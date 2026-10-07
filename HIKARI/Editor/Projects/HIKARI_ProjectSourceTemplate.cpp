@@ -124,10 +124,8 @@ std::string MakeGameProjectCMakePresets() {
 }
 
 std::string MakeGameProjectModule(const std::string& identifier) {
-    return R"cpp(#include "HIKARI/Project/GameProjectModule.h"
-#include "HIKARI/Project/GameFlowViews.h"
-#include "HIKARI/Project/RuntimeFeatureRegistration.h"
-#include "HIKARI/Project/SceneFlowTrigger.h"
+    return R"cpp(#include "HIKARI/Project/GameFlowViews.h"
+#include "HIKARI/Project/GameProjectModule.h"
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -168,40 +166,21 @@ public:
 };
 
 // 以下はエンジンへの登録。日常のゲーム処理は上の Game に書く。
+// Register で登録した組件・系统は自動的にこの Feature の所有になる。
 class GameplayFeature final : public HIKARI::IRuntimeFeature {
 public:
     std::string_view GetFeatureId() const noexcept override { return ")cpp" +
            identifier + R"cpp(.Gameplay"; }
     std::string_view GetDisplayName() const noexcept override { return "Gameplay"; }
     std::string_view GetDescription() const noexcept override { return "Project game logic"; }
-    std::span<const std::string_view> GetSystemIds() const noexcept override {
-        static constexpr std::array<std::string_view, 1> ids{ ")cpp" +
-           identifier + R"cpp(.Game" };
-        return ids;
-    }
     std::span<const HIKARI::RuntimeSystemDefault> GetDefaultSystems() const noexcept override {
-        static constexpr std::array<HIKARI::RuntimeSystemDefault, 1> systems{{
-            { ")cpp" +
-           identifier + R"cpp(.Game", true, 100 }
-        }};
+        static constexpr std::array<HIKARI::RuntimeSystemDefault, 1> systems{{{")cpp" +
+           identifier + R"cpp(.Game", true, 100}}};
         return systems;
     }
     bool Register(HIKARI::RuntimeFeatureContext& context) override {
-        HIKARI::GameSystemDescriptor system;
-        system.systemId = ")cpp" +
-           identifier + R"cpp(.Game";
-        system.displayName = "Game";
-        system.featureId = GetFeatureId();
-        return context.RegisterSystem<Game>(system);
-    }
-};
-
-class GameplayExtension final : public HIKARI::IRuntimeExtension {
-public:
-    std::string_view GetExtensionId() const noexcept override { return ")cpp" +
-           identifier + R"cpp("; }
-    bool RegisterRuntimeFeatures(HIKARI::RuntimeFeatureCatalog& catalog) override {
-        return HIKARI::RegisterRuntimeFeature<GameplayFeature>(catalog);
+        return context.RegisterSystem<Game>({.systemId = ")cpp" +
+           identifier + R"cpp(.Game", .displayName = "Game"});
     }
 };
 
@@ -209,14 +188,11 @@ class GameProjectModule final : public HIKARI::RUNTIME::IGameProjectModule {
 public:
     std::string_view GetModuleId() const noexcept override { return ")cpp" +
            identifier + R"cpp("; }
+    bool RegisterRuntimeFeatures(HIKARI::RuntimeFeatureCatalog& catalog) override {
+        return HIKARI::RegisterRuntimeFeature<GameplayFeature>(catalog);
+    }
     std::unique_ptr<HIKARI::IGameProjectSession> CreateGameSession() override {
         return std::make_unique<GameSession>();
-    }
-    std::vector<std::unique_ptr<HIKARI::IRuntimeExtension>> CreateRuntimeExtensions() const override {
-        std::vector<std::unique_ptr<HIKARI::IRuntimeExtension>> extensions;
-        extensions.push_back(std::make_unique<GameplayExtension>());
-        extensions.push_back(HIKARI::SCENE_FLOW::CreateSceneFlowRuntimeExtension());
-        return extensions;
     }
 };
 } // namespace

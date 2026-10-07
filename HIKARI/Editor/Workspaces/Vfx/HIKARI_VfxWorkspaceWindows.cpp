@@ -193,7 +193,8 @@ void VfxWorkspaceController::DrawToolbarWindow(AssetDatabase& database, VfxWorks
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button(document_.IsDirty() ? "Discard and Create" : TEXT::LocalizeCStr("editor.ui.create.6e157c"))) {
+        if (ImGui::Button(document_.IsDirty() ? "Discard and Create"
+                                              : TEXT::Localize("editor.ui.create.6e157c").c_str())) {
             NewAsset(newAssetName_.data());
             ImGui::CloseCurrentPopup();
         }

@@ -76,6 +76,9 @@ private:
     struct FeatureEntry {
         IRuntimeFeature* feature = nullptr;
         RuntimeFeatureDestroyFn destroy = nullptr;
+        // 追加時に一時レジストリへ試行登録して得た、この Feature が所有する型。
+        std::vector<std::string> componentTypeNames{};
+        std::vector<std::string> systemIds{};
     };
 
     bool AddWithDestroy(IRuntimeFeature* feature, RuntimeFeatureDestroyFn destroy);

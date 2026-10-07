@@ -5,6 +5,7 @@
 #include <iterator>
 
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
 
@@ -170,9 +171,17 @@ GameProjectWorldQueryResult WorldView::QueryComponents(const GameProjectWorldQue
     return result;
 }
 
-bool WorldView::VisitComponents(ComponentTypeId typeId, void* context, VisitorFn visitor) const noexcept {
+bool WorldView::VisitComponents(ComponentTypeId typeId, const void* typeToken, void* context,
+                                VisitorFn visitor) const noexcept {
     World* world = GameProjectSdkAccess::GetWorld(*this);
-    if (world == nullptr || !typeId.IsValid() || visitor == nullptr) {
+    if (world == nullptr || !typeId.IsValid() || typeToken == nullptr || visitor == nullptr) {
+        return false;
+    }
+    // 登録時の型の印と一致する GameProject 型だけを走査する。以降の要素はすべてアダプター。
+    const ComponentRegistry* registry = world->GetComponentRegistry();
+    const ComponentTypeInfo* info = registry != nullptr ? registry->Find(typeId) : nullptr;
+    if (info == nullptr || info->registrationSource != ComponentRegistrationSource::GameProject ||
+        info->gameProjectTypeToken != typeToken) {
         return false;
     }
     struct VisitContext {
@@ -191,7 +200,7 @@ bool WorldView::VisitComponents(ComponentTypeId typeId, void* context, VisitorFn
                 return false;
             }
             GameObject* object = visit.world->FindObject(objectHandle);
-            auto* adapter = dynamic_cast<GameProjectComponentAdapter*>(components[0]);
+            auto* adapter = static_cast<GameProjectComponentAdapter*>(components[0]);
             return object != nullptr && adapter != nullptr &&
                    visit.clientVisitor(visit.clientContext, GameProjectSdkAccess::MakeObjectView(*object),
                                        adapter->GetGameComponent());

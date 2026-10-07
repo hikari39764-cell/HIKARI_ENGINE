@@ -25,12 +25,14 @@
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
 #include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
 #include "Scene/Vfx/HIKARI_CombatPresentationService.h"
 #include "Scene/Vfx/HIKARI_VfxAttachmentResolver.h"
 #include "Scene/Ui/HIKARI_UiSceneSystem.h"
+#include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI {
 
@@ -74,6 +76,7 @@ void DetachAndStopGameProjectSession(DocumentSceneRuntimeState& runtime) {
     runtime.systemScheduler.DetachWorld(world);
     runtime.systemScheduler.Clear();
     world.Clear();
+    runtime.worldBuilt = false;
     if (RUNTIME::GameProjectSessionRuntimeExtension* sessionOwner =
             world.Services().Find<RUNTIME::GameProjectSessionRuntimeExtension>()) {
         sessionOwner->StopGameSession();
@@ -374,6 +377,7 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     state_->runtime.combatPresentationService.Reset();
     state_->runtime.combatAfterimageService.Reset();
     state_->runtime.actionPostReactionService.Reset();
+    POST::PostSystem::ClearActionPostFrame(state_->runtime.world.GetRuntimeIdentity());
     state_->runtime.animationPoseService.Clear();
     state_->runtime.animationNodeOverrideService.Clear();
     state_->runtime.animationRootMotionService.Clear();
@@ -589,6 +593,89 @@ bool DocumentSceneBase::ReloadSceneDocument() {
     }
     return OpenStartupSceneAsset();
 }
+bool DocumentSceneBase::ApplyRuntimeObjectChanges(const SceneObjectChanges& changes) {
+    DocumentSceneRuntimeState& runtime = state_->runtime;
+    const SceneDocument& document = state_->identity.document;
+    if (!runtime.worldBuilt || runtime.playActive) {
+        return RebuildRuntimeWorld();
+    }
+
+    // 追加分と変更分は同じ経路で document から生成する（変更分は先に壊してから作り直す）。
+    std::vector<const SceneObjectData*> builtObjects{};
+    builtObjects.reserve(changes.added.size() + changes.changed.size());
+    SceneDependencySet dependencies{};
+    bool lightingChanged = false;
+    const auto admit = [&](SceneObjectId id, bool mustBeNew) {
+        const SceneObjectData* object = FindSceneObjectData(document, id);
+        if (object == nullptr || (mustBeNew && runtime.world.FindObject(id) != nullptr)) {
+            return false;
+        }
+        for (const SceneComponentData& component : object->components) {
+            if (runtime.componentSystemPolicy.NeedsSystemInstall(component.type, document, runtime.systemScheduler)) {
+                return false;
+            }
+            lightingChanged = lightingChanged || LIGHTING_AUTHORING::IsLightingComponentType(component.type);
+        }
+        runtime.builder.CollectObjectDependencies(*object, &runtime.componentRegistry, dependencies);
+        builtObjects.push_back(object);
+        return true;
+    };
+    for (SceneObjectId id : changes.added) {
+        if (!admit(id, true)) {
+            return RebuildRuntimeWorld();
+        }
+    }
+    for (SceneObjectId id : changes.changed) {
+        if (!admit(id, false)) {
+            return RebuildRuntimeWorld();
+        }
+    }
+    if (state_->assets.NeedsRuntimeDependencyRegistryRefresh(dependencies)) {
+        return RebuildRuntimeWorld();
+    }
+
+    const auto destroy = [&](SceneObjectId id) {
+        GameObject* object = runtime.world.FindObject(id);
+        if (object == nullptr) {
+            return true;
+        }
+        for (const auto& component : object->GetComponents()) {
+            lightingChanged =
+                lightingChanged || (component && LIGHTING_AUTHORING::IsLightingComponentType(component->GetTypeName()));
+        }
+        return runtime.world.DestroyObject(object) == WorldMutationResult::Success;
+    };
+    for (SceneObjectId id : changes.removed) {
+        if (!destroy(id)) {
+            return RebuildRuntimeWorld();
+        }
+    }
+    for (SceneObjectId id : changes.changed) {
+        if (!destroy(id)) {
+            return RebuildRuntimeWorld();
+        }
+    }
+
+    if (!builtObjects.empty()) {
+        // 照明は下の RefreshLightingRuntime がまとめて読み直すので、ここでは資産だけを先読みする。
+        (void)runtime.builder.PreloadDependencies(dependencies, state_->assets.Registry(), state_->assets.Models(),
+                                                  state_->lighting.sky, state_->assets.Database().GetProjectRoot(),
+                                                  state_->identity.currentSceneAssetGuid.value, false,
+                                                  &state_->assets.SpriteAssets());
+        if (!runtime.builder.AddObjectsFromDocument(builtObjects, runtime.world, state_->assets.Registry(),
+                                                    runtime.componentRegistry, state_->assets.Models())) {
+            return RebuildRuntimeWorld();
+        }
+        runtime.builder.ReattachChildrenFromDocument(document, changes.changed, runtime.world);
+    }
+    if (lightingChanged) {
+        LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(state_->identity.document);
+        (void)RefreshLightingRuntime();
+    }
+    ApplyCameraRuntimeChanges();
+    return true;
+}
+
 bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool assetSnapshotAlreadyRefreshed,
                                             bool* outOldWorldDetached) {
     if (outOldWorldDetached != nullptr) {
@@ -641,6 +728,7 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     // Service-owned snapshots are cleared only after every old object
     // has released its borrowed service references.
     state_->runtime.world.Clear();
+    state_->runtime.worldBuilt = false;
     if (state_->runtime.stopGameProjectSessionAfterWorldDetach) {
         if (sessionOwner != nullptr) {
             sessionOwner->StopGameSession();
@@ -654,6 +742,7 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     state_->runtime.combatPresentationService.Reset();
     state_->runtime.combatAfterimageService.Reset();
     state_->runtime.actionPostReactionService.Reset();
+    POST::PostSystem::ClearActionPostFrame(state_->runtime.world.GetRuntimeIdentity());
     // Presentation records are owned by the exact runtime World. A
     // rebuild can occur after LateUpdate while the absolute frame token
     // is still current, so the old world's render-only attachments must
@@ -689,6 +778,7 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     const bool built = state_->runtime.builder.BuildWorldFromDocument(
         state_->identity.document, state_->runtime.world, state_->assets.Registry(), state_->runtime.componentRegistry,
         state_->runtime.massSchemaRegistry, state_->assets.Models(), state_->lighting.sky);
+    state_->runtime.worldBuilt = built;
 
     state_->lighting.environment = state_->identity.document.environment;
     state_->lighting.environment.directional.direction =

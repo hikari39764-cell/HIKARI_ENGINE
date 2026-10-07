@@ -13,6 +13,8 @@ SamplerState gLinearWrap : register(s0);
 
 float4 main(PSInput input) : SV_TARGET
 {
+    // 選択/geometry outline は基底の輪郭を使い、筆触の全層を重ねない。
+    if (input.shellLayer.y < 0.5f) discard;
     const HikariMeshMaterialData materialData =
         HikariGetMeshMaterialData(input.materialDataIndex);
     uint surfaceMaterialProgramFlags = 0u;

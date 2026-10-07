@@ -7,7 +7,7 @@
 #include <cmath>
 #include <limits>
 
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 
 #ifdef max
 #undef max

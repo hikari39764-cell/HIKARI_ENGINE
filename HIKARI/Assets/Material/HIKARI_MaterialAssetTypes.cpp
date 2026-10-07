@@ -1,131 +1,108 @@
 #include "HIKARI_MaterialAssetTypes.h"
 
 #include <algorithm>
-#include <array>
 #include <utility>
 
 #include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 
 namespace HIKARI {
 
 namespace {
 
-template <class TEnum, size_t TSize>
-std::string_view EnumToString(TEnum value,
-                              const std::array<std::pair<TEnum, std::string_view>, TSize>& names) noexcept {
-    for (const auto& [candidate, name] : names) {
-        if (candidate == value) {
-            return name;
-        }
-    }
-    return "Unknown";
-}
-
-template <class TEnum, size_t TSize>
-bool ParseEnum(std::string_view text, const std::array<std::pair<TEnum, std::string_view>, TSize>& names,
-               TEnum& outValue) noexcept {
-    for (const auto& [candidate, name] : names) {
-        if (name == text) {
-            outValue = candidate;
-            return true;
-        }
-    }
-    return false;
-}
-
-constexpr std::array kAssetKinds{
-    std::pair{MaterialAssetKind::Material, std::string_view{"Material"}},
-    std::pair{MaterialAssetKind::Function, std::string_view{"Function"}},
-    std::pair{MaterialAssetKind::Instance, std::string_view{"Instance"}},
-    std::pair{MaterialAssetKind::Profile, std::string_view{"Profile"}},
-    std::pair{MaterialAssetKind::Ramp, std::string_view{"Ramp"}},
+constexpr TEXT::EnumName<MaterialAssetKind> kAssetKinds[]{
+    {MaterialAssetKind::Material, "Material"}, {MaterialAssetKind::Function, "Function"},
+    {MaterialAssetKind::Instance, "Instance"}, {MaterialAssetKind::Profile, "Profile"},
+    {MaterialAssetKind::Ramp, "Ramp"},
 };
-constexpr std::array kDomains{
-    std::pair{MaterialDomain::Surface, std::string_view{"Surface"}},
-    std::pair{MaterialDomain::Particle, std::string_view{"Particle"}},
+constexpr TEXT::EnumName<MaterialDomain> kDomains[]{
+    {MaterialDomain::Surface, "Surface"},
+    {MaterialDomain::Particle, "Particle"},
 };
-constexpr std::array kTemplates{
-    std::pair{MaterialTemplateId::StandardPbr, std::string_view{"StandardPBR"}},
-    std::pair{MaterialTemplateId::GenericToon, std::string_view{"GenericToon"}},
-    std::pair{MaterialTemplateId::Skin, std::string_view{"Skin"}},
-    std::pair{MaterialTemplateId::Face, std::string_view{"Face"}},
-    std::pair{MaterialTemplateId::Hair, std::string_view{"Hair"}},
-    std::pair{MaterialTemplateId::Eye, std::string_view{"Eye"}},
-    std::pair{MaterialTemplateId::Cloth, std::string_view{"Cloth"}},
-    std::pair{MaterialTemplateId::HybridMetal, std::string_view{"HybridMetal"}},
-    std::pair{MaterialTemplateId::Custom, std::string_view{"Custom"}},
-    std::pair{MaterialTemplateId::ParticleUnlit, std::string_view{"ParticleUnlit"}},
-    std::pair{MaterialTemplateId::ParticleUnlitTextured, std::string_view{"ParticleUnlitTextured"}},
+constexpr TEXT::EnumName<MaterialTemplateId> kTemplates[]{
+    {MaterialTemplateId::StandardPbr, "StandardPBR"},
+    {MaterialTemplateId::GenericToon, "GenericToon"},
+    {MaterialTemplateId::Skin, "Skin"},
+    {MaterialTemplateId::Face, "Face"},
+    {MaterialTemplateId::Hair, "Hair"},
+    {MaterialTemplateId::Eye, "Eye"},
+    {MaterialTemplateId::Cloth, "Cloth"},
+    {MaterialTemplateId::HybridMetal, "HybridMetal"},
+    {MaterialTemplateId::Custom, "Custom"},
+    {MaterialTemplateId::ParticleUnlit, "ParticleUnlit"},
+    {MaterialTemplateId::ParticleUnlitTextured, "ParticleUnlitTextured"},
+    {MaterialTemplateId::PainterlyShell, "PainterlyShell"},
 };
-constexpr std::array kAlphaModes{
-    std::pair{MaterialAlphaMode::Opaque, std::string_view{"Opaque"}},
-    std::pair{MaterialAlphaMode::Mask, std::string_view{"Mask"}},
-    std::pair{MaterialAlphaMode::Blend, std::string_view{"Blend"}},
+constexpr TEXT::EnumName<MaterialAlphaMode> kAlphaModes[]{
+    {MaterialAlphaMode::Opaque, "Opaque"},
+    {MaterialAlphaMode::Mask, "Mask"},
+    {MaterialAlphaMode::Blend, "Blend"},
 };
-constexpr std::array kAlphaRepresentations{
-    std::pair{MaterialAlphaRepresentation::Straight, std::string_view{"Straight"}},
-    std::pair{MaterialAlphaRepresentation::Premultiplied, std::string_view{"Premultiplied"}},
+constexpr TEXT::EnumName<MaterialAlphaRepresentation> kAlphaRepresentations[]{
+    {MaterialAlphaRepresentation::Straight, "Straight"},
+    {MaterialAlphaRepresentation::Premultiplied, "Premultiplied"},
 };
-constexpr std::array kValueTypes{
-    std::pair{MaterialValueType::Bool, std::string_view{"Bool"}},
-    std::pair{MaterialValueType::Float1, std::string_view{"Float1"}},
-    std::pair{MaterialValueType::Float2, std::string_view{"Float2"}},
-    std::pair{MaterialValueType::Float3, std::string_view{"Float3"}},
-    std::pair{MaterialValueType::Float4, std::string_view{"Float4"}},
-    std::pair{MaterialValueType::Surface, std::string_view{"Surface"}},
-    std::pair{MaterialValueType::DiffuseResponse, std::string_view{"DiffuseResponse"}},
-    std::pair{MaterialValueType::SpecularResponse, std::string_view{"SpecularResponse"}},
-    std::pair{MaterialValueType::OutlineResponse, std::string_view{"OutlineResponse"}},
+constexpr TEXT::EnumName<MaterialValueType> kValueTypes[]{
+    {MaterialValueType::Bool, "Bool"},
+    {MaterialValueType::Float1, "Float1"},
+    {MaterialValueType::Float2, "Float2"},
+    {MaterialValueType::Float3, "Float3"},
+    {MaterialValueType::Float4, "Float4"},
+    {MaterialValueType::Surface, "Surface"},
+    {MaterialValueType::DiffuseResponse, "DiffuseResponse"},
+    {MaterialValueType::SpecularResponse, "SpecularResponse"},
+    {MaterialValueType::OutlineResponse, "OutlineResponse"},
+    {MaterialValueType::ShellSettings, "ShellSettings"},
 };
-constexpr std::array kResourceTypes{
-    std::pair{MaterialResourceType::Texture2D, std::string_view{"Texture2D"}},
-    std::pair{MaterialResourceType::TextureCube, std::string_view{"TextureCube"}},
-    std::pair{MaterialResourceType::Ramp1D, std::string_view{"Ramp1D"}},
-    std::pair{MaterialResourceType::Ramp2D, std::string_view{"Ramp2D"}},
+constexpr TEXT::EnumName<MaterialResourceType> kResourceTypes[]{
+    {MaterialResourceType::Texture2D, "Texture2D"},
+    {MaterialResourceType::TextureCube, "TextureCube"},
+    {MaterialResourceType::Ramp1D, "Ramp1D"},
+    {MaterialResourceType::Ramp2D, "Ramp2D"},
 };
-constexpr std::array kResourceSemantics{
-    std::pair{MaterialResourceSemantic::Custom, std::string_view{"Custom"}},
-    std::pair{MaterialResourceSemantic::BaseColor, std::string_view{"BaseColor"}},
-    std::pair{MaterialResourceSemantic::Normal, std::string_view{"Normal"}},
-    std::pair{MaterialResourceSemantic::MetallicRoughness, std::string_view{"MetallicRoughness"}},
-    std::pair{MaterialResourceSemantic::Occlusion, std::string_view{"Occlusion"}},
-    std::pair{MaterialResourceSemantic::Emissive, std::string_view{"Emissive"}},
-    std::pair{MaterialResourceSemantic::Specular, std::string_view{"Specular"}},
-    std::pair{MaterialResourceSemantic::SpecularColor, std::string_view{"SpecularColor"}},
-    std::pair{MaterialResourceSemantic::Mask, std::string_view{"Mask"}},
-    std::pair{MaterialResourceSemantic::Ramp, std::string_view{"Ramp"}},
-    std::pair{MaterialResourceSemantic::MatCap, std::string_view{"MatCap"}},
-    std::pair{MaterialResourceSemantic::FaceSdf, std::string_view{"FaceSDF"}},
-    std::pair{MaterialResourceSemantic::HairShadow, std::string_view{"HairShadow"}},
-    std::pair{MaterialResourceSemantic::HairControl, std::string_view{"HairControl"}},
-    std::pair{MaterialResourceSemantic::EyeControl, std::string_view{"EyeControl"}},
-    std::pair{MaterialResourceSemantic::Thickness, std::string_view{"Thickness"}},
-    std::pair{MaterialResourceSemantic::Fabric, std::string_view{"Fabric"}},
-    std::pair{MaterialResourceSemantic::Noise, std::string_view{"Noise"}},
-    std::pair{MaterialResourceSemantic::DetailNoise, std::string_view{"DetailNoise"}},
-    std::pair{MaterialResourceSemantic::FlowMap, std::string_view{"FlowMap"}},
+constexpr TEXT::EnumName<MaterialResourceSemantic> kResourceSemantics[]{
+    {MaterialResourceSemantic::Custom, "Custom"},
+    {MaterialResourceSemantic::BaseColor, "BaseColor"},
+    {MaterialResourceSemantic::Normal, "Normal"},
+    {MaterialResourceSemantic::MetallicRoughness, "MetallicRoughness"},
+    {MaterialResourceSemantic::Occlusion, "Occlusion"},
+    {MaterialResourceSemantic::Emissive, "Emissive"},
+    {MaterialResourceSemantic::Specular, "Specular"},
+    {MaterialResourceSemantic::SpecularColor, "SpecularColor"},
+    {MaterialResourceSemantic::Mask, "Mask"},
+    {MaterialResourceSemantic::Ramp, "Ramp"},
+    {MaterialResourceSemantic::MatCap, "MatCap"},
+    {MaterialResourceSemantic::FaceSdf, "FaceSDF"},
+    {MaterialResourceSemantic::HairShadow, "HairShadow"},
+    {MaterialResourceSemantic::HairControl, "HairControl"},
+    {MaterialResourceSemantic::EyeControl, "EyeControl"},
+    {MaterialResourceSemantic::Thickness, "Thickness"},
+    {MaterialResourceSemantic::Fabric, "Fabric"},
+    {MaterialResourceSemantic::Noise, "Noise"},
+    {MaterialResourceSemantic::DetailNoise, "DetailNoise"},
+    {MaterialResourceSemantic::FlowMap, "FlowMap"},
 };
-constexpr std::array kFeatureRequests{
-    std::pair{MaterialFeatureRequest::GeometryOutline, std::string_view{"GeometryOutline"}},
-    std::pair{MaterialFeatureRequest::ScreenOutline, std::string_view{"ScreenOutline"}},
-    std::pair{MaterialFeatureRequest::VisibilityOverlay, std::string_view{"VisibilityOverlay"}},
-    std::pair{MaterialFeatureRequest::FaceHairShadow, std::string_view{"FaceHairShadow"}},
+constexpr TEXT::EnumName<MaterialFeatureRequest> kFeatureRequests[]{
+    {MaterialFeatureRequest::GeometryOutline, "GeometryOutline"},
+    {MaterialFeatureRequest::ScreenOutline, "ScreenOutline"},
+    {MaterialFeatureRequest::VisibilityOverlay, "VisibilityOverlay"},
+    {MaterialFeatureRequest::FaceHairShadow, "FaceHairShadow"},
 };
-constexpr std::array kRampDimensions{
-    std::pair{MaterialRampDimension::OneD, std::string_view{"OneD"}},
-    std::pair{MaterialRampDimension::TwoD, std::string_view{"TwoD"}},
+constexpr TEXT::EnumName<MaterialRampDimension> kRampDimensions[]{
+    {MaterialRampDimension::OneD, "OneD"},
+    {MaterialRampDimension::TwoD, "TwoD"},
 };
-constexpr std::array kRampInterpolations{
-    std::pair{MaterialRampInterpolation::Constant, std::string_view{"Constant"}},
-    std::pair{MaterialRampInterpolation::Linear, std::string_view{"Linear"}},
-    std::pair{MaterialRampInterpolation::Smooth, std::string_view{"Smooth"}},
+constexpr TEXT::EnumName<MaterialRampInterpolation> kRampInterpolations[]{
+    {MaterialRampInterpolation::Constant, "Constant"},
+    {MaterialRampInterpolation::Linear, "Linear"},
+    {MaterialRampInterpolation::Smooth, "Smooth"},
 };
 
 } // namespace
 
 #define HIKARI_DEFINE_MATERIAL_ENUM_IO(Type, Names, ParseName)                                                         \
-    std::string_view ToString(Type value) noexcept { return EnumToString(value, Names); }                              \
-    bool ParseName(std::string_view text, Type& outValue) noexcept { return ParseEnum(text, Names, outValue); }
+    std::string_view ToString(Type value) noexcept { return TEXT::EnumToName(Names, value, "Unknown"); }               \
+    bool ParseName(std::string_view text, Type& outValue) noexcept { return TEXT::TryParseEnum(Names, text, outValue); }
 
 HIKARI_DEFINE_MATERIAL_ENUM_IO(MaterialAssetKind, kAssetKinds, TryParseMaterialAssetKind)
 HIKARI_DEFINE_MATERIAL_ENUM_IO(MaterialDomain, kDomains, TryParseMaterialDomain)

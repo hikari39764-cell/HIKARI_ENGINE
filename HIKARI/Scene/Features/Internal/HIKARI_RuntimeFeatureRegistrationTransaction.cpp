@@ -28,19 +28,24 @@ bool RegisterRuntimeFeatureTransactional(IRuntimeFeature& feature, RuntimeFeatur
         WorldMassSchemaRegistry massSchemaCheckpoint = massSchemas;
         SystemTypeRegistry systemCheckpoint = systems;
         ComponentSystemPolicy policyCheckpoint = policy;
+        // 記述子の所属 Feature は登録中の Feature から決める（プロジェクトは指定しない）。
+        RuntimeFeatureContextAccess::SetFeatureId(context, feature.GetFeatureId());
         try {
-            if (feature.Register(context)) {
+            const bool registered = feature.Register(context);
+            RuntimeFeatureContextAccess::SetFeatureId(context, {});
+            if (registered) {
                 return true;
             }
         } catch (...) {
-            // The failed feature owns no committed registry state.
+            RuntimeFeatureContextAccess::SetFeatureId(context, {});
+            // ここで例外が発生した場合、登録処理中に何らかのエラーが発生したことを意味します。
         }
         components = std::move(componentCheckpoint);
         massSchemas = std::move(massSchemaCheckpoint);
         systems = std::move(systemCheckpoint);
         policy = std::move(policyCheckpoint);
     } catch (...) {
-        // Checkpoint allocation failed before feature mutation began.
+        // ここで例外が発生した場合、登録処理中に何らかのエラーが発生したことを意味します。
     }
     return false;
 }

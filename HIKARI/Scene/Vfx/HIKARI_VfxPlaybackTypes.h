@@ -12,7 +12,7 @@
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Assets/Vfx/HIKARI_VfxProgram.h"
 #include "Assets/Vfx/HIKARI_VfxValidation.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI::VFX {

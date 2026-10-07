@@ -6,7 +6,7 @@
 
 #include "Assets/Shader/HIKARI_ShaderCookedArtifact.h"
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/WorldSprite/HIKARI_WorldSpritePipelines.h"
 
 namespace HIKARI::RENDER3D::WORLD_SPRITES {

@@ -3,21 +3,8 @@
 #include <array>
 #include <memory>
 
-#include "Scene/Features/HIKARI_AnimationRuntimeFeature.h"
-#include "Scene/Features/HIKARI_BuoyancyRuntimeFeature.h"
-#include "Scene/Features/HIKARI_CameraRuntimeFeature.h"
-#include "Scene/Features/HIKARI_GameplayRuntimeFeature.h"
-#include "Scene/Features/HIKARI_LightingRuntimeFeature.h"
-#include "Scene/Features/HIKARI_PhysicsRuntimeFeature.h"
-#include "Scene/Features/HIKARI_RenderingRuntimeFeature.h"
 #include "HIKARI/Project/RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
-#include "Scene/Features/HIKARI_SequenceRuntimeFeature.h"
-#include "Scene/Features/HIKARI_SurfaceInteractionRuntimeFeature.h"
-#include "Scene/Features/HIKARI_TerrainRuntimeFeature.h"
-#include "Scene/Features/HIKARI_UiRuntimeFeature.h"
-#include "Scene/Features/HIKARI_VfxRuntimeFeature.h"
-#include "Scene/Features/HIKARI_WaterRuntimeFeature.h"
 
 namespace HIKARI {
 
@@ -83,6 +70,7 @@ RuntimeFeatureCatalog CreateBuiltInRuntimeFeatureCatalog() {
     (void)catalog.Add(CreateSequenceRuntimeFeature());
     (void)catalog.Add(CreateVfxRuntimeFeature());
     (void)catalog.Add(std::make_unique<ActionPresentationRuntimeFeature>());
+    (void)catalog.Add(CreateSceneFlowRuntimeFeature());
     return catalog;
 }
 

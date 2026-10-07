@@ -12,7 +12,7 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
+const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 std::string SlotFor(GameObject* object, GameObject* root) {
     if (!object || !root)
         return {};

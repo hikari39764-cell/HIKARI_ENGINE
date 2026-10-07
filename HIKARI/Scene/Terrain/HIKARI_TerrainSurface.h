@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "Core/Text/HIKARI_EnumNames.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Terrain/HIKARI_SurfacePreset.h"
 #include "Scene/Terrain/HIKARI_TerrainChunks.h"
 #include "Scene/Terrain/HIKARI_TerrainGrass.h"

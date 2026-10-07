@@ -186,6 +186,7 @@ bool InputService::InitializeTransient() {
 }
 
 void InputService::ResetRuntimeState() {
+    StopGamepadVibration();
     developerInputCaptured_ = false;
     pointerCursorHiddenRequested_ = false;
     uiInteractionActive_ = false;
@@ -217,6 +218,7 @@ void InputService::Shutdown() {
 
 void InputService::SetBackend(std::unique_ptr<IInputBackend> backend) {
     if (backend) {
+        StopGamepadVibration();
         backend_ = std::move(backend);
         backend_->SetHostWindow(hostWindow_);
         backend_->SetImeCaretAnchor(imeCaretAnchor_);
@@ -224,6 +226,8 @@ void InputService::SetBackend(std::unique_ptr<IInputBackend> backend) {
 }
 
 void InputService::SetHostWindow(void* nativeWindow) {
+    if (hostWindow_ != nativeWindow)
+        StopGamepadVibration();
     if (backend_) {
         ResetTextInput();
         hostWindow_ = nativeWindow;
@@ -317,6 +321,8 @@ void InputService::Update(float unscaledDeltaSeconds) {
         return;
     const InputDeviceState previousDevices = snapshot_.devices_;
     backend_->Poll(snapshot_.devices_);
+    if (vibrationActive_ && !backend_->HasInputFocus())
+        StopGamepadVibration();
     UpdateLastActiveDevice(previousDevices, (std::max)(unscaledDeltaSeconds, 0.0f));
     ++snapshot_.frameIndex_;
     if (rebindOperation_.IsActive()) {
@@ -424,17 +430,28 @@ bool InputService::ConsumeRebindResult(InputRebindResult& outResult) {
 }
 
 bool InputService::SetGamepadVibration(float lowFrequency, float highFrequency, float durationSeconds) {
-    if (!backend_ || !backend_->SetGamepadVibration(ResolveGamepadIndex(), lowFrequency, highFrequency)) {
+    if (!backend_)
+        return false;
+    // Query at submission too: focus may change after this frame's poll.
+    if ((lowFrequency > 0.0f || highFrequency > 0.0f) && !backend_->HasInputFocus()) {
+        StopGamepadVibration();
         return false;
     }
+    const uint32_t gamepadIndex = ResolveGamepadIndex();
+    if (vibrationActive_ && vibrationGamepadIndex_ != gamepadIndex)
+        StopGamepadVibration();
+    if (!backend_->SetGamepadVibration(gamepadIndex, lowFrequency, highFrequency)) {
+        return false;
+    }
+    vibrationGamepadIndex_ = gamepadIndex;
     vibrationRemaining_ = (std::max)(durationSeconds, 0.0f);
     vibrationActive_ = lowFrequency > 0.0f || highFrequency > 0.0f;
     return true;
 }
 
 void InputService::StopGamepadVibration() {
-    if (backend_) {
-        (void)backend_->SetGamepadVibration(ResolveGamepadIndex(), 0.0f, 0.0f);
+    if (backend_ && vibrationActive_) {
+        (void)backend_->SetGamepadVibration(vibrationGamepadIndex_, 0.0f, 0.0f);
     }
     vibrationRemaining_ = 0.0f;
     vibrationActive_ = false;

@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Vfx/HIKARI_CombatPresentationFrameSource.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 

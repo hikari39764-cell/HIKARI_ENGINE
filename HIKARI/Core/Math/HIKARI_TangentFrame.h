@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cmath>
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI::MATH {
 // HikariTransformSurfaceTangent と同じ world / handedness 契約。

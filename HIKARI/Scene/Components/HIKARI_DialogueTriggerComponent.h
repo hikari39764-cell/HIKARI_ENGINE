@@ -23,7 +23,9 @@ public:
 
     void Serialize(nlohmann::json& out) const override;
     void Deserialize(const nlohmann::json& in) override;
+#if defined(HIKARI_WITH_EDITOR)
     void BuildInspector(IInspectorBuilder& builder) override;
+#endif
 
     bool IsEnabled() const noexcept { return enabled_; }
     const AssetGuid& GetDialogueAssetGuid() const noexcept { return dialogueAssetGuid_; }

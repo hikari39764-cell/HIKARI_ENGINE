@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -73,8 +74,9 @@ public:
     uint32_t GetMaxWireLines() const;
     bool GetWirePerPrimitiveColor() const;
 
-    void RenderImGui() override;
+#if defined(HIKARI_WITH_EDITOR)
     void BuildInspector(IInspectorBuilder& builder) override;
+#endif
     void Serialize(nlohmann::json& out) const override;
     void Deserialize(const nlohmann::json& in) override;
     bool QueryGeometryFit(GeometryFitDesc& outFit) const noexcept override;
@@ -89,6 +91,8 @@ public:
     void ClearMaterialSetAssetGuid();
 
     uint32_t GetPostGroupMask() const;
+    bool SetRuntimePostGroupMask(uint32_t mask);
+    void ClearRuntimePostGroupMask();
 
     const std::vector<ModelMaterialOverrideSlot>& GetMaterialOverrides() const;
     void SetMaterialOverride(MaterialSlotId slotId, AssetGuid materialGuid);
@@ -126,6 +130,7 @@ private:
     uint32_t maxWireLines_ = 20000;
     bool wirePerPrimitiveColor_ = true;
     uint32_t postGroupMask_ = 0;
+    std::optional<uint32_t> runtimePostGroupMask_{};
     AssetGuid materialSetAssetGuid_{};
     bool materialSetSelectionAuthored_ = false;
     std::vector<ModelMaterialOverrideSlot> materialOverrides_{};

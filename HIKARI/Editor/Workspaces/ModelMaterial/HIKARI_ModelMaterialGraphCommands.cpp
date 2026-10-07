@@ -44,12 +44,12 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphToolbar(DocumentSceneBas
     const auto button = [&](EditorGlyph glyph, const char* id, const char* key, bool enabled = true) {
         NextToolbarItem();
         ImGui::BeginDisabled(!enabled);
-        const bool clicked = IconButton(glyph, id, EditorButtonTone::Quiet, {}, TEXT::LocalizeCStr(key));
+        const bool clicked = IconButton(glyph, id, EditorButtonTone::Quiet, {}, TEXT::Localize(key).c_str());
         ImGui::EndDisabled();
         return clicked;
     };
     if (IconButton(EditorGlyph::Add, "##addNode", EditorButtonTone::Primary, {},
-                   TEXT::LocalizeCStr("ui.materialGraph.addNode"))) {
+                   TEXT::Localize("ui.materialGraph.addNode").c_str())) {
         graphLinkCreatePending_ = false;
         ImGui::OpenPopup("##MaterialGraphAddNode");
     }
@@ -66,29 +66,29 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphToolbar(DocumentSceneBas
     if (button(EditorGlyph::More, "##more", "ui.materialGraph.organize"))
         ImGui::OpenPopup("##MaterialGraphOrganize");
     if (ImGui::BeginPopup("##MaterialGraphOrganize")) {
-        if (ImGui::MenuItem(TEXT::LocalizeCStr("ui.materialGraph.copy"), "Ctrl+C", false, hasSelection))
+        if (ImGui::MenuItem(TEXT::Localize("ui.materialGraph.copy").c_str(), "Ctrl+C", false, hasSelection))
             (void)CopySelectedGraphNodes(source, graph);
-        paste = ImGui::MenuItem(TEXT::LocalizeCStr("ui.materialGraph.paste"), "Ctrl+V", false,
+        paste = ImGui::MenuItem(TEXT::Localize("ui.materialGraph.paste").c_str(), "Ctrl+V", false,
                                 !graphClipboard_.nodes.empty());
-        if (ImGui::MenuItem(TEXT::LocalizeCStr("ui.materialGraph.duplicate"), "Ctrl+D", false, hasSelection))
+        if (ImGui::MenuItem(TEXT::Localize("ui.materialGraph.duplicate").c_str(), "Ctrl+D", false, hasSelection))
             operation = "material.duplicate_selected";
         ImGui::Separator();
         const auto item = [&](const char* key, const char* id, bool enabled = true) {
-            if (ImGui::MenuItem(TEXT::LocalizeCStr(key), nullptr, false, enabled))
+            if (ImGui::MenuItem(TEXT::Localize(key).c_str(), nullptr, false, enabled))
                 operation = id;
         };
         item("material.layout.all", "material.graph_layout", !graph.nodes.empty());
         item("ui.materialGraph.arrangeSelected", "material.arrange_selected", hasSelection);
         item("ui.materialGraph.groupSelection", "material.group_selected", hasSelection);
         item("ui.materialGraph.ungroupSelected", "material.ungroup_selected", hasSelection);
-        extract = ImGui::MenuItem(TEXT::LocalizeCStr("material.function.extract"), nullptr, false, hasSelection);
+        extract = ImGui::MenuItem(TEXT::Localize("material.function.extract").c_str(), nullptr, false, hasSelection);
         ImGui::Separator();
         item("ui.materialGraph.collapseSelected", "material.collapse_selected", hasSelection);
         item("ui.materialGraph.expandSelected", "material.expand_selected", hasSelection);
         item("ui.materialGraph.collapseAll", "material.collapse_all");
         item("ui.materialGraph.expandAll", "material.expand_all");
         ImGui::Separator();
-        if (ImGui::MenuItem(TEXT::LocalizeCStr("ui.materialGraph.deleteSelection"), "Delete", false,
+        if (ImGui::MenuItem(TEXT::Localize("ui.materialGraph.deleteSelection").c_str(), "Delete", false,
                             hasSelection || !selectedGraphEdgeId_.empty())) {
             requestDeleteNode = hasSelection;
             requestDeleteEdge = !hasSelection;
@@ -98,8 +98,8 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphToolbar(DocumentSceneBas
     if (extract)
         ImGui::OpenPopup("##ExtractMaterialFunction");
     if (ImGui::BeginPopup("##ExtractMaterialFunction")) {
-        ImGui::InputText(TEXT::LocalizeCStr("material.parameter.name"), functionName_.data(), functionName_.size());
-        if (ImGui::Button(TEXT::LocalizeCStr("material.function.extract")) && operationRegistry_) {
+        ImGui::InputText(TEXT::Localize("material.parameter.name").c_str(), functionName_.data(), functionName_.size());
+        if (ImGui::Button(TEXT::Localize("material.function.extract").c_str()) && operationRegistry_) {
             const auto result =
                 operationRegistry_->Execute("material.extract_function", {{"name", functionName_.data()}});
             statusMessage_ = result.message;
@@ -197,7 +197,7 @@ void ModelMaterialWorkspaceController::FinishMaterialGraphCanvasInteraction(
         edgeSourcePin_.clear();
     }
     if (ImGui::BeginPopup("##MaterialGraphCanvasContext")) {
-        if (ImGui::MenuItem(TEXT::LocalizeCStr("material.layout.all"))) {
+        if (ImGui::MenuItem(TEXT::Localize("material.layout.all").c_str())) {
             RunMaterialOperation(operationRegistry_, "material.graph_layout", statusMessage_);
             ImGui::EndPopup();
             return;

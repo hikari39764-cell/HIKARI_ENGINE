@@ -2,6 +2,8 @@
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
+#include "Assets/HIKARI_AssetRegistryBuilder.h"
+#include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Assets/Post/HIKARI_PostAsset.h"
 #include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
@@ -88,7 +90,10 @@ bool CollectSourceCookDependencies(const AssetRecord& record, const std::filesys
         if (!ResolveContainedFilePath(projectRoot, record.sourcePath, path, outMessage))
             return false;
         POST::PostEffectDefinition effect;
-        return POST::LoadPostEffectDefinition(path, effect, outMessage);
+        if (!POST::LoadPostEffectDefinition(path, effect, outMessage))
+            return false;
+        plan.sourceDependencies.insert_or_assign(record.guid.value, POST::CollectPostEffectDependencies(effect));
+        return true;
     }
     if (record.type == AssetType::PostProfile) {
         std::filesystem::path path;
@@ -191,6 +196,8 @@ bool ValidateCueAudioPayload(const AssetCookOptions& options, const AssetDepende
 bool BuildCookPlan(const AssetCookOptions& options, AssetDatabase& assetDatabase, CookPlan& outPlan,
                    std::string& outMessage) {
     CookPlan plan{};
+    AssetRegistry engineTextures{};
+    (void)RegisterEngineContentTextures(CONTENT::GetEngineContentContext(), engineTextures);
     if (!options.startupSceneGuid.empty() && !IsValidAssetGuid(options.startupSceneGuid)) {
         outMessage = "Startup Scene GUID must be 32 hexadecimal characters.";
         return false;
@@ -383,6 +390,10 @@ bool BuildCookPlan(const AssetCookOptions& options, AssetDatabase& assetDatabase
                 dependencyRecord = assetDatabase.FindByPath(dependency.path);
             }
             if (dependencyRecord == nullptr) {
+                if (engineTextures.FindAs<TextureAssetDescriptor>(AssetId{dependency.guid.value})) {
+                    // EngineContent はインストール済み bundle として別途配布する。
+                    continue;
+                }
                 outMessage = "Missing dependency of " + TEXT::PathToUtf8(record->sourcePath) + ": " +
                              dependency.guid.value + " " + dependency.path + " (" + dependency.role + ").";
                 return false;

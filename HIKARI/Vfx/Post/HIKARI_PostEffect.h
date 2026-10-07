@@ -2,10 +2,13 @@
 #include <array>
 #include <cstdint>
 #include <string_view>
+#include <memory>
+#include <vector>
 #include <wrl.h>
 #include <d3d12.h>
 #include <DirectXMath.h>
 #include "Assets/Shader/HIKARI_ShaderAssetResolver.h"
+#include "Assets/Post/HIKARI_PostAsset.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Gfx/HIKARI_GfxContext.h"
 
@@ -20,7 +23,8 @@ public:
     ~PostEffect();
     static void UpdateContext(const GFX::Context& ctx);
 
-    bool LoadBuiltinPixelShader(std::string_view programId, std::string_view entryId = "Main");
+    bool LoadPixelShader(const PostEffectPass& pass, const AssetRegistry* registry = nullptr,
+                         bool surfaceFeatureMask = false);
 
     void ApplyCommonParams(const CommonParams& p);
 
@@ -48,6 +52,9 @@ private:
 
     CommonParams params_{};
 };
+
+bool BuildPostEffectPasses(const PostEffectDefinition& definition, const AssetRegistry* registry,
+                           std::vector<std::unique_ptr<PostEffect>>& passes);
 
 } // namespace POST
 } // namespace HIKARI

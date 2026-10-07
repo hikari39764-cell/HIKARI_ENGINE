@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "Core/Hashing/HIKARI_FnvHash.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "../../../../ThirdParty/meshoptimizer/src/meshoptimizer.h"
 
 namespace HIKARI::ASSETS::GEOMETRY::COOKING {

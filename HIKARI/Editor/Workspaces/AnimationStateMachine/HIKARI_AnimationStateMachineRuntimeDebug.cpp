@@ -128,8 +128,8 @@ void AnimationStateMachineWorkspaceController::DrawRuntimeDebug(DocumentSceneBas
                 ImGui::TableSetColumnIndex(1);
                 const auto* value = instance->FindValue(parameter.id);
                 if (const bool* boolean = value != nullptr ? std::get_if<bool>(value) : nullptr) {
-                    ImGui::TextUnformatted(*boolean ? TEXT::LocalizeCStr("editor.ui.true.88b33e")
-                                                    : TEXT::LocalizeCStr("editor.ui.false.97cdbd"));
+                    ImGui::TextUnformatted(*boolean ? TEXT::Localize("editor.ui.true.88b33e").c_str()
+                                                    : TEXT::Localize("editor.ui.false.97cdbd").c_str());
                 } else if (const float* number = value != nullptr ? std::get_if<float>(value) : nullptr) {
                     ImGui::Text("%.3f", *number);
                 } else if (const int32_t* integer = value != nullptr ? std::get_if<int32_t>(value) : nullptr) {

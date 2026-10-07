@@ -100,12 +100,12 @@ VfxEmitterInspectorPage DrawPageNavigation(VfxEmitterInspectorPage current, bool
         if (!first)
             NextToolbarItem();
         first = false;
-        if (IconToggleButton(icons[i], page.label, current == page.id, {28, 28}, TEXT::LocalizeCStr(page.label)))
+        if (IconToggleButton(icons[i], page.label, current == page.id, {28, 28}, TEXT::Localize(page.label).c_str()))
             requested = page.id;
     }
     for (const auto& page : pages)
         if (page.id == current) {
-            ImGui::TextUnformatted(TEXT::LocalizeCStr(page.label));
+            ImGui::TextUnformatted(TEXT::Localize(page.label).c_str());
             break;
         }
     ImGui::Separator();

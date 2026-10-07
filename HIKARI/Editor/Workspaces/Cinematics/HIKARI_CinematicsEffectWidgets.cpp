@@ -93,8 +93,8 @@ bool CinematicsWorkspaceController::DrawEffects(std::vector<SEQUENCER::SequenceS
                 move = static_cast<int>(i);
         }
         if (open) {
-            ImGui::TextDisabled(static_cast<int>(e.kind) < 6 ? TEXT::LocalizeCStr("cine.stageOverride")
-                                                             : TEXT::LocalizeCStr("cine.hdrEffect"));
+            ImGui::TextDisabled(static_cast<int>(e.kind) < 6 ? TEXT::Localize("cine.stageOverride").c_str()
+                                                             : TEXT::Localize("cine.hdrEffect").c_str());
             changed |=
                 ImGui::DragFloat(TEXT::LocalizeWindow("ui.vfx.text.Start", "开始").c_str(), &e.start, 0.02f, 0, 10000);
             changed |= ImGui::DragFloat(TEXT::LocalizeWindow("cine.duration", "时长").c_str(), &e.duration, 0.02f,

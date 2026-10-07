@@ -33,7 +33,6 @@ struct WorldTextFrameSource;
 }
 
 namespace COMBAT_VFX {
-struct CombatAfterimageFrameSource;
 struct CombatPresentationFrameSource;
 struct PerfectGuardShockwaveFrameSource;
 } // namespace COMBAT_VFX
@@ -85,7 +84,6 @@ struct RenderViewContext {
     const WORLD_SPRITES::WorldSpriteFrameSource* worldSpriteFrameSource = nullptr;
     const WORLD_TEXT::WorldTextFrameSource* worldTextFrameSource = nullptr;
     const COMBAT_VFX::CombatPresentationFrameSource* combatPresentationFrameSource = nullptr;
-    const COMBAT_VFX::CombatAfterimageFrameSource* combatAfterimageFrameSource = nullptr;
     const COMBAT_VFX::PerfectGuardShockwaveFrameSource* actionPostReactionFrameSource = nullptr;
     const AssetRegistry* assetRegistry = nullptr;
     RenderFrameProjectExtensionSink projectRenderExtensions{};

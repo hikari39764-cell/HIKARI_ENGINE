@@ -1,4 +1,4 @@
-#include "Scene/Features/HIKARI_BuoyancyRuntimeFeature.h"
+#include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 
 #include <array>
 #include <memory>
@@ -29,16 +29,6 @@ public:
 
     std::span<const std::string_view> GetRequiredFeatureIds() const noexcept override {
         static constexpr std::array<std::string_view, 2> ids{RuntimeFeatureIds::Water, RuntimeFeatureIds::Physics};
-        return ids;
-    }
-
-    std::span<const std::string_view> GetComponentTypeNames() const noexcept override {
-        static constexpr std::array<std::string_view, 1> names{"BuoyancyComponent"};
-        return names;
-    }
-
-    std::span<const std::string_view> GetSystemIds() const noexcept override {
-        static constexpr std::array<std::string_view, 1> ids{"BuoyancySystem"};
         return ids;
     }
 

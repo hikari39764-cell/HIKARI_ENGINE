@@ -21,6 +21,12 @@ namespace HIKARI::EDITOR {
 namespace {
 GameObject* FindRuntimeObject(DocumentSceneBase& scene, SceneObjectId id) { return scene.GetWorld().FindObject(id); }
 
+// document に足した一つのオブジェクトだけを runtime world へ反映する。
+GameObject* MaterializeCreatedObject(DocumentSceneBase& scene, SceneObjectId id) {
+    (void)scene.ApplyRuntimeObjectChanges({.added = {id}});
+    return FindRuntimeObject(scene, id);
+}
+
 std::string ResolveObjectName(const DocumentSceneBase& scene, const AssetGuid* modelGuid,
                               const CreateObjectRequest& request, SceneObjectId id) {
     if (!request.name.empty()) {
@@ -56,9 +62,7 @@ GameObject* CreateEmptyObject(DocumentSceneBase& scene, const CreateObjectReques
     const SceneObjectId id = object.id;
     scene.GetSceneDocument().objects.push_back(std::move(object));
 
-    // Document を正として runtime world を作り直す。
-    scene.RebuildRuntimeWorld();
-    return FindRuntimeObject(scene, id);
+    return MaterializeCreatedObject(scene, id);
 }
 
 GameObject* CreateModelObject(DocumentSceneBase& scene, const AssetGuid& modelGuid,
@@ -75,9 +79,7 @@ GameObject* CreateModelObject(DocumentSceneBase& scene, const AssetGuid& modelGu
 
     scene.GetSceneDocument().objects.push_back(std::move(object));
 
-    // Document を正として runtime world を作り直す。
-    scene.RebuildRuntimeWorld();
-    return FindRuntimeObject(scene, id);
+    return MaterializeCreatedObject(scene, id);
 }
 
 GameObject* CreatePrimitiveObject(DocumentSceneBase& scene, const CreatePrimitiveRequest& request) {
@@ -153,8 +155,7 @@ GameObject* CreatePrimitiveObject(DocumentSceneBase& scene, const CreatePrimitiv
     NormalizeSceneComponentIds(object);
 
     scene.GetSceneDocument().objects.push_back(std::move(object));
-    scene.RebuildRuntimeWorld();
-    return FindRuntimeObject(scene, id);
+    return MaterializeCreatedObject(scene, id);
 }
 
 GameObject* CreateWaterSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request) {
@@ -193,8 +194,7 @@ GameObject* CreateWaterSurfaceObject(DocumentSceneBase& scene, const CreateObjec
 
     NormalizeSceneComponentIds(object);
     scene.GetSceneDocument().objects.push_back(std::move(object));
-    scene.RebuildRuntimeWorld();
-    return FindRuntimeObject(scene, id);
+    return MaterializeCreatedObject(scene, id);
 }
 
 GameObject* CreateTerrainSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request) {
@@ -230,8 +230,7 @@ GameObject* CreateTerrainSurfaceObject(DocumentSceneBase& scene, const CreateObj
 
     NormalizeSceneComponentIds(object);
     scene.GetSceneDocument().objects.push_back(std::move(object));
-    scene.RebuildRuntimeWorld();
-    return FindRuntimeObject(scene, id);
+    return MaterializeCreatedObject(scene, id);
 }
 
 GameObject* CreateWorldSpriteObject(DocumentSceneBase& scene, const AssetGuid& assetGuid,
@@ -273,8 +272,7 @@ GameObject* CreateWorldSpriteObject(DocumentSceneBase& scene, const AssetGuid& a
     object.components.push_back(SceneComponentData{"WorldSpriteComponent", std::move(properties)});
     NormalizeSceneComponentIds(object);
     scene.GetSceneDocument().objects.push_back(std::move(object));
-    scene.RebuildRuntimeWorld();
-    return FindRuntimeObject(scene, id);
+    return MaterializeCreatedObject(scene, id);
 }
 
 GameObject* CreateWorldTextObject(DocumentSceneBase& scene, const CreateWorldTextRequest& request) {
@@ -310,9 +308,7 @@ GameObject* CreateWorldTextObject(DocumentSceneBase& scene, const CreateWorldTex
     NormalizeSceneComponentIds(object);
     scene.GetSceneDocument().objects.push_back(std::move(object));
 
-    // Document を正として runtime world を一度だけ作り直す。
-    scene.RebuildRuntimeWorld();
-    return FindRuntimeObject(scene, id);
+    return MaterializeCreatedObject(scene, id);
 }
 
 GameObject* CreateDialogueTriggerObject(DocumentSceneBase& scene, const CreateObjectRequest& request) {
@@ -362,8 +358,7 @@ GameObject* CreateDialogueTriggerObject(DocumentSceneBase& scene, const CreateOb
 
     NormalizeSceneComponentIds(object);
     scene.GetSceneDocument().objects.push_back(std::move(object));
-    scene.RebuildRuntimeWorld();
-    return FindRuntimeObject(scene, id);
+    return MaterializeCreatedObject(scene, id);
 }
 
 GameObject* CreateReflectionProbeObject(DocumentSceneBase& scene, const CreateObjectRequest& request) {
@@ -379,8 +374,7 @@ GameObject* CreateReflectionProbeObject(DocumentSceneBase& scene, const CreateOb
     probe.settings.influenceBoxCenter = probe.position;
     probe.settings.projectionBoxCenter = probe.position;
     const SceneObjectId id = LIGHTING_AUTHORING::AddReflectionProbe(scene.GetSceneDocument(), probe);
-    scene.RebuildRuntimeWorld();
-    return FindRuntimeObject(scene, id);
+    return MaterializeCreatedObject(scene, id);
 }
 
 GameObject* CreateIrradianceVolumeObject(DocumentSceneBase& scene, const CreateObjectRequest& request) {
@@ -395,8 +389,7 @@ GameObject* CreateIrradianceVolumeObject(DocumentSceneBase& scene, const CreateO
                               volume.center.y - volume.settings.size.y * 0.5f,
                               volume.center.z - volume.settings.size.z * 0.5f};
     const SceneObjectId id = LIGHTING_AUTHORING::AddIrradianceVolume(scene.GetSceneDocument(), volume);
-    scene.RebuildRuntimeWorld();
-    return FindRuntimeObject(scene, id);
+    return MaterializeCreatedObject(scene, id);
 }
 
 GameObject* CreateLightObject(DocumentSceneBase& scene, const CreateObjectRequest& request,
@@ -421,8 +414,7 @@ GameObject* CreateLightObject(DocumentSceneBase& scene, const CreateObjectReques
         }
     }
     const SceneObjectId id = LIGHTING_AUTHORING::AddLight(scene.GetSceneDocument(), light);
-    scene.RebuildRuntimeWorld();
-    return FindRuntimeObject(scene, id);
+    return MaterializeCreatedObject(scene, id);
 }
 
 } // namespace HIKARI::EDITOR

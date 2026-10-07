@@ -15,7 +15,7 @@
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Core/HIKARI_Logger.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"

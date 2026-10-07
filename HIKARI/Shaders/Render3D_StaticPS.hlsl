@@ -6,6 +6,7 @@
 #include "Include/Material/HIKARI_StylizedMaterial.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 #include "Include/Surface/HIKARI_SurfacePartition.hlsli"
+#include "Include/Surface/HIKARI_MaterialShell.hlsli"
 
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
 #include "Include/Forward/HIKARI_SurfaceFeatureShading.hlsli"
@@ -56,6 +57,7 @@ float4 main(PSInput input) : SV_TARGET
 #else
     const uint forwardCostMode = (uint)(gForwardCostMode + 0.5f);
 #endif
+    HikariApplyShellFade(input.shellLayer, input.position.xy);
     const bool costNoShadow =
         forwardCostMode == HIKARI_FORWARD_COST_NO_SHADOW;
 #if HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_TERRAIN
@@ -156,11 +158,12 @@ float4 main(PSInput input) : SV_TARGET
         materialData.materialProgramIndex !=
             HIKARI_STANDARD_PBR_MATERIAL_PROGRAM)
     {
-        const HikariMaterialExpressionContext expressionContext =
+        HikariMaterialExpressionContext expressionContext =
             HikariBuildMaterialExpressionContext(
                 input.uv, input.uv1, gTimeParams, input.worldPosWS,
                 geometricNormal, input.tangentWS, gCameraPos.xyz,
                 input.position, gScreenParams.zw);
+        expressionContext.shellLayer = input.shellLayer;
         materialExpression = HikariEvaluateMaterialExpression(
             materialData, expressionContext, gLinearWrap);
     }
@@ -210,10 +213,21 @@ float4 main(PSInput input) : SV_TARGET
     materialExpression.baseColor = HikariResolveMaterialSourceColor(materialData, materialExpression.baseColor);
     HikariApplyMaterialExpressionCoverage(materialExpression, albedo, alphaClipThreshold);
     if (!neutralClay &&
-        (materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0 &&
+        ((materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0 ||
+         ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_AFTERIMAGE) != 0u &&
+          (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_ALPHA_MASK) != 0u)) &&
         albedo.a < alphaClipThreshold)
     {
         discard;
+    }
+
+    // Frozen render-only silhouettes share the production geometry, skinning,
+    // coverage and transparent depth state. They do not shade the source RGB.
+    if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_AFTERIMAGE) != 0u)
+    {
+        float coverage = (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_ALPHA_BLEND) != 0u ? albedo.a : 1.0f;
+        float alpha = saturate(coverage * materialData.emissiveFactor.w);
+        return float4(max(materialData.emissiveFactor.rgb, 0.0f) * alpha, alpha);
     }
 
     if (gDebugView == 4 || costAlbedoOnly)

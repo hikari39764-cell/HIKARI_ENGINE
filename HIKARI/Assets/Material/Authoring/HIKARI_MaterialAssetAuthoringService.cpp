@@ -188,7 +188,7 @@ MaterialAuthoringResult MaterialAssetAuthoringService::SaveToPath(const Material
     // The serialized graph and its compiled runtime meaning are one unit.
     result.compile = CompileMaterialAsset(source, MakeMaterialCompileOptions(assetDatabase_));
     if (!result.compile.success) {
-        result.message = "Material v6 graph is invalid; source was not saved";
+        result.message = "Material graph is invalid; source was not saved";
         return result;
     }
     if (destination.empty() || !IsUnderRoot(assetDatabase_.GetAssetsRoot(), destination) ||

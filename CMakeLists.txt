@@ -254,22 +254,14 @@ set_property(SOURCE ${HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES}
 source_group(TREE "${HIKARI_SOURCE_ROOT}" FILES ${HIKARI_RUNTIME_SOURCES})
 
 if(HIKARI_WITH_EDITOR_BUILD)
-    # Keep workspace authoring separate from the editor shell and services.
-    # A single MSVC COFF archive cannot exceed 4 GiB.
-    set(hikari_editor_core_sources ${HIKARI_EDITOR_SOURCES})
-    set(hikari_editor_workspace_sources ${HIKARI_EDITOR_SOURCES})
-    list(FILTER hikari_editor_core_sources EXCLUDE REGEX "/Editor/Workspaces/")
-    list(FILTER hikari_editor_workspace_sources INCLUDE REGEX "/Editor/Workspaces/")
-    add_library(HIKARI_Editor STATIC ${hikari_editor_core_sources})
-    add_library(HIKARI_EditorWorkspaces STATIC ${hikari_editor_workspace_sources})
+    add_library(HIKARI_Editor STATIC ${HIKARI_EDITOR_SOURCES})
     add_library(HIKARI::Editor ALIAS HIKARI_Editor)
-    foreach(editor_target IN ITEMS HIKARI_Editor HIKARI_EditorWorkspaces)
-        target_link_libraries(${editor_target} PUBLIC
-            HIKARI::Runtime HIKARI::ImGui HIKARI::ImGuizmo HIKARI::Assimp HIKARI::WinPix
-            PRIVATE Bcrypt)
-        hikari_configure_engine_target(${editor_target})
-    endforeach()
-    target_link_libraries(HIKARI_Editor PRIVATE HIKARI_EditorWorkspaces)
+    target_link_libraries(HIKARI_Editor PUBLIC
+        HIKARI::Runtime HIKARI::ImGui HIKARI::ImGuizmo HIKARI::Assimp HIKARI::WinPix
+        PRIVATE Bcrypt)
+    hikari_configure_engine_target(HIKARI_Editor)
+    # 編集 UI はゲームの毎フレーム経路ではないため、全体最適化の中間物と再リンク時間を持たない。
+    set_target_properties(HIKARI_Editor PROPERTIES HIKARI_WHOLE_PROGRAM_OPTIMIZATION OFF)
     # エンジン向けに改変した ImGui backend もサードパーティコードなので、エンジンの警告規則を適用しない。
     set(hikari_editor_third_party_sources ${HIKARI_EDITOR_SOURCES})
     list(FILTER hikari_editor_third_party_sources INCLUDE REGEX "/ThirdParty/")
@@ -304,32 +296,11 @@ if(HIKARI_WITH_EDITOR_BUILD)
         FILES
             ${HIKARI_EDITOR_HOST_SOURCES})
 
-    add_executable(HIKARI_ProjectHub WIN32)
-    target_sources(HIKARI_ProjectHub PRIVATE $<TARGET_OBJECTS:HIKARI_StartupResources>)
-    target_sources(
-        HIKARI_ProjectHub
-        PRIVATE
-            ${HIKARI_PROJECT_LAUNCHER_HOST_SOURCES})
-    target_link_libraries(
-        HIKARI_ProjectHub
-        PRIVATE
-            HIKARI::Editor)
-    add_dependencies(
-        HIKARI_ProjectHub
-        HIKARI_EditorHost)
-    hikari_configure_engine_target(HIKARI_ProjectHub)
-    hikari_configure_runtime_deployment(
-        HIKARI_ProjectHub
-        OUTPUT_NAME "HIKARI_ProjectHub")
-    source_group(
-        TREE "${HIKARI_SOURCE_ROOT}"
-        FILES
-            ${HIKARI_PROJECT_LAUNCHER_HOST_SOURCES})
     add_executable(HIKARI_ProjectLauncher WIN32 ${HIKARI_LAUNCHER_BOOTSTRAP_SOURCES})
     target_sources(HIKARI_ProjectLauncher PRIVATE $<TARGET_OBJECTS:HIKARI_StartupResources>)
     target_link_libraries(HIKARI_ProjectLauncher PRIVATE user32)
     hikari_configure_engine_target(HIKARI_ProjectLauncher)
-    add_dependencies(HIKARI_ProjectLauncher HIKARI_ProjectHub)
+    add_dependencies(HIKARI_ProjectLauncher HIKARI_EditorHost)
     set_target_properties(HIKARI_ProjectLauncher PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
         PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/symbols")

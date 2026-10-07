@@ -166,8 +166,12 @@ bool WorldView::SpawnObjects(std::span<const GameProjectSpawnObjectDesc> objects
     return SubmitPreparedBatch(*world, std::span<const WorldSpawnRequest>(requests.data(), objects.size()), outResults);
 }
 
-bool WorldView::SpawnObjectsWithComponents(const GameProjectSpawnObjectComponentsDesc* objects, uint32_t objectCount,
-                                           GameProjectWorldResult* outResults, uint32_t resultCount) const noexcept {
+bool WorldView::SpawnObjectsWithComponents(std::span<const GameProjectSpawnObjectComponentsDesc> objectSpan,
+                                           std::span<GameProjectWorldResult> results) const noexcept {
+    const GameProjectSpawnObjectComponentsDesc* objects = objectSpan.data();
+    const uint32_t objectCount = PROJECT::INTERNAL::SpanCount(objectSpan.size());
+    GameProjectWorldResult* outResults = results.data();
+    const uint32_t resultCount = PROJECT::INTERNAL::SpanCount(results.size());
     if (objectCount != resultCount) {
         return false;
     }

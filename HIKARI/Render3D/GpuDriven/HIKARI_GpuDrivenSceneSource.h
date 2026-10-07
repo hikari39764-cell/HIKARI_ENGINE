@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenFrame.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteSnapshot.h"
 #include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"

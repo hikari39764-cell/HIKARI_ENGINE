@@ -1,5 +1,6 @@
 #include "Include/Meshlet/HIKARI_MeshletMSCommon.hlsli"
 #include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
+#include "Include/Surface/HIKARI_MaterialShell.hlsli"
 
 #ifndef HIKARI_MESHLET_ENABLE_WATER_DEFORM
 #define HIKARI_MESHLET_ENABLE_WATER_DEFORM 0
@@ -24,6 +25,7 @@ HikariMeshletVertexOut HikariBuildEmptyMeshletVertex()
     output.normalWS = float3(0.0f, 1.0f, 0.0f);
     output.tangentWS = float4(1.0f, 0.0f, 0.0f, 1.0f);
     output.surfaceFeatureData = 0.0f.xxx;
+    output.shellLayer = float4(0, 1, 0, 1);
     return output;
 }
 
@@ -33,7 +35,8 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
     HikariClusterVertex vertex,
     float3 localCharacterRight,
     float3 localCharacterForward,
-    uint surfaceGpuSceneIndex)
+    uint surfaceGpuSceneIndex,
+    float4 shellLayer)
 {
     HikariMeshletVertexOut output = HikariBuildEmptyMeshletVertex();
     float3 localPosition = vertex.position.xyz;
@@ -65,9 +68,11 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
         gTimeParams.x,
         vertex.uv01.xy,
         worldPos);
+    output.normalWS = normalize(mul((float3x3)instance.clusterNormalMatrix, localNormal));
+    worldPos.xyz += output.normalWS * (instance.shellSettings.y * shellLayer.x);
     precise float4 clipPosition = mul(gViewProj, worldPos);
     output.worldPosWS = worldPos.xyz;
-    output.normalWS = normalize(mul((float3x3)instance.clusterNormalMatrix, localNormal));
+    output.shellLayer = shellLayer;
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
     output.position = HikariExpandGeometryOutlineVertex(
         worldPos,
@@ -155,7 +160,8 @@ void main(
                     vertex,
                     localCharacterRight,
                     localCharacterForward,
-                    resolved.visible.gpuSceneInstanceIndex);
+                    resolved.visible.gpuSceneInstanceIndex,
+                    HikariShellLayer(groupId.y, payload.shellLayerCount, payload.shellLodAmount));
         }
         else
         {

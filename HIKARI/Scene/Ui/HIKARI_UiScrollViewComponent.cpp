@@ -18,7 +18,7 @@ constexpr TEXT::EnumName<UiScrollAxis> kUiScrollAxisNames[] = {
     {UiScrollAxis::Horizontal, "Horizontal"},
 };
 
-const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
+const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 
 constexpr auto kUiScrollViewSettingsFields = [](auto&& field) {
     field("enabled", &UiScrollViewSettings::enabled);

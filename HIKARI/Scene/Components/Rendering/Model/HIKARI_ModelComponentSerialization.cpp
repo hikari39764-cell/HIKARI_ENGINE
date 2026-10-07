@@ -78,7 +78,8 @@ void ModelComponent::Deserialize(const nlohmann::json& in) {
     wireColor_ = in.value("wireColor", wireColor_);
     maxWireLines_ = in.value("maxWireLines", maxWireLines_);
     wirePerPrimitiveColor_ = in.value("wirePerPrimitiveColor", wirePerPrimitiveColor_);
-    postGroupMask_ = in.value(ModelComponentPropertyIds::PostGroupMask, postGroupMask_);
+    postGroupMask_ = in.value(ModelComponentPropertyIds::PostGroupMask, postGroupMask_) & 0x7fffffffu;
+    runtimePostGroupMask_.reset();
     materialSetSelectionAuthored_ = in.contains("materialSetAssetGuid");
     materialSetAssetGuid_.value =
         materialSetSelectionAuthored_ ? in.value("materialSetAssetGuid", std::string{}) : std::string{};

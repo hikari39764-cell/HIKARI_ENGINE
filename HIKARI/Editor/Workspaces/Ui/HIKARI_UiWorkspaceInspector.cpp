@@ -19,7 +19,7 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
+const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 const SceneComponentData* Component(const SceneObjectData& object, std::string_view type) {
     for (const auto& c : object.components)
         if (c.type == type)

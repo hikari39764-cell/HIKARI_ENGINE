@@ -178,8 +178,10 @@ AssetImportResult ImportPostEffect(const std::filesystem::path& sourcePath, cons
     AssetImportResult result;
     POST::PostEffectDefinition effect;
     result.success = POST::LoadPostEffectDefinition(sourcePath, effect, result.message);
-    if (result.success)
+    if (result.success) {
         result.message = "Post effect validated";
+        result.dependencies = POST::CollectPostEffectDependencies(effect);
+    }
     result.diagnosticsJson = nlohmann::json{
         {"valid", result.success},
         {"passCount", effect.passes.size()},
@@ -192,8 +194,10 @@ AssetImportResult ImportPostProfile(const std::filesystem::path& sourcePath, con
     AssetImportResult result;
     POST::PostProfileAsset profile;
     result.success = POST::LoadPostProfileAsset(sourcePath, profile, result.message);
-    if (result.success)
+    if (result.success) {
         result.message = "Post profile validated";
+        result.dependencies = POST::CollectPostProfileDependencies(profile);
+    }
     result.diagnosticsJson =
         nlohmann::json{{"valid", result.success}, {"effect", profile.effectId}, {"valueCount", profile.values.size()}}
             .dump();

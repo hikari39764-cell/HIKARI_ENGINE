@@ -8,7 +8,7 @@
 namespace HIKARI {
 
 inline constexpr uint32_t kMaterialAssetSourceVersion = 7u;
-inline constexpr uint32_t kMaterialProgramIrVersion = 7u;
+inline constexpr uint32_t kMaterialProgramIrVersion = 8u;
 
 enum class MaterialAssetKind : uint8_t {
     Material,
@@ -39,6 +39,7 @@ enum class MaterialTemplateId : uint8_t {
     Custom,
     ParticleUnlit,
     ParticleUnlitTextured,
+    PainterlyShell,
 };
 
 enum class MaterialAlphaMode : uint8_t {
@@ -62,6 +63,7 @@ enum class MaterialValueType : uint8_t {
     DiffuseResponse,
     SpecularResponse,
     OutlineResponse,
+    ShellSettings,
 };
 
 enum class MaterialResourceType : uint8_t {
@@ -183,6 +185,10 @@ enum class MaterialNodeKind : uint8_t {
     ParticleState,
     ParticleColor,
     ParticleUv,
+    Shell,
+    ShellLayer,
+    NormalBlend,
+    NormalUvTransform,
 };
 
 // Source graphs use a stable textual identity so ordinary node growth is

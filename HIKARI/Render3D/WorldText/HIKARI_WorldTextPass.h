@@ -6,7 +6,7 @@
 #include <d3d12.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/WorldText/HIKARI_WorldTextFrameSource.h"
 
 namespace HIKARI::RENDER3D::WORLD_TEXT {

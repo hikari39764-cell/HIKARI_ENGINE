@@ -126,6 +126,10 @@ public:
     HIKARI_GAME_PROJECT_SDK_API bool SubmitKinematicMove(const GameProjectKinematicMove& move) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SubmitKinematicMoveWithCollisionOptions(
         const GameProjectKinematicMove& move, const GameProjectKinematicCollisionOptions& options) const noexcept;
+    // Owner-thread, current World. Size/version, finite acceleration, 0/1
+    // override flag and zero collision reserved fields are required.
+    HIKARI_GAME_PROJECT_SDK_API bool SubmitKinematicMoveWithOptions(
+        const GameProjectKinematicMove& move, const GameProjectKinematicMoveOptions& options) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SubmitMotionDelta(const GameProjectKinematicMotionDelta& delta) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool RequestTeleport(const GameProjectKinematicTeleport& teleport) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool GetKinematicState(uint64_t objectHandle,
@@ -253,6 +257,16 @@ public:
     // effectId は現在の全体後処理効果の ID（エンジン内蔵 "engine.post.effect.*" か効果資産の GUID）。
     HIKARI_GAME_PROJECT_SDK_API bool SubmitPostProfileParameter(
         std::string_view effectId, const GameProjectPostProfileParameterRequest& request) const noexcept;
+    // SDK/Runtime >= 3.11. Submit during Update/LateUpdate, before scene render
+    // preparation. true means accepted, not necessarily selected or GPU-ready.
+    // The whole highest-priority request wins (ties: lower sourceId; same source:
+    // latest request). Never merges sources. Omission expires after one frame.
+    // Pause/exit: stop submitting; reset before rendering: ClearActionPost.
+    HIKARI_GAME_PROJECT_SDK_API bool SubmitActionPostProfile(
+        std::string_view profileId, const GameProjectActionPostFrameRequest& request) const noexcept;
+    // Only clears this source; discarded contenders never reappear. Calls after
+    // render preparation return false and are never carried to a later frame.
+    HIKARI_GAME_PROJECT_SDK_API bool ClearActionPost(uint64_t sourceId) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SubmitActionCinematicGrade(
         const GameProjectActionCinematicGradeRequest& request) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SubmitActionBoostGrade(
@@ -265,6 +279,12 @@ public:
         const GameProjectPerfectGuardWaveProfiledRequest& request) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool CaptureAfterimageProfiled(
         const GameProjectAfterimageProfiledRequest& request) const noexcept;
+    // Owner-thread, World-local source controls. Pause freezes history and
+    // rejects new samples; resume never catches up. Clear also cancels queued
+    // captures and succeeds for an already empty, otherwise valid source.
+    HIKARI_GAME_PROJECT_SDK_API bool SetAfterimagePaused(uint64_t ownerObjectHandle, uint64_t sourceId,
+                                                         bool paused) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool ClearAfterimages(uint64_t ownerObjectHandle, uint64_t sourceId) const noexcept;
 
 private:
     friend struct GameProjectSdkAccess;

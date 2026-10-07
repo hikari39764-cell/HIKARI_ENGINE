@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <Windows.h>
@@ -9,11 +10,12 @@
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/HIKARI_Logger.h"
 #include "Editor/App/HIKARI_EditorEngineApp.h"
-#include "Editor/Export/HIKARI_GameExporter.h"
+#include "Editor/App/HIKARI_ProjectLauncherApp.h"
 #include "Editor/Export/HIKARI_GameExportJob.h"
 #include "Editor/Host/HIKARI_EditorUiServices.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Project/HIKARI_ProjectLaunch.h"
+#include "Platform/Paths/HIKARI_ExecutablePath.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Runtime/Host/HIKARI_EngineHostRunner.h"
@@ -52,7 +54,7 @@ std::optional<int> RunHeadlessAssetImportIfRequested() {
         HIKARI::GetProjectContext().Close();
         return 3;
     }
-    HIKARI::CORE::InitializeLogger();
+    HIKARI::CORE::InitializeLogger(HIKARI::GetProjectContext().GetLibraryRoot() / "Logs");
 
     const HRESULT comResult = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(comResult)) {
@@ -114,30 +116,65 @@ std::optional<int> RunHeadlessGamePackageIfRequested() {
         HIKARI::GetProjectContext().Close();
         return 3;
     }
-    HIKARI::CORE::InitializeLogger();
+    HIKARI::CORE::InitializeLogger(HIKARI::GetProjectContext().GetLibraryRoot() / "Logs");
 
-    HIKARI::EDITOR::GameExportOptions exportOptions{};
-    if (requestPath) {
-        const int code = HIKARI::EDITOR::GameExportJob::RunRequest(*requestPath);
-        HIKARI::GetProjectContext().Close();
-        return code;
-    }
-    exportOptions.outputDirectory = *outputDirectory;
-
-    HIKARI::ProjectSettingsService settings{};
-    if (settings.Load(HIKARI::GetProjectContext().GetRoot())) {
-        const HIKARI::AssetGuid startupSceneGuid = settings.GetSettings().startupSceneGuid;
-        if (HIKARI::IsValidAssetGuid(startupSceneGuid.value)) {
-            exportOptions.startupSceneGuid = startupSceneGuid.value;
-            exportOptions.sceneGuids.push_back(startupSceneGuid.value);
+    // --package-game は編集器の書き出しと同じ要求を作り、同じ経路（Shipping 構築・識別情報の検証）で実行する。
+    std::filesystem::path request = requestPath.value_or(std::filesystem::path{});
+    if (!requestPath) {
+        HIKARI::EDITOR::GameExportOptions exportOptions{};
+        exportOptions.outputDirectory = *outputDirectory;
+        HIKARI::ProjectSettingsService settings{};
+        if (settings.Load(HIKARI::GetProjectContext().GetRoot())) {
+            const HIKARI::AssetGuid startupSceneGuid = settings.GetSettings().startupSceneGuid;
+            if (HIKARI::IsValidAssetGuid(startupSceneGuid.value)) {
+                exportOptions.startupSceneGuid = startupSceneGuid.value;
+                exportOptions.sceneGuids.push_back(startupSceneGuid.value);
+            }
+        }
+        request = HIKARI::EDITOR::GameExportJob::WriteRequest(exportOptions, message);
+        if (request.empty()) {
+            HIKARI_LOG_ERROR("[GamePackager] " + message);
+            HIKARI::GetProjectContext().Close();
+            return 4;
         }
     }
-
-    const HIKARI::EDITOR::GameExportResult result = HIKARI::EDITOR::GameExporter::Export(exportOptions);
-    HIKARI::CORE::Log(result.success ? HIKARI::CORE::LogLevel::Info : HIKARI::CORE::LogLevel::Error,
-                      "[GamePackager] " + result.message);
+    const int code = HIKARI::EDITOR::GameExportJob::RunRequest(request);
     HIKARI::GetProjectContext().Close();
-    return result.success ? 0 : 4;
+    return code;
+}
+
+// 配布ルートの Launcher から --project-hub で起動される項目中心。
+int RunProjectHub() {
+    HIKARI::EDITOR::ProjectLauncherStartupRequest startup{};
+    startup.rebuildProject = HIKARI::ReadRuntimeCommandLinePath(L"--rebuild-project");
+    startup.waitForProcessId = HIKARI::ReadRuntimeCommandLineUint32(L"--wait-for-process-id");
+    startup.waitForProcessIdMalformed = startup.rebuildProject.has_value() &&
+                                        (!startup.waitForProcessId.has_value() || *startup.waitForProcessId == 0u);
+
+    HIKARI::EDITOR::ProjectLauncherApp application{HIKARI::PLATFORM::GetExecutableDirectory(), std::move(startup)};
+    HIKARI::RUNTIME::EngineHostRunOptions options{};
+    options.product = HIKARI::RUNTIME::EngineHostProduct::Editor;
+    options.projectPolicy = HIKARI::RUNTIME::EngineHostProjectPolicy::None;
+    options.loadRuntimeConfig = false;
+    options.windowTitle = "HIKARI Project Hub";
+    options.enableStreamline = false;
+    return HIKARI::RUNTIME::RunEngineHost(application, options);
+}
+
+int RunEditor() {
+    HIKARI::EDITOR::EditorEngineApp application{};
+    HIKARI::RUNTIME::EngineHostRunOptions options{};
+    const auto readyName = HIKARI::ReadRuntimeCommandLinePath(L"--launcher-ready-event");
+    if (readyName && readyName->wstring().starts_with(L"Local\\HIKARI.EditorReady.")) {
+        options.onFirstApplicationPresented = [name = readyName->wstring()] {
+            if (HANDLE event = OpenEventW(EVENT_MODIFY_STATE, FALSE, name.c_str())) {
+                SetEvent(event);
+                CloseHandle(event);
+            }
+        };
+    }
+    options.product = HIKARI::RUNTIME::EngineHostProduct::Editor;
+    return HIKARI::RUNTIME::RunEngineHost(application, options);
 }
 
 } // namespace
@@ -160,21 +197,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     if (!HIKARI::EDITOR::InstallEditorUiServices()) {
         return -1;
     }
-
-    HIKARI::EDITOR::EditorEngineApp application{};
-    HIKARI::RUNTIME::EngineHostRunOptions options{};
-    const auto readyName = HIKARI::ReadRuntimeCommandLinePath(L"--launcher-ready-event");
-    if (readyName && readyName->wstring().starts_with(L"Local\\HIKARI.EditorReady.")) {
-        options.onFirstApplicationPresented = [name = readyName->wstring()] {
-            if (HANDLE event = OpenEventW(EVENT_MODIFY_STATE, FALSE, name.c_str())) {
-                SetEvent(event);
-                CloseHandle(event);
-            }
-        };
-    }
-    options.product = HIKARI::RUNTIME::EngineHostProduct::Editor;
-    const int exitCode = HIKARI::RUNTIME::RunEngineHost(application, options);
-
+    const int exitCode = HIKARI::HasRuntimeCommandLineFlag(L"--project-hub") ? RunProjectHub() : RunEditor();
     HIKARI::EDITOR::UninstallEditorUiServices();
     return exitCode;
 }

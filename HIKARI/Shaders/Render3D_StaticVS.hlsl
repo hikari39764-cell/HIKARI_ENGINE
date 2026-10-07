@@ -1,6 +1,7 @@
 
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
+#include "Include/Surface/HIKARI_MaterialShell.hlsli"
 
 #define gFxUser0 gFxUser[0]
 #define gFxUser1 gFxUser[1]
@@ -77,9 +78,13 @@ VSOutput main(VSInput input)
         gTimeParams.x,
         input.uv,
         worldPos);
-    output.worldPosWS = worldPos.xyz;
     output.normalWS = normalize(
         mul((float3x3)objectData.normalMatrix, localNormal));
+    output.shellLayer = HikariShellLayer(input.instanceId,
+        gUseSurfaceGpuScene != 0u ? gSurfaceGpuSceneShellLayerCount : 0u,
+        asfloat(gSurfaceGpuSceneShellLodBits));
+    worldPos.xyz += output.normalWS * (surfaceInstance.shellSettings.y * output.shellLayer.x);
+    output.worldPosWS = worldPos.xyz;
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
     output.position = HikariExpandGeometryOutlineVertex(
         worldPos,

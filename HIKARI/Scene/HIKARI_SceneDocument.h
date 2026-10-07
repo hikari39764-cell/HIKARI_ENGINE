@@ -21,12 +21,22 @@ struct TransformData {
     MATH::Vec3 position{0.0f, 0.0f, 0.0f};
     MATH::Vec3 rotationEulerDeg{0.0f, 0.0f, 0.0f};
     MATH::Vec3 scale{1.0f, 1.0f, 1.0f};
+
+    bool operator==(const TransformData& other) const noexcept {
+        const auto same = [](const MATH::Vec3& a, const MATH::Vec3& b) {
+            return a.x == b.x && a.y == b.y && a.z == b.z;
+        };
+        return same(position, other.position) && same(rotationEulerDeg, other.rotationEulerDeg) &&
+               same(scale, other.scale);
+    }
 };
 
 struct SceneComponentData {
     std::string type{};
     nlohmann::json properties = nlohmann::json::object();
     SceneComponentId id{};
+
+    bool operator==(const SceneComponentData&) const = default;
 };
 
 struct SceneObjectData {
@@ -40,6 +50,17 @@ struct SceneObjectData {
     bool editorLocked = false;
     bool enabled = true;
     std::string editorFolder{};
+
+    bool operator==(const SceneObjectData&) const = default;
+};
+
+// 編集操作で document の objects に起きた変化。runtime world の差分反映と差分履歴が使う。
+struct SceneObjectChanges {
+    std::vector<SceneObjectId> added{};
+    std::vector<SceneObjectId> removed{};
+    std::vector<SceneObjectId> changed{};
+
+    bool Empty() const noexcept { return added.empty() && removed.empty() && changed.empty(); }
 };
 
 struct SceneSystemData {

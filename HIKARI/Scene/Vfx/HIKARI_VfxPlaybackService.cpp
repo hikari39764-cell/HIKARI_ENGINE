@@ -898,7 +898,8 @@ size_t VfxPlaybackService::AppendInstanceStep(Instance& instance, float deltaSec
         auto& overrides = instance.layerOverrides[i];
         overrides = layer.authoredOverrides;
         for (const auto& link : layer.inputLinks) {
-            if (link.inputIndex < instance.inputValues.size())
+            if (!ResolveVfxRuntimePropertyLayout(link.semantic).renderParameter &&
+                link.inputIndex < instance.inputValues.size())
                 ApplyRuntimeLink(overrides, link, instance.inputValues[link.inputIndex]);
         }
         ClampRuntimeOverrides(overrides);
@@ -1017,6 +1018,23 @@ size_t VfxPlaybackService::AppendInstanceStep(Instance& instance, float deltaSec
         EvaluateVfxLayerRenderParameters(emitter, layerSpan > 0 ? (submittedAge - layerStart) / layerSpan : 0,
                                          submission.render, layerSpan);
         ProjectAdjustmentParameters(instance, emitter, submittedAge, submission.render);
+        // Render bindings are absolute and apply after authored curves to every
+        // current geometry submission, including particles that already exist.
+        for (const auto& link : emitter.inputLinks) {
+            if (!ResolveVfxRuntimePropertyLayout(link.semantic).renderParameter)
+                continue;
+            float value = ScalarValue(instance.inputValues[link.inputIndex]) * link.scale + link.bias;
+            if (!std::isfinite(value))
+                continue;
+            if (link.semantic == VfxRuntimeBindingSemantic::RingStartAngleDegrees ||
+                link.semantic == VfxRuntimeBindingSemantic::RingEndAngleDegrees)
+                value *= 0.01745329251994329577f;
+            else
+                value = (std::max)(0.f, value);
+            std::memcpy(reinterpret_cast<std::byte*>(&submission.render) + link.byteOffset, &value, sizeof(value));
+        }
+        submission.render.ringInnerRadius =
+            (std::min)(submission.render.ringInnerRadius, submission.render.ringOuterRadius);
         if (emitter.kind == VfxLayerKind::Shape) {
             submission.directShape = true;
             const float start = PLAYBACK::EmitterStartDelay(program, emitter);

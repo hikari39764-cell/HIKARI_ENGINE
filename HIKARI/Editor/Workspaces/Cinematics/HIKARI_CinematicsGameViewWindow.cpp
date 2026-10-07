@@ -37,14 +37,15 @@ void CinematicsWorkspaceController::DrawMonitor(DocumentSceneBase& scene, Editor
     if (IconToggleButton(EditorGlyph::Keyframe, "autoKey", autoKey_, {26, 26}, TEXT::Localize("cine.autoKey").c_str()))
         autoKey_ = !autoKey_;
     NextToolbarItem(130);
-    StatusBadge(scene.IsRuntimePlayActive() ? TEXT::LocalizeCStr("cine.gameRunning")
-                : previewEnabled_           ? TEXT::LocalizeCStr("cine.previewing")
-                                            : TEXT::LocalizeCStr("cine.freeView"),
+    StatusBadge(scene.IsRuntimePlayActive() ? TEXT::Localize("cine.gameRunning").c_str()
+                : previewEnabled_           ? TEXT::Localize("cine.previewing").c_str()
+                                            : TEXT::Localize("cine.freeView").c_str(),
                 previewEnabled_ ? EditorStatusTone::Ready : EditorStatusTone::Normal);
     NextToolbarItem(130);
-    ImGui::TextDisabled("%s", autoKey_ ? TEXT::LocalizeCStr("cine.recordKeys") : TEXT::LocalizeCStr("cine.updateBase"));
+    ImGui::TextDisabled("%s", autoKey_ ? TEXT::Localize("cine.recordKeys").c_str()
+                                       : TEXT::Localize("cine.updateBase").c_str());
     if (scene.IsRuntimePlayActive())
-        ImGui::TextWrapped("%s", TEXT::LocalizeCStr("cine.playInputHelp"));
+        ImGui::TextWrapped("%s", TEXT::Localize("cine.playInputHelp").c_str());
     auto size = ImGui::GetContentRegionAvail();
     size.x = (std::max)(size.x, 1.0f);
     size.y = (std::max)(size.y, 1.0f);
@@ -63,7 +64,7 @@ void CinematicsWorkspaceController::DrawMonitor(DocumentSceneBase& scene, Editor
     else {
         ImGui::Dummy({fit.width, fit.height});
         ImGui::GetWindowDrawList()->AddText({origin.x + 20, origin.y + 20}, IM_COL32(170, 180, 190, 255),
-                                            TEXT::LocalizeCStr("cine.waitingFrame"));
+                                            TEXT::Localize("cine.waitingFrame").c_str());
     }
     if (scene.IsRuntimePlayActive() && ready) {
         SetGameViewportInputRect(origin.x, origin.y, fit.width, fit.height, ImGui::IsWindowFocused());

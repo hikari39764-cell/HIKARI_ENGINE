@@ -9,7 +9,7 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
+const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 } // namespace
 void TextStyleWorkspaceController::DrawContextTools(DocumentSceneBase& scene, EditorOperationRegistry& operations) {
     auto* selected = scene.GetWorld().FindObject(previewObject_);

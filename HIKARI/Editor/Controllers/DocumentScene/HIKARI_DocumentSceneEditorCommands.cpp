@@ -145,7 +145,7 @@ void DocumentSceneEditorController::ApplyHistoryResult(DocumentSceneBase& scene,
         viewportDropMessage_ = redo ? "Nothing to redo" : "Nothing to undo";
         return;
     }
-    ApplyDocumentImpact(scene, result.impact);
+    ApplyDocumentImpact(scene, result.impact, result.objectChanges ? &*result.objectChanges : nullptr);
 
     const bool dirty = historyExternalDirty_ || documentHistory_.IsDirty();
     context_.sceneDirty = dirty;
@@ -153,7 +153,8 @@ void DocumentSceneEditorController::ApplyHistoryResult(DocumentSceneBase& scene,
     viewportDropMessage_ = std::string(redo ? "Redo: " : "Undo: ") + result.label;
 }
 
-void DocumentSceneEditorController::ApplyDocumentImpact(DocumentSceneBase& scene, EDITOR::EditorDocumentImpact impact) {
+void DocumentSceneEditorController::ApplyDocumentImpact(DocumentSceneBase& scene, EDITOR::EditorDocumentImpact impact,
+                                                        const SceneObjectChanges* objectChanges) {
     if (EDITOR::HasEditorDocumentImpact(impact, EDITOR::EditorDocumentImpact::Cinematics)) {
         CinematicsWorkspace().OnCinematicsDocumentRestored(scene, workspaceHost_);
     }
@@ -161,7 +162,12 @@ void DocumentSceneEditorController::ApplyDocumentImpact(DocumentSceneBase& scene
         sceneAuthoringUtilityWindows_.SetSystemsRuntimeApplyStatus(scene.ApplySystemRuntimeChanges());
     }
     if (EDITOR::HasEditorDocumentImpact(impact, EDITOR::EditorDocumentImpact::RuntimeWorld)) {
-        selectionSync_.RebuildRuntimeWorldWithSelectionSync(scene, context_.selection, context_.nextSceneObjectId);
+        if (objectChanges != nullptr) {
+            selectionSync_.ApplyRuntimeObjectChangesWithSelectionSync(scene, context_.selection,
+                                                                      context_.nextSceneObjectId, *objectChanges);
+        } else {
+            selectionSync_.RebuildRuntimeWorldWithSelectionSync(scene, context_.selection, context_.nextSceneObjectId);
+        }
     }
     if (EDITOR::HasEditorDocumentImpact(impact, EDITOR::EditorDocumentImpact::Environment)) {
         if (!scene.ApplyDocumentEnvironmentRuntimeChanges()) {
@@ -181,11 +187,12 @@ void DocumentSceneEditorController::CommitAppliedDocumentCommand(
     if (!command) {
         return;
     }
+    const std::optional<SceneObjectChanges> objectChanges = command->GetObjectChanges(false);
     historyExternalDirty_ |= externalDirtyBefore;
     documentHistory_.RecordApplied(std::move(command), mergeGroup);
     context_.sceneDirty = true;
     scene.SetUnsavedSceneChanges(true);
-    ApplyDocumentImpact(scene, immediateImpact);
+    ApplyDocumentImpact(scene, immediateImpact, objectChanges ? &*objectChanges : nullptr);
 }
 
 void DocumentSceneEditorController::CommitSceneObjectAuthoringHistory(DocumentSceneBase& scene,

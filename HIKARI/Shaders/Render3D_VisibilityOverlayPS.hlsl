@@ -12,6 +12,7 @@ typedef HikariForwardPixelInput PSInput;
 
 float4 main(PSInput input) : SV_TARGET
 {
+    if (input.shellLayer.y < 0.5f) discard;
     const HikariMeshMaterialData materialData =
         HikariGetMeshMaterialData(input.materialDataIndex);
     if ((materialData.instanceFlags &

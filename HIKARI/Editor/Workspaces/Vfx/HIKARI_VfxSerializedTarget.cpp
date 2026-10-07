@@ -193,6 +193,8 @@ Json ChoicesFor(std::string_view path, const Json& parent, const Json& value) {
     if (leaf == "function") {
         return Json(VFX::kVfxEasingFunctionChoices);
     }
+    if (leaf == "postProcessMode")
+        return Json(VFX::kVfxPostProcessModeChoices);
     if (leaf == "blendMode")
         return Json(VFX::kVfxBlendModeChoices);
     if (leaf == "materialMode")

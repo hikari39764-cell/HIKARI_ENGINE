@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "Assets/Formats/HIKARI_HmatFormat.h"
+#include "Assets/HIKARI_AssetRegistryBuilder.h"
 #include "Assets/Importers/Policy/HIKARI_MaterialImportPolicy.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialProgramSerialization.h"
@@ -11,6 +12,7 @@
 #include "Assets/Material/HIKARI_MaterialDependencies.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/HIKARI_Logger.h"
+#include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
 namespace HIKARI {
@@ -67,12 +69,27 @@ AssetImportResult MaterialImporter::Import(const AssetRecord& record, const Asse
         return result;
     }
 
-    for (const MaterialAssetDependency& dependency : CollectMaterialAssetDependencies(data)) {
+    const auto dependencies = CollectMaterialAssetDependencies(data);
+    AssetRegistry engineTextures{};
+    if (std::any_of(dependencies.begin(), dependencies.end(), [](const auto& dependency) {
+            return dependency.kind == MaterialDependencyKind::Texture &&
+                   dependency.assetGuid.value.starts_with("engine.");
+        })) {
+        (void)RegisterEngineContentTextures(CONTENT::GetEngineContentContext(), engineTextures);
+    }
+    for (const MaterialAssetDependency& dependency : dependencies) {
         const bool compiledDependency =
             data.kind != MaterialAssetKind::Material && data.kind != MaterialAssetKind::Function ||
             std::any_of(compileResult.program.dependencyGuids.begin(), compileResult.program.dependencyGuids.end(),
                         [&dependency](const AssetGuid& guid) { return guid == dependency.assetGuid; });
         if (compiledDependency) {
+            if (dependency.kind == MaterialDependencyKind::Texture &&
+                dependency.assetGuid.value.starts_with("engine.") &&
+                !engineTextures.FindAs<TextureAssetDescriptor>(AssetId{dependency.assetGuid.value})) {
+                result.message =
+                    "[MaterialImporter] engine texture is missing or invalid: " + dependency.assetGuid.value;
+                return result;
+            }
             result.dependencies.push_back(AssetDependencyDesc{dependency.assetGuid, {}, dependency.role});
         }
     }

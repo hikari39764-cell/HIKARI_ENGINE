@@ -3,7 +3,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Core/Text/HIKARI_UtfPath.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"

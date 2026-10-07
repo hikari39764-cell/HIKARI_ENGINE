@@ -69,6 +69,8 @@ struct KinematicMotionRequest {
     MATH::Quat desiredRotation = MATH::Quat::Identity();
     float jumpSpeed = 0.0f;
     float maximumFallSpeed = 55.0f;
+    float verticalGravityAcceleration = 0.0f;
+    bool overrideVerticalGravity = false;
     bool hasDesiredRotation = false;
     // Physics owns the immediate contact test. The controller may grant
     // a short contact-independent window such as coyote time.

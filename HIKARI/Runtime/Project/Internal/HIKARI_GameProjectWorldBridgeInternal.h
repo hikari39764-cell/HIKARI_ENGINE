@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "HIKARI/Project/WorldTypes.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/HIKARI_World.h"
@@ -87,6 +89,11 @@ inline GameProjectWorldResult ToProjectCommandSubmission(const World& world,
 inline GameProjectWorldResult MakeWorldAccessFailure(RuntimeWorldAccessResult access) noexcept {
     return MakeWorldResult(access == RuntimeWorldAccessResult::WrongThread ? GameProjectWorldResultCode::WrongThread
                                                                            : GameProjectWorldResultCode::InvalidWorld);
+}
+
+// span の要素数を検査用の 32bit 値へ。上限を超える値は各 API の件数上限で拒否される。
+inline uint32_t SpanCount(size_t value) noexcept {
+    return value > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(value);
 }
 
 inline bool IsObjectHandleForWorld(GameProjectObjectHandle handle, const World& world) noexcept {

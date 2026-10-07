@@ -19,7 +19,7 @@
 
 namespace HIKARI {
 namespace {
-const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
+const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 
 float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
 

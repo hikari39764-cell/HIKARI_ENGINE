@@ -2,11 +2,13 @@
 #include "HIKARI_MaterialCompiler.h"
 
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <set>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
+#include <type_traits>
 
 #include "Assets/Material/Compiler/Internal/HIKARI_MaterialCompilerValidation.h"
 #include "Assets/Material/Compiler/Internal/HIKARI_MaterialFunctionExpansion.h"
@@ -15,6 +17,7 @@
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
 #include "Assets/Material/HIKARI_MaterialDependencies.h"
 #include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialShellFields.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/Text/HIKARI_HexString.h"
 
@@ -82,6 +85,7 @@ void AddNodeCapabilities(const MaterialGraphData& graph, uint64_t& capabilities)
         }
         switch (builtinKind) {
         case MaterialNodeKind::PbrSurface: AddCapability(capabilities, MaterialProgramCapability::StandardPbr); break;
+        case MaterialNodeKind::Shell: AddCapability(capabilities, MaterialProgramCapability::Shell); break;
         case MaterialNodeKind::RampDiffuse: AddCapability(capabilities, MaterialProgramCapability::RampDiffuse); break;
         case MaterialNodeKind::MultiRampDiffuse:
             AddCapability(capabilities, MaterialProgramCapability::MultiRampDiffuse);
@@ -164,10 +168,10 @@ const MaterialGraphData* SelectGraph(const MaterialAssetData& source) noexcept {
 
 std::string BuildStructureDescription(const MaterialAssetData& source, const MaterialProgramIR& program) {
     std::ostringstream stream{};
-    stream << ToString(source.kind) << ':' << ToString(source.domain) << ':' << ToString(program.templateId) << ':'
-           << source.profileAssetGuid.value << ':' << ToString(source.surface.alphaMode) << ':'
-           << ToString(source.surface.alphaRepresentation) << ':' << source.surface.doubleSided << ':'
-           << source.surface.unlit << ':' << program.capabilities;
+    stream << kMaterialProgramIrVersion << ':' << ToString(source.kind) << ':' << ToString(source.domain) << ':'
+           << ToString(program.templateId) << ':' << source.profileAssetGuid.value << ':'
+           << ToString(source.surface.alphaMode) << ':' << ToString(source.surface.alphaRepresentation) << ':'
+           << source.surface.doubleSided << ':' << source.surface.unlit << ':' << program.capabilities;
     for (const MaterialFeatureRequest feature : program.featureRequests) {
         stream << "|F:" << ToString(feature);
     }
@@ -383,7 +387,8 @@ MaterialProgramIR BuildProgram(const MaterialAssetData& source,
     std::string canonicalSource{};
     std::string serializationError{};
     if (MATERIAL_SERIALIZATION::SerializeMaterialCompileInputJson(source, canonicalSource, serializationError)) {
-        program.programId = TEXT::ToHexString(HASH::Fnv1aString(canonicalSource));
+        program.programId =
+            TEXT::ToHexString(HASH::Fnv1aString(std::to_string(kMaterialProgramIrVersion) + ":" + canonicalSource));
     } else {
         program.programId = TEXT::ToHexString(program.key.structureHash);
     }
@@ -399,7 +404,90 @@ MaterialProgramIR BuildStandardPbrMaterialProgramFallback() {
     return BuildProgram(MakeStandardPbrMaterialAssetData(pbr));
 }
 
+bool ResolveMaterialProgramShellSettings(const MaterialProgramIR& program, MaterialShellSettings& outSettings,
+                                         std::string& outError,
+                                         const std::function<const MaterialValueData*(uint32_t)>& parameterOverride) {
+    outSettings = {};
+    outError.clear();
+    const auto producer = [&](uint32_t output) -> const MaterialProgramInstruction* {
+        if (output == kInvalidMaterialProgramRegister)
+            return nullptr;
+        for (const auto& instruction : program.instructions)
+            if (std::find(instruction.outputRegisters.begin(), instruction.outputRegisters.end(), output) !=
+                instruction.outputRegisters.end())
+                return &instruction;
+        return nullptr;
+    };
+    const MaterialProgramInstruction* shell = nullptr;
+    for (const auto& instruction : program.instructions) {
+        if (instruction.opcode != MaterialProgramOpcode::PbrSurface)
+            continue;
+        const uint32_t shellRegister = FindMaterialProgramInputRegister(instruction, "Shell");
+        if (shellRegister == kInvalidMaterialProgramRegister)
+            continue;
+        shell = producer(shellRegister);
+        if (shell == nullptr || shell->opcode != MaterialProgramOpcode::Shell) {
+            outError = "PBR Shell requires a Shell configuration node";
+            return false;
+        }
+        break;
+    }
+    if (shell == nullptr)
+        return true;
+    if (program.domain != MaterialDomain::Surface || program.surface.alphaMode != MaterialAlphaMode::Mask) {
+        outError = "Shell geometry requires the Surface domain and Mask alpha mode";
+        return false;
+    }
+    bool valid = true;
+    kMaterialShellFields([&](const char* pin, auto member, JSONFIELDS::Range range) {
+        if (!valid)
+            return;
+        const uint32_t input = FindMaterialProgramInputRegister(*shell, pin);
+        if (input == kInvalidMaterialProgramRegister)
+            return;
+        const auto* valueInstruction = producer(input);
+        const MaterialValueData* value = nullptr;
+        if (valueInstruction && valueInstruction->opcode == MaterialProgramOpcode::Constant) {
+            value = &valueInstruction->immediate;
+        } else if (valueInstruction && valueInstruction->opcode == MaterialProgramOpcode::Parameter &&
+                   valueInstruction->bindingIndex < program.parameters.size()) {
+            value = parameterOverride ? parameterOverride(valueInstruction->bindingIndex) : nullptr;
+            if (value == nullptr)
+                value = &program.parameters[valueInstruction->bindingIndex].defaultValue;
+        }
+        if (value == nullptr || value->type != MaterialValueType::Float1 || !MATH::IsFinite(value->numeric.x) ||
+            value->numeric.x < range.min || value->numeric.x > range.max) {
+            valid = false;
+            outError = std::string("Shell ") + pin + " requires a finite in-range scalar constant or parameter";
+            return;
+        }
+        using Field = std::remove_reference_t<decltype(outSettings.*member)>;
+        if constexpr (std::is_integral_v<Field>) {
+            if (value->numeric.x != std::floor(value->numeric.x)) {
+                valid = false;
+                outError = "Shell MaxLayers must be 0, 2, 4, or 8";
+                return;
+            }
+        }
+        outSettings.*member = static_cast<Field>(value->numeric.x);
+    });
+    if (valid && !IsValidMaterialShellSettings(outSettings)) {
+        valid = false;
+        outError = "Shell requires 0/2/4/8 layers and ordered projected-pixel LOD thresholds";
+    }
+    return valid;
+}
+
 MaterialCompileResult CompileMaterialAsset(const MaterialAssetData& source) { return CompileMaterialAsset(source, {}); }
+
+uint32_t FindMaterialProgramInputRegister(const MaterialProgramInstruction& instruction,
+                                          std::string_view pin) noexcept {
+    const auto found = std::find(instruction.inputPins.begin(), instruction.inputPins.end(), pin);
+    const size_t index = static_cast<size_t>(found - instruction.inputPins.begin());
+    return found != instruction.inputPins.end() && index < instruction.inputRegisters.size()
+               ? instruction.inputRegisters[index]
+               : kInvalidMaterialProgramRegister;
+}
 
 MaterialCompileResult CompileMaterialAsset(const MaterialAssetData& source, const MaterialCompileOptions& options) {
     MaterialCompileResult result{};
@@ -416,9 +504,13 @@ MaterialCompileResult CompileMaterialAsset(const MaterialAssetData& source, cons
         }
     }
     if (functionsExpanded && MATERIAL_COMPILER_INTERNAL::ValidateMaterialSource(expanded, result)) {
-        result.success = true;
         result.program = BuildProgram(expanded, functionDependencies);
-        return result;
+        std::string shellError;
+        if (ResolveMaterialProgramShellSettings(result.program, result.program.shell, shellError)) {
+            result.success = true;
+            return result;
+        }
+        AddDiagnostic(result, MaterialCompileDiagnosticSeverity::Error, "Material.InvalidShell", std::move(shellError));
     }
 
     result.usedFallback = true;

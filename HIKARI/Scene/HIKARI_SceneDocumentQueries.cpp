@@ -31,6 +31,32 @@ std::unordered_set<uint64_t> CollectObjectSubtreeIds(const SceneDocument& docume
     return ids;
 }
 
+SceneObjectChanges DiffSceneObjects(std::span<const SceneObjectData> before, std::span<const SceneObjectData> after) {
+    std::unordered_map<uint64_t, const SceneObjectData*> previous;
+    previous.reserve(before.size());
+    for (const auto& object : before) {
+        previous.emplace(object.id.value, &object);
+    }
+    SceneObjectChanges changes;
+    for (const auto& object : after) {
+        const auto found = previous.find(object.id.value);
+        if (found == previous.end()) {
+            changes.added.push_back(object.id);
+            continue;
+        }
+        if (!(*found->second == object)) {
+            changes.changed.push_back(object.id);
+        }
+        previous.erase(found);
+    }
+    for (const auto& object : before) {
+        if (previous.contains(object.id.value)) {
+            changes.removed.push_back(object.id);
+        }
+    }
+    return changes;
+}
+
 bool AppendClonedSceneObjects(std::span<const SceneObjectData> source, SceneDocument& destination, uint64_t& nextId,
                               std::unordered_map<uint64_t, uint64_t>& outIds, bool detachExternalParents) {
     outIds.clear();

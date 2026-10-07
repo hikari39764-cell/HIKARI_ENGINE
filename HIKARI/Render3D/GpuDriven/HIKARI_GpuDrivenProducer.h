@@ -9,7 +9,7 @@
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenFrame.h"
 #include "Render3D/GpuDriven/HIKARI_GpuVisibilityResult.h"
 #include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 

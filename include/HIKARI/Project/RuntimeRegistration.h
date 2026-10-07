@@ -29,9 +29,9 @@ using DestroyGameComponentFn = void (*)(IGameComponent*) noexcept;
 using CreateGameSystemFn = IGameSystem* (*)() noexcept;
 using DestroyGameSystemFn = void (*)(IGameSystem*) noexcept;
 
+// typeId は typeName から、featureId は登録中の Feature から引擎が決める。
 struct GameComponentDescriptor {
     std::string_view typeName{};
-    ComponentTypeId typeId{};
     std::span<const std::string_view> requiredComponents{};
     std::span<const std::string_view> optionalComponents{};
     std::span<const std::string_view> incompatibleComponents{};
@@ -40,16 +40,16 @@ struct GameComponentDescriptor {
     std::string_view displayName{};
     std::string_view category{"Game"};
     std::string_view description{};
-    std::string_view featureId{};
 
     CreateGameComponentFn create = nullptr;
     DestroyGameComponentFn destroy = nullptr;
+    // ForEachComponent が要素ごとの dynamic_cast なしで型を確認するための、モジュール内で一意な印。
+    const void* typeToken = nullptr;
 };
 
 struct GameSystemDescriptor {
     std::string_view systemId{};
     std::string_view displayName{};
-    std::string_view featureId{};
 
     CreateGameSystemFn create = nullptr;
     DestroyGameSystemFn destroy = nullptr;
@@ -75,6 +75,7 @@ public:
             }
         };
         descriptor.destroy = [](IGameComponent* component) noexcept { delete static_cast<Component*>(component); };
+        descriptor.typeToken = GameComponentTypeToken<Component>();
         return RegisterComponentRaw(descriptor);
     }
 
@@ -241,6 +242,8 @@ private:
     void* massSchemaRegistry_ = nullptr;
     void* systemTypeRegistry_ = nullptr;
     void* componentSystemPolicy_ = nullptr;
+    // 登録中の Feature。引擎の登録取引が設定し、記述子の所属 Feature になる。
+    std::string_view featureId_{};
 };
 
 } // namespace HIKARI

@@ -438,6 +438,7 @@ Json WriteEmitter(const VfxEmitterData& emitter) {
                   {"flowMapTextureAssetGuid", emitter.renderCommon.flowMapTextureAssetGuid.value},
                   {"materialAssetGuid", emitter.renderCommon.materialAssetGuid.value},
                   {"blendMode", ToString(emitter.renderCommon.blendMode)},
+                  {"postProcessMode", ToString(emitter.renderCommon.postProcessMode)},
                   {"depthMode", ToString(emitter.renderCommon.depthMode)},
                   {"softIntersectionDistance", emitter.renderCommon.softIntersectionDistance},
                   {"depthBias", emitter.renderCommon.depthBias},

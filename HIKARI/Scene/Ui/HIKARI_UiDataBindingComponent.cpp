@@ -122,7 +122,7 @@ bool UiDataBindingComponent::IsInteractableWithMode(const BINDING::RuntimeBindin
     return !enabled_ || ReadBool(*this, store, interactableVariable_, mode);
 }
 void UiDataBindingComponent::BuildInspector(IInspectorBuilder& b) {
-    const auto l = [](const char* id) { return TEXT::LocalizeCStr(id); };
+    const auto l = [](const char* id) { return TEXT::Localize(id).c_str(); };
     b.Bool(AuthoringFieldDescriptor{"enabled", l("uix.enabled")}, enabled_);
     b.Bool(AuthoringFieldDescriptor{"integer", l("uibind.integer")}, integer_);
     b.RuntimeVariableIdPicker(AuthoringFieldDescriptor{"textVariable", l("uibind.text")},

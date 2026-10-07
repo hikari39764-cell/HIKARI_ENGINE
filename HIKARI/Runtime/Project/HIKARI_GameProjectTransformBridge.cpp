@@ -142,8 +142,12 @@ GameProjectWorldResult ObjectView::SetWorldTransform(const GameProjectTransform&
     }
 }
 
-bool WorldView::SetLocalTransforms(const GameProjectWorldTransformWrite* writes, uint32_t writeCount,
-                                   GameProjectWorldResult* outResults, uint32_t resultCount) const noexcept {
+bool WorldView::SetLocalTransforms(std::span<const GameProjectWorldTransformWrite> writeSpan,
+                                   std::span<GameProjectWorldResult> results) const noexcept {
+    const GameProjectWorldTransformWrite* writes = writeSpan.data();
+    const uint32_t writeCount = PROJECT::INTERNAL::SpanCount(writeSpan.size());
+    GameProjectWorldResult* outResults = results.data();
+    const uint32_t resultCount = PROJECT::INTERNAL::SpanCount(results.size());
     if (writeCount != resultCount) {
         return false;
     }

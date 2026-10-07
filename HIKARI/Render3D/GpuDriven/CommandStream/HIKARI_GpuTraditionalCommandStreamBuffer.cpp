@@ -99,9 +99,10 @@ struct GpuTraditionalCommandSeed {
     uint32_t localGpuSceneInstanceIndex = RUNTIME::kInvalidRenderSurfaceIndex;
     uint32_t reserved0 = 0;
     uint32_t reserved1 = 0;
+    MATH::Vec4 shellSettings{};
 };
 
-static_assert(sizeof(GpuTraditionalCommandSeed) == 48u);
+static_assert(sizeof(GpuTraditionalCommandSeed) == 64u);
 
 struct GpuTraditionalCommandStreamCullingConstants {
     MATH::Mat4 viewProj{};
@@ -109,7 +110,11 @@ struct GpuTraditionalCommandStreamCullingConstants {
     uint32_t outputCapacity = 0;
     uint32_t enableFrustumCull = 1;
     uint32_t payloadCount = 0;
+    MATH::Vec4 screenParams{};
+    MATH::Mat4 renderViewProj{};
 };
+
+static_assert(sizeof(GpuTraditionalCommandStreamCullingConstants) == 160u);
 
 bool CreateComputeRootSignature(ID3D12Device* device, ID3D12RootSignature** outRootSignature) {
     if (device == nullptr || outRootSignature == nullptr) {
@@ -617,6 +622,8 @@ void GpuTraditionalCommandStreamBuffer::UploadCommandSeeds(const GpuDrivenTradit
         GpuTraditionalCommandSeed& seed = seeds[seedCursor_++];
         seed = {};
         seed.boundsCenterRadius = boundsCenterRadius;
+        if (view.instances != nullptr && command.firstGpuSceneInstanceIndex < view.instances->size())
+            seed.shellSettings = (*view.instances)[command.firstGpuSceneInstanceIndex].shellSettings;
         seed.absoluteGpuSceneInstanceIndex = absoluteGpuSceneIndex;
         seed.passIndex = passIndex;
         seed.bucketIndex = commandBucketIndex;
@@ -636,7 +643,9 @@ void GpuTraditionalCommandStreamBuffer::UploadCommandSeeds(const GpuDrivenTradit
 }
 
 bool GpuTraditionalCommandStreamBuffer::BuildGpuCompactedCommands(ID3D12GraphicsCommandList* commandList,
-                                                                  const MATH::Mat4& viewProj, bool enableFrustumCull) {
+                                                                  const MATH::Mat4& viewProj,
+                                                                  const MATH::Mat4& renderViewProj, float screenHeight,
+                                                                  bool enableFrustumCull) {
     if (commandList == nullptr || seedCursor_ == 0 || capacity_ == 0 || seedBuffer_ == nullptr ||
         payloadBuffer_ == nullptr || argumentBuffer_ == nullptr || skinnedArgumentBuffer_ == nullptr ||
         counterBuffer_ == nullptr || counterResetUploadBuffer_ == nullptr ||
@@ -647,6 +656,8 @@ bool GpuTraditionalCommandStreamBuffer::BuildGpuCompactedCommands(ID3D12Graphics
 
     GpuTraditionalCommandStreamCullingConstants constants{};
     constants.viewProj = viewProj;
+    constants.renderViewProj = renderViewProj;
+    constants.screenParams.y = screenHeight;
     constants.inputCount = static_cast<uint32_t>((std::min)(seedCursor_, static_cast<size_t>(UINT32_MAX)));
     constants.outputCapacity = static_cast<uint32_t>((std::min)(capacity_, static_cast<size_t>(UINT32_MAX)));
     constants.enableFrustumCull = enableFrustumCull ? 1u : 0u;

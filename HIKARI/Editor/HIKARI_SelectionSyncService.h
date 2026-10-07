@@ -17,6 +17,10 @@ public:
 
     bool RebuildRuntimeWorldWithSelectionSync(DocumentSceneBase& scene, EditorSelection& selection,
                                               uint64_t& nextSceneObjectId) const;
+    // オブジェクトの差分だけを runtime world へ反映し、選択を document ID から結び直す。
+    bool ApplyRuntimeObjectChangesWithSelectionSync(DocumentSceneBase& scene, EditorSelection& selection,
+                                                    uint64_t& nextSceneObjectId,
+                                                    const SceneObjectChanges& changes) const;
     void SynchronizeAfterRuntimeWorldRebuild(DocumentSceneBase& scene, EditorSelection& selection,
                                              uint64_t& nextSceneObjectId, SceneObjectId activeObjectId) const;
     void SyncNextSceneObjectId(DocumentSceneBase& scene, uint64_t& nextSceneObjectId) const;

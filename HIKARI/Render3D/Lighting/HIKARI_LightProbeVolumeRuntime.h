@@ -9,7 +9,7 @@
 
 #include <d3d12.h>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 
 namespace HIKARI::RENDER3D::LIGHTPROBE {

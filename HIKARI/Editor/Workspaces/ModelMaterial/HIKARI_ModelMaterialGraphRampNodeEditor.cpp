@@ -31,8 +31,9 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphRampNodeInlineControls(D
         capturesPointer |= DrawGraphParameter(source, graph, &node, id, label, width, pin);
     };
 
-    ImGui::SeparatorText(node.kind == MaterialNodeKind::MultiRampDiffuse ? "Ramp Stack / Layer 1"
-                                                                         : TEXT::LocalizeCStr("ui.terrain.toolRamp"));
+    ImGui::SeparatorText(node.kind == MaterialNodeKind::MultiRampDiffuse
+                             ? "Ramp Stack / Layer 1"
+                             : TEXT::Localize("ui.terrain.toolRamp").c_str());
     MaterialGraphResourceData* resource = MATERIAL_GRAPH_UI::FindRampResource(graph, node);
     if (resource == nullptr) {
         if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.ramp.resource.3cfd9d", "+ Ramp Resource").c_str(),

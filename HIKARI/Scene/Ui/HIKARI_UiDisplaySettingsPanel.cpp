@@ -35,10 +35,10 @@ void UiDisplaySettingsPanelComponent::Deserialize(const nlohmann::json& in) {
     lastFrame_ = ~uint64_t(0);
 }
 void UiDisplaySettingsPanelComponent::BuildInspector(IInspectorBuilder& b) {
-    if (!b.Section(TEXT::LocalizeCStr("display.panel"), true))
+    if (!b.Section(TEXT::Localize("display.panel").c_str(), true))
         return;
-    b.Bool(AuthoringFieldDescriptor{"enabled", TEXT::LocalizeCStr("Enabled")}, enabled_);
-    b.FloatRange(AuthoringFieldDescriptor{"confirmSeconds", TEXT::LocalizeCStr("display.confirmSeconds")},
+    b.Bool(AuthoringFieldDescriptor{"enabled", TEXT::Localize("Enabled").c_str()}, enabled_);
+    b.FloatRange(AuthoringFieldDescriptor{"confirmSeconds", TEXT::Localize("display.confirmSeconds").c_str()},
                  confirmSeconds_, 5, 60, 1);
     b.Text(TEXT::Localize("display.panelHelp"));
 }

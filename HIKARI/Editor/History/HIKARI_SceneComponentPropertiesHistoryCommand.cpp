@@ -26,6 +26,10 @@ public:
 
     void Redo(SceneDocument& document) const override { Apply(document, afterProperties_); }
 
+    std::optional<SceneObjectChanges> GetObjectChanges(bool) const override {
+        return SceneObjectChanges{.changed = {objectId_}};
+    }
+
     bool TryMergeApplied(const IEditorDocumentCommand& newer) override {
         const auto* properties = dynamic_cast<const SceneComponentPropertiesHistoryCommand*>(&newer);
         if (properties == nullptr || properties->label_ != label_ || properties->objectId_ != objectId_ ||
@@ -72,6 +76,10 @@ public:
     void Undo(SceneDocument& document) const override { Apply(document, beforePatch_); }
 
     void Redo(SceneDocument& document) const override { Apply(document, afterPatch_); }
+
+    std::optional<SceneObjectChanges> GetObjectChanges(bool) const override {
+        return SceneObjectChanges{.changed = {objectId_}};
+    }
 
     bool TryMergeApplied(const IEditorDocumentCommand& newer) override {
         const auto* patch = dynamic_cast<const SceneComponentPropertiesPatchHistoryCommand*>(&newer);
@@ -127,6 +135,10 @@ public:
     void Undo(SceneDocument& document) const override { Apply(document, beforeDelta_); }
 
     void Redo(SceneDocument& document) const override { Apply(document, afterDelta_); }
+
+    std::optional<SceneObjectChanges> GetObjectChanges(bool) const override {
+        return SceneObjectChanges{.changed = {objectId_}};
+    }
 
     bool TryMergeApplied(const IEditorDocumentCommand&) override {
         // Each drag is one explicit authoring transaction. Never

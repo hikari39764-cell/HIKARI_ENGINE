@@ -532,6 +532,7 @@ VfxCompileResult CompileVfxAsset(const VfxAssetData& asset) {
         emitter.render.colorTextureAssetGuid = source.renderCommon.colorTextureAssetGuid.value;
         emitter.render.materialAssetGuid = source.renderCommon.materialAssetGuid.value;
         emitter.render.blendMode = ConvertBlend(source.renderCommon.blendMode);
+        emitter.render.postProcessMode = source.renderCommon.postProcessMode;
         emitter.render.depthMode = ConvertDepthMode(source.renderCommon.depthMode);
         emitter.render.softIntersectionDistance = source.renderCommon.softIntersectionDistance;
         emitter.render.depthBias = source.renderCommon.depthBias;

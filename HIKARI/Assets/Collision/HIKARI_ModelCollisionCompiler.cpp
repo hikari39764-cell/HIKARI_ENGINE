@@ -5,7 +5,7 @@
 #include <array>
 #include <cmath>
 
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::COLLISION {
 namespace {

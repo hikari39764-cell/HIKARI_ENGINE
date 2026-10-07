@@ -39,6 +39,7 @@
 #include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
 #include "Scene/Sequencer/Drivers/HIKARI_PresentationCueDriver.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
+#include "Vfx/Post/HIKARI_ActionPostProfile.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
@@ -53,7 +54,7 @@
 namespace HIKARI {
 namespace {
 // 環境が参照する後処理プロファイルを解決して全体効果へ渡す。解決できなければ全体効果を止める。
-void ApplyGlobalPost(const ScenePostSettings& post, const POST::PostAssetStore& store) {
+void ApplyGlobalPost(const ScenePostSettings& post, const POST::PostAssetStore& store, const AssetRegistry& registry) {
     if (!post.enabled || post.profileId.empty()) {
         POST::PostSystem::ClearGlobalEffect();
         return;
@@ -65,7 +66,36 @@ void ApplyGlobalPost(const ScenePostSettings& post, const POST::PostAssetStore& 
         POST::PostSystem::ClearGlobalEffect();
         return;
     }
-    POST::PostSystem::SetGlobalEffect(profile->effectId, effect, POST::ResolvePostParameters(*effect, profile.get()));
+    POST::PostSystem::SetGlobalEffect(profile->effectId, effect, POST::ResolvePostParameters(*effect, profile.get()),
+                                      &registry);
+}
+
+void PrepareActionPost(World& world, bool playActive, const POST::PostAssetStore& store,
+                       const AssetRegistry& registry) {
+    auto* reactions = world.Services().Find<VFX::ActionPostReactionService>();
+    const uint64_t worldId = world.GetRuntimeIdentity();
+    if (!reactions) {
+        POST::PostSystem::ClearActionPostFrame(worldId);
+        return;
+    }
+    std::optional<VFX::ActionPostReactionService::PostProfileFrame> winner;
+    const auto frame = TIME::GetFrameContext().frameIndex;
+    if (!reactions->FreezePostProfile(frame, winner))
+        return;
+    if (!playActive || TIME::IsPaused() || !winner) {
+        POST::PostSystem::ClearActionPostFrame(worldId);
+        return;
+    }
+    std::string error;
+    const auto profile = store.LoadProfile(winner->profileId, error);
+    const auto effect = profile ? store.LoadEffect(profile->effectId, error) : nullptr;
+    if (!effect || effect->screenWarp || !POST::ValidatePostProfileValues(*profile, *effect, error)) {
+        POST::PostSystem::ClearActionPostFrame(worldId);
+        HIKARI_LOG_ERROR("[ActionPost] Profile unavailable or incompatible: " + winner->profileId + " " + error);
+        return;
+    }
+    const auto values = POST::ResolveActionPostParameters(*effect, *profile, winner->request);
+    (void)POST::PostSystem::SetActionPostFrame(worldId, frame, profile->effectId, effect, values, registry);
 }
 
 bool TryUnprojectClipCorner(const MATH::Mat4& invViewProj, float x, float y, float z, MATH::Vec3& out) {
@@ -229,6 +259,7 @@ void DocumentSceneBase::OnExit() {
     // Components detach while World services (including RuntimeBinding)
     // are still available, so SDK contexts can release owned writers.
     state_->runtime.world.Clear();
+    state_->runtime.worldBuilt = false;
     if (sessionOwner != nullptr) {
         sessionOwner->StopGameSession();
     }
@@ -260,6 +291,7 @@ void DocumentSceneBase::OnExit() {
     state_->runtime.combatPresentationService.Reset();
     state_->runtime.combatAfterimageService.Reset();
     state_->runtime.actionPostReactionService.Reset();
+    POST::PostSystem::ClearActionPostFrame(state_->runtime.world.GetRuntimeIdentity());
     state_->runtime.fixedStepClock.Reset();
     state_->runtime.initialized = false;
     RuntimeSceneContext::SetCurrentWorld(nullptr);
@@ -388,6 +420,7 @@ void DocumentSceneBase::Render() {
         state_->camera.resolvedFrame.valid = true;
     }
 
+#if defined(HIKARI_WITH_EDITOR)
     if (state_->baking.ProcessReflectionProbeBakeJob(*this)) {
         return;
     }
@@ -397,12 +430,15 @@ void DocumentSceneBase::Render() {
     if (state_->baking.ProcessLightmapBakeJob(*this)) {
         return;
     }
+#endif
 
     RENDERER3D::DEBUG::Reset();
     MODELRENDERER::ResetFrame();
     SKYRENDERER::Reset();
 
-    ApplyGlobalPost(state_->lighting.environment.post, state_->assets.PostAssets());
+    ApplyGlobalPost(state_->lighting.environment.post, state_->assets.PostAssets(), state_->assets.Registry());
+    PrepareActionPost(state_->runtime.world, state_->runtime.playActive, state_->assets.PostAssets(),
+                      state_->assets.Registry());
     auto bloom = state_->lighting.environment.bloom;
     auto tone = state_->lighting.environment.toneMapping;
     std::vector<SEQUENCER::ScreenEffectSample> screenEffects;
@@ -548,9 +584,6 @@ void DocumentSceneBase::Render() {
         if (auto* combat = state_->runtime.world.Services().Find<VFX::CombatPresentationService>()) {
             primaryView.combatPresentationFrameSource = &combat->GetFrameSource();
         }
-        if (auto* afterimages = state_->runtime.world.Services().Find<VFX::CombatAfterimageService>()) {
-            primaryView.combatAfterimageFrameSource = &afterimages->GetFrameSource();
-        }
         if (auto* reactions = state_->runtime.world.Services().Find<VFX::ActionPostReactionService>()) {
             primaryView.actionPostReactionFrameSource = &reactions->GetFrameSource();
         }
@@ -576,11 +609,6 @@ void DocumentSceneBase::Render() {
         state_->lighting.sky, &state_->assets.Registry(), state_->runtime.materialExternalValueSnapshot.get(),
         &RenderSubmissionSystem::GetWorldSpriteFrameSource(), &RenderSubmissionSystem::GetWorldTextFrameSource());
 #endif
-}
-void DocumentSceneBase::RenderImGui() {
-    if (!SERVICES::IsEditorUIEnabled()) {
-        state_->runtime.world.RenderImGui();
-    }
 }
 const std::string& DocumentSceneBase::GetSceneId() const { return state_->identity.sceneId; }
 const std::string& DocumentSceneBase::GetScenePath() const { return state_->identity.scenePath; }
@@ -689,6 +717,7 @@ void DocumentSceneBase::SetViewportDebugViewState(const ViewportDebugViewState& 
 }
 void DocumentSceneBase::SetSelectedGizmoObjectId(SceneObjectId id) { state_->editor.selectedGizmoObjectId = id; }
 SceneObjectId DocumentSceneBase::GetSelectedGizmoObjectId() const { return state_->editor.selectedGizmoObjectId; }
+#if defined(HIKARI_WITH_EDITOR)
 bool DocumentSceneBase::RequestLightingBake(bool force, SceneObjectId selectedObjectId) {
     return state_->baking.RequestLightingBake(*this, force, selectedObjectId);
 }
@@ -700,6 +729,7 @@ bool DocumentSceneBase::HasLastLightingBakeReport() const { return state_->bakin
 const TOOLS::BAKING::LightingBakeReport& DocumentSceneBase::GetLastLightingBakeReport() const {
     return state_->baking.GetLastReport();
 }
+#endif
 bool DocumentSceneBase::UseDebugCamera() const { return !state_->runtime.playActive; }
 
 bool DocumentSceneBase::DrawDebugHelpers() const {

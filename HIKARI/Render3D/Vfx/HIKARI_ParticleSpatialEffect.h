@@ -1,5 +1,5 @@
 #pragma once
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialEffectStack.h"
 namespace HIKARI::RENDER3D::PARTICLES {
 inline constexpr uint32_t kMaximumParticleSpatialEffects = 8;

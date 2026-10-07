@@ -1,7 +1,7 @@
 #pragma once
 #include "Core/Math/HIKARI_Vector2.h"
 #include "Render2D/HIKARI_Matrix3x3.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI {
 

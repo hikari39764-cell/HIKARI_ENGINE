@@ -5,7 +5,8 @@
 #include <string>
 #include <vector>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
+#include "Assets/Material/HIKARI_MaterialShellSettings.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramTypes.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
@@ -78,6 +79,8 @@ public:
     void SetDoubleSided(bool doubleSided);
     bool IsDoubleSided() const;
     void SetUnlit(bool unlit);
+    void SetShellSettings(const MaterialShellSettings& settings);
+    const MaterialShellSettings& GetShellSettings() const noexcept { return shellSettings_; }
 
     void SetTextureSlot(MaterialTextureUsage usage, RuntimeTextureSlot slot);
     const RuntimeTextureSlot& GetTextureSlot(MaterialTextureUsage usage) const;
@@ -136,6 +139,7 @@ private:
     RuntimeMaterialAlphaMode materialAlphaMode_ = RuntimeMaterialAlphaMode::Opaque;
     float alphaCutoff_ = 0.5f;
     bool doubleSided_ = false;
+    MaterialShellSettings shellSettings_{};
     uint64_t revision_ = 0;
 };
 

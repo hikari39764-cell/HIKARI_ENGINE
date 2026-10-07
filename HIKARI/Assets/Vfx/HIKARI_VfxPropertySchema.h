@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 
 namespace HIKARI::VFX {
 
@@ -32,6 +33,23 @@ enum class VfxRuntimeBindingSemantic : uint8_t {
     ScaleMultiplier,
     GravityMultiplier,
     ColorMultiplier,
+    RingInnerRadius,
+    RingOuterRadius,
+    RingStartAngleDegrees,
+    RingEndAngleDegrees,
+};
+
+inline constexpr TEXT::EnumName<VfxRuntimeBindingSemantic> kVfxRuntimeBindingNames[]{
+    {VfxRuntimeBindingSemantic::EmitterEnabled, "EmitterEnabled"},
+    {VfxRuntimeBindingSemantic::SpawnRateMultiplier, "SpawnRateMultiplier"},
+    {VfxRuntimeBindingSemantic::RadialSpeedMultiplier, "RadialSpeedMultiplier"},
+    {VfxRuntimeBindingSemantic::ScaleMultiplier, "ScaleMultiplier"},
+    {VfxRuntimeBindingSemantic::GravityMultiplier, "GravityMultiplier"},
+    {VfxRuntimeBindingSemantic::ColorMultiplier, "ColorMultiplier"},
+    {VfxRuntimeBindingSemantic::RingInnerRadius, "RingInnerRadius"},
+    {VfxRuntimeBindingSemantic::RingOuterRadius, "RingOuterRadius"},
+    {VfxRuntimeBindingSemantic::RingStartAngleDegrees, "RingStartAngleDegrees"},
+    {VfxRuntimeBindingSemantic::RingEndAngleDegrees, "RingEndAngleDegrees"},
 };
 
 struct VfxPropertyRange {
@@ -70,7 +88,7 @@ inline bool IsVfxInputTypeCompatible(VfxValueType inputType, const VfxPropertySc
     return IsVfxInputTypeCompatible(inputType, property.valueType);
 }
 
-inline constexpr std::array<VfxPropertySchema, 6u> kVfxPropertySchemas{
+inline constexpr std::array<VfxPropertySchema, 10u> kVfxPropertySchemas{
     VfxPropertySchema{
         VfxModuleKind::Basic,
         "enabled",
@@ -137,6 +155,42 @@ inline constexpr std::array<VfxPropertySchema, 6u> kVfxPropertySchemas{
         {true, true, 0.0f, 64.0f},
         "multiplier",
     },
+    VfxPropertySchema{VfxModuleKind::RenderShape,
+                      "ringInnerRadius",
+                      "vfx.property.ring_inner_radius",
+                      VfxValueType::Float,
+                      true,
+                      true,
+                      VfxRuntimeBindingSemantic::RingInnerRadius,
+                      {true, false, 0.f, 0.f},
+                      "meters"},
+    VfxPropertySchema{VfxModuleKind::RenderShape,
+                      "ringOuterRadius",
+                      "vfx.property.ring_outer_radius",
+                      VfxValueType::Float,
+                      true,
+                      true,
+                      VfxRuntimeBindingSemantic::RingOuterRadius,
+                      {true, false, 0.f, 0.f},
+                      "meters"},
+    VfxPropertySchema{VfxModuleKind::RenderShape,
+                      "ringStartAngleDegrees",
+                      "vfx.property.ring_start_angle",
+                      VfxValueType::Float,
+                      true,
+                      true,
+                      VfxRuntimeBindingSemantic::RingStartAngleDegrees,
+                      {},
+                      "degrees"},
+    VfxPropertySchema{VfxModuleKind::RenderShape,
+                      "ringEndAngleDegrees",
+                      "vfx.property.ring_end_angle",
+                      VfxValueType::Float,
+                      true,
+                      true,
+                      VfxRuntimeBindingSemantic::RingEndAngleDegrees,
+                      {},
+                      "degrees"},
 };
 
 inline std::string_view ToString(VfxModuleKind value) noexcept {
@@ -158,15 +212,7 @@ inline std::string_view ToString(VfxModuleKind value) noexcept {
 }
 
 inline std::string_view ToString(VfxRuntimeBindingSemantic value) noexcept {
-    switch (value) {
-    case VfxRuntimeBindingSemantic::SpawnRateMultiplier: return "SpawnRateMultiplier";
-    case VfxRuntimeBindingSemantic::RadialSpeedMultiplier: return "RadialSpeedMultiplier";
-    case VfxRuntimeBindingSemantic::ScaleMultiplier: return "ScaleMultiplier";
-    case VfxRuntimeBindingSemantic::GravityMultiplier: return "GravityMultiplier";
-    case VfxRuntimeBindingSemantic::ColorMultiplier: return "ColorMultiplier";
-    case VfxRuntimeBindingSemantic::EmitterEnabled:
-    default: return "EmitterEnabled";
-    }
+    return TEXT::EnumToName(kVfxRuntimeBindingNames, value);
 }
 
 inline std::span<const VfxPropertySchema> GetVfxPropertySchemas() noexcept { return kVfxPropertySchemas; }

@@ -103,7 +103,7 @@ bool ParticleCompositionRenderer::ApplyMatte(Scope& scope, RenderTarget2D& matte
     const size_t page = effectCursor_ / POST::PostEffect::DrawCapacityPerFrame();
     if (page == effects_.size()) {
         auto effect = std::make_unique<POST::PostEffect>();
-        if (!effect->LoadBuiltinPixelShader("HIKARI.EngineShader.Post_VfxMattePS"))
+        if (!effect->LoadPixelShader({.programId = "HIKARI.EngineShader.Post_VfxMattePS"}))
             return false;
         effects_.push_back(std::move(effect));
     }
@@ -138,7 +138,7 @@ bool ParticleCompositionRenderer::ApplyStyle(Scope& scope, const MaterialEffectS
     const size_t page = styleCursor_ / POST::PostEffect::DrawCapacityPerFrame();
     if (page == styleEffects_.size()) {
         auto effect = std::make_unique<POST::PostEffect>();
-        if (!effect->LoadBuiltinPixelShader("HIKARI.EngineShader.Post_VfxStylePS"))
+        if (!effect->LoadPixelShader({.programId = "HIKARI.EngineShader.Post_VfxStylePS"}))
             return false;
         styleEffects_.push_back(std::move(effect));
     }

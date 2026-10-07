@@ -332,6 +332,9 @@ bool ValidateRuntimeGraphContract(const MaterialAssetData& source, MaterialCompi
                                                         response->kind == MaterialNodeKind::CorneaHighlight);
                 } else if (edge.targetPin == "Additive") {
                     supported = IsAdditiveRuntimeExpression(view, edge.sourceNodeId);
+                } else if (edge.targetPin == "Shell") {
+                    const MaterialGraphNodeData* configuration = FindRuntimeNode(view, edge.sourceNodeId);
+                    supported = configuration != nullptr && configuration->kind == MaterialNodeKind::Shell;
                 } else if (edge.targetPin == "Outline") {
                     const MaterialGraphNodeData* response = FindRuntimeNode(view, edge.sourceNodeId);
                     supported = response != nullptr && response->kind == MaterialNodeKind::Outline;
@@ -440,7 +443,7 @@ bool ValidateMaterialSource(const MaterialAssetData& source, MaterialCompileResu
     bool valid = true;
     if (source.version != kMaterialAssetSourceVersion) {
         AddDiagnostic(result, MaterialCompileDiagnosticSeverity::Error, "Material.UnsupportedVersion",
-                      "compiler accepts only canonical Material v6 source data");
+                      "compiler accepts only canonical Material source data");
         valid = false;
     }
     if (source.materialName.empty()) {

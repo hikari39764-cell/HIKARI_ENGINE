@@ -1,0 +1,62 @@
+{
+  "schema": "hikari.engine_content_assets",
+  "version": 1,
+  "sources": [
+    {
+      "id": "hikari.painterly.generated_strokes",
+      "name": "HIKARI original AI-generated dry-brush marks",
+      "origin": "OpenAI built-in image_gen output, generated for this project",
+      "provenanceFile": "Painterly/Sources/Provenance.json",
+      "rights": "Project-generated asset; no third-party texture or CC0 license claim"
+    }
+  ],
+  "sourceInputs": [
+    {
+      "sourceId": "hikari.painterly.generated_strokes",
+      "path": "Painterly/Sources/StrokeMarks_Generated.png",
+      "sha256": "7777a49b8d13e0375a3f0b079f5b761035730c200a80b1ecd1804ace01db121d"
+    }
+  ],
+  "derivations": [
+    {
+      "id": "hikari.painterly.stroke_mask",
+      "tool": "Painterly/Sources/BakeStrokeTextures.py",
+      "description": "1024px grayscale coverage; periodic smooth-boundary correction and scalar range normalization"
+    },
+    {
+      "id": "hikari.painterly.stroke_normal",
+      "tool": "Painterly/Sources/BakeStrokeTextures.py",
+      "heightSource": "Painterly/Sources/StrokeHeight.png",
+      "heightSha256": "a1a2d61d2289515bf0450a65ed452decf9ccf138c1680557b1a66c240af345de",
+      "description": "Shallow synthetic relief from softened local brush ridges, with broad pigment-value bias removed; wrapped derivatives produce DirectX tangent-space normal"
+    }
+  ],
+  "assets": [
+    {
+      "id": "engine.painterly.texture.stroke_mask",
+      "type": "Texture",
+      "path": "Painterly/Textures/Cooked/StrokeMask.htex",
+      "sourcePath": "Painterly/Textures/StrokeMask.png",
+      "colorSpace": "Linear",
+      "usage": "Mask",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.painterly.stroke_mask",
+      "sourceSha256": "befd80aa6544825213e8e922ebb1d40005462bb894910097eba7d82af83efc7c",
+      "sha256": "5bbf0f75e689e967235c08b6dd2f93f7e774d0b7e081549d0cf173c64b7c8ff3"
+    },
+    {
+      "id": "engine.painterly.texture.stroke_normal",
+      "type": "Texture",
+      "path": "Painterly/Textures/Cooked/StrokeNormalDX.htex",
+      "sourcePath": "Painterly/Textures/StrokeNormalDX.png",
+      "colorSpace": "Linear",
+      "usage": "Normal",
+      "compression": "BC5",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.painterly.stroke_normal",
+      "sourceSha256": "3f1ff065316dbb99c7067848287e20fa57f71a88f8bdd26b33a7ee2824c6250d",
+      "sha256": "ca1d25433aa040cc56d8c216b076b33e33d0f3ee63ed4de1535511c86c115d5a"
+    }
+  ]
+}

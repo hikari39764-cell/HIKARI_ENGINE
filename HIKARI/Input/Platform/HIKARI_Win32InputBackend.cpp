@@ -196,6 +196,8 @@ void Win32InputBackend::SetHostWindow(void* nativeWindow) {
     }
 }
 
+bool Win32InputBackend::HasInputFocus() const noexcept { return IsHostActive(static_cast<HWND>(hostWindow_)); }
+
 void Win32InputBackend::SetMouseCaptureMode(MouseCaptureMode mode) {
     if (mouseCaptureMode_ == mode)
         return;

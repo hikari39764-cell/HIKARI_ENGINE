@@ -82,6 +82,7 @@ constexpr std::array kPbrSurfaceInputs{
     Fixed("Eye", MaterialValueType::Float3),
     Fixed("Additive", MaterialValueType::Float3),
     Fixed("Outline", MaterialValueType::OutlineResponse),
+    Fixed("Shell", MaterialValueType::ShellSettings),
 };
 constexpr std::array kSurfaceOutput{Fixed("Surface", MaterialValueType::Surface)};
 constexpr std::array kParticleOutputInputs{
@@ -274,6 +275,25 @@ constexpr std::array kFresnelInputs{
     Fixed("View", MaterialValueType::Float3),
     Fixed("F0", MaterialValueType::Float1),
     Fixed("Power", MaterialValueType::Float1),
+};
+
+constexpr std::array kShellInputs{
+    Fixed("MaxLayers", MaterialValueType::Float1),
+    Fixed("Thickness", MaterialValueType::Float1),
+    Fixed("LodStartPixels", MaterialValueType::Float1),
+    Fixed("LodFullPixels", MaterialValueType::Float1),
+};
+constexpr std::array kShellOutputs{Fixed("Settings", MaterialValueType::ShellSettings)};
+constexpr std::array kNormalBlendInputs{
+    Fixed("Base", MaterialValueType::Float3),
+    Fixed("Detail", MaterialValueType::Float3),
+    Fixed("BaseStrength", MaterialValueType::Float1),
+    Fixed("DetailStrength", MaterialValueType::Float1),
+};
+constexpr std::array kNormalUvTransformInputs{
+    Fixed("Normal", MaterialValueType::Float3),
+    Fixed("Rotation", MaterialValueType::Float1),
+    Fixed("Scale", MaterialValueType::Float2),
 };
 
 constexpr std::array kDefinitions{
@@ -628,9 +648,32 @@ constexpr std::array kDefinitions{
         false,
         OutputRoute::Unrestricted,
         "Shape material UV after authored tiling, rotation and world-length mapping, independent of flipbook cells. UV1 provides the unmodified shape coordinates (0..1)."},
+    MaterialNodeDefinition{
+        MaterialNodeKind::Shell, "Shell", MaterialValueType::ShellSettings, NodeClass::Surface, true, kShellInputs,
+        kShellOutputs, false, OutputRoute::Unrestricted,
+        "Renderer-owned shell geometry: 0/2/4/8 layers, world thickness and projected-pixel LOD. Inputs must be uniform parameters or constants."},
+    MaterialNodeDefinition{
+        MaterialNodeKind::ShellLayer,
+        "ShellLayer",
+        MaterialValueType::Float4,
+        NodeClass::Input,
+        true,
+        {},
+        kFloat4Output,
+        false,
+        OutputRoute::Unrestricted,
+        "Current shell depth, base-surface flag, stable layer ID and transition fade. Base is (0,1,0,1)."},
+    MaterialNodeDefinition{
+        MaterialNodeKind::NormalBlend, "NormalBlend", MaterialValueType::Float3, NodeClass::Math, true,
+        kNormalBlendInputs, kNormalUnpackOutputs, false, OutputRoute::Unrestricted,
+        "Reoriented blend of decoded tangent-space normals with independent base/detail strengths. Material normal scale applies once afterward."},
+    MaterialNodeDefinition{
+        MaterialNodeKind::NormalUvTransform, "NormalUvTransform", MaterialValueType::Float3, NodeClass::Math, true,
+        kNormalUvTransformInputs, kNormalUnpackOutputs, false, OutputRoute::Unrestricted,
+        "Reorients a decoded tangent-space normal for the same rotation (radians) and mirrored scale used by UV Transform."},
 };
 
-static_assert(kDefinitions.size() == static_cast<size_t>(MaterialNodeKind::ParticleUv) + 1u);
+static_assert(kDefinitions.size() == static_cast<size_t>(MaterialNodeKind::NormalUvTransform) + 1u);
 
 constexpr bool AllPaletteVisibleNodesHaveSummary() {
     for (const MaterialNodeDefinition& definition : kDefinitions) {
@@ -681,6 +724,9 @@ bool IsMaterialNodeAvailableForDomain(MaterialNodeKind kind, MaterialDomain doma
     if (domain == MaterialDomain::Surface) {
         return kind != MaterialNodeKind::ParticleOutput && kind != MaterialNodeKind::ParticleState &&
                kind != MaterialNodeKind::ParticleColor && kind != MaterialNodeKind::ParticleUv;
+    }
+    if (kind == MaterialNodeKind::ShellLayer || kind == MaterialNodeKind::Shell) {
+        return false;
     }
     if (kind == MaterialNodeKind::ParticleOutput) {
         return true;

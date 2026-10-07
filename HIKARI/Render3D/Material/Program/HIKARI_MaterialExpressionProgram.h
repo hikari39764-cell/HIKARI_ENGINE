@@ -17,7 +17,7 @@ inline constexpr uint32_t kGpuMaterialExpressionInstructionCount = 96u;
 inline constexpr uint32_t kGpuMaterialExpressionRegisterCount = 128u;
 inline constexpr uint32_t kGpuMaterialExpressionResourceBase = 10u;
 inline constexpr uint32_t kGpuMaterialExpressionMagic = 0x484D4558u;
-inline constexpr uint32_t kGpuMaterialExpressionVersion = 1u;
+inline constexpr uint32_t kGpuMaterialExpressionVersion = 2u;
 inline constexpr uint32_t kGpuMaterialExpressionHeaderBase = kGpuMaterialProgramResponseSlotCount;
 inline constexpr uint32_t kGpuMaterialExpressionValueBase =
     kGpuMaterialExpressionHeaderBase + kGpuMaterialExpressionHeaderSlotCount;
@@ -87,6 +87,9 @@ enum class MaterialExpressionRuntimeOpcode : uint8_t {
     ParticleState,
     ParticleColor,
     ParticleUv,
+    ShellLayer,
+    NormalBlend,
+    NormalUvTransform,
 };
 
 struct MaterialExpressionRuntimeProgram {

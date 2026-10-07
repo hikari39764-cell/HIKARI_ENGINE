@@ -141,11 +141,12 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
                 const auto* key = op == EditorTransformGizmoOperation::Translate ? "cf.position"
                                   : op == EditorTransformGizmoOperation::Rotate  ? "cf.rotation"
                                                                                  : "cf.size";
-                if (IconToggleButton(glyph, key, flowGizmoState_.operation == op, {26, 26}, TEXT::LocalizeCStr(key)))
+                if (IconToggleButton(glyph, key, flowGizmoState_.operation == op, {26, 26},
+                                     TEXT::Localize(key).c_str()))
                     flowGizmoState_.operation = op;
                 ImGui::SameLine();
             }
-            ImGui::TextDisabled("%s", TEXT::LocalizeCStr("cf.gizmoHint"));
+            ImGui::TextDisabled("%s", TEXT::Localize("cf.gizmoHint").c_str());
         }
         EditorTransformGizmoState gizmo{};
         const auto result = observer_.DrawContents(scene, stage, {}, gizmo, ImGui::GetIO().DeltaTime, runtime, false);
@@ -240,7 +241,7 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
         else {
             ImGui::InvisibleButton("CameraPreviewCanvas", {fit.width, fit.height});
             ImGui::GetWindowDrawList()->AddText({origin.x + 12, origin.y + 12}, IM_COL32(170, 185, 195, 255),
-                                                TEXT::LocalizeCStr("gc.bindToPreview"));
+                                                TEXT::Localize("gc.bindToPreview").c_str());
         }
         workspaceResult.playViewportClicked =
             runtime && image.ptr && ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left);

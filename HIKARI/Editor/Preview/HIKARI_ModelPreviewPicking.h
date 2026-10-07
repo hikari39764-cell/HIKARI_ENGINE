@@ -3,7 +3,7 @@
 #include <cstdint>
 #include "Editor/Views/HIKARI_EditorViewportGeometry.h"
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI {
 class Camera3D;

@@ -9,7 +9,7 @@
 
 namespace HIKARI::EDITOR {
 void ProjectLauncherApp::DrawSettings() {
-    PanelTitle(TEXT::LocalizeCStr("settings.title"), TEXT::LocalizeCStr("launcher.sharedPreferences"));
+    PanelTitle(TEXT::Localize("settings.title").c_str(), TEXT::Localize("launcher.sharedPreferences").c_str());
     auto preferences = GetEditorPreferences();
     bool changed = false;
     for (const char* key :
@@ -17,9 +17,9 @@ void ProjectLauncherApp::DrawSettings() {
         changed |= DrawEditorPreferenceControl(key, preferences);
         ImGui::Spacing();
     }
-    ImGui::SeparatorText(TEXT::LocalizeCStr("launcher.defaultLocation"));
+    ImGui::SeparatorText(TEXT::Localize("launcher.defaultLocation").c_str());
     ImGui::TextWrapped("%s", projectLocation_.data());
-    if (IconTextButton(EditorGlyph::Folder, TEXT::LocalizeCStr("editor.ui.browse.2f3b5c"), "defaultParent")) {
+    if (IconTextButton(EditorGlyph::Folder, TEXT::Localize("editor.ui.browse.2f3b5c").c_str(), "defaultParent")) {
         BrowseForCreationLocation();
         preferences.projectParentDirectory = projectLocation_.data();
         changed = true;
@@ -28,21 +28,21 @@ void ProjectLauncherApp::DrawSettings() {
         SaveEditorPreferences(preferences);
     if (!EditorPreferencesError().empty())
         ImGui::TextWrapped("%s", EditorPreferencesError().c_str());
-    ImGui::SeparatorText(TEXT::LocalizeCStr("launcher.engineLocation"));
+    ImGui::SeparatorText(TEXT::Localize("launcher.engineLocation").c_str());
     ImGui::TextWrapped("%s", TEXT::PathToUtf8(runtimeRoot_).c_str());
-    if (IconTextButton(EditorGlyph::Folder, TEXT::LocalizeCStr("launcher.showFolder"), "engineFolder"))
+    if (IconTextButton(EditorGlyph::Folder, TEXT::Localize("launcher.showFolder").c_str(), "engineFolder"))
         SHELL::OpenFolderInExplorer(runtimeRoot_);
 }
 void ProjectLauncherApp::DrawLogs() {
     if (!ImGui::BeginTabBar("logs"))
         return;
-    if (ImGui::BeginTabItem(TEXT::LocalizeCStr("launcher.projectStartup"))) {
+    if (ImGui::BeginTabItem(TEXT::Localize("launcher.projectStartup").c_str())) {
         if (IconButton(EditorGlyph::Duplicate, "copyLog", EditorButtonTone::Quiet, {28, 28},
-                       TEXT::LocalizeCStr("ui.materialGraph.copy")))
+                       TEXT::Localize("ui.materialGraph.copy").c_str()))
             ImGui::SetClipboardText(openWorkflow_.GetLogTail().c_str());
         NextToolbarItem();
         if (IconButton(EditorGlyph::Folder, "logFolder", EditorButtonTone::Quiet, {28, 28},
-                       TEXT::LocalizeCStr("launcher.showFolder")) &&
+                       TEXT::Localize("launcher.showFolder").c_str()) &&
             !openWorkflow_.GetBuildLogPath().empty())
             SHELL::OpenFolderInExplorer(openWorkflow_.GetBuildLogPath().parent_path());
         ImGui::BeginChild("buildLog", {0, 0}, false, ImGuiWindowFlags_HorizontalScrollbar);
@@ -53,7 +53,7 @@ void ProjectLauncherApp::DrawLogs() {
         ImGui::EndChild();
         ImGui::EndTabItem();
     }
-    if (ImGui::BeginTabItem(TEXT::LocalizeCStr("shell.diagnostics"))) {
+    if (ImGui::BeginTabItem(TEXT::Localize("shell.diagnostics").c_str())) {
         logPanel_.DrawContents();
         ImGui::EndTabItem();
     }

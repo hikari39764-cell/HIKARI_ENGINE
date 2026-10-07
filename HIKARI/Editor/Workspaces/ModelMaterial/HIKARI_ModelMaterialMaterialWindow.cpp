@@ -23,12 +23,13 @@ namespace {
 
 const char* BindingLabel(ModelMaterialBindingSource source) noexcept {
     switch (source) {
-    case ModelMaterialBindingSource::ImportedFallback: return TEXT::LocalizeCStr("editor.ui.imported.draft.a67748");
-    case ModelMaterialBindingSource::AuthoredOverride: return TEXT::LocalizeCStr("editor.ui.authored.material.fde952");
+    case ModelMaterialBindingSource::ImportedFallback: return TEXT::Localize("editor.ui.imported.draft.a67748").c_str();
+    case ModelMaterialBindingSource::AuthoredOverride:
+        return TEXT::Localize("editor.ui.authored.material.fde952").c_str();
     case ModelMaterialBindingSource::OverrideUnavailable:
-        return TEXT::LocalizeCStr("editor.ui.override.unavailable.2787dc");
+        return TEXT::Localize("editor.ui.override.unavailable.2787dc").c_str();
     }
-    return TEXT::LocalizeCStr("ui.quality.transitionUnknown");
+    return TEXT::Localize("ui.quality.transitionUnknown").c_str();
 }
 
 } // namespace
@@ -66,6 +67,12 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(DocumentSceneBase& sce
         ImGui::TextDisabled(
             TEXT::Localize("editor.ui.the.cyan.row.and.viewport.outline.identify.the.material.part.bei.011578")
                 .c_str());
+        if (authoringDocument_.HasMaterial() &&
+            ImGui::Button(TEXT::Localize("material.painterly.createForPart").c_str(), ImVec2(-1.0f, 0.0f))) {
+            (void)CreateMaterial(scene, MaterialTemplateId::PainterlyShell, false, statusMessage_);
+            ImGui::End();
+            return;
+        }
 
         if (ImGui::TreeNodeEx(
                 TEXT::LocalizeWindow("editor.ui.advanced.part.binding.f0dacd", "Advanced Part Binding").c_str(),
@@ -108,8 +115,8 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(DocumentSceneBase& sce
     if (!authoringDocument_.HasMaterial()) {
         ImGui::TextWrapped(
             authoringMode_ == AuthoringMode::MaterialAsset
-                ? TEXT::LocalizeCStr("editor.ui.create.or.open.a.material.asset.from.the.left.panel.266612")
-                : TEXT::LocalizeCStr("editor.ui.select.a.model.part.to.edit.its.material.3a7ca7"));
+                ? TEXT::Localize("editor.ui.create.or.open.a.material.asset.from.the.left.panel.266612").c_str()
+                : TEXT::Localize("editor.ui.select.a.model.part.to.edit.its.material.3a7ca7").c_str());
         DrawPreviewLightingProperties();
         ImGui::End();
         return;
@@ -169,6 +176,12 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(DocumentSceneBase& sce
     }
 
     if (MaterialGraphData* graph = MATERIAL_GRAPH_UI::EditableGraph(source)) {
+        if (source.kind == MaterialAssetKind::Material) {
+            ImGui::SeparatorText(TEXT::Localize("material.parameters.quickControls").c_str());
+            if (source.templateId == MaterialTemplateId::PainterlyShell)
+                ImGui::TextWrapped("%s", TEXT::Localize("material.painterly.workflow").c_str());
+            DrawMaterialParameterControls(source, *graph);
+        }
         if (DrawMaterialGraphInspector(scene, source, *graph) && !selectedGraphEdgeId_.empty()) {
             (void)DeleteSelectedGraphEdge(scene, statusMessage_);
         }

@@ -14,6 +14,9 @@ SceneObjectId AllocateSceneObjectId(const SceneDocument& document);
 SceneObjectData* FindSceneObjectData(SceneDocument& document, SceneObjectId id) noexcept;
 const SceneObjectData* FindSceneObjectData(const SceneDocument& document, SceneObjectId id) noexcept;
 std::unordered_set<uint64_t> CollectObjectSubtreeIds(const SceneDocument& document, SceneObjectId rootId);
+struct SceneObjectChanges;
+// before から after への追加・削除・変更（追加と変更は after 順、削除は before 順）。
+SceneObjectChanges DiffSceneObjects(std::span<const SceneObjectData> before, std::span<const SceneObjectData> after);
 // Stage the complete clone before publishing it. Parent links and explicit
 // property references use the same ID map. Existing IDs are never reused.
 bool AppendClonedSceneObjects(std::span<const SceneObjectData> source, SceneDocument& destination, uint64_t& nextId,

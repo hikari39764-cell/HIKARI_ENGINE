@@ -6,7 +6,7 @@
 
 #include "Animation/Assets/HIKARI_AnimationAssetTypes.h"
 #include "Assets/HIKARI_AssetTypes.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/HIKARI_Transform3D.h"
 
 namespace HIKARI::ANIMATION {

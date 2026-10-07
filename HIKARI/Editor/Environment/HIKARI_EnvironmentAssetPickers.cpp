@@ -7,7 +7,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Render3D/Diagnostics/HIKARI_EnvironmentDiagnostics.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"

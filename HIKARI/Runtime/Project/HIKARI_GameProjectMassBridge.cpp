@@ -44,8 +44,10 @@ uint64_t WorldView::GetMassObjectCount(ComponentTypeId typeId) const noexcept {
                : 0u;
 }
 
-bool WorldView::SpawnMassObjects(const GameProjectWorldMassSpawnBatchDesc& batch, GameProjectWorldResult* outResults,
-                                 uint32_t resultCount) const noexcept {
+bool WorldView::SpawnMassObjects(const GameProjectWorldMassSpawnBatchDesc& batch,
+                                 std::span<GameProjectWorldResult> results) const noexcept {
+    GameProjectWorldResult* outResults = results.data();
+    const uint32_t resultCount = PROJECT::INTERNAL::SpanCount(results.size());
     const auto fillResults = [&](GameProjectWorldResult result) noexcept {
         if (outResults != nullptr) {
             for (uint32_t index = 0u; index < resultCount; ++index) {
@@ -109,8 +111,12 @@ bool WorldView::SpawnMassObjects(const GameProjectWorldMassSpawnBatchDesc& batch
     }
 }
 
-bool WorldView::DestroyMassObjects(const GameProjectObjectHandle* objects, uint32_t objectCount,
-                                   GameProjectWorldResult* outResults, uint32_t resultCount) const noexcept {
+bool WorldView::DestroyMassObjects(std::span<const GameProjectObjectHandle> objectSpan,
+                                   std::span<GameProjectWorldResult> results) const noexcept {
+    const GameProjectObjectHandle* objects = objectSpan.data();
+    const uint32_t objectCount = PROJECT::INTERNAL::SpanCount(objectSpan.size());
+    GameProjectWorldResult* outResults = results.data();
+    const uint32_t resultCount = PROJECT::INTERNAL::SpanCount(results.size());
     const auto fillResults = [&](GameProjectWorldResult result) noexcept {
         if (outResults != nullptr) {
             for (uint32_t index = 0u; index < resultCount; ++index) {

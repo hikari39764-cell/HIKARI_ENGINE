@@ -64,6 +64,8 @@ struct TemporalVelocityDraw {
     bool doubleSided = false;
     bool alphaMasked = false;
     const std::vector<MATH::Mat4>* jointPalette = nullptr;
+    MATH::Vec4 shellSettings{};
+    MATH::Vec4 boundsCenterRadius{};
 };
 
 void Reset();
@@ -116,6 +118,8 @@ bool RenderForwardOpaquePass(const GFX::Context& graphics, const MeshPassResourc
 bool RenderForwardTransparentPass(const GFX::Context& graphics, const MeshPassResources& passResources);
 bool HasDepthAwarePassWork();
 bool HasForwardTransparentPassWork();
+bool HasPreservedVfxWork();
+bool RenderPreservedVfxPass(const GFX::Context& graphics, const MeshPassResources& passResources);
 bool RenderDepthAwarePass(const GFX::Context& graphics, const MeshPassResources& passResources);
 bool GatherTemporalVelocityDraws(const GFX::Context& graphics, std::vector<TemporalVelocityDraw>& outDraws,
                                  uint32_t maximumDrawCount, uint32_t maximumSkinnedDrawCount);

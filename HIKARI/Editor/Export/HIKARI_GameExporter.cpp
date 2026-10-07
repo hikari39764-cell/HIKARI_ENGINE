@@ -340,14 +340,17 @@ bool CopyInstalledEngineContent(const std::filesystem::path& runtimeRoot, const 
             break;
         }
         const std::string key = RelativeFileKey(relative);
-        const bool sandSource = key.rfind("sand/textures/", 0u) == 0u && key.rfind("sand/textures/cooked/", 0u) != 0u;
-        const bool terrainSource =
-            key.rfind("terrain/sources/", 0u) == 0u ||
-            (key.rfind("terrain/textures/", 0u) == 0u && key.rfind("terrain/textures/cooked/", 0u) != 0u);
-        const bool vfxTextureSource =
-            key.rfind("vfx/textures/", 0u) == 0u && key.rfind("vfx/textures/cooked/", 0u) != 0u;
-        if (IsForbiddenGamePackagePath(std::filesystem::path("EngineContent") / relative) || sandSource ||
-            terrainSource || vfxTextureSource || key == "terrain/readme.md") {
+        const auto separator = key.find('/');
+        const std::string_view domain = std::string_view(key).substr(0u, separator);
+        const std::string_view local =
+            separator == std::string::npos ? std::string_view{} : std::string_view(key).substr(separator + 1u);
+        const bool textureDomain = domain == "sand" || domain == "terrain" || domain == "vfx" || domain == "painterly";
+        const bool textureSource =
+            textureDomain && local.starts_with("textures/") && !local.starts_with("textures/cooked/");
+        const bool surfaceSource =
+            (domain == "terrain" || domain == "painterly") && (local.starts_with("sources/") || local == "readme.md");
+        if (IsForbiddenGamePackagePath(std::filesystem::path("EngineContent") / relative) || textureSource ||
+            surfaceSource) {
             sourceOnlyExclusions.insert(key);
         }
     }
@@ -447,8 +450,6 @@ std::vector<GameExportSceneInfo> GameExporter::CollectSceneAssets() {
     return {};
 #endif
 }
-
-GameExportResult GameExporter::Export() { return Export(GameExportOptions{}); }
 
 GameExportResult GameExporter::Export(const GameExportOptions& options) {
 #if defined(HIKARI_WITH_EDITOR)

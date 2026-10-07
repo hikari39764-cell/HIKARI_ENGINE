@@ -37,12 +37,12 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(DocumentSceneB
         }
         if (node->kind == MaterialNodeKind::Parameter) {
             if (auto* parameter = FindMaterialGraphParameter(graph, node->referenceId)) {
-                if (ImGui::TreeNode(TEXT::LocalizeCStr("material.parameter.presentation"))) {
+                if (ImGui::TreeNode(TEXT::Localize("material.parameter.presentation").c_str())) {
                     const auto editText = [&](const char* key, std::string& value) {
                         char buffer[256]{};
                         std::snprintf(buffer, sizeof(buffer), "%s", value.c_str());
                         MaterialAssetData before = source;
-                        const bool changed = ImGui::InputText(TEXT::LocalizeCStr(key), buffer, sizeof(buffer));
+                        const bool changed = ImGui::InputText(TEXT::Localize(key).c_str(), buffer, sizeof(buffer));
                         if (changed)
                             value = buffer;
                         TrackMaterialItem(std::move(before), "Name material parameter", changed);
@@ -50,10 +50,10 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(DocumentSceneB
                     editText("material.parameter.name", parameter->displayName);
                     editText("material.parameter.group", parameter->group);
                     MaterialAssetData before = source;
-                    if (ImGui::Checkbox(TEXT::LocalizeCStr("material.parameter.expose"), &parameter->exposed))
+                    if (ImGui::Checkbox(TEXT::Localize("material.parameter.expose").c_str(), &parameter->exposed))
                         authoringDocument_.CommitMaterial(std::move(before), "Expose material parameter");
                     before = source;
-                    if (ImGui::Checkbox(TEXT::LocalizeCStr("material.parameter.range"), &parameter->useUiRange)) {
+                    if (ImGui::Checkbox(TEXT::Localize("material.parameter.range").c_str(), &parameter->useUiRange)) {
                         if (parameter->useUiRange && !(parameter->uiMinimum < parameter->uiMaximum)) {
                             parameter->uiMinimum = 0.0f;
                             parameter->uiMaximum = 1.0f;
@@ -63,7 +63,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(DocumentSceneB
                     if (parameter->useUiRange) {
                         before = source;
                         const bool changed =
-                            ImGui::DragFloatRange2(TEXT::LocalizeCStr("material.parameter.limits"),
+                            ImGui::DragFloatRange2(TEXT::Localize("material.parameter.limits").c_str(),
                                                    &parameter->uiMinimum, &parameter->uiMaximum, 0.01f);
                         if (changed && parameter->uiMinimum >= parameter->uiMaximum)
                             parameter->uiMaximum = parameter->uiMinimum + 0.001f;
@@ -95,7 +95,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(DocumentSceneB
             }
             ImGui::SameLine();
             if (IconToggleButton(EditorGlyph::Visible, "##inspect", inspecting, {},
-                                 TEXT::LocalizeCStr("material.inspect.node"))) {
+                                 TEXT::Localize("material.inspect.node").c_str())) {
                 nodePreviewId_ = inspecting ? "" : node->id;
                 nodePreviewPin_ = pin;
                 nodePreviewRefreshPending_ = true;
@@ -108,10 +108,10 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(DocumentSceneB
                     nodePreviewChannel_ = channel - 1;
                     nodePreviewRefreshPending_ = true;
                 }
-                ImGui::TextWrapped("%s", TEXT::LocalizeCStr("material.inspect.local"));
+                ImGui::TextWrapped("%s", TEXT::Localize("material.inspect.local").c_str());
             }
         }
-        if (ImGui::CollapsingHeader(TEXT::LocalizeCStr("material.inspector.connections"))) {
+        if (ImGui::CollapsingHeader(TEXT::Localize("material.inspector.connections").c_str())) {
             for (const auto& edge : graph.edges) {
                 if (edge.targetNodeId != node->id)
                     continue;
@@ -125,7 +125,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(DocumentSceneB
                 }
             }
         }
-        if (ImGui::CollapsingHeader(TEXT::LocalizeCStr("material.inspector.advanced"))) {
+        if (ImGui::CollapsingHeader(TEXT::Localize("material.inspector.advanced").c_str())) {
             ImGui::TextDisabled("%s", node->id.c_str());
             const auto& contract = ASSETS::MATERIAL::GetMaterialNodeSemanticContract(node->kind);
             ImGui::TextDisabled(TEXT::Localize("editor.ui.connect.to.44ad75").c_str());
@@ -142,7 +142,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(DocumentSceneB
         }
     } else {
         ImGui::TextDisabled(TEXT::Localize("editor.ui.current.node.85de31").c_str());
-        ImGui::TextWrapped("%s", TEXT::LocalizeCStr("material.inspector.select"));
+        ImGui::TextWrapped("%s", TEXT::Localize("material.inspector.select").c_str());
     }
 
     if (!selectedGraphEdgeId_.empty()) {
@@ -166,14 +166,15 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(DocumentSceneB
     const ImVec4 statusColor = currentProgram ? ImVec4{0.28f, 0.82f, 0.48f, 1.0f} : ImVec4{1.0f, 0.30f, 0.30f, 1.0f};
     ImGui::SeparatorText(TEXT::Localize("editor.ui.runtime.preview.status.897160").c_str());
     ImGui::TextColored(statusColor, "%s",
-                       TEXT::LocalizeCStr(currentProgram    ? "material.preview.live"
-                                          : compile.success ? "material.preview.pending"
-                                                            : "material.preview.invalid"));
+                       TEXT::Localize(currentProgram    ? "material.preview.live"
+                                      : compile.success ? "material.preview.pending"
+                                                        : "material.preview.invalid")
+                           .c_str());
     if (ImGui::CollapsingHeader(
             TEXT::LocalizeWindow("editor.ui.compile.diagnostics.6be167", "Compile & Diagnostics").c_str(),
             currentProgram ? ImGuiTreeNodeFlags_None : ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::TextUnformatted(compile.success ? TEXT::LocalizeCStr("editor.ui.compiled.14878f")
-                                               : TEXT::LocalizeCStr("editor.ui.compile.failed.97203d"));
+        ImGui::TextUnformatted(compile.success ? TEXT::Localize("editor.ui.compiled.14878f").c_str()
+                                               : TEXT::Localize("editor.ui.compile.failed.97203d").c_str());
         for (const MaterialCompileDiagnostic& diagnostic : compile.diagnostics) {
             ImGui::PushID(diagnostic.subjectId.c_str());
             if (FindMaterialGraphNode(graph, diagnostic.subjectId)) {
@@ -185,7 +186,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(DocumentSceneB
                 ImGui::TextWrapped("%s", diagnostic.message.c_str());
             ImGui::PopID();
         }
-        if (ImGui::TreeNode(TEXT::LocalizeCStr("editor.ui.expression.budget.dcb8b8"))) {
+        if (ImGui::TreeNode(TEXT::Localize("editor.ui.expression.budget.dcb8b8").c_str())) {
             if (!compile.success) {
                 ImGui::TextUnformatted(
                     TEXT::Localize("editor.ui.not.evaluated.current.graph.does.not.compile.238dc7").c_str());
@@ -208,15 +209,15 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(DocumentSceneB
                                                          : 0.0f,
                                            ImVec2(-1.0f, 0.0f), "");
                     };
-                    budgetBar(TEXT::LocalizeCStr("material.inspector.instructions"), budget.instructionCount,
+                    budgetBar(TEXT::Localize("material.inspector.instructions").c_str(), budget.instructionCount,
                               budget.maxInstructionCount);
-                    budgetBar(TEXT::LocalizeCStr("material.inspector.registers"), budget.registerCount,
+                    budgetBar(TEXT::Localize("material.inspector.registers").c_str(), budget.registerCount,
                               budget.maxRegisterCount);
-                    budgetBar(TEXT::LocalizeCStr("material.inspector.constants"), budget.valueCount,
+                    budgetBar(TEXT::Localize("material.inspector.constants").c_str(), budget.valueCount,
                               budget.maxValueCount);
-                    budgetBar(TEXT::LocalizeCStr("material.inspector.slots"), budget.parameterSlotCount,
+                    budgetBar(TEXT::Localize("material.inspector.slots").c_str(), budget.parameterSlotCount,
                               budget.maxParameterSlotCount);
-                    budgetBar(TEXT::LocalizeCStr("material.inspector.resources"), budget.resourceCount,
+                    budgetBar(TEXT::Localize("material.inspector.resources").c_str(), budget.resourceCount,
                               budget.maxResourceSlotCount);
                     if (!budget.nodeInstructionCounts.empty()) {
                         ImGui::TextDisabled(TEXT::Localize("editor.ui.per.node.instruction.cost.51d8c4").c_str());

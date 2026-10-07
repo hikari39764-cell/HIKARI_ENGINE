@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshTypes.h"
 
 namespace HIKARI {

@@ -274,12 +274,12 @@ std::string_view NodeMathSubgroup(MaterialNodeKind kind) {
     case MaterialNodeKind::Negate:
     case MaterialNodeKind::Modulo:
     case MaterialNodeKind::Power:
-    case MaterialNodeKind::SquareRoot: return TEXT::LocalizeCStr("editor.material.math.basic");
+    case MaterialNodeKind::SquareRoot: return TEXT::Localize("editor.material.math.basic").c_str();
     case MaterialNodeKind::Sine:
     case MaterialNodeKind::Cosine:
-    case MaterialNodeKind::Atan2: return TEXT::LocalizeCStr("editor.material.math.trigonometry");
+    case MaterialNodeKind::Atan2: return TEXT::Localize("editor.material.math.trigonometry").c_str();
     case MaterialNodeKind::Exp:
-    case MaterialNodeKind::Log2: return TEXT::LocalizeCStr("editor.material.math.exponential");
+    case MaterialNodeKind::Log2: return TEXT::Localize("editor.material.math.exponential").c_str();
     case MaterialNodeKind::Floor:
     case MaterialNodeKind::Ceil:
     case MaterialNodeKind::Fraction:
@@ -288,10 +288,10 @@ std::string_view NodeMathSubgroup(MaterialNodeKind kind) {
     case MaterialNodeKind::Sign:
     case MaterialNodeKind::Saturate:
     case MaterialNodeKind::OneMinus:
-    case MaterialNodeKind::Clamp: return TEXT::LocalizeCStr("editor.material.math.range");
+    case MaterialNodeKind::Clamp: return TEXT::Localize("editor.material.math.range").c_str();
     case MaterialNodeKind::Step:
     case MaterialNodeKind::SmoothStep:
-    case MaterialNodeKind::Remap: return TEXT::LocalizeCStr("editor.material.math.compare");
+    case MaterialNodeKind::Remap: return TEXT::Localize("editor.material.math.compare").c_str();
     case MaterialNodeKind::Dot:
     case MaterialNodeKind::Cross:
     case MaterialNodeKind::Length:
@@ -302,11 +302,11 @@ std::string_view NodeMathSubgroup(MaterialNodeKind kind) {
     case MaterialNodeKind::MakeFloat3:
     case MaterialNodeKind::MakeFloat4:
     case MaterialNodeKind::Split:
-    case MaterialNodeKind::Select: return TEXT::LocalizeCStr("editor.material.math.vector");
+    case MaterialNodeKind::Select: return TEXT::Localize("editor.material.math.vector").c_str();
     case MaterialNodeKind::ValueNoise:
-    case MaterialNodeKind::Voronoi: return TEXT::LocalizeCStr("editor.material.math.noise");
-    case MaterialNodeKind::UvTransform: return TEXT::LocalizeCStr("editor.material.math.uv");
-    case MaterialNodeKind::Fresnel: return TEXT::LocalizeCStr("editor.material.math.shading");
+    case MaterialNodeKind::Voronoi: return TEXT::Localize("editor.material.math.noise").c_str();
+    case MaterialNodeKind::UvTransform: return TEXT::Localize("editor.material.math.uv").c_str();
+    case MaterialNodeKind::Fresnel: return TEXT::Localize("editor.material.math.shading").c_str();
     default: return {};
     }
 }

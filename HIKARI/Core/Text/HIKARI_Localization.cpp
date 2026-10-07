@@ -1,15 +1,33 @@
 #include "Core/Text/HIKARI_Localization.h"
 
 #include <array>
+#include <functional>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace HIKARI::TEXT {
 namespace {
 
 Language gLanguage = Language::English;
 
-using LocalizationTable = std::unordered_map<std::string, std::string>;
+// string_view のまま検索し、照会ごとのキー文字列確保を避ける。
+struct TransparentStringHash {
+    using is_transparent = void;
+    size_t operator()(std::string_view value) const noexcept { return std::hash<std::string_view>{}(value); }
+};
+using LocalizationTable = std::unordered_map<std::string, std::string, TransparentStringHash, std::equal_to<>>;
+
+// 表に無いキーはキー自体を表示する。参照を返せるよう一度だけ保持する。
+const std::string& InternMissingKey(std::string_view key) {
+    static std::mutex mutex;
+    static std::unordered_set<std::string, TransparentStringHash, std::equal_to<>> keys;
+    std::scoped_lock lock(mutex);
+    if (const auto found = keys.find(key); found != keys.end()) {
+        return *found;
+    }
+    return *keys.emplace(key).first;
+}
 
 LocalizationTable& Table(Language language) {
     static std::array<LocalizationTable, 3u> tables{};
@@ -41,47 +59,23 @@ bool SetLocalizationLanguage(Language language) noexcept {
     return true;
 }
 
-std::string Localize(std::string_view key) {
+const std::string& Localize(std::string_view key) {
     EnsureBuiltInTables();
     const auto& active = Table(gLanguage);
-    const auto found = active.find(std::string(key));
-    if (found != active.end()) {
+    if (const auto found = active.find(key); found != active.end()) {
         return found->second;
     }
     if (gLanguage != Language::English) {
         const auto& english = Table(Language::English);
-        const auto fallback = english.find(std::string(key));
-        if (fallback != english.end()) {
+        if (const auto fallback = english.find(key); fallback != english.end()) {
             return fallback->second;
         }
     }
-    return std::string(key);
+    return InternMissingKey(key);
 }
 
 std::string LocalizeWindow(std::string_view key, std::string_view stableId) {
     return Localize(key) + "###" + std::string(stableId);
-}
-
-const char* LocalizeCStr(const char* key) {
-    EnsureBuiltInTables();
-    if (const auto found = Table(gLanguage).find(key); found != Table(gLanguage).end())
-        return found->second.c_str();
-    if (const auto found = Table(Language::English).find(key); found != Table(Language::English).end())
-        return found->second.c_str();
-    return key;
-}
-
-void MergeLocalizationTable(Language language, const nlohmann::json& table) noexcept {
-    if (static_cast<size_t>(language) >= 3u || !table.is_object()) {
-        return;
-    }
-    EnsureBuiltInTables();
-    auto& target = Table(language);
-    for (auto it = table.begin(); it != table.end(); ++it) {
-        if (it.value().is_string()) {
-            target[it.key()] = it.value().get<std::string>();
-        }
-    }
 }
 
 } // namespace HIKARI::TEXT

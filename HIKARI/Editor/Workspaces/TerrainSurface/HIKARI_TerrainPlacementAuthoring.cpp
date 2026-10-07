@@ -6,8 +6,8 @@
 
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
 #include "Editor/Selection/HIKARI_EditorSelection.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Geometry/HIKARI_GeometryFitProvider.h"
 #include "Scene/HIKARI_GameObject.h"

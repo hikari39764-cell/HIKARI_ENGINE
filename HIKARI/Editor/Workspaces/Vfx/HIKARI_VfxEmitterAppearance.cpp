@@ -90,6 +90,9 @@ void VfxWorkspaceController::DrawEmitterAppearance(AssetDatabase& database, cons
     renderCommonEditor.Choice(VfxUiText("Blend Mode").c_str(), "blendMode",
                               VFX::ToString(emitter.renderCommon.blendMode), VFX::kVfxBlendModeChoices.data(),
                               VFX::kVfxBlendModeChoices.size());
+    renderCommonEditor.Choice(VfxUiText("Post-process Mode").c_str(), "postProcessMode",
+                              VFX::ToString(emitter.renderCommon.postProcessMode),
+                              VFX::kVfxPostProcessModeChoices.data(), VFX::kVfxPostProcessModeChoices.size());
     renderCommonEditor.Choice(VfxUiText("Depth Policy").c_str(), "depthMode",
                               VFX::ToString(emitter.renderCommon.depthMode), VFX::kVfxParticleDepthModeChoices.data(),
                               VFX::kVfxParticleDepthModeChoices.size());

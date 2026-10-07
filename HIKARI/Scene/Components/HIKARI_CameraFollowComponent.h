@@ -8,7 +8,7 @@
 #include "Scene/Camera/HIKARI_CameraFollowSettings.h"
 
 #include "HIKARI_IComponent.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Camera/HIKARI_CameraRigTypes.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
@@ -20,7 +20,9 @@ public:
 
     void Serialize(nlohmann::json& out) const override;
     void Deserialize(const nlohmann::json& in) override;
+#if defined(HIKARI_WITH_EDITOR)
     void BuildInspector(IInspectorBuilder& builder) override;
+#endif
 
     bool IsEnabled() const noexcept { return enabled_; }
     int GetPriority() const noexcept { return priority_; }

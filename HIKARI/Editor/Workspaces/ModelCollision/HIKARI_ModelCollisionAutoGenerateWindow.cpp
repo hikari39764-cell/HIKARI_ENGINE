@@ -44,7 +44,8 @@ void ModelCollisionWorkspaceController::DrawAutoGenerateWindow() {
                 .c_str());
         const bool cancelRequested = task && task->cancellationRequested;
         ImGui::BeginDisabled(cancelRequested);
-        if (ImGui::Button(cancelRequested ? TEXT::LocalizeCStr("ui.resource.cancelRequested") : "Cancel Generation")) {
+        if (ImGui::Button(cancelRequested ? TEXT::Localize("ui.resource.cancelRequested").c_str()
+                                          : "Cancel Generation")) {
             if (assetTaskService_ != nullptr) {
                 (void)assetTaskService_->RequestCancel(generationTaskId_);
             }
@@ -83,20 +84,20 @@ void ModelCollisionWorkspaceController::DrawAutoGenerateWindow() {
         ImGui::End();
         return;
     }
-    const char* targets[]{TEXT::LocalizeCStr("editor.ui.whole.model.217305"),
-                          TEXT::LocalizeCStr("editor.ui.selected.parts.combined.686da0"),
-                          TEXT::LocalizeCStr("editor.ui.nearby.selected.groups.4ed8e8"),
-                          TEXT::LocalizeCStr("editor.ui.each.selected.part.c0d7a5")};
+    const char* targets[]{TEXT::Localize("editor.ui.whole.model.217305").c_str(),
+                          TEXT::Localize("editor.ui.selected.parts.combined.686da0").c_str(),
+                          TEXT::Localize("editor.ui.nearby.selected.groups.4ed8e8").c_str(),
+                          TEXT::Localize("editor.ui.each.selected.part.c0d7a5").c_str()};
     int target = static_cast<int>(generationTarget_);
     if (ImGui::Combo(TEXT::LocalizeWindow("editor.ui.target.61ad50", "Target").c_str(), &target, targets, 4)) {
         generationTarget_ = static_cast<ASSETS::COLLISION::ModelCollisionGenerationTarget>(target);
     }
-    const char* methods[]{TEXT::LocalizeCStr("editor.ui.fitted.box.25b34d"),
-                          TEXT::LocalizeCStr("editor.ui.fitted.sphere.f0c049"),
-                          TEXT::LocalizeCStr("editor.ui.fitted.capsule.01153f"),
-                          TEXT::LocalizeCStr("editor.ui.single.convex.hull.bb4a3d"),
-                          TEXT::LocalizeCStr("editor.ui.convex.decomposition.coacd.7ae694"),
-                          TEXT::LocalizeCStr("editor.ui.static.triangle.mesh.0df8f6")};
+    const char* methods[]{TEXT::Localize("editor.ui.fitted.box.25b34d").c_str(),
+                          TEXT::Localize("editor.ui.fitted.sphere.f0c049").c_str(),
+                          TEXT::Localize("editor.ui.fitted.capsule.01153f").c_str(),
+                          TEXT::Localize("editor.ui.single.convex.hull.bb4a3d").c_str(),
+                          TEXT::Localize("editor.ui.convex.decomposition.coacd.7ae694").c_str(),
+                          TEXT::Localize("editor.ui.static.triangle.mesh.0df8f6").c_str()};
     int method = static_cast<int>(generationMethod_);
     if (ImGui::Combo(TEXT::LocalizeWindow("editor.ui.method.883069", "Method").c_str(), &method, methods, 6)) {
         generationMethod_ = static_cast<ASSETS::COLLISION::ModelCollisionGenerationMethod>(method);

@@ -18,7 +18,7 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence& sequence) {
 #if defined(HIKARI_WITH_EDITOR)
     const bool playing = cursor_.IsPlaying();
     if (IconButton(playing ? EditorGlyph::Pause : EditorGlyph::Play, "sequencePlay", EditorButtonTone::Primary,
-                   {28, 28}, TEXT::LocalizeCStr(playing ? "cine.pause" : "cine.play"))) {
+                   {28, 28}, TEXT::Localize(playing ? "cine.pause" : "cine.play").c_str())) {
         if (playing)
             cursor_.Pause();
         else {
@@ -94,7 +94,7 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence& sequence) {
         curveMode_ = true;
     NextToolbarItem();
     if (IconToggleButton(EditorGlyph::Filter, "animatedChannels", animatedChannelsOnly_, {28, 28},
-                         TEXT::LocalizeCStr("cine.animatedChannels")))
+                         TEXT::Localize("cine.animatedChannels").c_str()))
         animatedChannelsOnly_ = !animatedChannelsOnly_;
     NextToolbarItem();
     if (IconButton(EditorGlyph::Focus, "fitTimeline", EditorButtonTone::Quiet, {28, 28},
@@ -195,7 +195,7 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         ImGui::PopID();
         ImGui::PopID();
     };
-    const float shotY = lane(TEXT::LocalizeCStr("cine.shot"));
+    const float shotY = lane(TEXT::Localize("cine.shot").c_str());
     for (auto& s : sequence.cameraCutTrack.clips) {
         clip(s.id, SelectionKind::Shot, s.startTimeSeconds, s.durationSeconds, s.camera.name.c_str(), shotY,
              IM_COL32(44, 105, 151, 255));
@@ -210,13 +210,13 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
     changed |= DrawChannelLanes(sequence, origin.x, origin.y + ruler + row * rowHeight, width, labelWidth, rowHeight);
     row += static_cast<int>(channelCount);
     for (auto& cue : sequence.presentationCueTrack.clips) {
-        const auto y =
-            lane(TEXT::LocalizeCStr(cue.kind == PresentationCueKind::Vfx ? "ui.assetBrowser.typeVfx" : "cine.sound"));
+        const auto y = lane(
+            TEXT::Localize(cue.kind == PresentationCueKind::Vfx ? "ui.assetBrowser.typeVfx" : "cine.sound").c_str());
         clip(cue.id, SelectionKind::Cue, cue.startSeconds, cue.durationSeconds, cue.name.c_str(), y,
              cue.kind == PresentationCueKind::Vfx ? IM_COL32(143, 78, 48, 255) : IM_COL32(51, 116, 89, 255));
     }
     for (auto& effect : sequence.screenEffects) {
-        const auto y = lane(TEXT::LocalizeCStr("cine.screenFx"));
+        const auto y = lane(TEXT::Localize("cine.screenFx").c_str());
         const auto name = effect.name.empty() ? "画面效果" : effect.name;
         clip(effect.id, SelectionKind::Effect, effect.start, effect.duration, name.c_str(), y,
              IM_COL32(105, 71, 146, 255));

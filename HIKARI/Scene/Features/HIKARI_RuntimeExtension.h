@@ -6,9 +6,20 @@
 #include <string_view>
 #include <vector>
 
-#include "HIKARI/Project/RuntimeExtension.h"
-
 namespace HIKARI {
+
+class RuntimeFeatureCatalog;
+class WorldServiceRegistry;
+
+// 引擎内部の拡張点（World サービスと Feature の登録）。プロジェクトは GameProjectModule から Feature だけを登録する。
+class IRuntimeExtension {
+public:
+    virtual ~IRuntimeExtension() = default;
+
+    virtual std::string_view GetExtensionId() const noexcept = 0;
+    virtual bool RegisterWorldServices(WorldServiceRegistry&) { return true; }
+    virtual bool RegisterRuntimeFeatures(RuntimeFeatureCatalog&) = 0;
+};
 
 class RuntimeExtensionHost {
 public:

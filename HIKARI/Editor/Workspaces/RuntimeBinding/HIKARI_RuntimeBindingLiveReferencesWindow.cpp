@@ -67,7 +67,7 @@ void RuntimeBindingWorkspaceController::DrawLiveReferencesWindow(DocumentSceneBa
                     ImGui::TextUnformatted(TEXT::Localize("editor.ui.writer.5f4358").c_str());
                     ImGui::TableSetColumnIndex(1);
                     const std::string writer(scene.GetRuntimeBindingStore().GetWriter(variable->id));
-                    ImGui::TextUnformatted(writer.empty() ? TEXT::LocalizeCStr("editor.ui.unclaimed.fca0eb")
+                    ImGui::TextUnformatted(writer.empty() ? TEXT::Localize("editor.ui.unclaimed.fca0eb").c_str()
                                                           : writer.c_str());
                     EndPropertyTable();
                 }
@@ -163,9 +163,10 @@ void RuntimeBindingWorkspaceController::DrawLiveReferencesWindow(DocumentSceneBa
                 EmptyState(
                     TEXT::Localize("editor.ui.no.references.found.7b8efc").c_str(),
                     referenceProvider_
-                        ? TEXT::LocalizeCStr(
+                        ? TEXT::Localize(
                               "editor.ui.no.use.was.found.in.the.current.scene.and.loaded.materials.other.ea9fa8")
-                        : TEXT::LocalizeCStr("editor.ui.reference.indexing.is.not.connected.yet.1b4c90"));
+                              .c_str()
+                        : TEXT::Localize("editor.ui.reference.indexing.is.not.connected.yet.1b4c90").c_str());
             } else if (ImGui::BeginTable("RuntimeBindingReferences", 4,
                                          ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
                                              ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingStretchProp)) {

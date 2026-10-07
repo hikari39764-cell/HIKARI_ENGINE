@@ -3,13 +3,10 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <map>
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialInstanceResolver.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-#include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -17,14 +14,6 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-
-MaterialValueData EffectiveParameterValue(const MaterialAssetData& instance,
-                                          const MaterialGraphParameterData& parameter) {
-    const auto found =
-        std::find_if(instance.instance.parameterOverrides.begin(), instance.instance.parameterOverrides.end(),
-                     [&parameter](const auto& entry) { return entry.parameterId == parameter.id; });
-    return found != instance.instance.parameterOverrides.end() ? found->value : parameter.defaultValue;
-}
 
 AssetGuid EffectiveResourceGuid(const MaterialAssetData& instance, const MaterialGraphResourceData& resource) {
     const auto found =
@@ -72,41 +61,7 @@ void ModelMaterialWorkspaceController::DrawInstanceWindow(DocumentSceneBase& sce
     }
     const auto& parent = *parentSource;
     ImGui::SeparatorText(TEXT::Localize("editor.ui.parameter.overrides.f96015").c_str());
-    std::map<std::string, std::vector<const MaterialGraphParameterData*>> groups;
-    for (const auto& parameter : parent.graph.parameters)
-        if (parameter.exposed)
-            groups[parameter.group].push_back(&parameter);
-    for (const auto& [group, parameters] : groups) {
-        const std::string label = group.empty() ? TEXT::Localize("material.parameter.general") : group;
-        if (!ImGui::CollapsingHeader(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
-            continue;
-        for (const auto* entry : parameters) {
-            const auto& parameter = *entry;
-            ImGui::PushID(parameter.id.c_str());
-            ImGui::TextUnformatted(parameter.displayName.empty() ? parameter.id.c_str()
-                                                                 : parameter.displayName.c_str());
-            MaterialValueData value = EffectiveParameterValue(instance, parameter);
-            MaterialAssetData before = instance;
-            const bool changed =
-                parameter.useUiRange && value.type == MaterialValueType::Float1
-                    ? ImGui::SliderFloat("##InstanceValue", &value.numeric.x, parameter.uiMinimum, parameter.uiMaximum)
-                    : MATERIAL_GRAPH_UI::DrawCompactMaterialValue(value, value.type == MaterialValueType::Float4);
-            bool applied = false;
-            if (changed) {
-                applied =
-                    ASSETS::MATERIAL::SetMaterialParameterValue(instance, parameter.id, value, statusMessage_, &parent);
-            }
-            TrackMaterialItem(std::move(before), "Edit instance parameter", applied);
-            ImGui::SameLine();
-            if (ImGui::SmallButton(TEXT::LocalizeWindow("ui.common.reset", "Reset").c_str())) {
-                MaterialAssetData resetBefore = instance;
-                if (ASSETS::MATERIAL::RestoreMaterialInstanceParameterDefault(instance, parameter.id)) {
-                    authoringDocument_.CommitMaterial(std::move(resetBefore), "Reset instance parameter");
-                }
-            }
-            ImGui::PopID();
-        }
-    }
+    DrawMaterialParameterControls(instance, parent.graph, &parent);
     ImGui::SeparatorText(TEXT::Localize("editor.ui.resource.overrides.71f02a").c_str());
     for (const MaterialGraphResourceData& resource : parent.graph.resources) {
         ImGui::PushID(resource.id.c_str());

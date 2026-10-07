@@ -1,7 +1,9 @@
 #pragma once
 
 #include "Scene/Document/Assets/HIKARI_DocumentSceneAssetBindings.h"
+#if defined(HIKARI_WITH_EDITOR)
 #include "Scene/Document/Baking/HIKARI_DocumentSceneBakeCoordinator.h"
+#endif
 #include "Scene/Document/Camera/HIKARI_DocumentSceneCameraRuntimeState.h"
 #include "Scene/Document/Editor/HIKARI_DocumentSceneEditorState.h"
 #include "Scene/Document/Lighting/HIKARI_DocumentSceneLightingRuntimeState.h"
@@ -17,7 +19,9 @@ struct DocumentSceneState {
     DocumentSceneAssetBindings assets{};
     DocumentSceneLightingRuntimeState lighting{};
     DocumentSceneEditorState editor{};
+#if defined(HIKARI_WITH_EDITOR)
     DocumentSceneBakeCoordinator baking{};
+#endif
 };
 
 } // namespace HIKARI

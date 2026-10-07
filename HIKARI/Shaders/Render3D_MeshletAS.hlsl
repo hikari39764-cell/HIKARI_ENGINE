@@ -8,6 +8,7 @@
 #include "Include/Cluster/HIKARI_ClusterCullingMath.hlsli"
 #include "Include/Meshlet/HIKARI_MeshletDeformedBounds.hlsli"
 #include "Include/Surface/HIKARI_SurfacePartition.hlsli"
+#include "Include/Surface/HIKARI_MaterialShell.hlsli"
 
 cbuffer CameraCB : register(b0)
 {
@@ -88,6 +89,8 @@ void HikariMeshletAsInitPayload()
     gMeshletAsPayload.firstCluster = 0u;
     gMeshletAsPayload.rangeClusterCount = 0u;
     gMeshletAsPayload.geometryClusterCount = 0u;
+    gMeshletAsPayload.shellLayerCount = 0u;
+    gMeshletAsPayload.shellLodAmount = 0.0f;
     HikariMeshletAsResetCompaction();
 }
 
@@ -273,6 +276,7 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
         }
         frustumCulled = !clusterValid;
         coneTested = clusterValid &&
+            instance.shellSettings.x == 0.0f &&
             HikariMeshletAsCanConeCull(visible) &&
             cluster.coneAxisCutoff.w >= 0.0f && cluster.coneAxisCutoff.w < 1.0f &&
             dot(gCullViewProj[3].xyz, gCullViewProj[3].xyz) > 1e-12f;
@@ -330,12 +334,23 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     }
     GroupMemoryBarrierWithGroupSync();
 
-    if (groupIndex == 0u) gMeshletAsPayload.visibleClusterCount = gMeshletAsVisibleCount;
+    if (groupIndex == 0u)
+    {
+        gMeshletAsPayload.visibleClusterCount = gMeshletAsVisibleCount;
+        // Shadow/depth は基底面のみ。画面の pass は同じ shell 選択を共有する。
+        if (gMeshletDrawPassKind != 3u && gMeshletDrawPassKind != 6u)
+        {
+            gMeshletAsPayload.shellLodAmount = HikariShellLodAmount(
+                instance.shellSettings, instance.boundsCenterRadius, gViewProj, gScreenParams.y);
+            gMeshletAsPayload.shellLayerCount = HikariShellLayerCount(
+                instance.shellSettings, gMeshletAsPayload.shellLodAmount);
+        }
+    }
     GroupMemoryBarrierWithGroupSync();
 
     DispatchMesh(
         gMeshletAsPayload.visibleClusterCount,
-        1u,
+        gMeshletAsPayload.shellLayerCount + 1u,
         1u,
         gMeshletAsPayload);
 }

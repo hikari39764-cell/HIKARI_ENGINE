@@ -1,7 +1,10 @@
 #ifndef HIKARI_RENDER_GEOMETRY_INTERFACE_HLSLI
 #define HIKARI_RENDER_GEOMETRY_INTERFACE_HLSLI
 
-#define HIKARI_RENDER_GEOMETRY_INTERFACE_VERSION 1
+#define HIKARI_RENDER_GEOMETRY_INTERFACE_VERSION 2
+// Shared GPU surface tail: uniform shell settings; AS payload adds count/LOD amount.
+#define HIKARI_SURFACE_GPU_SCENE_INSTANCE_BYTES 576
+#define HIKARI_MATERIAL_SHELL_INTERFACE_VERSION 1
 // 64 bytes: 3 float4, outerConeCos, angularFalloff, uint kind, sourceRadius.
 #define HIKARI_LOCAL_LIGHT_RECORD_VERSION 3
 // ShadowCB: directional prefix 352 bytes, local matrices 1024, local info 16.

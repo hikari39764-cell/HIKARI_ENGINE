@@ -40,10 +40,11 @@ function(hikari_configure_engine_target target_name)
                 "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/HIKARI_WindowsApplication.manifest")
     endif()
 
+    # 契約テストは HIKARI_KEEP_ASSERTIONS で assert を全構成で有効にする（判定と副作用を省かない）。
     target_compile_definitions(
         "${target_name}"
         PRIVATE
-            $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
+            $<$<AND:$<NOT:$<CONFIG:Debug>>,$<NOT:$<BOOL:$<TARGET_PROPERTY:HIKARI_KEEP_ASSERTIONS>>>>:NDEBUG>
             UNICODE
             _UNICODE
             _WINDOWS
@@ -65,6 +66,9 @@ function(hikari_configure_engine_target target_name)
                 HIKARI_WITH_EDITOR)
     endif()
 
+    # 最適化構成では全体最適化を既定とし、HIKARI_WHOLE_PROGRAM_OPTIMIZATION=OFF の対象だけ外す。
+    set(hikari_whole_program
+        "$<AND:$<OR:$<CONFIG:EditorRelease>,$<CONFIG:Shipping>>,$<NOT:$<STREQUAL:$<TARGET_PROPERTY:${target_name},HIKARI_WHOLE_PROGRAM_OPTIMIZATION>,OFF>>>")
     if(MSVC)
         target_compile_options(
             "${target_name}"
@@ -81,7 +85,7 @@ function(hikari_configure_engine_target target_name)
                 "$<$<OR:$<CONFIG:EditorRelease>,$<CONFIG:Shipping>>:/O2>"
                 "$<$<OR:$<CONFIG:EditorRelease>,$<CONFIG:Shipping>>:/Oi>"
                 "$<$<OR:$<CONFIG:EditorRelease>,$<CONFIG:Shipping>>:/Gy>"
-                "$<$<OR:$<CONFIG:EditorRelease>,$<CONFIG:Shipping>>:/GL>")
+                "$<${hikari_whole_program}:/GL>")
         target_link_options(
             "${target_name}"
             PRIVATE

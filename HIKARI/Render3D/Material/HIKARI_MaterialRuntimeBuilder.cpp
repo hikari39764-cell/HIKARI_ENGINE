@@ -127,6 +127,7 @@ void ApplyProgramResolution(const PbrMaterialAssetData& pbr, const AssetRegistry
     outMaterial.SetAlphaCutoff(program.surface.alphaCutoff);
     outMaterial.SetDoubleSided(program.surface.doubleSided);
     outMaterial.SetUnlit(program.surface.unlit);
+    outMaterial.SetShellSettings(program.shell);
 
     uint32_t featureBits = 0u;
     if (program.surface.unlit) {

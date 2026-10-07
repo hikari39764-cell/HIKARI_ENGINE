@@ -6,7 +6,7 @@
 #include <unordered_set>
 
 #include "Assets/Collision/HIKARI_ModelCollisionMeshExtraction.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::COLLISION {
 namespace {

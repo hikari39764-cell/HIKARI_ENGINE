@@ -1,5 +1,5 @@
 #pragma once
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Math/HIKARI_Affine2D.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 #include <unordered_map>

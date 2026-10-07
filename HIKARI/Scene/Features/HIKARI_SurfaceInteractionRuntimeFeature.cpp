@@ -1,4 +1,4 @@
-#include "Scene/Features/HIKARI_SurfaceInteractionRuntimeFeature.h"
+#include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 
 #include <array>
 #include <memory>
@@ -31,16 +31,6 @@ public:
 
     std::span<const std::string_view> GetRequiredFeatureIds() const noexcept override {
         static constexpr std::array<std::string_view, 2> ids{RuntimeFeatureIds::Terrain, RuntimeFeatureIds::Physics};
-        return ids;
-    }
-
-    std::span<const std::string_view> GetComponentTypeNames() const noexcept override {
-        static constexpr std::array<std::string_view, 1> names{"TerrainSurfaceFollowerComponent"};
-        return names;
-    }
-
-    std::span<const std::string_view> GetSystemIds() const noexcept override {
-        static constexpr std::array<std::string_view, 2> ids{"TerrainInteractionSourceSystem", "TerrainSurfaceSystem"};
         return ids;
     }
 

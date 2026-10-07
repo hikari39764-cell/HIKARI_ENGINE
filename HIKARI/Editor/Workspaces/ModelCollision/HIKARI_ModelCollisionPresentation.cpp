@@ -9,14 +9,16 @@ namespace HIKARI::EDITOR::MODEL_COLLISION_PRESENTATION {
 
 const char* ShapeTypeLabel(ASSETS::COLLISION::CollisionGeometryShapeType type) noexcept {
     switch (type) {
-    case ASSETS::COLLISION::CollisionGeometryShapeType::Sphere: return TEXT::LocalizeCStr("ui.sceneCreation.sphere");
-    case ASSETS::COLLISION::CollisionGeometryShapeType::Capsule: return TEXT::LocalizeCStr("ui.sceneCreation.capsule");
+    case ASSETS::COLLISION::CollisionGeometryShapeType::Sphere:
+        return TEXT::Localize("ui.sceneCreation.sphere").c_str();
+    case ASSETS::COLLISION::CollisionGeometryShapeType::Capsule:
+        return TEXT::Localize("ui.sceneCreation.capsule").c_str();
     case ASSETS::COLLISION::CollisionGeometryShapeType::ConvexHull:
-        return TEXT::LocalizeCStr("editor.ui.convex.hull.483fd1");
+        return TEXT::Localize("editor.ui.convex.hull.483fd1").c_str();
     case ASSETS::COLLISION::CollisionGeometryShapeType::TriangleMesh:
-        return TEXT::LocalizeCStr("editor.ui.static.mesh.cb0a46");
+        return TEXT::Localize("editor.ui.static.mesh.cb0a46").c_str();
     case ASSETS::COLLISION::CollisionGeometryShapeType::Box:
-    default: return TEXT::LocalizeCStr("ui.sceneCreation.box");
+    default: return TEXT::Localize("ui.sceneCreation.box").c_str();
     }
 }
 

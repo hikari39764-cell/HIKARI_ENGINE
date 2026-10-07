@@ -261,6 +261,8 @@ void ReleaseTemporalPassScratch(TemporalResourceState& state, TemporalResourceRe
         ReleaseGeometrySlot(state, slot, mode);
     }
     ClearTemporalGeometryHistory(state);
+    state.passScratch.geometryHistoryRejectionFrame = {};
+    state.passScratch.geometryHistoryRejectionRects.clear();
 }
 
 } // namespace HIKARI::RENDER3D::TEMPORAL::DETAIL

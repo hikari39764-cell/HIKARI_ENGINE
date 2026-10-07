@@ -38,8 +38,8 @@ bool ModelMaterialWorkspaceController::DrawEyeLightingNodeInlineControls(Materia
     MaterialGraphParameterData* eyeLayerMode = FindMaterialGraphParameter(graph, "parameter.eyeLayerMode");
     int layerMode = eyeLayerMode != nullptr && eyeLayerMode->defaultValue.numeric.x >= 0.5f ? 1 : 0;
     const char* kEyeLayerModes[]{
-        TEXT::LocalizeCStr("editor.ui.iris.base.38a41d"),
-        TEXT::LocalizeCStr("editor.ui.transparent.highlight.7964bc"),
+        TEXT::Localize("editor.ui.iris.base.38a41d").c_str(),
+        TEXT::Localize("editor.ui.transparent.highlight.7964bc").c_str(),
     };
     ImGui::SetNextItemWidth(width);
     if (ImGui::Combo("##EyeLayerMode", &layerMode, kEyeLayerModes, 2)) {
@@ -122,9 +122,9 @@ bool ModelMaterialWorkspaceController::DrawCorneaHighlightNodeInlineControls(Mat
 
     int current = mode->defaultValue.numeric.x < 0.5f ? 0 : mode->defaultValue.numeric.x < 1.5f ? 1 : 2;
     const char* kModes[]{
-        TEXT::LocalizeCStr("editor.ui.painted.fixed.7d22ac"),
-        TEXT::LocalizeCStr("editor.ui.light.intensity.d44ceb"),
-        TEXT::LocalizeCStr("editor.ui.light.projection.85c965"),
+        TEXT::Localize("editor.ui.painted.fixed.7d22ac").c_str(),
+        TEXT::Localize("editor.ui.light.intensity.d44ceb").c_str(),
+        TEXT::Localize("editor.ui.light.projection.85c965").c_str(),
     };
     ImGui::SetNextItemWidth(width);
     if (ImGui::Combo("##CorneaHighlightMode", &current, kModes, 3)) {

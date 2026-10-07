@@ -32,16 +32,20 @@
 #include "Scene/HIKARI_World.h"
 #include "Scene/Features/HIKARI_RuntimeExtension.h"
 #include "Scene/Sequencer/Runtime/HIKARI_SequencePlaybackService.h"
+#if defined(HIKARI_WITH_EDITOR)
 #include "Tools/Baking/HIKARI_LightingBakeReport.h"
+#endif
 
 namespace HIKARI {
 
 class DocumentSceneAssetBindings;
-class DocumentSceneBakeCoordinator;
 struct DocumentSceneState;
+#if defined(HIKARI_WITH_EDITOR)
+class DocumentSceneBakeCoordinator;
 namespace DOCUMENT_SCENE_BAKING {
 class RasterLightingTransportBackend;
 }
+#endif
 
 struct MaterialAssetData;
 struct PbrMaterialAssetData;
@@ -55,7 +59,6 @@ public:
     void OnExit() override;
     void Update(float dt) override;
     void Render() override;
-    void RenderImGui() override;
 
     const std::string& GetSceneId() const override;
     const std::string& GetScenePath() const;
@@ -103,6 +106,10 @@ public:
     bool ReloadSceneDocument();
     bool RebuildRuntimeWorld(bool reconfigureWorldServices = false, bool assetSnapshotAlreadyRefreshed = false,
                              bool* outOldWorldDetached = nullptr);
+    // document のオブジェクトの追加・削除・変更を runtime world へ差分反映する（変更分は作り直す）。
+    // Play 中、未構築の World、資産記述子の再読込や新しいシステムの導入が必要な場合は
+    // RebuildRuntimeWorld で全体を作り直す。changes は反映済みの document に対する差分であること。
+    bool ApplyRuntimeObjectChanges(const SceneObjectChanges& changes);
     bool ApplySystemRuntimeChanges();
     bool ApplyCameraRuntimeChanges();
     bool SetGameDefaultCamera(SceneObjectId cameraObjectId);
@@ -136,11 +143,14 @@ public:
     int RebuildMaterialOverridesForMaterial(const AssetGuid& materialGuid);
     int ApplyRuntimeMaterialOverridePreview(const AssetGuid& materialGuid, const MaterialAssetData& data);
     int ApplyRuntimeMaterialOverridePreview(const AssetGuid& materialGuid, const PbrMaterialAssetData& data);
+#if defined(HIKARI_WITH_EDITOR)
+    // 照明の焼き込み（編集器専用）。
     bool RequestLightingBake(bool force, SceneObjectId selectedObjectId = {});
     bool ClearLightingBake();
     TOOLS::BAKING::LightingBakeJobState GetLightingBakeJobState() const;
     bool HasLastLightingBakeReport() const;
     const TOOLS::BAKING::LightingBakeReport& GetLastLightingBakeReport() const;
+#endif
     bool SaveCurrentSceneDocument();
     bool SaveCurrentSceneDocumentAs(const AssetGuid& sceneGuid);
     const AssetGuid& GetCurrentSceneAssetGuid() const;
@@ -167,8 +177,10 @@ protected:
 
 private:
     friend class DocumentSceneAssetBindings;
+#if defined(HIKARI_WITH_EDITOR)
     friend class DocumentSceneBakeCoordinator;
     friend class DOCUMENT_SCENE_BAKING::RasterLightingTransportBackend;
+#endif
     bool OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGuid);
     bool OpenStartupSceneAssetWithCurrentAssets();
     std::unique_ptr<DocumentSceneState> state_;

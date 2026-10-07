@@ -11,7 +11,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Cluster/HIKARI_ClusterGeometryPacked.h"
 #include "Render3D/Cluster/HIKARI_ClusterGpuData.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Resources/HIKARI_RenderResourcePool.h"
 
 namespace HIKARI::RENDER3D {

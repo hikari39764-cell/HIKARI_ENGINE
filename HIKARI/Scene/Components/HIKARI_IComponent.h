@@ -44,7 +44,6 @@ public:
     virtual void OnDetach() {}
     virtual void Update(float dt) { (void)dt; }
     virtual void Render() {}
-    virtual void RenderImGui() {}
 
     virtual void Serialize(nlohmann::json& out) const { out = nlohmann::json::object(); }
     virtual void Deserialize(const nlohmann::json& in) { (void)in; }

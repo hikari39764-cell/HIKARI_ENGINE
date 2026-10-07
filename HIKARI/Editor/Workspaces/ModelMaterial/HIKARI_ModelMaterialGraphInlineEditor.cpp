@@ -88,8 +88,8 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(Docum
             }
             trackItem();
         } else {
-            ImGui::TextDisabled("%s", parameter->displayName.empty() ? parameter->id.c_str()
-                                                                     : parameter->displayName.c_str());
+            ImGui::TextDisabled(
+                "%s", TEXT::Localize(parameter->displayName.empty() ? parameter->id : parameter->displayName).c_str());
             MaterialAssetData typeBefore = source;
             if (MATERIAL_GRAPH_UI::DrawMaterialNodeTypeControl(node, parameter)) {
                 authoringDocument_.CommitMaterial(std::move(typeBefore), "Change parameter type");
@@ -219,9 +219,9 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(Docum
     } else if (node.kind == MaterialNodeKind::SurfaceOutput) {
         ImGui::SeparatorText(TEXT::Localize("editor.ui.mesh.shader.surface.fa0149").c_str());
         int alphaMode = static_cast<int>(source.surface.alphaMode);
-        const char* kAlphaModes[]{TEXT::LocalizeCStr("ui.inspector.worldSprite.alphaOpaque"),
-                                  TEXT::LocalizeCStr("ui.vfx.uvTarget.Mask"),
-                                  TEXT::LocalizeCStr("ui.terrain.rampBlend")};
+        const char* kAlphaModes[]{TEXT::Localize("ui.inspector.worldSprite.alphaOpaque").c_str(),
+                                  TEXT::Localize("ui.vfx.uvTarget.Mask").c_str(),
+                                  TEXT::Localize("ui.terrain.rampBlend").c_str()};
         ImGui::SetNextItemWidth(width);
         if (ImGui::Combo("##SurfaceAlphaMode", &alphaMode, kAlphaModes, 3)) {
             MaterialAssetData before = source;
@@ -240,8 +240,8 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(Docum
         } else if (source.surface.alphaMode == MaterialAlphaMode::Blend) {
             ImGui::TextUnformatted(TEXT::Localize("editor.ui.source.color.6d2042").c_str());
             int representation = static_cast<int>(source.surface.alphaRepresentation);
-            const char* kRepresentations[]{TEXT::LocalizeCStr("editor.ui.straight.2501c6"),
-                                           TEXT::LocalizeCStr("editor.ui.premultiplied.f64bae")};
+            const char* kRepresentations[]{TEXT::Localize("editor.ui.straight.2501c6").c_str(),
+                                           TEXT::Localize("editor.ui.premultiplied.f64bae").c_str()};
             ImGui::SetNextItemWidth(width);
             if (ImGui::Combo("##SurfaceAlphaRepresentation", &representation, kRepresentations, 2)) {
                 MaterialAssetData before = source;
@@ -356,9 +356,9 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(Docum
         MaterialGraphParameterData* mode = FindMaterialGraphParameter(graph, "parameter.outlineMode");
         if (mode != nullptr) {
             int current = mode->defaultValue.numeric.x < 0.5f ? 0 : mode->defaultValue.numeric.x < 1.5f ? 1 : 2;
-            const char* kModes[]{TEXT::LocalizeCStr("ui.vfx.layer.geometry"),
-                                 TEXT::LocalizeCStr("editor.ui.screen.5cc847"),
-                                 TEXT::LocalizeCStr("editor.ui.both.1f4698")};
+            const char* kModes[]{TEXT::Localize("ui.vfx.layer.geometry").c_str(),
+                                 TEXT::Localize("editor.ui.screen.5cc847").c_str(),
+                                 TEXT::Localize("editor.ui.both.1f4698").c_str()};
             ImGui::SetNextItemWidth(width);
             if (ImGui::Combo("##OutlineMode", &current, kModes, 3)) {
                 MaterialAssetData before = source;
@@ -372,9 +372,9 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(Docum
             if (current != 1) {
                 ImGui::TextDisabled(
                     MESHRENDERER::HasGeometryOutlineFeatureBackend()
-                        ? TEXT::LocalizeCStr("editor.ui.geometry.backend.ready.closed.meshes.work.best.7ad1e3")
-                        : TEXT::LocalizeCStr(
-                              "editor.ui.geometry.backend.unavailable.check.renderer.diagnostics.189c4d"));
+                        ? TEXT::Localize("editor.ui.geometry.backend.ready.closed.meshes.work.best.7ad1e3").c_str()
+                        : TEXT::Localize("editor.ui.geometry.backend.unavailable.check.renderer.diagnostics.189c4d")
+                              .c_str());
             }
             if (current != 0) {
                 ImGui::TextDisabled(

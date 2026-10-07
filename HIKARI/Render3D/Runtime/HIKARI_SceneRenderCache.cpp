@@ -5,7 +5,7 @@
 #include <limits>
 
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Render3D/Runtime/HIKARI_RenderSurfaceResolver.h"
 
 namespace HIKARI::RENDER3D::RUNTIME {

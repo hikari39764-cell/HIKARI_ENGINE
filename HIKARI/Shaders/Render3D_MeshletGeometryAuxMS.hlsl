@@ -4,6 +4,7 @@
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
 #include "Include/Surface/HIKARI_TerrainSurfaceDeform.hlsli"
 #include "Include/Surface/HIKARI_FoliageWind.hlsli"
+#include "Include/Surface/HIKARI_MaterialShell.hlsli"
 
 struct HikariMeshletGeometryAuxVertexOut
 {
@@ -16,6 +17,7 @@ struct HikariMeshletGeometryAuxVertexOut
     float3 worldPosWS : TEXCOORD3;
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD4;
     nointerpolation uint surfaceFeatureFlags : TEXCOORD5;
+    nointerpolation float4 shellLayer : TEXCOORD6;
 };
 
 HikariMeshletGeometryAuxVertexOut HikariBuildEmptyMeshletGeometryAuxVertex()
@@ -25,6 +27,7 @@ HikariMeshletGeometryAuxVertexOut HikariBuildEmptyMeshletGeometryAuxVertex()
     output.normalWS = float3(0.0f, 1.0f, 0.0f);
     output.tangentWS = float4(1.0f, 0.0f, 0.0f, 1.0f);
     output.materialDataIndex = 0xffffffffu;
+    output.shellLayer = float4(0, 1, 0, 1);
     return output;
 }
 
@@ -32,7 +35,8 @@ HikariMeshletGeometryAuxVertexOut HikariBuildMeshletGeometryAuxVertex(
     HikariSurfaceGpuSceneInstance instance,
     HikariMeshletResolvedCluster resolved,
     ByteAddressBuffer geometry,
-    uint vertexIndex)
+    uint vertexIndex,
+    float4 shellLayer)
 {
     HikariMeshletGeometryAuxVertexOut output =
         HikariBuildEmptyMeshletGeometryAuxVertex();
@@ -74,10 +78,12 @@ HikariMeshletGeometryAuxVertexOut HikariBuildMeshletGeometryAuxVertex(
         gTimeParams.x,
         uv01.xy,
         worldPos);
-    precise float4 clipPosition = mul(gViewProj, worldPos);
-    output.position = clipPosition;
     output.normalWS =
         normalize(mul((float3x3)instance.clusterNormalMatrix, localNormal));
+    worldPos.xyz += output.normalWS * (instance.shellSettings.y * shellLayer.x);
+    precise float4 clipPosition = mul(gViewProj, worldPos);
+    output.position = clipPosition;
+    output.shellLayer = shellLayer;
     output.tangentWS = HikariTransformSurfaceTangent(
         float4(localTangent, vertex.tangent.w), (float3x3)instance.clusterWorld);
     output.uv = uv01.xy;
@@ -120,7 +126,8 @@ void main(
         if (HikariResolveMeshletVertexIndex(resolved, vertexSlot, vertexIndex))
         {
             vertices[vertexSlot] =
-                HikariBuildMeshletGeometryAuxVertex(instance, resolved, geometry, vertexIndex);
+                HikariBuildMeshletGeometryAuxVertex(instance, resolved, geometry, vertexIndex,
+                    HikariShellLayer(groupId.y, payload.shellLayerCount, payload.shellLodAmount));
         }
         else
         {

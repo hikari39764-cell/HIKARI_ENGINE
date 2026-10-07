@@ -126,8 +126,7 @@ bool InitializeStreamlineEarly(bool enableFrameGenerationPlugins, const std::fil
 
     signatureTimer.Finish();
     state.pluginPath = moduleDirectory.wstring();
-    const std::filesystem::path logDirectory =
-        requestedLogDirectory.empty() ? std::filesystem::absolute("logs") : requestedLogDirectory;
+    const std::filesystem::path& logDirectory = requestedLogDirectory;
     std::error_code error{};
     std::filesystem::create_directories(logDirectory, error);
     state.logPath = logDirectory.wstring();

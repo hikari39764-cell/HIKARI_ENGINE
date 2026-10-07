@@ -394,6 +394,10 @@ int AudioBackendXAudio2::Play(int soundHandle, bool loop, float volume, bool pau
     playing.soundHandle = soundHandle;
     playing.active = true;
     playing.paused = paused;
+    playing.loop = loop;
+    const auto* format = reinterpret_cast<const WAVEFORMATEX*>(sound.formatBytes.data());
+    playing.startFrame = static_cast<uint64_t>(double(startSeconds) * format->nSamplesPerSec);
+    playing.frameCount = (sound.streaming ? sound.wave.dataBytes : sound.audioBytes.size()) / format->nBlockAlign;
     for (size_t i = 0; i < voices_.size(); ++i) {
         if (!voices_[i].active) {
             voices_[i] = std::move(playing);
@@ -519,6 +523,35 @@ bool AudioBackendXAudio2::IsPlaying(int playHandle) {
         return false;
     }
 
+    return true;
+}
+
+bool AudioBackendXAudio2::TryGetPlaybackSnapshot(int handle, GameProjectAudioPlaybackSnapshot& outSnapshot) {
+    if (handle < 0 || handle >= static_cast<int>(voices_.size()))
+        return false;
+    const auto& playing = voices_[static_cast<size_t>(handle)];
+    if (!playing.active || !playing.voice || playing.frameCount == 0u)
+        return false;
+    XAUDIO2_VOICE_STATE state{};
+    playing.voice->GetState(&state);
+    if (state.BuffersQueued == 0u && !(playing.stream && playing.stream->IsFeeding()))
+        return false;
+    const auto& sound = sounds_[static_cast<size_t>(playing.soundHandle)];
+    const auto* format = reinterpret_cast<const WAVEFORMATEX*>(sound.formatBytes.data());
+    GameProjectAudioPlaybackSnapshot snapshot;
+    snapshot.paused = playing.paused ? 1u : 0u;
+    snapshot.looping = playing.loop ? 1u : 0u;
+    snapshot.sampleRate = format->nSamplesPerSec;
+    snapshot.samplesPlayed = state.SamplesPlayed;
+    const uint64_t absoluteFrame = playing.startFrame + state.SamplesPlayed;
+    const uint64_t positionFrame =
+        playing.loop ? absoluteFrame % playing.frameCount : (std::min)(absoluteFrame, playing.frameCount);
+    snapshot.completedLoops = playing.loop ? absoluteFrame / playing.frameCount : 0u;
+    snapshot.positionSeconds = double(positionFrame) / snapshot.sampleRate;
+    snapshot.elapsedSeconds = double(state.SamplesPlayed) / snapshot.sampleRate;
+    snapshot.durationSeconds = double(playing.frameCount) / snapshot.sampleRate;
+    playing.voice->GetFrequencyRatio(&snapshot.playbackRate);
+    outSnapshot = snapshot;
     return true;
 }
 

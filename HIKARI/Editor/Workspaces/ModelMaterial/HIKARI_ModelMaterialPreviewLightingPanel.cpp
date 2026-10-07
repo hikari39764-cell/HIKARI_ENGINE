@@ -41,12 +41,12 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingPanel(DocumentSceneBas
         if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.dark.studio.9df0ca", "Dark Studio").c_str())) {
             applyPreset(0.15f, 0.40f, 0.15f, 2.2f);
         }
-        NextToolbarItem(ImGui::CalcTextSize(TEXT::LocalizeCStr("editor.ui.neutral.studio.17e540")).x +
+        NextToolbarItem(ImGui::CalcTextSize(TEXT::Localize("editor.ui.neutral.studio.17e540").c_str()).x +
                         ImGui::GetStyle().FramePadding.x * 2);
         if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.neutral.studio.17e540", "Neutral Studio").c_str())) {
             applyPreset(0.35f, 1.00f, 0.45f, 3.0f);
         }
-        NextToolbarItem(ImGui::CalcTextSize(TEXT::LocalizeCStr("editor.ui.bright.studio.6d3c4a")).x +
+        NextToolbarItem(ImGui::CalcTextSize(TEXT::Localize("editor.ui.bright.studio.6d3c4a").c_str()).x +
                         ImGui::GetStyle().FramePadding.x * 2);
         if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.bright.studio.6d3c4a", "Bright Studio").c_str())) {
             applyPreset(0.55f, 1.60f, 0.80f, 4.2f);

@@ -304,6 +304,7 @@ bool ReadRenderCommon(const Json& node, VfxRenderCommonModuleData& render) {
     // flowMap / detailNoise は 2 つ目のノイズ場（省略可能）。
     return RequiredGuid(node, "materialAssetGuid", render.materialAssetGuid) &&
            RequiredEnum(node, "blendMode", kVfxBlendModeNames, render.blendMode) &&
+           OptionalEnum(node, "postProcessMode", kVfxPostProcessModeNames, render.postProcessMode) &&
            RequiredEnum(node, "materialMode", kVfxMaterialModeNames, render.materialMode) &&
            RequiredGuid(node, "colorTextureAssetGuid", render.colorTextureAssetGuid) &&
            OptionalGuid(node, "maskTextureAssetGuid", render.maskTextureAssetGuid) &&

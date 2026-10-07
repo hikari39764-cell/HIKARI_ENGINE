@@ -6,7 +6,7 @@
 
 #include <d3d12.h>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/GpuDriven/Backend/HIKARI_GeometryBackendContext.h"
 #include "Render3D/GpuDriven/Backend/HIKARI_GeometryBackendPolicy.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenFrameContext.h"
@@ -62,7 +62,9 @@ struct GpuDrivenSceneUploadDesc {
 struct GpuDrivenCommandFrameDesc {
     ID3D12GraphicsCommandList* commandList = nullptr;
     const MATH::Mat4* cullViewProj = nullptr;
+    const MATH::Mat4* renderViewProj = nullptr;
     uint32_t frameIndex = 0;
+    float screenHeight = 0.0f;
     bool resetTraditionalIndirectBuffer = true;
     bool publishCommandBuffers = true;
     bool enableSurfaceFrustumCull = true;
@@ -130,12 +132,14 @@ private:
     struct TraditionalCommandFrameKey {
         bool valid = false;
         uint32_t frameIndex = 0;
+        float screenHeight = 0.0f;
         const GpuDrivenSceneSource* source = nullptr;
         uint64_t sourceVersion = 0;
         uint64_t layoutVersion = 0;
         bool hasCullViewProj = false;
         bool enableSurfaceFrustumCull = false;
         MATH::Mat4 cullViewProj{};
+        MATH::Mat4 renderViewProj{};
     };
 
     SurfaceGpuSceneFrameBuffer* sceneBuffer_ = nullptr;

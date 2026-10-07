@@ -15,10 +15,12 @@
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalResolveStage.h"
+#include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 #include "Vfx/Post/HIKARI_GameUiCompositionStage.h"
 #include "Vfx/Post/HIKARI_PostPresentationStage.h"
 #include "Vfx/Post/HIKARI_PostProcessingStage.h"
 #include "Vfx/Post/HIKARI_SceneCaptureStage.h"
+#include "Vfx/Post/HIKARI_PreservedVfxLayer.h"
 
 namespace HIKARI::POST {
 
@@ -41,6 +43,7 @@ bool PostSystem::initialized_ = false;
 GFX::Context PostSystem::context_{};
 QuadDrawer PostSystem::quad_{};
 SceneCaptureStage PostSystem::captureStage_{};
+PreservedVfxLayer PostSystem::preservedVfxLayer_{};
 PostProcessingStage PostSystem::processingStage_{};
 GameUiCompositionStage PostSystem::gameUiCompositionStage_{};
 PostPresentationStage PostSystem::presentationStage_{};
@@ -85,6 +88,7 @@ void PostSystem::Shutdown() {
     RENDER3D::DOF::ShutdownCameraDepthOfFieldStage();
     if (!initialized_)
         return;
+    preservedVfxLayer_.Shutdown();
     captureStage_.Shutdown();
     processingStage_.Shutdown();
     gameUiCompositionStage_.Shutdown();
@@ -110,8 +114,22 @@ void PostSystem::SetCombo(float value) { processingStage_.SetCombo(value); }
 void PostSystem::ClearEffects() { processingStage_.ClearEffects(); }
 void PostSystem::AddEffect(PostEffect* effect) { processingStage_.AddEffect(effect); }
 bool PostSystem::SetGlobalEffect(std::string_view effectId, std::shared_ptr<const PostEffectDefinition> effect,
-                                 const PostParameterBlock& values) {
-    return processingStage_.SetGlobalEffect(effectId, std::move(effect), values);
+                                 const PostParameterBlock& values, const AssetRegistry* registry) {
+    return processingStage_.SetGlobalEffect(effectId, std::move(effect), values, registry);
+}
+bool PostSystem::RequiresGlobalSurfaceFeatureMask() noexcept { return processingStage_.RequiresSurfaceFeatureMask(); }
+bool PostSystem::SetActionPostFrame(uint64_t worldId, uint64_t frameIndex, std::string_view effectId,
+                                    std::shared_ptr<const PostEffectDefinition> effect,
+                                    const PostParameterBlock& values, const AssetRegistry& registry) {
+    return initialized_ &&
+           processingStage_.SetActionPostFrame(worldId, frameIndex, effectId, std::move(effect), values, registry);
+}
+void PostSystem::ClearActionPostFrame(uint64_t worldId) { processingStage_.ClearActionPostFrame(worldId); }
+void PostSystem::SetActionPostView(uint64_t worldId, bool primaryGameView) noexcept {
+    processingStage_.SetActionPostView(worldId, primaryGameView);
+}
+bool PostSystem::RequiresActionSurfaceFeatureMask() noexcept {
+    return processingStage_.RequiresActionSurfaceFeatureMask();
 }
 void PostSystem::ClearGlobalEffect() { processingStage_.ClearGlobalEffect(); }
 bool PostSystem::SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
@@ -316,6 +334,7 @@ bool PostSystem::SetSceneCaptureTemporalFrame(RENDER3D::TEMPORAL::TemporalViewLe
 }
 
 bool PostSystem::AbortSceneCaptureTemporalFrame(RENDER3D::TEMPORAL::TemporalHistoryResetReason reason) {
+    preservedVfxLayer_.Invalidate();
     bool closed = true;
     if (renderGraphSessionReceipt_.IsValid()) {
         if (RENDER3D::PIPELINE::AbortRenderFrameGraphSession(renderGraphSessionReceipt_)) {
@@ -442,6 +461,13 @@ D3D12_CPU_DESCRIPTOR_HANDLE PostSystem::GetCurrentRenderTargetDsv() { return cap
 D3D12_CPU_DESCRIPTOR_HANDLE PostSystem::GetCurrentRenderTargetReadOnlyDsv() {
     return captureStage_.GetCurrentReadOnlyDsv();
 }
+bool PostSystem::BeginPreservedVfxCapture(const RENDER3D::PIPELINE::RenderFrameContext& frame,
+                                          const RENDER3D::TEMPORAL::TemporalFrameState& temporal,
+                                          RENDER3D::PIPELINE::RenderTargetAccess& target) {
+    return initialized_ && captureStage_.IsActive() && frame.surfaceReceipt.Matches(renderSurfaceReceipt_) &&
+           preservedVfxLayer_.Begin(frame, temporal, target);
+}
+bool PostSystem::EndPreservedVfxCapture(bool succeeded) { return preservedVfxLayer_.End(succeeded); }
 bool PostSystem::BeginCurrentRenderTargetDepthRead() { return captureStage_.BeginCurrentDepthRead(); }
 void PostSystem::EndCurrentRenderTargetDepthRead() { captureStage_.EndCurrentDepthRead(); }
 
@@ -543,6 +569,8 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
     const auto handoffView = temporalView_;
     const auto handoffFrame = temporalFrame_;
     const auto handoffResources = temporalResources_;
+    RENDER3D::TEMPORAL::TemporalFrameState capturedTemporal{};
+    (void)RENDER3D::TEMPORAL::TryGetTemporalFrameState(handoffView, handoffFrame, capturedTemporal);
     auto temporal = RENDER3D::TEMPORAL::ExecuteTemporalResolveStage(handoffView, handoffFrame, handoffResources,
                                                                     context_, *volumetric, *captured, quality,
                                                                     processingStage_.GetExposureState());
@@ -570,6 +598,7 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
             output = normalized;
         } else {
             output = volumetric;
+            temporal.outputJitterPixels = {capturedTemporal.camera.jitter.x, capturedTemporal.camera.jitter.y};
             RENDER3D::TEMPORAL::TemporalViewLease temporalView{};
             if (RENDER3D::TEMPORAL::AcquireTemporalView(RENDER3D::kPrimaryRenderViewId, temporalView)) {
                 (void)RENDER3D::TEMPORAL::ResetTemporalFrameHistory(
@@ -577,9 +606,23 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
             }
         }
     }
+    const RENDER3D::RenderTextureView* featureMask = nullptr;
+    if ((processingStage_.RequiresSurfaceFeatureMask() || processingStage_.RequiresActionSurfaceFeatureMask()) &&
+        renderSurfaceReceipt_.frame.Matches(handoffFrame) &&
+        renderSurfaceReceipt_.deviceGeneration == context_.deviceGeneration) {
+        if (const auto* surfaces = RENDER3D::SURFACE::TryGetRenderFrameSurfaces(renderSurfaceReceipt_))
+            featureMask = surfaces->TryGetTexture({RENDER3D::GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
+                                                   RENDER3D::GRAPH::RenderGraphSemanticPhase::PostOpaque});
+    }
+    RenderTarget2D* preserved = nullptr;
+    if (!preservedVfxLayer_.Resolve(renderSurfaceReceipt_, temporal.outputJitterPixels, output->GetWidth(),
+                                    output->GetHeight(), quad_, preserved)) {
+        HIKARI_LOG_ERROR("[PreservedVfx] Current layer could not resolve to the presentation raster.");
+        return nullptr;
+    }
     return processingStage_.ResolveHdr(*output, quad_, RENDER3D::GetRenderDebugOutputRoute().bypassPostProcessing,
                                        RENDER3D::TEMPORAL::ToString(temporal.backend),
-                                       captureStage_.IsLightingEnabled(), captured);
+                                       captureStage_.IsLightingEnabled(), captured, featureMask, preserved);
 }
 
 RenderTarget2D* PostSystem::ResolveFinalSceneToLdr(RenderTarget2D& source, DXGI_FORMAT outputFormat) {

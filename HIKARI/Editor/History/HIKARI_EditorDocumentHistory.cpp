@@ -75,7 +75,7 @@ EditorHistoryResult EditorDocumentHistory::Undo(SceneDocument& document) {
     entry.command->Undo(document);
     ++editRevision_;
     --cursor_;
-    return {entry.command->GetImpact(), entry.command->GetLabel(), true};
+    return {entry.command->GetImpact(), entry.command->GetLabel(), true, entry.command->GetObjectChanges(true)};
 }
 // Redo操作を行う
 EditorHistoryResult EditorDocumentHistory::Redo(SceneDocument& document) {
@@ -88,7 +88,7 @@ EditorHistoryResult EditorDocumentHistory::Redo(SceneDocument& document) {
     entry.command->Redo(document);
     ++editRevision_;
     ++cursor_;
-    return {entry.command->GetImpact(), entry.command->GetLabel(), true};
+    return {entry.command->GetImpact(), entry.command->GetLabel(), true, entry.command->GetObjectChanges(false)};
 }
 // ドキュメントが保存されたことをマークする
 void EditorDocumentHistory::MarkSaved() noexcept {

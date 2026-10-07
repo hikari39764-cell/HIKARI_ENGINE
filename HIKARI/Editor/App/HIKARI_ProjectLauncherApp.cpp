@@ -106,7 +106,7 @@ void ProjectLauncherApp::RenderHostUi() {
 }
 void ProjectLauncherApp::DrawHeader() {
     ImGui::Spacing();
-    PanelTitle("HIKARI", TEXT::LocalizeCStr("launcher.projectHub"));
+    PanelTitle("HIKARI", TEXT::Localize("launcher.projectHub").c_str());
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("%s", TEXT::PathToUtf8(runtimeRoot_).c_str());
     ImGui::Spacing();
@@ -149,29 +149,30 @@ void ProjectLauncherApp::DrawStatusPanel() {
     default: break;
     }
     const bool failed = state == ProjectOpenWorkflowState::Failed;
-    StatusBadge(TEXT::LocalizeCStr(key), failed                   ? EditorStatusTone::Error
-                                         : openWorkflow_.IsBusy() ? EditorStatusTone::Normal
-                                                                  : EditorStatusTone::Ready);
+    StatusBadge(TEXT::Localize(key).c_str(), failed                   ? EditorStatusTone::Error
+                                             : openWorkflow_.IsBusy() ? EditorStatusTone::Normal
+                                                                      : EditorStatusTone::Ready);
     ImGui::SameLine();
     if (openWorkflow_.IsBusy()) {
         if (IconButton(EditorGlyph::Stop, "cancel", EditorButtonTone::Quiet, {26, 26},
-                       TEXT::LocalizeCStr("ui.common.cancel")))
+                       TEXT::Localize("ui.common.cancel").c_str()))
             openWorkflow_.Cancel();
     } else if (failed || state == ProjectOpenWorkflowState::Cancelled) {
-        if (IconTextButton(EditorGlyph::Refresh, TEXT::LocalizeCStr("launcher.retry"), "retry"))
+        if (IconTextButton(EditorGlyph::Refresh, TEXT::Localize("launcher.retry").c_str(), "retry"))
             openWorkflow_.Retry(interactionMessage_);
         if (failed) {
             NextToolbarItem();
-            if (IconTextButton(EditorGlyph::File, TEXT::LocalizeCStr("launcher.authorOnly"), "authorOnly",
+            if (IconTextButton(EditorGlyph::File, TEXT::Localize("launcher.authorOnly").c_str(), "authorOnly",
                                EditorButtonTone::Quiet))
                 openWorkflow_.OpenWithoutModule(interactionMessage_);
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s", TEXT::LocalizeCStr("launcher.authorOnlyHint"));
+                ImGui::SetTooltip("%s", TEXT::Localize("launcher.authorOnlyHint").c_str());
         }
     }
     if (!openWorkflow_.GetBuildLogPath().empty()) {
         NextToolbarItem();
-        if (IconButton(EditorGlyph::Log, "showLog", EditorButtonTone::Quiet, {26, 26}, TEXT::LocalizeCStr("shell.log")))
+        if (IconButton(EditorGlyph::Log, "showLog", EditorButtonTone::Quiet, {26, 26},
+                       TEXT::Localize("shell.log").c_str()))
             page_ = Page::Logs;
     }
     if (!interactionMessage_.empty())

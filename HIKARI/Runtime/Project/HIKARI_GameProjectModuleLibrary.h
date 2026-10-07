@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -26,8 +27,8 @@ public:
 
     bool IsLoaded() const noexcept;
     std::string_view GetModuleId() const noexcept;
-    size_t GetRuntimeExtensionCount() const noexcept;
-    IRuntimeExtension* GetRuntimeExtension(size_t index) const noexcept;
+    // モジュールの Feature 登録を引擎内部の拡張として場面へ渡す。未読込なら nullptr。
+    IRuntimeExtension* GetRuntimeExtension() const noexcept;
     bool CreateGameSession(std::string& outMessage);
     HIKARI::IGameProjectSession* GetGameSession() const noexcept;
     void DestroyGameSession() noexcept;
@@ -46,6 +47,7 @@ private:
     HIKARI::IGameProjectSession* gameSession_ = nullptr;
     std::filesystem::path modulePath_{};
     std::string moduleId_{};
+    std::unique_ptr<IRuntimeExtension> extension_{};
 };
 
 } // namespace HIKARI::RUNTIME

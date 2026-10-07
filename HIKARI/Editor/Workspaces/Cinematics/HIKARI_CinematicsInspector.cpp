@@ -41,7 +41,7 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
         const auto* current = FindSequenceBinding(sequence.bindings, id);
         bool result = false;
         if (ImGui::BeginCombo(fieldLabel(label).c_str(),
-                              current ? current->name.c_str() : TEXT::LocalizeCStr("cine.worldSpace"))) {
+                              current ? current->name.c_str() : TEXT::Localize("cine.worldSpace").c_str())) {
             if (ImGui::Selectable(TEXT::LocalizeWindow("cine.worldSpace", "无 / 世界空间").c_str(), !id.IsValid())) {
                 id = {};
                 result = true;
@@ -57,7 +57,7 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
     };
     if (auto* shot = SelectedShot(sequence)) {
         PanelTitle(TEXT::Localize("cine.shot").c_str(), shot->camera.name.c_str());
-        changed |= text(TEXT::LocalizeCStr("ui.input.name"), shot->camera.name);
+        changed |= text(TEXT::Localize("ui.input.name").c_str(), shot->camera.name);
         changed |= ImGui::DragFloat(fieldLabel(TEXT::LocalizeWindow("ui.vfx.text.Start", "开始时间").c_str()).c_str(),
                                     &shot->startTimeSeconds, 0.02f, 0, 10000);
         changed |= ImGui::DragFloat(fieldLabel(TEXT::LocalizeWindow("cine.shotDuration", "镜头时长").c_str()).c_str(),
@@ -123,15 +123,15 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
         if (shot->camera.owned &&
             ImGui::CollapsingHeader(TEXT::LocalizeWindow("cine.composition", "构图与关键帧").c_str(),
                                     ImGuiTreeNodeFlags_DefaultOpen)) {
-            changed |= binding(TEXT::LocalizeCStr("cine.anchor"), shot->camera.anchor);
-            changed |= binding(TEXT::LocalizeCStr("cine.lookAt"), shot->camera.lookAt);
+            changed |= binding(TEXT::Localize("cine.anchor").c_str(), shot->camera.anchor);
+            changed |= binding(TEXT::Localize("cine.lookAt").c_str(), shot->camera.lookAt);
             changed |=
                 ImGui::DragFloat3(fieldLabel(TEXT::LocalizeWindow("cine.lookOffset", "注视偏移").c_str()).c_str(),
                                   &shot->camera.targetOffset.x, 0.02f);
             const float local =
                 std::clamp(cursor_.GetTimeSeconds() - shot->startTimeSeconds, 0.0f, shot->durationSeconds);
             if (IconTextButton(EditorGlyph::Keyframe, TEXT::Localize("cine.addKey").c_str(), "addPose",
-                               EditorButtonTone::Quiet, {}, TEXT::LocalizeCStr("cine.addPose"))) {
+                               EditorButtonTone::Quiet, {}, TEXT::Localize("cine.addPose").c_str())) {
                 SetShotPose(shot->camera, EvaluateShotPose(shot->camera, local), true);
                 changed = true;
             }
@@ -185,22 +185,22 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
     } else if (selectionKind_ == SelectionKind::Cue) {
         for (auto& cue : sequence.presentationCueTrack.clips)
             if (cue.id == selectedId_) {
-                PanelTitle(cue.kind == PresentationCueKind::Vfx ? TEXT::LocalizeCStr("cine.vfxClip")
-                                                                : TEXT::LocalizeCStr("cine.soundClip"));
-                changed |= text(TEXT::LocalizeCStr("ui.input.name"), cue.name);
+                PanelTitle(cue.kind == PresentationCueKind::Vfx ? TEXT::Localize("cine.vfxClip").c_str()
+                                                                : TEXT::Localize("cine.soundClip").c_str());
+                changed |= text(TEXT::Localize("ui.input.name").c_str(), cue.name);
                 changed |=
                     ImGui::DragFloat(fieldLabel(TEXT::LocalizeWindow("ui.vfx.text.Start", "开始").c_str()).c_str(),
                                      &cue.startSeconds, 0.02f, 0, 10000);
                 changed |= ImGui::DragFloat(fieldLabel(TEXT::LocalizeWindow("cine.duration", "时长").c_str()).c_str(),
                                             &cue.durationSeconds, 0.02f, 0.01f, 10000);
-                changed |= binding(TEXT::LocalizeCStr("cine.boundObject"), cue.targetBinding);
+                changed |= binding(TEXT::Localize("cine.boundObject").c_str(), cue.targetBinding);
                 if (cue.kind == PresentationCueKind::Vfx) {
                     AssetFieldOptions options;
                     options.label = TEXT::Localize("menu.workspace.vfx");
                     options.requiredType = AssetType::VfxEffect;
                     changed |= DrawAssetField(&scene.GetAssetDatabase(), options, cue.vfxAsset.value);
                 } else {
-                    changed |= text(TEXT::LocalizeCStr("cine.audioFile"), cue.soundPath);
+                    changed |= text(TEXT::Localize("cine.audioFile").c_str(), cue.soundPath);
                     changed |= ImGui::SliderFloat(TEXT::LocalizeWindow("cine.volume", "音量").c_str(),
                                                   &cue.audio.volume, 0, 1);
                 }
@@ -214,7 +214,7 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
         changed |= DrawEffects(sequence.screenEffects, cursor_.GetTimeSeconds());
     } else {
         PanelTitle(TEXT::Localize("cine.sequence").c_str());
-        changed |= text(TEXT::LocalizeCStr("ui.input.name"), sequence.name);
+        changed |= text(TEXT::Localize("ui.input.name").c_str(), sequence.name);
         changed |= ImGui::DragFloat(fieldLabel(TEXT::LocalizeWindow("cine.duration", "时长").c_str()).c_str(),
                                     &sequence.durationSeconds, 0.1f, 1, 10000);
         ImGui::TextWrapped(TEXT::Localize("cine.editHint").c_str());

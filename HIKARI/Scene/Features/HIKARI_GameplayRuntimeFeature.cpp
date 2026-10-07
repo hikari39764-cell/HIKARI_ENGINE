@@ -1,4 +1,4 @@
-#include "Scene/Features/HIKARI_GameplayRuntimeFeature.h"
+#include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 
 #include <array>
 #include <algorithm>
@@ -52,19 +52,6 @@ public:
 
     std::span<const std::string_view> GetRequiredFeatureIds() const noexcept override {
         static constexpr std::array<std::string_view, 1> ids{RuntimeFeatureIds::Physics};
-        return ids;
-    }
-
-    std::span<const std::string_view> GetComponentTypeNames() const noexcept override {
-        static constexpr std::array<std::string_view, 5> names{
-            "CharacterInputComponent", "CharacterLocomotionComponent", "SpawnPointComponent",
-            "DialogueInteractorComponent", "DialogueTriggerComponent"};
-        return names;
-    }
-
-    std::span<const std::string_view> GetSystemIds() const noexcept override {
-        static constexpr std::array<std::string_view, 4> ids{"CharacterInputSystem", "CharacterLocomotionSystem",
-                                                             "CharacterMotionStateSystem", "DialogueRuntimeSystem"};
         return ids;
     }
 

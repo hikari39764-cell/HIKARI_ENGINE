@@ -85,7 +85,7 @@ struct StreamlineDebugStats {
     std::string lastResult{};
 };
 
-bool InitializeStreamlineEarly(bool enableFrameGenerationPlugins, const std::filesystem::path& logDirectory = {});
+bool InitializeStreamlineEarly(bool enableFrameGenerationPlugins, const std::filesystem::path& logDirectory);
 bool AttachStreamlineDevice(ID3D12Device* device);
 bool SetStreamlineFrameGenerationFeatureLoaded(bool loaded);
 bool IsStreamlineFrameGenerationFeatureLoaded();

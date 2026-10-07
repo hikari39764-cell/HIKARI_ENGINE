@@ -2,15 +2,17 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <vector>
+#include <memory>
 
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
-#include "Render3D/Vfx/HIKARI_CombatAfterimageFrameSource.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI {
 class World;
+namespace RENDER3D::RUNTIME {
+class SceneRenderCache;
 }
+} // namespace HIKARI
 
 namespace HIKARI::VFX {
 
@@ -24,15 +26,11 @@ struct CombatAfterimageRequest {
     uint32_t randomSeed = 0u;
     uint64_t frameIndex = 0u;
 
-    bool silhouette = true;
     float intensity = 1.0f;
     float uniformScale = 1.0f;
     uint32_t silhouetteCount = 4u;
     float lifetimeUnscaledSeconds = 0.28f;
     float opacity = 0.62f;
-    float fresnelPower = 3.0f;
-    float dissolveStrength = 1.0f;
-    float shellOffsetWorld = 0.008f;
     MATH::Vec3 color{0.10f, 0.72f, 1.0f};
 };
 
@@ -44,9 +42,8 @@ public:
     CombatAfterimageService(const CombatAfterimageService&) = delete;
     CombatAfterimageService& operator=(const CombatAfterimageService&) = delete;
 
-    // Captures an immutable copy of the owner's current skinned model
-    // draw data.  Invalid owners/assets/poses are rejected without
-    // mutating existing active afterimages.
+    // Admission queues a sample after final animation/appearance sync.
+    // Missing final poses fail closed during publication.
     bool Capture(World& world, const CombatAfterimageRequest& request) noexcept;
     // SkinnedAfterimage 出力の見た目で取り込む。要求の intensity/opacity は倍率として掛ける。
     bool Capture(World& world, const CombatAfterimageRequest& request, const VfxSpecialOutputData& output) noexcept;
@@ -54,26 +51,18 @@ public:
     // Advances unscaled presentation time.  Repeated calls for the same
     // frame are ignored so multiple views cannot age the effect twice.
     void Tick(uint64_t frameIndex, float unscaledDeltaSeconds) noexcept;
+    bool SetPaused(RuntimeObjectHandle owner, uint64_t sourceId, bool paused) noexcept;
+    bool Clear(RuntimeObjectHandle owner, uint64_t sourceId) noexcept;
+    void Publish(World& world, RENDER3D::RUNTIME::SceneRenderCache& scene, uint64_t frameIndex) noexcept;
 
     void Reset() noexcept;
 
-    const RENDER3D::COMBAT_VFX::CombatAfterimageFrameSource& GetFrameSource() const noexcept { return frameSource_; }
-
     size_t GetActiveCount() const noexcept;
+    size_t GetSampleCount(RuntimeObjectHandle owner, uint64_t sourceId) const noexcept;
 
 private:
-    struct AfterimageState;
-
-    void BuildFrameSource(uint64_t frameIndex) noexcept;
-
-    std::vector<AfterimageState> states_{};
-    std::vector<RENDER3D::COMBAT_VFX::CombatAfterimageDraw> drawRecords_{};
-    RENDER3D::COMBAT_VFX::CombatAfterimageFrameSource frameSource_{};
-    uint64_t revision_ = 0u;
-    uint64_t lastTickFrame_ = 0u;
-    bool hasTicked_ = false;
-    bool poseRejectLogged_ = false;
-    bool poseRejectedThisFrame_ = false;
+    struct State;
+    std::unique_ptr<State> state_;
 };
 
 } // namespace HIKARI::VFX

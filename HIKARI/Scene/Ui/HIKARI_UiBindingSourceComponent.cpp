@@ -22,7 +22,7 @@ void UiBindingSourceComponent::Deserialize(const nlohmann::json& in) {
 
 void UiBindingSourceComponent::BuildInspector(IInspectorBuilder& builder) {
     SceneObjectId target = targetObjectId_;
-    const AuthoringFieldDescriptor field{"targetObjectId", TEXT::LocalizeCStr("uibind.sourceTarget"),
+    const AuthoringFieldDescriptor field{"targetObjectId", TEXT::Localize("uibind.sourceTarget").c_str(),
                                          "UI descendants read runtime variables from this object."};
     if (builder.SceneObjectIdPicker(field, target)) {
         targetObjectId_ = target;

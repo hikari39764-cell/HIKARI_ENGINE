@@ -2,10 +2,12 @@
 #include "Editor/Authoring/HIKARI_UiAuthoring.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 
 namespace HIKARI::EDITOR {
 namespace {
 GameObject* Create(DocumentSceneBase& scene, const CreateObjectRequest& request, std::string_view preset) {
+    const std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
     const auto result = CreateUiTemplate(scene.GetSceneDocument(), scene.GetComponentRegistry(), preset, {},
                                          FindUiFont(scene.GetAssetDatabase()), request.name);
     if (!result.ok)
@@ -17,7 +19,7 @@ GameObject* Create(DocumentSceneBase& scene, const CreateObjectRequest& request,
             object.transform.scale = request.scale;
             break;
         }
-    scene.RebuildRuntimeWorld();
+    (void)scene.ApplyRuntimeObjectChanges(DiffSceneObjects(beforeObjects, scene.GetSceneDocument().objects));
     return scene.GetWorld().FindObject(result.id);
 }
 } // namespace

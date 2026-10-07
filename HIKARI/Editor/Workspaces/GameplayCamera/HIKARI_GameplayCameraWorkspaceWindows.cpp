@@ -15,7 +15,7 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
+const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 bool Icon(EditorGlyph glyph, const char* key) {
     return IconButton(glyph, key, EditorButtonTone::Quiet, {28, 28}, L(key));
 }

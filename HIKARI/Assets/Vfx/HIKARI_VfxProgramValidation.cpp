@@ -429,7 +429,9 @@ bool IsValidOptionalAssetReference(const std::string& guid, bool allowBuiltinTex
 bool IsValidEmitterRender(const ParticleEmitterRenderParameters& render) {
     const uint64_t flipbookCells =
         static_cast<uint64_t>(render.flipbookColumns) * static_cast<uint64_t>(render.flipbookRows);
-    return IsOneOf(render.materialMode, kMaterialModes) && IsOneOf(render.blendMode, kBlendModes) &&
+    return TEXT::IsNamedEnum(kVfxPostProcessModeNames, render.postProcessMode) &&
+           (render.meshAssetGuid.empty() || render.postProcessMode == VfxPostProcessMode::Scene) &&
+           IsOneOf(render.materialMode, kMaterialModes) && IsOneOf(render.blendMode, kBlendModes) &&
            IsOneOf(render.shape, kRenderShapes) && IsOneOf(render.billboardMode, kBillboardModes) &&
            IsOneOf(render.depthMode, kDepthModes) && IsFinite(render.softIntersectionDistance) &&
            (render.depthMode != ParticleDepthMode::SoftIntersection ||
@@ -518,18 +520,18 @@ bool ValidateInputLinks(const VfxProgram& program, const VfxProgramEmitter& emit
     }
     std::unordered_set<uint32_t> boundSemantics{};
     for (const VfxProgramInputLink& link : emitter.inputLinks) {
-        if (link.semantic < VfxRuntimeBindingSemantic::EmitterEnabled ||
-            link.semantic > VfxRuntimeBindingSemantic::ColorMultiplier) {
+        if (!TEXT::IsNamedEnum(kVfxRuntimeBindingNames, link.semantic)) {
             return Fail(outError, "VFX program input semantic is invalid");
         }
         const VfxRuntimePropertyLayout expected = ResolveVfxRuntimePropertyLayout(link.semantic);
         const uint32_t storageSize = StorageSize(expected.storageType);
+        const size_t ownerSize = expected.renderParameter ? sizeof(ParticleEmitterRenderParameters)
+                                                          : sizeof(ParticleEmitterRuntimeOverrides);
         if (!boundSemantics.emplace(static_cast<uint32_t>(link.semantic)).second ||
             link.inputIndex >= program.inputs.size() || link.inputType != program.inputs[link.inputIndex].type ||
             !IsVfxInputTypeCompatible(link.inputType, ExpectedInputType(link.semantic)) ||
             link.byteOffset != expected.byteOffset || link.storageType != expected.storageType || storageSize == 0u ||
-            expected.byteOffset > sizeof(ParticleEmitterRuntimeOverrides) - storageSize || !IsFinite(link.scale) ||
-            !IsFinite(link.bias)) {
+            expected.byteOffset > ownerSize - storageSize || !IsFinite(link.scale) || !IsFinite(link.bias)) {
             return Fail(outError, "VFX program input link is invalid");
         }
     }
@@ -557,7 +559,20 @@ bool ValidateEmitter(const VfxProgram& program, uint32_t index, std::unordered_s
 
 // 経路追従とトラックマットは同じ親の下で循環しない参照に限る。
 bool ValidateComposition(const VfxProgram& program, std::string& outError) {
+    const bool requiresScreenComposition =
+        std::any_of(program.emitters.begin(), program.emitters.end(), [](const auto& layer) {
+            return layer.matteSourceIndex != UINT32_MAX || layer.matteOnly ||
+                   std::any_of(layer.runtimeEffects.begin(), layer.runtimeEffects.end(), [](const auto& effect) {
+                       return effect.enabled && effect.space == MaterialEffectSpace::LayerUv;
+                   });
+        });
+    const VfxProgramEmitter* firstContent = nullptr;
     for (const auto& layer : program.emitters) {
+        if (requiresScreenComposition && (layer.kind == VfxLayerKind::Particles || layer.kind == VfxLayerKind::Shape)) {
+            if (firstContent && firstContent->render.postProcessMode != layer.render.postProcessMode)
+                return Fail(outError, "Track matte and LayerUv compositions require one content post-process mode");
+            firstContent = &layer;
+        }
         if (layer.orientAlongPath && layer.kind != VfxLayerKind::Shape && layer.kind != VfxLayerKind::Group) {
             return Fail(outError, "Invalid path orientation layer");
         }

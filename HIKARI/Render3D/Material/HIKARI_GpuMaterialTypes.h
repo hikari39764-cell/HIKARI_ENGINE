@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI::RENDER3D::MATERIAL {
 
@@ -43,6 +43,8 @@ inline constexpr uint32_t TemplateGenericToon = 1u << 16u;
 inline constexpr uint32_t TemplateSkin = 1u << 17u;
 inline constexpr uint32_t TemplateFace = 1u << 18u;
 inline constexpr uint32_t TemplateHair = 1u << 19u;
+// Runtime-only frozen silhouette; emissive RGB/A carry tint and fade.
+inline constexpr uint32_t Afterimage = 1u << 20u;
 inline constexpr uint32_t TemplateCloth = 1u << 21u;
 inline constexpr uint32_t TemplateHybrid = 1u << 22u;
 inline constexpr uint32_t RenderFeatureGeometryOutline = 1u << 23u;

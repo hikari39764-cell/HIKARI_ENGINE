@@ -10,7 +10,7 @@
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
@@ -107,6 +107,14 @@ const MaterialAsset* ResolveMaterialAsset(const GpuSceneSurfaceRecord& record) {
         return nullptr;
     }
     return &record.model->materials[record.materialIndex];
+}
+
+const MaterialShellSettings* ResolveActiveShellSettings(const GpuSceneSurfaceRecord& record) {
+    // public Material API の変更も、最終的な pass 分類と同じ Mask 資格に従う。
+    if (record.materialOverride == nullptr || !record.key.alphaMasked || record.key.transparent)
+        return nullptr;
+    const auto& settings = record.materialOverride->GetShellSettings();
+    return settings.maxLayers != 0u && settings.thickness > 0.0f ? &settings : nullptr;
 }
 
 const MeshPrimitive* ResolveMeshPrimitiveAsset(const GpuSceneSurfaceRecord& record) {
@@ -543,6 +551,10 @@ RUNTIME::SurfaceGpuSceneInstance BuildGpuSceneInstance(const GpuSceneSurfaceReco
     if (record.materialOverride != nullptr) {
         instance.materialProgramFlags = record.materialOverride->GetMaterialProgramInstanceFlags();
     }
+    if (const auto* shell = ResolveActiveShellSettings(record)) {
+        instance.shellSettings = {static_cast<float>(shell->maxLayers), shell->thickness, shell->lodStartPixels,
+                                  shell->lodFullPixels};
+    }
     if (record.editorSelectionOutline) {
         using namespace MATERIAL::GPU_MATERIAL_PROGRAM_FLAGS;
         instance.materialProgramFlags |= EditorSelectionOutline;
@@ -649,6 +661,11 @@ GpuSceneSurfaceRecord BuildGpuSceneSurfaceRecord(const RUNTIME::SceneSurfaceInst
         return record;
     }
     record.key = BuildResourceKey(record);
+    if (const auto* shell = ResolveActiveShellSettings(record)) {
+        const MATH::Vec3 padding{shell->thickness, shell->thickness, shell->thickness};
+        record.worldBounds.min = record.worldBounds.min - padding;
+        record.worldBounds.max = record.worldBounds.max + padding;
+    }
 
     const GpuSceneSurfaceValidationResult validation = ValidateGpuSceneSurfaceRecord(record);
     record.valid = validation.IsValid();

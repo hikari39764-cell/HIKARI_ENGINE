@@ -2,7 +2,7 @@
 #define HIKARI_MATERIAL_EXPRESSION_INCLUDED
 
 static const uint HIKARI_MATERIAL_EXPRESSION_MAGIC = 0x484D4558u;
-static const uint HIKARI_MATERIAL_EXPRESSION_VERSION = 1u;
+static const uint HIKARI_MATERIAL_EXPRESSION_VERSION = 2u;
 static const uint HIKARI_MATERIAL_EXPRESSION_HEADER_BASE = 30u;
 static const uint HIKARI_MATERIAL_EXPRESSION_VALUE_BASE = 34u;
 static const uint HIKARI_MATERIAL_EXPRESSION_INSTRUCTION_BASE = 82u;
@@ -72,6 +72,9 @@ static const uint HIKARI_EXPRESSION_FRESNEL = 58u;
 static const uint HIKARI_EXPRESSION_PARTICLE_STATE = 59u;
 static const uint HIKARI_EXPRESSION_PARTICLE_COLOR = 60u;
 static const uint HIKARI_EXPRESSION_PARTICLE_UV = 61u;
+static const uint HIKARI_EXPRESSION_SHELL_LAYER = 62u;
+static const uint HIKARI_EXPRESSION_NORMAL_BLEND = 63u;
+static const uint HIKARI_EXPRESSION_NORMAL_UV_TRANSFORM = 64u;
 
 static const uint HIKARI_EXPRESSION_OUTPUT_BASE_COLOR = 1u << 0u;
 static const uint HIKARI_EXPRESSION_OUTPUT_OPACITY = 1u << 1u;
@@ -98,6 +101,7 @@ struct HikariMaterialExpressionContext
     float4 particleState;
     float4 particleColor;
     float2 particleUv;
+    float4 shellLayer;
     HikariMaterialTextureFootprint textureFootprint;
 };
 
@@ -180,6 +184,24 @@ float2 HikariExpressionHash22(float2 p)
         float(n1 & 0xffffffu) / 16777215.0f);
 }
 
+float3 HikariExpressionNormalStrength(float3 value, float strength)
+{
+    const float lengthSquared = dot(value, value);
+    const float3 normal = all(isfinite(value)) && isfinite(lengthSquared) && lengthSquared > 1.0e-10f
+        ? value * rsqrt(lengthSquared) : float3(0.0f, 0.0f, 1.0f);
+    const float boundedStrength = min(isfinite(strength) ? max(strength, 0.0f) : 1.0f,
+                                     rsqrt(max(dot(normal.xy, normal.xy), 1.0e-20f)));
+    const float2 xy = normal.xy * boundedStrength;
+    return normalize(float3(xy, sqrt(saturate(1.0f - dot(xy, xy)))));
+}
+
+float3 HikariExpressionBlendNormals(float3 baseNormal, float3 detailNormal)
+{
+    const float3 t = baseNormal + float3(0.0f, 0.0f, 1.0f);
+    const float3 u = detailNormal * float3(-1.0f, -1.0f, 1.0f);
+    return normalize(t * (dot(t, u) / max(t.z, 1.0e-6f)) - u);
+}
+
 HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
     HikariMeshMaterialData materialData,
     HikariMaterialExpressionContext context,
@@ -255,7 +277,7 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
                 opcode == HIKARI_EXPRESSION_PARTICLE_STATE ? 4u :
             opcode == HIKARI_EXPRESSION_TEXTURE_COORDINATE ? 2u : 1u;
         // 書き込み前に範囲を検査し、不正なプログラムは部分結果を公開しない。
-        if (opcode > HIKARI_EXPRESSION_PARTICLE_UV || components < 1u || components > 4u ||
+        if (opcode > HIKARI_EXPRESSION_NORMAL_UV_TRANSFORM || components < 1u || components > 4u ||
             outputCount < 1u || outputCount > maxOutputs ||
             destination + outputCount > header.w ||
             !HikariExpressionSourceValid(source0, header.w) ||
@@ -400,6 +422,33 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
             if (outputCount > 2u) registers[destination + 2u] = context.particleState.zzzz;
             if (outputCount > 3u) registers[destination + 3u] = context.particleState.wwww;
             continue;
+        }
+        else if (opcode == HIKARI_EXPRESSION_SHELL_LAYER) value = context.shellLayer;
+        else if (opcode == HIKARI_EXPRESSION_NORMAL_BLEND)
+        {
+            const float3 baseNormal = source0 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                ? a.xyz : float3(0.0f, 0.0f, 1.0f);
+            const float3 detailNormal = source1 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                ? b.xyz : float3(0.0f, 0.0f, 1.0f);
+            const float baseStrength = source2 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER ? c.x : 1.0f;
+            const float detailStrength = source3 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER ? d.x : 1.0f;
+            value = float4(HikariExpressionBlendNormals(
+                HikariExpressionNormalStrength(baseNormal, baseStrength),
+                HikariExpressionNormalStrength(detailNormal, detailStrength)), 0.0f);
+        }
+        else if (opcode == HIKARI_EXPRESSION_NORMAL_UV_TRANSFORM)
+        {
+            const float3 normal = HikariExpressionNormalStrength(
+                source0 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER ? a.xyz : float3(0.0f, 0.0f, 1.0f), 1.0f);
+            const float rotation = source1 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER && isfinite(b.x) ? b.x : 0.0f;
+            const float2 scale = source2 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER ? c.xy : 1.0f.xx;
+            const float2 oriented = normal.xy * float2(scale.x < 0.0f ? -1.0f : 1.0f,
+                                                       scale.y < 0.0f ? -1.0f : 1.0f);
+            const float sine = sin(rotation);
+            const float cosine = cos(rotation);
+            // UV Transform は回転後に拡縮する。法線は鏡映、逆回転の順に補正する。
+            value = float4(oriented.x * cosine + oriented.y * sine,
+                           -oriented.x * sine + oriented.y * cosine, normal.z, 0.0f);
         }
         else if (opcode == HIKARI_EXPRESSION_PARTICLE_COLOR) value = context.particleColor;
         else if (opcode == HIKARI_EXPRESSION_PARTICLE_UV) value = float4(context.particleUv, 0, 0);

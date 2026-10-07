@@ -11,9 +11,9 @@
 namespace HIKARI::ASSETS::SHADER {
 
 inline constexpr std::string_view kRenderGeometryEngineInterfaceId = "HIKARI.RenderGeometry";
-inline constexpr uint32_t kRenderGeometryEngineInterfaceVersion = 1u;
+inline constexpr uint32_t kRenderGeometryEngineInterfaceVersion = 2u;
 inline constexpr std::string_view kRenderGeometryEngineInterfaceHash =
-    "149db821112434114f8dacb1850eedf4716872a72114f838f9dc0c916cc68ad3";
+    "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee";
 inline constexpr std::string_view kRenderGeometryInterfaceDependency =
     "EngineSdk/Include/Render3D/HIKARI_RenderGeometryInterface.hlsli";
 
@@ -41,24 +41,24 @@ inline constexpr std::string_view kClusterRayTracingRootLayoutCanonical =
     "Pipeline(Compute)|Flags(None)";
 
 inline constexpr std::string_view kMeshGraphicsRootLayoutId = "HIKARI.RenderGeometry.MeshGraphics.Root";
-inline constexpr uint32_t kMeshGraphicsRootLayoutVersion = 6u;
+inline constexpr uint32_t kMeshGraphicsRootLayoutVersion = 7u;
 inline constexpr std::string_view kMeshGraphicsRootLayoutHash =
-    "ee505e7d03c7c9b396edab36d1a96e11d4dfdc0f5a9b34f6da724bc5f914a454";
+    "f4d1051c4c10f2c4fd24eca84e71d058a613973d3f58eca7e255ef656486fec7";
 inline constexpr std::string_view kMeshGraphicsRootLayoutCanonical =
-    "HIKARI.RenderGeometry.MeshGraphics.Root.v6|MeshletDispatchControl(Base,Pass,Bucket,RangeCount)|Grid(MaxX65535)|"
-    "RootParameters(42)|DwordCost(63)|ASVisibility(Table(t19,u0space8,b12),QueryBytes(80,viewProj+control))|VisibleRangeBytes(80)|PayloadBytes(824)|"
+    "HIKARI.RenderGeometry.MeshGraphics.Root.v7|MeshletDispatchControl(Base,Pass,Bucket,RangeCount)|Grid(MaxX65535)|"
+    "RootParameters(42)|DwordCost(63)|ASVisibility(Table(t19,u0space8,b12),QueryBytes(80,viewProj+control))|VisibleRangeBytes(80)|PayloadBytes(832)|"
     "JointPaletteVariant(StaticSRV(t0,space3),SkinnedCBV(b3,space0))|"
-    "SurfaceControlAlias(b8,TraditionalSurfaceGpuScene,MeshletDrawControl)|"
+    "SurfaceControlAlias(b8,TraditionalSurfaceGpuScene(Base,Enabled,ShellCount,ShellLodBits),MeshletDrawControl)|"
     "ClusterGeometryTable(SRV(t0,space1,count1024))|"
     "StaticSamplers(s0,s1,s2,s3,s4)|"
     "Pipeline(Graphics,Amplification,Mesh)|Flags(AllowInputAssembler)";
 
 inline constexpr std::string_view kTraditionalCommandRootLayoutId = "HIKARI.RenderGeometry.TraditionalCommand.Root";
-inline constexpr uint32_t kTraditionalCommandRootLayoutVersion = 1u;
+inline constexpr uint32_t kTraditionalCommandRootLayoutVersion = 2u;
 inline constexpr std::string_view kTraditionalCommandRootLayoutHash =
-    "cf60faa111cdfb4808e88526ae3b68bea6c05bb1078231951d7b4d518e34eab3";
+    "9be672b776faa4a182cd3b769dc5f84fb64590207f02f810f90d37b6b33714bb";
 inline constexpr std::string_view kTraditionalCommandRootLayoutCanonical =
-    "HIKARI.RenderGeometry.TraditionalCommand.Root.v1|"
+    "HIKARI.RenderGeometry.TraditionalCommand.Root.v2|SeedBytes(64)|CullConstantsBytes(160)|"
     "0:CBV(b0,space0,All)|1:SRV(t0,space0,All)|"
     "2:UAV(u0,space0,All)|3:SRV(t1,space0,All)|"
     "4:UAV(u1,space0,All)|5:UAV(u2,space0,All)|"

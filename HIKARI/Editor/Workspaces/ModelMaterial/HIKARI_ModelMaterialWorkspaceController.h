@@ -368,6 +368,8 @@ private:
     void DrawPreviewEnvironmentControls();
     void DrawPreviewLightingPanel(DocumentSceneBase& scene);
     void DrawOutlineThicknessPresets(MaterialAssetData& source, MaterialGraphData& graph);
+    void DrawMaterialParameterControls(MaterialAssetData& source, const MaterialGraphData& graph,
+                                       const MaterialAssetData* parent = nullptr);
     void SubmitPreviewRequests(EditorWorkspaceHost& workspaceHost, const ModelPreviewScene& activePreview,
                                bool canvasVisible);
     void DrawModelAndSlotsWindow(DocumentSceneBase& scene);

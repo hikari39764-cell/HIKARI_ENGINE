@@ -173,7 +173,14 @@ void PhysicsSystem::ProcessKinematicMotions(World& world, const FrameContext& fr
             before.pose.rotation = solverPose.rotation;
         }
 
-        const MATH::Vec3 gravity = settings_.gravity * binding.bodyDesc.gravityScale;
+        MATH::Vec3 gravity = settings_.gravity * binding.bodyDesc.gravityScale;
+        if (request.overrideVerticalGravity) {
+            if (!std::isfinite(request.verticalGravityAcceleration)) {
+                setError("kinematic vertical gravity acceleration must be finite");
+                continue;
+            }
+            gravity.y = request.verticalGravityAcceleration;
+        }
         const bool jumpActiveBeforeStep = binding.kinematicJumpActive;
         const bool onGround = before.IsGrounded();
         constexpr float kGroundDetachSpeed = 0.1f;

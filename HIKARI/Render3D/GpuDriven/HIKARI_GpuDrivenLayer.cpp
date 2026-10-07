@@ -469,6 +469,7 @@ const GpuDrivenCommandFrameStats& GpuDrivenLayer::BuildCommandFrame(const GpuDri
     TraditionalCommandFrameKey key{};
     key.valid = true;
     key.frameIndex = desc.frameIndex;
+    key.screenHeight = desc.screenHeight;
     key.source = frameSource_;
     key.sourceVersion = traditionalCommandInputVersion_;
     key.layoutVersion = frameSource_ != nullptr ? frameSource_->layoutVersion : 0u;
@@ -476,15 +477,18 @@ const GpuDrivenCommandFrameStats& GpuDrivenLayer::BuildCommandFrame(const GpuDri
     key.enableSurfaceFrustumCull = desc.enableSurfaceFrustumCull;
     if (desc.cullViewProj != nullptr) {
         key.cullViewProj = *desc.cullViewProj;
+        key.renderViewProj = desc.renderViewProj ? *desc.renderViewProj : *desc.cullViewProj;
     }
     const bool reuseTraditionalCommands =
         buildTraditionalStream && traditionalCommandStreamBuffer_ != nullptr && traditionalCommandFrameKey_.valid &&
         traditionalCommandFrameKey_.frameIndex == key.frameIndex && traditionalCommandFrameKey_.source == key.source &&
         traditionalCommandFrameKey_.sourceVersion == key.sourceVersion &&
         traditionalCommandFrameKey_.layoutVersion == key.layoutVersion &&
+        traditionalCommandFrameKey_.screenHeight == key.screenHeight &&
         traditionalCommandFrameKey_.hasCullViewProj == key.hasCullViewProj &&
         traditionalCommandFrameKey_.enableSurfaceFrustumCull == key.enableSurfaceFrustumCull &&
-        std::memcmp(&traditionalCommandFrameKey_.cullViewProj, &key.cullViewProj, sizeof(key.cullViewProj)) == 0;
+        std::memcmp(&traditionalCommandFrameKey_.cullViewProj, &key.cullViewProj, sizeof(key.cullViewProj)) == 0 &&
+        std::memcmp(&traditionalCommandFrameKey_.renderViewProj, &key.renderViewProj, sizeof(key.renderViewProj)) == 0;
 
     if (traditionalCommandStreamBuffer_ != nullptr) {
         traditionalCommandStreamBuffer_->BeginFrame(desc.frameIndex);
@@ -497,9 +501,10 @@ const GpuDrivenCommandFrameStats& GpuDrivenLayer::BuildCommandFrame(const GpuDri
             if (!reusedResidentInput) {
                 UploadTraditionalIndirectCommands(*traditionalCommandStreamBuffer_, *frameSource_);
             }
-            const bool built = desc.cullViewProj != nullptr &&
-                               traditionalCommandStreamBuffer_->BuildGpuCompactedCommands(
-                                   desc.commandList, *desc.cullViewProj, desc.enableSurfaceFrustumCull);
+            const bool built =
+                desc.cullViewProj != nullptr && traditionalCommandStreamBuffer_->BuildGpuCompactedCommands(
+                                                    desc.commandList, *desc.cullViewProj, key.renderViewProj,
+                                                    desc.screenHeight, desc.enableSurfaceFrustumCull);
             traditionalCommandFrameKey_ = built ? key : TraditionalCommandFrameKey{};
         }
         commandFrameStats_.traditionalCommandStreamStats = traditionalCommandStreamBuffer_->GetStats();

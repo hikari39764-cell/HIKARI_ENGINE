@@ -165,6 +165,11 @@ void GpuSceneRegistry::TraditionalIndirectStream::Append(const std::vector<GpuSc
         stream.materialSources.pop_back();
         return;
     }
+    // Shadow の静的/動的分割は primary と同じ pass 資格を参照する。
+    if (pass == RUNTIME::SurfaceDrawCommandPass::Shadow) {
+        stream.instances[instanceIndex].flags |=
+            static_cast<uint32_t>(RUNTIME::SurfaceGpuSceneInstanceFlags::PassShadow);
+    }
     stream.records.push_back(record);
     stream.executableRecordIndices.push_back(recordIndexInStream);
     stream.jointPalettes.emplace_back();

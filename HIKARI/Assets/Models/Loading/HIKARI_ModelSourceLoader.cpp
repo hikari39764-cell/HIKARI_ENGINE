@@ -14,7 +14,7 @@
 #if defined(HIKARI_WITH_EDITOR)
 #include "Core/Text/HIKARI_AsciiCase.h"
 #endif
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::MODELS {
 

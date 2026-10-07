@@ -14,7 +14,7 @@
 
 namespace HIKARI::VFX {
 
-inline constexpr uint32_t kVfxProgramVersion = 16u;
+inline constexpr uint32_t kVfxProgramVersion = 18u;
 inline constexpr uint32_t kMaximumVfxProgramTableItems = 1u << 20u;
 inline constexpr uint32_t kMaximumVfxProgramEmitters = 1024u;
 inline constexpr uint32_t kMaximumVfxProgramInputs = 4096u;
@@ -29,11 +29,14 @@ struct VfxRuntimePropertyLayout {
     uint32_t byteOffset = 0u;
     RENDER3D::PARTICLES::ParticleRuntimePropertyType storageType =
         RENDER3D::PARTICLES::ParticleRuntimePropertyType::Float;
+    // Absolute render values use a different owner from simulation multipliers.
+    bool renderParameter = false;
 };
 
 inline VfxRuntimePropertyLayout ResolveVfxRuntimePropertyLayout(VfxRuntimeBindingSemantic semantic) noexcept {
     using Overrides = RENDER3D::PARTICLES::ParticleEmitterRuntimeOverrides;
     using Storage = RENDER3D::PARTICLES::ParticleRuntimePropertyType;
+    using Render = RENDER3D::PARTICLES::ParticleEmitterRenderParameters;
     switch (semantic) {
     case VfxRuntimeBindingSemantic::EmitterEnabled:
         return {
@@ -65,6 +68,14 @@ inline VfxRuntimePropertyLayout ResolveVfxRuntimePropertyLayout(VfxRuntimeBindin
             static_cast<uint32_t>(offsetof(Overrides, colorMultiplier)),
             Storage::Float4,
         };
+    case VfxRuntimeBindingSemantic::RingInnerRadius:
+        return {static_cast<uint32_t>(offsetof(Render, ringInnerRadius)), Storage::Float, true};
+    case VfxRuntimeBindingSemantic::RingOuterRadius:
+        return {static_cast<uint32_t>(offsetof(Render, ringOuterRadius)), Storage::Float, true};
+    case VfxRuntimeBindingSemantic::RingStartAngleDegrees:
+        return {static_cast<uint32_t>(offsetof(Render, ringStartAngleRadians)), Storage::Float, true};
+    case VfxRuntimeBindingSemantic::RingEndAngleDegrees:
+        return {static_cast<uint32_t>(offsetof(Render, ringEndAngleRadians)), Storage::Float, true};
     default: return {};
     }
 }

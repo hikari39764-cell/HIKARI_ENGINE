@@ -14,7 +14,7 @@ float Number(const nlohmann::json& in, const char* key, float fallback, float mi
     const float value = JSONREAD::NumberMemberOr(in, key, fallback);
     return std::clamp(std::isfinite(value) ? value : fallback, minimum, maximum);
 }
-const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
+const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 } // namespace
 void UiGroupComponent::Serialize(nlohmann::json& out) const {
     out = {{"version", 1}, {"visible", visible_}, {"interactable", interactable_}, {"opacity", opacity_}};

@@ -199,6 +199,8 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
     RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDescription{};
     commandFrameDescription.commandList = GFX::GetCurrentContext().cmdList;
     commandFrameDescription.cullViewProj = &cullViewProj;
+    commandFrameDescription.renderViewProj = &cameraData.viewProj;
+    commandFrameDescription.screenHeight = static_cast<float>(screenHeight);
     commandFrameDescription.frameIndex = GFX::GetCurrentContext().frameIndex;
     commandFrameDescription.enableSurfaceFrustumCull = true;
     layer.BuildCommandFrame(commandFrameDescription);

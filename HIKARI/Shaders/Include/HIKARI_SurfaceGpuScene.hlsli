@@ -57,6 +57,7 @@ struct HikariSurfaceGpuSceneInstance
 
     float4 lightmapUvScaleBias;
     float4 fxUser[8];
+    float4 shellSettings;
 };
 
 static const uint HIKARI_SURFACE_GEOMETRY_BACKEND_TRIANGLE_MESH = 0;
@@ -107,8 +108,8 @@ cbuffer SurfaceGpuSceneControlCB : register(b8)
 {
     uint gSurfaceGpuSceneBaseIndex;
     uint gUseSurfaceGpuScene;
-    uint gSurfaceGpuSceneDrawCommandIndex;
-    uint gSurfaceGpuSceneDrawPassKind;
+    uint gSurfaceGpuSceneShellLayerCount;
+    uint gSurfaceGpuSceneShellLodBits;
 };
 #endif
 
@@ -128,7 +129,7 @@ HikariSurfaceGpuSceneInstance HikariGetSurfaceGpuSceneInstanceAt(uint absoluteIn
 #ifndef HIKARI_SURFACE_GPU_SCENE_SKIP_CONTROL_HELPERS
 uint HikariGetSurfaceGpuSceneAbsoluteIndex(uint instanceId)
 {
-    return gSurfaceGpuSceneBaseIndex + instanceId;
+    return gSurfaceGpuSceneBaseIndex + (gSurfaceGpuSceneShellLayerCount != 0u ? 0u : instanceId);
 }
 
 HikariSurfaceGpuSceneInstance HikariGetSurfaceGpuSceneInstance(uint instanceId)

@@ -1,5 +1,6 @@
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
 #include "Core/HIKARI_MathConfig.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Render3D/Temporal/HIKARI_TemporalGeometryPass.h"
 #include "Gfx/HIKARI_GfxContext.h"
 
@@ -7,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cmath>
 #include <utility>
 #include <vector>
 
@@ -31,6 +33,41 @@ namespace {
 using Microsoft::WRL::ComPtr;
 
 constexpr uint32_t kMaxJointCount = 128u;
+
+D3D12_RECT ProjectHistoryRejectionBounds(const MATH::Vec4& bounds, const MATH::Mat4& viewProj, LONG width,
+                                         LONG height) {
+    const D3D12_RECT viewport{0, 0, width, height};
+    if (!MATH::IsFinite(bounds))
+        return viewport;
+    float minimumX = static_cast<float>(width), minimumY = static_cast<float>(height);
+    float maximumX = 0.0f, maximumY = 0.0f;
+    bool front = false, behind = false;
+    const float radius = std::abs(bounds.w);
+    for (uint32_t corner = 0u; corner < 8u; ++corner) {
+        const auto clip = viewProj.TransformPoint({bounds.x + ((corner & 1u) ? radius : -radius),
+                                                   bounds.y + ((corner & 2u) ? radius : -radius),
+                                                   bounds.z + ((corner & 4u) ? radius : -radius), 1.0f});
+        if (!MATH::IsFinite(clip))
+            return viewport;
+        if (clip.w <= 1.0e-4f) {
+            behind = true;
+            continue;
+        }
+        front = true;
+        const float x = std::clamp(clip.x / clip.w * 0.5f + 0.5f, 0.0f, 1.0f) * static_cast<float>(width);
+        const float y = std::clamp(-clip.y / clip.w * 0.5f + 0.5f, 0.0f, 1.0f) * static_cast<float>(height);
+        minimumX = (std::min)(minimumX, x);
+        minimumY = (std::min)(minimumY, y);
+        maximumX = (std::max)(maximumX, x);
+        maximumY = (std::max)(maximumY, y);
+    }
+    if (!front)
+        return {};
+    if (behind)
+        return viewport;
+    return {static_cast<LONG>(std::floor(minimumX)), static_cast<LONG>(std::floor(minimumY)),
+            static_cast<LONG>(std::ceil(maximumX)), static_cast<LONG>(std::ceil(maximumY))};
+}
 
 struct GeometryConstants {
     MATH::Mat4 renderViewProj{};
@@ -226,6 +263,9 @@ bool ExecuteTemporalGeometryPass(const GFX::Context& graphics, const TemporalInp
     if (temporalState == nullptr || !DETAIL::ContextMatchesOwner(*temporalState, graphics)) {
         return false;
     }
+    auto& rejectionRects = temporalState->passScratch.geometryHistoryRejectionRects;
+    rejectionRects.clear();
+    temporalState->passScratch.geometryHistoryRejectionFrame = inputs.resourceFrame;
 
     std::vector<MESHRENDERER::TemporalVelocityDraw> draws;
     if (!MESHRENDERER::GatherTemporalVelocityDraws(graphics, draws, DETAIL::kTemporalMaximumGeometryDrawCount,
@@ -235,6 +275,27 @@ bool ExecuteTemporalGeometryPass(const GFX::Context& graphics, const TemporalInp
     if (draws.size() > static_cast<size_t>(DETAIL::kTemporalMaximumGeometryDrawCount)) {
         return false;
     }
+    // 圧縮 MS の法線・LOD と CPU triangle sidecar は同一形状とは限らない。
+    // 動的 Shell は偽の EQUAL motion を書かず、描画範囲の履歴を明示的に失効する。
+    std::erase_if(draws, [&](const auto& draw) {
+        if (draw.shellSettings.x < 2.0f || draw.shellSettings.y <= 0.0f)
+            return false;
+        const auto rect = ProjectHistoryRejectionBounds(draw.boundsCenterRadius, inputs.frame.camera.viewProj,
+                                                        (std::max)(1, metadataTarget->GetWidth()),
+                                                        (std::max)(1, metadataTarget->GetHeight()));
+        if (rect.left < rect.right && rect.top < rect.bottom)
+            rejectionRects.push_back(rect);
+        return true;
+    });
+    const auto invalidateShellHistory = [&] {
+        if (rejectionRects.empty())
+            return;
+        metadataTarget->TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
+        const float invalid[4]{1.0f, 0.0f, 0.0f, 0.0f};
+        cmd->ClearRenderTargetView(metadataTarget->GetRtvHandle(), invalid, static_cast<UINT>(rejectionRects.size()),
+                                   rejectionRects.data());
+        metadataTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    };
     uint32_t rigidDrawCount = 0;
     uint32_t skinnedDrawCount = 0;
     uint32_t alphaMaskedDrawCount = 0;
@@ -263,6 +324,7 @@ bool ExecuteTemporalGeometryPass(const GFX::Context& graphics, const TemporalInp
     }
     if (draws.empty()) {
         DETAIL::ClearTemporalGeometryHistory(*temporalState);
+        invalidateShellHistory();
         return true;
     }
     if (!EnsurePipeline(graphics)) {
@@ -339,6 +401,7 @@ bool ExecuteTemporalGeometryPass(const GFX::Context& graphics, const TemporalInp
     }
     motionTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     metadataTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    invalidateShellHistory();
 
     for (const MESHRENDERER::TemporalVelocityDraw& draw : draws) {
         const DETAIL::TemporalGeometryHistoryKey historyKey = ResolveHistoryKey(draw);

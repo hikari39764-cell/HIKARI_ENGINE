@@ -27,6 +27,14 @@ const SceneSystemData* FindSystemSettings(const SceneDocument& document, std::st
                                     [systemId](const SceneSystemData& system) { return system.systemId == systemId; });
     return found != document.systems.end() ? &*found : nullptr;
 }
+
+bool NeedsInstall(const ComponentSystemRule& rule, const SceneDocument& document, const SystemScheduler& scheduler) {
+    if (scheduler.HasSystem(rule.systemId)) {
+        return false;
+    }
+    const SceneSystemData* settings = FindSystemSettings(document, rule.systemId);
+    return settings == nullptr || settings->enabled;
+}
 } // namespace
 
 bool ComponentSystemPolicy::Register(ComponentSystemRule rule) {
@@ -50,14 +58,11 @@ ComponentSystemInstallResult ComponentSystemPolicy::InstallRequiredSystems(const
                                                                            SystemScheduler& scheduler) const {
     ComponentSystemInstallResult result{};
     for (const ComponentSystemRule& rule : rules_) {
-        if (!SceneUsesComponent(document, rule.componentType) || scheduler.HasSystem(rule.systemId)) {
+        if (!SceneUsesComponent(document, rule.componentType) || !NeedsInstall(rule, document, scheduler)) {
             continue;
         }
 
         const SceneSystemData* settings = FindSystemSettings(document, rule.systemId);
-        if (settings != nullptr && !settings->enabled) {
-            continue;
-        }
         const nlohmann::json systemSettings = settings != nullptr ? settings->settings : nlohmann::json::object();
         std::unique_ptr<ISystem> system = typeRegistry.Create(rule.systemId, systemSettings);
         if (!system) {
@@ -75,6 +80,13 @@ ComponentSystemInstallResult ComponentSystemPolicy::InstallRequiredSystems(const
         result.installedSystems.emplace_back(rule.systemId);
     }
     return result;
+}
+
+bool ComponentSystemPolicy::NeedsSystemInstall(std::string_view componentType, const SceneDocument& document,
+                                               const SystemScheduler& scheduler) const {
+    return std::any_of(rules_.begin(), rules_.end(), [&](const ComponentSystemRule& rule) {
+        return rule.componentType == componentType && NeedsInstall(rule, document, scheduler);
+    });
 }
 
 } // namespace HIKARI

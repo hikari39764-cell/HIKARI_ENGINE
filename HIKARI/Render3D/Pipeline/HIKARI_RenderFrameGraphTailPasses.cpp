@@ -15,6 +15,7 @@
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 #include "Render3D/Water/HIKARI_WaterVisibleDepth.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
+#include "Render3D/Debug/HIKARI_RenderDebugOutput.h"
 
 namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
 
@@ -76,6 +77,10 @@ bool ExecuteForwardTransparent(const GRAPH::RenderGraphPassContext& graphPass, v
         auto resources = context.postOpaqueResources;
         resources.compositionTarget = context.frame.targetAccess;
         resources.compositionDepth = context.frame.scene.readOnlyDsv;
+        const bool preserve = context.frame.surfaceReceipt.Matches(POST::PostSystem::GetSceneCaptureSurfaceReceipt()) &&
+                              !GetRenderDebugOutputRoute().bypassPostProcessing && MESHRENDERER::HasPreservedVfxWork();
+        if (preserve)
+            resources.particlePostProcessMode = VFX::VfxPostProcessMode::Scene;
         const DOF::WorldSpriteLayerCapture* capture =
             state.cameraDepthOfFieldPrepared ? DOF::BeginWorldSpriteLayerCapture(context.frame.frameIndex) : nullptr;
         resources.worldSpriteDepthOfFieldCapture = capture;
@@ -88,6 +93,19 @@ bool ExecuteForwardTransparent(const GRAPH::RenderGraphPassContext& graphPass, v
         resources.worldSpriteDepthOfFieldCapture = nullptr;
         if (capture != nullptr) {
             DOF::EndWorldSpriteLayerCapture(context.frame.frameIndex);
+        }
+        if (rendered && preserve) {
+            if (!POST::PostSystem::BeginPreservedVfxCapture(context.frame, context.temporalFrame,
+                                                            resources.compositionTarget))
+                return false;
+            bool captured = false;
+            try {
+                captured = MESHRENDERER::RenderPreservedVfxPass(context.frame.graphics, resources);
+            } catch (...) {
+                captured = false;
+            }
+            const bool restored = POST::PostSystem::EndPreservedVfxCapture(captured);
+            return captured && restored;
         }
         return rendered;
     } catch (...) {

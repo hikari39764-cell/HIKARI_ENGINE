@@ -1,444 +1,323 @@
-#include "Core/Math/HIKARI_MathValidation.h"
 #include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstddef>
-#include <cstdint>
-#include <iterator>
-#include <limits>
-#include <memory>
-#include <utility>
-
-#include "Animation/Runtime/HIKARI_AnimationPoseEvaluation.h"
-#include "Animation/Runtime/HIKARI_AnimationPoseService.h"
-#include "Diagnostics/HIKARI_DebugLogBuffer.h"
-#include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
+#include "Core/Math/HIKARI_MathValidation.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "Scene/Vfx/HIKARI_AfterimageSnapshot.h"
 #include "Scene/HIKARI_GameObject.h"
-#include "Scene/HIKARI_PresentationTransformService.h"
+#include "Scene/HIKARI_PresentationModelService.h"
 #include "Scene/HIKARI_World.h"
-#include "Assets/Vfx/HIKARI_VfxProgram.h"
+#include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 
 namespace HIKARI::VFX {
 namespace {
-using AfterimageDraw = RENDER3D::COMBAT_VFX::CombatAfterimageDraw;
+using namespace RENDER3D::RUNTIME;
+constexpr size_t kSourceBudget = 8u;
+constexpr size_t kPartBudget = 16u;
+constexpr size_t kHistoryBudget = kVfxAfterimageSampleCountMax;
 
-template <class T>
-bool ProfileSilhouette(const T& profile) noexcept {
-    if constexpr (requires { profile.silhouette; }) {
-        return profile.silhouette;
-    }
-    return true;
+bool Valid(const CombatAfterimageRequest& r) {
+    return r.ownerObject.IsValid() && r.sourceId != 0u && r.silhouetteCount >= kVfxAfterimageSampleCountMin &&
+           r.silhouetteCount <= kHistoryBudget && MATH::IsFinite(r.color) && MATH::IsFinite(r.intensity) &&
+           r.intensity >= 0 && MATH::IsFinite(r.opacity) && r.opacity >= 0 && MATH::IsFinite(r.uniformScale) &&
+           r.uniformScale > 0 && MATH::IsFinite(r.lifetimeUnscaledSeconds) &&
+           r.lifetimeUnscaledSeconds >= kVfxAfterimageLifetimeMin &&
+           r.lifetimeUnscaledSeconds <= kVfxAfterimageLifetimeMax;
 }
 
-// A draw record carries a bounded 128-joint palette.  Keep the CPU
-// capture budget deliberately small so a burst cannot consume an
-// unbounded amount of scene memory.
-constexpr size_t kMaximumActiveStates = 8u;
-constexpr size_t kMaximumHistoryPerState = RENDER3D::COMBAT_VFX::kMaximumCombatAfterimageSilhouettes;
-constexpr size_t kMaximumDrawsPerCapture = 32u;
-constexpr float kMinimumLifetime = 0.04f;
-constexpr float kMaximumLifetime = 1.0f;
-constexpr float kSyntheticAgeSpacing = 0.018f;
+struct Sample {
+    std::vector<AFTERIMAGE::Part> parts{};
+    size_t partCount = 0;
+    uint64_t order = 0;
+    float age = 0;
+    bool active = false;
+};
 
-bool IsSkinnedPrimitive(const MeshPrimitive& primitive) noexcept {
-    // The glTF importer keeps the legacy StaticPNTT tag while it
-    // retains a populated skinnedVertices stream for JOINTS_0 /
-    // WEIGHTS_0 (the live RenderModelAsset path uses this same
-    // semantic).  Layout alone would therefore freeze Summer's body
-    // in bind pose and make the afterimage look like a T-pose.
-    return (primitive.layout == VertexLayoutKind::SkinnedPNTTJW || !primitive.skinnedVertices.empty()) &&
-           !primitive.skinnedVertices.empty() && !primitive.indices.empty();
+void ReleaseSample(Sample& sample) {
+    for (auto& part : sample.parts) {
+        part.geometry.reset();
+        part.materials.reset();
+        part.desc.model = nullptr;
+        part.desc.renderModel = nullptr;
+        part.desc.materialOverrides.clear();
+    }
+    sample.partCount = 0;
 }
 
-bool IsStaticPrimitive(const MeshPrimitive& primitive) noexcept {
-    return primitive.layout == VertexLayoutKind::StaticPNTT && primitive.skinnedVertices.empty() &&
-           !primitive.staticVertices.empty() && !primitive.indices.empty();
-}
+struct Source {
+    CombatAfterimageRequest request{};
+    std::array<Sample, kHistoryBudget> samples{};
+    Sample staging{};
+    bool occupied = false;
+    bool pending = false;
+    bool paused = false;
+    uint64_t lastPublishedFrame = 0;
+    uint64_t order = 0;
+};
 
-bool IsValidRequest(const CombatAfterimageRequest& request) noexcept {
-    if (!request.ownerObject.IsValid() || request.sourceId == 0u || request.silhouetteCount < 3u ||
-        request.silhouetteCount > RENDER3D::COMBAT_VFX::kMaximumCombatAfterimageSilhouettes ||
-        !MATH::IsFinite(request.intensity) || !MATH::IsFinite(request.uniformScale) ||
-        !MATH::IsFinite(request.lifetimeUnscaledSeconds) || !MATH::IsFinite(request.opacity) ||
-        !MATH::IsFinite(request.fresnelPower) || !MATH::IsFinite(request.dissolveStrength) ||
-        !MATH::IsFinite(request.shellOffsetWorld) || !MATH::IsFinite(request.color)) {
-        return false;
-    }
-    return request.intensity >= 0.0f && request.uniformScale > 0.0f && request.lifetimeUnscaledSeconds > 0.0f &&
-           request.opacity >= 0.0f && request.fresnelPower >= 0.0f && request.dissolveStrength >= 0.0f &&
-           request.shellOffsetWorld >= 0.0f;
-}
-
-bool IsDuplicateCapture(const CombatAfterimageRequest& request, uint64_t lastFrameIndex, uint64_t lastSequence,
-                        uint32_t lastRandomSeed, bool hasLastCapture) noexcept {
-    return hasLastCapture && request.frameIndex == lastFrameIndex && request.sequence == lastSequence &&
-           request.randomSeed == lastRandomSeed;
-}
-
-float SanitizePositive(float value, float lower, float upper) noexcept { return std::clamp(value, lower, upper); }
-
-void InitializeJointPalette(AfterimageDraw& draw) noexcept {
-    for (MATH::Mat4& matrix : draw.jointPalette) {
-        matrix = MATH::Mat4::Identity();
-    }
-}
-
-bool BuildCapturedDraws(const MATH::Mat4& objectWorld, const ModelAsset& model,
-                        const ANIMATION::AnimationLocalPose* pose, std::vector<AfterimageDraw>& outDraws) {
-    if (!model.HasSkinnedMesh() || model.nodes.empty()) {
-        return false;
-    }
-
-    std::vector<MATH::Mat4> nodeGlobals;
-    if (!ANIMATION::POSE_EVALUATION::BuildNodeGlobalMatrices(model, pose, nodeGlobals) ||
-        nodeGlobals.size() != model.nodes.size()) {
-        return false;
-    }
-    for (const MATH::Mat4& matrix : nodeGlobals) {
-        if (!MATH::IsFinite(matrix)) {
-            return false;
-        }
-    }
-
-    if (!MATH::IsFinite(objectWorld)) {
-        return false;
-    }
-
-    outDraws.clear();
-    outDraws.reserve(kMaximumDrawsPerCapture);
-    for (size_t nodeIndex = 0u; nodeIndex < model.nodes.size(); ++nodeIndex) {
-        const ModelNode& node = model.nodes[nodeIndex];
-        if (node.meshIndex < 0 || node.meshIndex >= static_cast<int>(model.meshes.size())) {
-            continue;
-        }
-        if (nodeIndex >= nodeGlobals.size()) {
-            continue;
-        }
-        const MATH::Mat4 drawWorld = objectWorld * nodeGlobals[nodeIndex];
-        if (!MATH::IsFinite(drawWorld)) {
-            continue;
-        }
-
-        const MeshAsset& mesh = model.meshes[static_cast<size_t>(node.meshIndex)];
-        const SkeletonAsset* skin = model.FindSkin(node.skinIndex);
-        std::array<MATH::Mat4, RENDER3D::COMBAT_VFX::kMaximumCombatAfterimageJoints> palette{};
-        bool validPalette = skin != nullptr && !skin->joints.empty() &&
-                            skin->joints.size() <= RENDER3D::COMBAT_VFX::kMaximumCombatAfterimageJoints;
-        if (validPalette) {
-            for (size_t jointIndex = 0u; jointIndex < skin->joints.size(); ++jointIndex) {
-                const SkeletonJoint& joint = skin->joints[jointIndex];
-                if (joint.nodeIndex < 0 || joint.nodeIndex >= static_cast<int>(nodeGlobals.size())) {
-                    validPalette = false;
-                    break;
-                }
-                palette[jointIndex] = nodeGlobals[static_cast<size_t>(joint.nodeIndex)] * joint.inverseBindMatrix;
-                if (!MATH::IsFinite(palette[jointIndex])) {
-                    validPalette = false;
-                    break;
-                }
-            }
-        }
-
-        for (const MeshPrimitive& primitive : mesh.primitives) {
-            const bool skinned = IsSkinnedPrimitive(primitive);
-            const bool staticPrimitive = IsStaticPrimitive(primitive);
-            if ((!skinned && !staticPrimitive) || (skinned && !validPalette)) {
-                continue;
-            }
-            if (outDraws.size() >= kMaximumDrawsPerCapture) {
-                break;
-            }
-            AfterimageDraw draw{};
-            draw.primitive = &primitive;
-            draw.world = drawWorld;
-            draw.jointCount = skinned ? static_cast<uint32_t>(skin->joints.size()) : 0u;
-            draw.skinned = skinned ? 1u : 0u;
-            draw.silhouetteIndex = 0u;
-            InitializeJointPalette(draw);
-            if (skinned) {
-                for (size_t jointIndex = 0u; jointIndex < skin->joints.size(); ++jointIndex) {
-                    draw.jointPalette[jointIndex] = palette[jointIndex];
-                }
-            }
-            outDraws.push_back(std::move(draw));
-        }
-    }
-    return !outDraws.empty();
+void ClearSource(Source& source) {
+    source.pending = false;
+    source.paused = false;
+    source.occupied = false;
+    for (auto& sample : source.samples)
+        sample.active = false;
 }
 } // namespace
 
-struct CombatAfterimageService::AfterimageState {
-    struct Snapshot {
-        std::vector<AfterimageDraw> draws{};
-        float ageSeconds = 0.0f;
-    };
+struct CombatAfterimageService::State {
+    std::array<Source, kSourceBudget> sources{};
+    AFTERIMAGE::SnapshotCache assets{};
+    std::vector<uint64_t> published{};
+    std::vector<uint64_t> nextPublished{};
+    uint64_t nextId = 0xB100000000000001ull;
+    uint64_t tickFrame = 0;
+    bool ticked = false;
 
-    RuntimeObjectHandle ownerObject{};
-    uint64_t sourceId = 0u;
-    uint32_t randomSeed = 0u;
-    uint64_t sequence = 0u;
-    uint64_t lastCaptureFrame = 0u;
-    bool hasLastCapture = false;
+    Source* Find(RuntimeObjectHandle owner, uint64_t id) {
+        const auto found = std::find_if(sources.begin(), sources.end(), [&](const Source& value) {
+            return value.occupied && value.request.ownerObject == owner && value.request.sourceId == id;
+        });
+        return found == sources.end() ? nullptr : &*found;
+    }
 
-    uint32_t silhouetteCount = 4u;
-    bool silhouette = true;
-    float lifetimeSeconds = 0.28f;
-    float opacity = 0.62f;
-    float intensity = 1.0f;
-    float uniformScale = 1.0f;
-    float fresnelPower = 3.0f;
-    float dissolveStrength = 1.0f;
-    float shellOffsetWorld = 0.008f;
-    MATH::Vec3 color{0.10f, 0.72f, 1.0f};
-    std::vector<Snapshot> history{};
+    bool CapturePart(const SceneRenderObjectDesc& desc, Sample& sample) {
+        if (!desc.visible)
+            return true;
+        if (sample.partCount == kPartBudget)
+            return false;
+        if (sample.parts.size() <= sample.partCount)
+            sample.parts.emplace_back();
+        if (!assets.Capture(desc, sample.parts[sample.partCount]))
+            return false;
+        ++sample.partCount;
+        return true;
+    }
+
+    bool CaptureFinal(World& world, SceneRenderCache& scene, Source& source) {
+        const auto* owner = world.FindObject(source.request.ownerObject);
+        if (!owner)
+            return false;
+        const auto* model = owner->GetComponent<ModelComponent>();
+        const auto* body = scene.Find({owner->GetRenderStableId()});
+        if (!model || !body || !body->desc.visible || !body->desc.model || !body->desc.model->HasSkinnedMesh())
+            return false;
+        auto& sample = source.staging;
+        sample.partCount = 0;
+        if (!CapturePart(body->desc, sample))
+            return false;
+        if (const auto* models = world.Services().Find<PresentationModelService>()) {
+            for (const auto& record : models->GetFrameRecords()) {
+                if (record.ownerObjectHandle != source.request.ownerObject.ToValue() || !record.visible)
+                    continue;
+                const auto* clothing = scene.Find({record.renderObjectId});
+                if (!clothing || !CapturePart(clothing->desc, sample))
+                    return false;
+            }
+        }
+        if (sample.partCount == 0)
+            return false;
+        if (source.request.uniformScale != 1.0f) {
+            const auto position = body->desc.worldTransform.GetWorldMatrix().TransformPoint({0, 0, 0, 1});
+            const MATH::Vec3 origin{position.x, position.y, position.z};
+            const float scale = source.request.uniformScale;
+            const auto adjustment =
+                MATH::Mat4::TRS(origin, MATH::Quat::Identity(), {scale, scale, scale}) *
+                MATH::Mat4::TRS({-origin.x, -origin.y, -origin.z}, MATH::Quat::Identity(), {1, 1, 1});
+            for (size_t i = 0; i < sample.partCount; ++i) {
+                auto& desc = sample.parts[i].desc;
+                const auto matrix = adjustment * desc.worldTransform.GetWorldMatrix();
+                desc.worldTransform.useExplicitMatrix = true;
+                desc.worldTransform.explicitMatrix = matrix;
+                desc.worldBounds = BOUNDS::TransformBounds(desc.localBounds, matrix);
+            }
+        }
+        auto found =
+            std::find_if(source.samples.begin(), source.samples.end(), [](const Sample& item) { return !item.active; });
+        if (found == source.samples.end())
+            found = std::min_element(source.samples.begin(), source.samples.end(),
+                                     [](const auto& a, const auto& b) { return a.order < b.order; });
+        std::swap(*found, sample);
+        sample.active = false;
+        found->age = 0;
+        found->order = ++source.order;
+        found->active = true;
+        size_t count = static_cast<size_t>(
+            std::count_if(source.samples.begin(), source.samples.end(), [](const auto& item) { return item.active; }));
+        while (count > source.request.silhouetteCount) {
+            auto oldest = source.samples.end();
+            for (auto it = source.samples.begin(); it != source.samples.end(); ++it)
+                if (it->active && (oldest == source.samples.end() || it->order < oldest->order))
+                    oldest = it;
+            oldest->active = false;
+            --count;
+        }
+        return true;
+    }
 };
 
-CombatAfterimageService::CombatAfterimageService() = default;
+CombatAfterimageService::CombatAfterimageService() : state_(std::make_unique<State>()) {}
 CombatAfterimageService::~CombatAfterimageService() = default;
 
 bool CombatAfterimageService::Capture(World& world, const CombatAfterimageRequest& request) noexcept {
-    try {
-        if (!IsValidRequest(request)) {
-            return false;
-        }
-
-        GameObject* object = world.FindObject(request.ownerObject);
-        if (object == nullptr) {
-            return false;
-        }
-        const ModelComponent* modelComponent = object->GetComponent<ModelComponent>();
-        const ModelAsset* model = modelComponent != nullptr ? modelComponent->GetModelAsset() : nullptr;
-        if (model == nullptr) {
-            return false;
-        }
-
-        const ANIMATION::AnimationPoseService* poses = world.Services().Find<ANIMATION::AnimationPoseService>();
-        if (poses == nullptr) {
-            poseRejectedThisFrame_ = true;
-            return false;
-        }
-        const std::shared_ptr<const ANIMATION::AnimationPoseSnapshot> poseSnapshot = poses->Find(request.ownerObject);
-        if (poseSnapshot == nullptr || !poseSnapshot->valid ||
-            !poseSnapshot->localPose.IsValidFor(model->nodes.size())) {
-            // A bind-pose fallback would turn a transient animation
-            // delivery failure into a visible T-pose silhouette.  The
-            // effect is presentation-only, so fail closed instead.
-            poseRejectedThisFrame_ = true;
-            if (!poseRejectLogged_) {
-                DEBUGLOG::PushRenderError(
-                    "[CombatAfterimage][WARN] capture rejected: evaluated animation pose is missing or invalid.");
-                poseRejectLogged_ = true;
-            }
-            return false;
-        }
-
-        MATH::Mat4 captureWorld = object->GetTransform().GetWorldMatrix();
-        if (const PresentationTransformService* presentation = world.Services().Find<PresentationTransformService>()) {
-            MATH::Mat4 presentationWorld{};
-            if (presentation->TryGetWorldMatrix(request.ownerObject, presentationWorld)) {
-                captureWorld = presentationWorld;
-            }
-        }
-        if (!MATH::IsFinite(captureWorld)) {
-            return false;
-        }
-
-        std::vector<AfterimageDraw> capturedDraws;
-        if (!BuildCapturedDraws(captureWorld, *model, &poseSnapshot->localPose, capturedDraws)) {
-            return false;
-        }
-
-        auto found = std::find_if(states_.begin(), states_.end(), [&request](const AfterimageState& state) {
-            return state.ownerObject == request.ownerObject && state.sourceId == request.sourceId;
-        });
-        if (found == states_.end()) {
-            if (states_.size() >= kMaximumActiveStates) {
-                return false;
-            }
-            AfterimageState state{};
-            state.ownerObject = request.ownerObject;
-            state.sourceId = request.sourceId;
-            state.history.reserve(kMaximumHistoryPerState);
-            states_.push_back(std::move(state));
-            found = std::prev(states_.end());
-        }
-
-        AfterimageState& state = *found;
-        if (IsDuplicateCapture(request, state.lastCaptureFrame, state.sequence, state.randomSeed,
-                               state.hasLastCapture)) {
-            return false;
-        }
-
-        state.silhouetteCount = request.silhouetteCount;
-        state.silhouette = request.silhouette;
-        state.lifetimeSeconds = SanitizePositive(request.lifetimeUnscaledSeconds, kMinimumLifetime, kMaximumLifetime);
-        state.opacity = std::clamp(request.opacity, 0.01f, 1.0f);
-        state.intensity = SanitizePositive(request.intensity, 0.05f, 4.0f);
-        state.uniformScale = SanitizePositive(request.uniformScale, 0.05f, 4.0f);
-        state.fresnelPower = SanitizePositive(request.fresnelPower, 0.5f, 8.0f);
-        state.dissolveStrength = SanitizePositive(request.dissolveStrength, 0.1f, 4.0f);
-        state.shellOffsetWorld = std::clamp(request.shellOffsetWorld, 0.0f, 0.08f);
-        state.color = {(std::max)(0.0f, request.color.x), (std::max)(0.0f, request.color.y),
-                       (std::max)(0.0f, request.color.z)};
-
-        AfterimageState::Snapshot snapshot{};
-        snapshot.draws = std::move(capturedDraws);
-        snapshot.ageSeconds = 0.0f;
-        if (state.history.size() >= kMaximumHistoryPerState) {
-            state.history.erase(state.history.begin());
-        }
-        state.history.push_back(std::move(snapshot));
-        if (state.history.size() > state.silhouetteCount) {
-            state.history.erase(state.history.begin(),
-                                state.history.begin() + (state.history.size() - state.silhouetteCount));
-        }
-        state.lastCaptureFrame = request.frameIndex;
-        state.randomSeed = request.randomSeed;
-        state.sequence = request.sequence;
-        state.hasLastCapture = true;
-        poseRejectLogged_ = false;
-        return true;
-    } catch (...) {
+    if (!world.IsOwnerThread() || !Valid(request) || !world.FindObject(request.ownerObject))
         return false;
+    auto* source = state_->Find(request.ownerObject, request.sourceId);
+    if (source) {
+        if (source->paused ||
+            (source->request.frameIndex == request.frameIndex && source->request.sequence == request.sequence &&
+             source->request.randomSeed == request.randomSeed))
+            return false;
+    } else {
+        const auto free = std::find_if(state_->sources.begin(), state_->sources.end(),
+                                       [](const auto& value) { return !value.occupied; });
+        if (free == state_->sources.end())
+            return false;
+        source = &*free;
+        source->occupied = true;
+        source->lastPublishedFrame = 0;
     }
+    source->request = request;
+    source->pending = true;
+    return true;
 }
 
 bool CombatAfterimageService::Capture(World& world, const CombatAfterimageRequest& request,
                                       const VfxSpecialOutputData& output) noexcept {
-    if (!output.enabled || output.type != VfxSpecialOutputType::SkinnedAfterimage) {
+    if (!output.enabled || output.type != VfxSpecialOutputType::SkinnedAfterimage)
         return false;
-    }
-    const VfxSkinnedAfterimageProfile& profile = output.skinnedAfterimage;
-    CombatAfterimageRequest configured = request;
-    const float intensityScale = std::clamp(request.intensity, 0.0f, 8.0f);
-    const float opacityScale = std::clamp(request.opacity, 0.0f, 1.0f);
-    const float colorAlpha = std::clamp(std::isfinite(profile.color.w) ? profile.color.w : 1.0f, 0.0f, 1.0f);
-    configured.intensity = profile.intensity * intensityScale;
-    configured.silhouette = ProfileSilhouette(profile);
+    auto configured = request;
+    const auto& profile = output.skinnedAfterimage;
+    configured.silhouetteCount = profile.sampleCount;
     configured.lifetimeUnscaledSeconds = profile.lifetimeSeconds;
-    // The existing afterimage frame carries RGB; use authored color A as
-    // the profile's visibility multiplier so it is not a dead Inspector
-    // field while preserving the renderer's compact frame contract.
-    configured.opacity = profile.opacity * opacityScale * colorAlpha;
-    configured.silhouetteCount =
-        std::clamp(profile.sampleCount, 3u, RENDER3D::COMBAT_VFX::kMaximumCombatAfterimageSilhouettes);
-    configured.fresnelPower = profile.fresnel;
-    configured.dissolveStrength = profile.dissolve;
-    configured.shellOffsetWorld = profile.shellOffset;
+    configured.opacity = profile.opacity * request.opacity * profile.color.w;
+    configured.intensity = profile.intensity * request.intensity;
     configured.color = {profile.color.x, profile.color.y, profile.color.z};
     return Capture(world, configured);
 }
 
-void CombatAfterimageService::Tick(uint64_t frameIndex, float unscaledDeltaSeconds) noexcept {
-    try {
-        if (hasTicked_ && frameIndex <= lastTickFrame_) {
-            return;
-        }
-        hasTicked_ = true;
-        lastTickFrame_ = frameIndex;
-        const float delta = MATH::IsFinite(unscaledDeltaSeconds) ? std::clamp(unscaledDeltaSeconds, 0.0f, 0.25f) : 0.0f;
-        for (AfterimageState& state : states_) {
-            for (AfterimageState::Snapshot& snapshot : state.history) {
-                snapshot.ageSeconds += delta;
-            }
-            std::erase_if(state.history, [&state](const AfterimageState::Snapshot& snapshot) {
-                return snapshot.ageSeconds >= state.lifetimeSeconds;
-            });
-        }
-        std::erase_if(states_, [](const AfterimageState& state) { return state.history.empty(); });
+bool CombatAfterimageService::SetPaused(RuntimeObjectHandle owner, uint64_t sourceId, bool paused) noexcept {
+    auto* source = state_->Find(owner, sourceId);
+    if (!source)
+        return false;
+    source->paused = paused;
+    if (paused)
+        source->pending = false;
+    return true;
+}
 
-        BuildFrameSource(frameIndex);
-    } catch (...) {
-        // Presentation must fail closed.  Preserve ownership state, but
-        // publish an empty frame if allocation/building failed.
-        drawRecords_.clear();
-        frameSource_.draws = nullptr;
-        frameSource_.drawCount = 0u;
-        frameSource_.silhouetteCount = 0u;
-        frameSource_.missingPose = poseRejectedThisFrame_;
-        poseRejectedThisFrame_ = false;
-        frameSource_.frameIndex = frameIndex;
+bool CombatAfterimageService::Clear(RuntimeObjectHandle owner, uint64_t sourceId) noexcept {
+    if (!owner.IsValid() || sourceId == 0)
+        return false;
+    if (auto* source = state_->Find(owner, sourceId))
+        ClearSource(*source);
+    return true;
+}
+
+void CombatAfterimageService::Tick(uint64_t frameIndex, float dt) noexcept {
+    if (state_->ticked && frameIndex <= state_->tickFrame)
+        return;
+    state_->ticked = true;
+    state_->tickFrame = frameIndex;
+    dt = MATH::IsFinite(dt) ? std::clamp(dt, 0.0f, 0.25f) : 0;
+    for (auto& source : state_->sources) {
+        if (!source.occupied || source.paused)
+            continue;
+        for (auto& sample : source.samples) {
+            if (sample.active) {
+                sample.age += dt;
+                sample.active = sample.age < source.request.lifetimeUnscaledSeconds;
+            }
+        }
     }
 }
 
-void CombatAfterimageService::BuildFrameSource(uint64_t frameIndex) noexcept {
-    drawRecords_.clear();
-    drawRecords_.reserve(RENDER3D::COMBAT_VFX::kMaximumCombatAfterimageDraws);
-    uint32_t silhouetteCount = 0u;
-
-    for (const AfterimageState& state : states_) {
-        const uint32_t requestedSilhouettes =
-            std::clamp(state.silhouetteCount, 3u, RENDER3D::COMBAT_VFX::kMaximumCombatAfterimageSilhouettes);
-        const size_t historySize = state.history.size();
-        if (historySize == 0u) {
-            continue;
-        }
-
-        uint32_t emittedForState = 0u;
-        for (uint32_t silhouetteIndex = 0u; silhouetteIndex < requestedSilhouettes; ++silhouetteIndex) {
-            if (drawRecords_.size() >= RENDER3D::COMBAT_VFX::kMaximumCombatAfterimageDraws) {
-                break;
-            }
-            const size_t historyIndex = silhouetteIndex < historySize ? historySize - 1u - silhouetteIndex : 0u;
-            const AfterimageState::Snapshot& snapshot = state.history[historyIndex];
-            const float age =
-                (std::max)(snapshot.ageSeconds, static_cast<float>(silhouetteIndex) * kSyntheticAgeSpacing);
-            if (age >= state.lifetimeSeconds) {
+void CombatAfterimageService::Publish(World& world, SceneRenderCache& scene, uint64_t frameIndex) noexcept {
+    try {
+        state_->nextPublished.clear();
+        for (auto& source : state_->sources) {
+            if (!source.occupied)
+                continue;
+            if (!world.FindObject(source.request.ownerObject)) {
+                ClearSource(source);
                 continue;
             }
-            const float remaining = std::clamp(1.0f - age / (std::max)(state.lifetimeSeconds, 0.001f), 0.0f, 1.0f);
-            const float silhouetteOpacity =
-                state.opacity * remaining * remaining * (1.0f - 0.08f * static_cast<float>(silhouetteIndex));
-            for (const AfterimageDraw& captured : snapshot.draws) {
-                if (drawRecords_.size() >= RENDER3D::COMBAT_VFX::kMaximumCombatAfterimageDraws) {
-                    break;
-                }
-                AfterimageDraw draw = captured;
-                draw.silhouetteIndex = silhouetteIndex;
-                draw.silhouette = state.silhouette ? 1u : 0u;
-                draw.ageSeconds = age;
-                draw.lifetimeSeconds = state.lifetimeSeconds;
-                draw.opacity = std::clamp(silhouetteOpacity, 0.0f, 1.0f);
-                draw.intensity = state.intensity;
-                draw.uniformScale = state.uniformScale;
-                draw.fresnelPower = state.fresnelPower;
-                draw.dissolveStrength = state.dissolveStrength;
-                draw.shellOffsetWorld = state.shellOffsetWorld * static_cast<float>(silhouetteIndex);
-                draw.color = state.color;
-                drawRecords_.push_back(std::move(draw));
+            if (source.pending && !source.paused && source.lastPublishedFrame != frameIndex) {
+                (void)state_->CaptureFinal(world, scene, source);
+                source.lastPublishedFrame = frameIndex;
+                source.pending = false;
             }
-            ++emittedForState;
+            bool active = false;
+            for (auto& sample : source.samples) {
+                if (!sample.active)
+                    continue;
+                active = true;
+                const float remaining =
+                    std::clamp(1.0f - sample.age / source.request.lifetimeUnscaledSeconds, 0.0f, 1.0f);
+                const float alpha = std::clamp(source.request.opacity * remaining * remaining, 0.0f, 1.0f);
+                const auto color = source.request.color * source.request.intensity;
+                for (size_t i = 0; i < sample.partCount; ++i) {
+                    auto& part = sample.parts[i];
+                    auto& id = part.desc.id.value;
+                    if (id < 0xB100000000000000ull ||
+                        (scene.Find({id}) && std::find(state_->published.begin(), state_->published.end(), id) ==
+                                                 state_->published.end())) {
+                        do {
+                            id = state_->nextId++;
+                        } while (id == 0 || scene.Find({id}));
+                    }
+                    AFTERIMAGE::ApplyStyle(part, color, alpha);
+                    scene.Upsert(part.desc);
+                    state_->nextPublished.push_back(id);
+                }
+            }
+            if (!active && !source.pending && !source.paused)
+                ClearSource(source);
         }
-        silhouetteCount = (std::max)(silhouetteCount, emittedForState);
+        for (const auto id : state_->published)
+            if (std::find(state_->nextPublished.begin(), state_->nextPublished.end(), id) ==
+                state_->nextPublished.end())
+                scene.Remove({id});
+        state_->published.swap(state_->nextPublished);
+        scene.PreRenderSync();
+        // Remove render references before releasing leases; preserve vector and
+        // pose capacities for the next capture in each bounded ring slot.
+        for (auto& source : state_->sources) {
+            for (auto& sample : source.samples)
+                if (!sample.active)
+                    ReleaseSample(sample);
+            ReleaseSample(source.staging);
+        }
+    } catch (...) {
+        for (const auto id : state_->published)
+            scene.Remove({id});
+        for (const auto id : state_->nextPublished)
+            scene.Remove({id});
+        state_->published.clear();
+        state_->nextPublished.clear();
     }
-
-    ++revision_;
-    if (revision_ == 0u) {
-        revision_ = 1u;
-    }
-    frameSource_.draws = drawRecords_.empty() ? nullptr : drawRecords_.data();
-    frameSource_.drawCount = static_cast<uint32_t>(
-        (std::min)(drawRecords_.size(), static_cast<size_t>((std::numeric_limits<uint32_t>::max)())));
-    frameSource_.silhouetteCount = silhouetteCount;
-    frameSource_.missingPose = poseRejectedThisFrame_;
-    poseRejectedThisFrame_ = false;
-    frameSource_.frameIndex = frameIndex;
-    frameSource_.revision = revision_;
 }
 
 void CombatAfterimageService::Reset() noexcept {
-    states_.clear();
-    drawRecords_.clear();
-    frameSource_ = {};
-    revision_ = 0u;
-    lastTickFrame_ = 0u;
-    hasTicked_ = false;
-    poseRejectLogged_ = false;
-    poseRejectedThisFrame_ = false;
+    for (auto& source : state_->sources) {
+        ClearSource(source);
+        source = {};
+    }
+    state_->assets.Clear();
+    state_->ticked = false;
+    // Keep removal identities until publication, including scene reset.
 }
 
-size_t CombatAfterimageService::GetActiveCount() const noexcept { return states_.size(); }
+size_t CombatAfterimageService::GetActiveCount() const noexcept {
+    return static_cast<size_t>(std::count_if(state_->sources.begin(), state_->sources.end(),
+                                             [](const auto& value) { return value.occupied; }));
+}
 
+size_t CombatAfterimageService::GetSampleCount(RuntimeObjectHandle owner, uint64_t sourceId) const noexcept {
+    const auto* source = state_->Find(owner, sourceId);
+    return source ? static_cast<size_t>(std::count_if(source->samples.begin(), source->samples.end(),
+                                                      [](const auto& value) { return value.active; }))
+                  : 0u;
+}
 } // namespace HIKARI::VFX

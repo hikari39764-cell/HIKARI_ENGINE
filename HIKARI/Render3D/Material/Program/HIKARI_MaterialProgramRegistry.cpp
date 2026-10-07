@@ -93,7 +93,11 @@ bool IsRuntimeProgramShapeValid(const MaterialProgramIR& program, std::vector<Ma
              instruction.opcode != MaterialProgramOpcode::ParticleOutput &&
              instruction.opcode != MaterialProgramOpcode::ParticleState &&
              instruction.opcode != MaterialProgramOpcode::ParticleColor &&
-             instruction.opcode != MaterialProgramOpcode::ParticleUv)) {
+             instruction.opcode != MaterialProgramOpcode::ParticleUv &&
+             instruction.opcode != MaterialProgramOpcode::Shell &&
+             instruction.opcode != MaterialProgramOpcode::ShellLayer &&
+             instruction.opcode != MaterialProgramOpcode::NormalBlend &&
+             instruction.opcode != MaterialProgramOpcode::NormalUvTransform)) {
             diagnostics.push_back(MakeRegistryDiagnostic(
                 MaterialCompileDiagnosticSeverity::Error, "Material.RuntimeInstructionShapeInvalid",
                 "Material instructions require unique source nodes and matching typed pin/register arrays.",

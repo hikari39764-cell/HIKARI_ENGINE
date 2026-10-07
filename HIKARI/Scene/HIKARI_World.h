@@ -112,6 +112,7 @@ public:
     // empty; Clear retains it through component detach and releases it
     // after object and component-index teardown completes.
     bool BindComponentRegistry(const ComponentRegistry* registry) noexcept;
+    const ComponentRegistry* GetComponentRegistry() const noexcept { return componentRegistry_; }
     bool BindMassSchemaRegistry(const WorldMassSchemaRegistry* registry) noexcept;
     WorldCommandSubmission SubmitDestroy(RuntimeObjectHandle object);
     WorldCommandSubmission SubmitSetParent(RuntimeObjectHandle object, RuntimeObjectHandle parent,
@@ -136,7 +137,6 @@ public:
 
     void Update(float dt);
     void Render();
-    void RenderImGui();
     void Clear();
 
     LiveObjectRange GetObjects() const noexcept;

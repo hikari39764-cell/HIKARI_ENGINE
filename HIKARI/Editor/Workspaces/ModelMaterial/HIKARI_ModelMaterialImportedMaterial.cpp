@@ -66,7 +66,6 @@ bool BuildImportedMaterialSource(const ModelAsset& model, uint32_t materialIndex
     const MaterialAsset& imported = model.materials[materialIndex];
     const std::string displayName =
         imported.name.empty() ? slot.displayName + " Material" : imported.name + " Material";
-    outSource = ASSETS::MATERIAL::CreateMaterialFromTemplate(templateId, displayName);
     PbrMaterialAssetData pbr{};
     pbr.version = kMaterialAssetSourceVersion;
     pbr.materialName = displayName;
@@ -93,7 +92,7 @@ bool BuildImportedMaterialSource(const ModelAsset& model, uint32_t materialIndex
     pbr.specularTexture = ResolveImportedTextureSlot(model, imported.specularTexture, database, outUnresolvedTextures);
     pbr.specularColorTexture =
         ResolveImportedTextureSlot(model, imported.specularColorTexture, database, outUnresolvedTextures);
-    ApplyPbrMaterialAssetData(outSource, pbr);
+    outSource = ASSETS::MATERIAL::CreateMaterialFromTemplateWithPbr(templateId, pbr, displayName);
     outSource.surface.alphaMode = ResolveImportedAlphaMode(imported.alphaMode);
     outSource.surface.alphaCutoff = imported.alphaCutoff;
     return true;

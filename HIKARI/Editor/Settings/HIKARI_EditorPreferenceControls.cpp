@@ -8,7 +8,7 @@ bool DrawEditorPreferenceControl(const char* key, EditorPreferences& value) {
     const std::string_view field(key);
     const auto label = TEXT::LocalizeWindow(key, key);
     if (field == "settings.language") {
-        ImGui::TextUnformatted(TEXT::LocalizeCStr(key));
+        ImGui::TextUnformatted(TEXT::Localize(key).c_str());
         int language = static_cast<int>(value.language);
         ImGui::SetNextItemWidth(-1);
         if (!ImGui::Combo("##language", &language, "English\0中文\0日本語\0"))
@@ -17,7 +17,7 @@ bool DrawEditorPreferenceControl(const char* key, EditorPreferences& value) {
         return true;
     }
     if (field == "shell.scale") {
-        ImGui::TextUnformatted(TEXT::LocalizeCStr(key));
+        ImGui::TextUnformatted(TEXT::Localize(key).c_str());
         constexpr float scales[]{0.85f, 1.0f, 1.15f, 1.3f, 1.5f, 1.75f};
         int choice = 0;
         for (int i = 1; i < 6; ++i)

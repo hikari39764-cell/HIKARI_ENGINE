@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-// 配布ルート唯一の入口。描画・SDK・外部 DLL は Runtime 内の Hub が所有する。
+// 配布ルート唯一の入口。描画・SDK・外部 DLL は Runtime 内の Engine（--project-hub で項目中心）が所有する。
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int show) {
     std::wstring self(32768, L'\0');
     const DWORD length = GetModuleFileNameW(nullptr, self.data(), static_cast<DWORD>(self.size()));
@@ -11,8 +11,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int show) {
         return 1;
     self.resize(length);
     const auto runtime = std::filesystem::path(self).parent_path() / L"Runtime";
-    const auto hub = runtime / L"HIKARI_ProjectHub.exe";
-    std::wstring command = L"\"" + hub.wstring() + L"\"";
+    const auto hub = runtime / L"HIKARI_Engine.exe";
+    std::wstring command = L"\"" + hub.wstring() + L"\" --project-hub";
     if (arguments && *arguments) {
         command += L" ";
         command += arguments;

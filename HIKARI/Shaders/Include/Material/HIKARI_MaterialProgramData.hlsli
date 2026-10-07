@@ -7,6 +7,7 @@ static const uint HIKARI_MATERIAL_PROGRAM_RESOURCE_SLOTS = 32u;
 static const uint HIKARI_MATERIAL_PROGRAM_PARAMETER_CAPACITY = 729088u;
 static const uint HIKARI_MATERIAL_PROGRAM_RESOURCE_CAPACITY = 131072u;
 
+static const uint HIKARI_PROGRAM_FLAG_ALPHA_MASK = 1u << 1u;
 static const uint HIKARI_PROGRAM_FLAG_ALPHA_BLEND = 1u << 2u;
 static const uint HIKARI_PROGRAM_FLAG_DOUBLE_SIDED = 1u << 3u;
 static const uint HIKARI_PROGRAM_FLAG_CORNEA_HIGHLIGHT = 1u << 4u;
@@ -21,6 +22,7 @@ static const uint HIKARI_PROGRAM_FLAG_FACE_SDF = 1u << 13u;
 static const uint HIKARI_PROGRAM_FLAG_EYE_LIGHTING = 1u << 14u;
 static const uint HIKARI_PROGRAM_FLAG_USES_BLOCK = 1u << 15u;
 static const uint HIKARI_PROGRAM_FLAG_TEMPLATE_SKIN = 1u << 17u;
+static const uint HIKARI_PROGRAM_FLAG_AFTERIMAGE = 1u << 20u;
 static const uint HIKARI_PROGRAM_FLAG_TEMPLATE_CLOTH = 1u << 21u;
 static const uint HIKARI_PROGRAM_FLAG_TEMPLATE_HYBRID = 1u << 22u;
 static const uint HIKARI_PROGRAM_FLAG_FEATURE_GEOMETRY_OUTLINE = 1u << 23u;

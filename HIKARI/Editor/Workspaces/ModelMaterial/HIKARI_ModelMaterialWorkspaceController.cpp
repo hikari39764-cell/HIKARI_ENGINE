@@ -11,7 +11,7 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Core/Text/HIKARI_Localization.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"

@@ -34,8 +34,9 @@ public:
     bool GetToggle(const std::string& key, bool& out) const;
     bool ResetToProfileDefaults();
 
-    void RenderImGui() override;
+#if defined(HIKARI_WITH_EDITOR)
     void BuildInspector(IInspectorBuilder& builder) override;
+#endif
     void Serialize(nlohmann::json& out) const override;
     void Deserialize(const nlohmann::json& in) override;
 

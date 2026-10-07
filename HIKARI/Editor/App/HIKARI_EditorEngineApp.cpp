@@ -64,7 +64,6 @@ void EditorEngineApp::Update(float deltaTime) { runtimeApp_.Update(deltaTime); }
 void EditorEngineApp::Render() { runtimeApp_.Render(); }
 
 void EditorEngineApp::RenderHostUi() {
-    runtimeApp_.RenderHostUi();
     if (!SERVICES::IsEditorHost() || !SERVICES::IsEditorUIEnabled()) {
         return;
     }

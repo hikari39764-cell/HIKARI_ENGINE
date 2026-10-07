@@ -1,5 +1,5 @@
 #pragma once
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI::RENDER3D::PARTICLES {
 // 座標は粒子のシミュレーション空間。半径 0 は空間全体。

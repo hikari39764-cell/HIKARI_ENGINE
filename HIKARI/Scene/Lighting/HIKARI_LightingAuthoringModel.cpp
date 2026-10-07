@@ -98,6 +98,11 @@ bool HasLightingComponent(const SceneDocument& document, const char* componentTy
 
 } // namespace
 
+bool IsLightingComponentType(std::string_view componentType) noexcept {
+    return componentType == kLightComponentType || componentType == kReflectionProbeComponentType ||
+           componentType == kIrradianceVolumeComponentType;
+}
+
 const SceneComponentData* FindLightingComponent(const SceneObjectData& object, const char* componentType) {
     const auto found =
         std::find_if(object.components.begin(), object.components.end(),

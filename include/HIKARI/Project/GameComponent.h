@@ -1,7 +1,6 @@
 #pragma once
 
-#include "HIKARI/Project/Inspector.h"
-#include "HIKARI/Project/PropertyArchive.h"
+#include "HIKARI/Project/PropertyFields.h"
 #include "HIKARI/Project/WorldView.h"
 
 namespace HIKARI {
@@ -45,18 +44,17 @@ private:
     void* bindingOwner_ = nullptr;
 };
 
+// Attach/Detach/Update run only for objects that belong to a World.
+// DescribeProperties declares every authored field once; the engine uses the
+// same declaration to load the Scene, save it, and draw the Inspector.
 class IGameComponent {
 public:
     virtual ~IGameComponent() = default;
 
-    virtual void OnAttach(const ObjectView&) {}
-    virtual void OnAttach(GameComponentContext& context) { OnAttach(context.GetObject()); }
+    virtual void OnAttach(GameComponentContext&) {}
     virtual void OnDetach(GameComponentContext&) {}
-    virtual void Update(float deltaTime) { (void)deltaTime; }
-    virtual void Update(GameComponentContext&, float deltaTime) { Update(deltaTime); }
-    virtual void LoadProperties(const PropertyReader&) {}
-    virtual void SaveProperties(PropertyWriter&) const {}
-    virtual void BuildInspector(GameProjectInspector&) {}
+    virtual void Update(GameComponentContext&, float deltaTime) { (void)deltaTime; }
+    virtual void DescribeProperties(PropertyFields&) {}
 };
 
 } // namespace HIKARI

@@ -75,6 +75,9 @@ struct HikariMeshletPayload
     uint rangeClusterCount;
     uint geometryClusterCount;
 
+    uint shellLayerCount;
+    float shellLodAmount;
+
     // Keep compact cluster payloads in SoA form. DXIL requires dynamic TGSM
     // accesses to resolve directly to a scalar global allocation; an AoS
     // member access introduces an ambiguous intermediate structure pointer.

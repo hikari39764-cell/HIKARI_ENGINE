@@ -4,7 +4,7 @@
 #include <limits>
 #include <unordered_set>
 
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::COLLISION {
 namespace {

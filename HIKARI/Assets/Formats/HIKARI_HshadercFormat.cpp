@@ -10,6 +10,7 @@
 
 #include "Assets/Formats/Internal/HIKARI_HshadercMetadata.h"
 #include "Core/IO/HIKARI_FileReplacementTransaction.h"
+#include "Core/IO/HIKARI_NativeFilePath.h"
 
 namespace HIKARI::ASSETS::SHADER {
 namespace {
@@ -196,7 +197,7 @@ bool WriteHshadercFile(const std::filesystem::path& path, const ShaderCookedArti
     }
     std::error_code ec{};
     if (!path.parent_path().empty()) {
-        std::filesystem::create_directories(path.parent_path(), ec);
+        std::filesystem::create_directories(IO::NativeFilePath(path.parent_path()), ec);
     }
     if (ec) {
         outError = "could not create shader artifact directory: " + ec.message();
@@ -204,7 +205,7 @@ bool WriteHshadercFile(const std::filesystem::path& path, const ShaderCookedArti
     }
 
     const std::filesystem::path staged = MakeStagedPath(path);
-    std::ofstream output(staged, std::ios::binary | std::ios::trunc);
+    std::ofstream output(IO::NativeFilePath(staged), std::ios::binary | std::ios::trunc);
     if (!output.is_open()) {
         outError = "could not open staged shader artifact";
         return false;
@@ -212,19 +213,19 @@ bool WriteHshadercFile(const std::filesystem::path& path, const ShaderCookedArti
     output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     output.close();
     if (output.fail()) {
-        std::filesystem::remove(staged, ec);
+        std::filesystem::remove(IO::NativeFilePath(staged), ec);
         outError = "could not write staged shader artifact";
         return false;
     }
 
     ShaderCookedArtifact verified{};
     if (!ReadHshadercFile(staged, verified, outError)) {
-        std::filesystem::remove(staged, ec);
+        std::filesystem::remove(IO::NativeFilePath(staged), ec);
         return false;
     }
     std::string commitMessage{};
     if (!IO::CommitStagedFile(staged, path, commitMessage)) {
-        std::filesystem::remove(staged, ec);
+        std::filesystem::remove(IO::NativeFilePath(staged), ec);
         outError = "could not commit shader artifact: " + commitMessage;
         return false;
     }
@@ -234,14 +235,14 @@ bool WriteHshadercFile(const std::filesystem::path& path, const ShaderCookedArti
 
 bool ReadHshadercFile(const std::filesystem::path& path, ShaderCookedArtifact& outArtifact, std::string& outError) {
     std::error_code ec{};
-    const uintmax_t fileBytes = std::filesystem::file_size(path, ec);
+    const uintmax_t fileBytes = std::filesystem::file_size(IO::NativeFilePath(path), ec);
     const size_t maximumFileBytes =
         sizeof(HshadercHeader) + kMaximumHshadercMetadataBytes + kMaximumShaderArtifactBytes;
     if (ec || fileBytes < sizeof(HshadercHeader) || fileBytes > maximumFileBytes) {
         outError = "shader artifact file size is invalid";
         return false;
     }
-    std::ifstream input(path, std::ios::binary);
+    std::ifstream input(IO::NativeFilePath(path), std::ios::binary);
     if (!input.is_open()) {
         outError = "could not open shader artifact";
         return false;

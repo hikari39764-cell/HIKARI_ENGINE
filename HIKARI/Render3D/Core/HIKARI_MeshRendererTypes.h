@@ -14,7 +14,7 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Cluster/HIKARI_ClusterGpuCullingPass.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenLayer.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_LocalLightGpuData.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/HIKARI_Transform3D.h"

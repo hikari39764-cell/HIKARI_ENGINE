@@ -17,13 +17,14 @@ namespace HIKARI::EDITOR {
 namespace {
 const char* DebugModeLabel(ModelMaterialWorkspaceController::PreviewDebugMode mode) noexcept {
     switch (mode) {
-    case ModelMaterialWorkspaceController::PreviewDebugMode::Lit: return TEXT::LocalizeCStr("ui.debugView.lit");
-    case ModelMaterialWorkspaceController::PreviewDebugMode::Neutral: return TEXT::LocalizeCStr("cine.neutral");
-    case ModelMaterialWorkspaceController::PreviewDebugMode::Clay: return TEXT::LocalizeCStr("editor.ui.clay.e00d56");
+    case ModelMaterialWorkspaceController::PreviewDebugMode::Lit: return TEXT::Localize("ui.debugView.lit").c_str();
+    case ModelMaterialWorkspaceController::PreviewDebugMode::Neutral: return TEXT::Localize("cine.neutral").c_str();
+    case ModelMaterialWorkspaceController::PreviewDebugMode::Clay:
+        return TEXT::Localize("editor.ui.clay.e00d56").c_str();
     case ModelMaterialWorkspaceController::PreviewDebugMode::Unlit:
-        return TEXT::LocalizeCStr("ui.assetInspector.unlit");
+        return TEXT::Localize("ui.assetInspector.unlit").c_str();
     }
-    return TEXT::LocalizeCStr("ui.debugView.lit");
+    return TEXT::Localize("ui.debugView.lit").c_str();
 }
 
 } // namespace
@@ -32,18 +33,18 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(ModelMaterialWorkspace
                                                           EditorCommandRouter& commandRouter) {
 #if defined(HIKARI_WITH_EDITOR)
     if (!nodePreviewId_.empty()) {
-        StatusBadge(TEXT::LocalizeCStr("material.inspect.active"), EditorStatusTone::Warning);
+        StatusBadge(TEXT::Localize("material.inspect.active").c_str(), EditorStatusTone::Warning);
         ImGui::SameLine();
         if (IconButton(EditorGlyph::Close, "##EndNodePreview", EditorButtonTone::Quiet, {},
-                       TEXT::LocalizeCStr("material.inspect.end"))) {
+                       TEXT::Localize("material.inspect.end").c_str())) {
             nodePreviewId_.clear();
             nodePreviewRefreshPending_ = true;
         }
     }
     constexpr ImVec2 kIconSize{28.0f, 28.0f};
-    ToolbarLabel(authoringMode_ == AuthoringMode::MaterialAsset ? TEXT::LocalizeCStr("material.preview.sphere")
+    ToolbarLabel(authoringMode_ == AuthoringMode::MaterialAsset ? TEXT::Localize("material.preview.sphere").c_str()
                  : IsEditingModel()                             ? modelDisplayName_.c_str()
-                                                                : TEXT::LocalizeCStr("material.preview.noModel"));
+                                                                : TEXT::Localize("material.preview.noModel").c_str());
     ImGui::SameLine();
     if (authoringMode_ == AuthoringMode::MaterialAsset) {
         StatusBadge(TEXT::Localize("editor.ui.standalone.material.f1ffe4").c_str(), EditorStatusTone::Ready);

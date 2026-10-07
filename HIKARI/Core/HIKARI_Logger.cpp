@@ -1,4 +1,5 @@
 #include "HIKARI_Logger.h"
+#include "Platform/Paths/HIKARI_UserDataPath.h"
 
 #include <Windows.h>
 
@@ -57,8 +58,14 @@ const char* ToText(LogLevel level) {
 }
 
 std::filesystem::path MakeLogFilePathOnce(const std::filesystem::path& requestedDirectory) {
-    const std::filesystem::path logDir =
-        requestedDirectory.empty() ? std::filesystem::current_path() / "logs" : requestedDirectory;
+    // 既定の出力先は作業ディレクトリではなくユーザーデータ領域。製品フォルダやリポジトリを汚さない。
+    std::filesystem::path logDir = requestedDirectory;
+    if (logDir.empty()) {
+        const std::filesystem::path localAppData = PLATFORM::GetLocalAppDataDirectory();
+        std::error_code tempError;
+        logDir =
+            (localAppData.empty() ? std::filesystem::temp_directory_path(tempError) : localAppData) / "HIKARI" / "Logs";
+    }
     std::error_code ec;
     std::filesystem::create_directories(logDir, ec);
     return logDir / ("HIKARI_" + FormatTimestampForFileName() + ".log");

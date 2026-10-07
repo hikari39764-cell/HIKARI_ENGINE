@@ -8,7 +8,7 @@
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/Models/HIKARI_ModelAssetTypes.h"
 #include "Assets/Shader/HIKARI_ShaderParameters.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI {
 

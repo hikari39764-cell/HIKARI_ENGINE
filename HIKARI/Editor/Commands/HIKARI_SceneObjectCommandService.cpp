@@ -92,7 +92,7 @@ SceneObjectAuthoringHistoryRequest MakeHistory(std::string label, std::vector<Sc
 
 SceneObjectCommandPresentation GetSceneObjectCommandPresentation(SceneObjectCommandId command) noexcept {
     auto presentation = kPresentations[static_cast<size_t>(command)];
-    presentation.label = TEXT::LocalizeCStr(presentation.label);
+    presentation.label = TEXT::Localize(presentation.label).c_str();
     return presentation;
 }
 
@@ -190,7 +190,9 @@ bool SceneObjectCommandService::Execute(SceneObjectCommandId command, DocumentSc
             duplicateRootIds.push_back(SceneObjectId{remappedIds.at(sourceRootId.value)});
         }
         context.sceneDirty = true;
-        selectionSync.RebuildRuntimeWorldWithSelectionSync(scene, context.selection, context.nextSceneObjectId);
+        selectionSync.ApplyRuntimeObjectChangesWithSelectionSync(
+            scene, context.selection, context.nextSceneObjectId,
+            DiffSceneObjects(beforeObjects, scene.GetSceneDocument().objects));
         context.selection.SelectObjectIds(scene.GetWorld(), duplicateRootIds);
         historyRequest_ = MakeHistory(sourceRootIds.size() == 1u ? "Duplicate Object" : "Duplicate Objects",
                                       std::move(beforeObjects), beforeCamera, dirtyBefore, scene);
@@ -226,7 +228,9 @@ bool SceneObjectCommandService::Execute(SceneObjectCommandId command, DocumentSc
         context.selection.ClearObjects();
         context.selection.ClearAsset();
         context.sceneDirty = true;
-        selectionSync.RebuildRuntimeWorldWithSelectionSync(scene, context.selection, context.nextSceneObjectId);
+        selectionSync.ApplyRuntimeObjectChangesWithSelectionSync(
+            scene, context.selection, context.nextSceneObjectId,
+            DiffSceneObjects(beforeObjects, scene.GetSceneDocument().objects));
         historyRequest_ = MakeHistory(sourceRootIds.size() == 1u ? "Delete Object" : "Delete Objects",
                                       std::move(beforeObjects), beforeCamera, dirtyBefore, scene);
         SetStatus(sourceRootIds.size() == 1u
@@ -291,7 +295,9 @@ bool SceneObjectCommandService::Execute(SceneObjectCommandId command, DocumentSc
             return false;
         }
         context.sceneDirty = true;
-        selectionSync.RebuildRuntimeWorldWithSelectionSync(scene, context.selection, context.nextSceneObjectId);
+        selectionSync.ApplyRuntimeObjectChangesWithSelectionSync(
+            scene, context.selection, context.nextSceneObjectId,
+            DiffSceneObjects(beforeObjects, scene.GetSceneDocument().objects));
         context.selection.SelectObject(scene.GetWorld(),
                                        selectionSync.FindRuntimeObjectByDocumentId(scene, instanceId));
         historyRequest_ = MakeHistory("Instantiate Prefab", std::move(beforeObjects), beforeCamera, dirtyBefore, scene);
@@ -307,7 +313,9 @@ bool SceneObjectCommandService::Execute(SceneObjectCommandId command, DocumentSc
             return false;
         }
         context.sceneDirty = true;
-        selectionSync.RebuildRuntimeWorldWithSelectionSync(scene, context.selection, context.nextSceneObjectId);
+        selectionSync.ApplyRuntimeObjectChangesWithSelectionSync(
+            scene, context.selection, context.nextSceneObjectId,
+            DiffSceneObjects(beforeObjects, scene.GetSceneDocument().objects));
         historyRequest_ =
             MakeHistory("Add " + (typeInfo != nullptr ? typeInfo->presentation.displayName : std::string(argument)),
                         std::move(beforeObjects), beforeCamera, dirtyBefore, scene);

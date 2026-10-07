@@ -39,11 +39,15 @@ bool ReadPass(const nlohmann::json& node, PostEffectPass& pass, std::string& err
     }
     if (!JSONSTRICT::ReadString(node, "name", {}, pass.name, error, path) ||
         !JSONSTRICT::ReadString(node, "programId", {}, pass.programId, error, path) ||
+        !JSONSTRICT::ReadString(node, "shaderAssetGuid", {}, pass.shaderAssetGuid.value, error, path) ||
         !JSONSTRICT::ReadString(node, "entryId", "Main", pass.entryId, error, path)) {
         return false;
     }
-    if (pass.name.empty() || pass.programId.empty() || pass.entryId.empty()) {
-        return JSONSTRICT::Fail(error, path + " requires name and programId");
+    if (pass.name.empty() || pass.entryId.empty() || pass.programId.empty() == pass.shaderAssetGuid.value.empty()) {
+        return JSONSTRICT::Fail(error, path + " requires name, entryId and exactly one of programId/shaderAssetGuid");
+    }
+    if (!pass.shaderAssetGuid.value.empty() && !IsValidAssetGuid(pass.shaderAssetGuid.value)) {
+        return JSONSTRICT::Fail(error, path + ".shaderAssetGuid must be a project asset GUID");
     }
     return true;
 }
@@ -76,6 +80,15 @@ bool ReadPostEffectDefinition(const nlohmann::json& root, PostEffectDefinition& 
         return false;
     }
     PostEffectDefinition effect;
+    if (const auto inputs = root.find("inputs"); inputs != root.end()) {
+        if (!inputs->is_array())
+            return JSONSTRICT::Fail(error, "inputs must be an array");
+        for (const auto& input : *inputs) {
+            if (input != "SurfaceFeatureMask" || effect.requiresSurfaceFeatureMask)
+                return JSONSTRICT::Fail(error, "inputs supports SurfaceFeatureMask once only");
+            effect.requiresSurfaceFeatureMask = true;
+        }
+    }
     if (!JSONSTRICT::ReadString(root, "name", {}, effect.name, error, "root")) {
         return false;
     }
@@ -168,6 +181,17 @@ std::vector<AssetDependencyDesc> CollectPostProfileDependencies(const PostProfil
         return {};
     }
     return {{AssetGuid{profile.effectId}, {}, "PostProfile.Effect"}};
+}
+
+std::vector<AssetDependencyDesc> CollectPostEffectDependencies(const PostEffectDefinition& effect) {
+    std::vector<AssetDependencyDesc> dependencies;
+    for (const auto& pass : effect.passes) {
+        if (pass.shaderAssetGuid.IsValid() &&
+            std::none_of(dependencies.begin(), dependencies.end(),
+                         [&](const auto& dependency) { return dependency.guid == pass.shaderAssetGuid; }))
+            dependencies.push_back({pass.shaderAssetGuid, {}, "PostEffect.Shader"});
+    }
+    return dependencies;
 }
 
 bool ValidatePostProfileValues(const PostProfileAsset& profile, const PostEffectDefinition& effect,

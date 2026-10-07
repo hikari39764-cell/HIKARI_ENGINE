@@ -98,7 +98,7 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         AssetImporterKind::Material,
         AssetType::Material,
         "MaterialImporter",
-        7u,
+        8u,
         ".material.json",
     },
     {
@@ -112,8 +112,8 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         AssetImporterKind::VfxEffect,
         AssetType::VfxEffect,
         "VfxAssetImporter",
-        // 合成風格と空間変形を独立した実行段へ保存する。
-        26u,
+        // 現在の描画形状へ適用する絶対値入力を含む HVFXC v17。
+        27u,
         ".hvfx",
     },
     {
@@ -127,8 +127,8 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
     {AssetImporterKind::Font, AssetType::Font, "FontAssetImporter", 2u, ".ttf, .otf, .ttc"},
     {AssetImporterKind::TextStyle, AssetType::TextStyle, "TextStyleAssetImporter", 1u, ".htextstyle"},
     {AssetImporterKind::UiAnimation, AssetType::UiAnimation, "UiAnimationAssetImporter", 1u, ".huianim"},
-    {AssetImporterKind::PostEffect, AssetType::PostEffect, "PostEffectAssetImporter", 1u, ".hposteffect"},
-    {AssetImporterKind::PostProfile, AssetType::PostProfile, "PostProfileAssetImporter", 1u, ".hpostprofile"},
+    {AssetImporterKind::PostEffect, AssetType::PostEffect, "PostEffectAssetImporter", 2u, ".hposteffect"},
+    {AssetImporterKind::PostProfile, AssetType::PostProfile, "PostProfileAssetImporter", 2u, ".hpostprofile"},
 }};
 
 static_assert(

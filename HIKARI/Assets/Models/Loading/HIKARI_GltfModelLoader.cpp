@@ -19,7 +19,7 @@
 #include "Assets/Models/Loading/Gltf/HIKARI_GltfMaterialReader.h"
 #include "Assets/Models/Loading/Gltf/HIKARI_GltfSceneReader.h"
 #include "Assets/Models/Processing/HIKARI_ModelGeometryPostprocess.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::MODELS {
 

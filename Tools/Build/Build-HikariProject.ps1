@@ -20,6 +20,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+# Load the current PowerShell's standard module even when another edition precedes it in PSModulePath.
+Import-Module "$PSHOME/Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1" -ErrorAction Stop
 . (Join-Path $PSScriptRoot 'HikariProjectPublication.ps1')
 
 function Get-HikariRelativePath {

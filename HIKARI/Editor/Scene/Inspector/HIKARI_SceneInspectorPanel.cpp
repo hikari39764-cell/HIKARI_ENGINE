@@ -19,7 +19,7 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
@@ -188,7 +188,7 @@ void SceneInspectorPanel::DrawContents(DocumentSceneBase& scene, EditorContext& 
     const auto optionalTypes =
         DocumentComponentAuthoringService{}.GetMissingOptionalComponents(scene.GetComponentRegistry(), *target);
     if (!optionalTypes.empty()) {
-        ImGui::SeparatorText(TEXT::LocalizeCStr("ui.inspector.optionalComponents"));
+        ImGui::SeparatorText(TEXT::Localize("ui.inspector.optionalComponents").c_str());
         ImGui::BeginDisabled(scene.IsRuntimePlayActive());
         for (const auto& type : optionalTypes) {
             const auto* info = scene.GetComponentRegistry().Find(type);

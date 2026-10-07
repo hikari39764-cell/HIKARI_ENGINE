@@ -4,7 +4,7 @@
 #include <utility>
 
 #include "Assets/Models/HIKARI_ModelAsset.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Scene/HIKARI_GameObject.h"
 
@@ -115,7 +115,24 @@ void ModelComponent::ClearMaterialSetAssetGuid() { SetMaterialSetAssetGuid({}); 
 
 void ModelComponent::UseImportedModelMaterials() { ClearMaterialSetAssetGuid(); }
 
-uint32_t ModelComponent::GetPostGroupMask() const { return postGroupMask_; }
+uint32_t ModelComponent::GetPostGroupMask() const { return runtimePostGroupMask_.value_or(postGroupMask_); }
+
+bool ModelComponent::SetRuntimePostGroupMask(uint32_t mask) {
+    if ((mask & 0x80000000u) != 0u)
+        return false;
+    if (runtimePostGroupMask_ != mask) {
+        runtimePostGroupMask_ = mask;
+        NotifyRenderStateDirty();
+    }
+    return true;
+}
+
+void ModelComponent::ClearRuntimePostGroupMask() {
+    if (runtimePostGroupMask_) {
+        runtimePostGroupMask_.reset();
+        NotifyRenderStateDirty();
+    }
+}
 
 const std::vector<ModelMaterialOverrideSlot>& ModelComponent::GetMaterialOverrides() const {
     return materialOverrides_;

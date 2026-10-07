@@ -16,7 +16,7 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -144,8 +144,8 @@ void SceneInspectorPanel::DrawObjectContextMenu(DocumentSceneBase& scene, Editor
         }
         const bool previewing =
             scene.IsEditorCameraPreviewActive() && scene.GetEditorCameraPreviewObjectId() == target->id;
-        if (ImGui::MenuItem(previewing ? TEXT::LocalizeCStr("editor.ui.exit.camera.view.32714d")
-                                       : TEXT::LocalizeCStr("editor.ui.view.through.camera.2e4994"))) {
+        if (ImGui::MenuItem(previewing ? TEXT::Localize("editor.ui.exit.camera.view.32714d").c_str()
+                                       : TEXT::Localize("editor.ui.view.through.camera.2e4994").c_str())) {
             if (previewing) {
                 scene.EndEditorCameraPreview();
             } else {

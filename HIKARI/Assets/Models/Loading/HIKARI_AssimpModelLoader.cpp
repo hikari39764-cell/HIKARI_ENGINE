@@ -14,7 +14,7 @@
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpMaterialReader.h"
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpMeshReader.h"
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpSceneReader.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::MODELS {
 

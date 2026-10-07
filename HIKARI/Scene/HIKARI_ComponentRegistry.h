@@ -54,6 +54,8 @@ struct ComponentTypeInfo {
     bool allowMultiple = false;
     bool affectsRenderState = false;
     ComponentRegistrationSource registrationSource = ComponentRegistrationSource::Engine;
+    // GameProject 由来の型だけが持つ、モジュール内で一意な型の印（ForEachComponent の型確認用）。
+    const void* gameProjectTypeToken = nullptr;
     ComponentRuntimeApplyPolicy runtimeApplyPolicy = ComponentRuntimeApplyPolicy::Immediate;
     InitializeDefaultsFn initializeDefaults{};
     ConfigureDependenciesFn configureDependencies{};

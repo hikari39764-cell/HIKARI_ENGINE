@@ -12,7 +12,7 @@
 #include <cstdio>
 namespace HIKARI::EDITOR {
 namespace {
-const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
+const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 bool Field(const char* key, std::string& value) {
     char buffer[256]{};
     std::snprintf(buffer, sizeof(buffer), "%s", value.c_str());

@@ -326,6 +326,8 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
     RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrame{};
     commandFrame.commandList = graphics.cmdList;
     commandFrame.cullViewProj = &cullViewProj;
+    commandFrame.renderViewProj = &captureFrame.view.camera.viewProj;
+    commandFrame.screenHeight = captureFrame.view.camera.screenParams.y;
     commandFrame.frameIndex = graphics.frameIndex;
     commandFrame.enableSurfaceFrustumCull = true;
     layer.BuildCommandFrame(commandFrame);

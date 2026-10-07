@@ -1,4 +1,4 @@
-#include "Scene/Features/HIKARI_CameraRuntimeFeature.h"
+#include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 
 #include <array>
 #include <memory>
@@ -29,17 +29,6 @@ public:
 
     std::string_view GetDescription() const noexcept override {
         return "Scene cameras, reusable gameplay rigs, and director arbitration.";
-    }
-
-    std::span<const std::string_view> GetComponentTypeNames() const noexcept override {
-        static constexpr std::array<std::string_view, 3> names{"CameraComponent", "CameraFollowComponent",
-                                                               "CameraActivationVolumeComponent"};
-        return names;
-    }
-
-    std::span<const std::string_view> GetSystemIds() const noexcept override {
-        static constexpr std::array<std::string_view, 2> ids{"CameraFollowSystem", "CameraActivationVolumeSystem"};
-        return ids;
     }
 
     bool Register(RuntimeFeatureContext& context) override {

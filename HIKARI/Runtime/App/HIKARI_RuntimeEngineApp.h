@@ -16,7 +16,6 @@ public:
     bool Initialize() override;
     void Update(float deltaTime) override;
     void Render() override;
-    void RenderHostUi() override;
     void Shutdown() override;
     bool ShouldExitHost() const override;
     int GetExitCode() const override;

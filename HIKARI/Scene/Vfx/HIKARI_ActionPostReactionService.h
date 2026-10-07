@@ -4,6 +4,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <limits>
+#include "HIKARI/Project/ActionTypes.h"
 
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
 #include "Render3D/Vfx/HIKARI_ActionPostReactionFrameSource.h"
@@ -77,6 +82,18 @@ public:
     bool SubmitActionCinematicGrade(const ActionCinematicGradeRequest& request) noexcept;
     bool SubmitActionBoostGrade(const ActionBoostGradeRequest& request) noexcept;
 
+    struct PostProfileFrame {
+        std::string profileId;
+        GameProjectActionPostFrameRequest request{};
+        uint64_t frameIndex = 0u;
+    };
+    bool SubmitPostProfile(std::string_view profileId, const GameProjectActionPostFrameRequest& request,
+                           uint64_t frameIndex);
+    bool ClearPostProfile(uint64_t sourceId, uint64_t frameIndex) noexcept;
+    // Seals even an empty frame. Moves the winner out so no CPU request survives
+    // preparation; a repeated freeze is rejected without replacing render state.
+    bool FreezePostProfile(uint64_t frameIndex, std::optional<PostProfileFrame>& winner) noexcept;
+
     // Uses unscaled presentation time so hit-stop cannot freeze the
     // screen reaction. Delta is bounded to keep a stalled frame finite.
     void Tick(float unscaledDeltaSeconds, uint64_t frameIndex) noexcept;
@@ -133,6 +150,8 @@ private:
     ActionBoostGradeRequest boostGradeRequest_{};
     bool boostGradeSubmitted_ = false;
     RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrameSource frameSource_{};
+    std::optional<PostProfileFrame> postProfile_;
+    uint64_t postProfileFrozenFrame_ = (std::numeric_limits<uint64_t>::max)();
 };
 
 } // namespace HIKARI::VFX

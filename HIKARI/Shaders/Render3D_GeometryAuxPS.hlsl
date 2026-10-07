@@ -6,6 +6,7 @@
 #include "Include/HIKARI_MeshObjectData.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 #include "Include/Surface/HIKARI_SurfacePartition.hlsli"
+#include "Include/Surface/HIKARI_MaterialShell.hlsli"
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
 #include "Include/HIKARI_PbrCommon.hlsli"
 #include "Include/Material/HIKARI_MaterialExpressionSurface.hlsli"
@@ -37,6 +38,7 @@ struct PSInput
     float3 worldPosWS : TEXCOORD3;
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD4;
     nointerpolation uint surfaceFeatureFlags : TEXCOORD5;
+    nointerpolation float4 shellLayer : TEXCOORD6;
     bool isFrontFace : SV_IsFrontFace;
 };
 #else
@@ -59,6 +61,7 @@ float4 main(PSInput input) : SV_TARGET
 #endif
 {
     HikariMeshMaterialData materialData = HikariGetMeshMaterialData(input.materialDataIndex);
+    HikariApplyShellFade(input.shellLayer, input.position.xy);
     const float3 geometricNormal =
         (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_DOUBLE_SIDED) != 0u && !input.isFrontFace
             ? -normalize(input.normalWS) : normalize(input.normalWS);
@@ -73,11 +76,12 @@ float4 main(PSInput input) : SV_TARGET
     if (!terrainSurface &&
         materialData.materialProgramIndex != HIKARI_STANDARD_PBR_MATERIAL_PROGRAM)
     {
-        const HikariMaterialExpressionContext expressionContext =
+        HikariMaterialExpressionContext expressionContext =
             HikariBuildMaterialExpressionContext(
                 input.uv, input.uv1, gTimeParams, input.worldPosWS,
                 geometricNormal, input.tangentWS, gCameraPos.xyz,
                 input.position, gScreenParams.zw);
+        expressionContext.shellLayer = input.shellLayer;
         materialExpression = HikariEvaluateMaterialExpression(
             materialData, expressionContext, gLinearWrap);
     }

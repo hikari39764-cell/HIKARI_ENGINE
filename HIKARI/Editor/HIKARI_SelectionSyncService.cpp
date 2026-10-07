@@ -5,7 +5,7 @@
 #include <utility>
 
 #include "HIKARI_EditorContext.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -41,6 +41,16 @@ bool SelectionSyncService::RebuildRuntimeWorldWithSelectionSync(DocumentSceneBas
     const bool built = scene.RebuildRuntimeWorld();
     SynchronizeAfterRuntimeWorldRebuild(scene, selection, nextSceneObjectId, activeObjectId);
     return built;
+}
+
+bool SelectionSyncService::ApplyRuntimeObjectChangesWithSelectionSync(DocumentSceneBase& scene,
+                                                                      EditorSelection& selection,
+                                                                      uint64_t& nextSceneObjectId,
+                                                                      const SceneObjectChanges& changes) const {
+    const SceneObjectId activeObjectId = selection.GetActiveObjectId();
+    const bool applied = scene.ApplyRuntimeObjectChanges(changes);
+    SynchronizeAfterRuntimeWorldRebuild(scene, selection, nextSceneObjectId, activeObjectId);
+    return applied;
 }
 
 void SelectionSyncService::SynchronizeAfterRuntimeWorldRebuild(DocumentSceneBase& scene, EditorSelection& selection,

@@ -186,6 +186,19 @@ bool AudioView::IsPlaying(GameProjectAudioPlaybackHandle playback) const noexcep
     }
 }
 
+bool AudioView::TryGetPlaybackSnapshot(GameProjectAudioPlaybackHandle playback,
+                                       GameProjectAudioPlaybackSnapshot& outSnapshot) const noexcept {
+    try {
+        const auto* world = CurrentWorld(world_);
+        const int decoded = DecodeAudioHandle(playback.value);
+        return world && world->IsOwnerThread() && !GameProjectSdkAccess::IsWorldClosing(*world) && decoded >= 0 &&
+               AUDIO::BelongsToOwner(decoded, world->GetRuntimeIdentity()) &&
+               AUDIO::TryGetPlaybackSnapshot(decoded, outSnapshot);
+    } catch (...) {
+        return false;
+    }
+}
+
 AudioView GameProjectSdkAccess::MakeAudioView(World& world) noexcept { return AudioView(&world); }
 
 AudioView WorldView::GetAudio() const noexcept {

@@ -192,6 +192,9 @@ std::optional<MaterialExpressionRuntimeOpcode> ToRuntimeOpcode(MaterialProgramOp
         HIKARI_EXPRESSION_OPCODE(ParticleState, ParticleState);
         HIKARI_EXPRESSION_OPCODE(ParticleColor, ParticleColor);
         HIKARI_EXPRESSION_OPCODE(ParticleUv, ParticleUv);
+        HIKARI_EXPRESSION_OPCODE(ShellLayer, ShellLayer);
+        HIKARI_EXPRESSION_OPCODE(NormalBlend, NormalBlend);
+        HIKARI_EXPRESSION_OPCODE(NormalUvTransform, NormalUvTransform);
     default: return std::nullopt;
     }
 #undef HIKARI_EXPRESSION_OPCODE

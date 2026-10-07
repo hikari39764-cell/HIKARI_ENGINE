@@ -85,6 +85,10 @@ ComponentSystemPolicy& RuntimeFeatureContextAccess::Policy(RuntimeFeatureContext
     return *static_cast<ComponentSystemPolicy*>(context.componentSystemPolicy_);
 }
 
+void RuntimeFeatureContextAccess::SetFeatureId(RuntimeFeatureContext& context, std::string_view featureId) noexcept {
+    context.featureId_ = featureId;
+}
+
 GameComponentContext GameProjectSdkAccess::MakeGameComponentContext(GameProjectComponentAdapter& adapter,
                                                                     GameObject& object, World& world) noexcept {
     return GameComponentContext(MakeObjectView(object), MakeWorldView(world), &adapter);
@@ -133,10 +137,7 @@ void GameProjectComponentAdapter::OnAttach() {
     GameObject& owner = *GetOwner();
     World* world = owner.GetWorld();
     if (world == nullptr) {
-        const ObjectView ownerView = GameProjectSdkAccess::MakeObjectView(owner);
-        if (!InvokeProjectCallback(typeName_, "OnAttach", [this, &ownerView]() { component_->OnAttach(ownerView); })) {
-            throw std::runtime_error("Game project component OnAttach failed.");
-        }
+        // World 外の一時オブジェクト（Inspector の既定値作成など）ではゲーム処理を走らせない。
         return;
     }
     GameComponentContext context = GameProjectSdkAccess::MakeGameComponentContext(*this, owner, *world);
@@ -167,7 +168,6 @@ void GameProjectComponentAdapter::Update(float deltaTime) {
     GameObject& owner = *GetOwner();
     World* world = owner.GetWorld();
     if (world == nullptr) {
-        InvokeProjectCallback(typeName_, "Update", [this, deltaTime]() { component_->Update(deltaTime); });
         return;
     }
     GameComponentContext context = GameProjectSdkAccess::MakeGameComponentContext(*this, owner, *world);
@@ -180,8 +180,9 @@ void GameProjectComponentAdapter::Serialize(nlohmann::json& out) const {
     if (component_ == nullptr) {
         return;
     }
-    PropertyWriter writer = GameProjectSdkAccess::MakePropertyWriter(&out);
-    InvokeProjectCallback(typeName_, "SaveProperties", [this, &writer]() { component_->SaveProperties(writer); });
+    PropertyFields fields = GameProjectSdkAccess::MakePropertyFields(PropertyFieldsMode::Save, nullptr, &out, nullptr);
+    InvokeProjectCallback(typeName_, "DescribeProperties",
+                          [this, &fields]() { component_->DescribeProperties(fields); });
 }
 
 void GameProjectComponentAdapter::Deserialize(const nlohmann::json& in) {
@@ -198,10 +199,10 @@ bool GameProjectComponentAdapter::TryDeserialize(const nlohmann::json& in, std::
         outDiagnostic = "GameProject component instance is unavailable.";
         return false;
     }
-    const PropertyReader reader = GameProjectSdkAccess::MakePropertyReader(&in);
-    const bool loaded =
-        InvokeProjectCallback(typeName_, "LoadProperties", [this, &reader]() { component_->LoadProperties(reader); });
-    outDiagnostic = loaded ? std::string{} : "GameProject LoadProperties failed; see the engine log.";
+    PropertyFields fields = GameProjectSdkAccess::MakePropertyFields(PropertyFieldsMode::Load, &in, nullptr, nullptr);
+    const bool loaded = InvokeProjectCallback(typeName_, "DescribeProperties",
+                                              [this, &fields]() { component_->DescribeProperties(fields); });
+    outDiagnostic = loaded ? std::string{} : "GameProject DescribeProperties failed while loading; see the engine log.";
     return loaded;
 }
 
@@ -209,8 +210,10 @@ void GameProjectComponentAdapter::BuildInspector(IInspectorBuilder& builder) {
     if (component_ == nullptr) {
         return;
     }
-    GameProjectInspector inspector = GameProjectSdkAccess::MakeInspector(builder);
-    InvokeProjectCallback(typeName_, "BuildInspector", [this, &inspector]() { component_->BuildInspector(inspector); });
+    PropertyFields fields =
+        GameProjectSdkAccess::MakePropertyFields(PropertyFieldsMode::Inspect, nullptr, nullptr, &builder);
+    InvokeProjectCallback(typeName_, "DescribeProperties",
+                          [this, &fields]() { component_->DescribeProperties(fields); });
 }
 
 IGameComponent* GameProjectComponentAdapter::GetGameComponent() noexcept { return component_; }
@@ -390,7 +393,7 @@ bool RuntimeFeatureContext::RegisterComponentRaw(GameComponentDescriptor descrip
 
     const std::string typeName(descriptor.typeName);
     const ComponentTypeId computedTypeId = MakeComponentTypeId(typeName);
-    if (!computedTypeId.IsValid() || (descriptor.typeId.IsValid() && descriptor.typeId != computedTypeId)) {
+    if (!computedTypeId.IsValid()) {
         return false;
     }
     const CreateGameComponentFn create = descriptor.create;
@@ -426,21 +429,23 @@ bool RuntimeFeatureContext::RegisterComponentRaw(GameComponentDescriptor descrip
             return;
         }
         properties = nlohmann::json::object();
-        PropertyWriter writer = GameProjectSdkAccess::MakePropertyWriter(&properties);
+        PropertyFields fields =
+            GameProjectSdkAccess::MakePropertyFields(PropertyFieldsMode::Save, nullptr, &properties, nullptr);
         InvokeProjectCallback("GameProjectComponent", "SaveDefaults",
-                              [component, &writer]() { component->SaveProperties(writer); });
+                              [component, &fields]() { component->DescribeProperties(fields); });
         destroy(component);
     };
     info.presentation.displayName = descriptor.displayName.empty() ? typeName : std::string(descriptor.displayName);
     info.presentation.category = descriptor.category.empty() ? "Game" : std::string(descriptor.category);
     info.presentation.description = std::string(descriptor.description);
-    info.presentation.featureId = std::string(descriptor.featureId);
+    info.presentation.featureId = std::string(featureId_);
+    info.gameProjectTypeToken = descriptor.typeToken;
     return RuntimeFeatureContextAccess::Components(*this).Register(std::move(info));
 }
 
 namespace {
 
-bool RegisterGameSystemType(SystemTypeRegistry& registry, GameSystemDescriptor descriptor,
+bool RegisterGameSystemType(SystemTypeRegistry& registry, std::string_view featureId, GameSystemDescriptor descriptor,
                             GameProjectSystemExtensions extensions) {
     if (descriptor.systemId.empty() || descriptor.create == nullptr || descriptor.destroy == nullptr) {
         return false;
@@ -452,8 +457,10 @@ bool RegisterGameSystemType(SystemTypeRegistry& registry, GameSystemDescriptor d
 
     nlohmann::json defaultSettings = nlohmann::json::object();
     if (IGameSystem* defaults = create()) {
-        PropertyWriter writer = GameProjectSdkAccess::MakePropertyWriter(&defaultSettings);
-        InvokeProjectCallback(systemId, "SaveSettings", [defaults, &writer]() { defaults->SaveSettings(writer); });
+        PropertyFields fields =
+            GameProjectSdkAccess::MakePropertyFields(PropertyFieldsMode::Save, nullptr, &defaultSettings, nullptr);
+        InvokeProjectCallback(systemId, "DescribeSettings",
+                              [defaults, &fields]() { defaults->DescribeSettings(fields); });
         destroy(defaults);
     }
 
@@ -464,10 +471,11 @@ bool RegisterGameSystemType(SystemTypeRegistry& registry, GameSystemDescriptor d
         if (system == nullptr) {
             return {};
         }
-        const PropertyReader reader = GameProjectSdkAccess::MakePropertyReader(&settings);
+        PropertyFields fields =
+            GameProjectSdkAccess::MakePropertyFields(PropertyFieldsMode::Load, &settings, nullptr, nullptr);
         bool loaded = true;
         try {
-            system->LoadSettings(reader);
+            system->DescribeSettings(fields);
         } catch (...) {
             loaded = false;
         }
@@ -478,7 +486,7 @@ bool RegisterGameSystemType(SystemTypeRegistry& registry, GameSystemDescriptor d
         return std::make_unique<GameProjectSystemAdapter>(systemId, system, destroy, extensions);
     };
     info.displayName = descriptor.displayName.empty() ? systemId : std::string(descriptor.displayName);
-    info.featureId = std::string(descriptor.featureId);
+    info.featureId = std::string(featureId);
     info.settings.defaultSettings = std::move(defaultSettings);
     info.hasParallelMassSchedule = extensions.executeMass != nullptr;
     info.parallelMassSchedule = extensions.massSchedule;
@@ -492,8 +500,9 @@ bool RegisterGameSystemType(SystemTypeRegistry& registry, GameSystemDescriptor d
 } // namespace
 
 bool RuntimeFeatureContext::RegisterSystemRaw(GameSystemDescriptor descriptor) {
-    return systemTypeRegistry_ != nullptr && RegisterGameSystemType(RuntimeFeatureContextAccess::Systems(*this),
-                                                                    descriptor, GameProjectSystemExtensions{});
+    return systemTypeRegistry_ != nullptr &&
+           RegisterGameSystemType(RuntimeFeatureContextAccess::Systems(*this), featureId_, descriptor,
+                                  GameProjectSystemExtensions{});
 }
 
 bool RuntimeFeatureContext::RegisterParallelMassSystemRaw(GameSystemDescriptor descriptor,
@@ -505,7 +514,7 @@ bool RuntimeFeatureContext::RegisterParallelMassSystemRaw(GameSystemDescriptor d
     return systemTypeRegistry_ != nullptr && massSchemaRegistry_ != nullptr && execute != nullptr &&
            IsValidParallelMassSystemSchedule(schedule) &&
            RuntimeFeatureContextAccess::MassSchemas(*this).Find(schedule.access.typeId) != nullptr &&
-           RegisterGameSystemType(RuntimeFeatureContextAccess::Systems(*this), descriptor, extensions);
+           RegisterGameSystemType(RuntimeFeatureContextAccess::Systems(*this), featureId_, descriptor, extensions);
 }
 
 bool RuntimeFeatureContext::RegisterRenderObserverSystemRaw(GameSystemDescriptor descriptor,
@@ -515,7 +524,7 @@ bool RuntimeFeatureContext::RegisterRenderObserverSystemRaw(GameSystemDescriptor
     extensions.renderObserver = observer;
     extensions.observeRender = observe;
     return systemTypeRegistry_ != nullptr && observe != nullptr && IsValidRenderObserverDesc(observer) &&
-           RegisterGameSystemType(RuntimeFeatureContextAccess::Systems(*this), descriptor, extensions);
+           RegisterGameSystemType(RuntimeFeatureContextAccess::Systems(*this), featureId_, descriptor, extensions);
 }
 
 bool RuntimeFeatureContext::RegisterRenderPassSystemRaw(GameSystemDescriptor descriptor,
@@ -525,7 +534,7 @@ bool RuntimeFeatureContext::RegisterRenderPassSystemRaw(GameSystemDescriptor des
     extensions.renderPass = pass;
     extensions.executeRenderPass = execute;
     return systemTypeRegistry_ != nullptr && execute != nullptr && IsValidRenderPassDesc(pass) &&
-           RegisterGameSystemType(RuntimeFeatureContextAccess::Systems(*this), descriptor, extensions);
+           RegisterGameSystemType(RuntimeFeatureContextAccess::Systems(*this), featureId_, descriptor, extensions);
 }
 
 bool RuntimeFeatureContext::RegisterMassDataRaw(const GameProjectMassDataTypeDesc& descriptor) {

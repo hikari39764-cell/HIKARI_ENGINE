@@ -4,7 +4,7 @@
 #include <string>
 
 #include "Editor/Selection/HIKARI_EditorSelection.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Runtime/HIKARI_RuntimeResourceRefreshService.h"
 #include "Scene/Debug/HIKARI_ComponentGizmoRegistry.h"
 #include "Scene/Debug/HIKARI_ViewportDebugState.h"

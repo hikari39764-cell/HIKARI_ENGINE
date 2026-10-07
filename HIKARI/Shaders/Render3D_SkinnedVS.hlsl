@@ -1,6 +1,7 @@
 #define gFxUser0 gFxUser[0]
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
 #include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
+#include "Include/Surface/HIKARI_MaterialShell.hlsli"
 #define gFxUser1 gFxUser[1]
 #define gFxUser2 gFxUser[2]
 #define gFxUser3 gFxUser[3]
@@ -113,6 +114,7 @@ VSOutput main(VSInput input)
     uint debugSurfaceId = 0u;
     uint debugDrawBucket = 0u;
     uint surfaceFeatureFlags = 0u;
+    float shellThickness = 0.0f;
     if (gUseSurfaceGpuScene != 0u)
     {
         surfaceGpuSceneIndex = HikariGetSurfaceGpuSceneAbsoluteIndex(input.instanceId);
@@ -129,11 +131,16 @@ VSOutput main(VSInput input)
         debugSurfaceId = instance.sourceSurfaceInstanceIndex;
         debugDrawBucket = instance.geometryBackend;
         surfaceFeatureFlags = instance.flags;
+        shellThickness = instance.shellSettings.y;
     }
 
     float4 worldPos = mul(world, float4(localPos.xyz, 1.0f));
-    output.worldPosWS = worldPos.xyz;
     output.normalWS = normalize(mul((float3x3)normalMatrix, normalize(localNormal)));
+    output.shellLayer = HikariShellLayer(input.instanceId,
+        gUseSurfaceGpuScene != 0u ? gSurfaceGpuSceneShellLayerCount : 0u,
+        asfloat(gSurfaceGpuSceneShellLodBits));
+    worldPos.xyz += output.normalWS * (shellThickness * output.shellLayer.x);
+    output.worldPosWS = worldPos.xyz;
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
     output.position = HikariExpandGeometryOutlineVertex(
         worldPos,

@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Runtime/HIKARI_RenderSurfaceContract.h"
 #include "Render3D/Runtime/HIKARI_SurfaceDrawPlan.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
@@ -105,9 +105,10 @@ struct SurfaceGpuSceneInstance {
 
     MATH::Vec4 lightmapUvScaleBias{1.0f, 1.0f, 0.0f, 0.0f};
     MATH::Vec4 fxUser[VFX::kMaterialFxUserCount]{};
+    MATH::Vec4 shellSettings{}; // maxLayers, world thickness, LOD start/full pixels
 };
 
-static_assert(sizeof(SurfaceGpuSceneInstance) == 560u);
+static_assert(sizeof(SurfaceGpuSceneInstance) == 576u);
 static_assert(offsetof(SurfaceGpuSceneInstance, surfaceFeatureDataIndex) == 408u);
 static_assert(offsetof(SurfaceGpuSceneInstance, lightmapUvScaleBias) == 416u);
 static_assert(offsetof(SurfaceGpuSceneInstance, fxUser) == 432u);

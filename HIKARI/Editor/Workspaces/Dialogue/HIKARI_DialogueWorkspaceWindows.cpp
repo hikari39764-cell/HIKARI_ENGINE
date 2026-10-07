@@ -199,49 +199,52 @@ bool DrawFullWidthSelectable(const char* label, bool selected, float height = 0.
 
 const char* StyleSectionLabel(DialogueStyleSection section) {
     switch (section) {
-    case DialogueStyleSection::Canvas: return TEXT::LocalizeCStr("editor.ui.canvas.artwork.74a94b");
-    case DialogueStyleSection::Typography: return TEXT::LocalizeCStr("editor.ui.typography.f4beb9");
-    case DialogueStyleSection::Portraits: return TEXT::LocalizeCStr("editor.ui.portrait.layout.216ada");
-    case DialogueStyleSection::Characters: return TEXT::LocalizeCStr("editor.ui.characters.b6f59f");
-    case DialogueStyleSection::Motion: return TEXT::LocalizeCStr("editor.ui.motion.backdrop.97e967");
-    default: return TEXT::LocalizeCStr("editor.ui.canvas.artwork.74a94b");
+    case DialogueStyleSection::Canvas: return TEXT::Localize("editor.ui.canvas.artwork.74a94b").c_str();
+    case DialogueStyleSection::Typography: return TEXT::Localize("editor.ui.typography.f4beb9").c_str();
+    case DialogueStyleSection::Portraits: return TEXT::Localize("editor.ui.portrait.layout.216ada").c_str();
+    case DialogueStyleSection::Characters: return TEXT::Localize("editor.ui.characters.b6f59f").c_str();
+    case DialogueStyleSection::Motion: return TEXT::Localize("editor.ui.motion.backdrop.97e967").c_str();
+    default: return TEXT::Localize("editor.ui.canvas.artwork.74a94b").c_str();
     }
 }
 
 const char* StyleSectionNavigationLabel(DialogueStyleSection section) {
     switch (section) {
-    case DialogueStyleSection::Canvas: return TEXT::LocalizeCStr("editor.ui.1.canvas.artwork.cd3827");
-    case DialogueStyleSection::Typography: return TEXT::LocalizeCStr("editor.ui.2.typography.40c242");
-    case DialogueStyleSection::Portraits: return TEXT::LocalizeCStr("editor.ui.3.portrait.layout.eb1372");
-    case DialogueStyleSection::Characters: return TEXT::LocalizeCStr("editor.ui.4.characters.0b3db3");
-    case DialogueStyleSection::Motion: return TEXT::LocalizeCStr("editor.ui.5.motion.backdrop.44cfe9");
-    default: return TEXT::LocalizeCStr("editor.ui.1.canvas.artwork.cd3827");
+    case DialogueStyleSection::Canvas: return TEXT::Localize("editor.ui.1.canvas.artwork.cd3827").c_str();
+    case DialogueStyleSection::Typography: return TEXT::Localize("editor.ui.2.typography.40c242").c_str();
+    case DialogueStyleSection::Portraits: return TEXT::Localize("editor.ui.3.portrait.layout.eb1372").c_str();
+    case DialogueStyleSection::Characters: return TEXT::Localize("editor.ui.4.characters.0b3db3").c_str();
+    case DialogueStyleSection::Motion: return TEXT::Localize("editor.ui.5.motion.backdrop.44cfe9").c_str();
+    default: return TEXT::Localize("editor.ui.1.canvas.artwork.cd3827").c_str();
     }
 }
 
 const char* StyleSectionDescription(DialogueStyleSection section) {
     switch (section) {
     case DialogueStyleSection::Canvas:
-        return TEXT::LocalizeCStr("editor.ui.choose.the.dialogue.name.and.choice.artwork.then.position.it.on..368953");
+        return TEXT::Localize("editor.ui.choose.the.dialogue.name.and.choice.artwork.then.position.it.on..368953")
+            .c_str();
     case DialogueStyleSection::Typography:
-        return TEXT::LocalizeCStr("editor.ui.choose.one.project.font.and.author.readable.name.body.and.choice.1524d2");
+        return TEXT::Localize("editor.ui.choose.one.project.font.and.author.readable.name.body.and.choice.1524d2")
+            .c_str();
     case DialogueStyleSection::Portraits:
-        return TEXT::LocalizeCStr("editor.ui.place.the.two.portrait.slots.used.by.every.dialogue.event.b88fe6");
+        return TEXT::Localize("editor.ui.place.the.two.portrait.slots.used.by.every.dialogue.event.b88fe6").c_str();
     case DialogueStyleSection::Characters:
-        return TEXT::LocalizeCStr("editor.ui.register.reusable.names.portraits.and.per.character.alignment.99128c");
+        return TEXT::Localize("editor.ui.register.reusable.names.portraits.and.per.character.alignment.99128c").c_str();
     case DialogueStyleSection::Motion:
-        return TEXT::LocalizeCStr("editor.ui.tune.reveal.portrait.focus.and.the.treatment.of.the.game.view.be.1b7ccb");
-    default: return TEXT::LocalizeCStr("editor.ui.build.the.project.wide.dialogue.presentation.51ee01");
+        return TEXT::Localize("editor.ui.tune.reveal.portrait.focus.and.the.treatment.of.the.game.view.be.1b7ccb")
+            .c_str();
+    default: return TEXT::Localize("editor.ui.build.the.project.wide.dialogue.presentation.51ee01").c_str();
     }
 }
 
 const char* NodeTypeLabel(DIALOGUE::DialogueNodeType type) {
     switch (type) {
-    case DIALOGUE::DialogueNodeType::Line: return TEXT::LocalizeCStr("editor.ui.line.528a45");
-    case DIALOGUE::DialogueNodeType::Choice: return TEXT::LocalizeCStr("editor.ui.choice.20d9bc");
-    case DIALOGUE::DialogueNodeType::Event: return TEXT::LocalizeCStr("editor.ui.signal.289e7c");
-    case DIALOGUE::DialogueNodeType::End: return TEXT::LocalizeCStr("editor.ui.end.d205ab");
-    default: return TEXT::LocalizeCStr("editor.ui.step.0c9b85");
+    case DIALOGUE::DialogueNodeType::Line: return TEXT::Localize("editor.ui.line.528a45").c_str();
+    case DIALOGUE::DialogueNodeType::Choice: return TEXT::Localize("editor.ui.choice.20d9bc").c_str();
+    case DIALOGUE::DialogueNodeType::Event: return TEXT::Localize("editor.ui.signal.289e7c").c_str();
+    case DIALOGUE::DialogueNodeType::End: return TEXT::Localize("editor.ui.end.d205ab").c_str();
+    default: return TEXT::Localize("editor.ui.step.0c9b85").c_str();
     }
 }
 
@@ -382,13 +385,13 @@ private:
         if (ImGui::BeginTable("##DialoguePageTabs", 2,
                               ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_NoPadOuterX)) {
             ImGui::TableNextColumn();
-            if (IconTextButton(EditorGlyph::Material, TEXT::LocalizeCStr("editor.dialogue.style"), "stylePage",
+            if (IconTextButton(EditorGlyph::Material, TEXT::Localize("editor.dialogue.style").c_str(), "stylePage",
                                stylePage ? EditorButtonTone::Primary : EditorButtonTone::Quiet, {-1, 36})) {
                 controller_.activePage_ = DialogueWorkspacePage::Style;
                 stylePage = true;
             }
             ImGui::TableNextColumn();
-            if (IconTextButton(EditorGlyph::Sequence, TEXT::LocalizeCStr("editor.dialogue.event"), "storyPage",
+            if (IconTextButton(EditorGlyph::Sequence, TEXT::Localize("editor.dialogue.event").c_str(), "storyPage",
                                !stylePage ? EditorButtonTone::Primary : EditorButtonTone::Quiet, {-1, 36})) {
                 controller_.activePage_ = DialogueWorkspacePage::Story;
                 stylePage = false;
@@ -403,14 +406,14 @@ private:
                               ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_NoPadOuterX)) {
             ImGui::TableNextColumn();
             if (IconButton(EditorGlyph::Save, "dialogueSave", EditorButtonTone::Quiet,
-                           {ImGui::GetContentRegionAvail().x, 28}, TEXT::LocalizeCStr("ai.api.save"))) {
+                           {ImGui::GetContentRegionAvail().x, 28}, TEXT::Localize("ai.api.save").c_str())) {
                 (void)controller_.Save(scene_, Status());
             }
             const bool canUndo = stylePage ? controller_.styleDocument_.CanUndo() : controller_.document_.CanUndo();
             ImGui::TableNextColumn();
             ImGui::BeginDisabled(!canUndo);
             if (IconButton(EditorGlyph::Undo, "dialogueUndo", EditorButtonTone::Quiet,
-                           {ImGui::GetContentRegionAvail().x, 28}, TEXT::LocalizeCStr("menu.edit.undo"))) {
+                           {ImGui::GetContentRegionAvail().x, 28}, TEXT::Localize("menu.edit.undo").c_str())) {
                 (void)controller_.Undo(Status());
             }
             ImGui::EndDisabled();
@@ -418,7 +421,7 @@ private:
             ImGui::TableNextColumn();
             ImGui::BeginDisabled(!canRedo);
             if (IconButton(EditorGlyph::Redo, "dialogueRedo", EditorButtonTone::Quiet,
-                           {ImGui::GetContentRegionAvail().x, 28}, TEXT::LocalizeCStr("menu.edit.redo"))) {
+                           {ImGui::GetContentRegionAvail().x, 28}, TEXT::Localize("menu.edit.redo").c_str())) {
                 (void)controller_.Redo(Status());
             }
             ImGui::EndDisabled();
@@ -426,9 +429,9 @@ private:
         }
         const bool activeDirty = stylePage ? controller_.styleDocument_.IsDirty() : controller_.document_.IsDirty();
         if (activeDirty) {
-            ImGui::TextColored(kModified,
-                               stylePage ? TEXT::LocalizeCStr("editor.ui.ui.style.has.unsaved.changes.b18536")
-                                         : TEXT::LocalizeCStr("editor.ui.dialogue.event.has.unsaved.changes.b4dc55"));
+            ImGui::TextColored(
+                kModified, stylePage ? TEXT::Localize("editor.ui.ui.style.has.unsaved.changes.b18536").c_str()
+                                     : TEXT::Localize("editor.ui.dialogue.event.has.unsaved.changes.b4dc55").c_str());
         }
     }
 
@@ -634,8 +637,8 @@ private:
 
     void DrawPreviewToolbar() {
         ImGui::TextColored(kAccent, controller_.activePage_ == DialogueWorkspacePage::Style
-                                        ? TEXT::LocalizeCStr("editor.ui.ui.style.canvas.c3bc93")
-                                        : TEXT::LocalizeCStr("editor.ui.dialogue.event.preview.ef3e4d"));
+                                        ? TEXT::Localize("editor.ui.ui.style.canvas.c3bc93").c_str()
+                                        : TEXT::Localize("editor.ui.dialogue.event.preview.ef3e4d").c_str());
         ImGui::SameLine();
         ImGui::Checkbox(TEXT::LocalizeWindow("editor.ui.animate.e733b2", "Animate").c_str(),
                         &controller_.previewPlaying_);
@@ -902,12 +905,12 @@ private:
         InspectorContext context{};
         context.assetDatabase = &database_;
         inspector.SetContext(context);
-        bool changed = inspector.AssetIdPicker(TEXT::LocalizeCStr("editor.ui.character.name.c0a090"),
+        bool changed = inspector.AssetIdPicker(TEXT::Localize("editor.ui.character.name.c0a090").c_str(),
                                                AssetType::TextStyle, style_.theme.speakerTextStyle.value);
-        changed = inspector.AssetIdPicker(TEXT::LocalizeCStr("editor.ui.dialogue.text.1bd98a"), AssetType::TextStyle,
-                                          style_.theme.bodyTextStyle.value) ||
+        changed = inspector.AssetIdPicker(TEXT::Localize("editor.ui.dialogue.text.1bd98a").c_str(),
+                                          AssetType::TextStyle, style_.theme.bodyTextStyle.value) ||
                   changed;
-        changed = inspector.AssetIdPicker(TEXT::LocalizeCStr("editor.ui.choice.text.a9c015"), AssetType::TextStyle,
+        changed = inspector.AssetIdPicker(TEXT::Localize("editor.ui.choice.text.a9c015").c_str(), AssetType::TextStyle,
                                           style_.theme.choiceTextStyle.value) ||
                   changed;
         if (changed)
@@ -978,9 +981,9 @@ private:
             ImGui::TextDisabled(
                 TEXT::Localize("editor.ui.the.center.canvas.updates.while.you.adjust.this.character.aec428").c_str());
         }
-        const char* sides[]{TEXT::LocalizeCStr("ui.quality.exposureAutomatic"),
-                            TEXT::LocalizeCStr("ui.input.directionLeft"),
-                            TEXT::LocalizeCStr("ui.input.directionRight")};
+        const char* sides[]{TEXT::Localize("ui.quality.exposureAutomatic").c_str(),
+                            TEXT::Localize("ui.input.directionLeft").c_str(),
+                            TEXT::Localize("ui.input.directionRight").c_str()};
         int side = static_cast<int>(speaker->preferredSlot);
         changed = ImGui::Combo(TEXT::LocalizeWindow("editor.ui.preferred.side.7bd0e7", "Preferred side").c_str(), &side,
                                sides, 3) ||
@@ -1206,18 +1209,19 @@ private:
         }
         Seal();
         ImGui::SeparatorText(TEXT::Localize("editor.ui.portrait.direction.960d48").c_str());
-        const char* actions[]{
-            TEXT::LocalizeCStr("ui.quality.exposureAutomatic"), TEXT::LocalizeCStr("editor.ui.show.replace.f060fd"),
-            TEXT::LocalizeCStr("editor.ui.keep.current.786906"), TEXT::LocalizeCStr("ui.vfx.hierarchy.hide")};
+        const char* actions[]{TEXT::Localize("ui.quality.exposureAutomatic").c_str(),
+                              TEXT::Localize("editor.ui.show.replace.f060fd").c_str(),
+                              TEXT::Localize("editor.ui.keep.current.786906").c_str(),
+                              TEXT::Localize("ui.vfx.hierarchy.hide").c_str()};
         int action = static_cast<int>(node.portraitAction);
         before = definition_;
         bool changed =
             ImGui::Combo(TEXT::LocalizeWindow("editor.ui.portrait.behavior.1d8231", "Portrait behavior").c_str(),
                          &action, actions, 4);
         node.portraitAction = static_cast<DIALOGUE::DialoguePortraitAction>(action);
-        const char* slots[]{TEXT::LocalizeCStr("ui.quality.exposureAutomatic"),
-                            TEXT::LocalizeCStr("ui.input.directionLeft"),
-                            TEXT::LocalizeCStr("ui.input.directionRight")};
+        const char* slots[]{TEXT::Localize("ui.quality.exposureAutomatic").c_str(),
+                            TEXT::Localize("ui.input.directionLeft").c_str(),
+                            TEXT::Localize("ui.input.directionRight").c_str()};
         int slot = static_cast<int>(node.portraitSlot);
         changed = ImGui::Combo(TEXT::LocalizeWindow("editor.ui.portrait.side.136200", "Portrait side").c_str(), &slot,
                                slots, 3) ||
@@ -1320,8 +1324,9 @@ private:
             (void)controller_.RenameSelectedNode(controller_.nodeIdDraft_, Status());
         }
         int type = static_cast<int>(node.type);
-        const char* types[]{TEXT::LocalizeCStr("editor.ui.line.ea9676"), TEXT::LocalizeCStr("editor.ui.choice.0682be"),
-                            TEXT::LocalizeCStr("editor.ui.event.ad8919"), TEXT::LocalizeCStr("ui.vfx.text.End")};
+        const char* types[]{
+            TEXT::Localize("editor.ui.line.ea9676").c_str(), TEXT::Localize("editor.ui.choice.0682be").c_str(),
+            TEXT::Localize("editor.ui.event.ad8919").c_str(), TEXT::Localize("ui.vfx.text.End").c_str()};
         if (ImGui::Combo(TEXT::LocalizeWindow("editor.ui.step.type.5dd37b", "Step type").c_str(), &type, types, 4)) {
             auto before = definition_;
             node.type = static_cast<DIALOGUE::DialogueNodeType>(type);

@@ -94,6 +94,7 @@ private:
     bool pointerCursorHiddenRequested_ = false;
     std::string lastError_{};
     float vibrationRemaining_ = 0.0f;
+    uint32_t vibrationGamepadIndex_ = 0u;
     bool vibrationActive_ = false;
     float deviceSwitchLockRemainingSeconds_ = 0.0f;
 };

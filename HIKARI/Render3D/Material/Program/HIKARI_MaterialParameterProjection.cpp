@@ -130,6 +130,13 @@ bool ApplyMaterialExternalValues(HIKARI::Material& material, const MaterialExter
     if (!BuildMaterialProgramParameterBlock(recipe->program, overrides, parameters, outError)) {
         return false;
     }
+    MaterialShellSettings shell;
+    if (!ResolveMaterialProgramShellSettings(recipe->program, shell, outError, [&](uint32_t binding) {
+            return FindMaterialParameterOverride(overrides, binding);
+        })) {
+        return false;
+    }
+    material.SetShellSettings(shell);
     material.ApplyMaterialParameterProjection(std::move(parameters), snapshot.sourceInstanceId, snapshot.revision);
     return true;
 }

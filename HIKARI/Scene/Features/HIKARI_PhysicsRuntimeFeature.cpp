@@ -1,4 +1,4 @@
-#include "Scene/Features/HIKARI_PhysicsRuntimeFeature.h"
+#include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 
 #include <array>
 #include <cmath>
@@ -51,16 +51,6 @@ public:
 
     std::string_view GetDescription() const noexcept override {
         return "Backend-independent bodies, colliders, queries, and contact events.";
-    }
-
-    std::span<const std::string_view> GetComponentTypeNames() const noexcept override {
-        static constexpr std::array<std::string_view, 2> names{"PhysicsBodyComponent", "ColliderComponent"};
-        return names;
-    }
-
-    std::span<const std::string_view> GetSystemIds() const noexcept override {
-        static constexpr std::array<std::string_view, 1> ids{"PhysicsSystem"};
-        return ids;
     }
 
     bool Register(RuntimeFeatureContext& context) override {

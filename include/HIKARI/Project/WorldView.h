@@ -1,7 +1,8 @@
 #pragma once
 
-#include "HIKARI/Project/UiCanvasView.h"
+#include "HIKARI/Project/ComponentViews.h"
 #include "HIKARI/Project/PrefabView.h"
+#include "HIKARI/Project/UiCanvasView.h"
 
 #include <cstdint>
 #include <span>
@@ -23,8 +24,6 @@
 #include "HIKARI/Runtime/ComponentTypeId.h"
 
 namespace HIKARI {
-struct GameProjectModelAppearance;
-
 class AnimationView;
 class AudioView;
 class CameraView;
@@ -51,6 +50,13 @@ class TimeDilationView;
 class UiView;
 class VfxView;
 struct GameProjectSdkAccess;
+
+// 各型について一つの静的変数のアドレスを型の印とする（RTTI 不要、モジュール内で一意）。
+template <class Component>
+const void* GameComponentTypeToken() noexcept {
+    static constexpr char token = 0;
+    return &token;
+}
 
 // Non-owning identity view. It may be retained, does not extend World
 // lifetime, resolves World + object generations on every call, and becomes
@@ -79,55 +85,14 @@ public:
     // for discontinuous Kinematic relocation (no interpolation across the jump).
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
     SetWorldTransform(const GameProjectTransform& transform) const noexcept;
-    // Reads and updates the engine LightComponent attached to this object.
-    // Initialize outState size/version. Unsupported headers return false unchanged;
-    // valid headers receive only their negotiated prefix, neutral on lookup failure.
-    // Runtime patches are immediate, owner-thread only, and never persist
-    // into the authored Scene document.
-    HIKARI_GAME_PROJECT_SDK_API bool TryGetRuntimeLightState(GameProjectLightState& outState) const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
-    ApplyRuntimeLightPatch(const GameProjectLightPatch& patch) const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API bool TryGetRuntimeWorldSpriteState(
-        GameProjectWorldSpriteState& outState) const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API bool SetRuntimeWorldSpriteTexture(std::string_view textureAssetGuid) const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
-    ApplyRuntimeWorldSpritePatch(const GameProjectWorldSpritePatch& patch) const noexcept;
+    // 組み込みコンポーネントの実行時操作。対象コンポーネントが無い場合、各操作は Unsupported を返す。
+    HIKARI_GAME_PROJECT_SDK_API LightView GetLight() const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API ModelView GetModel() const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API WorldSpriteView GetWorldSprite() const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API WorldTextView GetWorldText() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API SpriteAnimationView GetSpriteAnimation() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API SpriteMaterialView GetSpriteMaterial() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API MaterialFxView GetMaterialFx() const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API bool TryGetRuntimeModelAppearance(GameProjectModelAppearance&) const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API bool ApplyRuntimeModelAppearance(const GameProjectModelAppearance&) const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API bool TryGetRuntimeWorldTextState(GameProjectWorldTextState& outState) const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
-    ApplyRuntimeWorldTextPatch(const GameProjectWorldTextPatch& patch) const noexcept;
-    // UTF-8 is copied during this owner-thread call. Empty font keeps the
-    // authored font. No component is created and no Scene is persisted.
-    HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
-    SetRuntimeWorldTextContent(std::string_view text, std::string_view fontAssetPath = {}) const noexcept;
-    // Updates an existing engine-owned runtime material override. This is
-    // intended for authored procedural/model presentation objects; it
-    // never creates a material, changes the source asset, or persists the
-    // value back into the Scene document. Reapply after a World rebuild.
-    HIKARI_GAME_PROJECT_SDK_API bool SetRuntimeMaterialColorOverride(uint32_t materialIndex,
-                                                                     GameProjectFloat3 baseColor, float opacity,
-                                                                     GameProjectFloat3 emissiveColor,
-                                                                     float emissiveStrength) const noexcept;
-    // Runtime-only render visibility for the first case-sensitive,
-    // exact-name model node. The name is limited to
-    // kGameProjectModelNodeNameMaximumBytes. The override may be authored
-    // before the model asset is bound; an unmatched name remains stored
-    // but has no render effect. visible must be 0 or 1.
-    // This skips that node's render surfaces without changing animation,
-    // collision, transforms, or the source model asset. A descendant's
-    // explicit override wins over an inherited ancestor override. The
-    // state is not serialized; reapply it after a World rebuild.
-    HIKARI_GAME_PROJECT_SDK_API bool SetModelNodeVisibility(
-        std::string_view nodeName, uint8_t visible,
-        GameProjectModelNodeVisibilityScope scope =
-            GameProjectModelNodeVisibilityScope::NodeAndDescendants) const noexcept;
-    // Clearing restores inherited/default visibility and is idempotent.
-    HIKARI_GAME_PROJECT_SDK_API bool ClearModelNodeVisibilityOverride(std::string_view nodeName) const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API bool ClearModelNodeVisibilityOverrides() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API ObjectView GetParent() const noexcept;
 
 private:
@@ -159,23 +124,20 @@ public:
     // than ObjectView.
     HIKARI_GAME_PROJECT_SDK_API uint64_t GetObjectCount() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool CanMutateStructure() const noexcept;
-    // SDK 2.5 additive non-structural batch. The World is resolved once,
+    // Non-structural batch. The World is resolved once,
     // then each valid item is applied immediately in input order. Items
     // are independent: false means at least one item failed or the batch
     // shape was invalid; successful items are not rolled back. Duplicate
     // handles are allowed and the later transform wins. Arrays are
     // borrowed only for this call and count is capped by
     // kGameProjectWorldMaximumTransformWriteBatchCount.
-    HIKARI_GAME_PROJECT_SDK_API bool SetLocalTransforms(const GameProjectWorldTransformWrite* writes,
-                                                        uint32_t writeCount, GameProjectWorldResult* outResults,
-                                                        uint32_t resultCount) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool SetLocalTransforms(std::span<const GameProjectWorldTransformWrite> writes,
+                                                        std::span<GameProjectWorldResult> outResults) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API uint64_t GetMassObjectCount(ComponentTypeId typeId) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SpawnMassObjects(const GameProjectWorldMassSpawnBatchDesc& batch,
-                                                      GameProjectWorldResult* outResults,
-                                                      uint32_t resultCount) const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API bool DestroyMassObjects(const GameProjectObjectHandle* objects, uint32_t objectCount,
-                                                        GameProjectWorldResult* outResults,
-                                                        uint32_t resultCount) const noexcept;
+                                                      std::span<GameProjectWorldResult> outResults) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool DestroyMassObjects(std::span<const GameProjectObjectHandle> objects,
+                                                        std::span<GameProjectWorldResult> outResults) const noexcept;
     // Valid queries flush QueryEnd after the callback scope closes. Rows,
     // pointers and POD bytes are borrowed only for the callback.
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldQueryResult
@@ -197,15 +159,14 @@ public:
     // rejection result for every addressable input item.
     HIKARI_GAME_PROJECT_SDK_API bool SpawnObjects(std::span<const GameProjectSpawnObjectDesc> objects,
                                                   std::span<GameProjectWorldResult> outResults) const noexcept;
-    // SDK 2.4 additive batch. Descriptor arrays and JSON bytes are borrowed
+    // Descriptor arrays and JSON bytes are borrowed
     // only for this call; accepted data is deep-copied before return. The
     // batch admission is all-or-none, while flush-time failure rolls back
     // only the failed object and its structural commands. Project-defined
     // event/variable/external side effects are not transactionally undone.
-    HIKARI_GAME_PROJECT_SDK_API bool SpawnObjectsWithComponents(const GameProjectSpawnObjectComponentsDesc* objects,
-                                                                uint32_t objectCount,
-                                                                GameProjectWorldResult* outResults,
-                                                                uint32_t resultCount) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool SpawnObjectsWithComponents(
+        std::span<const GameProjectSpawnObjectComponentsDesc> objects,
+        std::span<GameProjectWorldResult> outResults) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult DestroyObject(GameProjectObjectHandle object) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
     SetParent(GameProjectObjectHandle object, GameProjectObjectHandle parent,
@@ -280,14 +241,11 @@ public:
         static_assert(std::is_base_of_v<IGameComponent, Component>);
         using Callback = std::decay_t<Visitor>;
         Callback callback = std::forward<Visitor>(visitor);
-        return VisitComponents(typeId, &callback,
+        // 型の印が登録と一致する場合だけ走査されるため、要素ごとの dynamic_cast は不要。
+        return VisitComponents(typeId, GameComponentTypeToken<Component>(), &callback,
                                [](void* context, ObjectView object, IGameComponent* component) noexcept {
                                    try {
-                                       Component* typed = dynamic_cast<Component*>(component);
-                                       if (typed == nullptr) {
-                                           return false;
-                                       }
-                                       (*static_cast<Callback*>(context))(object, *typed);
+                                       (*static_cast<Callback*>(context))(object, *static_cast<Component*>(component));
                                        return true;
                                    } catch (...) {
                                        return false;
@@ -302,7 +260,7 @@ private:
 
     explicit WorldView(GameProjectWorldHandle world) noexcept : world_(world) {}
 
-    HIKARI_GAME_PROJECT_SDK_API bool VisitComponents(ComponentTypeId typeId, void* context,
+    HIKARI_GAME_PROJECT_SDK_API bool VisitComponents(ComponentTypeId typeId, const void* typeToken, void* context,
                                                      VisitorFn visitor) const noexcept;
 
     GameProjectWorldHandle world_{};

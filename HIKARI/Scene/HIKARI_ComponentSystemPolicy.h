@@ -30,6 +30,9 @@ public:
     ComponentSystemInstallResult InstallRequiredSystems(const SceneDocument& document,
                                                         const SystemTypeRegistry& typeRegistry,
                                                         SystemScheduler& scheduler) const;
+    // 指定コンポーネントを場景へ足すと、まだ scheduler に無いシステムの導入が必要になるか。
+    bool NeedsSystemInstall(std::string_view componentType, const SceneDocument& document,
+                            const SystemScheduler& scheduler) const;
 
     const std::vector<ComponentSystemRule>& GetRules() const noexcept { return rules_; }
 

@@ -50,6 +50,7 @@ TemporalResolveStageResult ExecuteTemporalResolveStage(TemporalViewLease view, R
     if (!TryGetTemporalFrameState(view, publication, frame)) {
         return result;
     }
+    result.outputJitterPixels = {frame.camera.jitter.x, frame.camera.jitter.y};
     if (!resources.IsValid() || !resources.view.Matches(view) || !resources.publication.Matches(publication)) {
         (void)AbortTemporalFrame(view, publication, TemporalHistoryResetReason::InvalidInput);
         return result;
@@ -152,6 +153,9 @@ TemporalResolveStageResult ExecuteTemporalResolveStage(TemporalViewLease view, R
         return result;
     }
 
+    result.outputJitterPixels = result.backend == TemporalResolveBackend::Streamline
+                                    ? MATH::Vec2{}
+                                    : MATH::Vec2{frame.camera.jitter.x, frame.camera.jitter.y};
     result.output = resolvedTarget;
     result.resolved = true;
     result.requiresOutputNormalization =
@@ -162,6 +166,7 @@ TemporalResolveStageResult ExecuteTemporalResolveStage(TemporalViewLease view, R
         RenderTarget2D* debugTarget = GetTemporalDebugRenderTarget(resources);
         if (debugTarget != nullptr && debugTarget->GetResource() != nullptr) {
             result.output = debugTarget;
+            result.outputJitterPixels = {frame.camera.jitter.x, frame.camera.jitter.y};
             result.requiresOutputNormalization = false;
         }
     }

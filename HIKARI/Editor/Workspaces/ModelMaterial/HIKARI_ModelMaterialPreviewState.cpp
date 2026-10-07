@@ -7,7 +7,7 @@
 #include <utility>
 
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
@@ -38,13 +38,13 @@ namespace {
 const char* EnvironmentModeLabel(ModelMaterialWorkspaceController::PreviewEnvironmentMode mode) noexcept {
     switch (mode) {
     case ModelMaterialWorkspaceController::PreviewEnvironmentMode::RuntimeMatch:
-        return TEXT::LocalizeCStr("editor.ui.runtime.asset.lighting.d00c8b");
+        return TEXT::Localize("editor.ui.runtime.asset.lighting.d00c8b").c_str();
     case ModelMaterialWorkspaceController::PreviewEnvironmentMode::SceneMatch:
-        return TEXT::LocalizeCStr("editor.ui.scene.match.61e8fc");
+        return TEXT::Localize("editor.ui.scene.match.61e8fc").c_str();
     case ModelMaterialWorkspaceController::PreviewEnvironmentMode::StudioInspect:
-        return TEXT::LocalizeCStr("editor.ui.studio.inspect.7ebcc0");
+        return TEXT::Localize("editor.ui.studio.inspect.7ebcc0").c_str();
     }
-    return TEXT::LocalizeCStr("editor.ui.runtime.asset.lighting.d00c8b");
+    return TEXT::Localize("editor.ui.runtime.asset.lighting.d00c8b").c_str();
 }
 
 RENDER3D::EDITORVIEW::EditorInteractiveShadingMode ResolveShadingMode(

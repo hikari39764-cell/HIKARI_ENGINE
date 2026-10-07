@@ -1,5 +1,6 @@
 #pragma once
 #include "Render3D/Vfx/HIKARI_ParticleForceField.h"
+#include "Vfx/HIKARI_VfxPostProcessMode.h"
 #include "Render3D/Vfx/HIKARI_ParticleSpatialEffect.h"
 
 #include <array>
@@ -9,7 +10,7 @@
 #include <type_traits>
 #include <vector>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialEffectStack.h"
 
 namespace HIKARI {
@@ -297,6 +298,7 @@ struct ParticleEmitterRenderParameters {
     std::string noiseTextureAssetGuid{};
     std::string materialAssetGuid{};
     ParticleBlendMode blendMode = ParticleBlendMode::Alpha;
+    VFX::VfxPostProcessMode postProcessMode = VFX::VfxPostProcessMode::Scene;
     ParticleRenderShape shape = ParticleRenderShape::Sprite;
     ParticleBillboardMode billboardMode = ParticleBillboardMode::RotatedBillboard;
     ParticleDepthMode depthMode = ParticleDepthMode::WorldOccluded;

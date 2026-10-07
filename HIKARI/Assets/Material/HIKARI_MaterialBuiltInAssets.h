@@ -42,6 +42,10 @@ inline constexpr std::string_view kBuiltInTerrainLayerAlbedoTextureId = "engine.
 
 inline constexpr std::string_view kBuiltInTerrainLayerNormalTextureId = "engine.terrain.texture.layer_atlas_normal";
 
+// Painterly/BuiltinAssets.json が所有する筆致データ。両方とも Linear で読む。
+inline constexpr std::string_view kBuiltInPainterlyStrokeMaskTextureId = "engine.painterly.texture.stroke_mask";
+inline constexpr std::string_view kBuiltInPainterlyStrokeNormalTextureId = "engine.painterly.texture.stroke_normal";
+
 constexpr bool IsBuiltInSandMaterialAssetId(std::string_view id) noexcept { return id == kBuiltInSandMaterialAssetId; }
 
 } // namespace HIKARI::ASSETS::MATERIAL

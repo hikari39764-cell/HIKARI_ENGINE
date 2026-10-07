@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 
@@ -21,7 +21,9 @@ public:
 
     void Serialize(nlohmann::json& out) const override;
     void Deserialize(const nlohmann::json& in) override;
+#if defined(HIKARI_WITH_EDITOR)
     void BuildInspector(IInspectorBuilder& builder) override;
+#endif
 
     bool IsEnabled() const noexcept { return enabled_; }
     const std::string& GetSourceCubemapAsset() const noexcept { return sourceCubemapAsset_; }

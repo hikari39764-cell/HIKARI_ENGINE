@@ -154,7 +154,8 @@ void HierarchyPanel::DrawContents(World& world, EditorSelection& selection,
                 auto folders = EDITOR::CollectSceneFolderPaths(*document);
                 folders.insert(folders.begin(), "");
                 for (const auto& folder : folders)
-                    if (ImGui::MenuItem(folder.empty() ? TEXT::LocalizeCStr("editor.uncategorized") : folder.c_str())) {
+                    if (ImGui::MenuItem(folder.empty() ? TEXT::Localize("editor.uncategorized").c_str()
+                                                       : folder.c_str())) {
                         nlohmann::json ids = nlohmann::json::array();
                         for (const auto id : selection.GetSelectedObjectIds())
                             ids.push_back(id.value);

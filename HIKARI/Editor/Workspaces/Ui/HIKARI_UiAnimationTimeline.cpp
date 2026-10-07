@@ -13,7 +13,7 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
+const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 } // namespace
 void UiAnimationEditor::DrawTimeline(DocumentSceneBase& scene, EditorContext& context,
                                      EditorOperationRegistry& operations, UiAnimationAsset&, UiAnimationClip& clip,

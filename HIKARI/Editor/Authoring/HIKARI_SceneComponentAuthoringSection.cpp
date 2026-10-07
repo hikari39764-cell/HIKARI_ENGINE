@@ -8,7 +8,7 @@
 
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
@@ -78,11 +78,6 @@ bool HasDocumentComponent(const SceneObjectData& object, std::string_view typeNa
                        [typeName](const SceneComponentData& component) { return component.type == typeName; });
 }
 
-bool IsLightingRuntimeComponent(std::string_view typeName) noexcept {
-    return typeName == LIGHTING_AUTHORING::kLightComponentType ||
-           typeName == LIGHTING_AUTHORING::kReflectionProbeComponentType ||
-           typeName == LIGHTING_AUTHORING::kIrradianceVolumeComponentType;
-}
 } // namespace
 #endif
 
@@ -249,7 +244,7 @@ std::optional<SceneObjectAuthoringHistoryRequest> SceneComponentAuthoringSection
                     needsRebuild = true;
                 } else if (component.type == "CameraComponent") {
                     (void)scene.ApplyCameraRuntimeChanges();
-                } else if (IsLightingRuntimeComponent(component.type)) {
+                } else if (LIGHTING_AUTHORING::IsLightingComponentType(component.type)) {
                     (void)scene.RefreshLightingRuntime();
                 } else if (component.type == "ProceduralMeshComponent") {
                     (void)scene.RebuildMaterialOverrides();
@@ -275,7 +270,7 @@ std::optional<SceneObjectAuthoringHistoryRequest> SceneComponentAuthoringSection
                 needsRebuild = true;
             } else if (component.type == "CameraComponent") {
                 (void)scene.ApplyCameraRuntimeChanges();
-            } else if (IsLightingRuntimeComponent(component.type)) {
+            } else if (LIGHTING_AUTHORING::IsLightingComponentType(component.type)) {
                 (void)scene.RefreshLightingRuntime();
             } else if (component.type == "ProceduralMeshComponent") {
                 (void)scene.RebuildMaterialOverrides();
@@ -291,12 +286,14 @@ std::optional<SceneObjectAuthoringHistoryRequest> SceneComponentAuthoringSection
             deferredComponentRebuild_ = true;
         } else {
             SyncRuntimeTransformToDocument(target, context);
-            selectionSync.RebuildRuntimeWorldWithSelectionSync(scene, context.selection, context.nextSceneObjectId);
+            selectionSync.ApplyRuntimeObjectChangesWithSelectionSync(
+                scene, context.selection, context.nextSceneObjectId, {.changed = {target.id}});
             deferredComponentRebuild_ = false;
         }
     } else if (deferredComponentRebuild_ && !editingComponentParameter) {
         SyncRuntimeTransformToDocument(target, context);
-        selectionSync.RebuildRuntimeWorldWithSelectionSync(scene, context.selection, context.nextSceneObjectId);
+        selectionSync.ApplyRuntimeObjectChangesWithSelectionSync(scene, context.selection, context.nextSceneObjectId,
+                                                                 {.changed = {target.id}});
         deferredComponentRebuild_ = false;
     }
 

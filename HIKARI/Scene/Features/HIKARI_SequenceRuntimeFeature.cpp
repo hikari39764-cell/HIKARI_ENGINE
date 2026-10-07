@@ -1,4 +1,4 @@
-#include "Scene/Features/HIKARI_SequenceRuntimeFeature.h"
+#include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 
 #include "Scene/Components/HIKARI_CameraFlowComponent.h"
 #include "Scene/Camera/HIKARI_CameraFlowSystem.h"
@@ -24,16 +24,6 @@ public:
 
     std::string_view GetDescription() const noexcept override {
         return "Reusable sequence playback for camera and future presentation tracks.";
-    }
-
-    std::span<const std::string_view> GetComponentTypeNames() const noexcept override {
-        static constexpr std::array<std::string_view, 2> names{"SequencePlayerComponent", "CameraFlowComponent"};
-        return names;
-    }
-
-    std::span<const std::string_view> GetSystemIds() const noexcept override {
-        static constexpr std::array<std::string_view, 2> ids{"SequencePlayerSystem", "CameraFlowSystem"};
-        return ids;
     }
 
     bool Register(RuntimeFeatureContext& context) override {

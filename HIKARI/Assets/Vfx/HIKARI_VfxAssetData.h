@@ -1,5 +1,6 @@
 #pragma once
 #include "Render3D/Vfx/HIKARI_ParticleForceField.h"
+#include "Vfx/HIKARI_VfxPostProcessMode.h"
 
 #include <cstdint>
 #include <span>
@@ -10,7 +11,7 @@
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Assets/Vfx/HIKARI_VfxAnimationTiming.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialEffectStack.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI::VFX {
 
@@ -182,10 +183,10 @@ enum class VfxSpecialOutputType : uint8_t {
 
 // Keep these authoring limits identical to the private presentation
 // consumers: the screen post path supports four wave layers and the
-// afterimage history keeps three to five silhouettes.
+// afterimage history keeps one to five real silhouettes.
 inline constexpr uint32_t kVfxScreenImpulseWaveCountMin = 1u;
 inline constexpr uint32_t kVfxScreenImpulseWaveCountMax = 4u;
-inline constexpr uint32_t kVfxAfterimageSampleCountMin = 3u;
+inline constexpr uint32_t kVfxAfterimageSampleCountMin = 1u;
 inline constexpr uint32_t kVfxAfterimageSampleCountMax = 5u;
 inline constexpr float kVfxWeaponDistortionMin = 0.0f;
 
@@ -520,6 +521,7 @@ struct VfxRenderCommonModuleData {
     AssetGuid flowMapTextureAssetGuid{};
     AssetGuid materialAssetGuid{};
     VfxBlendMode blendMode = VfxBlendMode::Alpha;
+    VfxPostProcessMode postProcessMode = VfxPostProcessMode::Scene;
     VfxParticleDepthMode depthMode = VfxParticleDepthMode::WorldOccluded;
     float softIntersectionDistance = 0.15f;
     float depthBias = 0.00035f;
@@ -687,6 +689,7 @@ std::string_view ToString(VfxShapeType value) noexcept;
 std::string_view ToString(VfxRenderShapeType value) noexcept;
 std::string_view ToString(VfxShapeUvMode value) noexcept;
 std::string_view ToString(VfxBlendMode value) noexcept;
+std::string_view ToString(VfxPostProcessMode value) noexcept;
 std::string_view ToString(VfxMaterialMode value) noexcept;
 std::string_view ToString(VfxParticleDepthMode value) noexcept;
 std::string_view ToString(VfxParticleCapacityMode value) noexcept;

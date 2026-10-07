@@ -3,7 +3,6 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "HIKARI/Project/GameProjectModule.h"
 
@@ -39,7 +38,6 @@ namespace {
 struct GameProjectModuleInstance {
     std::unique_ptr<IGameProjectModule> module{};
     std::string moduleId{};
-    std::vector<std::unique_ptr<IRuntimeExtension>> runtimeExtensions{};
     std::unique_ptr<IGameProjectSession> gameSession{};
 };
 
@@ -54,12 +52,6 @@ void* CreateInstance() noexcept {
         if (instance->moduleId.empty()) {
             return nullptr;
         }
-        instance->runtimeExtensions = instance->module->CreateRuntimeExtensions();
-        for (const auto& extension : instance->runtimeExtensions) {
-            if (!extension || extension->GetExtensionId().empty()) {
-                return nullptr;
-            }
-        }
         return instance.release();
     } catch (...) {
         return nullptr;
@@ -73,17 +65,16 @@ const char* GetModuleId(void* instance) noexcept {
     return module != nullptr ? module->moduleId.c_str() : nullptr;
 }
 
-size_t GetRuntimeExtensionCount(void* instance) noexcept {
-    const auto* module = static_cast<GameProjectModuleInstance*>(instance);
-    return module != nullptr ? module->runtimeExtensions.size() : 0u;
-}
-
-IRuntimeExtension* GetRuntimeExtension(void* instance, size_t index) noexcept {
+bool RegisterRuntimeFeatures(void* instance, RuntimeFeatureCatalog* catalog) noexcept {
     auto* module = static_cast<GameProjectModuleInstance*>(instance);
-    if (module == nullptr || index >= module->runtimeExtensions.size()) {
-        return nullptr;
+    if (module == nullptr || !module->module || catalog == nullptr) {
+        return false;
     }
-    return module->runtimeExtensions[index].get();
+    try {
+        return module->module->RegisterRuntimeFeatures(*catalog);
+    } catch (...) {
+        return false;
+    }
 }
 
 bool CreateGameSession(void* instance, IGameProjectSession** outSession) noexcept {
@@ -113,8 +104,8 @@ void DestroyGameSession(void* instance) noexcept {
 }
 
 const GameProjectModuleApi kModuleApi{
-    sizeof(GameProjectModuleApi), kGameProjectModuleAbiVersion, &CreateInstance,    &DestroyInstance,    &GetModuleId,
-    &GetRuntimeExtensionCount,    &GetRuntimeExtension,         &CreateGameSession, &DestroyGameSession,
+    sizeof(GameProjectModuleApi), kGameProjectModuleAbiVersion, &CreateInstance,     &DestroyInstance, &GetModuleId,
+    &RegisterRuntimeFeatures,     &CreateGameSession,           &DestroyGameSession,
 };
 
 } // namespace

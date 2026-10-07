@@ -6,7 +6,7 @@
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Core/HIKARI_RenderFrameToken.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
 namespace HIKARI::RENDER3D::TEMPORAL {

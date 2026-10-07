@@ -14,7 +14,7 @@
 #include "imgui_internal.h"
 namespace HIKARI::EDITOR {
 namespace {
-const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
+const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 std::string Window(const char* key, const char* id) { return TEXT::Localize(key) + "###TextStyle/" + id; }
 } // namespace
 void TextStyleWorkspaceController::DrawDockSpace(bool reset) {

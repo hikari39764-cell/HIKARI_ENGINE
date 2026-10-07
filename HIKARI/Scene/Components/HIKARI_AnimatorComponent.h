@@ -18,8 +18,9 @@ public:
 
     void Serialize(nlohmann::json& out) const override;
     void Deserialize(const nlohmann::json& in) override;
+#if defined(HIKARI_WITH_EDITOR)
     void BuildInspector(IInspectorBuilder& builder) override;
-    void RenderImGui() override;
+#endif
 
     void Play(std::string clip, bool loop = true, bool restart = true);
     void Play(ANIMATION::AnimationClipReference clip, bool loop = true, bool restart = true);

@@ -15,6 +15,7 @@ HikariMaterialExpressionContext HikariBuildMaterialExpressionContext(
 {
     HikariMaterialExpressionContext context = (HikariMaterialExpressionContext)0;
     context.particleColor = 1.0f.xxxx;
+    context.shellLayer = float4(0.0f, 1.0f, 0.0f, 1.0f);
     context.particleUv = uv0;
     context.uv0 = uv0;
     context.uv1 = uv1;

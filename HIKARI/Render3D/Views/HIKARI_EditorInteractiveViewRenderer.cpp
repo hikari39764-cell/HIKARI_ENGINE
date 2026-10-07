@@ -282,7 +282,7 @@ bool EnsureDisplayPipeline() {
 
     if (g_displayEffect == nullptr) {
         auto effect = std::make_unique<POST::PostEffect>();
-        if (!effect->LoadBuiltinPixelShader("HIKARI.EngineShader.Post_ToneMappingPS")) {
+        if (!effect->LoadPixelShader({.programId = "HIKARI.EngineShader.Post_ToneMappingPS"})) {
             return false;
         }
         g_displayEffect = std::move(effect);
@@ -296,7 +296,7 @@ bool EnsureFxaaPipeline() {
     }
     if (g_fxaaEffect == nullptr) {
         auto effect = std::make_unique<POST::PostEffect>();
-        if (!effect->LoadBuiltinPixelShader("HIKARI.EngineShader.Post_FXAA")) {
+        if (!effect->LoadPixelShader({.programId = "HIKARI.EngineShader.Post_FXAA"})) {
             return false;
         }
         g_fxaaEffect = std::move(effect);

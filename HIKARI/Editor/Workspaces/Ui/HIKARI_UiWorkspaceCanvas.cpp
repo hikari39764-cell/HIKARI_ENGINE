@@ -25,7 +25,7 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
+const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 SceneObjectId CanvasOf(GameObject* object) {
     for (int depth = 0; object && depth < 64; object = object->GetParent(), ++depth)
         if (object->GetComponent<UiCanvasComponent>())

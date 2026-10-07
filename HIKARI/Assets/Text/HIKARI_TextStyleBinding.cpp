@@ -21,7 +21,7 @@ void TextStyleBinding::Read(const nlohmann::json& data) {
     overrideEffects = JSONREAD::BooleanMemberOr(data, "overrideTextEffects", false);
 }
 bool TextStyleBinding::Inspect(IInspectorBuilder& b, bool allowSizeOverride) {
-    const auto L = [](const char* k) { return TEXT::LocalizeCStr(k); };
+    const auto L = [](const char* k) { return TEXT::Localize(k).c_str(); };
     bool changed = b.AssetIdPicker(AuthoringFieldDescriptor{"textStyleAssetGuid", L("textstyle.asset")},
                                    AssetType::TextStyle, style.value);
     if (style.IsValid()) {

@@ -3,7 +3,7 @@
 #include <cstdint>
 
 #include "Render3D/Core/HIKARI_RenderView.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
 namespace HIKARI::EDITOR {

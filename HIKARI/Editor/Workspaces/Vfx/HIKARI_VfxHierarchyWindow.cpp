@@ -199,7 +199,8 @@ void VfxWorkspaceController::DrawHierarchyWindow(AssetDatabase& database) {
                 TEXT::LocalizeWindow("editor.ui.delete.vfx.emitter.c34a06", "Delete VFX Emitter?").c_str(), nullptr,
                 ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::TextUnformatted(
-                VfxUiText(TEXT::LocalizeCStr("ui.vfx.text.Delete the selected emitter? Child emitters are promoted."))
+                VfxUiText(
+                    TEXT::Localize("ui.vfx.text.Delete the selected emitter? Child emitters are promoted.").c_str())
                     .c_str());
             if (ImGui::Button(VfxUiText("Cancel").c_str()))
                 ImGui::CloseCurrentPopup();
@@ -218,7 +219,7 @@ void VfxWorkspaceController::DrawHierarchyWindow(AssetDatabase& database) {
                 TEXT::LocalizeWindow("editor.ui.delete.vfx.input.a649fc", "Delete VFX Input?").c_str(), nullptr,
                 ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::TextUnformatted(
-                VfxUiText(TEXT::LocalizeCStr("ui.vfx.text.Delete the input and all property links that use it?"))
+                VfxUiText(TEXT::Localize("ui.vfx.text.Delete the input and all property links that use it?").c_str())
                     .c_str());
             if (ImGui::Button(VfxUiText("Cancel").c_str()))
                 ImGui::CloseCurrentPopup();

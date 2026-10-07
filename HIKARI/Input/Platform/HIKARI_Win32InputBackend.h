@@ -11,6 +11,7 @@ public:
     ~Win32InputBackend() override;
 
     void SetHostWindow(void* nativeWindow) override;
+    bool HasInputFocus() const noexcept override;
     void SetMouseCaptureMode(MouseCaptureMode mode) override;
     void SetMouseCaptureRegion(const MouseCaptureRegion& region) override;
     void ClearMouseCaptureRegion() override;

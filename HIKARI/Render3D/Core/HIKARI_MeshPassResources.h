@@ -1,4 +1,6 @@
 #pragma once
+#include <optional>
+#include "Vfx/HIKARI_VfxPostProcessMode.h"
 
 #include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
 #include "Render3D/DepthOfField/HIKARI_CameraDepthOfFieldStage.h"
@@ -20,6 +22,7 @@ struct MeshPassResources {
     RENDER3D::PIPELINE::RenderTargetAccess compositionTarget{};
     D3D12_CPU_DESCRIPTOR_HANDLE compositionDepth{};
     const RENDER3D::DOF::WorldSpriteLayerCapture* worldSpriteDepthOfFieldCapture = nullptr;
+    std::optional<VFX::VfxPostProcessMode> particlePostProcessMode;
     bool reflectionCapture = false;
     bool reflectionMaterialCapture = false;
 };

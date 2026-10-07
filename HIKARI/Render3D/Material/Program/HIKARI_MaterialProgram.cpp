@@ -4,15 +4,6 @@
 #include <algorithm>
 
 namespace HIKARI::RENDER3D::MATERIAL {
-uint32_t FindMaterialProgramInputRegister(const MaterialProgramInstruction& instruction,
-                                          std::string_view pin) noexcept {
-    const auto found = std::find(instruction.inputPins.begin(), instruction.inputPins.end(), pin);
-    const size_t index = static_cast<size_t>(found - instruction.inputPins.begin());
-    return found != instruction.inputPins.end() && index < instruction.inputRegisters.size()
-               ? instruction.inputRegisters[index]
-               : kInvalidMaterialProgramRegister;
-}
-
 namespace {
 constexpr bool HasMaterialCapability(uint64_t capabilities, MaterialProgramCapability capability) noexcept {
     return (capabilities & MaterialCapabilityBit(capability)) != 0u;
@@ -74,6 +65,8 @@ MaterialProgramRuntimeCapabilities BuildMaterialProgramRuntimeCapabilities(const
         case MaterialNodeKind::Time: result.usesTime = true; break;
         case MaterialNodeKind::ViewDirection:
         case MaterialNodeKind::CameraPosition:
+        case MaterialNodeKind::Shell:
+        case MaterialNodeKind::ShellLayer:
         case MaterialNodeKind::Fresnel: result.usesView = true; break;
         case MaterialNodeKind::ScreenPosition: result.usesScreen = true; break;
         case MaterialNodeKind::DerivativeX:
@@ -99,6 +92,13 @@ MaterialProgramRuntimeCapabilities BuildMaterialProgramRuntimeCapabilities(const
                                         MaterialProgramCapabilityBit(MaterialProgramVertexSemantic::Uv0);
     if (HasMaterialCapability(program.capabilities, MaterialProgramCapability::AnisotropicHair)) {
         result.requiredVertexSemanticMask |= MaterialProgramCapabilityBit(MaterialProgramVertexSemantic::Tangent);
+    }
+    for (const auto& instruction : program.instructions) {
+        if (instruction.opcode == MaterialNodeKind::NormalBlend ||
+            instruction.opcode == MaterialNodeKind::NormalUvTransform) {
+            result.requiredVertexSemanticMask |= MaterialProgramCapabilityBit(MaterialProgramVertexSemantic::Tangent);
+            break;
+        }
     }
     if (HasMaterialCapability(program.capabilities, MaterialProgramCapability::AuxiliaryUv)) {
         result.requiredVertexSemanticMask |= MaterialProgramCapabilityBit(MaterialProgramVertexSemantic::Uv1);

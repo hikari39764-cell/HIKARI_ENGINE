@@ -34,7 +34,7 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(AssetDatabase& ass
             nodePreviewId_.clear();
     }
     if (nodePreviewId_.empty() && !authoringDocument_.GetCompileResult().success) {
-        outMessage = "current Material v6 graph is invalid; preview is paused until diagnostics are fixed";
+        outMessage = "current Material graph is invalid; preview is paused until diagnostics are fixed";
         return false;
     }
     if (nodePreviewId_.empty() && !IsRenderableMaterialAsset(authoringDocument_.GetMaterial().kind)) {
@@ -153,7 +153,7 @@ bool ModelMaterialWorkspaceController::RefreshMaterialPreviews(DocumentSceneBase
     (void)authoringDocument_.ConsumeMaterialPreviewChange();
     nodePreviewRefreshPending_ = false;
     if (authoringDocument_.HasMaterial() && !authoringDocument_.GetCompileResult().success && nodePreviewId_.empty()) {
-        outMessage = "current Material v6 graph is invalid; preview and runtime hot update are paused";
+        outMessage = "current Material graph is invalid; preview and runtime hot update are paused";
         return false;
     }
     const bool authoredPreviewUpdated =

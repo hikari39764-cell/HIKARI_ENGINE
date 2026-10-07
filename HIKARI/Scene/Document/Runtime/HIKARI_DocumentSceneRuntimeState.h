@@ -106,6 +106,8 @@ struct DocumentSceneRuntimeState {
     bool editorDocumentSnapshotValid = false;
     bool editorDocumentDirtySnapshot = false;
     bool worldServicesConfigured = false;
+    // world が現在の document から構築済みか。差分反映はこれが真の時だけ行う。
+    bool worldBuilt = false;
     bool initialized = false;
 };
 

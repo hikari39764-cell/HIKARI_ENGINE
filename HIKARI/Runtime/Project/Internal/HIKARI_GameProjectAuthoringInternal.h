@@ -60,6 +60,8 @@ struct RuntimeFeatureContextAccess {
     static WorldMassSchemaRegistry& MassSchemas(RuntimeFeatureContext& context) noexcept;
     static SystemTypeRegistry& Systems(RuntimeFeatureContext& context) noexcept;
     static ComponentSystemPolicy& Policy(RuntimeFeatureContext& context) noexcept;
+    // 登録取引が Register 呼び出しの間だけ設定する。記述子の所属 Feature になる。
+    static void SetFeatureId(RuntimeFeatureContext& context, std::string_view featureId) noexcept;
 };
 
 struct GameProjectSdkAccess {
@@ -67,9 +69,8 @@ struct GameProjectSdkAccess {
                                                uint32_t componentCount) noexcept;
     using MassObjectVisitorFn = bool (*)(void* context, WorldMassMutableRow& row) noexcept;
 
-    static PropertyReader MakePropertyReader(const void* properties) noexcept;
-    static PropertyWriter MakePropertyWriter(void* properties) noexcept;
-    static GameProjectInspector MakeInspector(IInspectorBuilder& builder) noexcept;
+    static PropertyFields MakePropertyFields(PropertyFieldsMode mode, const nlohmann::json* loadArchive,
+                                             nlohmann::json* saveArchive, IInspectorBuilder* inspector) noexcept;
     static ObjectView MakeObjectView(GameObject& object) noexcept;
     static WorldView MakeWorldView(World& world) noexcept;
     static InputView MakeInputView(World& world) noexcept;

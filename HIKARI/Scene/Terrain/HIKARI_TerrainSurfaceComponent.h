@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainChunks.h"
 #include "Scene/Terrain/HIKARI_TerrainChunkChangeJournal.h"
@@ -129,7 +129,9 @@ public:
     void SerializeSettings(nlohmann::json& out) const;
     void Serialize(nlohmann::json& out) const override;
     void Deserialize(const nlohmann::json& in) override;
+#if defined(HIKARI_WITH_EDITOR)
     void BuildInspector(IInspectorBuilder& builder) override;
+#endif
     // Inspector と地形ワークスペースで設定の意味・範囲・setter を共有する。
     bool BuildSurfaceSettingsInspector(IInspectorBuilder& builder, bool expandGrass = false);
 

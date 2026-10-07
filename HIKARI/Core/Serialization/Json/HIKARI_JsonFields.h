@@ -11,7 +11,7 @@
 
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Text/HIKARI_EnumNames.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 // 設定構造体のフィールドを 1 か所で宣言し、JSON 読み書きと値の正規化を共有する。
 //

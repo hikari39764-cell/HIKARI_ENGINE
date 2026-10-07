@@ -23,8 +23,9 @@ public:
     void OnAttach() override;
     void Serialize(nlohmann::json& out) const override;
     void Deserialize(const nlohmann::json& in) override;
+#if defined(HIKARI_WITH_EDITOR)
     void BuildInspector(IInspectorBuilder& builder) override;
-    void RenderImGui() override;
+#endif
 
     void Play();
     void Stop();

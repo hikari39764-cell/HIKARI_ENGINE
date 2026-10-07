@@ -12,5 +12,6 @@ void ConnectNodeInput(MaterialAssetData&, std::string id, std::string sourceNode
 void AddSkinLightingGraph(MaterialAssetData& data);
 void AddFabricSheenGraph(MaterialAssetData& data);
 void AddHybridLightingGraph(MaterialAssetData& data);
+void AddPainterlyShellGraph(MaterialAssetData& data);
 
 } // namespace HIKARI::ASSETS::MATERIAL::TEMPLATE_FACTORY_INTERNAL

@@ -593,6 +593,7 @@ void WriteProgram(BinaryWriter& writer, const VfxProgram& program) {
         writer.WriteString(emitter.render.noiseTextureAssetGuid);
         writer.WriteString(emitter.render.materialAssetGuid);
         writer.WriteEnum(emitter.render.blendMode);
+        writer.WriteEnum(emitter.render.postProcessMode);
         writer.WriteEnum(emitter.render.shape);
         writer.WriteEnum(emitter.render.billboardMode);
         writer.WriteEnum(emitter.render.depthMode);
@@ -774,21 +775,21 @@ bool ReadProgram(BinaryReader& reader, VfxProgram& program) {
             !reader.ReadString(emitter.render.maskTextureAssetGuid) ||
             !reader.ReadString(emitter.render.noiseTextureAssetGuid) ||
             !reader.ReadString(emitter.render.materialAssetGuid) || !reader.ReadEnum(emitter.render.blendMode) ||
-            !reader.ReadEnum(emitter.render.shape) || !reader.ReadEnum(emitter.render.billboardMode) ||
-            !reader.ReadEnum(emitter.render.depthMode) || !reader.Read(emitter.render.softIntersectionDistance) ||
-            !reader.Read(emitter.render.depthBias) || !reader.Read(emitter.render.flipbookColumns) ||
-            !reader.Read(emitter.render.flipbookRows) || !reader.Read(emitter.render.flipbookFrameCount) ||
-            !reader.Read(emitter.render.flipbookFramesPerSecond) || !reader.ReadBool(emitter.render.flipbookLoop) ||
-            !reader.ReadBool(emitter.render.flipbookRandomStart) || !reader.Read(emitter.render.ribbonSegmentCount) ||
-            !reader.Read(emitter.render.ribbonWidth) || !reader.Read(emitter.render.ringOuterRadius) ||
-            !reader.Read(emitter.render.ringInnerRadius) || !reader.Read(emitter.render.ringSegmentCount) ||
-            !reader.Read(emitter.render.ringStartAngleRadians) || !reader.Read(emitter.render.ringEndAngleRadians) ||
-            !reader.Read(emitter.render.uvMode) || !reader.Read(emitter.render.uvTileLength) ||
-            !reader.Read(emitter.render.uvTilingU) || !reader.Read(emitter.render.uvTilingV) ||
-            !reader.Read(emitter.render.uvRotationRadians) || !reader.Read(emitter.render.uvSwapAxes) ||
-            !reader.Read(emitter.render.anchor.x) || !reader.Read(emitter.render.anchor.y) ||
-            !reader.Read(emitter.render.anchor.z) || !reader.Read(emitter.render.connectTargetMode) ||
-            !reader.Read(emitter.render.connectTargetLayerIndex) ||
+            !reader.ReadEnum(emitter.render.postProcessMode) || !reader.ReadEnum(emitter.render.shape) ||
+            !reader.ReadEnum(emitter.render.billboardMode) || !reader.ReadEnum(emitter.render.depthMode) ||
+            !reader.Read(emitter.render.softIntersectionDistance) || !reader.Read(emitter.render.depthBias) ||
+            !reader.Read(emitter.render.flipbookColumns) || !reader.Read(emitter.render.flipbookRows) ||
+            !reader.Read(emitter.render.flipbookFrameCount) || !reader.Read(emitter.render.flipbookFramesPerSecond) ||
+            !reader.ReadBool(emitter.render.flipbookLoop) || !reader.ReadBool(emitter.render.flipbookRandomStart) ||
+            !reader.Read(emitter.render.ribbonSegmentCount) || !reader.Read(emitter.render.ribbonWidth) ||
+            !reader.Read(emitter.render.ringOuterRadius) || !reader.Read(emitter.render.ringInnerRadius) ||
+            !reader.Read(emitter.render.ringSegmentCount) || !reader.Read(emitter.render.ringStartAngleRadians) ||
+            !reader.Read(emitter.render.ringEndAngleRadians) || !reader.Read(emitter.render.uvMode) ||
+            !reader.Read(emitter.render.uvTileLength) || !reader.Read(emitter.render.uvTilingU) ||
+            !reader.Read(emitter.render.uvTilingV) || !reader.Read(emitter.render.uvRotationRadians) ||
+            !reader.Read(emitter.render.uvSwapAxes) || !reader.Read(emitter.render.anchor.x) ||
+            !reader.Read(emitter.render.anchor.y) || !reader.Read(emitter.render.anchor.z) ||
+            !reader.Read(emitter.render.connectTargetMode) || !reader.Read(emitter.render.connectTargetLayerIndex) ||
             !reader.Read(emitter.render.connectLocalPosition.x) ||
             !reader.Read(emitter.render.connectLocalPosition.y) ||
             !reader.Read(emitter.render.connectLocalPosition.z) || !reader.Read(emitter.render.connectPivot) ||

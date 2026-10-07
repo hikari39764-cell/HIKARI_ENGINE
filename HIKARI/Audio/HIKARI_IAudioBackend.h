@@ -19,6 +19,7 @@ struct IAudioBackend {
     virtual void Resume(int playHandle) = 0;
     virtual void SetVolume(int playHandle, float volume) = 0;
     virtual bool IsPlaying(int playHandle) = 0;
+    virtual bool TryGetPlaybackSnapshot(int, GameProjectAudioPlaybackSnapshot&) { return false; }
     virtual bool SetSpatial(int, const GameProjectAudioListener&, const GameProjectAudioSource&) { return false; }
     virtual bool SetPlaybackRate(int, float) { return false; }
     virtual GameProjectAudioStats GetStats() const { return {}; }

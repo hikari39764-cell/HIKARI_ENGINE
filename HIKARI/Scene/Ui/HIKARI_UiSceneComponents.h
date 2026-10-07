@@ -6,7 +6,7 @@
 
 #include "Assets/HIKARI_AssetGuid.h"
 #include "HIKARI/Project/UiTypes.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "HIKARI/Runtime/ComponentTypeId.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"

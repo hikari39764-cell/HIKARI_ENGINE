@@ -142,7 +142,10 @@ bool Initialize(const char* title, const RUNTIME::HostBootstrapConfig& cfg, std:
         runtimeUserRoot = PLATFORM::GetHikariGameUserRoot(launchProject.GetDescriptor().name);
     }
     PLATFORM::SetHikariRuntimeUserRoot(runtimeUserRoot);
-    const std::filesystem::path logRoot = runtimeUserRoot.empty() ? std::filesystem::path{} : runtimeUserRoot / "Logs";
+    // 単体ゲームはユーザー領域、エディタは開いているプロジェクトの Library に記録する。
+    const std::filesystem::path logRoot = !runtimeUserRoot.empty() ? runtimeUserRoot / "Logs"
+                                          : launchProject.IsOpen() ? launchProject.GetLibraryRoot() / "Logs"
+                                                                   : std::filesystem::path{};
     CORE::InitializeLogger(logRoot);
     CORE::StartupTimer servicesTimer("Services.initialize");
     HIKARI_LOG_INFO("HIKARI boot started.");
@@ -225,7 +228,7 @@ bool Initialize(const char* title, const RUNTIME::HostBootstrapConfig& cfg, std:
     const bool enableFrameGenerationPlugins = IsEditorHostMode(cfg.hostMode) || IsStandaloneGameHostMode(cfg.hostMode);
     if (gStreamlineEnabled) {
         gStreamlineEnabled = RENDER3D::UPSCALING::InitializeStreamlineEarly(
-            enableFrameGenerationPlugins, logRoot.empty() ? std::filesystem::path{} : logRoot / "Streamline");
+            enableFrameGenerationPlugins, CORE::GetLogFilePath().parent_path() / "Streamline");
     } else {
         HIKARI_LOG_INFO("[Streamline] bootstrap disabled for this host.");
     }

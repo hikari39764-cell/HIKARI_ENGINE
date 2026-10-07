@@ -11,7 +11,7 @@
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"

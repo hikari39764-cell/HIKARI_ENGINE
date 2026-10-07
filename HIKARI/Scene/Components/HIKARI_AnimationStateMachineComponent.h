@@ -24,8 +24,9 @@ public:
         syncCharacterMotion_ = in.value("syncCharacterMotion", syncCharacterMotion_);
         lastDiagnostic_.clear();
     }
+#if defined(HIKARI_WITH_EDITOR)
     void BuildInspector(IInspectorBuilder& builder) override;
-    void RenderImGui() override;
+#endif
 
     bool IsEnabled() const noexcept { return enabled_; }
     void SetEnabled(bool enabled) noexcept { enabled_ = enabled; }

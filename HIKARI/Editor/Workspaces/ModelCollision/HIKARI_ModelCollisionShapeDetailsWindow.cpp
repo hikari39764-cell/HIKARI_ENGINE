@@ -53,8 +53,9 @@ void ModelCollisionWorkspaceController::DrawShapeDetailsWindow() {
                             static_cast<int>(shape->vertices.size()), static_cast<int>(shape->indices.size() / 3u));
     } else {
         int type = static_cast<int>(shape->type);
-        const char* types[]{TEXT::LocalizeCStr("ui.sceneCreation.box"), TEXT::LocalizeCStr("ui.sceneCreation.sphere"),
-                            TEXT::LocalizeCStr("ui.sceneCreation.capsule")};
+        const char* types[]{TEXT::Localize("ui.sceneCreation.box").c_str(),
+                            TEXT::Localize("ui.sceneCreation.sphere").c_str(),
+                            TEXT::Localize("ui.sceneCreation.capsule").c_str()};
         if (ImGui::Combo(TEXT::LocalizeWindow("ui.vfx.text.Type", "Type").c_str(), &type, types, 3)) {
             shape->type = static_cast<ASSETS::COLLISION::CollisionGeometryShapeType>(type);
             shape->radius = (std::max)(shape->radius, 0.001f);
@@ -114,18 +115,18 @@ void ModelCollisionWorkspaceController::DrawShapeDetailsWindow() {
         if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.materialGraph.duplicate", "Duplicate").c_str(), "Ctrl+D")) {
             DuplicateSelectedShapes();
         }
-        if (ImGui::MenuItem(shape->enabled ? TEXT::LocalizeCStr("editor.ui.disable.9a7d4e")
-                                           : TEXT::LocalizeCStr("editor.ui.enable.20063a"))) {
+        if (ImGui::MenuItem(shape->enabled ? TEXT::Localize("editor.ui.disable.9a7d4e").c_str()
+                                           : TEXT::Localize("editor.ui.enable.20063a").c_str())) {
             SetSelectedShapesEnabled(!shape->enabled);
         }
         const bool allHidden = AreAllSelectedShapesHidden();
-        if (ImGui::MenuItem(allHidden ? TEXT::LocalizeCStr("ai.api.show") : TEXT::LocalizeCStr("ui.vfx.text.Hide"),
-                            "H")) {
+        if (ImGui::MenuItem(
+                allHidden ? TEXT::Localize("ai.api.show").c_str() : TEXT::Localize("ui.vfx.text.Hide").c_str(), "H")) {
             SetSelectedShapesHidden(!allHidden);
         }
         const bool allLocked = AreAllSelectedShapesLocked();
-        if (ImGui::MenuItem(allLocked ? TEXT::LocalizeCStr("editor.ui.unlock.1526a1")
-                                      : TEXT::LocalizeCStr("editor.ui.lock.891ebc"),
+        if (ImGui::MenuItem(allLocked ? TEXT::Localize("editor.ui.unlock.1526a1").c_str()
+                                      : TEXT::Localize("editor.ui.lock.891ebc").c_str(),
                             "L")) {
             SetSelectedShapesLocked(!allLocked);
         }

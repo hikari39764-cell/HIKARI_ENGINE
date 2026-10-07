@@ -35,7 +35,7 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(DocumentScen
         MaterialNodeKind::Clamp,    MaterialNodeKind::TextureSample, MaterialNodeKind::TextureCoordinate,
     };
 
-    SearchField("##MaterialGraphNodeSearch", TEXT::LocalizeCStr("material.palette.search"), graphSearch_.data(),
+    SearchField("##MaterialGraphNodeSearch", TEXT::Localize("material.palette.search").c_str(), graphSearch_.data(),
                 graphSearch_.size());
     const std::string searchText = graphSearch_.data();
     const bool searching = !searchText.empty();
@@ -230,11 +230,11 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(DocumentScen
         return;
     }
 
-    if (ImGui::BeginMenu(TEXT::LocalizeCStr("material.module.menu"))) {
+    if (ImGui::BeginMenu(TEXT::Localize("material.module.menu").c_str())) {
         drawModules();
         ImGui::EndMenu();
     }
-    if (!recentGraphNodes_.empty() && ImGui::BeginMenu(TEXT::LocalizeCStr("material.palette.recent"))) {
+    if (!recentGraphNodes_.empty() && ImGui::BeginMenu(TEXT::Localize("material.palette.recent").c_str())) {
         // 挿入後に履歴が更新されても走査中の参照を無効にしない。
         const auto recent = recentGraphNodes_;
         for (const auto& name : recent) {
@@ -363,7 +363,7 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(DocumentScen
     }
     drawCategory(otherCategory);
 
-    if (ImGui::BeginMenu(TEXT::LocalizeCStr("editor.ui.material.functions.c794e3"))) {
+    if (ImGui::BeginMenu(TEXT::Localize("editor.ui.material.functions.c794e3").c_str())) {
         drawFunctions();
         ImGui::EndMenu();
     }

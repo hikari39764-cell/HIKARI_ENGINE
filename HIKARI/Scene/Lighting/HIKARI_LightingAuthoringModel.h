@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
@@ -71,6 +72,8 @@ SceneObjectId AddLight(SceneDocument& document, const LightAuthoring& light);
 SceneObjectId AddReflectionProbe(SceneDocument& document, const ReflectionProbeAuthoring& probe);
 SceneObjectId AddIrradianceVolume(SceneDocument& document, const IrradianceVolumeAuthoring& volume);
 
+// ライト・反射プローブ・放射照度ボリュームのいずれか（照明ランタイムの再読込が必要な種類）。
+bool IsLightingComponentType(std::string_view componentType) noexcept;
 const SceneComponentData* FindLightingComponent(const SceneObjectData& object, const char* componentType);
 SceneComponentData* FindLightingComponent(SceneObjectData& object, const char* componentType);
 

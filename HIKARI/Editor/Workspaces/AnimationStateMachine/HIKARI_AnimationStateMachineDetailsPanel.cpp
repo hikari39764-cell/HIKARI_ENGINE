@@ -33,15 +33,15 @@ bool InputTextString(const char* label, std::string& value) {
 const char* ParameterSourceName(ANIMATION::AnimationParameterSource source) noexcept {
     using Source = ANIMATION::AnimationParameterSource;
     switch (source) {
-    case Source::CharacterGrounded: return TEXT::LocalizeCStr("editor.ui.character.grounded.4a238d");
-    case Source::CharacterMoving: return TEXT::LocalizeCStr("editor.ui.character.moving.ead4a7");
-    case Source::CharacterHorizontalSpeed: return TEXT::LocalizeCStr("editor.ui.horizontal.speed.1500fb");
-    case Source::CharacterVerticalSpeed: return TEXT::LocalizeCStr("editor.ui.vertical.speed.0cc532");
-    case Source::CharacterInputMagnitude: return TEXT::LocalizeCStr("editor.ui.input.magnitude.19185f");
-    case Source::CharacterSprinting: return TEXT::LocalizeCStr("editor.ui.character.sprinting.177b29");
-    case Source::CharacterFalling: return TEXT::LocalizeCStr("editor.ui.character.falling.39a12a");
+    case Source::CharacterGrounded: return TEXT::Localize("editor.ui.character.grounded.4a238d").c_str();
+    case Source::CharacterMoving: return TEXT::Localize("editor.ui.character.moving.ead4a7").c_str();
+    case Source::CharacterHorizontalSpeed: return TEXT::Localize("editor.ui.horizontal.speed.1500fb").c_str();
+    case Source::CharacterVerticalSpeed: return TEXT::Localize("editor.ui.vertical.speed.0cc532").c_str();
+    case Source::CharacterInputMagnitude: return TEXT::Localize("editor.ui.input.magnitude.19185f").c_str();
+    case Source::CharacterSprinting: return TEXT::Localize("editor.ui.character.sprinting.177b29").c_str();
+    case Source::CharacterFalling: return TEXT::Localize("editor.ui.character.falling.39a12a").c_str();
     case Source::Manual:
-    default: return TEXT::LocalizeCStr("editor.ui.manual.c.0a8a40");
+    default: return TEXT::Localize("editor.ui.manual.c.0a8a40").c_str();
     }
 }
 
@@ -58,16 +58,16 @@ ANIMATION::AnimationConditionOperator DefaultOperator(ANIMATION::AnimationParame
 const char* ConditionOperatorName(ANIMATION::AnimationConditionOperator value) noexcept {
     using Op = ANIMATION::AnimationConditionOperator;
     switch (value) {
-    case Op::IsFalse: return TEXT::LocalizeCStr("editor.ui.is.false.b63c27");
+    case Op::IsFalse: return TEXT::Localize("editor.ui.is.false.b63c27").c_str();
     case Op::Greater: return ">";
     case Op::GreaterOrEqual: return ">=";
     case Op::Less: return "<";
     case Op::LessOrEqual: return "<=";
     case Op::Equal: return "==";
     case Op::NotEqual: return "!=";
-    case Op::Triggered: return TEXT::LocalizeCStr("editor.ui.triggered.933f5e");
+    case Op::Triggered: return TEXT::Localize("editor.ui.triggered.933f5e").c_str();
     case Op::IsTrue:
-    default: return TEXT::LocalizeCStr("editor.ui.is.true.905c77");
+    default: return TEXT::Localize("editor.ui.is.true.905c77").c_str();
     }
 }
 #endif
@@ -155,8 +155,8 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(DocumentSceneBa
             }
             int type = static_cast<int>(parameter->type);
             const char* types[]{
-                TEXT::LocalizeCStr("editor.ui.bool.daf760"), TEXT::LocalizeCStr("editor.ui.float.64435f"),
-                TEXT::LocalizeCStr("editor.ui.integer.9edcff"), TEXT::LocalizeCStr("editor.ui.trigger.d3f06a")};
+                TEXT::Localize("editor.ui.bool.daf760").c_str(), TEXT::Localize("editor.ui.float.64435f").c_str(),
+                TEXT::Localize("editor.ui.integer.9edcff").c_str(), TEXT::Localize("editor.ui.trigger.d3f06a").c_str()};
             before = definition;
             if (ImGui::Combo(TEXT::LocalizeWindow("ui.vfx.text.Type", "Type").c_str(), &type, types, 4)) {
                 parameter->type = static_cast<ANIMATION::AnimationParameterType>(type);
@@ -168,14 +168,14 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(DocumentSceneBa
                 parameter = SelectedParameter();
             }
             int source = static_cast<int>(parameter->source);
-            const char* sources[]{TEXT::LocalizeCStr("editor.ui.manual.c.0a8a40"),
-                                  TEXT::LocalizeCStr("editor.ui.character.grounded.4a238d"),
-                                  TEXT::LocalizeCStr("editor.ui.character.moving.ead4a7"),
-                                  TEXT::LocalizeCStr("editor.ui.horizontal.speed.1500fb"),
-                                  TEXT::LocalizeCStr("editor.ui.vertical.speed.0cc532"),
-                                  TEXT::LocalizeCStr("editor.ui.input.magnitude.19185f"),
-                                  TEXT::LocalizeCStr("editor.ui.character.sprinting.177b29"),
-                                  TEXT::LocalizeCStr("editor.ui.character.falling.39a12a")};
+            const char* sources[]{TEXT::Localize("editor.ui.manual.c.0a8a40").c_str(),
+                                  TEXT::Localize("editor.ui.character.grounded.4a238d").c_str(),
+                                  TEXT::Localize("editor.ui.character.moving.ead4a7").c_str(),
+                                  TEXT::Localize("editor.ui.horizontal.speed.1500fb").c_str(),
+                                  TEXT::Localize("editor.ui.vertical.speed.0cc532").c_str(),
+                                  TEXT::Localize("editor.ui.input.magnitude.19185f").c_str(),
+                                  TEXT::Localize("editor.ui.character.sprinting.177b29").c_str(),
+                                  TEXT::Localize("editor.ui.character.falling.39a12a").c_str()};
             ImGui::BeginDisabled(parameter->type == ANIMATION::AnimationParameterType::Trigger);
             before = definition;
             if (ImGui::Combo(TEXT::LocalizeWindow("editor.ui.binding.source.35edd6", "Binding Source").c_str(), &source,

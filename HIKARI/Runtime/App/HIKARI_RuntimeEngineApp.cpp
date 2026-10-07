@@ -58,15 +58,12 @@ bool RuntimeEngineApp::Initialize() {
 
     if (gameProjectModule_.IsLoaded()) {
         const std::string moduleId(gameProjectModule_.GetModuleId());
-        const size_t extensionCount = gameProjectModule_.GetRuntimeExtensionCount();
-        for (size_t index = 0u; index < extensionCount; ++index) {
-            IRuntimeExtension* extension = gameProjectModule_.GetRuntimeExtension(index);
-            if (extension == nullptr || !initialScene->AddBorrowedRuntimeExtension(*extension)) {
-                HIKARI_LOG_ERROR("[GameProject] invalid or duplicate runtime extension: " + moduleId);
-                return false;
-            }
+        IRuntimeExtension* extension = gameProjectModule_.GetRuntimeExtension();
+        if (extension == nullptr || !initialScene->AddBorrowedRuntimeExtension(*extension)) {
+            HIKARI_LOG_ERROR("[GameProject] invalid or duplicate runtime extension: " + moduleId);
+            return false;
         }
-        HIKARI_LOG_INFO("[GameProject] composed module=" + moduleId + " extensions=" + std::to_string(extensionCount));
+        HIKARI_LOG_INFO("[GameProject] composed module=" + moduleId);
     } else {
         HIKARI_LOG_WARN("[GameProject] " + moduleMessage);
     }
@@ -110,8 +107,6 @@ void RuntimeEngineApp::Render() {
     }
     sceneManager_.Render();
 }
-
-void RuntimeEngineApp::RenderHostUi() { sceneManager_.RenderImGui(); }
 
 void RuntimeEngineApp::Shutdown() {
     RuntimeSceneContext::SetTransitionBus(nullptr);

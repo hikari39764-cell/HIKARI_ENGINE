@@ -2,7 +2,7 @@
 #include "Scene/Ui/HIKARI_UiBindingSourceComponent.h"
 #include "Scene/Ui/HIKARI_UiScrollViewComponent.h"
 #include "Scene/Ui/HIKARI_UiTextFieldComponent.h"
-#include "Scene/Features/HIKARI_UiRuntimeFeature.h"
+#include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 
 #include "Scene/Ui/HIKARI_UiAnimationComponents.h"
 #include <array>
@@ -46,29 +46,6 @@ public:
     }
     std::span<const std::string_view> GetRequiredFeatureIds() const noexcept override {
         static constexpr std::array<std::string_view, 1u> ids{RuntimeFeatureIds::Rendering};
-        return ids;
-    }
-    std::span<const std::string_view> GetComponentTypeNames() const noexcept override {
-        static constexpr std::array<std::string_view, 16u> names{kUiCanvasComponentType,
-                                                                 kUiRectComponentType,
-                                                                 kUiImageComponentType,
-                                                                 kUiTextComponentType,
-                                                                 kUiButtonComponentType,
-                                                                 "UiTextFieldComponent",
-                                                                 "UiScrollViewComponent",
-                                                                 "UiGroupComponent",
-                                                                 "UiLayoutGroupComponent",
-                                                                 "UiProgressComponent",
-                                                                 "UiDisplaySettingsPanelComponent",
-                                                                 "UiDisplaySettingComponent",
-                                                                 "UiAnimatorComponent",
-                                                                 "UiAnimationTargetComponent",
-                                                                 "UiDataBindingComponent",
-                                                                 "UiBindingSourceComponent"};
-        return names;
-    }
-    std::span<const std::string_view> GetSystemIds() const noexcept override {
-        static constexpr std::array<std::string_view, 1u> ids{kUiSceneSystemId};
         return ids;
     }
     std::span<const RuntimeSystemDefault> GetDefaultSystems() const noexcept override {

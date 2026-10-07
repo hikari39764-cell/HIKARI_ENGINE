@@ -36,6 +36,7 @@ struct PostEffectPass {
     std::string name;
     std::string programId;
     std::string entryId = "Main";
+    AssetGuid shaderAssetGuid{};
 };
 
 // 効果の ID は読み込んだ場所が決める（エンジン内蔵は "engine.post.effect.*"、プロジェクト資産は GUID）。
@@ -44,6 +45,7 @@ struct PostEffectDefinition {
     std::vector<PostEffectPass> passes;
     std::vector<VFX::ParamDesc> params;
     std::optional<PostScreenWarpBinding> screenWarp;
+    bool requiresSurfaceFeatureMask = false;
 };
 
 struct PostProfileAsset {
@@ -62,6 +64,7 @@ bool LoadPostProfileAsset(const std::filesystem::path& path, PostProfileAsset& o
 bool SavePostProfileAsset(const std::filesystem::path& path, const PostProfileAsset& profile, std::string& error);
 // プロファイルが参照するプロジェクトの効果資産。エンジン内蔵の効果は依存に含めない。
 std::vector<AssetDependencyDesc> CollectPostProfileDependencies(const PostProfileAsset& profile);
+std::vector<AssetDependencyDesc> CollectPostEffectDependencies(const PostEffectDefinition& effect);
 
 // プロファイルの値が効果のパラメーターに対応しているか。
 bool ValidatePostProfileValues(const PostProfileAsset& profile, const PostEffectDefinition& effect, std::string& error);

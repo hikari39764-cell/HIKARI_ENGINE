@@ -29,7 +29,7 @@ struct MaterialRampPresetInfo {
     std::string_view description{};
 };
 
-const std::array<MaterialTemplateInfo, 10u>& GetBuiltInMaterialTemplates() noexcept;
+const std::array<MaterialTemplateInfo, 11u>& GetBuiltInMaterialTemplates() noexcept;
 
 const std::array<MaterialRampPresetInfo, 4u>& GetBuiltInMaterialRampPresets() noexcept;
 

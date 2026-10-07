@@ -3,13 +3,16 @@
 #include <algorithm>
 #include <exception>
 #include <limits>
+#include <type_traits>
 #include <utility>
 
 #include <json.hpp>
 
 #include "Assets/Material/Serialization/HIKARI_MaterialGraphJson.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialShellFields.h"
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
+#include "Core/Serialization/Json/HIKARI_JsonStrict.h"
 
 namespace HIKARI::MATERIAL_SERIALIZATION {
 
@@ -116,8 +119,11 @@ nlohmann::json WriteProgram(const MaterialProgramIR& program) {
         featureArray.push_back(std::string(ToString(feature)));
     }
 
+    nlohmann::json shell;
+    JSONFIELDS::Write(shell, program.shell, kMaterialShellFields);
     return nlohmann::json{
         {"version", program.version},
+        {"shell", std::move(shell)},
         {"key",
          {
              {"structureHash", program.key.structureHash},
@@ -188,6 +194,27 @@ bool ReadProgram(const nlohmann::json& node, MaterialProgramIR& outProgram, std:
     program.surface.alphaCutoff = surface.value("alphaCutoff", 0.5f);
     program.surface.doubleSided = surface.value("doubleSided", false);
     program.surface.unlit = surface.value("unlit", false);
+    if (!node.contains("shell") || !node["shell"].is_object()) {
+        outError = "compiled MaterialProgram requires its Shell descriptor";
+        return false;
+    }
+    bool shellFieldsValid = true;
+    kMaterialShellFields([&](const char* keyName, auto member, JSONFIELDS::Range) {
+        if (!shellFieldsValid)
+            return;
+        if constexpr (std::is_integral_v<std::remove_reference_t<decltype(program.shell.*member)>>)
+            shellFieldsValid = JSONSTRICT::ReadUint32(node["shell"], keyName, program.shell.*member,
+                                                      program.shell.*member, outError, "shell");
+        else
+            shellFieldsValid = JSONSTRICT::ReadFloat(node["shell"], keyName, program.shell.*member,
+                                                     program.shell.*member, outError, "shell");
+    });
+    if (!shellFieldsValid)
+        return false;
+    if (!IsValidMaterialShellSettings(program.shell)) {
+        outError = "compiled MaterialProgram contains invalid Shell settings";
+        return false;
+    }
     program.capabilities = node.value("capabilities", uint64_t{0u});
     program.parentMaterialGuid.value = node.value("parentMaterialGuid", std::string{});
     program.profileAssetGuid.value = node.value("profileAssetGuid", std::string{});
@@ -264,7 +291,7 @@ bool ReadProgram(const nlohmann::json& node, MaterialProgramIR& outProgram, std:
         // Variable などの作成専用ノードは lowering 済みの IR に現れない。
         const bool executableOpcode = opcode <= static_cast<uint32_t>(MaterialProgramOpcode::Fresnel) ||
                                       (opcode >= static_cast<uint32_t>(MaterialProgramOpcode::ParticleOutput) &&
-                                       opcode <= static_cast<uint32_t>(MaterialProgramOpcode::ParticleUv));
+                                       opcode <= static_cast<uint32_t>(MaterialProgramOpcode::NormalUvTransform));
         if (!executableOpcode ||
             !TryParseMaterialValueType(item.value("valueType", std::string{}), instruction.valueType)) {
             outError = "compiled MaterialProgram contains an unknown instruction opcode or type";
@@ -309,6 +336,12 @@ bool ReadProgram(const nlohmann::json& node, MaterialProgramIR& outProgram, std:
             }
             program.dependencyGuids.push_back(AssetGuid{item.get<std::string>()});
         }
+    }
+    MaterialShellSettings resolvedShell;
+    if (!ResolveMaterialProgramShellSettings(program, resolvedShell, outError) || resolvedShell != program.shell) {
+        if (outError.empty())
+            outError = "compiled Shell descriptor disagrees with its uniform inputs";
+        return false;
     }
     outProgram = std::move(program);
     return true;

@@ -68,7 +68,7 @@ void UiDisplaySettingComponent::Deserialize(const nlohmann::json& in) {
     direction_ = JSONREAD::IntegerMemberOr(in, "direction", 1) < 0 ? -1 : 1;
 }
 void UiDisplaySettingComponent::BuildInspector(IInspectorBuilder& b) {
-    const auto L = [](const char* key) { return TEXT::LocalizeCStr(key); };
+    const auto L = [](const char* key) { return TEXT::Localize(key).c_str(); };
     if (!b.Section(L("display.control"), true))
         return;
     const std::array<AuthoringChoice, 5> actions{{{"Cycle", L("display.cycle")},

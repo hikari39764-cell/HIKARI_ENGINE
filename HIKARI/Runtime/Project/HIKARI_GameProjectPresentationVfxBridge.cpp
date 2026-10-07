@@ -113,9 +113,6 @@ bool PresentationVfxView::PlayWorldEffect(const GameProjectCombatWorldEffectRequ
         afterimageRequest.silhouetteCount = request.intensity >= 1.35f ? 5u : 4u;
         afterimageRequest.lifetimeUnscaledSeconds = std::clamp(0.24f + request.intensity * 0.055f, 0.22f, 0.36f);
         afterimageRequest.opacity = std::clamp(0.50f + request.intensity * 0.11f, 0.46f, 0.78f);
-        afterimageRequest.fresnelPower = 2.75f;
-        afterimageRequest.dissolveStrength = 1.15f;
-        afterimageRequest.shellOffsetWorld = 0.009f;
         afterimageRequest.color = {0.08f, 0.66f, 1.0f};
         const bool silhouetteAccepted = afterimages->Capture(*world, afterimageRequest);
         return particleAccepted && silhouetteAccepted;
@@ -219,6 +216,32 @@ bool PresentationVfxView::SubmitPostProfileParameter(
         const DirectX::XMFLOAT4 value{request.value.x, request.value.y, request.value.z, request.value.w};
         return POST::PostSystem::SubmitEffectParameter(effectId, request.parameterIndex, request.channelMask, value,
                                                        request.priority, request.sourceId);
+    } catch (...) {
+        return false;
+    }
+}
+
+bool PresentationVfxView::SubmitActionPostProfile(std::string_view profileId,
+                                                  const GameProjectActionPostFrameRequest& request) const noexcept {
+    try {
+        World* world = CurrentWorld(world_);
+        if (!world)
+            return false;
+        const auto* play = world->Services().Find<RuntimePlayStateService>();
+        const auto* camera = world->Services().Find<GameplayCameraService>();
+        auto* reactions = world->Services().Find<VFX::ActionPostReactionService>();
+        return play && play->IsActive() && !TIME::IsPaused() && camera && camera->IsRuntimeCameraActive() &&
+               reactions && reactions->SubmitPostProfile(profileId, request, TIME::GetFrameContext().frameIndex);
+    } catch (...) {
+        return false;
+    }
+}
+
+bool PresentationVfxView::ClearActionPost(uint64_t sourceId) const noexcept {
+    try {
+        World* world = CurrentWorld(world_);
+        auto* reactions = world ? world->Services().Find<VFX::ActionPostReactionService>() : nullptr;
+        return reactions && reactions->ClearPostProfile(sourceId, TIME::GetFrameContext().frameIndex);
     } catch (...) {
         return false;
     }

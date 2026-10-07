@@ -20,11 +20,11 @@ namespace {
 #if defined(HIKARI_WITH_EDITOR)
 const char* ParameterTypeName(ANIMATION::AnimationParameterType type) noexcept {
     switch (type) {
-    case ANIMATION::AnimationParameterType::Float: return TEXT::LocalizeCStr("editor.ui.float.64435f");
-    case ANIMATION::AnimationParameterType::Integer: return TEXT::LocalizeCStr("editor.ui.integer.9edcff");
-    case ANIMATION::AnimationParameterType::Trigger: return TEXT::LocalizeCStr("editor.ui.trigger.d3f06a");
+    case ANIMATION::AnimationParameterType::Float: return TEXT::Localize("editor.ui.float.64435f").c_str();
+    case ANIMATION::AnimationParameterType::Integer: return TEXT::Localize("editor.ui.integer.9edcff").c_str();
+    case ANIMATION::AnimationParameterType::Trigger: return TEXT::Localize("editor.ui.trigger.d3f06a").c_str();
     case ANIMATION::AnimationParameterType::Bool:
-    default: return TEXT::LocalizeCStr("editor.ui.bool.daf760");
+    default: return TEXT::Localize("editor.ui.bool.daf760").c_str();
     }
 }
 #endif
@@ -112,7 +112,7 @@ void AnimationStateMachineWorkspaceController::DrawParametersWindow() {
     }
     ImGui::EndDisabled();
     ImGui::Separator();
-    SearchField("parameterSearch", TEXT::LocalizeCStr("shell.search"), parameterSearch_, sizeof(parameterSearch_));
+    SearchField("parameterSearch", TEXT::Localize("shell.search").c_str(), parameterSearch_, sizeof(parameterSearch_));
     const auto filter = TEXT::ToLowerAsciiCopy(parameterSearch_);
     for (const auto& parameter : document_.Definition().parameters) {
         if (!filter.empty() && TEXT::ToLowerAsciiCopy(parameter.name).find(filter) == std::string::npos)
@@ -153,7 +153,8 @@ void AnimationStateMachineWorkspaceController::DrawTransitionsWindow() {
     }
     ImGui::EndDisabled();
     ImGui::Separator();
-    SearchField("transitionSearch", TEXT::LocalizeCStr("shell.search"), transitionSearch_, sizeof(transitionSearch_));
+    SearchField("transitionSearch", TEXT::Localize("shell.search").c_str(), transitionSearch_,
+                sizeof(transitionSearch_));
     ImGui::Checkbox(TEXT::LocalizeWindow("editor.workflow.connectedTransitions", "connectedTransitions").c_str(),
                     &connectedTransitionsOnly_);
     const auto filter = TEXT::ToLowerAsciiCopy(transitionSearch_);

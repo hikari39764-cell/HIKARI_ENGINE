@@ -11,7 +11,6 @@ public:
     void ChangeScene(std::unique_ptr<IScene> next, bool callOnEnterNext = true, bool callOnExitCurrent = true);
     void Update(float dt);
     void Render();
-    void RenderImGui();
 
     IScene* GetCurrentScene();
 

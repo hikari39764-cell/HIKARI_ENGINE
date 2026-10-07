@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <string>
 #include "Core/Text/HIKARI_Localization.h"
+#include <json.hpp>
 
 namespace HIKARI::EDITOR {
 // エディタ個人設定。プロジェクトとドキュメントの履歴には含めない。

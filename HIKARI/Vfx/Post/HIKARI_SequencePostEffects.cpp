@@ -13,7 +13,7 @@ RenderTarget2D* PostProcessingStage::ApplySequenceEffects(RenderTarget2D& source
         return &source;
     if (!sequenceEffect_) {
         auto effect = std::make_unique<PostEffect>();
-        if (!effect->LoadBuiltinPixelShader("HIKARI.EngineShader.Post_SequenceEffectPS", "Main"))
+        if (!effect->LoadPixelShader({.programId = "HIKARI.EngineShader.Post_SequenceEffectPS", .entryId = "Main"}))
             return &source;
         sequenceEffect_ = std::move(effect);
         sequenceChain_.Add(sequenceEffect_.get());

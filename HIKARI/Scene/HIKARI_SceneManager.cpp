@@ -24,12 +24,6 @@ void SceneManager::Render() {
     }
 }
 
-void SceneManager::RenderImGui() {
-    if (current_) {
-        current_->RenderImGui();
-    }
-}
-
 IScene* SceneManager::GetCurrentScene() { return current_.get(); }
 
 const IScene* SceneManager::GetCurrentScene() const { return current_.get(); }

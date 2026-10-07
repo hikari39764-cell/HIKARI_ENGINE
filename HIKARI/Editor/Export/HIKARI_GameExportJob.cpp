@@ -70,47 +70,60 @@ GameExportJob::GameExportJob() : state_(std::make_unique<State>()) {}
 GameExportJob::~GameExportJob() { Cancel(); }
 bool GameExportJob::IsRunning() const { return state_->process && state_->process->Running(); }
 const nlohmann::json& GameExportJob::Status() const { return state_->status; }
+std::filesystem::path GameExportJob::WriteRequest(GameExportOptions& options, std::string& message) {
+    if (!GetProjectContext().IsOpen()) {
+        message = "Open a project before exporting.";
+        return {};
+    }
+    try {
+        const auto project = GetProjectContext().GetRoot();
+        const auto root = project / "Library/Build/Exports" /
+                          std::to_wstring(std::chrono::steady_clock::now().time_since_epoch().count());
+        std::filesystem::create_directories(root);
+        if (options.outputDirectory.empty())
+            options.outputDirectory = GameExporter::GetDefaultOutputDirectory();
+        GameExportIdentity identity;
+        if (options.identity)
+            identity = *options.identity;
+        else if (!LoadGameExportIdentity(project, identity, message))
+            return {};
+        if (!ValidateGameExportIdentity(project, identity, message))
+            return {};
+        Write(root / "request.json", {{"outputDirectory", TEXT::PathToUtf8(options.outputDirectory)},
+                                      {"sceneGuids", options.sceneGuids},
+                                      {"startupSceneGuid", options.startupSceneGuid},
+                                      {"windowMode", static_cast<int>(options.windowMode)},
+                                      {"prepareShipping", true},
+                                      {"identity", GameExportIdentityJson(identity)}});
+        return root / "request.json";
+    } catch (const std::exception& e) {
+        message = e.what();
+        return {};
+    }
+}
 bool GameExportJob::Start(const GameExportOptions& options, std::string& message) {
     Poll();
     if (IsRunning()) {
         message = "An export is already running.";
         return false;
     }
-    if (!GetProjectContext().IsOpen()) {
-        message = "Open a project before exporting.";
+    GameExportOptions requested = options;
+    const auto request = WriteRequest(requested, message);
+    if (request.empty())
         return false;
-    }
     try {
         const auto project = GetProjectContext().GetRoot();
-        state_->root = project / "Library/Build/Exports" /
-                       std::to_wstring(std::chrono::steady_clock::now().time_since_epoch().count());
-        std::filesystem::create_directories(state_->root);
-        const auto output =
-            options.outputDirectory.empty() ? GameExporter::GetDefaultOutputDirectory() : options.outputDirectory;
-        GameExportIdentity identity;
-        if (options.identity)
-            identity = *options.identity;
-        else if (!LoadGameExportIdentity(project, identity, message))
-            return false;
-        if (!ValidateGameExportIdentity(project, identity, message))
-            return false;
-        Write(state_->root / "request.json", {{"outputDirectory", TEXT::PathToUtf8(output)},
-                                              {"sceneGuids", options.sceneGuids},
-                                              {"startupSceneGuid", options.startupSceneGuid},
-                                              {"windowMode", static_cast<int>(options.windowMode)},
-                                              {"prepareShipping", true},
-                                              {"identity", GameExportIdentityJson(identity)}});
+        state_->root = request.parent_path();
         auto child = std::make_unique<EditorChildProcess>();
-        if (!child->Start(
-                PLATFORM::GetExecutablePath(),
-                {L"--project", project.wstring(), L"--export-request", (state_->root / "request.json").wstring()},
-                project, state_->root / "export.log", message, false))
+        if (!child->Start(PLATFORM::GetExecutablePath(),
+                          {L"--project", project.wstring(), L"--export-request", request.wstring()}, project,
+                          state_->root / "export.log", message, false))
             return false;
         state_->process = std::move(child);
         state_->status = {{"running", true},
                           {"message", "Preparing Shipping export"},
                           {"progress", 0.0f},
-                          {"outputDirectory", TEXT::PathToUtf8(output)},
+                          {"outputDirectory", TEXT::PathToUtf8(requested.outputDirectory)},
                           {"logDirectory", TEXT::PathToUtf8(state_->root)}};
         return true;
     } catch (const std::exception& e) {

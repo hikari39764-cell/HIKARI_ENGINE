@@ -39,6 +39,8 @@ void BuildStrictGpuDrivenCommandFrame(const GFX::Context& graphics) {
     RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
     commandFrameDesc.commandList = graphics.cmdList;
     commandFrameDesc.cullViewProj = &viewProj;
+    commandFrameDesc.renderViewProj = &GetActiveMeshFrameResources().view.camera.viewProj;
+    commandFrameDesc.screenHeight = GetActiveMeshFrameResources().view.camera.screenParams.y;
     commandFrameDesc.frameIndex = graphics.frameIndex;
     gMeshRendererState.gpuDrivenLayer.BuildCommandFrame(commandFrameDesc);
     UpdateTraditionalCommandStreamStats();

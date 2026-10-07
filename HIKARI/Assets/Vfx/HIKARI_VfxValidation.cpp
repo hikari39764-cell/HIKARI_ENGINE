@@ -395,6 +395,11 @@ void ValidateMotionModules(const VfxEmitterData& emitter, std::unordered_set<std
 }
 
 void ValidateRenderMaterial(const VfxEmitterData& emitter, std::vector<VfxDiagnostic>& diagnostics) {
+    if (!TEXT::IsNamedEnum(kVfxPostProcessModeNames, emitter.renderCommon.postProcessMode))
+        AddError(diagnostics, "Vfx.InvalidPostProcessMode", "Unknown post-process mode", emitter.renderCommon.id);
+    if (emitter.meshOutput.enabled && emitter.renderCommon.postProcessMode != VfxPostProcessMode::Scene)
+        AddError(diagnostics, "Vfx.PreserveColorMeshOutput",
+                 "PreserveColor requires procedural shape or particle output", emitter.renderCommon.id);
     if (!TEXT::IsNamedEnum(kVfxMaterialModeNames, emitter.renderCommon.materialMode)) {
         AddError(diagnostics, "Vfx.InvalidMaterialMode", "render material mode is invalid", emitter.renderCommon.id);
     }
@@ -602,7 +607,24 @@ void ValidateComposition(const VfxAssetData& asset,
     const bool hasComposition = std::any_of(asset.emitters.begin(), asset.emitters.end(), [](const auto& layer) {
         return layer.kind == VfxLayerKind::Adjustment || !layer.matte.sourceLayerId.empty() || layer.matte.sourceOnly;
     });
+    const bool requiresScreenComposition =
+        std::any_of(asset.emitters.begin(), asset.emitters.end(), [](const auto& layer) {
+            return !layer.matte.sourceLayerId.empty() || layer.matte.sourceOnly ||
+                   std::any_of(layer.effects.begin(), layer.effects.end(), [](const auto& effect) {
+                       return effect.enabled && effect.space == MaterialEffectSpace::LayerUv;
+                   });
+        });
+    const VfxEmitterData* firstContent = nullptr;
     for (const VfxEmitterData& emitter : asset.emitters) {
+        if (requiresScreenComposition &&
+            (emitter.kind == VfxLayerKind::Particles || emitter.kind == VfxLayerKind::Shape)) {
+            if (firstContent && firstContent->renderCommon.postProcessMode != emitter.renderCommon.postProcessMode)
+                AddError(
+                    diagnostics, "Vfx.MixedCompositionPostProcessMode",
+                    "Track matte and LayerUv compositions require the same post-process mode on all content layers",
+                    emitter.renderCommon.id);
+            firstContent = &emitter;
+        }
         if (!emitter.matte.sourceLayerId.empty()) {
             const auto source = emitters.find(emitter.matte.sourceLayerId);
             if (source == emitters.end() || source->second == &emitter ||

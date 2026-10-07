@@ -63,8 +63,8 @@ void VfxWorkspaceController::DrawTimeline() {
         }
     } else if (IconButton(preview_.previewPaused_ ? EditorGlyph::Play : EditorGlyph::Pause, "Play",
                           EditorButtonTone::Quiet, {28, 28},
-                          (VfxUiText(preview_.previewPaused_ ? TEXT::LocalizeCStr("ui.vfx.text.Resume")
-                                                             : TEXT::LocalizeCStr("ui.vfx.text.Pause")) +
+                          (VfxUiText(preview_.previewPaused_ ? TEXT::Localize("ui.vfx.text.Resume").c_str()
+                                                             : TEXT::Localize("ui.vfx.text.Pause").c_str()) +
                            " (Space)")
                               .c_str())) {
         preview_.PausePreview(!preview_.previewPaused_);

@@ -59,13 +59,13 @@ void RuntimeBindingWorkspaceController::DrawCatalogWindow(DocumentSceneBase& sce
     }
     ImGui::Separator();
 
-    SearchField("RuntimeBindingSearch", TEXT::LocalizeCStr("editor.ui.search.name.or.stable.id.874d5c"),
+    SearchField("RuntimeBindingSearch", TEXT::Localize("editor.ui.search.name.or.stable.id.874d5c").c_str(),
                 searchBuffer_.data(), searchBuffer_.size());
     const BINDING::Catalog& catalog = document_.Catalog();
     size_t visibleCount = 0u;
     std::string deleteRequestedId{};
     if (catalogFilter_ != CatalogFilter::Events) {
-        ImGui::SeparatorText(TEXT::LocalizeCStr("editor.ui.variables.ac018d"));
+        ImGui::SeparatorText(TEXT::Localize("editor.ui.variables.ac018d").c_str());
         for (const BINDING::VariableDefinition& variable : catalog.variables) {
             if (!MatchesCatalogSearch(variable.name, variable.id, searchBuffer_.data())) {
                 continue;
@@ -90,7 +90,7 @@ void RuntimeBindingWorkspaceController::DrawCatalogWindow(DocumentSceneBase& sce
     }
 
     if (catalogFilter_ != CatalogFilter::Variables) {
-        ImGui::SeparatorText(TEXT::LocalizeCStr("editor.ui.events.c5497b"));
+        ImGui::SeparatorText(TEXT::Localize("editor.ui.events.c5497b").c_str());
         for (const BINDING::EventDefinition& event : catalog.events) {
             if (!MatchesCatalogSearch(event.name, event.id, searchBuffer_.data())) {
                 continue;
@@ -117,11 +117,11 @@ void RuntimeBindingWorkspaceController::DrawCatalogWindow(DocumentSceneBase& sce
     }
 
     if (visibleCount == 0u) {
-        EmptyState(searchBuffer_[0] == '\0' ? TEXT::LocalizeCStr("editor.ui.no.bindings.yet.3980b1")
-                                            : TEXT::LocalizeCStr("editor.ui.no.matching.bindings.10a205"),
+        EmptyState(searchBuffer_[0] == '\0' ? TEXT::Localize("editor.ui.no.bindings.yet.3980b1").c_str()
+                                            : TEXT::Localize("editor.ui.no.matching.bindings.10a205").c_str(),
                    searchBuffer_[0] == '\0'
-                       ? TEXT::LocalizeCStr("editor.ui.use.add.in.the.toolbar.to.create.a.variable.or.event.1cda5c")
-                       : TEXT::LocalizeCStr("editor.ui.try.another.name.or.stable.id.a9c8a0"));
+                       ? TEXT::Localize("editor.ui.use.add.in.the.toolbar.to.create.a.variable.or.event.1cda5c").c_str()
+                       : TEXT::Localize("editor.ui.try.another.name.or.stable.id.a9c8a0").c_str());
     }
     if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete,
                               ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)))

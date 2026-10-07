@@ -9,7 +9,7 @@
 
 #include <json.hpp>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 // 型不一致を診断付きで拒否する JSON 読み取り。キーが無い場合は fallback を使う。
 // 診断文は "<path>.<key> must be ..." で統一する。

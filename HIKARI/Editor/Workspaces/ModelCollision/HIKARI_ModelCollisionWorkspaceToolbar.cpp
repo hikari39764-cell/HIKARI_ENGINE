@@ -22,8 +22,8 @@ void ModelCollisionWorkspaceController::DrawPreviewToolbar(DocumentSceneBase& sc
     ToolbarLabel(title.c_str());
     if (IsEditingModel()) {
         NextToolbarItem();
-        StatusBadge(history_.IsDirty() ? TEXT::LocalizeCStr("ui.vfx.text.Unsaved")
-                                       : TEXT::LocalizeCStr("ui.projectFeatures.saved"),
+        StatusBadge(history_.IsDirty() ? TEXT::Localize("ui.vfx.text.Unsaved").c_str()
+                                       : TEXT::Localize("ui.projectFeatures.saved").c_str(),
                     history_.IsDirty() ? EditorStatusTone::Warning : EditorStatusTone::Ready);
     }
 
@@ -67,8 +67,8 @@ void ModelCollisionWorkspaceController::DrawPreviewToolbar(DocumentSceneBase& sc
     }
     NextToolbarItem();
     if (IconToggleButton(EditorGlyph::Object, "CollisionShowModel", showModel_, kIconSize,
-                         showModel_ ? TEXT::LocalizeCStr("editor.ui.hide.source.model.f8d90c")
-                                    : TEXT::LocalizeCStr("editor.ui.show.source.model.d5c357"))) {
+                         showModel_ ? TEXT::Localize("editor.ui.hide.source.model.f8d90c").c_str()
+                                    : TEXT::Localize("editor.ui.show.source.model.d5c357").c_str())) {
         showModel_ = !showModel_;
     }
     NextToolbarItem();
@@ -156,14 +156,14 @@ void ModelCollisionWorkspaceController::DrawPreviewToolbar(DocumentSceneBase& sc
     const bool localSpace = gizmoState_.mode == EditorTransformGizmoMode::Local;
     if (IconButton(localSpace ? EditorGlyph::LocalSpace : EditorGlyph::WorldSpace, "CollisionTransformSpace",
                    EditorButtonTone::Quiet, kIconSize,
-                   localSpace ? TEXT::LocalizeCStr("editor.ui.use.world.space.8f2d9a")
-                              : TEXT::LocalizeCStr("editor.ui.use.local.space.22d273"))) {
+                   localSpace ? TEXT::Localize("editor.ui.use.world.space.8f2d9a").c_str()
+                              : TEXT::Localize("editor.ui.use.local.space.22d273").c_str())) {
         gizmoState_.mode = localSpace ? EditorTransformGizmoMode::World : EditorTransformGizmoMode::Local;
     }
     NextToolbarItem();
     if (IconToggleButton(EditorGlyph::Snap, "CollisionSnap", gizmoState_.snapEnabled, kIconSize,
-                         gizmoState_.snapEnabled ? TEXT::LocalizeCStr("editor.ui.disable.snapping.576053")
-                                                 : TEXT::LocalizeCStr("editor.ui.enable.snapping.8002ed"))) {
+                         gizmoState_.snapEnabled ? TEXT::Localize("editor.ui.disable.snapping.576053").c_str()
+                                                 : TEXT::Localize("editor.ui.enable.snapping.8002ed").c_str())) {
         gizmoState_.snapEnabled = !gizmoState_.snapEnabled;
     }
 

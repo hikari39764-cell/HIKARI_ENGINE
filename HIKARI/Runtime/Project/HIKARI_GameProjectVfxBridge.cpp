@@ -557,6 +557,20 @@ bool VfxView::Update(GameProjectVfxPlaybackHandle handle, const GameProjectVfxUp
     }
 }
 
+bool VfxView::SetTimeScale(GameProjectVfxPlaybackHandle handle, float scale) const noexcept {
+    try {
+        auto* world = static_cast<World*>(world_);
+        if (!world || !world->IsOwnerThread() || GameProjectSdkAccess::IsWorldClosing(*world))
+            return false;
+        auto* service = FindVfxPlaybackService(world);
+        VFX::VfxPlaybackHandle runtimeHandle{};
+        return service && ToRuntimeVfxHandle(handle, service->GetPlaybackNamespace(), runtimeHandle) &&
+               service->SetTimeScale(runtimeHandle, scale);
+    } catch (...) {
+        return false;
+    }
+}
+
 bool VfxView::IsActive(GameProjectVfxPlaybackHandle handle) const noexcept {
     try {
         VFX::VfxPlaybackService* service = FindVfxPlaybackService(static_cast<World*>(world_));
@@ -674,7 +688,8 @@ bool PresentationVfxView::CaptureAfterimageProfiled(
     const GameProjectAfterimageProfiledRequest& request) const noexcept {
     try {
         const GameProjectCombatWorldEffectRequest& effect = request.request;
-        if (world_ == nullptr) {
+        if (world_ == nullptr || !static_cast<World*>(world_)->IsOwnerThread() ||
+            GameProjectSdkAccess::IsWorldClosing(*static_cast<World*>(world_))) {
             EmitVfxBridgeDiagnostic("afterimage_profiled_rejected", "world_unavailable");
             return false;
         }
@@ -715,14 +730,39 @@ bool PresentationVfxView::CaptureAfterimageProfiled(
         runtimeRequest.uniformScale = effect.scale;
         runtimeRequest.silhouetteCount = effect.intensity >= 1.35f ? 5u : 4u;
         runtimeRequest.lifetimeUnscaledSeconds = std::clamp(0.24f + effect.intensity * 0.055f, 0.22f, 0.36f);
-        runtimeRequest.opacity = std::clamp(0.50f + effect.intensity * 0.11f, 0.46f, 0.78f);
-        runtimeRequest.fresnelPower = 2.75f;
-        runtimeRequest.dissolveStrength = 1.15f;
-        runtimeRequest.shellOffsetWorld = 0.009f;
+        runtimeRequest.opacity = 1.0f;
         runtimeRequest.color = {0.08f, 0.66f, 1.0f};
         return afterimages->Capture(*world, runtimeRequest, output);
     } catch (...) {
         EmitVfxBridgeDiagnostic("afterimage_profiled_rejected", "bridge_exception");
+        return false;
+    }
+}
+
+namespace {
+VFX::CombatAfterimageService* ResolveAfterimageSource(void* value, uint64_t owner, uint64_t source) {
+    auto* world = static_cast<World*>(value);
+    if (!world || !world->IsOwnerThread() || GameProjectSdkAccess::IsWorldClosing(*world) || source == 0u ||
+        !world->FindObject(RuntimeObjectHandle::FromValue(owner)))
+        return nullptr;
+    return world->Services().Find<VFX::CombatAfterimageService>();
+}
+} // namespace
+
+bool PresentationVfxView::SetAfterimagePaused(uint64_t owner, uint64_t source, bool paused) const noexcept {
+    try {
+        auto* service = ResolveAfterimageSource(world_, owner, source);
+        return service && service->SetPaused(RuntimeObjectHandle::FromValue(owner), source, paused);
+    } catch (...) {
+        return false;
+    }
+}
+
+bool PresentationVfxView::ClearAfterimages(uint64_t owner, uint64_t source) const noexcept {
+    try {
+        auto* service = ResolveAfterimageSource(world_, owner, source);
+        return service && service->Clear(RuntimeObjectHandle::FromValue(owner), source);
+    } catch (...) {
         return false;
     }
 }

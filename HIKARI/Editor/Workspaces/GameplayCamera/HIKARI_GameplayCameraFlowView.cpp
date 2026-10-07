@@ -15,7 +15,7 @@
 #include <numbers>
 namespace HIKARI::EDITOR {
 namespace {
-const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
+const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 } // namespace
 void GameplayCameraWorkspaceController::DrawFlowTimeline(DocumentSceneBase& scene, EditorWorkspaceHost& host,
                                                          EditorOperationRegistry& operations) {

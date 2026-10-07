@@ -76,6 +76,9 @@ struct TemporalPassScratchState {
     std::array<TemporalGeometryUploadSlot, GFX::kFrameResourceCount> geometryUploads{};
     std::unordered_map<TemporalGeometryHistoryKey, TemporalGeometryObjectHistory, TemporalGeometryHistoryKeyHash>
         geometryHistory{};
+    // 同じ view/frame のみで共有し、TAA と外部 upscaler の両方へ失効を伝える。
+    TemporalResourceFrame geometryHistoryRejectionFrame{};
+    std::vector<D3D12_RECT> geometryHistoryRejectionRects{};
 };
 
 struct TemporalPassUploadSlice {

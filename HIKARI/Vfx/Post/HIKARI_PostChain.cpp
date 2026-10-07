@@ -3,6 +3,7 @@
 #include "Vfx/Post/HIKARI_PostEffect.h"
 #include <sstream>
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
+#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI {
 namespace POST {
@@ -75,10 +76,16 @@ bool PostChain::EnsureTempSize(int w, int h) {
 }
 
 RenderTarget2D* PostChain::Execute(RenderTarget2D& src, QuadDrawer& quad, const CommonParams& params, int tempWidth,
-                                   int tempHeight) {
+                                   int tempHeight, const RENDER3D::RenderTextureView* surfaceFeatureMask) {
     if (effects_.empty()) {
         return &src;
     }
+    if (surfaceFeatureMask &&
+        (!surfaceFeatureMask->IsSampleable() || !surfaceFeatureMask->resource ||
+         surfaceFeatureMask->format != DXGI_FORMAT_R32G32_UINT ||
+         !(surfaceFeatureMask->state & D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) || !context_.device ||
+         !context_.srvHeap || !context_.deferredReleaseQueue || context_.currentFrameRetireFenceValue == 0u))
+        return &src;
 
     int w = tempWidth > 0 ? tempWidth : src.GetWidth();
     int h = tempHeight > 0 ? tempHeight : src.GetHeight();
@@ -107,11 +114,37 @@ RenderTarget2D* PostChain::Execute(RenderTarget2D& src, QuadDrawer& quad, const 
 
         dst->BeginCapture(0, 0, 0, 0);
 
-        quad.SetInputTexture(cur->GetSrvHeap(), cur->GetSrvGpu());
+        std::vector<RENDER3D::RenderResourceView> inputDescriptors;
+        if (surfaceFeatureMask) {
+            inputDescriptors = RENDER3D::AllocateRenderResourceDescriptorRange(3u);
+            if (inputDescriptors.size() != 3u) {
+                dst->EndCapture();
+                return &src;
+            }
+            D3D12_SHADER_RESOURCE_VIEW_DESC view{};
+            view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            view.Texture2D.MipLevels = 1u;
+            view.Format = cur->GetFormat();
+            context_.device->CreateShaderResourceView(cur->GetResource(), &view, inputDescriptors[0].cpu);
+            view.Format = DXGI_FORMAT_R32_FLOAT;
+            context_.device->CreateShaderResourceView(nullptr, &view, inputDescriptors[1].cpu);
+            view.Format = surfaceFeatureMask->format;
+            context_.device->CreateShaderResourceView(surfaceFeatureMask->resource, &view, inputDescriptors[2].cpu);
+            quad.SetInputTexture(context_.srvHeap, inputDescriptors[0].gpu, inputDescriptors[1].gpu);
+        } else {
+            quad.SetInputTexture(cur->GetSrvHeap(), cur->GetSrvGpu());
+        }
+        // Descriptor retirement is deferred to this frame's fence on every exit.
+        const auto retireInputs = [&]() {
+            for (auto& view : inputDescriptors)
+                RENDER3D::RetireRenderResourceDescriptor(view, context_, "PostChain.SurfaceInputs");
+        };
         if (!quad.SetOutputFormat(dst->GetFormat())) {
             DEBUGLOG::PushRenderError(std::string("[PostChain][ERROR] Execute SetOutputFormat failed.\n") +
                                       DumpState());
             dst->EndCapture();
+            retireInputs();
             return &src;
         }
 
@@ -119,10 +152,12 @@ RenderTarget2D* PostChain::Execute(RenderTarget2D& src, QuadDrawer& quad, const 
         if (!effects_[i]->BindAndDraw(quad)) {
             DEBUGLOG::PushRenderError(std::string("[PostChain][ERROR] Effect BindAndDraw failed.\n") + DumpState());
             dst->EndCapture();
+            retireInputs();
             return &src;
         }
 
         dst->EndCapture();
+        retireInputs();
 
         cur = dst;
     }

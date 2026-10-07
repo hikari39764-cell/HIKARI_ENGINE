@@ -130,7 +130,7 @@ bool CinematicsWorkspaceController::DrawStage(DocumentSceneBase& scene, Cinemati
         }
         ImGui::EndDisabled();
         if (rotationLocked && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-            ImGui::SetTooltip("%s", TEXT::LocalizeCStr("cine.boundRotation"));
+            ImGui::SetTooltip("%s", TEXT::Localize("cine.boundRotation").c_str());
         ImGui::EndDisabled();
         directorViewPanel_.SetTargetCamera({});
         const auto result = directorViewPanel_.DrawContents(scene, view, {}, context.transformGizmo,

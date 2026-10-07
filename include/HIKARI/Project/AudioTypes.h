@@ -69,4 +69,21 @@ struct GameProjectAudioStats {
     uint64_t streamBufferBytes = 0u;
 };
 
+// Source-sample clock, not wall time or latency-corrected speaker time.
+// Position includes the initial seek and wraps when looping; elapsed excludes
+// that seek and accumulates source seconds across loops. Pausing freezes both.
+struct GameProjectAudioPlaybackSnapshot {
+    uint32_t structSize = sizeof(GameProjectAudioPlaybackSnapshot);
+    uint32_t version = 1u;
+    uint32_t paused = 0u;
+    uint32_t looping = 0u;
+    double positionSeconds = 0.0;
+    double elapsedSeconds = 0.0;
+    double durationSeconds = 0.0;
+    uint64_t completedLoops = 0u;
+    uint64_t samplesPlayed = 0u;
+    uint32_t sampleRate = 0u;
+    float playbackRate = 1.0f;
+};
+
 } // namespace HIKARI

@@ -18,7 +18,7 @@
 #include "Render2D/HIKARI_Camera.h"
 #include "Render2D/HIKARI_Renderer.h"
 #include "Render2D/HIKARI_SpineActor.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 #include "Runtime/App/HIKARI_IHostApplication.h"
 #include "Runtime/Diagnostics/HIKARI_RuntimeBenchmark.h"

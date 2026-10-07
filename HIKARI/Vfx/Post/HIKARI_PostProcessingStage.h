@@ -17,7 +17,7 @@
 #include "Render3D/Color/HIKARI_AutomaticExposure.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Vfx/HIKARI_ActionPostReactionFrameSource.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
 #include "Vfx/Post/HIKARI_ActionScreenImpulseProvider.h"
@@ -27,6 +27,9 @@
 #include "Assets/Post/HIKARI_PostAsset.h"
 #include "Vfx/Transition/HIKARI_TransitionProfile.h"
 
+namespace HIKARI {
+class AssetRegistry;
+} // namespace HIKARI
 namespace HIKARI::POST {
 
 class PostEffect;
@@ -48,10 +51,17 @@ public:
     void ClearEffects();
     void AddEffect(PostEffect* effect);
     bool SetGlobalEffect(std::string_view effectId, std::shared_ptr<const PostEffectDefinition> effect,
-                         const PostParameterBlock& values);
+                         const PostParameterBlock& values, const AssetRegistry* registry = nullptr);
+    bool RequiresSurfaceFeatureMask() const noexcept;
     bool SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
                                const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId);
     void ClearGlobalEffect();
+    bool SetActionPostFrame(uint64_t worldId, uint64_t frameIndex, std::string_view effectId,
+                            std::shared_ptr<const PostEffectDefinition> effect, const PostParameterBlock& values,
+                            const AssetRegistry& registry);
+    void ClearActionPostFrame(uint64_t worldId = 0u);
+    void SetActionPostView(uint64_t worldId, bool primaryGameView) noexcept;
+    bool RequiresActionSurfaceFeatureMask() const noexcept;
     void GetRadialScreenWarp(float& curvature, float& strength) const noexcept;
     void SetBloomSettings(const BloomSettings& settings);
     void SetToneMappingSettings(const ToneMappingSettings& settings);
@@ -82,7 +92,9 @@ public:
 
     RenderTarget2D* NormalizeTemporalOutput(RenderTarget2D& source, uint32_t width, uint32_t height, QuadDrawer& quad);
     RenderTarget2D* ResolveHdr(RenderTarget2D& source, QuadDrawer& quad, bool debugOutput, const char* temporalBackend,
-                               bool lightingEnabled, RenderTarget2D* sceneDepthOwner);
+                               bool lightingEnabled, RenderTarget2D* sceneDepthOwner,
+                               const RENDER3D::RenderTextureView* surfaceFeatureMask = nullptr,
+                               RenderTarget2D* preservedVfx = nullptr);
     // Bloom だけを適用して source へ加算合成する。エディタのツールプレビュー
     // 用: 本編と同じ bloom を見せつつ、ゲーム状態に紐づく後処理
     // (画面衝撃・自動露出計測・サングレア・遷移) を引き込まない。
@@ -96,6 +108,9 @@ public:
 
 private:
     CommonParams ResolveGlobalFrameParams() const noexcept;
+    bool IsActionPostCurrent() const noexcept;
+    RenderTarget2D* ApplyActionPost(RenderTarget2D& source, QuadDrawer& quad,
+                                    const RENDER3D::RenderTextureView* surfaceFeatureMask);
     struct EffectChannelOverride {
         float value = 0.f;
         int32_t priority = 0;
@@ -119,6 +134,18 @@ private:
     void LogState(const char* reason) const;
 
     GFX::Context context_{};
+    PostChain actionPostChain_{};
+    std::vector<std::unique_ptr<PostEffect>> actionPostPasses_{};
+    std::shared_ptr<const PostEffectDefinition> actionPostEffect_{};
+    std::string actionPostEffectId_;
+    PostParameterBlock actionPostValues_{};
+    const AssetRegistry* actionPostRegistry_ = nullptr;
+    uint64_t actionPostRegistryId_ = 0u;
+    uint64_t actionPostRegistryRevision_ = 0u;
+    uint64_t actionPostWorld_ = 0u;
+    uint64_t actionPostViewWorld_ = 0u;
+    uint64_t actionPostFrame_ = (std::numeric_limits<uint64_t>::max)();
+    uint64_t actionPostDeviceGeneration_ = 0u;
     PostChain globalChain_{};
     std::array<PostChain, 5> bloomLevels_{};
     RenderTarget2D* ApplySequenceEffects(RenderTarget2D& source, QuadDrawer& quad);
@@ -137,6 +164,8 @@ private:
 
     std::string activeGlobalEffectId_{};
     std::shared_ptr<const PostEffectDefinition> activeGlobalEffect_{};
+    uint64_t activeGlobalRegistryId_ = 0u;
+    uint64_t activeGlobalRegistryRevision_ = 0u;
     std::vector<std::unique_ptr<PostEffect>> activeGlobalEffects_{};
     std::vector<std::unique_ptr<PostEffect>> activeBloomEffects_{};
     BloomSettings bloomSettings_{};

@@ -51,7 +51,22 @@ bool GatherTemporalVelocityDraws(const GFX::Context& graphics, std::vector<Tempo
                 continue;
             }
             const MeshPrimitive& primitive = meshAsset.primitives[instance.primitiveIndex];
-            if (primitive.layout != VertexLayoutKind::StaticPNTT) {
+            const bool skinned = primitive.layout == VertexLayoutKind::SkinnedPNTTJW;
+            const bool shellFallback = instance.shellSettings.x >= 2.0f && instance.shellSettings.y > 0.0f;
+            if (skinned && (!shellFallback ||
+                            (flags & static_cast<uint32_t>(
+                                         RENDER3D::RUNTIME::SurfaceGpuSceneInstanceFlags::ClusterMainline)) == 0u))
+                continue;
+            if (primitive.layout != VertexLayoutKind::StaticPNTT && !skinned) {
+                continue;
+            }
+            // Shell は圧縮形状と元三角形の EQUAL 一致を保証できないため、範囲だけを失効処理へ渡す。
+            if (shellFallback) {
+                TemporalVelocityDraw draw{};
+                draw.shellSettings = instance.shellSettings;
+                draw.boundsCenterRadius = instance.boundsCenterRadius;
+                if (!appendDraw(std::move(draw)))
+                    return false;
                 continue;
             }
             Mesh* mesh = gMeshRendererState.primitiveCache.GetOrCreateStatic(graphics.device, primitive,
@@ -118,6 +133,11 @@ bool GatherTemporalVelocityDraws(const GFX::Context& graphics, std::vector<Tempo
         draw.doubleSided = record.key.doubleSided;
         draw.alphaMasked = record.key.alphaMasked;
         draw.jointPalette = &(*stream.jointPalettes)[recordIndex];
+        if (stream.instances != nullptr && command.firstGpuSceneInstanceIndex < stream.instances->size()) {
+            const auto& instance = (*stream.instances)[command.firstGpuSceneInstanceIndex];
+            draw.shellSettings = instance.shellSettings;
+            draw.boundsCenterRadius = instance.boundsCenterRadius;
+        }
         if (!appendDraw(std::move(draw))) {
             return false;
         }

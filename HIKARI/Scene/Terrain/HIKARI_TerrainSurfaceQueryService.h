@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceTypes.h"
 #include "Scene/Terrain/HIKARI_TerrainChunks.h"

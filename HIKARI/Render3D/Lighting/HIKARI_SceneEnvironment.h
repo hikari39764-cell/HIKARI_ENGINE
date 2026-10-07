@@ -8,7 +8,7 @@
 #include <DirectXMath.h>
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI {
 

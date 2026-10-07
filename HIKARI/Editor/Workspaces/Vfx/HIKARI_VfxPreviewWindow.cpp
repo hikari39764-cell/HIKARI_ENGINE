@@ -138,8 +138,9 @@ void VfxWorkspaceController::DrawPreviewWindow(EditorViewInstance& previewView, 
     if (adjustmentSelected) {
         ImGui::TextDisabled("%s", TEXT::Localize("ui.vfx.view.adjustmentScope").c_str());
     } else {
-        const char* operations[] = {TEXT::LocalizeCStr("ui.vfx.text.Move"), TEXT::LocalizeCStr("ui.viewport.rotate"),
-                                    TEXT::LocalizeCStr("ui.assetInspector.scale")};
+        const char* operations[] = {TEXT::Localize("ui.vfx.text.Move").c_str(),
+                                    TEXT::Localize("ui.viewport.rotate").c_str(),
+                                    TEXT::Localize("ui.assetInspector.scale").c_str()};
         const EditorGlyph glyphs[]{EditorGlyph::Translate, EditorGlyph::Rotate, EditorGlyph::Scale};
         const char* shortcuts[]{" (W)", " (E)", " (R)"};
         for (int i = 0; i < 3; ++i) {
@@ -153,8 +154,8 @@ void VfxWorkspaceController::DrawPreviewWindow(EditorViewInstance& previewView, 
         const bool world = layerGizmoState_.mode == EditorTransformGizmoMode::World;
         if (IconButton(world ? EditorGlyph::WorldSpace : EditorGlyph::LocalSpace, "TransformSpace",
                        EditorButtonTone::Quiet, {28, 28},
-                       VfxUiText(world ? TEXT::LocalizeCStr("ui.vfx.text.World (X)")
-                                       : TEXT::LocalizeCStr("ui.vfx.text.Local (X)"))
+                       VfxUiText(world ? TEXT::Localize("ui.vfx.text.World (X)").c_str()
+                                       : TEXT::Localize("ui.vfx.text.Local (X)").c_str())
                            .c_str()))
             layerGizmoState_.mode = layerGizmoState_.mode == EditorTransformGizmoMode::World
                                         ? EditorTransformGizmoMode::Local

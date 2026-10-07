@@ -250,20 +250,20 @@ bool AppendEngineContentTextureManifest(AssetRegistry& registry, const CONTENT::
             asset.value("compression", std::string{}), TextureCompression::None);
         descriptor->mipPolicy = ASSETS::IMPORT_POLICY::ParseTextureMipPolicy(asset.value("mipPolicy", std::string{}),
                                                                              TextureMipPolicy::Preserve);
+        HtexFileInfo textureInfo{};
+        std::string textureError{};
+        if (!InspectHtexFile(sourcePath, textureInfo, textureError) ||
+            textureInfo.colorSpace != descriptor->colorSpace || textureInfo.usage != descriptor->usage ||
+            textureInfo.compression != descriptor->compression) {
+            HIKARI_LOG_ERROR("[AssetRegistryBuilder][EngineContent] invalid texture artifact: " + id + " " +
+                             textureError);
+            ok = false;
+            continue;
+        }
+        descriptor->width = textureInfo.width;
+        descriptor->height = textureInfo.height;
         ok = registry.RegisterDescriptor(std::move(descriptor)) && ok;
     }
-    return ok;
-}
-
-bool AppendEngineContentTextures(AssetRegistry& registry) {
-    const CONTENT::EngineContentContext& content = CONTENT::GetEngineContentContext();
-    if (!content.IsOpen()) {
-        return true;
-    }
-
-    bool ok = AppendEngineContentTextureManifest(registry, content, "Vfx/BuiltinAssets.json", "VFX");
-    ok = AppendEngineContentTextureManifest(registry, content, "Sand/BuiltinAssets.json", "Sand") && ok;
-    ok = AppendEngineContentTextureManifest(registry, content, "Terrain/BuiltinAssets.json", "Terrain") && ok;
     return ok;
 }
 
@@ -356,9 +356,21 @@ bool AppendBuiltInTerrainMaterials(AssetRegistry& registry, const AssetDatabase&
 
 } // namespace
 
+bool RegisterEngineContentTextures(const CONTENT::EngineContentContext& content, AssetRegistry& registry) {
+    if (!content.IsOpen()) {
+        return true;
+    }
+
+    bool ok = AppendEngineContentTextureManifest(registry, content, "Vfx/BuiltinAssets.json", "VFX");
+    ok = AppendEngineContentTextureManifest(registry, content, "Sand/BuiltinAssets.json", "Sand") && ok;
+    ok = AppendEngineContentTextureManifest(registry, content, "Terrain/BuiltinAssets.json", "Terrain") && ok;
+    ok = AppendEngineContentTextureManifest(registry, content, "Painterly/BuiltinAssets.json", "Painterly") && ok;
+    return ok;
+}
+
 bool AssetRegistryBuilder::RebuildRegistry(const AssetDatabase& assetDatabase, AssetRegistry& liveRegistry) const {
     AssetRegistry registry{};
-    bool ok = AppendEngineContentTextures(registry);
+    bool ok = RegisterEngineContentTextures(CONTENT::GetEngineContentContext(), registry);
     ok = AppendBuiltInMaterials(registry, assetDatabase) && ok;
     ok = AppendBuiltInTerrainMaterials(registry, assetDatabase) && ok;
 

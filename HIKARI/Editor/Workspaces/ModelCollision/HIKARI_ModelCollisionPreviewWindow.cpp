@@ -314,8 +314,9 @@ void ModelCollisionWorkspaceController::DrawPreviewWindow(DocumentSceneBase& sce
                                 nullptr, false, hasSelection)) {
                 collisionVisibility_ = ModelCollisionPreviewVisibility::SelectedOnly;
             }
-            if (ImGui::MenuItem(AreAllSelectedShapesLocked() ? TEXT::LocalizeCStr("editor.ui.unlock.selected.88c853")
-                                                             : TEXT::LocalizeCStr("editor.ui.lock.selected.00d319"),
+            if (ImGui::MenuItem(AreAllSelectedShapesLocked()
+                                    ? TEXT::Localize("editor.ui.unlock.selected.88c853").c_str()
+                                    : TEXT::Localize("editor.ui.lock.selected.00d319").c_str(),
                                 "L", false, hasSelection)) {
                 SetSelectedShapesLocked(!AreAllSelectedShapesLocked());
             }

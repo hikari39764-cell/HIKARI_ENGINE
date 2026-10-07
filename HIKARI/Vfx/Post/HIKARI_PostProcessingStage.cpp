@@ -1,4 +1,5 @@
 #include "Vfx/Post/HIKARI_PostProcessingStage.h"
+#include "Assets/HIKARI_AssetRegistry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -47,9 +48,12 @@ PostProcessingStage::PostProcessingStage()
 PostProcessingStage::~PostProcessingStage() = default;
 
 void PostProcessingStage::UpdateContext(const GFX::Context& context) {
+    if (context_.device != context.device || context_.deviceGeneration != context.deviceGeneration)
+        ClearActionPostFrame();
     context_ = context;
     PostEffect::UpdateContext(context);
     globalChain_.UpdateContext(context);
+    actionPostChain_.UpdateContext(context);
     sequenceChain_.UpdateContext(context);
     for (auto& level : bloomLevels_)
         level.UpdateContext(context);
@@ -65,6 +69,7 @@ void PostProcessingStage::UpdateContext(const GFX::Context& context) {
     sunGlareTarget_.UpdateContext(context);
     automaticExposureMeter_.UpdateContext(context);
     globalChain_.SetDebugName("PostProcessing.Global");
+    actionPostChain_.SetDebugName("PostProcessing.ProjectAction");
     sequenceChain_.SetDebugName("PostProcessing.Sequence");
     for (size_t i = 0; i < bloomLevels_.size(); ++i)
         bloomLevels_[i].SetDebugName("PostProcessing.Bloom." + std::to_string(i));
@@ -74,6 +79,7 @@ void PostProcessingStage::UpdateContext(const GFX::Context& context) {
 }
 
 void PostProcessingStage::Shutdown() {
+    ClearActionPostFrame();
     ClearGlobalEffect();
     ClearTransitionState();
     globalChain_.Finalize();
@@ -131,21 +137,20 @@ void PostProcessingStage::ClearEffects() { globalChain_.Clear(); }
 void PostProcessingStage::AddEffect(PostEffect* effect) { globalChain_.Add(effect); }
 
 bool PostProcessingStage::SetGlobalEffect(std::string_view effectId, std::shared_ptr<const PostEffectDefinition> effect,
-                                          const PostParameterBlock& values) {
+                                          const PostParameterBlock& values, const AssetRegistry* registry) {
     if (effectId.empty() || !effect) {
         ClearGlobalEffect();
         return false;
     }
     // 資産の再読み込みで定義が差し替わった時も pass を作り直す。
-    if (activeGlobalEffectId_ != effectId || activeGlobalEffect_ != effect || activeGlobalEffects_.empty()) {
+    const uint64_t registryId = registry ? registry->GetInstanceId() : 0u;
+    const uint64_t registryRevision = registry ? registry->GetRevision() : 0u;
+    if (activeGlobalEffectId_ != effectId || activeGlobalEffect_ != effect || activeGlobalEffects_.empty() ||
+        activeGlobalRegistryId_ != registryId || activeGlobalRegistryRevision_ != registryRevision) {
         std::vector<std::unique_ptr<PostEffect>> passes{};
-        passes.reserve(effect->passes.size());
-        for (const PostEffectPass& pass : effect->passes) {
-            auto instance = std::make_unique<PostEffect>();
-            if (!instance->LoadBuiltinPixelShader(pass.programId, pass.entryId)) {
-                return false;
-            }
-            passes.push_back(std::move(instance));
+        if (!BuildPostEffectPasses(*effect, registry, passes)) {
+            ClearGlobalEffect();
+            return false;
         }
         globalChain_.Clear();
         activeGlobalEffects_ = std::move(passes);
@@ -154,9 +159,15 @@ bool PostProcessingStage::SetGlobalEffect(std::string_view effectId, std::shared
         }
         activeGlobalEffect_ = std::move(effect);
         activeGlobalEffectId_ = effectId;
+        activeGlobalRegistryId_ = registryId;
+        activeGlobalRegistryRevision_ = registryRevision;
     }
     std::copy(values.begin(), values.end(), std::begin(commonParams_.user));
     return globalChain_.HasAny();
+}
+
+bool PostProcessingStage::RequiresSurfaceFeatureMask() const noexcept {
+    return globalChain_.HasAny() && activeGlobalEffect_ && activeGlobalEffect_->requiresSurfaceFeatureMask;
 }
 
 bool PostProcessingStage::SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
@@ -223,6 +234,7 @@ void PostProcessingStage::ClearGlobalEffect() {
     effectOverrideFrame_ = (std::numeric_limits<uint64_t>::max)();
     activeGlobalEffectId_.clear();
     activeGlobalEffect_.reset();
+    activeGlobalRegistryId_ = activeGlobalRegistryRevision_ = 0u;
     globalChain_.Clear();
     activeGlobalEffects_.clear();
 }
@@ -324,7 +336,7 @@ void PostProcessingStage::SetTransitionState(const TransitionVisualState& state)
         std::unique_ptr<PostEffect> effect{};
         if (profileReady) {
             effect = std::make_unique<PostEffect>();
-            profileReady = effect->LoadBuiltinPixelShader(profile.programId, profile.entryId);
+            profileReady = effect->LoadPixelShader({.programId = profile.programId, .entryId = profile.entryId});
         }
         if (profileReady) {
             activeTransitionProfile_ = std::move(profile);
@@ -375,7 +387,7 @@ bool PostProcessingStage::EnsureToneMappingEffect() {
     if (toneMappingEffect_)
         return true;
     auto effect = std::make_unique<PostEffect>();
-    if (!effect->LoadBuiltinPixelShader("HIKARI.EngineShader.Post_ToneMappingPS")) {
+    if (!effect->LoadPixelShader({.programId = "HIKARI.EngineShader.Post_ToneMappingPS"})) {
         LogState("ToneMapping effect load failed");
         return false;
     }
@@ -388,7 +400,7 @@ bool PostProcessingStage::EnsureFxaaEffect() {
         return true;
     if (!fxaaEffect_) {
         auto effect = std::make_unique<PostEffect>();
-        if (!effect->LoadBuiltinPixelShader("HIKARI.EngineShader.Post_FXAA")) {
+        if (!effect->LoadPixelShader({.programId = "HIKARI.EngineShader.Post_FXAA"})) {
             LogState("FXAA effect load failed");
             return false;
         }
@@ -403,7 +415,7 @@ bool PostProcessingStage::EnsureSunGlareEffect() {
     if (sunGlareEffect_)
         return true;
     auto effect = std::make_unique<PostEffect>();
-    if (!effect->LoadBuiltinPixelShader("HIKARI.EngineShader.Post_SunGlarePS")) {
+    if (!effect->LoadPixelShader({.programId = "HIKARI.EngineShader.Post_SunGlarePS"})) {
         LogState("Sun glare effect load failed");
         return false;
     }
@@ -417,7 +429,7 @@ bool PostProcessingStage::EnsureActionScreenImpulseEffect() {
     }
     if (!actionScreenImpulseEffect_) {
         auto effect = std::make_unique<PostEffect>();
-        if (!effect->LoadBuiltinPixelShader("HIKARI.EngineShader.Post_ActionScreenImpulse")) {
+        if (!effect->LoadPixelShader({.programId = "HIKARI.EngineShader.Post_ActionScreenImpulse"})) {
             LogState("Action screen impulse effect load failed");
             return false;
         }
@@ -435,7 +447,7 @@ bool PostProcessingStage::EnsureBloomEffects(uint32_t levelCount) {
         for (const char* id : {"HIKARI.EngineShader.Post_BloomExtractPS", "HIKARI.EngineShader.Post_BloomBlurHPS",
                                "HIKARI.EngineShader.Post_BloomBlurVPS"}) {
             auto effect = std::make_unique<PostEffect>();
-            if (!effect->LoadBuiltinPixelShader(id)) {
+            if (!effect->LoadPixelShader({.programId = id})) {
                 activeBloomEffects_.clear();
                 return false;
             }
@@ -757,7 +769,9 @@ RenderTarget2D* PostProcessingStage::ApplyFxaa(RenderTarget2D& source, QuadDrawe
 
 RenderTarget2D* PostProcessingStage::ResolveHdr(RenderTarget2D& source, QuadDrawer& quad, bool debugOutput,
                                                 const char* temporalBackend, bool lightingEnabled,
-                                                RenderTarget2D* sceneDepthOwner) {
+                                                RenderTarget2D* sceneDepthOwner,
+                                                const RENDER3D::RenderTextureView* surfaceFeatureMask,
+                                                RenderTarget2D* preservedVfx) {
     RenderTarget2D* output = &source;
     commonParams_.resolutionX = static_cast<float>((std::max)(1, output->GetWidth()));
     commonParams_.resolutionY = static_cast<float>((std::max)(1, output->GetHeight()));
@@ -767,17 +781,28 @@ RenderTarget2D* PostProcessingStage::ResolveHdr(RenderTarget2D& source, QuadDraw
         sunGlareDebugStats_ = {};
         sunGlareDebugStats_.requested = sunGlareFrame_.enabled;
     }
-    if (!debugOutput && globalChain_.HasAny()) {
+    if (!debugOutput && globalChain_.HasAny() && (!RequiresSurfaceFeatureMask() || surfaceFeatureMask)) {
         const CommonParams frameParams = ResolveGlobalFrameParams();
-        output = globalChain_.Execute(*output, quad, frameParams);
+        output = globalChain_.Execute(*output, quad, frameParams, 0, 0,
+                                      RequiresSurfaceFeatureMask() ? surfaceFeatureMask : nullptr);
     }
     if (!debugOutput) {
         (void)automaticExposureMeter_.QueueMeasurement(*output);
+        // Scene-linear PMA (including additive RGB with zero coverage) enters once,
+        // after artistic Global Post/metering and before sequence/action/bloom/output.
+        if (preservedVfx && preservedVfx->GetResource()) {
+            if (!quad.SetOutputFormat(output->GetFormat()))
+                return nullptr;
+            output->Rebind();
+            quad.DrawBlended(preservedVfx->GetSrvHeap(), preservedVfx->GetSrvGpu(), BlendOption::PremultipliedAlpha, 0);
+            output->EndCapture();
+        }
         output = ApplySequenceEffects(*output, quad);
         // This is deliberately after temporal/global HDR processing and
         // after exposure measurement, but before bloom so the bright ring
         // and flash participate in the same bloom extraction as scene HDR.
         output = ApplyActionScreenImpulse(*output, quad);
+        output = ApplyActionPost(*output, quad, surfaceFeatureMask);
     } else {
         auto& actionDebug = actionScreenImpulseProvider_.MutableDebugState();
         const uint64_t absoluteFrame = TIME::GetFrameContext().frameIndex;

@@ -24,7 +24,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Core/IO/HIKARI_FileReplacementTransaction.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI {
 namespace {

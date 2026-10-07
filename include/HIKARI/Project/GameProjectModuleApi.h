@@ -8,14 +8,14 @@
 
 namespace HIKARI {
 
-class IRuntimeExtension;
+class RuntimeFeatureCatalog;
 
 } // namespace HIKARI
 
 namespace HIKARI::RUNTIME {
 
-// ABI 7 adds module-owned game session creation and destruction callbacks.
-inline constexpr uint32_t kGameProjectModuleAbiVersion = 7u;
+// ABI 8: モジュールは Feature をカタログへ直接登録する（拡張オブジェクトの受け渡しを廃止）。
+inline constexpr uint32_t kGameProjectModuleAbiVersion = 8u;
 inline constexpr char kGameProjectModuleApiEntryPoint[] = "HIKARI_GetGameProjectModuleApi";
 
 struct GameProjectModuleApi {
@@ -25,8 +25,7 @@ struct GameProjectModuleApi {
     void* (*createInstance)() noexcept = nullptr;
     void (*destroyInstance)(void* instance) noexcept = nullptr;
     const char* (*getModuleId)(void* instance) noexcept = nullptr;
-    size_t (*getRuntimeExtensionCount)(void* instance) noexcept = nullptr;
-    IRuntimeExtension* (*getRuntimeExtension)(void* instance, size_t index) noexcept = nullptr;
+    bool (*registerRuntimeFeatures)(void* instance, RuntimeFeatureCatalog* catalog) noexcept = nullptr;
     bool (*createGameSession)(void* instance, IGameProjectSession** outSession) noexcept = nullptr;
     void (*destroyGameSession)(void* instance) noexcept = nullptr;
 };
@@ -35,15 +34,14 @@ using QueryGameProjectModuleApi = const GameProjectModuleApi* (*)(uint32_t hostA
 
 static_assert(std::is_standard_layout_v<GameProjectModuleApi>);
 static_assert(std::is_trivially_copyable_v<GameProjectModuleApi>);
-static_assert(sizeof(GameProjectModuleApi) == 64u);
+static_assert(sizeof(GameProjectModuleApi) == 56u);
 static_assert(offsetof(GameProjectModuleApi, structSize) == 0u);
 static_assert(offsetof(GameProjectModuleApi, abiVersion) == 4u);
 static_assert(offsetof(GameProjectModuleApi, createInstance) == 8u);
 static_assert(offsetof(GameProjectModuleApi, destroyInstance) == 16u);
 static_assert(offsetof(GameProjectModuleApi, getModuleId) == 24u);
-static_assert(offsetof(GameProjectModuleApi, getRuntimeExtensionCount) == 32u);
-static_assert(offsetof(GameProjectModuleApi, getRuntimeExtension) == 40u);
-static_assert(offsetof(GameProjectModuleApi, createGameSession) == 48u);
-static_assert(offsetof(GameProjectModuleApi, destroyGameSession) == 56u);
+static_assert(offsetof(GameProjectModuleApi, registerRuntimeFeatures) == 32u);
+static_assert(offsetof(GameProjectModuleApi, createGameSession) == 40u);
+static_assert(offsetof(GameProjectModuleApi, destroyGameSession) == 48u);
 
 } // namespace HIKARI::RUNTIME

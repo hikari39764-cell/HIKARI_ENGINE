@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "Assets/Models/HIKARI_ModelAssetTypes.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Text/HIKARI_SdfTextLayout.h"
 
 namespace HIKARI::RENDER3D::WORLD_TEXT {

@@ -16,13 +16,13 @@ void AiAssistantPanel::DrawReasoning(const std::string& text, bool streaming, bo
         return;
     const auto key = streaming ? "ai.reasoning.streaming" : "ai.reasoning.title";
     ImGui::SetNextItemOpen(streaming, ImGuiCond_Once);
-    if (!ImGui::TreeNode("##Reasoning", "%s", TEXT::LocalizeCStr(key)))
+    if (!ImGui::TreeNode("##Reasoning", "%s", TEXT::Localize(key).c_str()))
         return;
-    ImGui::TextWrapped("%s", TEXT::LocalizeCStr("ai.reasoning.source"));
+    ImGui::TextWrapped("%s", TEXT::Localize("ai.reasoning.source").c_str());
     if (incomplete)
-        ImGui::TextWrapped("%s", TEXT::LocalizeCStr("ai.reasoning.incomplete"));
+        ImGui::TextWrapped("%s", TEXT::Localize("ai.reasoning.incomplete").c_str());
     if (text.empty())
-        ImGui::TextDisabled("%s", TEXT::LocalizeCStr("ai.reasoning.unavailable"));
+        ImGui::TextDisabled("%s", TEXT::Localize("ai.reasoning.unavailable").c_str());
     else {
         ImGui::BeginChild("##ReasoningText", {0, ImGui::GetTextLineHeightWithSpacing() * 9}, true);
         const bool follow = ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 24.0f;

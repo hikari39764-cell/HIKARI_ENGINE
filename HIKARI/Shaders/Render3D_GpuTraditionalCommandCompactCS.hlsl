@@ -1,4 +1,5 @@
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
+#include "Include/Surface/HIKARI_MaterialShell.hlsli"
 
 struct GpuTraditionalCommandArgument
 {
@@ -73,6 +74,7 @@ struct GpuTraditionalCommandSeed
     uint localGpuSceneInstanceIndex;
     uint reserved0;
     uint reserved1;
+    float4 shellSettings;
 };
 
 cbuffer GpuTraditionalCommandStreamCullingCB : register(b0)
@@ -82,6 +84,8 @@ cbuffer GpuTraditionalCommandStreamCullingCB : register(b0)
     uint gGpuTraditionalCommandStreamOutputCapacity;
     uint gGpuTraditionalCommandStreamEnableFrustumCull;
     uint gGpuTraditionalCommandStreamPayloadCount;
+    float4 gGpuTraditionalCommandStreamScreenParams;
+    float4x4 gGpuTraditionalCommandStreamRenderViewProj;
 };
 
 StructuredBuffer<GpuTraditionalCommandSeed> gGpuTraditionalCommandStreamSeeds : register(t0);
@@ -246,6 +250,11 @@ void CompactGpuTraditionalCommandStreamCS(uint3 dispatchThreadId : SV_DispatchTh
         1u,
         ignoredVisible);
 
+    float shellAmount = HikariShellLodAmount(seed.shellSettings, seed.boundsCenterRadius,
+        gGpuTraditionalCommandStreamRenderViewProj, gGpuTraditionalCommandStreamScreenParams.y);
+    uint shellCount = (seed.passIndex == 3u || seed.passIndex == 6u) ? 0u :
+        HikariShellLayerCount(seed.shellSettings, shellAmount);
+
     if (skinned)
     {
         uint visibleSkinnedIndex = 0u;
@@ -283,10 +292,10 @@ void CompactGpuTraditionalCommandStreamCS(uint3 dispatchThreadId : SV_DispatchTh
         argument.jointPalette = payload.jointPalette;
         argument.rootConstants.x = seed.absoluteGpuSceneInstanceIndex;
         argument.rootConstants.y = 1u;
-        argument.rootConstants.z = 0u;
-        argument.rootConstants.w = 0u;
+        argument.rootConstants.z = shellCount;
+        argument.rootConstants.w = asuint(shellAmount);
         argument.indexCountPerInstance = payload.indexCountPerInstance;
-        argument.instanceCount = 1u;
+        argument.instanceCount = shellCount == 0u ? instanceCount : 1u + shellCount;
         argument.startIndexLocation = payload.startIndexLocation;
         argument.baseVertexLocation = payload.baseVertexLocation;
         argument.startInstanceLocation = 0u;
@@ -325,10 +334,10 @@ void CompactGpuTraditionalCommandStreamCS(uint3 dispatchThreadId : SV_DispatchTh
     argument.indexBufferFormat = payload.indexBufferFormat;
     argument.rootConstants.x = seed.absoluteGpuSceneInstanceIndex;
     argument.rootConstants.y = 1u;
-    argument.rootConstants.z = 0u;
-    argument.rootConstants.w = 0u;
+    argument.rootConstants.z = shellCount;
+    argument.rootConstants.w = asuint(shellAmount);
     argument.indexCountPerInstance = payload.indexCountPerInstance;
-    argument.instanceCount = 1u;
+    argument.instanceCount = shellCount == 0u ? instanceCount : 1u + shellCount;
     argument.startIndexLocation = payload.startIndexLocation;
     argument.baseVertexLocation = payload.baseVertexLocation;
     argument.startInstanceLocation = 0u;

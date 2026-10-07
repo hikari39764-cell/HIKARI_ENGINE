@@ -23,7 +23,7 @@ constexpr auto kUiTextFieldSettingsFields = [](auto&& field) {
     field("submitEventId", &UiTextFieldSettings::submitEventId);
 };
 
-const char* L(const char* key) { return TEXT::LocalizeCStr(key); }
+const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 
 size_t ScalarCount(std::string_view value) noexcept {
     size_t count = 0u;

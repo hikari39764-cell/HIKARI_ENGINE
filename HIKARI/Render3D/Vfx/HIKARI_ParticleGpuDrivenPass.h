@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include "Render3D/Lighting/HIKARI_SurfaceLightingBindings.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 
@@ -55,6 +56,8 @@ struct ParticleGpuDrivenDrawBindings : SurfaceLightingBindings {
     PIPELINE::RenderTargetAccess compositionTarget{};
     D3D12_CPU_DESCRIPTOR_HANDLE compositionDepth{};
     uint32_t width = 0, height = 0;
+    // Tool/secondary views without Global Post draw both routes in their local target.
+    std::optional<VFX::VfxPostProcessMode> postProcessMode;
 };
 
 // Owned by one MeshRenderer view-resource set. This object has no
@@ -75,7 +78,7 @@ public:
                       MATERIAL::GpuMaterialRegistry& materialRegistry);
     bool ExecuteForwardTransparent(const GFX::Context& context, const ParticleGpuDrivenDrawBindings& bindings);
     void ReleaseNamespace(uint64_t playbackNamespace);
-    bool HasDrawWork() const noexcept;
+    bool HasDrawWork(std::optional<VFX::VfxPostProcessMode> mode = std::nullopt) const noexcept;
     const ParticleGpuDrivenPassStats& GetStats() const noexcept;
 
 private:

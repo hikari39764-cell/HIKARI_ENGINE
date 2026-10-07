@@ -65,7 +65,7 @@ std::vector<AssetDependencyDesc> CollectTextStyleDependencies(const TextStyleAss
                                 : std::vector<AssetDependencyDesc>{};
 }
 void InspectTextStyleAsset(IInspectorBuilder& b, TextStyleAsset& value) {
-    const auto L = [](const char* key) { return TEXT::LocalizeCStr(key); };
+    const auto L = [](const char* key) { return TEXT::Localize(key).c_str(); };
     b.String(AuthoringFieldDescriptor{"name", L("textstyle.name")}, value.name);
     b.AssetIdPicker(AuthoringFieldDescriptor{"fontAssetGuid", L("textstyle.font")}, AssetType::Font, value.font.value);
     b.FloatRange(AuthoringFieldDescriptor{"pixelHeight", L("Pixel Height")}, value.pixelHeight, 4, 512, 1);

@@ -42,7 +42,6 @@ class GameExporter {
 public:
     static std::filesystem::path GetDefaultOutputDirectory();
     static std::vector<GameExportSceneInfo> CollectSceneAssets();
-    static GameExportResult Export();
     static GameExportResult Export(const GameExportOptions& options);
 };
 

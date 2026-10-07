@@ -24,12 +24,12 @@ float ReadNumber(const nlohmann::json& in, const char* key, float fallback, floa
 }
 void InspectColor(IInspectorBuilder& b, const char* id, const char* label, GameProjectUiColor& color) {
     MATH::Vec3 rgb{color.r, color.g, color.b};
-    b.Color3(AuthoringFieldDescriptor{id, TEXT::LocalizeCStr(label)}, rgb.x, rgb.y, rgb.z);
+    b.Color3(AuthoringFieldDescriptor{id, TEXT::Localize(label).c_str()}, rgb.x, rgb.y, rgb.z);
     color.r = rgb.x;
     color.g = rgb.y;
     color.b = rgb.z;
     const std::string alpha = std::string(id) + "Alpha";
-    b.FloatRange(AuthoringFieldDescriptor{alpha, TEXT::LocalizeCStr("uix.opacity")}, color.a, 0, 1);
+    b.FloatRange(AuthoringFieldDescriptor{alpha, TEXT::Localize("uix.opacity").c_str()}, color.a, 0, 1);
 }
 } // namespace
 void UiTextStyle::Write(nlohmann::json& out) const {
@@ -74,7 +74,7 @@ void UiTextStyle::Apply(GameProjectUiTextRequest& r) const noexcept {
     r.shadowOffsetY = shadowY;
 }
 void UiTextStyle::InspectContent(IInspectorBuilder& b) {
-    const auto L = [](const char* key) { return TEXT::LocalizeCStr(key); };
+    const auto L = [](const char* key) { return TEXT::Localize(key).c_str(); };
 
     b.FloatRange(AuthoringFieldDescriptor{"reveal", L("uix.reveal")}, reveal, 0, 1);
     const std::array<AuthoringChoice, 2> choices{{{"0", L("uix.noWrap")}, {"1", L("uix.characterWrap")}}};
@@ -83,7 +83,7 @@ void UiTextStyle::InspectContent(IInspectorBuilder& b) {
         wrap = static_cast<GameProjectUiTextWrap>(std::clamp(index, 0, 1));
 }
 void UiTextStyle::Inspect(IInspectorBuilder& b, bool contentControls) {
-    const auto L = [](const char* key) { return TEXT::LocalizeCStr(key); };
+    const auto L = [](const char* key) { return TEXT::Localize(key).c_str(); };
     if (b.Section(L("uix.typography"))) {
         b.FloatRange(AuthoringFieldDescriptor{"lineHeight", L("uix.lineHeight")}, lineHeight, .5f, 5);
         b.FloatRange(AuthoringFieldDescriptor{"letterSpacing", L("uix.letterSpacing")}, letterSpacing, -128, 256);

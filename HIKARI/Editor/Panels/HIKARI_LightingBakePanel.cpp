@@ -193,7 +193,7 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
     EDITOR::LIGHTING_BAKE_PANEL::DrawWorkflowSummary(status, palette);
 
     ImGui::Spacing();
-    ImGui::TextWrapped("%s", TEXT::LocalizeCStr("ui.lightingBake.workflowHelp"));
+    ImGui::TextWrapped("%s", TEXT::Localize("ui.lightingBake.workflowHelp").c_str());
     if (!blockReason.empty())
         ImGui::TextWrapped("%s", blockReason.c_str());
     const auto selected = tool.editorContext.selection.GetActiveObjectId();
@@ -229,9 +229,9 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
     }
 
     if (selectedItem != status.items.end())
-        ImGui::Text(TEXT::LocalizeCStr("ui.lightingBake.selectedName"), selectedItem->name.c_str());
+        ImGui::Text(TEXT::Localize("ui.lightingBake.selectedName").c_str(), selectedItem->name.c_str());
     else
-        ImGui::TextDisabled("%s", TEXT::LocalizeCStr("ui.lightingBake.selectHint"));
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.selectHint").c_str());
     if (!actionMessage_.empty())
         ImGui::TextWrapped("%s", actionMessage_.c_str());
     const bool hasReport = scene.HasLastLightingBakeReport();
@@ -251,10 +251,10 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
 
     ImGui::Spacing();
     ImGui::SeparatorText(TEXT::Localize("ui.lightingBake.lightingObjectsSection").c_str());
-    EDITOR::SearchField("bakeObjects", TEXT::LocalizeCStr("ui.lightingBake.filter"), objectFilter_,
+    EDITOR::SearchField("bakeObjects", TEXT::Localize("ui.lightingBake.filter").c_str(), objectFilter_,
                         sizeof(objectFilter_));
     ImGui::SameLine();
-    ImGui::Checkbox(TEXT::LocalizeCStr("ui.lightingBake.onlyDirty"), &onlyDirty_);
+    ImGui::Checkbox(TEXT::Localize("ui.lightingBake.onlyDirty").c_str(), &onlyDirty_);
     if (status.items.empty()) {
         EDITOR::EmptyState(TEXT::Localize("ui.lightingBake.emptyTitle").c_str(),
                            TEXT::Localize("ui.lightingBake.emptyHint").c_str());
@@ -294,7 +294,7 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
             }
             ImGui::TableNextColumn();
             ImGui::TextWrapped("%s", item.dirtyReason.c_str());
-            if (ImGui::SmallButton(TEXT::LocalizeCStr("ui.lightingBake.locate")))
+            if (ImGui::SmallButton(TEXT::Localize("ui.lightingBake.locate").c_str()))
                 execute("scene.object.focus", {{"objectId", item.objectId}});
             ImGui::PopID();
         }
@@ -334,15 +334,15 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
         ImGui::EndDisabled();
         if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("ui.lightingBake.clearOutputs", "ClearLightingOutputs").c_str(),
                                    nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::TextWrapped("%s", TEXT::LocalizeCStr("ui.lightingBake.clearConfirm"));
+            ImGui::TextWrapped("%s", TEXT::Localize("ui.lightingBake.clearConfirm").c_str());
             ImGui::BeginDisabled(!blockReason.empty());
-            if (ImGui::Button(TEXT::LocalizeCStr("ui.lightingBake.clearOutputs"))) {
+            if (ImGui::Button(TEXT::Localize("ui.lightingBake.clearOutputs").c_str())) {
                 execute("lighting.bake.clear");
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndDisabled();
             ImGui::SameLine();
-            if (ImGui::Button(TEXT::LocalizeCStr("ui.common.cancel")))
+            if (ImGui::Button(TEXT::Localize("ui.common.cancel").c_str()))
                 ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "Assets/Material/HIKARI_MaterialShellSettings.h"
 
 namespace HIKARI {
 
@@ -37,6 +38,7 @@ enum class MaterialProgramCapability : uint64_t {
     HairShadow = 1ull << 22u,
     CorneaHighlight = 1ull << 23u,
     ParticleExpression = 1ull << 24u,
+    Shell = 1ull << 25u,
 };
 
 constexpr uint64_t MaterialCapabilityBit(MaterialProgramCapability capability) noexcept {
@@ -111,6 +113,7 @@ struct MaterialProgramIR {
     MaterialDomain domain = MaterialDomain::Surface;
     MaterialTemplateId templateId = MaterialTemplateId::StandardPbr;
     MaterialSurfaceData surface{};
+    MaterialShellSettings shell{};
     uint64_t capabilities = 0u;
     std::vector<MaterialFeatureRequest> featureRequests{};
     std::vector<MaterialProgramParameterBinding> parameters{};
@@ -154,7 +157,14 @@ struct MaterialCompileOptions {
 
 MaterialProgramIR BuildStandardPbrMaterialProgramFallback();
 
+uint32_t FindMaterialProgramInputRegister(const MaterialProgramInstruction& instruction, std::string_view pin) noexcept;
+
 MaterialCompileResult CompileMaterialAsset(const MaterialAssetData& source);
 MaterialCompileResult CompileMaterialAsset(const MaterialAssetData& source, const MaterialCompileOptions& options);
+
+// Constant/Parameter のみを uniform 設定へ投影する。ピクセル式や任意 WPO は実行しない。
+bool ResolveMaterialProgramShellSettings(
+    const MaterialProgramIR& program, MaterialShellSettings& outSettings, std::string& outError,
+    const std::function<const MaterialValueData*(uint32_t)>& parameterOverride = {});
 
 } // namespace HIKARI

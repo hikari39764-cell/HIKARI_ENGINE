@@ -1,7 +1,7 @@
 #pragma once
 
 #include "HIKARI/Project/FrameContext.h"
-#include "HIKARI/Project/PropertyArchive.h"
+#include "HIKARI/Project/PropertyFields.h"
 #include "HIKARI/Project/WorldView.h"
 
 namespace HIKARI {
@@ -10,8 +10,8 @@ class IGameSystem {
 public:
     virtual ~IGameSystem() = default;
 
-    virtual void LoadSettings(const PropertyReader&) {}
-    virtual void SaveSettings(PropertyWriter&) const {}
+    // Scene に保存するシステム設定を一度だけ宣言する（読込・保存・Inspector 共通）。
+    virtual void DescribeSettings(PropertyFields&) {}
 
     virtual void OnWorldAttached(WorldView&) {}
     virtual void OnWorldDetached(WorldView&) {}

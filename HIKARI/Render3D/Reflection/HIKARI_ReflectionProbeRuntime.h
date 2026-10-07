@@ -9,7 +9,7 @@
 #include <d3d12.h>
 #include <dxgiformat.h>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeContract.h"
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"

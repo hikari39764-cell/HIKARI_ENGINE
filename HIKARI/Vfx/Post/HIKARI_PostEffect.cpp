@@ -30,6 +30,20 @@ void PostEffect::UpdateContext(const GFX::Context& ctx) { context_ = ctx; }
 
 PostEffect::~PostEffect() { ReleaseConstantBuffer(); }
 
+bool BuildPostEffectPasses(const PostEffectDefinition& definition, const AssetRegistry* registry,
+                           std::vector<std::unique_ptr<PostEffect>>& passes) {
+    std::vector<std::unique_ptr<PostEffect>> prepared;
+    prepared.reserve(definition.passes.size());
+    for (const auto& pass : definition.passes) {
+        auto instance = std::make_unique<PostEffect>();
+        if (!instance->LoadPixelShader(pass, registry, definition.requiresSurfaceFeatureMask))
+            return false;
+        prepared.push_back(std::move(instance));
+    }
+    passes = std::move(prepared);
+    return !passes.empty();
+}
+
 void PostEffect::ReleaseConstantBuffer() noexcept {
     if (constantBuffer_ && mappedPtr_) {
         constantBuffer_->Unmap(0, nullptr);
@@ -86,22 +100,37 @@ bool PostEffect::CreateConstantBuffer() {
     constantDrawCursors_.fill(0u);
     return true;
 }
-bool PostEffect::LoadBuiltinPixelShader(std::string_view programId, std::string_view entryId) {
-    if (context_.device == nullptr || programId.empty() || entryId.empty()) {
-        DEBUGLOG::PushRenderError("[PostEffect][ERROR] Built-in Shader request is invalid.");
+bool PostEffect::LoadPixelShader(const PostEffectPass& pass, const AssetRegistry* registry, bool surfaceFeatureMask) {
+    const bool projectShader = !pass.shaderAssetGuid.value.empty();
+    if (context_.device == nullptr || pass.entryId.empty() || pass.programId.empty() == !projectShader ||
+        (projectShader && (registry == nullptr || !IsValidAssetGuid(pass.shaderAssetGuid.value)))) {
+        DEBUGLOG::PushRenderError("[PostEffect][ERROR] Shader request is invalid.");
         return false;
     }
     const GFX::ShaderDeviceCapabilities capabilities = GFX::QueryShaderDeviceCapabilities(context_.device);
     const ASSETS::SHADER::ShaderAssetContractExpectation contract = ASSETS::SHADER::MakePostEffectShaderContract(
         {capabilities.shaderModel, capabilities.rootSignatureVersion, capabilities.featureMask});
-    ASSETS::SHADER::ShaderAssetResolveResult resolved = ASSETS::SHADER::ResolveBuiltinShaderEntry(
-        programId, {std::string(entryId), ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0"}, contract);
+    const ASSETS::SHADER::ShaderAssetEntryExpectation entry{pass.entryId, ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0"};
+    auto resolved = projectShader ? ASSETS::SHADER::ShaderAssetResolver::ResolveByGuid(*registry, pass.shaderAssetGuid,
+                                                                                       entry, contract)
+                                  : ASSETS::SHADER::ResolveBuiltinShaderEntry(pass.programId, entry, contract);
     std::string diagnostic{};
     const ASSETS::SHADER::ShaderCookedArtifact* artifact = resolved ? resolved.lease.GetArtifact() : nullptr;
     if (!resolved || artifact == nullptr || !ASSETS::SHADER::ValidatePostEffectShaderArtifact(*artifact, diagnostic)) {
-        DEBUGLOG::PushRenderError("[PostEffect][ERROR] Built-in HSHADERC resolve failed: " +
+        DEBUGLOG::PushRenderError("[PostEffect][ERROR] HSHADERC resolve failed: " +
                                   (diagnostic.empty() ? resolved.diagnostic : diagnostic));
         return false;
+    }
+    // Global project effects may consume only the inputs declared by their owner.
+    // Internal built-in passes retain their specialized t1/t2 binding owners.
+    if (projectShader) {
+        for (const auto& binding : resolved.lease.GetEntry()->bindings) {
+            if (binding.kind == ASSETS::SHADER::ShaderResourceBindingKind::ShaderResource &&
+                (binding.registerIndex == 1u || (binding.registerIndex == 2u && !surfaceFeatureMask))) {
+                DEBUGLOG::PushRenderError("[PostEffect][ERROR] Project shader uses an undeclared surface input.");
+                return false;
+            }
+        }
     }
     psLease_ = std::move(resolved.lease);
     return true;

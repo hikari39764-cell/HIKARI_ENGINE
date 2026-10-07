@@ -10,9 +10,11 @@ namespace HIKARI::ASSETS::MATERIAL {
 
 namespace {
 
-constexpr std::array<MaterialTemplateInfo, 10u> kTemplates{{
+constexpr std::array<MaterialTemplateInfo, 11u> kTemplates{{
     {MaterialTemplateId::StandardPbr, "Standard PBR", "Physically based baseline with imported texture compatibility."},
     {MaterialTemplateId::GenericToon, "Generic Toon", "Ramp diffuse, banded specular and Fresnel rim defaults."},
+    {MaterialTemplateId::PainterlyShell, "Painterly Shell",
+     "Built-in brush mask and normal, editable stroke graph and projected-size shell LOD."},
     {MaterialTemplateId::Skin, "Skin", "Soft ramp response, skin masks and restrained rim lighting."},
     {MaterialTemplateId::Face, "Face", "Face SDF lighting with facial shadow feature requests."},
     {MaterialTemplateId::Hair, "Hair", "Ramp diffuse and anisotropic strand highlights."},
@@ -377,7 +379,7 @@ void ConfigureParticleUnlit(MaterialAssetData& data, bool textured) {
 
 } // namespace
 
-const std::array<MaterialTemplateInfo, 10u>& GetBuiltInMaterialTemplates() noexcept { return kTemplates; }
+const std::array<MaterialTemplateInfo, 11u>& GetBuiltInMaterialTemplates() noexcept { return kTemplates; }
 
 const std::array<MaterialRampPresetInfo, 4u>& GetBuiltInMaterialRampPresets() noexcept { return kRampPresets; }
 
@@ -481,6 +483,10 @@ MaterialAssetData CreateMaterialFromTemplateWithPbr(MaterialTemplateId templateI
     data.templateId = templateId;
     switch (templateId) {
     case MaterialTemplateId::GenericToon: ConfigureGenericToon(data); break;
+    case MaterialTemplateId::PainterlyShell:
+        AddRamp(data);
+        TEMPLATE_FACTORY_INTERNAL::AddPainterlyShellGraph(data);
+        break;
     case MaterialTemplateId::Skin: ConfigureSkin(data); break;
     case MaterialTemplateId::Face: ConfigureFace(data); break;
     case MaterialTemplateId::Hair: ConfigureHair(data); break;

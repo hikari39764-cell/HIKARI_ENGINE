@@ -236,6 +236,8 @@ void ActionPostReactionService::Tick(float unscaledDeltaSeconds, uint64_t frameI
     // Render 側は Tick 後に今フレームの波を投稿する。投稿が無ければ
     // 前フレームの歪みを保持しない（サービス消失や非表示にも対応）。
     vfxWaveCount_ = 0u;
+    if (postProfile_ && postProfile_->frameIndex != frameIndex)
+        postProfile_.reset();
     if (!gradeSubmitted_ || gradeRequest_.frameIndex != frameIndex) {
         gradeRequest_ = {};
         gradeSubmitted_ = false;
@@ -335,7 +337,52 @@ bool ActionPostReactionService::TriggerPerfectGuardShockwave(const PerfectGuardS
     return StartShockwave(configured);
 }
 
+bool ActionPostReactionService::SubmitPostProfile(std::string_view profileId,
+                                                  const GameProjectActionPostFrameRequest& request,
+                                                  uint64_t frameIndex) {
+    if (request.structSize < sizeof(request) || request.version != 1u || request.reserved != 0u ||
+        request.sourceId == 0u || profileId.empty() || profileId.size() > 128u ||
+        profileId.find('\0') != std::string_view::npos || frameIndex == postProfileFrozenFrame_)
+        return false;
+    for (uint32_t slot = 0u; slot < kGameProjectActionPostSlotCount; ++slot) {
+        const auto mask = request.channelMasks[slot];
+        if ((mask & ~15u) != 0u)
+            return false;
+        const auto& value = request.values[slot];
+        const float channels[]{value.x, value.y, value.z, value.w};
+        for (uint32_t channel = 0; channel < 4u; ++channel)
+            if ((mask & (1u << channel)) && !std::isfinite(channels[channel]))
+                return false;
+    }
+    if (!postProfile_ || postProfile_->frameIndex != frameIndex || request.priority > postProfile_->request.priority ||
+        (request.priority == postProfile_->request.priority && request.sourceId <= postProfile_->request.sourceId))
+        postProfile_ = PostProfileFrame{std::string(profileId), request, frameIndex};
+    return true;
+}
+
+bool ActionPostReactionService::ClearPostProfile(uint64_t sourceId, uint64_t frameIndex) noexcept {
+    if (sourceId == 0u || frameIndex == postProfileFrozenFrame_)
+        return false;
+    if (postProfile_ && (postProfile_->frameIndex != frameIndex || postProfile_->request.sourceId == sourceId))
+        postProfile_.reset();
+    return true;
+}
+
+bool ActionPostReactionService::FreezePostProfile(uint64_t frameIndex,
+                                                  std::optional<PostProfileFrame>& winner) noexcept {
+    if (postProfileFrozenFrame_ == frameIndex)
+        return false;
+    postProfileFrozenFrame_ = frameIndex;
+    winner.reset();
+    if (postProfile_ && postProfile_->frameIndex == frameIndex)
+        winner = std::move(postProfile_);
+    postProfile_.reset();
+    return true;
+}
+
 void ActionPostReactionService::Reset() noexcept {
+    postProfile_.reset();
+    postProfileFrozenFrame_ = (std::numeric_limits<uint64_t>::max)();
     activeWaves_ = {};
     vfxWaves_ = {};
     vfxWaveCount_ = 0u;

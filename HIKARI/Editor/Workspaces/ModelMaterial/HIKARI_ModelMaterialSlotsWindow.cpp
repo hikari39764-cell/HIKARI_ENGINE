@@ -31,11 +31,11 @@ bool ContainsText(std::string_view value, std::string_view query) {
 
 const char* BindingLabel(ModelMaterialBindingSource source) noexcept {
     switch (source) {
-    case ModelMaterialBindingSource::ImportedFallback: return TEXT::LocalizeCStr("ui.assetBrowser.stateImported");
-    case ModelMaterialBindingSource::AuthoredOverride: return TEXT::LocalizeCStr("editor.ui.authored.026b05");
-    case ModelMaterialBindingSource::OverrideUnavailable: return TEXT::LocalizeCStr("ui.lightingBake.unavailable");
+    case ModelMaterialBindingSource::ImportedFallback: return TEXT::Localize("ui.assetBrowser.stateImported").c_str();
+    case ModelMaterialBindingSource::AuthoredOverride: return TEXT::Localize("editor.ui.authored.026b05").c_str();
+    case ModelMaterialBindingSource::OverrideUnavailable: return TEXT::Localize("ui.lightingBake.unavailable").c_str();
     }
-    return TEXT::LocalizeCStr("ui.quality.transitionUnknown");
+    return TEXT::Localize("ui.quality.transitionUnknown").c_str();
 }
 
 } // namespace

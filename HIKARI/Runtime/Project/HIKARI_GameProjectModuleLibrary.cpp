@@ -8,6 +8,7 @@
 
 #include "Platform/Paths/HIKARI_ExecutablePath.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
+#include "Scene/Features/HIKARI_RuntimeExtension.h"
 
 namespace HIKARI::RUNTIME {
 namespace {
@@ -26,6 +27,23 @@ std::string MakeWindowsError(const char* operation, DWORD error) {
     }
     return message;
 }
+
+// モジュールの Feature 登録を、場面が持つ内部拡張の一つとして渡す。
+class GameProjectModuleExtension final : public IRuntimeExtension {
+public:
+    GameProjectModuleExtension(const GameProjectModuleApi& api, void* instance, std::string_view moduleId) noexcept
+        : api_(api), instance_(instance), moduleId_(moduleId) {}
+
+    std::string_view GetExtensionId() const noexcept override { return moduleId_; }
+    bool RegisterRuntimeFeatures(RuntimeFeatureCatalog& catalog) override {
+        return api_.registerRuntimeFeatures(instance_, &catalog);
+    }
+
+private:
+    const GameProjectModuleApi& api_;
+    void* instance_ = nullptr;
+    std::string_view moduleId_{};
+};
 
 } // namespace
 
@@ -78,9 +96,8 @@ bool GameProjectModuleLibrary::Load(const std::filesystem::path& modulePath, std
     const GameProjectModuleApi* api = queryApi(kGameProjectModuleAbiVersion);
     if (api == nullptr || api->structSize < sizeof(GameProjectModuleApi) ||
         api->abiVersion != kGameProjectModuleAbiVersion || api->createInstance == nullptr ||
-        api->destroyInstance == nullptr || api->getModuleId == nullptr || api->getRuntimeExtensionCount == nullptr ||
-        api->getRuntimeExtension == nullptr || api->createGameSession == nullptr ||
-        api->destroyGameSession == nullptr) {
+        api->destroyInstance == nullptr || api->getModuleId == nullptr || api->registerRuntimeFeatures == nullptr ||
+        api->createGameSession == nullptr || api->destroyGameSession == nullptr) {
         outMessage = "GameProject module ABI is incompatible. "
                      "Rebuild the project with this HIKARI engine.";
         FreeLibrary(library);
@@ -106,12 +123,14 @@ bool GameProjectModuleLibrary::Load(const std::filesystem::path& modulePath, std
     instance_ = instance;
     modulePath_ = std::move(resolved);
     moduleId_ = moduleId;
+    extension_ = std::make_unique<GameProjectModuleExtension>(*api_, instance_, moduleId_);
     outMessage.clear();
     return true;
 }
 
 void GameProjectModuleLibrary::Reset() noexcept {
     DestroyGameSession();
+    extension_.reset();
     if (api_ != nullptr && instance_ != nullptr && api_->destroyInstance != nullptr) {
         api_->destroyInstance(instance_);
     }
@@ -131,12 +150,8 @@ bool GameProjectModuleLibrary::IsLoaded() const noexcept {
 
 std::string_view GameProjectModuleLibrary::GetModuleId() const noexcept { return moduleId_; }
 
-size_t GameProjectModuleLibrary::GetRuntimeExtensionCount() const noexcept {
-    return IsLoaded() ? api_->getRuntimeExtensionCount(instance_) : 0u;
-}
-
-IRuntimeExtension* GameProjectModuleLibrary::GetRuntimeExtension(size_t index) const noexcept {
-    return IsLoaded() ? api_->getRuntimeExtension(instance_, index) : nullptr;
+IRuntimeExtension* GameProjectModuleLibrary::GetRuntimeExtension() const noexcept {
+    return IsLoaded() ? extension_.get() : nullptr;
 }
 
 bool GameProjectModuleLibrary::CreateGameSession(std::string& outMessage) {

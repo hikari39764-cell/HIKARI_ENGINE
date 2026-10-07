@@ -27,9 +27,9 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
         if (!previewBindings_.Resolve(sequence.bindings, binding.id, id) || !scene.GetWorld().FindObject(id))
             ++unresolved;
     }
-    ImGui::TextWrapped("%s", TEXT::LocalizeCStr("cine.workflowHelp"));
+    ImGui::TextWrapped("%s", TEXT::Localize("cine.workflowHelp").c_str());
     if (unresolved)
-        ImGui::Text(TEXT::LocalizeCStr("cine.missingBindings"), static_cast<int>(unresolved));
+        ImGui::Text(TEXT::Localize("cine.missingBindings").c_str(), static_cast<int>(unresolved));
     if (!ImGui::BeginTabBar("SequenceResources"))
         return false;
     if (ImGui::BeginTabItem(TEXT::LocalizeWindow("cine.shot", "镜头").c_str())) {
@@ -159,8 +159,9 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
         }
         if (ImGui::CollapsingHeader(TEXT::LocalizeWindow("cine.modules", "可复用模块").c_str(),
                                     ImGuiTreeNodeFlags_DefaultOpen)) {
-            const char* names[]{TEXT::LocalizeCStr("cine.preset.dolly"), TEXT::LocalizeCStr("cine.preset.orbit"),
-                                TEXT::LocalizeCStr("cine.preset.handheld"), TEXT::LocalizeCStr("cine.preset.impact")};
+            const char* names[]{
+                TEXT::Localize("cine.preset.dolly").c_str(), TEXT::Localize("cine.preset.orbit").c_str(),
+                TEXT::Localize("cine.preset.handheld").c_str(), TEXT::Localize("cine.preset.impact").c_str()};
             const CameraMotionKind kinds[]{CameraMotionKind::Dolly, CameraMotionKind::Orbit, CameraMotionKind::Handheld,
                                            CameraMotionKind::Shake};
             for (int i = 0; i < 4; ++i)
@@ -195,7 +196,7 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
         ImGui::SameLine();
         const auto selected = context.selection.GetActiveObjectId();
         ImGui::BeginDisabled(!selected.value);
-        if (ImGui::Button(TEXT::LocalizeCStr("cine.slotFromSelection"))) {
+        if (ImGui::Button(TEXT::Localize("cine.slotFromSelection").c_str())) {
             const auto slotName = "Subject." + std::to_string(AllocateSequenceBindingId(sequence.bindings).value);
             const auto id = FindOrCreateSlotBinding(sequence.bindings, slotName, slotName);
             for (const auto& object : scene.GetSceneDocument().objects)
@@ -206,7 +207,7 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
             changed = true;
         }
         ImGui::EndDisabled();
-        ImGui::TextWrapped("%s", TEXT::LocalizeCStr("cine.bindingHelp"));
+        ImGui::TextWrapped("%s", TEXT::Localize("cine.bindingHelp").c_str());
         for (auto& binding : sequence.bindings) {
             ImGui::PushID(static_cast<int>(binding.id.value));
             std::array<char, 128> name{};
@@ -227,7 +228,7 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
                     filter.Clear();
                     ImGui::SetKeyboardFocusHere();
                 }
-                filter.Draw(TEXT::LocalizeCStr("uix.search"));
+                filter.Draw(TEXT::Localize("uix.search").c_str());
                 for (const auto& object : scene.GetSceneDocument().objects) {
                     if (!filter.PassFilter(object.name.c_str()))
                         continue;
@@ -244,7 +245,7 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
                 ImGui::EndCombo();
             }
             ImGui::BeginDisabled(!selected.value);
-            if (ImGui::SmallButton(TEXT::LocalizeCStr("cine.useSelection"))) {
+            if (ImGui::SmallButton(TEXT::Localize("cine.useSelection").c_str())) {
                 previewBindings_.Bind(binding.id, selected);
                 previewChanged_ = true;
                 if (binding.targetKind == SequenceBindingTargetKind::SceneObject) {
@@ -255,7 +256,7 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
             ImGui::EndDisabled();
             ImGui::SameLine();
             ImGui::BeginDisabled(!scene.GetWorld().FindObject(current));
-            if (ImGui::SmallButton(TEXT::LocalizeCStr("cine.selectBoundObject")))
+            if (ImGui::SmallButton(TEXT::Localize("cine.selectBoundObject").c_str()))
                 context.selection.SelectObjectIds(scene.GetWorld(), {current});
             ImGui::EndDisabled();
             changed |= ImGui::Checkbox(TEXT::LocalizeWindow("cine.requiredRuntime", "运行时必须提供").c_str(),

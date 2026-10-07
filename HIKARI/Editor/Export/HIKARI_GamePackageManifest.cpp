@@ -13,9 +13,11 @@
 #include <json.hpp>
 
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
+#include "Assets/HIKARI_AssetRegistryBuilder.h"
 #include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
+#include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
 
 namespace HIKARI::EDITOR {
@@ -123,6 +125,13 @@ bool ValidateGamePackageBoundary(const std::filesystem::path& packageRoot, const
 
     if (!std::filesystem::is_directory(packageRoot / "EngineContent", ec) || ec) {
         outMessage = "Game package is missing installed EngineContent.";
+        return false;
+    }
+    CONTENT::EngineContentContext packagedContent{};
+    AssetRegistry engineTextures{};
+    if (!packagedContent.Open(packageRoot / "EngineContent", &outMessage) ||
+        !RegisterEngineContentTextures(packagedContent, engineTextures)) {
+        outMessage = "Game package contains missing or invalid engine texture artifacts: " + outMessage;
         return false;
     }
 

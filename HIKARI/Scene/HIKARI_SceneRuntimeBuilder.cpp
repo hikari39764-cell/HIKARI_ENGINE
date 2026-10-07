@@ -4,6 +4,7 @@
 #include <cctype>
 #include <memory>
 #include <numbers>
+#include <span>
 #include <unordered_set>
 #include <vector>
 
@@ -420,72 +421,7 @@ SceneDependencySet SceneRuntimeBuilder::CollectDependencies(const SceneDocument&
     deps.lighting = LIGHTING_AUTHORING::BuildSceneLightingSet(document);
 
     for (const SceneObjectData& object : document.objects) {
-        for (const SceneComponentData& component : object.components) {
-            if (enabledComponents != nullptr && enabledComponents->Find(component.type) == nullptr) {
-                continue;
-            }
-            if (component.type == "ModelComponent") {
-                const std::string assetId = component.properties.value("assetId", std::string{});
-                if (!assetId.empty()) {
-                    deps.modelAssetIds.insert(assetId);
-                }
-                const std::string materialSetGuid = component.properties.value("materialSetAssetGuid", std::string{});
-                if (!materialSetGuid.empty()) {
-                    deps.modelMaterialSetAssetIds.insert(materialSetGuid);
-                }
-                if (component.properties.contains("materialOverrides") &&
-                    component.properties["materialOverrides"].is_array()) {
-                    for (const nlohmann::json& node : component.properties["materialOverrides"]) {
-                        if (!node.is_object()) {
-                            continue;
-                        }
-                        const std::string materialGuid = node.value("materialAssetGuid", std::string{});
-                        if (!materialGuid.empty()) {
-                            deps.materialAssetIds.insert(materialGuid);
-                        }
-                    }
-                }
-            } else if (component.type == "ProceduralMeshComponent") {
-                ProceduralMeshComponent procedural;
-                procedural.Deserialize(component.properties);
-                const std::string& materialSelection = procedural.GetMaterialSelection();
-                if (!materialSelection.empty()) {
-                    deps.materialAssetIds.insert(materialSelection);
-                }
-            } else if (component.type == "WorldSpriteComponent") {
-                const auto sprite = component.properties.find("spriteAssetGuid");
-                if (sprite != component.properties.end() && sprite->is_string() &&
-                    !sprite->get_ref<const std::string&>().empty()) {
-                    deps.spriteAssetIds.insert(sprite->get_ref<const std::string&>());
-                }
-                const auto texture = component.properties.find("textureAssetGuid");
-                if (texture != component.properties.end() && texture->is_string() &&
-                    !texture->get_ref<const std::string&>().empty()) {
-                    deps.textureAssetIds.insert(texture->get_ref<const std::string&>());
-                }
-                const auto material = component.properties.find("spriteMaterial");
-                if (material != component.properties.end() && material->is_object()) {
-                    const auto guid = material->find("assetGuid");
-                    if (guid != material->end() && guid->is_string() && !guid->get_ref<const std::string&>().empty()) {
-                        deps.spriteMaterialAssetIds.insert(guid->get_ref<const std::string&>());
-                    }
-                }
-            } else if (component.type == "VfxPlayerComponent") {
-                const auto slots = component.properties.find("slots");
-                if (slots == component.properties.end() || !slots->is_array()) {
-                    continue;
-                }
-                for (const nlohmann::json& slot : *slots) {
-                    if (!slot.is_object()) {
-                        continue;
-                    }
-                    const std::string assetGuid = slot.value("effectAssetGuid", std::string{});
-                    if (!assetGuid.empty()) {
-                        deps.vfxAssetIds.insert(assetGuid);
-                    }
-                }
-            }
-        }
+        CollectObjectDependencies(object, enabledComponents, deps);
     }
 
     for (const auto& sequence : document.cinematics.sequences) {
@@ -495,6 +431,77 @@ SceneDependencySet SceneRuntimeBuilder::CollectDependencies(const SceneDocument&
     }
 
     return deps;
+}
+
+void SceneRuntimeBuilder::CollectObjectDependencies(const SceneObjectData& object,
+                                                    const ComponentRegistry* enabledComponents,
+                                                    SceneDependencySet& dependencies) const {
+    for (const SceneComponentData& component : object.components) {
+        if (enabledComponents != nullptr && enabledComponents->Find(component.type) == nullptr) {
+            continue;
+        }
+        if (component.type == "ModelComponent") {
+            const std::string assetId = component.properties.value("assetId", std::string{});
+            if (!assetId.empty()) {
+                dependencies.modelAssetIds.insert(assetId);
+            }
+            const std::string materialSetGuid = component.properties.value("materialSetAssetGuid", std::string{});
+            if (!materialSetGuid.empty()) {
+                dependencies.modelMaterialSetAssetIds.insert(materialSetGuid);
+            }
+            if (component.properties.contains("materialOverrides") &&
+                component.properties["materialOverrides"].is_array()) {
+                for (const nlohmann::json& node : component.properties["materialOverrides"]) {
+                    if (!node.is_object()) {
+                        continue;
+                    }
+                    const std::string materialGuid = node.value("materialAssetGuid", std::string{});
+                    if (!materialGuid.empty()) {
+                        dependencies.materialAssetIds.insert(materialGuid);
+                    }
+                }
+            }
+        } else if (component.type == "ProceduralMeshComponent") {
+            ProceduralMeshComponent procedural;
+            procedural.Deserialize(component.properties);
+            const std::string& materialSelection = procedural.GetMaterialSelection();
+            if (!materialSelection.empty()) {
+                dependencies.materialAssetIds.insert(materialSelection);
+            }
+        } else if (component.type == "WorldSpriteComponent") {
+            const auto sprite = component.properties.find("spriteAssetGuid");
+            if (sprite != component.properties.end() && sprite->is_string() &&
+                !sprite->get_ref<const std::string&>().empty()) {
+                dependencies.spriteAssetIds.insert(sprite->get_ref<const std::string&>());
+            }
+            const auto texture = component.properties.find("textureAssetGuid");
+            if (texture != component.properties.end() && texture->is_string() &&
+                !texture->get_ref<const std::string&>().empty()) {
+                dependencies.textureAssetIds.insert(texture->get_ref<const std::string&>());
+            }
+            const auto material = component.properties.find("spriteMaterial");
+            if (material != component.properties.end() && material->is_object()) {
+                const auto guid = material->find("assetGuid");
+                if (guid != material->end() && guid->is_string() && !guid->get_ref<const std::string&>().empty()) {
+                    dependencies.spriteMaterialAssetIds.insert(guid->get_ref<const std::string&>());
+                }
+            }
+        } else if (component.type == "VfxPlayerComponent") {
+            const auto slots = component.properties.find("slots");
+            if (slots == component.properties.end() || !slots->is_array()) {
+                continue;
+            }
+            for (const nlohmann::json& slot : *slots) {
+                if (!slot.is_object()) {
+                    continue;
+                }
+                const std::string assetGuid = slot.value("effectAssetGuid", std::string{});
+                if (!assetGuid.empty()) {
+                    dependencies.vfxAssetIds.insert(assetGuid);
+                }
+            }
+        }
+    }
 }
 
 bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependencies,
@@ -689,6 +696,19 @@ bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependen
     return lightingResult.success;
 }
 
+namespace {
+Transform3D ToLocalTransform(const TransformData& transform) {
+    constexpr float kDegToRad = std::numbers::pi_v<float> / 180.0f;
+    Transform3D local{};
+    local.position = transform.position;
+    local.scale = transform.scale;
+    local.rotation =
+        MATH::Quat::FromEulerXYZ(transform.rotationEulerDeg.x * kDegToRad, transform.rotationEulerDeg.y * kDegToRad,
+                                 transform.rotationEulerDeg.z * kDegToRad);
+    return local;
+}
+} // namespace
+
 bool SceneRuntimeBuilder::BuildWorldFromDocument(const SceneDocument& document, World& world,
                                                  const AssetRegistry& assetRegistry,
                                                  const ComponentRegistry& componentRegistry,
@@ -704,89 +724,15 @@ bool SceneRuntimeBuilder::BuildWorldFromDocument(const SceneDocument& document, 
         world.Clear();
         return false;
     }
-
-    constexpr float kDegToRad = std::numbers::pi_v<float> / 180.0f;
-
-    for (const SceneObjectData& objectData : document.objects) {
-        GameObject* object = world.CreateObject(objectData.name);
-        if (object == nullptr) {
-            HIKARI_LOG_ERROR("[SceneRuntime] object creation failed: " + objectData.name);
-            world.Clear();
-            return false;
-        }
-        if (!object->SetDocumentId(objectData.id)) {
-            HIKARI_LOG_ERROR("[SceneRuntime] duplicate object id rejected: " + std::to_string(objectData.id.value));
-            world.Clear();
-            return false;
-        }
-        Transform3D localTransform{};
-        localTransform.position = objectData.transform.position;
-        localTransform.scale = objectData.transform.scale;
-        localTransform.rotation = MATH::Quat::FromEulerXYZ(objectData.transform.rotationEulerDeg.x * kDegToRad,
-                                                           objectData.transform.rotationEulerDeg.y * kDegToRad,
-                                                           objectData.transform.rotationEulerDeg.z * kDegToRad);
-        (void)object->SetLocalTransform(localTransform);
+    std::vector<const SceneObjectData*> objects{};
+    objects.reserve(document.objects.size());
+    for (const SceneObjectData& object : document.objects) {
+        objects.push_back(&object);
     }
-
-    for (const SceneObjectData& objectData : document.objects) {
-        if (!objectData.parent.has_value()) {
-            continue;
-        }
-        GameObject* child = world.FindObject(objectData.id);
-        GameObject* parent = world.FindObject(*objectData.parent);
-        if (child == nullptr || parent == nullptr || !child->SetParent(parent)) {
-            HIKARI_LOG_WARN(
-                "[SceneRuntime] invalid object hierarchy skipped: child=" + std::to_string(objectData.id.value) +
-                " parent=" + std::to_string(objectData.parent->value));
-        }
+    if (!AddObjectsFromDocument(objects, world, assetRegistry, componentRegistry, modelManager)) {
+        world.Clear();
+        return false;
     }
-
-    for (const SceneObjectData& objectData : document.objects) {
-        GameObject* object = world.FindObject(objectData.id);
-        if (object == nullptr) {
-            HIKARI_LOG_ERROR("[SceneRuntime] object lookup failed after creation: " +
-                             std::to_string(objectData.id.value));
-            world.Clear();
-            return false;
-        }
-        for (const SceneComponentData& componentData : objectData.components) {
-            const ComponentTypeInfo* componentInfo = componentRegistry.Find(componentData.type);
-            if (componentInfo == nullptr) {
-                HIKARI_LOG_WARN("[SceneRuntime] unavailable component skipped: " + componentData.type +
-                                " objectId=" + std::to_string(objectData.id.value));
-                continue;
-            }
-            std::unique_ptr<IComponent> component = componentInfo->factory();
-            if (component == nullptr) {
-                HIKARI_LOG_ERROR("[SceneRuntime] component factory failed: " + componentData.type);
-                world.Clear();
-                return false;
-            }
-            std::string deserializeDiagnostic{};
-            if (!component->TryDeserialize(componentData.properties, deserializeDiagnostic)) {
-                HIKARI_LOG_ERROR("[SceneRuntime] component deserialize failed: " + componentData.type + " objectId=" +
-                                 std::to_string(objectData.id.value) + " diagnostic=" + deserializeDiagnostic);
-                world.Clear();
-                return false;
-            }
-            IComponent* attached = object->AddComponentInstance(std::move(component), componentInfo->typeId);
-            if (attached == nullptr) {
-                HIKARI_LOG_ERROR("[SceneRuntime] component attachment failed: " + componentData.type);
-                world.Clear();
-                return false;
-            }
-
-            std::string runtimeDiagnostic{};
-            if (!InitializeRuntimeComponentAssets(*object, *attached, assetRegistry, modelManager, runtimeDiagnostic)) {
-                HIKARI_LOG_WARN("[SceneRuntime] " + runtimeDiagnostic);
-            }
-        }
-
-        // 全コンポーネント反映後、後続で追加された ProceduralMesh も含めて
-        // レンダリング可能アセットとマテリアル上書きを確定する。
-        FinalizeRuntimeObjectAssets(*object, assetRegistry);
-    }
-
     return true;
 } catch (...) {
     HIKARI_LOG_ERROR("[SceneRuntime] World build failed with an exception.");
@@ -796,6 +742,124 @@ bool SceneRuntimeBuilder::BuildWorldFromDocument(const SceneDocument& document, 
         HIKARI_LOG_ERROR("[SceneRuntime] World cleanup also failed.");
     }
     return false;
+}
+
+void SceneRuntimeBuilder::ReattachChildrenFromDocument(const SceneDocument& document,
+                                                       std::span<const SceneObjectId> parents, World& world) const {
+    if (parents.empty()) {
+        return;
+    }
+    std::unordered_set<uint64_t> parentIds{};
+    for (SceneObjectId parent : parents) {
+        parentIds.insert(parent.value);
+    }
+    for (const SceneObjectData& objectData : document.objects) {
+        if (!objectData.parent.has_value() || !parentIds.contains(objectData.parent->value)) {
+            continue;
+        }
+        GameObject* child = world.FindObject(objectData.id);
+        GameObject* parent = world.FindObject(*objectData.parent);
+        if (child == nullptr || parent == nullptr || child->GetParent() == parent) {
+            continue;
+        }
+        if (!child->SetParent(parent)) {
+            HIKARI_LOG_WARN("[SceneRuntime] child reattachment failed: child=" + std::to_string(objectData.id.value));
+            continue;
+        }
+        (void)child->SetLocalTransform(ToLocalTransform(objectData.transform));
+    }
+}
+
+bool SceneRuntimeBuilder::AddObjectsFromDocument(std::span<const SceneObjectData* const> objects, World& world,
+                                                 const AssetRegistry& assetRegistry,
+                                                 const ComponentRegistry& componentRegistry,
+                                                 ModelManager& modelManager) const {
+    std::vector<GameObject*> created{};
+    created.reserve(objects.size());
+    const auto fail = [&]() {
+        for (GameObject* object : created) {
+            (void)world.DestroyObject(object);
+        }
+        return false;
+    };
+    try {
+        for (const SceneObjectData* objectData : objects) {
+            GameObject* object = world.CreateObject(objectData->name);
+            if (object == nullptr) {
+                HIKARI_LOG_ERROR("[SceneRuntime] object creation failed: " + objectData->name);
+                return fail();
+            }
+            created.push_back(object);
+            if (!object->SetDocumentId(objectData->id)) {
+                HIKARI_LOG_ERROR("[SceneRuntime] duplicate object id rejected: " +
+                                 std::to_string(objectData->id.value));
+                return fail();
+            }
+            (void)object->SetLocalTransform(ToLocalTransform(objectData->transform));
+        }
+
+        for (size_t index = 0u; index < objects.size(); ++index) {
+            const SceneObjectData& objectData = *objects[index];
+            if (!objectData.parent.has_value()) {
+                continue;
+            }
+            GameObject* parent = world.FindObject(*objectData.parent);
+            if (parent == nullptr || !created[index]->SetParent(parent)) {
+                HIKARI_LOG_WARN(
+                    "[SceneRuntime] invalid object hierarchy skipped: child=" + std::to_string(objectData.id.value) +
+                    " parent=" + std::to_string(objectData.parent->value));
+            }
+        }
+
+        for (size_t index = 0u; index < objects.size(); ++index) {
+            const SceneObjectData& objectData = *objects[index];
+            GameObject* object = created[index];
+            for (const SceneComponentData& componentData : objectData.components) {
+                const ComponentTypeInfo* componentInfo = componentRegistry.Find(componentData.type);
+                if (componentInfo == nullptr) {
+                    HIKARI_LOG_WARN("[SceneRuntime] unavailable component skipped: " + componentData.type +
+                                    " objectId=" + std::to_string(objectData.id.value));
+                    continue;
+                }
+                std::unique_ptr<IComponent> component = componentInfo->factory();
+                if (component == nullptr) {
+                    HIKARI_LOG_ERROR("[SceneRuntime] component factory failed: " + componentData.type);
+                    return fail();
+                }
+                std::string deserializeDiagnostic{};
+                if (!component->TryDeserialize(componentData.properties, deserializeDiagnostic)) {
+                    HIKARI_LOG_ERROR("[SceneRuntime] component deserialize failed: " + componentData.type +
+                                     " objectId=" + std::to_string(objectData.id.value) +
+                                     " diagnostic=" + deserializeDiagnostic);
+                    return fail();
+                }
+                IComponent* attached = object->AddComponentInstance(std::move(component), componentInfo->typeId);
+                if (attached == nullptr) {
+                    HIKARI_LOG_ERROR("[SceneRuntime] component attachment failed: " + componentData.type);
+                    return fail();
+                }
+
+                std::string runtimeDiagnostic{};
+                if (!InitializeRuntimeComponentAssets(*object, *attached, assetRegistry, modelManager,
+                                                      runtimeDiagnostic)) {
+                    HIKARI_LOG_WARN("[SceneRuntime] " + runtimeDiagnostic);
+                }
+            }
+
+            // 全コンポーネント反映後、後続で追加された ProceduralMesh も含めて
+            // レンダリング可能アセットとマテリアル上書きを確定する。
+            FinalizeRuntimeObjectAssets(*object, assetRegistry);
+        }
+        return true;
+    } catch (...) {
+        HIKARI_LOG_ERROR("[SceneRuntime] adding document objects failed with an exception.");
+        try {
+            return fail();
+        } catch (...) {
+            HIKARI_LOG_ERROR("[SceneRuntime] cleanup of partially added objects also failed.");
+        }
+        return false;
+    }
 }
 
 } // namespace HIKARI

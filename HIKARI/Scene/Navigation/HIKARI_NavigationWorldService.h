@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI {
 class World;

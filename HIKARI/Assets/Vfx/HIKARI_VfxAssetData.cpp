@@ -84,6 +84,9 @@ std::string_view ToString(VfxShapeUvMode value) noexcept {
     return TEXT::EnumToName(kVfxShapeUvModeNames, value, "Parameter");
 }
 std::string_view ToString(VfxBlendMode value) noexcept { return TEXT::EnumToName(kVfxBlendModeNames, value, "Alpha"); }
+std::string_view ToString(VfxPostProcessMode value) noexcept {
+    return TEXT::EnumToName(kVfxPostProcessModeNames, value, "Scene");
+}
 std::string_view ToString(VfxMaterialMode value) noexcept {
     return TEXT::EnumToName(kVfxMaterialModeNames, value, "StandardUnlit");
 }

@@ -74,7 +74,7 @@ void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
         if (ImGui::BeginViewportSideBar("###Editor/Documents", ImGui::GetMainViewport(), ImGuiDir_Up, 34 * scale,
                                         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar)) {
             const auto visible = authoringSessions_.VisibleSession(workspace);
-            if (IconTextButton(EditorGlyph::File, TEXT::LocalizeCStr("ai.document.manual"), "manualDocument",
+            if (IconTextButton(EditorGlyph::File, TEXT::Localize("ai.document.manual").c_str(), "manualDocument",
                                visible.empty() ? EditorButtonTone::Primary : EditorButtonTone::Quiet)) {
                 authoringSessions_.ShowForeground(workspace);
                 EditorWorkspaceOpenRequest request;
@@ -85,12 +85,12 @@ void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
             bool follow = authoringSessions_.FollowDocuments();
             if (IconButton(EditorGlyph::Reveal, "followDocuments",
                            follow ? EditorButtonTone::Primary : EditorButtonTone::Quiet, {},
-                           TEXT::LocalizeCStr("ai.document.follow")))
+                           TEXT::Localize("ai.document.follow").c_str()))
                 authoringSessions_.SetFollowDocuments(!follow);
             if (aiAssistantSession_.IsBusy() && !visible.empty()) {
                 ImGui::SameLine();
                 if (IconButton(EditorGlyph::Pause, "takeOverDocument", EditorButtonTone::Quiet, {},
-                               TEXT::LocalizeCStr("ai.document.takeover")))
+                               TEXT::Localize("ai.document.takeover").c_str()))
                     aiAssistantSession_.Cancel();
             }
             ImGui::SameLine();
@@ -107,7 +107,7 @@ void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
                     // 自動選択を操作に変換しない。手動文書表示もそのまま保つ。
                     if (ImGui::IsItemClicked() && visible != id)
                         authoringSessions_.Execute("authoring.reveal", {{"sessionId", id}});
-                    ImGui::SetItemTooltip("%s", TEXT::LocalizeCStr("ai.document.live"));
+                    ImGui::SetItemTooltip("%s", TEXT::Localize("ai.document.live").c_str());
                     if (shown)
                         ImGui::EndTabItem();
                 }
@@ -167,7 +167,7 @@ void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
         auto snapshots = assetTasks.CollectSnapshots();
         std::sort(snapshots.begin(), snapshots.end(), [](const auto& a, const auto& b) { return a.id > b.id; });
         if (snapshots.empty())
-            ImGui::TextDisabled("%s", TEXT::LocalizeCStr("shell.ready"));
+            ImGui::TextDisabled("%s", TEXT::Localize("shell.ready").c_str());
         for (const auto& task : snapshots) {
             ImGui::PushID(static_cast<int>(task.id));
             const bool active = !IsTerminal(task.state);
@@ -175,7 +175,7 @@ void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
                                 : task.state == AssetTaskState::Failed   ? "shell.failed"
                                 : task.state == AssetTaskState::Canceled ? "shell.cancelled"
                                                                          : "shell.completed";
-            StatusBadge(TEXT::LocalizeCStr(state),
+            StatusBadge(TEXT::Localize(state).c_str(),
                         task.state == AssetTaskState::Failed ? EditorStatusTone::Error : EditorStatusTone::Normal);
             ImGui::TextWrapped("%s", task.label.c_str());
             if (active) {
@@ -183,7 +183,7 @@ void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
                 if (task.progress.determinate)
                     ImGui::ProgressBar(task.progress.normalized);
                 ImGui::BeginDisabled(!task.cancelable || task.cancellationRequested);
-                if (IconTextButton(EditorGlyph::Stop, TEXT::LocalizeCStr("shell.cancelTask"), "cancelAssetTask"))
+                if (IconTextButton(EditorGlyph::Stop, TEXT::Localize("shell.cancelTask").c_str(), "cancelAssetTask"))
                     assetTasks.RequestCancel(task.id);
                 ImGui::EndDisabled();
             } else if (!task.resultMessage.empty())

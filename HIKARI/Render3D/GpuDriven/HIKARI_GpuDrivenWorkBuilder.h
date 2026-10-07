@@ -6,7 +6,7 @@
 #include <d3d12.h>
 
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenProducer.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 

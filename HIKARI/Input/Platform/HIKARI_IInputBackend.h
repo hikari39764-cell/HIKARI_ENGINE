@@ -14,6 +14,7 @@ public:
     virtual ~IInputBackend() = default;
 
     virtual void SetHostWindow(void* nativeWindow) = 0;
+    virtual bool HasInputFocus() const noexcept = 0;
     virtual void SetMouseCaptureMode(MouseCaptureMode mode) = 0;
     virtual void SetMouseCaptureRegion(const MouseCaptureRegion& region) = 0;
     virtual void ClearMouseCaptureRegion() = 0;

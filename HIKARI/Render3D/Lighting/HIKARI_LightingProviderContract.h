@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeContract.h"
 
 namespace HIKARI::RENDER3D::LIGHTING {

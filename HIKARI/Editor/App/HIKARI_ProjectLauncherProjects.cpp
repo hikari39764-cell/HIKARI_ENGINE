@@ -14,17 +14,17 @@
 
 namespace HIKARI::EDITOR {
 void ProjectLauncherApp::DrawRecentProjectsPanel() {
-    PanelTitle(TEXT::LocalizeCStr("launcher.projects"));
+    PanelTitle(TEXT::Localize("launcher.projects").c_str());
     NextToolbarItem(120);
     ImGui::BeginDisabled(openWorkflow_.IsBusy());
-    if (IconTextButton(EditorGlyph::Folder, TEXT::LocalizeCStr("editor.ui.open.project.68e7c2"), "browse",
+    if (IconTextButton(EditorGlyph::Folder, TEXT::Localize("editor.ui.open.project.68e7c2").c_str(), "browse",
                        EditorButtonTone::Primary))
         BrowseForProject();
     ImGui::EndDisabled();
     ImGui::Spacing();
-    SearchField("projectsSearch", TEXT::LocalizeCStr("launcher.search"), search_.data(), search_.size());
+    SearchField("projectsSearch", TEXT::Localize("launcher.search").c_str(), search_.data(), search_.size());
     if (IconToggleButton(EditorGlyph::Keyframe, "pinnedOnly", pinnedOnly_, {28, 28},
-                         TEXT::LocalizeCStr("launcher.pinnedOnly")))
+                         TEXT::Localize("launcher.pinnedOnly").c_str()))
         pinnedOnly_ = !pinnedOnly_;
     ImGui::SameLine();
     ImGui::TextDisabled("%zu", recentProjects_.GetEntries().size());
@@ -94,8 +94,8 @@ void ProjectLauncherApp::DrawRecentProjectsPanel() {
             ImGui::SetTooltip("%s", path.c_str());
         ImGui::BeginDisabled(openWorkflow_.IsBusy());
         if (IconTextButton(entry.available ? EditorGlyph::Play : EditorGlyph::Folder,
-                           TEXT::LocalizeCStr(entry.available ? "editor.ui.open.cf9b77" : "launcher.locate"), "open",
-                           EditorButtonTone::Primary, {0, 28})) {
+                           TEXT::Localize(entry.available ? "editor.ui.open.cf9b77" : "launcher.locate").c_str(),
+                           "open", EditorButtonTone::Primary, {0, 28})) {
             if (entry.available)
                 OpenProject(entry.root);
             else if (auto replacement = FILE_DIALOG::PickFolder(entry.root.parent_path()))
@@ -104,25 +104,25 @@ void ProjectLauncherApp::DrawRecentProjectsPanel() {
         ImGui::EndDisabled();
         NextToolbarItem();
         if (IconToggleButton(EditorGlyph::Keyframe, "pin", entry.pinned, {28, 28},
-                             TEXT::LocalizeCStr(entry.pinned ? "launcher.unpin" : "launcher.pin")))
+                             TEXT::Localize(entry.pinned ? "launcher.unpin" : "launcher.pin").c_str()))
             recentProjects_.SetPinned(entry.root, !entry.pinned, &interactionMessage_);
         NextToolbarItem();
         if (IconButton(EditorGlyph::More, "more", EditorButtonTone::Quiet, {28, 28},
-                       TEXT::LocalizeCStr("launcher.more")))
+                       TEXT::Localize("launcher.more").c_str()))
             ImGui::OpenPopup("projectMenu");
         if (ImGui::BeginPopup("projectMenu")) {
-            if (ImGui::MenuItem(TEXT::LocalizeCStr("launcher.showFolder")))
+            if (ImGui::MenuItem(TEXT::Localize("launcher.showFolder").c_str()))
                 SHELL::OpenFolderInExplorer(entry.root);
-            if (ImGui::MenuItem(TEXT::LocalizeCStr("launcher.chooseImage"))) {
+            if (ImGui::MenuItem(TEXT::Localize("launcher.chooseImage").c_str())) {
                 if (auto selected = FILE_DIALOG::PickFile(entry.root, L"Images", L"*.png;*.jpg;*.jpeg"))
                     recentProjects_.SetThumbnail(entry.root, TEXT::PathToUtf8(*selected), &interactionMessage_);
             }
-            if (ImGui::MenuItem(TEXT::LocalizeCStr("launcher.locate"))) {
+            if (ImGui::MenuItem(TEXT::Localize("launcher.locate").c_str())) {
                 if (auto selected = FILE_DIALOG::PickFolder(entry.root.parent_path()))
                     recentProjects_.Relocate(entry.root, *selected, &interactionMessage_);
             }
             ImGui::Separator();
-            if (ImGui::MenuItem(TEXT::LocalizeCStr("editor.ui.remove.from.recent.projects.f1a467")))
+            if (ImGui::MenuItem(TEXT::Localize("editor.ui.remove.from.recent.projects.f1a467").c_str()))
                 recentProjects_.Remove(entry.root, &interactionMessage_);
             ImGui::EndPopup();
         }
@@ -134,22 +134,22 @@ void ProjectLauncherApp::DrawRecentProjectsPanel() {
     }
     ImGui::EndTable();
     if (!visible)
-        EmptyState(TEXT::LocalizeCStr("launcher.noMatches"), TEXT::LocalizeCStr("launcher.emptyHint"));
+        EmptyState(TEXT::Localize("launcher.noMatches").c_str(), TEXT::Localize("launcher.emptyHint").c_str());
 }
 
 void ProjectLauncherApp::DrawCreateProjectPanel() {
-    PanelTitle(TEXT::LocalizeCStr("launcher.newProject"));
-    ImGui::TextDisabled("%s", TEXT::LocalizeCStr("launcher.blankTemplate"));
+    PanelTitle(TEXT::Localize("launcher.newProject").c_str());
+    ImGui::TextDisabled("%s", TEXT::Localize("launcher.blankTemplate").c_str());
     ImGui::Spacing();
-    ImGui::TextUnformatted(TEXT::LocalizeCStr("editor.ui.project.name.ab9773"));
+    ImGui::TextUnformatted(TEXT::Localize("editor.ui.project.name.ab9773").c_str());
     ImGui::SetNextItemWidth(-1);
     ImGui::InputTextWithHint("name", "MyGame", projectName_.data(), projectName_.size());
-    ImGui::TextUnformatted(TEXT::LocalizeCStr("editor.ui.location.d219c6"));
+    ImGui::TextUnformatted(TEXT::Localize("editor.ui.location.d219c6").c_str());
     ImGui::SetNextItemWidth(-42);
     ImGui::InputText("##location", projectLocation_.data(), projectLocation_.size());
     ImGui::SameLine();
     if (IconButton(EditorGlyph::Folder, "location", EditorButtonTone::Quiet, {30, 0},
-                   TEXT::LocalizeCStr("editor.ui.browse.2f3b5c")))
+                   TEXT::Localize("editor.ui.browse.2f3b5c").c_str()))
         BrowseForCreationLocation();
     std::filesystem::path target;
     std::string validation;
@@ -161,7 +161,7 @@ void ProjectLauncherApp::DrawCreateProjectPanel() {
         ImGui::TextWrapped("%s", validation.c_str());
     ImGui::Spacing();
     ImGui::BeginDisabled(!valid || openWorkflow_.IsBusy());
-    if (IconTextButton(EditorGlyph::Add, TEXT::LocalizeCStr("editor.ui.create.and.open.f53899"), "create",
+    if (IconTextButton(EditorGlyph::Add, TEXT::Localize("editor.ui.create.and.open.f53899").c_str(), "create",
                        EditorButtonTone::Primary, {0, 36}))
         CreateAndOpenProject();
     ImGui::EndDisabled();

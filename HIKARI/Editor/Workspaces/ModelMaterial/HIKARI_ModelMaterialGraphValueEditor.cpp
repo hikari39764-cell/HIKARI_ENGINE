@@ -86,7 +86,7 @@ bool ModelMaterialWorkspaceController::DrawGraphParameter(MaterialAssetData& sou
     namespace UI = MATERIAL_GRAPH_UI;
     auto* parameter = FindMaterialGraphParameter(graph, id);
     if (!parameter && !fallback) {
-        ImGui::TextDisabled(TEXT::LocalizeCStr("editor.ui.s.missing.f1ed86"), label);
+        ImGui::TextDisabled(TEXT::Localize("editor.ui.s.missing.f1ed86").c_str(), label);
         return false;
     }
     ImGui::PushID(id.data(), id.data() + id.size());
@@ -94,7 +94,7 @@ bool ModelMaterialWorkspaceController::DrawGraphParameter(MaterialAssetData& sou
     ImGui::TextUnformatted(label);
     ImGui::SameLine();
     if (node && !pin.empty() && !UI::InputUsesParameterDefault(graph, *node, pin, id)) {
-        ImGui::TextDisabled(TEXT::LocalizeCStr("editor.ui.linked.a089f6"));
+        ImGui::TextDisabled(TEXT::Localize("editor.ui.linked.a089f6").c_str());
         ImGui::PopID();
         return false;
     }
@@ -122,7 +122,7 @@ bool ModelMaterialWorkspaceController::DrawGraphParameter(MaterialAssetData& sou
     }
     if (!parameter && !changed && ImGui::IsItemHovered())
         ImGui::SetTooltip(
-            "%s", TEXT::LocalizeCStr("editor.ui.runtime.default.editing.creates.the.authored.parameter.c91fef"));
+            "%s", TEXT::Localize("editor.ui.runtime.default.editing.creates.the.authored.parameter.c91fef").c_str());
     ImGui::PopID();
     return capturesPointer;
 #else

@@ -17,6 +17,7 @@
 #include "Render3D/Temporal/Internal/HIKARI_TemporalShader.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
+#include "Render3D/Temporal/Internal/HIKARI_TemporalResourceSystemInternal.h"
 
 namespace HIKARI::RENDER3D::TEMPORAL {
 
@@ -179,6 +180,17 @@ bool ExecuteTemporalMaskPass(const GFX::Context& graphics, const TemporalInputs&
         cmd->DrawInstanced(3, 1, 0, 0);
     }
 
+    // TAA の metadata と同じ保守的な失効範囲を、外部 upscaler にも公開する。
+    const auto* temporalState = DETAIL::FindWritableState(inputs.resourceFrame);
+    if (temporalState != nullptr &&
+        temporalState->passScratch.geometryHistoryRejectionFrame.Matches(inputs.resourceFrame)) {
+        const auto& rects = temporalState->passScratch.geometryHistoryRejectionRects;
+        if (!rects.empty()) {
+            const float rejected[4]{1.0f, 1.0f, 1.0f, 1.0f};
+            cmd->ClearRenderTargetView(rtvs[0], rejected, static_cast<UINT>(rects.size()), rects.data());
+            cmd->ClearRenderTargetView(rtvs[2], rejected, static_cast<UINT>(rects.size()), rects.data());
+        }
+    }
     reactive->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     transparency->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     invalidDepthMotion->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);

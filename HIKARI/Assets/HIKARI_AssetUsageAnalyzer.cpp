@@ -1,6 +1,8 @@
 #include "HIKARI_AssetUsageAnalyzer.h"
 
 #include "HIKARI_AssetDatabase.h"
+#include "Assets/HIKARI_AssetRegistryBuilder.h"
+#include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Assets/Post/HIKARI_PostAsset.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
 #include "Gameplay/Dialogue/HIKARI_DialogueProjectStyle.h"
@@ -10,13 +12,13 @@
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
-#include "HIKARI/Project/PropertyArchive.h"
+#include "HIKARI/Project/PropertyFields.h"
 
 namespace HIKARI {
 
 namespace {
 void AddReference(const std::string& assetId, const std::string& owner, const std::string& role,
-                  const AssetDatabase& assetDatabase, AssetUsageSummary& summary) {
+                  const AssetDatabase& assetDatabase, const AssetRegistry& engineTextures, AssetUsageSummary& summary) {
     if (assetId.empty()) {
         return;
     }
@@ -27,25 +29,36 @@ void AddReference(const std::string& assetId, const std::string& owner, const st
             TextStyleAsset style;
             std::string error;
             if (LoadTextStyleAsset(assetDatabase.GetProjectRoot() / record->sourcePath, style, error))
-                AddReference(style.font.value, owner, "TextStyle.Font", assetDatabase, summary);
+                AddReference(style.font.value, owner, "TextStyle.Font", assetDatabase, engineTextures, summary);
         }
         if (first && record->type == AssetType::PostProfile) {
             POST::PostProfileAsset profile;
             std::string error;
             if (POST::LoadPostProfileAsset(assetDatabase.GetProjectRoot() / record->sourcePath, profile, error)) {
                 for (const AssetDependencyDesc& dependency : POST::CollectPostProfileDependencies(profile))
-                    AddReference(dependency.guid.value, owner, dependency.role, assetDatabase, summary);
+                    AddReference(dependency.guid.value, owner, dependency.role, assetDatabase, engineTextures, summary);
+            }
+        }
+        if (first && record->type == AssetType::PostEffect) {
+            POST::PostEffectDefinition effect;
+            std::string error;
+            if (POST::LoadPostEffectDefinition(assetDatabase.GetProjectRoot() / record->sourcePath, effect, error)) {
+                for (const AssetDependencyDesc& dependency : POST::CollectPostEffectDependencies(effect))
+                    AddReference(dependency.guid.value, owner, dependency.role, assetDatabase, engineTextures, summary);
             }
         }
         return;
     }
 
+    if (engineTextures.FindAs<TextureAssetDescriptor>(AssetId{assetId})) {
+        return;
+    }
     summary.missingReferences.push_back(AssetMissingReference{assetId, owner, role});
 }
 
 void AddMaterialReferences(const std::string& materialGuid, const std::string& owner,
-                           const AssetDatabase& assetDatabase, AssetUsageSummary& summary,
-                           std::unordered_set<std::string>& visitedMaterials) {
+                           const AssetDatabase& assetDatabase, const AssetRegistry& engineTextures,
+                           AssetUsageSummary& summary, std::unordered_set<std::string>& visitedMaterials) {
     if (materialGuid.empty()) {
         return;
     }
@@ -73,17 +86,19 @@ void AddMaterialReferences(const std::string& materialGuid, const std::string& o
 
     // Material v4 の Texture / Function / Ramp / Profile / Parent を同じ依存契約で辿る。
     for (const MaterialAssetDependency& dependency : CollectMaterialAssetDependencies(data)) {
-        AddReference(dependency.assetGuid.value, owner, "Material " + dependency.role, assetDatabase, summary);
+        AddReference(dependency.assetGuid.value, owner, "Material " + dependency.role, assetDatabase, engineTextures,
+                     summary);
         if (dependency.kind != MaterialDependencyKind::Texture) {
-            AddMaterialReferences(dependency.assetGuid.value, owner, assetDatabase, summary, visitedMaterials);
+            AddMaterialReferences(dependency.assetGuid.value, owner, assetDatabase, engineTextures, summary,
+                                  visitedMaterials);
         }
     }
 }
 
 void AddModelMaterialBindingReferences(const std::string& modelGuid, const std::string& materialSetGuid,
                                        bool explicitSelection, const std::string& owner,
-                                       const AssetDatabase& assetDatabase, AssetUsageSummary& summary,
-                                       std::unordered_set<std::string>& visitedMaterials) {
+                                       const AssetDatabase& assetDatabase, const AssetRegistry& engineTextures,
+                                       AssetUsageSummary& summary, std::unordered_set<std::string>& visitedMaterials) {
     if (modelGuid.empty()) {
         return;
     }
@@ -106,10 +121,12 @@ void AddModelMaterialBindingReferences(const std::string& modelGuid, const std::
             data.modelAssetGuid.value != modelGuid) {
             continue;
         }
-        AddReference(record->guid.value, owner, "Material Set", assetDatabase, summary);
+        AddReference(record->guid.value, owner, "Material Set", assetDatabase, engineTextures, summary);
         for (const auto& binding : data.bindings) {
-            AddReference(binding.materialAssetGuid.value, owner, "Material Set Part", assetDatabase, summary);
-            AddMaterialReferences(binding.materialAssetGuid.value, owner, assetDatabase, summary, visitedMaterials);
+            AddReference(binding.materialAssetGuid.value, owner, "Material Set Part", assetDatabase, engineTextures,
+                         summary);
+            AddMaterialReferences(binding.materialAssetGuid.value, owner, assetDatabase, engineTextures, summary,
+                                  visitedMaterials);
         }
     }
 }
@@ -120,28 +137,29 @@ bool IsGameProjectAssetGuidProperty(std::string_view propertyName) noexcept {
 
 void AddGameProjectPropertyReferences(const nlohmann::json& value, std::string_view propertyName,
                                       const std::string& owner, const AssetDatabase& assetDatabase,
-                                      AssetUsageSummary& summary) {
+                                      const AssetRegistry& engineTextures, AssetUsageSummary& summary) {
     if (value.is_object()) {
         const auto taggedAssetGuid = value.find(std::string(kGameProjectAssetGuidArchiveMarker));
         if (taggedAssetGuid != value.end() && taggedAssetGuid->is_string()) {
-            AddReference(taggedAssetGuid->get<std::string>(), owner, "GameProject AssetGuid", assetDatabase, summary);
+            AddReference(taggedAssetGuid->get<std::string>(), owner, "GameProject AssetGuid", assetDatabase,
+                         engineTextures, summary);
         }
         for (auto it = value.begin(); it != value.end(); ++it) {
             if (it.key() != kGameProjectAssetGuidArchiveMarker) {
-                AddGameProjectPropertyReferences(it.value(), it.key(), owner, assetDatabase, summary);
+                AddGameProjectPropertyReferences(it.value(), it.key(), owner, assetDatabase, engineTextures, summary);
             }
         }
         return;
     }
     if (value.is_array()) {
         for (const nlohmann::json& element : value) {
-            AddGameProjectPropertyReferences(element, propertyName, owner, assetDatabase, summary);
+            AddGameProjectPropertyReferences(element, propertyName, owner, assetDatabase, engineTextures, summary);
         }
         return;
     }
     if (value.is_string() && IsGameProjectAssetGuidProperty(propertyName)) {
         AddReference(value.get<std::string>(), owner, "GameProject " + std::string(propertyName), assetDatabase,
-                     summary);
+                     engineTextures, summary);
     }
 }
 } // namespace
@@ -149,6 +167,8 @@ void AddGameProjectPropertyReferences(const nlohmann::json& value, std::string_v
 AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDatabase& assetDatabase,
                                     AssetUsageScope scope) {
     AssetUsageSummary summary{};
+    AssetRegistry engineTextures{};
+    (void)RegisterEngineContentTextures(CONTENT::GetEngineContentContext(), engineTextures);
     std::unordered_set<std::string> visitedMaterials{};
     if (scope == AssetUsageScope::Scene) {
         std::error_code styleError;
@@ -158,23 +178,25 @@ AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDa
             if (DIALOGUE::LoadDialogueProjectStyle(assetDatabase.GetProjectRoot(), style)) {
                 for (const auto& guid :
                      {style.theme.speakerTextStyle, style.theme.bodyTextStyle, style.theme.choiceTextStyle})
-                    AddReference(guid.value, "Dialogue UI", "TextStyle", assetDatabase, summary);
+                    AddReference(guid.value, "Dialogue UI", "TextStyle", assetDatabase, engineTextures, summary);
                 for (const auto& speaker : style.speakers)
-                    AddReference(speaker.portraitAssetGuid, "Dialogue UI", "Portrait", assetDatabase, summary);
+                    AddReference(speaker.portraitAssetGuid, "Dialogue UI", "Portrait", assetDatabase, engineTextures,
+                                 summary);
             }
         }
 
         if (document.environment.sky.skyAsset != RENDER3D::LIGHTING::kDefaultSkyAssetName) {
-            AddReference(document.environment.sky.skyAsset, "Scene Environment", "Sky", assetDatabase, summary);
+            AddReference(document.environment.sky.skyAsset, "Scene Environment", "Sky", assetDatabase, engineTextures,
+                         summary);
         }
         AddReference(document.environment.sky.panoramaCloudAsset, "Scene Environment", "Panorama Cloud Layer",
-                     assetDatabase, summary);
+                     assetDatabase, engineTextures, summary);
         AddReference(document.environment.reflectionProbe.sourceCubemapAsset, "Scene Environment",
-                     "Reflection Probe Cubemap", assetDatabase, summary);
+                     "Reflection Probe Cubemap", assetDatabase, engineTextures, summary);
         // エンジン内蔵の後処理プロファイルはエンジンの内容として出力されるので、プロジェクト資産だけを数える。
         if (const ScenePostSettings& post = document.environment.post;
             post.enabled && !post.profileId.starts_with(POST::kBuiltinPostProfilePrefix)) {
-            AddReference(post.profileId, "Scene Environment", "Post Profile", assetDatabase, summary);
+            AddReference(post.profileId, "Scene Environment", "Post Profile", assetDatabase, engineTextures, summary);
         }
     }
 
@@ -184,17 +206,18 @@ AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDa
         for (const SceneComponentData& component : object.components) {
             if (component.type == "ModelComponent") {
                 const std::string modelGuid = component.properties.value("assetId", std::string{});
-                AddReference(modelGuid, owner, "Model", assetDatabase, summary);
+                AddReference(modelGuid, owner, "Model", assetDatabase, engineTextures, summary);
                 const bool hasMaterialSetSelection = component.properties.contains("materialSetAssetGuid");
                 AddModelMaterialBindingReferences(
                     modelGuid, component.properties.value("materialSetAssetGuid", std::string{}),
-                    hasMaterialSetSelection, owner, assetDatabase, summary, visitedMaterials);
+                    hasMaterialSetSelection, owner, assetDatabase, engineTextures, summary, visitedMaterials);
                 if (component.properties.contains("materialOverrides") &&
                     component.properties["materialOverrides"].is_array()) {
                     for (const nlohmann::json& slot : component.properties["materialOverrides"]) {
                         const std::string materialGuid = slot.value("materialAssetGuid", std::string{});
-                        AddReference(materialGuid, owner, "Material Override", assetDatabase, summary);
-                        AddMaterialReferences(materialGuid, owner, assetDatabase, summary, visitedMaterials);
+                        AddReference(materialGuid, owner, "Material Override", assetDatabase, engineTextures, summary);
+                        AddMaterialReferences(materialGuid, owner, assetDatabase, engineTextures, summary,
+                                              visitedMaterials);
                     }
                 }
             } else if (component.type == "ProceduralMeshComponent") {
@@ -207,30 +230,30 @@ AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDa
                 if (!ASSETS::MATERIAL::IsBuiltInWhiteMaterialAssetId(material) &&
                     !ASSETS::MATERIAL::IsBuiltInCheckerMaterialAssetId(material) &&
                     !ASSETS::MATERIAL::IsBuiltInSandMaterialAssetId(material)) {
-                    AddReference(material, owner, "Procedural Material", assetDatabase, summary);
-                    AddMaterialReferences(material, owner, assetDatabase, summary, visitedMaterials);
+                    AddReference(material, owner, "Procedural Material", assetDatabase, engineTextures, summary);
+                    AddMaterialReferences(material, owner, assetDatabase, engineTextures, summary, visitedMaterials);
                 }
             } else if (component.type == "CameraFollowComponent") {
                 AddReference(component.properties.value("cameraProfile", std::string{}), owner, "Gameplay Camera",
-                             assetDatabase, summary);
+                             assetDatabase, engineTextures, summary);
             } else if (component.type == "SequencePlayerComponent" || component.type == "CameraFlowComponent") {
                 AddReference(component.properties.value("sequenceAssetGuid", std::string{}), owner, "Sequence",
-                             assetDatabase, summary);
+                             assetDatabase, engineTextures, summary);
             } else if (component.type == "AnimationStateMachineComponent") {
                 AddReference(component.properties.value("stateMachineAssetGuid", std::string{}), owner,
-                             "Animation State Machine", assetDatabase, summary);
+                             "Animation State Machine", assetDatabase, engineTextures, summary);
             } else if (component.type == "DialogueTriggerComponent") {
                 AddReference(component.properties.value("dialogueAssetGuid", std::string{}), owner, "Dialogue Trigger",
-                             assetDatabase, summary);
+                             assetDatabase, engineTextures, summary);
             } else if (component.type == "WorldSpriteComponent") {
                 AddReference(component.properties.value("spriteAssetGuid", std::string{}), owner,
-                             "World Sprite Animation", assetDatabase, summary);
+                             "World Sprite Animation", assetDatabase, engineTextures, summary);
                 AddReference(component.properties.value("textureAssetGuid", std::string{}), owner,
-                             "World Sprite Texture", assetDatabase, summary);
+                             "World Sprite Texture", assetDatabase, engineTextures, summary);
                 const auto material = component.properties.find("spriteMaterial");
                 if (material != component.properties.end() && material->is_object()) {
                     AddReference(material->value("assetGuid", std::string{}), owner, "World Sprite Material",
-                                 assetDatabase, summary);
+                                 assetDatabase, engineTextures, summary);
                 }
             } else if (component.type == "VfxPlayerComponent") {
                 const auto slots = component.properties.find("slots");
@@ -240,21 +263,21 @@ AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDa
                             continue;
                         }
                         AddReference(slot.value("effectAssetGuid", std::string{}), owner, "VFX Player Slot",
-                                     assetDatabase, summary);
+                                     assetDatabase, engineTextures, summary);
                     }
                 }
             } else if (component.type == "ReflectionProbeComponent") {
                 AddReference(component.properties.value("sourceCubemapAsset", std::string{}), owner,
-                             "Reflection Probe Cubemap", assetDatabase, summary);
+                             "Reflection Probe Cubemap", assetDatabase, engineTextures, summary);
             } else if (component.type == "ColliderComponent" &&
                        component.properties.value("fitMode", std::string{}) == "CollisionAsset") {
                 AddReference(component.properties.value("collisionAssetId", std::string{}), owner, "Collision Geometry",
-                             assetDatabase, summary);
+                             assetDatabase, engineTextures, summary);
             }
             // GameProject component schemas belong to their module. Prefer
             // explicit PropertyArchive AssetGuid tags while retaining the
             // suffix convention used by existing component properties.
-            AddGameProjectPropertyReferences(component.properties, {}, owner, assetDatabase, summary);
+            AddGameProjectPropertyReferences(component.properties, {}, owner, assetDatabase, engineTextures, summary);
         }
     }
 
@@ -262,7 +285,8 @@ AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDa
         for (const auto& sequence : document.cinematics.sequences) {
             for (const auto& cue : sequence.presentationCueTrack.clips)
                 if (cue.kind == SEQUENCER::PresentationCueKind::Vfx)
-                    AddReference(cue.vfxAsset.value, sequence.name, "Sequence.VfxCue", assetDatabase, summary);
+                    AddReference(cue.vfxAsset.value, sequence.name, "Sequence.VfxCue", assetDatabase, engineTextures,
+                                 summary);
         }
     }
     return summary;

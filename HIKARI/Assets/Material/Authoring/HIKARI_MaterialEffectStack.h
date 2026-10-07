@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 

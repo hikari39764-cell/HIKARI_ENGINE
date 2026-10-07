@@ -27,7 +27,9 @@ public:
         jumpActionId_ = in.value("jumpAction", jumpActionId_);
         sprintActionId_ = in.value("sprintAction", sprintActionId_);
     }
+#if defined(HIKARI_WITH_EDITOR)
     void BuildInspector(IInspectorBuilder& builder) override;
+#endif
 
     bool IsEnabled() const noexcept { return enabled_; }
     int GetPriority() const noexcept { return priority_; }

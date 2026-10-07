@@ -171,12 +171,13 @@ RENDER3D::SurfaceLightingBindings ResolveSurfaceLightingBindings() {
 bool ExecuteParticleForwardTransparent(RENDER3D::PARTICLES::ParticleGpuDrivenPass& particlePass,
                                        const GFX::Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
                                        const MATH::Vec3& cameraPosition, const MeshPassResources& passResources) {
-    if (!particlePass.HasDrawWork()) {
+    if (!particlePass.HasDrawWork(passResources.particlePostProcessMode)) {
         return true;
     }
     const MeshFrameResources& frame = GetActiveMeshFrameResources();
     RENDER3D::PARTICLES::ParticleGpuDrivenDrawBindings bindings{};
     bindings.camera = cameraAddress;
+    bindings.postProcessMode = passResources.particlePostProcessMode;
     static_cast<RENDER3D::SurfaceLightingBindings&>(bindings) = ResolveSurfaceLightingBindings();
     bindings.materialData = frame.materialDataBuffer != nullptr ? frame.materialDataBuffer->GetGPUVirtualAddress() : 0u;
     bindings.materialParameters = frame.materialProgramParameterBuffer != nullptr
@@ -397,6 +398,17 @@ bool RenderForwardTransparentPass(const GFX::Context& graphics, const MeshPassRe
         ExecutePreparedParticleForwardTransparent(graphics, frame.view.Bindings().camera, passResources);
     const bool textExecuted = ExecutePreparedWorldTextForwardTransparent(graphics, frame.view.Bindings().camera);
     return surfaceExecuted && spritesExecuted && particlesExecuted && textExecuted;
+}
+
+bool HasPreservedVfxWork() {
+    return gMeshRendererState.particlePass.HasDrawWork(VFX::VfxPostProcessMode::PreserveColor);
+}
+
+bool RenderPreservedVfxPass(const GFX::Context& graphics, const MeshPassResources& passResources) {
+    auto resources = passResources;
+    resources.particlePostProcessMode = VFX::VfxPostProcessMode::PreserveColor;
+    return ExecutePreparedParticleForwardTransparent(graphics, GetActiveMeshFrameResources().view.Bindings().camera,
+                                                     resources);
 }
 
 bool HasDepthAwarePassWork() {

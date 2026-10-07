@@ -34,6 +34,8 @@ struct TemporalResolveStageResult {
     bool requested = false;
     bool resolved = false;
     bool requiresOutputNormalization = false;
+    // Output raster phase in render pixels. Native TAA retains current jitter; DLSS removes it.
+    MATH::Vec2 outputJitterPixels{};
 };
 
 TemporalResolveStageResult ExecuteTemporalResolveStage(TemporalViewLease view, RenderFrameToken frame,

@@ -36,6 +36,7 @@ public:
     void Resume(int playHandle) override;
     void SetVolume(int playHandle, float volume) override;
     bool IsPlaying(int playHandle) override;
+    bool TryGetPlaybackSnapshot(int playHandle, GameProjectAudioPlaybackSnapshot& outSnapshot) override;
 
 private:
     struct SpatialState;
@@ -53,6 +54,9 @@ private:
         int soundHandle = -1;
         bool active = false;
         bool paused = false;
+        bool loop = false;
+        uint64_t startFrame = 0u;
+        uint64_t frameCount = 0u;
         std::unique_ptr<AudioStreamVoice> stream;
     };
 

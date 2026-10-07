@@ -11,7 +11,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenPass.h"
 #include "Render3D/Runtime/HIKARI_SurfaceDrawPlan.h"
 
@@ -91,7 +91,7 @@ public:
     bool PrepareCommandInputs(uintptr_t sourceIdentity, uint64_t layoutVersion, uint64_t sourceVersion);
     void UploadCommandSeeds(const GpuDrivenTraditionalIndirectView& view);
     bool BuildGpuCompactedCommands(ID3D12GraphicsCommandList* commandList, const MATH::Mat4& viewProj,
-                                   bool enableFrustumCull = true);
+                                   const MATH::Mat4& renderViewProj, float screenHeight, bool enableFrustumCull = true);
 
     ID3D12Resource* GetArgumentBuffer() const;
     ID3D12Resource* GetSkinnedArgumentBuffer() const;

@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 

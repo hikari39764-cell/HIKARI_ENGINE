@@ -1,0 +1,23 @@
+{
+  "origin": "Original image generated for HIKARI using built-in image_gen",
+  "thirdPartyTextureIncluded": false,
+  "licenseClaim": "No CC0 or third-party license claim; retained as a project-generated asset.",
+  "source": {
+    "path": "StrokeMarks_Generated.png",
+    "sha256": "7777a49b8d13e0375a3f0b079f5b761035730c200a80b1ecd1804ace01db121d",
+    "dimensions": [
+      1254,
+      1254
+    ],
+    "prompt": "Use case: stylized-concept. Asset type: production candidate grayscale Stroke Mask for a real-time shell-based painterly material. Create ONE square 1024x1024 opaque grayscale texture filling the entire image edge to edge. It should look like a dense field of overlapping short dry-brush scumbles, with soft irregular bristled edges and small broken comb-like streaks inside each stroke. Many medium-short strokes form varied local clusters with mostly gently diagonal and vertical directions, plus some crossed strokes. A bright midgray overall value with a useful varied range from charcoal gray to off-white. Overlapping light and dark paint marks produce organic value variation, not simulated illumination or relief. Roughly 12 to 20 medium brush marks across the width, with finer bristle detail subordinate to clear stroke shapes. Uniform statistical density over the entire tile, no center focal point, no large blank areas. Seamlessly tileable on both axes, edge-continuous pattern, no visible border or tile grid. This is a flat scalar coverage data map: achromatic RGB, opaque, orthographic image of marks only, no color, no cast shadows, no directional shading, no highlights, no ambient occlusion, no 3D material sphere, no paper/canvas weave, no cracks, no rocks, no cloudy fractal noise replacing brush marks, no isolated separated brush-stamp atlas, no long flowing calligraphic ribbons, no text, no labels, no watermark. Make an original texture, not a copy of any particular asset."
+  },
+  "referenceTechnique": "https://aqu.hatenablog.com/entry/2018/08/12/070306",
+  "referenceImageUsedAsInput": false,
+  "processing": {
+    "tool": "BakeStrokeTextures.py",
+    "coverage": "Periodic boundary correction, resize to 1024, scalar contrast normalization.",
+    "height": "Separately defined shallow synthetic relief: smoothed local brush detail minus broader value variation; amplitude-compressed around a neutral height plane. Coverage does not directly equal height.",
+    "normal": "Numerical periodic derivatives of the exact saved 16-bit height, encoded in DirectX image-axis convention. The image-generated normal candidate was rejected and is not distributed.",
+    "limitation": "The height is an artistic interpretation of generated marks, not measured relief. Appearance and temporal stability require rendered material validation."
+  }
+}

@@ -102,7 +102,7 @@ void AiAssistantPanel::DrawSettings() {
             ImGui::SliderInt(TEXT::Localize("ai.api.historyBudget").c_str(), &toolHistoryKiB_, 8, 256, "%d KiB");
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s", TEXT::Localize("ai.api.historyBudgetHint").c_str());
-            ImGui::Checkbox(TEXT::LocalizeCStr("ai.reasoning.show"), &showReasoning_);
+            ImGui::Checkbox(TEXT::Localize("ai.reasoning.show").c_str(), &showReasoning_);
             const auto reasoningChoices = TEXT::EnumNameList(AI_ASSISTANT::kAiReasoningContentPolicyNames);
             const std::string selectedPolicy =
                 TEXT::EnumToName(AI_ASSISTANT::kAiReasoningContentPolicyNames, reasoningContentPolicy_, "preserve");

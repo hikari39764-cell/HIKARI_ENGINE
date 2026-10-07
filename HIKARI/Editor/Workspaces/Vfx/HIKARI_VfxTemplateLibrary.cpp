@@ -62,8 +62,8 @@ void VfxWorkspaceController::DrawTemplateLibrary() {
             ImGui::OpenPopup((VfxUiText("Replace unsaved effect?") + "###VfxReplace").c_str());
     }
     if (ImGui::BeginPopupModal(
-            (VfxUiText(TEXT::LocalizeCStr("ui.vfx.text.Replace unsaved effect?")) + "###VfxReplace").c_str(), nullptr,
-            ImGuiWindowFlags_AlwaysAutoResize)) {
+            (VfxUiText(TEXT::Localize("ui.vfx.text.Replace unsaved effect?").c_str()) + "###VfxReplace").c_str(),
+            nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextWrapped(
             VfxUiText("The current effect has unsaved changes. Save it first to keep those edits.").c_str());
         if (ImGui::Button(VfxUiText("Cancel").c_str())) {

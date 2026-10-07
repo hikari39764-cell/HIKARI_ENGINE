@@ -120,6 +120,19 @@ struct GameProjectKinematicCollisionOptions {
     uint32_t reserved1 = 0u;
 };
 
+// Options belong to the selected move for one fixed tick. With the override
+// enabled, verticalGravityAcceleration replaces the world-Y acceleration in
+// m/s^2 after authored gravityScale. Negative falls, zero is zero gravity,
+// positive accelerates upward. X/Z retain authored gravity. No authoring data
+// is changed; a disabled override or a later move uses authored gravity.
+struct GameProjectKinematicMoveOptions {
+    uint32_t structSize = sizeof(GameProjectKinematicMoveOptions);
+    uint32_t version = 1u;
+    GameProjectKinematicCollisionOptions collision{};
+    float verticalGravityAcceleration = 0.0f;
+    uint32_t overrideVerticalGravity = 0u;
+};
+
 // A collision-aware relative contribution consumed by the kinematic
 // character solver for one fixed tick. Translation is in world space;
 // rotation is a relative quaternion composed after locomotion facing.
@@ -511,6 +524,19 @@ struct GameProjectPostProfileParameterRequest {
     uint32_t parameterIndex = 0u;
     uint32_t channelMask = 15u;
     GameProjectFloat4 value{};
+};
+
+// SDK/Runtime 3.11+. One atomic, frame-local Action Post winner. Masked channels
+// override the winning profile; zero masks retain its authored values.
+inline constexpr uint32_t kGameProjectActionPostSlotCount = 16u;
+struct GameProjectActionPostFrameRequest {
+    uint32_t structSize = sizeof(GameProjectActionPostFrameRequest);
+    uint32_t version = 1u;
+    uint64_t sourceId = 0u;
+    int32_t priority = 0;
+    uint32_t reserved = 0u;
+    GameProjectFloat4 values[kGameProjectActionPostSlotCount]{};
+    uint32_t channelMasks[kGameProjectActionPostSlotCount]{};
 };
 
 // Frame-local full-screen action grade. The caller submits this every

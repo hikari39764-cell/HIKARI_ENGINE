@@ -22,17 +22,17 @@ void UiAnimatorComponent::Deserialize(const nlohmann::json& in) {
     speed_ = std::clamp(std::isfinite(speed) ? speed : 1.f, 0.01f, 100.f);
 }
 void UiAnimatorComponent::BuildInspector(IInspectorBuilder& b) {
-    b.Bool(AuthoringFieldDescriptor{"enabled", TEXT::LocalizeCStr("uix.enabled")}, enabled_);
-    b.AssetIdPicker(AuthoringFieldDescriptor{"animationAssetGuid", TEXT::LocalizeCStr("uianim.asset")},
+    b.Bool(AuthoringFieldDescriptor{"enabled", TEXT::Localize("uix.enabled").c_str()}, enabled_);
+    b.AssetIdPicker(AuthoringFieldDescriptor{"animationAssetGuid", TEXT::Localize("uianim.asset").c_str()},
                     AssetType::UiAnimation, animation_.value);
-    b.FloatRange(AuthoringFieldDescriptor{"speed", TEXT::LocalizeCStr("uianim.speed")}, speed_, .01f, 100);
-    b.Bool(AuthoringFieldDescriptor{"unscaled", TEXT::LocalizeCStr("uianim.unscaled")}, unscaled_);
+    b.FloatRange(AuthoringFieldDescriptor{"speed", TEXT::Localize("uianim.speed").c_str()}, speed_, .01f, 100);
+    b.Bool(AuthoringFieldDescriptor{"unscaled", TEXT::Localize("uianim.unscaled").c_str()}, unscaled_);
 }
 void UiAnimationTargetComponent::Serialize(nlohmann::json& out) const { out = {{"version", 1}, {"slot", slot_}}; }
 void UiAnimationTargetComponent::Deserialize(const nlohmann::json& in) {
     slot_ = JSONREAD::StringMemberOr(in, "slot", "");
 }
 void UiAnimationTargetComponent::BuildInspector(IInspectorBuilder& b) {
-    b.String(AuthoringFieldDescriptor{"slot", TEXT::LocalizeCStr("uianim.slot")}, slot_);
+    b.String(AuthoringFieldDescriptor{"slot", TEXT::Localize("uianim.slot").c_str()}, slot_);
 }
 } // namespace HIKARI

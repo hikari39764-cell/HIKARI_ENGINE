@@ -9,7 +9,7 @@
 
 namespace HIKARI::EDITOR {
 void UiWorkspaceController::DrawPreviewData(DocumentSceneBase& scene, EditorContext& context) {
-    const auto L = [](const char* key) { return TEXT::LocalizeCStr(key); };
+    const auto L = [](const char* key) { return TEXT::Localize(key).c_str(); };
     const auto* live = scene.GetWorld().Services().Find<BINDING::RuntimeBindingStore>();
     auto* object = scene.GetWorld().FindObject(context.selection.GetActiveObjectId());
     projector_.SetPreviewBindings(nullptr);

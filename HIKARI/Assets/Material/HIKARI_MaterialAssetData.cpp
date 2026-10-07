@@ -133,7 +133,7 @@ bool SavePbrMaterialAssetData(const std::filesystem::path& path, const PbrMateri
     std::error_code existsError{};
     const bool exists = std::filesystem::is_regular_file(path, existsError);
     if (exists && !LoadMaterialAssetData(path, source, outError)) {
-        outError = "refusing to overwrite an unreadable Material v6 source: " + outError;
+        outError = "refusing to overwrite an unreadable Material source: " + outError;
         return false;
     }
     if (exists && source.kind != MaterialAssetKind::Material) {

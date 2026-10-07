@@ -70,11 +70,11 @@ namespace {
 #if defined(HIKARI_WITH_EDITOR)
 const char* SeverityLabel(VFX::VfxDiagnosticSeverity severity) noexcept {
     switch (severity) {
-    case VFX::VfxDiagnosticSeverity::Info: return TEXT::LocalizeCStr("log.info");
-    case VFX::VfxDiagnosticSeverity::Warning: return TEXT::LocalizeCStr("editor.ui.warning.e9c455");
-    case VFX::VfxDiagnosticSeverity::Error: return TEXT::LocalizeCStr("ui.assetBrowser.stateError");
+    case VFX::VfxDiagnosticSeverity::Info: return TEXT::Localize("log.info").c_str();
+    case VFX::VfxDiagnosticSeverity::Warning: return TEXT::Localize("editor.ui.warning.e9c455").c_str();
+    case VFX::VfxDiagnosticSeverity::Error: return TEXT::Localize("ui.assetBrowser.stateError").c_str();
     }
-    return TEXT::LocalizeCStr("ui.quality.transitionUnknown");
+    return TEXT::Localize("ui.quality.transitionUnknown").c_str();
 }
 
 ImVec4 SeverityColor(VFX::VfxDiagnosticSeverity severity) noexcept {

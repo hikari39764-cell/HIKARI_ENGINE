@@ -8,7 +8,7 @@
 
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
 #include "Core/Serialization/Binary/HIKARI_BinaryBuffer.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 
 namespace HIKARI::RENDER3D::CLUSTER {
 

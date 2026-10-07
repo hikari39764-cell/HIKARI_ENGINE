@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
 
@@ -254,7 +254,9 @@ private:
     void ExecuteSceneDocumentHistory(DocumentSceneBase& scene, bool redo);
     void CommitSceneObjectAuthoringHistory(DocumentSceneBase& scene, SceneObjectAuthoringHistoryRequest history);
     void ApplyHistoryResult(DocumentSceneBase& scene, const EDITOR::EditorHistoryResult& result, bool redo);
-    void ApplyDocumentImpact(DocumentSceneBase& scene, EDITOR::EditorDocumentImpact impact);
+    // objectChanges があれば runtime world は差分反映、無ければ作り直す。
+    void ApplyDocumentImpact(DocumentSceneBase& scene, EDITOR::EditorDocumentImpact impact,
+                             const SceneObjectChanges* objectChanges = nullptr);
     void CommitAppliedDocumentCommand(
         DocumentSceneBase& scene, std::unique_ptr<EDITOR::IEditorDocumentCommand> command, uint64_t mergeGroup,
         bool externalDirtyBefore, EDITOR::EditorDocumentImpact immediateImpact = EDITOR::EditorDocumentImpact::None);

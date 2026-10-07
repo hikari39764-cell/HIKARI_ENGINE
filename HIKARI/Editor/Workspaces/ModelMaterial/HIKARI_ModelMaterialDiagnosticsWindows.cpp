@@ -22,16 +22,16 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(const DocumentScene
         ImGui::End();
         return;
     }
-    StatusBadge(IsEditingModel() ? TEXT::LocalizeCStr("editor.ui.model.ready.4b7cbb")
-                                 : TEXT::LocalizeCStr("editor.ui.no.model.8cae61"),
+    StatusBadge(IsEditingModel() ? TEXT::Localize("editor.ui.model.ready.4b7cbb").c_str()
+                                 : TEXT::Localize("editor.ui.no.model.8cae61").c_str(),
                 IsEditingModel() ? EditorStatusTone::Ready : EditorStatusTone::Normal);
     ImGui::SameLine();
-    StatusBadge(previewOutputReady_ ? TEXT::LocalizeCStr("editor.ui.preview.ready.8a0295")
-                                    : TEXT::LocalizeCStr("editor.ui.preview.pending.e4ceea"),
+    StatusBadge(previewOutputReady_ ? TEXT::Localize("editor.ui.preview.ready.8a0295").c_str()
+                                    : TEXT::Localize("editor.ui.preview.pending.e4ceea").c_str(),
                 previewOutputReady_ ? EditorStatusTone::Ready : EditorStatusTone::Warning);
     ImGui::SameLine();
     const bool dirty = authoringDocument_.IsBindingDirty() || authoringDocument_.IsMaterialDirty();
-    StatusBadge(dirty ? "Unsaved edits" : TEXT::LocalizeCStr("ui.projectFeatures.saved"),
+    StatusBadge(dirty ? "Unsaved edits" : TEXT::Localize("ui.projectFeatures.saved").c_str(),
                 dirty ? EditorStatusTone::Warning : EditorStatusTone::Ready);
     if (authoringDocument_.IsAbPreviewActive()) {
         ImGui::SameLine();
@@ -56,8 +56,8 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(const DocumentScene
     if (authoringDocument_.HasMaterial()) {
         ImGui::SeparatorText(TEXT::Localize("editor.ui.material.compile.fc6f27").c_str());
         const MaterialCompileResult& compile = authoringDocument_.GetCompileResult();
-        StatusBadge(compile.success ? TEXT::LocalizeCStr("editor.ui.compiled.14878f")
-                                    : TEXT::LocalizeCStr("editor.ui.fallback.b4a100"),
+        StatusBadge(compile.success ? TEXT::Localize("editor.ui.compiled.14878f").c_str()
+                                    : TEXT::Localize("editor.ui.fallback.b4a100").c_str(),
                     compile.success ? EditorStatusTone::Ready : EditorStatusTone::Warning);
         ImGui::SameLine();
         ImGui::TextDisabled(TEXT::Localize("editor.ui.source.r.llu.compile.r.llu.877878").c_str(),

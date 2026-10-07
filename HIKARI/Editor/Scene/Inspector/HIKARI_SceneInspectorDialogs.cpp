@@ -16,11 +16,12 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -91,7 +92,9 @@ void SceneInspectorPanel::DrawDeferredDialogs(DocumentSceneBase& scene, EditorCo
         context.componentAddStatusIsError = !result.success;
         if (result.documentChanged) {
             context.sceneDirty = true;
-            selectionSync.RebuildRuntimeWorldWithSelectionSync(scene, context.selection, context.nextSceneObjectId);
+            selectionSync.ApplyRuntimeObjectChangesWithSelectionSync(
+                scene, context.selection, context.nextSceneObjectId,
+                DiffSceneObjects(beforeObjects, scene.GetSceneDocument().objects));
             historyRequest_ = SceneObjectAuthoringHistoryRequest{
                 collisionRequest.scope == CollisionAuthoringScope::SceneGeometry ? "Setup Scene Collision"
                                                                                  : "Setup Object Collision",

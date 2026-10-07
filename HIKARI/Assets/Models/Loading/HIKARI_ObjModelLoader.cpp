@@ -15,7 +15,7 @@
 #include "Assets/Models/Loading/Obj/HIKARI_ObjMaterialLibrary.h"
 #include "Assets/Models/Loading/Obj/HIKARI_ObjText.h"
 #include "Assets/Models/Processing/HIKARI_ModelGeometryPostprocess.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::MODELS {
 

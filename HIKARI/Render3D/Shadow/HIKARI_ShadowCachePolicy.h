@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Shadow/HIKARI_ShadowCacheTypes.h"
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
 

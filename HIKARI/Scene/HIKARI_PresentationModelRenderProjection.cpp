@@ -12,7 +12,7 @@
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingResolver.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
@@ -242,6 +242,10 @@ RENDER3D::RUNTIME::SceneRenderObjectDesc BuildRenderObjectDesc(
     std::unordered_set<std::string>& materialDiagnostics) {
     RENDER3D::RUNTIME::SceneRenderObjectDesc desc{};
     desc.id = {record.renderObjectId};
+    if (const auto* owner = world.FindObject(RuntimeObjectHandle::FromValue(record.ownerObjectHandle))) {
+        if (const auto* model = owner->GetComponent<ModelComponent>())
+            desc.postGroupMask = model->GetPostGroupMask();
+    }
     desc.model = asset;
     if (asset != nullptr) {
         desc.renderModel = renderModelCache.GetOrCreate(*asset);

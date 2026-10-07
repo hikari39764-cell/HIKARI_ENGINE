@@ -173,6 +173,7 @@ struct ParticleGpuDrivenPass::Impl {
     uint32_t emitterUploadCapacity = 0u;
     uint32_t emitterUploadCursor = 0u;
     uint32_t shapeUploadCursor = 0u;
+    D3D12_GPU_VIRTUAL_ADDRESS preparedShapeAddress = 0u;
     uint32_t uploadFrameSlot = (std::numeric_limits<uint32_t>::max)();
     uint64_t uploadFrameSerial = (std::numeric_limits<uint64_t>::max)();
     uint64_t lastCompactionLayoutVersion = 0u;
@@ -762,6 +763,20 @@ struct ParticleGpuDrivenPass::Impl {
         } else {
             drawBuffersValid = false;
         }
+        // One upload slice per prepared view. Scene/PreserveColor reuse immutable shape data.
+        preparedShapeAddress = 0u;
+        const uint32_t shapeCount = static_cast<uint32_t>(drawItems.size());
+        auto* shapes = storage.MappedShapeStates(uploadFrameSlot);
+        if (shapeCount > kMaximumParticleEmitterSubmissionsPerFrame - shapeUploadCursor || (shapeCount && !shapes)) {
+            ++stats.materialFailures;
+            inputAccepted = false;
+        } else if (shapeCount) {
+            preparedShapeAddress = storage.GetShapeStateGpuAddress(uploadFrameSlot) +
+                                   uint64_t{shapeUploadCursor} * sizeof(GpuParticleShapeState);
+            for (const auto& item : drawItems)
+                shapes[shapeUploadCursor + item.drawIndex] = BuildShapeState(item.render);
+            shapeUploadCursor += shapeCount;
+        }
         RefreshAllocationStats();
         stats.inputAccepted = inputAccepted;
         return inputAccepted;
@@ -775,6 +790,8 @@ struct ParticleGpuDrivenPass::Impl {
             bindings.materialParameters == 0u || bindings.materialResources == 0u) {
             return false;
         }
+        if (!preparedShapeAddress)
+            return false;
         GFX::PIX::ScopedGpuEvent drawEvent(context.cmdList, GFX::PIX::kColorRender, "Particles.DrawIndirect");
         GFX::GPU_PROFILE::ScopedGpuTimer drawTimer(context.cmdList, GFX::GPU_PROFILE::Pass::ParticleDraw);
         const D3D12_GPU_DESCRIPTOR_HANDLE texturePool = GetMaterialTexturePoolSrvGpuHandle(context);
@@ -811,25 +828,9 @@ struct ParticleGpuDrivenPass::Impl {
         };
         drawOrder.clear();
         drawOrder.reserve(drawItems.size());
-        // 同一フレームの各 view は別の upload 範囲を使う。記録済みの
-        // draw が GPU で読む前に、次の view が形状を書き換えてはならない。
-        const uint32_t shapeCount = static_cast<uint32_t>(drawItems.size());
-        if (shapeCount > kMaximumParticleEmitterSubmissionsPerFrame - shapeUploadCursor) {
-            ++stats.materialFailures;
-            return false;
-        }
-        GpuParticleShapeState* shapeStateBuffer = storage.MappedShapeStates(uploadFrameSlot);
-        if (shapeStateBuffer == nullptr)
-            return false;
-        shapeStateBuffer += shapeUploadCursor;
-        const auto shapeAddress = storage.GetShapeStateGpuAddress(uploadFrameSlot) +
-                                  uint64_t{shapeUploadCursor} * sizeof(GpuParticleShapeState);
-        bindParticleState();
-        context.cmdList->SetGraphicsRootShaderResourceView(20u, storage.GetShapeStateGpuAddress(uploadFrameSlot) +
-                                                                    uint64_t{shapeUploadCursor} *
-                                                                        sizeof(GpuParticleShapeState));
-        shapeUploadCursor += shapeCount;
         for (uint32_t itemIndex = 0u; itemIndex < static_cast<uint32_t>(drawItems.size()); ++itemIndex) {
+            if (bindings.postProcessMode && drawItems[itemIndex].render.postProcessMode != *bindings.postProcessMode)
+                continue;
             float distanceSquared = 0.0f;
             if (bindings.cameraPositionValid) {
                 const MATH::Vec3 delta = drawItems[itemIndex].worldPosition - bindings.cameraPosition;
@@ -857,8 +858,10 @@ struct ParticleGpuDrivenPass::Impl {
         }
         const auto drawItem = [&](uint32_t itemIndex) {
             bindParticleState();
-            context.cmdList->SetGraphicsRootShaderResourceView(20u, shapeAddress);
+            context.cmdList->SetGraphicsRootShaderResourceView(20u, preparedShapeAddress);
             const DrawItem& item = drawItems[itemIndex];
+            if (bindings.postProcessMode && item.render.postProcessMode != *bindings.postProcessMode)
+                return false; // reject a malformed raw composition crossing the two routes
             const uint32_t blendIndex = item.render.blendMode == ParticleBlendMode::Additive ? 1u : 0u;
             const uint32_t depthIndex = item.render.depthMode == ParticleDepthMode::ForegroundAccent ? 0u : 1u;
             const uint32_t shapeIndex =
@@ -875,10 +878,6 @@ struct ParticleGpuDrivenPass::Impl {
             constants.billboardMode = static_cast<uint32_t>(item.render.billboardMode);
             constants.renderShapeMode = static_cast<uint32_t>(item.render.shape);
             constants.segmentCount = ParticleGeometrySegments(item.render);
-            const GpuParticleShapeState shapeState = BuildShapeState(item.render);
-            if (shapeStateBuffer != nullptr) {
-                shapeStateBuffer[item.drawIndex] = shapeState;
-            }
             const uint32_t flipbookGrid =
                 INTERNAL::PackGpuParticleFlipbookGrid(item.render.flipbookColumns, item.render.flipbookRows);
             const uint32_t flipbookFlags =
@@ -992,6 +991,7 @@ struct ParticleGpuDrivenPass::Impl {
         emitterUploadCapacity = 0u;
         emitterUploadCursor = 0u;
         shapeUploadCursor = 0u;
+        preparedShapeAddress = 0u;
         uploadFrameSerial = (std::numeric_limits<uint64_t>::max)();
         uploadFrameSlot = (std::numeric_limits<uint32_t>::max)();
         lastCompactionLayoutVersion = 0u;
@@ -1056,7 +1056,10 @@ void ParticleGpuDrivenPass::ReleaseNamespace(uint64_t playbackNamespace) {
         impl_->ReleaseNamespace(playbackNamespace);
 }
 
-bool ParticleGpuDrivenPass::HasDrawWork() const noexcept { return impl_ != nullptr && !impl_->drawItems.empty(); }
+bool ParticleGpuDrivenPass::HasDrawWork(std::optional<VFX::VfxPostProcessMode> mode) const noexcept {
+    return impl_ && std::any_of(impl_->drawItems.begin(), impl_->drawItems.end(),
+                                [&](const auto& item) { return !mode || item.render.postProcessMode == *mode; });
+}
 
 const ParticleGpuDrivenPassStats& ParticleGpuDrivenPass::GetStats() const noexcept {
     static const ParticleGpuDrivenPassStats empty{};

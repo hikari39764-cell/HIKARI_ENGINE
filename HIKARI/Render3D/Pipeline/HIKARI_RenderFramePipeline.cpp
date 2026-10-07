@@ -232,6 +232,9 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     POST::PostSystem::SetSunGlareFrame(BuildSunGlareFrame(camera, environment));
     RENDER3D::SetRenderDebugOutputView(debugView);
     const RENDER3D::RenderDebugOutputRoute& debugRoute = RENDER3D::GetRenderDebugOutputRoute();
+    POST::PostSystem::SetActionPostView(view.projectRenderExtensions.worldIdentity,
+                                        view.viewId == kPrimaryRenderViewId &&
+                                            view.purpose == RenderViewPurpose::Game && !debugRoute.active);
     uint32_t projectPassCount = 0u;
     const bool hasProjectPassSink = view.projectRenderExtensions.CanExecutePasses();
     if (hasProjectPassSink &&
@@ -387,9 +390,15 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
          featureRequests.RequestsOpaqueSurface(FEATURES::RenderFeatureKind::FaceHairShadow) ||
          (featureRequests.RequestsOpaqueSurface(FEATURES::RenderFeatureKind::GeometryOutline) &&
           !geometryOutlineBackendReady));
+    const bool globalPostMaskRequired =
+        !debugRoute.active && stylizedFeatureMaskBackendReady && POST::PostSystem::RequiresGlobalSurfaceFeatureMask();
+    const bool actionPostMaskRequired =
+        !debugRoute.active && stylizedFeatureMaskBackendReady && POST::PostSystem::RequiresActionSurfaceFeatureMask();
     RENDER3D::SCREENSPACE::ScreenSpaceSurfaceRequirements screenSurfaceRequirements{};
-    screenSurfaceRequirements.requirePackedSurface = stylizedScreenMaskRequired || hasSsrWork;
-    screenSurfaceRequirements.requireFeatureMask = stylizedScreenMaskRequired;
+    screenSurfaceRequirements.requirePackedSurface =
+        stylizedScreenMaskRequired || globalPostMaskRequired || actionPostMaskRequired || hasSsrWork;
+    screenSurfaceRequirements.requireFeatureMask =
+        stylizedScreenMaskRequired || globalPostMaskRequired || actionPostMaskRequired;
     screenSurfaceRequirements.requireCurrentFrameAo = camera.IsOrthographic();
     const bool volumetricFogReady = RENDER3D::VOLUMETRIC::PrepareVolumetricLightingFrame(
         frame.graphics, temporalFrame, frame.scene.color, frame.scene.depth, environment,
@@ -501,7 +510,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
                                        !debugRoute.active, geometryOutlineBackendReady, visibilityOverlayBackendReady},
         cameraCb, screenResult, sceneTextures, opaqueResources, postOpaqueResources, debugView, hasDepthAwareWork,
         hasTransparentWork, hasSsrWork,
-        hasDepthAwareWork || hasTransparentWork || hasSsrWork || stylizedScreenMaskRequired});
+        hasDepthAwareWork || hasTransparentWork || hasSsrWork || stylizedScreenMaskRequired || globalPostMaskRequired});
     if (!graphStage.prefixCompleted || !graphStage.pausedForPresentation || !graphStage.session.IsValid()) {
         const std::string graphDetail =
             std::string(GRAPH::ToString(graphStage.diagnostic.code)) + " " + graphStage.diagnostic.message.data();

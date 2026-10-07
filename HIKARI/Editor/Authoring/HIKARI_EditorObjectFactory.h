@@ -3,7 +3,7 @@
 #include <string>
 
 #include "Assets/HIKARI_AssetGuid.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshTypes.h"
 #include "Render3D/WorldText/HIKARI_WorldTextFrameSource.h"

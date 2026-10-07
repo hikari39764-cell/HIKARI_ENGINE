@@ -416,7 +416,7 @@ void ValidateRuntimeSemantics(const MaterialGraphData& graph, std::vector<Materi
             continue;
         }
         if (edge.targetPin == "DiffuseResponse" || edge.targetPin == "SpecularResponse" || edge.targetPin == "Eye" ||
-            edge.targetPin == "Outline") {
+            edge.targetPin == "Outline" || edge.targetPin == "Shell") {
             continue;
         }
         if (edge.targetPin == "Additive") {

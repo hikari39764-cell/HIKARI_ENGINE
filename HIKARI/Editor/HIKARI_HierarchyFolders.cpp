@@ -198,8 +198,8 @@ void HierarchyPanel::DrawFolderContents(World& world, EditorSelection& selection
                                ImGuiWindowFlags_AlwaysAutoResize)) {
         if (changedDocument)
             ImGui::CloseCurrentPopup();
-        ImGui::TextUnformatted(folderRename_ ? TEXT::LocalizeCStr("editor.folder.rename")
-                                             : TEXT::LocalizeCStr("editor.folder.create"));
+        ImGui::TextUnformatted(folderRename_ ? TEXT::Localize("editor.folder.rename").c_str()
+                                             : TEXT::Localize("editor.folder.create").c_str());
         ImGui::TextDisabled("%s", folderSource_.empty() ? "シーン直下" : folderSource_.c_str());
         if (ImGui::IsWindowAppearing())
             ImGui::SetKeyboardFocusHere();
@@ -207,7 +207,7 @@ void HierarchyPanel::DrawFolderContents(World& world, EditorSelection& selection
                          folderNameBuffer_.size());
         if (!folderMessage_.empty())
             ImGui::TextWrapped("%s", folderMessage_.c_str());
-        if (ImGui::Button(folderRename_ ? "変更" : TEXT::LocalizeCStr("editor.ui.create.6e157c"))) {
+        if (ImGui::Button(folderRename_ ? "変更" : TEXT::Localize("editor.ui.create.6e157c").c_str())) {
             const auto target = join(folderRename_ ? parent(folderSource_) : folderSource_, folderNameBuffer_.data());
             const bool done = folderRename_
                                   ? execute("scene.folder.rename", {{"path", folderSource_}, {"newPath", target}})

@@ -91,11 +91,11 @@ void RuntimeBindingWorkspaceController::DrawInspectorWindow(DocumentSceneBase& s
         inspectorDraftItemId_ = selectedItemId_;
     }
 
-    PanelTitle(variable != nullptr ? TEXT::LocalizeCStr("editor.ui.variable.19de69")
-                                   : TEXT::LocalizeCStr("editor.ui.event.ad8919"),
+    PanelTitle(variable != nullptr ? TEXT::Localize("editor.ui.variable.19de69").c_str()
+                                   : TEXT::Localize("editor.ui.event.ad8919").c_str(),
                variable != nullptr
-                   ? TEXT::LocalizeCStr("editor.ui.a.typed.value.shared.through.stable.binding.slots.203ed5")
-                   : TEXT::LocalizeCStr("editor.ui.a.transient.typed.signal.emitted.by.runtime.logic.da0328"));
+                   ? TEXT::Localize("editor.ui.a.typed.value.shared.through.stable.binding.slots.203ed5").c_str()
+                   : TEXT::Localize("editor.ui.a.transient.typed.signal.emitted.by.runtime.logic.da0328").c_str());
 
     std::optional<std::pair<std::string, nlohmann::json>> pendingProperty{};
     if (BeginPropertyTable("RuntimeBindingInspectorProperties", 112.0f)) {

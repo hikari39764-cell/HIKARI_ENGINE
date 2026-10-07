@@ -1,4 +1,4 @@
-#include "Scene/Features/HIKARI_RenderingRuntimeFeature.h"
+#include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 
 #include <array>
 #include <memory>
@@ -36,18 +36,6 @@ public:
     std::string_view GetDescription() const noexcept override {
         return "Model, material, procedural geometry, world sprite, "
                "and world text rendering.";
-    }
-
-    std::span<const std::string_view> GetComponentTypeNames() const noexcept override {
-        static constexpr std::array<std::string_view, 5> names{"ModelComponent", "MaterialFxComponent",
-                                                               "ProceduralMeshComponent", "WorldSpriteComponent",
-                                                               "WorldTextComponent"};
-        return names;
-    }
-
-    std::span<const std::string_view> GetSystemIds() const noexcept override {
-        static constexpr std::array<std::string_view, 1> ids{"ModelRenderSystem"};
-        return ids;
     }
 
     bool Register(RuntimeFeatureContext& context) override {

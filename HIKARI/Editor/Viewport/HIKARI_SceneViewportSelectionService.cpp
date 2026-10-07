@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "Editor/Views/HIKARI_EditorViewportGeometry.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"

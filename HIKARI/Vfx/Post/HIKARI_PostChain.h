@@ -5,6 +5,7 @@
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
 namespace HIKARI {
 namespace POST {
@@ -25,7 +26,7 @@ public:
     // 先頭エフェクトの描画がそのままダウンサンプルを兼ねる (bloom 用)。
     // 0 のときは src と同サイズ。
     RenderTarget2D* Execute(RenderTarget2D& src, QuadDrawer& quad, const CommonParams& params, int tempWidth = 0,
-                            int tempHeight = 0);
+                            int tempHeight = 0, const RENDER3D::RenderTextureView* surfaceFeatureMask = nullptr);
     RenderTarget2D* GetPing() { return &ping_; }
 
     void Finalize();

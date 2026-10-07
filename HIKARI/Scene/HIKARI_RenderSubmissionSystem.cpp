@@ -5,7 +5,7 @@
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "HIKARI/Project/FrameContext.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/GpuDriven/HIKARI_MassGpuSceneFrameBuffer.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
@@ -688,6 +688,10 @@ void RenderSubmissionSystem::PreRender(World& world, const FrameContext& frame) 
         } else {
             sVfxMeshPublisher_.ClearPublished(sSceneRenderCache_);
         }
+    }
+
+    if (auto* afterimages = world.Services().Find<VFX::CombatAfterimageService>()) {
+        afterimages->Publish(world, sSceneRenderCache_, frame.frameIndex);
     }
 
     {

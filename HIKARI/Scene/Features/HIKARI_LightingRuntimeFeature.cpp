@@ -1,4 +1,4 @@
-#include "Scene/Features/HIKARI_LightingRuntimeFeature.h"
+#include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 
 #include <array>
 #include <memory>
@@ -34,12 +34,6 @@ public:
     std::span<const std::string_view> GetRequiredFeatureIds() const noexcept override {
         static constexpr std::array<std::string_view, 1> ids{RuntimeFeatureIds::Rendering};
         return ids;
-    }
-
-    std::span<const std::string_view> GetComponentTypeNames() const noexcept override {
-        static constexpr std::array<std::string_view, 3> names{"LightComponent", "ReflectionProbeComponent",
-                                                               "IrradianceVolumeComponent"};
-        return names;
     }
 
     bool Register(RuntimeFeatureContext& context) override {

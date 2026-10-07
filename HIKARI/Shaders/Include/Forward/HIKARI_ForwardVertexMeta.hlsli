@@ -19,7 +19,8 @@
     float3 characterRightWS : TEXCOORD8; \
     float3 characterForwardWS : TEXCOORD9; \
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7; \
-    float3 surfaceFeatureData : TEXCOORD11;
+    float3 surfaceFeatureData : TEXCOORD11; \
+    nointerpolation float4 shellLayer : TEXCOORD12;
 
 struct HikariForwardVertexOutput
 {

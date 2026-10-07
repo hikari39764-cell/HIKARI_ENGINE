@@ -8,7 +8,7 @@
 #include "Render3D/Lighting/HIKARI_SurfaceLightingBindings.h"
 
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/DepthOfField/HIKARI_CameraDepthOfFieldStage.h"
 #include "Render3D/WorldSprite/HIKARI_WorldSpriteFrameSource.h"
@@ -46,8 +46,7 @@ public:
                               const SurfaceLightingBindings& lighting = {});
     bool ExecuteForwardTransparent(const GFX::Context& context, D3D12_GPU_VIRTUAL_ADDRESS cameraConstants,
                                    const SurfaceLightingBindings& lighting = {});
-    bool ExecuteForwardTransparentDepthOfField(const GFX::Context& context,
-                                               D3D12_GPU_VIRTUAL_ADDRESS cameraConstants,
+    bool ExecuteForwardTransparentDepthOfField(const GFX::Context& context, D3D12_GPU_VIRTUAL_ADDRESS cameraConstants,
                                                const SurfaceLightingBindings& lighting,
                                                const DOF::WorldSpriteLayerCapture& capture);
 

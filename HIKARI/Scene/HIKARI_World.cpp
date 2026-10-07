@@ -269,17 +269,6 @@ void World::Render() {
     }
 }
 
-void World::RenderImGui() {
-    if (!IsOwnerThread()) {
-        HIKARI_LOG_ERROR("[World] RenderImGui rejected outside the owner thread.");
-        return;
-    }
-    const StructureReadScope structureRead = AcquireStructureReadScope();
-    for (const auto& object : GetObjects()) {
-        object->RenderImGui();
-    }
-}
-
 void World::Clear() {
     if (!IsOwnerThread()) {
         HIKARI_LOG_ERROR("[World] Clear rejected outside the owner thread.");

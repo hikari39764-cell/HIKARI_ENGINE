@@ -8,12 +8,13 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 
 #include <DirectXMath.h>
 
 #include "Assets/Post/HIKARI_PostAsset.h"
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Color/HIKARI_AutomaticExposure.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
@@ -50,6 +51,7 @@ class GameUiCompositionStage;
 class PostPresentationStage;
 class PostProcessingStage;
 class SceneCaptureStage;
+class PreservedVfxLayer;
 
 // Compatibility facade. Resource ownership lives in the three stages below.
 class PostSystem {
@@ -73,7 +75,14 @@ public:
     static void ClearEffects();
     static void AddEffect(PostEffect* effect);
     static bool SetGlobalEffect(std::string_view effectId, std::shared_ptr<const PostEffectDefinition> effect,
-                                const PostParameterBlock& values);
+                                const PostParameterBlock& values, const AssetRegistry* registry = nullptr);
+    static bool RequiresGlobalSurfaceFeatureMask() noexcept;
+    static bool SetActionPostFrame(uint64_t worldId, uint64_t frameIndex, std::string_view effectId,
+                                   std::shared_ptr<const PostEffectDefinition> effect, const PostParameterBlock& values,
+                                   const AssetRegistry& registry);
+    static void ClearActionPostFrame(uint64_t worldId = 0u);
+    static void SetActionPostView(uint64_t worldId, bool primaryGameView) noexcept;
+    static bool RequiresActionSurfaceFeatureMask() noexcept;
     static void ClearGlobalEffect();
     // 実行中の全体効果のパラメーターを 1 フレームだけ上書きする。effectId が現在の効果と違えば無視する。
     static bool SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
@@ -128,6 +137,10 @@ public:
     static RENDER3D::RenderTextureView GetCurrentRenderTargetColorView();
     static D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetDsv();
     static D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetReadOnlyDsv();
+    static bool BeginPreservedVfxCapture(const RENDER3D::PIPELINE::RenderFrameContext& frame,
+                                         const RENDER3D::TEMPORAL::TemporalFrameState& temporal,
+                                         RENDER3D::PIPELINE::RenderTargetAccess& target);
+    static bool EndPreservedVfxCapture(bool succeeded);
     static bool BeginCurrentRenderTargetDepthRead();
     static void EndCurrentRenderTargetDepthRead();
     static bool PrepareCameraDepthOfField(uint64_t frameIndex, const CAMERA::DepthOfFieldSettings& settings,
@@ -161,6 +174,7 @@ private:
     static GFX::Context context_;
     static QuadDrawer quad_;
     static SceneCaptureStage captureStage_;
+    static PreservedVfxLayer preservedVfxLayer_;
     static PostProcessingStage processingStage_;
     static GameUiCompositionStage gameUiCompositionStage_;
     static PostPresentationStage presentationStage_;

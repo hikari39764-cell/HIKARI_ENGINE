@@ -251,6 +251,17 @@ bool IsPlaying(int handle) {
     g_playing.erase(found);
     return false;
 }
+bool TryGetPlaybackSnapshot(int handle, GameProjectAudioPlaybackSnapshot& outSnapshot) {
+    const auto found = g_playing.find(handle);
+    if (!g_backend || found == g_playing.end() || outSnapshot.structSize != sizeof(outSnapshot) ||
+        outSnapshot.version != 1u)
+        return false;
+    GameProjectAudioPlaybackSnapshot snapshot;
+    if (!g_backend->TryGetPlaybackSnapshot(found->second.backend, snapshot))
+        return false;
+    outSnapshot = snapshot;
+    return true;
+}
 void SetBusVolume(AudioBus bus, float volume) {
     g_busVolumes[BusIndex(bus)] = SafeVolume(volume);
     CollectFinished();

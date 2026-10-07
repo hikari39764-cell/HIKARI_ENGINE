@@ -6,7 +6,7 @@
 #include "Assets/Formats/HIKARI_HmodelFormat.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
-#include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Models/Runtime/HIKARI_ModelTextureResolver.h"
 #include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"

@@ -1,9 +1,8 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
-
-#include <json.hpp>
 
 namespace HIKARI::TEXT {
 
@@ -16,19 +15,14 @@ enum class Language : uint8_t {
 bool SetLocalizationLanguage(Language language) noexcept;
 
 // Returns the translated UI string for a key; falls back to English, then to
-// the key itself when the table has no entry.
-std::string Localize(std::string_view key);
-// 呼び出し元は返り値を保存しないこと。表の更新まで有効な UI 表示用ポインター。
-const char* LocalizeCStr(const char* key);
+// the key itself when the table has no entry. 表は起動後に変化しないため、
+// 返す参照はプロセス終了まで有効で、毎フレームの呼び出しでも文字列を確保しない。
+const std::string& Localize(std::string_view key);
 
 // Returns a localized window title with a stable ImGui window ID.
 // Example: LocalizeWindow("ui.window.inspector", "Inspector")
 // produces "检查器###Inspector" so the displayed title is translated
 // while docking/layout state keeps referencing "Inspector".
 std::string LocalizeWindow(std::string_view key, std::string_view stableId);
-
-// Merges an external string table (key -> text) into the active language.
-// This is the extension point for JSON localization files.
-void MergeLocalizationTable(Language language, const nlohmann::json& table) noexcept;
 
 } // namespace HIKARI::TEXT

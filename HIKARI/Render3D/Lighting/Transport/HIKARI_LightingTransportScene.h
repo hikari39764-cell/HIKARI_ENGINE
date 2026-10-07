@@ -9,7 +9,7 @@
 #include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
 #include "Assets/Lighting/HIKARI_LightmapAtlasLayout.h"
 #include "Assets/Lighting/HIKARI_LightmapSurfaceContract.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Material/HIKARI_MaterialSnapshot.h"

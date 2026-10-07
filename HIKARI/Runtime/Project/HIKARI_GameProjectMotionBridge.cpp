@@ -22,26 +22,38 @@ MotionView WorldView::GetMotion() const noexcept {
 }
 
 bool MotionView::SubmitKinematicMove(const GameProjectKinematicMove& move) const noexcept {
-    return SubmitKinematicMoveWithCollisionOptions(move, {});
+    return SubmitKinematicMoveWithOptions(move, {});
 }
 
 bool MotionView::SubmitKinematicMoveWithCollisionOptions(
     const GameProjectKinematicMove& move, const GameProjectKinematicCollisionOptions& options) const noexcept {
+    GameProjectKinematicMoveOptions combined;
+    combined.collision = options;
+    return SubmitKinematicMoveWithOptions(move, combined);
+}
+
+bool MotionView::SubmitKinematicMoveWithOptions(const GameProjectKinematicMove& move,
+                                                const GameProjectKinematicMoveOptions& options) const noexcept {
     try {
         if (world_ == nullptr || move.sourceId == 0u || !IsFinite(move.horizontalVelocity) ||
             !IsFinite(move.desiredRotation) || !IsFiniteNonNegative(move.jumpSpeed) ||
-            !IsFinitePositive(move.maximumFallSpeed) || options.reserved0 != 0u || options.reserved1 != 0u ||
+            !IsFinitePositive(move.maximumFallSpeed) || options.structSize != sizeof(options) ||
+            options.version != 1u || options.collision.reserved0 != 0u || options.collision.reserved1 != 0u ||
+            options.overrideVerticalGravity > 1u || !std::isfinite(options.verticalGravityAcceleration) ||
             (move.hasDesiredRotation != 0u && !IsFiniteNonZeroRotation(move.desiredRotation))) {
             return false;
         }
-        World* world = static_cast<World*>(world_);
+        World* world = CurrentWorld(world_);
+        if (world == nullptr || GameProjectSdkAccess::IsWorldClosing(*world))
+            return false;
         GameObject* object = FindObject(world, move.objectHandle);
         if (object == nullptr) {
             return false;
         }
-        GameObject* ignoredObject =
-            options.ignoredObjectHandle != 0u ? FindObject(world, options.ignoredObjectHandle) : nullptr;
-        if (options.ignoredObjectHandle != 0u && (ignoredObject == nullptr || ignoredObject == object)) {
+        GameObject* ignoredObject = options.collision.ignoredObjectHandle != 0u
+                                        ? FindObject(world, options.collision.ignoredObjectHandle)
+                                        : nullptr;
+        if (options.collision.ignoredObjectHandle != 0u && (ignoredObject == nullptr || ignoredObject == object)) {
             return false;
         }
         PHYSICS::KinematicMotionService* service = world->Services().Find<PHYSICS::KinematicMotionService>();
@@ -53,6 +65,8 @@ bool MotionView::SubmitKinematicMoveWithCollisionOptions(
         request.desiredRotation = ToRuntime(move.desiredRotation);
         request.jumpSpeed = move.jumpSpeed;
         request.maximumFallSpeed = move.maximumFallSpeed;
+        request.verticalGravityAcceleration = options.verticalGravityAcceleration;
+        request.overrideVerticalGravity = options.overrideVerticalGravity != 0u;
         request.hasDesiredRotation = move.hasDesiredRotation != 0u;
         request.jumpRequested = move.jumpRequested != 0u;
         request.allowJumpWithoutGroundContact = move.allowJumpWithoutGroundContact != 0u;

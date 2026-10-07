@@ -147,7 +147,27 @@ bool ModelMaterialWorkspaceController::CreateMaterial(DocumentSceneBase& scene, 
         source.templateId = authoringDocument_.GetMaterial().templateId;
         source.instance.parentMaterialGuid = authoringDocument_.GetMaterialAssetGuid();
     } else {
-        source = ASSETS::MATERIAL::CreateMaterialFromTemplate(templateId, displayName);
+        if (templateId == MaterialTemplateId::PainterlyShell && authoringMode_ == AuthoringMode::ModelMaterials &&
+            authoringDocument_.HasMaterial()) {
+            MaterialAssetData seed = authoringDocument_.GetMaterial();
+            if (seed.kind == MaterialAssetKind::Instance) {
+                const auto resolved = ASSETS::MATERIAL::ResolveMaterialInstance(
+                    seed, [&](const AssetGuid& guid, MaterialAssetData& parent, std::string& error) {
+                        return ASSETS::MATERIAL::LoadMaterialAssetSource(scene.GetAssetDatabase(), guid, parent, error);
+                    });
+                if (!resolved.success) {
+                    outMessage = "Resolve the current material instance before creating a painterly material.";
+                    return false;
+                }
+                seed = resolved.resolvedMaterial;
+            }
+            source = ASSETS::MATERIAL::CreateMaterialFromTemplateWithPbr(templateId, ProjectPbrMaterialAssetData(seed),
+                                                                         displayName);
+        } else {
+            source = ASSETS::MATERIAL::CreateMaterialFromTemplate(templateId, displayName);
+        }
+        if (templateId == MaterialTemplateId::PainterlyShell)
+            (void)MATERIAL_GRAPH_UI::AutoLayoutMaterialGraph(source.graph);
         EnsureBuiltInRampPresets(scene);
         RefreshAssetChoices(scene.GetAssetDatabase());
         BindBuiltInRampPresets(source);
@@ -267,7 +287,7 @@ bool ModelMaterialWorkspaceController::SaveMaterial(DocumentSceneBase& scene, bo
         return false;
     }
     if (!authoringDocument_.GetCompileResult().success) {
-        outMessage = "Material v6 graph is invalid; fix Compile & Diagnostics before saving";
+        outMessage = "Material graph is invalid; fix Compile & Diagnostics before saving";
         return false;
     }
 

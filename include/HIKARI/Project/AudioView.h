@@ -28,6 +28,10 @@ public:
     HIKARI_GAME_PROJECT_SDK_API bool SetVolume(GameProjectAudioPlaybackHandle playback,
                                                float linearVolume) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool IsPlaying(GameProjectAudioPlaybackHandle playback) const noexcept;
+    // Owner-thread query. Invalid, foreign, stopped or completed handles and
+    // unsupported snapshot size/version return false without modifying output.
+    HIKARI_GAME_PROJECT_SDK_API bool TryGetPlaybackSnapshot(
+        GameProjectAudioPlaybackHandle playback, GameProjectAudioPlaybackSnapshot& outSnapshot) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API GameProjectAudioPlaybackHandle
     Play(GameProjectAudioSoundHandle sound, const GameProjectAudioPlayOptions& options) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool UseCameraListener() const noexcept;

@@ -33,6 +33,7 @@ void Pause(int playHandle);
 void Resume(int playHandle);
 void SetVolume(int playHandle, float volume);
 bool IsPlaying(int playHandle);
+bool TryGetPlaybackSnapshot(int playHandle, GameProjectAudioPlaybackSnapshot& outSnapshot);
 void SetBusVolume(AudioBus bus, float volume);
 float GetBusVolume(AudioBus bus);
 int PlayCue(int soundHandle, const GameProjectAudioPlayOptions& options, uint64_t owner = 0u);

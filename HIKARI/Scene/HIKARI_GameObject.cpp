@@ -196,16 +196,6 @@ void GameObject::Render() {
             component->Render();
 }
 
-void GameObject::RenderImGui() {
-    if (!active_) {
-        return;
-    }
-
-    for (const auto& component : components_) {
-        component->RenderImGui();
-    }
-}
-
 IComponent* GameObject::AddComponentInstance(std::unique_ptr<IComponent> component, ComponentTypeId declaredTypeId) {
     if (!component) {
         return nullptr;

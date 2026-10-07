@@ -18,7 +18,9 @@ public:
         spawnPointId_ = in.value("spawnPointId", spawnPointId_);
         enabled_ = in.value("enabled", enabled_);
     }
+#if defined(HIKARI_WITH_EDITOR)
     void BuildInspector(IInspectorBuilder& builder) override;
+#endif
 
     const std::string& GetSpawnPointId() const { return spawnPointId_; }
     bool IsEnabled() const { return enabled_; }

@@ -39,6 +39,13 @@ bool Equal(const std::vector<RuntimeTextureSlot>& lhs, const std::vector<Runtime
 
 Material::Material() : revision_(NextMaterialRevision()) {}
 
+void Material::SetShellSettings(const MaterialShellSettings& settings) {
+    if (!IsValidMaterialShellSettings(settings) || shellSettings_ == settings)
+        return;
+    shellSettings_ = settings;
+    TouchRevision();
+}
+
 void Material::TouchRevision() noexcept { revision_ = NextMaterialRevision(); }
 
 int RuntimeTextureSlot::ResolveBackendHandle() const {

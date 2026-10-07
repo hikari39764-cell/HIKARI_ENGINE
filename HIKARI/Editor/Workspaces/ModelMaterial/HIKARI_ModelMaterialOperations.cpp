@@ -10,7 +10,7 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialAssetOperations.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
-#include "Render3D/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {

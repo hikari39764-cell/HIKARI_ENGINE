@@ -7,14 +7,34 @@
 #include <unordered_set>
 #include <utility>
 
-#include "Scene/Features/Internal/HIKARI_RuntimeFeatureRegistrationTransaction.h"
+#include "Core/HIKARI_Logger.h"
 #include "HIKARI/Project/RuntimeFeature.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Scene/Features/Internal/HIKARI_RuntimeFeatureRegistrationTransaction.h"
+#include "Scene/HIKARI_ComponentRegistry.h"
+#include "Scene/HIKARI_ComponentSystemPolicy.h"
+#include "Scene/HIKARI_SystemTypeRegistry.h"
+#include "Scene/HIKARI_WorldMassStore.h"
 
 namespace HIKARI {
 
 namespace {
 
 void DestroyEngineRuntimeFeature(IRuntimeFeature* feature) noexcept { delete feature; }
+
+// 無効な Feature の型も場面解析で所有者を示せるよう、一時レジストリへ試行登録して一覧を得る。
+bool DescribeFeatureOwnership(IRuntimeFeature& feature, std::vector<std::string>& outComponentTypes,
+                              std::vector<std::string>& outSystemIds) {
+    ComponentRegistry components;
+    WorldMassSchemaRegistry massSchemas;
+    SystemTypeRegistry systems;
+    ComponentSystemPolicy policy;
+    RuntimeFeatureContext context = RuntimeFeatureContextAccess::Create(components, massSchemas, systems, policy);
+    const bool registered = INTERNAL::RegisterRuntimeFeatureTransactional(feature, context);
+    outComponentTypes = components.GetTypeNames();
+    outSystemIds = systems.GetTypeNames();
+    return registered;
+}
 
 } // namespace
 
@@ -70,7 +90,11 @@ bool RuntimeFeatureCatalog::AddWithDestroy(IRuntimeFeature* feature, RuntimeFeat
     if (duplicate) {
         return false;
     }
-    features_.push_back(FeatureEntry{feature, destroy});
+    FeatureEntry entry{feature, destroy};
+    if (!DescribeFeatureOwnership(*feature, entry.componentTypeNames, entry.systemIds)) {
+        HIKARI_LOG_WARN("[RuntimeFeature] ownership probe failed: " + std::string(featureId));
+    }
+    features_.push_back(std::move(entry));
     return true;
 }
 
@@ -264,12 +288,8 @@ std::vector<RuntimeFeatureInfo> RuntimeFeatureCatalog::GetFeatureInfos() const {
         for (const std::string_view dependency : feature->GetRequiredFeatureIds()) {
             info.requiredFeatureIds.emplace_back(dependency);
         }
-        for (const std::string_view componentType : feature->GetComponentTypeNames()) {
-            info.componentTypeNames.emplace_back(componentType);
-        }
-        for (const std::string_view systemId : feature->GetSystemIds()) {
-            info.systemIds.emplace_back(systemId);
-        }
+        info.componentTypeNames = entry.componentTypeNames;
+        info.systemIds = entry.systemIds;
         info.active = IsFeatureActive(info.featureId);
         infos.push_back(std::move(info));
     }
@@ -289,10 +309,9 @@ std::string RuntimeFeatureCatalog::FindOwningFeatureForComponent(std::string_vie
         if (feature == nullptr) {
             continue;
         }
-        for (const std::string_view ownedType : feature->GetComponentTypeNames()) {
-            if (ownedType == componentType) {
-                return std::string(feature->GetFeatureId());
-            }
+        if (std::find(entry.componentTypeNames.begin(), entry.componentTypeNames.end(), componentType) !=
+            entry.componentTypeNames.end()) {
+            return std::string(feature->GetFeatureId());
         }
     }
     return {};
@@ -304,10 +323,8 @@ std::string RuntimeFeatureCatalog::FindOwningFeatureForSystem(std::string_view s
         if (feature == nullptr) {
             continue;
         }
-        for (const std::string_view ownedId : feature->GetSystemIds()) {
-            if (ownedId == systemId) {
-                return std::string(feature->GetFeatureId());
-            }
+        if (std::find(entry.systemIds.begin(), entry.systemIds.end(), systemId) != entry.systemIds.end()) {
+            return std::string(feature->GetFeatureId());
         }
     }
     return {};

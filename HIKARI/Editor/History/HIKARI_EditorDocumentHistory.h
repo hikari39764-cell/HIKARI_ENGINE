@@ -32,6 +32,8 @@ struct EditorHistoryResult {
     EditorDocumentImpact impact = EditorDocumentImpact::None;
     std::string label{};
     bool changed = false;
+    // オブジェクト単位の差分が分かるコマンドだけが持つ。無ければ runtime world を作り直す。
+    std::optional<SceneObjectChanges> objectChanges{};
 };
 
 class IEditorDocumentCommand {
@@ -43,6 +45,8 @@ public:
     virtual void Undo(SceneDocument& document) const = 0;
     virtual void Redo(SceneDocument& document) const = 0;
     virtual bool TryMergeApplied(const IEditorDocumentCommand& newer) = 0;
+    // 撤销（undo=true）または重做で変わるオブジェクト。分からないコマンドは nullopt。
+    virtual std::optional<SceneObjectChanges> GetObjectChanges(bool) const { return std::nullopt; }
 };
 
 class EditorDocumentHistory {
