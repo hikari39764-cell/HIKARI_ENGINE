@@ -19,12 +19,10 @@
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
-#include "Scene/Serialization/Environment/HIKARI_SceneEnvironmentJson.h"
 
 namespace HIKARI::ASSETS::LIGHTING {
 
 namespace JsonMath = SERIALIZATION::JSON::MATH;
-namespace SceneJson = SCENE::SERIALIZATION;
 
 namespace {
 
@@ -107,36 +105,14 @@ nlohmann::json BuildCaptureObjectNode(const SceneDocument& document, const Scene
     return {{"transformChain", BuildTransformChain(document, object)}, {"components", std::move(components)}};
 }
 
-nlohmann::json BuildCaptureEnvironmentNode(const SceneEnvironment& source) {
-    nlohmann::json environment{};
-    SceneJson::SerializeSceneEnvironmentJson(source, environment);
-    environment.erase("reflectionProbe");
-    environment.erase("directional");
-    environment.erase("pointLights");
-    environment.erase("spotLights");
-    environment.erase("ambientOcclusion");
-    environment.erase("surfaceLightmaps");
-    environment.erase("screenSpaceReflections");
-    environment.erase("bloom");
-    environment.erase("toneMapping");
-    environment.erase("post");
-    environment.erase("showLightDebug");
-    environment.erase("showPointLightMarkers");
-    environment.erase("showSkyDebugInfo");
-    if (environment.contains("directionalShadow")) {
-        environment["directionalShadow"].erase("showDebugTexture");
-        environment["directionalShadow"].erase("showDebugFrustum");
-    }
-    if (environment.contains("sky")) {
-        environment["sky"].erase("showDebugTexture");
-    }
-    return environment;
+// 焼き付け結果を変えるのは環境の参照と初期の時刻・地点・天気。
+nlohmann::json BuildCaptureEnvironmentNode(const ENVIRONMENT::SceneEnvironmentBinding& source) {
+    return ENVIRONMENT::WriteSceneEnvironmentBinding(source);
 }
 
 SceneDocument BuildLightingCaptureUsageDocument(const SceneDocument& document) {
     SceneDocument capture{};
     capture.environment = document.environment;
-    capture.environment.reflectionProbe = {};
     capture.objects.reserve(document.objects.size());
     for (const SceneObjectData& object : document.objects) {
         const SceneComponentData* model = nullptr;
@@ -349,7 +325,7 @@ std::unordered_map<std::string, std::string> BuildLightingBakeRecordAuthoringHas
                        HashJson(BuildReflectionProbeCaptureNode(probe)));
     }
     for (const LIGHTING_AUTHORING::IrradianceVolumeAuthoring& volume :
-         LIGHTING_AUTHORING::CollectIrradianceVolumes(document)) {
+         LIGHTING_AUTHORING::CollectBakedIrradianceVolumes(document)) {
         hashes.emplace("irradiance_volume_" + std::to_string(volume.objectId.value),
                        HashJson(BuildIrradianceVolumeCaptureNode(volume)));
     }

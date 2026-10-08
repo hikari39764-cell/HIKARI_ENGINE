@@ -108,6 +108,8 @@ AssetType ToAssetType(GameProjectAssetKind kind) noexcept {
     case GameProjectAssetKind::Font: return AssetType::Font;
     case GameProjectAssetKind::TextStyle: return AssetType::TextStyle;
     case GameProjectAssetKind::UiAnimation: return AssetType::UiAnimation;
+    case GameProjectAssetKind::Environment: return AssetType::Environment;
+    case GameProjectAssetKind::Weather: return AssetType::Weather;
     }
     return AssetType::Unknown;
 }

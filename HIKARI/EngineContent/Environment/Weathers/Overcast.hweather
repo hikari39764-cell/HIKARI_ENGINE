@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "name": "Overcast",
+  "weather": {
+    "cloudCoverage": 0.95,
+    "cloudType": 0.15,
+    "cloudDensity": 1.3,
+    "haze": 0.2,
+    "fogDensity": 0.0005,
+    "fogHeightFalloff": 0.03,
+    "windSpeed": 6.0,
+    "windFromDegrees": 220.0,
+    "transitionSeconds": 25.0
+  }
+}

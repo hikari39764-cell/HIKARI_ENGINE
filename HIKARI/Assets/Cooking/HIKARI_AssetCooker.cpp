@@ -190,7 +190,9 @@ AssetCookResult AssetCooker::Cook(const AssetCookOptions& options) const {
         if (!record->sourceExists ||
             ((RequiresPrimaryArtifact(record->type) || record->type == AssetType::Font ||
               record->type == AssetType::TextStyle || record->type == AssetType::UiAnimation ||
-              record->type == AssetType::PostEffect || record->type == AssetType::PostProfile) &&
+              record->type == AssetType::PostEffect || record->type == AssetType::PostProfile ||
+              record->type == AssetType::Environment || record->type == AssetType::Weather ||
+              record->type == AssetType::RenderStyle) &&
              (record->importOutdated || record->artifactMissing || !record->lastImportSucceeded))) {
             result.message = "Asset needs a successful, current import: " + TEXT::PathToUtf8(record->sourcePath) +
                              " (" + guid + "). " + record->lastImportMessage;

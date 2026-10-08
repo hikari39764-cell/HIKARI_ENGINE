@@ -41,37 +41,24 @@ float2 HikariShadowAtlasUv(float2 cascadeUv, uint cascadeIndex)
         HikariShadowAtlasTileOrigin(cascadeIndex);
 }
 
-float3 HikariApplyBoundedShadowNormalBias(
+// 受け手の位置を法線方向へずらし、PCF の核が受け手の面を横切る深さの変化で自己影にならないようにする。
+// 必要なずれは（核の半幅 + 1.5 texel）× カスケードの texel の大きさ × sinθ（θ は面の法線と光の角度）。
+// 光が面をかすめる低い太陽ほど大きく、光を正面から受ける面ではほぼ設定値だけになる。
+float3 HikariApplyShadowNormalOffset(
     float3 worldPosWS,
     float3 geometricNormalWS,
     uint cascadeIndex)
 {
-    const float3 requestedOffset =
-        geometricNormalWS * max(gShadowNormalBias, 0.0f);
-    const float3 projectedOffset =
-        mul(
-            gShadowLightViewProj[cascadeIndex],
-            float4(requestedOffset, 0.0f)).xyz;
-
-    // Authoring remains in world units, but the effective offset is bounded in
-    // the selected cascade. This prevents a large acne fix from detaching a
-    // near-cascade shadow by many texels.
-    const float maximumProjectedOffset =
-        max(gShadowTexelSizeX, gShadowTexelSizeY) * 8.0f;
-    const float projectedXY =
-        max(abs(projectedOffset.x), abs(projectedOffset.y));
-    const float xyScale =
-        projectedXY > maximumProjectedOffset
-            ? maximumProjectedOffset / projectedXY
-            : 1.0f;
-    const float maximumDepthOffset =
-        max(gShadowDepthBias * 4.0f, 0.002f) * gShadowCascadeDepthBiasScales[cascadeIndex];
-    const float projectedZ = abs(projectedOffset.z);
-    const float depthScale =
-        projectedZ > maximumDepthOffset
-            ? maximumDepthOffset / projectedZ
-            : 1.0f;
-    return worldPosWS + requestedOffset * min(xyScale, depthScale);
+    const float3 toLight = -gDirectionalDir.xyz * rsqrt(max(dot(gDirectionalDir.xyz, gDirectionalDir.xyz), 1.0e-8f));
+    const float cosine = saturate(dot(geometricNormalWS, toLight));
+    const float sine = sqrt(1.0f - cosine * cosine);
+    // 正射影の x 行の長さは 2 / 幅。カスケード内の 1 texel を世界の長さへ直す。
+    const float rowScale = length(gShadowLightViewProj[cascadeIndex][0].xyz);
+    const float cascadeTexelUv = gShadowTexelSizeX / max(gShadowCascadeParams.z, 1.0e-6f);
+    const float texelWorld = 2.0f * cascadeTexelUv / max(rowScale, 1.0e-6f);
+    const float kernelTexels = (gShadowPcfEnabled != 0 ? 2.0f * max(gShadowPcfRadius, 0.0f) : 0.0f) + 1.5f;
+    const float offset = max(gShadowNormalBias, 0.0f) + texelWorld * kernelTexels * sine;
+    return worldPosWS + geometricNormalWS * offset;
 }
 
 float HikariSampleDirectionalShadowCascade(
@@ -81,7 +68,7 @@ float HikariSampleDirectionalShadowCascade(
     out bool cascadeValid)
 {
     const float3 biasedWorldPos =
-        HikariApplyBoundedShadowNormalBias(
+        HikariApplyShadowNormalOffset(
             worldPosWS,
             geometricNormalWS,
             cascadeIndex);

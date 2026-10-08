@@ -2,7 +2,7 @@ cbuffer PanoramaLayerCB : register(b0)
 {
     float4x4 gPanoramaInverseViewProj;
     float4 gPanoramaYawOffsetOpacity; // x yaw, yz UV offset, w opacity
-    float4 gPanoramaTintExposure;     // rgb tint, w scene-linear multiplier
+    float4 gPanoramaTintExposure;     // rgb tint, w scene-linear multiplier × pre-exposure
 };
 
 Texture2D gPanoramaCloudLayer : register(t0);

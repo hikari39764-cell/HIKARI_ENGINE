@@ -42,7 +42,7 @@ struct DxrProgressiveLightmapBaker::GpuLight {
     MATH::Vec4 radianceInnerCone{};
     uint32_t type = 0u;
     float angularFalloff = 1.0f;
-    uint32_t distanceFalloff = 0u;
+    uint32_t reserved = 0u;
     float sourceRadius = 0.0f;
 };
 
@@ -58,10 +58,7 @@ struct DxrProgressiveLightmapBaker::DispatchConstants {
     uint32_t sampleGridWidth = 1u;
     uint32_t sampleGridHeight = 1u;
     uint32_t padding[2]{};
-    MATH::Vec4 ambientSkyStrength{};
-    MATH::Vec4 skyZenith{}; // w: horizon power
-    MATH::Vec4 skyHorizon{};
-    MATH::Vec4 skyGround{};
+    MATH::Vec4 skyParams{}; // x 天空光の倍率、y 空の回転
     MATH::Vec4 skyTintExposure{};
 };
 
@@ -69,6 +66,6 @@ static_assert(sizeof(DxrProgressiveLightmapBaker::GpuTriangle) == 208u);
 static_assert(offsetof(DxrProgressiveLightmapBaker::GpuTriangle, materialIndex) == 192u);
 static_assert(sizeof(INTERNAL::DxrLightmapSurfaceTexel) == 32u);
 static_assert(sizeof(DxrProgressiveLightmapBaker::GpuLight) == 64u);
-static_assert(sizeof(DxrProgressiveLightmapBaker::DispatchConstants) == 128u);
+static_assert(sizeof(DxrProgressiveLightmapBaker::DispatchConstants) == 80u);
 
 } // namespace HIKARI::TOOLS::BAKING

@@ -27,9 +27,10 @@ constexpr DXGI_FORMAT kFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 constexpr auto kReadState = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
 struct Constants {
     ATMOSPHERE::AtmosphereLutConstants atmosphere{};
-    MATH::Vec4 zenith{0, 0, 0, 0}, horizon{0, 0, 0, 0}, ground{0, 0, 0, 0}, source{0, 0, 0, 0};
+    // x SkyMode、y SkyView LUT あり、z 夜空の天頂背景輝度 [nits]、w 雲の空あり。
+    MATH::Vec4 source{0, 0, 0, 0};
 };
-static_assert(sizeof(Constants) == 192);
+static_assert(sizeof(Constants) == 144);
 
 struct Cube {
     ComPtr<ID3D12Resource> resource;
@@ -136,8 +137,8 @@ struct EnvironmentLightingCache::State {
     bool EnsurePipeline(const GFX::Context& graphics) {
         if (pipeline)
             return true;
-        std::array<CD3DX12_DESCRIPTOR_RANGE, 4> ranges;
-        std::array<CD3DX12_ROOT_PARAMETER, 6> parameters;
+        std::array<CD3DX12_DESCRIPTOR_RANGE, 5> ranges;
+        std::array<CD3DX12_ROOT_PARAMETER, 7> parameters;
         parameters[0].InitAsConstantBufferView(0);
         parameters[1].InitAsConstants(4, 1);
         for (UINT i = 0; i < 4; ++i) {
@@ -145,6 +146,8 @@ struct EnvironmentLightingCache::State {
                            i == 3 ? 0 : i);
             parameters[i + 2].InitAsDescriptorTable(1, &ranges[i]);
         }
+        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);
+        parameters[6].InitAsDescriptorTable(1, &ranges[4]);
         std::array<CD3DX12_STATIC_SAMPLER_DESC, 2> samplers;
         samplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
                          D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
@@ -161,10 +164,10 @@ struct EnvironmentLightingCache::State {
         contract.rootLayoutId = "HIKARI.EnvironmentLighting.Root";
         contract.rootLayoutVersion = 1;
         if (!HASH::ComputeSha256(
-                "EnvironmentLightingCB:192; ConvolutionJob:16; raw scene-linear cubemap E/pi and GGX; no analytic sun disk",
+                "EnvironmentLightingCB:192; ConvolutionJob:16; raw scene-linear cubemap E/pi and GGX; no analytic sun disk; source.w premultiplied cloud sky over sky (t3, sky-view mapping)",
                 contract.engineInterfaceHash) ||
             !HASH::ComputeSha256(
-                "CBV(b0);Constants(b1,4);SRV(t0,cube);SRV(t1,2d);SRV(t2,2d);UAV(u0,array);Sampler(s0,clamp);Sampler(s1,wrapX)",
+                "CBV(b0);Constants(b1,4);SRV(t0,cube);SRV(t1,2d);SRV(t2,2d);SRV(t3,2d);UAV(u0,array);Sampler(s0,clamp);Sampler(s1,wrapX)",
                 contract.rootLayoutHash))
             return false;
         const auto caps = GFX::QueryShaderDeviceCapabilities(graphics.device);
@@ -234,10 +237,11 @@ void EnvironmentLightingCache::Invalidate() {
     state_->budgetFrame = (std::numeric_limits<uint64_t>::max)();
 }
 
-bool EnvironmentLightingCache::Update(const GFX::Context& graphics, const SkySettings& sky,
+bool EnvironmentLightingCache::Update(const GFX::Context& graphics, SkyMode mode, std::string_view skyAsset,
                                       const ATMOSPHERE::AtmosphereLutConstants& atmosphere,
                                       TextureResourceHandle source, D3D12_GPU_DESCRIPTOR_HANDLE atmosphereSkyView,
-                                      uint64_t frameIndex) {
+                                      D3D12_GPU_DESCRIPTOR_HANDLE cloudSky, uint64_t cloudSkyVersion,
+                                      float nightSkyLuminance, uint64_t frameIndex) {
     auto& state = *state_;
     if (state.budgetFrame != frameIndex) {
         state.budgetFrame = frameIndex;
@@ -248,8 +252,8 @@ bool EnvironmentLightingCache::Update(const GFX::Context& graphics, const SkySet
     state.status.building = false;
     state.status.sourceEpoch = state.status.ageFrames = state.status.remainingDispatches = 0;
     state.status.failure = EnvironmentLightingCacheFailure::None;
-    if (!sky.enabled || sky.mode == SkyMode::None || graphics.deviceGeneration == 0 || !graphics.device ||
-        !graphics.cmdList || !graphics.srvHeap) {
+    if (mode == SkyMode::None || graphics.deviceGeneration == 0 || !graphics.device || !graphics.cmdList ||
+        !graphics.srvHeap) {
         state.status.failure = EnvironmentLightingCacheFailure::MissingInput;
         return false;
     }
@@ -263,7 +267,7 @@ bool EnvironmentLightingCache::Update(const GFX::Context& graphics, const SkySet
         state.status.failure = EnvironmentLightingCacheFailure::MissingInput;
         return false;
     }
-    const bool cube = sky.mode == SkyMode::Cubemap, panorama = sky.mode == SkyMode::Texture2D;
+    const bool cube = mode == SkyMode::Cubemap, panorama = mode == SkyMode::Texture2D;
     if ((cube || panorama) && (!IsTextureResourceValid(source) ||
                                GetTextureResourceDimension(source) != (cube ? TextureResourceDimension::TextureCube
                                                                             : TextureResourceDimension::Texture2D))) {
@@ -271,20 +275,21 @@ bool EnvironmentLightingCache::Update(const GFX::Context& graphics, const SkySet
         return false;
     }
     Constants requested{};
-    if (sky.mode == SkyMode::Atmosphere)
+    if (mode == SkyMode::Atmosphere) {
         requested.atmosphere = atmosphere;
-    if (!cube && !panorama) {
-        requested.zenith = {sky.zenithColor.x, sky.zenithColor.y, sky.zenithColor.z, 0};
-        requested.horizon = {sky.horizonColor.x, sky.horizonColor.y, sky.horizonColor.z, sky.horizonPower};
-        requested.ground = {sky.groundColor.x, sky.groundColor.y, sky.groundColor.z, 0};
+        requested.source = {float(mode), atmosphereSkyView.ptr ? 1.0f : 0.0f, (std::max)(0.0f, nightSkyLuminance),
+                            cloudSky.ptr ? 1.0f : 0.0f};
+    } else {
+        requested.source = {float(mode), 0, 0, cloudSky.ptr ? 1.0f : 0.0f};
     }
-    requested.source = {float(sky.mode), sky.mode == SkyMode::Atmosphere && atmosphereSkyView.ptr ? 1.0f : 0.0f, 0, 0};
-    uint64_t identity = HASH::Fnv1aBytes(HASH::kFnv1a64OffsetBasis, &sky.mode, sizeof(sky.mode));
+    uint64_t identity = HASH::Fnv1aBytes(HASH::kFnv1a64OffsetBasis, &mode, sizeof(mode));
     if (cube || panorama) {
-        identity = HASH::Fnv1aBytes(identity, sky.skyAsset.data(), sky.skyAsset.size());
+        identity = HASH::Fnv1aBytes(identity, skyAsset.data(), skyAsset.size());
         identity = HASH::Fnv1aBytes(identity, &source, sizeof(source));
     }
-    const uint64_t epoch = HASH::Fnv1aBytes(identity, &requested, sizeof(requested));
+    uint64_t epoch = HASH::Fnv1aBytes(identity, &requested, sizeof(requested));
+    if (cloudSky.ptr)
+        epoch = HASH::Fnv1aBytes(epoch, &cloudSkyVersion, sizeof(cloudSkyVersion));
     if (state.retryEpoch == epoch && frameIndex < state.retryAfterFrame)
         return state.PublishStatus(identity, epoch, frameIndex, state.retryFailure);
     if (state.nextDispatch < kDispatchCount && state.sets[state.pending].identity != identity)
@@ -348,6 +353,7 @@ bool EnvironmentLightingCache::Update(const GFX::Context& graphics, const SkySet
             commands->SetComputeRootDescriptorTable(4,
                                                     atmosphereSkyView.ptr ? atmosphereSkyView : state.nullSrvs[1].gpu);
             commands->SetComputeRootDescriptorTable(5, output.uavs[mip].gpu);
+            commands->SetComputeRootDescriptorTable(6, cloudSky.ptr ? cloudSky : state.nullSrvs[1].gpu);
             commands->Dispatch((size + 7) / 8, (size + 7) / 8, 6);
             output.Transition(commands, kReadState);
             ++state.nextDispatch;

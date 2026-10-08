@@ -27,8 +27,6 @@ bool ModelAsset::HasSkinnedMesh() const {
     return false;
 }
 
-size_t ModelAsset::GetSkinCount() const { return skins.size(); }
-
 const SkeletonAsset* ModelAsset::FindSkin(int skinIndex) const {
     if (skinIndex < 0 || skinIndex >= static_cast<int>(skins.size())) {
         return nullptr;

@@ -45,6 +45,71 @@ bool EquivalentOperationValue(const nlohmann::json& requested, const nlohmann::j
 }
 
 namespace {
+std::string JoinPatchPath(const std::string& path, const std::string& key) {
+    return path.empty() ? key : path + "." + key;
+}
+
+bool FindUnknownPatchKey(const nlohmann::json& patch, const nlohmann::json& current, const std::string& path,
+                         std::string& outPath) {
+    for (auto it = patch.begin(); it != patch.end(); ++it) {
+        const auto found = current.find(it.key());
+        if (found == current.end()) {
+            outPath = JoinPatchPath(path, it.key());
+            return true;
+        }
+        if (it->is_object() && found->is_object() &&
+            FindUnknownPatchKey(*it, *found, JoinPatchPath(path, it.key()), outPath)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void CollectAdjustedPatchValues(const nlohmann::json& requested, const nlohmann::json& stored, const std::string& path,
+                                nlohmann::json& outAdjusted) {
+    for (auto it = requested.begin(); it != requested.end(); ++it) {
+        const auto found = stored.find(it.key());
+        if (found == stored.end()) {
+            continue;
+        }
+        const std::string key = JoinPatchPath(path, it.key());
+        if (it->is_object() && found->is_object()) {
+            CollectAdjustedPatchValues(*it, *found, key, outAdjusted);
+        } else if (!EquivalentOperationValue(*it, *found)) {
+            outAdjusted[key] = *found;
+        }
+    }
+}
+} // namespace
+
+std::string FindUnknownPatchKey(const nlohmann::json& patch, const nlohmann::json& current) {
+    std::string path;
+    if (patch.is_object() && current.is_object()) {
+        (void)FindUnknownPatchKey(patch, current, {}, path);
+    }
+    return path;
+}
+
+nlohmann::json CollectAdjustedPatchValues(const nlohmann::json& requested, const nlohmann::json& stored) {
+    nlohmann::json adjusted = nlohmann::json::object();
+    if (requested.is_object() && stored.is_object()) {
+        CollectAdjustedPatchValues(requested, stored, {}, adjusted);
+    }
+    return adjusted;
+}
+
+nlohmann::json ProjectAppliedPatch(const nlohmann::json& patch, const nlohmann::json& stored) {
+    nlohmann::json applied = nlohmann::json::object();
+    for (auto it = patch.begin(); it != patch.end(); ++it) {
+        const auto found = stored.find(it.key());
+        if (found != stored.end()) {
+            applied[it.key()] = it->is_object() && found->is_object() ? ProjectAppliedPatch(*it, *found) : *found;
+        }
+    }
+    return applied;
+}
+
+namespace {
 
 std::atomic<uint64_t> gOperationSequence{0u};
 

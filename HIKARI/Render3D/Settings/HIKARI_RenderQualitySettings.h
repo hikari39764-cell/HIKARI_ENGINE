@@ -77,7 +77,8 @@ enum class LocalShadowQuality : uint8_t {
     High,
 };
 
-enum class StylizedCloudQuality : uint8_t {
+// 体積雲の追跡の画質（解像度・歩数・光源方向のサンプル数・届く距離）。
+enum class VolumetricCloudQuality : uint8_t {
     Low = 0,
     Balanced,
     High,
@@ -102,6 +103,23 @@ struct RenderResolution {
     int height = 0;
 };
 
+// 太陽方向光の影の技術設定。影の距離と強さは環境プロファイルが持つ。
+struct DirectionalShadowQualitySettings {
+    uint32_t resolution = 2048;
+    uint32_t cascadeCount = 3;
+    float cascadeSplitLambda = 0.65f;
+    float cascadeBlend = 0.10f;
+    float nearPlane = 0.1f;
+    float farPlane = 80.0f;
+    float depthBias = 0.001f;
+    float normalBias = 0.02f;
+    bool pcfEnabled = true;
+    float pcfRadius = 1.0f;
+    bool stabilize = true;
+
+    bool operator==(const DirectionalShadowQualitySettings&) const = default;
+};
+
 struct RenderQualitySettings {
     RenderResolutionPreset sceneResolution = RenderResolutionPreset::P1080;
     RenderResolutionPreset windowSize = RenderResolutionPreset::P720;
@@ -119,9 +137,11 @@ struct RenderQualitySettings {
     uint8_t frameGenerationMultiplier = 2;
     VolumetricLightingQuality volumetricLightingQuality = VolumetricLightingQuality::Balanced;
     DepthOfFieldQuality depthOfFieldQuality = DepthOfFieldQuality::Medium;
-    StylizedCloudQuality stylizedCloudQuality = StylizedCloudQuality::Balanced;
-    DynamicGiQuality dynamicGiQuality = DynamicGiQuality::Off;
+    VolumetricCloudQuality volumetricCloudQuality = VolumetricCloudQuality::Balanced;
+    // 光追（inline ray query）が無い GPU では動的 GI が Unsupported になり、空の光へ戻る。
+    DynamicGiQuality dynamicGiQuality = DynamicGiQuality::Balanced;
     LocalShadowQuality localShadowQuality = LocalShadowQuality::Balanced;
+    DirectionalShadowQualitySettings directionalShadow{};
     float taaHistoryWeight = 0.92f;
     float taaVarianceClipGamma = 1.25f;
     float taaDepthRejection = 0.0025f;
@@ -166,7 +186,7 @@ const char* RenderAntiAliasingModeLabel(RenderAntiAliasingMode mode);
 const char* DlssQualityModeLabel(DlssQualityMode mode);
 const char* RenderFrameGenerationModeLabel(RenderFrameGenerationMode mode);
 const char* VolumetricLightingQualityLabel(VolumetricLightingQuality quality);
-const char* StylizedCloudQualityLabel(StylizedCloudQuality quality);
+const char* VolumetricCloudQualityLabel(VolumetricCloudQuality quality);
 const char* DynamicGiQualityLabel(DynamicGiQuality quality);
 const char* LocalShadowQualityLabel(LocalShadowQuality quality);
 const char* DepthOfFieldQualityLabel(DepthOfFieldQuality quality);

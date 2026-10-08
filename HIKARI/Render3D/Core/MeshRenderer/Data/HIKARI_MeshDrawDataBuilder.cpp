@@ -11,6 +11,7 @@
 #include "Core/HIKARI_TimeService.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
@@ -71,9 +72,9 @@ float ProjectionShapeValue(REFLECTION::RuntimeReflectionProbeProjectionShape sha
 void FillLightCB(const SceneEnvironment& environment, const RENDER3D::LIGHTING::LocalLightListView& localLightList,
                  RenderDebugView debugView, LightCB& out, MeshRendererDebugStats& stats) {
     out = {};
-    const SKYRENDERER::SkyEnvironmentData& skyData = SKYRENDERER::GetEnvironmentData();
+    out.viewExposure = RENDER3D::COLOR::GetActiveViewExposure();
 
-    // 空・媒質・bake と同じ地表の太陽入力。透過率はここで一度だけ適用する。
+    // 空・媒質・bake と同じ地表の太陽入力 [lux]。透過率はここで一度だけ適用する。
     const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
     const auto dir = solar.sunDirection * -1.0f;
     const float halfAngleSine = std::sin(0.5f * solar.sunAngularRadius);
@@ -81,20 +82,19 @@ void FillLightCB(const SceneEnvironment& environment, const RENDER3D::LIGHTING::
     out.directionalColor = {solar.sunColor.x, solar.sunColor.y, solar.sunColor.z, 1.0f};
     out.directionalIntensity = solar.sunRadiance;
 
-    const auto ambientColor = SKYRENDERER::ResolveAmbientLightColor(environment);
-    const bool skyEnabled = environment.sky.enabled && environment.sky.mode != SkyMode::None;
-
-    MATH::Vec3 fogColor = environment.fog.color;
-    if (environment.fog.useSkyHorizonColor && skyEnabled && skyData.valid) {
-        fogColor = {skyData.horizonColor.x * skyData.exposure, skyData.horizonColor.y * skyData.exposure,
-                    skyData.horizonColor.z * skyData.exposure};
-    }
-
-    out.ambientColor = {ambientColor.x, ambientColor.y, ambientColor.z, 1.0f};
-    out.ambientIntensity = std::max(0.0f, environment.ambient.intensity);
-    out.fogColorDensity = {fogColor.x, fogColor.y, fogColor.z, std::max(0.0f, environment.fog.density)};
-    out.fogParams = {environment.fog.enabled ? 1.0f : 0.0f, std::max(0.0f, environment.fog.startDistance),
-                     std::max(0.1f, environment.fog.endDistance), std::max(0.0f, environment.fog.heightFalloff)};
+    // 環境光は空（天空光）が持つ。一定色の環境光は使わない。
+    out.ambientColor = {0.0f, 0.0f, 0.0f, 1.0f};
+    out.ambientIntensity = 0.0f;
+    // 体積霧が無い時の解析霧。散乱光 = 反照率 × (空の環境光 + 等方位相の太陽光)。
+    const FogSettings& fog = environment.fog;
+    const MATH::Vec3 skyAmbient = SKYRENDERER::EstimateSkyAmbientRadiance(environment);
+    const float sunPhase = solar.sunRadiance / (4.0f * 3.14159265f);
+    const MATH::Vec3 fogRadiance = {fog.albedo.x * (skyAmbient.x + solar.sunColor.x * sunPhase),
+                                    fog.albedo.y * (skyAmbient.y + solar.sunColor.y * sunPhase),
+                                    fog.albedo.z * (skyAmbient.z + solar.sunColor.z * sunPhase)};
+    out.fogColorDensity = {fogRadiance.x, fogRadiance.y, fogRadiance.z, std::max(0.0f, fog.density)};
+    out.fogParams = {fog.enabled ? 1.0f : 0.0f, std::max(0.0f, fog.startDistance), fog.baseHeight,
+                     std::max(0.0f, fog.heightFalloff)};
     out.debugView = static_cast<uint32_t>(debugView);
     out.forwardCostMode =
         static_cast<float>(static_cast<uint8_t>(RENDER3D::GetRenderQualitySettings().forwardCostMode));
@@ -105,6 +105,12 @@ void FillLightCB(const SceneEnvironment& environment, const RENDER3D::LIGHTING::
         std::clamp(ssr.thickness, 0.0001f, 0.05f), std::clamp(ssr.maxRoughness, 0.05f, 1.0f)};
     out.screenSpaceReflectionParams1 = {std::clamp(ssr.stride, 0.02f, 2.0f), std::clamp(ssr.edgeFade, 0.01f, 0.35f),
                                         static_cast<float>(ResolveScreenSpaceReflectionMaxSteps(ssr.quality)), 0.0f};
+    const RENDERSTYLE::RenderStyleShading& shading = environment.styleShading;
+    const bool cel = shading.model == RENDERSTYLE::RenderStyleShadingModel::Cel;
+    out.styleShading0 = {cel ? static_cast<float>(shading.bands) : 0.0f, shading.threshold, shading.softness,
+                         shading.specular};
+    out.styleShading1 = {cel ? shading.shadowTint.x : 1.0f, cel ? shading.shadowTint.y : 1.0f,
+                         cel ? shading.shadowTint.z : 1.0f, cel ? shading.rim : 0.0f};
 
     out.localLightCount = localLightList.lightCount;
     out.localLightClusterCountX = localLightList.clusterCountX;
@@ -117,7 +123,7 @@ void FillLightCB(const SceneEnvironment& environment, const RENDER3D::LIGHTING::
     out.localLightDepthScale = localLightList.depthScale;
     out.localLightDepthBias = localLightList.depthBias;
 
-    stats.directionalEnabled = environment.directional.enabled;
+    stats.directionalEnabled = solar.valid;
     stats.directionalIntensity = out.directionalIntensity;
     stats.ambientIntensity = out.ambientIntensity;
     stats.localLightSourceCount = localLightList.sourceCount;
@@ -133,6 +139,7 @@ void FillLightCB(const SceneEnvironment& environment, const RENDER3D::LIGHTING::
 
 void FillShadowCB(const SceneEnvironment& environment, uint64_t frameIndex, ShadowCB& out) {
     out = {};
+    const RENDER3D::DirectionalShadowQualitySettings& quality = RENDER3D::GetRenderQualitySettings().directionalShadow;
     const auto& cascadeMatrices = SHADOW::GetDirectionalCascadeLightViewProj();
     for (uint32_t cascadeIndex = 0; cascadeIndex < SHADOW::kMaxDirectionalShadowCascades; ++cascadeIndex) {
         out.lightViewProj[cascadeIndex] = cascadeMatrices[cascadeIndex];
@@ -140,13 +147,13 @@ void FillShadowCB(const SceneEnvironment& environment, uint64_t frameIndex, Shad
     out.cascadeSplitDistances = SHADOW::GetDirectionalCascadeSplitDistances();
     out.cascadeDepthBiasScales = SHADOW::GetDirectionalCascadeDepthBiasScales();
     out.cascadeParams = {static_cast<float>(SHADOW::GetDirectionalCascadeCount()),
-                         std::clamp(environment.directionalShadow.cascadeBlend, 0.0f, 0.3f), 0.5f, 0.5f};
-    out.enabled = (SHADOW::IsDirectionalShadowEnabled() && environment.directionalShadow.enabled) ? 1u : 0u;
-    out.depthBias = std::max(0.0f, environment.directionalShadow.depthBias);
-    out.normalBias = std::max(0.0f, environment.directionalShadow.normalBias);
-    out.strength = std::clamp(environment.directionalShadow.strength, 0.0f, 1.0f);
-    out.pcfEnabled = environment.directionalShadow.pcfEnabled ? 1u : 0u;
-    out.pcfRadius = std::clamp(environment.directionalShadow.pcfRadius, 0.0f, 4.0f);
+                         std::clamp(quality.cascadeBlend, 0.0f, 0.3f), 0.5f, 0.5f};
+    out.enabled = (SHADOW::IsDirectionalShadowEnabled() && environment.shadows.enabled) ? 1u : 0u;
+    out.depthBias = std::max(0.0f, quality.depthBias);
+    out.normalBias = std::max(0.0f, quality.normalBias);
+    out.strength = std::clamp(environment.shadows.strength, 0.0f, 1.0f);
+    out.pcfEnabled = quality.pcfEnabled ? 1u : 0u;
+    out.pcfRadius = std::clamp(quality.pcfRadius, 0.0f, 4.0f);
     out.texelSizeX = SHADOW::GetShadowAtlasTexelSize();
     out.texelSizeY = out.texelSizeX;
     out.edgeFade = 0.04f;
@@ -156,6 +163,8 @@ void FillShadowCB(const SceneEnvironment& environment, uint64_t frameIndex, Shad
 
 void FillSelectedIrradianceVolumes(SkyEnvironmentCB& out) {
     for (auto& volume : out.irradianceVolumes)
+        volume = {};
+    for (auto& volume : out.dynamicGiVolumes)
         volume = {};
     const RENDER3D::LightProbeVolumeSamplingMode lightProbeSampling =
         RENDER3D::GetRenderQualitySettings().lightProbeVolumeSampling;
@@ -174,13 +183,20 @@ void FillSelectedIrradianceVolumes(SkyEnvironmentCB& out) {
         out.irradianceVolumes[slot] =
             RENDER3D::LIGHTPROBE::BuildIrradianceVolumeGpuData(*volume, lightProbeSamplingMode);
     }
+    const auto dynamicVolumes = RENDER3D::LIGHTPROBE::GetDynamicGiVolumes();
+    for (size_t index = 0; index < dynamicVolumes.size(); ++index) {
+        if (dynamicVolumes[index].valid)
+            out.dynamicGiVolumes[index] =
+                RENDER3D::LIGHTPROBE::BuildIrradianceVolumeGpuData(dynamicVolumes[index], lightProbeSamplingMode);
+    }
 }
 
 void FillSkyEnvironmentCB(const SceneEnvironment& environment, const MATH::Vec3& cameraPosition,
                           const MATH::Vec3& viewFocusPosition, SkyEnvironmentCB& out) {
     out = {};
     const IBL::IblEnvironmentData& iblData = IBL::GetEnvironmentData();
-    const bool skyEnabled = environment.sky.enabled && environment.sky.mode != SkyMode::None;
+    const SKYRENDERER::SkyEnvironmentData& skyData = SKYRENDERER::GetEnvironmentData();
+    const bool skyEnabled = skyData.valid && skyData.mode != SkyMode::None;
     out.iblParams = {skyEnabled && iblData.hasIrradiance ? 1.0f : 0.0f,
                      skyEnabled && iblData.hasPrefiltered ? 1.0f : 0.0f, iblData.hasBrdfLut ? 1.0f : 0.0f,
                      static_cast<float>(std::max<uint32_t>(1u, iblData.prefilteredMipCount))};
@@ -207,47 +223,21 @@ void FillSkyEnvironmentCB(const SceneEnvironment& environment, const MATH::Vec3&
         environment.ambientOcclusion.enabled && environment.ambientOcclusion.mode != SsaoMode::Off;
     out.ambientSamplingParams = {ssaoConfiguredEnabled ? 1.0f : 0.0f,
                                  std::clamp(environment.ambientOcclusion.diffuseStrength, 0.0f, 1.0f),
-                                 std::clamp(environment.ambientOcclusion.specularStrength, 0.0f, 1.0f),
-                                 environment.surfaceLightmaps.enabled ? 1.0f : 0.0f};
+                                 std::clamp(environment.ambientOcclusion.specularStrength, 0.0f, 1.0f), 1.0f};
     RENDER3D::LIGHTPROBE::PrepareView(cameraPosition, viewFocusPosition);
     FillSelectedIrradianceVolumes(out);
 
-    const SKYRENDERER::SkyEnvironmentData& skyData = SKYRENDERER::GetEnvironmentData();
-    if (!skyEnabled || !skyData.valid) {
+    if (!skyEnabled) {
         return;
     }
 
-    out.skyZenithExposure = {skyData.zenithColor.x, skyData.zenithColor.y, skyData.zenithColor.z, skyData.exposure};
-    out.skyHorizonReflection = {skyData.horizonColor.x, skyData.horizonColor.y, skyData.horizonColor.z,
-                                skyData.reflectionIntensity};
-    out.skyGroundAmbient = {skyData.groundColor.x, skyData.groundColor.y, skyData.groundColor.z,
-                            skyData.ambientFromSky};
-    out.skyParams = {static_cast<float>(skyData.mode), skyData.hasCubemap ? 1.0f : 0.0f, skyData.horizonPower,
-                     skyData.yaw};
+    out.skyScales = {skyData.exposure, skyData.reflectionIntensity, skyData.ambientFromSky, 0.0f};
+    out.skyParams = {static_cast<float>(skyData.mode), skyData.hasCubemap ? 1.0f : 0.0f, 0.0f, skyData.yaw};
     out.skyTintLighting = {skyData.tint.x, skyData.tint.y, skyData.tint.z,
                            skyData.mode == SkyMode::Texture2D && skyData.textureHandle >= 0
                                ? static_cast<float>(skyData.textureHandle + 1)
                                : 0.0f};
 
-    const bool atmosphereEnabled = skyData.atmosphereEnabled && skyData.mode == SkyMode::Atmosphere;
-    if (atmosphereEnabled) {
-        const auto ground = skyData.atmosphereConstants.groundColor;
-        out.skyGroundAmbient = {ground.x, ground.y, ground.z, skyData.ambientFromSky};
-        // A stale authored prefiltered/irradiance cubemap is not the
-        // same environment as the authoritative atmosphere sun. Keep
-        // the BRDF LUT, but force diffuse/specular sky sampling through
-        // the shared atmosphere evaluator until dynamic atmosphere IBL
-        // baking is available.
-        out.iblParams.x = 0.0f;
-        out.iblParams.y = 0.0f;
-    }
-    if (skyData.mode == SkyMode::Texture2D) {
-        // A custom panorama without its own convolved artifacts must not
-        // reflect a stale/default cubemap. The shared shader sky provider
-        // supplies the authored panorama and analytic BRDF fallback.
-        out.iblParams.x = 0.0f;
-        out.iblParams.y = 0.0f;
-    }
     out.atmospherePlanetParams = skyData.atmosphereConstants.planetParams;
     out.atmosphereRayleigh = skyData.atmosphereConstants.rayleighScattering;
     out.atmosphereMie = skyData.atmosphereConstants.mieScattering;
@@ -255,8 +245,6 @@ void FillSkyEnvironmentCB(const SceneEnvironment& environment, const MATH::Vec3&
     out.atmosphereOzoneParams = skyData.atmosphereConstants.ozoneParams;
     out.atmosphereSunDirection = skyData.atmosphereConstants.sunDirection;
     out.atmosphereSunColorRadiance = skyData.atmosphereConstants.sunColorRadiance;
-    std::copy(std::begin(skyData.gradientIrradiance.coefficients), std::end(skyData.gradientIrradiance.coefficients),
-              std::begin(out.gradientSkyIrradiance));
 }
 
 namespace {}

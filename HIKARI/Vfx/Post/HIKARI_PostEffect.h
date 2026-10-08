@@ -30,7 +30,7 @@ public:
 
     void SetTime(float t);
 
-    bool BindAndDraw(QuadDrawer& drawer);
+    bool BindAndDraw(QuadDrawer& drawer, bool additive = false);
     static constexpr uint32_t DrawCapacityPerFrame() noexcept { return kConstantDrawCapacityPerFrame; }
 
 private:

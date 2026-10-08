@@ -120,8 +120,8 @@ void VfxWorkspaceController::DrawEmitterAdvanced(AssetDatabase& database, const 
             break;
         case VFX::VfxSpecialOutputType::Light:
             outputEditor.Color("Color", "light.color", output.light.color);
-            outputEditor.Float(VfxUiText("Intensity").c_str(), "light.intensity", output.light.intensity, 0.05f,
-                               VFX::kVfxLightIntensityMin, VFX::kVfxLightIntensityMax);
+            outputEditor.Float(VfxUiText("Luminous Flux (lm)").c_str(), "light.luminousFlux", output.light.luminousFlux,
+                               100.0f, VFX::kVfxLightFluxMin, VFX::kVfxLightFluxMax);
             outputEditor.Float(VfxUiText("Range").c_str(), "light.range", output.light.range, 0.05f,
                                VFX::kVfxLightRangeMin, VFX::kVfxLightRangeMax);
             outputEditor.Float(VfxUiText("Source Radius").c_str(), "light.sourceRadius", output.light.sourceRadius,

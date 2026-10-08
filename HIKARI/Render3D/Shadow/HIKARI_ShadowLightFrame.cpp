@@ -6,6 +6,7 @@
 #include <numbers>
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
+#include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 
 namespace HIKARI::SHADOW {
 
@@ -17,8 +18,8 @@ float SnapShadowAnchorValue(float value, float grid) {
     return std::round(value / grid) * grid;
 }
 
-float ResolveShadowAnchorGrid(const SceneEnvironment& environment, float orthoSize, uint32_t resolution) {
-    if (!environment.directionalShadow.stabilize || resolution == 0u) {
+float ResolveShadowAnchorGrid(float orthoSize, uint32_t resolution) {
+    if (!RENDER3D::GetRenderQualitySettings().directionalShadow.stabilize || resolution == 0u) {
         return 0.0f;
     }
 
@@ -27,8 +28,9 @@ float ResolveShadowAnchorGrid(const SceneEnvironment& environment, float orthoSi
     return (std::max)(texelWorldSize * kSnapTexels, 0.0001f);
 }
 
+// 影を落とす主光源（昼は太陽、夜は月）の光線の向き。
 MATH::Vec3 ResolveLightDirection(const SceneEnvironment& environment) {
-    MATH::Vec3 lightDir = MATH::Normalize(environment.directional.direction);
+    MATH::Vec3 lightDir = MATH::Normalize(environment.frame.Primary().toLight * -1.0f);
     if (MATH::Length(lightDir) <= 1e-6f) {
         lightDir = MATH::Normalize(MATH::Vec3{0.4f, -1.0f, -0.6f});
     }
@@ -67,11 +69,13 @@ ShadowLightFrame BuildCascadeFrame(const SceneEnvironment& environment, const Ca
 
     const float baseOrthoSize = radius * 2.0f;
     // 5x5 PCF の最大 2*radius、線形比較の半 Texel、Snap の半 Texel を確保する。
-    const float guardTexels =
-        (std::max)(2.0f, std::ceil(2.0f * std::clamp(environment.directionalShadow.pcfRadius, 0.0f, 4.0f)) + 1.0f);
+    const float guardTexels = (std::max)(
+        2.0f,
+        std::ceil(2.0f * std::clamp(RENDER3D::GetRenderQualitySettings().directionalShadow.pcfRadius, 0.0f, 4.0f)) +
+            1.0f);
     const float usableFraction = 1.0f - 2.0f * guardTexels / static_cast<float>((std::max)(32u, resolution));
     const float orthoSize = baseOrthoSize / usableFraction;
-    const float anchorGrid = ResolveShadowAnchorGrid(environment, orthoSize, resolution);
+    const float anchorGrid = ResolveShadowAnchorGrid(orthoSize, resolution);
     MATH::Vec3 anchor = center;
     if (anchorGrid > 0.0f) {
         anchor = right * SnapShadowAnchorValue(MATH::Dot(center, right), anchorGrid) +
@@ -79,9 +83,10 @@ ShadowLightFrame BuildCascadeFrame(const SceneEnvironment& environment, const Ca
                  lightDir * SnapShadowAnchorValue(MATH::Dot(center, lightDir), anchorGrid);
     }
 
-    const float depthPadding = (std::max)(radius, environment.directionalShadow.farPlane * 0.25f);
+    const float depthPadding =
+        (std::max)(radius, RENDER3D::GetRenderQualitySettings().directionalShadow.farPlane * 0.25f);
     const float lightDistance = radius + depthPadding;
-    const float nearPlane = (std::max)(0.01f, environment.directionalShadow.nearPlane);
+    const float nearPlane = (std::max)(0.01f, RENDER3D::GetRenderQualitySettings().directionalShadow.nearPlane);
     const float farPlane = (std::max)(nearPlane + 1.0f, lightDistance * 2.0f + radius);
     const MATH::Vec3 lightPos = anchor - lightDir * lightDistance;
 
@@ -187,13 +192,14 @@ uint32_t ResolveShadowResolution(uint32_t resolution) {
 DirectionalShadowFrameSet BuildDirectionalShadowFrameSet(const SceneEnvironment& environment, const Camera3D& camera,
                                                          uint32_t cascadeResolution) {
     DirectionalShadowFrameSet result{};
-    result.cascadeCount = std::clamp(environment.directionalShadow.cascadeCount, 1u, kMaxDirectionalShadowCascades);
+    const RENDER3D::DirectionalShadowQualitySettings& quality = RENDER3D::GetRenderQualitySettings().directionalShadow;
+    result.cascadeCount = std::clamp(quality.cascadeCount, 1u, kMaxDirectionalShadowCascades);
     const float nearDistance = (std::max)(0.01f, camera.GetNearZ());
     const float farDistance =
-        (std::max)(nearDistance + 0.01f, (std::min)(camera.GetFarZ(), environment.directionalShadow.shadowDistance));
-    const float lambda = std::clamp(environment.directionalShadow.cascadeSplitLambda, 0.0f, 1.0f);
+        (std::max)(nearDistance + 0.01f, (std::min)(camera.GetFarZ(), environment.shadows.distance));
+    const float lambda = std::clamp(quality.cascadeSplitLambda, 0.0f, 1.0f);
 
-    const float blend = std::clamp(environment.directionalShadow.cascadeBlend, 0.0f, 0.3f);
+    const float blend = std::clamp(quality.cascadeBlend, 0.0f, 0.3f);
     std::array<float, kMaxDirectionalShadowCascades> splitDistances{};
     float splitNear = nearDistance;
     float fitNear = nearDistance;

@@ -31,12 +31,10 @@ public:
     void CrossFadeMotion(ANIMATION::AnimationMotionSample motion, float durationSeconds, float speed = 1.0f,
                          bool loop = true, bool restart = true);
     void UpdateMotion(ANIMATION::AnimationMotionSample motion, const ModelAsset& model);
-    void PlayCurrent(bool restart = true);
     void PlayOnce(std::string clip, bool restart = true);
     void Pause();
     void Resume();
     void Stop();
-    void ResetTime();
     void Advance(float deltaTimeSec, float clipDurationSec = -1.0f);
 
     void SetClip(std::string clip);

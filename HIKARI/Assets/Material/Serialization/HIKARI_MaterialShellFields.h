@@ -11,6 +11,12 @@ inline constexpr auto kMaterialShellFields = [](auto&& field) {
     field("Thickness", &MaterialShellSettings::thickness, JSONFIELDS::Range{0.0, 1.0});
     field("LodStartPixels", &MaterialShellSettings::lodStartPixels, JSONFIELDS::Range{0.0, 16384.0});
     field("LodFullPixels", &MaterialShellSettings::lodFullPixels, JSONFIELDS::Range{0.0, 16384.0});
+    field("StrokeTiling", &MaterialShellSettings::strokeTiling, JSONFIELDS::Range{0.01, 64.0});
+    field("StrokeRotation", &MaterialShellSettings::strokeRotation, JSONFIELDS::Range{-6.3, 6.3});
+    field("StrokeVariation", &MaterialShellSettings::strokeVariation, JSONFIELDS::Range{0.0, 1.0});
+    field("StrokeNormalStrength", &MaterialShellSettings::strokeNormalStrength, JSONFIELDS::Range{0.0, 4.0});
+    field("EdgePower", &MaterialShellSettings::edgePower, JSONFIELDS::Range{0.1, 16.0});
+    field("Coverage", &MaterialShellSettings::coverage, JSONFIELDS::Range{0.0, 1.0});
 };
 
 } // namespace HIKARI

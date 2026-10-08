@@ -3,6 +3,9 @@
 #include <array>
 #include <string_view>
 
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
+#include "Render3D/Settings/HIKARI_RenderQualityFields.h"
+
 namespace HIKARI::RENDER3D {
 
 namespace {
@@ -73,10 +76,10 @@ constexpr EnumNames<LocalShadowQuality, 4> kLocalShadowNames{{
     {LocalShadowQuality::Balanced, "Balanced"},
     {LocalShadowQuality::High, "High"},
 }};
-constexpr EnumNames<StylizedCloudQuality, 3> kStylizedCloudNames{{
-    {StylizedCloudQuality::Low, "Low"},
-    {StylizedCloudQuality::Balanced, "Balanced"},
-    {StylizedCloudQuality::High, "High"},
+constexpr EnumNames<VolumetricCloudQuality, 3> kVolumetricCloudNames{{
+    {VolumetricCloudQuality::Low, "Low"},
+    {VolumetricCloudQuality::Balanced, "Balanced"},
+    {VolumetricCloudQuality::High, "High"},
 }};
 
 template <typename Enum, size_t Size>
@@ -120,6 +123,24 @@ bool ReadValue(const nlohmann::json& node, const char* key, Value& value) {
     }
 }
 
+bool ReadDirectionalShadow(const nlohmann::json& node, DirectionalShadowQualitySettings& settings) {
+    const auto member = node.find("directionalShadow");
+    if (member == node.end()) {
+        return true;
+    }
+    if (!member->is_object()) {
+        return false;
+    }
+    JSONFIELDS::ReadLenient(*member, settings, kDirectionalShadowFields);
+    return true;
+}
+
+nlohmann::json WriteDirectionalShadow(const DirectionalShadowQualitySettings& settings) {
+    nlohmann::json node = nlohmann::json::object();
+    JSONFIELDS::Write(node, settings, kDirectionalShadowFields);
+    return node;
+}
+
 bool ReadDepthOfFieldQuality(const nlohmann::json& node, DepthOfFieldQuality& quality) {
     if (!node.contains("depthOfFieldQuality")) {
         return true;
@@ -146,9 +167,10 @@ nlohmann::json SerializeRenderQualitySettings(const RenderQualitySettings& sourc
         {"frameGenerationMultiplier", settings.frameGenerationMultiplier},
         {"volumetricLightingQuality", EnumName(settings.volumetricLightingQuality, kVolumetricNames)},
         {"depthOfFieldQuality", TEXT::EnumToName(kDepthOfFieldQualityNames, settings.depthOfFieldQuality)},
-        {"stylizedCloudQuality", EnumName(settings.stylizedCloudQuality, kStylizedCloudNames)},
+        {"volumetricCloudQuality", EnumName(settings.volumetricCloudQuality, kVolumetricCloudNames)},
         {"dynamicGiQuality", EnumName(settings.dynamicGiQuality, kDynamicGiNames)},
         {"localShadowQuality", EnumName(settings.localShadowQuality, kLocalShadowNames)},
+        {"directionalShadow", WriteDirectionalShadow(settings.directionalShadow)},
         {"taaHistoryWeight", settings.taaHistoryWeight},
         {"taaVarianceClipGamma", settings.taaVarianceClipGamma},
         {"taaDepthRejection", settings.taaDepthRejection},
@@ -182,9 +204,10 @@ bool DeserializeRenderQualitySettings(const nlohmann::json& node, RenderQualityS
         ReadValue(node, "frameGenerationMultiplier", parsed.frameGenerationMultiplier) &&
         ReadEnum(node, "volumetricLightingQuality", kVolumetricNames, parsed.volumetricLightingQuality) &&
         ReadDepthOfFieldQuality(node, parsed.depthOfFieldQuality) &&
-        ReadEnum(node, "stylizedCloudQuality", kStylizedCloudNames, parsed.stylizedCloudQuality) &&
+        ReadEnum(node, "volumetricCloudQuality", kVolumetricCloudNames, parsed.volumetricCloudQuality) &&
         ReadEnum(node, "dynamicGiQuality", kDynamicGiNames, parsed.dynamicGiQuality) &&
         ReadEnum(node, "localShadowQuality", kLocalShadowNames, parsed.localShadowQuality) &&
+        ReadDirectionalShadow(node, parsed.directionalShadow) &&
         ReadValue(node, "taaHistoryWeight", parsed.taaHistoryWeight) &&
         ReadValue(node, "taaVarianceClipGamma", parsed.taaVarianceClipGamma) &&
         ReadValue(node, "taaDepthRejection", parsed.taaDepthRejection) &&

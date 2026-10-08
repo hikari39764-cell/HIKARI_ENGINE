@@ -2,6 +2,7 @@
 
 #if defined(HIKARI_WITH_EDITOR)
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string_view>
@@ -108,6 +109,8 @@ struct EditorInteractiveViewRequest {
     EditorInteractiveViewGuideOverlay guideOverlay{};
     bool suppressSpatialLightingProviders = false;
     bool useDefaultSkyIbl = false;
+    // a > 0 の時、空の代わりに rgb（表示参照の値）の一様な背景を塗る。VFX 確認用の暗・灰・明の背景。
+    std::array<float, 4> backgroundColor{};
     // Spatial AA is applied after the shared display resolve. It is
     // intentionally opt-in so Scene views keep their product AA policy.
     bool spatialAntiAliasing = false;

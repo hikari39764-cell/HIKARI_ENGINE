@@ -175,20 +175,22 @@ float3 HikariSampleWaterRefraction(
     opticalDistance = max(HikariFiniteOr(
         opticalDistance,
         fallbackOpticalDistance), 0.0f);
-    const float3 sampledCenterColor =
+    // 場面色は Pre-Exposure 済み。範囲の検査は書かれた値で行い、絶対量へ戻して合成する。
+    const float3 capturedCenterColor =
         gSceneColorTex.Sample(gLinearClamp, screenUv).rgb;
     const bool centerCaptureValid =
         (gScreenSpaceTraceFlags &
             HIKARI_SCREEN_SPACE_SCENE_COLOR_CAPTURE_VALID) != 0u &&
-        HikariIsFiniteFloat3(sampledCenterColor) &&
-        all(abs(sampledCenterColor) < 65504.0f.xxx);
+        HikariIsFiniteFloat3(capturedCenterColor) &&
+        all(abs(capturedCenterColor) < 65504.0f.xxx);
+    const float3 sampledCenterColor = HikariRemovePreExposure(capturedCenterColor, gViewExposure);
     const float3 centerColor = HikariWaterResolveSceneCapture(
         sampledCenterColor,
         skyFallback,
         centerCaptureValid ? 1.0f : 0.0f,
         1.0f);
     const float3 sampledCandidateColor = candidateValid
-        ? gSceneColorTex.Sample(gLinearClamp, candidateUv).rgb
+        ? HikariRemovePreExposure(gSceneColorTex.Sample(gLinearClamp, candidateUv).rgb, gViewExposure)
         : centerColor;
     const float3 candidateColor = candidateValid
         ? HikariWaterResolveSceneCapture(
@@ -480,10 +482,12 @@ float4 HikariShadeWaterSurface(
         HikariFiniteOr(p.scatteringColor, 0.0f.xxx),
         0.0015f.xxx);
     const float3 sunRadiance = HikariWaterResolveSunRadiance();
+    const float3 skyAmbient = HikariWaterSkyAmbient();
     const float3 transmittedBase =
         HikariWaterResolveSingleLayerScattering(
             sceneRefraction,
             safeScatteringColor,
+            skyAmbient,
             transmittance,
             view,
             light,
@@ -493,9 +497,10 @@ float4 HikariShadeWaterSurface(
     // Beer-Lambert remains the authored transport term. The single-layer
     // solar lobe makes clear water readable without replacing the scene
     // capture or inventing an unbounded emissive contribution.
+    // 下限も照らされた散乱色で決め、真っ黒にならない最後の床だけを表示参照で持つ。
     const float3 transmissionFloor = max(
-        safeScatteringColor * (anime ? 0.12f : 0.08f),
-        float3(0.0015f, 0.004f, 0.006f));
+        safeScatteringColor * skyAmbient * (anime ? 0.12f : 0.08f),
+        HikariDisplayReferredToRadiance(float3(0.0015f, 0.004f, 0.006f), gViewExposure));
     const float3 transmittedColor = max(
         max(transmittedBase, 0.0f.xxx),
         transmissionFloor);
@@ -611,7 +616,7 @@ float4 HikariShadeWaterSurface(
     waterSsrConfig.edgeFade = HikariFiniteOr(
         gScreenSpaceReflectionParams1.y,
         0.0f);
-    const HikariScreenSpaceReflectionTraceResult waterSsr =
+    HikariScreenSpaceReflectionTraceResult waterSsr =
         HikariTraceScreenSpaceReflectionFromSurface(
             gSceneColorTex,
             gSceneDepthTex,
@@ -626,6 +631,15 @@ float4 HikariShadeWaterSurface(
             gViewProj,
             gInvViewProj,
             waterSsrConfig);
+    // 追跡結果は場面色（Pre-Exposure 済み）。書かれた値で検査してから絶対量へ戻す。
+    if (waterSsr.hit != 0u && HikariIsValidScreenSpaceReflectionRadiance(waterSsr.radiance))
+    {
+        waterSsr.radiance = HikariRemovePreExposure(waterSsr.radiance, gViewExposure);
+    }
+    else
+    {
+        waterSsr.hit = 0u;
+    }
     // Preserve the existing SSR -> probe/IBL -> sky order. An invalid SSR
     // hit cannot replace a valid provider with black; the helper also uses a
     // max() sky fallback rather than adding a second reflection lobe.
@@ -745,8 +759,9 @@ float4 HikariShadeWaterSurface(
         // Anime ramp is a bounded tint over the physical transport. It must
         // not replace Beer-Lambert transmission or erase a valid reflection
         // provider, which was the source of the old flat blue body.
+        // 色の段は表示参照の色。透過光も表示上の明るさへ写してから比を取る。
         const float3 transmissionReference = max(
-            transmittedColor,
+            HikariRadianceToDisplayReferred(transmittedColor, gViewExposure),
             float3(0.045f, 0.045f, 0.045f));
         const float3 graphicTint = clamp(
             graphicBody / transmissionReference,
@@ -812,7 +827,9 @@ float4 HikariShadeWaterSurface(
             shallowSummer,
             float3(0.16f, 0.84f, 0.88f),
             0.62f);
-        color += crestRibbonColor *
+        const float3 surfaceLighting =
+            HikariWaterDiffuseLighting(geometricNormal, light, directShadow);
+        color += crestRibbonColor * surfaceLighting *
             (crestRibbon * stylizedDetailWeight *
                 (0.10f + 0.08f * sunStep));
 
@@ -829,9 +846,9 @@ float4 HikariShadeWaterSurface(
             0.62f);
         color = lerp(
             color,
-            foamCyanEdge,
+            foamCyanEdge * surfaceLighting,
             saturate(foamEdge * 0.92f + foamCore * 0.20f));
-        color = lerp(color, foamWarmCore, foamCore);
+        color = lerp(color, foamWarmCore * surfaceLighting, foamCore);
     }
     else
     {
@@ -857,11 +874,9 @@ float4 HikariShadeWaterSurface(
         color = transmissionTerm + HikariWaterApplyReflectionBudget(
             reflectionEnergy,
             p.reflectionStrength);
-        const float foamLighting = 0.72f +
-            0.28f * saturate(dot(geometricNormal, light)) * directShadow;
         color = lerp(
             color,
-            p.foamColor * foamLighting,
+            p.foamColor * HikariWaterDiffuseLighting(geometricNormal, light, directShadow),
             foam);
     }
 
@@ -891,11 +906,11 @@ float4 HikariShadeWaterSurface(
 
     // 非有限値を alpha=1 で SceneColor に確定書き込みしない。
     // provider が一時的に無効でも、各スタイルの夏色を明示的な最終退避先にする。
-    const float3 summerFallback = anime
+    const float3 summerFallback = HikariDisplayReferredToRadiance(anime
         ? float3(0.02f, 0.30f, 0.42f)
-        : float3(0.015f, 0.18f, 0.24f);
+        : float3(0.015f, 0.18f, 0.24f), gViewExposure);
     const bool colorFitsHdrTarget = HikariIsFiniteFloat3(color) &&
-        all(abs(color) < 65504.0f.xxx);
+        all(abs(color) < HikariMaxSceneRadiance(gViewExposure).xxx);
     const float3 finiteColor = colorFitsHdrTarget
         ? max(color, 0.0f.xxx)
         : summerFallback;
@@ -920,7 +935,7 @@ float4 HikariShadeWaterSurface(
 
     // SceneColor は上で明示的に合成済み。alpha=1 の premultiplied blend で
     // destination の二重取り込みを避ける。
-    return float4(resolvedColor, 1.0f);
+    return HikariPreExposeView(float4(resolvedColor, 1.0f));
 }
 
 #endif

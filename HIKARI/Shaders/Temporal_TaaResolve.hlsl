@@ -376,8 +376,9 @@ PSOut PSMain(VSOut input)
     uint2 pixel = min(uint2(input.position.xy), size - 1u);
     float4 current = gCurrentColor.Load(int3(pixel, 0));
     float currentDepth = LoadDepth(int2(pixel));
+    // 履歴は残差露出 E/P で符号化する（Pre-Exposure 後は 1 付近、FP16 でも劣化しない）。
     float currentExposure =
-        gTaaParams.z >= 0.5f ? max(gExposure.Load(int3(0, 0, 0)), 1e-4f) : 1.0f;
+        gTaaParams.z >= 0.5f ? max(gExposure.Load(int3(0, 0, 0)) * gExposureParams.x, 1e-4f) : 1.0f;
     float3 currentEncoded = EncodeTemporalColor(current.rgb, currentExposure);
     MotionSample motion = LoadDilatedMotion(pixel);
     float reactive = LoadMask(gReactiveMask, int2(pixel));
@@ -404,7 +405,8 @@ PSOut PSMain(VSOut input)
         {
             float4 historySample = SampleHistoryCatmullRom(previousUv);
             float historyExposure = max(historySample.a, 1e-4f);
-            float3 historyLinear = DecodeTemporalColor(historySample.rgb, historyExposure);
+            // 前フレームの Pre-Exposure 空間から現在の空間へ。
+            float3 historyLinear = DecodeTemporalColor(historySample.rgb, historyExposure) * gExposureParams.y;
             float3 historyEncoded = EncodeTemporalColor(historyLinear, currentExposure);
             historyEncoded = ClipHistoryToNeighborhood(
                 pixel,

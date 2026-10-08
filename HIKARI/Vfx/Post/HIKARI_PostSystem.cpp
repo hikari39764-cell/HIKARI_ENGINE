@@ -106,16 +106,17 @@ void PostSystem::UpdateCommonParams(float deltaTime) {
     processingStage_.UpdateCommonParams(deltaTime, width, height);
 }
 
+void PostSystem::AdvanceExposure(float deltaTime, const RENDER3D::COLOR::ExposureIllumination& illumination) {
+    processingStage_.AdvanceExposure(deltaTime, illumination);
+}
+
 void PostSystem::SetSequenceEffects(std::span<const SEQUENCER::ScreenEffectSample> effects) {
     processingStage_.SetSequenceEffects(effects);
 }
 void PostSystem::SetIntensity(float value) { processingStage_.SetIntensity(value); }
 void PostSystem::SetCombo(float value) { processingStage_.SetCombo(value); }
-void PostSystem::ClearEffects() { processingStage_.ClearEffects(); }
-void PostSystem::AddEffect(PostEffect* effect) { processingStage_.AddEffect(effect); }
-bool PostSystem::SetGlobalEffect(std::string_view effectId, std::shared_ptr<const PostEffectDefinition> effect,
-                                 const PostParameterBlock& values, const AssetRegistry* registry) {
-    return processingStage_.SetGlobalEffect(effectId, std::move(effect), values, registry);
+bool PostSystem::SetGlobalEffects(std::span<const ResolvedPostLayer> layers, const AssetRegistry* registry) {
+    return processingStage_.SetGlobalEffects(layers, registry);
 }
 bool PostSystem::RequiresGlobalSurfaceFeatureMask() noexcept { return processingStage_.RequiresSurfaceFeatureMask(); }
 bool PostSystem::SetActionPostFrame(uint64_t worldId, uint64_t frameIndex, std::string_view effectId,
@@ -131,7 +132,6 @@ void PostSystem::SetActionPostView(uint64_t worldId, bool primaryGameView) noexc
 bool PostSystem::RequiresActionSurfaceFeatureMask() noexcept {
     return processingStage_.RequiresActionSurfaceFeatureMask();
 }
-void PostSystem::ClearGlobalEffect() { processingStage_.ClearGlobalEffect(); }
 bool PostSystem::SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
                                        const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId) {
     return initialized_ &&
@@ -150,6 +150,9 @@ void PostSystem::SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& fr
 }
 void PostSystem::SetToneMappingSettings(const ToneMappingSettings& settings) {
     processingStage_.SetToneMappingSettings(settings);
+}
+void PostSystem::SetExposureSettings(const RENDER3D::COLOR::ExposureSettings& settings) {
+    processingStage_.SetExposureSettings(settings);
 }
 void PostSystem::SetFxaaSettings(const FxaaSettings& settings) { processingStage_.SetFxaaSettings(settings); }
 void PostSystem::SetSunGlareFrame(const SunGlareFrame& frame) { processingStage_.SetSunGlareFrame(frame); }

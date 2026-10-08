@@ -16,21 +16,9 @@ namespace JsonMath = SERIALIZATION::JSON::MATH;
 
 namespace {
 
-bool HasLightComponent(const SceneDocument& document) {
-    return std::any_of(document.objects.begin(), document.objects.end(), [](const SceneObjectData& object) {
-        return FindLightingComponent(object, kLightComponentType) != nullptr;
-    });
-}
-
 RENDER3D::LIGHTING::SceneLightType ReadLightType(const nlohmann::json& properties) {
-    const std::string value = properties.value("type", std::string("Point"));
-    if (value == "Directional") {
-        return RENDER3D::LIGHTING::SceneLightType::Directional;
-    }
-    if (value == "Spot") {
-        return RENDER3D::LIGHTING::SceneLightType::Spot;
-    }
-    return RENDER3D::LIGHTING::SceneLightType::Point;
+    return properties.value("type", std::string("Point")) == "Spot" ? RENDER3D::LIGHTING::SceneLightType::Spot
+                                                                    : RENDER3D::LIGHTING::SceneLightType::Point;
 }
 
 MATH::Vec3 ForwardFromEulerDegrees(const MATH::Vec3& eulerDegrees) {
@@ -39,13 +27,6 @@ MATH::Vec3 ForwardFromEulerDegrees(const MATH::Vec3& eulerDegrees) {
         MATH::Quat::FromEulerXYZ(eulerDegrees.x * kDegToRad, eulerDegrees.y * kDegToRad, eulerDegrees.z * kDegToRad);
     const MATH::Mat4 matrix = MATH::Mat4::Rotate(rotation);
     return MATH::Normalize({matrix.m[2][0], matrix.m[2][1], matrix.m[2][2]});
-}
-
-MATH::Vec3 EulerDegreesFromForward(const MATH::Vec3& direction) {
-    const MATH::Vec3 forward = MATH::Normalize(direction);
-    constexpr float kRadToDeg = 180.0f / 3.14159265358979323846f;
-    return {std::asin(std::clamp(-forward.y, -1.0f, 1.0f)) * kRadToDeg, std::atan2(forward.x, forward.z) * kRadToDeg,
-            0.0f};
 }
 
 LightAuthoring ReadLight(const SceneObjectData& object, const SceneComponentData& component) {
@@ -58,12 +39,10 @@ LightAuthoring ReadLight(const SceneObjectData& object, const SceneComponentData
     light.rotationEulerDeg = object.transform.rotationEulerDeg;
     light.direction = ForwardFromEulerDegrees(light.rotationEulerDeg);
     light.type = ReadLightType(properties);
-    light.distanceFalloff =
-        RENDER3D::LIGHTING::ParseLocalLightFalloff(properties.value("distanceFalloff", std::string("Range")));
     light.enabled = object.enabled && properties.value("enabled", true);
     light.color = JSONREAD::Vec3Or(properties.value("color", nlohmann::json::array()), {1.0f, 1.0f, 1.0f});
-    light.intensity = std::clamp(properties.value("intensity", 1.0f), 0.0f, 100.0f);
-    light.range = (std::max)(properties.value("range", 5.0f), 0.05f);
+    light.intensity = std::clamp(properties.value("intensity", 800.0f), 0.0f, 1000000.0f);
+    light.range = (std::max)(properties.value("range", 10.0f), 0.05f);
     light.castsShadows = properties.value("castsShadows", false);
     light.sourceRadius = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(properties.value("sourceRadius", 0.0f));
     light.innerConeAngleDegrees = std::clamp(properties.value("innerConeAngleDegrees", 25.0f), 0.1f, 89.0f);
@@ -75,22 +54,6 @@ LightAuthoring ReadLight(const SceneObjectData& object, const SceneComponentData
 }
 
 } // namespace
-
-MATH::Vec3 LightDirectionFromEulerDegrees(const MATH::Vec3& eulerDegrees) noexcept {
-    return ForwardFromEulerDegrees(eulerDegrees);
-}
-
-MATH::Vec3 DirectionalLightEulerDegreesFromDirection(const MATH::Vec3& direction) noexcept {
-    MATH::Vec3 canonical = EulerDegreesFromForward(direction);
-    canonical.x = std::clamp(canonical.x, -89.9f, 89.9f);
-    canonical.y = std::remainder(canonical.y, 360.0f);
-    canonical.z = 0.0f;
-    return canonical;
-}
-
-MATH::Vec3 CanonicalDirectionalLightEulerDegrees(const MATH::Vec3& eulerDegrees) noexcept {
-    return DirectionalLightEulerDegreesFromDirection(LightDirectionFromEulerDegrees(eulerDegrees));
-}
 
 std::vector<LightAuthoring> CollectLights(const SceneDocument& document) { return CollectLights(document.objects); }
 
@@ -118,12 +81,7 @@ SceneObjectId AddLight(SceneDocument& document, const LightAuthoring& light) {
     object.enabled = light.objectEnabled;
     object.transform.position = light.position;
     object.transform.rotationEulerDeg = light.rotationEulerDeg;
-    const char* typeName = "Point";
-    if (light.type == RENDER3D::LIGHTING::SceneLightType::Directional) {
-        typeName = "Directional";
-    } else if (light.type == RENDER3D::LIGHTING::SceneLightType::Spot) {
-        typeName = "Spot";
-    }
+    const char* typeName = light.type == RENDER3D::LIGHTING::SceneLightType::Spot ? "Spot" : "Point";
     object.components.push_back(
         SceneComponentData{kLightComponentType,
                            {{"enabled", light.enabled},
@@ -133,7 +91,6 @@ SceneObjectId AddLight(SceneDocument& document, const LightAuthoring& light) {
                             {"range", light.range},
                             {"sourceRadius", RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(light.sourceRadius)},
                             {"castsShadows", light.castsShadows},
-                            {"distanceFalloff", RENDER3D::LIGHTING::ToString(light.distanceFalloff)},
                             {"innerConeAngleDegrees", light.innerConeAngleDegrees},
                             {"outerConeAngleDegrees", light.outerConeAngleDegrees},
                             {"angularFalloff", light.angularFalloff},
@@ -142,24 +99,6 @@ SceneObjectId AddLight(SceneDocument& document, const LightAuthoring& light) {
     const SceneObjectId id = object.id;
     document.objects.push_back(std::move(object));
     return id;
-}
-
-// 新規 scene の既定光源。environment の平行光設定を Light component として置く。
-void AddDefaultSceneLight(SceneDocument& document) {
-    if (HasLightComponent(document)) {
-        return;
-    }
-    const DirectionalLight& environmentLight = document.environment.directional;
-    LightAuthoring light{};
-    light.name = "Directional Light";
-    light.position = {0.0f, 2.0f, 0.0f};
-    light.rotationEulerDeg = EulerDegreesFromForward(environmentLight.direction);
-    light.type = RENDER3D::LIGHTING::SceneLightType::Directional;
-    light.enabled = environmentLight.enabled;
-    light.color = environmentLight.color;
-    light.intensity = environmentLight.intensity;
-    light.priority = 100;
-    (void)AddLight(document, light);
 }
 
 } // namespace HIKARI::LIGHTING_AUTHORING

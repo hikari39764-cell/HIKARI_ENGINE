@@ -1,0 +1,6 @@
+{
+  "formatVersion": 1,
+  "name": "Pixel",
+  "effect": "engine.post.effect.pixel",
+  "values": {}
+}

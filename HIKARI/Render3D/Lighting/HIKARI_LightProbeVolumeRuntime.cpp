@@ -76,7 +76,7 @@ std::vector<ResidentVolume> gResidents{};
 size_t gResidentCount = 0;
 LightProbeVolumeViewSelection gViewSelection{};
 int gSamplingSuppressDepth = 0;
-ScopedLightProbeVolumeOverride* gVolumeOverride = nullptr;
+std::span<const LightProbeVolumeRuntimeData> gDynamicGiVolumes{};
 
 UINT DescriptorBaseIndex(size_t residentIndex) {
     return GFX::DESCRIPTOR::ToIndex(GFX::DESCRIPTOR::SystemSrv::LightProbeShVolume0) +
@@ -570,11 +570,6 @@ const LightProbeVolumeViewSelection& GetViewSelection() { return gViewSelection;
 const LightProbeVolumeRuntimeData* GetViewVolume(size_t slot) {
     if (slot >= kLightProbeVolumeViewSlotCount || IsLightProbeVolumeSamplingSuppressed())
         return nullptr;
-    if (gVolumeOverride) {
-        if (slot == 0)
-            return &gVolumeOverride->GetData();
-        --slot;
-    }
     if (slot >= gViewSelection.count) {
         return nullptr;
     }
@@ -584,20 +579,15 @@ const LightProbeVolumeRuntimeData* GetViewVolume(size_t slot) {
 
 bool IsLightProbeVolumeSamplingSuppressed() { return gSamplingSuppressDepth > 0; }
 
-ScopedLightProbeVolumeOverride::ScopedLightProbeVolumeOverride(const LightProbeVolumeRuntimeData& data,
-                                                               D3D12_GPU_DESCRIPTOR_HANDLE shTable) {
-    if (!data.enabled || !data.valid || !data.dynamic || shTable.ptr == 0)
-        return;
-    data_ = &data;
-    table_ = shTable;
-    previous_ = gVolumeOverride;
-    gVolumeOverride = this;
-    active_ = true;
+ScopedDynamicGiVolumes::ScopedDynamicGiVolumes(std::span<const LightProbeVolumeRuntimeData> volumes)
+    : previous_(gDynamicGiVolumes) {
+    gDynamicGiVolumes = volumes.first((std::min)(volumes.size(), kDynamicGiVolumeCount));
 }
 
-ScopedLightProbeVolumeOverride::~ScopedLightProbeVolumeOverride() {
-    if (active_)
-        gVolumeOverride = previous_;
+ScopedDynamicGiVolumes::~ScopedDynamicGiVolumes() { gDynamicGiVolumes = previous_; }
+
+std::span<const LightProbeVolumeRuntimeData> GetDynamicGiVolumes() {
+    return IsLightProbeVolumeSamplingSuppressed() ? std::span<const LightProbeVolumeRuntimeData>{} : gDynamicGiVolumes;
 }
 
 ScopedLightProbeVolumeSamplingSuppress::ScopedLightProbeVolumeSamplingSuppress() {
@@ -613,11 +603,6 @@ ScopedLightProbeVolumeSamplingSuppress::~ScopedLightProbeVolumeSamplingSuppress(
 D3D12_GPU_DESCRIPTOR_HANDLE GetViewShVolumeSrvTable(size_t slot) {
     if (slot >= kLightProbeVolumeViewSlotCount) {
         return {};
-    }
-    if (!IsLightProbeVolumeSamplingSuppressed() && gVolumeOverride) {
-        if (slot == 0)
-            return gVolumeOverride->GetTable();
-        --slot;
     }
     if (IsLightProbeVolumeSamplingSuppressed() || slot >= gViewSelection.count) {
         return VolumeSrvTableGpu(slot);

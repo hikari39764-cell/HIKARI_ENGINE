@@ -23,7 +23,7 @@
 //   JSONFIELDS::Write(out, fog, kFogFields);
 //   JSONFIELDS::Read(in, fog, kFogFields);            // json.value(key, 現在値) と同じ規則
 //   JSONFIELDS::ReadLenient(in, fog, kFogFields);     // 型不一致は現在値を保持（例外なし）
-//   fog = JSONFIELDS::Sanitize(fog, kFogFields);      // Range: 非有限値は既定値、範囲外は丸め
+//   fog = JSONFIELDS::Sanitize(fog, kFogFields);      // Range: 非有限値は既定値、範囲外は丸め（Vec は成分ごと）
 //
 // Vec2/3/4 は配列で保存し、読み込みは配列と {x,y,z,w} の両方を受け付ける。
 namespace HIKARI::JSONFIELDS {
@@ -85,8 +85,12 @@ void ReadLenient(const nlohmann::json& in, const char* key, T& value) {
         value = JSONREAD::IntegerMemberOr(in, key, value);
     } else if constexpr (std::is_same_v<T, uint32_t>) {
         value = JSONREAD::UnsignedMemberOr(in, key, value);
+    } else if constexpr (std::is_same_v<T, double>) {
+        // double の項目（緯度・時刻など）は float を経由させない。
+        const nlohmann::json* node = JSONREAD::FindMember(in, key);
+        value = node != nullptr && node->is_number() ? node->get<double>() : value;
     } else if constexpr (std::is_floating_point_v<T>) {
-        value = static_cast<T>(JSONREAD::NumberMemberOr(in, key, static_cast<float>(value)));
+        value = JSONREAD::NumberMemberOr(in, key, value);
     } else {
         value = JSONREAD::StringMemberOr(in, key, std::move(value));
     }
@@ -94,7 +98,16 @@ void ReadLenient(const nlohmann::json& in, const char* key, T& value) {
 
 template <class T>
 void Clamp(T& value, const T& fallback, Range range) {
-    if constexpr (std::is_floating_point_v<T>) {
+    if constexpr (kIsVector<T>) {
+        Clamp(value.x, fallback.x, range);
+        Clamp(value.y, fallback.y, range);
+        if constexpr (!std::is_same_v<T, MATH::Vec2>) {
+            Clamp(value.z, fallback.z, range);
+        }
+        if constexpr (std::is_same_v<T, MATH::Vec4>) {
+            Clamp(value.w, fallback.w, range);
+        }
+    } else if constexpr (std::is_floating_point_v<T>) {
         value =
             std::isfinite(value) ? std::clamp(value, static_cast<T>(range.min), static_cast<T>(range.max)) : fallback;
     } else {

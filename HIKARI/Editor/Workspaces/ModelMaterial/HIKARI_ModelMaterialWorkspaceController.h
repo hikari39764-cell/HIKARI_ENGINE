@@ -323,7 +323,9 @@ private:
     }
     void ResetPreviewKeyLight();
     void InitializePreviewLighting();
-    void AddPreviewLight(RENDER3D::LIGHTING::SceneLightType type);
+    void AddPreviewLight();
+    // Studio 環境のプロファイルからこのフレームの光源（固定の太陽）を作り直す。
+    void RebuildPreviewEnvironment();
     void DeleteSelectedPreviewLight();
     void EnsureBuiltInRampPresets(DocumentSceneBase& scene);
     bool BindBuiltInRampPresets(MaterialAssetData& source) const;
@@ -337,7 +339,6 @@ private:
                                 std::string& outMessage);
     bool RefreshMaterialPreviews(DocumentSceneBase& scene, std::string& outMessage);
     bool FlushMaterialPreview(DocumentSceneBase& scene, std::string& outMessage);
-    void RebuildAllBindingPreviews(const AssetDatabase& assetDatabase, const AssetRegistry& assetRegistry);
     bool LoadOrCreateBindings(DocumentSceneBase& scene, std::string& outMessage);
     bool OpenMaterialSet(DocumentSceneBase& scene, const AssetGuid& guid, std::string& outMessage);
     bool CreateMaterialSet(DocumentSceneBase& scene, std::string& outMessage);
@@ -366,7 +367,7 @@ private:
     void DrawPreviewToolbar(ModelMaterialWorkspaceResult& result, EditorCommandRouter& commandRouter);
     void DrawPreviewCameraControls();
     void DrawPreviewEnvironmentControls();
-    void DrawPreviewLightingPanel(DocumentSceneBase& scene);
+    void DrawPreviewLightingPanel();
     void DrawOutlineThicknessPresets(MaterialAssetData& source, MaterialGraphData& graph);
     void DrawMaterialParameterControls(MaterialAssetData& source, const MaterialGraphData& graph,
                                        const MaterialAssetData* parent = nullptr);
@@ -447,13 +448,14 @@ private:
     uint64_t previewOutputRevision_ = 0u;
 
     RENDER3D::MATERIAL::MaterialProgramRegistry materialProgramRegistry_{};
+    // Studio 確認用の環境。プロファイルを編集し、描画には光源を解いた previewEnvironment_ を渡す。
+    EnvironmentProfile previewProfile_{};
     SceneEnvironment previewEnvironment_{};
     RENDER3D::LIGHTING::SceneLightingSet previewLighting_{};
     PreviewDebugMode previewDebugMode_ = PreviewDebugMode::Lit;
     PreviewEnvironmentMode previewEnvironmentMode_ = PreviewEnvironmentMode::StudioInspect;
     AuthoringMode authoringMode_ = AuthoringMode::ModelMaterials;
     bool previewLightingInitialized_ = false;
-    bool previewSkyEnabled_ = true;
     bool previewSpatialAaEnabled_ = true;
     float previewCameraSpeedScale_ = 1.0f;
     float previewCameraBaseMoveSpeed_ = 0.0f;

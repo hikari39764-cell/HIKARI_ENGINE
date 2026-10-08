@@ -12,7 +12,6 @@
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Editor/Tools/HIKARI_BuiltInEditorTools.h"
-#include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
@@ -36,7 +35,6 @@ namespace HIKARI {
 namespace {
 #if defined(HIKARI_WITH_EDITOR)
 constexpr uint64_t kEnvironmentPanelMergeGroup = 0x454e5649524f4e4dull;
-constexpr uint64_t kQualityPanelMergeGroup = 0x5155414c49545945ull;
 constexpr uint64_t kTerrainSurfaceWorkspaceMergeGroup = 0x5445525241494e53ull;
 
 std::string SummarizeRuntimeRefreshReport(const RuntimeResourceRefreshReport& report) {
@@ -481,19 +479,17 @@ void DocumentSceneEditorController::HandleResourceWorkspaceRequests(DocumentScen
 void DocumentSceneEditorController::DrawEnvironmentPanels(DocumentSceneBase& scene) {
     bool environmentEditActive = false;
     if (context_.windows.resources.showEnvironment) {
-        const SceneEnvironment beforeEnvironment = scene.GetSceneDocument().environment;
-        SceneEnvironment editedEnvironment = beforeEnvironment;
-        const EnvironmentPanelResult environmentResult = environmentPanel_.Draw(
-            editedEnvironment, &SKYRENDERER::GetDebugState(), &scene.GetAssetRegistry(), &scene.GetAssetDatabase());
+        const ENVIRONMENT::SceneEnvironmentBinding before = scene.GetSceneDocument().environment;
+        ENVIRONMENT::SceneEnvironmentBinding edited = before;
+        const EnvironmentPanelResult environmentResult = environmentPanel_.Draw(edited, scene);
         environmentEditActive |= environmentResult.editActive;
-        if (environmentResult.environmentChanged) {
+        if (environmentResult.bindingChanged && edited != before) {
             const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
-            scene.GetSceneDocument().environment = editedEnvironment;
-            CommitAppliedDocumentCommand(scene,
-                                         EDITOR::MakeEnvironmentHistoryCommand("Edit Environment", beforeEnvironment,
-                                                                               std::move(editedEnvironment)),
-                                         environmentResult.editActive ? kEnvironmentPanelMergeGroup : 0u,
-                                         externalDirtyBefore, EDITOR::EditorDocumentImpact::Environment);
+            scene.GetSceneDocument().environment = edited;
+            CommitAppliedDocumentCommand(
+                scene, EDITOR::MakeEnvironmentHistoryCommand("Edit Environment", before, std::move(edited)),
+                environmentResult.editActive ? kEnvironmentPanelMergeGroup : 0u, externalDirtyBefore,
+                EDITOR::EditorDocumentImpact::Environment);
         }
         if (environmentResult.openLightingBakeRequested) {
             EDITOR::EditorToolOpenRequest request{};
@@ -502,21 +498,7 @@ void DocumentSceneEditorController::DrawEnvironmentPanels(DocumentSceneBase& sce
         }
     }
     if (context_.windows.resources.showQuality) {
-        const SceneEnvironment beforeEnvironment = scene.GetSceneDocument().environment;
-        SceneEnvironment editedEnvironment = beforeEnvironment;
-        const QualityPanelResult qualityResult = qualityPanel_.Draw(editedEnvironment, scene);
-        environmentEditActive |= qualityResult.editActive;
-        if (qualityResult.environmentChanged) {
-            const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
-            scene.GetSceneDocument().environment = editedEnvironment;
-            CommitAppliedDocumentCommand(scene,
-                                         EDITOR::MakeEnvironmentHistoryCommand("Edit Quality Environment",
-                                                                               beforeEnvironment,
-                                                                               std::move(editedEnvironment)),
-                                         qualityResult.editActive ? kQualityPanelMergeGroup : 0u, externalDirtyBefore,
-                                         EDITOR::EditorDocumentImpact::Environment);
-        }
-        renderQualitySavePending_ |= qualityResult.renderQualityChanged;
+        renderQualitySavePending_ |= qualityPanel_.Draw();
     }
     if (!environmentEditActive) {
         documentHistory_.SealMerge();

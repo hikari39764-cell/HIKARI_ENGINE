@@ -1,5 +1,6 @@
 #include "HIKARI_RuntimeResourceRefreshService.h"
 
+#include <algorithm>
 #include <unordered_set>
 #include <utility>
 
@@ -10,6 +11,7 @@
 #include "Render3D/Diagnostics/HIKARI_EnvironmentDiagnostics.h"
 #include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
+#include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 
 #if defined(_MSC_VER)
@@ -26,7 +28,14 @@ namespace HIKARI {
 namespace {
 bool IsActiveSkyTexture(const DocumentSceneBase& scene, const std::string& assetId) {
     const SkySettings& sky = scene.GetSceneEnvironment().sky;
-    return sky.skyAsset == assetId || sky.panoramaCloudAsset == assetId;
+    return sky.asset == assetId || sky.panoramaCloudAsset == assetId;
+}
+
+bool IsReflectionProbeSource(const DocumentSceneBase& scene, const std::string& assetId) {
+    const auto probes = LIGHTING_AUTHORING::CollectReflectionProbes(scene.GetSceneDocument());
+    return std::any_of(probes.begin(), probes.end(), [&](const LIGHTING_AUTHORING::ReflectionProbeAuthoring& probe) {
+        return probe.settings.sourceCubemapAsset == assetId;
+    });
 }
 
 void RefreshSpriteMaterials(DocumentSceneBase& scene, RuntimeResourceRefreshReport& report) {
@@ -179,8 +188,7 @@ RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshCurrentSceneR
         return report;
     }
 
-    const SceneDependencySet dependencies =
-        scene.GetRuntimeBuilder().CollectDependencies(scene.GetSceneDocument(), &scene.GetComponentRegistry());
+    const SceneDependencySet dependencies = scene.CollectRuntimeDependencies();
 
     bool modelTouched = false;
     const AssetRegistry& registry = scene.GetAssetRegistry();
@@ -249,6 +257,7 @@ RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshCurrentSceneR
     }
 
     RefreshSpriteMaterials(scene, report);
+    scene.GetEnvironmentRuntime().RefreshProfile();
     scene.RefreshLightingRuntime();
     // Runtime refresh 後の environment 状態変化だけを diagnostics log に流す。
     RENDER3D::DIAGNOSTICS::LogEnvironmentSnapshotIfChanged("RuntimeRefresh.CurrentScene", &scene.GetSceneEnvironment());
@@ -295,11 +304,9 @@ bool RuntimeResourceRefreshService::RefreshSkyAsset(DocumentSceneBase& scene, co
         return false;
     }
 
-    if (scene.GetSceneEnvironment().sky.skyAsset != descriptor.id.value) {
-        if (scene.GetSceneEnvironment().reflectionProbe.sourceCubemapAsset != descriptor.id.value) {
-            AppendMessage(report, "Sky asset is not active: " + descriptor.id.value);
-            return true;
-        }
+    if (!IsActiveSkyTexture(scene, descriptor.id.value) && !IsReflectionProbeSource(scene, descriptor.id.value)) {
+        AppendMessage(report, "Sky asset is not active: " + descriptor.id.value);
+        return true;
     }
 
     scene.RefreshTextureRuntimeByPath(descriptor.sourcePath);
@@ -350,8 +357,7 @@ bool RuntimeResourceRefreshService::RefreshMaterialAsset(DocumentSceneBase& scen
 
 void RuntimeResourceRefreshService::ReloadCurrentSceneModelDependencies(DocumentSceneBase& scene,
                                                                         RuntimeResourceRefreshReport& report) {
-    const SceneDependencySet dependencies =
-        scene.GetRuntimeBuilder().CollectDependencies(scene.GetSceneDocument(), &scene.GetComponentRegistry());
+    const SceneDependencySet dependencies = scene.CollectRuntimeDependencies();
 
     bool modelTouched = false;
     const AssetRegistry& registry = scene.GetAssetRegistry();

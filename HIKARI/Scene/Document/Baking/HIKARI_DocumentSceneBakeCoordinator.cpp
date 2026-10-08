@@ -45,7 +45,6 @@ bool DocumentSceneBakeCoordinator::RequestReflectionProbeBake(DocumentSceneBase&
         scene.state_->assets.Database().Initialize({});
     }
 
-    LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(scene.state_->identity.document);
     const std::vector<LIGHTING_AUTHORING::ReflectionProbeAuthoring> probes =
         LIGHTING_AUTHORING::CollectReflectionProbes(scene.state_->identity.document);
     const auto probeIt = std::find_if(
@@ -175,9 +174,8 @@ bool DocumentSceneBakeCoordinator::RequestLightProbeBake(DocumentSceneBase& scen
     }
 
     const std::filesystem::path projectRoot = scene.state_->assets.Database().GetProjectRoot();
-    LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(scene.state_->identity.document);
     const std::vector<LIGHTING_AUTHORING::IrradianceVolumeAuthoring> volumes =
-        LIGHTING_AUTHORING::CollectIrradianceVolumes(scene.state_->identity.document);
+        LIGHTING_AUTHORING::CollectBakedIrradianceVolumes(scene.state_->identity.document);
     const auto volumeIt = std::find_if(
         volumes.begin(), volumes.end(), [targetObjectId](const LIGHTING_AUTHORING::IrradianceVolumeAuthoring& volume) {
             return targetObjectId.value != 0u ? volume.objectId == targetObjectId : volume.settings.enabled;

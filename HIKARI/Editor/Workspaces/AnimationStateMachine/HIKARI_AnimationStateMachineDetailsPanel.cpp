@@ -191,20 +191,20 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(DocumentSceneBa
             before = definition;
             if (parameter->type == ANIMATION::AnimationParameterType::Float) {
                 float value = std::get<float>(parameter->defaultValue);
-                if (ImGui::DragFloat(TEXT::LocalizeWindow("ui.environment.preset.default", "Default").c_str(), &value,
+                if (ImGui::DragFloat(TEXT::LocalizeWindow("ui.common.default", "Default").c_str(), &value,
                                      0.02f)) {
                     parameter->defaultValue = value;
                     RecordMutation(std::move(before), 4000u + parameter->id.value);
                 }
             } else if (parameter->type == ANIMATION::AnimationParameterType::Integer) {
                 int value = std::get<int32_t>(parameter->defaultValue);
-                if (ImGui::DragInt(TEXT::LocalizeWindow("ui.environment.preset.default", "Default").c_str(), &value)) {
+                if (ImGui::DragInt(TEXT::LocalizeWindow("ui.common.default", "Default").c_str(), &value)) {
                     parameter->defaultValue = static_cast<int32_t>(value);
                     RecordMutation(std::move(before), 4000u + parameter->id.value);
                 }
             } else if (parameter->type == ANIMATION::AnimationParameterType::Bool) {
                 bool value = std::get<bool>(parameter->defaultValue);
-                if (ImGui::Checkbox(TEXT::LocalizeWindow("ui.environment.preset.default", "Default").c_str(), &value)) {
+                if (ImGui::Checkbox(TEXT::LocalizeWindow("ui.common.default", "Default").c_str(), &value)) {
                     parameter->defaultValue = value;
                     RecordMutation(std::move(before));
                 }

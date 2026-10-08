@@ -53,7 +53,7 @@ struct TemporalResourceStats {
     bool masksCompositionDerived = false;
     bool exposureWritten = false;
     COLOR::ExposureMode exposureMode = COLOR::ExposureMode::Manual;
-    float exposureMultiplier = 1.0f;
+    float exposure = 1.0f;
     float preExposure = 1.0f;
     bool debugOutputReady = false;
     RenderDebugView debugView = RenderDebugView::None;

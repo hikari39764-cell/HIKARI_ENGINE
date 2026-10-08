@@ -36,6 +36,8 @@ enum class SurfaceGpuSceneInstanceFlags : uint32_t {
     TerrainSurface = 1u << 17,
     CameraCenteredOcean = 1u << 18,
     FoliageWind = 1u << 19,
+    // 材質 program（式・風格化）を持つ材質。Forward は標準 PBR の面と別 PSO で描く。
+    MaterialProgram = 1u << 20,
 };
 
 enum class SurfaceGpuSceneResourceFlags : uint32_t {

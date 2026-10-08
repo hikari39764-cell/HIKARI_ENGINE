@@ -5,7 +5,7 @@
 #include "Render3D/Core/HIKARI_MeshPassResources.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
-#include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
+#include "Render3D/Lighting/HIKARI_VolumetricCloudStage.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Pipeline/HIKARI_ProjectComputeShaderRuntime.h"
 #include "Render3D/Pipeline/HIKARI_ProjectFullscreenShaderRuntime.h"
@@ -220,14 +220,12 @@ bool ExecuteClouds(const GRAPH::RenderGraphPassContext& graphPass, void* userDat
     const RenderFrameGraphStageContext& context = *state.context;
     const bool supportedPurpose =
         context.frame.purpose == RenderViewPurpose::Game || context.frame.purpose == RenderViewPurpose::EditorScene;
-    if (!context.environment.clouds.enabled || context.environment.clouds.density <= 0.0f ||
-        (context.environment.clouds.physicallyBasedLighting && context.environment.clouds.coverage <= 0.0f) ||
-        !supportedPurpose) {
+    if (!CLOUDS::HasVisibleClouds(context.environment) || !supportedPurpose) {
         return true;
     }
     try {
-        return CLOUDS::ExecuteStylizedCloudStage(context.frame, context.temporalFrame, context.environment.clouds,
-                                                 context.renderQuality.stylizedCloudQuality);
+        return CLOUDS::ExecuteVolumetricCloudStage(context.frame, context.temporalFrame, context.environment,
+                                                   context.renderQuality.volumetricCloudQuality);
     } catch (...) {
         return false;
     }

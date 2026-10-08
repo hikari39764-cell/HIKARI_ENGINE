@@ -5,7 +5,9 @@
 #include "Editor/Assets/HIKARI_AssetImportSettingsService.h"
 #include "Editor/Authoring/HIKARI_ComponentAuthoringOperations.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
+#include "Editor/Environment/HIKARI_EnvironmentAssetOperations.h"
 #include "Editor/Quality/HIKARI_GlobalPostOperations.h"
+#include "Editor/RenderStyle/HIKARI_RenderStyleOperations.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineOperations.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsOperations.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionOperations.h"
@@ -363,8 +365,12 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
         EditorOperationKind::Mutation);
 
     RegisterEnvironmentOperations();
-    EDITOR::RegisterGlobalPostOperations(operationRegistry_, qualityPanel_.GlobalPost(),
+    EDITOR::RegisterEnvironmentAssetOperations(operationRegistry_, environmentPanel_.Assets(),
+                                               [this] { return aiOperationScene_; });
+    EDITOR::RegisterGlobalPostOperations(operationRegistry_, environmentPanel_.Style().GlobalPost(),
                                          [this] { return aiOperationScene_; });
+    EDITOR::RegisterRenderStyleOperations(operationRegistry_, environmentPanel_.Style(),
+                                          [this] { return aiOperationScene_; });
     EDITOR::RegisterProjectKnowledgeOperations(operationRegistry_, [this] { return aiOperationScene_; });
     EDITOR::RegisterModelCollisionOperations(operationRegistry_, ModelCollisionWorkspace(),
                                              [this]() { return aiOperationScene_; });

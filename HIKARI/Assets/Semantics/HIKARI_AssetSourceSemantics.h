@@ -37,6 +37,9 @@ enum class AssetImporterKind : uint8_t {
     UiAnimation,
     PostEffect,
     PostProfile,
+    Environment,
+    Weather,
+    RenderStyle,
     Count,
 };
 

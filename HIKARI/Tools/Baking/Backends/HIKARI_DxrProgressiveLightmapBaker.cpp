@@ -184,7 +184,6 @@ bool DxrProgressiveLightmapBaker::PrepareScene(const GFX::Context& graphics,
         light.radianceInnerCone = {source.radiance.x, source.radiance.y, source.radiance.z, source.innerConeCos};
         light.type = source.type;
         light.angularFalloff = source.angularFalloff;
-        light.distanceFalloff = static_cast<uint32_t>(source.distanceFalloff);
         light.sourceRadius = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(source.sourceRadius);
         lights.push_back(light);
     }

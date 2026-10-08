@@ -73,9 +73,8 @@ size_t UsageDocumentFingerprint(const SceneDocument& document) {
     };
     const std::hash<std::string> stringHash;
     const std::hash<nlohmann::json> propertyHash;
-    append(stringHash(document.environment.sky.skyAsset));
-    append(stringHash(document.environment.sky.panoramaCloudAsset));
-    append(stringHash(document.environment.reflectionProbe.sourceCubemapAsset));
+    append(stringHash(document.environment.profileId));
+    append(stringHash(document.environment.weatherId));
     for (const auto& object : document.objects) {
         append(static_cast<size_t>(object.id.value));
         append(stringHash(object.name));

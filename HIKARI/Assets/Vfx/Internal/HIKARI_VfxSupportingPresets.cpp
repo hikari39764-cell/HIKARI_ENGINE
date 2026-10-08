@@ -141,7 +141,7 @@ VfxAssetData SupportingComposition(std::string_view id) {
         VectorKeys(flash.scale.value, flash.id + ".flash",
                    {{0, {0.1f, 0.1f, 0.1f}}, {0.15f, {1.3f, 1.3f, 1.3f}}, {1, {0.1f, 0.1f, 0.1f}}});
         AlphaKeys(flash, {3.5f, 1.6f, 0.55f}, {{0, 1}, {0.2f, 0.7f}, {1, 0}});
-        Light(flash, {1, 0.35f, 0.1f, 1}, 1.2f, 3);
+        Light(flash, {1, 0.35f, 0.1f, 1}, 12000.0f, 3);
         layers.push_back(std::move(flash));
         auto dust = Smoke("Expanding dust", 0.06f, 0.18f);
         dust.spawn.burstTimeline = {{dust.spawn.id + ".burst", 0, 8}};
@@ -195,7 +195,7 @@ VfxAssetData SupportingComposition(std::string_view id) {
                     {0.8f, {1.05f, 1.05f, 1.05f}},
                     {1, {0, 0, 0}}});
         AlphaKeys(core, {1.6f, 2.9f, 4.0f}, {{0, 0}, {0.6f, 0.5f}, {0.8f, 1}, {1, 0}});
-        Light(core, {0.2f, 0.55f, 1, 1}, 1, 3);
+        Light(core, {0.2f, 0.55f, 1, 1}, 10000.0f, 3);
         layers.push_back(std::move(core));
     } else if (id == "flame_jet") {
         asset.durationSeconds = 3.0f;

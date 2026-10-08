@@ -23,6 +23,9 @@ enum class MaterialTextureUsage {
     Emissive,
     Specular,
     SpecularColor,
+    // 筆触の殻（Painterly Shell）。実行時材質だけが持ち、モデルの材質に対応する slot は無い。
+    StrokeMask,
+    StrokeNormal,
     Unknown,
 };
 

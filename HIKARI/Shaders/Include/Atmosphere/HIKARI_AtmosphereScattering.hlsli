@@ -2,6 +2,7 @@
 #define HIKARI_ATMOSPHERE_SCATTERING_HLSLI
 
 #include "../Lighting/HIKARI_VolumetricScattering.hlsli"
+#include "HIKARI_SkyViewMapping.hlsli"
 
 #ifdef HIKARI_ATMOSPHERE_DECLARE_LUT_CB
 cbuffer AtmosphereLutCB : register(b0)
@@ -14,6 +15,17 @@ cbuffer AtmosphereLutCB : register(b0)
     float4 gAtmosphereSunDirection;
     float4 gAtmosphereSunColorRadiance;
     float4 gAtmosphereGroundColor;
+};
+#endif
+
+#ifdef HIKARI_ATMOSPHERE_DECLARE_VIEW_CB
+// 大気 LUT の視点（ルート定数）。空の LUT は観測者の高さに、空気遠近は視線にも使う。
+cbuffer AtmosphereViewCB : register(b1)
+{
+    float4x4 gAtmosphereViewInverseViewProj;
+    float4 gAtmosphereViewCamera; // xyz カメラ位置 [m]（y は地表からの高さ）、w Pre-Exposure
+    float4 gAtmosphereViewParams; // x 空気遠近の最大距離 [m]
+    float4 gAtmosphereViewCloudShading; // rgb 雲の下の空の平均輝度 [nits]、w 雲を抜けて空気へ届く主光源の割合
 };
 #endif
 
@@ -175,7 +187,8 @@ void HikariAtmosphereDensities(
 
     rayleighDensity = exp(-height / rayleighScaleHeight);
     mieDensity = exp(-height / mieScaleHeight);
-    ozoneDensity = exp(-abs(height - ozoneCenter) / ozoneWidth);
+    // オゾン層は中心高度で最大、幅の外で 0 になる三角形の分布（吸収係数はこの分布で較正されている）。
+    ozoneDensity = max(0.0f, 1.0f - abs(height - ozoneCenter) / ozoneWidth);
 }
 
 float3 HikariAtmosphereExtinction(
@@ -423,6 +436,7 @@ HikariAtmosphereViewIntegration HikariAtmosphereIntegrateViewWithSteps(
         requestedViewSteps, requestedSunSteps, 1e30f, false);
 }
 
+// groundSkyIrradiance は地表の水平面が空から受ける照度（絶対量）。地面は太陽の直射とこれの両方で照らされる。
 float3 HikariAtmosphereEvaluateSkyRadianceWithSteps(
     float3 origin,
     float3 direction,
@@ -430,7 +444,8 @@ float3 HikariAtmosphereEvaluateSkyRadianceWithSteps(
     float groundAlbedo,
     float aerialPerspectiveStrength,
     uint requestedViewSteps,
-    uint requestedSunSteps)
+    uint requestedSunSteps,
+    float3 groundSkyIrradiance)
 {
     const float3 sunDirection = HikariAtmosphereSafeNormalize(
         gAtmosphereSunDirection.xyz);
@@ -465,6 +480,8 @@ float3 HikariAtmosphereEvaluateSkyRadianceWithSteps(
             sunCosine * groundSunTransmittance *
             integration.transmittance / HIKARI_ATMOSPHERE_PI;
         radiance += bounce * max(0.0f.xxx, gAtmosphereSunColorRadiance.rgb) * sourceRadiance * aerialStrength;
+        radiance += saturate(groundColor) * saturate(HikariAtmosphereFiniteOr(groundAlbedo, 0.1f)) *
+            max(groundSkyIrradiance, 0.0f.xxx) * integration.transmittance / HIKARI_ATMOSPHERE_PI;
     }
 
     if (!all(isfinite(radiance)))
@@ -488,37 +505,8 @@ float3 HikariAtmosphereEvaluateSkyRadiance(
         groundAlbedo,
         aerialPerspectiveStrength,
         HIKARI_ATMOSPHERE_MAX_SKY_STEPS,
-        HIKARI_ATMOSPHERE_MAX_SUN_STEPS);
-}
-
-float HikariAtmosphereObserverSunTransmittance()
-{
-    // OzoneParams.z is the observer-side solar transmittance supplied by the
-    // renderer. It is intentionally not folded into sky single scattering.
-    return saturate(HikariAtmosphereFiniteOr(
-        gAtmosphereOzoneParams.z,
-        1.0f));
-}
-
-float3 HikariAtmosphereEvaluateSunDisk(
-    float3 direction,
-    float3 observerRadiance)
-{
-    const float3 sunDirection = HikariAtmosphereSafeNormalize(
-        gAtmosphereSunDirection.xyz);
-    const float radius = clamp(
-        HikariAtmosphereFiniteOr(gAtmosphereRayleigh.a, 0.004675f),
-        1.0e-5f,
-        0.5f);
-    const float cosine = dot(
-        HikariAtmosphereSafeNormalize(direction),
-        sunDirection);
-    const float innerCosine = cos(radius);
-    const float outerCosine = cos(radius * 1.45f);
-    const float disk = smoothstep(outerCosine, innerCosine, cosine);
-    const float3 radiance = max(0.0f.xxx, observerRadiance) *
-        HikariAtmosphereObserverSunTransmittance();
-    return disk * radiance;
+        HIKARI_ATMOSPHERE_MAX_SUN_STEPS,
+        0.0f.xxx);
 }
 
 float3 HikariAtmospherePositionFromRadius(float radius)
@@ -532,5 +520,20 @@ float3 HikariAtmosphereDirectionFromMu(float cosineToRadialUp)
     const float horizontal = sqrt(max(0.0f, 1.0f - mu * mu));
     return HikariAtmosphereSafeNormalize(float3(horizontal, mu, 0.0f));
 }
+
+#ifdef HIKARI_ATMOSPHERE_DECLARE_VIEW_CB
+// LUT の観測者の位置。地表から 1m 以上。
+float3 HikariAtmosphereViewObserver()
+{
+    return float3(0.0f, HikariAtmospherePlanetRadius() + max(gAtmosphereViewCamera.y, 1.0f), 0.0f);
+}
+
+// 空の背景（天空 LUT）の観測者。カメラの高さか HIKARI_ATMOSPHERE_BACKGROUND_HEIGHT の高い方。
+float3 HikariAtmosphereBackgroundObserver()
+{
+    return float3(0.0f,
+        HikariAtmospherePlanetRadius() + max(gAtmosphereViewCamera.y, HIKARI_ATMOSPHERE_BACKGROUND_HEIGHT), 0.0f);
+}
+#endif
 
 #endif

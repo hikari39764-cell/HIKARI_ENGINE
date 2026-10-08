@@ -140,7 +140,7 @@ void PostEffect::ApplyCommonParams(const CommonParams& p) { params_ = p; }
 
 void PostEffect::SetTime(float t) { params_.time = t; }
 
-bool PostEffect::BindAndDraw(QuadDrawer& drawer) {
+bool PostEffect::BindAndDraw(QuadDrawer& drawer, bool additive) {
     const std::span<const uint8_t> cooked = psLease_.GetDxil();
     if (cooked.empty()) {
         return false;
@@ -172,7 +172,7 @@ bool PostEffect::BindAndDraw(QuadDrawer& drawer) {
     const UINT64 byteOffset = allocationIndex * constantStride_;
     memcpy(mappedPtr_ + byteOffset, &params_, sizeof(params_));
 
-    if (!drawer.SetPixelShader(cooked)) {
+    if (!drawer.SetPixelShader(cooked, additive)) {
         return false;
     }
     drawer.SetConstantBuffer(constantBuffer_->GetGPUVirtualAddress() + byteOffset);

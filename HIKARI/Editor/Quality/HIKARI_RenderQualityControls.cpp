@@ -1,12 +1,10 @@
-#include "Editor/Quality/HIKARI_QualityPanel.h"
+#include "Editor/Quality/HIKARI_QualityPanelSections.h"
 
 #include "Core/Text/HIKARI_Localization.h"
-#include "Editor/Environment/HIKARI_EnvironmentEditComparison.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
-#include "Render3D/Diagnostics/HIKARI_EnvironmentDiagnostics.h"
+#include "Render3D/Settings/HIKARI_RenderQualityFields.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
-#include "Scene/HIKARI_RuntimeSceneContext.h"
-#include "Scene/HIKARI_SceneTransitionBus.h"
+#include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -16,8 +14,9 @@
 #include <iterator>
 #include <string>
 #include <utility>
+
+#include "Editor/Widgets/HIKARI_JsonFieldsEditor.h"
 #endif
-#include "Editor/Quality/HIKARI_QualityPanelSections.h"
 
 namespace HIKARI::EDITOR::QUALITY_PANEL {
 
@@ -337,18 +336,18 @@ bool DrawRenderSettings() {
                  RENDER3D::VolumetricLightingQuality::High},
                 RENDER3D::VolumetricLightingQualityLabel);
             changed |= DrawDepthOfFieldQualityCombo(settings.depthOfFieldQuality);
+            changed |= DrawLightingQualityCombo(
+                TEXT::Localize("ui.quality.volumetricClouds").c_str(), settings.volumetricCloudQuality,
+                {RENDER3D::VolumetricCloudQuality::Low, RENDER3D::VolumetricCloudQuality::Balanced,
+                 RENDER3D::VolumetricCloudQuality::High},
+                RENDER3D::VolumetricCloudQualityLabel);
             changed |=
-                DrawLightingQualityCombo("Stylized Clouds", settings.stylizedCloudQuality,
-                                         {RENDER3D::StylizedCloudQuality::Low, RENDER3D::StylizedCloudQuality::Balanced,
-                                          RENDER3D::StylizedCloudQuality::High},
-                                         RENDER3D::StylizedCloudQualityLabel);
-            changed |=
-                DrawLightingQualityCombo("Dynamic Diffuse GI", settings.dynamicGiQuality,
+                DrawLightingQualityCombo(TEXT::Localize("ui.quality.dynamicGi").c_str(), settings.dynamicGiQuality,
                                          {RENDER3D::DynamicGiQuality::Off, RENDER3D::DynamicGiQuality::Low,
                                           RENDER3D::DynamicGiQuality::Balanced, RENDER3D::DynamicGiQuality::High},
                                          RENDER3D::DynamicGiQualityLabel);
             changed |=
-                DrawLightingQualityCombo("Local Shadows", settings.localShadowQuality,
+                DrawLightingQualityCombo(TEXT::Localize("ui.quality.localShadows").c_str(), settings.localShadowQuality,
                                          {RENDER3D::LocalShadowQuality::Off, RENDER3D::LocalShadowQuality::Low,
                                           RENDER3D::LocalShadowQuality::Balanced, RENDER3D::LocalShadowQuality::High},
                                          RENDER3D::LocalShadowQualityLabel);
@@ -357,6 +356,10 @@ bool DrawRenderSettings() {
                 changed |= DrawDlssQualityModeCombo(settings.dlssQualityMode);
             }
             changed |= DrawFrameGenerationModeCombo(settings.frameGenerationMode);
+            if (settings.frameGenerationMode == RENDER3D::RenderFrameGenerationMode::Dlss &&
+                !RENDER3D::UPSCALING::IsStreamlineFrameGenerationInitialized()) {
+                ImGui::TextDisabled("%s", TEXT::Localize("ui.quality.frameGenerationRestart").c_str());
+            }
             if (settings.frameGenerationMode == RENDER3D::RenderFrameGenerationMode::Dlss) {
                 int multiplier = settings.frameGenerationMultiplier;
                 EDITOR::PropertyLabel(TEXT::Localize("ui.quality.frameMultiplier").c_str());
@@ -384,6 +387,13 @@ bool DrawRenderSettings() {
             changed |= ImGui::Checkbox("##SceneDepthPrepass", &settings.sceneDepthPrepass);
             EDITOR::EndPropertyTable();
         }
+        ImGui::TreePop();
+    }
+
+    if (ImGui::TreeNode(TEXT::Localize("ui.quality.directionalShadow").c_str())) {
+        changed |= EDITOR::DrawJsonFields("ui.quality.directionalShadow", settings.directionalShadow,
+                                          RENDER3D::kDirectionalShadowFields)
+                       .changed;
         ImGui::TreePop();
     }
 

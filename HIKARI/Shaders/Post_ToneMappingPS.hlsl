@@ -31,13 +31,44 @@ float3 ApplyACESFitted(float3 color)
     return saturate(mul(outputMatrix, aces));
 }
 
+// AgX（Troy Sobotka）。少し内側へ寄せた原色の空間で log2 の 16.5 段を [0, 1] に写し、S 字曲線を通す。
+// 高い輝度は色相を保ったまま白へ寄り、飽和した青が紫へ転ぶことがない。結果は線形へ戻して返す。
+float3 AgxContrast(float3 x)
+{
+    const float3 x2 = x * x;
+    const float3 x4 = x2 * x2;
+    return 15.5f * x4 * x2 - 40.14f * x4 * x + 31.96f * x4 - 6.868f * x2 * x + 0.4298f * x2 + 0.1191f * x -
+        0.00232f;
+}
+
+float3 ApplyAgX(float3 color)
+{
+    static const float3x3 kInset = float3x3(
+        0.842479062253094f, 0.0423282422610123f, 0.0423756549057051f,
+        0.0784335999999992f, 0.878468636469772f, 0.0784336f,
+        0.0792237451477643f, 0.0791661274605434f, 0.879142973793104f);
+    static const float3x3 kOutset = float3x3(
+        1.19687900512017f, -0.0528968517574562f, -0.0529716355144438f,
+        -0.0980208811401368f, 1.15190312990417f, -0.0980434501171241f,
+        -0.0990297440797205f, -0.0989611768448433f, 1.15107367264116f);
+    static const float kMinimumEv = -12.47393f;
+    static const float kMaximumEv = 4.026069f;
+    float3 x = mul(max(color, 1.0e-10f.xxx), kInset);
+    x = saturate((clamp(log2(x), kMinimumEv, kMaximumEv) - kMinimumEv) / (kMaximumEv - kMinimumEv));
+    x = AgxContrast(x);
+    // 写真に近い見えの look（Blender の Punchy を弱めたもの）。符号化した空間で中間調を締め、彩度を少し戻す。
+    const float luma = dot(x, float3(0.2126f, 0.7152f, 0.0722f));
+    x = luma + 1.2f * (pow(max(x, 0.0f.xxx), 1.2f) - luma);
+    x = mul(x, kOutset);
+    return saturate(pow(max(x, 0.0f.xxx), 2.2f));
+}
+
 float4 main(HikariPostEffectInput input) : SV_TARGET
 {
     float4 sceneColor = gSceneTex.Sample(gSamp, input.uv);
-    const bool toneCurveEnabled = gUser[0].x >= 0.5f;
+    const int curve = (int)round(gUser[0].x);
     const float exposure = max(gUser[0].y, 0.0f);
     const float gamma = max(gUser[0].z, 0.01f);
-    const int mode = (int)round(gUser[0].w);
     const float3 whiteBalance = max(gUser[1].rgb, 0.0f);
     const float contrast = clamp(gUser[1].a, 0.25f, 2.0f);
     const float saturation = clamp(gUser[2].x, 0.0f, 2.0f);
@@ -49,24 +80,35 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     color = max(
         lerp(luminance.xxx, color, saturation),
         0.0f);
-    if (toneCurveEnabled)
+    // 中間灰 0.18 を中心に輝度を対数で伸ばす（階調曲線の前。暗部を 0 で切らず色相も保ち、明部は曲線の肩が受ける）。
+    const float graded = dot(color, float3(0.2126f, 0.7152f, 0.0722f));
+    if (graded > 0.0f)
     {
-        if (mode == 1)
-        {
-            color = ApplyReinhard(color);
-        }
-        else if (mode == 2)
-        {
-            color = ApplyACESFitted(color);
-        }
+        color *= 0.18f * pow(graded / 0.18f, contrast) / graded;
+    }
+    if (curve == 1)
+    {
+        color = ApplyReinhard(color);
+    }
+    else if (curve == 2)
+    {
+        color = ApplyACESFitted(color);
+    }
+    else if (curve == 3)
+    {
+        color = ApplyAgX(color);
     }
 
-    color = max((color - 0.18f) * contrast + 0.18f, 0.0f);
     float2 screenUv = input.uv * 2.0f - 1.0f;
     screenUv *= 1.0f + gUser[2].y * gUser[2].z * dot(screenUv, screenUv);
     const float2 resolution = max(float2(gResolutionX, gResolutionY), 1.0f.xx);
     const float readability = HikariScreenReadability(screenUv * .5f + .5f, resolution);
     color = lerp(color, max(sceneColor.rgb, 0.0f), readability);
     color = pow(saturate(color), 1.0f / gamma);
+    // 8 bit への量子化で空のなめらかな階調に縞が出ないよう、画素ごとに ±1 段の三角分布の揺らぎを足す。
+    const float2 pixel = input.position.xy;
+    const float noiseA = frac(52.9829189f * frac(dot(pixel, float2(0.06711056f, 0.00583715f))));
+    const float noiseB = frac(52.9829189f * frac(dot(pixel + 17.0f, float2(0.00583715f, 0.06711056f))));
+    color = saturate(color + (noiseA + noiseB - 1.0f) / 255.0f);
     return float4(color, sceneColor.a);
 }

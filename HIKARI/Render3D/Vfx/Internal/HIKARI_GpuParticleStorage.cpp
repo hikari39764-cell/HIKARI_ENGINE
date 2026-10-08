@@ -226,9 +226,6 @@ GpuParticleStorage::GetEmitterUploadGpuAddress(uint32_t frameSlot, uint32_t page
 }
 
 D3D12_GPU_DESCRIPTOR_HANDLE
-GpuParticleStorage::GetParticleSrvGpuHandle() const noexcept { return particleSrv_.gpu; }
-
-D3D12_GPU_DESCRIPTOR_HANDLE
 GpuParticleStorage::GetParticleUavGpuHandle() const noexcept { return particleUav_.gpu; }
 
 D3D12_GPU_VIRTUAL_ADDRESS

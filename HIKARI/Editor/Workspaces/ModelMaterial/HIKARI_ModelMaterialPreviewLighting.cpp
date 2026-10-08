@@ -138,33 +138,8 @@ bool DrawSelectedLightSpatialOverlay(ImDrawList& drawList, const Camera3D& camer
             }
             return hovered || rangeDragging;
         }
-    } else if (light.type == RENDER3D::LIGHTING::SceneLightType::Directional) {
-        const MATH::Vec3 direction =
-            MATH::Length(light.direction) > 1.0e-5f ? MATH::Normalize(light.direction) : MATH::Vec3{0.0f, -1.0f, 0.0f};
-        ImVec2 start{};
-        ImVec2 end{};
-        if (ProjectPreviewPoint(camera, light.position, origin, size, start) &&
-            ProjectPreviewPoint(camera, light.position + direction * 2.0f, origin, size, end)) {
-            drawList.AddLine(start, end, color, 3.0f);
-            drawList.AddCircleFilled(end, 5.0f, color, 12);
-        }
     }
     return false;
-}
-
-MATH::Vec3 DirectionEulerDegrees(const MATH::Vec3& direction) {
-    const MATH::Vec3 normalized =
-        MATH::Length(direction) > 1.0e-5f ? MATH::Normalize(direction) : MATH::Vec3{0.0f, 0.0f, 1.0f};
-    constexpr float kRadiansToDegrees = 57.2957795131f;
-    const float pitch = -std::asin(std::clamp(normalized.y, -1.0f, 1.0f));
-    const float yaw = std::atan2(normalized.x, normalized.z);
-    return {pitch * kRadiansToDegrees, yaw * kRadiansToDegrees, 0.0f};
-}
-
-MATH::Vec3 RotationForward(const MATH::Quat& rotation) {
-    const MATH::Vec4 transformed = MATH::Mat4::Rotate(rotation).TransformPoint({0.0f, 0.0f, 1.0f, 0.0f});
-    const MATH::Vec3 forward{transformed.x, transformed.y, transformed.z};
-    return MATH::Length(forward) > 1.0e-5f ? MATH::Normalize(forward) : MATH::Vec3{0.0f, 0.0f, 1.0f};
 }
 #endif
 
@@ -179,25 +154,17 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingProperties() {
     ImGui::TextDisabled(
         TEXT::Localize("editor.ui.studio.lights.are.workspace.only.they.use.the.runtime.light.cont.6d18be").c_str());
     if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.point.light.a8134e", "+ Point Light").c_str())) {
-        AddPreviewLight(RENDER3D::LIGHTING::SceneLightType::Point);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.directional.light.87509d", "+ Directional Light").c_str())) {
-        AddPreviewLight(RENDER3D::LIGHTING::SceneLightType::Directional);
+        AddPreviewLight();
     }
     for (size_t index = 0u; index < previewLighting_.lights.size(); ++index) {
         auto& light = previewLighting_.lights[index];
         ImGui::PushID(static_cast<int>(index));
         const bool selected = selectedPreviewLightIndex_ == index;
-        const char* typeLabel = light.type == RENDER3D::LIGHTING::SceneLightType::Directional ? "Directional" : "Point";
-        const std::string label = light.name + "  [" + typeLabel + "]";
-        if (ImGui::Selectable(label.c_str(), selected)) {
+        if (ImGui::Selectable(light.name.c_str(), selected)) {
             previewLightRangeDragActive_ = false;
             selectedPreviewLightIndex_ = index;
             previewEnvironmentMode_ = PreviewEnvironmentMode::StudioInspect;
-            previewLightGizmoState_.operation = light.type == RENDER3D::LIGHTING::SceneLightType::Directional
-                                                    ? EditorTransformGizmoOperation::Rotate
-                                                    : EditorTransformGizmoOperation::Translate;
+            previewLightGizmoState_.operation = EditorTransformGizmoOperation::Translate;
         }
         ImGui::PopID();
     }
@@ -210,24 +177,14 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingProperties() {
     ImGui::SeparatorText(TEXT::Localize("editor.ui.selected.light.67da0b").c_str());
     ImGui::Checkbox(TEXT::LocalizeWindow("ui.vfx.text.Enabled", "Enabled").c_str(), &light.enabled);
     ImGui::DragFloat3(TEXT::LocalizeWindow("ui.vfx.text.Position", "Position").c_str(), &light.position.x, 0.05f);
-    if (light.type == RENDER3D::LIGHTING::SceneLightType::Directional) {
-        if (ImGui::DragFloat3(TEXT::LocalizeWindow("ui.vfx.text.Direction", "Direction").c_str(), &light.direction.x,
-                              0.01f, -1.0f, 1.0f)) {
-            light.direction = MATH::Length(light.direction) > 1.0e-5f ? MATH::Normalize(light.direction)
-                                                                      : MATH::Vec3{0.0f, -1.0f, 0.0f};
-        }
-        ImGui::TextDisabled(
-            TEXT::Localize("editor.ui.use.the.rotate.gizmo.in.the.viewport.to.aim.this.light.2c784d").c_str());
-    } else {
-        ImGui::DragFloat(TEXT::LocalizeWindow("ui.vfx.text.Range", "Range").c_str(), &light.range, 0.05f, 0.05f,
-                         10000.0f, "%.2f");
-        ImGui::TextDisabled(
-            TEXT::Localize("editor.ui.the.gold.sphere.in.the.viewport.is.the.point.light.range.77d37e").c_str());
-    }
+    ImGui::DragFloat(TEXT::LocalizeWindow("ui.vfx.text.Range", "Range").c_str(), &light.range, 0.05f, 0.05f, 10000.0f,
+                     "%.2f");
+    ImGui::TextDisabled(
+        TEXT::Localize("editor.ui.the.gold.sphere.in.the.viewport.is.the.point.light.range.77d37e").c_str());
     ImGui::ColorEdit3(TEXT::LocalizeWindow("ui.vfx.text.Color", "Color").c_str(), &light.color.x,
                       ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
-    ImGui::DragFloat(TEXT::LocalizeWindow("ui.quality.intensity", "Intensity").c_str(), &light.intensity, 0.05f, 0.0f,
-                     10000.0f, "%.2f");
+    ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.light.lumens", "Luminous Flux (lm)").c_str(), &light.intensity,
+                     100.0f, 0.0f, 1000000.0f, "%.0f");
     if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.reset.around.preview.3f2318", "Reset Around Preview").c_str())) {
         ResetPreviewKeyLight();
     }
@@ -266,10 +223,7 @@ ModelMaterialWorkspaceController::DrawPreviewLightViewportInteraction(float orig
         if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             previewLightRangeDragActive_ = false;
             selectedPreviewLightIndex_ = index;
-            previewLightGizmoState_.operation =
-                previewLighting_.lights[index].type == RENDER3D::LIGHTING::SceneLightType::Directional
-                    ? EditorTransformGizmoOperation::Rotate
-                    : EditorTransformGizmoOperation::Translate;
+            previewLightGizmoState_.operation = EditorTransformGizmoOperation::Translate;
         }
     }
 
@@ -277,22 +231,15 @@ ModelMaterialWorkspaceController::DrawPreviewLightViewportInteraction(float orig
         return interaction;
     }
     auto& light = previewLighting_.lights[*selectedPreviewLightIndex_];
-    if (light.type == RENDER3D::LIGHTING::SceneLightType::Point) {
-        previewLightGizmoState_.operation = EditorTransformGizmoOperation::Translate;
-    }
+    previewLightGizmoState_.operation = EditorTransformGizmoOperation::Translate;
     TransformData transform{};
     transform.position = light.position;
-    transform.rotationEulerDeg = DirectionEulerDegrees(light.direction);
     transform.scale = {1.0f, 1.0f, 1.0f};
     const EditorTransformGizmoResult result = previewLightGizmo_.DrawTransform(
         transform, camera, previewLightGizmoState_, EditorViewportRect{originX, originY, width, height});
     interaction.gizmoInteracting = result.interacting;
     if (result.changed) {
         light.position = result.transform.position;
-        if (light.type == RENDER3D::LIGHTING::SceneLightType::Directional &&
-            previewLightGizmoState_.operation == EditorTransformGizmoOperation::Rotate) {
-            light.direction = RotationForward(result.rotation);
-        }
         MarkPreviewLightingChanged();
     }
 #else

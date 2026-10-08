@@ -103,6 +103,22 @@ inline bool ReadUint32(const nlohmann::json& object, const char* key, uint32_t f
     return true;
 }
 
+// 資産の root.formatVersion が expected と一致すること（古い形式は読まない）。
+inline bool RequireFormatVersion(const nlohmann::json& root, uint32_t expected, std::string& outDiagnostic) {
+    if (!root.is_object() || !root.contains("formatVersion")) {
+        return Fail(outDiagnostic, "root.formatVersion is required");
+    }
+    uint32_t version = 0u;
+    if (!ReadUint32(root, "formatVersion", 0u, version, outDiagnostic, "root")) {
+        return false;
+    }
+    if (version != expected) {
+        return Fail(outDiagnostic, "unsupported formatVersion " + std::to_string(version) +
+                                       " (supported: " + std::to_string(expected) + ")");
+    }
+    return true;
+}
+
 // node 自体が [x, y, z] であること（path は node の位置）
 inline bool ReadVec3(const nlohmann::json& node, MATH::Vec3& outValue, std::string& outDiagnostic,
                      std::string_view path) {

@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "name": "Storm",
+  "weather": {
+    "cloudCoverage": 0.7,
+    "cloudType": 0.95,
+    "cloudDensity": 1.6,
+    "haze": 0.3,
+    "fogDensity": 0.0015,
+    "fogHeightFalloff": 0.03,
+    "precipitation": "Rain",
+    "precipitationIntensity": 1.0,
+    "windSpeed": 14.0,
+    "windFromDegrees": 210.0,
+    "lightningPerMinute": 6.0,
+    "transitionSeconds": 30.0
+  }
+}

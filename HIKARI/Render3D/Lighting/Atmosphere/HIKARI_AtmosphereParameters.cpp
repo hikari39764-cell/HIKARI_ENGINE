@@ -30,11 +30,12 @@ MATH::Vec3 SanitizeDirection(const MATH::Vec3& value, const MATH::Vec3& fallback
 
 namespace {
 
-MATH::Vec3 SanitizeRadianceColor(const MATH::Vec3& value, const MATH::Vec3& fallback = {1.0f, 1.0f, 1.0f}) noexcept {
+// 光源の色味（強さは照度が持つ）。
+MATH::Vec3 SanitizeLightColor(const MATH::Vec3& value) noexcept {
     return {
-        SanitizeFiniteRange(value.x, fallback.x, 0.0f, 64.0f),
-        SanitizeFiniteRange(value.y, fallback.y, 0.0f, 64.0f),
-        SanitizeFiniteRange(value.z, fallback.z, 0.0f, 64.0f),
+        SanitizeFiniteRange(value.x, 1.0f, 0.0f, 4.0f),
+        SanitizeFiniteRange(value.y, 1.0f, 0.0f, 4.0f),
+        SanitizeFiniteRange(value.z, 1.0f, 0.0f, 4.0f),
     };
 }
 
@@ -81,7 +82,7 @@ MATH::Vec3 EstimateAtmosphereSunTransmittance(const AtmosphereLutConstants& atmo
         const float height = std::max(0.0f, std::sqrt(std::max(radiusSquared, 0.0f)) - planetRadius);
         rayleighColumn += std::exp(-height / rayleighHeight) * stepLength;
         mieColumn += std::exp(-height / mieHeight) * stepLength;
-        ozoneColumn += std::exp(-std::abs(height - ozoneCenter) / ozoneWidth) * stepLength;
+        ozoneColumn += (std::max)(0.0f, 1.0f - std::abs(height - ozoneCenter) / ozoneWidth) * stepLength;
     }
     const MATH::Vec3 opticalDepth{
         atmosphere.rayleighScattering.x * rayleighColumn + atmosphere.mieScattering.x * mieColumn +
@@ -100,48 +101,24 @@ MATH::Vec3 EstimateAtmosphereSunTransmittance(const AtmosphereLutConstants& atmo
 
 } // namespace
 
-float SolarAngularRadiusFromDiskSize(float size) noexcept {
-    const float cosineWidth = SanitizeFiniteRange(size, 0.04f, 0.0f, 2.0f);
-    return std::clamp(2.0f * std::asin(std::sqrt(0.5f * cosineWidth)), kMinSolarAngularRadius, kMaxSolarAngularRadius);
-}
-
-float SolarDiskSizeFromAngularRadius(float radius) noexcept {
-    const float safeRadius = SanitizeFiniteRange(radius, 0.004675f, kMinSolarAngularRadius, kMaxSolarAngularRadius);
-    const float halfSine = std::sin(0.5f * safeRadius);
-    return 2.0f * halfSine * halfSine;
-}
-
-float ResolveSolarAngularRadius(const SceneEnvironment& environment) noexcept {
-    const bool atmosphere =
-        environment.sky.enabled && environment.sky.mode == SkyMode::Atmosphere && environment.atmosphere.enabled;
-    return atmosphere ? SanitizeFiniteRange(environment.atmosphere.sunAngularRadius, 0.004675f, kMinSolarAngularRadius,
-                                            kMaxSolarAngularRadius)
-                      : SolarAngularRadiusFromDiskSize(environment.sky.sunDiskSize);
-}
-
 AtmosphereSolarState BuildAtmosphereSolarState(const SceneEnvironment& environment, float observerHeight) noexcept {
     AtmosphereSolarState result{};
-    const DirectionalLight& sun = environment.directional;
-    const MATH::Vec3 directional = SanitizeDirection(sun.direction, {0.4f, -1.0f, -0.6f});
-    result.sunDirection = directional * -1.0f;
-    result.sunSourceColor = SanitizeRadianceColor(sun.color);
+    const EnvironmentDirectionalLight& light = environment.frame.Primary();
+    result.sunDirection = SanitizeDirection(light.toLight, {0.0f, 1.0f, 0.0f});
+    result.sunSourceColor = SanitizeLightColor(light.color);
     result.sunColor = result.sunSourceColor;
-    const float directionalIntensity = sun.enabled ? SanitizeFiniteRange(sun.intensity, 0.0f, 0.0f, 64.0f) : 0.0f;
-    result.atmosphereEnabled =
-        environment.sky.enabled && environment.sky.mode == SkyMode::Atmosphere && environment.atmosphere.enabled;
-    const float solarScale =
+    result.atmosphereEnabled = environment.sky.source == SkySource::Atmosphere;
+    // 大気の空は地平線の下の光源も残し、地球の影（透過率）で地表の直射を消す。大気を持たない空は円盤の見える割合で消す。
+    const float visibility = result.atmosphereEnabled ? 1.0f : std::clamp(light.horizonVisibility, 0.0f, 1.0f);
+    result.sunSourceRadiance =
+        std::isfinite(light.illuminance) ? (std::max)(light.illuminance, 0.0f) * visibility : 0.0f;
+    result.sunAngularRadius =
+        SanitizeFiniteRange(light.angularRadius, 0.004675f, kMinSolarAngularRadius, kMaxSolarAngularRadius);
+    result.sunTransmittance =
         result.atmosphereEnabled
-            ? SanitizeFiniteRange(environment.atmosphere.sunIlluminance, 1.0f, 0.0f, 16.0f) *
-                  std::exp2(SanitizeFiniteRange(environment.atmosphere.sunExposure, 0.0f, -16.0f, 16.0f))
-            : 1.0f;
-    result.sunSourceRadiance = SanitizeFiniteRange(directionalIntensity * solarScale, 0.0f, 0.0f, 256.0f);
-    if (result.atmosphereEnabled) {
-        result.sunTransmittance = EstimateAtmosphereSunTransmittance(
-            BuildAtmosphereLutConstants(environment.atmosphere, result, environment.sky.groundColor),
-            result.sunDirection, observerHeight);
-    } else {
-        result.sunTransmittance = {1.0f, 1.0f, 1.0f};
-    }
+            ? EstimateAtmosphereSunTransmittance(BuildAtmosphereLutConstants(environment.atmosphere, result),
+                                                 result.sunDirection, observerHeight)
+            : MATH::Vec3{1.0f, 1.0f, 1.0f};
     const float transmittanceLuminance = SanitizeFiniteRange(
         result.sunTransmittance.x * 0.2126f + result.sunTransmittance.y * 0.7152f + result.sunTransmittance.z * 0.0722f,
         0.0f, 0.0f, 1.0f);
@@ -154,53 +131,54 @@ AtmosphereSolarState BuildAtmosphereSolarState(const SceneEnvironment& environme
             result.sunSourceColor.z * result.sunTransmittance.z / transmittanceLuminance,
         };
     }
-    result.sunAngularRadius = ResolveSolarAngularRadius(environment);
-    result.valid = sun.enabled;
+    result.valid = result.sunSourceRadiance > 0.0f;
     return result;
 }
 
 AtmosphereLutConstants BuildAtmosphereLutConstants(const AtmosphereSettings& atmosphere,
-                                                   const AtmosphereSolarState& solar,
-                                                   const MATH::Vec3& groundColor) noexcept {
+                                                   const AtmosphereSolarState& solar) noexcept {
     AtmosphereLutConstants result{};
     if (!solar.atmosphereEnabled)
         return result;
-    result.groundColor = {SanitizeFiniteRange(groundColor.x, 0.1f, 0.0f, 1.0f),
-                          SanitizeFiniteRange(groundColor.y, 0.14f, 0.0f, 1.0f),
-                          SanitizeFiniteRange(groundColor.z, 0.2f, 0.0f, 1.0f), 0.0f};
-    const float planetRadius = SanitizeFiniteRange(atmosphere.planetRadius, 6360000.0f, 1.0f, 100000000.0f);
-    const float height = SanitizeFiniteRange(atmosphere.atmosphereHeight, 80000.0f, 1.0f, 1000000.0f);
+    // 有限でない値は既定の大気へ戻す。
+    const AtmosphereSettings defaults{};
+    // 地面の反照率は色で持ち、shader が掛ける ozoneParams.w の単一倍率は 1 にする。
+    result.groundColor = {SanitizeFiniteRange(atmosphere.groundAlbedo.x, defaults.groundAlbedo.x, 0.0f, 1.0f),
+                          SanitizeFiniteRange(atmosphere.groundAlbedo.y, defaults.groundAlbedo.y, 0.0f, 1.0f),
+                          SanitizeFiniteRange(atmosphere.groundAlbedo.z, defaults.groundAlbedo.z, 0.0f, 1.0f), 0.0f};
+    const float planetRadius = SanitizeFiniteRange(atmosphere.planetRadius, defaults.planetRadius, 1.0f, 100000000.0f);
+    const float height = SanitizeFiniteRange(atmosphere.atmosphereHeight, defaults.atmosphereHeight, 1.0f, 1000000.0f);
     result.planetParams = {
         planetRadius,
         planetRadius + std::max(height, planetRadius * 2.0e-7f),
-        SanitizeFiniteRange(atmosphere.rayleighScaleHeight, 8000.0f, 1.0f, 1000000.0f),
-        SanitizeFiniteRange(atmosphere.mieScaleHeight, 1200.0f, 1.0f, 1000000.0f),
+        SanitizeFiniteRange(atmosphere.rayleighScaleHeight, defaults.rayleighScaleHeight, 1.0f, 1000000.0f),
+        SanitizeFiniteRange(atmosphere.mieScaleHeight, defaults.mieScaleHeight, 1.0f, 1000000.0f),
     };
     result.rayleighScattering = {
-        SanitizeFiniteRange(atmosphere.rayleighScattering.x, 5.8e-6f, 0.0f, 1.0f),
-        SanitizeFiniteRange(atmosphere.rayleighScattering.y, 13.5e-6f, 0.0f, 1.0f),
-        SanitizeFiniteRange(atmosphere.rayleighScattering.z, 33.1e-6f, 0.0f, 1.0f),
-        SanitizeFiniteRange(atmosphere.sunAngularRadius, 0.004675f, 0.0001f, 0.25f),
+        SanitizeFiniteRange(atmosphere.rayleighScattering.x, defaults.rayleighScattering.x, 0.0f, 1.0f),
+        SanitizeFiniteRange(atmosphere.rayleighScattering.y, defaults.rayleighScattering.y, 0.0f, 1.0f),
+        SanitizeFiniteRange(atmosphere.rayleighScattering.z, defaults.rayleighScattering.z, 0.0f, 1.0f),
+        SanitizeFiniteRange(solar.sunAngularRadius, 0.004675f, kMinSolarAngularRadius, kMaxSolarAngularRadius),
     };
     result.mieScattering = {
-        SanitizeFiniteRange(atmosphere.mieScattering.x, 3.996e-6f, 0.0f, 1.0f),
-        SanitizeFiniteRange(atmosphere.mieScattering.y, 3.996e-6f, 0.0f, 1.0f),
-        SanitizeFiniteRange(atmosphere.mieScattering.z, 3.996e-6f, 0.0f, 1.0f),
-        SanitizeFiniteRange(atmosphere.mieAnisotropy, 0.76f, -0.95f, 0.95f),
+        SanitizeFiniteRange(atmosphere.mieScattering.x, defaults.mieScattering.x, 0.0f, 1.0f),
+        SanitizeFiniteRange(atmosphere.mieScattering.y, defaults.mieScattering.y, 0.0f, 1.0f),
+        SanitizeFiniteRange(atmosphere.mieScattering.z, defaults.mieScattering.z, 0.0f, 1.0f),
+        SanitizeFiniteRange(atmosphere.mieAnisotropy, defaults.mieAnisotropy, -0.95f, 0.95f),
     };
     result.ozoneAbsorption = {
-        SanitizeFiniteRange(atmosphere.ozoneAbsorption.x, 6.5e-7f, 0.0f, 1.0f),
-        SanitizeFiniteRange(atmosphere.ozoneAbsorption.y, 1.881e-6f, 0.0f, 1.0f),
-        SanitizeFiniteRange(atmosphere.ozoneAbsorption.z, 8.5e-8f, 0.0f, 1.0f),
-        SanitizeFiniteRange(atmosphere.ozoneCenterHeight, 25000.0f, 0.0f, 1000000.0f),
+        SanitizeFiniteRange(atmosphere.ozoneAbsorption.x, defaults.ozoneAbsorption.x, 0.0f, 1.0f),
+        SanitizeFiniteRange(atmosphere.ozoneAbsorption.y, defaults.ozoneAbsorption.y, 0.0f, 1.0f),
+        SanitizeFiniteRange(atmosphere.ozoneAbsorption.z, defaults.ozoneAbsorption.z, 0.0f, 1.0f),
+        SanitizeFiniteRange(atmosphere.ozoneCenterHeight, defaults.ozoneCenterHeight, 0.0f, 1000000.0f),
     };
     result.ozoneParams = {
-        SanitizeFiniteRange(atmosphere.ozoneWidth, 15000.0f, 1.0f, 1000000.0f),
-        SanitizeFiniteRange(atmosphere.aerialPerspectiveStrength, 1.0f, 0.0f, 8.0f),
+        SanitizeFiniteRange(atmosphere.ozoneWidth, defaults.ozoneWidth, 1.0f, 1000000.0f),
+        SanitizeFiniteRange(atmosphere.aerialPerspectiveStrength, defaults.aerialPerspectiveStrength, 0.0f, 8.0f),
         SanitizeFiniteRange(solar.sunTransmittance.x * 0.2126f + solar.sunTransmittance.y * 0.7152f +
                                 solar.sunTransmittance.z * 0.0722f,
                             0.0f, 0.0f, 1.0f),
-        SanitizeFiniteRange(atmosphere.groundAlbedo, 0.1f, 0.0f, 1.0f),
+        1.0f,
     };
     result.sunDirection = {
         solar.sunDirection.x,

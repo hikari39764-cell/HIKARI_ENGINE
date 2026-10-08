@@ -69,7 +69,7 @@ VfxAssetData FireTornado() {
             shell, {1, 1, 1},
             {{0, 0}, {0.12f, (0.75f - i * 0.17f) * density[i]}, {0.76f, (0.65f - i * 0.14f) * density[i]}, {1, 0}});
         if (i == 0)
-            Light(shell, {1, 0.18f, 0.025f, 1}, 1.2f, 5.5f);
+            Light(shell, {1, 0.18f, 0.025f, 1}, 12000.0f, 5.5f);
         layers.push_back(std::move(shell));
     }
 

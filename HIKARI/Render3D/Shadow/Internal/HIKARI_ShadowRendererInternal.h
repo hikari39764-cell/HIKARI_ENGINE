@@ -83,6 +83,7 @@ struct ShadowRendererState {
     RENDER3D::WORLD_SPRITES::WorldSpritePass* worldSprites = nullptr;
     bool initialized = false;
     bool frameEnabled = false;
+    bool debugFrustumVisible = false;
     bool frameHasShadowWork = false;
     bool frameHasStaticShadowWork = false;
     bool frameHasDynamicShadowWork = false;

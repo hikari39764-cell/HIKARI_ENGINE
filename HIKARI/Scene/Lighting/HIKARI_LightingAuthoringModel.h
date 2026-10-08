@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
-#include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Reflection/HIKARI_ReflectionProbeContract.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
 namespace HIKARI::LIGHTING_AUTHORING {
@@ -26,14 +26,14 @@ struct LightAuthoring {
     RENDER3D::LIGHTING::SceneLightType type = RENDER3D::LIGHTING::SceneLightType::Point;
     bool enabled = true;
     MATH::Vec3 color{1.0f, 1.0f, 1.0f};
-    float intensity = 1.0f;
-    float range = 5.0f;
+    // 光束 [lm]。
+    float intensity = 800.0f;
+    float range = 10.0f;
     float sourceRadius = 0.0f;
     bool castsShadows = true;
     float innerConeAngleDegrees = 25.0f;
     float outerConeAngleDegrees = 35.0f;
     float angularFalloff = 1.0f;
-    RENDER3D::LIGHTING::LocalLightFalloff distanceFalloff = RENDER3D::LIGHTING::LocalLightFalloff::InverseSquare;
     int priority = 0;
 };
 
@@ -61,12 +61,10 @@ std::vector<ReflectionProbeAuthoring> CollectReflectionProbes(const SceneDocumen
 std::vector<ReflectionProbeAuthoring> CollectReflectionProbes(std::span<const SceneObjectData> objects);
 std::vector<IrradianceVolumeAuthoring> CollectIrradianceVolumes(const SceneDocument& document);
 std::vector<IrradianceVolumeAuthoring> CollectIrradianceVolumes(std::span<const SceneObjectData> objects);
+// 焼き込み対象だけ。Realtime の区域は動的 GI が毎フレーム更新する。
+std::vector<IrradianceVolumeAuthoring> CollectBakedIrradianceVolumes(const SceneDocument& document);
 std::vector<LightAuthoring> CollectLights(const SceneDocument& document);
 std::vector<LightAuthoring> CollectLights(std::span<const SceneObjectData> objects);
-
-MATH::Vec3 LightDirectionFromEulerDegrees(const MATH::Vec3& eulerDegrees) noexcept;
-MATH::Vec3 DirectionalLightEulerDegreesFromDirection(const MATH::Vec3& direction) noexcept;
-MATH::Vec3 CanonicalDirectionalLightEulerDegrees(const MATH::Vec3& eulerDegrees) noexcept;
 
 SceneObjectId AddLight(SceneDocument& document, const LightAuthoring& light);
 SceneObjectId AddReflectionProbe(SceneDocument& document, const ReflectionProbeAuthoring& probe);
@@ -76,8 +74,5 @@ SceneObjectId AddIrradianceVolume(SceneDocument& document, const IrradianceVolum
 bool IsLightingComponentType(std::string_view componentType) noexcept;
 const SceneComponentData* FindLightingComponent(const SceneObjectData& object, const char* componentType);
 SceneComponentData* FindLightingComponent(SceneObjectData& object, const char* componentType);
-
-void AddDefaultSceneLight(SceneDocument& document);
-void SynchronizeLegacyLightingViews(SceneDocument& document);
 
 } // namespace HIKARI::LIGHTING_AUTHORING

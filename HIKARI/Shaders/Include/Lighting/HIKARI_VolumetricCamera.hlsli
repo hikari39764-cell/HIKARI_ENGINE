@@ -73,13 +73,32 @@ float HikariVolumeViewDepth(float3 worldPosition, float3 cameraPosition, float3 
     return max(dot(worldPosition - cameraPosition, cameraForward), 0.0f);
 }
 
-float HikariVolumeDistanceToSlice(float distanceToCamera, float nearDistance, float farDistance, float depthSlices)
+// froxel の奥行きの分布。fraction は near..far を 0..1 とし、log(1 + d / knee) に比例させる。カメラの近く（knee 以内）は
+// 等間隔に近く、遠くは対数になる。純粋な対数（near からの比）だと near が 0.01m の時に半分の層が 1m 以内に集まり、
+// 部屋の大きさの光の筋が数層にしか乗らない。
+static const float HIKARI_VOLUME_DEPTH_KNEE = 2.0f;
+
+float HikariVolumeDepthFraction(float distanceToCamera, float nearDistance, float farDistance)
 {
     const float safeNear = max(0.01f, nearDistance);
     const float safeFar = max(safeNear + 0.01f, farDistance);
-    const float normalized = saturate(log(max(distanceToCamera, safeNear) / safeNear) / log(safeFar / safeNear));
+    return saturate(log(1.0f + max(distanceToCamera - safeNear, 0.0f) / HIKARI_VOLUME_DEPTH_KNEE) /
+        log(1.0f + (safeFar - safeNear) / HIKARI_VOLUME_DEPTH_KNEE));
+}
+
+float HikariVolumeFractionDistance(float fraction, float nearDistance, float farDistance)
+{
+    const float safeNear = max(0.01f, nearDistance);
+    const float safeFar = max(safeNear + 0.01f, farDistance);
+    return safeNear + HIKARI_VOLUME_DEPTH_KNEE *
+        (exp(fraction * log(1.0f + (safeFar - safeNear) / HIKARI_VOLUME_DEPTH_KNEE)) - 1.0f);
+}
+
+float HikariVolumeDistanceToSlice(float distanceToCamera, float nearDistance, float farDistance, float depthSlices)
+{
     // 最初/最後の格納点は near/far 境界。Texture の Texel 中心へ写像する。
-    return (normalized * (depthSlices - 1.0f) + 0.5f) / depthSlices;
+    return (HikariVolumeDepthFraction(distanceToCamera, nearDistance, farDistance) * (depthSlices - 1.0f) + 0.5f) /
+        depthSlices;
 }
 
 #endif

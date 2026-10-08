@@ -1,0 +1,213 @@
+{
+  "formatVersion": 1,
+  "name": "Painterly",
+  "phase": "Display",
+  "inputs": [
+    "SceneDepth"
+  ],
+  "passes": [
+    {
+      "name": "Painterly Resolve",
+      "programId": "HIKARI.EngineShader.Post_PainterlyPS",
+      "entryId": "Main"
+    }
+  ],
+  "params": [
+    {
+      "key": "strength",
+      "label": "Strength",
+      "type": "Float",
+      "ref": {
+        "slot": 0,
+        "channel": 0
+      },
+      "defaultValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "brushSize",
+      "label": "Brush Size (1080p px)",
+      "type": "Float",
+      "ref": {
+        "slot": 0,
+        "channel": 1
+      },
+      "defaultValues": [
+        6.0,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        16.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.05
+    },
+    {
+      "key": "sharpness",
+      "label": "Edge Sharpness",
+      "type": "Float",
+      "ref": {
+        "slot": 0,
+        "channel": 2
+      },
+      "defaultValues": [
+        8.0,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        16.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.05
+    },
+    {
+      "key": "saturation",
+      "label": "Saturation",
+      "type": "Float",
+      "ref": {
+        "slot": 0,
+        "channel": 3
+      },
+      "defaultValues": [
+        1.15,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        2.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "canvas",
+      "label": "Canvas",
+      "type": "Float",
+      "ref": {
+        "slot": 1,
+        "channel": 0
+      },
+      "defaultValues": [
+        0.5,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "edgeDarken",
+      "label": "Edge Darkening",
+      "type": "Float",
+      "ref": {
+        "slot": 1,
+        "channel": 1
+      },
+      "defaultValues": [
+        0.5,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "brushNoise",
+      "label": "Brush Variation",
+      "type": "Float",
+      "ref": {
+        "slot": 1,
+        "channel": 2
+      },
+      "defaultValues": [
+        0.6,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    }
+  ]
+}

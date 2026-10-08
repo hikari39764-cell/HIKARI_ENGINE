@@ -3,6 +3,7 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Core/MeshRenderer/Execution/HIKARI_MeshDrawExecutor.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererState.h"
+#include "Render3D/Debug/HIKARI_RenderDebugView.h"
 #include "Render3D/GpuDriven/Backend/HIKARI_GeometryBackendPolicy.h"
 
 namespace HIKARI::MESHRENDERER::INTERNAL {

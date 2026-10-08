@@ -247,7 +247,7 @@ EnvironmentDiagnosticsSnapshot CaptureEnvironmentSnapshot(const SceneEnvironment
     snapshot.bloomRadius = bloom.radius;
 
     if (environment) {
-        snapshot.toneMappingEnabled = environment->toneMapping.enabled;
+        snapshot.toneCurve = static_cast<int>(environment->toneMapping.curve);
     }
     const RenderQualitySettings& renderQuality = GetRenderQualitySettings();
     snapshot.antiAliasingMode = RenderAntiAliasingModeLabel(renderQuality.antiAliasingMode);
@@ -408,7 +408,7 @@ void LogEnvironmentSnapshot(const char* reason, const SceneEnvironment* environm
     {
         std::ostringstream oss;
         oss << "[EnvironmentDiagnostics][Post]"
-            << " toneMapping=" << BoolText(snapshot.toneMappingEnabled) << " aaMode=" << snapshot.antiAliasingMode
+            << " toneCurve=" << snapshot.toneCurve << " aaMode=" << snapshot.antiAliasingMode
             << " fxaa=" << BoolText(snapshot.fxaaEnabled) << " fxaaEdge=" << snapshot.fxaaEdgeThreshold
             << " fxaaEdgeMin=" << snapshot.fxaaEdgeThresholdMin << " fxaaSubpixel=" << snapshot.fxaaSubpixelQuality;
         LogInfoLine(oss.str());
@@ -514,19 +514,6 @@ const char* ResolveReflectionProbeSummaryLabel(const EnvironmentDiagnosticsSnaps
         return "Probe Partial";
     }
     return "Probe Missing";
-}
-
-const char* ResolveSsaoSummaryLabel(const EnvironmentDiagnosticsSnapshot& snapshot) {
-    if (!snapshot.ssaoEnabled) {
-        return "AO Off";
-    }
-    if (snapshot.ssaoSuppressed) {
-        return "AO Suppressed";
-    }
-    if (snapshot.ssaoValid) {
-        return snapshot.ssaoHalfResolution ? "AO Half Ready" : "AO Ready";
-    }
-    return "AO Missing";
 }
 
 } // namespace HIKARI::RENDER3D::DIAGNOSTICS

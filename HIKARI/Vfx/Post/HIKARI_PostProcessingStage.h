@@ -44,18 +44,18 @@ public:
     void UpdateContext(const GFX::Context& context);
     void Shutdown();
     void UpdateCommonParams(float deltaTime, int width, int height);
+    // フレームの露出を一度だけ進める（P と P_prev が決まる）。HDR へ書く前に呼ぶ。illumination は場面を照らす光の量。
+    void AdvanceExposure(float deltaTime, const RENDER3D::COLOR::ExposureIllumination& illumination);
     void SetIntensity(float intensity);
     void SetSequenceEffects(std::span<const SEQUENCER::ScreenEffectSample> effects);
     void SetCombo(float combo);
 
-    void ClearEffects();
-    void AddEffect(PostEffect* effect);
-    bool SetGlobalEffect(std::string_view effectId, std::shared_ptr<const PostEffectDefinition> effect,
-                         const PostParameterBlock& values, const AssetRegistry* registry = nullptr);
+    // 全体後処理の層を並びの順に重ねる。同じ効果の層は前のフレームの pass を引き継ぐ。
+    bool SetGlobalEffects(std::span<const ResolvedPostLayer> layers, const AssetRegistry* registry = nullptr);
     bool RequiresSurfaceFeatureMask() const noexcept;
     bool SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
                                const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId);
-    void ClearGlobalEffect();
+    void ClearGlobalEffects();
     bool SetActionPostFrame(uint64_t worldId, uint64_t frameIndex, std::string_view effectId,
                             std::shared_ptr<const PostEffectDefinition> effect, const PostParameterBlock& values,
                             const AssetRegistry& registry);
@@ -65,6 +65,7 @@ public:
     void GetRadialScreenWarp(float& curvature, float& strength) const noexcept;
     void SetBloomSettings(const BloomSettings& settings);
     void SetToneMappingSettings(const ToneMappingSettings& settings);
+    void SetExposureSettings(const RENDER3D::COLOR::ExposureSettings& settings);
     void SetFxaaSettings(const FxaaSettings& settings);
     void SetSunGlareFrame(const SunGlareFrame& frame);
     void ClearSunGlareFrame();
@@ -87,6 +88,8 @@ public:
     const SunGlareDebugStats& GetSunGlareDebugStats() const;
     const ActionScreenImpulseProvider::DebugState& GetActionScreenImpulseDebugState() const;
     const RENDER3D::COLOR::ExposureFrameState& GetExposureState() const;
+    // 測光を持たない用途（ツールのプレビュー）が、描画に使ったビューの露出を渡す。
+    void SetExposureFrame(const RENDER3D::COLOR::ExposureFrameState& state) noexcept { exposureState_ = state; }
     const RENDER3D::COLOR::AutomaticExposureDebugState& GetAutomaticExposureDebugState() const;
     void RequestFrameDump();
 
@@ -107,7 +110,18 @@ public:
     std::string DumpState() const;
 
 private:
-    CommonParams ResolveGlobalFrameParams() const noexcept;
+    struct ActiveGlobalLayer {
+        std::string effectId;
+        std::shared_ptr<const PostEffectDefinition> effect;
+        std::vector<std::unique_ptr<PostEffect>> passes;
+        PostParameterBlock values{};
+    };
+    // phase の層を並びの順に通す。特性マスクや深度を要る層は、それが無いフレームには飛ばす。
+    RenderTarget2D* ExecuteGlobalLayers(PostEffectPhase phase, RenderTarget2D* output, QuadDrawer& quad,
+                                        RenderTarget2D* sceneDepthOwner,
+                                        const RENDER3D::RenderTextureView* surfaceFeatureMask);
+    // 層のパラメーターに、このフレームの SDK の一時上書き（同じ効果の層すべて）を重ねる。
+    CommonParams ResolveGlobalFrameParams(const ActiveGlobalLayer& layer) const noexcept;
     bool IsActionPostCurrent() const noexcept;
     RenderTarget2D* ApplyActionPost(RenderTarget2D& source, QuadDrawer& quad,
                                     const RENDER3D::RenderTextureView* surfaceFeatureMask);
@@ -121,7 +135,7 @@ private:
     std::string effectOverrideId_;
     bool EnsureToneMappingEffect();
     bool EnsureFxaaEffect();
-    bool EnsureBloomEffects(uint32_t blurPairCount);
+    bool EnsureBloomEffects(uint32_t levelCount);
     bool EnsureSunGlareEffect();
     bool EnsureActionScreenImpulseEffect();
     bool EnsureSunGlareTarget(int width, int height);
@@ -147,7 +161,8 @@ private:
     uint64_t actionPostFrame_ = (std::numeric_limits<uint64_t>::max)();
     uint64_t actionPostDeviceGeneration_ = 0u;
     PostChain globalChain_{};
-    std::array<PostChain, 5> bloomLevels_{};
+    // Bloom のピラミッドの各段（縮小した結果を段ごとに持つ）。
+    std::array<PostChain, 6> bloomLevels_{};
     RenderTarget2D* ApplySequenceEffects(RenderTarget2D& source, QuadDrawer& quad);
     PostChain sequenceChain_{};
     std::unique_ptr<PostEffect> sequenceEffect_{};
@@ -162,21 +177,24 @@ private:
     CommonParams commonParams_{};
     float elapsedTime_ = 0.0f;
 
-    std::string activeGlobalEffectId_{};
-    std::shared_ptr<const PostEffectDefinition> activeGlobalEffect_{};
+    std::vector<ActiveGlobalLayer> activeGlobalLayers_{};
+    // Display の層が読む、このフレームの HDR 解決で渡された深度と特性マスク。ResolveLdr が使って消す。
+    RenderTarget2D* displaySceneDepthOwner_ = nullptr;
+    const RENDER3D::RenderTextureView* displaySurfaceFeatureMask_ = nullptr;
     uint64_t activeGlobalRegistryId_ = 0u;
     uint64_t activeGlobalRegistryRevision_ = 0u;
-    std::vector<std::unique_ptr<PostEffect>> activeGlobalEffects_{};
-    std::vector<std::unique_ptr<PostEffect>> activeBloomEffects_{};
+    std::unique_ptr<PostEffect> bloomDownsampleEffect_{};
+    std::unique_ptr<PostEffect> bloomUpsampleEffect_{};
     BloomSettings bloomSettings_{};
     ToneMappingSettings toneMappingSettings_{};
+    RENDER3D::COLOR::ExposureSettings exposureSettings_{};
     RENDER3D::COLOR::AutomaticExposureMeter automaticExposureMeter_{};
     RENDER3D::COLOR::ExposureFrameState exposureState_{};
     FxaaSettings fxaaSettings_{};
     BloomDebugStats bloomDebugStats_{};
     SunGlareFrame sunGlareFrame_{};
     SunGlareDebugStats sunGlareDebugStats_{};
-    uint32_t activeBloomBlurPairCount_ = 0;
+    uint32_t activeBloomLevelCount_ = 0;
     std::unique_ptr<PostEffect> sunGlareEffect_{};
     std::unique_ptr<PostEffect> toneMappingEffect_{};
     std::unique_ptr<PostEffect> fxaaEffect_{};

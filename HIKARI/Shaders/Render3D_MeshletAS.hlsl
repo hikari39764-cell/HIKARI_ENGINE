@@ -187,6 +187,13 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     if (terrainRange != (HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_TERRAIN))
         visible = (HikariMeshletVisibleRange)0;
 #endif
+#if HIKARI_MATERIAL_CLASS != HIKARI_MATERIAL_CLASS_ANY
+    // 標準 PBR と材質 program の面も同じ可視範囲を別 PSO で dispatch する。
+    const bool programRange =
+        (visible.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_MATERIAL_PROGRAM) != 0u;
+    if (programRange != (HIKARI_MATERIAL_CLASS == HIKARI_MATERIAL_CLASS_PROGRAM))
+        visible = (HikariMeshletVisibleRange)0;
+#endif
     const uint sourceClusterCount = visible.clusterCount;
     const bool candidateLane = groupIndex < min(sourceClusterCount, HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD);
     bool frustumCulled = false, coneTested = false, coneCulled = false;

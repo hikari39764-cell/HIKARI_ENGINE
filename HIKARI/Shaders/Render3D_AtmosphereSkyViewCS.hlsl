@@ -2,6 +2,7 @@
 #define HIKARI_ATMOSPHERE_SKY_VIEW_CS_INCLUDED
 
 #define HIKARI_ATMOSPHERE_DECLARE_LUT_CB
+#define HIKARI_ATMOSPHERE_DECLARE_VIEW_CB
 
 
 Texture2D<float4> gAtmosphereTransmittance : register(t0);
@@ -13,9 +14,40 @@ SamplerState gLinearClamp : register(s0);
 #define HIKARI_ATMOSPHERE_USE_MULTISCATTERING_LUT
 #include "Include/Atmosphere/HIKARI_AtmosphereScattering.hlsli"
 
-[numthreads(8, 8, 1)]
-void main(uint3 dispatchThreadId : SV_DispatchThreadID)
+// 地表の天空照度。グループの 64 スレッドが余弦分布の 64 方向の空の輝度を一つずつ求め、平均の π 倍を照度にする。
+groupshared float3 gSkyIrradianceSamples[64];
+
+float3 GroundSkyIrradiance(float3 observer, uint sampleIndex, float aerialPerspectiveStrength)
 {
+    const float u = (float(sampleIndex) + 0.5f) / 64.0f;
+    const float v = float(reversebits(sampleIndex)) * 2.3283064365386963e-10f;
+    const float cosine = sqrt(1.0f - v);
+    const float sine = sqrt(v);
+    const float azimuth = u * 6.28318530718f;
+    gSkyIrradianceSamples[sampleIndex] = HikariAtmosphereEvaluateSkyRadianceWithSteps(observer,
+        float3(cos(azimuth) * sine, cosine, sin(azimuth) * sine), gAtmosphereGroundColor.rgb,
+        gAtmosphereOzoneParams.w, aerialPerspectiveStrength, 12u, 4u, 0.0f.xxx);
+    GroupMemoryBarrierWithGroupSync();
+    float3 sum = 0.0f.xxx;
+    [loop] for (uint index = 0u; index < 64u; ++index)
+    {
+        sum += gSkyIrradianceSamples[index];
+    }
+    return sum * (3.14159265f / 64.0f);
+}
+
+[numthreads(8, 8, 1)]
+void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint groupIndex : SV_GroupIndex)
+{
+    // 観測者はカメラの高さ（低い時は遠い地表を見渡す高さ）に置く。高い視点ほど地面までの視線が長く、遠くの地面が
+    // 大気で白む。
+    const float3 observer = HikariAtmosphereBackgroundObserver();
+    const float aerialPerspectiveStrength = max(
+        0.0f,
+        HikariAtmosphereFiniteOr(gAtmosphereOzoneParams.y, 1.0f));
+    // 範囲外のスレッドも同期に加わる。
+    const float3 skyIrradiance = GroundSkyIrradiance(observer, groupIndex, aerialPerspectiveStrength);
+
     uint width = 0u;
     uint height = 0u;
     gAtmosphereSkyView.GetDimensions(width, height);
@@ -26,29 +58,38 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     const float2 uv = (float2(dispatchThreadId.xy) + 0.5f) /
         float2(max(1u, width), max(1u, height));
-    const float elevation = uv.y * 2.0f - 1.0f;
-    const float azimuth = uv.x * 6.28318530718f;
-    const float3 viewDirection = HikariAtmosphereSafeNormalize(float3(
-        cos(azimuth) * sqrt(max(0.0f, 1.0f - elevation * elevation)),
-        elevation,
-        sin(azimuth) * sqrt(max(0.0f, 1.0f - elevation * elevation))));
-    // The LUT is authored for a stable ground observer. Per-frame camera
-    // altitude is not part of the atmosphere parameter contract, so the
-    // renderer keeps this fixed just above the planet surface.
-    const float3 observer = float3(
-        0.0f,
-        HikariAtmospherePlanetRadius() + 1.0f,
-        0.0f);
-    const float aerialPerspectiveStrength = max(
-        0.0f,
-        HikariAtmosphereFiniteOr(gAtmosphereOzoneParams.y, 1.0f));
-    const float3 groundColor = gAtmosphereGroundColor.rgb;
-    float3 radiance = HikariAtmosphereEvaluateSkyRadiance(
+    const float3 viewDirection = HikariAtmosphereSkyViewDirection(uv);
+    float3 radiance = HikariAtmosphereEvaluateSkyRadianceWithSteps(
         observer,
         viewDirection,
-        groundColor,
+        gAtmosphereGroundColor.rgb,
         gAtmosphereOzoneParams.w,
-        aerialPerspectiveStrength);
+        aerialPerspectiveStrength,
+        HIKARI_ATMOSPHERE_MAX_SKY_STEPS,
+        HIKARI_ATMOSPHERE_MAX_SUN_STEPS,
+        skyIrradiance);
+    // 水平より下（地面と、背景の観測者から見える地平線の先の空気）は雲の下にある。主光源は雲を抜けた割合だけ
+    // 届き、空気と地面は雲の下の空の光でも照らされる。空の照度と主光源の項は線形なので、照度 0 と 1 で評価し直して
+    // 分ける（地面に当たらない視線は地面の項が 0 で、透過率 0 の長い空気の道として扱う）。水平より上の空は雲の
+    // 向こうの晴天のまま（雲が重ねて描かれる。雲は実際のカメラの高さから描くので、背景の観測者の高さで水平より下に
+    // 見える晴天は雲の外に出てしまう）。
+    const float visibility = saturate(gAtmosphereViewCloudShading.w);
+    if (visibility < 1.0f && viewDirection.y < 0.0f)
+    {
+        const float3 sunPart = HikariAtmosphereEvaluateSkyRadianceWithSteps(observer, viewDirection,
+            gAtmosphereGroundColor.rgb, gAtmosphereOzoneParams.w, aerialPerspectiveStrength,
+            HIKARI_ATMOSPHERE_MAX_SKY_STEPS, HIKARI_ATMOSPHERE_MAX_SUN_STEPS, 0.0f.xxx);
+        // 地面の照度 1 あたりの輝度（アルベド × 地面までの透過率 / π）。
+        const float3 groundPerIrradiance = HikariAtmosphereEvaluateSkyRadianceWithSteps(observer, viewDirection,
+            gAtmosphereGroundColor.rgb, gAtmosphereOzoneParams.w, aerialPerspectiveStrength,
+            HIKARI_ATMOSPHERE_MAX_SKY_STEPS, HIKARI_ATMOSPHERE_MAX_SUN_STEPS, 1.0f.xxx) - sunPart;
+        const float3 transmittance = saturate(groundPerIrradiance * 3.14159265f /
+            max(gAtmosphereGroundColor.rgb, 1.0e-4f.xxx));
+        const float3 underCloud = max(gAtmosphereViewCloudShading.rgb, 0.0f.xxx);
+        radiance = sunPart * visibility +
+            groundPerIrradiance * lerp(underCloud * 3.14159265f, skyIrradiance, visibility) +
+            underCloud * (1.0f - transmittance) * (1.0f - visibility);
+    }
     gAtmosphereSkyView[dispatchThreadId.xy] =
         float4(
             all(isfinite(radiance)) ? max(0.0f.xxx, radiance) : 0.0f.xxx,

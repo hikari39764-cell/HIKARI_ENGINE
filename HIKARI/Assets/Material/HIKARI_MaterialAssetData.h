@@ -117,8 +117,6 @@ struct MaterialAssetData {
 
 MaterialAssetData MakeStandardPbrMaterialAssetData(const PbrMaterialAssetData& pbr = {});
 
-void ApplyPbrMaterialAssetData(MaterialAssetData& material, const PbrMaterialAssetData& pbr);
-
 // One-way graph -> PBR compatibility sync. Called on material commit so
 // node-graph edits (including AI edits) keep the legacy pbr factor block
 // consistent for the runtime compatibility path and save/reopen rounds.

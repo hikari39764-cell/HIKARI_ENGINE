@@ -29,6 +29,7 @@ class AudioView;
 class CameraView;
 class DialogueView;
 class DebugView;
+class EnvironmentView;
 class DisplaySettingsView;
 class IGameComponent;
 class IGameProjectSession;
@@ -201,6 +202,8 @@ public:
     HIKARI_GAME_PROJECT_SDK_API NavigationView GetNavigation() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API TerrainView GetTerrain() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API LocalFogView GetLocalFog() const noexcept;
+    // シーンの時刻・天気（実行時だけの変更）。
+    HIKARI_GAME_PROJECT_SDK_API EnvironmentView GetEnvironment() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API CameraView GetCamera() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API TimeDilationView GetTimeDilation() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API PresentationModelView GetPresentationModels() const noexcept;

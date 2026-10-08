@@ -19,6 +19,7 @@
 #include "Render2D/HIKARI_GameUiEffectRenderer.h"
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Render2D/HIKARI_Renderer.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 #include "Render3D/Core/HIKARI_RenderFrameToken.h"
@@ -582,7 +583,11 @@ bool PrepareFramePresentation(FramePresentationDestination destination) {
     int renderWidth = 0;
     int renderHeight = 0;
     HIKARI::POST::PostSystem::GetSceneCaptureSize(renderWidth, renderHeight);
-    if (!HIKARI::DX::DxRenderer::SetOutputTarget(DXGI_FORMAT_R16G16B16A16_FLOAT, renderWidth, renderHeight)) {
+    // 場面層の 2D は表示参照の色。主ビューの露出空間（P/E）で HDR 目標へ書く。
+    const float sceneLayerColorScale =
+        RENDER3D::COLOR::MakeViewExposureConstants(HIKARI::POST::PostSystem::GetExposureState()).z;
+    if (!HIKARI::DX::DxRenderer::SetOutputTarget(DXGI_FORMAT_R16G16B16A16_FLOAT, renderWidth, renderHeight,
+                                                 sceneLayerColorScale)) {
         HIKARI_LOG_ERROR("Render2D HDR output target is unavailable.");
         return RecoverLastEditorPresentation(editorViewport, "Render2D HDR target preparation failed");
     }

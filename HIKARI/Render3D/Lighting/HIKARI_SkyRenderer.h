@@ -10,7 +10,6 @@
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Lighting/HIKARI_SkyManager.h"
-#include "Render3D/Lighting/HIKARI_SkyIrradiance.h"
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 
 namespace HIKARI::SKYRENDERER {
@@ -48,15 +47,12 @@ struct SkyEnvironmentData {
     int cubemapHandle = -1;
     int textureHandle = -1;
     D3D12_GPU_DESCRIPTOR_HANDLE cubemapSrv{};
-    MATH::Vec3 zenithColor{0.0f, 0.0f, 0.0f};
-    MATH::Vec3 horizonColor{0.0f, 0.0f, 0.0f};
-    MATH::Vec3 groundColor{0.0f, 0.0f, 0.0f};
-    RENDER3D::LIGHTING::GradientSkyIrradiance gradientIrradiance{};
     MATH::Vec3 tint{1.0f, 1.0f, 1.0f};
+    // 空のテクスチャの輝度倍率（大気の空は 1）。
     float exposure = 1.0f;
+    // 天空光（拡散）と反射の作画用倍率。
     float ambientFromSky = 0.0f;
     float reflectionIntensity = 0.0f;
-    float horizonPower = 1.0f;
     float yaw = 0.0f;
     std::string activeSkyAsset{};
     std::string activeTexturePath{};
@@ -77,9 +73,9 @@ struct SkyEnvironmentData {
     SunGlareSettings sunGlare{};
 };
 
-// Narrow renderer-to-post contract. Direction and radiance are derived
-// from SceneEnvironment::directional; screen position is a probe input,
-// not a second light owner.
+// Narrow renderer-to-post contract. Direction and illuminance are derived
+// from SceneEnvironment::frame (the primary celestial light); screen position
+// is a probe input, not a second light owner.
 struct AtmosphereFrameData {
     bool valid = false;
     bool atmosphereEnabled = false;
@@ -104,11 +100,25 @@ void Reset();
 // destroyed; it does not tear down the legacy sky renderer resources.
 void ShutdownAtmosphereRuntime();
 void InvalidateSkyTextureCache();
+// drawSky が false なら空を描かず、環境光・大気・IBL の状態だけを更新する（一様な背景で塗る確認用ビュー）。
 void Render(const GFX::Context& graphics, const Camera3D& camera, const SceneEnvironment& environment,
-            ModelManager& modelManager, SkyManager& skyManager);
+            ModelManager& modelManager, SkyManager& skyManager, bool drawSky = true);
 const SkyRendererDebugState& GetDebugState();
 const SkyEnvironmentData& GetEnvironmentData();
-MATH::Vec3 ResolveAmbientLightColor(const SceneEnvironment& environment);
+// 直近の Render のビューの空気遠近の体積 LUT（Pre-Exposure 済みの内散乱光と平均透過率）。
+// 奥行きは d = maxDistance * w^2（w は体積の奥行き座標）。大気の空でない時は無効。
+struct AerialPerspectiveView {
+    D3D12_GPU_DESCRIPTOR_HANDLE srv{};
+    float maxDistance = 0.0f;
+    bool valid = false;
+};
+const AerialPerspectiveView& GetAerialPerspectiveView();
+// 直近の Render の天空 LUT（絶対輝度、HikariAtmosphereSkyViewUv の座標）。大気の空でない時は 0。
+D3D12_GPU_DESCRIPTOR_HANDLE GetSkyViewLutSrv();
+// 空が与える平均の環境光の輝度 [nits] の CPU 近似（雲・霧・光線追跡の環境光項）。
+MATH::Vec3 EstimateSkyAmbientRadiance(const SceneEnvironment& environment);
+// 場面を照らす光の量（自動露出の入射式の手がかり）。水平面の照度 = 雲を抜けた直射 + 雲の下の空。
+RENDER3D::COLOR::ExposureIllumination EstimateExposureIllumination(const SceneEnvironment& environment);
 AtmosphereFrameData BuildAtmosphereFrameData(const SceneEnvironment& environment);
 AtmosphereFrameData BuildAtmosphereFrameData(const SceneEnvironment& environment, const Camera3D& camera);
 

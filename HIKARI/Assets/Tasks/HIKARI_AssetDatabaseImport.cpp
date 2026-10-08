@@ -412,16 +412,6 @@ AssetImportBatchResult AssetDatabase::ImportAllOutdated() {
     return ImportAssets(importGuids);
 }
 
-AssetImportBatchResult AssetDatabase::ImportOutdatedInDirectory(const std::filesystem::path& directory,
-                                                                bool recursive) {
-    if (!CheckOwnerThread("directory asset import")) {
-        return {};
-    }
-
-    const auto importGuids = CollectOutdatedImportGuids(CollectInDirectory(directory, recursive));
-    return ImportAssets(importGuids);
-}
-
 AssetImportBatchResult AssetDatabase::ImportDependencies(const AssetGuid& guid, bool includeSelf) {
     if (!CheckOwnerThread("dependency asset import")) {
         return {};

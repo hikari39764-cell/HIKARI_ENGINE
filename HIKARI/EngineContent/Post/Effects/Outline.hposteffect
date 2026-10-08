@@ -1,0 +1,213 @@
+{
+  "formatVersion": 1,
+  "name": "Outline",
+  "phase": "Display",
+  "inputs": [
+    "SceneDepth"
+  ],
+  "passes": [
+    {
+      "name": "Outline Resolve",
+      "programId": "HIKARI.EngineShader.Post_OutlinePS",
+      "entryId": "Main"
+    }
+  ],
+  "params": [
+    {
+      "key": "strength",
+      "label": "Strength",
+      "type": "Float",
+      "ref": {
+        "slot": 0,
+        "channel": 0
+      },
+      "defaultValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "lineWidth",
+      "label": "Line Width (1080p px)",
+      "type": "Float",
+      "ref": {
+        "slot": 0,
+        "channel": 1
+      },
+      "defaultValues": [
+        1.3,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.5,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        4.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.02
+    },
+    {
+      "key": "depthSensitivity",
+      "label": "Shape Line Sensitivity",
+      "type": "Float",
+      "ref": {
+        "slot": 0,
+        "channel": 2
+      },
+      "defaultValues": [
+        0.65,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "lumaSensitivity",
+      "label": "Tone Line Sensitivity",
+      "type": "Float",
+      "ref": {
+        "slot": 0,
+        "channel": 3
+      },
+      "defaultValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "surfaceColor",
+      "label": "Trace Surface Color",
+      "type": "Float",
+      "ref": {
+        "slot": 1,
+        "channel": 0
+      },
+      "defaultValues": [
+        0.75,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "darken",
+      "label": "Traced Brightness",
+      "type": "Float",
+      "ref": {
+        "slot": 1,
+        "channel": 1
+      },
+      "defaultValues": [
+        0.35,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "lineColor",
+      "label": "Line Color",
+      "type": "Color3",
+      "ref": {
+        "slot": 2,
+        "channel": 0
+      },
+      "defaultValues": [
+        0.1,
+        0.08,
+        0.12,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0.0,
+        0.0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        1.0,
+        1.0,
+        0
+      ],
+      "speed": 0.01
+    }
+  ]
+}

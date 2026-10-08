@@ -55,9 +55,8 @@ public:
     const FEATURES::RenderFeaturePlan& GetPlan() const noexcept { return plan_; }
 
     bool Resolve(RenderTarget2D& sceneTarget, uint64_t targetGeneration, RenderViewId viewId, const Camera3D& camera,
-                 const SceneEnvironment& environment, const LIGHTING::SceneLightingSet& lighting, uint32_t width,
-                 uint32_t height, const EditorInteractiveStylizedPreparation& preparation,
-                 RenderTarget2D*& outDisplaySource);
+                 const SceneEnvironment& environment, uint32_t width, uint32_t height,
+                 const EditorInteractiveStylizedPreparation& preparation, RenderTarget2D*& outDisplaySource);
     void Shutdown();
 
 private:

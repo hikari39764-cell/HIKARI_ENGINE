@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -14,6 +15,7 @@
 #include <json.hpp>
 
 #include "Assets/HIKARI_AssetArtifactManifest.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
 
 // 全画面後処理の資産。効果（.hposteffect）は pass とパラメーターの定義、
@@ -32,6 +34,27 @@ struct PostScreenWarpBinding {
     std::string curvatureParam;
 };
 
+// 効果がシーン色（t0）のほかに読む画面の入力。深度は t1（R32_FLOAT、未射影の深度）、特性マスクは t2。
+enum class PostEffectInput : uint8_t {
+    SceneDepth,
+    SurfaceFeatureMask,
+};
+inline constexpr TEXT::EnumName<PostEffectInput> kPostEffectInputNames[] = {
+    {PostEffectInput::SceneDepth, "SceneDepth"},
+    {PostEffectInput::SurfaceFeatureMask, "SurfaceFeatureMask"},
+};
+
+// 効果を通す段階。Scene は色調写像の前のシーン線形 HDR（露出済み）、Display は色調写像と FXAA の後の表示の色
+// （ガンマ符号化済みの 0..1）。調色板・網点・紙の白のように表示の色で決める効果は Display で書く。
+enum class PostEffectPhase : uint8_t {
+    Scene,
+    Display,
+};
+inline constexpr TEXT::EnumName<PostEffectPhase> kPostEffectPhaseNames[] = {
+    {PostEffectPhase::Scene, "Scene"},
+    {PostEffectPhase::Display, "Display"},
+};
+
 struct PostEffectPass {
     std::string name;
     std::string programId;
@@ -45,6 +68,8 @@ struct PostEffectDefinition {
     std::vector<PostEffectPass> passes;
     std::vector<VFX::ParamDesc> params;
     std::optional<PostScreenWarpBinding> screenWarp;
+    PostEffectPhase phase = PostEffectPhase::Scene;
+    bool requiresSceneDepth = false;
     bool requiresSurfaceFeatureMask = false;
 };
 
@@ -70,6 +95,13 @@ std::vector<AssetDependencyDesc> CollectPostEffectDependencies(const PostEffectD
 bool ValidatePostProfileValues(const PostProfileAsset& profile, const PostEffectDefinition& effect, std::string& error);
 // 効果の既定値にプロファイルの値を重ねたパラメーターブロック。profile が無ければ既定値のまま。
 PostParameterBlock ResolvePostParameters(const PostEffectDefinition& effect, const PostProfileAsset* profile);
+
+// 解決済みの全体後処理の層（効果の定義と、プロファイルを重ねたパラメーター）。描画の様式の並びの順に重ねる。
+struct ResolvedPostLayer {
+    std::string effectId;
+    std::shared_ptr<const PostEffectDefinition> effect;
+    PostParameterBlock values{};
+};
 // パラメーターキーの現在値（先頭チャンネル）。見つからなければ nullopt。
 std::optional<float> ReadPostParameter(const PostEffectDefinition& effect, std::span<const DirectX::XMFLOAT4> values,
                                        std::string_view key);
@@ -85,8 +117,6 @@ struct BuiltinPostContent {
 };
 inline constexpr std::string_view kBuiltinPostEffectPrefix = "engine.post.effect.";
 inline constexpr std::string_view kBuiltinPostProfilePrefix = "engine.post.profile.";
-// 後処理を有効にした時の既定プロファイル。
-inline constexpr std::string_view kDefaultPostProfileId = "engine.post.profile.ani";
 std::span<const BuiltinPostContent> GetBuiltinPostContent() noexcept;
 std::filesystem::path ResolveBuiltinPostEffectPath(std::string_view effectId);
 std::filesystem::path ResolveBuiltinPostProfilePath(std::string_view profileId);

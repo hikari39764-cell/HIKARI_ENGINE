@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "name": "Rain",
+  "weather": {
+    "cloudCoverage": 0.9,
+    "cloudType": 0.3,
+    "cloudDensity": 1.4,
+    "haze": 0.3,
+    "fogDensity": 0.001,
+    "fogHeightFalloff": 0.03,
+    "precipitation": "Rain",
+    "precipitationIntensity": 0.6,
+    "windSpeed": 7.0,
+    "windFromDegrees": 200.0,
+    "transitionSeconds": 25.0
+  }
+}

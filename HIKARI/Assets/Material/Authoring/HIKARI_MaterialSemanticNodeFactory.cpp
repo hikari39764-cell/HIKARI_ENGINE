@@ -90,6 +90,7 @@ constexpr std::array kHybridParameters{"parameter.directDiffusePbrBlend"sv, "par
 constexpr std::array kOutlineParameters{"parameter.outlineMode"sv, "parameter.outlineColor"sv,
                                         "parameter.outlineThickness"sv};
 constexpr std::array kHairShadowParameters{"parameter.hairShadowStrength"sv};
+constexpr std::array kShellResources{"resource.strokeMask"sv, "resource.strokeNormal"sv};
 
 template <size_t Size>
 std::span<const std::string_view> AsSpan(const std::array<std::string_view, Size>& values) noexcept {
@@ -433,6 +434,7 @@ std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(MaterialNodeKi
     case MaterialNodeKind::SkinLighting: return EmptyBindings();
     case MaterialNodeKind::FabricSheen: return EmptyBindings();
     case MaterialNodeKind::HairShadow: return EmptyBindings();
+    case MaterialNodeKind::Shell: return AsSpan(kShellResources);
     default: return EmptyBindings();
     }
 }

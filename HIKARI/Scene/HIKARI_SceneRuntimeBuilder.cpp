@@ -405,17 +405,19 @@ void SceneRuntimeBuilder::FinalizeRuntimeObjectAssets(GameObject& object, const 
     }
 }
 
+void AddEnvironmentSkyDependencies(const SkySettings& sky, SceneDependencySet& dependencies) {
+    dependencies.sky = sky;
+    if (sky.source != SkySource::Atmosphere && !sky.asset.empty()) {
+        dependencies.skyAssetIds.insert(sky.asset);
+    }
+    if (sky.source == SkySource::Panorama && !sky.panoramaCloudAsset.empty()) {
+        dependencies.skyAssetIds.insert(sky.panoramaCloudAsset);
+    }
+}
+
 SceneDependencySet SceneRuntimeBuilder::CollectDependencies(const SceneDocument& document,
                                                             const ComponentRegistry* enabledComponents) const {
     SceneDependencySet deps{};
-    deps.sky = document.environment.sky;
-
-    if (!document.environment.sky.skyAsset.empty()) {
-        deps.skyAssetIds.insert(document.environment.sky.skyAsset);
-    }
-    if (document.environment.sky.mode == SkyMode::Texture2D && !document.environment.sky.panoramaCloudAsset.empty()) {
-        deps.skyAssetIds.insert(document.environment.sky.panoramaCloudAsset);
-    }
     deps.lightingSceneHash = ASSETS::LIGHTING::BuildLightingSceneHash(document);
     deps.lightingBakeAuthoringHashes = ASSETS::LIGHTING::BuildLightingBakeRecordAuthoringHashes(document);
     deps.lighting = LIGHTING_AUTHORING::BuildSceneLightingSet(document);

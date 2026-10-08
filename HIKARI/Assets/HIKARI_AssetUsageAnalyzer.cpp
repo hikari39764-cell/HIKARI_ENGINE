@@ -3,7 +3,9 @@
 #include "HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRegistryBuilder.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
+#include "Assets/Environment/HIKARI_EnvironmentAsset.h"
 #include "Assets/Post/HIKARI_PostAsset.h"
+#include "Assets/RenderStyle/HIKARI_RenderStyleAsset.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
 #include "Gameplay/Dialogue/HIKARI_DialogueProjectStyle.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
@@ -11,7 +13,6 @@
 #include "Assets/Material/HIKARI_MaterialDependencies.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
-#include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
 #include "HIKARI/Project/PropertyFields.h"
 
 namespace HIKARI {
@@ -36,6 +37,24 @@ void AddReference(const std::string& assetId, const std::string& owner, const st
             std::string error;
             if (POST::LoadPostProfileAsset(assetDatabase.GetProjectRoot() / record->sourcePath, profile, error)) {
                 for (const AssetDependencyDesc& dependency : POST::CollectPostProfileDependencies(profile))
+                    AddReference(dependency.guid.value, owner, dependency.role, assetDatabase, engineTextures, summary);
+            }
+        }
+        if (first && record->type == AssetType::Environment) {
+            ENVIRONMENT::EnvironmentProfileAsset environment;
+            std::string error;
+            if (ENVIRONMENT::LoadEnvironmentProfileAsset(assetDatabase.GetProjectRoot() / record->sourcePath,
+                                                         environment, error)) {
+                for (const AssetDependencyDesc& dependency :
+                     ENVIRONMENT::CollectEnvironmentProfileDependencies(environment))
+                    AddReference(dependency.guid.value, owner, dependency.role, assetDatabase, engineTextures, summary);
+            }
+        }
+        if (first && record->type == AssetType::RenderStyle) {
+            RENDERSTYLE::RenderStyleAsset style;
+            std::string error;
+            if (RENDERSTYLE::LoadRenderStyleAsset(assetDatabase.GetProjectRoot() / record->sourcePath, style, error)) {
+                for (const AssetDependencyDesc& dependency : RENDERSTYLE::CollectRenderStyleDependencies(style))
                     AddReference(dependency.guid.value, owner, dependency.role, assetDatabase, engineTextures, summary);
             }
         }
@@ -185,18 +204,18 @@ AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDa
             }
         }
 
-        if (document.environment.sky.skyAsset != RENDER3D::LIGHTING::kDefaultSkyAssetName) {
-            AddReference(document.environment.sky.skyAsset, "Scene Environment", "Sky", assetDatabase, engineTextures,
+        // エンジン内蔵の環境と天気はエンジンの内容として出力されるので、プロジェクト資産だけを数える。
+        const ENVIRONMENT::SceneEnvironmentBinding& environment = document.environment;
+        if (!environment.profileId.starts_with(ENVIRONMENT::kBuiltinEnvironmentPrefix)) {
+            AddReference(environment.profileId, "Scene Environment", "Environment", assetDatabase, engineTextures,
                          summary);
         }
-        AddReference(document.environment.sky.panoramaCloudAsset, "Scene Environment", "Panorama Cloud Layer",
-                     assetDatabase, engineTextures, summary);
-        AddReference(document.environment.reflectionProbe.sourceCubemapAsset, "Scene Environment",
-                     "Reflection Probe Cubemap", assetDatabase, engineTextures, summary);
-        // エンジン内蔵の後処理プロファイルはエンジンの内容として出力されるので、プロジェクト資産だけを数える。
-        if (const ScenePostSettings& post = document.environment.post;
-            post.enabled && !post.profileId.starts_with(POST::kBuiltinPostProfilePrefix)) {
-            AddReference(post.profileId, "Scene Environment", "Post Profile", assetDatabase, engineTextures, summary);
+        if (!environment.weatherId.starts_with(ENVIRONMENT::kBuiltinWeatherPrefix)) {
+            AddReference(environment.weatherId, "Scene Environment", "Weather", assetDatabase, engineTextures, summary);
+        }
+        if (!environment.renderStyleId.starts_with(RENDERSTYLE::kBuiltinRenderStylePrefix)) {
+            AddReference(environment.renderStyleId, "Scene Environment", "RenderStyle", assetDatabase, engineTextures,
+                         summary);
         }
     }
 

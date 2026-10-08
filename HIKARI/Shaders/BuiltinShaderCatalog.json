@@ -25,7 +25,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.AutomaticExposure",
         "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "f57bbf2ad4c4a04a0e9b6dc20c10949394259ab11d3a0250dce0dea8e7d2a20a",
+        "engineInterfaceHash": "ff3ff83c2a172692bea1ab483eb3f8f44e703384f25046e13a82ff1ed02cf7da",
         "rootLayoutId": "HIKARI.AutomaticExposure.Root",
         "rootLayoutVersion": 1,
         "rootLayoutHash": "0181d502ae864f3780ca9e37222ce5846b90c27795857b5c3c3e145bba15c9df",
@@ -139,9 +139,9 @@
       }
     },
     {
-      "assetGuid": "38098467eb1d265c60ef21aa2eb1bf63",
-      "programId": "HIKARI.EngineShader.Post_BloomBlurHPS",
-      "source": "Post_BloomBlurHPS.hlsl",
+      "assetGuid": "6f08e2fd105a4496b2b5ead821df648d",
+      "programId": "HIKARI.EngineShader.Post_BloomDownsamplePS",
+      "source": "Post_BloomDownsamplePS.hlsl",
       "scope": "Runtime",
       "state": "Cooked",
       "owner": "Vfx.Post",
@@ -173,43 +173,9 @@
       }
     },
     {
-      "assetGuid": "04063be78460ae6d9c4982ea86ff5cd3",
-      "programId": "HIKARI.EngineShader.Post_BloomBlurVPS",
-      "source": "Post_BloomBlurVPS.hlsl",
-      "scope": "Runtime",
-      "state": "Cooked",
-      "owner": "Vfx.Post",
-      "group": "",
-      "includeRoots": [
-        "EngineSdk"
-      ],
-      "defines": [],
-      "entries": [
-        {
-          "id": "Main",
-          "stage": "Pixel",
-          "entry": "main",
-          "profile": "ps_6_0"
-        }
-      ],
-      "contract": {
-        "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
-        "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 3,
-        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
-        "requiredCaps": {
-          "minimumShaderModel": 60,
-          "minimumRootSignatureVersion": 10,
-          "requiredFeatureMask": 0
-        }
-      }
-    },
-    {
-      "assetGuid": "be4a2cf7a3fee517eb84acdca1bc636d",
-      "programId": "HIKARI.EngineShader.Post_BloomExtractPS",
-      "source": "Post_BloomExtractPS.hlsl",
+      "assetGuid": "e57a9017c44e424888e22d4efb67e934",
+      "programId": "HIKARI.EngineShader.Post_BloomUpsamplePS",
+      "source": "Post_BloomUpsamplePS.hlsl",
       "scope": "Runtime",
       "state": "Cooked",
       "owner": "Vfx.Post",
@@ -419,6 +385,142 @@
       ]
     },
     {
+      "assetGuid": "94693ea1ed7c49368800ee055cca824d",
+      "programId": "HIKARI.EngineShader.Post_MangaPS",
+      "source": "Post_MangaPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Vfx.Post",
+      "group": "StylizedPost",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.PostEffect.Common",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "rootLayoutId": "HIKARI.PostQuad.Root",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "17bbf57d87bb470aa3ef1e7999242cf4",
+      "programId": "HIKARI.EngineShader.Post_OutlinePS",
+      "source": "Post_OutlinePS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Vfx.Post",
+      "group": "StylizedPost",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.PostEffect.Common",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "rootLayoutId": "HIKARI.PostQuad.Root",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "239666db2ae04b4c86dad20090ebd667",
+      "programId": "HIKARI.EngineShader.Post_PainterlyPS",
+      "source": "Post_PainterlyPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Vfx.Post",
+      "group": "StylizedPost",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.PostEffect.Common",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "rootLayoutId": "HIKARI.PostQuad.Root",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "b66788dfbd8648c4b12d163033f887fb",
+      "programId": "HIKARI.EngineShader.Post_PixelPS",
+      "source": "Post_PixelPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Vfx.Post",
+      "group": "StylizedPost",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.PostEffect.Common",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "rootLayoutId": "HIKARI.PostQuad.Root",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
       "assetGuid": "09cc4ae3e5624bce9cca835713073673",
       "programId": "HIKARI.EngineShader.Post_ProjectFullscreen",
       "source": "Post_ProjectFullscreen.hlsl",
@@ -602,6 +704,40 @@
       "state": "Cooked",
       "owner": "Vfx.Post",
       "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.PostEffect.Common",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "rootLayoutId": "HIKARI.PostQuad.Root",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "4a7379083ab647efad6f0f4c4a680a35",
+      "programId": "HIKARI.EngineShader.Post_SketchPS",
+      "source": "Post_SketchPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Vfx.Post",
+      "group": "StylizedPost",
       "includeRoots": [
         "EngineSdk"
       ],
@@ -825,7 +961,7 @@
         }
       }
     },
-      {
+    {
       "assetGuid": "3569b2e21c794cf4b8963bcb7e26c437",
       "programId": "HIKARI.EngineShader.Post_VfxResolvePS",
       "source": "Post_VfxResolvePS.hlsl",
@@ -867,40 +1003,6 @@
       "state": "Cooked",
       "owner": "Render3D.Vfx",
       "group": "",
-      "includeRoots": [
-        "EngineSdk"
-      ],
-      "defines": [],
-      "entries": [
-        {
-          "id": "Main",
-          "stage": "Pixel",
-          "entry": "main",
-          "profile": "ps_6_0"
-        }
-      ],
-      "contract": {
-        "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
-        "rootLayoutId": "HIKARI.PostQuad.Root",
-        "rootLayoutVersion": 3,
-        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
-        "requiredCaps": {
-          "minimumShaderModel": 60,
-          "minimumRootSignatureVersion": 10,
-          "requiredFeatureMask": 0
-        }
-      }
-    },
-    {
-      "assetGuid": "e318f2a94c6d7b05a1f843e9c2705d6b",
-      "programId": "HIKARI.EngineShader.Post_WHITEBLACK",
-      "source": "Post_WHITEBLACK.hlsl",
-      "scope": "Runtime",
-      "state": "Cooked",
-      "owner": "Vfx.Post",
-      "group": "StylizedPost",
       "includeRoots": [
         "EngineSdk"
       ],
@@ -974,7 +1076,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.Render2D.Builtin",
         "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "4b0ba8ed3f6c38b45dcaef7b3cb5e5986f56a7d42b74de41848f320a0606bf37",
+        "engineInterfaceHash": "966764b12d8c08c666c9d1f9e130cd8f0853acf3f36b5387b167dda3a3e8891a",
         "rootLayoutId": "HIKARI.Render2D.Builtin.Root",
         "rootLayoutVersion": 1,
         "rootLayoutHash": "10eec9a9b4514842837498f655e1ddfd0f1d02fccf04aece3b508f709dd1366c",
@@ -1013,6 +1115,40 @@
       ]
     },
     {
+      "assetGuid": "8510498292e74119b7a0f4f332a23c60",
+      "programId": "HIKARI.EngineShader.Render3D_AtmosphereAerialPerspectiveCS",
+      "source": "Render3D_AtmosphereAerialPerspectiveCS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.Lighting",
+      "group": "Atmosphere",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Compute",
+          "entry": "main",
+          "profile": "cs_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.AtmosphereAerialPerspective",
+        "engineInterfaceVersion": 1,
+        "engineInterfaceHash": "5eb4d338e58b25da7b820becfc4d11c4b4f6fdbece7b26647e336939905f2a84",
+        "rootLayoutId": "HIKARI.AtmosphereLut.Root",
+        "rootLayoutVersion": 1,
+        "rootLayoutHash": "d62bf8e011c7cd3f370201f0da72f031723aa2f47ad22e5210a39f0412cd1e62",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
       "assetGuid": "722ad621d580b3c8657cc57e59daa32b",
       "programId": "HIKARI.EngineShader.Render3D_AtmosphereMultiScatteringCS",
       "source": "Render3D_AtmosphereMultiScatteringCS.hlsl",
@@ -1035,10 +1171,10 @@
       "contract": {
         "engineInterfaceId": "HIKARI.AtmosphereLut",
         "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "a5be0d9a2e7e1a622f7d9bc6f69170082aa9c5ddf3ce0d9b601cf1210b3d80fe",
+        "engineInterfaceHash": "f8038c43fce4d577ece3f7f5fb89b732d3f7893af9837bbeab8027fafe802a34",
         "rootLayoutId": "HIKARI.AtmosphereLut.Root",
         "rootLayoutVersion": 1,
-        "rootLayoutHash": "50a468b2e47d8f5cc21dbd41abf3fab3b26c381a5bd5dc50bd0aa84c9fe0fef9",
+        "rootLayoutHash": "d62bf8e011c7cd3f370201f0da72f031723aa2f47ad22e5210a39f0412cd1e62",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -1069,10 +1205,10 @@
       "contract": {
         "engineInterfaceId": "HIKARI.AtmosphereLut",
         "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "a5be0d9a2e7e1a622f7d9bc6f69170082aa9c5ddf3ce0d9b601cf1210b3d80fe",
+        "engineInterfaceHash": "f8038c43fce4d577ece3f7f5fb89b732d3f7893af9837bbeab8027fafe802a34",
         "rootLayoutId": "HIKARI.AtmosphereLut.Root",
         "rootLayoutVersion": 1,
-        "rootLayoutHash": "50a468b2e47d8f5cc21dbd41abf3fab3b26c381a5bd5dc50bd0aa84c9fe0fef9",
+        "rootLayoutHash": "d62bf8e011c7cd3f370201f0da72f031723aa2f47ad22e5210a39f0412cd1e62",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -1103,10 +1239,10 @@
       "contract": {
         "engineInterfaceId": "HIKARI.AtmosphereLut",
         "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "a5be0d9a2e7e1a622f7d9bc6f69170082aa9c5ddf3ce0d9b601cf1210b3d80fe",
+        "engineInterfaceHash": "f8038c43fce4d577ece3f7f5fb89b732d3f7893af9837bbeab8027fafe802a34",
         "rootLayoutId": "HIKARI.AtmosphereLut.Root",
         "rootLayoutVersion": 1,
-        "rootLayoutHash": "50a468b2e47d8f5cc21dbd41abf3fab3b26c381a5bd5dc50bd0aa84c9fe0fef9",
+        "rootLayoutHash": "d62bf8e011c7cd3f370201f0da72f031723aa2f47ad22e5210a39f0412cd1e62",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -1485,11 +1621,11 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.DynamicDiffuseGi",
-        "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "c1177a6125634b34ffef8389dba7c5cbc68b819d42880fd9ca96f23db03e29e7",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "db9cee28f7730b08bb2d55c99b1856581acc74d1e5743eb557634ca0014b752d",
         "rootLayoutId": "HIKARI.DynamicDiffuseGi.Root",
         "rootLayoutVersion": 1,
-        "rootLayoutHash": "3c12813878e43815017beb250576a26914056a0253f64b62f628f7ee7e9e952d",
+        "rootLayoutHash": "b6ccfefea6805273fa0cfd5ada7edef0a7a4e17a0b68dd46a1dac94d1541e6be",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -1520,10 +1656,10 @@
       "contract": {
         "engineInterfaceId": "HIKARI.EnvironmentLighting",
         "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "09b79fba41489c56d303e4bd07cc026c5d03396011bb81416d6db1a1c24f45dd",
+        "engineInterfaceHash": "eb593aea245f4da055ad2b12fcbae3c06ef6e79a3ed62c65c73329675ec4edca",
         "rootLayoutId": "HIKARI.EnvironmentLighting.Root",
         "rootLayoutVersion": 1,
-        "rootLayoutHash": "9c8113b3c87bcf86970dc71181ee508c9788e018646fc8dc1d8d16307b0bba1b",
+        "rootLayoutHash": "63f44f5681cfc318fb3c4be6b2707bdbdd39fdf1e7a0b557b7a802f335945ef8",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -1915,6 +2051,92 @@
       }
     },
     {
+      "assetGuid": "f6bec289b659405ab5bfa6d4c56f0708",
+      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueStandardPS",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "1",
+          "name": "HIKARI_MATERIAL_CLASS"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 7,
+        "rootLayoutHash": "f4d1051c4c10f2c4fd24eca84e71d058a613973d3f58eca7e255ef656486fec7",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "97e93922988142868997b19451a00b48",
+      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueStandardReflectionPS",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "1",
+          "name": "HIKARI_FORWARD_REFLECTION_CAPTURE"
+        },
+        {
+          "value": "1",
+          "name": "HIKARI_MATERIAL_CLASS"
+        },
+        {
+          "value": "0",
+          "name": "HIKARI_SURFACE_PARTITION"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 7,
+        "rootLayoutHash": "f4d1051c4c10f2c4fd24eca84e71d058a613973d3f58eca7e255ef656486fec7",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
       "assetGuid": "55a2348af2325f7589246bdbe01d1e5d",
       "programId": "HIKARI.EngineShader.Render3D_GpuDrivenSurfacePS",
       "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
@@ -2065,6 +2287,92 @@
         "EngineSdk"
       ],
       "defines": [],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Amplification",
+          "entry": "main",
+          "profile": "as_6_5"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 7,
+        "rootLayoutHash": "f4d1051c4c10f2c4fd24eca84e71d058a613973d3f58eca7e255ef656486fec7",
+        "requiredCaps": {
+          "minimumShaderModel": 65,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 2
+        }
+      }
+    },
+    {
+      "assetGuid": "9455fdb63e6f49278fac30a68c015e51",
+      "programId": "HIKARI.EngineShader.Render3D_MeshletAllProgramAS",
+      "source": "Render3D_MeshletAS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "2",
+          "name": "HIKARI_MATERIAL_CLASS"
+        },
+        {
+          "value": "0",
+          "name": "HIKARI_SURFACE_PARTITION"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Amplification",
+          "entry": "main",
+          "profile": "as_6_5"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 7,
+        "rootLayoutHash": "f4d1051c4c10f2c4fd24eca84e71d058a613973d3f58eca7e255ef656486fec7",
+        "requiredCaps": {
+          "minimumShaderModel": 65,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 2
+        }
+      }
+    },
+    {
+      "assetGuid": "4194965c311c4d6a8a06e162a260ef3b",
+      "programId": "HIKARI.EngineShader.Render3D_MeshletAllStandardAS",
+      "source": "Render3D_MeshletAS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "1",
+          "name": "HIKARI_MATERIAL_CLASS"
+        },
+        {
+          "value": "0",
+          "name": "HIKARI_SURFACE_PARTITION"
+        }
+      ],
       "entries": [
         {
           "id": "Main",
@@ -2409,6 +2717,49 @@
       }
     },
     {
+      "assetGuid": "586160b8fd964d9194d8fb69720a330c",
+      "programId": "HIKARI.EngineShader.Render3D_MeshletProgramAS",
+      "source": "Render3D_MeshletAS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "2",
+          "name": "HIKARI_MATERIAL_CLASS"
+        },
+        {
+          "value": "1",
+          "name": "HIKARI_SURFACE_PARTITION"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Amplification",
+          "entry": "main",
+          "profile": "as_6_5"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 7,
+        "rootLayoutHash": "f4d1051c4c10f2c4fd24eca84e71d058a613973d3f58eca7e255ef656486fec7",
+        "requiredCaps": {
+          "minimumShaderModel": 65,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 2
+        }
+      }
+    },
+    {
       "assetGuid": "e191c1fb3ee142b4ae1ee295111f7fc4",
       "programId": "HIKARI.EngineShader.Render3D_MeshletShadowAS",
       "source": "Render3D_MeshletShadowAS.hlsl",
@@ -2507,6 +2858,49 @@
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
           "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "6238b9ffed1e4676b486a75ac945dbed",
+      "programId": "HIKARI.EngineShader.Render3D_MeshletStandardAS",
+      "source": "Render3D_MeshletAS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "1",
+          "name": "HIKARI_MATERIAL_CLASS"
+        },
+        {
+          "value": "1",
+          "name": "HIKARI_SURFACE_PARTITION"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Amplification",
+          "entry": "main",
+          "profile": "as_6_5"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 7,
+        "rootLayoutHash": "f4d1051c4c10f2c4fd24eca84e71d058a613973d3f58eca7e255ef656486fec7",
+        "requiredCaps": {
+          "minimumShaderModel": 65,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 2
         }
       }
     },
@@ -3215,110 +3609,6 @@
       }
     },
     {
-      "assetGuid": "a7ac76ab286630277cd17bf07387ec27",
-      "programId": "HIKARI.EngineShader.Render3D_StylizedCloudNoise",
-      "source": "Render3D_StylizedCloudNoise.hlsl",
-      "scope": "Runtime",
-      "state": "Cooked",
-      "owner": "Render3D.Lighting",
-      "group": "StylizedClouds",
-      "includeRoots": [
-        "EngineSdk"
-      ],
-      "defines": [],
-      "entries": [
-        {
-          "id": "GenerateStylizedCloudDetailCS",
-          "stage": "Compute",
-          "entry": "GenerateStylizedCloudDetailCS",
-          "profile": "cs_6_0"
-        },
-        {
-          "id": "GenerateStylizedCloudShapeCS",
-          "stage": "Compute",
-          "entry": "GenerateStylizedCloudShapeCS",
-          "profile": "cs_6_0"
-        },
-        {
-          "id": "GenerateStylizedCloudWeatherCS",
-          "stage": "Compute",
-          "entry": "GenerateStylizedCloudWeatherCS",
-          "profile": "cs_6_0"
-        }
-      ],
-      "contract": {
-        "engineInterfaceId": "HIKARI.CloudNoise",
-        "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "396b3839a0a8886dd6ee67731ca7c61b29ac74f184ed4d03e39507fd655d9b53",
-        "rootLayoutId": "HIKARI.CloudNoise.Root",
-        "rootLayoutVersion": 1,
-        "rootLayoutHash": "355fbc971505122b7b3526298b916653f4acfb74d928b499ee733d11497f06b3",
-        "requiredCaps": {
-          "minimumShaderModel": 60,
-          "minimumRootSignatureVersion": 10,
-          "requiredFeatureMask": 0
-        }
-      }
-    },
-    {
-      "assetGuid": "eea2de40aeae6c6eb50b82aa384e6991",
-      "programId": "HIKARI.EngineShader.Render3D_StylizedCloudPass",
-      "source": "Render3D_StylizedCloudPass.hlsl",
-      "scope": "Runtime",
-      "state": "Cooked",
-      "owner": "Render3D.Lighting",
-      "group": "StylizedClouds",
-      "includeRoots": [
-        "EngineSdk"
-      ],
-      "defines": [],
-      "entries": [
-        {
-          "id": "CompositeCloudPS",
-          "stage": "Pixel",
-          "entry": "CompositeCloudPS",
-          "profile": "ps_6_0"
-        },
-        {
-          "id": "FullscreenVS",
-          "stage": "Vertex",
-          "entry": "FullscreenVS",
-          "profile": "vs_6_0"
-        },
-        {
-          "id": "RenderCloudPS",
-          "stage": "Pixel",
-          "entry": "RenderCloudPS",
-          "profile": "ps_6_0"
-        },
-        {
-          "id": "ReprojectCloudPS",
-          "stage": "Pixel",
-          "entry": "ReprojectCloudPS",
-          "profile": "ps_6_0"
-        },
-        {
-          "id": "SunTransmittanceCS",
-          "stage": "Compute",
-          "entry": "SunTransmittanceCS",
-          "profile": "cs_6_0"
-        }
-      ],
-      "contract": {
-        "engineInterfaceId": "HIKARI.CloudPass",
-        "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "b2c0c5619ed9a5cba2b45c69ebbdf1841a20db4eb7a01a56f720095969c36ceb",
-        "rootLayoutId": "HIKARI.CloudPass.Root",
-        "rootLayoutVersion": 1,
-        "rootLayoutHash": "0e95700361b60abb3bbafeeb2dc91a8fdf17a311a85d0073869e8f1f9f1b3d72",
-        "requiredCaps": {
-          "minimumShaderModel": 60,
-          "minimumRootSignatureVersion": 10,
-          "requiredFeatureMask": 0
-        }
-      }
-    },
-    {
       "assetGuid": "e61597393396e60823f1e9c36ce485c3",
       "programId": "HIKARI.EngineShader.Render3D_VisibilityOverlayPS",
       "source": "Render3D_VisibilityOverlayPS.hlsl",
@@ -3353,6 +3643,152 @@
       }
     },
     {
+      "assetGuid": "25764a118182463a9d62523db2a45abf",
+      "programId": "HIKARI.EngineShader.Render3D_VolumetricCloudNoise",
+      "source": "Render3D_VolumetricCloudNoise.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.Lighting",
+      "group": "VolumetricClouds",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "ClearCloudHistogramCS",
+          "stage": "Compute",
+          "entry": "ClearCloudHistogramCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "DownsampleCloudVolumeCS",
+          "stage": "Compute",
+          "entry": "DownsampleCloudVolumeCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "GenerateCloudDetailCS",
+          "stage": "Compute",
+          "entry": "GenerateCloudDetailCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "GenerateCloudShapeCS",
+          "stage": "Compute",
+          "entry": "GenerateCloudShapeCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "GenerateCloudWeatherCS",
+          "stage": "Compute",
+          "entry": "GenerateCloudWeatherCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "HistogramCloudDetailCS",
+          "stage": "Compute",
+          "entry": "HistogramCloudDetailCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "HistogramCloudShapeCS",
+          "stage": "Compute",
+          "entry": "HistogramCloudShapeCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "HistogramCloudWeatherCS",
+          "stage": "Compute",
+          "entry": "HistogramCloudWeatherCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ScanCloudHistogramCS",
+          "stage": "Compute",
+          "entry": "ScanCloudHistogramCS",
+          "profile": "cs_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.CloudNoise",
+        "engineInterfaceVersion": 1,
+        "engineInterfaceHash": "c398eac584e1203dd2a9cf1581aaf26745d144aba1262d8d2b461bf38b885cea",
+        "rootLayoutId": "HIKARI.CloudNoise.Root",
+        "rootLayoutVersion": 1,
+        "rootLayoutHash": "48389966e55563d4bd0da52012715c1a519778e1f69be59e550b53c19498d779",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "c1b372363f6f4351a54da68531d628ee",
+      "programId": "HIKARI.EngineShader.Render3D_VolumetricCloudPass",
+      "source": "Render3D_VolumetricCloudPass.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.Lighting",
+      "group": "VolumetricClouds",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "CompositeCloudPS",
+          "stage": "Pixel",
+          "entry": "CompositeCloudPS",
+          "profile": "ps_6_0"
+        },
+        {
+          "id": "FullscreenVS",
+          "stage": "Vertex",
+          "entry": "FullscreenVS",
+          "profile": "vs_6_0"
+        },
+        {
+          "id": "ReprojectCloudPS",
+          "stage": "Pixel",
+          "entry": "ReprojectCloudPS",
+          "profile": "ps_6_0"
+        },
+        {
+          "id": "SunTransmittanceCS",
+          "stage": "Compute",
+          "entry": "SunTransmittanceCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "TraceCloudPS",
+          "stage": "Pixel",
+          "entry": "TraceCloudPS",
+          "profile": "ps_6_0"
+        },
+        {
+          "id": "TraceCloudSkyCS",
+          "stage": "Compute",
+          "entry": "TraceCloudSkyCS",
+          "profile": "cs_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.CloudPass",
+        "engineInterfaceVersion": 1,
+        "engineInterfaceHash": "22b8715ea52fd98e9c0fc2824c67e3f02c5ee5ad7b6a949d308c41bc15fce16a",
+        "rootLayoutId": "HIKARI.CloudPass.Root",
+        "rootLayoutVersion": 1,
+        "rootLayoutHash": "76529b302f40a6f34110a0660649772600d622a11565e1e4cc3420bd0a4b5335",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
       "assetGuid": "3513b3a3ad85044ce2629e6b99d19616",
       "programId": "HIKARI.EngineShader.Render3D_VolumetricLighting",
       "source": "Render3D_VolumetricLighting.hlsl",
@@ -3372,19 +3808,31 @@
           "profile": "cs_6_0"
         },
         {
-          "id": "InjectAndIntegrateCS",
+          "id": "GatherAmbientCS",
           "stage": "Compute",
-          "entry": "InjectAndIntegrateCS",
+          "entry": "GatherAmbientCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "InjectCS",
+          "stage": "Compute",
+          "entry": "InjectCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "IntegrateCS",
+          "stage": "Compute",
+          "entry": "IntegrateCS",
           "profile": "cs_6_0"
         }
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.VolumetricFog",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "cea958597239bf9a78ca8a4c702a70c5523e5403c8c7fe7b68cda2d156a26c46",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "144d2d5a930ff051407d19a8a6550ace18e547fece809941c27789dc2f6e8f52",
         "rootLayoutId": "HIKARI.VolumetricFog.Root",
         "rootLayoutVersion": 1,
-        "rootLayoutHash": "04868f53e82f777dc680ac557ae97c198933df47f80945904fef0fdda2f3da97",
+        "rootLayoutHash": "c8df8356e7afd3b47d351be7933ad4bb77d79cf034da7cfafad84db491f31e6b",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -3629,7 +4077,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.Temporal",
         "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "7be1946c9cb933f998fe1a2966ae849a109882ebd727c20fc2ad48f239653385",
+        "engineInterfaceHash": "5f47c056f3ad74984780eae3e3d710ac3f63ee978d2dce0c83a05502582e9620",
         "rootLayoutId": "HIKARI.Temporal.Geometry.Root",
         "rootLayoutVersion": 1,
         "rootLayoutHash": "7a3f07eab96cafa35ac166678438a8d258e337dc882f160bfded82ee9b088f53",
@@ -3669,7 +4117,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.Temporal",
         "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "7be1946c9cb933f998fe1a2966ae849a109882ebd727c20fc2ad48f239653385",
+        "engineInterfaceHash": "5f47c056f3ad74984780eae3e3d710ac3f63ee978d2dce0c83a05502582e9620",
         "rootLayoutId": "HIKARI.Temporal.Masks.Root",
         "rootLayoutVersion": 1,
         "rootLayoutHash": "61e8da305ab5858d28f1a5806eaf84e51fb1ff8a8243407f7ed8c41838db5151",
@@ -3709,7 +4157,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.Temporal",
         "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "7be1946c9cb933f998fe1a2966ae849a109882ebd727c20fc2ad48f239653385",
+        "engineInterfaceHash": "5f47c056f3ad74984780eae3e3d710ac3f63ee978d2dce0c83a05502582e9620",
         "rootLayoutId": "HIKARI.Temporal.MotionVector.Root",
         "rootLayoutVersion": 1,
         "rootLayoutHash": "1ca5eb927ca7d437d6f7d321027acb6e27552fb96416d2bfad68d757d4500cbf",
@@ -3749,7 +4197,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.Temporal",
         "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "7be1946c9cb933f998fe1a2966ae849a109882ebd727c20fc2ad48f239653385",
+        "engineInterfaceHash": "5f47c056f3ad74984780eae3e3d710ac3f63ee978d2dce0c83a05502582e9620",
         "rootLayoutId": "HIKARI.Temporal.TaaResolve.Root",
         "rootLayoutVersion": 1,
         "rootLayoutHash": "c78cd440460d97d8e8e88f6203220ac2b5b9677b62ec4f83c6ac693845a86fb8",

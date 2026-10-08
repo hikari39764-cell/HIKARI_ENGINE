@@ -1,15 +1,13 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
-#include <exception>
-#include <iterator>
 #include <string>
 #include <utility>
 
+#include "Assets/HIKARI_AssetRecord.h"
+#include "Assets/RenderStyle/HIKARI_RenderStyleAssetStore.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
-#include "Editor/Environment/HIKARI_EnvironmentPanelSections.h"
 #include "Editor/History/HIKARI_EnvironmentHistoryCommand.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-#include "Scene/Serialization/Environment/HIKARI_SceneEnvironmentJson.h"
 #include "Tools/Baking/HIKARI_LightingBakeReport.h"
 #include "Tools/Baking/HIKARI_LightingBakeService.h"
 
@@ -18,135 +16,124 @@ namespace {
 using EDITOR::EditorOperationKind;
 using EDITOR::EditorOperationParameterType;
 
-nlohmann::json SerializeEnvironment(const SceneEnvironment& environment) {
-    nlohmann::json out = nlohmann::json::object();
-    SCENE::SERIALIZATION::SerializeSceneEnvironmentJson(environment, out);
-    return out;
+nlohmann::json ListRenderStyles(const AssetDatabase& database) {
+    nlohmann::json list = nlohmann::json::array();
+    for (const RENDERSTYLE::BuiltinRenderStyleContent& content : RENDERSTYLE::GetBuiltinRenderStyles()) {
+        list.push_back({{"id", content.id}, {"name", content.displayName}, {"builtin", true}});
+    }
+    for (const AssetRecord* record : database.CollectByType(AssetType::RenderStyle)) {
+        list.push_back({{"id", record->guid.value}, {"name", GetAssetRecordDisplayName(*record)}, {"builtin", false}});
+    }
+    return list;
 }
 
-// パッチのキーは現在の環境 JSON に存在するものに限る。配列と値は丸ごと置き換える。
-bool FindUnknownKey(const nlohmann::json& patch, const nlohmann::json& current, const std::string& path,
-                    std::string& outPath) {
-    for (auto it = patch.begin(); it != patch.end(); ++it) {
-        const std::string key = path.empty() ? it.key() : path + "." + it.key();
-        const auto found = current.find(it.key());
-        if (found == current.end()) {
-            outPath = key;
-            return true;
-        }
-        if (it->is_object() && found->is_object() && FindUnknownKey(*it, *found, key, outPath)) {
-            return true;
-        }
+nlohmann::json ListEnvironmentAssets(AssetType type, const AssetDatabase& database) {
+    nlohmann::json list = nlohmann::json::array();
+    const auto builtin = type == AssetType::Weather ? ENVIRONMENT::GetBuiltinWeatherPresets()
+                                                    : ENVIRONMENT::GetBuiltinEnvironmentProfiles();
+    for (const ENVIRONMENT::BuiltinEnvironmentContent& content : builtin) {
+        list.push_back({{"id", content.id}, {"name", content.displayName}, {"builtin", true}});
     }
-    return false;
+    for (const AssetRecord* record : database.CollectByType(type)) {
+        list.push_back({{"id", record->guid.value}, {"name", GetAssetRecordDisplayName(*record)}, {"builtin", false}});
+    }
+    return list;
 }
 
-// 要求した値と、正規化後に保存された値が違う項目を返す。
-void CollectAdjusted(const nlohmann::json& requested, const nlohmann::json& stored, const std::string& path,
-                     nlohmann::json& outAdjusted) {
-    for (auto it = requested.begin(); it != requested.end(); ++it) {
-        const std::string key = path.empty() ? it.key() : path + "." + it.key();
-        const auto found = stored.find(it.key());
-        if (found == stored.end()) {
-            continue;
-        }
-        if (it->is_object() && found->is_object()) {
-            CollectAdjusted(*it, *found, key, outAdjusted);
-        } else if (!EDITOR::EquivalentOperationValue(*it, *found)) {
-            outAdjusted[key] = *found;
-        }
-    }
-}
-
-nlohmann::json ProjectAppliedPatch(const nlohmann::json& patch, const nlohmann::json& stored) {
-    nlohmann::json applied = nlohmann::json::object();
-    for (auto it = patch.begin(); it != patch.end(); ++it) {
-        const auto found = stored.find(it.key());
-        if (found == stored.end())
-            continue;
-        applied[it.key()] = it->is_object() && found->is_object() ? ProjectAppliedPatch(*it, *found) : *found;
-    }
-    return applied;
+// 実行時の状態（試し再生や Play で進んだ時刻と天気）。シーン文書には保存されない。
+nlohmann::json DescribeEnvironmentRuntime(DocumentSceneBase& scene) {
+    ENVIRONMENT::EnvironmentRuntime& runtime = scene.GetEnvironmentRuntime();
+    const ENVIRONMENT::EnvironmentFrameState state = runtime.Simulation().GetFrameState();
+    return {{"time",
+             {{"year", state.time.year},
+              {"month", state.time.month},
+              {"day", state.time.day},
+              {"localHours", state.time.localHours}}},
+            {"sunAltitudeDegrees", state.celestial.sunAltitudeDegrees},
+            {"moonIlluminatedFraction", state.celestial.moonIlluminatedFraction},
+            {"primaryLight", scene.GetSceneEnvironment().frame.moonIsPrimary ? "moon" : "sun"},
+            {"weather", runtime.GetWeatherId()},
+            {"weatherTransition", state.weatherTransitionProgress},
+            {"surface",
+             {{"wetness", state.surface.wetness},
+              {"puddles", state.surface.puddles},
+              {"snowCover", state.surface.snowCover}}},
+            {"error", runtime.GetError()}};
 }
 } // namespace
 
 void DocumentSceneEditorController::RegisterEnvironmentOperations() {
-    const auto commitEnvironment = [this](DocumentSceneBase& scene, SceneEnvironment edited, std::string label) {
-        SceneEnvironment before = scene.GetSceneDocument().environment;
-        const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
-        scene.GetSceneDocument().environment = edited;
-        CommitAppliedDocumentCommand(
-            scene, EDITOR::MakeEnvironmentHistoryCommand(std::move(label), std::move(before), std::move(edited)), 0u,
-            externalDirtyBefore, EDITOR::EditorDocumentImpact::Environment);
-    };
-
     EDITOR::EditorOperationDefinition describe{
         "environment.describe",
-        "Return the scene environment (sky, sun, fog, bloom, tone mapping, SSR, AO, global post) in its saved JSON form. Edit it with environment.edit.",
+        "Return the scene environment binding (profile, weather, render style, start time, location, time scale), the "
+        "runtime time/weather state and the available profiles, weathers and render styles. Edit the binding with "
+        "environment.edit, the profile or weather contents with environment.asset.* and render styles with "
+        "renderstyle.*.",
         "scene",
-        {{"section", EditorOperationParameterType::String, false,
-          "Optional top-level section such as sky, fog, toneMapping or post"}},
-        [this](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
+        {},
+        [this](const nlohmann::json&) -> EDITOR::EditorOperationResult {
             if (!aiOperationScene_)
                 return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
-            const nlohmann::json environment = SerializeEnvironment(aiOperationScene_->GetSceneDocument().environment);
-            nlohmann::json sections = nlohmann::json::array();
-            for (auto it = environment.begin(); it != environment.end(); ++it)
-                sections.push_back(it.key());
-            nlohmann::json presets = nlohmann::json::array();
-            for (const auto& preset : EDITOR::ENVIRONMENT_PANEL::kEnvironmentPresets)
-                presets.push_back(preset.id);
-            const std::string section = parameters.value("section", std::string{});
-            if (section.empty())
-                return EDITOR::OperationOk(
-                    "Scene environment.", {{"environment", environment}, {"sections", sections}, {"presets", presets}});
-            const auto found = environment.find(section);
-            if (found == environment.end())
-                return EDITOR::OperationFailure("UNKNOWN_SECTION", "Unknown environment section: " + section);
-            return EDITOR::OperationOk("Scene environment section.",
-                                       {{"section", section}, {"value", *found}, {"sections", sections}});
+            DocumentSceneBase& scene = *aiOperationScene_;
+            const AssetDatabase& database = scene.GetAssetDatabase();
+            return EDITOR::OperationOk(
+                "Scene environment.",
+                {{"binding", ENVIRONMENT::WriteSceneEnvironmentBinding(scene.GetSceneDocument().environment)},
+                 {"profile", scene.GetEnvironmentRuntime().GetBinding().profileId},
+                 {"runtime", DescribeEnvironmentRuntime(scene)},
+                 {"profiles", ListEnvironmentAssets(AssetType::Environment, database)},
+                 {"weathers", ListEnvironmentAssets(AssetType::Weather, database)},
+                 {"renderStyles", ListRenderStyles(database)}});
         }};
     describe.entryPoint = true;
-    describe.searchTerms = {"environment", "sky", "fog", "lighting", "post", "环境", "天空", "雾", "後処理"};
+    describe.searchTerms = {"environment", "sky",  "weather", "time of day", "fog", "lighting",
+                            "环境",        "天气", "时间",    "天空",        "雾",  "天気"};
     operationRegistry_.Register(std::move(describe), EditorOperationKind::Query);
 
     operationRegistry_.Register(
         {"environment.edit",
-         "Merge a partial JSON object into the scene environment (same keys as environment.describe; arrays replace). One undo step; reports values the engine normalized.",
+         "Merge a partial JSON object into the scene environment binding (keys from environment.describe binding: "
+         "profile, weather, renderStyle, timeScale, time, location). One undo step; reports values the engine "
+         "normalized.",
          "scene",
          {{"patch", EditorOperationParameterType::Json, true,
-           "Partial environment object, for example {\"fog\":{\"density\":0.02}}"}},
-         [this, commitEnvironment](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
+           "Partial binding, for example {\"time\":{\"localHours\":18.5},\"weather\":\"engine.weather.rain\"}"}},
+         [this](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
              if (!aiOperationScene_)
                  return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
              const nlohmann::json& patch = parameters.at("patch");
              if (!patch.is_object() || patch.empty())
                  return EDITOR::OperationFailure("INVALID_PATCH", "patch must be a non-empty object.");
-             auto& scene = *aiOperationScene_;
-             const nlohmann::json current = SerializeEnvironment(scene.GetSceneDocument().environment);
-             std::string unknown;
-             if (FindUnknownKey(patch, current, {}, unknown))
-                 return EDITOR::OperationFailure("UNKNOWN_FIELD", "Unknown environment field: " + unknown);
+             DocumentSceneBase& scene = *aiOperationScene_;
+             const ENVIRONMENT::SceneEnvironmentBinding before = scene.GetSceneDocument().environment;
+             const nlohmann::json current = ENVIRONMENT::WriteSceneEnvironmentBinding(before);
+             if (const std::string unknown = EDITOR::FindUnknownPatchKey(patch, current); !unknown.empty())
+                 return EDITOR::OperationFailure("UNKNOWN_FIELD", "Unknown environment binding field: " + unknown);
              nlohmann::json merged = current;
              merged.merge_patch(patch);
-             SceneEnvironment edited = scene.GetSceneDocument().environment;
-             try {
-                 SCENE::SERIALIZATION::DeserializeSceneEnvironmentJson(merged, edited);
-             } catch (const std::exception& error) {
-                 return EDITOR::OperationFailure("INVALID_VALUE", error.what());
-             }
-             const nlohmann::json stored = SerializeEnvironment(edited);
-             nlohmann::json adjusted = nlohmann::json::object();
-             CollectAdjusted(patch, stored, {}, adjusted);
+             ENVIRONMENT::SceneEnvironmentBinding edited{};
+             ENVIRONMENT::ReadSceneEnvironmentBinding(merged, edited);
+             std::string error;
+             if (!scene.GetEnvironmentAssets().LoadProfile(edited.profileId, error))
+                 return EDITOR::OperationFailure("UNKNOWN_PROFILE", error);
+             if (!edited.weatherId.empty() && !scene.GetEnvironmentAssets().LoadWeather(edited.weatherId, error))
+                 return EDITOR::OperationFailure("UNKNOWN_WEATHER", error);
+             if (!scene.GetRenderStyleAssets().Load(edited.renderStyleId, error))
+                 return EDITOR::OperationFailure("UNKNOWN_RENDER_STYLE", error);
+             const nlohmann::json stored = ENVIRONMENT::WriteSceneEnvironmentBinding(edited);
              const uint64_t revisionBefore = scene.GetSceneDocumentRevision();
-             if (stored != current)
-                 commitEnvironment(scene, std::move(edited), "AI Edit Environment");
+             if (edited != before) {
+                 const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
+                 scene.GetSceneDocument().environment = edited;
+                 CommitAppliedDocumentCommand(
+                     scene, EDITOR::MakeEnvironmentHistoryCommand("AI Edit Environment", before, std::move(edited)), 0u,
+                     externalDirtyBefore, EDITOR::EditorDocumentImpact::Environment);
+             }
              const uint64_t revisionAfter = scene.GetSceneDocumentRevision();
-             const bool dirty = context_.sceneDirty || scene.HasUnsavedSceneChanges();
-             nlohmann::json data{{"appliedPatch", ProjectAppliedPatch(patch, stored)},
-                                 {"adjusted", std::move(adjusted)},
+             nlohmann::json data{{"appliedPatch", EDITOR::ProjectAppliedPatch(patch, stored)},
+                                 {"adjusted", EDITOR::CollectAdjustedPatchValues(patch, stored)},
                                  {"documentChanged", revisionAfter != revisionBefore},
-                                 {"dirty", dirty},
+                                 {"dirty", context_.sceneDirty || scene.HasUnsavedSceneChanges()},
                                  {"revision", revisionAfter}};
              return EDITOR::OperationOk(
                  revisionAfter != revisionBefore ? "Environment updated." : "Environment unchanged.", std::move(data));
@@ -154,37 +141,40 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
         EditorOperationKind::Mutation);
 
     operationRegistry_.Register(
-        {"environment.preset.apply",
-         "Apply a built-in environment preset listed by environment.describe. One undo step.",
+        {"environment.preview",
+         "Preview a time of day or weather in the editor without changing the scene document (Play and reload start "
+         "again from the binding). Weather changes use the weather's transition time unless seconds is given.",
          "scene",
-         {{"preset", EditorOperationParameterType::String, true, "Preset id"}},
-         [this, commitEnvironment](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
+         {{"localHours", EditorOperationParameterType::Float, false, "Local time in hours (0-24)"},
+          {"weather", EditorOperationParameterType::String, false, "Weather id from environment.describe"},
+          {"seconds", EditorOperationParameterType::Float, false, "Weather transition seconds; 0 switches at once"},
+          {"reset", EditorOperationParameterType::Bool, false, "Restart from the scene binding first"}},
+         [this](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
              if (!aiOperationScene_)
                  return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
-             const std::string id = parameters.value("preset", std::string{});
-             const auto& presets = EDITOR::ENVIRONMENT_PANEL::kEnvironmentPresets;
-             for (int index = 0; index < static_cast<int>(std::size(presets)); ++index) {
-                 if (id != presets[index].id)
-                     continue;
-                 auto& scene = *aiOperationScene_;
-                 const nlohmann::json before = SerializeEnvironment(scene.GetSceneDocument().environment);
-                 const uint64_t revisionBefore = scene.GetSceneDocumentRevision();
-                 SceneEnvironment edited = scene.GetSceneDocument().environment;
-                 EDITOR::ENVIRONMENT_PANEL::ApplyEnvironmentPreset(edited, index);
-                 const nlohmann::json applied = SerializeEnvironment(edited);
-                 if (applied != before)
-                     commitEnvironment(scene, std::move(edited), "AI Apply Environment Preset");
-                 const uint64_t revisionAfter = scene.GetSceneDocumentRevision();
-                 nlohmann::json data{{"preset", id},
-                                     {"appliedChanges", nlohmann::json::diff(before, applied)},
-                                     {"documentChanged", revisionAfter != revisionBefore},
-                                     {"dirty", context_.sceneDirty || scene.HasUnsavedSceneChanges()},
-                                     {"revision", revisionAfter}};
-                 return EDITOR::OperationOk("Environment preset applied: " + id, std::move(data));
+             DocumentSceneBase& scene = *aiOperationScene_;
+             if (scene.IsRuntimePlayActive())
+                 return EDITOR::OperationFailure("PLAY_ACTIVE", "The game drives the environment during Play.");
+             if (parameters.value("reset", false))
+                 scene.ResetEnvironmentRuntime();
+             ENVIRONMENT::EnvironmentRuntime& runtime = scene.GetEnvironmentRuntime();
+             if (parameters.contains("localHours")) {
+                 const double hours = parameters.value("localHours", 0.0);
+                 if (!(hours >= 0.0 && hours < 24.0))
+                     return EDITOR::OperationFailure("INVALID_TIME", "localHours must be in [0, 24).");
+                 ENVIRONMENT::CalendarTime time = runtime.Simulation().GetFrameState().time;
+                 time.localHours = hours;
+                 runtime.Simulation().SetTime(time);
              }
-             return EDITOR::OperationFailure("UNKNOWN_PRESET", "Unknown environment preset: " + id);
+             if (const std::string weather = parameters.value("weather", std::string{}); !weather.empty()) {
+                 std::string error;
+                 if (!runtime.RequestWeather(weather, parameters.value("seconds", -1.0f), error))
+                     return EDITOR::OperationFailure("UNKNOWN_WEATHER", error);
+             }
+             return EDITOR::OperationOk("Environment preview updated.",
+                                        {{"runtime", DescribeEnvironmentRuntime(scene)}});
          }},
-        EditorOperationKind::Mutation);
+        EditorOperationKind::Session);
 
     EDITOR::EditorOperationDefinition bake{
         "lighting.bake.start",

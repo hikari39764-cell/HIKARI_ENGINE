@@ -8,7 +8,7 @@
 namespace HIKARI {
 
 inline constexpr uint32_t kMaterialAssetSourceVersion = 7u;
-inline constexpr uint32_t kMaterialProgramIrVersion = 8u;
+inline constexpr uint32_t kMaterialProgramIrVersion = 9u;
 
 enum class MaterialAssetKind : uint8_t {
     Material,
@@ -98,6 +98,9 @@ enum class MaterialResourceSemantic : uint8_t {
     // ときに使う。Noise と同じく応答ノードの空きスロットを 1 つ使う。
     DetailNoise,
     FlowMap,
+    // 筆触の殻（Shell ノード）が所有する筆触マスクと筆触法線。
+    StrokeMask,
+    StrokeNormal,
 };
 
 enum class MaterialNodeKind : uint8_t {

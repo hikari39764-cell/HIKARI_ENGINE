@@ -346,6 +346,9 @@ GpuSceneResourceKey BuildResourceKey(const GpuSceneSurfaceRecord& record) {
     // 常に透明(プレマルチプライド)として分類する。
     key.transparent = record.waterSurface || alphaMode == AlphaMode::Blend;
     key.doubleSided = doubleSided;
+    // 資産の model 材質は常に標準 PBR。材質 program は実行時の材質（上書き）だけが持つ。
+    key.materialProgram = record.materialOverride != nullptr && record.materialOverride->GetMaterialProgramId() !=
+                                                                    RENDER3D::MATERIAL::kStandardPbrMaterialProgramId;
     key.resourceKeyValid = key.resources.HasStableKeys();
     key.objectDataCompatible = shaderRoute.objectDataCompatible;
     key.materialFx = !record.materialFxProfileId.empty();
@@ -429,6 +432,9 @@ uint32_t BuildInstanceFlags(const GpuSceneSurfaceRecord& record) {
     }
     if (record.foliageWind) {
         flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::FoliageWind);
+    }
+    if (record.key.materialProgram) {
+        flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::MaterialProgram);
     }
     return flags;
 }
@@ -662,7 +668,8 @@ GpuSceneSurfaceRecord BuildGpuSceneSurfaceRecord(const RUNTIME::SceneSurfaceInst
     }
     record.key = BuildResourceKey(record);
     if (const auto* shell = ResolveActiveShellSettings(record)) {
-        const MATH::Vec3 padding{shell->thickness, shell->thickness, shell->thickness};
+        const float extent = shell->thickness * (1.0f + kMaterialShellPushVariation);
+        const MATH::Vec3 padding{extent, extent, extent};
         record.worldBounds.min = record.worldBounds.min - padding;
         record.worldBounds.max = record.worldBounds.max + padding;
     }

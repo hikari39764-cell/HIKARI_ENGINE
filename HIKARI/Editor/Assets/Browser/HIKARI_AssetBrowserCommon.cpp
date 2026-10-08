@@ -63,6 +63,9 @@ std::string ToAssetTypeText(AssetType type) {
     case AssetType::TextStyle: return TEXT::Localize("textstyle.asset");
     case AssetType::PostEffect: return TEXT::Localize("post.effect.asset");
     case AssetType::PostProfile: return TEXT::Localize("post.profile.asset");
+    case AssetType::Environment: return TEXT::Localize("environment.profile.asset");
+    case AssetType::Weather: return TEXT::Localize("environment.weather.asset");
+    case AssetType::RenderStyle: return TEXT::Localize("renderstyle.asset");
     case AssetType::Unknown:
     default: return ASSETS::SEMANTICS::ToString(type).data();
     }

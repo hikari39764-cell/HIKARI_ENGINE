@@ -8,7 +8,8 @@ namespace {
 
 class EnvironmentHistoryCommand final : public IEditorDocumentCommand {
 public:
-    EnvironmentHistoryCommand(std::string label, SceneEnvironment before, SceneEnvironment after)
+    EnvironmentHistoryCommand(std::string label, ENVIRONMENT::SceneEnvironmentBinding before,
+                              ENVIRONMENT::SceneEnvironmentBinding after)
         : label_(std::move(label)), before_(std::move(before)), after_(std::move(after)) {}
 
     const std::string& GetLabel() const noexcept override { return label_; }
@@ -30,14 +31,15 @@ public:
 
 private:
     std::string label_{};
-    SceneEnvironment before_{};
-    SceneEnvironment after_{};
+    ENVIRONMENT::SceneEnvironmentBinding before_{};
+    ENVIRONMENT::SceneEnvironmentBinding after_{};
 };
 
 } // namespace
 
-std::unique_ptr<IEditorDocumentCommand> MakeEnvironmentHistoryCommand(std::string label, SceneEnvironment before,
-                                                                      SceneEnvironment after) {
+std::unique_ptr<IEditorDocumentCommand> MakeEnvironmentHistoryCommand(std::string label,
+                                                                      ENVIRONMENT::SceneEnvironmentBinding before,
+                                                                      ENVIRONMENT::SceneEnvironmentBinding after) {
     return std::make_unique<EnvironmentHistoryCommand>(std::move(label), std::move(before), std::move(after));
 }
 

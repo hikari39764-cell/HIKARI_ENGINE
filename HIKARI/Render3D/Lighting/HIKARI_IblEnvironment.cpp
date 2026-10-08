@@ -15,7 +15,10 @@ namespace {
 IblEnvironmentData gData{};
 EnvironmentLightingCache gCache{};
 IblEnvironmentData gRuntimeData{};
+// 空の資産に畳み込み済みの IBL が無い時（大気・全景・IBL 無しの立方体）は実行時の捕獲が唯一の出所。
+IblEnvironmentData gBrdfOnlyData{};
 bool gRuntimeActive = false;
+bool gRuntimeRequired = false;
 ScopedEnvironmentOverride* gActiveOverride = nullptr;
 struct IblStateKey {
     bool valid = false;
@@ -193,19 +196,26 @@ bool SetFromTextureResources(RENDER3D::TextureResourceHandle irradianceResource,
     return gData.hasIrradiance && gData.hasPrefiltered && gData.hasBrdfLut;
 }
 
-void BeginEnvironmentFrame() { gRuntimeActive = false; }
+void BeginEnvironmentFrame() {
+    gRuntimeActive = false;
+    gRuntimeRequired = false;
+}
 
-void PrepareEnvironmentLighting(const GFX::Context& graphics, const SkySettings& sky,
+void PrepareEnvironmentLighting(const GFX::Context& graphics, SkyMode mode, std::string_view skyAsset,
                                 const ATMOSPHERE::AtmosphereLutConstants& atmosphere,
                                 RENDER3D::TextureResourceHandle source, D3D12_GPU_DESCRIPTOR_HANDLE atmosphereSkyView,
+                                D3D12_GPU_DESCRIPTOR_HANDLE cloudSky, uint64_t cloudSkyVersion, float nightSkyLuminance,
                                 uint64_t frameIndex) {
     gRuntimeActive = false;
+    gRuntimeRequired = false;
     if (gActiveOverride)
         return;
     RefreshResolvedHandles(gData, gRequestedPrefilteredMipCount);
-    if (sky.mode == SkyMode::Cubemap && gData.hasIrradiance && gData.hasPrefiltered)
+    if (mode == SkyMode::Cubemap && gData.hasIrradiance && gData.hasPrefiltered)
         return;
-    if (!gCache.Update(graphics, sky, atmosphere, source, atmosphereSkyView, frameIndex))
+    gRuntimeRequired = mode != SkyMode::None;
+    if (!gCache.Update(graphics, mode, skyAsset, atmosphere, source, atmosphereSkyView, cloudSky, cloudSkyVersion,
+                       nightSkyLuminance, frameIndex))
         return;
     const auto cache = gCache.GetSource();
     gRuntimeData = {};
@@ -244,6 +254,12 @@ const IblEnvironmentData& GetEnvironmentData() {
 
     if (gRuntimeActive)
         return gRuntimeData;
+    if (gRuntimeRequired) {
+        gBrdfOnlyData = {};
+        gBrdfOnlyData.brdfLutResource = gData.brdfLutResource;
+        RefreshResolvedHandles(gBrdfOnlyData, 1u);
+        return gBrdfOnlyData;
+    }
     RefreshResolvedHandles(gData, gRequestedPrefilteredMipCount);
     LogIblStateIfChanged();
     return gData;

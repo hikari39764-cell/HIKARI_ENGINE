@@ -1,14 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <string_view>
 #include <d3d12.h>
 #include <dxgiformat.h>
 
+#include "Render3D/Lighting/HIKARI_SkyAsset.h"
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 
-namespace HIKARI {
-struct SkySettings;
-}
 namespace HIKARI::GFX {
 struct Context;
 }
@@ -62,9 +61,10 @@ struct IblEnvironmentData {
 
 void Reset();
 void BeginEnvironmentFrame();
-void PrepareEnvironmentLighting(const GFX::Context& graphics, const SkySettings& sky,
+void PrepareEnvironmentLighting(const GFX::Context& graphics, SkyMode mode, std::string_view skyAsset,
                                 const ATMOSPHERE::AtmosphereLutConstants& atmosphere,
                                 RENDER3D::TextureResourceHandle source, D3D12_GPU_DESCRIPTOR_HANDLE atmosphereSkyView,
+                                D3D12_GPU_DESCRIPTOR_HANDLE cloudSky, uint64_t cloudSkyVersion, float nightSkyLuminance,
                                 uint64_t frameIndex);
 void ShutdownEnvironmentLighting(const GFX::Context& graphics);
 

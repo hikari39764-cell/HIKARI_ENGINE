@@ -14,6 +14,7 @@ namespace JsonMath = SERIALIZATION::JSON::MATH;
 
 void IrradianceVolumeComponent::Serialize(nlohmann::json& out) const {
     out = {{"enabled", enabled_},
+           {"mode", TEXT::EnumToName(kLightProbeVolumeModeNames, mode_)},
            {"size", JsonMath::ToJsonArray(size_)},
            {"countX", countX_},
            {"countY", countY_},
@@ -30,6 +31,7 @@ void IrradianceVolumeComponent::Serialize(nlohmann::json& out) const {
 
 void IrradianceVolumeComponent::Deserialize(const nlohmann::json& in) {
     enabled_ = in.value("enabled", enabled_);
+    TEXT::TryParseEnum(kLightProbeVolumeModeNames, in.value("mode", std::string{}), mode_);
     size_ = JSONREAD::Vec3Or(in.value("size", nlohmann::json::array()), size_);
     countX_ = in.value("countX", countX_);
     countY_ = in.value("countY", countY_);
@@ -60,6 +62,7 @@ bool IrradianceVolumeComponent::SetSize(const MATH::Vec3& size) noexcept {
 
 void IrradianceVolumeComponent::ClampSettings() noexcept {
     LightProbeVolumeSettings settings{};
+    settings.mode = mode_;
     settings.size = size_;
     settings.countX = countX_;
     settings.countY = countY_;

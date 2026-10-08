@@ -8,6 +8,7 @@
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Render3D/Debug/HIKARI_RenderDebugView.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"

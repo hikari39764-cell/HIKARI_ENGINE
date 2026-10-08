@@ -24,9 +24,10 @@ public:
     bool HasAny() const { return !effects_.empty(); }
     // tempWidth/tempHeight を指定すると ping/pong をそのサイズで確保し、
     // 先頭エフェクトの描画がそのままダウンサンプルを兼ねる (bloom 用)。
-    // 0 のときは src と同サイズ。
+    // 0 のときは src と同サイズ。sceneDepth（D32 を shader 読みの状態にした資源）は t1、特性マスクは t2 へ渡す。
     RenderTarget2D* Execute(RenderTarget2D& src, QuadDrawer& quad, const CommonParams& params, int tempWidth = 0,
-                            int tempHeight = 0, const RENDER3D::RenderTextureView* surfaceFeatureMask = nullptr);
+                            int tempHeight = 0, const RENDER3D::RenderTextureView* surfaceFeatureMask = nullptr,
+                            ID3D12Resource* sceneDepth = nullptr);
     RenderTarget2D* GetPing() { return &ping_; }
 
     void Finalize();

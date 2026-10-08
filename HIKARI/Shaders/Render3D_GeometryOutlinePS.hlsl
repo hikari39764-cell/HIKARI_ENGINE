@@ -5,6 +5,7 @@
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
+#include "Include/Lighting/HIKARI_ViewLightingData.hlsli"
 
 typedef HikariForwardPixelInput PSInput;
 
@@ -50,5 +51,6 @@ float4 main(PSInput input) : SV_TARGET
             materialData,
             19u,
             float4(0.025f, 0.030f, 0.045f, 2.0f));
-    return float4(max(outline.rgb, 0.0f.xxx), 1.0f);
+    // 輪郭色は表示参照。
+    return float4(HikariDisplayReferredToScene(max(outline.rgb, 0.0f.xxx), gViewExposure), 1.0f);
 }

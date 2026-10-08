@@ -3,6 +3,7 @@
 #include <d3dx12.h>
 
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <string>
 #include <utility>
@@ -30,7 +31,8 @@ struct MeshVertex {
 
 struct GlobalCB {
     float screenSize[2];
-    float pad[2];
+    float colorScale = 1.0f;
+    float pad = 0.0f;
 };
 
 // 出力形式ごとの PSO（ストレートアルファ合成のみ使用）
@@ -48,6 +50,7 @@ float g_screenH = static_cast<float>(PRESENTATION::kDefaultLogicalHeight);
 ComPtr<ID3D12RootSignature> g_rootSig;
 std::array<PipelineSet, 2> g_pipelineSets{};
 DXGI_FORMAT g_outputFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+float g_colorScale = 1.0f;
 
 PipelineSet* FindPipelineSet(DXGI_FORMAT format) {
     for (PipelineSet& set : g_pipelineSets) {
@@ -204,12 +207,13 @@ void DxRenderer::SetScreenSize(int width, int height) {
     }
 }
 
-bool DxRenderer::SetOutputTarget(DXGI_FORMAT format, int width, int height) {
+bool DxRenderer::SetOutputTarget(DXGI_FORMAT format, int width, int height, float colorScale) {
     const PipelineSet* pipelines = FindPipelineSet(format);
     if (pipelines == nullptr || pipelines->pso == nullptr || width <= 0 || height <= 0) {
         return false;
     }
     g_outputFormat = format;
+    g_colorScale = std::isfinite(colorScale) && colorScale > 0.0f ? colorScale : 1.0f;
     SetScreenSize(width, height);
     return true;
 }
@@ -221,6 +225,7 @@ void DxRenderer::Finalize() {
     }
     g_pipelineSets = {};
     g_outputFormat = DXGI_FORMAT_UNKNOWN;
+    g_colorScale = 1.0f;
     g_rootSig.Reset();
 }
 
@@ -257,7 +262,7 @@ void DxRenderer::DrawMeshQuad(float x0, float y0, float u0, float v0, float x1, 
         return;
     }
     std::memcpy(vb, verts, sizeof(verts));
-    const GlobalCB global{{g_screenW, g_screenH}, {0.0f, 0.0f}};
+    const GlobalCB global{{g_screenW, g_screenH}, g_colorScale};
     std::memcpy(cb, &global, sizeof(global));
 
     ID3D12GraphicsCommandList* cmd = g_ctx.cmdList;

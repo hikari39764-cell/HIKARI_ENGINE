@@ -20,6 +20,8 @@
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
+#include "Render3D/Lighting/HIKARI_VolumetricCloudStage.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereRuntime.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
@@ -35,15 +37,24 @@ constexpr uint64_t kInvalidSkyConstantFrameSerial = (std::numeric_limits<uint64_
 
 struct SkyCB {
     MATH::Mat4 inverseViewProj{};
-    MATH::Vec4 zenithExposure{};
-    MATH::Vec4 horizonPower{};
-    MATH::Vec4 groundYaw{};
+    // x 空の画素値を輝度へ写す倍率、y 空の回転、z このビューの Pre-Exposure。
+    MATH::Vec4 scaleYaw{};
     MATH::Vec4 tintMode{};
-    MATH::Vec4 sunDirectionIntensity{};
-    MATH::Vec4 sunSizeParams{};
+    // 主光源の円盤。xyz 光源へ向かう方向、w 視半径 [rad]。
+    MATH::Vec4 disk{};
+    // 円盤の平均輝度（大気の透過率込み）[nits]。
+    MATH::Vec4 diskLuminance{};
+    // 夜空。xyz 太陽へ向かう方向（月の満ち欠け）、w 1 なら主光源の円盤は月。
+    MATH::Vec4 moonPhase{};
+    // 夜空。x 星と銀河の明るさの倍率、y 限界等級、z 天頂の背景輝度 [nits]、w 瞬きの時刻 [s]。
+    MATH::Vec4 stars{};
+    // 天球座標からワールドへの回転の列。
+    MATH::Vec4 celestialX{1, 0, 0, 0};
+    MATH::Vec4 celestialY{0, 1, 0, 0};
+    MATH::Vec4 celestialZ{0, 0, 1, 0};
 };
 
-static_assert(sizeof(SkyCB) == 160u);
+static_assert(sizeof(SkyCB) == 208u);
 
 using AtmosphereCB = ATMOSPHERE::AtmosphereLutConstants;
 
@@ -162,6 +173,7 @@ struct State {
     SkyRendererDebugState debug{};
     SkyEnvironmentData environmentData{};
     AtmosphereFrameData atmosphereFrame{};
+    AerialPerspectiveView aerialPerspective{};
     ATMOSPHERE::AtmosphereLutOwner atmosphereLuts{};
 };
 
@@ -382,14 +394,14 @@ bool EnsureInitialized(const GFX::Context& graphics) {
 }
 
 RENDER3D::TextureResourceHandle ResolveTexture2D(const SkySettings& settings, SkyManager& skyManager) {
-    const SkyAsset* skyAsset = skyManager.FindAsset(settings.skyAsset);
+    const SkyAsset* skyAsset = skyManager.FindAsset(settings.asset);
     g.debug.skyAssetFound = (skyAsset != nullptr);
     if (!skyAsset) {
         g.debug.activeTexturePath.clear();
         g.debug.textureValid = false;
         g.debug.usingFallback = true;
-        if (!settings.skyAsset.empty()) {
-            HIKARI_LOG_WARN("[SkyRenderer] sky asset not registered: " + settings.skyAsset);
+        if (!settings.asset.empty()) {
+            HIKARI_LOG_WARN("[SkyRenderer] sky asset not registered: " + settings.asset);
         }
         return {};
     }
@@ -421,15 +433,15 @@ RENDER3D::TextureResourceHandle ResolveTexture2D(const SkySettings& settings, Sk
 }
 
 RENDER3D::TextureResourceHandle ResolveCubemap(const SkySettings& settings, SkyManager& skyManager) {
-    const SkyAsset* skyAsset = skyManager.FindAsset(settings.skyAsset);
+    const SkyAsset* skyAsset = skyManager.FindAsset(settings.asset);
     g.debug.skyAssetFound = (skyAsset != nullptr);
     if (!skyAsset) {
         g.debug.activeTexturePath.clear();
         g.debug.cubemapLoaded = false;
         g.debug.textureValid = false;
         g.debug.usingFallback = true;
-        if (!settings.skyAsset.empty()) {
-            HIKARI_LOG_WARN("[SkyRenderer] sky asset not registered: " + settings.skyAsset);
+        if (!settings.asset.empty()) {
+            HIKARI_LOG_WARN("[SkyRenderer] sky asset not registered: " + settings.asset);
         }
         return {};
     }
@@ -457,8 +469,8 @@ RENDER3D::TextureResourceHandle ResolveCubemap(const SkySettings& settings, SkyM
         g.cubemapHandle = RENDER3D::GetTextureResourceBackendHandle(g.cubemapResource);
         if (g.cubemapHandle < 0) {
             std::ostringstream oss;
-            oss << "[SkyRenderer][WARN] Cubemap load failed. Falling back to Gradient sky. skyAsset="
-                << settings.skyAsset << " path=" << path;
+            oss << "[SkyRenderer][WARN] Cubemap load failed; the sky renders black. asset=" << settings.asset
+                << " path=" << path;
             HIKARI_LOG_WARN(oss.str());
         }
     }
@@ -523,50 +535,42 @@ void InvalidateSkyTextureCache() {
 }
 
 void Render(const GFX::Context& graphics, const Camera3D& camera, const SceneEnvironment& environment, ModelManager&,
-            SkyManager& skyManager) {
+            SkyManager& skyManager, bool drawSky) {
     const SkySettings& settings = environment.sky;
     IBL::BeginEnvironmentFrame();
-    const DirectionalLight& sun = environment.directional;
+    g.aerialPerspective = {};
     g.atmosphereLuts.SetContext(graphics);
     const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
     g.atmosphereFrame = BuildAtmosphereFrameDataInternal(environment, &camera, solar);
     g.debug.initialized = g.initialized;
-    g.debug.activeSkyAsset = settings.skyAsset;
+    g.debug.activeSkyAsset = settings.asset;
     g.debug.activeTexturePath.clear();
     g.debug.usingFallback = false;
 
-    if (!settings.enabled || settings.mode == SkyMode::None || !EnsureInitialized(graphics)) {
+    if (!EnsureInitialized(graphics)) {
         g.debug.initialized = g.initialized;
         return;
     }
 
     RENDER3D::TextureResourceHandle texture2DResource = g.fallbackTextureResource;
     RENDER3D::TextureResourceHandle cubemapResource{};
-    SkyMode renderMode = settings.mode;
+    // 読み込めない空の資産は黒い空（None）にする。別の空へ黙って差し替えない。
+    SkyMode renderMode = ResolveSkyRenderMode(settings.source);
+    (void)g.atmosphereLuts.Configure(environment.atmosphere, renderMode == SkyMode::Atmosphere);
 
-    if (settings.mode == SkyMode::Atmosphere && !environment.atmosphere.enabled) {
-        g.debug.usingFallback = true;
-        renderMode = SkyMode::Gradient;
-    }
-
-    AtmosphereSettings atmosphereLutSettings = environment.atmosphere;
-    atmosphereLutSettings.enabled =
-        renderMode == SkyMode::Atmosphere && settings.enabled && atmosphereLutSettings.enabled;
-    (void)g.atmosphereLuts.Configure(atmosphereLutSettings);
-
-    if (settings.mode == SkyMode::Texture2D) {
+    if (renderMode == SkyMode::Texture2D) {
         const RENDER3D::TextureResourceHandle resolved = ResolveTexture2D(settings, skyManager);
         if (RENDER3D::IsTextureResourceValid(resolved)) {
             texture2DResource = resolved;
         } else {
             g.debug.usingFallback = true;
-            renderMode = SkyMode::Gradient;
+            renderMode = SkyMode::None;
         }
-    } else if (settings.mode == SkyMode::Cubemap) {
+    } else if (renderMode == SkyMode::Cubemap) {
         cubemapResource = ResolveCubemap(settings, skyManager);
         if (!RENDER3D::IsTextureResourceValid(cubemapResource)) {
             g.debug.usingFallback = true;
-            renderMode = SkyMode::Gradient;
+            renderMode = SkyMode::None;
         }
     }
 
@@ -581,37 +585,59 @@ void Render(const GFX::Context& graphics, const Camera3D& camera, const SceneEnv
     // PIX 上で sky pass の境界を追いやすくする。
     GFX::PIX::ScopedGpuEvent pixSky(cmd, GFX::PIX::kColorRender, "SkyRenderer.Render");
 
-    const MATH::Vec3 sunDir = SanitizeDirection(sun.direction, {0.4f, -1.0f, -0.6f});
-    const float sunIntensity = sun.enabled ? SanitizeFiniteRange(sun.intensity, 0.0f, 0.0f, 64.0f) : 0.0f;
-
-    constants.cpu->inverseViewProj = MATH::Inverse(camera.GetViewProj());
-    constants.cpu->zenithExposure = {settings.zenithColor.x, settings.zenithColor.y, settings.zenithColor.z,
-                                     std::max(0.0f, settings.exposure)};
-    constants.cpu->horizonPower = {settings.horizonColor.x, settings.horizonColor.y, settings.horizonColor.z,
-                                   std::max(0.01f, settings.horizonPower)};
-    constants.cpu->groundYaw = {settings.groundColor.x, settings.groundColor.y, settings.groundColor.z, settings.yaw};
+    const MATH::Mat4 inverseViewProj = MATH::Inverse(camera.GetViewProj());
+    constants.cpu->inverseViewProj = inverseViewProj;
+    // 空の描画だけがこのビューの HDR 空間で書く。前向きの空/IBL 参照は絶対量のまま。
+    constants.cpu->scaleYaw = {ResolveSkyTextureRadianceScale(settings), settings.yaw,
+                               RENDER3D::COLOR::GetActiveViewExposure().x, 0.0f};
     constants.cpu->tintMode = {settings.tint.x, settings.tint.y, settings.tint.z, static_cast<float>(renderMode)};
-    const float sunDiskSourceRadiance = renderMode == SkyMode::Atmosphere && g.atmosphereFrame.atmosphereEnabled
-                                            ? g.atmosphereFrame.sunSourceRadiance
-                                            : sunIntensity;
-    constants.cpu->sunDirectionIntensity = {
-        sunDir.x,
-        sunDir.y,
-        sunDir.z,
-        settings.showSunDisk ? settings.sunDiskIntensity * sunDiskSourceRadiance : 0.0f,
-    };
-    constants.cpu->sunSizeParams = {ATMOSPHERE::SolarDiskSizeFromAngularRadius(solar.sunAngularRadius),
-                                    settings.ambientFromSky, settings.reflectionIntensity, sunIntensity};
+    // 円盤の平均輝度 = 大気外の法線照度 / 立体角 × 色ごとの大気の透過率（落日が赤いのはこの透過率）。
+    const float diskSolidAngle = (std::max)(2.0f * 3.14159265f * (1.0f - std::cos(solar.sunAngularRadius)), 1.0e-9f);
+    // 夜は大気の光源が月になる。月の円盤は満月の照度で描き、満ち欠けは shader が太陽の向きから付ける。
+    const EnvironmentLightingFrame& frame = environment.frame;
+    const bool moonDisk = frame.moonIsPrimary && renderMode == SkyMode::Atmosphere && environment.moon.enabled;
+    float diskIlluminance = 0.0f;
+    if (moonDisk) {
+        diskIlluminance = environment.moon.illuminance;
+    } else if (environment.sun.showDisk && !frame.moonIsPrimary) {
+        diskIlluminance = solar.sunSourceRadiance;
+    }
+    const float diskScale = diskIlluminance / diskSolidAngle;
+    constants.cpu->disk = {solar.sunDirection.x, solar.sunDirection.y, solar.sunDirection.z, solar.sunAngularRadius};
+    constants.cpu->diskLuminance = {solar.sunSourceColor.x * solar.sunTransmittance.x * diskScale,
+                                    solar.sunSourceColor.y * solar.sunTransmittance.y * diskScale,
+                                    solar.sunSourceColor.z * solar.sunTransmittance.z * diskScale, 0.0f};
+    constants.cpu->moonPhase = {frame.sun.toLight.x, frame.sun.toLight.y, frame.sun.toLight.z, moonDisk ? 1.0f : 0.0f};
+    const StarSettings& stars = environment.stars;
+    const MATH::Vec4 nightSky = stars.enabled && renderMode == SkyMode::Atmosphere
+                                    ? MATH::Vec4{stars.intensity, stars.limitingMagnitude, stars.backgroundLuminance,
+                                                 std::fmod(TIME::GetUnscaledElapsedSeconds(), 3600.0f)}
+                                    : MATH::Vec4{};
+    constants.cpu->stars = nightSky;
+    constants.cpu->celestialX = {frame.celestialToWorldX.x, frame.celestialToWorldX.y, frame.celestialToWorldX.z, 0.0f};
+    constants.cpu->celestialY = {frame.celestialToWorldY.x, frame.celestialToWorldY.y, frame.celestialToWorldY.z, 0.0f};
+    constants.cpu->celestialZ = {frame.celestialToWorldZ.x, frame.celestialToWorldZ.y, frame.celestialToWorldZ.z, 0.0f};
     bool atmosphereLutsReady = false;
     if (renderMode == SkyMode::Atmosphere && g.atmosphereFrame.atmosphereEnabled) {
-        const AtmosphereSettings& atmosphere = environment.atmosphere;
-        *constants.atmosphereCpu = ATMOSPHERE::BuildAtmosphereLutConstants(atmosphere, solar, settings.groundColor);
-
-        if (atmosphere.preferLut) {
-            atmosphereLutsReady =
-                g.atmosphereLuts.Dispatch(graphics, constants.atmosphereGpu, *constants.atmosphereCpu);
-        }
+        *constants.atmosphereCpu = ATMOSPHERE::BuildAtmosphereLutConstants(environment.atmosphere, solar);
+        // 空の LUT の観測者の高さと、このビューの空気遠近の視線。空気遠近の体積は合成（不透明面へ掛ける）で
+        // このビューの Pre-Exposure のまま使う。
+        ATMOSPHERE::AtmosphereViewConstants view{};
+        view.inverseViewProj = inverseViewProj;
+        const MATH::Vec3 position = camera.GetPosition();
+        view.cameraPreExposure = {position.x, position.y, position.z, RENDER3D::COLOR::GetActiveViewExposure().x};
+        view.params = {ATMOSPHERE::kAerialPerspectiveMaxDistance, 0.0f, 0.0f, 0.0f};
+        const RENDER3D::CLOUDS::CloudShadingEstimate cloudShading = RENDER3D::CLOUDS::EstimateCloudShading(environment);
+        view.cloudShading = {cloudShading.ambientRadiance.x, cloudShading.ambientRadiance.y,
+                             cloudShading.ambientRadiance.z, cloudShading.sunVisibility};
+        atmosphereLutsReady =
+            g.atmosphereLuts.Dispatch(graphics, constants.atmosphereGpu, *constants.atmosphereCpu, view);
         constants.atmosphereCpu->sunDirection.w = atmosphereLutsReady ? 2.0f : 1.0f;
+        if (atmosphereLutsReady) {
+            const D3D12_GPU_DESCRIPTOR_HANDLE srv =
+                g.atmosphereLuts.DispatchAerialPerspective(graphics, constants.atmosphereGpu, view);
+            g.aerialPerspective = {srv, ATMOSPHERE::kAerialPerspectiveMaxDistance, srv.ptr != 0u};
+        }
     } else {
         *constants.atmosphereCpu = {};
     }
@@ -652,8 +678,7 @@ void Render(const GFX::Context& graphics, const Camera3D& camera, const SceneEnv
         cmd->SetGraphicsRootDescriptorTable(4, atmosphereSkyViewSrv);
     }
 
-    g.debug.textureValid = (textureSrv.ptr != 0) || (cubeSrv.ptr != 0) || renderMode == SkyMode::Gradient ||
-                           renderMode == SkyMode::Atmosphere;
+    g.debug.textureValid = (textureSrv.ptr != 0) || (cubeSrv.ptr != 0) || renderMode == SkyMode::Atmosphere;
     g.debug.cubemapLoaded = (RENDER3D::IsTextureResourceValid(cubemapResource) && cubeSrv.ptr != 0);
     g.debug.cubemapResource = cubemapResource;
     g.debug.textureResource = texture2DResource;
@@ -670,17 +695,12 @@ void Render(const GFX::Context& graphics, const Camera3D& camera, const SceneEnv
     g.environmentData.cubemapHandle = g.debug.cubemapHandle;
     g.environmentData.textureHandle = g.debug.textureHandle;
     g.environmentData.cubemapSrv = cubeSrv;
-    g.environmentData.zenithColor = settings.zenithColor;
-    g.environmentData.horizonColor = settings.horizonColor;
-    g.environmentData.groundColor = settings.groundColor;
-    g.environmentData.gradientIrradiance = RENDER3D::LIGHTING::BuildGradientSkyIrradiance(settings);
     g.environmentData.tint = settings.tint;
-    g.environmentData.exposure = std::max(0.0f, settings.exposure);
-    g.environmentData.ambientFromSky = std::max(0.0f, settings.ambientFromSky);
+    g.environmentData.exposure = ResolveSkyTextureRadianceScale(settings);
+    g.environmentData.ambientFromSky = std::max(0.0f, settings.lightIntensity);
     g.environmentData.reflectionIntensity = std::max(0.0f, settings.reflectionIntensity);
-    g.environmentData.horizonPower = std::max(0.01f, settings.horizonPower);
     g.environmentData.yaw = settings.yaw;
-    g.environmentData.activeSkyAsset = settings.skyAsset;
+    g.environmentData.activeSkyAsset = settings.asset;
     g.environmentData.activeTexturePath = g.debug.activeTexturePath;
     g.environmentData.atmosphereEnabled = g.atmosphereFrame.atmosphereEnabled && renderMode == SkyMode::Atmosphere;
     g.environmentData.atmosphereLutsReady = atmosphereLutsReady;
@@ -695,40 +715,70 @@ void Render(const GFX::Context& graphics, const Camera3D& camera, const SceneEnv
     g.environmentData.sunGlare = g.atmosphereFrame.sunGlare;
     g.environmentData.atmosphereConstants = *constants.atmosphereCpu;
 
-    cmd->DrawInstanced(3, 1, 0, 0);
-    SkySettings lightingSky = settings;
-    lightingSky.mode = renderMode;
-    IBL::PrepareEnvironmentLighting(graphics, lightingSky, *constants.atmosphereCpu,
+    if (drawSky) {
+        cmd->DrawInstanced(3, 1, 0, 0);
+    }
+    // 雲の空は前のフレームの雲の段が描いたもの（空の描画は雲より先に走る）。
+    const RENDER3D::CLOUDS::CloudSkyView cloudSky = RENDER3D::CLOUDS::GetCloudSkyView();
+    IBL::PrepareEnvironmentLighting(graphics, renderMode, settings.asset, *constants.atmosphereCpu,
                                     renderMode == SkyMode::Cubemap ? cubemapResource : texture2DResource,
                                     atmosphereLutsReady ? g.atmosphereLuts.GetSkyViewSrv().gpu
                                                         : D3D12_GPU_DESCRIPTOR_HANDLE{},
-                                    TIME::GetFrameContext().frameIndex);
+                                    cloudSky.srv, cloudSky.version, nightSky.z, TIME::GetFrameContext().frameIndex);
     g.debug.lastRenderSubmitted = true;
     ++g.debug.drawCount;
 }
 
 const SkyRendererDebugState& GetDebugState() { return g.debug; }
 
-MATH::Vec3 ResolveAmbientLightColor(const SceneEnvironment& environment) {
-    const auto& skyData = GetEnvironmentData();
-    MATH::Vec3 ambientColor = environment.ambient.color;
-    const bool skyEnabled = environment.sky.enabled && environment.sky.mode != SkyMode::None;
-    if (environment.ambient.useSkyColor && skyEnabled && skyData.valid) {
-        const MATH::Vec3 skyAmbient = {(skyData.horizonColor.x * 0.65f + skyData.groundColor.x * 0.35f) *
-                                           skyData.exposure * skyData.ambientFromSky,
-                                       (skyData.horizonColor.y * 0.65f + skyData.groundColor.y * 0.35f) *
-                                           skyData.exposure * skyData.ambientFromSky,
-                                       (skyData.horizonColor.z * 0.65f + skyData.groundColor.z * 0.35f) *
-                                           skyData.exposure * skyData.ambientFromSky};
-        const float blend = std::clamp(environment.ambient.skyBlend, 0.0f, 1.0f);
-        ambientColor = {ambientColor.x * (1.0f - blend) + skyAmbient.x * blend,
-                        ambientColor.y * (1.0f - blend) + skyAmbient.y * blend,
-                        ambientColor.z * (1.0f - blend) + skyAmbient.z * blend};
+MATH::Vec3 EstimateSkyAmbientRadiance(const SceneEnvironment& environment) {
+    const SkySettings& sky = environment.sky;
+    MATH::Vec3 radiance{};
+    if (sky.source == SkySource::Atmosphere) {
+        // 晴天の空は地表の全天照度のおよそ 2 割を与える。夜は星と大気光の床を残す。
+        const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
+        const float skyIlluminance = 0.2f * solar.sunRadiance;
+        const float nightFloor = environment.stars.enabled ? environment.stars.backgroundLuminance : 0.0f;
+        const float luminance = skyIlluminance / 3.14159265f + nightFloor;
+        radiance = {luminance * 0.85f, luminance * 0.95f, luminance * 1.15f};
+    } else {
+        const float luminance = ResolveSkyTextureRadianceScale(sky);
+        radiance = {luminance, luminance, luminance};
     }
+    const float scale = std::max(0.0f, sky.lightIntensity);
+    return {radiance.x * sky.tint.x * scale, radiance.y * sky.tint.y * scale, radiance.z * sky.tint.z * scale};
+}
 
-    return ambientColor;
+RENDER3D::COLOR::ExposureIllumination EstimateExposureIllumination(const SceneEnvironment& environment) {
+    RENDER3D::COLOR::ExposureIllumination illumination{};
+    const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
+    if (!solar.valid) {
+        return illumination;
+    }
+    float visibility = 1.0f;
+    MATH::Vec3 sky = EstimateSkyAmbientRadiance(environment);
+    if (RENDER3D::CLOUDS::HasVisibleClouds(environment)) {
+        const RENDER3D::CLOUDS::CloudShadingEstimate clouds = RENDER3D::CLOUDS::EstimateCloudShading(environment);
+        visibility = clouds.sunVisibility;
+        sky = clouds.ambientRadiance;
+    }
+    const float elevation = (std::max)(solar.sunDirection.y, 0.0f);
+    const float skyLuminance = sky.x * 0.2126f + sky.y * 0.7152f + sky.z * 0.0722f;
+    const float illuminance = solar.sunRadiance * elevation * visibility + 3.14159265f * skyLuminance;
+    // 入射式露出計（ISO 100、平板 C = 250）の EV100。
+    illumination.incidentEv100 = std::log2((std::max)(illuminance, 1.0e-6f) * 100.0f / 250.0f);
+    // 太陽が 10° より低い間は空の色に合わせた露出のまま（夕焼けの空を白く飛ばさない）、25° で直射の重み 1。
+    const float rise = std::clamp((elevation - 0.17365f) / (0.42262f - 0.17365f), 0.0f, 1.0f);
+    illumination.directSun = visibility * rise * rise * (3.0f - 2.0f * rise);
+    return illumination;
 }
 
 const SkyEnvironmentData& GetEnvironmentData() { return g.environmentData; }
+
+const AerialPerspectiveView& GetAerialPerspectiveView() { return g.aerialPerspective; }
+
+D3D12_GPU_DESCRIPTOR_HANDLE GetSkyViewLutSrv() {
+    return g.atmosphereFrame.lutsReady ? g.atmosphereLuts.GetSkyViewSrv().gpu : D3D12_GPU_DESCRIPTOR_HANDLE{};
+}
 
 } // namespace HIKARI::SKYRENDERER

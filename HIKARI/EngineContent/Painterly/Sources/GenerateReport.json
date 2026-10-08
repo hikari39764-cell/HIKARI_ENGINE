@@ -1,0 +1,44 @@
+{
+  "generator": "GenerateStrokeTextures.py",
+  "seed": 3,
+  "dimensions": [
+    1024,
+    1024
+  ],
+  "outputs": {
+    "mask": {
+      "path": "Textures/StrokeMask.png",
+      "sha256": "7a142fb098d5e97421896ad07501e0028e2fdd7ae187cb1baf0d38696ab2e18a"
+    },
+    "normal": {
+      "path": "Textures/StrokeNormalDX.png",
+      "sha256": "c7fe6b08fea8097887e8ca715f48f67c921cc792d3fdede1a01fc22ddbd9c522"
+    }
+  },
+  "mask": {
+    "seams": {
+      "wrap_x_mean_difference": 0.033723958333333345,
+      "interior_x_mean_difference": 0.02807798094797934,
+      "wrap_y_mean_difference": 0.023246017156862676,
+      "interior_y_mean_difference": 0.019885794615974586
+    },
+    "range": [
+      20,
+      223
+    ],
+    "mean": 0.376801288829381
+  },
+  "normal": {
+    "minimum_z": 0.8352656388882692,
+    "mean_signed_xy": [
+      -1.3676559041684445e-05,
+      2.5555578382473555e-06
+    ],
+    "relief_pixels": 4.0,
+    "flat_encoded_rgb": [
+      128,
+      128,
+      255
+    ]
+  }
+}

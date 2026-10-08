@@ -9,7 +9,7 @@
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Assets/Vfx/HIKARI_VfxProgram.h"
-#include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Lighting/HIKARI_SkyAsset.h"
 
 namespace HIKARI {
 
@@ -40,6 +40,9 @@ enum class AssetType {
     UiAnimation,
     PostEffect,
     PostProfile,
+    Environment,
+    Weather,
+    RenderStyle,
     Unknown
 };
 
@@ -110,7 +113,7 @@ struct ModelAssetDescriptor final : AssetDescriptor {
 struct SkyAssetDescriptor final : AssetDescriptor {
     std::string meshAssetId{};
     std::string textureAssetId{};
-    SkyMode preferredMode = SkyMode::Gradient;
+    SkyMode preferredMode = SkyMode::Cubemap;
     std::string irradiancePath{};
     std::string prefilteredPath{};
     std::string brdfLutPath{};

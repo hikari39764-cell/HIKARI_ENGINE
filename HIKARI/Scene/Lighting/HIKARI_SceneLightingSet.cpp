@@ -39,9 +39,10 @@ bool EqualReflectionProvider(const RENDER3D::LIGHTING::ReflectionProbeProvider& 
 
 bool EqualIrradianceProvider(const RENDER3D::LIGHTING::IrradianceVolumeProvider& lhs,
                              const RENDER3D::LIGHTING::IrradianceVolumeProvider& rhs) {
-    return lhs.id == rhs.id && lhs.enabled == rhs.enabled && EqualVec3(lhs.origin, rhs.origin) &&
-           EqualVec3(lhs.size, rhs.size) && lhs.countX == rhs.countX && lhs.countY == rhs.countY &&
-           lhs.countZ == rhs.countZ && lhs.intensity == rhs.intensity && lhs.blendDistance == rhs.blendDistance &&
+    return lhs.id == rhs.id && lhs.enabled == rhs.enabled && lhs.realtime == rhs.realtime &&
+           EqualVec3(lhs.origin, rhs.origin) && EqualVec3(lhs.size, rhs.size) && EqualVec3(lhs.spacing, rhs.spacing) &&
+           lhs.countX == rhs.countX && lhs.countY == rhs.countY && lhs.countZ == rhs.countZ &&
+           lhs.intensity == rhs.intensity && lhs.blendDistance == rhs.blendDistance &&
            lhs.normalBias == rhs.normalBias && lhs.priority == rhs.priority && lhs.bakeSet == rhs.bakeSet &&
            lhs.scenario == rhs.scenario;
 }
@@ -54,7 +55,7 @@ bool EqualLightProvider(const RENDER3D::LIGHTING::SceneLightProvider& lhs,
            lhs.sourceRadius == rhs.sourceRadius && lhs.castsShadows == rhs.castsShadows &&
            lhs.innerConeAngleDegrees == rhs.innerConeAngleDegrees &&
            lhs.outerConeAngleDegrees == rhs.outerConeAngleDegrees && lhs.angularFalloff == rhs.angularFalloff &&
-           lhs.distanceFalloff == rhs.distanceFalloff && lhs.priority == rhs.priority;
+           lhs.priority == rhs.priority;
 }
 
 MATH::Vec3 WorldPosition(const MATH::Mat4& matrix) {
@@ -97,21 +98,18 @@ RENDER3D::LIGHTING::SceneLightingSet BuildRuntimeSceneLightingSet(const SceneDoc
         provider.id = LightId(object->GetDocumentId());
         provider.name = object->GetName();
         provider.enabled = component->IsEnabled();
-        switch (component->GetLightType()) {
-        case LightComponentType::Directional: provider.type = RENDER3D::LIGHTING::SceneLightType::Directional; break;
-        case LightComponentType::Spot: provider.type = RENDER3D::LIGHTING::SceneLightType::Spot; break;
-        case LightComponentType::Point:
-        default: provider.type = RENDER3D::LIGHTING::SceneLightType::Point; break;
-        }
+        provider.type = component->GetLightType() == LightComponentType::Spot
+                            ? RENDER3D::LIGHTING::SceneLightType::Spot
+                            : RENDER3D::LIGHTING::SceneLightType::Point;
         const MATH::Mat4 worldMatrix = object->GetTransform().GetWorldMatrix();
         provider.position = WorldPosition(worldMatrix);
         provider.direction = WorldForward(worldMatrix);
         provider.color = component->GetColor();
-        provider.intensity = component->GetIntensity();
+        // 作者値は光束 [lm]、描画は光度 [cd]。
+        provider.intensity = RENDER3D::LIGHTING::LuminousIntensityFromFlux(component->GetIntensity());
         provider.range = component->GetRange();
         provider.sourceRadius = component->GetSourceRadius();
         provider.castsShadows = component->CastsShadows();
-        provider.distanceFalloff = component->GetDistanceFalloff();
         provider.innerConeAngleDegrees = component->GetInnerConeAngleDegrees();
         provider.outerConeAngleDegrees = component->GetOuterConeAngleDegrees();
         provider.angularFalloff = component->GetAngularFalloff();
@@ -139,11 +137,10 @@ RENDER3D::LIGHTING::SceneLightingSet BuildSceneLightingSet(std::span<const Scene
         provider.position = authored.position;
         provider.direction = authored.direction;
         provider.color = authored.color;
-        provider.intensity = authored.intensity;
+        provider.intensity = RENDER3D::LIGHTING::LuminousIntensityFromFlux(authored.intensity);
         provider.range = authored.range;
         provider.sourceRadius = authored.sourceRadius;
         provider.castsShadows = authored.castsShadows;
-        provider.distanceFalloff = authored.distanceFalloff;
         provider.innerConeAngleDegrees = authored.innerConeAngleDegrees;
         provider.outerConeAngleDegrees = authored.outerConeAngleDegrees;
         provider.angularFalloff = authored.angularFalloff;
@@ -178,8 +175,10 @@ RENDER3D::LIGHTING::SceneLightingSet BuildSceneLightingSet(std::span<const Scene
         provider.id = IrradianceVolumeId(authored.objectId);
         provider.name = authored.name;
         provider.enabled = authored.settings.enabled;
+        provider.realtime = authored.settings.mode == LightProbeVolumeMode::Realtime;
         provider.origin = authored.settings.origin;
         provider.size = authored.settings.size;
+        provider.spacing = GetLightProbeVolumeSpacing(authored.settings);
         provider.countX = authored.settings.countX;
         provider.countY = authored.settings.countY;
         provider.countZ = authored.settings.countZ;

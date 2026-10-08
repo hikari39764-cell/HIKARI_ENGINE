@@ -4,7 +4,9 @@
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
 #include "Assets/HIKARI_AssetRegistryBuilder.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
+#include "Assets/Environment/HIKARI_EnvironmentAsset.h"
 #include "Assets/Post/HIKARI_PostAsset.h"
+#include "Assets/RenderStyle/HIKARI_RenderStyleAsset.h"
 #include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
 #include "Assets/Sequence/HIKARI_SequenceAsset.h"
@@ -104,6 +106,34 @@ bool CollectSourceCookDependencies(const AssetRecord& record, const std::filesys
             return false;
         plan.sourceDependencies.insert_or_assign(record.guid.value, POST::CollectPostProfileDependencies(profile));
         return true;
+    }
+    if (record.type == AssetType::Environment) {
+        std::filesystem::path path;
+        if (!ResolveContainedFilePath(projectRoot, record.sourcePath, path, outMessage))
+            return false;
+        ENVIRONMENT::EnvironmentProfileAsset environment;
+        if (!ENVIRONMENT::LoadEnvironmentProfileAsset(path, environment, outMessage))
+            return false;
+        plan.sourceDependencies.insert_or_assign(record.guid.value,
+                                                 ENVIRONMENT::CollectEnvironmentProfileDependencies(environment));
+        return true;
+    }
+    if (record.type == AssetType::RenderStyle) {
+        std::filesystem::path path;
+        if (!ResolveContainedFilePath(projectRoot, record.sourcePath, path, outMessage))
+            return false;
+        RENDERSTYLE::RenderStyleAsset style;
+        if (!RENDERSTYLE::LoadRenderStyleAsset(path, style, outMessage))
+            return false;
+        plan.sourceDependencies.insert_or_assign(record.guid.value, RENDERSTYLE::CollectRenderStyleDependencies(style));
+        return true;
+    }
+    if (record.type == AssetType::Weather) {
+        std::filesystem::path path;
+        if (!ResolveContainedFilePath(projectRoot, record.sourcePath, path, outMessage))
+            return false;
+        ENVIRONMENT::WeatherPresetAsset weather;
+        return ENVIRONMENT::LoadWeatherPresetAsset(path, weather, outMessage);
     }
     if (record.type == AssetType::TextStyle) {
         std::filesystem::path path;

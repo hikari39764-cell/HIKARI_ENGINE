@@ -261,7 +261,7 @@ bool BuildProjectRenderFrameView(const RenderFrameGraphStageContext& context,
 
     const TEMPORAL::TemporalResourceStats temporal = TEMPORAL::GetLatestTemporalResourceStats(context.frame.viewId);
     if (temporal.resourceFrame.Matches(context.temporalResources) && temporal.exposureWritten) {
-        frame.exposureMultiplier = temporal.exposureMultiplier;
+        frame.exposureMultiplier = temporal.exposure;
         frame.preExposure = temporal.preExposure;
         frame.exposureMode = temporal.exposureMode == COLOR::ExposureMode::Automatic
                                  ? GameProjectRenderExposureMode::Automatic

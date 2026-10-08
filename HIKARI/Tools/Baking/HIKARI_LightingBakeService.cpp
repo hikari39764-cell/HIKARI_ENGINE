@@ -145,7 +145,7 @@ LightingBakeStatus LightingBakeService::AnalyzeLightingBakeStatus(const Lighting
     }
 
     for (const LIGHTING_AUTHORING::IrradianceVolumeAuthoring& volume :
-         LIGHTING_AUTHORING::CollectIrradianceVolumes(*request.sceneDocument)) {
+         LIGHTING_AUTHORING::CollectBakedIrradianceVolumes(*request.sceneDocument)) {
         LightingBakeItemStatus item{};
         item.kind = LightingBakeItemKind::IrradianceVolume;
         item.objectId = volume.objectId.value;

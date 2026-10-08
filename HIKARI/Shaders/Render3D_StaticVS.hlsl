@@ -83,7 +83,8 @@ VSOutput main(VSInput input)
     output.shellLayer = HikariShellLayer(input.instanceId,
         gUseSurfaceGpuScene != 0u ? gSurfaceGpuSceneShellLayerCount : 0u,
         asfloat(gSurfaceGpuSceneShellLodBits));
-    worldPos.xyz += output.normalWS * (surfaceInstance.shellSettings.y * output.shellLayer.x);
+    worldPos.xyz += output.normalWS * (surfaceInstance.shellSettings.y * output.shellLayer.x *
+        HikariShellPush(localPosition, surfaceInstance.boundsCenterRadius.w));
     output.worldPosWS = worldPos.xyz;
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
     output.position = HikariExpandGeometryOutlineVertex(

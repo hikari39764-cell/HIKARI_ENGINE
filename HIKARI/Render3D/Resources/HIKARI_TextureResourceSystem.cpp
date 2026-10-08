@@ -134,10 +134,6 @@ TextureResourceHandle ResolveBackendTextureResource(int backendHandle) {
 
 ID3D12DescriptorHeap* GetTextureResourceSrvHeap() { return DXTEX::DxTextureManager::GetSrvHeap(); }
 
-TextureResourceHandle LoadTextureResource(const std::string& name, const std::string& path) {
-    return LoadTextureResourceWithColorSpace(name, path, TextureResourceColorSpace::Auto);
-}
-
 TextureResourceHandle LoadTextureResourceWithColorSpace(const std::string& name, const std::string& path,
                                                         TextureResourceColorSpace colorSpace) {
     const int backendHandle =

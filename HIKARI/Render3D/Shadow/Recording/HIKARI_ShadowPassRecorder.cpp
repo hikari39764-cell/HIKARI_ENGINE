@@ -44,7 +44,8 @@ bool UploadShadowCameraConstants(ShadowRendererState& state, const GFX::Context&
 }
 
 void SubmitShadowDebugFrustum(ShadowRendererState& state, const SceneEnvironment& environment, const Camera3D& camera) {
-    if (!environment.directionalShadow.showDebugFrustum) {
+    (void)environment;
+    if (!state.debugFrustumVisible) {
         return;
     }
     (void)camera;

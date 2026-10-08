@@ -7,6 +7,8 @@
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 #include "Include/Surface/HIKARI_SurfacePartition.hlsli"
 #include "Include/Surface/HIKARI_MaterialShell.hlsli"
+#include "Include/Surface/HIKARI_PainterlyShell.hlsli"
+#include "Include/Forward/HIKARI_StyleShading.hlsli"
 
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
 #include "Include/Forward/HIKARI_SurfaceFeatureShading.hlsli"
@@ -57,6 +59,8 @@ float4 main(PSInput input) : SV_TARGET
 #else
     const uint forwardCostMode = (uint)(gForwardCostMode + 0.5f);
 #endif
+    // 標準 PBR だけを描く PSO は材質 program（式・風格化・目）の経路を持たない。
+    static const bool programMaterials = HIKARI_MATERIAL_CLASS != HIKARI_MATERIAL_CLASS_STANDARD;
     HikariApplyShellFade(input.shellLayer, input.position.xy);
     const bool costNoShadow =
         forwardCostMode == HIKARI_FORWARD_COST_NO_SHADOW;
@@ -152,9 +156,18 @@ float4 main(PSInput input) : SV_TARGET
     const float cloudSolarVisibility=costAlbedoOnly || (materialData.materialFlags & HIKARI_MATERIAL_FLAG_UNLIT)!=0u
         ? 1.0f : HikariForwardCloudSolarVisibility(input.worldPosWS);
 
+    // 筆触の殻は固定経路。殻の被覆は GeometryAux と同じ関数で決め、式の解釈器は走らせない。
+    const bool painterly = programMaterials && HikariIsPainterlyShellMaterial(materialData);
+    HikariPainterlyStroke stroke = (HikariPainterlyStroke)0;
+    if (painterly)
+    {
+        stroke = HikariSamplePainterlyStroke(materialData, gLinearWrap, input.uv, input.shellLayer);
+        HikariApplyPainterlyShellCoverage(
+            materialData, input.shellLayer, input.position.xy, gTimeParams.w, geometricNormal, v, stroke.mask);
+    }
     HikariMaterialExpressionResult materialExpression =
         (HikariMaterialExpressionResult)0;
-    if (!neutralClay &&
+    if (!neutralClay && programMaterials && !painterly &&
         materialData.materialProgramIndex !=
             HIKARI_STANDARD_PBR_MATERIAL_PROGRAM)
     {
@@ -176,38 +189,48 @@ float4 main(PSInput input) : SV_TARGET
         float2 baseColorUv =
             HikariResolveMaterialUv(materialData, HIKARI_MATERIAL_UV_BASE_COLOR, input.uv, input.uv1);
         const float2 eyeSurfaceUv = baseColorUv;
-        baseColorUv = HikariResolveEyeLayerUv(
-            materialData,
-            baseColorUv,
-            geometricNormal,
-            input.tangentWS,
-            v);
-        baseColorUv = HikariResolveCorneaHighlightUv(
-            materialData,
-            baseColorUv,
-            geometricNormal,
-            input.tangentWS,
-            v,
-            l);
+        if (programMaterials)
+        {
+            baseColorUv = HikariResolveEyeLayerUv(
+                materialData,
+                baseColorUv,
+                geometricNormal,
+                input.tangentWS,
+                v);
+            baseColorUv = HikariResolveCorneaHighlightUv(
+                materialData,
+                baseColorUv,
+                geometricNormal,
+                input.tangentWS,
+                v,
+                l);
+        }
         float4 baseColorSample = HikariSampleMaterialTexture(
             materialData.baseColorTextureDescriptorIndex,
             gLinearWrap,
             baseColorUv,
             float4(1.0f, 1.0f, 1.0f, 1.0f));
-        baseColorSample = HikariResolveEyeLayerSample(
-            materialData,
-            baseColorSample);
-        baseColorSample = HikariResolveCorneaHighlightSample(
-            materialData,
-            baseColorSample,
-            eyeSurfaceUv,
-            geometricNormal,
-            input.tangentWS,
-            v,
-            l,
-            gDirectionalColor.rgb * (gDirectionalIntensity * cloudSolarVisibility));
+        if (programMaterials)
+        {
+            baseColorSample = HikariResolveEyeLayerSample(
+                materialData,
+                baseColorSample);
+            baseColorSample = HikariResolveCorneaHighlightSample(
+                materialData,
+                baseColorSample,
+                eyeSurfaceUv,
+                geometricNormal,
+                input.tangentWS,
+                v,
+                l,
+                gDirectionalColor.rgb * (gDirectionalIntensity * cloudSolarVisibility));
+        }
         baseColorSample = HikariResolveMaterialSourceColor(materialData, baseColorSample);
         albedo *= baseColorSample;
+    }
+    if (painterly && !neutralClay)
+    {
+        albedo.rgb = HikariApplyPainterlyStrokeColor(materialData, albedo.rgb, stroke.mask);
     }
     float alphaClipThreshold = materialData.pbrParams.w;
     materialExpression.baseColor = HikariResolveMaterialSourceColor(materialData, materialExpression.baseColor);
@@ -227,7 +250,8 @@ float4 main(PSInput input) : SV_TARGET
     {
         float coverage = (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_ALPHA_BLEND) != 0u ? albedo.a : 1.0f;
         float alpha = saturate(coverage * materialData.emissiveFactor.w);
-        return float4(max(materialData.emissiveFactor.rgb, 0.0f) * alpha, alpha);
+        return float4(HikariDisplayReferredToScene(max(materialData.emissiveFactor.rgb, 0.0f), gViewExposure) * alpha,
+            alpha);
     }
 
     if (gDebugView == 4 || costAlbedoOnly)
@@ -271,6 +295,10 @@ float4 main(PSInput input) : SV_TARGET
             gLinearWrap);
     n = HikariResolveMaterialExpressionNormal(
         materialExpression, materialData.normalScale, geometricNormal, input.tangentWS, n);
+    if (painterly && !neutralClay && !costNoNormalMap)
+    {
+        n = HikariApplyPainterlyStrokeNormal(n, geometricNormal, input.tangentWS, stroke.normalTS);
+    }
     if (gDebugView == 1)
     {
         return float4(normalize(n) * 0.5f + 0.5f, albedo.a);
@@ -353,6 +381,11 @@ float4 main(PSInput input) : SV_TARGET
             materialData, input.uv, input.uv1, gLinearWrap);
     }
     HikariApplyMaterialExpressionPbr(materialExpression, pbrInputs);
+    if (painterly)
+    {
+        HikariApplyPainterlyShellPbr(
+            input.shellLayer, pbrInputs.metallic, pbrInputs.roughness, pbrInputs.specularFactor);
+    }
     const float metallic = pbrInputs.metallic;
     const float roughness = pbrInputs.roughness;
     const float occlusion = pbrInputs.occlusion;
@@ -399,10 +432,11 @@ float4 main(PSInput input) : SV_TARGET
     }
     if (gDebugView == 10)
     {
-        return float4(emissive, albedo.a);
+        return HikariPreExposeView(float4(emissive, albedo.a));
     }
 
-    float3 shadedColor = albedo.rgb;
+    // Unlit は表示参照の色。絶対量へ換算して霧と Pre-Exposure を他と同じ経路で通す。
+    float3 shadedColor = HikariDisplayReferredToRadiance(albedo.rgb, gViewExposure);
     if (neutralClay ||
         (materialData.materialFlags & MATERIAL_UNLIT) == 0)
     {
@@ -415,23 +449,8 @@ float4 main(PSInput input) : SV_TARGET
                 specularFactor,
                 n,
                 v);
-        if (HikariMaterialUsesStandardPbrLighting(materialData))
-        {
-        HikariDirectPbrLobes directional =
-            HikariEvaluateDirectionalPbrLobes(
-                pbrContext,
-                l,
-                gDirectionalColor.rgb * (gDirectionalIntensity * cloudSolarVisibility),
-                gDirectionalDir.w);
-        directional.diffuse *= shadowVisibility;
-        directional.specular *= shadowVisibility;
-
-        const HikariDirectPbrLobes local = AccumulateLocalLightPbrLobes(
-            pbrContext,
-            input.worldPosWS,
-            input.position.xy, geometricNormal,
-            HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
-
+        // 光マップと環境光（探針・空・反射）は標準 PBR と風格化のどちらも使う。分岐ごとに評価すると pixel shader に
+        // 二重に展開される。
         float3 surfaceLightmapIrradiance = 0.0f.xxx;
         float surfaceLightmapWeight = 0.0f;
         ResolveSurfaceLightmap(
@@ -441,11 +460,9 @@ float4 main(PSInput input) : SV_TARGET
             surfaceLightmapWeight);
         if (gDebugView == 28)
         {
-            return float4(
-                surfaceLightmapWeight > 0.0f
-                    ? surfaceLightmapIrradiance
-                    : float3(1.0f, 0.0f, 1.0f),
-                albedo.a);
+            return surfaceLightmapWeight > 0.0f
+                ? HikariPreExposeView(float4(surfaceLightmapIrradiance, albedo.a))
+                : float4(1.0f, 0.0f, 1.0f, albedo.a);
         }
 
         const HikariAmbientIblLobes ambient = HikariEvaluateAmbientIblLobes(
@@ -455,25 +472,45 @@ float4 main(PSInput input) : SV_TARGET
             input.worldPosWS,
             surfaceLightmapIrradiance,
             surfaceLightmapWeight);
+        if (!programMaterials || HikariMaterialUsesStandardPbrLighting(materialData))
+        {
+        const float3 directionalRadiance = gDirectionalColor.rgb * (gDirectionalIntensity * cloudSolarVisibility);
+        HikariDirectPbrLobes directional =
+            HikariEvaluateDirectionalPbrLobes(
+                pbrContext,
+                l,
+                directionalRadiance,
+                gDirectionalDir.w);
+        directional.diffuse *= shadowVisibility;
+        directional.specular *= shadowVisibility;
+        float3 ambientDiffuse = ambient.diffuse;
+        HikariApplyStyleShading(pbrContext, n, l, directionalRadiance, shadowVisibility, directional, ambientDiffuse);
+
+        const HikariDirectPbrLobes local = AccumulateLocalLightPbrLobes(
+            pbrContext,
+            input.worldPosWS,
+            input.position.xy, geometricNormal,
+            HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
 
         shadedColor = directional.diffuse + directional.specular +
-            local.diffuse + local.specular + ambient.diffuse + ambient.specular;
+            local.diffuse + local.specular + ambientDiffuse + ambient.specular;
         // Lit と同じローブを分離し、別のデバッグ用 BRDF を持たない。
         // Post/Fog/SSR を混ぜずに材質と各光源の寄与を調べるための HDR 出力。
         if (gDebugView == HIKARI_DEBUG_VIEW_DIRECT_DIFFUSE)
-            return float4(directional.diffuse + local.diffuse, albedo.a);
+            return HikariPreExposeView(float4(directional.diffuse + local.diffuse, albedo.a));
         if (gDebugView == HIKARI_DEBUG_VIEW_DIRECTIONAL_SPECULAR)
-            return float4(directional.specular, albedo.a);
+            return HikariPreExposeView(float4(directional.specular, albedo.a));
         if (gDebugView == HIKARI_DEBUG_VIEW_LOCAL_SPECULAR)
-            return float4(local.specular, albedo.a);
+            return HikariPreExposeView(float4(local.specular, albedo.a));
         if (gDebugView == HIKARI_DEBUG_VIEW_INDIRECT_DIFFUSE)
-            return float4(ambient.diffuse, albedo.a);
+            return HikariPreExposeView(float4(ambientDiffuse, albedo.a));
         if (gDebugView == HIKARI_DEBUG_VIEW_INDIRECT_SPECULAR)
-            return float4(ambient.specular, albedo.a);
+            return HikariPreExposeView(float4(ambient.specular, albedo.a));
 #if HIKARI_FORWARD_REFLECTION_CAPTURE
         if ((gDebugView == 0u || gDebugView == 26u || gDebugView == 27u) && !neutralClay)
         {
-            fallbackSpecular = float4(ambient.specular, 1.0f);
+            // SSR が場面色（Pre-Exposure 済み）と差し替えるので同じ空間で書く。
+            fallbackSpecular = float4(HikariPreExpose(ambient.specular, gViewExposure), 1.0f);
             specularResponse = float4(ambient.specularResponse, 1.0f);
             reflectionMaterial = float4(pbrContext.specularF0, pbrContext.specularF90);
         }
@@ -481,28 +518,6 @@ float4 main(PSInput input) : SV_TARGET
         }
         else
         {
-            float3 surfaceLightmapIrradiance = 0.0f.xxx;
-            float surfaceLightmapWeight = 0.0f;
-            ResolveSurfaceLightmap(
-                input.surfaceGpuSceneIndex,
-                input.uv1,
-                surfaceLightmapIrradiance,
-                surfaceLightmapWeight);
-            if (gDebugView == 28)
-            {
-                return float4(
-                    surfaceLightmapWeight > 0.0f
-                        ? surfaceLightmapIrradiance
-                        : float3(1.0f, 0.0f, 1.0f),
-                    albedo.a);
-            }
-            const float3 pbrIndirect = HikariEvaluateAmbientIbl(
-                pbrContext,
-                occlusion,
-                screenAo,
-                input.worldPosWS,
-                surfaceLightmapIrradiance,
-                surfaceLightmapWeight);
             HikariMaterialSurfaceData surface;
             surface.baseColor = albedo.rgb;
             surface.opacity = albedo.a;
@@ -530,20 +545,21 @@ float4 main(PSInput input) : SV_TARGET
                     l,
                     gDirectionalColor.rgb * (gDirectionalIntensity * cloudSolarVisibility),
                     shadowVisibility,
-                    pbrIndirect, HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
+                    ambient.diffuse + ambient.specular, HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
+            // 風格化の付加項（縁の光・matcap・布の光沢など）は表示参照の色。露出に依らず同じ明るさで足す。
             shadedColor = response.directDiffuse +
                 response.directSpecular +
                 response.indirect +
-                response.additive;
+                HikariDisplayReferredToRadiance(response.additive, gViewExposure);
         }
     }
     if (gDebugView == 3)
     {
-        return float4(ApplyFog(shadedColor, input.worldPosWS), albedo.a);
+        return HikariPreExposeView(float4(ApplyFog(shadedColor, input.worldPosWS), albedo.a));
     }
 
     const bool transparentEyeHighlight =
-        HikariIsTransparentEyeHighlight(materialData) &&
+        programMaterials && HikariIsTransparentEyeHighlight(materialData) &&
         ((materialData.materialFlags & MATERIAL_ALPHA_BLEND) != 0u ||
          (materialData.instanceFlags &
           HIKARI_PROGRAM_FLAG_ALPHA_BLEND) != 0u);
@@ -551,7 +567,7 @@ float4 main(PSInput input) : SV_TARGET
     // Keeping it in straight color here lets the shared transparent return
     // premultiply exactly once below.
     float3 finalColor = transparentEyeHighlight
-        ? albedo.rgb
+        ? HikariDisplayReferredToRadiance(albedo.rgb, gViewExposure)
         : ApplyFog(shadedColor + emissive, input.worldPosWS);
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
     if (!neutralClay &&
@@ -576,7 +592,7 @@ float4 main(PSInput input) : SV_TARGET
 #if HIKARI_FORWARD_REFLECTION_CAPTURE
     bool reflectionSupported = !neutralClay && (gDebugView == 0u || gDebugView == 26u || gDebugView == 27u) && !alphaBlended &&
         (materialData.materialFlags & MATERIAL_UNLIT) == 0u &&
-        HikariMaterialUsesStandardPbrLighting(materialData);
+        (!programMaterials || HikariMaterialUsesStandardPbrLighting(materialData));
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
     reflectionSupported = reflectionSupported && !hasStaticMaterialFx;
 #endif
@@ -586,9 +602,9 @@ float4 main(PSInput input) : SV_TARGET
         1.0f - HikariForwardFogFactor(input.worldPosWS), reflectionSupported);
     if (!HikariHasReflectionContribution(fallbackSpecular, specularResponse)) reflectionMaterial = 0.0f.xxxx;
 #endif
-    return float4(
+    return HikariPreExposeView(float4(
         alphaBlended ? finalColor * albedo.a : finalColor,
-        albedo.a);
+        albedo.a));
 #endif
 }
 

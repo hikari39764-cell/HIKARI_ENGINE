@@ -313,11 +313,11 @@ void FinalizeSurfaceAtlas(TRANSPORT::LightingTransportScene& scene, TRANSPORT::L
 
 TRANSPORT::LightingTransportLight ConvertLight(const RENDER3D::LIGHTING::SceneLightProvider& source) {
     TRANSPORT::LightingTransportLight light{};
-    light.type = static_cast<uint32_t>(source.type);
+    light.type = source.type == RENDER3D::LIGHTING::SceneLightType::Spot ? TRANSPORT::kTransportLightSpot
+                                                                         : TRANSPORT::kTransportLightPoint;
     light.position = source.position;
     light.range = source.range;
     light.sourceRadius = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(source.sourceRadius);
-    light.distanceFalloff = RENDER3D::LIGHTING::CanonicalLocalLightFalloff(source.distanceFalloff);
     light.direction = MATH::Normalize(source.direction);
     light.radiance = source.color * (std::max)(0.0f, source.intensity);
     if (source.type == RENDER3D::LIGHTING::SceneLightType::Spot) {
@@ -338,23 +338,15 @@ TRANSPORT::LightingTransportScene BuildLightingTransportScene(const SceneDocumen
                                                               const RENDER3D::RUNTIME::SceneRenderCache& renderCache,
                                                               const SkyManager* skyManager) {
     TRANSPORT::LightingTransportScene scene{};
-    SceneEnvironment resolved = environment;
-    resolved.directional = RENDER3D::LIGHTING::ResolveDirectionalLight(lighting);
-    const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(resolved);
-    scene.environment.ambientRadiance = environment.ambient.color * (std::max)(0.0f, environment.ambient.intensity);
-    scene.environment.skyZenithRadiance = environment.sky.zenithColor;
-    scene.environment.skyHorizonRadiance = environment.sky.horizonColor;
-    scene.environment.skyGroundRadiance = environment.sky.groundColor;
-    scene.environment.skyHorizonPower = environment.sky.horizonPower;
-    scene.environment.skyTintExposure = {environment.sky.tint.x, environment.sky.tint.y, environment.sky.tint.z,
-                                         environment.sky.exposure};
-    scene.environment.skyMode =
-        environment.sky.enabled && environment.sky.ambientFromSky > 0 ? environment.sky.mode : SkyMode::None;
-    scene.environment.skyYaw = environment.sky.yaw;
+    const SkySettings& sky = environment.sky;
+    const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
+    scene.environment.skyTintExposure = {sky.tint.x, sky.tint.y, sky.tint.z, ResolveSkyTextureRadianceScale(sky)};
+    scene.environment.skyMode = sky.lightIntensity > 0.0f ? ResolveSkyRenderMode(sky.source) : SkyMode::None;
+    scene.environment.skyYaw = sky.yaw;
     if (scene.environment.skyMode == SkyMode::Cubemap || scene.environment.skyMode == SkyMode::Texture2D) {
-        const auto* asset = skyManager ? skyManager->FindAsset(environment.sky.skyAsset) : nullptr;
+        const auto* asset = skyManager ? skyManager->FindAsset(sky.asset) : nullptr;
         if (!asset || asset->texturePath.empty()) {
-            scene.environment.error = "Sky asset is unavailable for DXR baking: " + environment.sky.skyAsset;
+            scene.environment.error = "Sky asset is unavailable for DXR baking: " + sky.asset;
         } else {
             auto& texture = scene.environment.skyTexture;
             texture.enabled = true;
@@ -366,25 +358,20 @@ TRANSPORT::LightingTransportScene BuildLightingTransportScene(const SceneDocumen
                                                    : RENDER3D::TextureResourceColorSpace::Srgb};
         }
     } else if (scene.environment.skyMode == SkyMode::Atmosphere) {
-        scene.environment.atmosphere =
-            ATMOSPHERE::BuildAtmosphereLutConstants(resolved.atmosphere, solar, resolved.sky.groundColor);
-        if (!solar.atmosphereEnabled)
-            scene.environment.skyMode = SkyMode::Gradient;
+        scene.environment.atmosphere = ATMOSPHERE::BuildAtmosphereLutConstants(environment.atmosphere, solar);
     }
-    scene.environment.skyStrength =
-        scene.environment.skyMode != SkyMode::None ? (std::max)(0.0f, environment.sky.ambientFromSky) : 0.0f;
+    scene.environment.skyStrength = scene.environment.skyMode != SkyMode::None ? sky.lightIntensity : 0.0f;
 
     // Runtime と同じ一つの主光源だけを輸送する。非選択 sun を bake へ混ぜない。
     if (solar.valid) {
         TRANSPORT::LightingTransportLight sun{};
-        sun.type = static_cast<uint32_t>(RENDER3D::LIGHTING::SceneLightType::Directional);
+        sun.type = TRANSPORT::kTransportLightSun;
         sun.direction = solar.sunDirection * -1.0f;
         sun.radiance = solar.sunColor * solar.sunRadiance;
         scene.lights.push_back(sun);
     }
     for (const auto& light : lighting.lights) {
-        if (light.enabled && light.type != RENDER3D::LIGHTING::SceneLightType::Directional &&
-            RENDER3D::LIGHTING::IsLocalLightUploadable(light)) {
+        if (light.enabled && RENDER3D::LIGHTING::IsLocalLightUploadable(light)) {
             scene.lights.push_back(ConvertLight(light));
         }
     }

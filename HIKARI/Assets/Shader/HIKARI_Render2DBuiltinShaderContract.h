@@ -14,7 +14,7 @@ inline constexpr std::string_view kRender2DBuiltinInterfaceDependency =
 inline constexpr ShaderContractIdentity kRender2DBuiltinContract{
     kRender2DBuiltinEngineInterfaceId,
     1u,
-    "4b0ba8ed3f6c38b45dcaef7b3cb5e5986f56a7d42b74de41848f320a0606bf37",
+    "966764b12d8c08c666c9d1f9e130cd8f0853acf3f36b5387b167dda3a3e8891a",
     "HIKARI.Render2D.Builtin.Root",
     1u,
     "10eec9a9b4514842837498f655e1ddfd0f1d02fccf04aece3b508f709dd1366c",

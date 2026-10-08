@@ -88,7 +88,6 @@ void DocumentToolbarController::DrawContents(DocumentSceneBase& scene, EditorCon
     }
     ImGui::SameLine();
     if (ImGui::Button(TEXT::Localize("ui.toolbar.saveScene").c_str())) {
-        scene.GetSceneDocument().environment = scene.GetSceneEnvironment();
         if (scene.SaveCurrentSceneDocument()) {
             context.sceneDirty = false;
         }

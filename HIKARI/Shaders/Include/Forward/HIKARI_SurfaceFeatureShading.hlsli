@@ -127,7 +127,9 @@ float3 HikariApplyStaticMaterialFx(
     const float3 edgeColor =
         float3(0.4f, 0.5f, 1.0f) * coverage.edgeBand * edgeBoost *
         (1.0f + (flowNoise - 0.5f) * 1.2f * flowStrength);
-    float3 finalColor = litColor * coverage.edge + rimColor + edgeColor;
+    // 縁と輪郭の色は表示参照。絶対量の litColor と同じ空間へ換算して足す。
+    float3 finalColor =
+        litColor * coverage.edge + HikariDisplayReferredToRadiance(rimColor + edgeColor, gViewExposure);
 
     const float sceneColorDistortionStrength = fxUser2.x;
     const float sceneColorMix = saturate(fxUser2.y);
@@ -144,9 +146,9 @@ float3 HikariApplyStaticMaterialFx(
         const float2 distortion =
             (float2(n0, n1) * 2.0f - 1.0f) *
             sceneColorDistortionStrength * (1.0f + 0.5f * flowStrength);
-        const float3 sceneColor = gSceneColorTex.Sample(
+        const float3 sceneColor = HikariRemovePreExposure(gSceneColorTex.Sample(
             gLinearWrap,
-            saturate(screenUv + distortion)).rgb;
+            saturate(screenUv + distortion)).rgb, gViewExposure);
         finalColor = lerp(finalColor, sceneColor, sceneColorMix);
     }
 
@@ -369,9 +371,9 @@ float3 HikariApplyStaticMaterialFx(
             float2(detailNoise - 0.5f, triangleSeed - 0.5f) + 0.0001f.xx);
         distortion *= scanDistortionStrength * saturate(
             frontLine + hotFront * 0.5f + afterglowLayer * 0.25f);
-        const float3 distortedSceneColor = gSceneColorTex.Sample(
+        const float3 distortedSceneColor = HikariRemovePreExposure(gSceneColorTex.Sample(
             gLinearWrap,
-            saturate(screenUv + distortion)).rgb;
+            saturate(screenUv + distortion)).rgb, gViewExposure);
         finalColor = lerp(
             finalColor,
             distortedSceneColor,
@@ -399,7 +401,7 @@ float3 HikariApplyStaticMaterialFx(
             edgeLayer * 0.42f +
             geometryEdgeLayer * 0.38f);
     finalColor *= 1.0f + scanColor.rgb * overlayBoost;
-    finalColor += overlayColor * scanMask * scanIntensity;
+    finalColor += HikariDisplayReferredToRadiance(overlayColor * scanMask * scanIntensity, gViewExposure);
     return finalColor;
 }
 

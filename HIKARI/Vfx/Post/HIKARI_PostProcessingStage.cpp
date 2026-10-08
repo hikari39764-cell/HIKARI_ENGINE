@@ -10,6 +10,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_GfxDebugConfig.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Vfx/Post/HIKARI_CombatScreenDistortionComposite.h"
 #include "Vfx/Post/HIKARI_PostEffect.h"
@@ -25,12 +26,12 @@ void LogCombatVfx(CORE::LogLevel level, const std::string& message) noexcept {
 }
 } // namespace
 
-void WriteToneMappingParameters(CommonParams& parameters, const ToneMappingSettings& settings, float exposureMultiplier,
+void WriteToneMappingParameters(CommonParams& parameters, const ToneMappingSettings& settings, float residualExposure,
                                 float radialCurvature, float radialStrength) {
     const auto color = RENDER3D::COLOR::BuildDisplayColorFrame(
         settings.whiteBalanceTemperature, settings.whiteBalanceTint, settings.contrast, settings.saturation);
-    parameters.user[0] = {settings.enabled ? 1.0f : 0.0f, exposureMultiplier, (std::max)(0.01f, settings.gamma),
-                          static_cast<float>(settings.mode)};
+    parameters.user[0] = {static_cast<float>(settings.curve), residualExposure, (std::max)(0.01f, settings.gamma),
+                          0.0f};
     parameters.user[1] = {color.whiteBalanceR, color.whiteBalanceG, color.whiteBalanceB, color.contrast};
     parameters.user[2] = {color.saturation, radialCurvature, radialStrength, 0.0f};
 }
@@ -80,7 +81,7 @@ void PostProcessingStage::UpdateContext(const GFX::Context& context) {
 
 void PostProcessingStage::Shutdown() {
     ClearActionPostFrame();
-    ClearGlobalEffect();
+    ClearGlobalEffects();
     ClearTransitionState();
     globalChain_.Finalize();
     sequenceChain_.Clear();
@@ -92,7 +93,8 @@ void PostProcessingStage::Shutdown() {
     transitionChain_.Finalize();
     fxaaChain_.Finalize();
     actionScreenImpulseChain_.Finalize();
-    activeBloomEffects_.clear();
+    bloomDownsampleEffect_.reset();
+    bloomUpsampleEffect_.reset();
     actionScreenImpulseEffect_.reset();
     if (actionScreenDistortionComposite_) {
         actionScreenDistortionComposite_->Shutdown();
@@ -107,7 +109,7 @@ void PostProcessingStage::Shutdown() {
     bloomDebugStats_ = {};
     sunGlareFrame_ = {};
     sunGlareDebugStats_ = {};
-    activeBloomBlurPairCount_ = 0;
+    activeBloomLevelCount_ = 0;
     actionScreenImpulseProvider_.BeginFrame(0u);
     actionScreenImpulseProvider_.MutableDebugState() = {};
     lastActionProjectionRejectReason_ = 0u;
@@ -123,57 +125,89 @@ void PostProcessingStage::UpdateCommonParams(float deltaTime, int width, int hei
     elapsedTime_ += deltaTime;
     commonParams_.time = elapsedTime_;
     actionScreenImpulseProvider_.BeginFrame(TIME::GetFrameContext().frameIndex);
-    exposureState_ =
-        automaticExposureMeter_.BeginFrame(toneMappingSettings_.exposureMode, toneMappingSettings_.exposure,
-                                           toneMappingSettings_.automaticExposure, deltaTime);
+}
+
+void PostProcessingStage::AdvanceExposure(float deltaTime, const RENDER3D::COLOR::ExposureIllumination& illumination) {
+    exposureState_ = automaticExposureMeter_.BeginFrame(exposureSettings_, illumination, deltaTime);
 }
 
 void PostProcessingStage::SetIntensity(float intensity) { commonParams_.intensity = intensity; }
 
 void PostProcessingStage::SetCombo(float combo) { commonParams_.combo = combo; }
 
-void PostProcessingStage::ClearEffects() { globalChain_.Clear(); }
-
-void PostProcessingStage::AddEffect(PostEffect* effect) { globalChain_.Add(effect); }
-
-bool PostProcessingStage::SetGlobalEffect(std::string_view effectId, std::shared_ptr<const PostEffectDefinition> effect,
-                                          const PostParameterBlock& values, const AssetRegistry* registry) {
-    if (effectId.empty() || !effect) {
-        ClearGlobalEffect();
-        return false;
-    }
-    // 資産の再読み込みで定義が差し替わった時も pass を作り直す。
+bool PostProcessingStage::SetGlobalEffects(std::span<const ResolvedPostLayer> layers, const AssetRegistry* registry) {
+    // 資産の再読み込みで定義が差し替わった時は pass を作り直す。
     const uint64_t registryId = registry ? registry->GetInstanceId() : 0u;
     const uint64_t registryRevision = registry ? registry->GetRevision() : 0u;
-    if (activeGlobalEffectId_ != effectId || activeGlobalEffect_ != effect || activeGlobalEffects_.empty() ||
-        activeGlobalRegistryId_ != registryId || activeGlobalRegistryRevision_ != registryRevision) {
-        std::vector<std::unique_ptr<PostEffect>> passes{};
-        if (!BuildPostEffectPasses(*effect, registry, passes)) {
-            ClearGlobalEffect();
-            return false;
+    const bool sameRegistry =
+        activeGlobalRegistryId_ == registryId && activeGlobalRegistryRevision_ == registryRevision;
+    std::vector<ActiveGlobalLayer> next;
+    next.reserve(layers.size());
+    for (const ResolvedPostLayer& layer : layers) {
+        if (layer.effectId.empty() || !layer.effect) {
+            continue;
+        }
+        ActiveGlobalLayer active{layer.effectId, layer.effect, {}, layer.values};
+        const auto reusable = sameRegistry ? std::find_if(activeGlobalLayers_.begin(), activeGlobalLayers_.end(),
+                                                          [&](const ActiveGlobalLayer& candidate) {
+                                                              return !candidate.passes.empty() &&
+                                                                     candidate.effect == layer.effect &&
+                                                                     candidate.effectId == layer.effectId;
+                                                          })
+                                           : activeGlobalLayers_.end();
+        if (reusable != activeGlobalLayers_.end()) {
+            active.passes = std::move(reusable->passes);
+        } else if (!BuildPostEffectPasses(*layer.effect, registry, active.passes)) {
+            continue;
+        }
+        next.push_back(std::move(active));
+    }
+    activeGlobalLayers_ = std::move(next);
+    activeGlobalRegistryId_ = registryId;
+    activeGlobalRegistryRevision_ = registryRevision;
+    return !activeGlobalLayers_.empty();
+}
+
+RenderTarget2D* PostProcessingStage::ExecuteGlobalLayers(PostEffectPhase phase, RenderTarget2D* output,
+                                                         QuadDrawer& quad, RenderTarget2D* sceneDepthOwner,
+                                                         const RENDER3D::RenderTextureView* surfaceFeatureMask) {
+    for (const ActiveGlobalLayer& layer : activeGlobalLayers_) {
+        if (layer.effect->phase != phase) {
+            continue;
+        }
+        const bool mask = layer.effect->requiresSurfaceFeatureMask;
+        const bool depth = layer.effect->requiresSceneDepth;
+        if ((mask && !surfaceFeatureMask) ||
+            (depth && (sceneDepthOwner == nullptr || !sceneDepthOwner->GetDepthResource() ||
+                       !sceneDepthOwner->BeginDepthShaderRead()))) {
+            continue;
         }
         globalChain_.Clear();
-        activeGlobalEffects_ = std::move(passes);
-        for (const auto& instance : activeGlobalEffects_) {
-            globalChain_.Add(instance.get());
+        for (const auto& pass : layer.passes) {
+            globalChain_.Add(pass.get());
         }
-        activeGlobalEffect_ = std::move(effect);
-        activeGlobalEffectId_ = effectId;
-        activeGlobalRegistryId_ = registryId;
-        activeGlobalRegistryRevision_ = registryRevision;
+        output = globalChain_.Execute(*output, quad, ResolveGlobalFrameParams(layer), 0, 0,
+                                      mask ? surfaceFeatureMask : nullptr,
+                                      depth ? sceneDepthOwner->GetDepthResource() : nullptr);
+        if (depth) {
+            sceneDepthOwner->EndDepthShaderRead();
+        }
     }
-    std::copy(values.begin(), values.end(), std::begin(commonParams_.user));
-    return globalChain_.HasAny();
+    globalChain_.Clear();
+    return output;
 }
 
 bool PostProcessingStage::RequiresSurfaceFeatureMask() const noexcept {
-    return globalChain_.HasAny() && activeGlobalEffect_ && activeGlobalEffect_->requiresSurfaceFeatureMask;
+    return std::any_of(activeGlobalLayers_.begin(), activeGlobalLayers_.end(),
+                       [](const ActiveGlobalLayer& layer) { return layer.effect->requiresSurfaceFeatureMask; });
 }
 
 bool PostProcessingStage::SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
                                                 const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId) {
-    if (effectId.empty() || effectId != activeGlobalEffectId_ || index >= kPostParameterSlotCount ||
-        channelMask == 0u || (channelMask & ~15u) != 0u || sourceId == 0u)
+    const bool active = std::any_of(activeGlobalLayers_.begin(), activeGlobalLayers_.end(),
+                                    [effectId](const ActiveGlobalLayer& layer) { return layer.effectId == effectId; });
+    if (effectId.empty() || !active || index >= kPostParameterSlotCount || channelMask == 0u ||
+        (channelMask & ~15u) != 0u || sourceId == 0u)
         return false;
     const float values[]{value.x, value.y, value.z, value.w};
     for (uint32_t channel = 0; channel < 4u; ++channel)
@@ -196,9 +230,10 @@ bool PostProcessingStage::SubmitEffectParameter(std::string_view effectId, uint3
     return true;
 }
 
-CommonParams PostProcessingStage::ResolveGlobalFrameParams() const noexcept {
+CommonParams PostProcessingStage::ResolveGlobalFrameParams(const ActiveGlobalLayer& layer) const noexcept {
     CommonParams params = commonParams_;
-    if (effectOverrideFrame_ != TIME::GetFrameContext().frameIndex || effectOverrideId_ != activeGlobalEffectId_)
+    std::copy(layer.values.begin(), layer.values.end(), std::begin(params.user));
+    if (effectOverrideFrame_ != TIME::GetFrameContext().frameIndex || effectOverrideId_ != layer.effectId)
         return params;
     for (size_t index = 0; index < effectOverrides_.size(); ++index) {
         auto& value = params.user[index];
@@ -212,13 +247,15 @@ CommonParams PostProcessingStage::ResolveGlobalFrameParams() const noexcept {
 
 void PostProcessingStage::GetRadialScreenWarp(float& curvature, float& strength) const noexcept {
     curvature = strength = 0.0f;
-    if (!activeGlobalEffect_ || !activeGlobalEffect_->screenWarp || !globalChain_.HasAny())
+    // 画面の曲げは最初に曲げを宣言した層のパラメーターから読む。SDK の一時上書きも反映する。
+    const auto layer = std::find_if(activeGlobalLayers_.begin(), activeGlobalLayers_.end(),
+                                    [](const ActiveGlobalLayer& candidate) { return candidate.effect->screenWarp; });
+    if (layer == activeGlobalLayers_.end())
         return;
-    // 画面の曲げは効果が宣言したパラメーターから読む。SDK の一時上書きも反映する。
-    const CommonParams params = ResolveGlobalFrameParams();
-    const PostScreenWarpBinding& warp = *activeGlobalEffect_->screenWarp;
-    const auto strengthValue = ReadPostParameter(*activeGlobalEffect_, params.user, warp.strengthParam);
-    const auto curvatureValue = ReadPostParameter(*activeGlobalEffect_, params.user, warp.curvatureParam);
+    const CommonParams params = ResolveGlobalFrameParams(*layer);
+    const PostScreenWarpBinding& warp = *layer->effect->screenWarp;
+    const auto strengthValue = ReadPostParameter(*layer->effect, params.user, warp.strengthParam);
+    const auto curvatureValue = ReadPostParameter(*layer->effect, params.user, warp.curvatureParam);
     if (!strengthValue || !curvatureValue)
         return;
     const float value = *strengthValue * params.intensity;
@@ -228,15 +265,13 @@ void PostProcessingStage::GetRadialScreenWarp(float& curvature, float& strength)
     strength = std::clamp(value, 0.0f, 1.0f);
 }
 
-void PostProcessingStage::ClearGlobalEffect() {
+void PostProcessingStage::ClearGlobalEffects() {
     effectOverrides_ = {};
     effectOverrideId_.clear();
     effectOverrideFrame_ = (std::numeric_limits<uint64_t>::max)();
-    activeGlobalEffectId_.clear();
-    activeGlobalEffect_.reset();
     activeGlobalRegistryId_ = activeGlobalRegistryRevision_ = 0u;
     globalChain_.Clear();
-    activeGlobalEffects_.clear();
+    activeGlobalLayers_.clear();
 }
 
 void PostProcessingStage::SetBloomSettings(const BloomSettings& settings) {
@@ -254,18 +289,19 @@ void PostProcessingStage::SetBloomSettings(const BloomSettings& settings) {
     bloomSettings_.threshold = std::clamp(bloomSettings_.threshold, 0.0f, 10.0f);
     bloomSettings_.intensity = std::clamp(bloomSettings_.intensity, 0.0f, 5.0f);
     bloomSettings_.radius = std::clamp(bloomSettings_.radius, 0.0f, 8.0f);
-    bloomSettings_.downsampleCount = std::clamp<uint32_t>(bloomSettings_.downsampleCount, 1u, 5u);
+    bloomSettings_.downsampleCount =
+        std::clamp<uint32_t>(bloomSettings_.downsampleCount, 1u, static_cast<uint32_t>(bloomLevels_.size()));
 }
 
 void PostProcessingStage::SetToneMappingSettings(const ToneMappingSettings& settings) {
-    const bool exposureModeChanged = toneMappingSettings_.exposureMode != settings.exposureMode;
     toneMappingSettings_ = settings;
-    if (exposureModeChanged) {
-        automaticExposureMeter_.Reset(settings.exposure);
+}
+
+void PostProcessingStage::SetExposureSettings(const RENDER3D::COLOR::ExposureSettings& settings) {
+    if (exposureSettings_.mode != settings.mode) {
+        automaticExposureMeter_.Reset(RENDER3D::COLOR::ResolveManualExposure(settings));
     }
-    if (settings.exposureMode == RENDER3D::COLOR::ExposureMode::Manual) {
-        exposureState_ = RENDER3D::COLOR::BuildManualExposureFrame(settings.exposure);
-    }
+    exposureSettings_ = settings;
 }
 
 void PostProcessingStage::SetFxaaSettings(const FxaaSettings& settings) {
@@ -441,30 +477,24 @@ bool PostProcessingStage::EnsureActionScreenImpulseEffect() {
 }
 
 bool PostProcessingStage::EnsureBloomEffects(uint32_t levelCount) {
-    levelCount = std::clamp<uint32_t>(levelCount, 1u, 5u);
-    if (activeBloomEffects_.empty()) {
-        // 全レベルで同じ shader を共有。PostEffect は draw ごとの定数を保持する。
-        for (const char* id : {"HIKARI.EngineShader.Post_BloomExtractPS", "HIKARI.EngineShader.Post_BloomBlurHPS",
-                               "HIKARI.EngineShader.Post_BloomBlurVPS"}) {
-            auto effect = std::make_unique<PostEffect>();
-            if (!effect->LoadPixelShader({.programId = id})) {
-                activeBloomEffects_.clear();
-                return false;
-            }
-            activeBloomEffects_.push_back(std::move(effect));
-        }
+    if (!bloomDownsampleEffect_ || !bloomUpsampleEffect_) {
+        auto downsample = std::make_unique<PostEffect>();
+        auto upsample = std::make_unique<PostEffect>();
+        if (!downsample->LoadPixelShader({.programId = "HIKARI.EngineShader.Post_BloomDownsamplePS"}) ||
+            !upsample->LoadPixelShader({.programId = "HIKARI.EngineShader.Post_BloomUpsamplePS"}))
+            return false;
+        bloomDownsampleEffect_ = std::move(downsample);
+        bloomUpsampleEffect_ = std::move(upsample);
+        activeBloomLevelCount_ = 0;
     }
-    if (activeBloomBlurPairCount_ != levelCount) {
+    if (activeBloomLevelCount_ != levelCount) {
+        // 全段が同じ縮小 shader を共有する。PostEffect は draw ごとの定数を保持する。
         for (uint32_t i = 0; i < bloomLevels_.size(); ++i) {
             bloomLevels_[i].Clear();
-            if (i >= levelCount)
-                continue;
-            if (i == 0)
-                bloomLevels_[i].Add(activeBloomEffects_[0].get());
-            bloomLevels_[i].Add(activeBloomEffects_[1].get());
-            bloomLevels_[i].Add(activeBloomEffects_[2].get());
+            if (i < levelCount)
+                bloomLevels_[i].Add(bloomDownsampleEffect_.get());
         }
-        activeBloomBlurPairCount_ = levelCount;
+        activeBloomLevelCount_ = levelCount;
     }
     return true;
 }
@@ -541,10 +571,12 @@ bool PostProcessingStage::ApplySunGlare(RenderTarget2D& source, RenderTarget2D& 
         CommonParams parameters = commonParams_;
         parameters.resolutionX = static_cast<float>(sunGlareTarget_.GetWidth());
         parameters.resolutionY = static_cast<float>(sunGlareTarget_.GetHeight());
+        // 光芒は表示参照の明るさ。前露出した HDR 目標へは P/E を掛けて足す。
+        const float displayToScene = RENDER3D::COLOR::MakeViewExposureConstants(exposureState_).z;
         parameters.user[0] = {sunGlareFrame_.sunUvX, sunGlareFrame_.sunUvY, sunGlareFrame_.coreRadius,
-                              sunGlareFrame_.intensity};
+                              sunGlareFrame_.intensity * displayToScene};
         parameters.user[1] = {sunGlareFrame_.colorR, sunGlareFrame_.colorG, sunGlareFrame_.colorB,
-                              sunGlareFrame_.maxRadiance};
+                              sunGlareFrame_.maxRadiance * displayToScene};
         parameters.user[2] = {sunGlareFrame_.haloRadius, sunGlareFrame_.haloFalloff, sunGlareFrame_.streakIntensity,
                               sunGlareFrame_.streakLength};
         parameters.user[3] = {sunGlareFrame_.occlusionRadius, sunGlareFrame_.edgeFade,
@@ -593,7 +625,8 @@ RenderTarget2D* PostProcessingStage::ApplyBloom(RenderTarget2D& source, QuadDraw
     bloomDebugStats_.threshold = bloomSettings_.threshold;
     bloomDebugStats_.intensity = bloomSettings_.intensity;
     bloomDebugStats_.radius = bloomSettings_.radius;
-    bloomDebugStats_.downsampleCount = std::clamp<uint32_t>(bloomSettings_.downsampleCount, 1u, 5u);
+    bloomDebugStats_.downsampleCount =
+        std::clamp<uint32_t>(bloomSettings_.downsampleCount, 1u, static_cast<uint32_t>(bloomLevels_.size()));
     bloomDebugStats_.textureWidth = source.GetWidth();
     bloomDebugStats_.textureHeight = source.GetHeight();
     if (!source.GetResource() || !bloomSettings_.enabled || bloomSettings_.intensity <= 0.0f) {
@@ -603,21 +636,21 @@ RenderTarget2D* PostProcessingStage::ApplyBloom(RenderTarget2D& source, QuadDraw
         bloomDebugStats_.failed = true;
         return nullptr;
     }
-    // 細い光の核と広い光輪を別スケールで残す。同じ解像度の反復ブラー
-    // では核ごと均され、プレビューでは太いぼけの塊になっていた。
+    // 半解像度から 1/2 ずつ縮小し、小さい段から順にテントで広げて一つ上の段へ足し戻す。
+    // 各段は同じ明るさを持つので、全段の和が intensity 倍になるよう先頭の段で段数で割る。
     const uint32_t count = bloomDebugStats_.downsampleCount;
-    std::array<RenderTarget2D*, 5> outputs{};
+    // 閾値は露出後の明るさ。縮小 shader が場面色の空間へ P/E で戻す。
+    const float displayToScene = RENDER3D::COLOR::MakeViewExposureConstants(exposureState_).z;
+    std::array<RenderTarget2D*, std::tuple_size_v<decltype(bloomLevels_)>> outputs{};
     RenderTarget2D* input = &source;
-    int width = (std::max)((source.GetWidth() + 3) / 4, 1);
-    int height = (std::max)((source.GetHeight() + 3) / 4, 1);
+    int width = (std::max)((source.GetWidth() + 1) / 2, 1);
+    int height = (std::max)((source.GetHeight() + 1) / 2, 1);
     bloomDebugStats_.textureWidth = width;
     bloomDebugStats_.textureHeight = height;
     for (uint32_t i = 0; i < count; ++i) {
         CommonParams params = commonParams_;
-        // レベル数を変えても総エネルギーを増やさない。
-        params.user[0] = {bloomSettings_.threshold, bloomSettings_.intensity / float(count), bloomSettings_.radius,
-                          float(count)};
-        params.user[1] = {1.0f / float(width), 1.0f / float(height), 0, 0};
+        params.user[0] = {bloomSettings_.threshold, bloomSettings_.intensity / float(count), i == 0 ? 1.0f : 0.0f, 0};
+        params.user[1] = {1.0f / float(input->GetWidth()), 1.0f / float(input->GetHeight()), displayToScene, 0};
         outputs[i] = bloomLevels_[i].Execute(*input, quad, params, width, height);
         if (outputs[i] == nullptr || outputs[i] == input || !outputs[i]->GetResource()) {
             bloomDebugStats_.failed = true;
@@ -628,17 +661,26 @@ RenderTarget2D* PostProcessingStage::ApplyBloom(RenderTarget2D& source, QuadDraw
         height = (std::max)((height + 1) / 2, 1);
     }
     for (uint32_t i = count - 1; i > 0; --i) {
+        CommonParams params = commonParams_;
+        params.user[0] = {bloomSettings_.radius, 0, 0, 0};
+        params.user[1] = {1.0f / float(outputs[i]->GetWidth()), 1.0f / float(outputs[i]->GetHeight()), 0, 0};
         outputs[i - 1]->Rebind();
         if (!quad.SetOutputFormat(outputs[i - 1]->GetFormat())) {
             outputs[i - 1]->EndCapture();
             bloomDebugStats_.failed = true;
             return nullptr;
         }
-        quad.DrawBlended(outputs[i]->GetSrvHeap(), outputs[i]->GetSrvGpu(), BlendOption::Additive);
+        quad.SetInputTexture(outputs[i]->GetSrvHeap(), outputs[i]->GetSrvGpu());
+        bloomUpsampleEffect_->ApplyCommonParams(params);
+        const bool drawn = bloomUpsampleEffect_->BindAndDraw(quad, true);
         outputs[i - 1]->EndCapture();
+        if (!drawn) {
+            bloomDebugStats_.failed = true;
+            return nullptr;
+        }
     }
     bloomDebugStats_.initialized = true;
-    bloomDebugStats_.passCount = 3u * count;
+    bloomDebugStats_.passCount = 2u * count - 1u;
     return outputs[0];
 }
 
@@ -781,15 +823,18 @@ RenderTarget2D* PostProcessingStage::ResolveHdr(RenderTarget2D& source, QuadDraw
         sunGlareDebugStats_ = {};
         sunGlareDebugStats_.requested = sunGlareFrame_.enabled;
     }
-    if (!debugOutput && globalChain_.HasAny() && (!RequiresSurfaceFeatureMask() || surfaceFeatureMask)) {
-        const CommonParams frameParams = ResolveGlobalFrameParams();
-        output = globalChain_.Execute(*output, quad, frameParams, 0, 0,
-                                      RequiresSurfaceFeatureMask() ? surfaceFeatureMask : nullptr);
+    // 測光は芸術的な全体後処理の前に行う。後処理の色調が露出を引き戻さない。
+    if (!debugOutput) {
+        (void)automaticExposureMeter_.QueueMeasurement(*output, exposureState_.preExposure);
+    }
+    displaySceneDepthOwner_ = debugOutput ? nullptr : sceneDepthOwner;
+    displaySurfaceFeatureMask_ = debugOutput ? nullptr : surfaceFeatureMask;
+    if (!debugOutput) {
+        output = ExecuteGlobalLayers(PostEffectPhase::Scene, output, quad, sceneDepthOwner, surfaceFeatureMask);
     }
     if (!debugOutput) {
-        (void)automaticExposureMeter_.QueueMeasurement(*output);
         // Scene-linear PMA (including additive RGB with zero coverage) enters once,
-        // after artistic Global Post/metering and before sequence/action/bloom/output.
+        // after metering/artistic Global Post and before sequence/action/bloom/output.
         if (preservedVfx && preservedVfx->GetResource()) {
             if (!quad.SetOutputFormat(output->GetFormat()))
                 return nullptr;
@@ -832,7 +877,7 @@ RenderTarget2D* PostProcessingStage::ResolveHdr(RenderTarget2D& source, QuadDraw
     }
     if (dumpNextFrame_ || GFX::GetGfxDebugConfig().verbosePostLog) {
         const auto& quality = RENDER3D::GetRenderQualitySettings();
-        HIKARI_LOG_INFO(std::string("[PostProcessing][HDR] global=") + (globalChain_.HasAny() ? "on" : "off") +
+        HIKARI_LOG_INFO(std::string("[PostProcessing][HDR] global=") + std::to_string(activeGlobalLayers_.size()) +
                         " bloom=" + (bloom && bloom->GetResource() ? "on" : "off") +
                         " temporal=" + (temporalBackend ? temporalBackend : "off") +
                         " sunGlare=" + (sunGlareDebugStats_.active ? "on" : "off") +
@@ -891,8 +936,8 @@ RenderTarget2D* PostProcessingStage::ResolveLdr(RenderTarget2D& source, DXGI_FOR
     float radialCurvature = 0.0f;
     float radialStrength = 0.0f;
     GetRadialScreenWarp(radialCurvature, radialStrength);
-    WriteToneMappingParameters(parameters, toneMappingSettings_, exposureState_.exposureMultiplier, radialCurvature,
-                               radialStrength);
+    WriteToneMappingParameters(parameters, toneMappingSettings_, RENDER3D::COLOR::ResidualExposure(exposureState_),
+                               radialCurvature, radialStrength);
     toneMappingEffect_->ApplyCommonParams(parameters);
     if (!toneMappingEffect_->BindAndDraw(quad)) {
         ldrTarget_.EndCapture();
@@ -909,6 +954,11 @@ RenderTarget2D* PostProcessingStage::ResolveLdr(RenderTarget2D& source, DXGI_FOR
         if (fxaa && fxaa->GetResource())
             output = fxaa;
     }
+    // 表示の色の層は FXAA の後に通し、画素や網点の縁を均さない。HDR の層の一時目標はもう読まれないので共有する。
+    output = ExecuteGlobalLayers(PostEffectPhase::Display, output, quad, displaySceneDepthOwner_,
+                                 displaySurfaceFeatureMask_);
+    displaySceneDepthOwner_ = nullptr;
+    displaySurfaceFeatureMask_ = nullptr;
     if (dumpNextFrame_ || GFX::GetGfxDebugConfig().verbosePostLog) {
         LogState(dumpNextFrame_ ? "Requested frame dump" : "Verbose post log");
         dumpNextFrame_ = false;
@@ -918,7 +968,7 @@ RenderTarget2D* PostProcessingStage::ResolveLdr(RenderTarget2D& source, DXGI_FOR
 
 std::string PostProcessingStage::DumpState() const {
     std::ostringstream stream;
-    stream << "[PostProcessingStage] global=" << globalChain_.HasAny() << " bloom=" << bloomSettings_.enabled
+    stream << "[PostProcessingStage] global=" << activeGlobalLayers_.size() << " bloom=" << bloomSettings_.enabled
            << " bloomPasses=" << bloomDebugStats_.passCount << " sunGlare=" << sunGlareDebugStats_.active
            << " sunGlareRequested=" << sunGlareDebugStats_.requested
            << " actionScreenImpulse=" << actionScreenImpulseProvider_.GetDebugState().composited
@@ -938,10 +988,9 @@ std::string PostProcessingStage::DumpState() const {
            << " actionScreenImpulseGradeWeight=" << actionScreenImpulseProvider_.GetDebugState().cinematicGradeWeight
            << " actionScreenImpulseFailed=" << actionScreenImpulseProvider_.GetDebugState().failed
            << " actionScreenImpulseBypassed=" << actionScreenImpulseProvider_.GetDebugState().bypassed
-           << " toneCurve=" << toneMappingSettings_.enabled
-           << " exposureMode=" << RENDER3D::COLOR::ToString(exposureState_.mode)
-           << " exposure=" << exposureState_.exposureMultiplier
-           << " exposureTarget=" << exposureState_.targetExposureMultiplier
+           << " toneCurve=" << static_cast<int>(toneMappingSettings_.curve)
+           << " exposureMode=" << TEXT::EnumToName(RENDER3D::COLOR::kExposureModeNames, exposureState_.mode)
+           << " exposure=" << exposureState_.exposure << " exposureTarget=" << exposureState_.targetExposure
            << " meteredLuminance=" << exposureState_.meteredLuminance
            << " meteringValid=" << exposureState_.meteringValid << " preExposure=" << exposureState_.preExposure
            << " transition=" << transitionActive_ << "\n  " << ldrTarget_.DumpState() << "\n  "

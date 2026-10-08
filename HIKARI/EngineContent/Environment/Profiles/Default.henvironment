@@ -1,0 +1,65 @@
+{
+  "formatVersion": 1,
+  "name": "Default",
+  "defaultWeather": "engine.weather.clear",
+  "sky": {
+    "source": "Atmosphere"
+  },
+  "sun": {
+    "mode": "Celestial",
+    "illuminance": 128000.0
+  },
+  "moon": {
+    "enabled": true,
+    "illuminance": 0.27
+  },
+  "stars": {
+    "enabled": true,
+    "intensity": 1.0,
+    "limitingMagnitude": 6.5,
+    "backgroundLuminance": 0.00017
+  },
+  "clouds": {
+    "enabled": true
+  },
+  "fog": {
+    "enabled": true,
+    "volumetric": true,
+    "density": 0.0005,
+    "heightFalloff": 0.02,
+    "albedo": [
+      0.9,
+      0.9,
+      0.9
+    ]
+  },
+  "exposure": {
+    "mode": "Automatic",
+    "compensationEv": 0.0,
+    "minEv100": -10.0,
+    "maxEv100": 18.0,
+    "nightAdaptationEv100": 5.0,
+    "nightAdaptationStrength": 0.35,
+    "highlightProtection": 0.5,
+    "sunlitMeteringCorrectionEv": 1.0,
+    "dimAdaptationStrength": 0.3
+  },
+  "bloom": {
+    "enabled": true,
+    "threshold": 0.0,
+    "intensity": 0.05
+  },
+  "ambientOcclusion": {
+    "enabled": true,
+    "mode": "Balanced"
+  },
+  "screenSpaceReflections": {
+    "enabled": true,
+    "quality": "Medium"
+  },
+  "shadows": {
+    "enabled": true,
+    "distance": 60.0,
+    "strength": 1.0
+  }
+}

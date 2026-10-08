@@ -31,9 +31,12 @@ public:
     EnvironmentLightingCache(const EnvironmentLightingCache&) = delete;
     EnvironmentLightingCache& operator=(const EnvironmentLightingCache&) = delete;
 
-    bool Update(const GFX::Context& graphics, const SkySettings& sky,
+    // cloudSky は空に重ねる雲（天空 LUT と同じ写像、乗算済み輝度と不透明度）。cloudSkyVersion が変わった時だけ
+    // 作り直す。nightSkyLuminance は大気の空に足す夜空の天頂背景輝度 [nits]。
+    bool Update(const GFX::Context& graphics, SkyMode mode, std::string_view skyAsset,
                 const ATMOSPHERE::AtmosphereLutConstants& atmosphere, RENDER3D::TextureResourceHandle source,
-                D3D12_GPU_DESCRIPTOR_HANDLE atmosphereSkyView, uint64_t frameIndex);
+                D3D12_GPU_DESCRIPTOR_HANDLE atmosphereSkyView, D3D12_GPU_DESCRIPTOR_HANDLE cloudSky,
+                uint64_t cloudSkyVersion, float nightSkyLuminance, uint64_t frameIndex);
     void Reset(const GFX::Context& graphics);
     void Invalidate();
     IblEnvironmentSource GetSource() const;

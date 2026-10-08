@@ -82,7 +82,8 @@ struct VfxLayerLightSample {
     uint32_t emitterIndex = 0u;
     MATH::Vec3 position{0.0f, 0.0f, 0.0f};
     MATH::Vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
-    float intensity = 0.0f;
+    // 光束 [lm]。
+    float luminousFlux = 0.0f;
     float range = 0.0f;
     float sourceRadius = 0.0f;
     float flickerFrequency = 0.0f;

@@ -3,7 +3,6 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 
 #include "Assets/HIKARI_AssetFileCache.h"
 #include "Assets/Post/HIKARI_PostAsset.h"
@@ -25,8 +24,8 @@ private:
     using ProfileCache = AssetFileCache<PostProfileAsset, AssetType::PostProfile, &LoadPostProfileAsset>;
     EffectCache effects_;
     ProfileCache profiles_;
-    mutable std::unordered_map<std::string, std::shared_ptr<const PostEffectDefinition>> builtinEffects_;
-    mutable std::unordered_map<std::string, std::shared_ptr<const PostProfileAsset>> builtinProfiles_;
+    BuiltinAssetCache<PostEffectDefinition> builtinEffects_;
+    BuiltinAssetCache<PostProfileAsset> builtinProfiles_;
     std::string draftId_;
     std::shared_ptr<const PostProfileAsset> draft_;
 };

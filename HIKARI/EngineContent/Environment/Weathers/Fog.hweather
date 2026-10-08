@@ -1,0 +1,15 @@
+{
+  "formatVersion": 1,
+  "name": "Fog",
+  "weather": {
+    "cloudCoverage": 0.3,
+    "cloudType": 0.2,
+    "cloudDensity": 1.0,
+    "haze": 0.5,
+    "fogDensity": 0.02,
+    "fogHeightFalloff": 0.15,
+    "windSpeed": 1.0,
+    "windFromDegrees": 90.0,
+    "transitionSeconds": 40.0
+  }
+}

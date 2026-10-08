@@ -2,6 +2,7 @@
 #define HIKARI_CLUSTER_CULLING_MATH_INCLUDED
 
 #include "Include/Surface/HIKARI_FoliageWind.hlsli"
+#include "Include/Surface/HIKARI_MaterialShell.hlsli"
 
 bool HikariClusterHasConservativeBounds(HikariSurfaceGpuSceneInstance instance)
 {
@@ -97,7 +98,7 @@ float4 HikariClusterBuildCullSphere(HikariSurfaceGpuSceneInstance instance,
         localSphere, boundsMin, boundsMax);
     if ((instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_FOLIAGE_WIND) != 0u)
         sphere.w += length(HikariFoliageWindBoundsExtent(instance));
-    if (instance.shellSettings.x > 0.0f) sphere.w += instance.shellSettings.y;
+    if (instance.shellSettings.x > 0.0f) sphere.w += instance.shellSettings.y * (1.0f + HIKARI_SHELL_PUSH_VARIATION);
     return sphere;
 }
 
@@ -110,7 +111,7 @@ void HikariClusterBuildCullBox(HikariSurfaceGpuSceneInstance instance,
     float3 center = mul(world, float4((boundsMin.xyz + boundsMax.xyz) * 0.5f, 1.0f)).xyz;
     float3 extent = mul(abs((float3x3)world), (boundsMax.xyz - boundsMin.xyz) * 0.5f) +
         (wind ? HikariFoliageWindBoundsExtent(instance) : 0.0f.xxx) +
-        (instance.shellSettings.x > 0.0f ? instance.shellSettings.y : 0.0f).xxx;
+        (instance.shellSettings.x > 0.0f ? instance.shellSettings.y * (1.0f + HIKARI_SHELL_PUSH_VARIATION) : 0.0f).xxx;
     boundsMin = float4(center - extent, 0.0f);
     boundsMax = float4(center + extent, 0.0f);
     world = float4x4(1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1);

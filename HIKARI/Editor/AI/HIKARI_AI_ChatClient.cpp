@@ -9,19 +9,6 @@
 namespace HIKARI::EDITOR::AI_ASSISTANT {
 namespace {
 
-std::string ExtractJsonContent(const std::string& response) {
-    const auto parsed = nlohmann::json::parse(response, nullptr, false);
-    if (!parsed.is_object() || !parsed.contains("choices") || !parsed["choices"].is_array() ||
-        parsed["choices"].empty())
-        return {};
-    const auto& choice = parsed["choices"][0];
-    const auto found = choice.find(choice.contains("delta") ? "delta" : "message");
-    if (found == choice.end() || !found->is_object())
-        return {};
-    const auto content = found->find("content");
-    return content != found->end() && content->is_string() ? content->get<std::string>() : std::string{};
-}
-
 void ReadUsage(const std::string& response, AiChatUsage* output) {
     if (!output)
         return;
@@ -49,37 +36,6 @@ std::string ExtractJsonField(std::string_view text, std::string_view field) {
         return {};
     const auto found = value.find(std::string(field));
     return found != value.end() && found->is_string() ? found->get<std::string>() : std::string{};
-}
-
-std::string ExtractJsonNumberField(std::string_view text, std::string_view field) {
-    const auto value = nlohmann::json::parse(text, nullptr, false);
-    if (!value.is_object())
-        return {};
-    const auto found = value.find(std::string(field));
-    return found != value.end() && found->is_number() ? found->dump() : std::string{};
-}
-
-bool RunApiRequest(const AiChatConfig& config, const std::string& body, std::string& outContent, std::string& outError,
-                   AiChatUsage* usage) {
-    if (usage)
-        *usage = {};
-    std::string raw;
-    if (!RunAiHttpStream(
-            config, body,
-            [&raw](const std::string& chunk) {
-                raw += chunk;
-                return raw.size() < 8 * 1024 * 1024;
-            },
-            outError)) {
-        return false;
-    }
-    outContent = ExtractJsonContent(raw);
-    ReadUsage(raw, usage);
-    if (outContent.empty()) {
-        outError = "API 响应中没有 content 字段";
-        return false;
-    }
-    return true;
 }
 
 bool RunChatCompletionsStreaming(const AiChatConfig& config, const std::vector<AiChatMessage>& messages,

@@ -13,6 +13,7 @@
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
@@ -20,11 +21,13 @@
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Assets/Shader/HIKARI_VolumetricShaderContract.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
+#include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
-#include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
+#include "Render3D/Lighting/HIKARI_VolumetricCloudStage.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -59,6 +62,15 @@ struct alignas(16) VolumetricConstants {
     MATH::Vec4 volumeSize{};
     MATH::Vec4 frameParams{};
     MATH::Vec4 debugAndLocalLightDepth{};
+    // 空気遠近。x 体積の最大距離 [m]、y 1 なら空気遠近を掛ける、z 1 なら霧の体積を掛ける。
+    MATH::Vec4 aerialPerspective{};
+    // xy froxel 内の横の標本位置 [-0.5, 0.5]、z 層内の奥行きの標本位置 [0, 1)、w 1 なら環境光は動的 GI の体積から読む。
+    MATH::Vec4 fogJitter{0.0f, 0.0f, 0.5f, 0.0f};
+    MATH::Vec4 ambientVolumeSize{};
+    // 高さ霧の密度の揺らぎ。x 強さ、y 1/大きさ [1/m]、zw 未使用。offset は二つのノイズの風の移動（ノイズ単位、周期で折る）。
+    MATH::Vec4 fogNoise{};
+    MATH::Vec4 fogNoiseOffset{};
+    LIGHTPROBE::IrradianceVolumeGpuData giVolumes[LIGHTPROBE::kDynamicGiVolumeCount]{};
     uint32_t localLightCount = 0u;
     uint32_t localLightClusterCountX = 0u;
     uint32_t localLightClusterCountY = 0u;
@@ -72,7 +84,7 @@ struct alignas(16) VolumetricConstants {
     LocalFogVolumeGpu localFogVolumes[kGameProjectLocalFogMaximumVolumes]{};
 };
 
-static_assert(sizeof(VolumetricConstants) == 5344u);
+static_assert(sizeof(VolumetricConstants) == 5664u);
 
 struct VolumeResource {
     ComPtr<ID3D12Resource> texture{};
@@ -81,15 +93,60 @@ struct VolumeResource {
     D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_GENERIC_READ;
 };
 
+// 注入側（GatherAmbientCS / InjectCS / IntegrateCS）の root の引数。HIKARI_VolumetricShaderContract.h の Fog と同じ並び。
+enum InjectRoot : UINT {
+    kInjectConstants,
+    kInjectSceneDepth,
+    kInjectShadowMap,
+    kInjectHistory,
+    kInjectOutput,
+    kInjectLights,
+    kInjectLightClusterHeaders,
+    kInjectLightClusterIndices,
+    kInjectLocalShadow,
+    kInjectCloudSolar,
+    kInjectAmbient,
+    kInjectInjected,
+    kInjectTexturePool,
+    kInjectRootCount
+};
+// 合成側（CompositeCS）の root の引数。
+enum CompositeRoot : UINT {
+    kCompositeConstants,
+    kCompositeDepth,
+    kCompositeIntegrated,
+    kCompositeWaterDepth,
+    kCompositeSceneColor,
+    kCompositeAerialPerspective,
+    kCompositeRootCount
+};
+// 環境光の格子は froxel の横 4x4 と奥行き 2 層ごとに一点。probe 間隔より十分細かい。
+constexpr uint32_t kAmbientCellFroxels = 4u;
+// 高さ霧の揺らぎのノイズの周期（ノイズ単位）と細かい方の周波数の倍率（Render3D_VolumetricLighting.hlsl と同じ）。
+constexpr uint32_t kFogNoisePeriod = 256u;
+constexpr double kFogNoiseDetailFrequency = 2.37;
+
 struct StageState {
     GFX::Context context{};
+    // このビューで霧の体積を作るか。無ければ合成は空気遠近だけを掛ける。
+    bool fogInjected = false;
+    // 霧の環境光を動的 GI の probe から集めるか。
+    bool giAmbient = false;
+    D3D12_GPU_DESCRIPTOR_HANDLE aerialPerspectiveSrv{};
     ComPtr<ID3D12RootSignature> computeRoot{};
     ComPtr<ID3D12RootSignature> compositeRoot{};
-    ComPtr<ID3D12PipelineState> computePso{};
+    ComPtr<ID3D12PipelineState> gatherPso{};
+    ComPtr<ID3D12PipelineState> injectPso{};
+    ComPtr<ID3D12PipelineState> integratePso{};
     ComPtr<ID3D12PipelineState> compositePso{};
+    UINT descriptorStride = 0;
+    uint32_t ambientWidth = 0, ambientHeight = 0, ambientDepth = 0;
     std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads;
     D3D12_GPU_VIRTUAL_ADDRESS constantAddress = 0;
-    VolumeResource volumes[2]{};
+    // 注入（今と前フレームを交互に書く）、積分、環境光。
+    VolumeResource injected[2]{};
+    VolumeResource integrated{};
+    VolumeResource ambient{};
     RenderResourceView sceneColorUav{};
     RenderResourceView sceneDepthSrv{};
     D3D12_GPU_DESCRIPTOR_HANDLE waterDepthSrv{};
@@ -121,17 +178,19 @@ StageState& State() {
     return state;
 }
 
+// froxel の大きさと奥行き。霧は無限に続くので、体積で扱う距離 [m] も画質で決める（その先は空と大気が受け持つ）。
 struct QualityPolicy {
     uint32_t froxelPixelSize = 16;
     uint32_t sliceCount = 64;
+    float farDistance = 160.0f;
 };
 
 QualityPolicy ResolveQualityPolicy(VolumetricLightingQuality quality) {
     switch (quality) {
-    case VolumetricLightingQuality::Low: return {24u, 48u};
-    case VolumetricLightingQuality::High: return {12u, 80u};
+    case VolumetricLightingQuality::Low: return {24u, 48u, 96.0f};
+    case VolumetricLightingQuality::High: return {12u, 80u, 256.0f};
     case VolumetricLightingQuality::Balanced:
-    default: return {16u, 64u};
+    default: return {16u, 64u, 160.0f};
     }
 }
 
@@ -144,55 +203,18 @@ uint32_t ResolveDebugMode(RenderDebugView view) {
     }
 }
 
+// 履歴を捨てるべき不連続な変化だけを数える。太陽・天気・霧の濃さなど連続に変わる値は含めない。
 uint64_t HashVolumetricSettings(const SceneEnvironment& environment, VolumetricLightingQuality quality,
-                                uint64_t localLightingContentHash,
-                                const ATMOSPHERE::AtmosphereSolarState& solar) noexcept {
+                                uint64_t localLightingContentHash) noexcept {
     uint64_t hash = HASH::kFnv1a64OffsetBasis;
     const auto Add = [&hash](const auto& value) { hash = HASH::Fnv1aBytes(hash, &value, sizeof(value)); };
     Add(localLightingContentHash);
-    Add(solar.sunDirection);
-    Add(solar.sunColor);
-    Add(solar.sunRadiance);
     Add(environment.fog.enabled);
     Add(environment.fog.volumetric);
-    Add(environment.fog.color);
-    Add(environment.fog.density);
-    Add(environment.fog.startDistance);
-    Add(environment.fog.endDistance);
-    Add(environment.fog.heightFalloff);
-    Add(environment.fog.baseHeight);
-    Add(environment.fog.anisotropy);
-    Add(environment.fog.temporalWeight);
-    Add(environment.fog.scatteringIntensity);
-    Add(environment.fog.ambientScatteringStrength);
-    Add(environment.fog.sunShaftStrength);
-    Add(environment.fog.useSkyHorizonColor);
-    Add(environment.sky.horizonColor);
-    Add(environment.sky.tint);
-    Add(environment.sky.exposure);
-    Add(environment.directional.enabled);
-    Add(environment.directional.direction);
-    Add(environment.directional.color);
-    Add(environment.directional.intensity);
-    Add(environment.directionalShadow.enabled);
-    Add(environment.directionalShadow.strength);
-    Add(environment.directionalShadow.depthBias);
-    Add(environment.directionalShadow.cascadeBlend);
-    Add(environment.directionalShadow.cascadeCount);
-    Add(environment.directionalShadow.cascadeSplitLambda);
-    Add(environment.directionalShadow.shadowDistance);
-    Add(environment.directionalShadow.resolution);
-    Add(SKYRENDERER::ResolveAmbientLightColor(environment));
+    Add(environment.shadows.enabled);
+    Add(RENDER3D::GetRenderQualitySettings().directionalShadow.resolution);
+    Add(RENDER3D::GetRenderQualitySettings().directionalShadow.cascadeCount);
     Add(environment.clouds.enabled);
-    Add(environment.clouds.physicallyBasedLighting);
-    Add(environment.clouds.coverage);
-    Add(environment.clouds.density);
-    Add(environment.clouds.altitude);
-    Add(environment.clouds.thickness);
-    Add(environment.clouds.scale);
-    Add(environment.clouds.shapeDetail);
-    Add(environment.clouds.softness);
-    Add(environment.ambient.intensity);
     Add(quality);
     return hash == 0u ? 1u : hash;
 }
@@ -233,78 +255,44 @@ void RetireVolume(StageState& state, VolumeResource& volume) {
 }
 
 bool CreateRootSignature(ID3D12Device* device, bool injection, ID3D12RootSignature** output) {
-    std::array<D3D12_DESCRIPTOR_RANGE, 6> ranges{};
-    constexpr uint32_t tableCount = 4u;
-    for (uint32_t index = 0; index < tableCount; ++index) {
-        ranges[index].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        ranges[index].NumDescriptors = 1;
-        if (injection) {
-            ranges[index].RangeType = index == 3 ? D3D12_DESCRIPTOR_RANGE_TYPE_UAV : D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-            ranges[index].BaseShaderRegister = index == 3 ? 0u : index;
-        } else {
-            ranges[index].RangeType = index == 3 ? D3D12_DESCRIPTOR_RANGE_TYPE_UAV : D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-            ranges[index].BaseShaderRegister = index == 3 ? 1u : (4u + index);
-        }
-        ranges[index].OffsetInDescriptorsFromTableStart = 0;
-    }
-
-    std::array<D3D12_ROOT_PARAMETER, 10> params{};
-    params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-    params[0].Descriptor.ShaderRegister = 0;
-    params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    for (uint32_t index = 0; index < tableCount; ++index) {
-        params[index + 1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        params[index + 1].DescriptorTable.NumDescriptorRanges = 1;
-        params[index + 1].DescriptorTable.pDescriptorRanges = &ranges[index];
-        params[index + 1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    }
+    std::array<CD3DX12_DESCRIPTOR_RANGE, kInjectRootCount> ranges{};
+    std::array<CD3DX12_ROOT_PARAMETER, kInjectRootCount> params{};
+    const auto table = [&](UINT index, D3D12_DESCRIPTOR_RANGE_TYPE type, UINT shaderRegister, UINT count = 1u) {
+        ranges[index].Init(type, count, shaderRegister);
+        params[index].InitAsDescriptorTable(1, &ranges[index]);
+    };
+    UINT parameterCount = 0;
     if (injection) {
-        for (uint32_t index = 0u; index < 3u; ++index) {
-            D3D12_ROOT_PARAMETER& parameter = params[1u + tableCount + index];
-            parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
-            parameter.Descriptor.ShaderRegister = index;
-            parameter.Descriptor.RegisterSpace = 5u;
-            parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        }
+        params[kInjectConstants].InitAsConstantBufferView(0);
+        table(kInjectSceneDepth, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0);
+        table(kInjectShadowMap, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1);
+        table(kInjectHistory, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2);
+        table(kInjectOutput, D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0);
+        params[kInjectLights].InitAsShaderResourceView(0, 5);
+        params[kInjectLightClusterHeaders].InitAsShaderResourceView(1, 5);
+        params[kInjectLightClusterIndices].InitAsShaderResourceView(2, 5);
+        table(kInjectLocalShadow, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 7);
+        table(kInjectCloudSolar, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 8);
+        table(kInjectAmbient, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3);
+        table(kInjectInjected, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 10);
+        table(kInjectTexturePool, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 20, GFX::DESCRIPTOR::kUserSrvCount);
+        parameterCount = kInjectRootCount;
+    } else {
+        params[kCompositeConstants].InitAsConstantBufferView(0);
+        table(kCompositeDepth, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4);
+        table(kCompositeIntegrated, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5);
+        table(kCompositeWaterDepth, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 6);
+        table(kCompositeSceneColor, D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1);
+        table(kCompositeAerialPerspective, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 9);
+        parameterCount = kCompositeRootCount;
     }
-
-    if (injection) {
-        ranges[4].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        ranges[4].NumDescriptors = 1;
-        ranges[4].BaseShaderRegister = 7;
-        params[8].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        params[8].DescriptorTable = {1, &ranges[4]};
-        params[8].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        ranges[5] = ranges[4];
-        ranges[5].BaseShaderRegister = 8;
-        params[9].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        params[9].DescriptorTable = {1, &ranges[5]};
-        params[9].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    }
-    std::array<D3D12_STATIC_SAMPLER_DESC, 2> samplers{};
-    samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-    samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-    samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-    samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-    samplers[0].ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-    samplers[0].MaxLOD = D3D12_FLOAT32_MAX;
-    samplers[0].ShaderRegister = 0;
-    samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    samplers[1] = samplers[0];
-    samplers[1].Filter = D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
-    samplers[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-    samplers[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-    samplers[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-    samplers[1].ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-    samplers[1].BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
-    samplers[1].ShaderRegister = 1;
-
-    D3D12_ROOT_SIGNATURE_DESC desc{};
-    desc.NumParameters = 1u + tableCount + (injection ? 5u : 0u);
-    desc.pParameters = params.data();
-    desc.NumStaticSamplers = injection ? 2u : 1u;
-    desc.pStaticSamplers = samplers.data();
-    desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+    std::array<CD3DX12_STATIC_SAMPLER_DESC, 2> samplers{};
+    samplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
+                     D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+    samplers[1].Init(1, D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+                     D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER, 0.0f, 16,
+                     D3D12_COMPARISON_FUNC_LESS_EQUAL, D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE);
+    const CD3DX12_ROOT_SIGNATURE_DESC desc(parameterCount, params.data(), injection ? 2u : 1u, samplers.data());
     return HIKARI_DX_CHECK(GFX::CreateRootSignature(device, desc, output), "VolumetricLighting::CreateRootSignature");
 }
 
@@ -322,30 +310,26 @@ bool EnsurePipeline(StageState& state) {
     const auto deviceCaps = GFX::QueryShaderDeviceCapabilities(device);
     const SHADER::ShaderRuntimeDeviceCapabilities caps{deviceCaps.shaderModel, deviceCaps.rootSignatureVersion,
                                                        deviceCaps.featureMask};
-    const auto cs = SHADER::ResolveVolumetricShaderEntry(SHADER::VolumetricShaderProgram::Fog, "InjectAndIntegrateCS",
-                                                         SHADER::ShaderStage::Compute, caps);
-    const auto compositeCs = SHADER::ResolveVolumetricShaderEntry(SHADER::VolumetricShaderProgram::Fog, "CompositeCS",
-                                                                  SHADER::ShaderStage::Compute, caps);
-    if (!cs || !compositeCs) {
-        DEBUGLOG::PushRenderError("Volumetric fog: cooked shader unavailable or incompatible: " +
-                                  (!cs ? cs.diagnostic : compositeCs.diagnostic));
+    const auto createPso = [&](const char* entry, ID3D12RootSignature* root, ComPtr<ID3D12PipelineState>& pso) {
+        const auto shader = SHADER::ResolveVolumetricShaderEntry(SHADER::VolumetricShaderProgram::Fog, entry,
+                                                                 SHADER::ShaderStage::Compute, caps);
+        if (!shader) {
+            DEBUGLOG::PushRenderError(std::string("Volumetric fog: cooked shader unavailable or incompatible: ") +
+                                      entry + ": " + shader.diagnostic);
+            return false;
+        }
+        D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
+        desc.pRootSignature = root;
+        desc.CS = {shader.lease.GetDxil().data(), shader.lease.GetDxil().size()};
+        return HIKARI_DX_CHECK(device->CreateComputePipelineState(&desc, IID_PPV_ARGS(pso.ReleaseAndGetAddressOf())),
+                               "VolumetricLighting::CreateComputePSO");
+    };
+    if (!createPso("GatherAmbientCS", state.computeRoot.Get(), state.gatherPso) ||
+        !createPso("InjectCS", state.computeRoot.Get(), state.injectPso) ||
+        !createPso("IntegrateCS", state.computeRoot.Get(), state.integratePso) ||
+        !createPso("CompositeCS", state.compositeRoot.Get(), state.compositePso))
         return false;
-    }
-    D3D12_COMPUTE_PIPELINE_STATE_DESC computeDesc{};
-    computeDesc.pRootSignature = state.computeRoot.Get();
-    computeDesc.CS = {cs.lease.GetDxil().data(), cs.lease.GetDxil().size()};
-    if (!HIKARI_DX_CHECK(
-            device->CreateComputePipelineState(&computeDesc, IID_PPV_ARGS(state.computePso.GetAddressOf())),
-            "VolumetricLighting::CreateComputePSO"))
-        return false;
-
-    D3D12_COMPUTE_PIPELINE_STATE_DESC compositeDesc{};
-    compositeDesc.pRootSignature = state.compositeRoot.Get();
-    compositeDesc.CS = {compositeCs.lease.GetDxil().data(), compositeCs.lease.GetDxil().size()};
-    if (!HIKARI_DX_CHECK(
-            device->CreateComputePipelineState(&compositeDesc, IID_PPV_ARGS(state.compositePso.GetAddressOf())),
-            "VolumetricLighting::CreateCompositePSO"))
-        return false;
+    state.descriptorStride = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
     state.pipelineReady = true;
     return true;
@@ -382,20 +366,31 @@ bool EnsureResources(StageState& state, uint32_t renderWidth, uint32_t renderHei
         state.stats.froxelWidth == width && state.stats.froxelHeight == height && state.stats.froxelDepth == sliceCount)
         return true;
 
-    for (VolumeResource& volume : state.volumes)
+    const uint32_t ambientWidth = (width + kAmbientCellFroxels - 1u) / kAmbientCellFroxels;
+    const uint32_t ambientHeight = (height + kAmbientCellFroxels - 1u) / kAmbientCellFroxels;
+    const uint32_t ambientDepth = (std::max)(sliceCount / 2u, 2u);
+    for (VolumeResource& volume : state.injected)
         RetireVolume(state, volume);
-    if (!CreateVolume(state, state.volumes[0], width, height, sliceCount) ||
-        !CreateVolume(state, state.volumes[1], width, height, sliceCount)) {
+    RetireVolume(state, state.integrated);
+    RetireVolume(state, state.ambient);
+    if (!CreateVolume(state, state.injected[0], width, height, sliceCount) ||
+        !CreateVolume(state, state.injected[1], width, height, sliceCount) ||
+        !CreateVolume(state, state.integrated, width, height, sliceCount) ||
+        !CreateVolume(state, state.ambient, ambientWidth, ambientHeight, ambientDepth)) {
         state.resourcesReady = false;
         return false;
     }
+    state.ambientWidth = ambientWidth;
+    state.ambientHeight = ambientHeight;
+    state.ambientDepth = ambientDepth;
     state.stats.renderWidth = renderWidth;
     state.stats.renderHeight = renderHeight;
     state.stats.froxelWidth = width;
     state.stats.froxelHeight = height;
     state.stats.froxelDepth = sliceCount;
     state.stats.froxelPixelSize = pixelSize;
-    state.stats.workingSetBytes = static_cast<uint64_t>(width) * height * sliceCount * 8u * 2u;
+    state.stats.workingSetBytes = static_cast<uint64_t>(width) * height * sliceCount * 8u * 3u +
+                                  static_cast<uint64_t>(ambientWidth) * ambientHeight * ambientDepth * 8u;
     ++state.stats.resizeCount;
     ++state.stats.historyResetCount;
     state.volumeHistoryValid = false;
@@ -451,7 +446,13 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     StageState& state = State();
     const bool globalFog = environment.fog.enabled && (environment.fog.volumetric || !localFogVolumes.empty()) &&
                            std::isfinite(environment.fog.density) && environment.fog.density > 0.0f;
-    state.stats.requested = globalFog || !localFogVolumes.empty();
+    // 霧が無くても、大気の空なら合成で空気遠近を掛ける。霧の体積は霧がある時だけ作る。
+    const bool fogRequested = globalFog || !localFogVolumes.empty();
+    const SKYRENDERER::AerialPerspectiveView& aerial = SKYRENDERER::GetAerialPerspectiveView();
+    state.stats.requested = fogRequested || aerial.valid;
+    state.fogInjected = false;
+    state.giAmbient = false;
+    state.aerialPerspectiveSrv = {};
     state.stats.active = false;
     state.stats.sceneTargetsReady = false;
     state.stats.localShadowFaces = 0;
@@ -513,36 +514,51 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     }
     constants.shadowCascadeSplits = SHADOW::GetDirectionalCascadeSplitDistances();
     constants.shadowCascadeDepthBiasScales = SHADOW::GetDirectionalCascadeDepthBiasScales();
+    const RENDER3D::DirectionalShadowQualitySettings& shadowQuality =
+        RENDER3D::GetRenderQualitySettings().directionalShadow;
     constants.shadowCascadeParams = {static_cast<float>(SHADOW::GetDirectionalCascadeCount()),
-                                     std::clamp(environment.directionalShadow.cascadeBlend, 0.0f, 0.3f), 0.5f, 0.5f};
+                                     std::clamp(shadowQuality.cascadeBlend, 0.0f, 0.3f), 0.5f, 0.5f};
     constants.cameraPos = frame.camera.cameraPos;
     const float shadowAtlasTexel = SHADOW::GetShadowAtlasTexelSize();
-    constants.shadowSampling = {(std::max)(environment.directionalShadow.depthBias, 0.0f), shadowAtlasTexel,
-                                shadowAtlasTexel, 0.0f};
+    constants.shadowSampling = {(std::max)(shadowQuality.depthBias, 0.0f), shadowAtlasTexel, shadowAtlasTexel, 0.0f};
     constants.prevCameraPos = frame.camera.prevCameraPos;
-    // Prepare runs before the current frame's SkyRenderer pass.  Resolve
-    // the authored horizon directly instead of reading last frame's sky
-    // cache, so inspector edits and scene switches cannot seed stale fog.
-    MATH::Vec3 fogColor = environment.fog.color;
-    if (environment.fog.useSkyHorizonColor && environment.sky.enabled) {
-        const float skyExposure = (std::max)(0.0f, environment.sky.exposure);
-        fogColor = {environment.sky.horizonColor.x * environment.sky.tint.x * skyExposure,
-                    environment.sky.horizonColor.y * environment.sky.tint.y * skyExposure,
-                    environment.sky.horizonColor.z * environment.sky.tint.z * skyExposure};
-    }
-    constants.fogColorDensity = {fogColor.x, fogColor.y, fogColor.z, globalFog ? environment.fog.density : 0.0f};
+    // 体積の shader は fogColor を散乱アルベドとして使う。散乱光は太陽と空の光から求める。
+    const MATH::Vec3& albedo = environment.fog.albedo;
+    constants.fogColorDensity = {albedo.x, albedo.y, albedo.z, globalFog ? environment.fog.density : 0.0f};
     std::copy(localFogVolumes.begin(), localFogVolumes.end(), constants.localFogVolumes);
-    constants.fogDistances = {(std::max)(0.01f, environment.fog.startDistance),
-                              (std::max)(environment.fog.startDistance + 0.01f, environment.fog.endDistance),
+    // 揺らぎは地上の風の積分した移動で流す。細かい方は 1.6 倍の速さで流れ、二つの重なりが形を変える。移動量は倍精度で
+    // ノイズの周期へ折り、float の精度を保つ。
+    if (environment.fog.noise > 0.0f) {
+        const double scale = std::clamp(static_cast<double>(environment.fog.noiseScale), 1.0, 500.0);
+        const double windX = std::isfinite(environment.frame.clouds.windDisplacementX)
+                                 ? environment.frame.clouds.windDisplacementX
+                                 : 0.0;
+        const double windZ = std::isfinite(environment.frame.clouds.windDisplacementZ)
+                                 ? environment.frame.clouds.windDisplacementZ
+                                 : 0.0;
+        const auto wrap = [](double value) {
+            const double period = static_cast<double>(kFogNoisePeriod);
+            return static_cast<float>(value - std::floor(value / period) * period);
+        };
+        constants.fogNoise = {std::clamp(environment.fog.noise, 0.0f, 1.0f), static_cast<float>(1.0 / scale), 0.0f,
+                              0.0f};
+        constants.fogNoiseOffset = {wrap(-windX / scale), wrap(-windZ / scale),
+                                    wrap(-windX * 1.6 * kFogNoiseDetailFrequency / scale),
+                                    wrap(-windZ * 1.6 * kFogNoiseDetailFrequency / scale)};
+    }
+    const float nearDistance = (std::max)(0.01f, environment.fog.startDistance);
+    constants.fogDistances = {nearDistance, (std::max)(nearDistance + 1.0f, policy.farDistance),
                               (std::max)(0.0f, environment.fog.heightFalloff),
                               std::clamp(environment.fog.anisotropy, -0.8f, 0.8f)};
     const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
     constants.directionalDirIntensity = {-solar.sunDirection.x, -solar.sunDirection.y, -solar.sunDirection.z,
                                          solar.sunRadiance};
     constants.directionalColorShadow = {solar.sunColor.x, solar.sunColor.y, solar.sunColor.z, 0.0f};
-    const auto ambientColor = SKYRENDERER::ResolveAmbientLightColor(environment);
-    constants.ambientColorIntensity = {ambientColor.x, ambientColor.y, ambientColor.z,
-                                       (std::max)(0.0f, environment.ambient.intensity)};
+    // 霧を照らす空の光は、雲があれば雲の下から見上げた空（雲を含む）。晴天の空のままだと曇天や雨で霧が白く光る。
+    const MATH::Vec3 ambient = CLOUDS::HasVisibleClouds(environment)
+                                   ? CLOUDS::EstimateCloudShading(environment).ambientRadiance
+                                   : SKYRENDERER::EstimateSkyAmbientRadiance(environment);
+    constants.ambientColorIntensity = {ambient.x, ambient.y, ambient.z, 1.0f};
     constants.volumetricOptics = {
         std::isfinite(environment.fog.baseHeight) ? environment.fog.baseHeight : 0.0f,
         std::clamp(environment.fog.scatteringIntensity, 0.0f, 8.0f),
@@ -551,7 +567,7 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     };
 
     uint64_t settingsSignature =
-        HASH::Fnv1aBytes(HashVolumetricSettings(environment, quality, localLights.view.lightingContentHash, solar),
+        HASH::Fnv1aBytes(HashVolumetricSettings(environment, quality, localLights.view.lightingContentHash),
                          &constants.cloudSolarVisibility.originDescriptor.w, sizeof(float));
     // 内容が変わったフレームは以前の媒体を混ぜない。静的編集では履歴を保持する。
     settingsSignature = HASH::Fnv1aBytes(settingsSignature, localFogVolumes.data(), localFogVolumes.size_bytes());
@@ -564,11 +580,32 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     const bool historyValid = state.volumeHistoryValid && frame.historyValid && !frame.resetHistory;
     constants.volumeSize = {static_cast<float>(state.stats.froxelWidth), static_cast<float>(state.stats.froxelHeight),
                             static_cast<float>(state.stats.froxelDepth), historyValid ? 1.0f : 0.0f};
-    const bool shadowed = SHADOW::IsDirectionalShadowEnabled() && environment.directionalShadow.enabled &&
+    const bool shadowed = SHADOW::IsDirectionalShadowEnabled() && environment.shadows.enabled &&
                           SHADOW::GetDirectionalShadowSrv().ptr != 0;
+    // 体積はこのビューの P で書き、前フレームの体積は P/P_prev で今の空間へ換算する。
+    const MATH::Vec4& viewExposure = RENDER3D::COLOR::GetActiveViewExposure();
     constants.frameParams = {historyValid ? std::clamp(environment.fog.temporalWeight, 0.0f, 0.98f) : 0.0f,
-                             static_cast<float>(frame.frameIndex & 0xffffu), shadowed ? 1.0f : 0.0f,
-                             static_cast<float>(localLights.view.lightCount)};
+                             viewExposure.w, shadowed ? 1.0f : 0.0f, viewExposure.x};
+    // 履歴を混ぜるフレームだけ froxel 内の標本位置を動かし、froxel 全体の平均へ収束させる（奥行きの層の段と影の縁の
+    // 階段を消す）。位置は R3 の低食い違い列（shader が froxel ごとの乱数で回す）。履歴の無いフレームは中心で取る。
+    if (constants.frameParams.x > 0.0f) {
+        const double phase = static_cast<double>(frame.frameIndex % 4096u);
+        const auto fraction = [](double value) { return static_cast<float>(value - std::floor(value)); };
+        constants.fogJitter = {fraction(0.5 + phase * 0.8191725134) - 0.5f, fraction(0.5 + phase * 0.6710436067) - 0.5f,
+                               fraction(0.5 + phase * 0.5497004779), 0.0f};
+    }
+    // 霧へ届く環境光。動的 GI があれば probe から集め（覆わない所は空の光）、壁や屋根に囲まれた所の霧を空の光で
+    // 光らせない。無ければ一様な空の光。
+    const auto giVolumes = LIGHTPROBE::GetDynamicGiVolumes();
+    for (size_t index = 0; index < giVolumes.size() && index < std::size(constants.giVolumes); ++index) {
+        if (giVolumes[index].valid) {
+            constants.giVolumes[index] = LIGHTPROBE::BuildIrradianceVolumeGpuData(giVolumes[index], 1.0f);
+            state.giAmbient = fogRequested;
+        }
+    }
+    constants.fogJitter.w = state.giAmbient ? 1.0f : 0.0f;
+    constants.ambientVolumeSize = {static_cast<float>(state.ambientWidth), static_cast<float>(state.ambientHeight),
+                                   static_cast<float>(state.ambientDepth), 0.0f};
     constants.localLightCount = localLights.view.lightCount;
     constants.localLightClusterCountX = localLights.view.clusterCountX;
     constants.localLightClusterCountY = localLights.view.clusterCountY;
@@ -579,6 +616,10 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     constants.localLightFarDistance = localLights.view.farDistance;
     constants.debugAndLocalLightDepth = {static_cast<float>(ResolveDebugMode(debugView)), localLights.view.depthScale,
                                          localLights.view.depthBias, static_cast<float>(localFogVolumes.size())};
+    constants.aerialPerspective = {aerial.valid ? aerial.maxDistance : 0.0f, aerial.valid ? 1.0f : 0.0f,
+                                   fogRequested ? 1.0f : 0.0f, 0.0f};
+    state.aerialPerspectiveSrv = aerial.valid ? aerial.srv : D3D12_GPU_DESCRIPTOR_HANDLE{};
+    state.fogInjected = fogRequested;
     state.preparedFrameIndex = frame.frameIndex;
     state.executedFrameIndex = (std::numeric_limits<uint64_t>::max)();
     state.executedSceneColorResource = nullptr;
@@ -606,7 +647,8 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     state.stats.qualityLevel = static_cast<uint32_t>(quality);
     state.stats.temporalWeight = constants.frameParams.x;
     state.prepared = true;
-    return true;
+    // 前向きの霧は霧の体積がある時だけ読む。
+    return fogRequested;
 }
 
 void SetVolumetricVisibleWaterDepth(const WATER::WaterVisibleDepthView& view) {
@@ -653,50 +695,82 @@ RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
         return &scene;
     }
     const D3D12_GPU_VIRTUAL_ADDRESS constantAddress = state.constantAddress;
-    VolumeResource& output = state.volumes[state.writeIndex];
-    VolumeResource& history = state.volumes[state.writeIndex ^ 1u];
+    VolumeResource& output = state.injected[state.writeIndex];
+    VolumeResource& history = state.injected[state.writeIndex ^ 1u];
+    const auto uavBarrier = [cmd](VolumeResource& volume) {
+        const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(volume.texture.Get());
+        cmd->ResourceBarrier(1, &barrier);
+    };
 
     GFX::PIX::ScopedGpuEvent event(cmd, GFX::PIX::kColorPost, "VolumetricLighting");
     GFX::GPU_PROFILE::ScopedGpuTimer timer(cmd, GFX::GPU_PROFILE::Pass::VolumetricLighting);
     cmd->SetDescriptorHeaps(1, &heap);
-    TransitionVolume(cmd, output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    cmd->SetComputeRootSignature(state.computeRoot.Get());
-    cmd->SetPipelineState(state.computePso.Get());
-    cmd->SetComputeRootConstantBufferView(0, constantAddress);
-    cmd->SetComputeRootDescriptorTable(1, state.sceneDepthSrv.gpu);
-    const D3D12_GPU_DESCRIPTOR_HANDLE shadow =
-        state.stats.shadowed ? SHADOW::GetDirectionalShadowSrv() : state.sceneDepthSrv.gpu;
-    cmd->SetComputeRootDescriptorTable(2, shadow);
-    cmd->SetComputeRootDescriptorTable(3, history.srv.gpu);
-    cmd->SetComputeRootDescriptorTable(4, output.uav.gpu);
-    cmd->SetComputeRootDescriptorTable(8, state.localShadowSrv.ptr ? state.localShadowSrv : state.sceneDepthSrv.gpu);
-    cmd->SetComputeRootDescriptorTable(9, state.cloudSolarSrv.ptr ? state.cloudSolarSrv : state.sceneDepthSrv.gpu);
-    if (state.localLights.IsValid()) {
-        cmd->SetComputeRootShaderResourceView(5, state.localLights.lights);
-        cmd->SetComputeRootShaderResourceView(6, state.localLights.clusterHeaders);
-        cmd->SetComputeRootShaderResourceView(7, state.localLights.clusterIndices);
+    if (state.fogInjected) {
+        cmd->SetComputeRootSignature(state.computeRoot.Get());
+        cmd->SetComputeRootConstantBufferView(kInjectConstants, constantAddress);
+        cmd->SetComputeRootDescriptorTable(kInjectSceneDepth, state.sceneDepthSrv.gpu);
+        if (state.giAmbient) {
+            TransitionVolume(cmd, state.ambient, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            cmd->SetPipelineState(state.gatherPso.Get());
+            cmd->SetComputeRootDescriptorTable(kInjectOutput, state.ambient.uav.gpu);
+            cmd->SetComputeRootDescriptorTable(
+                kInjectTexturePool,
+                GFX::DESCRIPTOR::GpuAt(heap, state.descriptorStride, GFX::DESCRIPTOR::kUserSrvBegin));
+            cmd->Dispatch((state.ambientWidth + 7u) / 8u, (state.ambientHeight + 7u) / 8u, state.ambientDepth);
+            uavBarrier(state.ambient);
+            TransitionVolume(cmd, state.ambient, D3D12_RESOURCE_STATE_GENERIC_READ);
+        }
+        TransitionVolume(cmd, output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        cmd->SetPipelineState(state.injectPso.Get());
+        const D3D12_GPU_DESCRIPTOR_HANDLE shadow =
+            state.stats.shadowed ? SHADOW::GetDirectionalShadowSrv() : state.sceneDepthSrv.gpu;
+        cmd->SetComputeRootDescriptorTable(kInjectShadowMap, shadow);
+        cmd->SetComputeRootDescriptorTable(kInjectHistory, history.srv.gpu);
+        cmd->SetComputeRootDescriptorTable(kInjectAmbient, state.ambient.srv.gpu);
+        cmd->SetComputeRootDescriptorTable(kInjectOutput, output.uav.gpu);
+        cmd->SetComputeRootDescriptorTable(kInjectLocalShadow,
+                                           state.localShadowSrv.ptr ? state.localShadowSrv : state.sceneDepthSrv.gpu);
+        cmd->SetComputeRootDescriptorTable(kInjectCloudSolar,
+                                           state.cloudSolarSrv.ptr ? state.cloudSolarSrv : state.sceneDepthSrv.gpu);
+        if (state.localLights.IsValid()) {
+            cmd->SetComputeRootShaderResourceView(kInjectLights, state.localLights.lights);
+            cmd->SetComputeRootShaderResourceView(kInjectLightClusterHeaders, state.localLights.clusterHeaders);
+            cmd->SetComputeRootShaderResourceView(kInjectLightClusterIndices, state.localLights.clusterIndices);
+        }
+        cmd->Dispatch((state.stats.froxelWidth + 7u) / 8u, (state.stats.froxelHeight + 7u) / 8u,
+                      state.stats.froxelDepth);
+        uavBarrier(output);
+        TransitionVolume(cmd, output, D3D12_RESOURCE_STATE_GENERIC_READ);
+
+        TransitionVolume(cmd, state.integrated, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        cmd->SetPipelineState(state.integratePso.Get());
+        cmd->SetComputeRootDescriptorTable(kInjectInjected, output.srv.gpu);
+        cmd->SetComputeRootDescriptorTable(kInjectOutput, state.integrated.uav.gpu);
+        cmd->Dispatch((state.stats.froxelWidth + 7u) / 8u, (state.stats.froxelHeight + 7u) / 8u, 1u);
+        uavBarrier(state.integrated);
+        TransitionVolume(cmd, state.integrated, D3D12_RESOURCE_STATE_GENERIC_READ);
     }
-    cmd->Dispatch((state.stats.froxelWidth + 7u) / 8u, (state.stats.froxelHeight + 7u) / 8u, 1u);
-    const auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(output.texture.Get());
-    cmd->ResourceBarrier(1, &uavBarrier);
-    TransitionVolume(cmd, output, D3D12_RESOURCE_STATE_GENERIC_READ);
 
     scene.TransitionColor(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     cmd->SetDescriptorHeaps(1, &heap);
     cmd->SetComputeRootSignature(state.compositeRoot.Get());
     cmd->SetPipelineState(state.compositePso.Get());
-    cmd->SetComputeRootConstantBufferView(0, constantAddress);
-    cmd->SetComputeRootDescriptorTable(1, state.sceneDepthSrv.gpu);
-    cmd->SetComputeRootDescriptorTable(2, output.srv.gpu);
-    cmd->SetComputeRootDescriptorTable(3, state.waterDepthSrv.ptr != 0 ? state.waterDepthSrv : state.sceneDepthSrv.gpu);
-    cmd->SetComputeRootDescriptorTable(4, state.sceneColorUav.gpu);
+    cmd->SetComputeRootConstantBufferView(kCompositeConstants, constantAddress);
+    cmd->SetComputeRootDescriptorTable(kCompositeDepth, state.sceneDepthSrv.gpu);
+    cmd->SetComputeRootDescriptorTable(kCompositeIntegrated, state.integrated.srv.gpu);
+    cmd->SetComputeRootDescriptorTable(kCompositeWaterDepth,
+                                       state.waterDepthSrv.ptr != 0 ? state.waterDepthSrv : state.sceneDepthSrv.gpu);
+    cmd->SetComputeRootDescriptorTable(kCompositeSceneColor, state.sceneColorUav.gpu);
+    cmd->SetComputeRootDescriptorTable(kCompositeAerialPerspective, state.aerialPerspectiveSrv.ptr != 0u
+                                                                        ? state.aerialPerspectiveSrv
+                                                                        : state.integrated.srv.gpu);
     cmd->Dispatch((state.stats.renderWidth + 7u) / 8u, (state.stats.renderHeight + 7u) / 8u, 1u);
     const auto sceneUavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(scene.GetResource());
     cmd->ResourceBarrier(1, &sceneUavBarrier);
     scene.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     scene.EndDepthShaderRead();
 
-    state.volumeHistoryValid = true;
+    state.volumeHistoryValid = state.fogInjected;
     state.historyView = state.preparedView;
     state.historyFrameIndex = state.preparedFrameIndex;
     state.executedFrameIndex = state.preparedFrameIndex;
@@ -708,12 +782,12 @@ RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
 bool GetVolumetricFogSamplingView(uint64_t frameIndex, VolumetricFogSamplingView& outView) noexcept {
     outView = {};
     StageState& state = State();
-    if (!state.stats.active || state.executedFrameIndex != frameIndex || state.preparedFrameIndex != frameIndex ||
-        state.writeIndex >= std::size(state.volumes) || !state.volumes[state.writeIndex].srv.IsValid() ||
-        state.volumes[state.writeIndex].srv.gpu.ptr == 0u || state.stats.froxelDepth == 0u) {
+    if (!state.stats.active || !state.fogInjected || state.executedFrameIndex != frameIndex ||
+        state.preparedFrameIndex != frameIndex || !state.integrated.srv.IsValid() ||
+        state.integrated.srv.gpu.ptr == 0u || state.stats.froxelDepth == 0u) {
         return false;
     }
-    outView.integratedVolumeSrv = state.volumes[state.writeIndex].srv.gpu;
+    outView.integratedVolumeSrv = state.integrated.srv.gpu;
     outView.nearDistance = state.fogNearDistance;
     outView.farDistance = state.fogFarDistance;
     outView.depthSlices = state.stats.froxelDepth;
@@ -728,15 +802,22 @@ const VolumetricLightingStats& GetVolumetricLightingStats() { return State().sta
 
 void ShutdownVolumetricLightingStage() {
     StageState& state = State();
-    for (VolumeResource& volume : state.volumes)
+    for (VolumeResource& volume : state.injected)
         ReleaseVolume(volume);
+    ReleaseVolume(state.integrated);
+    ReleaseVolume(state.ambient);
     ReleaseView(state.sceneColorUav);
     ReleaseView(state.sceneDepthSrv);
     for (auto& uploads : state.uploads)
         uploads.Finalize(&state.context);
     state.constantAddress = 0;
-    state.computePso.Reset();
+    state.gatherPso.Reset();
+    state.injectPso.Reset();
+    state.integratePso.Reset();
     state.compositePso.Reset();
+    state.descriptorStride = 0;
+    state.ambientWidth = state.ambientHeight = state.ambientDepth = 0;
+    state.giAmbient = false;
     state.computeRoot.Reset();
     state.compositeRoot.Reset();
     state.sceneColorResource = nullptr;

@@ -97,23 +97,17 @@ void SceneCreationPanel::DrawCreationMenu(DocumentSceneBase& scene, EditorContex
     const bool showReflectionProbe = MatchesSearch(TEXT::Localize("ui.sceneCreation.reflectionProbe").c_str(), search);
     const bool showIrradianceVolume =
         MatchesSearch(TEXT::Localize("ui.sceneCreation.irradianceVolume").c_str(), search);
-    const bool showDirectionalLight =
-        MatchesSearch(TEXT::Localize("ui.sceneCreation.directionalLight").c_str(), search);
     const bool showPointLight = MatchesSearch(TEXT::Localize("ui.sceneCreation.pointLight").c_str(), search);
     const bool showSpotLight = MatchesSearch(TEXT::Localize("ui.sceneCreation.spotLight").c_str(), search);
-    if ((showReflectionProbe || showIrradianceVolume || showDirectionalLight || showPointLight || showSpotLight) &&
+    if ((showReflectionProbe || showIrradianceVolume || showPointLight || showSpotLight) &&
         ImGui::BeginMenu(TEXT::Localize("ui.sceneCreation.lighting").c_str())) {
-        if (showDirectionalLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.directionalLight").c_str())) {
-            CreateLightObject(scene, context, selectionSync, RENDER3D::LIGHTING::SceneLightType::Directional);
-        }
         if (showPointLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.pointLight").c_str())) {
             CreateLightObject(scene, context, selectionSync, RENDER3D::LIGHTING::SceneLightType::Point);
         }
         if (showSpotLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.spotLight").c_str())) {
             CreateLightObject(scene, context, selectionSync, RENDER3D::LIGHTING::SceneLightType::Spot);
         }
-        if ((showDirectionalLight || showPointLight || showSpotLight) &&
-            (showReflectionProbe || showIrradianceVolume)) {
+        if ((showPointLight || showSpotLight) && (showReflectionProbe || showIrradianceVolume)) {
             ImGui::Separator();
         }
         if (showReflectionProbe && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.reflectionProbe").c_str())) {
@@ -278,12 +272,7 @@ void SceneCreationPanel::CreateLightObject(DocumentSceneBase& scene, EditorConte
     context.selection.SelectObject(scene.GetWorld(), object);
     context.sceneDirty = true;
     selectionSync.SyncNextSceneObjectId(scene, context.nextSceneObjectId);
-    const char* label = "Point Light";
-    if (lightType == RENDER3D::LIGHTING::SceneLightType::Directional) {
-        label = "Directional Light";
-    } else if (lightType == RENDER3D::LIGHTING::SceneLightType::Spot) {
-        label = "Spot Light";
-    }
+    const char* label = lightType == RENDER3D::LIGHTING::SceneLightType::Spot ? "Spot Light" : "Point Light";
     historyRequest_ = SceneObjectAuthoringHistoryRequest{std::string("Create ") + label,   beforeObjects,
                                                          scene.GetSceneDocument().objects, beforeCamera,
                                                          scene.GetSceneDocument().camera,  dirtyBefore};

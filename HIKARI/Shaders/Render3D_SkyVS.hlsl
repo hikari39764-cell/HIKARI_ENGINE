@@ -1,12 +1,15 @@
 cbuffer SkyCB : register(b0)
 {
     float4x4 gSkyInverseViewProj;
-    float4 gSkyZenithExposure;
-    float4 gSkyHorizonPower;
-    float4 gSkyGroundYaw;
+    float4 gSkyScaleYaw;
     float4 gSkyTintMode;
-    float4 gSkySunDirectionIntensity;
-    float4 gSkySunSizeParams;
+    float4 gSkyDisk;
+    float4 gSkyDiskLuminance;
+    float4 gSkyMoonPhase;           // xyz toward sun, w primary disk is the moon
+    float4 gSkyStars;               // x star intensity, y limiting magnitude, z night background [nits], w time [s]
+    float4 gSkyCelestialX;          // celestial -> world columns
+    float4 gSkyCelestialY;
+    float4 gSkyCelestialZ;
 };
 
 struct VSOutput

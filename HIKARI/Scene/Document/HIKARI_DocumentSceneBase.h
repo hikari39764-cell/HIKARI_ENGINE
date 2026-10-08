@@ -19,6 +19,7 @@
 #include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Scene/Debug/HIKARI_ComponentGizmoRenderer.h"
 #include "Scene/Debug/HIKARI_ViewportDebugState.h"
+#include "Scene/Environment/HIKARI_EnvironmentRuntime.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureCatalog.h"
 #include "Scene/HIKARI_CameraDirector.h"
 #include "Scene/Sequencer/Runtime/HIKARI_SequencePlaybackTypes.h"
@@ -40,6 +41,9 @@ namespace HIKARI {
 
 class DocumentSceneAssetBindings;
 struct DocumentSceneState;
+namespace RENDERSTYLE {
+class RenderStyleAssetStore;
+}
 #if defined(HIKARI_WITH_EDITOR)
 class DocumentSceneBakeCoordinator;
 namespace DOCUMENT_SCENE_BAKING {
@@ -71,8 +75,16 @@ public:
     SceneDocument& GetSceneDocument();
     const SceneDocument& GetSceneDocument() const;
 
+    // このフレームの描画入力（環境プロファイル + 時刻・天気）。シーン文書の環境は参照だけを持つ。
     SceneEnvironment& GetSceneEnvironment();
     const SceneEnvironment& GetSceneEnvironment() const;
+    ENVIRONMENT::EnvironmentRuntime& GetEnvironmentRuntime() noexcept;
+    // 編集中の時刻の流れ（実時間 1 秒あたりの秒数）。天気の遷移・風・雲は編集中も常に実時間で進む。
+    void SetEnvironmentPreviewTimeScale(double timeScale) noexcept;
+    ENVIRONMENT::EnvironmentAssetStore& GetEnvironmentAssets() noexcept;
+    RENDERSTYLE::RenderStyleAssetStore& GetRenderStyleAssets() noexcept;
+    // シーンの依存（空の資産は解決済みの環境プロファイルから）。
+    SceneDependencySet CollectRuntimeDependencies() const;
     AssetDatabase& GetAssetDatabase();
     const AssetDatabase& GetAssetDatabase() const;
     AssetRegistry& GetAssetRegistry();
@@ -136,6 +148,10 @@ public:
     void SetUnsavedSceneChanges(bool dirty);
     bool ApplyDocumentEnvironmentRuntimeChanges();
     bool RefreshLightingRuntime();
+    // 環境の実行時状態を文書の参照と初期状態から作り直す。
+    void ResetEnvironmentRuntime();
+    // 環境プロファイル（編集中の下書きを含む）を引き直す。時刻と天気の進行は保ち、空の資源が変わった時だけ読み直す。
+    bool RefreshEnvironmentProfile();
     bool RefreshTextureRuntimeByPath(const std::string& path);
     bool ReloadModelAssetRuntime(const AssetId& modelId);
     int RebindModelComponents();
@@ -163,7 +179,6 @@ public:
     void SetViewportPerformanceState(const ViewportPerformanceState& state);
     void SetViewportDebugViewState(const ViewportDebugViewState& state);
     void SetSelectedGizmoObjectId(SceneObjectId id);
-    SceneObjectId GetSelectedGizmoObjectId() const;
 
 protected:
     bool RegisterRuntimeFeatures();

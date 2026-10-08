@@ -4,10 +4,13 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <optional>
+#include <string>
 #include <d3dx12.h>
 #include <wrl/client.h>
 #include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
@@ -26,18 +29,91 @@ using Microsoft::WRL::ComPtr;
 constexpr auto kReadState = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
 // SH0 は一様な入射 radiance の約 3.54 倍。FP16 上限で HDR を壊さない。
 constexpr auto kProbeShFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
-constexpr uint64_t kProbeBudgetBytes = 32ull * 1024 * 1024;
+// 描画側が読む probe atlas。probe ごとに放射照度と深度 moment の八面体、validity の tile を持つ
+// （HIKARI_LightingProviderSampling.hlsli の HIKARI_DYNAMIC_GI_TILE_* と同じ寸法）。
+constexpr auto kProbeAtlasFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+constexpr UINT kProbeAtlasTileWidth = 28, kProbeAtlasTileHeight = 18;
+// probe 一回の更新の ray 数（Render3D_DynamicDiffuseGiCS.hlsl の kRayCount）。
+constexpr uint32_t kProbeRayCount = 128;
+constexpr uint64_t kProbeBudgetBytes = 64ull * 1024 * 1024;
+bool SameVec3(const MATH::Vec3& lhs, const MATH::Vec3& rhs) {
+    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
+}
+// 一つの probe 場の配置。相機を追う近景と遠景の cascade、または手置きの実時間区域。
+struct FieldLayout {
+    MATH::Vec3 spacing{};
+    UINT x = 0, y = 0, z = 0, budget = 0;
+    float blendDistance = 0.0f, normalBias = 0.25f, intensity = 1.0f;
+    int priority = 0;
+    bool operator==(const FieldLayout& other) const {
+        return SameVec3(spacing, other.spacing) && x == other.x && y == other.y && z == other.z &&
+               budget == other.budget && blendDistance == other.blendDistance && normalBias == other.normalBias &&
+               intensity == other.intensity && priority == other.priority;
+    }
+};
+// 描画側の動的 GI volume と同じ並び（優先順）。
+constexpr size_t kRegionField = 0, kFieldCount = LIGHTPROBE::kDynamicGiVolumeCount;
+// 区域を更新する相機からの最大距離。外れた区域は cascade に任せる。
+constexpr float kRegionReach = 32.0f;
+UINT ProbeBudget(DynamicGiQuality quality) {
+    return quality == DynamicGiQuality::Low ? 128u : quality == DynamicGiQuality::High ? 512u : 256u;
+}
+// 近景は 1.5m 間隔。遠景は 4 倍の間隔で近景の外（空の光だけでは平らに見える範囲）の遮蔽と照り返しを受け持つ。
+// 描画側は近景、遠景の順に重ね、近景の縁は blendDistance（1 間隔）で遠景へ移る。
+std::array<FieldLayout, 2> CascadeLayouts(DynamicGiQuality quality) {
+    const UINT nearCount = quality == DynamicGiQuality::Low ? 12u : quality == DynamicGiQuality::High ? 24u : 16u;
+    const UINT farCount = quality == DynamicGiQuality::Low ? 12u : 16u;
+    const UINT budget = ProbeBudget(quality);
+    return {FieldLayout{{1.5f, 1.5f, 1.5f}, nearCount, nearCount / 2, nearCount, budget, 1.5f},
+            FieldLayout{{6.0f, 6.0f, 6.0f}, farCount, farCount / 2, farCount, budget / 2, 12.0f}};
+}
+// 手置きの実時間区域。probe は区域の格子に固定し、近景と同じ予算で数フレームに分けて更新する。
+FieldLayout RegionLayout(const LIGHTING::IrradianceVolumeProvider& volume, DynamicGiQuality quality) {
+    return {volume.spacing,
+            volume.countX,
+            volume.countY,
+            volume.countZ,
+            (std::min)(ProbeBudget(quality), volume.countX * volume.countY * volume.countZ),
+            volume.blendDistance,
+            volume.normalBias,
+            volume.intensity,
+            volume.priority};
+}
+// 一度に更新する区域は一つ。相機を含む区域を優先度順に、無ければ最も近い区域を選ぶ。
+const LIGHTING::IrradianceVolumeProvider* SelectRegion(std::span<const LIGHTING::IrradianceVolumeProvider> volumes,
+                                                       MATH::Vec3 camera) {
+    const LIGHTING::IrradianceVolumeProvider* best = nullptr;
+    float bestDistance = kRegionReach;
+    for (const auto& volume : volumes) {
+        if (!volume.enabled || !volume.realtime || volume.countX * volume.countY * volume.countZ == 0)
+            continue;
+        const auto outside = [](float value, float minimum, float size) {
+            return (std::max)({minimum - value, value - (minimum + size), 0.0f});
+        };
+        const float dx = outside(camera.x, volume.origin.x, volume.size.x);
+        const float dy = outside(camera.y, volume.origin.y, volume.size.y);
+        const float dz = outside(camera.z, volume.origin.z, volume.size.z);
+        const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+        if (distance < bestDistance ||
+            (best != nullptr && distance == bestDistance && volume.priority > best->priority)) {
+            best = &volume;
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
 struct Constants {
     LIGHTPROBE::IrradianceVolumeGpuData previous{};
-    MATH::Vec4 originSpacing{0, 0, 0, 0};
+    MATH::Vec4 origin{0, 0, 0, 0}; // xyz 格子の原点
+    MATH::Vec4 spacing{0, 0, 0, 0};
     std::array<uint32_t, 4> counts{}, work{};
     RAYTRACING::RuntimeRayLightingGpuData lighting{};
 };
-static_assert(sizeof(Constants) == 352);
+static_assert(sizeof(Constants) == 304);
 struct ProbeSet {
     std::array<ComPtr<ID3D12Resource>, 10> textures;
     std::vector<RenderResourceView> srvs, uavs;
-    TextureResourceHandle visibility;
+    TextureResourceHandle atlas;
     LIGHTPROBE::LightProbeVolumeRuntimeData data;
     uint64_t bytes = 0;
     void Reset(const GFX::Context& graphics) {
@@ -47,9 +123,9 @@ struct ProbeSet {
             RetireRenderResourceDescriptor(view, graphics, "DynamicGI.UAV");
         srvs.clear();
         uavs.clear();
-        if (visibility)
-            ReleaseTextureResource(visibility);
-        visibility = {};
+        if (atlas)
+            ReleaseTextureResource(atlas);
+        atlas = {};
         for (auto& texture : textures)
             GFX::RetireD3D12ObjectForFrame(texture, graphics, "DynamicGI.Probe");
         data = {};
@@ -60,11 +136,13 @@ struct ProbeSet {
         for (UINT index = 0; index < 9; ++index)
             result[index] = CD3DX12_RESOURCE_DESC::Tex3D(kProbeShFormat, x, y, static_cast<UINT16>(z), 1,
                                                          D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-        result[9] = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32G32_FLOAT, x * y * 10, z * 10, 1, 1, 1, 0,
-                                                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        result[9] =
+            CD3DX12_RESOURCE_DESC::Tex2D(kProbeAtlasFormat, x * y * kProbeAtlasTileWidth, z * kProbeAtlasTileHeight, 1,
+                                         1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         return result;
     }
-    bool Create(const GFX::Context& graphics, UINT x, UINT y, UINT z) {
+    bool Create(const GFX::Context& graphics, const FieldLayout& layout) {
+        const UINT x = layout.x, y = layout.y, z = layout.z;
         const auto descriptions = Descriptions(x, y, z);
         for (const auto& desc : descriptions) {
             const auto allocation = graphics.device->GetResourceAllocationInfo(0, 1, &desc);
@@ -99,8 +177,8 @@ struct ProbeSet {
                 graphics.device->CreateShaderResourceView(textures[index].Get(), &srv, srvs[index].cpu);
             }
         }
-        visibility = RegisterTextureResourceFromNative(textures[9].Get(), DXGI_FORMAT_R32G32_FLOAT);
-        if (!IsTextureResourceValid(visibility))
+        atlas = RegisterTextureResourceFromNative(textures[9].Get(), kProbeAtlasFormat);
+        if (!IsTextureResourceValid(atlas))
             return false;
         data.id = "DynamicDiffuseGi";
         data.enabled = true;
@@ -109,12 +187,19 @@ struct ProbeSet {
         data.countY = y;
         data.countZ = z;
         data.probeCount = x * y * z;
-        data.spacing = {1.5f, 1.5f, 1.5f};
-        data.size = {float(x - 1) * 1.5f, float(y - 1) * 1.5f, float(z - 1) * 1.5f};
-        data.blendDistance = 3.0f;
-        data.normalBias = 0.02f;
-        data.visibilityDistanceScale = 60.0f;
-        data.visibilityTextureDescriptorIndex = GetTextureResourceSrvDescriptorIndex(visibility);
+        data.spacing = layout.spacing;
+        data.size = {float(x - 1) * layout.spacing.x, float(y - 1) * layout.spacing.y, float(z - 1) * layout.spacing.z};
+        data.blendDistance = layout.blendDistance;
+        data.normalBias = layout.normalBias;
+        data.intensity = layout.intensity;
+        data.priority = layout.priority;
+        // 可視性が問うのは周囲 8 probe の格子内だけ。深度は格子の対角線の 1.5 倍で打ち切る（RTXGI と同じ）。
+        // 空や遠景の深度をそのまま入れると、疎な ray を広げた隣の方向の平均深度が引き上げられ、地面の下の
+        // probe が地面越しに見えると判定される。
+        data.visibilityDistanceScale =
+            1.5f * std::sqrt(layout.spacing.x * layout.spacing.x + layout.spacing.y * layout.spacing.y +
+                             layout.spacing.z * layout.spacing.z);
+        data.visibilityTextureDescriptorIndex = GetTextureResourceSrvDescriptorIndex(atlas);
         return data.visibilityTextureDescriptorIndex < GFX::DESCRIPTOR::kUserSrvCount;
     }
     void Transition(ID3D12GraphicsCommandList* commands, bool toWrite) {
@@ -126,22 +211,40 @@ struct ProbeSet {
         commands->ResourceBarrier(UINT(barriers.size()), barriers.data());
     }
 };
+// 一つの probe 場。履歴は二組の ProbeSet を交互に書き、前の組を読む。
+struct Field {
+    std::array<ProbeSet, 2> sets;
+    FieldLayout layout{};
+    std::string id{}, failedId{};
+    MATH::Vec3 fixedOrigin{};
+    UINT published = 0, firstProbe = 0;
+    uint64_t lastFrame = 0;
+    bool history = false, active = false;
+    void Reset(const GFX::Context& graphics) {
+        for (auto& set : sets)
+            set.Reset(graphics);
+        layout = {};
+        id.clear();
+        fixedOrigin = {};
+        published = firstProbe = 0;
+        history = active = false;
+    }
+    const ProbeSet& Published() const { return sets[published]; }
+};
 } // namespace
 
 struct DynamicDiffuseGi::State {
-    std::array<ProbeSet, 2> sets;
+    std::array<Field, kFieldCount> fields;
     std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads;
     ComPtr<ID3D12RootSignature> root;
     ComPtr<ID3D12PipelineState> pipeline;
     ID3D12Device* device = nullptr;
     ComPtr<ID3D12Fence> fence;
-    uint64_t deviceGeneration = 0, lastFence = 0, lastFrame = 0, sequence = 0, retryFrame = 0;
+    uint64_t deviceGeneration = 0, lastFence = 0, sequence = 0, retryFrame = 0;
     uint64_t sourceLayout = 0;
     const void* sourceIdentity = nullptr;
     uint64_t lastRaySceneVersion = 0, lastLightingContentHash = 0;
     RAYTRACING::RuntimeRayTracingMaterialVersion lastMaterialVersion{};
-    UINT published = 0, firstProbe = 0;
-    bool history = false;
     Stats stats;
 
     bool EnsurePipeline(const GFX::Context& graphics) {
@@ -176,14 +279,14 @@ struct DynamicDiffuseGi::State {
         namespace SHADER = ASSETS::SHADER;
         SHADER::ShaderAssetContractExpectation contract{};
         contract.engineInterfaceId = "HIKARI.DynamicDiffuseGi";
-        contract.engineInterfaceVersion = 1;
+        contract.engineInterfaceVersion = 2;
         contract.rootLayoutId = "HIKARI.DynamicDiffuseGi.Root";
         contract.rootLayoutVersion = 1;
         if (!HASH::ComputeSha256(
-                "DynamicDiffuseGiCB:352;SH9 radiance/confidence/relocation;visibility RG32 oct8+border;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
+                "DynamicDiffuseGiCB:368;origin,axis spacing;SH9 radiance/validity/sky L1;atlas RGBA16F tile28x18 irradiance^(1/5)+sky oct8,moments+validity oct16,border,neighbor links A(11+octant,1) 7bit;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
                 contract.engineInterfaceHash) ||
             !HASH::ComputeSha256(
-                "CBV(b0);AS(t0,s8);Hits(t1,s8);Materials(t16);Programs(t0,t1,s6);Lights(t1,t2,s7);Geometry(t0,s1,1024);Textures(t20);PreviousSH(t0,s2,9);SH(u0,9);Visibility(u9);Sky(t0,s7);Sampler(s0,clamp);Sampler(s1,wrap)",
+                "CBV(b0);AS(t0,s8);Hits(t1,s8);Materials(t16);Programs(t0,t1,s6);Lights(t1,t2,s7);Geometry(t0,s1,1024);Textures(t20);PreviousSH(t0,s2,9);SH(u0,9);ProbeAtlas(u9);Sky(t0,s7);Sampler(s0,clamp);Sampler(s1,wrap)",
                 contract.rootLayoutHash))
             return false;
         const auto caps = GFX::QueryShaderDeviceCapabilities(graphics.device);
@@ -222,8 +325,9 @@ const char* ToString(Status status) noexcept {
 
 Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::RuntimeRayTracingFrame& rt,
                                 const MESHRENDERER::MeshMaterialGpuFrameView& materials,
-                                const RAYTRACING::RuntimeRayLightingFrame& lighting, MATH::Vec3 cameraPosition,
-                                DynamicGiQuality quality, uint64_t frameSerial) {
+                                const RAYTRACING::RuntimeRayLightingFrame& lighting,
+                                std::span<const LIGHTING::IrradianceVolumeProvider> volumes, MATH::Vec3 cameraPosition,
+                                MATH::Vec3 viewTarget, DynamicGiQuality quality, uint64_t frameSerial) {
     auto& state = *state_;
     if (state.lastFence != graphics.currentFrameRetireFenceValue)
         state.stats.updatedProbes = state.stats.primaryRays = 0;
@@ -232,11 +336,15 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
             Reset(graphics);
         return {};
     }
+    const auto invalidateHistory = [&state] {
+        for (auto& field : state.fields)
+            field.history = false;
+    };
     if (!graphics.device || !graphics.cmdList || !graphics.srvHeap || !graphics.frameFence ||
         !graphics.currentFrameRetireFenceValue || graphics.frameIndex >= GFX::kFrameResourceCount || !materials ||
-        !std::isfinite(cameraPosition.x) || !std::isfinite(cameraPosition.y) || !std::isfinite(cameraPosition.z)) {
+        !MATH::IsFinite(cameraPosition)) {
         state.stats.status = Status::PreparingScene;
-        state.history = false;
+        invalidateHistory();
         return {};
     }
     if (state.device && (state.device != graphics.device || state.deviceGeneration != graphics.deviceGeneration ||
@@ -247,7 +355,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
             state.stats.status = Status::Unsupported;
             return {};
         }
-        for (const auto format : {kProbeShFormat, DXGI_FORMAT_R32G32_FLOAT}) {
+        for (const auto format : {kProbeShFormat, kProbeAtlasFormat}) {
             D3D12_FEATURE_DATA_FORMAT_SUPPORT support{format};
             if (FAILED(graphics.device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support))) ||
                 !(support.Support1 & D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE) ||
@@ -264,31 +372,23 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         state.stats.status = lighting.status == RAYTRACING::RuntimeRayLightingStatus::MissingEnvironment
                                  ? Status::MissingEnvironment
                                  : Status::PreparingScene;
-        state.history = false;
+        invalidateHistory();
         return {};
     }
+    // 描画側へは手置きの区域、近景、遠景の順（優先順）に渡す。
+    const auto publish = [&state] {
+        Frame frame;
+        for (const auto& field : state.fields)
+            if (field.active && field.history)
+                frame.volumes[frame.count++] = field.Published().data;
+        return frame;
+    };
+    const bool sameSource = state.sourceIdentity == rt.sceneIdentity && state.sourceLayout == rt.sceneLayoutVersion;
     if (state.lastFence == graphics.currentFrameRetireFenceValue) {
-        const auto& set = state.sets[state.published];
-        if (state.history && state.sourceIdentity == rt.sceneIdentity && state.sourceLayout == rt.sceneLayoutVersion &&
-            state.lastRaySceneVersion == rt.version && state.lastMaterialVersion == rt.materialVersion &&
+        if (sameSource && state.lastRaySceneVersion == rt.version && state.lastMaterialVersion == rt.materialVersion &&
             state.lastLightingContentHash == lighting.contentHash)
-            return {set.data, set.srvs[0].gpu};
+            return publish();
         return {};
-    }
-    const UINT x = quality == DynamicGiQuality::Low ? 12u : quality == DynamicGiQuality::High ? 24u : 16u;
-    const UINT y = x / 2, z = x,
-               budget = quality == DynamicGiQuality::Low    ? 32u
-                        : quality == DynamicGiQuality::High ? 128u
-                                                            : 64u;
-    if (state.sets[0].data.countX != x && state.sets[0].bytes != 0) {
-        // quality resize は旧 field の fence を待ってから割り当て、世代数で予算を超えない。
-        state.history = false;
-        if (state.fence->GetCompletedValue() < state.lastFence) {
-            state.stats.status = Status::PreparingScene;
-            return {};
-        }
-        for (auto& set : state.sets)
-            set.Reset(graphics);
     }
     GFX::GPU_PROFILE::ScopedGpuTimer timer(graphics.cmdList, GFX::GPU_PROFILE::Pass::DynamicDiffuseGi);
     state.stats.status = Status::ResourceFailure;
@@ -296,51 +396,71 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         return {};
     if (!state.EnsurePipeline(graphics)) {
         state.retryFrame = frameSerial + 60;
-        state.history = false;
+        invalidateHistory();
         return {};
     }
-    if (!state.sets[0].textures[0]) {
-        if (!state.sets[0].Create(graphics, x, y, z) || !state.sets[1].Create(graphics, x, y, z)) {
-            for (auto& set : state.sets)
-                set.Reset(graphics);
-            state.retryFrame = frameSerial + 60;
-            state.history = false;
-            return {};
+    const auto cascades = CascadeLayouts(quality);
+    const LIGHTING::IrradianceVolumeProvider* region = SelectRegion(volumes, cameraPosition);
+    std::optional<FieldLayout> regionLayout;
+    if (region != nullptr)
+        regionLayout = RegionLayout(*region, quality);
+    const std::array<const FieldLayout*, kFieldCount> layouts{regionLayout ? &*regionLayout : nullptr, &cascades[0],
+                                                              &cascades[1]};
+    const bool previousFenceDone = state.fence->GetCompletedValue() >= state.lastFence;
+    for (size_t index = 0; index < kFieldCount; ++index) {
+        auto& field = state.fields[index];
+        const std::string_view id =
+            index == kRegionField && region != nullptr ? std::string_view{region->id} : std::string_view{};
+        field.active = false;
+        if (layouts[index] == nullptr)
+            continue;
+        const bool changed = !(field.layout == *layouts[index]) || field.id != id ||
+                             (index == kRegionField && !SameVec3(field.fixedOrigin, region->origin));
+        if (changed && field.sets[0].bytes != 0) {
+            // 配置換えは旧 field の fence を待ってから割り当て、世代数で予算を超えない。その間この field は休む。
+            if (!previousFenceDone) {
+                field.history = false;
+                continue;
+            }
+            field.Reset(graphics);
         }
+        if (!field.sets[0].textures[0]) {
+            if (index == kRegionField && field.failedId == id)
+                continue;
+            if (!field.sets[0].Create(graphics, *layouts[index]) || !field.sets[1].Create(graphics, *layouts[index])) {
+                field.Reset(graphics);
+                // 予算を超える区域はその区域が変わるまで使わない。cascade の失敗は全体を作り直す。
+                if (index == kRegionField) {
+                    field.failedId = id;
+                    DEBUGLOG::PushRenderError("Dynamic GI: realtime volume '" + std::string(id) +
+                                              "' exceeds the probe memory budget.");
+                    continue;
+                }
+                for (auto& other : state.fields)
+                    other.Reset(graphics);
+                state.retryFrame = frameSerial + 60;
+                return {};
+            }
+            field.layout = *layouts[index];
+            field.id = id;
+            field.failedId.clear();
+            field.fixedOrigin = index == kRegionField ? region->origin : MATH::Vec3{};
+        }
+        field.active = true;
     }
-    auto& previous = state.sets[state.published];
-    auto& target = state.sets[1 - state.published];
-    const bool compatible = state.history && state.sourceIdentity == rt.sceneIdentity &&
-                            state.sourceLayout == rt.sceneLayoutVersion && frameSerial == state.lastFrame + 1;
-    if (!compatible)
-        state.firstProbe = 0;
-    constexpr float spacing = 1.5f;
-    target.data.origin = {std::floor(cameraPosition.x / spacing) * spacing - float(x / 2) * spacing,
-                          std::floor(cameraPosition.y / spacing) * spacing - float(y / 2) * spacing,
-                          std::floor(cameraPosition.z / spacing) * spacing - float(z / 2) * spacing};
-    Constants constants{};
-    constants.previous = LIGHTPROBE::BuildIrradianceVolumeGpuData(previous.data, compatible ? 3.0f : 0.0f);
-    constants.originSpacing = {target.data.origin.x, target.data.origin.y, target.data.origin.z, spacing};
-    constants.counts = {x, y, z, x * y * z};
-    constants.work = {UINT(state.sequence), state.firstProbe % constants.counts[3], budget, compatible ? 1u : 0u};
-    constants.lighting = lighting.data;
-    state.stats.localLights = lighting.data.scene[2];
-    state.stats.droppedLights = lighting.droppedLights;
     auto& upload = state.uploads[graphics.frameIndex];
     if (!upload.IsInitialized() && !upload.Init(graphics.device, 4096))
         return {};
     upload.ResetForFrame(graphics.currentFrameRetireFenceValue);
-    const auto cb = upload.Allocate(sizeof(constants));
-    if (!cb)
-        return {};
-    std::memcpy(cb.cpuAddress, &constants, sizeof(constants));
+    std::array<DX::UploadAllocation, kFieldCount> constantBuffers;
+    for (size_t index = 0; index < kFieldCount; ++index)
+        if (state.fields[index].active && !(constantBuffers[index] = upload.Allocate(sizeof(Constants))))
+            return {};
     auto* commands = graphics.cmdList;
     ID3D12DescriptorHeap* heaps[]{graphics.srvHeap};
     commands->SetDescriptorHeaps(1, heaps);
-    target.Transition(commands, true);
     commands->SetComputeRootSignature(state.root.Get());
     commands->SetPipelineState(state.pipeline.Get());
-    commands->SetComputeRootConstantBufferView(0, cb.gpuAddress);
     commands->SetComputeRootShaderResourceView(1, rt.accelerationStructure);
     commands->SetComputeRootShaderResourceView(2, rt.hitRecords ? rt.hitRecords : lighting.localLights);
     commands->SetComputeRootShaderResourceView(3, materials.materials);
@@ -353,36 +473,83 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         8, GFX::DESCRIPTOR::GpuAt(graphics.srvHeap, stride, GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaBegin));
     commands->SetComputeRootDescriptorTable(
         9, GFX::DESCRIPTOR::GpuAt(graphics.srvHeap, stride, GFX::DESCRIPTOR::kUserSrvBegin));
-    commands->SetComputeRootDescriptorTable(10, previous.srvs[0].gpu);
-    commands->SetComputeRootDescriptorTable(11, target.uavs[0].gpu);
-    commands->SetComputeRootDescriptorTable(12, target.uavs[9].gpu);
     commands->SetComputeRootDescriptorTable(13, lighting.sky);
-    commands->Dispatch(constants.counts[3], 1, 1);
-    target.Transition(commands, false);
-    state.published = 1 - state.published;
-    state.history = true;
-    target.data.valid = true;
+    state.stats.probes = state.stats.updatedProbes = 0;
+    state.stats.probeBytes = 0;
+    // 相機の cascade の中心は視線の水平方向へ幅の 3 割だけ前に置く。相機の後ろへ半分を割くと、見えている奥が近景から
+    // 外れ、遠景（間隔 6m）が薄い壁の裏の明るさを部屋の中へ漏らす。
+    MATH::Vec3 ahead{viewTarget.x - cameraPosition.x, 0.0f, viewTarget.z - cameraPosition.z};
+    const float aheadLength = std::sqrt(ahead.x * ahead.x + ahead.z * ahead.z);
+    ahead = aheadLength > 1e-4f && std::isfinite(aheadLength)
+                ? MATH::Vec3{ahead.x / aheadLength, 0.0f, ahead.z / aheadLength}
+                : MATH::Vec3{};
+    for (size_t index = 0; index < kFieldCount; ++index) {
+        auto& field = state.fields[index];
+        if (!field.active)
+            continue;
+        const FieldLayout& layout = field.layout;
+        auto& previous = field.sets[field.published];
+        auto& target = field.sets[1 - field.published];
+        const bool compatible = field.history && sameSource && frameSerial == field.lastFrame + 1;
+        if (!compatible)
+            field.firstProbe = 0;
+        if (index == kRegionField) {
+            target.data.origin = field.fixedOrigin;
+        } else {
+            // probe は間隔の半分ずらした格子に置く。床や壁は整数座標に揃うことが多く、面に重なった probe は
+            // 面の表裏を判定できずに板の反対側へ移されてしまう。
+            const float spacing = layout.spacing.x;
+            const auto gridOrigin = [spacing](float camera, UINT count) {
+                return (std::floor(camera / spacing - 0.5f) + 0.5f - float(count / 2)) * spacing;
+            };
+            const float lead = 0.3f * float(layout.x - 1) * spacing;
+            target.data.origin = {gridOrigin(cameraPosition.x + ahead.x * lead, layout.x),
+                                  gridOrigin(cameraPosition.y, layout.y),
+                                  gridOrigin(cameraPosition.z + ahead.z * lead, layout.z)};
+        }
+        Constants constants{};
+        constants.previous = LIGHTPROBE::BuildIrradianceVolumeGpuData(previous.data, compatible ? 3.0f : 0.0f);
+        constants.origin = {target.data.origin.x, target.data.origin.y, target.data.origin.z, 0.0f};
+        constants.spacing = {layout.spacing.x, layout.spacing.y, layout.spacing.z, 0.0f};
+        constants.counts = {layout.x, layout.y, layout.z, layout.x * layout.y * layout.z};
+        constants.work = {UINT(state.sequence), field.firstProbe % constants.counts[3], layout.budget,
+                          compatible ? 1u : 0u};
+        constants.lighting = lighting.data;
+        std::memcpy(constantBuffers[index].cpuAddress, &constants, sizeof(constants));
+        target.Transition(commands, true);
+        commands->SetComputeRootConstantBufferView(0, constantBuffers[index].gpuAddress);
+        commands->SetComputeRootDescriptorTable(10, previous.srvs[0].gpu);
+        commands->SetComputeRootDescriptorTable(11, target.uavs[0].gpu);
+        commands->SetComputeRootDescriptorTable(12, target.uavs[9].gpu);
+        commands->Dispatch(constants.counts[3], 1, 1);
+        target.Transition(commands, false);
+        target.data.valid = true;
+        field.published = 1 - field.published;
+        field.history = true;
+        field.lastFrame = frameSerial;
+        field.firstProbe = (constants.work[1] + layout.budget) % constants.counts[3];
+        state.stats.probes += constants.counts[3];
+        state.stats.updatedProbes += layout.budget;
+        state.stats.probeBytes += previous.bytes + target.bytes;
+    }
     state.lastFence = graphics.currentFrameRetireFenceValue;
-    state.lastFrame = frameSerial;
     state.sourceIdentity = rt.sceneIdentity;
     state.sourceLayout = rt.sceneLayoutVersion;
     state.lastRaySceneVersion = rt.version;
     state.lastMaterialVersion = rt.materialVersion;
     state.lastLightingContentHash = lighting.contentHash;
     ++state.sequence;
-    state.firstProbe = (constants.work[1] + budget) % constants.counts[3];
     state.stats.status = Status::Ready;
-    state.stats.probes = constants.counts[3];
-    state.stats.updatedProbes = budget;
-    state.stats.primaryRays = budget * 64;
+    state.stats.primaryRays = state.stats.updatedProbes * kProbeRayCount;
+    state.stats.localLights = lighting.data.scene[2];
+    state.stats.droppedLights = lighting.droppedLights;
     state.stats.sequence = state.sequence;
-    state.stats.probeBytes = previous.bytes + target.bytes;
-    return {target.data, target.srvs[0].gpu};
+    return publish();
 }
 void DynamicDiffuseGi::Reset(const GFX::Context& graphics) {
     auto& state = *state_;
-    for (auto& set : state.sets)
-        set.Reset(graphics);
+    for (auto& field : state.fields)
+        field.Reset(graphics);
     for (auto& upload : state.uploads)
         upload.Finalize(&graphics);
     GFX::RetireD3D12ObjectForFrame(state.pipeline, graphics, "DynamicGI.PSO");
@@ -390,10 +557,8 @@ void DynamicDiffuseGi::Reset(const GFX::Context& graphics) {
     state.device = nullptr;
     state.fence.Reset();
     state.lastFence = 0;
-    state.history = false;
     state.sourceIdentity = nullptr;
     state.sequence = state.retryFrame = 0;
-    state.firstProbe = 0;
     state.stats = {};
 }
 } // namespace HIKARI::RENDER3D::DYNAMICGI

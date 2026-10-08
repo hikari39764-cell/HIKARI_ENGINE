@@ -10,11 +10,15 @@
 
 namespace HIKARI {
 
+// 局所光源。太陽と月は環境プロファイルが持つ。
 enum class LightComponentType : uint8_t {
-    Directional = 0,
     Point,
     Spot,
 };
+
+// 光束 [lm] の上限と既定値（白熱電球 60W 相当）。
+inline constexpr float kMaximumLightLumens = 1000000.0f;
+inline constexpr float kDefaultLightLumens = 800.0f;
 
 class LightComponent final : public IComponent {
 public:
@@ -29,6 +33,7 @@ public:
     bool IsEnabled() const noexcept { return enabled_; }
     LightComponentType GetLightType() const noexcept { return type_; }
     const MATH::Vec3& GetColor() const noexcept { return color_; }
+    // 光束 [lm]。描画は光度 I = Φ / 4π [cd] で、距離の二乗で減衰する。
     float GetIntensity() const noexcept { return intensity_; }
     float GetRange() const noexcept { return range_; }
     float GetSourceRadius() const noexcept { return sourceRadius_; }
@@ -36,7 +41,6 @@ public:
     float GetInnerConeAngleDegrees() const noexcept { return innerConeAngleDegrees_; }
     float GetOuterConeAngleDegrees() const noexcept { return outerConeAngleDegrees_; }
     float GetAngularFalloff() const noexcept { return angularFalloff_; }
-    RENDER3D::LIGHTING::LocalLightFalloff GetDistanceFalloff() const noexcept { return distanceFalloff_; }
     int GetPriority() const noexcept { return priority_; }
     uint64_t GetStateRevision() const noexcept { return stateRevision_; }
 
@@ -49,7 +53,6 @@ public:
     void SetCastsShadows(bool value) noexcept;
     void SetSpotConeAnglesDegrees(float innerAngleDegrees, float outerAngleDegrees) noexcept;
     void SetAngularFalloff(float angularFalloff) noexcept;
-    void SetDistanceFalloff(RENDER3D::LIGHTING::LocalLightFalloff value) noexcept;
 
 private:
     void ClampSettings() noexcept;
@@ -58,14 +61,13 @@ private:
     bool enabled_ = true;
     LightComponentType type_ = LightComponentType::Point;
     MATH::Vec3 color_{1.0f, 1.0f, 1.0f};
-    float intensity_ = 1.0f;
-    float range_ = 5.0f;
+    float intensity_ = kDefaultLightLumens;
+    float range_ = 10.0f;
     float sourceRadius_ = 0.0f;
     bool castsShadows_ = true;
     float innerConeAngleDegrees_ = 25.0f;
     float outerConeAngleDegrees_ = 35.0f;
     float angularFalloff_ = 1.0f;
-    RENDER3D::LIGHTING::LocalLightFalloff distanceFalloff_ = RENDER3D::LIGHTING::LocalLightFalloff::InverseSquare;
     int priority_ = 0;
     uint64_t stateRevision_ = 1u;
 };

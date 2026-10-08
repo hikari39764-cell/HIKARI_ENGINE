@@ -36,7 +36,6 @@
 #include "Platform/HIKARI_Win32Window.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Scene/HIKARI_SceneDocument.h"
-#include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
@@ -164,7 +163,6 @@ bool CreateEmptySceneAsset(AssetDatabase& assetDatabase, const std::filesystem::
     // 新規シーンのデフォルト構成として実体のグリッド床を置く。
     document.objects.push_back(BuildDefaultGridFloorSceneObject(document));
     document.systems.push_back(SceneSystemData{"ModelRenderSystem", true, 100, nlohmann::json::object()});
-    LIGHTING_AUTHORING::AddDefaultSceneLight(document);
     const SceneSerializer serializer{};
     if (!serializer.SaveToFile(absoluteScenePath.string(), document)) {
         outError = "Failed to write scene file.";

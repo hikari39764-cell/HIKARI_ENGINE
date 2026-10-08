@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "name": "Pixel",
+  "post": [
+    {
+      "profile": "engine.post.profile.pixel",
+      "enabled": true
+    }
+  ]
+}

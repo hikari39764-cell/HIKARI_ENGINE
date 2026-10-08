@@ -58,8 +58,6 @@ struct TextureResourceBatchLoadStats {
 
 ID3D12DescriptorHeap* GetTextureResourceSrvHeap();
 
-TextureResourceHandle LoadTextureResource(const std::string& name, const std::string& path);
-
 TextureResourceHandle LoadTextureResourceWithColorSpace(const std::string& name, const std::string& path,
                                                         TextureResourceColorSpace colorSpace);
 

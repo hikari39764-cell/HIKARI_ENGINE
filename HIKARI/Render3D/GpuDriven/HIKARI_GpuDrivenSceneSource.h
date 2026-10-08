@@ -75,6 +75,8 @@ struct GpuDrivenSceneSource {
     GpuSceneJointPaletteSnapshotPtr meshShaderJointPalettes{};
     const std::vector<WATER::WaterSurfaceGpuData>* waterSurfaceGpuData = nullptr;
     const std::vector<TERRAIN::TerrainSurfaceGpuData>* terrainSurfaceGpuData = nullptr;
+    // 材質 program を持つ面があるか。無ければ Forward は標準 PBR の PSO だけを dispatch する。
+    bool materialProgramSurfacesPresent = false;
     RUNTIME::SurfaceFeatureFloatPoolSource surfaceFeatureFloats{};
     const MassGpuSceneSource* mass = nullptr;
     uint64_t layoutVersion = 0;

@@ -9,6 +9,7 @@ static const uint HIKARI_MATERIAL_FLAG_ALPHA_MASK = 1u << 1u;
 static const uint HIKARI_MATERIAL_FLAG_EMISSIVE = 1u << 2u;
 static const uint HIKARI_MATERIAL_FLAG_ALPHA_BLEND = 1u << 3u;
 static const uint HIKARI_MATERIAL_FLAG_LEGACY_SPECULAR = 1u << 4u;
+static const uint HIKARI_MATERIAL_FLAG_PAINTERLY_SHELL = 1u << 5u;
 
 // Keep this layout in sync with C++ MaterialGpuData.
 struct HikariMeshMaterialData
@@ -56,6 +57,12 @@ struct HikariMeshMaterialData
     float4 uvRotation1;
     uint4 uvSet0;
     uint4 uvSet1;
+    // 筆触の殻（Painterly Shell）。HIKARI_MATERIAL_FLAG_PAINTERLY_SHELL が立つ材質だけが読む。
+    uint strokeMaskTextureDescriptorIndex;
+    uint strokeNormalTextureDescriptorIndex;
+    uint2 shellStrokePadding;
+    float4 shellStroke0; // x 繰り返し, y 回転, z 色差, w 筆触法線の強さ
+    float4 shellStroke1; // x 輪郭の冪, y 被覆率, z 層数, w 厚み
 };
 
 StructuredBuffer<HikariMeshMaterialData> gMaterialDataBuffer : register(t16);
@@ -104,6 +111,10 @@ HikariMeshMaterialData HikariBuildDefaultMeshMaterialData()
     data.occlusionUvTransform = float4(1.0f, 1.0f, 0.0f, 0.0f);
     data.specularUvTransform = float4(1.0f, 1.0f, 0.0f, 0.0f);
     data.specularColorUvTransform = float4(1.0f, 1.0f, 0.0f, 0.0f);
+    data.strokeMaskTextureDescriptorIndex = HIKARI_INVALID_MESH_MATERIAL_DATA_INDEX;
+    data.strokeNormalTextureDescriptorIndex = HIKARI_INVALID_MESH_MATERIAL_DATA_INDEX;
+    data.shellStroke0 = float4(1.0f, 0.0f, 0.0f, 0.0f);
+    data.shellStroke1 = float4(1.5f, 0.0f, 0.0f, 0.0f);
     return data;
 }
 

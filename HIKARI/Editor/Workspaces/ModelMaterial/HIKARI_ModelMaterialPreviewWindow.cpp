@@ -85,42 +85,9 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(ModelMaterialWorkspace
     ImGui::SameLine(0.0f, 6.0f);
     if (IconButton(EditorGlyph::Add, "ModelMaterialAddStudioLight",
                    studioInspect ? EditorButtonTone::Primary : EditorButtonTone::Quiet, kIconSize,
-                   TEXT::Localize("editor.ui.create.a.studio.point.or.directional.light.92f898").c_str())) {
+                   TEXT::Localize("editor.ui.create.a.studio.point.light").c_str())) {
         previewEnvironmentMode_ = PreviewEnvironmentMode::StudioInspect;
-        ImGui::OpenPopup("ModelMaterialAddStudioLightPopup");
-    }
-    if (ImGui::BeginPopup("ModelMaterialAddStudioLightPopup")) {
-        if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.sceneCreation.pointLight", "Point Light").c_str())) {
-            AddPreviewLight(RENDER3D::LIGHTING::SceneLightType::Point);
-        }
-        if (ImGui::MenuItem(TEXT::LocalizeWindow("ui.sceneCreation.directionalLight", "Directional Light").c_str())) {
-            AddPreviewLight(RENDER3D::LIGHTING::SceneLightType::Directional);
-        }
-        ImGui::EndPopup();
-    }
-    if (selectedPreviewLightIndex_.has_value()) {
-        const bool selectedDirectional = *selectedPreviewLightIndex_ < previewLighting_.lights.size() &&
-                                         previewLighting_.lights[*selectedPreviewLightIndex_].type ==
-                                             RENDER3D::LIGHTING::SceneLightType::Directional;
-        ImGui::SameLine();
-        if (IconButton(EditorGlyph::Translate, "ModelMaterialLightTranslate",
-                       previewLightGizmoState_.operation == EditorTransformGizmoOperation::Translate
-                           ? EditorButtonTone::Primary
-                           : EditorButtonTone::Quiet,
-                       kIconSize, TEXT::Localize("editor.ui.move.the.selected.light.in.the.viewport.9a846a").c_str())) {
-            previewLightGizmoState_.operation = EditorTransformGizmoOperation::Translate;
-        }
-        if (selectedDirectional) {
-            ImGui::SameLine();
-            if (IconButton(EditorGlyph::Rotate, "ModelMaterialLightRotate",
-                           previewLightGizmoState_.operation == EditorTransformGizmoOperation::Rotate
-                               ? EditorButtonTone::Primary
-                               : EditorButtonTone::Quiet,
-                           kIconSize,
-                           TEXT::Localize("editor.ui.rotate.the.selected.directional.light.6283f2").c_str())) {
-                previewLightGizmoState_.operation = EditorTransformGizmoOperation::Rotate;
-            }
-        }
+        AddPreviewLight();
     }
 
     ImGui::SameLine(0.0f, 12.0f);
@@ -396,7 +363,7 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(DocumentSceneBase& scen
     ImGui::SetCursorScreenPos({origin.x, origin.y + canvasSize.y});
     ImGui::Dummy(ImVec2(1.0f, 1.0f));
     ImGui::End();
-    DrawPreviewLightingPanel(scene);
+    DrawPreviewLightingPanel();
 #else
     (void)scene;
     (void)workspaceHost;

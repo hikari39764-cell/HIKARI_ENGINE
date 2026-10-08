@@ -176,7 +176,7 @@ void DrawTemporalTable(const RuntimePerformanceSnapshot& s) {
                   RENDER3D::LocalShadowQualityLabel(renderQuality.localShadowQuality));
         MetricRow("Volumetric / Stylized Cloud Quality", "%s / %s",
                   RENDER3D::VolumetricLightingQualityLabel(renderQuality.volumetricLightingQuality),
-                  RENDER3D::StylizedCloudQualityLabel(renderQuality.stylizedCloudQuality));
+                  RENDER3D::VolumetricCloudQualityLabel(renderQuality.volumetricCloudQuality));
         MetricRow("TAA History / Variance / Depth / Luma / Sharpness", "%.3f / %.3f / %.4f / %.3f / %.3f",
                   renderQuality.taaHistoryWeight, renderQuality.taaVarianceClipGamma, renderQuality.taaDepthRejection,
                   renderQuality.taaLuminanceRejection, renderQuality.taaSharpness);
@@ -209,8 +209,8 @@ void DrawTemporalTable(const RuntimePerformanceSnapshot& s) {
         MetricRow("Exposure Ready / Written", "%s / %s", s.temporalResources.exposureReady ? "yes" : "no",
                   s.temporalResources.exposureWritten ? "yes" : "no");
         MetricRow("Exposure Mode / Multiplier / Pre", "%s / %.3f / %.3f",
-                  RENDER3D::COLOR::ToString(s.temporalResources.exposureMode), s.temporalResources.exposureMultiplier,
-                  s.temporalResources.preExposure);
+                  TEXT::EnumToName(RENDER3D::COLOR::kExposureModeNames, s.temporalResources.exposureMode),
+                  s.temporalResources.exposure, s.temporalResources.preExposure);
         MetricRow("Masks R/T/Invalid Ready / Valid / Source", "%s / %s / %s",
                   (s.temporalResources.reactiveMaskReady && s.temporalResources.transparencyMaskReady &&
                    s.temporalResources.invalidDepthMotionMaskReady)

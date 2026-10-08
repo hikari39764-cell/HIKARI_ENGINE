@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,8 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
 
 inline constexpr size_t kLightProbeVolumeViewSlotCount = LIGHTING::kLightingProviderViewSlotCount;
 inline constexpr size_t kLightProbeVolumeResidentBudget = 8u;
+// 動的 GI の volume（手置きの区域、近景、遠景）。HIKARI_SkyEnvironmentCommon.hlsli と同じ数。
+inline constexpr size_t kDynamicGiVolumeCount = 3u;
 
 struct LightProbeVolumeLoadRequest {
     std::string id{};
@@ -44,7 +47,7 @@ struct LightProbeVolumeRuntimeData {
     std::string sourcePath{};
     uint32_t visibilityTextureDescriptorIndex = UINT32_MAX;
     float visibilityDistanceScale = 0.0f;
-    // 動的 probe は SH0.a に信頼度、SH1..3.a に cell 相対の relocation を保持する。
+    // 動的 probe の描画側は SH9 ではなく probe atlas（visibilityTextureDescriptorIndex）を読む。
     bool dynamic = false;
 };
 
@@ -103,23 +106,19 @@ private:
     LightProbeVolumeViewSelection previousSelection_{};
 };
 
-// GPU 生成の現在フレームだけを先頭 slot に公開する。残り slot は既存 baked set。
-// リソース所有/生成は caller。scope を抜ければ capture 等の旧選択へ戻る。
-class ScopedLightProbeVolumeOverride final {
+// GPU 生成の動的 GI の現在フレームの volume を優先順に公開する。焼き込みの view slot とは別枠。
+// リソース所有/生成は caller。scope を抜ければ以前の公開へ戻り、probe 採取の抑制中（capture 等）は空になる。
+class ScopedDynamicGiVolumes final {
 public:
-    ScopedLightProbeVolumeOverride(const LightProbeVolumeRuntimeData& data, D3D12_GPU_DESCRIPTOR_HANDLE shTable);
-    ~ScopedLightProbeVolumeOverride();
-    ScopedLightProbeVolumeOverride(const ScopedLightProbeVolumeOverride&) = delete;
-    ScopedLightProbeVolumeOverride& operator=(const ScopedLightProbeVolumeOverride&) = delete;
-    const LightProbeVolumeRuntimeData& GetData() const { return *data_; }
-    D3D12_GPU_DESCRIPTOR_HANDLE GetTable() const { return table_; }
+    explicit ScopedDynamicGiVolumes(std::span<const LightProbeVolumeRuntimeData> volumes);
+    ~ScopedDynamicGiVolumes();
+    ScopedDynamicGiVolumes(const ScopedDynamicGiVolumes&) = delete;
+    ScopedDynamicGiVolumes& operator=(const ScopedDynamicGiVolumes&) = delete;
 
 private:
-    const LightProbeVolumeRuntimeData* data_ = nullptr;
-    D3D12_GPU_DESCRIPTOR_HANDLE table_{};
-    ScopedLightProbeVolumeOverride* previous_ = nullptr;
-    bool active_ = false;
+    std::span<const LightProbeVolumeRuntimeData> previous_{};
 };
+std::span<const LightProbeVolumeRuntimeData> GetDynamicGiVolumes();
 
 // View slot に選ばれた SH9 Texture3D descriptor table を返す。
 D3D12_GPU_DESCRIPTOR_HANDLE GetViewShVolumeSrvTable(size_t slot);

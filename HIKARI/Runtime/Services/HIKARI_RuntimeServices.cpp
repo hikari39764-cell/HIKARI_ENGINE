@@ -25,7 +25,7 @@
 #include "Render2D/HIKARI_GameUiEffectRenderer.h"
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
-#include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
+#include "Render3D/Lighting/HIKARI_VolumetricCloudStage.h"
 #include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
@@ -225,7 +225,12 @@ bool Initialize(const char* title, const RUNTIME::HostBootstrapConfig& cfg, std:
 
     CORE::StartupTimer streamlineTimer("Streamline.early");
     gStreamlineEnabled = cfg.enableStreamline;
-    const bool enableFrameGenerationPlugins = IsEditorHostMode(cfg.hostMode) || IsStandaloneGameHostMode(cfg.hostMode);
+    // DLSS-G の読み込みは起動を 2.5〜3 秒延ばす。エディタはプロジェクトの画質設定で有効な時だけ読み込み（途中で有効に
+    // した時は再起動で反映）、単体ゲームはプレイヤーが途中で切り替えられるよう常に読み込む。
+    const bool enableFrameGenerationPlugins =
+        IsStandaloneGameHostMode(cfg.hostMode) ||
+        (IsEditorHostMode(cfg.hostMode) &&
+         RENDER3D::GetRenderQualitySettings().frameGenerationMode == RENDER3D::RenderFrameGenerationMode::Dlss);
     if (gStreamlineEnabled) {
         gStreamlineEnabled = RENDER3D::UPSCALING::InitializeStreamlineEarly(
             enableFrameGenerationPlugins, CORE::GetLogFilePath().parent_path() / "Streamline");
@@ -451,7 +456,7 @@ void FinalizeAll() {
         RENDER3D::TEMPORAL::ShutdownMotionVectorPass();
         RENDER3D::TEMPORAL::ShutdownTemporalResourceSystem(temporalReleaseMode);
         RENDER3D::TEMPORAL::ShutdownTemporalFrameStateSystem();
-        RENDER3D::CLOUDS::ShutdownStylizedCloudStage();
+        RENDER3D::CLOUDS::ShutdownVolumetricCloudStage();
         RENDER3D::PANORAMA_SKY::ShutdownPanoramaSkyLayerStage();
         RENDER3D::VOLUMETRIC::ShutdownVolumetricLightingStage();
         SKYRENDERER::ShutdownAtmosphereRuntime();

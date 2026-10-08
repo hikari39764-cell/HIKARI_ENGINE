@@ -650,6 +650,9 @@ bool VfxPreviewSession::CopyFrom(const VfxPreviewSession& source, std::string& m
     showPreviewAxes_ = source.showPreviewAxes_;
     *previewEnvironment_ = *source.previewEnvironment_;
     *previewLighting_ = *source.previewLighting_;
+    previewLightYaw_ = source.previewLightYaw_;
+    previewLightIntensity_ = source.previewLightIntensity_;
+    previewBackdrop_ = source.previewBackdrop_;
     return true;
 }
 

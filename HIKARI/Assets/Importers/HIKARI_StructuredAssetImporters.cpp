@@ -1,3 +1,4 @@
+#include "Assets/Environment/HIKARI_EnvironmentAsset.h"
 #include "Assets/Importers/HIKARI_StructuredAssetImporters.h"
 #include "Assets/Importers/HIKARI_AssetImporterRegistry.h"
 #include "Assets/Animation/HIKARI_AnimationStateMachineAsset.h"
@@ -6,6 +7,7 @@
 #include "Assets/Sequence/HIKARI_SequenceAsset.h"
 #include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Assets/Post/HIKARI_PostAsset.h"
+#include "Assets/RenderStyle/HIKARI_RenderStyleAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
 #include <unordered_set>
@@ -203,6 +205,42 @@ AssetImportResult ImportPostProfile(const std::filesystem::path& sourcePath, con
             .dump();
     return result;
 }
+
+AssetImportResult ImportEnvironment(const std::filesystem::path& sourcePath, const AssetGuid&) {
+    AssetImportResult result;
+    ENVIRONMENT::EnvironmentProfileAsset asset;
+    result.success = ENVIRONMENT::LoadEnvironmentProfileAsset(sourcePath, asset, result.message);
+    if (result.success) {
+        result.message = "Environment profile validated";
+        result.dependencies = ENVIRONMENT::CollectEnvironmentProfileDependencies(asset);
+    }
+    result.diagnosticsJson = nlohmann::json{{"valid", result.success}, {"name", asset.name}}.dump();
+    return result;
+}
+
+AssetImportResult ImportRenderStyle(const std::filesystem::path& sourcePath, const AssetGuid&) {
+    AssetImportResult result;
+    RENDERSTYLE::RenderStyleAsset style;
+    result.success = RENDERSTYLE::LoadRenderStyleAsset(sourcePath, style, result.message);
+    if (result.success) {
+        result.message = "Render style validated";
+        result.dependencies = RENDERSTYLE::CollectRenderStyleDependencies(style);
+    }
+    result.diagnosticsJson =
+        nlohmann::json{{"valid", result.success}, {"name", style.name}, {"postLayerCount", style.post.size()}}.dump();
+    return result;
+}
+
+AssetImportResult ImportWeather(const std::filesystem::path& sourcePath, const AssetGuid&) {
+    AssetImportResult result;
+    ENVIRONMENT::WeatherPresetAsset asset;
+    result.success = ENVIRONMENT::LoadWeatherPresetAsset(sourcePath, asset, result.message);
+    if (result.success) {
+        result.message = "Weather preset validated";
+    }
+    result.diagnosticsJson = nlohmann::json{{"valid", result.success}, {"name", asset.name}}.dump();
+    return result;
+}
 } // namespace
 
 void RegisterStructuredAssetImporters(AssetImporterRegistry& registry) {
@@ -217,5 +255,8 @@ void RegisterStructuredAssetImporters(AssetImporterRegistry& registry) {
     add(ImporterKind::UiAnimation, nullptr, ImportUiAnimation);
     add(ImporterKind::PostEffect, nullptr, ImportPostEffect);
     add(ImporterKind::PostProfile, nullptr, ImportPostProfile);
+    add(ImporterKind::Environment, nullptr, ImportEnvironment);
+    add(ImporterKind::Weather, nullptr, ImportWeather);
+    add(ImporterKind::RenderStyle, nullptr, ImportRenderStyle);
 }
 } // namespace HIKARI

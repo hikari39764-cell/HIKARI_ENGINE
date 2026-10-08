@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 #include "Assets/HIKARI_AssetDatabase.h"
@@ -70,6 +71,34 @@ private:
     const AssetDatabase* database_ = nullptr;
     mutable uint64_t revision_ = 0;
     mutable std::unordered_map<std::string, Entry> entries_;
+};
+
+// エンジン内蔵の資産（ID → 内容フォルダーのファイル）。実行中に変わらないので成功した読み込みだけを保持する。
+template <class Asset>
+class BuiltinAssetCache {
+public:
+    using Loader = bool (*)(const std::filesystem::path&, Asset&, std::string&);
+
+    std::shared_ptr<const Asset> Load(std::string_view id, const std::filesystem::path& path, Loader load,
+                                      std::string& error) const {
+        if (const auto found = entries_.find(std::string(id)); found != entries_.end()) {
+            return found->second;
+        }
+        if (path.empty()) {
+            error = "Unknown engine content: " + std::string(id);
+            return {};
+        }
+        auto asset = std::make_shared<Asset>();
+        if (!load(path, *asset, error)) {
+            return {};
+        }
+        std::shared_ptr<const Asset> result = std::move(asset);
+        entries_.emplace(std::string(id), result);
+        return result;
+    }
+
+private:
+    mutable std::unordered_map<std::string, std::shared_ptr<const Asset>> entries_;
 };
 
 } // namespace HIKARI

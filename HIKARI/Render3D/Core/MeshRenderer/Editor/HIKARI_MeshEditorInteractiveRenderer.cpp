@@ -69,14 +69,9 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
     }
     std::optional<REFLECTION::ScopedReflectionProbeSamplingSuppress> reflectionProbeSuppress{};
     std::optional<RENDER3D::LIGHTPROBE::ScopedLightProbeVolumeSamplingSuppress> lightProbeSuppress{};
-    SceneEnvironment isolatedEnvironment{};
-    const SceneEnvironment* renderEnvironment = &environment;
     if (settings.suppressSpatialLightingProviders) {
         reflectionProbeSuppress.emplace();
         lightProbeSuppress.emplace();
-        isolatedEnvironment = environment;
-        isolatedEnvironment.surfaceLightmaps.enabled = false;
-        renderEnvironment = &isolatedEnvironment;
     }
 
     const Camera3D& camera = view.cameraFrame->camera;
@@ -89,17 +84,22 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
     } else {
         editorFrame.view.ClearLocalLights();
     }
-    FillLightCB(*renderEnvironment, editorFrame.view.localLightList, settings.debugView, editorFrame.view.light,
+    FillLightCB(environment, editorFrame.view.localLightList, settings.debugView, editorFrame.view.light,
                 gMeshRendererState.debugStats);
-    FillShadowCB(*renderEnvironment, GFX::GetCurrentContext().frameIndex, editorFrame.view.shadow);
-    FillSkyEnvironmentCB(*renderEnvironment, cameraPosition, camera.GetTarget(), editorFrame.view.skyEnvironment);
+    FillShadowCB(environment, GFX::GetCurrentContext().frameIndex, editorFrame.view.shadow);
+    FillSkyEnvironmentCB(environment, cameraPosition, camera.GetTarget(), editorFrame.view.skyEnvironment);
+    if (settings.suppressSpatialLightingProviders) {
+        editorFrame.view.skyEnvironment.ambientSamplingParams.w = 0.0f;
+    }
     if (settings.neutralLighting) {
+        // 中立照明は露出に依らない表示参照の明るさ。shader の前露出 P を打ち消す値で書く。
         LightCB& light = editorFrame.view.light;
+        const float displayToScene = light.viewExposure.y;
         light.directionalDir = {0.35f, -0.82f, 0.45f, 0.0f};
         light.directionalColor = {1.0f, 0.98f, 0.94f, 1.0f};
-        light.directionalIntensity = 0.75f;
+        light.directionalIntensity = 0.75f * displayToScene;
         light.ambientColor = {0.92f, 0.96f, 1.0f, 1.0f};
-        light.ambientIntensity = 0.55f;
+        light.ambientIntensity = 0.55f * displayToScene;
         light.localLightCount = 0;
         light.fogParams.x = 0.0f;
         editorFrame.view.shadow.enabled = 0;

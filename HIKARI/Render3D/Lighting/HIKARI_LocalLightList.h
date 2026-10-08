@@ -5,7 +5,6 @@
 
 #include <d3d12.h>
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
-#include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_LocalLightGpuData.h"
 
 namespace HIKARI {
@@ -87,9 +86,5 @@ LocalLightListView SelectVisibleLocalLights(const SceneLightingSet& lighting, co
 LocalLightListView BuildLocalLightList(const SceneLightingSet& lighting, const Camera3D& camera, uint32_t screenWidth,
                                        uint32_t screenHeight, const LocalLightListBuildOutput& output,
                                        std::span<const LocalLightShadowAssignment> shadows = {});
-
-const SceneLightProvider* SelectDirectionalLight(const SceneLightingSet& lighting) noexcept;
-
-DirectionalLight ResolveDirectionalLight(const SceneLightingSet& lighting) noexcept;
 
 } // namespace HIKARI::RENDER3D::LIGHTING

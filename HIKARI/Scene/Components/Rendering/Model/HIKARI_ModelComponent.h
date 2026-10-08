@@ -114,7 +114,6 @@ public:
 
 private:
     void NotifyRenderStateDirty();
-    MaterialSlotId ResolveCurrentSlotId(uint32_t slotIndex) const noexcept;
 
     ModelAsset* asset_ = nullptr;
     std::string assetId_{};

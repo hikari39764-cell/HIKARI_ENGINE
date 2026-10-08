@@ -15,23 +15,12 @@ constexpr BuiltinPostContent kBuiltinPostContent[]{
     {"engine.post.effect.ani", "engine.post.profile.ani", "Ani", "Ani"},
     {"engine.post.effect.crtdy", "engine.post.profile.crtdy", "CRTDY", "CRTDY"},
     {"engine.post.effect.cyber", "engine.post.profile.cyber", "CYBER", "CYBER"},
-    {"engine.post.effect.whiteblack", "engine.post.profile.whiteblack", "WHITEBLACK", "WHITEBLACK"},
+    {"engine.post.effect.manga", "engine.post.profile.manga", "Manga", "Manga"},
+    {"engine.post.effect.pixel", "engine.post.profile.pixel", "Pixel", "Pixel"},
+    {"engine.post.effect.painterly", "engine.post.profile.painterly", "Painterly", "Painterly"},
+    {"engine.post.effect.sketch", "engine.post.profile.sketch", "Sketch", "Sketch"},
+    {"engine.post.effect.outline", "engine.post.profile.outline", "Outline", "Outline"},
 };
-
-bool ReadFormatVersion(const nlohmann::json& root, uint32_t expected, std::string& error) {
-    uint32_t version = 0u;
-    if (!root.is_object() || !root.contains("formatVersion")) {
-        return JSONSTRICT::Fail(error, "root.formatVersion is required");
-    }
-    if (!JSONSTRICT::ReadUint32(root, "formatVersion", 0u, version, error, "root")) {
-        return false;
-    }
-    if (version != expected) {
-        return JSONSTRICT::Fail(error, "unsupported formatVersion " + std::to_string(version) +
-                                           " (supported: " + std::to_string(expected) + ")");
-    }
-    return true;
-}
 
 bool ReadPass(const nlohmann::json& node, PostEffectPass& pass, std::string& error, const std::string& path) {
     if (!node.is_object()) {
@@ -76,7 +65,7 @@ bool ReadScreenWarp(const nlohmann::json& node, PostEffectDefinition& effect, st
 } // namespace
 
 bool ReadPostEffectDefinition(const nlohmann::json& root, PostEffectDefinition& out, std::string& error) {
-    if (!ReadFormatVersion(root, kPostEffectFormatVersion, error)) {
+    if (!JSONSTRICT::RequireFormatVersion(root, kPostEffectFormatVersion, error)) {
         return false;
     }
     PostEffectDefinition effect;
@@ -84,13 +73,23 @@ bool ReadPostEffectDefinition(const nlohmann::json& root, PostEffectDefinition& 
         if (!inputs->is_array())
             return JSONSTRICT::Fail(error, "inputs must be an array");
         for (const auto& input : *inputs) {
-            if (input != "SurfaceFeatureMask" || effect.requiresSurfaceFeatureMask)
-                return JSONSTRICT::Fail(error, "inputs supports SurfaceFeatureMask once only");
-            effect.requiresSurfaceFeatureMask = true;
+            PostEffectInput kind{};
+            if (!input.is_string() || !TEXT::TryParseEnum(kPostEffectInputNames, input.get<std::string>(), kind))
+                return JSONSTRICT::Fail(error, "inputs supports SceneDepth and SurfaceFeatureMask");
+            bool& required =
+                kind == PostEffectInput::SceneDepth ? effect.requiresSceneDepth : effect.requiresSurfaceFeatureMask;
+            if (required)
+                return JSONSTRICT::Fail(error, "inputs lists " + input.get<std::string>() + " more than once");
+            required = true;
         }
     }
-    if (!JSONSTRICT::ReadString(root, "name", {}, effect.name, error, "root")) {
+    std::string phase;
+    if (!JSONSTRICT::ReadString(root, "name", {}, effect.name, error, "root") ||
+        !JSONSTRICT::ReadString(root, "phase", "Scene", phase, error, "root")) {
         return false;
+    }
+    if (!TEXT::TryParseEnum(kPostEffectPhaseNames, phase, effect.phase)) {
+        return JSONSTRICT::Fail(error, "root.phase must be Scene or Display");
     }
     const auto passes = root.find("passes");
     if (passes == root.end() || !passes->is_array() || passes->empty()) {
@@ -120,7 +119,7 @@ bool LoadPostEffectDefinition(const std::filesystem::path& path, PostEffectDefin
 }
 
 bool ReadPostProfileAsset(const nlohmann::json& root, PostProfileAsset& out, std::string& error) {
-    if (!ReadFormatVersion(root, kPostProfileFormatVersion, error)) {
+    if (!JSONSTRICT::RequireFormatVersion(root, kPostProfileFormatVersion, error)) {
         return false;
     }
     PostProfileAsset profile;

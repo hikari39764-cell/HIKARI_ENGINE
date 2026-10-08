@@ -269,8 +269,7 @@ ScreenSpaceFrameResult ExecuteScreenSpacePreLightingPasses(ScreenSpaceRuntimeSta
     const bool ssrNeedsSurface = environment.screenSpaceReflections.enabled &&
                                  environment.screenSpaceReflections.quality != ScreenSpaceReflectionQuality::Off;
     const bool geometryAuxRequired = ssrNeedsSurface || requirements.requirePackedSurface ||
-                                     (ssaoMode != SsaoMode::Off && ssaoMode != SsaoMode::Balanced &&
-                                      !environment.ambientOcclusion.editorViewportSuppressed);
+                                     (ssaoMode != SsaoMode::Off && ssaoMode != SsaoMode::Balanced);
     const bool meshletCurrentDepth = geometryAuxRequired &&
                                      GetRenderQualitySettings().geometryPipeline == GeometryPipelineMode::MeshShader &&
                                      !MESHRENDERER::IsGpuDrivenCullingCameraFrozen();
@@ -342,7 +341,7 @@ ScreenSpaceFrameResult ExecuteScreenSpacePreLightingPasses(ScreenSpaceRuntimeSta
     const float depthVisibilityMs = ElapsedMs(depthVisibilityStart, CpuClock::now());
 
     // Off 時は GeometryAux も作らない。
-    if (ssaoMode == SsaoMode::Off || environment.ambientOcclusion.editorViewportSuppressed) {
+    if (ssaoMode == SsaoMode::Off) {
         if (ssrNeedsSurface || requirements.requirePackedSurface) {
             // Continue to the shared surface write; SSAO remains disabled.
         } else {
@@ -412,7 +411,7 @@ ScreenSpaceFrameResult ExecuteScreenSpacePreLightingPasses(ScreenSpaceRuntimeSta
         return result;
     }
 
-    if (ssaoMode == SsaoMode::Off || environment.ambientOcclusion.editorViewportSuppressed) {
+    if (ssaoMode == SsaoMode::Off) {
         state.ssaoRenderer.RecordSkipped(context.width, context.height, environment.ambientOcclusion);
         state.ssaoValid = false;
         return result;
@@ -462,9 +461,7 @@ bool ExecuteScreenSpacePostOpaquePasses(ScreenSpaceRuntimeState& state,
     const SsaoMode ssaoMode = ResolveEffectiveSsaoMode(environment.ambientOcclusion);
     // 同フレーム経路 (ExecuteBalancedSsaoFromSceneDepth) が成功した場合は
     // temporal 更新を省く。フラグはここで毎フレーム消費する。
-    const bool refreshBalancedSsao = ssaoMode == SsaoMode::Balanced &&
-                                     !environment.ambientOcclusion.editorViewportSuppressed &&
-                                     !state.balancedSsaoSameFrame;
+    const bool refreshBalancedSsao = ssaoMode == SsaoMode::Balanced && !state.balancedSsaoSameFrame;
     state.balancedSsaoSameFrame = false;
 
     if (!context.renderTargetAccess.BeginDepthRead()) {
@@ -534,8 +531,8 @@ bool ExecuteBalancedSsaoFromSceneDepth(ScreenSpaceRuntimeState& state,
                                        const SceneEnvironment& environment, ScreenSpaceFrameResult& result) {
     state.balancedSsaoSameFrame = false;
     const SsaoMode ssaoMode = ResolveEffectiveSsaoMode(environment.ambientOcclusion);
-    if (ssaoMode != SsaoMode::Balanced || environment.ambientOcclusion.editorViewportSuppressed ||
-        context.graphics == nullptr || context.cmd == nullptr || !context.sceneDepth.IsSampleable()) {
+    if (ssaoMode != SsaoMode::Balanced || context.graphics == nullptr || context.cmd == nullptr ||
+        !context.sceneDepth.IsSampleable()) {
         return false;
     }
 

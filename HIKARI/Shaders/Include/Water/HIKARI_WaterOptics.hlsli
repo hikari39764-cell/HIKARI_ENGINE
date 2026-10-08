@@ -43,17 +43,20 @@ float HikariWaterOpticsLayeredNoise(float2 localXZ, float time)
     return noise * (1.0f / 3.0f);
 }
 
+// 表示上の明るさ（露出後）で滑らかに頭を抑え、絶対量へ戻す。露出に依らず同じ見た目になる。
 float3 HikariWaterSoftCompressHdr(
     float3 radiance,
     float knee)
 {
-    const float3 safeRadiance = min(
+    const float3 display = HikariRadianceToDisplayReferred(
         max(HikariFiniteOr(radiance, 0.0f.xxx), 0.0f.xxx),
-        65504.0f.xxx);
+        gViewExposure);
     const float safeKnee = max(
         HikariFiniteOr(knee, 0.12f),
         0.01f);
-    return safeRadiance / (1.0f.xxx + safeRadiance * safeKnee);
+    return HikariDisplayReferredToRadiance(
+        display / (1.0f.xxx + display * safeKnee),
+        gViewExposure);
 }
 
 float3 HikariWaterApplyReflectionBudget(
@@ -63,9 +66,10 @@ float3 HikariWaterApplyReflectionBudget(
     const float gain = clamp(HikariFiniteOr(
         reflectionStrength,
         0.62f), 0.0f, 2.0f);
-    const float3 safeRadiance = min(
+    // 予算は表示上の明るさで決める。
+    const float3 safeRadiance = HikariRadianceToDisplayReferred(
         max(HikariFiniteOr(radiance, 0.0f.xxx), 0.0f.xxx),
-        65504.0f.xxx);
+        gViewExposure);
     const float peak = max(
         max(safeRadiance.r, safeRadiance.g),
         safeRadiance.b);
@@ -77,9 +81,9 @@ float3 HikariWaterApplyReflectionBudget(
     const float budgetScale = budget / max(
         budget + peak * 0.35f,
         1.0e-4f);
-    return min(
+    return HikariDisplayReferredToRadiance(
         safeRadiance * budgetScale * gain,
-        65504.0f.xxx);
+        gViewExposure);
 }
 
 float HikariWaterResolveFresnel(
@@ -126,6 +130,28 @@ float3 HikariWaterResolveSunRadiance()
     return HikariWaterSoftCompressHdr(max(directional, atmosphere), 0.08f);
 }
 
+// 上向きの面が空から受ける拡散光（反照率 1 の面の出射輝度）。水中の散乱と泡の照明に使う。
+float3 HikariWaterSkyAmbient()
+{
+    return max(
+        HikariFiniteOr(
+            HikariEvaluateSkyDiffuseIrradiance(float3(0.0f, 1.0f, 0.0f)),
+            0.0f.xxx),
+        0.0f.xxx);
+}
+
+// 泡などの拡散面の照明（空 + 太陽）。sunShadow は太陽の影。
+float3 HikariWaterDiffuseLighting(float3 normal, float3 lightDirection, float sunShadow)
+{
+    const float3 sun = max(
+        HikariFiniteOr(
+            gDirectionalColor.rgb * max(HikariFiniteOr(gDirectionalIntensity, 0.0f), 0.0f),
+            0.0f.xxx),
+        0.0f.xxx);
+    return HikariWaterSkyAmbient() +
+        sun * (saturate(dot(normal, lightDirection)) * saturate(sunShadow) / 3.14159265f);
+}
+
 float3 HikariWaterResolveSkyFallback(
     float3 direction,
     float3 authoredFallback,
@@ -139,27 +165,19 @@ float3 HikariWaterResolveSkyFallback(
             HikariSampleSkyEnvironment(safeDirection),
             0.0f.xxx),
         0.0f.xxx);
+    // 作者の散乱色は空の拡散光で照らした反射率として扱う（夜は暗く、昼は明るい）。
     const float3 authored = max(
         HikariFiniteOr(authoredFallback, 0.0f.xxx),
-        0.0f.xxx);
-    const float3 horizon = max(
-        HikariFiniteOr(
-            lerp(
-                gSkyHorizonColor,
-                gSkyZenithColor,
-                saturate(safeDirection.y * 0.5f + 0.5f)) *
-                max(HikariFiniteOr(gSkyExposure, 0.0f), 0.0f),
-            0.0f.xxx),
-        0.0f.xxx);
+        0.0f.xxx) * HikariWaterSkyAmbient();
     const float safeStrength = clamp(
         HikariFiniteOr(strength, 1.0f),
         0.0f,
         2.0f);
     // Never let an unavailable sky/environment descriptor turn the water
-    // black.  The authored scattering color is a controlled final fallback.
+    // black.  The lit authored scattering color is a controlled final fallback.
     return min(
-        max(sky * safeStrength, max(authored * 0.35f, horizon * 0.20f)),
-        65504.0f.xxx);
+        max(sky * safeStrength, authored * 0.35f),
+        HikariMaxSceneRadiance(gViewExposure).xxx);
 }
 
 float3 HikariWaterResolveSceneCapture(
@@ -170,10 +188,10 @@ float3 HikariWaterResolveSceneCapture(
 {
     const float3 safeSample = min(
         max(HikariFiniteOr(sampledColor, 0.0f.xxx), 0.0f.xxx),
-        65504.0f.xxx);
+        HikariMaxSceneRadiance(gViewExposure).xxx);
     const float3 safeFallback = min(
         max(HikariFiniteOr(skyFallback, 0.0f.xxx), 0.0f.xxx),
-        65504.0f.xxx);
+        HikariMaxSceneRadiance(gViewExposure).xxx);
     const float valid = saturate(HikariFiniteOr(validity, 0.0f));
     const float safeConfidence = saturate(HikariFiniteOr(
         confidence,
@@ -183,7 +201,7 @@ float3 HikariWaterResolveSceneCapture(
         safeFallback * (valid > 0.5f ? 0.015f : 1.0f));
     return min(
         lerp(safeFallback, guardedSample, valid * safeConfidence),
-        65504.0f.xxx);
+        HikariMaxSceneRadiance(gViewExposure).xxx);
 }
 
 float3 HikariWaterBlendWithSceneHorizon(
@@ -197,13 +215,13 @@ float3 HikariWaterBlendWithSceneHorizon(
 {
     const float3 safeWater = min(
         max(HikariFiniteOr(waterColor, 0.0f.xxx), 0.0f.xxx),
-        65504.0f.xxx);
+        HikariMaxSceneRadiance(gViewExposure).xxx);
     const float3 safeScene = min(
         max(HikariFiniteOr(capturedSceneColor, safeWater), 0.0f.xxx),
-        65504.0f.xxx);
+        HikariMaxSceneRadiance(gViewExposure).xxx);
     const float3 safeSky = min(
         max(HikariFiniteOr(explicitSkyRadiance, safeWater), 0.0f.xxx),
-        65504.0f.xxx);
+        HikariMaxSceneRadiance(gViewExposure).xxx);
     if (saturate(HikariFiniteOr(opaqueReceiverValidity, 0.0f)) > 0.5f)
     {
         return safeWater;
@@ -276,9 +294,11 @@ float3 HikariWaterResolveBeerLambert(
         0.0f.xxx));
 }
 
+// scatteringColor は散乱の反照率。ambientRadiance（空の拡散光）と太陽で照らす。
 float3 HikariWaterResolveSingleLayerScattering(
     float3 sceneRadiance,
     float3 scatteringColor,
+    float3 ambientRadiance,
     float3 transmittance,
     float3 viewDirection,
     float3 lightDirection,
@@ -311,12 +331,12 @@ float3 HikariWaterResolveSingleLayerScattering(
         safeSolarStrength * forwardPhase;
     const float3 singleLayer =
         safeScene * safeTransmittance +
-        safeScatter * opticalLayer +
+        safeScatter * max(HikariFiniteOr(ambientRadiance, 0.0f.xxx), 0.0f.xxx) * opticalLayer +
         max(HikariFiniteOr(sunRadiance, 0.0f.xxx), 0.0f.xxx) *
             opticalLayer * solarScale;
     return min(
         max(HikariFiniteOr(singleLayer, safeScatter), 0.0f.xxx),
-        65504.0f.xxx);
+        HikariMaxSceneRadiance(gViewExposure).xxx);
 }
 
 float3 HikariWaterResolveEnvironmentFallback(
@@ -344,7 +364,7 @@ float3 HikariWaterResolveEnvironmentFallback(
         clamp(HikariFiniteOr(reflectionIntensity, 1.0f), 0.0f, 2.0f);
     // max() is intentional: this is a replacement fallback, not another
     // additive reflection provider, so SSR/probe/sky cannot double energy.
-    return min(max(provider, skyProvider), 65504.0f.xxx);
+    return min(max(provider, skyProvider), HikariMaxSceneRadiance(gViewExposure).xxx);
 }
 
 float3 HikariWaterResolveSsrReplacement(
@@ -356,9 +376,11 @@ float3 HikariWaterResolveSsrReplacement(
     const float3 provider = max(
         HikariFiniteOr(providerRadiance, 0.0f.xxx),
         0.0f.xxx);
+    // 範囲の検査は呼び出し側が Pre-Exposure 済みの値で済ませている。
     const bool validRadiance =
         ssr.hit != 0u &&
-        HikariIsValidScreenSpaceReflectionRadiance(ssr.radiance);
+        HikariIsFiniteFloat3(ssr.radiance) &&
+        all(ssr.radiance >= 0.0f.xxx);
     const float weight = validRadiance
         ? saturate(HikariFiniteOr(
             ssr.confidence * maxWeight,
@@ -369,7 +391,7 @@ float3 HikariWaterResolveSsrReplacement(
         provider * 0.06f);
     return min(
         lerp(provider, reflected, weight),
-        65504.0f.xxx);
+        HikariMaxSceneRadiance(gViewExposure).xxx);
 }
 
 float3 HikariWaterResolveMicroNormal(

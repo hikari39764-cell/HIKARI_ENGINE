@@ -7,6 +7,7 @@
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 #include "Include/Surface/HIKARI_SurfacePartition.hlsli"
 #include "Include/Surface/HIKARI_MaterialShell.hlsli"
+#include "Include/Surface/HIKARI_PainterlyShell.hlsli"
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
 #include "Include/HIKARI_PbrCommon.hlsli"
 #include "Include/Material/HIKARI_MaterialExpressionSurface.hlsli"
@@ -71,9 +72,18 @@ float4 main(PSInput input) : SV_TARGET
     // 分割 PSO では AS が担当面だけを渡す。
     static const bool terrainSurface = HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_TERRAIN;
 #endif
+    // 筆触の殻：forward と同じ関数と入力で殻の被覆を確定する（地形は殻を持たない）。
+    const bool painterly = !terrainSurface && HikariIsPainterlyShellMaterial(materialData);
+    HikariPainterlyStroke stroke = (HikariPainterlyStroke)0;
+    if (painterly)
+    {
+        stroke = HikariSamplePainterlyStroke(materialData, gLinearWrap, input.uv, input.shellLayer);
+        HikariApplyPainterlyShellCoverage(materialData, input.shellLayer, input.position.xy, gTimeParams.w,
+            geometricNormal, HikariCameraViewDirection(input.worldPosWS), stroke.mask);
+    }
     HikariMaterialExpressionResult materialExpression = (HikariMaterialExpressionResult)0;
 #if HIKARI_SURFACE_PARTITION != HIKARI_SURFACE_PARTITION_TERRAIN
-    if (!terrainSurface &&
+    if (!terrainSurface && !painterly &&
         materialData.materialProgramIndex != HIKARI_STANDARD_PBR_MATERIAL_PROGRAM)
     {
         HikariMaterialExpressionContext expressionContext =
@@ -115,6 +125,11 @@ float4 main(PSInput input) : SV_TARGET
     HikariMaterialPbrInputs pbrInputs = HikariResolveMaterialPbrInputs(
         materialData, input.uv, input.uv1, gLinearWrap);
     HikariApplyMaterialExpressionPbr(materialExpression, pbrInputs);
+    if (painterly)
+    {
+        HikariApplyPainterlyShellPbr(
+            input.shellLayer, pbrInputs.metallic, pbrInputs.roughness, pbrInputs.specularFactor);
+    }
     float roughness = pbrInputs.roughness;
     const float metallic = pbrInputs.metallic;
 
@@ -149,6 +164,10 @@ float4 main(PSInput input) : SV_TARGET
     {
         n = HikariResolveMaterialExpressionNormal(
             materialExpression, materialData.normalScale, geometricNormal, input.tangentWS, n);
+        if (painterly)
+        {
+            n = HikariApplyPainterlyStrokeNormal(n, geometricNormal, input.tangentWS, stroke.normalTS);
+        }
         roughness = HikariFilterPerceptualRoughness(roughness, ddx(n), ddy(n));
     }
     const float4 packedSurface = HikariPackSceneSurface(n, roughness, metallic);

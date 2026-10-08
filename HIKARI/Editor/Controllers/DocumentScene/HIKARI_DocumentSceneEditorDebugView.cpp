@@ -33,6 +33,8 @@ void DocumentSceneEditorController::DrawDebugViewWindow(DocumentSceneBase& scene
     ImGui::Checkbox(TEXT::Localize("ui.debugView.showLegend").c_str(), &context_.viewportDebug.showLegend);
     ImGui::Checkbox(TEXT::Localize("ui.debugView.freezeCullingCamera").c_str(),
                     &context_.viewportDebug.freezeCullingCamera);
+    ImGui::Checkbox(TEXT::Localize("ui.debugView.showShadowCascades").c_str(),
+                    &context_.viewportDebug.showShadowCascades);
 
     if (context_.viewportDebug.renderView == RenderDebugView::None) {
         ImGui::TextDisabled("%s", TEXT::Localize("ui.debugView.normalShaded").c_str());

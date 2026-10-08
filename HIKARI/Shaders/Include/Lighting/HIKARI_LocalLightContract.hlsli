@@ -3,7 +3,6 @@
 
 static const uint HIKARI_LOCAL_LIGHT_TYPE_POINT = 0u;
 static const uint HIKARI_LOCAL_LIGHT_TYPE_SPOT = 1u;
-static const uint HIKARI_LOCAL_LIGHT_FALLOFF_INVERSE_SQUARE = 1u;
 
 // Keep this layout synchronized with
 // RENDER3D::LIGHTING::LocalLightGpuData.
@@ -14,7 +13,7 @@ struct HikariLocalLightGpuData
     float4 directionInnerCos;
     float outerConeCos;
     float angularFalloff;
-    uint kind; // low byte: type, next byte: distance falloff, upper16: shadow first face + 1
+    uint kind; // low byte: type, upper16: shadow first face + 1
     float sourceRadius;
 };
 
@@ -47,27 +46,20 @@ float3 HikariSampleEmitterCone(float3 axis, float halfAngleSineSquared, float2 s
     return axis * cosine + (tangent*cos(azimuth) + cross(axis,tangent)*sin(azimuth))*sine;
 }
 
+// 光度 [cd] から照度 [lux] への距離減衰。逆二乗で、range の手前で滑らかに 0 へ落とす。
+// 距離の単位はメートル。発光体半径より内側は半径で頭打ちにする。
 float HikariLocalLightRangeAttenuation(
     float distanceToLight,
     float range,
-    uint distanceFalloff,
     float sourceRadius = 0.0f)
 {
     if (range <= 0.0f || distanceToLight >= range)
         return 0.0f;
-    // 距離の単位はワールド単位。近距離 0.01 以下の特異点だけを制限する。
-    // 範囲端を滑らかに切るため、範囲を変えても近傍の照度はほぼ一定。
-    if (distanceFalloff == HIKARI_LOCAL_LIGHT_FALLOFF_INVERSE_SQUARE)
-    {
-        const float normalizedDistance = distanceToLight / range;
-        const float squaredDistance = normalizedDistance * normalizedDistance;
-        const float window = saturate(1.0f - squaredDistance * squaredDistance);
-        return window * window / max(max(distanceToLight * distanceToLight,
-            sourceRadius * sourceRadius), 1e-4f);
-    }
-    float attenuation =
-        saturate(1.0f - distanceToLight / max(range, 0.001f));
-    return attenuation * attenuation;
+    const float normalizedDistance = distanceToLight / range;
+    const float squaredDistance = normalizedDistance * normalizedDistance;
+    const float window = saturate(1.0f - squaredDistance * squaredDistance);
+    return window * window / max(max(distanceToLight * distanceToLight,
+        sourceRadius * sourceRadius), 1e-4f);
 }
 
 float HikariLocalLightSourceHalfAngleSineSquared(float distanceToLight, float sourceRadius)
@@ -110,7 +102,6 @@ bool HikariResolveLocalLightSample(
     float attenuation = HikariLocalLightRangeAttenuation(
         distanceToLight,
         light.positionRange.w,
-        (light.kind >> 8u) & 0xffu,
         light.sourceRadius);
 
     sample.directionToLight =

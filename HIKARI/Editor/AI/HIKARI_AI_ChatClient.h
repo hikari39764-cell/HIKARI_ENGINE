@@ -70,10 +70,7 @@ bool LoadAiChatConfig(AiChatConfig& outConfig);
 bool SaveAiChatConfig(const AiChatConfig& config);
 bool ResetAiChatConfig();
 std::string GetAiUserConfigPath();
-bool RunApiRequest(const AiChatConfig& config, const std::string& requestBody, std::string& outContent,
-                   std::string& outError, AiChatUsage* usage = nullptr);
 std::string ExtractJsonField(std::string_view json, std::string_view field);
-std::string ExtractJsonNumberField(std::string_view json, std::string_view field);
 bool RunChatCompletionsStreaming(const AiChatConfig& config, const std::vector<AiChatMessage>& messages,
                                  const AiChatStreamCallback& onDelta, std::string& outFull, std::string& outError,
                                  AiChatUsage* usage = nullptr, AiChatRequestStats* stats = nullptr,

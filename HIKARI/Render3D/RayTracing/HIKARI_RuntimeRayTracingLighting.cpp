@@ -62,9 +62,9 @@ RuntimeRayLightingFrame RuntimeRayTracingLighting::Prepare(const GFX::Context& g
         Reset(state.context);
     state.context = graphics;
     const auto& sky = environment.sky;
-    const bool skyEnabled = sky.enabled && sky.mode != SkyMode::None;
+    const SkyMode skyMode = ResolveSkyRenderMode(sky.source);
     const auto& ibl = IBL::GetEnvironmentData();
-    if (skyEnabled && sky.mode != SkyMode::Gradient && !ibl.hasPrefiltered) {
+    if (!ibl.hasPrefiltered) {
         frame.status = RuntimeRayLightingStatus::MissingEnvironment;
         return frame;
     }
@@ -72,16 +72,8 @@ RuntimeRayLightingFrame RuntimeRayTracingLighting::Prepare(const GFX::Context& g
     const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
     data.sunDirectionIntensity = {solar.sunDirection.x, solar.sunDirection.y, solar.sunDirection.z, solar.sunRadiance};
     data.sunColorRange = {solar.sunColor.x, solar.sunColor.y, solar.sunColor.z, solar.sunAngularRadius};
-    const auto ambient =
-        SKYRENDERER::ResolveAmbientLightColor(environment) * std::max(0.0f, environment.ambient.intensity);
-    data.ambient = {ambient.x, ambient.y, ambient.z, 0};
-    data.skyTintExposure = {sky.tint.x, sky.tint.y, sky.tint.z, skyEnabled ? sky.exposure : 0.0f};
-    data.zenith = {sky.zenithColor.x, sky.zenithColor.y, sky.zenithColor.z, 0};
-    data.horizon = {sky.horizonColor.x, sky.horizonColor.y, sky.horizonColor.z, 0};
-    data.ground = {sky.groundColor.x, sky.groundColor.y, sky.groundColor.z, 0};
-    data.skyParams = {ibl.hasPrefiltered && sky.mode != SkyMode::Gradient ? 1.0f : 0.0f,
-                      sky.mode == SkyMode::Atmosphere ? 0.0f : sky.yaw, sky.horizonPower,
-                      skyEnabled ? sky.ambientFromSky : 0.0f};
+    data.skyTintExposure = {sky.tint.x, sky.tint.y, sky.tint.z, ResolveSkyTextureRadianceScale(sky)};
+    data.skyParams = {1.0f, skyMode == SkyMode::Atmosphere ? 0.0f : sky.yaw, 0.0f, std::max(0.0f, sky.lightIntensity)};
     data.time = time;
     data.clouds = clouds;
     state.lights.clear();

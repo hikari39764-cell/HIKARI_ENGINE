@@ -117,7 +117,7 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     const float coreRadius = max(gUser[0].z, 0.0005f);
     const float intensity = max(gUser[0].w, 0.0f);
     const float3 sunColor = max(gUser[1].rgb, 0.0f.xxx);
-    const float maxRadiance = max(gUser[1].w, 0.1f);
+    const float maxRadiance = max(gUser[1].w, 0.0f);
     const float haloRadius = max(gUser[2].x, coreRadius);
     const float haloFalloff = max(gUser[2].y, 0.25f);
     const float streakIntensity = max(gUser[2].z, 0.0f);

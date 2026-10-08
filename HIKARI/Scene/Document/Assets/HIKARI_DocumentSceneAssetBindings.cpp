@@ -624,15 +624,13 @@ bool DocumentSceneAssetBindings::ReloadModelAsset(const AssetId& modelId) {
 
 int DocumentSceneAssetBindings::RebindModelComponents(DocumentSceneBase& scene) {
     int reboundCount = 0;
-    SceneDependencySet deps = scene.state_->runtime.builder.CollectDependencies(
-        scene.state_->identity.document, &scene.state_->runtime.componentRegistry);
+    SceneDependencySet deps = scene.CollectRuntimeDependencies();
     if (NeedsRuntimeDependencyRegistryRefresh(deps)) {
         if (!scene.ReloadAssets()) {
             HIKARI_LOG_WARN("[SceneRuntime] asset registry refresh failed before model rebind.");
             return 0;
         }
-        deps = scene.state_->runtime.builder.CollectDependencies(scene.state_->identity.document,
-                                                                 &scene.state_->runtime.componentRegistry);
+        deps = scene.CollectRuntimeDependencies();
         if (NeedsRuntimeDependencyRegistryRefresh(deps)) {
             HIKARI_LOG_WARN("[SceneRuntime] model rebind rejected because required "
                             "asset descriptors remain unavailable.");
@@ -844,8 +842,7 @@ int DocumentSceneAssetBindings::ApplyMaterialOverridePreview(DocumentSceneBase& 
 }
 
 bool DocumentSceneBase::ReloadAssets() {
-    const auto required =
-        state_->runtime.builder.CollectDependencies(state_->identity.document, &state_->runtime.componentRegistry);
+    const auto required = CollectRuntimeDependencies();
     const bool reloaded = state_->assets.ReloadAssets(&required);
     if (reloaded) {
         // AssetDatabase retains stable object identity across scans, so

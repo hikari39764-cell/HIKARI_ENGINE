@@ -58,7 +58,6 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
     std::string previousSceneId = state_->identity.sceneId;
     AssetGuid previousSceneAssetGuid = state_->identity.currentSceneAssetGuid;
     const bool previousDocumentDirty = state_->identity.documentDirty;
-    const SceneEnvironment previousEnvironment = state_->lighting.environment;
     if (!state_->runtime.playActive) {
         EndEditorCameraPreview();
     }
@@ -69,7 +68,6 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
     state_->identity.currentSceneAssetGuid = sceneGuid;
     state_->identity.documentDirty = false;
 
-    state_->lighting.environment = state_->identity.document.environment;
     bool oldWorldDetached = false;
     if (RebuildRuntimeWorld(false, true, &oldWorldDetached)) {
         state_->identity.loadError.clear();
@@ -86,7 +84,6 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
     state_->identity.sceneId = std::move(previousSceneId);
     state_->identity.currentSceneAssetGuid = std::move(previousSceneAssetGuid);
     state_->identity.documentDirty = previousDocumentDirty;
-    state_->lighting.environment = previousEnvironment;
     if (oldWorldDetached && !RebuildRuntimeWorld(false, true)) {
         HIKARI_LOG_ERROR("[SceneAsset] failed to restore the previous runtime World "
                          "after Scene open failed.");
@@ -166,8 +163,7 @@ bool DocumentSceneBase::CreateTransientEmptySceneDocument() {
         state_->identity.document.objects.push_back(BuildDefaultGridFloorSceneObject(state_->identity.document));
     }
     state_->identity.document.systems = state_->runtime.featureCatalog.CreateDefaultSceneSystems();
-    LIGHTING_AUTHORING::AddDefaultSceneLight(state_->identity.document);
-    state_->lighting.environment = state_->identity.document.environment;
+    ResetEnvironmentRuntime();
     state_->identity.scenePath.clear();
     state_->identity.sceneId = "TransientScene";
     state_->identity.currentSceneAssetGuid = {};
@@ -183,7 +179,6 @@ bool DocumentSceneBase::SaveCurrentSceneDocument() {
         return false;
     }
 
-    state_->identity.document.environment = state_->lighting.environment;
     const bool saved = state_->identity.serializer.SaveToFile(state_->identity.scenePath, state_->identity.document);
     if (saved) {
         state_->identity.documentDirty = false;
@@ -213,7 +208,6 @@ bool DocumentSceneBase::SaveCurrentSceneDocumentAs(const AssetGuid& sceneGuid) {
 
     const std::filesystem::path absolutePath =
         (state_->assets.Database().GetProjectRoot() / record->sourcePath).lexically_normal();
-    state_->identity.document.environment = state_->lighting.environment;
     if (!state_->identity.serializer.SaveToFile(absolutePath.generic_string(), state_->identity.document)) {
         return false;
     }

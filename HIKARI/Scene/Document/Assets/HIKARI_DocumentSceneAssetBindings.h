@@ -10,7 +10,9 @@
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/HIKARI_DocumentAssetStores.h"
 #include "Assets/Camera/HIKARI_GameplayCameraAsset.h"
+#include "Assets/Environment/HIKARI_EnvironmentAssetStore.h"
 #include "Assets/Post/HIKARI_PostAssetStore.h"
+#include "Assets/RenderStyle/HIKARI_RenderStyleAssetStore.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
 #include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Assets/Sprite/HIKARI_SpriteAssetStore.h"
@@ -38,6 +40,8 @@ public:
     SequenceAssetStore& SequenceAssets() noexcept { return sequenceAssets_; }
     GameplayCameraAssetStore& GameplayCameras() noexcept { return gameplayCameras_; }
     POST::PostAssetStore& PostAssets() noexcept { return postAssets_; }
+    ENVIRONMENT::EnvironmentAssetStore& EnvironmentAssets() noexcept { return environmentAssets_; }
+    RENDERSTYLE::RenderStyleAssetStore& RenderStyleAssets() noexcept { return renderStyleAssets_; }
     TextAssetStore& TextAssets() noexcept { return textAssets_; }
     UiAnimationAssetStore& UiAnimations() noexcept { return uiAnimations_; }
     SPRITE::SpriteAssetStore& SpriteAssets() noexcept { return spriteAssets_; }
@@ -74,6 +78,8 @@ private:
     SequenceAssetStore sequenceAssets_{};
     GameplayCameraAssetStore gameplayCameras_;
     POST::PostAssetStore postAssets_;
+    ENVIRONMENT::EnvironmentAssetStore environmentAssets_;
+    RENDERSTYLE::RenderStyleAssetStore renderStyleAssets_;
     TextAssetStore textAssets_;
     UiAnimationAssetStore uiAnimations_;
     SPRITE::SpriteAssetStore spriteAssets_{};

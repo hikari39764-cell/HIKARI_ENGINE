@@ -9,6 +9,8 @@
 
 namespace HIKARI {
 
+enum class LightProbeVolumeMode : uint8_t;
+
 class IrradianceVolumeComponent final : public IComponent {
 public:
     std::string_view GetTypeName() const override { return "IrradianceVolumeComponent"; }
@@ -20,6 +22,7 @@ public:
 #endif
 
     bool IsEnabled() const noexcept { return enabled_; }
+    LightProbeVolumeMode GetMode() const noexcept { return mode_; }
     const MATH::Vec3& GetSize() const noexcept { return size_; }
     bool SetSize(const MATH::Vec3& size) noexcept;
     uint32_t GetCountX() const noexcept { return countX_; }
@@ -38,6 +41,7 @@ private:
     void ClampSettings() noexcept;
 
     bool enabled_ = true;
+    LightProbeVolumeMode mode_{}; // Baked
     MATH::Vec3 size_{10.0f, 4.0f, 10.0f};
     uint32_t countX_ = 4;
     uint32_t countY_ = 2;

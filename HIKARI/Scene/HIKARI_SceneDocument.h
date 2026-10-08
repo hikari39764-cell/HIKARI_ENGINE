@@ -8,14 +8,17 @@
 
 #include <json.hpp>
 
-#include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Core/Math/HIKARI_Math3D.h"
+#include "Core/Text/HIKARI_EnumNames.h"
+#include "Scene/Environment/HIKARI_SceneEnvironmentBinding.h"
 #include "Scene/HIKARI_CinematicSequence.h"
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 
 namespace HIKARI {
 
-inline constexpr uint32_t kCurrentSceneDocumentVersion = 9;
+// 10: 環境はプロファイル資産の参照と初期の時刻・地点・天気になった。
+inline constexpr uint32_t kCurrentSceneDocumentVersion = 10;
 
 struct TransformData {
     MATH::Vec3 position{0.0f, 0.0f, 0.0f};
@@ -70,8 +73,16 @@ struct SceneSystemData {
     nlohmann::json settings = nlohmann::json::object();
 };
 
+// Baked は焼き込んだ probe（.hlpv）。Realtime は動的 GI が光追で毎フレーム更新する区域で、焼き込まない。
+enum class LightProbeVolumeMode : uint8_t { Baked, Realtime };
+inline constexpr TEXT::EnumName<LightProbeVolumeMode> kLightProbeVolumeModeNames[] = {
+    {LightProbeVolumeMode::Baked, "Baked"},
+    {LightProbeVolumeMode::Realtime, "Realtime"},
+};
+
 struct LightProbeVolumeSettings {
     bool enabled = true;
+    LightProbeVolumeMode mode = LightProbeVolumeMode::Baked;
     MATH::Vec3 origin{-5.0f, 0.5f, -5.0f};
     MATH::Vec3 size{10.0f, 4.0f, 10.0f};
     uint32_t countX = 4;
@@ -82,10 +93,6 @@ struct LightProbeVolumeSettings {
     float normalBias = 0.2f;
     uint32_t captureResolution = 32;
     uint32_t shOrder = 3;
-};
-
-struct SceneLightingBakeSettings {
-    LightProbeVolumeSettings lightProbeVolume{};
 };
 
 struct SceneCameraSettings {
@@ -103,9 +110,11 @@ inline uint32_t NormalizeLightProbeCaptureResolution(uint32_t resolution) {
 }
 
 inline void ClampLightProbeVolumeSettings(LightProbeVolumeSettings& settings) {
-    settings.countX = std::clamp(settings.countX, 2u, 8u);
-    settings.countY = std::clamp(settings.countY, 1u, 4u);
-    settings.countZ = std::clamp(settings.countZ, 2u, 8u);
+    // 実時間の区域は更新を数フレームに分けるので、焼き込みより細かい格子を取れる。
+    const bool realtime = settings.mode == LightProbeVolumeMode::Realtime;
+    settings.countX = std::clamp(settings.countX, 2u, realtime ? 32u : 8u);
+    settings.countY = std::clamp(settings.countY, realtime ? 2u : 1u, realtime ? 16u : 4u);
+    settings.countZ = std::clamp(settings.countZ, 2u, realtime ? 32u : 8u);
     settings.captureResolution = NormalizeLightProbeCaptureResolution(settings.captureResolution);
     settings.shOrder = 3u;
     settings.intensity = std::clamp(settings.intensity, 0.0f, 4.0f);
@@ -139,8 +148,7 @@ inline MATH::Vec3 GetLightProbeVolumeProbePosition(const LightProbeVolumeSetting
 struct SceneDocument {
     uint32_t version = kCurrentSceneDocumentVersion;
     std::string sceneName = "Untitled";
-    SceneEnvironment environment{};
-    SceneLightingBakeSettings lightingBake{};
+    ENVIRONMENT::SceneEnvironmentBinding environment{};
     SceneCameraSettings camera{};
     SceneCinematicsSettings cinematics{};
     std::vector<SceneObjectData> objects{};

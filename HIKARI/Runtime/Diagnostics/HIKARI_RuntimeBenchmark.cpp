@@ -25,12 +25,27 @@
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
-#include "Scene/Serialization/Environment/HIKARI_SceneEnvironmentJson.h"
+#include "Assets/Environment/HIKARI_EnvironmentAsset.h"
 
 namespace HIKARI::RUNTIME {
 using Clock = std::chrono::steady_clock;
 using Json = nlohmann::json;
 using Timing = DIAGNOSTICS::BenchmarkTiming;
+
+namespace {
+// 測定条件として、環境の参照・解決済みのプロファイル・その時点の主光源を残す。
+Json DescribeEnvironment(const DocumentSceneBase& document) {
+    const SceneEnvironment& environment = document.GetSceneEnvironment();
+    const EnvironmentDirectionalLight& light = environment.frame.Primary();
+    return {{"binding", ENVIRONMENT::WriteSceneEnvironmentBinding(document.GetSceneDocument().environment)},
+            {"profile", ENVIRONMENT::WriteEnvironmentProfileSections(environment)},
+            {"primaryLight",
+             {{"toLight", {light.toLight.x, light.toLight.y, light.toLight.z}},
+              {"illuminance", light.illuminance},
+              {"moon", environment.frame.moonIsPrimary},
+              {"localHours", environment.frame.localHours}}}};
+}
+} // namespace
 
 struct RuntimeBenchmark::State {
     State(std::filesystem::path path, uint32_t warmup, uint32_t samples, Clock::time_point start)
@@ -105,8 +120,7 @@ struct RuntimeBenchmark::State {
             configurationStable &= (scene ? scene->GetSceneId() : "") == initialSceneId &&
                                    (!document || document->GetSceneDocumentRevision() == initialSceneRevision);
             if (run.CaptureComplete() && document)
-                SCENE::SERIALIZATION::SerializeSceneEnvironmentJson(document->GetSceneEnvironment(),
-                                                                    context["environmentAtEnd"]);
+                context["environmentAtEnd"] = DescribeEnvironment(*document);
             return;
         }
         initialQuality = quality;
@@ -151,8 +165,7 @@ struct RuntimeBenchmark::State {
             const Camera3D& camera = document->GetCamera();
             context["cameraAtStart"]["target"] = {camera.GetTarget().x, camera.GetTarget().y, camera.GetTarget().z};
             context["cameraAtStart"]["up"] = {camera.GetUp().x, camera.GetUp().y, camera.GetUp().z};
-            SCENE::SERIALIZATION::SerializeSceneEnvironmentJson(document->GetSceneEnvironment(),
-                                                                context["environmentAtStart"]);
+            context["environmentAtStart"] = DescribeEnvironment(*document);
             if (run.CaptureComplete())
                 context["environmentAtEnd"] = context["environmentAtStart"];
         }

@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "name": "Snow",
+  "weather": {
+    "cloudCoverage": 0.9,
+    "cloudType": 0.2,
+    "cloudDensity": 1.2,
+    "haze": 0.4,
+    "fogDensity": 0.001,
+    "fogHeightFalloff": 0.03,
+    "precipitation": "Snow",
+    "precipitationIntensity": 0.6,
+    "windSpeed": 3.0,
+    "windFromDegrees": 330.0,
+    "transitionSeconds": 30.0
+  }
+}

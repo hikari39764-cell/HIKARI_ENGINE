@@ -43,7 +43,6 @@ const AssetArtifactSemantics& GetAssetArtifactSemantics(AssetArtifactKind kind) 
 const AssetArtifactSemantics* FindPrimaryAssetArtifactSemantics(AssetType type) noexcept;
 std::string_view ToString(CookedAssetFormat format) noexcept;
 CookedAssetFormat ParseCookedAssetFormat(std::string_view text) noexcept;
-std::string_view GetCookedAssetExtension(CookedAssetFormat format) noexcept;
 CookedAssetFormat ClassifyCookedAssetFormat(const std::filesystem::path& path);
 
 AssetArtifactDesc MakeAssetArtifact(AssetArtifactKind kind, std::string path);

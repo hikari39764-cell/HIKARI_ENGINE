@@ -278,10 +278,11 @@ constexpr std::array kFresnelInputs{
 };
 
 constexpr std::array kShellInputs{
-    Fixed("MaxLayers", MaterialValueType::Float1),
-    Fixed("Thickness", MaterialValueType::Float1),
-    Fixed("LodStartPixels", MaterialValueType::Float1),
-    Fixed("LodFullPixels", MaterialValueType::Float1),
+    Fixed("MaxLayers", MaterialValueType::Float1),       Fixed("Thickness", MaterialValueType::Float1),
+    Fixed("LodStartPixels", MaterialValueType::Float1),  Fixed("LodFullPixels", MaterialValueType::Float1),
+    Fixed("StrokeTiling", MaterialValueType::Float1),    Fixed("StrokeRotation", MaterialValueType::Float1),
+    Fixed("StrokeVariation", MaterialValueType::Float1), Fixed("StrokeNormalStrength", MaterialValueType::Float1),
+    Fixed("EdgePower", MaterialValueType::Float1),       Fixed("Coverage", MaterialValueType::Float1),
 };
 constexpr std::array kShellOutputs{Fixed("Settings", MaterialValueType::ShellSettings)};
 constexpr std::array kNormalBlendInputs{
@@ -651,7 +652,7 @@ constexpr std::array kDefinitions{
     MaterialNodeDefinition{
         MaterialNodeKind::Shell, "Shell", MaterialValueType::ShellSettings, NodeClass::Surface, true, kShellInputs,
         kShellOutputs, false, OutputRoute::Unrestricted,
-        "Renderer-owned shell geometry: 0/2/4/8 layers, world thickness and projected-pixel LOD. Inputs must be uniform parameters or constants."},
+        "Renderer-owned painterly shell: 0/2/4/8 layers, world thickness, projected-pixel LOD, and the brush-stroke mask tiling, rotation, colour variation, normal strength, silhouette power and coverage. Inputs must be uniform parameters or constants; the node owns the stroke mask and stroke normal resources."},
     MaterialNodeDefinition{
         MaterialNodeKind::ShellLayer,
         "ShellLayer",

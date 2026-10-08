@@ -15,6 +15,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI::RENDER3D::REFLECTION {
@@ -347,7 +348,7 @@ bool ScreenSpaceReflectionRenderer::Render(const GFX::Context& graphics,
     constants.frameParams = {debugView == RenderDebugView::SsrConfidence ? 1.0f
                              : debugView == RenderDebugView::SsrHit      ? 2.0f
                                                                          : 0.0f,
-                             float(temporal.frameIndex & 0xffffu), debugState_.historyUsed ? 1.0f : 0.0f, 0.9f};
+                             RENDER3D::COLOR::GetActiveViewExposure().w, debugState_.historyUsed ? 1.0f : 0.0f, 0.9f};
     constants.previousInvViewProj = MATH::Inverse(temporal.camera.prevViewProj);
     constants.previousCameraPosition = temporal.camera.prevCameraPos;
     constants.jitterPixels = {temporal.camera.jitter.x, temporal.camera.jitter.y, temporal.camera.prevJitter.x,

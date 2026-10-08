@@ -6,6 +6,7 @@
 
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Reflection/HIKARI_ReflectionProbeContract.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 
 namespace HIKARI {

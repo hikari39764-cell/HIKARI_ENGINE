@@ -162,9 +162,8 @@ bool EditorInteractiveStylizedView::PublishSceneSurfaces(RenderTarget2D& sceneTa
 }
 
 bool EditorInteractiveStylizedView::Resolve(RenderTarget2D& sceneTarget, uint64_t targetGeneration, RenderViewId viewId,
-                                            const Camera3D& camera, const SceneEnvironment& environment,
-                                            const LIGHTING::SceneLightingSet& lighting, uint32_t width, uint32_t height,
-                                            const EditorInteractiveStylizedPreparation& preparation,
+                                            const Camera3D& camera, const SceneEnvironment& environment, uint32_t width,
+                                            uint32_t height, const EditorInteractiveStylizedPreparation& preparation,
                                             RenderTarget2D*& outDisplaySource) {
     outDisplaySource = &sceneTarget;
     FEATURES::RenderFeatureAvailability availability{};
@@ -214,15 +213,11 @@ bool EditorInteractiveStylizedView::Resolve(RenderTarget2D& sceneTarget, uint64_
     targetAccess.rebind = &RebindTarget;
     FEATURES::StylizedScreenFeatureSettings settings{};
     settings.viewProj = camera.GetViewProj();
-    if (const LIGHTING::SceneLightProvider* directional = LIGHTING::SelectDirectionalLight(lighting)) {
-        settings.directionalLightWS[0] = directional->direction.x;
-        settings.directionalLightWS[1] = directional->direction.y;
-        settings.directionalLightWS[2] = directional->direction.z;
-    } else {
-        settings.directionalLightWS[0] = environment.directional.direction.x;
-        settings.directionalLightWS[1] = environment.directional.direction.y;
-        settings.directionalLightWS[2] = environment.directional.direction.z;
-    }
+    // 主光源（昼は太陽、夜は月）の光線の向き。
+    const MATH::Vec3 ray = environment.frame.Primary().toLight * -1.0f;
+    settings.directionalLightWS[0] = ray.x;
+    settings.directionalLightWS[1] = ray.y;
+    settings.directionalLightWS[2] = ray.z;
     const bool rendered =
         gScreenFeatureRenderer.Render(GFX::GetCurrentContext(), targetAccess, surfaces, plan_, settings);
     compositeTarget_->EndCapture();

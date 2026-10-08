@@ -145,7 +145,7 @@ struct EnvironmentDiagnosticsSnapshot {
     float bloomIntensity = 0.0f;
     float bloomRadius = 0.0f;
 
-    bool toneMappingEnabled = false;
+    int toneCurve = 0;
     std::string antiAliasingMode{};
     bool fxaaEnabled = false;
     float fxaaEdgeThreshold = 0.0f;
@@ -165,7 +165,6 @@ void LogEnvironmentSnapshotIfChanged(const char* reason, const SceneEnvironment*
 const char* ResolveSkySummaryLabel(const EnvironmentDiagnosticsSnapshot& snapshot);
 const char* ResolveIblSummaryLabel(const EnvironmentDiagnosticsSnapshot& snapshot);
 const char* ResolveReflectionProbeSummaryLabel(const EnvironmentDiagnosticsSnapshot& snapshot);
-const char* ResolveSsaoSummaryLabel(const EnvironmentDiagnosticsSnapshot& snapshot);
 
 } // namespace RENDER3D::DIAGNOSTICS
 

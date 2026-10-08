@@ -401,10 +401,6 @@ GameObject* CreateLightObject(DocumentSceneBase& scene, const CreateObjectReques
     light.type = lightType;
     if (light.name.empty()) {
         switch (lightType) {
-        case RENDER3D::LIGHTING::SceneLightType::Directional:
-            light.name = "Directional Light";
-            light.priority = 100;
-            break;
         case RENDER3D::LIGHTING::SceneLightType::Spot:
             light.name = "Spot Light";
             light.range = 8.0f;

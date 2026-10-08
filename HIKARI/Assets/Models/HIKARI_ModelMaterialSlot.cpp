@@ -38,14 +38,6 @@ std::string NormalizeSourceMaterialIdentity(std::string_view value) {
     return normalized;
 }
 
-bool IsLegacyGeneratedAssimpMaterialName(std::string_view value) noexcept {
-    constexpr std::string_view kPrefix = "AssimpMaterial";
-    if (!value.starts_with(kPrefix) || value.size() == kPrefix.size()) {
-        return false;
-    }
-    return std::all_of(value.begin() + static_cast<std::string_view::difference_type>(kPrefix.size()), value.end(),
-                       [](unsigned char character) { return character >= '0' && character <= '9'; });
-}
 } // namespace
 
 MaterialSlotId MakeMaterialSlotId(MaterialSlotImporterSemantic importerSemantic,
@@ -79,49 +71,6 @@ MaterialSlotId MaterialSlotIdBuilder::Next(std::string_view sourceMaterialIdenti
         ++count;
     }
     return MakeMaterialSlotId(importerSemantic_, normalizedIdentity, duplicateOrdinal);
-}
-
-MaterialSlotImporterSemantic ResolveMaterialSlotImporterSemantic(std::string_view sourcePath) {
-    if (sourcePath.starts_with("procedural://")) {
-        return MaterialSlotImporterSemantic::Procedural;
-    }
-
-    const size_t separator = sourcePath.find_last_of("/\\");
-    const size_t dot = sourcePath.find_last_of('.');
-    if (dot == std::string_view::npos || (separator != std::string_view::npos && dot < separator)) {
-        return MaterialSlotImporterSemantic::LegacyHmodel;
-    }
-
-    std::string extension(sourcePath.substr(dot));
-    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char value) {
-        return value >= 'A' && value <= 'Z' ? static_cast<char>(value - 'A' + 'a') : static_cast<char>(value);
-    });
-    if (extension == ".gltf" || extension == ".glb") {
-        return MaterialSlotImporterSemantic::Gltf;
-    }
-    if (extension == ".obj") {
-        return MaterialSlotImporterSemantic::Obj;
-    }
-    if (extension == ".fbx") {
-        return MaterialSlotImporterSemantic::Assimp;
-    }
-    return MaterialSlotImporterSemantic::LegacyHmodel;
-}
-
-void AssignMaterialSlotIds(std::vector<MaterialAsset>& materials, MaterialSlotImporterSemantic importerSemantic) {
-    MaterialSlotIdBuilder builder(importerSemantic);
-    for (MaterialAsset& material : materials) {
-        // HMODEL v1-v6 stored Assimp's display fallback but not the empty
-        // source name. Recover the importer identity so a v7 recook keeps
-        // the same unnamed-material ordinals. An old source material that
-        // was literally named AssimpMaterial<number> is inherently
-        // ambiguous and follows the legacy fallback interpretation.
-        const std::string_view sourceIdentity = importerSemantic == MaterialSlotImporterSemantic::Assimp &&
-                                                        IsLegacyGeneratedAssimpMaterialName(material.name)
-                                                    ? std::string_view{}
-                                                    : std::string_view{material.name};
-        material.slotId = builder.Next(sourceIdentity);
-    }
 }
 
 bool HaveValidUniqueMaterialSlotIds(const std::vector<MaterialAsset>& materials) {

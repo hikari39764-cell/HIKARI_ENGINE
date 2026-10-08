@@ -61,6 +61,7 @@ struct GpuSceneResourceKey {
     bool alphaMasked = false;
     bool transparent = false;
     bool doubleSided = false;
+    bool materialProgram = false;
 };
 
 struct GpuSceneSurfaceRecord {

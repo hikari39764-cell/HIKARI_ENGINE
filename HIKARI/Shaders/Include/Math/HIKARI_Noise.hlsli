@@ -126,6 +126,48 @@ float HikariNoisePeriodicValue3D(
     return saturate(value);
 }
 
+// 周期的な勾配ノイズ（Perlin）。値はおよそ [-1, 1]。
+float HikariNoisePeriodicGradient3D(
+    float3 position,
+    int3 period,
+    uint salt)
+{
+    int3 cell = int3(floor(position));
+    float3 local = frac(position);
+    float3 fade = float3(
+        HikariNoiseFade(local.x),
+        HikariNoiseFade(local.y),
+        HikariNoiseFade(local.z));
+
+    float value = 0.0f;
+    [unroll]
+    for (int z = 0; z <= 1; ++z)
+    {
+        [unroll]
+        for (int y = 0; y <= 1; ++y)
+        {
+            [unroll]
+            for (int x = 0; x <= 1; ++x)
+            {
+                int3 corner = int3(x, y, z);
+                uint hash = HikariNoiseHashInt3(
+                    HikariNoiseWrapCell3(cell + corner, period),
+                    salt);
+                float3 gradient = float3(
+                    HikariNoiseHashUnit(hash),
+                    HikariNoiseHashUnit(HikariNoiseMixUint(hash ^ 0x3c6ef372u)),
+                    HikariNoiseHashUnit(HikariNoiseMixUint(hash ^ 0xa54ff53au))) * 2.0f - 1.0f;
+                gradient *= rsqrt(max(dot(gradient, gradient), 1.0e-4f));
+                float weightX = x == 0 ? 1.0f - fade.x : fade.x;
+                float weightY = y == 0 ? 1.0f - fade.y : fade.y;
+                float weightZ = z == 0 ? 1.0f - fade.z : fade.z;
+                value += dot(gradient, local - float3(corner)) * weightX * weightY * weightZ;
+            }
+        }
+    }
+    return clamp(value * 1.4f, -1.0f, 1.0f);
+}
+
 float HikariNoisePeriodicCellular2D(
     float2 position,
     int2 period,

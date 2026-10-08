@@ -28,7 +28,8 @@ uint32_t SanitizeDimension(uint32_t value, uint32_t fallback, uint32_t maximum) 
     return std::clamp(value == 0u ? fallback : value, 2u, maximum);
 }
 
-std::array<uint64_t, 3> TransportSignatures(const AtmosphereLutConstants& constants) {
+std::array<uint64_t, 3> TransportSignatures(const AtmosphereLutConstants& constants, float observerAltitude,
+                                            const MATH::Vec4& cloudShading) {
     const auto hash = [](const auto& data) {
         const uint64_t value = HASH::Fnv1aBytes(HASH::kFnv1a64OffsetBasis, &data, sizeof(data));
         return value ? value : 1u;
@@ -41,7 +42,19 @@ std::array<uint64_t, 3> TransportSignatures(const AtmosphereLutConstants& consta
     medium.ozoneParams.w = constants.ozoneParams.w;
     medium.groundColor = constants.groundColor;
     // multi LUT の光源方向は texel の軸。色/照度/位相異方性には依存しない。
-    return {transmission, hash(medium), hash(constants)};
+    // 空の LUT は観測者の高さにも依存する。対数で約 4% 刻みに丸めて、歩く程度の上下では作り直さない。
+    const int32_t altitudeStep =
+        static_cast<int32_t>(std::lround(std::log2((std::max)(observerAltitude, 1.0f)) * 16.0f));
+    // 地面は雲の下にある。雲の陰（主光源の割合 1/64 刻み、雲の下の空の輝度 1/8 段刻み）が変わったら作り直す。
+    const auto stops = [](float value) {
+        return std::isfinite(value) ? static_cast<int32_t>(std::lround(std::log2((std::max)(value, 1.0e-4f)) * 8.0f))
+                                    : 0;
+    };
+    const std::array<int32_t, 5> cloudStep{
+        static_cast<int32_t>(
+            std::lround(std::clamp(std::isfinite(cloudShading.w) ? cloudShading.w : 1.0f, 0.0f, 1.0f) * 64.0f)),
+        stops(cloudShading.x), stops(cloudShading.y), stops(cloudShading.z), altitudeStep};
+    return {transmission, hash(medium), HASH::Fnv1aBytes(hash(constants), cloudStep.data(), sizeof(cloudStep))};
 }
 
 bool HasRetireFence(const GFX::Context& context) noexcept {
@@ -59,10 +72,12 @@ uint64_t AtmosphereLutOwner::GetWorkingSetBytes() const noexcept {
         return 0;
     return 8ull * (uint64_t(dimensions_.transmittanceWidth) * dimensions_.transmittanceHeight +
                    uint64_t(dimensions_.multiScatteringSize) * dimensions_.multiScatteringSize +
-                   uint64_t(dimensions_.skyViewWidth) * dimensions_.skyViewHeight);
+                   uint64_t(dimensions_.skyViewWidth) * dimensions_.skyViewHeight +
+                   uint64_t(kAerialPerspectiveResolution) * kAerialPerspectiveResolution * kAerialPerspectiveSlices *
+                       kAerialPerspectiveRingSize);
 }
 
-bool AtmosphereLutOwner::Configure(const AtmosphereSettings& settings) {
+bool AtmosphereLutOwner::Configure(const AtmosphereSettings& settings, bool enabled) {
     const AtmosphereLutDimensions next{
         SanitizeDimension(settings.transmittanceLutWidth, 256u, 1024u),
         SanitizeDimension(settings.transmittanceLutHeight, 64u, 256u),
@@ -80,7 +95,7 @@ bool AtmosphereLutOwner::Configure(const AtmosphereSettings& settings) {
         dimensions_ = next;
     }
     // Parameter edits only require a fresh dispatch. 各 LUT の依存値を Dispatch が比較する。
-    configured_ = settings.enabled;
+    configured_ = enabled;
     return configured_;
 }
 
@@ -122,6 +137,12 @@ void AtmosphereLutOwner::Invalidate() {
     RetireView(context, multiScatteringGpu_.uav, "Atmosphere.MultiScatteringUAV");
     RetireView(context, skyViewGpu_.srv, "Atmosphere.SkyViewSRV");
     RetireView(context, skyViewGpu_.uav, "Atmosphere.SkyViewUAV");
+    for (GpuLut& volume : aerialPerspectiveGpu_) {
+        RetireView(context, volume.srv, "Atmosphere.AerialPerspectiveSRV");
+        RetireView(context, volume.uav, "Atmosphere.AerialPerspectiveUAV");
+        RetireResource(context, volume.resource, "Atmosphere.AerialPerspective");
+        volume = {};
+    }
     RetireResource(context, transmittanceGpu_.resource, "Atmosphere.Transmittance");
     RetireResource(context, multiScatteringGpu_.resource, "Atmosphere.MultiScattering");
     RetireResource(context, skyViewGpu_.resource, "Atmosphere.SkyView");
@@ -146,6 +167,7 @@ void AtmosphereLutOwner::Reset() {
     transmittancePso_.Reset();
     multiScatteringPso_.Reset();
     skyViewPso_.Reset();
+    aerialPerspectivePso_.Reset();
 }
 
 bool AtmosphereLutOwner::EnsurePipeline(const GFX::Context& context) {
@@ -168,7 +190,7 @@ bool AtmosphereLutOwner::EnsurePipeline(const GFX::Context& context) {
     ranges[2].BaseShaderRegister = 0u;
     ranges[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-    std::array<D3D12_ROOT_PARAMETER, 4u> parameters{};
+    std::array<D3D12_ROOT_PARAMETER, 5u> parameters{};
     parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     parameters[0].Descriptor.ShaderRegister = 0u;
@@ -178,6 +200,11 @@ bool AtmosphereLutOwner::EnsurePipeline(const GFX::Context& context) {
         parameters[index + 1u].DescriptorTable.NumDescriptorRanges = 1u;
         parameters[index + 1u].DescriptorTable.pDescriptorRanges = &ranges[index];
     }
+    // 空気遠近の視点（b1）。LUT 自体の shader は使わない。
+    parameters[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+    parameters[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    parameters[4].Constants.ShaderRegister = 1u;
+    parameters[4].Constants.Num32BitValues = sizeof(AtmosphereViewConstants) / sizeof(uint32_t);
 
     D3D12_STATIC_SAMPLER_DESC sampler{};
     sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -205,8 +232,8 @@ bool AtmosphereLutOwner::EnsurePipeline(const GFX::Context& context) {
     const SHADER::ShaderRuntimeDeviceCapabilities caps{capabilities.shaderModel, capabilities.rootSignatureVersion,
                                                        capabilities.featureMask};
     const std::array programs{Program::AtmosphereTransmittance, Program::AtmosphereMultiScattering,
-                              Program::AtmosphereSkyView};
-    std::array<SHADER::ShaderAssetEntryLease, 3u> shaders{};
+                              Program::AtmosphereSkyView, Program::AtmosphereAerialPerspective};
+    std::array<SHADER::ShaderAssetEntryLease, 4u> shaders{};
     for (size_t index = 0; index < programs.size(); ++index) {
         auto resolved =
             SHADER::ResolveVolumetricShaderEntry(programs[index], "Main", SHADER::ShaderStage::Compute, caps);
@@ -217,7 +244,7 @@ bool AtmosphereLutOwner::EnsurePipeline(const GFX::Context& context) {
         }
         shaders[index] = std::move(resolved.lease);
     }
-    std::array<ComPtr<ID3D12PipelineState>, 3u> pipelines{};
+    std::array<ComPtr<ID3D12PipelineState>, 4u> pipelines{};
     for (uint32_t index = 0u; index < pipelines.size(); ++index) {
         D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc{};
         psoDesc.pRootSignature = computeRoot_.Get();
@@ -229,26 +256,28 @@ bool AtmosphereLutOwner::EnsurePipeline(const GFX::Context& context) {
             transmittancePso_.Reset();
             multiScatteringPso_.Reset();
             skyViewPso_.Reset();
+            aerialPerspectivePso_.Reset();
             return false;
         }
     }
     transmittancePso_ = std::move(pipelines[0]);
     multiScatteringPso_ = std::move(pipelines[1]);
     skyViewPso_ = std::move(pipelines[2]);
+    aerialPerspectivePso_ = std::move(pipelines[3]);
     pipelineReady_ = true;
     return true;
 }
 
 bool AtmosphereLutOwner::CreateLut(const GFX::Context& context, GpuLut& lut, uint32_t width, uint32_t height,
-                                   const wchar_t* debugName) {
+                                   uint32_t depth, const wchar_t* debugName) {
     if (context.device == nullptr || context.srvHeap == nullptr || width == 0u || height == 0u) {
         return false;
     }
     D3D12_RESOURCE_DESC desc{};
-    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    desc.Dimension = depth > 1u ? D3D12_RESOURCE_DIMENSION_TEXTURE3D : D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     desc.Width = width;
     desc.Height = height;
-    desc.DepthOrArraySize = 1u;
+    desc.DepthOrArraySize = static_cast<UINT16>((std::max)(depth, 1u));
     desc.MipLevels = 1u;
     desc.Format = kLutFormat;
     desc.SampleDesc.Count = 1u;
@@ -262,8 +291,13 @@ bool AtmosphereLutOwner::CreateLut(const GFX::Context& context, GpuLut& lut, uin
     if (debugName != nullptr) {
         lut.resource->SetName(debugName);
     }
-    lut.srv = RENDER3D::AllocateTexture2DSrvDescriptor(lut.resource.Get(), kLutFormat, 0u, 1u);
-    lut.uav = RENDER3D::AllocateTexture2DUavDescriptor(lut.resource.Get(), kLutFormat, 0u);
+    if (depth > 1u) {
+        lut.srv = RENDER3D::AllocateTexture3DSrvDescriptor(lut.resource.Get(), kLutFormat);
+        lut.uav = RENDER3D::AllocateTexture3DUavDescriptor(lut.resource.Get(), kLutFormat, 0, 0, depth);
+    } else {
+        lut.srv = RENDER3D::AllocateTexture2DSrvDescriptor(lut.resource.Get(), kLutFormat, 0u, 1u);
+        lut.uav = RENDER3D::AllocateTexture2DUavDescriptor(lut.resource.Get(), kLutFormat, 0u);
+    }
     if (!lut.srv.IsValid() || !lut.uav.IsValid()) {
         RetireView(context, lut.srv, "Atmosphere.LutSRV.Failed");
         RetireView(context, lut.uav, "Atmosphere.LutUAV.Failed");
@@ -279,20 +313,29 @@ bool AtmosphereLutOwner::EnsureGpuResources(const GFX::Context& context) {
     if (!configured_ || context.device == nullptr || context.cmdList == nullptr || context.srvHeap == nullptr) {
         return false;
     }
+    const bool aerialPerspectiveReady = std::all_of(aerialPerspectiveGpu_.begin(), aerialPerspectiveGpu_.end(),
+                                                    [](const GpuLut& volume) { return volume.srv.IsValid(); });
     if (resourcesReady_ && transmittanceGpu_.resource != nullptr && multiScatteringGpu_.resource != nullptr &&
         skyViewGpu_.resource != nullptr && transmittanceGpu_.srv.IsValid() && multiScatteringGpu_.srv.IsValid() &&
-        skyViewGpu_.srv.IsValid()) {
+        skyViewGpu_.srv.IsValid() && aerialPerspectiveReady) {
         return true;
     }
     if (!EnsurePipeline(context) ||
-        !CreateLut(context, transmittanceGpu_, dimensions_.transmittanceWidth, dimensions_.transmittanceHeight,
+        !CreateLut(context, transmittanceGpu_, dimensions_.transmittanceWidth, dimensions_.transmittanceHeight, 1u,
                    L"HIKARI.Atmosphere.Transmittance") ||
-        !CreateLut(context, multiScatteringGpu_, dimensions_.multiScatteringSize, dimensions_.multiScatteringSize,
+        !CreateLut(context, multiScatteringGpu_, dimensions_.multiScatteringSize, dimensions_.multiScatteringSize, 1u,
                    L"HIKARI.Atmosphere.MultiScattering") ||
-        !CreateLut(context, skyViewGpu_, dimensions_.skyViewWidth, dimensions_.skyViewHeight,
+        !CreateLut(context, skyViewGpu_, dimensions_.skyViewWidth, dimensions_.skyViewHeight, 1u,
                    L"HIKARI.Atmosphere.SkyView")) {
         Invalidate();
         return false;
+    }
+    for (GpuLut& volume : aerialPerspectiveGpu_) {
+        if (!CreateLut(context, volume, kAerialPerspectiveResolution, kAerialPerspectiveResolution,
+                       kAerialPerspectiveSlices, L"HIKARI.Atmosphere.AerialPerspective")) {
+            Invalidate();
+            return false;
+        }
     }
     resourcesReady_ = true;
     gpuLutsReady_ = false;
@@ -309,14 +352,15 @@ void AtmosphereLutOwner::Transition(ID3D12GraphicsCommandList* commandList, GpuL
 }
 
 bool AtmosphereLutOwner::Dispatch(const GFX::Context& context, D3D12_GPU_VIRTUAL_ADDRESS constantsGpu,
-                                  const AtmosphereLutConstants& constants) {
+                                  const AtmosphereLutConstants& constants, const AtmosphereViewConstants& view) {
     lastDispatchCount_ = 0;
     lastContext_ = context;
     if (!EnsureGpuResources(context) || constantsGpu == 0u || context.cmdList == nullptr || !computeRoot_ ||
         !transmittancePso_ || !multiScatteringPso_ || !skyViewPso_) {
         return false;
     }
-    const auto signatures = TransportSignatures(constants);
+    const auto signatures = TransportSignatures(
+        constants, std::isfinite(view.cameraPreExposure.y) ? view.cameraPreExposure.y : 1.0f, view.cloudShading);
     if (gpuLutsReady_ && lastDispatchSignatures_ == signatures) {
         return true;
     }
@@ -361,6 +405,7 @@ bool AtmosphereLutOwner::Dispatch(const GFX::Context& context, D3D12_GPU_VIRTUAL
     commandList->SetComputeRootDescriptorTable(1u, transmittanceGpu_.srv.gpu);
     commandList->SetComputeRootDescriptorTable(2u, multiScatteringGpu_.srv.gpu);
     commandList->SetComputeRootDescriptorTable(3u, skyViewGpu_.uav.gpu);
+    commandList->SetComputeRoot32BitConstants(4u, sizeof(view) / sizeof(uint32_t), &view, 0u);
     commandList->Dispatch((dimensions_.skyViewWidth + kLutThreadGroupSize - 1u) / kLutThreadGroupSize,
                           (dimensions_.skyViewHeight + kLutThreadGroupSize - 1u) / kLutThreadGroupSize, 1u);
     const auto skyUavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(skyViewGpu_.resource.Get());
@@ -371,6 +416,34 @@ bool AtmosphereLutOwner::Dispatch(const GFX::Context& context, D3D12_GPU_VIRTUAL
     lastDispatchSignatures_ = signatures;
     gpuLutsReady_ = true;
     return true;
+}
+
+D3D12_GPU_DESCRIPTOR_HANDLE AtmosphereLutOwner::DispatchAerialPerspective(const GFX::Context& context,
+                                                                          D3D12_GPU_VIRTUAL_ADDRESS constantsGpu,
+                                                                          const AtmosphereViewConstants& view) {
+    GpuLut& volume = aerialPerspectiveGpu_[aerialPerspectiveCursor_];
+    if (!gpuLutsReady_ || !aerialPerspectivePso_ || constantsGpu == 0u || context.cmdList == nullptr ||
+        volume.resource == nullptr) {
+        return {};
+    }
+    aerialPerspectiveCursor_ = (aerialPerspectiveCursor_ + 1u) % kAerialPerspectiveRingSize;
+    ID3D12GraphicsCommandList* commandList = context.cmdList;
+    ID3D12DescriptorHeap* heaps[] = {context.srvHeap};
+    commandList->SetDescriptorHeaps(1u, heaps);
+    commandList->SetComputeRootSignature(computeRoot_.Get());
+    Transition(commandList, volume, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    commandList->SetPipelineState(aerialPerspectivePso_.Get());
+    commandList->SetComputeRootConstantBufferView(0u, constantsGpu);
+    commandList->SetComputeRootDescriptorTable(1u, transmittanceGpu_.srv.gpu);
+    commandList->SetComputeRootDescriptorTable(2u, multiScatteringGpu_.srv.gpu);
+    commandList->SetComputeRootDescriptorTable(3u, volume.uav.gpu);
+    commandList->SetComputeRoot32BitConstants(4u, sizeof(view) / sizeof(uint32_t), &view, 0u);
+    commandList->Dispatch((kAerialPerspectiveResolution + kLutThreadGroupSize - 1u) / kLutThreadGroupSize,
+                          (kAerialPerspectiveResolution + kLutThreadGroupSize - 1u) / kLutThreadGroupSize, 1u);
+    const auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(volume.resource.Get());
+    commandList->ResourceBarrier(1u, &uavBarrier);
+    Transition(commandList, volume, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    return volume.srv.gpu;
 }
 
 } // namespace HIKARI::ATMOSPHERE

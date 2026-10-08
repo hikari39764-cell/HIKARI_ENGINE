@@ -250,7 +250,7 @@ bool QuadDrawer::EnsurePipelineSet(DXGI_FORMAT format) {
             GFX::FormatToString(format) + " " + DumpState());
         return false;
     }
-    if (!CreatePipeline(BlobBytes(psCopyBlob_.Get()), format, set.copy, "PostQuadDrawer Copy PSO")) {
+    if (!CreatePipeline(BlobBytes(psCopyBlob_.Get()), format, false, set.copy, "PostQuadDrawer Copy PSO")) {
         DEBUGLOG::PushRenderError(std::string("[PostQuadDrawer][ERROR] EnsurePipelineSet copy PSO failed. format=") +
                                   GFX::FormatToString(format) + " " + DumpState());
         return false;
@@ -366,7 +366,7 @@ bool QuadDrawer::CreateRootSignature() {
     return true;
 }
 
-bool QuadDrawer::CreatePipeline(std::span<const uint8_t> pixelBytecode, DXGI_FORMAT format,
+bool QuadDrawer::CreatePipeline(std::span<const uint8_t> pixelBytecode, DXGI_FORMAT format, bool additive,
                                 ComPtr<ID3D12PipelineState>& outPso, const char* debugName) {
     auto* device = context_.device;
     if (!device || !rootSig_ || !vsBlob_ || pixelBytecode.empty()) {
@@ -379,6 +379,17 @@ bool QuadDrawer::CreatePipeline(std::span<const uint8_t> pixelBytecode, DXGI_FOR
     pso.VS = {vsBlob_->GetBufferPointer(), vsBlob_->GetBufferSize()};
     pso.PS = {pixelBytecode.data(), pixelBytecode.size()};
     pso.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    if (additive) {
+        // 色は足し、alpha は出力側を保つ。
+        D3D12_RENDER_TARGET_BLEND_DESC& blend = pso.BlendState.RenderTarget[0];
+        blend.BlendEnable = TRUE;
+        blend.SrcBlend = D3D12_BLEND_ONE;
+        blend.DestBlend = D3D12_BLEND_ONE;
+        blend.BlendOp = D3D12_BLEND_OP_ADD;
+        blend.SrcBlendAlpha = D3D12_BLEND_ZERO;
+        blend.DestBlendAlpha = D3D12_BLEND_ONE;
+        blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    }
     pso.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     pso.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
     pso.DepthStencilState.DepthEnable = FALSE;
@@ -480,7 +491,7 @@ bool QuadDrawer::SetPixelShader(ID3DBlob* psBlob) {
     return SetPixelShader(BlobBytes(psBlob));
 }
 
-bool QuadDrawer::SetPixelShader(std::span<const uint8_t> bytecode) {
+bool QuadDrawer::SetPixelShader(std::span<const uint8_t> bytecode, bool additive) {
     if (bytecode.empty()) {
         DEBUGLOG::PushRenderError(std::string("[PostQuadDrawer][ERROR] SetPixelShader "
                                               "received empty bytecode. ") +
@@ -492,14 +503,16 @@ bool QuadDrawer::SetPixelShader(std::span<const uint8_t> bytecode) {
         return false;
     }
 
-    const std::string shaderKey = MakeShaderKey(bytecode);
+    std::string shaderKey = MakeShaderKey(bytecode);
     if (shaderKey.empty()) {
         currentPostPso_ = nullptr;
         return false;
     }
+    if (additive)
+        shaderKey += "+additive";
     auto& cachedPso = currentPipelineSet_->postByShader[shaderKey];
     if (!cachedPso) {
-        if (!CreatePipeline(bytecode, outputFormat_, cachedPso, "PostQuadDrawer Dynamic Post PSO")) {
+        if (!CreatePipeline(bytecode, outputFormat_, additive, cachedPso, "PostQuadDrawer Dynamic Post PSO")) {
             currentPostPso_ = nullptr;
             return false;
         }

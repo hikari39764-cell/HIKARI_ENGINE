@@ -71,7 +71,6 @@ bool DocumentSceneEditorController::PrepareGamePreview(DocumentSceneBase& scene)
         return false;
     }
 
-    scene.GetSceneDocument().environment = scene.GetSceneEnvironment();
     if (!scene.SaveCurrentSceneDocument()) {
         viewportDropMessage_ = "Could not save the current scene for Play";
         return false;

@@ -37,8 +37,8 @@ cbuffer WorldTextDrawConstants : register(b1)
 {
     uint gWorldTextBaseIndex;
     uint gWorldTextCount;
-    uint gWorldTextReserved0;
-    uint gWorldTextReserved1;
+    float gWorldTextDisplayToScene; // P/E
+    uint gWorldTextReserved;
 };
 
 struct WorldTextVertex
@@ -158,5 +158,5 @@ float4 WorldTextPS(WorldTextVertex input) : SV_TARGET
         premultiplied * (1.0f - fillAlpha);
     alpha = fillAlpha + alpha * (1.0f - fillAlpha);
     clip(alpha - (1.0f / 255.0f));
-    return float4(premultiplied, alpha);
+    return float4(premultiplied * gWorldTextDisplayToScene, alpha);
 }

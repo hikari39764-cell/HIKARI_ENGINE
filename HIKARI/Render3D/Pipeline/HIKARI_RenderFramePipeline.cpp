@@ -17,7 +17,7 @@
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_DynamicDiffuseGi.h"
-#include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
+#include "Render3D/Lighting/HIKARI_VolumetricCloudStage.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Shadow/HIKARI_LocalLightShadowRenderer.h"
@@ -326,8 +326,8 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         return false;
     }
     MESHRENDERER::MeshFrameCameraOverrides cameraOverrides{};
-    const auto cloudSolarVisibility = CLOUDS::PrepareCloudSolarVisibilityFrame(frame, temporalFrame, environment.clouds,
-                                                                               renderQuality.stylizedCloudQuality);
+    const auto cloudSolarVisibility =
+        CLOUDS::PrepareCloudLightingFrame(frame, temporalFrame, environment, renderQuality.volumetricCloudQuality);
     if (temporalFrame.camera.valid) {
         cameraOverrides.renderViewProj = &temporalFrame.camera.viewProj;
         cameraOverrides.renderInvViewProj = &temporalFrame.camera.invViewProj;
@@ -343,7 +343,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     }
     DYNAMICGI::Frame dynamicGi;
     RAYTRACING::RuntimeRayLightingFrame rayLighting;
-    std::optional<LIGHTPROBE::ScopedLightProbeVolumeOverride> dynamicGiScope;
+    std::optional<LIGHTPROBE::ScopedDynamicGiVolumes> dynamicGiScope;
     {
         const auto& source = MESHRENDERER::GetActiveGpuDrivenSceneSource();
         const auto& clock = TIME::GetFrameContext();
@@ -365,11 +365,11 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
             frame.graphics, rayScene, materials, environment, lighting,
             {TIME::GetUnscaledElapsedSeconds(), clock.unscaledDt, clock.gameDt, static_cast<float>(clock.frameIndex)},
             cloudSolarVisibility.data);
-        dynamicGi = gDynamicDiffuseGi.Prepare(frame.graphics, rayScene, materials, rayLighting, camera.GetPosition(),
-                                              giQuality, frame.frameIndex);
-        if (dynamicGi) {
-            dynamicGiScope.emplace(dynamicGi.volume, dynamicGi.shTable);
-        }
+        dynamicGi =
+            gDynamicDiffuseGi.Prepare(frame.graphics, rayScene, materials, rayLighting, lighting.irradianceVolumes,
+                                      camera.GetPosition(), camera.GetTarget(), giQuality, frame.frameIndex);
+        if (dynamicGi.count != 0)
+            dynamicGiScope.emplace(dynamicGi.Volumes());
         if (!MESHRENDERER::RefreshLightingProviders(frame.graphics, cloudSolarVisibility.data)) {
             MESHRENDERER::EndFrame();
             return false;
@@ -434,8 +434,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     // GeometryAux がなければ既存の depth-only pass で現フレームを供給する。
     const bool orthographicAoNeedsDepth =
         screenSurfaceRequirements.requireCurrentFrameAo &&
-        RENDER3D::SCREENSPACE::ResolveEffectiveSsaoMode(environment.ambientOcclusion) == SsaoMode::Balanced &&
-        !environment.ambientOcclusion.editorViewportSuppressed;
+        RENDER3D::SCREENSPACE::ResolveEffectiveSsaoMode(environment.ambientOcclusion) == SsaoMode::Balanced;
     const bool scenePrepassEnabled =
         orthographicAoNeedsDepth || ShouldRunSceneDepthPrepass(RENDER3D::GetRenderQualitySettings());
     const bool sceneDsvReady = screenSpaceContext.sceneDsv.ptr != 0;

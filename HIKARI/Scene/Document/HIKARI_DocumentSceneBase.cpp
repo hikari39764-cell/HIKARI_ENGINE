@@ -13,6 +13,8 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include "Render3D/Color/HIKARI_ViewExposure.h"
+#include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectSessionRuntimeExtension.h"
@@ -32,6 +34,7 @@
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Render3D/Views/HIKARI_EditorViewCapture.h"
 #endif
+#include "Render3D/Lighting/HIKARI_Lightning.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
@@ -53,21 +56,28 @@
 
 namespace HIKARI {
 namespace {
-// 環境が参照する後処理プロファイルを解決して全体効果へ渡す。解決できなければ全体効果を止める。
-void ApplyGlobalPost(const ScenePostSettings& post, const POST::PostAssetStore& store, const AssetRegistry& registry) {
-    if (!post.enabled || post.profileId.empty()) {
-        POST::PostSystem::ClearGlobalEffect();
-        return;
-    }
+// シーンの描画の様式を解く。標準の材質の光の受け方はこのフレームの描画入力へ、後処理の層は全体効果へ渡す。
+// 様式や層のプロファイルを解決できなければ、物理の受け方と、その層を飛ばした後処理になる（エディターの様式の欄が
+// 理由を示す）。
+void ApplyRenderStyle(std::string_view styleId, const RENDERSTYLE::RenderStyleAssetStore& styles,
+                      const POST::PostAssetStore& posts, const AssetRegistry& registry, SceneEnvironment& environment) {
     std::string error;
-    const auto profile = store.LoadProfile(post.profileId, error);
-    const auto effect = profile ? store.LoadEffect(profile->effectId, error) : nullptr;
-    if (!effect) {
-        POST::PostSystem::ClearGlobalEffect();
-        return;
+    std::vector<POST::ResolvedPostLayer> layers;
+    environment.styleShading = {};
+    if (const auto style = styles.Load(styleId, error)) {
+        environment.styleShading = style->shading;
+        for (const RENDERSTYLE::RenderStylePostLayer& layer : style->post) {
+            if (!layer.enabled) {
+                continue;
+            }
+            const auto profile = posts.LoadProfile(layer.profileId, error);
+            const auto effect = profile ? posts.LoadEffect(profile->effectId, error) : nullptr;
+            if (effect) {
+                layers.push_back({profile->effectId, effect, POST::ResolvePostParameters(*effect, profile.get())});
+            }
+        }
     }
-    POST::PostSystem::SetGlobalEffect(profile->effectId, effect, POST::ResolvePostParameters(*effect, profile.get()),
-                                      &registry);
+    POST::PostSystem::SetGlobalEffects(layers, &registry);
 }
 
 void PrepareActionPost(World& world, bool playActive, const POST::PostAssetStore& store,
@@ -89,7 +99,9 @@ void PrepareActionPost(World& world, bool playActive, const POST::PostAssetStore
     std::string error;
     const auto profile = store.LoadProfile(winner->profileId, error);
     const auto effect = profile ? store.LoadEffect(profile->effectId, error) : nullptr;
-    if (!effect || effect->screenWarp || !POST::ValidatePostProfileValues(*profile, *effect, error)) {
+    // 行動の後処理は HDR の段階で特性マスクだけを受け取る（画面の曲げ・深度・表示の色の効果は全体後処理の層で使う）。
+    if (!effect || effect->screenWarp || effect->requiresSceneDepth || effect->phase != POST::PostEffectPhase::Scene ||
+        !POST::ValidatePostProfileValues(*profile, *effect, error)) {
         POST::PostSystem::ClearActionPostFrame(worldId);
         HIKARI_LOG_ERROR("[ActionPost] Profile unavailable or incompatible: " + winner->profileId + " " + error);
         return;
@@ -354,6 +366,14 @@ void DocumentSceneBase::Update(float dt) {
 
     state_->runtime.systemScheduler.Update(state_->runtime.world, frame);
     state_->runtime.systemScheduler.LateUpdate(state_->runtime.world, frame);
+    // Play 中の環境はゲーム時間で進む（一時停止とスローに従う）。編集中も天気の遷移・風・雲は実時間で進め、
+    // 時刻だけは環境パネルの試し再生の速さで流す。環境パネルを開いているかどうかで空が止まらない。
+    if (state_->runtime.playActive) {
+        state_->runtime.environment.Advance(frame.gameDt);
+    } else {
+        state_->runtime.environment.Simulation().SetTimeScale(state_->runtime.environmentPreviewTimeScale);
+        state_->runtime.environment.Advance(dt);
+    }
     state_->runtime.debugService.Observe(state_->runtime.world);
     (void)state_->runtime.bindingStore.PublishSnapshot();
 
@@ -436,15 +456,23 @@ void DocumentSceneBase::Render() {
     MODELRENDERER::ResetFrame();
     SKYRENDERER::Reset();
 
-    ApplyGlobalPost(state_->lighting.environment.post, state_->assets.PostAssets(), state_->assets.Registry());
+    // このフレームの描画入力。環境プロファイル + 時刻・天気を毎フレーム解く。
+    state_->lighting.environment = state_->runtime.environment.ResolveFrame();
+    ApplyRenderStyle(state_->runtime.environment.GetRenderStyleId(), state_->assets.RenderStyleAssets(),
+                     state_->assets.PostAssets(), state_->assets.Registry(), state_->lighting.environment);
     PrepareActionPost(state_->runtime.world, state_->runtime.playActive, state_->assets.PostAssets(),
                       state_->assets.Registry());
     auto bloom = state_->lighting.environment.bloom;
     auto tone = state_->lighting.environment.toneMapping;
+    auto exposure = state_->lighting.environment.exposure;
     std::vector<SEQUENCER::ScreenEffectSample> screenEffects;
-    state_->camera.presentation.Resolve(state_->camera.director, bloom, tone, screenEffects);
+    state_->camera.presentation.Resolve(state_->camera.director, bloom, tone, exposure, screenEffects);
     POST::PostSystem::SetBloomSettings(bloom);
     POST::PostSystem::SetToneMappingSettings(tone);
+    POST::PostSystem::SetExposureSettings(exposure);
+    // 目の順応は実時間で進める（一時停止やスローでも露出は追従する）。
+    POST::PostSystem::AdvanceExposure(TIME::GetFrameContext().unscaledDt,
+                                      SKYRENDERER::EstimateExposureIllumination(state_->lighting.environment));
     POST::PostSystem::SetSequenceEffects(screenEffects);
 
     // UE 風の地面グリッド: 半透明の地面パネルと主線/副線を一括で描画する。
@@ -494,24 +522,42 @@ void DocumentSceneBase::Render() {
             (void)VFX::SubmitVfxScreenWaves(*vfxPlayback, *reactions);
         }
     }
-    const bool editorSsaoSuppressed =
-        DrawDebugHelpers() && state_->editor.viewportPerformanceState.disableSsaoInEditorViewport;
-    activeEnvironment.ambientOcclusion.editorViewportSuppressed = editorSsaoSuppressed;
+    // 落雷は雷雲の中の一時的な点光源として場面を照らす（影は落とさない）。
+    if (const RENDER3D::LIGHTNING::LightningLight lightning =
+            RENDER3D::LIGHTNING::ResolveLightningLight(activeEnvironment, state_->camera.editorCamera.GetPosition());
+        lightning.active) {
+        RENDER3D::LIGHTING::SceneLightProvider light{};
+        light.id = "engine.environment.lightning";
+        light.enabled = true;
+        light.position = lightning.position;
+        light.color = lightning.color;
+        light.intensity = lightning.intensity;
+        light.range = 60000.0f;
+        sceneLighting.lights.push_back(light);
+    }
+    // エディターの表示切り替えは、このフレームの描画入力だけを変える。
+    if (DrawDebugHelpers() && state_->editor.viewportPerformanceState.disableSsaoInEditorViewport) {
+        activeEnvironment.ambientOcclusion.enabled = false;
+    }
     if (!UseEnvironmentLighting()) {
-        activeEnvironment.ambient.intensity = 0.0f;
+        activeEnvironment.frame.sun.illuminance = 0.0f;
+        activeEnvironment.frame.moon.illuminance = 0.0f;
+        activeEnvironment.sky.lightIntensity = 0.0f;
         for (auto& light : sceneLighting.lights) {
             light.intensity = 0.0f;
         }
     }
-    activeEnvironment.directional = RENDER3D::LIGHTING::ResolveDirectionalLight(sceneLighting);
 
     MESHRENDERER::SetGpuDrivenCullingCameraFreezeEnabled(DrawDebugHelpers() &&
                                                          state_->editor.viewportDebugViewState.freezeCullingCamera);
+    SHADOW::SetDebugFrustumVisible(DrawDebugHelpers() && state_->editor.viewportDebugViewState.showShadowCascades);
     const Camera3D& renderCamera = state_->camera.editorCamera;
 
     const GFX::Context graphics = GFX::GetCurrentContext();
     const bool renderPrimaryView = !SERVICES::ShouldProduceEditorUiFrame() || SERVICES::IsEditorGameViewportVisible();
     if (renderPrimaryView) {
+        // 主ビューの HDR へ書く間は、このフレームに固定した露出（P = E）を使う。
+        const RENDER3D::COLOR::ScopedViewExposure primaryExposure(POST::PostSystem::GetExposureState());
         SKYRENDERER::Render(graphics, renderCamera, activeEnvironment, state_->assets.Models(), state_->lighting.sky);
         (void)RENDER3D::PANORAMA_SKY::RenderPanoramaSkyLayer(graphics, renderCamera, activeEnvironment.sky,
                                                              state_->lighting.sky);
@@ -716,7 +762,6 @@ void DocumentSceneBase::SetViewportDebugViewState(const ViewportDebugViewState& 
     state_->editor.viewportDebugViewState = state;
 }
 void DocumentSceneBase::SetSelectedGizmoObjectId(SceneObjectId id) { state_->editor.selectedGizmoObjectId = id; }
-SceneObjectId DocumentSceneBase::GetSelectedGizmoObjectId() const { return state_->editor.selectedGizmoObjectId; }
 #if defined(HIKARI_WITH_EDITOR)
 bool DocumentSceneBase::RequestLightingBake(bool force, SceneObjectId selectedObjectId) {
     return state_->baking.RequestLightingBake(*this, force, selectedObjectId);

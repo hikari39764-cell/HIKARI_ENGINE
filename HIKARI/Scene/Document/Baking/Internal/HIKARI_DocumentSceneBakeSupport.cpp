@@ -178,14 +178,14 @@ Camera3D MakeProbeFaceCamera(const MATH::Vec3& position, uint32_t faceIndex, flo
 }
 
 SceneEnvironment MakeProbeCaptureEnvironment(const SceneEnvironment& source) {
+    // 探針の捕獲は絶対量の放射輝度だけを記録する。後処理と画面空間の効果は含めない。
     SceneEnvironment captureEnvironment = source;
-    captureEnvironment.reflectionProbe.enabled = false;
     captureEnvironment.ambientOcclusion.enabled = false;
+    captureEnvironment.screenSpaceReflections.enabled = false;
     captureEnvironment.bloom.enabled = false;
-    captureEnvironment.toneMapping.enabled = false;
-    captureEnvironment.post.enabled = false;
-    captureEnvironment.showLightDebug = false;
-    captureEnvironment.showSkyDebugInfo = false;
+    captureEnvironment.toneMapping.curve = ToneCurve::None;
+    // 描画の様式（Cel の受け方など）は画面の表現なので、焼き込む光には使わない。
+    captureEnvironment.styleShading = {};
     return captureEnvironment;
 }
 

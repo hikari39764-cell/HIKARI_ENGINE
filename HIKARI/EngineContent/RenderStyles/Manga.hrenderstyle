@@ -1,0 +1,23 @@
+{
+  "formatVersion": 1,
+  "name": "Manga",
+  "shading": {
+    "model": "Cel",
+    "bands": 2,
+    "threshold": 0.25,
+    "softness": 0.015,
+    "shadowTint": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "specular": 0.3,
+    "rim": 0.0
+  },
+  "post": [
+    {
+      "profile": "engine.post.profile.manga",
+      "enabled": true
+    }
+  ]
+}

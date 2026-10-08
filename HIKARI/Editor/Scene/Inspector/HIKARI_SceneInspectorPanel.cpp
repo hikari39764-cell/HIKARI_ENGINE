@@ -21,11 +21,9 @@
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
-#include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-#include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -262,20 +260,6 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase& scene, EditorContext&
                                                              pendingTransformHistory_->dirtyBefore};
         pendingTransformHistory_.reset();
     };
-    const auto isDirectionalLight = [&]() {
-        const GameObject* selected = context.selection.selectedObject;
-        const LightComponent* light = selected != nullptr ? selected->GetComponent<LightComponent>() : nullptr;
-        return light != nullptr && light->GetLightType() == LightComponentType::Directional;
-    };
-    const auto applyDirectionalPreset = [&](const MATH::Vec3& rotation, const char* historyLabel) {
-        PendingTransformHistory before{scene.GetSceneDocument().objects, scene.GetSceneDocument().camera,
-                                       context.sceneDirty || scene.HasUnsavedSceneChanges()};
-        target.transform.rotationEulerDeg = LIGHTING_AUTHORING::CanonicalDirectionalLightEulerDegrees(rotation);
-        applyTransform();
-        historyRequest_ = SceneObjectAuthoringHistoryRequest{
-            historyLabel,        std::move(before.beforeObjects), scene.GetSceneDocument().objects,
-            before.beforeCamera, scene.GetSceneDocument().camera, before.dirtyBefore};
-    };
 
     {
         InspectorPropertyRow row(TEXT::Localize("ui.inspector.position").c_str());
@@ -289,39 +273,7 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase& scene, EditorContext&
         finishHistoryIfDeactivated();
     }
     {
-        if (isDirectionalLight()) {
-            {
-                InspectorPropertyRow row(TEXT::Localize("ui.inspector.lightDirection").c_str());
-                const MATH::Vec3 canonical =
-                    LIGHTING_AUTHORING::CanonicalDirectionalLightEulerDegrees(target.transform.rotationEulerDeg);
-                float values[2]{canonical.x, canonical.y};
-                const bool changed =
-                    row.IsVisible() && ImGui::DragFloat2("##Value", values, 0.5f, -360.0f, 360.0f,
-                                                         TEXT::Localize("ui.viewport.degFormat").c_str());
-                beginHistoryIfActivated();
-                if (changed) {
-                    target.transform.rotationEulerDeg = LIGHTING_AUTHORING::CanonicalDirectionalLightEulerDegrees(
-                        {std::clamp(values[0], -89.9f, 89.9f), values[1], 0.0f});
-                    applyTransform();
-                }
-                finishHistoryIfDeactivated();
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("%s", TEXT::Localize("ui.inspector.lightDirectionTooltip").c_str());
-                }
-            }
-            ImGui::TextDisabled("%s", TEXT::Localize("ui.inspector.lightRotationLocked").c_str());
-            if (ImGui::SmallButton(TEXT::Localize("ui.inspector.presetKey34").c_str())) {
-                applyDirectionalPreset({35.0f, -35.0f, 0.0f}, TEXT::Localize("ui.inspector.history.keyPreset").c_str());
-            }
-            ImGui::SameLine();
-            if (ImGui::SmallButton(TEXT::Localize("ui.inspector.presetTopDown").c_str())) {
-                applyDirectionalPreset({89.9f, 0.0f, 0.0f}, TEXT::Localize("ui.inspector.history.topPreset").c_str());
-            }
-            ImGui::SameLine();
-            if (ImGui::SmallButton(TEXT::Localize("ui.inspector.presetFront").c_str())) {
-                applyDirectionalPreset({0.0f, 0.0f, 0.0f}, TEXT::Localize("ui.inspector.history.frontPreset").c_str());
-            }
-        } else {
+        {
             InspectorPropertyRow row(TEXT::Localize("ui.inspector.rotation").c_str());
             float values[3]{target.transform.rotationEulerDeg.x, target.transform.rotationEulerDeg.y,
                             target.transform.rotationEulerDeg.z};

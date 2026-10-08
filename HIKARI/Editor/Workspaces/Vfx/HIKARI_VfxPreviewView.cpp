@@ -12,9 +12,11 @@
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Assets/Vfx/Compiler/HIKARI_VfxCompiler.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
+#include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
+#include "Scene/Environment/HIKARI_EnvironmentRuntime.h"
 #include "Scene/Vfx/HIKARI_VfxLightOutput.h"
 
 #include "Editor/Workspaces/Vfx/HIKARI_VfxPreviewBounds.h"
@@ -22,6 +24,11 @@
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 
 namespace HIKARI::EDITOR {
+namespace {
+// 確認用の固定露出（晴天の屋外相当）。発光の見え方をシーンの露出に依存させない。
+constexpr float kPreviewEv100 = 14.0f;
+} // namespace
+
 VfxPreviewSession::VfxPreviewSession()
     : emptySceneSource_(std::make_unique<RENDER3D::GPUDRIVEN::GpuDrivenSceneSource>()),
       previewEnvironment_(std::make_unique<SceneEnvironment>()),
@@ -29,25 +36,34 @@ VfxPreviewSession::VfxPreviewSession()
     Camera3D previewCamera = cameraController_.GetCamera();
     previewCamera.SetLookAt({1.5f, 2.0f, -6.0f}, {0.0f, 0.75f, 0.0f});
     cameraController_.ResetFromCamera(previewCamera);
-    // 中性プレビューの発光基準。シーンの任意の露出設定に依存させない。
-    previewEnvironment_->bloom.threshold = 1.0f;
-    previewEnvironment_->bloom.intensity = 0.4f;
-    previewEnvironment_->bloom.radius = 1.0f;
-    previewEnvironment_->bloom.downsampleCount = 4u;
-    previewEnvironment_->sky.enabled = true;
-    previewEnvironment_->sky.mode = SkyMode::Gradient;
-    previewEnvironment_->sky.zenithColor = {0.018f, 0.026f, 0.042f};
-    previewEnvironment_->sky.horizonColor = {0.065f, 0.082f, 0.105f};
-    previewEnvironment_->sky.groundColor = {0.012f, 0.016f, 0.022f};
-    previewEnvironment_->sky.showSunDisk = false;
-    previewEnvironment_->sky.reflectionIntensity = 1.0f;
-    RENDER3D::LIGHTING::SceneLightProvider key{};
-    key.id = "vfx.preview.key";
-    key.enabled = true;
-    key.type = RENDER3D::LIGHTING::SceneLightType::Directional;
-    key.direction = {-0.4f, -0.8f, 0.4f};
-    key.intensity = previewLightIntensity_;
-    previewLighting_->lights.push_back(key);
+    // 中性プレビュー。背景は一様な色で塗り、主光源は向きと明るさを変えられる固定の太陽。
+    EnvironmentProfile& profile = *previewEnvironment_;
+    profile.exposure.mode = RENDER3D::COLOR::ExposureMode::Manual;
+    profile.exposure.manualEv100 = kPreviewEv100;
+    // 天空光と反射は DefaultSky の IBL。画素値 1 が表示の 1 になるよう水平面照度で較正する。
+    profile.sky.source = SkySource::Hdri;
+    profile.sky.asset = "DefaultSky";
+    profile.sky.textureIlluminance = 3.14159265f / RENDER3D::COLOR::ExposureFromEv100(kPreviewEv100);
+    profile.sun.mode = SunMode::Fixed;
+    profile.sun.showDisk = false;
+    profile.moon.enabled = false;
+    profile.stars.enabled = false;
+    profile.bloom.threshold = 1.0f;
+    profile.bloom.intensity = 0.4f;
+    profile.bloom.radius = 1.0f;
+    profile.bloom.downsampleCount = 4u;
+    UpdatePreviewKeyLight();
+}
+
+void VfxPreviewSession::UpdatePreviewKeyLight() {
+    // 光線の向き {sin(yaw)·0.6, -0.8, cos(yaw)·0.6} を方位（北 0・東 90）と高度で表す。
+    EnvironmentProfile& profile = *previewEnvironment_;
+    profile.sun.fixedAzimuthDegrees = -previewLightYaw_;
+    profile.sun.fixedElevationDegrees = 53.13f;
+    profile.sun.illuminance = previewLightIntensity_ / RENDER3D::COLOR::ExposureFromEv100(profile.exposure.manualEv100);
+    previewEnvironment_->frame =
+        ENVIRONMENT::BuildLightingFrame(profile, ENVIRONMENT::EnvironmentFrameState{}, ENVIRONMENT::GeoLocation{});
+    previewNeedsRedraw_ = true;
 }
 
 VfxPreviewSession::~VfxPreviewSession() {
@@ -169,8 +185,8 @@ void VfxPreviewSession::SubmitPreviewRequest(EditorViewInstance& previewView, bo
     request.displayExposure = previewView.visualization.displayExposure;
     request.sceneSourceOverride = emptySceneSource_.get();
     request.environmentOverride = previewEnvironment_.get();
-    // 作業用の主光源を保ち、素材自身の光源は同じ runtime bridge で再構成する。
-    previewLighting_->lights.resize(1);
+    // 主光源は環境の太陽。素材自身の光源は同じ runtime bridge で毎回組み直す。
+    previewLighting_->lights.clear();
     std::vector<uint8_t> visibleLayers;
     for (const auto& layer : source_->emitters)
         visibleLayers.push_back(IsEmitterPreviewVisible(layer.id) ? 1u : 0u);
@@ -185,6 +201,7 @@ void VfxPreviewSession::SubmitPreviewRequest(EditorViewInstance& previewView, bo
     request.guideOverlay.axisLength = 1.25f;
     request.suppressSpatialLightingProviders = true;
     request.useDefaultSkyIbl = true;
+    request.backgroundColor = {previewBackdrop_, previewBackdrop_, previewBackdrop_, 1.0f};
     request.spatialAntiAliasing = true;
     RENDER3D::EDITORVIEW::SubmitRequest(request);
     cameraCutPending_ = false;

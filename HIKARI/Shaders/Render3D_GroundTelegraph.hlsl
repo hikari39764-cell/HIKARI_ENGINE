@@ -1,7 +1,7 @@
 cbuffer GroundTelegraphConstants : register(b0)
 {
     float4x4 gViewProj;
-    float4 gTimeParams;
+    float4 gTimeParams; // x: 秒、y: P/E
 };
 
 struct GroundTelegraphVertex
@@ -54,5 +54,5 @@ float4 PSMain(GroundTelegraphPixel input) : SV_TARGET
         color *= 0.72f + grid * 0.26f + scan * 0.12f +
             interaction * 0.38f;
     }
-    return float4(color * alpha, alpha);
+    return float4(color * (alpha * gTimeParams.y), alpha);
 }

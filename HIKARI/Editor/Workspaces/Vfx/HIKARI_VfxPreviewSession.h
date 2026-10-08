@@ -75,6 +75,8 @@ public:
     bool StepPreviewFrame(int frameCount, std::string& outMessage);
     void StopPreview();
     void SubmitPreviewRequest(EditorViewInstance& previewView, bool canvasVisible);
+    // 作業用の主光源（固定の太陽）を向きと明るさから作り直す。
+    void UpdatePreviewKeyLight();
     void TickBackgroundPreview(EditorViewInstance& view, uint64_t frameIndex);
     void UpdatePreview(uint64_t frameIndex, float deltaSeconds);
 
@@ -129,7 +131,10 @@ private:
     std::unique_ptr<RENDER3D::LIGHTING::SceneLightingSet> previewLighting_{};
     PreviewNamespaceRetireCallback previewNamespaceRetireCallback_{};
     float previewLightYaw_ = -35.0f;
+    // 1 で表示の白に当たる照度の倍率。
     float previewLightIntensity_ = 2.0f;
+    // 一様な背景の明るさ（表示参照）。
+    float previewBackdrop_ = 0.025f;
     std::unordered_set<std::string> hiddenEmitterIds_{};
     std::string soloEmitterId_{};
     std::vector<VFX::VfxDiagnostic> diagnostics_{};

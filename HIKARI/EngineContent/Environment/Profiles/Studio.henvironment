@@ -1,0 +1,50 @@
+{
+  "formatVersion": 1,
+  "name": "Studio",
+  "defaultWeather": "engine.weather.clear",
+  "sky": {
+    "source": "Hdri",
+    "asset": "DefaultSky",
+    "textureIlluminance": 20000.0
+  },
+  "sun": {
+    "mode": "Fixed",
+    "fixedAzimuthDegrees": 135.0,
+    "fixedElevationDegrees": 45.0,
+    "illuminance": 60000.0
+  },
+  "moon": {
+    "enabled": false
+  },
+  "stars": {
+    "enabled": false
+  },
+  "clouds": {
+    "enabled": false
+  },
+  "fog": {
+    "enabled": false
+  },
+  "exposure": {
+    "mode": "Manual",
+    "manualEv100": 14.0
+  },
+  "bloom": {
+    "enabled": true,
+    "threshold": 1.0,
+    "intensity": 0.1
+  },
+  "ambientOcclusion": {
+    "enabled": true,
+    "mode": "Balanced"
+  },
+  "screenSpaceReflections": {
+    "enabled": true,
+    "quality": "Medium"
+  },
+  "shadows": {
+    "enabled": true,
+    "distance": 30.0,
+    "strength": 1.0
+  }
+}

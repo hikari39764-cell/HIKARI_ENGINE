@@ -227,16 +227,11 @@ bool ExecuteStylizedFeatureComposite(const GRAPH::RenderGraphPassContext& graphP
         if (context.cameraConstants != nullptr) {
             settings.viewProj = context.cameraConstants->viewProj;
         }
-        if (const LIGHTING::SceneLightProvider* directional =
-                LIGHTING::SelectDirectionalLight(context.features.lighting)) {
-            settings.directionalLightWS[0] = directional->direction.x;
-            settings.directionalLightWS[1] = directional->direction.y;
-            settings.directionalLightWS[2] = directional->direction.z;
-        } else {
-            settings.directionalLightWS[0] = context.environment.directional.direction.x;
-            settings.directionalLightWS[1] = context.environment.directional.direction.y;
-            settings.directionalLightWS[2] = context.environment.directional.direction.z;
-        }
+        // 主光源（昼は太陽、夜は月）の光線の向き。
+        const MATH::Vec3 ray = context.environment.frame.Primary().toLight * -1.0f;
+        settings.directionalLightWS[0] = ray.x;
+        settings.directionalLightWS[1] = ray.y;
+        settings.directionalLightWS[2] = ray.z;
         return context.features.renderer.Render(context.frame.graphics, context.frame.targetAccess,
                                                 context.sceneSurfaces, context.features.plan, settings);
     } catch (...) {

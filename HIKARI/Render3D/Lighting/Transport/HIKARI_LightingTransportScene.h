@@ -12,6 +12,7 @@
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
+#include "Render3D/Lighting/HIKARI_SkyAsset.h"
 #include "Render3D/Material/HIKARI_MaterialSnapshot.h"
 
 namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
@@ -54,8 +55,13 @@ struct LightingTransportSurfaceTarget {
     uint32_t blendedSurfaceCount = 0u;
 };
 
+// 焼き付け shader（Baking/HIKARI_DxrLightmapCS.hlsl）と共有する光源の種類。
+inline constexpr uint32_t kTransportLightSun = 0u;
+inline constexpr uint32_t kTransportLightPoint = 1u;
+inline constexpr uint32_t kTransportLightSpot = 2u;
+
 struct LightingTransportLight {
-    uint32_t type = 0u;
+    uint32_t type = kTransportLightSun;
     MATH::Vec3 position{};
     float range = 0.0f;
     MATH::Vec3 direction{0.0f, -1.0f, 0.0f};
@@ -63,20 +69,15 @@ struct LightingTransportLight {
     MATH::Vec3 radiance{1.0f, 1.0f, 1.0f};
     float innerConeCos = -1.0f;
     float angularFalloff = 1.0f;
-    LocalLightFalloff distanceFalloff = LocalLightFalloff::Range;
     float sourceRadius = 0.0f;
 };
 
 struct LightingTransportEnvironment {
     ATMOSPHERE::AtmosphereLutConstants atmosphere{};
-    MATH::Vec3 ambientRadiance{0.05f, 0.05f, 0.05f};
-    MATH::Vec3 skyZenithRadiance{0.08f, 0.22f, 0.55f};
-    MATH::Vec3 skyHorizonRadiance{0.65f, 0.78f, 0.95f};
-    MATH::Vec3 skyGroundRadiance{0.08f, 0.08f, 0.10f};
+    // 天空光の倍率。
     float skyStrength = 0.0f;
-    float skyHorizonPower = 1.5f;
     MATH::Vec4 skyTintExposure{1, 1, 1, 1};
-    SkyMode skyMode = SkyMode::Gradient;
+    SkyMode skyMode = SkyMode::None;
     float skyYaw = 0;
     TextureSnapshotSource skyTexture{};
     std::string error{};

@@ -4,7 +4,6 @@
 #include <cmath>
 #include <numbers>
 
-#include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 
 namespace HIKARI::RENDER3D::LIGHTING {
@@ -19,33 +18,28 @@ bool Finite(MATH::Vec3 value) noexcept {
     return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 }
 
-template <class Light>
-bool ValidLocalSource(const Light& light) noexcept {
-    return light.enabled && Finite(light.position) && Finite(light.color) && light.color.x >= 0 && light.color.y >= 0 &&
-           light.color.z >= 0 && std::isfinite(light.intensity) && light.intensity > 0.0f &&
-           std::isfinite(light.range) && light.range > 0.0f;
-}
-
 } // namespace
+
+float LuminousIntensityFromFlux(float lumens) noexcept {
+    return std::isfinite(lumens) ? (std::max)(lumens, 0.0f) / (4.0f * std::numbers::pi_v<float>) : 0.0f;
+}
 
 float SanitizeLocalLightSourceRadius(float radius) noexcept {
     return std::isfinite(radius) ? std::clamp(radius, 0.0f, kMaximumLocalLightSourceRadius) : 0.0f;
 }
 
-bool IsLocalLightUploadable(const PointLight& light) noexcept { return ValidLocalSource(light); }
-
-bool IsLocalLightUploadable(const SpotLight& light) noexcept { return ValidLocalSource(light); }
-
 bool IsLocalLightUploadable(const SceneLightProvider& light) noexcept {
-    return (light.type == SceneLightType::Point || light.type == SceneLightType::Spot) && ValidLocalSource(light);
+    return light.enabled && Finite(light.position) && Finite(light.color) && light.color.x >= 0 && light.color.y >= 0 &&
+           light.color.z >= 0 && std::isfinite(light.intensity) && light.intensity > 0.0f &&
+           std::isfinite(light.range) && light.range > 0.0f;
 }
 
-MATH::Vec3 ResolveSpotLightDirection(const SpotLight& light) noexcept {
+MATH::Vec3 ResolveSpotLightDirection(const SceneLightProvider& light) noexcept {
     const MATH::Vec3 direction = Finite(light.direction) ? MATH::Normalize(light.direction) : MATH::Vec3{};
     return MATH::Length(direction) > 1e-6f ? direction : MATH::Vec3{0.0f, -1.0f, 0.0f};
 }
 
-SpotLightCone ResolveSpotLightCone(const SpotLight& light) noexcept {
+SpotLightCone ResolveSpotLightCone(const SceneLightProvider& light) noexcept {
     SpotLightCone cone{};
     cone.outerAngleDegrees =
         std::clamp(std::isfinite(light.outerConeAngleDegrees) ? light.outerConeAngleDegrees : cone.outerAngleDegrees,
@@ -57,30 +51,6 @@ SpotLightCone ResolveSpotLightCone(const SpotLight& light) noexcept {
     cone.outerCos = std::cos(DegreesToRadians(cone.outerAngleDegrees));
     cone.angularFalloff = std::clamp(std::isfinite(light.angularFalloff) ? light.angularFalloff : 1.0f, 0.1f, 16.0f);
     return cone;
-}
-
-void SanitizeSpotLight(SpotLight& light) noexcept {
-    const SpotLightCone cone = ResolveSpotLightCone(light);
-    light.direction = ResolveSpotLightDirection(light);
-    light.range = std::isfinite(light.range) ? (std::max)(0.0f, light.range) : 0.0f;
-    light.intensity = std::isfinite(light.intensity) ? (std::max)(0.0f, light.intensity) : 0.0f;
-    light.innerConeAngleDegrees = cone.innerAngleDegrees;
-    light.outerConeAngleDegrees = cone.outerAngleDegrees;
-    light.angularFalloff = cone.angularFalloff;
-}
-
-MATH::Vec3 ResolveSpotLightDirection(const SceneLightProvider& light) noexcept {
-    SpotLight source{};
-    source.direction = light.direction;
-    return ResolveSpotLightDirection(source);
-}
-
-SpotLightCone ResolveSpotLightCone(const SceneLightProvider& light) noexcept {
-    SpotLight source{};
-    source.innerConeAngleDegrees = light.innerConeAngleDegrees;
-    source.outerConeAngleDegrees = light.outerConeAngleDegrees;
-    source.angularFalloff = light.angularFalloff;
-    return ResolveSpotLightCone(source);
 }
 
 } // namespace HIKARI::RENDER3D::LIGHTING

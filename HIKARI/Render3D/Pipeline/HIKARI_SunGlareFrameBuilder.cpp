@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
+#include "Render3D/Lighting/HIKARI_VolumetricCloudStage.h"
 #include "Vfx/Post/HIKARI_PostProcessingTypes.h"
 
 namespace HIKARI::RENDER3D::PIPELINE {
@@ -34,7 +35,12 @@ POST::SunGlareFrame BuildSunGlareFrame(const Camera3D& camera, const SceneEnviro
     frame.colorR = sun.sunColor.x;
     frame.colorG = sun.sunColor.y;
     frame.colorB = sun.sunColor.z;
-    frame.intensity = settings.intensity * sun.sunRadiance;
+    // 光芒はレンズの演出なので表示参照の明るさで持つ。大気の透過と地平線への沈み、雲に隠れる割合（天気からの
+    // 概算）で弱める。
+    const float visibility =
+        std::clamp(sun.sunRadiance / (std::max)(environment.sun.illuminance, 1.0e-3f), 0.0f, 1.0f) *
+        CLOUDS::EstimateCloudShading(environment).sunVisibility;
+    frame.intensity = settings.intensity * visibility;
     frame.haloRadius = settings.haloRadius;
     frame.haloFalloff = settings.haloFalloff;
     frame.streakIntensity = settings.streakIntensity;

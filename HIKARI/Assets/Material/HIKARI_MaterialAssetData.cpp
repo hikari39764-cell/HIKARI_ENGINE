@@ -71,10 +71,6 @@ void ApplyPbrAdapterEdits(const PbrMaterialAssetData& pbr, MaterialAssetData& so
 
 } // namespace
 
-void ApplyPbrMaterialAssetData(MaterialAssetData& material, const PbrMaterialAssetData& pbr) {
-    ApplyPbrAdapterEdits(pbr, material);
-}
-
 void SyncPbrFromGraphParameters(MaterialAssetData& material) {
     const auto apply = [&](std::string_view id, auto& target) {
         const auto* parameter = FindMaterialGraphParameter(material.graph, id);

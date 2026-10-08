@@ -42,4 +42,32 @@ void HikariApplyShellFade(float4 layer, float2 pixelPosition)
     }
 }
 
+// 殻の押し出しの揺らぎ（筆の圧の濃淡）。局所座標の粗い値ノイズで厚みを 1 ± HIKARI_SHELL_PUSH_VARIATION 倍する。
+// 格子は物体の半径で正規化し（半径 ≈ 4 格子）、全 view / pass が同じ式を使う。
+static const float HIKARI_SHELL_PUSH_VARIATION = 0.45f;
+
+float HikariShellPushHash(float3 cell)
+{
+    const int3 i = (int3)cell;
+    uint hash = (uint)i.x * 73856093u ^ (uint)i.y * 19349663u ^ (uint)i.z * 83492791u;
+    hash ^= hash >> 13u;
+    hash *= 0x5bd1e995u;
+    hash ^= hash >> 15u;
+    return float(hash & 0xffffffu) / 16777216.0f;
+}
+
+float HikariShellPush(float3 localPosition, float boundsRadius)
+{
+    const float3 p = localPosition * (4.0f / max(boundsRadius, 1.0e-3f));
+    const float3 cell = floor(p);
+    const float3 t = p - cell;
+    const float3 w = t * t * (3.0f - 2.0f * t);
+    const float x00 = lerp(HikariShellPushHash(cell), HikariShellPushHash(cell + float3(1, 0, 0)), w.x);
+    const float x10 = lerp(HikariShellPushHash(cell + float3(0, 1, 0)), HikariShellPushHash(cell + float3(1, 1, 0)), w.x);
+    const float x01 = lerp(HikariShellPushHash(cell + float3(0, 0, 1)), HikariShellPushHash(cell + float3(1, 0, 1)), w.x);
+    const float x11 = lerp(HikariShellPushHash(cell + float3(0, 1, 1)), HikariShellPushHash(cell + float3(1, 1, 1)), w.x);
+    const float noise = lerp(lerp(x00, x10, w.y), lerp(x01, x11, w.y), w.z);
+    return 1.0f + HIKARI_SHELL_PUSH_VARIATION * (noise * 2.0f - 1.0f);
+}
+
 #endif

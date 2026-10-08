@@ -324,11 +324,4 @@ std::vector<uint8_t> ModelComponent::ResolveRuntimeNodeVisibilityMask(const Mode
     return mask;
 }
 
-MaterialSlotId ModelComponent::ResolveCurrentSlotId(uint32_t slotIndex) const noexcept {
-    if (asset_ == nullptr || slotIndex >= asset_->materials.size()) {
-        return {};
-    }
-    return asset_->materials[slotIndex].slotId;
-}
-
 } // namespace HIKARI

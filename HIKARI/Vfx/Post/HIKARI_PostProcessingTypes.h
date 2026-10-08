@@ -30,7 +30,8 @@ struct FxaaSettings {
 };
 
 // プレビューと本編が同じ shader パラメータ契約を使う。
-void WriteToneMappingParameters(CommonParams& parameters, const ToneMappingSettings& settings, float exposureMultiplier,
+// residualExposure は Pre-Exposure 済みの HDR に残りを掛ける E/P。
+void WriteToneMappingParameters(CommonParams& parameters, const ToneMappingSettings& settings, float residualExposure,
                                 float radialCurvature = 0.0f, float radialStrength = 0.0f);
 void WriteFxaaParameters(CommonParams& parameters, int width, int height, const FxaaSettings& settings = {});
 

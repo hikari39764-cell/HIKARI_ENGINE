@@ -1,36 +1,15 @@
 #pragma once
 
 #include <cstdint>
-#include <string_view>
 
 #include "Core/Math/HIKARI_Math3D.h"
 
-namespace HIKARI {
-struct PointLight;
-struct SpotLight;
-} // namespace HIKARI
-
 namespace HIKARI::RENDER3D::LIGHTING {
 
-// GPU と保存データで共有する値。未指定値は Range。
-enum class LocalLightFalloff : uint32_t {
-    Range = 0u,
-    InverseSquare = 1u,
-};
-
-constexpr LocalLightFalloff CanonicalLocalLightFalloff(LocalLightFalloff value) noexcept {
-    return value == LocalLightFalloff::InverseSquare ? value : LocalLightFalloff::Range;
-}
-
-constexpr const char* ToString(LocalLightFalloff value) noexcept {
-    return value == LocalLightFalloff::InverseSquare ? "InverseSquare" : "Range";
-}
-
-constexpr LocalLightFalloff ParseLocalLightFalloff(std::string_view value) noexcept {
-    return value == "InverseSquare" ? LocalLightFalloff::InverseSquare : LocalLightFalloff::Range;
-}
-
 struct SceneLightProvider;
+
+// 光束 [lm] から全方向に一様な光度 [cd] へ（I = Φ / 4π）。スポットも同じ換算で、円錐は遮光だけを行う。
+float LuminousIntensityFromFlux(float lumens) noexcept;
 
 // ワールド単位の発光体半径。影響範囲 range とは独立した値。
 inline constexpr float kMaximumLocalLightSourceRadius = 1000.0f;
@@ -44,14 +23,9 @@ struct SpotLightCone {
     float angularFalloff = 1.0f;
 };
 
-bool IsLocalLightUploadable(const PointLight& light) noexcept;
-bool IsLocalLightUploadable(const SpotLight& light) noexcept;
 bool IsLocalLightUploadable(const SceneLightProvider& light) noexcept;
 
-MATH::Vec3 ResolveSpotLightDirection(const SpotLight& light) noexcept;
-SpotLightCone ResolveSpotLightCone(const SpotLight& light) noexcept;
 MATH::Vec3 ResolveSpotLightDirection(const SceneLightProvider& light) noexcept;
 SpotLightCone ResolveSpotLightCone(const SceneLightProvider& light) noexcept;
-void SanitizeSpotLight(SpotLight& light) noexcept;
 
 } // namespace HIKARI::RENDER3D::LIGHTING

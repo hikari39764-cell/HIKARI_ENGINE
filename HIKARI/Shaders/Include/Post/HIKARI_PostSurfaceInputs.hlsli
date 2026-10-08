@@ -30,4 +30,20 @@ bool HikariPostHasGroup(float2 screenUv, uint groups)
 {
     return (HikariPostReadGroupMask(screenUv) & groups) != 0u;
 }
+
+// Declare inputs:["SceneDepth"] in the .hposteffect.
+// Current-view opaque depth at render resolution (R32_FLOAT, 0 = near plane, 1 = far plane and sky).
+Texture2D<float> HikariPostSceneDepth : register(t1);
+
+// 1 - depth。遠平面が十分遠い透視投影では near / viewZ に比例し、平面の上では画面の中で一次関数になる（空は 0）。
+// 二点の比は視距離の比なので、近平面と遠平面を知らなくても輪郭と折れ目を同じ尺度で測れる。
+float HikariPostReadInverseDepth(float2 screenUv)
+{
+    uint width, height;
+    HikariPostSceneDepth.GetDimensions(width, height);
+    if (width == 0u || height == 0u)
+        return 0.0f;
+    const uint2 pixel = min(uint2(saturate(screenUv) * float2(width, height)), uint2(width - 1u, height - 1u));
+    return saturate(1.0f - HikariPostSceneDepth.Load(int3(pixel, 0)));
+}
 #endif

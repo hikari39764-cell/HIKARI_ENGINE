@@ -168,6 +168,8 @@ void Material::SetTextureSlot(MaterialTextureUsage usage, RuntimeTextureSlot slo
     case MaterialTextureUsage::Emissive: destination = &emissiveTexture_; break;
     case MaterialTextureUsage::Specular: destination = &specularTexture_; break;
     case MaterialTextureUsage::SpecularColor: destination = &specularColorTexture_; break;
+    case MaterialTextureUsage::StrokeMask: destination = &strokeMaskTexture_; break;
+    case MaterialTextureUsage::StrokeNormal: destination = &strokeNormalTexture_; break;
     default: return;
     }
     if (Equal(*destination, slot)) {
@@ -186,6 +188,8 @@ const RuntimeTextureSlot& Material::GetTextureSlot(MaterialTextureUsage usage) c
     case MaterialTextureUsage::Emissive: return emissiveTexture_;
     case MaterialTextureUsage::Specular: return specularTexture_;
     case MaterialTextureUsage::SpecularColor: return specularColorTexture_;
+    case MaterialTextureUsage::StrokeMask: return strokeMaskTexture_;
+    case MaterialTextureUsage::StrokeNormal: return strokeNormalTexture_;
     default: return kEmptyTextureSlot;
     }
 }

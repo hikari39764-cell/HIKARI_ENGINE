@@ -239,7 +239,7 @@ bool BuildRenderFrameGraphPlan(const RenderFrameGraphPlanOptions& options, void*
     const std::array cloudWrites{
         GRAPH::RenderGraphResourceUse{cloudsComplete, GRAPH::RenderGraphAccess::WriteDependency}};
     if (!graph.AddPass(
-            GRAPH::RenderGraphPassDesc{"StylizedClouds", cloudReads, cloudWrites, callbacks.clouds, userData}))
+            GRAPH::RenderGraphPassDesc{"VolumetricClouds", cloudReads, cloudWrites, callbacks.clouds, userData}))
         return false;
     return BuildRenderFrameGraphTailPlan(
         options, userData, callbacks,

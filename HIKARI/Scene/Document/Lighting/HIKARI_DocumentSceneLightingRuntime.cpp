@@ -5,61 +5,75 @@
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
-#include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 namespace HIKARI {
 namespace {
-bool EqualVec3(const MATH::Vec3& lhs, const MATH::Vec3& rhs) {
-    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
-}
-
+// 空の資源（読み込む資産）が変わったか。時刻や天気だけの変化では資源を読み直さない。
 bool IsSkyRuntimeResourceBindingChanged(const SkySettings& before, const SkySettings& after) {
-    return before.skyAsset != after.skyAsset || before.panoramaCloudAsset != after.panoramaCloudAsset ||
-           before.mode != after.mode;
+    return before.source != after.source || before.asset != after.asset ||
+           before.panoramaCloudAsset != after.panoramaCloudAsset;
 }
-
-bool IsReflectionProbeRuntimeBindingChanged(const ReflectionProbeSettings& before,
-                                            const ReflectionProbeSettings& after) {
-    return before.enabled != after.enabled || before.sourceCubemapAsset != after.sourceCubemapAsset ||
-           !EqualVec3(before.position, after.position) || before.radius != after.radius ||
-           before.intensity != after.intensity || before.influenceShape != after.influenceShape ||
-           before.projectionShape != after.projectionShape ||
-           !EqualVec3(before.influenceBoxCenter, after.influenceBoxCenter) ||
-           !EqualVec3(before.influenceBoxSize, after.influenceBoxSize) ||
-           !EqualVec3(before.projectionBoxCenter, after.projectionBoxCenter) ||
-           !EqualVec3(before.projectionBoxSize, after.projectionBoxSize) ||
-           before.blendDistance != after.blendDistance || before.priority != after.priority;
-}
-
 } // namespace
 
+ENVIRONMENT::EnvironmentRuntime& DocumentSceneBase::GetEnvironmentRuntime() noexcept {
+    return state_->runtime.environment;
+}
+
+void DocumentSceneBase::SetEnvironmentPreviewTimeScale(double timeScale) noexcept {
+    state_->runtime.environmentPreviewTimeScale = timeScale;
+}
+
+RENDERSTYLE::RenderStyleAssetStore& DocumentSceneBase::GetRenderStyleAssets() noexcept {
+    return state_->assets.RenderStyleAssets();
+}
+
+ENVIRONMENT::EnvironmentAssetStore& DocumentSceneBase::GetEnvironmentAssets() noexcept {
+    return state_->assets.EnvironmentAssets();
+}
+
+void DocumentSceneBase::ResetEnvironmentRuntime() {
+    state_->assets.EnvironmentAssets().Configure(&state_->assets.Database());
+    state_->runtime.environment.Configure(&state_->assets.EnvironmentAssets());
+    state_->runtime.environment.Reset(state_->identity.document.environment);
+    if (!state_->runtime.environment.GetError().empty()) {
+        HIKARI_LOG_WARN("[Environment] " + state_->runtime.environment.GetError());
+    }
+    state_->lighting.environment = state_->runtime.environment.ResolveFrame();
+}
+
+SceneDependencySet DocumentSceneBase::CollectRuntimeDependencies() const {
+    SceneDependencySet dependencies =
+        state_->runtime.builder.CollectDependencies(state_->identity.document, &state_->runtime.componentRegistry);
+    AddEnvironmentSkyDependencies(state_->runtime.environment.GetProfile().sky, dependencies);
+    return dependencies;
+}
+
 bool DocumentSceneBase::ApplyDocumentEnvironmentRuntimeChanges() {
-    const bool skyResourceBindingChanged =
-        IsSkyRuntimeResourceBindingChanged(state_->lighting.environment.sky, state_->identity.document.environment.sky);
-    const bool reflectionProbeBindingChanged = IsReflectionProbeRuntimeBindingChanged(
-        state_->lighting.environment.reflectionProbe, state_->identity.document.environment.reflectionProbe);
-
-    state_->lighting.environment = state_->identity.document.environment;
+    const SkySettings previousSky = state_->runtime.environment.GetProfile().sky;
+    ResetEnvironmentRuntime();
     state_->identity.documentDirty = true;
-
-    if (!skyResourceBindingChanged && !reflectionProbeBindingChanged) {
+    if (!IsSkyRuntimeResourceBindingChanged(previousSky, state_->runtime.environment.GetProfile().sky)) {
         return true;
     }
+    return RefreshLightingRuntime();
+}
 
+bool DocumentSceneBase::RefreshEnvironmentProfile() {
+    const SkySettings previousSky = state_->runtime.environment.GetProfile().sky;
+    state_->runtime.environment.RefreshProfile();
+    if (!state_->runtime.environment.GetError().empty()) {
+        HIKARI_LOG_WARN("[Environment] " + state_->runtime.environment.GetError());
+    }
+    if (!IsSkyRuntimeResourceBindingChanged(previousSky, state_->runtime.environment.GetProfile().sky)) {
+        return true;
+    }
     return RefreshLightingRuntime();
 }
 
 bool DocumentSceneBase::RefreshLightingRuntime() {
     SceneDependencySet deps{};
-    deps.sky = state_->lighting.environment.sky;
-    if (!state_->lighting.environment.sky.skyAsset.empty()) {
-        deps.skyAssetIds.insert(state_->lighting.environment.sky.skyAsset);
-    }
-    if (state_->lighting.environment.sky.mode == SkyMode::Texture2D &&
-        !state_->lighting.environment.sky.panoramaCloudAsset.empty()) {
-        deps.skyAssetIds.insert(state_->lighting.environment.sky.panoramaCloudAsset);
-    }
+    AddEnvironmentSkyDependencies(state_->runtime.environment.GetProfile().sky, deps);
     deps.lightingSceneHash = ASSETS::LIGHTING::BuildLightingSceneHash(state_->identity.document);
     deps.lightingBakeAuthoringHashes =
         ASSETS::LIGHTING::BuildLightingBakeRecordAuthoringHashes(state_->identity.document);

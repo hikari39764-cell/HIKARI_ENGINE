@@ -70,6 +70,7 @@ IrradianceVolumeAuthoring ReadIrradianceVolume(const SceneObjectData& object, co
     volume.name = object.name;
     volume.center = object.transform.position;
     volume.settings.enabled = object.enabled && properties.value("enabled", true);
+    TEXT::TryParseEnum(kLightProbeVolumeModeNames, properties.value("mode", std::string{}), volume.settings.mode);
     volume.settings.size = JSONREAD::Vec3Or(properties.value("size", nlohmann::json::array()), {10.0f, 4.0f, 10.0f});
     volume.settings.origin = {volume.center.x - volume.settings.size.x * 0.5f,
                               volume.center.y - volume.settings.size.y * 0.5f,
@@ -143,6 +144,14 @@ std::vector<IrradianceVolumeAuthoring> CollectIrradianceVolumes(const SceneDocum
     return CollectIrradianceVolumes(document.objects);
 }
 
+std::vector<IrradianceVolumeAuthoring> CollectBakedIrradianceVolumes(const SceneDocument& document) {
+    std::vector<IrradianceVolumeAuthoring> volumes = CollectIrradianceVolumes(document);
+    std::erase_if(volumes, [](const IrradianceVolumeAuthoring& volume) {
+        return volume.settings.mode != LightProbeVolumeMode::Baked;
+    });
+    return volumes;
+}
+
 std::vector<IrradianceVolumeAuthoring> CollectIrradianceVolumes(std::span<const SceneObjectData> objects) {
     std::vector<IrradianceVolumeAuthoring> volumes{};
     for (const SceneObjectData& object : objects) {
@@ -197,45 +206,26 @@ SceneObjectId AddIrradianceVolume(SceneDocument& document, const IrradianceVolum
     object.id = volume.objectId.value != 0u ? volume.objectId : AllocateSceneObjectId(document);
     object.name = volume.name.empty() ? "Irradiance Volume" : volume.name;
     object.transform.position = volume.center;
-    object.components.push_back(SceneComponentData{kIrradianceVolumeComponentType,
-                                                   {{"enabled", settings.enabled},
-                                                    {"size", JsonMath::ToJsonArray(settings.size)},
-                                                    {"countX", settings.countX},
-                                                    {"countY", settings.countY},
-                                                    {"countZ", settings.countZ},
-                                                    {"intensity", settings.intensity},
-                                                    {"blendDistance", settings.blendDistance},
-                                                    {"normalBias", settings.normalBias},
-                                                    {"captureResolution", settings.captureResolution},
-                                                    {"shOrder", settings.shOrder},
-                                                    {"priority", volume.priority},
-                                                    {"bakeSet", volume.bakeSet},
-                                                    {"scenario", volume.scenario}}});
+    object.components.push_back(
+        SceneComponentData{kIrradianceVolumeComponentType,
+                           {{"enabled", settings.enabled},
+                            {"mode", TEXT::EnumToName(kLightProbeVolumeModeNames, settings.mode)},
+                            {"size", JsonMath::ToJsonArray(settings.size)},
+                            {"countX", settings.countX},
+                            {"countY", settings.countY},
+                            {"countZ", settings.countZ},
+                            {"intensity", settings.intensity},
+                            {"blendDistance", settings.blendDistance},
+                            {"normalBias", settings.normalBias},
+                            {"captureResolution", settings.captureResolution},
+                            {"shOrder", settings.shOrder},
+                            {"priority", volume.priority},
+                            {"bakeSet", volume.bakeSet},
+                            {"scenario", volume.scenario}}});
     NormalizeSceneComponentIds(object);
     const SceneObjectId id = object.id;
     document.objects.push_back(std::move(object));
     return id;
-}
-
-void SynchronizeLegacyLightingViews(SceneDocument& document) {
-    const std::vector<ReflectionProbeAuthoring> probes = CollectReflectionProbes(document);
-    const auto reflection = std::find_if(probes.begin(), probes.end(),
-                                         [](const ReflectionProbeAuthoring& probe) { return probe.settings.enabled; });
-    if (reflection == probes.end()) {
-        document.environment.reflectionProbe.enabled = false;
-    } else {
-        document.environment.reflectionProbe = reflection->settings;
-    }
-
-    const std::vector<IrradianceVolumeAuthoring> volumes = CollectIrradianceVolumes(document);
-    const auto irradiance = std::find_if(volumes.begin(), volumes.end(), [](const IrradianceVolumeAuthoring& volume) {
-        return volume.settings.enabled;
-    });
-    if (irradiance == volumes.end()) {
-        document.lightingBake.lightProbeVolume.enabled = false;
-    } else {
-        document.lightingBake.lightProbeVolume = irradiance->settings;
-    }
 }
 
 } // namespace HIKARI::LIGHTING_AUTHORING

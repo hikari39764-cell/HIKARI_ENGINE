@@ -240,11 +240,11 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
             HikariExpressionByte(outputHeader[1u + output / 4u], output % 4u) >= header.w)
             return result;
     }
+    // 読む register は header.w 未満に検査済み。上限 128 個を毎画素すべて消すと scratch への書き込みが
+    // 式の評価より重くなるので、program が使う数だけ初期化する。
     float4 registers[HIKARI_MATERIAL_EXPRESSION_MAX_REGISTERS];
-    [unroll]
-    for (uint registerIndex = 0u;
-         registerIndex < HIKARI_MATERIAL_EXPRESSION_MAX_REGISTERS;
-         ++registerIndex)
+    [loop]
+    for (uint registerIndex = 0u; registerIndex < header.w; ++registerIndex)
     {
         registers[registerIndex] = 0.0f.xxxx;
     }

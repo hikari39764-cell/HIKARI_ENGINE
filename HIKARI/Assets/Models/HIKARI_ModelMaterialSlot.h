@@ -34,10 +34,6 @@ private:
     std::unordered_map<std::string, uint32_t> duplicateCounts_{};
 };
 
-MaterialSlotImporterSemantic ResolveMaterialSlotImporterSemantic(std::string_view sourcePath);
-
-void AssignMaterialSlotIds(std::vector<MaterialAsset>& materials, MaterialSlotImporterSemantic importerSemantic);
-
 bool HaveValidUniqueMaterialSlotIds(const std::vector<MaterialAsset>& materials);
 
 // 安定 slot ID から現在の material index を引く。見つからなければ nullopt。

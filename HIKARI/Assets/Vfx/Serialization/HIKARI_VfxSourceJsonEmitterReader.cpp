@@ -198,7 +198,8 @@ bool ReadSpecialOutput(const Json& node, VfxSpecialOutputData& output) {
     if (const auto profile = node.find("light"); profile != node.end()) {
         auto& value = output.light;
         if (!profile->is_object() || !OptionalVec4(*profile, "color", value.color) ||
-            !OptionalFloat(*profile, "intensity", value.intensity) || !OptionalFloat(*profile, "range", value.range) ||
+            !OptionalFloat(*profile, "luminousFlux", value.luminousFlux) ||
+            !OptionalFloat(*profile, "range", value.range) ||
             !OptionalFloat(*profile, "sourceRadius", value.sourceRadius) ||
             !OptionalFloat(*profile, "flickerFrequency", value.flickerFrequency) ||
             !OptionalFloat(*profile, "flickerAmplitude", value.flickerAmplitude) ||

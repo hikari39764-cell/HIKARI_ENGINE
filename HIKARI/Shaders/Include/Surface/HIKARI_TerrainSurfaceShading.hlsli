@@ -258,8 +258,13 @@ float4 HikariShadeTerrainSurface(
         scaled - bandBase);
     const float ramp = saturate(
         (bandBase + bandEdge) / max(bandCount - 1.0f, 1.0f));
-    const float3 diffuse = lerp(blendedDark, blendedLight, ramp);
-    float3 color = albedo.rgb * diffuse * shadowFactor;
+    // 光の強さは他の面と同じ物理量（太陽の照度と空の拡散光）。帯の色は反射率の色味として掛け、
+    // 影の側は空の光、日向は太陽の帯を足す。昼夜と天気で他の面と同じように明るさが変わる。
+    const float3 sunRadiance = gDirectionalColor.rgb *
+        (max(gDirectionalIntensity, 0.0f) * HikariForwardCloudSolarVisibility(worldPos) / 3.14159265f);
+    const float3 skyAmbient = max(HikariEvaluateSkyDiffuseIrradiance(shadingNormal), 0.0f.xxx);
+    const float3 sunLit = sunRadiance * shadowFactor;
+    float3 color = albedo.rgb * (blendedDark * skyAmbient + blendedLight * sunLit * ramp);
 
     // 海面ハイライトに似た広い光沢を加え、流れるような砂の質感を作る。
     const float3 halfDir = normalize(lightDir + viewDir);
@@ -272,21 +277,21 @@ float4 HikariShadeTerrainSurface(
         ? 0.16f
         : lerp(0.16f, 0.025f, roughness);
     color += stylizedSpecular * specularStrength *
-        blendedLight * shadowFactor;
+        blendedLight * sunLit;
 
     // 砂粒のきらめき。高周波 hash で細かい輝点を作り、硬さを避ける。
     const float grain = HikariTerrainHash21(
         floor(worldPos.xz * 160.0f));
     const float sparkle = pow(grain, 12.0f) *
         p.sparkleStrength * granularStrength * ndotl;
-    color += sparkle * 1.8f * float3(1.0f, 0.96f, 0.82f) * shadowFactor;
+    color += sparkle * 1.8f * float3(1.0f, 0.96f, 0.82f) * sunLit;
 
     // 簡易フレネルで明るい空の照り返しを足し、単調な土色を避ける。
     const float fresnel =
         pow(1.0f - saturate(dot(shadingNormal, viewDir)), 3.0f);
-    color += fresnel * 0.06f * float3(0.72f, 0.82f, 1.0f);
+    color += fresnel * 0.06f * skyAmbient;
 
-    return float4(max(color, 0.0f.xxx), albedo.a);
+    return HikariPreExposeView(float4(max(color, 0.0f.xxx), albedo.a));
 }
 
 #endif

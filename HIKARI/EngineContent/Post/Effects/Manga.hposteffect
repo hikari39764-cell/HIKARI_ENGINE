@@ -1,0 +1,437 @@
+{
+  "formatVersion": 1,
+  "name": "Manga",
+  "phase": "Display",
+  "inputs": [
+    "SceneDepth"
+  ],
+  "passes": [
+    {
+      "name": "Manga Resolve",
+      "programId": "HIKARI.EngineShader.Post_MangaPS",
+      "entryId": "Main"
+    }
+  ],
+  "params": [
+    {
+      "key": "strength",
+      "label": "Strength",
+      "type": "Float",
+      "ref": {
+        "slot": 0,
+        "channel": 0
+      },
+      "defaultValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "toneLevels",
+      "label": "Tone Levels",
+      "type": "Float",
+      "ref": {
+        "slot": 0,
+        "channel": 1
+      },
+      "defaultValues": [
+        4.0,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        2.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        8.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.05
+    },
+    {
+      "key": "screentone",
+      "label": "Screentone",
+      "type": "Float",
+      "ref": {
+        "slot": 0,
+        "channel": 2
+      },
+      "defaultValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "dotSize",
+      "label": "Dot Size (1080p px)",
+      "type": "Float",
+      "ref": {
+        "slot": 0,
+        "channel": 3
+      },
+      "defaultValues": [
+        5.0,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        2.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        16.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.05
+    },
+    {
+      "key": "dotAngle",
+      "label": "Dot Angle",
+      "type": "Float",
+      "ref": {
+        "slot": 1,
+        "channel": 0
+      },
+      "defaultValues": [
+        45.0,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        90.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.5
+    },
+    {
+      "key": "ink",
+      "label": "Ink Lines",
+      "type": "Float",
+      "ref": {
+        "slot": 1,
+        "channel": 1
+      },
+      "defaultValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "lineWidth",
+      "label": "Line Width (1080p px)",
+      "type": "Float",
+      "ref": {
+        "slot": 1,
+        "channel": 2
+      },
+      "defaultValues": [
+        1.6,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.5,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        4.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.02
+    },
+    {
+      "key": "depthSensitivity",
+      "label": "Shape Line Sensitivity",
+      "type": "Float",
+      "ref": {
+        "slot": 1,
+        "channel": 3
+      },
+      "defaultValues": [
+        0.6,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "lumaSensitivity",
+      "label": "Tone Line Sensitivity",
+      "type": "Float",
+      "ref": {
+        "slot": 2,
+        "channel": 0
+      },
+      "defaultValues": [
+        0.4,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "hatching",
+      "label": "Shadow Hatching",
+      "type": "Float",
+      "ref": {
+        "slot": 2,
+        "channel": 1
+      },
+      "defaultValues": [
+        0.7,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "keepColor",
+      "label": "Keep Color",
+      "type": "Float",
+      "ref": {
+        "slot": 2,
+        "channel": 2
+      },
+      "defaultValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "whitePoint",
+      "label": "Paper White Point",
+      "type": "Float",
+      "ref": {
+        "slot": 2,
+        "channel": 3
+      },
+      "defaultValues": [
+        0.62,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.2,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "paperColor",
+      "label": "Paper Color",
+      "type": "Color3",
+      "ref": {
+        "slot": 3,
+        "channel": 0
+      },
+      "defaultValues": [
+        0.96,
+        0.94,
+        0.89,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0.0,
+        0.0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        1.0,
+        1.0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "blackPoint",
+      "label": "Solid Black Point",
+      "type": "Float",
+      "ref": {
+        "slot": 3,
+        "channel": 3
+      },
+      "defaultValues": [
+        0.08,
+        0,
+        0,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0,
+        0,
+        0
+      ],
+      "maxValues": [
+        0.5,
+        0,
+        0,
+        0
+      ],
+      "speed": 0.01
+    },
+    {
+      "key": "inkColor",
+      "label": "Ink Color",
+      "type": "Color3",
+      "ref": {
+        "slot": 4,
+        "channel": 0
+      },
+      "defaultValues": [
+        0.07,
+        0.07,
+        0.09,
+        0
+      ],
+      "minValues": [
+        0.0,
+        0.0,
+        0.0,
+        0
+      ],
+      "maxValues": [
+        1.0,
+        1.0,
+        1.0,
+        0
+      ],
+      "speed": 0.01
+    }
+  ]
+}

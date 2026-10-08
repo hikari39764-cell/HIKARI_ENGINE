@@ -14,23 +14,11 @@ namespace JsonMath = SERIALIZATION::JSON::MATH;
 namespace {
 
 const char* LightTypeName(LightComponentType type) noexcept {
-    switch (type) {
-    case LightComponentType::Directional: return "Directional";
-    case LightComponentType::Spot: return "Spot";
-    case LightComponentType::Point:
-    default: return "Point";
-    }
+    return type == LightComponentType::Spot ? "Spot" : "Point";
 }
 
 LightComponentType ReadLightType(const nlohmann::json& in) {
-    const std::string value = in.value("type", std::string("Point"));
-    if (value == "Directional") {
-        return LightComponentType::Directional;
-    }
-    if (value == "Spot") {
-        return LightComponentType::Spot;
-    }
-    return LightComponentType::Point;
+    return in.value("type", std::string("Point")) == "Spot" ? LightComponentType::Spot : LightComponentType::Point;
 }
 
 } // namespace
@@ -43,7 +31,6 @@ void LightComponent::Serialize(nlohmann::json& out) const {
            {"range", range_},
            {"sourceRadius", sourceRadius_},
            {"castsShadows", castsShadows_},
-           {"distanceFalloff", RENDER3D::LIGHTING::ToString(distanceFalloff_)},
            {"innerConeAngleDegrees", innerConeAngleDegrees_},
            {"outerConeAngleDegrees", outerConeAngleDegrees_},
            {"angularFalloff", angularFalloff_},
@@ -58,7 +45,6 @@ void LightComponent::Deserialize(const nlohmann::json& in) {
     const float previousRange = range_;
     const float previousSourceRadius = sourceRadius_;
     const bool previousCastsShadows = castsShadows_;
-    const auto previousDistanceFalloff = distanceFalloff_;
     const float previousInnerConeAngle = innerConeAngleDegrees_;
     const float previousOuterConeAngle = outerConeAngleDegrees_;
     const float previousAngularFalloff = angularFalloff_;
@@ -71,8 +57,6 @@ void LightComponent::Deserialize(const nlohmann::json& in) {
     range_ = in.value("range", range_);
     sourceRadius_ = in.value("sourceRadius", 0.0f);
     castsShadows_ = in.value("castsShadows", false);
-    // 旧シーンを読み直した際も、新規作成用の既定値で照度を変えない。
-    distanceFalloff_ = RENDER3D::LIGHTING::ParseLocalLightFalloff(in.value("distanceFalloff", std::string("Range")));
     innerConeAngleDegrees_ = in.value("innerConeAngleDegrees", innerConeAngleDegrees_);
     outerConeAngleDegrees_ = in.value("outerConeAngleDegrees", outerConeAngleDegrees_);
     angularFalloff_ = in.value("angularFalloff", angularFalloff_);
@@ -83,20 +67,13 @@ void LightComponent::Deserialize(const nlohmann::json& in) {
         previousColor.y != color_.y || previousColor.z != color_.z || previousIntensity != intensity_ ||
         previousRange != range_ || previousSourceRadius != sourceRadius_ || previousCastsShadows != castsShadows_ ||
         previousInnerConeAngle != innerConeAngleDegrees_ || previousOuterConeAngle != outerConeAngleDegrees_ ||
-        previousAngularFalloff != angularFalloff_ || previousDistanceFalloff != distanceFalloff_ ||
-        previousPriority != priority_) {
+        previousAngularFalloff != angularFalloff_ || previousPriority != priority_) {
         BumpStateRevision();
     }
 }
 
 void LightComponent::SetLightType(LightComponentType type) noexcept {
-    LightComponentType canonical = LightComponentType::Point;
-    switch (type) {
-    case LightComponentType::Directional:
-    case LightComponentType::Point:
-    case LightComponentType::Spot: canonical = type; break;
-    default: break;
-    }
+    const LightComponentType canonical = type == LightComponentType::Spot ? type : LightComponentType::Point;
     if (type_ != canonical) {
         type_ = canonical;
         BumpStateRevision();
@@ -172,14 +149,6 @@ void LightComponent::SetAngularFalloff(float angularFalloff) noexcept {
     }
 }
 
-void LightComponent::SetDistanceFalloff(RENDER3D::LIGHTING::LocalLightFalloff value) noexcept {
-    const auto canonical = RENDER3D::LIGHTING::CanonicalLocalLightFalloff(value);
-    if (distanceFalloff_ != canonical) {
-        distanceFalloff_ = canonical;
-        BumpStateRevision();
-    }
-}
-
 void LightComponent::BumpStateRevision() noexcept {
     ++stateRevision_;
     if (stateRevision_ == 0u) {
@@ -192,7 +161,7 @@ void LightComponent::ClampSettings() noexcept {
     color_.x = std::clamp(std::isfinite(color_.x) ? color_.x : 1.0f, 0.0f, 1.0f);
     color_.y = std::clamp(std::isfinite(color_.y) ? color_.y : 1.0f, 0.0f, 1.0f);
     color_.z = std::clamp(std::isfinite(color_.z) ? color_.z : 1.0f, 0.0f, 1.0f);
-    intensity_ = std::clamp(std::isfinite(intensity_) ? intensity_ : 1.0f, 0.0f, 100.0f);
+    intensity_ = std::clamp(std::isfinite(intensity_) ? intensity_ : kDefaultLightLumens, 0.0f, kMaximumLightLumens);
     range_ = std::clamp(std::isfinite(range_) ? range_ : 5.0f, 0.05f, 1000.0f);
     innerConeAngleDegrees_ =
         std::clamp(std::isfinite(innerConeAngleDegrees_) ? innerConeAngleDegrees_ : 25.0f, 0.1f, 89.0f);

@@ -30,7 +30,8 @@ public:
     void SetInputTexture(ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR_HANDLE srvGpu,
                          D3D12_GPU_DESCRIPTOR_HANDLE auxiliaryTextures = {});
     bool SetPixelShader(ID3DBlob* psBlob);
-    bool SetPixelShader(std::span<const uint8_t> bytecode);
+    // additive なら出力へ加算合成する（Bloom のピラミッドを戻す段）。
+    bool SetPixelShader(std::span<const uint8_t> bytecode, bool additive = false);
     void SetConstantBuffer(D3D12_GPU_VIRTUAL_ADDRESS cbv0);
     void SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& frame) { readability_ = frame; }
     void DrawFullscreen();
@@ -49,7 +50,7 @@ private:
     };
 
     bool CreateRootSignature();
-    bool CreatePipeline(std::span<const uint8_t> pixelBytecode, DXGI_FORMAT format,
+    bool CreatePipeline(std::span<const uint8_t> pixelBytecode, DXGI_FORMAT format, bool additive,
                         Microsoft::WRL::ComPtr<ID3D12PipelineState>& outPso, const char* debugName);
     bool CreateBlendPipelines(DXGI_FORMAT format, PipelineSet& outSet);
     bool EnsurePipelineSet(DXGI_FORMAT format);

@@ -52,7 +52,7 @@ enum class Pass : uint32_t {
     UiLayers,
     ImGui,
     WaterVisibilityDepth,
-    StylizedClouds,
+    VolumetricClouds,
     SceneCaptures,
     CommandFrame,
     EnvironmentLighting,

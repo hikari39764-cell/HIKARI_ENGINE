@@ -15,7 +15,6 @@ namespace HIKARI::RENDER3D::LIGHTING {
 LocalLightGpuData BuildLocalLightGpuData(const SceneLightProvider& light) noexcept {
     LocalLightGpuData gpu{};
     gpu.sourceRadius = SanitizeLocalLightSourceRadius(light.sourceRadius);
-    gpu.kind = static_cast<uint32_t>(CanonicalLocalLightFalloff(light.distanceFalloff)) << 8u;
     gpu.positionRange = {light.position.x, light.position.y, light.position.z, light.range};
     gpu.colorIntensity = {light.color.x, light.color.y, light.color.z, (std::max)(0.0f, light.intensity)};
     if (light.type == SceneLightType::Spot) {
@@ -188,9 +187,6 @@ void VisitVisibleLocalLights(const SceneLightingSet& lighting, const Camera3D& c
                              Visitor&& visitor) {
     for (uint32_t sourceIndex = 0; sourceIndex < lighting.lights.size(); ++sourceIndex) {
         const auto& light = lighting.lights[sourceIndex];
-        if (light.type == SceneLightType::Directional) {
-            continue;
-        }
         if (!IsLocalLightUploadable(light)) {
             ++view.rejectedCount;
             continue;
@@ -219,36 +215,11 @@ void VisitVisibleLocalLights(const SceneLightingSet& lighting, const Camera3D& c
 
 } // namespace
 
-const SceneLightProvider* SelectDirectionalLight(const SceneLightingSet& lighting) noexcept {
-    const SceneLightProvider* selected = nullptr;
-    for (const SceneLightProvider& light : lighting.lights) {
-        if (light.enabled && light.type == SceneLightType::Directional && std::isfinite(light.intensity) &&
-            light.intensity > 0.0f && (selected == nullptr || light.priority > selected->priority)) {
-            selected = &light;
-        }
-    }
-    return selected;
-}
-
-DirectionalLight ResolveDirectionalLight(const SceneLightingSet& lighting) noexcept {
-    DirectionalLight result{};
-    const auto* source = SelectDirectionalLight(lighting);
-    result.enabled = source != nullptr;
-    result.intensity = source ? source->intensity : 0.0f;
-    if (source) {
-        result.direction = source->direction;
-        result.color = source->color;
-    }
-    return result;
-}
-
 LocalLightListView SelectVisibleLocalLights(const SceneLightingSet& lighting, const Camera3D& camera,
                                             uint32_t screenWidth, uint32_t screenHeight,
                                             std::span<uint32_t> sourceIndices) {
     LocalLightListView view{};
-    view.sourceCount = uint32_t(std::count_if(lighting.lights.begin(), lighting.lights.end(), [](const auto& light) {
-        return light.type != SceneLightType::Directional;
-    }));
+    view.sourceCount = static_cast<uint32_t>(lighting.lights.size());
     if (sourceIndices.empty() ||
         !InitializeLocalLightGrid(view, camera, screenWidth, screenHeight, kMaximumLocalLightClusterCount)) {
         view.rejectedCount = view.sourceCount;
@@ -293,9 +264,7 @@ LocalLightListView BuildLocalLightList(const SceneLightingSet& lighting, const C
                                        uint32_t screenHeight, const LocalLightListBuildOutput& output,
                                        std::span<const LocalLightShadowAssignment> shadows) {
     LocalLightListView view{};
-    view.sourceCount = static_cast<uint32_t>(
-        std::count_if(lighting.lights.begin(), lighting.lights.end(),
-                      [](const SceneLightProvider& light) { return light.type != SceneLightType::Directional; }));
+    view.sourceCount = static_cast<uint32_t>(lighting.lights.size());
     if (screenWidth == 0u || screenHeight == 0u || output.lights == nullptr || output.clusterHeaders == nullptr ||
         output.clusterIndices == nullptr || output.lightCapacity == 0u || output.clusterHeaderCapacity == 0u ||
         output.clusterIndexCapacity == 0u) {

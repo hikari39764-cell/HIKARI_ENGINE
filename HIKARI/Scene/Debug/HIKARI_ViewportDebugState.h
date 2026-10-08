@@ -23,6 +23,7 @@ struct ViewportDebugViewState {
     RenderDebugView renderView = RenderDebugView::None;
     bool showLegend = true;
     bool freezeCullingCamera = false;
+    bool showShadowCascades = false;
 };
 
 } // namespace HIKARI

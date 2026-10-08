@@ -222,7 +222,7 @@ void WriteSpecialOutput(BinaryWriter& writer, const VfxSpecialOutputData& value)
     writer.Write(afterimage.intensity);
     const auto& light = value.light;
     WriteVec4(writer, light.color);
-    writer.Write(light.intensity);
+    writer.Write(light.luminousFlux);
     writer.Write(light.range);
     writer.Write(light.sourceRadius);
     writer.Write(light.flickerFrequency);
@@ -248,7 +248,7 @@ bool ReadSpecialOutput(BinaryReader& reader, VfxSpecialOutputData& value) {
            reader.Read(afterimage.lifetimeSeconds) && reader.Read(afterimage.opacity) &&
            reader.Read(afterimage.fresnel) && reader.Read(afterimage.dissolve) && reader.Read(afterimage.shellOffset) &&
            ReadVec4(reader, afterimage.color) && reader.Read(afterimage.intensity) && ReadVec4(reader, light.color) &&
-           reader.Read(light.intensity) && reader.Read(light.range) && reader.Read(light.sourceRadius) &&
+           reader.Read(light.luminousFlux) && reader.Read(light.range) && reader.Read(light.sourceRadius) &&
            reader.Read(light.flickerFrequency) && reader.Read(light.flickerAmplitude) && reader.Read(light.priority) &&
            reader.ReadBool(light.castsShadows);
 }

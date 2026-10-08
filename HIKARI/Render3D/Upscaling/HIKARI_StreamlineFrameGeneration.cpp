@@ -372,6 +372,8 @@ bool SubmitStreamlineFrameGenerationInputs(const TEMPORAL::TemporalInputs& tempo
 
 bool IsStreamlineFrameGenerationInstalled() { return INTERNAL::GetState().frameGeneration.stats.pluginPresent; }
 
+bool IsStreamlineFrameGenerationInitialized() { return INTERNAL::GetState().plugins.frameGeneration; }
+
 bool IsStreamlineFrameGenerationAvailable() {
     const StreamlineFrameGenerationStats& stats = INTERNAL::GetState().frameGeneration.stats;
     return stats.pluginPresent && stats.supported;

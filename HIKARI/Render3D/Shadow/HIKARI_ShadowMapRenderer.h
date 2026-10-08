@@ -111,6 +111,8 @@ void SetGpuDrivenSceneSource(const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* so
 void InvalidateSceneCache();
 void RenderDirectionalShadowMap(const GFX::Context& graphics);
 
+// 方向光の影のカスケード範囲を線で示す（エディターの表示切り替え）。
+void SetDebugFrustumVisible(bool visible) noexcept;
 bool IsDirectionalShadowEnabled();
 const std::array<MATH::Mat4, kMaxDirectionalShadowCascades>& GetDirectionalCascadeLightViewProj();
 const MATH::Vec4& GetDirectionalCascadeSplitDistances();

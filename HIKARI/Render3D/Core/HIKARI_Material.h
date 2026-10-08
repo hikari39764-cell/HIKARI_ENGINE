@@ -117,6 +117,8 @@ private:
     RuntimeTextureSlot emissiveTexture_{};
     RuntimeTextureSlot specularTexture_{};
     RuntimeTextureSlot specularColorTexture_{};
+    RuntimeTextureSlot strokeMaskTexture_{};
+    RuntimeTextureSlot strokeNormalTexture_{};
     bool inheritModelTextures_ = false;
     float metallicFactor_ = 0.0f;
     float roughnessFactor_ = 1.0f;

@@ -17,6 +17,7 @@ cbuffer CameraCB : register(b0)
 {
     float4x4 gViewProj;
     float4 gViewport;
+    float4 gDebugExposure; // x: P/E
 };
 
 void ClipEndpointToNearPlane(inout float4 outsidePoint, float4 insidePoint)

@@ -132,6 +132,14 @@ struct EditorOperationResult {
 // Ignores only float storage roundoff; integer values and all structure remain exact.
 bool EquivalentOperationValue(const nlohmann::json& requested, const nlohmann::json& applied);
 
+// 部分 JSON を現在の値へ重ねる編集操作の共通部分。パッチのキーは current に存在するものに限り、
+// 配列と値は丸ごと置き換える。見つからなければ空、あれば "a.b" 形式の最初の未知のキーを返す。
+std::string FindUnknownPatchKey(const nlohmann::json& patch, const nlohmann::json& current);
+// 要求した値と、正規化後に保存された値が違う項目（{"a.b": 保存値}）。
+nlohmann::json CollectAdjustedPatchValues(const nlohmann::json& requested, const nlohmann::json& stored);
+// 要求したキーだけを保存後の値で返す。
+nlohmann::json ProjectAppliedPatch(const nlohmann::json& patch, const nlohmann::json& stored);
+
 struct EditorOperationDefinition {
     std::string id{};
     std::string summary{};

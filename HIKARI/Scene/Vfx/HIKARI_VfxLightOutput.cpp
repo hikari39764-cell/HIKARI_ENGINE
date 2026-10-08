@@ -28,7 +28,7 @@ bool IsPreferred(const VfxLayerLightSample& candidate, const VfxLayerLightSample
     if (candidate.priority != current.priority) {
         return candidate.priority > current.priority;
     }
-    return candidate.intensity > current.intensity;
+    return candidate.luminousFlux > current.luminousFlux;
 }
 } // namespace
 
@@ -42,7 +42,7 @@ size_t AppendVfxLightProviders(const VfxPlaybackService& playback,
                (sample.emitterIndex >= visibleLayers.size() || visibleLayers[sample.emitterIndex] == 0);
     });
     for (auto& sample : samples)
-        sample.intensity *= std::clamp(sample.color.w, 0.0f, 1.0f);
+        sample.luminousFlux *= std::clamp(sample.color.w, 0.0f, 1.0f);
     if (samples.empty())
         return 0u;
     if (samples.size() > kMaximumVfxLightOutputs) {
@@ -55,8 +55,8 @@ size_t AppendVfxLightProviders(const VfxPlaybackService& playback,
     size_t appended = 0u;
     for (const VfxLayerLightSample& sample : samples) {
         const float flicker = ResolveFlicker(sample);
-        const float intensity = sample.intensity * flicker;
-        if (!(intensity > 0.0f))
+        const float luminousFlux = sample.luminousFlux * flicker;
+        if (!(luminousFlux > 0.0f))
             continue;
         RENDER3D::LIGHTING::SceneLightProvider provider{};
         provider.id = MakeProviderId(playback.GetPlaybackNamespace(), sample);
@@ -69,7 +69,7 @@ size_t AppendVfxLightProviders(const VfxPlaybackService& playback,
             (std::max)(sample.color.y, 0.0f),
             (std::max)(sample.color.z, 0.0f),
         };
-        provider.intensity = intensity;
+        provider.intensity = RENDER3D::LIGHTING::LuminousIntensityFromFlux(luminousFlux);
         provider.range = sample.range;
         provider.sourceRadius = sample.sourceRadius;
         provider.castsShadows = sample.castsShadows;

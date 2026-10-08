@@ -22,16 +22,12 @@ using PROJECT::INTERNAL::ReadComponent;
 namespace {
 
 GameProjectLightType ToProjectLightType(LightComponentType type) noexcept {
-    switch (type) {
-    case LightComponentType::Directional: return GameProjectLightType::Directional;
-    case LightComponentType::Spot: return GameProjectLightType::Spot;
-    case LightComponentType::Point:
-    default: return GameProjectLightType::Point;
-    }
+    return type == LightComponentType::Spot ? GameProjectLightType::Spot : GameProjectLightType::Point;
 }
 
 bool HasNonZeroLightPatchReserved(const GameProjectLightPatch& patch) noexcept {
-    return patch.reserved0[0] != 0u || patch.reserved0[1] != 0u || patch.reserved0[2] != 0u || patch.reserved1 != 0u;
+    return patch.reserved0[0] != 0u || patch.reserved0[1] != 0u || patch.reserved0[2] != 0u || patch.reserved1 != 0u ||
+           patch.reserved2 != 0u;
 }
 
 bool HasNonZeroWorldSpritePatchReserved(const GameProjectWorldSpritePatch& patch) noexcept {
@@ -64,7 +60,7 @@ WorldTextView ObjectView::GetWorldText() const noexcept { return WorldTextView(h
 bool LightView::TryGetState(GameProjectLightState& outState) const noexcept {
     const uint32_t bytes = outState.structSize;
     const uint32_t version = outState.version;
-    if (version != kGameProjectLightStateVersion || bytes != kGameProjectLightStateV2Size) {
+    if (version != kGameProjectLightStateVersion || bytes != kGameProjectLightStateV3Size) {
         return false;
     }
     GameProjectLightState snapshot{};
@@ -82,7 +78,6 @@ bool LightView::TryGetState(GameProjectLightState& outState) const noexcept {
         snapshot.innerConeAngleDegrees = light.GetInnerConeAngleDegrees();
         snapshot.outerConeAngleDegrees = light.GetOuterConeAngleDegrees();
         snapshot.angularFalloff = light.GetAngularFalloff();
-        snapshot.distanceFalloff = static_cast<GameProjectLightFalloff>(light.GetDistanceFalloff());
         snapshot.priority = light.GetPriority();
         snapshot.stateRevision = light.GetStateRevision();
         snapshot.sourceRadius = light.GetSourceRadius();
@@ -98,7 +93,7 @@ GameProjectWorldResult LightView::ApplyPatch(const GameProjectLightPatch& patch)
         const auto Selected = [mask](GameProjectLightPatchField field) {
             return (mask & GameProjectLightPatchFields(field)) != 0u;
         };
-        if (patch.structSize != kGameProjectLightPatchV1Size || patch.version != kGameProjectLightPatchVersion ||
+        if (patch.structSize != kGameProjectLightPatchV2Size || patch.version != kGameProjectLightPatchVersion ||
             mask == 0u || (mask & ~kGameProjectLightPatchKnownFields) != 0u || HasNonZeroLightPatchReserved(patch) ||
             (Selected(GameProjectLightPatchField::Enabled) && patch.enabled > 1u) ||
             (Selected(GameProjectLightPatchField::Color) && !Finite(patch.color)) ||
@@ -108,18 +103,11 @@ GameProjectWorldResult LightView::ApplyPatch(const GameProjectLightPatch& patch)
              (!std::isfinite(patch.innerConeAngleDegrees) || !std::isfinite(patch.outerConeAngleDegrees))) ||
             (Selected(GameProjectLightPatchField::AngularFalloff) && !std::isfinite(patch.angularFalloff)) ||
             (Selected(GameProjectLightPatchField::CastShadows) && patch.castsShadows > 1u) ||
-            (Selected(GameProjectLightPatchField::SourceRadius) && !std::isfinite(patch.sourceRadius)) ||
-            (Selected(GameProjectLightPatchField::DistanceFalloff) &&
-             patch.distanceFalloff != GameProjectLightFalloff::Range &&
-             patch.distanceFalloff != GameProjectLightFalloff::InverseSquare)) {
+            (Selected(GameProjectLightPatchField::SourceRadius) && !std::isfinite(patch.sourceRadius))) {
             return Code::InvalidRequest;
         }
-        if (((Selected(GameProjectLightPatchField::Range) || Selected(GameProjectLightPatchField::DistanceFalloff) ||
-              Selected(GameProjectLightPatchField::SourceRadius) ||
-              Selected(GameProjectLightPatchField::CastShadows)) &&
-             light.GetLightType() == LightComponentType::Directional) ||
-            ((Selected(GameProjectLightPatchField::SpotCone) || Selected(GameProjectLightPatchField::AngularFalloff)) &&
-             light.GetLightType() != LightComponentType::Spot)) {
+        if ((Selected(GameProjectLightPatchField::SpotCone) || Selected(GameProjectLightPatchField::AngularFalloff)) &&
+            light.GetLightType() != LightComponentType::Spot) {
             return Code::Unsupported;
         }
         const float innerCone = std::clamp(patch.innerConeAngleDegrees, 0.1f, 89.0f);
@@ -131,7 +119,7 @@ GameProjectWorldResult LightView::ApplyPatch(const GameProjectLightPatch& patch)
                             std::clamp(patch.color.z, 0.0f, 1.0f)});
         }
         if (Selected(GameProjectLightPatchField::Intensity)) {
-            light.SetIntensity(std::clamp(patch.intensity, 0.0f, 100.0f));
+            light.SetIntensity(std::clamp(patch.intensity, 0.0f, kMaximumLightLumens));
         }
         if (Selected(GameProjectLightPatchField::Range)) {
             light.SetRange(std::clamp(patch.range, 0.05f, 1000.0f));
@@ -147,9 +135,6 @@ GameProjectWorldResult LightView::ApplyPatch(const GameProjectLightPatch& patch)
         }
         if (Selected(GameProjectLightPatchField::SourceRadius)) {
             light.SetSourceRadius(patch.sourceRadius);
-        }
-        if (Selected(GameProjectLightPatchField::DistanceFalloff)) {
-            light.SetDistanceFalloff(static_cast<RENDER3D::LIGHTING::LocalLightFalloff>(patch.distanceFalloff));
         }
         return Code::Success;
     });

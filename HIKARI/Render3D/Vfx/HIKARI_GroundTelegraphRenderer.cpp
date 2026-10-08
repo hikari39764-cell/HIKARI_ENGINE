@@ -14,6 +14,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
 
 namespace HIKARI::RENDER3D::COMBAT_VFX {
 namespace {
@@ -21,6 +22,7 @@ using Microsoft::WRL::ComPtr;
 
 struct alignas(16) GroundTelegraphConstants {
     MATH::Mat4 viewProj{};
+    // x: 秒、y: ビューの P/E（予兆の色は表示参照）。
     MATH::Vec4 timeParams{};
 };
 
@@ -118,7 +120,8 @@ bool GroundTelegraphRenderer::Render(const GFX::Context& graphics, const PIPELIN
     if (!EnsureFrameResources(graphics.device, frame, source.groundTelegraphVertexCount)) {
         return true;
     }
-    const GroundTelegraphConstants constants{camera.viewProj, {source.unscaledTimeSeconds, 0.0f, 0.0f, 0.0f}};
+    const GroundTelegraphConstants constants{
+        camera.viewProj, {source.unscaledTimeSeconds, RENDER3D::COLOR::GetActiveViewExposure().z, 0.0f, 0.0f}};
     std::memcpy(frame.constantMapped, &constants, sizeof(constants));
     std::memcpy(frame.vertexMapped, source.groundTelegraphVertices,
                 sizeof(GroundTelegraphVertex) * source.groundTelegraphVertexCount);

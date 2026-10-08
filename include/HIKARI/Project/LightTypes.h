@@ -8,14 +8,15 @@
 
 namespace HIKARI {
 
-inline constexpr uint32_t kGameProjectLightStateVersion = 2u;
-inline constexpr uint32_t kGameProjectLightStateV2Size = 72u;
-inline constexpr uint32_t kGameProjectLightPatchVersion = 1u;
-inline constexpr uint32_t kGameProjectLightPatchV1Size = 64u;
+// 3: 光源は局所光（点・スポット）だけ。強さは光束 [lm]、距離は逆二乗で range で滑らかに切る。
+//    太陽と月は EnvironmentView が持つ。
+inline constexpr uint32_t kGameProjectLightStateVersion = 3u;
+inline constexpr uint32_t kGameProjectLightStateV3Size = 72u;
+inline constexpr uint32_t kGameProjectLightPatchVersion = 2u;
+inline constexpr uint32_t kGameProjectLightPatchV2Size = 64u;
 
 enum class GameProjectLightType : uint32_t {
-    Directional = 0u,
-    Point,
+    Point = 0u,
     Spot,
     Count,
 };
@@ -28,14 +29,8 @@ enum class GameProjectLightPatchField : uint32_t {
     Range = 1u << 3u,
     SpotCone = 1u << 4u,
     AngularFalloff = 1u << 5u,
-    DistanceFalloff = 1u << 6u,
     SourceRadius = 1u << 7u,
     CastShadows = 1u << 8u,
-};
-
-enum class GameProjectLightFalloff : uint32_t {
-    Range = 0u,
-    InverseSquare = 1u,
 };
 
 constexpr GameProjectLightPatchField operator|(GameProjectLightPatchField lhs,
@@ -54,7 +49,6 @@ inline constexpr uint32_t kGameProjectLightPatchKnownFields =
     GameProjectLightPatchFields(GameProjectLightPatchField::Range) |
     GameProjectLightPatchFields(GameProjectLightPatchField::SpotCone) |
     GameProjectLightPatchFields(GameProjectLightPatchField::AngularFalloff) |
-    GameProjectLightPatchFields(GameProjectLightPatchField::DistanceFalloff) |
     GameProjectLightPatchFields(GameProjectLightPatchField::SourceRadius) |
     GameProjectLightPatchFields(GameProjectLightPatchField::CastShadows);
 
@@ -62,19 +56,21 @@ inline constexpr uint32_t kGameProjectLightPatchKnownFields =
 // persisted back to the Scene document. Initialize size/version before reading;
 // the host rejects any other size/version.
 struct GameProjectLightState {
-    uint32_t structSize = kGameProjectLightStateV2Size;
+    uint32_t structSize = kGameProjectLightStateV3Size;
     uint32_t version = kGameProjectLightStateVersion;
     GameProjectLightType type = GameProjectLightType::Point;
     uint8_t enabled = 1u;
     uint8_t reserved0[3] = {0u, 0u, 0u};
     GameProjectFloat3 color{1.0f, 1.0f, 1.0f};
-    float intensity = 1.0f;
-    float range = 5.0f;
+    // Luminous flux in lumens (a 60 W bulb is about 800 lm).
+    float intensity = 800.0f;
+    // Metres; inverse-square falloff fades smoothly to zero at this distance.
+    float range = 10.0f;
     float innerConeAngleDegrees = 25.0f;
     float outerConeAngleDegrees = 35.0f;
     float angularFalloff = 1.0f;
     int32_t priority = 0;
-    GameProjectLightFalloff distanceFalloff = GameProjectLightFalloff::Range;
+    uint32_t reserved1 = 0u;
     uint64_t stateRevision = 0u;
     // Point/Spot physical emitter radius in world units; independent of Range.
     float sourceRadius = 0.0f;
@@ -84,38 +80,38 @@ struct GameProjectLightState {
 
 // Atomic runtime-only update. Only fields selected by fieldMask are read.
 struct GameProjectLightPatch {
-    uint32_t structSize = kGameProjectLightPatchV1Size;
+    uint32_t structSize = kGameProjectLightPatchV2Size;
     uint32_t version = kGameProjectLightPatchVersion;
     uint32_t fieldMask = 0u;
     uint8_t enabled = 1u;
     uint8_t reserved0[3] = {0u, 0u, 0u};
     GameProjectFloat3 color{1.0f, 1.0f, 1.0f};
-    float intensity = 1.0f;
-    float range = 5.0f;
+    // Lumens.
+    float intensity = 800.0f;
+    float range = 10.0f;
     float innerConeAngleDegrees = 25.0f;
     float outerConeAngleDegrees = 35.0f;
     float angularFalloff = 1.0f;
-    // Read only when DistanceFalloff is selected; applies to Point/Spot.
-    GameProjectLightFalloff distanceFalloff = GameProjectLightFalloff::Range;
+    uint32_t reserved2 = 0u;
     // Read only for SourceRadius.
     float sourceRadius = 0.0f;
-    // Read only for CastShadows. Must be 0 or 1; applies to Point/Spot.
+    // Read only for CastShadows. Must be 0 or 1.
     uint32_t castsShadows = 0u;
     uint32_t reserved1 = 0u;
 };
 
 static_assert(std::is_standard_layout_v<GameProjectLightState>);
 static_assert(std::is_trivially_copyable_v<GameProjectLightState>);
-static_assert(sizeof(GameProjectLightState) == kGameProjectLightStateV2Size);
+static_assert(sizeof(GameProjectLightState) == kGameProjectLightStateV3Size);
 static_assert(offsetof(GameProjectLightState, color) == 16u);
 static_assert(offsetof(GameProjectLightState, castsShadows) == 68u);
 static_assert(offsetof(GameProjectLightState, stateRevision) == 56u);
-static_assert(offsetof(GameProjectLightState, distanceFalloff) == 52u);
+static_assert(offsetof(GameProjectLightState, reserved1) == 52u);
 static_assert(std::is_standard_layout_v<GameProjectLightPatch>);
 static_assert(std::is_trivially_copyable_v<GameProjectLightPatch>);
-static_assert(sizeof(GameProjectLightPatch) == kGameProjectLightPatchV1Size);
+static_assert(sizeof(GameProjectLightPatch) == kGameProjectLightPatchV2Size);
 static_assert(offsetof(GameProjectLightPatch, color) == 16u);
-static_assert(offsetof(GameProjectLightPatch, distanceFalloff) == 48u);
+static_assert(offsetof(GameProjectLightPatch, reserved2) == 48u);
 static_assert(offsetof(GameProjectLightPatch, sourceRadius) == 52u);
 static_assert(offsetof(GameProjectLightPatch, castsShadows) == 56u);
 

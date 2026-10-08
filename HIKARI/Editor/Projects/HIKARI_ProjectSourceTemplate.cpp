@@ -166,7 +166,7 @@ public:
 };
 
 // 以下はエンジンへの登録。日常のゲーム処理は上の Game に書く。
-// Register で登録した組件・系统は自動的にこの Feature の所有になる。
+// Register で登録したコンポーネントとシステムは自動的にこの Feature の所有になる。
 class GameplayFeature final : public HIKARI::IRuntimeFeature {
 public:
     std::string_view GetFeatureId() const noexcept override { return ")cpp" +

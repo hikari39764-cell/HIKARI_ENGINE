@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "Assets/HIKARI_AssetRegistry.h"
@@ -24,7 +25,9 @@ RuntimeTextureSlot DefaultSlotForUsage(MaterialTextureUsage usage) {
     case MaterialTextureUsage::Occlusion:
     case MaterialTextureUsage::Specular:
     case MaterialTextureUsage::SpecularColor: return DefaultPbrResources::WhiteSlot();
-    case MaterialTextureUsage::Normal: return DefaultPbrResources::FlatNormalSlot();
+    case MaterialTextureUsage::Normal:
+    case MaterialTextureUsage::StrokeNormal: return DefaultPbrResources::FlatNormalSlot();
+    case MaterialTextureUsage::StrokeMask: return DefaultPbrResources::WhiteSlot();
     case MaterialTextureUsage::MetallicRoughness: return DefaultPbrResources::MetallicRoughnessSlot();
     case MaterialTextureUsage::Emissive: return DefaultPbrResources::BlackSlot();
     default: return DefaultPbrResources::MissingSlot();
@@ -103,6 +106,30 @@ void ApplyPbrCompatibilityData(const PbrMaterialAssetData& data, const AssetRegi
         BuildSlot(data.specularColorTexture, MaterialTextureUsage::SpecularColor, assetRegistry, debugName));
 }
 
+// 筆触の殻の 2 枚のテクスチャは Shell ノードが所有する resource から実行時材質の slot へ投影する。
+// 殻を持たない材質は既定（白のマスク・平らな法線）へ戻し、同じ Material を別の資産で作り直しても残らない。
+void ApplyPainterlyShellResources(const MaterialProgramIR& program, const AssetRegistry& assetRegistry,
+                                  Material& outMaterial, std::string_view debugName) {
+    constexpr std::pair<MaterialResourceSemantic, MaterialTextureUsage> kStrokeTextures[]{
+        {MaterialResourceSemantic::StrokeMask, MaterialTextureUsage::StrokeMask},
+        {MaterialResourceSemantic::StrokeNormal, MaterialTextureUsage::StrokeNormal},
+    };
+    for (const auto& [semantic, usage] : kStrokeTextures) {
+        MaterialTextureSlotData slotData{};
+        const auto resource = std::find_if(program.resources.begin(), program.resources.end(),
+                                           [semantic](const auto& entry) { return entry.semantic == semantic; });
+        if (resource != program.resources.end()) {
+            slotData.useTexture = resource->assetGuid.IsValid();
+            slotData.textureAssetGuid = resource->assetGuid;
+            slotData.texCoord = static_cast<int>(resource->texCoord);
+            slotData.uvScale = resource->uvScale;
+            slotData.uvOffset = resource->uvOffset;
+            slotData.uvRotation = resource->uvRotation;
+        }
+        outMaterial.SetTextureSlot(usage, BuildSlot(slotData, usage, assetRegistry, debugName));
+    }
+}
+
 RuntimeMaterialAlphaMode ToRuntimeAlphaMode(MaterialAlphaMode alphaMode) noexcept {
     switch (alphaMode) {
     case MaterialAlphaMode::Mask: return RuntimeMaterialAlphaMode::Mask;
@@ -128,10 +155,14 @@ void ApplyProgramResolution(const PbrMaterialAssetData& pbr, const AssetRegistry
     outMaterial.SetDoubleSided(program.surface.doubleSided);
     outMaterial.SetUnlit(program.surface.unlit);
     outMaterial.SetShellSettings(program.shell);
+    ApplyPainterlyShellResources(program, assetRegistry, outMaterial, debugName);
 
     uint32_t featureBits = 0u;
     if (program.surface.unlit) {
         featureBits |= MATERIAL_FEATURES::Unlit;
+    }
+    if ((program.capabilities & MaterialCapabilityBit(MaterialProgramCapability::Shell)) != 0u) {
+        featureBits |= MATERIAL_FEATURES::PainterlyShell;
     }
     if (program.surface.alphaMode == MaterialAlphaMode::Mask) {
         featureBits |= MATERIAL_FEATURES::AlphaMask;
@@ -143,63 +174,37 @@ void ApplyProgramResolution(const PbrMaterialAssetData& pbr, const AssetRegistry
     }
     outMaterial.SetFeatureBits(featureBits);
 }
+
+RENDER3D::MATERIAL::MaterialProgramResolution StandardPbrResolution(const MaterialCompileResult& compileResult) {
+    return {RENDER3D::MATERIAL::kStandardPbrMaterialProgramId,
+            compileResult.success ? RENDER3D::MATERIAL::MaterialProgramResolutionKind::Reused
+                                  : RENDER3D::MATERIAL::MaterialProgramResolutionKind::StandardPbrFallback,
+            compileResult.success ? compileResult.program : BuildStandardPbrMaterialProgramFallback(),
+            compileResult.diagnostics};
+}
+
+// テクスチャを標準 PBR の入力へ直結するだけのグラフ（MakeStandardPbrMaterialAssetData と同じ構造）は、
+// ProjectPbrMaterialAssetData の slot と係数で固定経路がそのまま描ける。専用 program にすると画素ごとに式を
+// 解釈するので（網目の床で 1 フレーム数十 ms）、構造が一致するものは program 0 へ寄せる。
+bool IsStandardPbrForm(const MaterialAssetData& data, const PbrMaterialAssetData& pbr,
+                       const MaterialCompileResult& compileResult) {
+    if (!compileResult.success || compileResult.usedFallback || data.kind != MaterialAssetKind::Material ||
+        data.templateId != MaterialTemplateId::StandardPbr) {
+        return false;
+    }
+    MaterialAssetData standard = MakeStandardPbrMaterialAssetData(pbr);
+    standard.surface = data.surface;
+    const MaterialCompileResult standardCompile = CompileMaterialAsset(standard);
+    return standardCompile.success && standardCompile.program.key == compileResult.program.key;
+}
 } // namespace
 
 bool MaterialRuntimeBuilder::BuildRuntimeMaterial(const PbrMaterialAssetData& data, const AssetRegistry& assetRegistry,
                                                   Material& outMaterial, std::string_view debugName) const {
-    outMaterial.SetBaseColor(data.baseColorFactor);
-    outMaterial.SetMetallicFactor(data.metallicFactor);
-    outMaterial.SetRoughnessFactor(data.roughnessFactor);
-    outMaterial.SetSpecularFactor(data.specularFactor);
-    outMaterial.SetSpecularColorFactor(data.specularColorFactor);
-    outMaterial.SetNormalScale(data.normalScale);
-    outMaterial.SetOcclusionStrength(data.occlusionStrength);
-    outMaterial.SetEmissiveFactor(data.emissiveFactor);
-    outMaterial.SetEmissiveStrength(data.emissiveStrength);
-    outMaterial.SetShaderProfileId("PBR");
-
-    uint32_t featureBits = 0;
-    if (data.unlit) {
-        featureBits |= MATERIAL_FEATURES::Unlit;
-    }
-    if (data.emissiveTexture.useTexture || data.emissiveStrength > 0.0f) {
-        featureBits |= MATERIAL_FEATURES::Emissive;
-    }
-    outMaterial.SetFeatureBits(featureBits);
-
-    // Material JSON は GUID だけを保持し、Runtime では Registry から cooked texture へ解決する。
-    outMaterial.SetTextureSlot(
-        MaterialTextureUsage::BaseColor,
-        BuildSlot(data.baseColorTexture, MaterialTextureUsage::BaseColor, assetRegistry, debugName));
-    outMaterial.SetTextureSlot(MaterialTextureUsage::Normal,
-                               BuildSlot(data.normalTexture, MaterialTextureUsage::Normal, assetRegistry, debugName));
-    outMaterial.SetTextureSlot(
-        MaterialTextureUsage::MetallicRoughness,
-        BuildSlot(data.metallicRoughnessTexture, MaterialTextureUsage::MetallicRoughness, assetRegistry, debugName));
-    outMaterial.SetTextureSlot(
-        MaterialTextureUsage::Occlusion,
-        BuildSlot(data.occlusionTexture, MaterialTextureUsage::Occlusion, assetRegistry, debugName));
-    outMaterial.SetTextureSlot(
-        MaterialTextureUsage::Emissive,
-        BuildSlot(data.emissiveTexture, MaterialTextureUsage::Emissive, assetRegistry, debugName));
-    outMaterial.SetTextureSlot(
-        MaterialTextureUsage::Specular,
-        BuildSlot(data.specularTexture, MaterialTextureUsage::Specular, assetRegistry, debugName));
-    outMaterial.SetTextureSlot(
-        MaterialTextureUsage::SpecularColor,
-        BuildSlot(data.specularColorTexture, MaterialTextureUsage::SpecularColor, assetRegistry, debugName));
-
-    const MaterialAssetData source = MakeStandardPbrMaterialAssetData(data);
-    const MaterialCompileResult compileResult = CompileMaterialAsset(source);
-    const MaterialProgramIR effectiveProgram =
-        compileResult.success ? compileResult.program : BuildStandardPbrMaterialProgramFallback();
-    const RENDER3D::MATERIAL::MaterialProgramResolution resolution{
-        RENDER3D::MATERIAL::kStandardPbrMaterialProgramId,
-        compileResult.success ? RENDER3D::MATERIAL::MaterialProgramResolutionKind::Reused
-                              : RENDER3D::MATERIAL::MaterialProgramResolutionKind::StandardPbrFallback,
-        effectiveProgram, compileResult.diagnostics};
-    ApplyProgramResolution(data, assetRegistry, resolution, outMaterial, debugName);
-
+    ApplyPbrCompatibilityData(data, assetRegistry, outMaterial, debugName);
+    ApplyProgramResolution(data, assetRegistry,
+                           StandardPbrResolution(CompileMaterialAsset(MakeStandardPbrMaterialAssetData(data))),
+                           outMaterial, debugName);
     return true;
 }
 
@@ -217,9 +222,10 @@ bool MaterialRuntimeBuilder::BuildRuntimeMaterial(const MaterialAssetData& data,
                                                   RENDER3D::MATERIAL::MaterialProgramRegistry& programRegistry,
                                                   Material& outMaterial, std::string_view debugName,
                                                   RENDER3D::MATERIAL::MaterialProgramResolution* outResolution) const {
-    const RENDER3D::MATERIAL::MaterialProgramResolution resolution =
-        programRegistry.ResolveCompileResult(debugName, compileResult);
     const PbrMaterialAssetData pbr = ProjectPbrMaterialAssetData(data);
+    const RENDER3D::MATERIAL::MaterialProgramResolution resolution =
+        IsStandardPbrForm(data, pbr, compileResult) ? StandardPbrResolution(compileResult)
+                                                    : programRegistry.ResolveCompileResult(debugName, compileResult);
     ApplyPbrCompatibilityData(pbr, assetRegistry, outMaterial, debugName);
     ApplyProgramResolution(pbr, assetRegistry, resolution, outMaterial, debugName);
     if (outResolution != nullptr) {

@@ -7,10 +7,8 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
-#include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdio>
 #include <iterator>
 #include <unordered_set>
@@ -197,42 +195,9 @@ void DrawSpotLightIcon(ImDrawList* drawList, const ImVec2& center, ImU32 color) 
     drawList->AddText(ImVec2(center.x - 3.5f, center.y - 5.5f), IM_COL32(24, 21, 13, 245), "S");
 }
 
-void DrawDirectionalLightIcon(ImDrawList* drawList, const ImVec2& center, ImU32 color) {
-    constexpr float kRadius = 9.0f;
-    drawList->AddCircleFilled(center, kRadius, color, 16);
-    drawList->AddCircle(center, kRadius + 2.5f, IM_COL32(255, 248, 214, 245), 20, 2.0f);
-    for (int i = 0; i < 8; ++i) {
-        const float angle = (static_cast<float>(i) / 8.0f) * 6.28318530718f;
-        const ImVec2 from{center.x + std::cos(angle) * 13.0f, center.y + std::sin(angle) * 13.0f};
-        const ImVec2 to{center.x + std::cos(angle) * 19.0f, center.y + std::sin(angle) * 19.0f};
-        drawList->AddLine(from, to, color, 2.0f);
-    }
-}
-
-void DrawDirectionalLightArrow(ImDrawList* drawList, const ImVec2& center, const ImVec2& projectedDirection,
-                               ImU32 color) {
-    ImVec2 direction{projectedDirection.x - center.x, projectedDirection.y - center.y};
-    const float length = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-    if (length <= 0.5f) {
-        direction = {0.0f, 1.0f};
-    } else {
-        direction.x /= length;
-        direction.y /= length;
-    }
-    const ImVec2 normal{-direction.y, direction.x};
-    const ImVec2 start{center.x + direction.x * 22.0f, center.y + direction.y * 22.0f};
-    const ImVec2 end{start.x + direction.x * 56.0f, start.y + direction.y * 56.0f};
-    drawList->AddLine(start, end, IM_COL32(8, 10, 14, 235), 6.0f);
-    drawList->AddLine(start, end, color, 3.0f);
-    const ImVec2 left{end.x - direction.x * 12.0f + normal.x * 7.0f, end.y - direction.y * 12.0f + normal.y * 7.0f};
-    const ImVec2 right{end.x - direction.x * 12.0f - normal.x * 7.0f, end.y - direction.y * 12.0f - normal.y * 7.0f};
-    drawList->AddTriangleFilled(end, left, right, color);
-    drawList->AddTriangle(end, left, right, IM_COL32(255, 252, 235, 245), 1.5f);
-}
-
 void DrawLightOverlayIcons(DocumentSceneBase& scene, const ViewportOverlayState& overlays, const ImVec2& viewportOrigin,
                            const ImVec2& viewportSize) {
-    if (!overlays.showLights || !scene.GetSceneEnvironment().showLightDebug) {
+    if (!overlays.showLights) {
         return;
     }
 
@@ -269,31 +234,17 @@ void DrawLightOverlayIcons(DocumentSceneBase& scene, const ViewportOverlayState&
         }
 
         const ImU32 color = ToImGuiLightColor(light->GetColor(), 235);
-        const MATH::Vec3 worldForward =
-            MATH::Normalize({worldMatrix.m[2][0], worldMatrix.m[2][1], worldMatrix.m[2][2]});
-        switch (light->GetLightType()) {
-        case LightComponentType::Directional: {
-            DrawDirectionalLightIcon(drawList, screen, color);
-            ImVec2 projectedDirection{screen.x, screen.y + 1.0f};
-            (void)ProjectWorldToViewport(camera, worldPosition + worldForward * 2.0f, viewportOrigin, viewportSize,
-                                         projectedDirection);
-            DrawDirectionalLightArrow(drawList, screen, projectedDirection, color);
-            break;
-        }
-        case LightComponentType::Spot: DrawSpotLightIcon(drawList, screen, color); break;
-        case LightComponentType::Point:
-        default: DrawPointLightIcon(drawList, screen, color); break;
+        if (light->GetLightType() == LightComponentType::Spot) {
+            DrawSpotLightIcon(drawList, screen, color);
+        } else {
+            DrawPointLightIcon(drawList, screen, color);
         }
         ++iconCount;
         if (!overlays.showProbeLabels || labelCount >= kMaxLightLabels) {
             continue;
         }
         char label[144]{};
-        if (light->GetLightType() == LightComponentType::Directional) {
-            const MATH::Vec3 rotation = LIGHTING_AUTHORING::DirectionalLightEulerDegreesFromDirection(worldForward);
-            std::snprintf(label, sizeof(label), TEXT::Localize("ui.viewport.lightLabelDirectional").c_str(),
-                          object->GetName().c_str(), rotation.x, rotation.y, light->GetIntensity());
-        } else if (light->GetLightType() == LightComponentType::Spot) {
+        if (light->GetLightType() == LightComponentType::Spot) {
             std::snprintf(label, sizeof(label), TEXT::Localize("ui.viewport.lightLabelSpot").c_str(),
                           object->GetName().c_str(), light->GetRange(), light->GetOuterConeAngleDegrees());
         } else {

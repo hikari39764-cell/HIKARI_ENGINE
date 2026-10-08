@@ -76,7 +76,8 @@ bool PostChain::EnsureTempSize(int w, int h) {
 }
 
 RenderTarget2D* PostChain::Execute(RenderTarget2D& src, QuadDrawer& quad, const CommonParams& params, int tempWidth,
-                                   int tempHeight, const RENDER3D::RenderTextureView* surfaceFeatureMask) {
+                                   int tempHeight, const RENDER3D::RenderTextureView* surfaceFeatureMask,
+                                   ID3D12Resource* sceneDepth) {
     if (effects_.empty()) {
         return &src;
     }
@@ -115,7 +116,7 @@ RenderTarget2D* PostChain::Execute(RenderTarget2D& src, QuadDrawer& quad, const 
         dst->BeginCapture(0, 0, 0, 0);
 
         std::vector<RENDER3D::RenderResourceView> inputDescriptors;
-        if (surfaceFeatureMask) {
+        if (surfaceFeatureMask || sceneDepth) {
             inputDescriptors = RENDER3D::AllocateRenderResourceDescriptorRange(3u);
             if (inputDescriptors.size() != 3u) {
                 dst->EndCapture();
@@ -128,9 +129,10 @@ RenderTarget2D* PostChain::Execute(RenderTarget2D& src, QuadDrawer& quad, const 
             view.Format = cur->GetFormat();
             context_.device->CreateShaderResourceView(cur->GetResource(), &view, inputDescriptors[0].cpu);
             view.Format = DXGI_FORMAT_R32_FLOAT;
-            context_.device->CreateShaderResourceView(nullptr, &view, inputDescriptors[1].cpu);
-            view.Format = surfaceFeatureMask->format;
-            context_.device->CreateShaderResourceView(surfaceFeatureMask->resource, &view, inputDescriptors[2].cpu);
+            context_.device->CreateShaderResourceView(sceneDepth, &view, inputDescriptors[1].cpu);
+            view.Format = surfaceFeatureMask ? surfaceFeatureMask->format : DXGI_FORMAT_R32G32_UINT;
+            context_.device->CreateShaderResourceView(surfaceFeatureMask ? surfaceFeatureMask->resource : nullptr,
+                                                      &view, inputDescriptors[2].cpu);
             quad.SetInputTexture(context_.srvHeap, inputDescriptors[0].gpu, inputDescriptors[1].gpu);
         } else {
             quad.SetInputTexture(cur->GetSrvHeap(), cur->GetSrvGpu());

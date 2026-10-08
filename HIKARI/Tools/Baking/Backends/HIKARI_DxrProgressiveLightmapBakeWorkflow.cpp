@@ -128,14 +128,8 @@ bool DxrProgressiveLightmapBaker::RecordSamples(const GFX::Context& graphics, ui
         constants.skyTextureIndex = skyDescriptorIndex_;
         constants.sampleGridWidth = sampleGridWidth;
         constants.sampleGridHeight = status_.requestedSamples / sampleGridWidth;
-        constants.ambientSkyStrength = {environment_.ambientRadiance.x, environment_.ambientRadiance.y,
-                                        environment_.ambientRadiance.z, environment_.skyStrength};
-        constants.skyZenith = ToPosition4(environment_.skyZenithRadiance);
-        constants.skyZenith.w = environment_.skyHorizonPower;
+        constants.skyParams = {environment_.skyStrength, environment_.skyYaw, 0.0f, 0.0f};
         constants.skyTintExposure = environment_.skyTintExposure;
-        constants.skyHorizon = ToPosition4(environment_.skyHorizonRadiance);
-        constants.skyHorizon.w = environment_.skyYaw;
-        constants.skyGround = ToPosition4(environment_.skyGroundRadiance);
         graphics.cmdList->SetComputeRoot32BitConstants(kRootConstants, sizeof(constants) / sizeof(uint32_t), &constants,
                                                        0u);
         graphics.cmdList->Dispatch((width_ + 7u) / 8u, (height_ + 7u) / 8u, 1u);

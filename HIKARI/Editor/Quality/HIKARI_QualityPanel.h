@@ -1,23 +1,13 @@
 #pragma once
 
-#include "Editor/Quality/HIKARI_GlobalPostEditor.h"
-#include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
-
 namespace HIKARI {
 
-struct QualityPanelResult {
-    bool environmentChanged = false;
-    bool renderQualityChanged = false;
-    bool editActive = false;
-};
-
+// 画質ウィンドウ。プロジェクトの画質設定（解像度・パイプライン・影の技術設定）を編集する。
+// 画面の見た目（露出・後処理・SSAO など）は環境プロファイルが持ち、環境ウィンドウで編集する。
 class QualityPanel {
 public:
-    QualityPanelResult Draw(SceneEnvironment& environment, DocumentSceneBase& scene);
-    EDITOR::GlobalPostEditor& GlobalPost() { return globalPost_; }
-
-private:
-    EDITOR::GlobalPostEditor globalPost_;
+    // 画質設定が変わったら true（保存はエディターが行う）。
+    bool Draw();
 };
 
 } // namespace HIKARI

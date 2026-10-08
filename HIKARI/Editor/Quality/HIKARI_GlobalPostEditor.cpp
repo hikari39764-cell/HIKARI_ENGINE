@@ -7,6 +7,7 @@
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Post/HIKARI_PostAssetStore.h"
 #include "Core/Text/HIKARI_Localization.h"
+#include "Editor/Documents/HIKARI_ValidatedAssetDocumentUi.h"
 #include "Editor/Widgets/HIKARI_FxParameterWidget.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_World.h"
@@ -20,24 +21,8 @@ namespace HIKARI::EDITOR {
 
 #if defined(HIKARI_WITH_EDITOR)
 namespace {
-constexpr ImVec4 kErrorColor{1.0f, 0.45f, 0.45f, 1.0f};
-constexpr ImVec4 kWarningColor{1.0f, 0.72f, 0.25f, 1.0f};
-
 std::string BuiltinLabel(const POST::BuiltinPostContent& content) {
-    return std::string(content.displayName) + TEXT::Localize("post.content.engineSuffix");
-}
-
-std::string ProfileLabel(std::string_view id, const AssetDatabase& database) {
-    if (id.empty()) {
-        return TEXT::Localize("ui.common.none");
-    }
-    for (const POST::BuiltinPostContent& content : POST::GetBuiltinPostContent()) {
-        if (content.profileId == id) {
-            return BuiltinLabel(content);
-        }
-    }
-    const AssetRecord* record = database.FindByGuid(AssetGuid{std::string(id)});
-    return record ? GetAssetRecordDisplayName(*record) : std::string(id);
+    return std::string(content.displayName) + TEXT::Localize("asset.content.engineSuffix");
 }
 
 std::string EffectLabel(std::string_view id, const AssetDatabase& database) {
@@ -53,20 +38,51 @@ std::string EffectLabel(std::string_view id, const AssetDatabase& database) {
 uint64_t ParameterMergeGroup(std::string_view key) { return std::hash<std::string_view>{}(key) | 1u; }
 } // namespace
 
-void GlobalPostEditor::Draw(ScenePostSettings& post, DocumentSceneBase& scene) {
-    AssetDatabase& database = scene.GetAssetDatabase();
-    const bool wasEnabled = post.enabled;
-    if (ImGui::Checkbox(TEXT::Localize("ui.quality.postEnabled").c_str(), &post.enabled) && post.enabled &&
-        !wasEnabled && post.profileId.empty()) {
-        post.profileId = POST::kDefaultPostProfileId;
+std::string ResolvePostProfileLabel(std::string_view id, const AssetDatabase& database) {
+    if (id.empty()) {
+        return TEXT::Localize("ui.common.none");
     }
-    DrawProfilePicker(post, database);
+    for (const POST::BuiltinPostContent& content : POST::GetBuiltinPostContent()) {
+        if (content.profileId == id) {
+            return BuiltinLabel(content);
+        }
+    }
+    const AssetRecord* record = database.FindByGuid(AssetGuid{std::string(id)});
+    return record ? GetAssetRecordDisplayName(*record) : std::string(id);
+}
+
+bool GlobalPostEditor::DrawProfilePicker(std::string& profileId, const AssetDatabase& database,
+                                         const char* preview) const {
+    const std::string label = preview != nullptr ? std::string(preview) : ResolvePostProfileLabel(profileId, database);
+    if (!ImGui::BeginCombo("##postProfile", label.c_str())) {
+        return false;
+    }
+    const std::string before = profileId;
+    for (const POST::BuiltinPostContent& content : POST::GetBuiltinPostContent()) {
+        if (ImGui::Selectable(BuiltinLabel(content).c_str(), profileId == content.profileId)) {
+            profileId = content.profileId;
+        }
+    }
+    ImGui::Separator();
+    for (const AssetRecord* record : database.CollectByType(AssetType::PostProfile)) {
+        if (ImGui::Selectable((GetAssetRecordDisplayName(*record) + "##" + record->guid.value).c_str(),
+                              profileId == record->guid.value)) {
+            profileId = record->guid.value;
+        }
+    }
+    ImGui::EndCombo();
+    return profileId != before;
+}
+
+std::string GlobalPostEditor::DrawSelectedProfile(const std::string& profileId, DocumentSceneBase& scene,
+                                                  bool allowCopy) {
     auto* store = scene.GetWorld().Services().Find<POST::PostAssetStore>();
-    if (store && !post.profileId.empty()) {
-        if (post.profileId.starts_with(POST::kBuiltinPostProfilePrefix)) {
-            DrawBuiltinProfile(post, database, *store);
+    std::string copiedId;
+    if (store && !profileId.empty()) {
+        if (profileId.starts_with(POST::kBuiltinPostProfilePrefix)) {
+            copiedId = DrawBuiltinProfile(profileId, scene.GetAssetDatabase(), *store, allowCopy);
         } else {
-            DrawProjectProfile(AssetGuid{post.profileId}, database, *store);
+            DrawProjectProfile(AssetGuid{profileId}, scene.GetAssetDatabase(), *store);
         }
     }
     if (store) {
@@ -75,46 +91,24 @@ void GlobalPostEditor::Draw(ScenePostSettings& post, DocumentSceneBase& scene) {
     if (!status_.empty()) {
         ImGui::TextWrapped("%s", status_.c_str());
     }
+    return copiedId;
 }
 
-void GlobalPostEditor::DrawProfilePicker(ScenePostSettings& post, const AssetDatabase& database) const {
-    if (!ImGui::BeginCombo(TEXT::Localize("ui.quality.globalPostProfile").c_str(),
-                           ProfileLabel(post.profileId, database).c_str())) {
-        return;
-    }
-    if (ImGui::Selectable(TEXT::Localize("ui.common.none").c_str(), post.profileId.empty())) {
-        post.profileId.clear();
-    }
-    for (const POST::BuiltinPostContent& content : POST::GetBuiltinPostContent()) {
-        const bool selected = post.profileId == content.profileId;
-        if (ImGui::Selectable(BuiltinLabel(content).c_str(), selected)) {
-            post.profileId = content.profileId;
-        }
-    }
-    ImGui::Separator();
-    for (const AssetRecord* record : database.CollectByType(AssetType::PostProfile)) {
-        const bool selected = post.profileId == record->guid.value;
-        if (ImGui::Selectable((GetAssetRecordDisplayName(*record) + "##" + record->guid.value).c_str(), selected)) {
-            post.profileId = record->guid.value;
-        }
-    }
-    ImGui::EndCombo();
-}
-
-void GlobalPostEditor::DrawBuiltinProfile(ScenePostSettings& post, AssetDatabase& database,
-                                          const POST::PostAssetStore& store) {
+std::string GlobalPostEditor::DrawBuiltinProfile(const std::string& profileId, AssetDatabase& database,
+                                                 const POST::PostAssetStore& store, bool allowCopy) {
     std::string error;
-    const auto profile = store.LoadProfile(post.profileId, error);
+    const auto profile = store.LoadProfile(profileId, error);
     const auto effect = profile ? store.LoadEffect(profile->effectId, error) : nullptr;
     if (!effect) {
-        ImGui::TextColored(kErrorColor, "%s", error.c_str());
-        return;
+        ImGui::TextColored(kAssetDocumentErrorColor, "%s", error.c_str());
+        return {};
     }
-    ImGui::TextDisabled("%s", TEXT::Localize("post.profile.builtinReadOnly").c_str());
-    if (ImGui::Button(TEXT::Localize("post.profile.createCopy").c_str())) {
+    std::string copiedId;
+    ImGui::TextDisabled("%s", TEXT::Localize("asset.document.builtinReadOnly").c_str());
+    if (allowCopy && ImGui::Button(TEXT::Localize("asset.document.createCopy").c_str())) {
         std::string message;
         if (CreateProjectCopy(*profile, database, message)) {
-            post.profileId = document_.Guid().value;
+            copiedId = document_.Guid().value;
             status_.clear();
         } else {
             status_ = message;
@@ -123,82 +117,25 @@ void GlobalPostEditor::DrawBuiltinProfile(ScenePostSettings& post, AssetDatabase
     ImGui::BeginDisabled();
     DrawParameters(*effect, *profile, false);
     ImGui::EndDisabled();
-}
-
-bool GlobalPostEditor::OpenProjectProfile(const AssetGuid& guid, AssetDatabase& database) {
-    if (document_.IsOpen() && document_.Guid() == guid) {
-        return true;
-    }
-    std::string message;
-    if (document_.Open(database, guid, message)) {
-        status_.clear();
-        return true;
-    }
-    if (!document_.IsOpen() || !document_.IsDirty()) {
-        ImGui::TextColored(kErrorColor, "%s", message.c_str());
-        return false;
-    }
-    // 別のプロファイルに未保存の変更がある。保存するか破棄してから切り替える。
-    ImGui::TextColored(kWarningColor, "%s", TEXT::Localize("post.profile.pendingOther").c_str());
-    if (ImGui::Button(TEXT::Localize("menu.edit.save").c_str()) && !document_.Save(database, message)) {
-        status_ = message;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button(TEXT::Localize("post.profile.discardAndOpen").c_str())) {
-        if (document_.Open(database, guid, message, true)) {
-            status_.clear();
-            return true;
-        }
-        status_ = message;
-    }
-    return false;
+    return copiedId;
 }
 
 void GlobalPostEditor::DrawProjectProfile(const AssetGuid& guid, AssetDatabase& database, POST::PostAssetStore& store) {
-    if (!OpenProjectProfile(guid, database)) {
+    if (!OpenAssetDocumentForEdit(document_, guid, database, status_)) {
         return;
     }
-    DrawDocumentToolbar(database);
+    DrawAssetDocumentToolbar(document_, database, status_);
     DrawEffectPicker(database);
     std::string error;
     const auto effect = store.LoadEffect(document_.Profile().effectId, error);
     if (!effect) {
-        ImGui::TextColored(kErrorColor, "%s", error.c_str());
+        ImGui::TextColored(kAssetDocumentErrorColor, "%s", error.c_str());
         return;
     }
     if (!POST::ValidatePostProfileValues(document_.Profile(), *effect, error)) {
-        ImGui::TextColored(kWarningColor, "%s", error.c_str());
+        ImGui::TextColored(kAssetDocumentWarningColor, "%s", error.c_str());
     }
     DrawParameters(*effect, document_.Profile(), true);
-}
-
-void GlobalPostEditor::DrawDocumentToolbar(AssetDatabase& database) {
-    std::string message;
-    ImGui::BeginDisabled(!document_.CanUndo());
-    if (ImGui::Button(TEXT::Localize("menu.edit.undo").c_str())) {
-        (void)document_.Undo();
-    }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!document_.CanRedo());
-    if (ImGui::Button(TEXT::Localize("menu.edit.redo").c_str())) {
-        (void)document_.Redo();
-    }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!document_.IsDirty());
-    if (ImGui::Button(TEXT::Localize("menu.edit.save").c_str())) {
-        status_ = document_.Save(database, message) ? std::string{} : message;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button(TEXT::Localize("ui.assetInspector.revert").c_str())) {
-        status_ = document_.Open(database, document_.Guid(), message, true) ? std::string{} : message;
-    }
-    ImGui::EndDisabled();
-    if (document_.IsDirty()) {
-        ImGui::SameLine();
-        ImGui::TextColored(kWarningColor, "%s", TEXT::Localize("post.profile.unsaved").c_str());
-    }
 }
 
 void GlobalPostEditor::DrawEffectPicker(const AssetDatabase& database) {
@@ -280,7 +217,9 @@ void GlobalPostEditor::PublishDraft(POST::PostAssetStore& store) {
     }
 }
 #else
-void GlobalPostEditor::Draw(ScenePostSettings&, DocumentSceneBase&) {}
+bool GlobalPostEditor::DrawProfilePicker(std::string&, const AssetDatabase&, const char*) const { return false; }
+std::string ResolvePostProfileLabel(std::string_view id, const AssetDatabase&) { return std::string(id); }
+std::string GlobalPostEditor::DrawSelectedProfile(const std::string&, DocumentSceneBase&, bool) { return {}; }
 #endif
 
 } // namespace HIKARI::EDITOR

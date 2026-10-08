@@ -63,6 +63,9 @@ constexpr AssetTypeFilter kAssetTypeFilters[] = {
     {AssetType::UiAnimation, "uianim.asset"},
     {AssetType::PostEffect, "post.effect.asset"},
     {AssetType::PostProfile, "post.profile.asset"},
+    {AssetType::Environment, "environment.profile.asset"},
+    {AssetType::Weather, "environment.weather.asset"},
+    {AssetType::RenderStyle, "renderstyle.asset"},
 };
 } // namespace
 
@@ -213,6 +216,9 @@ const char* ToCompactTypeBadge(AssetType type) {
     case AssetType::TextStyle: return "TXT";
     case AssetType::PostEffect: return "PFX";
     case AssetType::PostProfile: return "PPR";
+    case AssetType::Environment: return "ENV";
+    case AssetType::Weather: return "WTH";
+    case AssetType::RenderStyle: return "RST";
     case AssetType::Unknown:
     default: return "UNK";
     }

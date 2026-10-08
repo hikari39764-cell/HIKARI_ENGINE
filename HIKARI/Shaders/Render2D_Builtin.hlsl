@@ -40,7 +40,7 @@ HikariRender2DMeshPixelInput MeshVS(
     HikariRender2DMeshPixelInput output;
     output.position = HikariRender2DPosition(input.position);
     output.uv = input.uv;
-    output.color = input.color;
+    output.color = float4(input.color.rgb * gHikariRender2DColorScale, input.color.a);
     return output;
 }
 
@@ -71,7 +71,7 @@ HikariRender2DLinePixelInput LineVS(
 {
     HikariRender2DLinePixelInput output;
     output.position = HikariRender2DPosition(input.position);
-    output.color = input.color;
+    output.color = float4(input.color.rgb * gHikariRender2DColorScale, input.color.a);
     return output;
 }
 

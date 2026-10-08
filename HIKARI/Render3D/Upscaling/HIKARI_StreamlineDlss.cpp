@@ -42,7 +42,7 @@ sl::DLSSOptions BuildDlssOptions(StreamlineDlssMode mode, uint32_t outputWidth, 
     options.mode = ToSlDlssMode(mode);
     options.outputWidth = outputWidth;
     options.outputHeight = outputHeight;
-    options.preExposure = (std::max)(preExposure, 1e-4f);
+    options.preExposure = std::isfinite(preExposure) && preExposure > 0.0f ? preExposure : 1.0f;
     options.exposureScale = 1.0f;
     options.colorBuffersHDR = sl::Boolean::eTrue;
     options.useAutoExposure = sl::Boolean::eFalse;

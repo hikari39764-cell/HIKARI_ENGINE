@@ -11,6 +11,7 @@
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #pragma comment(lib, "d3dcompiler.lib")
 namespace HIKARI::RENDERER3D::DEBUG::INTERNAL {
@@ -25,6 +26,8 @@ struct StrokeVertex3D {
 struct CameraCB {
     MATH::Mat4 viewProj{};
     MATH::Vec4 viewport{};
+    // x: ビューの P/E。デバッグ色は表示参照。
+    MATH::Vec4 exposure{1.0f, 0.0f, 0.0f, 0.0f};
 };
 struct FrameResources {
     ComPtr<ID3D12Resource> cameraCB;
@@ -336,6 +339,7 @@ void RenderPrimitiveBatches(const Camera3D& camera, float screenWidth, float scr
     const float safeHeight = (std::max)(screenHeight, 1.0f);
     frame.cameraMapped->viewProj = camera.GetViewProj();
     frame.cameraMapped->viewport = {safeWidth, safeHeight, 1.0f / safeWidth, 1.0f / safeHeight};
+    frame.cameraMapped->exposure = {RENDER3D::COLOR::GetActiveViewExposure().z, 0.0f, 0.0f, 0.0f};
     if (!solidVertices.empty()) {
         std::copy(solidVertices.begin(), solidVertices.end(), frame.solidMapped);
     }

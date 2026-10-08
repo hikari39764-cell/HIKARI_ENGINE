@@ -223,7 +223,7 @@ bool LightingRuntimeLoader::TryLoadBakeManifest(const LightingRuntimeLoadRequest
     std::vector<LIGHTPROBE::LightProbeVolumeLoadRequest> lightProbeRequests{};
     for (const ASSETS::LIGHTING::LightProbeBakeRecord& record : manifest.lightProbes) {
         const IrradianceVolumeProvider* authored = FindIrradianceProvider(request.lighting, record.id);
-        if (authored == nullptr || !authored->enabled || record.shDataPath.empty() ||
+        if (authored == nullptr || !authored->enabled || authored->realtime || record.shDataPath.empty() ||
             (!record.type.empty() && record.type != "VolumeGrid") ||
             (!record.scenario.empty() && record.scenario != runtimeData.activeScenario) ||
             (!authored->scenario.empty() && authored->scenario != runtimeData.activeScenario)) {
@@ -299,10 +299,9 @@ void LightingRuntimeLoader::LoadSkyLightingFromAssets(const LightingRuntimeLoadR
                                                       std::vector<std::string>& messages) const {
     // 依存集合には雲レイヤーも含まれる。表示中の空だけが IBL を選択する。
     IBL::Reset();
-    const bool usesSkyTexture =
-        request.sky.enabled && (request.sky.mode == SkyMode::Cubemap || request.sky.mode == SkyMode::Texture2D);
-    const bool usesCubemapIbl = usesSkyTexture && request.sky.mode == SkyMode::Cubemap;
-    const std::string activeSkyId = usesSkyTexture ? request.sky.skyAsset : std::string{};
+    const bool usesSkyTexture = request.sky.source != SkySource::Atmosphere;
+    const bool usesCubemapIbl = request.sky.source == SkySource::Hdri;
+    const std::string activeSkyId = usesSkyTexture ? request.sky.asset : std::string{};
     auto skyAssetIds = request.skyAssetIds;
     if (!activeSkyId.empty())
         skyAssetIds.insert(activeSkyId);

@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "name": "Retro CRT",
+  "post": [
+    {
+      "profile": "engine.post.profile.crtdy",
+      "enabled": true
+    }
+  ]
+}

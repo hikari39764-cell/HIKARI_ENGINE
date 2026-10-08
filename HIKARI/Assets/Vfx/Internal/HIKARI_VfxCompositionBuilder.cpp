@@ -74,12 +74,12 @@ void Erode(VfxEmitterData& layer, float start, float end) {
     dissolve.parameters = {start, end, 1.7f, 0.09f};
     dissolve.colorA = {0.03f, 0.14f, 0.25f, 1};
 }
-void Light(VfxEmitterData& layer, MATH::Vec4 color, float intensity, float range) {
+void Light(VfxEmitterData& layer, MATH::Vec4 color, float luminousFlux, float range) {
     VfxSpecialOutputData output{};
     output.id = layer.id + ".light";
     output.type = VfxSpecialOutputType::Light;
     output.light.color = color;
-    output.light.intensity = intensity;
+    output.light.luminousFlux = luminousFlux;
     output.light.range = range;
     layer.specialOutputs.push_back(std::move(output));
 }

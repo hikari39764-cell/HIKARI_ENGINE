@@ -32,9 +32,10 @@ struct TaaResolveConstants {
     MATH::Vec4 taaParams{};
     MATH::Vec4 rejectionParams{};
     MATH::Vec4 jitterPixels{};
+    MATH::Vec4 exposureParams{};
 };
 
-static_assert(sizeof(TaaResolveConstants) == 64u);
+static_assert(sizeof(TaaResolveConstants) == 80u);
 
 struct TaaResolvePassState {
     ComPtr<ID3D12RootSignature> rootSignature{};
@@ -205,6 +206,9 @@ RenderTarget2D* ExecuteTaaResolvePass(const GFX::Context& graphics, const Tempor
     constants.rejectionParams = {
         std::clamp(settings.depthRejection, 0.0001f, 0.05f), std::clamp(settings.luminanceRejection, 0.05f, 4.0f),
         std::clamp(settings.sharpness, 0.0f, 1.0f), static_cast<float>(GetTemporalDebugView(inputs.resourceFrame))};
+    const float preExposure =
+        inputs.exposure.valid && inputs.exposureState.preExposure > 0.0f ? inputs.exposureState.preExposure : 1.0f;
+    constants.exposureParams = {1.0f / preExposure, COLOR::PreExposureRatio(inputs.exposureState), 0.0f, 0.0f};
     std::memcpy(constantUpload.mapped, &constants, sizeof(constants));
 
     D3D12_GPU_DESCRIPTOR_HANDLE historySrv = historyValid ? inputs.historyColorRead.srv : inputs.sceneColor.srv;

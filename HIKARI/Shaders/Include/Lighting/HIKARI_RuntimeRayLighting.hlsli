@@ -10,11 +10,7 @@ struct HikariRayLightingData
 {
     float4 sunDirectionIntensity;
     float4 sunColorRange;
-    float4 ambient;
     float4 skyTintExposure;
-    float4 zenith;
-    float4 horizon;
-    float4 ground;
     float4 skyParams;
     float4 time;
     uint4 scene;
@@ -32,11 +28,10 @@ float3 HikariRayDirectLightResponse(bool includeSpecular, HikariPbrShadingContex
 
 float3 HikariRayEnvironmentRadiance(HikariRayLightingData lighting, float3 direction, SamplerState skySampler, float mipLevel = 0.0f)
 {
-    const float3 rotated = HikariRotateSkyYaw(direction,lighting.skyParams.y);
-    const float3 raw = lighting.skyParams.x > 0.5f ? gRuntimeRaySky.SampleLevel(skySampler,rotated,mipLevel).rgb
-        : HikariEvaluateGradientSky(rotated,lighting.zenith.rgb,lighting.horizon.rgb,lighting.ground.rgb,lighting.skyParams.z);
-    return HikariBlendAmbientWithSky(lighting.ambient.rgb,
-        HikariApplySkyRadianceScale(raw,lighting.skyTintExposure.rgb,lighting.skyTintExposure.w),lighting.skyParams.w);
+    if (lighting.skyParams.x <= 0.5f) return 0.0f.xxx;
+    const float3 raw = gRuntimeRaySky.SampleLevel(skySampler,HikariRotateSkyYaw(direction,lighting.skyParams.y),mipLevel).rgb;
+    return HikariApplySkyRadianceScale(raw,lighting.skyTintExposure.rgb,lighting.skyTintExposure.w) *
+        max(lighting.skyParams.w,0.0f);
 }
 
 bool HikariRayLightOccluded(HikariRayLightingData lighting, SamplerState materialSampler,

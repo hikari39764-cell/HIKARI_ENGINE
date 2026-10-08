@@ -17,6 +17,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
 #include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
@@ -263,6 +264,7 @@ bool RequestsDiffer(const EditorInteractiveViewRequest& previous,
            previous.guideOverlay.showWorldAxes != current.guideOverlay.showWorldAxes ||
            previous.suppressSpatialLightingProviders != current.suppressSpatialLightingProviders ||
            previous.useDefaultSkyIbl != current.useDefaultSkyIbl ||
+           previous.backgroundColor != current.backgroundColor ||
            previous.spatialAntiAliasing != current.spatialAntiAliasing;
 }
 
@@ -642,34 +644,46 @@ MESHRENDERER::EditorInteractiveRenderSettings ResolveRenderSettings(
     return settings;
 }
 
-bool ResolveDisplayTarget(InteractiveViewState& state, const SceneEnvironment& environment,
-                          RenderTarget2D& sourceTarget) {
-    if (state.target == nullptr || state.displayTarget == nullptr || !EnsureDisplayPipeline()) {
-        return false;
-    }
-
-    const float userExposure = std::clamp(state.request.displayExposure, 0.25f, 4.0f);
+ToneMappingSettings ResolveViewToneMapping(const InteractiveViewState& state, const SceneEnvironment& environment) {
     ToneMappingSettings toneMapping{};
     if (state.request.shadingMode == EditorInteractiveShadingMode::Lit) {
         toneMapping = environment.toneMapping;
     } else if (state.request.shadingMode == EditorInteractiveShadingMode::Unlit) {
-        toneMapping.enabled = false;
-        toneMapping.mode = 0;
+        toneMapping.curve = ToneCurve::None;
     }
-    const float sceneExposure = (std::max)(0.0f, toneMapping.exposure);
-    COLOR::ExposureFrameState exposureState = COLOR::BuildManualExposureFrame(sceneExposure, userExposure);
-    if (toneMapping.exposureMode == COLOR::ExposureMode::Automatic) {
-        exposureState = POST::PostSystem::GetExposureState();
-        if (!exposureState.valid || exposureState.mode != COLOR::ExposureMode::Automatic) {
-            exposureState = COLOR::BuildManualExposureFrame(sceneExposure);
+    return toneMapping;
+}
+
+// ビューの露出。HDR へ書く前に決め、描画とトーンマッピングの両方で同じ値を使う。
+COLOR::ExposureFrameState ResolveViewExposureFrame(const InteractiveViewState& state,
+                                                   const SceneEnvironment& environment) {
+    const float userExposure = std::clamp(state.request.displayExposure, 0.25f, 4.0f);
+    // 照明を使わない表示は表示参照の値をそのまま出す。
+    if (state.request.shadingMode != EditorInteractiveShadingMode::Lit) {
+        return COLOR::BuildManualExposureFrame(1.0f, 0.0f, userExposure);
+    }
+    if (environment.exposure.mode == COLOR::ExposureMode::Automatic) {
+        // 自動露出は主ビューの測光を借りる。視点ごとの補正は残差側だけに掛ける。
+        COLOR::ExposureFrameState exposureState = POST::PostSystem::GetExposureState();
+        if (exposureState.valid && exposureState.mode == COLOR::ExposureMode::Automatic) {
+            exposureState.exposure *= userExposure;
+            return exposureState;
         }
-        exposureState.exposureMultiplier *= userExposure;
-        exposureState.exposureCompensation *= userExposure;
     }
+    return COLOR::BuildManualExposureFrame(COLOR::ResolveManualExposure(environment.exposure), 0.0f, userExposure);
+}
+
+bool ResolveDisplayTarget(InteractiveViewState& state, const SceneEnvironment& environment,
+                          const COLOR::ExposureFrameState& exposureState, RenderTarget2D& sourceTarget) {
+    if (state.target == nullptr || state.displayTarget == nullptr || !EnsureDisplayPipeline()) {
+        return false;
+    }
+
+    const ToneMappingSettings toneMapping = ResolveViewToneMapping(state, environment);
     POST::CommonParams parameters{};
     parameters.resolutionX = static_cast<float>(sourceTarget.GetWidth());
     parameters.resolutionY = static_cast<float>(sourceTarget.GetHeight());
-    POST::WriteToneMappingParameters(parameters, toneMapping, exposureState.exposureMultiplier);
+    POST::WriteToneMappingParameters(parameters, toneMapping, COLOR::ResidualExposure(exposureState));
 
     state.displayTarget->BeginCapture(0.0f, 0.0f, 0.0f, 1.0f);
     const bool outputReady = g_displayQuad->SetOutputFormat(kInteractiveDisplayFormat);
@@ -862,7 +876,19 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
         FailOutput(*selected, EditorInteractiveViewFailure::RenderTargetUnavailable);
         return false;
     }
-    const std::array<float, 4> clearColor = ResolveClearColor(selected->request.shadingMode);
+    const SceneEnvironment& effectiveEnvironment =
+        selected->request.environmentOverride != nullptr ? *selected->request.environmentOverride : environment;
+    const COLOR::ExposureFrameState viewExposure = ResolveViewExposureFrame(*selected, effectiveEnvironment);
+    const COLOR::ScopedViewExposure viewExposureScope(viewExposure);
+    const std::array<float, 4>& background = selected->request.backgroundColor;
+    const bool uniformBackground = background[3] > 0.0f;
+    std::array<float, 4> clearColor = ResolveClearColor(selected->request.shadingMode);
+    if (uniformBackground) {
+        // 表示参照の値を、この視点の前露出した HDR の値へ写す（×P/E）。
+        const float displayToScene = COLOR::GetActiveViewExposure().z;
+        clearColor = {background[0] * displayToScene, background[1] * displayToScene, background[2] * displayToScene,
+                      1.0f};
+    }
     selected->target->BeginCapture(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
 
     RenderViewContext view{};
@@ -882,8 +908,6 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
         materialExternalValues,
     };
     view.particleFrameSource = selected->request.particleInputOverride != nullptr ? &particleFrameSource : nullptr;
-    const SceneEnvironment& effectiveEnvironment =
-        selected->request.environmentOverride != nullptr ? *selected->request.environmentOverride : environment;
     const LIGHTING::SceneLightingSet& effectiveLighting =
         selected->request.lightingOverride != nullptr ? *selected->request.lightingOverride : lighting;
     const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& sceneSource = selected->request.sceneSourceOverride != nullptr
@@ -907,9 +931,11 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
         }
     }
     SKYRENDERER::Render(GFX::GetCurrentContext(), selected->request.cameraFrame.camera, effectiveEnvironment,
-                        modelManager, skyManager);
-    (void)PANORAMA_SKY::RenderPanoramaSkyLayer(GFX::GetCurrentContext(), selected->request.cameraFrame.camera,
-                                               effectiveEnvironment.sky, skyManager);
+                        modelManager, skyManager, !uniformBackground);
+    if (!uniformBackground) {
+        (void)PANORAMA_SKY::RenderPanoramaSkyLayer(GFX::GetCurrentContext(), selected->request.cameraFrame.camera,
+                                                   effectiveEnvironment.sky, skyManager);
+    }
     MESHRENDERER::EditorInteractiveRenderSettings renderSettings =
         ResolveRenderSettings(*selected, selected->request, stylizedPreparation);
     renderSettings.iblEnvironmentOverride = iblEnvironmentOverride;
@@ -941,8 +967,8 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
 
     RenderTarget2D* displaySource = selected->target.get();
     if (!selected->stylizedView.Resolve(*selected->target, selected->targetGeneration, selected->request.viewId,
-                                        selected->request.cameraFrame.camera, effectiveEnvironment, effectiveLighting,
-                                        width, height, stylizedPreparation, displaySource)) {
+                                        selected->request.cameraFrame.camera, effectiveEnvironment, width, height,
+                                        stylizedPreparation, displaySource)) {
         (void)POST::PostSystem::RebindCurrentRenderTarget();
         FailOutput(*selected, EditorInteractiveViewFailure::StylizedResolveFailed);
         return false;
@@ -956,6 +982,7 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
         // 初回フレームで未初期化のまま参照してしまう。
         EnsureDisplayPipeline() && EnsurePreviewPostStage()) {
         g_previewPostStage->UpdateCommonParams(0.0f, static_cast<int>(width), static_cast<int>(height));
+        g_previewPostStage->SetExposureFrame(viewExposure);
         // HDR lighting と display が参照する同じ view 環境を使う。
         BloomSettings previewBloom{};
         previewBloom.enabled = effectiveEnvironment.bloom.enabled;
@@ -973,7 +1000,8 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
         }
     }
 
-    if (displaySource == nullptr || !ResolveDisplayTarget(*selected, effectiveEnvironment, *displaySource)) {
+    if (displaySource == nullptr ||
+        !ResolveDisplayTarget(*selected, effectiveEnvironment, viewExposure, *displaySource)) {
         (void)POST::PostSystem::RebindCurrentRenderTarget();
         FailOutput(*selected, EditorInteractiveViewFailure::DisplayResolveFailed);
         return false;

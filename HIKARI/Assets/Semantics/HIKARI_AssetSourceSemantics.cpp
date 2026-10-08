@@ -129,6 +129,9 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
     {AssetImporterKind::UiAnimation, AssetType::UiAnimation, "UiAnimationAssetImporter", 1u, ".huianim"},
     {AssetImporterKind::PostEffect, AssetType::PostEffect, "PostEffectAssetImporter", 2u, ".hposteffect"},
     {AssetImporterKind::PostProfile, AssetType::PostProfile, "PostProfileAssetImporter", 2u, ".hpostprofile"},
+    {AssetImporterKind::Environment, AssetType::Environment, "EnvironmentAssetImporter", 1u, ".henvironment"},
+    {AssetImporterKind::Weather, AssetType::Weather, "WeatherAssetImporter", 1u, ".hweather"},
+    {AssetImporterKind::RenderStyle, AssetType::RenderStyle, "RenderStyleAssetImporter", 1u, ".hrenderstyle"},
 }};
 
 static_assert(
@@ -189,6 +192,9 @@ constexpr TEXT::EnumName<AssetType> kAssetTypeNames[] = {
     {AssetType::UiAnimation, "UiAnimation"},
     {AssetType::PostEffect, "PostEffect"},
     {AssetType::PostProfile, "PostProfile"},
+    {AssetType::Environment, "Environment"},
+    {AssetType::Weather, "Weather"},
+    {AssetType::RenderStyle, "RenderStyle"},
     {AssetType::GameplayCamera, "GameplayCamera"},
     {AssetType::Sequence, "Sequence"},
     {AssetType::AnimationStateMachine, "AnimationStateMachine"},
@@ -252,6 +258,12 @@ const AssetImporterSemantics* ResolveAssetSourceSemantics(const std::filesystem:
         kind = AssetImporterKind::PostEffect;
     } else if (extension == ".hpostprofile") {
         kind = AssetImporterKind::PostProfile;
+    } else if (extension == ".henvironment") {
+        kind = AssetImporterKind::Environment;
+    } else if (extension == ".hweather") {
+        kind = AssetImporterKind::Weather;
+    } else if (extension == ".hrenderstyle") {
+        kind = AssetImporterKind::RenderStyle;
     } else if (extension == ".hsequence") {
         kind = AssetImporterKind::Sequence;
     } else if (extension == ".hanimsm") {

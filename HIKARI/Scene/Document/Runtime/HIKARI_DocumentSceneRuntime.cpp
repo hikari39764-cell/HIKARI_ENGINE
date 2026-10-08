@@ -131,7 +131,6 @@ bool DocumentSceneBase::BeginRuntimePlay() {
         state_->editor.sceneAssetGuidSnapshot = state_->identity.currentSceneAssetGuid;
         state_->editor.documentRevisionSnapshot = state_->identity.documentRevision;
         state_->editor.documentSnapshot = state_->identity.document;
-        state_->editor.environmentSnapshot = state_->lighting.environment;
         state_->runtime.editorDocumentDirtySnapshot = state_->identity.documentDirty;
         state_->runtime.editorDocumentSnapshotValid = true;
 
@@ -144,7 +143,6 @@ bool DocumentSceneBase::BeginRuntimePlay() {
             state_->identity.currentSceneAssetGuid = state_->editor.sceneAssetGuidSnapshot;
             state_->identity.documentRevision = state_->editor.documentRevisionSnapshot;
             state_->identity.document = std::move(state_->editor.documentSnapshot);
-            state_->lighting.environment = state_->editor.environmentSnapshot;
             state_->identity.documentDirty = state_->runtime.editorDocumentDirtySnapshot;
             state_->runtime.editorDocumentSnapshotValid = false;
             (void)RebuildRuntimeWorld();
@@ -264,7 +262,6 @@ bool DocumentSceneBase::EndRuntimePlay() {
     state_->identity.currentSceneAssetGuid = state_->editor.sceneAssetGuidSnapshot;
     state_->identity.documentRevision = state_->editor.documentRevisionSnapshot;
     state_->identity.document = std::move(state_->editor.documentSnapshot);
-    state_->lighting.environment = state_->editor.environmentSnapshot;
     state_->identity.documentDirty = state_->runtime.editorDocumentDirtySnapshot;
     state_->runtime.editorDocumentSnapshotValid = false;
     state_->runtime.stopGameProjectSessionAfterWorldDetach = true;
@@ -500,6 +497,12 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     success = services.Register(state_->assets.SpriteMaterials()) && success;
     state_->assets.PostAssets().Configure(&state_->assets.Database());
     success = services.Register(state_->assets.PostAssets()) && success;
+    state_->assets.EnvironmentAssets().Configure(&state_->assets.Database());
+    success = services.Register(state_->assets.EnvironmentAssets()) && success;
+    state_->assets.RenderStyleAssets().Configure(&state_->assets.Database());
+    success = services.Register(state_->assets.RenderStyleAssets()) && success;
+    state_->runtime.environment.Configure(&state_->assets.EnvironmentAssets());
+    success = services.Register(state_->runtime.environment) && success;
     success = (!animationEnabled || services.Register(state_->runtime.animationPoseService)) && success;
     success = (!animationEnabled || services.Register(state_->runtime.animationNodeOverrideService)) && success;
     success = (!renderingEnabled || services.Register(state_->runtime.animationSocketService)) && success;
@@ -669,7 +672,6 @@ bool DocumentSceneBase::ApplyRuntimeObjectChanges(const SceneObjectChanges& chan
         runtime.builder.ReattachChildrenFromDocument(document, changes.changed, runtime.world);
     }
     if (lightingChanged) {
-        LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(state_->identity.document);
         (void)RefreshLightingRuntime();
     }
     ApplyCameraRuntimeChanges();
@@ -681,8 +683,10 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     if (outOldWorldDetached != nullptr) {
         *outOldWorldDetached = false;
     }
-    SceneDependencySet deps =
-        state_->runtime.builder.CollectDependencies(state_->identity.document, &state_->runtime.componentRegistry);
+    // Play の開始と停止、シーンの読み込みは、文書の初期の時刻・天気から始め直す。
+    // 空の資産は解決したプロファイルから決まるので、依存の収集より前に作る。
+    ResetEnvironmentRuntime();
+    SceneDependencySet deps = CollectRuntimeDependencies();
     std::string dependencyReason;
     const auto rejectAssetAdmission = [&](const char* message) {
         state_->identity.loadError = state_->identity.document.sceneName + ": " + message + " " + dependencyReason;
@@ -698,8 +702,7 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
             return rejectAssetAdmission("[SceneRuntime] asset registry refresh failed before "
                                         "runtime rebuild.");
         }
-        deps =
-            state_->runtime.builder.CollectDependencies(state_->identity.document, &state_->runtime.componentRegistry);
+        deps = CollectRuntimeDependencies();
         if (state_->assets.NeedsRuntimeDependencyRegistryRefresh(deps, &dependencyReason)) {
             return rejectAssetAdmission("[SceneRuntime] runtime rebuild rejected because "
                                         "required asset descriptors remain unavailable.");
@@ -721,7 +724,6 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     state_->runtime.sceneCaptureService.Reset();
     MODELRENDERER::ResetSecondarySceneCaptureTarget();
     state_->runtime.dialogueSessionService.Reset(&state_->runtime.world);
-    LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(state_->identity.document);
     state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
     state_->runtime.systemScheduler.Clear();
     // Component detach callbacks observe the complete old service set.
@@ -779,10 +781,6 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
         state_->identity.document, state_->runtime.world, state_->assets.Registry(), state_->runtime.componentRegistry,
         state_->runtime.massSchemaRegistry, state_->assets.Models(), state_->lighting.sky);
     state_->runtime.worldBuilt = built;
-
-    state_->lighting.environment = state_->identity.document.environment;
-    state_->lighting.environment.directional.direction =
-        MATH::Normalize(state_->lighting.environment.directional.direction);
 
     if (!built) {
         RuntimeSceneContext::SetCurrentWorld(nullptr);

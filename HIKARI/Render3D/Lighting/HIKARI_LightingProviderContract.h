@@ -25,8 +25,8 @@ struct CloudSolarVisibilityGpuData {
 };
 static_assert(sizeof(CloudSolarVisibilityGpuData) == 64);
 
+// 局所光源。太陽と月は環境（SceneEnvironment::frame）が持つ。
 enum class SceneLightType : uint8_t {
-    Directional = 0,
     Point,
     Spot,
 };
@@ -39,6 +39,7 @@ struct SceneLightProvider {
     MATH::Vec3 position{};
     MATH::Vec3 direction{0.0f, 0.0f, 1.0f};
     MATH::Vec3 color{1.0f, 1.0f, 1.0f};
+    // 光度 [cd]。距離の二乗で減衰し、range で滑らかに打ち切る。
     float intensity = 1.0f;
     float range = 5.0f;
     float sourceRadius = 0.0f;
@@ -46,7 +47,6 @@ struct SceneLightProvider {
     float innerConeAngleDegrees = 25.0f;
     float outerConeAngleDegrees = 35.0f;
     float angularFalloff = 1.0f;
-    LocalLightFalloff distanceFalloff = LocalLightFalloff::Range;
     int priority = 0;
 };
 
@@ -76,8 +76,11 @@ struct IrradianceVolumeProvider {
     std::string id{};
     std::string name{};
     bool enabled = false;
+    // 動的 GI が光追で更新する区域。焼き込みの読み込みは行わない。
+    bool realtime = false;
     MATH::Vec3 origin{};
     MATH::Vec3 size{};
+    MATH::Vec3 spacing{};
     uint32_t countX = 0;
     uint32_t countY = 0;
     uint32_t countZ = 0;

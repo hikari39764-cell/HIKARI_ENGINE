@@ -172,10 +172,6 @@ CookedAssetFormat ParseCookedAssetFormat(std::string_view text) noexcept {
     return TEXT::ParseEnum(kCookedAssetFormatNames, text, CookedAssetFormat::Unknown);
 }
 
-std::string_view GetCookedAssetExtension(CookedAssetFormat format) noexcept {
-    return TEXT::EnumToName(kCookedAssetFormatExtensions, format, "");
-}
-
 CookedAssetFormat ClassifyCookedAssetFormat(const std::filesystem::path& path) {
     const std::string extension = TEXT::ToLowerAsciiCopy(path.extension().string());
     return TEXT::ParseEnum(kCookedAssetFormatExtensions, extension, CookedAssetFormat::Unknown);

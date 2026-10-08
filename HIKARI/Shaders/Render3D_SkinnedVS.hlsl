@@ -115,6 +115,7 @@ VSOutput main(VSInput input)
     uint debugDrawBucket = 0u;
     uint surfaceFeatureFlags = 0u;
     float shellThickness = 0.0f;
+    float shellBoundsRadius = 0.0f;
     if (gUseSurfaceGpuScene != 0u)
     {
         surfaceGpuSceneIndex = HikariGetSurfaceGpuSceneAbsoluteIndex(input.instanceId);
@@ -132,6 +133,7 @@ VSOutput main(VSInput input)
         debugDrawBucket = instance.geometryBackend;
         surfaceFeatureFlags = instance.flags;
         shellThickness = instance.shellSettings.y;
+        shellBoundsRadius = instance.boundsCenterRadius.w;
     }
 
     float4 worldPos = mul(world, float4(localPos.xyz, 1.0f));
@@ -139,7 +141,8 @@ VSOutput main(VSInput input)
     output.shellLayer = HikariShellLayer(input.instanceId,
         gUseSurfaceGpuScene != 0u ? gSurfaceGpuSceneShellLayerCount : 0u,
         asfloat(gSurfaceGpuSceneShellLodBits));
-    worldPos.xyz += output.normalWS * (shellThickness * output.shellLayer.x);
+    worldPos.xyz += output.normalWS *
+        (shellThickness * output.shellLayer.x * HikariShellPush(localPos.xyz, shellBoundsRadius));
     output.worldPosWS = worldPos.xyz;
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
     output.position = HikariExpandGeometryOutlineVertex(

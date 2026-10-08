@@ -20,6 +20,7 @@
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/Text/HIKARI_SdfTextLayout.h"
@@ -50,8 +51,9 @@ static_assert(sizeof(GpuWorldTextGlyphInstance) == 112u);
 struct DrawConstants {
     uint32_t baseIndex = 0u;
     uint32_t count = 0u;
-    uint32_t reserved0 = 0u;
-    uint32_t reserved1 = 0u;
+    // 文字色は表示参照。ビューの P/E を掛けて HDR 目標へ書く。
+    float displayToScene = 1.0f;
+    uint32_t reserved = 0u;
 };
 
 struct PreparedText {
@@ -467,7 +469,7 @@ struct WorldTextPass::Impl {
         context.cmdList->SetGraphicsRootShaderResourceView(1u, uploadBuffers[activeFrameSlot]->GetGPUVirtualAddress());
         context.cmdList->SetGraphicsRootDescriptorTable(2u, texturePool);
         for (const DrawBatch& batch : batches) {
-            const DrawConstants constants{batch.baseIndex, batch.count, 0u, 0u};
+            const DrawConstants constants{batch.baseIndex, batch.count, RENDER3D::COLOR::GetActiveViewExposure().z, 0u};
             context.cmdList->SetGraphicsRoot32BitConstants(3u, 4u, &constants, 0u);
             commandList6->DispatchMesh(batch.count, 1u, 1u);
             ++stats.dispatchCount;

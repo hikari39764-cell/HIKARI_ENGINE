@@ -11,10 +11,6 @@ SpineActor::~SpineActor() {
     delete stateData_;
     delete skeleton_;
     delete atlas_;
-    if (listener_) {
-        delete listener_;
-        listener_ = nullptr;
-    }
 }
 
 bool SpineActor::Load(const std::string& atlasPath, const std::string& jsonPath) {
@@ -53,13 +49,6 @@ void SpineActor::SetAnimation(const char* name, bool loop, int trackIndex, float
     if (mixDuration >= 0.0f && e) {
         e->setMixDuration(mixDuration);
     }
-}
-
-void SpineActor::SetSkin(const char* skinName) {
-    if (!skeleton_)
-        return;
-    skeleton_->setSkin(skinName);
-    skeleton_->setSlotsToSetupPose();
 }
 
 void SpineActor::Update(float dt, bool usePhysics) {
@@ -167,90 +156,6 @@ void SpineActor::Draw() {
         // その他のケースは一旦スキップ
     }
 }
-void SpineActor::AddAnimation(const char* name, bool loop, float delaySec, bool forceAdd) {
-    if (!state_ || !name)
-        return;
-
-    if (!forceAdd) {
-        spine::TrackEntry* entry = state_->getCurrent(0);
-        while (entry) {
-            spine::Animation* anim = entry->getAnimation();
-            if (anim && strcmp(anim->getName().buffer(), name) == 0) {
-                return;
-            }
-            entry = entry->getNext();
-        }
-    }
-    state_->addAnimation(0, name, loop, delaySec);
-}
-
-void SpineActor::SetMix(const char* from, const char* to, float mixSec) {
-    if (!stateData_ || !from || !to)
-        return;
-    stateData_->setMix(spine::String(from), spine::String(to), mixSec);
-}
-void SpineActor::SetEmptyAnimation(int track, float mixSec, bool forceSet) {
-    if (!state_)
-        return;
-
-    if (!forceSet) {
-        spine::TrackEntry* current = state_->getCurrent(track);
-        if (current) {
-            spine::Animation* anim = current->getAnimation();
-            if (anim && strcmp(anim->getName().buffer(), "empty") == 0) {
-                return;
-            }
-        }
-    }
-
-    state_->setEmptyAnimation(track, mixSec);
-}
-void SpineActor::ClearTrack(int track) {
-    if (!state_)
-        return;
-    state_->clearTrack(track);
-}
-void SpineActor::ClearTracks() {
-    if (!state_)
-        return;
-    state_->clearTracks();
-}
-
-void SpineActor::SetStateListener(StateListener cb) {
-    if (!state_)
-        return;
-
-    // リスナーを解除
-    if (!cb) {
-        state_->setListener((spine::AnimationStateListenerObject*)nullptr);
-        if (listener_) {
-            delete listener_;
-            listener_ = nullptr;
-        }
-        return;
-    }
-
-    // リスナーを差し替え
-    if (listener_) {
-        delete listener_;
-        listener_ = nullptr;
-    }
-    listener_ = new ListenerProxy(std::move(cb));
-    state_->setListener(listener_);
-}
-
-bool SpineActor::IsTrackFinished(int trackIndex) {
-    if (!state_)
-        return true;
-
-    spine::TrackEntry* entry = state_->getCurrent(trackIndex);
-    if (!entry) {
-        return true;
-    }
-
-    return entry->isComplete();
-}
-
 bool SpineActor::IsAnimationFinished(const char* name, int trackIndex) {
     if (!state_ || !name)
         return false;

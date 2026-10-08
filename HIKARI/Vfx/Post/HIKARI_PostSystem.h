@@ -69,13 +69,14 @@ public:
     static void Shutdown();
 
     static void UpdateCommonParams(float deltaTime);
+    // 主ビューの露出をこのフレーム分進めて P を固定する。色調設定の後、HDR へ書く前に一度だけ呼ぶ。
+    // illumination は場面を照らす光の量（SKYRENDERER::EstimateExposureIllumination）。
+    static void AdvanceExposure(float deltaTime, const RENDER3D::COLOR::ExposureIllumination& illumination);
     static void SetIntensity(float intensity);
     static void SetSequenceEffects(std::span<const SEQUENCER::ScreenEffectSample> effects);
     static void SetCombo(float combo);
-    static void ClearEffects();
-    static void AddEffect(PostEffect* effect);
-    static bool SetGlobalEffect(std::string_view effectId, std::shared_ptr<const PostEffectDefinition> effect,
-                                const PostParameterBlock& values, const AssetRegistry* registry = nullptr);
+    // 全体後処理の層（描画の様式の後処理）を並びの順に重ねる。空なら全体後処理を止める。
+    static bool SetGlobalEffects(std::span<const ResolvedPostLayer> layers, const AssetRegistry* registry = nullptr);
     static bool RequiresGlobalSurfaceFeatureMask() noexcept;
     static bool SetActionPostFrame(uint64_t worldId, uint64_t frameIndex, std::string_view effectId,
                                    std::shared_ptr<const PostEffectDefinition> effect, const PostParameterBlock& values,
@@ -83,14 +84,14 @@ public:
     static void ClearActionPostFrame(uint64_t worldId = 0u);
     static void SetActionPostView(uint64_t worldId, bool primaryGameView) noexcept;
     static bool RequiresActionSurfaceFeatureMask() noexcept;
-    static void ClearGlobalEffect();
-    // 実行中の全体効果のパラメーターを 1 フレームだけ上書きする。effectId が現在の効果と違えば無視する。
+    // 実行中の全体効果のパラメーターを 1 フレームだけ上書きする。effectId の層が無ければ無視する（同じ効果の層すべてへ）。
     static bool SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
                                       const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId);
     static bool GetRadialScreenWarp(float& curvature, float& strength) noexcept;
     static void SetBloomSettings(const BloomSettings& settings);
     static void SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& frame);
     static void SetToneMappingSettings(const ToneMappingSettings& settings);
+    static void SetExposureSettings(const RENDER3D::COLOR::ExposureSettings& settings);
     static void SetFxaaSettings(const FxaaSettings& settings);
     static void SetSunGlareFrame(const SunGlareFrame& frame);
     static void ClearSunGlareFrame();

@@ -14,6 +14,7 @@
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D::PANORAMA_SKY {
@@ -214,9 +215,8 @@ TextureResourceHandle ResolveTexture(const SkySettings& settings, SkyManager& sk
 bool RenderPanoramaSkyLayer(const GFX::Context& graphics, const Camera3D& camera, const SkySettings& settings,
                             SkyManager& skyManager) {
     const float opacity = SanitizeFinite(settings.panoramaCloudOpacity, 1.0f, 0.0f, 1.0f);
-    if (!settings.enabled || settings.mode != SkyMode::Texture2D || !settings.panoramaCloudEnabled ||
-        settings.panoramaCloudAsset.empty() || opacity <= 1.0e-4f || graphics.cmdList == nullptr ||
-        !EnsureInitialized(graphics)) {
+    if (settings.source != SkySource::Panorama || settings.panoramaCloudAsset.empty() || opacity <= 1.0e-4f ||
+        graphics.cmdList == nullptr || !EnsureInitialized(graphics)) {
         return false;
     }
 
@@ -242,7 +242,7 @@ bool RenderPanoramaSkyLayer(const GFX::Context& graphics, const Camera3D& camera
         SanitizeFinite(settings.tint.x, 1.0f, 0.0f, 64.0f),
         SanitizeFinite(settings.tint.y, 1.0f, 0.0f, 64.0f),
         SanitizeFinite(settings.tint.z, 1.0f, 0.0f, 64.0f),
-        SanitizeFinite(settings.exposure, 1.0f, 0.0f, 64.0f),
+        ResolveSkyTextureRadianceScale(settings) * RENDER3D::COLOR::GetActiveViewExposure().x,
     };
 
     ID3D12GraphicsCommandList* cmd = graphics.cmdList;

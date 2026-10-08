@@ -4,6 +4,7 @@
 #include "Include/Material/HIKARI_MaterialBaseColorInputs.hlsli"
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
+#include "Include/Lighting/HIKARI_ViewLightingData.hlsli"
 
 static const uint MATERIAL_ALPHA_MASK = 1u << 1u;
 SamplerState gLinearWrap : register(s0);
@@ -29,5 +30,5 @@ float4 main(PSInput input) : SV_TARGET
         discard;
     }
     const float3 overlay = lerp(baseColor.rgb, 1.0f.xxx, 0.12f);
-    return float4(overlay, saturate(baseColor.a * 0.72f));
+    return float4(HikariDisplayReferredToScene(overlay, gViewExposure), saturate(baseColor.a * 0.72f));
 }

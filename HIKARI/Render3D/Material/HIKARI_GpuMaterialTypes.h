@@ -121,9 +121,17 @@ struct GpuMaterialData {
     MATH::Vec4 uvRotation1{0, 0, 0, 0}; // x: occlusion, y: specular, z: specularColor
     uint32_t uvSet0[4]{};               // x: baseColor, y: normal, z: emissive, w: metallicRoughness
     uint32_t uvSet1[4]{};               // x: occlusion, y: specular, z: specularColor
+    // 筆触の殻（Painterly Shell）。描画パスは MATERIAL_FEATURES::PainterlyShell が立つ材質だけで読む。
+    uint32_t strokeMaskTextureDescriptorIndex = kInvalidTextureDescriptorIndex;
+    uint32_t strokeNormalTextureDescriptorIndex = kInvalidTextureDescriptorIndex;
+    uint32_t shellStrokePadding[2]{};
+    MATH::Vec4 shellStroke0{1.0f, 0.0f, 0.0f, 0.0f}; // x: 繰り返し, y: 回転, z: 色差, w: 筆触法線の強さ
+    MATH::Vec4 shellStroke1{1.5f, 0.0f, 0.0f, 0.0f}; // x: 輪郭の冪, y: 被覆率, z: 層数, w: 厚み
 };
 
-static_assert(sizeof(GpuMaterialData) == 352u);
+static_assert(sizeof(GpuMaterialData) == 400u);
+static_assert(offsetof(GpuMaterialData, strokeMaskTextureDescriptorIndex) == 352u);
+static_assert(offsetof(GpuMaterialData, shellStroke0) == 368u);
 static_assert(offsetof(GpuMaterialData, materialProgramIndex) == 100u);
 static_assert(offsetof(GpuMaterialData, parameterBlockOffset) == 104u);
 static_assert(offsetof(GpuMaterialData, resourceTableOffset) == 108u);

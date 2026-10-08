@@ -8,21 +8,21 @@ cbuffer EnvironmentLightingCB : register(b0)
     float4 gAtmosphereSunDirection;
     float4 gAtmosphereSunColorRadiance;
     float4 gAtmosphereGroundColor;
-    float4 gZenith;
-    float4 gHorizon;
-    float4 gGround;
-    float4 gSource; // mode, sky-view LUT valid
+    float4 gSource; // mode, sky-view LUT valid, night sky background [nits], cloud sky valid
 };
 cbuffer ConvolutionJob : register(b1) { uint gJob; uint gMip; uint gSize; uint gMipCount; };
 TextureCube<float4> gSourceCube : register(t0);
 Texture2D<float4> gPanorama : register(t1);
 Texture2D<float4> gSkyView : register(t2);
+// 雲の空（天空 LUT と同じ写像）。rgb 乗算済みの絶対輝度、a 不透明度。
+Texture2D<float4> gCloudSky : register(t3);
 RWTexture2DArray<float4> gOutput : register(u0);
 SamplerState gLinearClamp : register(s0);
 SamplerState gPanoramaSampler : register(s1);
 #include "Include/Atmosphere/HIKARI_AtmosphereScattering.hlsli"
 #include "Include/Sky/HIKARI_SkyRadiance.hlsli"
 #include "Include/Sky/HIKARI_EquirectangularSampling.hlsli"
+#include "Include/Sky/HIKARI_NightSky.hlsli"
 
 float3 CubeDirection(uint face, float2 uv)
 {
@@ -35,24 +35,35 @@ float3 CubeDirection(uint face, float2 uv)
     return normalize(float3(-p.x,-p.y,-1));
 }
 
-float3 CaptureRadiance(float3 direction)
+float3 OverlayClouds(float3 direction, float3 sky)
+{
+    if (gSource.w<0.5f) return sky;
+    const float4 cloud=gCloudSky.SampleLevel(gPanoramaSampler,HikariAtmosphereSkyViewUv(direction),0);
+    return sky*(1.0f-cloud.a)+cloud.rgb;
+}
+
+float3 SkyRadiance(float3 direction)
 {
     const uint mode=(uint)(gSource.x+0.5f);
     if (mode==2u) return gSourceCube.SampleLevel(gLinearClamp,direction,0).rgb;
     if (mode==3u) return gPanorama.SampleLevel(gPanoramaSampler,HikariDirectionToEquirectangularUv(direction),0).rgb;
-    if (mode==4u && gAtmosphereSunDirection.w>0.5f)
+    if (mode!=4u) return 0.0f.xxx;
+    // 星は点光源で照明への寄与が小さいので、夜空の背景だけを足す。
+    const float3 night=HikariNightSkyBackground(direction,gSource.z);
+    if (gAtmosphereSunDirection.w<=0.5f) return night;
+    // 太陽円盤は直接光 BRDF が所有する。空の散乱輝度だけを畳み込む。
+    if (gSource.y>0.5f)
     {
-        // 太陽円盤は直接光 BRDF が所有する。空の散乱輝度だけを畳み込む。
-        if (gSource.y>0.5f)
-        {
-            const float2 uv=float2(frac(atan2(direction.z,direction.x)*0.15915494309f),direction.y*0.5f+0.5f);
-            return gSkyView.SampleLevel(gPanoramaSampler,uv,0).rgb;
-        }
-        const float3 observer=float3(0,HikariAtmospherePlanetRadius()+1,0);
-        return HikariAtmosphereEvaluateSkyRadianceWithSteps(observer,direction,gGround.rgb,
-            gAtmosphereOzoneParams.w,gAtmosphereOzoneParams.y,8u,4u);
+        return gSkyView.SampleLevel(gPanoramaSampler,HikariAtmosphereSkyViewUv(direction),0).rgb+night;
     }
-    return HikariEvaluateGradientSky(direction,gZenith.rgb,gHorizon.rgb,gGround.rgb,gHorizon.w);
+    const float3 observer=float3(0,HikariAtmospherePlanetRadius()+1,0);
+    return HikariAtmosphereEvaluateSkyRadianceWithSteps(observer,direction,gAtmosphereGroundColor.rgb,
+        gAtmosphereOzoneParams.w,gAtmosphereOzoneParams.y,8u,4u,0.0f.xxx)+night;
+}
+
+float3 CaptureRadiance(float3 direction)
+{
+    return OverlayClouds(direction,SkyRadiance(direction));
 }
 
 [numthreads(8,8,1)]

@@ -126,7 +126,7 @@ void FillDebugStateBase(uint32_t width, uint32_t height, const AmbientOcclusionS
     const SsaoResolvedMode resolved = ResolveModeParameters(settings);
     gDebugState.enabled = resolved.mode != SsaoMode::Off;
     gDebugState.valid = false;
-    gDebugState.suppressed = settings.editorViewportSuppressed;
+    gDebugState.suppressed = !settings.enabled;
     gDebugState.mode = resolved.mode;
     gDebugState.width = width;
     gDebugState.height = height;
@@ -173,7 +173,7 @@ bool SsaoRequiresGeometryAux(const AmbientOcclusionSettings& settings) {
 
 void BeginSsaoDebugFrame(uint32_t width, uint32_t height, const AmbientOcclusionSettings& settings) {
     FillDebugStateBase(width, height, settings);
-    gDebugState.geometryAuxEnabled = SsaoRequiresGeometryAux(settings) && !settings.editorViewportSuppressed;
+    gDebugState.geometryAuxEnabled = SsaoRequiresGeometryAux(settings) && settings.enabled;
     gDebugState.geometryAuxWritten = false;
     gDebugState.geometryAuxFormat = DXGI_FORMAT_UNKNOWN;
     gDebugState.geometryAuxCpuMs = 0.0f;

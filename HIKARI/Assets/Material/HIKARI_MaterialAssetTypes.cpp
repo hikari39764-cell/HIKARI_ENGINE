@@ -81,6 +81,8 @@ constexpr TEXT::EnumName<MaterialResourceSemantic> kResourceSemantics[]{
     {MaterialResourceSemantic::Noise, "Noise"},
     {MaterialResourceSemantic::DetailNoise, "DetailNoise"},
     {MaterialResourceSemantic::FlowMap, "FlowMap"},
+    {MaterialResourceSemantic::StrokeMask, "StrokeMask"},
+    {MaterialResourceSemantic::StrokeNormal, "StrokeNormal"},
 };
 constexpr TEXT::EnumName<MaterialFeatureRequest> kFeatureRequests[]{
     {MaterialFeatureRequest::GeometryOutline, "GeometryOutline"},

@@ -18,7 +18,7 @@ public:
                       [&](const auto& e) { return e.token.value == token.value && e.token.epoch == token.epoch; });
     }
     void Resolve(const CameraDirector& director, BloomSettings& bloom, ToneMappingSettings& tone,
-                 std::vector<ScreenEffectSample>& output) const {
+                 RENDER3D::COLOR::ExposureSettings& exposure, std::vector<ScreenEffectSample>& output) const {
         output.clear();
         for (const auto& entry : entries_) {
             if (!director.IsWinningOverride(entry.token))
@@ -34,8 +34,8 @@ public:
                     bloom.threshold = (std::max)(0.0f, blend(bloom.threshold));
                     break;
                 case ScreenEffectKind::Exposure:
-                    tone.exposure = (std::max)(0.001f, blend(tone.exposure));
-                    tone.exposureMode = RENDER3D::COLOR::ExposureMode::Manual;
+                    // 露出の補正 [EV]。手動・自動のどちらの露出にも掛かる。
+                    exposure.compensationEv = std::clamp(blend(exposure.compensationEv), -8.0f, 8.0f);
                     break;
                 case ScreenEffectKind::Saturation: tone.saturation = (std::max)(0.0f, blend(tone.saturation)); break;
                 case ScreenEffectKind::Contrast: tone.contrast = (std::max)(0.0f, blend(tone.contrast)); break;

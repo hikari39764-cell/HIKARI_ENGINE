@@ -1,0 +1,6 @@
+{
+  "formatVersion": 1,
+  "name": "Outline",
+  "effect": "engine.post.effect.outline",
+  "values": {}
+}

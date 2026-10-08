@@ -17,7 +17,6 @@ struct AutomaticExposureDebugState {
     bool measurementQueued = false;
     bool measurementValid = false;
     float meteredLuminance = 0.18f;
-    float arithmeticLuminance = 0.18f;
     float currentExposure = 1.0f;
     float targetExposure = 1.0f;
     uint64_t measuredFrameIndex = 0;
@@ -33,11 +32,12 @@ public:
 
     void UpdateContext(const GFX::Context& context);
     void Shutdown();
-    void Reset(float exposureMultiplier = 1.0f);
+    void Reset(float exposure = 1.0f);
 
-    ExposureFrameState BeginFrame(ExposureMode mode, float manualExposure, const AutomaticExposureSettings& settings,
+    ExposureFrameState BeginFrame(const ExposureSettings& settings, const ExposureIllumination& illumination,
                                   float deltaTime);
-    bool QueueMeasurement(RenderTarget2D& sceneColor);
+    // sceneColor はこのフレームの P で Pre-Exposure 済み。測光は絶対輝度に戻して行う。
+    bool QueueMeasurement(RenderTarget2D& sceneColor, float preExposure);
 
     const AutomaticExposureDebugState& GetDebugState() const;
 

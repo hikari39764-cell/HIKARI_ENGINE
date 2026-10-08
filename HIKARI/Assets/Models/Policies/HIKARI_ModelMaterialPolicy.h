@@ -14,6 +14,8 @@ constexpr uint32_t Emissive = 1u << 2;
 constexpr uint32_t ThinTransparentSurface = 1u << 3;
 // v37 以前の生成物のみが使用する旧反射応答。新規インポートには付与しない。
 constexpr uint32_t SpecularGlossCompatibility = 1u << 4;
+// 筆触の殻（Painterly Shell）。描画パスは筆触マスク・法線と殻の被覆を固定経路で評価する。
+constexpr uint32_t PainterlyShell = 1u << 5;
 } // namespace MATERIAL_FEATURES
 
 namespace MATERIAL_POLICY {

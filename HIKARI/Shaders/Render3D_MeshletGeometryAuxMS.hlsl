@@ -80,7 +80,8 @@ HikariMeshletGeometryAuxVertexOut HikariBuildMeshletGeometryAuxVertex(
         worldPos);
     output.normalWS =
         normalize(mul((float3x3)instance.clusterNormalMatrix, localNormal));
-    worldPos.xyz += output.normalWS * (instance.shellSettings.y * shellLayer.x);
+    worldPos.xyz += output.normalWS *
+        (instance.shellSettings.y * shellLayer.x * HikariShellPush(localPosition, instance.boundsCenterRadius.w));
     precise float4 clipPosition = mul(gViewProj, worldPos);
     output.position = clipPosition;
     output.shellLayer = shellLayer;

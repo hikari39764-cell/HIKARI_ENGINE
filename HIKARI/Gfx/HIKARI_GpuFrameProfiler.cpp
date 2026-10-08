@@ -279,7 +279,7 @@ const char* ToString(Pass pass) {
     case Pass::UiLayers: return "UI Layers";
     case Pass::ImGui: return "ImGui";
     case Pass::WaterVisibilityDepth: return "Water Visibility Depth";
-    case Pass::StylizedClouds: return "Stylized Clouds";
+    case Pass::VolumetricClouds: return "Volumetric Clouds";
     case Pass::EnvironmentLighting: return "Environment Lighting";
     case Pass::DynamicDiffuseGi: return "Dynamic Diffuse GI";
     case Pass::CloudSolarVisibility: return "Cloud Solar Visibility";

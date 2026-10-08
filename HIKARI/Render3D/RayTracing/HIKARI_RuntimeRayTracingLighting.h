@@ -15,12 +15,13 @@ namespace HIKARI::RENDER3D::RAYTRACING {
 // GI と反射で共有する入射照明。probe history / 出力 surface は consumer が所有する。
 struct RuntimeRayLightingGpuData {
     MATH::Vec4 sunDirectionIntensity{0, 0, 0, 0}, sunColorRange{0, 0, 0, 0};
-    MATH::Vec4 ambient{0, 0, 0, 0}, skyTintExposure{0, 0, 0, 0};
-    MATH::Vec4 zenith{0, 0, 0, 0}, horizon{0, 0, 0, 0}, ground{0, 0, 0, 0}, skyParams{0, 0, 0, 0}, time{0, 0, 0, 0};
+    MATH::Vec4 skyTintExposure{0, 0, 0, 0};
+    // x 捕獲した空の立方体あり、y 空の回転、w 天空光の倍率。
+    MATH::Vec4 skyParams{0, 0, 0, 0}, time{0, 0, 0, 0};
     std::array<uint32_t, 4> scene{}; // hit records, materials, local lights, empty scene
     LIGHTING::CloudSolarVisibilityGpuData clouds{};
 };
-static_assert(sizeof(RuntimeRayLightingGpuData) == 224);
+static_assert(sizeof(RuntimeRayLightingGpuData) == 160);
 
 enum class RuntimeRayLightingStatus : uint8_t { InvalidInput, MissingEnvironment, ResourceFailure, Ready };
 struct RuntimeRayLightingFrame {

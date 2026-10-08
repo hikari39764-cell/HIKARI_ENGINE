@@ -143,14 +143,6 @@ void AnimatorComponent::UpdateMotion(ANIMATION::AnimationMotionSample motion, co
     playing_ = !clip_.IsEmpty() && !finished_;
 }
 
-void AnimatorComponent::PlayCurrent(bool restart) {
-    playing_ = !clip_.IsEmpty();
-    finished_ = false;
-    ClearTransition();
-    if (restart)
-        timeSec_ = 0.0f;
-}
-
 void AnimatorComponent::PlayOnce(std::string clip, bool restart) { Play(std::move(clip), false, restart); }
 
 void AnimatorComponent::Pause() { playing_ = false; }
@@ -167,11 +159,6 @@ void AnimatorComponent::Stop() {
     finished_ = true;
     timeSec_ = 0.0f;
     ClearTransition();
-}
-
-void AnimatorComponent::ResetTime() {
-    timeSec_ = 0.0f;
-    finished_ = false;
 }
 
 void AnimatorComponent::Advance(float deltaTimeSec, float clipDurationSec) {

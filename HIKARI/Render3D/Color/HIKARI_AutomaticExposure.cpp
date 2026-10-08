@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -33,10 +34,10 @@ constexpr uint32_t kMeasurementValueCount = 4u;
 constexpr uint64_t kMeasurementBytes = sizeof(float) * kMeasurementValueCount;
 
 struct MeasurementResult {
-    float geometricLuminance = 0.18f;
-    float arithmeticLuminance = 0.18f;
-    float sampleWeight = 0.0f;
-    float padding = 0.0f;
+    float meteredLuminance = 0.18f;
+    float windowWeight = 0.0f;
+    float totalWeight = 0.0f;
+    float highlightLuminance = 0.18f;
 };
 
 bool IsValidLuminance(float value) noexcept { return std::isfinite(value) && value > 1e-6f && value < 1e8f; }
@@ -59,12 +60,15 @@ struct AutomaticExposureMeter::Impl {
     std::array<ReadbackSlot, GFX::kFrameResourceCount> readbackSlots{};
     D3D12_RESOURCE_STATES measurementState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     size_t nextReadbackSlot = 0;
-    float latestGeometricLuminance = 0.18f;
-    float latestArithmeticLuminance = 0.18f;
+    float latestMeteredLuminance = 0.18f;
+    float latestHighlightLuminance = 0.18f;
     float currentExposure = 1.0f;
+    float currentPreExposure = 0.0f;
     uint64_t latestMeasuredFrame = 0;
     bool latestMeasurementValid = false;
     bool automaticModeActive = false;
+    // 自動露出を始めた直後は、最初の有効な測光で目標へ直接合わせる（手動の値から長く慣らさない）。
+    bool snapToFirstMeasurement = false;
     AutomaticExposureDebugState debug{};
 
     bool IsInitialized() const noexcept {
@@ -236,12 +240,11 @@ struct AutomaticExposureMeter::Impl {
                 std::memcpy(&result, mapped, sizeof(result));
                 const D3D12_RANGE writeRange{0, 0};
                 slot.buffer->Unmap(0, &writeRange);
-                if (IsValidLuminance(result.geometricLuminance) && result.sampleWeight > 0.0f &&
+                if (IsValidLuminance(result.meteredLuminance) && result.windowWeight > 0.0f &&
                     (!collected || slot.frameIndex >= latestMeasuredFrame)) {
-                    latestGeometricLuminance = result.geometricLuminance;
-                    latestArithmeticLuminance = IsValidLuminance(result.arithmeticLuminance)
-                                                    ? result.arithmeticLuminance
-                                                    : result.geometricLuminance;
+                    latestMeteredLuminance = result.meteredLuminance;
+                    latestHighlightLuminance = IsValidLuminance(result.highlightLuminance) ? result.highlightLuminance
+                                                                                           : result.meteredLuminance;
                     latestMeasuredFrame = slot.frameIndex;
                     latestMeasurementValid = true;
                     collected = true;
@@ -273,58 +276,61 @@ void AutomaticExposureMeter::Shutdown() {
     impl_->context = {};
 }
 
-void AutomaticExposureMeter::Reset(float exposureMultiplier) {
-    impl_->latestGeometricLuminance = 0.18f;
-    impl_->latestArithmeticLuminance = 0.18f;
-    impl_->currentExposure = std::isfinite(exposureMultiplier) && exposureMultiplier > 0.0f ? exposureMultiplier : 1.0f;
+void AutomaticExposureMeter::Reset(float exposure) {
+    impl_->latestMeteredLuminance = 0.18f;
+    impl_->latestHighlightLuminance = 0.18f;
+    impl_->currentExposure = std::isfinite(exposure) && exposure > 0.0f ? exposure : 1.0f;
+    impl_->currentPreExposure = 0.0f;
     impl_->latestMeasuredFrame = 0;
     impl_->latestMeasurementValid = false;
     impl_->automaticModeActive = false;
     impl_->debug.measurementValid = false;
     impl_->debug.meteredLuminance = 0.18f;
-    impl_->debug.arithmeticLuminance = 0.18f;
     impl_->debug.currentExposure = impl_->currentExposure;
     impl_->debug.targetExposure = impl_->currentExposure;
 }
 
-ExposureFrameState AutomaticExposureMeter::BeginFrame(ExposureMode mode, float manualExposure,
-                                                      const AutomaticExposureSettings& settings, float deltaTime) {
+ExposureFrameState AutomaticExposureMeter::BeginFrame(const ExposureSettings& settings,
+                                                      const ExposureIllumination& illumination, float deltaTime) {
     impl_->CollectMeasurements();
-    if (mode != ExposureMode::Automatic) {
+    ExposureFrameState state{};
+    const float manualExposure = ResolveManualExposure(settings);
+    if (settings.mode != ExposureMode::Automatic) {
         impl_->automaticModeActive = false;
-        const ExposureFrameState state = BuildManualExposureFrame(manualExposure);
-        impl_->currentExposure = state.exposureMultiplier;
+        state = BuildManualExposureFrame(manualExposure, impl_->currentPreExposure);
         impl_->debug.measurementValid = impl_->latestMeasurementValid;
-        impl_->debug.meteredLuminance = impl_->latestGeometricLuminance;
-        impl_->debug.arithmeticLuminance = impl_->latestArithmeticLuminance;
-        impl_->debug.currentExposure = state.exposureMultiplier;
-        impl_->debug.targetExposure = state.targetExposureMultiplier;
-        impl_->debug.measuredFrameIndex = impl_->latestMeasuredFrame;
-        return state;
+        impl_->debug.meteredLuminance = impl_->latestMeteredLuminance;
+    } else {
+        if (!impl_->automaticModeActive) {
+            impl_->currentExposure = std::isfinite(manualExposure) && manualExposure > 0.0f ? manualExposure : 1.0f;
+            impl_->automaticModeActive = true;
+            impl_->snapToFirstMeasurement = true;
+        }
+        state = BuildAutomaticExposureFrame(settings, illumination, impl_->latestMeteredLuminance,
+                                            impl_->latestHighlightLuminance, impl_->currentExposure,
+                                            impl_->currentPreExposure, deltaTime, impl_->latestMeasurementValid);
+        if (impl_->snapToFirstMeasurement && state.meteringValid) {
+            state.exposure = state.targetExposure;
+            state.preExposure = state.exposure;
+            impl_->snapToFirstMeasurement = false;
+        }
+        impl_->debug.measurementValid = state.meteringValid;
+        impl_->debug.meteredLuminance = state.meteredLuminance;
     }
-
-    if (!impl_->automaticModeActive) {
-        impl_->currentExposure = std::isfinite(manualExposure) && manualExposure > 0.0f ? manualExposure : 1.0f;
-        impl_->automaticModeActive = true;
-    }
-    ExposureFrameState state = BuildAutomaticExposureFrame(
-        settings, impl_->latestGeometricLuminance, impl_->currentExposure, deltaTime, impl_->latestMeasurementValid);
-    impl_->currentExposure = state.exposureMultiplier;
-    impl_->debug.measurementValid = state.meteringValid;
-    impl_->debug.meteredLuminance = state.meteredLuminance;
-    impl_->debug.arithmeticLuminance = impl_->latestArithmeticLuminance;
-    impl_->debug.currentExposure = state.exposureMultiplier;
-    impl_->debug.targetExposure = state.targetExposureMultiplier;
+    impl_->currentExposure = state.exposure;
+    impl_->currentPreExposure = state.preExposure;
+    impl_->debug.currentExposure = state.exposure;
+    impl_->debug.targetExposure = state.targetExposure;
     impl_->debug.measuredFrameIndex = impl_->latestMeasuredFrame;
     return state;
 }
 
-bool AutomaticExposureMeter::QueueMeasurement(RenderTarget2D& sceneColor) {
+bool AutomaticExposureMeter::QueueMeasurement(RenderTarget2D& sceneColor, float preExposure) {
     impl_->debug.measurementQueued = false;
     if (!impl_->automaticModeActive || impl_->context.device == nullptr || impl_->context.cmdList == nullptr ||
         impl_->context.frameFence == nullptr || impl_->context.currentFrameRetireFenceValue == 0 ||
         sceneColor.GetResource() == nullptr || sceneColor.GetWidth() <= 0 || sceneColor.GetHeight() <= 0 ||
-        !impl_->EnsureInitialized()) {
+        !std::isfinite(preExposure) || preExposure <= 0.0f || !impl_->EnsureInitialized()) {
         return false;
     }
 
@@ -367,7 +373,8 @@ bool AutomaticExposureMeter::QueueMeasurement(RenderTarget2D& sceneColor) {
     commandList->SetPipelineState(impl_->pipelineState.Get());
     commandList->SetComputeRootDescriptorTable(0, impl_->descriptorHeap->GetGPUDescriptorHandleForHeapStart());
     const uint32_t constants[4] = {static_cast<uint32_t>(sceneColor.GetWidth()),
-                                   static_cast<uint32_t>(sceneColor.GetHeight()), 0u, 0u};
+                                   static_cast<uint32_t>(sceneColor.GetHeight()),
+                                   std::bit_cast<uint32_t>(1.0f / preExposure), 0u};
     commandList->SetComputeRoot32BitConstants(1, static_cast<UINT>(std::size(constants)), constants, 0);
     commandList->Dispatch(1, 1, 1);
 

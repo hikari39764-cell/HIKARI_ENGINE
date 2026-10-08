@@ -87,8 +87,11 @@ MaterialGpuData BuildMaterialGpuData(const ObjectCB& obj, const MaterialTextureH
     projection.baseColor = obj.baseColor;
     projection.emissiveFactor = obj.emissiveFactor;
     projection.pbrParams = {obj.metallicFactor, obj.roughnessFactor, obj.occlusionStrength, obj.alphaCutoff};
-    projection.specularParams =
-        RENDER3D::MATERIAL::BuildMaterialFactorProjection(materialAsset, runtimeMaterial).specularParams;
+    const RENDER3D::MATERIAL::MaterialFactorProjection factors =
+        RENDER3D::MATERIAL::BuildMaterialFactorProjection(materialAsset, runtimeMaterial);
+    projection.specularParams = factors.specularParams;
+    projection.shellStroke0 = factors.shellStroke0;
+    projection.shellStroke1 = factors.shellStroke1;
     projection.materialFlags = obj.materialFlags;
     projection.normalScale = obj.normalScale;
 
@@ -117,6 +120,13 @@ MaterialGpuData BuildMaterialGpuData(const ObjectCB& obj, const MaterialTextureH
     setTexture(RENDER3D::MATERIAL::GpuMaterialTextureChannel::SpecularColor, MaterialTextureUsage::SpecularColor,
                textures.specularColor, textureIndices.specularColor,
                HasSpecularTextureSlot(materialAsset, runtimeMaterial, MaterialTextureUsage::SpecularColor));
+    if (runtimeMaterial != nullptr) {
+        // 筆触テクスチャは実行時材質だけが持つ。モデルの材質から継承する slot は無い。
+        projection.textures[static_cast<size_t>(RENDER3D::MATERIAL::GpuMaterialTextureChannel::StrokeMask)] =
+            RENDER3D::MATERIAL::ProjectRuntimeMaterialTexture(*runtimeMaterial, MaterialTextureUsage::StrokeMask);
+        projection.textures[static_cast<size_t>(RENDER3D::MATERIAL::GpuMaterialTextureChannel::StrokeNormal)] =
+            RENDER3D::MATERIAL::ProjectRuntimeMaterialTexture(*runtimeMaterial, MaterialTextureUsage::StrokeNormal);
+    }
     return RENDER3D::MATERIAL::PackGpuMaterialData(projection);
 }
 

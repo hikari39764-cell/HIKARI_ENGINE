@@ -3,17 +3,23 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <initializer_list>
 #include <string>
+#include <string_view>
 #include <utility>
 
+#include "Assets/Environment/HIKARI_EnvironmentAsset.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 #if defined(HIKARI_WITH_EDITOR)
+#include "Editor/Widgets/HIKARI_JsonFieldsEditor.h"
 #include "imgui.h"
 #endif
+#include "Assets/Environment/HIKARI_EnvironmentFields.h"
+#include "Scene/Environment/HIKARI_EnvironmentRuntime.h"
 
 namespace HIKARI::EDITOR {
 
@@ -34,6 +40,10 @@ bool ModelMaterialWorkspaceController::PrepareBackgroundPreview(DocumentSceneBas
 }
 
 namespace {
+
+constexpr std::string_view kStudioProfileId = "engine.environment.studio";
+// Studio の手前の点光源 [lm]。晴天相当の露出（EV100 14 前後）でも見える明るさ。
+constexpr float kStudioKeyLumens = 200000.0f;
 
 const char* EnvironmentModeLabel(ModelMaterialWorkspaceController::PreviewEnvironmentMode mode) noexcept {
     switch (mode) {
@@ -130,24 +140,19 @@ void ModelMaterialWorkspaceController::ResetPreviewKeyLight() {
     key.enabled = true;
     key.position = center + MATH::Vec3{radius * 0.8f, radius * 1.15f, -radius * 0.8f};
     key.color = {1.0f, 0.93f, 0.82f};
-    if (key.type == RENDER3D::LIGHTING::SceneLightType::Directional) {
-        key.direction = MATH::Normalize(center - key.position);
-        key.intensity = 3.0f;
-    } else {
-        key.intensity = 18.0f;
-        key.range = (std::max)(radius * 4.0f, 14.0f);
-    }
+    key.intensity = kStudioKeyLumens;
+    key.range = (std::max)(radius * 4.0f, 14.0f);
     MarkPreviewLightingChanged();
 }
 
-void ModelMaterialWorkspaceController::AddPreviewLight(RENDER3D::LIGHTING::SceneLightType type) {
+void ModelMaterialWorkspaceController::AddPreviewLight() {
     previewLightRangeDragActive_ = false;
     InitializePreviewLighting();
     RENDER3D::LIGHTING::SceneLightProvider light{};
     light.id = "ModelMaterialStudioInspect.Light." + std::to_string(previewLightIdCounter_++);
-    light.name = type == RENDER3D::LIGHTING::SceneLightType::Directional ? "Directional Light" : "Point Light";
+    light.name = "Point Light";
     light.enabled = true;
-    light.type = type;
+    light.type = RENDER3D::LIGHTING::SceneLightType::Point;
     light.color = {1.0f, 0.96f, 0.90f};
     light.priority = 100;
     previewLighting_.lights.push_back(std::move(light));
@@ -205,18 +210,16 @@ void ModelMaterialWorkspaceController::InitializePreviewLighting() {
     if (previewLightingInitialized_) {
         return;
     }
-    previewEnvironment_ = {};
-    previewEnvironment_.ambient.intensity = 0.35f;
-    previewEnvironment_.ambient.useSkyColor = true;
-    previewEnvironment_.ambient.skyBlend = 0.8f;
-    previewEnvironment_.directional.enabled = false;
-    previewEnvironment_.sky.enabled = true;
-    previewEnvironment_.sky.mode = SkyMode::Cubemap;
-    previewEnvironment_.sky.skyAsset = "DefaultSky";
-    previewEnvironment_.sky.exposure = 1.0f;
-    previewEnvironment_.sky.reflectionIntensity = 0.45f;
-    previewEnvironment_.screenSpaceReflections.enabled = false;
-    previewEnvironment_.surfaceLightmaps.enabled = false;
+    // エンジン内蔵の Studio 環境（固定の太陽と HDR の空）から始める。
+    ENVIRONMENT::EnvironmentProfileAsset studio{};
+    std::string error;
+    if (!ENVIRONMENT::LoadEnvironmentProfileAsset(ENVIRONMENT::ResolveBuiltinEnvironmentProfilePath(kStudioProfileId),
+                                                  studio, error)) {
+        statusMessage_ = error;
+    }
+    previewProfile_ = studio.profile;
+    previewProfile_.screenSpaceReflections.enabled = false;
+    RebuildPreviewEnvironment();
 
     previewLighting_ = {};
     RENDER3D::LIGHTING::SceneLightProvider key{};
@@ -226,11 +229,18 @@ void ModelMaterialWorkspaceController::InitializePreviewLighting() {
     key.type = RENDER3D::LIGHTING::SceneLightType::Point;
     key.position = {2.5f, 3.5f, -2.5f};
     key.color = {1.0f, 0.96f, 0.9f};
-    key.intensity = 18.0f;
+    key.intensity = kStudioKeyLumens;
     key.range = 14.0f;
     key.priority = 100;
     previewLighting_.lights.push_back(std::move(key));
     previewLightingInitialized_ = true;
+}
+
+void ModelMaterialWorkspaceController::RebuildPreviewEnvironment() {
+    static_cast<EnvironmentProfile&>(previewEnvironment_) = previewProfile_;
+    previewEnvironment_.frame = ENVIRONMENT::BuildLightingFrame(previewProfile_, ENVIRONMENT::EnvironmentFrameState{},
+                                                                ENVIRONMENT::GeoLocation{});
+    MarkPreviewLightingChanged();
 }
 
 void ModelMaterialWorkspaceController::DrawPreviewCameraControls() {
@@ -268,30 +278,28 @@ void ModelMaterialWorkspaceController::DrawPreviewEnvironmentControls() {
     ImGui::SeparatorText(TEXT::Localize("editor.ui.studio.inspect.environment.f9eb92").c_str());
     ImGui::TextDisabled(
         TEXT::Localize("editor.ui.create.lights.with.the.icon.then.select.their.viewport.glyph.e5730c").c_str());
-    bool changed = false;
-    if (ImGui::Checkbox(TEXT::LocalizeWindow("ui.environment.sky", "Sky").c_str(), &previewSkyEnabled_)) {
-        previewEnvironment_.sky.enabled = previewSkyEnabled_;
-        changed = true;
-    }
-    changed = ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.sky.rotation.ee7e3f", "Sky Rotation").c_str(),
-                               &previewEnvironment_.sky.yaw, 0.01f) ||
-              changed;
-    changed = ImGui::DragFloat(TEXT::LocalizeWindow("ui.environment.skyIntensity", "Sky Intensity").c_str(),
-                               &previewEnvironment_.sky.exposure, 0.01f, 0.0f, 32.0f) ||
-              changed;
-    changed = ImGui::DragFloat(TEXT::LocalizeWindow("editor.ui.ibl.reflections.48780d", "IBL Reflections").c_str(),
-                               &previewEnvironment_.sky.reflectionIntensity, 0.01f, 0.0f, 4.0f) ||
-              changed;
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip(
-            TEXT::Localize("editor.ui.specular.reflection.strength.from.the.visible.defaultsky.studio..d42671")
-                .c_str());
-    }
-    changed = ImGui::DragFloat(TEXT::LocalizeWindow("ui.environment.ambient", "Ambient").c_str(),
-                               &previewEnvironment_.ambient.intensity, 0.01f, 0.0f, 8.0f) ||
-              changed;
+    // Studio 環境の項目のうち、確認でよく触るものだけを環境資産と同じ表で描く。
+    const auto hidden = [](std::initializer_list<std::string_view> shown, std::string_view key) {
+        return std::find(shown.begin(), shown.end(), key) == shown.end();
+    };
+    bool changed =
+        DrawJsonFields("ui.environment.sun", previewProfile_.sun, ENVIRONMENT::FIELDS::kSunFields,
+                       [&](std::string_view key, auto&, FieldEditResult&) {
+                           return hidden({"fixedAzimuthDegrees", "fixedElevationDegrees", "illuminance"}, key);
+                       })
+            .changed;
+    changed |= DrawJsonFields("ui.environment.sky", previewProfile_.sky, ENVIRONMENT::FIELDS::kSkyFields,
+                              [&](std::string_view key, auto&, FieldEditResult&) {
+                                  return hidden({"yaw", "lightIntensity", "reflectionIntensity"}, key);
+                              })
+                   .changed;
+    changed |= DrawJsonFields("ui.environment.exposure", previewProfile_.exposure, ENVIRONMENT::FIELDS::kExposureFields,
+                              [&](std::string_view key, auto&, FieldEditResult&) {
+                                  return hidden({"manualEv100", "compensationEv"}, key);
+                              })
+                   .changed;
     if (changed) {
-        MarkPreviewLightingChanged();
+        RebuildPreviewEnvironment();
     }
     ImGui::EndDisabled();
 #endif
@@ -328,8 +336,7 @@ void ModelMaterialWorkspaceController::SubmitPreviewRequests(EditorWorkspaceHost
     request.sceneSourceOverride = activePreview.GetSceneSource();
     request.environmentOverride = studioInspect ? &previewEnvironment_ : nullptr;
     request.lightingOverride = studioInspect ? &previewLighting_ : nullptr;
-    request.useDefaultSkyIbl =
-        studioInspect && previewEnvironment_.sky.enabled && previewEnvironment_.sky.reflectionIntensity > 0.0f;
+    request.useDefaultSkyIbl = studioInspect && previewEnvironment_.sky.reflectionIntensity > 0.0f;
     request.suppressSpatialLightingProviders = previewEnvironmentMode_ != PreviewEnvironmentMode::SceneMatch;
     request.spatialAntiAliasing = previewSpatialAaEnabled_;
     RENDER3D::EDITORVIEW::SubmitRequest(request);
@@ -340,8 +347,7 @@ void ModelMaterialWorkspaceController::SubmitPreviewRequests(EditorWorkspaceHost
         const bool compareStudio = previewEnvironmentMode_ != PreviewEnvironmentMode::StudioInspect;
         compareRequest.environmentOverride = compareStudio ? &previewEnvironment_ : nullptr;
         compareRequest.lightingOverride = compareStudio ? &previewLighting_ : nullptr;
-        compareRequest.useDefaultSkyIbl =
-            compareStudio && previewEnvironment_.sky.enabled && previewEnvironment_.sky.reflectionIntensity > 0.0f;
+        compareRequest.useDefaultSkyIbl = compareStudio && previewEnvironment_.sky.reflectionIntensity > 0.0f;
         compareRequest.suppressSpatialLightingProviders = compareStudio;
         compareRequest.schedulingPriority = 90u;
         RENDER3D::EDITORVIEW::SubmitRequest(compareRequest);

@@ -370,6 +370,7 @@ float3 WorldSpriteResolveShadingNormal(WorldSpriteVertex input, bool frontFace)
         (input.spriteFlags & 8u) != 0u);
 }
 
+// 受光した色は絶対量、受光しない色は表示参照。どちらもこのビューの HDR 空間の値で返す。
 float3 WorldSpriteApplyLighting(WorldSpriteVertex input, bool frontFace, float3 color)
 {
     if (input.surface.x > 0.5f && gWorldSpriteReserved0 != 0u) {
@@ -377,8 +378,9 @@ float3 WorldSpriteApplyLighting(WorldSpriteVertex input, bool frontFace, float3 
         const float3 shadingNormal = WorldSpriteResolveShadingNormal(input, frontFace);
         color = HikariShadeSimpleSurface(color,0.0f,input.surface.y,1.0f.xxx,input.surface.z,1.0f,
             shadingNormal,geometricNormal,input.worldPosition,input.position.xy,(input.spriteFlags >> 1u) & 1u);
+        return HikariPreExpose(color, gViewExposure);
     }
-    return color;
+    return HikariDisplayReferredToScene(color, gViewExposure);
 }
 
 float4 WorldSpritePS(WorldSpriteVertex input, bool frontFace : SV_IsFrontFace) : SV_TARGET

@@ -23,14 +23,16 @@ enum class GpuMaterialTextureChannel : uint8_t {
     Occlusion,
     Specular,
     SpecularColor,
+    StrokeMask,
+    StrokeNormal,
     Count,
 };
 
 inline constexpr std::array<MaterialTextureUsage, static_cast<size_t>(GpuMaterialTextureChannel::Count)>
-    kGpuMaterialTextureUsages{MaterialTextureUsage::BaseColor,    MaterialTextureUsage::Normal,
-                              MaterialTextureUsage::Emissive,     MaterialTextureUsage::MetallicRoughness,
-                              MaterialTextureUsage::Occlusion,    MaterialTextureUsage::Specular,
-                              MaterialTextureUsage::SpecularColor};
+    kGpuMaterialTextureUsages{
+        MaterialTextureUsage::BaseColor,         MaterialTextureUsage::Normal,     MaterialTextureUsage::Emissive,
+        MaterialTextureUsage::MetallicRoughness, MaterialTextureUsage::Occlusion,  MaterialTextureUsage::Specular,
+        MaterialTextureUsage::SpecularColor,     MaterialTextureUsage::StrokeMask, MaterialTextureUsage::StrokeNormal};
 
 struct GpuMaterialTextureProjection {
     int32_t backendHandle = -1;
@@ -49,6 +51,9 @@ struct MaterialFactorProjection {
     MATH::Vec4 specularParams{1.0f, 1.0f, 1.0f, 1.0f};
     uint32_t materialFlags = 0u;
     float normalScale = 1.0f;
+    // 筆触の殻の uniform 設定（MaterialShellSettings の投影）。GpuMaterialData::shellStroke0/1 と同じ並び。
+    MATH::Vec4 shellStroke0{1.0f, 0.0f, 0.0f, 0.0f};
+    MATH::Vec4 shellStroke1{1.5f, 0.0f, 0.0f, 0.0f};
 };
 
 // Material-owned projection into the shared C++/HLSL layout.
@@ -64,6 +69,9 @@ MaterialFactorProjection BuildMaterialFactorProjection(const MaterialAsset* mode
                                                        const Material* runtimeMaterial);
 
 GpuMaterialProjection BuildRuntimeMaterialGpuProjection(const Material& material);
+
+// 実行時材質だけが持つ slot（筆触テクスチャ）を射影する。モデル継承は無い。
+GpuMaterialTextureProjection ProjectRuntimeMaterialTexture(const Material& material, MaterialTextureUsage usage);
 
 // テクスチャの所有権は変更せず、継承規則に従う UV だけを射影する。
 void ProjectMaterialTextureUv(const MaterialAsset* modelMaterial, const Material* runtimeMaterial,

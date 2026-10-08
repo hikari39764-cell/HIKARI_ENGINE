@@ -24,6 +24,7 @@
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_PresentationModelService.h"
+#include "Scene/Environment/HIKARI_EnvironmentRuntime.h"
 #include "Scene/Lighting/HIKARI_LocalFogService.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_RuntimeObjectActivityService.h"
@@ -82,6 +83,10 @@ struct DocumentSceneRuntimeState {
     TERRAIN::TerrainSurfaceQueryService terrainSurfaceQueryService{};
     PresentationModelService presentationModelService{};
     LocalFogService localFogService{};
+    // 時刻・天気・環境プロファイルの実行時の所有者。シーン文書へは書き戻さない。
+    ENVIRONMENT::EnvironmentRuntime environment{};
+    // 編集中の時刻の流れ（実時間 1 秒あたりの秒数、0 で止める）。環境パネルの試し再生が設定する。
+    double environmentPreviewTimeScale = 0.0;
     PresentationTransformService presentationTransformService{};
     RuntimeObjectActivityService runtimeObjectActivityService{};
     RuntimeExtensionHost extensionHost{};

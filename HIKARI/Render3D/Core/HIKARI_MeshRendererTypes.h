@@ -152,8 +152,8 @@ struct LightCB {
     MATH::Vec4 directionalDir{};
     MATH::Vec4 directionalColor{};
     MATH::Vec4 ambientColor{};
-    // 旧 Phong 定数の領域を予約し、後続の LightCB オフセットを保持する。
-    MATH::Vec4 lightReserved{};
+    // ビューの露出 {P, 1/P, P/E, P/P_prev}（COLOR::MakeViewExposureConstants）。
+    MATH::Vec4 viewExposure{1.0f, 1.0f, 1.0f, 1.0f};
     float directionalIntensity = 1.0f;
     float ambientIntensity = 0.25f;
     uint32_t localLightCount = 0;
@@ -175,12 +175,17 @@ struct LightCB {
     // 変形後の surface origin だけを差し替えて trace する。
     MATH::Vec4 screenSpaceReflectionParams0{};
     MATH::Vec4 screenSpaceReflectionParams1{};
+    // 描画の様式の標準材質の光の受け方。0: {明るい側の段数（0 で物理）, 影の境, 境のぼかし, 鏡面反射の強さ}、
+    // 1: {影の側の環境光の色, 縁の光}。
+    MATH::Vec4 styleShading0{};
+    MATH::Vec4 styleShading1{1.0f, 1.0f, 1.0f, 0.0f};
 };
 
 static_assert(offsetof(LightCB, localLightDepthScale) == 104u);
 static_assert(offsetof(LightCB, fogColorDensity) == 112u);
 static_assert(offsetof(LightCB, screenSpaceReflectionParams0) == 160u);
-static_assert(sizeof(LightCB) == 192u);
+static_assert(offsetof(LightCB, styleShading0) == 192u);
+static_assert(sizeof(LightCB) == 224u);
 
 struct ReflectionProbeGpuData {
     MATH::Vec4 positionRadius{};
@@ -196,11 +201,9 @@ struct ReflectionProbeGpuData {
 using IrradianceVolumeGpuData = RENDER3D::LIGHTPROBE::IrradianceVolumeGpuData;
 
 struct SkyEnvironmentCB {
-    // Vec4{} は w=1。未設定の空は露出・反射・ambient blend・descriptor を
-    // 全て無効にし、黒い空で authored ambient を上書きしてはならない。
-    MATH::Vec4 skyZenithExposure{0, 0, 0, 0};
-    MATH::Vec4 skyHorizonReflection{0, 0, 0, 0};
-    MATH::Vec4 skyGroundAmbient{0, 0, 0, 0};
+    // x 空の画素値を輝度へ写す倍率、y 反射の倍率、z 天空光の倍率。未設定の空はすべて 0（空の光なし）。
+    MATH::Vec4 skyScales{0, 0, 0, 0};
+    // x SkyMode、y 立方体あり、w 空の回転。
     MATH::Vec4 skyParams{0, 0, 0, 0};
     // rgb tint, w Texture2D user-SRV descriptor index plus one.
     MATH::Vec4 skyTintLighting{0, 0, 0, 0};
@@ -216,13 +219,15 @@ struct SkyEnvironmentCB {
     MATH::Vec4 atmosphereOzoneParams{};
     MATH::Vec4 atmosphereSunDirection{0, 0, 0, 0};
     MATH::Vec4 atmosphereSunColorRadiance{};
-    MATH::Vec4 gradientSkyIrradiance[3]{};
     RENDER3D::LIGHTING::CloudSolarVisibilityGpuData cloudSolarVisibility{};
+    // 動的 GI（手置きの区域、近景、遠景の優先順）。焼き込みの irradianceVolumes より先に重ねる。
+    IrradianceVolumeGpuData dynamicGiVolumes[RENDER3D::LIGHTPROBE::kDynamicGiVolumeCount]{};
 };
 
-static_assert(offsetof(SkyEnvironmentCB, atmospherePlanetParams) == 528u);
-static_assert(offsetof(SkyEnvironmentCB, gradientSkyIrradiance) == 640u);
-static_assert(sizeof(SkyEnvironmentCB) == 752u);
+static_assert(offsetof(SkyEnvironmentCB, atmospherePlanetParams) == 496u);
+static_assert(offsetof(SkyEnvironmentCB, cloudSolarVisibility) == 608u);
+static_assert(offsetof(SkyEnvironmentCB, dynamicGiVolumes) == 672u);
+static_assert(sizeof(SkyEnvironmentCB) == 912u);
 
 struct ShadowCB {
     MATH::Mat4 lightViewProj[SHADOW::kMaxDirectionalShadowCascades]{};

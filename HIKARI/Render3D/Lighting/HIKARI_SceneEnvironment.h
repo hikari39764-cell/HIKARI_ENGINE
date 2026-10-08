@@ -1,115 +1,111 @@
 #pragma once
 
-#include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
-
 #include <string>
-#include <vector>
 #include <cstdint>
-#include <DirectXMath.h>
-#include "Render3D/Color/HIKARI_ExposureState.h"
-#include "Render3D/Debug/HIKARI_RenderDebugView.h"
-#include "Core/Math/HIKARI_Math3D.h"
 
+#include "Assets/RenderStyle/HIKARI_RenderStyleShading.h"
+#include "Core/Math/HIKARI_Math3D.h"
+#include "Render3D/Color/HIKARI_ExposureState.h"
+
+// 環境の設定（.henvironment の内容）と、環境ランタイムが毎フレーム解く光源状態。
+// 単位: 照度 lux、輝度 nits（cd/m^2）、距離 m、角度は注記のとおり。
 namespace HIKARI {
 
-struct AmbientLight {
-    MATH::Vec3 color{1.0f, 1.0f, 1.0f};
-    float intensity = 0.25f;
-    bool useSkyColor = false;
-    float skyBlend = 1.0f;
+enum class SkySource : uint8_t {
+    Atmosphere = 0,
+    // Sky 資産（HDR 立方体）。水平面照度で絶対輝度へ校正する。
+    Hdri,
+    // 等距円筒の背景画像（表示参照）。任意の雲層を重ねられる。
+    Panorama,
 };
 
-struct DirectionalLight {
-    bool enabled = true;
-    MATH::Vec3 direction{0.4f, -1.0f, -0.6f};
-    float intensity = 1.0f;
-    MATH::Vec3 color{1.0f, 1.0f, 1.0f};
+struct SkySettings {
+    SkySource source = SkySource::Atmosphere;
+    // Hdri では Sky 資産名、Panorama ではテクスチャ資産。
+    std::string asset{};
+    // Hdri と Panorama の画素値の較正。画素値 1 の一様な空が地面に与える水平面照度 [lux]。
+    float textureIlluminance = 20000.0f;
+    std::string panoramaCloudAsset{};
+    MATH::Vec2 panoramaCloudScrollSpeed{0.0015f, 0.0f};
+    float panoramaCloudOpacity = 1.0f;
+    // 空の回転 [度]。
+    float yaw = 0.0f;
+    MATH::Vec3 tint{1.0f, 1.0f, 1.0f};
+    // 天空光（拡散）と反射の作画用倍率。
+    float lightIntensity = 1.0f;
+    float reflectionIntensity = 1.0f;
 };
 
-struct DirectionalShadowSettings {
-    bool enabled = true;
-    uint32_t resolution = 2048;
-    uint32_t cascadeCount = 3;
-    float cascadeSplitLambda = 0.65f;
-    float cascadeBlend = 0.10f;
-    float nearPlane = 0.1f;
-    float farPlane = 80.0f;
-    float depthBias = 0.001f;
-    float normalBias = 0.02f;
-    // 様式化した陰影の演出用。Standard PBR は実際の可視性を直接使う。
-    float strength = 0.75f;
-    bool pcfEnabled = true;
-    float pcfRadius = 1.0f;
-    bool stabilize = true;
-    bool showDebugTexture = false;
-    float shadowDistance = 30.0f;
-    bool showDebugFrustum = false;
-};
-
-struct PointLight {
-    bool enabled = true;
-    MATH::Vec3 position{0.0f, 2.0f, 0.0f};
-    float range = 5.0f;
-    float sourceRadius = 0.0f;
-    MATH::Vec3 color{1.0f, 1.0f, 1.0f};
-    float intensity = 1.0f;
-    int priority = 0;
-    RENDER3D::LIGHTING::LocalLightFalloff distanceFalloff = RENDER3D::LIGHTING::LocalLightFalloff::Range;
-};
-
-struct SpotLight {
-    bool enabled = true;
-    MATH::Vec3 position{0.0f, 3.0f, 0.0f};
-    float range = 8.0f;
-    float sourceRadius = 0.0f;
-    MATH::Vec3 direction{0.0f, -1.0f, 0.0f};
-    float innerConeAngleDegrees = 25.0f;
-    float outerConeAngleDegrees = 35.0f;
-    float angularFalloff = 1.0f;
-    MATH::Vec3 color{1.0f, 1.0f, 1.0f};
-    float intensity = 1.0f;
-    int priority = 0;
-    RENDER3D::LIGHTING::LocalLightFalloff distanceFalloff = RENDER3D::LIGHTING::LocalLightFalloff::Range;
-};
-
-enum class SkyMode {
-    None = 0,
-    Gradient,
-    Cubemap,
-    Texture2D,
-    Atmosphere,
-};
-
-// Relative solar illumination keeps the legacy directional intensity as
-// the authoritative scene-light value while allowing an atmosphere to
-// calibrate sky radiance without introducing a second sun owner.
 struct AtmosphereSettings {
-    bool enabled = true;
     float planetRadius = 6360000.0f;
     float atmosphereHeight = 80000.0f;
     float rayleighScaleHeight = 8000.0f;
-    float mieScaleHeight = 1200.0f;
+    // エアロゾルは地表近くの境界層に集まる。
+    float mieScaleHeight = 800.0f;
     MATH::Vec3 rayleighScattering{5.8e-6f, 13.5e-6f, 33.1e-6f};
-    MATH::Vec3 mieScattering{3.996e-6f, 3.996e-6f, 3.996e-6f};
+    // 地表のエアロゾルの散乱係数 [1/m]。普通の晴天（地表の視程約 58km、光学的厚さ約 0.04）。地平線の白み、遠くの
+    // 雲や地面が霞に溶ける具合、太陽まわりの光環を決める。境界層に集めて柱の厚さを抑え、天頂の青は保つ
+    // （多重散乱は等方近似なので、柱が厚いと空全体が灰色の幕をかぶったようになる）。
+    MATH::Vec3 mieScattering{5.0e-5f, 5.0e-5f, 5.0e-5f};
     MATH::Vec3 ozoneAbsorption{6.5e-7f, 1.881e-6f, 8.5e-8f};
     float ozoneCenterHeight = 25000.0f;
     float ozoneWidth = 15000.0f;
-    float mieAnisotropy = 0.76f;
-    float sunIlluminance = 1.0f;
-    float sunExposure = 0.0f;
-    float groundAlbedo = 0.1f;
+    float mieAnisotropy = 0.8f;
+    MATH::Vec3 groundAlbedo{0.1f, 0.1f, 0.1f};
     float aerialPerspectiveStrength = 1.0f;
-    float sunAngularRadius = 0.004675f;
     uint32_t transmittanceLutWidth = 256u;
     uint32_t transmittanceLutHeight = 64u;
     uint32_t multiScatteringLutSize = 32u;
     uint32_t skyViewLutWidth = 192u;
     uint32_t skyViewLutHeight = 108u;
-    bool preferLut = true;
 };
 
-// Post owns the glare pass; Environment owns only the persistent policy
-// and the renderer-facing values that identify the same solar source.
+enum class SunMode : uint8_t {
+    // 日付・時刻・地点から天体位置を求める。
+    Celestial = 0,
+    // 方位と高度を固定する。
+    Fixed,
+};
+
+struct SunSettings {
+    SunMode mode = SunMode::Celestial;
+    // Fixed の方位（北 0、東 90）と高度 [度]。
+    float fixedAzimuthDegrees = 135.0f;
+    float fixedElevationDegrees = 45.0f;
+    // 大気外の法線照度 [lux]。地表の値は大気の透過率を掛けて求める。
+    float illuminance = 128000.0f;
+    MATH::Vec3 color{1.0f, 1.0f, 1.0f};
+    // 視半径 [rad]。
+    float angularRadius = 0.004675f;
+    bool showDisk = true;
+};
+
+struct MoonSettings {
+    bool enabled = true;
+    // 満月の大気外照度 [lux]。位相で減光する。
+    float illuminance = 0.27f;
+    MATH::Vec3 color{0.88f, 0.92f, 1.0f};
+    float angularRadius = 0.0045f;
+};
+
+// 夜空。星は実際の星等級分布に従う点光源で、明るさは物理値に intensity を掛ける。
+struct StarSettings {
+    bool enabled = true;
+    float intensity = 1.0f;
+    // 描く最も暗い星の等級。大きいほど暗い星まで増える（6.5 で全天およそ 9000 個）。
+    float limitingMagnitude = 6.5f;
+    // 大気光と分解できない星の光による天頂の背景輝度 [nits]。暗い空でおよそ 22 等/平方秒角。
+    float backgroundLuminance = 0.00017f;
+};
+
+// 太陽方向光の影。技術的な解像度・カスケード・フィルターは画質設定が持つ。
+struct ShadowSettings {
+    bool enabled = true;
+    float distance = 30.0f;
+    // 様式化した陰影の演出用。Standard PBR は実際の可視性を直接使う。
+    float strength = 0.75f;
+};
+
 struct SunGlareSettings {
     bool enabled = false;
     float intensity = 0.15f;
@@ -120,89 +116,24 @@ struct SunGlareSettings {
     float occlusionRadius = 0.012f;
     float edgeFade = 0.15f;
     float maxRadiance = 4.0f;
-    // Depth-backed radial shafts are an artistic readability supplement
-    // to the froxel volume, not a second fog/light owner.  A zero default
-    // preserves the appearance of scenes authored before this contract.
     float shaftIntensity = 0.0f;
     float shaftLength = 0.55f;
     float shaftDecay = 0.94f;
 };
 
-struct SkySettings {
+// 体積雲の層。被覆率・雲の種類・降水・巻雲・風は天気が毎フレーム与える（EnvironmentLightingFrame::clouds）。
+struct CloudLayerSettings {
     bool enabled = true;
-    SkyMode mode = SkyMode::Cubemap;
-    std::string skyAsset = "DefaultSky";
-    // Optional equirectangular foreground layer for Texture2D skies.  The
-    // base panorama remains owned by skyAsset; this layer is composed by
-    // its own render stage so the volumetric cloud owner stays separate.
-    bool panoramaCloudEnabled = false;
-    std::string panoramaCloudAsset{};
-    MATH::Vec2 panoramaCloudScrollSpeed{0.0015f, 0.0f};
-    float panoramaCloudOpacity = 1.0f;
-    float scale = 1.0f;
-    float yaw = 0.0f;
-    // Scene-linear sky radiance multiplier. Kept as "exposure" in serialized
-    // data for compatibility; this is not the camera/display exposure.
-    float exposure = 1.0f;
-    MATH::Vec3 tint{1.0f, 1.0f, 1.0f};
-    bool followCamera = true;
-    MATH::Vec3 zenithColor{0.08f, 0.22f, 0.55f};
-    MATH::Vec3 horizonColor{0.65f, 0.78f, 0.95f};
-    MATH::Vec3 groundColor{0.08f, 0.08f, 0.10f};
-    float horizonPower = 1.5f;
-    bool showSunDisk = true;
-    float sunDiskIntensity = 0.0f;
-    float sunDiskSize = 0.04f;
-    float ambientFromSky = 1.0f;
-    float reflectionIntensity = 1.0f;
-    bool showDebugTexture = false;
-};
-
-struct StylizedCloudSettings {
-    bool enabled = false;
-    bool physicallyBasedLighting = true;
-    float anisotropy = 0.7f;
-    float coverage = 0.46f;
-    float density = 1.10f;
-    float altitude = 180.0f;
-    float thickness = 90.0f;
-    float scale = 140.0f;
-    MATH::Vec2 windDirection{1.0f, 0.22f};
-    float windSpeed = 6.0f;
-    float shapeDetail = 0.55f;
-    float softness = 0.28f;
-    float lightAbsorption = 0.72f;
-    float silverLining = 0.42f;
-    float horizonFade = 0.62f;
-    MATH::Vec3 brightColor{1.0f, 0.985f, 0.94f};
-    MATH::Vec3 shadowColor{0.48f, 0.67f, 0.86f};
-};
-
-enum class ReflectionProbeInfluenceShape {
-    Sphere,
-    Box,
-};
-
-enum class ReflectionProbeProjectionShape {
-    Infinite,
-    Box,
-};
-
-struct ReflectionProbeSettings {
-    bool enabled = false;
-    std::string sourceCubemapAsset{};
-    MATH::Vec3 position{0.0f, 2.0f, 0.0f};
-    float radius = 8.0f;
-    float intensity = 1.0f;
-    // Influence は probe の有効範囲、Projection は cubemap の視差補正に使う。
-    ReflectionProbeInfluenceShape influenceShape = ReflectionProbeInfluenceShape::Sphere;
-    MATH::Vec3 influenceBoxCenter{0.0f, 2.0f, 0.0f};
-    MATH::Vec3 influenceBoxSize{8.0f, 4.0f, 8.0f};
-    ReflectionProbeProjectionShape projectionShape = ReflectionProbeProjectionShape::Infinite;
-    MATH::Vec3 projectionBoxCenter{0.0f, 2.0f, 0.0f};
-    MATH::Vec3 projectionBoxSize{8.0f, 4.0f, 8.0f};
-    float blendDistance = 1.0f;
-    int priority = 0;
+    // 積雲の雲底の高度 [m]。層雲・積乱雲の雲底と各雲の厚さもこれに比例する。
+    float baseAltitude = 1500.0f;
+    // 雲の消散係数の倍率（基準 0.1 /m）。
+    float densityScale = 1.0f;
+    // 雲の塊の大きさの倍率（基準 2.4 km 周期）。
+    float shapeScale = 1.0f;
+    // 細部ノイズで縁を削る強さ。
+    float detailErosion = 0.25f;
+    // 空と地面から雲へ入る環境光の倍率。
+    float ambientScale = 1.0f;
 };
 
 enum class SsaoMode {
@@ -223,7 +154,6 @@ struct AmbientOcclusionSettings {
     float specularStrength = 0.5f;
     uint32_t sampleCount = 16;
     uint32_t blurIterations = 1;
-    bool editorViewportSuppressed = false;
 };
 
 enum class ScreenSpaceReflectionQuality {
@@ -255,76 +185,147 @@ struct ScreenSpaceReflectionSettings {
     bool rayTracingFallback = false;
 };
 
-struct SurfaceLightmapSettings {
-    bool enabled = true;
-};
-
+// 半解像度から始まる縮小ピラミッドで作る光のにじみ。全段の和を intensity 倍して足す。
 struct BloomSettings {
     bool enabled = true;
-    float threshold = 1.0f;
-    float intensity = 0.2f;
+    // 表示の明るさの閾値。既定の 0 は画面全体がわずかににじむ写実の設定（レンズと目の散乱に近い）。
+    float threshold = 0.0f;
+    float intensity = 0.05f;
+    // 段を戻すときの広がりの倍率。
     float radius = 1.0f;
-    uint32_t downsampleCount = 3;
+    // ピラミッドの段数。多いほど光の輪が遠くまで届く。
+    uint32_t downsampleCount = 6;
 };
 
 struct FogSettings {
     bool enabled = false;
     bool volumetric = true;
-    MATH::Vec3 color{0.55f, 0.65f, 0.75f};
-    float density = 0.02f;
-    float startDistance = 10.0f;
-    float endDistance = 80.0f;
-    float heightFalloff = 0.0f;
+    // 散乱アルベド。散乱光の色は空と太陽から求める。
+    MATH::Vec3 albedo{0.9f, 0.9f, 0.9f};
+    // 基準高さでの消散係数 [1/m]。天気の霧はこれに加わる。
+    float density = 0.002f;
+    float startDistance = 0.0f;
+    float heightFalloff = 0.05f;
     float baseHeight = 0.0f;
     float anisotropy = 0.2f;
     float temporalWeight = 0.9f;
     float scatteringIntensity = 1.0f;
     float ambientScatteringStrength = 1.0f;
     float sunShaftStrength = 1.0f;
-    bool useSkyHorizonColor = false;
+    // 密度の揺らぎの強さ（0 で一様、1 で 0..2 倍）と揺らぎの大きさ [m]。揺らぎは地上の風で流れる。
+    float noise = 0.0f;
+    float noiseScale = 16.0f;
 };
 
+// 表示の階調曲線。露出と表示変換は SDR 出力時に常に適用し、曲線だけを選ぶ。
+// AgX は高い輝度を色相を保ったまま白へ寄せる（写実の既定）。AcesFitted は ACES の近似で彩度が強い。
+enum class ToneCurve : uint8_t {
+    None = 0u,
+    Reinhard = 1u,
+    AcesFitted = 2u,
+    AgX = 3u,
+};
+
+inline constexpr TEXT::EnumName<ToneCurve> kToneCurveNames[] = {
+    {ToneCurve::None, "None"},
+    {ToneCurve::Reinhard, "Reinhard"},
+    {ToneCurve::AcesFitted, "AcesFitted"},
+    {ToneCurve::AgX, "AgX"},
+};
+
+// contrast は露出後・階調曲線の前に、輝度を中間灰 0.18 を中心に対数で伸ばす倍率。既定 1.15 は写真の階調に近い
+// 張り（AgX の肩だけでは日の当たる雲が灰色に寄る）。
 struct ToneMappingSettings {
-    // enabled は Tone Curve のみを制御する。
-    // Exposure と Display Transfer は SDR 出力時に常に適用する。
-    bool enabled = true;
-    RENDER3D::COLOR::ExposureMode exposureMode = RENDER3D::COLOR::ExposureMode::Manual;
-    float exposure = 1.0f; // Manual exposure and automatic-mode seed.
-    RENDER3D::COLOR::AutomaticExposureSettings automaticExposure{};
+    ToneCurve curve = ToneCurve::AgX;
     float whiteBalanceTemperature = 6500.0f;
     float whiteBalanceTint = 0.0f;
-    float contrast = 1.0f;
+    float contrast = 1.15f;
     float saturation = 1.0f;
-    float gamma = 2.2f; // SDR display transfer approximation.
-    int mode = 2;       // 0=None, 1=Reinhard, 2=ACES fitted
+    float gamma = 2.2f;
 };
 
 // 全画面後処理は後処理プロファイル資産を参照する（エンジン内蔵 ID かプロジェクト資産の GUID）。
-struct ScenePostSettings {
-    bool enabled = false;
-    std::string profileId{};
-};
+// 空のテクスチャの画素値を輝度 [nits] へ写す倍率。一様な空の輝度 L は水平面に πL の照度を与える。
+inline float ResolveSkyTextureRadianceScale(const SkySettings& sky) noexcept {
+    return sky.source == SkySource::Atmosphere ? 1.0f : sky.textureIlluminance / 3.14159265358979f;
+}
 
-struct SceneEnvironment {
-    AmbientLight ambient{};
-    DirectionalLight directional{};
-    DirectionalShadowSettings directionalShadow{};
-    std::vector<PointLight> pointLights{};
-    std::vector<SpotLight> spotLights{};
+// .henvironment の内容。シーンは参照と初期時刻・地点・天気だけを持つ。
+struct EnvironmentProfile {
     SkySettings sky{};
     AtmosphereSettings atmosphere{};
-    SunGlareSettings sunGlare{};
-    StylizedCloudSettings clouds{};
-    ReflectionProbeSettings reflectionProbe{};
-    AmbientOcclusionSettings ambientOcclusion{};
-    SurfaceLightmapSettings surfaceLightmaps{};
-    ScreenSpaceReflectionSettings screenSpaceReflections{};
-    BloomSettings bloom{};
+    SunSettings sun{};
+    MoonSettings moon{};
+    StarSettings stars{};
+    CloudLayerSettings clouds{};
     FogSettings fog{};
+    RENDER3D::COLOR::ExposureSettings exposure{};
     ToneMappingSettings toneMapping{};
-    bool showLightDebug = true;
-    bool showSkyDebugInfo = false;
-    ScenePostSettings post{};
+    BloomSettings bloom{};
+    SunGlareSettings sunGlare{};
+    AmbientOcclusionSettings ambientOcclusion{};
+    ScreenSpaceReflectionSettings screenSpaceReflections{};
+    ShadowSettings shadows{};
+    // 天気の指定が無い時の天気（内蔵 ID か .hweather の GUID）。
+    std::string defaultWeather = "engine.weather.clear";
+};
+
+// 天体の方向光。toLight は光源へ向かう単位ベクトル。
+struct EnvironmentDirectionalLight {
+    MATH::Vec3 toLight{0.0f, 1.0f, 0.0f};
+    // 大気外の法線照度 [lux]。地平線の下でも保つ（大気の空は地球の影で地表の直射を 0 にし、空の高い所や高い雲には
+    // 日没後も光が届いて薄明が残る）。
+    float illuminance = 0.0f;
+    MATH::Vec3 color{1.0f, 1.0f, 1.0f};
+    float angularRadius = 0.004675f;
+    // 地表から見た円盤の地平線より上の割合（0..1）。大気を持たない空や影、地表の光の有無はこれを掛けて判断する。
+    float horizonVisibility = 1.0f;
+};
+
+// 雲の天気と風。被覆率、雲型（0 層雲・0.5 積雲・1 積乱雲）、濃さの倍率、降水と、
+// 風の速度 [m/s] と積分した移動量 [m]（どちらもワールド xz）。
+struct CloudWeatherFrame {
+    float coverage = 0.0f;
+    float type = 0.5f;
+    float density = 1.0f;
+    float precipitation = 0.0f;
+    MATH::Vec2 windVelocity{};
+    double windDisplacementX = 0.0;
+    double windDisplacementZ = 0.0;
+    // 雲の発達を進める実時間 [s]。
+    double seconds = 0.0;
+};
+
+// 環境ランタイムが毎フレーム解く値。資産には保存しない。
+struct EnvironmentLightingFrame {
+    EnvironmentDirectionalLight sun{};
+    EnvironmentDirectionalLight moon{};
+    // 影を落とす主光源が月か（太陽が十分沈んだ夜）。
+    bool moonIsPrimary = false;
+    // 天球座標からワールドへの回転（星空用）。
+    MATH::Vec3 celestialToWorldX{1.0f, 0.0f, 0.0f};
+    MATH::Vec3 celestialToWorldY{0.0f, 1.0f, 0.0f};
+    MATH::Vec3 celestialToWorldZ{0.0f, 0.0f, 1.0f};
+    // 地表の濡れ・水たまり・積雪（0..1）。
+    float surfaceWetness = 0.0f;
+    float surfacePuddles = 0.0f;
+    float surfaceSnowCover = 0.0f;
+    // 落雷の閃光（0..1、発生時に 1 で短時間で減衰）、最後の落雷の経過時間 [s]、視点から見た落雷の水平の向き
+    // （ワールド xz の単位ベクトル）と距離 [m]。
+    float lightningFlash = 0.0f;
+    float lightningAge = 0.0f;
+    MATH::Vec2 lightningDirection{0.0f, 1.0f};
+    float lightningDistance = 0.0f;
+    float localHours = 12.0f;
+    CloudWeatherFrame clouds{};
+
+    const EnvironmentDirectionalLight& Primary() const noexcept { return moonIsPrimary ? moon : sun; }
+};
+
+// 描画への入力。天気を重ねた設定値と、この時刻の光源状態、シーンの描画の様式が決める標準の材質の光の受け方。
+struct SceneEnvironment : EnvironmentProfile {
+    EnvironmentLightingFrame frame{};
+    RENDERSTYLE::RenderStyleShading styleShading{};
 };
 
 } // namespace HIKARI

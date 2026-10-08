@@ -7,12 +7,13 @@
 namespace HIKARI::DX {
 
 // 2D コマンド（Spine など）用のテクスチャ付き四角形描画。直前に SetOutputTarget した形式へ描く。
+// colorScale は頂点色に掛ける倍率で、HDR の場面層へ描く時は表示参照の色をビューの露出空間へ移す P/E。
 class DxRenderer {
 public:
     static bool Init(const GFX::Context& ctx);
     static void UpdateContext(const GFX::Context& ctx);
     static void SetScreenSize(int width, int height);
-    static bool SetOutputTarget(DXGI_FORMAT format, int width, int height);
+    static bool SetOutputTarget(DXGI_FORMAT format, int width, int height, float colorScale = 1.0f);
     static void Finalize();
     static void BeginFrame();
 

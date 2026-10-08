@@ -1,6 +1,8 @@
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
+#include "Render3D/Settings/HIKARI_RenderQualityFields.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
@@ -26,6 +28,9 @@ RenderQualitySettings NormalizeRenderQualitySettings(RenderQualitySettings setti
     settings.taaDepthRejection = std::clamp(settings.taaDepthRejection, 0.0001f, 0.05f);
     settings.taaLuminanceRejection = std::clamp(settings.taaLuminanceRejection, 0.05f, 4.0f);
     settings.taaSharpness = std::clamp(settings.taaSharpness, 0.0f, 1.0f);
+    DirectionalShadowQualitySettings& shadow = settings.directionalShadow;
+    shadow = JSONFIELDS::Sanitize(shadow, kDirectionalShadowFields);
+    shadow.farPlane = (std::max)(shadow.farPlane, shadow.nearPlane + 1.0f);
     if (static_cast<uint8_t>(settings.sceneResolution) > static_cast<uint8_t>(RenderResolutionPreset::P2160)) {
         settings.sceneResolution = RenderResolutionPreset::P1080;
     }
@@ -63,8 +68,8 @@ RenderQualitySettings NormalizeRenderQualitySettings(RenderQualitySettings setti
     if (static_cast<uint8_t>(settings.localShadowQuality) > static_cast<uint8_t>(LocalShadowQuality::High)) {
         settings.localShadowQuality = LocalShadowQuality::Balanced;
     }
-    if (static_cast<uint8_t>(settings.stylizedCloudQuality) > static_cast<uint8_t>(StylizedCloudQuality::High)) {
-        settings.stylizedCloudQuality = StylizedCloudQuality::Balanced;
+    if (static_cast<uint8_t>(settings.volumetricCloudQuality) > static_cast<uint8_t>(VolumetricCloudQuality::High)) {
+        settings.volumetricCloudQuality = VolumetricCloudQuality::Balanced;
     }
     if (static_cast<uint8_t>(settings.forwardCostMode) >
         static_cast<uint8_t>(ForwardShadingCostMode::NoMaterialExtras)) {
@@ -86,11 +91,12 @@ bool AreRenderQualitySettingsEqual(const RenderQualitySettings& lhs, const Rende
            lhs.frameGenerationMode == rhs.frameGenerationMode &&
            lhs.frameGenerationMultiplier == rhs.frameGenerationMultiplier &&
            lhs.volumetricLightingQuality == rhs.volumetricLightingQuality &&
-           lhs.depthOfFieldQuality == rhs.depthOfFieldQuality && lhs.stylizedCloudQuality == rhs.stylizedCloudQuality &&
-           lhs.dynamicGiQuality == rhs.dynamicGiQuality && lhs.localShadowQuality == rhs.localShadowQuality &&
-           lhs.taaHistoryWeight == rhs.taaHistoryWeight && lhs.taaVarianceClipGamma == rhs.taaVarianceClipGamma &&
-           lhs.taaDepthRejection == rhs.taaDepthRejection && lhs.taaLuminanceRejection == rhs.taaLuminanceRejection &&
-           lhs.taaSharpness == rhs.taaSharpness && lhs.sceneDepthPrepass == rhs.sceneDepthPrepass;
+           lhs.depthOfFieldQuality == rhs.depthOfFieldQuality &&
+           lhs.volumetricCloudQuality == rhs.volumetricCloudQuality && lhs.dynamicGiQuality == rhs.dynamicGiQuality &&
+           lhs.localShadowQuality == rhs.localShadowQuality && lhs.taaHistoryWeight == rhs.taaHistoryWeight &&
+           lhs.taaVarianceClipGamma == rhs.taaVarianceClipGamma && lhs.taaDepthRejection == rhs.taaDepthRejection &&
+           lhs.taaLuminanceRejection == rhs.taaLuminanceRejection && lhs.taaSharpness == rhs.taaSharpness &&
+           lhs.sceneDepthPrepass == rhs.sceneDepthPrepass;
 }
 
 RenderQualityRuntimeChangeSet ClassifyRenderQualityRuntimeChanges(const RenderQualitySettings& before,
@@ -234,11 +240,11 @@ const char* LocalShadowQualityLabel(LocalShadowQuality quality) {
     }
 }
 
-const char* StylizedCloudQualityLabel(StylizedCloudQuality quality) {
+const char* VolumetricCloudQualityLabel(VolumetricCloudQuality quality) {
     switch (quality) {
-    case StylizedCloudQuality::Low: return "Low";
-    case StylizedCloudQuality::Balanced: return "Balanced";
-    case StylizedCloudQuality::High: return "High";
+    case VolumetricCloudQuality::Low: return "Low";
+    case VolumetricCloudQuality::Balanced: return "Balanced";
+    case VolumetricCloudQuality::High: return "High";
     default: return "Unknown";
     }
 }

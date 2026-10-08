@@ -71,8 +71,7 @@ void VfxWorkspaceController::DrawPreviewWindow(EditorViewInstance& previewView, 
         ImGui::TextUnformatted(VfxUiText("Preview lighting (not saved in the effect)").c_str());
         const auto backdrop = [&](const char* key, float value) {
             if (ImGui::SmallButton(TEXT::Localize(key).c_str())) {
-                auto& sky = preview_.previewEnvironment_->sky;
-                sky.zenithColor = sky.horizonColor = sky.groundColor = {value, value, value};
+                preview_.previewBackdrop_ = value;
                 preview_.previewNeedsRedraw_ = true;
             }
         };
@@ -81,10 +80,14 @@ void VfxWorkspaceController::DrawPreviewWindow(EditorViewInstance& previewView, 
         backdrop("ui.vfx.view.gray", 0.18f);
         ImGui::SameLine();
         backdrop("ui.vfx.view.light", 0.85f);
-        bool changed =
+        bool lightChanged =
             ImGui::SliderFloat(VfxUiText("Direction").c_str(), &preview_.previewLightYaw_, -180.0f, 180.0f, "%.0f deg");
-        changed |=
+        lightChanged |=
             ImGui::SliderFloat(VfxUiText("Brightness").c_str(), &preview_.previewLightIntensity_, 0.0f, 5.0f, "%.2f");
+        if (lightChanged) {
+            preview_.UpdatePreviewKeyLight();
+        }
+        bool changed = false;
         auto& bloom = preview_.previewEnvironment_->bloom;
         ImGui::Separator();
         changed |= ImGui::Checkbox(TEXT::LocalizeWindow("ui.quality.bloom", "Bloom").c_str(), &bloom.enabled);
@@ -93,12 +96,8 @@ void VfxWorkspaceController::DrawPreviewWindow(EditorViewInstance& previewView, 
         changed |=
             ImGui::SliderFloat((VfxUiText("Intensity") + "##Bloom").c_str(), &bloom.intensity, 0.0f, 2.0f, "%.2f");
         changed |= ImGui::SliderFloat((VfxUiText("Radius") + "##Bloom").c_str(), &bloom.radius, 0.25f, 3.0f, "%.2f");
-        if (changed && !preview_.previewLighting_->lights.empty()) {
+        if (changed) {
             preview_.previewNeedsRedraw_ = true;
-            const float yaw = preview_.previewLightYaw_ * 0.01745329252f;
-            auto& key = preview_.previewLighting_->lights.front();
-            key.direction = {std::sin(yaw) * 0.6f, -0.8f, std::cos(yaw) * 0.6f};
-            key.intensity = preview_.previewLightIntensity_;
         }
         ImGui::TextWrapped(
             VfxUiText("StandardLit and CustomLit respond to this light. Unlit effects keep their authored color.")

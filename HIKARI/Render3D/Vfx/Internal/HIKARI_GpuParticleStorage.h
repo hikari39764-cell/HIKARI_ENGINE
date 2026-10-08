@@ -31,7 +31,6 @@ public:
     bool WriteEmitterParameters(ID3D12Device* device, uint32_t frameSlot, GpuParticleEmitterUploadAddress address,
                                 const GpuParticleEmitterParameters& parameters);
     D3D12_GPU_VIRTUAL_ADDRESS GetEmitterUploadGpuAddress(uint32_t frameSlot, uint32_t pageIndex) const noexcept;
-    D3D12_GPU_DESCRIPTOR_HANDLE GetParticleSrvGpuHandle() const noexcept;
     D3D12_GPU_DESCRIPTOR_HANDLE GetParticleUavGpuHandle() const noexcept;
     D3D12_GPU_VIRTUAL_ADDRESS GetParticleGpuAddress() const noexcept;
     D3D12_GPU_VIRTUAL_ADDRESS GetAliveIndexGpuAddress() const noexcept;

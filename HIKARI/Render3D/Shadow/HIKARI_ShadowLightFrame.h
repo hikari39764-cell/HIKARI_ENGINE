@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "Render3D/Core/HIKARI_Camera3D.h"
+#include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 
 namespace HIKARI::SHADOW {

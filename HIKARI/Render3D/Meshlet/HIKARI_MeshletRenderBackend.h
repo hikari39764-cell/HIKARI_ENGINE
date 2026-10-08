@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <future>
 
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -105,6 +106,8 @@ struct MeshletRenderExecutionContext {
     ForwardShadingCostMode forwardCostMode = ForwardShadingCostMode::Full;
     // Forward/GeometryAux は一般面と地形を別 PSO で描く。地形が無ければ地形 dispatch を省く。
     bool terrainSurfacesPresent = false;
+    // Forward は標準 PBR の面と材質 program の面を別 PSO で描く。program の面が無ければその dispatch を省く。
+    bool materialProgramSurfacesPresent = false;
     // debug view 中の Forward は全経路 PSO で描き、分割前と同じ表示を保つ。
     bool forwardDebugView = false;
 };
@@ -117,6 +120,7 @@ public:
 
     bool Initialize(ID3D12Device* device, ID3D12RootSignature* rootSignature);
     bool Initialize(ID3D12Device* device, ID3D12RootSignature* rootSignature, uint32_t pipelineMask);
+    // SSR capture PSO が使えるか。PSO は Initialize が別スレッドで作り、完成前と失敗時は false。
     bool PrepareReflectionCapture(bool captureMaterial = false);
     // 診断 variant は最初の要求時にだけ準備する。失敗は Reset まで再試行しない。
     bool PrepareForwardVariant(ForwardShadingCostMode mode);
@@ -149,15 +153,24 @@ private:
     // 地形専用 PSO を持つ kind だけ非 null。
     ID3D12PipelineState* GetTerrainPipelineState(MeshletPipelineKind kind,
                                                  GPUDRIVEN::GpuDrivenCommandBucket bucket) const;
-    // 分割した kind は一般面と地形の両方が揃って初めて描ける。
-    void ApplyTerrainPartitionReadiness();
+    // 分割した kind は分割したすべての PSO（一般面・材質 program・地形）が揃って初めて描ける。
+    void ApplySurfacePartitionReadiness();
+    bool AreReflectionPipelinesReady(bool captureMaterial) const;
+
+    // SSR capture の PSO。[captureMaterial] ごとに標準 PBR の面と材質 program の面を別 PSO で描く。
+    struct ReflectionCapturePipelines {
+        std::array<PipelineBucketArray, 2> standard{};
+        std::array<PipelineBucketArray, 2> program{};
+    };
 
     MeshletVisibility visibility_{};
     Microsoft::WRL::ComPtr<ID3D12Device> device_{};
     Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature_{};
-    std::array<PipelineBucketArray, 2> reflectionPipelineStates_{};
-    std::array<bool, 2> reflectionCaptureAttempted_{};
+    ReflectionCapturePipelines reflectionPipelines_{};
+    std::future<ReflectionCapturePipelines> reflectionCaptureTask_{};
+    // [0] は標準 PBR の面だけを描く通常 PSO。診断 variant は一般面すべてを描く。
     ForwardPipelineVariantArray forwardPipelineStates_{};
+    PipelineBucketArray programForwardPipelineStates_{};
     std::array<bool, kForwardOpaquePipelineVariantCount> forwardVariantAttempted_{};
     PipelineBucketArray depthAwarePipelineStates_{};
     PipelineBucketArray transparentPipelineStates_{};

@@ -52,6 +52,8 @@ enum class GameProjectAssetKind : uint8_t {
     Font,
     TextStyle,
     UiAnimation,
+    Environment,
+    Weather,
 };
 
 // 呼び出し側が所有する固定長文字列。DLL 境界を越えて STL の所有権を渡さないための薄い参照。

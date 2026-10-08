@@ -18,12 +18,11 @@ float3 HikariShadeSimpleSurface(float3 baseColor, float metallic, float roughnes
         direct *= HikariSampleCloudSolarVisibility(gMaterialTexturePool[NonUniformResourceIndex(
             uint(gCloudSolarVisibility.originDescriptor.w)-1u)],gCloudSolarVisibility,worldPosition);
     direct += AccumulateLocalLightsPbr(pbr,worldPosition,pixelPosition,geometricNormal,receiveShadow);
-    float3 irradiance = gAmbientColor.rgb*gAmbientIntensity;
-    if (gSkyAmbientFromSky > 0.0001f)
-        irradiance = HikariBlendAmbientWithSky(irradiance,HikariEvaluateSkyDiffuseIrradiance(normal),gSkyAmbientFromSky);
+    const float3 irradiance = gAmbientColor.rgb*gAmbientIntensity + HikariEvaluateSkyDiffuseIrradiance(normal);
     const float3 reflection = reflect(-view,normal);
+    // 粒子と世界スプライトの root は空の元画像を持たない。畳み込み済みの空だけを反射する。
     const float3 environment = (gIblHasPrefiltered > 0.5f ?
-        HikariSamplePrefilteredSkyRadiance(reflection,pbr.roughness) : HikariEvaluateSkyApprox(reflection)) *
+        HikariSamplePrefilteredSkyRadiance(reflection,pbr.roughness) : 0.0f.xxx) *
         max(gSkyReflectionIntensity,0.0f);
     // Sky/ambient は通常 Forward と同じ E/pi。ここで再び pi を除かない。
     return direct + (irradiance*baseColor*pbr.diffuseEnergyWeight +

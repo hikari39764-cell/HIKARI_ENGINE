@@ -283,7 +283,7 @@ void RefreshStats(TemporalResourceState& state) {
     state.stats.taaResolvedColorReady = state.taaResolvedColor.ready;
     state.stats.exposureReady = state.exposure.ready;
     state.stats.exposureMode = state.exposureState.mode;
-    state.stats.exposureMultiplier = state.exposureState.exposureMultiplier;
+    state.stats.exposure = state.exposureState.exposure;
     state.stats.preExposure = state.exposureState.preExposure;
     state.stats.exposureWritten = StampMatches(state.exposureWritten, state.activeFrame);
     state.stats.reactiveMaskReady = state.reactiveMask.ready;

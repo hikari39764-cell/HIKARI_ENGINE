@@ -44,7 +44,6 @@ void LightComponent::BuildInspector(IInspectorBuilder& builder) {
     const float previousRange = range_;
     const float previousSourceRadius = sourceRadius_;
     const bool previousCastsShadows = castsShadows_;
-    const auto previousDistanceFalloff = distanceFalloff_;
     const float previousInnerConeAngle = innerConeAngleDegrees_;
     const float previousOuterConeAngle = outerConeAngleDegrees_;
     const float previousAngularFalloff = angularFalloff_;
@@ -54,39 +53,30 @@ void LightComponent::BuildInspector(IInspectorBuilder& builder) {
     builder.Bool(AuthoringFieldDescriptor{"enabled", "Enabled"}, enabled_);
 
     int lightType = static_cast<int>(type_);
-    static constexpr std::array<AuthoringChoice, 3> typeChoices{AuthoringChoice{"Directional", "Directional"},
-                                                                AuthoringChoice{"Point", "Point"},
+    static constexpr std::array<AuthoringChoice, 2> typeChoices{AuthoringChoice{"Point", "Point"},
                                                                 AuthoringChoice{"Spot", "Spot"}};
     if (builder.Choice(AuthoringFieldDescriptor{"type", "Type"}, lightType, typeChoices)) {
-        type_ = static_cast<LightComponentType>(std::clamp(lightType, 0, 2));
+        type_ = static_cast<LightComponentType>(std::clamp(lightType, 0, 1));
     }
 
     builder.Color3(AuthoringFieldDescriptor{"color", "Color"}, color_.x, color_.y, color_.z);
-    builder.FloatRange(AuthoringFieldDescriptor{"intensity", "Intensity"}, intensity_, 0.0f, 100.0f, 0.05f);
+    builder.FloatRange(
+        AuthoringFieldDescriptor{"intensity", "Luminous Flux (lm)",
+                                 "Total emitted light. A 60 W bulb is about 800 lm. Spot cones mask, they do not "
+                                 "concentrate the flux."},
+        intensity_, 0.0f, kMaximumLightLumens, 10.0f);
     builder.Int(AuthoringFieldDescriptor{"priority", "Priority"}, priority_);
-
-    if (type_ != LightComponentType::Directional) {
-        builder.Bool(AuthoringFieldDescriptor{"castsShadows", "Cast Shadows",
-                                              "Request local-light shadows within the active rendering budget."},
-                     castsShadows_);
-        builder.FloatRange(AuthoringFieldDescriptor{"range", "Range"}, range_, 0.05f, 1000.0f, 0.1f);
-        builder.FloatRange(
-            AuthoringFieldDescriptor{
-                "sourceRadius", "Source Radius",
-                "Emitter radius in world units. Broadens direct specular independently of material roughness and light range. Zero preserves punctual lighting."},
-            sourceRadius_, 0.0f, RENDER3D::LIGHTING::kMaximumLocalLightSourceRadius, 0.01f);
-        int falloff = static_cast<int>(distanceFalloff_);
-        static constexpr std::array<AuthoringChoice, 2> falloffChoices{
-            AuthoringChoice{"Range", "Range"}, AuthoringChoice{"InverseSquare", "Inverse Square"}};
-        if (builder.Choice(
-                AuthoringFieldDescriptor{
-                    "distanceFalloff", "Distance Falloff",
-                    "Range fades to zero at the light range. Inverse Square uses intensity per squared world distance with a smooth range cutoff."},
-                falloff, falloffChoices)) {
-            distanceFalloff_ = RENDER3D::LIGHTING::CanonicalLocalLightFalloff(
-                static_cast<RENDER3D::LIGHTING::LocalLightFalloff>(falloff));
-        }
-    }
+    builder.Bool(AuthoringFieldDescriptor{"castsShadows", "Cast Shadows",
+                                          "Request local-light shadows within the active rendering budget."},
+                 castsShadows_);
+    builder.FloatRange(AuthoringFieldDescriptor{"range", "Range (m)",
+                                                "Inverse-square falloff fades smoothly to zero at this distance."},
+                       range_, 0.05f, 1000.0f, 0.1f);
+    builder.FloatRange(
+        AuthoringFieldDescriptor{
+            "sourceRadius", "Source Radius",
+            "Emitter radius in metres. Broadens direct specular independently of material roughness and light range. Zero preserves punctual lighting."},
+        sourceRadius_, 0.0f, RENDER3D::LIGHTING::kMaximumLocalLightSourceRadius, 0.01f);
     if (type_ == LightComponentType::Spot) {
         builder.Text("Spot Cone (+Z forward)");
         builder.FloatRange(AuthoringFieldDescriptor{"innerConeAngleDegrees", "Inner Cone Angle"},
@@ -102,8 +92,7 @@ void LightComponent::BuildInspector(IInspectorBuilder& builder) {
         previousColor.y != color_.y || previousColor.z != color_.z || previousIntensity != intensity_ ||
         previousRange != range_ || previousSourceRadius != sourceRadius_ || previousCastsShadows != castsShadows_ ||
         previousInnerConeAngle != innerConeAngleDegrees_ || previousOuterConeAngle != outerConeAngleDegrees_ ||
-        previousAngularFalloff != angularFalloff_ || previousDistanceFalloff != distanceFalloff_ ||
-        previousPriority != priority_) {
+        previousAngularFalloff != angularFalloff_ || previousPriority != priority_) {
         BumpStateRevision();
     }
 }
@@ -199,6 +188,17 @@ void ReflectionProbeComponent::BuildInspector(IInspectorBuilder& builder) {
 void IrradianceVolumeComponent::BuildInspector(IInspectorBuilder& builder) {
     builder.Text("Volume");
     builder.Bool("Enabled", enabled_);
+    std::array<const char*, std::size(kLightProbeVolumeModeNames)> modeLabels{};
+    int mode = 0;
+    for (size_t index = 0; index < modeLabels.size(); ++index) {
+        modeLabels[index] = kLightProbeVolumeModeNames[index].name;
+        if (kLightProbeVolumeModeNames[index].value == mode_)
+            mode = static_cast<int>(index);
+    }
+    if (builder.Choice("Mode", mode, modeLabels))
+        mode_ = kLightProbeVolumeModeNames[mode].value;
+    if (mode_ == LightProbeVolumeMode::Realtime)
+        builder.Text("Realtime volumes are updated by ray-traced dynamic GI and need no bake.");
     builder.Float("Size X", size_.x);
     builder.Float("Size Y", size_.y);
     builder.Float("Size Z", size_.z);

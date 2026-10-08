@@ -14,4 +14,17 @@
 #define HIKARI_SURFACE_PARTITION HIKARI_SURFACE_PARTITION_ALL
 #endif
 
+// 材質の種類による compile-time 分割。標準 PBR（program 0）の面は式の解釈と風格化の経路を持たない PS で描き、
+// 大きな PS の register 圧で標準の面まで遅くならないようにする。AS は面の flag で振り分ける。
+//   ANY      : 分割しない。
+//   STANDARD : 標準 PBR の材質だけ。
+//   PROGRAM  : 材質 program（式・風格化）を持つ材質だけ。
+#define HIKARI_MATERIAL_CLASS_ANY 0
+#define HIKARI_MATERIAL_CLASS_STANDARD 1
+#define HIKARI_MATERIAL_CLASS_PROGRAM 2
+
+#ifndef HIKARI_MATERIAL_CLASS
+#define HIKARI_MATERIAL_CLASS HIKARI_MATERIAL_CLASS_ANY
+#endif
+
 #endif

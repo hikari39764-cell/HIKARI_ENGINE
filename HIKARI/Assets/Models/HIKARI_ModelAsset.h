@@ -27,7 +27,6 @@ public:
     void SetState(State state);
 
     bool HasSkinnedMesh() const;
-    size_t GetSkinCount() const;
     const SkeletonAsset* FindSkin(int skinIndex) const;
     const AnimationClip* FindAnimationClip(std::string_view name) const;
     const AnimationClip* FindAnimationClip(AnimationClipId clipId) const;

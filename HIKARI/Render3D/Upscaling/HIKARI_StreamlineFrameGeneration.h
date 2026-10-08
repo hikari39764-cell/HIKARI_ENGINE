@@ -62,6 +62,8 @@ bool SubmitStreamlineFrameGenerationInputs(const TEMPORAL::TemporalInputs& tempo
                                            RenderTarget2D& uiColorAndAlpha, uint64_t frameIndex, bool hostAllowed,
                                            const D3D12_RECT& sceneRect);
 bool IsStreamlineFrameGenerationInstalled();
+// DLSS-G が起動時に読み込まれたか。読み込みは起動時だけで、入っていなければ有効にするには再起動が要る。
+bool IsStreamlineFrameGenerationInitialized();
 bool IsStreamlineFrameGenerationAvailable();
 // Must run on the same thread that just presented the frame. Streamline
 // returns the fence that protects the inputs consumed by that Present.

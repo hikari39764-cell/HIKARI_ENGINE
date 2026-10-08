@@ -5,6 +5,7 @@
 
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
+#include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
 #include "Render3D/Shadow/HIKARI_LocalLightShadowRenderer.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
@@ -28,19 +29,22 @@ void BeginFrame(const GFX::Context& graphics, const SceneEnvironment& environmen
     CPU_PROFILE::ScopedCpuTimer cpuTimer(CPU_PROFILE::Pass::ShadowPrepare);
     ClearShadowFrameSubmissions(gShadowRendererState);
     gShadowRendererState.worldSprites = sprites;
-    gShadowRendererState.frameEnabled = environment.directional.enabled && environment.directionalShadow.enabled;
+    const RENDER3D::DirectionalShadowQualitySettings& quality = RENDER3D::GetRenderQualitySettings().directionalShadow;
+    const EnvironmentDirectionalLight& primary = environment.frame.Primary();
+    gShadowRendererState.frameEnabled =
+        primary.illuminance * primary.horizonVisibility > 0.0f && environment.shadows.enabled;
     gShadowRendererState.debugStats.enabled = gShadowRendererState.frameEnabled;
-    gShadowRendererState.debugStats.resolution = ResolveShadowResolution(environment.directionalShadow.resolution);
+    gShadowRendererState.debugStats.resolution = ResolveShadowResolution(quality.resolution);
     gShadowRendererState.debugStats.worldTexelSize = 0.0f;
     gShadowRendererState.debugStats.shadowMapRecreateCount = gShadowRendererState.shadowMapRecreateCount;
-    gShadowRendererState.debugStats.pcfEnabled = environment.directionalShadow.pcfEnabled ? 1u : 0u;
-    gShadowRendererState.debugStats.pcfRadius = environment.directionalShadow.pcfRadius;
+    gShadowRendererState.debugStats.pcfEnabled = quality.pcfEnabled ? 1u : 0u;
+    gShadowRendererState.debugStats.pcfRadius = quality.pcfRadius;
     gShadowRendererState.debugStats.orthoSize = 0.0f;
-    gShadowRendererState.debugStats.nearPlane = environment.directionalShadow.nearPlane;
-    gShadowRendererState.debugStats.farPlane = environment.directionalShadow.farPlane;
-    gShadowRendererState.debugStats.depthBias = environment.directionalShadow.depthBias;
-    gShadowRendererState.debugStats.normalBias = environment.directionalShadow.normalBias;
-    gShadowRendererState.debugStats.strength = environment.directionalShadow.strength;
+    gShadowRendererState.debugStats.nearPlane = quality.nearPlane;
+    gShadowRendererState.debugStats.farPlane = quality.farPlane;
+    gShadowRendererState.debugStats.depthBias = quality.depthBias;
+    gShadowRendererState.debugStats.normalBias = quality.normalBias;
+    gShadowRendererState.debugStats.strength = environment.shadows.strength;
     if (!gShadowRendererState.frameEnabled) {
         PublishShadowCacheStats(gShadowRendererState);
         return;
@@ -72,7 +76,7 @@ void BeginFrame(const GFX::Context& graphics, const SceneEnvironment& environmen
         return;
     }
 
-    const uint32_t resolution = ResolveShadowResolution(environment.directionalShadow.resolution);
+    const uint32_t resolution = ResolveShadowResolution(quality.resolution);
     if (gShadowRendererState.shadowMap == nullptr || gShadowRendererState.resolution != resolution) {
         if (!CreateShadowMapResources(gShadowRendererState, graphics,
                                       {resolution, 2, true, "shadow/directional_map"})) {
@@ -293,6 +297,8 @@ void RenderDirectionalShadowMap(const GFX::Context& graphics) {
     gShadowRendererState.lightViewProj = gShadowRendererState.cascadeLightViewProj[0];
     FinishFinalShadowMap(gShadowRendererState, graphics, cmd);
 }
+
+void SetDebugFrustumVisible(bool visible) noexcept { gShadowRendererState.debugFrustumVisible = visible; }
 
 bool IsDirectionalShadowEnabled() {
     return gShadowRendererState.frameEnabled && gShadowRendererState.frameHasShadowWork &&

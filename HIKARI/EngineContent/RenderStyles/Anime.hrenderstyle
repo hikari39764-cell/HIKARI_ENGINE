@@ -1,0 +1,27 @@
+{
+  "formatVersion": 1,
+  "name": "Anime",
+  "shading": {
+    "model": "Cel",
+    "bands": 1,
+    "threshold": 0.28,
+    "softness": 0.02,
+    "shadowTint": [
+      0.74,
+      0.72,
+      0.92
+    ],
+    "specular": 0.5,
+    "rim": 0.35
+  },
+  "post": [
+    {
+      "profile": "engine.post.profile.outline",
+      "enabled": true
+    },
+    {
+      "profile": "engine.post.profile.ani",
+      "enabled": true
+    }
+  ]
+}

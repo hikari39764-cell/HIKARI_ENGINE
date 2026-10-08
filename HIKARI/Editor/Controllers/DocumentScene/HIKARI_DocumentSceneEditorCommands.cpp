@@ -119,7 +119,6 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
 }
 
 bool DocumentSceneEditorController::SaveSceneDocument(DocumentSceneBase& scene) {
-    scene.GetSceneDocument().environment = scene.GetSceneEnvironment();
     if (scene.SaveCurrentSceneDocument()) {
         documentHistory_.MarkSaved();
         historyExternalDirty_ = false;

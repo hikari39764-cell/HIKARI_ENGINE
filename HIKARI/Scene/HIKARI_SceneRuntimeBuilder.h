@@ -36,6 +36,7 @@ struct SceneDependencySet {
     std::unordered_set<std::string> skyAssetIds{};
     std::unordered_set<std::string> spriteAssetIds{};
     std::unordered_set<std::string> spriteMaterialAssetIds{};
+    // 環境プロファイルの空。AddEnvironmentSkyDependencies が埋める。
     SkySettings sky{};
     std::unordered_set<std::string> textureAssetIds{};
     std::unordered_set<std::string> materialAssetIds{};
@@ -45,6 +46,9 @@ struct SceneDependencySet {
     std::unordered_map<std::string, std::string> lightingBakeAuthoringHashes{};
     RENDER3D::LIGHTING::SceneLightingSet lighting{};
 };
+
+// 解決済みの環境プロファイルの空（HDRI・全景・雲層の資産）を依存へ加える。
+void AddEnvironmentSkyDependencies(const SkySettings& sky, SceneDependencySet& dependencies);
 
 // Resolves and loads a registered model through the canonical runtime
 // ModelManager path. Callers must not invoke importers directly.

@@ -55,7 +55,7 @@ bool IsValidVfxSpecialOutputProfile(const VfxSpecialOutputData& output) noexcept
     }
     case VfxSpecialOutputType::Light: {
         const auto& light = output.light;
-        return finiteColor(light.color) && std::isfinite(light.intensity) && light.intensity >= 0 &&
+        return finiteColor(light.color) && std::isfinite(light.luminousFlux) && light.luminousFlux >= 0 &&
                std::isfinite(light.range) && light.range > 0 && std::isfinite(light.sourceRadius) &&
                light.sourceRadius >= 0 && std::isfinite(light.flickerFrequency) &&
                std::isfinite(light.flickerAmplitude);

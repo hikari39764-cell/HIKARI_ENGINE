@@ -30,7 +30,7 @@ struct TransportLight
     float4 radianceInnerCone;
     uint type;
     float angularFalloff;
-    uint distanceFalloff;
+    uint reserved;
     float sourceRadius;
 };
 
@@ -47,10 +47,7 @@ cbuffer BakeConstants : register(b0)
     uint gSampleGridWidth;
     uint gSampleGridHeight;
     uint2 gSamplePadding;
-    float4 gAmbientSkyStrength;
-    float4 gSkyZenith;
-    float4 gSkyHorizon;
-    float4 gSkyGround;
+    float4 gSkyParams; // x 天空光の倍率、y 空の回転
     float4 gSkyTintExposure;
 };
 
@@ -131,17 +128,16 @@ float Random01(inout uint state)
 
 float3 EvaluateSky(float3 direction)
 {
-    const float3 skyDirection = HikariRotateSkyYaw(direction, gSkyHorizon.w);
-    float3 sky = HikariEvaluateGradientSky(skyDirection, gSkyZenith.rgb, gSkyHorizon.rgb, gSkyGround.rgb, gSkyZenith.w);
+    const float3 skyDirection = HikariRotateSkyYaw(direction, gSkyParams.y);
+    float3 sky = 0.0f.xxx;
     if (gSkyMode == 2u) sky = gEnvironmentCube.SampleLevel(gEnvironmentSampler, skyDirection, 0).rgb;
     else if (gSkyMode == 3u) sky = HikariSampleMaterialTexture(gSkyTextureIndex, gEnvironmentSampler,
-        HikariDirectionToEquirectangularUv(skyDirection), float4(sky, 1)).rgb;
+        HikariDirectionToEquirectangularUv(skyDirection), 0.0f.xxxx).rgb;
     // 大気は世界の太陽方向に従う。直接光の sun disk は二重積分しない。
     else if (gSkyMode == 4u) sky = HikariAtmosphereEvaluateSkyRadiance(
         float3(0, HikariAtmospherePlanetRadius() + 1.0f, 0), direction,
         gAtmosphereGroundColor.rgb, gAtmosphereOzoneParams.w, gAtmosphereOzoneParams.y);
-    sky = HikariApplySkyRadianceScale(sky, gSkyTintExposure.rgb, gSkyTintExposure.w);
-    return HikariBlendAmbientWithSky(gAmbientSkyStrength.rgb, sky, gAmbientSkyStrength.w);
+    return HikariApplySkyRadianceScale(sky, gSkyTintExposure.rgb, gSkyTintExposure.w) * max(gSkyParams.x, 0.0f);
 }
 
 bool BuildBasis(
@@ -264,9 +260,9 @@ bool EvaluateDirect(
                 continue;
             }
             directionToLight = offset / distanceToLight;
-            // 保存された衰減モードを realtime と共通の契約で評価する。
+            // realtime と共通の逆二乗の契約で評価する。
             attenuation = HikariLocalLightRangeAttenuation(
-                distanceToLight, light.positionRange.w, light.distanceFalloff, light.sourceRadius);
+                distanceToLight, light.positionRange.w, light.sourceRadius);
             if (light.sourceRadius > 0.0f && distanceToLight > light.sourceRadius)
             {
                 // 球の見かけの円盤を立体角で一様サンプルする。I/d^2 から

@@ -13,7 +13,7 @@ inline constexpr std::string_view kAutomaticExposureInterfaceDependency =
 inline constexpr ShaderContractIdentity kAutomaticExposureContract{
     kAutomaticExposureEngineInterfaceId,
     1u,
-    "f57bbf2ad4c4a04a0e9b6dc20c10949394259ab11d3a0250dce0dea8e7d2a20a",
+    "ff3ff83c2a172692bea1ab483eb3f8f44e703384f25046e13a82ff1ed02cf7da",
     "HIKARI.AutomaticExposure.Root",
     1u,
     "0181d502ae864f3780ca9e37222ce5846b90c27795857b5c3c3e145bba15c9df",

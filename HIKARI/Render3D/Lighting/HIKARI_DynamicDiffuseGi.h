@@ -1,5 +1,7 @@
 #pragma once
+#include <array>
 #include <memory>
+#include <span>
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
@@ -25,21 +27,23 @@ struct Stats {
     uint32_t probes = 0, updatedProbes = 0, primaryRays = 0, localLights = 0, droppedLights = 0;
     uint64_t probeBytes = 0, sequence = 0;
 };
+// 描画側が読む volume（優先順）。描画側は probe atlas だけを読み、SH9 の table は使わない。
 struct Frame {
-    LIGHTPROBE::LightProbeVolumeRuntimeData volume{};
-    D3D12_GPU_DESCRIPTOR_HANDLE shTable{};
-    explicit operator bool() const { return volume.valid && shTable.ptr != 0; }
+    std::array<LIGHTPROBE::LightProbeVolumeRuntimeData, LIGHTPROBE::kDynamicGiVolumeCount> volumes{};
+    size_t count = 0;
+    std::span<const LIGHTPROBE::LightProbeVolumeRuntimeData> Volumes() const { return {volumes.data(), count}; }
 };
-// 単一 scene の world-space field。AS は frame pipeline から借用し、GI は所有/構築しない。
-// 同一 fence では一度だけ更新し、別 scene の同時 view へ履歴を流用しない。
+// 単一 scene の world-space field（手置きの実時間区域、相機を追う近景と遠景の cascade）。AS は frame pipeline
+// から借用し、GI は所有/構築しない。同一 fence では一度だけ更新し、別 scene の同時 view へ履歴を流用しない。
 class DynamicDiffuseGi final {
 public:
     DynamicDiffuseGi();
     ~DynamicDiffuseGi();
     Frame Prepare(const GFX::Context& graphics, const RAYTRACING::RuntimeRayTracingFrame& rayScene,
                   const MESHRENDERER::MeshMaterialGpuFrameView& materials,
-                  const RAYTRACING::RuntimeRayLightingFrame& lighting, MATH::Vec3 cameraPosition,
-                  DynamicGiQuality quality, uint64_t frameSerial);
+                  const RAYTRACING::RuntimeRayLightingFrame& lighting,
+                  std::span<const LIGHTING::IrradianceVolumeProvider> volumes, MATH::Vec3 cameraPosition,
+                  MATH::Vec3 viewTarget, DynamicGiQuality quality, uint64_t frameSerial);
     void Reset(const GFX::Context& graphics);
     const Stats& GetStats() const;
 

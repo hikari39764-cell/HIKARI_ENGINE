@@ -99,7 +99,7 @@ VfxAssetData Beam() {
                 {0.75f, {0.65f, 0.65f, 0.65f}},
                 {1, {0.03f, 0.03f, 0.03f}}});
     AlphaKeys(flash, {2.8f, 4.0f, 4.5f}, {{0, 0}, {0.025f, 1}, {0.2f, 0.7f}, {0.75f, 0.65f}, {1, 0}});
-    Light(flash, {0.25f, 0.6f, 1, 1}, 1.8f, 3.5f);
+    Light(flash, {0.25f, 0.6f, 1, 1}, 18000.0f, 3.5f);
     layers.push_back(std::move(flash));
 
     auto impact = Disc("Focused contact", -kMuzzle, 0.44f, 1.26f);
@@ -111,7 +111,7 @@ VfxAssetData Beam() {
                 {0.72f, {0.68f, 0.68f, 0.68f}},
                 {1, {0.01f, 0.01f, 0.01f}}});
     AlphaKeys(impact, {1.8f, 2.7f, 3.3f}, {{0, 0}, {0.035f, 1}, {0.72f, 0.75f}, {1, 0}});
-    Light(impact, {0.3f, 0.65f, 1, 1}, 2.2f, 3.8f);
+    Light(impact, {0.3f, 0.65f, 1, 1}, 22000.0f, 3.8f);
     layers.push_back(std::move(impact));
 
     auto corona = Shape("Contact pressure ring", VfxRenderShapeType::Ring, 0.43f, 0.42f);

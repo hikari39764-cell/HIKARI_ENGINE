@@ -123,7 +123,7 @@ void RuntimeBindingWorkspaceController::DrawInspectorWindow(DocumentSceneBase& s
                 pendingProperty = {"type", std::string(BINDING::ToString(selectedType))};
             }
 
-            PropertyLabel(TEXT::Localize("ui.environment.preset.default").c_str());
+            PropertyLabel(TEXT::Localize("ui.common.default").c_str());
             const RuntimeBindingValueEditResult defaultEdit =
                 DrawRuntimeBindingValueEditor("##DefaultValue", inspectorDefaultValue_, variable);
             if (defaultEdit.committed) {

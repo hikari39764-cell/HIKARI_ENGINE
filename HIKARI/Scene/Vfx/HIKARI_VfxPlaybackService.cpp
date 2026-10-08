@@ -624,7 +624,7 @@ size_t VfxPlaybackService::CollectLightOutputs(std::vector<VfxLayerLightSample>&
                 if (!output.enabled || output.type != VfxSpecialOutputType::Light)
                     continue;
                 const auto& profile = output.light;
-                if (!(profile.intensity > 0.0f) || !(profile.range > 0.0f))
+                if (!(profile.luminousFlux > 0.0f) || !(profile.range > 0.0f))
                     continue;
                 // レイヤー色をそのまま落とす。エフェクトの色と光源色が
                 // 食い違うと、加法発光と照明が別物に見えてしまう。
@@ -655,7 +655,7 @@ size_t VfxPlaybackService::CollectLightOutputs(std::vector<VfxLayerLightSample>&
                     profile.color.z * tint.z,
                     profile.color.w * tint.w,
                 };
-                sample.intensity = profile.intensity;
+                sample.luminousFlux = profile.luminousFlux;
                 sample.range = profile.range;
                 sample.sourceRadius = profile.sourceRadius;
                 sample.flickerFrequency = profile.flickerFrequency;

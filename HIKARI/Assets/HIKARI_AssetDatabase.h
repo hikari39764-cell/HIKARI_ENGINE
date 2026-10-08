@@ -77,7 +77,6 @@ public:
     bool RebuildModelCollisionArtifact(const AssetGuid& guid, std::string& outMessage);
     AssetImportBatchResult ImportAssets(const std::vector<AssetGuid>& guids);
     AssetImportBatchResult ImportAllOutdated();
-    AssetImportBatchResult ImportOutdatedInDirectory(const std::filesystem::path& directory, bool recursive);
     AssetImportBatchResult ImportDependencies(const AssetGuid& guid, bool includeSelf = false);
 
     bool QueueImportAssets(const std::vector<AssetGuid>& guids, std::string label);

@@ -191,8 +191,9 @@ inline constexpr uint32_t kVfxAfterimageSampleCountMax = 5u;
 inline constexpr float kVfxWeaponDistortionMin = 0.0f;
 
 // VFX 光源出力の編集レンジ。UI と検証が同じ範囲を参照する。
-inline constexpr float kVfxLightIntensityMin = 0.0f;
-inline constexpr float kVfxLightIntensityMax = 200.0f;
+// 光束 [lm]。シーンの点光源と同じ単位。
+inline constexpr float kVfxLightFluxMin = 0.0f;
+inline constexpr float kVfxLightFluxMax = 1000000.0f;
 inline constexpr float kVfxLightRangeMin = 0.05f;
 inline constexpr float kVfxLightRangeMax = 100.0f;
 inline constexpr float kVfxLightSourceRadiusMin = 0.0f;
@@ -315,10 +316,11 @@ struct VfxSkinnedAfterimageProfile {
 // 乗算されるので、エフェクトの色をそのまま周囲へ落とせる。
 struct VfxLightOutputProfile {
     MATH::Vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
-    float intensity = 8.0f;
+    // 光束 [lm]。
+    float luminousFlux = 10000.0f;
     float range = 6.0f;
     float sourceRadius = 0.05f;
-    // 0 のときは点滅しない。周波数は Hz、振幅は intensity への倍率。
+    // 0 のときは点滅しない。周波数は Hz、振幅は光束への倍率。
     float flickerFrequency = 0.0f;
     float flickerAmplitude = 0.0f;
     // 同時に複数の VFX 光源が競合したときの優先度。大きいほど残る。

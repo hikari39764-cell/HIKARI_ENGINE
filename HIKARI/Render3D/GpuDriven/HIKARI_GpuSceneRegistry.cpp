@@ -337,7 +337,8 @@ bool HasCompatibleGpuScenePatchLayout(const GpuSceneSurfaceRecord& lhs, const Gp
                lhs.key.materialFxUsesCustomPixelShader == rhs.key.materialFxUsesCustomPixelShader &&
                lhs.key.depthAware == rhs.key.depthAware && lhs.key.alphaMasked == rhs.key.alphaMasked &&
                lhs.key.transparent == rhs.key.transparent && lhs.key.doubleSided == rhs.key.doubleSided &&
-               lhsResources.mesh == rhsResources.mesh && lhsResources.clusterGeometry == rhsResources.clusterGeometry;
+               lhs.key.materialProgram == rhs.key.materialProgram && lhsResources.mesh == rhsResources.mesh &&
+               lhsResources.clusterGeometry == rhsResources.clusterGeometry;
     }
     return lhs.key.sortKey == rhs.key.sortKey && lhs.key.psoKey == rhs.key.psoKey &&
            lhs.key.materialKey == rhs.key.materialKey && lhs.key.materialRevision == rhs.key.materialRevision &&
@@ -625,6 +626,9 @@ void GpuSceneRegistry::RebuildForwardFromSceneCache(const GpuSceneRegistrySyncIn
 
     terrainSurfaceGpuData_.clear();
     terrainSurfaceGpuData_.push_back(TERRAIN::BuildTerrainSurfaceGpuDataSentinel(1u));
+    materialProgramSurfacesPresent_ =
+        std::any_of(surfaceRecords_.begin(), surfaceRecords_.end(),
+                    [](const GpuSceneSurfaceRecord& record) { return record.valid && record.key.materialProgram; });
     surfaceFeatureFloats_ = BuildSurfaceFeatureFloatSource(residencyEpoch_, *input.sceneCache);
     for (GpuSceneSurfaceRecord& record : surfaceRecords_) {
         if (!record.valid || !record.terrainSurface) {
@@ -1027,6 +1031,7 @@ void GpuSceneRegistry::RebuildForwardSceneSource() {
     sceneSource_.meshShaderJointPalettes = meshShaderJointPalettes_;
     sceneSource_.waterSurfaceGpuData = &waterSurfaceGpuData_;
     sceneSource_.terrainSurfaceGpuData = &terrainSurfaceGpuData_;
+    sceneSource_.materialProgramSurfacesPresent = materialProgramSurfacesPresent_;
     sceneSource_.surfaceFeatureFloats = surfaceFeatureFloats_;
     const uint32_t sharedPrimaryCount = NUMERIC::SaturateToUint32(globalGpuSceneInstances_.size());
     uint32_t cursor = sharedPrimaryCount;

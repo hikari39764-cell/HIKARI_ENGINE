@@ -15,6 +15,8 @@ const char* MaterialTextureUsageName(MaterialTextureUsage usage) {
     case MaterialTextureUsage::Emissive: return "emissive";
     case MaterialTextureUsage::Specular: return "specular";
     case MaterialTextureUsage::SpecularColor: return "specularColor";
+    case MaterialTextureUsage::StrokeMask: return "strokeMask";
+    case MaterialTextureUsage::StrokeNormal: return "strokeNormal";
     default: return "unknown";
     }
 }

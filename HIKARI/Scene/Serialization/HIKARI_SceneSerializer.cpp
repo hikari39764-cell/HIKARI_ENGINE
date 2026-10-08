@@ -14,8 +14,6 @@
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Sequencer/Serialization/HIKARI_CinematicSequenceJson.h"
-#include "Scene/Serialization/Environment/HIKARI_SceneEnvironmentJson.h"
-#include "Scene/Serialization/Lighting/HIKARI_SceneLightingBakeJson.h"
 #include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 
 namespace HIKARI::SCENE::SERIALIZATION {
@@ -100,12 +98,8 @@ bool SceneSerializer::LoadFromFile(const std::string& path, SceneDocument& outDo
                 if (folder.is_string())
                     decoded.editorFolders.push_back(folder.get<std::string>());
 
-        if (root.contains("environment") && root["environment"].is_object()) {
-            SceneJson::DeserializeSceneEnvironmentJson(root["environment"], decoded.environment);
-        }
-
-        SceneJson::DeserializeSceneLightingBakeJson(root.value("lightingBake", nlohmann::json::object()),
-                                                    decoded.lightingBake);
+        ENVIRONMENT::ReadSceneEnvironmentBinding(root.value("environment", nlohmann::json::object()),
+                                                 decoded.environment);
         DeserializeCamera(root.value("camera", nlohmann::json::object()), decoded.camera);
         DeserializeSceneCinematicsJson(root.value("cinematics", nlohmann::json::object()), decoded.cinematics);
         SceneJson::DeserializeSceneSystemsJson(root.value("systems", nlohmann::json{}), decoded.systems);
@@ -120,7 +114,6 @@ bool SceneSerializer::LoadFromFile(const std::string& path, SceneDocument& outDo
             }
         }
 
-        LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(decoded);
         for (SceneObjectData& object : decoded.objects) {
             NormalizeSceneComponentIds(object);
         }
@@ -138,7 +131,6 @@ bool SceneSerializer::SaveToFile(const std::string& path, const SceneDocument& d
     for (SceneObjectData& object : persisted.objects) {
         NormalizeSceneComponentIds(object);
     }
-    LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(persisted);
 
     nlohmann::json root = nlohmann::json::object();
     root["version"] = persisted.version;
@@ -146,12 +138,7 @@ bool SceneSerializer::SaveToFile(const std::string& path, const SceneDocument& d
     if (!persisted.editorFolders.empty())
         root["editorFolders"] = persisted.editorFolders;
 
-    SceneJson::SerializeSceneEnvironmentJson(persisted.environment, root["environment"]);
-    // Version 6 以场景组件为唯一 Probe / Light Authoring 来源。
-    root["environment"].erase("reflectionProbe");
-    root["environment"].erase("directional");
-    root["environment"].erase("pointLights");
-    root["environment"].erase("spotLights");
+    root["environment"] = ENVIRONMENT::WriteSceneEnvironmentBinding(persisted.environment);
     SerializeCamera(persisted.camera, root["camera"]);
     SerializeSceneCinematicsJson(persisted.cinematics, root["cinematics"]);
     SceneJson::SerializeSceneSystemsJson(persisted.systems, root["systems"]);

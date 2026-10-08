@@ -11,7 +11,7 @@ cbuffer ScreenSpaceReflectionCB : register(b0)
     float4 gTraceScreenParams;
     float4 gTraceParams;
     float4 gResolveParams;
-    float4 gFrameParams;
+    float4 gFrameParams; // x debug mode, y P/P_prev, z history used, w history weight
     float4x4 gPreviousInvViewProj;
     float4 gPreviousCameraPosition;
     float4 gJitterPixels;
@@ -315,7 +315,8 @@ ReflectionHistoryOutput PSHistory(FullscreenVertex input)
         historySupport += weight;
     }
     if (historySupport <= 0.01f || historySum.a <= 0.0001f) return output;
-    float3 historyRadiance = historySum.rgb / historySum.a;
+    // 履歴は前フレームの Pre-Exposure 空間。今の空間へ換算してから近傍で制限する。
+    float3 historyRadiance = historySum.rgb / historySum.a * gFrameParams.y;
     const float historyConfidence = saturate(historySum.a / historySupport);
     // 現在の同一面の近傍範囲に制限する。遮蔽境界をまたぐ色や照明変更を履歴で引きずらない。
     float3 lower = current.rgb, upper = current.rgb;

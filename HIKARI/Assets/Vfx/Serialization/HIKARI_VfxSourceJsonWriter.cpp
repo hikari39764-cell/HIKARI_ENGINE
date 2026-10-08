@@ -222,7 +222,7 @@ Json WriteSpecialOutput(const VfxSpecialOutputData& value) {
         {"light",
          {
              {"color", WriteVec4(value.light.color)},
-             {"intensity", value.light.intensity},
+             {"luminousFlux", value.light.luminousFlux},
              {"range", value.light.range},
              {"sourceRadius", value.light.sourceRadius},
              {"flickerFrequency", value.light.flickerFrequency},

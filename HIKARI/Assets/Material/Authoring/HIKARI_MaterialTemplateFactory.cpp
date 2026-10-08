@@ -14,7 +14,8 @@ constexpr std::array<MaterialTemplateInfo, 11u> kTemplates{{
     {MaterialTemplateId::StandardPbr, "Standard PBR", "Physically based baseline with imported texture compatibility."},
     {MaterialTemplateId::GenericToon, "Generic Toon", "Ramp diffuse, banded specular and Fresnel rim defaults."},
     {MaterialTemplateId::PainterlyShell, "Painterly Shell",
-     "Built-in brush mask and normal, editable stroke graph and projected-size shell LOD."},
+     "Fixed-function brush-stroke shells: built-in stroke mask and normal, silhouette coverage, colour variation and "
+     "projected-size shell LOD."},
     {MaterialTemplateId::Skin, "Skin", "Soft ramp response, skin masks and restrained rim lighting."},
     {MaterialTemplateId::Face, "Face", "Face SDF lighting with facial shadow feature requests."},
     {MaterialTemplateId::Hair, "Hair", "Ramp diffuse and anisotropic strand highlights."},
@@ -483,10 +484,7 @@ MaterialAssetData CreateMaterialFromTemplateWithPbr(MaterialTemplateId templateI
     data.templateId = templateId;
     switch (templateId) {
     case MaterialTemplateId::GenericToon: ConfigureGenericToon(data); break;
-    case MaterialTemplateId::PainterlyShell:
-        AddRamp(data);
-        TEMPLATE_FACTORY_INTERNAL::AddPainterlyShellGraph(data);
-        break;
+    case MaterialTemplateId::PainterlyShell: TEMPLATE_FACTORY_INTERNAL::AddPainterlyShellGraph(data); break;
     case MaterialTemplateId::Skin: ConfigureSkin(data); break;
     case MaterialTemplateId::Face: ConfigureFace(data); break;
     case MaterialTemplateId::Hair: ConfigureHair(data); break;

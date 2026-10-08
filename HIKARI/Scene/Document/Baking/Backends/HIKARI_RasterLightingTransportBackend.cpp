@@ -72,8 +72,7 @@ bool RasterLightingTransportBackend::RenderProbeFace(DocumentSceneBase& scene,
     bool faceBegun = false;
     const RENDER3D::LIGHTING::SceneLightingSet lighting =
         LIGHTING_AUTHORING::BuildRuntimeSceneLightingSet(scene.GetSceneDocument(), scene.GetWorld());
-    SceneEnvironment resolvedCaptureEnvironment = captureEnvironment;
-    resolvedCaptureEnvironment.directional = RENDER3D::LIGHTING::ResolveDirectionalLight(lighting);
+    const SceneEnvironment& resolvedCaptureEnvironment = captureEnvironment;
 
     const auto renderFace = [&]() {
         RENDERER3D::DEBUG::Reset();

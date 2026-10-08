@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "name": "Painterly",
+  "post": [
+    {
+      "profile": "engine.post.profile.painterly",
+      "enabled": true
+    }
+  ]
+}

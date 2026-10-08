@@ -91,6 +91,10 @@ MaterialFactorProjection BuildMaterialFactorProjection(const MaterialAsset* mode
         result.specularParams = {specular.x, specular.y, specular.z, material.GetSpecularFactor()};
         result.normalScale = material.GetNormalScale();
         result.materialFlags = material.GetFeatureBits();
+        const MaterialShellSettings& shell = material.GetShellSettings();
+        result.shellStroke0 = {shell.strokeTiling, shell.strokeRotation, shell.strokeVariation,
+                               shell.strokeNormalStrength};
+        result.shellStroke1 = {shell.edgePower, shell.coverage, static_cast<float>(shell.maxLayers), shell.thickness};
     }
     result.materialFlags &= ~(MATERIAL_FEATURES::AlphaMask | MATERIAL_FEATURES::ThinTransparentSurface);
     const AlphaMode alpha = ResolveMaterialAlphaMode(modelMaterial, runtimeMaterial);
@@ -106,6 +110,10 @@ GpuMaterialProjection BuildRuntimeMaterialGpuProjection(const Material& material
     for (size_t i = 0; i < kGpuMaterialTextureUsages.size(); ++i)
         result.textures[i] = ProjectTexture(material.GetTextureSlot(kGpuMaterialTextureUsages[i]));
     return result;
+}
+
+GpuMaterialTextureProjection ProjectRuntimeMaterialTexture(const Material& material, MaterialTextureUsage usage) {
+    return ProjectTexture(material.GetTextureSlot(usage));
 }
 
 void ProjectMaterialTextureUv(const MaterialAsset* modelMaterial, const Material* runtimeMaterial,
@@ -174,6 +182,14 @@ GpuMaterialData PackGpuMaterialData(const GpuMaterialProjection& projection) {
     data.uvSet1[0] = occlusion.uvSet;
     data.uvSet1[1] = specular.uvSet;
     data.uvSet1[2] = specularColor.uvSet;
+    const auto& strokeMask = Texture(projection, GpuMaterialTextureChannel::StrokeMask);
+    const auto& strokeNormal = Texture(projection, GpuMaterialTextureChannel::StrokeNormal);
+    data.strokeMaskTextureDescriptorIndex =
+        strokeMask.enabled ? strokeMask.descriptorIndex : kInvalidTextureDescriptorIndex;
+    data.strokeNormalTextureDescriptorIndex =
+        strokeNormal.enabled ? strokeNormal.descriptorIndex : kInvalidTextureDescriptorIndex;
+    data.shellStroke0 = projection.shellStroke0;
+    data.shellStroke1 = projection.shellStroke1;
     return data;
 }
 

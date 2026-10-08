@@ -9,6 +9,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Post/HIKARI_PostAssetStore.h"
+#include "Assets/RenderStyle/HIKARI_RenderStyleAssetStore.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Quality/HIKARI_GlobalPostEditor.h"
@@ -110,7 +111,14 @@ EditorOperationResult QueryPost(GlobalPostEditor& editor, const SceneProvider& p
     if (!ResolveContext(provider, context, failure)) {
         return failure;
     }
-    const ScenePostSettings& post = context.scene->GetSceneDocument().environment.post;
+    const std::string& styleId = context.scene->GetEnvironmentRuntime().GetRenderStyleId();
+    nlohmann::json layers = nlohmann::json::array();
+    std::string styleError;
+    if (const auto style = context.scene->GetRenderStyleAssets().Load(styleId, styleError)) {
+        for (const RENDERSTYLE::RenderStylePostLayer& layer : style->post) {
+            layers.push_back({{"profileId", layer.profileId}, {"enabled", layer.enabled}});
+        }
+    }
     nlohmann::json profiles = nlohmann::json::array();
     nlohmann::json effects = nlohmann::json::array();
     for (const POST::BuiltinPostContent& content : POST::GetBuiltinPostContent()) {
@@ -134,8 +142,10 @@ EditorOperationResult QueryPost(GlobalPostEditor& editor, const SceneProvider& p
             {{"id", record->guid.value}, {"name", GetAssetRecordDisplayName(*record)}, {"builtin", false}});
     }
     const PostProfileEditorDocument& document = editor.Document();
-    return OperationOk("Global post state. Select a profile with environment.edit {\"post\":{...}}.",
-                       {{"scene", {{"enabled", post.enabled}, {"profileId", post.profileId}}},
+    return OperationOk("Global post state. The scene's render style stacks post profiles in order: pick the style "
+                       "with environment.edit {\"patch\":{\"renderStyle\":\"<id>\"}} and edit a project style's "
+                       "layers with renderstyle.edit.",
+                       {{"scene", {{"renderStyleId", styleId}, {"post", std::move(layers)}, {"error", styleError}}},
                         {"profiles", std::move(profiles)},
                         {"effects", std::move(effects)},
                         {"editing",
@@ -289,13 +299,15 @@ void RegisterGlobalPostOperations(EditorOperationRegistry& registry, GlobalPostE
          {{"profileId", ParameterType::String, true, "Profile id from post.query"}},
          [&editor, scene](const nlohmann::json& p) { return DescribeProfile(editor, scene, p); }},
         EditorOperationKind::Query, false);
-    registry.Register({"post.profile.create",
-                       "Save a new project post profile copied from an engine or project profile.",
-                       "scene",
-                       {{"sourceProfileId", ParameterType::String, true, "Profile to copy"},
-                        {"name", ParameterType::String, false, "Display name of the copy"}},
-                       [&editor, scene](const nlohmann::json& p) { return CreateProfile(editor, scene, p); }},
-                      EditorOperationKind::Mutation, false);
+    EditorOperationDefinition create{
+        "post.profile.create",
+        "Save a new project post profile copied from an engine or project profile.",
+        "scene",
+        {{"sourceProfileId", ParameterType::String, true, "Profile to copy"},
+         {"name", ParameterType::String, false, "Display name of the copy"}},
+        [&editor, scene](const nlohmann::json& p) { return CreateProfile(editor, scene, p); }};
+    create.permission = EditorOperationPermission::ModifyProjectFiles;
+    registry.Register(std::move(create), EditorOperationKind::Mutation, false);
     registry.Register(
         {"post.profile.edit",
          "Edit a project post profile as an unsaved draft shown live in the scene. Values outside the declared range are clamped.",
@@ -306,12 +318,13 @@ void RegisterGlobalPostOperations(EditorOperationRegistry& registry, GlobalPostE
           {"resetDefaults", ParameterType::Bool, false, "Clear all overrides first"}},
          [&editor, scene](const nlohmann::json& p) { return EditProfile(editor, scene, p); }},
         EditorOperationKind::Mutation, false);
-    registry.Register({"post.profile.save",
-                       "Save the edited project post profile.",
-                       "scene",
-                       {{"profileId", ParameterType::String, true, "Project profile id"}},
-                       [&editor, scene](const nlohmann::json& p) { return SaveProfile(editor, scene, p); }},
-                      EditorOperationKind::Mutation, false);
+    EditorOperationDefinition save{"post.profile.save",
+                                   "Save the edited project post profile.",
+                                   "scene",
+                                   {{"profileId", ParameterType::String, true, "Project profile id"}},
+                                   [&editor, scene](const nlohmann::json& p) { return SaveProfile(editor, scene, p); }};
+    save.permission = EditorOperationPermission::ModifyProjectFiles;
+    registry.Register(std::move(save), EditorOperationKind::Mutation, false);
 }
 
 } // namespace HIKARI::EDITOR

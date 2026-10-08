@@ -429,8 +429,10 @@ float4 ParticlePS(ParticleVertex input, bool frontFace : SV_IsFrontFace) : SV_TA
     alpha *= HikariResolveParticleDepthFade(input);
     clip(alpha - alphaClipThreshold);
     const float3 baseColor = layerColor.rgb * materialColor.rgb;
+    // 受光と発光は絶対量、Unlit の色は表示参照。どちらもこのビューの HDR 空間へ移して書く。
     const float3 straightColor = (lit ? HikariShadeSimpleSurface(baseColor,pbrInputs.metallic,
         pbrInputs.roughness,pbrInputs.specularColor,pbrInputs.specularFactor,pbrInputs.occlusion,
-        shadingNormal,geometricNormal,input.worldPosition,input.position.xy) : baseColor) + emissive;
-    return float4(straightColor * alpha, alpha);
+        shadingNormal,geometricNormal,input.worldPosition,input.position.xy)
+        : HikariDisplayReferredToRadiance(baseColor, gViewExposure)) + emissive;
+    return float4(HikariPreExpose(straightColor, gViewExposure) * alpha, alpha);
 }

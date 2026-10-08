@@ -128,7 +128,7 @@ VfxAssetData Slash() {
     VectorKeys(tip.scale.value, tip.id + ".size",
                {{0, {0.10f, 0.10f, 0.10f}}, {0.45f, {0.24f, 0.24f, 0.24f}}, {1, {0.08f, 0.08f, 0.08f}}});
     AlphaKeys(tip, {2.5f, 4.2f, 5.0f}, {{0, 0}, {0.12f, 1}, {0.82f, 0.8f}, {1, 0}});
-    Light(tip, {0.12f, 0.48f, 1, 1}, 1.2f, 3.5f);
+    Light(tip, {0.12f, 0.48f, 1, 1}, 12000.0f, 3.5f);
     layers.push_back(std::move(tip));
 
     auto sparks = SparkBurst("Cut fragments", 0.22f, 9, {0.32f, 1.3f, 2.6f, 1}, 3.2f, 0.38f);

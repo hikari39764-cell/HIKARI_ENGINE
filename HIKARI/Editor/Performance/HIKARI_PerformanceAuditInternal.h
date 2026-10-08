@@ -12,7 +12,7 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
-#include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
+#include "Render3D/Lighting/HIKARI_VolumetricCloudStage.h"
 #include "Render3D/Lighting/HIKARI_DynamicDiffuseGi.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
@@ -66,7 +66,7 @@ struct RuntimePerformanceSnapshot {
     RENDER3D::SCREENSPACE::SsaoDebugState ssao{};
     RENDER3D::SCREENSPACE::DepthVisibilityDebugState depthVisibility{};
     RENDER3D::VOLUMETRIC::VolumetricLightingStats volumetric{};
-    RENDER3D::CLOUDS::StylizedCloudStageStats clouds{};
+    RENDER3D::CLOUDS::VolumetricCloudStageStats clouds{};
     RENDER3D::TEMPORAL::TemporalFrameState temporalFrame{};
     RENDER3D::TEMPORAL::TemporalResourceStats temporalResources{};
     RENDER3D::UPSCALING::StreamlineDebugStats streamline{};

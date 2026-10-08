@@ -24,11 +24,10 @@ struct HikariReflectionProbeData
 #include "Lighting/HIKARI_IrradianceSh9.hlsli"
 #include "Lighting/HIKARI_CloudSolarVisibility.hlsli"
 
+
 cbuffer SkyEnvironmentCB : register(b5, HIKARI_ENVIRONMENT_REGISTER_SPACE)
 {
-    float4 gSkyZenithExposure;
-    float4 gSkyHorizonReflection;
-    float4 gSkyGroundAmbient;
+    float4 gSkyScales;
     float4 gSkyParams;
     float4 gSkyTintLighting;
     float4 gIblParams;
@@ -42,19 +41,16 @@ cbuffer SkyEnvironmentCB : register(b5, HIKARI_ENVIRONMENT_REGISTER_SPACE)
     float4 gAtmosphereOzoneParams;
     float4 gAtmosphereSunDirection;
     float4 gAtmosphereSunColorRadiance;
-    float4 gGradientSkyIrradiance[3];
     HikariCloudSolarVisibilityData gCloudSolarVisibility;
+    HikariIrradianceVolumeData gDynamicGiVolumes[HIKARI_DYNAMIC_GI_VOLUME_COUNT];
 };
 
-#define gSkyZenithColor gSkyZenithExposure.rgb
-#define gSkyExposure gSkyZenithExposure.a
-#define gSkyHorizonColor gSkyHorizonReflection.rgb
-#define gSkyReflectionIntensity gSkyHorizonReflection.a
-#define gSkyGroundColor gSkyGroundAmbient.rgb
-#define gSkyAmbientFromSky gSkyGroundAmbient.a
+// 空の画素値を輝度 [nits] へ写す倍率（大気は 1）、反射と天空光の倍率。
+#define gSkyRadianceScale gSkyScales.x
+#define gSkyReflectionIntensity gSkyScales.y
+#define gSkyLightIntensity gSkyScales.z
 #define gSkyMode gSkyParams.x
 #define gSkyHasCubemap gSkyParams.y
-#define gSkyHorizonPower gSkyParams.z
 #define gSkyYaw gSkyParams.w
 #define gSkyTint gSkyTintLighting.rgb
 #define gSkyTextureDescriptorIndexPlusOne gSkyTintLighting.w
@@ -86,7 +82,6 @@ TextureCube gReflectionProbePrefilteredTex1 : register(t14, HIKARI_ENVIRONMENT_R
 Texture3D<float4> gLightProbeShVolume0[9] : register(t0, space2);
 Texture3D<float4> gLightProbeShVolume1[9] : register(t0, space4);
 
-#include "Atmosphere/HIKARI_AtmosphereScattering.hlsli"
 #include "Sky/HIKARI_EquirectangularSampling.hlsli"
 #include "Sky/HIKARI_SkyRadiance.hlsli"
 
@@ -100,113 +95,52 @@ void HikariApplyEnvironmentBrdf(inout HikariPbrShadingContext context)
     }
 }
 
-float3 HikariEvaluateSkyApprox(float3 dir)
+// 大気・全景・IBL を持たない立方体の空は、実行時に捕獲した立方体（gIbl*）だけを光源にする。
+// 捕獲が揃うまでの数フレームは空の光を 0 にする（古い空や別の近似を混ぜない）。
+bool HikariSkyUsesWorldSpaceCapture()
 {
-    dir = normalize(
-        HikariRotateSkyYaw(dir, gSkyYaw));
-    return HikariApplySkyRadianceScale(HikariEvaluateGradientSky(dir,
-        gSkyZenithColor, gSkyHorizonColor, gSkyGroundColor, gSkyHorizonPower), gSkyTint, gSkyExposure);
+    return (uint)(gSkyMode + 0.5f) == 4u;
 }
 
-float3 HikariEvaluateAtmosphereSky(float3 dir)
+float3 HikariSkyEnvironmentDirection(float3 direction)
 {
-    if (gAtmosphereSunEnabled <= 0.5f)
-    {
-        return HikariEvaluateSkyApprox(dir);
-    }
-
-    const float3 observer = float3(
-        0.0f,
-        HikariAtmospherePlanetRadius() + 1.0f,
-        0.0f);
-    // Forward/Water sampling is per-surface-pixel, so reuse the same
-    // spherical model at a deliberately low bounded quality while the
-    // SkyView LUT uses the full 24/12-step path.  Four view samples with two
-    // solar samples preserve horizon extinction without turning every
-    // material pixel into a second LUT bake.
-    const float3 radiance = HikariAtmosphereEvaluateSkyRadianceWithSteps(
-        observer,
-        dir,
-        gSkyGroundColor,
-        gAtmosphereOzoneParams.w,
-        gAtmosphereOzoneParams.y,
-        4u,
-        2u);
-    return radiance * max(0.0f, gSkyExposure) *
-        max(0.0f.xxx, gSkyTint);
+    return normalize(HikariSkyUsesWorldSpaceCapture() ? direction : HikariRotateSkyYaw(direction, gSkyYaw));
 }
 
-float3 HikariEvaluateAtmosphereDiffuse(float3 normal)
-{
-    const float3 n = HikariAtmosphereSafeNormalize(normal);
-    // A cosine-weighted representative direction keeps the diffuse fallback
-    // tied to the same atmosphere as the visible sky without integrating the
-    // narrow solar disk a second time.
-    const float3 representativeDirection = HikariAtmosphereSafeNormalize(
-        lerp(n, float3(0.0f, 1.0f, 0.0f), 0.45f));
-    return HikariEvaluateAtmosphereSky(representativeDirection);
-}
-
+// 空からの拡散光（反照率 1 の面の出射輝度）。天空光の倍率を含む。
 float3 HikariEvaluateSkyDiffuseIrradiance(float3 normal)
 {
-    if (gIblHasIrradiance > 0.5f)
-    {
-        const float3 direction=(uint)(gSkyMode+0.5f)==4u ? normal : HikariRotateSkyYaw(normal,gSkyYaw);
-        const float3 irradiance = gIblIrradianceTex.Sample(gLinearWrap,
-            normalize(direction)).rgb;
-        return HikariApplySkyRadianceScale(irradiance, gSkyTint, gSkyExposure);
-    }
-    if ((uint)(gSkyMode + 0.5f) == 4u && gAtmosphereSunEnabled > 0.5f)
-        return HikariEvaluateAtmosphereDiffuse(normal);
-    return HikariApplySkyRadianceScale(
-        HikariEvaluateGradientSkyIrradiance(normal, gGradientSkyIrradiance), gSkyTint, gSkyExposure);
+    if (gIblHasIrradiance <= 0.5f)
+        return 0.0f.xxx;
+    const float3 irradiance = gIblIrradianceTex.Sample(gLinearWrap, HikariSkyEnvironmentDirection(normal)).rgb;
+    return HikariApplySkyRadianceScale(irradiance, gSkyTint, gSkyRadianceScale) * max(gSkyLightIntensity, 0.0f);
 }
 
+// 空そのものの輝度（反射の代わりや水平線の色）。立方体と全景は元の画像、大気は捕獲した立方体から引く。
 float3 HikariSampleSkyEnvironment(float3 dir)
 {
-    float3 sky = HikariEvaluateSkyApprox(dir);
-    uint mode = (uint)(gSkyMode + 0.5f);
-    if (mode == 4u && gAtmosphereSunEnabled > 0.5f)
+    const uint mode = (uint)(gSkyMode + 0.5f);
+    const float3 direction = HikariSkyEnvironmentDirection(dir);
+    float3 sky = 0.0f.xxx;
+    if (mode == 2u && gSkyHasCubemap > 0.5f)
     {
-        // 太陽の specular は直接光が所有する。raw/filtered fallback の両方で重複させない。
-        sky = HikariEvaluateAtmosphereSky(dir);
-    }
-    else if (mode == 2u && gSkyHasCubemap > 0.5f)
-    {
-        float3 cubeDir = normalize(
-            HikariRotateSkyYaw(dir, gSkyYaw));
-        sky = gSkyCube.Sample(
-            gLinearWrap,
-            cubeDir).rgb;
-        sky *= max(gSkyTint, 0.0f.xxx);
-        sky *= max(0.0f, gSkyExposure);
+        sky = gSkyCube.Sample(gLinearWrap, direction).rgb;
     }
     else if (mode == 3u && gSkyTextureDescriptorIndexPlusOne > 0.5f)
     {
-        const float3 panoramaDirection = normalize(
-            HikariRotateSkyYaw(dir, gSkyYaw));
-        const float2 panoramaUv =
-            HikariDirectionToEquirectangularUv(panoramaDirection);
+        const float2 panoramaUv = HikariDirectionToEquirectangularUv(direction);
         float2 panoramaDerivativeX;
         float2 panoramaDerivativeY;
-        HikariResolveEquirectangularGradients(
-            panoramaDirection,
-            panoramaUv,
-            panoramaDerivativeX,
-            panoramaDerivativeY);
-        const uint panoramaDescriptorIndex =
-            (uint)(gSkyTextureDescriptorIndexPlusOne + 0.5f) - 1u;
-        sky = HikariSampleMaterialTextureGrad(
-            panoramaDescriptorIndex,
-            gSkyPanoramaSampler,
-            panoramaUv,
-            panoramaDerivativeX,
-            panoramaDerivativeY,
-            float4(sky, 1.0f)).rgb;
-        sky *= max(gSkyTint, 0.0f.xxx);
-        sky *= max(0.0f, gSkyExposure);
+        HikariResolveEquirectangularGradients(direction, panoramaUv, panoramaDerivativeX, panoramaDerivativeY);
+        const uint panoramaDescriptorIndex = (uint)(gSkyTextureDescriptorIndexPlusOne + 0.5f) - 1u;
+        sky = HikariSampleMaterialTextureGrad(panoramaDescriptorIndex, gSkyPanoramaSampler, panoramaUv,
+            panoramaDerivativeX, panoramaDerivativeY, 0.0f.xxxx).rgb;
     }
-    return sky;
+    else if (gIblHasPrefiltered > 0.5f)
+    {
+        sky = gIblPrefilteredTex.SampleLevel(gLinearWrap, direction, 0.0f).rgb;
+    }
+    return HikariApplySkyRadianceScale(sky, gSkyTint, gSkyRadianceScale);
 }
 
 #include "Lighting/HIKARI_LightingProviderSampling.hlsli"
@@ -231,12 +165,14 @@ float3 HikariSampleReflectionProbePrefiltered(
 float3 HikariSamplePrefilteredSkyRadiance(float3 r, float roughness)
 {
     const float mip = roughness * (max(1.0f, gIblPrefilteredMipCount)-1.0f);
-    return gIblPrefilteredTex.SampleLevel(gLinearWrap,
-        normalize((uint)(gSkyMode+0.5f)==4u ? r : HikariRotateSkyYaw(r,gSkyYaw)),mip).rgb *
-        max(gSkyTint,0.0f.xxx) * max(gSkyExposure,0.0f);
+    return HikariApplySkyRadianceScale(
+        gIblPrefilteredTex.SampleLevel(gLinearWrap, HikariSkyEnvironmentDirection(r), mip).rgb,
+        gSkyTint, gSkyRadianceScale);
 }
 
-float3 HikariSampleEnvironmentReflection(float3 worldPos, float3 r, float roughness)
+// skyOcclusion は空の反射の遮蔽、occludedRadiance は遮られた分に映す周囲の輝度。反射 probe には掛けない。
+float3 HikariSampleEnvironmentReflection(float3 worldPos, float3 r, float roughness, float skyOcclusion = 1.0f,
+    float3 occludedRadiance = 0.0f.xxx)
 {
     float3 skyRadiance = 0.0f.xxx;
     if (gIblHasPrefiltered > 0.5f)
@@ -245,8 +181,8 @@ float3 HikariSampleEnvironmentReflection(float3 worldPos, float3 r, float roughn
     {
         skyRadiance = HikariSampleSkyEnvironment(r);
     }
-    skyRadiance *=
-        max(0.0f, gSkyReflectionIntensity);
+    skyRadiance = skyRadiance * max(0.0f, gSkyReflectionIntensity) * skyOcclusion +
+        occludedRadiance * (1.0f - skyOcclusion);
 
     float3 probeRadiance[2];
     float probeWeights[2];
