@@ -34,14 +34,6 @@ struct RayTracedShadowInputs {
     uint32_t frameIndex = 0u;
 };
 
-struct RayTracedShadowDebugState {
-    bool requested = false;
-    bool rendered = false;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t sampleCount = 0;
-};
-
 // 光線追跡の太陽の影。場面の深度から画素ごとに太陽の円錐へ影光線を飛ばし、可視率（R8, 1 = 照らされる）を書き、
 // 同じ面の近傍で空間フィルターを掛けてから Forward へ渡す。
 // 加速構造・材質・局所光の束ね方は光線クエリの共通根パラメーター（RuntimeRayQueryBindings）に従う。
@@ -55,7 +47,6 @@ public:
     // 最後に描いた（フィルター済みの）可視率。描いていなければ無効。
     RenderTextureView GetVisibilityView() const noexcept;
     void Release();
-    const RayTracedShadowDebugState& GetDebugState() const noexcept { return debugState_; }
 
 private:
     // 可視率の面：生の追跡結果（raw）とフィルター済み（filtered）。
@@ -85,7 +76,6 @@ private:
     uint32_t height_ = 0u;
     bool pipelineFailed_ = false;
     bool valid_ = false;
-    RayTracedShadowDebugState debugState_{};
 };
 
 } // namespace HIKARI::RENDER3D::SCREENSPACE

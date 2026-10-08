@@ -33,8 +33,6 @@ struct ScreenSpaceReflectionDebugState {
     bool historyUsed = false;
     bool resolutionLimited = false;
     bool resizeDeferred = false;
-    // 実行時の加速構造へ反射光線を飛ばし、SSR が外した texel を埋めた。
-    bool rayTracingUsed = false;
     uint32_t residentViews = 0;
     uint64_t workingSetBytes = 0;
     uint32_t maxSteps = 0;

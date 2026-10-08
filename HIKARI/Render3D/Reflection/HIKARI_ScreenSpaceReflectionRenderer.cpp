@@ -509,7 +509,6 @@ bool ScreenSpaceReflectionRenderer::Render(const GFX::Context& graphics,
             commands->SetComputeRootDescriptorTable(kSky + 3u, trace.uav.gpu);
             commands->Dispatch((view->width + 7u) / 8u, (view->height + 7u) / 8u, 1u);
             trace.Transition(commands, kReadState);
-            debugState_.rayTracingUsed = true;
         }
     }
     auto resolvedTrace = trace.srv.gpu;

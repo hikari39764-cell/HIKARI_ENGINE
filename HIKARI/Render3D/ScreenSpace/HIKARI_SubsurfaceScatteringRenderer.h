@@ -16,13 +16,6 @@
 
 namespace HIKARI::RENDER3D::SCREENSPACE {
 
-struct SubsurfaceScatteringDebugState {
-    bool requested = false;
-    bool rendered = false;
-    uint32_t width = 0;
-    uint32_t height = 0;
-};
-
 // 画面空間の次表面散乱。Forward が SubsurfaceDiffuse（拡散光 × 強さ, 半径 [m]）へ書いた面だけを、深度に沿って
 // 水平→垂直にぼかし、ぼかした分と元の差を場面色へ加算する。中間の水平結果だけを所有し、入力は frame graph が渡す。
 class SubsurfaceScatteringRenderer final {
@@ -35,7 +28,6 @@ public:
                 const RenderTextureView& subsurfaceDiffuse, const RenderTextureView& sceneDepth,
                 const MESHRENDERER::CameraCB& camera, const SubsurfaceScatteringSettings& settings);
     void Release();
-    const SubsurfaceScatteringDebugState& GetDebugState() const noexcept { return debugState_; }
 
 private:
     bool EnsurePipeline(const GFX::Context& graphics);
@@ -55,7 +47,6 @@ private:
     uint64_t deviceGeneration_ = 0u;
     uint32_t width_ = 0u;
     uint32_t height_ = 0u;
-    SubsurfaceScatteringDebugState debugState_{};
 };
 
 } // namespace HIKARI::RENDER3D::SCREENSPACE

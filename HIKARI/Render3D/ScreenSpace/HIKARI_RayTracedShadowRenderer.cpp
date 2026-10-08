@@ -44,11 +44,6 @@ constexpr UINT kFilterInputParameter = kSkyParameter + 4u;
 
 bool RayTracedShadowRenderer::Render(const GFX::Context& graphics, const RayTracedShadowInputs& inputs) {
     valid_ = false;
-    debugState_ = {};
-    debugState_.requested = true;
-    debugState_.width = inputs.sceneDepth.width;
-    debugState_.height = inputs.sceneDepth.height;
-    debugState_.sampleCount = inputs.sampleCount;
     auto* commands = graphics.cmdList;
     if (commands == nullptr || graphics.device == nullptr || graphics.srvHeap == nullptr || inputs.camera == nullptr ||
         inputs.rayLighting == nullptr || inputs.materials == nullptr || !*inputs.materials ||
@@ -112,7 +107,6 @@ bool RayTracedShadowRenderer::Render(const GFX::Context& graphics, const RayTrac
     commands->Dispatch(groupsX, groupsY, 1u);
     Transition(commands, filtered_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     valid_ = true;
-    debugState_.rendered = true;
     return true;
 }
 
@@ -266,7 +260,6 @@ void RayTracedShadowRenderer::Release() {
     filterPipeline_.Reset();
     deviceGeneration_ = 0u;
     pipelineFailed_ = false;
-    debugState_ = {};
 }
 
 } // namespace HIKARI::RENDER3D::SCREENSPACE

@@ -44,10 +44,6 @@ bool SubsurfaceScatteringRenderer::Render(const GFX::Context& graphics,
                                           const RenderTextureView& subsurfaceDiffuse,
                                           const RenderTextureView& sceneDepth, const MESHRENDERER::CameraCB& camera,
                                           const SubsurfaceScatteringSettings& settings) {
-    debugState_ = {};
-    debugState_.requested = settings.enabled;
-    debugState_.width = subsurfaceDiffuse.width;
-    debugState_.height = subsurfaceDiffuse.height;
     auto* commands = graphics.cmdList;
     if (!settings.enabled || commands == nullptr || graphics.device == nullptr || graphics.srvHeap == nullptr ||
         !subsurfaceDiffuse.IsSampleable() || !sceneDepth.IsSampleable() || settings.strength <= 0.0f) {
@@ -119,7 +115,6 @@ bool SubsurfaceScatteringRenderer::Render(const GFX::Context& graphics,
     commands->SetPipelineState(compositePso_.Get());
     commands->DrawInstanced(3, 1, 0, 0);
     targetAccess.EndDepthRead();
-    debugState_.rendered = true;
     return true;
 }
 
@@ -293,7 +288,6 @@ void SubsurfaceScatteringRenderer::Release() {
     horizontalPso_.Reset();
     compositePso_.Reset();
     deviceGeneration_ = 0u;
-    debugState_ = {};
 }
 
 } // namespace HIKARI::RENDER3D::SCREENSPACE
