@@ -15,6 +15,8 @@ struct MeshPassResources {
     RENDER3D::RenderTextureView opaqueSceneColor{};
     RENDER3D::RenderTextureView packedSceneSurface{};
     RENDER3D::RenderTextureView ambientOcclusion{};
+    // 光線追跡の太陽の可視率（現フレーム、描画解像度）。無効なら shader はカスケード影を使う。
+    RENDER3D::RenderTextureView rayTracedShadow{};
     RENDER3D::DEPTH::DepthPyramidView depthPyramid{};
     // AS は現在フレームの render camera に一致する深度のみ消費する。
     RENDER3D::DEPTH::DepthPyramidView visibilityDepthPyramid{};

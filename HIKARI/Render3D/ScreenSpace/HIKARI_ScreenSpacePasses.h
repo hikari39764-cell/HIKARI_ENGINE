@@ -12,6 +12,7 @@
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceBuffer.h"
 #include "Render3D/Surface/HIKARI_SceneReflectionBuffer.h"
+#include "Render3D/ScreenSpace/HIKARI_RayTracedShadowRenderer.h"
 #include "Render3D/ScreenSpace/HIKARI_SsaoRenderer.h"
 
 namespace HIKARI {
@@ -48,6 +49,7 @@ struct ScreenSpaceRuntimeState {
     SURFACE::SceneSurfaceBuffer surfaceBuffer{};
     SURFACE::SceneReflectionBuffer reflectionBuffer{};
     SsaoRenderer ssaoRenderer{};
+    RayTracedShadowRenderer rayTracedShadowRenderer{};
     RENDER3D::GPUDRIVEN::GpuDepthVisibilityLayer depthVisibility{};
     RENDER3D::GPUDRIVEN::GpuDepthVisibilityStats frozenCullingDepthStats{};
     MATH::Mat4 depthVisibilityViewProj{};
@@ -76,6 +78,8 @@ struct ScreenSpaceFrameResult {
     RENDER3D::RenderTextureView surfaceFeatureMask{};
     RENDER3D::RenderTextureView stylizedOutlineStyle{};
     RENDER3D::RenderTextureView ambientOcclusion{};
+    // 光線追跡の太陽の可視率（場面の深度 prepass の後にだけ作る）。
+    RENDER3D::RenderTextureView rayTracedShadow{};
     RENDER3D::TextureResourceHandle fallbackAoTextureResource{};
     int fallbackAoTextureHandle = -1;
 };
@@ -107,6 +111,11 @@ bool ExecuteScreenSpacePostOpaquePasses(ScreenSpaceRuntimeState& state,
 // GeometryAux / scene depth prepass 完了後に Balanced SSAO を当該フレームの深度から描く。
 // 旧 temporal 経路 (1 フレーム遅れ・再投影なし) の移動時の引き摺りを解消
 // する。prepass が走らないフレームでは呼ばれず、従来経路が使われる。
+// 場面の深度 prepass の後、現フレームの深度から光線追跡の太陽の可視率を作る（Balanced SSAO と同じ時点）。
+bool ExecuteRayTracedShadowFromSceneDepth(ScreenSpaceRuntimeState& state,
+                                          const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
+                                          const RayTracedShadowInputs& inputs, ScreenSpaceFrameResult& result);
+
 bool ExecuteBalancedSsaoFromSceneDepth(ScreenSpaceRuntimeState& state,
                                        const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
                                        const MESHRENDERER::CameraCB& renderCameraCb,

@@ -98,6 +98,7 @@ inline constexpr TEXT::EnumName<DepthOfFieldQuality> kDepthOfFieldQualityNames[]
     {DepthOfFieldQuality::High, "High"},
 };
 
+// 運動ブラーの標本数（Low 8、Medium 12、High 16）。Off はカメラの設定に関わらず掛けない。
 struct RenderResolution {
     int width = 0;
     int height = 0;
@@ -120,6 +121,11 @@ struct DirectionalShadowQualitySettings {
     float penumbraScale = 8.0f;
     // 接触影：画面空間で光の方へ深度を辿る長さ [m]。カスケードの分解能では消える接地の影を補う。0 で無効。
     float contactShadowLength = 0.25f;
+    // 光線追跡の影：場面の深度 prepass の後に画素ごとの太陽の可視率を求め、不透明面のカスケード影と接触影を置き換える
+    // （半透明・地形はカスケードのまま）。対応 GPU と実行時の加速構造が要り、無ければ静かにカスケードへ戻る。
+    // 有効時は場面の深度 prepass も走る。標本数は画素あたりの光線数（TAA が均す）。
+    bool rayTraced = false;
+    uint32_t rayTracedSamples = 2;
     bool stabilize = true;
 
     bool operator==(const DirectionalShadowQualitySettings&) const = default;

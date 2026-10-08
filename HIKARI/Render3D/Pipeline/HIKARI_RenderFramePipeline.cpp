@@ -202,7 +202,8 @@ ScreenSpacePassContext BuildScreenSpaceContext(const RenderFrameContext& frame) 
 }
 
 bool ShouldRunSceneDepthPrepass(const RENDER3D::RenderQualitySettings& settings) {
-    if (!settings.sceneDepthPrepass) {
+    // 光線追跡の影は現フレームの深度から可視率を作るので prepass を伴う。
+    if (!settings.sceneDepthPrepass && !settings.directionalShadow.rayTraced) {
         return false;
     }
     return settings.forwardCostMode != RENDER3D::ForwardShadingCostMode::AlbedoOnly;
@@ -351,13 +352,14 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         const auto giQuality = renderQuality.lightProbeVolumeSampling == LightProbeVolumeSamplingMode::Off
                                    ? DynamicGiQuality::Off
                                    : renderQuality.dynamicGiQuality;
-        // 光線追跡の反射も同じ加速構造を借りる。
+        // 光線追跡の反射と太陽の影も同じ加速構造を借りる。
         const bool rayReflections = environment.screenSpaceReflections.enabled &&
                                     environment.screenSpaceReflections.quality != ScreenSpaceReflectionQuality::Off &&
                                     environment.screenSpaceReflections.rayTracingFallback;
+        const bool rayShadows = renderQuality.directionalShadow.rayTraced && environment.shadows.enabled;
         materials = MESHRENDERER::GetMaterialGpuFrameView(frame.graphics);
         RAYTRACING::RuntimeRayTracingFrame rayScene;
-        if ((giQuality != DynamicGiQuality::Off || rayReflections) && materials) {
+        if ((giQuality != DynamicGiQuality::Off || rayReflections || rayShadows) && materials) {
             GFX::GPU_PROFILE::ScopedGpuTimer rayTimer(frame.graphics.cmdList,
                                                       GFX::GPU_PROFILE::Pass::RuntimeRayScenePreparation);
             rayScene = gRuntimeRayScene.Prepare(frame.graphics, source, materials.materialSlots, materials.materialData,
@@ -446,6 +448,8 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         orthographicAoNeedsDepth || ShouldRunSceneDepthPrepass(RENDER3D::GetRenderQualitySettings());
     const bool sceneDsvReady = screenSpaceContext.sceneDsv.ptr != 0;
     const bool depthPrepassWorkReady = MESHRENDERER::HasDepthPrepassWork();
+    // 当該フレームの場面深度が Forward より前に揃ったか（scene prepass か GeometryAux）。
+    bool sceneDepthCurrent = screenResult.geometryAuxDepthComplete;
     if (scenePrepassEnabled && !screenResult.geometryAuxWritten && sceneDsvReady && depthPrepassWorkReady) {
         bool prepassExecuted = false;
         {
@@ -473,6 +477,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
                 RENDER3D::SCREENSPACE::GetScreenSpaceRuntimeState(), screenSpaceContext, *cameraCb, environment,
                 screenResult);
         }
+        sceneDepthCurrent = sceneDepthCurrent || prepassExecuted;
     } else if (scenePrepassEnabled) {
         static bool sWarnedScenePrepassSkip = false;
         if (!sWarnedScenePrepassSkip) {
@@ -481,6 +486,26 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
                             (sceneDsvReady ? "" : " sceneDsv=null") +
                             (depthPrepassWorkReady ? "" : " depthPrepassSource=empty"));
         }
+    }
+
+    // 光線追跡の太陽の影：当該フレームの深度（prepass か GeometryAux）から可視率を作り、Forward がカスケードの代わりに読む。
+    if (renderQuality.directionalShadow.rayTraced && environment.shadows.enabled && sceneDepthCurrent &&
+        cameraCb != nullptr) {
+        RENDER3D::SCREENSPACE::RayTracedShadowInputs shadowInputs{};
+        shadowInputs.packedSurface = screenResult.packedSurface;
+        shadowInputs.camera = cameraCb;
+        shadowInputs.rayLighting = &rayLighting;
+        shadowInputs.materials = &materials;
+        const auto& sun = rayLighting.data.sunDirectionIntensity;
+        shadowInputs.directionToSun = {sun.x, sun.y, sun.z};
+        // 太陽の角半径（rayLighting.sunColorRange.w）× PCSS と同じ半影の倍率。
+        shadowInputs.coneHalfAngle = std::clamp(rayLighting.data.sunColorRange.w, 0.0f, 0.5f) *
+                                     std::max(renderQuality.directionalShadow.penumbraScale, 0.0f);
+        shadowInputs.maxDistance = environment.shadows.distance;
+        shadowInputs.sampleCount = renderQuality.directionalShadow.rayTracedSamples;
+        shadowInputs.frameIndex = static_cast<uint32_t>(frame.frameIndex);
+        (void)RENDER3D::SCREENSPACE::ExecuteRayTracedShadowFromSceneDepth(
+            RENDER3D::SCREENSPACE::GetScreenSpaceRuntimeState(), screenSpaceContext, shadowInputs, screenResult);
     }
 
     if (!MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered)) {
@@ -507,7 +532,10 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     MESHRENDERER::MeshPassResources opaqueResources = BuildMeshPassResources(
         sceneTextures, GRAPH::RenderGraphSemanticPhase::PreOpaque, screenResult.fallbackAoTextureHandle);
     opaqueResources.visibilityDepthPyramid = screenResult.visibilityDepthPyramid;
+    opaqueResources.rayTracedShadow = screenResult.rayTracedShadow;
     MESHRENDERER::MeshPassResources postOpaqueResources = opaqueResources;
+    // 可視率は不透明面の画素のもの。半透明はカスケード影を読む。
+    postOpaqueResources.rayTracedShadow = {};
     FEATURES::RenderFeaturePlan renderFeaturePlan{};
 
     const RenderFrameGraphStageResult graphStage = ExecuteRenderFrameGraphStage(RenderFrameGraphStageContext{

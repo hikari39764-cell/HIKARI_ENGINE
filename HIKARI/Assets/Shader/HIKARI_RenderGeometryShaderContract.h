@@ -41,12 +41,13 @@ inline constexpr std::string_view kClusterRayTracingRootLayoutCanonical =
     "Pipeline(Compute)|Flags(None)";
 
 inline constexpr std::string_view kMeshGraphicsRootLayoutId = "HIKARI.RenderGeometry.MeshGraphics.Root";
-inline constexpr uint32_t kMeshGraphicsRootLayoutVersion = 7u;
+inline constexpr uint32_t kMeshGraphicsRootLayoutVersion = 8u;
 inline constexpr std::string_view kMeshGraphicsRootLayoutHash =
-    "f4d1051c4c10f2c4fd24eca84e71d058a613973d3f58eca7e255ef656486fec7";
+    "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3";
 inline constexpr std::string_view kMeshGraphicsRootLayoutCanonical =
-    "HIKARI.RenderGeometry.MeshGraphics.Root.v7|MeshletDispatchControl(Base,Pass,Bucket,RangeCount)|Grid(MaxX65535)|"
-    "RootParameters(42)|DwordCost(63)|ASVisibility(Table(t19,u0space8,b12),QueryBytes(80,viewProj+control))|VisibleRangeBytes(80)|PayloadBytes(832)|"
+    "HIKARI.RenderGeometry.MeshGraphics.Root.v8|MeshletDispatchControl(Base,Pass,Bucket,RangeCount)|Grid(MaxX65535)|"
+    "RootParameters(43)|DwordCost(64)|ASVisibility(Table(t19,u0space8,b12),QueryBytes(80,viewProj+control))|VisibleRangeBytes(80)|PayloadBytes(832)|"
+    "RayTracedShadow(Table(t11,space7))|"
     "JointPaletteVariant(StaticSRV(t0,space3),SkinnedCBV(b3,space0))|"
     "SurfaceControlAlias(b8,TraditionalSurfaceGpuScene(Base,Enabled,ShellCount,ShellLodBits),MeshletDrawControl)|"
     "ClusterGeometryTable(SRV(t0,space1,count1024))|"
@@ -439,7 +440,7 @@ inline bool IsRenderGeometryBindingAllowed(RenderGeometryRootLayout layout,
                (binding.registerSpace == 5u && binding.registerIndex <= 2u && binding.count == 1u) ||
                (binding.registerSpace == 6u && binding.registerIndex <= 1u && binding.count == 1u) ||
                (binding.registerSpace == 7u &&
-                ((binding.registerIndex <= 4u && binding.count == 1u) ||
+                (((binding.registerIndex <= 4u || binding.registerIndex == 11u) && binding.count == 1u) ||
                  ((binding.registerIndex == 5u || binding.registerIndex == 8u) && binding.count == 3u))) ||
                MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 8u, 0u);
     case RenderGeometryRootLayout::TraditionalCommand:

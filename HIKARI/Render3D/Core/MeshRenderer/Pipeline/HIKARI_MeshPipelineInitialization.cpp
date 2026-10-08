@@ -126,6 +126,7 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
     const CD3DX12_DESCRIPTOR_RANGE screenSpaceDepthPyramidRange = srvRange(1, 2, 7);
     const CD3DX12_DESCRIPTOR_RANGE screenSpacePackedSurfaceRange = srvRange(1, 3, 7);
     const CD3DX12_DESCRIPTOR_RANGE oceanSpectrumRange = srvRange(6u, 5u, 7u);
+    const CD3DX12_DESCRIPTOR_RANGE rayTracedShadowRange = srvRange(1u, 11u, 7u);
     CD3DX12_DESCRIPTOR_RANGE meshletOcclusionRanges[3]{};
     meshletOcclusionRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1u, 19u, 0u, 0u);
     meshletOcclusionRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1u, 0u, 8u, 1u);
@@ -180,6 +181,7 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
     params[ROOT_PARAM::ScreenSpaceTraceControl].InitAsConstants(2, 10, 0, kPixel);
     params[ROOT_PARAM::OceanSpectrumData].InitAsDescriptorTable(1u, &oceanSpectrumRange, kAll);
     params[ROOT_PARAM::OceanSpectrumControl].InitAsConstants(2u, 11u, 0u, kAll);
+    params[ROOT_PARAM::RayTracedShadow].InitAsDescriptorTable(1u, &rayTracedShadowRange, kPixel);
 
     // 零初期化した上で必要な欄だけを設定する（比較関数・境界色の既定値を持ち込まない）。
     const auto sampler = [](UINT shaderRegister, D3D12_FILTER filter, D3D12_TEXTURE_ADDRESS_MODE addressU,

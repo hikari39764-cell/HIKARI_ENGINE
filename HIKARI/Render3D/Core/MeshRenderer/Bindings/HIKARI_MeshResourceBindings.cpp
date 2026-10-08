@@ -327,13 +327,23 @@ void BindScreenSpaceTraceResources(const MeshBindingContext& ctx) {
     if (packedSurfaceSrv.ptr != 0) {
         BindDescriptorTableCached(ctx, ROOT_PARAM::ScreenSpacePackedSurface, packedSurfaceSrv);
     }
+    const bool rayShadowValid = ctx.passResources.rayTracedShadow.IsSampleable() &&
+                                ctx.passResources.rayTracedShadow.width == ctx.passResources.sceneDepth.width &&
+                                ctx.passResources.rayTracedShadow.height == ctx.passResources.sceneDepth.height;
+    const D3D12_GPU_DESCRIPTOR_HANDLE rayShadowSrv =
+        rayShadowValid ? ctx.passResources.rayTracedShadow.srv : fallbackSrv;
+    if (rayShadowSrv.ptr != 0) {
+        BindDescriptorTableCached(ctx, ROOT_PARAM::RayTracedShadow, rayShadowSrv);
+    }
 
     const bool boundTraceValid = traceInputValid && depthPyramidSrv.ptr != 0 && packedSurfaceSrv.ptr != 0;
     constexpr uint32_t kDepthTraceValid = 1u << 0;
     constexpr uint32_t kSceneColorCaptureValid = 1u << 1;
+    constexpr uint32_t kRayShadowValid = 1u << 2;
     const bool sceneColorCaptureValid = ctx.passResources.opaqueSceneColor.IsSampleable();
     const uint32_t constants[2] = {(boundTraceValid ? kDepthTraceValid : 0u) |
-                                       (sceneColorCaptureValid ? kSceneColorCaptureValid : 0u),
+                                       (sceneColorCaptureValid ? kSceneColorCaptureValid : 0u) |
+                                       (rayShadowValid && rayShadowSrv.ptr != 0 ? kRayShadowValid : 0u),
                                    boundTraceValid ? depthPyramid.mipCount : 0u};
     ctx.cmd->SetGraphicsRoot32BitConstants(ROOT_PARAM::ScreenSpaceTraceControl, 2u, constants, 0u);
     if (ctx.cache != nullptr) {

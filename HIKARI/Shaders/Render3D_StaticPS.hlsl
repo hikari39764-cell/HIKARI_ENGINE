@@ -416,16 +416,21 @@ float4 main(PSInput input) : SV_TARGET
     {
         screenAo = gSsaoTex.Load(int3(int2(input.position.xy), 0)).r;
     }
-    float shadowVisibility = costNoShadow
-        ? 1.0f
-        : SampleDirectionalVisibility(
-            input.worldPosWS,
-            geometricNormal,
-            HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
+    float shadowVisibility = 1.0f;
     if (!costNoShadow)
     {
-        shadowVisibility *= HikariContactShadow(input.worldPosWS, geometricNormal, input.position.xy,
-            HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
+        const uint receiveShadow = HikariForwardVertexMetaReceiveShadow(input.forwardMeta);
+        // 光線追跡の可視率があれば、カスケード影と接触影の代わりにそれを使う（不透明面は深度 prepass と同じ画素）。
+        if ((gScreenSpaceTraceFlags & HIKARI_SCREEN_SPACE_RAY_SHADOW_VALID) != 0u && receiveShadow != 0u &&
+            gShadowEnabled != 0u)
+        {
+            shadowVisibility = gRayTracedShadow.Load(int3(int2(input.position.xy), 0));
+        }
+        else
+        {
+            shadowVisibility = SampleDirectionalVisibility(input.worldPosWS, geometricNormal, receiveShadow) *
+                HikariContactShadow(input.worldPosWS, geometricNormal, input.position.xy, receiveShadow);
+        }
     }
     if (gDebugView == 8)
     {

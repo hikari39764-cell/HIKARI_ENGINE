@@ -3194,6 +3194,8 @@
     {"ui.quality.directionalShadow.pcfRadius", "フィルタ半径"}, {"ui.quality.directionalShadow.stabilize", "安定化"},
     {"ui.quality.directionalShadow.penumbraScale", "半影の倍率（0 で固定 PCF）"},
     {"ui.quality.directionalShadow.contactShadowLength", "接触影の長さ (m)"},
+    {"ui.quality.directionalShadow.rayTraced", "光線追跡の影（RT 対応 GPU、深度 prepass を有効化）"},
+    {"ui.quality.directionalShadow.rayTracedSamples", "光線追跡の影の画素あたり光線数"},
     {"ui.debugView.showShadowCascades", "影のカスケードを表示"},
     {"editor.ui.create.a.studio.point.light", "スタジオ用の点光源を追加"}, {"editor.ui.light.lumens", "光束 (lm)"},
     {"ui.vfx.text.Luminous Flux (lm)", "光束 (lm)"}, {"ui.environment.stars.intensity", "星の明るさ"},

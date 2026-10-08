@@ -200,6 +200,7 @@ void ReleaseScreenSpaceRuntimeState() {
     gScreenSpaceState.surfaceBuffer.Release();
     gScreenSpaceState.reflectionBuffer.Release();
     gScreenSpaceState.ssaoRenderer.Release();
+    gScreenSpaceState.rayTracedShadowRenderer.Release();
     gScreenSpaceState.depthVisibility.Release();
     RENDER3D::ReleaseTextureResource(gScreenSpaceState.fallbackAoTextureResource);
     gScreenSpaceState.fallbackAoTextureResource = {};
@@ -523,6 +524,25 @@ bool ExecuteScreenSpacePostOpaquePasses(ScreenSpaceRuntimeState& state,
 
     context.renderTargetAccess.EndDepthRead();
     return context.renderTargetAccess.Rebind();
+}
+
+bool ExecuteRayTracedShadowFromSceneDepth(ScreenSpaceRuntimeState& state,
+                                          const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
+                                          const RayTracedShadowInputs& inputs, ScreenSpaceFrameResult& result) {
+    result.rayTracedShadow = {};
+    if (context.graphics == nullptr || context.cmd == nullptr || !context.sceneDepth.IsSampleable() ||
+        !context.renderTargetAccess.BeginDepthRead()) {
+        return false;
+    }
+    RayTracedShadowInputs resolved = inputs;
+    resolved.sceneDepth = context.sceneDepth;
+    const bool rendered = state.rayTracedShadowRenderer.Render(*context.graphics, resolved);
+    context.renderTargetAccess.EndDepthRead();
+    if (!context.renderTargetAccess.Rebind() || !rendered) {
+        return false;
+    }
+    result.rayTracedShadow = state.rayTracedShadowRenderer.GetVisibilityView();
+    return result.rayTracedShadow.IsSampleable();
 }
 
 bool ExecuteBalancedSsaoFromSceneDepth(ScreenSpaceRuntimeState& state,

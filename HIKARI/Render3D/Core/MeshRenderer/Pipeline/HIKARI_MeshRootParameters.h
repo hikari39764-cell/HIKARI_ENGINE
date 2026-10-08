@@ -90,17 +90,19 @@ constexpr UINT ScreenSpaceTraceControl = 39;
 constexpr UINT OceanSpectrumData = 40;
 // Ocean spectrum validity / resolution -> b11
 constexpr UINT OceanSpectrumControl = 41;
+// Ray-traced sun visibility (R8, current frame) -> t11, space7
+constexpr UINT RayTracedShadow = 42;
 
-constexpr UINT Count = OceanSpectrumControl + 1;
+constexpr UINT Count = RayTracedShadow + 1;
 
 // Root descriptor は 2 DWORD、descriptor table は 1 DWORD。
 // Static/Skinned は JointPalette slot の型だけを置換し、同じ予算を使う。
 constexpr UINT RootDescriptorCount = 16u;
-constexpr UINT DescriptorTableCount = 21u;
+constexpr UINT DescriptorTableCount = 22u;
 constexpr UINT RootConstantDwordCount = 10u;
 constexpr UINT DwordCost = RootDescriptorCount * 2u + DescriptorTableCount + RootConstantDwordCount;
-static_assert(Count == 42u, "Update the mesh root-signature budget.");
-static_assert(DwordCost == 63u);
+static_assert(Count == 43u, "Update the mesh root-signature budget.");
+static_assert(DwordCost == 64u);
 static_assert(DwordCost <= 64u);
 
 } // namespace HIKARI::MESHRENDERER::ROOT_PARAM

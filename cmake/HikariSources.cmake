@@ -408,6 +408,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Surface/HIKARI_SceneSurfaceSet.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/ScreenSpace/HIKARI_SsaoRenderer.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/ScreenSpace/HIKARI_RayTracedShadowRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/ScreenSpace/HIKARI_SubsurfaceScatteringRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_Lightning.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_SkyRenderer.cpp"
