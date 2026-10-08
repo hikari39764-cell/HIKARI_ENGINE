@@ -83,6 +83,8 @@ void ApplyPbrCompatibilityData(const PbrMaterialAssetData& data, const AssetRegi
     outMaterial.SetOcclusionStrength(data.occlusionStrength);
     outMaterial.SetEmissiveFactor(data.emissiveFactor);
     outMaterial.SetEmissiveStrength(data.emissiveStrength);
+    outMaterial.SetSurfaceLayers(
+        {data.clearCoatFactor, data.clearCoatRoughnessFactor, data.transmissionFactor, data.ior});
 
     outMaterial.SetTextureSlot(
         MaterialTextureUsage::BaseColor,

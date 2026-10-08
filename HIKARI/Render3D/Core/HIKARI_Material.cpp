@@ -249,6 +249,16 @@ void Material::SetSpecularColorFactor(const MATH::Vec3& value) {
 
 const MATH::Vec3& Material::GetSpecularColorFactor() const { return specularColorFactor_; }
 
+void Material::SetSurfaceLayers(const MATH::Vec4& value) {
+    const MATH::Vec4 next{std::clamp(value.x, 0.0f, 1.0f), std::clamp(value.y, 0.0f, 1.0f),
+                          std::clamp(value.z, 0.0f, 1.0f), std::clamp(value.w, 1.0f, 3.0f)};
+    if (Equal(surfaceLayers_, next)) {
+        return;
+    }
+    surfaceLayers_ = next;
+    TouchRevision();
+}
+
 void Material::SetNormalScale(float value) {
     if (normalScale_ == value) {
         return;

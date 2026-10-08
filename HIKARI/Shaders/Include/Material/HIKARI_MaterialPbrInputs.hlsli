@@ -11,6 +11,10 @@ struct HikariMaterialPbrInputs
     float occlusion;
     float3 specularColor;
     float specularFactor;
+    float clearCoat;
+    float clearCoatRoughness;
+    float transmission;
+    float ior;
 };
 
 // 材質テクスチャと旧資産の応答を一度だけ解決する。
@@ -28,6 +32,10 @@ HikariMaterialPbrInputs HikariResolveMaterialPbrInputs(
     inputs.occlusion = 1.0f;
     inputs.specularColor = max(0.0f.xxx, materialData.specularParams.rgb);
     inputs.specularFactor = max(0.0f, materialData.specularParams.w);
+    inputs.clearCoat = saturate(materialData.surfaceLayers.x);
+    inputs.clearCoatRoughness = clamp(materialData.surfaceLayers.y, 0.04f, 1.0f);
+    inputs.transmission = saturate(materialData.surfaceLayers.z);
+    inputs.ior = clamp(materialData.surfaceLayers.w, 1.0f, 3.0f);
     if (materialData.hasMetallicRoughnessTexture != 0u)
     {
         const float4 mr = HikariSampleMaterialTextureSlot(

@@ -11,10 +11,19 @@ namespace {
 using namespace std::literals;
 
 constexpr std::array kNoBindings{std::string_view{}};
-constexpr std::array kPbrParameters{
-    "parameter.baseColor"sv,         "parameter.metallic"sv,      "parameter.roughness"sv,
-    "parameter.specular"sv,          "parameter.specularColor"sv, "parameter.normalScale"sv,
-    "parameter.occlusionStrength"sv, "parameter.emissive"sv,      "parameter.emissiveStrength"sv};
+constexpr std::array kPbrParameters{"parameter.baseColor"sv,
+                                    "parameter.metallic"sv,
+                                    "parameter.roughness"sv,
+                                    "parameter.specular"sv,
+                                    "parameter.specularColor"sv,
+                                    "parameter.normalScale"sv,
+                                    "parameter.occlusionStrength"sv,
+                                    "parameter.emissive"sv,
+                                    "parameter.emissiveStrength"sv,
+                                    "parameter.clearCoat"sv,
+                                    "parameter.clearCoatRoughness"sv,
+                                    "parameter.transmission"sv,
+                                    "parameter.ior"sv};
 constexpr std::array kRampParameters{
     "parameter.shadowThreshold"sv,  "parameter.shadowSoftness"sv,    "parameter.midThreshold"sv,
     "parameter.shadowTint"sv,       "parameter.midTint"sv,           "parameter.litTint"sv,
@@ -541,6 +550,14 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material, MaterialGraphN
                               material.pbr.emissiveFactor.z));
         EnsureParameter(graph, "parameter.emissiveStrength", "Emissive Strength",
                         Value(MaterialValueType::Float1, material.pbr.emissiveStrength));
+        EnsureParameter(graph, "parameter.clearCoat", "Clear Coat",
+                        Value(MaterialValueType::Float1, material.pbr.clearCoatFactor));
+        EnsureParameter(graph, "parameter.clearCoatRoughness", "Clear Coat Roughness",
+                        Value(MaterialValueType::Float1, material.pbr.clearCoatRoughnessFactor));
+        EnsureParameter(graph, "parameter.transmission", "Transmission",
+                        Value(MaterialValueType::Float1, material.pbr.transmissionFactor));
+        EnsureParameter(graph, "parameter.ior", "Index of Refraction",
+                        Value(MaterialValueType::Float1, material.pbr.ior));
         break;
     case MaterialNodeKind::RampDiffuse:
     case MaterialNodeKind::MultiRampDiffuse: {

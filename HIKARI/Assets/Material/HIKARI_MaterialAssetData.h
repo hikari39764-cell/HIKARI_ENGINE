@@ -42,6 +42,12 @@ struct PbrMaterialAssetData {
     float occlusionStrength = 1.0f;
     MATH::Vec3 emissiveFactor{0.0f, 0.0f, 0.0f};
     float emissiveStrength = 1.0f;
+    // クリアコート：F0 0.04 の第二の誘電体鏡面層。基底との配分は Fresnel で決まる。
+    float clearCoatFactor = 0.0f;
+    float clearCoatRoughnessFactor = 0.1f;
+    // 透過：Blend 材質が透明 pass で不透明の場面色を屈折して透かす割合と屈折率。
+    float transmissionFactor = 0.0f;
+    float ior = 1.5f;
 
     bool doubleSided = false;
     bool unlit = false;

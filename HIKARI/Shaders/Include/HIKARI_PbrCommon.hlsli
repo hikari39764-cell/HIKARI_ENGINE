@@ -83,7 +83,34 @@ struct HikariPbrShadingContext
     float3 specularEnergyCompensation;
     float3 environmentSpecularResponse;
     float3 diffuseEnergyWeight;
+    // クリアコート：F0 0.04 の第二の鏡面層。0 で無効。基底の粗さはコートで滑らかに見える分だけ持ち上げる。
+    float clearCoat;
+    float clearCoatRoughness;
 };
+
+static const float HIKARI_CLEAR_COAT_F0 = 0.04f;
+
+float HikariClearCoatFresnel(HikariPbrShadingContext context, float cosTheta)
+{
+    return HikariFresnelSchlick(cosTheta, HIKARI_CLEAR_COAT_F0.xxx, 1.0f).x * context.clearCoat;
+}
+
+// コートを足す。基底の層は Fresnel で減った分だけ暗くなる（Filament と同じ配分）。
+void HikariApplyClearCoat(inout HikariPbrShadingContext context, float clearCoat, float clearCoatRoughness)
+{
+    context.clearCoat = saturate(clearCoat);
+    context.clearCoatRoughness = clamp(clearCoatRoughness, 0.04f, 1.0f);
+    if (context.clearCoat <= 0.0f)
+        return;
+    context.roughness = lerp(context.roughness, max(context.roughness, context.clearCoatRoughness), context.clearCoat);
+    const float alpha = context.roughness * context.roughness;
+    context.distributionAlphaSquared = alpha * alpha;
+    context.visibilityViewRoot = sqrt(context.distributionAlphaSquared +
+        (1.0f - context.distributionAlphaSquared) * context.ndotView * context.ndotView);
+    const float coatView = HikariClearCoatFresnel(context, context.ndotView);
+    context.environmentSpecularResponse *= 1.0f - coatView;
+    context.diffuseEnergyWeight *= 1.0f - coatView;
+}
 
 void HikariSetPbrEnvironmentBrdf(inout HikariPbrShadingContext context, float2 envBrdf)
 {
@@ -135,6 +162,8 @@ HikariPbrShadingContext HikariBuildPbrShadingContextWithFootprint(
     context.visibilityViewRoot = sqrt(context.distributionAlphaSquared +
         (1.0f-context.distributionAlphaSquared) * ndotView * ndotView);
     HikariSetPbrEnvironmentBrdf(context, HikariAnalyticEnvBrdf(ndotView, context.roughness));
+    context.clearCoat = 0.0f;
+    context.clearCoatRoughness = 0.04f;
     return context;
 }
 
@@ -196,6 +225,21 @@ HikariDirectPbrLobes HikariEvaluateDirectPbrLobes(
 
     result.diffuse = diffuse * radiance * ndotl;
     result.specular = specular * radiance * ndotl;
+    if (context.clearCoat > 0.0f)
+    {
+        // コートの GGX（Kelemen の可視性）。基底の両ローブはコートに反射した分だけ減る。
+        const float ldoth = saturate(dot(l, h));
+        const float coatFresnel = HikariClearCoatFresnel(context, ldoth);
+        const float coatAlpha = context.clearCoatRoughness * context.clearCoatRoughness;
+        const float coatAlphaSquared = coatAlpha * coatAlpha;
+        const float ndoth = saturate(dot(context.normal, h));
+        const float coatDenom = 1.0f - ndoth * ndoth + ndoth * ndoth * coatAlphaSquared;
+        const float coatDistribution = coatAlphaSquared / max(HIKARI_PI * coatDenom * coatDenom, 1.0e-12f);
+        const float coatVisibility = 0.25f / max(ldoth * ldoth, 1.0e-4f);
+        const float coatLobe = coatDistribution * coatVisibility * coatFresnel;
+        result.diffuse *= 1.0f - coatFresnel;
+        result.specular = result.specular * (1.0f - coatFresnel) + coatLobe * radiance * ndotl;
+    }
     return result;
 }
 

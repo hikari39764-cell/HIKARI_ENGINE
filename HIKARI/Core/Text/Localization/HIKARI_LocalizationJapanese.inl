@@ -362,6 +362,8 @@
     {"ui.assetInspector.showImportedDirectory", "インポートディレクトリを表示"},
     {"ui.assetInspector.showSource", "ソースを表示"}, {"ui.assetInspector.sourcePath", "ソースパス"},
     {"ui.assetInspector.specular", "スペキュラ"}, {"ui.assetInspector.specularColor", "スペキュラカラー"},
+    {"ui.assetInspector.clearCoat", "クリアコート"}, {"ui.assetInspector.transmission", "透過"},
+    {"ui.assetInspector.ior", "屈折率"}, {"ui.assetInspector.transmissionHint", "屈折は Blend 材質でのみ有効です。"},
     {"ui.assetInspector.stateFormat", "状態: %s"}, {"ui.assetInspector.strength", "強度"},
     {"ui.assetInspector.tabArtifacts", "成果物"}, {"ui.assetInspector.tabDebugJson", "デバッグJSON"},
     {"ui.assetInspector.tabDependencies", "依存関係"}, {"ui.assetInspector.tabImportSettings", "インポート設定"},

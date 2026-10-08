@@ -10,11 +10,12 @@ struct HikariAmbientIblLobes
 
 HikariPbrShadingContext HikariBuildForwardPbrShadingContext(
     float3 baseColor, float metallic, float roughness, float3 specularColor,
-    float specularFactor, float3 normal, float3 view)
+    float specularFactor, float3 normal, float3 view, float clearCoat = 0.0f, float clearCoatRoughness = 0.04f)
 {
     HikariPbrShadingContext context = HikariBuildPbrShadingContext(
         baseColor, metallic, roughness, specularColor, specularFactor, normal, view);
     HikariApplyEnvironmentBrdf(context);
+    HikariApplyClearCoat(context, clearCoat, clearCoatRoughness);
     return context;
 }
 
@@ -59,8 +60,18 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
     // 空が遮られた所では空の反射の代わりに周囲の照り返し（拡散の E/pi）を映す（Lagarde の鏡面遮蔽）。
     const float skyOcclusion = saturate(pow(context.ndotView + skyVisibility, exp2(-16.0f * roughness - 1.0f)) -
         1.0f + skyVisibility);
-    const float3 specular = HikariSampleEnvironmentReflection(
+    float3 specular = HikariSampleEnvironmentReflection(
         worldPos, normalize(reflect(-v, n)), roughness, skyOcclusion, diffuseIbl) * context.environmentSpecularResponse;
+    float3 specularResponse = context.environmentSpecularResponse;
+    if (context.clearCoat > 0.0f)
+    {
+        // コートの環境反射。基底の応答は HikariApplyClearCoat で既にコートの Fresnel 分だけ減っている。
+        const float2 coatBrdf = HikariAnalyticEnvBrdf(context.ndotView, context.clearCoatRoughness);
+        const float coatResponse = (HIKARI_CLEAR_COAT_F0 * coatBrdf.x + coatBrdf.y) * context.clearCoat;
+        specular += HikariSampleEnvironmentReflection(worldPos, normalize(reflect(-v, n)), context.clearCoatRoughness,
+            skyOcclusion, diffuseIbl) * coatResponse;
+        specularResponse += coatResponse.xxx;
+    }
 
     float materialAo = saturate(occlusion);
     float ssao = saturate(screenAo);
@@ -78,7 +89,7 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
     HikariAmbientIblLobes result;
     result.diffuse = diffuse * diffuseAo;
     result.specular = specular * specularAo;
-    result.specularResponse = context.environmentSpecularResponse * specularAo;
+    result.specularResponse = specularResponse * specularAo;
     return result;
 }
 

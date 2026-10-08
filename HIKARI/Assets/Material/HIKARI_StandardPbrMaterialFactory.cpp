@@ -62,6 +62,13 @@ MaterialAssetData MakeStandardPbrMaterialAssetData(const PbrMaterialAssetData& p
                       {pbr.emissiveFactor.x, pbr.emissiveFactor.y, pbr.emissiveFactor.z, 0.0f}),
         MakeParameter("parameter.emissiveStrength", "Emissive Strength", MaterialValueType::Float1,
                       {pbr.emissiveStrength, 0.0f, 0.0f, 0.0f}),
+        MakeParameter("parameter.clearCoat", "Clear Coat", MaterialValueType::Float1,
+                      {pbr.clearCoatFactor, 0.0f, 0.0f, 0.0f}),
+        MakeParameter("parameter.clearCoatRoughness", "Clear Coat Roughness", MaterialValueType::Float1,
+                      {pbr.clearCoatRoughnessFactor, 0.0f, 0.0f, 0.0f}),
+        MakeParameter("parameter.transmission", "Transmission", MaterialValueType::Float1,
+                      {pbr.transmissionFactor, 0.0f, 0.0f, 0.0f}),
+        MakeParameter("parameter.ior", "Index of Refraction", MaterialValueType::Float1, {pbr.ior, 0.0f, 0.0f, 0.0f}),
     };
 
     data.graph.resources = {

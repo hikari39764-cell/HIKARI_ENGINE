@@ -54,6 +54,8 @@ struct MaterialFactorProjection {
     // 筆触の殻の uniform 設定（MaterialShellSettings の投影）。GpuMaterialData::shellStroke0/1 と同じ並び。
     MATH::Vec4 shellStroke0{1.0f, 0.0f, 0.0f, 0.0f};
     MATH::Vec4 shellStroke1{1.5f, 0.0f, 0.0f, 0.0f};
+    // 表面の層（Material::GetSurfaceLayers）。モデルの材質は既定（層なし）。
+    MATH::Vec4 surfaceLayers{0.0f, 0.1f, 0.0f, 1.5f};
 };
 
 // Material-owned projection into the shared C++/HLSL layout.

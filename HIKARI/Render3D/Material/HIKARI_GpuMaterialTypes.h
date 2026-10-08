@@ -127,9 +127,12 @@ struct GpuMaterialData {
     uint32_t shellStrokePadding[2]{};
     MATH::Vec4 shellStroke0{1.0f, 0.0f, 0.0f, 0.0f}; // x: 繰り返し, y: 回転, z: 色差, w: 筆触法線の強さ
     MATH::Vec4 shellStroke1{1.5f, 0.0f, 0.0f, 0.0f}; // x: 輪郭の冪, y: 被覆率, z: 層数, w: 厚み
+    // 表面の層：x クリアコート, y クリアコートの粗さ, z 透過, w 屈折率。
+    MATH::Vec4 surfaceLayers{0.0f, 0.1f, 0.0f, 1.5f};
 };
 
-static_assert(sizeof(GpuMaterialData) == 400u);
+static_assert(sizeof(GpuMaterialData) == 416u);
+static_assert(offsetof(GpuMaterialData, surfaceLayers) == 400u);
 static_assert(offsetof(GpuMaterialData, strokeMaskTextureDescriptorIndex) == 352u);
 static_assert(offsetof(GpuMaterialData, shellStroke0) == 368u);
 static_assert(offsetof(GpuMaterialData, materialProgramIndex) == 100u);

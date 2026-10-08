@@ -83,6 +83,10 @@ constexpr std::array kPbrSurfaceInputs{
     Fixed("Additive", MaterialValueType::Float3),
     Fixed("Outline", MaterialValueType::OutlineResponse),
     Fixed("Shell", MaterialValueType::ShellSettings),
+    Fixed("ClearCoat", MaterialValueType::Float1),
+    Fixed("ClearCoatRoughness", MaterialValueType::Float1),
+    Fixed("Transmission", MaterialValueType::Float1),
+    Fixed("Ior", MaterialValueType::Float1),
 };
 constexpr std::array kSurfaceOutput{Fixed("Surface", MaterialValueType::Surface)};
 constexpr std::array kParticleOutputInputs{

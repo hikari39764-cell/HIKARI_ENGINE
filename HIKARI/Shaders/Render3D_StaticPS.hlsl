@@ -10,6 +10,10 @@
 #include "Include/Surface/HIKARI_PainterlyShell.hlsli"
 #include "Include/Forward/HIKARI_StyleShading.hlsli"
 #include "Include/Forward/HIKARI_ContactShadow.hlsli"
+#include "Include/Surface/HIKARI_SurfaceTransmission.hlsli"
+
+// 透過の屈折で背景をずらす仮想の厚み [m]。
+static const float HIKARI_TRANSMISSION_THICKNESS = 0.15f;
 
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
 #include "Include/Forward/HIKARI_SurfaceFeatureShading.hlsli"
@@ -443,6 +447,7 @@ float4 main(PSInput input) : SV_TARGET
 
     // Unlit は表示参照の色。絶対量へ換算して霧と Pre-Exposure を他と同じ経路で通す。
     float3 shadedColor = HikariDisplayReferredToRadiance(albedo.rgb, gViewExposure);
+    float3 specularSum = 0.0f.xxx;
     if (neutralClay ||
         (materialData.materialFlags & MATERIAL_UNLIT) == 0)
     {
@@ -454,7 +459,9 @@ float4 main(PSInput input) : SV_TARGET
                 specularColor,
                 specularFactor,
                 n,
-                v);
+                v,
+                neutralClay || costNoMaterialExtras ? 0.0f : pbrInputs.clearCoat,
+                pbrInputs.clearCoatRoughness);
         // 光マップと環境光（探針・空・反射）は標準 PBR と風格化のどちらも使う。分岐ごとに評価すると pixel shader に
         // 二重に展開される。
         float3 surfaceLightmapIrradiance = 0.0f.xxx;
@@ -500,6 +507,7 @@ float4 main(PSInput input) : SV_TARGET
 
         shadedColor = directional.diffuse + directional.specular +
             local.diffuse + local.specular + ambientDiffuse + ambient.specular;
+        specularSum = directional.specular + local.specular + ambient.specular;
         // Lit と同じローブを分離し、別のデバッグ用 BRDF を持たない。
         // Post/Fog/SSR を混ぜずに材質と各光源の寄与を調べるための HDR 出力。
         if (gDebugView == HIKARI_DEBUG_VIEW_DIRECT_DIFFUSE)
@@ -557,7 +565,26 @@ float4 main(PSInput input) : SV_TARGET
                 response.directSpecular +
                 response.indirect +
                 HikariDisplayReferredToRadiance(response.additive, gViewExposure);
+            specularSum = response.directSpecular;
         }
+    }
+    // 透過：Blend 材質は不透明の場面色を屈折して透かし、鏡面だけを残す。背景は自分で読むので被覆は 1 に寄せる。
+    const bool transmissive = !neutralClay && !costNoMaterialExtras && pbrInputs.transmission > 0.0f &&
+        ((materialData.materialFlags & MATERIAL_ALPHA_BLEND) != 0u ||
+         (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_ALPHA_BLEND) != 0u) &&
+        (gScreenSpaceTraceFlags & HIKARI_SCREEN_SPACE_SCENE_COLOR_CAPTURE_VALID) != 0u;
+    if (transmissive)
+    {
+        const float3 refracted = refract(-v, n, rcp(pbrInputs.ior));
+        float2 uvOffset = 0.0f.xx;
+        (void)HikariProjectWorldDirectionToUvOffset(input.worldPosWS,
+            dot(refracted, refracted) > 1.0e-4f ? refracted : -v, HIKARI_TRANSMISSION_THICKNESS, gViewProj, uvOffset);
+        const float2 screenUv = input.position.xy * gScreenParams.zw;
+        const float2 refractedUv = clamp(screenUv + uvOffset, gScreenParams.zw, 1.0f - gScreenParams.zw);
+        const float3 background = HikariRemovePreExposure(gSceneColorTex.SampleLevel(gLinearClamp, refractedUv, 0.0f).rgb,
+            gViewExposure);
+        shadedColor = lerp(shadedColor, background * albedo.rgb + specularSum, pbrInputs.transmission);
+        albedo.a = lerp(albedo.a, 1.0f, pbrInputs.transmission);
     }
     if (gDebugView == 3)
     {

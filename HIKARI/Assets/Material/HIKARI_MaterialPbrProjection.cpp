@@ -298,6 +298,18 @@ PbrMaterialAssetData ProjectPbrMaterialAssetData(const MaterialAssetData& data) 
     value = {projected.emissiveStrength, 0.0f, 0.0f, 0.0f};
     ProjectParameter(data.graph, "parameter.emissiveStrength", value);
     projected.emissiveStrength = value.x;
+    value = {projected.clearCoatFactor, 0.0f, 0.0f, 0.0f};
+    ProjectParameter(data.graph, "parameter.clearCoat", value);
+    projected.clearCoatFactor = value.x;
+    value = {projected.clearCoatRoughnessFactor, 0.0f, 0.0f, 0.0f};
+    ProjectParameter(data.graph, "parameter.clearCoatRoughness", value);
+    projected.clearCoatRoughnessFactor = value.x;
+    value = {projected.transmissionFactor, 0.0f, 0.0f, 0.0f};
+    ProjectParameter(data.graph, "parameter.transmission", value);
+    projected.transmissionFactor = value.x;
+    value = {projected.ior, 0.0f, 0.0f, 0.0f};
+    ProjectParameter(data.graph, "parameter.ior", value);
+    projected.ior = value.x;
 
     const MaterialGraphNodeData* surface = FindConnectedPbrSurface(data.graph);
     if (surface == nullptr) {
@@ -327,6 +339,18 @@ PbrMaterialAssetData ProjectPbrMaterialAssetData(const MaterialAssetData& data) 
     value = {projected.specularColorFactor.x, projected.specularColorFactor.y, projected.specularColorFactor.z, 0.0f};
     projectNumeric("SpecularColor", value);
     projected.specularColorFactor = {value.x, value.y, value.z};
+    value = {projected.clearCoatFactor, 0.0f, 0.0f, 0.0f};
+    projectNumeric("ClearCoat", value);
+    projected.clearCoatFactor = value.x;
+    value = {projected.clearCoatRoughnessFactor, 0.0f, 0.0f, 0.0f};
+    projectNumeric("ClearCoatRoughness", value);
+    projected.clearCoatRoughnessFactor = value.x;
+    value = {projected.transmissionFactor, 0.0f, 0.0f, 0.0f};
+    projectNumeric("Transmission", value);
+    projected.transmissionFactor = value.x;
+    value = {projected.ior, 0.0f, 0.0f, 0.0f};
+    projectNumeric("Ior", value);
+    projected.ior = value.x;
 
     value = projected.baseColorFactor;
     if (ProjectConnectedTextureInput(data.graph, *surface, "BaseColor", projected.baseColorTexture, &value)) {

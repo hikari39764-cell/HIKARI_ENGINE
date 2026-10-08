@@ -149,6 +149,24 @@ bool DrawMaterialAssetEditor(AssetDatabase& assetDatabase, AssetRegistry& assetR
                   changed;
     }
 
+    if (ImGui::CollapsingHeader(TEXT::Localize("ui.assetInspector.clearCoat").c_str())) {
+        changed = ImGui::SliderFloat((TEXT::Localize("ui.assetInspector.factor") + "##ClearCoat").c_str(),
+                                     &editData.clearCoatFactor, 0.0f, 1.0f) ||
+                  changed;
+        changed = ImGui::SliderFloat((TEXT::Localize("ui.assetInspector.roughness") + "##ClearCoat").c_str(),
+                                     &editData.clearCoatRoughnessFactor, 0.0f, 1.0f) ||
+                  changed;
+    }
+
+    if (ImGui::CollapsingHeader(TEXT::Localize("ui.assetInspector.transmission").c_str())) {
+        changed = ImGui::SliderFloat((TEXT::Localize("ui.assetInspector.factor") + "##Transmission").c_str(),
+                                     &editData.transmissionFactor, 0.0f, 1.0f) ||
+                  changed;
+        changed =
+            ImGui::SliderFloat(TEXT::Localize("ui.assetInspector.ior").c_str(), &editData.ior, 1.0f, 3.0f) || changed;
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.transmissionHint").c_str());
+    }
+
     if (ImGui::CollapsingHeader(TEXT::Localize("ui.assetInspector.ambientOcclusion").c_str())) {
         changed =
             EDITOR::DrawMaterialTextureSlot(TEXT::Localize("ui.assetInspector.occlusion").c_str(),

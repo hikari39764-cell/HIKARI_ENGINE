@@ -297,6 +297,8 @@
     {"ui.assetInspector.shaderPbr", "着色器：PBR"}, {"ui.assetInspector.showImportedDirectory", "显示导入目录"},
     {"ui.assetInspector.showSource", "显示源文件"}, {"ui.assetInspector.sourcePath", "源路径"},
     {"ui.assetInspector.specular", "高光"}, {"ui.assetInspector.specularColor", "高光颜色"},
+    {"ui.assetInspector.clearCoat", "清漆层"}, {"ui.assetInspector.transmission", "透射"},
+    {"ui.assetInspector.ior", "折射率"}, {"ui.assetInspector.transmissionHint", "折射只在混合（Blend）模式的材质上生效。"},
     {"ui.assetInspector.stateFormat", "状态：%s"}, {"ui.assetInspector.strength", "强度"},
     {"ui.assetInspector.tabArtifacts", "产物"}, {"ui.assetInspector.tabDebugJson", "调试 JSON"},
     {"ui.assetInspector.tabDependencies", "依赖"}, {"ui.assetInspector.tabImportSettings", "导入设置"},
