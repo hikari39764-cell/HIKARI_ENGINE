@@ -43,6 +43,8 @@ enum class AssetType {
     Environment,
     Weather,
     RenderStyle,
+    ColorLut,
+    LightProfile,
     Unknown
 };
 

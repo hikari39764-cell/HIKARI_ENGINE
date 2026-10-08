@@ -103,7 +103,7 @@ bool DrawNameField(std::string& name) {
     return true;
 }
 
-// 表だけでは描けない項目: 空の資産の参照、光源の種類で意味の無い項目。
+// 表だけでは描けない項目: 空と色調整の資産の参照、設定で意味の無い項目。
 struct ProfileCustomFields {
     const AssetDatabase& database;
 
@@ -136,6 +136,21 @@ struct ProfileCustomFields {
         } else if constexpr (std::is_same_v<T, SunSettings>) {
             if (key.starts_with("fixed")) {
                 return object.mode != SunMode::Fixed;
+            }
+        } else if constexpr (std::is_same_v<T, ColorGradingSettings>) {
+            if (key == "lut") {
+                AssetFieldOptions options{};
+                options.label = "ui.environment.colorGrading.lut";
+                options.requiredType = AssetType::ColorLut;
+                options.drawLabel = false;
+                InspectorPropertyRow row(ResolveFieldLabel("ui.environment.colorGrading", key));
+                if (row.IsVisible()) {
+                    result.changed |= DrawAssetField(&database, options, object.lut);
+                }
+                return true;
+            }
+            if (key == "lutIntensity") {
+                return object.lut.empty();
             }
         }
         return false;

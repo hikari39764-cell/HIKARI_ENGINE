@@ -369,6 +369,11 @@ bool ExecuteTemporalGeometryPass(const GFX::Context& graphics, const TemporalInp
                                    inputs.frame.frameIndex - historyIt->second.frameIndex == 1u &&
                                    draw.objectVersion >= historyIt->second.objectVersion;
 
+        // 前のフレームから動いていない剛体はカメラの運動ベクトルのままで正しいので描かない（履歴だけ更新する）。
+        if (!draw.skinned && previousValid &&
+            std::memcmp(&historyIt->second.world, &draw.world, sizeof(MATH::Mat4)) == 0) {
+            continue;
+        }
         GeometryConstants geometry{};
         geometry.renderViewProj = inputs.frame.camera.viewProj;
         geometry.currentViewProj = inputs.frame.camera.unjitteredViewProj;

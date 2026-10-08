@@ -17,15 +17,44 @@ LocalLightGpuData BuildLocalLightGpuData(const SceneLightProvider& light) noexce
     gpu.sourceRadius = SanitizeLocalLightSourceRadius(light.sourceRadius);
     gpu.positionRange = {light.position.x, light.position.y, light.position.z, light.range};
     gpu.colorIntensity = {light.color.x, light.color.y, light.color.z, (std::max)(0.0f, light.intensity)};
-    if (light.type == SceneLightType::Spot) {
+    switch (light.type) {
+    case SceneLightType::Spot: {
         const MATH::Vec3 direction = ResolveSpotLightDirection(light);
         const SpotLightCone cone = ResolveSpotLightCone(light);
         gpu.directionInnerCos = {direction.x, direction.y, direction.z, cone.innerCos};
         gpu.outerConeCos = cone.outerCos;
         gpu.angularFalloff = cone.angularFalloff;
         gpu.kind |= static_cast<uint32_t>(LocalLightType::Spot);
-    } else {
-        gpu.directionInnerCos = {0.0f, 0.0f, 1.0f, 1.0f};
+        break;
+    }
+    case SceneLightType::Tube: {
+        const MATH::Vec3 axis = ResolveAreaLightTangent(light, {0.0f, 0.0f, 0.0f});
+        gpu.directionInnerCos = {axis.x, axis.y, axis.z, 0.5f * light.length};
+        gpu.kind |= static_cast<uint32_t>(LocalLightType::Tube);
+        break;
+    }
+    case SceneLightType::Rect: {
+        const MATH::Vec3 normal = ResolveSpotLightDirection(light);
+        const MATH::Vec3 tangent = ResolveAreaLightTangent(light, normal);
+        gpu.directionInnerCos = {normal.x, normal.y, normal.z, 0.5f * light.length};
+        gpu.shapeTangent = {tangent.x, tangent.y, tangent.z, 0.5f * light.height};
+        // 片面の Lambert 発光面は法線方向に光度 Φ/π を持つ（等方の Φ/4π の 4 倍）。
+        gpu.colorIntensity.w *= 4.0f;
+        gpu.kind |= static_cast<uint32_t>(LocalLightType::Rect);
+        break;
+    }
+    case SceneLightType::Point: {
+        const MATH::Vec3 forward = ResolveSpotLightDirection(light);
+        gpu.directionInnerCos = {forward.x, forward.y, forward.z, 1.0f};
+        break;
+    }
+    }
+    if (light.type == SceneLightType::Point || light.type == SceneLightType::Spot) {
+        // 配光とクッキーの水平の基準（ローカル +X）と、テクスチャの記述子番号 + 1 を整数値のまま float に詰めたもの
+        // （配光 + クッキー * 4096、2^24 未満なので正確に表せる）。
+        const MATH::Vec3 right = ResolveAreaLightTangent(light, ResolveSpotLightDirection(light));
+        const uint32_t textures = light.iesProfileTexture + light.cookieTexture * kLocalLightTextureIndexStride;
+        gpu.shapeTangent = {right.x, right.y, right.z, static_cast<float>(textures)};
     }
     return gpu;
 }
@@ -88,7 +117,7 @@ ClusterBounds ProjectLightBounds(const SceneLightProvider& light, const Camera3D
     if (!MATH::IsFinite(viewPosition))
         return bounds;
     const float viewDepth = -viewPosition.z;
-    const float range = (std::max)(light.range, 0.05f);
+    const float range = (std::max)(ResolveLocalLightInfluenceRadius(light), 0.05f);
     if (viewDepth + range < nearDistance || viewDepth - range > farDistance) {
         return bounds;
     }

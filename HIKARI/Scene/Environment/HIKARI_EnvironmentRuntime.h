@@ -9,8 +9,8 @@
 #include "Scene/Environment/HIKARI_EnvironmentSimulation.h"
 #include "Scene/Environment/HIKARI_SceneEnvironmentBinding.h"
 
-// シーンの環境の実行時の所有者（World サービス）。環境プロファイルと天気資産を解決し、
-// 時刻・天気のシミュレーションを進め、毎フレームの描画入力 SceneEnvironment を作る。
+// シーンの環境の実行時の所有者（World サービス）。環境プロファイルと天気資産、プロファイルが参照する色調整の
+// LUT を解決し、時刻・天気のシミュレーションを進め、毎フレームの描画入力 SceneEnvironment を作る。
 // 編集中のプレビューと Play で同じものを使い、実行時の変更はシーン文書へ書き戻さない。
 namespace HIKARI::ENVIRONMENT {
 
@@ -33,6 +33,8 @@ public:
     const SceneEnvironmentBinding& GetBinding() const noexcept { return binding_; }
     const EnvironmentProfile& GetProfile() const noexcept { return profile_; }
     const std::string& GetError() const noexcept { return error_; }
+    // プロファイルの色調整が参照する LUT。参照が無いか読めなければ nullptr（読めない理由は GetError）。
+    const std::shared_ptr<const ASSETS::COLOR::ColorLutAsset>& GetColorLut() const noexcept { return colorLut_; }
     EnvironmentSimulation& Simulation() noexcept { return simulation_; }
     const EnvironmentSimulation& Simulation() const noexcept { return simulation_; }
     const std::string& GetWeatherId() const noexcept { return weatherId_; }
@@ -49,6 +51,7 @@ private:
     const EnvironmentAssetStore* store_ = nullptr;
     SceneEnvironmentBinding binding_{};
     EnvironmentProfile profile_{};
+    std::shared_ptr<const ASSETS::COLOR::ColorLutAsset> colorLut_{};
     std::string error_{};
     std::string weatherId_{};
     std::string renderStyleId_{};

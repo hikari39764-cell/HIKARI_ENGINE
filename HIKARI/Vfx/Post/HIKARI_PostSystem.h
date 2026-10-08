@@ -36,9 +36,14 @@ class Camera3D;
 class RenderTarget2D;
 } // namespace HIKARI
 
+namespace HIKARI::ASSETS::COLOR {
+struct ColorLutAsset;
+}
+
 namespace HIKARI::CAMERA {
 struct DepthOfFieldSettings;
-}
+struct MotionBlurSettings;
+} // namespace HIKARI::CAMERA
 
 namespace HIKARI::RENDER3D {
 enum class DepthOfFieldQuality : uint8_t;
@@ -91,6 +96,13 @@ public:
     static void SetBloomSettings(const BloomSettings& settings);
     static void SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& frame);
     static void SetToneMappingSettings(const ToneMappingSettings& settings);
+    // 表示するカメラの運動ブラー。TAA の後、HDR の後処理の前に掛ける。
+    static void SetCameraMotionBlur(const CAMERA::MotionBlurSettings& settings, bool orthographic);
+    static void SetColorGrading(const ColorGradingSettings& settings,
+                                std::shared_ptr<const ASSETS::COLOR::ColorLutAsset> lut);
+    // 主ビューが最後に焼いた色調整の LUT（同じ環境を描く別のビューが借りる）。調整が無ければ nullptr。
+    // 主ビューを描かないフレームでは前回焼いたもののまま。
+    static ID3D12Resource* GetColorGradingLut() noexcept;
     static void SetExposureSettings(const RENDER3D::COLOR::ExposureSettings& settings);
     static void SetFxaaSettings(const FxaaSettings& settings);
     static void SetSunGlareFrame(const SunGlareFrame& frame);
@@ -187,6 +199,8 @@ private:
     static RENDER3D::RenderFrameToken temporalFrame_;
     static RENDER3D::TEMPORAL::TemporalResourceFrame temporalResources_;
     static RENDER3D::TEMPORAL::TemporalResourceFrame presentationTemporalResources_;
+    static CAMERA::MotionBlurSettings cameraMotionBlur_;
+    static bool cameraMotionBlurOrthographic_;
     static RENDER3D::SURFACE::RenderFrameSurfaceReceipt renderSurfaceReceipt_;
     static RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt renderGraphSessionReceipt_;
 };

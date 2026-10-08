@@ -30,7 +30,7 @@ inline constexpr const char* kAtmosphereAerialPerspectiveInterface =
     "AtmosphereLutCB:128;AerialPerspectiveView:b1 28 dwords mat4 inverseViewProj,float4 cameraPreExposure,float4 params,float4 cloudShading;RGBA16F 32^3 pre-exposed inscatter and mean transmittance;quadratic slices to maxDistance;cloud-shaded air lit by under-cloud sky";
 inline constexpr const char* kAtmosphereLutRoot =
     "0:CBV(b0);1:SRVTable(t0,1);2:SRVTable(t1,1);3:UAVTable(u0,1);4:Constants(b1,28);s0:linear-clamp;All;Flags(None)";
-// 体積霧の環境光の採取が読む材質 texture pool の大きさ（GFX::DESCRIPTOR::kUserSrvCount）。
+// 体積霧の環境光の採取と注入が読む材質 texture pool の大きさ（GFX::DESCRIPTOR::kUserSrvCount）。
 inline constexpr uint32_t kFogTexturePoolCount = 3968u;
 inline constexpr std::array<VolumetricShaderDefinition, static_cast<size_t>(VolumetricShaderProgram::Count)> kVolumetricShaders{
     {{"HIKARI.EngineShader.Render3D_VolumetricCloudNoise", "HIKARI.CloudNoise",
@@ -73,9 +73,9 @@ inline ShaderAssetContractExpectation MakeVolumetricShaderContract(VolumetricSha
 inline bool IsVolumetricBindingAllowed(VolumetricShaderProgram program, std::string_view entry,
                                        const ShaderResourceBinding& binding) {
     using Kind = ShaderResourceBindingKind;
-    // 環境光の採取は動的 GI の probe atlas を材質 texture pool（t20、user SRV 全体）から読む。
-    if (program == VolumetricShaderProgram::Fog && entry == "GatherAmbientCS" && binding.kind == Kind::ShaderResource &&
-        binding.registerSpace == 0u && binding.registerIndex == 20u)
+    // 環境光の採取は動的 GI の probe atlas、注入は局所光の配光とクッキーを材質 texture pool（t20、user SRV 全体）から読む。
+    if (program == VolumetricShaderProgram::Fog && (entry == "GatherAmbientCS" || entry == "InjectCS") &&
+        binding.kind == Kind::ShaderResource && binding.registerSpace == 0u && binding.registerIndex == 20u)
         return binding.count == kFogTexturePoolCount;
     if (static_cast<size_t>(program) >= kVolumetricShaders.size() || binding.count != 1u ||
         (program == VolumetricShaderProgram::CloudPass && entry == "FullscreenVS"))

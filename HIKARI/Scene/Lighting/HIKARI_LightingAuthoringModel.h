@@ -8,6 +8,7 @@
 
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeContract.h"
+#include "Scene/Components/Lighting/HIKARI_LightSettings.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
 namespace HIKARI::LIGHTING_AUTHORING {
@@ -22,19 +23,11 @@ struct LightAuthoring {
     bool objectEnabled = true;
     MATH::Vec3 position{};
     MATH::Vec3 rotationEulerDeg{};
+    // 回転から求めたローカル +Z（光の向き・発光面の法線）と +X（管の軸・長方形の幅）。
     MATH::Vec3 direction{0.0f, 0.0f, 1.0f};
-    RENDER3D::LIGHTING::SceneLightType type = RENDER3D::LIGHTING::SceneLightType::Point;
-    bool enabled = true;
-    MATH::Vec3 color{1.0f, 1.0f, 1.0f};
-    // 光束 [lm]。
-    float intensity = 800.0f;
-    float range = 10.0f;
-    float sourceRadius = 0.0f;
-    bool castsShadows = true;
-    float innerConeAngleDegrees = 25.0f;
-    float outerConeAngleDegrees = 35.0f;
-    float angularFalloff = 1.0f;
-    int priority = 0;
+    MATH::Vec3 tangent{1.0f, 0.0f, 0.0f};
+    // 作者値。enabled は物体の有効も畳み込んだ値。
+    LightSettings settings{};
 };
 
 struct ReflectionProbeAuthoring {

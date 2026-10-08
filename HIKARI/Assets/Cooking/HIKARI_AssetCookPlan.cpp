@@ -4,6 +4,8 @@
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
 #include "Assets/HIKARI_AssetRegistryBuilder.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
+#include "Assets/Color/HIKARI_ColorLutAsset.h"
+#include "Assets/Lighting/HIKARI_IesProfileAsset.h"
 #include "Assets/Environment/HIKARI_EnvironmentAsset.h"
 #include "Assets/Post/HIKARI_PostAsset.h"
 #include "Assets/RenderStyle/HIKARI_RenderStyleAsset.h"
@@ -134,6 +136,20 @@ bool CollectSourceCookDependencies(const AssetRecord& record, const std::filesys
             return false;
         ENVIRONMENT::WeatherPresetAsset weather;
         return ENVIRONMENT::LoadWeatherPresetAsset(path, weather, outMessage);
+    }
+    if (record.type == AssetType::ColorLut) {
+        std::filesystem::path path;
+        if (!ResolveContainedFilePath(projectRoot, record.sourcePath, path, outMessage))
+            return false;
+        ASSETS::COLOR::ColorLutAsset lut;
+        return ASSETS::COLOR::LoadColorLutAsset(path, lut, outMessage);
+    }
+    if (record.type == AssetType::LightProfile) {
+        std::filesystem::path path;
+        if (!ResolveContainedFilePath(projectRoot, record.sourcePath, path, outMessage))
+            return false;
+        ASSETS::LIGHTING::IesProfileAsset profile;
+        return ASSETS::LIGHTING::LoadIesProfileAsset(path, profile, outMessage);
     }
     if (record.type == AssetType::TextStyle) {
         std::filesystem::path path;

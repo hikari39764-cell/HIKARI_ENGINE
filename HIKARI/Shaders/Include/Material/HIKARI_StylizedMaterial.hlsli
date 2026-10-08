@@ -2,6 +2,7 @@
 #define HIKARI_STYLIZED_MATERIAL_INCLUDED
 
 #include "HIKARI_StylizedEyeMaterial.hlsli"
+#include "../Lighting/HIKARI_LocalLightTextures.hlsli"
 
 float3 HikariEvaluateAnalyticRamp(
     HikariMeshMaterialData materialData,
@@ -841,6 +842,7 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
         {
             continue;
         }
+        HikariApplyLocalLightTextures(gHikariLocalLights[index], lightSample);
         const float localVisibility = SampleLocalLightVisibility(
             gHikariLocalLights[index], worldPosition, surface.geometricNormalWS, receiveShadow);
         const HikariDirectPbrLobes local =

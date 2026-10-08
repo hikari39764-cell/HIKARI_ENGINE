@@ -51,6 +51,7 @@ POST::SunGlareFrame BuildSunGlareFrame(const Camera3D& camera, const SceneEnviro
     frame.shaftIntensity = settings.shaftIntensity;
     frame.shaftLength = settings.shaftLength;
     frame.shaftDecay = settings.shaftDecay;
+    frame.ghostIntensity = settings.ghostIntensity;
     return frame;
 }
 

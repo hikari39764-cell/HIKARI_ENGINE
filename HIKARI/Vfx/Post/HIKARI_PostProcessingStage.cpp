@@ -10,6 +10,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_GfxDebugConfig.h"
+#include "Render3D/Color/HIKARI_ColorGradingBake.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Vfx/Post/HIKARI_CombatScreenDistortionComposite.h"
@@ -27,13 +28,13 @@ void LogCombatVfx(CORE::LogLevel level, const std::string& message) noexcept {
 } // namespace
 
 void WriteToneMappingParameters(CommonParams& parameters, const ToneMappingSettings& settings, float residualExposure,
-                                float radialCurvature, float radialStrength) {
+                                float radialCurvature, float radialStrength, uint32_t gradingLutSize) {
     const auto color = RENDER3D::COLOR::BuildDisplayColorFrame(
         settings.whiteBalanceTemperature, settings.whiteBalanceTint, settings.contrast, settings.saturation);
     parameters.user[0] = {static_cast<float>(settings.curve), residualExposure, (std::max)(0.01f, settings.gamma),
                           0.0f};
     parameters.user[1] = {color.whiteBalanceR, color.whiteBalanceG, color.whiteBalanceB, color.contrast};
-    parameters.user[2] = {color.saturation, radialCurvature, radialStrength, 0.0f};
+    parameters.user[2] = {color.saturation, radialCurvature, radialStrength, static_cast<float>(gradingLutSize)};
 }
 
 void WriteFxaaParameters(CommonParams& parameters, int width, int height, const FxaaSettings& settings) {
@@ -101,6 +102,7 @@ void PostProcessingStage::Shutdown() {
     }
     sunGlareEffect_.reset();
     toneMappingEffect_.reset();
+    colorGradingLut_.Release(context_);
     fxaaEffect_.reset();
     ldrTarget_.Finalize();
     temporalOutput_.Finalize();
@@ -291,6 +293,11 @@ void PostProcessingStage::SetBloomSettings(const BloomSettings& settings) {
     bloomSettings_.radius = std::clamp(bloomSettings_.radius, 0.0f, 8.0f);
     bloomSettings_.downsampleCount =
         std::clamp<uint32_t>(bloomSettings_.downsampleCount, 1u, static_cast<uint32_t>(bloomLevels_.size()));
+}
+
+void PostProcessingStage::SetColorGrading(const ColorGradingSettings& settings,
+                                          std::shared_ptr<const ASSETS::COLOR::ColorLutAsset> lut) {
+    colorGradingLut_.SetSource(settings, std::move(lut));
 }
 
 void PostProcessingStage::SetToneMappingSettings(const ToneMappingSettings& settings) {
@@ -583,7 +590,7 @@ bool PostProcessingStage::ApplySunGlare(RenderTarget2D& source, RenderTarget2D& 
                               static_cast<float>(sceneDepthOwner.GetWidth()),
                               static_cast<float>(sceneDepthOwner.GetHeight())};
         parameters.user[4] = {sunGlareFrame_.shaftIntensity, sunGlareFrame_.shaftLength, sunGlareFrame_.shaftDecay,
-                              0.0f};
+                              sunGlareFrame_.ghostIntensity};
         sunGlareEffect_->ApplyCommonParams(parameters);
         rendered = sunGlareEffect_->BindAndDraw(quad);
     }
@@ -931,13 +938,18 @@ RenderTarget2D* PostProcessingStage::ResolveLdr(RenderTarget2D& source, DXGI_FOR
         ldrTarget_.EndCapture();
         return nullptr;
     }
-    quad.SetInputTexture(source.GetSrvHeap(), source.GetSrvGpu());
+    ID3D12Resource* gradingLut = colorGradingLut_.Prepare(context_, toneMappingSettings_.gamma);
+    const ToneMappingInputs inputs(context_, quad, source, gradingLut);
+    if (!inputs) {
+        quad.SetInputTexture(source.GetSrvHeap(), source.GetSrvGpu());
+    }
     CommonParams parameters = commonParams_;
     float radialCurvature = 0.0f;
     float radialStrength = 0.0f;
     GetRadialScreenWarp(radialCurvature, radialStrength);
     WriteToneMappingParameters(parameters, toneMappingSettings_, RENDER3D::COLOR::ResidualExposure(exposureState_),
-                               radialCurvature, radialStrength);
+                               radialCurvature, radialStrength,
+                               inputs && gradingLut ? RENDER3D::COLOR::kColorGradingLutSize : 0u);
     toneMappingEffect_->ApplyCommonParams(parameters);
     if (!toneMappingEffect_->BindAndDraw(quad)) {
         ldrTarget_.EndCapture();

@@ -20,6 +20,7 @@ constexpr BuiltinPostContent kBuiltinPostContent[]{
     {"engine.post.effect.painterly", "engine.post.profile.painterly", "Painterly", "Painterly"},
     {"engine.post.effect.sketch", "engine.post.profile.sketch", "Sketch", "Sketch"},
     {"engine.post.effect.outline", "engine.post.profile.outline", "Outline", "Outline"},
+    {"engine.post.effect.lens", "engine.post.profile.lens", "Lens", "Lens"},
 };
 
 bool ReadPass(const nlohmann::json& node, PostEffectPass& pass, std::string& error, const std::string& path) {

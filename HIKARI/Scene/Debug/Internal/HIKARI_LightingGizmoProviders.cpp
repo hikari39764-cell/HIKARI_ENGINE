@@ -1,6 +1,7 @@
 #include "Scene/Debug/Internal/HIKARI_LightingGizmoProviders.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -47,12 +48,42 @@ void DrawLight(const GameObject& object, const ComponentGizmoDrawContext& contex
     const MATH::Vec3 direction = WorldForward(world);
     SubmitProbeCenter(position, selected, kLightColor);
 
-    if (light->GetLightType() == LightComponentType::Point) {
+    using RENDER3D::LIGHTING::SceneLightType;
+    if (light->GetLightType() == SceneLightType::Point) {
         SubmitSphereBoundary(MATH::Mat4::Translate(position), light->GetRange(), kLightColor, selected);
         return;
     }
 
-    if (light->GetLightType() == LightComponentType::Spot) {
+    // 管は軸の線分、長方形は発光面の枠を描き、長方形はこの後に向きの矢印も描く。
+    const LightSettings& settings = light->GetSettings();
+    const MATH::Vec3 right = MATH::Normalize({world.m[0][0], world.m[0][1], world.m[0][2]});
+    const MATH::Vec3 up = MATH::Normalize({world.m[1][0], world.m[1][1], world.m[1][2]});
+    const auto submitEdge = [&](const MATH::Vec3& from, const MATH::Vec3& to) {
+        RENDERER3D::DEBUG::Stroke3D edge{};
+        edge.from = from;
+        edge.to = to;
+        edge.rgba = selected ? DRAW::kSelectionColor : kLightColor;
+        edge.depthMode = RENDERER3D::DEBUG::DebugDepthMode::XRay;
+        edge.thicknessPixels = selected ? DRAW::kSelectedStrokePixels : DRAW::kNormalStrokePixels;
+        RENDERER3D::DEBUG::SubmitStroke3D(edge);
+    };
+    if (light->GetLightType() == SceneLightType::Tube) {
+        const MATH::Vec3 half = right * (0.5f * settings.length);
+        submitEdge(position - half, position + half);
+        SubmitSphereBoundary(MATH::Mat4::Translate(position), light->GetRange(), kLightColor, selected);
+        return;
+    }
+    if (light->GetLightType() == SceneLightType::Rect) {
+        const MATH::Vec3 halfWidth = right * (0.5f * settings.length);
+        const MATH::Vec3 halfHeight = up * (0.5f * settings.height);
+        const std::array<MATH::Vec3, 4> corners{position - halfWidth - halfHeight, position + halfWidth - halfHeight,
+                                                position + halfWidth + halfHeight, position - halfWidth + halfHeight};
+        for (size_t index = 0; index < corners.size(); ++index) {
+            submitEdge(corners[index], corners[(index + 1u) % corners.size()]);
+        }
+    }
+
+    if (light->GetLightType() == SceneLightType::Spot) {
         const auto submitCone = [&](float angle, unsigned int color) {
             RENDERER3D::DEBUG::WireCone3D cone{};
             cone.origin = position;

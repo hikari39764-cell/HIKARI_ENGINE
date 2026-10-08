@@ -469,6 +469,10 @@ void DocumentSceneBase::Render() {
     state_->camera.presentation.Resolve(state_->camera.director, bloom, tone, exposure, screenEffects);
     POST::PostSystem::SetBloomSettings(bloom);
     POST::PostSystem::SetToneMappingSettings(tone);
+    POST::PostSystem::SetCameraMotionBlur(state_->camera.resolvedFrame.camera.GetMotionBlurSettings(),
+                                          state_->camera.resolvedFrame.camera.IsOrthographic());
+    POST::PostSystem::SetColorGrading(state_->lighting.environment.colorGrading,
+                                      state_->runtime.environment.GetColorLut());
     POST::PostSystem::SetExposureSettings(exposure);
     // 目の順応は実時間で進める（一時停止やスローでも露出は追従する）。
     POST::PostSystem::AdvanceExposure(TIME::GetFrameContext().unscaledDt,
@@ -513,6 +517,7 @@ void DocumentSceneBase::Render() {
     SceneEnvironment activeEnvironment = state_->lighting.environment;
     RENDER3D::LIGHTING::SceneLightingSet sceneLighting =
         LIGHTING_AUTHORING::BuildRuntimeSceneLightingSet(state_->identity.document, state_->runtime.world);
+    state_->assets.LightTextures().Resolve(state_->assets.Database(), state_->assets.Registry(), sceneLighting.lights);
     // VFX の光源出力はそのフレーム限りの一時光源。照明セットを組んだ
     // 直後に足し、方向光の解決より前に確定させる。
     if (const auto* vfxPlayback = state_->runtime.world.Services().Find<VFX::VfxPlaybackService>()) {

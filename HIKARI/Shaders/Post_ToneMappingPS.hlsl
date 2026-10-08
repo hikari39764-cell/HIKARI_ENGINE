@@ -1,6 +1,8 @@
 #include "Include/Post/HIKARI_PostEffectInterface.hlsli"
 
 Texture2D gSceneTex : register(t0);
+// 色調整の 3D LUT（表示の符号化した色で引く）。一辺の格子数は gUser[2].w、0 なら束ねていない。
+Texture3D gGradingLut : register(t1);
 SamplerState gSamp : register(s0);
 
 // Scene lighting stays linear HDR through the render pipeline. This pass
@@ -105,6 +107,13 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     const float readability = HikariScreenReadability(screenUv * .5f + .5f, resolution);
     color = lerp(color, max(sceneColor.rgb, 0.0f), readability);
     color = pow(saturate(color), 1.0f / gamma);
+    const float lutSize = gUser[2].w;
+    if (lutSize > 0.0f)
+    {
+        // 格子の中心を引く。読みやすさを保つ領域は調整しない。
+        const float3 lutUv = color * ((lutSize - 1.0f) / lutSize) + 0.5f / lutSize;
+        color = lerp(gGradingLut.SampleLevel(gSamp, lutUv, 0.0f).rgb, color, readability);
+    }
     // 8 bit への量子化で空のなめらかな階調に縞が出ないよう、画素ごとに ±1 段の三角分布の揺らぎを足す。
     const float2 pixel = input.position.xy;
     const float noiseA = frac(52.9829189f * frac(dot(pixel, float2(0.06711056f, 0.00583715f))));

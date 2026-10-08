@@ -40,6 +40,8 @@ enum class AssetImporterKind : uint8_t {
     Environment,
     Weather,
     RenderStyle,
+    ColorLut,
+    LightProfile,
     Count,
 };
 

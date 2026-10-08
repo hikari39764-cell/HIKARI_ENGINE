@@ -22,6 +22,13 @@ inline constexpr auto kDepthOfFieldSettingsFields = [](auto&& field) {
     field("farBlurRadius1080pPixels", &DepthOfFieldSettings::farBlurRadius1080pPixels,
           JSONFIELDS::Range{0.0, kMaxDepthOfFieldBlurRadius1080pPixels});
 };
+
+inline constexpr auto kMotionBlurSettingsFields = [](auto&& field) {
+    field("enabled", &MotionBlurSettings::enabled);
+    field("shutterAngleDegrees", &MotionBlurSettings::shutterAngleDegrees, JSONFIELDS::Range{0.0, 360.0});
+    field("maxBlur1080pPixels", &MotionBlurSettings::maxBlur1080pPixels,
+          JSONFIELDS::Range{0.0, kMaxMotionBlurBlur1080pPixels});
+};
 } // namespace
 
 DepthOfFieldSettings NormalizeDepthOfFieldSettings(DepthOfFieldSettings settings) noexcept {
@@ -42,6 +49,23 @@ void ReadDepthOfFieldSettings(const nlohmann::json& node, DepthOfFieldSettings& 
 nlohmann::json WriteDepthOfFieldSettings(const DepthOfFieldSettings& settings) {
     nlohmann::json node = nlohmann::json::object();
     JSONFIELDS::Write(node, NormalizeDepthOfFieldSettings(settings), kDepthOfFieldSettingsFields);
+    return node;
+}
+
+MotionBlurSettings NormalizeMotionBlurSettings(MotionBlurSettings settings) noexcept {
+    return JSONFIELDS::Sanitize(settings, kMotionBlurSettingsFields);
+}
+
+void ReadMotionBlurSettings(const nlohmann::json& node, MotionBlurSettings& settings) {
+    if (node.is_object()) {
+        JSONFIELDS::ReadLenient(node, settings, kMotionBlurSettingsFields);
+    }
+    settings = NormalizeMotionBlurSettings(settings);
+}
+
+nlohmann::json WriteMotionBlurSettings(const MotionBlurSettings& settings) {
+    nlohmann::json node = nlohmann::json::object();
+    JSONFIELDS::Write(node, NormalizeMotionBlurSettings(settings), kMotionBlurSettingsFields);
     return node;
 }
 

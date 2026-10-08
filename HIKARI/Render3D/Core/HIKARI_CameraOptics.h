@@ -23,4 +23,18 @@ struct DepthOfFieldSettings {
 DepthOfFieldSettings NormalizeDepthOfFieldSettings(DepthOfFieldSettings settings) noexcept;
 bool IsValidDepthOfFieldSettings(const DepthOfFieldSettings& settings) noexcept;
 
+inline constexpr float kMaxMotionBlurBlur1080pPixels = 64.0f;
+
+// 運動ブラー。シャッター角（360° で 1 フレームの間ずっと開く）が速度に掛かり、ブラーの最大長は 1080p 出力高を
+// 基準にした画素数。TAA の運動ベクトルを使うので、TAA/DLAA/DLSS の時だけ効く。
+struct MotionBlurSettings {
+    bool enabled = false;
+    float shutterAngleDegrees = 180.0f;
+    float maxBlur1080pPixels = 32.0f;
+
+    friend constexpr bool operator==(const MotionBlurSettings&, const MotionBlurSettings&) = default;
+};
+
+MotionBlurSettings NormalizeMotionBlurSettings(MotionBlurSettings settings) noexcept;
+
 } // namespace HIKARI::CAMERA

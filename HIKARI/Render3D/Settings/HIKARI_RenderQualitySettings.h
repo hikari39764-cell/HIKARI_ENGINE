@@ -99,6 +99,20 @@ inline constexpr TEXT::EnumName<DepthOfFieldQuality> kDepthOfFieldQualityNames[]
 };
 
 // 運動ブラーの標本数（Low 8、Medium 12、High 16）。Off はカメラの設定に関わらず掛けない。
+enum class MotionBlurQuality : uint8_t {
+    Off = 0,
+    Low,
+    Medium,
+    High,
+};
+
+inline constexpr TEXT::EnumName<MotionBlurQuality> kMotionBlurQualityNames[] = {
+    {MotionBlurQuality::Off, "Off"},
+    {MotionBlurQuality::Low, "Low"},
+    {MotionBlurQuality::Medium, "Medium"},
+    {MotionBlurQuality::High, "High"},
+};
+
 struct RenderResolution {
     int width = 0;
     int height = 0;
@@ -148,6 +162,7 @@ struct RenderQualitySettings {
     uint8_t frameGenerationMultiplier = 2;
     VolumetricLightingQuality volumetricLightingQuality = VolumetricLightingQuality::Balanced;
     DepthOfFieldQuality depthOfFieldQuality = DepthOfFieldQuality::Medium;
+    MotionBlurQuality motionBlurQuality = MotionBlurQuality::Medium;
     VolumetricCloudQuality volumetricCloudQuality = VolumetricCloudQuality::Balanced;
     // 光追（inline ray query）が無い GPU では動的 GI が Unsupported になり、空の光へ戻る。
     DynamicGiQuality dynamicGiQuality = DynamicGiQuality::Balanced;
@@ -201,6 +216,7 @@ const char* VolumetricCloudQualityLabel(VolumetricCloudQuality quality);
 const char* DynamicGiQualityLabel(DynamicGiQuality quality);
 const char* LocalShadowQualityLabel(LocalShadowQuality quality);
 const char* DepthOfFieldQualityLabel(DepthOfFieldQuality quality);
+const char* MotionBlurQualityLabel(MotionBlurQuality quality);
 
 bool IsTemporalAntiAliasingMode(RenderAntiAliasingMode mode);
 bool UsesTemporalJitter(RenderAntiAliasingMode mode);

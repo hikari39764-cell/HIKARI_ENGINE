@@ -119,6 +119,8 @@ struct SunGlareSettings {
     float shaftIntensity = 0.0f;
     float shaftLength = 0.55f;
     float shaftDecay = 0.94f;
+    // レンズ内面の反射の像（太陽と画面中心を結ぶ線上の淡い円盤）。光芒の強さに対する割合。
+    float ghostIntensity = 0.0f;
 };
 
 // 体積雲の層。被覆率・雲の種類・降水・巻雲・風は天気が毎フレーム与える（EnvironmentLightingFrame::clouds）。
@@ -251,6 +253,18 @@ struct ToneMappingSettings {
     float contrast = 1.15f;
     float saturation = 1.0f;
     float gamma = 2.2f;
+};
+
+// 表示の色の仕上げ。階調曲線と表示の符号化の後の色に、暗部・中間・明部の倍率（符号化した輝度で重みを分ける）と
+// .cube の 3D LUT（資産の GUID、空なら無し）を掛け、lutIntensity で LUT の前の色と混ぜる。
+struct ColorGradingSettings {
+    MATH::Vec3 shadowsTint{1.0f, 1.0f, 1.0f};
+    MATH::Vec3 midtonesTint{1.0f, 1.0f, 1.0f};
+    MATH::Vec3 highlightsTint{1.0f, 1.0f, 1.0f};
+    std::string lut{};
+    float lutIntensity = 1.0f;
+
+    bool operator==(const ColorGradingSettings&) const = default;
 };
 
 // 全画面後処理は後処理プロファイル資産を参照する（エンジン内蔵 ID かプロジェクト資産の GUID）。

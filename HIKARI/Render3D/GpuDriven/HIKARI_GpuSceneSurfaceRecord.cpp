@@ -390,6 +390,9 @@ uint32_t BuildInstanceFlags(const GpuSceneSurfaceRecord& record) {
     if (staticGeometry) {
         flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::StaticGeometry);
     }
+    if (record.isStatic) {
+        flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::StaticTransform);
+    }
     if (record.castShadow) {
         flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::CastShadow);
     }

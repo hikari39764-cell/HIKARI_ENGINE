@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Core/Math/HIKARI_Math3D.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeContract.h"
 
 namespace HIKARI::RENDER3D::LIGHTING {
@@ -26,9 +27,20 @@ struct CloudSolarVisibilityGpuData {
 static_assert(sizeof(CloudSolarVisibilityGpuData) == 64);
 
 // 局所光源。太陽と月は環境（SceneEnvironment::frame）が持つ。
+// 管は中心を通る線分（長さ length、向き tangent）、長方形は length x height の片面の発光面（法線 direction、
+// 幅の向き tangent）。
 enum class SceneLightType : uint8_t {
     Point,
     Spot,
+    Tube,
+    Rect,
+};
+
+inline constexpr TEXT::EnumName<SceneLightType> kSceneLightTypeNames[] = {
+    {SceneLightType::Point, "Point"},
+    {SceneLightType::Spot, "Spot"},
+    {SceneLightType::Tube, "Tube"},
+    {SceneLightType::Rect, "Rect"},
 };
 
 struct SceneLightProvider {
@@ -38,16 +50,27 @@ struct SceneLightProvider {
     SceneLightType type = SceneLightType::Point;
     MATH::Vec3 position{};
     MATH::Vec3 direction{0.0f, 0.0f, 1.0f};
+    // 管の軸・長方形の幅の向き（ローカル +X）。
+    MATH::Vec3 tangent{1.0f, 0.0f, 0.0f};
     MATH::Vec3 color{1.0f, 1.0f, 1.0f};
     // 光度 [cd]。距離の二乗で減衰し、range で滑らかに打ち切る。
     float intensity = 1.0f;
     float range = 5.0f;
     float sourceRadius = 0.0f;
+    // 管の長さ・長方形の幅と高さ [m]。
+    float length = 1.0f;
+    float height = 1.0f;
     bool castsShadows = false;
     float innerConeAngleDegrees = 25.0f;
     float outerConeAngleDegrees = 35.0f;
     float angularFalloff = 1.0f;
     int priority = 0;
+    // 点・スポットの配光（LightProfile 資産）とスポットのクッキー（Texture 資産）の GUID。
+    std::string iesProfile{};
+    std::string cookie{};
+    // 上の資産の描画用テクスチャの記述子番号 + 1（0 は無し）。描画の直前に LightTextureResolver が埋める。
+    uint32_t iesProfileTexture = 0u;
+    uint32_t cookieTexture = 0u;
 };
 
 struct ReflectionProbeProvider {

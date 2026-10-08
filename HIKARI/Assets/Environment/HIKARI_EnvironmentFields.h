@@ -126,6 +126,15 @@ constexpr auto kToneMappingFields = [](auto&& field) {
     field("gamma", &S::gamma, Range{0.01, 4.0});
 };
 
+constexpr auto kColorGradingFields = [](auto&& field) {
+    using S = ColorGradingSettings;
+    field("shadowsTint", &S::shadowsTint, Range{0.0, 2.0});
+    field("midtonesTint", &S::midtonesTint, Range{0.0, 2.0});
+    field("highlightsTint", &S::highlightsTint, Range{0.0, 2.0});
+    field("lut", &S::lut);
+    field("lutIntensity", &S::lutIntensity, Range{0.0, 1.0});
+};
+
 constexpr auto kBloomFields = [](auto&& field) {
     using S = BloomSettings;
     field("enabled", &S::enabled);
@@ -149,6 +158,7 @@ constexpr auto kSunGlareFields = [](auto&& field) {
     field("shaftIntensity", &S::shaftIntensity, Range{0.0, 8.0});
     field("shaftLength", &S::shaftLength, Range{0.01, 2.0});
     field("shaftDecay", &S::shaftDecay, Range{0.5, 0.999});
+    field("ghostIntensity", &S::ghostIntensity, Range{0.0, 4.0});
 };
 
 constexpr auto kAmbientOcclusionFields = [](auto&& field) {
@@ -205,6 +215,7 @@ void VisitProfileSections(Visitor&& visit) {
     visit("fog", &EnvironmentProfile::fog, kFogFields);
     visit("exposure", &EnvironmentProfile::exposure, kExposureFields);
     visit("toneMapping", &EnvironmentProfile::toneMapping, kToneMappingFields);
+    visit("colorGrading", &EnvironmentProfile::colorGrading, kColorGradingFields);
     visit("bloom", &EnvironmentProfile::bloom, kBloomFields);
     visit("sunGlare", &EnvironmentProfile::sunGlare, kSunGlareFields);
     visit("ambientOcclusion", &EnvironmentProfile::ambientOcclusion, kAmbientOcclusionFields);

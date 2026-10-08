@@ -112,12 +112,16 @@ void EnvironmentRuntime::Reset(const SceneEnvironmentBinding& binding) {
 void EnvironmentRuntime::RefreshProfile() {
     error_.clear();
     profile_ = {};
+    colorLut_.reset();
     if (store_ == nullptr) {
         error_ = "Environment assets are not configured.";
         return;
     }
     if (const auto asset = store_->LoadProfile(binding_.profileId, error_)) {
         profile_ = asset->profile;
+        if (!profile_.colorGrading.lut.empty()) {
+            colorLut_ = store_->LoadColorLut(profile_.colorGrading.lut, error_);
+        }
     }
 }
 

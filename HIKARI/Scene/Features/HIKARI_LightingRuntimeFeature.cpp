@@ -48,7 +48,7 @@ public:
             defaults.Serialize(properties);
         };
         light.presentation =
-            LightingPresentation("Light", "Directional, point, or spot light from the object transform.");
+            LightingPresentation("Light", "Point, spot, tube, or rect light from the object transform.");
 
         ComponentTypeInfo reflectionProbe{};
         reflectionProbe.typeName = "ReflectionProbeComponent";

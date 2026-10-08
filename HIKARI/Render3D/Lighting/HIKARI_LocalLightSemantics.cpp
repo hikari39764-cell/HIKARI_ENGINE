@@ -34,9 +34,30 @@ bool IsLocalLightUploadable(const SceneLightProvider& light) noexcept {
            std::isfinite(light.range) && light.range > 0.0f;
 }
 
+float ResolveLocalLightInfluenceRadius(const SceneLightProvider& light) noexcept {
+    switch (light.type) {
+    case SceneLightType::Tube: return light.range + 0.5f * light.length;
+    case SceneLightType::Rect:
+        return light.range + 0.5f * std::sqrt(light.length * light.length + light.height * light.height);
+    case SceneLightType::Point:
+    case SceneLightType::Spot: break;
+    }
+    return light.range;
+}
+
 MATH::Vec3 ResolveSpotLightDirection(const SceneLightProvider& light) noexcept {
     const MATH::Vec3 direction = Finite(light.direction) ? MATH::Normalize(light.direction) : MATH::Vec3{};
     return MATH::Length(direction) > 1e-6f ? direction : MATH::Vec3{0.0f, -1.0f, 0.0f};
+}
+
+MATH::Vec3 ResolveAreaLightTangent(const SceneLightProvider& light, const MATH::Vec3& normal) noexcept {
+    MATH::Vec3 tangent = Finite(light.tangent) ? light.tangent : MATH::Vec3{1.0f, 0.0f, 0.0f};
+    tangent = tangent - normal * MATH::Dot(tangent, normal);
+    if (MATH::Length(tangent) <= 1e-6f) {
+        tangent = std::abs(normal.x) < 0.9f ? MATH::Vec3{1.0f, 0.0f, 0.0f} : MATH::Vec3{0.0f, 0.0f, 1.0f};
+        tangent = tangent - normal * MATH::Dot(tangent, normal);
+    }
+    return MATH::Normalize(tangent);
 }
 
 SpotLightCone ResolveSpotLightCone(const SceneLightProvider& light) noexcept {

@@ -1,8 +1,12 @@
 #ifndef HIKARI_LOCAL_LIGHT_CONTRACT_INCLUDED
 #define HIKARI_LOCAL_LIGHT_CONTRACT_INCLUDED
 
+#include "HIKARI_AreaLightShading.hlsli"
+
 static const uint HIKARI_LOCAL_LIGHT_TYPE_POINT = 0u;
 static const uint HIKARI_LOCAL_LIGHT_TYPE_SPOT = 1u;
+static const uint HIKARI_LOCAL_LIGHT_TYPE_TUBE = 2u;
+static const uint HIKARI_LOCAL_LIGHT_TYPE_RECT = 3u;
 
 // Keep this layout synchronized with
 // RENDER3D::LIGHTING::LocalLightGpuData.
@@ -10,11 +14,16 @@ struct HikariLocalLightGpuData
 {
     float4 positionRange;
     float4 colorIntensity;
+    // 点: 配光の向き（ローカル +Z）。スポット: 向きと内側の cos。管: 軸と半長。長方形: 発光面の法線と半幅。
     float4 directionInnerCos;
     float outerConeCos;
     float angularFalloff;
     uint kind; // low byte: type, upper16: shadow first face + 1
+    // 点・スポットは発光球、管は管の半径。
     float sourceRadius;
+    // 長方形: 幅の向き（xyz）と半高（w）。点・スポット: 配光とクッキーの水平の基準（ローカル +X）と、
+    // w にテクスチャの記述子番号を整数値で（HIKARI_LocalLightTextures.hlsli、補間しない）。
+    float4 shapeTangent;
 };
 
 struct HikariLocalShadowData
@@ -33,6 +42,10 @@ struct HikariLocalLightSample
     float distanceToLight;
     float attenuation;
     float sourceHalfAngleSineSquared;
+    // 鏡面の代表点（面光源は反射方向に最も近い発光体上の点、ほかは directionToLight と同じ）と、その点からの
+    // 放射輝度（Karis 2013 の正規化込み）。
+    float3 specularDirectionToLight;
+    float3 specularRadiance;
 };
 
 // 見かけの円盤を立体角で一様に選ぶ。入力は sin^2(halfAngle/2)。
@@ -46,6 +59,17 @@ float3 HikariSampleEmitterCone(float3 axis, float halfAngleSineSquared, float2 s
     return axis * cosine + (tangent*cos(azimuth) + cross(axis,tangent)*sin(azimuth))*sine;
 }
 
+// range の手前で滑らかに 0 へ落とす窓。
+float HikariLocalLightRangeWindow(float distanceToLight, float range)
+{
+    if (range <= 0.0f || distanceToLight >= range)
+        return 0.0f;
+    const float normalizedDistance = distanceToLight / range;
+    const float squaredDistance = normalizedDistance * normalizedDistance;
+    const float window = saturate(1.0f - squaredDistance * squaredDistance);
+    return window * window;
+}
+
 // 光度 [cd] から照度 [lux] への距離減衰。逆二乗で、range の手前で滑らかに 0 へ落とす。
 // 距離の単位はメートル。発光体半径より内側は半径で頭打ちにする。
 float HikariLocalLightRangeAttenuation(
@@ -53,12 +77,7 @@ float HikariLocalLightRangeAttenuation(
     float range,
     float sourceRadius = 0.0f)
 {
-    if (range <= 0.0f || distanceToLight >= range)
-        return 0.0f;
-    const float normalizedDistance = distanceToLight / range;
-    const float squaredDistance = normalizedDistance * normalizedDistance;
-    const float window = saturate(1.0f - squaredDistance * squaredDistance);
-    return window * window / max(max(distanceToLight * distanceToLight,
+    return HikariLocalLightRangeWindow(distanceToLight, range) / max(max(distanceToLight * distanceToLight,
         sourceRadius * sourceRadius), 1e-4f);
 }
 
@@ -78,9 +97,86 @@ float HikariLocalLightConeAttenuation(
     return pow(weight, max(angularFalloff, 0.1f));
 }
 
+// 面光源（管・長方形）。representative point（Karis 2013）で方向を選び、拡散は形に沿って積分した照度、鏡面は
+// 反射方向 reflection（無ければ 0）に最も近い発光体上の点から求める。
+bool HikariResolveAreaLightSample(
+    HikariLocalLightGpuData light,
+    uint lightType,
+    float3 worldPosition,
+    float3 reflection,
+    float roughness,
+    out HikariLocalLightSample sample)
+{
+    const float3 center = light.positionRange.xyz;
+    const float3 axis = light.directionInnerCos.xyz;
+    const float halfExtent = light.directionInnerCos.w;
+    const float alpha = max(roughness * roughness, 1e-4f);
+    float3 closest;
+    float3 specularPoint;
+    float irradianceFactor;
+    float specularNormalization;
+    if (lightType == HIKARI_LOCAL_LIGHT_TYPE_TUBE)
+    {
+        const float3 start = center - axis * halfExtent;
+        const float segmentLength = 2.0f * halfExtent;
+        closest = start + axis * HikariClosestOnSegment(start, axis, segmentLength, worldPosition);
+        irradianceFactor =
+            HikariTubeIrradianceFactor(start, axis, segmentLength, worldPosition, light.sourceRadius);
+        specularPoint = any(reflection != 0.0f)
+            ? HikariTubeSpecularPoint(start, axis, segmentLength, worldPosition, reflection)
+            : closest;
+        const float specularDistance = max(length(specularPoint - worldPosition), 1e-3f);
+        // 線の長さで一方向に広がった鏡面の分だけ強さを下げる（Karis 2013、α = roughness²）。
+        specularNormalization = alpha / saturate(alpha + halfExtent / (2.0f * specularDistance));
+    }
+    else
+    {
+        const float3 tangent = light.shapeTangent.xyz;
+        const float halfHeight = light.shapeTangent.w;
+        // 片面の発光面。裏側は照らさない。
+        if (dot(worldPosition - center, axis) <= 0.0f)
+            return false;
+        closest = HikariClosestOnRect(center, axis, tangent, halfExtent, halfHeight, worldPosition);
+        const float area = 4.0f * halfExtent * halfHeight;
+        const float3 fromCenter = worldPosition - center;
+        const float centerDistanceSquared = max(dot(fromCenter, fromCenter), 1e-6f);
+        const float emitterCosine = saturate(dot(axis, fromCenter) * rsqrt(centerDistanceSquared));
+        const float closestDistanceSquared = dot(closest - worldPosition, closest - worldPosition);
+        irradianceFactor = emitterCosine / max(closestDistanceSquared, area * 0.31830988f);
+        specularPoint = any(reflection != 0.0f)
+            ? HikariRectSpecularPoint(center, axis, tangent, halfExtent, halfHeight, worldPosition, reflection)
+            : closest;
+        const float specularDistance = max(length(specularPoint - worldPosition), 1e-3f);
+        // 幅と高さの二方向に広がった分（Karis 2013 の (α/α')² を辺ごとに分けたもの）。
+        specularNormalization = alpha * alpha /
+            (saturate(alpha + halfExtent / (2.0f * specularDistance)) *
+             saturate(alpha + halfHeight / (2.0f * specularDistance)));
+    }
+    const float3 toLight = closest - worldPosition;
+    const float distanceToLight = length(toLight);
+    const float window = HikariLocalLightRangeWindow(distanceToLight, light.positionRange.w);
+    const float3 toSpecular = specularPoint - worldPosition;
+    const float specularDistance = length(toSpecular);
+    const float3 intensity = light.colorIntensity.rgb * light.colorIntensity.a;
+    sample.directionToLight = distanceToLight > 1e-5f ? toLight / distanceToLight : axis;
+    sample.distanceToLight = distanceToLight;
+    sample.attenuation = window * irradianceFactor;
+    sample.radiance = intensity * sample.attenuation;
+    sample.sourceHalfAngleSineSquared =
+        HikariLocalLightSourceHalfAngleSineSquared(distanceToLight, light.sourceRadius);
+    sample.specularDirectionToLight = specularDistance > 1e-5f ? toSpecular / specularDistance : sample.directionToLight;
+    sample.specularRadiance = intensity * window * saturate(specularNormalization) /
+        max(specularDistance * specularDistance, max(light.sourceRadius * light.sourceRadius, 1e-4f));
+    return sample.attenuation > 0.0f;
+}
+
+// reflection は鏡面の代表点を選ぶ反射方向（面光源だけが使う。0 なら拡散の代表点）、roughness は鏡面の
+// 正規化に使う知覚粗さ。
 bool HikariResolveLocalLightSample(
     HikariLocalLightGpuData light,
     float3 worldPosition,
+    float3 reflection,
+    float roughness,
     out HikariLocalLightSample sample)
 {
     sample.directionToLight = float3(0.0f, 1.0f, 0.0f);
@@ -88,8 +184,14 @@ bool HikariResolveLocalLightSample(
     sample.distanceToLight = 0.0f;
     sample.attenuation = 0.0f;
     sample.sourceHalfAngleSineSquared = 0.0f;
+    sample.specularDirectionToLight = sample.directionToLight;
+    sample.specularRadiance = 0.0f.xxx;
 
     const uint lightType = light.kind & 0xffu;
+    if (lightType == HIKARI_LOCAL_LIGHT_TYPE_TUBE || lightType == HIKARI_LOCAL_LIGHT_TYPE_RECT)
+    {
+        return HikariResolveAreaLightSample(light, lightType, worldPosition, reflection, roughness, sample);
+    }
     if (lightType != HIKARI_LOCAL_LIGHT_TYPE_POINT &&
         lightType != HIKARI_LOCAL_LIGHT_TYPE_SPOT)
     {
@@ -130,7 +232,18 @@ bool HikariResolveLocalLightSample(
     sample.attenuation = attenuation;
     sample.sourceHalfAngleSineSquared = HikariLocalLightSourceHalfAngleSineSquared(
         distanceToLight, light.sourceRadius);
+    sample.specularDirectionToLight = sample.directionToLight;
+    sample.specularRadiance = sample.radiance;
     return attenuation > 0.0f;
+}
+
+// 拡散の代表点だけを使う受け手（霧・光線追跡・風格化）。
+bool HikariResolveLocalLightSample(
+    HikariLocalLightGpuData light,
+    float3 worldPosition,
+    out HikariLocalLightSample sample)
+{
+    return HikariResolveLocalLightSample(light, worldPosition, 0.0f.xxx, 1.0f, sample);
 }
 
 uint HikariLocalShadowFace(float3 fromLight)
@@ -203,13 +316,14 @@ float HikariSampleLocalLightShadow(Texture2D atlas, SamplerComparisonState compa
     if (encodedFace == 0u || shadow.faceCount == 0u || shadow.tilesPerRow == 0u || shadow.tileResolution == 0u)
         return 1.0f;
     const uint type = light.kind & 255u;
-    const uint faceCount = type == HIKARI_LOCAL_LIGHT_TYPE_POINT ? 6u : 1u;
+    // 管と長方形は中心から点光源と同じ六面で影を取る。
+    const uint faceCount = type == HIKARI_LOCAL_LIGHT_TYPE_SPOT ? 1u : 6u;
     const uint firstFace = encodedFace - 1u;
     if (firstFace + faceCount > min(shadow.faceCount, 16u)) return 1.0f;
     const float3 fromLight = worldPosWS - light.positionRange.xyz;
     const float distanceToLight = length(fromLight);
     if (distanceToLight < 1e-5f) return 1.0f;
-    const uint face = firstFace + (type == HIKARI_LOCAL_LIGHT_TYPE_POINT
+    const uint face = firstFace + (type != HIKARI_LOCAL_LIGHT_TYPE_SPOT
         ? HikariLocalShadowFace(fromLight) : 0u);
     float4 clip = mul(shadow.viewProj[face], float4(worldPosWS, 1.0f));
     if (!all(isfinite(clip)) || clip.w <= 1e-6f) return 1.0f;

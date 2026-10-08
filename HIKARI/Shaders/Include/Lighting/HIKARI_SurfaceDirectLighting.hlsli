@@ -1,5 +1,6 @@
 #ifndef HIKARI_SURFACE_DIRECT_LIGHTING_INCLUDED
 #define HIKARI_SURFACE_DIRECT_LIGHTING_INCLUDED
+#include "HIKARI_LocalLightTextures.hlsli"
 HikariDirectPbrLobes AccumulateLocalLightPbrLobes(
     HikariPbrShadingContext pbrContext,
     float3 worldPosWS,
@@ -11,6 +12,7 @@ HikariDirectPbrLobes AccumulateLocalLightPbrLobes(
     const uint2 cluster = HikariResolveLocalLightCluster(
         pixelPosition,
         HikariCameraViewDepth(worldPosWS));
+    const float3 reflection = reflect(-pbrContext.view, pbrContext.normal);
     [loop]
     for (uint slot = 0u; slot < cluster.y; ++slot)
     {
@@ -19,14 +21,25 @@ HikariDirectPbrLobes AccumulateLocalLightPbrLobes(
         if (!HikariResolveLocalLightSample(
                 gHikariLocalLights[i],
                 worldPosWS,
+                reflection,
+                pbrContext.roughness,
                 lightSample))
         {
             continue;
         }
-        const HikariDirectPbrLobes lobes = HikariEvaluateDirectPbrLobes(
+        HikariApplyLocalLightTextures(gHikariLocalLights[i], lightSample);
+        HikariDirectPbrLobes lobes = HikariEvaluateDirectPbrLobes(
             HikariFilterLocalPbrContext(pbrContext, footprint, lightSample.directionToLight,
                 lightSample.distanceToLight, lightSample.sourceHalfAngleSineSquared),
             lightSample.directionToLight, lightSample.radiance);
+        if (any(lightSample.specularDirectionToLight != lightSample.directionToLight))
+        {
+            // 面光源の鏡面は反射方向に最も近い発光体上の点から取る。
+            lobes.specular = HikariEvaluateDirectPbrLobes(
+                HikariFilterLocalPbrContext(pbrContext, footprint, lightSample.specularDirectionToLight,
+                    lightSample.distanceToLight, lightSample.sourceHalfAngleSineSquared),
+                lightSample.specularDirectionToLight, lightSample.specularRadiance).specular;
+        }
         const float visibility = SampleLocalLightVisibility(
             gHikariLocalLights[i], worldPosWS, geometricNormalWS, receiveShadow);
         sum.diffuse += lobes.diffuse * visibility;

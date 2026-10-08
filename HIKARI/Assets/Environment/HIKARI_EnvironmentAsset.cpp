@@ -184,6 +184,9 @@ std::vector<AssetDependencyDesc> CollectEnvironmentProfileDependencies(const Env
     if (profile.sky.source == SkySource::Panorama && IsProjectAssetReference(profile.sky.panoramaCloudAsset, {})) {
         AddDependency(dependencies, profile.sky.panoramaCloudAsset, "Environment.PanoramaCloud");
     }
+    if (IsProjectAssetReference(profile.colorGrading.lut, {})) {
+        AddDependency(dependencies, profile.colorGrading.lut, "Environment.ColorLut");
+    }
     if (IsProjectAssetReference(profile.defaultWeather, kBuiltinWeatherPrefix)) {
         AddDependency(dependencies, profile.defaultWeather, "Environment.Weather");
     }

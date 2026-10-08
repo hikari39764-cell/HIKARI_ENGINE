@@ -30,6 +30,10 @@ public:
     float GetOrthographicHeight() const { return orthographicHeight_; }
     void SetDepthOfFieldSettings(const CAMERA::DepthOfFieldSettings& settings);
     const CAMERA::DepthOfFieldSettings& GetDepthOfFieldSettings() const noexcept { return depthOfFieldSettings_; }
+    void SetMotionBlurSettings(const CAMERA::MotionBlurSettings& settings) {
+        motionBlurSettings_ = CAMERA::NormalizeMotionBlurSettings(settings);
+    }
+    const CAMERA::MotionBlurSettings& GetMotionBlurSettings() const noexcept { return motionBlurSettings_; }
 
 private:
     MATH::Vec3 eye_{0.0f, 0.0f, -5.0f};
@@ -42,6 +46,7 @@ private:
     bool orthographic_ = false;
     float orthographicHeight_ = 10.0f;
     CAMERA::DepthOfFieldSettings depthOfFieldSettings_{};
+    CAMERA::MotionBlurSettings motionBlurSettings_{};
 
     MATH::Mat4 view_ = MATH::Mat4::Identity();
     MATH::Mat4 proj_ = MATH::Mat4::Identity();

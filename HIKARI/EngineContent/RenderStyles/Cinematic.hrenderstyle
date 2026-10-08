@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "name": "Cinematic",
+  "post": [
+    {
+      "profile": "engine.post.profile.lens",
+      "enabled": true
+    }
+  ]
+}

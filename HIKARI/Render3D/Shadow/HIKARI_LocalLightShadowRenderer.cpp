@@ -137,7 +137,7 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
         if (std::any_of(state.cache.begin(), state.cache.end(),
                         [&](const auto& old) { return SameLight(old, sourceIndex, light); }))
             importance *= 1.15;
-        candidates.push_back({sourceIndex, light.type == SceneLightType::Point ? 6u : 1u, light.priority, importance});
+        candidates.push_back({sourceIndex, light.type == SceneLightType::Spot ? 1u : 6u, light.priority, importance});
     }
     state.stats.requestedLights = uint32_t(candidates.size());
     if (candidates.empty())

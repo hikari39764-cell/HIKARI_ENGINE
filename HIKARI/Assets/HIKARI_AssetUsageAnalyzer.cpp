@@ -285,6 +285,11 @@ AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDa
                                      assetDatabase, engineTextures, summary);
                     }
                 }
+            } else if (component.type == "LightComponent") {
+                AddReference(component.properties.value("iesProfile", std::string{}), owner, "Light IES Profile",
+                             assetDatabase, engineTextures, summary);
+                AddReference(component.properties.value("cookie", std::string{}), owner, "Light Cookie", assetDatabase,
+                             engineTextures, summary);
             } else if (component.type == "ReflectionProbeComponent") {
                 AddReference(component.properties.value("sourceCubemapAsset", std::string{}), owner,
                              "Reflection Probe Cubemap", assetDatabase, engineTextures, summary);

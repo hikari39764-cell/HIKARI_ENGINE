@@ -4,6 +4,7 @@
 #include <cctype>
 #include <memory>
 #include <numbers>
+#include <optional>
 #include <span>
 #include <unordered_set>
 #include <vector>
@@ -31,6 +32,7 @@
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntimeConversion.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
+#include "Render3D/Resources/HIKARI_SceneTextureAssetRequest.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
@@ -488,6 +490,11 @@ void SceneRuntimeBuilder::CollectObjectDependencies(const SceneObjectData& objec
                     dependencies.spriteMaterialAssetIds.insert(guid->get_ref<const std::string&>());
                 }
             }
+        } else if (component.type == "LightComponent") {
+            const std::string cookie = component.properties.value("cookie", std::string{});
+            if (!cookie.empty()) {
+                dependencies.textureAssetIds.insert(cookie);
+            }
         } else if (component.type == "VfxPlayerComponent") {
             const auto slots = component.properties.find("slots");
             if (slots == component.properties.end() || !slots->is_array()) {
@@ -557,15 +564,10 @@ bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependen
     }
 
     for (const std::string& textureId : dependencies.textureAssetIds) {
-        const auto* texture = assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{textureId});
-        if (texture == nullptr || texture->dimension != TextureAssetDimension::Texture2D ||
-            texture->sourcePath.empty()) {
-            continue;
+        if (std::optional<RENDER3D::TextureResourceLoadRequest> request =
+                RENDER3D::FindSceneTextureAssetRequest(assetRegistry, textureId)) {
+            AddTextureRequest(loadPlan, std::move(request->name), std::move(request->path), request->colorSpace);
         }
-        AddTextureRequest(loadPlan, "runtime_world_sprite/" + textureId, texture->sourcePath,
-                          texture->colorSpace == TextureAssetColorSpace::Linear
-                              ? RENDER3D::TextureResourceColorSpace::Linear
-                              : RENDER3D::TextureResourceColorSpace::Srgb);
     }
 
     if (!dependencies.spriteAssetIds.empty() && spriteAssetStore == nullptr) {

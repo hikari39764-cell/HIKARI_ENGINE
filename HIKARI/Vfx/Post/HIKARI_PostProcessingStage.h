@@ -21,6 +21,7 @@
 #include "Render3D/Vfx/HIKARI_ActionPostReactionFrameSource.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
 #include "Vfx/Post/HIKARI_ActionScreenImpulseProvider.h"
+#include "Vfx/Post/HIKARI_ColorGradingLut.h"
 #include "Vfx/Post/HIKARI_PostChain.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Vfx/Post/HIKARI_PostProcessingTypes.h"
@@ -65,6 +66,8 @@ public:
     void GetRadialScreenWarp(float& curvature, float& strength) const noexcept;
     void SetBloomSettings(const BloomSettings& settings);
     void SetToneMappingSettings(const ToneMappingSettings& settings);
+    void SetColorGrading(const ColorGradingSettings& settings, std::shared_ptr<const ASSETS::COLOR::ColorLutAsset> lut);
+    ID3D12Resource* GetColorGradingLut() const noexcept { return colorGradingLut_.GetCurrent(); }
     void SetExposureSettings(const RENDER3D::COLOR::ExposureSettings& settings);
     void SetFxaaSettings(const FxaaSettings& settings);
     void SetSunGlareFrame(const SunGlareFrame& frame);
@@ -197,6 +200,7 @@ private:
     uint32_t activeBloomLevelCount_ = 0;
     std::unique_ptr<PostEffect> sunGlareEffect_{};
     std::unique_ptr<PostEffect> toneMappingEffect_{};
+    ColorGradingLut colorGradingLut_{};
     std::unique_ptr<PostEffect> fxaaEffect_{};
     std::unique_ptr<PostEffect> actionScreenImpulseEffect_{};
     ActionScreenImpulseProvider actionScreenImpulseProvider_{};

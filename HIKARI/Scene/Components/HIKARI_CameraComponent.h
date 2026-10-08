@@ -22,6 +22,7 @@ public:
     float GetNearClip() const noexcept;
     float GetFarClip() const noexcept;
     const CAMERA::DepthOfFieldSettings& GetDepthOfFieldSettings() const noexcept { return depthOfFieldSettings_; }
+    const CAMERA::MotionBlurSettings& GetMotionBlurSettings() const noexcept { return motionBlurSettings_; }
     bool IsOrthographic() const noexcept { return orthographic_; }
     float GetOrthographicHeight() const noexcept { return orthographicHeight_; }
     float GetPixelGridSize() const noexcept { return pixelSnap_ ? 1.0f / pixelsPerUnit_ : 0.0f; }
@@ -36,6 +37,7 @@ private:
     float nearClip_ = Camera3D::kDefaultNearZ;
     float farClip_ = Camera3D::kDefaultFarZ;
     CAMERA::DepthOfFieldSettings depthOfFieldSettings_{};
+    CAMERA::MotionBlurSettings motionBlurSettings_{};
 };
 
 } // namespace HIKARI

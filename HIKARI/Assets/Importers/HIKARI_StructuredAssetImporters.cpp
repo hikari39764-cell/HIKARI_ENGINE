@@ -3,6 +3,8 @@
 #include "Assets/Importers/HIKARI_AssetImporterRegistry.h"
 #include "Assets/Animation/HIKARI_AnimationStateMachineAsset.h"
 #include "Assets/Camera/HIKARI_GameplayCameraAsset.h"
+#include "Assets/Color/HIKARI_ColorLutAsset.h"
+#include "Assets/Lighting/HIKARI_IesProfileAsset.h"
 #include "Assets/Dialogue/HIKARI_DialogueAsset.h"
 #include "Assets/Sequence/HIKARI_SequenceAsset.h"
 #include "Assets/Ui/HIKARI_UiAnimationAsset.h"
@@ -231,6 +233,33 @@ AssetImportResult ImportRenderStyle(const std::filesystem::path& sourcePath, con
     return result;
 }
 
+AssetImportResult ImportColorLut(const std::filesystem::path& sourcePath, const AssetGuid&) {
+    AssetImportResult result;
+    ASSETS::COLOR::ColorLutAsset lut;
+    result.success = ASSETS::COLOR::LoadColorLutAsset(sourcePath, lut, result.message);
+    if (result.success) {
+        result.message = "Color LUT validated";
+    }
+    result.diagnosticsJson = nlohmann::json{{"valid", result.success}, {"title", lut.title}, {"size", lut.size}}.dump();
+    return result;
+}
+
+AssetImportResult ImportLightProfile(const std::filesystem::path& sourcePath, const AssetGuid&) {
+    AssetImportResult result;
+    ASSETS::LIGHTING::IesProfileAsset profile;
+    result.success = ASSETS::LIGHTING::LoadIesProfileAsset(sourcePath, profile, result.message);
+    if (result.success) {
+        result.message = "IES light profile validated";
+    }
+    result.diagnosticsJson = nlohmann::json{
+        {"valid", result.success},
+        {"verticalAngles", profile.verticalAngles.size()},
+        {"horizontalAngles", profile.horizontalAngles.size()},
+        {"maximumCandela",
+         profile.maximumCandela}}.dump();
+    return result;
+}
+
 AssetImportResult ImportWeather(const std::filesystem::path& sourcePath, const AssetGuid&) {
     AssetImportResult result;
     ENVIRONMENT::WeatherPresetAsset asset;
@@ -258,5 +287,7 @@ void RegisterStructuredAssetImporters(AssetImporterRegistry& registry) {
     add(ImporterKind::Environment, nullptr, ImportEnvironment);
     add(ImporterKind::Weather, nullptr, ImportWeather);
     add(ImporterKind::RenderStyle, nullptr, ImportRenderStyle);
+    add(ImporterKind::ColorLut, nullptr, ImportColorLut);
+    add(ImporterKind::LightProfile, nullptr, ImportLightProfile);
 }
 } // namespace HIKARI

@@ -30,9 +30,11 @@ struct FxaaSettings {
 };
 
 // プレビューと本編が同じ shader パラメータ契約を使う。
-// residualExposure は Pre-Exposure 済みの HDR に残りを掛ける E/P。
+// residualExposure は Pre-Exposure 済みの HDR に残りを掛ける E/P。gradingLutSize は t1 に束ねた色調整の
+// LUT の一辺（0 なら引かない）。
 void WriteToneMappingParameters(CommonParams& parameters, const ToneMappingSettings& settings, float residualExposure,
-                                float radialCurvature = 0.0f, float radialStrength = 0.0f);
+                                float radialCurvature = 0.0f, float radialStrength = 0.0f,
+                                uint32_t gradingLutSize = 0u);
 void WriteFxaaParameters(CommonParams& parameters, int width, int height, const FxaaSettings& settings = {});
 
 // Per-view, scene-linear solar glare input.  The render pipeline derives
@@ -57,6 +59,7 @@ struct SunGlareFrame {
     float shaftIntensity = 0.0f;
     float shaftLength = 0.55f;
     float shaftDecay = 0.94f;
+    float ghostIntensity = 0.0f;
 };
 
 struct SunGlareDebugStats {

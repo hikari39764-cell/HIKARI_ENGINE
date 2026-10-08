@@ -13,6 +13,7 @@ namespace HIKARI::RENDERSTYLE {
 namespace {
 constexpr BuiltinRenderStyleContent kBuiltinRenderStyles[]{
     {"engine.style.realistic", "Realistic", "Realistic"},
+    {"engine.style.cinematic", "Cinematic", "Cinematic"},
     {"engine.style.anime", "Anime", "Anime"},
     {"engine.style.manga", "Manga", "Manga"},
     {"engine.style.painterly", "Painterly", "Painterly"},

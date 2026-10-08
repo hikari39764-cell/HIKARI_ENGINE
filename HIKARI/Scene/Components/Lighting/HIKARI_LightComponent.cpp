@@ -1,173 +1,76 @@
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 
-#include <algorithm>
-#include <cmath>
-#include <string>
-
-#include "Core/HIKARI_JsonRead.h"
-#include "Core/Serialization/Json/HIKARI_JsonMath.h"
-
 namespace HIKARI {
 
-namespace JsonMath = SERIALIZATION::JSON::MATH;
+void LightComponent::Serialize(nlohmann::json& out) const { out = WriteLightSettings(settings_); }
 
-namespace {
+void LightComponent::Deserialize(const nlohmann::json& in) { Apply(ReadLightSettings(in)); }
 
-const char* LightTypeName(LightComponentType type) noexcept {
-    return type == LightComponentType::Spot ? "Spot" : "Point";
-}
-
-LightComponentType ReadLightType(const nlohmann::json& in) {
-    return in.value("type", std::string("Point")) == "Spot" ? LightComponentType::Spot : LightComponentType::Point;
-}
-
-} // namespace
-
-void LightComponent::Serialize(nlohmann::json& out) const {
-    out = {{"enabled", enabled_},
-           {"type", LightTypeName(type_)},
-           {"color", JsonMath::ToJsonArray(color_)},
-           {"intensity", intensity_},
-           {"range", range_},
-           {"sourceRadius", sourceRadius_},
-           {"castsShadows", castsShadows_},
-           {"innerConeAngleDegrees", innerConeAngleDegrees_},
-           {"outerConeAngleDegrees", outerConeAngleDegrees_},
-           {"angularFalloff", angularFalloff_},
-           {"priority", priority_}};
-}
-
-void LightComponent::Deserialize(const nlohmann::json& in) {
-    const bool previousEnabled = enabled_;
-    const LightComponentType previousType = type_;
-    const MATH::Vec3 previousColor = color_;
-    const float previousIntensity = intensity_;
-    const float previousRange = range_;
-    const float previousSourceRadius = sourceRadius_;
-    const bool previousCastsShadows = castsShadows_;
-    const float previousInnerConeAngle = innerConeAngleDegrees_;
-    const float previousOuterConeAngle = outerConeAngleDegrees_;
-    const float previousAngularFalloff = angularFalloff_;
-    const int previousPriority = priority_;
-
-    enabled_ = in.value("enabled", enabled_);
-    type_ = ReadLightType(in);
-    color_ = JSONREAD::Vec3Or(in.value("color", nlohmann::json::array()), color_);
-    intensity_ = in.value("intensity", intensity_);
-    range_ = in.value("range", range_);
-    sourceRadius_ = in.value("sourceRadius", 0.0f);
-    castsShadows_ = in.value("castsShadows", false);
-    innerConeAngleDegrees_ = in.value("innerConeAngleDegrees", innerConeAngleDegrees_);
-    outerConeAngleDegrees_ = in.value("outerConeAngleDegrees", outerConeAngleDegrees_);
-    angularFalloff_ = in.value("angularFalloff", angularFalloff_);
-    priority_ = in.value("priority", priority_);
-    ClampSettings();
-
-    if (previousEnabled != enabled_ || previousType != type_ || previousColor.x != color_.x ||
-        previousColor.y != color_.y || previousColor.z != color_.z || previousIntensity != intensity_ ||
-        previousRange != range_ || previousSourceRadius != sourceRadius_ || previousCastsShadows != castsShadows_ ||
-        previousInnerConeAngle != innerConeAngleDegrees_ || previousOuterConeAngle != outerConeAngleDegrees_ ||
-        previousAngularFalloff != angularFalloff_ || previousPriority != priority_) {
-        BumpStateRevision();
+void LightComponent::Apply(LightSettings next) noexcept {
+    next = NormalizeLightSettings(next);
+    if (next == settings_) {
+        return;
     }
-}
-
-void LightComponent::SetLightType(LightComponentType type) noexcept {
-    const LightComponentType canonical = type == LightComponentType::Spot ? type : LightComponentType::Point;
-    if (type_ != canonical) {
-        type_ = canonical;
-        BumpStateRevision();
-    }
-}
-
-void LightComponent::SetEnabled(bool enabled) noexcept {
-    if (enabled_ != enabled) {
-        enabled_ = enabled;
-        BumpStateRevision();
-    }
-}
-
-void LightComponent::SetColor(const MATH::Vec3& color) noexcept {
-    const MATH::Vec3 previous = color_;
-    color_ = color;
-    ClampSettings();
-    if (previous.x != color_.x || previous.y != color_.y || previous.z != color_.z) {
-        BumpStateRevision();
-    }
-}
-
-void LightComponent::SetIntensity(float intensity) noexcept {
-    const float previous = intensity_;
-    intensity_ = intensity;
-    ClampSettings();
-    if (previous != intensity_) {
-        BumpStateRevision();
-    }
-}
-
-void LightComponent::SetRange(float range) noexcept {
-    const float previous = range_;
-    range_ = range;
-    ClampSettings();
-    if (previous != range_) {
-        BumpStateRevision();
-    }
-}
-
-void LightComponent::SetCastsShadows(bool value) noexcept {
-    if (castsShadows_ != value) {
-        castsShadows_ = value;
-        BumpStateRevision();
-    }
-}
-
-void LightComponent::SetSourceRadius(float radius) noexcept {
-    const float canonical = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(radius);
-    if (sourceRadius_ != canonical) {
-        sourceRadius_ = canonical;
-        BumpStateRevision();
-    }
-}
-
-void LightComponent::SetSpotConeAnglesDegrees(float innerAngleDegrees, float outerAngleDegrees) noexcept {
-    const float previousInner = innerConeAngleDegrees_;
-    const float previousOuter = outerConeAngleDegrees_;
-    innerConeAngleDegrees_ = innerAngleDegrees;
-    outerConeAngleDegrees_ = outerAngleDegrees;
-    ClampSettings();
-    if (previousInner != innerConeAngleDegrees_ || previousOuter != outerConeAngleDegrees_) {
-        BumpStateRevision();
-    }
-}
-
-void LightComponent::SetAngularFalloff(float angularFalloff) noexcept {
-    const float previous = angularFalloff_;
-    angularFalloff_ = angularFalloff;
-    ClampSettings();
-    if (previous != angularFalloff_) {
-        BumpStateRevision();
-    }
-}
-
-void LightComponent::BumpStateRevision() noexcept {
+    settings_ = next;
     ++stateRevision_;
     if (stateRevision_ == 0u) {
         stateRevision_ = 1u;
     }
 }
 
-void LightComponent::ClampSettings() noexcept {
-    sourceRadius_ = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(sourceRadius_);
-    color_.x = std::clamp(std::isfinite(color_.x) ? color_.x : 1.0f, 0.0f, 1.0f);
-    color_.y = std::clamp(std::isfinite(color_.y) ? color_.y : 1.0f, 0.0f, 1.0f);
-    color_.z = std::clamp(std::isfinite(color_.z) ? color_.z : 1.0f, 0.0f, 1.0f);
-    intensity_ = std::clamp(std::isfinite(intensity_) ? intensity_ : kDefaultLightLumens, 0.0f, kMaximumLightLumens);
-    range_ = std::clamp(std::isfinite(range_) ? range_ : 5.0f, 0.05f, 1000.0f);
-    innerConeAngleDegrees_ =
-        std::clamp(std::isfinite(innerConeAngleDegrees_) ? innerConeAngleDegrees_ : 25.0f, 0.1f, 89.0f);
-    outerConeAngleDegrees_ = std::clamp(std::isfinite(outerConeAngleDegrees_) ? outerConeAngleDegrees_ : 35.0f,
-                                        innerConeAngleDegrees_, 89.0f);
-    angularFalloff_ = std::clamp(std::isfinite(angularFalloff_) ? angularFalloff_ : 1.0f, 0.05f, 8.0f);
+void LightComponent::SetEnabled(bool enabled) noexcept {
+    LightSettings next = settings_;
+    next.enabled = enabled;
+    Apply(next);
+}
+
+void LightComponent::SetLightType(RENDER3D::LIGHTING::SceneLightType type) noexcept {
+    LightSettings next = settings_;
+    next.type = type;
+    Apply(next);
+}
+
+void LightComponent::SetColor(const MATH::Vec3& color) noexcept {
+    LightSettings next = settings_;
+    next.color = color;
+    Apply(next);
+}
+
+void LightComponent::SetIntensity(float intensity) noexcept {
+    LightSettings next = settings_;
+    next.intensity = intensity;
+    Apply(next);
+}
+
+void LightComponent::SetRange(float range) noexcept {
+    LightSettings next = settings_;
+    next.range = range;
+    Apply(next);
+}
+
+void LightComponent::SetSourceRadius(float radius) noexcept {
+    LightSettings next = settings_;
+    next.sourceRadius = radius;
+    Apply(next);
+}
+
+void LightComponent::SetCastsShadows(bool value) noexcept {
+    LightSettings next = settings_;
+    next.castsShadows = value;
+    Apply(next);
+}
+
+void LightComponent::SetSpotConeAnglesDegrees(float innerAngleDegrees, float outerAngleDegrees) noexcept {
+    LightSettings next = settings_;
+    next.innerConeAngleDegrees = innerAngleDegrees;
+    next.outerConeAngleDegrees = outerAngleDegrees;
+    Apply(next);
+}
+
+void LightComponent::SetAngularFalloff(float angularFalloff) noexcept {
+    LightSettings next = settings_;
+    next.angularFalloff = angularFalloff;
+    Apply(next);
 }
 
 } // namespace HIKARI

@@ -318,6 +318,14 @@ TRANSPORT::LightingTransportLight ConvertLight(const RENDER3D::LIGHTING::SceneLi
     light.position = source.position;
     light.range = source.range;
     light.sourceRadius = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius(source.sourceRadius);
+    // 焼き込みの輸送は点とスポットだけを扱う。管と長方形は広がりを半径にした点光源で近似する。
+    if (source.type == RENDER3D::LIGHTING::SceneLightType::Tube ||
+        source.type == RENDER3D::LIGHTING::SceneLightType::Rect) {
+        light.sourceRadius = RENDER3D::LIGHTING::SanitizeLocalLightSourceRadius((std::max)(
+            light.sourceRadius,
+            0.5f * (std::max)(source.length,
+                              source.type == RENDER3D::LIGHTING::SceneLightType::Rect ? source.height : 0.0f)));
+    }
     light.direction = MATH::Normalize(source.direction);
     light.radiance = source.color * (std::max)(0.0f, source.intensity);
     if (source.type == RENDER3D::LIGHTING::SceneLightType::Spot) {

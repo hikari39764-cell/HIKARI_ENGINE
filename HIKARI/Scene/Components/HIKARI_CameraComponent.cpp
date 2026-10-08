@@ -25,6 +25,7 @@ void CameraComponent::Serialize(nlohmann::json& out) const {
     out["nearClip"] = nearClip_;
     out["farClip"] = farClip_;
     out["depthOfField"] = CAMERA::WriteDepthOfFieldSettings(depthOfFieldSettings_);
+    out["motionBlur"] = CAMERA::WriteMotionBlurSettings(motionBlurSettings_);
 }
 
 void CameraComponent::Deserialize(const nlohmann::json& in) {
@@ -39,6 +40,10 @@ void CameraComponent::Deserialize(const nlohmann::json& in) {
     depthOfFieldSettings_ = {};
     if (const auto depthOfField = in.find("depthOfField"); depthOfField != in.end()) {
         CAMERA::ReadDepthOfFieldSettings(*depthOfField, depthOfFieldSettings_);
+    }
+    motionBlurSettings_ = {};
+    if (const auto motionBlur = in.find("motionBlur"); motionBlur != in.end()) {
+        CAMERA::ReadMotionBlurSettings(*motionBlur, motionBlurSettings_);
     }
     ClampLens();
 }
@@ -68,6 +73,7 @@ void CameraComponent::ClampLens() noexcept {
     nearClip_ = (std::max)(nearClip_, kMinNearClip);
     farClip_ = (std::max)(farClip_, nearClip_ + kMinClipRange);
     depthOfFieldSettings_ = CAMERA::NormalizeDepthOfFieldSettings(depthOfFieldSettings_);
+    motionBlurSettings_ = CAMERA::NormalizeMotionBlurSettings(motionBlurSettings_);
 }
 
 } // namespace HIKARI

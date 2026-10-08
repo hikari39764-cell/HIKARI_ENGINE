@@ -269,6 +269,7 @@ const char* ToString(Pass pass) {
     case Pass::DepthAware: return "DepthAware";
     case Pass::ForwardTransparent: return "ForwardTransparent";
     case Pass::DepthOfField: return "Depth Of Field";
+    case Pass::MotionBlur: return "Motion Blur";
     case Pass::ParticleSimulation: return "Particle Simulation";
     case Pass::ParticleDraw: return "Particle Draw";
     case Pass::VolumetricLighting: return "Volumetric Lighting";

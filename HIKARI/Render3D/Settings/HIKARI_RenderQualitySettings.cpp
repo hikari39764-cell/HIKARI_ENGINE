@@ -62,6 +62,9 @@ RenderQualitySettings NormalizeRenderQualitySettings(RenderQualitySettings setti
     if (!TEXT::IsNamedEnum(kDepthOfFieldQualityNames, settings.depthOfFieldQuality)) {
         settings.depthOfFieldQuality = DepthOfFieldQuality::Medium;
     }
+    if (!TEXT::IsNamedEnum(kMotionBlurQualityNames, settings.motionBlurQuality)) {
+        settings.motionBlurQuality = MotionBlurQuality::Medium;
+    }
     if (static_cast<uint8_t>(settings.dynamicGiQuality) > static_cast<uint8_t>(DynamicGiQuality::High)) {
         settings.dynamicGiQuality = DynamicGiQuality::Off;
     }
@@ -91,7 +94,7 @@ bool AreRenderQualitySettingsEqual(const RenderQualitySettings& lhs, const Rende
            lhs.frameGenerationMode == rhs.frameGenerationMode &&
            lhs.frameGenerationMultiplier == rhs.frameGenerationMultiplier &&
            lhs.volumetricLightingQuality == rhs.volumetricLightingQuality &&
-           lhs.depthOfFieldQuality == rhs.depthOfFieldQuality &&
+           lhs.depthOfFieldQuality == rhs.depthOfFieldQuality && lhs.motionBlurQuality == rhs.motionBlurQuality &&
            lhs.volumetricCloudQuality == rhs.volumetricCloudQuality && lhs.dynamicGiQuality == rhs.dynamicGiQuality &&
            lhs.localShadowQuality == rhs.localShadowQuality && lhs.taaHistoryWeight == rhs.taaHistoryWeight &&
            lhs.taaVarianceClipGamma == rhs.taaVarianceClipGamma && lhs.taaDepthRejection == rhs.taaDepthRejection &&
@@ -220,6 +223,10 @@ const char* VolumetricLightingQualityLabel(VolumetricLightingQuality quality) {
 
 const char* DepthOfFieldQualityLabel(DepthOfFieldQuality quality) {
     return TEXT::EnumToName(kDepthOfFieldQualityNames, quality, "Unknown");
+}
+
+const char* MotionBlurQualityLabel(MotionBlurQuality quality) {
+    return TEXT::EnumToName(kMotionBlurQualityNames, quality, "Unknown");
 }
 
 const char* DynamicGiQualityLabel(DynamicGiQuality quality) {

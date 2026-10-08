@@ -21,8 +21,14 @@ using PROJECT::INTERNAL::ReadComponent;
 
 namespace {
 
-GameProjectLightType ToProjectLightType(LightComponentType type) noexcept {
-    return type == LightComponentType::Spot ? GameProjectLightType::Spot : GameProjectLightType::Point;
+GameProjectLightType ToProjectLightType(RENDER3D::LIGHTING::SceneLightType type) noexcept {
+    switch (type) {
+    case RENDER3D::LIGHTING::SceneLightType::Spot: return GameProjectLightType::Spot;
+    case RENDER3D::LIGHTING::SceneLightType::Tube: return GameProjectLightType::Tube;
+    case RENDER3D::LIGHTING::SceneLightType::Rect: return GameProjectLightType::Rect;
+    case RENDER3D::LIGHTING::SceneLightType::Point: break;
+    }
+    return GameProjectLightType::Point;
 }
 
 bool HasNonZeroLightPatchReserved(const GameProjectLightPatch& patch) noexcept {
@@ -107,7 +113,7 @@ GameProjectWorldResult LightView::ApplyPatch(const GameProjectLightPatch& patch)
             return Code::InvalidRequest;
         }
         if ((Selected(GameProjectLightPatchField::SpotCone) || Selected(GameProjectLightPatchField::AngularFalloff)) &&
-            light.GetLightType() != LightComponentType::Spot) {
+            light.GetLightType() != RENDER3D::LIGHTING::SceneLightType::Spot) {
             return Code::Unsupported;
         }
         const float innerCone = std::clamp(patch.innerConeAngleDegrees, 0.1f, 89.0f);

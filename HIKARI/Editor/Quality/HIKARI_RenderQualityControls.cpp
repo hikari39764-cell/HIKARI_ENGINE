@@ -269,11 +269,14 @@ bool DrawLightingQualityCombo(const char* label, Quality& quality, std::initiali
         [name](Quality candidate) { return name(candidate); }, name);
 }
 
-bool DrawDepthOfFieldQualityCombo(RENDER3D::DepthOfFieldQuality& quality) {
-    const std::string label = TEXT::Localize("ui.quality.depthOfField");
+// TEXT::EnumName の表をそのまま選択肢にする段階の選択。
+template <class Quality, size_t Size>
+bool DrawNamedQualityCombo(const char* labelKey, Quality& quality, const TEXT::EnumName<Quality> (&names)[Size],
+                           const char* (*name)(Quality)) {
+    const std::string label = TEXT::Localize(labelKey);
     return DrawQualityCombo(
-        label.c_str(), quality, RENDER3D::kDepthOfFieldQualityNames, [](const auto& option) { return option.value; },
-        [](const auto& option) { return option.name; }, RENDER3D::DepthOfFieldQualityLabel);
+        label.c_str(), quality, names, [](const auto& option) { return option.value; },
+        [](const auto& option) { return option.name; }, name);
 }
 
 bool DrawFxaaSettings() {
@@ -335,7 +338,10 @@ bool DrawRenderSettings() {
                 {RENDER3D::VolumetricLightingQuality::Low, RENDER3D::VolumetricLightingQuality::Balanced,
                  RENDER3D::VolumetricLightingQuality::High},
                 RENDER3D::VolumetricLightingQualityLabel);
-            changed |= DrawDepthOfFieldQualityCombo(settings.depthOfFieldQuality);
+            changed |= DrawNamedQualityCombo("ui.quality.depthOfField", settings.depthOfFieldQuality,
+                                             RENDER3D::kDepthOfFieldQualityNames, RENDER3D::DepthOfFieldQualityLabel);
+            changed |= DrawNamedQualityCombo("ui.quality.motionBlur", settings.motionBlurQuality,
+                                             RENDER3D::kMotionBlurQualityNames, RENDER3D::MotionBlurQualityLabel);
             changed |= DrawLightingQualityCombo(
                 TEXT::Localize("ui.quality.volumetricClouds").c_str(), settings.volumetricCloudQuality,
                 {RENDER3D::VolumetricCloudQuality::Low, RENDER3D::VolumetricCloudQuality::Balanced,

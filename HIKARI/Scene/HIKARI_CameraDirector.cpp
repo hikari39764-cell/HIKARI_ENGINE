@@ -69,6 +69,20 @@ CAMERA::DepthOfFieldSettings BlendDepthOfFieldSettings(const CAMERA::DepthOfFiel
     return CAMERA::NormalizeDepthOfFieldSettings(result);
 }
 
+// 切り替えの途中はシャッター角を補間する（無効側は 0°）。端点ではそのカメラの設定のまま。
+CAMERA::MotionBlurSettings BlendMotionBlurSettings(const CAMERA::MotionBlurSettings& from,
+                                                   const CAMERA::MotionBlurSettings& to, float amount) noexcept {
+    if (amount <= 0.0f || amount >= 1.0f) {
+        return amount <= 0.0f ? from : to;
+    }
+    CAMERA::MotionBlurSettings result{};
+    result.shutterAngleDegrees =
+        Lerp(from.enabled ? from.shutterAngleDegrees : 0.0f, to.enabled ? to.shutterAngleDegrees : 0.0f, amount);
+    result.maxBlur1080pPixels = Lerp(from.maxBlur1080pPixels, to.maxBlur1080pPixels, amount);
+    result.enabled = result.shutterAngleDegrees > 0.0f;
+    return CAMERA::NormalizeMotionBlurSettings(result);
+}
+
 bool ResolveFocusDistance(const Camera3D& camera, const CAMERA::CameraFocusSubmission& request,
                           float& outDistance) noexcept {
     outDistance = 0.0f;
@@ -155,6 +169,8 @@ Camera3D CameraDirector::BlendViews(const Camera3D& from, const Camera3D& to, fl
     result.SetLookAt(eye, target, up);
     result.SetDepthOfFieldSettings(
         BlendDepthOfFieldSettings(from.GetDepthOfFieldSettings(), to.GetDepthOfFieldSettings(), blendAmount));
+    result.SetMotionBlurSettings(
+        BlendMotionBlurSettings(from.GetMotionBlurSettings(), to.GetMotionBlurSettings(), blendAmount));
     return result;
 }
 
@@ -477,6 +493,7 @@ bool CameraDirector::TryResolveCameraObject(const World& world, SceneObjectId ca
     }
     outCamera.SetLookAt(eye, target, up);
     outCamera.SetDepthOfFieldSettings(component->GetDepthOfFieldSettings());
+    outCamera.SetMotionBlurSettings(component->GetMotionBlurSettings());
     return true;
 }
 

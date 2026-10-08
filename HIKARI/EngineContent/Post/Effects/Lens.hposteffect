@@ -1,0 +1,13 @@
+{
+  "formatVersion": 1,
+  "name": "Lens",
+  "passes": [{"name": "Lens Resolve", "programId": "HIKARI.EngineShader.Post_LensPS", "entryId": "Main"}],
+  "params": [
+    {"key": "vignette", "label": "Vignette", "type": "Float", "ref": {"slot": 0, "channel": 0}, "defaultValues": [0.3, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01},
+    {"key": "vignetteRoundness", "label": "Vignette Roundness", "type": "Float", "ref": {"slot": 0, "channel": 1}, "defaultValues": [1.0, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01},
+    {"key": "chromaticAberration", "label": "Chromatic Aberration (px)", "type": "Float", "ref": {"slot": 0, "channel": 2}, "defaultValues": [1.5, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [12.0, 0, 0, 0], "speed": 0.05},
+    {"key": "grain", "label": "Film Grain", "type": "Float", "ref": {"slot": 1, "channel": 0}, "defaultValues": [0.08, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.005},
+    {"key": "grainSize", "label": "Grain Size (px)", "type": "Float", "ref": {"slot": 1, "channel": 1}, "defaultValues": [1.5, 0, 0, 0], "minValues": [1.0, 0, 0, 0], "maxValues": [4.0, 0, 0, 0], "speed": 0.05},
+    {"key": "grainShadowBias", "label": "Grain Shadow Bias", "type": "Float", "ref": {"slot": 1, "channel": 2}, "defaultValues": [0.5, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01}
+  ]
+}

@@ -71,6 +71,7 @@ SamplerState gLinearClamp : register(s0);
 SamplerComparisonState gShadowSampler : register(s1);
 
 #include "Include/Lighting/HIKARI_DynamicGiProbeAtlas.hlsli"
+#include "Include/Lighting/HIKARI_LocalLightTextures.hlsli"
 
 float DistanceToSlice(float distanceToCamera)
 {
@@ -186,6 +187,7 @@ float3 EvaluateLighting(
         {
             continue;
         }
+        HikariApplyLocalLightTextures(gHikariLocalLights[lightIndex], lightSample);
         const float pointPhase = HikariHenyeyGreenstein(
             dot(viewRay, lightSample.directionToLight),
             gFogDistances.w);

@@ -1,0 +1,6 @@
+{
+  "formatVersion": 1,
+  "name": "Lens",
+  "effect": "engine.post.effect.lens",
+  "values": {}
+}

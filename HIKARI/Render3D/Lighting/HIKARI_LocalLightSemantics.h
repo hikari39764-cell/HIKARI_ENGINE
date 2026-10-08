@@ -24,8 +24,12 @@ struct SpotLightCone {
 };
 
 bool IsLocalLightUploadable(const SceneLightProvider& light) noexcept;
+// 影響の届く中心からの半径。面光源は発光体の広がりの分だけ range より大きい。
+float ResolveLocalLightInfluenceRadius(const SceneLightProvider& light) noexcept;
 
 MATH::Vec3 ResolveSpotLightDirection(const SceneLightProvider& light) noexcept;
+// 管の軸・長方形の幅の向き。normal が 0 でなければそれに直交させる。
+MATH::Vec3 ResolveAreaLightTangent(const SceneLightProvider& light, const MATH::Vec3& normal) noexcept;
 SpotLightCone ResolveSpotLightCone(const SceneLightProvider& light) noexcept;
 
 } // namespace HIKARI::RENDER3D::LIGHTING

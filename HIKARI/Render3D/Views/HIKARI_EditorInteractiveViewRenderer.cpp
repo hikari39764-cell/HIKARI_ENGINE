@@ -16,6 +16,7 @@
 #include "Core/HIKARI_TimeService.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
+#include "Render3D/Color/HIKARI_ColorGradingBake.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
@@ -28,6 +29,7 @@
 #include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewGuides.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveStylizedView.h"
+#include "Vfx/Post/HIKARI_ColorGradingLut.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Vfx/Post/HIKARI_PostEffect.h"
 #include "Vfx/Post/HIKARI_PostProcessingStage.h"
@@ -680,16 +682,24 @@ bool ResolveDisplayTarget(InteractiveViewState& state, const SceneEnvironment& e
     }
 
     const ToneMappingSettings toneMapping = ResolveViewToneMapping(state, environment);
-    POST::CommonParams parameters{};
-    parameters.resolutionX = static_cast<float>(sourceTarget.GetWidth());
-    parameters.resolutionY = static_cast<float>(sourceTarget.GetHeight());
-    POST::WriteToneMappingParameters(parameters, toneMapping, COLOR::ResidualExposure(exposureState));
+    // 照明を見るビューは主ビューと同じ環境の色調整を掛ける。
+    ID3D12Resource* gradingLut = state.request.shadingMode == EditorInteractiveShadingMode::Lit
+                                     ? POST::PostSystem::GetColorGradingLut()
+                                     : nullptr;
 
     state.displayTarget->BeginCapture(0.0f, 0.0f, 0.0f, 1.0f);
     const bool outputReady = g_displayQuad->SetOutputFormat(kInteractiveDisplayFormat);
     bool resolved = false;
     if (outputReady) {
-        g_displayQuad->SetInputTexture(sourceTarget.GetSrvHeap(), sourceTarget.GetSrvGpu());
+        const POST::ToneMappingInputs inputs(GFX::GetCurrentContext(), *g_displayQuad, sourceTarget, gradingLut);
+        if (!inputs) {
+            g_displayQuad->SetInputTexture(sourceTarget.GetSrvHeap(), sourceTarget.GetSrvGpu());
+        }
+        POST::CommonParams parameters{};
+        parameters.resolutionX = static_cast<float>(sourceTarget.GetWidth());
+        parameters.resolutionY = static_cast<float>(sourceTarget.GetHeight());
+        POST::WriteToneMappingParameters(parameters, toneMapping, COLOR::ResidualExposure(exposureState), 0.0f, 0.0f,
+                                         inputs && gradingLut ? COLOR::kColorGradingLutSize : 0u);
         g_displayEffect->ApplyCommonParams(parameters);
         resolved = g_displayEffect->BindAndDraw(*g_displayQuad);
     }

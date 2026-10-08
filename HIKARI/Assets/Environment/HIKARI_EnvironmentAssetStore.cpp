@@ -13,6 +13,7 @@ void EnvironmentAssetStore::Configure(const AssetDatabase* database) {
     database_ = database;
     profiles_.Configure(database);
     weathers_.Configure(database);
+    colorLuts_.Configure(database);
     ClearDrafts();
 }
 
@@ -36,6 +37,11 @@ std::shared_ptr<const WeatherPresetAsset> EnvironmentAssetStore::LoadWeather(std
         return builtinWeathers_.Load(id, ResolveBuiltinWeatherPresetPath(id), &LoadWeatherPresetAsset, error);
     }
     return weathers_.Load(AssetGuid{std::string(id)}, error);
+}
+
+std::shared_ptr<const ASSETS::COLOR::ColorLutAsset> EnvironmentAssetStore::LoadColorLut(std::string_view id,
+                                                                                        std::string& error) const {
+    return colorLuts_.Load(AssetGuid{std::string(id)}, error);
 }
 
 void EnvironmentAssetStore::SetProfileDraft(std::string_view id, std::shared_ptr<const EnvironmentProfileAsset> draft) {

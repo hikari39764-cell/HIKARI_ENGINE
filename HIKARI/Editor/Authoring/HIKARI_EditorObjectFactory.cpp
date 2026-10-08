@@ -398,16 +398,12 @@ GameObject* CreateLightObject(DocumentSceneBase& scene, const CreateObjectReques
     light.name = request.name;
     light.position = request.position;
     light.rotationEulerDeg = request.rotation;
-    light.type = lightType;
+    light.settings.type = lightType;
+    if (lightType == RENDER3D::LIGHTING::SceneLightType::Spot) {
+        light.settings.range = 8.0f;
+    }
     if (light.name.empty()) {
-        switch (lightType) {
-        case RENDER3D::LIGHTING::SceneLightType::Spot:
-            light.name = "Spot Light";
-            light.range = 8.0f;
-            break;
-        case RENDER3D::LIGHTING::SceneLightType::Point:
-        default: light.name = "Point Light"; break;
-        }
+        light.name = std::string(TEXT::EnumToName(RENDER3D::LIGHTING::kSceneLightTypeNames, lightType)) + " Light";
     }
     const SceneObjectId id = LIGHTING_AUTHORING::AddLight(scene.GetSceneDocument(), light);
     return MaterializeCreatedObject(scene, id);

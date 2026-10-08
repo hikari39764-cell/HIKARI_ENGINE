@@ -132,6 +132,8 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
     {AssetImporterKind::Environment, AssetType::Environment, "EnvironmentAssetImporter", 1u, ".henvironment"},
     {AssetImporterKind::Weather, AssetType::Weather, "WeatherAssetImporter", 1u, ".hweather"},
     {AssetImporterKind::RenderStyle, AssetType::RenderStyle, "RenderStyleAssetImporter", 1u, ".hrenderstyle"},
+    {AssetImporterKind::ColorLut, AssetType::ColorLut, "ColorLutAssetImporter", 1u, ".cube"},
+    {AssetImporterKind::LightProfile, AssetType::LightProfile, "LightProfileAssetImporter", 1u, ".ies"},
 }};
 
 static_assert(
@@ -195,6 +197,8 @@ constexpr TEXT::EnumName<AssetType> kAssetTypeNames[] = {
     {AssetType::Environment, "Environment"},
     {AssetType::Weather, "Weather"},
     {AssetType::RenderStyle, "RenderStyle"},
+    {AssetType::ColorLut, "ColorLut"},
+    {AssetType::LightProfile, "LightProfile"},
     {AssetType::GameplayCamera, "GameplayCamera"},
     {AssetType::Sequence, "Sequence"},
     {AssetType::AnimationStateMachine, "AnimationStateMachine"},
@@ -264,6 +268,10 @@ const AssetImporterSemantics* ResolveAssetSourceSemantics(const std::filesystem:
         kind = AssetImporterKind::Weather;
     } else if (extension == ".hrenderstyle") {
         kind = AssetImporterKind::RenderStyle;
+    } else if (extension == ".cube") {
+        kind = AssetImporterKind::ColorLut;
+    } else if (extension == ".ies") {
+        kind = AssetImporterKind::LightProfile;
     } else if (extension == ".hsequence") {
         kind = AssetImporterKind::Sequence;
     } else if (extension == ".hanimsm") {

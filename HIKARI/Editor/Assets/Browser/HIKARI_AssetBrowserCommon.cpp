@@ -66,6 +66,8 @@ std::string ToAssetTypeText(AssetType type) {
     case AssetType::Environment: return TEXT::Localize("environment.profile.asset");
     case AssetType::Weather: return TEXT::Localize("environment.weather.asset");
     case AssetType::RenderStyle: return TEXT::Localize("renderstyle.asset");
+    case AssetType::ColorLut: return TEXT::Localize("environment.colorLut.asset");
+    case AssetType::LightProfile: return TEXT::Localize("light.profile.asset");
     case AssetType::Unknown:
     default: return ASSETS::SEMANTICS::ToString(type).data();
     }

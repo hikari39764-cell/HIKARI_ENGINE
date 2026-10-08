@@ -10,6 +10,7 @@
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Render3D/DepthOfField/HIKARI_CameraDepthOfFieldStage.h"
+#include "Render3D/MotionBlur/HIKARI_CameraMotionBlurStage.h"
 #include "Render3D/Debug/HIKARI_RenderDebugOutput.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
@@ -55,6 +56,8 @@ RENDER3D::TEMPORAL::TemporalViewLease PostSystem::temporalView_{};
 RENDER3D::RenderFrameToken PostSystem::temporalFrame_{};
 RENDER3D::TEMPORAL::TemporalResourceFrame PostSystem::temporalResources_{};
 RENDER3D::TEMPORAL::TemporalResourceFrame PostSystem::presentationTemporalResources_{};
+CAMERA::MotionBlurSettings PostSystem::cameraMotionBlur_{};
+bool PostSystem::cameraMotionBlurOrthographic_ = false;
 RENDER3D::SURFACE::RenderFrameSurfaceReceipt PostSystem::renderSurfaceReceipt_{};
 RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt PostSystem::renderGraphSessionReceipt_{};
 
@@ -86,6 +89,7 @@ void PostSystem::UpdateContext(const GFX::Context& context) {
 void PostSystem::Shutdown() {
     AbortSceneCaptureTemporalFrame(RENDER3D::TEMPORAL::TemporalHistoryResetReason::PreviousFrameIncomplete);
     RENDER3D::DOF::ShutdownCameraDepthOfFieldStage();
+    RENDER3D::MOTIONBLUR::ShutdownCameraMotionBlurStage();
     if (!initialized_)
         return;
     preservedVfxLayer_.Shutdown();
@@ -150,6 +154,15 @@ void PostSystem::SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& fr
 }
 void PostSystem::SetToneMappingSettings(const ToneMappingSettings& settings) {
     processingStage_.SetToneMappingSettings(settings);
+}
+void PostSystem::SetColorGrading(const ColorGradingSettings& settings,
+                                 std::shared_ptr<const ASSETS::COLOR::ColorLutAsset> lut) {
+    processingStage_.SetColorGrading(settings, std::move(lut));
+}
+ID3D12Resource* PostSystem::GetColorGradingLut() noexcept { return processingStage_.GetColorGradingLut(); }
+void PostSystem::SetCameraMotionBlur(const CAMERA::MotionBlurSettings& settings, bool orthographic) {
+    cameraMotionBlur_ = settings;
+    cameraMotionBlurOrthographic_ = orthographic;
 }
 void PostSystem::SetExposureSettings(const RENDER3D::COLOR::ExposureSettings& settings) {
     processingStage_.SetExposureSettings(settings);
@@ -608,6 +621,17 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
                     temporalView, RENDER3D::TEMPORAL::TemporalHistoryResetReason::ExplicitReset);
             }
         }
+    }
+    if (presentationInputs.motionVectors.valid && !RENDER3D::GetRenderDebugOutputRoute().bypassPostProcessing) {
+        RENDER3D::MOTIONBLUR::CameraMotionBlurInputs motionBlur{};
+        motionBlur.sceneColor = output;
+        motionBlur.motionVectors = presentationInputs.motionVectors;
+        motionBlur.sceneDepthOwner = captured;
+        motionBlur.temporalFrame = &presentationInputs.frame;
+        motionBlur.settings = cameraMotionBlur_;
+        motionBlur.quality = quality.motionBlurQuality;
+        motionBlur.orthographic = cameraMotionBlurOrthographic_;
+        output = RENDER3D::MOTIONBLUR::ExecuteCameraMotionBlur(context_, motionBlur);
     }
     const RENDER3D::RenderTextureView* featureMask = nullptr;
     if ((processingStage_.RequiresSurfaceFeatureMask() || processingStage_.RequiresActionSurfaceFeatureMask()) &&

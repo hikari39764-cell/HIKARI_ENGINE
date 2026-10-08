@@ -38,6 +38,9 @@ enum class SurfaceGpuSceneInstanceFlags : uint32_t {
     FoliageWind = 1u << 19,
     // 材質 program（式・風格化）を持つ材質。Forward は標準 PBR の面と別 PSO で描く。
     MaterialProgram = 1u << 20,
+    // 描画上の静的物体（ワールド変換が変わらない）。StaticGeometry（形が変わらない）と両方立てば、時域の物体運動を
+    // 描かずカメラの運動ベクトルで足りる。
+    StaticTransform = 1u << 21,
 };
 
 enum class SurfaceGpuSceneResourceFlags : uint32_t {

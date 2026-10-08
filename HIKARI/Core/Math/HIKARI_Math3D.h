@@ -12,6 +12,7 @@ struct Vec2 {
     Vec2 operator+(const Vec2& r) const { return {x + r.x, y + r.y}; }
     Vec2 operator-(const Vec2& r) const { return {x - r.x, y - r.y}; }
     Vec2 operator*(float s) const { return {x * s, y * s}; }
+    bool operator==(const Vec2&) const = default;
 };
 
 struct Vec3 {
@@ -22,6 +23,7 @@ struct Vec3 {
     Vec3 operator+(const Vec3& r) const { return {x + r.x, y + r.y, z + r.z}; }
     Vec3 operator-(const Vec3& r) const { return {x - r.x, y - r.y, z - r.z}; }
     Vec3 operator*(float s) const { return {x * s, y * s, z * s}; }
+    bool operator==(const Vec3&) const = default;
 };
 
 struct Vec4 {
@@ -29,6 +31,8 @@ struct Vec4 {
     float y = 0.0f;
     float z = 0.0f;
     float w = 1.0f;
+
+    bool operator==(const Vec4&) const = default;
 };
 
 struct Quat {

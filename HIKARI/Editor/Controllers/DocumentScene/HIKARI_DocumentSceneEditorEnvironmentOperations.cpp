@@ -29,8 +29,9 @@ nlohmann::json ListRenderStyles(const AssetDatabase& database) {
 
 nlohmann::json ListEnvironmentAssets(AssetType type, const AssetDatabase& database) {
     nlohmann::json list = nlohmann::json::array();
-    const auto builtin = type == AssetType::Weather ? ENVIRONMENT::GetBuiltinWeatherPresets()
-                                                    : ENVIRONMENT::GetBuiltinEnvironmentProfiles();
+    const auto builtin = type == AssetType::Weather       ? ENVIRONMENT::GetBuiltinWeatherPresets()
+                         : type == AssetType::Environment ? ENVIRONMENT::GetBuiltinEnvironmentProfiles()
+                                                          : std::span<const ENVIRONMENT::BuiltinEnvironmentContent>{};
     for (const ENVIRONMENT::BuiltinEnvironmentContent& content : builtin) {
         list.push_back({{"id", content.id}, {"name", content.displayName}, {"builtin", true}});
     }
@@ -66,9 +67,9 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
     EDITOR::EditorOperationDefinition describe{
         "environment.describe",
         "Return the scene environment binding (profile, weather, render style, start time, location, time scale), the "
-        "runtime time/weather state and the available profiles, weathers and render styles. Edit the binding with "
-        "environment.edit, the profile or weather contents with environment.asset.* and render styles with "
-        "renderstyle.*.",
+        "runtime time/weather state and the available profiles, weathers, render styles and color LUTs (.cube, set "
+        "through the profile colorGrading.lut). Edit the binding with environment.edit, the profile or weather contents "
+        "with environment.asset.* and render styles with renderstyle.*.",
         "scene",
         {},
         [this](const nlohmann::json&) -> EDITOR::EditorOperationResult {
@@ -83,7 +84,8 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
                  {"runtime", DescribeEnvironmentRuntime(scene)},
                  {"profiles", ListEnvironmentAssets(AssetType::Environment, database)},
                  {"weathers", ListEnvironmentAssets(AssetType::Weather, database)},
-                 {"renderStyles", ListRenderStyles(database)}});
+                 {"renderStyles", ListRenderStyles(database)},
+                 {"colorLuts", ListEnvironmentAssets(AssetType::ColorLut, database)}});
         }};
     describe.entryPoint = true;
     describe.searchTerms = {"environment", "sky",  "weather", "time of day", "fog", "lighting",

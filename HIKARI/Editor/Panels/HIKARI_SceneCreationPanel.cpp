@@ -99,7 +99,10 @@ void SceneCreationPanel::DrawCreationMenu(DocumentSceneBase& scene, EditorContex
         MatchesSearch(TEXT::Localize("ui.sceneCreation.irradianceVolume").c_str(), search);
     const bool showPointLight = MatchesSearch(TEXT::Localize("ui.sceneCreation.pointLight").c_str(), search);
     const bool showSpotLight = MatchesSearch(TEXT::Localize("ui.sceneCreation.spotLight").c_str(), search);
-    if ((showReflectionProbe || showIrradianceVolume || showPointLight || showSpotLight) &&
+    const bool showTubeLight = MatchesSearch(TEXT::Localize("ui.sceneCreation.tubeLight").c_str(), search);
+    const bool showRectLight = MatchesSearch(TEXT::Localize("ui.sceneCreation.rectLight").c_str(), search);
+    const bool showLight = showPointLight || showSpotLight || showTubeLight || showRectLight;
+    if ((showReflectionProbe || showIrradianceVolume || showLight) &&
         ImGui::BeginMenu(TEXT::Localize("ui.sceneCreation.lighting").c_str())) {
         if (showPointLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.pointLight").c_str())) {
             CreateLightObject(scene, context, selectionSync, RENDER3D::LIGHTING::SceneLightType::Point);
@@ -107,7 +110,13 @@ void SceneCreationPanel::DrawCreationMenu(DocumentSceneBase& scene, EditorContex
         if (showSpotLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.spotLight").c_str())) {
             CreateLightObject(scene, context, selectionSync, RENDER3D::LIGHTING::SceneLightType::Spot);
         }
-        if ((showPointLight || showSpotLight) && (showReflectionProbe || showIrradianceVolume)) {
+        if (showTubeLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.tubeLight").c_str())) {
+            CreateLightObject(scene, context, selectionSync, RENDER3D::LIGHTING::SceneLightType::Tube);
+        }
+        if (showRectLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.rectLight").c_str())) {
+            CreateLightObject(scene, context, selectionSync, RENDER3D::LIGHTING::SceneLightType::Rect);
+        }
+        if (showLight && (showReflectionProbe || showIrradianceVolume)) {
             ImGui::Separator();
         }
         if (showReflectionProbe && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.reflectionProbe").c_str())) {
@@ -272,10 +281,14 @@ void SceneCreationPanel::CreateLightObject(DocumentSceneBase& scene, EditorConte
     context.selection.SelectObject(scene.GetWorld(), object);
     context.sceneDirty = true;
     selectionSync.SyncNextSceneObjectId(scene, context.nextSceneObjectId);
-    const char* label = lightType == RENDER3D::LIGHTING::SceneLightType::Spot ? "Spot Light" : "Point Light";
-    historyRequest_ = SceneObjectAuthoringHistoryRequest{std::string("Create ") + label,   beforeObjects,
-                                                         scene.GetSceneDocument().objects, beforeCamera,
-                                                         scene.GetSceneDocument().camera,  dirtyBefore};
+    const std::string label =
+        std::string(TEXT::EnumToName(RENDER3D::LIGHTING::kSceneLightTypeNames, lightType)) + " Light";
+    historyRequest_ = SceneObjectAuthoringHistoryRequest{"Create " + label,
+                                                         beforeObjects,
+                                                         scene.GetSceneDocument().objects,
+                                                         beforeCamera,
+                                                         scene.GetSceneDocument().camera,
+                                                         dirtyBefore};
 }
 
 void SceneCreationPanel::CreateTerrainSurfaceObject(DocumentSceneBase& scene, EditorContext& context,

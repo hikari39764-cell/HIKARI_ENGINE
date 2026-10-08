@@ -709,13 +709,13 @@ RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
         cmd->SetComputeRootSignature(state.computeRoot.Get());
         cmd->SetComputeRootConstantBufferView(kInjectConstants, constantAddress);
         cmd->SetComputeRootDescriptorTable(kInjectSceneDepth, state.sceneDepthSrv.gpu);
+        // 環境光の採取（動的 GI の atlas）と注入（局所光の配光・クッキー）が読む。
+        cmd->SetComputeRootDescriptorTable(
+            kInjectTexturePool, GFX::DESCRIPTOR::GpuAt(heap, state.descriptorStride, GFX::DESCRIPTOR::kUserSrvBegin));
         if (state.giAmbient) {
             TransitionVolume(cmd, state.ambient, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             cmd->SetPipelineState(state.gatherPso.Get());
             cmd->SetComputeRootDescriptorTable(kInjectOutput, state.ambient.uav.gpu);
-            cmd->SetComputeRootDescriptorTable(
-                kInjectTexturePool,
-                GFX::DESCRIPTOR::GpuAt(heap, state.descriptorStride, GFX::DESCRIPTOR::kUserSrvBegin));
             cmd->Dispatch((state.ambientWidth + 7u) / 8u, (state.ambientHeight + 7u) / 8u, state.ambientDepth);
             uavBarrier(state.ambient);
             TransitionVolume(cmd, state.ambient, D3D12_RESOURCE_STATE_GENERIC_READ);

@@ -38,11 +38,14 @@ bool GatherTemporalVelocityDraws(const GFX::Context& graphics, std::vector<Tempo
             const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance = instances[index];
             const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource& source = materialSources[index];
             const uint32_t flags = instance.flags;
+            // 形もワールド変換も変わらない面はカメラの運動ベクトルで足りる。動く剛体（物理・スクリプト）は描く。
+            const uint32_t staticFlags =
+                static_cast<uint32_t>(RENDER3D::RUNTIME::SurfaceGpuSceneInstanceFlags::StaticGeometry) |
+                static_cast<uint32_t>(RENDER3D::RUNTIME::SurfaceGpuSceneInstanceFlags::StaticTransform);
             if ((flags & static_cast<uint32_t>(RENDER3D::RUNTIME::SurfaceGpuSceneInstanceFlags::PassForwardOpaque)) ==
                     0u ||
-                (flags & static_cast<uint32_t>(RENDER3D::RUNTIME::SurfaceGpuSceneInstanceFlags::StaticGeometry)) !=
-                    0u ||
-                source.model == nullptr || instance.meshIndex >= source.model->meshes.size()) {
+                (flags & staticFlags) == staticFlags || source.model == nullptr ||
+                instance.meshIndex >= source.model->meshes.size()) {
                 continue;
             }
 

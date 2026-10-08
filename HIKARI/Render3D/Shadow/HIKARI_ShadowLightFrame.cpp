@@ -144,7 +144,8 @@ LocalLightShadowFrameSet BuildLocalLightShadowFrameSet(const RENDER3D::LIGHTING:
     LocalLightShadowFrameSet result{};
     if (!IsLocalLightUploadable(light) || faceResolution < 32u)
         return result;
-    const bool point = light.type == SceneLightType::Point;
+    // 管と長方形も中心から点光源と同じ六面で影を取る。
+    const bool point = light.type != SceneLightType::Spot;
     const float nearPlane = (std::max)(1e-4f, (std::min)(.05f, light.range * .001f));
     if (light.range <= nearPlane)
         return result;

@@ -103,6 +103,7 @@ SunGlareSettings SanitizeSunGlare(const SunGlareSettings& settings) noexcept {
     result.shaftIntensity = SanitizeFiniteRange(result.shaftIntensity, 0.0f, 0.0f, 8.0f);
     result.shaftLength = SanitizeFiniteRange(result.shaftLength, 0.55f, 0.01f, 2.0f);
     result.shaftDecay = SanitizeFiniteRange(result.shaftDecay, 0.94f, 0.5f, 0.999f);
+    result.ghostIntensity = SanitizeFiniteRange(result.ghostIntensity, 0.0f, 0.0f, 4.0f);
     return result;
 }
 

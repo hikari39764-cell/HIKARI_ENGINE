@@ -141,12 +141,15 @@ nlohmann::json WriteDirectionalShadow(const DirectionalShadowQualitySettings& se
     return node;
 }
 
-bool ReadDepthOfFieldQuality(const nlohmann::json& node, DepthOfFieldQuality& quality) {
-    if (!node.contains("depthOfFieldQuality")) {
+// TEXT::EnumName の表で名前を読む。無ければ今の値のまま、知らない名前なら失敗。
+template <class Enum, size_t Size>
+bool ReadNamedEnum(const nlohmann::json& node, const char* key, const TEXT::EnumName<Enum> (&names)[Size],
+                   Enum& value) {
+    if (!node.contains(key)) {
         return true;
     }
-    const nlohmann::json& value = node["depthOfFieldQuality"];
-    return value.is_string() && TEXT::TryParseEnum(kDepthOfFieldQualityNames, value.get<std::string>(), quality);
+    const nlohmann::json& name = node[key];
+    return name.is_string() && TEXT::TryParseEnum(names, name.get<std::string>(), value);
 }
 } // namespace
 
@@ -167,6 +170,7 @@ nlohmann::json SerializeRenderQualitySettings(const RenderQualitySettings& sourc
         {"frameGenerationMultiplier", settings.frameGenerationMultiplier},
         {"volumetricLightingQuality", EnumName(settings.volumetricLightingQuality, kVolumetricNames)},
         {"depthOfFieldQuality", TEXT::EnumToName(kDepthOfFieldQualityNames, settings.depthOfFieldQuality)},
+        {"motionBlurQuality", TEXT::EnumToName(kMotionBlurQualityNames, settings.motionBlurQuality)},
         {"volumetricCloudQuality", EnumName(settings.volumetricCloudQuality, kVolumetricCloudNames)},
         {"dynamicGiQuality", EnumName(settings.dynamicGiQuality, kDynamicGiNames)},
         {"localShadowQuality", EnumName(settings.localShadowQuality, kLocalShadowNames)},
@@ -203,7 +207,8 @@ bool DeserializeRenderQualitySettings(const nlohmann::json& node, RenderQualityS
         ReadEnum(node, "frameGenerationMode", kFrameGenerationNames, parsed.frameGenerationMode) &&
         ReadValue(node, "frameGenerationMultiplier", parsed.frameGenerationMultiplier) &&
         ReadEnum(node, "volumetricLightingQuality", kVolumetricNames, parsed.volumetricLightingQuality) &&
-        ReadDepthOfFieldQuality(node, parsed.depthOfFieldQuality) &&
+        ReadNamedEnum(node, "depthOfFieldQuality", kDepthOfFieldQualityNames, parsed.depthOfFieldQuality) &&
+        ReadNamedEnum(node, "motionBlurQuality", kMotionBlurQualityNames, parsed.motionBlurQuality) &&
         ReadEnum(node, "volumetricCloudQuality", kVolumetricCloudNames, parsed.volumetricCloudQuality) &&
         ReadEnum(node, "dynamicGiQuality", kDynamicGiNames, parsed.dynamicGiQuality) &&
         ReadEnum(node, "localShadowQuality", kLocalShadowNames, parsed.localShadowQuality) &&

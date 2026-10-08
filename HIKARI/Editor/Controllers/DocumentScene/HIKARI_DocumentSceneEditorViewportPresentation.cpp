@@ -234,7 +234,7 @@ void DrawLightOverlayIcons(DocumentSceneBase& scene, const ViewportOverlayState&
         }
 
         const ImU32 color = ToImGuiLightColor(light->GetColor(), 235);
-        if (light->GetLightType() == LightComponentType::Spot) {
+        if (light->GetLightType() == RENDER3D::LIGHTING::SceneLightType::Spot) {
             DrawSpotLightIcon(drawList, screen, color);
         } else {
             DrawPointLightIcon(drawList, screen, color);
@@ -244,7 +244,7 @@ void DrawLightOverlayIcons(DocumentSceneBase& scene, const ViewportOverlayState&
             continue;
         }
         char label[144]{};
-        if (light->GetLightType() == LightComponentType::Spot) {
+        if (light->GetLightType() == RENDER3D::LIGHTING::SceneLightType::Spot) {
             std::snprintf(label, sizeof(label), TEXT::Localize("ui.viewport.lightLabelSpot").c_str(),
                           object->GetName().c_str(), light->GetRange(), light->GetOuterConeAngleDegrees());
         } else {

@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 
+#include "Assets/HIKARI_AssetTypes.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
@@ -37,64 +38,73 @@ bool MeasureSceneExtent(const SceneDocument* document, MATH::Vec3& outSize) {
 } // namespace
 
 void LightComponent::BuildInspector(IInspectorBuilder& builder) {
-    const bool previousEnabled = enabled_;
-    const LightComponentType previousType = type_;
-    const MATH::Vec3 previousColor = color_;
-    const float previousIntensity = intensity_;
-    const float previousRange = range_;
-    const float previousSourceRadius = sourceRadius_;
-    const bool previousCastsShadows = castsShadows_;
-    const float previousInnerConeAngle = innerConeAngleDegrees_;
-    const float previousOuterConeAngle = outerConeAngleDegrees_;
-    const float previousAngularFalloff = angularFalloff_;
-    const int previousPriority = priority_;
-
+    using RENDER3D::LIGHTING::SceneLightType;
+    LightSettings next = settings_;
     builder.Text("Light");
-    builder.Bool(AuthoringFieldDescriptor{"enabled", "Enabled"}, enabled_);
+    builder.Bool(AuthoringFieldDescriptor{"enabled", "Enabled"}, next.enabled);
 
-    int lightType = static_cast<int>(type_);
-    static constexpr std::array<AuthoringChoice, 2> typeChoices{AuthoringChoice{"Point", "Point"},
-                                                                AuthoringChoice{"Spot", "Spot"}};
+    int lightType = static_cast<int>(next.type);
+    static constexpr std::array<AuthoringChoice, 4> typeChoices{
+        AuthoringChoice{"Point", "Point"}, AuthoringChoice{"Spot", "Spot"}, AuthoringChoice{"Tube", "Tube"},
+        AuthoringChoice{"Rect", "Rect"}};
     if (builder.Choice(AuthoringFieldDescriptor{"type", "Type"}, lightType, typeChoices)) {
-        type_ = static_cast<LightComponentType>(std::clamp(lightType, 0, 1));
+        next.type = static_cast<SceneLightType>(std::clamp(lightType, 0, static_cast<int>(typeChoices.size()) - 1));
     }
 
-    builder.Color3(AuthoringFieldDescriptor{"color", "Color"}, color_.x, color_.y, color_.z);
+    builder.Color3(AuthoringFieldDescriptor{"color", "Color"}, next.color.x, next.color.y, next.color.z);
     builder.FloatRange(
         AuthoringFieldDescriptor{"intensity", "Luminous Flux (lm)",
                                  "Total emitted light. A 60 W bulb is about 800 lm. Spot cones mask, they do not "
-                                 "concentrate the flux."},
-        intensity_, 0.0f, kMaximumLightLumens, 10.0f);
-    builder.Int(AuthoringFieldDescriptor{"priority", "Priority"}, priority_);
+                                 "concentrate the flux; rect lights emit it from the front face only."},
+        next.intensity, 0.0f, kMaximumLightLumens, 10.0f);
+    builder.Int(AuthoringFieldDescriptor{"priority", "Priority"}, next.priority);
     builder.Bool(AuthoringFieldDescriptor{"castsShadows", "Cast Shadows",
                                           "Request local-light shadows within the active rendering budget."},
-                 castsShadows_);
+                 next.castsShadows);
     builder.FloatRange(AuthoringFieldDescriptor{"range", "Range (m)",
                                                 "Inverse-square falloff fades smoothly to zero at this distance."},
-                       range_, 0.05f, 1000.0f, 0.1f);
-    builder.FloatRange(
-        AuthoringFieldDescriptor{
-            "sourceRadius", "Source Radius",
-            "Emitter radius in metres. Broadens direct specular independently of material roughness and light range. Zero preserves punctual lighting."},
-        sourceRadius_, 0.0f, RENDER3D::LIGHTING::kMaximumLocalLightSourceRadius, 0.01f);
-    if (type_ == LightComponentType::Spot) {
+                       next.range, 0.05f, 1000.0f, 0.1f);
+    const bool tube = next.type == SceneLightType::Tube;
+    const bool rect = next.type == SceneLightType::Rect;
+    if (!rect) {
+        builder.FloatRange(
+            AuthoringFieldDescriptor{
+                "sourceRadius", tube ? "Tube Radius" : "Source Radius",
+                "Emitter radius in metres. Broadens direct specular independently of material roughness and light range. Zero preserves punctual lighting."},
+            next.sourceRadius, 0.0f, RENDER3D::LIGHTING::kMaximumLocalLightSourceRadius, 0.01f);
+    }
+    if (tube || rect) {
+        builder.Text(tube ? "Tube (along local X)" : "Rect Emitter (local X width, Y height, lights +Z)");
+        builder.FloatRange(AuthoringFieldDescriptor{"length", tube ? "Length (m)" : "Width (m)"}, next.length, 0.01f,
+                           kMaximumAreaLightExtent, 0.01f);
+        if (rect) {
+            builder.FloatRange(AuthoringFieldDescriptor{"height", "Height (m)"}, next.height, 0.01f,
+                               kMaximumAreaLightExtent, 0.01f);
+        }
+    }
+    if (next.type == SceneLightType::Spot) {
         builder.Text("Spot Cone (+Z forward)");
         builder.FloatRange(AuthoringFieldDescriptor{"innerConeAngleDegrees", "Inner Cone Angle"},
-                           innerConeAngleDegrees_, 0.1f, 89.0f, 0.1f);
+                           next.innerConeAngleDegrees, 0.1f, 89.0f, 0.1f);
         builder.FloatRange(AuthoringFieldDescriptor{"outerConeAngleDegrees", "Outer Cone Angle"},
-                           outerConeAngleDegrees_, 0.1f, 89.0f, 0.1f);
-        builder.FloatRange(AuthoringFieldDescriptor{"angularFalloff", "Angular Falloff"}, angularFalloff_, 0.05f, 8.0f,
-                           0.05f);
+                           next.outerConeAngleDegrees, 0.1f, 89.0f, 0.1f);
+        builder.FloatRange(AuthoringFieldDescriptor{"angularFalloff", "Angular Falloff"}, next.angularFalloff, 0.05f,
+                           8.0f, 0.05f);
+        builder.AssetIdPicker(
+            AuthoringFieldDescriptor{"cookie", "Cookie Texture",
+                                     "Projected colour pattern multiplied into the light. It fills the outer cone and "
+                                     "reads unmirrored from behind the light (texture up = local +Y)."},
+            AssetType::Texture, next.cookie);
     }
-    ClampSettings();
-
-    if (previousEnabled != enabled_ || previousType != type_ || previousColor.x != color_.x ||
-        previousColor.y != color_.y || previousColor.z != color_.z || previousIntensity != intensity_ ||
-        previousRange != range_ || previousSourceRadius != sourceRadius_ || previousCastsShadows != castsShadows_ ||
-        previousInnerConeAngle != innerConeAngleDegrees_ || previousOuterConeAngle != outerConeAngleDegrees_ ||
-        previousAngularFalloff != angularFalloff_ || previousPriority != priority_) {
-        BumpStateRevision();
+    if (!tube && !rect) {
+        builder.AssetIdPicker(
+            AuthoringFieldDescriptor{
+                "iesProfile", "IES Profile",
+                "Photometric distribution (.ies, Type C). Vertical 0 degrees points along local +Z, "
+                "horizontal 0 degrees along local +X. The flux setting stays the total output."},
+            AssetType::LightProfile, next.iesProfile);
     }
+    Apply(next);
 }
 
 void ReflectionProbeComponent::BuildInspector(IInspectorBuilder& builder) {

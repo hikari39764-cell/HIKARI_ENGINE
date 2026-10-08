@@ -21,41 +21,35 @@ std::string IrradianceVolumeId(SceneObjectId objectId) { return "irradiance_volu
 
 std::string LightId(SceneObjectId objectId) { return "light_" + std::to_string(objectId.value); }
 
-bool EqualVec3(const MATH::Vec3& lhs, const MATH::Vec3& rhs) noexcept {
-    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
-}
-
 bool EqualReflectionProvider(const RENDER3D::LIGHTING::ReflectionProbeProvider& lhs,
                              const RENDER3D::LIGHTING::ReflectionProbeProvider& rhs) {
-    return lhs.id == rhs.id && lhs.enabled == rhs.enabled && EqualVec3(lhs.position, rhs.position) &&
-           lhs.radius == rhs.radius && lhs.intensity == rhs.intensity && lhs.influenceShape == rhs.influenceShape &&
-           lhs.projectionShape == rhs.projectionShape && EqualVec3(lhs.influenceBoxCenter, rhs.influenceBoxCenter) &&
-           EqualVec3(lhs.influenceBoxSize, rhs.influenceBoxSize) &&
-           EqualVec3(lhs.projectionBoxCenter, rhs.projectionBoxCenter) &&
-           EqualVec3(lhs.projectionBoxSize, rhs.projectionBoxSize) && lhs.blendDistance == rhs.blendDistance &&
+    return lhs.id == rhs.id && lhs.enabled == rhs.enabled && lhs.position == rhs.position && lhs.radius == rhs.radius &&
+           lhs.intensity == rhs.intensity && lhs.influenceShape == rhs.influenceShape &&
+           lhs.projectionShape == rhs.projectionShape && lhs.influenceBoxCenter == rhs.influenceBoxCenter &&
+           lhs.influenceBoxSize == rhs.influenceBoxSize && lhs.projectionBoxCenter == rhs.projectionBoxCenter &&
+           lhs.projectionBoxSize == rhs.projectionBoxSize && lhs.blendDistance == rhs.blendDistance &&
            lhs.priority == rhs.priority && lhs.sourceCubemapAssetId == rhs.sourceCubemapAssetId &&
            lhs.bakeSet == rhs.bakeSet && lhs.scenario == rhs.scenario;
 }
 
 bool EqualIrradianceProvider(const RENDER3D::LIGHTING::IrradianceVolumeProvider& lhs,
                              const RENDER3D::LIGHTING::IrradianceVolumeProvider& rhs) {
-    return lhs.id == rhs.id && lhs.enabled == rhs.enabled && lhs.realtime == rhs.realtime &&
-           EqualVec3(lhs.origin, rhs.origin) && EqualVec3(lhs.size, rhs.size) && EqualVec3(lhs.spacing, rhs.spacing) &&
-           lhs.countX == rhs.countX && lhs.countY == rhs.countY && lhs.countZ == rhs.countZ &&
-           lhs.intensity == rhs.intensity && lhs.blendDistance == rhs.blendDistance &&
+    return lhs.id == rhs.id && lhs.enabled == rhs.enabled && lhs.realtime == rhs.realtime && lhs.origin == rhs.origin &&
+           lhs.size == rhs.size && lhs.spacing == rhs.spacing && lhs.countX == rhs.countX && lhs.countY == rhs.countY &&
+           lhs.countZ == rhs.countZ && lhs.intensity == rhs.intensity && lhs.blendDistance == rhs.blendDistance &&
            lhs.normalBias == rhs.normalBias && lhs.priority == rhs.priority && lhs.bakeSet == rhs.bakeSet &&
            lhs.scenario == rhs.scenario;
 }
 
 bool EqualLightProvider(const RENDER3D::LIGHTING::SceneLightProvider& lhs,
                         const RENDER3D::LIGHTING::SceneLightProvider& rhs) {
-    return lhs.id == rhs.id && lhs.enabled == rhs.enabled && lhs.type == rhs.type &&
-           EqualVec3(lhs.position, rhs.position) && EqualVec3(lhs.direction, rhs.direction) &&
-           EqualVec3(lhs.color, rhs.color) && lhs.intensity == rhs.intensity && lhs.range == rhs.range &&
-           lhs.sourceRadius == rhs.sourceRadius && lhs.castsShadows == rhs.castsShadows &&
+    return lhs.id == rhs.id && lhs.enabled == rhs.enabled && lhs.type == rhs.type && lhs.position == rhs.position &&
+           lhs.direction == rhs.direction && lhs.tangent == rhs.tangent && lhs.length == rhs.length &&
+           lhs.height == rhs.height && lhs.color == rhs.color && lhs.intensity == rhs.intensity &&
+           lhs.range == rhs.range && lhs.sourceRadius == rhs.sourceRadius && lhs.castsShadows == rhs.castsShadows &&
            lhs.innerConeAngleDegrees == rhs.innerConeAngleDegrees &&
            lhs.outerConeAngleDegrees == rhs.outerConeAngleDegrees && lhs.angularFalloff == rhs.angularFalloff &&
-           lhs.priority == rhs.priority;
+           lhs.priority == rhs.priority && lhs.iesProfile == rhs.iesProfile && lhs.cookie == rhs.cookie;
 }
 
 MATH::Vec3 WorldPosition(const MATH::Mat4& matrix) {
@@ -65,6 +59,38 @@ MATH::Vec3 WorldPosition(const MATH::Mat4& matrix) {
 
 MATH::Vec3 WorldForward(const MATH::Mat4& matrix) {
     return MATH::Normalize({matrix.m[2][0], matrix.m[2][1], matrix.m[2][2]});
+}
+
+MATH::Vec3 WorldRight(const MATH::Mat4& matrix) {
+    return MATH::Normalize({matrix.m[0][0], matrix.m[0][1], matrix.m[0][2]});
+}
+
+// コンポーネントと文書のどちらの作者値からも同じ形の光源を作る。作者値は光束 [lm]、描画は光度 [cd]。
+RENDER3D::LIGHTING::SceneLightProvider BuildLightProvider(std::string id, std::string name,
+                                                          const LightSettings& settings, const MATH::Vec3& position,
+                                                          const MATH::Vec3& forward, const MATH::Vec3& right) {
+    RENDER3D::LIGHTING::SceneLightProvider provider{};
+    provider.id = std::move(id);
+    provider.name = std::move(name);
+    provider.enabled = settings.enabled;
+    provider.type = settings.type;
+    provider.position = position;
+    provider.direction = forward;
+    provider.tangent = right;
+    provider.color = settings.color;
+    provider.intensity = RENDER3D::LIGHTING::LuminousIntensityFromFlux(settings.intensity);
+    provider.range = settings.range;
+    provider.sourceRadius = settings.sourceRadius;
+    provider.length = settings.length;
+    provider.height = settings.height;
+    provider.castsShadows = settings.castsShadows;
+    provider.innerConeAngleDegrees = settings.innerConeAngleDegrees;
+    provider.outerConeAngleDegrees = settings.outerConeAngleDegrees;
+    provider.angularFalloff = settings.angularFalloff;
+    provider.priority = settings.priority;
+    provider.iesProfile = settings.iesProfile;
+    provider.cookie = settings.type == RENDER3D::LIGHTING::SceneLightType::Spot ? settings.cookie : std::string{};
+    return provider;
 }
 
 } // namespace
@@ -94,27 +120,10 @@ RENDER3D::LIGHTING::SceneLightingSet BuildRuntimeSceneLightingSet(const SceneDoc
         if (component == nullptr) {
             continue;
         }
-        RENDER3D::LIGHTING::SceneLightProvider provider{};
-        provider.id = LightId(object->GetDocumentId());
-        provider.name = object->GetName();
-        provider.enabled = component->IsEnabled();
-        provider.type = component->GetLightType() == LightComponentType::Spot
-                            ? RENDER3D::LIGHTING::SceneLightType::Spot
-                            : RENDER3D::LIGHTING::SceneLightType::Point;
         const MATH::Mat4 worldMatrix = object->GetTransform().GetWorldMatrix();
-        provider.position = WorldPosition(worldMatrix);
-        provider.direction = WorldForward(worldMatrix);
-        provider.color = component->GetColor();
-        // 作者値は光束 [lm]、描画は光度 [cd]。
-        provider.intensity = RENDER3D::LIGHTING::LuminousIntensityFromFlux(component->GetIntensity());
-        provider.range = component->GetRange();
-        provider.sourceRadius = component->GetSourceRadius();
-        provider.castsShadows = component->CastsShadows();
-        provider.innerConeAngleDegrees = component->GetInnerConeAngleDegrees();
-        provider.outerConeAngleDegrees = component->GetOuterConeAngleDegrees();
-        provider.angularFalloff = component->GetAngularFalloff();
-        provider.priority = component->GetPriority();
-        set.lights.push_back(std::move(provider));
+        set.lights.push_back(BuildLightProvider(LightId(object->GetDocumentId()), object->GetName(),
+                                                component->GetSettings(), WorldPosition(worldMatrix),
+                                                WorldForward(worldMatrix), WorldRight(worldMatrix)));
     }
     std::stable_sort(set.lights.begin(), set.lights.end(), [](const auto& lhs, const auto& rhs) {
         if (lhs.priority != rhs.priority) {
@@ -129,23 +138,8 @@ RENDER3D::LIGHTING::SceneLightingSet BuildSceneLightingSet(std::span<const Scene
     RENDER3D::LIGHTING::SceneLightingSet set{};
 
     for (const LightAuthoring& authored : CollectLights(objects)) {
-        RENDER3D::LIGHTING::SceneLightProvider provider{};
-        provider.id = LightId(authored.objectId);
-        provider.name = authored.name;
-        provider.enabled = authored.enabled;
-        provider.type = authored.type;
-        provider.position = authored.position;
-        provider.direction = authored.direction;
-        provider.color = authored.color;
-        provider.intensity = RENDER3D::LIGHTING::LuminousIntensityFromFlux(authored.intensity);
-        provider.range = authored.range;
-        provider.sourceRadius = authored.sourceRadius;
-        provider.castsShadows = authored.castsShadows;
-        provider.innerConeAngleDegrees = authored.innerConeAngleDegrees;
-        provider.outerConeAngleDegrees = authored.outerConeAngleDegrees;
-        provider.angularFalloff = authored.angularFalloff;
-        provider.priority = authored.priority;
-        set.lights.push_back(std::move(provider));
+        set.lights.push_back(BuildLightProvider(LightId(authored.objectId), authored.name, authored.settings,
+                                                authored.position, authored.direction, authored.tangent));
     }
 
     for (const ReflectionProbeAuthoring& authored : CollectReflectionProbes(objects)) {

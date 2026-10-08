@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -27,6 +28,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
+#include "Render3D/Resources/HIKARI_SceneTextureAssetRequest.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D::WORLD_SPRITES {
@@ -82,11 +84,6 @@ struct PreparedItem {
     float viewDepth = 0.0f;
     uint32_t stableOrder = 0u;
 };
-
-TextureResourceColorSpace ResolveTextureColorSpace(TextureAssetColorSpace colorSpace) noexcept {
-    return colorSpace == TextureAssetColorSpace::Linear ? TextureResourceColorSpace::Linear
-                                                        : TextureResourceColorSpace::Srgb;
-}
 
 ResolvedAlphaMode ResolveAlphaMode(WorldSpriteAlphaMode authored, const TextureAssetDescriptor* descriptor,
                                    float opacity) noexcept {
@@ -297,16 +294,14 @@ struct WorldSpritePass::Impl {
                 textureByAssetId.erase(found);
             }
             textureByAssetId.try_emplace(assetId);
-            const auto* descriptor = source->assetRegistry != nullptr
-                                         ? source->assetRegistry->FindAs<TextureAssetDescriptor>(AssetId{assetId})
-                                         : nullptr;
-            if (descriptor == nullptr || descriptor->dimension != TextureAssetDimension::Texture2D ||
-                descriptor->sourcePath.empty()) {
+            std::optional<TextureResourceLoadRequest> request =
+                source->assetRegistry != nullptr ? FindSceneTextureAssetRequest(*source->assetRegistry, assetId)
+                                                 : std::nullopt;
+            if (!request) {
                 textureByAssetId.erase(assetId);
                 return;
             }
-            requests.push_back({"runtime_world_sprite/" + assetId, descriptor->sourcePath,
-                                ResolveTextureColorSpace(descriptor->colorSpace)});
+            requests.push_back(std::move(*request));
             requestAssetIds.push_back(assetId);
         };
         for (uint32_t index = 0; index < acceptedCount; ++index) {

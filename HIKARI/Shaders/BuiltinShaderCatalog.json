@@ -385,6 +385,40 @@
       ]
     },
     {
+      "assetGuid": "40fe34b1e99141b7b1ca2ba006bf43d9",
+      "programId": "HIKARI.EngineShader.Post_LensPS",
+      "source": "Post_LensPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Vfx.Post",
+      "group": "StylizedPost",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.PostEffect.Common",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "rootLayoutId": "HIKARI.PostQuad.Root",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
       "assetGuid": "94693ea1ed7c49368800ee055cca824d",
       "programId": "HIKARI.EngineShader.Post_MangaPS",
       "source": "Post_MangaPS.hlsl",
@@ -1285,6 +1319,52 @@
       }
     },
     {
+      "assetGuid": "260770e0336944898b2738ef3fcb6e89",
+      "programId": "HIKARI.EngineShader.Render3D_CameraMotionBlur",
+      "source": "Render3D_CameraMotionBlur.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.CameraOptics",
+      "group": "MotionBlur",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "GatherCS",
+          "stage": "Compute",
+          "entry": "GatherCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "NeighborMaxCS",
+          "stage": "Compute",
+          "entry": "NeighborMaxCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "TileMaxCS",
+          "stage": "Compute",
+          "entry": "TileMaxCS",
+          "profile": "cs_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.CameraMotionBlur",
+        "engineInterfaceVersion": 1,
+        "engineInterfaceHash": "5a34a70c12fc9e37deb643e5f06936d38bd399f60106b22123337d523d750041",
+        "rootLayoutId": "HIKARI.CameraMotionBlur.Root",
+        "rootLayoutVersion": 1,
+        "rootLayoutHash": "ac6c6a5ded48f94637034879cdffad33ddf644e3df1c1302ca21a6942efc0fbb",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
       "assetGuid": "451fc8d42321d929a418f9890f1cae03",
       "programId": "HIKARI.EngineShader.Render3D_ClusterDispatchFinalizeCS",
       "source": "Render3D_ClusterDispatchFinalizeCS.hlsl",
@@ -1307,7 +1387,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ClusterCulling.Root",
         "rootLayoutVersion": 4,
         "rootLayoutHash": "1fe0139728af1f8b1ec1264854b389d779e1d6a3eae7c1af8eef412b04b60d60",
@@ -1341,7 +1421,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ClusterCulling.Root",
         "rootLayoutVersion": 4,
         "rootLayoutHash": "1fe0139728af1f8b1ec1264854b389d779e1d6a3eae7c1af8eef412b04b60d60",
@@ -1375,7 +1455,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ClusterCulling.Root",
         "rootLayoutVersion": 4,
         "rootLayoutHash": "1fe0139728af1f8b1ec1264854b389d779e1d6a3eae7c1af8eef412b04b60d60",
@@ -1409,7 +1489,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ClusterRayTracing.Root",
         "rootLayoutVersion": 1,
         "rootLayoutHash": "6d1ca3b9897f9c559932321f5383aaa2df1932d7ade4269a9ffd2e539ba65750",
@@ -1443,7 +1523,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ClusterCulling.Root",
         "rootLayoutVersion": 4,
         "rootLayoutHash": "1fe0139728af1f8b1ec1264854b389d779e1d6a3eae7c1af8eef412b04b60d60",
@@ -1477,7 +1557,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ClusterCulling.Root",
         "rootLayoutVersion": 4,
         "rootLayoutHash": "1fe0139728af1f8b1ec1264854b389d779e1d6a3eae7c1af8eef412b04b60d60",
@@ -1684,7 +1764,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -1718,7 +1798,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -1752,7 +1832,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -1786,7 +1866,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -1820,7 +1900,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -1854,7 +1934,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -1888,7 +1968,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -1922,7 +2002,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -1956,7 +2036,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -1990,7 +2070,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2033,7 +2113,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2072,7 +2152,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2119,7 +2199,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2158,7 +2238,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2197,7 +2277,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2231,7 +2311,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.TraditionalCommand.Root",
         "rootLayoutVersion": 2,
         "rootLayoutHash": "9be672b776faa4a182cd3b769dc5f84fb64590207f02f810f90d37b6b33714bb",
@@ -2292,7 +2372,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2335,7 +2415,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2378,7 +2458,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2412,7 +2492,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2451,7 +2531,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2485,7 +2565,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2524,7 +2604,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2558,7 +2638,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2592,7 +2672,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2631,7 +2711,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2665,7 +2745,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2699,7 +2779,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2742,7 +2822,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2776,7 +2856,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ShadowGraphics.Root",
         "rootLayoutVersion": 2,
         "rootLayoutHash": "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c",
@@ -2810,7 +2890,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ShadowGraphics.Root",
         "rootLayoutVersion": 2,
         "rootLayoutHash": "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c",
@@ -2844,7 +2924,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ShadowGraphics.Root",
         "rootLayoutVersion": 2,
         "rootLayoutHash": "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c",
@@ -2887,7 +2967,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2926,7 +3006,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2960,7 +3040,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -2994,7 +3074,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -3061,7 +3141,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ParticleCompaction.Root",
         "rootLayoutVersion": 2,
         "rootLayoutHash": "b721e743343700916a7db6b60e59422b67d0e6374510bde1deb51e3105a1acfb",
@@ -3113,7 +3193,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ParticleDraw.Root",
         "rootLayoutVersion": 5,
         "rootLayoutHash": "4b67f7dd418e45869c1a14ee014ae01bb356d20dd9d05043a80ea4c1c0e3a134",
@@ -3153,7 +3233,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ParticleDraw.Root",
         "rootLayoutVersion": 5,
         "rootLayoutHash": "4b67f7dd418e45869c1a14ee014ae01bb356d20dd9d05043a80ea4c1c0e3a134",
@@ -3199,7 +3279,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ParticleSimulation.Root",
         "rootLayoutVersion": 1,
         "rootLayoutHash": "13007e949f7390c3d7e4b2266249d437402af2ef980dfa560923f16d9fafe838",
@@ -3233,7 +3313,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ShadowGraphics.Root",
         "rootLayoutVersion": 2,
         "rootLayoutHash": "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c",
@@ -3267,7 +3347,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ShadowGraphics.Root",
         "rootLayoutVersion": 2,
         "rootLayoutHash": "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c",
@@ -3301,7 +3381,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.ShadowGraphics.Root",
         "rootLayoutVersion": 2,
         "rootLayoutHash": "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c",
@@ -3335,7 +3415,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -3369,7 +3449,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -3445,7 +3525,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -3484,7 +3564,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -3518,7 +3598,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -3557,7 +3637,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -3591,7 +3671,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -3625,7 +3705,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -3857,7 +3937,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
         "rootLayoutVersion": 8,
         "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
@@ -3921,7 +4001,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.WorldSpriteDraw.Root",
         "rootLayoutVersion": 5,
         "rootLayoutHash": "28b3180ebac7fb772905401be74bd0fed4dc99633fe26ce1b89d8f2e18801f8b",
@@ -3985,7 +4065,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.WorldSpriteDraw.Root",
         "rootLayoutVersion": 5,
         "rootLayoutHash": "28b3180ebac7fb772905401be74bd0fed4dc99633fe26ce1b89d8f2e18801f8b",
@@ -4025,7 +4105,7 @@
       "contract": {
         "engineInterfaceId": "HIKARI.RenderGeometry",
         "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "d58a82600338f48eceaa0232216d8288d951901652019bc969d2d100558341ee",
+        "engineInterfaceHash": "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77",
         "rootLayoutId": "HIKARI.RenderGeometry.WorldTextDraw.Root",
         "rootLayoutVersion": 1,
         "rootLayoutHash": "92eedb3f876b85dc0340b6c23ddfeef1db489d233fc3d9a0f4523edbc3e2b222",

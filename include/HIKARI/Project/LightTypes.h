@@ -18,6 +18,9 @@ inline constexpr uint32_t kGameProjectLightPatchV2Size = 64u;
 enum class GameProjectLightType : uint32_t {
     Point = 0u,
     Spot,
+    // 管（線分）と長方形の面光源。寸法はエディターで設定する。
+    Tube,
+    Rect,
     Count,
 };
 
