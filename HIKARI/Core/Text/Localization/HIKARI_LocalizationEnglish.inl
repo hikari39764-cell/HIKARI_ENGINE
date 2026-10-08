@@ -3169,6 +3169,8 @@
     {"ui.quality.directionalShadow.pcfEnabled", "Soft Filtering (PCF)"},
     {"ui.quality.directionalShadow.pcfRadius", "Filter Radius"},
     {"ui.quality.directionalShadow.stabilize", "Stabilize"},
+    {"ui.quality.directionalShadow.penumbraScale", "Penumbra Scale (0 = fixed PCF)"},
+    {"ui.quality.directionalShadow.contactShadowLength", "Contact Shadow Length (m)"},
     {"ui.debugView.showShadowCascades", "Show Shadow Cascades"},
     {"editor.ui.create.a.studio.point.light", "Add a studio point light"},
     {"editor.ui.light.lumens", "Luminous Flux (lm)"}, {"ui.vfx.text.Luminous Flux (lm)", "Luminous Flux (lm)"},

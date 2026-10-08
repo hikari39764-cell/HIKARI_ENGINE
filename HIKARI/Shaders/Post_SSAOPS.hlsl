@@ -2,6 +2,11 @@
 #include "Include/Surface/HIKARI_ScreenSpaceGeometry.hlsli"
 #include "Include/Post/HIKARI_PostHash.hlsli"
 
+// GTAO（Jimenez 2016）。画素を通る画面上の直線（スライス）ごとに両側の水平線を探し、スライス面へ投影した法線を
+// 基準に可視の円弧を積分する。半球サンプリングより少ない読み出しで、角や接地の遮蔽が距離に応じて正しく出る。
+// 時間蓄積は持たないので乱数は画素位置だけで決める。白色雑音ではなく交互勾配雑音（近傍の画素が互いに異なる
+// 角を取る格子状の並び）にして、後段の 5 tap の両側フィルタで一画素ごとの斑が消えるようにする。
+
 cbuffer SsaoPassCB : register(b0)
 {
     float4x4 gViewProj;
@@ -18,12 +23,11 @@ cbuffer SsaoPassCB : register(b0)
 #define gAoBias gAoParams0.y
 #define gAoStrength gAoParams0.z
 #define gAoPower gAoParams0.w
-#define gAoSampleCount gAoParams1.x
-#define gFrameIndex gAoParams1.y
-#define gDepthOnlyNormals gAoParams1.w
+#define gAoSliceCount gAoParams1.x
+#define gAoStepCount gAoParams1.y
 
-static const float kTwoPi = 6.28318530718f;
-static const float kGoldenAngle = 2.39996322973f;
+static const float kPi = 3.14159265f;
+static const float kHalfPi = 1.57079633f;
 
 Texture2D gSceneDepthTex : register(t0);
 Texture2D gNormalRoughnessTex : register(t1);
@@ -62,12 +66,7 @@ float2 ProjectWorld(float3 world)
     float2 uv;
     float projectedDepth;
     float viewDepth;
-    HikariProjectWorldPosition(
-        world,
-        gViewProj,
-        uv,
-        projectedDepth,
-        viewDepth);
+    HikariProjectWorldPosition(world, gViewProj, uv, projectedDepth, viewDepth);
     return uv;
 }
 
@@ -89,224 +88,94 @@ float3 ReconstructNormalFromDepth(float2 uv, float centerDepth)
     return dot(n, viewDir) < 0.0f ? -n : n;
 }
 
-float3 SampleKernel(uint index, float angle)
+// 世界半径を画面上の画素数へ。面の接線方向へ半径だけ動いた点を射影して測る。
+float ScreenRadiusPixels(float2 centerUv, float3 worldPos, float3 normal)
 {
-    static const float3 kSamples[32] = {
-        float3( 0.5381f,  0.1856f,  0.4319f), float3( 0.1379f,  0.2486f,  0.4430f),
-        float3( 0.3371f,  0.5679f,  0.0057f), float3(-0.6999f, -0.0451f,  0.0019f),
-        float3( 0.0689f, -0.1598f,  0.8547f), float3( 0.0560f,  0.0069f,  0.1843f),
-        float3(-0.0146f,  0.1402f,  0.0762f), float3( 0.0100f, -0.1924f,  0.0344f),
-        float3(-0.3577f, -0.5301f,  0.4358f), float3(-0.3169f,  0.1063f,  0.0158f),
-        float3( 0.0103f, -0.5869f,  0.0046f), float3(-0.0897f, -0.4940f,  0.3287f),
-        float3( 0.7119f, -0.0154f,  0.0918f), float3(-0.0533f,  0.0596f,  0.5411f),
-        float3( 0.0352f, -0.0631f,  0.5460f), float3(-0.4776f,  0.2847f,  0.0271f),
-        float3(-0.0483f, -0.0833f,  0.0503f), float3(-0.1959f,  0.3624f,  0.4353f),
-        float3(-0.3566f,  0.0135f,  0.4821f), float3( 0.1030f, -0.1127f,  0.7812f),
-        float3( 0.1316f,  0.2841f,  0.2977f), float3(-0.1975f, -0.3839f,  0.3994f),
-        float3( 0.3828f, -0.1567f,  0.4751f), float3(-0.4609f,  0.1411f,  0.2927f),
-        float3( 0.3012f,  0.2178f,  0.5945f), float3(-0.2057f,  0.3228f,  0.6420f),
-        float3( 0.0644f, -0.4475f,  0.5692f), float3( 0.4165f, -0.3861f,  0.3912f),
-        float3(-0.5904f, -0.1559f,  0.3025f), float3( 0.5107f,  0.4422f,  0.1978f),
-        float3(-0.2961f,  0.5774f,  0.3397f), float3( 0.0747f, -0.7116f,  0.2181f)
-    };
+    float3 up = abs(normal.y) < 0.98f ? float3(0.0f, 1.0f, 0.0f) : float3(1.0f, 0.0f, 0.0f);
+    float3 tangent = normalize(cross(up, normal));
+    float2 radiusUv = ProjectWorld(worldPos + tangent * gAoRadius) - centerUv;
+    float radius = length(radiusUv * gScreenParams.xy);
+    return clamp(radius, 2.0f, 0.12f * gScreenParams.x);
+}
 
-    float s = sin(angle);
-    float c = cos(angle);
-    float3 v = kSamples[index];
-    return normalize(float3(v.x * c - v.y * s, v.x * s + v.y * c, abs(v.z)));
+// 片側の水平線。cos は視線との角の余弦で、半径の外側ほど -1（遮蔽なし）へ戻す。
+float HorizonCosine(float2 uv, float2 stepUv, float noise, uint stepCount, float3 position, float3 view)
+{
+    float horizon = -1.0f;
+    [loop] for (uint step = 0u; step < stepCount; ++step)
+    {
+        const float2 sampleUv = uv + stepUv * (float(step) + noise);
+        if (any(sampleUv < 0.0f) || any(sampleUv > 1.0f))
+            break;
+        const float sampleDepth = gSceneDepthTex.SampleLevel(gPointClamp, sampleUv, 0).r;
+        if (sampleDepth >= 0.99999f)
+            continue;
+        const float3 delta = ReconstructWorld(sampleUv, sampleDepth) - position;
+        const float distance = length(delta);
+        if (distance <= gAoBias)
+            continue;
+        const float cosine = dot(delta / distance, view);
+        const float falloff = saturate((distance / gAoRadius - 0.7f) / 0.3f);
+        horizon = max(horizon, lerp(cosine, -1.0f, falloff));
+    }
+    return horizon;
+}
+
+float GroundTruthAo(float2 uv, float depth, float3 n)
+{
+    const float3 position = ReconstructWorld(uv, depth);
+    const float3 view = normalize(gCameraPos.xyz - position);
+    const float radiusPixels = ScreenRadiusPixels(uv, position, n);
+    const float2 texel = gScreenParams.zw;
+    const float2 pixel = floor(uv * gScreenParams.xy);
+    const float noiseSlice = frac(52.9829189f * frac(dot(pixel, float2(0.06711056f, 0.00583715f))));
+    const float noiseStep = frac(52.9829189f * frac(dot(pixel + 5.0f, float2(0.00583715f, 0.06711056f))));
+    const uint sliceCount = max((uint)gAoSliceCount, 1u);
+    const uint stepCount = max((uint)gAoStepCount, 1u);
+
+    float visibility = 0.0f;
+    [loop] for (uint slice = 0u; slice < sliceCount; ++slice)
+    {
+        const float phi = (float(slice) + noiseSlice) * (kPi / float(sliceCount));
+        const float2 direction = float2(cos(phi), sin(phi));
+        const float2 stepUv = direction * texel * (radiusPixels / float(stepCount));
+        // スライス面：視線と、画面上の方向に対応する世界方向が張る平面。
+        const float3 sliceDir = ReconstructWorld(uv + direction * texel, depth) - position;
+        const float3 axis = normalize(sliceDir - view * dot(sliceDir, view));
+        const float3 sliceNormal = normalize(cross(axis, view));
+        const float3 projected = n - sliceNormal * dot(n, sliceNormal);
+        const float projectedLength = length(projected);
+        if (projectedLength < 1.0e-4f)
+            continue;
+        const float3 projectedDir = projected / projectedLength;
+        const float gamma = sign(dot(projectedDir, axis)) * acos(saturate(dot(projectedDir, view)));
+        float h1 = -acos(HorizonCosine(uv, -stepUv, noiseStep, stepCount, position, view));
+        float h2 = acos(HorizonCosine(uv, stepUv, noiseStep, stepCount, position, view));
+        h1 = gamma + max(h1 - gamma, -kHalfPi);
+        h2 = gamma + min(h2 - gamma, kHalfPi);
+        const float sinGamma = sin(gamma);
+        const float cosGamma = cos(gamma);
+        visibility += projectedLength * 0.25f *
+            ((-cos(2.0f * h1 - gamma) + cosGamma + 2.0f * h1 * sinGamma) +
+             (-cos(2.0f * h2 - gamma) + cosGamma + 2.0f * h2 * sinGamma));
+    }
+    visibility /= float(sliceCount);
+    const float ao = 1.0f - saturate((1.0f - saturate(visibility)) * gAoStrength);
+    return pow(saturate(ao), gAoPower);
 }
 
 float PSMain(VSOut input) : SV_TARGET
 {
-    float2 texel = gScreenParams.zw;
-    float depth = gSceneDepthTex.SampleLevel(gPointClamp, input.uv, 0).r;
+    const float depth = gSceneDepthTex.SampleLevel(gPointClamp, input.uv, 0).r;
     if (depth >= 0.99999f)
-    {
         return 1.0f;
-    }
-
-    float4 normalRoughness = gNormalRoughnessTex.SampleLevel(gPointClamp, input.uv, 0);
-    float3 n = DecodeNormal(normalRoughness);
-    float3 worldPos = ReconstructWorld(input.uv, depth);
-    float randomAngle = HikariHash12(
-        input.uv * gScreenParams.xy + gFrameIndex) * kTwoPi;
-    float sampleCount = clamp(gAoSampleCount, 1.0f, 32.0f);
-
-    float occlusion = 0.0f;
-    [loop]
-    for (uint i = 0; i < 32; ++i)
-    {
-        if (i >= (uint)sampleCount)
-        {
-            break;
-        }
-
-        float scale = (float(i) + 0.5f) / sampleCount;
-        scale = lerp(0.2f, 1.0f, scale * scale);
-        float3 dir = SampleKernel(i, randomAngle);
-        if (dot(dir, n) < 0.0f)
-        {
-            dir = -dir;
-        }
-
-        float3 sampleWorld = worldPos + dir * gAoRadius * scale;
-        float2 sampleUv = ProjectWorld(sampleWorld);
-        if (any(sampleUv < 0.0f) || any(sampleUv > 1.0f))
-        {
-            continue;
-        }
-
-        float sampleDepth = gSceneDepthTex.SampleLevel(gPointClamp, sampleUv, 0).r;
-        if (sampleDepth >= 0.99999f)
-        {
-            continue;
-        }
-
-        float3 hitWorld = ReconstructWorld(sampleUv, sampleDepth);
-        float3 delta = hitWorld - worldPos;
-        float distanceToHit = length(delta);
-        float facing = saturate(dot(n, normalize(delta)));
-        float range = saturate(1.0f - distanceToHit / max(gAoRadius, 1e-4f));
-        float hit = (distanceToHit > gAoBias && distanceToHit < gAoRadius && facing > 0.05f) ? 1.0f : 0.0f;
-        occlusion += hit * range * facing;
-    }
-
-    float ao = 1.0f - saturate((occlusion / sampleCount) * gAoStrength);
-    return pow(saturate(ao), gAoPower);
-}
-
-float2 VogelDisk(uint index, float sampleCount, float angle)
-{
-    float t = (float(index) + 0.5f) / max(sampleCount, 1.0f);
-    float r = sqrt(t);
-    float theta = float(index) * kGoldenAngle + angle;
-    return float2(cos(theta), sin(theta)) * r;
-}
-
-float ScreenRadiusFromWorldRadius(float2 centerUv, float3 worldPos, float3 normal)
-{
-    float3 up = abs(normal.y) < 0.98f ? float3(0.0f, 1.0f, 0.0f) : float3(1.0f, 0.0f, 0.0f);
-    float3 tangent = normalize(cross(up, normal));
-    float2 radiusUv = ProjectWorld(worldPos + tangent * gAoRadius);
-    float radius = length(radiusUv - centerUv);
-    float minRadius = max(gScreenParams.z, gScreenParams.w) * 2.0f;
-    return clamp(radius, minRadius, 0.12f);
-}
-
-// Spiral sampling で Reference より軽い AO を作る。
-float PSMainOptimizedHigh(VSOut input) : SV_TARGET
-{
-    float depth = gSceneDepthTex.SampleLevel(gPointClamp, input.uv, 0).r;
-    if (depth >= 0.99999f)
-    {
-        return 1.0f;
-    }
-
-    float4 normalRoughness = gNormalRoughnessTex.SampleLevel(gPointClamp, input.uv, 0);
-    float3 n = DecodeNormal(normalRoughness);
-    float3 worldPos = ReconstructWorld(input.uv, depth);
-    float randomAngle = HikariHash12(
-        input.uv * gScreenParams.xy + gFrameIndex * 7.13f) * kTwoPi;
-    float sampleCount = clamp(gAoSampleCount, 1.0f, 32.0f);
-    float screenRadius = ScreenRadiusFromWorldRadius(input.uv, worldPos, n);
-
-    float occlusion = 0.0f;
-    float weightSum = 0.0f;
-
-    [loop]
-    for (uint i = 0; i < 32; ++i)
-    {
-        if (i >= (uint)sampleCount)
-        {
-            break;
-        }
-
-        float2 offset = VogelDisk(i, sampleCount, randomAngle);
-        float2 sampleUv = input.uv + offset * screenRadius;
-        if (any(sampleUv < 0.0f) || any(sampleUv > 1.0f))
-        {
-            continue;
-        }
-
-        float sampleDepth = gSceneDepthTex.SampleLevel(gPointClamp, sampleUv, 0).r;
-        if (sampleDepth >= 0.99999f)
-        {
-            continue;
-        }
-
-        float3 hitWorld = ReconstructWorld(sampleUv, sampleDepth);
-        float3 delta = hitWorld - worldPos;
-        float distanceToHit = length(delta);
-        float3 dir = delta / max(distanceToHit, 1e-4f);
-        float facing = saturate(dot(n, dir));
-        float range = saturate(1.0f - distanceToHit / max(gAoRadius, 1e-4f));
-        range = range * range * (3.0f - 2.0f * range);
-
-        float radialWeight = 1.0f - saturate(length(offset));
-        float hit = (distanceToHit > gAoBias && distanceToHit < gAoRadius && facing > 0.03f) ? 1.0f : 0.0f;
-        float weight = max(radialWeight, 0.15f);
-        occlusion += hit * range * facing * weight;
-        weightSum += weight;
-    }
-
-    float ao = 1.0f - saturate((occlusion / max(weightSum, 1e-4f)) * gAoStrength);
-    return pow(saturate(ao), gAoPower);
+    return GroundTruthAo(input.uv, depth, DecodeNormal(gNormalRoughnessTex.SampleLevel(gPointClamp, input.uv, 0)));
 }
 
 float PSMainDepthOnly(VSOut input) : SV_TARGET
 {
-    float depth = gSceneDepthTex.SampleLevel(gPointClamp, input.uv, 0).r;
+    const float depth = gSceneDepthTex.SampleLevel(gPointClamp, input.uv, 0).r;
     if (depth >= 0.99999f)
-    {
         return 1.0f;
-    }
-
-    float3 n = ReconstructNormalFromDepth(input.uv, depth);
-    float3 worldPos = ReconstructWorld(input.uv, depth);
-    float randomAngle = HikariHash12(
-        input.uv * gScreenParams.xy + gFrameIndex * 7.13f) * kTwoPi;
-    float sampleCount = clamp(gAoSampleCount, 1.0f, 32.0f);
-    float screenRadius = ScreenRadiusFromWorldRadius(input.uv, worldPos, n);
-
-    float occlusion = 0.0f;
-    float weightSum = 0.0f;
-
-    [loop]
-    for (uint i = 0; i < 32; ++i)
-    {
-        if (i >= (uint)sampleCount)
-        {
-            break;
-        }
-
-        float2 offset = VogelDisk(i, sampleCount, randomAngle);
-        float2 sampleUv = input.uv + offset * screenRadius;
-        if (any(sampleUv < 0.0f) || any(sampleUv > 1.0f))
-        {
-            continue;
-        }
-
-        float sampleDepth = gSceneDepthTex.SampleLevel(gPointClamp, sampleUv, 0).r;
-        if (sampleDepth >= 0.99999f)
-        {
-            continue;
-        }
-
-        float3 hitWorld = ReconstructWorld(sampleUv, sampleDepth);
-        float3 delta = hitWorld - worldPos;
-        float distanceToHit = length(delta);
-        float3 dir = delta / max(distanceToHit, 1e-4f);
-        float facing = saturate(dot(n, dir));
-        float range = saturate(1.0f - distanceToHit / max(gAoRadius, 1e-4f));
-        range = range * range * (3.0f - 2.0f * range);
-
-        float radialWeight = 1.0f - saturate(length(offset));
-        float hit = (distanceToHit > gAoBias && distanceToHit < gAoRadius && facing > 0.03f) ? 1.0f : 0.0f;
-        float weight = max(radialWeight, 0.15f);
-        occlusion += hit * range * facing * weight;
-        weightSum += weight;
-    }
-
-    float ao = 1.0f - saturate((occlusion / max(weightSum, 1e-4f)) * gAoStrength);
-    return pow(saturate(ao), gAoPower);
+    return GroundTruthAo(input.uv, depth, ReconstructNormalFromDepth(input.uv, depth));
 }

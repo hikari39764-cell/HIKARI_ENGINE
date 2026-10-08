@@ -157,8 +157,12 @@ void FillShadowCB(const SceneEnvironment& environment, uint64_t frameIndex, Shad
     out.texelSizeX = SHADOW::GetShadowAtlasTexelSize();
     out.texelSizeY = out.texelSizeX;
     out.edgeFade = 0.04f;
-    // ShadowCB.padding[0] carries the frame index for rotated PCF taps.
-    out.padding[0] = static_cast<float>(frameIndex & 0xffffu);
+    out.frameIndex = static_cast<float>(frameIndex & 0xffffu);
+    // 半影の幅は太陽の見かけの大きさから決まる。空・雲と同じ太陽の状態を使う。
+    const float sunAngularRadius =
+        std::clamp(ATMOSPHERE::BuildAtmosphereSolarState(environment).sunAngularRadius, 0.0f, 0.5f);
+    out.lightTangent = quality.penumbraScale > 0.0f ? quality.penumbraScale * std::tan(sunAngularRadius) : 0.0f;
+    out.contactLength = std::max(0.0f, quality.contactShadowLength);
 }
 
 void FillSelectedIrradianceVolumes(SkyEnvironmentCB& out) {

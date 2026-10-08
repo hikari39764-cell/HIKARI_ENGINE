@@ -2777,6 +2777,8 @@
     {"ui.quality.directionalShadow.normalBias", "法线偏移"},
     {"ui.quality.directionalShadow.pcfEnabled", "软阴影过滤 (PCF)"},
     {"ui.quality.directionalShadow.pcfRadius", "过滤半径"}, {"ui.quality.directionalShadow.stabilize", "稳定化"},
+    {"ui.quality.directionalShadow.penumbraScale", "半影缩放（0 为固定 PCF）"},
+    {"ui.quality.directionalShadow.contactShadowLength", "接触阴影长度 (m)"},
     {"ui.debugView.showShadowCascades", "显示阴影级联"}, {"editor.ui.create.a.studio.point.light", "添加摄影棚点光源"},
     {"editor.ui.light.lumens", "光通量 (lm)"}, {"ui.vfx.text.Luminous Flux (lm)", "光通量 (lm)"},
     {"ui.environment.stars.intensity", "星光强度"}, {"ui.environment.stars.limitingMagnitude", "极限星等"},

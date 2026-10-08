@@ -79,7 +79,6 @@ private:
     Microsoft::WRL::ComPtr<ID3D12RootSignature> generateRootSig_{};
     Microsoft::WRL::ComPtr<ID3D12RootSignature> depthOnlyGenerateRootSig_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> generatePso_{};
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> optimizedGeneratePso_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> depthOnlyGeneratePso_{};
     Microsoft::WRL::ComPtr<ID3D12RootSignature> blurRootSig_{};
     Microsoft::WRL::ComPtr<ID3D12RootSignature> depthOnlyBlurRootSig_{};

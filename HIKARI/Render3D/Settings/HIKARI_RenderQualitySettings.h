@@ -115,6 +115,11 @@ struct DirectionalShadowQualitySettings {
     float normalBias = 0.02f;
     bool pcfEnabled = true;
     float pcfRadius = 1.0f;
+    // 半影：太陽の角半径 × この倍率で、遮蔽者との距離に応じて核を広げる（PCSS）。0 で固定半径の PCF。
+    // 実際の太陽（角半径 0.27°）では 1m 先の半影が 1cm 弱でほぼ硬い。8 倍で 2m 先の球の影が目に見えて柔らかくなる。
+    float penumbraScale = 8.0f;
+    // 接触影：画面空間で光の方へ深度を辿る長さ [m]。カスケードの分解能では消える接地の影を補う。0 で無効。
+    float contactShadowLength = 0.25f;
     bool stabilize = true;
 
     bool operator==(const DirectionalShadowQualitySettings&) const = default;

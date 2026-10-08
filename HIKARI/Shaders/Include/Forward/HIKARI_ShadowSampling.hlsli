@@ -10,15 +10,46 @@ float2 HikariClampShadowAtlasUv(float2 uv, uint cascadeIndex)
         float2(gShadowTexelSizeX, gShadowTexelSizeY));
 }
 
-float HikariSampleShadowPcf(
+// PCSS の半影の上限 [texel]。遮蔽者探索の半径でもある。
+static const float HIKARI_SHADOW_PCSS_MAX_TEXELS = 8.0f;
+
+// カスケード内の 1 texel の世界長。正射影の x 行の長さは 2 / 幅。
+float HikariShadowCascadeTexelWorld(uint cascadeIndex)
+{
+    const float rowScale = length(gShadowLightViewProj[cascadeIndex][0].xyz);
+    const float cascadeTexelUv = gShadowTexelSizeX / max(gShadowCascadeParams.z, 1.0e-6f);
+    return 2.0f * cascadeTexelUv / max(rowScale, 1.0e-6f);
+}
+
+// フィルタ核の半幅 [texel]。PCSS は半影の上限で受け手をずらす。
+float HikariShadowKernelTexels()
+{
+    if (gShadowLightTangent > 0.0f)
+        return HIKARI_SHADOW_PCSS_MAX_TEXELS * 0.5f;
+    return gShadowPcfEnabled != 0 ? 2.0f * max(gShadowPcfRadius, 0.0f) : 0.0f;
+}
+
+float HikariSampleShadowFiltered(
     float2 uv,
     float currentDepth,
-    uint cascadeIndex)
+    uint cascadeIndex,
+    float3 worldPosWS)
 {
-    return HikariShadowPcf5x5(gShadowMap, gShadowSampler, uv, currentDepth,
-        float2(gShadowTexelSizeX, gShadowTexelSizeY),
-        HikariClampShadowAtlasUv(0.0f.xx, cascadeIndex),
-        HikariClampShadowAtlasUv(1.0f.xx, cascadeIndex),
+    const float2 texelSize = float2(gShadowTexelSizeX, gShadowTexelSizeY);
+    const float2 clampMin = HikariClampShadowAtlasUv(0.0f.xx, cascadeIndex);
+    const float2 clampMax = HikariClampShadowAtlasUv(1.0f.xx, cascadeIndex);
+    if (gShadowLightTangent > 0.0f)
+    {
+        // 影の深度 1 は near→far の世界長（正射影の z 行の長さの逆数）。
+        const float depthRangeWorld = rcp(max(length(gShadowLightViewProj[cascadeIndex][2].xyz), 1.0e-6f));
+        const float depthToTexels =
+            gShadowLightTangent * depthRangeWorld / max(HikariShadowCascadeTexelWorld(cascadeIndex), 1.0e-6f);
+        const float rotation = HikariHash12(float2(dot(worldPosWS, float3(12.9898f, 78.233f, 37.719f)),
+            gShadowFrameIndex)) * 6.28318530718f;
+        return HikariShadowPcss(gShadowMap, gShadowSampler, uv, currentDepth, texelSize, clampMin, clampMax,
+            depthToTexels, HIKARI_SHADOW_PCSS_MAX_TEXELS, rotation);
+    }
+    return HikariShadowPcf5x5(gShadowMap, gShadowSampler, uv, currentDepth, texelSize, clampMin, clampMax,
         gShadowPcfEnabled != 0 ? gShadowPcfRadius : 0.0f);
 }
 
@@ -52,12 +83,9 @@ float3 HikariApplyShadowNormalOffset(
     const float3 toLight = -gDirectionalDir.xyz * rsqrt(max(dot(gDirectionalDir.xyz, gDirectionalDir.xyz), 1.0e-8f));
     const float cosine = saturate(dot(geometricNormalWS, toLight));
     const float sine = sqrt(1.0f - cosine * cosine);
-    // 正射影の x 行の長さは 2 / 幅。カスケード内の 1 texel を世界の長さへ直す。
-    const float rowScale = length(gShadowLightViewProj[cascadeIndex][0].xyz);
-    const float cascadeTexelUv = gShadowTexelSizeX / max(gShadowCascadeParams.z, 1.0e-6f);
-    const float texelWorld = 2.0f * cascadeTexelUv / max(rowScale, 1.0e-6f);
-    const float kernelTexels = (gShadowPcfEnabled != 0 ? 2.0f * max(gShadowPcfRadius, 0.0f) : 0.0f) + 1.5f;
-    const float offset = max(gShadowNormalBias, 0.0f) + texelWorld * kernelTexels * sine;
+    const float kernelTexels = HikariShadowKernelTexels() + 1.5f;
+    const float offset =
+        max(gShadowNormalBias, 0.0f) + HikariShadowCascadeTexelWorld(cascadeIndex) * kernelTexels * sine;
     return worldPosWS + geometricNormalWS * offset;
 }
 
@@ -96,10 +124,11 @@ float HikariSampleDirectionalShadowCascade(
         HikariShadowAtlasUv(cascadeUv, cascadeIndex);
     const float currentDepth = proj.z - gShadowDepthBias * gShadowCascadeDepthBiasScales[cascadeIndex];
     const float sampledVisibility =
-        HikariSampleShadowPcf(
+        HikariSampleShadowFiltered(
             atlasUv,
             currentDepth,
-            cascadeIndex);
+            cascadeIndex,
+            worldPosWS);
     return lerp(
         1.0f,
         sampledVisibility,

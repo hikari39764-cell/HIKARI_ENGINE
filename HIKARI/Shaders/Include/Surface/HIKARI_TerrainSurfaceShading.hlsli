@@ -236,7 +236,9 @@ float4 HikariShadeTerrainSurface(
         : SampleDirectionalShadow(
             input.worldPosWS,
             geometricNormal,
-            HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
+            HikariForwardVertexMetaReceiveShadow(input.forwardMeta)) *
+            HikariStylizedShadowFactor(HikariContactShadow(input.worldPosWS, geometricNormal, input.position.xy,
+                HikariForwardVertexMetaReceiveShadow(input.forwardMeta)));
     const float shadowFactor = lerp(
         1.0f,
         sampledShadowFactor,

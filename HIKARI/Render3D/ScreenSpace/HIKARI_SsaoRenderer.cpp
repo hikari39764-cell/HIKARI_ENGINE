@@ -74,16 +74,17 @@ MATH::Vec4 MakeScreenParams(uint32_t width, uint32_t height) {
 
 struct SsaoResolvedMode {
     SsaoMode mode = SsaoMode::Off;
-    uint32_t sampleCount = 0;
+    // GTAO のスライス数と片側の歩数。読み出し数は slice × step × 2。
+    uint32_t sliceCount = 0;
+    uint32_t stepCount = 0;
     uint32_t blurIterations = 0;
     float radiusScale = 1.0f;
     float strengthScale = 1.0f;
-    bool optimizedMainPass = false;
     bool halfResolution = false;
     const char* pixEventName = "SSAO.Off";
 };
 
-// Mode ごとの実行時パラメータを決める。
+// Mode ごとの実行時パラメータを決める。設定の sampleCount（8..32）を片側の歩数へ配り、Mode がスライス数と解像度を決める。
 SsaoResolvedMode ResolveModeParameters(const AmbientOcclusionSettings& settings) {
     const uint32_t referenceSamples = NormalizeSampleCount(settings.sampleCount);
     const uint32_t referenceBlur = NormalizeBlurIterations(settings.blurIterations);
@@ -92,29 +93,29 @@ SsaoResolvedMode ResolveModeParameters(const AmbientOcclusionSettings& settings)
     resolved.mode = ResolveEffectiveSsaoMode(settings);
     switch (resolved.mode) {
     case SsaoMode::Reference:
-        resolved.sampleCount = referenceSamples;
+        resolved.sliceCount = 4u;
+        resolved.stepCount = std::clamp<uint32_t>(referenceSamples / 4u, 2u, 8u);
         resolved.blurIterations = referenceBlur;
         resolved.pixEventName = "SSAO.Reference";
         break;
     case SsaoMode::OptimizedHigh:
-        resolved.sampleCount = std::clamp<uint32_t>(referenceSamples, 16u, 24u);
+        resolved.sliceCount = 3u;
+        resolved.stepCount = std::clamp<uint32_t>(referenceSamples / 4u, 2u, 6u);
         resolved.blurIterations = NormalizeHalfResolutionBlurPasses(referenceBlur);
         resolved.radiusScale = 0.92f;
-        resolved.optimizedMainPass = true;
         resolved.halfResolution = true;
         resolved.pixEventName = "SSAO.OptimizedHigh";
         break;
     case SsaoMode::Balanced:
-        resolved.sampleCount = std::min<uint32_t>(referenceSamples, 16u);
+        resolved.sliceCount = 2u;
+        resolved.stepCount = std::clamp<uint32_t>(referenceSamples / 4u, 2u, 4u);
         resolved.blurIterations = NormalizeHalfResolutionBlurPasses(referenceBlur);
         resolved.radiusScale = 0.95f;
-        resolved.optimizedMainPass = true;
         resolved.halfResolution = true;
         resolved.pixEventName = "SSAO.Balanced";
         break;
     case SsaoMode::Off:
     default:
-        resolved.sampleCount = 0;
         resolved.blurIterations = 0;
         resolved.pixEventName = "SSAO.Off";
         break;
@@ -135,7 +136,7 @@ void FillDebugStateBase(uint32_t width, uint32_t height, const AmbientOcclusionS
     gDebugState.halfResolution = false;
     gDebugState.referenceSampleCount = NormalizeSampleCount(settings.sampleCount);
     gDebugState.referenceBlurIterations = NormalizeBlurIterations(settings.blurIterations);
-    gDebugState.sampleCount = resolved.sampleCount;
+    gDebugState.sampleCount = resolved.sliceCount * resolved.stepCount * 2u;
     gDebugState.blurIterations = resolved.blurIterations;
     gDebugState.radius = std::max(0.01f, settings.radius) * resolved.radiusScale;
     gDebugState.strength = std::max(0.0f, settings.strength) * resolved.strengthScale;
@@ -243,10 +244,9 @@ bool SsaoRenderer::RenderInternal(const GFX::Context& graphics, ID3D12GraphicsCo
     cb.depthScreenParams = MakeScreenParams(screenWidth_, screenHeight_);
     cb.aoParams0 = {std::max(0.01f, settings.radius) * modeParams.radiusScale, std::max(0.0f, settings.bias),
                     std::max(0.0f, settings.strength) * modeParams.strengthScale, std::max(0.1f, settings.power)};
-    cb.aoParams1 = {static_cast<float>(modeParams.sampleCount),
-                    // Temporal 蓄積を持たないため per-frame jitter は正味のちらつき
-                    // にしかならない。回転角は画素位置 hash のみで固定する。
-                    0.0f, static_cast<float>(static_cast<int>(modeParams.mode)), depthOnlyNormals ? 1.0f : 0.0f};
+    // Temporal 蓄積を持たないため per-frame jitter は正味のちらつきにしかならない。乱数は画素位置だけで決める。
+    cb.aoParams1 = {static_cast<float>(modeParams.sliceCount), static_cast<float>(modeParams.stepCount),
+                    static_cast<float>(static_cast<int>(modeParams.mode)), depthOnlyNormals ? 1.0f : 0.0f};
 
     uint32_t constantSliceIndex = 0;
     const UINT constantStride = GFX::AlignD3D12ConstantBufferByteSize(sizeof(SsaoPassCB));
@@ -292,9 +292,7 @@ bool SsaoRenderer::RenderInternal(const GFX::Context& graphics, ID3D12GraphicsCo
         cmd->OMSetRenderTargets(1, &rawRtv_, FALSE, nullptr);
         cmd->ClearRenderTargetView(rawRtv_, white, 0, nullptr);
 
-        ID3D12PipelineState* pso =
-            depthOnlyNormals ? depthOnlyGeneratePso_.Get()
-                             : (modeParams.optimizedMainPass ? optimizedGeneratePso_.Get() : generatePso_.Get());
+        ID3D12PipelineState* pso = depthOnlyNormals ? depthOnlyGeneratePso_.Get() : generatePso_.Get();
         const D3D12_GPU_VIRTUAL_ADDRESS cbAddress = uploadConstants(cb);
         if (cbAddress == 0) {
             return false;
@@ -592,8 +590,8 @@ bool SsaoRenderer::CreateAoResource(const GFX::Context& graphics, uint32_t width
 }
 
 bool SsaoRenderer::EnsurePipeline(const GFX::Context& graphics) {
-    if (generatePso_ && optimizedGeneratePso_ && blurPso_ && upsamplePso_ && depthOnlyGeneratePso_ &&
-        depthOnlyBlurPso_ && depthOnlyUpsamplePso_) {
+    if (generatePso_ && blurPso_ && upsamplePso_ && depthOnlyGeneratePso_ && depthOnlyBlurPso_ &&
+        depthOnlyUpsamplePso_) {
         return true;
     }
 
@@ -657,7 +655,6 @@ bool SsaoRenderer::EnsurePipeline(const GFX::Context& graphics) {
 
     Microsoft::WRL::ComPtr<ID3DBlob> generateVs;
     Microsoft::WRL::ComPtr<ID3DBlob> generatePs;
-    Microsoft::WRL::ComPtr<ID3DBlob> optimizedGeneratePs;
     Microsoft::WRL::ComPtr<ID3DBlob> depthOnlyGeneratePs;
     Microsoft::WRL::ComPtr<ID3DBlob> blurVs;
     Microsoft::WRL::ComPtr<ID3DBlob> blurPs;
@@ -666,8 +663,6 @@ bool SsaoRenderer::EnsurePipeline(const GFX::Context& graphics) {
     Microsoft::WRL::ComPtr<ID3DBlob> depthOnlyUpsamplePs;
     if (!CompileShader(L"HIKARI/Shaders/Post_SSAOPS.hlsl", "VSMain", L"vs_6_0", generateVs.GetAddressOf()) ||
         !CompileShader(L"HIKARI/Shaders/Post_SSAOPS.hlsl", "PSMain", L"ps_6_0", generatePs.GetAddressOf()) ||
-        !CompileShader(L"HIKARI/Shaders/Post_SSAOPS.hlsl", "PSMainOptimizedHigh", L"ps_6_0",
-                       optimizedGeneratePs.GetAddressOf()) ||
         !CompileShader(L"HIKARI/Shaders/Post_SSAOPS.hlsl", "PSMainDepthOnly", L"ps_6_0",
                        depthOnlyGeneratePs.GetAddressOf()) ||
         !CompileShader(L"HIKARI/Shaders/Post_SSAOBlurPS.hlsl", "VSMain", L"vs_6_0", blurVs.GetAddressOf()) ||
@@ -702,8 +697,6 @@ bool SsaoRenderer::EnsurePipeline(const GFX::Context& graphics) {
     };
 
     return makePso(generateRootSig_.Get(), generateVs.Get(), generatePs.Get(), generatePso_.GetAddressOf()) &&
-           makePso(generateRootSig_.Get(), generateVs.Get(), optimizedGeneratePs.Get(),
-                   optimizedGeneratePso_.GetAddressOf()) &&
            makePso(depthOnlyGenerateRootSig_.Get(), generateVs.Get(), depthOnlyGeneratePs.Get(),
                    depthOnlyGeneratePso_.GetAddressOf()) &&
            makePso(blurRootSig_.Get(), blurVs.Get(), blurPs.Get(), blurPso_.GetAddressOf()) &&
@@ -749,7 +742,6 @@ void SsaoRenderer::Release() {
     generateRootSig_.Reset();
     depthOnlyGenerateRootSig_.Reset();
     generatePso_.Reset();
-    optimizedGeneratePso_.Reset();
     depthOnlyGeneratePso_.Reset();
     blurRootSig_.Reset();
     depthOnlyBlurRootSig_.Reset();

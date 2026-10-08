@@ -243,7 +243,9 @@ struct ShadowCB {
     float texelSizeX = 1.0f / 2048.0f;
     float texelSizeY = 1.0f / 2048.0f;
     float edgeFade = 0.04f;
-    float padding[3]{};
+    float frameIndex = 0.0f;    // 画素ごとの tap 回転と接触影の始点のずらし
+    float lightTangent = 0.0f;  // PCSS：tan(太陽の角半径) × 半影の倍率。0 で固定 PCF
+    float contactLength = 0.0f; // 接触影の長さ [m]。0 で無効
     RENDER3D::LIGHTING::LocalShadowGpuData localShadow{};
 };
 

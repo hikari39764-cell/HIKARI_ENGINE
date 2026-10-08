@@ -54,7 +54,9 @@ cbuffer ShadowCB : register(b4)
     float gShadowTexelSizeX;
     float gShadowTexelSizeY;
     float gShadowEdgeFade;
-    float3 gShadowPadding;
+    float gShadowFrameIndex;    // 画素ごとの tap 回転と接触影の始点のずらし
+    float gShadowLightTangent;  // PCSS：tan(太陽の角半径) × 半影の倍率。0 で固定 PCF
+    float gShadowContactLength; // 接触影の長さ [m]。0 で無効
     HikariLocalShadowData gLocalShadow;
 };
 

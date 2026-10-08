@@ -9,6 +9,7 @@
 #include "Include/Surface/HIKARI_MaterialShell.hlsli"
 #include "Include/Surface/HIKARI_PainterlyShell.hlsli"
 #include "Include/Forward/HIKARI_StyleShading.hlsli"
+#include "Include/Forward/HIKARI_ContactShadow.hlsli"
 
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
 #include "Include/Forward/HIKARI_SurfaceFeatureShading.hlsli"
@@ -415,6 +416,11 @@ float4 main(PSInput input) : SV_TARGET
             input.worldPosWS,
             geometricNormal,
             HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
+    if (!costNoShadow)
+    {
+        shadowVisibility *= HikariContactShadow(input.worldPosWS, geometricNormal, input.position.xy,
+            HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
+    }
     if (gDebugView == 8)
     {
         return float4(shadowVisibility.xxx, albedo.a);

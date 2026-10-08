@@ -19,6 +19,8 @@ inline constexpr auto kDirectionalShadowFields = [](auto&& field) {
     field("normalBias", &S::normalBias, Range{0.0, 1.0});
     field("pcfEnabled", &S::pcfEnabled);
     field("pcfRadius", &S::pcfRadius, Range{0.0, 8.0});
+    field("penumbraScale", &S::penumbraScale, Range{0.0, 16.0});
+    field("contactShadowLength", &S::contactShadowLength, Range{0.0, 2.0});
     field("stabilize", &S::stabilize);
 };
 

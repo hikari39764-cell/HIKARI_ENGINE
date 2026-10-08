@@ -631,12 +631,6 @@
           "profile": "ps_6_0"
         },
         {
-          "id": "PSMainOptimizedHigh",
-          "stage": "Pixel",
-          "entry": "PSMainOptimizedHigh",
-          "profile": "ps_6_0"
-        },
-        {
           "id": "VSMain",
           "stage": "Vertex",
           "entry": "VSMain",
