@@ -19,7 +19,7 @@
 #include "Assets/Sprite/HIKARI_SpriteMaterialStore.h"
 #include "Render3D/Models/HIKARI_ModelManager.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
-#include "Scene/Lighting/HIKARI_LightTextureResolver.h"
+#include "Scene/Lighting/HIKARI_LocalTextureResolver.h"
 
 namespace HIKARI {
 
@@ -48,7 +48,7 @@ public:
     SPRITE::SpriteAssetStore& SpriteAssets() noexcept { return spriteAssets_; }
     SPRITE::SpriteMaterialStore& SpriteMaterials() noexcept { return spriteMaterials_; }
     ModelManager& Models() noexcept { return models_; }
-    LightTextureResolver& LightTextures() noexcept { return lightTextures_; }
+    LocalTextureResolver& LocalTextures() noexcept { return localTextures_; }
 
     bool ReloadAssets(const SceneDependencySet* required = nullptr, const AssetGuid* admissionRoot = nullptr,
                       const std::function<bool(const AssetRegistry&, std::string&)>& validatePrepared = {},
@@ -87,7 +87,7 @@ private:
     SPRITE::SpriteAssetStore spriteAssets_{};
     SPRITE::SpriteMaterialStore spriteMaterials_{};
     ModelManager models_{};
-    LightTextureResolver lightTextures_{};
+    LocalTextureResolver localTextures_{};
 };
 
 } // namespace HIKARI

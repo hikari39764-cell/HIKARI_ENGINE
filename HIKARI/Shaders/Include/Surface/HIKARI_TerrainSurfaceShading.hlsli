@@ -219,6 +219,19 @@ float4 HikariShadeTerrainSurface(
             -windDir.x * sin(ripplePhase),
             0.0f,
             -windDir.y * sin(ripplePhase)) * rippleAmplitude);
+    // デカール（汚れ、弾痕、足跡）は他の面と同じく受光の前に色・法線・粗さを書き換える。
+    {
+        HikariDecalSurface decalSurface;
+        decalSurface.albedo = albedo.rgb;
+        decalSurface.normal = shadingNormal;
+        decalSurface.roughness = roughness;
+        decalSurface.metallic = 0.0f;
+        HikariApplyLocalDecals(worldPos, input.position.xy, HikariCameraViewDepth(worldPos),
+            normalize(input.normalWS), ddx(worldPos), ddy(worldPos), decalSurface);
+        albedo.rgb = decalSurface.albedo;
+        shadingNormal = decalSurface.normal;
+        roughness = decalSurface.roughness;
+    }
 
     // Terrain is a regular directional-shadow receiver. Reuse the shared CSM
     // sampler and the same per-surface receive flag as opaque PBR surfaces.

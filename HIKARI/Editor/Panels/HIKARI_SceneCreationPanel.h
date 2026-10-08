@@ -1,7 +1,8 @@
 #pragma once
 
-#include <cstdint>
+#include <functional>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include "Editor/Authoring/HIKARI_PrimitiveCreationDialog.h"
@@ -9,12 +10,9 @@
 
 namespace HIKARI {
 
-namespace RENDER3D::LIGHTING {
-enum class SceneLightType : uint8_t;
-}
-
 struct EditorContext;
 class DocumentSceneBase;
+class GameObject;
 class SelectionSyncService;
 
 namespace EDITOR {
@@ -32,27 +30,13 @@ public:
 
 private:
     static bool MatchesSearch(std::string_view label, std::string_view search);
-    void CreateEmptyObject(DocumentSceneBase& scene, EditorContext& context, const SelectionSyncService& selectionSync);
-    void CreateWorldSpriteObject(DocumentSceneBase& scene, EditorContext& context,
-                                 const SelectionSyncService& selectionSync);
-    void CreateWorldTextObject(DocumentSceneBase& scene, EditorContext& context,
-                               const SelectionSyncService& selectionSync);
     void DrawUiCreationMenu(DocumentSceneBase& scene, EditorContext& context, const SelectionSyncService& selectionSync,
                             std::string_view search);
     void CreateUiObject(DocumentSceneBase& scene, EditorContext& context, const SelectionSyncService& selectionSync,
                         bool button, bool addSceneFlow = false);
-    void CreateLightingObject(DocumentSceneBase& scene, EditorContext& context,
-                              const SelectionSyncService& selectionSync, bool reflectionProbe);
-    void CreateLightObject(DocumentSceneBase& scene, EditorContext& context, const SelectionSyncService& selectionSync,
-                           RENDER3D::LIGHTING::SceneLightType lightType);
-    void CreateWaterSurfaceObject(DocumentSceneBase& scene, EditorContext& context,
-                                  const SelectionSyncService& selectionSync);
-
-    void CreateTerrainSurfaceObject(DocumentSceneBase& scene, EditorContext& context,
-                                    const SelectionSyncService& selectionSync);
-
-    void CreateDialogueTriggerObject(DocumentSceneBase& scene, EditorContext& context,
-                                     const SelectionSyncService& selectionSync);
+    // create が文書へ物体を加えたら選択し、取り消しの履歴を残す。
+    void CreateWithHistory(DocumentSceneBase& scene, EditorContext& context, const SelectionSyncService& selectionSync,
+                           std::string historyLabel, const std::function<GameObject*()>& create);
 
     PrimitiveCreationDialog primitiveCreationDialog_{};
     std::optional<SceneObjectAuthoringHistoryRequest> historyRequest_{};

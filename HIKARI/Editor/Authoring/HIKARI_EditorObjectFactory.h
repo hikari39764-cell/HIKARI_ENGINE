@@ -81,5 +81,7 @@ GameObject* CreateIrradianceVolumeObject(DocumentSceneBase& scene, const CreateO
 GameObject* CreateLightObject(DocumentSceneBase& scene, const CreateObjectRequest& request,
                               RENDER3D::LIGHTING::SceneLightType lightType);
 
+GameObject* CreateDecalObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
+
 } // namespace EDITOR
 } // namespace HIKARI

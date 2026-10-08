@@ -55,7 +55,8 @@ private:
     bool PublishConstant(const GFX::Context& graphics, const void* data, size_t bytes,
                          D3D12_GPU_VIRTUAL_ADDRESS& binding);
     DX::DynamicUploadBuffer uploads_{};
-    std::vector<RENDER3D::LIGHTING::LocalLightGpuData> lights_{};
+    // 局所光の記録の後ろにデカールの記録が続く。
+    std::vector<RENDER3D::LIGHTING::LocalLightGpuData> records_{};
     std::vector<RENDER3D::LIGHTING::LocalLightClusterHeader> headers_{};
     std::vector<uint32_t> indices_{};
     MeshViewGpuBindings bindings_{};

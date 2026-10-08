@@ -16,9 +16,13 @@ namespace HIKARI::RENDER3D::LIGHTING {
 inline constexpr uint32_t kMaximumLocalLightCount = 1024u;
 inline constexpr uint32_t kLocalLightClusterDepthSliceCount = 16u;
 inline constexpr uint32_t kMaximumLocalLightsPerCluster = 64u;
+// 光源の後ろに並べるデカールの記録の上限と、クラスタあたりの上限。
+inline constexpr uint32_t kMaximumLocalDecalCount = 512u;
+inline constexpr uint32_t kMaximumLocalDecalsPerCluster = 32u;
 inline constexpr uint32_t kMaximumLocalLightClusterCount = 65536u;
 inline constexpr uint32_t kMaximumLocalLightClusterIndexCount = 1024u * 1024u;
 
+// クラスタの index 列は光源の後ろにデカールが続く。count は光源数 | デカール数 << 16。
 struct alignas(8) LocalLightClusterHeader {
     uint32_t offset = 0u;
     uint32_t count = 0u;
@@ -27,8 +31,9 @@ struct alignas(8) LocalLightClusterHeader {
 static_assert(sizeof(LocalLightClusterHeader) == 8u);
 
 struct LocalLightListBuildOutput {
-    LocalLightGpuData* lights = nullptr;
-    uint32_t lightCapacity = 0u;
+    // 光源の記録の後ろにデカールの記録（LocalDecalGpuData）を並べる。
+    LocalLightGpuData* records = nullptr;
+    uint32_t recordCapacity = 0u;
     LocalLightClusterHeader* clusterHeaders = nullptr;
     uint32_t clusterHeaderCapacity = 0u;
     uint32_t* clusterIndices = nullptr;
@@ -36,9 +41,11 @@ struct LocalLightListBuildOutput {
 };
 
 struct LocalLightListView {
-    // 選択済み GPU 光源内容のみ。カメラ行列とクラスタ配置は含めない。
+    // 選択済みの GPU 記録（光源とデカール）の内容のみ。カメラ行列とクラスタ配置は含めない。
     uint64_t lightingContentHash = 0u;
     uint32_t lightCount = 0u;
+    // 記録の [lightCount, lightCount + decalCount) がデカール。
+    uint32_t decalCount = 0u;
     uint32_t clusterCountX = 0u;
     uint32_t clusterCountY = 0u;
     uint32_t clusterCountZ = 0u;

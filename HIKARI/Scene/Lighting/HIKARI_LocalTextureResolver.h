@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <span>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -16,13 +15,13 @@ namespace HIKARI {
 
 class AssetRegistry;
 
-// 局所光の配光（LightProfile 資産）とスポットのクッキー（Texture 資産）を描画用のテクスチャへ解決し、光源へ記述子番号を
+// 局所の記録が引くテクスチャ（光源の配光とクッキー、デカールの色と法線）を描画用のテクスチャへ解決し、記述子番号を
 // 書く。配光は全光束を保つよう光度を上げる。配光の表は資産の内容が変わった時だけ作り直し、解決できない資産は資産の
 // 内容版が進むまで再試行しない。
-class LightTextureResolver {
+class LocalTextureResolver {
 public:
     void Resolve(const AssetDatabase& database, const AssetRegistry& registry,
-                 std::span<RENDER3D::LIGHTING::SceneLightProvider> lights);
+                 RENDER3D::LIGHTING::SceneLightingSet& lighting);
 
 private:
     struct ProfileTexture {
@@ -32,7 +31,8 @@ private:
     };
 
     const ProfileTexture* ResolveProfile(const std::string& guid);
-    uint32_t ResolveCookie(const AssetRegistry& registry, const std::string& guid);
+    // Texture 資産（クッキー、デカール）。
+    uint32_t ResolveTexture(const AssetRegistry& registry, const std::string& guid);
     void Report(const std::string& guid, const std::string& message);
 
     using ProfileCache = AssetFileCache<ASSETS::LIGHTING::IesProfileAsset, AssetType::LightProfile,
@@ -41,7 +41,7 @@ private:
     const AssetDatabase* database_ = nullptr;
     uint64_t revision_ = 0u;
     std::unordered_map<std::string, ProfileTexture> profileTextures_;
-    std::unordered_map<std::string, RENDER3D::TextureResourceHandle> cookieTextures_;
+    std::unordered_map<std::string, RENDER3D::TextureResourceHandle> textures_;
     std::unordered_set<std::string> failed_;
 };
 

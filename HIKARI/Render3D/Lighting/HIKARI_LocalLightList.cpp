@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Render3D/Core/HIKARI_Camera3D.h"
+#include "Render3D/Decal/HIKARI_LocalDecalRecord.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
@@ -78,15 +79,18 @@ struct ClusterBounds {
     bool visible = false;
 };
 
-struct UploadedLightBounds {
-    uint32_t lightIndex = 0u;
+struct UploadedRecordBounds {
+    uint32_t recordIndex = 0u;
     ClusterBounds clusters{};
 };
 
 struct LocalLightListScratch {
     std::vector<uint8_t> clusterCounts{};
     std::vector<uint8_t> clusterWriteCounts{};
-    std::vector<UploadedLightBounds> uploadedBounds{};
+    std::vector<uint8_t> clusterDecalCounts{};
+    std::vector<uint8_t> clusterDecalWriteCounts{};
+    std::vector<UploadedRecordBounds> uploadedBounds{};
+    std::vector<UploadedRecordBounds> uploadedDecalBounds{};
     std::vector<LocalLightClusterHeader> clusterHeaders{};
     std::vector<uint32_t> clusterIndices{};
 };
@@ -107,17 +111,22 @@ MATH::Vec2 ProjectViewAxisBounds(float center, float radius, float inverseNear, 
     return {(std::min)(lowNear, lowFar), (std::max)(highNear, highFar)};
 }
 
-ClusterBounds ProjectLightBounds(const SceneLightProvider& light, const Camera3D& camera, uint32_t screenWidth,
-                                 uint32_t screenHeight, uint32_t tileSize, uint32_t clusterCountX,
-                                 uint32_t clusterCountY, float nearDistance, float farDistance, float depthScale,
-                                 float depthBias) {
+// 球が掛かるクラスタの範囲。
+ClusterBounds ProjectSphereBounds(const MATH::Vec3& center, float radius, const Camera3D& camera, uint32_t screenWidth,
+                                  uint32_t screenHeight, const LocalLightListView& view) {
+    const uint32_t tileSize = view.tileSizePixels;
+    const uint32_t clusterCountX = view.clusterCountX;
+    const uint32_t clusterCountY = view.clusterCountY;
+    const float nearDistance = view.nearDistance;
+    const float farDistance = view.farDistance;
+    const float depthScale = view.depthScale;
+    const float depthBias = view.depthBias;
     ClusterBounds bounds{};
-    const MATH::Vec4 viewPosition =
-        camera.GetView().TransformPoint({light.position.x, light.position.y, light.position.z, 1.0f});
+    const MATH::Vec4 viewPosition = camera.GetView().TransformPoint({center.x, center.y, center.z, 1.0f});
     if (!MATH::IsFinite(viewPosition))
         return bounds;
     const float viewDepth = -viewPosition.z;
-    const float range = (std::max)(ResolveLocalLightInfluenceRadius(light), 0.05f);
+    const float range = (std::max)(radius, 0.05f);
     if (viewDepth + range < nearDistance || viewDepth - range > farDistance) {
         return bounds;
     }
@@ -221,9 +230,8 @@ void VisitVisibleLocalLights(const SceneLightingSet& lighting, const Camera3D& c
             continue;
         }
         ++view.uploadableCount;
-        const ClusterBounds bounds = ProjectLightBounds(light, camera, screenWidth, screenHeight, view.tileSizePixels,
-                                                        view.clusterCountX, view.clusterCountY, view.nearDistance,
-                                                        view.farDistance, view.depthScale, view.depthBias);
+        const ClusterBounds bounds = ProjectSphereBounds(light.position, ResolveLocalLightInfluenceRadius(light),
+                                                         camera, screenWidth, screenHeight, view);
         if (!bounds.visible) {
             ++view.culledCount;
             continue;
@@ -281,6 +289,11 @@ uint64_t LocalLightListInputSignature(const SceneLightingSet& lighting, const Ca
         // 所有者が公開する GPU 射影でキーを作り、padding/string の生バイトには依存しない。
         append(BuildLocalLightGpuData(light));
     }
+    append(lighting.decals.size());
+    for (const auto& decal : lighting.decals) {
+        append(DECAL::IsDecalUploadable(decal));
+        append(DECAL::BuildLocalDecalGpuData(decal));
+    }
     append(shadows.size());
     for (const auto& shadow : shadows) {
         append(shadow.sourceIndex);
@@ -294,8 +307,8 @@ LocalLightListView BuildLocalLightList(const SceneLightingSet& lighting, const C
                                        std::span<const LocalLightShadowAssignment> shadows) {
     LocalLightListView view{};
     view.sourceCount = static_cast<uint32_t>(lighting.lights.size());
-    if (screenWidth == 0u || screenHeight == 0u || output.lights == nullptr || output.clusterHeaders == nullptr ||
-        output.clusterIndices == nullptr || output.lightCapacity == 0u || output.clusterHeaderCapacity == 0u ||
+    if (screenWidth == 0u || screenHeight == 0u || output.records == nullptr || output.clusterHeaders == nullptr ||
+        output.clusterIndices == nullptr || output.recordCapacity == 0u || output.clusterHeaderCapacity == 0u ||
         output.clusterIndexCapacity == 0u) {
         view.rejectedCount = view.sourceCount;
         return view;
@@ -309,22 +322,28 @@ LocalLightListView BuildLocalLightList(const SceneLightingSet& lighting, const C
     LocalLightListScratch& scratch = GetLocalLightListScratch();
     scratch.clusterCounts.assign(view.clusterCount, 0u);
     scratch.clusterWriteCounts.assign(view.clusterCount, 0u);
+    scratch.clusterDecalCounts.assign(view.clusterCount, 0u);
+    scratch.clusterDecalWriteCounts.assign(view.clusterCount, 0u);
     scratch.uploadedBounds.clear();
+    scratch.uploadedDecalBounds.clear();
     scratch.clusterHeaders.assign(view.clusterCount, LocalLightClusterHeader{});
     std::vector<uint8_t>& clusterCounts = scratch.clusterCounts;
     std::vector<uint8_t>& clusterWriteCounts = scratch.clusterWriteCounts;
-    std::vector<UploadedLightBounds>& uploadedBounds = scratch.uploadedBounds;
+    std::vector<uint8_t>& clusterDecalCounts = scratch.clusterDecalCounts;
+    std::vector<uint8_t>& clusterDecalWriteCounts = scratch.clusterDecalWriteCounts;
+    std::vector<UploadedRecordBounds>& uploadedBounds = scratch.uploadedBounds;
+    std::vector<UploadedRecordBounds>& uploadedDecalBounds = scratch.uploadedDecalBounds;
     std::vector<LocalLightClusterHeader>& clusterHeaders = scratch.clusterHeaders;
-    uploadedBounds.reserve((std::min)(output.lightCapacity, kMaximumLocalLightCount));
+    uploadedBounds.reserve((std::min)(output.recordCapacity, kMaximumLocalLightCount));
 
     VisitVisibleLocalLights(
-        lighting, camera, screenWidth, screenHeight, output.lightCapacity, view,
+        lighting, camera, screenWidth, screenHeight, output.recordCapacity, view,
         [&](const SceneLightProvider& light, uint32_t sourceIndex, uint32_t lightIndex, const ClusterBounds& bounds) {
-            output.lights[lightIndex] = BuildLocalLightGpuData(light);
+            output.records[lightIndex] = BuildLocalLightGpuData(light);
             for (const auto& shadow : shadows) {
                 if (shadow.sourceIndex == sourceIndex && shadow.firstFace < kMaximumLocalShadowFaceCount &&
                     light.castsShadows) {
-                    output.lights[lightIndex].kind |= (shadow.firstFace + 1u) << 16u;
+                    output.records[lightIndex].kind |= (shadow.firstFace + 1u) << 16u;
                     break;
                 }
             }
@@ -345,22 +364,60 @@ LocalLightListView BuildLocalLightList(const SceneLightingSet& lighting, const C
             }
         });
 
+    // デカールは光源の後ろの記録に sortOrder の順で並べる（クラスタの中でも後ろのものが上に乗る）。
+    for (const DECAL::SceneDecalProvider& decal : lighting.decals) {
+        if (!DECAL::IsDecalUploadable(decal)) {
+            continue;
+        }
+        MATH::Vec3 center{};
+        float radius = 0.0f;
+        DECAL::ResolveDecalBoundingSphere(decal, center, radius);
+        const ClusterBounds bounds = ProjectSphereBounds(center, radius, camera, screenWidth, screenHeight, view);
+        if (!bounds.visible) {
+            continue;
+        }
+        const uint32_t recordIndex = view.lightCount + view.decalCount;
+        if (view.decalCount >= kMaximumLocalDecalCount || recordIndex >= output.recordCapacity) {
+            ++view.overflowCount;
+            continue;
+        }
+        const LocalDecalGpuData record = DECAL::BuildLocalDecalGpuData(decal);
+        std::memcpy(&output.records[recordIndex], &record, sizeof(record));
+        ++view.decalCount;
+        uploadedDecalBounds.push_back({recordIndex, bounds});
+        for (uint32_t z = bounds.minZ; z <= bounds.maxZ; ++z) {
+            for (uint32_t y = bounds.minY; y <= bounds.maxY; ++y) {
+                for (uint32_t x = bounds.minX; x <= bounds.maxX; ++x) {
+                    uint8_t& count = clusterDecalCounts[(z * view.clusterCountY + y) * view.clusterCountX + x];
+                    if (count >= kMaximumLocalDecalsPerCluster) {
+                        ++view.overflowCount;
+                        continue;
+                    }
+                    ++count;
+                }
+            }
+        }
+    }
+
     for (uint32_t clusterIndex = 0u; clusterIndex < view.clusterCount; ++clusterIndex) {
-        const uint32_t count = clusterCounts[clusterIndex];
+        const uint32_t lights = clusterCounts[clusterIndex];
+        const uint32_t decals = clusterDecalCounts[clusterIndex];
         LocalLightClusterHeader& header = clusterHeaders[clusterIndex];
         header.offset = view.clusterIndexCount;
         const uint32_t remainingCapacity = view.clusterIndexCount < output.clusterIndexCapacity
                                                ? output.clusterIndexCapacity - view.clusterIndexCount
                                                : 0u;
-        header.count = (std::min)(count, remainingCapacity);
-        view.overflowCount += count - header.count;
-        view.clusterIndexCount += header.count;
+        const uint32_t storedLights = (std::min)(lights, remainingCapacity);
+        const uint32_t storedDecals = (std::min)(decals, remainingCapacity - storedLights);
+        header.count = storedLights | storedDecals << 16u;
+        view.overflowCount += lights - storedLights + decals - storedDecals;
+        view.clusterIndexCount += storedLights + storedDecals;
     }
 
     scratch.clusterIndices.assign(view.clusterIndexCount, 0u);
     std::vector<uint32_t>& clusterIndices = scratch.clusterIndices;
 
-    for (const UploadedLightBounds& uploaded : uploadedBounds) {
+    for (const UploadedRecordBounds& uploaded : uploadedBounds) {
         const ClusterBounds& bounds = uploaded.clusters;
         for (uint32_t z = bounds.minZ; z <= bounds.maxZ; ++z) {
             for (uint32_t y = bounds.minY; y <= bounds.maxY; ++y) {
@@ -368,10 +425,27 @@ LocalLightListView BuildLocalLightList(const SceneLightingSet& lighting, const C
                     const uint32_t clusterIndex = (z * view.clusterCountY + y) * view.clusterCountX + x;
                     const LocalLightClusterHeader& header = clusterHeaders[clusterIndex];
                     uint8_t& writeCount = clusterWriteCounts[clusterIndex];
-                    if (writeCount >= header.count) {
+                    if (writeCount >= (header.count & 0xffffu)) {
                         continue;
                     }
-                    clusterIndices[header.offset + writeCount] = uploaded.lightIndex;
+                    clusterIndices[header.offset + writeCount] = uploaded.recordIndex;
+                    ++writeCount;
+                }
+            }
+        }
+    }
+    for (const UploadedRecordBounds& uploaded : uploadedDecalBounds) {
+        const ClusterBounds& bounds = uploaded.clusters;
+        for (uint32_t z = bounds.minZ; z <= bounds.maxZ; ++z) {
+            for (uint32_t y = bounds.minY; y <= bounds.maxY; ++y) {
+                for (uint32_t x = bounds.minX; x <= bounds.maxX; ++x) {
+                    const uint32_t clusterIndex = (z * view.clusterCountY + y) * view.clusterCountX + x;
+                    const LocalLightClusterHeader& header = clusterHeaders[clusterIndex];
+                    uint8_t& writeCount = clusterDecalWriteCounts[clusterIndex];
+                    if (writeCount >= (header.count >> 16u)) {
+                        continue;
+                    }
+                    clusterIndices[header.offset + (header.count & 0xffffu) + writeCount] = uploaded.recordIndex;
                     ++writeCount;
                 }
             }
@@ -383,8 +457,9 @@ LocalLightListView BuildLocalLightList(const SceneLightingSet& lighting, const C
         std::memcpy(output.clusterIndices, clusterIndices.data(),
                     static_cast<size_t>(view.clusterIndexCount) * sizeof(uint32_t));
     }
-    view.lightingContentHash = HASH::Fnv1aBytes(HASH::kFnv1a64OffsetBasis, output.lights,
-                                                static_cast<size_t>(view.lightCount) * sizeof(LocalLightGpuData));
+    view.lightingContentHash =
+        HASH::Fnv1aBytes(HASH::kFnv1a64OffsetBasis, output.records,
+                         static_cast<size_t>(view.lightCount + view.decalCount) * sizeof(LocalLightGpuData));
     return view;
 }
 

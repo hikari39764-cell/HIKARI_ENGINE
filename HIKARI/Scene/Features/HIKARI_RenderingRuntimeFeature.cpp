@@ -7,6 +7,7 @@
 
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
+#include "Scene/Components/Rendering/Decal/HIKARI_DecalComponent.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponentAuthoring.h"
@@ -34,7 +35,7 @@ public:
     std::string_view GetDisplayName() const noexcept override { return "Rendering Core"; }
 
     std::string_view GetDescription() const noexcept override {
-        return "Model, material, procedural geometry, world sprite, "
+        return "Model, material, procedural geometry, decal, world sprite, "
                "and world text rendering.";
     }
 
@@ -75,6 +76,16 @@ public:
                           {"doubleSided", true}, {"generateTangents", true}};
         };
         procedural.presentation = RenderingPresentation("Procedural Mesh", "Generates editable primitive geometry.");
+
+        ComponentTypeInfo decal{};
+        decal.typeName = "DecalComponent";
+        decal.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<DecalComponent>(); };
+        decal.runtimeApplyPolicy = ComponentRuntimeApplyPolicy::Immediate;
+        decal.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
+            DecalComponent{}.Serialize(properties);
+        };
+        decal.presentation = RenderingPresentation(
+            "Decal", "Projects colour, normal, and roughness onto opaque surfaces inside a box along local +Z.");
 
         ComponentTypeInfo worldSprite{};
         worldSprite.typeName = "WorldSpriteComponent";
@@ -121,6 +132,7 @@ public:
         bool success = components.Register(std::move(model));
         success = components.Register(std::move(materialFx)) && success;
         success = components.Register(std::move(procedural)) && success;
+        success = components.Register(std::move(decal)) && success;
         success = components.Register(std::move(worldSprite)) && success;
         success = components.Register(std::move(worldText)) && success;
         success = systems.Register(SystemTypeInfo{"ModelRenderSystem",

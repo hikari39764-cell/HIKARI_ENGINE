@@ -1,4 +1,4 @@
-#include "Scene/Lighting/HIKARI_LightTextureResolver.h"
+#include "Scene/Lighting/HIKARI_LocalTextureResolver.h"
 
 #include <algorithm>
 #include <cmath>
@@ -46,8 +46,8 @@ std::vector<uint8_t> EncodeProfileTable(const std::vector<float>& values) {
 
 } // namespace
 
-void LightTextureResolver::Resolve(const AssetDatabase& database, const AssetRegistry& registry,
-                                   std::span<SceneLightProvider> lights) {
+void LocalTextureResolver::Resolve(const AssetDatabase& database, const AssetRegistry& registry,
+                                   RENDER3D::LIGHTING::SceneLightingSet& lighting) {
     if (database_ != &database) {
         database_ = &database;
         profiles_.Configure(&database);
@@ -55,10 +55,10 @@ void LightTextureResolver::Resolve(const AssetDatabase& database, const AssetReg
     }
     if (revision_ != database.GetContentRevision()) {
         revision_ = database.GetContentRevision();
-        cookieTextures_.clear();
+        textures_.clear();
         failed_.clear();
     }
-    for (SceneLightProvider& light : lights) {
+    for (SceneLightProvider& light : lighting.lights) {
         if (light.type != SceneLightType::Point && light.type != SceneLightType::Spot) {
             continue;
         }
@@ -69,12 +69,20 @@ void LightTextureResolver::Resolve(const AssetDatabase& database, const AssetReg
             }
         }
         if (light.type == SceneLightType::Spot && !light.cookie.empty()) {
-            light.cookieTexture = ResolveCookie(registry, light.cookie);
+            light.cookieTexture = ResolveTexture(registry, light.cookie);
+        }
+    }
+    for (RENDER3D::DECAL::SceneDecalProvider& decal : lighting.decals) {
+        if (!decal.settings.baseColorTexture.empty()) {
+            decal.baseColorTextureIndex = ResolveTexture(registry, decal.settings.baseColorTexture);
+        }
+        if (!decal.settings.normalTexture.empty()) {
+            decal.normalTextureIndex = ResolveTexture(registry, decal.settings.normalTexture);
         }
     }
 }
 
-const LightTextureResolver::ProfileTexture* LightTextureResolver::ResolveProfile(const std::string& guid) {
+const LocalTextureResolver::ProfileTexture* LocalTextureResolver::ResolveProfile(const std::string& guid) {
     if (failed_.contains(guid)) {
         return nullptr;
     }
@@ -107,9 +115,9 @@ const LightTextureResolver::ProfileTexture* LightTextureResolver::ResolveProfile
     return &entry;
 }
 
-uint32_t LightTextureResolver::ResolveCookie(const AssetRegistry& registry, const std::string& guid) {
-    if (const auto found = cookieTextures_.find(guid);
-        found != cookieTextures_.end() && RENDER3D::IsTextureResourceValid(found->second)) {
+uint32_t LocalTextureResolver::ResolveTexture(const AssetRegistry& registry, const std::string& guid) {
+    if (const auto found = textures_.find(guid);
+        found != textures_.end() && RENDER3D::IsTextureResourceValid(found->second)) {
         return EncodeTextureIndex(found->second);
     }
     if (failed_.contains(guid)) {
@@ -121,16 +129,16 @@ uint32_t LightTextureResolver::ResolveCookie(const AssetRegistry& registry, cons
         request ? RENDER3D::LoadTextureResourceWithColorSpace(request->name, request->path, request->colorSpace)
                 : RENDER3D::TextureResourceHandle{};
     if (!RENDER3D::IsTextureResourceValid(texture)) {
-        Report(guid, "the light cookie is not a loadable 2D texture asset");
+        Report(guid, "the texture is not a loadable 2D texture asset");
         return 0u;
     }
-    cookieTextures_[guid] = texture;
+    textures_[guid] = texture;
     return EncodeTextureIndex(texture);
 }
 
-void LightTextureResolver::Report(const std::string& guid, const std::string& message) {
+void LocalTextureResolver::Report(const std::string& guid, const std::string& message) {
     if (failed_.insert(guid).second) {
-        HIKARI_LOG_WARN("[LightTextures] " + guid + ": " + message);
+        HIKARI_LOG_WARN("[LocalTextures] " + guid + ": " + message);
     }
 }
 

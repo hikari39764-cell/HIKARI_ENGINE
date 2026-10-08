@@ -49,29 +49,16 @@ void SceneCreationPanel::DrawUiCreationMenu(DocumentSceneBase& scene, EditorCont
 
 void SceneCreationPanel::CreateUiObject(DocumentSceneBase& scene, EditorContext& context,
                                         const SelectionSyncService& selectionSync, bool button, bool addSceneFlow) {
-    const bool dirtyBefore = context.sceneDirty || scene.HasUnsavedSceneChanges();
-    const std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
-    const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
-    CreateObjectRequest request{};
-    request.name = addSceneFlow ? "Scene Button" : button ? "UI Button" : "UI Canvas";
-    GameObject* object = button ? EDITOR::CreateUiButtonObject(scene, request, addSceneFlow)
-                                : EDITOR::CreateUiCanvasObject(scene, request);
-    if (scene.GetSceneDocument().objects.size() == beforeObjects.size()) {
-        return;
-    }
-    if (object != nullptr) {
-        context.selection.SelectObject(scene.GetWorld(), object);
-    }
-    context.sceneDirty = true;
-    selectionSync.SyncNextSceneObjectId(scene, context.nextSceneObjectId);
-    historyRequest_ = SceneObjectAuthoringHistoryRequest{addSceneFlow ? "Create UI Scene Button"
-                                                         : button     ? "Create UI Button"
-                                                                      : "Create UI Canvas",
-                                                         beforeObjects,
-                                                         scene.GetSceneDocument().objects,
-                                                         beforeCamera,
-                                                         scene.GetSceneDocument().camera,
-                                                         dirtyBefore};
+    CreateWithHistory(scene, context, selectionSync,
+                      addSceneFlow ? "Create UI Scene Button"
+                      : button     ? "Create UI Button"
+                                   : "Create UI Canvas",
+                      [&] {
+                          CreateObjectRequest request{};
+                          request.name = addSceneFlow ? "Scene Button" : button ? "UI Button" : "UI Canvas";
+                          return button ? EDITOR::CreateUiButtonObject(scene, request, addSceneFlow)
+                                        : EDITOR::CreateUiCanvasObject(scene, request);
+                      });
 }
 
 } // namespace HIKARI::EDITOR

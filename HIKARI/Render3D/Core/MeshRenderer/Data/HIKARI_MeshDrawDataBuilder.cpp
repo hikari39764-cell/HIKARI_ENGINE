@@ -112,7 +112,8 @@ void FillLightCB(const SceneEnvironment& environment, const RENDER3D::LIGHTING::
     out.styleShading1 = {cel ? shading.shadowTint.x : 1.0f, cel ? shading.shadowTint.y : 1.0f,
                          cel ? shading.shadowTint.z : 1.0f, cel ? shading.rim : 0.0f};
 
-    out.localLightCount = localLightList.lightCount;
+    // 記録の総数（光源とデカール）。シェーダーはクラスタを引くかどうかだけに使う。
+    out.localLightCount = localLightList.lightCount + localLightList.decalCount;
     out.localLightClusterCountX = localLightList.clusterCountX;
     out.localLightClusterCountY = localLightList.clusterCountY;
     out.localLightClusterCountZ = localLightList.clusterCountZ;

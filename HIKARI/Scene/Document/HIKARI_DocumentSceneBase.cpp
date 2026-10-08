@@ -517,7 +517,7 @@ void DocumentSceneBase::Render() {
     SceneEnvironment activeEnvironment = state_->lighting.environment;
     RENDER3D::LIGHTING::SceneLightingSet sceneLighting =
         LIGHTING_AUTHORING::BuildRuntimeSceneLightingSet(state_->identity.document, state_->runtime.world);
-    state_->assets.LightTextures().Resolve(state_->assets.Database(), state_->assets.Registry(), sceneLighting.lights);
+    state_->assets.LocalTextures().Resolve(state_->assets.Database(), state_->assets.Registry(), sceneLighting);
     // VFX の光源出力はそのフレーム限りの一時光源。照明セットを組んだ
     // 直後に足し、方向光の解決より前に確定させる。
     if (const auto* vfxPlayback = state_->runtime.world.Services().Find<VFX::VfxPlaybackService>()) {

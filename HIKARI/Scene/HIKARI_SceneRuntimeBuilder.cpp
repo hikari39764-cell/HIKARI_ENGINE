@@ -490,10 +490,13 @@ void SceneRuntimeBuilder::CollectObjectDependencies(const SceneObjectData& objec
                     dependencies.spriteMaterialAssetIds.insert(guid->get_ref<const std::string&>());
                 }
             }
-        } else if (component.type == "LightComponent") {
-            const std::string cookie = component.properties.value("cookie", std::string{});
-            if (!cookie.empty()) {
-                dependencies.textureAssetIds.insert(cookie);
+        } else if (component.type == "LightComponent" || component.type == "DecalComponent") {
+            // スポットのクッキーとデカールの色・法線は Texture 資産を直接引く。
+            for (const char* key : {"cookie", "baseColorTexture", "normalTexture"}) {
+                const std::string texture = component.properties.value(key, std::string{});
+                if (!texture.empty()) {
+                    dependencies.textureAssetIds.insert(texture);
+                }
             }
         } else if (component.type == "VfxPlayerComponent") {
             const auto slots = component.properties.find("slots");

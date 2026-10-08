@@ -9,6 +9,7 @@
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
+#include "Scene/Components/Rendering/Decal/HIKARI_DecalComponent.h"
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 #include "Scene/Components/Rendering/WorldText/HIKARI_WorldTextComponent.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
@@ -406,6 +407,20 @@ GameObject* CreateLightObject(DocumentSceneBase& scene, const CreateObjectReques
         light.name = std::string(TEXT::EnumToName(RENDER3D::LIGHTING::kSceneLightTypeNames, lightType)) + " Light";
     }
     const SceneObjectId id = LIGHTING_AUTHORING::AddLight(scene.GetSceneDocument(), light);
+    return MaterializeCreatedObject(scene, id);
+}
+
+GameObject* CreateDecalObject(DocumentSceneBase& scene, const CreateObjectRequest& request) {
+    SceneObjectData object = BuildBaseObject(scene, nullptr, request);
+    if (request.name.empty()) {
+        object.name = "Decal";
+    }
+    const SceneObjectId id = object.id;
+    nlohmann::json properties = nlohmann::json::object();
+    DecalComponent{}.Serialize(properties);
+    object.components.push_back(SceneComponentData{"DecalComponent", std::move(properties)});
+    NormalizeSceneComponentIds(object);
+    scene.GetSceneDocument().objects.push_back(std::move(object));
     return MaterializeCreatedObject(scene, id);
 }
 

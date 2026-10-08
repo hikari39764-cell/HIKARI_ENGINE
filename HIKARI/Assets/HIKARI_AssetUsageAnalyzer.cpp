@@ -290,6 +290,11 @@ AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDa
                              assetDatabase, engineTextures, summary);
                 AddReference(component.properties.value("cookie", std::string{}), owner, "Light Cookie", assetDatabase,
                              engineTextures, summary);
+            } else if (component.type == "DecalComponent") {
+                AddReference(component.properties.value("baseColorTexture", std::string{}), owner, "Decal Base Color",
+                             assetDatabase, engineTextures, summary);
+                AddReference(component.properties.value("normalTexture", std::string{}), owner, "Decal Normal",
+                             assetDatabase, engineTextures, summary);
             } else if (component.type == "ReflectionProbeComponent") {
                 AddReference(component.properties.value("sourceCubemapAsset", std::string{}), owner,
                              "Reflection Probe Cubemap", assetDatabase, engineTextures, summary);

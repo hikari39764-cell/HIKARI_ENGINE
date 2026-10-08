@@ -6,7 +6,8 @@
 #define HIKARI_SURFACE_GPU_SCENE_INSTANCE_BYTES 576
 #define HIKARI_MATERIAL_SHELL_INTERFACE_VERSION 1
 // 80 bytes: 3 float4, outerConeCos, angularFalloff, uint kind, sourceRadius, float4 shapeTangent.
-#define HIKARI_LOCAL_LIGHT_RECORD_VERSION 4
+// Decal records (kind type 4) follow the lights; cluster header count = lights | decals << 16.
+#define HIKARI_LOCAL_LIGHT_RECORD_VERSION 5
 // ShadowCB: directional prefix 352 bytes, local matrices 1024, local info 16.
 #define HIKARI_SHADOW_RECEIVER_CONSTANT_BYTES 1392
 // Sky/environment providers include the shared 64-byte cloud solar field.

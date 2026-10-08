@@ -12,6 +12,7 @@
 #include "Include/HIKARI_PbrCommon.hlsli"
 #include "Include/Material/HIKARI_MaterialExpressionSurface.hlsli"
 #include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
+#include "Include/Lighting/HIKARI_ViewLightingData.hlsli"
 #if HIKARI_SURFACE_PARTITION != HIKARI_SURFACE_PARTITION_GENERAL
 #include "Include/Surface/HIKARI_TerrainSurfaceParams.hlsli"
 #include "Include/Surface/HIKARI_TerrainSurfaceNormal.hlsli"
@@ -25,6 +26,7 @@ static const uint MATERIAL_ALPHA_MASK = HIKARI_MATERIAL_FLAG_ALPHA_MASK;
 
 SamplerState gLinearWrap : register(s0);
 SamplerState gLinearClamp : register(s2);
+#include "Include/Lighting/HIKARI_LocalDecals.hlsli"
 
 #if defined(HIKARI_GEOMETRY_AUX_MESHLET_INPUT)
 // Mesh Shader の圧縮した補助パス入力を保ち、材質評価は従来パスと共有する。
@@ -131,7 +133,7 @@ float4 main(PSInput input) : SV_TARGET
             input.shellLayer, pbrInputs.metallic, pbrInputs.roughness, pbrInputs.specularFactor);
     }
     float roughness = pbrInputs.roughness;
-    const float metallic = pbrInputs.metallic;
+    float metallic = pbrInputs.metallic;
 
     float3 n = normalize(geometricNormal);
     if (terrainSurface)
@@ -168,6 +170,22 @@ float4 main(PSInput input) : SV_TARGET
         {
             n = HikariApplyPainterlyStrokeNormal(n, geometricNormal, input.tangentWS, stroke.normalTS);
         }
+    }
+    // SSR / AO が見る法線と粗さを、受光の前にデカールを適用した可視の材質（StaticPS）と揃える。
+    {
+        HikariDecalSurface decalSurface;
+        decalSurface.albedo = 0.0f.xxx;
+        decalSurface.normal = n;
+        decalSurface.roughness = roughness;
+        decalSurface.metallic = metallic;
+        HikariApplyLocalDecals(input.worldPosWS, input.position.xy, HikariCameraViewDepth(input.worldPosWS),
+            geometricNormal, ddx(input.worldPosWS), ddy(input.worldPosWS), decalSurface);
+        n = decalSurface.normal;
+        roughness = decalSurface.roughness;
+        metallic = decalSurface.metallic;
+    }
+    if (!terrainSurface)
+    {
         roughness = HikariFilterPerceptualRoughness(roughness, ddx(n), ddy(n));
     }
     const float4 packedSurface = HikariPackSceneSurface(n, roughness, metallic);

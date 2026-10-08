@@ -9,6 +9,7 @@
 
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Text/HIKARI_EnumNames.h"
+#include "Render3D/Decal/HIKARI_DecalContract.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeContract.h"
 
 namespace HIKARI::RENDER3D::LIGHTING {
@@ -68,7 +69,7 @@ struct SceneLightProvider {
     // 点・スポットの配光（LightProfile 資産）とスポットのクッキー（Texture 資産）の GUID。
     std::string iesProfile{};
     std::string cookie{};
-    // 上の資産の描画用テクスチャの記述子番号 + 1（0 は無し）。描画の直前に LightTextureResolver が埋める。
+    // 上の資産の描画用テクスチャの記述子番号 + 1（0 は無し）。描画の直前に LocalTextureResolver が埋める。
     uint32_t iesProfileTexture = 0u;
     uint32_t cookieTexture = 0u;
 };
@@ -118,6 +119,8 @@ struct IrradianceVolumeProvider {
 struct SceneLightingSet {
     std::string activeScenario{"Default"};
     std::vector<SceneLightProvider> lights{};
+    // 面へ投影するデカール（sortOrder の昇順）。局所光と同じクラスタと記録バッファで公開する。
+    std::vector<DECAL::SceneDecalProvider> decals{};
     std::vector<ReflectionProbeProvider> reflectionProbes{};
     std::vector<IrradianceVolumeProvider> irradianceVolumes{};
 };

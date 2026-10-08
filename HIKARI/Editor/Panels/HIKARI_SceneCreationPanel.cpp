@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -33,19 +34,40 @@ void SceneCreationPanel::DrawCreationMenu(DocumentSceneBase& scene, EditorContex
     const std::string search = TEXT::ToLowerAsciiCopy(searchBuffer_);
     ImGui::Separator();
 
-    const std::string emptyObjectLabel = TEXT::Localize("ui.sceneCreation.emptyObject");
-    if (MatchesSearch(emptyObjectLabel.c_str(), search) && ImGui::MenuItem(emptyObjectLabel.c_str())) {
-        CreateEmptyObject(scene, context, selectionSync);
-    }
+    // 視点の前に置く物体。make は配置済みの要求から物体を作る。
+    const auto createInView = [&](std::string historyLabel, const auto& make) {
+        CreateWithHistory(scene, context, selectionSync, std::move(historyLabel), [&] {
+            CreateObjectRequest request{};
+            request.position = ComputeObjectPlacementInView(scene.GetCamera());
+            return make(request);
+        });
+    };
+    const auto menuItem = [&](const char* key) {
+        const std::string label = TEXT::Localize(key);
+        return MatchesSearch(label.c_str(), search) && ImGui::MenuItem(label.c_str());
+    };
 
-    const std::string worldSpriteLabel = TEXT::Localize("ui.sceneCreation.worldSprite");
-    if (MatchesSearch(worldSpriteLabel.c_str(), search) && ImGui::MenuItem(worldSpriteLabel.c_str())) {
-        CreateWorldSpriteObject(scene, context, selectionSync);
+    if (menuItem("ui.sceneCreation.emptyObject")) {
+        createInView("Create Empty Object",
+                     [&](const CreateObjectRequest& request) { return EDITOR::CreateEmptyObject(scene, request); });
     }
-
-    const std::string worldTextLabel = TEXT::Localize("ui.sceneCreation.worldText");
-    if (MatchesSearch(worldTextLabel.c_str(), search) && ImGui::MenuItem(worldTextLabel.c_str())) {
-        CreateWorldTextObject(scene, context, selectionSync);
+    if (menuItem("ui.sceneCreation.worldSprite")) {
+        createInView("Create World Sprite", [&](CreateObjectRequest request) {
+            request.name = TEXT::Localize("ui.sceneCreation.worldSprite");
+            return EDITOR::CreateWorldSpriteObject(scene, {}, request);
+        });
+    }
+    if (menuItem("ui.sceneCreation.worldText")) {
+        createInView("Create World Text", [&](const CreateObjectRequest& request) {
+            CreateWorldTextRequest text{};
+            text.object = request;
+            text.object.name = TEXT::Localize("ui.sceneCreation.worldText");
+            return EDITOR::CreateWorldTextObject(scene, text);
+        });
+    }
+    if (menuItem("ui.sceneCreation.decal")) {
+        createInView("Create Decal",
+                     [&](const CreateObjectRequest& request) { return EDITOR::CreateDecalObject(scene, request); });
     }
 
     DrawUiCreationMenu(scene, context, selectionSync, search);
@@ -79,19 +101,20 @@ void SceneCreationPanel::DrawCreationMenu(DocumentSceneBase& scene, EditorContex
         ImGui::EndMenu();
     }
 
-    const std::string waterSurfaceLabel = TEXT::Localize("ui.sceneCreation.waterSurface");
-    if (MatchesSearch(waterSurfaceLabel.c_str(), search) && ImGui::MenuItem(waterSurfaceLabel.c_str())) {
-        CreateWaterSurfaceObject(scene, context, selectionSync);
+    if (menuItem("ui.sceneCreation.waterSurface")) {
+        createInView("Create Water Surface", [&](const CreateObjectRequest& request) {
+            return EDITOR::CreateWaterSurfaceObject(scene, request);
+        });
     }
-
-    const std::string terrainSurfaceLabel = TEXT::Localize("ui.sceneCreation.terrain");
-    if (MatchesSearch(terrainSurfaceLabel.c_str(), search) && ImGui::MenuItem(terrainSurfaceLabel.c_str())) {
-        CreateTerrainSurfaceObject(scene, context, selectionSync);
+    if (menuItem("ui.sceneCreation.terrain")) {
+        createInView("Create Terrain", [&](const CreateObjectRequest& request) {
+            return EDITOR::CreateTerrainSurfaceObject(scene, request);
+        });
     }
-
-    const std::string dialogueTriggerLabel = TEXT::Localize("ui.sceneCreation.dialogueTrigger");
-    if (MatchesSearch(dialogueTriggerLabel.c_str(), search) && ImGui::MenuItem(dialogueTriggerLabel.c_str())) {
-        CreateDialogueTriggerObject(scene, context, selectionSync);
+    if (menuItem("ui.sceneCreation.dialogueTrigger")) {
+        createInView("Create Dialogue Trigger", [&](const CreateObjectRequest& request) {
+            return EDITOR::CreateDialogueTriggerObject(scene, request);
+        });
     }
 
     const bool showReflectionProbe = MatchesSearch(TEXT::Localize("ui.sceneCreation.reflectionProbe").c_str(), search);
@@ -105,25 +128,37 @@ void SceneCreationPanel::DrawCreationMenu(DocumentSceneBase& scene, EditorContex
     if ((showReflectionProbe || showIrradianceVolume || showLight) &&
         ImGui::BeginMenu(TEXT::Localize("ui.sceneCreation.lighting").c_str())) {
         if (showPointLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.pointLight").c_str())) {
-            CreateLightObject(scene, context, selectionSync, RENDER3D::LIGHTING::SceneLightType::Point);
+            createInView("Create Point Light", [&](const CreateObjectRequest& request) {
+                return EDITOR::CreateLightObject(scene, request, RENDER3D::LIGHTING::SceneLightType::Point);
+            });
         }
         if (showSpotLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.spotLight").c_str())) {
-            CreateLightObject(scene, context, selectionSync, RENDER3D::LIGHTING::SceneLightType::Spot);
+            createInView("Create Spot Light", [&](const CreateObjectRequest& request) {
+                return EDITOR::CreateLightObject(scene, request, RENDER3D::LIGHTING::SceneLightType::Spot);
+            });
         }
         if (showTubeLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.tubeLight").c_str())) {
-            CreateLightObject(scene, context, selectionSync, RENDER3D::LIGHTING::SceneLightType::Tube);
+            createInView("Create Tube Light", [&](const CreateObjectRequest& request) {
+                return EDITOR::CreateLightObject(scene, request, RENDER3D::LIGHTING::SceneLightType::Tube);
+            });
         }
         if (showRectLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.rectLight").c_str())) {
-            CreateLightObject(scene, context, selectionSync, RENDER3D::LIGHTING::SceneLightType::Rect);
+            createInView("Create Rect Light", [&](const CreateObjectRequest& request) {
+                return EDITOR::CreateLightObject(scene, request, RENDER3D::LIGHTING::SceneLightType::Rect);
+            });
         }
         if (showLight && (showReflectionProbe || showIrradianceVolume)) {
             ImGui::Separator();
         }
         if (showReflectionProbe && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.reflectionProbe").c_str())) {
-            CreateLightingObject(scene, context, selectionSync, true);
+            createInView("Create Reflection Probe", [&](const CreateObjectRequest& request) {
+                return EDITOR::CreateReflectionProbeObject(scene, request);
+            });
         }
         if (showIrradianceVolume && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.irradianceVolume").c_str())) {
-            CreateLightingObject(scene, context, selectionSync, false);
+            createInView("Create Irradiance Volume", [&](const CreateObjectRequest& request) {
+                return EDITOR::CreateIrradianceVolumeObject(scene, request);
+            });
         }
         ImGui::EndMenu();
     }
@@ -158,20 +193,12 @@ void SceneCreationPanel::DrawDeferredDialogs(DocumentSceneBase& scene, EditorCon
         return;
     }
 
-    const bool dirtyBefore = context.sceneDirty || scene.HasUnsavedSceneChanges();
-    const std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
-    const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
-    primitiveRequest.object.position = ComputePrimitivePlacementInView(scene.GetCamera(), primitiveRequest.mesh);
-    GameObject* object = CreatePrimitiveObject(scene, primitiveRequest);
-    context.selection.SelectObject(scene.GetWorld(), object);
-    context.sceneDirty = true;
-    selectionSync.SyncNextSceneObjectId(scene, context.nextSceneObjectId);
-    historyRequest_ = SceneObjectAuthoringHistoryRequest{std::string("Create ") + ToString(primitiveRequest.mesh.kind),
-                                                         beforeObjects,
-                                                         scene.GetSceneDocument().objects,
-                                                         beforeCamera,
-                                                         scene.GetSceneDocument().camera,
-                                                         dirtyBefore};
+    CreateWithHistory(scene, context, selectionSync, std::string("Create ") + ToString(primitiveRequest.mesh.kind),
+                      [&] {
+                          primitiveRequest.object.position =
+                              ComputePrimitivePlacementInView(scene.GetCamera(), primitiveRequest.mesh);
+                          return CreatePrimitiveObject(scene, primitiveRequest);
+                      });
 #else
     (void)scene;
     (void)context;
@@ -179,149 +206,22 @@ void SceneCreationPanel::DrawDeferredDialogs(DocumentSceneBase& scene, EditorCon
 #endif
 }
 
-void SceneCreationPanel::CreateEmptyObject(DocumentSceneBase& scene, EditorContext& context,
-                                           const SelectionSyncService& selectionSync) {
+void SceneCreationPanel::CreateWithHistory(DocumentSceneBase& scene, EditorContext& context,
+                                           const SelectionSyncService& selectionSync, std::string historyLabel,
+                                           const std::function<GameObject*()>& create) {
     const bool dirtyBefore = context.sceneDirty || scene.HasUnsavedSceneChanges();
-    const std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
+    std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
     const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
-    CreateObjectRequest request{};
-    request.position = ComputeObjectPlacementInView(scene.GetCamera());
-    GameObject* object = EDITOR::CreateEmptyObject(scene, request);
-    context.selection.SelectObject(scene.GetWorld(), object);
+    GameObject* object = create();
+    if (scene.GetSceneDocument().objects.size() == beforeObjects.size()) {
+        return;
+    }
+    if (object != nullptr) {
+        context.selection.SelectObject(scene.GetWorld(), object);
+    }
     context.sceneDirty = true;
     selectionSync.SyncNextSceneObjectId(scene, context.nextSceneObjectId);
-    historyRequest_ = SceneObjectAuthoringHistoryRequest{
-        "Create Empty Object",           beforeObjects, scene.GetSceneDocument().objects, beforeCamera,
-        scene.GetSceneDocument().camera, dirtyBefore};
-}
-
-void SceneCreationPanel::CreateWorldSpriteObject(DocumentSceneBase& scene, EditorContext& context,
-                                                 const SelectionSyncService& selectionSync) {
-    const bool dirtyBefore = context.sceneDirty || scene.HasUnsavedSceneChanges();
-    const std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
-    const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
-    CreateObjectRequest request{};
-    request.name = TEXT::Localize("ui.sceneCreation.worldSprite");
-    request.position = ComputeObjectPlacementInView(scene.GetCamera());
-    GameObject* object = EDITOR::CreateWorldSpriteObject(scene, {}, request);
-    context.selection.SelectObject(scene.GetWorld(), object);
-    context.sceneDirty = true;
-    selectionSync.SyncNextSceneObjectId(scene, context.nextSceneObjectId);
-    historyRequest_ = SceneObjectAuthoringHistoryRequest{
-        "Create World Sprite",           beforeObjects, scene.GetSceneDocument().objects, beforeCamera,
-        scene.GetSceneDocument().camera, dirtyBefore};
-}
-
-void SceneCreationPanel::CreateWorldTextObject(DocumentSceneBase& scene, EditorContext& context,
-                                               const SelectionSyncService& selectionSync) {
-    const bool dirtyBefore = context.sceneDirty || scene.HasUnsavedSceneChanges();
-    const std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
-    const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
-    CreateWorldTextRequest request{};
-    request.object.name = TEXT::Localize("ui.sceneCreation.worldText");
-    request.object.position = ComputeObjectPlacementInView(scene.GetCamera());
-    GameObject* object = EDITOR::CreateWorldTextObject(scene, request);
-    context.selection.SelectObject(scene.GetWorld(), object);
-    context.sceneDirty = true;
-    selectionSync.SyncNextSceneObjectId(scene, context.nextSceneObjectId);
-    historyRequest_ = SceneObjectAuthoringHistoryRequest{"Create World Text",
-                                                         beforeObjects,
-                                                         scene.GetSceneDocument().objects,
-                                                         beforeCamera,
-                                                         scene.GetSceneDocument().camera,
-                                                         dirtyBefore};
-}
-
-void SceneCreationPanel::CreateLightingObject(DocumentSceneBase& scene, EditorContext& context,
-                                              const SelectionSyncService& selectionSync, bool reflectionProbe) {
-    const bool dirtyBefore = context.sceneDirty || scene.HasUnsavedSceneChanges();
-    const std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
-    const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
-    CreateObjectRequest request{};
-    request.position = ComputeObjectPlacementInView(scene.GetCamera());
-    GameObject* object = reflectionProbe ? EDITOR::CreateReflectionProbeObject(scene, request)
-                                         : EDITOR::CreateIrradianceVolumeObject(scene, request);
-    context.selection.SelectObject(scene.GetWorld(), object);
-    context.sceneDirty = true;
-    selectionSync.SyncNextSceneObjectId(scene, context.nextSceneObjectId);
-    historyRequest_ =
-        SceneObjectAuthoringHistoryRequest{reflectionProbe ? "Create Reflection Probe" : "Create Irradiance Volume",
-                                           beforeObjects,
-                                           scene.GetSceneDocument().objects,
-                                           beforeCamera,
-                                           scene.GetSceneDocument().camera,
-                                           dirtyBefore};
-}
-
-void SceneCreationPanel::CreateWaterSurfaceObject(DocumentSceneBase& scene, EditorContext& context,
-                                                  const SelectionSyncService& selectionSync) {
-    const bool dirtyBefore = context.sceneDirty || scene.HasUnsavedSceneChanges();
-    const std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
-    const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
-    CreateObjectRequest request{};
-    request.position = ComputeObjectPlacementInView(scene.GetCamera());
-    GameObject* object = EDITOR::CreateWaterSurfaceObject(scene, request);
-    context.selection.SelectObject(scene.GetWorld(), object);
-    context.sceneDirty = true;
-    selectionSync.SyncNextSceneObjectId(scene, context.nextSceneObjectId);
-    historyRequest_ = SceneObjectAuthoringHistoryRequest{"Create Water Surface",           beforeObjects,
-                                                         scene.GetSceneDocument().objects, beforeCamera,
-                                                         scene.GetSceneDocument().camera,  dirtyBefore};
-}
-
-void SceneCreationPanel::CreateLightObject(DocumentSceneBase& scene, EditorContext& context,
-                                           const SelectionSyncService& selectionSync,
-                                           RENDER3D::LIGHTING::SceneLightType lightType) {
-    const bool dirtyBefore = context.sceneDirty || scene.HasUnsavedSceneChanges();
-    const std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
-    const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
-    CreateObjectRequest request{};
-    request.position = ComputeObjectPlacementInView(scene.GetCamera());
-    GameObject* object = EDITOR::CreateLightObject(scene, request, lightType);
-    context.selection.SelectObject(scene.GetWorld(), object);
-    context.sceneDirty = true;
-    selectionSync.SyncNextSceneObjectId(scene, context.nextSceneObjectId);
-    const std::string label =
-        std::string(TEXT::EnumToName(RENDER3D::LIGHTING::kSceneLightTypeNames, lightType)) + " Light";
-    historyRequest_ = SceneObjectAuthoringHistoryRequest{"Create " + label,
-                                                         beforeObjects,
-                                                         scene.GetSceneDocument().objects,
-                                                         beforeCamera,
-                                                         scene.GetSceneDocument().camera,
-                                                         dirtyBefore};
-}
-
-void SceneCreationPanel::CreateTerrainSurfaceObject(DocumentSceneBase& scene, EditorContext& context,
-                                                    const SelectionSyncService& selectionSync) {
-    const bool dirtyBefore = context.sceneDirty || scene.HasUnsavedSceneChanges();
-    const std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
-    const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
-    CreateObjectRequest request{};
-    request.position = ComputeObjectPlacementInView(scene.GetCamera());
-    GameObject* object = EDITOR::CreateTerrainSurfaceObject(scene, request);
-    context.selection.SelectObject(scene.GetWorld(), object);
-    context.sceneDirty = true;
-    selectionSync.SyncNextSceneObjectId(scene, context.nextSceneObjectId);
-    historyRequest_ = SceneObjectAuthoringHistoryRequest{"Create Terrain",
-                                                         beforeObjects,
-                                                         scene.GetSceneDocument().objects,
-                                                         beforeCamera,
-                                                         scene.GetSceneDocument().camera,
-                                                         dirtyBefore};
-}
-
-void SceneCreationPanel::CreateDialogueTriggerObject(DocumentSceneBase& scene, EditorContext& context,
-                                                     const SelectionSyncService& selectionSync) {
-    const bool dirtyBefore = context.sceneDirty || scene.HasUnsavedSceneChanges();
-    const std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
-    const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
-    CreateObjectRequest request{};
-    request.position = ComputeObjectPlacementInView(scene.GetCamera());
-    GameObject* object = EDITOR::CreateDialogueTriggerObject(scene, request);
-    context.selection.SelectObject(scene.GetWorld(), object);
-    context.sceneDirty = true;
-    selectionSync.SyncNextSceneObjectId(scene, context.nextSceneObjectId);
-    historyRequest_ = SceneObjectAuthoringHistoryRequest{"Create Dialogue Trigger",        beforeObjects,
+    historyRequest_ = SceneObjectAuthoringHistoryRequest{std::move(historyLabel),          std::move(beforeObjects),
                                                          scene.GetSceneDocument().objects, beforeCamera,
                                                          scene.GetSceneDocument().camera,  dirtyBefore};
 }

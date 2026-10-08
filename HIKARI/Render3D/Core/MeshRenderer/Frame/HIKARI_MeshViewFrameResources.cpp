@@ -23,7 +23,7 @@ MeshViewFrameResources& MeshViewFrameResources::operator=(MeshViewFrameResources
         localLightBuildSignature_ = other.localLightBuildSignature_;
         localLightBuildCached_ = std::exchange(other.localLightBuildCached_, false);
         uploads_ = std::move(other.uploads_);
-        lights_ = std::move(other.lights_);
+        records_ = std::move(other.records_);
         headers_ = std::move(other.headers_);
         indices_ = std::move(other.indices_);
         bindings_ = std::exchange(other.bindings_, {});
@@ -37,7 +37,7 @@ bool MeshViewFrameResources::Initialize(ID3D12Device* device) {
         return false;
     using namespace RENDER3D::LIGHTING;
     try {
-        lights_.resize(kMaximumLocalLightCount);
+        records_.resize(kMaximumLocalLightCount + kMaximumLocalDecalCount);
         headers_.resize(kMaximumLocalLightClusterCount);
         indices_.resize(kMaximumLocalLightClusterIndexCount);
     } catch (...) {
@@ -49,7 +49,7 @@ bool MeshViewFrameResources::Initialize(ID3D12Device* device) {
 
 void MeshViewFrameResources::Finalize() {
     uploads_.Finalize(&GFX::GetCurrentContext());
-    lights_.clear();
+    records_.clear();
     headers_.clear();
     indices_.clear();
     bindings_ = {};
@@ -65,7 +65,7 @@ void MeshViewFrameResources::BuildLocalLights(const RENDER3D::LIGHTING::SceneLig
     if (localLightBuildCached_ && signature == localLightBuildSignature_)
         return;
     localLightList = RENDER3D::LIGHTING::BuildLocalLightList(lighting, viewCamera, width, height,
-                                                             {lights_.data(), static_cast<uint32_t>(lights_.size()),
+                                                             {records_.data(), static_cast<uint32_t>(records_.size()),
                                                               headers_.data(), static_cast<uint32_t>(headers_.size()),
                                                               indices_.data(), static_cast<uint32_t>(indices_.size())},
                                                              shadows);
@@ -75,8 +75,9 @@ void MeshViewFrameResources::BuildLocalLights(const RENDER3D::LIGHTING::SceneLig
 
 bool MeshViewFrameResources::Publish(const GFX::Context& graphics, const CameraCB* cullingOverride) {
     bindings_ = {};
-    if (!IsInitialized() || localLightList.lightCount > lights_.size() ||
-        localLightList.clusterCount > headers_.size() || localLightList.clusterIndexCount > indices_.size())
+    const uint32_t recordCount = localLightList.lightCount + localLightList.decalCount;
+    if (!IsInitialized() || recordCount > records_.size() || localLightList.clusterCount > headers_.size() ||
+        localLightList.clusterIndexCount > indices_.size())
         return false;
 
     using namespace RENDER3D::LIGHTING;
@@ -94,8 +95,7 @@ bool MeshViewFrameResources::Publish(const GFX::Context& graphics, const CameraC
          {&light, sizeof(light)},
          {&shadow, sizeof(shadow)},
          {&skyEnvironment, sizeof(skyEnvironment)},
-         {localLightList.lightCount ? lights_.data() : &emptyLight,
-          sizeof(emptyLight) * (localLightList.lightCount ? localLightList.lightCount : 1u)},
+         {recordCount ? records_.data() : &emptyLight, sizeof(emptyLight) * (recordCount ? recordCount : 1u)},
          {localLightList.clusterCount ? headers_.data() : &emptyHeader,
           sizeof(emptyHeader) * (localLightList.clusterCount ? localLightList.clusterCount : 1u)},
          {localLightList.clusterIndexCount ? indices_.data() : &emptyIndex,

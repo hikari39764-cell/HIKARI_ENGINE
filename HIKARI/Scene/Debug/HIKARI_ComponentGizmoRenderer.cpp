@@ -2,6 +2,7 @@
 
 #include "Scene/Debug/HIKARI_ColliderGizmoProvider.h"
 #include "Scene/Debug/Internal/HIKARI_CameraGizmoProviders.h"
+#include "Scene/Debug/Internal/HIKARI_DecalGizmoProvider.h"
 #include "Scene/Debug/Internal/HIKARI_LightingGizmoProviders.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
@@ -11,6 +12,7 @@ namespace HIKARI {
 ComponentGizmoRenderer::ComponentGizmoRenderer() {
     RegisterCameraGizmoProviders(registry_);
     RegisterLightingGizmoProviders(registry_);
+    RegisterDecalGizmoProvider(registry_);
     RegisterColliderGizmoProvider(registry_);
 }
 

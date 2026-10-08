@@ -13,7 +13,7 @@ namespace HIKARI::ASSETS::SHADER {
 inline constexpr std::string_view kRenderGeometryEngineInterfaceId = "HIKARI.RenderGeometry";
 inline constexpr uint32_t kRenderGeometryEngineInterfaceVersion = 2u;
 inline constexpr std::string_view kRenderGeometryEngineInterfaceHash =
-    "e18d979a0372fb5fda78d3140709724a585783857a5d2c7f1147a678bff55c77";
+    "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98";
 inline constexpr std::string_view kRenderGeometryInterfaceDependency =
     "EngineSdk/Include/Render3D/HIKARI_RenderGeometryInterface.hlsli";
 

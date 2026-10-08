@@ -7,6 +7,7 @@
 
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntimeConversion.h"
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
+#include "Scene/Components/Rendering/Decal/HIKARI_DecalComponent.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
@@ -20,6 +21,8 @@ std::string ReflectionProbeId(SceneObjectId objectId) { return "reflection_probe
 std::string IrradianceVolumeId(SceneObjectId objectId) { return "irradiance_volume_" + std::to_string(objectId.value); }
 
 std::string LightId(SceneObjectId objectId) { return "light_" + std::to_string(objectId.value); }
+
+std::string DecalId(SceneObjectId objectId) { return "decal_" + std::to_string(objectId.value); }
 
 bool EqualReflectionProvider(const RENDER3D::LIGHTING::ReflectionProbeProvider& lhs,
                              const RENDER3D::LIGHTING::ReflectionProbeProvider& rhs) {
@@ -116,18 +119,31 @@ RENDER3D::LIGHTING::SceneLightingSet BuildRuntimeSceneLightingSet(const SceneDoc
         if (disabledObjectIds.contains(object->GetDocumentId().value)) {
             continue;
         }
-        const LightComponent* component = object->GetComponent<LightComponent>();
-        if (component == nullptr) {
+        const LightComponent* light = object->GetComponent<LightComponent>();
+        const DecalComponent* decal = object->GetComponent<DecalComponent>();
+        const bool hasDecal = decal != nullptr && decal->GetSettings().enabled;
+        if (light == nullptr && !hasDecal) {
             continue;
         }
         const MATH::Mat4 worldMatrix = object->GetTransform().GetWorldMatrix();
-        set.lights.push_back(BuildLightProvider(LightId(object->GetDocumentId()), object->GetName(),
-                                                component->GetSettings(), WorldPosition(worldMatrix),
-                                                WorldForward(worldMatrix), WorldRight(worldMatrix)));
+        if (light != nullptr) {
+            set.lights.push_back(BuildLightProvider(LightId(object->GetDocumentId()), object->GetName(),
+                                                    light->GetSettings(), WorldPosition(worldMatrix),
+                                                    WorldForward(worldMatrix), WorldRight(worldMatrix)));
+        }
+        if (hasDecal) {
+            set.decals.push_back({DecalId(object->GetDocumentId()), worldMatrix, decal->GetSettings()});
+        }
     }
     std::stable_sort(set.lights.begin(), set.lights.end(), [](const auto& lhs, const auto& rhs) {
         if (lhs.priority != rhs.priority) {
             return lhs.priority > rhs.priority;
+        }
+        return lhs.id < rhs.id;
+    });
+    std::stable_sort(set.decals.begin(), set.decals.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.settings.sortOrder != rhs.settings.sortOrder) {
+            return lhs.settings.sortOrder < rhs.settings.sortOrder;
         }
         return lhs.id < rhs.id;
     });

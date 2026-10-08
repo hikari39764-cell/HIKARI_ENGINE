@@ -4,6 +4,7 @@
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 #include "Include/Material/HIKARI_MaterialExpressionSurface.hlsli"
 #include "Include/Material/HIKARI_StylizedMaterial.hlsli"
+#include "Include/Lighting/HIKARI_LocalDecals.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 #include "Include/Surface/HIKARI_SurfacePartition.hlsli"
 #include "Include/Surface/HIKARI_MaterialShell.hlsli"
@@ -393,6 +394,27 @@ float4 main(PSInput input) : SV_TARGET
         HikariApplyPainterlyShellPbr(
             input.shellLayer, pbrInputs.metallic, pbrInputs.roughness, pbrInputs.specularFactor);
     }
+    const bool alphaBlended =
+        (materialData.materialFlags & MATERIAL_ALPHA_BLEND) != 0u ||
+        (materialData.instanceFlags &
+         HIKARI_PROGRAM_FLAG_ALPHA_BLEND) != 0u;
+    // デカールは不透明面の材質の入力を確定した後、受光の前に色・法線・粗さ・金属度を書き換える。微分はループの外で取る。
+    const float3 positionDx = ddx(input.worldPosWS);
+    const float3 positionDy = ddy(input.worldPosWS);
+    if (!neutralClay && !alphaBlended)
+    {
+        HikariDecalSurface decalSurface;
+        decalSurface.albedo = albedo.rgb;
+        decalSurface.normal = n;
+        decalSurface.roughness = pbrInputs.roughness;
+        decalSurface.metallic = pbrInputs.metallic;
+        HikariApplyLocalDecals(input.worldPosWS, input.position.xy, HikariCameraViewDepth(input.worldPosWS),
+            geometricNormal, positionDx, positionDy, decalSurface);
+        albedo.rgb = decalSurface.albedo;
+        n = decalSurface.normal;
+        pbrInputs.roughness = decalSurface.roughness;
+        pbrInputs.metallic = decalSurface.metallic;
+    }
     const float metallic = pbrInputs.metallic;
     const float roughness = pbrInputs.roughness;
     const float occlusion = pbrInputs.occlusion;
@@ -583,9 +605,7 @@ float4 main(PSInput input) : SV_TARGET
     }
     // 透過：Blend 材質は不透明の場面色を屈折して透かし、鏡面だけを残す。背景は自分で読むので被覆は 1 に寄せる。
     const bool transmissive = !neutralClay && !costNoMaterialExtras && pbrInputs.transmission > 0.0f &&
-        ((materialData.materialFlags & MATERIAL_ALPHA_BLEND) != 0u ||
-         (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_ALPHA_BLEND) != 0u) &&
-        (gScreenSpaceTraceFlags & HIKARI_SCREEN_SPACE_SCENE_COLOR_CAPTURE_VALID) != 0u;
+        alphaBlended && (gScreenSpaceTraceFlags & HIKARI_SCREEN_SPACE_SCENE_COLOR_CAPTURE_VALID) != 0u;
     if (transmissive)
     {
         const float3 refracted = refract(-v, n, rcp(pbrInputs.ior));
@@ -605,10 +625,7 @@ float4 main(PSInput input) : SV_TARGET
     }
 
     const bool transparentEyeHighlight =
-        programMaterials && HikariIsTransparentEyeHighlight(materialData) &&
-        ((materialData.materialFlags & MATERIAL_ALPHA_BLEND) != 0u ||
-         (materialData.instanceFlags &
-          HIKARI_PROGRAM_FLAG_ALPHA_BLEND) != 0u);
+        programMaterials && HikariIsTransparentEyeHighlight(materialData) && alphaBlended;
     // Eye highlight artwork is a compositing layer, not a second PBR shell.
     // Keeping it in straight color here lets the shared transparent return
     // premultiply exactly once below.
@@ -631,10 +648,6 @@ float4 main(PSInput input) : SV_TARGET
             surfaceFeatureData);
     }
 #endif
-    const bool alphaBlended =
-        (materialData.materialFlags & MATERIAL_ALPHA_BLEND) != 0u ||
-        (materialData.instanceFlags &
-         HIKARI_PROGRAM_FLAG_ALPHA_BLEND) != 0u;
 #if HIKARI_FORWARD_REFLECTION_CAPTURE
     bool reflectionSupported = !neutralClay && (gDebugView == 0u || gDebugView == 26u || gDebugView == 27u) && !alphaBlended &&
         (materialData.materialFlags & MATERIAL_UNLIT) == 0u &&
