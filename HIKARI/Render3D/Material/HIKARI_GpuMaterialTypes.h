@@ -129,10 +129,12 @@ struct GpuMaterialData {
     MATH::Vec4 shellStroke1{1.5f, 0.0f, 0.0f, 0.0f}; // x: 輪郭の冪, y: 被覆率, z: 層数, w: 厚み
     // 表面の層：x クリアコート, y クリアコートの粗さ, z 透過, w 屈折率。
     MATH::Vec4 surfaceLayers{0.0f, 0.1f, 0.0f, 1.5f};
+    MATH::Vec4 subsurface{0.0f, 0.02f, 0.0f, 0.0f}; // x 次表面散乱の強さ, y 散乱半径 [m]
 };
 
-static_assert(sizeof(GpuMaterialData) == 416u);
+static_assert(sizeof(GpuMaterialData) == 432u);
 static_assert(offsetof(GpuMaterialData, surfaceLayers) == 400u);
+static_assert(offsetof(GpuMaterialData, subsurface) == 416u);
 static_assert(offsetof(GpuMaterialData, strokeMaskTextureDescriptorIndex) == 352u);
 static_assert(offsetof(GpuMaterialData, shellStroke0) == 368u);
 static_assert(offsetof(GpuMaterialData, materialProgramIndex) == 100u);

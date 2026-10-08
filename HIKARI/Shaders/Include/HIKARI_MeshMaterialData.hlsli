@@ -64,6 +64,7 @@ struct HikariMeshMaterialData
     float4 shellStroke0; // x 繰り返し, y 回転, z 色差, w 筆触法線の強さ
     float4 shellStroke1; // x 輪郭の冪, y 被覆率, z 層数, w 厚み
     float4 surfaceLayers; // x クリアコート, y クリアコートの粗さ, z 透過, w 屈折率
+    float4 subsurface;    // x 次表面散乱の強さ, y 散乱半径 [m]
 };
 
 StructuredBuffer<HikariMeshMaterialData> gMaterialDataBuffer : register(t16);
@@ -117,6 +118,7 @@ HikariMeshMaterialData HikariBuildDefaultMeshMaterialData()
     data.shellStroke0 = float4(1.0f, 0.0f, 0.0f, 0.0f);
     data.shellStroke1 = float4(1.5f, 0.0f, 0.0f, 0.0f);
     data.surfaceLayers = float4(0.0f, 0.1f, 0.0f, 1.5f);
+    data.subsurface = float4(0.0f, 0.02f, 0.0f, 0.0f);
     return data;
 }
 

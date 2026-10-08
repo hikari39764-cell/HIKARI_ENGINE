@@ -178,6 +178,14 @@ constexpr auto kScreenSpaceReflectionFields = [](auto&& field) {
     field("rayTracingFallback", &S::rayTracingFallback);
 };
 
+constexpr auto kSubsurfaceScatteringFields = [](auto&& field) {
+    using S = SubsurfaceScatteringSettings;
+    field("enabled", &S::enabled);
+    field("strength", &S::strength, Range{0.0, 2.0});
+    field("channelFalloff", &S::channelFalloff, Range{0.05, 1.0});
+    field("maxPixelRadius", &S::maxPixelRadius, Range{1.0, 256.0});
+};
+
 constexpr auto kShadowFields = [](auto&& field) {
     using S = ShadowSettings;
     field("enabled", &S::enabled);
@@ -201,6 +209,7 @@ void VisitProfileSections(Visitor&& visit) {
     visit("sunGlare", &EnvironmentProfile::sunGlare, kSunGlareFields);
     visit("ambientOcclusion", &EnvironmentProfile::ambientOcclusion, kAmbientOcclusionFields);
     visit("screenSpaceReflections", &EnvironmentProfile::screenSpaceReflections, kScreenSpaceReflectionFields);
+    visit("subsurfaceScattering", &EnvironmentProfile::subsurfaceScattering, kSubsurfaceScatteringFields);
     visit("shadows", &EnvironmentProfile::shadows, kShadowFields);
 }
 

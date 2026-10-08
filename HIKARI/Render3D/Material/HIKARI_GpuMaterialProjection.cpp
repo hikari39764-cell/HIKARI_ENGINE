@@ -96,6 +96,7 @@ MaterialFactorProjection BuildMaterialFactorProjection(const MaterialAsset* mode
                                shell.strokeNormalStrength};
         result.shellStroke1 = {shell.edgePower, shell.coverage, static_cast<float>(shell.maxLayers), shell.thickness};
         result.surfaceLayers = material.GetSurfaceLayers();
+        result.subsurface = {material.GetSubsurface().x, material.GetSubsurface().y, 0.0f, 0.0f};
     }
     result.materialFlags &= ~(MATERIAL_FEATURES::AlphaMask | MATERIAL_FEATURES::ThinTransparentSurface);
     const AlphaMode alpha = ResolveMaterialAlphaMode(modelMaterial, runtimeMaterial);
@@ -192,6 +193,7 @@ GpuMaterialData PackGpuMaterialData(const GpuMaterialProjection& projection) {
     data.shellStroke0 = projection.shellStroke0;
     data.shellStroke1 = projection.shellStroke1;
     data.surfaceLayers = projection.surfaceLayers;
+    data.subsurface = projection.subsurface;
     return data;
 }
 

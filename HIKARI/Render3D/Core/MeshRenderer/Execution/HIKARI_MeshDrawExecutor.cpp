@@ -93,6 +93,7 @@ MaterialGpuData BuildMaterialGpuData(const ObjectCB& obj, const MaterialTextureH
     projection.shellStroke0 = factors.shellStroke0;
     projection.shellStroke1 = factors.shellStroke1;
     projection.surfaceLayers = factors.surfaceLayers;
+    projection.subsurface = factors.subsurface;
     projection.materialFlags = obj.materialFlags;
     projection.normalScale = obj.normalScale;
 

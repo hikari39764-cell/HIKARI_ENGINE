@@ -11,6 +11,7 @@
 #include "Render3D/Pipeline/HIKARI_ProjectFullscreenShaderRuntime.h"
 #include "Render3D/Reflection/HIKARI_ScreenSpaceReflectionRenderer.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.h"
+#include "Render3D/ScreenSpace/HIKARI_SubsurfaceScatteringRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 #include "Render3D/Temporal/HIKARI_TemporalGeometryPass.h"
@@ -21,6 +22,7 @@
 namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
 namespace {
 REFLECTION::ScreenSpaceReflectionRenderer gSsrRenderer{};
+SCREENSPACE::SubsurfaceScatteringRenderer gSubsurfaceRenderer{};
 
 bool ReplaceTexturePublication(
     SURFACE::SceneSurfaceSet& surfaces, GRAPH::RenderGraphSurfaceKey key, const RenderTextureView& texture,
@@ -74,14 +76,18 @@ bool ExecuteForwardOpaque(const GRAPH::RenderGraphPassContext& graphPass, void* 
                                                        GRAPH::RenderGraphSemanticPhase::Opaque};
     constexpr GRAPH::RenderGraphSurfaceKey materialKey{GRAPH::RenderGraphSemantic::ReflectionMaterial,
                                                        GRAPH::RenderGraphSemanticPhase::Opaque};
+    constexpr GRAPH::RenderGraphSurfaceKey subsurfaceKey{GRAPH::RenderGraphSemantic::SubsurfaceDiffuse,
+                                                         GRAPH::RenderGraphSemanticPhase::Opaque};
     (void)context.sceneSurfaces.Invalidate(fallbackKey);
     (void)context.sceneSurfaces.Invalidate(responseKey);
     (void)context.sceneSurfaces.Invalidate(materialKey);
+    (void)context.sceneSurfaces.Invalidate(subsurfaceKey);
     bool beganCapture = false;
     try {
         const auto& frame = context.frame;
+        // capture（追加 RT）は SSR か次表面散乱のどちらかが要る時に有効。
         const bool eligible =
-            context.hasSsrWork && context.cameraConstants &&
+            (context.hasSsrWork || context.hasSubsurfaceWork) && context.cameraConstants &&
             context.renderQuality.forwardCostMode != ForwardShadingCostMode::AlbedoOnly &&
             (context.debugView == RenderDebugView::None || context.debugView == RenderDebugView::SsrConfidence ||
              context.debugView == RenderDebugView::SsrHit) &&
@@ -89,19 +95,25 @@ bool ExecuteForwardOpaque(const GRAPH::RenderGraphPassContext& graphPass, void* 
         MESHRENDERER::MeshPassResources resources = context.opaqueResources;
         resources.reflectionCapture = false;
         resources.reflectionMaterialCapture = false;
+        resources.subsurfaceCapture = false;
         // 任意の capture 準備に失敗しても、通常の Forward 描画は続ける。
         try {
-            const bool captureMaterial = context.environment.screenSpaceReflections.rayTracingFallback;
-            const bool captureReady =
-                eligible && MESHRENDERER::PrepareForwardReflectionCapture(frame.graphics, captureMaterial);
-            if (buffer.Ensure(frame.graphics, frame.renderWidth, frame.renderHeight, captureReady,
-                              context.environment.screenSpaceReflections.rayTracingFallback)) {
+            const bool captureMaterial =
+                context.hasSsrWork && context.environment.screenSpaceReflections.rayTracingFallback;
+            const bool captureSubsurface = context.hasSubsurfaceWork;
+            const bool captureReady = eligible && MESHRENDERER::PrepareForwardReflectionCapture(
+                                                      frame.graphics, captureMaterial, captureSubsurface);
+            if (buffer.Ensure(frame.graphics, frame.renderWidth, frame.renderHeight, captureReady, captureMaterial,
+                              captureSubsurface)) {
                 beganCapture = buffer.BeginWrite(frame.graphics.cmdList);
                 resources.reflectionCapture = beganCapture && frame.targetAccess.BindAdditionalColors(buffer.GetRtvs());
                 resources.reflectionMaterialCapture = resources.reflectionCapture && captureMaterial;
+                resources.subsurfaceCapture = resources.reflectionCapture && captureSubsurface;
             }
         } catch (...) {
             resources.reflectionCapture = false;
+            resources.reflectionMaterialCapture = false;
+            resources.subsurfaceCapture = false;
         }
         if (beganCapture && !resources.reflectionCapture) {
             buffer.EndWrite(frame.graphics.cmdList, false);
@@ -127,6 +139,10 @@ bool ExecuteForwardOpaque(const GRAPH::RenderGraphPassContext& graphPass, void* 
             }
             if (state.result.opaqueSucceeded && buffer.GetMaterialView().IsSampleable())
                 (void)ReplaceTexturePublication(context.sceneSurfaces, materialKey, buffer.GetMaterialView(),
+                                                SURFACE::SceneSurfaceProducer::ForwardOpaque);
+            if (state.result.opaqueSucceeded && resources.subsurfaceCapture &&
+                buffer.GetSubsurfaceView().IsSampleable())
+                (void)ReplaceTexturePublication(context.sceneSurfaces, subsurfaceKey, buffer.GetSubsurfaceView(),
                                                 SURFACE::SceneSurfaceProducer::ForwardOpaque);
         }
         return state.result.opaqueSucceeded;
@@ -361,6 +377,37 @@ bool ExecuteSsr(const GRAPH::RenderGraphPassContext& graphPass, void* userData) 
     }
 }
 
+bool ExecuteSubsurfaceScattering(const GRAPH::RenderGraphPassContext& graphPass, void* userData) noexcept {
+    auto& state = *static_cast<StageExecutionState*>(userData);
+    if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
+        return false;
+    }
+    const RenderFrameGraphStageContext& context = *state.context;
+    if (context.cameraConstants == nullptr || context.debugView != RenderDebugView::None) {
+        return true;
+    }
+    const RenderTextureView* diffuse = context.sceneSurfaces.TryGetTexture(
+        {GRAPH::RenderGraphSemantic::SubsurfaceDiffuse, GRAPH::RenderGraphSemanticPhase::Opaque});
+    const RenderTextureView* depth = context.sceneSurfaces.TryGetTexture(
+        {GRAPH::RenderGraphSemantic::SceneDepth, GRAPH::RenderGraphSemanticPhase::Imported});
+    if (diffuse == nullptr || depth == nullptr || !diffuse->IsSampleable() || !depth->IsSampleable()) {
+        return true;
+    }
+    try {
+        if (gSubsurfaceRenderer.Render(context.frame.graphics, context.frame.targetAccess, *diffuse, *depth,
+                                       *context.cameraConstants, context.environment.subsurfaceScattering))
+            return true;
+        return context.frame.targetAccess.Rebind();
+    } catch (...) {
+        try {
+            context.frame.targetAccess.EndDepthRead();
+            return context.frame.targetAccess.Rebind();
+        } catch (...) {
+            return false;
+        }
+    }
+}
+
 const RenderFrameGraphPassCallbacks& GetRenderFrameGraphPassCallbacks() noexcept {
     static const RenderFrameGraphPassCallbacks callbacks{&ExecuteForwardOpaque,
                                                          &ExecutePostOpaqueSurfaces,
@@ -368,6 +415,7 @@ const RenderFrameGraphPassCallbacks& GetRenderFrameGraphPassCallbacks() noexcept
                                                          &ExecuteMotionVectors,
                                                          &ExecuteSceneColorOpaqueCapture,
                                                          &ExecuteSsr,
+                                                         &ExecuteSubsurfaceScattering,
                                                          &ExecuteDepthAware,
                                                          &ExecuteForwardTransparent,
                                                          &ExecuteRenderFeaturePlan,
@@ -389,6 +437,7 @@ void ReleaseRenderFrameGraphPassResources() noexcept {
     ReleaseProjectFullscreenShaderRuntime();
     try {
         gSsrRenderer.Release();
+        gSubsurfaceRenderer.Release();
     } catch (...) {
     }
 }

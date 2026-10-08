@@ -47,6 +47,7 @@ struct StageExecutionState {
 struct RenderFrameGraphPlanOptions {
     bool captureSceneColor = false;
     bool includeSsr = false;
+    bool includeSubsurface = false;
     bool includeDepthAware = false;
     bool includeTransparent = false;
     bool includeCameraDepthOfField = false;
@@ -67,6 +68,7 @@ struct RenderFrameGraphPassCallbacks {
     GRAPH::RenderGraphExecuteFn motionVectors = nullptr;
     GRAPH::RenderGraphExecuteFn sceneColorOpaqueCapture = nullptr;
     GRAPH::RenderGraphExecuteFn ssr = nullptr;
+    GRAPH::RenderGraphExecuteFn subsurfaceScattering = nullptr;
     GRAPH::RenderGraphExecuteFn depthAware = nullptr;
     GRAPH::RenderGraphExecuteFn transparent = nullptr;
     GRAPH::RenderGraphExecuteFn featurePlan = nullptr;

@@ -6,7 +6,7 @@
 namespace HIKARI::RENDER3D::SURFACE {
 
 bool SceneReflectionBuffer::Ensure(const GFX::Context& graphics, uint32_t width, uint32_t height, bool enabled,
-                                   bool captureMaterial) {
+                                   bool captureMaterial, bool captureSubsurface) {
     ready_ = written_ = false;
     if (!enabled) {
         if (!context_.frameFence || context_.frameFence->GetCompletedValue() >= lastRetireFence_)
@@ -29,7 +29,7 @@ bool SceneReflectionBuffer::Ensure(const GFX::Context& graphics, uint32_t width,
     context_ = graphics;
     frameSlot_ = graphics.frameIndex;
     if (!textures_[0] || !textures_[1] || width_ != width || height_ != height ||
-        bool(textures_[2]) != captureMaterial) {
+        bool(textures_[2]) != captureMaterial || bool(textures_[3]) != captureSubsurface) {
         const auto completed = graphics.frameFence->GetCompletedValue();
         if (completed == UINT64_MAX || completed < lastRetireFence_)
             return false;
@@ -38,20 +38,21 @@ bool SceneReflectionBuffer::Ensure(const GFX::Context& graphics, uint32_t width,
         const auto desc =
             CD3DX12_RESOURCE_DESC::Tex2D(kFormat, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
         const D3D12_CLEAR_VALUE clear{kFormat, {0, 0, 0, 0}};
-        const uint32_t count = captureMaterial ? 3u : 2u;
+        const std::array<bool, kTargetCount> wanted{true, true, captureMaterial, captureSubsurface};
+        const uint32_t count = 2u + (captureMaterial ? 1u : 0u) + (captureSubsurface ? 1u : 0u);
         const auto bytes = graphics.device->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes;
         // MRT は scene と同寸が必要。予算超過は低解像度の誤った capture でなく provider を辞退する。
         constexpr uint64_t budget = 192ull * 1024 * 1024;
         if (!bytes || bytes > budget / count)
             return false;
-        std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 3> replacements;
+        std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kTargetCount> replacements;
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> replacementHeap;
-        for (uint32_t i = 0; i < count; ++i) {
-            if (FAILED(graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state_, &clear,
-                                                                IID_PPV_ARGS(&replacements[i]))))
+        for (size_t i = 0; i < kTargetCount; ++i) {
+            if (wanted[i] && FAILED(graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state_,
+                                                                             &clear, IID_PPV_ARGS(&replacements[i]))))
                 return false;
         }
-        const D3D12_DESCRIPTOR_HEAP_DESC rtvDesc{D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 3};
+        const D3D12_DESCRIPTOR_HEAP_DESC rtvDesc{D3D12_DESCRIPTOR_HEAP_TYPE_RTV, kTargetCount};
         if (FAILED(graphics.device->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&replacementHeap))))
             return false;
         textures_.swap(replacements);
@@ -70,6 +71,8 @@ bool SceneReflectionBuffer::Ensure(const GFX::Context& graphics, uint32_t width,
         textures_[1]->SetName(L"HIKARI.SceneSurface.ReflectionSpecularResponse");
         if (textures_[2])
             textures_[2]->SetName(L"HIKARI.SceneSurface.ReflectionMaterial");
+        if (textures_[3])
+            textures_[3]->SetName(L"HIKARI.SceneSurface.SubsurfaceDiffuse");
         workingSetBytes_ = bytes * count;
         width_ = width;
         height_ = height;
@@ -148,7 +151,7 @@ void SceneReflectionBuffer::Release() {
 void SceneReflectionBuffer::Transition(ID3D12GraphicsCommandList* commands, D3D12_RESOURCE_STATES nextState) {
     if (state_ == nextState)
         return;
-    std::array<D3D12_RESOURCE_BARRIER, 3> barriers;
+    std::array<D3D12_RESOURCE_BARRIER, kTargetCount> barriers;
     UINT count = 0;
     for (const auto& texture : textures_)
         if (texture)

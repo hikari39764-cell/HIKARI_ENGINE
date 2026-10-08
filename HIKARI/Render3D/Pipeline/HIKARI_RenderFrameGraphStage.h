@@ -66,6 +66,7 @@ struct RenderFrameGraphStageContext {
     bool hasDepthAwareWork = false;
     bool hasTransparentWork = false;
     bool hasSsrWork = false;
+    bool hasSubsurfaceWork = false;
     bool requiresSceneColorOpaque = false;
 };
 

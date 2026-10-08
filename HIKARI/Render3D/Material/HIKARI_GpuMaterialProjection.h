@@ -56,6 +56,7 @@ struct MaterialFactorProjection {
     MATH::Vec4 shellStroke1{1.5f, 0.0f, 0.0f, 0.0f};
     // 表面の層（Material::GetSurfaceLayers）。モデルの材質は既定（層なし）。
     MATH::Vec4 surfaceLayers{0.0f, 0.1f, 0.0f, 1.5f};
+    MATH::Vec4 subsurface{0.0f, 0.02f, 0.0f, 0.0f};
 };
 
 // Material-owned projection into the shared C++/HLSL layout.

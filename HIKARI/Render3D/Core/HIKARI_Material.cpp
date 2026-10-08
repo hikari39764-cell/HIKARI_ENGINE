@@ -259,6 +259,15 @@ void Material::SetSurfaceLayers(const MATH::Vec4& value) {
     TouchRevision();
 }
 
+void Material::SetSubsurface(const MATH::Vec2& value) {
+    const MATH::Vec2 next{std::clamp(value.x, 0.0f, 1.0f), std::clamp(value.y, 0.0f, 1.0f)};
+    if (Equal(subsurface_, next)) {
+        return;
+    }
+    subsurface_ = next;
+    TouchRevision();
+}
+
 void Material::SetNormalScale(float value) {
     if (normalScale_ == value) {
         return;

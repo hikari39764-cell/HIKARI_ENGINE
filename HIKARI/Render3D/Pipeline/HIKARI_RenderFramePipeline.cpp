@@ -381,6 +381,8 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     const bool hasTransparentWork = MESHRENDERER::HasForwardTransparentPassWork();
     const bool hasSsrWork = environment.screenSpaceReflections.enabled &&
                             environment.screenSpaceReflections.quality != ScreenSpaceReflectionQuality::Off;
+    const bool hasSubsurfaceWork =
+        environment.subsurfaceScattering.enabled && environment.subsurfaceScattering.strength > 0.0f;
     const bool stylizedFeatureMaskBackendReady = MESHRENDERER::HasStylizedFeatureMaskBackend();
     const bool geometryOutlineBackendReady = MESHRENDERER::HasGeometryOutlineFeatureBackend();
     const bool visibilityOverlayBackendReady = MESHRENDERER::HasVisibilityOverlayFeatureBackend();
@@ -508,7 +510,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         RenderFrameGraphFeatureContext{lighting, featureRequests, renderFeaturePlan, gStylizedScreenFeatures,
                                        !debugRoute.active, geometryOutlineBackendReady, visibilityOverlayBackendReady},
         cameraCb, screenResult, sceneTextures, opaqueResources, postOpaqueResources, debugView, hasDepthAwareWork,
-        hasTransparentWork, hasSsrWork,
+        hasTransparentWork, hasSsrWork, hasSubsurfaceWork,
         hasDepthAwareWork || hasTransparentWork || hasSsrWork || stylizedScreenMaskRequired || globalPostMaskRequired});
     if (!graphStage.prefixCompleted || !graphStage.pausedForPresentation || !graphStage.session.IsValid()) {
         const std::string graphDetail =

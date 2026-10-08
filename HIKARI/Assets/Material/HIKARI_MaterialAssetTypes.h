@@ -8,7 +8,7 @@
 namespace HIKARI {
 
 inline constexpr uint32_t kMaterialAssetSourceVersion = 7u;
-inline constexpr uint32_t kMaterialProgramIrVersion = 10u;
+inline constexpr uint32_t kMaterialProgramIrVersion = 11u;
 
 enum class MaterialAssetKind : uint8_t {
     Material,

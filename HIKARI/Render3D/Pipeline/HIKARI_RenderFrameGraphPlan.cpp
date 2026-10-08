@@ -102,6 +102,15 @@ bool BuildRenderFrameGraphPlan(const RenderFrameGraphPlanOptions& options, void*
         if (!reflectionFallback.IsValid() || !reflectionResponse.IsValid() || !reflectionMaterial.IsValid())
             return false;
     }
+    GRAPH::RenderGraphResourceId subsurfaceDiffuse{};
+    if (options.includeSubsurface) {
+        subsurfaceDiffuse = AddRenderFrameGraphSurfaceResource(
+            graph, "SubsurfaceDiffuse", GRAPH::RenderGraphSemantic::SubsurfaceDiffuse, false,
+            GRAPH::RenderGraphSemanticPhase::Opaque, SURFACE::SceneSurfaceProducer::ForwardOpaque,
+            GRAPH::RenderGraphResourceRequirement::Optional);
+        if (!subsurfaceDiffuse.IsValid())
+            return false;
+    }
     const auto forwardComplete = AddRenderFrameGraphCompletionMarker(graph, "ForwardOpaque.Complete");
     const auto postOpaqueComplete = AddRenderFrameGraphCompletionMarker(graph, "PostOpaqueSurfaces.Complete");
     const auto cloudsComplete = AddRenderFrameGraphCompletionMarker(graph, "Clouds.Complete");
@@ -128,22 +137,51 @@ bool BuildRenderFrameGraphPlan(const RenderFrameGraphPlanOptions& options, void*
         GRAPH::RenderGraphResourceUse{packedSurfaceInput, GRAPH::RenderGraphAccess::ReadSampled},
         GRAPH::RenderGraphResourceUse{forwardDepthPyramid, GRAPH::RenderGraphAccess::ReadSampled},
         GRAPH::RenderGraphResourceUse{ambientOcclusionInput, GRAPH::RenderGraphAccess::ReadSampled}};
-    const std::array forwardWrites{
-        GRAPH::RenderGraphResourceUse{forwardComplete, GRAPH::RenderGraphAccess::WriteDependency},
-        GRAPH::RenderGraphResourceUse{reflectionFallback, GRAPH::RenderGraphAccess::WriteColor,
-                                      SURFACE::SceneSurfaceProducer::ForwardOpaque},
-        GRAPH::RenderGraphResourceUse{reflectionResponse, GRAPH::RenderGraphAccess::WriteColor,
-                                      SURFACE::SceneSurfaceProducer::ForwardOpaque},
-        GRAPH::RenderGraphResourceUse{reflectionMaterial, GRAPH::RenderGraphAccess::WriteColor,
-                                      SURFACE::SceneSurfaceProducer::ForwardOpaque}};
+    std::array<GRAPH::RenderGraphResourceUse, 5u> forwardWrites{
+        GRAPH::RenderGraphResourceUse{forwardComplete, GRAPH::RenderGraphAccess::WriteDependency}};
+    std::size_t forwardWriteCount = 1u;
+    if (options.includeSsr) {
+        forwardWrites[forwardWriteCount++] = GRAPH::RenderGraphResourceUse{
+            reflectionFallback, GRAPH::RenderGraphAccess::WriteColor, SURFACE::SceneSurfaceProducer::ForwardOpaque};
+        forwardWrites[forwardWriteCount++] = GRAPH::RenderGraphResourceUse{
+            reflectionResponse, GRAPH::RenderGraphAccess::WriteColor, SURFACE::SceneSurfaceProducer::ForwardOpaque};
+        forwardWrites[forwardWriteCount++] = GRAPH::RenderGraphResourceUse{
+            reflectionMaterial, GRAPH::RenderGraphAccess::WriteColor, SURFACE::SceneSurfaceProducer::ForwardOpaque};
+    }
+    if (options.includeSubsurface) {
+        forwardWrites[forwardWriteCount++] = GRAPH::RenderGraphResourceUse{
+            subsurfaceDiffuse, GRAPH::RenderGraphAccess::WriteColor, SURFACE::SceneSurfaceProducer::ForwardOpaque};
+    }
     if (!graph.AddPass(GRAPH::RenderGraphPassDesc{"ForwardOpaque", forwardReads,
-                                                  std::span(forwardWrites.data(), options.includeSsr ? 4u : 1u),
+                                                  std::span(forwardWrites.data(), forwardWriteCount),
                                                   callbacks.forwardOpaque, userData})) {
         return false;
     }
 
-    const std::array postReads{GRAPH::RenderGraphResourceUse{forwardComplete, GRAPH::RenderGraphAccess::ReadDependency},
-                               GRAPH::RenderGraphResourceUse{sceneDepth, GRAPH::RenderGraphAccess::ReadDepth}};
+    // 次表面散乱は不透明の場面色を直接書き換えるので、後段（AO・動きベクトル・場面色の複製）より前に済ませる。
+    GRAPH::RenderGraphResourceId subsurfaceComplete{};
+    if (options.includeSubsurface) {
+        subsurfaceComplete = AddRenderFrameGraphCompletionMarker(graph, "SubsurfaceScattering.Complete");
+        const std::array subsurfaceReads{
+            GRAPH::RenderGraphResourceUse{forwardComplete, GRAPH::RenderGraphAccess::ReadDependency},
+            GRAPH::RenderGraphResourceUse{sceneDepth, GRAPH::RenderGraphAccess::ReadDepth},
+            GRAPH::RenderGraphResourceUse{subsurfaceDiffuse, GRAPH::RenderGraphAccess::ReadSampled}};
+        const std::array subsurfaceWrites{
+            GRAPH::RenderGraphResourceUse{subsurfaceComplete, GRAPH::RenderGraphAccess::WriteDependency}};
+        if (!graph.AddPass(GRAPH::RenderGraphPassDesc{"SubsurfaceScattering", subsurfaceReads, subsurfaceWrites,
+                                                      callbacks.subsurfaceScattering, userData})) {
+            return false;
+        }
+    }
+
+    std::array<GRAPH::RenderGraphResourceUse, 3u> postReads{
+        GRAPH::RenderGraphResourceUse{forwardComplete, GRAPH::RenderGraphAccess::ReadDependency},
+        GRAPH::RenderGraphResourceUse{sceneDepth, GRAPH::RenderGraphAccess::ReadDepth}};
+    std::size_t postReadCount = 2u;
+    if (options.includeSubsurface) {
+        postReads[postReadCount++] =
+            GRAPH::RenderGraphResourceUse{subsurfaceComplete, GRAPH::RenderGraphAccess::ReadDependency};
+    }
     const std::array postWrites{
         GRAPH::RenderGraphResourceUse{postOpaqueComplete, GRAPH::RenderGraphAccess::WriteDependency},
         GRAPH::RenderGraphResourceUse{packedSurface, GRAPH::RenderGraphAccess::WriteColor,
@@ -158,8 +196,8 @@ bool BuildRenderFrameGraphPlan(const RenderFrameGraphPlanOptions& options, void*
                                       SURFACE::SceneSurfaceProducer::SceneSurfaceAux},
         GRAPH::RenderGraphResourceUse{stylizedOutlineStyle, GRAPH::RenderGraphAccess::WriteColor,
                                       SURFACE::SceneSurfaceProducer::SceneSurfaceAux}};
-    if (!graph.AddPass(GRAPH::RenderGraphPassDesc{"ScreenSpacePostOpaque", postReads, postWrites,
-                                                  callbacks.postOpaqueSurfaces, userData})) {
+    if (!graph.AddPass(GRAPH::RenderGraphPassDesc{"ScreenSpacePostOpaque", std::span(postReads.data(), postReadCount),
+                                                  postWrites, callbacks.postOpaqueSurfaces, userData})) {
         return false;
     }
 

@@ -275,6 +275,7 @@ const char* ToString(RenderGraphSemantic semantic) noexcept {
     case RenderGraphSemantic::ReflectionFallbackSpecular: return "ReflectionFallbackSpecular";
     case RenderGraphSemantic::ReflectionSpecularResponse: return "ReflectionSpecularResponse";
     case RenderGraphSemantic::ReflectionMaterial: return "ReflectionMaterial";
+    case RenderGraphSemantic::SubsurfaceDiffuse: return "SubsurfaceDiffuse";
     case RenderGraphSemantic::Count: break;
     }
     return "Unknown";

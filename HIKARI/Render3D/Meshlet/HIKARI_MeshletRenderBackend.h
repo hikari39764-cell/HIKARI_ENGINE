@@ -103,6 +103,7 @@ struct MeshletRenderExecutionContext {
     GFX::GPU_PROFILE::Pass profilePass = GFX::GPU_PROFILE::Pass::Count;
     bool reflectionCapture = false;
     bool reflectionMaterialCapture = false;
+    bool subsurfaceCapture = false;
     ForwardShadingCostMode forwardCostMode = ForwardShadingCostMode::Full;
     // Forward/GeometryAux は一般面と地形を別 PSO で描く。地形が無ければ地形 dispatch を省く。
     bool terrainSurfacesPresent = false;
@@ -121,7 +122,7 @@ public:
     bool Initialize(ID3D12Device* device, ID3D12RootSignature* rootSignature);
     bool Initialize(ID3D12Device* device, ID3D12RootSignature* rootSignature, uint32_t pipelineMask);
     // SSR capture PSO が使えるか。PSO は Initialize が別スレッドで作り、完成前と失敗時は false。
-    bool PrepareReflectionCapture(bool captureMaterial = false);
+    bool PrepareReflectionCapture(bool captureMaterial = false, bool captureSubsurface = false);
     // 診断 variant は最初の要求時にだけ準備する。失敗は Reset まで再試行しない。
     bool PrepareForwardVariant(ForwardShadingCostMode mode);
     // debug view 用の全経路 Forward PSO。最初の要求時にだけ作る。
@@ -155,12 +156,17 @@ private:
                                                  GPUDRIVEN::GpuDrivenCommandBucket bucket) const;
     // 分割した kind は分割したすべての PSO（一般面・材質 program・地形）が揃って初めて描ける。
     void ApplySurfacePartitionReadiness();
-    bool AreReflectionPipelinesReady(bool captureMaterial) const;
+    bool AreReflectionPipelinesReady(bool captureMaterial, bool captureSubsurface) const;
 
-    // SSR capture の PSO。[captureMaterial] ごとに標準 PBR の面と材質 program の面を別 PSO で描く。
+    // Forward capture の PSO。[captureMaterial + 2 * captureSubsurface] ごとに標準 PBR の面と材質 program の面を
+    // 別 PSO で描く（4 番目 = 反射の材質、5 番目 = 次表面散乱の拡散光。持たない出力は UNKNOWN）。
+    static constexpr size_t kCaptureVariantCount = 4u;
+    static size_t CaptureVariantIndex(bool captureMaterial, bool captureSubsurface) noexcept {
+        return (captureMaterial ? 1u : 0u) + (captureSubsurface ? 2u : 0u);
+    }
     struct ReflectionCapturePipelines {
-        std::array<PipelineBucketArray, 2> standard{};
-        std::array<PipelineBucketArray, 2> program{};
+        std::array<PipelineBucketArray, kCaptureVariantCount> standard{};
+        std::array<PipelineBucketArray, kCaptureVariantCount> program{};
     };
 
     MeshletVisibility visibility_{};

@@ -106,6 +106,7 @@ RenderFrameGraphStageResult ExecuteRenderFrameGraphStage(const RenderFrameGraphS
 
     const INTERNAL::RenderFrameGraphPlanOptions options{context.requiresSceneColorOpaque,
                                                         context.hasSsrWork,
+                                                        context.hasSubsurfaceWork,
                                                         context.hasDepthAwareWork,
                                                         context.hasTransparentWork,
                                                         state->cameraDepthOfFieldPrepared,

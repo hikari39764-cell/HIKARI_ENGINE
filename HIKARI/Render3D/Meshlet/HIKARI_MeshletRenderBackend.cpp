@@ -362,17 +362,19 @@ bool CreateMeshletPipelineState(ID3D12Device* device, ID3D12RootSignature* rootS
                                 DXGI_FORMAT secondaryRenderTargetFormat = DXGI_FORMAT_UNKNOWN,
                                 D3D12_COMPARISON_FUNC depthFunction = D3D12_COMPARISON_FUNC_LESS_EQUAL,
                                 DXGI_FORMAT tertiaryRenderTargetFormat = DXGI_FORMAT_UNKNOWN,
-                                std::optional<DXGI_FORMAT> fourthRenderTargetFormat = std::nullopt) {
+                                std::optional<DXGI_FORMAT> fourthRenderTargetFormat = std::nullopt,
+                                std::optional<DXGI_FORMAT> fifthRenderTargetFormat = std::nullopt) {
     if (device == nullptr || rootSignature == nullptr || amplificationShader.pShaderBytecode == nullptr ||
         meshShader.pShaderBytecode == nullptr || (pixelShader.pShaderBytecode == nullptr && hasRenderTarget) ||
         (tertiaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN && secondaryRenderTargetFormat == DXGI_FORMAT_UNKNOWN) ||
         (fourthRenderTargetFormat.has_value() && tertiaryRenderTargetFormat == DXGI_FORMAT_UNKNOWN) ||
-        outPipelineState == nullptr) {
+        (fifthRenderTargetFormat.has_value() && !fourthRenderTargetFormat.has_value()) || outPipelineState == nullptr) {
         return false;
     }
 
     D3D12_RT_FORMAT_ARRAY renderTargets{};
-    renderTargets.NumRenderTargets = hasRenderTarget ? (fourthRenderTargetFormat.has_value()                 ? 4u
+    renderTargets.NumRenderTargets = hasRenderTarget ? (fifthRenderTargetFormat.has_value()                  ? 5u
+                                                        : fourthRenderTargetFormat.has_value()               ? 4u
                                                         : tertiaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN  ? 3u
                                                         : secondaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN ? 2u
                                                                                                              : 1u)
@@ -382,6 +384,7 @@ bool CreateMeshletPipelineState(ID3D12Device* device, ID3D12RootSignature* rootS
         renderTargets.RTFormats[1] = secondaryRenderTargetFormat;
         renderTargets.RTFormats[2] = tertiaryRenderTargetFormat;
         renderTargets.RTFormats[3] = fourthRenderTargetFormat.value_or(DXGI_FORMAT_UNKNOWN);
+        renderTargets.RTFormats[4] = fifthRenderTargetFormat.value_or(DXGI_FORMAT_UNKNOWN);
     }
 
     CD3DX12_RASTERIZER_DESC rasterizer(D3D12_DEFAULT);
@@ -696,18 +699,21 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                 ReflectionCapturePipelines pipelines{};
                 const auto create = [&](const ASSETS::SHADER::ShaderAssetEntryLease& as,
                                         const ASSETS::SHADER::ShaderAssetEntryLease& ps,
-                                        std::array<PipelineBucketArray, 2>& out) {
-                    for (size_t captureMaterial = 0; captureMaterial < out.size(); ++captureMaterial) {
+                                        std::array<PipelineBucketArray, kCaptureVariantCount>& out) {
+                    for (size_t variant = 0; variant < out.size(); ++variant) {
+                        const bool captureMaterial = (variant & 1u) != 0u;
+                        const bool captureSubsurface = (variant & 2u) != 0u;
                         for (size_t i = 0; i < GPUDRIVEN::kGpuDrivenCommandBucketCount; ++i) {
                             if (!CreateMeshletPipelineState(
                                     device.Get(), rootSignature.Get(), ShaderBytecode(as), ShaderBytecode(ms),
                                     ShaderBytecode(ps), DXGI_FORMAT_R16G16B16A16_FLOAT,
                                     CullModeForBucket(static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i)), false, true,
-                                    true, L"Meshlet.ForwardReflectionCapture", out[captureMaterial][i].GetAddressOf(),
+                                    true, L"Meshlet.ForwardReflectionCapture", out[variant][i].GetAddressOf(),
                                     DXGI_FORMAT_R16G16B16A16_FLOAT, D3D12_COMPARISON_FUNC_LESS_EQUAL,
                                     DXGI_FORMAT_R16G16B16A16_FLOAT,
-                                    captureMaterial != 0u ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_UNKNOWN)) {
-                                out[captureMaterial] = {};
+                                    captureMaterial ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_UNKNOWN,
+                                    captureSubsurface ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_UNKNOWN)) {
+                                out[variant] = {};
                                 break;
                             }
                         }
@@ -903,19 +909,20 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
     return stats_.pipelineReady;
 }
 
-bool MeshletRenderBackend::PrepareReflectionCapture(bool captureMaterial) {
+bool MeshletRenderBackend::PrepareReflectionCapture(bool captureMaterial, bool captureSubsurface) {
     // capture PSO は Initialize が別スレッドで作る。完成までは false を返し、呼び出し側は capture なしで描く。
     if (reflectionCaptureTask_.valid()) {
         if (reflectionCaptureTask_.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
             return false;
         reflectionPipelines_ = reflectionCaptureTask_.get();
     }
-    return stats_.forwardPipelineReady && AreReflectionPipelinesReady(captureMaterial);
+    return stats_.forwardPipelineReady && AreReflectionPipelinesReady(captureMaterial, captureSubsurface);
 }
 
-bool MeshletRenderBackend::AreReflectionPipelinesReady(bool captureMaterial) const {
-    return ArePipelinesReady(reflectionPipelines_.standard[captureMaterial]) &&
-           ArePipelinesReady(reflectionPipelines_.program[captureMaterial]);
+bool MeshletRenderBackend::AreReflectionPipelinesReady(bool captureMaterial, bool captureSubsurface) const {
+    const size_t variant = CaptureVariantIndex(captureMaterial, captureSubsurface);
+    return ArePipelinesReady(reflectionPipelines_.standard[variant]) &&
+           ArePipelinesReady(reflectionPipelines_.program[variant]);
 }
 
 bool MeshletRenderBackend::PrepareForwardVariant(ForwardShadingCostMode mode) {
@@ -1118,11 +1125,12 @@ void MeshletRenderBackend::ResetFrame() {
 }
 
 bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
-    if (ctx.reflectionMaterialCapture && !ctx.reflectionCapture)
+    if ((ctx.reflectionMaterialCapture || ctx.subsurfaceCapture) && !ctx.reflectionCapture)
         return false;
     if (ctx.reflectionCapture && (ctx.pipelineKind != MeshletPipelineKind::ForwardOpaque ||
-                                  !AreReflectionPipelinesReady(ctx.reflectionMaterialCapture)))
+                                  !AreReflectionPipelinesReady(ctx.reflectionMaterialCapture, ctx.subsurfaceCapture)))
         return false;
+    const size_t captureVariant = CaptureVariantIndex(ctx.reflectionMaterialCapture, ctx.subsurfaceCapture);
     if (ctx.visibility == nullptr || ctx.drawCommandRange == nullptr) {
         return false;
     }
@@ -1223,7 +1231,7 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
         }
 
         ID3D12PipelineState* selectedPipeline =
-            ctx.reflectionCapture ? reflectionPipelines_.standard[ctx.reflectionMaterialCapture][bucketIndex].Get()
+            ctx.reflectionCapture ? reflectionPipelines_.standard[captureVariant][bucketIndex].Get()
             : forwardDebug        ? forwardDebugPipelineStates_[bucketIndex].Get()
                                   : GetPipelineState(ctx.pipelineKind, bucket, effectiveForwardCostMode);
         if (selectedPipeline == nullptr) {
@@ -1238,8 +1246,7 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
         ID3D12PipelineState* programPipeline = nullptr;
         if (ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque && ctx.materialProgramSurfacesPresent &&
             !forwardDebug) {
-            programPipeline = ctx.reflectionCapture
-                                  ? reflectionPipelines_.program[ctx.reflectionMaterialCapture][bucketIndex].Get()
+            programPipeline = ctx.reflectionCapture ? reflectionPipelines_.program[captureVariant][bucketIndex].Get()
                               : effectiveForwardCostMode == ForwardShadingCostMode::Full
                                   ? programForwardPipelineStates_[bucketIndex].Get()
                                   : nullptr;

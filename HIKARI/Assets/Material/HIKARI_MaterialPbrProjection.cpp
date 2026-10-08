@@ -310,6 +310,12 @@ PbrMaterialAssetData ProjectPbrMaterialAssetData(const MaterialAssetData& data) 
     value = {projected.ior, 0.0f, 0.0f, 0.0f};
     ProjectParameter(data.graph, "parameter.ior", value);
     projected.ior = value.x;
+    value = {projected.subsurfaceFactor, 0.0f, 0.0f, 0.0f};
+    ProjectParameter(data.graph, "parameter.subsurface", value);
+    projected.subsurfaceFactor = value.x;
+    value = {projected.subsurfaceRadius, 0.0f, 0.0f, 0.0f};
+    ProjectParameter(data.graph, "parameter.subsurfaceRadius", value);
+    projected.subsurfaceRadius = value.x;
 
     const MaterialGraphNodeData* surface = FindConnectedPbrSurface(data.graph);
     if (surface == nullptr) {
@@ -351,6 +357,12 @@ PbrMaterialAssetData ProjectPbrMaterialAssetData(const MaterialAssetData& data) 
     value = {projected.ior, 0.0f, 0.0f, 0.0f};
     projectNumeric("Ior", value);
     projected.ior = value.x;
+    value = {projected.subsurfaceFactor, 0.0f, 0.0f, 0.0f};
+    projectNumeric("Subsurface", value);
+    projected.subsurfaceFactor = value.x;
+    value = {projected.subsurfaceRadius, 0.0f, 0.0f, 0.0f};
+    projectNumeric("Subsurface Radius", value);
+    projected.subsurfaceRadius = value.x;
 
     value = projected.baseColorFactor;
     if (ProjectConnectedTextureInput(data.graph, *surface, "BaseColor", projected.baseColorTexture, &value)) {

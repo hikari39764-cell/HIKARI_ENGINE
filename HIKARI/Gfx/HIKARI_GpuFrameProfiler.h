@@ -32,6 +32,7 @@ enum class Pass : uint32_t {
     SsaoMain,
     SsaoBlur,
     ScreenSpaceReflections,
+    SubsurfaceScattering,
     TemporalMotionVectors,
     TemporalTaaResolve,
     TemporalDlaaResolve,

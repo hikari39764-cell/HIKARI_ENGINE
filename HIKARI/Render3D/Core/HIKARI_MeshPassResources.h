@@ -25,6 +25,8 @@ struct MeshPassResources {
     std::optional<VFX::VfxPostProcessMode> particlePostProcessMode;
     bool reflectionCapture = false;
     bool reflectionMaterialCapture = false;
+    // Forward capture の 5 番目の出力（次表面散乱の拡散光）。reflectionCapture が前提。
+    bool subsurfaceCapture = false;
 };
 
 } // namespace HIKARI::MESHRENDERER

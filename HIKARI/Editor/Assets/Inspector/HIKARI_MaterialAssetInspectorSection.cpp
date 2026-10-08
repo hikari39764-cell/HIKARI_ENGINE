@@ -167,6 +167,15 @@ bool DrawMaterialAssetEditor(AssetDatabase& assetDatabase, AssetRegistry& assetR
         ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.transmissionHint").c_str());
     }
 
+    if (ImGui::CollapsingHeader(TEXT::Localize("ui.assetInspector.subsurface").c_str())) {
+        changed = ImGui::SliderFloat((TEXT::Localize("ui.assetInspector.factor") + "##Subsurface").c_str(),
+                                     &editData.subsurfaceFactor, 0.0f, 1.0f) ||
+                  changed;
+        changed = ImGui::SliderFloat(TEXT::Localize("ui.assetInspector.subsurfaceRadius").c_str(),
+                                     &editData.subsurfaceRadius, 0.0f, 0.5f) ||
+                  changed;
+    }
+
     if (ImGui::CollapsingHeader(TEXT::Localize("ui.assetInspector.ambientOcclusion").c_str())) {
         changed =
             EDITOR::DrawMaterialTextureSlot(TEXT::Localize("ui.assetInspector.occlusion").c_str(),

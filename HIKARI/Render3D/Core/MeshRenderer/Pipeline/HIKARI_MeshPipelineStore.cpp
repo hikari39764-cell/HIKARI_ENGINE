@@ -30,7 +30,8 @@ size_t VariantKeyHasher::operator()(const MeshPipelineVariantQuery& variant) con
     seed ^= static_cast<size_t>(key.depthWrite) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
     seed ^= static_cast<size_t>(key.doubleSided) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
     return seed ^ (static_cast<size_t>(variant.reflectionCapture) << 1) ^
-           (static_cast<size_t>(variant.reflectionMaterialCapture) << 2);
+           (static_cast<size_t>(variant.reflectionMaterialCapture) << 2) ^
+           (static_cast<size_t>(variant.subsurfaceCapture) << 3);
 }
 
 namespace {
@@ -73,7 +74,8 @@ bool ResolveVertexShaderBytecode(MeshPipelineStore& store, const std::string& ve
 
 // メッシュの描画に使用するパイプラインステートオブジェクトを作成する。頂点シェーダとピクセルシェーダのバイナリを取得し、入力レイアウトやラスタライザステートなどを設定して、ID3D12PipelineStateを生成する。
 bool CreateVariantPipeline(MeshPipelineStore& store, ID3D12Device* device, const VFX::VariantKey& key, bool wireframe,
-                           bool reflectionCapture, bool reflectionMaterialCapture, ID3D12PipelineState** outPso) {
+                           bool reflectionCapture, bool reflectionMaterialCapture, bool subsurfaceCapture,
+                           ID3D12PipelineState** outPso) {
     D3D12_SHADER_BYTECODE vertexShader{};
     if (!ResolveVertexShaderBytecode(store, key.vertexShaderId, vertexShader) ||
         vertexShader.pShaderBytecode == nullptr) {
@@ -105,11 +107,14 @@ bool CreateVariantPipeline(MeshPipelineStore& store, ID3D12Device* device, const
     psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
     psoDesc.InputLayout = {inputElements.data(), static_cast<UINT>(inputElements.size())};
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    psoDesc.NumRenderTargets = reflectionCapture ? 4 : 1;
+    // capture は 5 出力（色・fallback 鏡面・鏡面応答・材質・次表面散乱の拡散光）。持たない出力は null RTV へ捨てる。
+    psoDesc.NumRenderTargets = reflectionCapture ? 5 : 1;
     for (UINT i = 0; i < psoDesc.NumRenderTargets; ++i)
         psoDesc.RTVFormats[i] = DXGI_FORMAT_R16G16B16A16_FLOAT;
     if (reflectionCapture && !reflectionMaterialCapture)
         psoDesc.RTVFormats[3] = DXGI_FORMAT_UNKNOWN;
+    if (reflectionCapture && !subsurfaceCapture)
+        psoDesc.RTVFormats[4] = DXGI_FORMAT_UNKNOWN;
     psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     psoDesc.SampleDesc.Count = 1;
     return SUCCEEDED(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(outPso)));
@@ -117,7 +122,7 @@ bool CreateVariantPipeline(MeshPipelineStore& store, ID3D12Device* device, const
 
 bool CreateSkinnedVariantPipeline(MeshPipelineStore& store, ID3D12Device* device, const VFX::VariantKey& key,
                                   bool wireframe, bool reflectionCapture, bool reflectionMaterialCapture,
-                                  ID3D12PipelineState** outPso) {
+                                  bool subsurfaceCapture, ID3D12PipelineState** outPso) {
     D3D12_SHADER_BYTECODE pixelShader{};
     const std::string psId = !key.pixelShaderId.empty() ? key.pixelShaderId : key.shaderId;
     const D3D12_SHADER_BYTECODE vertexShader = CookedBytecode(store.skinnedVsShader);
@@ -151,11 +156,14 @@ bool CreateSkinnedVariantPipeline(MeshPipelineStore& store, ID3D12Device* device
     psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
     psoDesc.InputLayout = {inputElements.data(), static_cast<UINT>(inputElements.size())};
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    psoDesc.NumRenderTargets = reflectionCapture ? 4 : 1;
+    // capture は 5 出力（色・fallback 鏡面・鏡面応答・材質・次表面散乱の拡散光）。持たない出力は null RTV へ捨てる。
+    psoDesc.NumRenderTargets = reflectionCapture ? 5 : 1;
     for (UINT i = 0; i < psoDesc.NumRenderTargets; ++i)
         psoDesc.RTVFormats[i] = DXGI_FORMAT_R16G16B16A16_FLOAT;
     if (reflectionCapture && !reflectionMaterialCapture)
         psoDesc.RTVFormats[3] = DXGI_FORMAT_UNKNOWN;
+    if (reflectionCapture && !subsurfaceCapture)
+        psoDesc.RTVFormats[4] = DXGI_FORMAT_UNKNOWN;
     psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     psoDesc.SampleDesc.Count = 1;
     return SUCCEEDED(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(outPso)));
@@ -252,8 +260,9 @@ ID3D12RootSignature* GetSkinnedRootSignature(MeshPipelineStore& store) { return 
 
 ID3D12PipelineState* GetOrCreateVariantPso(MeshPipelineStore& store, ID3D12Device* device,
                                            MeshRendererDebugStats& stats, const VFX::VariantKey& key, bool skinned,
-                                           bool wireframe, bool reflectionCapture, bool reflectionMaterialCapture) {
-    if (reflectionMaterialCapture && !reflectionCapture)
+                                           bool wireframe, bool reflectionCapture, bool reflectionMaterialCapture,
+                                           bool subsurfaceCapture) {
+    if ((reflectionMaterialCapture || subsurfaceCapture) && !reflectionCapture)
         return nullptr;
     if (reflectionCapture &&
         (!device || wireframe ||
@@ -283,16 +292,17 @@ ID3D12PipelineState* GetOrCreateVariantPso(MeshPipelineStore& store, ID3D12Devic
     auto& cache = skinned ? (wireframe ? store.skinnedWireVariantPsoCache : store.skinnedVariantPsoCache)
                           : (wireframe ? store.wireVariantPsoCache : store.variantPsoCache);
 
-    const MeshPipelineVariantQuery cacheKey{key, reflectionCapture, reflectionMaterialCapture};
+    const MeshPipelineVariantQuery cacheKey{key, reflectionCapture, reflectionMaterialCapture, subsurfaceCapture};
     auto found = cache.find(cacheKey);
     if (found == cache.end()) {
         ++stats.psoCacheMissCount;
         ComPtr<ID3D12PipelineState> variantPso;
-        const bool created = skinned
-                                 ? CreateSkinnedVariantPipeline(store, device, key, wireframe, reflectionCapture,
-                                                                reflectionMaterialCapture, variantPso.GetAddressOf())
-                                 : CreateVariantPipeline(store, device, key, wireframe, reflectionCapture,
-                                                         reflectionMaterialCapture, variantPso.GetAddressOf());
+        const bool created =
+            skinned
+                ? CreateSkinnedVariantPipeline(store, device, key, wireframe, reflectionCapture,
+                                               reflectionMaterialCapture, subsurfaceCapture, variantPso.GetAddressOf())
+                : CreateVariantPipeline(store, device, key, wireframe, reflectionCapture, reflectionMaterialCapture,
+                                        subsurfaceCapture, variantPso.GetAddressOf());
         if (!created && !reflectionCapture) {
             DEBUGLOG::PushRenderError(
                 std::string("[MeshRenderer][MaterialFx][WARN] Variant PSO create failed; fallback used. vs=") +

@@ -185,6 +185,15 @@ struct ScreenSpaceReflectionSettings {
     bool rayTracingFallback = false;
 };
 
+// 画面空間の次表面散乱。材質の Subsurface（強さ）と Subsurface Radius（[m]）を持つ面の拡散光を、深度に沿って
+// 水平→垂直にぼかして差分を足す。channelFalloff はチャネルごとの半径の比（皮膚では赤が最も遠くへ散る）。
+struct SubsurfaceScatteringSettings {
+    bool enabled = true;
+    float strength = 1.0f;
+    MATH::Vec3 channelFalloff{1.0f, 0.4f, 0.25f};
+    float maxPixelRadius = 48.0f;
+};
+
 // 半解像度から始まる縮小ピラミッドで作る光のにじみ。全段の和を intensity 倍して足す。
 struct BloomSettings {
     bool enabled = true;
@@ -261,10 +270,12 @@ struct EnvironmentProfile {
     FogSettings fog{};
     RENDER3D::COLOR::ExposureSettings exposure{};
     ToneMappingSettings toneMapping{};
+    ColorGradingSettings colorGrading{};
     BloomSettings bloom{};
     SunGlareSettings sunGlare{};
     AmbientOcclusionSettings ambientOcclusion{};
     ScreenSpaceReflectionSettings screenSpaceReflections{};
+    SubsurfaceScatteringSettings subsurfaceScattering{};
     ShadowSettings shadows{};
     // 天気の指定が無い時の天気（内蔵 ID か .hweather の GUID）。
     std::string defaultWeather = "engine.weather.clear";

@@ -85,6 +85,10 @@ PbrMaterialAssetData ReadPbrMaterialJson(const nlohmann::json& node, std::string
         data.transmissionFactor = field->value("factor", data.transmissionFactor);
         data.ior = field->value("ior", data.ior);
     }
+    if (const auto field = node.find("subsurface"); field != node.end() && field->is_object()) {
+        data.subsurfaceFactor = field->value("factor", data.subsurfaceFactor);
+        data.subsurfaceRadius = field->value("radius", data.subsurfaceRadius);
+    }
     data.doubleSided = node.value("doubleSided", data.doubleSided);
     data.unlit = node.value("unlit", data.unlit);
     return data;
@@ -111,6 +115,7 @@ nlohmann::json WritePbrMaterialJson(const PbrMaterialAssetData& data) {
     node["specularColor"]["factor"] = JsonMath::ToJsonArray(data.specularColorFactor);
     node["clearCoat"] = {{"factor", data.clearCoatFactor}, {"roughness", data.clearCoatRoughnessFactor}};
     node["transmission"] = {{"factor", data.transmissionFactor}, {"ior", data.ior}};
+    node["subsurface"] = {{"factor", data.subsurfaceFactor}, {"radius", data.subsurfaceRadius}};
     return node;
 }
 

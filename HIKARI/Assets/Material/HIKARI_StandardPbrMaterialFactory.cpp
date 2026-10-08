@@ -69,6 +69,10 @@ MaterialAssetData MakeStandardPbrMaterialAssetData(const PbrMaterialAssetData& p
         MakeParameter("parameter.transmission", "Transmission", MaterialValueType::Float1,
                       {pbr.transmissionFactor, 0.0f, 0.0f, 0.0f}),
         MakeParameter("parameter.ior", "Index of Refraction", MaterialValueType::Float1, {pbr.ior, 0.0f, 0.0f, 0.0f}),
+        MakeParameter("parameter.subsurface", "Subsurface", MaterialValueType::Float1,
+                      {pbr.subsurfaceFactor, 0.0f, 0.0f, 0.0f}),
+        MakeParameter("parameter.subsurfaceRadius", "Subsurface Radius", MaterialValueType::Float1,
+                      {pbr.subsurfaceRadius, 0.0f, 0.0f, 0.0f}),
     };
 
     data.graph.resources = {

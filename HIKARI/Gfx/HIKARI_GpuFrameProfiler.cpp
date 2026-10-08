@@ -259,6 +259,7 @@ const char* ToString(Pass pass) {
     case Pass::SsaoMain: return "SSAO Main";
     case Pass::SsaoBlur: return "SSAO Blur";
     case Pass::ScreenSpaceReflections: return "Screen Space Reflections";
+    case Pass::SubsurfaceScattering: return "Subsurface Scattering";
     case Pass::TemporalMotionVectors: return "Temporal MotionVectors";
     case Pass::TemporalTaaResolve: return "Temporal TAA";
     case Pass::TemporalDlaaResolve: return "Temporal DLAA";

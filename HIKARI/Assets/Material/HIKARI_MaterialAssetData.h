@@ -48,6 +48,9 @@ struct PbrMaterialAssetData {
     // 透過：Blend 材質が透明 pass で不透明の場面色を屈折して透かす割合と屈折率。
     float transmissionFactor = 0.0f;
     float ior = 1.5f;
+    // 次表面散乱：拡散光のうち散る割合と散乱半径 [m]。0 で散らない（画面空間の分離ぼかしが読む）。
+    float subsurfaceFactor = 0.0f;
+    float subsurfaceRadius = 0.02f;
 
     bool doubleSided = false;
     bool unlit = false;

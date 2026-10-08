@@ -99,6 +99,9 @@ public:
     // 表面の層：x クリアコート, y クリアコートの粗さ, z 透過, w 屈折率。
     void SetSurfaceLayers(const MATH::Vec4& value);
     const MATH::Vec4& GetSurfaceLayers() const noexcept { return surfaceLayers_; }
+    // 次表面散乱：x 強さ, y 散乱半径 [m]。
+    void SetSubsurface(const MATH::Vec2& value);
+    const MATH::Vec2& GetSubsurface() const noexcept { return subsurface_; }
     void SetNormalScale(float value);
     float GetNormalScale() const;
     void SetOcclusionStrength(float value);
@@ -128,6 +131,7 @@ private:
     float specularFactor_ = 1.0f;
     MATH::Vec3 specularColorFactor_{1.0f, 1.0f, 1.0f};
     MATH::Vec4 surfaceLayers_{0.0f, 0.1f, 0.0f, 1.5f};
+    MATH::Vec2 subsurface_{0.0f, 0.02f};
     float normalScale_ = 1.0f;
     float occlusionStrength_ = 1.0f;
     MATH::Vec3 emissiveFactor_{0.0f, 0.0f, 0.0f};

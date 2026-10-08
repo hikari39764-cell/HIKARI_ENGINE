@@ -23,7 +23,9 @@ constexpr std::array kPbrParameters{"parameter.baseColor"sv,
                                     "parameter.clearCoat"sv,
                                     "parameter.clearCoatRoughness"sv,
                                     "parameter.transmission"sv,
-                                    "parameter.ior"sv};
+                                    "parameter.ior"sv,
+                                    "parameter.subsurface"sv,
+                                    "parameter.subsurfaceRadius"sv};
 constexpr std::array kRampParameters{
     "parameter.shadowThreshold"sv,  "parameter.shadowSoftness"sv,    "parameter.midThreshold"sv,
     "parameter.shadowTint"sv,       "parameter.midTint"sv,           "parameter.litTint"sv,
@@ -558,6 +560,10 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material, MaterialGraphN
                         Value(MaterialValueType::Float1, material.pbr.transmissionFactor));
         EnsureParameter(graph, "parameter.ior", "Index of Refraction",
                         Value(MaterialValueType::Float1, material.pbr.ior));
+        EnsureParameter(graph, "parameter.subsurface", "Subsurface",
+                        Value(MaterialValueType::Float1, material.pbr.subsurfaceFactor));
+        EnsureParameter(graph, "parameter.subsurfaceRadius", "Subsurface Radius",
+                        Value(MaterialValueType::Float1, material.pbr.subsurfaceRadius));
         break;
     case MaterialNodeKind::RampDiffuse:
     case MaterialNodeKind::MultiRampDiffuse: {

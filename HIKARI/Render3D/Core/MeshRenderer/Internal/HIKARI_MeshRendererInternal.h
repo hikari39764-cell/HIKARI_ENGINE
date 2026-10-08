@@ -69,14 +69,12 @@ bool IsGpuDrivenWorkPreparedForPass(RENDER3D::GPUDRIVEN::GpuDrivenPassKind passK
 MeshDrawContext BuildDrawContext(const GFX::Context& graphics, bool depthAwarePhase, MeshDrawPassKind passKind,
                                  const MeshPassResources& passResources,
                                  const MeshFrameBindingOverrides* overrides = nullptr);
-ID3D12PipelineState* ResolveTraditionalStaticPso(const GFX::Context& graphics, MeshDrawPassKind passKind,
-                                                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
-                                                 const VFX::VariantKey& variant);
 bool ExecuteTraditionalDrawFrame(const GFX::Context& graphics, const MeshPassResources& passResources,
                                  RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass, MeshDrawPassKind passKind,
                                  RENDER3D::GPUDRIVEN::GpuDrivenLayer* layerOverride = nullptr,
                                  const MeshFrameBindingOverrides* bindingOverrides = nullptr);
-bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics, bool captureMaterial);
+bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics, bool captureMaterial,
+                                              bool captureSubsurface);
 
 GeometryBackendExecutionResult ExecuteGeometryBackendPlan(const GFX::Context& graphics,
                                                           RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass,

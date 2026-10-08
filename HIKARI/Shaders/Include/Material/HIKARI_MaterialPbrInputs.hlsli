@@ -15,6 +15,8 @@ struct HikariMaterialPbrInputs
     float clearCoatRoughness;
     float transmission;
     float ior;
+    float subsurface;
+    float subsurfaceRadius;
 };
 
 // 材質テクスチャと旧資産の応答を一度だけ解決する。
@@ -36,6 +38,8 @@ HikariMaterialPbrInputs HikariResolveMaterialPbrInputs(
     inputs.clearCoatRoughness = clamp(materialData.surfaceLayers.y, 0.04f, 1.0f);
     inputs.transmission = saturate(materialData.surfaceLayers.z);
     inputs.ior = clamp(materialData.surfaceLayers.w, 1.0f, 3.0f);
+    inputs.subsurface = saturate(materialData.subsurface.x);
+    inputs.subsurfaceRadius = max(materialData.subsurface.y, 0.0f);
     if (materialData.hasMetallicRoughnessTexture != 0u)
     {
         const float4 mr = HikariSampleMaterialTextureSlot(
