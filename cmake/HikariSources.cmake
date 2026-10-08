@@ -338,6 +338,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Cluster/HIKARI_ClusterGpuCullingPass.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Cluster/HIKARI_ClusterRayTracingGeometry.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/RayTracing/HIKARI_RuntimeRayTracingScene.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/RayTracing/HIKARI_RuntimeRayQueryBindings.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/RayTracing/HIKARI_RuntimeRayTracingLighting.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Cluster/HIKARI_ClusterGeometryPacked.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Cluster/HIKARI_ClusteredGeometryAsset.cpp"

@@ -34,6 +34,13 @@ struct SceneSurfaceSet;
 }
 } // namespace HIKARI::RENDER3D
 
+namespace HIKARI::RENDER3D::RAYTRACING {
+struct RuntimeRayLightingFrame;
+}
+namespace HIKARI::MESHRENDERER {
+struct MeshMaterialGpuFrameView;
+}
+
 namespace HIKARI::RENDER3D::PIPELINE {
 
 struct RenderFrameContext;
@@ -68,6 +75,9 @@ struct RenderFrameGraphStageContext {
     bool hasSsrWork = false;
     bool hasSubsurfaceWork = false;
     bool requiresSceneColorOpaque = false;
+    // 光線追跡の反射が借りる、frame pipeline が準備した場面照明と材質（無ければ nullptr）。
+    const RAYTRACING::RuntimeRayLightingFrame* rayLighting = nullptr;
+    const MESHRENDERER::MeshMaterialGpuFrameView* materials = nullptr;
 };
 
 struct RenderFrameGraphStageResult {

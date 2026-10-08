@@ -364,7 +364,7 @@ bool ExecuteSsr(const GRAPH::RenderGraphPassContext& graphPass, void* userData) 
     try {
         if (gSsrRenderer.Render(context.frame.graphics, context.frame.targetAccess, context.sceneSurfaces,
                                 *context.cameraConstants, context.environment.screenSpaceReflections, context.debugView,
-                                context.temporalFrame))
+                                context.temporalFrame, context.rayLighting, context.materials))
             return true;
         return context.frame.targetAccess.Rebind();
     } catch (...) {

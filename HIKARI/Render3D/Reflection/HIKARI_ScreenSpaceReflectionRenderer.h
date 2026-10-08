@@ -15,6 +15,13 @@
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 
+namespace HIKARI::RENDER3D::RAYTRACING {
+struct RuntimeRayLightingFrame;
+}
+namespace HIKARI::MESHRENDERER {
+struct MeshMaterialGpuFrameView;
+}
+
 namespace HIKARI::RENDER3D::REFLECTION {
 
 struct ScreenSpaceReflectionDebugState {
@@ -26,6 +33,8 @@ struct ScreenSpaceReflectionDebugState {
     bool historyUsed = false;
     bool resolutionLimited = false;
     bool resizeDeferred = false;
+    // 実行時の加速構造へ反射光線を飛ばし、SSR が外した texel を埋めた。
+    bool rayTracingUsed = false;
     uint32_t residentViews = 0;
     uint64_t workingSetBytes = 0;
     uint32_t maxSteps = 0;
@@ -45,7 +54,9 @@ public:
     bool Render(const GFX::Context& graphics, const PIPELINE::RenderTargetAccess& targetAccess,
                 const SURFACE::SceneSurfaceSet& surfaces, const MESHRENDERER::CameraCB& camera,
                 const ScreenSpaceReflectionSettings& settings, RenderDebugView debugView,
-                const TEMPORAL::TemporalFrameState& temporal);
+                const TEMPORAL::TemporalFrameState& temporal,
+                const RAYTRACING::RuntimeRayLightingFrame* rayLighting = nullptr,
+                const MESHRENDERER::MeshMaterialGpuFrameView* materials = nullptr);
     void Release();
 
     const ScreenSpaceReflectionDebugState& GetDebugState() const { return debugState_; }

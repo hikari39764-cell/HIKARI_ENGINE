@@ -343,6 +343,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     }
     DYNAMICGI::Frame dynamicGi;
     RAYTRACING::RuntimeRayLightingFrame rayLighting;
+    MESHRENDERER::MeshMaterialGpuFrameView materials{};
     std::optional<LIGHTPROBE::ScopedDynamicGiVolumes> dynamicGiScope;
     {
         const auto& source = MESHRENDERER::GetActiveGpuDrivenSceneSource();
@@ -350,9 +351,13 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         const auto giQuality = renderQuality.lightProbeVolumeSampling == LightProbeVolumeSamplingMode::Off
                                    ? DynamicGiQuality::Off
                                    : renderQuality.dynamicGiQuality;
-        const auto materials = MESHRENDERER::GetMaterialGpuFrameView(frame.graphics);
+        // 光線追跡の反射も同じ加速構造を借りる。
+        const bool rayReflections = environment.screenSpaceReflections.enabled &&
+                                    environment.screenSpaceReflections.quality != ScreenSpaceReflectionQuality::Off &&
+                                    environment.screenSpaceReflections.rayTracingFallback;
+        materials = MESHRENDERER::GetMaterialGpuFrameView(frame.graphics);
         RAYTRACING::RuntimeRayTracingFrame rayScene;
-        if (giQuality != DynamicGiQuality::Off && materials) {
+        if ((giQuality != DynamicGiQuality::Off || rayReflections) && materials) {
             GFX::GPU_PROFILE::ScopedGpuTimer rayTimer(frame.graphics.cmdList,
                                                       GFX::GPU_PROFILE::Pass::RuntimeRayScenePreparation);
             rayScene = gRuntimeRayScene.Prepare(frame.graphics, source, materials.materialSlots, materials.materialData,
@@ -506,12 +511,27 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     FEATURES::RenderFeaturePlan renderFeaturePlan{};
 
     const RenderFrameGraphStageResult graphStage = ExecuteRenderFrameGraphStage(RenderFrameGraphStageContext{
-        frame, screenSpaceContext, temporalFrame, temporalResources, environment, renderQuality,
+        frame,
+        screenSpaceContext,
+        temporalFrame,
+        temporalResources,
+        environment,
+        renderQuality,
         RenderFrameGraphFeatureContext{lighting, featureRequests, renderFeaturePlan, gStylizedScreenFeatures,
                                        !debugRoute.active, geometryOutlineBackendReady, visibilityOverlayBackendReady},
-        cameraCb, screenResult, sceneTextures, opaqueResources, postOpaqueResources, debugView, hasDepthAwareWork,
-        hasTransparentWork, hasSsrWork, hasSubsurfaceWork,
-        hasDepthAwareWork || hasTransparentWork || hasSsrWork || stylizedScreenMaskRequired || globalPostMaskRequired});
+        cameraCb,
+        screenResult,
+        sceneTextures,
+        opaqueResources,
+        postOpaqueResources,
+        debugView,
+        hasDepthAwareWork,
+        hasTransparentWork,
+        hasSsrWork,
+        hasSubsurfaceWork,
+        hasDepthAwareWork || hasTransparentWork || hasSsrWork || stylizedScreenMaskRequired || globalPostMaskRequired,
+        &rayLighting,
+        &materials});
     if (!graphStage.prefixCompleted || !graphStage.pausedForPresentation || !graphStage.session.IsValid()) {
         const std::string graphDetail =
             std::string(GRAPH::ToString(graphStage.diagnostic.code)) + " " + graphStage.diagnostic.message.data();

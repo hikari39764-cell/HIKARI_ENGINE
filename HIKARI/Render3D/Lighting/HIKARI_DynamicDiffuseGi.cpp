@@ -18,6 +18,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Gfx/RayTracing/HIKARI_DxrCapabilities.h"
+#include "Render3D/RayTracing/HIKARI_RuntimeRayQueryBindings.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
@@ -250,29 +251,16 @@ struct DynamicDiffuseGi::State {
     bool EnsurePipeline(const GFX::Context& graphics) {
         if (pipeline)
             return true;
+        // 共通の 0..9 の後に前フレーム SH(10)・SH の UAV(11)・probe atlas の UAV(12)・空(13)。
         std::array<CD3DX12_ROOT_PARAMETER, 14> parameters;
-        parameters[0].InitAsConstantBufferView(0);
-        parameters[1].InitAsShaderResourceView(0, 8);
-        parameters[2].InitAsShaderResourceView(1, 8);
-        parameters[3].InitAsShaderResourceView(16);
-        parameters[4].InitAsShaderResourceView(0, 6);
-        parameters[5].InitAsShaderResourceView(1, 6);
-        parameters[6].InitAsShaderResourceView(1, 7);
-        parameters[7].InitAsShaderResourceView(2, 7);
         std::array<CD3DX12_DESCRIPTOR_RANGE, 6> ranges;
-        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaCapacity, 0, 1);
-        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, GFX::DESCRIPTOR::kUserSrvCount, 20);
-        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 9, 0, 2);
-        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 9, 0);
-        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 9);
-        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 7);
-        for (UINT i = 0; i < 6; ++i)
-            parameters[8 + i].InitAsDescriptorTable(1, &ranges[i]);
-        std::array<CD3DX12_STATIC_SAMPLER_DESC, 2> samplers;
-        samplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
-                         D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
-        samplers[1].Init(1, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_WRAP,
-                         D3D12_TEXTURE_ADDRESS_MODE_WRAP, D3D12_TEXTURE_ADDRESS_MODE_WRAP);
+        RAYTRACING::InitRuntimeRayQueryRootParameters(parameters, ranges, 13);
+        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 9, 0, 2);
+        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 9, 0);
+        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 9);
+        for (UINT i = 0; i < 3; ++i)
+            parameters[10 + i].InitAsDescriptorTable(1, &ranges[3 + i]);
+        const auto samplers = RAYTRACING::RuntimeRayQueryStaticSamplers();
         const CD3DX12_ROOT_SIGNATURE_DESC rootDesc(UINT(parameters.size()), parameters.data(), 2, samplers.data());
         if (FAILED(GFX::CreateRootSignature(graphics.device, rootDesc, &root)))
             return false;
@@ -461,19 +449,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
     commands->SetDescriptorHeaps(1, heaps);
     commands->SetComputeRootSignature(state.root.Get());
     commands->SetPipelineState(state.pipeline.Get());
-    commands->SetComputeRootShaderResourceView(1, rt.accelerationStructure);
-    commands->SetComputeRootShaderResourceView(2, rt.hitRecords ? rt.hitRecords : lighting.localLights);
-    commands->SetComputeRootShaderResourceView(3, materials.materials);
-    commands->SetComputeRootShaderResourceView(4, materials.programParameters);
-    commands->SetComputeRootShaderResourceView(5, materials.programResources);
-    commands->SetComputeRootShaderResourceView(6, lighting.localLights);
-    commands->SetComputeRootShaderResourceView(7, lighting.lightCdf);
-    const UINT stride = graphics.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    commands->SetComputeRootDescriptorTable(
-        8, GFX::DESCRIPTOR::GpuAt(graphics.srvHeap, stride, GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaBegin));
-    commands->SetComputeRootDescriptorTable(
-        9, GFX::DESCRIPTOR::GpuAt(graphics.srvHeap, stride, GFX::DESCRIPTOR::kUserSrvBegin));
-    commands->SetComputeRootDescriptorTable(13, lighting.sky);
+    RAYTRACING::BindRuntimeRayQueryRoots(commands, graphics, lighting, materials, 13);
     state.stats.probes = state.stats.updatedProbes = 0;
     state.stats.probeBytes = 0;
     // 相機の cascade の中心は視線の水平方向へ幅の 3 割だけ前に置く。相機の後ろへ半分を割くと、見えている奥が近景から
