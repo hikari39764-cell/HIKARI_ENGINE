@@ -167,7 +167,7 @@ enum class SsaoMode {
 
 struct AmbientOcclusionSettings {
     bool enabled = false;
-    SsaoMode mode = SsaoMode::Balanced;
+    SsaoMode mode = SsaoMode::OptimizedHigh;
     float radius = 0.6f;
     float bias = 0.025f;
     float strength = 1.0f;
