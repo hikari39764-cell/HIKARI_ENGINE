@@ -954,10 +954,10 @@ bool BuildConstants(StageState& state, const TEMPORAL::TemporalFrameState& tempo
         SanitizeFiniteRange(air.rayleighScaleHeight, defaults.rayleighScaleHeight, 100.0f, 100000.0f)};
     const float mieScattering = (air.mieScattering.x + air.mieScattering.y + air.mieScattering.z) / 3.0f;
     const float mieScaleHeight = SanitizeFiniteRange(air.mieScaleHeight, defaults.mieScaleHeight, 100.0f, 100000.0f);
+    const CloudShadingEstimate shading = EstimateCloudShading(environment);
     constants.airMie = {
         std::isfinite(mieScattering) ? (std::max)(mieScattering, 0.0f) * 1.11f * airStrength * kCloudHazeScale : 0.0f,
-        (std::max)(mieScaleHeight, kCloudHazeHeightPerBase * scale * 1500.0f), 0.0f, 0.0f};
-    const CloudShadingEstimate shading = EstimateCloudShading(environment);
+        (std::max)(mieScaleHeight, kCloudHazeHeightPerBase * scale * 1500.0f), shading.shadeAltitude, 0.0f};
     constants.airUnderClouds = {shading.ambientRadiance.x, shading.ambientRadiance.y, shading.ambientRadiance.z,
                                 shading.sunVisibility};
     // 落雷の光（雲の中の点光源）。色は HIKARI_Lightning.cpp と shader の HikariCloudLightningRadiance で同じ青白。
@@ -1361,6 +1361,7 @@ CloudShadingEstimate EstimateCloudShading(const SceneEnvironment& environment) {
     const MATH::Vec3 sky = SKYRENDERER::EstimateSkyAmbientRadiance(environment);
     const MATH::Vec3 cloudBase = (light.sunColor * (light.sunRadiance * elevation / 3.14159265f) + sky) * diffuse;
     estimate.ambientRadiance = sky * (1.0f - coverage) + cloudBase * coverage;
+    estimate.shadeAltitude = base + height * 0.5f;
     return estimate;
 }
 

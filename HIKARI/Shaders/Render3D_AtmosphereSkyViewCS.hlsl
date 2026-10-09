@@ -68,13 +68,15 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint groupIndex : SV_Gro
         HIKARI_ATMOSPHERE_MAX_SKY_STEPS,
         HIKARI_ATMOSPHERE_MAX_SUN_STEPS,
         skyIrradiance);
-    // 水平より下（地面と、背景の観測者から見える地平線の先の空気）は雲の下にある。主光源は雲を抜けた割合だけ
-    // 届き、空気と地面は雲の下の空の光でも照らされる。空の照度と主光源の項は線形なので、照度 0 と 1 で評価し直して
-    // 分ける（地面に当たらない視線は地面の項が 0 で、透過率 0 の長い空気の道として扱う）。水平より上の空は雲の
-    // 向こうの晴天のまま（雲が重ねて描かれる。雲は実際のカメラの高さから描くので、背景の観測者の高さで水平より下に
-    // 見える晴天は雲の外に出てしまう）。
+    // 水平より下（地面と、背景の観測者から見える地平線の先の空気）のうち、雲の陰の境より下は雲の下にある。主光源は
+    // 雲を抜けた割合だけ届き、空気と地面は雲の下の空の光でも照らされる。空の照度と主光源の項は線形なので、照度 0 と
+    // 1 で評価し直して分ける（地面に当たらない視線は地面の項が 0 で、透過率 0 の長い空気の道として扱う）。観測者が
+    // 雲の上にいる時、視線が境へ下りるまでの空気は晴れた空として主光源をそのまま受ける（雲海の上から見る地平線が
+    // 灰色に沈まない）。水平より上の空は雲の向こうの晴天のまま（雲が重ねて描かれる。雲は実際のカメラの高さから
+    // 描くので、背景の観測者の高さで水平より下に見える晴天は雲の外に出てしまう）。
     const float visibility = saturate(gAtmosphereViewCloudShading.w);
-    if (visibility < 1.0f && viewDirection.y < 0.0f)
+    const float shadeDistance = HikariAtmosphereCloudShadeDistance(observer, viewDirection);
+    if (visibility < 1.0f && viewDirection.y < 0.0f && shadeDistance < HIKARI_ATMOSPHERE_NO_CLOUD_SHADE)
     {
         const float3 sunPart = HikariAtmosphereEvaluateSkyRadianceWithSteps(observer, viewDirection,
             gAtmosphereGroundColor.rgb, gAtmosphereOzoneParams.w, aerialPerspectiveStrength,
@@ -86,9 +88,21 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID, uint groupIndex : SV_Gro
         const float3 transmittance = saturate(groundPerIrradiance * 3.14159265f /
             max(gAtmosphereGroundColor.rgb, 1.0e-4f.xxx));
         const float3 underCloud = max(gAtmosphereViewCloudShading.rgb, 0.0f.xxx);
-        radiance = sunPart * visibility +
+        // 境より手前の晴れた空気の散乱光と透過率（雲の下にいる時は 0 と 1）。
+        float3 clearScattering = 0.0f.xxx;
+        float3 clearTransmittance = 1.0f.xxx;
+        if (shadeDistance > 0.0f)
+        {
+            const HikariAtmosphereViewIntegration clear = HikariAtmosphereIntegrateSegment(observer, viewDirection,
+                HikariAtmosphereSafeNormalize(gAtmosphereSunDirection.xyz), HIKARI_ATMOSPHERE_MAX_SKY_STEPS,
+                HIKARI_ATMOSPHERE_MAX_SUN_STEPS, shadeDistance, false);
+            clearScattering = clear.scattering * max(gAtmosphereSunColorRadiance.rgb, 0.0f.xxx) *
+                max(0.0f, HikariAtmosphereFiniteOr(gAtmosphereSunColorRadiance.a, 0.0f)) * aerialPerspectiveStrength;
+            clearTransmittance = clear.transmittance;
+        }
+        radiance = clearScattering + max(sunPart - clearScattering, 0.0f.xxx) * visibility +
             groundPerIrradiance * lerp(underCloud * 3.14159265f, skyIrradiance, visibility) +
-            underCloud * (1.0f - transmittance) * (1.0f - visibility);
+            underCloud * max(clearTransmittance - transmittance, 0.0f.xxx) * (1.0f - visibility);
     }
     gAtmosphereSkyView[dispatchThreadId.xy] =
         float4(

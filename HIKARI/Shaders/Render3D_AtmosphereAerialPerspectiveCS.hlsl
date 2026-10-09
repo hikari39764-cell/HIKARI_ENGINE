@@ -7,7 +7,8 @@
 // 視点ごとの空気遠近の体積 LUT（Hillaire 2020）。画面の 32x32 の方向ごとに、カメラから各奥行きまでの
 // 大気の内散乱光（このビューの Pre-Exposure 済み）と平均の透過率を 32 段の奥行きへ書く。
 // 奥行きは d = maxDistance * w^2（w = (slice + 1) / 32）で、近くを細かく取る。
-// 雲があると空気は主光源の一部しか受けず、残りは雲の下の空の光（等方とみなす）で照らされる。
+// 雲があると、雲の陰の境より下の空気は主光源の一部しか受けず、残りは雲の下の空の光（等方とみなす）で照らされる。
+// 境より上（雲の上の視点から境へ下りるまで）の空気は晴れた空として主光源をそのまま受ける。
 
 Texture2D<float4> gAtmosphereTransmittance : register(t0);
 Texture2D<float4> gAtmosphereMultiScattering : register(t1);
@@ -41,6 +42,15 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         max(0.0f, HikariAtmosphereFiniteOr(gAtmosphereSunColorRadiance.a, 0.0f)) *
         max(0.0f, HikariAtmosphereFiniteOr(gAtmosphereOzoneParams.y, 1.0f));
     const float maxDistance = max(gAtmosphereViewParams.x, 1.0f);
+    const float visibility = saturate(gAtmosphereViewCloudShading.w);
+    // 境より手前の晴れた空気（雲の下にいる時は長さ 0）。どの奥行きの層も同じ区間なので一度だけ積分する。
+    const float shadeDistance = visibility < 1.0f ? HikariAtmosphereCloudShadeDistance(origin, direction) : 0.0f;
+    HikariAtmosphereViewIntegration clear = (HikariAtmosphereViewIntegration)0;
+    clear.transmittance = 1.0f.xxx;
+    if (shadeDistance > 0.0f && shadeDistance < maxDistance)
+    {
+        clear = HikariAtmosphereIntegrateSegment(origin, direction, sunDirection, 12u, 4u, shadeDistance, false);
+    }
     [loop]
     for (uint slice = 0u; slice < depth; ++slice)
     {
@@ -48,9 +58,13 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         const float distance = maxDistance * w * w;
         const HikariAtmosphereViewIntegration integration = HikariAtmosphereIntegrateSegment(
             origin, direction, sunDirection, 4u + slice / 4u, 4u, distance, false);
-        const float visibility = saturate(gAtmosphereViewCloudShading.w);
-        const float3 scattering = (integration.scattering * sunRadiance * visibility +
-            max(gAtmosphereViewCloudShading.rgb, 0.0f.xxx) * (1.0f - integration.transmittance) * (1.0f - visibility)) *
+        // 層までの全体が境より手前なら晴れた空気だけ。
+        const bool allClear = shadeDistance >= distance;
+        const float3 clearScattering = allClear ? integration.scattering : clear.scattering;
+        const float3 clearTransmittance = allClear ? integration.transmittance : clear.transmittance;
+        const float3 scattering = ((clearScattering + max(integration.scattering - clearScattering, 0.0f.xxx) *
+            visibility) * sunRadiance + max(gAtmosphereViewCloudShading.rgb, 0.0f.xxx) *
+            max(clearTransmittance - integration.transmittance, 0.0f.xxx) * (1.0f - visibility)) *
             max(gAtmosphereViewCamera.w, 0.0f);
         const float transmittance = dot(integration.transmittance, 1.0f / 3.0f);
         gAerialPerspective[uint3(dispatchThreadId.xy, slice)] = all(isfinite(scattering))

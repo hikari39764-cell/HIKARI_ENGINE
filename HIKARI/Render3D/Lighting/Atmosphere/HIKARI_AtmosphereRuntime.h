@@ -20,7 +20,7 @@ struct AtmosphereViewConstants {
     MATH::Mat4 inverseViewProj{};
     // xyz カメラ位置 [m]、w このビューの Pre-Exposure。
     MATH::Vec4 cameraPreExposure{};
-    // x 最大距離 [m]。
+    // x 空気遠近の最大距離 [m]、y 雲の陰の境の高度 [m]（これより下の空気が雲の下。雲が無ければ 0）。
     MATH::Vec4 params{};
     // 空気遠近への雲の陰。rgb 雲の下から見上げた空の平均輝度 [nits]、w 雲を抜けて空気へ届く主光源の割合。
     MATH::Vec4 cloudShading{0.0f, 0.0f, 0.0f, 1.0f};

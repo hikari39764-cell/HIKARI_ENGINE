@@ -72,6 +72,9 @@ struct CloudShadingEstimate {
     float sunVisibility = 1.0f;
     // 雲の下から見上げた空（雲を含む）の平均輝度 [nits]。
     MATH::Vec3 ambientRadiance{};
+    // 雲の陰の境の高度 [m]（雲の層の中ほど）。これより下の空気が雲の下で、上は晴れた空として主光源を受ける。
+    // 雲が無ければ 0。
+    float shadeAltitude = 0.0f;
 };
 
 // 雲が見えるか（雲の層が有効で、天気の被覆率がある）。

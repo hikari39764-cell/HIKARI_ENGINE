@@ -24,7 +24,7 @@ cbuffer AtmosphereViewCB : register(b1)
 {
     float4x4 gAtmosphereViewInverseViewProj;
     float4 gAtmosphereViewCamera; // xyz カメラ位置 [m]（y は地表からの高さ）、w Pre-Exposure
-    float4 gAtmosphereViewParams; // x 空気遠近の最大距離 [m]
+    float4 gAtmosphereViewParams; // x 空気遠近の最大距離 [m]、y 雲の陰の境の高度 [m]（雲が無ければ 0）
     float4 gAtmosphereViewCloudShading; // rgb 雲の下の空の平均輝度 [nits]、w 雲を抜けて空気へ届く主光源の割合
 };
 #endif
@@ -526,6 +526,25 @@ float3 HikariAtmosphereDirectionFromMu(float cosineToRadialUp)
 float3 HikariAtmosphereViewObserver()
 {
     return float3(0.0f, HikariAtmospherePlanetRadius() + max(gAtmosphereViewCamera.y, 1.0f), 0.0f);
+}
+
+// 視線の上で雲の陰の境（雲の層の中ほど、gAtmosphereViewParams.y）より下へ入るまでの距離 [m]。観測者が境より上
+// （雲の上）にいて視線が境の球面へ下りる時はその距離、下りなければ HIKARI_ATMOSPHERE_NO_CLOUD_SHADE（視線の全体が
+// 晴れた空気）。観測者が境より下（雲の下）なら 0。
+static const float HIKARI_ATMOSPHERE_NO_CLOUD_SHADE = 1.0e30f;
+
+float HikariAtmosphereCloudShadeDistance(float3 origin, float3 direction)
+{
+    const float radius = HikariAtmospherePlanetRadius() + max(gAtmosphereViewParams.y, 0.0f);
+    if (gAtmosphereViewParams.y <= 0.0f || length(origin) <= radius)
+    {
+        return 0.0f;
+    }
+    float nearDistance = 0.0f;
+    float farDistance = 0.0f;
+    return HikariAtmosphereIntersectSphere(origin, direction, radius, nearDistance, farDistance) && nearDistance > 0.0f
+        ? nearDistance
+        : HIKARI_ATMOSPHERE_NO_CLOUD_SHADE;
 }
 
 // 空の背景（天空 LUT）の観測者。カメラの高さか HIKARI_ATMOSPHERE_BACKGROUND_HEIGHT の高い方。

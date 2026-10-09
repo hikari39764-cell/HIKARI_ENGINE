@@ -117,8 +117,10 @@ const AerialPerspectiveView& GetAerialPerspectiveView();
 D3D12_GPU_DESCRIPTOR_HANDLE GetSkyViewLutSrv();
 // 空が与える平均の環境光の輝度 [nits] の CPU 近似（雲・霧・光線追跡の環境光項）。
 MATH::Vec3 EstimateSkyAmbientRadiance(const SceneEnvironment& environment);
-// 場面を照らす光の量（自動露出の入射式の手がかり）。水平面の照度 = 雲を抜けた直射 + 雲の下の空。
-RENDER3D::COLOR::ExposureIllumination EstimateExposureIllumination(const SceneEnvironment& environment);
+// 場面を照らす光の量（自動露出の入射式の手がかり）。視点の高さ cameraAltitude [m] での水平面の照度 = 雲を抜けた
+// 直射 + 雲の下の空。雲の陰の境より上（雲海の上）では晴れた空の日照。
+RENDER3D::COLOR::ExposureIllumination EstimateExposureIllumination(const SceneEnvironment& environment,
+                                                                   float cameraAltitude);
 AtmosphereFrameData BuildAtmosphereFrameData(const SceneEnvironment& environment);
 AtmosphereFrameData BuildAtmosphereFrameData(const SceneEnvironment& environment, const Camera3D& camera);
 

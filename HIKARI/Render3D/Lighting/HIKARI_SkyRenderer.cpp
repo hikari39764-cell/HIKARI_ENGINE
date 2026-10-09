@@ -37,8 +37,8 @@ constexpr uint64_t kInvalidSkyConstantFrameSerial = (std::numeric_limits<uint64_
 
 struct SkyCB {
     MATH::Mat4 inverseViewProj{};
-    // x 空の画素値を輝度へ写す倍率、y 空の回転、z このビューの Pre-Exposure、w 物理大気の地平線より下の背景
-    // （0 地平線の霞、1 惑星の地表）。
+    // x 空の画素値を輝度へ写す倍率、y 空の回転、z このビューの Pre-Exposure、w 物理大気の地平線より下で惑星の地表を
+    // 見せる割合（0 地平線の霞、1 地表）。
     MATH::Vec4 scaleYaw{};
     MATH::Vec4 tintMode{};
     // 主光源の円盤。xyz 光源へ向かう方向、w 視半径 [rad]。
@@ -228,6 +228,20 @@ bool CreateBuffers(ID3D12Device* device) {
     g.constantDrawCursors.fill(0u);
     g.debug.constantCapacityPerFrame = kSkyConstantDrawCapacityPerFrame;
     return true;
+}
+
+// 地平線より下で惑星の地表を見せる割合。霞（既定）は地面の近くで霞のまま（場面の地面は物体が受け持ち、無い所に遠い
+// 地面を出さない）、視点が上がると地表へ移す（雲の上から雲海の切れ間に、空気遠近で霞んだ地表が見える）。
+float ResolveBelowHorizonGroundShare(const AtmosphereSettings& atmosphere, float cameraAltitude) {
+    constexpr float kHazeAltitude = 300.0f;
+    constexpr float kGroundAltitude = 1500.0f;
+    if (atmosphere.belowHorizon == BelowHorizonMode::Ground) {
+        return 1.0f;
+    }
+    const float t = std::isfinite(cameraAltitude)
+                        ? std::clamp((cameraAltitude - kHazeAltitude) / (kGroundAltitude - kHazeAltitude), 0.0f, 1.0f)
+                        : 0.0f;
+    return t * t * (3.0f - 2.0f * t);
 }
 
 SkyConstantAllocation AllocateSkyConstants(const GFX::Context& graphics) {
@@ -592,7 +606,7 @@ void Render(const GFX::Context& graphics, const Camera3D& camera, const SceneEnv
     // 空の描画だけがこのビューの HDR 空間で書く。前向きの空/IBL 参照は絶対量のまま。
     constants.cpu->scaleYaw = {ResolveSkyTextureRadianceScale(settings), settings.yaw,
                                RENDER3D::COLOR::GetActiveViewExposure().x,
-                               environment.atmosphere.belowHorizon == BelowHorizonMode::Ground ? 1.0f : 0.0f};
+                               ResolveBelowHorizonGroundShare(environment.atmosphere, camera.GetPosition().y)};
     constants.cpu->tintMode = {settings.tint.x, settings.tint.y, settings.tint.z, static_cast<float>(renderMode)};
     // 円盤の平均輝度 = 大気外の法線照度 / 立体角 × 色ごとの大気の透過率（落日が赤いのはこの透過率）。
     const float diskSolidAngle = (std::max)(2.0f * 3.14159265f * (1.0f - std::cos(solar.sunAngularRadius)), 1.0e-9f);
@@ -629,8 +643,8 @@ void Render(const GFX::Context& graphics, const Camera3D& camera, const SceneEnv
         view.inverseViewProj = inverseViewProj;
         const MATH::Vec3 position = camera.GetPosition();
         view.cameraPreExposure = {position.x, position.y, position.z, RENDER3D::COLOR::GetActiveViewExposure().x};
-        view.params = {ATMOSPHERE::kAerialPerspectiveMaxDistance, 0.0f, 0.0f, 0.0f};
         const RENDER3D::CLOUDS::CloudShadingEstimate cloudShading = RENDER3D::CLOUDS::EstimateCloudShading(environment);
+        view.params = {ATMOSPHERE::kAerialPerspectiveMaxDistance, cloudShading.shadeAltitude, 0.0f, 0.0f};
         view.cloudShading = {cloudShading.ambientRadiance.x, cloudShading.ambientRadiance.y,
                              cloudShading.ambientRadiance.z, cloudShading.sunVisibility};
         atmosphereLutsReady =
@@ -752,7 +766,8 @@ MATH::Vec3 EstimateSkyAmbientRadiance(const SceneEnvironment& environment) {
     return {radiance.x * sky.tint.x * scale, radiance.y * sky.tint.y * scale, radiance.z * sky.tint.z * scale};
 }
 
-RENDER3D::COLOR::ExposureIllumination EstimateExposureIllumination(const SceneEnvironment& environment) {
+RENDER3D::COLOR::ExposureIllumination EstimateExposureIllumination(const SceneEnvironment& environment,
+                                                                   float cameraAltitude) {
     RENDER3D::COLOR::ExposureIllumination illumination{};
     const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
     if (!solar.valid) {
@@ -761,9 +776,14 @@ RENDER3D::COLOR::ExposureIllumination EstimateExposureIllumination(const SceneEn
     float visibility = 1.0f;
     MATH::Vec3 sky = EstimateSkyAmbientRadiance(environment);
     if (RENDER3D::CLOUDS::HasVisibleClouds(environment)) {
+        // 雲の陰の境の前後 300m で、雲の下（雲を抜けた日照と雲の下の空）から雲の上（晴れた空の日照）へ移す。
         const RENDER3D::CLOUDS::CloudShadingEstimate clouds = RENDER3D::CLOUDS::EstimateCloudShading(environment);
-        visibility = clouds.sunVisibility;
-        sky = clouds.ambientRadiance;
+        const float t = std::isfinite(cameraAltitude)
+                            ? std::clamp((cameraAltitude - clouds.shadeAltitude + 300.0f) / 600.0f, 0.0f, 1.0f)
+                            : 0.0f;
+        const float above = t * t * (3.0f - 2.0f * t);
+        visibility = clouds.sunVisibility + (1.0f - clouds.sunVisibility) * above;
+        sky = clouds.ambientRadiance + (sky - clouds.ambientRadiance) * above;
     }
     const float elevation = (std::max)(solar.sunDirection.y, 0.0f);
     const float skyLuminance = sky.x * 0.2126f + sky.y * 0.7152f + sky.z * 0.0722f;

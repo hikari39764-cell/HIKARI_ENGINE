@@ -1,7 +1,7 @@
 cbuffer SkyCB : register(b0)
 {
     float4x4 gSkyInverseViewProj;
-    float4 gSkyScaleYaw;            // x radiance scale, y yaw, z pre-exposure, w below horizon (0 haze, 1 ground)
+    float4 gSkyScaleYaw;            // x radiance scale, y yaw, z pre-exposure, w below-horizon ground share (0 haze, 1 ground)
     float4 gSkyTintMode;            // rgb tint, a SkyMode
     float4 gSkyDisk;                // xyz toward the primary light, w angular radius [rad]
     float4 gSkyDiskLuminance;       // rgb average disk luminance incl. transmittance [nits]
@@ -399,15 +399,14 @@ float4 main(PSInput input) : SV_TARGET
     float3 sky = 0.0f.xxx;
     if (mode == 4u && gAtmosphereSunDirection.w > 0.5f)
     {
-        if (worldRayDir.y < 0.0f && gSkyScaleYaw.w < 0.5f)
+        sky = gAtmosphereSunDirection.w > 1.5f
+            ? SampleAtmosphereSkyView(worldRayDir)
+            : EvaluateAtmosphereSky(worldRayDir);
+        // 地平線より下は gSkyScaleYaw.w の割合で惑星の地表（上の LUT）、残りを地平線の霞にする（地面の近くは霞、
+        // 視点が上がると空気遠近で霞んだ地表）。
+        if (worldRayDir.y < 0.0f && gSkyScaleYaw.w < 1.0f)
         {
-            sky = EvaluateBelowHorizonHaze(worldRayDir);
-        }
-        else
-        {
-            sky = gAtmosphereSunDirection.w > 1.5f
-                ? SampleAtmosphereSkyView(worldRayDir)
-                : EvaluateAtmosphereSky(worldRayDir);
+            sky = lerp(EvaluateBelowHorizonHaze(worldRayDir), sky, saturate(gSkyScaleYaw.w));
         }
         // 星と夜空の背景は地平線より下で 0。
         sky += EvaluateStars(worldRayDir) + HikariNightSkyBackground(worldRayDir, gSkyStars.z);

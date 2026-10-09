@@ -116,14 +116,23 @@ float HikariCloudInterleavedGradientNoise(float2 pixel)
         0.61803399f * float((frame >> 2u) & 255u));
 }
 
-// 方向 direction の空の輝度 [nits]（太陽円盤なし）。
+// 方向 direction の空気の輝度 [nits]（太陽円盤なし）。空気遠近で雲の手前の空気の色の元にする。水平より下の天空 LUT は
+// 地面や雲の下の空気を含むので、その方位の地平線のすぐ下の行（地面に当たらない空気だけの道）を使う。
 float3 HikariCloudSkyRadiance(float3 direction)
 {
     if (gCloudAerial.z < 0.5f)
     {
         return gCloudFallbackAmbient.rgb;
     }
-    return gCloudSkyView.SampleLevel(gCloudLinearClamp, HikariAtmosphereSkyViewUv(direction), 0.0f).rgb;
+    float2 uv = HikariAtmosphereSkyViewUv(direction);
+    if (direction.y < 0.0f)
+    {
+        uint width = 0u;
+        uint height = 0u;
+        gCloudSkyView.GetDimensions(width, height);
+        uv.y = 0.5f - 0.5f / float(max(height, 1u));
+    }
+    return gCloudSkyView.SampleLevel(gCloudLinearClamp, uv, 0.0f).rgb;
 }
 
 // 指数大気で高さ h0 から h1 へ距離 distance の直線を通る時の、密度の積分 [m]（地表の密度を 1 とする）。
@@ -141,7 +150,9 @@ float HikariCloudAirColumn(float h0, float h1, float distance, float scaleHeight
 
 // 雲までの大気の透過率と、その手前で散乱して目に届く光。手前の光は、その方向の空の輝度のうち雲までの区間が
 // 占める割合（1 - T(d)）/（1 - T(空の果て)）で表す。天空 LUT の色（太陽まわりの光環や夕焼け）をそのまま使える。
-// 雲の陰になった空気は主光源の代わりに雲の下の空の光で照らされる。
+// 雲の陰の境（gCloudAirMie.z）より下の空気は主光源の代わりに雲の下の空の光で照らされる。視点が境より上（雲の上）に
+// いる時、雲までの道のうち境より上の部分は晴れた空気で主光源をそのまま受ける（高さは道に沿って直線的に変わるとみな
+// す）。雲海の上から見る遠くの雲が雲の下の灰色や地面の色に沈まない。
 void HikariCloudAirPerspective(float3 direction, float altitude, float distance, float3 skyRadiance,
     out float3 transmittance, out float3 inscatter)
 {
@@ -155,9 +166,13 @@ void HikariCloudAirPerspective(float3 direction, float altitude, float distance,
     const float3 total = (gCloudAirRayleigh.rgb * gCloudAirRayleigh.w * exp(-max(h0, 0.0f) / gCloudAirRayleigh.w) +
         gCloudAirMie.x * gCloudAirMie.y * exp(-max(h0, 0.0f) / gCloudAirMie.y)) * airMass;
     transmittance = exp(-depth);
+    const float shade = gCloudAirMie.z;
+    const float clear = shade > 0.0f && h0 > shade ? saturate((h0 - shade) / max(h0 - altitude, 1.0f)) : 0.0f;
+    const float3 clearTransmittance = exp(-depth * clear);
+    const float3 air = skyRadiance / max(1.0f - exp(-max(total, depth)), 1.0e-3f);
     const float visibility = gCloudAirUnderClouds.w;
-    inscatter = (skyRadiance * visibility / max(1.0f - exp(-max(total, depth)), 1.0e-3f) +
-        gCloudAirUnderClouds.rgb * (1.0f - visibility)) * (1.0f - transmittance);
+    inscatter = air * (1.0f - clearTransmittance) +
+        (air * visibility + gCloudAirUnderClouds.rgb * (1.0f - visibility)) * (clearTransmittance - transmittance);
 }
 
 // 雲の 1 点から視線方向へ出る光 [nits]（アルベド込み）。
@@ -183,10 +198,10 @@ float3 HikariCloudSourceRadiance(HikariCloudColumn column, float cosine, float l
     float3 lightRadiance, float3 skyAmbient, float3 skyFacing, float viewDepth, float3 groundAmbient,
     float2 localVisibility)
 {
-    // 主光源の光は、表面近くの向きの揃った散乱（銀の縁と日向の面）と、雲の中で何度も散乱して透けてくる拡散光
-    // （薄い所を明るく、陰の面と雲底を灰色に満たす）の和。
+    // 主光源の光は、表面近くの向きの揃った散乱（銀の縁）と、雲の中で何度も散乱した拡散光（日向の面を白く輝かせ、
+    // 陰の面と雲底を灰色に満たす）の和。
     const float3 sun = lightRadiance *
-        (HikariCloudLightScattering(cosine, lightDepth, density) + HikariCloudDiffuseTransmission(lightDepth));
+        (HikariCloudLightScattering(cosine, lightDepth, density) + HikariCloudDiffuseRadiance(lightDepth));
     // 雲の上と下から入る環境光は、この柱でそこまでにある雲の厚さ（平均の濃さ 0.5）を拡散透過 1/(1 + 0.11τ) で
     // 抜けてくる。雲の側面は横の空も見ているので、鉛直の柱で指数的に消すと積雲の中が黒い芯になる。
     const float aboveDepth = gCloudDensity.x * 0.5f * column.above;
@@ -450,13 +465,19 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
     march.nearDepth = depthWeight > 0.0f ? depthSum / depthWeight : HIKARI_CLOUD_NO_HIT;
 
     // 最大距離より先。平均の濃さの雲を 8 区間で足し、光源までの厚さは雲層の上端までの平均の濃さで見積もる。
+    // 区間は 2 倍ずつ伸ばす（最初は残りの 1/255）。等分だと地平線近くでは最初の区間が十数 km になって一つの標本で
+    // 不透明になり、最大距離の円が雲の海の上に硬い縁として見える。
     if (transmittance >= 0.015f && end > t)
     {
-        const float segment = (end - t) / 8.0f;
+        float segment = (end - t) / 255.0f;
+        float next = t;
         [loop]
         for (uint farIndex = 0u; farIndex < 8u; ++farIndex)
         {
-            const float distance = t + (float(farIndex) + 0.5f) * segment;
+            const float distance = next + 0.5f * segment;
+            const float segmentLength = segment;
+            next += segment;
+            segment *= 2.0f;
             const float altitude = HikariCloudAltitude(origin + direction * distance);
             HikariCloudColumn column = (HikariCloudColumn)0;
             const float density =
@@ -471,7 +492,7 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
                 skyAmbient, skyFacing, -log(max(transmittance, 1.0e-4f)), groundAmbient, 1.0f.xx);
             float3 air, inscatter;
             HikariCloudAirPerspective(direction, altitude, distance, skyRadiance, air, inscatter);
-            const float opacity = 1.0f - exp(-extinction * segment);
+            const float opacity = 1.0f - exp(-extinction * segmentLength);
             const float weight = transmittance * opacity;
             far += weight * (source * air + inscatter);
             meanDepthSum += distance * weight;
@@ -604,23 +625,53 @@ HikariCloudTarget ReprojectCloudPS(HikariCloudFullscreen input)
     }
     float4 history = HikariCloudSampleCatmullRom(gCloudHistoryColor, previousUv, gCloudHistorySize.xy);
     history.rgb *= gCloudWindDelta.z;
-    float4 low = current;
-    float4 high = current;
-    [unroll]
-    for (int y = -1; y <= 1; ++y)
+    // 視点（または風で流れる雲）が半画素より動いた時は、履歴を今のフレームの近傍（追跡の 3x3）の範囲へ収めて動いた
+    // 雲の残像を残さない。止まっている時は逆に、新しい標本を履歴の近傍（3x3）の範囲へ収める：外れ値を履歴に入れず、
+    // 履歴は標本の指数平均として収束する（止まった視点で履歴を単標本の近傍へ収めると、薄い雲で収束せず標本の
+    // ずらしの模様が網目として残る）。再投影はカメラ相対の行列で画素単位に正確。
+    const float motionPixels = length((previousUv - input.uv) * gCloudHistorySize.xy);
+    float4 sample = current;
+    if (motionPixels > 0.5f)
     {
+        float4 low = current;
+        float4 high = current;
         [unroll]
-        for (int x = -1; x <= 1; ++x)
+        for (int y = -1; y <= 1; ++y)
         {
-            const float4 neighbour =
-                gCloudCurrentColor.Load(int3(clamp(tracePixel + int2(x, y), int2(0, 0), traceLast), 0));
-            low = min(low, neighbour);
-            high = max(high, neighbour);
+            [unroll]
+            for (int x = -1; x <= 1; ++x)
+            {
+                const float4 neighbour =
+                    gCloudCurrentColor.Load(int3(clamp(tracePixel + int2(x, y), int2(0, 0), traceLast), 0));
+                low = min(low, neighbour);
+                high = max(high, neighbour);
+            }
         }
+        const float4 margin = (high - low) * gCloudTemporal.w;
+        history = clamp(history, low - margin, high + margin);
     }
-    const float4 margin = (high - low) * gCloudTemporal.w;
-    history = clamp(history, low - margin, high + margin);
-    output.color = fresh ? lerp(history, current, gCloudTemporal.z) : history;
+    else if (fresh)
+    {
+        float4 low = history;
+        float4 high = history;
+        const int2 last = int2(gCloudHistorySize.xy) - 1;
+        [unroll]
+        for (int y = -1; y <= 1; ++y)
+        {
+            [unroll]
+            for (int x = -1; x <= 1; ++x)
+            {
+                const float4 neighbour =
+                    gCloudHistoryColor.Load(int3(clamp(pixel + int2(x, y), int2(0, 0), last), 0));
+                low = min(low, neighbour);
+                high = max(high, neighbour);
+            }
+        }
+        // 履歴の近傍より明るい標本は幅の半分までしか越えられない（履歴がまだ粗い最初の数十フレームのために 1 割足す）。
+        const float4 margin = (high - low) * 0.5f + 0.1f * max(history, 0.0f.xxxx);
+        sample = clamp(current, low - margin, high + margin);
+    }
+    output.color = fresh ? lerp(history, sample, gCloudTemporal.z) : history;
     return output;
 }
 

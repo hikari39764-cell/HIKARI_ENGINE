@@ -28,7 +28,8 @@ cbuffer VolumetricCloudCB : register(b0)
     float4 gCloudWindDelta;       // xy 前フレームからの風の移動（ワールド xz）[m]、z 履歴の P/P_prev
     float4 gCloudFallbackAmbient; // rgb 天空 LUT が無い時の空の輝度の概算 [nits]
     float4 gCloudAirRayleigh;     // rgb 地表の Rayleigh 散乱係数 [1/m]、w スケールハイト [m]
-    float4 gCloudAirMie;          // x 地表の Mie 消散係数 [1/m]、y スケールハイト [m]
+    float4 gCloudAirMie;          // x 地表の Mie 消散係数 [1/m]、y スケールハイト [m]、z 雲の陰の境の高度 [m]
+                                  // （これより下の空気が雲の下。雲が無ければ 0）
     float4 gCloudAirUnderClouds;  // rgb 雲の下から見上げた空の平均輝度 [nits]、w 雲を抜けて空気へ届く主光源の割合
     float4 gCloudLightning;       // xyz 落雷の光のワールド位置 [m]、w 光度 [cd]（0 なら無い）
     float4 gCloudLook;            // x 主光源の倍率、y 銀の縁（前方散乱）の倍率、z 雲の群れの強さ、w 置かれた形状に
@@ -38,9 +39,9 @@ cbuffer VolumetricCloudCB : register(b0)
 
 // ノイズはどれも一様分布（HIKARI_VolumetricCloudNoise.hlsli）。形状と細部は箱フィルタの mip を持つ。
 static const float HIKARI_CLOUD_SHAPE_NOISE_SIZE = 128.0f;  // HIKARI_VolumetricCloudStage.cpp の kShapeSize
-// 形状ノイズの鉛直の倍率。周期（gCloudShapePhase.z）は水平の周期で、鉛直はその 1/2 の周期で読む（雲の塊は高さより
-// 幅が広い。等方だと数 km 幅の雲が同じ丈の泡を縦にも積んだ厚い塊に見える）。
-static const float HIKARI_CLOUD_SHAPE_VERTICAL_SCALE = 2.0f;
+// 形状ノイズの鉛直の倍率。周期（gCloudShapePhase.z）は水平の周期で、鉛直はその 1/1.5 の周期で読む（雲の塊は高さより
+// 幅が広い。等方だと数 km 幅の雲が同じ丈の泡を縦にも積んだ厚い塊に見え、2 倍まで潰すと平たい棚が何段も重なる）。
+static const float HIKARI_CLOUD_SHAPE_VERTICAL_SCALE = 1.5f;
 static const float HIKARI_CLOUD_DETAIL_NOISE_SIZE = 32.0f;  // 同じく kDetailSize
 Texture3D<float> gCloudShapeNoise : register(t0);
 Texture3D<float> gCloudDetailNoise : register(t1);
@@ -308,10 +309,16 @@ HikariCloudColumn HikariCloudResolveColumn(float3 position, float altitude)
     const float lowered =
         250.0f * gCloudWeather.z * smoothstep(0.5f, 0.9f, column.cell) + 2.0f * HikariCloudRaggedBase();
     column.top += lowered;
-    const float elevation = altitude - layer.base - edgeLift + lowered;
+    // 雲底はセルごとに ±80m 上下する（塔の揺らぎと同じ天気図の値。曇天では揃える）。全ての雲が同じ面に座ると、
+    // 遠くの雲の列が同じ皿を並べたように見える。
+    const float baseShift =
+        160.0f * (weather.w - 0.5f) * (1.0f - smoothstep(0.6f, 0.85f, column.coverage));
+    const float elevation = altitude - layer.base - baseShift - edgeLift + lowered;
     column.height = elevation / column.top;
     column.profile = 1.0f - smoothstep(layer.falloff.x, layer.falloff.y, column.height);
-    column.baseRise = layer.baseRise;
+    // 遠く（5→20km）では雲底の立ち上がりを 2.5 倍に広げる。粗い標本では薄い立ち上がりが硬い平面に見え、雲が
+    // 平底の皿になる。
+    column.baseRise = layer.baseRise * lerp(1.0f, 2.5f, smoothstep(5000.0f, 20000.0f, length(position.xz - gCloudCamera.xz)));
     column.baseFade = saturate(elevation / layer.baseRise);
     column.above = max(column.top - elevation, 0.0f);
     column.below = clamp(elevation, 0.0f, column.top);
@@ -338,7 +345,8 @@ float HikariCloudHeightCoverage(HikariCloudColumn column)
 // 同じ）に達する。層雲（雲型 0.15 以下）は 1.1 と 0.6 で、細部の凹凸がほとんど無い柔らかな一面の雲になる
 // （層雲の濃淡は大きな形の起伏だけ。細部で削ると低い角度で縞が並ぶ）。
 // 標本の幅 footprint [m]（画素の幅 ≈ 距離 × 画素の角度）が視点からの距離の代わり。近く（1km 以内、幅 1.5m 以下）は
-// 輪郭と体積感のために縁をやや硬め（1.45 / 1.3）に、遠く（5km 以遠、幅 6m 以上）は霧のように柔らかく（1.2 / 1.0）する。
+// 輪郭と体積感のために縁をやや硬め（1.45）、細部の侵食を強め（1.6。近い大きな塊が起伏の無い風船にならない）に、
+// 遠く（5km 以遠、幅 6m 以上）は霧のように柔らかく（1.2 / 1.0）する。
 // 倍率が 1 に近いほど縁の半透明の幅が広く、雲が霧の塊として読める（1.7 以上に硬くすると、塊ごとの泡が一つずつ
 // 硬い粒として並ぶ）。
 float HikariCloudDistanceSoftness(float footprint)
@@ -350,7 +358,7 @@ float2 HikariCloudEdgeShaping(float type, float footprint = 1000.0f)
 {
     const float billowy = smoothstep(0.15f, 0.5f, type);
     const float soft = HikariCloudDistanceSoftness(footprint);
-    return float2(lerp(1.1f, lerp(1.45f, 1.2f, soft), billowy), lerp(0.6f, lerp(1.3f, 1.0f, soft), billowy));
+    return float2(lerp(1.1f, lerp(1.45f, 1.2f, soft), billowy), lerp(0.6f, lerp(1.6f, 1.0f, soft), billowy));
 }
 
 // 細部ノイズを平均（0.5）で置き換えた侵食の閾値。
@@ -480,8 +488,9 @@ float HikariCloudDensity(HikariCloudColumn column, float3 position, float altitu
         const float billow = saturate(max(column.height * 10.0f, column.height * column.top / 150.0f));
         erosion = lerp(0.5f, lerp(highFrequency, 1.0f - highFrequency, billow), detailWeight);
     }
-    // 雲底は凝結高度でほぼ平らに切る。
-    const float threshold = erosion * shaping.y * gCloudDensity.y;
+    // 細部の侵食は薄い外殻（濃さ 0.25 以下）で全開、濃さ 0.75 で 0 にする。中まで削ると、斜めの光が当たる面に
+    // 細部ノイズの粒が紙やすりのように浮く。
+    const float threshold = erosion * shaping.y * gCloudDensity.y * saturate(1.5f - 2.0f * density);
     const float shaped = saturate(shaping.x * HikariCloudRemap(density, threshold, 1.0f, 0.0f, 1.0f));
     return lerp(shaped, mean, meanWeight) * baseFade;
 }
@@ -551,16 +560,16 @@ float HikariCloudPhase(float cosine, float scale)
         0.7f * gCloudLook.y * HikariCloudHenyeyGreenstein(cosine, 0.7f * scale);
 }
 
-// 雲の中を何度も散乱して届く主光源の拡散光 [1/sr]（主光源の照度に対し）。光源の方向の光学的厚さ τ の雲を抜けた光の
-// うち、向きの揃った直射 e^(−τ) を除いた分（直射と少ない回数の散乱は HikariCloudLightScattering が受け持つ）。
-// 散乱で失われない水雲の二流近似の透過 1 / (1 + 0.75 (1 − g) τ)（雲粒の g ≈ 0.85 で 0.11 τ）を使い、拡散した光の
-// 半分が光の進む側へ出るとして輝度へ直す。薄い雲や縁は透けた光で明るく、厚い雲の陰の面と雲底は灰色に満たされ、
-// 指数的な減衰だけの時のように黒くならない。考え方は HanPi Volume Cloud（AshenOneArt、MIT）の phi_fwd（多重散乱の
-// 等方な拡散光を方向性の散乱と別に足す）を参考にし、式は二流近似から独自に選んだ。
-float HikariCloudDiffuseTransmission(float lightOpticalDepth)
+// 雲の中を何度も散乱した主光源の拡散光 [1/sr]（主光源の照度に対し）。散乱で失われない水雲の二流近似で、光源の方向の
+// 光学的厚さ τ の点の拡散光を 1 / (1 + 0.75 (1 − g) τ)（雲粒の g ≈ 0.85 で 0.11 τ）とし、その半分が見る向きへ出る
+// として輝度へ直す。光源に面した側（τ が小さい）では、雲の体に入って何度も散乱し外へ戻ってくる光（厚い雲の反射率は
+// 約 0.8）で日向の面が白く輝き、奥（τ が大きい）では透けてきた光で陰の面と雲底が灰色に満たされ、指数的な減衰だけの
+// 時のように黒くならない。向きの揃った直射と少ない回数の散乱（銀の縁）は HikariCloudLightScattering が受け持つ。
+// 考え方は HanPi Volume Cloud（AshenOneArt、MIT）の phi_fwd（多重散乱の等方な拡散光を方向性の散乱と別に足す）を
+// 参考にし、式は二流近似から独自に選んだ。
+float HikariCloudDiffuseRadiance(float lightOpticalDepth)
 {
-    const float tau = max(lightOpticalDepth, 0.0f);
-    return 0.5f / HIKARI_CLOUD_PI * max(1.0f / (1.0f + 0.11f * tau) - exp(-tau), 0.0f);
+    return 0.5f / HIKARI_CLOUD_PI / (1.0f + 0.11f * max(lightOpticalDepth, 0.0f));
 }
 
 // 光源方向へ向かって、殻の中を間隔を倍にしながら光学的厚さを足す（最大 samples 点、間隔は 15m × 2^index、
@@ -597,7 +606,7 @@ float HikariCloudLightOpticalDepth(float3 position, uint samples)
 // 主光源からの方向性の散乱光 [1/sr]。多重散乱を段ごとに減衰・寄与・異方性を半分にした和で近似し（Wrenninge 2013、
 // Frostbite・HDRP と同じ 3 段）、光源と反対を向いた側の表面近くを暗くする（powder、HDRP と同じ形）。
 // Horizon Zero Dawn と同じく 2 倍して、powder で暗くなる分と単一散乱の和で足りない分を補う。厚い雲の陰の面と
-// 雲底を満たす向きの揃わない光は HikariCloudDiffuseTransmission が受け持つ。
+// 雲底を満たす向きの揃わない光は HikariCloudDiffuseRadiance が受け持つ。
 float HikariCloudLightScattering(float cosine, float lightOpticalDepth, float density)
 {
     float scattering = 0.0f;
@@ -612,8 +621,9 @@ float HikariCloudLightScattering(float cosine, float lightOpticalDepth, float de
         attenuation *= 0.5f;
         anisotropy *= 0.5f;
     }
-    const float powder = lerp(1.0f, saturate(2.0f * (1.0f - exp(-4.0f * density))),
-        smoothstep(0.5f, -0.5f, cosine));
+    // powder は薄い外殻を 0.4 倍までにとどめる（0 まで落とすと、光源と反対を向いた時に塊の輪郭ごとに黒い線が巡り、
+    // 上から見た雲頂が脳のしわや等高線になる）。
+    const float powder = lerp(1.0f, 1.0f - 0.6f * exp(-8.0f * density), smoothstep(0.5f, -0.5f, cosine));
     return 2.0f * scattering * powder;
 }
 

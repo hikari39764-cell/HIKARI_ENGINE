@@ -475,8 +475,10 @@ void DocumentSceneBase::Render() {
                                       state_->runtime.environment.GetColorLut());
     POST::PostSystem::SetExposureSettings(exposure);
     // 目の順応は実時間で進める（一時停止やスローでも露出は追従する）。
-    POST::PostSystem::AdvanceExposure(TIME::GetFrameContext().unscaledDt,
-                                      SKYRENDERER::EstimateExposureIllumination(state_->lighting.environment));
+    POST::PostSystem::AdvanceExposure(
+        TIME::GetFrameContext().unscaledDt,
+        SKYRENDERER::EstimateExposureIllumination(state_->lighting.environment,
+                                                  state_->camera.resolvedFrame.camera.GetPosition().y));
     POST::PostSystem::SetSequenceEffects(screenEffects);
 
     // UE 風の地面グリッド: 半透明の地面パネルと主線/副線を一括で描画する。
