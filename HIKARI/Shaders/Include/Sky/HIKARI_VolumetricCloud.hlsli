@@ -166,24 +166,6 @@ float HikariCloudClusterField(float2 worldXZ)
     return gCloudWeatherMap.SampleLevel(gCloudLinearWrap, stretched / (gCloudWeatherPhase.z * 2.0f), 0.0f).x;
 }
 
-// 視点からの距離による被覆率の増減。晴れ〜薄曇り（雲量 0.6 未満）では頭上と近くの雲を増やし（6km 以内で 1.15 倍）、
-// 遠く（28km 以遠）を 0.35 倍に減らす。地平線近くでは数十 km 分の雲の列が透視で重なるので、一様な雲場だと遠くに
-// 雲が積み上がって見える。曇天・雲海（雲量 0.85 以上）はそのまま（地平線まで一面の雲）。
-static const float HIKARI_CLOUD_NEAR_GAIN = 1.15f;
-static const float HIKARI_CLOUD_FAR_GAIN = 0.5f;
-static const float HIKARI_CLOUD_NEAR_DISTANCE = 9000.0f;
-static const float HIKARI_CLOUD_FAR_DISTANCE = 28000.0f;
-
-float HikariCloudDistanceGain(float2 worldXZ, float coverage)
-{
-    const float distance = length(worldXZ - gCloudCamera.xz);
-    const float far = smoothstep(HIKARI_CLOUD_NEAR_DISTANCE, HIKARI_CLOUD_FAR_DISTANCE, distance);
-    // 近くを増やすのは晴天（雲量 0.45 以下）だけ。薄曇り（0.6）で増やすと頭上に巨大な暗い雲底が居座る。
-    const float nearGain = lerp(HIKARI_CLOUD_NEAR_GAIN, 1.0f, smoothstep(0.45f, 0.6f, coverage));
-    const float farGain = lerp(HIKARI_CLOUD_FAR_GAIN, 1.0f, smoothstep(0.6f, 0.85f, coverage));
-    return lerp(nearGain, farGain, far);
-}
-
 // 遠く（15km→35km）の雲は雲頂を 0.8 倍に低くし、塔を ±15% に弱める（無くすと遠くの層が一枚の平らな板になる）。遠くの対流セルの塔は粗い標本で尖った柱に見え、
 // 地平線近くの雲の群れが針山になる（現実でも遠くの積雲は横に連なった平たい層に見える）。10km から 0.6 倍まで
 // 潰すと、中景の雲が平底の皿を並べたようになる。
@@ -196,6 +178,9 @@ float HikariCloudFarFlattening(float2 worldXZ)
 // 被覆率が低い（晴天〜薄曇り）時は雲を風に沿った群れに集め、群れの間を晴らす（群れの中で C の最大 1.6 倍、外で
 // 0.4 倍。平均は C のまま）。被覆率が 0.6 を超えると群れは薄れて一面の雲へつながる。遠く（10→25km）では群れの
 // 強弱を 4 割に落とす（遠くの薄い平均の層に群れの縞が大理石の模様で残らない）。
+// 被覆率を視点からの距離で増減しない（近くを増やし遠くを減らすと、密度の暈が視点と一緒に動き、進むにつれて前方の
+// 薄い雲が濃くなり後方が薄れて、雲を通り過ぎるのではなく雲が視点に付いてくるように見える）。地平線近くに数十 km 分の
+// 雲が透視で積み上がるのは、追跡側の遠方の不透明度の淡出（HIKARI_CLOUD_FAR_THINNING）と平均の層への移行で抑える。
 float HikariCloudCoverage(float4 weather, float2 worldXZ)
 {
     const float coverage = gCloudWeather.x;
@@ -204,8 +189,7 @@ float HikariCloudCoverage(float4 weather, float2 worldXZ)
     const float cluster = smoothstep(0.2f, 0.8f, HikariCloudClusterField(worldXZ));
     // 群れの強弱は晴天で大きく（0.4〜1.6 倍）、薄曇りでは控えめに（0.6〜1.4 倍。群れの芯が一塊の壁にならない）。
     const float cloudy = smoothstep(0.45f, 0.6f, coverage);
-    const float gain = lerp(1.0f, lerp(lerp(0.4f, 0.6f, cloudy), lerp(1.6f, 1.4f, cloudy), cluster), grouping) *
-        HikariCloudDistanceGain(worldXZ, coverage);
+    const float gain = lerp(1.0f, lerp(lerp(0.4f, 0.6f, cloudy), lerp(1.6f, 1.4f, cloudy), cluster), grouping);
     const float spread = 1.2f * sqrt(saturate(coverage * (1.0f - coverage))) * lerp(1.0f, 0.6f, grouping);
     return saturate(coverage * gain + (weather.x - 0.5f) * spread + 0.1f * gCloudWeather.z) *
         smoothstep(0.0f, 0.05f, coverage);
