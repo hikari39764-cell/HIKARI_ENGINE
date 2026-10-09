@@ -51,7 +51,7 @@
   },
   "ambientOcclusion": {
     "enabled": true,
-    "mode": "Balanced"
+    "mode": "OptimizedHigh"
   },
   "screenSpaceReflections": {
     "enabled": true,
