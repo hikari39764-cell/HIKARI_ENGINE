@@ -120,8 +120,10 @@ struct alignas(16) VolumetricCloudConstants {
     MATH::Vec4 airMie{};
     MATH::Vec4 airUnderClouds{};
     MATH::Vec4 lightning{};
+    MATH::Vec4 look{};
+    MATH::Vec4 wind{};
 };
-static_assert(sizeof(VolumetricCloudConstants) == 464u);
+static_assert(sizeof(VolumetricCloudConstants) == 496u);
 static_assert(offsetof(VolumetricCloudConstants, camera) == 128u);
 static_assert(offsetof(VolumetricCloudConstants, fallbackAmbient) == 384u);
 
@@ -173,15 +175,17 @@ struct QualityPolicy {
     float maxDistance = 80000.0f;
     float detailDistance = 16000.0f;
     float currentWeight = 0.08f;
-    uint32_t solarResolution = 128u;
-    uint32_t solarSteps = 24u;
+    // 地表の影の表の列数（16km 四方）と光源方向の段数。Balanced で 1 列 83m。
+    uint32_t solarResolution = 192u;
+    uint32_t solarSteps = 20u;
     uint32_t qualityIndex = 1u;
 };
 
 QualityPolicy ResolveQualityPolicy(VolumetricCloudQuality quality) noexcept {
     switch (quality) {
-    case VolumetricCloudQuality::Low: return {4u, 48u, 9u, 24.0f, 0.012f, 50000.0f, 8000.0f, 0.12f, 64u, 16u, 0u};
-    case VolumetricCloudQuality::High: return {2u, 96u, 11u, 8.0f, 0.006f, 100000.0f, 24000.0f, 0.06f, 192u, 32u, 2u};
+    case VolumetricCloudQuality::Low: return {4u, 48u, 9u, 24.0f, 0.012f, 50000.0f, 8000.0f, 0.12f, 96u, 16u, 0u};
+    // High は履歴を全解像度で持つ（追跡はその 2x2 ごとに 1 画素）。撮影・カットシーン向け。
+    case VolumetricCloudQuality::High: return {1u, 128u, 12u, 8.0f, 0.006f, 100000.0f, 24000.0f, 0.06f, 320u, 24u, 2u};
     case VolumetricCloudQuality::Balanced:
     default: return {};
     }
@@ -840,6 +844,13 @@ MATH::Vec2 ResolveShell(const MATH::Vec4& typeBase, const MATH::Vec4& typeThickn
     return {(std::max)(bottom - 180.0f - 480.0f * precipitation, 10.0f), top + 50.0f};
 }
 
+// 天気の被覆率に設定の加算を足した、雲の実効の被覆率。
+float ResolveCloudCoverage(const SceneEnvironment& environment) noexcept {
+    return std::clamp(SanitizeFiniteRange(environment.frame.clouds.coverage, 0.0f, 0.0f, 1.0f) +
+                          SanitizeFiniteRange(environment.clouds.coverageBias, 0.0f, -0.5f, 0.5f),
+                      0.0f, 1.0f);
+}
+
 bool BuildConstants(StageState& state, const TEMPORAL::TemporalFrameState& temporalFrame,
                     const SceneEnvironment& environment, const QualityPolicy& policy, bool useHistory) {
     const CloudLayerSettings& layer = environment.clouds;
@@ -859,13 +870,13 @@ bool BuildConstants(StageState& state, const TEMPORAL::TemporalFrameState& tempo
     constants.typeBase = {600.0f * scale, 1500.0f * scale, 1000.0f * scale, 300.0f};
     constants.typeThickness = {600.0f * scale, 2500.0f * scale, 8500.0f * scale,
                                RENDER3D::COLOR::GetActiveViewExposure().x};
-    const float coverage = SanitizeFiniteRange(weather.coverage, 0.0f, 0.0f, 1.0f);
+    const float coverage = ResolveCloudCoverage(environment);
     const float type = SanitizeFiniteRange(weather.type, 0.5f, 0.0f, 1.0f);
     const float precipitation = SanitizeFiniteRange(weather.precipitation, 0.0f, 0.0f, 1.0f);
     const MATH::Vec2 shell = ResolveShell(constants.typeBase, constants.typeThickness, type, precipitation);
-    // 最大距離の最後の 3 割で個々の雲を平均の濃さへ移す。地平線近くで雲が連なって一続きの帯になっていく過程にし、
-    // 最大距離で急に一枚の板が始まって見えないようにする。
-    constants.shell = {shell.x, shell.y, policy.maxDistance, policy.maxDistance * 0.7f};
+    // 最大距離の 4 割から個々の雲を平均の濃さへ移す。地平線近くで雲が連なって一続きの帯になっていく過程にし、
+    // 遠くの小さな雲が粒の列（ポップコーン）に見えないようにする。
+    constants.shell = {shell.x, shell.y, policy.maxDistance, policy.maxDistance * 0.4f};
     constants.weather = {coverage, type, precipitation, 0.0f};
     const MATH::Vec3& albedo = environment.atmosphere.groundAlbedo;
     constants.density = {kReferenceExtinction * SanitizeFiniteRange(layer.densityScale, 1.0f, 0.0f, 8.0f) *
@@ -935,6 +946,16 @@ bool BuildConstants(StageState& state, const TEMPORAL::TemporalFrameState& tempo
         LIGHTNING::ResolveLightningLight(environment, {camera.cameraPos.x, camera.cameraPos.y, camera.cameraPos.z});
     constants.lightning = {lightning.position.x, lightning.position.y, lightning.position.z,
                            lightning.active ? lightning.intensity : 0.0f};
+    // 見た目の倍率と置かれた形状に落とす影の濃さ、風の向き（雲の群れは風に沿う）。
+    constants.look = {SanitizeFiniteRange(layer.sunlightScale, 1.0f, 0.0f, 4.0f),
+                      SanitizeFiniteRange(layer.silverLining, 1.0f, 0.0f, 2.0f),
+                      SanitizeFiniteRange(layer.clusterStrength, 1.0f, 0.0f, 1.0f),
+                      SanitizeFiniteRange(layer.shadowStrength, 0.65f, 0.0f, 1.0f)};
+    const float windX2 = std::isfinite(weather.windVelocity.x) ? weather.windVelocity.x : 0.0f;
+    const float windZ2 = std::isfinite(weather.windVelocity.y) ? weather.windVelocity.y : 0.0f;
+    const float windSpeed = std::sqrt(windX2 * windX2 + windZ2 * windZ2);
+    constants.wind = {windSpeed > 1.0e-3f ? windX2 / windSpeed : 1.0f, windSpeed > 1.0e-3f ? windZ2 / windSpeed : 0.0f,
+                      0.0f, 0.0f};
 
     const auto allocation = state.uploads[state.context.frameIndex].Allocate(sizeof(constants));
     if (!allocation)
@@ -1046,11 +1067,12 @@ bool PrepareStage(StageState& state, const GFX::Context& graphics) {
 }
 
 // 雲の空の版。天気の値と kSkyVersionSeconds ごとの時刻で決め、環境光はこの版が変わった時だけ作り直す。
-uint64_t ResolveSkyVersion(const CloudWeatherFrame& weather) noexcept {
+uint64_t ResolveSkyVersion(const CloudWeatherFrame& weather, const CloudLayerSettings& layer) noexcept {
     const auto quantize = [](float value) { return std::isfinite(value) ? uint64_t(std::lround(value * 64.0f)) : 0u; };
     const double seconds = std::isfinite(weather.seconds) ? weather.seconds : 0.0;
     uint64_t version = uint64_t(std::floor((std::max)(seconds, 0.0) / kSkyVersionSeconds));
-    for (const float value : {weather.coverage, weather.type, weather.density, weather.precipitation})
+    for (const float value : {weather.coverage, weather.type, weather.density, weather.precipitation,
+                              layer.coverageBias, layer.clusterStrength, layer.sunlightScale, layer.silverLining})
         version = version * 1315423911ull + quantize(value) + 1u;
     return version == 0u ? 1u : version;
 }
@@ -1069,7 +1091,7 @@ bool RenderSkyMap(StageState& state, const SceneEnvironment& environment) {
     commands->Dispatch((kSkyMapWidth + 7u) / 8u, (kSkyMapHeight + 7u) / 8u, 1u);
     TransitionTexture(commands, state.skyMap, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
     state.skyMapFence = state.context.currentFrameRetireFenceValue;
-    state.skyVersion = ResolveSkyVersion(environment.frame.clouds);
+    state.skyVersion = ResolveSkyVersion(environment.frame.clouds, environment.clouds);
     return true;
 }
 
@@ -1084,7 +1106,7 @@ bool IsGraphicsReady(const GFX::Context& graphics) noexcept {
 bool HasVisibleClouds(const SceneEnvironment& environment) noexcept {
     const CloudWeatherFrame& weather = environment.frame.clouds;
     return environment.clouds.enabled && environment.clouds.densityScale > 0.0f && weather.density > 0.0f &&
-           weather.coverage > 0.0f;
+           ResolveCloudCoverage(environment) > 0.0f;
 }
 
 CloudSolarVisibilityFrame PrepareCloudLightingFrame(const PIPELINE::RenderFrameContext& frame,
@@ -1124,7 +1146,7 @@ CloudSolarVisibilityFrame PrepareCloudLightingFrame(const PIPELINE::RenderFrameC
     commands->SetComputeRootDescriptorTable(4, state.weatherNoise.srv.gpu);
     // 雲の空は夜（月明かり）も描く。版（天気の量と 2 秒ごとの時刻）が変わった時だけ描き直す。環境光の畳み込みも
     // 版が変わった時にしか作り直さないので、毎フレーム描いても読まれない。影の表は太陽が出ている時だけ。
-    const uint64_t skyVersion = ResolveSkyVersion(environment.frame.clouds);
+    const uint64_t skyVersion = ResolveSkyVersion(environment.frame.clouds, environment.clouds);
     if (!state.skyMap.IsValid() || state.skyMapFence == 0u || state.skyVersion != skyVersion)
         state.stats.skyMapReady = RenderSkyMap(state, environment);
     else
@@ -1299,7 +1321,7 @@ CloudShadingEstimate EstimateCloudShading(const SceneEnvironment& environment) {
         return estimate;
     const CloudLayerSettings& layer = environment.clouds;
     const CloudWeatherFrame& weather = environment.frame.clouds;
-    const float coverage = SanitizeFiniteRange(weather.coverage, 0.0f, 0.0f, 1.0f);
+    const float coverage = ResolveCloudCoverage(environment);
     const float type = SanitizeFiniteRange(weather.type, 0.5f, 0.0f, 1.0f);
     const float precipitation = SanitizeFiniteRange(weather.precipitation, 0.0f, 0.0f, 1.0f);
     const float scale = SanitizeFiniteRange(layer.baseAltitude, 1500.0f, 100.0f, 10000.0f) / 1500.0f;

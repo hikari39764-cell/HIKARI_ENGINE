@@ -31,6 +31,9 @@ cbuffer VolumetricCloudCB : register(b0)
     float4 gCloudAirMie;          // x 地表の Mie 消散係数 [1/m]、y スケールハイト [m]
     float4 gCloudAirUnderClouds;  // rgb 雲の下から見上げた空の平均輝度 [nits]、w 雲を抜けて空気へ届く主光源の割合
     float4 gCloudLightning;       // xyz 落雷の光のワールド位置 [m]、w 光度 [cd]（0 なら無い）
+    float4 gCloudLook;            // x 主光源の倍率、y 銀の縁（前方散乱）の倍率、z 雲の群れの強さ、w 置かれた形状に
+                                  // 落とす影の濃さ（0..1）
+    float4 gCloudWind;            // xy 風の向き（ワールド xz の単位ベクトル）、zw 未使用
 };
 
 // ノイズはどれも一様分布（HIKARI_VolumetricCloudNoise.hlsli）。形状と細部は箱フィルタの mip を持つ。
@@ -144,12 +147,28 @@ float HikariCloudTurret(float4 weather)
     return lerp(0.6f, 1.35f, weather.w);
 }
 
+// 雲の群れ（雲街）。天気図の雲域の揺らぎを風に沿って 3 倍に伸ばし、2 倍の周期で読む（一様分布。周期 80km なので
+// 地平線まで同じ群れは繰り返さない）。
+float HikariCloudClusterField(float2 worldXZ)
+{
+    const float2 wind = gCloudWind.xy;
+    const float2 across = float2(-wind.y, wind.x);
+    const float2 shifted = worldXZ + gCloudWeatherPhase.xy;
+    const float2 stretched = float2(dot(shifted, wind) / 3.0f, dot(shifted, across));
+    return gCloudWeatherMap.SampleLevel(gCloudLinearWrap, stretched / (gCloudWeatherPhase.z * 2.0f), 0.0f).x;
+}
+
 // その場の被覆率。天気の C の周りで雲域の揺らぎに応じて増減し、C が 0 なら雲は無く、1 なら全天を覆う。
-float HikariCloudCoverage(float4 weather)
+// 被覆率が低い（晴天〜薄曇り）時は雲を風に沿った群れに集め、群れの間を晴らす（群れの中で C の最大 1.85 倍、外で
+// 0.15 倍。平均は C のまま）。被覆率が 0.45 を超えると群れは薄れて一面の雲へつながる。
+float HikariCloudCoverage(float4 weather, float2 worldXZ)
 {
     const float coverage = gCloudWeather.x;
-    const float spread = 1.2f * sqrt(saturate(coverage * (1.0f - coverage)));
-    return saturate(coverage + (weather.x - 0.5f) * spread + 0.1f * gCloudWeather.z) *
+    const float grouping = gCloudLook.z * (1.0f - smoothstep(0.45f, 0.8f, coverage));
+    const float cluster = smoothstep(0.2f, 0.8f, HikariCloudClusterField(worldXZ));
+    const float gain = lerp(1.0f, lerp(0.15f, 1.85f, cluster), grouping);
+    const float spread = 1.2f * sqrt(saturate(coverage * (1.0f - coverage))) * lerp(1.0f, 0.6f, grouping);
+    return saturate(coverage * gain + (weather.x - 0.5f) * spread + 0.1f * gCloudWeather.z) *
         smoothstep(0.0f, 0.05f, coverage);
 }
 
@@ -225,14 +244,16 @@ HikariCloudColumn HikariCloudResolveColumn(float3 position, float altitude)
 {
     HikariCloudColumn column = (HikariCloudColumn)0;
     const float4 weather = HikariCloudSampleWeather(position.xz);
-    column.coverage = HikariCloudCoverage(weather);
+    column.coverage = HikariCloudCoverage(weather, position.xz);
     if (column.coverage <= 0.0f)
     {
         return column;
     }
     column.type = HikariCloudType(weather);
-    column.cell = HikariCloudMergeCell(
-        saturate((weather.z - (1.0f - column.coverage)) / max(column.coverage, 0.02f)), column.coverage);
+    // 被覆率が低い所では弱いセル（頂点が 0.12 に届かないもの）を落とし、紙吹雪のような小片を作らない。
+    const float cut = 0.12f * (1.0f - smoothstep(0.3f, 0.6f, column.coverage));
+    const float cell = saturate((weather.z - (1.0f - column.coverage)) / max(column.coverage, 0.02f));
+    column.cell = HikariCloudMergeCell(saturate((cell - cut) / (1.0f - cut)), column.coverage);
     if (column.cell <= 0.0f)
     {
         return column;
@@ -307,7 +328,7 @@ float HikariCloudStatisticalDensity(float3 position, float altitude, out HikariC
 {
     column = (HikariCloudColumn)0;
     const float4 weather = HikariCloudSampleWeather(position.xz);
-    const float coverage = HikariCloudCoverage(weather);
+    const float coverage = HikariCloudCoverage(weather, position.xz);
     column.coverage = coverage;
     if (coverage <= 0.0f)
     {
@@ -431,7 +452,7 @@ float HikariCloudRainDensity(float3 position, float altitude, out float cloudDep
     const float4 weather = HikariCloudSampleWeather(position.xz);
     const float type = HikariCloudType(weather);
     const HikariCloudLayer layer = HikariCloudResolveLayer(type);
-    const float coverage = HikariCloudCoverage(weather);
+    const float coverage = HikariCloudCoverage(weather, position.xz);
     const float cell = saturate((weather.z - (1.0f - coverage)) / max(coverage, 0.02f));
     const float shaft = smoothstep(0.5f, 0.9f, cell) * smoothstep(0.3f, 0.7f, coverage);
     if (shaft <= 0.0f || altitude >= layer.base)
@@ -458,8 +479,9 @@ float HikariCloudHenyeyGreenstein(float cosine, float g)
 // （雲の中で何度も散乱した光は向きが散って前方の山が低くなる）。
 float HikariCloudPhase(float cosine, float scale)
 {
-    return lerp(HikariCloudHenyeyGreenstein(cosine, -0.3f * scale), HikariCloudHenyeyGreenstein(cosine, 0.7f * scale),
-        0.7f);
+    // 前方の山は見た目の倍率（gCloudLook.y、銀の縁の強さ）で増減する。
+    return 0.3f * HikariCloudHenyeyGreenstein(cosine, -0.3f * scale) +
+        0.7f * gCloudLook.y * HikariCloudHenyeyGreenstein(cosine, 0.7f * scale);
 }
 
 // 光源方向へ向かって、殻の中を間隔を倍にしながら光学的厚さを足す（最大 samples 点、間隔は 15m × 2^index、

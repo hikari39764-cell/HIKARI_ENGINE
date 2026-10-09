@@ -122,8 +122,8 @@ struct FieldDrawer {
         }
         ImGui::PushID(key);
         E& value = object.*member;
-        const char* current = TEXT::EnumToName(names, value);
-        if (ImGui::BeginCombo("##value", current)) {
+        const std::string current = ResolveFieldLabel(labelPrefix, TEXT::EnumToName(names, value));
+        if (ImGui::BeginCombo("##value", current.c_str())) {
             for (const TEXT::EnumName<E>& entry : names) {
                 const bool selected = entry.value == value;
                 if (ImGui::Selectable(ResolveFieldLabel(labelPrefix, entry.name).c_str(), selected) && !selected) {

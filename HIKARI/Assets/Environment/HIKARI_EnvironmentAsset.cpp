@@ -61,6 +61,9 @@ EnvironmentProfile NormalizeEnvironmentProfile(EnvironmentProfile profile) {
     if (!TEXT::IsNamedEnum(kSkySourceNames, profile.sky.source)) {
         profile.sky.source = defaults.sky.source;
     }
+    if (!TEXT::IsNamedEnum(kBelowHorizonModeNames, profile.atmosphere.belowHorizon)) {
+        profile.atmosphere.belowHorizon = defaults.atmosphere.belowHorizon;
+    }
     if (!TEXT::IsNamedEnum(kSunModeNames, profile.sun.mode)) {
         profile.sun.mode = defaults.sun.mode;
     }

@@ -30,10 +30,6 @@ namespace HIKARI::SHADOW {
 struct LocalLightShadowFrame;
 }
 
-namespace HIKARI::RENDER3D::CLOUDS {
-struct CloudSolarVisibilityFrame;
-}
-
 namespace HIKARI::RENDER3D::VOLUMETRIC {
 
 struct VolumetricLightingStats {
@@ -78,7 +74,6 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
                                     const LIGHTING::LocalLightListGpuBindings& localLights,
                                     VolumetricLightingQuality quality, RenderDebugView debugView,
                                     const SHADOW::LocalLightShadowFrame* localShadows = nullptr,
-                                    const CLOUDS::CloudSolarVisibilityFrame* clouds = nullptr,
                                     std::span<const LocalFogVolumeGpu> localFogVolumes = {});
 
 RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& sceneTarget);

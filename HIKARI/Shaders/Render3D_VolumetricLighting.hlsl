@@ -3,7 +3,6 @@
 #include "Include/Lighting/HIKARI_ShadowCascadeContract.hlsli"
 #include "Include/Lighting/HIKARI_VolumetricCamera.hlsli"
 #include "Include/Lighting/HIKARI_VolumetricScattering.hlsli"
-#include "Include/Lighting/HIKARI_CloudSolarVisibility.hlsli"
 #include "Include/Lighting/HIKARI_LocalFogDensity.hlsli"
 #include "Include/Lighting/HIKARI_IrradianceSh9.hlsli"
 
@@ -48,7 +47,6 @@ cbuffer VolumetricCB : register(b0)
     float gLocalLightNearDistance;
     float gLocalLightFarDistance;
     HikariLocalShadowData gLocalShadow;
-    HikariCloudSolarVisibilityData gCloudSolarVisibility;
     HikariLocalFogVolume gLocalFogVolumes[32];
 };
 
@@ -61,7 +59,6 @@ Texture3D<float4> gHistoryVolume : register(t2);
 // 媒質へ届く環境光の全方向平均 radiance（GatherAmbientCS）。
 Texture3D<float4> gAmbientVolume : register(t3);
 Texture2D gLocalShadowAtlas : register(t7);
-Texture2D<float4> gCloudSolarAtlas : register(t8);
 // 今フレームの注入（IntegrateCS が読む）。
 Texture3D<float4> gInjectedVolume : register(t10);
 static const uint HIKARI_MATERIAL_TEXTURE_POOL_COUNT = HIKARI_SHADER_USER_SRV_COUNT;
@@ -156,7 +153,7 @@ float3 EvaluateLighting(
     float3 lighting = ambientRadiance * max(gVolumetricOptics.z, 0.0f);
     lighting += directionalRadiance *
         max(gVolumetricOptics.w, 0.0f) *
-        ShadowVisibility(worldPosition, cameraForward)*HikariSampleCloudSolarVisibility(gCloudSolarAtlas,gCloudSolarVisibility,worldPosition);
+        ShadowVisibility(worldPosition, cameraForward);
 
     const uint2 localLightCluster =
         HikariResolveLocalLightClusterFromDepthSlice(
@@ -427,6 +424,17 @@ void CompositeCS(uint3 dispatchThreadId : SV_DispatchThreadID)
                   HikariOrthographicForwardFromInverseViewProjection(gInvViewProj),
                   true)
             : length(worldPosition - gCameraPos.xyz);
+    }
+    else if (!orthographic)
+    {
+        // 地平線より下の空の画素は、霧を基準の高さの平面までで止める。その下は地面の代わりの背景で空気は無い
+        // （地下の最も濃い霧が背景を覆わない）。地平線へ向けて距離は最大へ連続に戻る。
+        const float3 ray = normalize(worldPosition - gCameraPos.xyz);
+        const float height = gCameraPos.y - gVolumetricOptics.x;
+        if (ray.y < 0.0f && height > 0.0f)
+        {
+            distanceToCamera = min(distanceToCamera, height / -ray.y);
+        }
     }
     const float slice = DistanceToSlice(distanceToCamera);
     const float4 fog = gAerialPerspective.z < 0.5f || distanceToCamera <= gFogDistances.x

@@ -413,8 +413,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         frame.graphics, temporalFrame, frame.scene.color, frame.scene.depth, environment,
         MESHRENDERER::GetLocalLightListGpuBindings(), renderQuality.volumetricLightingQuality,
         volumetricDebugView ? debugView : RenderDebugView::None,
-        SHADOW::GetLocalLightShadowFrame(frame.graphics, lighting, camera), &cloudSolarVisibility,
-        view.localFogVolumes);
+        SHADOW::GetLocalLightShadowFrame(frame.graphics, lighting, camera), view.localFogVolumes);
     if (!MESHRENDERER::FinalizeVolumetricFog(frame.graphics, volumetricFogReady)) {
         MESHRENDERER::EndFrame();
         return false;

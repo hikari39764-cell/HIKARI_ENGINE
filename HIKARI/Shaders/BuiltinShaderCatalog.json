@@ -3902,11 +3902,11 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.VolumetricFog",
-        "engineInterfaceVersion": 3,
-        "engineInterfaceHash": "144d2d5a930ff051407d19a8a6550ace18e547fece809941c27789dc2f6e8f52",
+        "engineInterfaceVersion": 4,
+        "engineInterfaceHash": "597c6303ca2146f8936e5e54316d1019d847b4c2bb9a6195ef3e96c488614fa1",
         "rootLayoutId": "HIKARI.VolumetricFog.Root",
-        "rootLayoutVersion": 1,
-        "rootLayoutHash": "c8df8356e7afd3b47d351be7933ad4bb77d79cf034da7cfafad84db491f31e6b",
+        "rootLayoutVersion": 2,
+        "rootLayoutHash": "893a0da8a495f2b1d8720c716491e26999ed6e0d130a4ea55728cf70fe23b666",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

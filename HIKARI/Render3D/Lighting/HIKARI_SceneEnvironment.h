@@ -36,6 +36,14 @@ struct SkySettings {
     float reflectionIntensity = 1.0f;
 };
 
+// 物理大気の空で、地平線より下に見える背景。
+enum class BelowHorizonMode : uint8_t {
+    // 地平線の霞を下へ延ばす。地面は場面の物体が受け持ち、背景には地面も雲の影も描かない。
+    Haze = 0,
+    // 惑星の地表（地面反照率の色を空気遠近で霞ませる）。高い視点から遠くの地表を見せる時に使う。
+    Ground,
+};
+
 struct AtmosphereSettings {
     float planetRadius = 6360000.0f;
     float atmosphereHeight = 80000.0f;
@@ -51,7 +59,9 @@ struct AtmosphereSettings {
     float ozoneCenterHeight = 25000.0f;
     float ozoneWidth = 15000.0f;
     float mieAnisotropy = 0.8f;
+    // 地面反照率は背景の種類に関わらず、環境光の下からの照り返しに使う。
     MATH::Vec3 groundAlbedo{0.1f, 0.1f, 0.1f};
+    BelowHorizonMode belowHorizon = BelowHorizonMode::Haze;
     float aerialPerspectiveStrength = 1.0f;
     uint32_t transmittanceLutWidth = 256u;
     uint32_t transmittanceLutHeight = 64u;
@@ -123,7 +133,7 @@ struct SunGlareSettings {
     float ghostIntensity = 0.0f;
 };
 
-// 体積雲の層。被覆率・雲の種類・降水・巻雲・風は天気が毎フレーム与える（EnvironmentLightingFrame::clouds）。
+// 体積雲の層。被覆率・雲の種類・降水・風は天気が毎フレーム与える（EnvironmentLightingFrame::clouds）。
 struct CloudLayerSettings {
     bool enabled = true;
     // 積雲の雲底の高度 [m]。層雲・積乱雲の雲底と各雲の厚さもこれに比例する。
@@ -136,6 +146,16 @@ struct CloudLayerSettings {
     float detailErosion = 0.25f;
     // 空と地面から雲へ入る環境光の倍率。
     float ambientScale = 1.0f;
+    // 天気の被覆率への加算（-0.5..0.5）。晴天でも雲を増やしたい時に。
+    float coverageBias = 0.0f;
+    // 雲の群れ（雲街）の強さ。被覆率が低い時に雲を風に沿った群れに集め、間を晴らす（0 で一様に散る）。
+    float clusterStrength = 1.0f;
+    // 置かれた形状（網目・地形・水面）に落とす雲の影の濃さ（1 で物理どおり。小さいほど影の中にも日照が残り、見た目向きに
+    // 淡くなる）。空そのものには雲の影は落ちない。
+    float shadowStrength = 0.65f;
+    // 雲に当たる主光源の倍率と、前方散乱（銀の縁）の倍率。見た目の調整用。
+    float sunlightScale = 1.0f;
+    float silverLining = 1.0f;
 };
 
 enum class SsaoMode {

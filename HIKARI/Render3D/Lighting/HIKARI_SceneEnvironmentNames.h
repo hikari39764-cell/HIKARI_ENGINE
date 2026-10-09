@@ -20,6 +20,11 @@ inline constexpr TEXT::EnumName<SkySource> kSkySourceNames[] = {
     {SkySource::Panorama, "Panorama"},
 };
 
+inline constexpr TEXT::EnumName<BelowHorizonMode> kBelowHorizonModeNames[] = {
+    {BelowHorizonMode::Haze, "Haze"},
+    {BelowHorizonMode::Ground, "Ground"},
+};
+
 inline constexpr TEXT::EnumName<SunMode> kSunModeNames[] = {
     {SunMode::Celestial, "Celestial"},
     {SunMode::Fixed, "Fixed"},

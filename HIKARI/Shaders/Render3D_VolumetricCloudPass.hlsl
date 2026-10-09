@@ -7,7 +7,7 @@
 // （CompositeCloudPS）。雲の色は Pre-Exposure 済みの乗算済み輝度、alpha は
 // 1 - 透過率。深度は x 最初に当たった距離、y 平均距離 [m]。
 // SunTransmittanceCS は地表へ落とす雲の影の表を、TraceCloudSkyCS は環境光へ渡す雲の空（天空 LUT と同じ写像、
-// 絶対輝度）を作る。
+// 絶対輝度）を作る。地平線より下（天空 LUT の背景）には何も描かない。
 
 Texture2D<float4> gCloudCurrentColor : register(t3);
 Texture2D<float2> gCloudCurrentDepth : register(t4);
@@ -234,7 +234,7 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
     float start, shellEnd;
     const bool shellHit = HikariCloudShellInterval(origin, direction, start, shellEnd);
     const float cosine = dot(direction, gCloudLightDirection.xyz);
-    const float3 lightRadiance = gCloudLightColor.rgb * gCloudLightDirection.w;
+    const float3 lightRadiance = gCloudLightColor.rgb * gCloudLightDirection.w * gCloudLook.x;
 
     const float3 skyAmbient = HikariCloudSkyAmbient() * gCloudDensity.z;
     const float3 skyFacing = HikariCloudSkyAmbientFacing(direction) * gCloudDensity.z;
@@ -436,7 +436,8 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
             }
         }
         // 対流セルの外（天気図で雲が無い所）は粗い歩幅を 1.5 倍に伸ばす。セルは 400m 以上なので見落とさない。
-        t += stepLength * (!fine && fade <= 0.0f && column.cell <= 0.0f ? 1.5f : 1.0f);
+        // セルの中で雲に当たっていない所は半分に縮め、晴天の小さな雲（高さ数百 m）を粗い歩幅で跨がない。
+        t += stepLength * (!fine && fade <= 0.0f ? (column.cell <= 0.0f ? 1.5f : 0.5f) : 1.0f);
     }
     march.nearRadiance = radiance;
     march.nearTransmittance = 1.0f - nearOpacity;
@@ -486,66 +487,6 @@ int2 HikariCloudInterleaveOffset()
 {
     const uint phase = uint(gCloudTemporal.x) & 3u;
     return int2(((phase + 1u) >> 1u) & 1u, phase & 1u);
-}
-
-// 地平線より下の空の背景の地面（天空 LUT が HIKARI_ATMOSPHERE_BACKGROUND_HEIGHT 以上の高さから見下ろす遠い地表）に
-// 雲の影を落とした輝度 [nits]（a は背景を置き換える割合）。地面の点から主光源へ向かう光が雲の柱の下から 2・4.5・7 割の
-// 高さを通る所に雲（形状ノイズの塊。細部ノイズは見ない）があれば直射が遮られ、影は積雲の塊を地面へ写した輪郭になる
-// （一つの高さだけでは塊の断面しか写らず影が小さい）。薄い所は半影。天空 LUT の地面は平均の日照
-// （gCloudAirUnderClouds.w）で照らされているので、地面の照度のうち直射の分をその場の日照との比で増減する。手前の
-// 空気の散乱光は変わらないので、地面までの透過率を掛ける。遠くの影は斜めに潰れて地平線の下に細い線を作るので、霞に
-// 紛れる 4〜10km で消す。
-float4 HikariCloudBackgroundGround(float3 direction)
-{
-    const float sunHeight = gCloudLightDirection.y;
-    const float average = gCloudAirUnderClouds.w;
-    if (direction.y >= -1.0e-3f || sunHeight <= 0.02f || average <= 0.0f || gCloudWeather.x <= 0.0f)
-    {
-        return 0.0f.xxxx;
-    }
-    const float height = max(gCloudCamera.y, HIKARI_ATMOSPHERE_BACKGROUND_HEIGHT);
-    const float reach = height / -direction.y;
-    // 太陽が 2〜9 度より低いと影は数十 km に伸びて弱い直射の筋になり、雲の 3 高さの近似では塊にならない。
-    const float fade = (1.0f - smoothstep(4000.0f, 10000.0f, reach)) * smoothstep(0.03f, 0.15f, sunHeight);
-    if (fade <= 0.0f)
-    {
-        return 0.0f.xxxx;
-    }
-    const float3 ground = float3(gCloudCamera.x + direction.x * reach, 0.0f, gCloudCamera.z + direction.z * reach);
-    // 雲の殻の下端のすぐ上でその柱の雲頂の高さを求め、雲の下から 4 割の高さ（積雲の濃い所）で遮りを見る。殻の上端は
-    // 積乱雲の金床まで含むので、殻の中ほどでは普通の積雲の雲頂より高い。
-    const float lowest = gCloudShell.x + 300.0f;
-    const HikariCloudColumn probe = HikariCloudResolveColumn(ground + gCloudLightDirection.xyz * (lowest / sunHeight),
-        lowest);
-    const float base = lowest - probe.height * probe.top;
-    float cover = 0.0f;
-    float deck = 0.0f;
-    [unroll]
-    for (uint index = 0u; index < 3u; ++index)
-    {
-        const float elevation = base + (0.2f + 0.25f * float(index)) * probe.top;
-        const float3 crossing = ground + gCloudLightDirection.xyz * (elevation / sunHeight);
-        const float crossingAltitude = HikariCloudAltitude(crossing);
-        const HikariCloudColumn column = HikariCloudResolveColumn(crossing, crossingAltitude);
-        if (column.cell > 0.0f && column.profile > 0.0f)
-        {
-            cover = max(cover, HikariCloudDensity(column, crossing, crossingAltitude, 0.0f, 200.0f));
-            deck = max(deck, column.coverage * column.coverage * column.coverage * column.coverage);
-        }
-    }
-    // 雲の中の濃さは 0.3〜1 なので 2.5 倍で不透明にする。一面の雲（deck）は隙間が上下で重ならず、厚い柱を抜ける隙間は
-    // ほとんど無い（隙間を 1 + 4 deck 回重ねる）。
-    const float sunlit = pow(1.0f - saturate(2.5f * cover), 1.0f + 4.0f * deck);
-    // 地面の照度のうち直射の割合（平均の日照で）。空の光は雲の下の空と晴れた空を日照で混ぜる。晴天の空の光には
-    // 日の当たった雲の照り返しが入っていないので、直射の割合は 8 割まで（影の地面にも照度の 2 割ほどが残る）。
-    const float3 luminance = float3(0.2126f, 0.7152f, 0.0722f);
-    const float direct = dot(gCloudLightColor.rgb, luminance) * gCloudLightDirection.w * sunHeight * average;
-    const float sky = HIKARI_CLOUD_PI * dot(lerp(gCloudAirUnderClouds.rgb, HikariCloudSkyAmbient(), average), luminance);
-    const float share = min(direct / max(direct + sky, 1.0e-4f), 0.8f);
-    const float3 air = exp(-(gCloudAirRayleigh.rgb * HikariCloudAirColumn(height, 0.0f, reach, gCloudAirRayleigh.w) +
-        gCloudAirMie.x * HikariCloudAirColumn(height, 0.0f, reach, gCloudAirMie.y)));
-    const float factor = 1.0f + fade * dot(air, luminance) * share * (sunlit / average - 1.0f);
-    return float4(HikariCloudSkyRadiance(direction) * max(factor, 0.0f), 1.0f);
 }
 
 HikariCloudTarget TraceCloudPS(HikariCloudFullscreen input)
@@ -677,20 +618,21 @@ HikariCloudTarget ReprojectCloudPS(HikariCloudFullscreen input)
 
 float4 CompositeCloudPS(HikariCloudFullscreen input) : SV_Target
 {
-    const float4 cloud = HikariCloudSampleCatmullRom(gCloudCurrentColor, input.uv, gCloudHistorySize.xy);
-    const float depth = gCloudSceneDepth.Load(int3(input.position.xy, 0));
-    // 場面の物体が無い画素は、地平線より下の背景の地面を雲の影を落とした輝度で置き換え、雨はその手前に重ねる。
-    // 物体の縁に半分の解像度の雲の画素が掛からないよう、ここで画素ごとに求める。
-    if (depth >= 0.999999f)
+    float4 cloud = HikariCloudSampleCatmullRom(gCloudCurrentColor, input.uv, gCloudHistorySize.xy);
+    // 地平線のすぐ上の画素。半分の解像度の雲の画素を補間すると、地平線より下（雲が無く alpha 0）の画素が混ざって
+    // alpha が 1 を割り、天空 LUT の晴れた地平線の色が 1 画素の線になって透ける。地平線から数画素の帯では、1 行上
+    // （地平線より上）の画素をそのまま使う方が不透明ならそれを採る。
+    const float3 viewRay = HikariCloudViewRay(input.uv);
+    if (viewRay.y > 0.0f && viewRay.y < 4.0f * gCloudAerial.w)
     {
-        const float4 ground = HikariCloudBackgroundGround(HikariCloudViewRay(input.uv));
-        if (ground.a > 0.0f && all(isfinite(ground.rgb)))
+        const int2 texel = int2(input.uv * gCloudHistorySize.xy);
+        const float4 above = gCloudCurrentColor.Load(int3(texel.x, max(texel.y - 1, 0), 0));
+        if (above.a > cloud.a)
         {
-            const float opacity = saturate(cloud.a);
-            const float3 front = cloud.a > 0.0f ? cloud.rgb * (opacity / cloud.a) : 0.0f.xxx;
-            return float4(front + ground.rgb * gCloudTypeThickness.w * (1.0f - opacity), 1.0f);
+            cloud = above;
         }
     }
+    const float depth = gCloudSceneDepth.Load(int3(input.position.xy, 0));
     if (cloud.a <= 0.0f)
     {
         return 0.0f.xxxx;
@@ -735,26 +677,48 @@ void SunTransmittanceCS(uint3 threadId : SV_DispatchThreadID)
     const bool valid = outerHit && end > start;
     gCloudComputeTarget[HikariCloudSolarAtlasPixel(column, 0u, resolution)] =
         valid ? float4(start, end, 0.0f, 0.0f) : 0.0f.xxxx;
+    // 1 列を 2x2 の副列（±0.6 列）で平均し、列の境目の段差と光源方向の筋を無くす（影の縁が柔らかくなる。
+    // UE の雲の影の図を小さな核でぼかすのと同じ）。
+    const float cellSize = 2.0f * gCloudSolarField.rightExtent.w / float(resolution);
+    float3 origins[4];
+    [unroll]
+    for (uint sub = 0u; sub < 4u; ++sub)
+    {
+        const float2 offset = (float2(sub & 1u, sub >> 1u) - 0.5f) * 1.2f * cellSize;
+        origins[sub] = origin + gCloudSolarField.rightExtent.xyz * offset.x +
+            gCloudSolarField.upResolution.xyz * offset.y;
+    }
+    const float strength = gCloudLook.w;
     const float stepLength = valid ? (end - start) / float(steps) : 0.0f;
-    float opticalDepth = 0.0f;
+    float4 opticalDepth = 0.0f.xxxx;
     [loop]
     for (uint step = 1u; step <= steps; ++step)
     {
-        if (valid && opticalDepth < 12.0f)
+        if (valid)
         {
             [unroll]
-            for (uint sampleIndex = 0u; sampleIndex < 2u; ++sampleIndex)
+            for (uint sub = 0u; sub < 4u; ++sub)
             {
-                const float distance = end - (float(step - 1u) + (float(sampleIndex) + 0.5f) * 0.5f) * stepLength;
-                const float3 position = origin + direction * distance;
-                const float altitude = HikariCloudAltitude(position);
-                const float density = HikariCloudDensity(HikariCloudResolveColumn(position, altitude), position,
-                    altitude, 0.0f, stepLength);
-                opticalDepth += HikariCloudExtinction(density) * stepLength * 0.5f;
+                if (opticalDepth[sub] >= 12.0f)
+                {
+                    continue;
+                }
+                [unroll]
+                for (uint sampleIndex = 0u; sampleIndex < 2u; ++sampleIndex)
+                {
+                    const float distance = end - (float(step - 1u) + (float(sampleIndex) + 0.5f) * 0.5f) * stepLength;
+                    const float3 position = origins[sub] + direction * distance;
+                    const float altitude = HikariCloudAltitude(position);
+                    const float density = HikariCloudDensity(HikariCloudResolveColumn(position, altitude), position,
+                        altitude, 0.0f, stepLength);
+                    opticalDepth[sub] += HikariCloudExtinction(density) * stepLength * 0.5f;
+                }
             }
         }
+        // 影の濃さ（見た目の設定）: 1 で物理どおりの透過率、小さいほど影の中にも日照が残る。
+        const float visibility = 0.25f * dot(exp(-opticalDepth), 1.0f.xxxx);
         gCloudComputeTarget[HikariCloudSolarAtlasPixel(column, step, resolution)] =
-            float4(exp(-opticalDepth), 0.0f, 0.0f, 0.0f);
+            float4(lerp(1.0f, visibility, strength), 0.0f, 0.0f, 0.0f);
     }
 }
 

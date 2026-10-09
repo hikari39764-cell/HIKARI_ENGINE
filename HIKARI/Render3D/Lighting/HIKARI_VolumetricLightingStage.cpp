@@ -80,11 +80,10 @@ struct alignas(16) VolumetricConstants {
     float localLightNearDistance = 0.1f;
     float localLightFarDistance = 100.0f;
     LIGHTING::LocalShadowGpuData localShadow{};
-    LIGHTING::CloudSolarVisibilityGpuData cloudSolarVisibility{};
     LocalFogVolumeGpu localFogVolumes[kGameProjectLocalFogMaximumVolumes]{};
 };
 
-static_assert(sizeof(VolumetricConstants) == 5664u);
+static_assert(sizeof(VolumetricConstants) == 5600u);
 
 struct VolumeResource {
     ComPtr<ID3D12Resource> texture{};
@@ -104,7 +103,6 @@ enum InjectRoot : UINT {
     kInjectLightClusterHeaders,
     kInjectLightClusterIndices,
     kInjectLocalShadow,
-    kInjectCloudSolar,
     kInjectAmbient,
     kInjectInjected,
     kInjectTexturePool,
@@ -151,7 +149,6 @@ struct StageState {
     RenderResourceView sceneDepthSrv{};
     D3D12_GPU_DESCRIPTOR_HANDLE waterDepthSrv{};
     D3D12_GPU_DESCRIPTOR_HANDLE localShadowSrv{};
-    D3D12_GPU_DESCRIPTOR_HANDLE cloudSolarSrv{};
     WATER::WaterVisibleDepthView waterDepthView{};
     ID3D12Resource* sceneColorResource = nullptr;
     ID3D12Resource* sceneDepthResource = nullptr;
@@ -272,7 +269,6 @@ bool CreateRootSignature(ID3D12Device* device, bool injection, ID3D12RootSignatu
         params[kInjectLightClusterHeaders].InitAsShaderResourceView(1, 5);
         params[kInjectLightClusterIndices].InitAsShaderResourceView(2, 5);
         table(kInjectLocalShadow, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 7);
-        table(kInjectCloudSolar, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 8);
         table(kInjectAmbient, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3);
         table(kInjectInjected, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 10);
         table(kInjectTexturePool, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 20, GFX::DESCRIPTOR::kUserSrvCount);
@@ -441,7 +437,6 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
                                     const LIGHTING::LocalLightListGpuBindings& localLights,
                                     VolumetricLightingQuality quality, RenderDebugView debugView,
                                     const SHADOW::LocalLightShadowFrame* localShadows,
-                                    const CLOUDS::CloudSolarVisibilityFrame* clouds,
                                     std::span<const LocalFogVolumeGpu> localFogVolumes) {
     StageState& state = State();
     const bool globalFog = environment.fog.enabled && (environment.fog.volumetric || !localFogVolumes.empty()) &&
@@ -458,7 +453,6 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     state.stats.localShadowFaces = 0;
     state.prepared = false;
     state.localShadowSrv = {};
-    state.cloudSolarSrv = {};
     state.constantAddress = 0;
     state.waterDepthView = {};
     state.waterDepthSrv = {};
@@ -494,10 +488,6 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     }
 
     VolumetricConstants constants{};
-    if (clouds && *clouds && clouds->fenceValue == context.currentFrameRetireFenceValue) {
-        constants.cloudSolarVisibility = clouds->data;
-        state.cloudSolarSrv = clouds->srv;
-    }
     if (localShadows && localShadows->data.faceCount && IsTextureResourceValid(localShadows->atlas)) {
         state.localShadowSrv = GetTextureResourceSrvGpuHandle(localShadows->atlas);
         if (state.localShadowSrv.ptr)
@@ -551,13 +541,17 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
                               (std::max)(0.0f, environment.fog.heightFalloff),
                               std::clamp(environment.fog.anisotropy, -0.8f, 0.8f)};
     const auto solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
+    // 霧に雲の影の模様は付けない（雲の影は場面の面だけが受け、空の画素に影を出さない）。雲を抜ける主光源の割合は
+    // 空全体の平均を一様に掛ける。霧を照らす空の光は、雲があれば雲の下から見上げた空（雲を含む）。晴天の空のままだと
+    // 曇天や雨で霧が白く光る。
+    const bool clouded = CLOUDS::HasVisibleClouds(environment);
+    const CLOUDS::CloudShadingEstimate cloudShading =
+        clouded ? CLOUDS::EstimateCloudShading(environment) : CLOUDS::CloudShadingEstimate{};
     constants.directionalDirIntensity = {-solar.sunDirection.x, -solar.sunDirection.y, -solar.sunDirection.z,
-                                         solar.sunRadiance};
+                                         solar.sunRadiance * cloudShading.sunVisibility};
     constants.directionalColorShadow = {solar.sunColor.x, solar.sunColor.y, solar.sunColor.z, 0.0f};
-    // 霧を照らす空の光は、雲があれば雲の下から見上げた空（雲を含む）。晴天の空のままだと曇天や雨で霧が白く光る。
-    const MATH::Vec3 ambient = CLOUDS::HasVisibleClouds(environment)
-                                   ? CLOUDS::EstimateCloudShading(environment).ambientRadiance
-                                   : SKYRENDERER::EstimateSkyAmbientRadiance(environment);
+    const MATH::Vec3 ambient =
+        clouded ? cloudShading.ambientRadiance : SKYRENDERER::EstimateSkyAmbientRadiance(environment);
     constants.ambientColorIntensity = {ambient.x, ambient.y, ambient.z, 1.0f};
     constants.volumetricOptics = {
         std::isfinite(environment.fog.baseHeight) ? environment.fog.baseHeight : 0.0f,
@@ -566,9 +560,7 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
         std::clamp(environment.fog.sunShaftStrength, 0.0f, 8.0f),
     };
 
-    uint64_t settingsSignature =
-        HASH::Fnv1aBytes(HashVolumetricSettings(environment, quality, localLights.view.lightingContentHash),
-                         &constants.cloudSolarVisibility.originDescriptor.w, sizeof(float));
+    uint64_t settingsSignature = HashVolumetricSettings(environment, quality, localLights.view.lightingContentHash);
     // 内容が変わったフレームは以前の媒体を混ぜない。静的編集では履歴を保持する。
     settingsSignature = HASH::Fnv1aBytes(settingsSignature, localFogVolumes.data(), localFogVolumes.size_bytes());
     if (state.lastSettingsSignature != 0u && state.lastSettingsSignature != settingsSignature &&
@@ -730,8 +722,6 @@ RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
         cmd->SetComputeRootDescriptorTable(kInjectOutput, output.uav.gpu);
         cmd->SetComputeRootDescriptorTable(kInjectLocalShadow,
                                            state.localShadowSrv.ptr ? state.localShadowSrv : state.sceneDepthSrv.gpu);
-        cmd->SetComputeRootDescriptorTable(kInjectCloudSolar,
-                                           state.cloudSolarSrv.ptr ? state.cloudSolarSrv : state.sceneDepthSrv.gpu);
         if (state.localLights.IsValid()) {
             cmd->SetComputeRootShaderResourceView(kInjectLights, state.localLights.lights);
             cmd->SetComputeRootShaderResourceView(kInjectLightClusterHeaders, state.localLights.clusterHeaders);

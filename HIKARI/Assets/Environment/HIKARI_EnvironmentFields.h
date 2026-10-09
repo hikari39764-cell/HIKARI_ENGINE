@@ -36,6 +36,7 @@ constexpr auto kAtmosphereFields = [](auto&& field) {
     field("ozoneWidth", &S::ozoneWidth, Range{1.0, 1000000.0});
     field("mieAnisotropy", &S::mieAnisotropy, Range{-0.95, 0.95});
     field("groundAlbedo", &S::groundAlbedo, Range{0.0, 1.0});
+    field("belowHorizon", &S::belowHorizon, kBelowHorizonModeNames);
     field("aerialPerspectiveStrength", &S::aerialPerspectiveStrength, Range{0.0, 8.0});
     field("transmittanceLutWidth", &S::transmittanceLutWidth, Range{32.0, 1024.0});
     field("transmittanceLutHeight", &S::transmittanceLutHeight, Range{16.0, 256.0});
@@ -80,6 +81,11 @@ constexpr auto kCloudFields = [](auto&& field) {
     field("shapeScale", &S::shapeScale, Range{0.25, 4.0});
     field("detailErosion", &S::detailErosion, Range{0.0, 1.0});
     field("ambientScale", &S::ambientScale, Range{0.0, 4.0});
+    field("coverageBias", &S::coverageBias, Range{-0.5, 0.5});
+    field("clusterStrength", &S::clusterStrength, Range{0.0, 1.0});
+    field("shadowStrength", &S::shadowStrength, Range{0.0, 1.0});
+    field("sunlightScale", &S::sunlightScale, Range{0.0, 4.0});
+    field("silverLining", &S::silverLining, Range{0.0, 2.0});
 };
 
 constexpr auto kFogFields = [](auto&& field) {

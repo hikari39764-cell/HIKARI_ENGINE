@@ -1,7 +1,7 @@
 cbuffer SkyCB : register(b0)
 {
     float4x4 gSkyInverseViewProj;
-    float4 gSkyScaleYaw;            // x radiance scale, y yaw, z pre-exposure
+    float4 gSkyScaleYaw;            // x radiance scale, y yaw, z pre-exposure, w below horizon (0 haze, 1 ground)
     float4 gSkyTintMode;            // rgb tint, a SkyMode
     float4 gSkyDisk;                // xyz toward the primary light, w angular radius [rad]
     float4 gSkyDiskLuminance;       // rgb average disk luminance incl. transmittance [nits]
@@ -326,6 +326,70 @@ float3 SampleAtmosphereSkyView(float3 dir)
     return gAtmosphereSkyView.SampleLevel(gLinearClamp, HikariAtmosphereSkyViewUv(dir), 0.0f).rgb;
 }
 
+// 天空 LUT の一行を方位について 3 次 B スプラインで読む（線形補間 2 回、GPU Gems 2 の 20 章）。一行の色を下へ
+// 延ばすと、線形補間の折れ目が縦の筋に見えるため。
+float3 SampleSkyViewRowSmooth(float u, float v, float width)
+{
+    const float x = u * width - 0.5f;
+    const float index = floor(x);
+    const float f = x - index;
+    const float w0 = (1.0f - f) * (1.0f - f) * (1.0f - f) / 6.0f;
+    const float w1 = (4.0f - 6.0f * f * f + 3.0f * f * f * f) / 6.0f;
+    const float w3 = f * f * f / 6.0f;
+    const float g0 = w0 + w1;
+    const float u0 = frac((index - 0.5f + w1 / g0) / width);
+    const float u1 = frac((index + 1.5f + w3 / (1.0f - g0)) / width);
+    return g0 * gAtmosphereSkyView.SampleLevel(gLinearClamp, float2(u0, v), 0.0f).rgb +
+        (1.0f - g0) * gAtmosphereSkyView.SampleLevel(gLinearClamp, float2(u1, v), 0.0f).rgb;
+}
+
+// 地平線より下の背景（既定）。地面を描かず、地平線の霞を下へ延ばして真下へ向けて少し暗くする。場面の地面は物体が
+// 受け持ち、物体の無い所に遠い地面や雲の影を出さない。地平線の色は天空 LUT の地平線のすぐ下の行（背景の観測者から
+// まだ地面に当たらない空気で、雲の下の空気の色も含む）。方位ごとの色は 30 度ほど下までに最も暗い方位の地平線の色へ
+// 寄せる。夕日の側の明るい霞が下まで柱のように伸びず、暗い側が下ほど明るくならず、真下で色が一点へ集まる継ぎ目も
+// 作らない。寄せ方は対数で補間し（明るさの比を一様に縮める）、明るい側が最後に急に暗くなって影の縁に見えないように
+// する。
+float3 EvaluateBelowHorizonHaze(float3 dir)
+{
+    static const float kNadirBrightness = 0.6f;
+    const float depression = saturate(-dir.y);
+    float3 horizon;
+    float3 darkest;
+    if (gAtmosphereSunDirection.w > 1.5f)
+    {
+        uint width = 0u;
+        uint height = 0u;
+        gAtmosphereSkyView.GetDimensions(width, height);
+        const float v = 0.5f - 0.5f / float(max(height, 1u));
+        horizon = SampleSkyViewRowSmooth(HikariAtmosphereSkyViewUv(dir).x, v, float(max(width, 1u)));
+        darkest = horizon;
+        float darkestLuminance = 3.4e38f;
+        [unroll] for (uint index = 0u; index < 8u; ++index)
+        {
+            const float3 color =
+                gAtmosphereSkyView.SampleLevel(gLinearClamp, float2((float(index) + 0.5f) / 8.0f, v), 0.0f).rgb;
+            const float luminance = dot(color, float3(0.2126f, 0.7152f, 0.0722f));
+            if (luminance < darkestLuminance)
+            {
+                darkest = color;
+                darkestLuminance = luminance;
+            }
+        }
+    }
+    else
+    {
+        // LUT の無い間の代替は方位ごとの色だけを使う。
+        const float horizontalSquared = dot(dir.xz, dir.xz);
+        horizon = EvaluateAtmosphereSky(horizontalSquared > 1.0e-8f
+            ? float3(dir.x, 0.0f, dir.z) * rsqrt(horizontalSquared)
+            : float3(1.0f, 0.0f, 0.0f));
+        darkest = horizon;
+    }
+    const float toward = smoothstep(0.0f, 0.5f, depression);
+    const float3 haze = exp(lerp(log(max(horizon, 1.0e-6f.xxx)), log(max(darkest, 1.0e-6f.xxx)), toward));
+    return haze * lerp(1.0f, kNadirBrightness, smoothstep(0.0f, 1.0f, depression));
+}
+
 float4 main(PSInput input) : SV_TARGET
 {
     float3 worldRayDir = ReconstructWorldRay(input.ndc);
@@ -335,9 +399,17 @@ float4 main(PSInput input) : SV_TARGET
     float3 sky = 0.0f.xxx;
     if (mode == 4u && gAtmosphereSunDirection.w > 0.5f)
     {
-        sky = gAtmosphereSunDirection.w > 1.5f
-            ? SampleAtmosphereSkyView(worldRayDir)
-            : EvaluateAtmosphereSky(worldRayDir);
+        if (worldRayDir.y < 0.0f && gSkyScaleYaw.w < 0.5f)
+        {
+            sky = EvaluateBelowHorizonHaze(worldRayDir);
+        }
+        else
+        {
+            sky = gAtmosphereSunDirection.w > 1.5f
+                ? SampleAtmosphereSkyView(worldRayDir)
+                : EvaluateAtmosphereSky(worldRayDir);
+        }
+        // 星と夜空の背景は地平線より下で 0。
         sky += EvaluateStars(worldRayDir) + HikariNightSkyBackground(worldRayDir, gSkyStars.z);
     }
     else if (mode == 2u)

@@ -37,7 +37,8 @@ constexpr uint64_t kInvalidSkyConstantFrameSerial = (std::numeric_limits<uint64_
 
 struct SkyCB {
     MATH::Mat4 inverseViewProj{};
-    // x 空の画素値を輝度へ写す倍率、y 空の回転、z このビューの Pre-Exposure。
+    // x 空の画素値を輝度へ写す倍率、y 空の回転、z このビューの Pre-Exposure、w 物理大気の地平線より下の背景
+    // （0 地平線の霞、1 惑星の地表）。
     MATH::Vec4 scaleYaw{};
     MATH::Vec4 tintMode{};
     // 主光源の円盤。xyz 光源へ向かう方向、w 視半径 [rad]。
@@ -590,7 +591,8 @@ void Render(const GFX::Context& graphics, const Camera3D& camera, const SceneEnv
     constants.cpu->inverseViewProj = inverseViewProj;
     // 空の描画だけがこのビューの HDR 空間で書く。前向きの空/IBL 参照は絶対量のまま。
     constants.cpu->scaleYaw = {ResolveSkyTextureRadianceScale(settings), settings.yaw,
-                               RENDER3D::COLOR::GetActiveViewExposure().x, 0.0f};
+                               RENDER3D::COLOR::GetActiveViewExposure().x,
+                               environment.atmosphere.belowHorizon == BelowHorizonMode::Ground ? 1.0f : 0.0f};
     constants.cpu->tintMode = {settings.tint.x, settings.tint.y, settings.tint.z, static_cast<float>(renderMode)};
     // 円盤の平均輝度 = 大気外の法線照度 / 立体角 × 色ごとの大気の透過率（落日が赤いのはこの透過率）。
     const float diskSolidAngle = (std::max)(2.0f * 3.14159265f * (1.0f - std::cos(solar.sunAngularRadius)), 1.0e-9f);
