@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "name": "Cloudy",
   "weather": {
-    "cloudCoverage": 0.6,
+    "cloudCoverage": 0.7,
     "cloudType": 0.5,
     "cloudDensity": 1.0,
     "haze": 0.05,

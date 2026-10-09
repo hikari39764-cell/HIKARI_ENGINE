@@ -170,8 +170,8 @@ float HikariCloudClusterField(float2 worldXZ)
 // 遠く（28km 以遠）を 0.35 倍に減らす。地平線近くでは数十 km 分の雲の列が透視で重なるので、一様な雲場だと遠くに
 // 雲が積み上がって見える。曇天・雲海（雲量 0.85 以上）はそのまま（地平線まで一面の雲）。
 static const float HIKARI_CLOUD_NEAR_GAIN = 1.15f;
-static const float HIKARI_CLOUD_FAR_GAIN = 0.35f;
-static const float HIKARI_CLOUD_NEAR_DISTANCE = 6000.0f;
+static const float HIKARI_CLOUD_FAR_GAIN = 0.5f;
+static const float HIKARI_CLOUD_NEAR_DISTANCE = 9000.0f;
 static const float HIKARI_CLOUD_FAR_DISTANCE = 28000.0f;
 
 float HikariCloudDistanceGain(float2 worldXZ, float coverage)
@@ -289,9 +289,9 @@ HikariCloudColumn HikariCloudResolveColumn(float3 position, float altitude)
         return column;
     }
     column.type = HikariCloudType(weather);
-    // 曇天でない所では弱いセル（頂点が 0.25 に届かないもの）を落とし、大きな雲のまわりに紙吹雪や綿の玉のような小片を
-    // 散らさない（雲の間は成片の青空にする）。
-    const float cut = 0.25f * (1.0f - smoothstep(0.6f, 0.85f, column.coverage));
+    // 曇天でない所では弱いセル（頂点が 0.15 に届かないもの）を落とし、大きな雲のまわりに紙吹雪や綿の玉のような小片を
+    // 散らさない（雲の間は成片の青空にする。0.25 では大きな雲と青空だけになり、中くらいの雲が無くて空が空きすぎる）。
+    const float cut = 0.15f * (1.0f - smoothstep(0.6f, 0.85f, column.coverage));
     const float cell = saturate((weather.z - (1.0f - column.coverage)) / max(column.coverage, 0.02f));
     column.cell = HikariCloudMergeCell(saturate((cell - cut) / (1.0f - cut)), column.coverage);
     if (column.cell <= 0.0f)
@@ -391,9 +391,10 @@ float HikariCloudExtinction(float density)
     return density * gCloudDensity.x * (1.0f + 0.6f * gCloudWeather.z);
 }
 
-// 平均の層で、視線が 1 つの対流セルを抜ける長さ [m]（セルの中の大きさ 2.5km 級）。この長さごとにセルに当たるか
-// 外れるかが独立に決まるとみなす。
-static const float HIKARI_CLOUD_STATISTICAL_CELL = 2500.0f;
+// 平均の層で、視線が 1 つの対流セルを抜ける長さ [m]。この長さごとにセルに当たるか外れるかが独立に決まるとみなす。
+// セルは 1〜6.7km だが、2.5km では 4km 上空から見た 30km 先の雲の海が透けて空と同じ明るさの霞になった（1.5km で
+// 透過率 (1 - c)^(距離 / 1.5km)）。
+static const float HIKARI_CLOUD_STATISTICAL_CELL = 1500.0f;
 
 // その場の雲域の被覆率と雲型（天気図の大きな揺らぎ）だけで決まる、高さ altitude の雲の実効の濃さ。対流セル（1km 程度）
 // も 3D ノイズも見ないので、遠方（数十 km 先）や環境光用の雲の空でセルを拾って走査ノイズにならず、雲域の濃淡で
@@ -423,9 +424,6 @@ float HikariCloudStatisticalDensity(float3 position, float altitude, out HikariC
         lerp(HikariCloudTurret(weather, type), lerp(0.85f, 1.15f, weather.w), flatten) *
         lerp(1.0f, 0.8f, flatten);
     const float elevation = altitude - layer.base;
-    // 遠く（15→35km）では上端の落ちを上半分いっぱいに広げる。上端の落ちが狭いと、地平線近くの平均の層の上縁が
-    // 一本の線になる。
-    const float falloffStart = layer.falloff.x * lerp(1.0f, 0.5f, flatten);
     float blocked = 0.0f;
     float meanTop = 0.0f;
     [unroll]
@@ -435,7 +433,7 @@ float HikariCloudStatisticalDensity(float3 position, float altitude, out HikariC
         const float cell = HikariCloudMergeCell(index < 4u ? (float(index) + 0.5f) * 0.25f : 0.0f, coverage);
         const float top = max(scale * cell * (2.0f - cell), 1.0f);
         const float height = elevation / top;
-        const float profile = height > 0.0f && height < 1.0f ? 1.0f - smoothstep(falloffStart, layer.falloff.y,
+        const float profile = height > 0.0f && height < 1.0f ? 1.0f - smoothstep(layer.falloff.x, layer.falloff.y,
             height) : 0.0f;
         const float density = HikariCloudMeanDensity(min(cell, HikariCloudCoverageCap()), profile, shaping);
         blocked += weight * (1.0f - exp(-HikariCloudExtinction(density) * HIKARI_CLOUD_STATISTICAL_CELL));
