@@ -140,7 +140,7 @@ struct CloudLayerSettings {
     float baseAltitude = 1500.0f;
     // 雲の消散係数の倍率（基準 0.1 /m、実際の積雲の芯と同じ）。
     float densityScale = 1.0f;
-    // 雲の塊の大きさの倍率（基準 2.4 km 周期）。
+    // 雲の塊の大きさの倍率（基準は水平 9.6 km・鉛直 4.8 km の周期）。
     float shapeScale = 1.0f;
     // 細部ノイズで縁を削る強さ。
     float detailErosion = 0.12f;

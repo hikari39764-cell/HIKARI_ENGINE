@@ -73,28 +73,31 @@ Vec3 DecodeOctahedralDirection(const Vec2& uv) {
     return Normalize(direction);
 }
 
+// 倍精度で消去する。ビュー射影のように大きな平行移動と深度の縮尺を含む行列を単精度で逆にすると相対誤差が 1e-3 に
+// 達し、逆行列で作った視線を元の行列で投影し直すと画面の端で半画素以上ずれる（雲の履歴の再投影が毎フレーム
+// ずれて筋になった）。
 Mat4 Inverse(const Mat4& value) {
-    float a[4][8]{};
+    double a[4][8]{};
     for (int row = 0; row < 4; ++row) {
         for (int col = 0; col < 4; ++col) {
-            a[row][col] = value.m[col][row];
+            a[row][col] = static_cast<double>(value.m[col][row]);
         }
-        a[row][row + 4] = 1.0f;
+        a[row][row + 4] = 1.0;
     }
 
     // Gauss-Jordan elimination with partial pivoting.
     for (int col = 0; col < 4; ++col) {
         int pivot = col;
-        float pivotAbs = std::abs(a[col][col]);
+        double pivotAbs = std::abs(a[col][col]);
         for (int row = col + 1; row < 4; ++row) {
-            const float candidate = std::abs(a[row][col]);
+            const double candidate = std::abs(a[row][col]);
             if (candidate > pivotAbs) {
                 pivot = row;
                 pivotAbs = candidate;
             }
         }
 
-        if (pivotAbs <= 1e-8f) {
+        if (pivotAbs <= 1e-8) {
             return Mat4::Identity();
         }
 
@@ -104,7 +107,7 @@ Mat4 Inverse(const Mat4& value) {
             }
         }
 
-        const float invPivot = 1.0f / a[col][col];
+        const double invPivot = 1.0 / a[col][col];
         for (int i = 0; i < 8; ++i) {
             a[col][i] *= invPivot;
         }
@@ -113,7 +116,7 @@ Mat4 Inverse(const Mat4& value) {
             if (row == col) {
                 continue;
             }
-            const float factor = a[row][col];
+            const double factor = a[row][col];
             for (int i = 0; i < 8; ++i) {
                 a[row][i] -= factor * a[col][i];
             }
@@ -123,7 +126,7 @@ Mat4 Inverse(const Mat4& value) {
     Mat4 out{};
     for (int row = 0; row < 4; ++row) {
         for (int col = 0; col < 4; ++col) {
-            out.m[col][row] = a[row][col + 4];
+            out.m[col][row] = static_cast<float>(a[row][col + 4]);
         }
     }
     return out;

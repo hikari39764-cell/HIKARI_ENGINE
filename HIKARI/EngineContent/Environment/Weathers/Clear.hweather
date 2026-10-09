@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "name": "Clear",
   "weather": {
-    "cloudCoverage": 0.3,
+    "cloudCoverage": 0.45,
     "cloudType": 0.5,
     "cloudDensity": 1.0,
     "haze": 0.0,

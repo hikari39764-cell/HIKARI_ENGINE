@@ -21,6 +21,7 @@ constexpr BuiltinEnvironmentContent kBuiltinWeathers[]{
     {"engine.weather.clear", "Clear", "Clear"},
     {"engine.weather.cloudy", "Cloudy", "Cloudy"},
     {"engine.weather.overcast", "Overcast", "Overcast"},
+    {"engine.weather.cloudsea", "Cloud Sea", "CloudSea"},
     {"engine.weather.rain", "Rain", "Rain"},
     {"engine.weather.storm", "Storm", "Storm"},
     {"engine.weather.snow", "Snow", "Snow"},

@@ -52,13 +52,17 @@ float HikariCloudValueFbm2D(float2 uv, int2 frequency, uint salt, int octaves = 
 }
 
 // 雲の塊。Perlin の連続した広がりを Worley の膨らみで持ち上げ、低い周波数の Worley で縁を膨らませる。
+// 膨らみは 4・8・16 セル（水平 2.4km・1.2km・600m）を 1 オクターブずつ。32・64 セル（300m・150m）の泡まで入れると、
+// 数 km の雲の面が同じ大きさの小さな泡で一面に覆われ、斜めの光で水玉模様になる（細かな凹凸は細部ノイズの縁の
+// 侵食だけに任せる）。
 float HikariCloudShapeField(float3 uv)
 {
     const float perlin = HikariCloudPerlinFbm3D(uv, 4, 0x31a7c9edu);
     const float worley = HikariCloudWorleyFbm3D(uv, 4, 0x9e3779b9u);
     const float perlinWorley = saturate(worley + perlin * (1.0f - worley));
-    const float lowFrequency = worley * 0.625f + HikariCloudWorleyFbm3D(uv, 8, 0x243f6a88u) * 0.25f +
-        HikariCloudWorleyFbm3D(uv, 16, 0x6d2b79f5u) * 0.125f;
+    const float lowFrequency = HikariNoisePeriodicCellular3D(uv * 4.0f, int3(4, 4, 4), 0x243f6a88u) * 0.625f +
+        HikariNoisePeriodicCellular3D(uv * 8.0f, int3(8, 8, 8), 0x6d2b79f5u) * 0.25f +
+        HikariNoisePeriodicCellular3D(uv * 16.0f, int3(16, 16, 16), 0x3c6ef372u) * 0.125f;
     return saturate((perlinWorley - lowFrequency + 1.0f) / (2.0f - lowFrequency));
 }
 
@@ -95,19 +99,20 @@ float HikariCloudBlobs2D(float2 position, int period, uint salt)
     return total;
 }
 
-// 積雲の対流セル。周期あたり 11・30・90 個のセル（周期 40km でおよそ 3.6km・1.3km・0.45km）を値ノイズでゆがめて
-// 混ぜる。値が高いほどセルの中心。山の和の分布は格子の細かさによらない。大きなセルが主で、幅広く平たい雲
-// （晴天の積雲は高さより幅がずっと大きい）ができ、セルごとの半径と強さの乱数で大小の雲が混ざる。小さなセルは
-// 大きな雲の凹凸と群れの縁の小さな雲にとどめる（多いと同じ大きさの小さな塊が空一面に散らばる）。
+// 積雲の対流セル。周期あたり 6・16・40 個のセル（周期 40km でおよそ 6.7km・2.5km・1km）を値ノイズでゆがめて
+// 混ぜる。値が高いほどセルの中心。山の和の分布は格子の細かさによらない。数 km の大きなセルが主で、幅広く平たい雲
+// （積雲は高さより幅がずっと大きい）ができ、セルごとの半径と強さの乱数で大小の雲が混ざる。中くらいのセル
+// （0.35）が大きなセルの中に複数の塊と切れ目を作り、1 つのセルが 1 つの風船に見えない。小さなセルは大きな雲の
+// 凹凸にとどめる（多いと同じ大きさの小さな塊が空一面に散らばり、雲の間の青空が小さな穴に刻まれる）。
 float HikariCloudCellField(float2 uv)
 {
     const float2 warp = float2(HikariCloudValueFbm2D(uv, int2(8, 8), 0x2545f491u),
         HikariCloudValueFbm2D(uv, int2(8, 8), 0x9e3779b1u)) - 0.5f;
     const float2 warped = uv + warp * 0.017f;
     // 山の和は 0〜2 程度。一様化の前に 0..1 へ収める。
-    return saturate((HikariCloudBlobs2D(warped * 11.0f, 11, 0x1b56c4e9u) * 0.65f +
-        HikariCloudBlobs2D(warped * 30.0f, 30, 0x5e2d58d9u) * 0.27f +
-        HikariCloudBlobs2D(warped * 90.0f, 90, 0x7a5d3c21u) * 0.08f) * 0.5f);
+    return saturate((HikariCloudBlobs2D(warped * 6.0f, 6, 0x1b56c4e9u) * 0.55f +
+        HikariCloudBlobs2D(warped * 16.0f, 16, 0x5e2d58d9u) * 0.35f +
+        HikariCloudBlobs2D(warped * 40.0f, 40, 0x7a5d3c21u) * 0.1f) * 0.5f);
 }
 
 // 天気図。x 雲域の揺らぎ（大きな雲域と雲の群れ）、y 雲型の揺らぎ、z 対流セル、w 雲頂の塔（周期 40km で 830m から

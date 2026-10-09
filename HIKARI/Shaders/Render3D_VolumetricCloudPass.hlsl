@@ -20,8 +20,9 @@ SamplerState gCloudPointClamp : register(s2);
 static const float HIKARI_CLOUD_NO_HIT = 1.0e7f;
 // 雲の外を探す粗い歩幅の最小 [m]。
 static const float HIKARI_CLOUD_COARSE_STEP_MIN = 100.0f;
-// 遠方（gCloudShell.w から先）の雲を薄くする割合。地平線近くで数十 km 分の雲の列が透視で壁のように積み上がらない
-// （Horizon Zero Dawn も遠方の雲を淡く消す）。環境光用の雲の空（statistical）には掛けない。
+// 遠方（最大距離の 1/4 から先）の雲を薄くする割合。地平線近くで数十 km 分の雲の列が透視で壁のように積み上がらない
+// （Horizon Zero Dawn も遠方の雲を淡く消す）。環境光用の雲の空（statistical）と、地平線まで一面の雲である曇天・雲海
+// （雲量 0.85 以上）には掛けない。
 static const float HIKARI_CLOUD_FAR_THINNING = 0.5f;
 
 struct HikariCloudFullscreen
@@ -44,6 +45,7 @@ HikariCloudFullscreen FullscreenVS(uint vertexId : SV_VertexID)
     return output;
 }
 
+// 画素 uv・深度 depth の点（カメラ相対のワールド座標。カメラが原点）。
 float3 HikariCloudWorldPoint(float2 uv, float depth)
 {
     const float4 clip = float4(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f, depth, 1.0f);
@@ -65,7 +67,7 @@ float HikariCloudSceneDistance(float2 uv)
     {
         return HIKARI_CLOUD_NO_HIT;
     }
-    return length(HikariCloudWorldPoint(uv, depth) - gCloudCamera.xyz);
+    return length(HikariCloudWorldPoint(uv, depth));
 }
 
 // 空からの環境光（天頂と仰角 55 度の 4 方位の平均。余弦の重みに近く、地平線際の夕焼けの光環を拾いすぎない）。
@@ -210,7 +212,7 @@ struct HikariCloudMarch
 };
 
 // 視線に沿って雲を追跡する。最大距離（gCloudShell.z）までは個々の雲を、その先（地平線近くでは数百 km）は
-// 天気の平均の濃さ（HikariCloudStatisticalDensity）の雲として粗く足す。最大距離の最後の 3 割（gCloudShell.w から）で
+// 天気の平均の濃さ（HikariCloudStatisticalDensity）の雲として粗く足す。最大距離の最後の 4 割（gCloudShell.w から）で
 // 個々の雲を平均へ移し、境目を見せない。statistical なら最初から平均の濃さだけで追跡する（環境光用の雲の空）。
 // 雲の外は粗い歩幅で探し、雲に当たったら一歩戻って画素の幅の細い歩幅で進む（雲の縁が数十 m で立ち上がるので、
 // 粗いままだと縁が層状に切れる）。
@@ -300,6 +302,8 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
         return march;
     }
     const float nearEnd = min(end, start + gCloudShell.z);
+    const float farThinning =
+        statistical ? 0.0f : HIKARI_CLOUD_FAR_THINNING * (1.0f - smoothstep(0.6f, 0.85f, gCloudWeather.x));
     const uint maxSteps = (uint)quality.x;
     const uint lightSamples = (uint)quality.y;
     // 歩幅。雲の外は距離に比例した粗い歩幅（quality.w × 2.5 × 距離、最小 HIKARI_CLOUD_COARSE_STEP_MIN、最大 800m）で探し、
@@ -334,7 +338,13 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
         fine = fine && fade < 0.75f;
         const float coarseStep = clamp(quality.w * 2.5f * t, HIKARI_CLOUD_COARSE_STEP_MIN, 800.0f);
         const float fineStep = clamp(t * gCloudAerial.w, quality.z, 200.0f);
-        const float stepLength = fine ? fineStep * clamp(0.35f / max(lastDensity, 0.12f), 1.0f, 3.0f) : coarseStep;
+        // 薄い標本の後は歩幅を伸ばし、1 歩の光学的厚さをそろえる（濃さ 0.35 で 1 倍、最大 8 倍）。雲頂の半透明の
+        // 範囲（雲型の上端の落ち、数百 m）を上から掠めて通る視線は、最小歩幅のままだと百数十歩かかって歩数の上限
+        // （maxSteps × 3）を使い切り、残りが 8 区間の平均の濃さへ落ちて画素の列ごとに明るさが変わる（縦の筋）。
+        // 空の標本の後は伸ばさない（二分探索で絞った雲の表面を伸ばした歩幅で跨ぐと、雲の最初の標本の深さが画素ごとに
+        // ずれる）。
+        const float stepLength =
+            fine ? fineStep * (lastDensity > 0.0f ? clamp(0.35f / lastDensity, 1.0f, 8.0f) : 1.0f) : coarseStep;
         const float3 position = origin + direction * t;
         const float altitude = HikariCloudAltitude(position);
         // 細部ノイズは detailDistance の手前 4 割で平均へ移し、切り替わりの境目を見せない。
@@ -348,8 +358,7 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
                 (1.0f - fade);
         }
         // 遠くの雲は最大距離の 1/4 から薄くしていく（平均の濃さへの移行とは別の距離で）。
-        density *= statistical ? 1.0f
-                               : 1.0f - HIKARI_CLOUD_FAR_THINNING * smoothstep(0.25f * gCloudShell.z, gCloudShell.z, t);
+        density *= 1.0f - farThinning * smoothstep(0.25f * gCloudShell.z, gCloudShell.z, t);
         if (density > 0.0f && !fine && fade <= 0.0f)
         {
             // 雲の表面は (t - coarseStep, t] にある。二分探索 2 回で 1/4 の幅に絞ってから細い歩幅で進む（粗い歩幅ぶん
@@ -359,7 +368,6 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
             emptySamples = 0u;
             float low = max(t - coarseStep, start);
             float high = t;
-            lastDensity = density;
             [unroll]
             for (uint split = 0u; split < 2u; ++split)
             {
@@ -371,7 +379,6 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
                 if (probeDensity > 0.0f)
                 {
                     high = middle;
-                    lastDensity = probeDensity;
                 }
                 else
                 {
@@ -452,8 +459,8 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
             const float distance = t + (float(farIndex) + 0.5f) * segment;
             const float altitude = HikariCloudAltitude(origin + direction * distance);
             HikariCloudColumn column = (HikariCloudColumn)0;
-            const float density = HikariCloudStatisticalDensity(origin + direction * distance, altitude, column) *
-                (statistical ? 1.0f : 1.0f - HIKARI_CLOUD_FAR_THINNING);
+            const float density =
+                HikariCloudStatisticalDensity(origin + direction * distance, altitude, column) * (1.0f - farThinning);
             if (density <= 0.0f)
             {
                 continue;
@@ -496,7 +503,8 @@ HikariCloudTarget TraceCloudPS(HikariCloudFullscreen input)
     output.depth = HIKARI_CLOUD_NO_HIT.xx;
     const int2 historyPixel = int2(input.position.xy) * 2 + HikariCloudInterleaveOffset();
     const float2 uv = (float2(historyPixel) + 0.5f) * gCloudHistorySize.zw;
-    const float3 direction = HikariCloudViewRay(uv);
+    // 標本の位置はこのフレームの TAA のずらしぶん動かす（幾何と同じ位置を見る。履歴はずらし無しの格子に溜まる）。
+    const float3 direction = HikariCloudViewRay(uv - gCloudWind.zw);
     const float sceneDistance = HikariCloudSceneDistance(uv);
     const HikariCloudMarch march = HikariCloudMarchRay(gCloudCamera.xyz, direction, sceneDistance,
         HikariCloudInterleavedGradientNoise(input.position.xy), gCloudQuality, gCloudDetailPhase.w, false);
@@ -579,10 +587,10 @@ HikariCloudTarget ReprojectCloudPS(HikariCloudFullscreen input)
     {
         return output;
     }
-    // 雲の平均距離の点を風で戻してから、前フレームの画面へ投影する。雲が無い画素は遠方として扱う。
+    // 雲の平均距離の点（カメラ相対）を風で戻してから、前フレームの画面へ投影する。雲が無い画素は遠方として扱う。
     const float distance = currentDepth.y < HIKARI_CLOUD_NO_HIT ? currentDepth.y : gCloudShell.z;
-    const float3 world = gCloudCamera.xyz + HikariCloudViewRay(input.uv) * distance -
-        float3(gCloudWindDelta.x, 0.0f, gCloudWindDelta.y);
+    const float3 world =
+        HikariCloudViewRay(input.uv) * distance - float3(gCloudWindDelta.x, 0.0f, gCloudWindDelta.y);
     const float4 previousClip = mul(gCloudPreviousViewProj, float4(world, 1.0f));
     if (previousClip.w <= 0.0f)
     {
@@ -618,13 +626,16 @@ HikariCloudTarget ReprojectCloudPS(HikariCloudFullscreen input)
 
 float4 CompositeCloudPS(HikariCloudFullscreen input) : SV_Target
 {
-    float4 cloud = HikariCloudSampleCatmullRom(gCloudCurrentColor, input.uv, gCloudHistorySize.xy);
+    // 履歴（ずらし無しの格子）をこのフレームのずらしの位置で読み、幾何と同じくずらした雲を画面の TAA へ渡す。
+    float4 cloud = HikariCloudSampleCatmullRom(gCloudCurrentColor, input.uv - gCloudWind.zw, gCloudHistorySize.xy);
     // 地平線のすぐ上の画素。半分の解像度の雲の画素を補間すると、地平線より下（雲が無く alpha 0）の画素が混ざって
     // alpha が 1 を割り、天空 LUT の晴れた地平線の色が 1 画素の線になって透ける。地平線から数画素の帯では、1 行上
     // （地平線より上）の画素をそのまま使う方が不透明ならそれを採る。
     const float3 viewRay = HikariCloudViewRay(input.uv);
     const float depth = gCloudSceneDepth.Load(int3(input.position.xy, 0));
-    if (viewRay.y > 0.0f && viewRay.y < 4.0f * gCloudAerial.w)
+    // どちらも視点が雲底より下にある時だけ。雲の上では地平線のすぐ上に雲の海の縁や切れ目が来るので、1 行上の画素で
+    // 置き換えると 8 画素幅の階段になる。
+    if (viewRay.y > 0.0f && viewRay.y < 4.0f * gCloudAerial.w && gCloudCamera.y < gCloudShell.x)
     {
         const int2 texel = int2(input.uv * gCloudHistorySize.xy);
         const float4 above = gCloudCurrentColor.Load(int3(texel.x, max(texel.y - 1, 0), 0));
@@ -645,7 +656,7 @@ float4 CompositeCloudPS(HikariCloudFullscreen input) : SV_Target
         return 0.0f.xxxx;
     }
     const float front = gCloudCurrentDepth.SampleLevel(gCloudPointClamp, input.uv, 0.0f).x;
-    if (depth < 0.999999f && length(HikariCloudWorldPoint(input.uv, depth) - gCloudCamera.xyz) < front)
+    if (depth < 0.999999f && length(HikariCloudWorldPoint(input.uv, depth)) < front)
     {
         return 0.0f.xxxx;
     }

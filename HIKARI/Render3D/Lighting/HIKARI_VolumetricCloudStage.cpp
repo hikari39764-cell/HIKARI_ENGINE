@@ -73,11 +73,13 @@ enum class NoisePass : uint32_t {
     Count
 };
 constexpr uint32_t kPassSrvCount = 9u;
-// 雲の形の周期（形状・細部・天気図）[m]。互いに整数比にならない値で、重なりの繰り返しを目立たせない。
-// 形状ノイズは雲の中の塊（周期の 1/4〜1/16、200〜800m）、天気図の対流セルは 1.1km と 0.4km。
-// 形状ノイズの周期 [m]。対流セル（約 3km）に合わせ、大きな雲が同じ大きさの小さな泡の集まりに見えないようにする。
-constexpr double kShapePeriod = 4800.0;
-constexpr double kDetailPeriod = 320.0;
+// 雲の形の周期（形状・細部・天気図）[m]。形状ノイズは水平の周期で、鉛直はシェーダーが 1/2 の周期で読む
+// （HIKARI_CLOUD_SHAPE_VERTICAL_SCALE）。雲の中の塊は水平で周期の 1/4〜1/16（600〜2400m）、天気図の対流セルは
+// 6.7km・2.5km・1km。対流セルに合わせ、大きな雲が同じ大きさの小さな泡の集まりに見えず、塊が高さより幅広くなる。
+constexpr double kShapePeriod = 9600.0;
+// 細部ノイズの周期 [m]。縁を侵食する泡は周期の 1/2〜1/8（240〜60m）。320m だと 100m 前後の同じ大きさの泡が雲頂一面に
+// 並ぶ。
+constexpr double kDetailPeriod = 480.0;
 constexpr double kWeatherPeriod = 40000.0;
 // 雲のまわりの空気遠近。雲は混合層（霞の層）の上端にできるので、雲の描画だけ Mie を 3 倍、スケールハイトを雲底まで
 // 引き上げる。遠くの雲の列ほど地平線の霞に溶け、手前の列との奥行きが出て粒の壁にならない（空そのものの LUT は変えない）。
@@ -846,8 +848,8 @@ MATH::Vec2 ResolveShell(const MATH::Vec4& typeBase, const MATH::Vec4& typeThickn
         bottom = (std::min)(bottom, base);
         top = (std::max)(top, base + Lerp3(t, typeThickness.x, typeThickness.y, typeThickness.z));
     }
-    // 雲底は形状ノイズと細部ノイズで最大 160m（降水する雲は 400m）下がり、降水する雲はさらに最大 250m 垂れ下がる
-    // （シェーダーの HikariCloudRaggedBase・HIKARI_CLOUD_DETAIL_RAGGED・HikariCloudResolveColumn）。
+    // 雲底は形状ノイズで最大 80m（降水する雲は 360m）下がり、降水する雲はさらに最大 250m 垂れ下がる
+    // （シェーダーの HikariCloudRaggedBase・HikariCloudResolveColumn）。
     return {(std::max)(bottom - 180.0f - 480.0f * precipitation, 10.0f), top + 50.0f};
 }
 
@@ -865,25 +867,34 @@ bool BuildConstants(StageState& state, const TEMPORAL::TemporalFrameState& tempo
     const auto& camera = temporalFrame.camera;
     const float planetRadius = SanitizeFiniteRange(environment.atmosphere.planetRadius, 6360000.0f, 1000.0f, 1.0e8f);
     VolumetricCloudConstants constants{};
-    constants.inverseViewProj = camera.invUnjitteredViewProj;
-    constants.previousViewProj = camera.prevViewProj;
+    // 視線と履歴の再投影はカメラ相対の座標で、TAA のずらしを除いた行列を使う。
+    // カメラ相対：行列に数 km の平行移動が入っていると、単精度の逆行列で作った視線を元の行列で投影し直す往復で
+    // 画面の端が半画素以上ずれ（桁落ち）、履歴が毎フレームずれた位置から再標本化されて流れた筋になる
+    // （2026-10-09、同じ画素を直接読む版と比べて確かめた）。VP × T(カメラ位置) の平行移動の列は射影の定数だけに
+    // なり、前フレームの行列も T(今のカメラ位置) を掛けて相対座標から投影する。
+    // ずらし無し：履歴は TAA のずらしを除いた画素の格子に持ち、追跡はこのフレームのずらし（gCloudWind.zw）ぶん標本の
+    // 位置をずらし、合成はずらした位置で履歴を読む。こうして画面の TAA には幾何と同じくずらした雲が渡る。
+    const MATH::Mat4 toCamera = MATH::Mat4::Translate({camera.cameraPos.x, camera.cameraPos.y, camera.cameraPos.z});
+    constants.inverseViewProj = MATH::Inverse(camera.unjitteredViewProj * toCamera);
+    constants.previousViewProj = camera.prevUnjitteredViewProj * toCamera;
     constants.camera = {camera.cameraPos.x, camera.cameraPos.y, camera.cameraPos.z, planetRadius};
     const auto inverse = [](uint32_t value) { return 1.0f / static_cast<float>((std::max)(1u, value)); };
     constants.historySize = {float(state.stats.historyWidth), float(state.stats.historyHeight),
                              inverse(state.stats.historyWidth), inverse(state.stats.historyHeight)};
 
-    // 雲の種類ごとの雲底と厚さ。積雲の雲底（設定値）に比例させる。降水する雲は雲底が 300m 下がる。
+    // 雲の種類ごとの雲底と厚さ。積雲の雲底（設定値）に比例させる。降水する雲は雲底が 300m 下がる。積雲の厚さは 2km
+    // （被覆率 1 の最も強いセル。幅数 km の雲が高さより幅広く読める。深い対流は積乱雲の雲型で）。
     const float scale = SanitizeFiniteRange(layer.baseAltitude, 1500.0f, 100.0f, 10000.0f) / 1500.0f;
     constants.typeBase = {600.0f * scale, 1500.0f * scale, 1000.0f * scale, 300.0f};
-    constants.typeThickness = {600.0f * scale, 2500.0f * scale, 8500.0f * scale,
+    constants.typeThickness = {600.0f * scale, 2000.0f * scale, 8500.0f * scale,
                                RENDER3D::COLOR::GetActiveViewExposure().x};
     const float coverage = ResolveCloudCoverage(environment);
     const float type = SanitizeFiniteRange(weather.type, 0.5f, 0.0f, 1.0f);
     const float precipitation = SanitizeFiniteRange(weather.precipitation, 0.0f, 0.0f, 1.0f);
     const MATH::Vec2 shell = ResolveShell(constants.typeBase, constants.typeThickness, type, precipitation);
-    // 最大距離の 4 割から個々の雲を平均の濃さへ移す（薄くするのは shader が最大距離の 1/4 から別に行う）。地平線近くで
+    // 最大距離の 6 割から個々の雲を平均の濃さへ移す（薄くするのは shader が最大距離の 1/4 から別に行う）。地平線近くで
     // 数十 km 分の雲の列が壁のように積み上がらず、遠くの小さな雲も粒の列（ポップコーン）に見えない。
-    constants.shell = {shell.x, shell.y, policy.maxDistance, policy.maxDistance * 0.4f};
+    constants.shell = {shell.x, shell.y, policy.maxDistance, policy.maxDistance * 0.6f};
     constants.weather = {coverage, type, precipitation, 0.0f};
     const MATH::Vec3& albedo = environment.atmosphere.groundAlbedo;
     constants.density = {kReferenceExtinction * SanitizeFiniteRange(layer.densityScale, 1.0f, 0.0f, 8.0f) *
@@ -962,8 +973,10 @@ bool BuildConstants(StageState& state, const TEMPORAL::TemporalFrameState& tempo
     const float windX2 = std::isfinite(weather.windVelocity.x) ? weather.windVelocity.x : 0.0f;
     const float windZ2 = std::isfinite(weather.windVelocity.y) ? weather.windVelocity.y : 0.0f;
     const float windSpeed = std::sqrt(windX2 * windX2 + windZ2 * windZ2);
+    // zw はこのフレームの TAA のずらし [uv]（画素のずらし / 履歴の大きさ）。
     constants.wind = {windSpeed > 1.0e-3f ? windX2 / windSpeed : 1.0f, windSpeed > 1.0e-3f ? windZ2 / windSpeed : 0.0f,
-                      0.0f, 0.0f};
+                      camera.jitter.x * inverse(state.stats.historyWidth),
+                      camera.jitter.y * inverse(state.stats.historyHeight)};
 
     const auto allocation = state.uploads[state.context.frameIndex].Allocate(sizeof(constants));
     if (!allocation)

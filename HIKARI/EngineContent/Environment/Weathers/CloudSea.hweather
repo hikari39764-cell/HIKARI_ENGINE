@@ -1,0 +1,14 @@
+{
+  "formatVersion": 1,
+  "name": "Cloud Sea",
+  "weather": {
+    "cloudCoverage": 0.75,
+    "cloudType": 0.25,
+    "cloudDensity": 1.0,
+    "haze": 0.0,
+    "fogDensity": 0.0,
+    "windSpeed": 4.0,
+    "windFromDegrees": 260.0,
+    "transitionSeconds": 25.0
+  }
+}
