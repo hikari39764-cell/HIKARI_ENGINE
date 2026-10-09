@@ -1,6 +1,7 @@
 #include "Include/Sky/HIKARI_VolumetricCloud.hlsli"
 #include "Include/Lighting/HIKARI_CloudSolarVisibility.hlsli"
 #include "Include/Atmosphere/HIKARI_SkyViewMapping.hlsli"
+#include "Include/Post/HIKARI_PostHash.hlsli"
 
 // 体積雲の描画。半分の解像度の 2x2 ごとに 1 画素だけを毎フレーム場所を変えて追跡し（TraceCloudPS）、
 // 前フレームの履歴と合わせて半分の解像度へ再構成し（ReprojectCloudPS）、全解像度の場面へ深度を見て合成する
@@ -114,8 +115,7 @@ float3 HikariCloudSkyAmbientFacing(float3 direction)
 float HikariCloudInterleavedGradientNoise(float2 pixel)
 {
     const uint frame = uint(gCloudTemporal.x);
-    return frac(52.9829189f * frac(dot(pixel, float2(0.06711056f, 0.00583715f))) + 0.25f * float(frame & 3u) +
-        0.61803399f * float((frame >> 2u) & 255u));
+    return frac(HikariInterleavedGradientNoise(pixel, frame >> 2u) + 0.25f * float(frame & 3u));
 }
 
 // 方向 direction の空気の輝度 [nits]（太陽円盤なし）。空気遠近で雲の手前の空気の色の元にする。水平より下の天空 LUT は
@@ -569,7 +569,23 @@ HikariCloudTarget TraceCloudPS(HikariCloudFullscreen input)
     const float2 uv = (float2(historyPixel) + 0.5f) * gCloudHistorySize.zw;
     // 標本の位置はこのフレームの TAA のずらしぶん動かす（幾何と同じ位置を見る。履歴はずらし無しの格子に溜まる）。
     const float3 direction = HikariCloudViewRay(uv - gCloudWind.zw);
-    const float sceneDistance = HikariCloudSceneDistance(uv);
+    // 雲の殻より手前の形状に隠れた画素も雲の履歴を保つ（合成で最初に当たった距離と場面の深度を比べて隠す）。
+    // 隠れている間に履歴を空にすると、視点が動いて空が見えた時に新しい標本が空の履歴の近傍へ抑えられ、雲が消えて
+    // 縁から少しずつしか戻らない。隠れた画素は交錯の 4 巡に 1 回（16 フレームに 1 回）だけ最後まで追跡して履歴を
+    // 新しく保ち、それ以外は「隠れて未追跡」の印（front < 0）だけ返して再構成で履歴をそのまま残す（屋内などで空が
+    // 見えない時の費用を 1/4 に抑える）。雨の幕は殻より手前にあるので、降水の間は従来どおり形状で止める。
+    float shellStart, shellEnd;
+    float sceneDistance = HikariCloudSceneDistance(uv);
+    if (gCloudWeather.z <= 0.0f && sceneDistance < HIKARI_CLOUD_NO_HIT &&
+        HikariCloudShellInterval(gCloudCamera.xyz, direction, shellStart, shellEnd) && sceneDistance < shellStart)
+    {
+        if (((uint(gCloudTemporal.x) >> 2u) & 3u) != 0u)
+        {
+            output.depth = float2(-1.0f, HIKARI_CLOUD_NO_HIT);
+            return output;
+        }
+        sceneDistance = HIKARI_CLOUD_NO_HIT;
+    }
     const HikariCloudMarch march = HikariCloudMarchRay(gCloudCamera.xyz, direction, sceneDistance,
         HikariCloudInterleavedGradientNoise(input.position.xy), gCloudQuality, gCloudDetailPhase.w, false);
     if (march.transmittance >= 1.0f)
@@ -645,14 +661,17 @@ HikariCloudTarget ReprojectCloudPS(HikariCloudFullscreen input)
     const float4 current = gCloudCurrentColor.Load(int3(tracePixel, 0));
     const float2 currentDepth = gCloudCurrentDepth.Load(int3(tracePixel, 0));
     const bool fresh = all((pixel & 1) == HikariCloudInterleaveOffset());
+    // 形状に隠れて今回は追跡していない画素（TraceCloudPS の front < 0）。合成では手前の形状が隠すので、最初に当たる
+    // 距離は「無し」として書き、色は履歴をそのまま残す。
+    const bool hidden = currentDepth.x < 0.0f;
     output.color = current;
-    output.depth = currentDepth;
+    output.depth = hidden ? HIKARI_CLOUD_NO_HIT.xx : currentDepth;
     if (gCloudTemporal.y < 0.5f)
     {
         return output;
     }
     // 雲の平均距離の点（カメラ相対）を風で戻してから、前フレームの画面へ投影する。雲が無い画素は遠方として扱う。
-    const float distance = currentDepth.y < HIKARI_CLOUD_NO_HIT ? currentDepth.y : gCloudShell.z;
+    const float distance = output.depth.y < HIKARI_CLOUD_NO_HIT ? output.depth.y : gCloudShell.z;
     const float3 world =
         HikariCloudViewRay(input.uv) * distance - float3(gCloudWindDelta.x, 0.0f, gCloudWindDelta.y);
     const float4 previousClip = mul(gCloudPreviousViewProj, float4(world, 1.0f));
@@ -668,6 +687,11 @@ HikariCloudTarget ReprojectCloudPS(HikariCloudFullscreen input)
     }
     float4 history = HikariCloudSampleCatmullRom(gCloudHistoryColor, previousUv, gCloudHistorySize.xy);
     history.rgb *= gCloudWindDelta.z;
+    if (hidden)
+    {
+        output.color = history;
+        return output;
+    }
     // 視点（または風で流れる雲）が半画素より動いた時は、履歴を今のフレームの近傍（追跡の 3x3）の範囲へ収めて動いた
     // 雲の残像を残さない。止まっている時は逆に、新しい標本を履歴の近傍（3x3）の範囲へ収める：外れ値を履歴に入れず、
     // 履歴は標本の指数平均として収束する（止まった視点で履歴を単標本の近傍へ収めると、薄い雲で収束せず標本の
@@ -684,8 +708,13 @@ HikariCloudTarget ReprojectCloudPS(HikariCloudFullscreen input)
             [unroll]
             for (int x = -1; x <= 1; ++x)
             {
-                const float4 neighbour =
-                    gCloudCurrentColor.Load(int3(clamp(tracePixel + int2(x, y), int2(0, 0), traceLast), 0));
+                // 隠れて未追跡の近傍は値を持たないので範囲に入れない。
+                const int3 neighbourPixel = int3(clamp(tracePixel + int2(x, y), int2(0, 0), traceLast), 0);
+                if (gCloudCurrentDepth.Load(neighbourPixel).x < 0.0f)
+                {
+                    continue;
+                }
+                const float4 neighbour = gCloudCurrentColor.Load(neighbourPixel);
                 low = min(low, neighbour);
                 high = max(high, neighbour);
             }

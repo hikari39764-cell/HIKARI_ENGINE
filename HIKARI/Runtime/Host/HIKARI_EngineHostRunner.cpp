@@ -3,7 +3,9 @@
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Platform/HIKARI_StartupSplash.h"
 
+#include <algorithm>
 #include <filesystem>
+#include <string>
 
 #include <Windows.h>
 
@@ -38,7 +40,10 @@ HostBootstrapConfig ResolveBootstrapConfig(const EngineHostRunOptions& options,
     HostBootstrapConfig config{};
     config.headlessRender = HasRuntimeCommandLineFlag(L"--headless-render");
     const EngineHostProduct product = options.product;
-    config.enableStreamline = options.enableStreamline && !config.headlessRender;
+    // 無頭描画は既定で Streamline を読まない（起動を短く保つ）。DLAA/DLSS の画を無頭で確かめる時だけ
+    // --headless-streamline で読む。
+    config.enableStreamline = options.enableStreamline &&
+                              (!config.headlessRender || HasRuntimeCommandLineFlag(L"--headless-streamline"));
     if (product == EngineHostProduct::Editor) {
         config.hostMode = RuntimeHostMode::Editor;
         config.enableImGui = true;
@@ -229,6 +234,10 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
     // Explicit diagnostic launch options; no automatic screenshots in normal play.
     const auto captureOutput = ReadRuntimeCommandLinePath(L"--capture-output");
     const auto captureFrame = ReadRuntimeCommandLineUint32(L"--capture-frame").value_or(180u);
+    // 時間方向の安定性を見るための連続撮影。--capture-count 枚を --capture-stride フレームおきに撮り、
+    // 2 枚以上なら出力名の末尾にフレーム番号を付ける。
+    const uint32_t captureCount = (std::max)(ReadRuntimeCommandLineUint32(L"--capture-count").value_or(1u), 1u);
+    const uint32_t captureStride = (std::max)(ReadRuntimeCommandLineUint32(L"--capture-stride").value_or(1u), 1u);
     const auto exitFrame = ReadRuntimeCommandLineUint32(L"--exit-after-frame");
     auto benchmark = RuntimeBenchmark::FromCommandLine(startupStarted);
     uint64_t presentedFrames = 0;
@@ -312,8 +321,15 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
         }
 
         ++presentedFrames;
-        if (captureOutput && presentedFrames == captureFrame)
-            (void)SERVICES::RequestFrameCapture(*captureOutput);
+        if (captureOutput && presentedFrames >= captureFrame && (presentedFrames - captureFrame) % captureStride == 0u &&
+            (presentedFrames - captureFrame) / captureStride < captureCount) {
+            std::filesystem::path output = *captureOutput;
+            if (captureCount > 1u) {
+                output.replace_filename(output.stem().wstring() + L"_" + std::to_wstring(presentedFrames) +
+                                        output.extension().wstring());
+            }
+            (void)SERVICES::RequestFrameCapture(output);
+        }
         if (!SERVICES::EndFrame()) {
             break;
         }

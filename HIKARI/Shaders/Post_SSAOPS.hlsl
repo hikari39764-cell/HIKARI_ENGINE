@@ -128,8 +128,8 @@ float GroundTruthAo(float2 uv, float depth, float3 n)
     const float radiusPixels = ScreenRadiusPixels(uv, position, n);
     const float2 texel = gScreenParams.zw;
     const float2 pixel = floor(uv * gScreenParams.xy);
-    const float noiseSlice = frac(52.9829189f * frac(dot(pixel, float2(0.06711056f, 0.00583715f))));
-    const float noiseStep = frac(52.9829189f * frac(dot(pixel + 5.0f, float2(0.00583715f, 0.06711056f))));
+    const float noiseSlice = HikariInterleavedGradientNoise(pixel, 0u);
+    const float noiseStep = HikariInterleavedGradientNoise((pixel + 5.0f).yx, 0u);
     const uint sliceCount = max((uint)gAoSliceCount, 1u);
     const uint stepCount = max((uint)gAoStepCount, 1u);
 
