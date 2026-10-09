@@ -205,16 +205,20 @@ float3 HikariCloudSourceRadiance(HikariCloudColumn column, float cosine, float l
     // が、地平線すれすれの光は自分の雲の体を水平に何 km も抜けることになり、厚さのままでは雲底が暗い茶色に沈む（画面を
     // 優先した近似）。上限で切らずに縮めるので、夕日の側の縁ほど明るく奥ほど暗い濃淡が残り、雲底が日向の面より明るい
     // 一様な舞台光にならない。
-    // 雲底へ差し込む光は雲の中ほどへ届く光より低く地面寄りを通るので、大気の透過率を T^1.8（気団が 0.8 倍分多い）とし、
-    // 明るさを保ったまま色だけ赤へ寄せる（gCloudLightColor は T を輝度 1 へ正規化した色）。雲の上の方もその半分だけ
-    // 寄せる（暗い隙間が黄色のまま沈むと、赤い雲底の隣で濁った緑に見える）。
+    // 雲底へ差し込む光は雲の中ほどへ届く光より 500m ほど低い空気を通るので、その分の Rayleigh の光学的厚さ
+    // τ_v e^(-雲底/H) (500m / H) / sinE だけ余計に抜けた透過率を、明るさを保ったまま色だけ赤へ寄せる倍率にする
+    // （gCloudLightColor は T を輝度 1 へ正規化した色。仰角 1° で R/G が 1.2 倍、R/B が 1.9 倍）。T^1.8 のように気団を
+    // 倍率で増やすと、仰角 1° では 30 気団ぶん余計に赤へ寄り、雲底とそれに照らされる地面が番茄色になる。雲の上の方も
+    // その半分だけ寄せる（暗い隙間が黄色のまま沈むと、赤い雲底の隣で濁った緑に見える）。
     const float lowSun = 1.0f - smoothstep(0.02f, 0.17f, gCloudLightDirection.y);
     const float lower = 1.0f - smoothstep(0.15f, 0.45f, column.height);
     const float underside = lowSun * lower;
     const float redden = lowSun * lerp(0.5f, 1.0f, lower);
     const float sunDepth = lerp(lightDepth, 1.5f * log(1.0f + max(lightDepth, 0.0f) / 1.5f), underside);
     const float3 lightColor = max(gCloudLightColor.rgb, 1.0e-4f.xxx);
-    const float3 lowColor = pow(lightColor, 1.8f);
+    const float extraAirMass = exp(-gCloudShell.x / gCloudAirRayleigh.w) * (500.0f / gCloudAirRayleigh.w) /
+        max(gCloudLightDirection.y, 0.03f);
+    const float3 lowColor = lightColor * exp(-extraAirMass * gCloudAirRayleigh.rgb * gCloudAirRayleigh.w);
     const float3 reddening = lowColor / lightColor *
         (dot(lightColor, float3(0.2126f, 0.7152f, 0.0722f)) / max(dot(lowColor, float3(0.2126f, 0.7152f, 0.0722f)),
         1.0e-4f));
