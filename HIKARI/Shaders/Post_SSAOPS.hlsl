@@ -104,9 +104,10 @@ float HorizonCosine(float2 uv, float2 stepUv, float noise, uint stepCount, float
     float horizon = -1.0f;
     [loop] for (uint step = 0u; step < stepCount; ++step)
     {
-        const float2 sampleUv = uv + stepUv * (float(step) + noise);
+        float2 sampleUv = uv + stepUv * (float(step) + noise);
         if (any(sampleUv < 0.0f) || any(sampleUv > 1.0f))
             break;
+        sampleUv = HikariSnapUvToTexelCenter(sampleUv, gDepthScreenParams);
         const float sampleDepth = gSceneDepthTex.SampleLevel(gPointClamp, sampleUv, 0).r;
         if (sampleDepth >= 0.99999f)
             continue;
@@ -166,16 +167,18 @@ float GroundTruthAo(float2 uv, float depth, float3 n)
 
 float PSMain(VSOut input) : SV_TARGET
 {
-    const float depth = gSceneDepthTex.SampleLevel(gPointClamp, input.uv, 0).r;
+    const float2 uv = HikariSnapUvToTexelCenter(input.uv, gDepthScreenParams);
+    const float depth = gSceneDepthTex.SampleLevel(gPointClamp, uv, 0).r;
     if (depth >= 0.99999f)
         return 1.0f;
-    return GroundTruthAo(input.uv, depth, DecodeNormal(gNormalRoughnessTex.SampleLevel(gPointClamp, input.uv, 0)));
+    return GroundTruthAo(uv, depth, DecodeNormal(gNormalRoughnessTex.SampleLevel(gPointClamp, uv, 0)));
 }
 
 float PSMainDepthOnly(VSOut input) : SV_TARGET
 {
-    const float depth = gSceneDepthTex.SampleLevel(gPointClamp, input.uv, 0).r;
+    const float2 uv = HikariSnapUvToTexelCenter(input.uv, gDepthScreenParams);
+    const float depth = gSceneDepthTex.SampleLevel(gPointClamp, uv, 0).r;
     if (depth >= 0.99999f)
         return 1.0f;
-    return GroundTruthAo(input.uv, depth, ReconstructNormalFromDepth(input.uv, depth));
+    return GroundTruthAo(uv, depth, ReconstructNormalFromDepth(uv, depth));
 }

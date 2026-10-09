@@ -19,6 +19,15 @@ float2 HikariScreenUvFromSvPosition(
     return svPosition.xy * inverseScreenSize;
 }
 
+// uv を点で読む texel の中心へ寄せる（texelParams は xy 大きさ、zw その逆数）。低い解像度の画素の中心は高い解像度の
+// texel の境目に来るので、そのまま点で読むと、読んだ深度の texel と位置の復元に使う uv が半 texel ずれ、斜めの面で
+// 復元した位置が面から浮き沈みする。境目ちょうどの uv は丸め誤差でどちらの texel にも転ぶので、わずかに正の側へ寄せて
+// 毎回同じ texel を取る。
+float2 HikariSnapUvToTexelCenter(float2 uv, float4 texelParams)
+{
+    return (floor(uv * texelParams.xy + 0.01f) + 0.5f) * texelParams.zw;
+}
+
 bool HikariIsScreenUvInsideTexelGuard(
     float2 uv,
     float2 inverseScreenSize)
