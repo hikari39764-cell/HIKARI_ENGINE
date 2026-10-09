@@ -198,10 +198,26 @@ float3 HikariCloudSourceRadiance(HikariCloudColumn column, float cosine, float l
     float3 lightRadiance, float3 skyAmbient, float3 skyFacing, float viewDepth, float3 groundAmbient,
     float2 localVisibility)
 {
+    // 夕焼けの雲底（火烧云）。光源が低い間（仰角 10° 未満）、柱の下部（高さの 45% まで、上へ薄れる）は光源の方向の
+    // 光学的厚さを 1.5 で打ち切る。実際は夕日が雲の層の切れ間や雲底の下から差し込んで雲底を橙に光らせるが、地平線すれすれ
+    // の光は自分の雲の体を水平に何 km も抜けることになり、厚さのままでは雲底が暗い茶色に沈む（画面を優先した近似）。
+    // 雲底へ差し込む光は雲の中ほどへ届く光より低く地面寄りを通るので、大気の透過率を T^1.8（気団が 0.8 倍分多い）とし、
+    // 明るさを保ったまま色だけ赤へ寄せる（gCloudLightColor は T を輝度 1 へ正規化した色）。雲の上の方もその半分だけ
+    // 寄せる（暗い隙間が黄色のまま沈むと、赤い雲底の隣で濁った緑に見える）。
+    const float lowSun = 1.0f - smoothstep(0.02f, 0.17f, gCloudLightDirection.y);
+    const float lower = 1.0f - smoothstep(0.15f, 0.45f, column.height);
+    const float underside = lowSun * lower;
+    const float redden = lowSun * lerp(0.5f, 1.0f, lower);
+    const float sunDepth = lerp(lightDepth, min(lightDepth, 1.5f), underside);
+    const float3 lightColor = max(gCloudLightColor.rgb, 1.0e-4f.xxx);
+    const float3 lowColor = pow(lightColor, 1.8f);
+    const float3 reddening = lowColor / lightColor *
+        (dot(lightColor, float3(0.2126f, 0.7152f, 0.0722f)) / max(dot(lowColor, float3(0.2126f, 0.7152f, 0.0722f)),
+        1.0e-4f));
     // 主光源の光は、表面近くの向きの揃った散乱（銀の縁）と、雲の中で何度も散乱した拡散光（日向の面を白く輝かせ、
     // 陰の面と雲底を灰色に満たす）の和。
-    const float3 sun = lightRadiance *
-        (HikariCloudLightScattering(cosine, lightDepth, density) + HikariCloudDiffuseRadiance(lightDepth));
+    const float3 sun = lightRadiance * lerp(1.0f.xxx, reddening, redden) *
+        (HikariCloudLightScattering(cosine, sunDepth, density) + HikariCloudDiffuseRadiance(sunDepth));
     // 雲の上と下から入る環境光は、この柱でそこまでにある雲の厚さ（平均の濃さ 0.5）を拡散透過 1/(1 + 0.11τ) で
     // 抜けてくる。雲の側面は横の空も見ているので、鉛直の柱で指数的に消すと積雲の中が黒い芯になる。
     const float aboveDepth = gCloudDensity.x * 0.5f * column.above;
@@ -225,6 +241,23 @@ struct HikariCloudMarch
     float front;             // 最初に当たった距離 [m]
     float meanDepth;         // 全体の光の重み付き平均距離 [m]
 };
+
+// 平均の層の、光源までの光学的厚さ。平均の濃さはセルの間の晴れを透かした視線用の実効値なので、光の当て方には使えない。
+// 視線が当たるのはセルの上面・側面・底面のどれかで、上面は光源までの厚さ ≈ 0、側面は半分が日向、底面と側面の陰には
+// 柱の上の雲（雲の中の濃さ 0.5、環境光の柱と同じ）を抜けた光が届く。セルは高さの 6〜7 倍ほど幅があるので、仰角・俯角 δ で
+// 見える面のうち上面（見下ろし）または底面（見上げ）の割合は sinδ / (sinδ + 0.15 cosδ)、残りが側面。日向の割合 lit で
+// 拡散光 1/(1 + 0.11τ) を平均し、その平均に当たる厚さを返す（厚さを線形に混ぜると、拡散光は厚さに凸なので日向の分が
+// ほとんど効かない）。これを数えないと、平均の層は深さに関係なく標本が散らばる（実効の消散は 1 セル数 km）ので、
+// 遠くの雲の海が柱の奥の陰の暗さに沈む。
+float HikariCloudStatisticalLightDepth(HikariCloudColumn column, float3 direction)
+{
+    const float sine = abs(direction.y);
+    const float face = sine / (sine + 0.15f * sqrt(saturate(1.0f - sine * sine)));
+    const float lit = direction.y < 0.0f ? face + 0.5f * (1.0f - face) : 0.5f * (1.0f - face);
+    const float depth = HikariCloudExtinction(0.5f) * column.above / max(gCloudLightDirection.y, 0.1f);
+    const float diffuse = lit + (1.0f - lit) / (1.0f + 0.11f * depth);
+    return (1.0f / diffuse - 1.0f) / 0.11f;
+}
 
 // 視線に沿って雲を追跡する。最大距離（gCloudShell.z）までは個々の雲を、その先（地平線近くでは数百 km）は
 // 天気の平均の濃さ（HikariCloudStatisticalDensity）の雲として粗く足す。最大距離の最後の 4 割（gCloudShell.w から）で
@@ -349,7 +382,7 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
     {
         // 遠方へ移る範囲は平均の濃さなので細かく進まない。
         const float fade = statistical ? 1.0f : smoothstep(gCloudShell.w, gCloudShell.z, t);
-        // 個々の雲がまだ残る間（fade < 0.75）は細い歩幅を保つ。粗い歩幅だけで追うと遠くの雲が縦に流れた筋になる。
+        // 個々の雲がまだ残る間（fade < 0.9）は細い歩幅を保つ。粗い歩幅だけで追うと遠くの雲が縦に流れた筋になる。
         fine = fine && fade < 0.9f;
         const float coarseStep = clamp(quality.w * 2.5f * t, HIKARI_CLOUD_COARSE_STEP_MIN, 800.0f);
         const float fineStep = clamp(t * gCloudAerial.w, quality.z, 200.0f);
@@ -413,9 +446,11 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
         if (density > 0.0f)
         {
             const float extinction = HikariCloudExtinction(density);
-            // 平均の濃さの範囲は、光源までの厚さも柱の上の雲の平均で見積もる。
+            // 平均の濃さへ移る範囲は、光源までの厚さも柱の上の雲の平均（HikariCloudStatisticalLightDepth）へ移す。
             const bool detailed = fade < 0.5f;
-            float lightDepth = extinction * column.above / max(gCloudLightDirection.y, 0.1f);
+            const float lit = lerp(density, 0.5f, fade);
+            float lightDepth = lerp(extinction * column.above / max(gCloudLightDirection.y, 0.1f),
+                HikariCloudStatisticalLightDepth(column, direction), fade);
             float2 visibility = 1.0f.xx;
             if (detailed)
             {
@@ -428,7 +463,7 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
                 lightDepth = lightDepthCache;
                 visibility = localVisibility;
             }
-            const float3 source = HikariCloudSourceRadiance(column, cosine, lightDepth, density, lightRadiance,
+            const float3 source = HikariCloudSourceRadiance(column, cosine, lightDepth, lit, lightRadiance,
                 skyAmbient, skyFacing, -log(max(transmittance, 1.0e-4f)), groundAmbient, visibility) +
                 HIKARI_CLOUD_ALBEDO * HikariCloudLightningRadiance(position);
             const float stepTransmittance = exp(-extinction * stepLength);
@@ -464,7 +499,7 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
     march.nearTransmittance = 1.0f - nearOpacity;
     march.nearDepth = depthWeight > 0.0f ? depthSum / depthWeight : HIKARI_CLOUD_NO_HIT;
 
-    // 最大距離より先。平均の濃さの雲を 8 区間で足し、光源までの厚さは雲層の上端までの平均の濃さで見積もる。
+    // 最大距離より先。平均の濃さの雲を 8 区間で足し、光源までの厚さは HikariCloudStatisticalLightDepth で見積もる。
     // 区間は 2 倍ずつ伸ばす（最初は残りの 1/255）。等分だと地平線近くでは最初の区間が十数 km になって一つの標本で
     // 不透明になり、最大距離の円が雲の海の上に硬い縁として見える。
     if (transmittance >= 0.015f && end > t)
@@ -487,8 +522,8 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
                 continue;
             }
             const float extinction = HikariCloudExtinction(density);
-            const float lightDepth = extinction * column.above / max(gCloudLightDirection.y, 0.1f);
-            const float3 source = HikariCloudSourceRadiance(column, cosine, lightDepth, density, lightRadiance,
+            const float lightDepth = HikariCloudStatisticalLightDepth(column, direction);
+            const float3 source = HikariCloudSourceRadiance(column, cosine, lightDepth, 0.5f, lightRadiance,
                 skyAmbient, skyFacing, -log(max(transmittance, 1.0e-4f)), groundAmbient, 1.0f.xx);
             float3 air, inscatter;
             HikariCloudAirPerspective(direction, altitude, distance, skyRadiance, air, inscatter);

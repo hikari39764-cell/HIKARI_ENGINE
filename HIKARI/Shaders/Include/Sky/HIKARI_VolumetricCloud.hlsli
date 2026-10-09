@@ -385,10 +385,25 @@ float HikariCloudMeanDensity(float cell, float profile, float2 shaping)
     return (ramp * ramp * 0.5f / (full - start) + max(profile - full, 0.0f)) / profile;
 }
 
-// その場の雲域の被覆率と雲型（天気図の大きな揺らぎ）だけで決まる、高さ altitude の雲の濃さの平均。対流セル（1km 程度）
+// 消散係数 [1/m]。降水する雲は濃い。
+float HikariCloudExtinction(float density)
+{
+    return density * gCloudDensity.x * (1.0f + 0.6f * gCloudWeather.z);
+}
+
+// 平均の層で、視線が 1 つの対流セルを抜ける長さ [m]（セルの中の大きさ 2.5km 級）。この長さごとにセルに当たるか
+// 外れるかが独立に決まるとみなす。
+static const float HIKARI_CLOUD_STATISTICAL_CELL = 2500.0f;
+
+// その場の雲域の被覆率と雲型（天気図の大きな揺らぎ）だけで決まる、高さ altitude の雲の実効の濃さ。対流セル（1km 程度）
 // も 3D ノイズも見ないので、遠方（数十 km 先）や環境光用の雲の空でセルを拾って走査ノイズにならず、雲域の濃淡で
 // 地平線の雲の連なりの上端も揃わない。セルの強さ g は被覆率 c の範囲で一様なので 4 点の中点則で平均する
 // （セルの外は g = 0、ただし曇天ではつながる）。
+// 平均するのは濃さではなく 1 セルぶんの透過率（Jensen: exp(-E[τ]) ≤ E[exp(-τ)]）。濃さの平均をそのまま消散にすると
+// 被覆率 0.45 の雲域でも数百 m で不透明になり、数十 km 先の雲域は切り絵の板（硬い穴、地平線に平行な上縁）になる。
+// セルの間の晴れを透かした平均の透過率を消散に戻すと、遠くの雲域は (1 - c)^(視線の長さ / セル) で何 km もかけて
+// 不透明になり、雲域の縁と穴は被覆率の勾配で柔らかく移る。返す濃さは視線の透過率用で、光の当て方には使えない
+// （雲の中の濃さは HikariCloudSourceRadiance と同じ 0.5 で見積もる）。
 // column には被覆率と、この高さの上下の雲の平均の厚さを入れる（光の当て方に使う）。
 float HikariCloudStatisticalDensity(float3 position, float altitude, out HikariCloudColumn column)
 {
@@ -408,7 +423,10 @@ float HikariCloudStatisticalDensity(float3 position, float altitude, out HikariC
         lerp(HikariCloudTurret(weather, type), lerp(0.85f, 1.15f, weather.w), flatten) *
         lerp(1.0f, 0.8f, flatten);
     const float elevation = altitude - layer.base;
-    float density = 0.0f;
+    // 遠く（15→35km）では上端の落ちを上半分いっぱいに広げる。上端の落ちが狭いと、地平線近くの平均の層の上縁が
+    // 一本の線になる。
+    const float falloffStart = layer.falloff.x * lerp(1.0f, 0.5f, flatten);
+    float blocked = 0.0f;
     float meanTop = 0.0f;
     [unroll]
     for (uint index = 0u; index < 5u; ++index)
@@ -417,14 +435,21 @@ float HikariCloudStatisticalDensity(float3 position, float altitude, out HikariC
         const float cell = HikariCloudMergeCell(index < 4u ? (float(index) + 0.5f) * 0.25f : 0.0f, coverage);
         const float top = max(scale * cell * (2.0f - cell), 1.0f);
         const float height = elevation / top;
-        const float profile = height > 0.0f && height < 1.0f ? 1.0f - smoothstep(layer.falloff.x, layer.falloff.y,
+        const float profile = height > 0.0f && height < 1.0f ? 1.0f - smoothstep(falloffStart, layer.falloff.y,
             height) : 0.0f;
-        density += weight * HikariCloudMeanDensity(min(cell, HikariCloudCoverageCap()), profile, shaping);
+        const float density = HikariCloudMeanDensity(min(cell, HikariCloudCoverageCap()), profile, shaping);
+        blocked += weight * (1.0f - exp(-HikariCloudExtinction(density) * HIKARI_CLOUD_STATISTICAL_CELL));
         meanTop += weight * top;
     }
     column.above = max(meanTop - elevation, 0.0f);
     column.below = clamp(elevation, 0.0f, meanTop);
-    return density * saturate(elevation / layer.baseRise);
+    if (blocked <= 0.0f)
+    {
+        return 0.0f;
+    }
+    // 1 セルぶんの平均の透過率 (1 - blocked) を実効の消散に戻す（HikariCloudExtinction で消散になる濃さとして返す）。
+    return -log(max(1.0f - blocked, 1.0e-3f)) / HikariCloudExtinction(HIKARI_CLOUD_STATISTICAL_CELL) *
+        saturate(elevation / layer.baseRise);
 }
 
 // 雲の濃さ（0..1）。Horizon Zero Dawn（Schneider 2015/2017）と同じ組み立て:
@@ -498,12 +523,6 @@ float HikariCloudDensity(HikariCloudColumn column, float3 position, float altitu
     const float threshold = erosion * shaping.y * gCloudDensity.y * saturate(1.5f - 2.0f * density);
     const float shaped = saturate(shaping.x * HikariCloudRemap(density, threshold, 1.0f, 0.0f, 1.0f));
     return lerp(shaped, mean, meanWeight) * baseFade;
-}
-
-// 消散係数 [1/m]。降水する雲は濃い。
-float HikariCloudExtinction(float density)
-{
-    return density * gCloudDensity.x * (1.0f + 0.6f * gCloudWeather.z);
 }
 
 // 塊の凹凸による空（x）と地面（y）の光の遮り（0..1）。60m 上と下の濃さで、出っ張った塊は光を受け、くぼみは

@@ -892,9 +892,10 @@ bool BuildConstants(StageState& state, const TEMPORAL::TemporalFrameState& tempo
     const float type = SanitizeFiniteRange(weather.type, 0.5f, 0.0f, 1.0f);
     const float precipitation = SanitizeFiniteRange(weather.precipitation, 0.0f, 0.0f, 1.0f);
     const MATH::Vec2 shell = ResolveShell(constants.typeBase, constants.typeThickness, type, precipitation);
-    // 最大距離の 3/4 から個々の雲を平均の濃さへ移す（薄くするのは shader が最大距離の 1/4 から別に行う）。地平線近くで
+    // 最大距離の 6 割から個々の雲を平均の濃さへ移す（薄くするのは shader が最大距離の 1/4 から別に行う。平均の層が
+    // セルの間の晴れを透かすようになってからは、移り始めが遅いほうが個々の雲の消え際が目立つ）。地平線近くで
     // 数十 km 分の雲の列が壁のように積み上がらず、遠くの小さな雲も粒の列（ポップコーン）に見えない。
-    constants.shell = {shell.x, shell.y, policy.maxDistance, policy.maxDistance * 0.75f};
+    constants.shell = {shell.x, shell.y, policy.maxDistance, policy.maxDistance * 0.6f};
     constants.weather = {coverage, type, precipitation, 0.0f};
     const MATH::Vec3& albedo = environment.atmosphere.groundAlbedo;
     constants.density = {kReferenceExtinction * SanitizeFiniteRange(layer.densityScale, 1.0f, 0.0f, 8.0f) *
