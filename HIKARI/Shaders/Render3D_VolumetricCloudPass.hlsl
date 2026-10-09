@@ -71,15 +71,17 @@ float HikariCloudSceneDistance(float2 uv)
 }
 
 // 空からの環境光（天頂と仰角 55 度の 4 方位の平均。余弦の重みに近く、地平線際の夕焼けの光環を拾いすぎない）。
-// 天空 LUT は絶対輝度。大気の空でなければ CPU の概算。
+// 光源が低い間（仰角 10° 未満）は天頂の重みを 2 から 6 へ上げる。夕方の環には夕日の側の黄色く明るい空が入り、陰の面が
+// 黄緑に濁る（実際の夕方の陰は天頂の青紫の空に照らされる）。天空 LUT は絶対輝度。大気の空でなければ CPU の概算。
 float3 HikariCloudSkyAmbient()
 {
     if (gCloudAerial.z < 0.5f)
     {
         return gCloudFallbackAmbient.rgb;
     }
+    const float zenithWeight = 2.0f + 4.0f * (1.0f - smoothstep(0.02f, 0.17f, gCloudLightDirection.y));
     float3 sum = gCloudSkyView.SampleLevel(gCloudLinearClamp, HikariAtmosphereSkyViewUv(float3(0.0f, 1.0f, 0.0f)),
-        0.0f).rgb * 2.0f;
+        0.0f).rgb * zenithWeight;
     [unroll]
     for (uint index = 0u; index < 4u; ++index)
     {
@@ -87,7 +89,7 @@ float3 HikariCloudSkyAmbient()
         const float3 direction = float3(cos(azimuth) * 0.574f, 0.819f, sin(azimuth) * 0.574f);
         sum += gCloudSkyView.SampleLevel(gCloudLinearClamp, HikariAtmosphereSkyViewUv(direction), 0.0f).rgb;
     }
-    return sum / 6.0f;
+    return sum / (zenithWeight + 4.0f);
 }
 
 // 視線 direction の手前側（カメラの側）の空の光。視線の後ろ側の仰角 20 度と 50 度の空の平均。見えている雲の面は
@@ -199,8 +201,10 @@ float3 HikariCloudSourceRadiance(HikariCloudColumn column, float cosine, float l
     float2 localVisibility)
 {
     // 夕焼けの雲底（火烧云）。光源が低い間（仰角 10° 未満）、柱の下部（高さの 45% まで、上へ薄れる）は光源の方向の
-    // 光学的厚さを 1.5 で打ち切る。実際は夕日が雲の層の切れ間や雲底の下から差し込んで雲底を橙に光らせるが、地平線すれすれ
-    // の光は自分の雲の体を水平に何 km も抜けることになり、厚さのままでは雲底が暗い茶色に沈む（画面を優先した近似）。
+    // 光学的厚さ τ を 1.5 ln(1 + τ / 1.5) へ縮める。実際は夕日が雲の層の切れ間や雲底の下から差し込んで雲底を橙に光らせる
+    // が、地平線すれすれの光は自分の雲の体を水平に何 km も抜けることになり、厚さのままでは雲底が暗い茶色に沈む（画面を
+    // 優先した近似）。上限で切らずに縮めるので、夕日の側の縁ほど明るく奥ほど暗い濃淡が残り、雲底が日向の面より明るい
+    // 一様な舞台光にならない。
     // 雲底へ差し込む光は雲の中ほどへ届く光より低く地面寄りを通るので、大気の透過率を T^1.8（気団が 0.8 倍分多い）とし、
     // 明るさを保ったまま色だけ赤へ寄せる（gCloudLightColor は T を輝度 1 へ正規化した色）。雲の上の方もその半分だけ
     // 寄せる（暗い隙間が黄色のまま沈むと、赤い雲底の隣で濁った緑に見える）。
@@ -208,7 +212,7 @@ float3 HikariCloudSourceRadiance(HikariCloudColumn column, float cosine, float l
     const float lower = 1.0f - smoothstep(0.15f, 0.45f, column.height);
     const float underside = lowSun * lower;
     const float redden = lowSun * lerp(0.5f, 1.0f, lower);
-    const float sunDepth = lerp(lightDepth, min(lightDepth, 1.5f), underside);
+    const float sunDepth = lerp(lightDepth, 1.5f * log(1.0f + max(lightDepth, 0.0f) / 1.5f), underside);
     const float3 lightColor = max(gCloudLightColor.rgb, 1.0e-4f.xxx);
     const float3 lowColor = pow(lightColor, 1.8f);
     const float3 reddening = lowColor / lightColor *
