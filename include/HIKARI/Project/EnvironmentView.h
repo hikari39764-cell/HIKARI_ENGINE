@@ -33,6 +33,14 @@ public:
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult SetRenderStyle(std::string_view styleId) const noexcept;
     // 今の描画の様式の ID。次の SetRenderStyle / RestoreSnapshot / シーンの再構築まで有効な借用。
     HIKARI_GAME_PROJECT_SDK_API std::string_view GetRenderStyleId() const noexcept;
+    // 今効いている色調整（置き換え中ならその値）。outGrading の size/version を初期化してから呼ぶ。
+    HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
+    GetColorGrading(GameProjectColorGrading& outGrading) const noexcept;
+    // 環境プロファイルの色調整を置き換える（範囲へ丸める）。LUT が読めなければ InvalidRequest で変えない。
+    // シーンの読み込みと Play の開始で解除される。存档には含めない。
+    HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
+    SetColorGradingOverride(const GameProjectColorGrading& grading) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult ClearColorGradingOverride() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
     CaptureSnapshot(GameProjectEnvironmentSnapshot& outSnapshot) const noexcept;
     // 別の版のエンジンで保存した状態や壊れた状態は InvalidRequest で拒否する。

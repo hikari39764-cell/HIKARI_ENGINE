@@ -365,6 +365,12 @@ const RENDER3D::ResolvedCameraFrame& CameraDirector::Resolve(const World& world,
             resolvedFrame_.camera.SetDepthOfFieldSettings(resolvedSettings);
         }
 
+        CAMERA::CameraMotionBlurSubmission motionBlurRequest{};
+        if (rigService->TryResolveMotionBlur(resolvedSource, motionBlurRequest)) {
+            resolvedFrame_.camera.SetMotionBlurSettings(BlendMotionBlurSettings(
+                resolvedFrame_.camera.GetMotionBlurSettings(), motionBlurRequest.settings, motionBlurRequest.weight));
+        }
+
         CAMERA::CameraFocusSubmission focusRequest{};
         const bool hasFocusRequest = rigService->TryResolveFocus(resolvedSource, focusRequest);
         const bool focusWins =

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
@@ -60,5 +61,29 @@ struct GameProjectEnvironmentSnapshot {
 
 static_assert(sizeof(GameProjectEnvironmentSnapshot) == 464u);
 static_assert(std::is_trivially_copyable_v<GameProjectEnvironmentSnapshot>);
+
+inline constexpr uint32_t kGameProjectColorGradingVersion = 1u;
+inline constexpr uint32_t kGameProjectColorGradingV1Size = 88u;
+// 資産 GUID（32 桁の 16 進と終端の NUL）。空文字列は「無し」。
+inline constexpr uint32_t kGameProjectColorGradingAssetGuidCapacity = 33u;
+
+// 色調整（環境プロファイルの「色調整」）。トーンマッピングと表示の符号化の後の表示色へ掛かる。三段の色味は
+// 0..2（1 で変えない）、LUT は .cube の ColorLut 資産 GUID（空は無し）で lutIntensity 0..1 の強さで混ぜる。
+struct GameProjectColorGrading {
+    uint32_t structSize = kGameProjectColorGradingV1Size;
+    uint32_t version = kGameProjectColorGradingVersion;
+    GameProjectFloat3 shadowsTint{1.0f, 1.0f, 1.0f};
+    GameProjectFloat3 midtonesTint{1.0f, 1.0f, 1.0f};
+    GameProjectFloat3 highlightsTint{1.0f, 1.0f, 1.0f};
+    float lutIntensity = 1.0f;
+    char lutAssetGuid[kGameProjectColorGradingAssetGuidCapacity]{};
+    uint8_t reserved[7]{};
+};
+
+static_assert(std::is_standard_layout_v<GameProjectColorGrading>);
+static_assert(std::is_trivially_copyable_v<GameProjectColorGrading>);
+static_assert(sizeof(GameProjectColorGrading) == kGameProjectColorGradingV1Size);
+static_assert(offsetof(GameProjectColorGrading, lutIntensity) == 44u);
+static_assert(offsetof(GameProjectColorGrading, lutAssetGuid) == 48u);
 
 } // namespace HIKARI

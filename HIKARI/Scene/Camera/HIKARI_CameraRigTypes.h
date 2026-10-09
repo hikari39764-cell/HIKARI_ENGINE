@@ -122,6 +122,15 @@ struct CameraDepthOfFieldSubmission {
     DepthOfFieldSettings settings{};
 };
 
+// Full motion-blur override submitted for one frame (same arbitration as depth of field).
+struct CameraMotionBlurSubmission {
+    SceneObjectId cameraObjectId{};
+    CameraRigSourceId sourceId = 0u;
+    int priority = 0;
+    float weight = 1.0f;
+    MotionBlurSettings settings{};
+};
+
 enum class CameraFocusMode : uint8_t {
     Distance,
     WorldPoint,

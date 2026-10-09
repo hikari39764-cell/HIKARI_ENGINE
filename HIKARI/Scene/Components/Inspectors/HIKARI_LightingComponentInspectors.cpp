@@ -104,7 +104,7 @@ void LightComponent::BuildInspector(IInspectorBuilder& builder) {
                 "horizontal 0 degrees along local +X. The flux setting stays the total output."},
             AssetType::LightProfile, next.iesProfile);
     }
-    Apply(next);
+    SetSettings(next);
 }
 
 void ReflectionProbeComponent::BuildInspector(IInspectorBuilder& builder) {

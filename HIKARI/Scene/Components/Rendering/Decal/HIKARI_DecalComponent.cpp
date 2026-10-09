@@ -67,7 +67,7 @@ void DecalComponent::BuildInspector(IInspectorBuilder& builder) {
                        next.angleFadeDegrees, 0.0f, 89.0f, 0.5f);
     builder.Int(AuthoringFieldDescriptor{"sortOrder", "Sort Order", "Higher values draw over lower ones."},
                 next.sortOrder);
-    settings_ = NormalizeDecalSettings(next);
+    SetSettings(next);
 }
 #endif
 

@@ -39,6 +39,10 @@ public:
 
     void Serialize(nlohmann::json& out) const override { out = WriteDecalSettings(settings_); }
     void Deserialize(const nlohmann::json& in) override { settings_ = ReadDecalSettings(in); }
+    // 範囲へ丸めて置き換える（実行時の変更、文書へは保存しない）。
+    void SetSettings(const RENDER3D::DECAL::DecalSettings& settings) noexcept {
+        settings_ = NormalizeDecalSettings(settings);
+    }
 #if defined(HIKARI_WITH_EDITOR)
     void BuildInspector(IInspectorBuilder& builder) override;
 #endif

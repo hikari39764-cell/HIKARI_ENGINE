@@ -249,6 +249,69 @@ bool CameraView::SubmitDepthOfField(const GameProjectCameraDepthOfFieldRequest& 
     }
 }
 
+bool CameraView::GetAuthoredMotionBlur(uint64_t cameraObjectHandle,
+                                       GameProjectMotionBlurSettings& outSettings) const noexcept {
+    if (!CanWriteRecord(outSettings, kGameProjectMotionBlurSettingsV1Size, kGameProjectMotionBlurSettingsVersion) ||
+        cameraObjectHandle == 0u) {
+        return false;
+    }
+    try {
+        World* world = static_cast<World*>(world_);
+        if (!IsUsableWorld(world)) {
+            return false;
+        }
+        GameObject* object = PROJECT::INTERNAL::FindObject(world, cameraObjectHandle);
+        const CameraComponent* component = object != nullptr ? object->GetComponent<CameraComponent>() : nullptr;
+        if (component == nullptr || !component->IsEnabled()) {
+            return false;
+        }
+        const CAMERA::MotionBlurSettings& authored = component->GetMotionBlurSettings();
+        GameProjectMotionBlurSettings settings{};
+        settings.enabled = authored.enabled ? 1u : 0u;
+        settings.shutterAngleDegrees = authored.shutterAngleDegrees;
+        settings.maxBlur1080pPixels = authored.maxBlur1080pPixels;
+        WriteRecordPrefix(outSettings, settings, kGameProjectMotionBlurSettingsV1Size);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool CameraView::SubmitMotionBlur(const GameProjectCameraMotionBlurRequest& request) const noexcept {
+    if (!CanWriteRecord(request, kGameProjectCameraMotionBlurRequestV1Size,
+                        kGameProjectCameraMotionBlurRequestVersion) ||
+        request.reserved != 0u ||
+        !CanWriteRecord(request.settings, kGameProjectMotionBlurSettingsV1Size,
+                        kGameProjectMotionBlurSettingsVersion) ||
+        request.settings.enabled > 1u || request.settings.reserved[0] != 0u || request.settings.reserved[1] != 0u ||
+        request.settings.reserved[2] != 0u) {
+        return false;
+    }
+    try {
+        World* world = static_cast<World*>(world_);
+        if (!IsUsableWorld(world)) {
+            return false;
+        }
+        CAMERA::CameraMotionBlurSubmission submission{};
+        if (!ToCameraObjectId(*world, request.cameraObjectHandle, submission.cameraObjectId)) {
+            return false;
+        }
+        CAMERA::CameraRigService* rig = world->Services().Find<CAMERA::CameraRigService>();
+        if (rig == nullptr) {
+            return false;
+        }
+        submission.sourceId = request.sourceId;
+        submission.priority = request.priority;
+        submission.weight = request.weight;
+        submission.settings = {request.settings.enabled != 0u, request.settings.shutterAngleDegrees,
+                               request.settings.maxBlur1080pPixels};
+        // 送り主・重み・範囲の検証は CameraRigService が持つ（DoF と同じ受付）。
+        return rig->SubmitMotionBlur(submission);
+    } catch (...) {
+        return false;
+    }
+}
+
 bool CameraView::SubmitFocus(const GameProjectCameraFocusRequest& request) const noexcept {
     try {
         World* world = static_cast<World*>(world_);

@@ -34,6 +34,7 @@ void CameraRigService::BeginFrame(uint64_t frameIndex) noexcept {
     targetFramings_.clear();
     depthOfField_.clear();
     focuses_.clear();
+    motionBlur_.clear();
 }
 
 void CameraRigService::Clear() noexcept {
@@ -44,6 +45,7 @@ void CameraRigService::Clear() noexcept {
     targetFramings_.clear();
     depthOfField_.clear();
     focuses_.clear();
+    motionBlur_.clear();
 }
 
 bool CameraRigService::SubmitMode(const CameraModeSubmission& submission) {
@@ -141,29 +143,34 @@ const Submission* ResolveCameraFrameRequest(const std::vector<Submission>& reque
     return winner;
 }
 
-bool CameraRigService::SubmitDepthOfField(const CameraDepthOfFieldSubmission& submission) {
-    if (submission.sourceId == 0u || !std::isfinite(submission.weight) || submission.weight < 0.0f ||
-        submission.weight > 1.0f || !IsValidDepthOfFieldSettings(submission.settings)) {
-        return false;
-    }
-
-    const auto existing = std::find_if(
-        depthOfField_.begin(), depthOfField_.end(), [&submission](const CameraDepthOfFieldSubmission& candidate) {
-            return candidate.cameraObjectId == submission.cameraObjectId && candidate.sourceId == submission.sourceId;
-        });
-    if (existing != depthOfField_.end()) {
-        *existing = submission;
-    } else {
-        depthOfField_.push_back(submission);
-    }
-    return true;
-}
-
-bool CameraRigService::SubmitFocus(const CameraFocusSubmission& submission) {
+// 毎フレームのレンズ要求（DoF / Focus / 運動ブラー）の共通の受付。送り主と重みを確かめ、同じカメラ・送り主の要求を置き換える。
+template <typename Submission>
+bool UpsertCameraFrameRequest(std::vector<Submission>& requests, const Submission& submission) {
     if (submission.sourceId == 0u || !std::isfinite(submission.weight) || submission.weight < 0.0f ||
         submission.weight > 1.0f) {
         return false;
     }
+    const auto existing = std::find_if(requests.begin(), requests.end(), [&submission](const Submission& candidate) {
+        return candidate.cameraObjectId == submission.cameraObjectId && candidate.sourceId == submission.sourceId;
+    });
+    if (existing != requests.end()) {
+        *existing = submission;
+    } else {
+        requests.push_back(submission);
+    }
+    return true;
+}
+
+bool CameraRigService::SubmitDepthOfField(const CameraDepthOfFieldSubmission& submission) {
+    return IsValidDepthOfFieldSettings(submission.settings) && UpsertCameraFrameRequest(depthOfField_, submission);
+}
+
+bool CameraRigService::SubmitMotionBlur(const CameraMotionBlurSubmission& submission) {
+    return NormalizeMotionBlurSettings(submission.settings) == submission.settings &&
+           UpsertCameraFrameRequest(motionBlur_, submission);
+}
+
+bool CameraRigService::SubmitFocus(const CameraFocusSubmission& submission) {
     switch (submission.mode) {
     case CameraFocusMode::Distance:
         if (!std::isfinite(submission.distance) || submission.distance < kMinDepthOfFieldFocusDistance) {
@@ -186,17 +193,7 @@ bool CameraRigService::SubmitFocus(const CameraFocusSubmission& submission) {
         break;
     default: return false;
     }
-
-    const auto existing =
-        std::find_if(focuses_.begin(), focuses_.end(), [&submission](const CameraFocusSubmission& candidate) {
-            return candidate.cameraObjectId == submission.cameraObjectId && candidate.sourceId == submission.sourceId;
-        });
-    if (existing != focuses_.end()) {
-        *existing = submission;
-    } else {
-        focuses_.push_back(submission);
-    }
-    return true;
+    return UpsertCameraFrameRequest(focuses_, submission);
 }
 
 bool CameraRigService::TryResolvePose(SceneObjectId cameraObjectId, CameraRigSubmission& outSubmission) const noexcept {
@@ -249,6 +246,16 @@ bool CameraRigService::TryResolveDepthOfField(SceneObjectId cameraObjectId,
 bool CameraRigService::TryResolveFocus(SceneObjectId cameraObjectId,
                                        CameraFocusSubmission& outSubmission) const noexcept {
     const CameraFocusSubmission* winner = ResolveCameraFrameRequest(focuses_, cameraObjectId);
+    if (winner == nullptr) {
+        return false;
+    }
+    outSubmission = *winner;
+    return true;
+}
+
+bool CameraRigService::TryResolveMotionBlur(SceneObjectId cameraObjectId,
+                                            CameraMotionBlurSubmission& outSubmission) const noexcept {
+    const CameraMotionBlurSubmission* winner = ResolveCameraFrameRequest(motionBlur_, cameraObjectId);
     if (winner == nullptr) {
         return false;
     }

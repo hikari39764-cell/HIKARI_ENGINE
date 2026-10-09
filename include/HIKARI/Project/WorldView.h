@@ -88,6 +88,7 @@ public:
     SetWorldTransform(const GameProjectTransform& transform) const noexcept;
     // 組み込みコンポーネントの実行時操作。対象コンポーネントが無い場合、各操作は Unsupported を返す。
     HIKARI_GAME_PROJECT_SDK_API LightView GetLight() const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API DecalView GetDecal() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API ModelView GetModel() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API WorldSpriteView GetWorldSprite() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API WorldTextView GetWorldText() const noexcept;

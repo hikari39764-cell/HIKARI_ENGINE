@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "Assets/Environment/HIKARI_EnvironmentFields.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 
 namespace HIKARI::ENVIRONMENT {
@@ -94,6 +95,7 @@ EnvironmentLightingFrame BuildLightingFrame(const EnvironmentProfile& profile, c
 
 void EnvironmentRuntime::Reset(const SceneEnvironmentBinding& binding) {
     binding_ = binding;
+    colorGradingOverride_.reset();
     RefreshProfile();
     renderStyleId_ = binding_.renderStyleId;
     weatherId_ = binding_.weatherId.empty() ? profile_.defaultWeather : binding_.weatherId;
@@ -119,6 +121,9 @@ void EnvironmentRuntime::RefreshProfile() {
     }
     if (const auto asset = store_->LoadProfile(binding_.profileId, error_)) {
         profile_ = asset->profile;
+        if (colorGradingOverride_) {
+            profile_.colorGrading = *colorGradingOverride_;
+        }
         if (!profile_.colorGrading.lut.empty()) {
             colorLut_ = store_->LoadColorLut(profile_.colorGrading.lut, error_);
         }
@@ -149,6 +154,26 @@ bool EnvironmentRuntime::RequestWeather(std::string_view weatherId, float second
     weatherId_ = weatherId;
     simulation_.RequestWeather(asset->weather, WeatherKey(weatherId), seconds);
     return true;
+}
+
+bool EnvironmentRuntime::SetColorGradingOverride(const ColorGradingSettings& grading, std::string& error) {
+    const ColorGradingSettings normalized = JSONFIELDS::Sanitize(grading, FIELDS::kColorGradingFields);
+    if (!normalized.lut.empty() && (store_ == nullptr || !store_->LoadColorLut(normalized.lut, error))) {
+        if (store_ == nullptr) {
+            error = "Environment assets are not configured.";
+        }
+        return false;
+    }
+    colorGradingOverride_ = normalized;
+    RefreshProfile();
+    return true;
+}
+
+void EnvironmentRuntime::ClearColorGradingOverride() {
+    if (colorGradingOverride_) {
+        colorGradingOverride_.reset();
+        RefreshProfile();
+    }
 }
 
 bool EnvironmentRuntime::Restore(const EnvironmentSnapshot& snapshot, std::string_view weatherId,

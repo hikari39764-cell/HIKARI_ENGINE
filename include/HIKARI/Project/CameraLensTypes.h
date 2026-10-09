@@ -16,6 +16,10 @@ inline constexpr uint32_t kGameProjectCameraDepthOfFieldRequestVersion = 1u;
 inline constexpr uint32_t kGameProjectCameraDepthOfFieldRequestV1Size = 72u;
 inline constexpr uint32_t kGameProjectCameraFocusRequestVersion = 1u;
 inline constexpr uint32_t kGameProjectCameraFocusRequestV1Size = 80u;
+inline constexpr uint32_t kGameProjectMotionBlurSettingsVersion = 1u;
+inline constexpr uint32_t kGameProjectMotionBlurSettingsV1Size = 20u;
+inline constexpr uint32_t kGameProjectCameraMotionBlurRequestVersion = 1u;
+inline constexpr uint32_t kGameProjectCameraMotionBlurRequestV1Size = 56u;
 
 enum class GameProjectCameraProjectionKind : uint32_t {
     Perspective = 0u,
@@ -99,6 +103,32 @@ struct GameProjectCameraFocusRequest {
     uint32_t reserved = 0u;
 };
 
+// Camera motion blur. The shutter angle scales per-pixel velocity (360 keeps the shutter open for the whole
+// frame); the blur length is capped in reference pixels at 1080p (0..64). It reconstructs from TAA motion
+// vectors, so it applies only with TAA, DLAA or DLSS.
+struct GameProjectMotionBlurSettings {
+    uint32_t structSize = kGameProjectMotionBlurSettingsV1Size;
+    uint32_t version = kGameProjectMotionBlurSettingsVersion;
+    uint8_t enabled = 0u;
+    uint8_t reserved[3] = {0u, 0u, 0u};
+    float shutterAngleDegrees = 180.0f;
+    float maxBlur1080pPixels = 32.0f;
+};
+
+// Per-frame motion-blur replacement with the same arbitration as depth of field. cameraObjectHandle=0 targets
+// the currently resolved primary camera. weight blends the shutter angle (a disabled side counts as 0 degrees)
+// and the blur length from the authored values.
+struct GameProjectCameraMotionBlurRequest {
+    uint32_t structSize = kGameProjectCameraMotionBlurRequestV1Size;
+    uint32_t version = kGameProjectCameraMotionBlurRequestVersion;
+    uint64_t cameraObjectHandle = 0u;
+    uint64_t sourceId = 0u;
+    int32_t priority = 0;
+    float weight = 1.0f;
+    GameProjectMotionBlurSettings settings{};
+    uint32_t reserved = 0u;
+};
+
 static_assert(std::is_standard_layout_v<GameProjectDepthOfFieldSettings>);
 static_assert(std::is_trivially_copyable_v<GameProjectDepthOfFieldSettings>);
 static_assert(sizeof(GameProjectDepthOfFieldSettings) == kGameProjectDepthOfFieldSettingsV1Size);
@@ -117,5 +147,12 @@ static_assert(std::is_standard_layout_v<GameProjectCameraFocusRequest>);
 static_assert(std::is_trivially_copyable_v<GameProjectCameraFocusRequest>);
 static_assert(sizeof(GameProjectCameraFocusRequest) == kGameProjectCameraFocusRequestV1Size);
 static_assert(offsetof(GameProjectCameraFocusRequest, worldPoint) == 40u);
+static_assert(std::is_standard_layout_v<GameProjectMotionBlurSettings>);
+static_assert(std::is_trivially_copyable_v<GameProjectMotionBlurSettings>);
+static_assert(sizeof(GameProjectMotionBlurSettings) == kGameProjectMotionBlurSettingsV1Size);
+static_assert(std::is_standard_layout_v<GameProjectCameraMotionBlurRequest>);
+static_assert(std::is_trivially_copyable_v<GameProjectCameraMotionBlurRequest>);
+static_assert(sizeof(GameProjectCameraMotionBlurRequest) == kGameProjectCameraMotionBlurRequestV1Size);
+static_assert(offsetof(GameProjectCameraMotionBlurRequest, settings) == 32u);
 
 } // namespace HIKARI

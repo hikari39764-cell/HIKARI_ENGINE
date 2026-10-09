@@ -188,6 +188,11 @@ public:
     HIKARI_GAME_PROJECT_SDK_API bool SubmitDepthOfField(
         const GameProjectCameraDepthOfFieldRequest& request) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SubmitFocus(const GameProjectCameraFocusRequest& request) const noexcept;
+    // Authored motion blur of an explicit camera object, and a frame-scoped override with the same
+    // arbitration as SubmitDepthOfField. Out-of-range settings are rejected.
+    HIKARI_GAME_PROJECT_SDK_API bool GetAuthoredMotionBlur(uint64_t cameraObjectHandle,
+                                                           GameProjectMotionBlurSettings& outSettings) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API bool SubmitMotionBlur(const GameProjectCameraMotionBlurRequest& request) const noexcept;
     // Latest successfully presented primary image for this World. This may
     // describe Game, EditorScene or an editor camera preview and can be one
     // frame behind the current update. Camera, frame and coordinate mapping

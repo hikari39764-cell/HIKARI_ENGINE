@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -46,6 +47,10 @@ public:
     bool RequestWeather(std::string_view weatherId, float seconds, std::string& error);
     // 存档の復元。weatherId は遷移先の天気、renderStyleId は描画の様式。
     bool Restore(const EnvironmentSnapshot& snapshot, std::string_view weatherId, std::string_view renderStyleId);
+    // ゲームが実行中にプロファイルの色調整を置き換える（範囲へ丸める）。LUT が読めなければ false で変えない。
+    // Reset（シーンの読み込み、Play の開始）で解除する。存档には含めない。
+    bool SetColorGradingOverride(const ColorGradingSettings& grading, std::string& error);
+    void ClearColorGradingOverride();
 
 private:
     const EnvironmentAssetStore* store_ = nullptr;
@@ -55,6 +60,7 @@ private:
     std::string error_{};
     std::string weatherId_{};
     std::string renderStyleId_{};
+    std::optional<ColorGradingSettings> colorGradingOverride_{};
     EnvironmentSimulation simulation_{};
 };
 

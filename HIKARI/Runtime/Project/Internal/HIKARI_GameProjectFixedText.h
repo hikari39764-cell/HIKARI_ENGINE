@@ -5,6 +5,8 @@
 #include <string>
 #include <string_view>
 
+#include "Assets/HIKARI_AssetGuid.h"
+
 namespace HIKARI::PROJECT::DETAIL {
 template <size_t Capacity>
 std::string ReadFixedString(const char (&value)[Capacity]) {
@@ -52,6 +54,20 @@ bool ReadFixedText(const char (&source)[Capacity], std::string& outValue) {
         return true;
     outValue.clear();
     return false;
+}
+
+// 終端のある空文字列か資産 GUID だけを受け付ける（SDK の固定長の資産 GUID 欄）。
+template <size_t Capacity>
+bool ReadAssetGuidText(const char (&source)[Capacity], std::string& outGuid) {
+    return ReadFixedText(source, outGuid) && (outGuid.empty() || IsValidAssetGuid(outGuid));
+}
+
+// 収まらない値は空にする（作者値の GUID は常に収まる）。
+template <size_t Capacity>
+void WriteAssetGuidText(const std::string& guid, char (&destination)[Capacity]) noexcept {
+    if (!CopyStringToReference(guid, destination, Capacity)) {
+        destination[0] = '\0';
+    }
 }
 
 } // namespace HIKARI::PROJECT::DETAIL

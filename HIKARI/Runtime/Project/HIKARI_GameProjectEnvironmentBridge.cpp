@@ -1,6 +1,7 @@
 #include "HIKARI/Project/EnvironmentView.h"
 #include "HIKARI/Project/WorldView.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -9,6 +10,7 @@
 #include "Assets/RenderStyle/HIKARI_RenderStyleAssetStore.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectFixedText.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectWorldBridgeInternal.h"
 #include "Scene/Environment/HIKARI_EnvironmentRuntime.h"
 
@@ -43,6 +45,12 @@ GameProjectWorldResult Resolve(GameProjectWorldHandle identity, EnvironmentRunti
 }
 
 GameProjectFloat3 ToFloat3(const MATH::Vec3& value) noexcept { return {value.x, value.y, value.z}; }
+
+MATH::Vec3 ToVec3(const GameProjectFloat3& value) noexcept { return {value.x, value.y, value.z}; }
+
+bool IsFinite(const GameProjectFloat3& value) noexcept {
+    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+}
 } // namespace
 
 EnvironmentView WorldView::GetEnvironment() const noexcept { return EnvironmentView(world_); }
@@ -154,6 +162,74 @@ GameProjectWorldResult EnvironmentView::SetRenderStyle(std::string_view styleId)
 std::string_view EnvironmentView::GetRenderStyleId() const noexcept {
     EnvironmentRuntime* runtime = nullptr;
     return Resolve(world_, runtime).Succeeded() ? std::string_view(runtime->GetRenderStyleId()) : std::string_view{};
+}
+
+GameProjectWorldResult EnvironmentView::GetColorGrading(GameProjectColorGrading& outGrading) const noexcept {
+    if (outGrading.structSize != kGameProjectColorGradingV1Size ||
+        outGrading.version != kGameProjectColorGradingVersion) {
+        return MakeWorldResult(GameProjectWorldResultCode::InvalidRequest);
+    }
+    EnvironmentRuntime* runtime = nullptr;
+    GameProjectWorldResult result = Resolve(world_, runtime);
+    if (!result.Succeeded()) {
+        return result;
+    }
+    const ColorGradingSettings& source = runtime->GetProfile().colorGrading;
+    GameProjectColorGrading grading{};
+    grading.shadowsTint = ToFloat3(source.shadowsTint);
+    grading.midtonesTint = ToFloat3(source.midtonesTint);
+    grading.highlightsTint = ToFloat3(source.highlightsTint);
+    grading.lutIntensity = source.lutIntensity;
+    PROJECT::DETAIL::WriteAssetGuidText(source.lut, grading.lutAssetGuid);
+    outGrading = grading;
+    return result;
+}
+
+GameProjectWorldResult EnvironmentView::SetColorGradingOverride(const GameProjectColorGrading& grading) const noexcept {
+    ColorGradingSettings settings{};
+    if (grading.structSize != kGameProjectColorGradingV1Size || grading.version != kGameProjectColorGradingVersion ||
+        !IsFinite(grading.shadowsTint) || !IsFinite(grading.midtonesTint) || !IsFinite(grading.highlightsTint) ||
+        !std::isfinite(grading.lutIntensity) ||
+        std::any_of(std::begin(grading.reserved), std::end(grading.reserved),
+                    [](uint8_t value) { return value != 0u; })) {
+        return MakeWorldResult(GameProjectWorldResultCode::InvalidRequest);
+    }
+    EnvironmentRuntime* runtime = nullptr;
+    GameProjectWorldResult result = Resolve(world_, runtime);
+    if (!result.Succeeded()) {
+        return result;
+    }
+    try {
+        if (!PROJECT::DETAIL::ReadAssetGuidText(grading.lutAssetGuid, settings.lut)) {
+            return MakeWorldResult(GameProjectWorldResultCode::InvalidRequest);
+        }
+        settings.shadowsTint = ToVec3(grading.shadowsTint);
+        settings.midtonesTint = ToVec3(grading.midtonesTint);
+        settings.highlightsTint = ToVec3(grading.highlightsTint);
+        settings.lutIntensity = grading.lutIntensity;
+        // 範囲への丸めと LUT の読み込みは EnvironmentRuntime が行う。
+        std::string error;
+        if (!runtime->SetColorGradingOverride(settings, error)) {
+            return MakeWorldResult(GameProjectWorldResultCode::InvalidRequest);
+        }
+    } catch (...) {
+        return MakeWorldResult(GameProjectWorldResultCode::InternalError);
+    }
+    return result;
+}
+
+GameProjectWorldResult EnvironmentView::ClearColorGradingOverride() const noexcept {
+    EnvironmentRuntime* runtime = nullptr;
+    GameProjectWorldResult result = Resolve(world_, runtime);
+    if (!result.Succeeded()) {
+        return result;
+    }
+    try {
+        runtime->ClearColorGradingOverride();
+    } catch (...) {
+        return MakeWorldResult(GameProjectWorldResultCode::InternalError);
+    }
+    return result;
 }
 
 GameProjectWorldResult EnvironmentView::CaptureSnapshot(GameProjectEnvironmentSnapshot& outSnapshot) const noexcept {

@@ -34,20 +34,10 @@ public:
     int GetPriority() const noexcept { return settings_.priority; }
     uint64_t GetStateRevision() const noexcept { return stateRevision_; }
 
-    void SetEnabled(bool enabled) noexcept;
-    void SetLightType(RENDER3D::LIGHTING::SceneLightType type) noexcept;
-    void SetColor(const MATH::Vec3& color) noexcept;
-    void SetIntensity(float intensity) noexcept;
-    void SetRange(float range) noexcept;
-    void SetSourceRadius(float radius) noexcept;
-    void SetCastsShadows(bool value) noexcept;
-    void SetSpotConeAnglesDegrees(float innerAngleDegrees, float outerAngleDegrees) noexcept;
-    void SetAngularFalloff(float angularFalloff) noexcept;
+    // 正規化して置き換え、値が変わったら状態の版を進める。
+    void SetSettings(LightSettings next) noexcept;
 
 private:
-    // 正規化して置き換え、値が変わったら状態の版を進める。
-    void Apply(LightSettings next) noexcept;
-
     LightSettings settings_{};
     uint64_t stateRevision_ = 1u;
 };

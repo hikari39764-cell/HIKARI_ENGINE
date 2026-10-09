@@ -8,7 +8,9 @@
 #include "HIKARI/Project/WorldView.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectComponentAccess.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectFixedText.h"
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
+#include "Scene/Components/Rendering/Decal/HIKARI_DecalComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 #include "Scene/Components/Rendering/WorldText/HIKARI_WorldTextComponent.h"
@@ -32,8 +34,9 @@ GameProjectLightType ToProjectLightType(RENDER3D::LIGHTING::SceneLightType type)
 }
 
 bool HasNonZeroLightPatchReserved(const GameProjectLightPatch& patch) noexcept {
-    return patch.reserved0[0] != 0u || patch.reserved0[1] != 0u || patch.reserved0[2] != 0u || patch.reserved1 != 0u ||
-           patch.reserved2 != 0u;
+    const auto zero = [](uint8_t value) { return value == 0u; };
+    return !std::all_of(std::begin(patch.reserved0), std::end(patch.reserved0), zero) || patch.reserved1 != 0u ||
+           patch.reserved2 != 0u || !std::all_of(std::begin(patch.reserved3), std::end(patch.reserved3), zero);
 }
 
 bool HasNonZeroWorldSpritePatchReserved(const GameProjectWorldSpritePatch& patch) noexcept {
@@ -57,6 +60,7 @@ static_assert(static_cast<uint32_t>(GameProjectWorldSpriteAlphaMode::Blend) ==
               static_cast<uint8_t>(WorldSpriteComponent::AlphaMode::Blend));
 
 LightView ObjectView::GetLight() const noexcept { return LightView(handle_); }
+DecalView ObjectView::GetDecal() const noexcept { return DecalView(handle_); }
 ModelView ObjectView::GetModel() const noexcept { return ModelView(handle_); }
 WorldSpriteView ObjectView::GetWorldSprite() const noexcept { return WorldSpriteView(handle_); }
 WorldTextView ObjectView::GetWorldText() const noexcept { return WorldTextView(handle_); }
@@ -66,7 +70,7 @@ WorldTextView ObjectView::GetWorldText() const noexcept { return WorldTextView(h
 bool LightView::TryGetState(GameProjectLightState& outState) const noexcept {
     const uint32_t bytes = outState.structSize;
     const uint32_t version = outState.version;
-    if (version != kGameProjectLightStateVersion || bytes != kGameProjectLightStateV3Size) {
+    if (version != kGameProjectLightStateVersion || bytes != kGameProjectLightStateV4Size) {
         return false;
     }
     GameProjectLightState snapshot{};
@@ -88,6 +92,11 @@ bool LightView::TryGetState(GameProjectLightState& outState) const noexcept {
         snapshot.stateRevision = light.GetStateRevision();
         snapshot.sourceRadius = light.GetSourceRadius();
         snapshot.castsShadows = light.CastsShadows() ? 1u : 0u;
+        const LightSettings& settings = light.GetSettings();
+        snapshot.length = settings.length;
+        snapshot.height = settings.height;
+        PROJECT::DETAIL::WriteAssetGuidText(settings.iesProfile, snapshot.iesProfileAssetGuid);
+        PROJECT::DETAIL::WriteAssetGuidText(settings.cookie, snapshot.cookieAssetGuid);
         std::memcpy(&outState, &snapshot, bytes);
         return true;
     });
@@ -95,53 +104,166 @@ bool LightView::TryGetState(GameProjectLightState& outState) const noexcept {
 
 GameProjectWorldResult LightView::ApplyPatch(const GameProjectLightPatch& patch) const noexcept {
     return MutateComponent<LightComponent>(object_, [&](LightComponent& light) {
+        using Field = GameProjectLightPatchField;
+        using RENDER3D::LIGHTING::SceneLightType;
         const uint32_t mask = patch.fieldMask;
-        const auto Selected = [mask](GameProjectLightPatchField field) {
-            return (mask & GameProjectLightPatchFields(field)) != 0u;
-        };
-        if (patch.structSize != kGameProjectLightPatchV2Size || patch.version != kGameProjectLightPatchVersion ||
+        const auto Selected = [mask](Field field) { return (mask & GameProjectLightPatchFields(field)) != 0u; };
+        std::string iesProfile;
+        std::string cookie;
+        if (patch.structSize != kGameProjectLightPatchV3Size || patch.version != kGameProjectLightPatchVersion ||
             mask == 0u || (mask & ~kGameProjectLightPatchKnownFields) != 0u || HasNonZeroLightPatchReserved(patch) ||
-            (Selected(GameProjectLightPatchField::Enabled) && patch.enabled > 1u) ||
-            (Selected(GameProjectLightPatchField::Color) && !Finite(patch.color)) ||
-            (Selected(GameProjectLightPatchField::Intensity) && !std::isfinite(patch.intensity)) ||
-            (Selected(GameProjectLightPatchField::Range) && !std::isfinite(patch.range)) ||
-            (Selected(GameProjectLightPatchField::SpotCone) &&
+            (Selected(Field::Enabled) && patch.enabled > 1u) || (Selected(Field::Color) && !Finite(patch.color)) ||
+            (Selected(Field::Intensity) && !std::isfinite(patch.intensity)) ||
+            (Selected(Field::Range) && !std::isfinite(patch.range)) ||
+            (Selected(Field::SpotCone) &&
              (!std::isfinite(patch.innerConeAngleDegrees) || !std::isfinite(patch.outerConeAngleDegrees))) ||
-            (Selected(GameProjectLightPatchField::AngularFalloff) && !std::isfinite(patch.angularFalloff)) ||
-            (Selected(GameProjectLightPatchField::CastShadows) && patch.castsShadows > 1u) ||
-            (Selected(GameProjectLightPatchField::SourceRadius) && !std::isfinite(patch.sourceRadius))) {
+            (Selected(Field::AngularFalloff) && !std::isfinite(patch.angularFalloff)) ||
+            (Selected(Field::CastShadows) && patch.castsShadows > 1u) ||
+            (Selected(Field::SourceRadius) && !std::isfinite(patch.sourceRadius)) ||
+            (Selected(Field::AreaExtent) && (!std::isfinite(patch.length) || !std::isfinite(patch.height))) ||
+            (Selected(Field::IesProfile) &&
+             !PROJECT::DETAIL::ReadAssetGuidText(patch.iesProfileAssetGuid, iesProfile)) ||
+            (Selected(Field::Cookie) && !PROJECT::DETAIL::ReadAssetGuidText(patch.cookieAssetGuid, cookie))) {
             return Code::InvalidRequest;
         }
-        if ((Selected(GameProjectLightPatchField::SpotCone) || Selected(GameProjectLightPatchField::AngularFalloff)) &&
-            light.GetLightType() != RENDER3D::LIGHTING::SceneLightType::Spot) {
+        const SceneLightType type = light.GetLightType();
+        const bool spot = type == SceneLightType::Spot;
+        const bool area = type == SceneLightType::Tube || type == SceneLightType::Rect;
+        if (((Selected(Field::SpotCone) || Selected(Field::AngularFalloff) || Selected(Field::Cookie)) && !spot) ||
+            (Selected(Field::AreaExtent) && !area) || (Selected(Field::IesProfile) && area)) {
             return Code::Unsupported;
         }
-        const float innerCone = std::clamp(patch.innerConeAngleDegrees, 0.1f, 89.0f);
-        if (Selected(GameProjectLightPatchField::Enabled)) {
-            light.SetEnabled(patch.enabled != 0u);
+        // 範囲への丸めと円錐角の順序は作者値と同じ NormalizeLightSettings が行う。
+        LightSettings next = light.GetSettings();
+        if (Selected(Field::Enabled)) {
+            next.enabled = patch.enabled != 0u;
         }
-        if (Selected(GameProjectLightPatchField::Color)) {
-            light.SetColor({std::clamp(patch.color.x, 0.0f, 1.0f), std::clamp(patch.color.y, 0.0f, 1.0f),
-                            std::clamp(patch.color.z, 0.0f, 1.0f)});
+        if (Selected(Field::Color)) {
+            next.color = {patch.color.x, patch.color.y, patch.color.z};
         }
-        if (Selected(GameProjectLightPatchField::Intensity)) {
-            light.SetIntensity(std::clamp(patch.intensity, 0.0f, kMaximumLightLumens));
+        if (Selected(Field::Intensity)) {
+            next.intensity = patch.intensity;
         }
-        if (Selected(GameProjectLightPatchField::Range)) {
-            light.SetRange(std::clamp(patch.range, 0.05f, 1000.0f));
+        if (Selected(Field::Range)) {
+            next.range = patch.range;
         }
-        if (Selected(GameProjectLightPatchField::SpotCone)) {
-            light.SetSpotConeAnglesDegrees(innerCone, std::clamp(patch.outerConeAngleDegrees, innerCone, 89.0f));
+        if (Selected(Field::SpotCone)) {
+            next.innerConeAngleDegrees = patch.innerConeAngleDegrees;
+            next.outerConeAngleDegrees = patch.outerConeAngleDegrees;
         }
-        if (Selected(GameProjectLightPatchField::AngularFalloff)) {
-            light.SetAngularFalloff(std::clamp(patch.angularFalloff, 0.05f, 8.0f));
+        if (Selected(Field::AngularFalloff)) {
+            next.angularFalloff = patch.angularFalloff;
         }
-        if (Selected(GameProjectLightPatchField::CastShadows)) {
-            light.SetCastsShadows(patch.castsShadows != 0u);
+        if (Selected(Field::CastShadows)) {
+            next.castsShadows = patch.castsShadows != 0u;
         }
-        if (Selected(GameProjectLightPatchField::SourceRadius)) {
-            light.SetSourceRadius(patch.sourceRadius);
+        if (Selected(Field::SourceRadius)) {
+            next.sourceRadius = patch.sourceRadius;
         }
+        if (Selected(Field::AreaExtent)) {
+            next.length = patch.length;
+            next.height = patch.height;
+        }
+        if (Selected(Field::IesProfile)) {
+            next.iesProfile = std::move(iesProfile);
+        }
+        if (Selected(Field::Cookie)) {
+            next.cookie = std::move(cookie);
+        }
+        light.SetSettings(std::move(next));
+        return Code::Success;
+    });
+}
+
+// ---- Decal ----
+
+bool DecalView::TryGetState(GameProjectDecalState& outState) const noexcept {
+    if (outState.version != kGameProjectDecalStateVersion || outState.structSize != kGameProjectDecalStateV1Size) {
+        return false;
+    }
+    outState = GameProjectDecalState{};
+    return ReadComponent<DecalComponent>(object_, [&](const DecalComponent& decal) {
+        const RENDER3D::DECAL::DecalSettings& settings = decal.GetSettings();
+        GameProjectDecalState state{};
+        state.enabled = settings.enabled ? 1u : 0u;
+        state.size = {settings.size.x, settings.size.y, settings.size.z};
+        state.color = {settings.color.x, settings.color.y, settings.color.z};
+        state.opacity = settings.opacity;
+        state.colorWeight = settings.colorWeight;
+        state.normalWeight = settings.normalWeight;
+        state.materialWeight = settings.materialWeight;
+        state.roughness = settings.roughness;
+        state.metallic = settings.metallic;
+        state.angleFadeDegrees = settings.angleFadeDegrees;
+        state.sortOrder = settings.sortOrder;
+        PROJECT::DETAIL::WriteAssetGuidText(settings.baseColorTexture, state.baseColorTextureAssetGuid);
+        PROJECT::DETAIL::WriteAssetGuidText(settings.normalTexture, state.normalTextureAssetGuid);
+        outState = state;
+        return true;
+    });
+}
+
+GameProjectWorldResult DecalView::ApplyPatch(const GameProjectDecalPatch& patch) const noexcept {
+    return MutateComponent<DecalComponent>(object_, [&](DecalComponent& decal) {
+        using Field = GameProjectDecalPatchField;
+        const uint32_t mask = patch.fieldMask;
+        const auto Selected = [mask](Field field) { return (mask & GameProjectDecalPatchFields(field)) != 0u; };
+        const auto zero = [](uint8_t value) { return value == 0u; };
+        std::string baseColorTexture;
+        std::string normalTexture;
+        if (patch.structSize != kGameProjectDecalPatchV1Size || patch.version != kGameProjectDecalPatchVersion ||
+            mask == 0u || (mask & ~kGameProjectDecalPatchKnownFields) != 0u ||
+            !std::all_of(std::begin(patch.reserved0), std::end(patch.reserved0), zero) ||
+            !std::all_of(std::begin(patch.reserved1), std::end(patch.reserved1), zero) ||
+            (Selected(Field::Enabled) && patch.enabled > 1u) || (Selected(Field::Size) && !Finite(patch.size)) ||
+            (Selected(Field::Color) && !Finite(patch.color)) ||
+            (Selected(Field::Opacity) && !std::isfinite(patch.opacity)) ||
+            (Selected(Field::Weights) && (!std::isfinite(patch.colorWeight) || !std::isfinite(patch.normalWeight) ||
+                                          !std::isfinite(patch.materialWeight))) ||
+            (Selected(Field::Material) && (!std::isfinite(patch.roughness) || !std::isfinite(patch.metallic))) ||
+            (Selected(Field::AngleFade) && !std::isfinite(patch.angleFadeDegrees)) ||
+            (Selected(Field::BaseColorTexture) &&
+             !PROJECT::DETAIL::ReadAssetGuidText(patch.baseColorTextureAssetGuid, baseColorTexture)) ||
+            (Selected(Field::NormalTexture) &&
+             !PROJECT::DETAIL::ReadAssetGuidText(patch.normalTextureAssetGuid, normalTexture))) {
+            return Code::InvalidRequest;
+        }
+        // 範囲への丸めは作者値と同じ NormalizeDecalSettings が行う。
+        RENDER3D::DECAL::DecalSettings next = decal.GetSettings();
+        if (Selected(Field::Enabled)) {
+            next.enabled = patch.enabled != 0u;
+        }
+        if (Selected(Field::Size)) {
+            next.size = {patch.size.x, patch.size.y, patch.size.z};
+        }
+        if (Selected(Field::BaseColorTexture)) {
+            next.baseColorTexture = std::move(baseColorTexture);
+        }
+        if (Selected(Field::NormalTexture)) {
+            next.normalTexture = std::move(normalTexture);
+        }
+        if (Selected(Field::Color)) {
+            next.color = {patch.color.x, patch.color.y, patch.color.z};
+        }
+        if (Selected(Field::Opacity)) {
+            next.opacity = patch.opacity;
+        }
+        if (Selected(Field::Weights)) {
+            next.colorWeight = patch.colorWeight;
+            next.normalWeight = patch.normalWeight;
+            next.materialWeight = patch.materialWeight;
+        }
+        if (Selected(Field::Material)) {
+            next.roughness = patch.roughness;
+            next.metallic = patch.metallic;
+        }
+        if (Selected(Field::AngleFade)) {
+            next.angleFadeDegrees = patch.angleFadeDegrees;
+        }
+        if (Selected(Field::SortOrder)) {
+            next.sortOrder = patch.sortOrder;
+        }
+        decal.SetSettings(next);
         return Code::Success;
     });
 }

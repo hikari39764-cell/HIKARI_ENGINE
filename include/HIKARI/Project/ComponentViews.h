@@ -4,6 +4,7 @@
 #include <string_view>
 #include <type_traits>
 
+#include "HIKARI/Project/DecalTypes.h"
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/LightTypes.h"
 #include "HIKARI/Project/PresentationTypes.h"
@@ -15,7 +16,7 @@ namespace HIKARI {
 
 class ObjectView;
 
-// ObjectView::GetLight/GetModel/GetWorldSprite/GetWorldText から取得する、
+// ObjectView::GetLight/GetDecal/GetModel/GetWorldSprite/GetWorldText から取得する、
 // 既存の組み込みコンポーネントへの非所有ビュー。World 所有スレッドでのみ有効。
 // 変更は実行時のみで Scene 文書へは保存されない（World 再構築後は再適用する）。
 // 変更系はすべて GameProjectWorldResult を返し、対象コンポーネントが無い場合は Unsupported。
@@ -30,6 +31,19 @@ public:
 private:
     friend class ObjectView;
     explicit LightView(GameProjectObjectHandle object) noexcept : object_(object) {}
+    GameProjectObjectHandle object_{};
+};
+
+class DecalView {
+public:
+    DecalView() = default;
+    // outState の size/version を初期化してから呼ぶ。対応外のヘッダーは false で変更しない。
+    HIKARI_GAME_PROJECT_SDK_API bool TryGetState(GameProjectDecalState& outState) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult ApplyPatch(const GameProjectDecalPatch& patch) const noexcept;
+
+private:
+    friend class ObjectView;
+    explicit DecalView(GameProjectObjectHandle object) noexcept : object_(object) {}
     GameProjectObjectHandle object_{};
 };
 
@@ -93,6 +107,7 @@ private:
 };
 
 static_assert(std::is_trivially_copyable_v<LightView>);
+static_assert(std::is_trivially_copyable_v<DecalView>);
 static_assert(std::is_trivially_copyable_v<ModelView>);
 static_assert(std::is_trivially_copyable_v<WorldSpriteView>);
 static_assert(std::is_trivially_copyable_v<WorldTextView>);
