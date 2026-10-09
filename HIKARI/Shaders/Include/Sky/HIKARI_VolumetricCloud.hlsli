@@ -392,9 +392,9 @@ float HikariCloudExtinction(float density)
 }
 
 // 平均の層で、視線が 1 つの対流セルを抜ける長さ [m]。この長さごとにセルに当たるか外れるかが独立に決まるとみなす。
-// セルは 1〜6.7km だが、2.5km では 4km 上空から見た 30km 先の雲の海が透けて空と同じ明るさの霞になった（1.5km で
-// 透過率 (1 - c)^(距離 / 1.5km)）。
-static const float HIKARI_CLOUD_STATISTICAL_CELL = 1500.0f;
+// セルは 1〜6.7km だが、2.5km では 4km 上空から見た 30km 先の雲の海が透けて空と同じ明るさの霞になり、1.5km でも
+// 地平線の空の 1.2 倍にしかならなかった（1km で透過率 (1 - c)^(距離 / 1km)）。
+static const float HIKARI_CLOUD_STATISTICAL_CELL = 1000.0f;
 
 // その場の雲域の被覆率と雲型（天気図の大きな揺らぎ）だけで決まる、高さ altitude の雲の実効の濃さ。対流セル（1km 程度）
 // も 3D ノイズも見ないので、遠方（数十 km 先）や環境光用の雲の空でセルを拾って走査ノイズにならず、雲域の濃淡で
