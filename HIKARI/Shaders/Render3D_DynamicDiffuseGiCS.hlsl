@@ -185,7 +185,12 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         // 開口から差す小さく明るい面を拾うかどうかで一回の平均は大きく揺れる。揺れで履歴を捨てるとその probe だけ
         // 一回分の雑音に跳び、壁に probe 単位の明暗の斑が出る。履歴は保ち、点灯や消灯のような変化（平均の相対差が
         // 7 割以上）でだけ減らす。
-        const float history=previousSh[0].a>0.0f && sValidity>0.0f ? lerp(0.95f,0.5f,smoothstep(0.7f,1.0f,change)) : 0.0f;
+        // 更新回数（5 番の係数の alpha、描画側は読まない）で、新しい probe は最初の数回を単純平均にして早く収める。
+        // 固定の 0.95 では、読み込み直後や cascade が動いて入った probe の一次の照り返しが収まるまで近景で約 60 回
+        // （約 480 フレーム）かかり、その間ずっと光が明るくなり続けた。回数が増えると重みは 0.95 へ戻る。
+        const bool continuing=previousSh[0].a>0.0f && sValidity>0.0f;
+        const float updates=continuing ? previousSh[5].a : 0.0f;
+        const float history=continuing ? min(lerp(0.95f,0.5f,smoothstep(0.7f,1.0f,change)),updates/(updates+1.0f)) : 0.0f;
         // 0 番の alpha は validity、1..4 番は空の見える割合の L1 SH（全 ray）。描画側の空の鏡面反射を遮る。
         float sky=0.0f;
         if (lane>=1u && lane<=4u)
@@ -194,12 +199,14 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
             sky=lerp(sky,previousSh[lane].a,history);
             sSkySh[lane-1u]=sky;
         }
-        const float alpha=lane==0u ? sValidity : sky;
+        const float alpha=lane==0u ? sValidity : (lane==5u ? min(updates+1.0f,64.0f) : sky);
         sSh[lane]=lerp(coefficient,previousSh[lane].rgb,history);
         gOutputSh[lane][coordinate]=float4(sSh[lane],alpha);
     }
     GroupMemoryBarrierWithGroupSync();
     const bool keepMoments=hasPrevious && previousSh[0].a>0.0f && sValidity>0.0f;
+    // 深度 moment の履歴も更新回数で始めは軽くし、0.9 まで上げる。
+    const float momentHistory=keepMoments ? min(0.9f,previousSh[5].a/(previousSh[5].a+1.0f)) : 0.0f;
     // 描画側が probe ごとに 9 係数を読まないよう、放射照度 E/pi を 8x8 の八面体へ展開する。
     for(uint texel=lane;texel<100u;texel+=64u)
     {
@@ -234,7 +241,7 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         if (keepMoments)
         {
             const float2 previousMoments=gMaterialTexturePool[NonUniformResourceIndex(previousAtlasIndex)].Load(int3(previousTile+momentTexel,0)).rg;
-            result=weightSum>=0.1f ? lerp(fresh,previousMoments,0.9f) : previousMoments;
+            result=weightSum>=0.1f ? lerp(fresh,previousMoments,momentHistory) : previousMoments;
         }
         const float links = pixel.y == 1u && pixel.x >= 1u && pixel.x <= 8u ? float(ProbeOctantLinks(pixel.x - 1u)) : 0.0f;
         gOutputAtlas[tile+momentTexel]=float4(result,sValidity,links);
