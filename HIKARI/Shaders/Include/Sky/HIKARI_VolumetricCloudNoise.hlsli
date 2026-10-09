@@ -95,17 +95,19 @@ float HikariCloudBlobs2D(float2 position, int period, uint salt)
     return total;
 }
 
-// 積雲の対流セル。周期あたり 36 個の大きなセルと 100 個の小さなセル（周期 40km でおよそ 1.1km と 0.4km）を、
-// 値ノイズでゆがめて混ぜる。値が高いほどセルの中心。山の和の分布は格子の細かさによらない。小さなセルは 2 割に
-// とどめ、大きな雲の凹凸と群れの縁の小さな雲にする（多いと小さな塊が空一面に散らばる）。
+// 積雲の対流セル。周期あたり 11・30・90 個のセル（周期 40km でおよそ 3.6km・1.3km・0.45km）を値ノイズでゆがめて
+// 混ぜる。値が高いほどセルの中心。山の和の分布は格子の細かさによらない。大きなセルが主で、幅広く平たい雲
+// （晴天の積雲は高さより幅がずっと大きい）ができ、セルごとの半径と強さの乱数で大小の雲が混ざる。小さなセルは
+// 大きな雲の凹凸と群れの縁の小さな雲にとどめる（多いと同じ大きさの小さな塊が空一面に散らばる）。
 float HikariCloudCellField(float2 uv)
 {
     const float2 warp = float2(HikariCloudValueFbm2D(uv, int2(8, 8), 0x2545f491u),
         HikariCloudValueFbm2D(uv, int2(8, 8), 0x9e3779b1u)) - 0.5f;
     const float2 warped = uv + warp * 0.017f;
     // 山の和は 0〜2 程度。一様化の前に 0..1 へ収める。
-    return saturate((HikariCloudBlobs2D(warped * 36.0f, 36, 0x1b56c4e9u) * 0.8f +
-        HikariCloudBlobs2D(warped * 100.0f, 100, 0x7a5d3c21u) * 0.2f) * 0.5f);
+    return saturate((HikariCloudBlobs2D(warped * 11.0f, 11, 0x1b56c4e9u) * 0.65f +
+        HikariCloudBlobs2D(warped * 30.0f, 30, 0x5e2d58d9u) * 0.27f +
+        HikariCloudBlobs2D(warped * 90.0f, 90, 0x7a5d3c21u) * 0.08f) * 0.5f);
 }
 
 // 天気図。x 雲域の揺らぎ（大きな雲域と雲の群れ）、y 雲型の揺らぎ、z 対流セル、w 雲頂の塔（周期 40km で 830m から

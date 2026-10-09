@@ -75,9 +75,14 @@ enum class NoisePass : uint32_t {
 constexpr uint32_t kPassSrvCount = 9u;
 // 雲の形の周期（形状・細部・天気図）[m]。互いに整数比にならない値で、重なりの繰り返しを目立たせない。
 // 形状ノイズは雲の中の塊（周期の 1/4〜1/16、200〜800m）、天気図の対流セルは 1.1km と 0.4km。
-constexpr double kShapePeriod = 3200.0;
+// 形状ノイズの周期 [m]。対流セル（約 3km）に合わせ、大きな雲が同じ大きさの小さな泡の集まりに見えないようにする。
+constexpr double kShapePeriod = 4800.0;
 constexpr double kDetailPeriod = 320.0;
 constexpr double kWeatherPeriod = 40000.0;
+// 雲のまわりの空気遠近。雲は混合層（霞の層）の上端にできるので、雲の描画だけ Mie を 3 倍、スケールハイトを雲底まで
+// 引き上げる。遠くの雲の列ほど地平線の霞に溶け、手前の列との奥行きが出て粒の壁にならない（空そのものの LUT は変えない）。
+constexpr float kCloudHazeScale = 3.0f;
+constexpr float kCloudHazeHeightPerBase = 1.0f;
 // 濃さ 1 の消散係数 [1/m] と、雲の発達でノイズを持ち上げる速さ [m/s]。雲の中の濃さは縁から内側へ 0.3〜0.6 程度に
 // 育つので、雲の中の消散係数は積雲の実測（0.03〜0.06、視程 20〜30m）になる。
 constexpr float kReferenceExtinction = 0.1f;
@@ -172,8 +177,10 @@ struct QualityPolicy {
     uint32_t lightSamples = 10u;
     float minimumStep = 12.0f;
     float stepPerDistance = 0.008f;
-    float maxDistance = 80000.0f;
-    float detailDistance = 16000.0f;
+    // 個々の雲を追跡する最大距離 [m]。長いほど地平線の雲の列が壁になる。
+    float maxDistance = 50000.0f;
+    // 細部ノイズを使う距離。遠くまで保たないと、遠くの対流セルが丸屋根の粒に見える。
+    float detailDistance = 28000.0f;
     float currentWeight = 0.08f;
     // 地表の影の表の列数（16km 四方）と光源方向の段数。Balanced で 1 列 83m。
     uint32_t solarResolution = 192u;
@@ -183,9 +190,9 @@ struct QualityPolicy {
 
 QualityPolicy ResolveQualityPolicy(VolumetricCloudQuality quality) noexcept {
     switch (quality) {
-    case VolumetricCloudQuality::Low: return {4u, 48u, 9u, 24.0f, 0.012f, 50000.0f, 8000.0f, 0.12f, 96u, 16u, 0u};
+    case VolumetricCloudQuality::Low: return {4u, 48u, 9u, 24.0f, 0.012f, 40000.0f, 14000.0f, 0.12f, 96u, 16u, 0u};
     // High は履歴を全解像度で持つ（追跡はその 2x2 ごとに 1 画素）。撮影・カットシーン向け。
-    case VolumetricCloudQuality::High: return {1u, 128u, 12u, 8.0f, 0.006f, 100000.0f, 24000.0f, 0.06f, 320u, 24u, 2u};
+    case VolumetricCloudQuality::High: return {1u, 128u, 12u, 8.0f, 0.006f, 70000.0f, 40000.0f, 0.06f, 320u, 24u, 2u};
     case VolumetricCloudQuality::Balanced:
     default: return {};
     }
@@ -874,14 +881,14 @@ bool BuildConstants(StageState& state, const TEMPORAL::TemporalFrameState& tempo
     const float type = SanitizeFiniteRange(weather.type, 0.5f, 0.0f, 1.0f);
     const float precipitation = SanitizeFiniteRange(weather.precipitation, 0.0f, 0.0f, 1.0f);
     const MATH::Vec2 shell = ResolveShell(constants.typeBase, constants.typeThickness, type, precipitation);
-    // 最大距離の 4 割から個々の雲を平均の濃さへ移す。地平線近くで雲が連なって一続きの帯になっていく過程にし、
-    // 遠くの小さな雲が粒の列（ポップコーン）に見えないようにする。
+    // 最大距離の 4 割から個々の雲を平均の濃さへ移す（薄くするのは shader が最大距離の 1/4 から別に行う）。地平線近くで
+    // 数十 km 分の雲の列が壁のように積み上がらず、遠くの小さな雲も粒の列（ポップコーン）に見えない。
     constants.shell = {shell.x, shell.y, policy.maxDistance, policy.maxDistance * 0.4f};
     constants.weather = {coverage, type, precipitation, 0.0f};
     const MATH::Vec3& albedo = environment.atmosphere.groundAlbedo;
     constants.density = {kReferenceExtinction * SanitizeFiniteRange(layer.densityScale, 1.0f, 0.0f, 8.0f) *
                              SanitizeFiniteRange(weather.density, 1.0f, 0.0f, 8.0f),
-                         SanitizeFiniteRange(layer.detailErosion, 0.25f, 0.0f, 1.0f),
+                         SanitizeFiniteRange(layer.detailErosion, 0.12f, 0.0f, 1.0f),
                          SanitizeFiniteRange(layer.ambientScale, 1.0f, 0.0f, 4.0f),
                          std::clamp(albedo.x * 0.2126f + albedo.y * 0.7152f + albedo.z * 0.0722f, 0.0f, 1.0f)};
 
@@ -935,9 +942,10 @@ bool BuildConstants(StageState& state, const TEMPORAL::TemporalFrameState& tempo
         air.rayleighScattering.z * airStrength,
         SanitizeFiniteRange(air.rayleighScaleHeight, defaults.rayleighScaleHeight, 100.0f, 100000.0f)};
     const float mieScattering = (air.mieScattering.x + air.mieScattering.y + air.mieScattering.z) / 3.0f;
-    constants.airMie = {std::isfinite(mieScattering) ? (std::max)(mieScattering, 0.0f) * 1.11f * airStrength : 0.0f,
-                        SanitizeFiniteRange(air.mieScaleHeight, defaults.mieScaleHeight, 100.0f, 100000.0f), 0.0f,
-                        0.0f};
+    const float mieScaleHeight = SanitizeFiniteRange(air.mieScaleHeight, defaults.mieScaleHeight, 100.0f, 100000.0f);
+    constants.airMie = {
+        std::isfinite(mieScattering) ? (std::max)(mieScattering, 0.0f) * 1.11f * airStrength * kCloudHazeScale : 0.0f,
+        (std::max)(mieScaleHeight, kCloudHazeHeightPerBase * scale * 1500.0f), 0.0f, 0.0f};
     const CloudShadingEstimate shading = EstimateCloudShading(environment);
     constants.airUnderClouds = {shading.ambientRadiance.x, shading.ambientRadiance.y, shading.ambientRadiance.z,
                                 shading.sunVisibility};

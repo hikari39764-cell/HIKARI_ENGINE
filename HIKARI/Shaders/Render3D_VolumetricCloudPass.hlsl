@@ -20,6 +20,9 @@ SamplerState gCloudPointClamp : register(s2);
 static const float HIKARI_CLOUD_NO_HIT = 1.0e7f;
 // 雲の外を探す粗い歩幅の最小 [m]。
 static const float HIKARI_CLOUD_COARSE_STEP_MIN = 100.0f;
+// 遠方（gCloudShell.w から先）の雲を薄くする割合。地平線近くで数十 km 分の雲の列が透視で壁のように積み上がらない
+// （Horizon Zero Dawn も遠方の雲を淡く消す）。環境光用の雲の空（statistical）には掛けない。
+static const float HIKARI_CLOUD_FAR_THINNING = 0.5f;
 
 struct HikariCloudFullscreen
 {
@@ -178,18 +181,10 @@ float3 HikariCloudSourceRadiance(HikariCloudColumn column, float cosine, float l
     float3 lightRadiance, float3 skyAmbient, float3 skyFacing, float viewDepth, float3 groundAmbient,
     float2 localVisibility)
 {
-    // 雲が横に連なっている度合い。被覆率が 1 に近いほど一面の雲（HikariCloudMergeCell と同じ c^4）。
-    const float deck = column.coverage * column.coverage * column.coverage * column.coverage;
-    // 雲底（上が雲で下が開いている面。localVisibility で見分ける）には、上から入った主光源が雲の中を拡散して届く
-    // （μ / π / (1 + 0.11 τ μ) の半分。残りは横や上へ抜ける）。一面の雲は HikariCloudLightScattering の板の拡散透過が
-    // 持つので deck で引く。光源方向の厚さ τ に細部が入るので、薄い所が明るく厚い所が暗いまだらになり、雲底が一様な
-    // 灰色の板にならない。
-    const float elevation = max(gCloudLightDirection.y, 0.0f);
-    const float bottom = (1.0f - localVisibility.x) * localVisibility.y * (1.0f - deck);
-    const float transmitted =
-        0.5f * elevation / (HIKARI_CLOUD_PI * (1.0f + 0.11f * lightDepth * max(elevation, 0.1f)));
+    // 主光源の光は、表面近くの向きの揃った散乱（銀の縁と日向の面）と、雲の中で何度も散乱して透けてくる拡散光
+    // （薄い所を明るく、陰の面と雲底を灰色に満たす）の和。
     const float3 sun = lightRadiance *
-        (HikariCloudLightScattering(cosine, lightDepth, density, deck, gCloudLightDirection.y) + transmitted * bottom);
+        (HikariCloudLightScattering(cosine, lightDepth, density) + HikariCloudDiffuseTransmission(lightDepth));
     // 雲の上と下から入る環境光は、この柱でそこまでにある雲の厚さ（平均の濃さ 0.5）を拡散透過 1/(1 + 0.11τ) で
     // 抜けてくる。雲の側面は横の空も見ているので、鉛直の柱で指数的に消すと積雲の中が黒い芯になる。
     const float aboveDepth = gCloudDensity.x * 0.5f * column.above;
@@ -335,7 +330,8 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
     {
         // 遠方へ移る範囲は平均の濃さなので細かく進まない。
         const float fade = statistical ? 1.0f : smoothstep(gCloudShell.w, gCloudShell.z, t);
-        fine = fine && fade <= 0.0f;
+        // 個々の雲がまだ残る間（fade < 0.75）は細い歩幅を保つ。粗い歩幅だけで追うと遠くの雲が縦に流れた筋になる。
+        fine = fine && fade < 0.75f;
         const float coarseStep = clamp(quality.w * 2.5f * t, HIKARI_CLOUD_COARSE_STEP_MIN, 800.0f);
         const float fineStep = clamp(t * gCloudAerial.w, quality.z, 200.0f);
         const float stepLength = fine ? fineStep * clamp(0.35f / max(lastDensity, 0.12f), 1.0f, 3.0f) : coarseStep;
@@ -351,6 +347,9 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
             density += HikariCloudDensity(column, position, altitude, detailWeight, t * gCloudAerial.w) *
                 (1.0f - fade);
         }
+        // 遠くの雲は最大距離の 1/4 から薄くしていく（平均の濃さへの移行とは別の距離で）。
+        density *= statistical ? 1.0f
+                               : 1.0f - HIKARI_CLOUD_FAR_THINNING * smoothstep(0.25f * gCloudShell.z, gCloudShell.z, t);
         if (density > 0.0f && !fine && fade <= 0.0f)
         {
             // 雲の表面は (t - coarseStep, t] にある。二分探索 2 回で 1/4 の幅に絞ってから細い歩幅で進む（粗い歩幅ぶん
@@ -453,7 +452,8 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
             const float distance = t + (float(farIndex) + 0.5f) * segment;
             const float altitude = HikariCloudAltitude(origin + direction * distance);
             HikariCloudColumn column = (HikariCloudColumn)0;
-            const float density = HikariCloudStatisticalDensity(origin + direction * distance, altitude, column);
+            const float density = HikariCloudStatisticalDensity(origin + direction * distance, altitude, column) *
+                (statistical ? 1.0f : 1.0f - HIKARI_CLOUD_FAR_THINNING);
             if (density <= 0.0f)
             {
                 continue;
@@ -623,6 +623,7 @@ float4 CompositeCloudPS(HikariCloudFullscreen input) : SV_Target
     // alpha が 1 を割り、天空 LUT の晴れた地平線の色が 1 画素の線になって透ける。地平線から数画素の帯では、1 行上
     // （地平線より上）の画素をそのまま使う方が不透明ならそれを採る。
     const float3 viewRay = HikariCloudViewRay(input.uv);
+    const float depth = gCloudSceneDepth.Load(int3(input.position.xy, 0));
     if (viewRay.y > 0.0f && viewRay.y < 4.0f * gCloudAerial.w)
     {
         const int2 texel = int2(input.uv * gCloudHistorySize.xy);
@@ -632,7 +633,13 @@ float4 CompositeCloudPS(HikariCloudFullscreen input) : SV_Target
             cloud = above;
         }
     }
-    const float depth = gCloudSceneDepth.Load(int3(input.position.xy, 0));
+    else if (viewRay.y <= 0.0f && viewRay.y > -4.0f * gCloudAerial.w && depth >= 0.999999f &&
+        gCloudCamera.y < gCloudShell.x)
+    {
+        // 地平線のすぐ下（雲の殻の下から見ている）には雲は無い。補間の核が上の暗い遠方の雲を拾って 2 画素の暗い線に
+        // ならないよう、何も描かない。
+        return 0.0f.xxxx;
+    }
     if (cloud.a <= 0.0f)
     {
         return 0.0f.xxxx;
