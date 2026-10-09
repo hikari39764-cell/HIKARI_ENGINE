@@ -39,9 +39,10 @@ cbuffer VolumetricCloudCB : register(b0)
 
 // ノイズはどれも一様分布（HIKARI_VolumetricCloudNoise.hlsli）。形状と細部は箱フィルタの mip を持つ。
 static const float HIKARI_CLOUD_SHAPE_NOISE_SIZE = 128.0f;  // HIKARI_VolumetricCloudStage.cpp の kShapeSize
-// 形状ノイズの鉛直の倍率。周期（gCloudShapePhase.z）は水平の周期で、鉛直はその 1/1.5 の周期で読む（雲の塊は高さより
-// 幅が広い。等方だと数 km 幅の雲が同じ丈の泡を縦にも積んだ厚い塊に見え、2 倍まで潰すと平たい棚が何段も重なる）。
-static const float HIKARI_CLOUD_SHAPE_VERTICAL_SCALE = 1.5f;
+// 形状ノイズの鉛直の倍率。周期（gCloudShapePhase.z）は水平の周期で、鉛直はその 1/1.25 の周期で読む（雲の塊は高さより
+// 幅が広い。等方だと数 km 幅の雲が同じ丈の泡を縦にも積んだ厚い塊に見え、1.5 倍以上に潰すと平たい棚やレンズ状の層が
+// 何段も重なる）。
+static const float HIKARI_CLOUD_SHAPE_VERTICAL_SCALE = 1.25f;
 static const float HIKARI_CLOUD_DETAIL_NOISE_SIZE = 32.0f;  // 同じく kDetailSize
 Texture3D<float> gCloudShapeNoise : register(t0);
 Texture3D<float> gCloudDetailNoise : register(t1);
@@ -146,11 +147,12 @@ float4 HikariCloudSampleWeather(float2 worldXZ)
 }
 
 // 雲頂の塔。対流の強い雲型（0.6〜0.8 で積乱雲へ）ではセルの中で雲頂を 0.6〜1.35 倍に上下させ、1 つのセルに複数の塔が
-// 立つ（丸屋根 1 つにしない）。積雲・層積雲は 0.7〜1.3 倍で、数 km 幅の雲に高さの違う複数の丸い頭を立てる
-// （0.9〜1.1 ではどのセルの頂も同じ高さに揃い、遠くで平らな棚に見える。遠くでは HikariCloudFarFlattening が塔を消す）。
+// 立つ（丸屋根 1 つにしない）。積雲・層積雲は 0.8〜1.2 倍で、数 km 幅の雲に高さの違う複数の丸い頭を立てる
+// （0.9〜1.1 ではどのセルの頂も同じ高さに揃い、遠くで平らな棚に見える。1.3 では上の積雲と下の層が縦の茎でつながり
+// 横からの光で暗い柱になる。遠くでは HikariCloudFarFlattening が ±15% まで塔を弱める）。
 float HikariCloudTurret(float4 weather, float type)
 {
-    return lerp(lerp(0.7f, 1.3f, weather.w), lerp(0.6f, 1.35f, weather.w), smoothstep(0.6f, 0.8f, type));
+    return lerp(lerp(0.8f, 1.2f, weather.w), lerp(0.6f, 1.35f, weather.w), smoothstep(0.6f, 0.8f, type));
 }
 
 // 雲の群れ（雲街）。天気図の雲域の揺らぎを風に沿って 3 倍に伸ばし、2 倍の周期で読む（一様分布。周期 80km なので
@@ -182,7 +184,7 @@ float HikariCloudDistanceGain(float2 worldXZ, float coverage)
     return lerp(nearGain, farGain, far);
 }
 
-// 遠く（15km→35km）の雲は雲頂を 0.8 倍に低くし、塔を無くす。遠くの対流セルの塔は粗い標本で尖った柱に見え、
+// 遠く（15km→35km）の雲は雲頂を 0.8 倍に低くし、塔を ±15% に弱める（無くすと遠くの層が一枚の平らな板になる）。遠くの対流セルの塔は粗い標本で尖った柱に見え、
 // 地平線近くの雲の群れが針山になる（現実でも遠くの積雲は横に連なった平たい層に見える）。10km から 0.6 倍まで
 // 潰すと、中景の雲が平底の皿を並べたようになる。
 float HikariCloudFarFlattening(float2 worldXZ)
@@ -268,13 +270,13 @@ struct HikariCloudColumn
     float below;    // 下にある雲の厚さ [m]
 };
 
-// 雲底が形状ノイズ（2 段粗い mip、水平 300m 以上の起伏だけ）で波打つ半幅 [m]。晴天の積雲でも凝結高度のばらつきで
+// 雲底が形状ノイズ（1 段粗い mip、水平 150m 以上の起伏だけ）で波打つ半幅 [m]。晴天の積雲でも凝結高度のばらつきで
 // 40m 波打ち、雲底が一枚の平らな板にならない。降水する雲は 180m まで広がり、垂れ下がった所が暗い雲底の塊やちぎれ雲
 // になる。細かな泡や細部ノイズで雲底を波打たせると、斜めの光で雲底一面が水玉模様になる（実際の積雲の雲底は凝結
 // 高度でほぼ平ら）。
 float HikariCloudRaggedBase()
 {
-    return 40.0f + 140.0f * gCloudWeather.z;
+    return 80.0f + 100.0f * gCloudWeather.z;
 }
 
 HikariCloudColumn HikariCloudResolveColumn(float3 position, float altitude)
@@ -299,7 +301,7 @@ HikariCloudColumn HikariCloudResolveColumn(float3 position, float altitude)
     const HikariCloudLayer layer = HikariCloudResolveLayer(column.type);
     const float flatten = HikariCloudFarFlattening(position.xz);
     column.top = max(HikariCloudScale(layer, column.coverage) *
-        lerp(HikariCloudTurret(weather, column.type), 1.0f, flatten) *
+        lerp(HikariCloudTurret(weather, column.type), lerp(0.85f, 1.15f, weather.w), flatten) *
         lerp(1.0f, 0.8f, flatten) * column.cell * (2.0f - column.cell), 1.0f);
     // 雲底はセルの中心で平らで、縁へ向かってわずかに巻き上がる（雲の高さの 1/10、最大 50m）。どの雲の縁も同じ
     // 薄さで棚のように並ぶことはなく、積雲の雲底は凝結高度でそろった一本の線に見える。
@@ -325,12 +327,12 @@ HikariCloudColumn HikariCloudResolveColumn(float3 position, float altitude)
     return column;
 }
 
-// 形状ノイズで雲を削る被覆率の上限。セルの中心でも 0.75（曇天・雲海では 1 まで）に抑え、形状ノイズが大きな雲の
+// 形状ノイズで雲を削る被覆率の上限。セルの中心でも 0.65（曇天・雲海では 1 まで）に抑え、形状ノイズが大きな雲の
 // 中に塔と切れ目を彫れるようにする。1 まで上げると閾値 1 - c が 0 になり、ノイズに関係なく一様に満たされた風船
-// になる（Horizon Zero Dawn の天気図も雲の芯で 0.8 程度）。
+// になる（0.75 でも間近の数 km のセルは正面が起伏の無い球。Horizon Zero Dawn の天気図も雲の芯で 0.7〜0.8）。
 float HikariCloudCoverageCap()
 {
-    return lerp(0.75f, 1.0f, smoothstep(0.7f, 0.95f, gCloudWeather.x));
+    return lerp(0.65f, 1.0f, smoothstep(0.7f, 0.95f, gCloudWeather.x));
 }
 
 // この高さで雲を削る被覆率。積乱雲（雲型 0.75 以上）は上端で被覆率を広げて金床を作る。
@@ -402,7 +404,8 @@ float HikariCloudStatisticalDensity(float3 position, float altitude, out HikariC
     const HikariCloudLayer layer = HikariCloudResolveLayer(type);
     const float2 shaping = HikariCloudEdgeShaping(type);
     const float flatten = HikariCloudFarFlattening(position.xz);
-    const float scale = HikariCloudScale(layer, coverage) * lerp(HikariCloudTurret(weather, type), 1.0f, flatten) *
+    const float scale = HikariCloudScale(layer, coverage) *
+        lerp(HikariCloudTurret(weather, type), lerp(0.85f, 1.15f, weather.w), flatten) *
         lerp(1.0f, 0.8f, flatten);
     const float elevation = altitude - layer.base;
     float density = 0.0f;
@@ -458,10 +461,11 @@ float HikariCloudDensity(HikariCloudColumn column, float3 position, float altitu
     // 近くは元の mip で輪郭と体積感を残す。
     const float shapeLod = log2(max(footprint * HIKARI_CLOUD_SHAPE_NOISE_SIZE / gCloudShapePhase.z, 1.0f)) +
         HikariCloudDistanceSoftness(footprint);
-    // 雲底の波打ちは 2 段粗い mip（水平 300m 以上）だけで決め、雲底の近く（波打ちと立ち上がりの範囲）でだけ読む。
+    // 雲底の波打ちは 1 段粗い mip（水平 150m 以上。最も細かい泡は形状ノイズから既に外してある）だけで決め、雲底の
+    // 近く（波打ちと立ち上がりの範囲）でだけ読む。40m・2 段粗いと、間近のセルの底面が起伏の無い球に見える。
     if (elevation < 2.0f * ragged + column.baseRise)
     {
-        const float baseNoise = gCloudShapeNoise.SampleLevel(gCloudLinearWrap, shapePosition, shapeLod + 2.0f);
+        const float baseNoise = gCloudShapeNoise.SampleLevel(gCloudLinearWrap, shapePosition, shapeLod + 1.0f);
         baseFade = saturate((elevation - 2.0f * ragged * (1.0f - baseNoise)) / column.baseRise);
         if (baseFade <= 0.0f)
         {
@@ -488,8 +492,9 @@ float HikariCloudDensity(HikariCloudColumn column, float3 position, float altitu
         const float billow = saturate(max(column.height * 10.0f, column.height * column.top / 150.0f));
         erosion = lerp(0.5f, lerp(highFrequency, 1.0f - highFrequency, billow), detailWeight);
     }
-    // 細部の侵食は薄い外殻（濃さ 0.25 以下）で全開、濃さ 0.75 で 0 にする。中まで削ると、斜めの光が当たる面に
-    // 細部ノイズの粒が紙やすりのように浮く。
+    // 細部の侵食は薄い外殻（濃さ 0.25 以下）で全開、濃さ 0.75 で 0 にする。芯まで削ると、斜めの光が当たる面に
+    // 細部ノイズの粒が紙やすりのように浮く。0.9 まで広げても間近の大きなセルの正面は変わらず、縁の勾配だけが
+    // 急になって切れ目の縁が階段になった。
     const float threshold = erosion * shaping.y * gCloudDensity.y * saturate(1.5f - 2.0f * density);
     const float shaped = saturate(shaping.x * HikariCloudRemap(density, threshold, 1.0f, 0.0f, 1.0f));
     return lerp(shaped, mean, meanWeight) * baseFade;
@@ -621,9 +626,9 @@ float HikariCloudLightScattering(float cosine, float lightOpticalDepth, float de
         attenuation *= 0.5f;
         anisotropy *= 0.5f;
     }
-    // powder は薄い外殻を 0.4 倍までにとどめる（0 まで落とすと、光源と反対を向いた時に塊の輪郭ごとに黒い線が巡り、
-    // 上から見た雲頂が脳のしわや等高線になる）。
-    const float powder = lerp(1.0f, 1.0f - 0.6f * exp(-8.0f * density), smoothstep(0.5f, -0.5f, cosine));
+    // powder は薄い外殻を 0.8 倍までにとどめる（0 まで落とすと、光源と反対を向いた時に塊の輪郭ごとに黒い線が巡り、
+    // 上から見た雲頂が脳のしわや等高線になる。0.4 では淡い脈、0.7 では小さな塊の縁取りが残った）。
+    const float powder = lerp(1.0f, 1.0f - 0.2f * exp(-8.0f * density), smoothstep(0.5f, -0.5f, cosine));
     return 2.0f * scattering * powder;
 }
 

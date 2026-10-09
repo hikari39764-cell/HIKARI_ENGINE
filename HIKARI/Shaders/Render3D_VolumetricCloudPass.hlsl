@@ -350,7 +350,7 @@ HikariCloudMarch HikariCloudMarchRay(float3 origin, float3 direction, float scen
         // 遠方へ移る範囲は平均の濃さなので細かく進まない。
         const float fade = statistical ? 1.0f : smoothstep(gCloudShell.w, gCloudShell.z, t);
         // 個々の雲がまだ残る間（fade < 0.75）は細い歩幅を保つ。粗い歩幅だけで追うと遠くの雲が縦に流れた筋になる。
-        fine = fine && fade < 0.75f;
+        fine = fine && fade < 0.9f;
         const float coarseStep = clamp(quality.w * 2.5f * t, HIKARI_CLOUD_COARSE_STEP_MIN, 800.0f);
         const float fineStep = clamp(t * gCloudAerial.w, quality.z, 200.0f);
         // 薄い標本の後は歩幅を伸ばし、1 歩の光学的厚さをそろえる（濃さ 0.35 で 1 倍、最大 8 倍）。雲頂の半透明の

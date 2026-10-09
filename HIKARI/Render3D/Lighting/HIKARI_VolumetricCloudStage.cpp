@@ -848,7 +848,7 @@ MATH::Vec2 ResolveShell(const MATH::Vec4& typeBase, const MATH::Vec4& typeThickn
         bottom = (std::min)(bottom, base);
         top = (std::max)(top, base + Lerp3(t, typeThickness.x, typeThickness.y, typeThickness.z));
     }
-    // 雲底は形状ノイズで最大 80m（降水する雲は 360m）下がり、降水する雲はさらに最大 250m 垂れ下がる
+    // 雲底は形状ノイズで最大 160m（降水する雲は 360m）下がり、降水する雲はさらに最大 250m 垂れ下がる
     // （シェーダーの HikariCloudRaggedBase・HikariCloudResolveColumn）。
     return {(std::max)(bottom - 180.0f - 480.0f * precipitation, 10.0f), top + 50.0f};
 }
@@ -892,9 +892,9 @@ bool BuildConstants(StageState& state, const TEMPORAL::TemporalFrameState& tempo
     const float type = SanitizeFiniteRange(weather.type, 0.5f, 0.0f, 1.0f);
     const float precipitation = SanitizeFiniteRange(weather.precipitation, 0.0f, 0.0f, 1.0f);
     const MATH::Vec2 shell = ResolveShell(constants.typeBase, constants.typeThickness, type, precipitation);
-    // 最大距離の 6 割から個々の雲を平均の濃さへ移す（薄くするのは shader が最大距離の 1/4 から別に行う）。地平線近くで
+    // 最大距離の 3/4 から個々の雲を平均の濃さへ移す（薄くするのは shader が最大距離の 1/4 から別に行う）。地平線近くで
     // 数十 km 分の雲の列が壁のように積み上がらず、遠くの小さな雲も粒の列（ポップコーン）に見えない。
-    constants.shell = {shell.x, shell.y, policy.maxDistance, policy.maxDistance * 0.6f};
+    constants.shell = {shell.x, shell.y, policy.maxDistance, policy.maxDistance * 0.75f};
     constants.weather = {coverage, type, precipitation, 0.0f};
     const MATH::Vec3& albedo = environment.atmosphere.groundAlbedo;
     constants.density = {kReferenceExtinction * SanitizeFiniteRange(layer.densityScale, 1.0f, 0.0f, 8.0f) *
