@@ -332,7 +332,7 @@ HikariCloudColumn HikariCloudResolveColumn(float3 position, float altitude)
 // になる（0.75 でも間近の数 km のセルは正面が起伏の無い球。Horizon Zero Dawn の天気図も雲の芯で 0.7〜0.8）。
 float HikariCloudCoverageCap()
 {
-    return lerp(0.65f, 1.0f, smoothstep(0.7f, 0.95f, gCloudWeather.x));
+    return lerp(0.58f, 1.0f, smoothstep(0.7f, 0.95f, gCloudWeather.x));
 }
 
 // この高さで雲を削る被覆率。積乱雲（雲型 0.75 以上）は上端で被覆率を広げて金床を作る。
