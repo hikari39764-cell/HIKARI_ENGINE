@@ -4,6 +4,8 @@
 #include <exception>
 #include <utility>
 
+#include "Core/HIKARI_Logger.h"
+
 namespace HIKARI::EDITOR::AGENT {
 namespace {
 
@@ -68,6 +70,20 @@ void AgentHost::CancelPending() {
 void AgentHost::SetOpen(bool open) {
     if (open_.exchange(open) != open && !open)
         CancelPending();
+}
+
+void AgentHost::SetAutoApprove(bool enabled) {
+    if (autoApprove_.exchange(enabled) == enabled || !enabled)
+        return;
+    {
+        std::lock_guard lock(mutex_);
+        for (const std::shared_ptr<PendingAction>& action : awaitingApproval_) {
+            action->approved = true;
+            pending_.push_back(action);
+        }
+        awaitingApproval_.clear();
+    }
+    changed_.notify_all();
 }
 
 void AgentHost::SetAccessMode(AgentAccessMode mode) {
@@ -151,7 +167,9 @@ void AgentHost::PumpActions() {
                 }
                 action->query = policy && policy->query;
             }
-            if (result.is_null() && policy && RequiresUserApproval(policy->permission)) {
+            if (result.is_null() && policy && RequiresUserApproval(policy->permission) && autoApprove_.load())
+                HIKARI_LOG_INFO("[Agent] auto-approved " + action->operation);
+            else if (result.is_null() && policy && RequiresUserApproval(policy->permission)) {
                 std::lock_guard lock(mutex_);
                 if (policy->approveEachTime || !turnGrants_.contains(action->operation)) {
                     // 結果を返さずに保留し、呼び出し元は承認か拒否まで待つ。

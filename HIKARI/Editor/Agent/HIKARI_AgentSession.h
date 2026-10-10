@@ -81,8 +81,10 @@ struct AgentEvent {
         ToolResult,
         Result,
         Error,
-        // 编辑器が聞かずに断った道具（title は理由：engine / content）。
+        // 编辑器が聞かずに断った道具（title は理由：engine / content / auto）。
         Blocked,
+        // 自動（無需批准）で聞かずに通した道具。
+        AutoApproved,
         Raw,
     };
     Kind kind = Kind::Raw;
@@ -169,6 +171,9 @@ struct AgentSessionRequest {
     bool chrome = false;
     // 利用者が CLI に設定した他の MCP 服务器・插件も読み込む。既定は hikari だけ（道具の定義は毎轮の上下文を使う）。
     bool userTools = false;
+    // 自動（無需批准）：CLI の道具の確認を人に聞かずに決める。命令と项目内の编辑は通し、项目の外への書き込みと行き先の
+    // 分からない変更は断る（引擎目录と内容模式の禁止は先に効く）。Codex も確認は求めさせ、その場で答える。
+    bool autoApprove = false;
 };
 
 struct AgentMessage {

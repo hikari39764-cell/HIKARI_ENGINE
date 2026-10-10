@@ -112,7 +112,7 @@ bool SameSettings(const EDITOR::AGENT::AgentSessionRequest& lhs, const EDITOR::A
     const bool sameModel = lhs.kind == AgentKind::Codex || (lhs.model == rhs.model && lhs.effort == rhs.effort);
     return lhs.kind == rhs.kind && lhs.executable == rhs.executable && lhs.allowProjectEdits == rhs.allowProjectEdits &&
            sameModel && lhs.chrome == rhs.chrome && lhs.userTools == rhs.userTools &&
-           lhs.projectRoot == rhs.projectRoot;
+           lhs.autoApprove == rhs.autoApprove && lhs.projectRoot == rhs.projectRoot;
 }
 
 void SavePreferences(const EDITOR::AGENT::AgentPanelState& panel) {
@@ -225,6 +225,9 @@ void DrawAgentEvent(const EDITOR::AGENT::AgentEvent& event) {
     case Kind::Blocked:
         ImGui::TextColored({1.0f, 0.62f, 0.3f, 1.0f}, "%s %s",
                            TEXT::Localize("agent.event.blocked." + event.title).c_str(), event.text.c_str());
+        break;
+    case Kind::AutoApproved:
+        ImGui::TextDisabled("%s %s", TEXT::Localize("agent.event.autoApproved").c_str(), event.text.c_str());
         break;
     case Kind::Raw: break;
     }
@@ -456,6 +459,7 @@ void DocumentSceneEditorController::StartAgentTurn(DocumentSceneBase& scene) {
     request.effort = TEXT::TrimCopy(std::string(panel.effort));
     request.chrome = panel.chrome && panel.kind == AgentKind::ClaudeCode;
     request.userTools = panel.userTools;
+    request.autoApprove = agentHost_.AutoApprove();
     // 設定が変わったら同じ会話を新しい設定で続ける。
     std::string resume = panel.resumeSession;
     if (panel.session.Running() && !SameSettings(panel.session.Request(), request)) {
@@ -490,7 +494,8 @@ void DocumentSceneEditorController::RecordAgentOperation(const std::string& acti
     if (operations.size() > kMaximumAgentOperations)
         operations.pop_back();
     if (result.ok)
-        viewportDropMessage_ = TEXT::Localize("agent.feedPrefix") + action;
+        viewportDropMessage_ =
+            TEXT::Localize(agentHost_.AutoApprove() ? "agent.feedPrefixAuto" : "agent.feedPrefix") + action;
 }
 
 void DocumentSceneEditorController::DrawAgentPanel(DocumentSceneBase& scene) {
@@ -589,6 +594,14 @@ void DocumentSceneEditorController::DrawAgentPanel(DocumentSceneBase& scene) {
     ImGui::TextDisabled(
         "%s",
         TEXT::Localize(mode == AgentAccessMode::DevelopProject ? "agent.mode.develop" : "agent.mode.content").c_str());
+    // 自動（無需批准）は人だけが入れる（どの操作からも切り替えられず、文件にも保存しない）。入れている間は目立たせる。
+    bool autoApprove = agentHost_.AutoApprove();
+    if (ImGui::Checkbox(TEXT::Localize("agent.autoApprove").c_str(), &autoApprove))
+        agentHost_.SetAutoApprove(autoApprove);
+    if (autoApprove)
+        ImGui::TextColored({1.0f, 0.62f, 0.3f, 1.0f}, "%s", TEXT::Localize("agent.autoApproveOn").c_str());
+    else if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", TEXT::Localize("agent.autoApproveHint").c_str());
     if (panel.session.Running() && ImGui::CollapsingHeader(TEXT::Localize("agent.usage.title").c_str()))
         DrawUsage(panel.session);
     ImGui::Separator();

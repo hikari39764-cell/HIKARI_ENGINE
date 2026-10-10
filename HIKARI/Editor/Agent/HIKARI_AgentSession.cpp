@@ -391,6 +391,17 @@ void AgentSession::AddEvent(AgentEvent event) {
 bool AgentSession::AddApproval(AgentToolApproval approval) {
     if (!approval.grantKey.empty() && turnGrants_.contains(approval.grantKey))
         return true;
+    if (request_.autoApprove) {
+        // 人がいない前提なので、项目の外への書き込みと行き先の分からない変更は断り、それ以外は通して記録に残す。
+        const std::string target = ClipAgentText(approval.tool + ": " + approval.detail);
+        if (approval.warning == "outsideProject" || approval.warning == "unknownTarget") {
+            AddEvent({AgentEvent::Kind::Blocked, "auto", target, true});
+            protocol_->Respond(*this, approval, false);
+            return false;
+        }
+        AddEvent({AgentEvent::Kind::AutoApproved, {}, target, false});
+        return true;
+    }
     approval.id = nextApprovalId_++;
     approvals_.push_back(std::move(approval));
     return false;

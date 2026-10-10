@@ -61,6 +61,11 @@ public:
     void SetExecutor(Executor executor);
     // 主线程で、待っている操作の前に引く。無ければ承認の要る操作を含め何も実行しない。
     void SetPermissionResolver(PermissionResolver resolver);
+    // 自動（無需批准）：承認の要る操作も人を待たずに通す（実行は活動の記録と日志に残る）。人だけが切り替える
+    // （面板か起動引数 --agent-auto-approve）。どの操作からも切り替えられず、文件にも保存しない。访问模式と
+    // 引擎目录の禁止はそのまま効く。入れた時に待っている承認は通す。
+    void SetAutoApprove(bool enabled);
+    bool AutoApprove() const noexcept { return autoApprove_.load(); }
     // 人が操作している間は、読むだけでない操作を次のフレームへ回す（人の編集と一つの撤销に混ざらないように）。
     // kMaximumDeferral を過ぎても終わらなければ DOCUMENT_BUSY で返す。
     void SetEditingCheck(EditingCheck check);
@@ -124,6 +129,7 @@ private:
     PermissionResolver permissionResolver_{};
     EditingCheck editingCheck_{};
     std::atomic<bool> open_{false};
+    std::atomic<bool> autoApprove_{false};
     std::atomic<uint64_t> generation_{1};
     std::atomic<AgentAccessMode> accessMode_{AgentAccessMode::Content};
 };

@@ -98,6 +98,9 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
                                                        definition->kind == EDITOR::EditorOperationKind::Query};
         });
     agentHost_.SetEditingCheck([this] { return IsUserEditingScene(); });
+    // 無人の验收用。人が起動引数で入れる時だけ（面板の勾选と同じ扱い）。
+    if (HasRuntimeCommandLineFlag(L"--agent-auto-approve"))
+        agentHost_.SetAutoApprove(true);
     agentHost_.SetExecutor([this](const std::string& operation, const nlohmann::json& parameters) {
         return ExecuteAgentAction(operation, parameters);
     });
