@@ -108,9 +108,9 @@ void DocumentSceneEditorController::RegisterUiOperations() {
                      return EditorOperationResult{false, "LOCKED", "Unlock the parent before adding children."};
              const auto before = scene->GetSceneDocument().objects;
              const bool dirty = context_.sceneDirty || scene->HasUnsavedSceneChanges();
-             const auto created =
-                 CreateUiTemplate(scene->GetSceneDocument(), scene->GetComponentRegistry(), preset, parent,
-                                  FindUiFont(scene->GetAssetDatabase()), p.value("name", std::string{}));
+             const std::string font = FindUiFont(scene->GetAssetDatabase());
+             const auto created = CreateUiTemplate(scene->GetSceneDocument(), scene->GetComponentRegistry(), preset,
+                                                   parent, font, p.value("name", std::string{}));
              if (!created.ok)
                  return EditorOperationResult{false, "CREATE_FAILED", created.error};
              CommitSceneObjectAuthoringHistory(*scene, {"Create UI/Text", before, scene->GetSceneDocument().objects,
@@ -119,6 +119,10 @@ void DocumentSceneEditorController::RegisterUiOperations() {
              // 作った物は選ばない（智能体が人の選択を変えずに並行して作業できるように）。界面の按钮は成功後に選ぶ。
              EditorOperationResult result{true, "OK", "Created scene object."};
              result.data = {{"objectId", created.id.value}, {"componentQuery", "component.instances.query"}};
+             // 字体が無いと文字は描かれない（黙って捨てられる）。引擎は字体を同梱しないので、导入を促す。
+             if (font.empty())
+                 result.data["warning"] = "The project has no font asset, so text will not show until a font file "
+                                          "(.ttf/.otf) is imported with asset.import.";
              return result;
          }},
         EditorOperationKind::Mutation, false);

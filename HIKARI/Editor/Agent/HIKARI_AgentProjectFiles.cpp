@@ -122,6 +122,8 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
   位置、旋转（度）、缩放和颜色在所有操作里都写成 `[x, y, z]`。
 - 游戏镜头区域：`camera_zone.edit`。
 - 对话：`dialogue.new_asset` → `dialogue.edit`（传整份定义，`dialogue.query` 返回当前定义）→ `dialogue.save`。
+- 界面文字（HUD 等）：`ui.create`。引擎不自带字体，项目里没有字体资产时文字不显示（结果里有 `warning`），
+  先用 `asset.import` 导入 .ttf/.otf，或请用户提供字体。
 - 撤回自己的修改：`scene.undo`。修改的结果里 `undo.label` 是这次积下的撤销步；撤销栈和用户共用，`hikari_state` 的
   `scene.undoLabel` 不是你的修改时不要撤。
 - 测玩法：`play.background`（`ticks`，每秒 60；`track` 或 `path` 输入轨道；`captureAt` 截游戏画面的 tick；
