@@ -48,8 +48,10 @@ bool HikariRayLightOccluded(HikariRayLightingData lighting, SamplerState materia
     return HikariTraceRuntimeScene(ray,lighting.scene.x,lighting.scene.y,lighting.time,materialSampler,HIKARI_RAY_SHADOW,ignored);
 }
 
+// incidentDiffuse は面の法線まわり、incidentSpecular は反射の向きまわりの入射光（どちらも E/pi）。鏡面
+// （includeSpecular）を数えない受け手（GI の probe）は incidentSpecular を使わない。
 float3 HikariRayHitRadiance(HikariRayLightingData lighting, HikariRaySurface hit, float3 view, float2 randomUv,
-    float3 incidentDiffuse, bool includeSpecular, SamplerState materialSampler)
+    float3 incidentDiffuse, float3 incidentSpecular, bool includeSpecular, SamplerState materialSampler)
 {
     const HikariMeshMaterialData material = HikariGetMeshMaterialData(hit.materialIndex);
     if ((material.materialFlags & HIKARI_MATERIAL_FLAG_UNLIT) != 0u) return hit.baseColor.rgb+hit.emissive;
@@ -79,12 +81,16 @@ float3 HikariRayHitRadiance(HikariRayLightingData lighting, HikariRaySurface hit
             const float distance = sample.distanceToLight > light.sourceRadius
                 ? sample.distanceToLight*cosine-sqrt(max(0.0f,light.sourceRadius*light.sourceRadius-
                     sample.distanceToLight*sample.distanceToLight*(1.0f-cosine*cosine))) : sample.distanceToLight;
-            if ((light.kind >> 16u) == 0u || !HikariRayLightOccluded(lighting,materialSampler,hit,direction,distance))
+            // 影を落とさない設定の灯りも、光線の当たった点（GI と反射）では遮蔽を調べる。画面の直接光の影は影の予算の
+            // ための設定で、照り返しまで壁を抜けると閉じた部屋の外や隣の部屋が灯りで明るくなる。
+            if (!HikariRayLightOccluded(lighting,materialSampler,hit,direction,distance))
                 result += HikariRayDirectLightResponse(includeSpecular,pbr,direction,sample.radiance /
                     max(1e-8f,gRuntimeRayLightCdf[lo].y) / max(0.5f,1.0f-sample.sourceHalfAngleSineSquared));
         }
     }
     result += incidentDiffuse * pbr.baseColor * pbr.diffuseEnergyWeight;
+    if (includeSpecular)
+        result += incidentSpecular * pbr.environmentSpecularResponse;
     return all(isfinite(result)) ? max(result,0.0f.xxx) : 0.0f.xxx;
 }
 

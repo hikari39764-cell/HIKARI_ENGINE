@@ -59,9 +59,9 @@ void DrawEditorDockSpace(bool resetDefaultDockLayout) {
     }
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    // v2: default layout only docks windows that are real dockable
-    // panels. The new ID intentionally ignores stale imgui.ini nodes.
-    const ImGuiID dockspaceId = ImGui::GetID("HIKARI_EditorDockSpace_v3");
+    // 既定の配置を変えた時は ID の版を上げ、imgui.ini に残った古い配置を使わない。
+    // v4: 環境（光と画づくり）を右の列の下半分へ移し、縦に長く使えるようにした。
+    const ImGuiID dockspaceId = ImGui::GetID("HIKARI_EditorDockSpace_v4");
     const ImGuiDockNodeFlags dockspaceFlags = ImGuiDockNodeFlags_None;
 
     static bool initializedDefaultDockLayout = false;
@@ -81,15 +81,17 @@ void DrawEditorDockSpace(bool resetDefaultDockLayout) {
         ImGuiID mainNode = dockspaceId;
         ImGuiID leftNode = 0;
         ImGuiID rightNode = 0;
+        ImGuiID environmentNode = 0;
         ImGuiID bottomNode = 0;
         ImGui::DockBuilderSplitNode(mainNode, ImGuiDir_Left, 0.19f, &leftNode, &mainNode);
-        ImGui::DockBuilderSplitNode(mainNode, ImGuiDir_Down, 0.24f, &bottomNode, &mainNode);
         ImGui::DockBuilderSplitNode(mainNode, ImGuiDir_Right, 0.28f, &rightNode, &mainNode);
+        ImGui::DockBuilderSplitNode(rightNode, ImGuiDir_Down, 0.5f, &environmentNode, &rightNode);
+        ImGui::DockBuilderSplitNode(mainNode, ImGuiDir_Down, 0.24f, &bottomNode, &mainNode);
 
         ImGui::DockBuilderDockWindow("###Game View", mainNode);
         ImGui::DockBuilderDockWindow("###Scene Workspace", leftNode);
         ImGui::DockBuilderDockWindow("###Inspector", rightNode);
-        ImGui::DockBuilderDockWindow("###Environment", bottomNode);
+        ImGui::DockBuilderDockWindow("###Environment", environmentNode);
         ImGui::DockBuilderDockWindow("###Quality", bottomNode);
         ImGui::DockBuilderDockWindow("###Debug View", bottomNode);
         ImGui::DockBuilderDockWindow("Performance Audit", bottomNode);
@@ -207,6 +209,8 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
         GameplayCameraWorkspace().DrawDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::GameplayCamera));
         const auto result = GameplayCameraWorkspace().Draw(scene, workspaceHost_, operationRegistry_,
                                                            context_.selection.GetActiveObjectId());
+        if (!ImGui::IsAnyItemActive())
+            documentHistory_.SealMerge();
         playSession.UpdateEmbeddedViewportInput(result.playViewport, result.playViewportClicked);
         if (result.togglePlay)
             ToggleGamePreview(scene, playSession);
@@ -220,6 +224,10 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
     }
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::TerrainSurface)) {
         DrawTerrainSurfaceWorkspace(scene, playSession);
+        return;
+    }
+    if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::LookDev)) {
+        DrawLookDevWorkspace(scene, playSession);
         return;
     }
     DrawSceneWorkspace(scene, playSession);
@@ -277,11 +285,12 @@ void DocumentSceneEditorController::DrawCinematicsWorkspace(DocumentSceneBase& s
         cinematicsBefore = scene.GetSceneDocument().cinematics;
     }
     CinematicsWorkspace().DrawDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::Cinematics));
-    const EDITOR::CinematicsWorkspaceResult result = CinematicsWorkspace().Draw(scene, context_, workspaceHost_);
+    const EDITOR::CinematicsWorkspaceResult result =
+        CinematicsWorkspace().Draw(scene, context_, workspaceHost_, operationRegistry_);
     playSession.UpdateEmbeddedViewportInput(result.playViewport, result.playViewportClicked);
     if (result.cinematicsChanged && cinematicsBefore) {
         RecordCinematicsHistory(scene, std::move(*cinematicsBefore), result.timelineEditMergeId, externalDirtyBefore);
-    } else if (result.timelineEditMergeId == 0) {
+    } else if (result.timelineEditMergeId == 0 && !ImGui::IsAnyItemActive()) {
         documentHistory_.SealMerge();
     }
     if (result.saveSceneRequested) {
@@ -361,6 +370,20 @@ void DocumentSceneEditorController::DrawSceneWorkspace(DocumentSceneBase& scene,
                                                                             scene.GetSceneDocument().systems),
                                      0, externalDirtyBefore, EDITOR::EditorDocumentImpact::Systems);
     }
+    ProcessSceneAuthoringRequests(scene);
+    HandleResourceWorkspaceRequests(scene);
+    DrawEnvironmentPanels(scene);
+    if (context_.windows.runtime.showDebugView) {
+        DrawDebugViewWindow(scene, context_.windows.runtime.showDebugView);
+    }
+    if (context_.windows.runtime.showPerformanceAudit) {
+        performanceAuditPanel_.Draw(context_.windows.runtime.showPerformanceAudit);
+    }
+    DrawPendingSceneOpenModal(scene);
+    SaveRenderQualityWhenIdle(scene);
+}
+
+void DocumentSceneEditorController::ProcessSceneAuthoringRequests(DocumentSceneBase& scene) {
     sceneCreationPanel_.DrawDeferredDialogs(scene, context_, selectionSync_);
     sceneInspectorPanel_.DrawDeferredDialogs(scene, context_, selectionSync_, sceneObjectCommands_);
     const auto recordSceneObjectHistory = [&](std::optional<SceneObjectAuthoringHistoryRequest> history) {
@@ -383,16 +406,6 @@ void DocumentSceneEditorController::DrawSceneWorkspace(DocumentSceneBase& scene,
     if (const std::optional<SceneObjectId> focusRequest = sceneInspectorPanel_.ConsumeFocusObjectRequest()) {
         FocusSceneObjects(scene, {*focusRequest});
     }
-    HandleResourceWorkspaceRequests(scene);
-    DrawEnvironmentPanels(scene);
-    if (context_.windows.runtime.showDebugView) {
-        DrawDebugViewWindow(scene, context_.windows.runtime.showDebugView);
-    }
-    if (context_.windows.runtime.showPerformanceAudit) {
-        performanceAuditPanel_.Draw(context_.windows.runtime.showPerformanceAudit);
-    }
-    DrawPendingSceneOpenModal(scene);
-    SaveRenderQualityWhenIdle(scene);
 }
 
 void DocumentSceneEditorController::HandleResourceWorkspaceRequests(DocumentSceneBase& scene) {
@@ -404,13 +417,7 @@ void DocumentSceneEditorController::HandleResourceWorkspaceRequests(DocumentScen
         if (route.workspaceRequest.has_value()) {
             (void)workspaceHost_.RequestOpen(std::move(*route.workspaceRequest));
         } else if (route.sceneAssetGuid.has_value()) {
-            pendingSceneOpenGuid_ = *route.sceneAssetGuid;
-            if (context_.sceneDirty || scene.HasUnsavedSceneChanges()) {
-                ImGui::OpenPopup("Unsaved Scene Changes");
-            } else {
-                OpenSceneAssetFromEditor(scene, pendingSceneOpenGuid_);
-                pendingSceneOpenGuid_ = {};
-            }
+            RequestSceneOpen(scene, *route.sceneAssetGuid);
         }
     }
 
@@ -479,23 +486,7 @@ void DocumentSceneEditorController::HandleResourceWorkspaceRequests(DocumentScen
 void DocumentSceneEditorController::DrawEnvironmentPanels(DocumentSceneBase& scene) {
     bool environmentEditActive = false;
     if (context_.windows.resources.showEnvironment) {
-        const ENVIRONMENT::SceneEnvironmentBinding before = scene.GetSceneDocument().environment;
-        ENVIRONMENT::SceneEnvironmentBinding edited = before;
-        const EnvironmentPanelResult environmentResult = environmentPanel_.Draw(edited, scene);
-        environmentEditActive |= environmentResult.editActive;
-        if (environmentResult.bindingChanged && edited != before) {
-            const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
-            scene.GetSceneDocument().environment = edited;
-            CommitAppliedDocumentCommand(
-                scene, EDITOR::MakeEnvironmentHistoryCommand("Edit Environment", before, std::move(edited)),
-                environmentResult.editActive ? kEnvironmentPanelMergeGroup : 0u, externalDirtyBefore,
-                EDITOR::EditorDocumentImpact::Environment);
-        }
-        if (environmentResult.openLightingBakeRequested) {
-            EDITOR::EditorToolOpenRequest request{};
-            request.toolId = EDITOR::kLightingBakeToolId;
-            (void)toolHost_.RequestOpen(std::move(request));
-        }
+        environmentEditActive = DrawEnvironmentWindow(scene, false);
     }
     if (context_.windows.resources.showQuality) {
         renderQualitySavePending_ |= qualityPanel_.Draw();
@@ -503,6 +494,27 @@ void DocumentSceneEditorController::DrawEnvironmentPanels(DocumentSceneBase& sce
     if (!environmentEditActive) {
         documentHistory_.SealMerge();
     }
+}
+
+bool DocumentSceneEditorController::DrawEnvironmentWindow(DocumentSceneBase& scene, bool lookDev) {
+    const ENVIRONMENT::SceneEnvironmentBinding before = scene.GetSceneDocument().environment;
+    ENVIRONMENT::SceneEnvironmentBinding edited = before;
+    const EnvironmentPanelResult result =
+        lookDev ? environmentPanel_.DrawLookDev(edited, scene) : environmentPanel_.Draw(edited, scene);
+    if (result.bindingChanged && edited != before) {
+        const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
+        scene.GetSceneDocument().environment = edited;
+        CommitAppliedDocumentCommand(
+            scene, EDITOR::MakeEnvironmentHistoryCommand("Edit Environment", before, std::move(edited)),
+            result.editActive ? kEnvironmentPanelMergeGroup : 0u, externalDirtyBefore,
+            EDITOR::EditorDocumentImpact::Environment);
+    }
+    if (result.openLightingBakeRequested) {
+        EDITOR::EditorToolOpenRequest request{};
+        request.toolId = EDITOR::kLightingBakeToolId;
+        (void)toolHost_.RequestOpen(std::move(request));
+    }
+    return result.editActive;
 }
 #endif
 

@@ -15,6 +15,11 @@ using FIELDS::VisitProfileSections;
 constexpr BuiltinEnvironmentContent kBuiltinProfiles[]{
     {"engine.environment.default", "Default", "Default"},
     {"engine.environment.studio", "Studio", "Studio"},
+    // 布景の画面预设。太陽の向きを固定した（時刻を使わない）美術向けの光。
+    {"engine.environment.lookMorning", "Morning", "LookMorning"},
+    {"engine.environment.lookNoon", "Noon", "LookNoon"},
+    {"engine.environment.lookDusk", "Warm Dusk", "LookDusk"},
+    {"engine.environment.lookOvercast", "Overcast", "LookOvercast"},
 };
 
 constexpr BuiltinEnvironmentContent kBuiltinWeathers[]{

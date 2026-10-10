@@ -84,6 +84,13 @@ bool ProceduralMeshComponent::QueryGeometryFit(GeometryFitDesc& outFit) const no
         outFit.radius = 0.01f;
         outFit.height = 0.02f;
         break;
+    case ProceduralMeshKind::Ramp:
+    case ProceduralMeshKind::Stairs:
+        outFit.shape = GeometryFitShape::Box;
+        FitProceduralSlopeBox(settings, outFit.center, outFit.rotationEulerDegrees, outFit.size);
+        outFit.radius = outFit.size.y * 0.5f;
+        outFit.height = outFit.size.y;
+        break;
     case ProceduralMeshKind::Sphere:
         outFit.shape = GeometryFitShape::Sphere;
         outFit.size = {settings.width, settings.width, settings.width};

@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <span>
+#include <vector>
 #include <type_traits>
 #include <utility>
 
@@ -10,12 +11,15 @@
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/Environment/HIKARI_CelestialModel.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "Editor/Documents/HIKARI_ValidatedAssetDocumentUi.h"
+#include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
 #include "Editor/Widgets/HIKARI_JsonFieldsEditor.h"
+#include "Editor/Widgets/HIKARI_NumberField.h"
 #include "imgui.h"
 #endif
 
@@ -46,16 +50,6 @@ std::string ResolveEnvironmentAssetLabel(AssetType type, std::string_view id, co
     }
     const AssetRecord* record = database.FindByGuid(AssetGuid{std::string(id)});
     return record ? GetAssetRecordDisplayName(*record) : std::string(id);
-}
-
-bool EnvironmentAssetEditor::CreateProfileCopy(EnvironmentProfileAsset source, AssetDatabase& database,
-                                               std::string& message) {
-    return profile_.New(std::move(source), message) && profile_.Save(database, message);
-}
-
-bool EnvironmentAssetEditor::CreateWeatherCopy(WeatherPresetAsset source, AssetDatabase& database,
-                                               std::string& message) {
-    return weather_.New(std::move(source), message) && weather_.Save(database, message);
 }
 
 void EnvironmentAssetEditor::PublishDrafts(DocumentSceneBase& scene) {
@@ -136,6 +130,10 @@ struct ProfileCustomFields {
         } else if constexpr (std::is_same_v<T, SunSettings>) {
             if (key.starts_with("fixed")) {
                 return object.mode != SunMode::Fixed;
+            }
+        } else if constexpr (std::is_same_v<T, ShadowSettings>) {
+            if (key.starts_with("contactShadow") && key != "contactShadows") {
+                return !object.contactShadows;
             }
         } else if constexpr (std::is_same_v<T, ColorGradingSettings>) {
             if (key == "lut") {
@@ -226,13 +224,13 @@ std::string EnvironmentAssetEditor::DrawProfile(const std::string& id, DocumentS
             ImGui::TextColored(kAssetDocumentErrorColor, "%s", error.c_str());
             return {};
         }
-        ImGui::TextDisabled("%s", TEXT::Localize("asset.document.builtinReadOnly").c_str());
-        if (ImGui::Button(TEXT::Localize("asset.document.createCopy").c_str()) &&
-            CreateProfileCopy(*asset, database, status_)) {
+        // 内蔵は読み取り専用。最初の編集でその値ごとプロジェクトへ複製し、シーンを複製へ切り替える。
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.environment.lightingControlsCopyHint").c_str());
+        DrawAssetDocumentStatus(status_);
+        EnvironmentProfileAsset edited = *asset;
+        if (DrawProfileSections(edited, scene, true).changed && profile_.SaveAsNew(edited, database, status_)) {
             copiedId = profile_.Guid().value;
         }
-        EnvironmentProfileAsset view = *asset;
-        (void)DrawProfileSections(view, scene, false);
     } else if (OpenAssetDocumentForEdit(profile_, AssetGuid{id}, database, status_)) {
         DrawAssetDocumentToolbar(profile_, database, status_);
         EnvironmentProfileAsset edited = profile_.Profile();
@@ -244,9 +242,260 @@ std::string EnvironmentAssetEditor::DrawProfile(const std::string& id, DocumentS
             profile_.SealMerge();
         }
     }
-    if (!status_.empty()) {
-        ImGui::TextWrapped("%s", status_.c_str());
+    return copiedId;
+}
+
+namespace {
+// 布景でよく触る項目。プロファイルの表から節ごとに選ぶ（範囲と表示名は全項目の表と同じ）。
+bool IsLightingControlField(std::string_view section, std::string_view key) {
+    if (section == "sun") {
+        return key == "mode" || key == "fixedAzimuthDegrees" || key == "fixedElevationDegrees" ||
+               key == "illuminance" || key == "color";
     }
+    if (section == "sky") {
+        return key == "lightIntensity";
+    }
+    if (section == "shadows") {
+        // strength は様式化した陰影だけに効くので高级へ。
+        return key == "contactShadows" || key == "contactShadowLength" || key == "contactShadowStrength";
+    }
+    if (section == "ambientOcclusion") {
+        return key == "enabled" || key == "mode" || key == "radius" || key == "strength";
+    }
+    if (section == "screenSpaceReflections") {
+        // 光線追跡の反射（画質設定）もこの節の強さと粗さの上限に従う。
+        return key == "enabled" || key == "quality" || key == "intensity" || key == "maxRoughness";
+    }
+    if (section == "fog") {
+        return key == "enabled" || key == "density" || key == "heightFalloff" || key == "baseHeight" || key == "albedo";
+    }
+    if (section == "exposure") {
+        return key == "mode" || key == "compensationEv" || key == "manualEv100";
+    }
+    if (section == "clouds") {
+        return key == "enabled" || key == "coverageBias" || key == "baseAltitude" || key == "shadowStrength";
+    }
+    if (section == "bloom") {
+        return key == "enabled" || key == "intensity" || key == "threshold" || key == "radius";
+    }
+    if (section == "toneMapping") {
+        return key == "curve" || key == "whiteBalanceTemperature" || key == "whiteBalanceTint" || key == "contrast" ||
+               key == "saturation";
+    }
+    if (section == "colorGrading") {
+        return key == "shadowsTint" || key == "midtonesTint" || key == "highlightsTint" || key == "lut" ||
+               key == "lutIntensity";
+    }
+    return false;
+}
+
+// 組（光・大気・画づくり）と、その中の節の順。
+struct LightingControlGroup {
+    const char* labelKey;
+    std::span<const std::string_view> sections;
+};
+constexpr std::string_view kLightSections[] = {"sun", "sky", "shadows"};
+constexpr std::string_view kDetailSections[] = {"ambientOcclusion", "screenSpaceReflections"};
+constexpr std::string_view kAtmosphereSections[] = {"fog", "clouds"};
+constexpr std::string_view kImageSections[] = {"exposure", "bloom", "toneMapping", "colorGrading"};
+constexpr LightingControlGroup kLightingControlGroups[] = {
+    {"ui.environment.lightingGroup.light", kLightSections},
+    {"ui.environment.lightingGroup.detail", kDetailSections},
+    {"ui.environment.lightingGroup.atmosphere", kAtmosphereSections},
+    {"ui.environment.lightingGroup.image", kImageSections},
+};
+
+// common なら布景でよく触る項目だけ、そうでなければ残りの項目（「高級」の中）を描く。
+struct LightingControlFields {
+    const ProfileCustomFields& profile;
+    std::string_view section;
+    bool common = true;
+
+    template <class T>
+    bool operator()(std::string_view key, T& object, FieldEditResult& result) const {
+        if constexpr (std::is_same_v<T, SunSettings>) {
+            if (key == "mode") {
+                return true; // 窓の上の「光照模式」で切り替える。
+            }
+            if (key == "illuminance") {
+                if (!common) {
+                    return profile(key, object, result); // 高级には物理量（lux）のまま出す。
+                }
+                // 常用は既定の太陽（晴天の昼）に対する倍率。
+                static const double kReference = SunSettings{}.illuminance;
+                InspectorPropertyRow row(TEXT::Localize("ui.environment.sun.brightness"));
+                if (row.IsVisible()) {
+                    double scale = object.illuminance / kReference;
+                    constexpr double kDefaultScale = 1.0;
+                    if (DragNumber("##brightness", scale, {.minimum = 0.0, .maximum = 4.0, .step = 0.01},
+                                   &kDefaultScale)) {
+                        object.illuminance = static_cast<float>(scale * kReference);
+                        result.changed = true;
+                    }
+                    result.active |= ImGui::IsItemActive();
+                }
+                return true;
+            }
+        }
+        if (IsLightingControlField(section, key) != common) {
+            return true;
+        }
+        if (!common) {
+            return profile(key, object, result);
+        }
+        if constexpr (std::is_same_v<T, RENDER3D::COLOR::ExposureSettings>) {
+            // 手動の時は EV100、自動の時は補正だけを出す。
+            const bool manual = object.mode == RENDER3D::COLOR::ExposureMode::Manual;
+            if ((key == "manualEv100" && !manual) || (key == "compensationEv" && manual)) {
+                return true;
+            }
+        }
+        return profile(key, object, result);
+    }
+};
+
+// 太陽を「日付と地点」から「固定」へ切り替えた時、固定の向きを今の太陽の位置から始める（光が跳ばない）。
+void SeedFixedSunFromCurrent(const SunSettings& before, SunSettings& after, DocumentSceneBase& scene) {
+    if (before.mode == after.mode || after.mode != SunMode::Fixed) {
+        return;
+    }
+    const ENVIRONMENT::EnvironmentSimulation& simulation = scene.GetEnvironmentRuntime().Simulation();
+    ENVIRONMENT::WorldDirectionToHorizon(simulation.GetFrameState().celestial.sunDirection,
+                                         simulation.GetSnapshot().location.northYawDegrees, after.fixedAzimuthDegrees,
+                                         after.fixedElevationDegrees);
+}
+
+FieldEditResult DrawLightingControlSections(EnvironmentProfileAsset& asset, DocumentSceneBase& scene) {
+    FieldEditResult total{};
+    const ProfileCustomFields profileFields{scene.GetAssetDatabase()};
+    const SunSettings sunBefore = asset.profile.sun;
+    for (const LightingControlGroup& group : kLightingControlGroups) {
+        if (!ImGui::TreeNodeEx(TEXT::Localize(group.labelKey).c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+            continue;
+        }
+        for (const std::string_view section : group.sections) {
+            ENVIRONMENT::FIELDS::VisitProfileSections([&](const char* key, auto member, const auto& fields) {
+                if (section != key) {
+                    return;
+                }
+                ImGui::SeparatorText(ResolveFieldLabel("ui.environment.section", key).c_str());
+                ImGui::PushID(key);
+                const std::string labelPrefix = std::string("ui.environment.") + key;
+                FieldEditResult result = DrawJsonFields(labelPrefix, asset.profile.*member, fields,
+                                                        LightingControlFields{profileFields, section, true});
+                if (BeginAdvancedSection("advanced")) {
+                    const FieldEditResult advanced =
+                        DrawJsonFields(labelPrefix, asset.profile.*member, fields,
+                                       LightingControlFields{profileFields, section, false});
+                    result.changed |= advanced.changed;
+                    result.active |= advanced.active;
+                    EndAdvancedSection();
+                }
+                ImGui::PopID();
+                total.changed |= result.changed;
+                total.active |= result.active;
+            });
+        }
+        ImGui::TreePop();
+    }
+    SeedFixedSunFromCurrent(sunBefore, asset.profile.sun, scene);
+    return total;
+}
+} // namespace
+
+std::string EnvironmentAssetEditor::SetSunMode(const std::string& id, SunMode mode, DocumentSceneBase& scene) {
+    AssetDatabase& database = scene.GetAssetDatabase();
+    const auto withMode = [&](EnvironmentProfileAsset edited) {
+        const SunSettings before = edited.profile.sun;
+        edited.profile.sun.mode = mode;
+        SeedFixedSunFromCurrent(before, edited.profile.sun, scene);
+        return edited;
+    };
+    if (id.starts_with(ENVIRONMENT::kBuiltinEnvironmentPrefix)) {
+        std::string error;
+        const auto asset = scene.GetEnvironmentAssets().LoadProfile(id, error);
+        if (!asset) {
+            status_ = error;
+            return {};
+        }
+        if (asset->profile.sun.mode == mode || !profile_.SaveAsNew(withMode(*asset), database, status_)) {
+            return {};
+        }
+        return profile_.Guid().value;
+    }
+    if (OpenAssetDocumentForEdit(profile_, AssetGuid{id}, database, status_) &&
+        profile_.Profile().profile.sun.mode != mode) {
+        (void)profile_.Apply(withMode(profile_.Profile()), status_);
+        profile_.SealMerge();
+    }
+    return {};
+}
+
+bool DrawEnvironmentProfilePresets(const AssetDatabase& database, std::string& id) {
+    struct Preset {
+        std::string id;
+        std::string label;
+    };
+    std::vector<Preset> presets;
+    for (const ENVIRONMENT::BuiltinEnvironmentContent& content : ENVIRONMENT::GetBuiltinEnvironmentProfiles()) {
+        // 内蔵の名前は翻訳があれば使う（ui.lookDev.preset.<fileStem>）。
+        const std::string key = "ui.lookDev.preset." + std::string(content.fileStem);
+        const std::string& localized = TEXT::Localize(key);
+        presets.push_back({std::string(content.id), localized != key ? localized : std::string(content.displayName)});
+    }
+    for (const AssetRecord* record : database.CollectByType(AssetType::Environment)) {
+        presets.push_back({record->guid.value, GetAssetRecordDisplayName(*record)});
+    }
+    bool changed = false;
+    const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+    for (size_t index = 0; index < presets.size(); ++index) {
+        const Preset& preset = presets[index];
+        const float width = ImGui::CalcTextSize(preset.label.c_str()).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        if (index > 0u) {
+            ImGui::SameLine();
+            if (ImGui::GetCursorScreenPos().x + width > right) {
+                ImGui::NewLine();
+            }
+        }
+        ImGui::PushID(static_cast<int>(index));
+        if (ToggleButton(preset.label.c_str(), "##preset", preset.id == id) && preset.id != id) {
+            id = preset.id;
+            changed = true;
+        }
+        ImGui::PopID();
+    }
+    return changed;
+}
+
+std::string EnvironmentAssetEditor::DrawLightingControls(const std::string& id, DocumentSceneBase& scene) {
+    AssetDatabase& database = scene.GetAssetDatabase();
+    std::string copiedId;
+    ImGui::PushID("lightingControls");
+    if (id.starts_with(ENVIRONMENT::kBuiltinEnvironmentPrefix)) {
+        // 内蔵のプロファイルは、最初の編集でその値ごとプロジェクトへ複製し、シーンを複製へ切り替える。
+        std::string error;
+        if (const auto asset = scene.GetEnvironmentAssets().LoadProfile(id, error)) {
+            ImGui::TextDisabled("%s", TEXT::Localize("ui.environment.lightingControlsCopyHint").c_str());
+            DrawAssetDocumentStatus(status_);
+            EnvironmentProfileAsset edited = *asset;
+            if (DrawLightingControlSections(edited, scene).changed && profile_.SaveAsNew(edited, database, status_)) {
+                copiedId = profile_.Guid().value;
+            }
+        } else {
+            ImGui::TextColored(kAssetDocumentErrorColor, "%s", error.c_str());
+        }
+    } else if (OpenAssetDocumentForEdit(profile_, AssetGuid{id}, database, status_)) {
+        DrawAssetDocumentToolbar(profile_, database, status_);
+        EnvironmentProfileAsset edited = profile_.Profile();
+        const FieldEditResult result = DrawLightingControlSections(edited, scene);
+        if (result.changed) {
+            (void)profile_.Apply(std::move(edited), status_, kProfileFieldMergeGroup);
+        }
+        if (!result.active) {
+            profile_.SealMerge();
+        }
+    }
+    ImGui::PopID();
     return copiedId;
 }
 
@@ -260,15 +509,13 @@ std::string EnvironmentAssetEditor::DrawWeather(const std::string& id, DocumentS
             ImGui::TextColored(kAssetDocumentErrorColor, "%s", error.c_str());
             return {};
         }
-        ImGui::TextDisabled("%s", TEXT::Localize("asset.document.builtinReadOnly").c_str());
-        if (ImGui::Button(TEXT::Localize("asset.document.createCopy").c_str()) &&
-            CreateWeatherCopy(*asset, database, status_)) {
+        ImGui::TextDisabled("%s", TEXT::Localize("asset.document.builtinCopyOnEdit").c_str());
+        DrawAssetDocumentStatus(status_);
+        WeatherPresetAsset edited = *asset;
+        if (DrawJsonFields("ui.environment.weather", edited.weather, ENVIRONMENT::kWeatherFields).changed &&
+            weather_.SaveAsNew(edited, database, status_)) {
             copiedId = weather_.Guid().value;
         }
-        WeatherPresetAsset view = *asset;
-        ImGui::BeginDisabled();
-        (void)DrawJsonFields("ui.environment.weather", view.weather, ENVIRONMENT::kWeatherFields);
-        ImGui::EndDisabled();
     } else if (OpenAssetDocumentForEdit(weather_, AssetGuid{id}, database, status_)) {
         DrawAssetDocumentToolbar(weather_, database, status_);
         WeatherPresetAsset edited = weather_.Profile();
@@ -283,14 +530,14 @@ std::string EnvironmentAssetEditor::DrawWeather(const std::string& id, DocumentS
             weather_.SealMerge();
         }
     }
-    if (!status_.empty()) {
-        ImGui::TextWrapped("%s", status_.c_str());
-    }
     return copiedId;
 }
 #else
 bool DrawEnvironmentAssetPicker(AssetType, const AssetDatabase&, std::string&, const char*) { return false; }
 std::string EnvironmentAssetEditor::DrawProfile(const std::string&, DocumentSceneBase&) { return {}; }
+std::string EnvironmentAssetEditor::DrawLightingControls(const std::string&, DocumentSceneBase&) { return {}; }
+std::string EnvironmentAssetEditor::SetSunMode(const std::string&, SunMode, DocumentSceneBase&) { return {}; }
+bool DrawEnvironmentProfilePresets(const AssetDatabase&, std::string&) { return false; }
 std::string EnvironmentAssetEditor::DrawWeather(const std::string&, DocumentSceneBase&) { return {}; }
 #endif
 

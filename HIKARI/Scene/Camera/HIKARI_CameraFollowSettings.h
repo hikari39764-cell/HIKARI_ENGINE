@@ -18,6 +18,10 @@ struct CameraFollowSettings {
     float followSmooth = 12.0f;
     float lookSmooth = 14.0f;
     float distanceSmooth = 18.0f;
+    // 前瞻：移動の向きへ見る点をずらす距離 [m]（4 m/s で全量）。
+    float lookAheadDistance = 0.0f;
+    // 垂直死区 [m]：追う物の上下がこの幅の中なら高さを追わない（跳んでも画面が上下に揺れない）。
+    float verticalDeadZone = 0.0f;
 
     bool orbitInputEnabled = true;
     std::string lookActionId{"Gameplay.Look"};

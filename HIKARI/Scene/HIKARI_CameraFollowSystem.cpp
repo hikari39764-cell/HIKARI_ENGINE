@@ -118,6 +118,25 @@ CAMERA::CameraTargetFramingSubmission ResolveFramingSettings(
     return result;
 }
 
+// 追従点の目標：前瞻（移動の向きへ少し先）と垂直死区（小さな上下は追わない）を足した追う物の位置。
+MATH::Vec3 ResolveFollowGoal(const CAMERA::CameraFollowSettings& settings, const MATH::Vec3& pivot,
+                             const MATH::Vec3& previousPivot, const MATH::Vec3& followPivot, float dt) {
+    MATH::Vec3 goal = pivot;
+    if (settings.lookAheadDistance > 0.0f && dt > kViewEpsilon) {
+        const MATH::Vec3 moved{pivot.x - previousPivot.x, 0.0f, pivot.z - previousPivot.z};
+        const float speed = MATH::Length(moved) / dt;
+        if (speed > 0.05f) {
+            goal = goal + MATH::Normalize(moved) * (settings.lookAheadDistance * (std::min)(speed / 4.0f, 1.0f));
+        }
+    }
+    if (settings.verticalDeadZone > 0.0f) {
+        const float rise = goal.y - followPivot.y;
+        const float excess = std::abs(rise) - settings.verticalDeadZone;
+        goal.y = followPivot.y + (excess > 0.0f ? std::copysign(excess, rise) : 0.0f);
+    }
+    return goal;
+}
+
 float SmoothFramingWeight(float previous, float desired, float& velocity,
                           const CAMERA::CameraTargetFramingDynamics& dynamics, float dt) noexcept {
     const float smoothSeconds =
@@ -427,7 +446,11 @@ void CameraFollowSystem::EvaluateCamera(GameObject& cameraObject, CameraComponen
 
     const float followAmount = SmoothFactor(component.Settings().followSmooth, dt);
     const MATH::Vec3 trackedFollowPivot =
-        component.Runtime().followPivot + (pivot - component.Runtime().followPivot) * followAmount;
+        component.Runtime().followPivot +
+        (ResolveFollowGoal(component.Settings(), pivot, component.Runtime().targetPivot,
+                           component.Runtime().followPivot, dt) -
+         component.Runtime().followPivot) *
+            followAmount;
     MATH::Vec3 followPivot = trackedFollowPivot;
     if (relationshipShotResponseActive) {
         followPivot.y += framing.relationshipPivotHeightOffset * clampedRelationshipWeight;

@@ -14,8 +14,20 @@ const char* ToString(ProceduralMeshKind kind) noexcept {
     case ProceduralMeshKind::Sphere: return "Sphere";
     case ProceduralMeshKind::Cylinder: return "Cylinder";
     case ProceduralMeshKind::Capsule: return "Capsule";
+    case ProceduralMeshKind::Ramp: return "Ramp";
+    case ProceduralMeshKind::Stairs: return "Stairs";
     default: return "Box";
     }
+}
+
+void FitProceduralSlopeBox(const ProceduralMeshSettings& settings, MATH::Vec3& center, MATH::Vec3& rotationDegrees,
+                           MATH::Vec3& size) noexcept {
+    const float length = std::sqrt(settings.height * settings.height + settings.depth * settings.depth);
+    const float thickness = (std::max)(0.1f, (std::min)(settings.height, settings.depth) * 0.5f);
+    const MATH::Vec3 normal{0.0f, settings.depth / length, -settings.height / length};
+    center = normal * (-0.5f * thickness);
+    rotationDegrees = {-std::atan2(settings.height, settings.depth) * 57.2957795f, 0.0f, 0.0f};
+    size = {settings.width, thickness, length};
 }
 
 const char* GetProceduralMeshDisplayName(ProceduralMeshKind kind) noexcept {
@@ -25,7 +37,9 @@ const char* GetProceduralMeshDisplayName(ProceduralMeshKind kind) noexcept {
 ProceduralMeshKind ParseProceduralMeshKind(const nlohmann::json& value, ProceduralMeshKind fallback) {
     if (value.is_number_integer()) {
         const int index = value.get<int>();
-        return index >= 0 && index <= 5 ? static_cast<ProceduralMeshKind>(index) : fallback;
+        return index >= 0 && index <= static_cast<int>(ProceduralMeshKind::Stairs)
+                   ? static_cast<ProceduralMeshKind>(index)
+                   : fallback;
     }
     if (!value.is_string()) {
         return fallback;
@@ -43,6 +57,10 @@ ProceduralMeshKind ParseProceduralMeshKind(const nlohmann::json& value, Procedur
         return ProceduralMeshKind::Cylinder;
     if (text == "Capsule")
         return ProceduralMeshKind::Capsule;
+    if (text == "Ramp")
+        return ProceduralMeshKind::Ramp;
+    if (text == "Stairs")
+        return ProceduralMeshKind::Stairs;
     return fallback;
 }
 
@@ -82,6 +100,7 @@ ProceduralMeshSettings SanitizeProceduralMeshSettings(ProceduralMeshSettings set
         settings.depth = settings.width;
         settings.height = (std::max)(settings.height, settings.width);
         break;
+    case ProceduralMeshKind::Stairs: settings.segmentsY = (std::min)(settings.segmentsY, 64u); break;
     default: break;
     }
     if (settings.kind != ProceduralMeshKind::GridPlane) {

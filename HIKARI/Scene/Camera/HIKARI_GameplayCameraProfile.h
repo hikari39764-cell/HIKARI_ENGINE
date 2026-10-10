@@ -1,12 +1,21 @@
 #pragma once
 
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Scene/Camera/HIKARI_CameraFollowSettings.h"
 #include "Scene/Sequencer/Tracks/HIKARI_ShotPresentation.h"
 #include <string>
 #include <vector>
 
 namespace HIKARI::CAMERA {
-enum class CameraMount { Orbit, FirstPerson, Fixed };
+// 機位の型。Orbit は追う物の周りを回る、FirstPerson は目の位置、Fixed は機位の物体の位置から追う物を見る。
+// Rail は railStart〜railEnd の線上で追う物に最も近い点から見る、Arena は場の中心から追う物を通る向きの先に立つ。
+enum class CameraMount { Orbit, FirstPerson, Fixed, Rail, Arena };
+
+inline constexpr TEXT::EnumName<CameraMount> kCameraMountNames[] = {
+    {CameraMount::Orbit, "orbit"}, {CameraMount::FirstPerson, "first_person"},
+    {CameraMount::Fixed, "fixed"}, {CameraMount::Rail, "rail"},
+    {CameraMount::Arena, "arena"},
+};
 
 struct GameplayCameraMode {
     std::string id = "explore";
@@ -18,6 +27,11 @@ struct GameplayCameraMode {
     float farClip = 2000;
     float blendSeconds = 0.3f;
     float shoulderOffset = 0;
+    // Rail の線（ワールド座標）。
+    MATH::Vec3 railStart{-6.0f, 3.0f, -4.0f};
+    MATH::Vec3 railEnd{6.0f, 3.0f, -4.0f};
+    // Arena の場の中心（ワールド座標）。距離と仰角は follow の initialDistance と initialPitchDegrees。
+    MATH::Vec3 arenaCenter{};
     std::vector<SEQUENCER::CameraMotionEffect> effects;
     bool trackLookTarget = false;
     bool keepUserOrbit = true;

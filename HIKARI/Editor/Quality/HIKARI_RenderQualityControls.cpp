@@ -348,11 +348,6 @@ bool DrawRenderSettings() {
                  RENDER3D::VolumetricCloudQuality::High},
                 RENDER3D::VolumetricCloudQualityLabel);
             changed |=
-                DrawLightingQualityCombo(TEXT::Localize("ui.quality.dynamicGi").c_str(), settings.dynamicGiQuality,
-                                         {RENDER3D::DynamicGiQuality::Off, RENDER3D::DynamicGiQuality::Low,
-                                          RENDER3D::DynamicGiQuality::Balanced, RENDER3D::DynamicGiQuality::High},
-                                         RENDER3D::DynamicGiQualityLabel);
-            changed |=
                 DrawLightingQualityCombo(TEXT::Localize("ui.quality.localShadows").c_str(), settings.localShadowQuality,
                                          {RENDER3D::LocalShadowQuality::Off, RENDER3D::LocalShadowQuality::Low,
                                           RENDER3D::LocalShadowQuality::Balanced, RENDER3D::LocalShadowQuality::High},
@@ -396,10 +391,37 @@ bool DrawRenderSettings() {
         ImGui::TreePop();
     }
 
+    // 光線追跡を使う機能を一か所に並べる（GI・反射・太陽の影）。どれも同じ加速構造を使う。
+    if (ImGui::TreeNodeEx(TEXT::Localize("ui.quality.rayTracing").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (EDITOR::BeginPropertyTable("QualityRayTracingProperties")) {
+            changed |=
+                DrawLightingQualityCombo(TEXT::Localize("ui.quality.dynamicGi").c_str(), settings.dynamicGiQuality,
+                                         {RENDER3D::DynamicGiQuality::Off, RENDER3D::DynamicGiQuality::Low,
+                                          RENDER3D::DynamicGiQuality::Balanced, RENDER3D::DynamicGiQuality::High},
+                                         RENDER3D::DynamicGiQualityLabel);
+            EDITOR::PropertyLabel(TEXT::Localize("ui.quality.rayTracedReflections").c_str());
+            changed |= ImGui::Checkbox("##RayTracedReflections", &settings.rayTracedReflections);
+            EDITOR::PropertyLabel(TEXT::Localize("ui.quality.directionalShadow.rayTraced").c_str());
+            changed |= ImGui::Checkbox("##RayTracedShadows", &settings.directionalShadow.rayTraced);
+            if (settings.directionalShadow.rayTraced) {
+                int samples = static_cast<int>(settings.directionalShadow.rayTracedSamples);
+                EDITOR::PropertyLabel(TEXT::Localize("ui.quality.directionalShadow.rayTracedSamples").c_str());
+                if (ImGui::SliderInt("##RayTracedShadowSamples", &samples, 1, 8)) {
+                    settings.directionalShadow.rayTracedSamples = static_cast<uint32_t>(samples);
+                    changed = true;
+                }
+            }
+            EDITOR::EndPropertyTable();
+        }
+        ImGui::TreePop();
+    }
+
     if (ImGui::TreeNode(TEXT::Localize("ui.quality.directionalShadow").c_str())) {
-        changed |= EDITOR::DrawJsonFields("ui.quality.directionalShadow", settings.directionalShadow,
-                                          RENDER3D::kDirectionalShadowFields)
-                       .changed;
+        changed |=
+            EDITOR::DrawJsonFields(
+                "ui.quality.directionalShadow", settings.directionalShadow, RENDER3D::kDirectionalShadowFields,
+                [](std::string_view key, auto&, EDITOR::FieldEditResult&) { return key.starts_with("rayTraced"); })
+                .changed;
         ImGui::TreePop();
     }
 

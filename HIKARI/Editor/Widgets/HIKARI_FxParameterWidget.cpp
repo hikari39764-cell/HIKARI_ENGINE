@@ -1,6 +1,7 @@
 #include "Editor/Widgets/HIKARI_FxParameterWidget.h"
 
 #if defined(HIKARI_WITH_EDITOR)
+#include "Editor/Widgets/HIKARI_NumberField.h"
 #include "imgui.h"
 #endif
 
@@ -16,27 +17,26 @@ bool DrawFxParameter(const VFX::ParamDesc& parameter, DirectX::XMFLOAT4& slotVal
     const std::string labelText = parameter.label.empty() ? parameter.key : parameter.label;
     const char* label = labelText.empty() ? "<unnamed>" : labelText.c_str();
     bool changed = false;
+    const NumberRange range{
+        .minimum = parameter.minValues[0], .maximum = parameter.maxValues[0], .step = parameter.speed};
 
     switch (parameter.type) {
     case VFX::ParamType::Float:
-        changed = ImGui::DragFloat(label, &value[parameter.ref.channel], parameter.speed, parameter.minValues[0],
-                                   parameter.maxValues[0]);
+        changed = DragNumber(label, value[parameter.ref.channel], range, &parameter.defaultValues[0]);
         break;
     case VFX::ParamType::Float2:
         if (parameter.ref.channel <= 2) {
-            changed = ImGui::DragFloat2(label, &value[parameter.ref.channel], parameter.speed, parameter.minValues[0],
-                                        parameter.maxValues[0]);
+            changed = DragNumbers(label, &value[parameter.ref.channel], 2, range, parameter.defaultValues);
         }
         break;
     case VFX::ParamType::Float3:
         if (parameter.ref.channel <= 1) {
-            changed = ImGui::DragFloat3(label, &value[parameter.ref.channel], parameter.speed, parameter.minValues[0],
-                                        parameter.maxValues[0]);
+            changed = DragNumbers(label, &value[parameter.ref.channel], 3, range, parameter.defaultValues);
         }
         break;
     case VFX::ParamType::Float4:
         if (parameter.ref.channel == 0) {
-            changed = ImGui::DragFloat4(label, value, parameter.speed, parameter.minValues[0], parameter.maxValues[0]);
+            changed = DragNumbers(label, value, 4, range, parameter.defaultValues);
         }
         break;
     case VFX::ParamType::Color3:

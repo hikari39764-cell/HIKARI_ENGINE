@@ -68,7 +68,7 @@ MATH::Vec3 WorldRight(const MATH::Mat4& matrix) {
     return MATH::Normalize({matrix.m[0][0], matrix.m[0][1], matrix.m[0][2]});
 }
 
-// コンポーネントと文書のどちらの作者値からも同じ形の光源を作る。作者値は光束 [lm]、描画は光度 [cd]。
+// コンポーネントと文書のどちらの作者値からも同じ形の光源を作る。作者値は光束 [lm] か相対の倍率、描画は光度 [cd]。
 RENDER3D::LIGHTING::SceneLightProvider BuildLightProvider(std::string id, std::string name,
                                                           const LightSettings& settings, const MATH::Vec3& position,
                                                           const MATH::Vec3& forward, const MATH::Vec3& right) {
@@ -81,7 +81,7 @@ RENDER3D::LIGHTING::SceneLightProvider BuildLightProvider(std::string id, std::s
     provider.direction = forward;
     provider.tangent = right;
     provider.color = settings.color;
-    provider.intensity = RENDER3D::LIGHTING::LuminousIntensityFromFlux(settings.intensity);
+    provider.intensity = ResolveLuminousIntensity(settings);
     provider.range = settings.range;
     provider.sourceRadius = settings.sourceRadius;
     provider.length = settings.length;

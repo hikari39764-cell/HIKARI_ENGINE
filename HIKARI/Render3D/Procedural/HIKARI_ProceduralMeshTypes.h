@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "Core/Math/HIKARI_Math3D.h"
+
 #include <json.hpp>
 
 namespace HIKARI {
@@ -13,6 +15,10 @@ enum class ProceduralMeshKind : uint8_t {
     Sphere,
     Cylinder,
     Capsule,
+    // 斜面（くさび）。底は width x depth、-Z の手前の下端から +Z の奥の上端へ height だけ上がる。
+    Ramp,
+    // 階段。斜面と同じ向きに segmentsY 段で上がる。
+    Stairs,
 };
 
 struct ProceduralMeshSettings {
@@ -36,6 +42,10 @@ struct ProceduralMeshSettings {
 
     bool operator==(const ProceduralMeshSettings&) const = default;
 };
+
+// 斜面と階段の衝突の箱：斜面（手前の下端から奥の上端）を上面にして、その下へ厚みを取る。
+void FitProceduralSlopeBox(const ProceduralMeshSettings& settings, MATH::Vec3& center, MATH::Vec3& rotationDegrees,
+                           MATH::Vec3& size) noexcept;
 
 const char* ToString(ProceduralMeshKind kind) noexcept;
 const char* GetProceduralMeshDisplayName(ProceduralMeshKind kind) noexcept;

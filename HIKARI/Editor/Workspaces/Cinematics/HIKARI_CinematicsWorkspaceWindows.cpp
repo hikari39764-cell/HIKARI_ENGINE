@@ -48,7 +48,8 @@ void CinematicsWorkspaceController::DrawDockSpace(bool reset) const {
 }
 
 CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase& scene, EditorContext& context,
-                                                              EditorWorkspaceHost& workspaceHost) {
+                                                              EditorWorkspaceHost& workspaceHost,
+                                                              EditorOperationRegistry& operations) {
     CinematicsWorkspaceResult result;
     result.statusMessage.swap(pendingStatusMessage_);
 #if defined(HIKARI_WITH_EDITOR)
@@ -99,7 +100,7 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase&
     bool changed = false;
     if (ImGui::Begin(TEXT::LocalizeWindow("cine.assetsShots", "Cinematics/Resources").c_str())) {
         ImGui::BeginDisabled(!enabled);
-        changed |= DrawResources(scene, sequence, context);
+        changed |= DrawResources(scene, sequence, context, operations);
         ImGui::EndDisabled();
     }
     ImGui::End();

@@ -24,6 +24,8 @@ enum class EditorWorkspaceId : uint8_t {
     GameplayCamera,
     Ui,
     Text,
+    // 布景：程序化の方块と灯光で場面を組み、打光と構図を決める（美術向けの場面編集）。
+    LookDev,
     Count,
 };
 
@@ -34,6 +36,7 @@ constexpr std::string_view EditorWorkspaceOperationId(EditorWorkspaceId id) noex
     case EditorWorkspaceId::Ui: return "ui";
     case EditorWorkspaceId::Text: return "text";
     case EditorWorkspaceId::Scene: return "scene";
+    case EditorWorkspaceId::LookDev: return "look_dev";
     case EditorWorkspaceId::Cinematics: return "cinematics";
     case EditorWorkspaceId::ModelCollision: return "model_collision";
     case EditorWorkspaceId::ModelMaterial: return "model_material";

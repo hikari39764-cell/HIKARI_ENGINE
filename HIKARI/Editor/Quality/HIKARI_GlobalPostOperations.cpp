@@ -195,7 +195,7 @@ EditorOperationResult CreateProfile(GlobalPostEditor& editor, const SceneProvide
         copy.name = name;
     }
     std::string message;
-    if (!editor.CreateProjectCopy(std::move(copy), context.scene->GetAssetDatabase(), message)) {
+    if (!editor.Document().SaveAsNew(std::move(copy), context.scene->GetAssetDatabase(), message)) {
         return OperationFailure("CREATE_FAILED", message);
     }
     return OperationOk("Project post profile created.", {{"profileId", editor.Document().Guid().value}});

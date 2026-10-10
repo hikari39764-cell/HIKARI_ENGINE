@@ -131,14 +131,7 @@ void DocumentSceneEditorController::HandleGameViewportAssetDrop(DocumentSceneBas
         viewportDropMessage_ = object ? "Model object created: " + object->GetName() : "Model drop failed";
         break;
     }
-    case AssetType::Scene:
-        pendingSceneOpenGuid_ = payload.guid;
-        if (context_.sceneDirty || scene.HasUnsavedSceneChanges()) {
-            ImGui::OpenPopup("Unsaved Scene Changes");
-        } else {
-            OpenSceneAssetFromEditor(scene, payload.guid);
-        }
-        break;
+    case AssetType::Scene: RequestSceneOpen(scene, payload.guid); break;
     case AssetType::VfxEffect: viewportDropMessage_ = "VFX drop target not implemented yet"; break;
     case AssetType::Texture:
     case AssetType::Sprite: {

@@ -42,6 +42,7 @@
 #include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
 #include "Scene/Sequencer/Drivers/HIKARI_PresentationCueDriver.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
+#include "Scene/Components/Lighting/HIKARI_LightSettings.h"
 #include "Vfx/Post/HIKARI_ActionPostProfile.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -460,6 +461,11 @@ void DocumentSceneBase::Render() {
     state_->lighting.environment = state_->runtime.environment.ResolveFrame();
     ApplyRenderStyle(state_->runtime.environment.GetRenderStyleId(), state_->assets.RenderStyleAssets(),
                      state_->assets.PostAssets(), state_->assets.Registry(), state_->lighting.environment);
+    // 露出の固定（編集中だけ）：固定した EV100 の手動露出に置き換える。補正はそのまま効く。編集器の視口も同じ露出を使う。
+    if (const auto locked = state_->editor.viewportOverlayState.lockedExposureEv100; locked && DrawDebugHelpers()) {
+        state_->lighting.environment.exposure.mode = RENDER3D::COLOR::ExposureMode::Manual;
+        state_->lighting.environment.exposure.manualEv100 = *locked;
+    }
     PrepareActionPost(state_->runtime.world, state_->runtime.playActive, state_->assets.PostAssets(),
                       state_->assets.Registry());
     auto bloom = state_->lighting.environment.bloom;
@@ -467,6 +473,9 @@ void DocumentSceneBase::Render() {
     auto exposure = state_->lighting.environment.exposure;
     std::vector<SEQUENCER::ScreenEffectSample> screenEffects;
     state_->camera.presentation.Resolve(state_->camera.director, bloom, tone, exposure, screenEffects);
+    if (DrawDebugHelpers() && state_->editor.viewportOverlayState.valueView) {
+        tone.saturation = 0.0f;
+    }
     POST::PostSystem::SetBloomSettings(bloom);
     POST::PostSystem::SetToneMappingSettings(tone);
     POST::PostSystem::SetCameraMotionBlur(state_->camera.resolvedFrame.camera.GetMotionBlurSettings(),
@@ -475,10 +484,12 @@ void DocumentSceneBase::Render() {
                                       state_->runtime.environment.GetColorLut());
     POST::PostSystem::SetExposureSettings(exposure);
     // 目の順応は実時間で進める（一時停止やスローでも露出は追従する）。
-    POST::PostSystem::AdvanceExposure(
-        TIME::GetFrameContext().unscaledDt,
-        SKYRENDERER::EstimateExposureIllumination(state_->lighting.environment,
-                                                  state_->camera.resolvedFrame.camera.GetPosition().y));
+    const bool renderPrimaryView = !SERVICES::ShouldProduceEditorUiFrame() || SERVICES::IsEditorGameViewportVisible();
+    const RENDER3D::COLOR::ExposureIllumination illumination = SKYRENDERER::EstimateExposureIllumination(
+        state_->lighting.environment, state_->camera.resolvedFrame.camera.GetPosition().y);
+    POST::PostSystem::AdvanceExposure(TIME::GetFrameContext().unscaledDt, illumination, renderPrimaryView);
+    // 相対の灯の基準照度（入射式露出計と同じ較正 C = 250：E = 2.5 × 2^EV100）。下で組む照明セットが使う。
+    SetSceneKeyIlluminance(2.5f * std::exp2(illumination.incidentEv100));
     POST::PostSystem::SetSequenceEffects(screenEffects);
 
     // UE 風の地面グリッド: 半透明の地面パネルと主線/副線を一括で描画する。
@@ -561,7 +572,6 @@ void DocumentSceneBase::Render() {
     const Camera3D& renderCamera = state_->camera.editorCamera;
 
     const GFX::Context graphics = GFX::GetCurrentContext();
-    const bool renderPrimaryView = !SERVICES::ShouldProduceEditorUiFrame() || SERVICES::IsEditorGameViewportVisible();
     if (renderPrimaryView) {
         // 主ビューの HDR へ書く間は、このフレームに固定した露出（P = E）を使う。
         const RENDER3D::COLOR::ScopedViewExposure primaryExposure(POST::PostSystem::GetExposureState());
@@ -785,8 +795,19 @@ const TOOLS::BAKING::LightingBakeReport& DocumentSceneBase::GetLastLightingBakeR
 bool DocumentSceneBase::UseDebugCamera() const { return !state_->runtime.playActive; }
 
 bool DocumentSceneBase::DrawDebugHelpers() const {
-    return !state_->runtime.playActive && !state_->camera.sequencePreview.IsValid() && SERVICES::IsEditorUIEnabled();
+    return !state_->runtime.playActive && !state_->camera.sequencePreview.IsValid() && SERVICES::IsEditorUIEnabled() &&
+           !state_->editor.viewportOverlayState.cleanFrame;
 }
 bool DocumentSceneBase::UseEnvironmentLighting() const { return state_->lighting.environmentLightingEnabled; }
+
+float DocumentSceneBase::GetCurrentExposureEv100() const {
+    using namespace RENDER3D::COLOR;
+    const ExposureSettings& settings = state_->lighting.environment.exposure;
+    const ExposureFrameState& frame = POST::PostSystem::GetExposureState();
+    if (settings.mode == ExposureMode::Automatic && frame.valid && frame.mode == ExposureMode::Automatic) {
+        return Ev100FromExposure(frame.exposure);
+    }
+    return Ev100FromExposure(ResolveManualExposure(settings));
+}
 
 } // namespace HIKARI

@@ -4,6 +4,7 @@
 #include "Editor/Shell/HIKARI_EditorDockLayout.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Editor/Widgets/HIKARI_NumberField.h"
 #include "Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraWorkspaceController.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -88,133 +89,105 @@ bool GameplayCameraWorkspaceController::SelectObject(DocumentSceneBase& scene, c
 }
 void GameplayCameraWorkspaceController::DrawLibrary(DocumentSceneBase& scene, EditorOperationRegistry& operations) {
     if (ImGui::Begin(TEXT::LocalizeWindow("gc.library", "GameplayCamera/Library").c_str())) {
-        auto selectedCamera = camera_;
-        if (SelectObject(scene, "gc.camera", selectedCamera, true))
-            SelectCamera(scene, selectedCamera);
-        ImGui::Separator();
-        if (Icon(EditorGlyph::Add, "gc.new"))
-            ImGui::OpenPopup("CameraPresets");
-        if (ImGui::BeginPopup("CameraPresets")) {
-            for (const char* preset : {"third_person", "first_person", "top_down", "side_scroller", "fixed"}) {
-                const auto key = std::string("gc.preset.") + preset;
-                if (ImGui::MenuItem(L(key.c_str())))
-                    message_ = operations.Execute("gameplay_camera.new", {{"preset", preset}}).message;
-            }
-            ImGui::EndPopup();
-        }
-        ImGui::SameLine();
-        ImGui::BeginDisabled(!document_.IsOpen());
-        if (Icon(EditorGlyph::Save, "gc.save"))
-            message_ = operations.Execute("gameplay_camera.save", {}).message;
-        ImGui::SameLine();
-        if (Icon(EditorGlyph::Duplicate, "gc.saveAs"))
-            message_ = operations.Execute("gameplay_camera.save", {{"saveAs", true}}).message;
-        ImGui::EndDisabled();
-        ImGui::SameLine();
-        if (Icon(EditorGlyph::Revert, "gc.discard"))
-            ImGui::OpenPopup(TEXT::LocalizeWindow("gc.discard", "DiscardCameraDraft").c_str());
-        if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("gc.discard", "DiscardCameraDraft").c_str(), nullptr,
-                                   ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::TextWrapped("%s", L("gc.discardQuestion"));
-            if (ImGui::Button(L("gc.discard"))) {
-                if (document_.Guid().IsValid())
-                    document_.Open(scene.GetAssetDatabase(), document_.Guid(), message_, true);
-                else
-                    document_ = GameplayCameraEditorDocument{};
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button(L("gc.cancel")))
-                ImGui::CloseCurrentPopup();
-            ImGui::EndPopup();
-        }
-        TextField("gc.search", search_);
-        if (ImGui::CollapsingHeader(L("gc.assets"))) {
-            for (const auto* asset : scene.GetAssetDatabase().CollectByType(AssetType::GameplayCamera)) {
-                if (!search_.empty() && asset->displayName.find(search_) == std::string::npos)
-                    continue;
-                ImGui::PushID(asset->guid.value.c_str());
-                if (ImGui::Selectable(asset->displayName.c_str(), asset->guid == document_.Guid()))
-                    message_ = operations.Execute("gameplay_camera.open", {{"assetGuid", asset->guid.value}}).message;
-                ImGui::PopID();
-            }
-        }
-        if (ImGui::CollapsingHeader(L("cf.flow")))
-            DrawFlowLibrary(scene);
-        if (document_.IsOpen()) {
-            ImGui::SeparatorText(L("gc.modes"));
-            auto profile = document_.Profile();
-            if (TextField("gc.name", profile.name))
-                document_.Apply(std::move(profile), message_, ImGui::GetActiveID());
-            for (const auto& mode : document_.Profile().modes) {
-                if (!search_.empty() && mode.name.find(search_) == std::string::npos &&
-                    mode.id.find(search_) == std::string::npos)
-                    continue;
-                ImGui::PushID(mode.id.c_str());
-                if (ImGui::Selectable(mode.name.c_str(), mode_ == mode.id)) {
-                    mode_ = mode.id;
-                    flowEditing_ = false;
-                    effectsEditing_ = false;
-                    document_.SealMerge();
-                }
-                if (ImGui::BeginPopupContextItem()) {
-                    if (ImGui::MenuItem(L("gc.default"))) {
-                        Edit({{"action", "set_default"}, {"id", mode.id}}, message_);
-                        ImGui::EndPopup();
-                        ImGui::PopID();
-                        break;
-                    }
-                    if (ImGui::MenuItem(L("gc.duplicate"))) {
-                        std::string id = mode.id + "_copy";
-                        for (unsigned suffix = 2; document_.Profile().FindMode(id); ++suffix)
-                            id = mode.id + "_" + std::to_string(suffix);
-                        Edit({{"action", "duplicate_mode"},
-                              {"id", mode.id},
-                              {"newId", id},
-                              {"name", mode.name + " Copy"}},
-                             message_);
-                        ImGui::EndPopup();
-                        ImGui::PopID();
-                        break;
-                    }
-                    if (ImGui::MenuItem(L("gc.remove"), nullptr, false, mode.id != document_.Profile().defaultMode)) {
-                        const auto id = mode.id;
-                        Edit({{"action", "remove_mode"}, {"id", id}}, message_);
-                        mode_ = document_.Profile().defaultMode;
-                        ImGui::EndPopup();
-                        ImGui::PopID();
-                        break;
-                    }
-                    ImGui::EndPopup();
-                }
-                ImGui::PopID();
-            }
-            DrawEffectLibrary();
-            if (document_.IsDirty())
-                StatusBadge(L("gc.unsaved"), EditorStatusTone::Warning);
-        } else
-            ImGui::TextWrapped("%s", L("gc.start"));
+        DrawCameraList(scene, operations);
+        DrawZoneList(scene, operations);
+        if (ImGui::CollapsingHeader(L("gc.assets")))
+            DrawProfileAssets(scene, operations);
+        DrawModeList();
     }
     ImGui::End();
 }
-void GameplayCameraWorkspaceController::DrawInspector(DocumentSceneBase& scene, EditorOperationRegistry& operations,
-                                                      EditorWorkspaceHost& host, SceneObjectId selectedObject) {
-    if (ImGui::Begin(TEXT::LocalizeWindow("gc.inspector", "GameplayCamera/Inspector").c_str())) {
-        if (ImGui::RadioButton(L("gc.camera"), !flowEditing_ && !effectsEditing_)) {
-            flowEditing_ = false;
-            effectsEditing_ = false;
+void GameplayCameraWorkspaceController::DrawProfileAssets(DocumentSceneBase& scene,
+                                                          EditorOperationRegistry& operations) {
+    ImGui::BeginDisabled(!document_.IsOpen());
+    if (Icon(EditorGlyph::Save, "gc.save"))
+        message_ = operations.Execute("gameplay_camera.save", {}).message;
+    ImGui::SameLine();
+    if (Icon(EditorGlyph::Duplicate, "gc.saveAs"))
+        message_ = operations.Execute("gameplay_camera.save", {{"saveAs", true}}).message;
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (Icon(EditorGlyph::Revert, "gc.discard"))
+        ImGui::OpenPopup(TEXT::LocalizeWindow("gc.discard", "DiscardCameraDraft").c_str());
+    if (ImGui::BeginPopupModal(TEXT::LocalizeWindow("gc.discard", "DiscardCameraDraft").c_str(), nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextWrapped("%s", L("gc.discardQuestion"));
+        if (ImGui::Button(L("gc.discard"))) {
+            if (document_.Guid().IsValid())
+                document_.Open(scene.GetAssetDatabase(), document_.Guid(), message_, true);
+            else
+                document_ = GameplayCameraEditorDocument{};
+            ImGui::CloseCurrentPopup();
         }
+        ImGui::SameLine();
+        if (ImGui::Button(L("gc.cancel")))
+            ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+    TextField("gc.search", search_);
+    for (const auto* asset : scene.GetAssetDatabase().CollectByType(AssetType::GameplayCamera)) {
+        if (!search_.empty() && asset->displayName.find(search_) == std::string::npos)
+            continue;
+        ImGui::PushID(asset->guid.value.c_str());
+        if (ImGui::Selectable(asset->displayName.c_str(), asset->guid == document_.Guid()))
+            message_ = operations.Execute("gameplay_camera.open", {{"assetGuid", asset->guid.value}}).message;
+        ImGui::PopID();
+    }
+}
+void GameplayCameraWorkspaceController::DrawModeList() {
+    if (!document_.IsOpen())
+        return;
+    ImGui::SeparatorText(L("gc.modes"));
+    auto profile = document_.Profile();
+    if (TextField("gc.name", profile.name))
+        document_.Apply(std::move(profile), message_, ImGui::GetActiveID());
+    for (const auto& mode : document_.Profile().modes) {
+        ImGui::PushID(mode.id.c_str());
+        if (ImGui::Selectable(mode.name.c_str(), mode_ == mode.id)) {
+            mode_ = mode.id;
+            effectsEditing_ = false;
+            selectedZone_ = {};
+            document_.SealMerge();
+        }
+        // 項目の追加と削除で一覧が変わるので、操作したら描き終える。
+        bool edited = false;
+        if (ImGui::BeginPopupContextItem()) {
+            if (ImGui::MenuItem(L("gc.default"))) {
+                Edit({{"action", "set_default"}, {"id", mode.id}}, message_);
+                edited = true;
+            } else if (ImGui::MenuItem(L("gc.duplicate"))) {
+                std::string id = mode.id + "_copy";
+                for (unsigned suffix = 2; document_.Profile().FindMode(id); ++suffix)
+                    id = mode.id + "_" + std::to_string(suffix);
+                Edit({{"action", "duplicate_mode"}, {"id", mode.id}, {"newId", id}, {"name", mode.name + " Copy"}},
+                     message_);
+                edited = true;
+            } else if (ImGui::MenuItem(L("gc.remove"), nullptr, false, mode.id != document_.Profile().defaultMode)) {
+                const auto id = mode.id;
+                Edit({{"action", "remove_mode"}, {"id", id}}, message_);
+                mode_ = document_.Profile().defaultMode;
+                edited = true;
+            }
+            ImGui::EndPopup();
+        }
+        ImGui::PopID();
+        if (edited)
+            break;
+    }
+    DrawEffectLibrary();
+    if (document_.IsDirty())
+        StatusBadge(L("gc.unsaved"), EditorStatusTone::Warning);
+}
+void GameplayCameraWorkspaceController::DrawInspector(DocumentSceneBase& scene, EditorOperationRegistry& operations,
+                                                      SceneObjectId selectedObject) {
+    if (ImGui::Begin(TEXT::LocalizeWindow("gc.inspector", "GameplayCamera/Inspector").c_str())) {
+        if (ImGui::RadioButton(L("gc.camera"), !effectsEditing_))
+            effectsEditing_ = false;
         ImGui::SameLine();
         if (ImGui::RadioButton(L("gc.effects"), effectsEditing_)) {
             effectsEditing_ = true;
-            flowEditing_ = false;
             if (!document_.Profile().FindEffect(effect_) && !document_.Profile().effects.empty())
                 effect_ = document_.Profile().effects.front().id;
-        }
-        ImGui::SameLine();
-        if (ImGui::RadioButton(L("cf.flow"), flowEditing_)) {
-            flowEditing_ = true;
-            effectsEditing_ = false;
         }
         if (effectsEditing_) {
             DrawEffectInspector();
@@ -222,146 +195,143 @@ void GameplayCameraWorkspaceController::DrawInspector(DocumentSceneBase& scene, 
             return;
         }
         ImGui::Separator();
-        if (flowEditing_) {
-            DrawFlowInspector(scene, operations, host);
+        if (selectedZone_.value) {
+            DrawZoneInspector(scene, operations);
             ImGui::End();
             return;
         }
-        if (ImGui::CollapsingHeader(L("gc.bindings"), ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::TextWrapped("%s", L("gc.bindingWorkflow"));
-            SelectObject(scene, "gc.target", target_, false);
+        const auto* cameraObject = scene.GetWorld().FindObject(camera_);
+        if (cameraObject == nullptr) {
+            EmptyState(L("gc.noCameraTitle"), L("gc.noCameraHint"));
+            ImGui::End();
+            return;
+        }
+        PanelTitle(cameraObject->GetName().c_str(), L("gc.cameraTitle"));
+        if (cameraObject->GetComponent<CameraFollowComponent>() == nullptr) {
+            // 普通の機位（固定の镜头）。模板を選ぶと、玩家を追う游戏摄像机になる。
+            ImGui::TextWrapped("%s", L("gc.plainCameraHint"));
+            if (ActionButton(L("gc.makeGameCamera"), "##makeGameCamera", EditorButtonTone::Primary))
+                ImGui::OpenPopup("CameraTemplates");
+            DrawTemplateMenu(scene, operations, camera_);
+            ImGui::End();
+            return;
+        }
+        {
+            bool rebind = SelectObject(scene, "gc.target", target_, false);
             ImGui::SameLine();
             ImGui::BeginDisabled(!scene.GetWorld().FindObject(selectedObject) || selectedObject == camera_);
-            if (ImGui::SmallButton(L("gc.followSelected")))
+            if (ImGui::SmallButton(L("gc.followSelected"))) {
                 target_ = selectedObject;
-            ImGui::EndDisabled();
-            SelectObject(scene, "gc.lookTarget", lookTarget_, false);
-            ImGui::SameLine();
-            ImGui::BeginDisabled(!scene.GetWorld().FindObject(selectedObject) || selectedObject == camera_);
-            if (ImGui::SmallButton(L("gc.lookSelected")))
-                lookTarget_ = selectedObject;
-            ImGui::EndDisabled();
-            if (!scene.GetWorld().FindObject(target_))
-                ImGui::TextWrapped("%s", L("gc.targetRequired"));
-            if (!lookTarget_.value)
-                ImGui::TextDisabled("%s", L("gc.lookFallback"));
-            ImGui::BeginDisabled(scene.IsRuntimePlayActive() || !document_.IsOpen() || !target_.value);
-            if (ImGui::Button(L("gc.applyBinding"))) {
-                bool saved = true;
-                if (document_.IsDirty() || !document_.Guid().IsValid()) {
-                    auto save = operations.Execute("gameplay_camera.save", {});
-                    message_ = save.message;
-                    saved = save.ok;
-                }
-                auto result =
-                    saved ? operations.Execute("gameplay_camera.bind", {{"cameraId", camera_.value},
-                                                                        {"targetId", target_.value},
-                                                                        {"lookTargetId", lookTarget_.value},
-                                                                        {"assetGuid", document_.Guid().value},
-                                                                        {"mode", document_.Profile().defaultMode}})
-                          : EditorOperationResult{false, "SAVE_FAILED", message_};
-                message_ = result.message;
-                if (result.ok)
-                    camera_.value = result.data.value("cameraId", camera_.value);
+                rebind = true;
             }
             ImGui::EndDisabled();
-            if (document_.IsDirty() || !document_.Guid().IsValid())
-                ImGui::TextWrapped("%s", L("gc.saveBeforeBinding"));
+            rebind |= SelectObject(scene, "gc.lookTarget", lookTarget_, false);
+            if (!scene.GetWorld().FindObject(target_))
+                ImGui::TextWrapped("%s", L("gc.targetRequired"));
+            if (rebind && !scene.IsRuntimePlayActive())
+                RebindTargets(scene, operations);
         }
         auto profile = document_.Profile();
         auto selected = std::find_if(profile.modes.begin(), profile.modes.end(),
                                      [&](const auto& mode) { return mode.id == mode_; });
         if (document_.IsOpen() && selected != profile.modes.end()) {
-            auto& mode = *selected;
-            auto& follow = mode.follow;
-            bool changed = TextField("gc.modeName", mode.name);
-            ImGui::TextDisabled("%s: %s", L("cm.callId"), mode.id.c_str());
-            if (IconTextButton(EditorGlyph::Duplicate, L("cm.copyCall"), "copyModeCall")) {
-                const auto quoted = nlohmann::json(mode.id).dump(-1, ' ', true);
-                ImGui::SetClipboardText(
-                    ("// Submit while this mode should be active. Stop submitting to release.\nworld.GetCamera().SubmitGameplayMode(cameraHandle, " +
-                     quoted + ", sourceId);")
-                        .c_str());
-            }
-            ImGui::TextDisabled("%s", L("cm.editingMode"));
-            if (ImGui::CollapsingHeader(L("gc.framing"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                int mount = static_cast<int>(mode.mount);
-                const char* labels[] = {L("gc.orbit"), L("gc.firstPerson"), L("gc.fixed")};
-                if (ImGui::Combo(L("gc.mount"), &mount, labels, 3)) {
-                    mode.mount = static_cast<CAMERA::CameraMount>(mount);
-                    changed = true;
-                }
-                if (mode.mount == CAMERA::CameraMount::Orbit)
-                    changed |= ImGui::DragFloat(L("gc.distance"), &follow.initialDistance, 0.02f, 0.01f, 100);
-                changed |= ImGui::DragFloat(L("gc.height"), &follow.pivotOffset.y, 0.01f, -10, 30);
-                changed |= ImGui::SliderFloat(L("gc.pitch"), &follow.initialPitchDegrees, -85, 85);
-                changed |= ImGui::SliderFloat(L("gc.yaw"), &follow.initialYawDegrees, -180, 180);
-                changed |= ImGui::SliderFloat(L("gc.fov"), &mode.verticalFovDegrees, 10, 140);
-                changed |= ImGui::SliderFloat(L("gc.shoulder"), &mode.shoulderOffset, -2, 2);
-                changed |= ImGui::Checkbox(L("gc.lockTarget"), &mode.trackLookTarget);
-            }
-            if (ImGui::CollapsingHeader(L("gc.response"))) {
-                changed |= ImGui::SliderFloat(L("gc.blend"), &mode.blendSeconds, 0, 3);
-                changed |= ImGui::SliderFloat(L("gc.followSmooth"), &follow.followSmooth, 0, 40);
-                changed |= ImGui::SliderFloat(L("gc.lookSmooth"), &follow.lookSmooth, 0, 40);
-                changed |= ImGui::Checkbox(L("gc.keepOrbit"), &mode.keepUserOrbit);
-                changed |= ImGui::Checkbox(L("gc.input"), &follow.orbitInputEnabled);
-                changed |= TextField("gc.activation", mode.activationAction);
-                if (!mode.activationAction.empty() &&
-                    ImGui::BeginCombo(L("gc.activationFrom"),
-                                      mode.activationFromModes.empty() ? L("cf.anyMode") : L("gc.selectedModes"))) {
-                    for (const auto& candidate : profile.modes) {
-                        auto it =
-                            std::find(mode.activationFromModes.begin(), mode.activationFromModes.end(), candidate.id);
-                        bool included = it != mode.activationFromModes.end();
-                        ImGui::PushID(candidate.id.c_str());
-                        if (ImGui::Selectable(candidate.name.c_str(), included, ImGuiSelectableFlags_DontClosePopups)) {
-                            if (included)
-                                mode.activationFromModes.erase(it);
-                            else
-                                mode.activationFromModes.push_back(candidate.id);
-                            changed = true;
-                        }
-                        ImGui::PopID();
-                    }
-                    ImGui::EndCombo();
-                }
-                changed |= ImGui::InputInt(L("gc.priority"), &mode.priority);
-            }
-            if (ImGui::CollapsingHeader(L("gc.safety"))) {
-                changed |= ImGui::Checkbox(L("gc.collision"), &follow.collisionEnabled);
-                changed |= ImGui::Checkbox(L("gc.staticOnly"), &follow.collisionStaticOnly);
-                changed |= ImGui::DragFloat(L("gc.radius"), &follow.collisionRadius, 0.01f, 0.01f, 2);
-                changed |= ImGui::DragFloat(L("gc.padding"), &follow.collisionPadding, 0.005f, 0, 1);
-                changed |= ImGui::DragFloatRange2(L("gc.zoomRange"), &follow.minimumDistance, &follow.maximumDistance,
-                                                  0.05f, 0.01f, 100);
-                changed |= ImGui::DragFloat(L("gc.near"), &mode.nearClip, 0.001f, 0.001f, 2);
-            }
-            if (ImGui::CollapsingHeader(L("gc.handoff"))) {
-                changed |= ImGui::SliderFloat(L("gc.enter"), &profile.cinematicEnterSeconds, 0, 3);
-                changed |= ImGui::SliderFloat(L("gc.return"), &profile.cinematicReturnSeconds, 0, 3);
-            }
-            if (ImGui::CollapsingHeader(L("gc.effects"), ImGuiTreeNodeFlags_DefaultOpen)) {
-                changed |= DrawCameraMotionStack(mode.effects, preview_.GameplayState().elapsed, {}, true);
+            if (profile.modes.size() > 1u)
+                ImGui::TextDisabled("%s: %s", L("cm.editingMode"), selected->name.c_str());
+            bool changed = DrawMountSettings(scene, *selected);
+            if (ImGui::CollapsingHeader(L("gc.effects"))) {
+                changed |= DrawCameraMotionStack(selected->effects, preview_.GameplayState().elapsed, {}, true);
                 ImGui::SliderFloat(L("cm.previewSpeed"), &previewSpeed_, 0, 20);
             }
-            if (ImGui::CollapsingHeader(L("gc.advanced"))) {
-                changed |= ImGui::SliderFloat(L("gc.sensitivity"), &follow.mouseSensitivityDegreesPerPixel, 0.01f, 1);
-                changed |= ImGui::Checkbox(L("gc.recenter"), &follow.autoRecenterEnabled);
-                changed |= ImGui::Checkbox(L("gc.composition"), &follow.screenCompositionEnabled);
-                changed |= ImGui::SliderFloat(L("gc.anchorX"), &follow.screenCompositionPrimaryAnchorX, 0.05f, 0.49f);
-                changed |= ImGui::SliderFloat(L("gc.anchorY"), &follow.screenCompositionPrimaryAnchorY, 0.05f, 0.95f);
-                changed |= ImGui::SliderFloat(L("gc.softZone"), &follow.screenCompositionSoftZoneHalfWidth, 0, 0.45f);
-                changed |=
-                    ImGui::SliderFloat(L("gc.hardZone"), &follow.screenCompositionHardZoneHalfWidth, 0.02f, 0.5f);
-            }
+            changed |= DrawModeAdvanced(profile, *selected);
             if (changed) {
-                follow.Normalize();
+                selected->follow.Normalize();
                 document_.Apply(std::move(profile), message_, ImGui::GetActiveID());
             }
         }
     }
     ImGui::End();
+}
+bool GameplayCameraWorkspaceController::DrawModeAdvanced(CAMERA::GameplayCameraProfile& profile,
+                                                         CAMERA::GameplayCameraMode& mode) {
+    if (!BeginAdvancedSection("cameraAdvanced"))
+        return false;
+    auto& follow = mode.follow;
+    const CAMERA::GameplayCameraMode defaults{};
+    bool changed = TextField("gc.modeName", mode.name);
+    // 游戏代码から呼ぶ時の ID（プログラムの人向け）。
+    ImGui::TextDisabled("%s: %s", L("cm.callId"), mode.id.c_str());
+    if (IconTextButton(EditorGlyph::Duplicate, L("cm.copyCall"), "copyModeCall")) {
+        const auto quoted = nlohmann::json(mode.id).dump(-1, ' ', true);
+        ImGui::SetClipboardText(
+            ("// Submit while this mode should be active. Stop submitting to release.\nworld.GetCamera().SubmitGameplayMode(cameraHandle, " +
+             quoted + ", sourceId);")
+                .c_str());
+    }
+    const auto number = [&](const char* key, float& value, NumberRange range, const float* fallback) {
+        changed |= DragNumber(L(key), value, range, fallback);
+    };
+    ImGui::SeparatorText(L("gc.response"));
+    number("gc.blend", mode.blendSeconds, {.minimum = 0.0, .maximum = 5.0, .step = 0.01}, &defaults.blendSeconds);
+    number("gc.lookSmooth", follow.lookSmooth, {.minimum = 0.0, .maximum = 40.0, .step = 0.05},
+           &defaults.follow.lookSmooth);
+    number("gc.lookAhead", follow.lookAheadDistance, {.minimum = 0.0, .maximum = 20.0, .step = 0.01},
+           &defaults.follow.lookAheadDistance);
+    number("gc.verticalDeadZone", follow.verticalDeadZone, {.minimum = 0.0, .maximum = 10.0, .step = 0.01},
+           &defaults.follow.verticalDeadZone);
+    changed |= ImGui::Checkbox(L("gc.keepOrbit"), &mode.keepUserOrbit);
+    changed |= TextField("gc.activation", mode.activationAction);
+    if (!mode.activationAction.empty() &&
+        ImGui::BeginCombo(L("gc.activationFrom"),
+                          mode.activationFromModes.empty() ? L("cf.anyMode") : L("gc.selectedModes"))) {
+        for (const auto& candidate : profile.modes) {
+            auto it = std::find(mode.activationFromModes.begin(), mode.activationFromModes.end(), candidate.id);
+            bool included = it != mode.activationFromModes.end();
+            ImGui::PushID(candidate.id.c_str());
+            if (ImGui::Selectable(candidate.name.c_str(), included, ImGuiSelectableFlags_DontClosePopups)) {
+                if (included)
+                    mode.activationFromModes.erase(it);
+                else
+                    mode.activationFromModes.push_back(candidate.id);
+                changed = true;
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndCombo();
+    }
+    changed |= DragNumber(L("gc.priority"), mode.priority, {.minimum = -1000.0, .maximum = 1000.0, .step = 1.0});
+    ImGui::SeparatorText(L("gc.safety"));
+    changed |= ImGui::Checkbox(L("gc.collision"), &follow.collisionEnabled);
+    changed |= ImGui::Checkbox(L("gc.staticOnly"), &follow.collisionStaticOnly);
+    number("gc.radius", follow.collisionRadius, {.minimum = 0.01, .maximum = 2.0, .step = 0.01},
+           &defaults.follow.collisionRadius);
+    number("gc.padding", follow.collisionPadding, {.minimum = 0.0, .maximum = 1.0, .step = 0.005},
+           &defaults.follow.collisionPadding);
+    number("gc.minDistance", follow.minimumDistance, {.minimum = 0.01, .maximum = 100.0, .step = 0.05},
+           &defaults.follow.minimumDistance);
+    number("gc.maxDistance", follow.maximumDistance, {.minimum = 0.01, .maximum = 100.0, .step = 0.05},
+           &defaults.follow.maximumDistance);
+    number("gc.near", mode.nearClip, {.minimum = 0.001, .maximum = 2.0, .step = 0.001}, &defaults.nearClip);
+    ImGui::SeparatorText(L("gc.composition"));
+    number("gc.sensitivity", follow.mouseSensitivityDegreesPerPixel, {.minimum = 0.01, .maximum = 1.0, .step = 0.005},
+           &defaults.follow.mouseSensitivityDegreesPerPixel);
+    changed |= ImGui::Checkbox(L("gc.recenter"), &follow.autoRecenterEnabled);
+    changed |= ImGui::Checkbox(L("gc.composition"), &follow.screenCompositionEnabled);
+    number("gc.anchorX", follow.screenCompositionPrimaryAnchorX, {.minimum = 0.05, .maximum = 0.49, .step = 0.002},
+           &defaults.follow.screenCompositionPrimaryAnchorX);
+    number("gc.anchorY", follow.screenCompositionPrimaryAnchorY, {.minimum = 0.05, .maximum = 0.95, .step = 0.002},
+           &defaults.follow.screenCompositionPrimaryAnchorY);
+    number("gc.softZone", follow.screenCompositionSoftZoneHalfWidth, {.minimum = 0.0, .maximum = 0.45, .step = 0.002},
+           &defaults.follow.screenCompositionSoftZoneHalfWidth);
+    number("gc.hardZone", follow.screenCompositionHardZoneHalfWidth, {.minimum = 0.02, .maximum = 0.5, .step = 0.002},
+           &defaults.follow.screenCompositionHardZoneHalfWidth);
+    ImGui::SeparatorText(L("gc.handoff"));
+    const CAMERA::GameplayCameraProfile defaultProfile{};
+    number("gc.enter", profile.cinematicEnterSeconds, {.minimum = 0.0, .maximum = 3.0, .step = 0.01},
+           &defaultProfile.cinematicEnterSeconds);
+    number("gc.return", profile.cinematicReturnSeconds, {.minimum = 0.0, .maximum = 3.0, .step = 0.01},
+           &defaultProfile.cinematicReturnSeconds);
+    EndAdvancedSection();
+    return changed;
 }
 GameplayCameraWorkspaceResult GameplayCameraWorkspaceController::Draw(DocumentSceneBase& scene,
                                                                       EditorWorkspaceHost& host,
@@ -370,16 +340,23 @@ GameplayCameraWorkspaceResult GameplayCameraWorkspaceController::Draw(DocumentSc
     GameplayCameraWorkspaceResult result;
     if (!document_.Profile().FindMode(mode_))
         mode_ = document_.Profile().defaultMode;
+    UpdateZoneSimulation(scene);
     DrawLibrary(scene, operations);
-    DrawInspector(scene, operations, host, selectedObject);
+    DrawInspector(scene, operations, selectedObject);
     DrawViews(scene, host, result);
     if (ImGui::Begin(TEXT::LocalizeWindow("gc.playtest", "GameplayCamera/Playtest").c_str())) {
-        ImGui::BeginDisabled(flowDirty_ && !scene.IsRuntimePlayActive());
         if (Icon(scene.IsRuntimePlayActive() ? EditorGlyph::Stop : EditorGlyph::Play, "gc.play"))
             result.togglePlay = true;
-        ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::Checkbox(L("gc.simulate"), &simulate_);
+        ImGui::SameLine();
+        bool walk = simulateZones_;
+        ImGui::BeginDisabled(scene.IsRuntimePlayActive() || !target_.value);
+        if (ImGui::Checkbox(L("gc.walk"), &walk))
+            SetZoneSimulation(scene, walk);
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s", L("gc.walkHint"));
         ImGui::SameLine();
         if (Icon(EditorGlyph::Focus, "gc.focus"))
             focused_ = false;
@@ -403,12 +380,12 @@ GameplayCameraWorkspaceResult GameplayCameraWorkspaceController::Draw(DocumentSc
                         ImGui::TextWrapped("%s", live->GameplayState().error.c_str());
                 }
             }
+        if (const auto* zone = scene.GetWorld().FindObject(activeZone_))
+            ImGui::Text("%s%s", L("gc.inZone"), zone->GetName().c_str());
+        else if (target_.value)
+            ImGui::TextDisabled("%s", L("gc.outsideZones"));
         if (effectsEditing_)
             DrawEffectTimeline(scene);
-        else if (flowEditing_)
-            DrawFlowTimeline(scene, host, operations);
-        else
-            ImGui::TextWrapped("%s", L("cm.workflow"));
         if (!message_.empty())
             ImGui::TextWrapped("%s", message_.c_str());
         if (!preview_.GameplayState().error.empty())

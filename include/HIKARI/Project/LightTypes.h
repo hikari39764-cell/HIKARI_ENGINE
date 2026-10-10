@@ -77,7 +77,9 @@ struct GameProjectLightState {
     uint8_t enabled = 1u;
     uint8_t reserved0[3] = {0u, 0u, 0u};
     GameProjectFloat3 color{1.0f, 1.0f, 1.0f};
-    // Luminous flux in lumens (a 60 W bulb is about 800 lm).
+    // Brightness in the light's own unit: luminous flux in lumens (a 60 W bulb is
+    // about 800 lm), or for scene-relative lights a multiple of the environment's
+    // illuminance at 1 m.
     float intensity = 800.0f;
     // Metres; inverse-square falloff fades smoothly to zero at this distance.
     float range = 10.0f;
@@ -109,7 +111,7 @@ struct GameProjectLightPatch {
     uint8_t enabled = 1u;
     uint8_t reserved0[3] = {0u, 0u, 0u};
     GameProjectFloat3 color{1.0f, 1.0f, 1.0f};
-    // Lumens.
+    // Same unit as GameProjectLightState::intensity.
     float intensity = 800.0f;
     float range = 10.0f;
     float innerConeAngleDegrees = 25.0f;

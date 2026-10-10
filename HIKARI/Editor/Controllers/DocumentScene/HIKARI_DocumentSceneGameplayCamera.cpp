@@ -3,6 +3,7 @@
 #include "Editor/HIKARI_DocumentComponentAuthoringService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
+#include "Core/HIKARI_JsonRead.h"
 #include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 #include <algorithm>
 
@@ -36,7 +37,10 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::BindGameplayCamera(
     SceneObjectData object = create ? SceneObjectData{} : *found;
     if (create) {
         object.id = AllocateSceneObjectId(document);
-        object.name = profile.name;
+        object.name = p.value("name", profile.name);
+        // 固定・軌道などの機位は置いた位置が意味を持つ。新しく作る時だけ位置と向きを受け取る。
+        object.transform.position = JSONREAD::Vec3MemberOr(p, "position", object.transform.position);
+        object.transform.rotationEulerDeg = JSONREAD::Vec3MemberOr(p, "rotation", object.transform.rotationEulerDeg);
     }
     if (object.id == target)
         return {false, "INVALID_TARGET", "A camera cannot follow itself."};
@@ -66,9 +70,73 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::BindGameplayCamera(
         document.objects.push_back(std::move(object));
     else
         *found = std::move(object);
-    document.camera.defaultCameraObjectId = id;
+    if (p.value("setDefault", true))
+        document.camera.defaultCameraObjectId = id;
     CommitSceneObjectAuthoringHistory(*scene, {"Bind gameplay camera", std::move(beforeObjects), document.objects,
                                                beforeCamera, document.camera, dirty, true, true});
     return {true, "OK", "Gameplay camera bound", {{"cameraId", id.value}, {"assetGuid", guid.value}}};
+}
+
+EDITOR::EditorOperationResult DocumentSceneEditorController::EditCameraZone(const nlohmann::json& p) {
+    auto* scene = aiOperationScene_;
+    if (!scene || scene->IsRuntimePlayActive())
+        return {false, "EDIT_MODE_REQUIRED", "Edit camera zones outside Play mode."};
+    auto& document = scene->GetSceneDocument();
+    const std::string action = p.value("action", std::string("create"));
+    const SceneObjectId requested{p.value("objectId", uint64_t{0})};
+    auto found = std::find_if(document.objects.begin(), document.objects.end(),
+                              [&](const auto& object) { return object.id == requested; });
+    if (action != "create" && found == document.objects.end())
+        return {false, "ZONE_NOT_FOUND", "The camera zone no longer exists."};
+    auto beforeObjects = document.objects;
+    const auto beforeCamera = document.camera;
+    const bool dirty = context_.sceneDirty || scene->HasUnsavedSceneChanges();
+    const auto commit = [&](const char* label) {
+        CommitSceneObjectAuthoringHistory(*scene,
+                                          {label, std::move(beforeObjects), document.objects, beforeCamera,
+                                           document.camera, dirty, true, true, p.value("mergeKey", uint64_t{0})});
+    };
+    if (action == "remove") {
+        document.objects.erase(found);
+        commit("Remove camera zone");
+        return {true, "OK", "Camera zone removed"};
+    }
+    const bool create = action == "create";
+    SceneObjectData object = create ? SceneObjectData{} : *found;
+    if (create) {
+        object.id = AllocateSceneObjectId(document);
+        object.name = "Camera Zone";
+        DocumentComponentAuthoringService service;
+        const auto added =
+            service.AddComponent(scene->GetComponentRegistry(), object, "CameraActivationVolumeComponent");
+        if (!added.success)
+            return {false, "COMPONENT_FAILED", added.message};
+    }
+    auto zone = std::find_if(object.components.begin(), object.components.end(),
+                             [](const auto& c) { return c.type == "CameraActivationVolumeComponent"; });
+    if (zone == object.components.end())
+        return {false, "NOT_A_ZONE", "The object is not a camera zone."};
+    object.name = p.value("name", object.name);
+    object.transform.position = JSONREAD::Vec3MemberOr(p, "position", object.transform.position);
+    auto& props = zone->properties;
+    if (p.contains("cameraId"))
+        props["cameraObjectId"] = SCENE::SERIALIZATION::WriteSceneObjectReference(p.at("cameraId").get<uint64_t>());
+    if (p.contains("subjectId"))
+        props["subjectObjectId"] = SCENE::SERIALIZATION::WriteSceneObjectReference(p.at("subjectId").get<uint64_t>());
+    if (p.contains("halfExtents")) {
+        const auto extents = JSONREAD::Vec3MemberOr(p, "halfExtents", {4.0f, 3.0f, 4.0f});
+        props["halfExtents"] = {extents.x, extents.y, extents.z};
+    }
+    for (const char* key : {"priority", "blendSeconds", "affectsControlBasis", "enabled"})
+        if (p.contains(key))
+            props[key] = p.at(key);
+    NormalizeSceneComponentIds(object);
+    const auto id = object.id;
+    if (create)
+        document.objects.push_back(std::move(object));
+    else
+        *found = std::move(object);
+    commit(create ? "Create camera zone" : "Edit camera zone");
+    return {true, "OK", "Camera zone saved", {{"objectId", id.value}}};
 }
 } // namespace HIKARI

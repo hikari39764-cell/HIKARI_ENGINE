@@ -78,6 +78,8 @@ public:
     // このフレームの描画入力（環境プロファイル + 時刻・天気）。シーン文書の環境は参照だけを持つ。
     SceneEnvironment& GetSceneEnvironment();
     const SceneEnvironment& GetSceneEnvironment() const;
+    // 主ビューが今使っている露出の EV100（補正込み）。自動露出は直近の測光の結果、手動は設定から。
+    float GetCurrentExposureEv100() const;
     ENVIRONMENT::EnvironmentRuntime& GetEnvironmentRuntime() noexcept;
     // 編集中の時刻の流れ（実時間 1 秒あたりの秒数）。天気の遷移・風・雲は編集中も常に実時間で進む。
     void SetEnvironmentPreviewTimeScale(double timeScale) noexcept;

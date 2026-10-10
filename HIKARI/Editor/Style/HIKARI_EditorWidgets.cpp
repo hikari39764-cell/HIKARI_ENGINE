@@ -207,7 +207,7 @@ void PanelTitle(const char* title, const char* subtitle) {
     }
 }
 
-void EmptyState(const char* title, const char* detail) {
+bool EmptyState(const char* title, const char* detail, const char* actionLabel) {
     const EditorThemeMetrics& metrics = GetEditorThemeMetrics();
     const float availableWidth = ImGui::GetContentRegionAvail().x;
     const float titleWidth = ImGui::CalcTextSize(title).x;
@@ -216,12 +216,32 @@ void EmptyState(const char* title, const char* detail) {
     const bool pushed = PushEditorFont(EditorFontRole::Strong);
     ImGui::TextUnformatted(title);
     PopEditorFont(pushed);
-    if (detail == nullptr || detail[0] == '\0') {
-        return;
+    if (detail != nullptr && detail[0] != '\0') {
+        const float detailWidth = ImGui::CalcTextSize(detail).x;
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (std::max)(0.0f, (availableWidth - detailWidth) * 0.5f));
+        ImGui::TextDisabled("%s", detail);
     }
-    const float detailWidth = ImGui::CalcTextSize(detail).x;
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (std::max)(0.0f, (availableWidth - detailWidth) * 0.5f));
-    ImGui::TextDisabled("%s", detail);
+    if (actionLabel == nullptr || actionLabel[0] == '\0') {
+        return false;
+    }
+    const float buttonWidth = ImGui::CalcTextSize(actionLabel).x + ImGui::GetStyle().FramePadding.x * 4.0f;
+    ImGui::Dummy(ImVec2(0.0f, metrics.spacingSm));
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (std::max)(0.0f, (availableWidth - buttonWidth) * 0.5f));
+    return ActionButton(actionLabel, "##emptyStateAction", EditorButtonTone::Primary, ImVec2(buttonWidth, 0.0f));
+}
+
+bool BeginAdvancedSection(const char* id) {
+    ImGui::PushID(id);
+    const bool open = ImGui::TreeNodeEx(TEXT::Localize("ui.panel.advanced").c_str(), ImGuiTreeNodeFlags_SpanAvailWidth);
+    if (!open) {
+        ImGui::PopID();
+    }
+    return open;
+}
+
+void EndAdvancedSection() {
+    ImGui::TreePop();
+    ImGui::PopID();
 }
 
 bool SearchField(const char* id, const char* hint, char* buffer, std::size_t bufferSize, float width) {

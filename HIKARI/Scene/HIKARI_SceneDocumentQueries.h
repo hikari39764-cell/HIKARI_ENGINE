@@ -11,6 +11,8 @@ struct SceneDocument;
 struct SceneObjectData;
 
 SceneObjectId AllocateSceneObjectId(const SceneDocument& document);
+// 玩家：角色入力を持つ物、無ければ角色の移動を持つ物。見つからなければ無効な ID。
+SceneObjectId FindScenePlayer(const SceneDocument& document) noexcept;
 SceneObjectData* FindSceneObjectData(SceneDocument& document, SceneObjectId id) noexcept;
 const SceneObjectData* FindSceneObjectData(const SceneDocument& document, SceneObjectId id) noexcept;
 std::unordered_set<uint64_t> CollectObjectSubtreeIds(const SceneDocument& document, SceneObjectId rootId);

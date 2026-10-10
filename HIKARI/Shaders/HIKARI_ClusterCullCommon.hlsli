@@ -456,7 +456,7 @@ void HikariClusterCullEmitDraw(ClusterCullInput input, uint firstCluster,
     uint overflowCounterOffset =
         HikariClusterCullPassDrawOverflowCounterOffset(input.passKind, bucket);
     uint drawIndex = 0;
-    gClusterCullCounters.InterlockedAdd(aggregateDrawCounterOffset, 1);
+    HikariClusterCullAddDebugCounter(aggregateDrawCounterOffset, 1u);
     gClusterCullCounters.InterlockedAdd(drawCounterOffset, 1, drawIndex);
     if (drawIndex >= gClusterCullCandidateCommandBucketCapacity)
     {
@@ -476,9 +476,9 @@ void HikariClusterCullEmitDraw(ClusterCullInput input, uint firstCluster,
         return;
     }
 
-    gClusterCullCounters.InterlockedAdd(
+    HikariClusterCullAddDebugCounter(
         HIKARI_CLUSTER_CULL_COUNTER_VISIBLE_RANGE_COUNT,
-        1);
+        1u);
     if (gClusterCullEnableDebugCounters != 0u)
     {
         gClusterCullCounters.InterlockedAdd(
@@ -650,12 +650,14 @@ float HikariClusterCullResolveLodTransitionRadius(
     return max(baseRadius * relax, 0.0f);
 }
 
+// projectionScale は画面上の大きさと誤差に掛ける倍率（1 で通常の選択）。履歴の幅を作るのに使う。
 bool HikariClusterCullSelectSectionLodRange(
     ByteAddressBuffer geometry,
     HikariClusterGeometryHeader header,
     HikariSurfaceGpuSceneInstance instance,
     HikariClusterGeometrySurfaceSection section,
     float4 sectionWorldSphere,
+    float projectionScale,
     out HikariClusterGeometrySurfaceLodRange selectedRange)
 {
     selectedRange = (HikariClusterGeometrySurfaceLodRange)0;
@@ -708,7 +710,7 @@ bool HikariClusterCullSelectSectionLodRange(
 
     float4 lodWorldSphere =
         HikariClusterCullResolveSectionLodWorldSphere(instance, section, sectionWorldSphere);
-    float screenRadius = HikariClusterCullProjectedScreenRadius(lodWorldSphere);
+    float screenRadius = HikariClusterCullProjectedScreenRadius(lodWorldSphere) * projectionScale;
     float targetProjectedError = HikariClusterCullResolveProjectedErrorBudget();
     bool useProjectedError =
         gClusterCullEnableLodErrorSelection != 0u &&
@@ -743,7 +745,7 @@ bool HikariClusterCullSelectSectionLodRange(
             screenRadius < max(transitionRadius, 0.0f);
         bool errorAllowsStepDown =
             !useProjectedError ||
-            HikariClusterCullProjectedLodError(lodWorldSphere, range) <=
+            HikariClusterCullProjectedLodError(lodWorldSphere, range) * projectionScale <=
                 HikariClusterCullResolveSectionErrorBudget(section, range);
         if (!radiusAllowsStepDown || !errorAllowsStepDown)
         {
@@ -754,6 +756,78 @@ bool HikariClusterCullSelectSectionLodRange(
     }
 
     return hasFallback;
+}
+
+// 前フレームに選んだ LOD を保つ幅（画面上の大きさの比）。境目の近くで視点が少し動いても LOD が行き来しない。
+static const float HIKARI_CLUSTER_CULL_LOD_HYSTERESIS = 0.1f;
+
+// LOD の履歴は遮蔽の履歴と同じ表に別の鍵で置く（level の印で区別する）。値は {フレーム, LOD}。
+uint HikariClusterCullLodHistoryKey(uint gpuSceneInstanceIndex, uint passKind, uint sectionIndex)
+{
+    return HikariClusterCullBuildOcclusionKey(
+        gpuSceneInstanceIndex, passKind, 0u, sectionIndex, 0xffffffffu, 0xffffffffu, 0xffffu);
+}
+
+bool HikariClusterCullLoadLodHistory(uint key, out uint lodIndex)
+{
+    lodIndex = 0u;
+    if (gClusterCullOcclusionHistoryCapacity == 0u)
+    {
+        return false;
+    }
+    const uint offset = HikariClusterCullHistoryEntryOffset(key);
+    const uint2 entry = gClusterCullOcclusionHistory.Load2(offset);
+    lodIndex = entry.y & 0xffu;
+    // 数フレーム使われなかった履歴（視野の外から戻った物など）は使わない。
+    const uint age = ((gClusterCullTemporalFrameIndex & 0xffffu) - (entry.y >> 16u)) & 0xffffu;
+    return entry.x == key && age <= 2u;
+}
+
+void HikariClusterCullStoreLodHistory(uint key, uint lodIndex)
+{
+    if (gClusterCullOcclusionHistoryCapacity != 0u)
+    {
+        gClusterCullOcclusionHistory.Store2(HikariClusterCullHistoryEntryOffset(key),
+            uint2(key, ((gClusterCullTemporalFrameIndex & 0xffffu) << 16u) | (lodIndex & 0xffu)));
+    }
+}
+
+// 前フレームの LOD が、画面上の大きさを ±幅 動かした時の選択の間にあれば保つ。外れたら近い側へ移る。
+bool HikariClusterCullSelectStableSectionLodRange(
+    ByteAddressBuffer geometry,
+    HikariClusterGeometryHeader header,
+    HikariSurfaceGpuSceneInstance instance,
+    HikariClusterGeometrySurfaceSection section,
+    float4 sectionWorldSphere,
+    uint gpuSceneInstanceIndex,
+    out HikariClusterGeometrySurfaceLodRange selectedRange)
+{
+    HikariClusterGeometrySurfaceLodRange finer, coarser;
+    if (!HikariClusterCullSelectSectionLodRange(geometry, header, instance, section, sectionWorldSphere,
+            1.0f + HIKARI_CLUSTER_CULL_LOD_HYSTERESIS, finer) ||
+        !HikariClusterCullSelectSectionLodRange(geometry, header, instance, section, sectionWorldSphere,
+            1.0f - HIKARI_CLUSTER_CULL_LOD_HYSTERESIS, coarser))
+    {
+        selectedRange = (HikariClusterGeometrySurfaceLodRange)0;
+        return false;
+    }
+    const uint key = HikariClusterCullLodHistoryKey(gpuSceneInstanceIndex, gClusterCullPassKind, section.sectionIndex);
+    uint previous;
+    if (!HikariClusterCullLoadLodHistory(key, previous) || previous <= finer.lodIndex)
+    {
+        selectedRange = finer;
+    }
+    else if (previous >= coarser.lodIndex)
+    {
+        selectedRange = coarser;
+    }
+    else if (!HikariClusterCullSelectSectionLodRange(
+                 geometry, header, instance, section, sectionWorldSphere, 1.0f, selectedRange))
+    {
+        return false;
+    }
+    HikariClusterCullStoreLodHistory(key, selectedRange.lodIndex);
+    return true;
 }
 
 void HikariClusterCullRecordSelectedLod(uint lodIndex)
@@ -771,7 +845,7 @@ void HikariClusterCullRecordSelectedLod(uint lodIndex)
     {
         counterOffset = HIKARI_CLUSTER_CULL_COUNTER_LOD2_SELECTED_COUNT;
     }
-    gClusterCullCounters.InterlockedAdd(counterOffset, 1);
+    HikariClusterCullAddDebugCounter(counterOffset, 1u);
 }
 
 ClusterCullInput HikariClusterCullBuildInput(

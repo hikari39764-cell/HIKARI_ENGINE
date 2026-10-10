@@ -75,8 +75,10 @@ public:
 
     static void UpdateCommonParams(float deltaTime);
     // 主ビューの露出をこのフレーム分進めて P を固定する。色調設定の後、HDR へ書く前に一度だけ呼ぶ。
-    // illumination は場面を照らす光の量（SKYRENDERER::EstimateExposureIllumination）。
-    static void AdvanceExposure(float deltaTime, const RENDER3D::COLOR::ExposureIllumination& illumination);
+    // illumination は場面を照らす光の量（SKYRENDERER::EstimateExposureIllumination）。meterScene はこのフレームに主ビューが
+    // 場面を描くか（編集器で主ビューを隠した工作区では描かれない画面を測らず、測光は前の値か入射照度のまま）。
+    static void AdvanceExposure(float deltaTime, const RENDER3D::COLOR::ExposureIllumination& illumination,
+                                bool meterScene);
     static void SetIntensity(float intensity);
     static void SetSequenceEffects(std::span<const SEQUENCER::ScreenEffectSample> effects);
     static void SetCombo(float combo);

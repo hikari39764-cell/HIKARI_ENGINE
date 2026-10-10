@@ -99,7 +99,7 @@ bool AreRenderQualitySettingsEqual(const RenderQualitySettings& lhs, const Rende
            lhs.localShadowQuality == rhs.localShadowQuality && lhs.taaHistoryWeight == rhs.taaHistoryWeight &&
            lhs.taaVarianceClipGamma == rhs.taaVarianceClipGamma && lhs.taaDepthRejection == rhs.taaDepthRejection &&
            lhs.taaLuminanceRejection == rhs.taaLuminanceRejection && lhs.taaSharpness == rhs.taaSharpness &&
-           lhs.sceneDepthPrepass == rhs.sceneDepthPrepass;
+           lhs.sceneDepthPrepass == rhs.sceneDepthPrepass && lhs.rayTracedReflections == rhs.rayTracedReflections;
 }
 
 RenderQualityRuntimeChangeSet ClassifyRenderQualityRuntimeChanges(const RenderQualitySettings& before,

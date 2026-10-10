@@ -19,6 +19,7 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
+#include "Editor/Widgets/HIKARI_NumberField.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
@@ -264,7 +265,9 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase& scene, EditorContext&
     {
         InspectorPropertyRow row(TEXT::Localize("ui.inspector.position").c_str());
         float values[3]{target.transform.position.x, target.transform.position.y, target.transform.position.z};
-        const bool changed = row.IsVisible() && ImGui::DragFloat3("##Value", values, 0.05f);
+        constexpr float kOrigin[3]{};
+        const bool changed =
+            row.IsVisible() && DragNumbers("##Value", values, 3, {.step = 0.01, .proportional = false}, kOrigin);
         beginHistoryIfActivated();
         if (changed) {
             target.transform.position = {values[0], values[1], values[2]};
@@ -277,7 +280,9 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase& scene, EditorContext&
             InspectorPropertyRow row(TEXT::Localize("ui.inspector.rotation").c_str());
             float values[3]{target.transform.rotationEulerDeg.x, target.transform.rotationEulerDeg.y,
                             target.transform.rotationEulerDeg.z};
-            const bool changed = row.IsVisible() && ImGui::DragFloat3("##Value", values, 0.5f);
+            constexpr float kNoRotation[3]{};
+            const bool changed =
+                row.IsVisible() && DragNumbers("##Value", values, 3, {.step = 0.5, .proportional = false}, kNoRotation);
             beginHistoryIfActivated();
             if (changed) {
                 target.transform.rotationEulerDeg = {values[0], values[1], values[2]};
@@ -289,7 +294,8 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase& scene, EditorContext&
     {
         InspectorPropertyRow row(TEXT::Localize("ui.inspector.scale").c_str());
         float values[3]{target.transform.scale.x, target.transform.scale.y, target.transform.scale.z};
-        const bool changed = row.IsVisible() && ImGui::DragFloat3("##Value", values, 0.01f);
+        constexpr float kUnitScale[3]{1.0f, 1.0f, 1.0f};
+        const bool changed = row.IsVisible() && DragNumbers("##Value", values, 3, {.step = 0.01}, kUnitScale);
         beginHistoryIfActivated();
         if (changed) {
             target.transform.scale = {(std::max)(values[0], 0.0001f), (std::max)(values[1], 0.0001f),

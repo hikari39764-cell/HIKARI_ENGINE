@@ -163,7 +163,10 @@ void FillShadowCB(const SceneEnvironment& environment, uint64_t frameIndex, Shad
     const float sunAngularRadius =
         std::clamp(ATMOSPHERE::BuildAtmosphereSolarState(environment).sunAngularRadius, 0.0f, 0.5f);
     out.lightTangent = quality.penumbraScale > 0.0f ? quality.penumbraScale * std::tan(sunAngularRadius) : 0.0f;
-    out.contactLength = std::max(0.0f, quality.contactShadowLength);
+    const ShadowSettings& shadows = environment.shadows;
+    out.contactLength = shadows.contactShadows ? std::max(0.0f, shadows.contactShadowLength) : 0.0f;
+    out.contactStrength = std::clamp(shadows.contactShadowStrength, 0.0f, 1.0f);
+    out.contactThickness = std::max(0.01f, shadows.contactShadowThickness);
 }
 
 void FillSelectedIrradianceVolumes(SkyEnvironmentCB& out) {
@@ -251,8 +254,6 @@ void FillSkyEnvironmentCB(const SceneEnvironment& environment, const MATH::Vec3&
     out.atmosphereSunDirection = skyData.atmosphereConstants.sunDirection;
     out.atmosphereSunColorRadiance = skyData.atmosphereConstants.sunColorRadiance;
 }
-
-namespace {}
 
 void FillMaterialFactorValues(ObjectCB& obj, const MaterialAsset* modelMaterial, const Material* runtimeMaterial) {
     const auto projection = RENDER3D::MATERIAL::BuildMaterialFactorProjection(modelMaterial, runtimeMaterial);

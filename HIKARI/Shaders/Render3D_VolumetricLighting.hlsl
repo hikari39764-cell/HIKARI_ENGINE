@@ -209,26 +209,18 @@ void GatherAmbientCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     float3 ray;
     bool orthographic;
     HikariReconstructVolumeRay(uv, gInvViewProj, gCameraPos.xyz, rayOrigin, ray, orthographic);
-    // 不透明面より奥の格子点は面の手前へ引き寄せる。格子は粗く（奥行きで 1m 前後）、壁の向こうの外の点の環境光が
-    // 壁際の霧へ補間で混ざって閉じた部屋の霧を光らせる。輪郭の格子で背景を手前へ引かないよう、格子の 5 点の最も
-    // 遠い面を使う。
+    // 格子点は格子の中心の光線で最初に当たる不透明面の手前へ引き寄せる。格子は粗く（奥行きで 1m 前後、横に 60 画素
+    // ほど）、面の奥の点を使うと壁や屋根の向こう（外の空の光、灯りのついた部屋の照り返し）の環境光が補間で霧へ混ざる。
+    // 輪郭の格子で最も遠い面を使うと、中心の光線が屋根に当たっていても部屋の中の点を拾い、屋根の上の霧が赤く光った。
     uint sceneWidth = 0u;
     uint sceneHeight = 0u;
     gSceneDepth.GetDimensions(sceneWidth, sceneHeight);
     const float3 cameraForward = HikariVolumeCameraForward(gInvViewProj, gCameraPos.xyz, orthographic);
-    float surfaceDistance = 0.0f;
-    const float2 cellSize = 1.0f / float2(volumeSize.xy);
-    const float2 taps[5] = {0.0f.xx, float2(-0.35f, -0.35f), float2(0.35f, -0.35f), float2(-0.35f, 0.35f),
-        float2(0.35f, 0.35f)};
-    [unroll] for (uint tap = 0u; tap < 5u; ++tap)
-    {
-        const float2 tapUv = saturate(uv + taps[tap] * cellSize);
-        const float depth = gSceneDepth.Load(int3(tapUv * float2(sceneWidth - 1u, sceneHeight - 1u), 0));
-        surfaceDistance = depth < 0.999999f
-            ? max(surfaceDistance, HikariVolumeCameraDistance(HikariUnprojectVolumePosition(tapUv, depth, gInvViewProj),
-                  gCameraPos.xyz, cameraForward, orthographic))
-            : gFogDistances.y;
-    }
+    const float depth = gSceneDepth.Load(int3(uv * float2(sceneWidth - 1u, sceneHeight - 1u), 0));
+    const float surfaceDistance = depth < 0.999999f
+        ? HikariVolumeCameraDistance(HikariUnprojectVolumePosition(uv, depth, gInvViewProj), gCameraPos.xyz,
+              cameraForward, orthographic)
+        : gFogDistances.y;
     const float cellDistance = FractionDistance((float)dispatchThreadId.z / max((float)volumeSize.z - 1.0f, 1.0f));
     const float3 worldPosition = rayOrigin + ray * max(min(cellDistance, surfaceDistance - 0.3f), gFogDistances.x);
     // 面の受光（HikariResolveLightProbeDiffuse）と同じく、手置きの区域、近景、遠景の順に重ねる。
@@ -280,7 +272,20 @@ void InjectCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     const float3 cameraForward = HikariVolumeCameraForward(gInvViewProj, gCameraPos.xyz, orthographic);
     const float sampleDistance = FractionDistance(((float)slice - 1.0f + depthJitter) * sliceScale);
     const float3 worldPosition = rayOrigin + ray * sampleDistance;
-
+    // 照明は標本の画素で見えている範囲（不透明面の手前）で評価し、面より奥の点は面のすぐ手前で照らす。面の奥（日なたの
+    // 外や灯りのついた部屋の中）の標本は二つの経路で壁のこちら側へ漏れた。合成は面の深さで層の間を補間して面をまたぐ層の
+    // 散乱を一部取り込むので、層の境が壁を横切る所に相機を中心とした輪の光が出た。相機が動くと履歴の再投影（奥行きと横の
+    // 線形補間）が奥の froxel を壁の外や屋根の上の froxel へ混ぜ、履歴の重みで残って縞の光が出た。密度は元の位置のまま
+    // （媒質の量は変えない）。
+    float3 lightingPosition = worldPosition;
+    const float surfaceDepth = gSceneDepth.Load(
+        int3(min(uint2(uv * float2(sceneWidth, sceneHeight)), uint2(sceneWidth - 1u, sceneHeight - 1u)), 0));
+    if (surfaceDepth < 0.999999f)
+    {
+        const float surfaceDistance = HikariVolumeCameraDistance(
+            HikariUnprojectVolumePosition(uv, surfaceDepth, gInvViewProj), gCameraPos.xyz, cameraForward, orthographic);
+        lightingPosition = rayOrigin + ray * min(sampleDistance, max(surfaceDistance - 0.05f, 0.0f));
+    }
     const float heightAboveBase = max(worldPosition.y - gVolumetricOptics.x, 0.0f);
     float extinction = max(0.0f, gFogColorDensity.a) * exp(-heightAboveBase * gFogDistances.z) *
         FogNoiseDensityScale(worldPosition);
@@ -299,8 +304,8 @@ void InjectCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         const float3 directionalRadiance = gDirectionalColorShadow.rgb * gDirectionalDirIntensity.w *
             HikariHenyeyGreenstein(dot(ray, normalize(-gDirectionalDirIntensity.xyz)), gFogDistances.w);
         const uint localLightDepthSlice = HikariResolveLocalLightDepthSlice(
-            HikariVolumeViewDepth(worldPosition, gCameraPos.xyz, cameraForward));
-        inScattering = scatteringCoefficient * EvaluateLighting(worldPosition, ray, cameraForward,
+            HikariVolumeViewDepth(lightingPosition, gCameraPos.xyz, cameraForward));
+        inScattering = scatteringCoefficient * EvaluateLighting(lightingPosition, ray, cameraForward,
             uv * float2(sceneWidth, sceneHeight), localLightDepthSlice, directionalRadiance,
             AmbientRadiance(uv, sampleDistance));
     }
@@ -452,8 +457,10 @@ void CompositeCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         const float slices = max((float)aerialSlices, 1.0f);
         aerial = gAerialPerspectiveVolume.SampleLevel(
             gLinearClamp, float3(uv, max(w - 0.5f / slices, 0.5f / slices)), 0.0f);
-        // 最初の層より手前はカメラ位置の恒等へ向けて弱める。
-        aerial = lerp(float4(0.0f, 0.0f, 0.0f, 1.0f), aerial, saturate(w * slices));
+        // 最初の層より手前はカメラ位置の恒等へ距離に比例して弱める（近距離の内散乱と減衰は距離に比例する）。層の座標 w は
+        // 距離の平方根なので w に比例させると近くを過大に見積もり、閉じた部屋の中まで昼の空の青い霞が数倍濃く乗った。
+        const float nearFraction = saturate(w * slices);
+        aerial = lerp(float4(0.0f, 0.0f, 0.0f, 1.0f), aerial, nearFraction * nearFraction);
     }
 
     const uint debugMode =

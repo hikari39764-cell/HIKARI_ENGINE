@@ -101,6 +101,56 @@ void BuildBox(const ProceduralMeshSettings& settings, MeshPrimitive& primitive) 
     AddBoxFace(primitive, {-x, -y, -z}, {x, -y, -z}, {-x, -y, z}, {x, -y, z}, {0, -1, 0}, tangent({1, 0, 0, 1}));
 }
 
+void AddTriangle(MeshPrimitive& primitive, MATH::Vec3 a, MATH::Vec3 b, MATH::Vec3 c, MATH::Vec3 normal,
+                 MATH::Vec4 tangent) {
+    const uint32_t base = static_cast<uint32_t>(primitive.staticVertices.size());
+    primitive.staticVertices.push_back(MakeVertex(a, normal, tangent, 0.0f, 1.0f));
+    primitive.staticVertices.push_back(MakeVertex(b, normal, tangent, 1.0f, 1.0f));
+    primitive.staticVertices.push_back(MakeVertex(c, normal, tangent, 1.0f, 0.0f));
+    primitive.indices.insert(primitive.indices.end(), {base, base + 1u, base + 2u});
+}
+
+// 手前（-Z）の下端から奥（+Z）の上端へ上がるくさび。
+void BuildRamp(const ProceduralMeshSettings& settings, MeshPrimitive& primitive) {
+    const float x = settings.width * 0.5f;
+    const float y = settings.height * 0.5f;
+    const float z = settings.depth * 0.5f;
+    const MATH::Vec4 tangentX = settings.generateTangents ? MATH::Vec4{1, 0, 0, 1} : MATH::Vec4{};
+    const MATH::Vec4 tangentZ = settings.generateTangents ? MATH::Vec4{0, 0, 1, 1} : MATH::Vec4{};
+    const MATH::Vec4 tangentNegZ = settings.generateTangents ? MATH::Vec4{0, 0, -1, 1} : MATH::Vec4{};
+    const MATH::Vec3 slopeNormal = MATH::Normalize({0.0f, settings.depth, -settings.height});
+    AddBoxFace(primitive, {-x, y, z}, {x, y, z}, {-x, -y, -z}, {x, -y, -z}, slopeNormal, tangentX);
+    AddBoxFace(primitive, {-x, -y, z}, {x, -y, z}, {-x, y, z}, {x, y, z}, {0, 0, 1}, tangentX);
+    AddBoxFace(primitive, {-x, -y, -z}, {x, -y, -z}, {-x, -y, z}, {x, -y, z}, {0, -1, 0}, tangentX);
+    AddTriangle(primitive, {-x, -y, -z}, {-x, -y, z}, {-x, y, z}, {-1, 0, 0}, tangentZ);
+    AddTriangle(primitive, {x, -y, z}, {x, -y, -z}, {x, y, z}, {1, 0, 0}, tangentNegZ);
+}
+
+// 斜面と同じ向きに segmentsY 段で上がる階段。段ごとに離れた柱を並べる（境目の面は柱の内側に隠れる）。
+void BuildStairs(const ProceduralMeshSettings& settings, MeshPrimitive& primitive) {
+    const uint32_t steps = (std::max)(settings.segmentsY, 1u);
+    const float x = settings.width * 0.5f;
+    const float y0 = -settings.height * 0.5f;
+    const float front = -settings.depth * 0.5f;
+    const float rise = settings.height / static_cast<float>(steps);
+    const float run = settings.depth / static_cast<float>(steps);
+    const auto tangent = [enabled = settings.generateTangents](MATH::Vec4 value) {
+        return enabled ? value : MATH::Vec4{};
+    };
+    for (uint32_t step = 0; step < steps; ++step) {
+        const float y1 = y0 + rise * static_cast<float>(step + 1u);
+        const float z0 = front + run * static_cast<float>(step);
+        const float z1 = z0 + run;
+        AddBoxFace(primitive, {-x, y0, z1}, {x, y0, z1}, {-x, y1, z1}, {x, y1, z1}, {0, 0, 1}, tangent({1, 0, 0, 1}));
+        AddBoxFace(primitive, {x, y0, z0}, {-x, y0, z0}, {x, y1, z0}, {-x, y1, z0}, {0, 0, -1}, tangent({-1, 0, 0, 1}));
+        AddBoxFace(primitive, {-x, y0, z0}, {-x, y0, z1}, {-x, y1, z0}, {-x, y1, z1}, {-1, 0, 0},
+                   tangent({0, 0, 1, 1}));
+        AddBoxFace(primitive, {x, y0, z1}, {x, y0, z0}, {x, y1, z1}, {x, y1, z0}, {1, 0, 0}, tangent({0, 0, -1, 1}));
+        AddBoxFace(primitive, {-x, y1, z1}, {x, y1, z1}, {-x, y1, z0}, {x, y1, z0}, {0, 1, 0}, tangent({1, 0, 0, 1}));
+        AddBoxFace(primitive, {-x, y0, z0}, {x, y0, z0}, {-x, y0, z1}, {x, y0, z1}, {0, -1, 0}, tangent({1, 0, 0, 1}));
+    }
+}
+
 void BuildRoundedVerticalShape(const ProceduralMeshSettings& settings, MeshPrimitive& primitive, bool capsule) {
     const uint32_t slices = settings.sphereSlices;
     const float radius = settings.width * 0.5f;
@@ -234,6 +284,8 @@ void BuildProceduralMesh(const ProceduralMeshSettings& rawSettings, MeshPrimitiv
     case ProceduralMeshKind::Sphere: BuildRoundedVerticalShape(settings, outPrimitive, false); break;
     case ProceduralMeshKind::Cylinder: BuildCylinder(settings, outPrimitive); break;
     case ProceduralMeshKind::Capsule: BuildRoundedVerticalShape(settings, outPrimitive, true); break;
+    case ProceduralMeshKind::Ramp: BuildRamp(settings, outPrimitive); break;
+    case ProceduralMeshKind::Stairs: BuildStairs(settings, outPrimitive); break;
     case ProceduralMeshKind::Box:
     default: BuildBox(settings, outPrimitive); break;
     }

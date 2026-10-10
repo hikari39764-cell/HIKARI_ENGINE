@@ -51,7 +51,8 @@ bool Upload(ID3D12Device* device, std::span<const T> values, Microsoft::WRL::Com
 
 bool DxrAccelerationStructure::BuildBottomLevel(const Context& graphics,
                                                 std::span<const D3D12_RAYTRACING_GEOMETRY_DESC> geometry,
-                                                uint64_t maximumAllocationBytes, std::string* outMessage) {
+                                                uint64_t maximumAllocationBytes, std::string* outMessage,
+                                                bool allowUpdate) {
     if (geometry.empty() || geometry.size() > (1u << 24) ||
         !std::all_of(geometry.begin(), geometry.end(), ValidTriangles)) {
         Reset(&graphics);
@@ -62,6 +63,8 @@ bool DxrAccelerationStructure::BuildBottomLevel(const Context& graphics,
     inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
     inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
     inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+    if (allowUpdate)
+        inputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
     inputs.NumDescs = static_cast<UINT>(geometry.size());
     inputs.pGeometryDescs = geometry.data();
     return Build(graphics, inputs, {}, maximumAllocationBytes, nullptr, outMessage);
@@ -129,8 +132,11 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
     if (info.ResultDataMaxSizeInBytes == 0)
         return fail("DXR prebuild returned no acceleration structure.");
     const uint64_t resultBytes = info.ResultDataMaxSizeInBytes;
-    const uint64_t scratchBytes = (std::max)(kAlignment, updateSource != nullptr ? info.UpdateScratchDataSizeInBytes
-                                                                                 : info.ScratchDataSizeInBytes);
+    // 更新できる構造は、後の RefitInPlace でも同じ scratch を使えるよう大きい方を取る。
+    const bool updatable = (inputs.Flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE) != 0;
+    const uint64_t scratchBytes = (std::max)(
+        {kAlignment, updateSource != nullptr ? info.UpdateScratchDataSizeInBytes : info.ScratchDataSizeInBytes,
+         updatable ? info.UpdateScratchDataSizeInBytes : 0ull});
     if (resultBytes > UINT64_MAX - kAlignment || scratchBytes > UINT64_MAX - kAlignment)
         return fail("DXR prebuild size overflow.");
     const auto resultDesc = CD3DX12_RESOURCE_DESC::Buffer((resultBytes + kAlignment - 1) & ~(kAlignment - 1),
@@ -183,6 +189,36 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
     type_ = inputs.Type;
     flags_ = inputs.Flags;
     SetMessage(outMessage, "DXR acceleration structure built.");
+    return true;
+}
+
+bool DxrAccelerationStructure::RefitInPlace(const Context& graphics,
+                                            std::span<const D3D12_RAYTRACING_GEOMETRY_DESC> geometry) {
+    const bool bottom = type_ == D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+    if (!result_ || !scratch_ || graphics.cmdList == nullptr || device_ != graphics.device ||
+        deviceGeneration_ != graphics.deviceGeneration ||
+        (flags_ & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE) == 0 ||
+        (bottom ? geometry.size() != descriptorCount_ || !std::all_of(geometry.begin(), geometry.end(), ValidTriangles)
+                : !geometry.empty()))
+        return false;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> commands;
+    if (FAILED(graphics.cmdList->QueryInterface(IID_PPV_ARGS(&commands))))
+        return false;
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build{};
+    build.Inputs.Type = type_;
+    build.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+    build.Inputs.Flags = flags_ | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
+    build.Inputs.NumDescs = descriptorCount_;
+    if (bottom)
+        build.Inputs.pGeometryDescs = geometry.data();
+    else
+        build.Inputs.InstanceDescs = instanceBuffer_ ? instanceBuffer_->GetGPUVirtualAddress() : 0;
+    build.SourceAccelerationStructureData = result_->GetGPUVirtualAddress();
+    build.DestAccelerationStructureData = result_->GetGPUVirtualAddress();
+    build.ScratchAccelerationStructureData = scratch_->GetGPUVirtualAddress();
+    commands->BuildRaytracingAccelerationStructure(&build, 0, nullptr);
+    const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(result_.Get());
+    commands->ResourceBarrier(1, &barrier);
     return true;
 }
 

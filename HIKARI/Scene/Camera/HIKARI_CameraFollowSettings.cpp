@@ -30,6 +30,8 @@ void CameraFollowSettings::Serialize(nlohmann::json& out) const {
     out["followSmooth"] = followSmooth;
     out["lookSmooth"] = lookSmooth;
     out["distanceSmooth"] = distanceSmooth;
+    out["lookAheadDistance"] = lookAheadDistance;
+    out["verticalDeadZone"] = verticalDeadZone;
     out["orbitInputEnabled"] = orbitInputEnabled;
     out["lookAction"] = lookActionId;
     out["zoomAction"] = zoomActionId;
@@ -78,6 +80,8 @@ void CameraFollowSettings::Deserialize(const nlohmann::json& in) {
     followSmooth = in.value("followSmooth", followSmooth);
     lookSmooth = in.value("lookSmooth", lookSmooth);
     distanceSmooth = in.value("distanceSmooth", distanceSmooth);
+    lookAheadDistance = in.value("lookAheadDistance", lookAheadDistance);
+    verticalDeadZone = in.value("verticalDeadZone", verticalDeadZone);
     orbitInputEnabled = in.value("orbitInputEnabled", orbitInputEnabled);
     lookActionId = in.value("lookAction", lookActionId);
     zoomActionId = in.value("zoomAction", zoomActionId);
@@ -142,6 +146,8 @@ void CameraFollowSettings::Normalize() noexcept {
     followSmooth = NonNegativeFinite(followSmooth, 12.0f);
     lookSmooth = NonNegativeFinite(lookSmooth, 14.0f);
     distanceSmooth = NonNegativeFinite(distanceSmooth, 18.0f);
+    lookAheadDistance = (std::min)(NonNegativeFinite(lookAheadDistance, 0.0f), 20.0f);
+    verticalDeadZone = (std::min)(NonNegativeFinite(verticalDeadZone, 0.0f), 10.0f);
     yawSpeedDegreesPerSecond = NonNegativeFinite(yawSpeedDegreesPerSecond, 180.0f);
     pitchSpeedDegreesPerSecond = NonNegativeFinite(pitchSpeedDegreesPerSecond, 140.0f);
     mouseSensitivityDegreesPerPixel = NonNegativeFinite(mouseSensitivityDegreesPerPixel, 0.12f);

@@ -20,14 +20,19 @@ public:
     // 資産の内容を描く。複製を作った時は、シーンの参照を切り替えるためにその ID を返す。
     std::string DrawProfile(const std::string& id, DocumentSceneBase& scene);
     std::string DrawWeather(const std::string& id, DocumentSceneBase& scene);
+    // 布景でよく触る項目（太陽の向きと強さ、空の光、影、霧、露出、雲）だけを描く。内蔵プロファイルは最初の編集で
+    // プロジェクトへ複製し、その ID を返す。
+    std::string DrawLightingControls(const std::string& id, DocumentSceneBase& scene);
+    // 光照の型を切り替える（美術布景 = 太陽の向きを固定、昼夜 = 日付と地点）。固定へ移る時は今の太陽の位置から始める。
+    // 内蔵プロファイルは複製してその ID を返す。
+    std::string SetSunMode(const std::string& id, SunMode mode, DocumentSceneBase& scene);
     // 下書きを store へ渡し、変わっていればシーンの環境を引き直す。毎フレームと AI の編集後に呼ぶ。
     void PublishDrafts(DocumentSceneBase& scene);
 
-    bool CreateProfileCopy(ENVIRONMENT::EnvironmentProfileAsset source, AssetDatabase& database, std::string& message);
-    bool CreateWeatherCopy(ENVIRONMENT::WeatherPresetAsset source, AssetDatabase& database, std::string& message);
-
     EnvironmentProfileEditorDocument& Profile() { return profile_; }
+    const EnvironmentProfileEditorDocument& Profile() const { return profile_; }
     WeatherPresetEditorDocument& Weather() { return weather_; }
+    const WeatherPresetEditorDocument& Weather() const { return weather_; }
 
 private:
     EnvironmentProfileEditorDocument profile_;
@@ -41,5 +46,7 @@ private:
 bool DrawEnvironmentAssetPicker(AssetType type, const AssetDatabase& database, std::string& id,
                                 const char* emptyLabelKey = nullptr);
 std::string ResolveEnvironmentAssetLabel(AssetType type, std::string_view id, const AssetDatabase& database);
+// 画面预设：内蔵とプロジェクトの環境プロファイルを押して選べる札として並べる。選び直したら true。
+bool DrawEnvironmentProfilePresets(const AssetDatabase& database, std::string& id);
 
 } // namespace HIKARI::EDITOR

@@ -23,10 +23,6 @@ struct ProfileKind {
         return scene.GetEnvironmentAssets().LoadProfile(id, error);
     }
     static EnvironmentProfileEditorDocument& Document(EnvironmentAssetEditor& editor) { return editor.Profile(); }
-    static bool Copy(EnvironmentAssetEditor& editor, Traits::Asset asset, AssetDatabase& database,
-                     std::string& message) {
-        return editor.CreateProfileCopy(std::move(asset), database, message);
-    }
     static bool Read(const nlohmann::json& json, Traits::Asset& asset, std::string& error) {
         return ENVIRONMENT::ReadEnvironmentProfileAsset(json, asset, error);
     }
@@ -39,10 +35,6 @@ struct WeatherKind {
         return scene.GetEnvironmentAssets().LoadWeather(id, error);
     }
     static WeatherPresetEditorDocument& Document(EnvironmentAssetEditor& editor) { return editor.Weather(); }
-    static bool Copy(EnvironmentAssetEditor& editor, Traits::Asset asset, AssetDatabase& database,
-                     std::string& message) {
-        return editor.CreateWeatherCopy(std::move(asset), database, message);
-    }
     static bool Read(const nlohmann::json& json, Traits::Asset& asset, std::string& error) {
         return ENVIRONMENT::ReadWeatherPresetAsset(json, asset, error);
     }
@@ -82,7 +74,7 @@ EditorOperationResult Create(EnvironmentAssetEditor& editor, DocumentSceneBase& 
         copy.name = name;
     }
     std::string message;
-    if (!Kind::Copy(editor, std::move(copy), scene.GetAssetDatabase(), message)) {
+    if (!Kind::Document(editor).SaveAsNew(std::move(copy), scene.GetAssetDatabase(), message)) {
         return OperationFailure("CREATE_FAILED", message);
     }
     editor.PublishDrafts(scene);

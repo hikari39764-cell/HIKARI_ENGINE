@@ -47,7 +47,6 @@ bool GameplayCameraWorkspaceController::PreviewEffect(DocumentSceneBase& scene, 
     effectTime_ = std::min(time, effect->duration);
     effectStrength_ = strength;
     effectsEditing_ = true;
-    flowEditing_ = false;
     effectBypass_ = false;
     effectPlaying_ = play;
     message = "Camera effect preview ready.";
@@ -86,7 +85,6 @@ void GameplayCameraWorkspaceController::DrawEffectLibrary() {
         profile.effects.push_back(std::move(effect));
         if (document_.Apply(std::move(profile), message_)) {
             effectsEditing_ = true;
-            flowEditing_ = false;
             effectTime_ = 0;
         }
     }
@@ -98,7 +96,6 @@ void GameplayCameraWorkspaceController::DrawEffectLibrary() {
         if (ImGui::Selectable(effect.name.c_str(), effectsEditing_ && effect_ == effect.id)) {
             effect_ = effect.id;
             effectsEditing_ = true;
-            flowEditing_ = false;
             effectTime_ = 0;
             effectPlaying_ = false;
             document_.SealMerge();

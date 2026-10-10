@@ -1,9 +1,11 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <span>
 
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Gfx/HIKARI_GfxContext.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
@@ -19,11 +21,67 @@ enum class RuntimeRayTracingStatus : uint8_t {
     UnsupportedDevice,
     InvalidInput,
     Building,
-    IncompleteScene,
     BudgetExceeded,
     BuildFailed,
     Ready
 };
+
+// 加速構造へ入れなかった面の種類。抜けを許せる程度は機能ごとに違う（CanTraceDiffuse / CanTraceShadows）。
+enum class RuntimeRayTracingExclusion : uint8_t {
+    Water,
+    Skinned,
+    FoliageWind,
+    Terrain,
+    CustomVertex,
+    MaterialEffect,
+    ScreenMaterial,
+    MassInstances,
+    Missing,
+    Count
+};
+inline constexpr size_t kRuntimeRayTracingExclusionCount = static_cast<size_t>(RuntimeRayTracingExclusion::Count);
+inline constexpr TEXT::EnumName<RuntimeRayTracingExclusion> kRuntimeRayTracingExclusionNames[] = {
+    {RuntimeRayTracingExclusion::Water, "Water"},
+    {RuntimeRayTracingExclusion::Skinned, "Skinned"},
+    {RuntimeRayTracingExclusion::FoliageWind, "FoliageWind"},
+    {RuntimeRayTracingExclusion::Terrain, "Terrain"},
+    {RuntimeRayTracingExclusion::CustomVertex, "CustomVertex"},
+    {RuntimeRayTracingExclusion::MaterialEffect, "MaterialEffect"},
+    {RuntimeRayTracingExclusion::ScreenMaterial, "ScreenMaterial"},
+    {RuntimeRayTracingExclusion::MassInstances, "MassInstances"},
+    {RuntimeRayTracingExclusion::Missing, "Missing"},
+};
+
+constexpr uint32_t RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion exclusion) noexcept {
+    return 1u << static_cast<uint32_t>(exclusion);
+}
+
+// 種類ごとの入れなかった面の数と、その種類のビット（影を落とす面だけのビットも）。
+struct RuntimeRayTracingExclusions {
+    std::array<uint32_t, kRuntimeRayTracingExclusionCount> surfaces{};
+    uint32_t mask = 0;
+    uint32_t shadowCasterMask = 0;
+
+    void Add(RuntimeRayTracingExclusion exclusion, bool castsShadow) noexcept {
+        ++surfaces[static_cast<size_t>(exclusion)];
+        mask |= RuntimeRayTracingExclusionBit(exclusion);
+        if (castsShadow) {
+            shadowCasterMask |= RuntimeRayTracingExclusionBit(exclusion);
+        }
+    }
+};
+
+// GI は地形や未解決の面が抜けると光線が地面を抜けて空を拾い、場面へ光が漏れるので使わない。
+constexpr bool CanTraceDiffuse(uint32_t excluded) noexcept {
+    return (excluded & (RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Terrain) |
+                        RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Missing))) == 0u;
+}
+// 光追の影は不透明面のカスケード影と接触影を置き換えるので、影を落とす面が抜けると影が消える。
+// 水面は抜けても影の形が崩れないので許す。
+constexpr bool CanTraceShadows(uint32_t excludedShadowCasters) noexcept {
+    constexpr uint32_t tolerated = RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Water);
+    return (excludedShadowCasters & ~tolerated) == 0u;
+}
 
 struct RuntimeRayTracingBudget {
     uint64_t maximumBytes = 128ull * 1024 * 1024;
@@ -38,23 +96,33 @@ struct RuntimeRayTracingBudget {
 
 // InstanceID + GeometryIndex で参照する。BLAS は材質/オブジェクト間で共有する。
 // firstPrimitive は分割 BLAS 内の PrimitiveIndex を HCMESH 全体へ戻す基点。
+// 変形した面（骨格の蒙皮）は頂点を world 空間へ変形した pool から読む（instance の変換は単位）。
+inline constexpr uint32_t kRuntimeRayTracingHitDeformed = 4u;
+// 透過する面（半透明）。光線を止めず、影の光線だけ透過率を掛けて先へ進む。
+inline constexpr uint32_t kRuntimeRayTracingHitTransmissive = 8u;
+
 struct RuntimeRayTracingHitRecord {
     uint32_t geometryDescriptor = 0;
     uint32_t metadataDescriptor = 0;
     uint32_t materialIndex = 0xffffffffu;
-    uint32_t flags = 0; // bit0: double sided, bit1: casts shadow
+    uint32_t flags = 0; // bit0: 両面, bit1: 影を落とす, bit2: 変形, bit3: 透過
     uint32_t firstPrimitive = 0;
     uint32_t firstCluster = 0;
     uint32_t clusterCount = 0;
     uint32_t primitiveCount = 0;
+    // 変形した頂点の pool 内の byte 位置と頂点数（[位置 × N][法線 × N][接線 × N]）。
+    uint32_t deformedVertexBase = 0;
+    uint32_t deformedVertexCount = 0;
+    uint32_t padding[2]{};
 };
-static_assert(sizeof(RuntimeRayTracingHitRecord) == 32);
+static_assert(sizeof(RuntimeRayTracingHitRecord) == 48);
 
 struct RuntimeRayTracingStats {
     RuntimeRayTracingStatus status = RuntimeRayTracingStatus::Disabled;
     uint32_t sourceSurfaces = 0;
-    uint32_t unsupportedSurfaces = 0;
-    uint32_t missingSurfaces = 0;
+    // 毎フレーム変形して refit する面（骨格の蒙皮）の物体の数。
+    uint32_t deformedObjects = 0;
+    RuntimeRayTracingExclusions excluded{};
     uint32_t sharedAssets = 0;
     uint32_t readyChunks = 0;
     uint32_t pendingChunks = 0;
@@ -79,7 +147,7 @@ struct RuntimeRayTracingFrame {
     uint32_t hitRecordCount = 0;
     uint64_t version = 0;
     uint64_t retireFenceValue = 0;
-    bool complete = false;
+    bool ready = false;
     bool empty = false;
     // 借用 resource の有効範囲と scene/material の由来。consumer は使用前に照合する。
     ID3D12Fence* frameFence = nullptr;
@@ -87,6 +155,11 @@ struct RuntimeRayTracingFrame {
     const void* sceneIdentity = nullptr;
     uint64_t sceneLayoutVersion = 0;
     RuntimeRayTracingMaterialVersion materialVersion{};
+    // 入れなかった面の種類（RuntimeRayTracingExclusionBit）。機能はこれで自分が使えるかを決める。
+    uint32_t excluded = 0;
+    uint32_t excludedShadowCasters = 0;
+    // 変形した頂点の pool（無ければ 0）。命中の解決が読む。
+    D3D12_GPU_VIRTUAL_ADDRESS deformedVertices = 0;
 };
 
 bool IsRuntimeRayTracingFrameCurrent(const RuntimeRayTracingFrame& frame, const GFX::Context& graphics,
@@ -94,7 +167,7 @@ bool IsRuntimeRayTracingFrameCurrent(const RuntimeRayTracingFrame& frame, const 
 
 // Presentation thread owner。View culling と独立し、可視 scene 全体を記録する。
 // 材質は既存 registry の slot を借用し、ロード/評価/照明をここへ重複実装しない。
-// 返却値は同じ command stream/fence 内の consumer 用。不完全な scene は非公開。
+// 返却値は同じ command stream/fence 内の consumer 用。入れられない面は外して種類を記録し、場面全体は止めない。
 class RuntimeRayTracingScene final {
 public:
     RuntimeRayTracingScene();

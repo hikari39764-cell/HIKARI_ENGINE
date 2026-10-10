@@ -181,6 +181,7 @@ nlohmann::json SerializeRenderQualitySettings(const RenderQualitySettings& sourc
         {"taaLuminanceRejection", settings.taaLuminanceRejection},
         {"taaSharpness", settings.taaSharpness},
         {"sceneDepthPrepass", settings.sceneDepthPrepass},
+        {"rayTracedReflections", settings.rayTracedReflections},
     };
 }
 
@@ -218,7 +219,8 @@ bool DeserializeRenderQualitySettings(const nlohmann::json& node, RenderQualityS
         ReadValue(node, "taaDepthRejection", parsed.taaDepthRejection) &&
         ReadValue(node, "taaLuminanceRejection", parsed.taaLuminanceRejection) &&
         ReadValue(node, "taaSharpness", parsed.taaSharpness) &&
-        ReadValue(node, "sceneDepthPrepass", parsed.sceneDepthPrepass);
+        ReadValue(node, "sceneDepthPrepass", parsed.sceneDepthPrepass) &&
+        ReadValue(node, "rayTracedReflections", parsed.rayTracedReflections);
     if (!valid) {
         if (errorMessage != nullptr) {
             *errorMessage = "Render quality settings contain an invalid field.";

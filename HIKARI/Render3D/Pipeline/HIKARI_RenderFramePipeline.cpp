@@ -201,9 +201,15 @@ ScreenSpacePassContext BuildScreenSpaceContext(const RenderFrameContext& frame) 
     return context;
 }
 
-bool ShouldRunSceneDepthPrepass(const RENDER3D::RenderQualitySettings& settings) {
+// 接触影は不透明の Forward より前に揃った現フレームの深度を辿る（GeometryAux が無ければ prepass で作る）。
+bool WantsContactShadows(const RENDER3D::RenderQualitySettings& settings, const SceneEnvironment& environment) {
+    return environment.shadows.enabled && environment.shadows.contactShadows && !settings.directionalShadow.rayTraced;
+}
+
+bool ShouldRunSceneDepthPrepass(const RENDER3D::RenderQualitySettings& settings, const SceneEnvironment& environment) {
     // 光線追跡の影は現フレームの深度から可視率を作るので prepass を伴う。
-    if (!settings.sceneDepthPrepass && !settings.directionalShadow.rayTraced) {
+    if (!settings.sceneDepthPrepass && !settings.directionalShadow.rayTraced &&
+        !WantsContactShadows(settings, environment)) {
         return false;
     }
     return settings.forwardCostMode != RENDER3D::ForwardShadingCostMode::AlbedoOnly;
@@ -355,7 +361,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         // 光線追跡の反射と太陽の影も同じ加速構造を借りる。
         const bool rayReflections = environment.screenSpaceReflections.enabled &&
                                     environment.screenSpaceReflections.quality != ScreenSpaceReflectionQuality::Off &&
-                                    environment.screenSpaceReflections.rayTracingFallback;
+                                    renderQuality.rayTracedReflections;
         const bool rayShadows = renderQuality.directionalShadow.rayTraced && environment.shadows.enabled;
         materials = MESHRENDERER::GetMaterialGpuFrameView(frame.graphics);
         RAYTRACING::RuntimeRayTracingFrame rayScene;
@@ -444,7 +450,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         screenSurfaceRequirements.requireCurrentFrameAo &&
         RENDER3D::SCREENSPACE::ResolveEffectiveSsaoMode(environment.ambientOcclusion) == SsaoMode::Balanced;
     const bool scenePrepassEnabled =
-        orthographicAoNeedsDepth || ShouldRunSceneDepthPrepass(RENDER3D::GetRenderQualitySettings());
+        orthographicAoNeedsDepth || ShouldRunSceneDepthPrepass(RENDER3D::GetRenderQualitySettings(), environment);
     const bool sceneDsvReady = screenSpaceContext.sceneDsv.ptr != 0;
     const bool depthPrepassWorkReady = MESHRENDERER::HasDepthPrepassWork();
     // 当該フレームの場面深度が Forward より前に揃ったか（scene prepass か GeometryAux）。
@@ -475,6 +481,11 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
             (void)RENDER3D::SCREENSPACE::ExecuteBalancedSsaoFromSceneDepth(
                 RENDER3D::SCREENSPACE::GetScreenSpaceRuntimeState(), screenSpaceContext, *cameraCb, environment,
                 screenResult);
+        }
+        if (prepassExecuted && cameraCb != nullptr &&
+            WantsContactShadows(RENDER3D::GetRenderQualitySettings(), environment)) {
+            (void)RENDER3D::SCREENSPACE::BuildCurrentFrameDepthPyramid(
+                RENDER3D::SCREENSPACE::GetScreenSpaceRuntimeState(), screenSpaceContext, *cameraCb, screenResult);
         }
         sceneDepthCurrent = sceneDepthCurrent || prepassExecuted;
     } else if (scenePrepassEnabled) {

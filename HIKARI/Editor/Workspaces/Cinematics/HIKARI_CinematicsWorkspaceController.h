@@ -5,6 +5,7 @@
 #include <string>
 
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
+#include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Documents/HIKARI_SequenceEditorDocumentController.h"
 #include "Editor/Views/Director/HIKARI_DirectorViewPanel.h"
 #include "Editor/Widgets/HIKARI_ScalarCurveEditor.h"
@@ -41,8 +42,8 @@ public:
     void OnCinematicsDocumentRestored(DocumentSceneBase& scene, EditorWorkspaceHost& workspaceHost);
     void ApplyWorkspaceActivation(DocumentSceneBase& scene, const EditorWorkspaceActivation& activation,
                                   EditorContext& context, EditorWorkspaceHost& workspaceHost);
-    CinematicsWorkspaceResult Draw(DocumentSceneBase& scene, EditorContext& context,
-                                   EditorWorkspaceHost& workspaceHost);
+    CinematicsWorkspaceResult Draw(DocumentSceneBase& scene, EditorContext& context, EditorWorkspaceHost& workspaceHost,
+                                   EditorOperationRegistry& operations);
     bool RequestOpenSequenceAsset(DocumentSceneBase& scene, const AssetGuid& assetGuid, std::string& outMessage);
     bool IsEditingSequenceAsset() const noexcept;
     bool IsSequenceDocumentDirty() const noexcept;
@@ -69,7 +70,10 @@ public:
 private:
     CinematicSequence& ActiveSequence(DocumentSceneBase& scene);
     void ResetEditing(DocumentSceneBase& scene);
-    bool DrawResources(DocumentSceneBase& scene, CinematicSequence& sequence, EditorContext& context);
+    bool DrawResources(DocumentSceneBase& scene, CinematicSequence& sequence, EditorContext& context,
+                       EditorOperationRegistry& operations);
+    // 触发区域：玩家が入るとこの演出を流し、終わったら游戏摄像机を選んだ模式へ（場面の流程）。
+    void DrawTriggers(DocumentSceneBase& scene, EditorOperationRegistry& operations);
     bool DrawInspector(DocumentSceneBase& scene, CinematicSequence& sequence);
     bool DrawTimeline(DocumentSceneBase& scene, CinematicSequence& sequence);
     void DrawMonitor(DocumentSceneBase& scene, EditorWorkspaceHost& workspaceHost, CinematicsWorkspaceResult& result);

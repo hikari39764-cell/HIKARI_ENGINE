@@ -7,6 +7,7 @@
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshTypes.h"
 #include "Render3D/WorldText/HIKARI_WorldTextFrameSource.h"
+#include "Scene/Components/Lighting/HIKARI_LightSettings.h"
 
 namespace HIKARI {
 
@@ -79,9 +80,12 @@ GameObject* CreateReflectionProbeObject(DocumentSceneBase& scene, const CreateOb
 GameObject* CreateIrradianceVolumeObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
 
 GameObject* CreateLightObject(DocumentSceneBase& scene, const CreateObjectRequest& request,
-                              RENDER3D::LIGHTING::SceneLightType lightType);
+                              RENDER3D::LIGHTING::SceneLightType lightType, LightIntensityUnit unit);
 
 GameObject* CreateDecalObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
+
+// 機位（場面の摄像机）。布景の機位書签、游戏摄像机の固定機位、镜头演出の镜头が同じ物を使う。
+GameObject* CreateCameraObject(DocumentSceneBase& scene, const CreateObjectRequest& request, float verticalFovDegrees);
 
 } // namespace EDITOR
 } // namespace HIKARI

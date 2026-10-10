@@ -23,14 +23,14 @@ public:
     // 下書きを store へ渡す。毎フレームと AI の編集後に呼ぶ。
     void PublishDrafts(DocumentSceneBase& scene);
 
-    bool CreateStyleCopy(RENDERSTYLE::RenderStyleAsset source, AssetDatabase& database, std::string& message);
-
     RenderStyleEditorDocument& Document() { return document_; }
+    const RenderStyleEditorDocument& Document() const { return document_; }
     GlobalPostEditor& GlobalPost() { return globalPost_; }
+    const GlobalPostEditor& GlobalPost() const { return globalPost_; }
 
 private:
-    // 後処理の層の一覧と、選んだ層のプロファイル。editable でなければ値を描くだけ。
-    bool DrawPostLayers(RENDERSTYLE::RenderStyleAsset& style, DocumentSceneBase& scene, bool editable);
+    // 後処理の層の一覧と、選んだ層のプロファイル。層か内蔵プロファイルの複製で style を変えたら true。
+    bool DrawPostLayers(RENDERSTYLE::RenderStyleAsset& style, DocumentSceneBase& scene);
 
     RenderStyleEditorDocument document_;
     GlobalPostEditor globalPost_;

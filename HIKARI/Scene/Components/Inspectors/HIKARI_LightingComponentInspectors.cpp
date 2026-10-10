@@ -52,11 +52,30 @@ void LightComponent::BuildInspector(IInspectorBuilder& builder) {
     }
 
     builder.Color3(AuthoringFieldDescriptor{"color", "Color"}, next.color.x, next.color.y, next.color.z);
-    builder.FloatRange(
-        AuthoringFieldDescriptor{"intensity", "Luminous Flux (lm)",
-                                 "Total emitted light. A 60 W bulb is about 800 lm. Spot cones mask, they do not "
-                                 "concentrate the flux; rect lights emit it from the front face only."},
-        next.intensity, 0.0f, kMaximumLightLumens, 10.0f);
+    int unit = static_cast<int>(next.intensityUnit);
+    static constexpr std::array<AuthoringChoice, 2> unitChoices{AuthoringChoice{"Lumens", "Physical (lm)"},
+                                                                AuthoringChoice{"SceneRelative", "Relative to Scene"}};
+    if (builder.Choice(
+            AuthoringFieldDescriptor{"intensityUnit", "Brightness Unit",
+                                     "Physical: real lamps in lumens; they fade out in daylight as real lamps "
+                                     "do. Relative: a multiple of the sun and sky light, so fill and accent "
+                                     "lights keep their look across time of day, weather and presets."},
+            unit, unitChoices)) {
+        // 単位を変えても今の明るさを保つ。
+        next = ConvertLightIntensityUnit(next, static_cast<LightIntensityUnit>(std::clamp(unit, 0, 1)));
+    }
+    if (next.intensityUnit == LightIntensityUnit::SceneRelative) {
+        builder.FloatRange(AuthoringFieldDescriptor{"sceneRelativeIntensity", "Brightness (x scene light at 1 m)",
+                                                    "1 lights a surface 1 m away as brightly as the sun and sky light "
+                                                    "the open ground."},
+                           next.sceneRelativeIntensity, 0.0f, kMaximumSceneRelativeIntensity, 0.01f);
+    } else {
+        builder.FloatRange(
+            AuthoringFieldDescriptor{"intensity", "Luminous Flux (lm)",
+                                     "Total emitted light. A 60 W bulb is about 800 lm. Spot cones mask, they do not "
+                                     "concentrate the flux; rect lights emit it from the front face only."},
+            next.intensity, 0.0f, kMaximumLightLumens, 10.0f);
+    }
     builder.Int(AuthoringFieldDescriptor{"priority", "Priority"}, next.priority);
     builder.Bool(AuthoringFieldDescriptor{"castsShadows", "Cast Shadows",
                                           "Request local-light shadows within the active rendering budget."},

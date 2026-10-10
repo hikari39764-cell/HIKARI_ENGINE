@@ -98,8 +98,7 @@ bool ExecuteForwardOpaque(const GRAPH::RenderGraphPassContext& graphPass, void* 
         resources.subsurfaceCapture = false;
         // 任意の capture 準備に失敗しても、通常の Forward 描画は続ける。
         try {
-            const bool captureMaterial =
-                context.hasSsrWork && context.environment.screenSpaceReflections.rayTracingFallback;
+            const bool captureMaterial = context.hasSsrWork && context.renderQuality.rayTracedReflections;
             const bool captureSubsurface = context.hasSubsurfaceWork;
             const bool captureReady = eligible && MESHRENDERER::PrepareForwardReflectionCapture(
                                                       frame.graphics, captureMaterial, captureSubsurface);
@@ -362,9 +361,10 @@ bool ExecuteSsr(const GRAPH::RenderGraphPassContext& graphPass, void* userData) 
         return true;
     }
     try {
-        if (gSsrRenderer.Render(context.frame.graphics, context.frame.targetAccess, context.sceneSurfaces,
-                                *context.cameraConstants, context.environment.screenSpaceReflections, context.debugView,
-                                context.temporalFrame, context.rayLighting, context.materials))
+        if (gSsrRenderer.Render(
+                context.frame.graphics, context.frame.targetAccess, context.sceneSurfaces, *context.cameraConstants,
+                context.environment.screenSpaceReflections, context.debugView, context.temporalFrame,
+                context.renderQuality.rayTracedReflections ? context.rayLighting : nullptr, context.materials))
             return true;
         return context.frame.targetAccess.Rebind();
     } catch (...) {

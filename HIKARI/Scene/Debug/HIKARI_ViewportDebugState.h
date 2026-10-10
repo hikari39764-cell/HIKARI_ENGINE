@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
 
 namespace HIKARI {
@@ -13,6 +15,13 @@ struct ViewportOverlayState {
     bool showLights = true;
     bool showProbeLabels = true;
     bool showXRayGizmos = false;
+    // 主ビューを成片と同じにする（グリッド・ギズモ・光源の印など編集の補助を一切描かない）。镜头演出の画面で使う。
+    bool cleanFrame = false;
+    // 明暗：画面を白黒にして、明暗の配置（値の構成）だけを見る。
+    bool valueView = false;
+    // 露出の固定：自動露出を止め、この EV100（補正前）の手動露出で描く。灯や主光の調整を自動露出が打ち消さない。
+    // 編集中だけ効き、環境プロファイルには書かない。
+    std::optional<float> lockedExposureEv100{};
 };
 
 struct ViewportPerformanceState {

@@ -110,8 +110,9 @@ void PostSystem::UpdateCommonParams(float deltaTime) {
     processingStage_.UpdateCommonParams(deltaTime, width, height);
 }
 
-void PostSystem::AdvanceExposure(float deltaTime, const RENDER3D::COLOR::ExposureIllumination& illumination) {
-    processingStage_.AdvanceExposure(deltaTime, illumination);
+void PostSystem::AdvanceExposure(float deltaTime, const RENDER3D::COLOR::ExposureIllumination& illumination,
+                                 bool meterScene) {
+    processingStage_.AdvanceExposure(deltaTime, illumination, meterScene);
 }
 
 void PostSystem::SetSequenceEffects(std::span<const SEQUENCER::ScreenEffectSample> effects) {

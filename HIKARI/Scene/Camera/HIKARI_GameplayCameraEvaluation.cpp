@@ -128,7 +128,8 @@ bool PrepareGameplayCamera(GameObject& camera, CameraFollowComponent& component,
     state.elapsed += (std::max)(seconds, 0.0f);
     auto settings = state.mode.follow;
     // 肩越しと一人称の最終位置は後段で解決する。入力軌道は同じソルバを使う。
-    if (state.mode.mount == CameraMount::Fixed)
+    if (state.mode.mount == CameraMount::Fixed || state.mode.mount == CameraMount::Rail ||
+        state.mode.mount == CameraMount::Arena)
         settings.orbitInputEnabled = false;
     component.SetEvaluatedSettings(settings);
     return true;
@@ -153,6 +154,27 @@ void ApplyGameplayCameraPose(const GameObject& camera, CameraFollowComponent& co
         const auto matrix = camera.GetTransform().GetWorldMatrix();
         pose.eye = {matrix.m[3][0], matrix.m[3][1], matrix.m[3][2]};
         pose.target = pivot;
+    } else if (mode.mount == CameraMount::Rail) {
+        // 軌道：線のうち追う物に最も近い点に立って追う物を見る（追う物の進み具合で線上を滑る）。
+        const auto along = mode.railEnd - mode.railStart;
+        const float lengthSquared = MATH::Dot(along, along);
+        const float t = lengthSquared > 1e-6f
+                            ? std::clamp(MATH::Dot(pivot - mode.railStart, along) / lengthSquared, 0.0f, 1.0f)
+                            : 0.0f;
+        pose.eye = mode.railStart + along * t;
+        pose.target = pivot;
+    } else if (mode.mount == CameraMount::Arena) {
+        // 竞技场：場の中心から追う物を通る向きの先（中心の反対側）に立ち、追う物と中心（ボス）の間を見る。
+        auto away = pivot - mode.arenaCenter;
+        away.y = 0;
+        if (MATH::Length(away) < 1e-3f)
+            away = {-forward.x, 0, -forward.z};
+        away = MATH::Length(away) > 1e-5f ? MATH::Normalize(away) : MATH::Vec3{0, 0, -1};
+        const float pitch = mode.follow.initialPitchDegrees * std::numbers::pi_v<float> / 180;
+        const float distance = mode.follow.initialDistance;
+        pose.eye = pivot + away * (distance * std::cos(pitch)) + MATH::Vec3{0, distance * std::sin(pitch), 0};
+        pose.target = pivot + (mode.arenaCenter - pivot) * 0.35f;
+        pose.up = {0, 1, 0};
     }
     const auto shoulder = basis.right * (mode.shoulderOffset * state.shoulderSign);
     pose.eye = pose.eye + shoulder;

@@ -41,6 +41,9 @@ void AddCombinedGlyphRanges(ImFontGlyphRangesBuilder& builder, ImFontAtlas& atla
     builder.AddRanges(atlas.GetGlyphRangesDefault());
     builder.AddRanges(atlas.GetGlyphRangesJapanese());
     builder.AddRanges(atlas.GetGlyphRangesChineseFull());
+    // 中日の範囲に無い記号。翻訳文の矢印（→ ←）と図形（● など）が欠字にならないようにする。
+    static constexpr ImWchar kSymbolRanges[] = {0x2190, 0x21FF, 0x25A0, 0x25FF, 0};
+    builder.AddRanges(kSymbolRanges);
 }
 
 void MergeCjkFallback(ImFontAtlas& atlas, float pixelSize, const ImWchar* ranges) {

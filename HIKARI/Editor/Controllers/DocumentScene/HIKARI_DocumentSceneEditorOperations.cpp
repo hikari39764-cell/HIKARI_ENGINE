@@ -118,16 +118,16 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
                {"wrap", EditorOperationParameterType::String, false, "none/character"},
                {"facing", EditorOperationParameterType::String, false, "fixed/camera_facing/fixed_y_axis"}}})},
         {"procedural.create_primitive",
-         "Create a procedural mesh object (box/sphere/plane/grid_plane/cylinder/capsule).", "scene",
+         "Create a procedural mesh object (box/sphere/plane/grid_plane/cylinder/capsule/ramp/stairs).", "scene",
          EDITOR::CreateScenePrimitive,
-         Concat(
-             {{{"kind", EditorOperationParameterType::String, false, "box/sphere/plane/grid_plane/cylinder/capsule"}},
-              NameParameter("物体名称，缺省使用 kind"),
-              PositionParameters(),
-              ScaleParameters(),
-              {{"width", EditorOperationParameterType::Float, false, "网格宽度"},
-               {"height", EditorOperationParameterType::Float, false, "网格高度"},
-               {"depth", EditorOperationParameterType::Float, false, "网格深度"}}})},
+         Concat({{{"kind", EditorOperationParameterType::String, false,
+                   "box/sphere/plane/grid_plane/cylinder/capsule/ramp/stairs"}},
+                 NameParameter("物体名称，缺省使用 kind"),
+                 PositionParameters(),
+                 ScaleParameters(),
+                 {{"width", EditorOperationParameterType::Float, false, "网格宽度"},
+                  {"height", EditorOperationParameterType::Float, false, "网格高度"},
+                  {"depth", EditorOperationParameterType::Float, false, "网格深度"}}})},
         {"scene.delete_object", "Delete the selected object, or target one object by stable objectId.", "scene",
          EDITOR::DeleteSceneObjects, ObjectTargetParameters()},
         {"scene.duplicate_object", "Duplicate the selected object, or target one object by stable objectId.", "scene",
@@ -197,6 +197,15 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
                                  {},
                                  [this](const nlohmann::json&) { return ExecuteSceneSave(); }},
                                 EditorOperationKind::Mutation);
+    EDITOR::EditorOperationDefinition saveAll{
+        "editor.save_all",
+        "Save the scene and every edited environment, weather, render style, post, gameplay camera and external "
+        "sequence document.",
+        "scene",
+        {},
+        [this](const nlohmann::json&) { return ExecuteSaveAll(); }};
+    saveAll.permission = EDITOR::EditorOperationPermission::ModifyProjectFiles;
+    operationRegistry_.Register(std::move(saveAll), EditorOperationKind::Mutation);
     operationRegistry_.Register({"action.undo_last",
                                  "Undo the most recent edit in the active workspace.",
                                  "general",
@@ -387,8 +396,32 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
           {"targetId", EditorOperationParameterType::Int, true, "Follow target scene object ID"},
           {"lookTargetId", EditorOperationParameterType::Int, false, "Optional lock target ID"},
           {"mode", EditorOperationParameterType::String, false, "Initial mode ID"},
-          {"resetOverrides", EditorOperationParameterType::Bool, false, "Restore inherited profile settings"}},
+          {"resetOverrides", EditorOperationParameterType::Bool, false, "Restore inherited profile settings"},
+          {"setDefault", EditorOperationParameterType::Bool, false,
+           "Make it the scene's default gameplay camera (default true; false for zone cameras)"},
+          {"name", EditorOperationParameterType::String, false, "Name of a newly created camera"},
+          {"position", EditorOperationParameterType::Json, false, "World XYZ of a newly created camera"},
+          {"rotation", EditorOperationParameterType::Json, false, "Euler XYZ degrees of a newly created camera"}},
          [this](const auto& parameters) { return BindGameplayCamera(parameters); }},
+        EditorOperationKind::Mutation, false);
+    operationRegistry_.Register(
+        {"camera_zone.edit",
+         "Create, update, or remove a camera zone: while the subject is inside the box, the zone's camera becomes "
+         "active with the given priority and blend. Scene undo is shared with human editing.",
+         "scene",
+         {{"action", EditorOperationParameterType::String, true, "create, update, remove"},
+          {"objectId", EditorOperationParameterType::Int, false, "Existing zone scene object"},
+          {"name", EditorOperationParameterType::String, false, "Display name"},
+          {"cameraId", EditorOperationParameterType::Int, false, "Camera activated inside the zone"},
+          {"subjectId", EditorOperationParameterType::Int, false, "Object whose position is tested (the player)"},
+          {"position", EditorOperationParameterType::Json, false, "World XYZ of the zone center"},
+          {"halfExtents", EditorOperationParameterType::Json, false, "Half size XYZ in metres"},
+          {"priority", EditorOperationParameterType::Int, false, "Higher wins when zones overlap"},
+          {"blendSeconds", EditorOperationParameterType::Float, false, "Blend time into the zone camera"},
+          {"affectsControlBasis", EditorOperationParameterType::Bool, false, "Movement input follows the zone camera"},
+          {"mergeKey", EditorOperationParameterType::Int, false,
+           "Nonzero merges consecutive edits with the same key into one undo step"}},
+         [this](const auto& parameters) { return EditCameraZone(parameters); }},
         EditorOperationKind::Mutation, false);
     operationRegistry_.Register(
         {"camera_flow.edit",
@@ -399,7 +432,9 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
           {"name", EditorOperationParameterType::String, false, "Display name"},
           {"settings", EditorOperationParameterType::Json, false, "Partial CameraFlowComponent settings"},
           {"position", EditorOperationParameterType::Json, false, "Local XYZ position"},
-          {"rotation", EditorOperationParameterType::Json, false, "Local XYZ Euler degrees"}},
+          {"rotation", EditorOperationParameterType::Json, false, "Local XYZ Euler degrees"},
+          {"mergeKey", EditorOperationParameterType::Int, false,
+           "Nonzero merges consecutive edits with the same key into one undo step"}},
          [this](const auto& p) { return EditCameraFlow(p); }},
         EditorOperationKind::Mutation, false);
     EDITOR::RegisterCinematicsOperations(operationRegistry_, CinematicsWorkspace(),

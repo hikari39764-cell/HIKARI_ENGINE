@@ -90,6 +90,8 @@ DirectorViewPanelResult DirectorViewPanel::DrawContents(const DocumentSceneBase&
     if (icon(EditorGlyph::Settings, "cine.viewOptions"))
         ImGui::OpenPopup("viewOptions");
     ImGui::SameLine();
+    DrawEditorViewGuidesButton("guides", view.visualization.guides);
+    ImGui::SameLine();
     if (icon(EditorGlyph::Help, "cine.navigationHelp"))
         ImGui::OpenPopup("viewHelp");
     if (ImGui::BeginPopup("viewHelp")) {
@@ -278,6 +280,9 @@ DirectorViewPanelResult DirectorViewPanel::DrawContents(const DocumentSceneBase&
         ++cameraRevision_;
     }
     lastAspect_ = aspect;
+
+    DrawEditorViewGuides(*ImGui::GetWindowDrawList(), imageOrigin.x, imageOrigin.y, imageSize.x, imageSize.y,
+                         view.visualization.guides, &currentViewCamera_);
 
     const bool gizmoAllowed = !runtimePlayActive && !inputBlock.pointer && mode_ != DirectorViewMode::Pilot;
     if (gizmoAllowed && !(selectedObjectIsCamera && gizmoState.operation == EditorTransformGizmoOperation::Scale)) {

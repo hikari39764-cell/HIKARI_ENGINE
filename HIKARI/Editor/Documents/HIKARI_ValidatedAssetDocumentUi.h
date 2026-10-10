@@ -15,7 +15,18 @@ namespace HIKARI::EDITOR {
 inline constexpr ImVec4 kAssetDocumentErrorColor{1.0f, 0.45f, 0.45f, 1.0f};
 inline constexpr ImVec4 kAssetDocumentWarningColor{1.0f, 0.72f, 0.25f, 1.0f};
 
-// guid の資産を文書として開く。別の資産に未保存の変更があれば、保存か破棄を選ばせて false を返す。
+// 保存・検証・複製の失敗。長い項目一覧の末尾に埋もれないよう、操作列か内蔵の案内のすぐ下に出す。
+inline void DrawAssetDocumentStatus(const std::string& status) {
+    if (status.empty()) {
+        return;
+    }
+    ImGui::PushStyleColor(ImGuiCol_Text, kAssetDocumentErrorColor);
+    ImGui::TextWrapped("%s", status.c_str());
+    ImGui::PopStyleColor();
+}
+
+// guid の資産を文書として開く。別の資産に未保存の変更があれば先に保存してから開く（全部保存と同じ扱い）。
+// 保存できなかった時だけ止め、理由と保存・破棄の選択を出して false を返す（失敗を毎フレーム繰り返さない）。
 template <class Traits>
 bool OpenAssetDocumentForEdit(ValidatedAssetDocument<Traits>& document, const AssetGuid& guid, AssetDatabase& database,
                               std::string& status) {
@@ -23,6 +34,9 @@ bool OpenAssetDocumentForEdit(ValidatedAssetDocument<Traits>& document, const As
         return true;
     }
     std::string message;
+    if (document.IsOpen() && document.IsDirty() && status.empty() && !document.Save(database, message)) {
+        status = message;
+    }
     if (document.Open(database, guid, message)) {
         status.clear();
         return true;
@@ -43,10 +57,11 @@ bool OpenAssetDocumentForEdit(ValidatedAssetDocument<Traits>& document, const As
         }
         status = message;
     }
+    DrawAssetDocumentStatus(status);
     return false;
 }
 
-// 元に戻す・やり直す・保存・破棄の操作列。
+// 元に戻す・やり直す・保存・破棄の操作列と、その下に失敗の表示。
 template <class Traits>
 void DrawAssetDocumentToolbar(ValidatedAssetDocument<Traits>& document, AssetDatabase& database, std::string& status) {
     std::string message;
@@ -75,6 +90,7 @@ void DrawAssetDocumentToolbar(ValidatedAssetDocument<Traits>& document, AssetDat
         ImGui::SameLine();
         ImGui::TextColored(kAssetDocumentWarningColor, "%s", TEXT::Localize("asset.document.unsaved").c_str());
     }
+    DrawAssetDocumentStatus(status);
 }
 
 } // namespace HIKARI::EDITOR

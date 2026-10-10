@@ -246,11 +246,14 @@ struct ShadowCB {
     float frameIndex = 0.0f;    // 画素ごとの tap 回転と接触影の始点のずらし
     float lightTangent = 0.0f;  // PCSS：tan(太陽の角半径) × 半影の倍率。0 で固定 PCF
     float contactLength = 0.0f; // 接触影の長さ [m]。0 で無効
+    float contactStrength = 1.0f;
+    float contactThickness = 0.25f; // 遮る物の厚みの想定 [m]
+    float contactPadding[2]{};
     RENDER3D::LIGHTING::LocalShadowGpuData localShadow{};
 };
 
 constexpr size_t kMaxJointPaletteMatrices = 128u;
-static_assert(sizeof(ShadowCB) == 1392u);
+static_assert(sizeof(ShadowCB) == 1408u);
 constexpr UINT kMaxObjectCount = 2048u;
 constexpr UINT kMaxMaterialDataCount = RENDER3D::MATERIAL::kDefaultGpuMaterialCapacity;
 

@@ -40,6 +40,8 @@
 #include "Editor/Panels/HIKARI_ValidationLabPanel.h"
 #include "Editor/Tools/HIKARI_EditorToolHost.h"
 #include "Editor/Viewport/HIKARI_SceneViewportSelectionService.h"
+#include "Editor/Views/HIKARI_EditorViewGuides.h"
+#include "Editor/Workspaces/LookDev/HIKARI_LookDevWorkspace.h"
 #include "Editor/Windows/HIKARI_SceneAuthoringUtilityWindows.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 #include "Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraWorkspaceController.h"
@@ -152,6 +154,8 @@ private:
     }
     EDITOR::EditorOperationResult EditCameraFlow(const nlohmann::json& parameters);
     EDITOR::EditorOperationResult BindGameplayCamera(const nlohmann::json& parameters);
+    // 区域（玩家が入ると機位を切り替える箱）の作成・変更・削除。場面の履歴に載る。
+    EDITOR::EditorOperationResult EditCameraZone(const nlohmann::json& parameters);
     EDITOR::CinematicsWorkspaceController cinematicsWorkspaceController_{};
     EDITOR::ModelCollisionWorkspaceController modelCollisionWorkspaceController_{};
     EDITOR::ModelMaterialWorkspaceController modelMaterialWorkspaceController_{};
@@ -205,6 +209,9 @@ private:
     }
     DebugCameraPanel debugCameraPanel_{};
     EDITOR::EditorTransformGizmo transformGizmo_{};
+    // 場面の視口の構図補助線（工作区ごとの視口と同じく、この視口だけの開閉）。
+    EDITOR::EditorViewGuides sceneViewGuides_{};
+    EDITOR::LookDevWorkspace lookDevWorkspace_{};
     void DrawGameViewportWindow(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession,
                                 std::string_view stableWindowId = "Game View");
     void HandleTerrainBrush(DocumentSceneBase& scene, const EDITOR::SceneViewportRect& viewport, bool viewportHovered);
@@ -216,6 +223,22 @@ private:
     void DrawSceneWorkspace(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
     void DrawCinematicsWorkspace(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
     void DrawTerrainSurfaceWorkspace(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
+    // 布景：視口・摆放（置く物・機位・物体）・检查器・灯光与画面。場面の物体と履歴は場面の工作区と同じ経路。
+    void DrawLookDevWorkspace(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
+    void DrawLookDevPlaceWindow(DocumentSceneBase& scene);
+    // 機位の一覧（押すとその視点へ、通过相机看、今の視点で更新）と「保存当前视角」。
+    void DrawLookDevCameras(DocumentSceneBase& scene);
+    void SaveViewAsCamera(DocumentSceneBase& scene);
+    void MoveEditorCameraToObject(DocumentSceneBase& scene, SceneObjectId cameraObjectId);
+    // 布景の視口：数字キーで機位へ飛び、置く物を選んでいればカーソルの下へ下書きを描いてクリックで置く。
+    void UpdateLookDevViewport(DocumentSceneBase& scene, const EDITOR::SceneViewportRect& viewport, bool hovered,
+                               bool focused, bool gizmoCapture);
+    void PlaceLookDevItem(DocumentSceneBase& scene, EDITOR::LookDevPlaceItem item,
+                          const EDITOR::LookDevPlacementPose& pose);
+    // 物体の作成・检查器・視口の変形・命令が出した履歴と確認の窓を処理する（場面と布景の工作区で共通）。
+    void ProcessSceneAuthoringRequests(DocumentSceneBase& scene);
+    // 環境の窓（lookDev なら布景の灯光与画面）。参照の変更は場面の履歴へ積む。編集が続いていれば true。
+    bool DrawEnvironmentWindow(DocumentSceneBase& scene, bool lookDev);
     // showGameView が無効な時は埋め込み入力と Game View の矩形を解放する。
     void DrawOptionalGameViewport(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession,
                                   std::string_view stableWindowId);
@@ -234,6 +257,8 @@ private:
     void DrawViewportContextMenu(DocumentSceneBase& scene);
     void DrawDebugViewWindow(DocumentSceneBase& scene, bool& open);
     void HandleGameViewportAssetDrop(DocumentSceneBase& scene);
+    // 場面を開く要求。未保存の変更があれば確認を待ち、無ければすぐ開く。
+    void RequestSceneOpen(DocumentSceneBase& scene, const AssetGuid& sceneGuid);
     void DrawPendingSceneOpenModal(DocumentSceneBase& scene);
     void EnsureAiLocalBridge();
     EDITOR::EditorOperationResult ExecuteTerrainOperation(EDITOR::TerrainAuthoringOperation operation,
@@ -247,6 +272,14 @@ private:
     EDITOR::EditorOperationResult ExecuteAiUndoLast();
 
     EDITOR::EditorOperationResult ExecuteSceneSave();
+    // 場面と、編集中の資産文書（環境・天気・描画の様式・後処理・ゲームカメラ・外部の演出）をまとめて保存する。
+    EDITOR::EditorOperationResult ExecuteSaveAll();
+    // 場面・未保存の資産文書・編集中の演出序列をまとめて保存する。失敗は「名前: 理由」で failures に並べる。
+    bool SaveAllDocuments(DocumentSceneBase& scene, std::vector<std::string>& saved, std::string& failures);
+    // 未保存の場面と資産の名前を区切り文字で並べる（状態バーと場面切り替えの確認）。
+    std::string UnsavedDocumentSummary(const DocumentSceneBase& scene);
+    // 未保存の資産文書（場面と演出を除く）。全部保存と未保存の表示に使う。
+    std::vector<EDITOR::EditorAssetDocument*> UnsavedAssetDocuments();
     bool OpenSceneAssetFromEditor(DocumentSceneBase& scene, const AssetGuid& sceneGuid);
     void SyncDocumentHistory(DocumentSceneBase& scene);
     void ConfigureEditorCommands(DocumentSceneBase& scene);

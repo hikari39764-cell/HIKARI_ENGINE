@@ -101,6 +101,19 @@ bool AppendClonedSceneObjects(std::span<const SceneObjectData> source, SceneDocu
     return true;
 }
 
+SceneObjectId FindScenePlayer(const SceneDocument& document) noexcept {
+    for (const std::string_view type : {"CharacterInputComponent", "CharacterLocomotionComponent"}) {
+        for (const SceneObjectData& object : document.objects) {
+            for (const SceneComponentData& component : object.components) {
+                if (component.type == type) {
+                    return object.id;
+                }
+            }
+        }
+    }
+    return {};
+}
+
 SceneObjectId AllocateSceneObjectId(const SceneDocument& document) {
     std::unordered_set<uint64_t> usedIds{};
     uint64_t maximumId = 0u;

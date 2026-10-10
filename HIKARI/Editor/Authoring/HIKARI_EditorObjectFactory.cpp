@@ -9,6 +9,7 @@
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
+#include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/Components/Rendering/Decal/HIKARI_DecalComponent.h"
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 #include "Scene/Components/Rendering/WorldText/HIKARI_WorldTextComponent.h"
@@ -135,6 +136,20 @@ GameObject* CreatePrimitiveObject(DocumentSceneBase& scene, const CreatePrimitiv
             collider["height"] = settings.height;
             collider["size"] = {settings.width, settings.height, settings.width};
             break;
+        case ProceduralMeshKind::Ramp:
+        case ProceduralMeshKind::Stairs: {
+            MATH::Vec3 center{};
+            MATH::Vec3 rotation{};
+            MATH::Vec3 size{};
+            FitProceduralSlopeBox(settings, center, rotation, size);
+            collider["shape"] = "Box";
+            collider["center"] = {center.x, center.y, center.z};
+            collider["rotation"] = {rotation.x, rotation.y, rotation.z};
+            collider["size"] = {size.x, size.y, size.z};
+            collider["radius"] = size.y * 0.5f;
+            collider["height"] = size.y;
+            break;
+        }
         case ProceduralMeshKind::Plane:
         case ProceduralMeshKind::GridPlane:
             collider["shape"] = "Box";
@@ -394,12 +409,13 @@ GameObject* CreateIrradianceVolumeObject(DocumentSceneBase& scene, const CreateO
 }
 
 GameObject* CreateLightObject(DocumentSceneBase& scene, const CreateObjectRequest& request,
-                              RENDER3D::LIGHTING::SceneLightType lightType) {
+                              RENDER3D::LIGHTING::SceneLightType lightType, LightIntensityUnit unit) {
     LIGHTING_AUTHORING::LightAuthoring light{};
     light.name = request.name;
     light.position = request.position;
     light.rotationEulerDeg = request.rotation;
     light.settings.type = lightType;
+    light.settings.intensityUnit = unit;
     if (lightType == RENDER3D::LIGHTING::SceneLightType::Spot) {
         light.settings.range = 8.0f;
     }
@@ -419,6 +435,21 @@ GameObject* CreateDecalObject(DocumentSceneBase& scene, const CreateObjectReques
     nlohmann::json properties = nlohmann::json::object();
     DecalComponent{}.Serialize(properties);
     object.components.push_back(SceneComponentData{"DecalComponent", std::move(properties)});
+    NormalizeSceneComponentIds(object);
+    scene.GetSceneDocument().objects.push_back(std::move(object));
+    return MaterializeCreatedObject(scene, id);
+}
+
+GameObject* CreateCameraObject(DocumentSceneBase& scene, const CreateObjectRequest& request, float verticalFovDegrees) {
+    SceneObjectData object = BuildBaseObject(scene, nullptr, request);
+    if (request.name.empty()) {
+        object.name = "Camera";
+    }
+    const SceneObjectId id = object.id;
+    nlohmann::json properties = nlohmann::json::object();
+    CameraComponent{}.Serialize(properties);
+    properties["verticalFovDegrees"] = verticalFovDegrees;
+    object.components.push_back(SceneComponentData{"CameraComponent", std::move(properties)});
     NormalizeSceneComponentIds(object);
     scene.GetSceneDocument().objects.push_back(std::move(object));
     return MaterializeCreatedObject(scene, id);

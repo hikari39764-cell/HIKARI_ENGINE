@@ -1,10 +1,9 @@
 #pragma once
 
-#include <algorithm>
-#include <cmath>
 #include <cstdint>
 
 #if defined(HIKARI_WITH_EDITOR)
+#include "Editor/Widgets/HIKARI_NumberField.h"
 #include "imgui.h"
 #endif
 
@@ -28,26 +27,20 @@ TypedValueEditResult DrawTypedEditorValue(const char* id, Value& value, const Ty
     using Type = decltype(value.type);
     TypedValueEditResult result{};
     ImGui::SetNextItemWidth(width);
-    const float minimum = range.hasRange ? range.minimum : 0.0f;
-    const float maximum = range.hasRange ? range.maximum : 0.0f;
+    const NumberRange numberRange{.minimum = range.hasRange ? range.minimum : 0.0,
+                                  .maximum = range.hasRange ? range.maximum : 0.0,
+                                  .step = range.step};
     float* numeric = &value.numeric.x;
     switch (value.type) {
     case Type::Bool:
         result.changed = ImGui::Checkbox(id, &value.boolean);
         result.committed = result.changed;
         return result;
-    case Type::Int: {
-        int64_t integerMinimum = static_cast<int64_t>(std::floor(minimum));
-        int64_t integerMaximum = static_cast<int64_t>(std::ceil(maximum));
-        result.changed =
-            ImGui::DragScalar(id, ImGuiDataType_S64, &value.integer, (std::max)(range.step, 1.0f),
-                              range.hasRange ? &integerMinimum : nullptr, range.hasRange ? &integerMaximum : nullptr);
-        break;
-    }
-    case Type::Float: result.changed = ImGui::DragFloat(id, numeric, range.step, minimum, maximum); break;
-    case Type::Float2: result.changed = ImGui::DragFloat2(id, numeric, range.step, minimum, maximum); break;
-    case Type::Float3: result.changed = ImGui::DragFloat3(id, numeric, range.step, minimum, maximum); break;
-    case Type::Float4: result.changed = ImGui::DragFloat4(id, numeric, range.step, minimum, maximum); break;
+    case Type::Int: result.changed = DragNumber(id, value.integer, numberRange); break;
+    case Type::Float: result.changed = DragNumber(id, *numeric, numberRange); break;
+    case Type::Float2: result.changed = DragNumbers(id, numeric, 2, numberRange); break;
+    case Type::Float3: result.changed = DragNumbers(id, numeric, 3, numberRange); break;
+    case Type::Float4: result.changed = DragNumbers(id, numeric, 4, numberRange); break;
     case Type::Color: result.changed = ImGui::ColorEdit4(id, numeric, ImGuiColorEditFlags_Float); break;
     }
     result.committed = ImGui::IsItemDeactivatedAfterEdit();

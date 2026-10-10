@@ -24,11 +24,15 @@ public:
     DxrAccelerationStructure(const DxrAccelerationStructure&) = delete;
     DxrAccelerationStructure& operator=(const DxrAccelerationStructure&) = delete;
 
+    // allowUpdate なら後で RefitInPlace できる（refit 用の scratch も確保する）。
     bool BuildBottomLevel(const Context& graphics, std::span<const D3D12_RAYTRACING_GEOMETRY_DESC> geometry,
-                          uint64_t maximumAllocationBytes, std::string* outMessage = nullptr);
+                          uint64_t maximumAllocationBytes, std::string* outMessage = nullptr, bool allowUpdate = false);
     bool BuildTopLevel(const Context& graphics, std::span<const D3D12_RAYTRACING_INSTANCE_DESC> instances,
                        uint64_t maximumAllocationBytes, bool allowUpdate = false,
                        const DxrAccelerationStructure* updateSource = nullptr, std::string* outMessage = nullptr);
+    // 同じ形（記述の数・旗）のまま、結果を作り直さずにその場で refit する。毎フレーム頂点が動く BLAS と、
+    // それを指す TLAS に使う。allowUpdate で build したものだけ。geometry は BLAS の時だけ渡す（build と同じ数）。
+    bool RefitInPlace(const Context& graphics, std::span<const D3D12_RAYTRACING_GEOMETRY_DESC> geometry = {});
     void Reset(const Context* retireContext = nullptr);
 
     bool IsReady() const noexcept { return result_ != nullptr; }

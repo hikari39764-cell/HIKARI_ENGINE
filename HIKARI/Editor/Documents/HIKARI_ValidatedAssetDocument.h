@@ -1,11 +1,12 @@
 #pragma once
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Editor/Documents/HIKARI_EditorAssetDocument.h"
 #include "Editor/Documents/HIKARI_EditorSourceVersion.h"
 #include "Editor/History/HIKARI_DocumentSnapshotHistory.h"
 
 namespace HIKARI::EDITOR {
 template <class Traits>
-class ValidatedAssetDocument {
+class ValidatedAssetDocument : public EditorAssetDocument {
     using Asset = typename Traits::Asset;
 
 public:
@@ -13,15 +14,19 @@ public:
     bool New(Asset draft, std::string& message, bool discard = false);
     bool Open(const AssetDatabase& database, const AssetGuid& guid, std::string& message, bool discard = false);
     bool Save(AssetDatabase& database, std::string& message, bool saveAs = false);
+    // source を新しい資産として保存し、以後の編集先にする（内蔵資産の複製）。編集中の下書きは先に保存する。
+    bool SaveAsNew(Asset source, AssetDatabase& database, std::string& message);
     bool Apply(Asset profile, std::string& message, uint64_t mergeGroup = 0);
     void SealMerge() { history_.SealMerge(); }
-    bool Undo();
-    bool Redo();
-    bool CanUndo() const { return history_.CanUndo(); }
-    bool CanRedo() const { return history_.CanRedo(); }
-    bool IsDirty() const { return history_.IsDirty(); }
+    bool Undo() override;
+    bool Redo() override;
+    bool CanUndo() const override { return history_.CanUndo(); }
+    bool CanRedo() const override { return history_.CanRedo(); }
+    bool IsDirty() const override { return history_.IsDirty(); }
+    bool SaveDocument(AssetDatabase& database, std::string& message) override { return Save(database, message); }
+    std::string DisplayName() const override { return profile_.name; }
     uint64_t Revision() const { return revision_; }
-    bool IsOpen() const { return open_; }
+    bool IsOpen() const override { return open_; }
     const Asset& Profile() const { return profile_; }
     const AssetGuid& Guid() const { return guid_; }
 
@@ -157,9 +162,16 @@ bool ValidatedAssetDocument<Traits>::Save(AssetDatabase& database, std::string& 
     return true;
 }
 template <class Traits>
+bool ValidatedAssetDocument<Traits>::SaveAsNew(Asset source, AssetDatabase& database, std::string& message) {
+    if (open_ && IsDirty() && !Save(database, message))
+        return false;
+    return New(std::move(source), message) && Save(database, message);
+}
+template <class Traits>
 bool ValidatedAssetDocument<Traits>::Apply(Asset profile, std::string& message, uint64_t mergeGroup) {
     if (!Traits::Normalize(profile, message))
         return false;
+    message.clear();
     if (Traits::Write(profile) == Traits::Write(profile_))
         return true;
     history_.Record(profile_, profile, mergeGroup);

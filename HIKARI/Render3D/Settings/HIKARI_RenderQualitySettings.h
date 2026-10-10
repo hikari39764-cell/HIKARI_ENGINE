@@ -133,8 +133,6 @@ struct DirectionalShadowQualitySettings {
     // 半影：太陽の角半径 × この倍率で、遮蔽者との距離に応じて核を広げる（PCSS）。0 で固定半径の PCF。
     // 実際の太陽（角半径 0.27°）では 1m 先の半影が 1cm 弱でほぼ硬い。8 倍で 2m 先の球の影が目に見えて柔らかくなる。
     float penumbraScale = 8.0f;
-    // 接触影：画面空間で光の方へ深度を辿る長さ [m]。カスケードの分解能では消える接地の影を補う。0 で無効。
-    float contactShadowLength = 0.25f;
     // 光線追跡の影：場面の深度 prepass の後に画素ごとの太陽の可視率を求め、不透明面のカスケード影と接触影を置き換える
     // （半透明・地形はカスケードのまま）。対応 GPU と実行時の加速構造が要り、無ければ静かにカスケードへ戻る。
     // 有効時は場面の深度 prepass も走る。標本数は画素あたりの光線数（TAA が均す）。
@@ -176,6 +174,9 @@ struct RenderQualitySettings {
     // Optional scene-depth prepass for overdraw-heavy scenes.
     // Geometry-bound scenes should leave this off.
     bool sceneDepthPrepass = false;
+    // 光線追跡の反射：画面空間の反射が外した所（画面外・裏面）を光線で埋める。対応 GPU と加速構造が要る。
+    // 機械の性能に依る選択なので画面の設定（環境配置）ではなく画質に置く。
+    bool rayTracedReflections = false;
 };
 
 // Runtime render-quality edits are applied between frames.  The

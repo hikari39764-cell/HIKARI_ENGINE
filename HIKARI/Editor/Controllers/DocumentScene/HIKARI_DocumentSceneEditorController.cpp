@@ -313,7 +313,7 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
         nlohmann::json document{{"workspace", EDITOR::EditorWorkspaceOperationId(active)}};
         if (nlohmann::json state = DescribeWorkspaceDocument(active, true); !state.is_null())
             document["document"] = std::move(state);
-        if (active == EDITOR::EditorWorkspaceId::Scene)
+        if (active == EDITOR::EditorWorkspaceId::Scene || active == EDITOR::EditorWorkspaceId::LookDev)
             document["scenePath"] = scene.GetScenePath();
         context += "\nActive document: " + document.dump();
         context += "\nBackground authoring: " + authoringSessions_.Snapshot(true).dump();
@@ -538,13 +538,14 @@ bool DocumentSceneEditorController::HasKnownUnsavedProjectChanges(const Document
     return authoringSessions_.HasUnsavedDocuments() || uiWorkspaceController_.Animation().Document().IsDirty() ||
            (projectWorkspaceHost_ != nullptr && projectWorkspaceHost_->HasUnsavedChanges()) ||
            textWorkspaceController_.Document().IsDirty() || gameplayCameraWorkspaceController_.Document().IsDirty() ||
-           gameplayCameraWorkspaceController_.HasFlowDraft() || context_.sceneDirty || scene.HasUnsavedSceneChanges() ||
+           context_.sceneDirty || scene.HasUnsavedSceneChanges() ||
            cinematicsWorkspaceController_.IsSequenceDocumentDirty() ||
            modelCollisionWorkspaceController_.IsDocumentDirty() ||
            modelMaterialWorkspaceController_.HasUnsavedMaterialChanges() ||
            animationStateMachineWorkspaceController_.IsDocumentDirty() ||
            runtimeBindingWorkspaceController_.IsDocumentDirty() || vfxWorkspaceController_.GetDocument().IsDirty() ||
-           dialogueWorkspaceController_.IsDocumentDirty() || sceneAuthoringUtilityWindows_.HasUnsavedChanges();
+           dialogueWorkspaceController_.IsDocumentDirty() || sceneAuthoringUtilityWindows_.HasUnsavedChanges() ||
+           environmentPanel_.HasUnsavedDocuments();
 }
 
 void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession,
@@ -594,7 +595,9 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
         scene.SetSelectedGizmoObjectId(SceneObjectId{});
     }
     scene.SetComponentGizmoState(context_.gizmos);
-    scene.SetViewportOverlayState(context_.overlays);
+    ViewportOverlayState overlays = context_.overlays;
+    overlays.cleanFrame = workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Cinematics);
+    scene.SetViewportOverlayState(overlays);
     scene.SetViewportPerformanceState(context_.viewportPerformance);
     scene.SetViewportDebugViewState(context_.viewportDebug);
 
@@ -662,9 +665,10 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
             activation->cameraProfileAssetGuid.reset();
         }
         const auto isSceneOwnedWorkspace = [](EDITOR::EditorWorkspaceId id) {
-            return id == EDITOR::EditorWorkspaceId::Scene || id == EDITOR::EditorWorkspaceId::Cinematics ||
-                   id == EDITOR::EditorWorkspaceId::GameplayCamera || id == EDITOR::EditorWorkspaceId::Ui ||
-                   id == EDITOR::EditorWorkspaceId::Text || id == EDITOR::EditorWorkspaceId::Count;
+            return id == EDITOR::EditorWorkspaceId::Scene || id == EDITOR::EditorWorkspaceId::LookDev ||
+                   id == EDITOR::EditorWorkspaceId::Cinematics || id == EDITOR::EditorWorkspaceId::GameplayCamera ||
+                   id == EDITOR::EditorWorkspaceId::Ui || id == EDITOR::EditorWorkspaceId::Text ||
+                   id == EDITOR::EditorWorkspaceId::Count;
         };
         if (isSceneOwnedWorkspace(activation->previous) && !isSceneOwnedWorkspace(activation->current)) {
             SnapshotSceneViewCameras(scene);

@@ -191,7 +191,6 @@ constexpr auto kScreenSpaceReflectionFields = [](auto&& field) {
     field("maxRoughness", &S::maxRoughness, Range{0.05, 1.0});
     field("edgeFade", &S::edgeFade, Range{0.01, 0.35});
     field("stride", &S::stride, Range{0.02, 2.0});
-    field("rayTracingFallback", &S::rayTracingFallback);
 };
 
 constexpr auto kSubsurfaceScatteringFields = [](auto&& field) {
@@ -207,6 +206,10 @@ constexpr auto kShadowFields = [](auto&& field) {
     field("enabled", &S::enabled);
     field("distance", &S::distance, Range{1.0, 10000.0});
     field("strength", &S::strength, Range{0.0, 1.0});
+    field("contactShadows", &S::contactShadows);
+    field("contactShadowLength", &S::contactShadowLength, Range{0.01, 2.0});
+    field("contactShadowStrength", &S::contactShadowStrength, Range{0.0, 1.0});
+    field("contactShadowThickness", &S::contactShadowThickness, Range{0.01, 2.0});
 };
 
 // 節ごとの読み書きを一か所に並べる。visit(key, member, fields)。

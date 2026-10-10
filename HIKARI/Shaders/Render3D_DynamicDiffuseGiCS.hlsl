@@ -90,7 +90,7 @@ float3 HitRadiance(HikariRaySurface hit, float3 view, float2 randomUv, int3 shoo
     const float4 previous = HikariEvaluateDynamicGiVolume(gPrevious,hit.position,hit.normal,view,shooter,sky);
     // 未初期化 probe へ空を注入すると室内へ毎フレーム漏れる。有効な拡散履歴だけを渡す（coverage は有効な probe の有無）。
     return HikariRayHitRadiance(gRayLighting,hit,view,randomUv,previous.rgb*previous.a*
-        HikariEvaluateIrradianceVolumeInfluence(gPrevious,hit.position),false,gMaterialWrap);
+        HikariEvaluateIrradianceVolumeInfluence(gPrevious,hit.position),0.0f.xxx,false,gMaterialWrap);
 }
 
 [numthreads(64,1,1)]

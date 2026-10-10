@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "Editor/Views/HIKARI_EditorViewGuides.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/HIKARI_SceneDocument.h"
@@ -39,6 +40,7 @@ struct EditorViewVisualizationState {
     bool showOnlySelectedCamera = false;
     bool showSceneObjectMarkers = true;
     float cameraOverlayScale = 1.0f;
+    EditorViewGuides guides{};
 };
 
 struct EditorViewportExtent {

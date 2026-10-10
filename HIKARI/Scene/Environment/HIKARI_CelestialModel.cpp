@@ -1,5 +1,6 @@
 #include "Scene/Environment/HIKARI_CelestialModel.h"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -185,6 +186,21 @@ MATH::Vec3 HorizonDirectionToWorld(float azimuthDegrees, float elevationDegrees,
     const double elevation = static_cast<double>(elevationDegrees) * kDegToRad;
     return ToWorld(BuildHorizonBasis(northYawDegrees), std::cos(elevation) * std::sin(azimuth),
                    std::cos(elevation) * std::cos(azimuth), std::sin(elevation));
+}
+
+void WorldDirectionToHorizon(const MATH::Vec3& direction, float northYawDegrees, float& azimuthDegrees,
+                             float& elevationDegrees) noexcept {
+    const HorizonBasis basis = BuildHorizonBasis(northYawDegrees);
+    const MATH::Vec3 unit = MATH::Normalize(direction);
+    const double east = MATH::Dot(unit, basis.east);
+    const double north = MATH::Dot(unit, basis.north);
+    const double up = std::clamp(static_cast<double>(MATH::Dot(unit, basis.up)), -1.0, 1.0);
+    double azimuth = std::atan2(east, north) * kRadToDeg;
+    if (azimuth < 0.0) {
+        azimuth += 360.0;
+    }
+    azimuthDegrees = static_cast<float>(azimuth >= 360.0 ? 0.0 : azimuth);
+    elevationDegrees = static_cast<float>(std::asin(up) * kRadToDeg);
 }
 
 } // namespace HIKARI::ENVIRONMENT

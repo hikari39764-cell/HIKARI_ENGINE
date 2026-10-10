@@ -272,6 +272,10 @@ RejectionResult EvaluateHistory(
     float lumaReject = saturate(
         (relativeLumaError - gRejectParams.y * 0.35f) /
         max(gRejectParams.y, 0.05f));
+    // 止まった画素では輝度の差で履歴を捨てない。ずらし（jitter）で前景と背景を交互に拾う縁は毎フレーム輝度が
+    // 大きく変わり、捨てると縁が今のフレームのぎざぎざのまま点滅する。止まった画素の履歴は近傍の範囲への
+    // 切り詰め（ClipHistoryToNeighborhood）で守られている。
+    lumaReject *= smoothstep(0.1f, 1.0f, ReferenceMotionLength(motion.pixels));
 
     float reactive = LoadMask(gReactiveMask, int2(pixel));
     float transparency = LoadMask(gTransparencyMask, int2(pixel));

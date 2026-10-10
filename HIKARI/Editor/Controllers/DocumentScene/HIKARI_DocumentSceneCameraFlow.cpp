@@ -79,7 +79,7 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::EditCameraFlow(cons
     const bool dirty = context_.sceneDirty || scene->HasUnsavedSceneChanges();
     document.objects = std::move(objects);
     CommitSceneObjectAuthoringHistory(*scene, {"Edit camera flow", std::move(before), document.objects, document.camera,
-                                               document.camera, dirty, true, true});
+                                               document.camera, dirty, true, true, p.value("mergeKey", uint64_t{0})});
     return {true, "OK", "Camera flow updated", {{"objectId", resultId.value}}};
 }
 } // namespace HIKARI

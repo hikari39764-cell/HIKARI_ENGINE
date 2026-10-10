@@ -97,8 +97,10 @@ ExposureFrameState BuildAutomaticExposureFrame(const ExposureSettings& settings,
     const float maxLog2 = std::clamp(std::log2(ExposureFromEv100(settings.minEv100)), minLog2, kMaximumLog2Exposure);
     const float compensationEv =
         std::isfinite(settings.compensationEv) ? std::clamp(settings.compensationEv, -8.0f, 8.0f) : 0.0f;
-    // 反射式露出計の較正（K = 12.5、ISO 100）で平均輝度 L の EV100 は log2(8 L)。
-    float measuredEv100 = std::log2(safeMeasuredLuminance * 8.0f);
+    // 反射式露出計の較正（K = 12.5、ISO 100）で平均輝度 L の EV100 は log2(8 L)。まだ測光が無い時（主ビューを
+    // 描かない工作区や最初の数フレーム）は、入射照度の露出計の値へすぐ合わせる（初期値のまま白く飛ばさない）。
+    const bool incidentFallback = !measurementValid && std::isfinite(illumination.incidentEv100);
+    float measuredEv100 = incidentFallback ? illumination.incidentEv100 : std::log2(safeMeasuredLuminance * 8.0f);
     const float nightKnee = std::isfinite(settings.nightAdaptationEv100) ? settings.nightAdaptationEv100 : 5.0f;
     float dimEv = 0.0f;
     if (std::isfinite(illumination.incidentEv100)) {
@@ -136,7 +138,7 @@ ExposureFrameState BuildAutomaticExposureFrame(const ExposureSettings& settings,
     const bool adaptingToBrighterScene = targetLog2 < previousLog2;
     const float selectedSpeed = adaptingToBrighterScene ? settings.speedUp : settings.speedDown;
     const float speed = std::clamp(std::isfinite(selectedSpeed) ? selectedSpeed : 1.0f, 0.0f, 20.0f);
-    const float blend = measurementValid ? 1.0f - std::exp(-speed * safeDeltaTime) : 0.0f;
+    const float blend = measurementValid ? 1.0f - std::exp(-speed * safeDeltaTime) : (incidentFallback ? 1.0f : 0.0f);
 
     state.exposure = std::exp2(previousLog2 + (targetLog2 - previousLog2) * blend);
     state.meteredLuminance = safeMeasuredLuminance;

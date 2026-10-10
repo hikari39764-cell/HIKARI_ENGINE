@@ -142,7 +142,7 @@ GameProjectWorldResult LightView::ApplyPatch(const GameProjectLightPatch& patch)
             next.color = {patch.color.x, patch.color.y, patch.color.z};
         }
         if (Selected(Field::Intensity)) {
-            next.intensity = patch.intensity;
+            SetLightBrightness(next, patch.intensity);
         }
         if (Selected(Field::Range)) {
             next.range = patch.range;

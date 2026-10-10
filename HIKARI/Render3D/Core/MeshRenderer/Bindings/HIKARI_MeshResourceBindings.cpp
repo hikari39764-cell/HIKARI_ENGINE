@@ -312,13 +312,21 @@ void BindScreenSpaceTraceResources(const MeshBindingContext& ctx) {
         depthPyramid.sourceHeight == ctx.passResources.sceneDepth.height &&
         ctx.passResources.packedSceneSurface.width == ctx.passResources.sceneDepth.width &&
         ctx.passResources.packedSceneSurface.height == ctx.passResources.sceneDepth.height;
+    // 接触影は現フレームの場面深度のピラミッドだけを辿るので、不透明の Forward でも使える。
+    const bool contactDepthValid =
+        depthPyramid.valid && depthPyramid.sourceKind == RENDER3D::DEPTH::DepthPyramidSourceKind::SceneDepth &&
+        depthPyramid.viewKind == RENDER3D::DEPTH::DepthPyramidViewKind::CurrentFrame &&
+        depthPyramid.depthConvention == RENDER3D::DEPTH::DepthPyramidDepthConvention::StandardD3DLessMax &&
+        depthPyramid.pyramidSrv.ptr != 0 && depthPyramid.width > 0u && depthPyramid.height > 0u &&
+        depthPyramid.mipCount > 0u;
 
     D3D12_GPU_DESCRIPTOR_HANDLE fallbackSrv =
         RENDER3D::GetTextureResourceSrvGpuHandleFromBackendHandle(ctx.fallbackTextureHandle);
     if (fallbackSrv.ptr == 0) {
         fallbackSrv = ctx.passResources.sceneDepth.srv;
     }
-    const D3D12_GPU_DESCRIPTOR_HANDLE depthPyramidSrv = traceInputValid ? depthPyramid.pyramidSrv : fallbackSrv;
+    const D3D12_GPU_DESCRIPTOR_HANDLE depthPyramidSrv =
+        traceInputValid || contactDepthValid ? depthPyramid.pyramidSrv : fallbackSrv;
     const D3D12_GPU_DESCRIPTOR_HANDLE packedSurfaceSrv =
         traceInputValid ? ctx.passResources.packedSceneSurface.srv : fallbackSrv;
     if (depthPyramidSrv.ptr != 0) {
@@ -340,10 +348,12 @@ void BindScreenSpaceTraceResources(const MeshBindingContext& ctx) {
     constexpr uint32_t kDepthTraceValid = 1u << 0;
     constexpr uint32_t kSceneColorCaptureValid = 1u << 1;
     constexpr uint32_t kRayShadowValid = 1u << 2;
+    constexpr uint32_t kContactDepthValid = 1u << 3;
     const bool sceneColorCaptureValid = ctx.passResources.opaqueSceneColor.IsSampleable();
     const uint32_t constants[2] = {(boundTraceValid ? kDepthTraceValid : 0u) |
                                        (sceneColorCaptureValid ? kSceneColorCaptureValid : 0u) |
-                                       (rayShadowValid && rayShadowSrv.ptr != 0 ? kRayShadowValid : 0u),
+                                       (rayShadowValid && rayShadowSrv.ptr != 0 ? kRayShadowValid : 0u) |
+                                       (contactDepthValid && depthPyramidSrv.ptr != 0 ? kContactDepthValid : 0u),
                                    boundTraceValid ? depthPyramid.mipCount : 0u};
     ctx.cmd->SetGraphicsRoot32BitConstants(ROOT_PARAM::ScreenSpaceTraceControl, 2u, constants, 0u);
     if (ctx.cache != nullptr) {

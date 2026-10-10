@@ -32,6 +32,7 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAiCapturePre
     } else {
         switch (workspace) {
         case EditorWorkspaceId::Scene:
+        case EditorWorkspaceId::LookDev:
         case EditorWorkspaceId::TerrainSurface:
         case EditorWorkspaceId::Ui:
         case EditorWorkspaceId::Cinematics: view = RENDER3D::kPrimaryRenderViewId; break;
@@ -95,6 +96,7 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteBackgroundSc
         return {false, "PLAY_ACTIVE", "Stop Play before editing the scene."};
 #if defined(HIKARI_WITH_EDITOR)
     if (ImGui::IsAnyItemActive() && (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Scene) ||
+                                     workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::LookDev) ||
                                      workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::TerrainSurface)))
         return {false, "DOCUMENT_BUSY", "用户正在编辑场景。请等待当前操作完成后重试。"};
 #endif

@@ -6,6 +6,7 @@
 #include <span>
 #include <utility>
 
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/History/HIKARI_CinematicsHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -37,8 +38,7 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
         textWorkspaceController_.BindDocumentCommands(commandRouter_);
         return;
     }
-    if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::GameplayCamera) &&
-        !GameplayCameraWorkspace().EditingFlow()) {
+    if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::GameplayCamera)) {
         GameplayCameraWorkspace().BindDocumentCommands(commandRouter_);
         return;
     }
@@ -87,21 +87,33 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
         return;
     }
 
-    std::string undoLabel = "Undo Scene Edit";
-    if (const std::string* label = documentHistory_.GetUndoLabel()) {
-        undoLabel = "Undo " + *label;
+    commandRouter_.BindOperation(EditorCommandId::SaveDocument, TEXT::Localize("menu.edit.saveAll"), true,
+                                 "editor.save_all");
+    // 焦点のある窓が資産文書を編集していれば、元に戻すとやり直しはその文書へ。それ以外は場面の履歴。
+    if (EDITOR::EditorAssetDocument* focused = environmentPanel_.FocusedDocument();
+        focused != nullptr && (focused->CanUndo() || focused->CanRedo())) {
+        const std::string name = focused->DisplayName();
+        commandRouter_.Bind(EditorCommandId::Undo, TEXT::Localize("menu.edit.undo") + " " + name, focused->CanUndo(),
+                            [focused]() { (void)focused->Undo(); });
+        commandRouter_.Bind(EditorCommandId::Redo, TEXT::Localize("menu.edit.redo") + " " + name, focused->CanRedo(),
+                            [focused]() { (void)focused->Redo(); });
+    } else {
+        std::string undoLabel = TEXT::Localize("menu.edit.undo");
+        if (const std::string* label = documentHistory_.GetUndoLabel()) {
+            undoLabel += " " + *label;
+        }
+        std::string redoLabel = TEXT::Localize("menu.edit.redo");
+        if (const std::string* label = documentHistory_.GetRedoLabel()) {
+            redoLabel += " " + *label;
+        }
+        commandRouter_.Bind(EditorCommandId::Undo, std::move(undoLabel), documentHistory_.CanUndo(),
+                            [this, &scene]() { ExecuteSceneDocumentHistory(scene, false); });
+        commandRouter_.Bind(EditorCommandId::Redo, std::move(redoLabel), documentHistory_.CanRedo(),
+                            [this, &scene]() { ExecuteSceneDocumentHistory(scene, true); });
     }
-    std::string redoLabel = "Redo Scene Edit";
-    if (const std::string* label = documentHistory_.GetRedoLabel()) {
-        redoLabel = "Redo " + *label;
-    }
-    commandRouter_.BindOperation(EditorCommandId::SaveDocument, TEXT::Localize("menu.edit.save"), true, "scene.save");
-    commandRouter_.Bind(EditorCommandId::Undo, std::move(undoLabel), documentHistory_.CanUndo(),
-                        [this, &scene]() { ExecuteSceneDocumentHistory(scene, false); });
-    commandRouter_.Bind(EditorCommandId::Redo, std::move(redoLabel), documentHistory_.CanRedo(),
-                        [this, &scene]() { ExecuteSceneDocumentHistory(scene, true); });
 
     if (!workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Scene) &&
+        !workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::LookDev) &&
         !workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Ui) &&
         !workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Text)) {
         return;
@@ -116,6 +128,76 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
     commandRouter_.Bind(EditorCommandId::FocusSelection, "Focus Selection",
                         context_.selection.GetSelectedObjectCount() != 0u,
                         [this, &scene]() { FocusSceneObjects(scene, context_.selection.GetSelectedObjectIds()); });
+}
+
+std::vector<EDITOR::EditorAssetDocument*> DocumentSceneEditorController::UnsavedAssetDocuments() {
+    std::vector<EDITOR::EditorAssetDocument*> documents;
+    for (EDITOR::EditorAssetDocument* document : environmentPanel_.Documents()) {
+        if (document->IsOpen() && document->IsDirty()) {
+            documents.push_back(document);
+        }
+    }
+    EDITOR::EditorAssetDocument& camera = GameplayCameraWorkspace().Document();
+    if (camera.IsOpen() && camera.IsDirty()) {
+        documents.push_back(&camera);
+    }
+    return documents;
+}
+
+std::string DocumentSceneEditorController::UnsavedDocumentSummary(const DocumentSceneBase& scene) {
+    std::string summary;
+    const auto add = [&summary](const std::string& name) {
+        summary += (summary.empty() ? "" : TEXT::Localize("shell.listSeparator")) + name;
+    };
+    if (context_.sceneDirty || scene.HasUnsavedSceneChanges()) {
+        add(scene.GetSceneDocument().sceneName);
+    }
+    for (const EDITOR::EditorAssetDocument* document : UnsavedAssetDocuments()) {
+        add(document->DisplayName());
+    }
+    return summary;
+}
+
+bool DocumentSceneEditorController::SaveAllDocuments(DocumentSceneBase& scene, std::vector<std::string>& saved,
+                                                     std::string& failures) {
+    const auto fail = [&failures](const std::string& name, const std::string& message) {
+        failures += (failures.empty() ? "" : "; ") + name + ": " + message;
+    };
+    if (SaveSceneDocument(scene)) {
+        saved.push_back(scene.GetSceneDocument().sceneName);
+    } else {
+        fail(scene.GetSceneDocument().sceneName, viewportDropMessage_);
+    }
+    for (EDITOR::EditorAssetDocument* document : UnsavedAssetDocuments()) {
+        std::string message;
+        if (document->SaveDocument(scene.GetAssetDatabase(), message)) {
+            saved.push_back(document->DisplayName());
+        } else {
+            fail(document->DisplayName(), message);
+        }
+    }
+    if (CinematicsWorkspace().IsEditingSequenceAsset() && CinematicsWorkspace().IsSequenceDocumentDirty()) {
+        std::string message;
+        if (CinematicsWorkspace().SaveSequenceDocument(scene, message)) {
+            saved.push_back("Sequence");
+        } else {
+            fail("Sequence", message);
+        }
+    }
+    viewportDropMessage_ = failures.empty() ? TEXT::Localize("ui.save.allSaved") : failures;
+    return failures.empty();
+}
+
+EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteSaveAll() {
+    if (aiOperationScene_ == nullptr) {
+        return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
+    }
+    std::vector<std::string> saved;
+    std::string failures;
+    if (!SaveAllDocuments(*aiOperationScene_, saved, failures)) {
+        return EDITOR::OperationFailure("SAVE_FAILED", failures);
+    }
+    return EDITOR::OperationOk("Saved.", {{"saved", std::move(saved)}});
 }
 
 bool DocumentSceneEditorController::SaveSceneDocument(DocumentSceneBase& scene) {
@@ -217,7 +299,7 @@ void DocumentSceneEditorController::CommitSceneObjectAuthoringHistory(DocumentSc
         EDITOR::MakeSceneObjectsHistoryCommand(std::move(history.label), std::move(history.beforeObjects),
                                                std::move(history.afterObjects), std::move(history.beforeCamera),
                                                std::move(history.afterCamera), impact),
-        0, history.dirtyBefore && !documentHistory_.IsDirty(), immediateImpact);
+        history.mergeGroup, history.dirtyBefore && !documentHistory_.IsDirty(), immediateImpact);
 }
 
 void DocumentSceneEditorController::RecordCinematicsHistory(DocumentSceneBase& scene, SceneCinematicsSettings before,

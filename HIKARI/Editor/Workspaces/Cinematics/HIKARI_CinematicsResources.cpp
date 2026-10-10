@@ -7,7 +7,14 @@
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Editor/HIKARI_EditorContext.h"
+#include "Assets/Camera/HIKARI_GameplayCameraAsset.h"
+#include "Editor/Widgets/HIKARI_NumberField.h"
+#include "Scene/Camera/HIKARI_CameraVolume.h"
+#include "Scene/Components/HIKARI_CameraFlowComponent.h"
+#include "Scene/Components/HIKARI_CameraFollowComponent.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
+#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -17,7 +24,7 @@
 #endif
 namespace HIKARI::EDITOR {
 bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, CinematicSequence& sequence,
-                                                  EditorContext& context) {
+                                                  EditorContext& context, EditorOperationRegistry& operations) {
     bool changed = false;
 #if defined(HIKARI_WITH_EDITOR)
     using namespace SEQUENCER;
@@ -33,10 +40,15 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
     if (!ImGui::BeginTabBar("SequenceResources"))
         return false;
     if (ImGui::BeginTabItem(TEXT::LocalizeWindow("cine.shot", "镜头").c_str())) {
-        if (IconTextButton(EditorGlyph::Add, TEXT::Localize("cine.createShot").c_str(), "newShot",
-                           EditorButtonTone::Primary)) {
+        // 镜头は視口（無ければ主ビュー）の今の視点から作る。空の時は案内の中に同じ操作を置く。
+        const auto createShot = [&] {
             CreateShot(sequence, spaceView_ ? directorViewPanel_.GetViewCamera() : scene.GetCamera());
             changed = true;
+        };
+        if (!sequence.cameraCutTrack.clips.empty() &&
+            IconTextButton(EditorGlyph::Add, TEXT::Localize("cine.createShot").c_str(), "newShot",
+                           EditorButtonTone::Primary)) {
+            createShot();
         }
         for (const auto& shot : sequence.cameraCutTrack.clips) {
             ImGui::PushID(static_cast<int>(shot.id));
@@ -55,8 +67,14 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
         if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete,
                                   ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)))
             changed |= DeleteSelectedClip(sequence);
-        if (sequence.cameraCutTrack.clips.empty())
-            EmptyState(TEXT::Localize("cine.startFrame").c_str(), TEXT::Localize("cine.createFirst").c_str());
+        // K：視口（無ければ主ビュー）の今の視点から镜头を作る。
+        if (!ImGui::GetIO().WantTextInput && !ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_K, false))
+            createShot();
+        if (sequence.cameraCutTrack.clips.empty() &&
+            EmptyState(TEXT::Localize("cine.startFrame").c_str(), TEXT::Localize("cine.createFirst").c_str(),
+                       TEXT::Localize("cine.createShotFromView").c_str())) {
+            createShot();
+        }
         ImGui::EndTabItem();
     }
     if (ImGui::BeginTabItem(TEXT::LocalizeWindow("cine.assets", "素材").c_str())) {
@@ -186,6 +204,10 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
         }
         ImGui::EndTabItem();
     }
+    if (ImGui::BeginTabItem(TEXT::LocalizeWindow("cine.triggers", "触发区域").c_str())) {
+        DrawTriggers(scene, operations);
+        ImGui::EndTabItem();
+    }
     if (ImGui::BeginTabItem(TEXT::LocalizeWindow("cine.bindings", "对象绑定").c_str())) {
         if (ImGui::Button(TEXT::LocalizeWindow("cine.addBinding", "添加对象槽").c_str())) {
             const auto name = "Subject." + std::to_string(AllocateSequenceBindingId(sequence.bindings).value);
@@ -270,4 +292,106 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
 #endif
     return changed;
 }
+void CinematicsWorkspaceController::DrawTriggers(DocumentSceneBase& scene, EditorOperationRegistry& operations) {
+#if defined(HIKARI_WITH_EDITOR)
+    const auto L = [](const char* key) { return TEXT::Localize(key); };
+    const AssetGuid& sequenceGuid = sequenceDocumentController_.GetDocument().GetAssetGuid();
+    if (!IsEditingSequenceAsset() || !sequenceGuid.IsValid()) {
+        EmptyState(L("cine.triggerNeedsAsset").c_str(), L("cine.triggerNeedsAssetHint").c_str());
+        return;
+    }
+    const SceneObjectId player = FindScenePlayer(scene.GetSceneDocument());
+    const auto camera = scene.GetSceneDocument().camera.defaultCameraObjectId;
+    const GameObject* playerObject = scene.GetWorld().FindObject(player);
+    ImGui::BeginDisabled(playerObject == nullptr || !camera);
+    if (ActionButton(L("cine.newTrigger").c_str(), "##newTrigger", EditorButtonTone::Primary, ImVec2(-1.0f, 0.0f))) {
+        const MATH::Vec3 position = CAMERA::WorldPosition(*playerObject);
+        pendingStatusMessage_ =
+            operations
+                .Execute("camera_flow.edit",
+                         {{"action", "create"},
+                          {"name", L("cine.triggerName")},
+                          {"position", {position.x, position.y, position.z}},
+                          {"settings",
+                           {{"sequenceAssetGuid", sequenceGuid.value},
+                            {"subjectObjectId", SCENE::SERIALIZATION::WriteSceneObjectReference(player.value)},
+                            {"cameraObjectId", SCENE::SERIALIZATION::WriteSceneObjectReference(camera->value)},
+                            {"afterMode", ""}}}})
+                .message;
+    }
+    ImGui::EndDisabled();
+    if (playerObject == nullptr || !camera) {
+        ImGui::TextDisabled("%s", L("cine.triggerNeedsPlayer").c_str());
+    }
+    // 終わった後の模式は、追う機位の方案の模式から選ぶ（空は今の模式のまま）。
+    const auto* store = scene.GetWorld().Services().Find<GameplayCameraAssetStore>();
+    std::vector<std::pair<SceneObjectId, nlohmann::json>> edits;
+    std::vector<SceneObjectId> removed;
+    scene.GetWorld().ForEachObjectWith<CameraFlowComponent>([&](GameObject& object, CameraFlowComponent& flow) {
+        const CameraFlowSettings& settings = flow.Settings();
+        if (settings.sequence != sequenceGuid) {
+            return;
+        }
+        const SceneObjectId id = object.GetDocumentId();
+        ImGui::PushID(static_cast<int>(id.value));
+        ImGui::SeparatorText(object.GetName().c_str());
+        nlohmann::json patch = nlohmann::json::object();
+        MATH::Vec3 size = settings.halfExtents * 2.0f;
+        ImGui::TextUnformatted(L("cine.triggerSize").c_str());
+        ImGui::SetNextItemWidth(-1.0f);
+        if (DragNumbers("##size", &size.x, 3, {.minimum = 0.1, .maximum = 1000.0, .step = 0.05})) {
+            patch["halfExtents"] = {size.x * 0.5f, size.y * 0.5f, size.z * 0.5f};
+        }
+        const GameObject* cameraObject = scene.GetWorld().FindObject(settings.cameraObjectId);
+        const auto* follow = cameraObject ? cameraObject->GetComponent<CameraFollowComponent>() : nullptr;
+        std::string error;
+        const auto profile = store && follow ? store->Load(follow->GameplayBinding().profile, error) : nullptr;
+        const std::string current = settings.afterMode.empty() ? L("cine.triggerKeepMode") : settings.afterMode;
+        if (ImGui::BeginCombo(L("cine.triggerAfterMode").c_str(), current.c_str())) {
+            if (ImGui::Selectable(L("cine.triggerKeepMode").c_str(), settings.afterMode.empty())) {
+                patch["afterMode"] = "";
+            }
+            if (profile) {
+                for (const auto& mode : profile->modes) {
+                    if (ImGui::Selectable(mode.name.c_str(), settings.afterMode == mode.id)) {
+                        patch["afterMode"] = mode.id;
+                    }
+                }
+            }
+            ImGui::EndCombo();
+        }
+        bool repeat = settings.repeatOnReentry;
+        if (ImGui::Checkbox(L("cine.triggerRepeat").c_str(), &repeat)) {
+            patch["repeatOnReentry"] = repeat;
+        }
+        bool onExit = settings.triggerOnExit;
+        if (ImGui::Checkbox(L("cine.triggerOnExit").c_str(), &onExit)) {
+            patch["triggerOnExit"] = onExit;
+        }
+        if (ActionButton(L("cine.triggerRemove").c_str(), "##remove", EditorButtonTone::Danger)) {
+            removed.push_back(id);
+        } else if (!patch.empty()) {
+            edits.emplace_back(id, std::move(patch));
+        }
+        ImGui::PopID();
+    });
+    // 場面を変える操作は一覧を描き終えてから流す（描いている途中で物体が作り直されないように）。
+    for (auto& [id, patch] : edits) {
+        const auto result = operations.Execute(
+            "camera_flow.edit",
+            {{"action", "update"}, {"objectId", id.value}, {"settings", std::move(patch)}, {"mergeKey", id.value}});
+        if (!result.ok) {
+            pendingStatusMessage_ = result.message;
+        }
+    }
+    for (const SceneObjectId id : removed) {
+        pendingStatusMessage_ =
+            operations.Execute("camera_flow.edit", {{"action", "remove"}, {"objectId", id.value}}).message;
+    }
+#else
+    (void)scene;
+    (void)operations;
+#endif
+}
+
 } // namespace HIKARI::EDITOR

@@ -930,8 +930,11 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
     // Bind an explicit empty set first, then replace it only with the
     // complete DefaultSky set requested by Studio Inspect.
     const IBL::IblEnvironmentSource emptyIblEnvironment{};
+    // 中立照明は場面の物理的な空・IBL・探針を使わない（露出 1 の表示参照で描くので、昼の空の数千 nits が白く飛ぶ）。
+    const bool neutralLighting = selected->request.shadingMode == EditorInteractiveShadingMode::Neutral ||
+                                 selected->request.shadingMode == EditorInteractiveShadingMode::NeutralClay;
     const IBL::IblEnvironmentSource* iblEnvironmentOverride =
-        selected->request.environmentOverride != nullptr ? &emptyIblEnvironment : nullptr;
+        selected->request.environmentOverride != nullptr || neutralLighting ? &emptyIblEnvironment : nullptr;
     if (selected->request.useDefaultSkyIbl) {
         const LIGHTING::DefaultSkyEnvironmentResult defaultSky =
             LIGHTING::EnsureDefaultSkyEnvironmentAvailable(skyManager);
@@ -941,14 +944,15 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
         }
     }
     SKYRENDERER::Render(GFX::GetCurrentContext(), selected->request.cameraFrame.camera, effectiveEnvironment,
-                        modelManager, skyManager, !uniformBackground);
-    if (!uniformBackground) {
+                        modelManager, skyManager, !uniformBackground && !neutralLighting);
+    if (!uniformBackground && !neutralLighting) {
         (void)PANORAMA_SKY::RenderPanoramaSkyLayer(GFX::GetCurrentContext(), selected->request.cameraFrame.camera,
                                                    effectiveEnvironment.sky, skyManager);
     }
     MESHRENDERER::EditorInteractiveRenderSettings renderSettings =
         ResolveRenderSettings(*selected, selected->request, stylizedPreparation);
     renderSettings.iblEnvironmentOverride = iblEnvironmentOverride;
+    renderSettings.suppressSpatialLightingProviders |= neutralLighting;
     renderSettings.particleFrameSource = view.particleFrameSource;
     const bool hasToolGuides =
         selected->request.guideOverlay.showGroundGrid || selected->request.guideOverlay.showWorldAxes;

@@ -130,8 +130,9 @@ private:
 } // namespace
 void RegisterBoundSceneAuthoringSessions(EditorAuthoringSessionHost& host, EditorOperationRegistry& operations,
                                          EditorWorkspaceHost& workspaceHost, BoundSceneAuthoringContext context) {
-    for (const auto& [name, id] : {std::pair{"scene", EditorWorkspaceId::Scene},
-                                   std::pair{"terrain_surface", EditorWorkspaceId::TerrainSurface}}) {
+    for (const auto& [name, id] :
+         {std::pair{"scene", EditorWorkspaceId::Scene}, std::pair{"look_dev", EditorWorkspaceId::LookDev},
+          std::pair{"terrain_surface", EditorWorkspaceId::TerrainSurface}}) {
         host.RegisterWorkspace({name, name, [&operations, &workspaceHost, context, id] {
                                     return std::make_unique<BoundSceneSession>(operations, workspaceHost, context, id);
                                 }});

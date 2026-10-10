@@ -18,8 +18,8 @@ EditorWorkspaceHost::EditorWorkspaceHost() {
     director.purpose = RENDER3D::RenderViewPurpose::EditorScene;
     director.cameraBinding.kind = EditorViewCameraSourceKind::OwnedEditorCamera;
     director.execution = EditorViewExecutionMode::SecondaryEditorScene;
-    director.visualization.shadingMode = EditorViewShadingMode::Neutral;
-    director.visualization.displayExposure = 1.25f;
+    // 視口は相機画面と同じ場面の光で見せる（構図と打光を同じ画で判断する）。中立照明は表示設定から選べる。
+    director.visualization.shadingMode = EditorViewShadingMode::Lit;
 
     auto& gameplayObserver = View(BuiltInViewSlot::GameplayCameraObserver);
     gameplayObserver = director;
@@ -27,7 +27,6 @@ EditorWorkspaceHost::EditorWorkspaceHost() {
     auto& gameplayPreview = View(BuiltInViewSlot::GameplayCameraPreview);
     gameplayPreview = director;
     gameplayPreview.renderViewId = kGameplayCameraPreviewRenderViewId;
-    gameplayPreview.visualization.shadingMode = EditorViewShadingMode::Lit;
 
     EditorViewInstance& collision = View(BuiltInViewSlot::ModelCollisionPreview);
     collision.renderViewId = kModelCollisionPreviewRenderViewId;

@@ -74,13 +74,12 @@ bool GlobalPostEditor::DrawProfilePicker(std::string& profileId, const AssetData
     return profileId != before;
 }
 
-std::string GlobalPostEditor::DrawSelectedProfile(const std::string& profileId, DocumentSceneBase& scene,
-                                                  bool allowCopy) {
+std::string GlobalPostEditor::DrawSelectedProfile(const std::string& profileId, DocumentSceneBase& scene) {
     auto* store = scene.GetWorld().Services().Find<POST::PostAssetStore>();
     std::string copiedId;
     if (store && !profileId.empty()) {
         if (profileId.starts_with(POST::kBuiltinPostProfilePrefix)) {
-            copiedId = DrawBuiltinProfile(profileId, scene.GetAssetDatabase(), *store, allowCopy);
+            copiedId = DrawBuiltinProfile(profileId, scene.GetAssetDatabase(), *store);
         } else {
             DrawProjectProfile(AssetGuid{profileId}, scene.GetAssetDatabase(), *store);
         }
@@ -88,14 +87,11 @@ std::string GlobalPostEditor::DrawSelectedProfile(const std::string& profileId, 
     if (store) {
         PublishDraft(*store);
     }
-    if (!status_.empty()) {
-        ImGui::TextWrapped("%s", status_.c_str());
-    }
     return copiedId;
 }
 
 std::string GlobalPostEditor::DrawBuiltinProfile(const std::string& profileId, AssetDatabase& database,
-                                                 const POST::PostAssetStore& store, bool allowCopy) {
+                                                 const POST::PostAssetStore& store) {
     std::string error;
     const auto profile = store.LoadProfile(profileId, error);
     const auto effect = profile ? store.LoadEffect(profile->effectId, error) : nullptr;
@@ -103,21 +99,22 @@ std::string GlobalPostEditor::DrawBuiltinProfile(const std::string& profileId, A
         ImGui::TextColored(kAssetDocumentErrorColor, "%s", error.c_str());
         return {};
     }
-    std::string copiedId;
-    ImGui::TextDisabled("%s", TEXT::Localize("asset.document.builtinReadOnly").c_str());
-    if (allowCopy && ImGui::Button(TEXT::Localize("asset.document.createCopy").c_str())) {
-        std::string message;
-        if (CreateProjectCopy(*profile, database, message)) {
-            copiedId = document_.Guid().value;
-            status_.clear();
-        } else {
-            status_ = message;
-        }
+    // 最初の編集でその値ごとプロジェクトへ複製し、呼び出し側が複製へ切り替える。
+    ImGui::TextDisabled("%s", TEXT::Localize("asset.document.builtinCopyOnEdit").c_str());
+    DrawAssetDocumentStatus(status_);
+    bool copy = ImGui::Button(TEXT::Localize("asset.document.createCopy").c_str());
+    POST::PostProfileAsset edited = *profile;
+    copy |= DrawParameters(*effect, edited) != nullptr;
+    if (!copy) {
+        return {};
     }
-    ImGui::BeginDisabled();
-    DrawParameters(*effect, *profile, false);
-    ImGui::EndDisabled();
-    return copiedId;
+    std::string message;
+    if (!document_.SaveAsNew(std::move(edited), database, message)) {
+        status_ = message;
+        return {};
+    }
+    status_.clear();
+    return document_.Guid().value;
 }
 
 void GlobalPostEditor::DrawProjectProfile(const AssetGuid& guid, AssetDatabase& database, POST::PostAssetStore& store) {
@@ -135,7 +132,10 @@ void GlobalPostEditor::DrawProjectProfile(const AssetGuid& guid, AssetDatabase& 
     if (!POST::ValidatePostProfileValues(document_.Profile(), *effect, error)) {
         ImGui::TextColored(kAssetDocumentWarningColor, "%s", error.c_str());
     }
-    DrawParameters(*effect, document_.Profile(), true);
+    POST::PostProfileAsset edited = document_.Profile();
+    if (const VFX::ParamDesc* changed = DrawParameters(*effect, edited)) {
+        (void)document_.Apply(std::move(edited), status_, ParameterMergeGroup(changed->key));
+    }
 }
 
 void GlobalPostEditor::DrawEffectPicker(const AssetDatabase& database) {
@@ -170,36 +170,33 @@ void GlobalPostEditor::DrawEffectPicker(const AssetDatabase& database) {
     }
 }
 
-void GlobalPostEditor::DrawParameters(const POST::PostEffectDefinition& effect, const POST::PostProfileAsset& profile,
-                                      bool editable) {
+const VFX::ParamDesc* GlobalPostEditor::DrawParameters(const POST::PostEffectDefinition& effect,
+                                                       POST::PostProfileAsset& profile) {
     if (!ImGui::TreeNodeEx(TEXT::Localize("ui.quality.profileParameters").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
-        return;
+        return nullptr;
     }
+    const VFX::ParamDesc* changed = nullptr;
     const POST::PostParameterBlock block = POST::ResolvePostParameters(effect, &profile);
     for (const VFX::ParamDesc& param : effect.params) {
         ImGui::PushID(param.key.c_str());
         DirectX::XMFLOAT4 slot = block[param.ref.slot];
-        if (DrawFxParameter(param, slot) && editable) {
+        if (DrawFxParameter(param, slot)) {
             const float* channels = &slot.x;
             POST::PostParameterValue value{};
             const size_t count = VFX::GetParameterComponentCount(param.type);
             for (size_t index = 0; index < count && param.ref.channel + index < 4u; ++index) {
                 value[index] = channels[param.ref.channel + index];
             }
-            POST::PostProfileAsset edited = document_.Profile();
-            POST::SetPostParameterValue(param, edited, value);
-            (void)document_.Apply(std::move(edited), status_, ParameterMergeGroup(param.key));
+            POST::SetPostParameterValue(param, profile, value);
+            changed = &param;
         }
-        if (editable && ImGui::IsItemDeactivatedAfterEdit()) {
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
             document_.SealMerge();
         }
         ImGui::PopID();
     }
     ImGui::TreePop();
-}
-
-bool GlobalPostEditor::CreateProjectCopy(POST::PostProfileAsset source, AssetDatabase& database, std::string& message) {
-    return document_.New(std::move(source), message) && document_.Save(database, message);
+    return changed;
 }
 
 void GlobalPostEditor::PublishDraft(POST::PostAssetStore& store) {
@@ -219,7 +216,7 @@ void GlobalPostEditor::PublishDraft(POST::PostAssetStore& store) {
 #else
 bool GlobalPostEditor::DrawProfilePicker(std::string&, const AssetDatabase&, const char*) const { return false; }
 std::string ResolvePostProfileLabel(std::string_view id, const AssetDatabase&) { return std::string(id); }
-std::string GlobalPostEditor::DrawSelectedProfile(const std::string&, DocumentSceneBase&, bool) { return {}; }
+std::string GlobalPostEditor::DrawSelectedProfile(const std::string&, DocumentSceneBase&) { return {}; }
 #endif
 
 } // namespace HIKARI::EDITOR

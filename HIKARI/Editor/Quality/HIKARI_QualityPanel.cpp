@@ -54,6 +54,8 @@ bool QualityPanel::Draw() {
         ImGui::End();
         return false;
     }
+    // 画面の見た目（露出・泛光・色調）は環境プロファイルが持つ。以前この窓にあったので行き先を示す。
+    ImGui::TextDisabled("%s", TEXT::Localize("ui.quality.lookMovedHint").c_str());
     const bool renderQualityChanged = EDITOR::QUALITY_PANEL::DrawRenderSettings();
     if (ImGui::TreeNode(TEXT::Localize("ui.quality.transitionDebug").c_str())) {
         DrawTransitionDebug();

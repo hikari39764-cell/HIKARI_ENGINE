@@ -116,6 +116,12 @@ bool ExecuteRayTracedShadowFromSceneDepth(ScreenSpaceRuntimeState& state,
                                           const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
                                           const RayTracedShadowInputs& inputs, ScreenSpaceFrameResult& result);
 
+// 現フレームの場面深度（GeometryAux か場面の深度 prepass）から深度ピラミッドを作り、可視判定と
+// 不透明の Forward（接触影が辿る）へ現フレームのピラミッドとして公開する。
+bool BuildCurrentFrameDepthPyramid(ScreenSpaceRuntimeState& state,
+                                   const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
+                                   const MESHRENDERER::CameraCB& renderCameraCb, ScreenSpaceFrameResult& result);
+
 bool ExecuteBalancedSsaoFromSceneDepth(ScreenSpaceRuntimeState& state,
                                        const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
                                        const MESHRENDERER::CameraCB& renderCameraCb,

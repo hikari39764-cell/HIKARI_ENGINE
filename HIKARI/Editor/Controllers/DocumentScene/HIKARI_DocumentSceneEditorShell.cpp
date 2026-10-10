@@ -121,6 +121,7 @@ void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
     contents.assistantAttention = aiAssistantSession_.HasPendingApprovals();
     contents.tasksBusy = exportJob_.IsRunning() || projectCodeJob_.Running() ||
                          scene.GetAssetDatabase().GetAssetTaskService().HasActiveTasks();
+    contents.unsavedSummary = UnsavedDocumentSummary(scene);
     contents.assistant = [&] { aiAssistantPanel_.DrawEmbedded(); };
     contents.settings = [&] {
         editorSettingsPanel_.DrawContents(context_, [&] { aiAssistantPanel_.DrawPreferences(); });

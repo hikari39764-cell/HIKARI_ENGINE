@@ -391,21 +391,8 @@ ScreenSpaceFrameResult ExecuteScreenSpacePreLightingPasses(ScreenSpaceRuntimeSta
             }
         }
     }
-    if (meshletCurrentDepth && state.geometryValid && context.sceneDepth.IsSampleable() &&
-        context.renderTargetAccess.BeginDepthRead()) {
-        result.hzbBuilt = state.depthVisibility.BuildDepthPyramidFromDepthSrv(
-            *context.graphics, context.cmd, context.width, context.height, context.sceneDepth.srv,
-            renderCameraCb.viewProj, context.jitteredViewProj);
-        context.renderTargetAccess.EndDepthRead();
-        context.renderTargetAccess.Rebind();
-        if (result.hzbBuilt) {
-            ++gDepthVisibilityDebugState.sceneDepthPyramidBuildCount;
-            state.depthVisibilityValid = true;
-            PublishVisibilityDepthPyramid(result, state.depthVisibility.GetStats().depthPyramid,
-                                          DEPTH::DepthPyramidViewKind::CurrentFrame, context.frame);
-            RecordDepthPyramidSource(DepthVisibilitySource::CurrentSceneDepth);
-            RecordDepthVisibilitySource(DepthVisibilitySource::CurrentSceneDepth);
-        }
+    if (meshletCurrentDepth && state.geometryValid) {
+        (void)BuildCurrentFrameDepthPyramid(state, context, renderCameraCb, result);
     }
     if (!state.geometryValid || !context.sceneDepth.IsSampleable()) {
         state.ssaoValid = false;
@@ -543,6 +530,29 @@ bool ExecuteRayTracedShadowFromSceneDepth(ScreenSpaceRuntimeState& state,
     }
     result.rayTracedShadow = state.rayTracedShadowRenderer.GetVisibilityView();
     return result.rayTracedShadow.IsSampleable();
+}
+
+bool BuildCurrentFrameDepthPyramid(ScreenSpaceRuntimeState& state,
+                                   const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
+                                   const MESHRENDERER::CameraCB& renderCameraCb, ScreenSpaceFrameResult& result) {
+    if (context.graphics == nullptr || context.cmd == nullptr || !context.sceneDepth.IsSampleable() ||
+        !context.renderTargetAccess.BeginDepthRead()) {
+        return false;
+    }
+    result.hzbBuilt = state.depthVisibility.BuildDepthPyramidFromDepthSrv(
+        *context.graphics, context.cmd, context.width, context.height, context.sceneDepth.srv, renderCameraCb.viewProj,
+        context.jitteredViewProj);
+    context.renderTargetAccess.EndDepthRead();
+    if (!context.renderTargetAccess.Rebind() || !result.hzbBuilt) {
+        return false;
+    }
+    ++gDepthVisibilityDebugState.sceneDepthPyramidBuildCount;
+    state.depthVisibilityValid = true;
+    PublishVisibilityDepthPyramid(result, state.depthVisibility.GetStats().depthPyramid,
+                                  DEPTH::DepthPyramidViewKind::CurrentFrame, context.frame);
+    RecordDepthPyramidSource(DepthVisibilitySource::CurrentSceneDepth);
+    RecordDepthVisibilitySource(DepthVisibilitySource::CurrentSceneDepth);
+    return true;
 }
 
 bool ExecuteBalancedSsaoFromSceneDepth(ScreenSpaceRuntimeState& state,

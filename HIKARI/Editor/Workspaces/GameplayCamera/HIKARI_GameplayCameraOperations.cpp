@@ -5,6 +5,44 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
+namespace {
+// 場面の流程（区域に入ると演出を流して模式を変える）と実行中の段階。AI の問い合わせが読む。
+nlohmann::json DescribeCameraFlows(const DocumentSceneBase& scene) {
+    nlohmann::json flows = nlohmann::json::array();
+    for (const auto& object : scene.GetWorld().GetObjects()) {
+        if (!object)
+            continue;
+        const auto* flow = object->GetComponent<CameraFlowComponent>();
+        if (!flow)
+            continue;
+        nlohmann::json settings;
+        flow->Serialize(settings);
+        const auto& r = flow->Runtime();
+        flows.push_back({{"objectId", object->GetDocumentId().value},
+                         {"name", object->GetName()},
+                         {"settings", settings},
+                         {"stage", CameraFlowStageId(r.stage)},
+                         {"inside", r.inside},
+                         {"runs", r.runs},
+                         {"time", r.time},
+                         {"duration", r.duration},
+                         {"diagnostic", r.diagnostic}});
+    }
+    CameraFlowComponent defaults;
+    nlohmann::json settings;
+    defaults.Serialize(settings);
+    return {{"flows", flows},
+            {"defaults", settings},
+            {"playing", scene.IsRuntimePlayActive()},
+            {"bindings", {{"Player", "subjectObjectId"}, {"Camera", "cameraObjectId"}, {"Owner", "flow object"}}},
+            {"semantics", "Region entry/exit or explicit trigger. Optional "
+                          "sequence; empty afterMode keeps current "
+                          "mode. requiredMode filters the base mode. Temporary "
+                          "aim/input overrides remain available. "
+                          "Re-entry retry requires leaving the region. Settings "
+                          "belong to scene undo/save."}};
+}
+} // namespace
 void RegisterGameplayCameraOperations(EditorOperationRegistry& registry, GameplayCameraWorkspaceController& controller,
                                       EditorWorkspaceHost& host, std::function<DocumentSceneBase*()> scene) {
     using P = EditorOperationParameter;
@@ -14,7 +52,8 @@ void RegisterGameplayCameraOperations(EditorOperationRegistry& registry, Gamepla
         "gameplay_camera.schema",
         "Discover reusable gameplay camera presets and editable mode fields.",
         "gameplay_camera",
-        {P{"preset", T::String, false, "third_person, first_person, top_down, side_scroller, fixed"}},
+        {P{"preset", T::String, false,
+           "third_person, shoulder, first_person, lock_on, top_down, side_scroller, fixed, rail, arena"}},
         [](const nlohmann::json& p) {
             auto motion = nlohmann::json::array();
             for (const auto& d : SEQUENCER::kCameraMotionDescriptors)
@@ -66,9 +105,9 @@ void RegisterGameplayCameraOperations(EditorOperationRegistry& registry, Gamepla
         "Discover scene camera flows, region settings, bindings, and live playback stages. Empty sequence changes mode directly; empty afterMode preserves mode. Editing and save belong to the scene.",
         "scene",
         {},
-        [&controller, scene](const auto&) {
+        [scene](const auto&) {
             auto* current = scene();
-            return current ? EditorOperationResult{true, "OK", "Camera flows", controller.DescribeFlows(*current)}
+            return current ? EditorOperationResult{true, "OK", "Camera flows", DescribeCameraFlows(*current)}
                            : EditorOperationResult{false, "NO_SCENE", "No scene."};
         }};
     flowSchema.kind = K::Query;

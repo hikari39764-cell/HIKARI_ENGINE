@@ -1,4 +1,6 @@
 #include "Scene/Camera/HIKARI_GameplayCameraProfile.h"
+#include "Core/HIKARI_JsonRead.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Scene/Sequencer/Serialization/HIKARI_ShotPresentationJson.h"
 #include <algorithm>
 #include <cmath>
@@ -58,9 +60,10 @@ bool ValidateGameplayCameraProfile(const GameplayCameraProfile& profile, std::st
             return fail("Mode IDs must be nonempty and unique.");
         if (!validStack(mode.effects))
             return fail("Invalid camera effect stack.");
-        if (mode.mount != CameraMount::Orbit && mode.mount != CameraMount::FirstPerson &&
-            mode.mount != CameraMount::Fixed)
+        if (!TEXT::IsNamedEnum(kCameraMountNames, mode.mount))
             return fail("Unknown camera mount.");
+        if (!MATH::IsFinite(mode.railStart) || !MATH::IsFinite(mode.railEnd) || !MATH::IsFinite(mode.arenaCenter))
+            return fail("Rail and arena points must be finite.");
         if (!std::isfinite(mode.verticalFovDegrees) || mode.verticalFovDegrees < 5 || mode.verticalFovDegrees > 170)
             return fail("Vertical FOV must be between 5 and 170 degrees.");
         if (!std::isfinite(mode.nearClip) || !std::isfinite(mode.farClip) || mode.nearClip < 0.001f ||
@@ -107,15 +110,16 @@ nlohmann::json WriteGameplayCameraProfile(const GameplayCameraProfile& profile) 
         mode.follow.Serialize(follow);
         root["modes"].push_back({{"id", mode.id},
                                  {"name", mode.name},
-                                 {"mount", mode.mount == CameraMount::FirstPerson ? "first_person"
-                                           : mode.mount == CameraMount::Fixed     ? "fixed"
-                                                                                  : "orbit"},
+                                 {"mount", TEXT::EnumToName(kCameraMountNames, mode.mount)},
                                  {"follow", std::move(follow)},
                                  {"verticalFovDegrees", mode.verticalFovDegrees},
                                  {"nearClip", mode.nearClip},
                                  {"farClip", mode.farClip},
                                  {"blendSeconds", mode.blendSeconds},
                                  {"shoulderOffset", mode.shoulderOffset},
+                                 {"railStart", {mode.railStart.x, mode.railStart.y, mode.railStart.z}},
+                                 {"railEnd", {mode.railEnd.x, mode.railEnd.y, mode.railEnd.z}},
+                                 {"arenaCenter", {mode.arenaCenter.x, mode.arenaCenter.y, mode.arenaCenter.z}},
                                  {"effects", SEQUENCER::WriteCameraMotionEffects(mode.effects)},
                                  {"trackLookTarget", mode.trackLookTarget},
                                  {"keepUserOrbit", mode.keepUserOrbit},
@@ -154,13 +158,13 @@ bool ReadGameplayCameraProfile(const nlohmann::json& root, GameplayCameraProfile
             mode.id = item.at("id").get<std::string>();
             mode.name = item.value("name", mode.id);
             const std::string mount = item.value("mount", "orbit");
-            if (mount != "orbit" && mount != "first_person" && mount != "fixed") {
+            if (!TEXT::TryParseEnum(kCameraMountNames, mount, mode.mount)) {
                 error = "Unknown camera mount: " + mount;
                 return false;
             }
-            mode.mount = mount == "first_person" ? CameraMount::FirstPerson
-                         : mount == "fixed"      ? CameraMount::Fixed
-                                                 : CameraMount::Orbit;
+            mode.railStart = JSONREAD::Vec3MemberOr(item, "railStart", mode.railStart);
+            mode.railEnd = JSONREAD::Vec3MemberOr(item, "railEnd", mode.railEnd);
+            mode.arenaCenter = JSONREAD::Vec3MemberOr(item, "arenaCenter", mode.arenaCenter);
             if (item.contains("follow"))
                 mode.follow.Deserialize(item.at("follow"));
 #define HIKARI_READ_MODE(member) mode.member = item.value(#member, mode.member)
@@ -204,7 +208,29 @@ GameplayCameraProfile MakeGameplayCameraPreset(std::string_view preset) {
     base.follow.maximumDistance = 10;
     base.follow.initialPitchDegrees = 15;
     base.follow.pivotOffset = {0, 1.6f, 0};
-    if (preset == "first_person") {
+    if (preset == "shoulder") {
+        profile.name = "Over Shoulder";
+        base.name = "Over Shoulder";
+        base.follow.initialDistance = 2.4f;
+        base.follow.initialPitchDegrees = 8;
+        base.shoulderOffset = 0.6f;
+        base.verticalFovDegrees = 50;
+    } else if (preset == "lock_on") {
+        profile.name = "Lock On";
+        base.name = "Lock On";
+        base.trackLookTarget = true;
+        base.follow.initialDistance = 5.5f;
+        base.follow.initialPitchDegrees = 18;
+    } else if (preset == "rail" || preset == "arena") {
+        profile.name = preset == "rail" ? "Rail" : "Arena";
+        base.name = profile.name;
+        base.mount = preset == "rail" ? CameraMount::Rail : CameraMount::Arena;
+        base.follow.orbitInputEnabled = false;
+        base.keepUserOrbit = false;
+        base.follow.initialDistance = preset == "rail" ? 8.0f : 7.0f;
+        base.follow.maximumDistance = 30;
+        base.follow.initialPitchDegrees = preset == "rail" ? 20.0f : 22.0f;
+    } else if (preset == "first_person") {
         profile.name = "First Person";
         base.name = "First Person";
         base.mount = CameraMount::FirstPerson;

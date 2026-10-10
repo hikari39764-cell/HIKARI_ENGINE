@@ -20,6 +20,7 @@ void InitRuntimeRayQueryRootParameters(std::span<CD3DX12_ROOT_PARAMETER> paramet
     ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 7);
     parameters[8].InitAsDescriptorTable(1, &ranges[0]);
     parameters[9].InitAsDescriptorTable(1, &ranges[1]);
+    parameters[10].InitAsShaderResourceView(2, 8);
     parameters[skyParameter].InitAsDescriptorTable(1, &ranges[2]);
 }
 
@@ -49,6 +50,10 @@ void BindRuntimeRayQueryRoots(ID3D12GraphicsCommandList* commands, const GFX::Co
         8, GFX::DESCRIPTOR::GpuAt(graphics.srvHeap, stride, GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaBegin));
     commands->SetComputeRootDescriptorTable(
         9, GFX::DESCRIPTOR::GpuAt(graphics.srvHeap, stride, GFX::DESCRIPTOR::kUserSrvBegin));
+    // 変形した頂点が無い場面でも有効な番地を束ねる（命中記録が変形を指さなければ読まれない）。
+    commands->SetComputeRootShaderResourceView(10, scene.deformedVertices
+                                                       ? scene.deformedVertices
+                                                       : (scene.hitRecords ? scene.hitRecords : lighting.localLights));
     commands->SetComputeRootDescriptorTable(skyParameter, lighting.sky);
 }
 

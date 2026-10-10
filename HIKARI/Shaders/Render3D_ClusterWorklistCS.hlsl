@@ -20,9 +20,9 @@ void ExpandPageTasksCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    gClusterCullCounters.InterlockedAdd(
+    HikariClusterCullAddDebugCounter(
         HIKARI_CLUSTER_CULL_COUNTER_INPUT_COUNT,
-        1);
+        1u);
 
     if (instance.clusterGeometryMetadataSrvDescriptorIndex < gClusterCullClusterSrvPoolBegin)
     {
@@ -94,12 +94,13 @@ void ExpandPageTasksCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         }
 
         HikariClusterGeometrySurfaceLodRange selectedRange;
-        if (!HikariClusterCullSelectSectionLodRange(
+        if (!HikariClusterCullSelectStableSectionLodRange(
                 metadata,
                 header,
                 instance,
                 section,
                 sectionWorldSphere,
+                surfaceGpuSceneIndex,
                 selectedRange))
         {
             continue;

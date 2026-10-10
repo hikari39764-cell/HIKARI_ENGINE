@@ -12,6 +12,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 
 #if defined(HIKARI_WITH_EDITOR)
+#include "Editor/Widgets/HIKARI_NumberField.h"
 #include "imgui.h"
 #endif
 
@@ -83,7 +84,7 @@ void VfxInspectorPropertyEditor::Bool(const char* label, std::string_view proper
 void VfxInspectorPropertyEditor::Float(const char* label, std::string_view propertyId, float value, float speed,
                                        float minimum, float maximum) {
 #if defined(HIKARI_WITH_EDITOR)
-    if (ImGui::DragFloat(label, &value, speed, minimum, maximum)) {
+    if (DragNumber(label, value, {.minimum = minimum, .maximum = maximum, .step = speed})) {
         Set(propertyId, value, true);
     }
     if (ImGui::IsItemDeactivatedAfterEdit()) {
@@ -102,7 +103,7 @@ void VfxInspectorPropertyEditor::Float(const char* label, std::string_view prope
 void VfxInspectorPropertyEditor::Unsigned(const char* label, std::string_view propertyId, uint32_t value,
                                           uint32_t minimum, uint32_t maximum) {
 #if defined(HIKARI_WITH_EDITOR)
-    if (ImGui::DragScalar(label, ImGuiDataType_U32, &value, 1.0f, &minimum, &maximum)) {
+    if (DragNumber(label, value, {.minimum = static_cast<double>(minimum), .maximum = static_cast<double>(maximum)})) {
         Set(propertyId, value, true);
     }
     if (ImGui::IsItemDeactivatedAfterEdit()) {
@@ -121,7 +122,7 @@ void VfxInspectorPropertyEditor::Vec3(const char* label, std::string_view proper
                                       float speed) {
 #if defined(HIKARI_WITH_EDITOR)
     MATH::Vec3 edited = value;
-    if (ImGui::DragFloat3(VfxUiText(label).c_str(), &edited.x, speed)) {
+    if (DragNumbers(VfxUiText(label).c_str(), &edited.x, 3, {.step = speed})) {
         Set(propertyId, Vec3Json(edited), true);
     }
     if (ImGui::IsItemDeactivatedAfterEdit()) {

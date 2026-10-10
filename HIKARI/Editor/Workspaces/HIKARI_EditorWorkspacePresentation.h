@@ -10,6 +10,7 @@ struct EditorWorkspacePresentation {
     EditorGlyph icon;
 };
 inline constexpr std::array kEditorWorkspacePresentations{
+    EditorWorkspacePresentation{EditorWorkspaceId::LookDev, "menu.workspace.lookDev", EditorGlyph::Light},
     EditorWorkspacePresentation{EditorWorkspaceId::Scene, "menu.workspace.scene", EditorGlyph::Scene},
     EditorWorkspacePresentation{EditorWorkspaceId::Ui, "uix.workspace", EditorGlyph::Grid},
     EditorWorkspacePresentation{EditorWorkspaceId::Text, "uix.textWorkspace", EditorGlyph::List},

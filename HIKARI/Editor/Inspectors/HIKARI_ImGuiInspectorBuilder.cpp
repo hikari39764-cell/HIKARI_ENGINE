@@ -15,6 +15,7 @@
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Editor/Widgets/HIKARI_InputActionFieldWidget.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
+#include "Editor/Widgets/HIKARI_NumberField.h"
 #include "Editor/Widgets/HIKARI_RuntimeBindingFieldWidget.h"
 #include "Editor/Widgets/HIKARI_TypedValueEditor.h"
 #include "Input/Runtime/HIKARI_InputService.h"
@@ -153,7 +154,7 @@ bool ImGuiInspectorBuilder::Int(std::string_view label, int& value) {
 bool ImGuiInspectorBuilder::Float(std::string_view label, float& value) {
 #if defined(HIKARI_WITH_EDITOR)
     EDITOR::InspectorPropertyRow row(label);
-    return row.IsVisible() && ImGui::DragFloat("##Value", &value, 0.1f);
+    return row.IsVisible() && EDITOR::DragNumber("##Value", value, {.step = 0.01});
 #else
     (void)label;
     (void)value;
@@ -261,7 +262,7 @@ bool ImGuiInspectorBuilder::FloatRange(std::string_view label, float& value, flo
 #if defined(HIKARI_WITH_EDITOR)
     EDITOR::InspectorPropertyRow row(label);
     return row.IsVisible() &&
-           ImGui::DragFloat("##Value", &value, speed, minimum, maximum, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+           EDITOR::DragNumber("##Value", value, {.minimum = minimum, .maximum = maximum, .step = speed});
 #else
     (void)label;
     (void)value;
@@ -353,7 +354,7 @@ bool ImGuiInspectorBuilder::Vec2(std::string_view label, float& x, float& y) {
 #if defined(HIKARI_WITH_EDITOR)
     float values[2]{x, y};
     EDITOR::InspectorPropertyRow row(label);
-    if (!row.IsVisible() || !ImGui::DragFloat2("##Value", values, 1.0f)) {
+    if (!row.IsVisible() || !EDITOR::DragNumbers("##Value", values, 2, {.step = 0.01})) {
         return false;
     }
 

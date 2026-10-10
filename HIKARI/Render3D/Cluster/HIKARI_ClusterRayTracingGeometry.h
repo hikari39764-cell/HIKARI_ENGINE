@@ -38,8 +38,9 @@ struct ClusterRayTracingGeometry final {
     uint64_t indexAllocationBytes = 0;
 
     void Reset(const GFX::Context& graphics);
-    bool DescribeTriangles(uint32_t firstPrimitive, uint32_t primitiveCount,
-                           D3D12_RAYTRACING_GEOMETRY_DESC& output) const;
+    // deformedPositions が 0 でなければ、頂点位置はそこ（float3 の並び、変形後）から読む。添字は共有する。
+    bool DescribeTriangles(uint32_t firstPrimitive, uint32_t primitiveCount, D3D12_RAYTRACING_GEOMETRY_DESC& output,
+                           D3D12_GPU_VIRTUAL_ADDRESS deformedPositions = 0) const;
 };
 
 class ClusterRayTracingGeometryBuilder final {

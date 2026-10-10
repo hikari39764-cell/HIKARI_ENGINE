@@ -129,8 +129,10 @@ void PostProcessingStage::UpdateCommonParams(float deltaTime, int width, int hei
     actionScreenImpulseProvider_.BeginFrame(TIME::GetFrameContext().frameIndex);
 }
 
-void PostProcessingStage::AdvanceExposure(float deltaTime, const RENDER3D::COLOR::ExposureIllumination& illumination) {
+void PostProcessingStage::AdvanceExposure(float deltaTime, const RENDER3D::COLOR::ExposureIllumination& illumination,
+                                          bool meterScene) {
     exposureState_ = automaticExposureMeter_.BeginFrame(exposureSettings_, illumination, deltaTime);
+    meterScene_ = meterScene;
 }
 
 void PostProcessingStage::SetIntensity(float intensity) { commonParams_.intensity = intensity; }
@@ -831,7 +833,7 @@ RenderTarget2D* PostProcessingStage::ResolveHdr(RenderTarget2D& source, QuadDraw
         sunGlareDebugStats_.requested = sunGlareFrame_.enabled;
     }
     // 測光は芸術的な全体後処理の前に行う。後処理の色調が露出を引き戻さない。
-    if (!debugOutput) {
+    if (!debugOutput && meterScene_) {
         (void)automaticExposureMeter_.QueueMeasurement(*output, exposureState_.preExposure);
     }
     displaySceneDepthOwner_ = debugOutput ? nullptr : sceneDepthOwner;

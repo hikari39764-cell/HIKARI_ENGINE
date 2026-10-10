@@ -104,7 +104,8 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
         light.fogParams.x = 0.0f;
         editorFrame.view.shadow.enabled = 0;
     }
-    if (settings.neutralClayMaterial) {
+    if (settings.neutralLighting) {
+        // 空の環境光も物理量なので、中立照明では使わない（上の平行光と環境光だけで見せる）。
         editorFrame.view.skyEnvironment = {};
     }
     if (!editorFrame.view.Publish(graphics)) {

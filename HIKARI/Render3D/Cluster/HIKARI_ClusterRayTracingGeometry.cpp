@@ -57,7 +57,8 @@ void ClusterRayTracingGeometry::Reset(const GFX::Context& graphics) {
 }
 
 bool ClusterRayTracingGeometry::DescribeTriangles(uint32_t firstPrimitive, uint32_t primitiveCount,
-                                                  D3D12_RAYTRACING_GEOMETRY_DESC& output) const {
+                                                  D3D12_RAYTRACING_GEOMETRY_DESC& output,
+                                                  D3D12_GPU_VIRTUAL_ADDRESS deformedPositions) const {
     output = {};
     if (!indices || !geometry || primitiveCount == 0 || firstPrimitive > layout.meshletPrimitiveCount ||
         primitiveCount > layout.meshletPrimitiveCount - firstPrimitive)
@@ -65,8 +66,11 @@ bool ClusterRayTracingGeometry::DescribeTriangles(uint32_t firstPrimitive, uint3
     output.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
     // alpha / sidedness は TLAS instance flags と共通 hit-material evaluator が決める。
     output.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
-    output.Triangles.VertexBuffer = {geometry->GetGPUVirtualAddress() + layout.vertexOffsetBytes,
-                                     sizeof(ClusterGeometryGpuVertexPosition)};
+    output.Triangles.VertexBuffer =
+        deformedPositions != 0
+            ? D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE{deformedPositions, 3 * sizeof(float)}
+            : D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE{geometry->GetGPUVirtualAddress() + layout.vertexOffsetBytes,
+                                                   sizeof(ClusterGeometryGpuVertexPosition)};
     output.Triangles.VertexCount = layout.vertexCount;
     output.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
     output.Triangles.IndexBuffer = indices->GetGPUVirtualAddress() + uint64_t(firstPrimitive) * 12;

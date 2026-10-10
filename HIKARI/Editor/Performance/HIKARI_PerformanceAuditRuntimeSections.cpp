@@ -109,8 +109,13 @@ void DrawEffectsTable(const RuntimePerformanceSnapshot& s) {
         MetricRow("GI Probe / RT Resident / RT Retiring MiB", "%.2f / %.2f / %.2f",
                   double(s.dynamicGi.probeBytes) / (1024 * 1024), double(s.rayScene.residentBytes) / (1024 * 1024),
                   double(s.rayScene.retiringBytes) / (1024 * 1024));
-        MetricRow("Shared RT Pending / Unsupported / Missing", "%u / %u / %u", s.rayScene.pendingChunks,
-                  s.rayScene.unsupportedSurfaces, s.rayScene.missingSurfaces);
+        uint32_t excludedSurfaces = 0;
+        for (const uint32_t count : s.rayScene.excluded.surfaces) {
+            excludedSurfaces += count;
+        }
+        MetricRow("Shared RT Pending / Excluded / Missing", "%u / %u / %u", s.rayScene.pendingChunks, excludedSurfaces,
+                  s.rayScene.excluded
+                      .surfaces[static_cast<size_t>(RENDER3D::RAYTRACING::RuntimeRayTracingExclusion::Missing)]);
         MetricRow("GI Local Lights / Overflow", "%u / %u", s.dynamicGi.localLights, s.dynamicGi.droppedLights);
         MetricRow("Probe Sampling / Dynamic GI Quality", "%s / %s",
                   RENDER3D::LightProbeVolumeSamplingModeLabel(s.renderQuality.lightProbeVolumeSampling),

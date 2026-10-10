@@ -21,9 +21,28 @@ struct HikariRayTracingHitRecord
     uint firstCluster;
     uint clusterCount;
     uint primitiveCount;
+    uint deformedVertexBase;  // 変形した頂点の pool 内の byte 位置（flags bit2 の時）
+    uint deformedVertexCount;
+    uint2 padding;
 };
 RaytracingAccelerationStructure gRuntimeRayScene : register(t0, space8);
 StructuredBuffer<HikariRayTracingHitRecord> gRuntimeRayHits : register(t1, space8);
+// 変形した面（骨格の蒙皮）の world 空間の頂点：[位置 float3 × N][法線 float3 × N][接線 float4 × N]。
+ByteAddressBuffer gRuntimeRayDeformed : register(t2, space8);
+static const uint HIKARI_RAY_HIT_DEFORMED = 4u;
+// 透過する面（ガラスなど半透明）。光線を止めず、影の光線だけ透過率を掛けて先へ進む。
+static const uint HIKARI_RAY_HIT_TRANSMISSIVE = 8u;
+
+void HikariLoadDeformedRayVertex(HikariRayTracingHitRecord record, uint vertex, inout HikariClusterVertex value)
+{
+    const uint count = record.deformedVertexCount;
+    if (vertex >= count)
+        return;
+    const uint base = record.deformedVertexBase;
+    value.position.xyz = asfloat(gRuntimeRayDeformed.Load3(base + vertex * 12u));
+    value.normal.xyz = asfloat(gRuntimeRayDeformed.Load3(base + count * 12u + vertex * 12u));
+    value.tangent = asfloat(gRuntimeRayDeformed.Load4(base + count * 24u + vertex * 16u));
+}
 ByteAddressBuffer gRuntimeRayGeometry[HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_COUNT] : register(t0, space1);
 
 struct HikariRaySurface
@@ -107,9 +126,16 @@ bool HikariDecodeRayCandidate(inout RayQuery<RAY_FLAG_NONE> query,
     if (any(local >= cluster.vertexCount) || cluster.firstVertex >= header.vertexCount ||
         any(local >= header.vertexCount-cluster.firstVertex)) return false;
     const uint3 vertices = cluster.firstVertex + local;
-    const HikariClusterVertex a = HikariLoadClusterVertex(gRuntimeRayGeometry[NonUniformResourceIndex(geometry)], header, vertices.x);
-    const HikariClusterVertex b = HikariLoadClusterVertex(gRuntimeRayGeometry[NonUniformResourceIndex(geometry)], header, vertices.y);
-    const HikariClusterVertex c = HikariLoadClusterVertex(gRuntimeRayGeometry[NonUniformResourceIndex(geometry)], header, vertices.z);
+    HikariClusterVertex a = HikariLoadClusterVertex(gRuntimeRayGeometry[NonUniformResourceIndex(geometry)], header, vertices.x);
+    HikariClusterVertex b = HikariLoadClusterVertex(gRuntimeRayGeometry[NonUniformResourceIndex(geometry)], header, vertices.y);
+    HikariClusterVertex c = HikariLoadClusterVertex(gRuntimeRayGeometry[NonUniformResourceIndex(geometry)], header, vertices.z);
+    // 変形した面は位置・法線・接線を world 空間の変形結果で置き換える（UV は元のまま、instance の変換は単位）。
+    if ((record.flags & HIKARI_RAY_HIT_DEFORMED) != 0u)
+    {
+        HikariLoadDeformedRayVertex(record, vertices.x, a);
+        HikariLoadDeformedRayVertex(record, vertices.y, b);
+        HikariLoadDeformedRayVertex(record, vertices.z, c);
+    }
     const float2 bary = query.CandidateTriangleBarycentrics();
     const float3 weights = float3(1.0f-bary.x-bary.y, bary.x, bary.y);
     const float3x4 objectToWorld = query.CandidateObjectToWorld3x4();
@@ -139,9 +165,18 @@ bool HikariDecodeRayCandidate(inout RayQuery<RAY_FLAG_NONE> query,
 static const uint HIKARI_RAY_SHADOW = 1u;
 static const uint HIKARI_RAY_REPORT_BACKFACES = 2u;
 
-bool HikariTraceRuntimeScene(RayDesc ray, uint hitRecordCount, uint materialCount,
+// 半透明の面が光を通す割合。被覆の外（1 - alpha）はそのまま、被覆の中は透過の分だけ底色で色づいて通る。
+float HikariRayTransmittance(HikariMeshMaterialData material, HikariRaySurface surface, SamplerState materialSampler)
+{
+    const float4 base = HikariResolveMaterialBaseColor(material, surface.uv0, surface.uv1, materialSampler, true);
+    const float3 through = (1.0f - base.a) + base.a * saturate(material.surfaceLayers.z) * base.rgb;
+    return saturate(dot(through, float3(0.2126f, 0.7152f, 0.0722f)));
+}
+
+// transmittance は影の光線が通り抜けた半透明の面の透過率の積（不透明に当たれば戻り値が true）。
+bool HikariTraceRuntimeSceneCore(RayDesc ray, uint hitRecordCount, uint materialCount,
     float4 time, SamplerState materialSampler, uint queryFlags, out HikariRaySurface hit,
-    float2 rayCone = 0.0f.xx)
+    float2 rayCone, inout float transmittance)
 {
     hit = (HikariRaySurface)0;
     const bool shadowRay = (queryFlags & HIKARI_RAY_SHADOW) != 0u;
@@ -157,7 +192,9 @@ bool HikariTraceRuntimeScene(RayDesc ray, uint hitRecordCount, uint materialCoun
         const HikariMeshMaterialData material = HikariGetMeshMaterialData(candidate.materialIndex);
         const bool doubleSided = (flags & 1u) != 0u || (material.instanceFlags & HIKARI_PROGRAM_FLAG_DOUBLE_SIDED) != 0u;
         const bool backFace = dot(candidate.geometricNormal, ray.Direction) > 0.0f;
-        if (!doubleSided && backFace && (queryFlags & HIKARI_RAY_REPORT_BACKFACES) == 0u) continue;
+        // 影の光線は裏面でも遮る（カスケードの影と同じ）。始点が接地した物の張り出しの内側に入っても、
+        // 中から抜ける時に裏面を飛ばすと影の中に光の筋が出る。
+        if (!doubleSided && backFace && !shadowRay && (queryFlags & HIKARI_RAY_REPORT_BACKFACES) == 0u) continue;
         candidate.backFace = backFace ? 1u : 0u;
         if (backFace) { candidate.geometricNormal = -candidate.geometricNormal; candidate.normal = -candidate.normal; }
         // alpha test は stochastic ray 自身の交差位置で評価する。低 mip の平均 alpha を
@@ -172,6 +209,12 @@ bool HikariTraceRuntimeScene(RayDesc ray, uint hitRecordCount, uint materialCoun
             const HikariMaterialExpressionResult coverageExpression = HikariEvaluateMaterialExpression(material, coverageContext, materialSampler);
             HikariApplyMaterialExpressionCoverage(coverageExpression, coverage, cutoff);
             if (coverage.a < cutoff) continue;
+        }
+        if ((flags & HIKARI_RAY_HIT_TRANSMISSIVE) != 0u)
+        {
+            if (shadowRay)
+                transmittance *= HikariRayTransmittance(material, candidate, materialSampler);
+            continue;
         }
         query.CommitNonOpaqueTriangleHit();
         hit = candidate;
@@ -197,5 +240,23 @@ bool HikariTraceRuntimeScene(RayDesc ray, uint hitRecordCount, uint materialCoun
         if ((expression.outputMask & HIKARI_EXPRESSION_OUTPUT_EMISSIVE) != 0u) hit.emissive = expression.emissive;
     }
     return found;
+}
+bool HikariTraceRuntimeScene(RayDesc ray, uint hitRecordCount, uint materialCount,
+    float4 time, SamplerState materialSampler, uint queryFlags, out HikariRaySurface hit,
+    float2 rayCone = 0.0f.xx)
+{
+    float transmittance = 1.0f;
+    return HikariTraceRuntimeSceneCore(ray, hitRecordCount, materialCount, time, materialSampler, queryFlags, hit,
+        rayCone, transmittance);
+}
+
+// 太陽などへの影の光線の通る割合（不透明に当たれば 0、半透明は透過率の積）。
+float HikariTraceRuntimeShadowTransmittance(RayDesc ray, uint hitRecordCount, uint materialCount, float4 time,
+    SamplerState materialSampler)
+{
+    float transmittance = 1.0f;
+    HikariRaySurface ignored;
+    return HikariTraceRuntimeSceneCore(ray, hitRecordCount, materialCount, time, materialSampler, HIKARI_RAY_SHADOW,
+        ignored, 0.0f.xx, transmittance) ? 0.0f : transmittance;
 }
 #endif

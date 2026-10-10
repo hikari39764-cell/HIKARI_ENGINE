@@ -23,10 +23,6 @@ namespace HIKARI::EDITOR {
 using RENDERSTYLE::RenderStyleAsset;
 using RENDERSTYLE::RenderStylePostLayer;
 
-bool RenderStyleEditor::CreateStyleCopy(RenderStyleAsset source, AssetDatabase& database, std::string& message) {
-    return document_.New(std::move(source), message) && document_.Save(database, message);
-}
-
 void RenderStyleEditor::PublishDrafts(DocumentSceneBase& scene) {
     const bool draft = document_.IsOpen() && document_.IsDirty() && document_.Guid().IsValid();
     const uint64_t revision = draft ? document_.Revision() : 0u;
@@ -85,7 +81,7 @@ bool DrawRenderStylePicker(const AssetDatabase& database, std::string& id) {
     return id != before;
 }
 
-bool RenderStyleEditor::DrawPostLayers(RenderStyleAsset& style, DocumentSceneBase& scene, bool editable) {
+bool RenderStyleEditor::DrawPostLayers(RenderStyleAsset& style, DocumentSceneBase& scene) {
     const AssetDatabase& database = scene.GetAssetDatabase();
     bool changed = false;
     ImGui::SeparatorText(TEXT::Localize("ui.renderStyle.postLayers").c_str());
@@ -98,32 +94,28 @@ bool RenderStyleEditor::DrawPostLayers(RenderStyleAsset& style, DocumentSceneBas
     for (size_t index = 0; index < style.post.size(); ++index) {
         RenderStylePostLayer& layer = style.post[index];
         ImGui::PushID(static_cast<int>(index));
-        ImGui::BeginDisabled(!editable);
         changed |= ImGui::Checkbox("##enabled", &layer.enabled);
-        ImGui::EndDisabled();
         ImGui::SameLine();
-        const float width = ImGui::GetContentRegionAvail().x - (editable ? buttons : 0.0f);
+        const float width = ImGui::GetContentRegionAvail().x - buttons;
         if (ImGui::Selectable(ResolvePostProfileLabel(layer.profileId, database).c_str(), selectedLayer_ == index, 0,
                               ImVec2(width, 0.0f))) {
             selectedLayer_ = index;
         }
-        if (editable) {
-            ImGui::SameLine();
-            ImGui::BeginDisabled(index == 0u);
-            if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {
-                movedUp = index;
-            }
-            ImGui::EndDisabled();
-            ImGui::SameLine();
-            ImGui::BeginDisabled(index + 1u == style.post.size());
-            if (ImGui::ArrowButton("##down", ImGuiDir_Down)) {
-                movedUp = index + 1u;
-            }
-            ImGui::EndDisabled();
-            ImGui::SameLine();
-            if (ImGui::Button("X", ImVec2(ImGui::GetFrameHeight(), 0.0f))) {
-                removed = index;
-            }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(index == 0u);
+        if (ImGui::ArrowButton("##up", ImGuiDir_Up)) {
+            movedUp = index;
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(index + 1u == style.post.size());
+        if (ImGui::ArrowButton("##down", ImGuiDir_Down)) {
+            movedUp = index + 1u;
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button("X", ImVec2(ImGui::GetFrameHeight(), 0.0f))) {
+            removed = index;
         }
         ImGui::PopID();
     }
@@ -137,7 +129,7 @@ bool RenderStyleEditor::DrawPostLayers(RenderStyleAsset& style, DocumentSceneBas
         selectedLayer_ = selectedLayer_ > 0u && selectedLayer_ >= *removed ? selectedLayer_ - 1u : selectedLayer_;
         changed = true;
     }
-    if (editable && style.post.size() < RENDERSTYLE::kMaxRenderStylePostLayers) {
+    if (style.post.size() < RENDERSTYLE::kMaxRenderStylePostLayers) {
         std::string added;
         ImGui::SetNextItemWidth(-1.0f);
         if (globalPost_.DrawProfilePicker(added, database, TEXT::Localize("ui.renderStyle.addPostLayer").c_str()) &&
@@ -150,15 +142,14 @@ bool RenderStyleEditor::DrawPostLayers(RenderStyleAsset& style, DocumentSceneBas
     if (selectedLayer_ < style.post.size()) {
         RenderStylePostLayer& layer = style.post[selectedLayer_];
         ImGui::SeparatorText(ResolvePostProfileLabel(layer.profileId, database).c_str());
-        if (editable) {
+        {
             InspectorPropertyRow row(TEXT::Localize("ui.renderStyle.postProfile"));
             if (row.IsVisible()) {
                 changed |= globalPost_.DrawProfilePicker(layer.profileId, database);
             }
         }
         ImGui::PushID("layerProfile");
-        if (const std::string copied = globalPost_.DrawSelectedProfile(layer.profileId, scene, editable);
-            !copied.empty()) {
+        if (const std::string copied = globalPost_.DrawSelectedProfile(layer.profileId, scene); !copied.empty()) {
             layer.profileId = copied;
             changed = true;
         }
@@ -177,16 +168,16 @@ std::string RenderStyleEditor::DrawStyle(const std::string& id, DocumentSceneBas
             ImGui::TextColored(kAssetDocumentErrorColor, "%s", error.c_str());
             return {};
         }
-        ImGui::TextDisabled("%s", TEXT::Localize("asset.document.builtinReadOnly").c_str());
-        if (ImGui::Button(TEXT::Localize("asset.document.createCopy").c_str()) &&
-            CreateStyleCopy(*asset, database, status_)) {
+        // 内蔵は読み取り専用。陰影か後処理の層の最初の編集でその値ごとプロジェクトへ複製し、シーンを複製へ切り替える。
+        ImGui::TextDisabled("%s", TEXT::Localize("asset.document.builtinCopyOnEdit").c_str());
+        DrawAssetDocumentStatus(status_);
+        bool copy = ImGui::Button(TEXT::Localize("asset.document.createCopy").c_str());
+        RenderStyleAsset edited = *asset;
+        copy |= DrawShading(edited.shading).changed;
+        copy |= DrawPostLayers(edited, scene);
+        if (copy && document_.SaveAsNew(std::move(edited), database, status_)) {
             copiedId = document_.Guid().value;
         }
-        RenderStyleAsset view = *asset;
-        ImGui::BeginDisabled();
-        (void)DrawShading(view.shading);
-        ImGui::EndDisabled();
-        (void)DrawPostLayers(view, scene, false);
     } else if (OpenAssetDocumentForEdit(document_, AssetGuid{id}, database, status_)) {
         DrawAssetDocumentToolbar(document_, database, status_);
         RenderStyleAsset edited = document_.Profile();
@@ -211,12 +202,9 @@ std::string RenderStyleEditor::DrawStyle(const std::string& id, DocumentSceneBas
         } else if (!fields.active) {
             document_.SealMerge();
         }
-        if (DrawPostLayers(edited, scene, true)) {
+        if (DrawPostLayers(edited, scene)) {
             (void)document_.Apply(std::move(edited), status_);
         }
-    }
-    if (!status_.empty()) {
-        ImGui::TextWrapped("%s", status_.c_str());
     }
     return copiedId;
 }

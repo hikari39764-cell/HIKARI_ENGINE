@@ -34,6 +34,8 @@ struct EditorDirectorCameraSettings {
     float wheelMoveStep = 1.0f;
     float pitchLimitRad = 1.52f;
     float minimumOrbitDistance = 0.05f;
+    // 高さによる速度の倍率: |y| がこの高さを超えると比例して速くする（場面の視口のカメラと同じ）。
+    float altitudeSpeedHeight = 50.0f;
 };
 
 struct EditorDirectorCameraState {

@@ -14,6 +14,8 @@ struct EditorShellContents {
     // AI の操作がユーザーの承認を待っている。
     bool assistantAttention = false;
     bool tasksBusy = false;
+    // 未保存の文書の名前（場面と資産）。空なら表示しない。
+    std::string unsavedSummary;
 };
 class EditorShell {
 public:

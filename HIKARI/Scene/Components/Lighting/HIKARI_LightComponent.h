@@ -23,8 +23,8 @@ public:
     bool IsEnabled() const noexcept { return settings_.enabled; }
     RENDER3D::LIGHTING::SceneLightType GetLightType() const noexcept { return settings_.type; }
     const MATH::Vec3& GetColor() const noexcept { return settings_.color; }
-    // 光束 [lm]。描画は光度 I = Φ / 4π [cd] で、距離の二乗で減衰する。
-    float GetIntensity() const noexcept { return settings_.intensity; }
+    // 今の単位での明るさ（物理は光束 [lm]、相対は環境の照度に対する倍率）。
+    float GetIntensity() const noexcept { return GetLightBrightness(settings_); }
     float GetRange() const noexcept { return settings_.range; }
     float GetSourceRadius() const noexcept { return settings_.sourceRadius; }
     bool CastsShadows() const noexcept { return settings_.castsShadows; }

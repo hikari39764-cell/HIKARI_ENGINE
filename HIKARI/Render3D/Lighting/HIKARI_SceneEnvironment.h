@@ -114,6 +114,13 @@ struct ShadowSettings {
     float distance = 30.0f;
     // 様式化した陰影の演出用。Standard PBR は実際の可視性を直接使う。
     float strength = 0.75f;
+    // 接触影：画面空間で主光の方へ短く深度を辿り、カスケードの分解能では消える足元や小物の接地の影を補う。
+    // length は辿る長さ [m]、strength は濃さ、thickness は遮る物の厚みの想定 [m]（これより奥の面は遮らない）。
+    // 有効にすると不透明面の Forward の前に場面の深度が要る（GeometryAux が無ければ深度 prepass を足す）ので既定は無効。
+    bool contactShadows = false;
+    float contactShadowLength = 0.25f;
+    float contactShadowStrength = 1.0f;
+    float contactShadowThickness = 0.25f;
 };
 
 struct SunGlareSettings {
@@ -204,7 +211,6 @@ struct ScreenSpaceReflectionSettings {
     float maxRoughness = 0.72f;
     float edgeFade = 0.08f;
     float stride = 0.18f;
-    bool rayTracingFallback = false;
 };
 
 // 画面空間の次表面散乱。材質の Subsurface（強さ）と Subsurface Radius（[m]）を持つ面の拡散光を、深度に沿って

@@ -2,8 +2,6 @@
 
 #if defined(HIKARI_WITH_EDITOR)
 
-#include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -15,10 +13,12 @@
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
+#include "Editor/Widgets/HIKARI_NumberField.h"
 
 // JSONFIELDS の項目表から設定の編集 UI を作る。資産の読み書きと同じ一つの表を使い、項目ごとの UI を書かない。
 // 表示名は "<labelPrefix>.<key>" の翻訳、無ければ key を語に分けたもの。
 // 資産の参照など表だけでは描けない項目は、custom(key, object, result) が true を返して自分で描く。
+// 数値は NumberField（右クリックで T{} の既定値へ戻せる）。"enabled" が false なら、その後の項目は灰色にする。
 namespace HIKARI::EDITOR {
 
 // "textureIlluminance" -> "Texture Illuminance"
@@ -47,10 +47,23 @@ struct FieldDrawer {
     std::string_view labelPrefix;
     FieldEditResult& result;
     const Custom& custom;
+    // "enabled" を切った後の項目（効かない値）を灰色にする。
+    mutable bool inactive = false;
 
     void Track(bool changed) const {
         result.changed |= changed;
         result.active |= ImGui::IsItemActive();
+    }
+
+    // 既定値は構造体の初期値（T{}）。右クリックの「既定値へ戻す」に使う。
+    template <class M>
+    static const M* DefaultOf(M T::* member) {
+        if constexpr (std::is_default_constructible_v<T>) {
+            static const T defaults{};
+            return &(defaults.*member);
+        } else {
+            return nullptr;
+        }
     }
 
     template <class M, class... Options>
@@ -59,43 +72,30 @@ struct FieldDrawer {
             return;
         }
         const std::string label = ResolveFieldLabel(labelPrefix, key);
+        ImGui::BeginDisabled(inactive);
         InspectorPropertyRow row(label);
         if (!row.IsVisible()) {
+            ImGui::EndDisabled();
             return;
         }
         ImGui::PushID(key);
         M& value = object.*member;
-        double minimum = 0.0;
-        double maximum = 0.0;
-        bool ranged = false;
-        ((void)ReadRange(options, minimum, maximum, ranged), ...);
-        const float speed = DragSpeed(Magnitude(value), minimum, maximum, ranged);
+        NumberRange range{};
+        ((void)ReadRange(options, range), ...);
+        const M* fallback = DefaultOf(member);
         if constexpr (std::is_same_v<M, bool>) {
             Track(ImGui::Checkbox("##value", &value));
-        } else if constexpr (std::is_same_v<M, float>) {
-            Track(ImGui::DragFloat("##value", &value, speed, static_cast<float>(minimum), static_cast<float>(maximum),
-                                   "%.4g", ranged ? ImGuiSliderFlags_AlwaysClamp : 0));
-        } else if constexpr (std::is_same_v<M, double>) {
-            Track(ImGui::DragScalar("##value", ImGuiDataType_Double, &value, speed, ranged ? &minimum : nullptr,
-                                    ranged ? &maximum : nullptr, "%.4f", ranged ? ImGuiSliderFlags_AlwaysClamp : 0));
-        } else if constexpr (std::is_same_v<M, uint32_t>) {
-            const uint32_t low = static_cast<uint32_t>(minimum);
-            const uint32_t high = static_cast<uint32_t>(maximum);
-            Track(ImGui::DragScalar("##value", ImGuiDataType_U32, &value, 1.0f, ranged ? &low : nullptr,
-                                    ranged ? &high : nullptr, "%u", ranged ? ImGuiSliderFlags_AlwaysClamp : 0));
-        } else if constexpr (std::is_same_v<M, int32_t> || std::is_same_v<M, int>) {
-            Track(ImGui::DragInt("##value", &value, 1.0f, static_cast<int>(minimum), static_cast<int>(maximum), "%d",
-                                 ranged ? ImGuiSliderFlags_AlwaysClamp : 0));
+        } else if constexpr (std::is_arithmetic_v<M>) {
+            Track(DragNumber("##value", value, range, fallback));
         } else if constexpr (std::is_same_v<M, MATH::Vec2>) {
-            Track(ImGui::DragFloat2("##value", &value.x, speed, static_cast<float>(minimum),
-                                    static_cast<float>(maximum)));
+            Track(DragNumbers("##value", &value.x, 2, range, fallback != nullptr ? &fallback->x : nullptr));
         } else if constexpr (std::is_same_v<M, MATH::Vec3>) {
-            if (IsColorFieldKey(key) && maximum <= 16.0) {
-                Track(ImGui::ColorEdit3("##value", &value.x,
-                                        ImGuiColorEditFlags_Float | (maximum > 1.0 ? ImGuiColorEditFlags_HDR : 0)));
+            if (IsColorFieldKey(key) && range.maximum <= 16.0) {
+                Track(
+                    ImGui::ColorEdit3("##value", &value.x,
+                                      ImGuiColorEditFlags_Float | (range.maximum > 1.0 ? ImGuiColorEditFlags_HDR : 0)));
             } else {
-                Track(ImGui::DragFloat3("##value", &value.x, speed, static_cast<float>(minimum),
-                                        static_cast<float>(maximum), "%.4g"));
+                Track(DragNumbers("##value", &value.x, 3, range, fallback != nullptr ? &fallback->x : nullptr));
             }
         } else if constexpr (std::is_same_v<M, std::string>) {
             char buffer[256]{};
@@ -108,6 +108,10 @@ struct FieldDrawer {
             }
         }
         ImGui::PopID();
+        ImGui::EndDisabled();
+        if constexpr (std::is_same_v<M, bool>) {
+            inactive |= std::string_view(key) == "enabled" && !value;
+        }
     }
 
     template <class E, std::size_t N, class... Options>
@@ -120,6 +124,7 @@ struct FieldDrawer {
         if (!row.IsVisible()) {
             return;
         }
+        ImGui::BeginDisabled(inactive);
         ImGui::PushID(key);
         E& value = object.*member;
         const std::string current = ResolveFieldLabel(labelPrefix, TEXT::EnumToName(names, value));
@@ -134,39 +139,14 @@ struct FieldDrawer {
             ImGui::EndCombo();
         }
         ImGui::PopID();
-    }
-
-    // 1 画素あたりの変化量。値の大きさの 1% を基本に、範囲の 1/2000 から 1/500 の間へ収める。
-    static float DragSpeed(double magnitude, double minimum, double maximum, bool ranged) {
-        const double relative = magnitude * 0.01;
-        if (!ranged) {
-            return static_cast<float>(relative > 0.001 ? relative : 0.001);
-        }
-        const double span = maximum - minimum;
-        const double low = span / 2000.0;
-        const double high = span / 500.0;
-        return static_cast<float>(relative < low ? low : (relative > high ? high : relative));
-    }
-
-    template <class M>
-    static double Magnitude(const M& value) {
-        if constexpr (std::is_same_v<M, MATH::Vec2>) {
-            return std::max(std::abs(value.x), std::abs(value.y));
-        } else if constexpr (std::is_same_v<M, MATH::Vec3>) {
-            return std::max({std::abs(value.x), std::abs(value.y), std::abs(value.z)});
-        } else if constexpr (std::is_arithmetic_v<M>) {
-            return std::abs(static_cast<double>(value));
-        } else {
-            return 0.0;
-        }
+        ImGui::EndDisabled();
     }
 
     template <class Option>
-    static bool ReadRange(const Option& option, double& minimum, double& maximum, bool& ranged) {
+    static bool ReadRange(const Option& option, NumberRange& range) {
         if constexpr (std::is_same_v<Option, JSONFIELDS::Range>) {
-            minimum = option.min;
-            maximum = option.max;
-            ranged = true;
+            range.minimum = option.min;
+            range.maximum = option.max;
         }
         return true;
     }

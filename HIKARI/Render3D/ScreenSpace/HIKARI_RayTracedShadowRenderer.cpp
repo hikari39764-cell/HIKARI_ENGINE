@@ -48,8 +48,9 @@ bool RayTracedShadowRenderer::Render(const GFX::Context& graphics, const RayTrac
     if (commands == nullptr || graphics.device == nullptr || graphics.srvHeap == nullptr || inputs.camera == nullptr ||
         inputs.rayLighting == nullptr || inputs.materials == nullptr || !*inputs.materials ||
         !inputs.sceneDepth.IsSampleable() ||
-        inputs.rayLighting->status != RAYTRACING::RuntimeRayLightingStatus::Ready ||
-        !inputs.rayLighting->scene.complete || inputs.rayLighting->scene.accelerationStructure == 0) {
+        inputs.rayLighting->status != RAYTRACING::RuntimeRayLightingStatus::Ready || !inputs.rayLighting->scene.ready ||
+        !RAYTRACING::CanTraceShadows(inputs.rayLighting->scene.excludedShadowCasters) ||
+        inputs.rayLighting->scene.accelerationStructure == 0) {
         return false;
     }
     if (!EnsurePipeline(graphics) || !EnsureTargets(graphics, inputs.sceneDepth.width, inputs.sceneDepth.height)) {

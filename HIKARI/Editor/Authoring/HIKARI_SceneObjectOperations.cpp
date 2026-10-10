@@ -300,6 +300,10 @@ EditorOperationResult CreateScenePrimitive(SceneObjectOperationContext& operatio
         meshKind = ProceduralMeshKind::Cylinder;
     } else if (kind == "capsule") {
         meshKind = ProceduralMeshKind::Capsule;
+    } else if (kind == "ramp") {
+        meshKind = ProceduralMeshKind::Ramp;
+    } else if (kind == "stairs") {
+        meshKind = ProceduralMeshKind::Stairs;
     }
 
     EDITOR::CreatePrimitiveRequest request{};

@@ -9,7 +9,6 @@
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Scene/Camera/HIKARI_CameraVolume.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
-#include "Scene/Components/HIKARI_CameraFlowComponent.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
@@ -110,18 +109,6 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
             };
             if (const auto* target = scene.GetWorld().FindObject(target_))
                 include(CAMERA::WorldPosition(*target));
-            for (const auto& object : scene.GetWorld().GetObjects()) {
-                const auto* flow = object ? object->GetComponent<CameraFlowComponent>() : nullptr;
-                if (!flow || flow->Settings().cameraObjectId != camera_)
-                    continue;
-                const auto& size = flow->Settings().halfExtents;
-                const auto matrix = object->GetTransform().GetWorldMatrix();
-                for (int i = 0; i < 8; ++i) {
-                    const auto point = matrix.TransformPoint(
-                        {i & 1 ? size.x : -size.x, i & 2 ? size.y : -size.y, i & 4 ? size.z : -size.z, 1});
-                    include({point.x, point.y, point.z});
-                }
-            }
             // 初回だけ全体を斜め上から捉え、その後の自由観察を上書きしない。
             const auto center = (minimum + maximum) * .5f;
             const float distance = std::max(8.0f, MATH::Length(maximum - minimum) * 1.2f);
@@ -132,33 +119,25 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
             observer_.SetTargetCamera(camera_);
             focused_ = true;
         }
-        if (flowEditing_ && !runtime && !flowDraft_.empty()) {
-            for (const auto op : {EditorTransformGizmoOperation::Translate, EditorTransformGizmoOperation::Rotate,
-                                  EditorTransformGizmoOperation::Scale}) {
-                const auto glyph = op == EditorTransformGizmoOperation::Translate ? EditorGlyph::Translate
-                                   : op == EditorTransformGizmoOperation::Rotate  ? EditorGlyph::Rotate
-                                                                                  : EditorGlyph::Scale;
-                const auto* key = op == EditorTransformGizmoOperation::Translate ? "cf.position"
-                                  : op == EditorTransformGizmoOperation::Rotate  ? "cf.rotation"
-                                                                                 : "cf.size";
-                if (IconToggleButton(glyph, key, flowGizmoState_.operation == op, {26, 26},
-                                     TEXT::Localize(key).c_str()))
-                    flowGizmoState_.operation = op;
-                ImGui::SameLine();
-            }
-            ImGui::TextDisabled("%s", TEXT::Localize("cf.gizmoHint").c_str());
-        }
+        // 模拟走动の間は追う物を視口で動かせる（実行時の位置だけで、文書は変えない）。
         EditorTransformGizmoState gizmo{};
-        const auto result = observer_.DrawContents(scene, stage, {}, gizmo, ImGui::GetIO().DeltaTime, runtime, false);
+        const SceneObjectId walker = simulateZones_ && !runtime ? target_ : SceneObjectId{};
+        const auto result =
+            observer_.DrawContents(scene, stage, walker, gizmo, ImGui::GetIO().DeltaTime, runtime, false);
+        if (walker.value && result.gizmo.changed && result.gizmo.objectId == walker) {
+            if (auto* moved = scene.GetWorld().FindObject(walker)) {
+                Transform3D transform = moved->GetTransform();
+                transform.position = result.gizmo.transform.position;
+                (void)moved->SetLocalTransform(transform);
+            }
+        }
         if (result.selectionRequested) {
             const auto* selected = scene.GetWorld().FindObject(result.selectedObjectId);
-            if (selected && selected->GetComponent<CameraFlowComponent>())
-                SelectFlow(scene, result.selectedObjectId);
             if (selected && selected->GetComponent<CameraComponent>()) {
                 SelectCamera(scene, result.selectedObjectId);
             }
         }
-        DrawFlowOverlay(scene, result.viewport);
+        DrawZoneOverlay(scene, result.viewport);
         if (shown && shown->GameplayState().hasPose) {
             const auto& pose = shown->GameplayState().outputPose;
             ImVec2 eye, target;

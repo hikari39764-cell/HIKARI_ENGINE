@@ -46,7 +46,8 @@ public:
     void Shutdown();
     void UpdateCommonParams(float deltaTime, int width, int height);
     // フレームの露出を一度だけ進める（P と P_prev が決まる）。HDR へ書く前に呼ぶ。illumination は場面を照らす光の量。
-    void AdvanceExposure(float deltaTime, const RENDER3D::COLOR::ExposureIllumination& illumination);
+    // meterScene が false のフレームは主ビューの画面を測らない。
+    void AdvanceExposure(float deltaTime, const RENDER3D::COLOR::ExposureIllumination& illumination, bool meterScene);
     void SetIntensity(float intensity);
     void SetSequenceEffects(std::span<const SEQUENCER::ScreenEffectSample> effects);
     void SetCombo(float combo);
@@ -193,6 +194,7 @@ private:
     RENDER3D::COLOR::ExposureSettings exposureSettings_{};
     RENDER3D::COLOR::AutomaticExposureMeter automaticExposureMeter_{};
     RENDER3D::COLOR::ExposureFrameState exposureState_{};
+    bool meterScene_ = true;
     FxaaSettings fxaaSettings_{};
     BloomDebugStats bloomDebugStats_{};
     SunGlareFrame sunGlareFrame_{};

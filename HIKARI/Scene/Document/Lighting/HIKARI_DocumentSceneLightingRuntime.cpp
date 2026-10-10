@@ -50,8 +50,23 @@ SceneDependencySet DocumentSceneBase::CollectRuntimeDependencies() const {
 }
 
 bool DocumentSceneBase::ApplyDocumentEnvironmentRuntimeChanges() {
-    const SkySettings previousSky = state_->runtime.environment.GetProfile().sky;
+    ENVIRONMENT::EnvironmentRuntime& runtime = state_->runtime.environment;
+    const SkySettings previousSky = runtime.GetProfile().sky;
+    const ENVIRONMENT::SceneEnvironmentBinding previousBinding = runtime.GetBinding();
+    const ENVIRONMENT::EnvironmentSnapshot previousSnapshot = runtime.Simulation().GetSnapshot();
+    const std::string previousWeather = runtime.GetWeatherId();
     ResetEnvironmentRuntime();
+    // 開始時刻・場所・時間の速さを変えない編集（プロファイル、天気、描画の様式など）では、試し見で進めた時刻と
+    // 雲の流れを保つ（初期化すると時刻が開始時刻へ戻り、雲が初期位置へ跳ぶ）。実際の天気が同じなら天気の遷移も保つ。
+    const ENVIRONMENT::SceneEnvironmentBinding& binding = state_->identity.document.environment;
+    if (binding.time == previousBinding.time && binding.location == previousBinding.location &&
+        binding.timeScale == previousBinding.timeScale) {
+        if (runtime.GetWeatherId() != previousWeather ||
+            !runtime.Restore(previousSnapshot, previousWeather, runtime.GetRenderStyleId())) {
+            runtime.Simulation().SetTime(previousSnapshot.time);
+        }
+        state_->lighting.environment = runtime.ResolveFrame();
+    }
     state_->identity.documentDirty = true;
     if (!IsSkyRuntimeResourceBindingChanged(previousSky, state_->runtime.environment.GetProfile().sky)) {
         return true;

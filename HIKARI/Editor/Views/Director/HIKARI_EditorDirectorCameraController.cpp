@@ -26,8 +26,9 @@ bool IsFiniteSettings(const EditorDirectorCameraSettings& settings) {
            std::isfinite(settings.lookSensitivity) && std::isfinite(settings.orbitSensitivity) &&
            std::isfinite(settings.panSensitivity) && std::isfinite(settings.wheelMoveStep) &&
            std::isfinite(settings.pitchLimitRad) && std::isfinite(settings.minimumOrbitDistance) &&
-           settings.moveSpeed >= 0.0f && settings.fastMultiplier >= 1.0f && settings.pitchLimitRad > 0.0f &&
-           settings.minimumOrbitDistance > 0.0f;
+           std::isfinite(settings.altitudeSpeedHeight) && settings.moveSpeed >= 0.0f &&
+           settings.fastMultiplier >= 1.0f && settings.pitchLimitRad > 0.0f && settings.minimumOrbitDistance > 0.0f &&
+           settings.altitudeSpeedHeight > 0.0f;
 }
 } // namespace
 
@@ -136,6 +137,13 @@ bool EditorDirectorCameraController::Update(const EditorDirectorCameraInput& inp
         orbitPivot_ = orbitPivot_ + pan;
     }
 
+    // 見回し中（右クリック中）のホイールは飛行速度の調整（1 目盛りで 1.25 倍）、それ以外は前後の移動。
+    const bool wheelAdjustsSpeed = input.lookActive && std::abs(input.wheelDelta) > 1.0e-6f;
+    if (wheelAdjustsSpeed) {
+        settings_.moveSpeed = std::clamp(settings_.moveSpeed * std::pow(1.25f, input.wheelDelta), 0.1f, 2000.0f);
+    }
+    const float altitudeScale = (std::max)(1.0f, std::abs(position_.y) / settings_.altitudeSpeedHeight);
+
     const float safeDeltaTime = std::clamp(deltaTime, kMinimumDeltaTime, kMaximumDeltaTime);
     MATH::Vec3 move{};
     if (input.moveForward)
@@ -151,7 +159,7 @@ bool EditorDirectorCameraController::Update(const EditorDirectorCameraInput& inp
     if (input.moveDown)
         move = move - worldUp;
     if (MATH::Length(move) > 1.0e-5f) {
-        float speed = settings_.moveSpeed;
+        float speed = settings_.moveSpeed * altitudeScale;
         if (input.fast) {
             speed *= settings_.fastMultiplier;
         }
@@ -160,8 +168,8 @@ bool EditorDirectorCameraController::Update(const EditorDirectorCameraInput& inp
         orbitPivot_ = orbitPivot_ + offset;
     }
 
-    if (std::abs(input.wheelDelta) > 1.0e-6f) {
-        const MATH::Vec3 offset = forward * (input.wheelDelta * settings_.wheelMoveStep);
+    if (!wheelAdjustsSpeed && std::abs(input.wheelDelta) > 1.0e-6f) {
+        const MATH::Vec3 offset = forward * (input.wheelDelta * settings_.wheelMoveStep * altitudeScale);
         position_ = position_ + offset;
         if (input.orbitActive) {
             orbitDistance_ = (std::max)(settings_.minimumOrbitDistance, MATH::Length(orbitPivot_ - position_));

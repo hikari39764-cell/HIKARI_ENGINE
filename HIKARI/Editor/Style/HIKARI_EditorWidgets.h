@@ -50,7 +50,11 @@ void ToolbarDivider(float height = 20.0f);
 void StatusText(const char* label, EditorStatusTone tone);
 void StatusBadge(const char* label, EditorStatusTone tone);
 void PanelTitle(const char* title, const char* subtitle = nullptr);
-void EmptyState(const char* title, const char* detail = nullptr);
+// 空の一覧の案内。actionLabel があれば、その場で始められる操作のボタンを下に置き、押されたら true。
+bool EmptyState(const char* title, const char* detail = nullptr, const char* actionLabel = nullptr);
+// 面板の「常用 + 高級」。常用の項目の後に置く折り畳み（既定で閉じる）。開いていれば中身を描いて EndAdvancedSection。
+bool BeginAdvancedSection(const char* id);
+void EndAdvancedSection();
 
 bool SearchField(const char* id, const char* hint, char* buffer, std::size_t bufferSize, float width = -1.0f);
 

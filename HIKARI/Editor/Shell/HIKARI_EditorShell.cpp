@@ -191,6 +191,11 @@ void EditorShell::Draw(EditorContext& context, EditorWorkspaceHost& workspaces, 
                            " " + std::to_string(history.errors);
         if (ImGui::SmallButton((count + "###openLogStatus").c_str()))
             page_ = Page::Log;
+        if (!contents.unsavedSummary.empty()) {
+            ImGui::SameLine();
+            ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.25f, 1.0f), "%s",
+                               (text("shell.unsavedList") + contents.unsavedSummary).c_str());
+        }
     }
     ImGui::End();
     ImGui::PopStyleVar();

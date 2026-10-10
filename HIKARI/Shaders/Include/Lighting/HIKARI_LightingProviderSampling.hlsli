@@ -63,13 +63,15 @@ float HikariCrushProbeWeight(float weight)
 // 法線まわりの空の見える割合（probe 間の重みで補間）。
 // probe ごとに atlas の深度 moment と validity、放射照度を一度ずつ読む（SH9 の 9 係数を読まない）。
 // 動的 probe は ray が疎で深度 moment が粗いので、面の裏側の probe を滑らかに弱める（DDGI の backface 項）。
-// referenceProbe は補間の基準にする probe の格子座標（probe の ray の当たった点を評価する時のその probe。
-// 当たった点との間に形状が無いことが確か）。無ければ負の値。
-// 連通（壁の向こうの角を落とす）は probe の ray の当たった点（照り返しが probe に溜まる所）でだけ使い、画面の面では
-// 深度 moment の可視性だけで角を重み付ける。画面でも連通で角を落とすと、基準の角が隣の格子で変わる所で共有面の角が
-// 片側で落とされ片側で残り、格子の面に沿った楔形の段差（球の下面の黒い楔）になる。連通を基準になり得る角すべての連続な
-// 重みで平均すれば段差は消えるが、前向きのシェーダでは 8×8 の重み付けだけで ForwardOpaque が 4.6→5.2ms になった
-// （Load の回数ではなく重み付けの分。画面で連通を外しても GIReference / CornellBox の室内は 1/255 も明るくならない）。
+// 画面の面（referenceProbe が負）は深度 moment の可視性だけで角を重み付ける。連通で角を落とすと、基準の角が隣の格子で
+// 変わる所で共有面の角が片側で落とされ片側で残り、格子の面に沿った楔形の段差（球の下面の黒い楔）になる（画面で連通を
+// 外しても GIReference / CornellBox の室内は 1/255 も明るくならない）。
+// referenceProbe は probe の ray の当たった点（照り返しが probe に溜まる所）を評価する時のその probe の格子座標。ここでは
+// 壁を越えて光を運んではならない。白い閉じた部屋は反射を重ねて光を何倍にも増やすので、壁の向こうの日なたの角がわずかに
+// 混ざるだけで昼の部屋が太陽の当たる壁の側から明るくなった。深度 moment の可視性は壁沿いの掠める向きで深度が混ざって
+// 緩むので、角の選び方に使わない。撃った probe が当たった点の格子の角にあれば、そこから連通している（形状が塞いでいない）
+// 角だけを使う。無ければ（ray が一格子より遠くへ届いた）撃った probe 自身の放射照度（当たった面の向き）で近似する。撃った
+// probe は当たった点と同じ側にあることが確か。
 float4 HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData volume, float3 worldPos, float3 n, float3 v,
     int3 referenceProbe, out float skyVisibility)
 {
@@ -84,13 +86,28 @@ float4 HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData volume, float3 w
     const float2 normalUv = HikariEncodeOctahedralDirection(n);
     const uint3 base = (uint3)floor(grid);
     const float3 fraction = frac(grid);
+    const bool probeRay = referenceProbe.x >= 0;
+    // 撃った probe の連通 7 bit（当たった点の格子の他の角の向きの卦限）。画面の面では使わない。
+    uint shooterLinks = 0u;
+    [branch] if (probeRay)
+    {
+        const int3 low = int3(min(base, counts - 1u));
+        const int3 high = int3(min(base + 1u, counts - 1u));
+        const bool3 atLow = referenceProbe == low;
+        const bool3 atHigh = referenceProbe == high;
+        const float2 shooterTile = HikariDynamicGiProbeTile((uint3)referenceProbe, counts);
+        [branch] if (!((atLow.x || atHigh.x) && (atLow.y || atHigh.y) && (atLow.z || atHigh.z)))
+        {
+            const float4 own = HikariSampleDynamicGiIrradiance(descriptorIndex, shooterTile, atlasSize, normalUv);
+            skyVisibility = saturate(own.a);
+            return float4(pow(max(own.rgb, 0.0f.xxx), kIrradianceGamma), 1.0f);
+        }
+        shooterLinks = HikariDynamicGiProbeLinks(descriptorIndex, shooterTile,
+            (atLow.x ? 0u : 1u) | (atLow.y ? 0u : 2u) | (atLow.z ? 0u : 4u));
+    }
     float cornerWeights[8];
     float2 cornerTiles[8];
-    // 各角を残す重みの和（候補の基準ごとの重み × その基準からの連通）。probe の ray の当たった点でだけ使う。
-    float linkedWeights[8];
     float validWeight = 0.0f;
-    float referenceTotal = 0.0f;
-    const bool probeRay = referenceProbe.x >= 0;
     [unroll] for (uint corner = 0u; corner < 8u; ++corner)
     {
         const uint3 offset = uint3(corner & 1u, (corner >> 1u) & 1u, (corner >> 2u) & 1u);
@@ -98,7 +115,6 @@ float4 HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData volume, float3 w
         const float3 axisWeight = lerp(1.0f.xxx - fraction, fraction, (float3)offset);
         const float interpolationWeight = axisWeight.x * axisWeight.y * axisWeight.z;
         cornerWeights[corner] = 0.0f;
-        linkedWeights[corner] = 0.0f;
         cornerTiles[corner] = HikariDynamicGiProbeTile(coordinate, counts);
         [branch] if (interpolationWeight > 0.0f)
         {
@@ -112,22 +128,11 @@ float4 HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData volume, float3 w
             const float crushed = HikariCrushProbeWeight(visibility * (facing * facing + 0.2f));
             cornerWeights[corner] = interpolationWeight * max(crushed, 1e-6f) * moments.z;
             validWeight += interpolationWeight * moments.z;
-            // probe の ray の当たった点の連通の基準としての重み（連続）。ray を撃った probe が角にあればそれが基準
-            // （当たった点との間に形状が無いことが確か）。無ければ面の表側（法線の側）の角を重く、裏側は 1/10（ray が壁を
-            // かすめた点では表側の角が深度 moment の自己遮蔽で潰れ、壁の向こうの角を基準にすると外の光が照り返しで部屋へ
-            // 溜まる）。
-            [branch] if (probeRay)
-            {
-                const float front = lerp(0.1f, 1.0f, smoothstep(0.4f, 0.6f, facing));
-                const float referenceWeight =
-                    all(int3(coordinate) == referenceProbe) ? 1.0e4f : cornerWeights[corner] * front;
-                referenceTotal += referenceWeight;
-                const uint links = HikariDynamicGiProbeLinks(descriptorIndex, cornerTiles[corner], corner);
-                [unroll] for (uint other = 0u; other < 8u; ++other)
-                {
-                    linkedWeights[other] += HikariDynamicGiCornerLinked(links, corner, other) ? referenceWeight : 0.0f;
-                }
-            }
+            // 撃った probe から連通していない角を落とす（軸の差の組 x=1, y=2, z=4 から 1 を引いた bit）。
+            const uint axes = ((int)coordinate.x != referenceProbe.x ? 1u : 0u) |
+                ((int)coordinate.y != referenceProbe.y ? 2u : 0u) | ((int)coordinate.z != referenceProbe.z ? 4u : 0u);
+            if (probeRay && axes != 0u && (shooterLinks & (1u << (axes - 1u))) == 0u)
+                cornerWeights[corner] = 0.0f;
         }
     }
     if (validWeight <= 1e-5f) return 0.0f.xxxx;
@@ -137,13 +142,9 @@ float4 HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData volume, float3 w
     {
         [branch] if (cornerWeights[linked] > 0.0f)
         {
-            // この角を残す割合: 基準の重みで平均した連通。見えている角が一つも無い点（接地部の奥など）は基準を決められ
-            // ないので角を落とさない。
-            // この角を残す割合: 基準の重みで平均した連通（画面の面では常に 1）。
-            const float kept = probeRay && referenceTotal > 1.0e-6f ? linkedWeights[linked] / referenceTotal : 1.0f;
-            const float weight = cornerWeights[linked] * kept;
-            result += HikariSampleDynamicGiIrradiance(descriptorIndex, cornerTiles[linked], atlasSize, normalUv) * weight;
-            totalWeight += weight;
+            result += HikariSampleDynamicGiIrradiance(descriptorIndex, cornerTiles[linked], atlasSize, normalUv) *
+                cornerWeights[linked];
+            totalWeight += cornerWeights[linked];
         }
     }
     result /= max(totalWeight, 1e-20f);

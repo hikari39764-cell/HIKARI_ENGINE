@@ -50,5 +50,8 @@ CalendarTime AdvanceCalendarTime(const CalendarTime& time, double hours) noexcep
 CelestialState ComputeCelestialState(const CalendarTime& time, const GeoLocation& location) noexcept;
 // 地平座標の方位（北 0、東 90、度）と高度（度）をワールドの単位方向へ写す。
 MATH::Vec3 HorizonDirectionToWorld(float azimuthDegrees, float elevationDegrees, float northYawDegrees) noexcept;
+// HorizonDirectionToWorld の逆。ワールドの方向を地平座標の方位（0 以上 360 未満）と高度へ。
+void WorldDirectionToHorizon(const MATH::Vec3& direction, float northYawDegrees, float& azimuthDegrees,
+                             float& elevationDegrees) noexcept;
 
 } // namespace HIKARI::ENVIRONMENT

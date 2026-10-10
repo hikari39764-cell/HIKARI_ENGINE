@@ -10,6 +10,7 @@
 #include "Editor/Selection/HIKARI_SceneSelectionTransform.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Editor/Views/HIKARI_EditorViewGuides.h"
 #include "Editor/Views/HIKARI_EditorViewportGeometry.h"
 #include "Editor/Viewport/HIKARI_ViewportAuthoringToolbar.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
@@ -133,6 +134,36 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
                 ImGui::SameLine(0.0f, 8.0f);
                 const EDITOR::ViewportAuthoringToolbarResult authoringToolbar =
                     EDITOR::DrawViewportAuthoringToolbar(context_, selectedObjectIsCamera);
+                ImGui::SameLine();
+                EDITOR::DrawEditorViewGuidesButton("sceneGuides", sceneViewGuides_);
+                // 美術向けの見え方の切り替え：素模（材質を灰色にして光と形だけ）と明暗（白黒）。
+                ImGui::SameLine();
+                const bool clay = context_.viewportDebug.renderView == RenderDebugView::NeutralClay;
+                if (EDITOR::ToggleButton(TEXT::Localize("ui.viewport.clay").c_str(), "##clayView", clay,
+                                         ImVec2(0.0f, 0.0f), TEXT::Localize("ui.viewport.clayHint").c_str())) {
+                    context_.viewportDebug.renderView = clay ? RenderDebugView::None : RenderDebugView::NeutralClay;
+                }
+                ImGui::SameLine();
+                if (EDITOR::ToggleButton(TEXT::Localize("ui.viewport.valueView").c_str(), "##valueView",
+                                         context_.overlays.valueView, ImVec2(0.0f, 0.0f),
+                                         TEXT::Localize("ui.viewport.valueViewHint").c_str())) {
+                    context_.overlays.valueView = !context_.overlays.valueView;
+                }
+                // 露出の固定：今の露出で止める（補正を足し戻した EV100 を手動露出として使う）。
+                ImGui::SameLine();
+                const bool exposureLocked = context_.overlays.lockedExposureEv100.has_value();
+                if (EDITOR::ToggleButton(TEXT::Localize("ui.viewport.lockExposure").c_str(), "##lockExposure",
+                                         exposureLocked, ImVec2(0.0f, 0.0f),
+                                         TEXT::Localize("ui.viewport.lockExposureHint").c_str())) {
+                    if (exposureLocked) {
+                        context_.overlays.lockedExposureEv100.reset();
+                    } else {
+                        context_.overlays.lockedExposureEv100 =
+                            scene.GetCurrentExposureEv100() + scene.GetSceneEnvironment().exposure.compensationEv;
+                    }
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("EV %.1f", scene.GetCurrentExposureEv100());
                 if (authoringToolbar.settingsRequested) {
                     ImGui::OpenPopup("ViewportToolSettingsPopup");
                 }
@@ -208,12 +239,17 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
 
     const ImVec2 imageOrigin = ImGui::GetCursorScreenPos();
     const bool gameViewFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    // 布景で置く物を選んでいる間は、クリックを選択ではなく配置に使い、R / Esc は配置の操作にする。
+    const bool lookDevActive = workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::LookDev);
+    const bool lookDevPlacing = lookDevActive && lookDevWorkspace_.ArmedItem().has_value();
     auto processViewportShortcuts = [&]() {
         if (playSession.IsRunning()) {
             return;
         }
         const bool viewportShortcutFocused = gameViewFocused;
-        HandleTransformGizmoShortcuts(context_.transformGizmo, viewportShortcutFocused);
+        if (!lookDevPlacing) {
+            HandleTransformGizmoShortcuts(context_.transformGizmo, viewportShortcutFocused);
+        }
         const bool standardCommandExecuted = commandRouter_.ProcessViewportShortcuts(viewportShortcutFocused);
         if (!standardCommandExecuted &&
             EDITOR::CanUseEditorShortcut(EDITOR::EditorShortcutScope::Viewport, viewportShortcutFocused) &&
@@ -279,6 +315,8 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
         const ImTextureID textureId = reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(viewportSrv.ptr));
         ImGui::Image(textureId, imageSize);
         viewportImageHovered = ImGui::IsItemHovered();
+        EDITOR::DrawEditorViewGuides(*ImGui::GetWindowDrawList(), imageOrigin.x, imageOrigin.y, imageSize.x,
+                                     imageSize.y, sceneViewGuides_, &scene.GetCamera());
         processViewportShortcuts();
         // Drop target 驍ｵ・ｺ繝ｻ・ｯ viewport image 驍ｵ・ｺ繝ｻ・ｮ鬨ｾ・ｶ繝ｻ・ｴ髯溷供・ｾ螽ｯ繝ｻ鬨ｾ蜈ｷ・ｽ・ｻ鬯ｪ・ｭ繝ｻ・ｲ驍ｵ・ｺ陷会ｽｱ・つ遶乗劼・ｽ・ｾ隶呵ｶ｣・ｽ・ｶ陞｢・ｹ郢晢ｽｻ overlay item 驍ｵ・ｺ繝ｻ・ｫ髯槭ｑ・ｽ・ｪ驛｢・ｧ闕ｳ蟯ｩ髮ｷ驍ｵ・ｺ繝ｻ・ｪ驍ｵ・ｺ郢晢ｽｻ・つ郢晢ｽｻ
         if (!playSession.IsRunning()) {
@@ -311,7 +349,7 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
     playSession.UpdateEmbeddedViewportInput(embeddedInputRegion,
                                             viewportImageHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left));
 
-    const bool authoringInteractionEnabled = !playSession.IsRunning();
+    const bool authoringInteractionEnabled = !playSession.IsRunning() && !lookDevPlacing;
     const EDITOR::SceneViewportRect blockedViewportRegion{-1.0f, -1.0f, 0.0f, 0.0f};
     const EDITOR::SceneViewportInteractionResult interaction =
         viewportSelectionService_.UpdateInput(scene.GetCamera(), sceneViewportRect, blockedViewportRegion,
@@ -332,8 +370,13 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
         }
         viewportSelectionService_.DrawMarquee(ImGui::GetWindowDrawList());
         DrawLightOverlayIcons(scene, context_.overlays, imageOrigin, imageSize);
+        if (lookDevActive) {
+            UpdateLookDevViewport(scene, sceneViewportRect, viewportImageHovered, gameViewFocused, gizmoCapture);
+        }
         DrawViewportContextMenu(scene);
-        HandleTerrainBrush(scene, sceneViewportRect, viewportImageHovered);
+        if (!lookDevActive) {
+            HandleTerrainBrush(scene, sceneViewportRect, viewportImageHovered);
+        }
     }
     viewportTransformHistory_.EndFrame(scene.GetSceneDocument());
 

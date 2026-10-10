@@ -1699,7 +1699,7 @@
         "engineInterfaceHash": "db9cee28f7730b08bb2d55c99b1856581acc74d1e5743eb557634ca0014b752d",
         "rootLayoutId": "HIKARI.DynamicDiffuseGi.Root",
         "rootLayoutVersion": 1,
-        "rootLayoutHash": "b6ccfefea6805273fa0cfd5ada7edef0a7a4e17a0b68dd46a1dac94d1541e6be",
+        "rootLayoutHash": "9b698907ec1e9219dff44ddd49e274c612b02b302ba1dd518406a155befc19cd",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,

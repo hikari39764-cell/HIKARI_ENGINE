@@ -5,6 +5,7 @@
 #include <cstring>
 
 #if defined(HIKARI_WITH_EDITOR)
+#include "Editor/Widgets/HIKARI_NumberField.h"
 #include "imgui.h"
 #endif
 
@@ -12,15 +13,11 @@ namespace HIKARI::EDITOR {
 namespace {
 #if defined(HIKARI_WITH_EDITOR)
 void DrawPositiveFloat(const char* label, float& value) {
-    ImGui::DragFloat(label, &value, 0.05f, 0.001f, 100000.0f, "%.3f");
-    value = std::clamp(value, 0.001f, 100000.0f);
+    (void)DragNumber(label, value, {.minimum = 0.001, .maximum = 100000.0, .step = 0.01});
 }
 
 void DrawCount(const char* label, uint32_t& value, int minimum, int maximum) {
-    int edited = static_cast<int>(value);
-    if (ImGui::DragInt(label, &edited, 1.0f, minimum, maximum)) {
-        value = static_cast<uint32_t>(std::clamp(edited, minimum, maximum));
-    }
+    (void)DragNumber(label, value, {.minimum = static_cast<double>(minimum), .maximum = static_cast<double>(maximum)});
 }
 #endif
 } // namespace

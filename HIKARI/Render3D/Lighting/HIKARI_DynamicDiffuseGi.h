@@ -20,7 +20,16 @@ namespace LIGHTING {
 struct SceneLightingSet;
 }
 namespace DYNAMICGI {
-enum class Status : uint8_t { Off, Unsupported, PreparingScene, MissingEnvironment, ResourceFailure, Ready };
+enum class Status : uint8_t {
+    Off,
+    Unsupported,
+    PreparingScene,
+    // 地形など大きな遮蔽物が加速構造に無い（光線が抜けて光が漏れる）。
+    MissingOccluders,
+    MissingEnvironment,
+    ResourceFailure,
+    Ready
+};
 const char* ToString(Status status) noexcept;
 struct Stats {
     Status status = Status::Off;

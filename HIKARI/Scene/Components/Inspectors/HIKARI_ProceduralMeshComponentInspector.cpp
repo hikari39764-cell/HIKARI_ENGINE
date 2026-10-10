@@ -17,7 +17,8 @@
 namespace HIKARI {
 
 namespace {
-constexpr std::array<const char*, 6> kMeshKindNames{"Plane", "Grid Plane", "Box", "Sphere", "Cylinder", "Capsule"};
+constexpr std::array<const char*, 8> kMeshKindNames{"Plane",    "Grid Plane", "Box",  "Sphere",
+                                                    "Cylinder", "Capsule",    "Ramp", "Stairs"};
 
 uint32_t DrawSegmentCount(IInspectorBuilder& builder, const char* label, uint32_t value, int minimum, int maximum) {
     int edited = static_cast<int>(value);
@@ -66,6 +67,17 @@ void ProceduralMeshComponent::BuildInspector(IInspectorBuilder& builder) {
         DrawDimension(builder, "Height", settings_.height);
         settings_.sphereSlices = DrawSegmentCount(builder, "Radial Segments", settings_.sphereSlices, 3, 512);
         settings_.segmentsY = DrawSegmentCount(builder, "Height Segments", settings_.segmentsY, 1, 512);
+        break;
+    case ProceduralMeshKind::Ramp:
+        DrawDimension(builder, "Width", settings_.width);
+        DrawDimension(builder, "Height", settings_.height);
+        DrawDimension(builder, "Depth", settings_.depth);
+        break;
+    case ProceduralMeshKind::Stairs:
+        DrawDimension(builder, "Width", settings_.width);
+        DrawDimension(builder, "Height", settings_.height);
+        DrawDimension(builder, "Depth", settings_.depth);
+        settings_.segmentsY = DrawSegmentCount(builder, "Steps", settings_.segmentsY, 1, 64);
         break;
     case ProceduralMeshKind::Capsule:
         DrawDimension(builder, "Diameter", settings_.width);

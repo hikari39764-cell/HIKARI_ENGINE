@@ -25,26 +25,36 @@ SamplerState gLinearClamp : register(s0);
 SamplerState gMaterialWrap : register(s1);
 SamplerState gPointClamp : register(s2);
 
-// 面の記述が無い画素は深度の差分で法線を作る（半解像度の AO と同じ近似）。
+// 隣の画素の位置との差と、その長さの二乗（深度が無ければ大きな値）。
+float4 NeighborDelta(float2 uv, float2 offset, float3 position)
+{
+    float3 neighbor;
+    const float depth = gSceneDepth.SampleLevel(gPointClamp, uv + offset, 0.0f);
+    if (!HikariIsValidSceneDepth(depth) || !HikariReconstructWorldPosition(uv + offset, depth, gInvViewProj, neighbor))
+        return float4(0.0f, 0.0f, 0.0f, 1.0e30f);
+    const float3 delta = neighbor - position;
+    return float4(delta, dot(delta, delta));
+}
+
+// 深度の差分から求める実際の面（多角形）の法線。輪郭で奥の物を拾わないよう、左右・上下それぞれ近い方の隣を使う。
 float3 NormalFromDepth(float2 uv, float3 position)
 {
     const float2 texel = gScreenParams.zw;
-    float3 right = position, down = position;
-    const float depthRight = gSceneDepth.SampleLevel(gPointClamp, uv + float2(texel.x, 0.0f), 0.0f);
-    const float depthDown = gSceneDepth.SampleLevel(gPointClamp, uv + float2(0.0f, texel.y), 0.0f);
-    if (HikariIsValidSceneDepth(depthRight))
-        HikariReconstructWorldPosition(uv + float2(texel.x, 0.0f), depthRight, gInvViewProj, right);
-    if (HikariIsValidSceneDepth(depthDown))
-        HikariReconstructWorldPosition(uv + float2(0.0f, texel.y), depthDown, gInvViewProj, down);
-    const float3 normal = cross(down - position, right - position);
+    const float4 right = NeighborDelta(uv, float2(texel.x, 0.0f), position);
+    const float4 left = NeighborDelta(uv, float2(-texel.x, 0.0f), position);
+    const float4 down = NeighborDelta(uv, float2(0.0f, texel.y), position);
+    const float4 up = NeighborDelta(uv, float2(0.0f, -texel.y), position);
+    const float3 dx = right.w <= left.w ? right.xyz : -left.xyz;
+    const float3 dy = down.w <= up.w ? down.xyz : -up.xyz;
+    const float3 normal = cross(dy, dx);
     const float lengthSquared = dot(normal, normal);
     if (lengthSquared < 1.0e-12f)
         return normalize(gCameraPosition.xyz - position);
     return normal * rsqrt(lengthSquared);
 }
 
-// 面の記述が束ねてあればその法線、無ければ深度の差分。
-float3 SurfaceNormal(float2 uv, float3 position)
+// 面の記述が束ねてあればその法線（頂点法線を補間した滑らかな法線）。無ければ 0。
+float3 SmoothSurfaceNormal(float2 uv)
 {
     float3 normal = 0.0f.xxx;
     if (gInputFlags.x > 0.5f)
@@ -53,9 +63,7 @@ float3 SurfaceNormal(float2 uv, float3 position)
         float metallic;
         HikariUnpackSceneSurface(gSceneSurface.SampleLevel(gPointClamp, uv, 0.0f), normal, roughness, metallic);
     }
-    if (dot(normal, normal) < 0.5f)
-        normal = NormalFromDepth(uv, position);
-    return normal;
+    return dot(normal, normal) < 0.5f ? 0.0f.xxx : normal;
 }
 
 [numthreads(8, 8, 1)]
@@ -77,12 +85,16 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         gVisibility[pixel] = 1.0f;
         return;
     }
-    const float3 normal = SurfaceNormal(uv, position);
+    const float3 smoothNormal = SmoothSurfaceNormal(uv);
+    const bool hasSmoothNormal = dot(smoothNormal, smoothNormal) > 0.5f;
+    const float3 normal = hasSmoothNormal ? smoothNormal : NormalFromDepth(uv, position);
     const float3 toSun = gSunCone.xyz;
     const float cosine = dot(normal, toSun);
+    // 光に背く面は影。ただし深度の差分の法線は多角形の面ごとに平らなので、それで切ると球の明暗の境が面の形の
+    // 階段になる。その時は自分の形による遮りを数えず、Forward の N・L（滑らかな法線）に任せる。
     if (cosine <= 0.0f || gRayLighting.scene.w != 0u)
     {
-        gVisibility[pixel] = cosine <= 0.0f ? 0.0f : 1.0f;
+        gVisibility[pixel] = cosine <= 0.0f && hasSmoothNormal ? 0.0f : 1.0f;
         return;
     }
     // 光をかすめる面ほど自分の面に当たりやすいので、始点を法線方向へ多めにずらす。
@@ -102,10 +114,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         ray.Direction = HikariSampleEmitterCone(toSun, sinHalfAngle * sinHalfAngle, xi);
         ray.TMin = 0.001f;
         ray.TMax = max(gRayParams.x, 0.1f);
-        HikariRaySurface ignored;
-        if (!HikariTraceRuntimeScene(ray, gRayLighting.scene.x, gRayLighting.scene.y, gRayLighting.time, gMaterialWrap,
-                HIKARI_RAY_SHADOW, ignored))
-            lit += 1.0f;
+        // 半透明（ガラスなど）は透過率の分だけ光を通す。
+        lit += HikariTraceRuntimeShadowTransmittance(ray, gRayLighting.scene.x, gRayLighting.scene.y,
+            gRayLighting.time, gMaterialWrap);
     }
     gVisibility[pixel] = lit / float(sampleCount);
 }
@@ -141,7 +152,8 @@ void CSFilter(uint3 id : SV_DispatchThreadID)
         gVisibility[pixel] = raw;
         return;
     }
-    const float3 normal = SurfaceNormal(uv, position);
+    const float3 smoothNormal = SmoothSurfaceNormal(uv);
+    const float3 normal = dot(smoothNormal, smoothNormal) > 0.5f ? smoothNormal : NormalFromDepth(uv, position);
     // 接平面からの許容距離：距離の 1.5% + 1cm（床をかすめて見る画素でも同じ面は通し、段差や輪郭は止める）。
     const float tolerance = 0.015f * length(position - gCameraPosition.xyz) + 0.01f;
     float sum = 0.0f;

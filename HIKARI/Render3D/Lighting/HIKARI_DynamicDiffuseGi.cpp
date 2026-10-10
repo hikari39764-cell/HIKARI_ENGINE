@@ -28,6 +28,9 @@ namespace HIKARI::RENDER3D::DYNAMICGI {
 namespace {
 using Microsoft::WRL::ComPtr;
 constexpr auto kReadState = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+// 光線クエリの共通根パラメーターの後に、前フレーム SH・SH の UAV・probe atlas の UAV・空の順に並べる。
+constexpr UINT kPreviousShParameter = RAYTRACING::kRuntimeRayQueryRootParameterCount;
+constexpr UINT kSkyParameter = kPreviousShParameter + 3u;
 // SH0 は一様な入射 radiance の約 3.54 倍。FP16 上限で HDR を壊さない。
 constexpr auto kProbeShFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
 // 描画側が読む probe atlas。probe ごとに放射照度と深度 moment の八面体、validity の tile を持つ
@@ -251,15 +254,15 @@ struct DynamicDiffuseGi::State {
     bool EnsurePipeline(const GFX::Context& graphics) {
         if (pipeline)
             return true;
-        // 共通の 0..9 の後に前フレーム SH(10)・SH の UAV(11)・probe atlas の UAV(12)・空(13)。
-        std::array<CD3DX12_ROOT_PARAMETER, 14> parameters;
+        // 共通の後に前フレーム SH・SH の UAV・probe atlas の UAV・空。
+        std::array<CD3DX12_ROOT_PARAMETER, kSkyParameter + 1u> parameters;
         std::array<CD3DX12_DESCRIPTOR_RANGE, 6> ranges;
-        RAYTRACING::InitRuntimeRayQueryRootParameters(parameters, ranges, 13);
+        RAYTRACING::InitRuntimeRayQueryRootParameters(parameters, ranges, kSkyParameter);
         ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 9, 0, 2);
         ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 9, 0);
         ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 9);
         for (UINT i = 0; i < 3; ++i)
-            parameters[10 + i].InitAsDescriptorTable(1, &ranges[3 + i]);
+            parameters[kPreviousShParameter + i].InitAsDescriptorTable(1, &ranges[3 + i]);
         const auto samplers = RAYTRACING::RuntimeRayQueryStaticSamplers();
         const CD3DX12_ROOT_SIGNATURE_DESC rootDesc(UINT(parameters.size()), parameters.data(), 2, samplers.data());
         if (FAILED(GFX::CreateRootSignature(graphics.device, rootDesc, &root)))
@@ -274,7 +277,7 @@ struct DynamicDiffuseGi::State {
                 "DynamicDiffuseGiCB:368;origin,axis spacing;SH9 radiance/validity/sky L1;atlas RGBA16F tile28x18 irradiance^(1/5)+sky oct8,moments+validity oct16,border,neighbor links A(11+octant,1) 7bit;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
                 contract.engineInterfaceHash) ||
             !HASH::ComputeSha256(
-                "CBV(b0);AS(t0,s8);Hits(t1,s8);Materials(t16);Programs(t0,t1,s6);Lights(t1,t2,s7);Geometry(t0,s1,1024);Textures(t20);PreviousSH(t0,s2,9);SH(u0,9);ProbeAtlas(u9);Sky(t0,s7);Sampler(s0,clamp);Sampler(s1,wrap)",
+                "CBV(b0);AS(t0,s8);Hits(t1,s8);Materials(t16);Programs(t0,t1,s6);Lights(t1,t2,s7);Geometry(t0,s1,1024);Textures(t20);Deformed(t2,s8);PreviousSH(t0,s2,9);SH(u0,9);ProbeAtlas(u9);Sky(t0,s7);Sampler(s0,clamp);Sampler(s1,wrap)",
                 contract.rootLayoutHash))
             return false;
         const auto caps = GFX::QueryShaderDeviceCapabilities(graphics.device);
@@ -303,7 +306,8 @@ const char* ToString(Status status) noexcept {
     switch (status) {
     case Status::Off: return "Off";
     case Status::Unsupported: return "DXR / shader format unavailable";
-    case Status::PreparingScene: return "Ray scene incomplete or preparing";
+    case Status::PreparingScene: return "Ray scene preparing";
+    case Status::MissingOccluders: return "Ray scene lacks terrain or unresolved surfaces";
     case Status::MissingEnvironment: return "Environment radiance unavailable";
     case Status::ResourceFailure: return "GPU resource or shader unavailable";
     case Status::Ready: return "Ready";
@@ -360,6 +364,11 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         state.stats.status = lighting.status == RAYTRACING::RuntimeRayLightingStatus::MissingEnvironment
                                  ? Status::MissingEnvironment
                                  : Status::PreparingScene;
+        invalidateHistory();
+        return {};
+    }
+    if (!RAYTRACING::CanTraceDiffuse(rt.excluded)) {
+        state.stats.status = Status::MissingOccluders;
         invalidateHistory();
         return {};
     }
@@ -449,7 +458,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
     commands->SetDescriptorHeaps(1, heaps);
     commands->SetComputeRootSignature(state.root.Get());
     commands->SetPipelineState(state.pipeline.Get());
-    RAYTRACING::BindRuntimeRayQueryRoots(commands, graphics, lighting, materials, 13);
+    RAYTRACING::BindRuntimeRayQueryRoots(commands, graphics, lighting, materials, kSkyParameter);
     state.stats.probes = state.stats.updatedProbes = 0;
     state.stats.probeBytes = 0;
     // 相機の cascade の中心は視線の水平方向へ幅の 3 割だけ前に置く。相機の後ろへ半分を割くと、見えている奥が近景から
@@ -494,9 +503,9 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         std::memcpy(constantBuffers[index].cpuAddress, &constants, sizeof(constants));
         target.Transition(commands, true);
         commands->SetComputeRootConstantBufferView(0, constantBuffers[index].gpuAddress);
-        commands->SetComputeRootDescriptorTable(10, previous.srvs[0].gpu);
-        commands->SetComputeRootDescriptorTable(11, target.uavs[0].gpu);
-        commands->SetComputeRootDescriptorTable(12, target.uavs[9].gpu);
+        commands->SetComputeRootDescriptorTable(kPreviousShParameter, previous.srvs[0].gpu);
+        commands->SetComputeRootDescriptorTable(kPreviousShParameter + 1u, target.uavs[0].gpu);
+        commands->SetComputeRootDescriptorTable(kPreviousShParameter + 2u, target.uavs[9].gpu);
         commands->Dispatch(constants.counts[3], 1, 1);
         target.Transition(commands, false);
         target.data.valid = true;

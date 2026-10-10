@@ -90,7 +90,7 @@ EditorOperationResult Create(RenderStyleEditor& editor, const SceneProvider& pro
         copy.name = name;
     }
     std::string message;
-    if (!editor.CreateStyleCopy(std::move(copy), scene->GetAssetDatabase(), message)) {
+    if (!editor.Document().SaveAsNew(std::move(copy), scene->GetAssetDatabase(), message)) {
         return OperationFailure("CREATE_FAILED", message);
     }
     return OperationOk("Project render style created; select it with environment.edit renderStyle.",

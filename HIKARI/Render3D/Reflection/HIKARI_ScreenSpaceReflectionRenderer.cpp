@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <d3dx12.h>
 #include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
@@ -19,6 +20,7 @@
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
+#include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayQueryBindings.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
@@ -37,13 +39,14 @@ struct alignas(16) Constants {
     MATH::Vec4 previousCameraPosition{}, jitterPixels{};
 };
 static_assert(sizeof(Constants) == 320);
-// 光線追跡の反射 pass の定数。SSR の trace 目標へ直接書く（UAV）。
+// 光線追跡の反射 pass の定数。SSR の trace 目標へ直接書く（UAV）。画面外の当たった点は動的 GI の volume で照らす。
 struct alignas(16) RayConstants {
-    MATH::Mat4 invViewProj{};
+    MATH::Mat4 viewProj{}, invViewProj{};
     MATH::Vec4 cameraPosition{}, screenParams{}, traceScreenParams{}, rayParams{}, viewExposure{};
+    LIGHTPROBE::IrradianceVolumeGpuData giVolumes[LIGHTPROBE::kDynamicGiVolumeCount]{};
     RAYTRACING::RuntimeRayLightingGpuData lighting{};
 };
-static_assert(sizeof(RayConstants) == 304);
+static_assert(sizeof(RayConstants) == 608);
 constexpr const wchar_t* kRayShaderPath = L"HIKARI/Shaders/Post_RayTracedReflectionsCS.hlsl";
 
 float FiniteClamp(float value, float lower, float upper, float fallback) {
@@ -200,22 +203,23 @@ struct ScreenSpaceReflectionRenderer::State {
     std::array<ViewResources, kResidentViews> views;
     GFX::Context context{};
     uint64_t useSerial = 0, pipelineRetryFrame = 0;
-    // 光線追跡の反射：動的 GI と同じ場面・材質・光源の束ね方に、深度・面・trace の UAV（space9）を足す。
+    // 光線追跡の反射：動的 GI と同じ場面・材質・光源の束ね方に、深度・面・画面の色・trace の UAV（space9）を足す。
     bool EnsureRayPipeline(const GFX::Context& graphics) {
         if (rayRoot && rayPipeline)
             return true;
         if (rayPipelineFailed || !GFX::SupportsShaderModel6(graphics.device))
             return false;
         rayPipelineFailed = true;
-        // 共通の 0..9 + 空(10) に、深度(11)・面(12)・trace の UAV(13) を続ける。
+        // 共通の 0..9 + 空(10) に、深度(11)・面(12)・画面の色(13)・trace の UAV(14) を続ける。
         constexpr UINT kSky = RAYTRACING::kRuntimeRayQueryRootParameterCount;
-        std::array<CD3DX12_ROOT_PARAMETER, kSky + 4u> parameters;
-        std::array<CD3DX12_DESCRIPTOR_RANGE, RAYTRACING::kRuntimeRayQueryRangeCount + 3u> ranges;
+        std::array<CD3DX12_ROOT_PARAMETER, kSky + 5u> parameters;
+        std::array<CD3DX12_DESCRIPTOR_RANGE, RAYTRACING::kRuntimeRayQueryRangeCount + 4u> ranges;
         RAYTRACING::InitRuntimeRayQueryRootParameters(parameters, ranges, kSky);
         ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 9);
         ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 9);
-        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 9);
-        for (UINT i = 0; i < 3u; ++i)
+        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 9);
+        ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 9);
+        for (UINT i = 0; i < 4u; ++i)
             parameters[kSky + 1u + i].InitAsDescriptorTable(1, &ranges[3u + i]);
         const auto common = RAYTRACING::RuntimeRayQueryStaticSamplers();
         std::array<CD3DX12_STATIC_SAMPLER_DESC, 3> samplers{common[0], common[1], {}};
@@ -421,7 +425,7 @@ bool ScreenSpaceReflectionRenderer::Render(const GFX::Context& graphics,
     constants.frameParams = {debugView == RenderDebugView::SsrConfidence ? 1.0f
                              : debugView == RenderDebugView::SsrHit      ? 2.0f
                                                                          : 0.0f,
-                             RENDER3D::COLOR::GetActiveViewExposure().w, debugState_.historyUsed ? 1.0f : 0.0f, 0.9f};
+                             RENDER3D::COLOR::GetActiveViewExposure().w, debugState_.historyUsed ? 1.0f : 0.0f, 0.95f};
     constants.previousInvViewProj = MATH::Inverse(temporal.camera.prevViewProj);
     constants.previousCameraPosition = temporal.camera.prevCameraPos;
     constants.jitterPixels = {temporal.camera.jitter.x, temporal.camera.jitter.y, temporal.camera.prevJitter.x,
@@ -474,42 +478,61 @@ bool ScreenSpaceReflectionRenderer::Render(const GFX::Context& graphics,
     commands->RSSetViewports(1, &viewport);
     commands->RSSetScissorRects(1, &scissor);
     bind(trace.srv.gpu);
-    trace.Transition(commands, D3D12_RESOURCE_STATE_RENDER_TARGET);
-    commands->OMSetRenderTargets(1, &trace.rtv, FALSE, nullptr);
-    commands->SetPipelineState(state.tracePipeline.Get());
-    commands->DrawInstanced(3, 1, 0, 0);
-    trace.Transition(commands, kReadState);
-    // SSR が外した texel を光線追跡で埋める（画面外・裏面・薄い面の向こう）。失敗しても SSR の結果はそのまま使う。
-    const bool rayReady = settings.rayTracingFallback && rayLighting && materials && *materials &&
-                          rayLighting->status == RAYTRACING::RuntimeRayLightingStatus::Ready &&
-                          rayLighting->scene.complete && !rayLighting->scene.empty &&
-                          rayLighting->scene.accelerationStructure != 0 && debugView == RenderDebugView::None &&
-                          trace.uav.IsValid() && state.EnsureRayPipeline(graphics);
-    if (rayReady) {
+    // 光線追跡が使える時は SSR の trace の代わりに全 texel を光線追跡の反射で書く。SSR と光線追跡で向きと当たる形状が
+    // 食い違うと、両者の境目と確信度の段差が床に縞や輪として出る。加速構造に入っていない面は映らないだけなので使う。
+    const bool rayCapable =
+        rayLighting && materials && *materials && rayLighting->status == RAYTRACING::RuntimeRayLightingStatus::Ready &&
+        rayLighting->scene.ready && !rayLighting->scene.empty && rayLighting->scene.accelerationStructure != 0 &&
+        debugView == RenderDebugView::None && trace.uav.IsValid() && state.EnsureRayPipeline(graphics);
+    const auto raySlice = rayCapable ? upload.Allocate(sizeof(RayConstants)) : DX::UploadAllocation{};
+    if (raySlice) {
         RayConstants rayConstants{};
+        rayConstants.viewProj = camera.viewProj;
         rayConstants.invViewProj = camera.invViewProj;
         rayConstants.cameraPosition = camera.cameraPos;
         rayConstants.screenParams = constants.screenParams;
         rayConstants.traceScreenParams = constants.traceScreenParams;
         rayConstants.rayParams = {debugState_.maxDistance, debugState_.maxRoughness, float(temporal.frameIndex % 1024u),
-                                  0.1f};
+                                  0.0f};
         rayConstants.viewExposure = RENDER3D::COLOR::GetActiveViewExposure();
+        const auto giVolumes = LIGHTPROBE::GetDynamicGiVolumes();
+        for (size_t index = 0; index < giVolumes.size() && index < std::size(rayConstants.giVolumes); ++index)
+            if (giVolumes[index].valid)
+                rayConstants.giVolumes[index] = LIGHTPROBE::BuildIrradianceVolumeGpuData(giVolumes[index], 1.0f);
         rayConstants.lighting = rayLighting->data;
-        if (const auto raySlice = upload.Allocate(sizeof(RayConstants))) {
-            std::memcpy(raySlice.cpuAddress, &rayConstants, sizeof(rayConstants));
-            GFX::PIX::ScopedGpuEvent rayEvent(commands, GFX::PIX::kColorPost, "ScreenSpaceReflections.RayTraced");
-            trace.Transition(commands, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            commands->SetComputeRootSignature(state.rayRoot.Get());
-            commands->SetPipelineState(state.rayPipeline.Get());
-            commands->SetComputeRootConstantBufferView(0, raySlice.gpuAddress);
-            constexpr UINT kSky = RAYTRACING::kRuntimeRayQueryRootParameterCount;
-            RAYTRACING::BindRuntimeRayQueryRoots(commands, graphics, *rayLighting, *materials, kSky);
-            commands->SetComputeRootDescriptorTable(kSky + 1u, depth->srv);
-            commands->SetComputeRootDescriptorTable(kSky + 2u, surface->srv);
-            commands->SetComputeRootDescriptorTable(kSky + 3u, trace.uav.gpu);
-            commands->Dispatch((view->width + 7u) / 8u, (view->height + 7u) / 8u, 1u);
-            trace.Transition(commands, kReadState);
-        }
+        std::memcpy(raySlice.cpuAddress, &rayConstants, sizeof(rayConstants));
+        GFX::PIX::ScopedGpuEvent rayEvent(commands, GFX::PIX::kColorPost, "ScreenSpaceReflections.RayTraced");
+        // 画面の色と面の記述は pixel shader 用の状態で渡されるので、compute からも読める状態を足して戻す。
+        std::array<D3D12_RESOURCE_BARRIER, 2> toCompute{};
+        UINT inputBarriers = 0;
+        for (const auto* input : {color, surface})
+            if (input->resource && (input->state & D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) == 0)
+                toCompute[inputBarriers++] = CD3DX12_RESOURCE_BARRIER::Transition(
+                    input->resource, input->state, input->state | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        if (inputBarriers)
+            commands->ResourceBarrier(inputBarriers, toCompute.data());
+        trace.Transition(commands, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        commands->SetComputeRootSignature(state.rayRoot.Get());
+        commands->SetPipelineState(state.rayPipeline.Get());
+        commands->SetComputeRootConstantBufferView(0, raySlice.gpuAddress);
+        constexpr UINT kSky = RAYTRACING::kRuntimeRayQueryRootParameterCount;
+        RAYTRACING::BindRuntimeRayQueryRoots(commands, graphics, *rayLighting, *materials, kSky);
+        commands->SetComputeRootDescriptorTable(kSky + 1u, depth->srv);
+        commands->SetComputeRootDescriptorTable(kSky + 2u, surface->srv);
+        commands->SetComputeRootDescriptorTable(kSky + 3u, color->srv);
+        commands->SetComputeRootDescriptorTable(kSky + 4u, trace.uav.gpu);
+        commands->Dispatch((view->width + 7u) / 8u, (view->height + 7u) / 8u, 1u);
+        trace.Transition(commands, kReadState);
+        for (UINT i = 0; i < inputBarriers; ++i)
+            std::swap(toCompute[i].Transition.StateBefore, toCompute[i].Transition.StateAfter);
+        if (inputBarriers)
+            commands->ResourceBarrier(inputBarriers, toCompute.data());
+    } else {
+        trace.Transition(commands, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        commands->OMSetRenderTargets(1, &trace.rtv, FALSE, nullptr);
+        commands->SetPipelineState(state.tracePipeline.Get());
+        commands->DrawInstanced(3, 1, 0, 0);
+        trace.Transition(commands, kReadState);
     }
     auto resolvedTrace = trace.srv.gpu;
     if (useHistory) {

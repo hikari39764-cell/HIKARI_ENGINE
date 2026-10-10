@@ -16,6 +16,8 @@ struct SceneObjectAuthoringHistoryRequest {
     bool dirtyBefore = false;
     bool runtimeWorldAffected = true;
     bool runtimeWorldRefreshRequired = false;
+    // 0 以外なら、同じ値の続く編集を一つの取り消しにまとめる（ドラッグ中の数値など）。
+    uint64_t mergeGroup = 0;
 };
 
 } // namespace HIKARI
