@@ -152,6 +152,8 @@ bool EditorProjectSessionController::LaunchProjectHub(bool rebuildAndReload, std
             L"--wait-for-process-id",
             std::to_wstring(GetCurrentProcessId()),
         };
+        // Launcher は構築の後、これらの旗をそのまま次の编辑器へ渡す。
+        arguments.insert(arguments.end(), carriedEditorFlags_.begin(), carriedEditorFlags_.end());
     }
 
     return PROJECT_PROCESS::LaunchProcess(executable, arguments, runtimeRoot,

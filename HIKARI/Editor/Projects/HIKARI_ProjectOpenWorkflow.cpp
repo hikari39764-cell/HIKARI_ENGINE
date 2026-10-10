@@ -30,15 +30,17 @@ ProjectOpenWorkflow::ProjectOpenWorkflow(std::filesystem::path runtimeRoot)
 ProjectOpenWorkflow::~ProjectOpenWorkflow() { Shutdown(); }
 
 bool ProjectOpenWorkflow::Start(const std::filesystem::path& projectRoot, std::string& outMessage) {
+    editorFlags_.clear();
     return StartRequest(projectRoot, ProjectOpenWorkflowRequest::OpenProject, outMessage);
 }
 
 bool ProjectOpenWorkflow::StartRebuildAfterProcessExit(const std::filesystem::path& projectRoot, uint32_t processId,
-                                                       std::string& outMessage) {
+                                                       std::vector<std::wstring> editorFlags, std::string& outMessage) {
     if (IsBusy()) {
         outMessage = "A project build is already running.";
         return false;
     }
+    editorFlags_ = std::move(editorFlags);
     if (processId == 0u || processId == GetCurrentProcessId()) {
         state_ = ProjectOpenWorkflowState::Failed;
         statusMessage_ = "The previous project editor process ID is invalid; "
@@ -363,6 +365,7 @@ bool ProjectOpenWorkflow::LaunchEditor(bool useProjectModule, std::string& outMe
     } else {
         arguments.push_back(L"--allow-missing-project-module");
     }
+    arguments.insert(arguments.end(), editorFlags_.begin(), editorFlags_.end());
     CloseEditorWait();
     GUID guid{};
     if (FAILED(CoCreateGuid(&guid))) {

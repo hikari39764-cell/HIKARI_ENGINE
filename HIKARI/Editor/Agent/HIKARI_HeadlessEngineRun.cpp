@@ -56,7 +56,7 @@ nlohmann::json ReadHeadlessPlayResult(const HeadlessEngineRun& run) {
     return result.is_discarded() ? nullptr : result;
 }
 
-uint32_t HeadlessRunTimeoutSeconds(uint32_t ticks) { return ticks / 20u + 180u; }
+uint32_t HeadlessRunTimeoutSeconds(uint32_t ticks, bool light) { return ticks / (light ? 20u : 4u) + 180u; }
 
 std::filesystem::path FindProjectDescriptor(const std::filesystem::path& projectRoot) {
     std::error_code error;

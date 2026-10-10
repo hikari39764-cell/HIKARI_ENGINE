@@ -101,7 +101,8 @@ nlohmann::json RunHeadless(const HeadlessRunOptions& options) {
     CloseHandle(process.hThread);
     // 後ろの编辑器は結果を書いたら用済み。終了を待たずに止める。
     const auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::seconds(EDITOR::AGENT::HeadlessRunTimeoutSeconds(run.ticks));
+        std::chrono::steady_clock::now() +
+        std::chrono::seconds(EDITOR::AGENT::HeadlessRunTimeoutSeconds(run.ticks, !options.projectQuality));
     nlohmann::json result = nullptr;
     bool exited = false;
     while (!(result = EDITOR::AGENT::ReadHeadlessPlayResult(run)).is_object()) {

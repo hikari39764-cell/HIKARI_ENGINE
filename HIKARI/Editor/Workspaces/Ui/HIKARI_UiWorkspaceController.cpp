@@ -167,6 +167,9 @@ void UiWorkspaceController::DrawLibrary(DocumentSceneBase& scene, EditorContext&
                     parent = selected->GetParent()->GetDocumentId();
                 const auto r = operations.Execute("ui.create", {{"template", chosen}, {"parentId", parent.value}});
                 status_ = r.ok ? std::string{} : r.message;
+                if (r.ok)
+                    context.selection.SelectObjectIds(scene.GetWorld(),
+                                                      {SceneObjectId{r.data.value("objectId", uint64_t{0})}});
             }
             ImGui::EndPopup();
         }

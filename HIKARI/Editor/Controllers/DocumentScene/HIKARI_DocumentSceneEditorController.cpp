@@ -467,6 +467,13 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
     aiOperationScene_ = &scene;
     aiPlaySession_ = &playSession;
     aiProjectSession_ = &projectSession;
+    // 重载しても人が入れた访问模式と自動模式を保つ（智能体の作業が重载の後も続けられるように）。
+    std::vector<std::wstring> carried;
+    if (agentHost_.AccessMode() == EDITOR::AGENT::AgentAccessMode::DevelopProject)
+        carried.emplace_back(L"--agent-develop-project");
+    if (agentHost_.AutoApprove())
+        carried.emplace_back(L"--agent-auto-approve");
+    projectSession.SetCarriedEditorFlags(std::move(carried));
     KeepWorkspaceDockSpacesAlive();
     const auto projectRoot = scene.GetAssetDatabase().GetProjectRoot().generic_string();
     if (authoringProjectRoot_ != projectRoot) {

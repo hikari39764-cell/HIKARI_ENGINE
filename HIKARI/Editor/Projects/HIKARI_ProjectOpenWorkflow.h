@@ -4,6 +4,7 @@
 #include <chrono>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include <Windows.h>
 
@@ -33,8 +34,9 @@ public:
     ProjectOpenWorkflow& operator=(const ProjectOpenWorkflow&) = delete;
 
     bool Start(const std::filesystem::path& projectRoot, std::string& outMessage);
+    // editorFlags は構築の後に起動する编辑器へそのまま足す（重载前の智能体の访问模式と自動模式）。
     bool StartRebuildAfterProcessExit(const std::filesystem::path& projectRoot, uint32_t processId,
-                                      std::string& outMessage);
+                                      std::vector<std::wstring> editorFlags, std::string& outMessage);
     void Update();
     void Cancel() noexcept;
     bool Retry(std::string& message);
@@ -61,6 +63,7 @@ private:
     void PollBuildLog();
 
     std::filesystem::path runtimeRoot_{};
+    std::vector<std::wstring> editorFlags_{};
     std::filesystem::path projectRoot_{};
     std::filesystem::path descriptorPath_{};
     std::filesystem::path buildLogPath_{};

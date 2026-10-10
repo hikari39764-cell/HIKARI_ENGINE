@@ -148,6 +148,10 @@ int RunProjectHub() {
     HIKARI::EDITOR::ProjectLauncherStartupRequest startup{};
     startup.rebuildProject = HIKARI::ReadRuntimeCommandLinePath(L"--rebuild-project");
     startup.waitForProcessId = HIKARI::ReadRuntimeCommandLineUint32(L"--wait-for-process-id");
+    for (const wchar_t* flag : {L"--agent-develop-project", L"--agent-auto-approve"}) {
+        if (startup.rebuildProject && HIKARI::HasRuntimeCommandLineFlag(flag))
+            startup.editorFlags.emplace_back(flag);
+    }
     startup.waitForProcessIdMalformed = startup.rebuildProject.has_value() &&
                                         (!startup.waitForProcessId.has_value() || *startup.waitForProcessId == 0u);
 

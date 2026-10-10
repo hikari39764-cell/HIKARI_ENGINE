@@ -33,8 +33,8 @@ std::vector<std::wstring> BuildHeadlessEngineArguments(const HeadlessEngineRun& 
 nlohmann::json HeadlessRuntimeSettings(bool light);
 // 後ろの编辑器が書いた結果（{ok, code, message, data}）。まだ無ければ null。
 nlohmann::json ReadHeadlessPlayResult(const HeadlessEngineRun& run);
-// 待つ上限の秒数（起動・読み込みと、無頭でおよそ毎秒 20 tick 以上進む分）。
-uint32_t HeadlessRunTimeoutSeconds(uint32_t ticks);
+// 待つ上限の秒数（起動・読み込みと、無頭で light はおよそ毎秒 20 tick、项目の画質は 4 tick 以上進む分）。
+uint32_t HeadlessRunTimeoutSeconds(uint32_t ticks, bool light);
 
 std::filesystem::path FindProjectDescriptor(const std::filesystem::path& projectRoot);
 std::set<std::filesystem::path> ListLogFiles(const std::filesystem::path& folder);

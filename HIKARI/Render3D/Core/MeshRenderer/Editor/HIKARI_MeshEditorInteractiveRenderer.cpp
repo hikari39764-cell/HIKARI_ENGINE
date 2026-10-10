@@ -88,6 +88,9 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
                 gMeshRendererState.debugStats);
     FillShadowCB(environment, GFX::GetCurrentContext().frameIndex, editorFrame.view.shadow);
     FillSkyEnvironmentCB(environment, cameraPosition, camera.GetTarget(), editorFrame.view.skyEnvironment);
+    // 編集器のビューは SSAO を描かないので AO を読まない。主ビューは描いた時だけ有効にする（SetAmbientOcclusionRuntimeEnabled）
+    // が、ここで環境の設定のまま読むと予備の貼图の値で環境光が消え、影になった面が真っ黒になる。
+    editorFrame.view.skyEnvironment.ambientSamplingParams.x = 0.0f;
     if (settings.suppressSpatialLightingProviders) {
         editorFrame.view.skyEnvironment.ambientSamplingParams.w = 0.0f;
     }

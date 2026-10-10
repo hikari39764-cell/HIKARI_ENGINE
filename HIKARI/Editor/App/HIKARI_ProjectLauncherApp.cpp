@@ -47,8 +47,8 @@ bool ProjectLauncherApp::Initialize() {
         std::string rebuildMessage{};
         const std::filesystem::path descriptorPath = ResolveProjectDescriptorPath(*startup_.rebuildProject);
         const std::filesystem::path projectRoot = descriptorPath.parent_path();
-        const bool started =
-            openWorkflow_.StartRebuildAfterProcessExit(projectRoot, *startup_.waitForProcessId, rebuildMessage);
+        const bool started = openWorkflow_.StartRebuildAfterProcessExit(projectRoot, *startup_.waitForProcessId,
+                                                                        startup_.editorFlags, rebuildMessage);
         if (!started) {
             interactionMessage_ = std::move(rebuildMessage);
         } else {

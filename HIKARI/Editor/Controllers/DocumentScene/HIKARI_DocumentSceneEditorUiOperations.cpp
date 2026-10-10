@@ -116,7 +116,7 @@ void DocumentSceneEditorController::RegisterUiOperations() {
              CommitSceneObjectAuthoringHistory(*scene, {"Create UI/Text", before, scene->GetSceneDocument().objects,
                                                         scene->GetSceneDocument().camera,
                                                         scene->GetSceneDocument().camera, dirty, true, true});
-             context_.selection.SelectObjectIds(scene->GetWorld(), {created.id});
+             // 作った物は選ばない（智能体が人の選択を変えずに並行して作業できるように）。界面の按钮は成功後に選ぶ。
              EditorOperationResult result{true, "OK", "Created scene object."};
              result.data = {{"objectId", created.id.value}, {"componentQuery", "component.instances.query"}};
              return result;

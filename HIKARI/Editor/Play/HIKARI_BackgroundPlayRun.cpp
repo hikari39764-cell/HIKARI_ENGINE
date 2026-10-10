@@ -67,7 +67,7 @@ EditorOperationResult BackgroundPlayRun::Start(const Request& request) {
         return OperationFailure("LAUNCH_FAILED", message);
     process_ = std::move(process);
     started_ = std::chrono::steady_clock::now();
-    timeout_ = std::chrono::seconds(AGENT::HeadlessRunTimeoutSeconds(run_.ticks));
+    timeout_ = std::chrono::seconds(AGENT::HeadlessRunTimeoutSeconds(run_.ticks, !request.projectQuality));
     return OperationOk("Background Play started; the editor stays free.", Pending(runId_));
 }
 

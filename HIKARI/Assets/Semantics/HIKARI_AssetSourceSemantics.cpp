@@ -29,14 +29,17 @@ std::filesystem::path MakeArtifactManifestPath(const std::filesystem::path& libr
 }
 
 std::string MakeAssetFileStem(std::string value, std::string_view fallback) {
+    // 英数字・-・_ と UTF-8 の多バイト文字（漢字・かな）は残し、文件名に使えない ASCII の記号と空白は _ にする。
     for (char& character : value) {
-        if (!std::isalnum(static_cast<unsigned char>(character)) && character != '-' && character != '_')
+        const auto byte = static_cast<unsigned char>(character);
+        if (byte < 0x80u && !std::isalnum(byte) && character != '-' && character != '_')
             character = '_';
     }
     value.erase(
         std::unique(value.begin(), value.end(), [](char left, char right) { return left == '_' && right == '_'; }),
         value.end());
-    return value.empty() ? std::string(fallback) : value;
+    const bool named = std::any_of(value.begin(), value.end(), [](char character) { return character != '_'; });
+    return named ? value : std::string(fallback);
 }
 
 namespace {

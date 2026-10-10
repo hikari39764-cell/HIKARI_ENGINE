@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <map>
+#include <vector>
 
 #include "Editor/Projects/HIKARI_ProjectOpenWorkflow.h"
 #include "Editor/Diagnostics/HIKARI_EditorLogPanel.h"
@@ -18,6 +19,8 @@ struct ProjectLauncherStartupRequest {
     std::optional<std::filesystem::path> rebuildProject{};
     std::optional<uint32_t> waitForProcessId{};
     bool waitForProcessIdMalformed = false;
+    // 重载を頼んだ编辑器から次の编辑器へ渡す旗（--agent-develop-project、--agent-auto-approve）。
+    std::vector<std::wstring> editorFlags{};
 };
 
 class ProjectLauncherApp final : public RUNTIME::IHostApplication {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace HIKARI::EDITOR {
 
@@ -19,6 +20,8 @@ public:
     void DrawConfirmationDialog();
     // 承認済みの「重新构建并重载」。呼ぶ側が未保存の文書と Play を確かめる。
     bool StartRebuildAndReload(std::string& outMessage);
+    // 重新构建并重载で次の编辑器へ引き継ぐ起動の旗（人が入れた智能体の访问模式と自動模式）。
+    void SetCarriedEditorFlags(std::vector<std::wstring> flags) { carriedEditorFlags_ = std::move(flags); }
 
     bool ShouldExitHost() const noexcept;
 
@@ -31,6 +34,7 @@ private:
     bool hasUnsavedChanges_ = false;
     bool openConfirmationRequested_ = false;
     bool exitRequested_ = false;
+    std::vector<std::wstring> carriedEditorFlags_{};
 };
 
 } // namespace HIKARI::EDITOR
