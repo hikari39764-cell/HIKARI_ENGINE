@@ -79,8 +79,10 @@ GameObject* CreateReflectionProbeObject(DocumentSceneBase& scene, const CreateOb
 
 GameObject* CreateIrradianceVolumeObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
 
+// 種類と明るさの単位ごとの既定の灯（スポットは届く距離を 8 m にする）。
+LightSettings DefaultLightSettings(RENDER3D::LIGHTING::SceneLightType lightType, LightIntensityUnit unit) noexcept;
 GameObject* CreateLightObject(DocumentSceneBase& scene, const CreateObjectRequest& request,
-                              RENDER3D::LIGHTING::SceneLightType lightType, LightIntensityUnit unit);
+                              const LightSettings& settings);
 
 GameObject* CreateDecalObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
 

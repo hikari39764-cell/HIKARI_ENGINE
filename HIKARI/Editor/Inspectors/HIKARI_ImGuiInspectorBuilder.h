@@ -16,6 +16,8 @@ public:
     bool Int(std::string_view label, int& value) override;
     bool Float(std::string_view label, float& value) override;
     bool FloatRange(std::string_view label, float& value, float minimum, float maximum, float speed = 0.1f) override;
+    bool FloatRange(const AuthoringFieldDescriptor& field, float& value, float minimum, float maximum,
+                    float speed = 0.1f) override;
     bool TypedValue(const AuthoringFieldDescriptor& field, BINDING::Value& value, bool hasRange, float minimum,
                     float maximum, float step) override;
     bool Color3(std::string_view label, float& red, float& green, float& blue) override;

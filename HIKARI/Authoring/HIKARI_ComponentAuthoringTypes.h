@@ -40,6 +40,8 @@ struct AuthoringFieldDescriptor {
     std::string_view label{};
     std::string_view description{};
     bool writable = true;
+    // 編集 UI で範囲を滑块で出す（FloatRange）。全域に意味がある角度・割合に使い、距離や明るさはドラッグ欄のまま。
+    bool slider = false;
 };
 
 struct AuthoringChoice {

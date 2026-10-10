@@ -2,7 +2,9 @@
 
 #include <cstdint>
 #include <optional>
+#include <unordered_set>
 
+#include "Assets/Models/HIKARI_ModelAssetTypes.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
@@ -49,6 +51,24 @@ inline constexpr TEXT::EnumName<LookDevPlaceItem> kLookDevPlaceItemNames[] = {
     {LookDevPlaceItem::RectLight, "rectLight"},
 };
 
+// 視口の矩形（画面座標）。
+struct LookDevView {
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+};
+
+// 世界の点を視口の画面座標へ写す。相機の後ろなら false。
+bool ProjectLookDevPoint(const Camera3D& camera, const LookDevView& view, const MATH::Vec3& point,
+                         MATH::Vec2& screen) noexcept;
+// 世界の行列の位置（行ベクトルの 4 行目）。
+inline MATH::Vec3 LookDevTranslation(const MATH::Mat4& world) noexcept {
+    return {world.m[3][0], world.m[3][1], world.m[3][2]};
+}
+// direction を向く Euler（度、XYZ）。相機と灯は局所 +Z が前。
+MATH::Vec3 LookDevFacingRotation(const MATH::Vec3& direction) noexcept;
+
 bool IsLookDevLight(LookDevPlaceItem item) noexcept;
 RENDER3D::LIGHTING::SceneLightType LookDevLightType(LookDevPlaceItem item) noexcept;
 // 方块類の形と寸法（m）。
@@ -63,8 +83,12 @@ struct LookDevSurfaceHit {
 // 場面の描画物の外接箱と地面（y = 0）から、視線で最初に当たる面を探す。normalizedX/Y は視口内の 0..1。
 std::optional<LookDevSurfaceHit> FindLookDevSurface(const Camera3D& camera, float normalizedX, float normalizedY);
 
-// point の真下で最も高い面の高さ（描画物の外接箱の上面、無ければ地面 0）。人眼高度へ置く時に使う。
-float FindLookDevGroundHeight(const MATH::Vec3& point);
+// 描画物の世界の外接箱（場面の物体 ID）。描かれていない物は無し。
+std::optional<Bounds> FindLookDevObjectBounds(uint64_t objectId);
+
+// point の真下で最も高い面の高さ（描画物の外接箱の上面、無ければ地面 0）。人眼高度と落地に使う。
+// ignoredObjects の物（落とす物自身）は数えない。
+float FindLookDevGroundHeight(const MATH::Vec3& point, const std::unordered_set<uint64_t>& ignoredObjects = {});
 
 struct LookDevPlacementPose {
     MATH::Vec3 position{};
@@ -79,7 +103,7 @@ LookDevPlacementPose ComputeLookDevPlacement(LookDevPlaceItem item, const LookDe
                                              float yawDegrees) noexcept;
 
 // 置く前の下書き（外形の線と接地の印）を視口の上に描く。
-void DrawLookDevPlacementPreview(ImDrawList& drawList, const Camera3D& camera, float x, float y, float width,
-                                 float height, const LookDevPlacementPose& pose, const LookDevSurfaceHit& hit);
+void DrawLookDevPlacementPreview(ImDrawList& drawList, const Camera3D& camera, const LookDevView& view,
+                                 const LookDevPlacementPose& pose, const LookDevSurfaceHit& hit);
 
 } // namespace HIKARI::EDITOR

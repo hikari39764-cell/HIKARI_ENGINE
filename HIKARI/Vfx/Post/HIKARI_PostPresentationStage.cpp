@@ -18,14 +18,56 @@ void PostPresentationStage::UpdateContext(const GFX::Context& context) {
                                 context_.deviceGeneration != context.deviceGeneration;
     context_ = context;
     editorOutput_.UpdateContext(context);
+    editorSnapshot_.UpdateContext(context);
     if (contextChanged) {
         ResetEditorOutputSrvTracking();
+        ClearEditorSnapshot();
     }
 }
 
 void PostPresentationStage::Shutdown() {
     editorOutput_.Finalize();
     ResetEditorOutputSrvTracking();
+    ClearEditorSnapshot();
+}
+
+void PostPresentationStage::ClearEditorSnapshot() {
+    editorSnapshot_.Finalize();
+    editorSnapshotSrv_ = {};
+    editorSnapshotRequested_ = false;
+}
+
+bool PostPresentationStage::CaptureEditorSnapshot(RenderTarget2D& source, QuadDrawer& quad) {
+    editorSnapshotRequested_ = false;
+    if (context_.device == nullptr || context_.srvHeap == nullptr) {
+        return false;
+    }
+    if (editorSnapshot_.GetResource() == nullptr || editorSnapshot_.GetWidth() != source.GetWidth() ||
+        editorSnapshot_.GetHeight() != source.GetHeight()) {
+        ClearEditorSnapshot();
+        editorSnapshot_.UpdateContext(context_);
+        editorSnapshot_.SetDebugName("Presentation.EditorSnapshot.LDR");
+        if (!editorSnapshot_.Init(source.GetWidth(), source.GetHeight(), DXGI_FORMAT_R8G8B8A8_UNORM, false,
+                                  {0.0f, 0.0f, 0.0f, 1.0f})) {
+            return false;
+        }
+        const UINT descriptorSize =
+            context_.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        const UINT slot = GFX::DESCRIPTOR::ToIndex(GFX::DESCRIPTOR::SystemSrv::EditorViewportSnapshot);
+        D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+        srv.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srv.Texture2D.MipLevels = 1;
+        context_.device->CreateShaderResourceView(editorSnapshot_.GetResource(), &srv,
+                                                  GFX::DESCRIPTOR::CpuAt(context_.srvHeap, descriptorSize, slot));
+        editorSnapshotSrv_ = GFX::DESCRIPTOR::GpuAt(context_.srvHeap, descriptorSize, slot);
+    }
+    editorSnapshot_.BeginCapture(0.0f, 0.0f, 0.0f, 1.0f);
+    const bool drew = DrawSource(source, quad);
+    editorSnapshot_.EndCapture();
+    BindBackBufferFullViewport();
+    return drew;
 }
 
 bool PostPresentationStage::HasCompatibleEditorOutput(int width, int height) const {
@@ -150,6 +192,9 @@ bool PostPresentationStage::PresentToEditor(RenderTarget2D& source, QuadDrawer& 
     lastPublishedFrameSlot_ = frameSlot;
     if (replacingOutput) {
         PruneObsoleteEditorOutputSrvTracking(editorOutput_.GetResource());
+    }
+    if (editorSnapshotRequested_) {
+        (void)CaptureEditorSnapshot(source, quad);
     }
 #if defined(HIKARI_WITH_EDITOR)
     RENDER3D::EDITORVIEW::RecordViewCapture(RENDER3D::kPrimaryRenderViewId, true, TIME::GetFrameContext().frameIndex,

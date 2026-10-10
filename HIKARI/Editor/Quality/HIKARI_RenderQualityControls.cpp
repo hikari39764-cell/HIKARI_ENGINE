@@ -16,6 +16,7 @@
 #include <utility>
 
 #include "Editor/Widgets/HIKARI_JsonFieldsEditor.h"
+#include "Editor/Widgets/HIKARI_NumberField.h"
 #endif
 
 namespace HIKARI::EDITOR::QUALITY_PANEL {
@@ -297,6 +298,8 @@ bool DrawFxaaSettings() {
 bool DrawRenderSettings() {
     const RENDER3D::RenderQualitySettings beforeEdit = RENDER3D::GetRenderQualitySettings();
     RENDER3D::RenderQualitySettings settings = beforeEdit;
+    // 滑块の右クリックで戻す既定値。
+    static const RENDER3D::RenderQualitySettings kDefaults{};
     bool changed = false;
 
     if (ImGui::TreeNodeEx(TEXT::Localize("ui.quality.display").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -305,7 +308,8 @@ bool DrawRenderSettings() {
                                                  settings.sceneResolution, true);
             if (settings.sceneResolution == RENDER3D::RenderResolutionPreset::Viewport) {
                 EDITOR::PropertyLabel(TEXT::Localize("ui.quality.viewportScale").c_str());
-                changed |= ImGui::SliderFloat("##ViewportScale", &settings.viewportScale, 0.25f, 2.0f, "%.2fx");
+                changed |= EDITOR::SliderNumber("##ViewportScale", settings.viewportScale, 0.25, 2.0,
+                                                &kDefaults.viewportScale);
             }
             changed |= DrawResolutionPresetCombo(TEXT::Localize("ui.quality.gameWindowSize").c_str(),
                                                  settings.windowSize, false);
@@ -362,25 +366,26 @@ bool DrawRenderSettings() {
                 ImGui::TextDisabled("%s", TEXT::Localize("ui.quality.frameGenerationRestart").c_str());
             }
             if (settings.frameGenerationMode == RENDER3D::RenderFrameGenerationMode::Dlss) {
-                int multiplier = settings.frameGenerationMultiplier;
                 EDITOR::PropertyLabel(TEXT::Localize("ui.quality.frameMultiplier").c_str());
-                if (ImGui::SliderInt("##FrameGenerationMultiplier", &multiplier, 2, 6, "%dx")) {
-                    settings.frameGenerationMultiplier = static_cast<uint8_t>(multiplier);
-                    changed = true;
-                }
+                changed |= EDITOR::SliderNumber("##FrameGenerationMultiplier", settings.frameGenerationMultiplier, 2.0,
+                                                6.0, &kDefaults.frameGenerationMultiplier);
             }
             if (settings.antiAliasingMode == RENDER3D::RenderAntiAliasingMode::TAA) {
                 EDITOR::PropertyLabel(TEXT::Localize("ui.quality.taaHistory").c_str());
-                changed |= ImGui::SliderFloat("##TaaHistory", &settings.taaHistoryWeight, 0.0f, 0.97f, "%.2f");
+                changed |= EDITOR::SliderNumber("##TaaHistory", settings.taaHistoryWeight, 0.0, 0.97,
+                                                &kDefaults.taaHistoryWeight);
                 EDITOR::PropertyLabel(TEXT::Localize("ui.quality.varianceClip").c_str());
-                changed |= ImGui::SliderFloat("##TaaVarianceClip", &settings.taaVarianceClipGamma, 0.0f, 3.0f, "%.2f");
+                changed |= EDITOR::SliderNumber("##TaaVarianceClip", settings.taaVarianceClipGamma, 0.0, 3.0,
+                                                &kDefaults.taaVarianceClipGamma);
                 EDITOR::PropertyLabel(TEXT::Localize("ui.quality.depthReject").c_str());
-                changed |=
-                    ImGui::DragFloat("##TaaDepthReject", &settings.taaDepthRejection, 0.0005f, 0.0001f, 0.05f, "%.4f");
+                changed |= EDITOR::DragNumber("##TaaDepthReject", settings.taaDepthRejection,
+                                              {.minimum = 0.0001, .maximum = 0.05}, &kDefaults.taaDepthRejection);
                 EDITOR::PropertyLabel(TEXT::Localize("ui.quality.lumaReject").c_str());
-                changed |= ImGui::SliderFloat("##TaaLumaReject", &settings.taaLuminanceRejection, 0.05f, 4.0f, "%.2f");
+                changed |= EDITOR::DragNumber("##TaaLumaReject", settings.taaLuminanceRejection,
+                                              {.minimum = 0.05, .maximum = 4.0}, &kDefaults.taaLuminanceRejection);
                 EDITOR::PropertyLabel(TEXT::Localize("ui.quality.sharpness").c_str());
-                changed |= ImGui::SliderFloat("##TaaSharpness", &settings.taaSharpness, 0.0f, 1.0f, "%.2f");
+                changed |=
+                    EDITOR::SliderNumber("##TaaSharpness", settings.taaSharpness, 0.0, 1.0, &kDefaults.taaSharpness);
             } else if (settings.antiAliasingMode == RENDER3D::RenderAntiAliasingMode::FXAA) {
                 (void)DrawFxaaSettings();
             }
@@ -404,12 +409,9 @@ bool DrawRenderSettings() {
             EDITOR::PropertyLabel(TEXT::Localize("ui.quality.directionalShadow.rayTraced").c_str());
             changed |= ImGui::Checkbox("##RayTracedShadows", &settings.directionalShadow.rayTraced);
             if (settings.directionalShadow.rayTraced) {
-                int samples = static_cast<int>(settings.directionalShadow.rayTracedSamples);
                 EDITOR::PropertyLabel(TEXT::Localize("ui.quality.directionalShadow.rayTracedSamples").c_str());
-                if (ImGui::SliderInt("##RayTracedShadowSamples", &samples, 1, 8)) {
-                    settings.directionalShadow.rayTracedSamples = static_cast<uint32_t>(samples);
-                    changed = true;
-                }
+                changed |= EDITOR::SliderNumber("##RayTracedShadowSamples", settings.directionalShadow.rayTracedSamples,
+                                                1.0, 8.0, &kDefaults.directionalShadow.rayTracedSamples);
             }
             EDITOR::EndPropertyTable();
         }

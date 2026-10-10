@@ -17,6 +17,32 @@ bool Unproject(const MATH::Mat4& inverseViewProjection, float x, float y, float 
 }
 
 } // namespace
+bool IntersectEditorPlane(const EditorPointerRay& ray, const MATH::Vec3& point, const MATH::Vec3& normal,
+                          MATH::Vec3& hit) noexcept {
+    const float denominator = MATH::Dot(ray.direction, normal);
+    if (std::abs(denominator) < 1.0e-4f) {
+        return false;
+    }
+    const float distance = MATH::Dot(point - ray.origin, normal) / denominator;
+    if (!(distance > 0.0f)) {
+        return false;
+    }
+    hit = ray.origin + ray.direction * distance;
+    return true;
+}
+
+bool ClosestEditorLineParameter(const EditorPointerRay& ray, const MATH::Vec3& origin, const MATH::Vec3& axis,
+                                float& s) noexcept {
+    const MATH::Vec3 w = origin - ray.origin;
+    const float b = MATH::Dot(axis, ray.direction);
+    const float denominator = 1.0f - b * b;
+    if (denominator < 1.0e-4f) {
+        return false;
+    }
+    s = (b * MATH::Dot(ray.direction, w) - MATH::Dot(axis, w)) / denominator;
+    return std::isfinite(s);
+}
+
 bool IntersectEditorBounds(const EditorPointerRay& ray, const MATH::Vec3& minimum, const MATH::Vec3& maximum,
                            float& outDistance) noexcept {
     float nearDistance = 0.0f;

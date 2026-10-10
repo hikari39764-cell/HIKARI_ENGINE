@@ -31,6 +31,43 @@ std::unordered_set<uint64_t> CollectObjectSubtreeIds(const SceneDocument& docume
     return ids;
 }
 
+std::vector<SceneObjectId> CollectRootObjectIds(const SceneDocument& document, std::span<const SceneObjectId> ids) {
+    std::unordered_set<uint64_t> selected{};
+    for (SceneObjectId id : ids) {
+        if (id.value != 0u) {
+            selected.insert(id.value);
+        }
+    }
+    std::unordered_map<uint64_t, SceneObjectId> parents{};
+    parents.reserve(document.objects.size());
+    for (const SceneObjectData& object : document.objects) {
+        if (object.parent) {
+            parents.emplace(object.id.value, *object.parent);
+        }
+    }
+    std::vector<SceneObjectId> roots{};
+    roots.reserve(selected.size());
+    for (SceneObjectId id : ids) {
+        bool hasSelectedAncestor = false;
+        SceneObjectId ancestor = id;
+        std::unordered_set<uint64_t> visited{id.value};
+        for (auto found = parents.find(ancestor.value); found != parents.end(); found = parents.find(ancestor.value)) {
+            ancestor = found->second;
+            if (!visited.insert(ancestor.value).second) {
+                break;
+            }
+            if (selected.contains(ancestor.value)) {
+                hasSelectedAncestor = true;
+                break;
+            }
+        }
+        if (!hasSelectedAncestor) {
+            roots.push_back(id);
+        }
+    }
+    return roots;
+}
+
 SceneObjectChanges DiffSceneObjects(std::span<const SceneObjectData> before, std::span<const SceneObjectData> after) {
     std::unordered_map<uint64_t, const SceneObjectData*> previous;
     previous.reserve(before.size());

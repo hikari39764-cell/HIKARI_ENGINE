@@ -78,7 +78,8 @@ bool ReadClipboardNumber(double& value) {
     return end != text && end != nullptr && *end == '\0' && std::isfinite(value);
 }
 
-bool DrawNumberMenu(double& value, const NumberRange& range, const double* defaultValue, bool integer) {
+bool DrawNumberMenu(double& value, const NumberRange& range, const double* defaultValue, bool integer,
+                    const char* hintKey) {
     if (!ImGui::BeginPopupContextItem("##numberMenu")) {
         return false;
     }
@@ -102,7 +103,7 @@ bool DrawNumberMenu(double& value, const NumberRange& range, const double* defau
         changed = true;
     }
     ImGui::Separator();
-    ImGui::TextDisabled("%s", TEXT::Localize("ui.number.hint").c_str());
+    ImGui::TextDisabled("%s", TEXT::Localize(hintKey).c_str());
     ImGui::EndPopup();
     return changed;
 }
@@ -131,7 +132,25 @@ bool DragNumberComponent(const char* label, double& value, const NumberRange& ra
     } else if (ImGui::IsItemDeactivated() && dragging) {
         g_dragLatch = {};
     }
-    changed |= DrawNumberMenu(value, range, defaultValue, integer);
+    changed |= DrawNumberMenu(value, range, defaultValue, integer, "ui.number.hint");
+    ImGui::EndGroup();
+    return changed;
+}
+
+bool SliderNumberComponent(const char* label, double& value, double minimum, double maximum, const double* defaultValue,
+                           bool integer) {
+    const NumberRange range{.minimum = minimum, .maximum = maximum};
+    if (!IsRanged(range)) {
+        return DragNumberComponent(label, value, range, defaultValue, integer);
+    }
+    const int decimals =
+        integer ? 0 : std::clamp(static_cast<int>(std::ceil(-std::log10((maximum - minimum) / 1000.0))), 0, 4);
+    char format[16]{};
+    std::snprintf(format, sizeof(format), "%%.%df", decimals);
+    ImGui::BeginGroup();
+    bool changed = ImGui::SliderScalar(label, ImGuiDataType_Double, &value, &range.minimum, &range.maximum, format,
+                                       ImGuiSliderFlags_AlwaysClamp);
+    changed |= DrawNumberMenu(value, range, defaultValue, integer, "ui.number.sliderHint");
     ImGui::EndGroup();
     return changed;
 }

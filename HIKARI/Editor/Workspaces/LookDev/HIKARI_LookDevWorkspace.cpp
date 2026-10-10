@@ -35,7 +35,7 @@ std::string ItemLabel(LookDevPlaceItem item) {
 
 void LookDevWorkspace::DrawDockSpace(bool resetLayout) {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    const ImGuiID id = ImGui::GetID("HIKARI_LookDev_v1");
+    const ImGuiID id = ImGui::GetID("HIKARI_LookDev_v2");
     if (resetLayout || ImGui::DockBuilderGetNode(id) == nullptr) {
         ImGui::DockBuilderRemoveNode(id);
         ImGui::DockBuilderAddNode(id, ImGuiDockNodeFlags_DockSpace);
@@ -45,11 +45,15 @@ void LookDevWorkspace::DrawDockSpace(bool resetLayout) {
         ImGuiID left = 0;
         ImGuiID right = 0;
         ImGuiID lighting = 0;
-        ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.17f, &left, &center);
+        ImGuiID scene = 0;
+        ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, 0.19f, &left, &center);
         ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, 0.27f, &right, &center);
         ImGui::DockBuilderSplitNode(right, ImGuiDir_Down, 0.62f, &lighting, &right);
+        ImGui::DockBuilderSplitNode(left, ImGuiDir_Down, 0.45f, &scene, &left);
         ImGui::DockBuilderDockWindow("###LookDev/Viewport", center);
         ImGui::DockBuilderDockWindow("###LookDev/Place", left);
+        ImGui::DockBuilderDockWindow("###LookDev/Lights", scene);
+        ImGui::DockBuilderDockWindow("###LookDev/Objects", scene);
         ImGui::DockBuilderDockWindow("###LookDev/Inspector", right);
         ImGui::DockBuilderDockWindow("###LookDev/Lighting", lighting);
         ImGui::DockBuilderFinish(id);

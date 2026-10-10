@@ -195,6 +195,38 @@ float3 EvaluateLighting(
     return lighting;
 }
 
+// 画素 pixel に見えている面の平面（向きは相機の側, 定数項）。法線は深度の隣の画素から作り、段差の少ない側を使う。
+// 空や両側とも段差なら 0（判定しない）。
+float4 VisibleSurfacePlane(int2 pixel, int2 size, float3 cameraSide)
+{
+    const float depth = gSceneDepth.Load(int3(pixel, 0));
+    if (depth >= 0.999999f)
+        return 0.0f.xxxx;
+    const float3 position = HikariUnprojectVolumePosition((float2(pixel) + 0.5f) / float2(size), depth, gInvViewProj);
+    float3 tangents[2];
+    [unroll] for (uint axis = 0u; axis < 2u; ++axis)
+    {
+        const int2 step = axis == 0u ? int2(1, 0) : int2(0, 1);
+        const int2 after = clamp(pixel + step, int2(0, 0), size - 1);
+        const int2 before = clamp(pixel - step, int2(0, 0), size - 1);
+        const float afterDepth = gSceneDepth.Load(int3(after, 0));
+        const float beforeDepth = gSceneDepth.Load(int3(before, 0));
+        const bool useAfter = abs(afterDepth - depth) <= abs(beforeDepth - depth);
+        const int2 neighbor = useAfter ? after : before;
+        const float neighborDepth = useAfter ? afterDepth : beforeDepth;
+        if (neighborDepth >= 0.999999f || all(neighbor == pixel))
+            return 0.0f.xxxx;
+        tangents[axis] = (HikariUnprojectVolumePosition((float2(neighbor) + 0.5f) / float2(size), neighborDepth,
+            gInvViewProj) - position) * (useAfter ? 1.0f : -1.0f);
+    }
+    const float3 normal = cross(tangents[0], tangents[1]);
+    const float normalLength = length(normal);
+    if (!(normalLength > 1.0e-12f))
+        return 0.0f.xxxx;
+    const float3 facing = normal / normalLength * (dot(normal, cameraSide - position) < 0.0f ? -1.0f : 1.0f);
+    return float4(facing, -dot(facing, position));
+}
+
 // 環境光の粗い格子（froxel の 4x4 横、奥行き半分）。格納点は積分と同じ奥行きの分布で near..far に並ぶ。
 [numthreads(8, 8, 1)]
 void GatherAmbientCS(uint3 dispatchThreadId : SV_DispatchThreadID)
@@ -216,13 +248,18 @@ void GatherAmbientCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     uint sceneHeight = 0u;
     gSceneDepth.GetDimensions(sceneWidth, sceneHeight);
     const float3 cameraForward = HikariVolumeCameraForward(gInvViewProj, gCameraPos.xyz, orthographic);
-    const float depth = gSceneDepth.Load(int3(uv * float2(sceneWidth - 1u, sceneHeight - 1u), 0));
+    const int2 pixel = int2(uv * float2(sceneWidth - 1u, sceneHeight - 1u));
+    const float depth = gSceneDepth.Load(int3(pixel, 0));
     const float surfaceDistance = depth < 0.999999f
         ? HikariVolumeCameraDistance(HikariUnprojectVolumePosition(uv, depth, gInvViewProj), gCameraPos.xyz,
               cameraForward, orthographic)
         : gFogDistances.y;
     const float cellDistance = FractionDistance((float)dispatchThreadId.z / max((float)volumeSize.z - 1.0f, 1.0f));
-    const float3 worldPosition = rayOrigin + ray * max(min(cellDistance, surfaceDistance - 0.3f), gFogDistances.x);
+    const float sampleDistance = max(min(cellDistance, surfaceDistance - 0.3f), gFogDistances.x);
+    const float3 worldPosition = rayOrigin + ray * sampleDistance;
+    // 格子点はその面の手前にあるので、面の裏の probe（薄い屋根や壁の向こう）を使わない。面から probe の一間隔より
+    // 遠い点では使わない（小さな物の接平面が遠くの probe まで切り落とす）。
+    const float4 surfacePlane = VisibleSurfacePlane(pixel, int2(sceneWidth, sceneHeight), rayOrigin);
     // 面の受光（HikariResolveLightProbeDiffuse）と同じく、手置きの区域、近景、遠景の順に重ねる。
     float3 radiance = 0.0f.xxx;
     float coverage = 0.0f;
@@ -232,7 +269,10 @@ void GatherAmbientCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         const float influence = HikariEvaluateIrradianceVolumeInfluence(volume, worldPosition);
         [branch] if (influence > 0.0001f && coverage < 0.9999f)
         {
-            const float4 sample = HikariEvaluateDynamicGiMedium(volume, worldPosition);
+            const float spacing =
+                max(volume.spacingIntensity.x, max(volume.spacingIntensity.y, volume.spacingIntensity.z));
+            const float4 sample = HikariEvaluateDynamicGiMedium(volume, worldPosition,
+                surfaceDistance - sampleDistance < spacing ? surfacePlane : 0.0f.xxxx);
             const float weight = influence * sample.a * (1.0f - coverage);
             radiance += sample.rgb * max(0.0f, volume.spacingIntensity.w) * weight;
             coverage += weight;

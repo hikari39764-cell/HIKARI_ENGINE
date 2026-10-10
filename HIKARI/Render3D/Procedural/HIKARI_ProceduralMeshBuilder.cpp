@@ -1,5 +1,7 @@
 #include "Render3D/Procedural/HIKARI_ProceduralMeshBuilder.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 
 #include "Assets/Models/HIKARI_ModelAsset.h"
@@ -76,14 +78,178 @@ void BuildGridPlane(const ProceduralMeshSettings& settings, MeshPrimitive& primi
     }
 }
 
+// 四角の面。a・b が下の辺（uv の v が大きい側）、c・d が上の辺。uv は a から d の順に (u0,v1) (u1,v1) (u0,v0) (u1,v0)。
 void AddBoxFace(MeshPrimitive& primitive, MATH::Vec3 a, MATH::Vec3 b, MATH::Vec3 c, MATH::Vec3 d, MATH::Vec3 normal,
-                MATH::Vec4 tangent) {
+                MATH::Vec4 tangent, MATH::Vec4 uv = {0.0f, 0.0f, 1.0f, 1.0f}) {
     const uint32_t base = static_cast<uint32_t>(primitive.staticVertices.size());
-    primitive.staticVertices.push_back(MakeVertex(a, normal, tangent, 0.0f, 1.0f));
-    primitive.staticVertices.push_back(MakeVertex(b, normal, tangent, 1.0f, 1.0f));
-    primitive.staticVertices.push_back(MakeVertex(c, normal, tangent, 0.0f, 0.0f));
-    primitive.staticVertices.push_back(MakeVertex(d, normal, tangent, 1.0f, 0.0f));
+    primitive.staticVertices.push_back(MakeVertex(a, normal, tangent, uv.x, uv.w));
+    primitive.staticVertices.push_back(MakeVertex(b, normal, tangent, uv.z, uv.w));
+    primitive.staticVertices.push_back(MakeVertex(c, normal, tangent, uv.x, uv.y));
+    primitive.staticVertices.push_back(MakeVertex(d, normal, tangent, uv.z, uv.y));
     primitive.indices.insert(primitive.indices.end(), {base, base + 1u, base + 2u, base + 1u, base + 3u, base + 2u});
+}
+
+// 箱の面の向き。u は接線の向き、v は面の上から下へ（BuildBox の uv の向き）。
+struct BoxFace {
+    int axis;
+    int sign;
+    MATH::Vec3 normal;
+    int uAxis;
+    float uSign;
+    int vAxis;
+    float vSign;
+    MATH::Vec4 tangent;
+};
+constexpr BoxFace kBoxFaces[6] = {
+    {2, 1, {0, 0, 1}, 0, 1.0f, 1, -1.0f, {1, 0, 0, 1}},   {2, -1, {0, 0, -1}, 0, -1.0f, 1, -1.0f, {-1, 0, 0, 1}},
+    {0, -1, {-1, 0, 0}, 2, 1.0f, 1, -1.0f, {0, 0, 1, 1}}, {0, 1, {1, 0, 0}, 2, -1.0f, 1, -1.0f, {0, 0, -1, 1}},
+    {1, 1, {0, 1, 0}, 0, 1.0f, 2, 1.0f, {1, 0, 0, 1}},    {1, -1, {0, -1, 0}, 0, 1.0f, 2, -1.0f, {1, 0, 0, 1}},
+};
+
+float AxisValue(const MATH::Vec3& value, int axis) { return axis == 0 ? value.x : (axis == 1 ? value.y : value.z); }
+
+MATH::Vec3 UnitAxis(int axis, float sign) {
+    return {axis == 0 ? sign : 0.0f, axis == 1 ? sign : 0.0f, axis == 2 ? sign : 0.0f};
+}
+
+// 箱の面全体に対する uv（欠けた面でも模様が続く）。
+MATH::Vec2 BoxFaceUv(const BoxFace& face, const MATH::Vec3& point, const MATH::Vec3& half) {
+    const float uHalf = AxisValue(half, face.uAxis);
+    const float vHalf = AxisValue(half, face.vAxis);
+    return {(AxisValue(point, face.uAxis) * face.uSign + uHalf) / (2.0f * uHalf),
+            (AxisValue(point, face.vAxis) * face.vSign + vHalf) / (2.0f * vHalf)};
+}
+
+// normal の側から見て表になるように回りを揃えた三角形。
+void AddOrientedTriangle(MeshPrimitive& primitive, std::array<MATH::Vec3, 3> points, std::array<MATH::Vec2, 3> uvs,
+                         std::array<MATH::Vec3, 3> normals, const MATH::Vec3& facing, const MATH::Vec4& tangent) {
+    if (MATH::Dot(MATH::Cross(points[1] - points[0], points[2] - points[0]), facing) < 0.0f) {
+        std::swap(points[1], points[2]);
+        std::swap(uvs[1], uvs[2]);
+        std::swap(normals[1], normals[2]);
+    }
+    const uint32_t base = static_cast<uint32_t>(primitive.staticVertices.size());
+    for (size_t index = 0; index < 3; ++index) {
+        primitive.staticVertices.push_back(
+            MakeVertex(points[index], normals[index], tangent, uvs[index].x, uvs[index].y));
+    }
+    primitive.indices.insert(primitive.indices.end(), {base, base + 1u, base + 2u});
+}
+
+// 丸い穴：外接する正方形の柱を格子から抜いた所に、両端の面の四隅（正方形の角から円弧への扇）と、内向きの円柱の壁を足す。
+void AddRoundCutFill(const ProceduralMeshCut& cut, const MATH::Vec3& half, bool tangents, MeshPrimitive& primitive) {
+    constexpr int kQuarterSegments = 8;
+    constexpr float kHalfPi = 1.57079632679f;
+    const int axis = cut.roundAxis;
+    const int u = (axis + 1) % 3;
+    const int v = (axis + 2) % 3;
+    const float radius = AxisValue(cut.size, u) * 0.5f;
+    const MATH::Vec3 uDir = UnitAxis(u, 1.0f);
+    const MATH::Vec3 vDir = UnitAxis(v, 1.0f);
+    const MATH::Vec3 center = UnitAxis(u, AxisValue(cut.center, u)) + UnitAxis(v, AxisValue(cut.center, v));
+    const float extent = AxisValue(half, axis);
+    const auto arc = [&](float angle) { return center + (uDir * std::cos(angle) + vDir * std::sin(angle)) * radius; };
+    for (const BoxFace& face : kBoxFaces) {
+        if (face.axis != axis) {
+            continue;
+        }
+        const MATH::Vec3 plane = UnitAxis(axis, static_cast<float>(face.sign) * extent);
+        for (int quarter = 0; quarter < 4; ++quarter) {
+            // この四分の一の外接正方形の角（扇の要）。
+            const float start = kHalfPi * static_cast<float>(quarter);
+            const float middle = start + kHalfPi * 0.5f;
+            const MATH::Vec3 square =
+                plane + center +
+                (uDir * (std::cos(middle) >= 0.0f ? 1.0f : -1.0f) + vDir * (std::sin(middle) >= 0.0f ? 1.0f : -1.0f)) *
+                    radius;
+            for (int segment = 0; segment < kQuarterSegments; ++segment) {
+                const float a0 = start + kHalfPi * static_cast<float>(segment) / kQuarterSegments;
+                const float a1 = start + kHalfPi * static_cast<float>(segment + 1) / kQuarterSegments;
+                const MATH::Vec3 p0 = plane + arc(a0);
+                const MATH::Vec3 p1 = plane + arc(a1);
+                AddOrientedTriangle(
+                    primitive, {square, p0, p1},
+                    {BoxFaceUv(face, square, half), BoxFaceUv(face, p0, half), BoxFaceUv(face, p1, half)},
+                    {face.normal, face.normal, face.normal}, face.normal, tangents ? face.tangent : MATH::Vec4{});
+            }
+        }
+    }
+    // 穴の壁（円の中心を向く）。
+    constexpr int kSegments = kQuarterSegments * 4;
+    const MATH::Vec3 bottom = UnitAxis(axis, -extent);
+    const MATH::Vec3 top = UnitAxis(axis, extent);
+    for (int segment = 0; segment < kSegments; ++segment) {
+        const float a0 = 4.0f * kHalfPi * static_cast<float>(segment) / kSegments;
+        const float a1 = 4.0f * kHalfPi * static_cast<float>(segment + 1) / kSegments;
+        const float aMid = (a0 + a1) * 0.5f;
+        const MATH::Vec3 inward = (uDir * std::cos(aMid) + vDir * std::sin(aMid)) * -1.0f;
+        const MATH::Vec4 tangent = tangents ? MATH::Vec4{-std::sin(aMid) * uDir.x + std::cos(aMid) * vDir.x,
+                                                         -std::sin(aMid) * uDir.y + std::cos(aMid) * vDir.y,
+                                                         -std::sin(aMid) * uDir.z + std::cos(aMid) * vDir.z, 1.0f}
+                                            : MATH::Vec4{};
+        const float u0 = static_cast<float>(segment) / kSegments * 4.0f;
+        const float u1 = static_cast<float>(segment + 1) / kSegments * 4.0f;
+        const MATH::Vec3 b0 = bottom + arc(a0);
+        const MATH::Vec3 b1 = bottom + arc(a1);
+        const MATH::Vec3 t0 = top + arc(a0);
+        const MATH::Vec3 t1 = top + arc(a1);
+        // 法線は頂点ごとに円の中心へ向け、壁を滑らかに見せる。
+        const MATH::Vec3 n0 = (uDir * std::cos(a0) + vDir * std::sin(a0)) * -1.0f;
+        const MATH::Vec3 n1 = (uDir * std::cos(a1) + vDir * std::sin(a1)) * -1.0f;
+        AddOrientedTriangle(primitive, {b0, b1, t0}, {MATH::Vec2{u0, 1.0f}, MATH::Vec2{u1, 1.0f}, MATH::Vec2{u0, 0.0f}},
+                            {n0, n1, n0}, inward, tangent);
+        AddOrientedTriangle(primitive, {b1, t1, t0}, {MATH::Vec2{u1, 1.0f}, MATH::Vec2{u1, 0.0f}, MATH::Vec2{u0, 0.0f}},
+                            {n1, n1, n0}, inward, tangent);
+    }
+}
+
+// 切り抜いた箱。残った升と空き（外を含む）の境の面だけを出し、面の向きと uv は BuildBox と同じ。uv は箱の面全体に
+// 対する位置なので、欠けた所の周りでも模様が続く。丸い穴の正方形の柱の内側の面は出さず、四隅と壁を別に作る。
+void BuildCutBox(const ProceduralMeshSettings& settings, MeshPrimitive& primitive) {
+    const ProceduralCutGrid grid = BuildProceduralCutGrid(settings);
+    const MATH::Vec3 half{settings.width * 0.5f, settings.height * 0.5f, settings.depth * 0.5f};
+    for (int z = 0; z < grid.Count(2); ++z) {
+        for (int y = 0; y < grid.Count(1); ++y) {
+            for (int x = 0; x < grid.Count(0); ++x) {
+                if (!grid.IsSolid(x, y, z)) {
+                    continue;
+                }
+                const std::array<int, 3> cell{x, y, z};
+                for (const BoxFace& face : kBoxFaces) {
+                    std::array<int, 3> neighbor = cell;
+                    neighbor[static_cast<size_t>(face.axis)] += face.sign;
+                    const int carver = grid.CarvedBy(neighbor[0], neighbor[1], neighbor[2]);
+                    if (carver == -1 || (carver >= 0 && settings.cuts[static_cast<size_t>(carver)].roundAxis >= 0)) {
+                        continue;
+                    }
+                    const auto edge = [&](int axis, int offset) {
+                        return grid.edges[static_cast<size_t>(axis)][static_cast<size_t>(cell[axis] + offset)];
+                    };
+                    const float plane = edge(face.axis, face.sign > 0 ? 1 : 0);
+                    // 面の上での u・v の範囲（符号付きの軸で測る）。
+                    const float u0 = (std::min)(edge(face.uAxis, 0) * face.uSign, edge(face.uAxis, 1) * face.uSign);
+                    const float u1 = (std::max)(edge(face.uAxis, 0) * face.uSign, edge(face.uAxis, 1) * face.uSign);
+                    const float v0 = (std::min)(edge(face.vAxis, 0) * face.vSign, edge(face.vAxis, 1) * face.vSign);
+                    const float v1 = (std::max)(edge(face.vAxis, 0) * face.vSign, edge(face.vAxis, 1) * face.vSign);
+                    const MATH::Vec3 u = UnitAxis(face.uAxis, face.uSign);
+                    const MATH::Vec3 v = UnitAxis(face.vAxis, face.vSign);
+                    const MATH::Vec3 origin = UnitAxis(face.axis, plane);
+                    const float uHalf = AxisValue(half, face.uAxis);
+                    const float vHalf = AxisValue(half, face.vAxis);
+                    const MATH::Vec4 uv{(u0 + uHalf) / (2.0f * uHalf), (v0 + vHalf) / (2.0f * vHalf),
+                                        (u1 + uHalf) / (2.0f * uHalf), (v1 + vHalf) / (2.0f * vHalf)};
+                    AddBoxFace(primitive, origin + u * u0 + v * v1, origin + u * u1 + v * v1, origin + u * u0 + v * v0,
+                               origin + u * u1 + v * v0, face.normal,
+                               settings.generateTangents ? face.tangent : MATH::Vec4{}, uv);
+                }
+            }
+        }
+    }
+    for (const ProceduralMeshCut& cut : settings.cuts) {
+        if (cut.roundAxis >= 0) {
+            AddRoundCutFill(cut, half, settings.generateTangents, primitive);
+        }
+    }
 }
 
 void BuildBox(const ProceduralMeshSettings& settings, MeshPrimitive& primitive) {
@@ -287,7 +453,13 @@ void BuildProceduralMesh(const ProceduralMeshSettings& rawSettings, MeshPrimitiv
     case ProceduralMeshKind::Ramp: BuildRamp(settings, outPrimitive); break;
     case ProceduralMeshKind::Stairs: BuildStairs(settings, outPrimitive); break;
     case ProceduralMeshKind::Box:
-    default: BuildBox(settings, outPrimitive); break;
+    default:
+        if (settings.cuts.empty()) {
+            BuildBox(settings, outPrimitive);
+        } else {
+            BuildCutBox(settings, outPrimitive);
+        }
+        break;
     }
 }
 

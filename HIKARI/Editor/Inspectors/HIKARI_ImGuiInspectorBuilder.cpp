@@ -273,6 +273,17 @@ bool ImGuiInspectorBuilder::FloatRange(std::string_view label, float& value, flo
 #endif
 }
 
+bool ImGuiInspectorBuilder::FloatRange(const AuthoringFieldDescriptor& field, float& value, float minimum,
+                                       float maximum, float speed) {
+#if defined(HIKARI_WITH_EDITOR)
+    if (field.slider) {
+        EDITOR::InspectorPropertyRow row(field.label);
+        return row.IsVisible() && EDITOR::SliderNumber("##Value", value, minimum, maximum);
+    }
+#endif
+    return FloatRange(field.label, value, minimum, maximum, speed);
+}
+
 bool ImGuiInspectorBuilder::TypedValue(const AuthoringFieldDescriptor& field, BINDING::Value& value, bool hasRange,
                                        float minimum, float maximum, float step) {
 #if defined(HIKARI_WITH_EDITOR)

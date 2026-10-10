@@ -25,13 +25,18 @@
 //   JSONFIELDS::ReadLenient(in, fog, kFogFields);     // 型不一致は現在値を保持（例外なし）
 //   fog = JSONFIELDS::Sanitize(fog, kFogFields);      // Range: 非有限値は既定値、範囲外は丸め（Vec は成分ごと）
 //
+// Slider(min, max) は Range と同じ範囲で、編集 UI では滑块で出す（全域に意味がある強さ・混合・角度など）。
+//
 // Vec2/3/4 は配列で保存し、読み込みは配列と {x,y,z,w} の両方を受け付ける。
 namespace HIKARI::JSONFIELDS {
 
 struct Range {
     double min;
     double max;
+    bool slider = false;
 };
+
+constexpr Range Slider(double min, double max) { return {min, max, true}; }
 
 namespace DETAIL {
 

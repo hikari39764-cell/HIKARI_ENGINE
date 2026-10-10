@@ -164,6 +164,22 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
                 }
                 ImGui::SameLine();
                 ImGui::TextDisabled("EV %.1f", scene.GetCurrentExposureEv100());
+                // A/B 分屏（布景）：今の画を A として左に残し、預設や灯を変えた右の画と見比べる。
+                if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::LookDev)) {
+                    ImGui::SameLine();
+                    bool& split = lookDevWorkspace_.SplitCompare();
+                    if (EDITOR::ToggleButton(TEXT::Localize("ui.lookDev.splitCompare").c_str(), "##splitCompare", split,
+                                             ImVec2(0.0f, 0.0f),
+                                             TEXT::Localize("ui.lookDev.splitCompareHint").c_str())) {
+                        split = !split;
+                        if (split) {
+                            lookDevWorkspace_.SplitCamera() = scene.GetCamera().GetViewProj();
+                            POST::PostSystem::RequestEditorSnapshot();
+                        } else {
+                            POST::PostSystem::ClearEditorSnapshot();
+                        }
+                    }
+                }
                 if (authoringToolbar.settingsRequested) {
                     ImGui::OpenPopup("ViewportToolSettingsPopup");
                 }
@@ -241,6 +257,14 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
     const bool gameViewFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
     // 布景で置く物を選んでいる間は、クリックを選択ではなく配置に使い、R / Esc は配置の操作にする。
     const bool lookDevActive = workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::LookDev);
+    // 単独表示と A/B 分屏は布景の中だけ。他の工作区では灯が消えたままにならないよう解く。
+    if (!lookDevActive) {
+        context_.overlays.soloLightObjectId = 0u;
+        if (lookDevWorkspace_.SplitCompare()) {
+            lookDevWorkspace_.SplitCompare() = false;
+            POST::PostSystem::ClearEditorSnapshot();
+        }
+    }
     const bool lookDevPlacing = lookDevActive && lookDevWorkspace_.ArmedItem().has_value();
     auto processViewportShortcuts = [&]() {
         if (playSession.IsRunning()) {
@@ -315,6 +339,14 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
         const ImTextureID textureId = reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(viewportSrv.ptr));
         ImGui::Image(textureId, imageSize);
         viewportImageHovered = ImGui::IsItemHovered();
+        // A/B 分屏の A（凍結した画）を境目の左へ重ねる。補助線と手柄はこの上に描く。
+        if (const D3D12_GPU_DESCRIPTOR_HANDLE snapshot = POST::PostSystem::GetEditorSnapshotSrv();
+            lookDevActive && lookDevWorkspace_.SplitCompare() && snapshot.ptr != 0) {
+            const float split = lookDevWorkspace_.SplitPosition();
+            ImGui::GetWindowDrawList()->AddImage(
+                reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(snapshot.ptr)), imageOrigin,
+                {imageOrigin.x + imageSize.x * split, imageOrigin.y + imageSize.y}, {0.0f, 0.0f}, {split, 1.0f});
+        }
         EDITOR::DrawEditorViewGuides(*ImGui::GetWindowDrawList(), imageOrigin.x, imageOrigin.y, imageSize.x,
                                      imageSize.y, sceneViewGuides_, &scene.GetCamera());
         processViewportShortcuts();
@@ -349,6 +381,11 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
     playSession.UpdateEmbeddedViewportInput(embeddedInputRegion,
                                             viewportImageHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left));
 
+    // 布景の手柄（主光・灯の範囲や角度）は選択より先にマウスを取る。
+    if (lookDevActive && !playSession.IsRunning() &&
+        UpdateLookDevHandles(scene, sceneViewportRect, viewportImageHovered, gameViewFocused, gizmoCapture)) {
+        gizmoCapture = true;
+    }
     const bool authoringInteractionEnabled = !playSession.IsRunning() && !lookDevPlacing;
     const EDITOR::SceneViewportRect blockedViewportRegion{-1.0f, -1.0f, 0.0f, 0.0f};
     const EDITOR::SceneViewportInteractionResult interaction =

@@ -9,10 +9,11 @@ namespace HIKARI::RENDER3D {
 inline constexpr auto kDirectionalShadowFields = [](auto&& field) {
     using S = DirectionalShadowQualitySettings;
     using JSONFIELDS::Range;
+    using JSONFIELDS::Slider;
     field("resolution", &S::resolution, Range{256.0, 8192.0});
-    field("cascadeCount", &S::cascadeCount, Range{1.0, 4.0});
-    field("cascadeSplitLambda", &S::cascadeSplitLambda, Range{0.0, 1.0});
-    field("cascadeBlend", &S::cascadeBlend, Range{0.0, 0.3});
+    field("cascadeCount", &S::cascadeCount, Slider(1.0, 4.0));
+    field("cascadeSplitLambda", &S::cascadeSplitLambda, Slider(0.0, 1.0));
+    field("cascadeBlend", &S::cascadeBlend, Slider(0.0, 0.3));
     field("nearPlane", &S::nearPlane, Range{0.01, 100.0});
     field("farPlane", &S::farPlane, Range{1.0, 100000.0});
     field("depthBias", &S::depthBias, Range{0.0, 0.1});

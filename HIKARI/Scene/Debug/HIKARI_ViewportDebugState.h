@@ -22,6 +22,8 @@ struct ViewportOverlayState {
     // 露出の固定：自動露出を止め、この EV100（補正前）の手動露出で描く。灯や主光の調整を自動露出が打ち消さない。
     // 編集中だけ効き、環境プロファイルには書かない。
     std::optional<float> lockedExposureEv100{};
+    // 単独表示：この物体（場面の物体 ID、0 は無効）の灯以外の局所光を描かない。編集中だけ効き、文書は変えない。
+    uint64_t soloLightObjectId = 0;
 };
 
 struct ViewportPerformanceState {

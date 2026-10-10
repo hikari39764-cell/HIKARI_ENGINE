@@ -36,14 +36,6 @@ MATH::Vec3 BoxFaceNormal(const MATH::Vec3& point, const MATH::Vec3& minimum, con
 
 float Snap(float value, float step) { return step > 0.0f ? std::round(value / step) * step : value; }
 
-// direction を向く Euler（度、XYZ）。カメラと灯は局所 +Z が前。
-MATH::Vec3 FacingRotation(const MATH::Vec3& direction) {
-    const MATH::Vec3 d = MATH::Normalize(direction);
-    const float pitch = std::asin(std::clamp(d.y, -1.0f, 1.0f));
-    const float yaw = std::abs(d.x) + std::abs(d.z) > 1.0e-5f ? std::atan2(d.x, d.z) : 0.0f;
-    return {-pitch * kRadiansToDegrees, yaw * kRadiansToDegrees, 0.0f};
-}
-
 // 形の外接寸法（程序化の形は原点が中心）。
 MATH::Vec3 ShapeExtent(const ProceduralMeshSettings& shape) {
     switch (shape.kind) {
@@ -58,6 +50,24 @@ MATH::Vec3 ShapeExtent(const ProceduralMeshSettings& shape) {
 }
 
 } // namespace
+
+bool ProjectLookDevPoint(const Camera3D& camera, const LookDevView& view, const MATH::Vec3& point,
+                         MATH::Vec2& screen) noexcept {
+    const MATH::Vec4 clip = camera.GetViewProj().TransformPoint({point.x, point.y, point.z, 1.0f});
+    if (clip.w <= 1.0e-4f) {
+        return false;
+    }
+    screen = {view.x + (clip.x / clip.w * 0.5f + 0.5f) * view.width,
+              view.y + (-clip.y / clip.w * 0.5f + 0.5f) * view.height};
+    return true;
+}
+
+MATH::Vec3 LookDevFacingRotation(const MATH::Vec3& direction) noexcept {
+    const MATH::Vec3 d = MATH::Normalize(direction);
+    const float pitch = std::asin(std::clamp(d.y, -1.0f, 1.0f));
+    const float yaw = std::abs(d.x) + std::abs(d.z) > 1.0e-5f ? std::atan2(d.x, d.z) : 0.0f;
+    return {-pitch * kRadiansToDegrees, yaw * kRadiansToDegrees, 0.0f};
+}
 
 bool IsLookDevLight(LookDevPlaceItem item) noexcept {
     return item == LookDevPlaceItem::PointLight || item == LookDevPlaceItem::SpotLight ||
@@ -153,13 +163,23 @@ std::optional<LookDevSurfaceHit> FindLookDevSurface(const Camera3D& camera, floa
     return hit;
 }
 
-float FindLookDevGroundHeight(const MATH::Vec3& point) {
+std::optional<Bounds> FindLookDevObjectBounds(uint64_t objectId) {
+    const RENDER3D::RUNTIME::SceneRenderObject* object =
+        RenderSubmissionSystem::GetSceneRenderCache().Find(RENDER3D::RUNTIME::SceneRenderObjectId{objectId});
+    if (object == nullptr || !object->valid || !BOUNDS::IsUsable(object->desc.worldBounds)) {
+        return std::nullopt;
+    }
+    return object->desc.worldBounds;
+}
+
+float FindLookDevGroundHeight(const MATH::Vec3& point, const std::unordered_set<uint64_t>& ignoredObjects) {
     float ground = 0.0f;
     for (const RENDER3D::RUNTIME::SceneSurfaceInstance& surface :
          RenderSubmissionSystem::GetSceneRenderCache().GetSurfaceInstances()) {
         const Bounds& bounds = surface.worldBounds;
-        if (surface.valid && surface.visible && BOUNDS::IsUsable(bounds) && point.x >= bounds.min.x &&
-            point.x <= bounds.max.x && point.z >= bounds.min.z && point.z <= bounds.max.z && bounds.max.y <= point.y) {
+        if (surface.valid && surface.visible && !ignoredObjects.contains(surface.objectId.value) &&
+            BOUNDS::IsUsable(bounds) && point.x >= bounds.min.x && point.x <= bounds.max.x && point.z >= bounds.min.z &&
+            point.z <= bounds.max.z && bounds.max.y <= point.y) {
             ground = (std::max)(ground, bounds.max.y);
         }
     }
@@ -187,12 +207,12 @@ LookDevPlacementPose ComputeLookDevPlacement(LookDevPlaceItem item, const LookDe
         case LookDevPlaceItem::SpotLight:
             // 面から 3 m 離して面を照らす。
             pose.position = anchor + hit.normal * 3.0f;
-            pose.rotationDegrees = FacingRotation(hit.normal * -1.0f);
+            pose.rotationDegrees = LookDevFacingRotation(hit.normal * -1.0f);
             break;
         case LookDevPlaceItem::RectLight:
             // 床なら天井の高さから下へ、壁なら壁に沿わせて外へ向ける。
             pose.position = upward ? anchor + hit.normal * 3.0f : anchor + hit.normal * 0.05f;
-            pose.rotationDegrees = FacingRotation(upward ? hit.normal * -1.0f : hit.normal);
+            pose.rotationDegrees = LookDevFacingRotation(upward ? hit.normal * -1.0f : hit.normal);
             pose.extent = {1.0f, 1.0f, 0.05f};
             break;
         case LookDevPlaceItem::TubeLight:
@@ -216,15 +236,14 @@ LookDevPlacementPose ComputeLookDevPlacement(LookDevPlaceItem item, const LookDe
 }
 
 #if defined(HIKARI_WITH_EDITOR)
-void DrawLookDevPlacementPreview(ImDrawList& drawList, const Camera3D& camera, float x, float y, float width,
-                                 float height, const LookDevPlacementPose& pose, const LookDevSurfaceHit& hit) {
-    const MATH::Mat4 viewProj = camera.GetViewProj();
+void DrawLookDevPlacementPreview(ImDrawList& drawList, const Camera3D& camera, const LookDevView& view,
+                                 const LookDevPlacementPose& pose, const LookDevSurfaceHit& hit) {
     const auto project = [&](const MATH::Vec3& point, ImVec2& screen) {
-        const MATH::Vec4 clip = viewProj.TransformPoint({point.x, point.y, point.z, 1.0f});
-        if (clip.w <= 1.0e-4f) {
+        MATH::Vec2 projected{};
+        if (!ProjectLookDevPoint(camera, view, point, projected)) {
             return false;
         }
-        screen = {x + (clip.x / clip.w * 0.5f + 0.5f) * width, y + (-clip.y / clip.w * 0.5f + 0.5f) * height};
+        screen = {projected.x, projected.y};
         return true;
     };
     const MATH::Mat4 world = MATH::Mat4::TRS(pose.position,
@@ -241,7 +260,7 @@ void DrawLookDevPlacementPreview(ImDrawList& drawList, const Camera3D& camera, f
         const MATH::Vec4 point = world.TransformPoint(local);
         visible &= project({point.x, point.y, point.z}, corners[static_cast<size_t>(index)]);
     }
-    drawList.PushClipRect({x, y}, {x + width, y + height}, true);
+    drawList.PushClipRect({view.x, view.y}, {view.x + view.width, view.y + view.height}, true);
     constexpr ImU32 kOutline = IM_COL32(120, 230, 255, 220);
     if (visible) {
         constexpr int kEdges[12][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3},
@@ -258,7 +277,7 @@ void DrawLookDevPlacementPreview(ImDrawList& drawList, const Camera3D& camera, f
     drawList.PopClipRect();
 }
 #else
-void DrawLookDevPlacementPreview(ImDrawList&, const Camera3D&, float, float, float, float, const LookDevPlacementPose&,
+void DrawLookDevPlacementPreview(ImDrawList&, const Camera3D&, const LookDevView&, const LookDevPlacementPose&,
                                  const LookDevSurfaceHit&) {}
 #endif
 

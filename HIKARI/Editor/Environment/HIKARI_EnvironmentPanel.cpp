@@ -1,5 +1,7 @@
 #include "Editor/Environment/HIKARI_EnvironmentPanel.h"
 
+#include <algorithm>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <utility>
@@ -273,6 +275,35 @@ EnvironmentPanelResult EnvironmentPanel::DrawLookDev(ENVIRONMENT::SceneEnvironme
     }
     FinishWindow(scene, result, false);
     ImGui::End();
+    return result;
+}
+
+EnvironmentPanelResult EnvironmentPanel::DragMainLight(ENVIRONMENT::SceneEnvironmentBinding& binding,
+                                                       DocumentSceneBase& scene, float azimuthDegrees,
+                                                       float elevationDegrees, bool dragging) {
+    EnvironmentPanelResult result{};
+    result.editActive = dragging;
+    if (scene.GetEnvironmentRuntime().GetProfile().sun.mode != SunMode::Fixed) {
+        if (azimuthDegrees != 0.0f) {
+            binding.time.localHours = std::fmod(binding.time.localHours + azimuthDegrees / 15.0 + 24.0, 24.0);
+            result.bindingChanged = true;
+        }
+        return result;
+    }
+    const std::string copied = assets_.EditProfile(
+        binding.profileId, scene,
+        [&](ENVIRONMENT::EnvironmentProfileAsset& edited) {
+            SunSettings& sun = edited.profile.sun;
+            sun.fixedAzimuthDegrees = std::fmod(sun.fixedAzimuthDegrees + azimuthDegrees + 360.0f, 360.0f);
+            sun.fixedElevationDegrees = std::clamp(sun.fixedElevationDegrees + elevationDegrees, -90.0f, 90.0f);
+            return azimuthDegrees != 0.0f || elevationDegrees != 0.0f;
+        },
+        dragging);
+    if (!copied.empty()) {
+        binding.profileId = copied;
+        result.bindingChanged = true;
+    }
+    assets_.PublishDrafts(scene);
     return result;
 }
 

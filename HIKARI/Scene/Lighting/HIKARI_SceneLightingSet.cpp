@@ -20,8 +20,6 @@ std::string ReflectionProbeId(SceneObjectId objectId) { return "reflection_probe
 
 std::string IrradianceVolumeId(SceneObjectId objectId) { return "irradiance_volume_" + std::to_string(objectId.value); }
 
-std::string LightId(SceneObjectId objectId) { return "light_" + std::to_string(objectId.value); }
-
 std::string DecalId(SceneObjectId objectId) { return "decal_" + std::to_string(objectId.value); }
 
 bool EqualReflectionProvider(const RENDER3D::LIGHTING::ReflectionProbeProvider& lhs,
@@ -97,6 +95,8 @@ RENDER3D::LIGHTING::SceneLightProvider BuildLightProvider(std::string id, std::s
 }
 
 } // namespace
+
+std::string LightId(SceneObjectId objectId) { return "light_" + std::to_string(objectId.value); }
 
 RENDER3D::LIGHTING::SceneLightingSet BuildSceneLightingSet(const SceneDocument& document) {
     RENDER3D::LIGHTING::SceneLightingSet set = BuildSceneLightingSet(document.objects);

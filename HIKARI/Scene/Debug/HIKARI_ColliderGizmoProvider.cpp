@@ -79,8 +79,10 @@ void DrawCollider(const GameObject& object, const ComponentGizmoDrawContext& con
         if (!collider.IsEnabled() || collider.UsesCollisionGeometryAsset()) {
             return;
         }
-        const PHYSICS::PhysicsShapeDesc shape = PHYSICS::BuildPhysicsShapeDesc(collider, objectScale, componentOrdinal);
-        SubmitColliderShape(bodyWorld, shape, selected);
+        for (const PHYSICS::PhysicsShapeDesc& shape :
+             PHYSICS::BuildPhysicsShapeDescs(collider, objectScale, componentOrdinal)) {
+            SubmitColliderShape(bodyWorld, shape, selected);
+        }
     });
 }
 } // namespace

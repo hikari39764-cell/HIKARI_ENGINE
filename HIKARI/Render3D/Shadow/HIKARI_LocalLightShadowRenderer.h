@@ -2,6 +2,8 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
@@ -43,6 +45,12 @@ struct LocalLightShadowStats {
     uint32_t reusedFaces = 0;
     uint32_t failedLights = 0;
     uint64_t allocatedDepthBytes = 0;
+    // 画質の面の上限と使った面（点光は 6 面、スポットは 1 面）。
+    uint32_t budgetFaces = 0;
+    uint32_t usedFaces = 0;
+    // 影を描いた灯と、面の上限で外れた灯（SceneLightProvider::id）。編集器の灯の一覧が状態の表示に使う。
+    std::vector<std::string> shadowedLightIds;
+    std::vector<std::string> budgetRejectedLightIds;
 };
 
 void RenderLocalLightShadows(const GFX::Context& graphics, const RENDER3D::LIGHTING::SceneLightingSet& lighting,

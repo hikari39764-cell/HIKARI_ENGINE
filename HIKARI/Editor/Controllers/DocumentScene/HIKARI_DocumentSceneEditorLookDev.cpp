@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <optional>
 #include <string>
 #include <utility>
@@ -59,12 +60,18 @@ void DocumentSceneEditorController::DrawLookDevWorkspace(DocumentSceneBase& scen
     context_.windows.viewport.showGameView = true;
     DrawGameViewportWindow(scene, playSession, "LookDev/Viewport");
     DrawLookDevPlaceWindow(scene);
+    DrawLookDevObjectsWindow(scene);
+    DrawLookDevLightsWindow(scene);
     if (ImGui::Begin(TEXT::LocalizeWindow("ui.window.inspector", "LookDev/Inspector").c_str())) {
         sceneInspectorPanel_.DrawContents(scene, context_, selectionSync_, sceneObjectCommands_);
     }
     ImGui::End();
+    // 一覧の数値欄や視口の手柄のドラッグが終わったら、一つの取り消しとして積む。
+    if (lookDevDrag_ && lookDevLightHandle_ == EDITOR::LookDevLightHandle::None && !ImGui::IsAnyItemActive()) {
+        FinishLookDevObjectDrag(scene);
+    }
     ProcessSceneAuthoringRequests(scene);
-    if (!DrawEnvironmentWindow(scene, true)) {
+    if (!DrawEnvironmentWindow(scene, true) && !lookDevMainLightDrag_) {
         documentHistory_.SealMerge();
     }
     DrawPendingSceneOpenModal(scene);
@@ -78,7 +85,15 @@ void DocumentSceneEditorController::DrawLookDevPlaceWindow(DocumentSceneBase& sc
     }
     lookDevWorkspace_.DrawPalette();
     DrawLookDevCameras(scene);
-    ImGui::SeparatorText(TEXT::Localize("ui.sceneWorkspace.objects").c_str());
+    ImGui::End();
+}
+
+void DocumentSceneEditorController::DrawLookDevObjectsWindow(DocumentSceneBase& scene) {
+    if (!ImGui::Begin(TEXT::LocalizeWindow("ui.sceneWorkspace.objects", "LookDev/Objects").c_str())) {
+        ImGui::End();
+        return;
+    }
+    DrawLookDevArrangeSection(scene);
     hierarchyPanel_.DrawContents(
         scene.GetWorld(), context_.selection,
         [&](GameObject& object) {
@@ -163,16 +178,13 @@ void DocumentSceneEditorController::DrawLookDevCameras(DocumentSceneBase& scene)
 
 void DocumentSceneEditorController::SaveViewAsCamera(DocumentSceneBase& scene) {
     const Camera3D& view = scene.GetCamera();
-    MATH::Vec3 forward = view.GetTarget() - view.GetPosition();
-    forward = MATH::Length(forward) > 1.0e-5f ? MATH::Normalize(forward) : MATH::Vec3{0.0f, 0.0f, 1.0f};
-    const float pitch = std::asin(std::clamp(forward.y, -1.0f, 1.0f));
-    const float yaw = std::atan2(forward.x, forward.z);
+    const MATH::Vec3 forward = view.GetTarget() - view.GetPosition();
     const size_t count = CollectSceneCameras(scene.GetSceneDocument()).size();
     sceneCreationPanel_.CreateWithHistory(scene, context_, selectionSync_, "Save Camera View", [&] {
         EDITOR::CreateObjectRequest request{};
         request.name = TEXT::Localize("ui.lookDev.cameraName") + " " + std::to_string(count + 1u);
         request.position = view.GetPosition();
-        request.rotation = {-pitch * kDegreesPerRadian, yaw * kDegreesPerRadian, 0.0f};
+        request.rotation = MATH::Length(forward) > 1.0e-5f ? EDITOR::LookDevFacingRotation(forward) : MATH::Vec3{};
         return EDITOR::CreateCameraObject(scene, request, view.GetFovYRad() * kDegreesPerRadian);
     });
 }
@@ -199,6 +211,23 @@ void DocumentSceneEditorController::UpdateLookDevViewport(DocumentSceneBase& sce
                                                           bool focused, bool gizmoCapture) {
     const ImGuiIO& io = ImGui::GetIO();
     lookDevWorkspace_.HandlePlacementKeys(focused);
+    // 単独表示中は、灯が消えたと誤解しないように視口の上に出す（灯が消されたら解除）。
+    if (const uint64_t solo = context_.overlays.soloLightObjectId; solo != 0u) {
+        const GameObject* light = scene.GetWorld().FindObject(SceneObjectId{solo});
+        if (light == nullptr) {
+            context_.overlays.soloLightObjectId = 0u;
+        } else {
+            char text[192]{};
+            std::snprintf(text, sizeof(text), TEXT::Localize("ui.lookDev.soloBanner").c_str(),
+                          light->GetName().c_str());
+            ImDrawList& banner = *ImGui::GetWindowDrawList();
+            const ImVec2 size = ImGui::CalcTextSize(text);
+            const ImVec2 origin{viewport.x + (viewport.width - size.x) * 0.5f - 8.0f, viewport.y + 10.0f};
+            banner.AddRectFilled(origin, {origin.x + size.x + 16.0f, origin.y + size.y + 10.0f},
+                                 IM_COL32(64, 44, 8, 225), 4.0f);
+            banner.AddText({origin.x + 8.0f, origin.y + 5.0f}, IM_COL32(255, 222, 150, 250), text);
+        }
+    }
     // 数字キー 1〜9：その番号の機位へ飛ぶ。
     if (focused && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && !io.KeyShift) {
         const std::vector<SceneCameraEntry> cameras = CollectSceneCameras(scene.GetSceneDocument());
@@ -229,8 +258,8 @@ void DocumentSceneEditorController::UpdateLookDevViewport(DocumentSceneBase& sce
     }
     const EDITOR::LookDevPlacementPose pose =
         EDITOR::ComputeLookDevPlacement(*item, *hit, lookDevWorkspace_.GridStep(), lookDevWorkspace_.PlacementYaw());
-    EDITOR::DrawLookDevPlacementPreview(drawList, scene.GetCamera(), viewport.x, viewport.y, viewport.width,
-                                        viewport.height, pose, *hit);
+    EDITOR::DrawLookDevPlacementPreview(drawList, scene.GetCamera(),
+                                        {viewport.x, viewport.y, viewport.width, viewport.height}, pose, *hit);
     if (!gizmoCapture && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !io.KeyAlt &&
         !EDITOR::QueryEditorViewInputBlockState().pointer) {
         PlaceLookDevItem(scene, *item, pose);
@@ -247,8 +276,9 @@ void DocumentSceneEditorController::PlaceLookDevItem(DocumentSceneBase& scene, E
             request.position = pose.position;
             request.rotation = pose.rotationDegrees;
             if (EDITOR::IsLookDevLight(item)) {
-                return EDITOR::CreateLightObject(scene, request, EDITOR::LookDevLightType(item),
-                                                 LightIntensityUnit::SceneRelative);
+                return EDITOR::CreateLightObject(
+                    scene, request,
+                    EDITOR::DefaultLightSettings(EDITOR::LookDevLightType(item), LightIntensityUnit::SceneRelative));
             }
             EDITOR::CreatePrimitiveRequest primitive{};
             primitive.object = request;

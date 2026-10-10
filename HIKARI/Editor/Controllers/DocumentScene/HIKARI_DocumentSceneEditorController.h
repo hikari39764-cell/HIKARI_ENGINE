@@ -4,8 +4,11 @@
 #include "Editor/Authoring/HIKARI_EditorAuthoringSessionHost.h"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "Core/Math/HIKARI_Math3D.h"
@@ -41,6 +44,9 @@
 #include "Editor/Tools/HIKARI_EditorToolHost.h"
 #include "Editor/Viewport/HIKARI_SceneViewportSelectionService.h"
 #include "Editor/Views/HIKARI_EditorViewGuides.h"
+#include "Editor/Workspaces/LookDev/HIKARI_LookDevArrange.h"
+#include "Editor/Workspaces/LookDev/HIKARI_LookDevLightTools.h"
+#include "Editor/Workspaces/LookDev/HIKARI_LookDevShapeHandles.h"
 #include "Editor/Workspaces/LookDev/HIKARI_LookDevWorkspace.h"
 #include "Editor/Windows/HIKARI_SceneAuthoringUtilityWindows.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
@@ -226,6 +232,51 @@ private:
     // 布景：視口・摆放（置く物・機位・物体）・检查器・灯光与画面。場面の物体と履歴は場面の工作区と同じ経路。
     void DrawLookDevWorkspace(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
     void DrawLookDevPlaceWindow(DocumentSceneBase& scene);
+    void DrawLookDevObjectsWindow(DocumentSceneBase& scene);
+    // 灯光の窓：一灯一行（开关・单独显示・亮度・颜色・阴影の状態）と、从视角放灯・三点布光。
+    void DrawLookDevLightsWindow(DocumentSceneBase& scene);
+    void PlaceLightAtView(DocumentSceneBase& scene);
+    void CreateThreePointLights(DocumentSceneBase& scene, SceneObjectId subject);
+    // 視口で主光を動かす（美術布景は方位と高度、昼夜は時刻）。ドラッグ中は一つの取り消しにまとめる。
+    void DragLookDevMainLight(DocumentSceneBase& scene, float azimuthDegrees, float elevationDegrees, bool dragging);
+    // 布景の視口の手柄：L + ドラッグの主光と、選んだ灯の範囲・角度・大きさ。選択より先に処理し、マウスを使えば true。
+    bool UpdateLookDevHandles(DocumentSceneBase& scene, const EDITOR::SceneViewportRect& viewport, bool hovered,
+                              bool focused, bool gizmoCapture);
+    // 一つの物体の文書と実行時の部品を書き換え続け（視口のドラッグ・一覧の数値欄）、FinishLookDevObjectDrag で
+    // 一つの取り消しとして積む。
+    void ContinueLookDevObjectDrag(DocumentSceneBase& scene, SceneObjectId objectId, std::string_view label,
+                                   const std::function<bool(SceneObjectData&)>& edit);
+    void FinishLookDevObjectDrag(DocumentSceneBase& scene);
+    void EditLookDevLight(DocumentSceneBase& scene, SceneObjectId objectId, const LightSettings& settings);
+    // 選んだ白模の寸法と開口の手柄。ドラッグ中は箱の線だけを描き、離した時に一度だけ形を作り直す。
+    bool UpdateLookDevShapeHandles(DocumentSceneBase& scene, const EDITOR::SceneViewportRect& viewport, bool hovered,
+                                   bool gizmoCapture);
+    // 開口（床の穴、壁の門窓）と挖空方块。開口は箱の切り抜きなので後から手柄で動かせる。
+    enum class LookDevOpeningKind : uint8_t { Hole, RoundHole, Door, Window, RoundWindow };
+    void DrawLookDevOpeningsSection(DocumentSceneBase& scene);
+    void AddLookDevOpening(DocumentSceneBase& scene, SceneObjectId objectId, LookDevOpeningKind kind);
+    void RemoveLookDevOpening(DocumentSceneBase& scene, SceneObjectId objectId, size_t index);
+    // 選んだ箱と重なる白模の箱を、その重なりで切り抜き、選んだ箱を消す。
+    void CutLookDevShapesWithBox(DocumentSceneBase& scene, SceneObjectId cutterId);
+    // 整理（揃え・等間隔・落地・编组・镜像复制・阵列・换成模型）。物体の窓の上に出す。
+    void DrawLookDevArrangeSection(DocumentSceneBase& scene);
+    std::vector<EDITOR::LookDevArrangeItem> CollectLookDevArrangeItems(DocumentSceneBase& scene);
+    void MoveLookDevItems(DocumentSceneBase& scene, std::string label,
+                          const std::vector<EDITOR::LookDevArrangeItem>& items, const std::vector<MATH::Vec3>& moves);
+    // 選んだ物（子を含む）を copies 回複製し、place で複製の位置と向きを決める（remapped は元の ID から複製の ID）。
+    using LookDevClonePlacement =
+        std::function<void(size_t copy, SceneDocument& document, const std::unordered_map<uint64_t, uint64_t>& remapped,
+                           const std::vector<SceneObjectId>& roots)>;
+    void CloneLookDevSelection(DocumentSceneBase& scene, std::string label, size_t copies,
+                               const LookDevClonePlacement& place);
+    void CreateLookDevArray(DocumentSceneBase& scene);
+    void MirrorLookDevSelection(DocumentSceneBase& scene, int axis);
+    void DropLookDevSelection(DocumentSceneBase& scene);
+    void GroupLookDevSelection(DocumentSceneBase& scene);
+    void ReplaceLookDevShapeWithModel(DocumentSceneBase& scene, SceneObjectId objectId, const std::string& modelGuid);
+    // 文書をまとめて書き換え、変わった物を実行時へ反映して一つの取り消しに積む。
+    void EditLookDevDocument(DocumentSceneBase& scene, std::string label,
+                             const std::function<bool(SceneDocument&)>& edit);
     // 機位の一覧（押すとその視点へ、通过相机看、今の視点で更新）と「保存当前视角」。
     void DrawLookDevCameras(DocumentSceneBase& scene);
     void SaveViewAsCamera(DocumentSceneBase& scene);
@@ -320,6 +371,29 @@ private:
     MATH::Vec3 terrainBrushPreviousLocalHit_{};
     bool terrainBrushHasPreviousLocalHit_ = false;
     bool terrainBrushDirtyBefore_ = false;
+    struct LookDevObjectDrag {
+        SceneObjectId objectId{};
+        std::string label{};
+        std::vector<SceneObjectData> beforeObjects{};
+        SceneCameraSettings beforeCamera{};
+        bool dirtyBefore = false;
+        bool changed = false;
+    };
+    std::optional<LookDevObjectDrag> lookDevDrag_{};
+    struct LookDevShapeDrag {
+        SceneObjectId objectId{};
+        EDITOR::LookDevShapeHandle handle{};
+        ProceduralMeshSettings start{};
+        MATH::Mat4 startWorld{};
+        ProceduralMeshSettings result{};
+        MATH::Vec3 worldShift{};
+        // 開口の手柄なら切り抜きの番号（-1 は形の面）、moveCut なら開口の中心を動かす。
+        int cutIndex = -1;
+        bool moveCut = false;
+    };
+    std::optional<LookDevShapeDrag> lookDevShapeDrag_{};
+    EDITOR::LookDevLightHandle lookDevLightHandle_ = EDITOR::LookDevLightHandle::None;
+    bool lookDevMainLightDrag_ = false;
 };
 
 } // namespace HIKARI

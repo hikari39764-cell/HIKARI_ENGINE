@@ -129,26 +129,30 @@ void SceneCreationPanel::DrawCreationMenu(DocumentSceneBase& scene, EditorContex
         ImGui::BeginMenu(TEXT::Localize("ui.sceneCreation.lighting").c_str())) {
         if (showPointLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.pointLight").c_str())) {
             createInView("Create Point Light", [&](const CreateObjectRequest& request) {
-                return EDITOR::CreateLightObject(scene, request, RENDER3D::LIGHTING::SceneLightType::Point,
-                                                 LightIntensityUnit::Lumens);
+                return EDITOR::CreateLightObject(scene, request,
+                                                 EDITOR::DefaultLightSettings(RENDER3D::LIGHTING::SceneLightType::Point,
+                                                                              LightIntensityUnit::Lumens));
             });
         }
         if (showSpotLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.spotLight").c_str())) {
             createInView("Create Spot Light", [&](const CreateObjectRequest& request) {
-                return EDITOR::CreateLightObject(scene, request, RENDER3D::LIGHTING::SceneLightType::Spot,
-                                                 LightIntensityUnit::Lumens);
+                return EDITOR::CreateLightObject(
+                    scene, request,
+                    EDITOR::DefaultLightSettings(RENDER3D::LIGHTING::SceneLightType::Spot, LightIntensityUnit::Lumens));
             });
         }
         if (showTubeLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.tubeLight").c_str())) {
             createInView("Create Tube Light", [&](const CreateObjectRequest& request) {
-                return EDITOR::CreateLightObject(scene, request, RENDER3D::LIGHTING::SceneLightType::Tube,
-                                                 LightIntensityUnit::Lumens);
+                return EDITOR::CreateLightObject(
+                    scene, request,
+                    EDITOR::DefaultLightSettings(RENDER3D::LIGHTING::SceneLightType::Tube, LightIntensityUnit::Lumens));
             });
         }
         if (showRectLight && ImGui::MenuItem(TEXT::Localize("ui.sceneCreation.rectLight").c_str())) {
             createInView("Create Rect Light", [&](const CreateObjectRequest& request) {
-                return EDITOR::CreateLightObject(scene, request, RENDER3D::LIGHTING::SceneLightType::Rect,
-                                                 LightIntensityUnit::Lumens);
+                return EDITOR::CreateLightObject(
+                    scene, request,
+                    EDITOR::DefaultLightSettings(RENDER3D::LIGHTING::SceneLightType::Rect, LightIntensityUnit::Lumens));
             });
         }
         if (showLight && (showReflectionProbe || showIrradianceVolume)) {

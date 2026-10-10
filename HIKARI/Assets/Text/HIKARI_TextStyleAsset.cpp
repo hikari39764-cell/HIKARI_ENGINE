@@ -70,7 +70,8 @@ void InspectTextStyleAsset(IInspectorBuilder& b, TextStyleAsset& value) {
     b.AssetIdPicker(AuthoringFieldDescriptor{"fontAssetGuid", L("textstyle.font")}, AssetType::Font, value.font.value);
     b.FloatRange(AuthoringFieldDescriptor{"pixelHeight", L("Pixel Height")}, value.pixelHeight, 4, 512, 1);
     b.Color3(AuthoringFieldDescriptor{"color", L("Color")}, value.color.r, value.color.g, value.color.b);
-    b.FloatRange(AuthoringFieldDescriptor{"alpha", L("uix.opacity")}, value.color.a, 0, 1);
+    b.FloatRange(AuthoringFieldDescriptor{.id = "alpha", .label = L("uix.opacity"), .slider = true}, value.color.a, 0,
+                 1);
     value.effects.Inspect(b, false);
 }
 void TextAssetStore::Configure(const AssetDatabase* database) {

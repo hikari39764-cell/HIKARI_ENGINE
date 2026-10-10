@@ -16,7 +16,14 @@ namespace HIKARI::SHADOW {
 namespace {
 using namespace RENDER3D::LIGHTING;
 using namespace INTERNAL;
-constexpr uint32_t kAtlasGrid = 4;
+// 図集の一辺の枚数は面の上限が収まる最小の正方形（8 面 3、16 面 4、32 面 6）。
+uint32_t AtlasGrid(uint32_t faces) {
+    uint32_t grid = 1u;
+    while (grid * grid < faces) {
+        ++grid;
+    }
+    return grid;
+}
 
 struct CachedLight {
     std::string id;
@@ -35,6 +42,7 @@ struct State {
     MATH::Mat4 cameraViewProj{};
     uint64_t frameFence = 0;
     uint64_t depthBytes = 0;
+    uint32_t atlasGrid = 0;
 };
 State& GetState() {
     static State state;
@@ -75,9 +83,10 @@ bool HasRelevantDynamicCasters(const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& 
 LocalShadowBudget ResolveLocalShadowBudget(RENDER3D::LocalShadowQuality quality) {
     switch (quality) {
     case RENDER3D::LocalShadowQuality::Off: return {256, 0};
-    case RENDER3D::LocalShadowQuality::Low: return {256, 6};
-    case RENDER3D::LocalShadowQuality::High: return {1024, 16};
-    default: return {512, 8};
+    case RENDER3D::LocalShadowQuality::Low: return {256, 8};
+    // 静止した灯は前の面を使い回すので、面の数を増やしても動かない場面の負担は初回だけ。
+    case RENDER3D::LocalShadowQuality::High: return {768, 32};
+    default: return {512, 16};
     }
 }
 
@@ -118,6 +127,7 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
         return;
     budget.maximumFaces = (std::min)(budget.maximumFaces, kMaximumLocalShadowFaceCount);
     budget.tileResolution = std::clamp(budget.tileResolution, 64u, 1024u);
+    state.stats.budgetFaces = budget.maximumFaces;
 
     std::array<uint32_t, kMaximumLocalLightCount> sourceIndices{};
     const auto selection = SelectVisibleLocalLights(lighting, camera, uint32_t((std::max)(1, graphics.backBufferWidth)),
@@ -155,6 +165,7 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
     for (const auto& candidate : candidates) {
         if (candidate.faces > budget.maximumFaces - nextFace) {
             ++state.stats.budgetRejectedLights;
+            state.stats.budgetRejectedLightIds.push_back(lighting.lights[candidate.sourceIndex].id);
             continue;
         }
         const auto& light = lighting.lights[candidate.sourceIndex];
@@ -187,12 +198,14 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
         failAll();
         return;
     }
-    if (!renderer.shadowMap || renderer.resolution != budget.tileResolution) {
+    const uint32_t atlasGrid = AtlasGrid(budget.maximumFaces);
+    if (!renderer.shadowMap || renderer.resolution != budget.tileResolution || state.atlasGrid != atlasGrid) {
         state.cache.clear();
+        state.atlasGrid = atlasGrid;
         state.depthBytes = 0;
         state.stats.allocatedDepthBytes = 0;
         if (!CreateShadowMapResources(renderer, graphics,
-                                      {budget.tileResolution, kAtlasGrid, false, "shadow/local_atlas"})) {
+                                      {budget.tileResolution, atlasGrid, false, "shadow/local_atlas"})) {
             failAll();
             return;
         }
@@ -242,8 +255,8 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
             if (job.render && job.complete) {
                 for (uint32_t face = 0; face < job.views.faceCount; ++face) {
                     const uint32_t tile = job.cache.firstFace + face;
-                    const LONG left = LONG(tile % kAtlasGrid * budget.tileResolution),
-                               top = LONG(tile / kAtlasGrid * budget.tileResolution);
+                    const LONG left = LONG(tile % atlasGrid * budget.tileResolution),
+                               top = LONG(tile / atlasGrid * budget.tileResolution);
                     if (!RecordShadowView(
                             renderer, graphics, job.views.faces[face],
                             {left, top, left + LONG(budget.tileResolution), top + LONG(budget.tileResolution)},
@@ -276,7 +289,7 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
                     for (uint32_t face = 0; face < job.views.faceCount; ++face) {
                         const uint32_t tile = job.cache.firstFace + face;
                         const LONG size = LONG(budget.tileResolution);
-                        const LONG x = LONG(tile % kAtlasGrid) * size, y = LONG(tile / kAtlasGrid) * size;
+                        const LONG x = LONG(tile % atlasGrid) * size, y = LONG(tile / atlasGrid) * size;
                         if (!RecordWorldSpriteShadowView(
                                 renderer, graphics, job.views.faces[face], {x, y, x + size, y + size},
                                 !renderer.frameHasStaticShadowWork && !renderer.frameHasDynamicShadowWork)) {
@@ -290,7 +303,7 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
     state.cache.clear();
     state.frame.atlas = renderer.shadowSrvResource;
     state.frame.data.tileResolution = budget.tileResolution;
-    state.frame.data.tilesPerRow = kAtlasGrid;
+    state.frame.data.tilesPerRow = atlasGrid;
     state.frame.data.textureDescriptorIndex =
         RENDER3D::GetTextureResourceSrvDescriptorIndexFromBackendHandle(renderer.shadowSrvHandle);
     for (auto& job : jobs) {
@@ -300,6 +313,8 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
         }
         job.cache.valid = true;
         state.cache.push_back(job.cache);
+        state.stats.usedFaces += job.cache.faceCount;
+        state.stats.shadowedLightIds.push_back(lighting.lights[job.cache.sourceIndex].id);
         state.frame.assignments[state.frame.assignmentCount++] = {job.cache.sourceIndex, job.cache.firstFace};
         state.frame.data.faceCount = (std::max)(state.frame.data.faceCount, job.cache.firstFace + job.cache.faceCount);
         for (uint32_t face = 0; face < job.views.faceCount; ++face)

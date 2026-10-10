@@ -4,6 +4,7 @@
 #include <span>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace HIKARI {
 
@@ -16,6 +17,8 @@ SceneObjectId FindScenePlayer(const SceneDocument& document) noexcept;
 SceneObjectData* FindSceneObjectData(SceneDocument& document, SceneObjectId id) noexcept;
 const SceneObjectData* FindSceneObjectData(const SceneDocument& document, SceneObjectId id) noexcept;
 std::unordered_set<uint64_t> CollectObjectSubtreeIds(const SceneDocument& document, SceneObjectId rootId);
+// ids のうち、祖先が ids に含まれない物（選択の一番上の物）。順番は ids のまま。
+std::vector<SceneObjectId> CollectRootObjectIds(const SceneDocument& document, std::span<const SceneObjectId> ids);
 struct SceneObjectChanges;
 // before から after への追加・削除・変更（追加と変更は after 順、削除は before 順）。
 SceneObjectChanges DiffSceneObjects(std::span<const SceneObjectData> before, std::span<const SceneObjectData> after);

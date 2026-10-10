@@ -87,9 +87,12 @@ void CameraComponent::BuildInspector(IInspectorBuilder& builder) {
                                               "Blur moving objects and camera motion (needs TAA, DLAA or DLSS)."},
                      motionBlurSettings_.enabled);
         if (motionBlurSettings_.enabled) {
-            builder.FloatRange(AuthoringFieldDescriptor{"motionBlur.shutterAngleDegrees", "Shutter Angle",
-                                                        "Degrees of the frame the shutter stays open; 180 is film."},
-                               motionBlurSettings_.shutterAngleDegrees, 0.0f, 360.0f, 1.0f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{.id = "motionBlur.shutterAngleDegrees",
+                                         .label = "Shutter Angle",
+                                         .description = "Degrees of the frame the shutter stays open; 180 is film.",
+                                         .slider = true},
+                motionBlurSettings_.shutterAngleDegrees, 0.0f, 360.0f, 1.0f);
             builder.FloatRange(AuthoringFieldDescriptor{"motionBlur.maxBlur1080pPixels", "Max Blur (1080p pixels)",
                                                         "Longest streak at 1080p output height."},
                                motionBlurSettings_.maxBlur1080pPixels, 0.0f, CAMERA::kMaxMotionBlurBlur1080pPixels,

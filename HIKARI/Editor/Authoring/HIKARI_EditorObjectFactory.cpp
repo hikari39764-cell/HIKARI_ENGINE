@@ -10,6 +10,7 @@
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
+#include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Components/Rendering/Decal/HIKARI_DecalComponent.h"
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 #include "Scene/Components/Rendering/WorldText/HIKARI_WorldTextComponent.h"
@@ -97,75 +98,22 @@ GameObject* CreatePrimitiveObject(DocumentSceneBase& scene, const CreatePrimitiv
     object.components.push_back(SceneComponentData{
         "ModelComponent",
         {{"assetId", ""}, {"visible", true}, {"castShadow", true}, {"receiveShadow", true}, {"renderStatic", false}}});
-    nlohmann::json proceduralProperties{{"kind", ToString(settings.kind)},
-                                        {"width", settings.width},
-                                        {"height", settings.height},
-                                        {"depth", settings.depth},
-                                        {"segmentsX", settings.segmentsX},
-                                        {"segmentsY", settings.segmentsY},
-                                        {"segmentsZ", settings.segmentsZ},
-                                        {"sphereSlices", settings.sphereSlices},
-                                        {"sphereStacks", settings.sphereStacks},
-                                        {"doubleSided", settings.doubleSided},
-                                        {"generateTangents", settings.generateTangents},
-                                        {"uvTilesX", settings.uvTilesX},
-                                        {"uvTilesY", settings.uvTilesY}};
+    // 形の作者値は部品と同じ書き方（切り抜きも含む）。
+    ProceduralMeshComponent procedural;
+    procedural.SetSettings(settings);
+    nlohmann::json proceduralProperties = nlohmann::json::object();
+    procedural.Serialize(proceduralProperties);
     object.components.push_back(SceneComponentData{"ProceduralMeshComponent", std::move(proceduralProperties)});
 
     if (request.addCollider) {
-        nlohmann::json collider{{"enabled", true},
+        // 衝突の形は形から当てはめる（Geometry）。寸法を変えても切り抜いても形に合ったまま。
+        object.components.push_back(
+            SceneComponentData{"ColliderComponent",
+                               {{"enabled", true},
                                 {"fitMode", "Geometry"},
-                                {"center", {0.0f, 0.0f, 0.0f}},
-                                {"rotation", {0.0f, 0.0f, 0.0f}},
                                 {"trigger", false},
                                 {"material", {{"friction", 0.5f}, {"restitution", 0.0f}, {"density", 1.0f}}},
-                                {"filter", {{"layer", 1u}, {"mask", 0xFFFFFFFFu}}}};
-        switch (settings.kind) {
-        case ProceduralMeshKind::Sphere:
-            collider["shape"] = "Sphere";
-            collider["radius"] = settings.width * 0.5f;
-            collider["height"] = settings.width;
-            collider["size"] = {settings.width, settings.width, settings.width};
-            break;
-        case ProceduralMeshKind::Capsule:
-        case ProceduralMeshKind::Cylinder:
-            // The backend contract currently exposes capsule as the
-            // closest stable collider for round vertical primitives.
-            collider["shape"] = "Capsule";
-            collider["radius"] = settings.width * 0.5f;
-            collider["height"] = settings.height;
-            collider["size"] = {settings.width, settings.height, settings.width};
-            break;
-        case ProceduralMeshKind::Ramp:
-        case ProceduralMeshKind::Stairs: {
-            MATH::Vec3 center{};
-            MATH::Vec3 rotation{};
-            MATH::Vec3 size{};
-            FitProceduralSlopeBox(settings, center, rotation, size);
-            collider["shape"] = "Box";
-            collider["center"] = {center.x, center.y, center.z};
-            collider["rotation"] = {rotation.x, rotation.y, rotation.z};
-            collider["size"] = {size.x, size.y, size.z};
-            collider["radius"] = size.y * 0.5f;
-            collider["height"] = size.y;
-            break;
-        }
-        case ProceduralMeshKind::Plane:
-        case ProceduralMeshKind::GridPlane:
-            collider["shape"] = "Box";
-            collider["size"] = {settings.width, 0.02f, settings.depth};
-            collider["radius"] = 0.01f;
-            collider["height"] = 0.02f;
-            break;
-        case ProceduralMeshKind::Box:
-        default:
-            collider["shape"] = "Box";
-            collider["size"] = {settings.width, settings.height, settings.depth};
-            collider["radius"] = (std::min)({settings.width, settings.height, settings.depth}) * 0.5f;
-            collider["height"] = settings.height;
-            break;
-        }
-        object.components.push_back(SceneComponentData{"ColliderComponent", std::move(collider)});
+                                {"filter", {{"layer", 1u}, {"mask", 0xFFFFFFFFu}}}}});
     }
 
     NormalizeSceneComponentIds(object);
@@ -408,19 +356,25 @@ GameObject* CreateIrradianceVolumeObject(DocumentSceneBase& scene, const CreateO
     return MaterializeCreatedObject(scene, id);
 }
 
+LightSettings DefaultLightSettings(RENDER3D::LIGHTING::SceneLightType lightType, LightIntensityUnit unit) noexcept {
+    LightSettings settings{};
+    settings.type = lightType;
+    settings.intensityUnit = unit;
+    if (lightType == RENDER3D::LIGHTING::SceneLightType::Spot) {
+        settings.range = 8.0f;
+    }
+    return settings;
+}
+
 GameObject* CreateLightObject(DocumentSceneBase& scene, const CreateObjectRequest& request,
-                              RENDER3D::LIGHTING::SceneLightType lightType, LightIntensityUnit unit) {
+                              const LightSettings& settings) {
     LIGHTING_AUTHORING::LightAuthoring light{};
     light.name = request.name;
     light.position = request.position;
     light.rotationEulerDeg = request.rotation;
-    light.settings.type = lightType;
-    light.settings.intensityUnit = unit;
-    if (lightType == RENDER3D::LIGHTING::SceneLightType::Spot) {
-        light.settings.range = 8.0f;
-    }
+    light.settings = settings;
     if (light.name.empty()) {
-        light.name = std::string(TEXT::EnumToName(RENDER3D::LIGHTING::kSceneLightTypeNames, lightType)) + " Light";
+        light.name = std::string(TEXT::EnumToName(RENDER3D::LIGHTING::kSceneLightTypeNames, settings.type)) + " Light";
     }
     const SceneObjectId id = LIGHTING_AUTHORING::AddLight(scene.GetSceneDocument(), light);
     return MaterializeCreatedObject(scene, id);

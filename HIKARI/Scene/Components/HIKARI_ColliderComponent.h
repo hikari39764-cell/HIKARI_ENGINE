@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "Physics/HIKARI_PhysicsTypes.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 
@@ -34,6 +36,8 @@ public:
     bool IsEnabled() const noexcept;
     ColliderFitMode GetFitMode() const noexcept;
     ResolvedColliderShape ResolveShape() const noexcept;
+    // 物理の形の一覧。当てはめ元が形の組（切り抜いた箱）を出していれば組の全部、無ければ ResolveShape の一つ。
+    std::vector<ResolvedColliderShape> ResolveShapes() const;
     const MATH::Vec3& GetCenter() const noexcept;
     const MATH::Vec3& GetSize() const noexcept;
     float GetRadius() const noexcept;

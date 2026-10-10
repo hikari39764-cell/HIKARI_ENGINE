@@ -26,6 +26,8 @@ public:
     void SetMaterialSelection(std::string selection);
     int GetGeometryFitPriority() const noexcept override;
     bool QueryGeometryFit(GeometryFitDesc& outFit) const noexcept override;
+    // 切り抜いた箱は、残りを重ならない箱の組で返す（衝突を箱だけで正確に作る）。
+    void QueryGeometryFitParts(std::vector<GeometryFitDesc>& outParts) const override;
 
 private:
     void NotifyRenderStateDirty();

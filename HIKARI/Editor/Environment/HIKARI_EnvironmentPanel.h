@@ -27,6 +27,10 @@ public:
     EnvironmentPanelResult Draw(ENVIRONMENT::SceneEnvironmentBinding& binding, DocumentSceneBase& scene);
     // 布景の「灯光与画面」の窓：画面预设（A/B 比較・存为预设）、光照模式、常用の光と大気と画づくり。
     EnvironmentPanelResult DrawLookDev(ENVIRONMENT::SceneEnvironmentBinding& binding, DocumentSceneBase& scene);
+    // 視口のドラッグで主光を動かす。美術布景は方位と高度（度）、昼夜は横の動きを時刻（15° = 1 時間）へ。
+    // dragging の間の変更は一つの取り消しにまとめ、離した時に dragging = false で一度呼んで区切る。
+    EnvironmentPanelResult DragMainLight(ENVIRONMENT::SceneEnvironmentBinding& binding, DocumentSceneBase& scene,
+                                         float azimuthDegrees, float elevationDegrees, bool dragging);
     EDITOR::EnvironmentAssetEditor& Assets() { return assets_; }
     EDITOR::RenderStyleEditor& Style() { return style_; }
     // 前のフレームで窓に焦点があり、最後に編集したのが資産文書ならその文書（元に戻すをそこへ振り分ける）。

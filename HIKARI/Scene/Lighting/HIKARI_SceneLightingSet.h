@@ -1,8 +1,10 @@
 #pragma once
 
 #include <span>
+#include <string>
 
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
+#include "Scene/HIKARI_SceneObjectId.h"
 
 namespace HIKARI {
 
@@ -11,6 +13,9 @@ struct SceneObjectData;
 class World;
 
 namespace LIGHTING_AUTHORING {
+
+// 場面の物体の灯の SceneLightProvider::id。
+std::string LightId(SceneObjectId objectId);
 
 // Scene component から renderer 非依存の意味情報だけを読み取り、
 // runtime loader へ渡す不変スナップショットを構築する。

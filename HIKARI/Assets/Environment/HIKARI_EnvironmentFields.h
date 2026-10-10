@@ -8,6 +8,7 @@
 namespace HIKARI::ENVIRONMENT::FIELDS {
 
 using JSONFIELDS::Range;
+using JSONFIELDS::Slider;
 
 constexpr auto kSkyFields = [](auto&& field) {
     using S = SkySettings;
@@ -15,9 +16,9 @@ constexpr auto kSkyFields = [](auto&& field) {
     field("asset", &S::asset);
     field("textureIlluminance", &S::textureIlluminance, Range{0.0, 200000.0});
     field("panoramaCloudAsset", &S::panoramaCloudAsset);
-    field("panoramaCloudScrollSpeed", &S::panoramaCloudScrollSpeed, Range{-1.0, 1.0});
-    field("panoramaCloudOpacity", &S::panoramaCloudOpacity, Range{0.0, 1.0});
-    field("yaw", &S::yaw, Range{-360.0, 360.0});
+    field("panoramaCloudScrollSpeed", &S::panoramaCloudScrollSpeed, Slider(-1.0, 1.0));
+    field("panoramaCloudOpacity", &S::panoramaCloudOpacity, Slider(0.0, 1.0));
+    field("yaw", &S::yaw, Slider(-360.0, 360.0));
     field("tint", &S::tint, Range{0.0, 16.0});
     field("lightIntensity", &S::lightIntensity, Range{0.0, 16.0});
     field("reflectionIntensity", &S::reflectionIntensity, Range{0.0, 16.0});
@@ -34,8 +35,8 @@ constexpr auto kAtmosphereFields = [](auto&& field) {
     field("ozoneAbsorption", &S::ozoneAbsorption, Range{0.0, 0.01});
     field("ozoneCenterHeight", &S::ozoneCenterHeight, Range{0.0, 1000000.0});
     field("ozoneWidth", &S::ozoneWidth, Range{1.0, 1000000.0});
-    field("mieAnisotropy", &S::mieAnisotropy, Range{-0.95, 0.95});
-    field("groundAlbedo", &S::groundAlbedo, Range{0.0, 1.0});
+    field("mieAnisotropy", &S::mieAnisotropy, Slider(-0.95, 0.95));
+    field("groundAlbedo", &S::groundAlbedo, Slider(0.0, 1.0));
     field("belowHorizon", &S::belowHorizon, kBelowHorizonModeNames);
     field("aerialPerspectiveStrength", &S::aerialPerspectiveStrength, Range{0.0, 8.0});
     field("transmittanceLutWidth", &S::transmittanceLutWidth, Range{32.0, 1024.0});
@@ -48,8 +49,8 @@ constexpr auto kAtmosphereFields = [](auto&& field) {
 constexpr auto kSunFields = [](auto&& field) {
     using S = SunSettings;
     field("mode", &S::mode, kSunModeNames);
-    field("fixedAzimuthDegrees", &S::fixedAzimuthDegrees, Range{0.0, 360.0});
-    field("fixedElevationDegrees", &S::fixedElevationDegrees, Range{-90.0, 90.0});
+    field("fixedAzimuthDegrees", &S::fixedAzimuthDegrees, Slider(0.0, 360.0));
+    field("fixedElevationDegrees", &S::fixedElevationDegrees, Slider(-90.0, 90.0));
     field("illuminance", &S::illuminance, Range{0.0, 1000000.0});
     field("color", &S::color, Range{0.0, 4.0});
     field("angularRadius", &S::angularRadius, Range{0.0001, 0.25});
@@ -68,7 +69,7 @@ constexpr auto kStarFields = [](auto&& field) {
     using S = StarSettings;
     field("enabled", &S::enabled);
     field("intensity", &S::intensity, Range{0.0, 100.0});
-    field("limitingMagnitude", &S::limitingMagnitude, Range{3.0, 9.0});
+    field("limitingMagnitude", &S::limitingMagnitude, Slider(3.0, 9.0));
     field("backgroundLuminance", &S::backgroundLuminance, Range{0.0, 0.01});
 };
 
@@ -79,11 +80,11 @@ constexpr auto kCloudFields = [](auto&& field) {
     field("baseAltitude", &S::baseAltitude, Range{100.0, 10000.0});
     field("densityScale", &S::densityScale, Range{0.0, 8.0});
     field("shapeScale", &S::shapeScale, Range{0.25, 4.0});
-    field("detailErosion", &S::detailErosion, Range{0.0, 1.0});
+    field("detailErosion", &S::detailErosion, Slider(0.0, 1.0));
     field("ambientScale", &S::ambientScale, Range{0.0, 4.0});
-    field("coverageBias", &S::coverageBias, Range{-0.5, 0.5});
-    field("clusterStrength", &S::clusterStrength, Range{0.0, 1.0});
-    field("shadowStrength", &S::shadowStrength, Range{0.0, 1.0});
+    field("coverageBias", &S::coverageBias, Slider(-0.5, 0.5));
+    field("clusterStrength", &S::clusterStrength, Slider(0.0, 1.0));
+    field("shadowStrength", &S::shadowStrength, Slider(0.0, 1.0));
     field("sunlightScale", &S::sunlightScale, Range{0.0, 4.0});
     field("silverLining", &S::silverLining, Range{0.0, 2.0});
 };
@@ -97,12 +98,12 @@ constexpr auto kFogFields = [](auto&& field) {
     field("startDistance", &S::startDistance, Range{0.0, 100000.0});
     field("heightFalloff", &S::heightFalloff, Range{0.0, 1.0});
     field("baseHeight", &S::baseHeight, Range{-100000.0, 100000.0});
-    field("anisotropy", &S::anisotropy, Range{-0.95, 0.95});
-    field("temporalWeight", &S::temporalWeight, Range{0.0, 0.98});
+    field("anisotropy", &S::anisotropy, Slider(-0.95, 0.95));
+    field("temporalWeight", &S::temporalWeight, Slider(0.0, 0.98));
     field("scatteringIntensity", &S::scatteringIntensity, Range{0.0, 16.0});
     field("ambientScatteringStrength", &S::ambientScatteringStrength, Range{0.0, 16.0});
     field("sunShaftStrength", &S::sunShaftStrength, Range{0.0, 16.0});
-    field("noise", &S::noise, Range{0.0, 1.0});
+    field("noise", &S::noise, Slider(0.0, 1.0));
     field("noiseScale", &S::noiseScale, Range{1.0, 500.0});
 };
 
@@ -110,25 +111,25 @@ constexpr auto kExposureFields = [](auto&& field) {
     using S = RENDER3D::COLOR::ExposureSettings;
     field("mode", &S::mode, RENDER3D::COLOR::kExposureModeNames);
     field("manualEv100", &S::manualEv100, Range{-10.0, 24.0});
-    field("compensationEv", &S::compensationEv, Range{-8.0, 8.0});
+    field("compensationEv", &S::compensationEv, Slider(-8.0, 8.0));
     field("minEv100", &S::minEv100, Range{-10.0, 24.0});
     field("maxEv100", &S::maxEv100, Range{-10.0, 24.0});
     field("speedUp", &S::speedUp, Range{0.0, 20.0});
     field("speedDown", &S::speedDown, Range{0.0, 20.0});
     field("nightAdaptationEv100", &S::nightAdaptationEv100, Range{-10.0, 24.0});
-    field("nightAdaptationStrength", &S::nightAdaptationStrength, Range{0.0, 1.0});
-    field("highlightProtection", &S::highlightProtection, Range{0.0, 1.0});
+    field("nightAdaptationStrength", &S::nightAdaptationStrength, Slider(0.0, 1.0));
+    field("highlightProtection", &S::highlightProtection, Slider(0.0, 1.0));
     field("sunlitMeteringCorrectionEv", &S::sunlitMeteringCorrectionEv, Range{0.0, 4.0});
-    field("dimAdaptationStrength", &S::dimAdaptationStrength, Range{0.0, 1.0});
+    field("dimAdaptationStrength", &S::dimAdaptationStrength, Slider(0.0, 1.0));
 };
 
 constexpr auto kToneMappingFields = [](auto&& field) {
     using S = ToneMappingSettings;
     field("curve", &S::curve, kToneCurveNames);
-    field("whiteBalanceTemperature", &S::whiteBalanceTemperature, Range{2000.0, 15000.0});
-    field("whiteBalanceTint", &S::whiteBalanceTint, Range{-1.0, 1.0});
-    field("contrast", &S::contrast, Range{0.25, 2.0});
-    field("saturation", &S::saturation, Range{0.0, 2.0});
+    field("whiteBalanceTemperature", &S::whiteBalanceTemperature, Slider(2000.0, 15000.0));
+    field("whiteBalanceTint", &S::whiteBalanceTint, Slider(-1.0, 1.0));
+    field("contrast", &S::contrast, Slider(0.25, 2.0));
+    field("saturation", &S::saturation, Slider(0.0, 2.0));
     field("gamma", &S::gamma, Range{0.01, 4.0});
 };
 
@@ -138,7 +139,7 @@ constexpr auto kColorGradingFields = [](auto&& field) {
     field("midtonesTint", &S::midtonesTint, Range{0.0, 2.0});
     field("highlightsTint", &S::highlightsTint, Range{0.0, 2.0});
     field("lut", &S::lut);
-    field("lutIntensity", &S::lutIntensity, Range{0.0, 1.0});
+    field("lutIntensity", &S::lutIntensity, Slider(0.0, 1.0));
 };
 
 constexpr auto kBloomFields = [](auto&& field) {
@@ -159,7 +160,7 @@ constexpr auto kSunGlareFields = [](auto&& field) {
     field("streakIntensity", &S::streakIntensity, Range{0.0, 8.0});
     field("streakLength", &S::streakLength, Range{0.0, 2.0});
     field("occlusionRadius", &S::occlusionRadius, Range{0.0, 0.25});
-    field("edgeFade", &S::edgeFade, Range{0.0, 1.0});
+    field("edgeFade", &S::edgeFade, Slider(0.0, 1.0));
     field("maxRadiance", &S::maxRadiance, Range{0.0, 64.0});
     field("shaftIntensity", &S::shaftIntensity, Range{0.0, 8.0});
     field("shaftLength", &S::shaftLength, Range{0.01, 2.0});
@@ -173,31 +174,31 @@ constexpr auto kAmbientOcclusionFields = [](auto&& field) {
     field("mode", &S::mode, kSsaoModeNames);
     field("radius", &S::radius, Range{0.01, 8.0});
     field("bias", &S::bias, Range{0.0, 1.0});
-    field("strength", &S::strength, Range{0.0, 4.0});
+    field("strength", &S::strength, Slider(0.0, 4.0));
     field("power", &S::power, Range{0.1, 8.0});
-    field("diffuseStrength", &S::diffuseStrength, Range{0.0, 1.0});
-    field("specularStrength", &S::specularStrength, Range{0.0, 1.0});
-    field("sampleCount", &S::sampleCount, Range{8.0, 32.0});
-    field("blurIterations", &S::blurIterations, Range{0.0, 4.0});
+    field("diffuseStrength", &S::diffuseStrength, Slider(0.0, 1.0));
+    field("specularStrength", &S::specularStrength, Slider(0.0, 1.0));
+    field("sampleCount", &S::sampleCount, Slider(8.0, 32.0));
+    field("blurIterations", &S::blurIterations, Slider(0.0, 4.0));
 };
 
 constexpr auto kScreenSpaceReflectionFields = [](auto&& field) {
     using S = ScreenSpaceReflectionSettings;
     field("enabled", &S::enabled);
     field("quality", &S::quality, kScreenSpaceReflectionQualityNames);
-    field("intensity", &S::intensity, Range{0.0, 2.0});
+    field("intensity", &S::intensity, Slider(0.0, 2.0));
     field("maxDistance", &S::maxDistance, Range{1.0, 200.0});
     field("thickness", &S::thickness, Range{0.0001, 0.05});
-    field("maxRoughness", &S::maxRoughness, Range{0.05, 1.0});
-    field("edgeFade", &S::edgeFade, Range{0.01, 0.35});
+    field("maxRoughness", &S::maxRoughness, Slider(0.05, 1.0));
+    field("edgeFade", &S::edgeFade, Slider(0.01, 0.35));
     field("stride", &S::stride, Range{0.02, 2.0});
 };
 
 constexpr auto kSubsurfaceScatteringFields = [](auto&& field) {
     using S = SubsurfaceScatteringSettings;
     field("enabled", &S::enabled);
-    field("strength", &S::strength, Range{0.0, 2.0});
-    field("channelFalloff", &S::channelFalloff, Range{0.05, 1.0});
+    field("strength", &S::strength, Slider(0.0, 2.0));
+    field("channelFalloff", &S::channelFalloff, Slider(0.05, 1.0));
     field("maxPixelRadius", &S::maxPixelRadius, Range{1.0, 256.0});
 };
 
@@ -205,10 +206,10 @@ constexpr auto kShadowFields = [](auto&& field) {
     using S = ShadowSettings;
     field("enabled", &S::enabled);
     field("distance", &S::distance, Range{1.0, 10000.0});
-    field("strength", &S::strength, Range{0.0, 1.0});
+    field("strength", &S::strength, Slider(0.0, 1.0));
     field("contactShadows", &S::contactShadows);
     field("contactShadowLength", &S::contactShadowLength, Range{0.01, 2.0});
-    field("contactShadowStrength", &S::contactShadowStrength, Range{0.0, 1.0});
+    field("contactShadowStrength", &S::contactShadowStrength, Slider(0.0, 1.0));
     field("contactShadowThickness", &S::contactShadowThickness, Range{0.01, 2.0});
 };
 

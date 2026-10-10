@@ -24,6 +24,9 @@ struct PhysicsBodyBuildResult {
 
 PhysicsShapeDesc BuildPhysicsShapeDesc(const ColliderComponent& collider, const MATH::Vec3& worldScale,
                                        uint32_t componentOrdinal = 0u);
+// 当てはめ元が形の組（切り抜いた箱）を出していれば組の全部。部品の中の何番目かは key.sourceShapeId（1 から）。
+std::vector<PhysicsShapeDesc> BuildPhysicsShapeDescs(const ColliderComponent& collider, const MATH::Vec3& worldScale,
+                                                     uint32_t componentOrdinal = 0u);
 
 PhysicsBodyBuildResult BuildPhysicsBodyCreateInfo(const GameObject& object, PhysicsBodyCreateInfo& outCreateInfo,
                                                   MATH::Vec3& outWorldScale,

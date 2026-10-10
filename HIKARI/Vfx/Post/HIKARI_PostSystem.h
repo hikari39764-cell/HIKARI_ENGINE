@@ -173,6 +173,10 @@ public:
 
     static bool IsEditorViewportReady();
     static D3D12_GPU_DESCRIPTOR_HANDLE GetEditorViewportSrv();
+    // 布景の A/B 分屏の A（次の編集器の画の複製）。要求の次のフレームから GetEditorSnapshotSrv が返す。
+    static void RequestEditorSnapshot();
+    static void ClearEditorSnapshot();
+    static D3D12_GPU_DESCRIPTOR_HANDLE GetEditorSnapshotSrv();
 
     static RENDER3D::RenderTextureView CaptureSceneColorSnapshot(SceneColorSnapshotKind kind);
     static RENDER3D::RenderTextureView GetSceneColorSnapshotView(SceneColorSnapshotKind kind);

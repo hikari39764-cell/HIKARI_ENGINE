@@ -253,7 +253,7 @@ struct ShadowCB {
 };
 
 constexpr size_t kMaxJointPaletteMatrices = 128u;
-static_assert(sizeof(ShadowCB) == 1408u);
+static_assert(sizeof(ShadowCB) == 2432u);
 constexpr UINT kMaxObjectCount = 2048u;
 constexpr UINT kMaxMaterialDataCount = RENDER3D::MATERIAL::kDefaultGpuMaterialCapacity;
 

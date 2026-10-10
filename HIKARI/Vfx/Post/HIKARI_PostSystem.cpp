@@ -560,6 +560,9 @@ bool PostSystem::IsEditorViewportReady() {
     return presentationStage_.IsEditorOutputReady(requestedOutputWidth_, requestedOutputHeight_);
 }
 D3D12_GPU_DESCRIPTOR_HANDLE PostSystem::GetEditorViewportSrv() { return presentationStage_.GetEditorOutputSrv(); }
+void PostSystem::RequestEditorSnapshot() { presentationStage_.RequestEditorSnapshot(); }
+void PostSystem::ClearEditorSnapshot() { presentationStage_.ClearEditorSnapshot(); }
+D3D12_GPU_DESCRIPTOR_HANDLE PostSystem::GetEditorSnapshotSrv() { return presentationStage_.GetEditorSnapshotSrv(); }
 
 void PostSystem::SetAmbientColor(float r, float g, float b) { captureStage_.SetAmbientColor(r, g, b); }
 void PostSystem::BeginLightCapture() { captureStage_.BeginLightCapture(); }

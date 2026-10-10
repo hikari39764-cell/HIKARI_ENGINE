@@ -28,23 +28,8 @@
 
 namespace HIKARI::PROCEDURAL {
 namespace {
-struct ProceduralModelKey {
-    ProceduralMeshKind kind = ProceduralMeshKind::Box;
-    float width = 1.0f;
-    float height = 1.0f;
-    float depth = 1.0f;
-    uint32_t segmentsX = 10;
-    uint32_t segmentsY = 10;
-    uint32_t segmentsZ = 1;
-    uint32_t sphereSlices = 32;
-    uint32_t sphereStacks = 16;
-    bool doubleSided = false;
-    bool generateTangents = true;
-    float uvTilesX = 0.0f;
-    float uvTilesY = 0.0f;
-
-    bool operator==(const ProceduralModelKey& rhs) const = default;
-};
+// 形の作り方を決める正規化した設定そのものを鍵にする。
+using ProceduralModelKey = ProceduralMeshSettings;
 
 struct KeyHasher {
     size_t operator()(const ProceduralModelKey& key) const noexcept {
@@ -62,6 +47,12 @@ struct KeyHasher {
         mix(key.generateTangents ? 1u : 0u);
         mix(std::hash<float>{}(key.uvTilesX));
         mix(std::hash<float>{}(key.uvTilesY));
+        for (const ProceduralMeshCut& cut : key.cuts) {
+            for (const float value : {cut.center.x, cut.center.y, cut.center.z, cut.size.x, cut.size.y, cut.size.z}) {
+                mix(std::hash<float>{}(value));
+            }
+            mix(static_cast<size_t>(cut.roundAxis + 1));
+        }
         return seed;
     }
 };
@@ -87,17 +78,7 @@ uint64_t gWarmUpGeneration = 1u;
 std::unordered_set<std::string> gPendingClusterWarmUps{};
 
 ProceduralModelKey MakeKey(const ProceduralMeshSettings& rawSettings) {
-    const ProceduralMeshSettings settings = SanitizeProceduralMeshSettings(rawSettings);
-    return {settings.kind,         settings.width,       settings.height,           settings.depth,
-            settings.segmentsX,    settings.segmentsY,   settings.segmentsZ,        settings.sphereSlices,
-            settings.sphereStacks, settings.doubleSided, settings.generateTangents, settings.uvTilesX,
-            settings.uvTilesY};
-}
-
-ProceduralMeshSettings MakeSettings(const ProceduralModelKey& key) {
-    return {key.kind,      key.width,        key.height,       key.depth,       key.segmentsX,        key.segmentsY,
-            key.segmentsZ, key.sphereSlices, key.sphereStacks, key.doubleSided, key.generateTangents, key.uvTilesX,
-            key.uvTilesY};
+    return SanitizeProceduralMeshSettings(rawSettings);
 }
 
 void HashAppendBytes(uint64_t& hash, const void* data, size_t size) { hash = HASH::Fnv1aBytes(hash, data, size); }
@@ -127,6 +108,13 @@ uint64_t HashProceduralModelKey(const ProceduralModelKey& key) {
     HashAppendU32(hash, key.generateTangents ? 1u : 0u);
     HashAppendFloat(hash, key.uvTilesX);
     HashAppendFloat(hash, key.uvTilesY);
+    // 切り抜きの無い形は以前と同じ名前のまま（焼いた幾何をそのまま使う）。
+    for (const ProceduralMeshCut& cut : key.cuts) {
+        for (const float value : {cut.center.x, cut.center.y, cut.center.z, cut.size.x, cut.size.y, cut.size.z}) {
+            HashAppendFloat(hash, value);
+        }
+        HashAppendU32(hash, static_cast<uint32_t>(cut.roundAxis + 1));
+    }
     return hash;
 }
 
@@ -251,7 +239,7 @@ std::unique_ptr<ModelAsset> BuildModel(const ProceduralModelKey& key, bool recor
     primitive.name = "Procedural Primitive";
     primitive.layout = VertexLayoutKind::StaticPNTT;
     primitive.materialIndex = 0;
-    BuildProceduralMesh(MakeSettings(key), primitive);
+    BuildProceduralMesh(key, primitive);
 
     MeshAsset mesh{};
     mesh.name = "Procedural Mesh";

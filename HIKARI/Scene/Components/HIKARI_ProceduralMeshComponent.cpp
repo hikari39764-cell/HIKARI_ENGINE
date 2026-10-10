@@ -21,6 +21,7 @@ void ProceduralMeshComponent::Serialize(nlohmann::json& out) const {
            {"generateTangents", settings.generateTangents},
            {"uvTilesX", settings.uvTilesX},
            {"uvTilesY", settings.uvTilesY},
+           {"cuts", WriteProceduralMeshCuts(settings.cuts)},
            {"materialSelection", materialSelection_}};
 }
 
@@ -39,6 +40,7 @@ void ProceduralMeshComponent::Deserialize(const nlohmann::json& in) {
     settings_.generateTangents = source.value("generateTangents", settings_.generateTangents);
     settings_.uvTilesX = source.value("uvTilesX", settings_.uvTilesX);
     settings_.uvTilesY = source.value("uvTilesY", settings_.uvTilesY);
+    settings_.cuts = ReadProceduralMeshCuts(source.value("cuts", nlohmann::json::array()));
     materialSelection_ =
         ASSETS::MATERIAL::CanonicalizeProceduralMaterialSelection(source.value("materialSelection", std::string{}));
     settings_ = SanitizeProceduralMeshSettings(settings_);
@@ -115,6 +117,23 @@ bool ProceduralMeshComponent::QueryGeometryFit(GeometryFitDesc& outFit) const no
         break;
     }
     return true;
+}
+
+void ProceduralMeshComponent::QueryGeometryFitParts(std::vector<GeometryFitDesc>& outParts) const {
+    outParts.clear();
+    const ProceduralMeshSettings settings = SanitizeProceduralMeshSettings(settings_);
+    if (settings.kind != ProceduralMeshKind::Box || settings.cuts.empty()) {
+        return;
+    }
+    for (const ProceduralMeshBox& box : DecomposeProceduralCutBox(settings)) {
+        GeometryFitDesc part{};
+        part.shape = GeometryFitShape::Box;
+        part.center = box.center;
+        part.size = box.size;
+        part.radius = (std::min)({box.size.x, box.size.y, box.size.z}) * 0.5f;
+        part.height = box.size.y;
+        outParts.push_back(part);
+    }
 }
 
 void ProceduralMeshComponent::NotifyRenderStateDirty() {

@@ -28,7 +28,7 @@ struct HikariLocalLightGpuData
 
 struct HikariLocalShadowData
 {
-    float4x4 viewProj[16];
+    float4x4 viewProj[32];
     uint faceCount;
     uint textureDescriptorIndex;
     uint tilesPerRow;
@@ -319,7 +319,7 @@ float HikariSampleLocalLightShadow(Texture2D atlas, SamplerComparisonState compa
     // 管と長方形は中心から点光源と同じ六面で影を取る。
     const uint faceCount = type == HIKARI_LOCAL_LIGHT_TYPE_SPOT ? 1u : 6u;
     const uint firstFace = encodedFace - 1u;
-    if (firstFace + faceCount > min(shadow.faceCount, 16u)) return 1.0f;
+    if (firstFace + faceCount > min(shadow.faceCount, 32u)) return 1.0f;
     const float3 fromLight = worldPosWS - light.positionRange.xyz;
     const float distanceToLight = length(fromLight);
     if (distanceToLight < 1e-5f) return 1.0f;

@@ -57,7 +57,8 @@ enum class SystemSrv : UINT {
     SceneColorFrame2 = kSystemSrvBegin + 13,
     SceneColorPostOpaqueFrame1 = kSystemSrvBegin + 14,
     SceneColorPostOpaqueFrame2 = kSystemSrvBegin + 15,
-    // +16 は将来の固定 SRV 用に未割り当て。
+    // 布景の A/B 分屏で凍結した A の画（編集器の出力の複製）。
+    EditorViewportSnapshot = kSystemSrvBegin + 16,
     PostSceneDepthFrame0 = kSystemSrvBegin + 17,
 
     MeshObjectDataFrame0 = kSystemSrvBegin + 18,

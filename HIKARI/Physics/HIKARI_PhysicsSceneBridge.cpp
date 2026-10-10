@@ -119,10 +119,11 @@ void HashShapeDefinitionFields(uint64_t& signature, const PhysicsShapeDesc& shap
 
 } // namespace
 
-PhysicsShapeDesc BuildPhysicsShapeDesc(const ColliderComponent& collider, const MATH::Vec3& worldScale,
-                                       uint32_t componentOrdinal) {
+namespace {
+
+PhysicsShapeDesc BuildResolvedShapeDesc(const ColliderComponent& collider, const ResolvedColliderShape& resolved,
+                                        const MATH::Vec3& worldScale, uint32_t componentOrdinal) {
     const MATH::Vec3 absoluteScale = Absolute(worldScale);
-    const ResolvedColliderShape resolved = collider.ResolveShape();
     PhysicsShapeDesc shape{};
     shape.key.componentOrdinal = componentOrdinal;
     shape.type = resolved.type;
@@ -142,6 +143,27 @@ PhysicsShapeDesc BuildPhysicsShapeDesc(const ColliderComponent& collider, const 
     shape.material = PhysicsMaterialDesc{collider.GetFriction(), collider.GetRestitution(), collider.GetDensity()};
     shape.filter = PhysicsCollisionFilter{collider.GetCollisionLayer(), collider.GetCollisionMask()};
     return shape;
+}
+
+} // namespace
+
+PhysicsShapeDesc BuildPhysicsShapeDesc(const ColliderComponent& collider, const MATH::Vec3& worldScale,
+                                       uint32_t componentOrdinal) {
+    return BuildResolvedShapeDesc(collider, collider.ResolveShape(), worldScale, componentOrdinal);
+}
+
+std::vector<PhysicsShapeDesc> BuildPhysicsShapeDescs(const ColliderComponent& collider, const MATH::Vec3& worldScale,
+                                                     uint32_t componentOrdinal) {
+    const std::vector<ResolvedColliderShape> resolved = collider.ResolveShapes();
+    std::vector<PhysicsShapeDesc> shapes;
+    shapes.reserve(resolved.size());
+    for (size_t index = 0; index < resolved.size(); ++index) {
+        shapes.push_back(BuildResolvedShapeDesc(collider, resolved[index], worldScale, componentOrdinal));
+        if (resolved.size() > 1u) {
+            shapes.back().key.sourceShapeId = index + 1u;
+        }
+    }
+    return shapes;
 }
 
 bool TryGetPhysicsWorldPoseAndScale(const GameObject& object, PhysicsPose& outPose, MATH::Vec3& outScale) {
@@ -251,7 +273,9 @@ PhysicsBodyBuildResult BuildPhysicsBodyCreateInfo(const GameObject& object, Phys
                                      (result.sourceRevision >> 2u);
             return;
         }
-        outCreateInfo.shapes.push_back(BuildPhysicsShapeDesc(collider, outWorldScale, componentOrdinal));
+        for (PhysicsShapeDesc& shape : BuildPhysicsShapeDescs(collider, outWorldScale, componentOrdinal)) {
+            outCreateInfo.shapes.push_back(std::move(shape));
+        }
     });
     if (collisionGeometryStore != nullptr) {
         result.sourceRevision ^= collisionGeometryStore->GetSourceRevision();
@@ -341,8 +365,9 @@ uint64_t ComputePhysicsBodyDefinitionSourceSignature(const GameObject& object, u
         }
         // allocation-free な proxy でも Geometry fit provider を解決し、
         // terrain shape を実体化せず model 由来寸法を gate に含める。
-        const PhysicsShapeDesc shape = BuildPhysicsShapeDesc(collider, definitionScale, componentOrdinal);
-        HashShapeDefinitionFields(signature, shape);
+        for (const PhysicsShapeDesc& shape : BuildPhysicsShapeDescs(collider, definitionScale, componentOrdinal)) {
+            HashShapeDefinitionFields(signature, shape);
+        }
     });
     HashValue(signature, componentOrdinal);
     return signature;

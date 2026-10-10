@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 #include "Core/Math/HIKARI_Math3D.h"
 
@@ -28,6 +29,8 @@ public:
     virtual ~IGeometryFitProvider() = default;
     virtual int GetGeometryFitPriority() const noexcept { return 0; }
     virtual bool QueryGeometryFit(GeometryFitDesc& outFit) const noexcept = 0;
+    // 一つの形で表せない時（切り抜いた箱）は重ならない形の組を返す。空なら QueryGeometryFit の形を使う。
+    virtual void QueryGeometryFitParts(std::vector<GeometryFitDesc>& outParts) const { outParts.clear(); }
 };
 
 } // namespace HIKARI

@@ -103,10 +103,12 @@ void LightComponent::BuildInspector(IInspectorBuilder& builder) {
     }
     if (next.type == SceneLightType::Spot) {
         builder.Text("Spot Cone (+Z forward)");
-        builder.FloatRange(AuthoringFieldDescriptor{"innerConeAngleDegrees", "Inner Cone Angle"},
-                           next.innerConeAngleDegrees, 0.1f, 89.0f, 0.1f);
-        builder.FloatRange(AuthoringFieldDescriptor{"outerConeAngleDegrees", "Outer Cone Angle"},
-                           next.outerConeAngleDegrees, 0.1f, 89.0f, 0.1f);
+        builder.FloatRange(
+            AuthoringFieldDescriptor{.id = "innerConeAngleDegrees", .label = "Inner Cone Angle", .slider = true},
+            next.innerConeAngleDegrees, 0.1f, 89.0f, 0.1f);
+        builder.FloatRange(
+            AuthoringFieldDescriptor{.id = "outerConeAngleDegrees", .label = "Outer Cone Angle", .slider = true},
+            next.outerConeAngleDegrees, 0.1f, 89.0f, 0.1f);
         builder.FloatRange(AuthoringFieldDescriptor{"angularFalloff", "Angular Falloff"}, next.angularFalloff, 0.05f,
                            8.0f, 0.05f);
         builder.AssetIdPicker(

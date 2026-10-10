@@ -18,7 +18,8 @@
 // JSONFIELDS の項目表から設定の編集 UI を作る。資産の読み書きと同じ一つの表を使い、項目ごとの UI を書かない。
 // 表示名は "<labelPrefix>.<key>" の翻訳、無ければ key を語に分けたもの。
 // 資産の参照など表だけでは描けない項目は、custom(key, object, result) が true を返して自分で描く。
-// 数値は NumberField（右クリックで T{} の既定値へ戻せる）。"enabled" が false なら、その後の項目は灰色にする。
+// 数値は NumberField（右クリックで T{} の既定値へ戻せる）。JSONFIELDS::Slider の項目は滑块、他はドラッグ欄。
+// "enabled" が false なら、その後の項目は灰色にする。
 namespace HIKARI::EDITOR {
 
 // "textureIlluminance" -> "Texture Illuminance"
@@ -81,12 +82,14 @@ struct FieldDrawer {
         ImGui::PushID(key);
         M& value = object.*member;
         NumberRange range{};
-        ((void)ReadRange(options, range), ...);
+        bool slider = false;
+        ((void)ReadRange(options, range, slider), ...);
         const M* fallback = DefaultOf(member);
         if constexpr (std::is_same_v<M, bool>) {
             Track(ImGui::Checkbox("##value", &value));
         } else if constexpr (std::is_arithmetic_v<M>) {
-            Track(DragNumber("##value", value, range, fallback));
+            Track(slider ? SliderNumber("##value", value, range.minimum, range.maximum, fallback)
+                         : DragNumber("##value", value, range, fallback));
         } else if constexpr (std::is_same_v<M, MATH::Vec2>) {
             Track(DragNumbers("##value", &value.x, 2, range, fallback != nullptr ? &fallback->x : nullptr));
         } else if constexpr (std::is_same_v<M, MATH::Vec3>) {
@@ -143,10 +146,11 @@ struct FieldDrawer {
     }
 
     template <class Option>
-    static bool ReadRange(const Option& option, NumberRange& range) {
+    static bool ReadRange(const Option& option, NumberRange& range, bool& slider) {
         if constexpr (std::is_same_v<Option, JSONFIELDS::Range>) {
             range.minimum = option.min;
             range.maximum = option.max;
+            slider = option.slider;
         }
         return true;
     }

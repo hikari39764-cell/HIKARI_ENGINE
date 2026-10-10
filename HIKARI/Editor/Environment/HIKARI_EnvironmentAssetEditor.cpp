@@ -260,7 +260,7 @@ bool IsLightingControlField(std::string_view section, std::string_view key) {
         return key == "contactShadows" || key == "contactShadowLength" || key == "contactShadowStrength";
     }
     if (section == "ambientOcclusion") {
-        return key == "enabled" || key == "mode" || key == "radius" || key == "strength";
+        return key == "enabled" || key == "mode" || key == "radius" || key == "strength" || key == "power";
     }
     if (section == "screenSpaceReflections") {
         // 光線追跡の反射（画質設定）もこの節の強さと粗さの上限に従う。
@@ -403,14 +403,10 @@ FieldEditResult DrawLightingControlSections(EnvironmentProfileAsset& asset, Docu
 }
 } // namespace
 
-std::string EnvironmentAssetEditor::SetSunMode(const std::string& id, SunMode mode, DocumentSceneBase& scene) {
+std::string EnvironmentAssetEditor::EditProfile(const std::string& id, DocumentSceneBase& scene,
+                                                const std::function<bool(EnvironmentProfileAsset&)>& edit,
+                                                bool continuing) {
     AssetDatabase& database = scene.GetAssetDatabase();
-    const auto withMode = [&](EnvironmentProfileAsset edited) {
-        const SunSettings before = edited.profile.sun;
-        edited.profile.sun.mode = mode;
-        SeedFixedSunFromCurrent(before, edited.profile.sun, scene);
-        return edited;
-    };
     if (id.starts_with(ENVIRONMENT::kBuiltinEnvironmentPrefix)) {
         std::string error;
         const auto asset = scene.GetEnvironmentAssets().LoadProfile(id, error);
@@ -418,17 +414,38 @@ std::string EnvironmentAssetEditor::SetSunMode(const std::string& id, SunMode mo
             status_ = error;
             return {};
         }
-        if (asset->profile.sun.mode == mode || !profile_.SaveAsNew(withMode(*asset), database, status_)) {
+        EnvironmentProfileAsset edited = *asset;
+        if (!edit(edited) || !profile_.SaveAsNew(edited, database, status_)) {
             return {};
         }
         return profile_.Guid().value;
     }
-    if (OpenAssetDocumentForEdit(profile_, AssetGuid{id}, database, status_) &&
-        profile_.Profile().profile.sun.mode != mode) {
-        (void)profile_.Apply(withMode(profile_.Profile()), status_);
+    if (!OpenAssetDocumentForEdit(profile_, AssetGuid{id}, database, status_)) {
+        return {};
+    }
+    EnvironmentProfileAsset edited = profile_.Profile();
+    if (edit(edited)) {
+        (void)profile_.Apply(std::move(edited), status_, continuing ? kProfileFieldMergeGroup : 0u);
+    }
+    if (!continuing) {
         profile_.SealMerge();
     }
     return {};
+}
+
+std::string EnvironmentAssetEditor::SetSunMode(const std::string& id, SunMode mode, DocumentSceneBase& scene) {
+    return EditProfile(
+        id, scene,
+        [&](EnvironmentProfileAsset& edited) {
+            if (edited.profile.sun.mode == mode) {
+                return false;
+            }
+            const SunSettings before = edited.profile.sun;
+            edited.profile.sun.mode = mode;
+            SeedFixedSunFromCurrent(before, edited.profile.sun, scene);
+            return true;
+        },
+        false);
 }
 
 bool DrawEnvironmentProfilePresets(const AssetDatabase& database, std::string& id) {

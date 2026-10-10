@@ -554,6 +554,12 @@ void DocumentSceneBase::Render() {
         sceneLighting.lights.push_back(light);
     }
     // エディターの表示切り替えは、このフレームの描画入力だけを変える。
+    if (const uint64_t solo = state_->editor.viewportOverlayState.soloLightObjectId; solo != 0u && DrawDebugHelpers()) {
+        const std::string soloId = LIGHTING_AUTHORING::LightId(SceneObjectId{solo});
+        for (RENDER3D::LIGHTING::SceneLightProvider& light : sceneLighting.lights) {
+            light.enabled &= light.id == soloId;
+        }
+    }
     if (DrawDebugHelpers() && state_->editor.viewportPerformanceState.disableSsaoInEditorViewport) {
         activeEnvironment.ambientOcclusion.enabled = false;
     }

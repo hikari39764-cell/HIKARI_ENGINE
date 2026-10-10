@@ -38,46 +38,7 @@ SceneObjectData* FindSelectedDocumentObject(DocumentSceneBase& scene, const Edit
 }
 
 std::vector<SceneObjectId> CollectSelectedRootIds(const SceneDocument& document, const EditorSelection& selection) {
-    std::unordered_set<uint64_t> selectedIds{};
-    for (SceneObjectId objectId : selection.GetSelectedObjectIds()) {
-        if (objectId.value != 0u) {
-            selectedIds.insert(objectId.value);
-        }
-    }
-
-    std::unordered_map<uint64_t, SceneObjectId> parents{};
-    parents.reserve(document.objects.size());
-    for (const SceneObjectData& object : document.objects) {
-        if (object.parent) {
-            parents.emplace(object.id.value, *object.parent);
-        }
-    }
-
-    std::vector<SceneObjectId> roots{};
-    roots.reserve(selectedIds.size());
-    for (SceneObjectId objectId : selection.GetSelectedObjectIds()) {
-        bool hasSelectedAncestor = false;
-        SceneObjectId ancestor = objectId;
-        std::unordered_set<uint64_t> visitedAncestors{objectId.value};
-        while (true) {
-            const auto found = parents.find(ancestor.value);
-            if (found == parents.end()) {
-                break;
-            }
-            ancestor = found->second;
-            if (!visitedAncestors.insert(ancestor.value).second) {
-                break;
-            }
-            if (selectedIds.contains(ancestor.value)) {
-                hasSelectedAncestor = true;
-                break;
-            }
-        }
-        if (!hasSelectedAncestor) {
-            roots.push_back(objectId);
-        }
-    }
-    return roots;
+    return CollectRootObjectIds(document, selection.GetSelectedObjectIds());
 }
 
 SceneObjectAuthoringHistoryRequest MakeHistory(std::string label, std::vector<SceneObjectData> beforeObjects,

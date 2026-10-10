@@ -195,6 +195,45 @@ ResolvedColliderShape ColliderComponent::ResolveShape() const noexcept {
     }
     return resolved;
 }
+std::vector<ResolvedColliderShape> ColliderComponent::ResolveShapes() const {
+    const ResolvedColliderShape single = ResolveShape();
+    if (!single.fittedFromGeometry || GetOwner() == nullptr) {
+        return {single};
+    }
+    // ResolveShape と同じ優先度で当てはめ元を選び、その形の組を使う。
+    const IGeometryFitProvider* best = nullptr;
+    int bestPriority = (std::numeric_limits<int>::min)();
+    GeometryFitDesc ignored{};
+    for (const auto& component : GetOwner()->GetComponents()) {
+        const auto* provider = dynamic_cast<const IGeometryFitProvider*>(component.get());
+        if (provider != nullptr && provider->GetGeometryFitPriority() > bestPriority &&
+            provider->QueryGeometryFit(ignored)) {
+            best = provider;
+            bestPriority = provider->GetGeometryFitPriority();
+        }
+    }
+    std::vector<GeometryFitDesc> parts;
+    if (best != nullptr) {
+        best->QueryGeometryFitParts(parts);
+    }
+    if (parts.empty()) {
+        return {single};
+    }
+    std::vector<ResolvedColliderShape> shapes;
+    shapes.reserve(parts.size());
+    for (const GeometryFitDesc& part : parts) {
+        ResolvedColliderShape shape = single;
+        shape.type = PHYSICS::PhysicsShapeType::Box;
+        shape.center = part.center;
+        shape.rotationEulerDegrees = part.rotationEulerDegrees;
+        shape.size = part.size;
+        shape.radius = (std::max)(part.radius, 0.0005f);
+        shape.height = (std::max)(part.height, shape.radius * 2.0f);
+        shapes.push_back(shape);
+    }
+    return shapes;
+}
+
 const MATH::Vec3& ColliderComponent::GetCenter() const noexcept { return center_; }
 const MATH::Vec3& ColliderComponent::GetSize() const noexcept { return size_; }
 float ColliderComponent::GetRadius() const noexcept { return radius_; }

@@ -8,7 +8,8 @@
 
 namespace HIKARI::RENDER3D::LIGHTING {
 
-inline constexpr uint32_t kMaximumLocalShadowFaceCount = 16u;
+// 局所光の影の面の上限（高画質で点光 5 灯 + スポット 2 灯）。HIKARI_LocalLightContract.hlsli の viewProj と同じ数。
+inline constexpr uint32_t kMaximumLocalShadowFaceCount = 32u;
 // 点・スポットの記録に詰める配光とクッキーの記述子番号 + 1 の桁（材質 texture pool の 3968 を収める）。
 inline constexpr uint32_t kLocalLightTextureIndexStride = 4096u;
 
@@ -20,7 +21,7 @@ struct alignas(16) LocalShadowGpuData {
     uint32_t tilesPerRow = 0;
     uint32_t tileResolution = 0;
 };
-static_assert(sizeof(LocalShadowGpuData) == 1040u);
+static_assert(sizeof(LocalShadowGpuData) == 2064u);
 
 enum class LocalLightType : uint32_t {
     Point = 0u,

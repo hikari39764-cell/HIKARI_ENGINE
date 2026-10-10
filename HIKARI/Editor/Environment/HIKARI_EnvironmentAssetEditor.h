@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -26,6 +27,10 @@ public:
     // 光照の型を切り替える（美術布景 = 太陽の向きを固定、昼夜 = 日付と地点）。固定へ移る時は今の太陽の位置から始める。
     // 内蔵プロファイルは複製してその ID を返す。
     std::string SetSunMode(const std::string& id, SunMode mode, DocumentSceneBase& scene);
+    // プロファイルを edit で書き換える（edit が false なら何もしない）。continuing の間（ドラッグ中）の編集は一つの
+    // 取り消しにまとめ、false の呼び出しで区切る。内蔵プロファイルは複製してその ID を返す。
+    std::string EditProfile(const std::string& id, DocumentSceneBase& scene,
+                            const std::function<bool(ENVIRONMENT::EnvironmentProfileAsset&)>& edit, bool continuing);
     // 下書きを store へ渡し、変わっていればシーンの環境を引き直す。毎フレームと AI の編集後に呼ぶ。
     void PublishDrafts(DocumentSceneBase& scene);
 

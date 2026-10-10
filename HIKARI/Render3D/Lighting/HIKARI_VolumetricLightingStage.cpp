@@ -83,7 +83,7 @@ struct alignas(16) VolumetricConstants {
     LocalFogVolumeGpu localFogVolumes[kGameProjectLocalFogMaximumVolumes]{};
 };
 
-static_assert(sizeof(VolumetricConstants) == 5600u);
+static_assert(sizeof(VolumetricConstants) == 6624u);
 
 struct VolumeResource {
     ComPtr<ID3D12Resource> texture{};
