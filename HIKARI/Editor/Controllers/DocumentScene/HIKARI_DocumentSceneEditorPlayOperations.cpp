@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <string>
 #include <utility>
 
@@ -34,6 +35,10 @@ constexpr size_t kMaximumRunCaptures = 8u;
 constexpr size_t kMaximumRuntimeObjects = 64u;
 constexpr size_t kMaximumLogRecords = 500u;
 constexpr size_t kMaximumRunLogRecords = 50u;
+// trackObjects：記録する物体の数、記録の間隔（tick）、結果に残す最大の数。
+constexpr size_t kMaximumTrackedObjects = 16u;
+constexpr uint64_t kTrackSampleTicks = 30u;
+constexpr size_t kMaximumTrackSamples = 21u;
 
 constexpr TEXT::EnumName<EDITOR::EditorPlayState> kPlayStateNames[] = {
     {EDITOR::EditorPlayState::Stopped, "stopped"},          {EDITOR::EditorPlayState::Starting, "starting"},
@@ -63,23 +68,73 @@ bool ReadVec3Parameter(const nlohmann::json& parameters, const char* key, MATH::
     return MATH::IsFinite(outValue.x) && MATH::IsFinite(outValue.y) && MATH::IsFinite(outValue.z);
 }
 
-// 入力轨道は引数の track（JSON 本体）か path（项目からの相対か絶対）で受け取る。
-// path 引数の .hinputtrack（相対パスは项目根から）。
-std::filesystem::path TrackPathParameter(const nlohmann::json& parameters, const std::filesystem::path& projectRoot) {
-    std::filesystem::path path = TEXT::PathFromUtf8(parameters.value("path", std::string{}));
-    return path.empty() || path.is_absolute() ? path : projectRoot / path;
-}
-
+// 入力轨道は引数の track（JSON 本体）か path（.hinputtrack、相対パスは项目根から）で受け取る。
 bool ReadTrackParameter(const nlohmann::json& parameters, const std::filesystem::path& projectRoot,
                         INPUT::InputTrack& outTrack, std::string& outError) {
     if (parameters.contains("track"))
         return INPUT::ReadInputTrack(parameters["track"], outTrack, outError);
-    const std::filesystem::path path = TrackPathParameter(parameters, projectRoot);
+    std::filesystem::path path = TEXT::PathFromUtf8(parameters.value("path", std::string{}));
+    if (!path.empty() && !path.is_absolute())
+        path = projectRoot / path;
     if (path.empty()) {
         outError = "Provide track (an InputTrack object) or path (a .hinputtrack file).";
         return false;
     }
     return INPUT::LoadInputTrack(path, outTrack, outError);
+}
+
+// play.run と play.background の共通の引数（ticks、track / path、captureAt、trackObjects、pauseAfter）を読む。
+EDITOR::EditorOperationResult ReadAgentPlayRun(const nlohmann::json& parameters,
+                                               const std::filesystem::path& projectRoot,
+                                               EDITOR::AGENT::AgentPlayRun& run) {
+    run.ticks = parameters.value("ticks", 600u);
+    run.pauseAfter = parameters.value("pauseAfter", true);
+    if (parameters.contains("track") || parameters.contains("path")) {
+        INPUT::InputTrack track;
+        std::string error;
+        if (!ReadTrackParameter(parameters, projectRoot, track, error))
+            return EDITOR::OperationFailure("INVALID_INPUT_TRACK", std::move(error));
+        run.input = std::move(track);
+    }
+    for (const nlohmann::json& tick : parameters.value("captureAt", nlohmann::json::array())) {
+        if (tick.get<uint64_t>() > run.ticks)
+            return EDITOR::OperationFailure("INVALID_CAPTURE_TICK", "captureAt ticks must be within ticks.");
+        run.captureTicks.push_back(tick.get<uint32_t>());
+    }
+    if (run.captureTicks.size() > kMaximumRunCaptures)
+        return EDITOR::OperationFailure("TOO_MANY_CAPTURES", "captureAt allows at most 8 ticks.");
+    std::sort(run.captureTicks.begin(), run.captureTicks.end());
+    run.trackObjects = parameters.value("trackObjects", std::vector<uint64_t>{});
+    if (run.trackObjects.size() > kMaximumTrackedObjects)
+        return EDITOR::OperationFailure("TOO_MANY_TRACKED_OBJECTS", "trackObjects allows at most 16 objects.");
+    return EDITOR::OperationOk("", {});
+}
+
+// 記録する物体の今の世界位置（無くなった物は null）。
+nlohmann::json SampleTrackedObjects(World& world, const std::vector<uint64_t>& objects, uint64_t tick) {
+    nlohmann::json positions = nlohmann::json::object();
+    for (const uint64_t id : objects) {
+        const GameObject* object = world.FindObject(SceneObjectId{id});
+        if (object == nullptr) {
+            positions[std::to_string(id)] = nullptr;
+            continue;
+        }
+        const auto matrix = object->GetTransform().GetWorldMatrix();
+        positions[std::to_string(id)] = {std::round(matrix.m[3][0] * 1000.0f) / 1000.0f,
+                                         std::round(matrix.m[3][1] * 1000.0f) / 1000.0f,
+                                         std::round(matrix.m[3][2] * 1000.0f) / 1000.0f};
+    }
+    return {{"tick", tick}, {"positions", std::move(positions)}};
+}
+
+// 記録を最大 kMaximumTrackSamples に間引く（最初と最後は残す）。
+nlohmann::json ThinSamples(const nlohmann::json& samples) {
+    if (samples.size() <= kMaximumTrackSamples)
+        return samples;
+    nlohmann::json thinned = nlohmann::json::array();
+    for (size_t index = 0u; index < kMaximumTrackSamples; ++index)
+        thinned.push_back(samples[index * (samples.size() - 1u) / (kMaximumTrackSamples - 1u)]);
+    return thinned;
 }
 
 nlohmann::json DescribeLogRecord(const CORE::LogRecord& record) {
@@ -223,6 +278,12 @@ void DocumentSceneEditorController::RegisterPlayOperations() {
           false,
           "Up to 8 tick numbers to capture",
           {{"type", "array"}, {"items", {{"type", "integer"}, {"minimum", 0}}}}},
+         {"trackObjects",
+          EditorOperationParameterType::Json,
+          false,
+          "Up to 16 scene object ids whose world positions are recorded every 30 ticks (evidence of where things "
+          "moved)",
+          {{"type", "array"}, {"items", {{"type", "integer"}, {"minimum", 1}}}}},
          {"pauseAfter", EditorOperationParameterType::Bool, false, "Pause when done (default true)"}},
         [this](const nlohmann::json& parameters) { return StartAgentPlayRun(parameters); }};
     run.entryPoint = true;
@@ -237,23 +298,29 @@ void DocumentSceneEditorController::RegisterPlayOperations() {
 
     EDITOR::EditorOperationDefinition background{
         "play.background",
-        "Play the current scene once in a separate headless engine, without saving it and without touching the user's "
-        "editor, view or Play: optional input track, run frames engine frames, capture the game view at captureAt "
-        "frames, then report captures and log warnings and errors. Poll play.background.status. Prefer this to "
-        "play.run for gameplay checks while the user is working. Only the current scene's unsaved changes are "
-        "carried over; other assets (materials, VFX, cameras) are read from disk, so save them first.",
+        "Play the current scene once in a separate headless editor, without saving it and without touching the "
+        "user's editor, view or Play: the same run as play.run (optional input track, exactly ticks fixed ticks, game "
+        "view captures at captureAt ticks, positions of trackObjects every 30 ticks), then captures, positions and "
+        "log warnings and errors. Poll play.background.status. Prefer this to play.run for gameplay checks while the "
+        "user is working. Only the current scene's unsaved changes are carried over; other assets (materials, VFX, "
+        "cameras) are read from disk, so save them first.",
         "runtime",
-        {{"frames",
+        {{"ticks",
           EditorOperationParameterType::Int,
           false,
-          "Engine frames to run, 1 to 10000 (default 600). Play starts after loading; the track plays from then",
-          {{"minimum", 1}, {"maximum", 10000}}},
+          "Fixed ticks after Play starts, 1 to 7200 (default 600; 60 ticks per second of game time)",
+          {{"minimum", 1}, {"maximum", EDITOR::AGENT::kMaximumHeadlessTicks}}},
          {"track", EditorOperationParameterType::Json, false, "Optional InputTrack object"},
          {"path", EditorOperationParameterType::String, false, "Optional .hinputtrack file instead of track"},
          {"captureAt",
           EditorOperationParameterType::Json,
           false,
-          "Up to 8 frame numbers, increasing and evenly spaced",
+          "Up to 8 tick numbers to capture the game view",
+          {{"type", "array"}, {"items", {{"type", "integer"}, {"minimum", 0}}}}},
+         {"trackObjects",
+          EditorOperationParameterType::Json,
+          false,
+          "Up to 16 scene object ids whose world positions are recorded every 30 ticks",
           {{"type", "array"}, {"items", {{"type", "integer"}, {"minimum", 1}}}}},
          {"quality",
           EditorOperationParameterType::String,
@@ -464,23 +531,10 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::StartAgentPlayRun(c
     if (aiOperationScene_ == nullptr)
         return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
     EDITOR::AGENT::AgentPlayRun run{};
-    run.ticks = parameters.at("ticks").get<uint32_t>();
-    run.pauseAfter = parameters.value("pauseAfter", true);
-    if (parameters.contains("track") || parameters.contains("path")) {
-        INPUT::InputTrack track;
-        std::string error;
-        if (!ReadTrackParameter(parameters, aiOperationScene_->GetAssetDatabase().GetProjectRoot(), track, error))
-            return EDITOR::OperationFailure("INVALID_INPUT_TRACK", std::move(error));
-        run.input = std::move(track);
-    }
-    for (const nlohmann::json& tick : parameters.value("captureAt", nlohmann::json::array())) {
-        if (tick.get<uint64_t>() > run.ticks)
-            return EDITOR::OperationFailure("INVALID_CAPTURE_TICK", "captureAt ticks must be within ticks.");
-        run.captureTicks.push_back(tick.get<uint32_t>());
-    }
-    if (run.captureTicks.size() > kMaximumRunCaptures)
-        return EDITOR::OperationFailure("TOO_MANY_CAPTURES", "captureAt allows at most 8 ticks.");
-    std::sort(run.captureTicks.begin(), run.captureTicks.end());
+    if (EDITOR::EditorOperationResult read =
+            ReadAgentPlayRun(parameters, aiOperationScene_->GetAssetDatabase().GetProjectRoot(), run);
+        !read.ok)
+        return read;
     if (aiPlaySession_ == nullptr || !aiPlaySession_->IsRunning()) {
         const EDITOR::EditorOperationResult started = StartAgentPlay();
         if (!started.ok)
@@ -494,20 +548,23 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::StartAgentPlayRun(c
 
 void DocumentSceneEditorController::TickAgentPlayRun() {
     INPUT::InputService& input = SERVICES::GetInputService();
-    if (pendingInputReplay_ && aiPlaySession_ != nullptr &&
-        aiPlaySession_->GetState() == EDITOR::EditorPlayState::Running) {
-        // --input-replay：Play の開始を待って轨道を回し、轨道の長さだけ锁步で進める。
-        INPUT::InputTrack track;
-        std::string error;
-        if (INPUT::LoadInputTrack(*pendingInputReplay_, track, error) && input.BeginPlayback(track, error)) {
-            TIME::SetLockstepFrames(static_cast<uint32_t>(track.length));
-            HIKARI_LOG_INFO("[InputReplay] playing " + TEXT::PathToUtf8(*pendingInputReplay_) + " for " +
-                            std::to_string(track.length) + " ticks");
-        } else {
-            HIKARI_LOG_ERROR("[InputReplay] " + error);
-        }
-        pendingInputReplay_.reset();
+    // --agent-play-run（後台試玩・hikari headless の無頭の编辑器）：場面が開いたら依頼の play.run を一回走らせ、
+    // 終わったら同じ目录の result.json に play.run.status と同じ結果を書く（起動した側が読んで引擎を止める）。
+    if (pendingBackgroundRun_ && aiOperationScene_ != nullptr && aiPlaySession_ != nullptr) {
+        const std::filesystem::path request = *std::exchange(pendingBackgroundRun_, std::nullopt);
+        std::ifstream file(request, std::ios::binary);
+        const nlohmann::json parameters = nlohmann::json::parse(file, nullptr, false);
+        EDITOR::EditorOperationResult started =
+            parameters.is_object() ? StartAgentPlayRun(parameters)
+                                   : EDITOR::OperationFailure("INVALID_REQUEST", "The run request is not JSON.");
+        backgroundResult_ = request.parent_path() / "result.json";
+        if (!started.ok)
+            WriteBackgroundResult(started);
     }
+    if (backgroundResult_ && agentPlayRun_ &&
+        (agentPlayRun_->phase == EDITOR::AGENT::AgentPlayRun::Phase::Done ||
+         agentPlayRun_->phase == EDITOR::AGENT::AgentPlayRun::Phase::Failed))
+        WriteBackgroundResult(PollAgentPlayRun(agentPlayRun_->id));
     if (!agentPlayRun_)
         return;
     using Phase = EDITOR::AGENT::AgentPlayRun::Phase;
@@ -545,6 +602,10 @@ void DocumentSceneEditorController::TickAgentPlayRun() {
         return;
     }
     const uint64_t elapsed = now - run.startTick;
+    if (!run.trackObjects.empty() && elapsed >= run.nextSampleTick && elapsed <= run.ticks) {
+        run.samples.push_back(SampleTrackedObjects(aiOperationScene_->GetWorld(), run.trackObjects, elapsed));
+        run.nextSampleTick = elapsed + kTrackSampleTicks;
+    }
     if (run.pendingCaptureId != 0u) {
         const EDITOR::EditorOperationResult capture = PollAiPreviewCapture(run.pendingCaptureId);
         if (!capture.ok || !capture.data.value("pending", false)) {
@@ -575,10 +636,29 @@ void DocumentSceneEditorController::TickAgentPlayRun() {
     if (run.phase == Phase::Running && TIME::GetLockstepFramesRemaining() == 0u && elapsed >= run.ticks)
         run.phase = Phase::Finishing;
     if (run.phase == Phase::Finishing && run.pendingCaptureId == 0u && run.nextCapture >= run.captureTicks.size()) {
+        // 最後の位置（間隔の途中で終わっても終点を残す）。
+        if (!run.trackObjects.empty() && (run.samples.empty() || run.samples.back()["tick"] != run.ticks))
+            run.samples.push_back(SampleTrackedObjects(aiOperationScene_->GetWorld(), run.trackObjects, run.ticks));
         if (run.pauseAfter && aiPlaySession_->IsRunning() && !aiPlaySession_->IsPaused())
             aiPlaySession_->TogglePause();
         run.phase = Phase::Done;
     }
+}
+
+void DocumentSceneEditorController::WriteBackgroundResult(const EDITOR::EditorOperationResult& result) {
+    const std::filesystem::path path = *std::exchange(backgroundResult_, std::nullopt);
+    const nlohmann::json written{
+        {"ok", result.ok}, {"code", result.code}, {"message", result.message}, {"data", result.data}};
+    // 読む側が書きかけを読まないよう、別名で書いてから置き換える。
+    const std::filesystem::path temporary = path.parent_path() / "result.json.tmp";
+    {
+        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+        output << written.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+    }
+    std::error_code error;
+    std::filesystem::rename(temporary, path, error);
+    if (error)
+        HIKARI_LOG_ERROR("[BackgroundPlay] Could not write " + TEXT::PathToUtf8(path) + ": " + error.message());
 }
 
 EDITOR::EditorOperationResult DocumentSceneEditorController::PollAgentPlayRun(uint64_t runId) const {
@@ -600,6 +680,8 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::PollAgentPlayRun(ui
         return EDITOR::OperationOk("Run in progress.", std::move(data));
     }
     data["problems"] = ReadLogs(run.logSequenceAtStart, CORE::LogLevel::Warn, kMaximumRunLogRecords, {});
+    if (!run.samples.empty())
+        data["tracked"] = ThinSamples(run.samples);
     data["play"] = DescribePlayState().data;
     if (run.phase == Phase::Failed) {
         EDITOR::EditorOperationResult result = EDITOR::OperationFailure("RUN_FAILED", run.error);
@@ -622,22 +704,14 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::StartBackgroundPlay
     request.projectModule = ReadRuntimeCommandLinePath(L"--project-module").value_or(std::filesystem::path{});
     request.sceneGuid = scene.GetCurrentSceneAssetGuid().value;
     request.scene = &scene.GetSceneDocument();
-    request.frames = static_cast<uint32_t>(parameters.value("frames", 600));
-    if (parameters.contains("track") || parameters.contains("path")) {
-        INPUT::InputTrack track;
-        std::string error;
-        if (!ReadTrackParameter(parameters, assets.GetProjectRoot(), track, error))
-            return EDITOR::OperationFailure("INVALID_TRACK", error);
-        if (parameters.contains("track"))
-            request.track = parameters["track"];
-        else
-            request.trackFile = TrackPathParameter(parameters, assets.GetProjectRoot());
-    }
-    const nlohmann::json captures = parameters.value("captureAt", nlohmann::json::array());
-    if (captures.size() > 8u)
-        return EDITOR::OperationFailure("TOO_MANY_CAPTURES", "captureAt allows at most 8 frames.");
-    for (const nlohmann::json& frame : captures)
-        request.captureFrames.push_back(frame.get<uint32_t>());
+    EDITOR::AGENT::AgentPlayRun checked{};
+    if (EDITOR::EditorOperationResult read = ReadAgentPlayRun(parameters, assets.GetProjectRoot(), checked); !read.ok)
+        return read;
+    request.run = parameters;
+    request.run.erase("quality");
+    request.run["ticks"] = checked.ticks;
+    request.run["pauseAfter"] = false;
+    // 相対の path は依頼を読む後ろの编辑器でも项目根から解ける。
     request.projectQuality = parameters.value("quality", std::string("light")) == "project";
     return backgroundPlay_.Start(request);
 }

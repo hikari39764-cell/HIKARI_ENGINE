@@ -95,6 +95,8 @@ public:
     nlohmann::json DescribeDocumentState() const;
 
     const DIALOGUE::DialogueDefinition& GetDefinition() const noexcept;
+    // 文書全体を置き換える（dialogue.edit）。一回の撤销になる。
+    void ReplaceDefinition(DIALOGUE::DialogueDefinition definition);
     const DIALOGUE::DialogueProjectStyle& GetStyle() const noexcept;
     const std::string& GetStatusMessage() const noexcept;
 

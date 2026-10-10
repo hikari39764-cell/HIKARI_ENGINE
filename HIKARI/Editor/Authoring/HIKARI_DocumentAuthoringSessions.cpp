@@ -265,8 +265,8 @@ void RegisterDocumentAuthoringSessions(EditorAuthoringSessionHost& host, EditorW
                                 using C = DialogueWorkspaceController;
                                 return std::make_unique<DocumentSession<C>>(
                                     scene, workspaceHost, EditorWorkspaceId::Dialogue,
-                                    [](auto& registry, C& controller, auto& privateHost, auto provider) {
-                                        RegisterDialogueOperations(registry, controller, privateHost, provider);
+                                    [](auto& registry, C& controller, auto&, auto provider) {
+                                        RegisterDialogueOperations(registry, controller, provider);
                                     },
                                     [](C& controller, auto& owner, const AssetGuid& guid, auto& message) {
                                         return guid.IsValid() ? controller.RequestOpenAsset(owner.GetAssetDatabase(),

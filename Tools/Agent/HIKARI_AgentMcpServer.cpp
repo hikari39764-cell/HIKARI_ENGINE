@@ -55,6 +55,8 @@ nlohmann::json CallTool(AgentClient& client, const nlohmann::json& params) {
     nlohmann::json arguments = params.value("arguments", nlohmann::json::object());
     if (!arguments.is_object())
         arguments = nlohmann::json::object();
+    if (const std::optional<std::string> invalid = NormalizeAgentToolArguments(*tool, arguments))
+        return {{"content", {{{"type", "text"}, {"text", *invalid}}}}, {"isError", true}};
     std::string error;
     const std::optional<AgentToolOutcome> outcome = tool->invoke(client, arguments, error);
     if (!outcome)

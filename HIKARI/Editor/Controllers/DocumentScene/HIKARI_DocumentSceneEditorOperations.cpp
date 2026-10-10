@@ -86,12 +86,14 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
          Concat({{{"model", EditorOperationParameterType::String, true, "模型资产 id 或路径片段"}},
                  NameParameter("物体名称，缺省为 AI Model"),
                  PositionParameters(),
+                 RotationParameters(),
                  ScaleParameters()})},
         {"scene.create_world_sprite", "Create a 3D world sprite directly from a texture asset id or path fragment.",
          "scene", EDITOR::CreateSceneWorldSprite,
          Concat({{{"texture", EditorOperationParameterType::String, true, "纹理资产 id 或路径片段"}},
                  NameParameter("物体名称，缺省使用纹理名"),
                  PositionParameters(),
+                 RotationParameters(),
                  ScaleParameters()})},
         {"scene.create_world_text", "Create editable SDF text directly in 3D world space.", "scene",
          EDITOR::CreateSceneWorldText,
@@ -120,6 +122,7 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
                    "box/sphere/plane/grid_plane/cylinder/capsule/ramp/stairs"}},
                  NameParameter("物体名称，缺省使用 kind"),
                  PositionParameters(),
+                 RotationParameters(),
                  ScaleParameters(),
                  {{"width", EditorOperationParameterType::Float, false, "网格宽度"},
                   {"height", EditorOperationParameterType::Float, false, "网格高度"},
@@ -129,7 +132,8 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
         {"scene.duplicate_object", "Duplicate the selected object, or target one object by stable objectId.", "scene",
          EDITOR::DuplicateSceneObjects, ObjectTargetParameters()},
         {"scene.create_empty_object", "Create an empty scene object.", "scene", EDITOR::CreateSceneEmptyObject,
-         Concat({NameParameter("物体名称，缺省为 AI Object"), PositionParameters(), ScaleParameters()})},
+         Concat({NameParameter("物体名称，缺省为 AI Object"), PositionParameters(), RotationParameters(),
+                 ScaleParameters()})},
     };
 }
 
@@ -469,8 +473,7 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
     EDITOR::RegisterVfxOperations(operationRegistry_, VfxWorkspace(), [this]() -> AssetDatabase* {
         return aiOperationScene_ != nullptr ? &aiOperationScene_->GetAssetDatabase() : nullptr;
     });
-    EDITOR::RegisterDialogueOperations(operationRegistry_, DialogueWorkspace(), workspaceHost_,
-                                       [this]() { return aiOperationScene_; });
+    EDITOR::RegisterDialogueOperations(operationRegistry_, DialogueWorkspace(), [this]() { return aiOperationScene_; });
     EDITOR::RegisterComponentAuthoringOperations(
         operationRegistry_,
         EDITOR::ComponentAuthoringOperationContext{

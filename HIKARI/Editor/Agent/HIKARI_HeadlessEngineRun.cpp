@@ -1,16 +1,10 @@
 #include "Editor/Agent/HIKARI_HeadlessEngineRun.h"
 
-#include <algorithm>
 #include <fstream>
 #include <system_error>
 
 namespace HIKARI::EDITOR::AGENT {
 namespace {
-
-std::string ToUtf8(const std::filesystem::path& path) {
-    const std::u8string text = path.generic_u8string();
-    return {reinterpret_cast<const char*>(text.data()), text.size()};
-}
 
 std::filesystem::path Absolute(const std::filesystem::path& path) {
     std::error_code error;
@@ -18,22 +12,21 @@ std::filesystem::path Absolute(const std::filesystem::path& path) {
     return error ? path : absolute;
 }
 
+// 起動・资产の読み込み・Play の開始に使うフレームの余裕。
+constexpr uint32_t kStartupFrames = 2400u;
+
 } // namespace
 
 std::vector<std::wstring> BuildHeadlessEngineArguments(const HeadlessEngineRun& run) {
-    std::vector<std::wstring> arguments = {L"--project",          run.descriptor.wstring(),    L"--headless-render",
-                                           L"--exit-after-frame", std::to_wstring(run.frames), L"--agent-bridge-off"};
-    if (run.play || !run.inputReplay.empty())
-        arguments.push_back(L"--play-on-start");
-    if (!run.inputReplay.empty())
-        arguments.insert(arguments.end(), {L"--input-replay", Absolute(run.inputReplay).wstring()});
-    if (!run.captureOutput.empty()) {
-        arguments.insert(arguments.end(), {L"--capture-output", Absolute(run.captureOutput).wstring(),
-                                           L"--capture-frame", std::to_wstring(run.captureFrame)});
-        if (run.captureCount > 1u)
-            arguments.insert(arguments.end(), {L"--capture-count", std::to_wstring(run.captureCount),
-                                               L"--capture-stride", std::to_wstring(run.captureStride)});
-    }
+    // 結果を書いたら起動した側が止める。--exit-after-frame は戻ってこない時の上限。
+    std::vector<std::wstring> arguments = {L"--project",
+                                           run.descriptor.wstring(),
+                                           L"--headless-render",
+                                           L"--exit-after-frame",
+                                           std::to_wstring(run.ticks + kStartupFrames),
+                                           L"--agent-bridge-off",
+                                           L"--agent-play-run",
+                                           Absolute(run.request).wstring()};
     if (run.projectModule.empty())
         arguments.push_back(L"--allow-missing-project-module");
     else
@@ -45,7 +38,7 @@ std::vector<std::wstring> BuildHeadlessEngineArguments(const HeadlessEngineRun& 
 }
 
 nlohmann::json HeadlessRuntimeSettings(bool light) {
-    // 输入轨道の回放は编辑器の制御器が回すので、编辑器の界面は残す（重いのは窗口の大きさと画質）。
+    // play.run は编辑器の制御器が回すので、编辑器の界面は残す（重いのは窗口の大きさと画質）。
     nlohmann::json runtime{{"windowWidth", light ? 1280 : 1920}, {"windowHeight", light ? 720 : 1080}};
     if (light)
         runtime["renderQuality"] = {{"sceneResolution", "720p"},       {"dynamicGiQuality", "Low"},
@@ -55,23 +48,15 @@ nlohmann::json HeadlessRuntimeSettings(bool light) {
     return runtime;
 }
 
-nlohmann::json CollectHeadlessCaptures(const HeadlessEngineRun& run) {
-    nlohmann::json captures = nlohmann::json::array();
-    if (run.captureOutput.empty())
-        return captures;
-    std::error_code error;
-    const std::filesystem::path output = Absolute(run.captureOutput);
-    for (uint32_t index = 0u; index < (std::max)(run.captureCount, 1u); ++index) {
-        const uint32_t frame = run.captureFrame + index * run.captureStride;
-        std::filesystem::path path = output;
-        if (run.captureCount > 1u)
-            path.replace_filename(output.stem().wstring() + L"_" + std::to_wstring(frame) +
-                                  output.extension().wstring());
-        if (std::filesystem::is_regular_file(path, error))
-            captures.push_back({{"frame", frame}, {"path", ToUtf8(path)}});
-    }
-    return captures;
+nlohmann::json ReadHeadlessPlayResult(const HeadlessEngineRun& run) {
+    std::ifstream input(run.request.parent_path() / "result.json", std::ios::binary);
+    if (!input)
+        return nullptr;
+    nlohmann::json result = nlohmann::json::parse(input, nullptr, false);
+    return result.is_discarded() ? nullptr : result;
 }
+
+uint32_t HeadlessRunTimeoutSeconds(uint32_t ticks) { return ticks / 20u + 180u; }
 
 std::filesystem::path FindProjectDescriptor(const std::filesystem::path& projectRoot) {
     std::error_code error;

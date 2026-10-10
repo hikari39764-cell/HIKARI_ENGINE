@@ -3,6 +3,7 @@
 #include "Editor/Agent/HIKARI_AgentConnection.h"
 #include "Editor/Agent/HIKARI_HeadlessEngineRun.h"
 
+#include <chrono>
 #include <fstream>
 #include <set>
 #include <string>
@@ -47,6 +48,12 @@ std::wstring Quote(const std::wstring& argument) {
     return quoted;
 }
 
+bool WriteJson(const std::filesystem::path& path, const nlohmann::json& value) {
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    output << value.dump(2);
+    return static_cast<bool>(output);
+}
+
 } // namespace
 
 nlohmann::json RunHeadless(const HeadlessRunOptions& options) {
@@ -58,33 +65,26 @@ nlohmann::json RunHeadless(const HeadlessRunOptions& options) {
     run.descriptor = EDITOR::AGENT::FindProjectDescriptor(options.projectRoot);
     if (run.descriptor.empty())
         return Failure("PROJECT_NOT_FOUND", "项目目录里没有 .hikari 描述文件：" + ToUtf8(options.projectRoot));
-    if (options.frames == 0u || options.frames > 10000u)
-        return Failure("INVALID_FRAMES", "--frames 必须在 1 到 10000 之间");
+    run.ticks = options.run.value("ticks", 600u);
+    if (run.ticks == 0u || run.ticks > EDITOR::AGENT::kMaximumHeadlessTicks)
+        return Failure("INVALID_TICKS",
+                       "tick 数必须在 1 到 " + std::to_string(EDITOR::AGENT::kMaximumHeadlessTicks) + " 之间");
     const std::filesystem::path library = EDITOR::AGENT::FindProjectLibraryRoot(options.projectRoot);
-    run.frames = options.frames;
-    run.play = options.play;
-    run.inputReplay = options.inputReplay.value_or(std::filesystem::path{});
-    run.runtimeConfig = options.runtimeConfig;
-    // 運行設定が無ければ、後台試玩と同じ軽い設定で描く。
-    if (run.runtimeConfig.empty()) {
-        run.runtimeConfig = library / "EditorAI" / "Headless" / "runtime.json";
-        std::filesystem::create_directories(run.runtimeConfig.parent_path(), error);
-        std::ofstream output(run.runtimeConfig, std::ios::binary | std::ios::trunc);
-        output << nlohmann::json{{"runtime", EDITOR::AGENT::HeadlessRuntimeSettings(true)}}.dump(2);
-        if (!output)
-            return Failure("CONFIG_FAILED", "无法写入运行配置：" + ToUtf8(run.runtimeConfig));
-    }
+    const std::filesystem::path folder = library / "EditorAI" / "Headless";
+    std::filesystem::remove_all(folder, error);
+    std::filesystem::create_directories(folder, error);
+    nlohmann::json request = options.run;
+    request["ticks"] = run.ticks;
+    request["pauseAfter"] = false;
+    run.request = folder / "request.json";
+    run.runtimeConfig = folder / "runtime.json";
+    if (!WriteJson(run.request, request) ||
+        !WriteJson(run.runtimeConfig, {{"runtime", EDITOR::AGENT::HeadlessRuntimeSettings(!options.projectQuality)}}))
+        return Failure("CONFIG_FAILED", "无法写入运行文件：" + ToUtf8(folder));
     // Launcher と同じく、項目が構築済みの模块を使う。無ければ模块なしで動かす。
     const std::filesystem::path module = library / "Build" / "editor-release" / "bin" / "HIKARI_GameProject.dll";
     if (!options.allowMissingModule && std::filesystem::is_regular_file(module, error))
         run.projectModule = module;
-    if (options.captureFrame) {
-        run.captureOutput =
-            options.captureOutput.empty() ? library / "EditorAI" / "Captures" / "headless.png" : options.captureOutput;
-        run.captureFrame = *options.captureFrame;
-        std::filesystem::create_directories(std::filesystem::absolute(run.captureOutput, error).parent_path(), error);
-        std::filesystem::remove(run.captureOutput, error);
-    }
     std::wstring commandLine = Quote(engine.wstring());
     for (const std::wstring& argument : EDITOR::AGENT::BuildHeadlessEngineArguments(run))
         commandLine += L" " + Quote(argument);
@@ -99,30 +99,38 @@ nlohmann::json RunHeadless(const HeadlessRunOptions& options) {
                         workingDirectory.c_str(), &startup, &process))
         return Failure("LAUNCH_FAILED", "无法启动引擎（Win32 error " + std::to_string(GetLastError()) + "）");
     CloseHandle(process.hThread);
-    // 無頭は毎秒百フレーム前後。起動と導入の時間を足して待つ。
-    const DWORD timeout = (options.frames / 20u + 180u) * 1000u;
-    const DWORD wait = WaitForSingleObject(process.hProcess, timeout);
-    DWORD exitCode = 0;
-    if (wait != WAIT_OBJECT_0) {
-        TerminateProcess(process.hProcess, 1);
-        CloseHandle(process.hProcess);
-        return Failure("TIMEOUT", "引擎在 " + std::to_string(timeout / 1000u) + " 秒内没有结束，已终止");
+    // 後ろの编辑器は結果を書いたら用済み。終了を待たずに止める。
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(EDITOR::AGENT::HeadlessRunTimeoutSeconds(run.ticks));
+    nlohmann::json result = nullptr;
+    bool exited = false;
+    while (!(result = EDITOR::AGENT::ReadHeadlessPlayResult(run)).is_object()) {
+        if (WaitForSingleObject(process.hProcess, 500) == WAIT_OBJECT_0) {
+            // 終わる直前に書いた結果を拾う。
+            result = EDITOR::AGENT::ReadHeadlessPlayResult(run);
+            exited = true;
+            break;
+        }
+        if (std::chrono::steady_clock::now() > deadline)
+            break;
     }
+    DWORD exitCode = 0;
+    if (!exited)
+        TerminateProcess(process.hProcess, 0);
     GetExitCodeProcess(process.hProcess, &exitCode);
     CloseHandle(process.hProcess);
+    if (result.is_object())
+        return result;
 
-    nlohmann::json data{
-        {"exitCode", exitCode}, {"frames", options.frames}, {"captures", EDITOR::AGENT::CollectHeadlessCaptures(run)}};
-    const std::filesystem::path log = EDITOR::AGENT::FindNewLogFile(logs, logsBefore);
-    if (!log.empty()) {
+    nlohmann::json data{{"exitCode", exitCode}};
+    if (const std::filesystem::path log = EDITOR::AGENT::FindNewLogFile(logs, logsBefore); !log.empty()) {
         data["log"] = ToUtf8(log);
         data["problems"] = EDITOR::AGENT::ReadLogProblems(log);
     }
-    const bool ok = exitCode == 0u;
-    return {{"ok", ok},
-            {"code", ok ? "OK" : "ENGINE_FAILED"},
-            {"message", ok ? "无头运行结束。" : "引擎以非零退出码结束，查看 log 与 problems。"},
-            {"data", std::move(data)}};
+    nlohmann::json failure = exited ? Failure("ENGINE_FAILED", "引擎没有给出结果就结束了，查看 log 与 problems。")
+                                    : Failure("TIMEOUT", "引擎没有按时给出结果，已终止；请减少 tick 数。");
+    failure["data"] = std::move(data);
+    return failure;
 }
 
 } // namespace HIKARI::AGENT_CLI

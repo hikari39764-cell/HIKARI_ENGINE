@@ -42,12 +42,14 @@ constexpr const char* kUsage =
     "  play step <ticks>            按固定步长精确前进\n"
     "  play input <轨道文件|-|stop>  回放或停止输入轨道（InputTrack JSON）\n"
     "  play run <ticks> [--track 文件] [--capture 30,60] [--no-pause]\n"
-    "  play background <帧数> [--track 文件] [--capture 120,240]  后台无头运行当前场景（不用保存，不占用编辑器）\n"
     "                               一次完成：需要时开始 Play、回放输入、前进、截图，返回截图与警告\n"
+    "  play background <ticks> [--track 文件] [--capture 120,240] [--track-objects 11,21] [--quality project]\n"
+    "                               后台无头运行当前场景（不用保存，不占用编辑器），结果同 play run，\n"
+    "                               --track-objects 每 30 tick 记录这些物体的位置\n"
     "  logs [--since N] [--level info|warning|error] [--contains 文本] [--limit N]\n"
-    "  headless [--frames N] [--play] [--input-replay 轨道] [--capture-frame N --out 文件.png]\n"
-    "           [--runtime-config 文件] [--allow-missing-module]\n"
-    "                               不连接编辑器，用引擎无头运行一次\n"
+    "  headless <ticks> [--track 文件] [--capture 120,240] [--track-objects 11,21] [--quality project]\n"
+    "           [--allow-missing-module]\n"
+    "                               编辑器没开时，用保存的开始场景无头运行一次（同 play background）\n"
     "  mcp                          作为 MCP 服务器运行（标准输入输出）\n"
     "\n"
     "选项：\n"
@@ -58,10 +60,10 @@ constexpr const char* kUsage =
     "退出码：0 成功，1 操作失败，2 用法错误，3 无法连接编辑器。\n";
 
 // 値を取る選択肢と、値を取らない旗。
-const std::set<std::string> kValueOptions = {
-    "--project", "--timeout",  "--source", "--out",    "--track",         "--capture",      "--since",
-    "--level",   "--contains", "--limit",  "--frames", "--capture-frame", "--input-replay", "--runtime-config"};
-const std::set<std::string> kFlags = {"--pretty", "--no-pause", "--play", "--allow-missing-module"};
+const std::set<std::string> kValueOptions = {"--project",  "--timeout", "--source",        "--out",
+                                             "--track",    "--capture", "--since",         "--level",
+                                             "--contains", "--limit",   "--track-objects", "--quality"};
+const std::set<std::string> kFlags = {"--pretty", "--no-pause", "--allow-missing-module"};
 
 std::string ToUtf8(const wchar_t* text) {
     const int size = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
@@ -128,6 +130,41 @@ struct CommandLine {
     }
 };
 
+// 逗号で区切った数の列（--capture、--track-objects）。
+bool ParseCountList(const std::string& text, const char* option, nlohmann::json& outList, std::string& outError) {
+    outList = nlohmann::json::array();
+    std::stringstream list(text);
+    for (std::string item; std::getline(list, item, ',');) {
+        const std::optional<uint64_t> count = ParseCount(item);
+        if (!count) {
+            outError = std::string(option) + " 需要用逗号分隔的数";
+            return false;
+        }
+        outList.push_back(*count);
+    }
+    return true;
+}
+
+// play run / play background / headless の共通の引数（ticks は位置 index の単語）。
+bool BuildRunArguments(const CommandLine& line, size_t index, nlohmann::json& outArguments, std::string& outError) {
+    const std::vector<std::string>& words = line.positional;
+    const std::optional<uint64_t> ticks = words.size() > index ? ParseCount(words[index]) : std::nullopt;
+    if (!ticks) {
+        outError = "需要 tick 数";
+        return false;
+    }
+    outArguments["ticks"] = *ticks;
+    if (!line.Value("--track").empty() && !ReadJsonFile(line.Value("--track"), outArguments["track"], outError))
+        return false;
+    if (!line.Value("--capture").empty() &&
+        !ParseCountList(line.Value("--capture"), "--capture", outArguments["captureAt"], outError))
+        return false;
+    if (!line.Value("--track-objects").empty() &&
+        !ParseCountList(line.Value("--track-objects"), "--track-objects", outArguments["trackObjects"], outError))
+        return false;
+    return true;
+}
+
 // play の命令を道具の引数にする。失敗したら理由。
 bool BuildPlayArguments(const CommandLine& line, nlohmann::json& outArguments, std::string& outError) {
     const std::vector<std::string>& words = line.positional;
@@ -137,13 +174,13 @@ bool BuildPlayArguments(const CommandLine& line, nlohmann::json& outArguments, s
     }
     const std::string& action = words[1];
     outArguments = {{"action", action}};
-    if (action == "step" || action == "run" || action == "background") {
+    if (action == "step") {
         const std::optional<uint64_t> count = words.size() >= 3u ? ParseCount(words[2]) : std::nullopt;
         if (!count) {
-            outError = "play " + action + (action == "background" ? " 需要帧数" : " 需要 tick 数");
+            outError = "play step 需要 tick 数";
             return false;
         }
-        outArguments[action == "background" ? "frames" : "ticks"] = *count;
+        outArguments["ticks"] = *count;
     }
     if (action == "input") {
         if (words.size() != 3u) {
@@ -157,23 +194,12 @@ bool BuildPlayArguments(const CommandLine& line, nlohmann::json& outArguments, s
         }
     }
     if (action == "run" || action == "background") {
-        if (!line.Value("--track").empty() && !ReadJsonFile(line.Value("--track"), outArguments["track"], outError))
+        if (!BuildRunArguments(line, 2u, outArguments, outError))
             return false;
-        if (!line.Value("--capture").empty()) {
-            nlohmann::json ticks = nlohmann::json::array();
-            std::stringstream list(line.Value("--capture"));
-            for (std::string item; std::getline(list, item, ',');) {
-                const std::optional<uint64_t> tick = ParseCount(item);
-                if (!tick) {
-                    outError = "--capture 需要用逗号分隔的 tick 数";
-                    return false;
-                }
-                ticks.push_back(*tick);
-            }
-            outArguments["captureAt"] = std::move(ticks);
-        }
-        if (line.flags.contains("--no-pause"))
+        if (action == "run" && line.flags.contains("--no-pause"))
             outArguments["pauseAfter"] = false;
+        if (action == "background" && !line.Value("--quality").empty())
+            outArguments["quality"] = line.Value("--quality");
     }
     return true;
 }
@@ -220,16 +246,13 @@ int wmain(int argc, wchar_t** argv) {
     if (command == "headless") {
         HeadlessRunOptions headless{};
         headless.projectRoot = project;
-        headless.play = line.flags.contains("--play");
         headless.allowMissingModule = line.flags.contains("--allow-missing-module");
-        if (const std::optional<uint64_t> frames = ParseCount(line.Value("--frames")))
-            headless.frames = static_cast<uint32_t>((std::min)(*frames, uint64_t{10000}));
-        if (!line.Value("--input-replay").empty())
-            headless.inputReplay = FromUtf8(line.Value("--input-replay"));
-        if (const std::optional<uint64_t> frame = ParseCount(line.Value("--capture-frame")))
-            headless.captureFrame = static_cast<uint32_t>(*frame);
-        headless.captureOutput = FromUtf8(line.Value("--out"));
-        headless.runtimeConfig = FromUtf8(line.Value("--runtime-config"));
+        headless.projectQuality = line.Value("--quality") == "project";
+        std::string error;
+        if (!BuildRunArguments(line, 1u, headless.run, error)) {
+            PrintUtf8("headless " + error, stderr);
+            return kExitUsage;
+        }
         return print(RunHeadless(headless));
     }
 
@@ -263,7 +286,7 @@ int wmain(int argc, wchar_t** argv) {
     } else if (command == "run" && (words.size() == 2u || words.size() == 3u)) {
         toolName = "hikari_run";
         arguments["operation"] = words[1];
-        if (words.size() == 3u && !ReadJsonArgument(words[2], arguments["arguments"], error)) {
+        if (words.size() == 3u && !ReadJsonArgument(words[2], arguments["parameters"], error)) {
             PrintUtf8(error, stderr);
             return kExitUsage;
         }
@@ -303,6 +326,10 @@ int wmain(int argc, wchar_t** argv) {
     }
 
     const AgentTool* tool = FindAgentTool(toolName);
+    if (const std::optional<std::string> invalid = NormalizeAgentToolArguments(*tool, arguments)) {
+        PrintUtf8(*invalid, stderr);
+        return kExitUsage;
+    }
     const std::optional<AgentToolOutcome> outcome = tool->invoke(client, arguments, error);
     if (!outcome) {
         PrintUtf8(error, stderr);

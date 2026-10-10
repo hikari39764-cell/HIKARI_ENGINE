@@ -64,19 +64,21 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
 )";
     text += "  - `\"" + hikari + "\" state`：编辑器现场（场景、选中对象、相机、Play、待审批）\n";
     text += "  - `\"" + hikari + "\" search 关键词`、`describe 操作`：找操作、看参数\n";
-    text += "  - `\"" + hikari + "\" run 操作 '{\"参数\": 值}'`：执行一个操作\n";
+    text += "  - `\"" + hikari +
+            "\" run 操作 '{\"参数\": 值}'`：执行一个操作（MCP 的 `hikari_run` 把参数放在 `parameters` 里）\n";
     text += "  - `\"" + hikari +
             "\" batch steps.json`：一次执行一组操作（场景改动合成一个撤销步，失败时自动撤回），"
             "每步是 `{\"operation\": 操作, \"parameters\": {...}}`\n";
     text += "  - `\"" + hikari + "\" capture`：截取用户当前看到的画面（图片存在 `Library/EditorAI/Captures`）\n";
     text += "  - `\"" + hikari +
-            "\" play background 600 --track walk.json --capture 120,240`：在后台另开一个无头引擎运行当前场景"
-            "（不用保存，不占用用户的编辑器），回放输入轨道并截图，返回截图和日志里的警告与错误\n";
+            "\" play background 600 --track walk.json --capture 120,240 --track-objects 11`：在后台另开一个无头"
+            "编辑器运行当前场景（不用保存，不占用用户的编辑器），回放输入轨道、截游戏画面、记录物体位置，"
+            "返回截图、位置和日志里的警告与错误\n";
     text += "  - `\"" + hikari +
             "\" play run 300 --track walk.json --capture 60,240`：在用户的编辑器里 Play（用户要看时才用）\n";
     text += "  - `\"" + hikari + "\" logs --level warning`：读取编辑器和游戏日志\n";
-    text +=
-        "  - `\"" + hikari + "\" headless --input-replay walk.json --frames 600`：编辑器没开时，无头运行已保存的项目\n";
+    text += "  - `\"" + hikari +
+            "\" headless 600 --track walk.json --capture 300`：编辑器没开时，用保存的开始场景做同样的运行\n";
     text += "- **Codex 使用 MCP**：在 `~/.codex/config.toml` 加入下面三行；不注册也可以直接用上面的命令行。\n\n";
     text += "  ```toml\n  [mcp_servers.hikari]\n  command = \"" + hikari + "\"\n  args = [\"mcp\"]\n  ```\n\n";
     text += R"(## 工作方式
@@ -85,13 +87,18 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
 2. 先看下面的速查；不在速查里的用搜索找，不要猜操作名。搜索结果带必填和可选参数名，参数形状不清楚时再 describe。
 3. 相关的多步修改用 batch 一次提交，减少往返。
 4. 场景里的修改（创建、改属性、布景、灯光）直接生效、可以撤销，不需要批准；截图存到 `Library` 也不需要。
-   写入磁盘（保存、新建资产、导入）和启动外部程序（构建、导出）要等用户在编辑器里批准后才返回。用户没要求时不要保存。
+   写入磁盘（保存、新建资产、导入）和启动外部程序（构建、导出）要等用户在编辑器里批准后才返回；`hikari_state` 的
+   `agent.autoApprove` 为 true 时用户开了自动模式，这些操作会直接执行。场景本身用户没要求时不要保存；任务本身就需要的
+   新资产（镜头配置、材质、序列、对话、特效）直接新建并保存，不用先问。
+   操作所属的 workspace 只是分类：调用操作不会切换用户的工作区（名字带 `reveal` 的除外）。
 5. 内容改动用 `scene.capture_views` 截图确认（后台渲染，不动用户的视角）；玩法改动用 `hikari_play` 的
    `background`（`play.background`）验证：在后台另开一个无头引擎运行编辑器里当前的场景，不用保存，也不占用用户的
    编辑器；启动外部进程要用户批准（同一轮里批准一次即可）。看返回的截图和 `problems`，然后汇报。输入轨道的格式：
    `{"assetType": "InputTrack", "formatVersion": 1, "length": tick 数, "events": [{"tick": 0, "action": "Gameplay.Move", "value": [0, 1]}]}`，
    动作名来自项目的输入设置，值保持到同一动作的下一次变化。
 6. 用户正在拖动场景里的东西时，你的修改会等用户松手再执行，不用重试。
+7. 报 `Unknown component type` 或 `FEATURE_DISABLED` 时，多半是项目没开对应的运行时功能（UI、Vfx、Cinematics 等）：
+   `project.features` 查看，`project.features.edit {"enable": [...]}` 开启（立即生效，不用重启）。
 
 ## 常用操作速查
 
@@ -114,9 +121,11 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
 - 移动、删除、复制：`scene.set_transform`、`scene.delete_object`、`scene.duplicate_object`（传 `objectId`，不会改用户的选中）。
   位置、旋转（度）、缩放和颜色在所有操作里都写成 `[x, y, z]`。
 - 游戏镜头区域：`camera_zone.edit`。
+- 对话：`dialogue.new_asset` → `dialogue.edit`（传整份定义，`dialogue.query` 返回当前定义）→ `dialogue.save`。
 - 撤回自己的修改：`scene.undo`。修改的结果里 `undo.label` 是这次积下的撤销步；撤销栈和用户共用，`hikari_state` 的
   `scene.undoLabel` 不是你的修改时不要撤。
-- 测玩法：`play.background`（`frames` 帧数，游戏时间每秒约 60 帧；`track` 或 `path` 输入轨道；`captureAt` 等间隔的截图帧）。
+- 测玩法：`play.background`（`ticks`，每秒 60；`track` 或 `path` 输入轨道；`captureAt` 截游戏画面的 tick；
+  `trackObjects` 每 30 tick 记录这些物体的世界位置，用来证明东西移动到了哪里——游戏摄像机拍不到的地方也能确认）。
   默认用轻量画质（1280×720，降低 GI 和体积效果），截图要和正式画面一致时加 `"quality": "project"`。后台运行只带上
   当前场景未保存的修改；其他资产（材质、VFX、镜头等）从磁盘读，改过的要先保存（保存要用户批准）。
 - 只在用户要求时用：`hikari_capture`（用户当前的画面）、`hikari_play` 的 start / run 等和 `play.run`（在编辑器里 Play，

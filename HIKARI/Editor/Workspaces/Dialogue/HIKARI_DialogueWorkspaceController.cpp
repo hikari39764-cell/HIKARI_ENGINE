@@ -393,6 +393,12 @@ void DialogueWorkspaceController::NormalizeSelection() noexcept {
     }
 }
 
+void DialogueWorkspaceController::ReplaceDefinition(DIALOGUE::DialogueDefinition definition) {
+    DIALOGUE::DialogueDefinition before = document_.Definition();
+    document_.Definition() = std::move(definition);
+    RecordMutation(std::move(before));
+}
+
 void DialogueWorkspaceController::RecordMutation(DIALOGUE::DialogueDefinition before, uint64_t mergeGroup) {
     DIALOGUE::NormalizeDialogue(document_.Definition());
     document_.RecordApplied(std::move(before), mergeGroup);

@@ -61,9 +61,9 @@ std::optional<AgentToolOutcome> InvokeDescribe(AgentClient& client, const nlohma
 }
 
 std::optional<AgentToolOutcome> InvokeRun(AgentClient& client, const nlohmann::json& arguments, std::string& outError) {
-    const nlohmann::json parameters = arguments.value("arguments", nlohmann::json::object());
+    const nlohmann::json parameters = arguments.value("parameters", nlohmann::json::object());
     if (!parameters.is_object()) {
-        outError = "arguments must be a JSON object";
+        outError = "parameters must be a JSON object";
         return std::nullopt;
     }
     return Finish(
@@ -92,19 +92,18 @@ std::optional<AgentToolOutcome> InvokePlay(AgentClient& client, const nlohmann::
                                            std::string& outError) {
     const std::string action = arguments.value("action", std::string{});
     nlohmann::json parameters = nlohmann::json::object();
-    for (const char* key : {"ticks", "track", "path", "captureAt", "pauseAfter"}) {
+    for (const char* key : {"ticks", "track", "path", "captureAt", "trackObjects", "pauseAfter"}) {
         if (arguments.contains(key))
             parameters[key] = arguments[key];
     }
     std::string operation = "play." + action;
     if (action == "background") {
-        // 後ろの無頭の引擎で遊ばせる。tick の代わりに引擎のフレーム数。
-        parameters.erase("ticks");
+        // 後ろの無頭の编辑器で play.run を一回。pauseAfter は使わない。
         parameters.erase("pauseAfter");
-        if (arguments.contains("frames"))
-            parameters["frames"] = arguments["frames"];
+        if (arguments.contains("quality"))
+            parameters["quality"] = arguments["quality"];
         // 引擎の起動と资产の読み込みに数十秒かかる。
-        const auto wait = std::chrono::seconds(90 + arguments.value("frames", 600) / 20);
+        const auto wait = std::chrono::seconds(90 + arguments.value("ticks", 600) / 20);
         return Finish(client.CallFollowingPoll(operation, parameters, wait, outError), arguments.value("full", false));
     }
     if (action == "pause" || action == "resume") {
@@ -166,7 +165,7 @@ const std::vector<AgentTool>& AgentTools() {
          "to 30 seconds. Saving, imports and external processes wait for the user's approval in the editor. Images in "
          "the result are scaled to 768 px on the long side unless full is true.",
          Schema({{"operation", {{"type", "string"}, {"description", "Operation id"}}},
-                 {"arguments", {{"type", "object"}, {"description", "Parameters of the operation"}}},
+                 {"parameters", {{"type", "object"}, {"description", "Parameters of the operation"}}},
                  {"full", {{"type", "boolean"}, {"description", "Return images at their original size"}}}},
                 {"operation"}),
          InvokeRun},
@@ -189,10 +188,11 @@ const std::vector<AgentTool>& AgentTools() {
          InvokeCapture},
         {"hikari_play",
          "Run and test the game. action background (use this by default): play the current scene, saved or not, once "
-         "in a separate headless engine for frames engine frames with an optional track, capture at captureAt frames "
-         "(evenly spaced) and return captures plus log warnings and errors; the user's editor is untouched and the "
-         "user approves starting the process. The other actions run Play in the user's editor (it takes over the game "
-         "view and needs the scene saved), so use them only when the user wants to watch: "
+         "in a separate headless editor for ticks fixed ticks (60 per second) with an optional track, capture the game "
+         "view at captureAt ticks, record positions of trackObjects every 30 ticks, and return captures, positions and "
+         "log warnings and errors; the user's editor is untouched and the user approves starting the process. The "
+         "other actions run Play in the user's editor (it takes over the game view and needs the scene saved), so use "
+         "them only when the user wants to watch: "
          "start, stop, status, pause, resume, step (exact ticks), input (play an "
          "InputTrack: {formatVersion 1, assetType InputTrack, length, events [{tick, action, value}]}), run (one call: "
          "start if needed, optional input track, advance ticks, capture at captureAt ticks, pause; returns captures and "
@@ -200,13 +200,21 @@ const std::vector<AgentTool>& AgentTools() {
          Schema({{"action",
                   {{"type", "string"},
                    {"enum", {"background", "start", "stop", "status", "pause", "resume", "step", "input", "run"}}}},
-                 {"frames", {{"type", "integer"}, {"description", "background: engine frames, 1-10000 (default 600)"}}},
-                 {"ticks", {{"type", "integer"}, {"description", "step: 1-3600, run: 1-36000"}}},
+                 {"ticks", {{"type", "integer"}, {"description", "step: 1-3600, run: 1-36000, background: 1-7200"}}},
                  {"track", {{"type", "object"}, {"description", "InputTrack for input or run"}}},
                  {"path", {{"type", "string"}, {"description", ".hinputtrack file instead of track"}}},
                  {"captureAt", {{"type", "array"}, {"items", {{"type", "integer"}}}}},
+                 {"trackObjects",
+                  {{"type", "array"},
+                   {"items", {{"type", "integer"}}},
+                   {"description", "run/background: object ids whose positions are recorded every 30 ticks"}}},
                  {"pauseAfter", {{"type", "boolean"}}},
-                 {"stop", {{"type", "boolean"}, {"description", "input: stop the current track"}}}},
+                 {"stop", {{"type", "boolean"}, {"description", "input: stop the current track"}}},
+                 {"quality",
+                  {{"type", "string"},
+                   {"enum", {"light", "project"}},
+                   {"description", "background: light (default, 1280x720) or project (the game's render quality)"}}},
+                 {"full", {{"type", "boolean"}, {"description", "Return images at their original size"}}}},
                 {"action"}),
          InvokePlay},
         {"hikari_logs",
@@ -218,6 +226,27 @@ const std::vector<AgentTool>& AgentTools() {
          InvokeLogs},
     };
     return tools;
+}
+
+std::optional<std::string> NormalizeAgentToolArguments(const AgentTool& tool, nlohmann::json& arguments) {
+    const nlohmann::json& properties = tool.inputSchema["properties"];
+    for (auto& [key, value] : arguments.items()) {
+        const auto declared = properties.find(key);
+        if (declared == properties.end()) {
+            std::string names;
+            for (const auto& [name, schema] : properties.items())
+                names += (names.empty() ? "" : ", ") + name;
+            return "Unknown argument " + key + " for " + tool.name + "; it takes: " + names + ".";
+        }
+        const std::string type = declared->value("type", std::string{});
+        if ((type == "object" || type == "array") && value.is_string()) {
+            nlohmann::json parsed = nlohmann::json::parse(value.get<std::string>(), nullptr, false);
+            if (parsed.is_discarded() || (type == "object" ? !parsed.is_object() : !parsed.is_array()))
+                return key + " must be a JSON " + type + ".";
+            value = std::move(parsed);
+        }
+    }
+    return std::nullopt;
 }
 
 const AgentTool* FindAgentTool(std::string_view name) {

@@ -3,6 +3,7 @@
 
 #include "Editor/Authoring/HIKARI_SceneObjectObservation.h"
 #include "Core/HIKARI_TimeService.h"
+#include "Scene/Features/HIKARI_RuntimeFeatureCatalog.h"
 #include <algorithm>
 #include <string>
 #include <unordered_set>
@@ -78,15 +79,38 @@ EditorOperationResult ComponentAuthoringQueryService::QueryTypes(DocumentSceneBa
     EditorOperationResult result{true, "OK", "Registered component types", {{"types", items}, {"total", matched}}};
     if (static_cast<size_t>(offset) + items.size() < matched)
         result.data["nextOffset"] = offset + items.size();
+    nlohmann::json inactive = nlohmann::json::array();
+    for (const RuntimeFeatureInfo& info : scene.GetRuntimeFeatureCatalog().GetFeatureInfos()) {
+        std::vector<std::string> components;
+        for (const std::string& component : info.componentTypeNames) {
+            if (!info.active && (filter.empty() || folded(component).find(filter) != std::string::npos))
+                components.push_back(component);
+        }
+        if (!components.empty())
+            inactive.push_back({{"feature", info.featureId}, {"components", std::move(components)}});
+    }
+    if (!inactive.empty()) {
+        result.data["inactiveFeatures"] = std::move(inactive);
+        result.hints.push_back("Components of inactive features need the feature enabled first: "
+                               "project.features.edit {\"enable\": [feature]}.");
+    }
     return result;
 }
 
 EditorOperationResult ComponentAuthoringQueryService::DescribeType(DocumentSceneBase& scene,
                                                                    std::string_view componentType) const {
     const auto* type = scene.GetComponentRegistry().Find(componentType);
-    if (!type)
+    if (!type) {
+        if (const std::string feature = scene.GetRuntimeFeatureCatalog().FindOwningFeatureForComponent(componentType);
+            !feature.empty())
+            return OperationFailure("FEATURE_DISABLED", std::string(componentType) +
+                                                            " belongs to the runtime feature " + feature +
+                                                            ", which this project has not enabled. Use "
+                                                            "project.features.edit {\"enable\": [\"" +
+                                                            feature + "\"]}.");
         return OperationFailure("UNKNOWN_COMPONENT_TYPE",
                                 "Search component.types.query for a registered component type.");
+    }
     auto instance = type->factory();
     if (!instance)
         return OperationFailure("COMPONENT_FACTORY_FAILED", "The component factory returned no instance.");
@@ -205,6 +229,13 @@ nlohmann::json ComponentAuthoringQueryService::SummarizeObject(const DocumentSce
         result["parentObjectId"] = object.parent->value;
     if (!object.enabled)
         result["enabled"] = false;
+    // 程序化の方块に開けた门・窗・洞の数（procedural.opening の index は 0 から）。
+    for (const SceneComponentData& component : object.components) {
+        const auto cuts = component.properties.find("cuts");
+        if (component.type == "ProceduralMeshComponent" && cuts != component.properties.end() && cuts->is_array() &&
+            !cuts->empty())
+            result["openings"] = cuts->size();
+    }
     if (const GameObject* runtime = scene.GetWorld().FindObject(object.id)) {
         const MATH::Mat4 world = runtime->GetTransform().GetWorldMatrix();
         result["worldPosition"] = {world.m[3][0], world.m[3][1], world.m[3][2]};

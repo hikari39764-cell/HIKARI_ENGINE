@@ -393,9 +393,11 @@ bool AgentSession::AddApproval(AgentToolApproval approval) {
         return true;
     if (request_.autoApprove) {
         // 人がいない前提なので、项目の外への書き込みと行き先の分からない変更は断り、それ以外は通して記録に残す。
+        // 内容模式は文件を変えない約束なので、命令（沙箱の外で動く）も通さない。
         const std::string target = ClipAgentText(approval.tool + ": " + approval.detail);
-        if (approval.warning == "outsideProject" || approval.warning == "unknownTarget") {
-            AddEvent({AgentEvent::Kind::Blocked, "auto", target, true});
+        const bool contentCommand = !request_.allowProjectEdits && approval.warning == "command";
+        if (contentCommand || approval.warning == "outsideProject" || approval.warning == "unknownTarget") {
+            AddEvent({AgentEvent::Kind::Blocked, contentCommand ? "content" : "auto", target, true});
             protocol_->Respond(*this, approval, false);
             return false;
         }

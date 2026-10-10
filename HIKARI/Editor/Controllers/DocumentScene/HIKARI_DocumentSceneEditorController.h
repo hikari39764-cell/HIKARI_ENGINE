@@ -354,6 +354,8 @@ private:
     bool IsUserEditingScene() const;
     // editor.state と operations.batch（HIKARI_DocumentSceneEditorAgentOperations.cpp）。
     void RegisterAgentOperations();
+    // project.features / project.features.edit（HIKARI_DocumentSceneEditorProjectOperations.cpp）。
+    void RegisterProjectOperations();
     EDITOR::EditorOperationResult DescribeEditorState();
     EDITOR::EditorOperationResult ExecuteOperationBatch(const nlohmann::json& parameters);
     // ExecuteAgentAction の実行中か。一括操作の各手順も智能体の操作として確かめる。
@@ -362,8 +364,10 @@ private:
     std::string agentFilesMessage_{};
     // Play・運行時・ログの操作（HIKARI_DocumentSceneEditorPlayOperations.cpp）。
     void RegisterPlayOperations();
-    // play.run と --input-replay を毎フレーム進める。
+    // play.run と --agent-play-run を毎フレーム進める。
     void TickAgentPlayRun();
+    // --agent-play-run の結果を result.json に書く（書き終えたら backgroundResult_ を空にする）。
+    void WriteBackgroundResult(const EDITOR::EditorOperationResult& result);
     EDITOR::EditorOperationResult DescribePlayState() const;
     EDITOR::EditorOperationResult StartAgentPlay();
     EDITOR::EditorOperationResult StartAgentPlayRun(const nlohmann::json& parameters);
@@ -374,8 +378,10 @@ private:
     EDITOR::EditorProjectSessionController* aiProjectSession_ = nullptr;
     std::optional<EDITOR::AGENT::AgentPlayRun> agentPlayRun_{};
     uint64_t nextAgentPlayRunId_ = 1;
-    // --input-replay で渡された轨道。Play が動き出したら回す。
-    std::optional<std::filesystem::path> pendingInputReplay_{};
+    // --agent-play-run で渡された依頼（後台試玩・hikari headless）。場面が開いたら play.run を一回走らせる。
+    std::optional<std::filesystem::path> pendingBackgroundRun_{};
+    // その結果を書く result.json（走っている間だけ）。
+    std::optional<std::filesystem::path> backgroundResult_{};
     // 助手页签の「外部智能体」（HIKARI_DocumentSceneEditorAgentPanel.cpp）。
     void DrawAgentPanel(DocumentSceneBase& scene);
     void StartAgentTurn(DocumentSceneBase& scene);

@@ -894,6 +894,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorAgentPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorLayoutOperations.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorPlayOperations.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorProjectOperations.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Editor/HIKARI_MeshEditorInteractiveRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Editor/HIKARI_MeshEditorInteractiveResources.cpp"

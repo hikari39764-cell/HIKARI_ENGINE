@@ -31,6 +31,9 @@ struct AgentTool {
 
 const std::vector<AgentTool>& AgentTools();
 const AgentTool* FindAgentTool(std::string_view name);
+// 道具の引数を宣言どおりに整える。知らない引数は黙って捨てずに断り、対象・配列の引数が JSON 文字列で来たら解く
+// （模型はよく文字列にして渡す）。問題があれば理由を返す。MCP と命令行はこれを通してから invoke を呼ぶ。
+std::optional<std::string> NormalizeAgentToolArguments(const AgentTool& tool, nlohmann::json& arguments);
 
 // MCP の initialize が返す、智能体向けの使い方。
 const char* AgentUsageInstructions();

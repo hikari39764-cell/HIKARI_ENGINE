@@ -165,7 +165,8 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::DescribeEditorState
         state["workspace"]["document"] = std::move(document);
     state["agent"] = {
         {"accessMode", std::string(TEXT::EnumToName(EDITOR::AGENT::kAgentAccessModeNames, agentHost_.AccessMode()))},
-        {"pendingApprovals", agentHost_.PendingApprovals().size()}};
+        {"pendingApprovals", agentHost_.PendingApprovals().size()},
+        {"autoApprove", agentHost_.AutoApprove()}};
     DocumentSceneBase* scene = aiOperationScene_;
     if (scene == nullptr) {
         state["scene"] = nullptr;

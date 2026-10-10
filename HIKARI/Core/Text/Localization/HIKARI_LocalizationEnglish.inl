@@ -143,7 +143,7 @@
     {"agent.event.blocked.engine", "Blocked (the engine directory is read-only)"},
     {"agent.event.blocked.content", "Blocked (Content mode does not edit files)"},
     {"agent.autoApprove", "Auto (no approvals)"},
-    {"agent.autoApproveOn", "Auto mode is on: saves, builds, reloads, background play, project edits and commands run without asking; writes to the engine directory or outside the project are still blocked."},
+    {"agent.autoApproveOn", "Auto mode is on: saves, builds, reloads and background play run without asking; in Develop Project mode, project file edits and commands do too. Writes to the engine directory or outside the project are still blocked, and Content mode runs no commands."},
     {"agent.autoApproveHint", "The agent stops waiting for your approval. Meant for unattended tests; lasts until the editor closes."},
     {"agent.feedPrefixAuto", "Agent (auto): "},
     {"agent.event.blocked.auto", "Blocked (auto mode does not write outside the project)"},

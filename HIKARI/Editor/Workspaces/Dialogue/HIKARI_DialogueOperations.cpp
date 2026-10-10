@@ -7,7 +7,6 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Workspaces/Dialogue/HIKARI_DialogueWorkspaceController.h"
-#include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
@@ -41,15 +40,6 @@ EditorOperationResult PendingConfirmation(std::string message) {
     return result;
 }
 
-void RevealDialogueWorkspace(EditorWorkspaceHost& workspaceHost, const AssetGuid& assetGuid = {}) {
-    EditorWorkspaceOpenRequest request{};
-    request.workspaceId = EditorWorkspaceId::Dialogue;
-    if (assetGuid.IsValid()) {
-        request.dialogueAssetGuid = assetGuid;
-    }
-    (void)workspaceHost.RequestOpen(std::move(request));
-}
-
 void WriteDocumentState(const DialogueWorkspaceController& controller, EditorOperationResult& result) {
     result.data["workspace"] = "dialogue";
     result.data["open"] = controller.IsDocumentOpen();
@@ -63,7 +53,7 @@ void WriteDocumentState(const DialogueWorkspaceController& controller, EditorOpe
 } // namespace
 
 void RegisterDialogueOperations(EditorOperationRegistry& registry, DialogueWorkspaceController& controller,
-                                EditorWorkspaceHost& workspaceHost, std::function<DocumentSceneBase*()> sceneProvider) {
+                                std::function<DocumentSceneBase*()> sceneProvider) {
     auto assetQuery = EditorOperationDefinition{
         "dialogue.list_assets",
         "List Dialogue assets in the current project.",
@@ -100,7 +90,7 @@ void RegisterDialogueOperations(EditorOperationRegistry& registry, DialogueWorks
             "Create a new formal Dialogue document.",
             "dialogue",
             {},
-            [&controller, &workspaceHost, sceneProvider](const nlohmann::json&) {
+            [&controller, sceneProvider](const nlohmann::json&) {
                 EditorOperationResult result{};
                 DocumentSceneBase* scene = nullptr;
                 if (!RequireDialogueScene(sceneProvider, result, scene))
@@ -113,7 +103,6 @@ void RegisterDialogueOperations(EditorOperationRegistry& registry, DialogueWorks
                     }
                     return OperationFailure("NEW_ASSET_FAILED", std::move(message));
                 }
-                RevealDialogueWorkspace(workspaceHost);
                 result.ok = true;
                 result.code = "OK";
                 result.message = std::move(message);
@@ -130,7 +119,7 @@ void RegisterDialogueOperations(EditorOperationRegistry& registry, DialogueWorks
             "Open a Dialogue asset by guid.",
             "dialogue",
             {{"assetGuid", EditorOperationParameterType::String, true, "Dialogue asset guid"}},
-            [&controller, &workspaceHost, sceneProvider](const nlohmann::json& parameters) {
+            [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
                 DocumentSceneBase* scene = nullptr;
                 if (!RequireDialogueScene(sceneProvider, result, scene))
@@ -151,7 +140,6 @@ void RegisterDialogueOperations(EditorOperationRegistry& registry, DialogueWorks
                     }
                     return OperationFailure("OPEN_FAILED", std::move(message));
                 }
-                RevealDialogueWorkspace(workspaceHost, guid);
                 result.ok = true;
                 result.code = "OK";
                 result.message = std::move(message);
@@ -299,12 +287,45 @@ void RegisterDialogueOperations(EditorOperationRegistry& registry, DialogueWorks
                                              issue.message);
                 }
                 WriteDocumentState(controller, result);
-                result.data["entryNodeId"] = definition.entryNodeId;
-                result.data["nodeCount"] = definition.nodes.size();
+                DIALOGUE::SerializeDialogueJson(definition, result.data["definition"]);
                 return result;
             },
         },
         HIKARI::EDITOR::EditorOperationKind::Query);
+    registry.Register(
+        {
+            "dialogue.edit",
+            "Replace the open Dialogue with a full definition (dialogue.query returns the current one): name, "
+            "entryNodeId, fallbackLocale, nodes [{id, type Line/Choice/Event/End, speaker and text as {locale: text}, "
+            "nextNodeId, choices [{id, text, nextNodeId}], eventId, autoAdvanceSeconds, skippable}]. One undo step; "
+            "returns validation issues. Save with dialogue.save.",
+            "dialogue",
+            {{"definition",
+              EditorOperationParameterType::Json,
+              true,
+              "Full Dialogue definition",
+              {{"type", "object"}, {"required", nlohmann::json::array({"nodes"})}}}},
+            [&controller](const nlohmann::json& parameters) {
+                EditorOperationResult result{};
+                if (!RequireDocument(controller, result))
+                    return result;
+                DIALOGUE::DialogueDefinition definition{};
+                std::string error{};
+                if (!DIALOGUE::DeserializeDialogueJson(parameters.at("definition"), definition, &error))
+                    return OperationFailure("INVALID_DIALOGUE", std::move(error));
+                controller.ReplaceDefinition(std::move(definition));
+                result.ok = true;
+                result.code = "OK";
+                result.message = "Dialogue updated.";
+                for (const auto& issue : DIALOGUE::ValidateDialogue(controller.GetDefinition())) {
+                    result.details.push_back(std::string(issue.error ? "ERROR " : "WARN ") + issue.path + ": " +
+                                             issue.message);
+                }
+                WriteDocumentState(controller, result);
+                return result;
+            },
+        },
+        HIKARI::EDITOR::EditorOperationKind::Mutation);
 }
 
 } // namespace HIKARI::EDITOR

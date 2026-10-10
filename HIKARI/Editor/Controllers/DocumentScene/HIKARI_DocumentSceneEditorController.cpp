@@ -85,8 +85,8 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
                 break;
             }
     }
-    // --input-replay <轨道>：Play（--play-on-start など）が動き出したら入力轨道を锁步で回す。
-    pendingInputReplay_ = ReadRuntimeCommandLinePath(L"--input-replay");
+    // --agent-play-run <request.json>：後ろの無頭の编辑器として play.run を一回走らせる。
+    pendingBackgroundRun_ = ReadRuntimeCommandLinePath(L"--agent-play-run");
     EDITOR::RegisterBuiltInEditorTools(toolHost_);
     EDITOR::RegisterBuiltInSystemAuthoring(systemAuthoringRegistry_);
     agentHost_.SetPermissionResolver(
@@ -98,9 +98,11 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
                                                        definition->kind == EDITOR::EditorOperationKind::Query};
         });
     agentHost_.SetEditingCheck([this] { return IsUserEditingScene(); });
-    // 無人の验收用。人が起動引数で入れる時だけ（面板の勾选と同じ扱い）。
+    // 無人の验收用。人が起動引数で入れる時だけ（面板の勾选・访问模式の切り替えと同じ扱い）。
     if (HasRuntimeCommandLineFlag(L"--agent-auto-approve"))
         agentHost_.SetAutoApprove(true);
+    if (HasRuntimeCommandLineFlag(L"--agent-develop-project"))
+        agentHost_.SetAccessMode(EDITOR::AGENT::AgentAccessMode::DevelopProject);
     agentHost_.SetExecutor([this](const std::string& operation, const nlohmann::json& parameters) {
         return ExecuteAgentAction(operation, parameters);
     });
@@ -165,6 +167,7 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
     });
     RegisterEditorOperations();
     RegisterAgentOperations();
+    RegisterProjectOperations();
     RegisterPlayOperations();
     EDITOR::RegisterVfxAuthoringSessions(authoringSessions_, workspaceHost_, [this] { return aiOperationScene_; });
     EDITOR::RegisterMaterialAuthoringSessions(authoringSessions_, workspaceHost_, [this] { return aiOperationScene_; });
