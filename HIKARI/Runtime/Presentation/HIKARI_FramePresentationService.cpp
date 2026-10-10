@@ -558,6 +558,7 @@ bool BeginFrame(const RUNTIME::HostBootstrapConfig& cfg) {
         } else {
             gInputService.SetExternalTextInputEvents({});
         }
+        gInputService.SetSimulationTick(frame.fixedTickIndex);
         gInputService.Update(frame.unscaledDt);
     }
     if (RUNTIME::IEditorUiServices* editorUiServices = RUNTIME::GetEditorUiServices()) {

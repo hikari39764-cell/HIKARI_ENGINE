@@ -18,6 +18,5 @@ PhysicsBodyValidationResult ValidatePhysicsBodyCreateInfo(const PhysicsBodyCreat
 
 const char* ToString(PhysicsErrorCode error) noexcept;
 const char* ToString(PhysicsBodyRuntimeState state) noexcept;
-const char* ToString(PhysicsMotionType motionType) noexcept;
 
 } // namespace HIKARI::PHYSICS

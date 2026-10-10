@@ -19,6 +19,7 @@ enum class AuthoringFieldValueType : uint8_t {
     String,
     Color3,
     Vec2,
+    Vec3,
     Choice,
     AssetId,
     SceneId,

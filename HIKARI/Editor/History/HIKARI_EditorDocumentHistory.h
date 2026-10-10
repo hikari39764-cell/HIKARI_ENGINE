@@ -56,9 +56,19 @@ public:
 
     void RecordApplied(std::unique_ptr<IEditorDocumentCommand> command, uint64_t mergeGroup = 0);
     void SealMerge() noexcept;
+    // 開いている間に記録したコマンドは種類が違っても一つの単位で撤销・重做する（AI の一括操作や一回の依頼）。
+    // 入れ子にできる。外側の EndUndoGroup で閉じる。reuse に前に返した組を渡すと、同じ組へ続けて記録する
+    // （智能体の一回の依頼の中の、別々の呼び出し）。開いた組を返す。
+    uint64_t BeginUndoGroup(uint64_t reuse = 0) noexcept;
+    void EndUndoGroup() noexcept;
+    // 次に撤销される記録の組（組に属さなければ 0）。
+    uint64_t GetUndoGroup() const noexcept;
 
     EditorHistoryResult Undo(SceneDocument& document);
     EditorHistoryResult Redo(SceneDocument& document);
+    // 撤销できる記録の数。UndoTo に渡して、その時点以降の記録だけを組に関係なく戻す（失敗した一括操作の巻き戻し）。
+    size_t GetUndoDepth() const noexcept { return cursor_; }
+    EditorHistoryResult UndoTo(SceneDocument& document, size_t depth);
 
     void MarkSaved() noexcept;
     bool IsDirty() const noexcept;
@@ -72,6 +82,7 @@ private:
     struct Entry {
         std::unique_ptr<IEditorDocumentCommand> command{};
         uint64_t mergeGroup = 0;
+        uint64_t undoGroup = 0;
     };
 
     std::vector<Entry> entries_{};
@@ -80,6 +91,9 @@ private:
     uint64_t documentRevision_ = 0;
     uint64_t editRevision_ = 1;
     uint64_t openMergeGroup_ = 0;
+    uint64_t openUndoGroup_ = 0;
+    uint64_t nextUndoGroup_ = 1;
+    uint32_t undoGroupDepth_ = 0;
     bool initialDirty_ = false;
     bool bound_ = false;
 };

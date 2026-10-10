@@ -6,20 +6,6 @@
 
 namespace HIKARI {
 
-const char* ToString(ProceduralMeshKind kind) noexcept {
-    switch (kind) {
-    case ProceduralMeshKind::Plane: return "Plane";
-    case ProceduralMeshKind::GridPlane: return "GridPlane";
-    case ProceduralMeshKind::Box: return "Box";
-    case ProceduralMeshKind::Sphere: return "Sphere";
-    case ProceduralMeshKind::Cylinder: return "Cylinder";
-    case ProceduralMeshKind::Capsule: return "Capsule";
-    case ProceduralMeshKind::Ramp: return "Ramp";
-    case ProceduralMeshKind::Stairs: return "Stairs";
-    default: return "Box";
-    }
-}
-
 void FitProceduralSlopeBox(const ProceduralMeshSettings& settings, MATH::Vec3& center, MATH::Vec3& rotationDegrees,
                            MATH::Vec3& size) noexcept {
     const float length = std::sqrt(settings.height * settings.height + settings.depth * settings.depth);
@@ -31,43 +17,15 @@ void FitProceduralSlopeBox(const ProceduralMeshSettings& settings, MATH::Vec3& c
 }
 
 const char* GetProceduralMeshDisplayName(ProceduralMeshKind kind) noexcept {
-    return kind == ProceduralMeshKind::GridPlane ? "Grid Plane" : ToString(kind);
-}
-
-ProceduralMeshKind ParseProceduralMeshKind(const nlohmann::json& value, ProceduralMeshKind fallback) {
-    if (value.is_number_integer()) {
-        const int index = value.get<int>();
-        return index >= 0 && index <= static_cast<int>(ProceduralMeshKind::Stairs)
-                   ? static_cast<ProceduralMeshKind>(index)
-                   : fallback;
-    }
-    if (!value.is_string()) {
-        return fallback;
-    }
-    const std::string text = value.get<std::string>();
-    if (text == "Plane")
-        return ProceduralMeshKind::Plane;
-    if (text == "GridPlane" || text == "Grid")
-        return ProceduralMeshKind::GridPlane;
-    if (text == "Box" || text == "Cube")
-        return ProceduralMeshKind::Box;
-    if (text == "Sphere")
-        return ProceduralMeshKind::Sphere;
-    if (text == "Cylinder")
-        return ProceduralMeshKind::Cylinder;
-    if (text == "Capsule")
-        return ProceduralMeshKind::Capsule;
-    if (text == "Ramp")
-        return ProceduralMeshKind::Ramp;
-    if (text == "Stairs")
-        return ProceduralMeshKind::Stairs;
-    return fallback;
+    return kind == ProceduralMeshKind::GridPlane ? "Grid Plane"
+                                                 : TEXT::EnumToName(kProceduralMeshKindNames, kind, "Box");
 }
 
 ProceduralMeshSettings SanitizeProceduralMeshSettings(ProceduralMeshSettings settings) noexcept {
     const auto finiteDimension = [](float value) {
         const float clamped = std::clamp(std::isfinite(value) ? value : 1.0f, 0.001f, 100000.0f);
-        return std::round(clamped * 1000.0f) * 0.001f;
+        // mm へ丸めてから 1000 で割る（0.001f を掛けると 3 が 3.0000002 になる）。
+        return std::round(clamped * 1000.0f) / 1000.0f;
     };
     settings.width = finiteDimension(settings.width);
     settings.height = finiteDimension(settings.height);
@@ -113,7 +71,7 @@ ProceduralMeshSettings SanitizeProceduralMeshSettings(ProceduralMeshSettings set
     }
     const MATH::Vec3 half{settings.width * 0.5f, settings.height * 0.5f, settings.depth * 0.5f};
     const auto millimetre = [](float value) {
-        return std::round(std::clamp(std::isfinite(value) ? value : 0.0f, -100000.0f, 100000.0f) * 1000.0f) * 0.001f;
+        return std::round(std::clamp(std::isfinite(value) ? value : 0.0f, -100000.0f, 100000.0f) * 1000.0f) / 1000.0f;
     };
     std::vector<ProceduralMeshCut> cuts;
     for (const ProceduralMeshCut& cut : settings.cuts) {

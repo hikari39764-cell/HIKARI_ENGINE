@@ -7,6 +7,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <span>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -15,9 +16,11 @@
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
 
-#include "Editor/AI/HIKARI_AI_AssistantPanel.h"
 #include "Editor/Diagnostics/HIKARI_RuntimeDebugWindow.h"
-#include "Editor/AI/HIKARI_AI_LocalBridge.h"
+#include "Editor/Agent/HIKARI_AgentBridge.h"
+#include "Editor/Agent/HIKARI_AgentHost.h"
+#include "Editor/Agent/HIKARI_AgentPanelState.h"
+#include "Editor/Agent/HIKARI_AgentPlayRun.h"
 #include "Editor/HIKARI_DebugCameraPanel.h"
 #include "Editor/HIKARI_DebugMenuBar.h"
 #include "Editor/Export/HIKARI_GameExportJob.h"
@@ -130,16 +133,16 @@ private:
     EDITOR::EditorOperationResult PollAiPreviewCapture(uint64_t id);
     void CancelAiSceneCapture();
     EDITOR::SceneViewSeriesCapture sceneViewSeries_{};
-    EDITOR::AiAssistantSession aiAssistantSession_{};
-    EDITOR::AiAssistantPanel aiAssistantPanel_{aiAssistantSession_};
+    EDITOR::AGENT::AgentHost agentHost_{};
     EDITOR::EditorSettingsPanel editorSettingsPanel_{};
     EDITOR::EditorShell editorShell_{};
     bool HasForegroundDocument(EDITOR::EditorWorkspaceId workspace) const;
     // ワークスペースの文書状態。includeSessions では AI が表示中のバックグラウンド文書を優先する。
     nlohmann::json DescribeWorkspaceDocument(EDITOR::EditorWorkspaceId workspace, bool includeSessions) const;
     void DrawGlobalShell(DocumentSceneBase& scene);
-    EDITOR::AI_ASSISTANT::AiLocalBridge aiLocalBridge_{};
-    bool aiBridgeStarted_ = false;
+    EDITOR::AGENT::AgentBridge agentBridge_{};
+    // 起動に失敗したら設定を切り替えるまで毎フレーム再試行しない。
+    bool agentBridgeStartFailed_ = false;
     EnvironmentPanel environmentPanel_{};
     QualityPanel qualityPanel_{};
     EDITOR::EditorToolHost toolHost_{};
@@ -311,7 +314,39 @@ private:
     // 場面を開く要求。未保存の変更があれば確認を待ち、無ければすぐ開く。
     void RequestSceneOpen(DocumentSceneBase& scene, const AssetGuid& sceneGuid);
     void DrawPendingSceneOpenModal(DocumentSceneBase& scene);
-    void EnsureAiLocalBridge();
+    void EnsureAgentBridge(DocumentSceneBase& scene);
+    // 外部智能体（本地桥）からの一つの操作。公開範囲と访问模式を確かめて操作表で実行する。主线程で呼ぶ。
+    EDITOR::EditorOperationResult ExecuteAgentAction(const std::string& operation, const nlohmann::json& parameters);
+    // editor.state と operations.batch（HIKARI_DocumentSceneEditorAgentOperations.cpp）。
+    void RegisterAgentOperations();
+    EDITOR::EditorOperationResult DescribeEditorState();
+    EDITOR::EditorOperationResult ExecuteOperationBatch(const nlohmann::json& parameters);
+    // ExecuteAgentAction の実行中か。一括操作の各手順も智能体の操作として確かめる。
+    bool executingAgentAction_ = false;
+    // 設定の「写入智能体说明」の結果。
+    std::string agentFilesMessage_{};
+    // Play・運行時・ログの操作（HIKARI_DocumentSceneEditorPlayOperations.cpp）。
+    void RegisterPlayOperations();
+    // play.run と --input-replay を毎フレーム進める。
+    void TickAgentPlayRun();
+    EDITOR::EditorOperationResult DescribePlayState() const;
+    EDITOR::EditorOperationResult StartAgentPlay();
+    EDITOR::EditorOperationResult StartAgentPlayRun(const nlohmann::json& parameters);
+    EDITOR::EditorOperationResult PollAgentPlayRun(uint64_t runId) const;
+    // Draw が毎フレーム受け取る Play 会話。操作はこれを通して Play を始め・止める。
+    EDITOR::EditorPlaySession* aiPlaySession_ = nullptr;
+    // project.reload が使う、Draw が毎フレーム受け取る項目会話。
+    EDITOR::EditorProjectSessionController* aiProjectSession_ = nullptr;
+    std::optional<EDITOR::AGENT::AgentPlayRun> agentPlayRun_{};
+    uint64_t nextAgentPlayRunId_ = 1;
+    // --input-replay で渡された轨道。Play が動き出したら回す。
+    std::optional<std::filesystem::path> pendingInputReplay_{};
+    // 助手页签の「外部智能体」（HIKARI_DocumentSceneEditorAgentPanel.cpp）。
+    void DrawAgentPanel(DocumentSceneBase& scene);
+    void StartAgentTurn(DocumentSceneBase& scene);
+    void TickAgentPanel();
+    void RecordAgentOperation(const std::string& action, const EDITOR::EditorOperationResult& result);
+    EDITOR::AGENT::AgentPanelState agentPanel_{};
     EDITOR::EditorOperationResult ExecuteTerrainOperation(EDITOR::TerrainAuthoringOperation operation,
                                                           const nlohmann::json& parameters);
     EDITOR::EditorOperationResult ExecuteSceneObjectOperation(EDITOR::SceneObjectOperation operation,

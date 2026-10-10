@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "Core/Math/HIKARI_Math3D.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeContract.h"
 #include "Scene/Components/HIKARI_IComponent.h"
@@ -14,6 +15,19 @@ namespace HIKARI {
 enum class ReflectionProbeViewportBoundsTarget : uint8_t {
     Influence,
     Projection,
+};
+
+inline constexpr TEXT::EnumName<ReflectionProbeViewportBoundsTarget> kReflectionProbeViewportBoundsTargetNames[] = {
+    {ReflectionProbeViewportBoundsTarget::Influence, "Influence"},
+    {ReflectionProbeViewportBoundsTarget::Projection, "Projection"},
+};
+inline constexpr TEXT::EnumName<ReflectionProbeInfluenceShape> kReflectionProbeInfluenceShapeNames[] = {
+    {ReflectionProbeInfluenceShape::Sphere, "Sphere"},
+    {ReflectionProbeInfluenceShape::Box, "Box"},
+};
+inline constexpr TEXT::EnumName<ReflectionProbeProjectionShape> kReflectionProbeProjectionShapeNames[] = {
+    {ReflectionProbeProjectionShape::Infinite, "Infinite"},
+    {ReflectionProbeProjectionShape::Box, "Box"},
 };
 
 class ReflectionProbeComponent final : public IComponent {

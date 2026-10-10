@@ -50,13 +50,12 @@ inline constexpr TEXT::EnumName<EditorOperationKind> kEditorOperationKindNames[]
 
 enum class EditorOperationSessionDispatch : uint8_t { Operation, Preview };
 
+// 操作を見せる相手。Agent は本地桥経由の外部智能体（Claude Code・Codex）。1u << 1u は使わない（項目 SDK と同じ値）。
 enum class EditorOperationExposureMask : uint8_t {
     None = 0,
     Human = 1u << 0u,
-    BuiltInAi = 1u << 1u,
-    LocalBridge = 1u << 2u,
-    Automation = 1u << 3u,
-    Default = (1u << 0u) | (1u << 1u) | (1u << 2u),
+    Agent = 1u << 2u,
+    Default = (1u << 0u) | (1u << 2u),
 };
 
 constexpr EditorOperationExposureMask operator|(EditorOperationExposureMask lhs,
@@ -158,6 +157,8 @@ struct EditorOperationDefinition {
     // 文書を置換する操作はバックグラウンドから非表示の確認ダイアログを開かない。
     bool requiresCleanDocument = false;
     bool entryPoint = false;
+    // 智能体の呼び出しを毎回承認させる（本轮允许でまとめない）。编辑器の再起動など。
+    bool approveEachTime = false;
     EditorOperationSessionDispatch sessionDispatch = EditorOperationSessionDispatch::Operation;
     // Zero identifies operations registered by Engine-owned subsystems.
     EditorOperationOwnerToken ownerToken = 0u;

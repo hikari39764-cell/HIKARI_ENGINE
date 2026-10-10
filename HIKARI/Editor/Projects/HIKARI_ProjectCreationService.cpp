@@ -1,4 +1,5 @@
 #include "Core/Text/HIKARI_Localization.h"
+#include "Editor/Agent/HIKARI_AgentProjectFiles.h"
 #include "Editor/Projects/HIKARI_ProjectCreationService.h"
 #include "Editor/Projects/HIKARI_ProjectSourceTemplate.h"
 
@@ -8,6 +9,7 @@
 #include <fstream>
 #include <string_view>
 #include <system_error>
+#include <vector>
 
 #include <json.hpp>
 
@@ -148,6 +150,12 @@ bool CreateProject(const ProjectCreationRequest& request, ProjectCreationResult&
         !WriteTextFile(stagingRoot / ".gitignore", "/Library/\n/logs/\n/out/\n/.vs/\n/imgui.ini\n*.user\n",
                        outMessage) ||
         !WriteTextFile(stagingRoot / ".gitattributes", PROJECT_TEMPLATE::MakeProjectGitAttributes(), outMessage)) {
+        RemoveStagingDirectory(stagingRoot);
+        return false;
+    }
+    std::vector<std::filesystem::path> agentFiles;
+    if (!AGENT::WriteAgentProjectFiles(stagingRoot, AGENT::DetectAgentProjectFileInputs(request.name), agentFiles,
+                                       outMessage)) {
         RemoveStagingDirectory(stagingRoot);
         return false;
     }

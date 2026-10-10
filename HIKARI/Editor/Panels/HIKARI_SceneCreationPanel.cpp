@@ -201,7 +201,8 @@ void SceneCreationPanel::DrawDeferredDialogs(DocumentSceneBase& scene, EditorCon
         return;
     }
 
-    CreateWithHistory(scene, context, selectionSync, std::string("Create ") + ToString(primitiveRequest.mesh.kind),
+    CreateWithHistory(scene, context, selectionSync,
+                      std::string("Create ") + TEXT::EnumToName(kProceduralMeshKindNames, primitiveRequest.mesh.kind),
                       [&] {
                           primitiveRequest.object.position =
                               ComputePrimitivePlacementInView(scene.GetCamera(), primitiveRequest.mesh);

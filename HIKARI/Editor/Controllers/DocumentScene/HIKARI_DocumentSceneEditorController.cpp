@@ -1,4 +1,5 @@
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
+#include "Editor/Agent/HIKARI_AgentConnection.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspacePresentation.h"
@@ -6,7 +7,6 @@
 #include "Editor/Commands/HIKARI_EditorOperationValue.h"
 #include "Editor/Authoring/HIKARI_EditorWorkspaceSessionProviders.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
-#include "Editor/AI/HIKARI_AI_ProjectKnowledge.h"
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
 #include "Core/HIKARI_TimeService.h"
 
@@ -18,7 +18,6 @@
 #include <vector>
 #include "Assets/HIKARI_AssetImportState.h"
 #include "Core/HIKARI_Logger.h"
-#include "Editor/AI/HIKARI_AI_ChatClient.h"
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
 #include "Editor/Menus/HIKARI_EditorDocumentMenu.h"
@@ -59,17 +58,6 @@
 namespace HIKARI {
 
 namespace {
-EDITOR::AI_ASSISTANT::AiRequestResult ToAiRequestResult(const EDITOR::EditorOperationResult& operation) {
-    EDITOR::AI_ASSISTANT::AiRequestResult result{};
-    result.ok = operation.ok;
-    result.code = operation.code;
-    result.message = operation.message;
-    result.data = operation.data;
-    result.details = operation.details;
-    result.hints = operation.hints;
-    return result;
-}
-
 #if defined(HIKARI_WITH_EDITOR)
 
 void KeepWorkspaceDockSpacesAlive() {
@@ -97,56 +85,20 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
                 break;
             }
     }
+    // --input-replay <轨道>：Play（--play-on-start など）が動き出したら入力轨道を锁步で回す。
+    pendingInputReplay_ = ReadRuntimeCommandLinePath(L"--input-replay");
     EDITOR::RegisterBuiltInEditorTools(toolHost_);
     EDITOR::RegisterBuiltInSystemAuthoring(systemAuthoringRegistry_);
-    aiAssistantSession_.SetCapabilityProvider(
-        [this](EDITOR::AiRequestSource source) {
-            const auto sourceExposure = source == EDITOR::AiRequestSource::LocalBridge
-                                            ? EDITOR::EditorOperationExposureMask::LocalBridge
-                                            : EDITOR::EditorOperationExposureMask::BuiltInAi;
-            std::vector<EDITOR::AI_ASSISTANT::AiCapability> capabilities = EDITOR::AI_ASSISTANT::BuiltInCapabilities();
-            for (const std::string& id : operationRegistry_.RegisteredIds()) {
-                const EDITOR::EditorOperationDefinition* definition = operationRegistry_.Find(id);
-                if (definition == nullptr ||
-                    !EDITOR::HasEditorOperationExposure(definition->exposureMask, sourceExposure)) {
-                    continue;
-                }
-                EDITOR::AI_ASSISTANT::AiCapability capability{definition->id, definition->summary, "stable"};
-                capability.parameters.reserve(definition->parameters.size());
-                capability.workspace = definition->workspace;
-                capability.semantics = EDITOR::DescribeEditorOperation(*definition);
-                capability.semantics.erase("parameters");
-                capability.searchTerms = definition->searchTerms;
-                for (const EDITOR::EditorOperationParameter& parameter : definition->parameters) {
-                    capability.parameters.push_back(
-                        {parameter.name, TEXT::EnumToName(EDITOR::kEditorOperationParameterTypeNames, parameter.type),
-                         parameter.required, parameter.description, parameter.schema});
-                }
-                if (definition->requiresDocumentSession &&
-                    authoringSessions_.SupportsWorkspace(definition->workspace) &&
-                    std::none_of(capability.parameters.begin(), capability.parameters.end(),
-                                 [](const auto& p) { return p.name == "sessionId"; })) {
-                    capability.parameters.push_back({"sessionId", "string", true,
-                                                     "Document session for workspace '" + definition->workspace +
-                                                         "'; returned by authoring.session.open."});
-                }
-                capabilities.push_back(std::move(capability));
-            }
-            std::sort(capabilities.begin(), capabilities.end(),
-                      [](const EDITOR::AI_ASSISTANT::AiCapability& lhs, const EDITOR::AI_ASSISTANT::AiCapability& rhs) {
-                          return lhs.id < rhs.id;
-                      });
-            return capabilities;
-        },
-        [this] { return operationRegistry_.Revision(); });
-    aiAssistantSession_.SetOperationPermissionResolver(
-        [this](std::string_view action) -> std::optional<EDITOR::EditorOperationPermission> {
-            const EDITOR::EditorOperationDefinition* definition = operationRegistry_.Find(std::string(action));
-            return definition != nullptr ? std::optional<EDITOR::EditorOperationPermission>{definition->permission}
-                                         : std::nullopt;
+    agentHost_.SetPermissionResolver(
+        [this](std::string_view operation) -> std::optional<EDITOR::AGENT::AgentOperationPolicy> {
+            const EDITOR::EditorOperationDefinition* definition = operationRegistry_.Find(std::string(operation));
+            if (definition == nullptr)
+                return std::nullopt;
+            return EDITOR::AGENT::AgentOperationPolicy{definition->permission, definition->approveEachTime};
         });
-    aiLocalBridge_.SetCapabilityProvider(
-        [this](EDITOR::AiRequestSource source) { return aiAssistantSession_.Capabilities(source); });
+    agentHost_.SetExecutor([this](const std::string& operation, const nlohmann::json& parameters) {
+        return ExecuteAgentAction(operation, parameters);
+    });
     ModelMaterialWorkspace().SetOperationRegistry(&operationRegistry_);
     AnimationStateMachineWorkspace().SetOperationRegistry(&operationRegistry_);
     RuntimeBindingWorkspace().SetReferenceProvider([this](std::string_view bindingId) {
@@ -207,123 +159,47 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
         return true;
     });
     RegisterEditorOperations();
+    RegisterAgentOperations();
+    RegisterPlayOperations();
     EDITOR::RegisterVfxAuthoringSessions(authoringSessions_, workspaceHost_, [this] { return aiOperationScene_; });
     EDITOR::RegisterMaterialAuthoringSessions(authoringSessions_, workspaceHost_, [this] { return aiOperationScene_; });
     EDITOR::RegisterDocumentAuthoringSessions(authoringSessions_, workspaceHost_, [this] { return aiOperationScene_; });
     RegisterSceneAuthoringSessions();
     authoringSessions_.RegisterOperations(operationRegistry_);
-    aiAssistantSession_.RefreshCapabilities();
-    aiAssistantSession_.SetSceneActionCallback([this](std::string_view json, EDITOR::AiRequestSource source) {
-        const std::string action = EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
-        if (operationRegistry_.IsRegistered(action)) {
-            nlohmann::json parameters;
-            try {
-                parameters = nlohmann::json::parse(std::string(json));
-            } catch (const nlohmann::json::parse_error& error) {
-                EDITOR::AI_ASSISTANT::AiRequestResult result{};
-                result.code = "JSON_PARSE_ERROR";
-                result.message = "动作 JSON 解析失败";
-                result.details.push_back(error.what());
-                return result;
-            }
-            const bool background = parameters.value("_backgroundTask", false);
-            parameters.erase("_backgroundTask");
-            const auto* definition = operationRegistry_.Find(action);
-            const auto sourceExposure = source == EDITOR::AiRequestSource::LocalBridge
-                                            ? EDITOR::EditorOperationExposureMask::LocalBridge
-                                            : EDITOR::EditorOperationExposureMask::BuiltInAi;
-            if (!EDITOR::HasEditorOperationExposure(definition->exposureMask, sourceExposure))
-                return ToAiRequestResult(
-                    {false, "OPERATION_NOT_EXPOSED", "This operation is not exposed to the assistant."});
-            if (!EDITOR::AI_ASSISTANT::AllowsProjectAccess(aiAssistantSession_.ProjectAccessMode(), action))
-                return ToAiRequestResult({false, "PROJECT_ACCESS_REQUIRED",
-                                          "This project code operation is unavailable in the current access mode."});
-#if defined(HIKARI_WITH_EDITOR)
-            if (background && parameters.contains("sessionId") && parameters["sessionId"].is_string() &&
-                definition->workspace == EDITOR::EditorWorkspaceOperationId(workspaceHost_.GetActive()) &&
-                authoringSessions_.VisibleSession(definition->workspace) ==
-                    parameters["sessionId"].get<std::string>() &&
-                (ImGui::IsAnyItemActive() || ImGuizmo::IsUsing() ||
-                 authoringSessions_.HasInteractiveEdit(parameters["sessionId"].get<std::string>()))) {
-                const auto* activeWindow = ImGui::GetCurrentContext()->ActiveIdWindow;
-                // 共通シェル・カメラ操作は文書の編集ロックではない。
-                const auto name = activeWindow ? std::string_view(activeWindow->Name) : std::string_view{};
-                const bool shell = name.find("Editor/") != std::string_view::npos ||
-                                   name.find("AI Assistant") != std::string_view::npos;
-                const bool view = name.find("View") != std::string_view::npos ||
-                                  name.find("Preview") != std::string_view::npos ||
-                                  name.find("Stage") != std::string_view::npos;
-                const bool editing = ImGuizmo::IsUsing() ||
-                                     authoringSessions_.HasInteractiveEdit(parameters["sessionId"].get<std::string>());
-                if (editing || (!shell && (!view || ImGui::GetIO().WantTextInput ||
-                                           ImGui::GetCurrentContext()->ActiveIdHasBeenEditedBefore)))
-                    return ToAiRequestResult({false,
-                                              "DOCUMENT_BUSY",
-                                              "Document edit in progress; the assistant waits locally.",
-                                              {{"retryable", true}}});
-            }
-#endif
-            if (background && definition->requiresDocumentSession && !parameters.contains("sessionId") &&
-                (authoringSessions_.SupportsWorkspace(definition->workspace) || action == "action.undo_last")) {
-                return ToAiRequestResult(
-                    {false,
-                     "EXPLICIT_SESSION_REQUIRED",
-                     "This operation needs an explicit document session.",
-                     {{"workspace", definition->workspace},
-                      {"operationSchema", EDITOR::DescribeEditorOperation(*definition)},
-                      {"openSession", {{"action", "authoring.session.open"}, {"workspace", definition->workspace}}}}});
-            }
-            auto result = operationRegistry_.Execute(action, parameters);
-            return ToAiRequestResult(result);
-        }
-        EDITOR::AI_ASSISTANT::AiRequestResult result{};
-        result.ok = false;
-        result.code = "UNKNOWN_ACTION";
-        result.message = "不支持的 AI 动作：" + action;
-        result.hints.push_back("Use query.capabilities with workspace or keyword to find the supported action.");
-        return result;
-    });
-
-    aiAssistantSession_.SetContextProvider([this]() -> std::string {
-        if (!aiOperationScene_)
-            return {};
-        auto& scene = *aiOperationScene_;
-        std::string context = "scene objects: " + std::to_string(scene.GetWorld().GetObjects().size()) + " (";
-        const auto selected = context_.selection.GetActiveObjectId();
-        if (selected.value)
-            context += "selected object [" + std::to_string(selected.value) + "]; ";
-        size_t shown = 0u;
-        for (const auto& object : scene.GetWorld().GetObjects()) {
-            if (shown >= 8u) {
-                context += "...";
-                break;
-            }
-            if (shown > 0u) {
-                context += ", ";
-            }
-            context += "[" + std::to_string(object->GetDocumentId().value) + "] ";
-            context += object->GetName();
-            ++shown;
-        }
-        context +=
-            ")\nmodel assets: " + std::to_string(scene.GetAssetRegistry().CollectByType(AssetType::Model).size());
-        context +=
-            "\nUse scene.objects.query for paged model sources, world bounds and screen anchors; capture.preview shows final output, scene.capture_views is a separate inspection render.";
-        const auto active = workspaceHost_.GetActive();
-        nlohmann::json document{{"workspace", EDITOR::EditorWorkspaceOperationId(active)}};
-        if (nlohmann::json state = DescribeWorkspaceDocument(active, true); !state.is_null())
-            document["document"] = std::move(state);
-        if (active == EDITOR::EditorWorkspaceId::Scene || active == EDITOR::EditorWorkspaceId::LookDev)
-            document["scenePath"] = scene.GetScenePath();
-        context += "\nActive document: " + document.dump();
-        context += "\nBackground authoring: " + authoringSessions_.Snapshot(true).dump();
-        if (const std::string guide = EDITOR::ReadProjectGuideForContext(scene.GetAssetDatabase().GetProjectRoot());
-            !guide.empty())
-            context += "\nProject guide (user-authored conventions):\n" + guide;
-        return context;
-    });
 
     commandRouter_.SetOperationRegistry(&operationRegistry_);
+}
+
+EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAgentAction(const std::string& operation,
+                                                                                const nlohmann::json& parameters) {
+    const EDITOR::EditorOperationDefinition* definition = operationRegistry_.Find(operation);
+    if (definition == nullptr) {
+        EDITOR::EditorOperationResult result =
+            EDITOR::OperationFailure("UNKNOWN_OPERATION", "未注册的操作：" + operation);
+        result.hints.push_back("Use operations.search with a keyword to find the operation id.");
+        return result;
+    }
+    if (!EDITOR::HasEditorOperationExposure(definition->exposureMask, EDITOR::EditorOperationExposureMask::Agent))
+        return EDITOR::OperationFailure("OPERATION_NOT_EXPOSED", "This operation is not exposed to agents.");
+    if (!EDITOR::AGENT::AllowsAgentOperation(agentHost_.AccessMode(), operation))
+        return EDITOR::OperationFailure("PROJECT_ACCESS_REQUIRED",
+                                        "This project code operation is unavailable in the current access mode.");
+    // 一括操作の各手順も智能体の操作として確かめられるように、実行中だけ印を残す。
+    struct Scope {
+        bool& flag;
+        bool previous;
+        ~Scope() { flag = previous; }
+    } scope{executingAgentAction_, std::exchange(executingAgentAction_, true)};
+    // 编辑器から起動した智能体の依頼の間は、場面修改を一つの撤销组（撤销这一轮）にまとめる。
+    const bool grouped = agentPanel_.turnActive;
+    if (grouped)
+        agentPanel_.turnUndoGroup = documentHistory_.BeginUndoGroup(agentPanel_.turnUndoGroup);
+    const EDITOR::EditorOperationResult result = operationRegistry_.Execute(operation, parameters);
+    if (grouped)
+        documentHistory_.EndUndoGroup();
+    if (definition->kind == EDITOR::EditorOperationKind::Mutation)
+        RecordAgentOperation(operation, result);
+    return result;
 }
 
 EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteSceneObjectOperation(
@@ -359,8 +235,9 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteTerrainOpera
 
 DocumentSceneEditorController::~DocumentSceneEditorController() {
     VfxWorkspace().Deactivate(workspaceHost_.GetVfxPreviewView().renderViewId);
-    aiAssistantSession_.Stop();
-    aiLocalBridge_.Stop();
+    agentPanel_.session.Stop();
+    agentHost_.SetOpen(false);
+    agentBridge_.Stop();
     CancelAiSceneCapture();
     authoringSessions_.Reset();
 }
@@ -481,42 +358,46 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteSceneSave() 
     return result;
 }
 
-void DocumentSceneEditorController::EnsureAiLocalBridge() {
-    if (!context_.aiIntegration.localBridgeEnabled) {
-        if (aiBridgeStarted_) {
-            aiLocalBridge_.Stop();
-            aiBridgeStarted_ = false;
+void DocumentSceneEditorController::EnsureAgentBridge(DocumentSceneBase& scene) {
+    auto& integration = context_.aiIntegration;
+    if (!integration.localBridgeEnabled) {
+        if (agentBridge_.IsRunning()) {
+            // 待っている本地桥の要求を先に終わらせる。終わらない要求があると Stop が接続スレッドを待ち続ける。
+            agentHost_.SetOpen(false);
+            agentBridge_.Stop();
         }
-        aiAssistantSession_.SetBridgeSessionToken({});
-        aiAssistantSession_.SetBridgeStatus("本地桥已禁用（可在编辑器设置中启用）");
+        agentBridgeStartFailed_ = false;
+        integration.localBridgeStatus.clear();
         return;
     }
-    if (aiBridgeStarted_) {
-        aiAssistantSession_.SetBridgeStatus(aiLocalBridge_.IsRunning() ? "本地桥：" + aiLocalBridge_.GetEndpoint()
-                                                                       : "本地桥已停止");
-        return;
-    }
-    aiBridgeStarted_ = true;
-    uint16_t port = 18725;
-    if (const char* envPort = std::getenv("HIKARI_AI_BRIDGE_PORT")) {
-        try {
-            port = static_cast<uint16_t>(std::stoul(envPort));
-        } catch (...) {
+    if (!agentBridge_.IsRunning()) {
+        if (agentBridgeStartFailed_)
+            return;
+        std::string error;
+        agentHost_.SetOpen(true);
+        const bool started =
+            agentBridge_.Start([this](std::string_view body) { return agentHost_.Execute(body); }, error);
+        if (!started) {
+            agentHost_.SetOpen(false);
+            agentBridgeStartFailed_ = true;
+            integration.localBridgeStatus = TEXT::Localize("settings.aiBridge.failed") + error;
+            return;
         }
     }
-    std::string bridgeError;
-    if (aiLocalBridge_.Start(
-            port,
-            [this](std::string_view json, EDITOR::AiRequestSource source) {
-                return aiAssistantSession_.ExecuteRequest(json, source);
-            },
-            bridgeError)) {
-        aiAssistantSession_.SetBridgeStatus("本地桥：" + aiLocalBridge_.GetEndpoint());
-        aiAssistantSession_.SetBridgeSessionToken(aiLocalBridge_.GetSessionToken());
-    } else {
-        aiAssistantSession_.SetBridgeSessionToken({});
-        aiAssistantSession_.SetBridgeStatus("本地桥启动失败：" + bridgeError);
+    const auto path = EDITOR::AGENT::AgentConnectionPath(scene.GetAssetDatabase().GetLibraryRoot());
+    if (agentBridge_.GetConnectionPath() == path)
+        return;
+    std::string error;
+    if (!agentBridge_.PublishConnection(path, TEXT::PathToUtf8(scene.GetAssetDatabase().GetProjectRoot()), error)) {
+        // 書けない場所なら止めて、利用者に理由を見せる。
+        agentHost_.SetOpen(false);
+        agentBridge_.Stop();
+        agentBridgeStartFailed_ = true;
+        integration.localBridgeStatus = TEXT::Localize("settings.aiBridge.failed") + error;
+        return;
     }
+    integration.localBridgeStatus = TEXT::Localize("settings.aiBridge.running") + agentBridge_.GetEndpoint() + "\n" +
+                                    TEXT::Localize("settings.aiBridge.connectionFile") + TEXT::PathToUtf8(path);
 }
 
 void DocumentSceneEditorController::SnapshotSceneViewCameras(DocumentSceneBase& scene) {
@@ -552,25 +433,22 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
                                          EDITOR::EditorProjectSessionController& projectSession) {
 #if defined(HIKARI_WITH_EDITOR)
     aiOperationScene_ = &scene;
+    aiPlaySession_ = &playSession;
+    aiProjectSession_ = &projectSession;
     KeepWorkspaceDockSpacesAlive();
     const auto projectRoot = scene.GetAssetDatabase().GetProjectRoot().generic_string();
     if (authoringProjectRoot_ != projectRoot) {
         CancelAiSceneCapture();
-        aiAssistantPanel_.ResetComposer();
-        aiAssistantSession_.SwitchProject(scene.GetAssetDatabase().GetLibraryRoot());
         authoringSessions_.Reset();
         authoringProjectRoot_ = projectRoot;
         authoringSessions_.SetRecoveryRoot(scene.GetAssetDatabase().GetLibraryRoot());
     }
-    if (aiAssistantSession_.ConsumeCancellation()) {
-        authoringSessions_.CancelPreviews();
-        CancelAiSceneCapture();
-    }
     if (aiSceneCaptureTicket_ && (aiSceneCaptureIdentity_ != scene.GetSceneId() + "|" + scene.GetScenePath() ||
                                   aiSceneCaptureRevision_ != scene.GetSceneDocumentRevision()))
         CancelAiSceneCapture();
-    aiAssistantSession_.PumpActions();
-    aiAssistantPanel_.TickAttachments();
+    agentHost_.PumpActions();
+    TickAgentPlayRun();
+    TickAgentPanel();
     authoringSessions_.Tick(static_cast<uint64_t>(ImGui::GetFrameCount()), ImGui::GetIO().DeltaTime);
     scene.GetAssetDatabase().PumpAssetTasks();
     SyncDocumentHistory(scene);
@@ -617,20 +495,7 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
         projectWorkspaceHost_->UpdateNavigation(workspaceHost_, TIME::GetFrameContext().unscaledDt);
     }
 
-    EnsureAiLocalBridge();
-    static constexpr const char* workspaceLabels[] = {"menu.workspace.scene",
-                                                      "menu.workspace.cinematics",
-                                                      "menu.workspace.modelCollision",
-                                                      "menu.workspace.modelMaterial",
-                                                      "menu.workspace.animationStateMachine",
-                                                      "menu.workspace.runtimeBinding",
-                                                      "menu.workspace.vfx",
-                                                      "menu.workspace.dialogue",
-                                                      "menu.workspace.terrainSurface"};
-    const auto workspaceIndex = static_cast<size_t>(workspaceHost_.GetActive());
-    aiAssistantPanel_.SetWorkspaceLabel(workspaceIndex < std::size(workspaceLabels)
-                                            ? TEXT::Localize(workspaceLabels[workspaceIndex])
-                                            : scene.GetSceneId());
+    EnsureAgentBridge(scene);
     DrawGlobalShell(scene);
 
     if (resetDockingLayoutRequested) {

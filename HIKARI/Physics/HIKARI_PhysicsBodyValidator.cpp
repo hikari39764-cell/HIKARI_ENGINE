@@ -137,13 +137,4 @@ const char* ToString(PhysicsBodyRuntimeState state) noexcept {
     }
 }
 
-const char* ToString(PhysicsMotionType motionType) noexcept {
-    switch (motionType) {
-    case PhysicsMotionType::Kinematic: return "Kinematic";
-    case PhysicsMotionType::Dynamic: return "Dynamic";
-    case PhysicsMotionType::Static:
-    default: return "Static";
-    }
-}
-
 } // namespace HIKARI::PHYSICS

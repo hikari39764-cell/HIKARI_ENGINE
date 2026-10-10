@@ -35,6 +35,16 @@ bool MeasureSceneExtent(const SceneDocument* document, MATH::Vec3& outSize) {
     return true;
 }
 
+// 撮影解像度は決まった三段から選ぶ。選択肢 ID は解像度の数字。
+bool CaptureResolutionChoice(IInspectorBuilder& builder, uint32_t& resolution,
+                             const std::array<uint32_t, 3>& resolutions,
+                             const std::array<AuthoringChoice, 3>& choices) {
+    int selected = resolution <= resolutions[0] ? 0 : (resolution <= resolutions[1] ? 1 : 2);
+    if (!builder.Choice(AuthoringFieldDescriptor{"captureResolution", "Capture Quality"}, selected, choices))
+        return false;
+    resolution = resolutions[static_cast<size_t>(std::clamp(selected, 0, 2))];
+    return true;
+}
 } // namespace
 
 void LightComponent::BuildInspector(IInspectorBuilder& builder) {
@@ -129,11 +139,12 @@ void LightComponent::BuildInspector(IInspectorBuilder& builder) {
 }
 
 void ReflectionProbeComponent::BuildInspector(IInspectorBuilder& builder) {
+    using D = AuthoringFieldDescriptor;
     builder.Text("Capture");
-    builder.Bool("Enabled", enabled_);
-    builder.String("Source Cubemap Asset", sourceCubemapAsset_);
-    builder.Float("Sphere / Capture Radius", radius_);
-    builder.Float("Intensity", intensity_);
+    builder.Bool(D{"enabled", "Enabled"}, enabled_);
+    builder.String(D{"sourceCubemapAsset", "Source Cubemap Asset"}, sourceCubemapAsset_);
+    builder.Float(D{"radius", "Sphere / Capture Radius"}, radius_);
+    builder.Float(D{"intensity", "Intensity"}, intensity_);
     if (builder.Button("Fit Influence Size To Scene")) {
         MATH::Vec3 sceneSize{};
         if (MeasureSceneExtent(builder.GetContext().sceneDocument, sceneSize)) {
@@ -143,34 +154,25 @@ void ReflectionProbeComponent::BuildInspector(IInspectorBuilder& builder) {
                 0.5f * std::sqrt(sceneSize.x * sceneSize.x + sceneSize.y * sceneSize.y + sceneSize.z * sceneSize.z);
         }
     }
-    int captureQuality = captureResolution_ <= 64u ? 0 : (captureResolution_ <= 128u ? 1 : 2);
-    static constexpr std::array<const char*, 3> reflectionCaptureChoices{"64 - Preview", "128 - Standard",
-                                                                         "256 - High"};
-    if (builder.Choice("Capture Quality", captureQuality, reflectionCaptureChoices)) {
-        static constexpr uint32_t resolutions[] = {64u, 128u, 256u};
-        captureResolution_ = resolutions[std::clamp(captureQuality, 0, 2)];
-    }
+    static constexpr std::array<AuthoringChoice, 3> captureChoices{AuthoringChoice{"64", "64 - Preview"},
+                                                                   AuthoringChoice{"128", "128 - Standard"},
+                                                                   AuthoringChoice{"256", "256 - High"}};
+    (void)CaptureResolutionChoice(builder, captureResolution_, {64u, 128u, 256u}, captureChoices);
     builder.Text("Higher quality uses a full roughness mip chain and more samples.");
 
     builder.Text("Influence");
-    int influenceShape = influenceShape_ == ReflectionProbeInfluenceShape::Box ? 1 : 0;
-    static constexpr std::array<const char*, 2> influenceChoices{"Sphere", "Box"};
-    if (builder.Choice("Influence Shape", influenceShape, influenceChoices)) {
-        influenceShape_ =
-            influenceShape == 1 ? ReflectionProbeInfluenceShape::Box : ReflectionProbeInfluenceShape::Sphere;
-    }
-    builder.Float("Influence Offset X", influenceBoxOffset_.x);
-    builder.Float("Influence Offset Y", influenceBoxOffset_.y);
-    builder.Float("Influence Offset Z", influenceBoxOffset_.z);
-    builder.Float("Influence Size X", influenceBoxSize_.x);
-    builder.Float("Influence Size Y", influenceBoxSize_.y);
-    builder.Float("Influence Size Z", influenceBoxSize_.z);
-    builder.Float("Blend Distance", blendDistance_);
-    builder.Int("Priority", priority_);
+    (void)EnumChoice(builder, D{"influenceShape", "Influence Shape"}, influenceShape_,
+                     kReflectionProbeInfluenceShapeNames);
+    builder.Vec3(D{"influenceBoxOffset", "Influence Offset"}, influenceBoxOffset_.x, influenceBoxOffset_.y,
+                 influenceBoxOffset_.z);
+    builder.Vec3(D{"influenceBoxSize", "Influence Size"}, influenceBoxSize_.x, influenceBoxSize_.y,
+                 influenceBoxSize_.z);
+    builder.Float(D{"blendDistance", "Blend Distance"}, blendDistance_);
+    builder.Int(D{"priority", "Priority"}, priority_);
 
     builder.Text("Projection");
     const bool wasLinked = projectionFollowsInfluence_;
-    builder.Bool("Link Projection To Influence", projectionFollowsInfluence_);
+    builder.Bool(D{"projectionFollowsInfluence", "Link Projection To Influence"}, projectionFollowsInfluence_);
     if (!wasLinked && projectionFollowsInfluence_) {
         SetProjectionFollowsInfluence(true);
     }
@@ -181,29 +183,19 @@ void ReflectionProbeComponent::BuildInspector(IInspectorBuilder& builder) {
         builder.Text("Projection Shape: Box (linked)");
         builder.Text("Viewport Bounds: Linked Influence + Projection");
     } else {
-        int projectionShape = projectionShape_ == ReflectionProbeProjectionShape::Box ? 1 : 0;
-        static constexpr std::array<const char*, 2> projectionChoices{"Infinite", "Box"};
-        if (builder.Choice("Projection Shape", projectionShape, projectionChoices)) {
-            projectionShape_ =
-                projectionShape == 1 ? ReflectionProbeProjectionShape::Box : ReflectionProbeProjectionShape::Infinite;
-        }
-        builder.Float("Projection Offset X", projectionBoxOffset_.x);
-        builder.Float("Projection Offset Y", projectionBoxOffset_.y);
-        builder.Float("Projection Offset Z", projectionBoxOffset_.z);
-        builder.Float("Projection Size X", projectionBoxSize_.x);
-        builder.Float("Projection Size Y", projectionBoxSize_.y);
-        builder.Float("Projection Size Z", projectionBoxSize_.z);
+        (void)EnumChoice(builder, D{"projectionShape", "Projection Shape"}, projectionShape_,
+                         kReflectionProbeProjectionShapeNames);
+        builder.Vec3(D{"projectionBoxOffset", "Projection Offset"}, projectionBoxOffset_.x, projectionBoxOffset_.y,
+                     projectionBoxOffset_.z);
+        builder.Vec3(D{"projectionBoxSize", "Projection Size"}, projectionBoxSize_.x, projectionBoxSize_.y,
+                     projectionBoxSize_.z);
         if (builder.Button("Match Projection To Influence")) {
             AlignProjectionToInfluence();
         }
 
         if (projectionShape_ == ReflectionProbeProjectionShape::Box) {
-            int viewportTarget = viewportBoundsTarget_ == ReflectionProbeViewportBoundsTarget::Projection ? 1 : 0;
-            static constexpr std::array<const char*, 2> viewportTargetChoices{"Influence", "Projection"};
-            if (builder.Choice("Viewport Bounds Target", viewportTarget, viewportTargetChoices)) {
-                viewportBoundsTarget_ = viewportTarget == 1 ? ReflectionProbeViewportBoundsTarget::Projection
-                                                            : ReflectionProbeViewportBoundsTarget::Influence;
-            }
+            (void)EnumChoice(builder, D{"viewportBoundsTarget", "Viewport Bounds Target"}, viewportBoundsTarget_,
+                             kReflectionProbeViewportBoundsTargetNames);
         } else {
             viewportBoundsTarget_ = ReflectionProbeViewportBoundsTarget::Influence;
             builder.Text("Viewport Bounds: Influence");
@@ -211,33 +203,24 @@ void ReflectionProbeComponent::BuildInspector(IInspectorBuilder& builder) {
     }
 
     builder.Text("Bake Routing");
-    builder.String("Bake Set", bakeSet_);
-    builder.String("Scenario", scenario_);
+    builder.String(D{"bakeSet", "Bake Set"}, bakeSet_);
+    builder.String(D{"scenario", "Scenario"}, scenario_);
     ClampSettings();
 }
 
 void IrradianceVolumeComponent::BuildInspector(IInspectorBuilder& builder) {
+    using D = AuthoringFieldDescriptor;
     builder.Text("Volume");
-    builder.Bool("Enabled", enabled_);
-    std::array<const char*, std::size(kLightProbeVolumeModeNames)> modeLabels{};
-    int mode = 0;
-    for (size_t index = 0; index < modeLabels.size(); ++index) {
-        modeLabels[index] = kLightProbeVolumeModeNames[index].name;
-        if (kLightProbeVolumeModeNames[index].value == mode_)
-            mode = static_cast<int>(index);
-    }
-    if (builder.Choice("Mode", mode, modeLabels))
-        mode_ = kLightProbeVolumeModeNames[mode].value;
+    builder.Bool(D{"enabled", "Enabled"}, enabled_);
+    (void)EnumChoice(builder, D{"mode", "Mode"}, mode_, kLightProbeVolumeModeNames);
     if (mode_ == LightProbeVolumeMode::Realtime)
         builder.Text("Realtime volumes are updated by ray-traced dynamic GI and need no bake.");
-    builder.Float("Size X", size_.x);
-    builder.Float("Size Y", size_.y);
-    builder.Float("Size Z", size_.z);
-    builder.Float("Intensity", intensity_);
-    builder.Float("Blend Distance", blendDistance_);
-    builder.FloatRange("Surface Normal Bias", normalBias_, 0.0f, 0.5f, 0.01f);
+    builder.Vec3(D{"size", "Size"}, size_.x, size_.y, size_.z);
+    builder.Float(D{"intensity", "Intensity"}, intensity_);
+    builder.Float(D{"blendDistance", "Blend Distance"}, blendDistance_);
+    builder.FloatRange(D{"normalBias", "Surface Normal Bias"}, normalBias_, 0.0f, 0.5f, 0.01f);
     builder.Text("Normal bias samples GI slightly away from walls to reduce leaks.");
-    builder.Int("Priority", priority_);
+    builder.Int(D{"priority", "Priority"}, priority_);
     if (builder.Button("Fit Size To Scene")) {
         MATH::Vec3 sceneSize{};
         if (MeasureSceneExtent(builder.GetContext().sceneDocument, sceneSize)) {
@@ -249,22 +232,20 @@ void IrradianceVolumeComponent::BuildInspector(IInspectorBuilder& builder) {
     int countX = static_cast<int>(countX_);
     int countY = static_cast<int>(countY_);
     int countZ = static_cast<int>(countZ_);
-    builder.Int("Count X", countX);
-    builder.Int("Count Y", countY);
-    builder.Int("Count Z", countZ);
+    builder.Int(D{"countX", "Count X"}, countX);
+    builder.Int(D{"countY", "Count Y"}, countY);
+    builder.Int(D{"countZ", "Count Z"}, countZ);
     countX_ = static_cast<uint32_t>((std::max)(countX, 1));
     countY_ = static_cast<uint32_t>((std::max)(countY, 1));
     countZ_ = static_cast<uint32_t>((std::max)(countZ, 1));
-    int captureQuality = captureResolution_ <= 16u ? 0 : (captureResolution_ <= 32u ? 1 : 2);
-    static constexpr std::array<const char*, 3> irradianceCaptureChoices{"16 - Preview", "32 - Standard", "64 - High"};
-    if (builder.Choice("Capture Quality", captureQuality, irradianceCaptureChoices)) {
-        static constexpr uint32_t resolutions[] = {16u, 32u, 64u};
-        captureResolution_ = resolutions[std::clamp(captureQuality, 0, 2)];
-    }
+    static constexpr std::array<AuthoringChoice, 3> captureChoices{AuthoringChoice{"16", "16 - Preview"},
+                                                                   AuthoringChoice{"32", "32 - Standard"},
+                                                                   AuthoringChoice{"64", "64 - High"}};
+    (void)CaptureResolutionChoice(builder, captureResolution_, {16u, 32u, 64u}, captureChoices);
 
     builder.Text("Bake Routing");
-    builder.String("Bake Set", bakeSet_);
-    builder.String("Scenario", scenario_);
+    builder.String(D{"bakeSet", "Bake Set"}, bakeSet_);
+    builder.String(D{"scenario", "Scenario"}, scenario_);
     ClampSettings();
 }
 

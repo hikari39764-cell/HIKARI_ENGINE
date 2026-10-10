@@ -38,6 +38,7 @@ const char* FieldTypeName(AuthoringFieldValueType type) noexcept {
     case AuthoringFieldValueType::String: return "string";
     case AuthoringFieldValueType::Color3: return "color3";
     case AuthoringFieldValueType::Vec2: return "vec2";
+    case AuthoringFieldValueType::Vec3: return "vec3";
     case AuthoringFieldValueType::Choice: return "choice";
     case AuthoringFieldValueType::AssetId: return "assetId";
     case AuthoringFieldValueType::SceneId: return "sceneId";
@@ -66,27 +67,6 @@ public:
     void Text(std::string_view) override {}
     bool Section(std::string_view, bool) override { return true; }
     bool Button(std::string_view) override { return false; }
-    bool Bool(std::string_view label, bool&) override { return UndeclaredField(label); }
-    bool Int(std::string_view label, int&) override { return UndeclaredField(label); }
-    bool Float(std::string_view label, float&) override { return UndeclaredField(label); }
-    bool FloatRange(std::string_view label, float&, float, float, float) override { return UndeclaredField(label); }
-    bool Color3(std::string_view label, float&, float&, float&) override { return UndeclaredField(label); }
-    bool String(std::string_view label, std::string&) override { return UndeclaredField(label); }
-    bool InputActionIdPicker(std::string_view label, INPUT::InputActionValueType, std::string&) override {
-        return UndeclaredField(label);
-    }
-    bool RuntimeVariableIdPicker(std::string_view label, BINDING::ValueType, std::string&) override {
-        return UndeclaredField(label);
-    }
-    bool RuntimeEventIdPicker(std::string_view label, bool, BINDING::ValueType, std::string&) override {
-        return UndeclaredField(label);
-    }
-    bool Choice(std::string_view label, int&, std::span<const char* const>) override { return UndeclaredField(label); }
-    bool Vec2(std::string_view label, float&, float&) override { return UndeclaredField(label); }
-    bool AssetIdPicker(std::string_view label, AssetType, std::string&) override { return UndeclaredField(label); }
-    bool SceneIdPicker(std::string_view label, std::string&) override { return UndeclaredField(label); }
-    bool SceneObjectIdPicker(std::string_view label, SceneObjectId&) override { return UndeclaredField(label); }
-
     bool Bool(const AuthoringFieldDescriptor& field, bool& value) override {
         const auto apply = [this, &value]() {
             if (!requestedValue_.is_boolean()) {
@@ -213,11 +193,6 @@ public:
                            {{"inputValueType", static_cast<int>(expectedType)}}, nullptr);
     }
 
-    bool RuntimeVariableIdPicker(const AuthoringFieldDescriptor& field, BINDING::ValueType expectedType,
-                                 std::string& value) override {
-        return RuntimeVariableIdPicker(field, std::span<const BINDING::ValueType>(&expectedType, 1u), value);
-    }
-
     bool RuntimeVariableIdPicker(const AuthoringFieldDescriptor& field,
                                  std::span<const BINDING::ValueType> allowedTypes, std::string& value) override {
         if (allowedTypes.empty()) {
@@ -325,6 +300,25 @@ public:
         return Visit(field, AuthoringFieldValueType::Vec2, current, nlohmann::json::object(), apply);
     }
 
+    bool Vec3(const AuthoringFieldDescriptor& field, float& x, float& y, float& z) override {
+        const nlohmann::json current = {x, y, z};
+        const auto apply = [this, &x, &y, &z]() {
+            if (!IsNumberArray(requestedValue_, 3u)) {
+                SetTypeError("array of 3 numbers");
+                return false;
+            }
+            const float nextX = requestedValue_[0].get<float>();
+            const float nextY = requestedValue_[1].get<float>();
+            const float nextZ = requestedValue_[2].get<float>();
+            const bool changed = x != nextX || y != nextY || z != nextZ;
+            x = nextX;
+            y = nextY;
+            z = nextZ;
+            return changed;
+        };
+        return Visit(field, AuthoringFieldValueType::Vec3, current, nlohmann::json::object(), apply);
+    }
+
     bool AssetIdPicker(const AuthoringFieldDescriptor& field, AssetType assetType, std::string& value) override {
         const auto validator = [this, assetType](const std::string& next) {
             if (next.empty() || context_.assetDatabase == nullptr) {
@@ -380,7 +374,6 @@ public:
     const std::string& Code() const noexcept { return code_; }
     const std::string& Message() const noexcept { return message_; }
     const nlohmann::json& Fields() const noexcept { return fields_; }
-    const nlohmann::json& UnavailableFields() const noexcept { return unavailableFields_; }
 
 private:
     bool ValidateEventId(const std::string& next, AuthoringEventPayloadPolicy policy, BINDING::ValueType payloadType) {
@@ -529,11 +522,6 @@ private:
     InspectorContext context_{};
     std::string requestedPropertyId_{};
     nlohmann::json requestedValue_{};
-    bool UndeclaredField(std::string_view label) {
-        unavailableFields_.push_back(std::string(label));
-        return false;
-    }
-    nlohmann::json unavailableFields_ = nlohmann::json::array();
     nlohmann::json fields_ = nlohmann::json::array();
     std::unordered_set<std::string> fieldIds_{};
     std::string code_{};
@@ -565,9 +553,7 @@ ComponentAuthoringServiceResult DescribeComponentProperties(IComponent& componen
     HeadlessComponentAuthoringBuilder builder(HeadlessComponentAuthoringBuilder::Mode::Describe);
     auto result = BuildProperties(component, context, builder);
     if (result.ok) {
-        result.data = {{"fields", builder.Fields()},
-                       {"schemaComplete", builder.UnavailableFields().empty()},
-                       {"unavailableFields", builder.UnavailableFields()}};
+        result.data = {{"fields", builder.Fields()}};
     }
     return result;
 }

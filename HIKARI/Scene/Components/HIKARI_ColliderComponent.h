@@ -2,15 +2,29 @@
 
 #include <vector>
 
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Physics/HIKARI_PhysicsTypes.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 
 namespace HIKARI {
 
+// 碰撞器が持てる形（保存名と診断で共通）。
+inline constexpr TEXT::EnumName<PHYSICS::PhysicsShapeType> kColliderShapeTypeNames[] = {
+    {PHYSICS::PhysicsShapeType::Box, "Box"},
+    {PHYSICS::PhysicsShapeType::Sphere, "Sphere"},
+    {PHYSICS::PhysicsShapeType::Capsule, "Capsule"},
+};
+
 enum class ColliderFitMode : uint8_t {
     Manual,
     Geometry,
     CollisionAsset,
+};
+
+inline constexpr TEXT::EnumName<ColliderFitMode> kColliderFitModeNames[] = {
+    {ColliderFitMode::Manual, "Manual"},
+    {ColliderFitMode::Geometry, "Geometry"},
+    {ColliderFitMode::CollisionAsset, "CollisionAsset"},
 };
 
 struct ResolvedColliderShape {

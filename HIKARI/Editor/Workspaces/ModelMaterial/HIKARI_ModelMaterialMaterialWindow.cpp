@@ -140,7 +140,7 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(DocumentSceneBase& sce
     }
 
     ImGui::BeginDisabled(!authoringDocument_.IsMaterialDirty() || !compile.success);
-    if (ImGui::Button(TEXT::LocalizeWindow("ai.api.save", "Save").c_str())) {
+    if (ImGui::Button(TEXT::LocalizeWindow("ui.common.save", "Save").c_str())) {
         (void)SaveMaterial(scene, false, statusMessage_);
     }
     ImGui::EndDisabled();

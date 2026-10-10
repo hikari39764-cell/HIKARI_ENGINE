@@ -77,7 +77,7 @@ EditorOperationResult EditorAuthoringSessionHost::Open(const nlohmann::json& par
     result.data = backend->Describe();
     result.data["sessionId"] = id;
     if (result.data.contains("poll"))
-        result.data["poll"]["sessionId"] = id;
+        result.data["poll"]["parameters"]["sessionId"] = id;
     result.data["workspace"] = workspace;
     auto [inserted, unused] = sessions_.emplace(id, Session{workspace, std::move(backend)});
     inserted->second.touched = ++touchSerial_;
@@ -157,7 +157,7 @@ EditorOperationResult EditorAuthoringSessionHost::Execute(const std::string& act
     FlushRecovery();
     result.data["sessionId"] = id;
     if (result.data.contains("poll"))
-        result.data["poll"]["sessionId"] = id;
+        result.data["poll"]["parameters"]["sessionId"] = id;
     return result;
 }
 

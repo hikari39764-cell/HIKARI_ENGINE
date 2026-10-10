@@ -8,7 +8,7 @@
 namespace HIKARI {
 void ProceduralMeshComponent::Serialize(nlohmann::json& out) const {
     const ProceduralMeshSettings settings = SanitizeProceduralMeshSettings(settings_);
-    out = {{"kind", ToString(settings.kind)},
+    out = {{"kind", TEXT::EnumToName(kProceduralMeshKindNames, settings.kind, "Box")},
            {"width", settings.width},
            {"height", settings.height},
            {"depth", settings.depth},
@@ -26,23 +26,22 @@ void ProceduralMeshComponent::Serialize(nlohmann::json& out) const {
 }
 
 void ProceduralMeshComponent::Deserialize(const nlohmann::json& in) {
-    const nlohmann::json& source = in.contains("settings") && in["settings"].is_object() ? in["settings"] : in;
-    settings_.kind = ParseProceduralMeshKind(source.value("kind", nlohmann::json{}), settings_.kind);
-    settings_.width = source.value("width", settings_.width);
-    settings_.height = source.value("height", settings_.height);
-    settings_.depth = source.value("depth", settings_.depth);
-    settings_.segmentsX = source.value("segmentsX", settings_.segmentsX);
-    settings_.segmentsY = source.value("segmentsY", settings_.segmentsY);
-    settings_.segmentsZ = source.value("segmentsZ", settings_.segmentsZ);
-    settings_.sphereSlices = source.value("sphereSlices", settings_.sphereSlices);
-    settings_.sphereStacks = source.value("sphereStacks", settings_.sphereStacks);
-    settings_.doubleSided = source.value("doubleSided", settings_.doubleSided);
-    settings_.generateTangents = source.value("generateTangents", settings_.generateTangents);
-    settings_.uvTilesX = source.value("uvTilesX", settings_.uvTilesX);
-    settings_.uvTilesY = source.value("uvTilesY", settings_.uvTilesY);
-    settings_.cuts = ReadProceduralMeshCuts(source.value("cuts", nlohmann::json::array()));
+    TEXT::TryParseEnum(kProceduralMeshKindNames, in.value("kind", std::string{}), settings_.kind);
+    settings_.width = in.value("width", settings_.width);
+    settings_.height = in.value("height", settings_.height);
+    settings_.depth = in.value("depth", settings_.depth);
+    settings_.segmentsX = in.value("segmentsX", settings_.segmentsX);
+    settings_.segmentsY = in.value("segmentsY", settings_.segmentsY);
+    settings_.segmentsZ = in.value("segmentsZ", settings_.segmentsZ);
+    settings_.sphereSlices = in.value("sphereSlices", settings_.sphereSlices);
+    settings_.sphereStacks = in.value("sphereStacks", settings_.sphereStacks);
+    settings_.doubleSided = in.value("doubleSided", settings_.doubleSided);
+    settings_.generateTangents = in.value("generateTangents", settings_.generateTangents);
+    settings_.uvTilesX = in.value("uvTilesX", settings_.uvTilesX);
+    settings_.uvTilesY = in.value("uvTilesY", settings_.uvTilesY);
+    settings_.cuts = ReadProceduralMeshCuts(in.value("cuts", nlohmann::json::array()));
     materialSelection_ =
-        ASSETS::MATERIAL::CanonicalizeProceduralMaterialSelection(source.value("materialSelection", std::string{}));
+        ASSETS::MATERIAL::CanonicalizeProceduralMaterialSelection(in.value("materialSelection", std::string{}));
     settings_ = SanitizeProceduralMeshSettings(settings_);
     NotifyRenderStateDirty();
 }

@@ -27,8 +27,9 @@ void VfxPlayerComponent::BuildInspector(IInspectorBuilder& builder) {
     using VfxPlayerAuthoringInternal::FindProgramInput;
     using VfxPlayerAuthoringInternal::ResolveProgram;
     using VfxPlayerAuthoringInternal::ToBindingType;
+    using D = AuthoringFieldDescriptor;
 
-    (void)builder.Bool("Enabled", enabled_);
+    (void)builder.Bool(AuthoringFieldDescriptor{"enabled", "Enabled"}, enabled_);
     if (builder.Button("Add VFX Slot")) {
         (void)AddSlot();
     }
@@ -43,49 +44,45 @@ void VfxPlayerComponent::BuildInspector(IInspectorBuilder& builder) {
         if (!builder.Section(slot.name + suffix, true)) {
             continue;
         }
-        (void)builder.String("Name" + suffix, slot.name);
-        (void)builder.Bool("Slot Enabled" + suffix, slot.enabled);
-        (void)builder.AssetIdPicker("Effect" + suffix, AssetType::VfxEffect, slot.effectAssetGuid.value);
-        (void)builder.Bool("Play On Start" + suffix, slot.playOnStart);
+        // 槽位の項目 ID は slots.<槽位 ID>.<キー名>（並べ替えても変わらない）。一時文字列は呼び出しの間だけ使う。
+        const std::string prefix = "slots." + std::to_string(slot.id.value) + ".";
+        const auto id = [&prefix](std::string_view key) { return prefix + std::string(key); };
+        (void)builder.String(D{id("name"), "Name"}, slot.name);
+        (void)builder.Bool(D{id("enabled"), "Slot Enabled"}, slot.enabled);
+        (void)builder.AssetIdPicker(D{id("effectAssetGuid"), "Effect"}, AssetType::VfxEffect,
+                                    slot.effectAssetGuid.value);
+        (void)builder.Bool(D{id("playOnStart"), "Play On Start"}, slot.playOnStart);
         const AuthoringEventPayloadPolicy eventPolicy = slot.spawnTarget == VfxSpawnTarget::EventPayloadPosition
                                                             ? AuthoringEventPayloadPolicy::Exact
                                                             : AuthoringEventPayloadPolicy::Any;
-        (void)builder.RuntimeEventIdPicker("Trigger Event" + suffix, eventPolicy, BINDING::ValueType::Float3,
-                                           slot.triggerEventId);
+        (void)builder.RuntimeEventIdPicker(D{id("triggerEventId"), "Trigger Event"}, eventPolicy,
+                                           BINDING::ValueType::Float3, slot.triggerEventId);
 
-        static constexpr std::array<const char*, 4> spawnChoices{"Owner", "Event Source", "Fixed Object",
-                                                                 "Event Payload Position"};
-        int spawnIndex = static_cast<int>(slot.spawnTarget);
-        if (builder.Choice("Spawn Target" + suffix, spawnIndex, spawnChoices)) {
-            slot.spawnTarget = static_cast<VfxSpawnTarget>(std::clamp(spawnIndex, 0, 3));
-        }
+        static constexpr std::array<std::string_view, std::size(kVfxSpawnTargetNames)> spawnLabels{
+            "Owner", "Event Source", "Fixed Object", "Event Payload Position"};
+        (void)EnumChoice(builder, D{id("spawnTarget"), "Spawn Target"}, slot.spawnTarget, kVfxSpawnTargetNames,
+                         &spawnLabels);
         if (slot.spawnTarget == VfxSpawnTarget::FixedObject) {
-            (void)builder.SceneObjectIdPicker("Fixed Object" + suffix, slot.fixedObjectId);
+            (void)builder.SceneObjectIdPicker(D{id("fixedObjectId"), "Fixed Object"}, slot.fixedObjectId);
         }
-        (void)builder.Bool("Follow Target" + suffix, slot.followTarget);
-        (void)builder.Float("Offset Position X" + suffix, slot.offset.position.x);
-        (void)builder.Float("Offset Position Y" + suffix, slot.offset.position.y);
-        (void)builder.Float("Offset Position Z" + suffix, slot.offset.position.z);
-        (void)builder.Float("Offset Rotation X" + suffix, slot.offset.rotationEulerDegrees.x);
-        (void)builder.Float("Offset Rotation Y" + suffix, slot.offset.rotationEulerDegrees.y);
-        (void)builder.Float("Offset Rotation Z" + suffix, slot.offset.rotationEulerDegrees.z);
-        (void)builder.Float("Offset Scale X" + suffix, slot.offset.scale.x);
-        (void)builder.Float("Offset Scale Y" + suffix, slot.offset.scale.y);
-        (void)builder.Float("Offset Scale Z" + suffix, slot.offset.scale.z);
+        (void)builder.Bool(D{id("followTarget"), "Follow Target"}, slot.followTarget);
+        MATH::Vec3& position = slot.offset.position;
+        MATH::Vec3& rotation = slot.offset.rotationEulerDegrees;
+        MATH::Vec3& scale = slot.offset.scale;
+        (void)builder.Vec3(D{id("offset.position"), "Offset Position"}, position.x, position.y, position.z);
+        (void)builder.Vec3(D{id("offset.rotationEulerDegrees"), "Offset Rotation"}, rotation.x, rotation.y, rotation.z);
+        (void)builder.Vec3(D{id("offset.scale"), "Offset Scale"}, scale.x, scale.y, scale.z);
 
-        static constexpr std::array<const char*, 3> loopChoices{"Asset Default", "Force Loop", "Force One Shot"};
-        int loopIndex = static_cast<int>(slot.loopMode);
-        if (builder.Choice("Loop Mode" + suffix, loopIndex, loopChoices)) {
-            slot.loopMode = static_cast<VfxLoopMode>(std::clamp(loopIndex, 0, 2));
-        }
-        static constexpr std::array<const char*, 3> retriggerChoices{"Parallel", "Restart", "Ignore If Playing"};
-        int retriggerIndex = static_cast<int>(slot.retriggerPolicy);
-        if (builder.Choice("Retrigger" + suffix, retriggerIndex, retriggerChoices)) {
-            slot.retriggerPolicy = static_cast<VfxRetriggerPolicy>(std::clamp(retriggerIndex, 0, 2));
-        }
+        static constexpr std::array<std::string_view, std::size(kVfxLoopModeNames)> loopLabels{
+            "Asset Default", "Force Loop", "Force One Shot"};
+        (void)EnumChoice(builder, D{id("loopMode"), "Loop Mode"}, slot.loopMode, kVfxLoopModeNames, &loopLabels);
+        static constexpr std::array<std::string_view, std::size(kVfxRetriggerPolicyNames)> retriggerLabels{
+            "Parallel", "Restart", "Ignore If Playing"};
+        (void)EnumChoice(builder, D{id("retriggerPolicy"), "Retrigger"}, slot.retriggerPolicy, kVfxRetriggerPolicyNames,
+                         &retriggerLabels);
         int randomSeed =
             static_cast<int>((std::min)(slot.randomSeed, static_cast<uint32_t>((std::numeric_limits<int>::max)())));
-        if (builder.Int("Random Seed" + suffix, randomSeed)) {
+        if (builder.Int(D{id("randomSeed"), "Random Seed"}, randomSeed)) {
             slot.randomSeed = static_cast<uint32_t>((std::max)(randomSeed, 0));
         }
 
@@ -107,6 +104,7 @@ void VfxPlayerComponent::BuildInspector(IInspectorBuilder& builder) {
         for (size_t bindingIndex = 0u; bindingIndex < slot.variableBindings.size(); ++bindingIndex) {
             VfxVariableBinding& binding = slot.variableBindings[bindingIndex];
             const std::string bindingSuffix = suffix + "-binding-" + std::to_string(bindingIndex);
+            const std::string bindingId = id("variableBindings." + std::to_string(bindingIndex) + ".");
             const VFX::VfxProgramInput* selectedInput = FindProgramInput(program, binding.inputId);
             if (program != nullptr && !program->inputs.empty()) {
                 std::vector<std::string> labels{};
@@ -118,10 +116,10 @@ void VfxPlayerComponent::BuildInspector(IInspectorBuilder& builder) {
                     choices.push_back(&input);
                     labels.push_back(input.id + " (" + std::string(VFX::ToString(input.type)) + ")");
                 }
-                std::vector<const char*> choiceLabels{};
-                choiceLabels.reserve(labels.size());
-                for (const std::string& label : labels) {
-                    choiceLabels.push_back(label.c_str());
+                std::vector<AuthoringChoice> inputChoices{};
+                inputChoices.reserve(labels.size());
+                for (size_t choiceIndex = 0u; choiceIndex < choices.size(); ++choiceIndex) {
+                    inputChoices.push_back({choices[choiceIndex]->id, labels[choiceIndex]});
                 }
                 int selectedIndex = 0;
                 for (size_t choiceIndex = 0u; choiceIndex < choices.size(); ++choiceIndex) {
@@ -130,14 +128,15 @@ void VfxPlayerComponent::BuildInspector(IInspectorBuilder& builder) {
                         break;
                     }
                 }
-                if (!choices.empty() && builder.Choice("Exposed Input" + bindingSuffix, selectedIndex, choiceLabels)) {
+                if (!choices.empty() &&
+                    builder.Choice(D{bindingId + "inputId", "Exposed Input"}, selectedIndex, inputChoices)) {
                     selectedIndex = std::clamp(selectedIndex, 0, static_cast<int>(choices.size() - 1u));
                     binding.inputId = choices[static_cast<size_t>(selectedIndex)]->id;
                     selectedInput = choices[static_cast<size_t>(selectedIndex)];
                 }
             }
             if (selectedInput != nullptr) {
-                (void)builder.RuntimeVariableIdPicker("Runtime Variable" + bindingSuffix,
+                (void)builder.RuntimeVariableIdPicker(D{bindingId + "variableId", "Runtime Variable"},
                                                       ToBindingType(selectedInput->type), binding.variableId);
             } else {
                 builder.Text("This exposed input no longer exists in the VFX asset.");

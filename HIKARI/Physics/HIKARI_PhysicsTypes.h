@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Core/Math/HIKARI_Math3D.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI::PHYSICS {
@@ -15,6 +16,12 @@ enum class PhysicsMotionType : uint8_t {
     Static,
     Kinematic,
     Dynamic,
+};
+
+inline constexpr TEXT::EnumName<PhysicsMotionType> kPhysicsMotionTypeNames[] = {
+    {PhysicsMotionType::Static, "Static"},
+    {PhysicsMotionType::Kinematic, "Kinematic"},
+    {PhysicsMotionType::Dynamic, "Dynamic"},
 };
 
 enum class PhysicsShapeType : uint8_t {

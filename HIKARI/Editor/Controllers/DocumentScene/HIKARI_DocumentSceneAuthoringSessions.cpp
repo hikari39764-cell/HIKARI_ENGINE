@@ -61,7 +61,7 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAiCapturePre
     auto result = StartEditorPreviewCapture(view, scene.GetAssetDatabase().GetLibraryRoot() / "EditorAI" / "Captures",
                                             parameters.value("path", std::string{}));
     if (result.ok && result.data.contains("poll"))
-        aiSceneCaptureTicket_ = result.data["poll"].value("captureId", uint64_t{});
+        aiSceneCaptureTicket_ = result.data["poll"]["parameters"].value("captureId", uint64_t{});
     return result;
 }
 

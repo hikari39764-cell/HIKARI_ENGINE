@@ -103,19 +103,22 @@ bool ConfigureSlot(VfxPlayerSlot& slot, const nlohmann::json& values, std::strin
     configured.fixedObjectId.value = fixedObjectId;
     configured.randomSeed = static_cast<uint32_t>(randomSeed);
     if (const auto found = values.find("spawnTarget"); found != values.end()) {
-        if (!found->is_string() || !TryParseVfxSpawnTarget(found->get<std::string>(), configured.spawnTarget)) {
+        if (!found->is_string() ||
+            !TEXT::TryParseEnum(kVfxSpawnTargetNames, found->get<std::string>(), configured.spawnTarget)) {
             outError = "unknown spawnTarget";
             return false;
         }
     }
     if (const auto found = values.find("loopMode"); found != values.end()) {
-        if (!found->is_string() || !TryParseVfxLoopMode(found->get<std::string>(), configured.loopMode)) {
+        if (!found->is_string() ||
+            !TEXT::TryParseEnum(kVfxLoopModeNames, found->get<std::string>(), configured.loopMode)) {
             outError = "unknown loopMode";
             return false;
         }
     }
     if (const auto found = values.find("retriggerPolicy"); found != values.end()) {
-        if (!found->is_string() || !TryParseVfxRetriggerPolicy(found->get<std::string>(), configured.retriggerPolicy)) {
+        if (!found->is_string() ||
+            !TEXT::TryParseEnum(kVfxRetriggerPolicyNames, found->get<std::string>(), configured.retriggerPolicy)) {
             outError = "unknown retriggerPolicy";
             return false;
         }

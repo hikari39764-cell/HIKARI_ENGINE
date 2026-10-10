@@ -169,7 +169,9 @@ EditorOperationResult SceneViewSeriesCapture::Pending() const {
     return {true,
             "PENDING",
             "正在渲染第 " + std::to_string(next_ + 1u) + "/" + std::to_string(views_.size()) + " 个角度。",
-            {{"pending", true}, {"stage", "render"}, {"poll", {{"action", "scene.capture_views.status"}}}}};
+            {{"pending", true},
+             {"stage", "render"},
+             {"poll", {{"operation", "scene.capture_views.status"}, {"parameters", nlohmann::json::object()}}}}};
 }
 
 EditorOperationResult SceneViewSeriesCapture::Poll(DocumentSceneBase* scene) {

@@ -229,13 +229,6 @@ ComponentAuthoringServiceResult ComponentPropertyAuthoringService::Describe(cons
                         {"componentId", target.componentId.value},
                         {"componentType", resolved.component->type},
                         {"commands", SerializeCommands(*resolved.typeInfo)}});
-    if (result.data["fields"].empty() && !result.data["unavailableFields"].empty() &&
-        resolved.typeInfo->authoringCommands.empty()) {
-        result.ok = false;
-        result.code = "AUTHORING_SCHEMA_INCOMPLETE";
-        result.message =
-            "This component still uses UI-only fields. No writable authoring schema is registered; querying again will not expose them.";
-    }
     return result;
 }
 

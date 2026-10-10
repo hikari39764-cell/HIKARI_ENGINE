@@ -9,35 +9,12 @@
 namespace HIKARI {
 namespace {
 constexpr float kDegreesToRadians = MATH::kDegreesToRadians;
-
-const char* ToString(CharacterMovementSpace space) noexcept {
-    switch (space) {
-    case CharacterMovementSpace::World: return "World";
-    case CharacterMovementSpace::Object: return "Object";
-    case CharacterMovementSpace::Camera:
-    default: return "Camera";
-    }
-}
-
-CharacterMovementSpace ParseMovementSpace(const nlohmann::json& value, CharacterMovementSpace fallback) {
-    if (!value.is_string()) {
-        return fallback;
-    }
-    const std::string text = value.get<std::string>();
-    if (text == "World")
-        return CharacterMovementSpace::World;
-    if (text == "Object")
-        return CharacterMovementSpace::Object;
-    if (text == "Camera")
-        return CharacterMovementSpace::Camera;
-    return fallback;
-}
 } // namespace
 
 void CharacterLocomotionComponent::Serialize(nlohmann::json& out) const {
     out["enabled"] = enabled_;
     out["motionPriority"] = motionPriority_;
-    out["movementSpace"] = ToString(movementSpace_);
+    out["movementSpace"] = TEXT::EnumToName(kCharacterMovementSpaceNames, movementSpace_, "Camera");
     out["maximumSpeed"] = maximumSpeed_;
     out["sprintMultiplier"] = sprintMultiplier_;
     out["acceleration"] = acceleration_;
@@ -70,9 +47,7 @@ void CharacterLocomotionComponent::Serialize(nlohmann::json& out) const {
 void CharacterLocomotionComponent::Deserialize(const nlohmann::json& in) {
     enabled_ = in.value("enabled", enabled_);
     motionPriority_ = in.value("motionPriority", motionPriority_);
-    if (const auto found = in.find("movementSpace"); found != in.end()) {
-        movementSpace_ = ParseMovementSpace(*found, movementSpace_);
-    }
+    TEXT::TryParseEnum(kCharacterMovementSpaceNames, in.value("movementSpace", std::string{}), movementSpace_);
     maximumSpeed_ = in.value("maximumSpeed", maximumSpeed_);
     sprintMultiplier_ = in.value("sprintMultiplier", sprintMultiplier_);
     acceleration_ = in.value("acceleration", acceleration_);

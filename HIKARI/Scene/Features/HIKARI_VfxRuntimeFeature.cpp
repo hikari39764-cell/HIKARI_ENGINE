@@ -5,7 +5,6 @@
 #include <string>
 
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
-#include "Scene/Components/Rendering/Vfx/HIKARI_GhostPossessionComponent.h"
 #include "Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponent.h"
 #include "Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponentAuthoring.h"
 #include "HIKARI/Project/RuntimeFeature.h"
@@ -13,7 +12,6 @@
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
-#include "Scene/Vfx/HIKARI_GhostPossessionSystem.h"
 #include "Scene/Vfx/HIKARI_VfxPlayerSystem.h"
 
 namespace HIKARI {
@@ -51,36 +49,12 @@ public:
         player.authoringCommands = BuildVfxPlayerComponentAuthoringCommands();
         player.validateAuthoring = ValidateVfxPlayerComponentAuthoring;
 
-        ComponentTypeInfo ghost{};
-        ghost.typeName = "GhostPossessionComponent";
-        ghost.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<GhostPossessionComponent>(); };
-        ghost.requiredComponents = {"ModelComponent", "MaterialFxComponent"};
-        ghost.optionalComponents = {"VfxPlayerComponent"};
-        ghost.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            GhostPossessionComponent defaults{};
-            defaults.Serialize(properties);
-        };
-        ghost.presentation =
-            ComponentTypePresentation{"Ghost Possession", "Rendering/VFX",
-                                      "Blends a reusable ghost surface and optional enter, loop, and exit VFX slots.",
-                                      std::string(RuntimeFeatureIds::Vfx)};
-
         bool success = componentRegistry.Register(std::move(player));
-        success = componentRegistry.Register(std::move(ghost)) && success;
-        success = systemRegistry.Register(SystemTypeInfo{"GhostPossessionSystem",
-                                                         [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
-                                                             return std::make_unique<GhostPossessionSystem>();
-                                                         },
-                                                         "Ghost Possession", std::string(RuntimeFeatureIds::Vfx)}) &&
-                  success;
         success = systemRegistry.Register(SystemTypeInfo{"VfxPlayerSystem",
                                                          [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
                                                              return std::make_unique<VfxPlayerSystem>();
                                                          },
                                                          "VFX Player", std::string(RuntimeFeatureIds::Vfx)}) &&
-                  success;
-        success = componentSystemPolicy.Register(
-                      ComponentSystemRule{"GhostPossessionComponent", "GhostPossessionSystem", 170}) &&
                   success;
         success = componentSystemPolicy.Register(ComponentSystemRule{"VfxPlayerComponent", "VfxPlayerSystem", 180}) &&
                   success;

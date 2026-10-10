@@ -37,11 +37,11 @@ enum class EditorOperationPermission : uint32_t {
     ExecuteExternalProcess,
 };
 
+// Agent: external agents (Claude Code, Codex) through the editor local bridge. Bit 1u << 1u is unused.
 enum class EditorOperationExposureMask : uint32_t {
     None = 0u,
     Human = 1u << 0u,
-    BuiltInAi = 1u << 1u,
-    LocalBridge = 1u << 2u,
+    Agent = 1u << 2u,
 };
 
 constexpr EditorOperationExposureMask operator|(EditorOperationExposureMask lhs,

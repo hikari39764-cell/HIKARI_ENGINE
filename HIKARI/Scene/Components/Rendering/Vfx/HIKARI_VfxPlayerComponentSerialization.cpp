@@ -36,7 +36,7 @@ void VfxPlayerComponent::Serialize(nlohmann::json& out) const {
             {"effectAssetGuid", slot.effectAssetGuid.value},
             {"playOnStart", slot.playOnStart},
             {"triggerEventId", slot.triggerEventId},
-            {"spawnTarget", std::string(ToString(slot.spawnTarget))},
+            {"spawnTarget", TEXT::EnumToName(kVfxSpawnTargetNames, slot.spawnTarget, "Owner")},
             {"fixedObjectId", SCENE::SERIALIZATION::WriteSceneObjectReference(slot.fixedObjectId.value)},
             {"followTarget", slot.followTarget},
             {"offset",
@@ -45,8 +45,8 @@ void VfxPlayerComponent::Serialize(nlohmann::json& out) const {
                  {"rotationEulerDegrees", WriteVec3(slot.offset.rotationEulerDegrees)},
                  {"scale", WriteVec3(slot.offset.scale)},
              }},
-            {"loopMode", std::string(ToString(slot.loopMode))},
-            {"retriggerPolicy", std::string(ToString(slot.retriggerPolicy))},
+            {"loopMode", TEXT::EnumToName(kVfxLoopModeNames, slot.loopMode, "AssetDefault")},
+            {"retriggerPolicy", TEXT::EnumToName(kVfxRetriggerPolicyNames, slot.retriggerPolicy, "Parallel")},
             {"randomSeed", slot.randomSeed},
             {"variableBindings", std::move(bindings)},
         });
@@ -93,7 +93,7 @@ bool VfxPlayerComponent::TryDeserialize(const nlohmann::json& in, std::string& o
                     !ReadString(node, "spawnTarget", "Owner", enumText, outDiagnostic, slotPath)) {
                     return false;
                 }
-                if (!TryParseVfxSpawnTarget(enumText, slot.spawnTarget)) {
+                if (!TEXT::TryParseEnum(kVfxSpawnTargetNames, enumText, slot.spawnTarget)) {
                     return Fail(outDiagnostic, slotPath + ".spawnTarget is invalid");
                 }
                 if (const auto target = node.find("fixedObjectId");
@@ -105,13 +105,13 @@ bool VfxPlayerComponent::TryDeserialize(const nlohmann::json& in, std::string& o
                     !ReadString(node, "loopMode", "AssetDefault", enumText, outDiagnostic, slotPath)) {
                     return false;
                 }
-                if (!TryParseVfxLoopMode(enumText, slot.loopMode)) {
+                if (!TEXT::TryParseEnum(kVfxLoopModeNames, enumText, slot.loopMode)) {
                     return Fail(outDiagnostic, slotPath + ".loopMode is invalid");
                 }
                 if (!ReadString(node, "retriggerPolicy", "Parallel", enumText, outDiagnostic, slotPath)) {
                     return false;
                 }
-                if (!TryParseVfxRetriggerPolicy(enumText, slot.retriggerPolicy)) {
+                if (!TEXT::TryParseEnum(kVfxRetriggerPolicyNames, enumText, slot.retriggerPolicy)) {
                     return Fail(outDiagnostic, slotPath + ".retriggerPolicy is invalid");
                 }
                 if (!ReadUint32(node, "randomSeed", 0u, slot.randomSeed, outDiagnostic, slotPath)) {

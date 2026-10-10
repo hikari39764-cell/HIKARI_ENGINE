@@ -406,7 +406,7 @@ private:
                               ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_NoPadOuterX)) {
             ImGui::TableNextColumn();
             if (IconButton(EditorGlyph::Save, "dialogueSave", EditorButtonTone::Quiet,
-                           {ImGui::GetContentRegionAvail().x, 28}, TEXT::Localize("ai.api.save").c_str())) {
+                           {ImGui::GetContentRegionAvail().x, 28}, TEXT::Localize("ui.common.save").c_str())) {
                 (void)controller_.Save(scene_, Status());
             }
             const bool canUndo = stylePage ? controller_.styleDocument_.CanUndo() : controller_.document_.CanUndo();
@@ -905,13 +905,16 @@ private:
         InspectorContext context{};
         context.assetDatabase = &database_;
         inspector.SetContext(context);
-        bool changed = inspector.AssetIdPicker(TEXT::Localize("editor.ui.character.name.c0a090").c_str(),
-                                               AssetType::TextStyle, style_.theme.speakerTextStyle.value);
-        changed = inspector.AssetIdPicker(TEXT::Localize("editor.ui.dialogue.text.1bd98a").c_str(),
-                                          AssetType::TextStyle, style_.theme.bodyTextStyle.value) ||
+        bool changed = inspector.AssetIdPicker(
+            AuthoringFieldDescriptor{"speakerTextStyle", TEXT::Localize("editor.ui.character.name.c0a090")},
+            AssetType::TextStyle, style_.theme.speakerTextStyle.value);
+        changed = inspector.AssetIdPicker(
+                      AuthoringFieldDescriptor{"bodyTextStyle", TEXT::Localize("editor.ui.dialogue.text.1bd98a")},
+                      AssetType::TextStyle, style_.theme.bodyTextStyle.value) ||
                   changed;
-        changed = inspector.AssetIdPicker(TEXT::Localize("editor.ui.choice.text.a9c015").c_str(), AssetType::TextStyle,
-                                          style_.theme.choiceTextStyle.value) ||
+        changed = inspector.AssetIdPicker(
+                      AuthoringFieldDescriptor{"choiceTextStyle", TEXT::Localize("editor.ui.choice.text.a9c015")},
+                      AssetType::TextStyle, style_.theme.choiceTextStyle.value) ||
                   changed;
         if (changed)
             RecordStyle(std::move(before), "style.typography");

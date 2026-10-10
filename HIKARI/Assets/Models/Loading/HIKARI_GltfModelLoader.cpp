@@ -13,6 +13,8 @@
 
 #include <json.hpp>
 
+#include "Core/Text/HIKARI_Base64.h"
+
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Assets/Models/Loading/Gltf/HIKARI_GltfAccessorReader.h"
 #include "Assets/Models/Loading/Gltf/HIKARI_GltfAnimationReader.h"
@@ -26,45 +28,6 @@ namespace HIKARI::ASSETS::MODELS {
 namespace {
 using nlohmann::json;
 
-int DecodeBase64Value(char c) {
-    if (c >= 'A' && c <= 'Z')
-        return c - 'A';
-    if (c >= 'a' && c <= 'z')
-        return c - 'a' + 26;
-    if (c >= '0' && c <= '9')
-        return c - '0' + 52;
-    if (c == '+')
-        return 62;
-    if (c == '/')
-        return 63;
-    return -1;
-}
-
-bool DecodeBase64(std::string_view input, std::vector<uint8_t>& out) {
-    out.clear();
-    int value = 0;
-    int bits = -8;
-    for (char c : input) {
-        if (std::isspace(static_cast<unsigned char>(c)) != 0) {
-            continue;
-        }
-        if (c == '=') {
-            break;
-        }
-        const int decoded = DecodeBase64Value(c);
-        if (decoded < 0) {
-            return false;
-        }
-        value = (value << 6) | decoded;
-        bits += 6;
-        if (bits >= 0) {
-            out.push_back(static_cast<uint8_t>((value >> bits) & 0xFF));
-            bits -= 8;
-        }
-    }
-    return true;
-}
-
 bool DecodeDataUriBytes(const std::string& uri, std::vector<uint8_t>& out) {
     const size_t comma = uri.find(',');
     if (comma == std::string::npos) {
@@ -74,7 +37,7 @@ bool DecodeDataUriBytes(const std::string& uri, std::vector<uint8_t>& out) {
     if (header.find(";base64") == std::string::npos) {
         return false;
     }
-    return DecodeBase64(std::string_view(uri).substr(comma + 1u), out);
+    return TEXT::DecodeBase64(std::string_view(uri).substr(comma + 1u), out);
 }
 
 bool ReadBinaryFile(const std::filesystem::path& path, std::vector<uint8_t>& out) {

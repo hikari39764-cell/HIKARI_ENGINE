@@ -120,8 +120,9 @@ void ModelCollisionWorkspaceController::DrawShapeDetailsWindow() {
             SetSelectedShapesEnabled(!shape->enabled);
         }
         const bool allHidden = AreAllSelectedShapesHidden();
-        if (ImGui::MenuItem(
-                allHidden ? TEXT::Localize("ai.api.show").c_str() : TEXT::Localize("ui.vfx.text.Hide").c_str(), "H")) {
+        if (ImGui::MenuItem(allHidden ? TEXT::Localize("ui.vfx.text.Show").c_str()
+                                      : TEXT::Localize("ui.vfx.text.Hide").c_str(),
+                            "H")) {
             SetSelectedShapesHidden(!allHidden);
         }
         const bool allLocked = AreAllSelectedShapesLocked();

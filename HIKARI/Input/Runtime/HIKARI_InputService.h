@@ -1,10 +1,14 @@
 #pragma once
 
+#include <array>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
+#include <unordered_map>
 
 #include "Input/Assets/HIKARI_InputActionMap.h"
+#include "Input/Assets/HIKARI_InputTrack.h"
 #include "Input/Runtime/HIKARI_InputContextStack.h"
 #include "Input/Runtime/HIKARI_InputRebindOperation.h"
 #include "Input/Runtime/HIKARI_InputTypes.h"
@@ -67,6 +71,19 @@ public:
     bool IsGamepadVibrating() const noexcept { return vibrationActive_; }
     const std::string& GetLastError() const noexcept { return lastError_; }
 
+    // 入力轨道の回放。tick は SetSimulationTick で受け取る固定歩長の完了数で数え、次の Update を 0 とする。
+    // 轨道の値は割り当てと同じ規則で動作に加わる（ボタンは最大値、軸は和）。轨道が地図に無い動作を使えば false。
+    bool BeginPlayback(InputTrack track, std::string& outError);
+    void StopPlayback() noexcept;
+    struct PlaybackStatus {
+        bool active = false;
+        uint64_t tick = 0;
+        uint64_t length = 0;
+    };
+    PlaybackStatus GetPlaybackStatus() const noexcept;
+    // フレームの最初に、これから進める固定歩長の完了数を渡す（回放の時刻）。
+    void SetSimulationTick(uint64_t tick) noexcept { simulationTick_ = tick; }
+
 private:
     float ReadBindingValue(const InputBinding& binding) const;
     bool IsModifierDown(const std::string& modifier) const;
@@ -74,6 +91,7 @@ private:
     void UpdateLastActiveDevice(const InputDeviceState& previousDevices, float unscaledDeltaSeconds);
     void ResetRuntimeState();
     void EvaluateActions(float dt);
+    void ApplyPlayback();
     void SuppressActions();
 
     std::unique_ptr<IInputBackend> backend_{};
@@ -97,6 +115,11 @@ private:
     uint32_t vibrationGamepadIndex_ = 0u;
     bool vibrationActive_ = false;
     float deviceSwitchLockRemainingSeconds_ = 0.0f;
+    std::optional<InputTrack> playback_{};
+    std::optional<uint64_t> playbackStartTick_{};
+    size_t playbackCursor_ = 0;
+    std::unordered_map<std::string, std::array<float, 2>> playbackValues_{};
+    uint64_t simulationTick_ = 0;
 };
 
 } // namespace HIKARI::INPUT

@@ -133,7 +133,10 @@ struct DebugWindowState {
 };
 
 struct EditorAiIntegrationSettings {
-    bool localBridgeEnabled = false;
+    // 既定で開く。127.0.0.1 だけで待ち受け、令牌は現在のユーザーだけが読める连接文件に書く。
+    bool localBridgeEnabled = true;
+    // 設定画面に出す本地桥の状態（地址と连接文件、または起動の失敗）。場景控制器が書く。
+    std::string localBridgeStatus{};
 };
 
 struct EditorContext {

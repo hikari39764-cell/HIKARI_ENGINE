@@ -270,6 +270,7 @@ nlohmann::json DescribeEditorOperation(const EditorOperationDefinition& definiti
                           {"requiresDocumentSession", definition.requiresDocumentSession},
                           {"requiresCleanDocument", definition.requiresCleanDocument},
                           {"entryPoint", definition.entryPoint},
+                          {"approveEachTime", definition.approveEachTime},
                           {"searchTerms", definition.searchTerms},
                           {"parameters", nlohmann::json::array()}};
     for (const auto& parameter : definition.parameters) {

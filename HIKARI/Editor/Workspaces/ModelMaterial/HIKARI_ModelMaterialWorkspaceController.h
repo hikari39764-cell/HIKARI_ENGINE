@@ -40,7 +40,6 @@ enum class MaterialRampPresetId : uint8_t;
 namespace HIKARI::EDITOR {
 
 class EditorWorkspaceHost;
-class AiAssistantPanel;
 class EditorOperationRegistry;
 
 enum class ModelMaterialBindingSource : uint8_t {

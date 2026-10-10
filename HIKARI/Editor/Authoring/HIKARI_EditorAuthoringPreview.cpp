@@ -30,7 +30,7 @@ EditorOperationResult EditorAuthoringPreview::Pending() const {
     auto data = metadata_;
     data["pending"] = true;
     data["stage"] = captureId_ ? "readback" : "render";
-    data["poll"] = {{"action", "authoring.capture_status"}};
+    data["poll"] = {{"operation", "authoring.capture_status"}, {"parameters", nlohmann::json::object()}};
     const auto output = RENDER3D::EDITORVIEW::GetOutput(viewId_);
     if (output.failure != RENDER3D::EDITORVIEW::EditorInteractiveViewFailure::None)
         data["renderFailure"] = RENDER3D::EDITORVIEW::GetEditorInteractiveViewFailureMessage(output.failure);

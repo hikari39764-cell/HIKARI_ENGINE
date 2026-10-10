@@ -156,7 +156,7 @@ void ModelCollisionWorkspaceController::DrawShapeListWindow() {
                     DuplicateSelectedShapes();
                     shapeListChanged = true;
                 }
-                if (ImGui::MenuItem(hidden ? TEXT::Localize("ai.api.show").c_str()
+                if (ImGui::MenuItem(hidden ? TEXT::Localize("ui.vfx.text.Show").c_str()
                                            : TEXT::Localize("ui.vfx.text.Hide").c_str(),
                                     "H")) {
                     SetSelectedShapesHidden(!hidden);

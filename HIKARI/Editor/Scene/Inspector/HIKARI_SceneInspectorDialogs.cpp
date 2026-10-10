@@ -67,7 +67,7 @@ void SceneInspectorPanel::DrawDeferredDialogs(DocumentSceneBase& scene, EditorCo
         ImGui::SetNextItemWidth(320.0f);
         const bool submit = ImGui::InputText("##PrefabName", prefabBuffer_, sizeof(prefabBuffer_),
                                              ImGuiInputTextFlags_EnterReturnsTrue);
-        if (submit || ImGui::Button(TEXT::LocalizeWindow("ai.api.save", "Save").c_str())) {
+        if (submit || ImGui::Button(TEXT::LocalizeWindow("ui.common.save", "Save").c_str())) {
             if (context.selection.selectedObject != nullptr &&
                 context.selection.selectedObject->GetDocumentId() == prefabObjectId_) {
                 commands.Execute(SceneObjectCommandId::SaveAsPrefab, scene, context, selectionSync, prefabBuffer_);

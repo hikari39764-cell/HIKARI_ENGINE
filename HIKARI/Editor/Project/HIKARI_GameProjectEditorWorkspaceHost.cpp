@@ -774,7 +774,7 @@ void GameProjectEditorWorkspaceHost::DrawClosePrompt() {
         ImGui::TextWrapped(TEXT::Localize("shell.saveBeforeLeaving").c_str(),
                            std::string(registry_.GetAwaitingWorkspaceName()).c_str());
         ImGui::Separator();
-        if (ImGui::Button(TEXT::LocalizeWindow("ai.api.save", "Save").c_str())) {
+        if (ImGui::Button(TEXT::LocalizeWindow("ui.common.save", "Save").c_str())) {
             registry_.ResolvePendingClose(GameProjectWorkspaceCloseResolution::Save);
             if (!registry_.IsAwaitingCloseResolution()) {
                 ImGui::CloseCurrentPopup();

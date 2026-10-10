@@ -2,11 +2,18 @@
 #include "Editor/Projects/HIKARI_ProjectProcess.h"
 #include <Windows.h>
 
+#include <algorithm>
+#include <utility>
+
 namespace HIKARI::EDITOR {
 struct EditorChildProcess::State {
     HANDLE process = nullptr;
     HANDLE job = nullptr;
+    // writableInput の時の、標準入力の管道の書き側。
+    HANDLE input = nullptr;
     ~State() {
+        if (input)
+            CloseHandle(input);
         if (process)
             CloseHandle(process);
         if (job)
@@ -28,6 +35,22 @@ void EditorChildProcess::Wait(uint32_t milliseconds) const noexcept {
     if (state_->process)
         WaitForSingleObject(state_->process, milliseconds);
 }
+bool EditorChildProcess::WriteInput(std::string_view bytes) noexcept {
+    while (state_->input && !bytes.empty()) {
+        DWORD written = 0;
+        const DWORD chunk = static_cast<DWORD>((std::min)(bytes.size(), size_t{1u} << 20u));
+        if (!WriteFile(state_->input, bytes.data(), chunk, &written, nullptr) || written == 0)
+            return false;
+        bytes.remove_prefix(written);
+    }
+    return state_->input != nullptr;
+}
+void EditorChildProcess::CloseInput() noexcept {
+    if (state_->input) {
+        CloseHandle(state_->input);
+        state_->input = nullptr;
+    }
+}
 void EditorChildProcess::Cancel() noexcept {
     if (state_->job && Running())
         TerminateJobObject(state_->job, ERROR_CANCELLED);
@@ -39,7 +62,7 @@ std::filesystem::path EditorChildProcess::PowerShell() {
 }
 bool EditorChildProcess::Start(const std::filesystem::path& executable, const std::vector<std::wstring>& arguments,
                                const std::filesystem::path& directory, const std::filesystem::path& log,
-                               std::string& message, bool killOnClose) {
+                               std::string& message, const EditorChildProcessOptions& options) {
     if (Running()) {
         message = "This worker is still running.";
         return false;
@@ -50,20 +73,35 @@ bool EditorChildProcess::Start(const std::filesystem::path& executable, const st
     for (const auto& argument : arguments)
         PROJECT_PROCESS::AppendWindowsArgument(command, argument);
     SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
-    HANDLE output = CreateFileW(log.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &security,
-                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    HANDLE input = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &security, OPEN_EXISTING,
-                               FILE_ATTRIBUTE_NORMAL, nullptr);
+    const auto openLog = [&security](const std::filesystem::path& path) {
+        return CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &security, CREATE_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    };
+    HANDLE output = openLog(log);
+    HANDLE errorOutput = options.errorLog.empty() ? INVALID_HANDLE_VALUE : openLog(options.errorLog);
+    // 標準入力は管道（書き側は親だけが持つ）か NUL。
+    HANDLE inputStream = INVALID_HANDLE_VALUE;
+    HANDLE inputWriter = nullptr;
+    if (options.writableInput) {
+        if (!CreatePipe(&inputStream, &inputWriter, &security, 0) ||
+            !SetHandleInformation(inputWriter, HANDLE_FLAG_INHERIT, 0))
+            inputStream = INVALID_HANDLE_VALUE;
+    } else {
+        inputStream = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &security, OPEN_EXISTING,
+                                  FILE_ATTRIBUTE_NORMAL, nullptr);
+    }
     struct CloseStreams {
-        HANDLE output, input;
+        HANDLE written, errors, read, writer;
         ~CloseStreams() {
-            if (output != INVALID_HANDLE_VALUE)
-                CloseHandle(output);
-            if (input != INVALID_HANDLE_VALUE)
-                CloseHandle(input);
+            for (HANDLE handle : {written, errors, read})
+                if (handle != INVALID_HANDLE_VALUE && handle != nullptr)
+                    CloseHandle(handle);
+            if (writer)
+                CloseHandle(writer);
         }
-    } closeStreams{output, input};
-    if (output == INVALID_HANDLE_VALUE || input == INVALID_HANDLE_VALUE) {
+    } closeStreams{output, errorOutput, inputStream, inputWriter};
+    if (output == INVALID_HANDLE_VALUE || inputStream == INVALID_HANDLE_VALUE ||
+        (!options.errorLog.empty() && errorOutput == INVALID_HANDLE_VALUE)) {
         message = "Cannot open worker streams.";
         return false;
     }
@@ -72,7 +110,7 @@ bool EditorChildProcess::Start(const std::filesystem::path& executable, const st
         message = "Cannot own the worker process tree.";
         return false;
     }
-    if (killOnClose) {
+    if (options.killOnClose) {
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
         limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
         if (!SetInformationJobObject(state_->job, JobObjectExtendedLimitInformation, &limits, sizeof(limits))) {
@@ -92,9 +130,10 @@ bool EditorChildProcess::Start(const std::filesystem::path& executable, const st
         LPPROC_THREAD_ATTRIBUTE_LIST list;
         ~DeleteAttributes() { DeleteProcThreadAttributeList(list); }
     } deleteAttributes{list};
-    HANDLE handles[]{output, input};
-    if (!UpdateProcThreadAttribute(list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, handles, sizeof(handles), nullptr,
-                                   nullptr)) {
+    HANDLE handles[]{output, inputStream, errorOutput};
+    const size_t handleCount = errorOutput == INVALID_HANDLE_VALUE ? 2u : 3u;
+    if (!UpdateProcThreadAttribute(list, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, handles, handleCount * sizeof(HANDLE),
+                                   nullptr, nullptr)) {
         message = "Cannot isolate inherited worker handles.";
         return false;
     }
@@ -102,8 +141,8 @@ bool EditorChildProcess::Start(const std::filesystem::path& executable, const st
     startup.StartupInfo.cb = sizeof(startup);
     startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
     startup.StartupInfo.hStdOutput = output;
-    startup.StartupInfo.hStdError = output;
-    startup.StartupInfo.hStdInput = input;
+    startup.StartupInfo.hStdError = errorOutput == INVALID_HANDLE_VALUE ? output : errorOutput;
+    startup.StartupInfo.hStdInput = inputStream;
     startup.lpAttributeList = list;
     std::vector<wchar_t> environment;
     if (auto* inherited = GetEnvironmentStringsW()) {
@@ -136,6 +175,7 @@ bool EditorChildProcess::Start(const std::filesystem::path& executable, const st
         message = "Cannot resume worker.";
         return false;
     }
+    state_->input = std::exchange(closeStreams.writer, nullptr);
     return true;
 }
 } // namespace HIKARI::EDITOR

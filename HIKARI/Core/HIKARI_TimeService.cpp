@@ -16,6 +16,9 @@ bool gHasLastTick = false;
 float gMaxDeltaSeconds = 0.1f;
 float gUnscaledElapsedSeconds = 0.0f;
 float gGameElapsedSeconds = 0.0f;
+// 利用者が設定した一時停止。gFrame.paused はこのフレームで実際に止まっているか（锁步中は進む）。
+bool gPaused = false;
+uint32_t gLockstepFrames = 0u;
 
 } // namespace
 
@@ -25,6 +28,8 @@ void Reset() {
     gFrame.gameTimeScale = 1.0f;
     gFrame.paused = false;
     gFrame.frameIndex = 0;
+    gPaused = false;
+    gLockstepFrames = 0u;
 
     gLastTick = Clock::time_point{};
     gHasLastTick = false;
@@ -57,7 +62,14 @@ const FrameContext& INTERNAL::BeginFrameAt(Clock::time_point now) {
     // 計測値は保持し、シミュレーションに渡す時間だけを制限する。
     gFrame.rawDt = rawDt;
     gFrame.unscaledDt = gMaxDeltaSeconds > 0.0f ? (std::min)(rawDt, gMaxDeltaSeconds) : rawDt;
-    gFrame.gameDt = gFrame.paused ? 0.0f : (gFrame.unscaledDt * gFrame.gameTimeScale);
+    if (gLockstepFrames > 0u) {
+        --gLockstepFrames;
+        gFrame.paused = false;
+        gFrame.gameDt = gFrame.fixedDt;
+    } else {
+        gFrame.paused = gPaused;
+        gFrame.gameDt = gFrame.paused ? 0.0f : (gFrame.unscaledDt * gFrame.gameTimeScale);
+    }
     gUnscaledElapsedSeconds += gFrame.unscaledDt;
     gGameElapsedSeconds += gFrame.gameDt;
     gFrame.fixedStepIndex = 0;
@@ -84,7 +96,14 @@ void SetGameTimeScale(float scale) { gFrame.gameTimeScale = std::isfinite(scale)
 
 float GetGameTimeScale() { return gFrame.gameTimeScale; }
 
-void SetPaused(bool paused) { gFrame.paused = paused; }
+void SetPaused(bool paused) {
+    gPaused = paused;
+    gFrame.paused = paused;
+}
+
+void SetLockstepFrames(uint32_t frames) { gLockstepFrames = frames; }
+
+uint32_t GetLockstepFramesRemaining() { return gLockstepFrames; }
 
 bool IsPaused() { return gFrame.paused; }
 

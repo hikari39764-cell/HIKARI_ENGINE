@@ -1,6 +1,5 @@
 #include "Editor/Projects/HIKARI_ProjectCodeJob.h"
 #include "Editor/Projects/HIKARI_ProjectSdkDocs.h"
-#include "Editor/Projects/HIKARI_ProjectCodeWorkspace.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Project/HIKARI_ProjectContext.h"
 
@@ -8,11 +7,11 @@
 
 namespace HIKARI::EDITOR {
 void RegisterProjectCodeOperations(EditorOperationRegistry& registry, ProjectCodeJob& job,
-                                   std::function<bool()> canApply) {
+                                   std::function<EditorOperationResult()> reload) {
     using P = EditorOperationParameterType;
     auto add = [&](std::string id, std::string summary, std::vector<EditorOperationParameter> parameters,
                    std::function<EditorOperationResult(const nlohmann::json&)> action, EditorOperationKind kind,
-                   EditorOperationPermission permission) {
+                   EditorOperationPermission permission, bool approveEachTime = false) {
         EditorOperationDefinition definition{
             std::move(id), std::move(summary), "project_code", std::move(parameters),
             [action = std::move(action)](const nlohmann::json& p) {
@@ -27,27 +26,9 @@ void RegisterProjectCodeOperations(EditorOperationRegistry& registry, ProjectCod
         definition.kind = kind;
         definition.requiresDocumentSession = false;
         definition.permission = permission;
+        definition.approveEachTime = approveEachTime;
         registry.Register(std::move(definition));
     };
-    add(
-        "project.code.files",
-        "List project-owned source paths and current SHA256 versions; engine source is not exposed.", {},
-        [](const nlohmann::json&) {
-            return EditorOperationResult{true, "OK", "Project code snapshot.",
-                                         PROJECT_CODE::Snapshot(GetProjectContext().GetRoot())};
-        },
-        EditorOperationKind::Query, EditorOperationPermission::ReadEditorState);
-    add(
-        "project.code.read",
-        "Read one project code file and its version. Missing files return an empty SHA256 for creating them.",
-        {{"path", P::String, true,
-          "Project-relative Source, Tests, Tools or cmake file, or root CMake/Project manifest."}},
-        [](const nlohmann::json& p) {
-            return EditorOperationResult{
-                true, "OK", "Project source.",
-                PROJECT_CODE::ReadFile(GetProjectContext().GetRoot(), p.at("path").get<std::string>())};
-        },
-        EditorOperationKind::Query, EditorOperationPermission::ReadEditorState);
     add(
         "project.sdk.index",
         "List the installed public SDK guides and headers with their intended starting points. This does not scan engine source.",
@@ -86,53 +67,48 @@ void RegisterProjectCodeOperations(EditorOperationRegistry& registry, ProjectCod
         },
         EditorOperationKind::Query, EditorOperationPermission::ReadEditorState);
     add(
-        "project.code.prepare",
-        "Stage version-checked project source edits and build them in a hidden worker. Original source and modules remain unchanged. No automatic activation.",
-        {{"edits", P::Json, true,
-          "1..64 {path, baseSha256, content}; read each current file first. Optional project Tests/HikariVerification.json declares windowless behavior checks."}},
-        [&job](const nlohmann::json& p) {
+        "project.build",
+        "Build a copy of the current project source (Source, Tests, Tools, cmake) in a hidden worker and run the optional "
+        "Tests/HikariVerification.json behavior checks. The source and the loaded module stay unchanged. Poll "
+        "project.build.status; compiling does not prove visual or gameplay correctness.",
+        {},
+        [&job](const nlohmann::json&) {
             std::string message;
-            const bool ok = job.Start(p.at("edits"), message);
-            return EditorOperationResult{ok, ok ? "STARTED" : "REJECTED", message, job.Status()};
+            const bool ok = job.Start(message);
+            nlohmann::json data = job.Status();
+            if (ok) {
+                data["pending"] = true;
+                data["poll"] = {{"operation", "project.build.status"}, {"parameters", nlohmann::json::object()}};
+            }
+            return EditorOperationResult{ok, ok ? "STARTED" : "REJECTED", message, std::move(data)};
         },
         EditorOperationKind::Session, EditorOperationPermission::ExecuteExternalProcess);
     add(
-        "project.code.status",
-        "Report source, compilation, behavior validation and activation separately. Compilation does not prove visual or gameplay correctness.",
+        "project.build.status", "Report the current project build: build and behavior results and the worker message.",
         {},
         [&job](const nlohmann::json&) {
             job.Poll();
-            return EditorOperationResult{true, "OK", "Project code task status.", job.Status()};
+            nlohmann::json data = job.Status();
+            if (job.Running()) {
+                data["pending"] = true;
+                data["poll"] = {{"operation", "project.build.status"}, {"parameters", nlohmann::json::object()}};
+            }
+            return EditorOperationResult{true, "OK", "Project build status.", std::move(data)};
         },
         EditorOperationKind::Query, EditorOperationPermission::ReadEditorState);
     add(
-        "project.code.diff",
-        "List changed files and conflict state. Supply one changed path to read current and candidate source for review.",
-        {{"path", P::String, false, "Optional changed project-relative source path; omit to list the candidate."}},
-        [&job](const nlohmann::json& p) {
-            return EditorOperationResult{true, "OK", "Candidate comparison.", job.Diff(p.value("path", std::string{}))};
-        },
-        EditorOperationKind::Query, EditorOperationPermission::ReadEditorState);
-    add(
-        "project.code.cancel",
-        "Cancel this owned worker or discard its candidate. Does not terminate the Editor or user applications.", {},
+        "project.build.cancel", "Cancel the running project build. Does not terminate the Editor or user applications.",
+        {},
         [&job](const nlohmann::json&) {
             job.Cancel();
-            return EditorOperationResult{true, "CANCELLED", "Code task cancelled.", job.Status()};
+            return EditorOperationResult{true, "CANCELLED", "Project build cancelled.", job.Status()};
         },
         EditorOperationKind::Session, EditorOperationPermission::ModifyEditorState);
     add(
-        "project.code.apply",
-        "Apply successfully compiled, reviewed source if the project and candidate are still unchanged. Module activation requires the normal human-controlled Rebuild and Reload boundary.",
-        {},
-        [&job, canApply = std::move(canApply)](const nlohmann::json&) {
-            if (!canApply || !canApply())
-                return EditorOperationResult{false, "PLAY_ACTIVE",
-                                             "Stop Play and preview before applying project code."};
-            std::string message;
-            const bool ok = job.Apply(message);
-            return EditorOperationResult{ok, ok ? "APPLIED" : "REJECTED", message, job.Status()};
-        },
-        EditorOperationKind::Mutation, EditorOperationPermission::ModifyProjectFiles);
+        "project.reload",
+        "Rebuild the project and restart the Editor to load the new module (Project > Rebuild and Reload). Requires "
+        "saved documents and no Play. Asks the user every time; reconnect after the Editor restarts.",
+        {}, [reload = std::move(reload)](const nlohmann::json&) { return reload(); }, EditorOperationKind::Session,
+        EditorOperationPermission::ExecuteExternalProcess, true);
 }
 } // namespace HIKARI::EDITOR

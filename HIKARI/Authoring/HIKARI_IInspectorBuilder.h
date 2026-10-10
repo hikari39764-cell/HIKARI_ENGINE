@@ -1,12 +1,14 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
 #include <string_view>
-#include <vector>
 
 #include "Authoring/HIKARI_ComponentAuthoringTypes.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingTypes.h"
 
 namespace HIKARI {
@@ -50,105 +52,57 @@ public:
         return true;
     }
     virtual bool Button(std::string_view label) = 0;
-    virtual bool Bool(std::string_view label, bool& value) = 0;
-    virtual bool Bool(const AuthoringFieldDescriptor& field, bool& value) { return Bool(field.label, value); }
-    virtual bool Int(std::string_view label, int& value) = 0;
-    virtual bool Int(const AuthoringFieldDescriptor& field, int& value) { return Int(field.label, value); }
-    virtual bool Float(std::string_view label, float& value) = 0;
-    virtual bool Float(const AuthoringFieldDescriptor& field, float& value) { return Float(field.label, value); }
-    virtual bool FloatRange(std::string_view label, float& value, float minimum, float maximum, float speed = 0.1f) = 0;
+    // 値を持つ項目は必ず安定 ID を持つ（表示名だけの項目は作れない）。ID はできるだけコンポーネント JSON のキー名に
+    // 合わせ、component.describe / component.property.set（外部智能体を含む）はこの ID で読み書きする。
+    virtual bool Bool(const AuthoringFieldDescriptor& field, bool& value) = 0;
+    virtual bool Int(const AuthoringFieldDescriptor& field, int& value) = 0;
+    virtual bool Float(const AuthoringFieldDescriptor& field, float& value) = 0;
     virtual bool FloatRange(const AuthoringFieldDescriptor& field, float& value, float minimum, float maximum,
-                            float speed = 0.1f) {
-        return FloatRange(field.label, value, minimum, maximum, speed);
-    }
+                            float speed = 0.1f) = 0;
     virtual bool TypedValue(const AuthoringFieldDescriptor& field, BINDING::Value& value, bool hasRange, float minimum,
-                            float maximum, float step) {
-        (void)field;
-        (void)value;
-        (void)hasRange;
-        (void)minimum;
-        (void)maximum;
-        (void)step;
-        return false;
-    }
-    virtual bool Color3(std::string_view label, float& red, float& green, float& blue) {
-        bool changed = false;
-        const std::string prefix(label);
-        changed = FloatRange(prefix + " Red", red, 0.0f, 1.0f, 0.01f) || changed;
-        changed = FloatRange(prefix + " Green", green, 0.0f, 1.0f, 0.01f) || changed;
-        changed = FloatRange(prefix + " Blue", blue, 0.0f, 1.0f, 0.01f) || changed;
-        return changed;
-    }
-    virtual bool Color3(const AuthoringFieldDescriptor& field, float& red, float& green, float& blue) {
-        return Color3(field.label, red, green, blue);
-    }
-    virtual bool String(std::string_view label, std::string& value) = 0;
-    virtual bool String(const AuthoringFieldDescriptor& field, std::string& value) {
-        return String(field.label, value);
-    }
+                            float maximum, float step) = 0;
+    virtual bool Color3(const AuthoringFieldDescriptor& field, float& red, float& green, float& blue) = 0;
+    virtual bool Vec2(const AuthoringFieldDescriptor& field, float& x, float& y) = 0;
+    virtual bool Vec3(const AuthoringFieldDescriptor& field, float& x, float& y, float& z) = 0;
+    virtual bool String(const AuthoringFieldDescriptor& field, std::string& value) = 0;
     // 複数行テキストも同じ String プロパティとして操作・スキーマに公開する。
     virtual bool MultilineString(const AuthoringFieldDescriptor& field, std::string& value) {
         return String(field, value);
     }
-    virtual bool InputActionIdPicker(std::string_view label, INPUT::InputActionValueType expectedType,
-                                     std::string& value) = 0;
     virtual bool InputActionIdPicker(const AuthoringFieldDescriptor& field, INPUT::InputActionValueType expectedType,
-                                     std::string& value) {
-        return InputActionIdPicker(field.label, expectedType, value);
-    }
-    virtual bool RuntimeVariableIdPicker(std::string_view label, BINDING::ValueType expectedType,
-                                         std::string& value) = 0;
+                                     std::string& value) = 0;
     virtual bool RuntimeVariableIdPicker(const AuthoringFieldDescriptor& field, BINDING::ValueType expectedType,
                                          std::string& value) {
-        return RuntimeVariableIdPicker(field.label, expectedType, value);
+        return RuntimeVariableIdPicker(field, std::span<const BINDING::ValueType>(&expectedType, 1u), value);
     }
     virtual bool RuntimeVariableIdPicker(const AuthoringFieldDescriptor& field,
-                                         std::span<const BINDING::ValueType> allowedTypes, std::string& value) {
-        return !allowedTypes.empty() && RuntimeVariableIdPicker(field, allowedTypes.front(), value);
-    }
-    virtual bool RuntimeEventIdPicker(std::string_view label, bool hasPayload, BINDING::ValueType payloadType,
-                                      std::string& value) = 0;
+                                         std::span<const BINDING::ValueType> allowedTypes, std::string& value) = 0;
     virtual bool RuntimeEventIdPicker(const AuthoringFieldDescriptor& field, bool hasPayload,
-                                      BINDING::ValueType payloadType, std::string& value) {
-        return RuntimeEventIdPicker(field.label, hasPayload, payloadType, value);
-    }
-    virtual bool RuntimeEventIdPicker(std::string_view label, AuthoringEventPayloadPolicy policy,
-                                      BINDING::ValueType payloadType, std::string& value) {
-        return RuntimeEventIdPicker(label, policy == AuthoringEventPayloadPolicy::Exact, payloadType, value);
-    }
+                                      BINDING::ValueType payloadType, std::string& value) = 0;
     virtual bool RuntimeEventIdPicker(const AuthoringFieldDescriptor& field, AuthoringEventPayloadPolicy policy,
-                                      BINDING::ValueType payloadType, std::string& value) {
-        return RuntimeEventIdPicker(field.label, policy, payloadType, value);
-    }
-    virtual bool Choice(std::string_view label, int& selectedIndex, std::span<const char* const> choices) = 0;
+                                      BINDING::ValueType payloadType, std::string& value) = 0;
     virtual bool Choice(const AuthoringFieldDescriptor& field, int& selectedIndex,
-                        std::span<const AuthoringChoice> choices) {
-        std::vector<std::string> labels{};
-        labels.reserve(choices.size());
-        for (const AuthoringChoice& choice : choices) {
-            labels.emplace_back(choice.label);
-        }
-        std::vector<const char*> labelPointers{};
-        labelPointers.reserve(labels.size());
-        for (const std::string& label : labels) {
-            labelPointers.push_back(label.c_str());
-        }
-        return Choice(field.label, selectedIndex, labelPointers);
-    }
-    virtual bool Vec2(std::string_view label, float& x, float& y) = 0;
-    virtual bool Vec2(const AuthoringFieldDescriptor& field, float& x, float& y) { return Vec2(field.label, x, y); }
-    virtual bool AssetIdPicker(std::string_view label, AssetType assetType, std::string& value) = 0;
-    virtual bool AssetIdPicker(const AuthoringFieldDescriptor& field, AssetType assetType, std::string& value) {
-        return AssetIdPicker(field.label, assetType, value);
-    }
-    virtual bool SceneIdPicker(std::string_view label, std::string& value) = 0;
-    virtual bool SceneIdPicker(const AuthoringFieldDescriptor& field, std::string& value) {
-        return SceneIdPicker(field.label, value);
-    }
-    virtual bool SceneObjectIdPicker(std::string_view label, SceneObjectId& value) = 0;
-    virtual bool SceneObjectIdPicker(const AuthoringFieldDescriptor& field, SceneObjectId& value) {
-        return SceneObjectIdPicker(field.label, value);
-    }
+                        std::span<const AuthoringChoice> choices) = 0;
+    virtual bool AssetIdPicker(const AuthoringFieldDescriptor& field, AssetType assetType, std::string& value) = 0;
+    virtual bool SceneIdPicker(const AuthoringFieldDescriptor& field, std::string& value) = 0;
+    virtual bool SceneObjectIdPicker(const AuthoringFieldDescriptor& field, SceneObjectId& value) = 0;
 };
+
+// 列挙名表（別名なし）の値を選ぶ。選択肢 ID は表の名前（JSON に書く名前と同じ）、表示は labels があればそれ。
+template <class E, std::size_t N>
+bool EnumChoice(IInspectorBuilder& builder, const AuthoringFieldDescriptor& field, E& value,
+                const TEXT::EnumName<E> (&names)[N], const std::array<std::string_view, N>* labels = nullptr) {
+    std::array<AuthoringChoice, N> choices{};
+    int selected = 0;
+    for (std::size_t index = 0; index < N; ++index) {
+        choices[index] = {names[index].name, labels != nullptr ? (*labels)[index] : names[index].name};
+        if (names[index].value == value)
+            selected = static_cast<int>(index);
+    }
+    if (!builder.Choice(field, selected, choices) || selected < 0 || static_cast<std::size_t>(selected) >= N)
+        return false;
+    value = names[static_cast<std::size_t>(selected)].value;
+    return true;
+}
 
 } // namespace HIKARI

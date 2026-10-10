@@ -61,6 +61,8 @@ public:
     bool IsWindowedRunning() const noexcept;
     bool HasEmbeddedInput() const noexcept { return embeddedInputCaptured_; }
     bool IsTransitioning() const noexcept;
+    // 開始の要求を受けて、次の Update で Starting に入る前。
+    bool HasPendingStart() const noexcept { return pendingAction_ != PendingAction::None; }
     const std::string& GetStatusMessage() const noexcept { return statusMessage_; }
 
 private:

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "Core/Math/HIKARI_Math3D.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 
 #include <json.hpp>
 
@@ -22,6 +23,13 @@ enum class ProceduralMeshKind : uint8_t {
     Ramp,
     // 階段。斜面と同じ向きに segmentsY 段で上がる。
     Stairs,
+};
+
+inline constexpr TEXT::EnumName<ProceduralMeshKind> kProceduralMeshKindNames[] = {
+    {ProceduralMeshKind::Plane, "Plane"},       {ProceduralMeshKind::GridPlane, "GridPlane"},
+    {ProceduralMeshKind::Box, "Box"},           {ProceduralMeshKind::Sphere, "Sphere"},
+    {ProceduralMeshKind::Cylinder, "Cylinder"}, {ProceduralMeshKind::Capsule, "Capsule"},
+    {ProceduralMeshKind::Ramp, "Ramp"},         {ProceduralMeshKind::Stairs, "Stairs"},
 };
 
 // 箱の切り抜き（局所の中心と大きさ）。床の穴、壁の門窓の開口、挖空方块で削った所。
@@ -89,10 +97,7 @@ std::vector<ProceduralMeshCut> ReadProceduralMeshCuts(const nlohmann::json& valu
 void FitProceduralSlopeBox(const ProceduralMeshSettings& settings, MATH::Vec3& center, MATH::Vec3& rotationDegrees,
                            MATH::Vec3& size) noexcept;
 
-const char* ToString(ProceduralMeshKind kind) noexcept;
 const char* GetProceduralMeshDisplayName(ProceduralMeshKind kind) noexcept;
-ProceduralMeshKind ParseProceduralMeshKind(const nlohmann::json& value,
-                                           ProceduralMeshKind fallback = ProceduralMeshKind::Box);
 ProceduralMeshSettings SanitizeProceduralMeshSettings(ProceduralMeshSettings settings) noexcept;
 
 } // namespace HIKARI

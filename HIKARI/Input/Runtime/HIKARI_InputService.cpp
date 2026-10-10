@@ -566,6 +566,7 @@ void InputService::EvaluateActions(float dt) {
                 consumedControls.insert(controlKey);
         }
     }
+    ApplyPlayback();
 
     for (const InputActionDefinition& action : actionMap_.actions) {
         InputActionState& state = snapshot_.actions_.at(action.actionId);
@@ -590,6 +591,62 @@ void InputService::EvaluateActions(float dt) {
         if (state.down) {
             const auto previous = previousActions.find(action.actionId);
             state.heldSeconds = previous != previousActions.end() ? previous->second.heldSeconds + dt : dt;
+        }
+    }
+}
+
+bool InputService::BeginPlayback(InputTrack track, std::string& outError) {
+    for (const InputTrackEvent& event : track.events) {
+        if (actionMap_.FindAction(event.actionId) == nullptr) {
+            outError = "Input track uses unknown action: " + event.actionId;
+            return false;
+        }
+    }
+    playback_ = std::move(track);
+    playbackStartTick_.reset();
+    playbackCursor_ = 0u;
+    playbackValues_.clear();
+    return true;
+}
+
+void InputService::StopPlayback() noexcept {
+    playback_.reset();
+    playbackStartTick_.reset();
+    playbackCursor_ = 0u;
+    playbackValues_.clear();
+}
+
+InputService::PlaybackStatus InputService::GetPlaybackStatus() const noexcept {
+    if (!playback_)
+        return {};
+    const uint64_t tick = playbackStartTick_ ? simulationTick_ - *playbackStartTick_ : 0u;
+    return {true, tick, playback_->length};
+}
+
+void InputService::ApplyPlayback() {
+    if (!playback_)
+        return;
+    if (!playbackStartTick_)
+        playbackStartTick_ = simulationTick_;
+    const uint64_t tick = simulationTick_ - *playbackStartTick_;
+    if (tick >= playback_->length) {
+        StopPlayback();
+        return;
+    }
+    const std::vector<InputTrackEvent>& events = playback_->events;
+    for (; playbackCursor_ < events.size() && events[playbackCursor_].tick <= tick; ++playbackCursor_)
+        playbackValues_[events[playbackCursor_].actionId] = events[playbackCursor_].value;
+    for (const auto& [actionId, value] : playbackValues_) {
+        const auto found = snapshot_.actions_.find(actionId);
+        if (found == snapshot_.actions_.end())
+            continue;
+        InputActionState& state = found->second;
+        if (state.valueType == InputActionValueType::Button) {
+            state.x = (std::max)(state.x, std::abs(value[0]));
+        } else {
+            state.x += value[0];
+            if (state.valueType == InputActionValueType::Axis2D)
+                state.y += value[1];
         }
     }
 }

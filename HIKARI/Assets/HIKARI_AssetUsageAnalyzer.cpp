@@ -240,12 +240,8 @@ AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDa
                     }
                 }
             } else if (component.type == "ProceduralMeshComponent") {
-                const auto& source =
-                    component.properties.contains("settings") && component.properties["settings"].is_object()
-                        ? component.properties["settings"]
-                        : component.properties;
                 const std::string material{ASSETS::MATERIAL::CanonicalizeProceduralMaterialSelection(
-                    source.value("materialSelection", std::string{}))};
+                    component.properties.value("materialSelection", std::string{}))};
                 if (!ASSETS::MATERIAL::IsBuiltInWhiteMaterialAssetId(material) &&
                     !ASSETS::MATERIAL::IsBuiltInCheckerMaterialAssetId(material) &&
                     !ASSETS::MATERIAL::IsBuiltInSandMaterialAssetId(material)) {

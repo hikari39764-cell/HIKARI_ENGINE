@@ -9,7 +9,7 @@ EditorOperationResult PollEditorPreviewCapture(RENDER3D::EDITORVIEW::PreviewCapt
         return {true,
                 "PENDING",
                 "正在读取预览图片。",
-                {{"pending", true}, {"poll", {{"action", "capture.status"}, {"captureId", id}}}}};
+                {{"pending", true}, {"poll", {{"operation", "capture.status"}, {"parameters", {{"captureId", id}}}}}}};
     if (!result.error.empty())
         return {false, "CAPTURE_FAILED", result.error};
     return {true,

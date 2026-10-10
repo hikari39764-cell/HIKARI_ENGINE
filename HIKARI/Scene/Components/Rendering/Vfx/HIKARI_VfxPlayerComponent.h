@@ -6,6 +6,7 @@
 
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 
@@ -37,12 +38,22 @@ enum class VfxRetriggerPolicy : uint8_t {
     IgnoreIfPlaying,
 };
 
-std::string_view ToString(VfxSpawnTarget value) noexcept;
-std::string_view ToString(VfxLoopMode value) noexcept;
-std::string_view ToString(VfxRetriggerPolicy value) noexcept;
-bool TryParseVfxSpawnTarget(std::string_view text, VfxSpawnTarget& outValue) noexcept;
-bool TryParseVfxLoopMode(std::string_view text, VfxLoopMode& outValue) noexcept;
-bool TryParseVfxRetriggerPolicy(std::string_view text, VfxRetriggerPolicy& outValue) noexcept;
+inline constexpr TEXT::EnumName<VfxSpawnTarget> kVfxSpawnTargetNames[] = {
+    {VfxSpawnTarget::Owner, "Owner"},
+    {VfxSpawnTarget::EventSource, "EventSource"},
+    {VfxSpawnTarget::FixedObject, "FixedObject"},
+    {VfxSpawnTarget::EventPayloadPosition, "EventPayloadPosition"},
+};
+inline constexpr TEXT::EnumName<VfxLoopMode> kVfxLoopModeNames[] = {
+    {VfxLoopMode::AssetDefault, "AssetDefault"},
+    {VfxLoopMode::ForceLoop, "ForceLoop"},
+    {VfxLoopMode::ForceOneShot, "ForceOneShot"},
+};
+inline constexpr TEXT::EnumName<VfxRetriggerPolicy> kVfxRetriggerPolicyNames[] = {
+    {VfxRetriggerPolicy::Parallel, "Parallel"},
+    {VfxRetriggerPolicy::Restart, "Restart"},
+    {VfxRetriggerPolicy::IgnoreIfPlaying, "IgnoreIfPlaying"},
+};
 
 struct VfxVariableBinding {
     std::string inputId{};

@@ -22,7 +22,8 @@
 namespace HIKARI {
 
 namespace {
-constexpr std::array<const char*, 3> kMovementSpaces{"World Axes", "Camera Relative", "Object Local"};
+constexpr std::array<std::string_view, std::size(kCharacterMovementSpaceNames)> kMovementSpaceLabels{
+    "World Axes", "Camera Relative", "Object Local"};
 
 void DrawActionValidation(IInspectorBuilder& builder, const INPUT::InputActionMap& actionMap, std::string_view label,
                           const std::string& actionId, INPUT::InputActionValueType expectedType) {
@@ -57,19 +58,23 @@ const char* RuntimeHealthName(PHYSICS::KinematicMotionRuntimeHealth health) noex
 } // namespace
 
 void CharacterInputComponent::BuildInspector(IInspectorBuilder& builder) {
-    builder.Bool("Enabled", enabled_);
+    builder.Bool(AuthoringFieldDescriptor{"enabled", "Enabled"}, enabled_);
     builder.Text(TEXT::Localize("character.inputHint"));
-    builder.Int("Control Priority", priority_);
+    builder.Int(AuthoringFieldDescriptor{"priority", "Control Priority"}, priority_);
     if (builder.Button("Use Gameplay Defaults")) {
         moveActionId_ = "Gameplay.Move";
         lookActionId_ = "Gameplay.Look";
         jumpActionId_ = "Gameplay.Jump";
         sprintActionId_ = "Gameplay.Sprint";
     }
-    builder.InputActionIdPicker("Move Action", INPUT::InputActionValueType::Axis2D, moveActionId_);
-    builder.InputActionIdPicker("Look Action", INPUT::InputActionValueType::Axis2D, lookActionId_);
-    builder.InputActionIdPicker("Jump Action", INPUT::InputActionValueType::Button, jumpActionId_);
-    builder.InputActionIdPicker("Sprint Action", INPUT::InputActionValueType::Button, sprintActionId_);
+    builder.InputActionIdPicker(AuthoringFieldDescriptor{"moveAction", "Move Action"},
+                                INPUT::InputActionValueType::Axis2D, moveActionId_);
+    builder.InputActionIdPicker(AuthoringFieldDescriptor{"lookAction", "Look Action"},
+                                INPUT::InputActionValueType::Axis2D, lookActionId_);
+    builder.InputActionIdPicker(AuthoringFieldDescriptor{"jumpAction", "Jump Action"},
+                                INPUT::InputActionValueType::Button, jumpActionId_);
+    builder.InputActionIdPicker(AuthoringFieldDescriptor{"sprintAction", "Sprint Action"},
+                                INPUT::InputActionValueType::Button, sprintActionId_);
 
     const InspectorContext& context = builder.GetContext();
     const auto* inputService =
@@ -84,55 +89,60 @@ void CharacterInputComponent::BuildInspector(IInspectorBuilder& builder) {
 }
 
 void CharacterLocomotionComponent::BuildInspector(IInspectorBuilder& builder) {
-    builder.Bool("Enabled", enabled_);
+    builder.Bool(AuthoringFieldDescriptor{"enabled", "Enabled"}, enabled_);
     builder.Text(TEXT::Localize("character.locomotionHint"));
     if (builder.Section(TEXT::Localize("character.movement"), true)) {
-        builder.Int("Motion Priority", motionPriority_);
-        int movementSpace = static_cast<int>(movementSpace_);
-        if (builder.Choice("Movement Space", movementSpace, kMovementSpaces)) {
-            movementSpace_ = static_cast<CharacterMovementSpace>((std::clamp)(movementSpace, 0, 2));
-        }
+        builder.Int(AuthoringFieldDescriptor{"motionPriority", "Motion Priority"}, motionPriority_);
+        (void)EnumChoice(builder, AuthoringFieldDescriptor{"movementSpace", "Movement Space"}, movementSpace_,
+                         kCharacterMovementSpaceNames, &kMovementSpaceLabels);
         if (builder.Button("Use Third-Person Movement")) {
             movementSpace_ = CharacterMovementSpace::Camera;
             rotateToMove_ = true;
             edgeGuardEnabled_ = true;
         }
-        builder.Float("Maximum Speed", maximumSpeed_);
-        builder.Float("Sprint Multiplier", sprintMultiplier_);
-        builder.Float("Ground Acceleration", acceleration_);
-        builder.Float("Ground Deceleration", deceleration_);
-        builder.Float("Air Acceleration", airAcceleration_);
-        builder.Float("Air Deceleration", airDeceleration_);
-        builder.Float("Turn Speed (deg/s)", turnSpeedDegrees_);
-        builder.Bool("Rotate To Move", rotateToMove_);
+        builder.Float(AuthoringFieldDescriptor{"maximumSpeed", "Maximum Speed"}, maximumSpeed_);
+        builder.Float(AuthoringFieldDescriptor{"sprintMultiplier", "Sprint Multiplier"}, sprintMultiplier_);
+        builder.Float(AuthoringFieldDescriptor{"acceleration", "Ground Acceleration"}, acceleration_);
+        builder.Float(AuthoringFieldDescriptor{"deceleration", "Ground Deceleration"}, deceleration_);
+        builder.Float(AuthoringFieldDescriptor{"airAcceleration", "Air Acceleration"}, airAcceleration_);
+        builder.Float(AuthoringFieldDescriptor{"airDeceleration", "Air Deceleration"}, airDeceleration_);
+        builder.Float(AuthoringFieldDescriptor{"turnSpeedDegrees", "Turn Speed (deg/s)"}, turnSpeedDegrees_);
+        builder.Bool(AuthoringFieldDescriptor{"rotateToMove", "Rotate To Move"}, rotateToMove_);
     }
     if (builder.Section(TEXT::Localize("character.jump"))) {
-        builder.Float("Jump Height", jumpHeight_);
-        builder.Float("Jump Buffer Time (s)", jumpBufferSeconds_);
-        builder.Float("Ground Grace Time (s)", groundGraceSeconds_);
-        builder.Float("Maximum Fall Speed", maximumFallSpeed_);
+        builder.Float(AuthoringFieldDescriptor{"jumpHeight", "Jump Height"}, jumpHeight_);
+        builder.Float(AuthoringFieldDescriptor{"jumpBufferSeconds", "Jump Buffer Time (s)"}, jumpBufferSeconds_);
+        builder.Float(AuthoringFieldDescriptor{"groundGraceSeconds", "Ground Grace Time (s)"}, groundGraceSeconds_);
+        builder.Float(AuthoringFieldDescriptor{"maximumFallSpeed", "Maximum Fall Speed"}, maximumFallSpeed_);
     }
     if (builder.Section(TEXT::Localize("character.traversal"))) {
-        builder.FloatRange("Maximum Slope (deg)", maximumSlopeAngleDegrees_, 0.0f, 89.0f, 1.0f);
-        builder.Float("Step Height", stepHeight_);
-        builder.Float("Floor Snap Distance", stickToFloorDistance_);
-        builder.Float("Step Forward Test", stepForwardTestDistance_);
-        builder.Bool("Cancel Uphill Motion On Steep Slopes", cancelVelocityTowardsSteepSlopes_);
-        builder.Bool("Prevent Grounded Edge Fall", edgeGuardEnabled_);
-        builder.Float("Edge Probe Distance", edgeProbeDistance_);
-        builder.Float("Edge Probe Radius", edgeProbeRadius_);
-        builder.Float("Maximum Grounded Drop", maximumGroundedDrop_);
+        builder.FloatRange(AuthoringFieldDescriptor{"maximumSlopeAngleDegrees", "Maximum Slope (deg)"},
+                           maximumSlopeAngleDegrees_, 0.0f, 89.0f, 1.0f);
+        builder.Float(AuthoringFieldDescriptor{"stepHeight", "Step Height"}, stepHeight_);
+        builder.Float(AuthoringFieldDescriptor{"stickToFloorDistance", "Floor Snap Distance"}, stickToFloorDistance_);
+        builder.Float(AuthoringFieldDescriptor{"stepForwardTestDistance", "Step Forward Test"},
+                      stepForwardTestDistance_);
+        builder.Bool(
+            AuthoringFieldDescriptor{"cancelVelocityTowardsSteepSlopes", "Cancel Uphill Motion On Steep Slopes"},
+            cancelVelocityTowardsSteepSlopes_);
+        builder.Bool(AuthoringFieldDescriptor{"edgeGuardEnabled", "Prevent Grounded Edge Fall"}, edgeGuardEnabled_);
+        builder.Float(AuthoringFieldDescriptor{"edgeProbeDistance", "Edge Probe Distance"}, edgeProbeDistance_);
+        builder.Float(AuthoringFieldDescriptor{"edgeProbeRadius", "Edge Probe Radius"}, edgeProbeRadius_);
+        builder.Float(AuthoringFieldDescriptor{"maximumGroundedDrop", "Maximum Grounded Drop"}, maximumGroundedDrop_);
     }
     if (builder.Section(TEXT::Localize("character.advanced"))) {
-        builder.Float("Contact Padding", characterPadding_);
-        builder.Float("Predictive Contact Distance", predictiveContactDistance_);
-        builder.FloatRange("Penetration Recovery", penetrationRecoverySpeed_, 0.0f, 1.0f, 0.05f);
+        builder.Float(AuthoringFieldDescriptor{"characterPadding", "Contact Padding"}, characterPadding_);
+        builder.Float(AuthoringFieldDescriptor{"predictiveContactDistance", "Predictive Contact Distance"},
+                      predictiveContactDistance_);
+        builder.FloatRange(AuthoringFieldDescriptor{"penetrationRecoverySpeed", "Penetration Recovery"},
+                           penetrationRecoverySpeed_, 0.0f, 1.0f, 0.05f);
         int maximumHits = static_cast<int>(maximumCollisionHits_);
-        if (builder.Int("Maximum Contact Hits", maximumHits)) {
+        if (builder.Int(AuthoringFieldDescriptor{"maximumCollisionHits", "Maximum Contact Hits"}, maximumHits)) {
             maximumCollisionHits_ = static_cast<uint32_t>((std::clamp)(maximumHits, 16, 4096));
         }
-        builder.Bool("Smooth Mesh Internal Edges", enhancedInternalEdgeRemoval_);
-        builder.FloatRange("Input Dead Zone", inputDeadZone_, 0.0f, 0.95f);
+        builder.Bool(AuthoringFieldDescriptor{"enhancedInternalEdgeRemoval", "Smooth Mesh Internal Edges"},
+                     enhancedInternalEdgeRemoval_);
+        builder.FloatRange(AuthoringFieldDescriptor{"inputDeadZone", "Input Dead Zone"}, inputDeadZone_, 0.0f, 0.95f);
     }
     ClampSettings();
     if (!builder.Section(TEXT::Localize("character.runtime")))
@@ -163,29 +173,30 @@ void CharacterLocomotionComponent::BuildInspector(IInspectorBuilder& builder) {
 }
 
 void SpawnPointComponent::BuildInspector(IInspectorBuilder& builder) {
-    builder.String("Spawn Point ID", spawnPointId_);
-    builder.Bool("Enabled", enabled_);
+    builder.String(AuthoringFieldDescriptor{"spawnPointId", "Spawn Point ID"}, spawnPointId_);
+    builder.Bool(AuthoringFieldDescriptor{"enabled", "Enabled"}, enabled_);
 }
 
 void DialogueInteractorComponent::BuildInspector(IInspectorBuilder& builder) {
-    builder.Bool("Enabled", enabled_);
+    builder.Bool(AuthoringFieldDescriptor{"enabled", "Enabled"}, enabled_);
     builder.Text("This actor can activate Dialogue Trigger volumes.");
 }
 
 void DialogueTriggerComponent::BuildInspector(IInspectorBuilder& builder) {
-    builder.Bool("Enabled", enabled_);
-    builder.AssetIdPicker("Dialogue Asset", AssetType::Dialogue, dialogueAssetGuid_.value);
-    builder.String("Locale", locale_);
-    int activation = static_cast<int>(activation_);
-    constexpr std::array<const char*, 2> activationModes{"On Enter", "Interact"};
-    if (builder.Choice("Activation", activation, activationModes)) {
-        activation_ = static_cast<DialogueTriggerActivation>(std::clamp(activation, 0, 1));
-    }
+    builder.Bool(AuthoringFieldDescriptor{"enabled", "Enabled"}, enabled_);
+    builder.AssetIdPicker(AuthoringFieldDescriptor{"dialogueAssetGuid", "Dialogue Asset"}, AssetType::Dialogue,
+                          dialogueAssetGuid_.value);
+    builder.String(AuthoringFieldDescriptor{"locale", "Locale"}, locale_);
+    static constexpr std::array<std::string_view, std::size(kDialogueTriggerActivationNames)> activationLabels{
+        "On Enter", "Interact"};
+    (void)EnumChoice(builder, AuthoringFieldDescriptor{"activation", "Activation"}, activation_,
+                     kDialogueTriggerActivationNames, &activationLabels);
     if (activation_ == DialogueTriggerActivation::Interact) {
-        builder.InputActionIdPicker("Interact Action", INPUT::InputActionValueType::Button, interactActionId_);
+        builder.InputActionIdPicker(AuthoringFieldDescriptor{"interactAction", "Interact Action"},
+                                    INPUT::InputActionValueType::Button, interactActionId_);
     }
-    builder.Bool("Pause World During Dialogue", pauseWorld_);
-    builder.Bool("One Shot", oneShot_);
+    builder.Bool(AuthoringFieldDescriptor{"pauseWorld", "Pause World During Dialogue"}, pauseWorld_);
+    builder.Bool(AuthoringFieldDescriptor{"oneShot", "One Shot"}, oneShot_);
     builder.Text(
         "Edit the paired Collider size and center to author the trigger range. The collider must remain a Trigger.");
     if (!dialogueAssetGuid_.IsValid()) {

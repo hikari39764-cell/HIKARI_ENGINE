@@ -150,7 +150,7 @@ void WorldSpriteComponent::BuildInspector(IInspectorBuilder& builder) {
     changed =
         builder.FloatRange({"roughness", "Roughness", "Width of the reflected highlight."}, roughness_, 0.05f, 1.0f) ||
         changed;
-    changed = builder.FloatRange("Specular", specular_, 0.0f, 1.0f) || changed;
+    changed = builder.FloatRange({"specular", "Specular"}, specular_, 0.0f, 1.0f) || changed;
     SanitizePresentation();
     std::string spriteAssetCandidate = spriteAssetGuid_.value;
     if (builder.AssetIdPicker(AuthoringFieldDescriptor{WorldSpriteComponentPropertyIds::SpriteAssetGuid,
@@ -234,7 +234,7 @@ void WorldSpriteComponent::BuildInspector(IInspectorBuilder& builder) {
             }
         }
     } else {
-        changed = builder.Bool("Point sampling", pointSampling_) || changed;
+        changed = builder.Bool({"pointSampling", "Point sampling"}, pointSampling_) || changed;
         std::string textureCandidate = textureAssetGuid_.value;
         if (builder.AssetIdPicker(
                 field(WorldSpriteComponentPropertyIds::TextureAssetGuid, textureLabel, textureHelp.c_str()),
@@ -242,10 +242,11 @@ void WorldSpriteComponent::BuildInspector(IInspectorBuilder& builder) {
             SetTextureAssetGuid(AssetGuid{textureCandidate});
             changed = true;
         }
-        changed = builder.Int("Atlas columns", atlasColumns_) || changed;
-        changed = builder.Int("Atlas rows", atlasRows_) || changed;
-        changed = builder.Int("Atlas frames", atlasFrames_) || changed;
-        changed = builder.FloatRange("Frames per second", framesPerSecond_, 0.0f, 60.0f) || changed;
+        changed = builder.Int({"atlasColumns", "Atlas columns"}, atlasColumns_) || changed;
+        changed = builder.Int({"atlasRows", "Atlas rows"}, atlasRows_) || changed;
+        changed = builder.Int({"atlasFrames", "Atlas frames"}, atlasFrames_) || changed;
+        changed =
+            builder.FloatRange({"framesPerSecond", "Frames per second"}, framesPerSecond_, 0.0f, 60.0f) || changed;
     }
     changed =
         builder.Bool(field(WorldSpriteComponentPropertyIds::Visible, visibleLabel, visibleHelp.c_str()), visible_) ||

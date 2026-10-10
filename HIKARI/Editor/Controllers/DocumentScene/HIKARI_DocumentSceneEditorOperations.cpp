@@ -1,11 +1,12 @@
 #include "Editor/Preview/HIKARI_EditorPreviewCapture.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
-#include "Editor/AI/HIKARI_AI_ProjectKnowledge.h"
+#include "Editor/Assets/HIKARI_AssetQueryOperation.h"
 #include "Editor/Assets/HIKARI_AssetImportSettingsService.h"
 #include "Editor/Authoring/HIKARI_ComponentAuthoringOperations.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Environment/HIKARI_EnvironmentAssetOperations.h"
+#include "Editor/Projects/HIKARI_EditorProjectSession.h"
 #include "Editor/Quality/HIKARI_GlobalPostOperations.h"
 #include "Editor/RenderStyle/HIKARI_RenderStyleOperations.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineOperations.h"
@@ -161,9 +162,19 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
     RegisterUiOperations();
     RegisterSceneFolderOperations();
     RegisterSceneLayoutOperations();
-    EDITOR::RegisterProjectCodeOperations(operationRegistry_, projectCodeJob_, [this] {
-        return projectBuildAllowed_ && aiOperationScene_ && !aiOperationScene_->IsRuntimePlayActive();
-    });
+    EDITOR::RegisterProjectCodeOperations(
+        operationRegistry_, projectCodeJob_, [this]() -> EDITOR::EditorOperationResult {
+            if (aiProjectSession_ == nullptr || aiOperationScene_ == nullptr || !projectBuildAllowed_)
+                return EDITOR::OperationFailure("RELOAD_UNAVAILABLE", "Stop Play before rebuilding and reloading.");
+            if (HasKnownUnsavedProjectChanges(*aiOperationScene_))
+                return EDITOR::OperationFailure("UNSAVED_DOCUMENTS",
+                                                "Save all documents before rebuilding and reloading.");
+            std::string message;
+            if (!aiProjectSession_->StartRebuildAndReload(message))
+                return EDITOR::OperationFailure("RELOAD_FAILED", std::move(message));
+            return EDITOR::OperationOk(
+                "The Editor is restarting to rebuild and load the project module. Reconnect after it opens.");
+        });
     EDITOR::RegisterGameExportOperations(operationRegistry_, exportJob_, [this] {
         return projectBuildAllowed_ && aiOperationScene_ && !HasKnownUnsavedProjectChanges(*aiOperationScene_);
     });
@@ -380,7 +391,7 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
                                          [this] { return aiOperationScene_; });
     EDITOR::RegisterRenderStyleOperations(operationRegistry_, environmentPanel_.Style(),
                                           [this] { return aiOperationScene_; });
-    EDITOR::RegisterProjectKnowledgeOperations(operationRegistry_, [this] { return aiOperationScene_; });
+    EDITOR::RegisterAssetQueryOperation(operationRegistry_, [this] { return aiOperationScene_; });
     EDITOR::RegisterModelCollisionOperations(operationRegistry_, ModelCollisionWorkspace(),
                                              [this]() { return aiOperationScene_; });
     EDITOR::RegisterAnimationStateMachineOperations(operationRegistry_, AnimationStateMachineWorkspace(),

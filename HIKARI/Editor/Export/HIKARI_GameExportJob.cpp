@@ -44,8 +44,7 @@ bool PrepareShipping(const std::filesystem::path& project, const std::filesystem
         return false;
     }
     EditorChildProcess build;
-    if (!build.Start(EditorChildProcess::PowerShell(), arguments, project, jobRoot / "shipping-build.log", message,
-                     true))
+    if (!build.Start(EditorChildProcess::PowerShell(), arguments, project, jobRoot / "shipping-build.log", message))
         return false;
     while (build.Running()) {
         if (std::filesystem::exists(jobRoot / "cancel")) {
@@ -117,7 +116,7 @@ bool GameExportJob::Start(const GameExportOptions& options, std::string& message
         auto child = std::make_unique<EditorChildProcess>();
         if (!child->Start(PLATFORM::GetExecutablePath(),
                           {L"--project", project.wstring(), L"--export-request", request.wstring()}, project,
-                          state_->root / "export.log", message, false))
+                          state_->root / "export.log", message, {.killOnClose = false}))
             return false;
         state_->process = std::move(child);
         state_->status = {{"running", true},

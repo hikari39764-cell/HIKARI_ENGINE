@@ -2,8 +2,6 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
-#include "Editor/AI/HIKARI_AI_AssistantPanel.h"
-
 #include <utility>
 
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"

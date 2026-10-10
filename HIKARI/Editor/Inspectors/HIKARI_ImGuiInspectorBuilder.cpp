@@ -48,6 +48,19 @@ struct AssetPickerEntry {
     std::string searchText{};
 };
 
+#if defined(HIKARI_WITH_EDITOR)
+// 項目 ID を ImGui の ID 範囲にする（同じ表示名の項目が並んでも衝突しない）。
+class FieldIdScope {
+public:
+    explicit FieldIdScope(const AuthoringFieldDescriptor& field) {
+        ImGui::PushID(field.id.data(), field.id.data() + field.id.size());
+    }
+    ~FieldIdScope() { ImGui::PopID(); }
+    FieldIdScope(const FieldIdScope&) = delete;
+    FieldIdScope& operator=(const FieldIdScope&) = delete;
+};
+#endif
+
 AssetPickerEntry BuildAssetPickerEntry(const AssetDescriptor& descriptor, const AssetDatabase* assetDatabase) {
     AssetPickerEntry entry{};
     entry.id = descriptor.id.value;
@@ -82,6 +95,7 @@ void ImGuiInspectorBuilder::SetContext(const InspectorContext& context) { contex
 
 bool ImGuiInspectorBuilder::MultilineString(const AuthoringFieldDescriptor& field, std::string& value) {
 #if defined(HIKARI_WITH_EDITOR)
+    const FieldIdScope scope(field);
     // 固定サイズの小さいバッファによる長文切り捨てを避ける。
     std::vector<char> buffer(std::max<size_t>(16385, value.size() + 4096), 0);
     std::copy(value.begin(), value.end(), buffer.begin());
@@ -129,62 +143,67 @@ bool ImGuiInspectorBuilder::Button(std::string_view label) {
 #endif
 }
 
-bool ImGuiInspectorBuilder::Bool(std::string_view label, bool& value) {
+bool ImGuiInspectorBuilder::Bool(const AuthoringFieldDescriptor& field, bool& value) {
 #if defined(HIKARI_WITH_EDITOR)
-    EDITOR::InspectorPropertyRow row(label, EDITOR::InspectorPropertyValueKind::Compact);
+    const FieldIdScope scope(field);
+    EDITOR::InspectorPropertyRow row(field.label, EDITOR::InspectorPropertyValueKind::Compact);
     return row.IsVisible() && ImGui::Checkbox("##Value", &value);
 #else
-    (void)label;
+    (void)field;
     (void)value;
     return false;
 #endif
 }
 
-bool ImGuiInspectorBuilder::Int(std::string_view label, int& value) {
+bool ImGuiInspectorBuilder::Int(const AuthoringFieldDescriptor& field, int& value) {
 #if defined(HIKARI_WITH_EDITOR)
-    EDITOR::InspectorPropertyRow row(label);
+    const FieldIdScope scope(field);
+    EDITOR::InspectorPropertyRow row(field.label);
     return row.IsVisible() && ImGui::InputInt("##Value", &value);
 #else
-    (void)label;
+    (void)field;
     (void)value;
     return false;
 #endif
 }
 
-bool ImGuiInspectorBuilder::Float(std::string_view label, float& value) {
+bool ImGuiInspectorBuilder::Float(const AuthoringFieldDescriptor& field, float& value) {
 #if defined(HIKARI_WITH_EDITOR)
-    EDITOR::InspectorPropertyRow row(label);
+    const FieldIdScope scope(field);
+    EDITOR::InspectorPropertyRow row(field.label);
     return row.IsVisible() && EDITOR::DragNumber("##Value", value, {.step = 0.01});
 #else
-    (void)label;
+    (void)field;
     (void)value;
     return false;
 #endif
 }
 
-bool ImGuiInspectorBuilder::String(std::string_view label, std::string& value) {
+bool ImGuiInspectorBuilder::String(const AuthoringFieldDescriptor& field, std::string& value) {
 #if defined(HIKARI_WITH_EDITOR)
+    const FieldIdScope scope(field);
     char buffer[256]{};
     strncpy_s(buffer, value.c_str(), sizeof(buffer) - 1);
-    EDITOR::InspectorPropertyRow row(label);
+    EDITOR::InspectorPropertyRow row(field.label);
     if (row.IsVisible() && ImGui::InputText("##Value", buffer, sizeof(buffer))) {
         value = buffer;
         return true;
     }
     return false;
 #else
-    (void)label;
+    (void)field;
     (void)value;
     return false;
 #endif
 }
 
-bool ImGuiInspectorBuilder::InputActionIdPicker(std::string_view label, INPUT::InputActionValueType expectedType,
-                                                std::string& value) {
+bool ImGuiInspectorBuilder::InputActionIdPicker(const AuthoringFieldDescriptor& field,
+                                                INPUT::InputActionValueType expectedType, std::string& value) {
 #if defined(HIKARI_WITH_EDITOR)
+    const FieldIdScope scope(field);
     const auto* inputService =
         context_.worldServices != nullptr ? context_.worldServices->Find<INPUT::InputService>() : nullptr;
-    EDITOR::InspectorPropertyRow row(label);
+    EDITOR::InspectorPropertyRow row(field.label);
     if (!row.IsVisible()) {
         return false;
     }
@@ -195,76 +214,80 @@ bool ImGuiInspectorBuilder::InputActionIdPicker(std::string_view label, INPUT::I
     return EDITOR::DrawInputActionField(inputService->GetActionMap(), "##Value", expectedType, value);
 #else
     (void)expectedType;
-    return String(label, value);
+    return String(field, value);
 #endif
-}
-
-bool ImGuiInspectorBuilder::RuntimeVariableIdPicker(std::string_view label, BINDING::ValueType expectedType,
-                                                    std::string& value) {
-    return RuntimeVariableIdPicker(AuthoringFieldDescriptor{{}, label, {}},
-                                   std::span<const BINDING::ValueType>(&expectedType, 1u), value);
 }
 
 bool ImGuiInspectorBuilder::RuntimeVariableIdPicker(const AuthoringFieldDescriptor& field,
                                                     std::span<const BINDING::ValueType> allowedTypes,
                                                     std::string& value) {
 #if defined(HIKARI_WITH_EDITOR)
+    const FieldIdScope scope(field);
     const auto* store =
         context_.worldServices != nullptr ? context_.worldServices->Find<BINDING::RuntimeBindingStore>() : nullptr;
     if (store == nullptr) {
-        return String(field.label, value);
+        return String(field, value);
     }
     EDITOR::InspectorPropertyRow row(field.label);
     return row.IsVisible() && EDITOR::DrawRuntimeVariableField(store->GetCatalog(), "##Value", allowedTypes, value);
 #else
     (void)allowedTypes;
-    return String(field.label, value);
+    return String(field, value);
 #endif
 }
 
-bool ImGuiInspectorBuilder::RuntimeEventIdPicker(std::string_view label, bool hasPayload,
+bool ImGuiInspectorBuilder::RuntimeEventIdPicker(const AuthoringFieldDescriptor& field, bool hasPayload,
                                                  BINDING::ValueType payloadType, std::string& value) {
 #if defined(HIKARI_WITH_EDITOR)
+    const FieldIdScope scope(field);
     const auto* store =
         context_.worldServices != nullptr ? context_.worldServices->Find<BINDING::RuntimeBindingStore>() : nullptr;
     if (store == nullptr) {
-        return String(label, value);
+        return String(field, value);
     }
-    EDITOR::InspectorPropertyRow row(label);
+    EDITOR::InspectorPropertyRow row(field.label);
     return row.IsVisible() &&
            EDITOR::DrawRuntimeEventField(store->GetCatalog(), "##Value", hasPayload, payloadType, value);
 #else
     (void)hasPayload;
     (void)payloadType;
-    return String(label, value);
+    return String(field, value);
 #endif
 }
 
-bool ImGuiInspectorBuilder::RuntimeEventIdPicker(std::string_view label, AuthoringEventPayloadPolicy policy,
-                                                 BINDING::ValueType payloadType, std::string& value) {
+bool ImGuiInspectorBuilder::RuntimeEventIdPicker(const AuthoringFieldDescriptor& field,
+                                                 AuthoringEventPayloadPolicy policy, BINDING::ValueType payloadType,
+                                                 std::string& value) {
 #if defined(HIKARI_WITH_EDITOR)
+    const FieldIdScope scope(field);
     const auto* store =
         context_.worldServices != nullptr ? context_.worldServices->Find<BINDING::RuntimeBindingStore>() : nullptr;
     if (store == nullptr) {
-        return String(label, value);
+        return String(field, value);
     }
-    EDITOR::InspectorPropertyRow row(label);
+    EDITOR::InspectorPropertyRow row(field.label);
     return row.IsVisible() && EDITOR::DrawRuntimeEventField(store->GetCatalog(), "##Value", policy, payloadType, value);
 #else
     (void)policy;
     (void)payloadType;
-    return String(label, value);
+    return String(field, value);
 #endif
 }
 
-bool ImGuiInspectorBuilder::FloatRange(std::string_view label, float& value, float minimum, float maximum,
-                                       float speed) {
+bool ImGuiInspectorBuilder::FloatRange(const AuthoringFieldDescriptor& field, float& value, float minimum,
+                                       float maximum, float speed) {
 #if defined(HIKARI_WITH_EDITOR)
-    EDITOR::InspectorPropertyRow row(label);
-    return row.IsVisible() &&
-           EDITOR::DragNumber("##Value", value, {.minimum = minimum, .maximum = maximum, .step = speed});
+    const FieldIdScope scope(field);
+    EDITOR::InspectorPropertyRow row(field.label);
+    if (!row.IsVisible()) {
+        return false;
+    }
+    if (field.slider) {
+        return EDITOR::SliderNumber("##Value", value, minimum, maximum);
+    }
+    return EDITOR::DragNumber("##Value", value, {.minimum = minimum, .maximum = maximum, .step = speed});
 #else
-    (void)label;
+    (void)field;
     (void)value;
     (void)minimum;
     (void)maximum;
@@ -273,20 +296,10 @@ bool ImGuiInspectorBuilder::FloatRange(std::string_view label, float& value, flo
 #endif
 }
 
-bool ImGuiInspectorBuilder::FloatRange(const AuthoringFieldDescriptor& field, float& value, float minimum,
-                                       float maximum, float speed) {
-#if defined(HIKARI_WITH_EDITOR)
-    if (field.slider) {
-        EDITOR::InspectorPropertyRow row(field.label);
-        return row.IsVisible() && EDITOR::SliderNumber("##Value", value, minimum, maximum);
-    }
-#endif
-    return FloatRange(field.label, value, minimum, maximum, speed);
-}
-
 bool ImGuiInspectorBuilder::TypedValue(const AuthoringFieldDescriptor& field, BINDING::Value& value, bool hasRange,
                                        float minimum, float maximum, float step) {
 #if defined(HIKARI_WITH_EDITOR)
+    const FieldIdScope scope(field);
     EDITOR::InspectorPropertyRow row(field.label);
     if (!row.IsVisible()) {
         return false;
@@ -305,10 +318,11 @@ bool ImGuiInspectorBuilder::TypedValue(const AuthoringFieldDescriptor& field, BI
 #endif
 }
 
-bool ImGuiInspectorBuilder::Color3(std::string_view label, float& red, float& green, float& blue) {
+bool ImGuiInspectorBuilder::Color3(const AuthoringFieldDescriptor& field, float& red, float& green, float& blue) {
 #if defined(HIKARI_WITH_EDITOR)
+    const FieldIdScope scope(field);
     float values[3]{red, green, blue};
-    EDITOR::InspectorPropertyRow row(label);
+    EDITOR::InspectorPropertyRow row(field.label);
     if (!row.IsVisible() ||
         !ImGui::ColorEdit3("##Value", values,
                            ImGuiColorEditFlags_Float | ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB)) {
@@ -320,7 +334,7 @@ bool ImGuiInspectorBuilder::Color3(std::string_view label, float& red, float& gr
     blue = values[2];
     return true;
 #else
-    (void)label;
+    (void)field;
     (void)red;
     (void)green;
     (void)blue;
@@ -328,43 +342,50 @@ bool ImGuiInspectorBuilder::Color3(std::string_view label, float& red, float& gr
 #endif
 }
 
-bool ImGuiInspectorBuilder::Choice(std::string_view label, int& selectedIndex, std::span<const char* const> choices) {
+bool ImGuiInspectorBuilder::Choice(const AuthoringFieldDescriptor& field, int& selectedIndex,
+                                   std::span<const AuthoringChoice> choices) {
 #if defined(HIKARI_WITH_EDITOR)
+    const FieldIdScope scope(field);
     if (choices.empty()) {
         return false;
     }
     selectedIndex = std::clamp(selectedIndex, 0, static_cast<int>(choices.size() - 1));
     bool changed = false;
-    EDITOR::InspectorPropertyRow row(label);
+    EDITOR::InspectorPropertyRow row(field.label);
     if (!row.IsVisible()) {
         return false;
     }
-    if (ImGui::BeginCombo("##Value", choices[static_cast<size_t>(selectedIndex)])) {
+    const std::string preview(choices[static_cast<size_t>(selectedIndex)].label);
+    if (ImGui::BeginCombo("##Value", preview.c_str())) {
         for (size_t index = 0; index < choices.size(); ++index) {
             const bool selected = static_cast<int>(index) == selectedIndex;
-            if (ImGui::Selectable(choices[index], selected)) {
+            const std::string label(choices[index].label);
+            ImGui::PushID(static_cast<int>(index));
+            if (ImGui::Selectable(label.c_str(), selected)) {
                 selectedIndex = static_cast<int>(index);
                 changed = true;
             }
             if (selected) {
                 ImGui::SetItemDefaultFocus();
             }
+            ImGui::PopID();
         }
         ImGui::EndCombo();
     }
     return changed;
 #else
-    (void)label;
+    (void)field;
     (void)selectedIndex;
     (void)choices;
     return false;
 #endif
 }
 
-bool ImGuiInspectorBuilder::Vec2(std::string_view label, float& x, float& y) {
+bool ImGuiInspectorBuilder::Vec2(const AuthoringFieldDescriptor& field, float& x, float& y) {
 #if defined(HIKARI_WITH_EDITOR)
+    const FieldIdScope scope(field);
     float values[2]{x, y};
-    EDITOR::InspectorPropertyRow row(label);
+    EDITOR::InspectorPropertyRow row(field.label);
     if (!row.IsVisible() || !EDITOR::DragNumbers("##Value", values, 2, {.step = 0.01})) {
         return false;
     }
@@ -373,17 +394,41 @@ bool ImGuiInspectorBuilder::Vec2(std::string_view label, float& x, float& y) {
     y = values[1];
     return true;
 #else
-    (void)label;
+    (void)field;
     (void)x;
     (void)y;
     return false;
 #endif
 }
 
-bool ImGuiInspectorBuilder::AssetIdPicker(std::string_view label, AssetType assetType, std::string& value) {
+bool ImGuiInspectorBuilder::Vec3(const AuthoringFieldDescriptor& field, float& x, float& y, float& z) {
 #if defined(HIKARI_WITH_EDITOR)
+    const FieldIdScope scope(field);
+    float values[3]{x, y, z};
+    EDITOR::InspectorPropertyRow row(field.label);
+    if (!row.IsVisible() || !EDITOR::DragNumbers("##Value", values, 3, {.step = 0.01})) {
+        return false;
+    }
+
+    x = values[0];
+    y = values[1];
+    z = values[2];
+    return true;
+#else
+    (void)field;
+    (void)x;
+    (void)y;
+    (void)z;
+    return false;
+#endif
+}
+
+bool ImGuiInspectorBuilder::AssetIdPicker(const AuthoringFieldDescriptor& field, AssetType assetType,
+                                          std::string& value) {
+#if defined(HIKARI_WITH_EDITOR)
+    const FieldIdScope scope(field);
     if (context_.assetDatabase) {
-        EDITOR::InspectorPropertyRow row(label);
+        EDITOR::InspectorPropertyRow row(field.label);
         if (!row.IsVisible()) {
             return false;
         }
@@ -392,7 +437,7 @@ bool ImGuiInspectorBuilder::AssetIdPicker(std::string_view label, AssetType asse
     }
 
     if (!context_.assetRegistry) {
-        return String(label, value);
+        return String(field, value);
     }
 
     std::vector<const AssetDescriptor*> assets = context_.assetRegistry->CollectByType(assetType);
@@ -415,12 +460,12 @@ bool ImGuiInspectorBuilder::AssetIdPicker(std::string_view label, AssetType asse
         }
     }
 
-    EDITOR::InspectorPropertyRow row(label);
+    EDITOR::InspectorPropertyRow row(field.label);
     if (!row.IsVisible()) {
         return false;
     }
     bool changed = false;
-    const std::string labelText(label);
+    const std::string labelText(field.label);
     const std::string previewText =
         value.empty() ? std::string("<none>") : (current ? current->name : ("Missing: " + value));
 
@@ -485,17 +530,18 @@ bool ImGuiInspectorBuilder::AssetIdPicker(std::string_view label, AssetType asse
 
     return changed;
 #else
-    (void)label;
+    (void)field;
     (void)assetType;
     (void)value;
     return false;
 #endif
 }
 
-bool ImGuiInspectorBuilder::SceneIdPicker(std::string_view label, std::string& value) {
+bool ImGuiInspectorBuilder::SceneIdPicker(const AuthoringFieldDescriptor& field, std::string& value) {
 #if defined(HIKARI_WITH_EDITOR)
+    const FieldIdScope scope(field);
     if (!context_.assetDatabase) {
-        return String(label, value);
+        return String(field, value);
     }
 
     std::vector<const AssetRecord*> sceneRecords = context_.assetDatabase->CollectByType(AssetType::Scene);
@@ -506,7 +552,7 @@ bool ImGuiInspectorBuilder::SceneIdPicker(std::string_view label, std::string& v
         return lhs->displayName < rhs->displayName;
     });
 
-    EDITOR::InspectorPropertyRow row(label);
+    EDITOR::InspectorPropertyRow row(field.label);
     if (!row.IsVisible()) {
         return false;
     }
@@ -553,15 +599,16 @@ bool ImGuiInspectorBuilder::SceneIdPicker(std::string_view label, std::string& v
 
     return changed;
 #else
-    (void)label;
+    (void)field;
     (void)value;
     return false;
 #endif
 }
 
-bool ImGuiInspectorBuilder::SceneObjectIdPicker(std::string_view label, SceneObjectId& value) {
+bool ImGuiInspectorBuilder::SceneObjectIdPicker(const AuthoringFieldDescriptor& field, SceneObjectId& value) {
 #if defined(HIKARI_WITH_EDITOR)
-    EDITOR::InspectorPropertyRow row(label);
+    const FieldIdScope scope(field);
+    EDITOR::InspectorPropertyRow row(field.label);
     if (!row.IsVisible()) {
         return false;
     }
@@ -607,7 +654,7 @@ bool ImGuiInspectorBuilder::SceneObjectIdPicker(std::string_view label, SceneObj
     }
     return changed;
 #else
-    (void)label;
+    (void)field;
     (void)value;
     return false;
 #endif

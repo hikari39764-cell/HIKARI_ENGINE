@@ -118,6 +118,18 @@ void EditorProjectSessionController::RequestTransition(EditorProjectTransition t
     openConfirmationRequested_ = true;
 }
 
+bool EditorProjectSessionController::StartRebuildAndReload(std::string& outMessage) {
+    if (exitRequested_) {
+        outMessage = "The editor is already closing.";
+        return false;
+    }
+    if (!LaunchProjectHub(true, outMessage))
+        return false;
+    pendingTransition_ = EditorProjectTransition::None;
+    exitRequested_ = true;
+    return true;
+}
+
 bool EditorProjectSessionController::LaunchProjectHub(bool rebuildAndReload, std::string& outMessage) {
     const std::filesystem::path runtimeRoot = PLATFORM::GetExecutableDirectory();
     const std::filesystem::path executable = runtimeRoot.parent_path() / "HIKARI_ProjectLauncher.exe";

@@ -19,7 +19,7 @@ float ClampInspectorTime(float value) { return (std::max)(0.0f, value); }
 } // namespace
 
 void AnimatorComponent::BuildInspector(IInspectorBuilder& builder) {
-    if (builder.String("Clip", clip_.fallbackName)) {
+    if (builder.String(AuthoringFieldDescriptor{"clip", "Clip"}, clip_.fallbackName)) {
         // A hand-edited name is no longer guaranteed to describe the
         // previously resolved asset/clip pair. The AnimationSystem will
         // resolve and bind the new name on its next update.
@@ -27,22 +27,23 @@ void AnimatorComponent::BuildInspector(IInspectorBuilder& builder) {
         clip_.clipId = {};
         ClearTransition();
     }
-    builder.Float("Time Sec", timeSec_);
-    builder.Float("Speed", speed_);
-    builder.Float("Default Blend Sec", defaultBlendDurationSec_);
-    builder.Bool("Loop", loop_);
-    builder.Bool("Auto Play", autoPlay_);
-    builder.Bool("Playing", playing_);
-    builder.Bool("Finished", finished_);
+    builder.Float(AuthoringFieldDescriptor{"timeSec", "Time Sec"}, timeSec_);
+    builder.Float(AuthoringFieldDescriptor{"speed", "Speed"}, speed_);
+    builder.Float(AuthoringFieldDescriptor{"defaultBlendDurationSec", "Default Blend Sec"}, defaultBlendDurationSec_);
+    builder.Bool(AuthoringFieldDescriptor{"loop", "Loop"}, loop_);
+    builder.Bool(AuthoringFieldDescriptor{"autoPlay", "Auto Play"}, autoPlay_);
+    builder.Bool(AuthoringFieldDescriptor{"playing", "Playing"}, playing_);
+    builder.Bool(AuthoringFieldDescriptor{"finished", "Finished"}, finished_);
     timeSec_ = ClampInspectorTime(timeSec_);
     defaultBlendDurationSec_ = (std::max)(0.0f, defaultBlendDurationSec_);
 }
 
 void AnimationStateMachineComponent::BuildInspector(IInspectorBuilder& builder) {
-    builder.Bool("Enabled", enabled_);
-    builder.AssetIdPicker("State Machine Asset", AssetType::AnimationStateMachine, assetGuid_);
-    builder.Bool("Play On Start", playOnStart_);
-    builder.Bool("Sync Character Motion", syncCharacterMotion_);
+    builder.Bool(AuthoringFieldDescriptor{"enabled", "Enabled"}, enabled_);
+    builder.AssetIdPicker(AuthoringFieldDescriptor{"stateMachineAssetGuid", "State Machine Asset"},
+                          AssetType::AnimationStateMachine, assetGuid_);
+    builder.Bool(AuthoringFieldDescriptor{"playOnStart", "Play On Start"}, playOnStart_);
+    builder.Bool(AuthoringFieldDescriptor{"syncCharacterMotion", "Sync Character Motion"}, syncCharacterMotion_);
 
     const InspectorContext& context = builder.GetContext();
     if (context.worldServices != nullptr && context.runtimeObject != nullptr) {

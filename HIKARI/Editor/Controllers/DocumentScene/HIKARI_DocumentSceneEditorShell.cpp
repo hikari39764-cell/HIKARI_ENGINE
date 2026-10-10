@@ -74,7 +74,7 @@ void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
         if (ImGui::BeginViewportSideBar("###Editor/Documents", ImGui::GetMainViewport(), ImGuiDir_Up, 34 * scale,
                                         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar)) {
             const auto visible = authoringSessions_.VisibleSession(workspace);
-            if (IconTextButton(EditorGlyph::File, TEXT::Localize("ai.document.manual").c_str(), "manualDocument",
+            if (IconTextButton(EditorGlyph::File, TEXT::Localize("authoring.document.manual").c_str(), "manualDocument",
                                visible.empty() ? EditorButtonTone::Primary : EditorButtonTone::Quiet)) {
                 authoringSessions_.ShowForeground(workspace);
                 EditorWorkspaceOpenRequest request;
@@ -85,13 +85,13 @@ void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
             bool follow = authoringSessions_.FollowDocuments();
             if (IconButton(EditorGlyph::Reveal, "followDocuments",
                            follow ? EditorButtonTone::Primary : EditorButtonTone::Quiet, {},
-                           TEXT::Localize("ai.document.follow").c_str()))
+                           TEXT::Localize("authoring.document.follow").c_str()))
                 authoringSessions_.SetFollowDocuments(!follow);
-            if (aiAssistantSession_.IsBusy() && !visible.empty()) {
+            if (agentPanel_.turnActive && !visible.empty()) {
                 ImGui::SameLine();
                 if (IconButton(EditorGlyph::Pause, "takeOverDocument", EditorButtonTone::Quiet, {},
-                               TEXT::Localize("ai.document.takeover").c_str()))
-                    aiAssistantSession_.Cancel();
+                               TEXT::Localize("authoring.document.takeover").c_str()))
+                    agentPanel_.session.Interrupt();
             }
             ImGui::SameLine();
             if (ImGui::BeginTabBar("LiveDocuments",
@@ -107,7 +107,7 @@ void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
                     // 自動選択を操作に変換しない。手動文書表示もそのまま保つ。
                     if (ImGui::IsItemClicked() && visible != id)
                         authoringSessions_.Execute("authoring.reveal", {{"sessionId", id}});
-                    ImGui::SetItemTooltip("%s", TEXT::Localize("ai.document.live").c_str());
+                    ImGui::SetItemTooltip("%s", TEXT::Localize("authoring.document.live").c_str());
                     if (shown)
                         ImGui::EndTabItem();
                 }
@@ -117,14 +117,19 @@ void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
         ImGui::End();
         ImGui::PopStyleVar();
     };
-    contents.assistantBusy = aiAssistantSession_.IsBusy();
-    contents.assistantAttention = aiAssistantSession_.HasPendingApprovals();
+    contents.assistantBusy = agentPanel_.turnActive;
+    contents.assistantAttention = agentHost_.HasPendingApprovals();
     contents.tasksBusy = exportJob_.IsRunning() || projectCodeJob_.Running() ||
                          scene.GetAssetDatabase().GetAssetTaskService().HasActiveTasks();
     contents.unsavedSummary = UnsavedDocumentSummary(scene);
-    contents.assistant = [&] { aiAssistantPanel_.DrawEmbedded(); };
+    contents.assistant = [&] { DrawAgentPanel(scene); };
     contents.settings = [&] {
-        editorSettingsPanel_.DrawContents(context_, [&] { aiAssistantPanel_.DrawPreferences(); });
+        editorSettingsPanel_.DrawContents(context_, [&] {
+            if (ImGui::Button(TEXT::Localize("settings.aiBridge.writeAgentFiles").c_str()))
+                agentFilesMessage_ = operationRegistry_.Execute("project.agent_files.write").message;
+            if (!agentFilesMessage_.empty())
+                ImGui::TextWrapped("%s", agentFilesMessage_.c_str());
+        });
     };
     contents.resources = [&] {
         const ResourceWorkspaceContext resourceContext{
@@ -194,12 +199,9 @@ void DocumentSceneEditorController::DrawGlobalShell(DocumentSceneBase& scene) {
         }
         ImGui::SeparatorText(TEXT::Localize("shell.ai").c_str());
         ImGui::TextUnformatted(TEXT::Localize(contents.assistantBusy ? "shell.busy" : "shell.ready").c_str());
-        if (contents.assistantBusy) {
-            const auto activity = aiAssistantSession_.SnapshotActivity();
-            ImGui::TextWrapped("%s", activity.action.c_str());
-            if (IconTextButton(EditorGlyph::Stop, TEXT::Localize("shell.cancelTask").c_str(), "stopAssistant"))
-                aiAssistantSession_.Cancel();
-        }
+        if (contents.assistantBusy &&
+            IconTextButton(EditorGlyph::Stop, TEXT::Localize("shell.cancelTask").c_str(), "stopAssistant"))
+            agentPanel_.session.Interrupt();
     };
     editorShell_.Draw(context_, workspaceHost_, commandRouter_, contents);
 }

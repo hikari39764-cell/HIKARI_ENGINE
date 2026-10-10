@@ -42,10 +42,8 @@ static_assert(static_cast<uint32_t>(EDITOR_PROJECT::EditorOperationPermission::E
               static_cast<uint32_t>(EditorOperationPermission::ExecuteExternalProcess));
 static_assert(static_cast<uint32_t>(EDITOR_PROJECT::EditorOperationExposureMask::Human) ==
               static_cast<uint32_t>(EditorOperationExposureMask::Human));
-static_assert(static_cast<uint32_t>(EDITOR_PROJECT::EditorOperationExposureMask::BuiltInAi) ==
-              static_cast<uint32_t>(EditorOperationExposureMask::BuiltInAi));
-static_assert(static_cast<uint32_t>(EDITOR_PROJECT::EditorOperationExposureMask::LocalBridge) ==
-              static_cast<uint32_t>(EditorOperationExposureMask::LocalBridge));
+static_assert(static_cast<uint32_t>(EDITOR_PROJECT::EditorOperationExposureMask::Agent) ==
+              static_cast<uint32_t>(EditorOperationExposureMask::Agent));
 
 std::string_view BoundedString(const char* value, size_t maximumLength) noexcept {
     if (value == nullptr) {
@@ -150,10 +148,8 @@ EDITOR_PROJECT::EditorOperationRegistrationResult GameProjectEditorOperationRegi
         return Fail(PublicCode::InvalidPermission, "Project Editor operation must declare an explicit permission.");
     }
 
-    constexpr uint32_t kKnownExposureMask =
-        static_cast<uint32_t>(EDITOR_PROJECT::EditorOperationExposureMask::Human) |
-        static_cast<uint32_t>(EDITOR_PROJECT::EditorOperationExposureMask::BuiltInAi) |
-        static_cast<uint32_t>(EDITOR_PROJECT::EditorOperationExposureMask::LocalBridge);
+    constexpr uint32_t kKnownExposureMask = static_cast<uint32_t>(EDITOR_PROJECT::EditorOperationExposureMask::Human) |
+                                            static_cast<uint32_t>(EDITOR_PROJECT::EditorOperationExposureMask::Agent);
     const uint32_t exposureBits = static_cast<uint32_t>(descriptor.exposureMask);
     if (exposureBits == 0u || (exposureBits & ~kKnownExposureMask) != 0u) {
         return Fail(PublicCode::InvalidExposure, "Project Editor operation exposure mask is invalid or empty.");

@@ -7,8 +7,7 @@ $jobDirectory = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($RequestPath)
 $workspaceDirectory = Join-Path $jobDirectory 'workspace'
 $statusPath = Join-Path $jobDirectory 'result.json'
 $result = [ordered]@{
-    version = 1; build = 'NotRun'; behavior = 'NotRun'; sources = 'Staged'
-    activation = 'NotApplied'; success = $false; message = 'Preparing project build.'
+    version = 1; build = 'NotRun'; behavior = 'NotRun'; success = $false; message = 'Preparing project build.'
 }
 
 function Write-Result {
@@ -23,7 +22,7 @@ function Write-Result {
 
 function Test-Cancellation {
     if (Test-Path -LiteralPath (Join-Path $jobDirectory 'cancel')) {
-        throw [OperationCanceledException]::new('Project code task cancelled; original source and binaries are unchanged.')
+        throw [OperationCanceledException]::new('Project build cancelled; original source and binaries are unchanged.')
     }
 }
 
@@ -50,7 +49,7 @@ function Resolve-WorkspaceFile([string]$relativePath) {
 try {
     $request = Get-Content -LiteralPath $RequestPath -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($request.version -ne 1 -or -not (Test-Path -LiteralPath (Join-Path $workspaceDirectory 'Project.hikari'))) {
-        throw 'Invalid project code request or missing staged project.'
+        throw 'Invalid project build request or missing copied project.'
     }
     $sdkDirectory = [IO.Path]::GetFullPath([string]$request.sdkRoot)
     $buildScript = Join-Path $sdkDirectory 'Tools/Build-HikariProject.ps1'
@@ -107,7 +106,7 @@ try {
     }
     Test-Cancellation
     $result.success = $true
-    $result.message = 'Candidate ready for diff review. Source has not been applied; the loaded module is unchanged.'
+    $result.message = 'Build passed on a copy of the current source. The loaded module is unchanged; rebuild and reload to use it.'
     Write-Result
     exit 0
 } catch {

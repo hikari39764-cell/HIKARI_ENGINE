@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Assets/HIKARI_AssetDatabase.h"
@@ -17,78 +18,82 @@
 namespace HIKARI {
 
 namespace {
-constexpr std::array<const char*, 8> kMeshKindNames{"Plane",    "Grid Plane", "Box",  "Sphere",
-                                                    "Cylinder", "Capsule",    "Ramp", "Stairs"};
-
-uint32_t DrawSegmentCount(IInspectorBuilder& builder, const char* label, uint32_t value, int minimum, int maximum) {
+uint32_t DrawSegmentCount(IInspectorBuilder& builder, std::string_view id, std::string_view label, uint32_t value,
+                          int minimum, int maximum) {
     int edited = static_cast<int>(value);
-    if (builder.Int(label, edited)) {
+    if (builder.Int(AuthoringFieldDescriptor{id, label}, edited)) {
         return static_cast<uint32_t>(std::clamp(edited, minimum, maximum));
     }
     return value;
 }
 
-void DrawDimension(IInspectorBuilder& builder, const char* label, float& value) {
-    (void)builder.FloatRange(label, value, 0.001f, 100000.0f, 0.05f);
+void DrawDimension(IInspectorBuilder& builder, std::string_view id, std::string_view label, float& value) {
+    (void)builder.FloatRange(AuthoringFieldDescriptor{id, label}, value, 0.001f, 100000.0f, 0.05f);
 }
 } // namespace
 
 void ProceduralMeshComponent::BuildInspector(IInspectorBuilder& builder) {
     const ProceduralMeshSettings before = settings_;
-    int kind = static_cast<int>(settings_.kind);
-    if (builder.Choice("Shape", kind, kMeshKindNames)) {
-        settings_.kind =
-            static_cast<ProceduralMeshKind>(std::clamp(kind, 0, static_cast<int>(kMeshKindNames.size() - 1)));
+    std::array<std::string_view, std::size(kProceduralMeshKindNames)> kindLabels{};
+    for (size_t index = 0; index < kindLabels.size(); ++index) {
+        kindLabels[index] = GetProceduralMeshDisplayName(kProceduralMeshKindNames[index].value);
     }
+    (void)EnumChoice(builder, AuthoringFieldDescriptor{"kind", "Shape"}, settings_.kind, kProceduralMeshKindNames,
+                     &kindLabels);
 
     switch (settings_.kind) {
     case ProceduralMeshKind::Plane:
-        DrawDimension(builder, "Width", settings_.width);
-        DrawDimension(builder, "Depth", settings_.depth);
+        DrawDimension(builder, "width", "Width", settings_.width);
+        DrawDimension(builder, "depth", "Depth", settings_.depth);
         break;
     case ProceduralMeshKind::GridPlane:
-        DrawDimension(builder, "Width", settings_.width);
-        DrawDimension(builder, "Depth", settings_.depth);
-        settings_.segmentsX = DrawSegmentCount(builder, "Columns", settings_.segmentsX, 1, 512);
-        settings_.segmentsY = DrawSegmentCount(builder, "Rows", settings_.segmentsY, 1, 512);
+        DrawDimension(builder, "width", "Width", settings_.width);
+        DrawDimension(builder, "depth", "Depth", settings_.depth);
+        settings_.segmentsX = DrawSegmentCount(builder, "segmentsX", "Columns", settings_.segmentsX, 1, 512);
+        settings_.segmentsY = DrawSegmentCount(builder, "segmentsY", "Rows", settings_.segmentsY, 1, 512);
         break;
     case ProceduralMeshKind::Box:
-        DrawDimension(builder, "Width", settings_.width);
-        DrawDimension(builder, "Height", settings_.height);
-        DrawDimension(builder, "Depth", settings_.depth);
+        DrawDimension(builder, "width", "Width", settings_.width);
+        DrawDimension(builder, "height", "Height", settings_.height);
+        DrawDimension(builder, "depth", "Depth", settings_.depth);
         break;
     case ProceduralMeshKind::Sphere:
-        DrawDimension(builder, "Diameter", settings_.width);
-        settings_.sphereSlices = DrawSegmentCount(builder, "Radial Segments", settings_.sphereSlices, 3, 512);
-        settings_.sphereStacks = DrawSegmentCount(builder, "Vertical Segments", settings_.sphereStacks, 2, 256);
+        DrawDimension(builder, "width", "Diameter", settings_.width);
+        settings_.sphereSlices =
+            DrawSegmentCount(builder, "sphereSlices", "Radial Segments", settings_.sphereSlices, 3, 512);
+        settings_.sphereStacks =
+            DrawSegmentCount(builder, "sphereStacks", "Vertical Segments", settings_.sphereStacks, 2, 256);
         break;
     case ProceduralMeshKind::Cylinder:
-        DrawDimension(builder, "Diameter", settings_.width);
-        DrawDimension(builder, "Height", settings_.height);
-        settings_.sphereSlices = DrawSegmentCount(builder, "Radial Segments", settings_.sphereSlices, 3, 512);
-        settings_.segmentsY = DrawSegmentCount(builder, "Height Segments", settings_.segmentsY, 1, 512);
+        DrawDimension(builder, "width", "Diameter", settings_.width);
+        DrawDimension(builder, "height", "Height", settings_.height);
+        settings_.sphereSlices =
+            DrawSegmentCount(builder, "sphereSlices", "Radial Segments", settings_.sphereSlices, 3, 512);
+        settings_.segmentsY = DrawSegmentCount(builder, "segmentsY", "Height Segments", settings_.segmentsY, 1, 512);
         break;
     case ProceduralMeshKind::Ramp:
-        DrawDimension(builder, "Width", settings_.width);
-        DrawDimension(builder, "Height", settings_.height);
-        DrawDimension(builder, "Depth", settings_.depth);
+        DrawDimension(builder, "width", "Width", settings_.width);
+        DrawDimension(builder, "height", "Height", settings_.height);
+        DrawDimension(builder, "depth", "Depth", settings_.depth);
         break;
     case ProceduralMeshKind::Stairs:
-        DrawDimension(builder, "Width", settings_.width);
-        DrawDimension(builder, "Height", settings_.height);
-        DrawDimension(builder, "Depth", settings_.depth);
-        settings_.segmentsY = DrawSegmentCount(builder, "Steps", settings_.segmentsY, 1, 64);
+        DrawDimension(builder, "width", "Width", settings_.width);
+        DrawDimension(builder, "height", "Height", settings_.height);
+        DrawDimension(builder, "depth", "Depth", settings_.depth);
+        settings_.segmentsY = DrawSegmentCount(builder, "segmentsY", "Steps", settings_.segmentsY, 1, 64);
         break;
     case ProceduralMeshKind::Capsule:
-        DrawDimension(builder, "Diameter", settings_.width);
-        DrawDimension(builder, "Total Height", settings_.height);
-        settings_.sphereSlices = DrawSegmentCount(builder, "Radial Segments", settings_.sphereSlices, 3, 512);
-        settings_.sphereStacks = DrawSegmentCount(builder, "Hemisphere Segments", settings_.sphereStacks, 2, 256);
+        DrawDimension(builder, "width", "Diameter", settings_.width);
+        DrawDimension(builder, "height", "Total Height", settings_.height);
+        settings_.sphereSlices =
+            DrawSegmentCount(builder, "sphereSlices", "Radial Segments", settings_.sphereSlices, 3, 512);
+        settings_.sphereStacks =
+            DrawSegmentCount(builder, "sphereStacks", "Hemisphere Segments", settings_.sphereStacks, 2, 256);
         break;
     }
 
-    builder.Bool("Double Sided", settings_.doubleSided);
-    builder.Bool("Generate Tangents", settings_.generateTangents);
+    builder.Bool(AuthoringFieldDescriptor{"doubleSided", "Double Sided"}, settings_.doubleSided);
+    builder.Bool(AuthoringFieldDescriptor{"generateTangents", "Generate Tangents"}, settings_.generateTangents);
 
     // マテリアル選択: None(デフォルト白) / Checker(デバッグ) /
     // プロジェクト内のマテリアルアセット。

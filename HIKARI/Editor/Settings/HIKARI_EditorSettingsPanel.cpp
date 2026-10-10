@@ -10,7 +10,7 @@
 #include "imgui.h"
 
 namespace HIKARI::EDITOR {
-void EditorSettingsPanel::DrawContents(EditorContext& context, const std::function<void()>& aiSettings) {
+void EditorSettingsPanel::DrawContents(EditorContext& context, const std::function<void()>& bridgeActions) {
     auto preferences = GetEditorPreferences();
     bool changed = false;
     const auto tr = [](const char* key) { return TEXT::Localize(key); };
@@ -48,11 +48,13 @@ void EditorSettingsPanel::DrawContents(EditorContext& context, const std::functi
         }
     }
     if (category_ == 3) {
-        if (aiSettings)
-            aiSettings();
         ImGui::SeparatorText(tr("settings.aiBridge").c_str());
         ImGui::Checkbox(tr("settings.aiBridge.enable").c_str(), &context.aiIntegration.localBridgeEnabled);
         ImGui::TextWrapped("%s", tr("settings.aiBridge.warning").c_str());
+        if (!context.aiIntegration.localBridgeStatus.empty())
+            ImGui::TextWrapped("%s", context.aiIntegration.localBridgeStatus.c_str());
+        if (bridgeActions)
+            bridgeActions();
     }
     if (category_ == 4 || search_[0]) {
         if (matches("shell.logCapacity")) {

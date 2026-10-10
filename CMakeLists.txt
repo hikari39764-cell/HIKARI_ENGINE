@@ -312,6 +312,33 @@ if(HIKARI_WITH_EDITOR_BUILD)
     endforeach()
     install(TARGETS HIKARI_ProjectLauncher RUNTIME DESTINATION ".")
     set(HIKARI_STARTUP_TARGET HIKARI_ProjectLauncher)
+
+    # hikari.exe：Claude Code・Codex などの智能体が編集器の本地桥を呼ぶ命令行と MCP。Launcher と同じ場所に置き、
+    # Launcher と一緒に作る。連接文件の読み書きは編集器と同じ実装を使う。
+    add_executable(HIKARI_AgentCli
+        "${HIKARI_SOURCE_ROOT}/Tools/Agent/HIKARI_AgentCliMain.cpp"
+        "${HIKARI_SOURCE_ROOT}/Tools/Agent/HIKARI_AgentClient.cpp"
+        "${HIKARI_SOURCE_ROOT}/Tools/Agent/HIKARI_AgentHeadless.cpp"
+        "${HIKARI_SOURCE_ROOT}/Tools/Agent/HIKARI_AgentMcpServer.cpp"
+        "${HIKARI_SOURCE_ROOT}/Tools/Agent/HIKARI_AgentTools.cpp"
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Agent/HIKARI_AgentConnection.cpp")
+    target_include_directories(HIKARI_AgentCli PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
+    target_link_libraries(HIKARI_AgentCli PRIVATE HIKARI::Nlohmann ws2_32 advapi32)
+    hikari_configure_engine_target(HIKARI_AgentCli)
+    set_target_properties(HIKARI_AgentCli PROPERTIES
+        OUTPUT_NAME "hikari"
+        FOLDER "Engine/Tools"
+        HIKARI_WHOLE_PROGRAM_OPTIMIZATION OFF
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/symbols")
+    foreach(configuration IN ITEMS Debug EditorRelease Shipping)
+        string(TOUPPER "${configuration}" configuration_upper)
+        set_target_properties(HIKARI_AgentCli PROPERTIES
+            "RUNTIME_OUTPUT_DIRECTORY_${configuration_upper}" "${CMAKE_BINARY_DIR}/bin"
+            "PDB_OUTPUT_DIRECTORY_${configuration_upper}" "${CMAKE_BINARY_DIR}/symbols")
+    endforeach()
+    install(TARGETS HIKARI_AgentCli RUNTIME DESTINATION ".")
+    add_dependencies(HIKARI_ProjectLauncher HIKARI_AgentCli)
 else()
     add_executable(HIKARI_GameHost WIN32)
     target_sources(HIKARI_GameHost PRIVATE $<TARGET_OBJECTS:HIKARI_StartupResources>)

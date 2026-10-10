@@ -10,38 +10,9 @@ namespace HIKARI {
 
 namespace JsonMath = SERIALIZATION::JSON::MATH;
 
-namespace {
-const char* ToString(PHYSICS::PhysicsMotionType type) noexcept {
-    switch (type) {
-    case PHYSICS::PhysicsMotionType::Kinematic: return "Kinematic";
-    case PHYSICS::PhysicsMotionType::Dynamic: return "Dynamic";
-    case PHYSICS::PhysicsMotionType::Static:
-    default: return "Static";
-    }
-}
-
-PHYSICS::PhysicsMotionType ParseMotionType(const nlohmann::json& value, PHYSICS::PhysicsMotionType fallback) {
-    if (value.is_number_integer()) {
-        const int index = value.get<int>();
-        return index >= 0 && index <= 2 ? static_cast<PHYSICS::PhysicsMotionType>(index) : fallback;
-    }
-    if (!value.is_string()) {
-        return fallback;
-    }
-    const std::string text = value.get<std::string>();
-    if (text == "Static")
-        return PHYSICS::PhysicsMotionType::Static;
-    if (text == "Kinematic")
-        return PHYSICS::PhysicsMotionType::Kinematic;
-    if (text == "Dynamic")
-        return PHYSICS::PhysicsMotionType::Dynamic;
-    return fallback;
-}
-} // namespace
-
 void PhysicsBodyComponent::Serialize(nlohmann::json& out) const {
     out["enabled"] = enabled_;
-    out["motionType"] = ToString(motionType_);
+    out["motionType"] = TEXT::EnumToName(PHYSICS::kPhysicsMotionTypeNames, motionType_, "Static");
     out["mass"] = mass_;
     out["gravityScale"] = gravityScale_;
     out["linearDamping"] = linearDamping_;
@@ -56,9 +27,7 @@ void PhysicsBodyComponent::Serialize(nlohmann::json& out) const {
 
 void PhysicsBodyComponent::Deserialize(const nlohmann::json& in) {
     enabled_ = in.value("enabled", enabled_);
-    if (const auto found = in.find("motionType"); found != in.end()) {
-        motionType_ = ParseMotionType(*found, motionType_);
-    }
+    TEXT::TryParseEnum(PHYSICS::kPhysicsMotionTypeNames, in.value("motionType", std::string{}), motionType_);
     mass_ = in.value("mass", mass_);
     gravityScale_ = in.value("gravityScale", gravityScale_);
     linearDamping_ = in.value("linearDamping", linearDamping_);

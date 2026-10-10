@@ -85,7 +85,7 @@ void RuntimeBindingWorkspaceController::DrawToolbarWindow(DocumentSceneBase& sce
     }
 
     ImGui::BeginDisabled(!IsDocumentOpen());
-    if (IconTextButton(EditorGlyph::Save, TEXT::Localize("ai.api.save").c_str(), "RuntimeBindingSave",
+    if (IconTextButton(EditorGlyph::Save, TEXT::Localize("ui.common.save").c_str(), "RuntimeBindingSave",
                        EditorButtonTone::Primary, ImVec2(0.0f, 28.0f),
                        TEXT::Localize("editor.ui.save.projectsettings.runtime.bindings.json.11464d").c_str())) {
         Save(scene, statusMessage_);

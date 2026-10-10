@@ -22,11 +22,11 @@ bool DrawPhysicsCollisionFilterInspector(IInspectorBuilder& builder, uint32_t& c
         int layer = static_cast<int>(collisionLayer);
         int mask = static_cast<int>(collisionMask);
         bool changed = false;
-        if (builder.Int("Collision Layer", layer)) {
+        if (builder.Int(AuthoringFieldDescriptor{"collisionLayer", "Collision Layer"}, layer)) {
             collisionLayer = static_cast<uint32_t>((std::max)(layer, 1));
             changed = true;
         }
-        if (builder.Int("Collision Mask", mask)) {
+        if (builder.Int(AuthoringFieldDescriptor{"collisionMask", "Collision Mask"}, mask)) {
             collisionMask = static_cast<uint32_t>(mask);
             changed = true;
         }
@@ -34,10 +34,10 @@ bool DrawPhysicsCollisionFilterInspector(IInspectorBuilder& builder, uint32_t& c
     }
 
     const auto& layers = projectSettings->GetLayers();
-    std::vector<const char*> layerNames{};
-    layerNames.reserve(layers.size() + 1u);
+    std::vector<AuthoringChoice> layerChoices{};
+    layerChoices.reserve(layers.size() + 1u);
     for (const PHYSICS::PhysicsCollisionLayerSetting& layer : layers) {
-        layerNames.push_back(layer.name.c_str());
+        layerChoices.push_back({layer.name, layer.name});
     }
 
     int selectedLayer = projectSettings->FindLayerIndex(collisionLayer);
@@ -45,13 +45,13 @@ bool DrawPhysicsCollisionFilterInspector(IInspectorBuilder& builder, uint32_t& c
     std::string unmappedLayerName{};
     if (selectedLayer < 0) {
         unmappedLayerName = "Unmapped (" + std::to_string(collisionLayer) + ")";
-        layerNames.insert(layerNames.begin(), unmappedLayerName.c_str());
+        layerChoices.insert(layerChoices.begin(), {"unmapped", unmappedLayerName});
         selectedLayer = 0;
         layerIndexOffset = 1;
     }
 
     bool changed = false;
-    if (builder.Choice("Collision Layer", selectedLayer, layerNames)) {
+    if (builder.Choice(AuthoringFieldDescriptor{"collisionLayer", "Collision Layer"}, selectedLayer, layerChoices)) {
         const int configuredLayerIndex = selectedLayer - layerIndexOffset;
         if (configuredLayerIndex >= 0) {
             collisionLayer = layers[static_cast<size_t>(configuredLayerIndex)].bit;
@@ -71,7 +71,9 @@ bool DrawPhysicsCollisionFilterInspector(IInspectorBuilder& builder, uint32_t& c
 
     for (const PHYSICS::PhysicsCollisionLayerSetting& layer : layers) {
         bool enabled = (collisionMask & layer.bit) != 0u;
-        if (!builder.Bool("Collides With " + layer.name, enabled)) {
+        const std::string id = "collidesWith." + layer.name;
+        const std::string label = "Collides With " + layer.name;
+        if (!builder.Bool(AuthoringFieldDescriptor{id, label}, enabled)) {
             continue;
         }
         if (enabled) {

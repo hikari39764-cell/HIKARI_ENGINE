@@ -8,26 +8,29 @@
 namespace HIKARI::EDITOR {
 class EditorChildProcess;
 class EditorOperationRegistry;
+struct EditorOperationResult;
+// 現在の項目源码の写しを隠れた worker で構築し、编译と動作検証の結果を報告する。原本と読み込み済みの模块は変えない。
 class ProjectCodeJob final {
 public:
     ProjectCodeJob();
     ~ProjectCodeJob();
-    bool Start(const nlohmann::json& edits, std::string& message);
+    bool Start(std::string& message);
     void Poll();
     void Cancel();
-    bool Apply(std::string& message);
-    nlohmann::json Diff(const std::string& relative = {}) const;
     bool Running() const;
     const nlohmann::json& Status() const { return status_; }
     static std::filesystem::path SdkRoot();
 
 private:
     std::unique_ptr<EditorChildProcess> process_;
-    std::filesystem::path project_, job_;
-    nlohmann::json prepared_, status_ = {{"running", false}, {"state", "Idle"}};
+    std::filesystem::path job_;
+    nlohmann::json status_ = {{"running", false}, {"state", "Idle"}};
     bool cancelled_ = false;
-    bool applied_ = false;
     std::chrono::steady_clock::time_point lastPoll_{};
 };
-void RegisterProjectCodeOperations(EditorOperationRegistry&, ProjectCodeJob&, std::function<bool()> canApply);
+
+// project.build・project.build.status・project.build.cancel・project.reload と、公開 SDK を読む project.sdk.*。
+// reload は编辑器を再起動して新しい模块を読み込む（呼ぶ側が未保存の文書と Play を確かめる）。
+void RegisterProjectCodeOperations(EditorOperationRegistry& registry, ProjectCodeJob& job,
+                                   std::function<EditorOperationResult()> reload);
 } // namespace HIKARI::EDITOR

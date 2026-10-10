@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "Authoring/HIKARI_IInspectorBuilder.h"
@@ -14,75 +15,69 @@
 namespace HIKARI {
 
 namespace {
+// 一つの参数を key を ID にした一項目で編集する（数値は型付き値、Toggle は真偽）。
 bool DrawMaterialFxParamInspector(IInspectorBuilder& builder, const VFX::ParamDesc& param, size_t paramIndex,
                                   DirectX::XMFLOAT4& slotValue) {
-    if (param.ref.channel >= 4u) {
+    const size_t channel = param.ref.channel;
+    if (channel >= 4u) {
         return false;
     }
-
     float value[4]{slotValue.x, slotValue.y, slotValue.z, slotValue.w};
-    const std::string baseLabel =
-        param.label.empty() ? (param.key.empty() ? "Param " + std::to_string(paramIndex) : param.key) : param.label;
-    const std::string idSuffix = "##MaterialFxInspector_" + std::to_string(paramIndex);
+    const std::string id = param.key.empty() ? "param" + std::to_string(paramIndex) : param.key;
+    const AuthoringFieldDescriptor field{id,
+                                         param.label.empty() ? std::string_view(id) : std::string_view(param.label)};
 
-    bool changed = false;
-    auto editFloat = [&](const char* channelName, uint8_t channel) {
-        if (channel >= 4u) {
-            return;
+    if (param.type == VFX::ParamType::Toggle) {
+        bool enabled = value[channel] >= 0.5f;
+        if (!builder.Bool(field, enabled)) {
+            return false;
         }
-        float nextValue = value[channel];
-        if (builder.Float(baseLabel + " " + channelName + idSuffix, nextValue)) {
-            value[channel] = nextValue;
-            changed = true;
+        value[channel] = enabled ? 1.0f : 0.0f;
+    } else {
+        BINDING::Value typed{};
+        size_t count = 0u;
+        switch (param.type) {
+        case VFX::ParamType::Float:
+            typed.type = BINDING::ValueType::Float;
+            count = 1u;
+            break;
+        case VFX::ParamType::Float2:
+            typed.type = BINDING::ValueType::Float2;
+            count = 2u;
+            break;
+        case VFX::ParamType::Float3:
+        case VFX::ParamType::Color3:
+            typed.type = BINDING::ValueType::Float3;
+            count = 3u;
+            break;
+        case VFX::ParamType::Float4:
+            typed.type = BINDING::ValueType::Float4;
+            count = 4u;
+            break;
+        case VFX::ParamType::Color:
+        case VFX::ParamType::Color4:
+            typed.type = BINDING::ValueType::Color;
+            count = 4u;
+            break;
+        default: return false;
         }
-    };
-
-    switch (param.type) {
-    case VFX::ParamType::Float: editFloat("", param.ref.channel); break;
-    case VFX::ParamType::Float2:
-        if (param.ref.channel <= 2u) {
-            float x = value[param.ref.channel];
-            float y = value[param.ref.channel + 1u];
-            if (builder.Vec2(baseLabel + idSuffix, x, y)) {
-                value[param.ref.channel] = x;
-                value[param.ref.channel + 1u] = y;
-                changed = true;
-            }
+        if (channel + count > 4u) {
+            return false;
         }
-        break;
-    case VFX::ParamType::Float3:
-    case VFX::ParamType::Color3:
-        if (param.ref.channel <= 1u) {
-            editFloat("X", param.ref.channel);
-            editFloat("Y", static_cast<uint8_t>(param.ref.channel + 1u));
-            editFloat("Z", static_cast<uint8_t>(param.ref.channel + 2u));
+        float* components[4]{&typed.numeric.x, &typed.numeric.y, &typed.numeric.z, &typed.numeric.w};
+        for (size_t index = 0u; index < count; ++index) {
+            *components[index] = value[channel + index];
         }
-        break;
-    case VFX::ParamType::Float4:
-    case VFX::ParamType::Color:
-    case VFX::ParamType::Color4:
-        if (param.ref.channel == 0u) {
-            editFloat("X", 0u);
-            editFloat("Y", 1u);
-            editFloat("Z", 2u);
-            editFloat("W", 3u);
+        const bool hasRange = param.minValues[0] < param.maxValues[0];
+        if (!builder.TypedValue(field, typed, hasRange, param.minValues[0], param.maxValues[0], param.speed)) {
+            return false;
         }
-        break;
-    case VFX::ParamType::Toggle: {
-        bool enabled = value[param.ref.channel] >= 0.5f;
-        if (builder.Bool(baseLabel + idSuffix, enabled)) {
-            value[param.ref.channel] = enabled ? 1.0f : 0.0f;
-            changed = true;
+        for (size_t index = 0u; index < count; ++index) {
+            value[channel + index] = *components[index];
         }
-        break;
     }
-    default: break;
-    }
-
-    if (changed) {
-        slotValue = {value[0], value[1], value[2], value[3]};
-    }
-    return changed;
+    slotValue = {value[0], value[1], value[2], value[3]};
+    return true;
 }
 } // namespace
 
@@ -92,7 +87,7 @@ void MaterialFxComponent::BuildInspector(IInspectorBuilder& builder) {
     const bool valuesInitialized_ = parameters_.valuesInitialized_;
 
     std::string profileId = profileId_;
-    if (builder.String("Profile", profileId)) {
+    if (builder.String(AuthoringFieldDescriptor{"profileId", "Profile"}, profileId)) {
         SetProfileId(std::move(profileId));
     }
     if (profileId_.empty()) {

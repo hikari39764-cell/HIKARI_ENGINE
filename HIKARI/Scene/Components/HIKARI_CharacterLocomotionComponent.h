@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 
 namespace HIKARI {
@@ -11,6 +12,12 @@ enum class CharacterMovementSpace : uint8_t {
     World,
     Camera,
     Object,
+};
+
+inline constexpr TEXT::EnumName<CharacterMovementSpace> kCharacterMovementSpaceNames[] = {
+    {CharacterMovementSpace::World, "World"},
+    {CharacterMovementSpace::Camera, "Camera"},
+    {CharacterMovementSpace::Object, "Object"},
 };
 
 class CharacterLocomotionComponent final : public IComponent {

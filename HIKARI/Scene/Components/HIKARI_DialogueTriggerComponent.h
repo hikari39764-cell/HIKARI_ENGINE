@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "Assets/HIKARI_AssetGuid.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "HIKARI_IComponent.h"
 
 namespace HIKARI {
@@ -14,8 +15,10 @@ enum class DialogueTriggerActivation : uint8_t {
     Interact = 1u,
 };
 
-const char* ToString(DialogueTriggerActivation value) noexcept;
-bool TryParseDialogueTriggerActivation(std::string_view text, DialogueTriggerActivation& outValue) noexcept;
+inline constexpr TEXT::EnumName<DialogueTriggerActivation> kDialogueTriggerActivationNames[] = {
+    {DialogueTriggerActivation::OnEnter, "OnEnter"},
+    {DialogueTriggerActivation::Interact, "Interact"},
+};
 
 class DialogueTriggerComponent final : public IComponent {
 public:

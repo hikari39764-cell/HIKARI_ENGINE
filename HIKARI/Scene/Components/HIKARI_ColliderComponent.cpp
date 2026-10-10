@@ -16,74 +16,10 @@ namespace HIKARI {
 
 namespace JsonMath = SERIALIZATION::JSON::MATH;
 
-namespace {
-const char* ToString(ColliderFitMode mode) noexcept {
-    switch (mode) {
-    case ColliderFitMode::Geometry: return "Geometry";
-    case ColliderFitMode::CollisionAsset: return "CollisionAsset";
-    case ColliderFitMode::Manual:
-    default: return "Manual";
-    }
-}
-
-ColliderFitMode ParseFitMode(const nlohmann::json& value, ColliderFitMode fallback) {
-    if (value.is_number_integer()) {
-        const int index = value.get<int>();
-        if (index == 1)
-            return ColliderFitMode::Geometry;
-        if (index == 2)
-            return ColliderFitMode::CollisionAsset;
-        return index == 0 ? ColliderFitMode::Manual : fallback;
-    }
-    if (!value.is_string()) {
-        return fallback;
-    }
-    const std::string text = value.get<std::string>();
-    if (text == "Geometry" || text == "FitGeometry") {
-        return ColliderFitMode::Geometry;
-    }
-    if (text == "CollisionAsset") {
-        return ColliderFitMode::CollisionAsset;
-    }
-    if (text == "Manual") {
-        return ColliderFitMode::Manual;
-    }
-    return fallback;
-}
-
-const char* ToString(PHYSICS::PhysicsShapeType type) noexcept {
-    switch (type) {
-    case PHYSICS::PhysicsShapeType::Sphere: return "Sphere";
-    case PHYSICS::PhysicsShapeType::Capsule: return "Capsule";
-    case PHYSICS::PhysicsShapeType::Box:
-    default: return "Box";
-    }
-}
-
-PHYSICS::PhysicsShapeType ParseShapeType(const nlohmann::json& value, PHYSICS::PhysicsShapeType fallback) {
-    if (value.is_number_integer()) {
-        const int index = value.get<int>();
-        return index >= 0 && index <= 2 ? static_cast<PHYSICS::PhysicsShapeType>(index) : fallback;
-    }
-    if (!value.is_string()) {
-        return fallback;
-    }
-    const std::string text = value.get<std::string>();
-    if (text == "Box")
-        return PHYSICS::PhysicsShapeType::Box;
-    if (text == "Sphere")
-        return PHYSICS::PhysicsShapeType::Sphere;
-    if (text == "Capsule")
-        return PHYSICS::PhysicsShapeType::Capsule;
-    return fallback;
-}
-
-} // namespace
-
 void ColliderComponent::Serialize(nlohmann::json& out) const {
     out["enabled"] = enabled_;
-    out["fitMode"] = ToString(fitMode_);
-    out["shape"] = ToString(shapeType_);
+    out["fitMode"] = TEXT::EnumToName(kColliderFitModeNames, fitMode_, "Manual");
+    out["shape"] = TEXT::EnumToName(kColliderShapeTypeNames, shapeType_, "Box");
     out["collisionAssetId"] = collisionGeometryAssetId_;
     out["center"] = JsonMath::ToJsonArray(center_);
     out["rotation"] = JsonMath::ToJsonArray(rotationEulerDegrees_);
@@ -97,12 +33,8 @@ void ColliderComponent::Serialize(nlohmann::json& out) const {
 
 void ColliderComponent::Deserialize(const nlohmann::json& in) {
     enabled_ = in.value("enabled", enabled_);
-    if (const auto found = in.find("fitMode"); found != in.end()) {
-        fitMode_ = ParseFitMode(*found, fitMode_);
-    }
-    if (const auto found = in.find("shape"); found != in.end()) {
-        shapeType_ = ParseShapeType(*found, shapeType_);
-    }
+    TEXT::TryParseEnum(kColliderFitModeNames, in.value("fitMode", std::string{}), fitMode_);
+    TEXT::TryParseEnum(kColliderShapeTypeNames, in.value("shape", std::string{}), shapeType_);
     collisionGeometryAssetId_ = in.value("collisionAssetId", collisionGeometryAssetId_);
     if (in.contains("center")) {
         center_ = JSONREAD::Vec3Or(in["center"], center_);

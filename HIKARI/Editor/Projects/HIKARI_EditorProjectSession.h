@@ -10,13 +10,15 @@ enum class EditorProjectTransition {
     RebuildAndReload,
 };
 
-// Project process transitions are intentionally human-only. They close the
-// current editor process and therefore require an in-context confirmation
-// instead of being exposed through the EditorOperation automation bus.
+// Project process transitions close the current editor process and therefore
+// require an in-context confirmation: the menu shows its own dialog, and agents
+// call project.reload, which the user approves in the agent panel every time.
 class EditorProjectSessionController {
 public:
     void DrawMainMenu(bool transitionAllowed, bool hasUnsavedChanges);
     void DrawConfirmationDialog();
+    // 承認済みの「重新构建并重载」。呼ぶ側が未保存の文書と Play を確かめる。
+    bool StartRebuildAndReload(std::string& outMessage);
 
     bool ShouldExitHost() const noexcept;
 

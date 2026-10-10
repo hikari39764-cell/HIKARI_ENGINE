@@ -11,37 +11,15 @@ namespace HIKARI {
 
 namespace JsonMath = SERIALIZATION::JSON::MATH;
 
-namespace {
-
-const char* InfluenceShapeName(ReflectionProbeInfluenceShape shape) noexcept {
-    return shape == ReflectionProbeInfluenceShape::Box ? "Box" : "Sphere";
-}
-
-const char* ProjectionShapeName(ReflectionProbeProjectionShape shape) noexcept {
-    return shape == ReflectionProbeProjectionShape::Box ? "Box" : "Infinite";
-}
-
-ReflectionProbeInfluenceShape ReadInfluenceShape(const nlohmann::json& in) {
-    return in.value("influenceShape", std::string("Sphere")) == "Box" ? ReflectionProbeInfluenceShape::Box
-                                                                      : ReflectionProbeInfluenceShape::Sphere;
-}
-
-ReflectionProbeProjectionShape ReadProjectionShape(const nlohmann::json& in) {
-    return in.value("projectionShape", std::string("Infinite")) == "Box" ? ReflectionProbeProjectionShape::Box
-                                                                         : ReflectionProbeProjectionShape::Infinite;
-}
-
-} // namespace
-
 void ReflectionProbeComponent::Serialize(nlohmann::json& out) const {
     out = {{"enabled", enabled_},
            {"sourceCubemapAsset", sourceCubemapAsset_},
            {"radius", radius_},
            {"intensity", intensity_},
-           {"influenceShape", InfluenceShapeName(influenceShape_)},
+           {"influenceShape", TEXT::EnumToName(kReflectionProbeInfluenceShapeNames, influenceShape_, "Sphere")},
            {"influenceBoxOffset", JsonMath::ToJsonArray(influenceBoxOffset_)},
            {"influenceBoxSize", JsonMath::ToJsonArray(influenceBoxSize_)},
-           {"projectionShape", ProjectionShapeName(projectionShape_)},
+           {"projectionShape", TEXT::EnumToName(kReflectionProbeProjectionShapeNames, projectionShape_, "Infinite")},
            {"projectionBoxOffset", JsonMath::ToJsonArray(projectionBoxOffset_)},
            {"projectionBoxSize", JsonMath::ToJsonArray(projectionBoxSize_)},
            {"projectionFollowsInfluence", projectionFollowsInfluence_},
@@ -57,11 +35,12 @@ void ReflectionProbeComponent::Deserialize(const nlohmann::json& in) {
     sourceCubemapAsset_ = in.value("sourceCubemapAsset", sourceCubemapAsset_);
     radius_ = in.value("radius", radius_);
     intensity_ = in.value("intensity", intensity_);
-    influenceShape_ = ReadInfluenceShape(in);
+    TEXT::TryParseEnum(kReflectionProbeInfluenceShapeNames, in.value("influenceShape", std::string{}), influenceShape_);
     influenceBoxOffset_ =
         JSONREAD::Vec3Or(in.value("influenceBoxOffset", nlohmann::json::array()), influenceBoxOffset_);
     influenceBoxSize_ = JSONREAD::Vec3Or(in.value("influenceBoxSize", nlohmann::json::array()), influenceBoxSize_);
-    projectionShape_ = ReadProjectionShape(in);
+    TEXT::TryParseEnum(kReflectionProbeProjectionShapeNames, in.value("projectionShape", std::string{}),
+                       projectionShape_);
     projectionBoxOffset_ =
         JSONREAD::Vec3Or(in.value("projectionBoxOffset", nlohmann::json::array()), projectionBoxOffset_);
     projectionBoxSize_ = JSONREAD::Vec3Or(in.value("projectionBoxSize", nlohmann::json::array()), projectionBoxSize_);
