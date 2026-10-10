@@ -9,7 +9,10 @@
 #include <utility>
 #include <vector>
 
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_World.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
@@ -121,6 +124,7 @@ EditorOperationResult ComponentAuthoringQueryService::QueryObjects(const Documen
         return OperationFailure("INVALID_OBJECT_ID", "objectId must be nonzero.");
     const int offset = (std::max)(0, parameters.value("offset", 0));
     const int limit = std::clamp(parameters.value("limit", 16), 1, 64);
+    const bool detail = parameters.value("detail", false);
     const SceneDocument& document = scene.GetSceneDocument();
     auto objects = nlohmann::json::array();
     size_t matched = 0;
@@ -134,11 +138,26 @@ EditorOperationResult ComponentAuthoringQueryService::QueryObjects(const Documen
             continue;
         if (matched++ < static_cast<size_t>(offset) || objects.size() >= static_cast<size_t>(limit))
             continue;
+        if (!detail) {
+            objects.push_back(SummarizeObject(scene, object));
+            continue;
+        }
         auto item = SerializeObject(document, object);
         item.update(ObserveSceneObject(scene, object));
         objects.push_back(std::move(item));
     }
     const auto count = objects.size();
+    if (!detail) {
+        auto summary = OperationOk("Scene object summaries returned; pass detail for models, material slots and "
+                                   "screen anchors.",
+                                   {{"count", count},
+                                    {"total", matched},
+                                    {"objects", std::move(objects)},
+                                    {"sceneRevision", scene.GetSceneDocumentRevision()}});
+        if (static_cast<size_t>(offset) + count < matched)
+            summary.data["nextOffset"] = offset + count;
+        return summary;
+    }
     auto result = OperationOk(
         "Scene object observations returned.",
         {{"count", count},
@@ -175,6 +194,26 @@ EditorOperationResult ComponentAuthoringQueryService::QueryComponents(const Docu
 
 nlohmann::json ComponentAuthoringQueryService::SerializeComponent(const SceneComponentData& component) const {
     return {{"componentId", component.id.value}, {"type", component.type}};
+}
+
+nlohmann::json ComponentAuthoringQueryService::SummarizeObject(const DocumentSceneBase& scene,
+                                                               const SceneObjectData& object) const {
+    nlohmann::json components = nlohmann::json::array();
+    for (const SceneComponentData& component : object.components)
+        components.push_back(SerializeComponent(component));
+    nlohmann::json result{{"objectId", object.id.value}, {"name", object.name}, {"components", std::move(components)}};
+    if (object.parent.has_value())
+        result["parentObjectId"] = object.parent->value;
+    if (!object.enabled)
+        result["enabled"] = false;
+    if (const GameObject* runtime = scene.GetWorld().FindObject(object.id)) {
+        const MATH::Mat4 world = runtime->GetTransform().GetWorldMatrix();
+        result["worldPosition"] = {world.m[3][0], world.m[3][1], world.m[3][2]};
+    }
+    if (const Bounds bounds = ObserveSceneObjectBounds(scene, object.id); BOUNDS::IsUsable(bounds))
+        result["worldBounds"] = {{"min", {bounds.min.x, bounds.min.y, bounds.min.z}},
+                                 {"max", {bounds.max.x, bounds.max.y, bounds.max.z}}};
+    return result;
 }
 
 nlohmann::json ComponentAuthoringQueryService::SerializeObject(const SceneDocument& document,

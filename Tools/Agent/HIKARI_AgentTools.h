@@ -17,6 +17,8 @@ struct AgentToolOutcome {
     nlohmann::json result = nlohmann::json::object();
     // 結果に含まれる画像（截图）。MCP は画像として返し、命令行はパスを出す。
     std::vector<std::filesystem::path> images{};
+    // MCP で画像を元の大きさのまま返す（既定は kModelImageLongSide へ縮める）。
+    bool fullSizeImages = false;
 };
 
 struct AgentTool {

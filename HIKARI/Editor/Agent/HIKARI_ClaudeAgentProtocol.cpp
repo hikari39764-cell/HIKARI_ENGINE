@@ -1,9 +1,11 @@
 // Claude Code：-p --input-format stream-json --output-format stream-json の常駐会話。
 // 利用者の発言は標準入力の {"type":"user"} 行、道具の権限確認は control_request（can_use_tool）で编辑器に来る
-// （--permission-prompts host）。用量は rate_limit_event・result・get_context_usage から読む。
+// （--permission-prompts host）。文件编辑は编辑器が書き込み先で決める（引擎目录と内容模式は断り、开发项目で项目の中なら
+// 聞かずに通す）。用量は rate_limit_event・result・get_context_usage から読む。
 #include "Editor/Agent/HIKARI_AgentProtocol.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <iterator>
@@ -13,6 +15,10 @@
 
 namespace HIKARI::EDITOR::AGENT {
 namespace {
+
+bool IsFileEditTool(std::string_view tool) {
+    return tool == "Edit" || tool == "Write" || tool == "MultiEdit" || tool == "NotebookEdit";
+}
 
 // 道具名から MCP の接頭辞（mcp__hikari__）を外す。
 std::string ToolTitle(std::string name) {
@@ -43,20 +49,38 @@ public:
         const auto add = [&arguments](const std::string& text) {
             arguments.push_back(TEXT::PathFromUtf8(text).wstring());
         };
+        // 確認は標準入出力の control_request（can_use_tool）で编辑器に来る。--permission-prompt-tool stdio が無いと
+        // 宿主に聞かずに断られる（2.1.295 で実測）。
         for (const char* argument : {"-p", "--input-format", "stream-json", "--output-format", "stream-json",
-                                     "--verbose", "--permission-prompts", "host"})
+                                     "--verbose", "--permission-prompts", "host", "--permission-prompt-tool", "stdio"})
             add(argument);
         add("--mcp-config");
         add(AgentGenericPath(config));
+        // 利用者の他の MCP 服务器と claude.ai の连接器を読まない（--chrome は別に動く）。
+        if (!request.userTools)
+            add("--strict-mcp-config");
         // hikari の道具と読むだけの道具は聞かずに通す。编辑器の操作には编辑器自身の承認がある。
         add("--allowedTools");
         add("mcp__hikari Read Glob Grep");
-        if (request.allowProjectEdits) {
-            add("--permission-mode");
-            add("acceptEdits");
-        } else {
+        // 利用者設定の defaultMode（acceptEdits など）を使わず、確認は全て编辑器に来させる（manual は以前の default）。
+        add("--permission-mode");
+        add("manual");
+        // 引擎目录への编辑は CLI の deny 規則でも拒む（利用者設定の allow 規則より優先する）。Windows のパスは
+        // /d/... の形で照合されるので、絶対パスは //d/... と書く。空白を含むパスが割れないよう、規則ごとに一つの引数にする。
+        std::vector<std::string> denied;
+        if (!request.allowProjectEdits)
+            denied.emplace_back("Edit Write MultiEdit NotebookEdit");
+        for (const std::filesystem::path& root : request.protectedRoots) {
+            std::string path = AgentGenericPath(root);
+            if (path.size() > 1u && path[1] == ':')
+                path = "//" + std::string(1, static_cast<char>(std::tolower(static_cast<unsigned char>(path[0])))) +
+                       path.substr(2u);
+            denied.push_back("Edit(" + path + "/**)");
+        }
+        if (!denied.empty()) {
             add("--disallowedTools");
-            add("Edit Write MultiEdit NotebookEdit");
+            for (const std::string& rule : denied)
+                add(rule);
         }
         const auto option = [&add](const char* name, const std::string& value) {
             if (!value.empty()) {
@@ -94,6 +118,15 @@ public:
             return true;
         outError = "Cannot write to Claude Code.";
         return false;
+    }
+
+    bool Compact(AgentSession& session, std::string& outError) override {
+        // stream-json でも slash command はそのまま効く。結果は result で返る。
+        if (!Send(session, {"/compact"}, outError))
+            return false;
+        session.AddEvent({AgentEvent::Kind::User, {}, "/compact"});
+        session.SetBusy(true);
+        return true;
     }
 
     void Interrupt(AgentSession& session) override {
@@ -152,14 +185,10 @@ public:
     }
 
     void Respond(AgentSession& session, const AgentToolApproval& approval, bool allow) override {
-        const std::string id = approval.token.value("request_id", std::string{});
-        nlohmann::json decision =
-            allow ? nlohmann::json{{"behavior", "allow"},
-                                   {"updatedInput", approval.token.value("input", nlohmann::json::object())}}
-                  : nlohmann::json{{"behavior", "deny"}, {"message", "The user denied this in the HIKARI editor."}};
-        (void)session.WriteLine(
-            {{"type", "control_response"},
-             {"response", {{"subtype", "success"}, {"request_id", id}, {"response", std::move(decision)}}}});
+        if (!allow)
+            return Deny(session, approval, "The user denied this in the HIKARI editor.");
+        Answer(session, approval,
+               {{"behavior", "allow"}, {"updatedInput", approval.token.value("input", nlohmann::json::object())}});
     }
 
 private:
@@ -197,6 +226,25 @@ private:
             window->resetsAt = info["resetsAt"].get<int64_t>();
     }
 
+    static void Answer(AgentSession& session, const AgentToolApproval& approval, nlohmann::json decision) {
+        (void)session.WriteLine({{"type", "control_response"},
+                                 {"response",
+                                  {{"subtype", "success"},
+                                   {"request_id", approval.token.value("request_id", std::string{})},
+                                   {"response", std::move(decision)}}}});
+    }
+
+    static void Deny(AgentSession& session, const AgentToolApproval& approval, std::string message) {
+        Answer(session, approval, {{"behavior", "deny"}, {"message", std::move(message)}});
+    }
+
+    // 聞かずに断り、記録に残す。reason は agent.event.blocked.<reason>。
+    static void Block(AgentSession& session, const AgentToolApproval& approval, const char* reason, std::string target,
+                      std::string message) {
+        session.AddEvent({AgentEvent::Kind::Blocked, reason, ClipAgentText(approval.tool + ": " + target), true});
+        Deny(session, approval, std::move(message));
+    }
+
     void HandleControlRequest(AgentSession& session, const nlohmann::json& line) {
         const std::string id = line.value("request_id", std::string{});
         const nlohmann::json request = line.value("request", nlohmann::json::object());
@@ -208,13 +256,38 @@ private:
             return;
         }
         const std::string tool = request.value("tool_name", std::string{});
+        const nlohmann::json input = request.value("input", nlohmann::json::object());
+        const std::string command = input.is_object() ? input.value("command", std::string{}) : std::string{};
         AgentToolApproval approval;
         approval.tool = request.value("display_name", tool);
-        approval.detail = ClipAgentText(
-            request.value("description", AgentJsonText(request.value("input", nlohmann::json::object()))));
+        // 命令は全文を見せる（説明だけでは何をするか分からない）。
+        approval.detail = ClipAgentText(command.empty() ? request.value("description", AgentJsonText(input)) : command);
         approval.browser = request.value("tool_kind", std::string{}) == "browser";
         approval.grantKey = tool;
-        approval.token = {{"request_id", id}, {"input", request.value("input", nlohmann::json::object())}};
+        approval.token = {{"request_id", id}, {"input", input}};
+        const AgentSessionRequest& settings = session.Request();
+        if (IsFileEditTool(tool)) {
+            const std::string target = input.is_object()
+                                           ? input.value("file_path", input.value("notebook_path", std::string{}))
+                                           : std::string{};
+            const std::filesystem::path path = TEXT::PathFromUtf8(target);
+            if (TouchesEngineRoots(settings.protectedRoots, path, settings.projectRoot))
+                return Block(session, approval, "engine", target,
+                             "HIKARI blocks writes into the engine directory. Change only files inside the project.");
+            if (!settings.allowProjectEdits)
+                return Block(
+                    session, approval, "content", target,
+                    "File edits are off in the Content access mode. Change content through hikari operations.");
+            if (IsInsideAgentRoot(path, settings.projectRoot, settings.projectRoot))
+                return Respond(session, approval, true);
+            approval.warning = "outsideProject";
+        } else if (!command.empty()) {
+            if (MentionsEngineRoots(settings.protectedRoots, command))
+                return Block(session, approval, "engine", command,
+                             "HIKARI blocks commands that reference the engine directory. Read engine files with "
+                             "Read, Glob or Grep, and write only inside the project.");
+            approval.warning = "command";
+        }
         if (session.AddApproval(approval))
             Respond(session, approval, true);
     }

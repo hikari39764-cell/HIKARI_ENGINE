@@ -67,6 +67,9 @@ struct RuntimeLaunchConfig {
     // ── シーン起動設定 ──
     // 起動時に読み込むシーンの GUID
     std::optional<std::string> startupSceneGuid{};
+    // startupSceneGuid の場面を、資産の文件ではなくこの文件（絶対パス）の内容で開く。编辑器が保存前の場面を
+    // 後ろの無頭の引擎で遊ばせる時に使う。
+    std::optional<std::string> startupSceneSnapshot{};
     // 出力対象シーンの GUID リスト
     std::optional<std::vector<std::string>> exportedSceneGuids{};
 };

@@ -107,6 +107,23 @@ uint64_t EditorDocumentHistory::BeginUndoGroup(uint64_t reuse) noexcept {
     }
     return openUndoGroup_;
 }
+size_t EditorDocumentHistory::CountUndoGroupEntries(uint64_t group) const noexcept {
+    if (group == 0u)
+        return 0u;
+    return static_cast<size_t>(std::count_if(entries_.begin(), entries_.begin() + static_cast<std::ptrdiff_t>(cursor_),
+                                             [group](const Entry& entry) { return entry.undoGroup == group; }));
+}
+size_t EditorDocumentHistory::TopUndoGroupLength() const noexcept {
+    if (!CanUndo())
+        return 0u;
+    const uint64_t group = entries_[cursor_ - 1].undoGroup;
+    if (group == 0u)
+        return 1u;
+    size_t length = 0u;
+    while (length < cursor_ && entries_[cursor_ - 1 - length].undoGroup == group)
+        ++length;
+    return length;
+}
 uint64_t EditorDocumentHistory::GetUndoGroup() const noexcept {
     return CanUndo() ? entries_[cursor_ - 1].undoGroup : 0u;
 }

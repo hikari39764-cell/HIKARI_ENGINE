@@ -112,7 +112,12 @@ bool WriteAgentConnection(const std::filesystem::path& path, const AgentConnecti
 std::optional<AgentConnection> ReadAgentConnection(const std::filesystem::path& path, std::string& outError) {
     std::string text;
     if (!ReadText(path, text)) {
-        outError = "找不到编辑器的连接文件：" + ToUtf8(path) + "。请打开项目，并在编辑器设置里启用本地桥。";
+        // 连接文件は当前用户だけが読める。沙箱の中の命令（Codex など）からは、在っても読めない。
+        std::error_code error;
+        outError = std::filesystem::exists(path, error)
+                       ? "无法读取编辑器的连接文件：" + ToUtf8(path) +
+                             "。这个文件只允许当前用户读取，在沙箱里运行的命令读不到；请改用 MCP 的 hikari 工具。"
+                       : "找不到编辑器的连接文件：" + ToUtf8(path) + "。请打开项目，并在编辑器设置里启用本地桥。";
         return std::nullopt;
     }
     const nlohmann::json value = nlohmann::json::parse(text, nullptr, false);

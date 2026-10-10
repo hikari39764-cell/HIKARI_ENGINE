@@ -1,5 +1,7 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialAssetOperations.h"
 
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <string>
 
@@ -58,12 +60,23 @@ void RegisterModelMaterialAssetOperations(EditorOperationRegistry& registry,
                       EditorOperationKind::Query, false);
     auto assetQuery = EditorOperationDefinition{
         "material.list_assets",
-        "List Material assets with domain, template, guid, name and source path.",
+        "List Material assets with domain, template, guid, name, source path and base color (linear RGB; "
+        "baseColorTexture true when a texture also tints it).",
         "model_material",
         {
             EditorOperationParameter{"keyword", EditorOperationParameterType::String, false, "可选名称/路径关键字过滤"},
             EditorOperationParameter{"domain", EditorOperationParameterType::String, false,
                                      "可选领域过滤：Surface 或 Particle"},
+            EditorOperationParameter{"nearColor",
+                                     EditorOperationParameterType::Json,
+                                     false,
+                                     "Linear RGB [r, g, b]: sort by base color distance and return the closest ones",
+                                     {{"type", "array"}, {"items", {{"type", "number"}}}}},
+            EditorOperationParameter{"limit",
+                                     EditorOperationParameterType::Int,
+                                     false,
+                                     "Maximum results (default all, or 8 with nearColor)",
+                                     {{"minimum", 1}, {"maximum", 256}}},
         },
         [sceneProvider](const nlohmann::json& parameters) {
             EditorOperationResult result{};
@@ -104,14 +117,42 @@ void RegisterModelMaterialAssetOperations(EditorOperationRegistry& registry,
                     {"name", name},
                     {"path", path},
                 };
-                result.data["materials"].push_back(material);
-                result.details.push_back(material.dump());
+                // 色を変えたい時に材質ファイルを読まずに選べるよう、底色を添える。
+                const PbrMaterialAssetData pbr = ProjectPbrMaterialAssetData(source);
+                const auto rounded = [](float value) { return std::round(value * 1000.0f) / 1000.0f; };
+                material["baseColor"] = {rounded(pbr.baseColorFactor.x), rounded(pbr.baseColorFactor.y),
+                                         rounded(pbr.baseColorFactor.z)};
+                if (pbr.baseColorTexture.useTexture)
+                    material["baseColorTexture"] = true;
+                result.data["materials"].push_back(std::move(material));
             }
             if (result.data["materials"].empty()) {
                 result.code = "NO_MATERIAL_ASSETS";
                 result.message = "没有匹配的 Material 资产。";
                 return result;
             }
+            nlohmann::json& materials = result.data["materials"];
+            const nlohmann::json target = parameters.value("nearColor", nlohmann::json::array());
+            if (target.size() == 3u && target[0].is_number() && target[1].is_number() && target[2].is_number()) {
+                const auto distance = [&target](const nlohmann::json& material) {
+                    const nlohmann::json& color = material["baseColor"];
+                    float sum = 0.0f;
+                    for (size_t channel = 0u; channel < 3u; ++channel) {
+                        const float delta = color[channel].get<float>() - target[channel].get<float>();
+                        sum += delta * delta;
+                    }
+                    return sum;
+                };
+                std::stable_sort(materials.begin(), materials.end(),
+                                 [&distance](const nlohmann::json& lhs, const nlohmann::json& rhs) {
+                                     return distance(lhs) < distance(rhs);
+                                 });
+            }
+            const size_t limit = static_cast<size_t>(
+                parameters.value("limit", target.size() == 3u ? 8 : static_cast<int>(materials.size())));
+            result.data["total"] = materials.size();
+            if (materials.size() > limit)
+                materials.erase(materials.begin() + static_cast<std::ptrdiff_t>(limit), materials.end());
             result.ok = true;
             result.code = "OK";
             result.message = "已返回 " + std::to_string(result.data["materials"].size()) + " 个 Material 资产。";

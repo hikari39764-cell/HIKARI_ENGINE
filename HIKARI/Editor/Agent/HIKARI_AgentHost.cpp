@@ -47,6 +47,11 @@ void AgentHost::SetPermissionResolver(PermissionResolver resolver) {
     permissionResolver_ = std::move(resolver);
 }
 
+void AgentHost::SetEditingCheck(EditingCheck check) {
+    std::lock_guard lock(mutex_);
+    editingCheck_ = std::move(check);
+}
+
 bool AgentHost::IsCanceled(const PendingAction& action) const noexcept {
     return !open_.load() || action.generation != generation_.load();
 }
@@ -114,7 +119,9 @@ nlohmann::json AgentHost::Run(const PendingAction& action) {
 
 void AgentHost::PumpActions() {
     std::vector<std::shared_ptr<PendingAction>> actions;
+    std::vector<std::shared_ptr<PendingAction>> deferred;
     PermissionResolver resolver;
+    EditingCheck editing;
     {
         std::lock_guard lock(mutex_);
         // 取り消しで待ち手が消えた承認要求は捨てる。
@@ -123,7 +130,9 @@ void AgentHost::PumpActions() {
             return;
         actions.swap(pending_);
         resolver = permissionResolver_;
+        editing = editingCheck_;
     }
+    const bool userEditing = editing && editing();
     for (const std::shared_ptr<PendingAction>& action : actions) {
         nlohmann::json result;
         if (IsCanceled(*action)) {
@@ -140,6 +149,7 @@ void AgentHost::PumpActions() {
                 } catch (...) {
                     result = Failure("PERMISSION_RESOLUTION_FAILED", "动作未执行：权限解析失败。");
                 }
+                action->query = policy && policy->query;
             }
             if (result.is_null() && policy && RequiresUserApproval(policy->permission)) {
                 std::lock_guard lock(mutex_);
@@ -152,11 +162,26 @@ void AgentHost::PumpActions() {
                     continue;
                 }
             }
+            if (result.is_null() && userEditing && !action->query) {
+                const auto now = std::chrono::steady_clock::now();
+                if (!action->deferredSince)
+                    action->deferredSince = now;
+                if (now - *action->deferredSince < kMaximumDeferral) {
+                    deferred.push_back(action);
+                    continue;
+                }
+                result = Failure("DOCUMENT_BUSY", "用户一直在编辑场景，操作没有执行。稍后重试。");
+            }
             if (result.is_null())
                 result = Run(*action);
         }
         std::lock_guard lock(mutex_);
         action->result = std::move(result);
+    }
+    if (!deferred.empty()) {
+        // 後から来た要求より前に、元の順番で戻す。
+        std::lock_guard lock(mutex_);
+        pending_.insert(pending_.begin(), deferred.begin(), deferred.end());
     }
     changed_.notify_all();
 }

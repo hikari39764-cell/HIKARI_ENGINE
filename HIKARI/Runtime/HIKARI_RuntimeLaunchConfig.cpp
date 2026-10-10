@@ -248,6 +248,15 @@ RuntimeLaunchConfig LoadRuntimeLaunchConfigFromFile(const std::filesystem::path&
     }
     // シーン情報
     cfg.startupSceneGuid = ReadString(runtime, "startupSceneGuid");
+#if defined(HIKARI_WITH_EDITOR)
+    // 编辑器の後台 Play が保存前の場面を渡す。発行版のゲームは任意の文件から開始場面を読まない。
+    cfg.startupSceneSnapshot = ReadString(runtime, "startupSceneSnapshot");
+#else
+    if (runtime.contains("startupSceneSnapshot")) {
+        HIKARI_LOG_WARN("[RuntimeConfig] startupSceneSnapshot is read only by editor builds; ignored. Path: " +
+                        path.string());
+    }
+#endif
     cfg.exportedSceneGuids = ReadStringArray(runtime, "exportedSceneGuids");
     cfg.loaded = true;
     cfg.sourcePath = path;
@@ -325,6 +334,9 @@ void ApplyRuntimeLaunchConfig(const RuntimeLaunchConfig& runtimeCfg, RUNTIME::Ho
     }
     if (runtimeCfg.startupSceneGuid) {
         servicesCfg.startupSceneGuid = *runtimeCfg.startupSceneGuid;
+    }
+    if (runtimeCfg.startupSceneSnapshot) {
+        servicesCfg.startupSceneSnapshot = *runtimeCfg.startupSceneSnapshot;
     }
     if (runtimeCfg.exportedSceneGuids) {
         servicesCfg.exportedSceneGuids = *runtimeCfg.exportedSceneGuids;

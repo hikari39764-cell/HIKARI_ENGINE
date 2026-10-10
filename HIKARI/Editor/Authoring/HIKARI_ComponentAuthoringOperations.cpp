@@ -1,6 +1,7 @@
 #include "Editor/Authoring/HIKARI_ComponentAuthoringOperations.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -103,8 +104,40 @@ public:
         if (!ReadTarget(parameters, target, failure)) {
             return failure;
         }
-        return ToOperationResult(propertyService_.Describe(scene->GetComponentRegistry(), scene->GetSceneDocument(),
-                                                           target, BuildInspectorContext(*scene)));
+        EditorOperationResult result = ToOperationResult(propertyService_.Describe(
+            scene->GetComponentRegistry(), scene->GetSceneDocument(), target, BuildInspectorContext(*scene)));
+        if (result.ok)
+            TrimDescribedFields(result.data, parameters);
+        return result;
+    }
+
+    // 智能体の文脈を小さく保つ：propertyIds で字段を絞り、資産の一覧のような大きな選択肢は数だけにする
+    // （material.list_assets などに詳しい一覧がある。includeChoices で全部）。
+    static void TrimDescribedFields(nlohmann::json& data, const nlohmann::json& parameters) {
+        constexpr size_t kMaximumInlineChoices = 16u;
+        const nlohmann::json wanted = parameters.value("propertyIds", nlohmann::json::array());
+        const bool includeChoices = parameters.value("includeChoices", false);
+        if (!data.contains("fields") || !data["fields"].is_array())
+            return;
+        nlohmann::json kept = nlohmann::json::array();
+        nlohmann::json unknown = wanted;
+        for (nlohmann::json& field : data["fields"]) {
+            const std::string id = field.value("id", std::string{});
+            if (!wanted.empty() && std::find(wanted.begin(), wanted.end(), id) == wanted.end())
+                continue;
+            unknown.erase(std::remove(unknown.begin(), unknown.end(), id), unknown.end());
+            const auto choices = field.find("choices");
+            if (!includeChoices && choices != field.end() && choices->is_array() &&
+                choices->size() > kMaximumInlineChoices) {
+                field["choiceCount"] = choices->size();
+                field.erase("choices");
+            }
+            kept.push_back(std::move(field));
+        }
+        data["fields"] = std::move(kept);
+        // 今の状態に無い字段（球体の height など）か ID の間違いかを、智能体が見分けられるように返す。
+        if (!unknown.empty())
+            data["unknownPropertyIds"] = std::move(unknown);
     }
 
     EditorOperationResult SetProperty(const nlohmann::json& parameters) {
@@ -375,7 +408,10 @@ void RegisterComponentAuthoringOperations(EditorOperationRegistry& registry,
           {"objectId", ParameterType::Int, false, "Optional stable object id filter."},
           {"keyword", ParameterType::String, false, "Optional name substring."},
           {"offset", ParameterType::Int, false, "Page offset, default 0."},
-          {"limit", ParameterType::Int, false, "Page size 1..64, default 16."}},
+          {"limit", ParameterType::Int, false, "Page size 1..64, default 16."},
+          {"detail", ParameterType::Bool, false,
+           "Return full observations (local transform, model, material slots, screen anchor); default is a compact "
+           "summary with ids, components, world position and bounds."}},
          [handler](const nlohmann::json& parameters) { return handler->QueryObjects(parameters); }},
         HIKARI::EDITOR::EditorOperationKind::Query);
     registry.Register(
@@ -391,13 +427,21 @@ void RegisterComponentAuthoringOperations(EditorOperationRegistry& registry,
                        {{"objectId", ParameterType::Int, true, "Stable SceneObjectId."}},
                        [handler](const nlohmann::json& parameters) { return handler->QueryComponents(parameters); }},
                       HIKARI::EDITOR::EditorOperationKind::Query);
-    registry.Register({"component.describe",
-                       "Return typed writable fields and semantic commands declared by one component instance.",
-                       "scene",
-                       {{"objectId", ParameterType::Int, true, "Stable SceneObjectId."},
-                        {"componentId", ParameterType::Int, true, "Stable SceneComponentId within the object."}},
-                       [handler](const nlohmann::json& parameters) { return handler->DescribeComponent(parameters); }},
-                      HIKARI::EDITOR::EditorOperationKind::Query);
+    registry.Register(
+        {"component.describe",
+         "Return typed writable fields and semantic commands declared by one component instance.",
+         "scene",
+         {{"objectId", ParameterType::Int, true, "Stable SceneObjectId."},
+          {"componentId", ParameterType::Int, true, "Stable SceneComponentId within the object."},
+          {"propertyIds",
+           ParameterType::Json,
+           false,
+           "Only these field ids",
+           {{"type", "array"}, {"items", {{"type", "string"}}}}},
+          {"includeChoices", ParameterType::Bool, false,
+           "List every choice of long choice fields (asset lists); by default they show choiceCount only"}},
+         [handler](const nlohmann::json& parameters) { return handler->DescribeComponent(parameters); }},
+        HIKARI::EDITOR::EditorOperationKind::Query);
     registry.Register(
         {"component.property.set",
          "Set one typed component field through its shared Inspector/Authoring declaration and record Document History.",

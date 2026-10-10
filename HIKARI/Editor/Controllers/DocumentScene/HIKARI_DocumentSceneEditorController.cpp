@@ -94,8 +94,10 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
             const EDITOR::EditorOperationDefinition* definition = operationRegistry_.Find(std::string(operation));
             if (definition == nullptr)
                 return std::nullopt;
-            return EDITOR::AGENT::AgentOperationPolicy{definition->permission, definition->approveEachTime};
+            return EDITOR::AGENT::AgentOperationPolicy{definition->permission, definition->approveEachTime,
+                                                       definition->kind == EDITOR::EditorOperationKind::Query};
         });
+    agentHost_.SetEditingCheck([this] { return IsUserEditingScene(); });
     agentHost_.SetExecutor([this](const std::string& operation, const nlohmann::json& parameters) {
         return ExecuteAgentAction(operation, parameters);
     });
@@ -184,6 +186,15 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAgentAction(
     if (!EDITOR::AGENT::AllowsAgentOperation(agentHost_.AccessMode(), operation))
         return EDITOR::OperationFailure("PROJECT_ACCESS_REQUIRED",
                                         "This project code operation is unavailable in the current access mode.");
+    if (const std::optional<std::string> output =
+            EDITOR::AGENT::FindEngineOutputParameter(*definition, parameters, engineRoots_)) {
+        EDITOR::EditorOperationResult blocked = EDITOR::OperationFailure(
+            "ENGINE_DIRECTORY_READ_ONLY", "Agents may not write into the engine directory: " + *output + ".");
+        // 编辑器の作業目录が引擎の中にあると、相対パスは引擎目录に解決される。
+        blocked.hints.push_back("Use an absolute path inside the project, or omit the path to keep the file in "
+                                "Library; relative paths resolve against the editor's working directory.");
+        return blocked;
+    }
     // 一括操作の各手順も智能体の操作として確かめられるように、実行中だけ印を残す。
     struct Scope {
         bool& flag;
@@ -194,12 +205,25 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAgentAction(
     const bool grouped = agentPanel_.turnActive;
     if (grouped)
         agentPanel_.turnUndoGroup = documentHistory_.BeginUndoGroup(agentPanel_.turnUndoGroup);
-    const EDITOR::EditorOperationResult result = operationRegistry_.Execute(operation, parameters);
+    const size_t undoDepth = documentHistory_.GetUndoDepth();
+    EDITOR::EditorOperationResult result = operationRegistry_.Execute(operation, parameters);
     if (grouped)
         documentHistory_.EndUndoGroup();
+    // この呼び出しが場面の撤销を積んだら、その名前を返す。次の scene.undo がこの修改を戻すかを智能体が判断できる。
+    if (const std::string* label = documentHistory_.GetUndoLabel();
+        label != nullptr && documentHistory_.GetUndoDepth() > undoDepth && result.data.is_object())
+        result.data["undo"] = {{"label", *label}, {"top", true}};
     if (definition->kind == EDITOR::EditorOperationKind::Mutation)
         RecordAgentOperation(operation, result);
     return result;
+}
+
+bool DocumentSceneEditorController::IsUserEditingScene() const {
+    // 文字の入力欄（智能体への依頼など）は数えない。マウスで動かしている間だけ。布景の寸法・开口の手柄は離した時に
+    // 押し始めの設定から書き戻すので、その間に智能体が同じ形を変えると上書きされる。
+    return viewportTransformHistory_.Active() || lookDevDrag_.has_value() || lookDevShapeDrag_.has_value() ||
+           lookDevMainLightDrag_ || terrainStrokeActive_ ||
+           (ImGui::IsAnyItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Left));
 }
 
 EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteSceneObjectOperation(
@@ -360,7 +384,9 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteSceneSave() 
 
 void DocumentSceneEditorController::EnsureAgentBridge(DocumentSceneBase& scene) {
     auto& integration = context_.aiIntegration;
-    if (!integration.localBridgeEnabled) {
+    // 後ろで動かす無頭の引擎（play.background、hikari headless）は、人の编辑器の连接文件を上書きしないよう桥を開かない。
+    static const bool bridgeOff = HasRuntimeCommandLineFlag(L"--agent-bridge-off");
+    if (!integration.localBridgeEnabled || bridgeOff) {
         if (agentBridge_.IsRunning()) {
             // 待っている本地桥の要求を先に終わらせる。終わらない要求があると Stop が接続スレッドを待ち続ける。
             agentHost_.SetOpen(false);

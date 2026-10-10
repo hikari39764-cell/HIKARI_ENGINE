@@ -86,6 +86,32 @@ bool DocumentSceneEditorController::EditLookDevDocument(DocumentSceneBase& scene
     return true;
 }
 
+std::vector<SceneObjectId> DocumentSceneEditorController::CreateLookDevObjects(
+    DocumentSceneBase& scene, std::string label, const std::function<std::vector<GameObject*>()>& create) {
+    FinishLookDevObjectDrag(scene);
+    selectionSync_.SyncNextSceneObjectId(scene, context_.nextSceneObjectId);
+    SceneDocument& document = scene.GetSceneDocument();
+    std::vector<SceneObjectData> beforeObjects = document.objects;
+    const SceneCameraSettings camera = document.camera;
+    const bool dirtyBefore = context_.sceneDirty || scene.HasUnsavedSceneChanges();
+    std::vector<SceneObjectId> created;
+    for (GameObject* object : create()) {
+        if (object != nullptr) {
+            created.push_back(object->GetDocumentId());
+        }
+    }
+    if (document.objects.size() == beforeObjects.size()) {
+        return {};
+    }
+    context_.sceneDirty = true;
+    selectionSync_.SyncNextSceneObjectId(scene, context_.nextSceneObjectId);
+    // 工厂は文書と実行時の両方へ足しているので、実行時の作り直しは要らない。
+    CommitSceneObjectAuthoringHistory(
+        scene, SceneObjectAuthoringHistoryRequest{std::move(label), std::move(beforeObjects), document.objects, camera,
+                                                  camera, dirtyBefore});
+    return created;
+}
+
 std::vector<EDITOR::LookDevArrangeItem> DocumentSceneEditorController::CollectLookDevArrangeItems(
     DocumentSceneBase& scene, std::span<const SceneObjectId> roots) {
     const SceneDocument& document = scene.GetSceneDocument();
@@ -351,7 +377,6 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ArrangeLookDevObjec
         if (objects.empty()) {
             return EDITOR::OperationFailure("CREATE_FAILED", "No copies were created.");
         }
-        SelectViewportObjects(*scene, objects, EditorObjectSelectionMode::Replace);
         return EDITOR::OperationOk(message, {{"createdIds", IdList(objects)}});
     };
     switch (*action) {
@@ -395,7 +420,6 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ArrangeLookDevObjec
         if (group.value == 0u) {
             return EDITOR::OperationFailure("GROUP_FAILED", "The objects could not be grouped.");
         }
-        SelectViewportObjects(*scene, {group}, EditorObjectSelectionMode::Replace);
         return EDITOR::OperationOk("Objects grouped.", {{"groupId", group.value}});
     }
     case EDITOR::LookDevArrangeAction::Mirror:
@@ -495,7 +519,7 @@ void DocumentSceneEditorController::DrawLookDevArrangeSection(DocumentSceneBase&
     const nlohmann::json selection = IdList(context_.selection.GetSelectedObjectIds());
     const auto arrange = [&](nlohmann::json parameters) {
         parameters["objectIds"] = selection;
-        RunLookDevOperation("scene.arrange", parameters);
+        SelectLookDevOperationResult(scene, RunLookDevOperation("scene.arrange", parameters));
     };
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     const float labelWidth = ImGui::CalcTextSize("XX").x;

@@ -9,6 +9,7 @@
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include <cstdio>
 
@@ -23,9 +24,9 @@ public:
         history_.beforeCamera = document.camera;
         history_.dirtyBefore = operation.editor.sceneDirty || operation.scene.HasUnsavedSceneChanges();
     }
-    void Complete(GameObject& object) {
+    // 操作で作った物は選ばない（智能体が人の選択を変えずに並行して作業できるように）。
+    void Complete(GameObject&) {
         auto& scene = operation_.scene;
-        operation_.editor.selection.SelectObject(scene.GetWorld(), &object);
         operation_.selection.SyncNextSceneObjectId(scene, operation_.editor.nextSceneObjectId);
         history_.afterObjects = scene.GetSceneDocument().objects;
         history_.afterCamera = scene.GetSceneDocument().camera;
@@ -46,10 +47,13 @@ void ReadObjectTransform(const nlohmann::json& parameters, CreateObjectRequest& 
     request.scale = {read("scaleX", 1), read("scaleY", 1), read("scaleZ", 1)};
 }
 
+// 作成の受領書は要約だけ（全量は scene.objects.query の detail）。智能体の文脈を小さく保つ。
 nlohmann::json CreatedObjectReceipt(const DocumentSceneBase& scene, const GameObject& object) {
-    auto result = ComponentAuthoringQueryService{}.QueryObjects(scene, {{"objectId", object.GetDocumentId().value}});
-    result.data["objectId"] = object.GetDocumentId().value;
-    return std::move(result.data);
+    const SceneObjectData* authored = FindSceneObjectData(scene.GetSceneDocument(), object.GetDocumentId());
+    nlohmann::json receipt{{"objectId", object.GetDocumentId().value}};
+    if (authored != nullptr)
+        receipt["object"] = ComponentAuthoringQueryService{}.SummarizeObject(scene, *authored);
+    return receipt;
 }
 
 EditorOperationResult EditSceneSelection(SceneObjectOperationContext& operation, SceneObjectCommandId command,
@@ -61,7 +65,17 @@ EditorOperationResult EditSceneSelection(SceneObjectOperationContext& operation,
     if (!ReadOptionalSceneObjectId(parameters, objectId, result)) {
         return result;
     }
-    if (objectId.has_value() || !name.empty()) {
+    // 対象を指定された時は一時的に選んで選択に対する命令を使い、終わったら人の選択に戻す
+    // （智能体が人の選択を変えずに並行して作業できるように）。
+    const auto previousSelection = operation.editor.selection;
+    const bool targeted = objectId.has_value() || !name.empty();
+    const auto restoreSelection = [&] {
+        if (!targeted)
+            return;
+        operation.editor.selection = previousSelection;
+        operation.editor.selection.RepairObjectSelection(scene->GetWorld(), previousSelection.GetActiveObjectId());
+    };
+    if (targeted) {
         const EDITOR::SceneObjectTargetResolution resolution = EDITOR::ResolveSceneObjectTarget(*scene, objectId, name);
         if (!resolution.IsResolved()) {
             return TargetResolutionFailure(resolution);
@@ -70,14 +84,17 @@ EditorOperationResult EditSceneSelection(SceneObjectOperationContext& operation,
         operation.editor.selection.SelectObject(scene->GetWorld(), target);
     }
     if (!operation.commands.CanExecute(command, *scene, operation.editor)) {
+        restoreSelection();
         return OperationFailure("INVALID_STATE", "没有可操作的选中对象");
     }
     if (!operation.commands.Execute(command, *scene, operation.editor, operation.selection)) {
+        restoreSelection();
         result.code = command == SceneObjectCommandId::Delete ? "DELETE_FAILED" : "DUPLICATE_FAILED";
         result.message = "对象操作失败";
         return result;
     }
     operation.history = operation.commands.ConsumeHistoryRequest();
+    restoreSelection();
     return OperationOk(operation.commands.GetStatusMessage());
 }
 } // namespace

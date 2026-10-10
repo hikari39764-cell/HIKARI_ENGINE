@@ -208,7 +208,7 @@ bool ValidateShape(const nlohmann::json& value, const nlohmann::json& schema, co
                 ++matches;
         }
         if (matches != 1) {
-            error = path + " must match exactly one accepted command shape. See operationSchema.";
+            error = path + " must match exactly one accepted command shape. See operations.describe.";
             return false;
         }
     }
@@ -368,10 +368,28 @@ bool EditorOperationRegistry::IsRegistered(const std::string& id) const noexcept
 
 EditorOperationResult EditorOperationRegistry::Validate(const EditorOperationDefinition& definition,
                                                         const nlohmann::json& parameters) const {
-    EditorOperationResult result{};
+    // 間違えた引数の説明だけを返す（操作全体の説明は operations.describe）。智能体の文脈を小さく保つ。
+    const auto failure = [&definition](std::string_view code, std::string message, nlohmann::json data) {
+        EditorOperationResult result = OperationFailure(code, std::move(message));
+        if (data.is_object()) {
+            result.data = std::move(data);
+        }
+        result.details.push_back("operation: " + definition.id);
+        result.hints.push_back("operations.describe " + definition.id + " lists every parameter.");
+        return result;
+    };
+    const auto describe = [](const EditorOperationParameter& parameter) {
+        nlohmann::json described{{"name", parameter.name},
+                                 {"type", TEXT::EnumToName(kEditorOperationParameterTypeNames, parameter.type)},
+                                 {"required", parameter.required},
+                                 {"description", parameter.description}};
+        if (!parameter.schema.empty()) {
+            described["schema"] = parameter.schema;
+        }
+        return nlohmann::json{{"parameter", std::move(described)}};
+    };
     if (!parameters.is_object()) {
-        return OperationFailure("PARAMETERS_NOT_OBJECT",
-                                "Operation parameters must be a JSON object: " + definition.id);
+        return failure("PARAMETERS_NOT_OBJECT", "Operation parameters must be a JSON object: " + definition.id, {});
     }
 
     for (const EditorOperationParameter& parameter : definition.parameters) {
@@ -380,22 +398,18 @@ EditorOperationResult EditorOperationRegistry::Validate(const EditorOperationDef
             if (!parameter.required) {
                 continue;
             }
-            result.code = "MISSING_PARAMETER";
-            result.message = "Missing required parameter: " + parameter.name;
-            result.details.push_back("operation: " + definition.id);
-            return result;
+            return failure("MISSING_PARAMETER", "Missing required parameter: " + parameter.name, describe(parameter));
         }
         if (!MatchesParameterType(*found, parameter.type)) {
-            result.code = "PARAMETER_TYPE_MISMATCH";
-            result.message = "Parameter '" + parameter.name + "' must be " +
-                             TEXT::EnumToName(kEditorOperationParameterTypeNames, parameter.type) + ", received " +
-                             found->type_name();
-            result.details.push_back("operation: " + definition.id);
-            return result;
+            return failure("PARAMETER_TYPE_MISMATCH",
+                           "Parameter '" + parameter.name + "' must be " +
+                               TEXT::EnumToName(kEditorOperationParameterTypeNames, parameter.type) + ", received " +
+                               found->type_name(),
+                           describe(parameter));
         }
-        if (!ValidateShape(*found, parameter.schema, parameter.name, result.message)) {
-            result.code = "PARAMETER_CONSTRAINT";
-            return result;
+        std::string message;
+        if (!ValidateShape(*found, parameter.schema, parameter.name, message)) {
+            return failure("PARAMETER_CONSTRAINT", std::move(message), describe(parameter));
         }
     }
 
@@ -408,13 +422,15 @@ EditorOperationResult EditorOperationRegistry::Validate(const EditorOperationDef
             std::find_if(definition.parameters.begin(), definition.parameters.end(),
                          [&name](const EditorOperationParameter& parameter) { return parameter.name == name; });
         if (known == definition.parameters.end()) {
-            result.code = "UNKNOWN_PARAMETER";
-            result.message = "Unknown parameter: " + name;
-            result.details.push_back("operation: " + definition.id);
-            return result;
+            nlohmann::json names = nlohmann::json::array();
+            for (const EditorOperationParameter& parameter : definition.parameters) {
+                names.push_back(parameter.name);
+            }
+            return failure("UNKNOWN_PARAMETER", "Unknown parameter: " + name, {{"parameters", std::move(names)}});
         }
     }
 
+    EditorOperationResult result{};
     result.ok = true;
     return result;
 }
@@ -430,9 +446,9 @@ EditorOperationResult EditorOperationRegistry::Execute(const std::string& id, co
                 result.data = nlohmann::json::object();
             result.data["operationKind"] =
                 TEXT::EnumToName(kEditorOperationKindNames, found->second.kind, "unspecified");
-            if (!result.ok) {
-                result.data["operationSchema"] = DescribeEditorOperation(found->second);
-            }
+            // 成功の code が空の操作があると、呼び出し側が失敗と見分けにくい。
+            if (result.ok && result.code.empty())
+                result.code = "OK";
         }
         LogOperationEnd(sequence, id, result, startedAt);
         return result;

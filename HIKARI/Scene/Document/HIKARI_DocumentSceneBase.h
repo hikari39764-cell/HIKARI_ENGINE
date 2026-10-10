@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -198,7 +199,8 @@ private:
     friend class DocumentSceneBakeCoordinator;
     friend class DOCUMENT_SCENE_BAKING::RasterLightingTransportBackend;
 #endif
-    bool OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGuid);
+    // contentPath を渡すと、資産の文件の代わりにその文件の内容で開く（身元は sceneGuid の資産のまま）。
+    bool OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGuid, const std::filesystem::path& contentPath = {});
     bool OpenStartupSceneAssetWithCurrentAssets();
     std::unique_ptr<DocumentSceneState> state_;
 };

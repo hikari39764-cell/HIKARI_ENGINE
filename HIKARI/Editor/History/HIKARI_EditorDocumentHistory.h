@@ -63,6 +63,10 @@ public:
     void EndUndoGroup() noexcept;
     // 次に撤销される記録の組（組に属さなければ 0）。
     uint64_t GetUndoGroup() const noexcept;
+    // group の記録が、いま撤销できる記録の中に幾つあるか。一番上から続く分（Undo 一回で戻る数）と比べれば、
+    // 途中に別の記録（人の編集など）が挟まっているかが分かる。
+    size_t CountUndoGroupEntries(uint64_t group) const noexcept;
+    size_t TopUndoGroupLength() const noexcept;
 
     EditorHistoryResult Undo(SceneDocument& document);
     EditorHistoryResult Redo(SceneDocument& document);

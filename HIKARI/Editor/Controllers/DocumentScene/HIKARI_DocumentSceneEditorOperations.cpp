@@ -264,12 +264,24 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
 
     EDITOR::EditorOperationDefinition captureViews{
         "scene.capture_views",
-        "Render the current scene from up to 6 fixed angles (front, three_quarter, right, back, left, top) around an object or point and return all images.",
+        "Render the scene in the background from up to 6 views around an object or point and return all images. "
+        "Does not move the editor view or draw editor helpers, so it is the default way for an agent to look at its "
+        "work while a person keeps using the editor.",
         "scene",
         {{"focusObjectId", EditorOperationParameterType::Int, false,
           "Object to orbit; defaults to the scene camera target"},
          {"center", EditorOperationParameterType::Json, false, "World [x, y, z] center instead of focusObjectId"},
-         {"views", EditorOperationParameterType::Json, false, "Angle names; default front, three_quarter, right, top"},
+         {"views", EditorOperationParameterType::Json, false,
+          "Each view is a name (editor = from the user's editor camera without moving it; front, three_quarter, right, "
+          "back, left, top orbit the center), {azimuth, elevation, distance, label} around the center (azimuth 0 = +Z "
+          "side, 90 = +X side) or {position, target, label}. Orbits can end up outside an enclosed room; use editor or "
+          "a position inside it. Default front, three_quarter, right, top; one or two views are usually enough"},
+         {"shading",
+          EditorOperationParameterType::String,
+          false,
+          "lit (default, scene lighting), neutral (even grey lighting: shapes and base colors stay readable in dark "
+          "scenes) or unlit (flat base colors, no shading)",
+          {{"enum", nlohmann::json::array({"lit", "unlit", "neutral"})}}},
          {"distance", EditorOperationParameterType::Float, false,
           "Camera distance; defaults to object bounds fit, or 6 for a point"},
          {"pitchDegrees", EditorOperationParameterType::Float, false, "Elevation for side views, default 20"},
@@ -301,7 +313,11 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
         {"capture.preview",
          "Capture the actual displayed output. auto uses the game/output monitor for scene and cameras; space explicitly captures the camera workspace observer. Poll capture.status.",
          "general",
-         {{"path", EditorOperationParameterType::String, false, "输出 PNG 路径，可省略"},
+         {{"path",
+           EditorOperationParameterType::String,
+           false,
+           "输出 PNG 路径，可省略",
+           {{"format", EDITOR::kOutputPathFormat}}},
           {"source", EditorOperationParameterType::String, false, "auto (default), game, space or preview"}},
          [this](const nlohmann::json& parameters) { return ExecuteAiCapturePreview(parameters); }},
         EditorOperationKind::Session, false);

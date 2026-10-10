@@ -44,7 +44,17 @@ nlohmann::json DescribeEditorOperationCompact(const EditorOperationDefinition& d
             item.erase(flag);
     }
     if (!includeParameters) {
+        // 引数名だけ。単純な操作はこれで呼べ、形が要る時は operations.describe。
+        nlohmann::json required = nlohmann::json::array();
+        nlohmann::json optional = nlohmann::json::array();
+        for (const nlohmann::json& parameter : item["parameters"])
+            (parameter.value("required", false) ? required : optional)
+                .push_back(parameter.value("name", std::string{}));
         item.erase("parameters");
+        if (!required.empty())
+            item["required"] = std::move(required);
+        if (!optional.empty())
+            item["optional"] = std::move(optional);
         return item;
     }
     for (nlohmann::json& parameter : item["parameters"]) {

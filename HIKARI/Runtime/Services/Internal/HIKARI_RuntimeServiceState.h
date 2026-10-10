@@ -29,6 +29,7 @@ struct RuntimeServiceState {
     bool streamlineEnabled = false;
     bool runtimeSessionEndRequested = false;
     std::string runtimeStartupSceneGuid{};
+    std::string runtimeStartupSceneSnapshot{};
     std::vector<std::string> runtimeExportedSceneGuids{};
     bool gpuFrameReady = false;
     bool presentationPrepared = false;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -35,6 +36,43 @@ inline constexpr TEXT::EnumName<AgentKind> kAgentKindNames[] = {
 // 見つからなければ空。
 std::filesystem::path FindAgentExecutable(AgentKind kind);
 
+// CLI に登录しているか（Claude Code は auth status、Codex は login status）。模型は呼ばない。
+// 後ろで動かし、Poll で結果を拾う。桌面版に同梱の CLI を単独で起動すると未登录のことがある。
+class AgentLoginCheck {
+public:
+    enum class State : uint8_t {
+        Unknown,
+        Checking,
+        LoggedIn,
+        LoggedOut,
+        // 調べられなかった（時間切れ、設定の読み込み失敗など）。Detail に CLI の出力の最初の行。
+        Failed,
+    };
+    static constexpr std::chrono::seconds kTimeout{15};
+
+    AgentLoginCheck();
+    ~AgentLoginCheck();
+    AgentLoginCheck(const AgentLoginCheck&) = delete;
+    AgentLoginCheck& operator=(const AgentLoginCheck&) = delete;
+
+    // output は CLI の出力を一時的に置くファイル。
+    void Start(AgentKind kind, const std::filesystem::path& executable, const std::filesystem::path& output);
+    void Poll();
+    State GetState() const noexcept { return state_; }
+    const std::string& Detail() const noexcept { return detail_; }
+    // 利用者が终端（PowerShell）で打つ登录命令。
+    std::string LoginCommand() const;
+
+private:
+    std::unique_ptr<EditorChildProcess> process_;
+    std::filesystem::path executable_{};
+    std::filesystem::path output_{};
+    AgentKind kind_ = AgentKind::ClaudeCode;
+    State state_ = State::Unknown;
+    std::chrono::steady_clock::time_point started_{};
+    std::string detail_{};
+};
+
 struct AgentEvent {
     enum class Kind : uint8_t {
         User,
@@ -43,6 +81,8 @@ struct AgentEvent {
         ToolResult,
         Result,
         Error,
+        // 编辑器が聞かずに断った道具（title は理由：engine / content）。
+        Blocked,
         Raw,
     };
     Kind kind = Kind::Raw;
@@ -76,14 +116,29 @@ struct AgentUsage {
     double referenceCostUsd = -1.0;
 };
 
+// 選べる模型。Codex は model/list の報告、Claude Code は CLI の別名。efforts は選べる推理强度。
+struct AgentModelOption {
+    std::string id{};
+    std::string label{};
+    std::vector<std::string> efforts{};
+    std::string defaultEffort{};
+    bool isDefault = false;
+    bool operator==(const AgentModelOption&) const = default;
+};
+
+// CLI が報告する前から出せる候補（Claude Code の別名と推理强度）。Codex は会話を始めると model/list で埋まる。
+std::vector<AgentModelOption> DefaultAgentModels(AgentKind kind);
+
 // CLI の道具の権限確認。
 struct AgentToolApproval {
     uint64_t id = 0;
     std::string tool{};
     std::string detail{};
     bool browser = false;
-    // 本轮允许で同じものを聞かずに通すための鍵。
+    // 本轮允许で同じものを聞かずに通すための鍵。空なら本轮允许を出さず、毎回聞く。
     std::string grantKey{};
+    // 人に知らせる注意（agent.toolApproval.warning.<warning>）。
+    std::string warning{};
     // 返答に要る、協議ごとの値。
     nlohmann::json token{};
 };
@@ -106,10 +161,14 @@ struct AgentSessionRequest {
     std::string resumeSession{};
     // 项目访问模式が「开发项目」の時だけ、源码の書き換えを CLI に許す。命令の実行は常に確認する。
     bool allowProjectEdits = false;
+    // どの模式でも書き込みを拒む目录（FindEngineRoots）。読むのは構わない。项目がこの中にあれば起動しない。
+    std::vector<std::filesystem::path> protectedRoots{};
     std::string model{};
     std::string effort{};
     // Claude in Chrome（Claude Code のみ）。
     bool chrome = false;
+    // 利用者が CLI に設定した他の MCP 服务器・插件も読み込む。既定は hikari だけ（道具の定義は毎轮の上下文を使う）。
+    bool userTools = false;
 };
 
 struct AgentMessage {
@@ -132,6 +191,8 @@ public:
     bool Send(const AgentMessage& message, std::string& outError);
     // 今の一轮を止める。会話は続けられる。
     void Interrupt();
+    // 上下文を詰める（Claude Code は /compact、Codex は thread/compact/start）。
+    bool Compact(std::string& outError);
     void Poll();
     void Stop() noexcept;
 
@@ -145,6 +206,8 @@ public:
     const AgentUsage& Usage() const noexcept { return usage_; }
     const std::string& SessionId() const noexcept { return sessionId_; }
     const std::filesystem::path& RunFolder() const noexcept { return request_.runFolder; }
+    // CLI が報告した模型（Codex の model/list）。報告が無ければ空。
+    const std::vector<AgentModelOption>& Models() const noexcept { return models_; }
 
     // 以下は協議（AgentProtocol）から使う。
     bool WriteLine(const nlohmann::json& message);
@@ -154,6 +217,7 @@ public:
     // token[key] が value の承認待ちを消す（CLI が確認を取り下げた時）。
     void RemoveApproval(std::string_view key, const nlohmann::json& value);
     void SetSessionId(std::string id) { sessionId_ = std::move(id); }
+    void SetModels(std::vector<AgentModelOption> models) { models_ = std::move(models); }
     void SetBusy(bool busy);
     AgentUsage& MutableUsage() noexcept { return usage_; }
     const AgentSessionRequest& Request() const noexcept { return request_; }
@@ -172,6 +236,7 @@ private:
     std::set<std::string, std::less<>> turnGrants_{};
     uint64_t nextApprovalId_ = 1;
     AgentUsage usage_{};
+    std::vector<AgentModelOption> models_{};
     std::string sessionId_{};
     bool busy_ = false;
     bool exited_ = false;

@@ -85,21 +85,24 @@ void DocumentSceneEditorController::RegisterAgentOperations() {
 
     EDITOR::EditorOperationDefinition search{
         "operations.search",
-        "Find operations by purpose. Returns ranked matches with their parameters. With neither keyword nor "
-        "workspace it returns only the operation count per workspace.",
+        "Find operations by purpose. Returns ranked matches with required and optional parameter names "
+        "(operations.describe gives full schemas). With neither keyword nor workspace it returns only the operation "
+        "count per workspace.",
         "general",
         {{"keyword", EditorOperationParameterType::String, false, "Purpose, operation name or search terms"},
          {"workspace", EditorOperationParameterType::String, false, "Workspace id"},
-         {"includeParameters", EditorOperationParameterType::Bool, false, "Include parameter schemas (default true)"},
+         {"includeParameters", EditorOperationParameterType::Bool, false,
+          "Include full parameter schemas (default false)"},
          {"offset", EditorOperationParameterType::Int, false, "Next page offset from a previous result"},
-         {"limit", EditorOperationParameterType::Int, false, "Results per page, 1 to 32 (default 12)"}},
+         {"limit", EditorOperationParameterType::Int, false, "Results per page, 1 to 32 (default 8)"}},
         [this](const nlohmann::json& parameters) {
             EDITOR::EditorOperationSearchQuery query;
             query.keyword = parameters.value("keyword", std::string{});
             query.workspace = parameters.value("workspace", std::string{});
-            query.includeParameters = parameters.value("includeParameters", true);
+            query.includeParameters = parameters.value("includeParameters", query.includeParameters);
             query.offset = static_cast<size_t>((std::max)(0, parameters.value("offset", 0)));
-            query.limit = static_cast<size_t>(std::clamp(parameters.value("limit", 12), 1, 32));
+            query.limit =
+                static_cast<size_t>(std::clamp(parameters.value("limit", static_cast<int>(query.limit)), 1, 32));
             return EDITOR::OperationOk(
                 "Matching operations.",
                 EDITOR::SearchEditorOperations(operationRegistry_, EDITOR::EditorOperationExposureMask::Agent, query));

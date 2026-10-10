@@ -5,10 +5,13 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <optional>
 #include <string_view>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Core/HIKARI_JsonRead.h"
 #include "Core/Math/HIKARI_MathValidation.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Editor/Authoring/HIKARI_EditorAuthoringPreview.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Preview/HIKARI_EditorPreviewCapture.h"
@@ -32,6 +35,20 @@ struct ViewAngle {
 constexpr ViewAngle kViewAngles[] = {
     {"front", 0.0f, 0.0f},  {"three_quarter", 45.0f, 0.0f}, {"right", 90.0f, 0.0f},
     {"back", 180.0f, 0.0f}, {"left", 270.0f, 0.0f},         {"top", 0.0f, 89.0f},
+};
+
+// 中心から見る人への向き（方位 0 が +Z、90 が +X、仰角は上向きが正）。
+MATH::Vec3 OrbitDirection(float azimuthDegrees, float elevationDegrees) {
+    const float yaw = azimuthDegrees * std::numbers::pi_v<float> / 180.0f;
+    const float elevation = elevationDegrees * std::numbers::pi_v<float> / 180.0f;
+    return {std::sin(yaw) * std::cos(elevation), std::sin(elevation), std::cos(yaw) * std::cos(elevation)};
+}
+
+// 照明つき・照明なし（底色）・中性の灰色の照明。
+constexpr TEXT::EnumName<RENDER3D::EDITORVIEW::EditorInteractiveShadingMode> kShadingNames[] = {
+    {RENDER3D::EDITORVIEW::EditorInteractiveShadingMode::Lit, "lit"},
+    {RENDER3D::EDITORVIEW::EditorInteractiveShadingMode::Unlit, "unlit"},
+    {RENDER3D::EDITORVIEW::EditorInteractiveShadingMode::Neutral, "neutral"},
 };
 
 const ViewAngle* FindViewAngle(std::string_view id) {
@@ -103,29 +120,68 @@ EditorOperationResult SceneViewSeriesCapture::Start(DocumentSceneBase& scene, co
     const float distance = std::clamp(parameters.value("distance", fittedDistance), 0.1f, 10000.0f);
     const nlohmann::json requested =
         parameters.value("views", nlohmann::json::array({"front", "three_quarter", "right", "top"}));
+    const std::optional<RENDER3D::EDITORVIEW::EditorInteractiveShadingMode> shading =
+        TEXT::TryParseEnum(kShadingNames, parameters.value("shading", std::string("lit")));
+    if (!shading)
+        return OperationFailure("INVALID_SHADING", "shading accepts lit, unlit or neutral.");
     if (!std::isfinite(distance) || !std::isfinite(pitch) || !std::isfinite(fov) || !requested.is_array() ||
         requested.empty() || requested.size() > kMaximumViews) {
         return OperationFailure("INVALID_VIEWS", "Provide 1 to 6 views and finite distance, pitch and fov.");
     }
     for (const nlohmann::json& item : requested) {
-        const ViewAngle* angle = item.is_string() ? FindViewAngle(item.get<std::string>()) : nullptr;
-        if (angle == nullptr) {
+        // 名前の角度、{azimuth, elevation, distance} の軌道、{position, target} の機位のどれか。
+        std::string label;
+        MATH::Vec3 eye{};
+        MATH::Vec3 look = center;
+        float viewFov = fov * std::numbers::pi_v<float> / 180.0f;
+        if (item.is_string() && item.get<std::string>() == "editor") {
+            // 人の編集相機と同じ位置・向きから写す（相機は動かさない）。部屋の中など、周りを回ると壁に遮られる時に使う。
+            const Camera3D& editor = scene.GetCamera();
+            eye = editor.GetPosition();
+            look = editor.GetTarget();
+            label = "editor";
+            // fovDegrees が無ければ、人が見ているのと同じ画角にする。
+            if (!parameters.contains("fovDegrees"))
+                viewFov = editor.GetFovYRad();
+        } else if (item.is_string()) {
+            const ViewAngle* angle = FindViewAngle(item.get<std::string>());
+            if (angle == nullptr) {
+                views_.clear();
+                return OperationFailure("UNKNOWN_VIEW",
+                                        "Named views are editor, front, three_quarter, right, back, left and top.");
+            }
+            label = angle->id;
+            eye =
+                center +
+                OrbitDirection(angle->yawDegrees, angle->pitchDegrees != 0.0f ? angle->pitchDegrees : pitch) * distance;
+        } else if (item.is_object() && item.contains("position")) {
+            eye = JSONREAD::Vec3MemberOr(item, "position", center);
+            look = JSONREAD::Vec3MemberOr(item, "target", center);
+            label = item.value("label", std::string("custom"));
+        } else if (item.is_object()) {
+            eye = center + OrbitDirection(item.value("azimuth", 0.0f),
+                                          std::clamp(item.value("elevation", pitch), -89.0f, 89.0f)) *
+                               std::clamp(item.value("distance", distance), 0.1f, 10000.0f);
+            label = item.value("label", std::string("orbit"));
+        } else {
             views_.clear();
-            return OperationFailure("UNKNOWN_VIEW", "views accepts front, three_quarter, right, back, left and top.");
+            return OperationFailure("INVALID_VIEW", "Each view is a name, {azimuth, elevation, distance} or "
+                                                    "{position, target}.");
         }
-        const float yaw = angle->yawDegrees * std::numbers::pi_v<float> / 180.0f;
-        const float elevation =
-            (angle->pitchDegrees != 0.0f ? angle->pitchDegrees : pitch) * std::numbers::pi_v<float> / 180.0f;
-        const MATH::Vec3 direction{std::sin(yaw) * std::cos(elevation), std::sin(elevation),
-                                   std::cos(yaw) * std::cos(elevation)};
-        View view{angle->id, {}};
-        view.camera.SetPerspective(fov * std::numbers::pi_v<float> / 180.0f,
-                                   static_cast<float>(width_) / static_cast<float>(height_),
-                                   (std::max)(0.01f, distance * 0.001f), (std::max)(1000.0f, distance * 50.0f));
-        // 真上からの時は上方向を奥へ倒して退化を避ける。
+        if (!MATH::IsFinite(eye) || !MATH::IsFinite(look) || !(MATH::Length(look - eye) > 1.0e-3f)) {
+            views_.clear();
+            return OperationFailure("INVALID_VIEW", "Each view is a name, {azimuth, elevation, distance} or "
+                                                    "{position, target} with distinct finite points.");
+        }
+        const float range = MATH::Length(look - eye);
+        View view{std::move(label), {}};
+        view.camera.SetPerspective(viewFov, static_cast<float>(width_) / static_cast<float>(height_),
+                                   (std::max)(0.01f, range * 0.001f), (std::max)(1000.0f, range * 50.0f));
+        // 真上・真下から見る時は上方向を奥へ倒して退化を避ける。
+        const MATH::Vec3 forward = MATH::Normalize(look - eye);
         const MATH::Vec3 up =
-            angle->pitchDegrees > 80.0f ? MATH::Vec3{0.0f, 0.0f, -1.0f} : MATH::Vec3{0.0f, 1.0f, 0.0f};
-        view.camera.SetLookAt(center + direction * distance, center, up);
+            std::abs(forward.y) > 0.98f ? MATH::Vec3{0.0f, 0.0f, -1.0f} : MATH::Vec3{0.0f, 1.0f, 0.0f};
+        view.camera.SetLookAt(eye, look, up);
         views_.push_back(std::move(view));
     }
     if (!viewId_.value) {
@@ -135,6 +191,8 @@ EditorOperationResult SceneViewSeriesCapture::Start(DocumentSceneBase& scene, co
     sceneRevision_ = scene.GetSceneDocumentRevision();
     worldIdentity_ = scene.GetWorld().GetRuntimeIdentity();
     next_ = 0;
+    sceneEdited_ = false;
+    shading_ = *shading;
     images_ = nlohmann::json::array();
     return SubmitNext();
 }
@@ -153,6 +211,7 @@ EditorOperationResult SceneViewSeriesCapture::SubmitNext() {
     request.contentRevision = next_ + 1u;
     request.visible = true;
     request.drawDebug = false;
+    request.shadingMode = shading_;
     RENDER3D::EDITORVIEW::SubmitRequest(request);
     EditorOperationResult result = StartEditorPreviewCapture(viewId_, folder_);
     if (!result.ok) {
@@ -160,7 +219,7 @@ EditorOperationResult SceneViewSeriesCapture::SubmitNext() {
         return result;
     }
     // 読み回しが即座に終わった場合も Poll で同じ経路を通す。
-    ticket_ = result.data.contains("poll") ? result.data["poll"].value("captureId", uint64_t{})
+    ticket_ = result.data.contains("poll") ? result.data["poll"]["parameters"].value("captureId", uint64_t{})
                                            : result.data.value("captureId", uint64_t{});
     return Pending();
 }
@@ -178,11 +237,12 @@ EditorOperationResult SceneViewSeriesCapture::Poll(DocumentSceneBase* scene) {
     if (views_.empty()) {
         return OperationFailure("NO_CAPTURE", "No multi-view capture is pending.");
     }
-    if (scene == nullptr || scene->GetSceneDocumentRevision() != sceneRevision_ ||
-        scene->GetWorld().GetRuntimeIdentity() != worldIdentity_) {
+    // 別の場面へ切り替わった時だけ止める。人が並行して編集した変更は止めずに、そのまま写して知らせる。
+    if (scene == nullptr || scene->GetWorld().GetRuntimeIdentity() != worldIdentity_) {
         Clear();
-        return OperationFailure("DOCUMENT_CONFLICT", "The scene changed during capture; capture it again.");
+        return OperationFailure("SCENE_CHANGED", "The scene was closed or replaced during capture; capture again.");
     }
+    sceneEdited_ = sceneEdited_ || scene->GetSceneDocumentRevision() != sceneRevision_;
     EditorOperationResult result = PollEditorPreviewCapture(ticket_);
     if (!result.ok) {
         Clear();
@@ -202,11 +262,13 @@ EditorOperationResult SceneViewSeriesCapture::Poll(DocumentSceneBase* scene) {
     }
     nlohmann::json images = std::move(images_);
     const std::size_t count = views_.size();
+    const bool edited = sceneEdited_;
     Clear();
     return OperationOk("已返回 " + std::to_string(count) + " 个角度的截图；画面内容仍需视觉检查。",
                        {{"images", std::move(images)},
                         {"source", "scene_inspection"},
-                        {"note", "Separate inspection renders; use capture.preview for final game output."}});
+                        {"sceneEditedDuringCapture", edited},
+                        {"note", "Background renders that do not move the editor view or draw editor helpers."}});
 }
 
 void SceneViewSeriesCapture::Clear() {

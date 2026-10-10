@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 #include <utility>
@@ -109,6 +110,9 @@ struct EditorOperationRegistrationResult {
     EditorOperationRegistrationCode code = EditorOperationRegistrationCode::Unspecified;
     std::string message{};
 };
+
+// schema の format：操作がこの引数のパスに書き込む。智能体からは引擎目录を指せない。
+inline constexpr std::string_view kOutputPathFormat = "output-path";
 
 struct EditorOperationParameter {
     std::string name{};

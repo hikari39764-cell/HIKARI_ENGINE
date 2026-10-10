@@ -18,12 +18,6 @@ namespace {
 constexpr size_t kMaximumEventText = 1200u;
 constexpr size_t kMaximumEvents = 4000u;
 
-std::filesystem::path KnownFolder(const wchar_t* variable) {
-    wchar_t value[MAX_PATH]{};
-    const DWORD length = GetEnvironmentVariableW(variable, value, MAX_PATH);
-    return length > 0u && length < MAX_PATH ? std::filesystem::path(value) : std::filesystem::path{};
-}
-
 std::filesystem::path FindOnPath(const wchar_t* name) {
     for (const wchar_t* extension : {L".exe", L".cmd"}) {
         wchar_t found[MAX_PATH]{};
@@ -56,25 +50,57 @@ bool NewerVersion(const std::string& lhs, const std::string& rhs) {
     return parts(lhs) > parts(rhs);
 }
 
-// Claude 桌面版は %APPDATA%\Claude\claude-code\<版本>\<识别码>\claude.exe に同梱する。最も新しい版を使う。
+// Claude 桌面版は claude-code\<版本>\<识别码>\claude.exe に同梱する。桌面版は MSIX 包なので、包の外（编辑器）からは
+// %APPDATA% ではなく %LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code に見える。最も新しい版を使う。
 std::filesystem::path FindBundledClaude() {
-    const std::filesystem::path root = KnownFolder(L"APPDATA") / "Claude" / "claude-code";
+    std::vector<std::filesystem::path> roots{AgentEnvironmentPath(L"APPDATA") / "Claude" / "claude-code"};
     std::error_code error;
+    for (const auto& package :
+         std::filesystem::directory_iterator(AgentEnvironmentPath(L"LOCALAPPDATA") / "Packages", error))
+        if (TEXT::PathToUtf8(package.path().filename()).starts_with("Claude_"))
+            roots.push_back(package.path() / "LocalCache" / "Roaming" / "Claude" / "claude-code");
     std::filesystem::path best;
     std::string bestVersion;
-    for (const auto& version : std::filesystem::directory_iterator(root, error)) {
-        if (!version.is_directory(error))
-            continue;
-        const std::string name = TEXT::PathToUtf8(version.path().filename());
-        if (!best.empty() && !NewerVersion(name, bestVersion))
-            continue;
-        for (const auto& build : std::filesystem::directory_iterator(version.path(), error)) {
-            const std::filesystem::path candidate = build.path() / "claude.exe";
-            if (std::filesystem::is_regular_file(candidate, error)) {
-                best = candidate;
-                bestVersion = name;
-                break;
+    for (const std::filesystem::path& root : roots) {
+        for (const auto& version : std::filesystem::directory_iterator(root, error)) {
+            if (!version.is_directory(error))
+                continue;
+            const std::string name = TEXT::PathToUtf8(version.path().filename());
+            if (!best.empty() && !NewerVersion(name, bestVersion))
+                continue;
+            for (const auto& build : std::filesystem::directory_iterator(version.path(), error)) {
+                const std::filesystem::path candidate = build.path() / "claude.exe";
+                if (std::filesystem::is_regular_file(candidate, error)) {
+                    best = candidate;
+                    bestVersion = name;
+                    break;
+                }
             }
+        }
+    }
+    return best;
+}
+
+// Codex 应用は codex.exe を ~/.codex/plugins/.plugin-appserver と %LOCALAPPDATA%\OpenAI\Codex\bin\<识别码> に置く。
+// bin 直下には新しい config.toml を読めない古い版が残ることがあるので、最も新しいファイルを使う。
+std::filesystem::path FindBundledCodex() {
+    const std::filesystem::path bin = AgentEnvironmentPath(L"LOCALAPPDATA") / "OpenAI" / "Codex" / "bin";
+    std::vector<std::filesystem::path> candidates{AgentEnvironmentPath(L"USERPROFILE") / ".codex" / "plugins" /
+                                                      ".plugin-appserver" / "codex.exe",
+                                                  bin / "codex.exe"};
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator(bin, error))
+        if (entry.is_directory(error))
+            candidates.push_back(entry.path() / "codex.exe");
+    std::filesystem::path best;
+    std::filesystem::file_time_type bestTime{};
+    for (const std::filesystem::path& candidate : candidates) {
+        if (!std::filesystem::is_regular_file(candidate, error))
+            continue;
+        const std::filesystem::file_time_type time = std::filesystem::last_write_time(candidate, error);
+        if (!error && (best.empty() || time > bestTime)) {
+            best = candidate;
+            bestTime = time;
         }
     }
     return best;
@@ -91,20 +117,15 @@ std::filesystem::path FindAgentExecutable(AgentKind kind) {
     const bool claude = kind == AgentKind::ClaudeCode;
     if (std::filesystem::path found = FindOnPath(claude ? L"claude" : L"codex"); !found.empty())
         return found;
-    const std::filesystem::path home = KnownFolder(L"USERPROFILE");
-    const std::filesystem::path npm = KnownFolder(L"APPDATA") / "npm" / (claude ? "claude.cmd" : "codex.cmd");
+    const std::filesystem::path home = AgentEnvironmentPath(L"USERPROFILE");
+    const std::filesystem::path npm = AgentEnvironmentPath(L"APPDATA") / "npm" / (claude ? "claude.cmd" : "codex.cmd");
     if (claude) {
         for (const std::filesystem::path& candidate : {home / ".local" / "bin" / "claude.exe", npm})
             if (IsFile(candidate))
                 return candidate;
         return FindBundledClaude();
     }
-    // Codex 应用は app-server の実行ファイルを ~/.codex/plugins/.plugin-appserver に置く。
-    for (const std::filesystem::path& candidate :
-         {npm, home / ".codex" / "plugins" / ".plugin-appserver" / "codex.exe"})
-        if (IsFile(candidate))
-            return candidate;
-    return {};
+    return IsFile(npm) ? npm : FindBundledCodex();
 }
 
 std::string ClipAgentText(std::string text) {
@@ -130,6 +151,12 @@ std::string AgentJsonText(const nlohmann::json& value) {
             return joined;
     }
     return value.is_null() ? std::string{} : value.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+}
+
+std::filesystem::path AgentEnvironmentPath(const wchar_t* variable) {
+    wchar_t value[MAX_PATH]{};
+    const DWORD length = GetEnvironmentVariableW(variable, value, MAX_PATH);
+    return length > 0u && length < MAX_PATH ? std::filesystem::path(value) : std::filesystem::path{};
 }
 
 std::string AgentGenericPath(const std::filesystem::path& path) { return TEXT::PathToUtf8(path.generic_wstring()); }
@@ -176,6 +203,92 @@ bool ResolveAgentLauncher(const std::filesystem::path& executable, AgentCommand&
     return false;
 }
 
+AgentLoginCheck::AgentLoginCheck() = default;
+
+AgentLoginCheck::~AgentLoginCheck() = default;
+
+void AgentLoginCheck::Start(AgentKind kind, const std::filesystem::path& executable,
+                            const std::filesystem::path& output) {
+    process_.reset();
+    kind_ = kind;
+    executable_ = executable;
+    output_ = output;
+    state_ = State::Unknown;
+    detail_.clear();
+    if (executable.empty())
+        return;
+    AgentCommand command;
+    command.arguments = kind == AgentKind::ClaudeCode ? std::vector<std::wstring>{L"auth", L"status"}
+                                                      : std::vector<std::wstring>{L"login", L"status"};
+    std::string error;
+    if (!ResolveAgentLauncher(executable, command, error))
+        return;
+    std::error_code ignored;
+    std::filesystem::create_directories(output.parent_path(), ignored);
+    EditorChildProcessOptions options;
+    options.errorLog = std::filesystem::path(output).concat(".err");
+    auto process = std::make_unique<EditorChildProcess>();
+    if (!process->Start(command.executable, command.arguments, output.parent_path(), output, error, options)) {
+        state_ = State::Failed;
+        detail_ = error;
+        return;
+    }
+    process_ = std::move(process);
+    started_ = std::chrono::steady_clock::now();
+    state_ = State::Checking;
+}
+
+void AgentLoginCheck::Poll() {
+    if (!process_)
+        return;
+    const std::filesystem::path errorLog = std::filesystem::path(output_).concat(".err");
+    const auto readText = [](const std::filesystem::path& path) {
+        std::ifstream input(path, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    };
+    const auto finish = [&](State state, std::string detail) {
+        process_.reset();
+        std::error_code ignored;
+        std::filesystem::remove(output_, ignored);
+        std::filesystem::remove(errorLog, ignored);
+        state_ = state;
+        detail_ = std::move(detail);
+    };
+    if (process_->Running()) {
+        if (std::chrono::steady_clock::now() - started_ < kTimeout)
+            return;
+        process_->Cancel();
+        return finish(State::Failed, "timeout");
+    }
+    const uint32_t code = process_->ExitCode();
+    const std::string text = readText(output_);
+    const std::string errors = readText(errorLog);
+    // Claude Code は {"loggedIn": true, ...} を出す。Codex は終了コードと「Not logged in」で見分ける。
+    // それ以外の失敗（設定ファイルが読めないなど）は未登录と言わず、最初の行をそのまま見せる。
+    const nlohmann::json status = nlohmann::json::parse(text, nullptr, false);
+    if (kind_ == AgentKind::ClaudeCode && status.is_object() && status.contains("loggedIn") &&
+        status["loggedIn"].is_boolean())
+        return finish(status["loggedIn"].get<bool>() ? State::LoggedIn : State::LoggedOut, {});
+    if (code == 0u)
+        return finish(State::LoggedIn, {});
+    const std::string all = errors + "\n" + text;
+    if (all.find("Not logged in") != std::string::npos || all.find("not logged in") != std::string::npos)
+        return finish(State::LoggedOut, {});
+    std::string firstLine;
+    for (size_t begin = 0u; begin < all.size() && firstLine.empty();) {
+        const size_t end = all.find('\n', begin);
+        firstLine = all.substr(begin, end == std::string::npos ? std::string::npos : end - begin);
+        while (!firstLine.empty() && (firstLine.back() == '\r' || firstLine.back() == ' '))
+            firstLine.pop_back();
+        begin = end == std::string::npos ? all.size() : end + 1u;
+    }
+    finish(State::Failed, ClipAgentText(firstLine.empty() ? "exit code " + std::to_string(code) : firstLine));
+}
+
+std::string AgentLoginCheck::LoginCommand() const {
+    return "& \"" + TEXT::PathToUtf8(executable_) + "\" " + (kind_ == AgentKind::ClaudeCode ? "auth login" : "login");
+}
+
 AgentSession::AgentSession() = default;
 
 AgentSession::~AgentSession() { Stop(); }
@@ -188,6 +301,11 @@ bool AgentSession::Start(const AgentSessionRequest& request, std::string& outErr
     }
     if (request.hikariExecutable.empty()) {
         outError = "hikari.exe was not found next to the editor.";
+        return false;
+    }
+    if (TouchesEngineRoots(request.protectedRoots, request.projectRoot)) {
+        outError = "The project overlaps the engine directory, which agents may not write. Move the project outside "
+                   "the engine installation.";
         return false;
     }
     request_ = request;
@@ -204,6 +322,7 @@ bool AgentSession::Start(const AgentSessionRequest& request, std::string& outErr
     approvals_.clear();
     turnGrants_.clear();
     usage_ = {};
+    models_.clear();
     sessionId_ = request.resumeSession;
     busy_ = false;
     exited_ = false;
@@ -217,6 +336,25 @@ bool AgentSession::Start(const AgentSessionRequest& request, std::string& outErr
     }
     protocol_->OnStarted(*this);
     return true;
+}
+
+std::vector<AgentModelOption> DefaultAgentModels(AgentKind kind) {
+    if (kind != AgentKind::ClaudeCode)
+        return {};
+    // claude --help の --model の別名と --effort の段階。
+    const std::vector<std::string> efforts{"low", "medium", "high", "xhigh", "max"};
+    std::vector<AgentModelOption> models;
+    for (const char* alias : {"fable", "opus", "sonnet", "haiku"})
+        models.push_back({alias, alias, efforts, {}, false});
+    return models;
+}
+
+bool AgentSession::Compact(std::string& outError) {
+    if (!Running() || busy_) {
+        outError = "The agent is not idle.";
+        return false;
+    }
+    return protocol_->Compact(*this, outError);
 }
 
 bool AgentSession::Send(const AgentMessage& message, std::string& outError) {
@@ -303,10 +441,16 @@ void AgentSession::ReadNewOutput() {
         if (line.empty())
             continue;
         const nlohmann::json value = nlohmann::json::parse(line.begin(), line.end(), nullptr, false);
-        if (value.is_object())
-            protocol_->HandleLine(*this, value);
-        else
+        if (!value.is_object()) {
             AddEvent({AgentEvent::Kind::Raw, {}, ClipAgentText(std::string(line))});
+            continue;
+        }
+        // 想定と違う形の行で编辑器を止めない。
+        try {
+            protocol_->HandleLine(*this, value);
+        } catch (const std::exception& error) {
+            AddEvent({AgentEvent::Kind::Error, {}, ClipAgentText(error.what()), true});
+        }
     }
     partialLine_.erase(0u, begin);
 }

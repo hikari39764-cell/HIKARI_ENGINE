@@ -7,6 +7,9 @@
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Authoring/HIKARI_SceneObjectObservation.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
+#include "Runtime/HIKARI_RuntimeLaunchConfig.h"
+#include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Editor/Agent/HIKARI_HeadlessEngineRun.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
 #include "Physics/HIKARI_PhysicsWorldService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
@@ -61,17 +64,21 @@ bool ReadVec3Parameter(const nlohmann::json& parameters, const char* key, MATH::
 }
 
 // 入力轨道は引数の track（JSON 本体）か path（项目からの相対か絶対）で受け取る。
+// path 引数の .hinputtrack（相対パスは项目根から）。
+std::filesystem::path TrackPathParameter(const nlohmann::json& parameters, const std::filesystem::path& projectRoot) {
+    std::filesystem::path path = TEXT::PathFromUtf8(parameters.value("path", std::string{}));
+    return path.empty() || path.is_absolute() ? path : projectRoot / path;
+}
+
 bool ReadTrackParameter(const nlohmann::json& parameters, const std::filesystem::path& projectRoot,
                         INPUT::InputTrack& outTrack, std::string& outError) {
     if (parameters.contains("track"))
         return INPUT::ReadInputTrack(parameters["track"], outTrack, outError);
-    std::filesystem::path path = TEXT::PathFromUtf8(parameters.value("path", std::string{}));
+    const std::filesystem::path path = TrackPathParameter(parameters, projectRoot);
     if (path.empty()) {
         outError = "Provide track (an InputTrack object) or path (a .hinputtrack file).";
         return false;
     }
-    if (path.is_relative())
-        path = projectRoot / path;
     return INPUT::LoadInputTrack(path, outTrack, outError);
 }
 
@@ -225,6 +232,38 @@ void DocumentSceneEditorController::RegisterPlayOperations() {
          "runtime",
          {{"runId", EditorOperationParameterType::Int, true, "Id returned by play.run"}},
          [this](const nlohmann::json& parameters) { return PollAgentPlayRun(parameters.at("runId").get<uint64_t>()); }},
+        EDITOR::EditorOperationKind::Query, read, {});
+
+    EDITOR::EditorOperationDefinition background{
+        "play.background",
+        "Play the current scene once in a separate headless engine, without saving it and without touching the user's "
+        "editor, view or Play: optional input track, run frames engine frames, capture the game view at captureAt "
+        "frames, then report captures and log warnings and errors. Poll play.background.status. Prefer this to "
+        "play.run for gameplay checks while the user is working. Only the current scene's unsaved changes are "
+        "carried over; other assets (materials, VFX, cameras) are read from disk, so save them first.",
+        "runtime",
+        {{"frames",
+          EditorOperationParameterType::Int,
+          false,
+          "Engine frames to run, 1 to 10000 (default 600). Play starts after loading; the track plays from then",
+          {{"minimum", 1}, {"maximum", 10000}}},
+         {"track", EditorOperationParameterType::Json, false, "Optional InputTrack object"},
+         {"path", EditorOperationParameterType::String, false, "Optional .hinputtrack file instead of track"},
+         {"captureAt",
+          EditorOperationParameterType::Json,
+          false,
+          "Up to 8 frame numbers, increasing and evenly spaced",
+          {{"type", "array"}, {"items", {{"type", "integer"}, {"minimum", 1}}}}}},
+        [this](const nlohmann::json& parameters) { return StartBackgroundPlay(parameters); }};
+    background.entryPoint = true;
+    add(std::move(background), EDITOR::EditorOperationKind::Session,
+        EDITOR::EditorOperationPermission::ExecuteExternalProcess,
+        {"background play", "test gameplay", "headless", "playtest", "后台试玩", "自测"});
+    add({"play.background.status",
+         "Result of play.background: pending while the engine runs, then captures, exit code, log warnings and errors.",
+         "runtime",
+         {},
+         [this](const nlohmann::json&) { return backgroundPlay_.Status(); }},
         EDITOR::EditorOperationKind::Query, read, {});
 
     add({"runtime.objects.query",
@@ -561,6 +600,38 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::PollAgentPlayRun(ui
         return result;
     }
     return EDITOR::OperationOk("Run finished.", std::move(data));
+}
+
+EDITOR::EditorOperationResult DocumentSceneEditorController::StartBackgroundPlay(const nlohmann::json& parameters) {
+    if (aiOperationScene_ == nullptr)
+        return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
+    DocumentSceneBase& scene = *aiOperationScene_;
+    const AssetDatabase& assets = scene.GetAssetDatabase();
+    EDITOR::BackgroundPlayRun::Request request;
+    request.engine = PLATFORM::GetExecutablePath();
+    request.descriptor = EDITOR::AGENT::FindProjectDescriptor(assets.GetProjectRoot());
+    request.libraryRoot = assets.GetLibraryRoot();
+    // 编辑器と同じ项目模块で遊ばせる。
+    request.projectModule = ReadRuntimeCommandLinePath(L"--project-module").value_or(std::filesystem::path{});
+    request.sceneGuid = scene.GetCurrentSceneAssetGuid().value;
+    request.scene = &scene.GetSceneDocument();
+    request.frames = static_cast<uint32_t>(parameters.value("frames", 600));
+    if (parameters.contains("track") || parameters.contains("path")) {
+        INPUT::InputTrack track;
+        std::string error;
+        if (!ReadTrackParameter(parameters, assets.GetProjectRoot(), track, error))
+            return EDITOR::OperationFailure("INVALID_TRACK", error);
+        if (parameters.contains("track"))
+            request.track = parameters["track"];
+        else
+            request.trackFile = TrackPathParameter(parameters, assets.GetProjectRoot());
+    }
+    const nlohmann::json captures = parameters.value("captureAt", nlohmann::json::array());
+    if (captures.size() > 8u)
+        return EDITOR::OperationFailure("TOO_MANY_CAPTURES", "captureAt allows at most 8 frames.");
+    for (const nlohmann::json& frame : captures)
+        request.captureFrames.push_back(frame.get<uint32_t>());
+    return backgroundPlay_.Start(request);
 }
 
 } // namespace HIKARI

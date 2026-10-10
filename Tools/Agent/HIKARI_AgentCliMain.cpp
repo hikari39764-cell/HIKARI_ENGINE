@@ -42,6 +42,7 @@ constexpr const char* kUsage =
     "  play step <ticks>            按固定步长精确前进\n"
     "  play input <轨道文件|-|stop>  回放或停止输入轨道（InputTrack JSON）\n"
     "  play run <ticks> [--track 文件] [--capture 30,60] [--no-pause]\n"
+    "  play background <帧数> [--track 文件] [--capture 120,240]  后台无头运行当前场景（不用保存，不占用编辑器）\n"
     "                               一次完成：需要时开始 Play、回放输入、前进、截图，返回截图与警告\n"
     "  logs [--since N] [--level info|warning|error] [--contains 文本] [--limit N]\n"
     "  headless [--frames N] [--play] [--input-replay 轨道] [--capture-frame N --out 文件.png]\n"
@@ -131,18 +132,18 @@ struct CommandLine {
 bool BuildPlayArguments(const CommandLine& line, nlohmann::json& outArguments, std::string& outError) {
     const std::vector<std::string>& words = line.positional;
     if (words.size() < 2u) {
-        outError = "play 需要子命令：start、stop、status、pause、resume、step、input、run";
+        outError = "play 需要子命令：background、start、stop、status、pause、resume、step、input、run";
         return false;
     }
     const std::string& action = words[1];
     outArguments = {{"action", action}};
-    if (action == "step" || action == "run") {
-        const std::optional<uint64_t> ticks = words.size() >= 3u ? ParseCount(words[2]) : std::nullopt;
-        if (!ticks) {
-            outError = "play " + action + " 需要 tick 数";
+    if (action == "step" || action == "run" || action == "background") {
+        const std::optional<uint64_t> count = words.size() >= 3u ? ParseCount(words[2]) : std::nullopt;
+        if (!count) {
+            outError = "play " + action + (action == "background" ? " 需要帧数" : " 需要 tick 数");
             return false;
         }
-        outArguments["ticks"] = *ticks;
+        outArguments[action == "background" ? "frames" : "ticks"] = *count;
     }
     if (action == "input") {
         if (words.size() != 3u) {
@@ -155,7 +156,7 @@ bool BuildPlayArguments(const CommandLine& line, nlohmann::json& outArguments, s
             return false;
         }
     }
-    if (action == "run") {
+    if (action == "run" || action == "background") {
         if (!line.Value("--track").empty() && !ReadJsonFile(line.Value("--track"), outArguments["track"], outError))
             return false;
         if (!line.Value("--capture").empty()) {

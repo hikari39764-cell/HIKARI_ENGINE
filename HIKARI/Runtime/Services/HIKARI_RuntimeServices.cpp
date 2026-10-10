@@ -67,6 +67,7 @@ auto& gEnableEditorUI = INTERNAL::GetRuntimeServiceState().enableEditorUI;
 auto& gStreamlineEnabled = INTERNAL::GetRuntimeServiceState().streamlineEnabled;
 auto& gRuntimeSessionEndRequested = INTERNAL::GetRuntimeServiceState().runtimeSessionEndRequested;
 auto& gRuntimeStartupSceneGuid = INTERNAL::GetRuntimeServiceState().runtimeStartupSceneGuid;
+auto& gRuntimeStartupSceneSnapshot = INTERNAL::GetRuntimeServiceState().runtimeStartupSceneSnapshot;
 auto& gRuntimeExportedSceneGuids = INTERNAL::GetRuntimeServiceState().runtimeExportedSceneGuids;
 auto& gGpuFrameReady = INTERNAL::GetRuntimeServiceState().gpuFrameReady;
 auto& gLogicalScreenWidth = INTERNAL::GetRuntimeServiceState().logicalScreenWidth;
@@ -112,6 +113,7 @@ bool ConsumeRuntimeSessionEndRequest() {
 }
 
 const std::string& GetRuntimeStartupSceneGuid() { return gRuntimeStartupSceneGuid; }
+const std::string& GetRuntimeStartupSceneSnapshot() { return gRuntimeStartupSceneSnapshot; }
 
 bool IsRuntimeSceneGuidAllowed(const std::string& sceneGuid) {
     if (gRuntimeExportedSceneGuids.empty()) {
@@ -166,6 +168,7 @@ bool Initialize(const char* title, const RUNTIME::HostBootstrapConfig& cfg, std:
     gEnableImGui = cfg.enableImGui;
     gEnableEditorUI = IsEditorHostMode(gRuntimeHostMode) && cfg.enableEditorUI;
     gRuntimeStartupSceneGuid = cfg.startupSceneGuid;
+    gRuntimeStartupSceneSnapshot = cfg.startupSceneSnapshot;
     gRuntimeExportedSceneGuids = cfg.exportedSceneGuids;
     {
         std::ostringstream oss;
@@ -502,6 +505,7 @@ void FinalizeAll() {
         HIKARI_LOG_INFO("COM uninitialized.");
     }
     gRuntimeStartupSceneGuid.clear();
+    gRuntimeStartupSceneSnapshot.clear();
     gRuntimeExportedSceneGuids.clear();
     gRuntimeWindowBaseTitle.clear();
     gPreviewTelemetrySeconds = 0.0;

@@ -319,11 +319,13 @@ if(HIKARI_WITH_EDITOR_BUILD)
         "${HIKARI_SOURCE_ROOT}/Tools/Agent/HIKARI_AgentCliMain.cpp"
         "${HIKARI_SOURCE_ROOT}/Tools/Agent/HIKARI_AgentClient.cpp"
         "${HIKARI_SOURCE_ROOT}/Tools/Agent/HIKARI_AgentHeadless.cpp"
+        "${HIKARI_SOURCE_ROOT}/Tools/Agent/HIKARI_AgentImage.cpp"
         "${HIKARI_SOURCE_ROOT}/Tools/Agent/HIKARI_AgentMcpServer.cpp"
         "${HIKARI_SOURCE_ROOT}/Tools/Agent/HIKARI_AgentTools.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Agent/HIKARI_AgentConnection.cpp")
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Agent/HIKARI_AgentConnection.cpp"
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Agent/HIKARI_HeadlessEngineRun.cpp")
     target_include_directories(HIKARI_AgentCli PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
-    target_link_libraries(HIKARI_AgentCli PRIVATE HIKARI::Nlohmann ws2_32 advapi32)
+    target_link_libraries(HIKARI_AgentCli PRIVATE HIKARI::Nlohmann ws2_32 advapi32 ole32 windowscodecs)
     hikari_configure_engine_target(HIKARI_AgentCli)
     set_target_properties(HIKARI_AgentCli PROPERTIES
         OUTPUT_NAME "hikari"

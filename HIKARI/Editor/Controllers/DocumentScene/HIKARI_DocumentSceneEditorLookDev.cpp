@@ -298,6 +298,27 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::RunLookDevOperation
     return result;
 }
 
+void DocumentSceneEditorController::SelectLookDevOperationResult(DocumentSceneBase& scene,
+                                                                 const EDITOR::EditorOperationResult& result) {
+    if (!result.ok) {
+        return;
+    }
+    std::vector<SceneObjectId> ids;
+    if (const auto created = result.data.find("createdIds"); created != result.data.end()) {
+        for (const nlohmann::json& id : *created) {
+            ids.push_back(SceneObjectId{id.get<uint64_t>()});
+        }
+    }
+    for (const char* key : {"groupId", "keyId", "objectId"}) {
+        if (ids.empty() && result.data.contains(key)) {
+            ids.push_back(SceneObjectId{result.data.at(key).get<uint64_t>()});
+        }
+    }
+    if (!ids.empty()) {
+        SelectViewportObjects(scene, ids, EditorObjectSelectionMode::Replace);
+    }
+}
+
 nlohmann::json DocumentSceneEditorController::DescribeLookDevState() const {
     nlohmann::json placement{{"snapGrid", lookDevWorkspace_.GridStep()},
                              {"yawDegrees", lookDevWorkspace_.PlacementYaw()}};

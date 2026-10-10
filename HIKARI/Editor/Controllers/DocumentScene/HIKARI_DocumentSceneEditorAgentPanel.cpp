@@ -108,9 +108,67 @@ void RememberConversation(EDITOR::AGENT::AgentPanelState& panel) {
 }
 
 bool SameSettings(const EDITOR::AGENT::AgentSessionRequest& lhs, const EDITOR::AGENT::AgentSessionRequest& rhs) {
+    // Codex は模型と推理强度を一轮ごとに turn/start で渡すので、会話を起動し直さない。
+    const bool sameModel = lhs.kind == AgentKind::Codex || (lhs.model == rhs.model && lhs.effort == rhs.effort);
     return lhs.kind == rhs.kind && lhs.executable == rhs.executable && lhs.allowProjectEdits == rhs.allowProjectEdits &&
-           lhs.model == rhs.model && lhs.effort == rhs.effort && lhs.chrome == rhs.chrome &&
+           sameModel && lhs.chrome == rhs.chrome && lhs.userTools == rhs.userTools &&
            lhs.projectRoot == rhs.projectRoot;
+}
+
+void SavePreferences(const EDITOR::AGENT::AgentPanelState& panel) {
+    if (panel.preferencesFile.empty())
+        return;
+    nlohmann::json value{{"agent", TEXT::EnumToName(EDITOR::AGENT::kAgentKindNames, panel.kind)}};
+    for (const auto& entry : EDITOR::AGENT::kAgentKindNames) {
+        const auto& [model, effort] = panel.remembered[AgentIndex(entry.value)];
+        value[std::string(entry.name)] = {{"model", model}, {"effort", effort}};
+    }
+    nlohmann::json models = nlohmann::json::array();
+    for (const EDITOR::AGENT::AgentModelOption& option : panel.codexModels)
+        models.push_back({{"id", option.id},
+                          {"label", option.label},
+                          {"efforts", option.efforts},
+                          {"defaultEffort", option.defaultEffort},
+                          {"isDefault", option.isDefault}});
+    value["Codex"]["models"] = std::move(models);
+    std::error_code error;
+    std::filesystem::create_directories(panel.preferencesFile.parent_path(), error);
+    std::ofstream(panel.preferencesFile, std::ios::binary | std::ios::trunc)
+        << value.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
+}
+
+// 今の智能体の選択を入力欄へ写す。
+void ApplyRemembered(EDITOR::AGENT::AgentPanelState& panel) {
+    const auto& [model, effort] = panel.remembered[AgentIndex(panel.kind)];
+    std::snprintf(panel.model, sizeof(panel.model), "%s", model.c_str());
+    std::snprintf(panel.effort, sizeof(panel.effort), "%s", effort.c_str());
+}
+
+void LoadPreferences(EDITOR::AGENT::AgentPanelState& panel, const std::filesystem::path& file) {
+    panel.preferencesFile = file;
+    std::ifstream input(file, std::ios::binary);
+    const nlohmann::json value = nlohmann::json::parse(input, nullptr, false);
+    if (value.is_object()) {
+        (void)TEXT::TryParseEnum(EDITOR::AGENT::kAgentKindNames, value.value("agent", std::string{}), panel.kind);
+        for (const auto& entry : EDITOR::AGENT::kAgentKindNames) {
+            const nlohmann::json settings = value.value(std::string(entry.name), nlohmann::json::object());
+            if (settings.is_object())
+                panel.remembered[AgentIndex(entry.value)] = {settings.value("model", std::string{}),
+                                                             settings.value("effort", std::string{})};
+        }
+        panel.codexModels.clear();
+        const nlohmann::json codex = value.value("Codex", nlohmann::json::object());
+        const nlohmann::json models =
+            codex.is_object() ? codex.value("models", nlohmann::json::array()) : nlohmann::json::array();
+        for (const nlohmann::json& model : models) {
+            if (model.is_object())
+                panel.codexModels.push_back({model.value("id", std::string{}), model.value("label", std::string{}),
+                                             model.value("efforts", std::vector<std::string>{}),
+                                             model.value("defaultEffort", std::string{}),
+                                             model.value("isDefault", false)});
+        }
+    }
+    ApplyRemembered(panel);
 }
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -156,10 +214,17 @@ void DrawAgentEvent(const EDITOR::AGENT::AgentEvent& event) {
         ImGui::TextDisabled("%s · %s",
                             TEXT::Localize(event.failed ? "agent.event.error" : "agent.event.result").c_str(),
                             event.title.c_str());
+        // 失敗の理由（未登录など）は CLI の文のまま見せる。
+        if (event.failed && !event.text.empty())
+            ImGui::TextColored({1.0f, 0.45f, 0.35f, 1.0f}, "%s", event.text.c_str());
         break;
     case Kind::Error:
         ImGui::TextColored({1.0f, 0.45f, 0.35f, 1.0f}, "%s %s", TEXT::Localize("agent.event.error").c_str(),
                            event.text.c_str());
+        break;
+    case Kind::Blocked:
+        ImGui::TextColored({1.0f, 0.62f, 0.3f, 1.0f}, "%s %s",
+                           TEXT::Localize("agent.event.blocked." + event.title).c_str(), event.text.c_str());
         break;
     case Kind::Raw: break;
     }
@@ -206,7 +271,10 @@ void DrawApprovals(EDITOR::AGENT::AgentHost& host, EDITOR::AGENT::AgentSession& 
                            approval.browser ? TEXT::Localize("agent.toolApproval.browser").c_str() : "");
         if (!approval.detail.empty())
             ImGui::TextDisabled("%s", approval.detail.c_str());
-        DrawDecisionButtons(true, [&session, &approval](int choice) {
+        if (!approval.warning.empty())
+            ImGui::TextColored({1.0f, 0.62f, 0.3f, 1.0f}, "%s",
+                               TEXT::Localize("agent.toolApproval.warning." + approval.warning).c_str());
+        DrawDecisionButtons(!approval.grantKey.empty(), [&session, &approval](int choice) {
             session.ResolveApproval(approval.id, choice == 0   ? AgentToolDecision::AllowTurn
                                                  : choice == 1 ? AgentToolDecision::AllowOnce
                                                                : AgentToolDecision::Deny);
@@ -216,6 +284,100 @@ void DrawApprovals(EDITOR::AGENT::AgentHost& host, EDITOR::AGENT::AgentSession& 
 }
 
 // CLI が報告した用量だけを出す。報告が無い項目は出さない。
+// 選べる模型。空欄は CLI の既定。一覧の外の名前も下の入力欄で書ける。切り替えは次の依頼から効く。
+bool DrawModelChoice(EDITOR::AGENT::AgentPanelState& panel,
+                     const std::vector<EDITOR::AGENT::AgentModelOption>& models) {
+    bool changed = false;
+    const auto found =
+        std::find_if(models.begin(), models.end(), [&panel](const auto& option) { return option.id == panel.model; });
+    std::string current = panel.model;
+    if (panel.model[0] == '\0')
+        current = TEXT::Localize("agent.model.default");
+    else if (found != models.end() && !found->label.empty())
+        current = found->label;
+    ImGui::SetNextItemWidth(180.0f);
+    if (ImGui::BeginCombo("##agentModel", current.c_str())) {
+        if (ImGui::Selectable(TEXT::Localize("agent.model.default").c_str(), panel.model[0] == '\0')) {
+            panel.model[0] = '\0';
+            changed = true;
+        }
+        for (const EDITOR::AGENT::AgentModelOption& option : models) {
+            const std::string text = (option.label.empty() ? option.id : option.label) + (option.isDefault ? " *" : "");
+            if (ImGui::Selectable(text.c_str(), option.id == panel.model)) {
+                std::snprintf(panel.model, sizeof(panel.model), "%s", option.id.c_str());
+                changed = true;
+            }
+        }
+        ImGui::Separator();
+        ImGui::SetNextItemWidth(170.0f);
+        if (ImGui::InputTextWithHint("##agentModelCustom", TEXT::Localize("agent.model").c_str(), panel.model,
+                                     sizeof(panel.model)))
+            changed = true;
+        ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", TEXT::Localize("agent.model.nextTurn").c_str());
+    return changed;
+}
+
+// 推理强度は選んだ模型が報告した段階から。模型が既定（空欄）なら既定の模型の段階。
+bool DrawEffortChoice(EDITOR::AGENT::AgentPanelState& panel,
+                      const std::vector<EDITOR::AGENT::AgentModelOption>& models) {
+    bool changed = false;
+    const auto model = std::find_if(models.begin(), models.end(), [&panel](const auto& option) {
+        return panel.model[0] == '\0' ? option.isDefault : option.id == panel.model;
+    });
+    std::vector<std::string> efforts;
+    if (model != models.end())
+        efforts = model->efforts;
+    else if (panel.kind == AgentKind::ClaudeCode && !models.empty())
+        efforts = models.front().efforts;
+    const std::string current =
+        panel.effort[0] == '\0' ? TEXT::Localize("agent.effort.default") : std::string(panel.effort);
+    ImGui::SetNextItemWidth(120.0f);
+    if (ImGui::BeginCombo("##agentEffort", current.c_str())) {
+        if (ImGui::Selectable(TEXT::Localize("agent.effort.default").c_str(), panel.effort[0] == '\0')) {
+            panel.effort[0] = '\0';
+            changed = true;
+        }
+        for (const std::string& effort : efforts) {
+            if (ImGui::Selectable(effort.c_str(), effort == panel.effort)) {
+                std::snprintf(panel.effort, sizeof(panel.effort), "%s", effort.c_str());
+                changed = true;
+            }
+        }
+        ImGui::Separator();
+        ImGui::SetNextItemWidth(110.0f);
+        if (ImGui::InputTextWithHint("##agentEffortCustom", TEXT::Localize("agent.effort").c_str(), panel.effort,
+                                     sizeof(panel.effort)))
+            changed = true;
+        ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", TEXT::Localize("agent.model.nextTurn").c_str());
+    return changed;
+}
+
+// 上下文の占有。8 割を超えたら、新しい会話か圧縮を勧める。
+void DrawContextBar(EDITOR::AGENT::AgentSession& session, std::string& error) {
+    const EDITOR::AGENT::AgentUsage& usage = session.Usage();
+    if (!session.Running() || usage.contextWindow == 0u)
+        return;
+    const float fraction =
+        std::clamp(static_cast<float>(usage.contextTokens) / static_cast<float>(usage.contextWindow), 0.0f, 1.0f);
+    const std::string overlay = TEXT::Localize("agent.usage.context") + " " + FormatTokens(usage.contextTokens) +
+                                " / " + FormatTokens(usage.contextWindow);
+    ImGui::ProgressBar(fraction, {-1.0f, 0.0f}, overlay.c_str());
+    if (fraction < 0.8f)
+        return;
+    ImGui::TextColored({1.0f, 0.62f, 0.3f, 1.0f}, "%s", TEXT::Localize("agent.context.nearFull").c_str());
+    ImGui::SameLine();
+    ImGui::BeginDisabled(session.Busy());
+    if (ImGui::SmallButton(TEXT::Localize("agent.context.compact").c_str()))
+        (void)session.Compact(error);
+    ImGui::EndDisabled();
+}
+
 void DrawUsage(const EDITOR::AGENT::AgentSession& session) {
     const EDITOR::AGENT::AgentUsage& usage = session.Usage();
     if (usage.windows.empty() && usage.contextWindow == 0u && usage.turnOutputTokens == 0u) {
@@ -289,9 +451,11 @@ void DocumentSceneEditorController::StartAgentTurn(DocumentSceneBase& scene) {
     request.projectRoot = assets.GetProjectRoot();
     request.hikariExecutable = EDITOR::AGENT::DetectAgentProjectFileInputs({}).hikariExecutable;
     request.allowProjectEdits = agentHost_.AccessMode() == EDITOR::AGENT::AgentAccessMode::DevelopProject;
+    request.protectedRoots = engineRoots_;
     request.model = TEXT::TrimCopy(std::string(panel.model));
     request.effort = TEXT::TrimCopy(std::string(panel.effort));
     request.chrome = panel.chrome && panel.kind == AgentKind::ClaudeCode;
+    request.userTools = panel.userTools;
     // 設定が変わったら同じ会話を新しい設定で続ける。
     std::string resume = panel.resumeSession;
     if (panel.session.Running() && !SameSettings(panel.session.Request(), request)) {
@@ -332,15 +496,35 @@ void DocumentSceneEditorController::RecordAgentOperation(const std::string& acti
 void DocumentSceneEditorController::DrawAgentPanel(DocumentSceneBase& scene) {
 #if defined(HIKARI_WITH_EDITOR)
     EDITOR::AGENT::AgentPanelState& panel = agentPanel_;
+    const std::filesystem::path agentRuns = scene.GetAssetDatabase().GetLibraryRoot() / "EditorAI" / "AgentRuns";
+    const auto checkLogin = [&panel, &agentRuns](AgentKind kind) {
+        panel.loginChecks[AgentIndex(kind)].Start(
+            kind, panel.executables[AgentIndex(kind)],
+            agentRuns / ("login-" + std::string(kind == AgentKind::ClaudeCode ? "claude" : "codex") + ".txt"));
+    };
     if (!panel.detected) {
         panel.executables = {EDITOR::AGENT::FindAgentExecutable(AgentKind::ClaudeCode),
                              EDITOR::AGENT::FindAgentExecutable(AgentKind::Codex)};
+        for (const auto& entry : EDITOR::AGENT::kAgentKindNames)
+            checkLogin(entry.value);
         panel.detected = true;
     }
+    for (EDITOR::AGENT::AgentLoginCheck& check : panel.loginChecks)
+        check.Poll();
     const std::filesystem::path conversations =
         scene.GetAssetDatabase().GetLibraryRoot() / "EditorAI" / "AgentConversations.json";
     if (panel.conversationsFile != conversations)
         LoadConversations(panel, conversations);
+    if (const std::filesystem::path preferences =
+            scene.GetAssetDatabase().GetLibraryRoot() / "EditorAI" / "AgentPanel.json";
+        panel.preferencesFile != preferences)
+        LoadPreferences(panel, preferences);
+    // Codex が報告した模型一覧は次の会話の前から選べるよう残す。
+    if (panel.kind == AgentKind::Codex && !panel.session.Models().empty() &&
+        panel.session.Models() != panel.codexModels) {
+        panel.codexModels = panel.session.Models();
+        SavePreferences(panel);
+    }
     const auto label = [&panel](AgentKind kind) {
         std::string text = TEXT::EnumToName(EDITOR::AGENT::kAgentKindNames, kind);
         if (panel.executables[AgentIndex(kind)].empty())
@@ -355,6 +539,8 @@ void DocumentSceneEditorController::DrawAgentPanel(DocumentSceneBase& scene) {
                 panel.kind = entry.value;
                 panel.session.Stop();
                 panel.resumeSession.clear();
+                ApplyRemembered(panel);
+                SavePreferences(panel);
             }
         }
         ImGui::EndCombo();
@@ -366,6 +552,25 @@ void DocumentSceneEditorController::DrawAgentPanel(DocumentSceneBase& scene) {
     const std::filesystem::path& executable = panel.executables[AgentIndex(panel.kind)];
     ImGui::TextDisabled("%s", executable.empty() ? TEXT::Localize("agent.noAgent").c_str()
                                                  : TEXT::PathToUtf8(executable).c_str());
+    // 未登录なら、终端で打つ命令を見せる（编辑器は利用者の資格情報を扱わない）。
+    const EDITOR::AGENT::AgentLoginCheck& login = panel.loginChecks[AgentIndex(panel.kind)];
+    if (login.GetState() == EDITOR::AGENT::AgentLoginCheck::State::LoggedOut) {
+        const std::string command = login.LoginCommand();
+        ImGui::TextColored({1.0f, 0.62f, 0.3f, 1.0f}, "%s", TEXT::Localize("agent.loginNeeded").c_str());
+        ImGui::TextWrapped("%s", command.c_str());
+        if (ImGui::SmallButton(TEXT::Localize("agent.copyCommand").c_str()))
+            ImGui::SetClipboardText(command.c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton(TEXT::Localize("agent.recheckLogin").c_str()))
+            checkLogin(panel.kind);
+    } else if (login.GetState() == EDITOR::AGENT::AgentLoginCheck::State::Failed) {
+        // 調べられなかった時は未登录と決めつけず、CLI が言ったことをそのまま出す。
+        ImGui::TextColored({1.0f, 0.62f, 0.3f, 1.0f}, "%s", TEXT::Localize("agent.loginCheckFailed").c_str());
+        ImGui::TextWrapped("%s", login.Detail() == "timeout" ? TEXT::Localize("agent.loginCheckTimeout").c_str()
+                                                             : login.Detail().c_str());
+        if (ImGui::SmallButton(TEXT::Localize("agent.recheckLogin").c_str()))
+            checkLogin(panel.kind);
+    }
     if (!agentBridge_.IsRunning()) {
         ImGui::TextWrapped("%s", TEXT::Localize("agent.bridgeOff").c_str());
         if (ImGui::Button(TEXT::Localize("agent.enableBridge").c_str()))
@@ -406,6 +611,7 @@ void DocumentSceneEditorController::DrawAgentPanel(DocumentSceneBase& scene) {
 
     if (!panel.error.empty())
         ImGui::TextColored({1.0f, 0.45f, 0.35f, 1.0f}, "%s", panel.error.c_str());
+    DrawContextBar(panel.session, panel.error);
     ImGui::BeginDisabled(panel.turnActive);
     ImGui::InputTextMultiline("##agentPrompt", panel.prompt, sizeof(panel.prompt), {-1.0f, 60.0f});
     ImGui::Checkbox(TEXT::Localize("agent.includeState").c_str(), &panel.includeEditorState);
@@ -413,12 +619,23 @@ void DocumentSceneEditorController::DrawAgentPanel(DocumentSceneBase& scene) {
         ImGui::SameLine();
         ImGui::Checkbox(TEXT::Localize("agent.chrome").c_str(), &panel.chrome);
     }
-    ImGui::SetNextItemWidth(140.0f);
-    ImGui::InputTextWithHint("##agentModel", TEXT::Localize("agent.model").c_str(), panel.model, sizeof(panel.model));
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(110.0f);
-    ImGui::InputTextWithHint("##agentEffort", TEXT::Localize("agent.effort").c_str(), panel.effort,
-                             sizeof(panel.effort));
+    ImGui::Checkbox(TEXT::Localize("agent.userTools").c_str(), &panel.userTools);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", TEXT::Localize("agent.userToolsHint").c_str());
+    // 模型と推理强度。CLI が報告した一覧（Codex）か別名（Claude Code）から選ぶ。自由に書くこともできる。
+    const std::vector<EDITOR::AGENT::AgentModelOption> models =
+        panel.kind == AgentKind::ClaudeCode ? EDITOR::AGENT::DefaultAgentModels(AgentKind::ClaudeCode)
+        : !panel.session.Models().empty()   ? panel.session.Models()
+                                            : panel.codexModels;
+    bool choiceChanged = DrawModelChoice(panel, models);
+    ImGui::SameLine();
+    choiceChanged = DrawEffortChoice(panel, models) || choiceChanged;
+    if (choiceChanged) {
+        panel.remembered[AgentIndex(panel.kind)] = {TEXT::TrimCopy(std::string(panel.model)),
+                                                    TEXT::TrimCopy(std::string(panel.effort))};
+        SavePreferences(panel);
+    }
     ImGui::BeginDisabled(executable.empty() || !agentBridge_.IsRunning());
     if (ImGui::Button(TEXT::Localize("agent.send").c_str()))
         StartAgentTurn(scene);
@@ -456,10 +673,18 @@ void DocumentSceneEditorController::DrawAgentPanel(DocumentSceneBase& scene) {
     ImGui::EndDisabled();
     if (panel.turnActive && ImGui::Button(TEXT::Localize("agent.stop").c_str()))
         panel.session.Interrupt();
-    const bool canUndoTurn = !panel.turnActive && panel.lastTurnUndoGroup != 0u &&
-                             documentHistory_.GetUndoGroup() == panel.lastTurnUndoGroup && !scene.IsRuntimePlayActive();
-    if (canUndoTurn && ImGui::Button(TEXT::Localize("agent.undoTurn").c_str()))
-        ExecuteSceneDocumentHistory(scene, false);
+    // 一轮の記録の後や途中に人の編集があると、Undo 一回では一轮全部を戻せず人の編集も巻き込む。その時は押せなくして理由を出す。
+    const size_t turnEntries = documentHistory_.CountUndoGroupEntries(panel.lastTurnUndoGroup);
+    if (!panel.turnActive && turnEntries > 0u && !scene.IsRuntimePlayActive()) {
+        const bool whole = documentHistory_.GetUndoGroup() == panel.lastTurnUndoGroup &&
+                           documentHistory_.TopUndoGroupLength() == turnEntries;
+        ImGui::BeginDisabled(!whole);
+        if (ImGui::Button(TEXT::Localize("agent.undoTurn").c_str()))
+            ExecuteSceneDocumentHistory(scene, false);
+        ImGui::EndDisabled();
+        if (!whole && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s", TEXT::Localize("agent.undoTurnBlocked").c_str());
+    }
 #else
     (void)scene;
 #endif

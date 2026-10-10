@@ -29,12 +29,20 @@ struct AgentPanelState {
     AgentSession session{};
     AgentKind kind = AgentKind::ClaudeCode;
     std::array<std::filesystem::path, 2> executables{};
+    std::array<AgentLoginCheck, 2> loginChecks{};
     bool detected = false;
     char prompt[4096]{};
     char model[64]{};
     char effort[16]{};
     bool includeEditorState = true;
     bool chrome = false;
+    // 利用者が CLI に設定した他の MCP 服务器・插件も読み込む。
+    bool userTools = false;
+    // 項目ごとに覚える選択（Library/EditorAI/AgentPanel.json）。Codex の模型一覧は前の会話の報告を残す。
+    std::filesystem::path preferencesFile{};
+    std::vector<AgentModelOption> codexModels{};
+    // 智能体ごとの模型と推理强度（下の model / effort は今の智能体の分）。
+    std::array<std::pair<std::string, std::string>, 2> remembered{};
     // 次の会話の開始で続ける会話 ID（一覧から選んだ時）。
     std::string resumeSession{};
     std::string error{};

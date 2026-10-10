@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
@@ -37,6 +38,8 @@ struct AgentOperationPolicy {
     EditorOperationPermission permission = EditorOperationPermission::Unspecified;
     // 本轮允许でまとめず、毎回聞く。
     bool approveEachTime = false;
+    // 読むだけの操作。人が編集中でも待たせない。
+    bool query = false;
 };
 
 // 外部智能体（本地桥）からの操作要求を编辑器の主线程で実行する。要求本文は
@@ -47,6 +50,8 @@ public:
     using Executor =
         std::function<EditorOperationResult(const std::string& operation, const nlohmann::json& parameters)>;
     using PermissionResolver = std::function<std::optional<AgentOperationPolicy>(std::string_view operation)>;
+    // 人が場面を操作中（手柄や数値のドラッグなど）か。主线程で引く。
+    using EditingCheck = std::function<bool()>;
 
     AgentHost();
     ~AgentHost();
@@ -56,6 +61,10 @@ public:
     void SetExecutor(Executor executor);
     // 主线程で、待っている操作の前に引く。無ければ承認の要る操作を含め何も実行しない。
     void SetPermissionResolver(PermissionResolver resolver);
+    // 人が操作している間は、読むだけでない操作を次のフレームへ回す（人の編集と一つの撤销に混ざらないように）。
+    // kMaximumDeferral を過ぎても終わらなければ DOCUMENT_BUSY で返す。
+    void SetEditingCheck(EditingCheck check);
+    static constexpr std::chrono::seconds kMaximumDeferral{20};
 
     // 本地桥の接続スレッドから呼ぶ（主线程から呼ぶと PumpActions を待ち続ける）。結果の JSON を返す。
     nlohmann::json Execute(std::string_view body);
@@ -97,6 +106,8 @@ private:
         std::string permission{};
         bool approveEachTime = false;
         bool approved = false;
+        bool query = false;
+        std::optional<std::chrono::steady_clock::time_point> deferredSince{};
     };
 
     bool IsCanceled(const PendingAction& action) const noexcept;
@@ -111,6 +122,7 @@ private:
     uint64_t nextApprovalId_ = 1;
     Executor executor_{};
     PermissionResolver permissionResolver_{};
+    EditingCheck editingCheck_{};
     std::atomic<bool> open_{false};
     std::atomic<uint64_t> generation_{1};
     std::atomic<AgentAccessMode> accessMode_{AgentAccessMode::Content};

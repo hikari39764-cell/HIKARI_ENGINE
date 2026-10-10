@@ -1,5 +1,6 @@
 #include "HIKARI_AgentMcpServer.h"
 
+#include "HIKARI_AgentImage.h"
 #include "HIKARI_AgentTools.h"
 
 #include "Core/Text/HIKARI_Base64.h"
@@ -11,6 +12,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <string>
 #include <string_view>
 
@@ -20,7 +22,7 @@
 namespace HIKARI::AGENT_CLI {
 namespace {
 
-// 画像は 4 MiB を超えたらパスだけ返す（文脈を圧迫しないため）。
+// 縮めても 4 MiB を超える画像はパスだけ返す（文脈を圧迫しないため）。
 constexpr std::uintmax_t kMaximumInlineImageBytes = 4u * 1024u * 1024u;
 constexpr std::array<std::string_view, 3> kSupportedProtocols = {"2025-06-18", "2025-03-26", "2024-11-05"};
 
@@ -61,13 +63,9 @@ nlohmann::json CallTool(AgentClient& client, const nlohmann::json& params) {
     content.push_back(
         {{"type", "text"}, {"text", outcome->result.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace)}});
     for (const std::filesystem::path& image : outcome->images) {
-        std::error_code sizeError;
-        const std::uintmax_t size = std::filesystem::file_size(image, sizeError);
-        if (sizeError || size > kMaximumInlineImageBytes)
-            continue;
-        std::ifstream input(image, std::ios::binary);
-        const std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-        if (!bytes.empty())
+        const std::string bytes = ReadImageForModel(
+            image, outcome->fullSizeImages ? (std::numeric_limits<uint32_t>::max)() : kModelImageLongSide);
+        if (!bytes.empty() && bytes.size() <= kMaximumInlineImageBytes)
             content.push_back({{"type", "image"}, {"data", TEXT::EncodeBase64(bytes)}, {"mimeType", "image/png"}});
     }
     return {{"content", std::move(content)}, {"isError", !outcome->result.value("ok", false)}};

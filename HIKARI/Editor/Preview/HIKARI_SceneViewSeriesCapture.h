@@ -16,6 +16,10 @@ namespace HIKARI {
 class DocumentSceneBase;
 }
 
+namespace HIKARI::RENDER3D::EDITORVIEW {
+enum class EditorInteractiveShadingMode : uint8_t;
+}
+
 namespace HIKARI::EDITOR {
 
 // 現在のシーンを定型の角度から順に撮影し、まとめて画像として返す。
@@ -32,6 +36,10 @@ private:
         std::string label;
         Camera3D camera;
     };
+    // 撮影中に人や智能体が場面を編集したか（止めずに結果で知らせる）。
+    bool sceneEdited_ = false;
+    // unlit は照明を使わず底色を写す（暗い場面で色を確かめる時）。値初期化は先頭の Lit。
+    RENDER3D::EDITORVIEW::EditorInteractiveShadingMode shading_{};
 
     EditorOperationResult SubmitNext();
     EditorOperationResult Pending() const;

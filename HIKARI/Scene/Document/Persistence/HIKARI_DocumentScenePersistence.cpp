@@ -8,6 +8,7 @@
 
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Core/HIKARI_Logger.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
@@ -27,7 +28,8 @@ bool DocumentSceneBase::OpenSceneAssetNow(const AssetGuid& sceneGuid) {
     return ReloadAssets() && OpenSceneAssetWithCurrentAssets(requestedGuid);
 }
 
-bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGuid) {
+bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGuid,
+                                                        const std::filesystem::path& contentPath) {
     state_->identity.loadError.clear();
     if (!IsValidAssetGuid(sceneGuid.value) || !SERVICES::IsRuntimeSceneGuidAllowed(sceneGuid.value)) {
         return false;
@@ -46,8 +48,9 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
     const std::filesystem::path scenePath =
         (state_->assets.Database().GetProjectRoot() / record->sourcePath).lexically_normal();
     SceneDocument loaded{};
-    if (!state_->identity.serializer.LoadFromFile(scenePath.generic_string(), loaded)) {
-        state_->identity.loadError = "Scene could not be read: " + scenePath.generic_string();
+    const std::filesystem::path contentSource = contentPath.empty() ? scenePath : contentPath;
+    if (!state_->identity.serializer.LoadFromFile(contentSource.generic_string(), loaded)) {
+        state_->identity.loadError = "Scene could not be read: " + contentSource.generic_string();
         HIKARI_LOG_ERROR(state_->identity.loadError);
         return false;
     }
@@ -71,6 +74,9 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
     bool oldWorldDetached = false;
     if (RebuildRuntimeWorld(false, true, &oldWorldDetached)) {
         state_->identity.loadError.clear();
+        if (!contentPath.empty())
+            HIKARI_LOG_INFO("[SceneAsset] opened " + sceneGuid.value + " from snapshot " +
+                            contentSource.generic_string());
         return true;
     }
 
@@ -104,7 +110,8 @@ bool DocumentSceneBase::OpenStartupSceneAssetWithCurrentAssets() {
     // 実行時の明示的な開始シーンを優先する。
     const std::string& runtimeStartupSceneGuid = SERVICES::GetRuntimeStartupSceneGuid();
     if (!runtimeStartupSceneGuid.empty()) {
-        return OpenSceneAssetWithCurrentAssets(AssetGuid{runtimeStartupSceneGuid});
+        return OpenSceneAssetWithCurrentAssets(AssetGuid{runtimeStartupSceneGuid},
+                                               TEXT::PathFromUtf8(SERVICES::GetRuntimeStartupSceneSnapshot()));
     }
 
     ProjectSettingsService settings{};

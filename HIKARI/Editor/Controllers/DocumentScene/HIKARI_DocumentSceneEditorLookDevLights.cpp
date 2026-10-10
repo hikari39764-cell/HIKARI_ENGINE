@@ -142,7 +142,7 @@ void DocumentSceneEditorController::DrawLookDevLightsWindow(DocumentSceneBase& s
             TEXT::Localize("ui.lookDev.threePoint").c_str(), "##threePoint", EDITOR::EditorButtonTone::Neutral,
             ImVec2(half, 0.0f),
             TEXT::Localize(hasSubject ? "ui.lookDev.threePointHint" : "ui.lookDev.threePointNeedsSelection").c_str())) {
-        RunLookDevOperation("lighting.three_point", {{"objectId", subject.value}});
+        SelectLookDevOperationResult(scene, RunLookDevOperation("lighting.three_point", {{"objectId", subject.value}}));
     }
     ImGui::EndDisabled();
     ImGui::PushTextWrapPos(0.0f);
@@ -253,12 +253,14 @@ void DocumentSceneEditorController::PlaceLightAtView(DocumentSceneBase& scene) {
     }
     const MATH::Vec3 position = view.GetPosition();
     const MATH::Vec3 aim = position + MATH::Normalize(forward) * distance;
-    RunLookDevOperation("scene.create_light",
-                        {{"type", "Spot"},
-                         {"name", TEXT::Localize("ui.lookDev.viewLightName")},
-                         {"position", {position.x, position.y, position.z}},
-                         {"aimAt", {aim.x, aim.y, aim.z}},
-                         {"settings", {{"range", distance * 1.5f}, {"sceneRelativeIntensity", distance * distance}}}});
+    SelectLookDevOperationResult(
+        scene, RunLookDevOperation(
+                   "scene.create_light",
+                   {{"type", "Spot"},
+                    {"name", TEXT::Localize("ui.lookDev.viewLightName")},
+                    {"position", {position.x, position.y, position.z}},
+                    {"aimAt", {aim.x, aim.y, aim.z}},
+                    {"settings", {{"range", distance * 1.5f}, {"sceneRelativeIntensity", distance * distance}}}}));
 }
 
 EDITOR::EditorOperationResult DocumentSceneEditorController::CreateLookDevLight(const nlohmann::json& p) {
@@ -309,19 +311,17 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::CreateLookDevLight(
             name = TEXT::Localize(std::string("ui.lookDev.item.") + entry.name);
         }
     }
-    GameObject* created = nullptr;
-    sceneCreationPanel_.CreateWithHistory(*scene, context_, selectionSync_, "Create Light", [&] {
+    const std::vector<SceneObjectId> created = CreateLookDevObjects(*scene, "Create Light", [&] {
         EDITOR::CreateObjectRequest request{};
         request.name = name;
         request.position = position;
         request.rotation = rotation;
-        created = EDITOR::CreateLightObject(*scene, request, settings);
-        return created;
+        return std::vector<GameObject*>{EDITOR::CreateLightObject(*scene, request, settings)};
     });
-    if (created == nullptr) {
+    if (created.empty()) {
         return EDITOR::OperationFailure("CREATE_FAILED", "The light could not be created.");
     }
-    return EDITOR::OperationOk("Light created.", {{"objectId", created->GetDocumentId().value}});
+    return EDITOR::OperationOk("Light created.", {{"objectId", created.front().value}});
 }
 
 EDITOR::EditorOperationResult DocumentSceneEditorController::CreateThreePointLights(const nlohmann::json& p) {
@@ -346,21 +346,16 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::CreateThreePointLig
         }
     }
     const auto rig = EDITOR::BuildThreePointLights(bounds, viewer);
-    std::vector<SceneObjectId> lights;
-    sceneCreationPanel_.CreateWithHistory(*scene, context_, selectionSync_, "Three-Point Lighting", [&] {
-        GameObject* key = nullptr;
+    const std::vector<SceneObjectId> lights = CreateLookDevObjects(*scene, "Three-Point Lighting", [&] {
+        std::vector<GameObject*> created;
         for (const EDITOR::LookDevRigLight& light : rig) {
             EDITOR::CreateObjectRequest request{};
             request.name = TEXT::Localize(std::string(light.nameKey));
             request.position = light.position;
             request.rotation = light.rotationDegrees;
-            GameObject* created = EDITOR::CreateLightObject(*scene, request, light.settings);
-            if (created != nullptr) {
-                lights.push_back(created->GetDocumentId());
-            }
-            key = key != nullptr ? key : created;
+            created.push_back(EDITOR::CreateLightObject(*scene, request, light.settings));
         }
-        return key;
+        return created;
     });
     if (lights.size() != rig.size()) {
         return EDITOR::OperationFailure("CREATE_FAILED", "The lights could not be created.");

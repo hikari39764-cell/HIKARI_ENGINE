@@ -27,6 +27,8 @@ public:
 
     nlohmann::json SerializeComponent(const SceneComponentData& component) const;
     nlohmann::json SerializeObject(const SceneDocument& document, const SceneObjectData& object) const;
+    // 一覧と作成の受領書の要約：ID・名前・親・部品・世界の位置と外接箱。
+    nlohmann::json SummarizeObject(const DocumentSceneBase& scene, const SceneObjectData& object) const;
 };
 
 } // namespace EDITOR

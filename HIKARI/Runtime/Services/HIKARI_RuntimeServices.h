@@ -28,6 +28,8 @@ bool IsRuntimeSessionEndRequested();
 bool ConsumeRuntimeSessionEndRequest();
 
 const std::string& GetRuntimeStartupSceneGuid();
+// 開始シーンの内容を読む文件（空なら資産の文件）。
+const std::string& GetRuntimeStartupSceneSnapshot();
 bool IsRuntimeSceneGuidAllowed(const std::string& sceneGuid);
 
 void SetEditorUIEnabled(bool enabled);

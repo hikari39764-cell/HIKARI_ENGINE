@@ -18,9 +18,11 @@
 
 #include "Editor/Diagnostics/HIKARI_RuntimeDebugWindow.h"
 #include "Editor/Agent/HIKARI_AgentBridge.h"
+#include "Editor/Agent/HIKARI_AgentEngineRoots.h"
 #include "Editor/Agent/HIKARI_AgentHost.h"
 #include "Editor/Agent/HIKARI_AgentPanelState.h"
 #include "Editor/Agent/HIKARI_AgentPlayRun.h"
+#include "Editor/Play/HIKARI_BackgroundPlayRun.h"
 #include "Editor/HIKARI_DebugCameraPanel.h"
 #include "Editor/HIKARI_DebugMenuBar.h"
 #include "Editor/Export/HIKARI_GameExportJob.h"
@@ -74,6 +76,7 @@
 namespace HIKARI {
 
 class DocumentSceneBase;
+class GameObject;
 namespace EDITOR {
 class EditorProjectSessionController;
 class EditorPlaySession;
@@ -134,6 +137,11 @@ private:
     void CancelAiSceneCapture();
     EDITOR::SceneViewSeriesCapture sceneViewSeries_{};
     EDITOR::AGENT::AgentHost agentHost_{};
+    // play.background：保存前の場面を後ろの無頭の引擎で遊ばせる。
+    EDITOR::BackgroundPlayRun backgroundPlay_{};
+    EDITOR::EditorOperationResult StartBackgroundPlay(const nlohmann::json& parameters);
+    // 智能体が書き込めない引擎目录（この编辑器の安装先）。
+    std::vector<std::filesystem::path> engineRoots_ = EDITOR::AGENT::FindEngineRoots();
     EDITOR::EditorSettingsPanel editorSettingsPanel_{};
     EDITOR::EditorShell editorShell_{};
     bool HasForegroundDocument(EDITOR::EditorWorkspaceId workspace) const;
@@ -244,6 +252,12 @@ private:
     void RegisterLookDevOperations();
     // 画面のボタンから布景の操作を呼び、失敗したら視口の札に出す。
     EDITOR::EditorOperationResult RunLookDevOperation(const std::string& id, const nlohmann::json& parameters);
+    // 画面のボタンで呼んだ操作が作った物（createdIds・groupId・keyId・objectId）を選ぶ。操作そのものは選択を変えない
+    // （智能体が人の選択や視点を変えずに並行して作業できるように）。
+    void SelectLookDevOperationResult(DocumentSceneBase& scene, const EDITOR::EditorOperationResult& result);
+    // 布景の操作で物を作る：その場で一つの取り消しに積む（批量や“这一轮”の取り消しの組にも入る）。選択は変えない。
+    std::vector<SceneObjectId> CreateLookDevObjects(DocumentSceneBase& scene, std::string label,
+                                                    const std::function<std::vector<GameObject*>()>& create);
     // scene.create_light：種類・位置・向き（aimAt か rotation）・LightSettings の部分 JSON で灯を一つ作る。
     EDITOR::EditorOperationResult CreateLookDevLight(const nlohmann::json& p);
     // lighting.three_point：物体の外接箱を照らす主光・補光・輪郭光。
@@ -335,6 +349,9 @@ private:
     void EnsureAgentBridge(DocumentSceneBase& scene);
     // 外部智能体（本地桥）からの一つの操作。公開範囲と访问模式を確かめて操作表で実行する。主线程で呼ぶ。
     EDITOR::EditorOperationResult ExecuteAgentAction(const std::string& operation, const nlohmann::json& parameters);
+    // 人が場面を操作している途中か（視口の手柄、布景の物・灯・寸法・开口・主光のドラッグ、地形の笔刷、数値のドラッグ）。
+    // 智能体の修改はその間待たせる。
+    bool IsUserEditingScene() const;
     // editor.state と operations.batch（HIKARI_DocumentSceneEditorAgentOperations.cpp）。
     void RegisterAgentOperations();
     EDITOR::EditorOperationResult DescribeEditorState();

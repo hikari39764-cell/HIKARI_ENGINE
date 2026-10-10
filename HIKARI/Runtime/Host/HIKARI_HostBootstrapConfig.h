@@ -21,6 +21,8 @@ struct HostBootstrapConfig {
     int windowWidth = PRESENTATION::kDefaultLogicalWidth;
     int windowHeight = PRESENTATION::kDefaultLogicalHeight;
     std::string startupSceneGuid{};
+    // startupSceneGuid の内容を読む文件（保存前の場面の写し）。空なら資産の文件。
+    std::string startupSceneSnapshot{};
     std::vector<std::string> exportedSceneGuids{};
 };
 

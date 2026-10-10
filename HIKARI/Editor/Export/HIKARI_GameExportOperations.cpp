@@ -18,7 +18,11 @@ void RegisterGameExportOperations(EditorOperationRegistry& registry, GameExportJ
     start.kind = EditorOperationKind::Session;
     start.permission = EditorOperationPermission::ExecuteExternalProcess;
     start.parameters = {
-        {"outputDirectory", EditorOperationParameterType::String, true, "出力先フォルダー"},
+        {"outputDirectory",
+         EditorOperationParameterType::String,
+         true,
+         "出力先フォルダー",
+         {{"format", kOutputPathFormat}}},
         {"startupSceneGuid", EditorOperationParameterType::String, false, "開始シーン GUID"},
         {"sceneGuids", EditorOperationParameterType::Json, false, "出力するシーン GUID の配列"},
         {"windowMode", EditorOperationParameterType::Int, false, "0: Windowed / 1: Borderless / 2: Fullscreen"}};

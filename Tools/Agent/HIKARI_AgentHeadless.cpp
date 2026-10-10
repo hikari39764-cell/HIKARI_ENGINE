@@ -1,20 +1,16 @@
 #include "HIKARI_AgentHeadless.h"
 
 #include "Editor/Agent/HIKARI_AgentConnection.h"
+#include "Editor/Agent/HIKARI_HeadlessEngineRun.h"
 
-#include <algorithm>
-#include <chrono>
-#include <fstream>
+#include <set>
 #include <string>
-#include <vector>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 namespace HIKARI::AGENT_CLI {
 namespace {
-
-constexpr size_t kMaximumProblems = 40u;
 
 std::string ToUtf8(const std::filesystem::path& path) {
     const std::u8string text = path.u8string();
@@ -50,43 +46,6 @@ std::wstring Quote(const std::wstring& argument) {
     return quoted;
 }
 
-std::filesystem::path FindDescriptor(const std::filesystem::path& projectRoot) {
-    std::error_code error;
-    if (std::filesystem::is_regular_file(projectRoot / "Project.hikari", error))
-        return projectRoot / "Project.hikari";
-    for (const auto& entry : std::filesystem::directory_iterator(projectRoot, error)) {
-        if (entry.path().extension() == ".hikari")
-            return entry.path();
-    }
-    return {};
-}
-
-std::filesystem::path NewestLog(const std::filesystem::path& folder, std::filesystem::file_time_type after) {
-    std::filesystem::path newest;
-    std::filesystem::file_time_type newestTime = after;
-    std::error_code error;
-    for (const auto& entry : std::filesystem::directory_iterator(folder, error)) {
-        const auto time = entry.last_write_time(error);
-        if (entry.path().extension() == ".log" && !error && time >= newestTime) {
-            newest = entry.path();
-            newestTime = time;
-        }
-    }
-    return newest;
-}
-
-nlohmann::json ReadProblems(const std::filesystem::path& log) {
-    nlohmann::json problems = nlohmann::json::array();
-    std::ifstream input(log, std::ios::binary);
-    for (std::string line; std::getline(input, line) && problems.size() < kMaximumProblems;) {
-        if (!line.empty() && line.back() == '\r')
-            line.pop_back();
-        if (line.find("[WARN]") != std::string::npos || line.find("[ERROR]") != std::string::npos)
-            problems.push_back(line);
-    }
-    return problems;
-}
-
 } // namespace
 
 nlohmann::json RunHeadless(const HeadlessRunOptions& options) {
@@ -94,44 +53,34 @@ nlohmann::json RunHeadless(const HeadlessRunOptions& options) {
     std::error_code error;
     if (!std::filesystem::is_regular_file(engine, error))
         return Failure("ENGINE_NOT_FOUND", "找不到引擎：" + ToUtf8(engine));
-    const std::filesystem::path descriptor = FindDescriptor(options.projectRoot);
-    if (descriptor.empty())
+    EDITOR::AGENT::HeadlessEngineRun run;
+    run.descriptor = EDITOR::AGENT::FindProjectDescriptor(options.projectRoot);
+    if (run.descriptor.empty())
         return Failure("PROJECT_NOT_FOUND", "项目目录里没有 .hikari 描述文件：" + ToUtf8(options.projectRoot));
     if (options.frames == 0u || options.frames > 10000u)
         return Failure("INVALID_FRAMES", "--frames 必须在 1 到 10000 之间");
-
-    std::vector<std::wstring> arguments = {engine.wstring(),      L"--project",
-                                           descriptor.wstring(),  L"--headless-render",
-                                           L"--exit-after-frame", std::to_wstring(options.frames)};
-    if (options.play || options.inputReplay)
-        arguments.push_back(L"--play-on-start");
-    if (options.inputReplay) {
-        arguments.push_back(L"--input-replay");
-        arguments.push_back(std::filesystem::absolute(*options.inputReplay, error).wstring());
-    }
-    std::filesystem::path capture;
+    const std::filesystem::path library = EDITOR::AGENT::FindProjectLibraryRoot(options.projectRoot);
+    run.frames = options.frames;
+    run.play = options.play;
+    run.inputReplay = options.inputReplay.value_or(std::filesystem::path{});
+    run.runtimeConfig = options.runtimeConfig;
+    // Launcher と同じく、項目が構築済みの模块を使う。無ければ模块なしで動かす。
+    const std::filesystem::path module = library / "Build" / "editor-release" / "bin" / "HIKARI_GameProject.dll";
+    if (!options.allowMissingModule && std::filesystem::is_regular_file(module, error))
+        run.projectModule = module;
     if (options.captureFrame) {
-        const std::filesystem::path fallback =
-            EDITOR::AGENT::FindProjectLibraryRoot(options.projectRoot) / "EditorAI" / "Captures" / "headless.png";
-        capture = std::filesystem::absolute(options.captureOutput.empty() ? fallback : options.captureOutput, error);
-        std::filesystem::create_directories(capture.parent_path(), error);
-        std::filesystem::remove(capture, error);
-        arguments.insert(arguments.end(), {L"--capture-output", capture.wstring(), L"--capture-frame",
-                                           std::to_wstring(*options.captureFrame)});
+        run.captureOutput =
+            options.captureOutput.empty() ? library / "EditorAI" / "Captures" / "headless.png" : options.captureOutput;
+        run.captureFrame = *options.captureFrame;
+        std::filesystem::create_directories(std::filesystem::absolute(run.captureOutput, error).parent_path(), error);
+        std::filesystem::remove(run.captureOutput, error);
     }
-    if (options.allowMissingModule)
-        arguments.push_back(L"--allow-missing-project-module");
-    if (!options.runtimeConfig.empty()) {
-        // 相対パスは引擎が見つけられず黙って既定に戻るので、絶対パスで渡す。
-        arguments.push_back(L"--runtime-config");
-        arguments.push_back(std::filesystem::absolute(options.runtimeConfig, error).wstring());
-    }
-    std::wstring commandLine;
-    for (const std::wstring& argument : arguments)
-        commandLine += (commandLine.empty() ? L"" : L" ") + Quote(argument);
+    std::wstring commandLine = Quote(engine.wstring());
+    for (const std::wstring& argument : EDITOR::AGENT::BuildHeadlessEngineArguments(run))
+        commandLine += L" " + Quote(argument);
 
-    const std::filesystem::path logs = EDITOR::AGENT::FindProjectLibraryRoot(options.projectRoot) / "Logs";
-    const auto started = std::filesystem::file_time_type::clock::now();
+    const std::filesystem::path logs = library / "Logs";
+    const std::set<std::filesystem::path> logsBefore = EDITOR::AGENT::ListLogFiles(logs);
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
     PROCESS_INFORMATION process{};
@@ -152,13 +101,12 @@ nlohmann::json RunHeadless(const HeadlessRunOptions& options) {
     GetExitCodeProcess(process.hProcess, &exitCode);
     CloseHandle(process.hProcess);
 
-    nlohmann::json data{{"exitCode", exitCode}, {"frames", options.frames}, {"captures", nlohmann::json::array()}};
-    if (!capture.empty() && std::filesystem::is_regular_file(capture, error))
-        data["captures"].push_back({{"frame", *options.captureFrame}, {"path", ToUtf8(capture)}});
-    const std::filesystem::path log = NewestLog(logs, started - std::chrono::seconds(2));
+    nlohmann::json data{
+        {"exitCode", exitCode}, {"frames", options.frames}, {"captures", EDITOR::AGENT::CollectHeadlessCaptures(run)}};
+    const std::filesystem::path log = EDITOR::AGENT::FindNewLogFile(logs, logsBefore);
     if (!log.empty()) {
         data["log"] = ToUtf8(log);
-        data["problems"] = ReadProblems(log);
+        data["problems"] = EDITOR::AGENT::ReadLogProblems(log);
     }
     const bool ok = exitCode == 0u;
     return {{"ok", ok},

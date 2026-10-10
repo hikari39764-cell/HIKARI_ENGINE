@@ -285,10 +285,29 @@ ComponentAuthoringServiceResult ComponentPropertyAuthoringService::Apply(
         if (knownTarget == changedTargets.end()) {
             changedTargets.push_back(mutation.target);
         }
-        changedFields.push_back({{"objectId", mutation.target.objectId.value},
-                                 {"componentId", mutation.target.componentId.value},
-                                 {"componentType", resolved.component->type},
-                                 {"propertyId", mutation.propertyId}});
+        nlohmann::json changedField{{"objectId", mutation.target.objectId.value},
+                                    {"componentId", mutation.target.componentId.value},
+                                    {"componentType", resolved.component->type},
+                                    {"propertyId", mutation.propertyId}};
+        // 字段 ID は JSON の键と同じ（入れ子は . 区切り）。辿れる時だけ改前・改后の値を添え、回读を省けるようにする。
+        const auto lookup = [&id = mutation.propertyId](const nlohmann::json& properties) -> const nlohmann::json* {
+            const nlohmann::json* node = &properties;
+            for (size_t begin = 0u; node != nullptr;) {
+                const size_t dot = id.find('.', begin);
+                const std::string key = id.substr(begin, dot == std::string::npos ? std::string::npos : dot - begin);
+                const auto found = node->is_object() ? node->find(key) : node->end();
+                node = node->is_object() && found != node->end() ? &*found : nullptr;
+                if (dot == std::string::npos)
+                    return node;
+                begin = dot + 1u;
+            }
+            return nullptr;
+        };
+        if (const nlohmann::json* oldValue = lookup(before))
+            changedField["oldValue"] = *oldValue;
+        if (const nlohmann::json* newValue = lookup(serialized))
+            changedField["newValue"] = *newValue;
+        changedFields.push_back(std::move(changedField));
     }
     for (const ComponentAuthoringTarget& changedTarget : changedTargets) {
         const ComponentAuthoringServiceResult validation =

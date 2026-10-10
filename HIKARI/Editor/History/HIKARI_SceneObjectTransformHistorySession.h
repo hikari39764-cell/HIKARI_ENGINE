@@ -22,6 +22,8 @@ public:
 
     void MarkChanged() noexcept;
     void EndFrame(const SceneDocument& document);
+    // 視口で物体を動かしている途中（一つの撤销にまとめている間）。
+    bool Active() const noexcept { return pending_.has_value(); }
 
     std::optional<SceneObjectAuthoringHistoryRequest> ConsumeHistoryRequest();
 
