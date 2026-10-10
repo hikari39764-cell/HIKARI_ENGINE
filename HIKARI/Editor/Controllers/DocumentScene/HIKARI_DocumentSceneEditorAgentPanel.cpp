@@ -1,5 +1,6 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
+#include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Core/Text/HIKARI_Trim.h"
 #include "Core/Text/HIKARI_UtfPath.h"
@@ -467,6 +468,14 @@ void DocumentSceneEditorController::StartAgentTurn(DocumentSceneBase& scene) {
         panel.session.Stop();
     }
     if (!panel.session.Running()) {
+        // 説明（AGENTS.md など）が無いか古い编辑器の版のものなら、今の版で書き直す（项目约定の節は残る）。
+        std::vector<std::filesystem::path> written;
+        std::string filesError;
+        if (!EDITOR::AGENT::WriteAgentProjectFiles(
+                request.projectRoot,
+                EDITOR::AGENT::DetectAgentProjectFileInputs(TEXT::PathToUtf8(request.projectRoot.filename())), written,
+                filesError))
+            HIKARI_LOG_WARN("[Agent] " + filesError);
         request.resumeSession = resume;
         request.runFolder = assets.GetLibraryRoot() / "EditorAI" / "AgentRuns" /
                             std::to_string(std::chrono::system_clock::now().time_since_epoch().count());

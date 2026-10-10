@@ -123,22 +123,21 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
              if (!scene.GetRenderStyleAssets().Load(edited.renderStyleId, error))
                  return EDITOR::OperationFailure("UNKNOWN_RENDER_STYLE", error);
              const nlohmann::json stored = ENVIRONMENT::WriteSceneEnvironmentBinding(edited);
-             const uint64_t revisionBefore = scene.GetSceneDocumentRevision();
-             if (edited != before) {
+             // 環境の編集は場面文档の修订号を進めないので、変わったかは束縛そのものを比べる。
+             const bool changed = edited != before;
+             if (changed) {
                  const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
                  scene.GetSceneDocument().environment = edited;
                  CommitAppliedDocumentCommand(
                      scene, EDITOR::MakeEnvironmentHistoryCommand("AI Edit Environment", before, std::move(edited)), 0u,
                      externalDirtyBefore, EDITOR::EditorDocumentImpact::Environment);
              }
-             const uint64_t revisionAfter = scene.GetSceneDocumentRevision();
              nlohmann::json data{{"appliedPatch", EDITOR::ProjectAppliedPatch(patch, stored)},
                                  {"adjusted", EDITOR::CollectAdjustedPatchValues(patch, stored)},
-                                 {"documentChanged", revisionAfter != revisionBefore},
+                                 {"documentChanged", changed},
                                  {"dirty", context_.sceneDirty || scene.HasUnsavedSceneChanges()},
-                                 {"revision", revisionAfter}};
-             return EDITOR::OperationOk(
-                 revisionAfter != revisionBefore ? "Environment updated." : "Environment unchanged.", std::move(data));
+                                 {"revision", scene.GetSceneDocumentRevision()}};
+             return EDITOR::OperationOk(changed ? "Environment updated." : "Environment unchanged.", std::move(data));
          }},
         EditorOperationKind::Mutation);
 

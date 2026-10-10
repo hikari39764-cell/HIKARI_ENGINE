@@ -251,6 +251,16 @@ bool ValidateShape(const nlohmann::json& value, const nlohmann::json& schema, co
             }
         }
     }
+    if (value.is_array()) {
+        for (const auto* key : {"minItems", "maxItems"}) {
+            if (schema.contains(key) &&
+                (std::string_view(key) == "minItems" ? value.size() < schema[key].get<size_t>()
+                                                     : value.size() > schema[key].get<size_t>())) {
+                error = path + " violates " + key + "=" + schema[key].dump();
+                return false;
+            }
+        }
+    }
     if (value.is_array() && schema.contains("items")) {
         for (size_t i = 0; i < value.size(); ++i)
             if (!ValidateShape(value[i], schema["items"], path + "[" + std::to_string(i) + "]", error, depth + 1))
@@ -260,6 +270,10 @@ bool ValidateShape(const nlohmann::json& value, const nlohmann::json& schema, co
 }
 
 } // namespace
+
+nlohmann::json EditorOperationVec3Schema() {
+    return {{"type", "array"}, {"items", {{"type", "number"}}}, {"minItems", 3}, {"maxItems", 3}};
+}
 
 nlohmann::json DescribeEditorOperation(const EditorOperationDefinition& definition) {
     nlohmann::json result{{"id", definition.id},

@@ -114,6 +114,9 @@ struct EditorOperationRegistrationResult {
 // schema の format：操作がこの引数のパスに書き込む。智能体からは引擎目录を指せない。
 inline constexpr std::string_view kOutputPathFormat = "output-path";
 
+// 位置・向き・大きさ・色などの [x, y, z] 引数の形。操作はこの一つの形で受け取る（成分ごとの引数は作らない）。
+nlohmann::json EditorOperationVec3Schema();
+
 struct EditorOperationParameter {
     std::string name{};
     EditorOperationParameterType type = EditorOperationParameterType::String;

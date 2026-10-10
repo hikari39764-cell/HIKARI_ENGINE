@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -43,11 +44,16 @@ private:
 
     EditorOperationResult SubmitNext();
     EditorOperationResult Pending() const;
+    bool ExposureSettled();
 
     RENDER3D::RenderViewId viewId_{};
     std::vector<View> views_;
     std::size_t next_ = 0;
     uint64_t ticket_ = 0;
+    // 照明つきの撮影は、主ビューの自動露出が落ち着くまで最初の角度を出さない（時刻や天気を変えた直後）。
+    bool waitingForExposure_ = false;
+    std::chrono::steady_clock::time_point exposureWaitStart_{};
+    float lastExposureLog2_ = 0.0f;
     uint64_t sceneRevision_ = 0;
     uint64_t worldIdentity_ = 0;
     uint32_t width_ = 0;

@@ -61,8 +61,10 @@ EditorOperationResult BackgroundPlayRun::Start(const Request& request) {
     const std::filesystem::path scene = folder_ / "scene.json";
     if (!SceneSerializer{}.SaveToFile(TEXT::PathToUtf8(scene), *request.scene))
         return OperationFailure("SNAPSHOT_FAILED", "Could not write the scene snapshot.");
-    const nlohmann::json config{
-        {"runtime", {{"startupSceneGuid", request.sceneGuid}, {"startupSceneSnapshot", TEXT::PathToUtf8(scene)}}}};
+    nlohmann::json runtime = AGENT::HeadlessRuntimeSettings(!request.projectQuality);
+    runtime["startupSceneGuid"] = request.sceneGuid;
+    runtime["startupSceneSnapshot"] = TEXT::PathToUtf8(scene);
+    const nlohmann::json config{{"runtime", std::move(runtime)}};
     run_ = {};
     run_.descriptor = request.descriptor;
     run_.frames = request.frames;
@@ -98,6 +100,18 @@ EditorOperationResult BackgroundPlayRun::Start(const Request& request) {
     return OperationOk("Background Play started; the editor stays free.", Pending(runId_));
 }
 
+nlohmann::json BackgroundPlayRun::Report(uint32_t exitCode) const {
+    nlohmann::json data{{"runId", runId_},
+                        {"exitCode", exitCode},
+                        {"frames", run_.frames},
+                        {"captures", AGENT::CollectHeadlessCaptures(run_)}};
+    if (const std::filesystem::path log = AGENT::FindNewLogFile(logs_, logsBefore_); !log.empty()) {
+        data["log"] = TEXT::PathToUtf8(log);
+        data["problems"] = AGENT::ReadLogProblems(log);
+    }
+    return data;
+}
+
 EditorOperationResult BackgroundPlayRun::Status() {
     if (finished_)
         return *finished_;
@@ -112,19 +126,15 @@ EditorOperationResult BackgroundPlayRun::Status() {
         }
         process_->Cancel();
         process_.reset();
-        finished_ = OperationFailure("TIMEOUT", "The background engine did not finish in time and was stopped.");
+        // 止めるまでに撮れた截图と日志は返す（どこまで進んだかの手掛かり）。
+        finished_ = OperationFailure("TIMEOUT", "The background engine did not finish in time and was stopped; run "
+                                                "fewer frames (about 60 frames per second of game time).");
+        finished_->data = Report(0u);
         return *finished_;
     }
     const uint32_t exitCode = process_->ExitCode();
     process_.reset();
-    nlohmann::json data{{"runId", runId_},
-                        {"exitCode", exitCode},
-                        {"frames", run_.frames},
-                        {"captures", AGENT::CollectHeadlessCaptures(run_)}};
-    if (const std::filesystem::path log = AGENT::FindNewLogFile(logs_, logsBefore_); !log.empty()) {
-        data["log"] = TEXT::PathToUtf8(log);
-        data["problems"] = AGENT::ReadLogProblems(log);
-    }
+    nlohmann::json data = Report(exitCode);
     finished_ = exitCode == 0u
                     ? OperationOk("Background Play finished.", std::move(data))
                     : OperationFailure("ENGINE_FAILED", "The background engine exited with code " +

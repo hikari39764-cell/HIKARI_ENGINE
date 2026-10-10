@@ -99,10 +99,11 @@ nlohmann::json ReadLogs(uint64_t afterSequence, CORE::LogLevel minimum, size_t l
     for (const CORE::LogRecord& record : CORE::ReadLogHistory(afterSequence)) {
         if (records.size() >= limit)
             break;
-        const bool severe = record.level == CORE::LogLevel::Error || record.level == CORE::LogLevel::D3D12;
+        // D3D12 の記録は初期化の経過（デバイスや堆の作成）で、警告でも错误でもない。
         const bool passes = minimum == CORE::LogLevel::Info ||
-                            (minimum == CORE::LogLevel::Warn && record.level != CORE::LogLevel::Info) ||
-                            (minimum == CORE::LogLevel::Error && severe);
+                            (minimum == CORE::LogLevel::Warn &&
+                             (record.level == CORE::LogLevel::Warn || record.level == CORE::LogLevel::Error)) ||
+                            (minimum == CORE::LogLevel::Error && record.level == CORE::LogLevel::Error);
         if (passes && (contains.empty() || record.message.find(contains) != std::string::npos ||
                        record.source.find(contains) != std::string::npos))
             records.push_back(DescribeLogRecord(record));
@@ -253,7 +254,13 @@ void DocumentSceneEditorController::RegisterPlayOperations() {
           EditorOperationParameterType::Json,
           false,
           "Up to 8 frame numbers, increasing and evenly spaced",
-          {{"type", "array"}, {"items", {{"type", "integer"}, {"minimum", 1}}}}}},
+          {{"type", "array"}, {"items", {{"type", "integer"}, {"minimum", 1}}}}},
+         {"quality",
+          EditorOperationParameterType::String,
+          false,
+          "light (default: 1280x720, low GI and volumetrics, so it shares the GPU with the user) or project "
+          "(1920x1080 at the project's render quality, when the captures must match the game's look)",
+          {{"enum", nlohmann::json::array({"light", "project"})}}}},
         [this](const nlohmann::json& parameters) { return StartBackgroundPlay(parameters); }};
     background.entryPoint = true;
     add(std::move(background), EDITOR::EditorOperationKind::Session,
@@ -275,7 +282,7 @@ void DocumentSceneEditorController::RegisterPlayOperations() {
            false,
            "Scene object ids",
            {{"type", "array"}, {"items", {{"type", "integer"}}}}},
-          {"nameContains", EditorOperationParameterType::String, false, "Name filter"},
+          {"keyword", EditorOperationParameterType::String, false, "Optional name substring."},
           {"limit",
            EditorOperationParameterType::Int,
            false,
@@ -287,7 +294,7 @@ void DocumentSceneEditorController::RegisterPlayOperations() {
              std::vector<uint64_t> ids;
              for (const nlohmann::json& id : parameters.value("objectIds", nlohmann::json::array()))
                  ids.push_back(id.get<uint64_t>());
-             const std::string contains = parameters.value("nameContains", std::string{});
+             const std::string contains = parameters.value("keyword", std::string{});
              const size_t limit = parameters.value("limit", size_t{32});
              nlohmann::json objects = nlohmann::json::array();
              bool truncated = false;
@@ -631,6 +638,7 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::StartBackgroundPlay
         return EDITOR::OperationFailure("TOO_MANY_CAPTURES", "captureAt allows at most 8 frames.");
     for (const nlohmann::json& frame : captures)
         request.captureFrames.push_back(frame.get<uint32_t>());
+    request.projectQuality = parameters.value("quality", std::string("light")) == "project";
     return backgroundPlay_.Start(request);
 }
 

@@ -39,6 +39,8 @@ public:
         std::filesystem::path trackFile{};
         // 撮るフレーム。2 つ以上は等間隔。
         std::vector<uint32_t> captureFrames{};
+        // false なら軽い画質で走らせる（AGENT::HeadlessRuntimeSettings）。
+        bool projectQuality = false;
     };
 
     BackgroundPlayRun();
@@ -51,6 +53,9 @@ public:
     EditorOperationResult Status();
 
 private:
+    // 撮れた截图と、その回の日志の警告・错误。
+    nlohmann::json Report(uint32_t exitCode) const;
+
     std::unique_ptr<EditorChildProcess> process_;
     AGENT::HeadlessEngineRun run_{};
     std::filesystem::path folder_{};

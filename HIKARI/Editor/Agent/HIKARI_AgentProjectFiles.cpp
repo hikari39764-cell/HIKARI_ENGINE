@@ -23,13 +23,18 @@ std::string ReadText(const std::filesystem::path& path) {
     return input ? std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()) : std::string{};
 }
 
-bool WriteText(const std::filesystem::path& path, const std::string& text, std::string& outError) {
+// 内容が同じなら書かない（更新日時と版本管理の差分を増やさない）。書いたものだけ outWritten に足す。
+bool WriteIfChanged(const std::filesystem::path& path, const std::string& text,
+                    std::vector<std::filesystem::path>& outWritten, std::string& outError) {
+    if (ReadText(path) == text)
+        return true;
     std::ofstream output(path, std::ios::binary | std::ios::trunc);
     output << text;
     if (!output) {
         outError = "无法写入 " + TEXT::PathToUtf8(path);
         return false;
     }
+    outWritten.push_back(path);
     return true;
 }
 
@@ -107,10 +112,12 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
   `procedural.subtract`（挖空）、`scene.arrange`（对齐、等距、落地、编组、镜像、阵列）。
 - 灯光：`scene.create_light`、`lighting.three_point`。
 - 移动、删除、复制：`scene.set_transform`、`scene.delete_object`、`scene.duplicate_object`（传 `objectId`，不会改用户的选中）。
+  位置、旋转（度）、缩放和颜色在所有操作里都写成 `[x, y, z]`。
 - 游戏镜头区域：`camera_zone.edit`。
 - 撤回自己的修改：`scene.undo`。修改的结果里 `undo.label` 是这次积下的撤销步；撤销栈和用户共用，`hikari_state` 的
   `scene.undoLabel` 不是你的修改时不要撤。
-- 测玩法：`play.background`（`frames` 帧数、`track` 或 `path` 输入轨道、`captureAt` 等间隔的截图帧）。后台运行只带上
+- 测玩法：`play.background`（`frames` 帧数，游戏时间每秒约 60 帧；`track` 或 `path` 输入轨道；`captureAt` 等间隔的截图帧）。
+  默认用轻量画质（1280×720，降低 GI 和体积效果），截图要和正式画面一致时加 `"quality": "project"`。后台运行只带上
   当前场景未保存的修改；其他资产（材质、VFX、镜头等）从磁盘读，改过的要先保存（保存要用户批准）。
 - 只在用户要求时用：`hikari_capture`（用户当前的画面）、`hikari_play` 的 start / run 等和 `play.run`（在编辑器里 Play，
   会占用游戏视图，要求场景已保存）、`scene.object.focus`（会移动用户的视角）。
@@ -166,24 +173,17 @@ bool WriteAgentProjectFiles(const std::filesystem::path& projectRoot, const Agen
     const std::string previous = ReadText(agentsPath);
     const size_t conventions = previous.find(kConventionsHeading);
     const std::string kept = conventions == std::string::npos ? std::string{} : previous.substr(conventions);
-    if (!WriteText(agentsPath, std::string(kUtf8Bom) + MakeAgentsGuide(inputs, kept), outError))
+    if (!WriteIfChanged(agentsPath, std::string(kUtf8Bom) + MakeAgentsGuide(inputs, kept), outWritten, outError) ||
+        !WriteIfChanged(projectRoot / "CLAUDE.md", "@AGENTS.md\n", outWritten, outError))
         return false;
-    outWritten.push_back(agentsPath);
-
-    const std::filesystem::path claudePath = projectRoot / "CLAUDE.md";
-    if (!WriteText(claudePath, "@AGENTS.md\n", outError))
-        return false;
-    outWritten.push_back(claudePath);
 
     if (!inputs.hikariExecutable.empty()) {
         const nlohmann::json mcp{
             {"mcpServers",
              {{"hikari",
                {{"command", GenericUtf8(inputs.hikariExecutable)}, {"args", nlohmann::json::array({"mcp"})}}}}}};
-        const std::filesystem::path mcpPath = projectRoot / ".mcp.json";
-        if (!WriteText(mcpPath, mcp.dump(2) + "\n", outError))
+        if (!WriteIfChanged(projectRoot / ".mcp.json", mcp.dump(2) + "\n", outWritten, outError))
             return false;
-        outWritten.push_back(mcpPath);
     }
     return true;
 }

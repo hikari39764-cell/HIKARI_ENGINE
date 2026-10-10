@@ -18,7 +18,8 @@ struct AgentProjectFileInputs {
 // 実行中の编辑器の場所から hikari.exe と已安装 SDK を探す。
 AgentProjectFileInputs DetectAgentProjectFileInputs(std::string projectName);
 
-// 三つのファイルを書く。既存の AGENTS.md の「## 项目约定」から後ろは利用者が書いた部分として残す。
+// 三つのファイルを書く。既存の AGENTS.md の「## 项目约定」から後ろは利用者が書いた部分として残す。内容が同じ文件は
+// 書かず、outWritten には実際に書いたものだけが入る。编辑器内の会話を始める時にも呼び、説明を今の编辑器に合わせる。
 bool WriteAgentProjectFiles(const std::filesystem::path& projectRoot, const AgentProjectFileInputs& inputs,
                             std::vector<std::filesystem::path>& outWritten, std::string& outError);
 

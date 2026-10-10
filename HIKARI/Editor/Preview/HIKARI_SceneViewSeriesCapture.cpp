@@ -4,6 +4,7 @@
 #include "Assets/Models/HIKARI_ModelBounds.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numbers>
 #include <optional>
 #include <string_view>
@@ -15,10 +16,12 @@
 #include "Editor/Authoring/HIKARI_EditorAuthoringPreview.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Preview/HIKARI_EditorPreviewCapture.h"
+#include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
+#include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -194,7 +197,25 @@ EditorOperationResult SceneViewSeriesCapture::Start(DocumentSceneBase& scene, co
     sceneEdited_ = false;
     shading_ = *shading;
     images_ = nlohmann::json::array();
-    return SubmitNext();
+    waitingForExposure_ = true;
+    exposureWaitStart_ = std::chrono::steady_clock::now();
+    lastExposureLog2_ = std::numeric_limits<float>::quiet_NaN();
+    return ExposureSettled() ? SubmitNext() : Pending();
+}
+
+// 検査ビューは主ビューの自動露出を借りる。順応の途中（夜から昼へ変えた直後など）に撮ると白や黒に飛ぶので、
+// 目標との差が 1/4 段以内になるか、露出が動かなくなる（主ビューを描いていない）か、4 秒経つまで待つ。
+bool SceneViewSeriesCapture::ExposureSettled() {
+    const RENDER3D::COLOR::ExposureFrameState& state = POST::PostSystem::GetExposureState();
+    const float current = std::log2((std::max)(state.exposure, 1.0e-30f));
+    const bool settled = shading_ != RENDER3D::EDITORVIEW::EditorInteractiveShadingMode::Lit || !state.valid ||
+                         state.mode != RENDER3D::COLOR::ExposureMode::Automatic ||
+                         std::abs(current - std::log2((std::max)(state.targetExposure, 1.0e-30f))) <= 0.25f ||
+                         current == lastExposureLog2_ ||
+                         std::chrono::steady_clock::now() - exposureWaitStart_ > std::chrono::seconds(4);
+    lastExposureLog2_ = current;
+    waitingForExposure_ = !settled;
+    return settled;
 }
 
 EditorOperationResult SceneViewSeriesCapture::SubmitNext() {
@@ -227,9 +248,11 @@ EditorOperationResult SceneViewSeriesCapture::SubmitNext() {
 EditorOperationResult SceneViewSeriesCapture::Pending() const {
     return {true,
             "PENDING",
-            "正在渲染第 " + std::to_string(next_ + 1u) + "/" + std::to_string(views_.size()) + " 个角度。",
+            waitingForExposure_
+                ? std::string("正在等待自动曝光稳定。")
+                : "正在渲染第 " + std::to_string(next_ + 1u) + "/" + std::to_string(views_.size()) + " 个角度。",
             {{"pending", true},
-             {"stage", "render"},
+             {"stage", waitingForExposure_ ? "exposure" : "render"},
              {"poll", {{"operation", "scene.capture_views.status"}, {"parameters", nlohmann::json::object()}}}}};
 }
 
@@ -243,6 +266,9 @@ EditorOperationResult SceneViewSeriesCapture::Poll(DocumentSceneBase* scene) {
         return OperationFailure("SCENE_CHANGED", "The scene was closed or replaced during capture; capture again.");
     }
     sceneEdited_ = sceneEdited_ || scene->GetSceneDocumentRevision() != sceneRevision_;
+    if (waitingForExposure_) {
+        return ExposureSettled() ? SubmitNext() : Pending();
+    }
     EditorOperationResult result = PollEditorPreviewCapture(ticket_);
     if (!result.ok) {
         Clear();
@@ -279,6 +305,7 @@ void SceneViewSeriesCapture::Clear() {
         RENDER3D::EDITORVIEW::ClearRequest(viewId_);
     }
     ticket_ = 0u;
+    waitingForExposure_ = false;
     views_.clear();
     next_ = 0u;
     images_ = nlohmann::json::array();

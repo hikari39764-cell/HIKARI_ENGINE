@@ -30,8 +30,17 @@ bool SetMaterialParameterValue(MaterialAssetData& source, std::string_view param
         value.type == MaterialValueType::Bool ||
         (IsMaterialNumericType(value.type) && std::isfinite(value.numeric.x) && std::isfinite(value.numeric.y) &&
          std::isfinite(value.numeric.z) && std::isfinite(value.numeric.w));
-    if (!parameter || parameter->defaultValue.type != value.type || !finite) {
-        outError = "Parameter must be declared with a compatible finite type";
+    if (!parameter) {
+        outError = "Unknown material parameter: " + std::string(parameterId);
+        return false;
+    }
+    // 宣言の型と成分数を返し、呼び出し側が一度で直せるようにする（色は Float4 なら [r, g, b, a]）。
+    if (parameter->defaultValue.type != value.type || !finite) {
+        const MaterialValueType declared = parameter->defaultValue.type;
+        outError = std::string(parameterId) + " is " + std::string(ToString(declared)) +
+                   (IsMaterialNumericType(declared)
+                        ? "; pass " + std::to_string(GetMaterialValueComponentCount(declared)) + " finite numbers"
+                        : std::string{});
         return false;
     }
     parameter->defaultValue = value;

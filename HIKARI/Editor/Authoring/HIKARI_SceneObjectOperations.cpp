@@ -10,6 +10,7 @@
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
+#include "Core/HIKARI_JsonRead.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include <cstdio>
 
@@ -39,12 +40,9 @@ private:
 };
 
 void ReadObjectTransform(const nlohmann::json& parameters, CreateObjectRequest& request) {
-    const auto read = [&](const char* name, float fallback) {
-        return ReadEditorOperationFloat(parameters, name, fallback);
-    };
-    request.position = {read("positionX", 0), read("positionY", 0), read("positionZ", 0)};
-    request.rotation = {read("rotationX", 0), read("rotationY", 0), read("rotationZ", 0)};
-    request.scale = {read("scaleX", 1), read("scaleY", 1), read("scaleZ", 1)};
+    request.position = JSONREAD::Vec3MemberOr(parameters, "position", {0.0f, 0.0f, 0.0f});
+    request.rotation = JSONREAD::Vec3MemberOr(parameters, "rotation", {0.0f, 0.0f, 0.0f});
+    request.scale = JSONREAD::Vec3MemberOr(parameters, "scale", {1.0f, 1.0f, 1.0f});
 }
 
 // 作成の受領書は要約だけ（全量は scene.objects.query の detail）。智能体の文脈を小さく保つ。
@@ -94,8 +92,16 @@ EditorOperationResult EditSceneSelection(SceneObjectOperationContext& operation,
         return result;
     }
     operation.history = operation.commands.ConsumeHistoryRequest();
+    // 複製は新しい物を選ぶので、人の選択へ戻す前にその id を返す（探し直さずに続けて編集できる）。
+    nlohmann::json data = nlohmann::json::object();
+    if (command == SceneObjectCommandId::Duplicate) {
+        nlohmann::json ids = nlohmann::json::array();
+        for (const SceneObjectId id : operation.editor.selection.GetSelectedObjectIds())
+            ids.push_back(id.value);
+        data[ids.size() == 1u ? "objectId" : "objectIds"] = ids.size() == 1u ? ids[0] : ids;
+    }
     restoreSelection();
-    return OperationOk(operation.commands.GetStatusMessage());
+    return OperationOk(operation.commands.GetStatusMessage(), std::move(data));
 }
 } // namespace
 
@@ -114,14 +120,9 @@ EditorOperationResult SetSceneObjectTransform(SceneObjectOperationContext& opera
         return TargetResolutionFailure(target);
     auto command = DescribeSceneObjectTransform(*target.documentObject);
     command["objectId"] = target.documentObject->id.value;
-    constexpr const char* channels[]{"position", "rotation", "scale"};
-    constexpr const char* axes[]{"X", "Y", "Z"};
-    for (const char* channel : channels) {
-        for (size_t i = 0; i < 3; ++i) {
-            const auto found = parameters.find(std::string(channel) + axes[i]);
-            if (found != parameters.end())
-                command[channel][i] = *found;
-        }
+    for (const char* channel : {"position", "rotation", "scale"}) {
+        if (const auto found = parameters.find(channel); found != parameters.end())
+            command[channel] = *found;
     }
     std::vector<SceneObjectData> staged;
     auto result = StageSceneTransformEdits(scene->GetSceneDocument(), nlohmann::json::array({command}), staged);
@@ -244,16 +245,8 @@ EditorOperationResult CreateSceneWorldText(SceneObjectOperationContext& operatio
         EDITOR::ReadEditorOperationFloat(parameters, "layoutHeight", 1.0f),
     };
     request.fontHeight = EDITOR::ReadEditorOperationFloat(parameters, "fontHeight", 0.5f);
-    request.color = {
-        EDITOR::ReadEditorOperationFloat(parameters, "colorR", 1.0f),
-        EDITOR::ReadEditorOperationFloat(parameters, "colorG", 1.0f),
-        EDITOR::ReadEditorOperationFloat(parameters, "colorB", 1.0f),
-    };
-    request.outlineColor = {
-        EDITOR::ReadEditorOperationFloat(parameters, "outlineR", 0.0f),
-        EDITOR::ReadEditorOperationFloat(parameters, "outlineG", 0.0f),
-        EDITOR::ReadEditorOperationFloat(parameters, "outlineB", 0.0f),
-    };
+    request.color = JSONREAD::Vec3MemberOr(parameters, "color", {1.0f, 1.0f, 1.0f});
+    request.outlineColor = JSONREAD::Vec3MemberOr(parameters, "outline", {0.0f, 0.0f, 0.0f});
     request.outlineWidth = EDITOR::ReadEditorOperationFloat(parameters, "outlineWidth", 0.04f);
     request.opacity = EDITOR::ReadEditorOperationFloat(parameters, "opacity", 1.0f);
 

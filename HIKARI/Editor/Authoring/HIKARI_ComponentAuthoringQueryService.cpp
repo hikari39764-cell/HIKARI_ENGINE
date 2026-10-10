@@ -119,9 +119,7 @@ EditorOperationResult ComponentAuthoringQueryService::QueryObjects(const Documen
     const auto name = parameters.value("name", std::string{});
     const auto keyword = parameters.value("keyword", std::string{});
     const auto componentType = parameters.value("componentType", std::string{});
-    const auto objectId = parameters.value("objectId", uint64_t{});
-    if (parameters.contains("objectId") && objectId == 0)
-        return OperationFailure("INVALID_OBJECT_ID", "objectId must be nonzero.");
+    const std::vector<uint64_t> objectIds = parameters.value("objectIds", std::vector<uint64_t>{});
     const int offset = (std::max)(0, parameters.value("offset", 0));
     const int limit = std::clamp(parameters.value("limit", 16), 1, 64);
     const bool detail = parameters.value("detail", false);
@@ -129,7 +127,8 @@ EditorOperationResult ComponentAuthoringQueryService::QueryObjects(const Documen
     auto objects = nlohmann::json::array();
     size_t matched = 0;
     for (const auto& object : document.objects) {
-        if ((!name.empty() && object.name != name) || (objectId && object.id.value != objectId) ||
+        if ((!name.empty() && object.name != name) ||
+            (!objectIds.empty() && std::find(objectIds.begin(), objectIds.end(), object.id.value) == objectIds.end()) ||
             (!keyword.empty() && object.name.find(keyword) == std::string::npos))
             continue;
         if (!componentType.empty() &&

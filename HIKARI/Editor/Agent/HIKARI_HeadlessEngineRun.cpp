@@ -44,6 +44,17 @@ std::vector<std::wstring> BuildHeadlessEngineArguments(const HeadlessEngineRun& 
     return arguments;
 }
 
+nlohmann::json HeadlessRuntimeSettings(bool light) {
+    // 输入轨道の回放は编辑器の制御器が回すので、编辑器の界面は残す（重いのは窗口の大きさと画質）。
+    nlohmann::json runtime{{"windowWidth", light ? 1280 : 1920}, {"windowHeight", light ? 720 : 1080}};
+    if (light)
+        runtime["renderQuality"] = {{"sceneResolution", "720p"},       {"dynamicGiQuality", "Low"},
+                                    {"localShadowQuality", "Low"},     {"volumetricLightingQuality", "Low"},
+                                    {"volumetricCloudQuality", "Low"}, {"depthOfFieldQuality", "Low"},
+                                    {"motionBlurQuality", "Off"}};
+    return runtime;
+}
+
 nlohmann::json CollectHeadlessCaptures(const HeadlessEngineRun& run) {
     nlohmann::json captures = nlohmann::json::array();
     if (run.captureOutput.empty())

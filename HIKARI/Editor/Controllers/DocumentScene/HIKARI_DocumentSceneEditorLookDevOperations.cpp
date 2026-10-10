@@ -27,10 +27,6 @@ nlohmann::json EnumSchema(const TEXT::EnumName<E> (&table)[N]) {
     return {{"enum", std::move(names)}};
 }
 
-nlohmann::json Vec3Schema() {
-    return {{"type", "array"}, {"items", {{"type", "number"}}}, {"minItems", 3}, {"maxItems", 3}};
-}
-
 nlohmann::json IdArraySchema() { return {{"type", "array"}, {"items", {{"type", "integer"}}}}; }
 
 } // namespace
@@ -80,8 +76,10 @@ void DocumentSceneEditorController::RegisterLookDevOperations() {
                {"kind", EditorOperationParameterType::String, false, "add: opening preset",
                 EnumSchema(EDITOR::kLookDevOpeningKindNames)},
                {"index", EditorOperationParameterType::Int, false, "edit/remove: opening index"},
-               {"center", EditorOperationParameterType::Json, false, "add/edit: local centre XYZ", Vec3Schema()},
-               {"size", EditorOperationParameterType::Json, false, "add/edit: local size XYZ", Vec3Schema()}},
+               {"center", EditorOperationParameterType::Json, false, "add/edit: local centre XYZ",
+                EDITOR::EditorOperationVec3Schema()},
+               {"size", EditorOperationParameterType::Json, false, "add/edit: local size XYZ",
+                EDITOR::EditorOperationVec3Schema()}},
               [this](const nlohmann::json& p) { return EditLookDevOpening(p); }});
     mutation({"procedural.subtract",
               "Cut the volume of a procedural cutter shape out of the procedural Boxes it overlaps (each becomes an "
@@ -106,10 +104,11 @@ void DocumentSceneEditorController::RegisterLookDevOperations() {
               "scene",
               {{"type", EditorOperationParameterType::String, true, "Point, Spot, Tube or Rect",
                 EnumSchema(RENDER3D::LIGHTING::kSceneLightTypeNames)},
-               {"position", EditorOperationParameterType::Json, true, "World XYZ", Vec3Schema()},
-               {"aimAt", EditorOperationParameterType::Json, false, "World XYZ the light faces", Vec3Schema()},
+               {"position", EditorOperationParameterType::Json, true, "World XYZ", EDITOR::EditorOperationVec3Schema()},
+               {"aimAt", EditorOperationParameterType::Json, false, "World XYZ the light faces",
+                EDITOR::EditorOperationVec3Schema()},
                {"rotation", EditorOperationParameterType::Json, false, "Euler XYZ degrees when aimAt is absent",
-                Vec3Schema()},
+                EDITOR::EditorOperationVec3Schema()},
                {"name", EditorOperationParameterType::String, false, "Display name"},
                {"settings",
                 EditorOperationParameterType::Json,

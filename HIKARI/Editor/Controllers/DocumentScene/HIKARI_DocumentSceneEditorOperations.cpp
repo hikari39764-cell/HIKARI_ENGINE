@@ -42,20 +42,14 @@ Parameters Concat(std::initializer_list<Parameters> groups) {
     return result;
 }
 
-// prefix + 各成分（XYZ / RGB）の Float 引数。説明は before + 成分名 + after。
-Parameters ComponentParameters(std::string_view prefix, std::string_view components, std::string_view before,
-                               std::string_view after = {}) {
-    Parameters result;
-    for (const char component : components) {
-        result.push_back({std::string(prefix) + component, EditorOperationParameterType::Float, false,
-                          std::string(before) + component + std::string(after)});
-    }
-    return result;
+// [x, y, z] の Json 引数（scene.create_light・camera_zone.edit と同じ形）。
+Parameters Vec3Parameter(const char* name, const char* description) {
+    return {{name, EditorOperationParameterType::Json, false, description, EDITOR::EditorOperationVec3Schema()}};
 }
 
-Parameters PositionParameters() { return ComponentParameters("position", "XYZ", "世界位置 "); }
-Parameters RotationParameters() { return ComponentParameters("rotation", "XYZ", "欧拉旋转 ", "（度）"); }
-Parameters ScaleParameters() { return ComponentParameters("scale", "XYZ", "缩放 "); }
+Parameters PositionParameters() { return Vec3Parameter("position", "World [x, y, z]"); }
+Parameters RotationParameters() { return Vec3Parameter("rotation", "Euler [x, y, z] in degrees"); }
+Parameters ScaleParameters() { return Vec3Parameter("scale", "Scale [x, y, z]"); }
 
 Parameters ObjectTargetParameters() {
     return {{"objectId", EditorOperationParameterType::Int, false, "scene.objects.query 返回的稳定 SceneObjectId"},
@@ -83,7 +77,8 @@ struct SceneObjectOperationSpec {
 std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
     return {
         {"scene.set_transform",
-         "Set one object's transform by stable objectId. Exact name is a discovery fallback and must be unique.",
+         "Set one object's transform by stable objectId: position, rotation and scale are [x, y, z]; omitted ones "
+         "keep their value. Exact name is a discovery fallback and must be unique.",
          "scene", EDITOR::SetSceneObjectTransform,
          Concat({ObjectTargetParameters(), PositionParameters(), ScaleParameters(), RotationParameters()})},
         {"scene.create_object", "Create a model object in the scene by asset id or path fragment.", "scene",
@@ -110,8 +105,8 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
               {{"layoutWidth", EditorOperationParameterType::Float, false, "文本布局宽度（世界单位）"},
                {"layoutHeight", EditorOperationParameterType::Float, false, "文本布局高度（世界单位）"},
                {"fontHeight", EditorOperationParameterType::Float, false, "字高（世界单位）"}},
-              ComponentParameters("color", "RGB", "文字线性色彩 "),
-              ComponentParameters("outline", "RGB", "描边线性色彩 "),
+              Vec3Parameter("color", "Linear RGB [r, g, b] of the text"),
+              Vec3Parameter("outline", "Linear RGB [r, g, b] of the outline"),
               {{"outlineWidth", EditorOperationParameterType::Float, false, "SDF 描边宽度，范围 0-0.25"},
                {"opacity", EditorOperationParameterType::Float, false, "不透明度，范围 0-1"},
                {"horizontalAlign", EditorOperationParameterType::String, false, "left/center/right"},

@@ -30,6 +30,9 @@ struct HeadlessEngineRun {
 
 // 引擎の实行文件を除いた引数。
 std::vector<std::wstring> BuildHeadlessEngineArguments(const HeadlessEngineRun& run);
+// 後ろの引擎の運行設定（runtime 節）。人の编辑器の窗口の大きさではなく固定の大きさで描く。light は引擎の既定の画質
+// から GI・体積・景深を落とす（人の编辑器と GPU を分け合い、玩法の確認を速く終える）。light でなければ项目の画質。
+nlohmann::json HeadlessRuntimeSettings(bool light);
 // 実際に書かれた截图 [{frame, path}]。
 nlohmann::json CollectHeadlessCaptures(const HeadlessEngineRun& run);
 

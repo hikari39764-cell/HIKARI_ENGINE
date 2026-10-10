@@ -3,6 +3,7 @@
 #include "Editor/Agent/HIKARI_AgentConnection.h"
 #include "Editor/Agent/HIKARI_HeadlessEngineRun.h"
 
+#include <fstream>
 #include <set>
 #include <string>
 
@@ -64,6 +65,15 @@ nlohmann::json RunHeadless(const HeadlessRunOptions& options) {
     run.play = options.play;
     run.inputReplay = options.inputReplay.value_or(std::filesystem::path{});
     run.runtimeConfig = options.runtimeConfig;
+    // 運行設定が無ければ、後台試玩と同じ軽い設定で描く。
+    if (run.runtimeConfig.empty()) {
+        run.runtimeConfig = library / "EditorAI" / "Headless" / "runtime.json";
+        std::filesystem::create_directories(run.runtimeConfig.parent_path(), error);
+        std::ofstream output(run.runtimeConfig, std::ios::binary | std::ios::trunc);
+        output << nlohmann::json{{"runtime", EDITOR::AGENT::HeadlessRuntimeSettings(true)}}.dump(2);
+        if (!output)
+            return Failure("CONFIG_FAILED", "无法写入运行配置：" + ToUtf8(run.runtimeConfig));
+    }
     // Launcher と同じく、項目が構築済みの模块を使う。無ければ模块なしで動かす。
     const std::filesystem::path module = library / "Build" / "editor-release" / "bin" / "HIKARI_GameProject.dll";
     if (!options.allowMissingModule && std::filesystem::is_regular_file(module, error))
