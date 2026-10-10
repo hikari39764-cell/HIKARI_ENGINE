@@ -21,6 +21,17 @@ const char* GetProceduralMeshDisplayName(ProceduralMeshKind kind) noexcept {
                                                  : TEXT::EnumToName(kProceduralMeshKindNames, kind, "Box");
 }
 
+MATH::Vec3 GetProceduralMeshExtent(const ProceduralMeshSettings& settings) noexcept {
+    switch (settings.kind) {
+    case ProceduralMeshKind::Sphere: return {settings.width, settings.width, settings.width};
+    case ProceduralMeshKind::Cylinder:
+    case ProceduralMeshKind::Capsule: return {settings.width, settings.height, settings.width};
+    case ProceduralMeshKind::Plane:
+    case ProceduralMeshKind::GridPlane: return {settings.width, 0.0f, settings.depth};
+    default: return {settings.width, settings.height, settings.depth};
+    }
+}
+
 ProceduralMeshSettings SanitizeProceduralMeshSettings(ProceduralMeshSettings settings) noexcept {
     const auto finiteDimension = [](float value) {
         const float clamped = std::clamp(std::isfinite(value) ? value : 1.0f, 0.001f, 100000.0f);
@@ -101,8 +112,15 @@ ProceduralMeshSettings SanitizeProceduralMeshSettings(ProceduralMeshSettings set
         const bool overlaps = std::abs(sanitized.center.x) < half.x + sanitized.size.x * 0.5f &&
                               std::abs(sanitized.center.y) < half.y + sanitized.size.y * 0.5f &&
                               std::abs(sanitized.center.z) < half.z + sanitized.size.z * 0.5f;
-        if (overlaps && sanitized.size.x >= 0.001f && sanitized.size.y >= 0.001f && sanitized.size.z >= 0.001f &&
-            cuts.size() < kMaximumProceduralMeshCuts) {
+        // 丸い切り抜きは他の切り抜きと重ねない（円柱の内壁が、別の切り抜きで空いた所に浮く）。四角同士は和になる。
+        const bool roundClash = std::any_of(cuts.begin(), cuts.end(), [&](const ProceduralMeshCut& other) {
+            return (sanitized.roundAxis >= 0 || other.roundAxis >= 0) &&
+                   std::abs(sanitized.center.x - other.center.x) < (sanitized.size.x + other.size.x) * 0.5f &&
+                   std::abs(sanitized.center.y - other.center.y) < (sanitized.size.y + other.size.y) * 0.5f &&
+                   std::abs(sanitized.center.z - other.center.z) < (sanitized.size.z + other.size.z) * 0.5f;
+        });
+        if (overlaps && !roundClash && sanitized.size.x >= 0.001f && sanitized.size.y >= 0.001f &&
+            sanitized.size.z >= 0.001f && cuts.size() < kMaximumProceduralMeshCuts) {
             cuts.push_back(sanitized);
         }
     }

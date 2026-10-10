@@ -84,6 +84,15 @@ void DebugCameraController3D::Update(float dt, Camera3D& camera, const INPUT::In
     const MATH::Vec3 worldUp{0.0f, 1.0f, 0.0f};
     const MATH::Vec3 right = MATH::BuildViewBasisRH(forward, worldUp).right;
 
+    // 右クリック中のホイールは速度の調整（1 目盛りで 1.25 倍）、それ以外は前後の移動。
+    const float wheel = acceptWheel ? input.GetAxis1D(INPUT::ActionIds::EditorCameraZoom) : 0.0f;
+    if (std::abs(wheel) > 1e-6f && rightMouseDown && !wantMouse) {
+        settings_.moveSpeed = std::clamp(settings_.moveSpeed * std::pow(1.25f, wheel), 0.1f, 2000.0f);
+    }
+    // 高さによる倍率（速度と前後の移動の両方）。
+    const float altitudeScale =
+        (std::max)(1.0f, std::abs(position_.y) / (std::max)(settings_.altitudeSpeedHeight, 1.0f));
+
     // WASD/QE は右クリック中だけ飛行カメラとして扱う。
     const bool movementInputActive = inputContext == CameraControlInputContext::RuntimeWindow || rightMouseDown;
     if (!wantKeyboard && movementInputActive) {
@@ -92,7 +101,7 @@ void DebugCameraController3D::Update(float dt, Camera3D& camera, const INPUT::In
         MATH::Vec3 move = right * moveAxes[0] + forward * moveAxes[1] + worldUp * vertical;
 
         const bool fast = input.IsDown(INPUT::ActionIds::EditorCameraBoost);
-        float speed = settings_.moveSpeed;
+        float speed = settings_.moveSpeed * altitudeScale;
         if (fast) {
             speed *= settings_.fastMultiplier;
         }
@@ -103,11 +112,8 @@ void DebugCameraController3D::Update(float dt, Camera3D& camera, const INPUT::In
         }
     }
 
-    if (acceptWheel) {
-        const float wheel = input.GetAxis1D(INPUT::ActionIds::EditorCameraZoom);
-        if (std::abs(wheel) > 1e-6f) {
-            position_ = position_ + forward * (wheel * settings_.wheelMoveStep);
-        }
+    if (std::abs(wheel) > 1e-6f && !rightMouseDown) {
+        position_ = position_ + forward * (wheel * settings_.wheelMoveStep * altitudeScale);
     }
 
     ApplyToCamera(camera);

@@ -66,6 +66,13 @@ bool ProjectLookDevPoint(const Camera3D& camera, const LookDevView& view, const 
 inline MATH::Vec3 LookDevTranslation(const MATH::Mat4& world) noexcept {
     return {world.m[3][0], world.m[3][1], world.m[3][2]};
 }
+// ベクトルの軸 axis（0 X、1 Y、2 Z）の成分。
+inline float LookDevAxis(const MATH::Vec3& value, int axis) noexcept {
+    return axis == 0 ? value.x : (axis == 1 ? value.y : value.z);
+}
+inline float& LookDevAxis(MATH::Vec3& value, int axis) noexcept {
+    return axis == 0 ? value.x : (axis == 1 ? value.y : value.z);
+}
 // direction を向く Euler（度、XYZ）。相機と灯は局所 +Z が前。
 MATH::Vec3 LookDevFacingRotation(const MATH::Vec3& direction) noexcept;
 
@@ -82,9 +89,6 @@ struct LookDevSurfaceHit {
 
 // 場面の描画物の外接箱と地面（y = 0）から、視線で最初に当たる面を探す。normalizedX/Y は視口内の 0..1。
 std::optional<LookDevSurfaceHit> FindLookDevSurface(const Camera3D& camera, float normalizedX, float normalizedY);
-
-// 描画物の世界の外接箱（場面の物体 ID）。描かれていない物は無し。
-std::optional<Bounds> FindLookDevObjectBounds(uint64_t objectId);
 
 // point の真下で最も高い面の高さ（描画物の外接箱の上面、無ければ地面 0）。人眼高度と落地に使う。
 // ignoredObjects の物（落とす物自身）は数えない。

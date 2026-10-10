@@ -162,6 +162,7 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
     RegisterUiOperations();
     RegisterSceneFolderOperations();
     RegisterSceneLayoutOperations();
+    RegisterLookDevOperations();
     EDITOR::RegisterProjectCodeOperations(
         operationRegistry_, projectCodeJob_, [this]() -> EDITOR::EditorOperationResult {
             if (aiProjectSession_ == nullptr || aiOperationScene_ == nullptr || !projectBuildAllowed_)

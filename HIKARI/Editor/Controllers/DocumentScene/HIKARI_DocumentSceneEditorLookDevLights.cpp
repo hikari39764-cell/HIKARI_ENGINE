@@ -3,11 +3,15 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
+#include "Core/HIKARI_JsonRead.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Authoring/HIKARI_EditorObjectFactory.h"
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/History/HIKARI_EnvironmentHistoryCommand.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
@@ -34,6 +38,7 @@ namespace HIKARI {
 namespace {
 
 constexpr uint64_t kLookDevMainLightMergeGroup = 0x4C4F4F4B53554Eull;
+constexpr float kDegreesToRadians = 0.0174532925f;
 constexpr float kHandleRadius = 5.5f;
 constexpr float kHandlePickRadius = 9.0f;
 
@@ -131,13 +136,13 @@ void DocumentSceneEditorController::DrawLookDevLightsWindow(DocumentSceneBase& s
     }
     ImGui::SameLine();
     const SceneObjectId subject = context_.selection.GetActiveObjectId();
-    const bool hasSubject = subject.value != 0u && EDITOR::FindLookDevObjectBounds(subject.value).has_value();
+    const bool hasSubject = subject.value != 0u;
     ImGui::BeginDisabled(!hasSubject);
     if (EDITOR::ActionButton(
             TEXT::Localize("ui.lookDev.threePoint").c_str(), "##threePoint", EDITOR::EditorButtonTone::Neutral,
             ImVec2(half, 0.0f),
             TEXT::Localize(hasSubject ? "ui.lookDev.threePointHint" : "ui.lookDev.threePointNeedsSelection").c_str())) {
-        CreateThreePointLights(scene, subject);
+        RunLookDevOperation("lighting.three_point", {{"objectId", subject.value}});
     }
     ImGui::EndDisabled();
     ImGui::PushTextWrapPos(0.0f);
@@ -196,7 +201,7 @@ void DocumentSceneEditorController::DrawLookDevLightsWindow(DocumentSceneBase& s
             const bool solo = context_.overlays.soloLightObjectId == row.id.value;
             if (EDITOR::IconToggleButton(EDITOR::EditorGlyph::Light, "##solo", solo, ImVec2(iconSize, iconSize),
                                          TEXT::Localize("ui.lookDev.solo").c_str())) {
-                context_.overlays.soloLightObjectId = solo ? 0u : row.id.value;
+                RunLookDevOperation("view.light_solo", {{"objectId", solo ? 0u : row.id.value}});
             }
             ImGui::TableNextColumn();
             float brightness = GetLightBrightness(settings);
@@ -246,37 +251,122 @@ void DocumentSceneEditorController::PlaceLightAtView(DocumentSceneBase& scene) {
     if (const auto hit = EDITOR::FindLookDevSurface(view, 0.5f, 0.5f)) {
         distance = std::clamp(MATH::Length(hit->position - view.GetPosition()), 1.0f, 60.0f);
     }
-    LightSettings settings =
-        EDITOR::DefaultLightSettings(RENDER3D::LIGHTING::SceneLightType::Spot, LightIntensityUnit::SceneRelative);
-    settings.range = distance * 1.5f;
-    settings.sceneRelativeIntensity = distance * distance;
-    sceneCreationPanel_.CreateWithHistory(scene, context_, selectionSync_, "Light From View", [&] {
-        EDITOR::CreateObjectRequest request{};
-        request.name = TEXT::Localize("ui.lookDev.viewLightName");
-        request.position = view.GetPosition();
-        request.rotation = EDITOR::LookDevFacingRotation(forward);
-        return EDITOR::CreateLightObject(scene, request, NormalizeLightSettings(settings));
-    });
+    const MATH::Vec3 position = view.GetPosition();
+    const MATH::Vec3 aim = position + MATH::Normalize(forward) * distance;
+    RunLookDevOperation("scene.create_light",
+                        {{"type", "Spot"},
+                         {"name", TEXT::Localize("ui.lookDev.viewLightName")},
+                         {"position", {position.x, position.y, position.z}},
+                         {"aimAt", {aim.x, aim.y, aim.z}},
+                         {"settings", {{"range", distance * 1.5f}, {"sceneRelativeIntensity", distance * distance}}}});
 }
 
-void DocumentSceneEditorController::CreateThreePointLights(DocumentSceneBase& scene, SceneObjectId subject) {
-    const std::optional<Bounds> bounds = EDITOR::FindLookDevObjectBounds(subject.value);
-    if (!bounds) {
-        return;
+EDITOR::EditorOperationResult DocumentSceneEditorController::CreateLookDevLight(const nlohmann::json& p) {
+    DocumentSceneBase* scene = aiOperationScene_;
+    if (scene == nullptr || scene->IsRuntimePlayActive()) {
+        return EDITOR::OperationFailure("EDIT_MODE_REQUIRED", "Create lights outside Play mode.");
     }
-    const auto rig = EDITOR::BuildThreePointLights(*bounds, scene.GetCamera().GetPosition());
-    sceneCreationPanel_.CreateWithHistory(scene, context_, selectionSync_, "Three-Point Lighting", [&] {
+    const std::optional<RENDER3D::LIGHTING::SceneLightType> type =
+        TEXT::TryParseEnum(RENDER3D::LIGHTING::kSceneLightTypeNames, p.at("type").get<std::string>());
+    if (!type) {
+        return EDITOR::OperationFailure("INVALID_TYPE", "type is Point, Spot, Tube or Rect.");
+    }
+    // 既定は場面に対する相対の明るさ（環境の照度が変わっても釣り合う）。settings は LightSettings の部分 JSON。
+    nlohmann::json properties =
+        WriteLightSettings(EDITOR::DefaultLightSettings(*type, LightIntensityUnit::SceneRelative));
+    if (p.contains("settings")) {
+        const nlohmann::json& patch = p.at("settings");
+        if (!patch.is_object()) {
+            return EDITOR::OperationFailure("INVALID_SETTINGS", "settings must be an object of LightSettings fields.");
+        }
+        if (const std::string unknown = EDITOR::FindUnknownPatchKey(patch, properties); !unknown.empty()) {
+            return EDITOR::OperationFailure("UNKNOWN_SETTING", "Unknown light setting: " + unknown);
+        }
+        properties.merge_patch(patch);
+    }
+    LightSettings settings = ReadLightSettings(properties);
+    settings.type = *type;
+    settings = NormalizeLightSettings(settings);
+    const MATH::Vec3 position = JSONREAD::Vec3MemberOr(p, "position", {});
+    // 向き：aimAt（世界の点）か rotation（Euler 度）。どちらも無ければ真下を照らす。
+    MATH::Vec3 rotation = EDITOR::LookDevFacingRotation({0.0f, -1.0f, 0.0f});
+    if (p.contains("aimAt")) {
+        const MATH::Vec3 direction = JSONREAD::Vec3MemberOr(p, "aimAt", position) - position;
+        if (!(MATH::Length(direction) > 1.0e-4f)) {
+            return EDITOR::OperationFailure("INVALID_AIM", "aimAt must differ from position.");
+        }
+        rotation = EDITOR::LookDevFacingRotation(direction);
+    } else if (p.contains("rotation")) {
+        rotation = JSONREAD::Vec3MemberOr(p, "rotation", rotation);
+    }
+    if (!MATH::IsFinite(position) || !MATH::IsFinite(rotation)) {
+        return EDITOR::OperationFailure("INVALID_TRANSFORM", "position, aimAt and rotation must be finite.");
+    }
+    // 名前の既定は摆放の灯と同じ。
+    std::string name = p.value("name", std::string{});
+    for (const auto& entry : EDITOR::kLookDevPlaceItemNames) {
+        if (name.empty() && EDITOR::IsLookDevLight(entry.value) && EDITOR::LookDevLightType(entry.value) == *type) {
+            name = TEXT::Localize(std::string("ui.lookDev.item.") + entry.name);
+        }
+    }
+    GameObject* created = nullptr;
+    sceneCreationPanel_.CreateWithHistory(*scene, context_, selectionSync_, "Create Light", [&] {
+        EDITOR::CreateObjectRequest request{};
+        request.name = name;
+        request.position = position;
+        request.rotation = rotation;
+        created = EDITOR::CreateLightObject(*scene, request, settings);
+        return created;
+    });
+    if (created == nullptr) {
+        return EDITOR::OperationFailure("CREATE_FAILED", "The light could not be created.");
+    }
+    return EDITOR::OperationOk("Light created.", {{"objectId", created->GetDocumentId().value}});
+}
+
+EDITOR::EditorOperationResult DocumentSceneEditorController::CreateThreePointLights(const nlohmann::json& p) {
+    DocumentSceneBase* scene = aiOperationScene_;
+    if (scene == nullptr || scene->IsRuntimePlayActive()) {
+        return EDITOR::OperationFailure("EDIT_MODE_REQUIRED", "Create lights outside Play mode.");
+    }
+    const SceneObjectId subject{p.at("objectId").get<uint64_t>()};
+    if (FindSceneObjectData(scene->GetSceneDocument(), subject) == nullptr) {
+        return EDITOR::OperationFailure("OBJECT_NOT_FOUND", "The subject object does not exist.");
+    }
+    const Bounds bounds =
+        CollectLookDevArrangeItems(*scene, std::span<const SceneObjectId>(&subject, 1u)).front().bounds;
+    // 見る方向：viewAzimuth（被写体から見る人への水平の向き、度。0 が +Z、90 が +X）、無ければ編集の視点。
+    MATH::Vec3 viewer = scene->GetCamera().GetPosition();
+    if (p.contains("viewAzimuth")) {
+        const float radians = p.at("viewAzimuth").get<float>() * kDegreesToRadians;
+        const MATH::Vec3 center = (bounds.min + bounds.max) * 0.5f;
+        viewer = center + MATH::Vec3{std::sin(radians), 0.0f, std::cos(radians)} * 10.0f;
+        if (!MATH::IsFinite(viewer)) {
+            return EDITOR::OperationFailure("INVALID_AZIMUTH", "viewAzimuth must be finite.");
+        }
+    }
+    const auto rig = EDITOR::BuildThreePointLights(bounds, viewer);
+    std::vector<SceneObjectId> lights;
+    sceneCreationPanel_.CreateWithHistory(*scene, context_, selectionSync_, "Three-Point Lighting", [&] {
         GameObject* key = nullptr;
         for (const EDITOR::LookDevRigLight& light : rig) {
             EDITOR::CreateObjectRequest request{};
             request.name = TEXT::Localize(std::string(light.nameKey));
             request.position = light.position;
             request.rotation = light.rotationDegrees;
-            GameObject* created = EDITOR::CreateLightObject(scene, request, light.settings);
+            GameObject* created = EDITOR::CreateLightObject(*scene, request, light.settings);
+            if (created != nullptr) {
+                lights.push_back(created->GetDocumentId());
+            }
             key = key != nullptr ? key : created;
         }
         return key;
     });
+    if (lights.size() != rig.size()) {
+        return EDITOR::OperationFailure("CREATE_FAILED", "The lights could not be created.");
+    }
+    return EDITOR::OperationOk("Key, fill and rim lights created.",
+                               {{"keyId", lights[0].value}, {"fillId", lights[1].value}, {"rimId", lights[2].value}});
 }
 
 void DocumentSceneEditorController::DragLookDevMainLight(DocumentSceneBase& scene, float azimuthDegrees,

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Core/Math/HIKARI_Math3D.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Editor/Workspaces/LookDev/HIKARI_LookDevPlacement.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshTypes.h"
 
@@ -57,9 +58,6 @@ void DrawLookDevBox(ImDrawList& drawList, const Camera3D& camera, const LookDevV
 void DrawLookDevCylinder(ImDrawList& drawList, const Camera3D& camera, const LookDevView& view,
                          const LookDevBoxFrame& frame, int axis, float radius, float length, uint32_t color);
 
-// 白模（程序化の形）の寸法。箱・斜面・階段は x 幅・y 高さ・z 奥行き、円柱と胶囊は x と z が直径、球は全部が直径、
-// 平面は y が 0。
-MATH::Vec3 LookDevShapeExtent(const ProceduralMeshSettings& settings) noexcept;
 // 形の手柄の軸：箱類は三軸の片側、平面は X と Z、円柱と胶囊は Y が片側で X が対称の半径、球は X の対称の直径。
 std::vector<LookDevShapeHandle> BuildLookDevShapeHandles(const ProceduralMeshSettings& settings,
                                                          const MATH::Mat4& world);
@@ -68,5 +66,23 @@ ProceduralMeshSettings WithLookDevShapeExtent(ProceduralMeshSettings settings, i
 
 // 世界の寸法の表示（"2.50 x 1.00 x 3.00 m"）。
 std::string FormatLookDevSize(const LookDevBoxFrame& frame, const MATH::Vec3& extent, bool flat);
+
+// 開口の種類。床は四角と丸の穴、壁は門・窓・丸窓（procedural.opening の kind）。
+enum class LookDevOpeningKind : uint8_t { Hole, RoundHole, Door, Window, RoundWindow };
+
+inline constexpr TEXT::EnumName<LookDevOpeningKind> kLookDevOpeningKindNames[] = {
+    {LookDevOpeningKind::Hole, "hole"},
+    {LookDevOpeningKind::RoundHole, "round_hole"},
+    {LookDevOpeningKind::Door, "door"},
+    {LookDevOpeningKind::Window, "window"},
+    {LookDevOpeningKind::RoundWindow, "round_window"},
+};
+
+// 一番薄い局所の軸（床は Y、壁は X か Z）。開口はこの軸を貫く。scale は物体の拡縮。
+int LookDevThinAxis(const ProceduralMeshSettings& settings, const MATH::Vec3& scale) noexcept;
+// 種類の既定の開口（局所）。門は 1.0 x 2.1 m で床から、窓は 1.2 x 1.2 m で窓台 0.9 m、穴は 2 m 角、丸は直径
+// 1.6 m（丸窓は 1.0 m で窓台 1.0 m）。面の 6 割（高さは 9 割）より大きくしない。
+ProceduralMeshCut BuildLookDevOpening(const ProceduralMeshSettings& settings, const MATH::Vec3& scale,
+                                      LookDevOpeningKind kind) noexcept;
 
 } // namespace HIKARI::EDITOR

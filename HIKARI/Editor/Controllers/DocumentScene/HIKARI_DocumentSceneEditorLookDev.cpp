@@ -14,8 +14,10 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Views/HIKARI_EditorViewInputGate.h"
+#include "Render3D/Shadow/HIKARI_LocalLightShadowRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -285,6 +287,61 @@ void DocumentSceneEditorController::PlaceLookDevItem(DocumentSceneBase& scene, E
             primitive.mesh = EDITOR::LookDevShape(item);
             return EDITOR::CreatePrimitiveObject(scene, primitive);
         });
+}
+
+EDITOR::EditorOperationResult DocumentSceneEditorController::RunLookDevOperation(const std::string& id,
+                                                                                 const nlohmann::json& parameters) {
+    EDITOR::EditorOperationResult result = operationRegistry_.Execute(id, parameters);
+    if (!result.ok) {
+        viewportDropMessage_ = result.message;
+    }
+    return result;
+}
+
+nlohmann::json DocumentSceneEditorController::DescribeLookDevState() const {
+    nlohmann::json placement{{"snapGrid", lookDevWorkspace_.GridStep()},
+                             {"yawDegrees", lookDevWorkspace_.PlacementYaw()}};
+    if (const std::optional<EDITOR::LookDevPlaceItem> item = lookDevWorkspace_.ArmedItem()) {
+        placement["armedItem"] = TEXT::EnumToName(EDITOR::kLookDevPlaceItemNames, *item);
+    }
+    nlohmann::json view{{"clay", context_.viewportDebug.renderView == RenderDebugView::NeutralClay},
+                        {"valueView", context_.overlays.valueView},
+                        {"soloLightId", context_.overlays.soloLightObjectId}};
+    if (context_.overlays.lockedExposureEv100) {
+        view["lockedExposureEv100"] = *context_.overlays.lockedExposureEv100;
+    }
+    nlohmann::json state{{"placement", std::move(placement)}};
+    const DocumentSceneBase* scene = aiOperationScene_;
+    if (scene == nullptr) {
+        state["view"] = std::move(view);
+        return state;
+    }
+    view["exposureEv100"] = scene->GetCurrentExposureEv100();
+    state["view"] = std::move(view);
+    const SceneDocument& document = scene->GetSceneDocument();
+    const ENVIRONMENT::SceneEnvironmentBinding& environment = document.environment;
+    state["environment"] = {{"profileId", environment.profileId},
+                            {"weatherId", environment.weatherId},
+                            {"renderStyleId", environment.renderStyleId}};
+    // 局所光の影の名額：使った面数と上限、名額が足りず影を持てなかった灯（場面の物体 ID）。
+    const SHADOW::LocalLightShadowStats& shadows = SHADOW::GetLocalLightShadowStats();
+    nlohmann::json rejected = nlohmann::json::array();
+    for (const SceneObjectData& object : document.objects) {
+        const std::string lightId = LIGHTING_AUTHORING::LightId(object.id);
+        if (std::find(shadows.budgetRejectedLightIds.begin(), shadows.budgetRejectedLightIds.end(), lightId) !=
+            shadows.budgetRejectedLightIds.end()) {
+            rejected.push_back(object.id.value);
+        }
+    }
+    state["localShadows"] = {
+        {"usedFaces", shadows.usedFaces}, {"budgetFaces", shadows.budgetFaces}, {"budgetRejectedLightIds", rejected}};
+    // 機位の書签（数字キー 1〜9 の順）。
+    nlohmann::json cameras = nlohmann::json::array();
+    for (const SceneCameraEntry& camera : CollectSceneCameras(document)) {
+        cameras.push_back({{"objectId", camera.id.value}, {"name", camera.name}});
+    }
+    state["cameraBookmarks"] = std::move(cameras);
+    return state;
 }
 #endif
 

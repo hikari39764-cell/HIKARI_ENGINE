@@ -4,13 +4,16 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <optional>
 #include <span>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+#include "Core/HIKARI_JsonRead.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Views/HIKARI_EditorViewportGeometry.h"
@@ -34,16 +37,6 @@ constexpr ImU32 kShapeColor = IM_COL32(120, 230, 255, 220);
 constexpr ImU32 kCutColor = IM_COL32(255, 170, 90, 230);
 constexpr ImU32 kPreviewColor = IM_COL32(255, 238, 150, 235);
 
-float Component(const MATH::Vec3& value, int axis) { return axis == 0 ? value.x : (axis == 1 ? value.y : value.z); }
-
-float& Component(MATH::Vec3& value, int axis) { return axis == 0 ? value.x : (axis == 1 ? value.y : value.z); }
-
-// 一番薄い局所の軸（床は Y、壁は X か Z）。開口はこの軸を貫く。
-int ThinAxis(const ProceduralMeshSettings& settings, const MATH::Vec3& scale) {
-    const std::array<float, 3> world{settings.width * scale.x, settings.height * scale.y, settings.depth * scale.z};
-    return static_cast<int>(std::min_element(world.begin(), world.end()) - world.begin());
-}
-
 void DrawSizeLabel(ImDrawList& drawList, const ImVec2& at, const std::string& text) {
     const ImVec2 size = ImGui::CalcTextSize(text.c_str());
     const ImVec2 origin{at.x + 14.0f, at.y + 10.0f};
@@ -64,8 +57,8 @@ void DrawCut(ImDrawList& drawList, const Camera3D& camera, const EDITOR::LookDev
              const EDITOR::LookDevBoxFrame& frame, const ProceduralMeshCut& cut, ImU32 color) {
     if (cut.roundAxis >= 0) {
         EDITOR::DrawLookDevCylinder(drawList, camera, view, frame, cut.roundAxis,
-                                    Component(cut.size, (cut.roundAxis + 1) % 3) * 0.5f,
-                                    Component(cut.size, cut.roundAxis), color);
+                                    EDITOR::LookDevAxis(cut.size, (cut.roundAxis + 1) % 3) * 0.5f,
+                                    EDITOR::LookDevAxis(cut.size, cut.roundAxis), color);
     } else {
         EDITOR::DrawLookDevBox(drawList, camera, view, frame, cut.size, {}, color);
     }
@@ -129,12 +122,12 @@ bool DocumentSceneEditorController::UpdateLookDevShapeHandles(DocumentSceneBase&
                     // 箱の面：寸法を変え、片側なら中心を動かす。切り抜きは世界に留まるよう局所の中心を戻す。
                     const EDITOR::LookDevBoxFrame frame = EDITOR::LookDevFrameFromWorld(drag.startWorld);
                     const int axis = drag.handle.axis;
-                    if (const auto resize =
-                            EDITOR::ResizeLookDevBox(frame, Component(EDITOR::LookDevShapeExtent(drag.start), axis),
-                                                     drag.handle, *pointer, lookDevWorkspace_.GridStep())) {
+                    if (const auto resize = EDITOR::ResizeLookDevBox(
+                            frame, EDITOR::LookDevAxis(GetProceduralMeshExtent(drag.start), axis), drag.handle,
+                            *pointer, lookDevWorkspace_.GridStep())) {
                         drag.result = EDITOR::WithLookDevShapeExtent(drag.start, axis, resize->extent);
                         for (ProceduralMeshCut& moved : drag.result.cuts) {
-                            Component(moved.center, axis) -= resize->localShift;
+                            EDITOR::LookDevAxis(moved.center, axis) -= resize->localShift;
                         }
                         drag.result = SanitizeProceduralMeshSettings(drag.result);
                         drag.worldShift = resize->worldShift;
@@ -142,7 +135,7 @@ bool DocumentSceneEditorController::UpdateLookDevShapeHandles(DocumentSceneBase&
                 } else if (drag.moveCut) {
                     // 開口を薄い軸に垂直な面の上で動かす。
                     ProceduralMeshCut& moved = drag.result.cuts[static_cast<size_t>(drag.cutIndex)];
-                    const int thin = ThinAxis(drag.start, object->GetTransform().scale);
+                    const int thin = EDITOR::LookDevThinAxis(drag.start, object->GetTransform().scale);
                     const EDITOR::LookDevBoxFrame frame = EDITOR::LookDevFrameFromWorld(drag.startWorld, moved.center);
                     const MATH::Vec3 normal = MATH::Normalize(frame.axes[thin]);
                     MATH::Vec3 hit{};
@@ -157,7 +150,7 @@ bool DocumentSceneEditorController::UpdateLookDevShapeHandles(DocumentSceneBase&
                             }
                             float along = MATH::Dot(delta, row) / scale;
                             along = grid > 0.0f ? std::round(along / grid) * grid : along;
-                            Component(moved.center, axis) += along / scale;
+                            EDITOR::LookDevAxis(moved.center, axis) += along / scale;
                         }
                     }
                 } else {
@@ -165,15 +158,15 @@ bool DocumentSceneEditorController::UpdateLookDevShapeHandles(DocumentSceneBase&
                     const EDITOR::LookDevBoxFrame frame =
                         EDITOR::LookDevFrameFromWorld(drag.startWorld, resized.center);
                     if (const auto resize =
-                            EDITOR::ResizeLookDevBox(frame, Component(resized.size, drag.handle.axis), drag.handle,
-                                                     *pointer, lookDevWorkspace_.GridStep())) {
+                            EDITOR::ResizeLookDevBox(frame, EDITOR::LookDevAxis(resized.size, drag.handle.axis),
+                                                     drag.handle, *pointer, lookDevWorkspace_.GridStep())) {
                         if (resized.roundAxis >= 0) {
                             // 丸は直径を二軸で揃える。
-                            Component(resized.size, (resized.roundAxis + 1) % 3) = resize->extent;
-                            Component(resized.size, (resized.roundAxis + 2) % 3) = resize->extent;
+                            EDITOR::LookDevAxis(resized.size, (resized.roundAxis + 1) % 3) = resize->extent;
+                            EDITOR::LookDevAxis(resized.size, (resized.roundAxis + 2) % 3) = resize->extent;
                         } else {
-                            Component(resized.size, drag.handle.axis) = resize->extent;
-                            Component(resized.center, drag.handle.axis) += resize->localShift;
+                            EDITOR::LookDevAxis(resized.size, drag.handle.axis) = resize->extent;
+                            EDITOR::LookDevAxis(resized.center, drag.handle.axis) += resize->localShift;
                         }
                         drag.result = SanitizeProceduralMeshSettings(drag.result);
                     }
@@ -187,7 +180,7 @@ bool DocumentSceneEditorController::UpdateLookDevShapeHandles(DocumentSceneBase&
                 DrawSizeLabel(drawList, io.MousePos, EDITOR::FormatLookDevSize(frame, preview.size, false));
             } else {
                 const EDITOR::LookDevBoxFrame frame = EDITOR::LookDevFrameFromWorld(drag.startWorld);
-                const MATH::Vec3 extent = EDITOR::LookDevShapeExtent(drag.result);
+                const MATH::Vec3 extent = GetProceduralMeshExtent(drag.result);
                 EDITOR::DrawLookDevBox(drawList, camera, view, frame, extent, drag.worldShift, kPreviewColor);
                 DrawSizeLabel(drawList, io.MousePos, EDITOR::FormatLookDevSize(frame, extent, flat));
             }
@@ -195,19 +188,26 @@ bool DocumentSceneEditorController::UpdateLookDevShapeHandles(DocumentSceneBase&
         }
         const LookDevShapeDrag finished = std::move(drag);
         lookDevShapeDrag_.reset();
-        if (!(finished.result == finished.start)) {
-            ContinueLookDevObjectDrag(
-                scene, selected, cut ? "Edit Opening" : "Resize Shape", [&](SceneObjectData& document) {
-                    SceneComponentData* component = EDITOR::FindLookDevComponent(document, "ProceduralMeshComponent");
-                    if (component == nullptr) {
-                        return false;
-                    }
-                    WriteShape(*component, finished.result);
-                    document.transform.position =
-                        document.transform.position +
-                        EDITOR::LookDevParentLocalVector(scene, document, finished.worldShift);
-                    return true;
-                });
+        if (cut && !(finished.result == finished.start) &&
+            static_cast<size_t>(finished.cutIndex) < finished.result.cuts.size()) {
+            // 開口は procedural.opening で変える（智能体と同じ検査と取り消し）。
+            const ProceduralMeshCut& edited = finished.result.cuts[static_cast<size_t>(finished.cutIndex)];
+            RunLookDevOperation("procedural.opening", {{"action", "edit"},
+                                                       {"objectId", selected.value},
+                                                       {"index", finished.cutIndex},
+                                                       {"center", {edited.center.x, edited.center.y, edited.center.z}},
+                                                       {"size", {edited.size.x, edited.size.y, edited.size.z}}});
+        } else if (!cut && !(finished.result == finished.start)) {
+            ContinueLookDevObjectDrag(scene, selected, "Resize Shape", [&](SceneObjectData& document) {
+                SceneComponentData* component = EDITOR::FindLookDevComponent(document, "ProceduralMeshComponent");
+                if (component == nullptr) {
+                    return false;
+                }
+                WriteShape(*component, finished.result);
+                document.transform.position = document.transform.position +
+                                              EDITOR::LookDevParentLocalVector(scene, document, finished.worldShift);
+                return true;
+            });
             FinishLookDevObjectDrag(scene);
         }
         return true;
@@ -227,7 +227,8 @@ bool DocumentSceneEditorController::UpdateLookDevShapeHandles(DocumentSceneBase&
     for (size_t index = 0; index < settings.cuts.size(); ++index) {
         const ProceduralMeshCut& cut = settings.cuts[index];
         const EDITOR::LookDevBoxFrame frame = EDITOR::LookDevFrameFromWorld(world, cut.center);
-        const int thin = cut.roundAxis >= 0 ? cut.roundAxis : ThinAxis(settings, object->GetTransform().scale);
+        const int thin =
+            cut.roundAxis >= 0 ? cut.roundAxis : EDITOR::LookDevThinAxis(settings, object->GetTransform().scale);
         const uint8_t mask = static_cast<uint8_t>(0b111u & ~(1u << thin));
         // 丸は直径の手柄（対称）を一つずつ、四角は面ごとに片側。
         for (const EDITOR::LookDevShapeHandle& handle :
@@ -275,9 +276,9 @@ bool DocumentSceneEditorController::UpdateLookDevShapeHandles(DocumentSceneBase&
         DrawSizeLabel(drawList, io.MousePos,
                       EDITOR::FormatLookDevSize(EDITOR::LookDevFrameFromWorld(world, cut.center), cut.size, false));
     } else {
-        DrawSizeLabel(drawList, io.MousePos,
-                      EDITOR::FormatLookDevSize(EDITOR::LookDevFrameFromWorld(world),
-                                                EDITOR::LookDevShapeExtent(settings), flat));
+        DrawSizeLabel(
+            drawList, io.MousePos,
+            EDITOR::FormatLookDevSize(EDITOR::LookDevFrameFromWorld(world), GetProceduralMeshExtent(settings), flat));
     }
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         lookDevShapeDrag_ =
@@ -286,103 +287,126 @@ bool DocumentSceneEditorController::UpdateLookDevShapeHandles(DocumentSceneBase&
     return true;
 }
 
-void DocumentSceneEditorController::AddLookDevOpening(DocumentSceneBase& scene, SceneObjectId objectId,
-                                                      LookDevOpeningKind kind) {
-    EditLookDevDocument(scene, "Add Opening", [&](SceneDocument& document) {
+EDITOR::EditorOperationResult DocumentSceneEditorController::EditLookDevOpening(const nlohmann::json& p) {
+    DocumentSceneBase* scene = aiOperationScene_;
+    if (scene == nullptr || scene->IsRuntimePlayActive()) {
+        return EDITOR::OperationFailure("EDIT_MODE_REQUIRED", "Edit openings outside Play mode.");
+    }
+    const std::string action = p.at("action").get<std::string>();
+    if (action != "add" && action != "edit" && action != "remove") {
+        return EDITOR::OperationFailure("INVALID_ACTION", "action is add, edit or remove.");
+    }
+    const SceneObjectId objectId{p.at("objectId").get<uint64_t>()};
+    EDITOR::EditorOperationResult failure{};
+    const auto fail = [&](std::string_view code, std::string message) {
+        failure = EDITOR::OperationFailure(code, std::move(message));
+        return false;
+    };
+    nlohmann::json data{{"objectId", objectId.value}};
+    const char* label = action == "add" ? "Add Opening" : (action == "edit" ? "Edit Opening" : "Remove Opening");
+    const bool done = EditLookDevDocument(*scene, label, [&](SceneDocument& document) {
         SceneObjectData* object = FindSceneObjectData(document, objectId);
         SceneComponentData* component =
             object != nullptr ? EDITOR::FindLookDevComponent(*object, "ProceduralMeshComponent") : nullptr;
         if (component == nullptr) {
-            return false;
+            return fail("NOT_A_SHAPE", "The object has no ProceduralMeshComponent.");
+        }
+        if (EDITOR::IsObjectEditorLocked(document, objectId)) {
+            return fail("OBJECT_LOCKED", "The object is locked in the editor.");
         }
         ProceduralMeshSettings settings = ReadShape(*component);
-        if (settings.kind != ProceduralMeshKind::Box || settings.cuts.size() >= kMaximumProceduralMeshCuts) {
-            return false;
+        if (settings.kind != ProceduralMeshKind::Box) {
+            return fail("NOT_A_BOX", "Openings can only be cut into Box shapes.");
         }
-        const MATH::Vec3 scale = object->transform.scale;
-        const MATH::Vec3 extent{settings.width, settings.height, settings.depth};
-        const int thin = ThinAxis(settings, scale);
-        // 世界の大きさ（m）を局所へ。開口は面の 6 割（高さは 9 割）より大きくしない。
-        const auto local = [&](float meters, int axis, float limit) {
-            return (std::min)(meters / (std::max)(Component(scale, axis), 1.0e-4f), Component(extent, axis) * limit);
-        };
-        ProceduralMeshCut cut{};
-        Component(cut.size, thin) = Component(extent, thin) + 0.2f;
-        if (kind == LookDevOpeningKind::RoundHole || kind == LookDevOpeningKind::RoundWindow) {
-            // 丸は直径（床 1.6 m、窓 1.0 m）。丸窓の中心は窓台 1.0 m の上。
-            const bool window = kind == LookDevOpeningKind::RoundWindow && thin != 1;
-            const float diameter = (std::min)(local(window ? 1.0f : 1.6f, (thin + 1) % 3, 0.6f),
-                                              local(window ? 1.0f : 1.6f, (thin + 2) % 3, 0.6f));
-            Component(cut.size, (thin + 1) % 3) = diameter;
-            Component(cut.size, (thin + 2) % 3) = diameter;
-            if (window) {
-                cut.center.y =
-                    -extent.y * 0.5f + (std::min)(local(1.0f, 1, 1.0f), extent.y - diameter) + diameter * 0.5f;
+        size_t index = 0;
+        if (action == "add") {
+            if (settings.cuts.size() >= kMaximumProceduralMeshCuts) {
+                return fail("TOO_MANY_OPENINGS",
+                            "A shape holds at most " + std::to_string(kMaximumProceduralMeshCuts) + " openings.");
             }
-            cut.roundAxis = static_cast<int8_t>(thin);
-        } else if (kind == LookDevOpeningKind::Hole || thin == 1) {
-            for (int axis = 0; axis < 3; ++axis) {
-                if (axis != thin) {
-                    Component(cut.size, axis) = local(2.0f, axis, 0.6f);
-                }
+            const std::optional<EDITOR::LookDevOpeningKind> kind =
+                TEXT::TryParseEnum(EDITOR::kLookDevOpeningKindNames, p.value("kind", std::string{}));
+            if (!kind) {
+                return fail("INVALID_KIND", "kind is hole, round_hole, door, window or round_window.");
             }
+            index = settings.cuts.size();
+            settings.cuts.push_back(EDITOR::BuildLookDevOpening(settings, object->transform.scale, *kind));
         } else {
-            const int along = thin == 0 ? 2 : 0;
-            const bool door = kind == LookDevOpeningKind::Door;
-            Component(cut.size, along) = local(door ? 1.0f : 1.2f, along, 0.6f);
-            cut.size.y = local(door ? 2.1f : 1.2f, 1, 0.9f);
-            // 門は床から、窓は 0.9 m の窓台の上から。
-            const float bottom = door ? 0.0f : (std::min)(local(0.9f, 1, 1.0f), extent.y - cut.size.y);
-            cut.center.y = -extent.y * 0.5f + bottom + cut.size.y * 0.5f;
+            const int64_t requested = p.value("index", int64_t{-1});
+            if (requested < 0 || static_cast<size_t>(requested) >= settings.cuts.size()) {
+                return fail("INVALID_INDEX", "index must name an existing opening (0 to " +
+                                                 std::to_string(settings.cuts.size()) + " - 1).");
+            }
+            index = static_cast<size_t>(requested);
+            if (action == "remove") {
+                settings.cuts.erase(settings.cuts.begin() + static_cast<std::ptrdiff_t>(index));
+            }
         }
-        settings.cuts.push_back(cut);
-        WriteShape(*component, SanitizeProceduralMeshSettings(settings));
-        return true;
-    });
-}
-
-void DocumentSceneEditorController::RemoveLookDevOpening(DocumentSceneBase& scene, SceneObjectId objectId,
-                                                         size_t index) {
-    EditLookDevDocument(scene, "Remove Opening", [&](SceneDocument& document) {
-        SceneObjectData* object = FindSceneObjectData(document, objectId);
-        SceneComponentData* component =
-            object != nullptr ? EDITOR::FindLookDevComponent(*object, "ProceduralMeshComponent") : nullptr;
-        if (component == nullptr) {
-            return false;
+        if (action != "remove") {
+            // 位置と大きさは物体の局所（箱の中心が原点、m ではなく局所の長さ）。
+            ProceduralMeshCut& cut = settings.cuts[index];
+            cut.center = JSONREAD::Vec3MemberOr(p, "center", cut.center);
+            cut.size = JSONREAD::Vec3MemberOr(p, "size", cut.size);
+            if (!MATH::IsFinite(cut.center) || !MATH::IsFinite(cut.size)) {
+                return fail("INVALID_OPENING", "center and size must be finite.");
+            }
         }
-        ProceduralMeshSettings settings = ReadShape(*component);
-        if (index >= settings.cuts.size()) {
-            return false;
+        const size_t expected = settings.cuts.size();
+        settings = SanitizeProceduralMeshSettings(settings);
+        if (settings.cuts.size() != expected) {
+            return fail("OPENING_REJECTED", "The opening overlaps another opening or lies outside the box.");
         }
-        settings.cuts.erase(settings.cuts.begin() + static_cast<std::ptrdiff_t>(index));
         WriteShape(*component, settings);
+        if (action != "remove") {
+            const ProceduralMeshCut& stored = settings.cuts[index];
+            data["index"] = index;
+            data["opening"] = {{"center", {stored.center.x, stored.center.y, stored.center.z}},
+                               {"size", {stored.size.x, stored.size.y, stored.size.z}},
+                               {"round", stored.roundAxis >= 0}};
+        }
+        data["openingCount"] = settings.cuts.size();
         return true;
     });
+    return done ? EDITOR::OperationOk(action == "add" ? "Opening added."
+                                                      : (action == "edit" ? "Opening updated." : "Opening removed."),
+                                      std::move(data))
+                : failure;
 }
 
-void DocumentSceneEditorController::CutLookDevShapesWithBox(DocumentSceneBase& scene, SceneObjectId cutterId) {
-    const GameObject* cutterObject = scene.GetWorld().FindObject(cutterId);
+EDITOR::EditorOperationResult DocumentSceneEditorController::SubtractLookDevShapes(const nlohmann::json& p) {
+    DocumentSceneBase* scene = aiOperationScene_;
+    if (scene == nullptr || scene->IsRuntimePlayActive()) {
+        return EDITOR::OperationFailure("EDIT_MODE_REQUIRED", "Subtract shapes outside Play mode.");
+    }
+    const SceneObjectId cutterId{p.at("cutterId").get<uint64_t>()};
+    const GameObject* cutterObject = scene->GetWorld().FindObject(cutterId);
     const ProceduralMeshComponent* cutterShape =
         cutterObject != nullptr ? cutterObject->GetComponent<ProceduralMeshComponent>() : nullptr;
     if (cutterShape == nullptr) {
-        return;
+        return EDITOR::OperationFailure("NOT_A_SHAPE", "The cutter must be a procedural shape.");
     }
+    std::unordered_set<uint64_t> targets;
+    for (const nlohmann::json& id : p.value("targetIds", nlohmann::json::array())) {
+        targets.insert(id.get<uint64_t>());
+    }
+    const bool keepCutter = p.value("keepCutter", false);
     // 挖空方块の 8 つの角（世界）。
     const MATH::Mat4 cutterWorld = cutterObject->GetTransform().GetWorldMatrix();
-    const MATH::Vec3 half = EDITOR::LookDevShapeExtent(cutterShape->GetSettings()) * 0.5f;
+    const MATH::Vec3 half = GetProceduralMeshExtent(cutterShape->GetSettings()) * 0.5f;
     std::array<MATH::Vec3, 8> corners{};
     for (int index = 0; index < 8; ++index) {
         const MATH::Vec4 corner = cutterWorld.TransformPoint(
             {(index & 1) ? half.x : -half.x, (index & 2) ? half.y : -half.y, (index & 4) ? half.z : -half.z, 1.0f});
         corners[static_cast<size_t>(index)] = {corner.x, corner.y, corner.z};
     }
-    size_t cutCount = 0;
-    EditLookDevDocument(scene, "Cut Out", [&](SceneDocument& document) {
+    nlohmann::json changed = nlohmann::json::array();
+    const bool done = EditLookDevDocument(*scene, "Cut Out", [&](SceneDocument& document) {
         const std::unordered_set<uint64_t> cutterTree = CollectObjectSubtreeIds(document, cutterId);
         for (SceneObjectData& target : document.objects) {
             SceneComponentData* component = EDITOR::FindLookDevComponent(target, "ProceduralMeshComponent");
-            const GameObject* runtime = scene.GetWorld().FindObject(target.id);
+            const GameObject* runtime = scene->GetWorld().FindObject(target.id);
             if (component == nullptr || runtime == nullptr || cutterTree.contains(target.id.value) ||
+                (!targets.empty() && !targets.contains(target.id.value)) ||
                 EDITOR::IsObjectEditorLocked(document, target.id)) {
                 continue;
             }
@@ -406,26 +430,29 @@ void DocumentSceneEditorController::CutLookDevShapesWithBox(DocumentSceneBase& s
             const MATH::Vec3 extent{settings.width, settings.height, settings.depth};
             bool overlaps = true;
             for (int axis = 0; axis < 3; ++axis) {
-                overlaps &=
-                    std::abs(Component(center, axis)) < (Component(extent, axis) + Component(size, axis)) * 0.5f;
+                overlaps &= std::abs(EDITOR::LookDevAxis(center, axis)) <
+                            (EDITOR::LookDevAxis(extent, axis) + EDITOR::LookDevAxis(size, axis)) * 0.5f;
             }
             if (!overlaps) {
                 continue;
             }
             settings.cuts.push_back({center, size});
             WriteShape(*component, SanitizeProceduralMeshSettings(settings));
-            ++cutCount;
+            changed.push_back(target.id.value);
         }
-        if (cutCount == 0u) {
+        if (changed.empty()) {
             return false;
         }
-        std::erase_if(document.objects,
-                      [&](const SceneObjectData& object) { return cutterTree.contains(object.id.value); });
+        if (!keepCutter) {
+            std::erase_if(document.objects,
+                          [&](const SceneObjectData& object) { return cutterTree.contains(object.id.value); });
+        }
         return true;
     });
-    if (cutCount == 0u) {
-        viewportDropMessage_ = TEXT::Localize("ui.lookDev.cutOutNothing");
+    if (!done) {
+        return EDITOR::OperationFailure("NO_OVERLAP", TEXT::Localize("ui.lookDev.cutOutNothing"));
     }
+    return EDITOR::OperationOk("Shapes cut.", {{"changedIds", std::move(changed)}, {"cutterRemoved", !keepCutter}});
 }
 
 void DocumentSceneEditorController::DrawLookDevOpeningsSection(DocumentSceneBase& scene) {
@@ -441,22 +468,22 @@ void DocumentSceneEditorController::DrawLookDevOpeningsSection(DocumentSceneBase
     ImGui::SeparatorText(TEXT::Localize("ui.lookDev.openings").c_str());
     const bool full = settings.cuts.size() >= kMaximumProceduralMeshCuts;
     ImGui::BeginDisabled(full);
-    const int thin = ThinAxis(settings, object->GetTransform().scale);
+    const int thin = EDITOR::LookDevThinAxis(settings, object->GetTransform().scale);
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     // 床は四角と丸の穴、壁は門・窓・丸窓。
     struct OpeningButton {
-        LookDevOpeningKind kind;
+        EDITOR::LookDevOpeningKind kind;
         const char* labelKey;
         const char* hintKey;
     };
     constexpr OpeningButton kFloorButtons[] = {
-        {LookDevOpeningKind::Hole, "ui.lookDev.openingHole", "ui.lookDev.openingHoleHint"},
-        {LookDevOpeningKind::RoundHole, "ui.lookDev.openingRoundHole", "ui.lookDev.openingRoundHoleHint"},
+        {EDITOR::LookDevOpeningKind::Hole, "ui.lookDev.openingHole", "ui.lookDev.openingHoleHint"},
+        {EDITOR::LookDevOpeningKind::RoundHole, "ui.lookDev.openingRoundHole", "ui.lookDev.openingRoundHoleHint"},
     };
     constexpr OpeningButton kWallButtons[] = {
-        {LookDevOpeningKind::Door, "ui.lookDev.openingDoor", "ui.lookDev.openingDoorHint"},
-        {LookDevOpeningKind::Window, "ui.lookDev.openingWindow", "ui.lookDev.openingWindowHint"},
-        {LookDevOpeningKind::RoundWindow, "ui.lookDev.openingRoundWindow", "ui.lookDev.openingRoundWindowHint"},
+        {EDITOR::LookDevOpeningKind::Door, "ui.lookDev.openingDoor", "ui.lookDev.openingDoorHint"},
+        {EDITOR::LookDevOpeningKind::Window, "ui.lookDev.openingWindow", "ui.lookDev.openingWindowHint"},
+        {EDITOR::LookDevOpeningKind::RoundWindow, "ui.lookDev.openingRoundWindow", "ui.lookDev.openingRoundWindowHint"},
     };
     const std::span<const OpeningButton> buttons =
         thin == 1 ? std::span<const OpeningButton>(kFloorButtons) : std::span<const OpeningButton>(kWallButtons);
@@ -470,7 +497,10 @@ void DocumentSceneEditorController::DrawLookDevOpeningsSection(DocumentSceneBase
         if (EDITOR::ActionButton(TEXT::Localize(buttons[index].labelKey).c_str(), "##opening",
                                  EDITOR::EditorButtonTone::Neutral, ImVec2(width, 0.0f),
                                  TEXT::Localize(buttons[index].hintKey).c_str())) {
-            AddLookDevOpening(scene, active, buttons[index].kind);
+            RunLookDevOperation("procedural.opening",
+                                {{"action", "add"},
+                                 {"objectId", active.value},
+                                 {"kind", TEXT::EnumToName(EDITOR::kLookDevOpeningKindNames, buttons[index].kind)}});
         }
         ImGui::PopID();
     }
@@ -488,7 +518,8 @@ void DocumentSceneEditorController::DrawLookDevOpeningsSection(DocumentSceneBase
         if (EDITOR::IconButton(EDITOR::EditorGlyph::Delete, "##remove", EDITOR::EditorButtonTone::Quiet,
                                ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()),
                                TEXT::Localize("ui.lookDev.openingRemove").c_str())) {
-            RemoveLookDevOpening(scene, active, index);
+            RunLookDevOperation("procedural.opening",
+                                {{"action", "remove"}, {"objectId", active.value}, {"index", index}});
             ImGui::PopID();
             break;
         }
@@ -496,7 +527,7 @@ void DocumentSceneEditorController::DrawLookDevOpeningsSection(DocumentSceneBase
     }
     if (EDITOR::ActionButton(TEXT::Localize("ui.lookDev.cutOut").c_str(), "##cutOut", EDITOR::EditorButtonTone::Neutral,
                              ImVec2(-1.0f, 0.0f), TEXT::Localize("ui.lookDev.cutOutHint").c_str())) {
-        CutLookDevShapesWithBox(scene, active);
+        RunLookDevOperation("procedural.subtract", {{"cutterId", active.value}});
     }
 }
 #endif

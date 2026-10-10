@@ -29,6 +29,7 @@ nlohmann::json DocumentSceneEditorController::DescribeWorkspaceDocument(EDITOR::
         return describe(AnimationStateMachineWorkspace(), animationStateMachineWorkspaceController_);
     case W::Dialogue: return describe(DialogueWorkspace(), dialogueWorkspaceController_);
     case W::RuntimeBinding: return describe(RuntimeBindingWorkspace(), runtimeBindingWorkspaceController_);
+    case W::LookDev: return DescribeLookDevState();
     default: return nullptr;
     }
 }

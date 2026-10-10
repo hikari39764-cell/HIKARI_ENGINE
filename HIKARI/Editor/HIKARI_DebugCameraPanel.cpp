@@ -2,6 +2,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
 #if defined(HIKARI_WITH_EDITOR)
+#include "Editor/Widgets/HIKARI_NumberField.h"
 #include "imgui.h"
 #endif
 
@@ -29,29 +30,34 @@ void DebugCameraPanel::DrawContents(DebugCameraController3D& debugCamera) const 
         debugCamera.SetEnabled(enabled);
     }
 
+    using EDITOR::DragNumber;
+    using EDITOR::DragNumbers;
     MATH::Vec3 position = debugCamera.GetPosition();
-    if (ImGui::DragFloat3(TEXT::Localize("ui.debugCamera.position").c_str(), &position.x, 0.02f)) {
+    if (DragNumbers(TEXT::Localize("ui.debugCamera.position").c_str(), &position.x, 3,
+                    {.step = 0.02, .proportional = false})) {
         debugCamera.SetPosition(position);
     }
 
     float yaw = debugCamera.GetYaw();
-    if (ImGui::DragFloat(TEXT::Localize("ui.debugCamera.yaw").c_str(), &yaw, 0.01f)) {
+    if (DragNumber(TEXT::Localize("ui.debugCamera.yaw").c_str(), yaw, {.step = 0.01, .proportional = false})) {
         debugCamera.SetYaw(yaw);
     }
 
     float pitch = debugCamera.GetPitch();
-    if (ImGui::DragFloat(TEXT::Localize("ui.debugCamera.pitch").c_str(), &pitch, 0.01f)) {
+    if (DragNumber(TEXT::Localize("ui.debugCamera.pitch").c_str(), pitch, {.step = 0.01, .proportional = false})) {
         debugCamera.SetPitch(pitch);
     }
 
+    static const DebugCamera3DSettings kDefaults{};
     DebugCamera3DSettings& settings = debugCamera.Settings();
-    ImGui::DragFloat(TEXT::Localize("ui.debugCamera.moveSpeed").c_str(), &settings.moveSpeed, 0.05f, 0.01f, 100.0f);
-    ImGui::DragFloat(TEXT::Localize("ui.debugCamera.fastMultiplier").c_str(), &settings.fastMultiplier, 0.05f, 1.0f,
-                     20.0f);
-    ImGui::DragFloat(TEXT::Localize("ui.debugCamera.mouseLookSensitivity").c_str(), &settings.mouseLookSensitivity,
-                     0.0001f, 0.0001f, 0.03f, "%.4f");
-    ImGui::DragFloat(TEXT::Localize("ui.debugCamera.wheelMoveStep").c_str(), &settings.wheelMoveStep, 0.01f, 0.01f,
-                     10.0f);
+    (void)DragNumber(TEXT::Localize("ui.debugCamera.moveSpeed").c_str(), settings.moveSpeed,
+                     {.minimum = 0.1, .maximum = 2000.0, .step = 0.05}, &kDefaults.moveSpeed);
+    (void)DragNumber(TEXT::Localize("ui.debugCamera.fastMultiplier").c_str(), settings.fastMultiplier,
+                     {.minimum = 1.0, .maximum = 20.0, .step = 0.05}, &kDefaults.fastMultiplier);
+    (void)DragNumber(TEXT::Localize("ui.debugCamera.mouseLookSensitivity").c_str(), settings.mouseLookSensitivity,
+                     {.minimum = 0.0001, .maximum = 0.03, .step = 0.0001}, &kDefaults.mouseLookSensitivity);
+    (void)DragNumber(TEXT::Localize("ui.debugCamera.wheelMoveStep").c_str(), settings.wheelMoveStep,
+                     {.minimum = 0.01, .maximum = 10.0, .step = 0.01}, &kDefaults.wheelMoveStep);
 
     if (ImGui::Button(TEXT::Localize("ui.common.reset").c_str())) {
         const MATH::Vec3 resetPos{0.0f, 2.0f, -6.0f};

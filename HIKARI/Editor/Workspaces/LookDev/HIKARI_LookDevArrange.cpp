@@ -5,16 +5,14 @@
 #include <limits>
 #include <numeric>
 
+#include "Editor/Workspaces/LookDev/HIKARI_LookDevPlacement.h"
+
 namespace HIKARI::EDITOR {
 namespace {
 
-float& Component(MATH::Vec3& value, int axis) { return axis == 0 ? value.x : (axis == 1 ? value.y : value.z); }
-
-float Component(const MATH::Vec3& value, int axis) { return axis == 0 ? value.x : (axis == 1 ? value.y : value.z); }
-
 float Anchor(const Bounds& bounds, int axis, LookDevAlign align) {
-    const float minimum = Component(bounds.min, axis);
-    const float maximum = Component(bounds.max, axis);
+    const float minimum = LookDevAxis(bounds.min, axis);
+    const float maximum = LookDevAxis(bounds.max, axis);
     return align == LookDevAlign::Min ? minimum : (align == LookDevAlign::Max ? maximum : (minimum + maximum) * 0.5f);
 }
 
@@ -25,7 +23,7 @@ std::vector<MATH::Vec3> AlignLookDevItems(const std::vector<LookDevArrangeItem>&
     const float target = Anchor(reference, axis, align);
     std::vector<MATH::Vec3> moves(items.size());
     for (size_t index = 0; index < items.size(); ++index) {
-        Component(moves[index], axis) = target - Anchor(items[index].bounds, axis, align);
+        LookDevAxis(moves[index], axis) = target - Anchor(items[index].bounds, axis, align);
     }
     return moves;
 }
@@ -42,7 +40,7 @@ std::vector<MATH::Vec3> DistributeLookDevItems(const std::vector<LookDevArrangeI
     const float first = center(order.front());
     const float step = (center(order.back()) - first) / static_cast<float>(order.size() - 1u);
     for (size_t rank = 1; rank + 1u < order.size(); ++rank) {
-        Component(moves[order[rank]], axis) = first + step * static_cast<float>(rank) - center(order[rank]);
+        LookDevAxis(moves[order[rank]], axis) = first + step * static_cast<float>(rank) - center(order[rank]);
     }
     return moves;
 }
@@ -88,14 +86,14 @@ std::vector<LookDevArrayCopy> BuildLookDevArray(const LookDevArraySettings& sett
 
 MATH::Vec3 MirrorLookDevPosition(const MATH::Vec3& position, const MATH::Vec3& center, int axis) noexcept {
     MATH::Vec3 mirrored = position;
-    Component(mirrored, axis) = 2.0f * Component(center, axis) - Component(position, axis);
+    LookDevAxis(mirrored, axis) = 2.0f * LookDevAxis(center, axis) - LookDevAxis(position, axis);
     return mirrored;
 }
 
 MATH::Vec3 MirrorLookDevRotation(const MATH::Vec3& eulerDegrees, int axis) noexcept {
     // 鏡映 M で回転 R を写すと M R M。軸 a に垂直な面の鏡映は、a まわりの回転を保ち、他の二軸の回転を逆にする。
     MATH::Vec3 mirrored = eulerDegrees * -1.0f;
-    Component(mirrored, axis) = Component(eulerDegrees, axis);
+    LookDevAxis(mirrored, axis) = LookDevAxis(eulerDegrees, axis);
     return mirrored;
 }
 

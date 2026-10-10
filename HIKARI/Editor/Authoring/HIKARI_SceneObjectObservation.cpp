@@ -4,6 +4,7 @@
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Assets/Models/HIKARI_ModelBounds.h"
+#include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -22,6 +23,11 @@ Bounds ObserveSceneObjectBounds(const DocumentSceneBase& scene, SceneObjectId ob
     const auto* object = scene.GetWorld().FindObject(objectId);
     if (!object)
         return {};
+    // 程序化の形は今の設定から求める（同じ批量で作った直後や寸法を変えた直後でも描画を待たない）。
+    if (const auto* shape = object->GetComponent<ProceduralMeshComponent>()) {
+        const MATH::Vec3 half = GetProceduralMeshExtent(shape->GetSettings()) * 0.5f;
+        return BOUNDS::TransformBounds({half * -1.0f, half}, object->GetTransform().GetWorldMatrix());
+    }
     const auto* model = object->GetComponent<ModelComponent>();
     if (model && model->GetModelAsset() && BOUNDS::IsUsable(model->GetModelAsset()->bounds))
         return BOUNDS::TransformBounds(model->GetModelAsset()->bounds, object->GetTransform().GetWorldMatrix());

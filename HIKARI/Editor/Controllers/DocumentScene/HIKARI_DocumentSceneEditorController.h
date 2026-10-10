@@ -238,8 +238,16 @@ private:
     void DrawLookDevObjectsWindow(DocumentSceneBase& scene);
     // 灯光の窓：一灯一行（开关・单独显示・亮度・颜色・阴影の状態）と、从视角放灯・三点布光。
     void DrawLookDevLightsWindow(DocumentSceneBase& scene);
+    // 今の視点から画面の中心へ向けたスポット灯を scene.create_light で置く。
     void PlaceLightAtView(DocumentSceneBase& scene);
-    void CreateThreePointLights(DocumentSceneBase& scene, SceneObjectId subject);
+    // 布景の操作（RegisterLookDevOperations）。画面のボタンと智能体が同じ操作を呼ぶ。
+    void RegisterLookDevOperations();
+    // 画面のボタンから布景の操作を呼び、失敗したら視口の札に出す。
+    EDITOR::EditorOperationResult RunLookDevOperation(const std::string& id, const nlohmann::json& parameters);
+    // scene.create_light：種類・位置・向き（aimAt か rotation）・LightSettings の部分 JSON で灯を一つ作る。
+    EDITOR::EditorOperationResult CreateLookDevLight(const nlohmann::json& p);
+    // lighting.three_point：物体の外接箱を照らす主光・補光・輪郭光。
+    EDITOR::EditorOperationResult CreateThreePointLights(const nlohmann::json& p);
     // 視口で主光を動かす（美術布景は方位と高度、昼夜は時刻）。ドラッグ中は一つの取り消しにまとめる。
     void DragLookDevMainLight(DocumentSceneBase& scene, float azimuthDegrees, float elevationDegrees, bool dragging);
     // 布景の視口の手柄：L + ドラッグの主光と、選んだ灯の範囲・角度・大きさ。選択より先に処理し、マウスを使えば true。
@@ -254,32 +262,42 @@ private:
     // 選んだ白模の寸法と開口の手柄。ドラッグ中は箱の線だけを描き、離した時に一度だけ形を作り直す。
     bool UpdateLookDevShapeHandles(DocumentSceneBase& scene, const EDITOR::SceneViewportRect& viewport, bool hovered,
                                    bool gizmoCapture);
-    // 開口（床の穴、壁の門窓）と挖空方块。開口は箱の切り抜きなので後から手柄で動かせる。
-    enum class LookDevOpeningKind : uint8_t { Hole, RoundHole, Door, Window, RoundWindow };
+    // 開口（床の穴、壁の門窓）と挖空方块の欄。開口は箱の切り抜きなので後から手柄で動かせる。
     void DrawLookDevOpeningsSection(DocumentSceneBase& scene);
-    void AddLookDevOpening(DocumentSceneBase& scene, SceneObjectId objectId, LookDevOpeningKind kind);
-    void RemoveLookDevOpening(DocumentSceneBase& scene, SceneObjectId objectId, size_t index);
-    // 選んだ箱と重なる白模の箱を、その重なりで切り抜き、選んだ箱を消す。
-    void CutLookDevShapesWithBox(DocumentSceneBase& scene, SceneObjectId cutterId);
+    // procedural.opening：開口の追加（種類の既定の大きさ）・変更・削除。
+    EDITOR::EditorOperationResult EditLookDevOpening(const nlohmann::json& p);
+    // procedural.subtract：切る箱と重なる白模の箱を、その重なりで切り抜く（既定で切る箱を消す）。
+    EDITOR::EditorOperationResult SubtractLookDevShapes(const nlohmann::json& p);
     // 整理（揃え・等間隔・落地・编组・镜像复制・阵列・换成模型）。物体の窓の上に出す。
     void DrawLookDevArrangeSection(DocumentSceneBase& scene);
-    std::vector<EDITOR::LookDevArrangeItem> CollectLookDevArrangeItems(DocumentSceneBase& scene);
-    void MoveLookDevItems(DocumentSceneBase& scene, std::string label,
+    // scene.arrange：揃え・等間隔・落地・编组・镜像复制・阵列。
+    EDITOR::EditorOperationResult ArrangeLookDevObjects(const nlohmann::json& p);
+    // scene.replace_model：白模の箱を模型に替え、箱に収まる大きさで底を合わせる。
+    EDITOR::EditorOperationResult ReplaceLookDevShapeWithModel(const nlohmann::json& p);
+    // 根の物（子を含む）の世界の外接箱。描かれない物は位置の点。
+    std::vector<EDITOR::LookDevArrangeItem> CollectLookDevArrangeItems(DocumentSceneBase& scene,
+                                                                       std::span<const SceneObjectId> roots);
+    bool MoveLookDevItems(DocumentSceneBase& scene, std::string label,
                           const std::vector<EDITOR::LookDevArrangeItem>& items, const std::vector<MATH::Vec3>& moves);
-    // 選んだ物（子を含む）を copies 回複製し、place で複製の位置と向きを決める（remapped は元の ID から複製の ID）。
+    // 根の物（子を含む）を copies 回複製し、place で複製の位置と向きを決める（remapped は元の ID から複製の ID）。
+    // 複製した根を返す。
     using LookDevClonePlacement =
         std::function<void(size_t copy, SceneDocument& document, const std::unordered_map<uint64_t, uint64_t>& remapped,
-                           const std::vector<SceneObjectId>& roots)>;
-    void CloneLookDevSelection(DocumentSceneBase& scene, std::string label, size_t copies,
-                               const LookDevClonePlacement& place);
-    void CreateLookDevArray(DocumentSceneBase& scene);
-    void MirrorLookDevSelection(DocumentSceneBase& scene, int axis);
-    void DropLookDevSelection(DocumentSceneBase& scene);
-    void GroupLookDevSelection(DocumentSceneBase& scene);
-    void ReplaceLookDevShapeWithModel(DocumentSceneBase& scene, SceneObjectId objectId, const std::string& modelGuid);
-    // 文書をまとめて書き換え、変わった物を実行時へ反映して一つの取り消しに積む。
-    void EditLookDevDocument(DocumentSceneBase& scene, std::string label,
+                           std::span<const SceneObjectId> roots)>;
+    std::vector<SceneObjectId> CloneLookDevObjects(DocumentSceneBase& scene, std::string label,
+                                                   std::span<const SceneObjectId> roots, size_t copies,
+                                                   const LookDevClonePlacement& place);
+    std::vector<SceneObjectId> CreateLookDevArray(DocumentSceneBase& scene, std::span<const SceneObjectId> roots,
+                                                  const EDITOR::LookDevArraySettings& settings);
+    std::vector<SceneObjectId> MirrorLookDevObjects(DocumentSceneBase& scene, std::span<const SceneObjectId> roots,
+                                                    int axis);
+    SceneObjectId GroupLookDevObjects(DocumentSceneBase& scene, std::span<const SceneObjectId> roots,
+                                      const std::string& name);
+    // 文書をまとめて書き換え、変わった物を実行時へ反映して一つの取り消しに積む。edit が false なら何もしない。
+    bool EditLookDevDocument(DocumentSceneBase& scene, std::string label,
                              const std::function<bool(SceneDocument&)>& edit);
+    // 布景の工作区の状態（editor.state の当前工作区）。置く物・吸着・見え方・露出・影の名額・単独表示・機位・環境。
+    nlohmann::json DescribeLookDevState() const;
     // 機位の一覧（押すとその視点へ、通过相机看、今の視点で更新）と「保存当前视角」。
     void DrawLookDevCameras(DocumentSceneBase& scene);
     void SaveViewAsCamera(DocumentSceneBase& scene);

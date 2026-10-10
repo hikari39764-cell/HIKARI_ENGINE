@@ -16,10 +16,28 @@ struct LookDevArrangeItem {
     Bounds bounds{};
 };
 
+// scene.arrange の action。
+enum class LookDevArrangeAction : uint8_t { Align, Distribute, Drop, Group, Mirror, Array };
+
+inline constexpr TEXT::EnumName<LookDevArrangeAction> kLookDevArrangeActionNames[] = {
+    {LookDevArrangeAction::Align, "align"},   {LookDevArrangeAction::Distribute, "distribute"},
+    {LookDevArrangeAction::Drop, "drop"},     {LookDevArrangeAction::Group, "group"},
+    {LookDevArrangeAction::Mirror, "mirror"}, {LookDevArrangeAction::Array, "array"},
+};
+
+// 世界の軸（0 X、1 Y、2 Z）。
+inline constexpr TEXT::EnumName<int> kLookDevAxisNames[] = {{0, "x"}, {1, "y"}, {2, "z"}};
+
 enum class LookDevAlign : uint8_t {
     Min,
     Center,
     Max,
+};
+
+inline constexpr TEXT::EnumName<LookDevAlign> kLookDevAlignNames[] = {
+    {LookDevAlign::Min, "min"},
+    {LookDevAlign::Center, "center"},
+    {LookDevAlign::Max, "max"},
 };
 
 // 基準の物（reference の外接箱）の min・中心・max に、軸 axis（0 X、1 Y、2 Z）で揃える移動量（items と同じ順）。

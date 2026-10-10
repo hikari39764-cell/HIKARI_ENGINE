@@ -16,8 +16,6 @@ namespace {
 
 constexpr float kMinimumWorldSize = 0.05f;
 
-float Component(const MATH::Vec3& value, int axis) { return axis == 0 ? value.x : (axis == 1 ? value.y : value.z); }
-
 bool IsRound(ProceduralMeshKind kind) {
     return kind == ProceduralMeshKind::Cylinder || kind == ProceduralMeshKind::Capsule;
 }
@@ -49,7 +47,7 @@ std::vector<LookDevShapeHandle> BuildLookDevBoxHandles(const LookDevBoxFrame& fr
                 continue;
             }
             handles.push_back(
-                {axis, sign, symmetric, frame.center + frame.axes[axis] * (sign * Component(extent, axis) * 0.5f)});
+                {axis, sign, symmetric, frame.center + frame.axes[axis] * (sign * LookDevAxis(extent, axis) * 0.5f)});
         }
     }
     return handles;
@@ -143,21 +141,10 @@ void DrawLookDevCylinder(ImDrawList&, const Camera3D&, const LookDevView&, const
                          uint32_t) {}
 #endif
 
-MATH::Vec3 LookDevShapeExtent(const ProceduralMeshSettings& settings) noexcept {
-    switch (settings.kind) {
-    case ProceduralMeshKind::Sphere: return {settings.width, settings.width, settings.width};
-    case ProceduralMeshKind::Cylinder:
-    case ProceduralMeshKind::Capsule: return {settings.width, settings.height, settings.width};
-    case ProceduralMeshKind::Plane:
-    case ProceduralMeshKind::GridPlane: return {settings.width, 0.0f, settings.depth};
-    default: return {settings.width, settings.height, settings.depth};
-    }
-}
-
 std::vector<LookDevShapeHandle> BuildLookDevShapeHandles(const ProceduralMeshSettings& settings,
                                                          const MATH::Mat4& world) {
     const LookDevBoxFrame frame = LookDevFrameFromWorld(world);
-    const MATH::Vec3 extent = LookDevShapeExtent(settings);
+    const MATH::Vec3 extent = GetProceduralMeshExtent(settings);
     if (settings.kind == ProceduralMeshKind::Sphere) {
         return BuildLookDevBoxHandles(frame, extent, 0b001u, 0b001u);
     }
@@ -189,6 +176,49 @@ std::string FormatLookDevSize(const LookDevBoxFrame& frame, const MATH::Vec3& ex
         std::snprintf(text, sizeof(text), "%.2f x %.2f x %.2f m", x, y, z);
     }
     return text;
+}
+
+int LookDevThinAxis(const ProceduralMeshSettings& settings, const MATH::Vec3& scale) noexcept {
+    const std::array<float, 3> world{settings.width * scale.x, settings.height * scale.y, settings.depth * scale.z};
+    return static_cast<int>(std::min_element(world.begin(), world.end()) - world.begin());
+}
+
+ProceduralMeshCut BuildLookDevOpening(const ProceduralMeshSettings& settings, const MATH::Vec3& scale,
+                                      LookDevOpeningKind kind) noexcept {
+    const MATH::Vec3 extent{settings.width, settings.height, settings.depth};
+    const int thin = LookDevThinAxis(settings, scale);
+    // 世界の大きさ（m）を局所へ。
+    const auto local = [&](float meters, int axis, float limit) {
+        return (std::min)(meters / (std::max)(LookDevAxis(scale, axis), 1.0e-4f), LookDevAxis(extent, axis) * limit);
+    };
+    ProceduralMeshCut cut{};
+    LookDevAxis(cut.size, thin) = LookDevAxis(extent, thin) + 0.2f;
+    if (kind == LookDevOpeningKind::RoundHole || kind == LookDevOpeningKind::RoundWindow) {
+        const bool window = kind == LookDevOpeningKind::RoundWindow && thin != 1;
+        const float diameter = (std::min)(local(window ? 1.0f : 1.6f, (thin + 1) % 3, 0.6f),
+                                          local(window ? 1.0f : 1.6f, (thin + 2) % 3, 0.6f));
+        LookDevAxis(cut.size, (thin + 1) % 3) = diameter;
+        LookDevAxis(cut.size, (thin + 2) % 3) = diameter;
+        if (window) {
+            cut.center.y = -extent.y * 0.5f + (std::min)(local(1.0f, 1, 1.0f), extent.y - diameter) + diameter * 0.5f;
+        }
+        cut.roundAxis = static_cast<int8_t>(thin);
+    } else if (kind == LookDevOpeningKind::Hole || thin == 1) {
+        for (int axis = 0; axis < 3; ++axis) {
+            if (axis != thin) {
+                LookDevAxis(cut.size, axis) = local(2.0f, axis, 0.6f);
+            }
+        }
+    } else {
+        const int along = thin == 0 ? 2 : 0;
+        const bool door = kind == LookDevOpeningKind::Door;
+        LookDevAxis(cut.size, along) = local(door ? 1.0f : 1.2f, along, 0.6f);
+        cut.size.y = local(door ? 2.1f : 1.2f, 1, 0.9f);
+        // 門は床から、窓は 0.9 m の窓台の上から。
+        const float bottom = door ? 0.0f : (std::min)(local(0.9f, 1, 1.0f), extent.y - cut.size.y);
+        cut.center.y = -extent.y * 0.5f + bottom + cut.size.y * 0.5f;
+    }
+    return cut;
 }
 
 } // namespace HIKARI::EDITOR

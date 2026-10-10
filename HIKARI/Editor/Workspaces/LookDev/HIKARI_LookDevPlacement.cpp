@@ -163,15 +163,6 @@ std::optional<LookDevSurfaceHit> FindLookDevSurface(const Camera3D& camera, floa
     return hit;
 }
 
-std::optional<Bounds> FindLookDevObjectBounds(uint64_t objectId) {
-    const RENDER3D::RUNTIME::SceneRenderObject* object =
-        RenderSubmissionSystem::GetSceneRenderCache().Find(RENDER3D::RUNTIME::SceneRenderObjectId{objectId});
-    if (object == nullptr || !object->valid || !BOUNDS::IsUsable(object->desc.worldBounds)) {
-        return std::nullopt;
-    }
-    return object->desc.worldBounds;
-}
-
 float FindLookDevGroundHeight(const MATH::Vec3& point, const std::unordered_set<uint64_t>& ignoredObjects) {
     float ground = 0.0f;
     for (const RENDER3D::RUNTIME::SceneSurfaceInstance& surface :

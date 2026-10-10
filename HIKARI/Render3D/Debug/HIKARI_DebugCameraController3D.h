@@ -22,11 +22,14 @@ using CameraControlCaptureQuery = CameraControlCaptureState (*)();
 void SetCameraControlCaptureQuery(CameraControlCaptureQuery query) noexcept;
 
 struct DebugCamera3DSettings {
-    float moveSpeed = 4.0f;
-    float fastMultiplier = 3.0f;
+    float moveSpeed = 4.0f;      // 地面付近の飛行速度 [m/s]。右クリック中のホイールで 1.25 倍ずつ変える
+    float fastMultiplier = 3.0f; // Shift の倍率
     float mouseLookSensitivity = 0.003f;
-    float wheelMoveStep = 0.8f;
+    float wheelMoveStep = 0.8f; // 右クリックしていない時のホイール 1 目盛りの前後移動 [m]
     float pitchLimitRad = 1.45f;
+    // 高さによる速度の倍率: |y| がこの高さを超えると比例して速くなる（50m で 1 倍、1500m で 30 倍）。部屋の大きさの
+    // 作業では効かず、雲（1.5km）や地形の上空へは数秒で届く。
+    float altitudeSpeedHeight = 50.0f;
 };
 
 class DebugCameraController3D {

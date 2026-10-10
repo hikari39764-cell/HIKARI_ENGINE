@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -10,8 +12,11 @@
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Assets/Models/HIKARI_ModelBounds.h"
+#include "Core/HIKARI_JsonRead.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
+#include "Editor/Authoring/HIKARI_SceneObjectObservation.h"
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Views/HIKARI_EditorViewportGeometry.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
@@ -44,9 +49,23 @@ MATH::Vec3 Rotate(const MATH::Vec3& eulerDegrees, const MATH::Vec3& vector) {
     return {rotated.x, rotated.y, rotated.z};
 }
 
+nlohmann::json IdList(std::span<const SceneObjectId> ids) {
+    nlohmann::json list = nlohmann::json::array();
+    for (SceneObjectId id : ids) {
+        list.push_back(id.value);
+    }
+    return list;
+}
+
+// 名前の表から引く。キーが無ければ fallback、名前が表に無ければ空。
+template <class E, size_t N>
+std::optional<E> ParseNamed(const nlohmann::json& p, const char* key, const TEXT::EnumName<E> (&table)[N], E fallback) {
+    return p.contains(key) ? TEXT::TryParseEnum(table, p.at(key).get<std::string>()) : std::optional<E>(fallback);
+}
+
 } // namespace
 
-void DocumentSceneEditorController::EditLookDevDocument(DocumentSceneBase& scene, std::string label,
+bool DocumentSceneEditorController::EditLookDevDocument(DocumentSceneBase& scene, std::string label,
                                                         const std::function<bool(SceneDocument&)>& edit) {
     FinishLookDevObjectDrag(scene);
     selectionSync_.SyncNextSceneObjectId(scene, context_.nextSceneObjectId);
@@ -55,25 +74,29 @@ void DocumentSceneEditorController::EditLookDevDocument(DocumentSceneBase& scene
     const SceneCameraSettings camera = document.camera;
     const bool dirtyBefore = context_.sceneDirty || scene.HasUnsavedSceneChanges();
     if (!edit(document)) {
-        return;
+        // 途中まで書き換えていても文書を元に戻す。
+        document.objects = std::move(beforeObjects);
+        return false;
     }
     context_.sceneDirty = true;
     selectionSync_.SyncNextSceneObjectId(scene, context_.nextSceneObjectId);
     CommitSceneObjectAuthoringHistory(
         scene, SceneObjectAuthoringHistoryRequest{std::move(label), std::move(beforeObjects), document.objects, camera,
                                                   camera, dirtyBefore, true, true});
+    return true;
 }
 
 std::vector<EDITOR::LookDevArrangeItem> DocumentSceneEditorController::CollectLookDevArrangeItems(
-    DocumentSceneBase& scene) {
+    DocumentSceneBase& scene, std::span<const SceneObjectId> roots) {
     const SceneDocument& document = scene.GetSceneDocument();
     std::vector<EDITOR::LookDevArrangeItem> items;
-    for (SceneObjectId root : CollectRootObjectIds(document, context_.selection.GetSelectedObjectIds())) {
+    for (SceneObjectId root : roots) {
         Bounds bounds = BOUNDS::EmptyBounds();
         bool found = false;
         for (uint64_t id : CollectObjectSubtreeIds(document, root)) {
-            if (const auto objectBounds = EDITOR::FindLookDevObjectBounds(id)) {
-                BOUNDS::Encapsulate(bounds, *objectBounds);
+            const Bounds objectBounds = EDITOR::ObserveSceneObjectBounds(scene, SceneObjectId{id});
+            if (BOUNDS::IsUsable(objectBounds)) {
+                BOUNDS::Encapsulate(bounds, objectBounds);
                 found = true;
             }
         }
@@ -87,10 +110,10 @@ std::vector<EDITOR::LookDevArrangeItem> DocumentSceneEditorController::CollectLo
     return items;
 }
 
-void DocumentSceneEditorController::MoveLookDevItems(DocumentSceneBase& scene, std::string label,
+bool DocumentSceneEditorController::MoveLookDevItems(DocumentSceneBase& scene, std::string label,
                                                      const std::vector<EDITOR::LookDevArrangeItem>& items,
                                                      const std::vector<MATH::Vec3>& moves) {
-    EditLookDevDocument(scene, std::move(label), [&](SceneDocument& document) {
+    return EditLookDevDocument(scene, std::move(label), [&](SceneDocument& document) {
         bool changed = false;
         for (size_t index = 0; index < items.size() && index < moves.size(); ++index) {
             SceneObjectData* object = FindSceneObjectData(document, SceneObjectId{items[index].id});
@@ -106,12 +129,13 @@ void DocumentSceneEditorController::MoveLookDevItems(DocumentSceneBase& scene, s
     });
 }
 
-void DocumentSceneEditorController::CloneLookDevSelection(DocumentSceneBase& scene, std::string label, size_t copies,
-                                                          const LookDevClonePlacement& place) {
+std::vector<SceneObjectId> DocumentSceneEditorController::CloneLookDevObjects(DocumentSceneBase& scene,
+                                                                              std::string label,
+                                                                              std::span<const SceneObjectId> roots,
+                                                                              size_t copies,
+                                                                              const LookDevClonePlacement& place) {
     std::vector<SceneObjectId> created;
-    EditLookDevDocument(scene, std::move(label), [&](SceneDocument& document) {
-        const std::vector<SceneObjectId> roots =
-            CollectRootObjectIds(document, context_.selection.GetSelectedObjectIds());
+    const bool committed = EditLookDevDocument(scene, std::move(label), [&](SceneDocument& document) {
         std::unordered_set<uint64_t> subtree;
         for (SceneObjectId root : roots) {
             const auto ids = CollectObjectSubtreeIds(document, root);
@@ -138,24 +162,25 @@ void DocumentSceneEditorController::CloneLookDevSelection(DocumentSceneBase& sce
         }
         return true;
     });
-    if (!created.empty()) {
-        SelectViewportObjects(scene, created, EditorObjectSelectionMode::Replace);
+    if (!committed) {
+        created.clear();
     }
+    return created;
 }
 
-void DocumentSceneEditorController::CreateLookDevArray(DocumentSceneBase& scene) {
-    const EDITOR::LookDevArraySettings& settings = lookDevWorkspace_.ArraySettings();
+std::vector<SceneObjectId> DocumentSceneEditorController::CreateLookDevArray(
+    DocumentSceneBase& scene, std::span<const SceneObjectId> roots, const EDITOR::LookDevArraySettings& settings) {
     const std::vector<EDITOR::LookDevArrayCopy> copies = EDITOR::BuildLookDevArray(settings);
-    const Bounds bounds = EDITOR::UnionLookDevBounds(CollectLookDevArrangeItems(scene));
+    const Bounds bounds = EDITOR::UnionLookDevBounds(CollectLookDevArrangeItems(scene, roots));
     const MATH::Vec3 center = (bounds.min + bounds.max) * 0.5f;
     // 環形の円の中心は、選んだ物の中心から -X へ半径だけ離れた点。
     const MATH::Vec3 ringCenter{center.x - settings.radius, center.y, center.z};
-    CloneLookDevSelection(
-        scene, "Array", copies.size(),
+    return CloneLookDevObjects(
+        scene, "Array", roots, copies.size(),
         [&](size_t copy, SceneDocument& document, const std::unordered_map<uint64_t, uint64_t>& remapped,
-            const std::vector<SceneObjectId>& roots) {
+            std::span<const SceneObjectId> sourceRoots) {
             const EDITOR::LookDevArrayCopy& placement = copies[copy];
-            for (SceneObjectId sourceRoot : roots) {
+            for (SceneObjectId sourceRoot : sourceRoots) {
                 SceneObjectData* root = FindSceneObjectData(document, SceneObjectId{remapped.at(sourceRoot.value)});
                 if (root == nullptr) {
                     continue;
@@ -176,13 +201,15 @@ void DocumentSceneEditorController::CreateLookDevArray(DocumentSceneBase& scene)
         });
 }
 
-void DocumentSceneEditorController::MirrorLookDevSelection(DocumentSceneBase& scene, int axis) {
-    const Bounds bounds = EDITOR::UnionLookDevBounds(CollectLookDevArrangeItems(scene));
+std::vector<SceneObjectId> DocumentSceneEditorController::MirrorLookDevObjects(DocumentSceneBase& scene,
+                                                                               std::span<const SceneObjectId> roots,
+                                                                               int axis) {
+    const Bounds bounds = EDITOR::UnionLookDevBounds(CollectLookDevArrangeItems(scene, roots));
     const MATH::Vec3 center = (bounds.min + bounds.max) * 0.5f;
-    CloneLookDevSelection(
-        scene, "Mirror Copy", 1u,
+    return CloneLookDevObjects(
+        scene, "Mirror Copy", roots, 1u,
         [&](size_t, SceneDocument& document, const std::unordered_map<uint64_t, uint64_t>& remapped,
-            const std::vector<SceneObjectId>&) {
+            std::span<const SceneObjectId>) {
             // 複製した物をすべて世界で鏡に映す（位置と向き、拡縮はそのまま）。親が先に決まるよう何度か回し、
             // 子は鏡に映した親に対する局所へ戻す。形そのものは裏返らない（左右対称の白模は見た目どおり）。
             std::unordered_map<uint64_t, MATH::Mat4> mirroredWorld;
@@ -238,24 +265,10 @@ void DocumentSceneEditorController::MirrorLookDevSelection(DocumentSceneBase& sc
         });
 }
 
-void DocumentSceneEditorController::DropLookDevSelection(DocumentSceneBase& scene) {
-    const std::vector<EDITOR::LookDevArrangeItem> items = CollectLookDevArrangeItems(scene);
-    std::vector<MATH::Vec3> moves;
-    for (const EDITOR::LookDevArrangeItem& item : items) {
-        const MATH::Vec3 center = (item.bounds.min + item.bounds.max) * 0.5f;
-        const std::unordered_set<uint64_t> own =
-            CollectObjectSubtreeIds(scene.GetSceneDocument(), SceneObjectId{item.id});
-        const float ground = EDITOR::FindLookDevGroundHeight({center.x, item.bounds.min.y + 0.01f, center.z}, own);
-        moves.push_back({0.0f, ground - item.bounds.min.y, 0.0f});
-    }
-    MoveLookDevItems(scene, "Drop To Ground", items, moves);
-}
-
-void DocumentSceneEditorController::GroupLookDevSelection(DocumentSceneBase& scene) {
-    const std::vector<EDITOR::LookDevArrangeItem> items = CollectLookDevArrangeItems(scene);
-    if (items.size() < 2u) {
-        return;
-    }
+SceneObjectId DocumentSceneEditorController::GroupLookDevObjects(DocumentSceneBase& scene,
+                                                                 std::span<const SceneObjectId> roots,
+                                                                 const std::string& name) {
+    const std::vector<EDITOR::LookDevArrangeItem> items = CollectLookDevArrangeItems(scene, roots);
     const Bounds bounds = EDITOR::UnionLookDevBounds(items);
     // 組の基点は全体の底の中心（床に置いた物をまとめて動かしやすい）。
     const MATH::Vec3 pivot{(bounds.min.x + bounds.max.x) * 0.5f, bounds.min.y, (bounds.min.z + bounds.max.z) * 0.5f};
@@ -263,7 +276,7 @@ void DocumentSceneEditorController::GroupLookDevSelection(DocumentSceneBase& sce
     EditLookDevDocument(scene, "Group", [&](SceneDocument& document) {
         SceneObjectData parent{};
         parent.id = SceneObjectId{context_.nextSceneObjectId++};
-        parent.name = TEXT::Localize("ui.lookDev.groupName");
+        parent.name = name;
         parent.transform.position = pivot;
         size_t insertAt = document.objects.size();
         for (const EDITOR::LookDevArrangeItem& item : items) {
@@ -288,39 +301,161 @@ void DocumentSceneEditorController::GroupLookDevSelection(DocumentSceneBase& sce
         document.objects.insert(document.objects.begin() + static_cast<std::ptrdiff_t>(insertAt), std::move(parent));
         return true;
     });
-    if (group.value != 0u) {
-        SelectViewportObjects(scene, {group}, EditorObjectSelectionMode::Replace);
-    }
+    return group;
 }
 
-void DocumentSceneEditorController::ReplaceLookDevShapeWithModel(DocumentSceneBase& scene, SceneObjectId objectId,
-                                                                 const std::string& modelGuid) {
-    ModelAsset* model = ResolveModelAssetNow(scene.GetModelManager(), scene.GetAssetRegistry(), modelGuid);
+EDITOR::EditorOperationResult DocumentSceneEditorController::ArrangeLookDevObjects(const nlohmann::json& p) {
+    DocumentSceneBase* scene = aiOperationScene_;
+    if (scene == nullptr || scene->IsRuntimePlayActive()) {
+        return EDITOR::OperationFailure("EDIT_MODE_REQUIRED", "Arrange objects outside Play mode.");
+    }
+    const std::optional<EDITOR::LookDevArrangeAction> action =
+        TEXT::TryParseEnum(EDITOR::kLookDevArrangeActionNames, p.at("action").get<std::string>());
+    if (!action) {
+        return EDITOR::OperationFailure("INVALID_ACTION", "action is align, distribute, drop, group, mirror or array.");
+    }
+    const SceneDocument& document = scene->GetSceneDocument();
+    std::vector<SceneObjectId> ids;
+    if (p.contains("objectIds")) {
+        for (const nlohmann::json& id : p.at("objectIds")) {
+            ids.push_back(SceneObjectId{id.get<uint64_t>()});
+            if (FindSceneObjectData(document, ids.back()) == nullptr) {
+                return EDITOR::OperationFailure("OBJECT_NOT_FOUND",
+                                                "Object " + std::to_string(ids.back().value) + " does not exist.");
+            }
+        }
+    } else {
+        ids = context_.selection.GetSelectedObjectIds();
+    }
+    // 子は親と一緒に動くので、根だけを並べる。
+    const std::vector<SceneObjectId> roots = CollectRootObjectIds(document, ids);
+    const size_t needed =
+        *action == EDITOR::LookDevArrangeAction::Distribute                                                ? 3u
+        : *action == EDITOR::LookDevArrangeAction::Align || *action == EDITOR::LookDevArrangeAction::Group ? 2u
+                                                                                                           : 1u;
+    if (roots.size() < needed) {
+        return EDITOR::OperationFailure("TOO_FEW_OBJECTS", "This action needs at least " + std::to_string(needed) +
+                                                               " root objects (children move with their parent).");
+    }
+    const std::optional<int> axis =
+        ParseNamed(p, "axis", EDITOR::kLookDevAxisNames, *action == EDITOR::LookDevArrangeAction::Align ? 1 : 0);
+    if (!axis) {
+        return EDITOR::OperationFailure("INVALID_AXIS", "axis is x, y or z.");
+    }
+    const std::vector<EDITOR::LookDevArrangeItem> items = CollectLookDevArrangeItems(*scene, roots);
+    const auto moved = [&](bool changed, const char* message) {
+        return EDITOR::OperationOk(changed ? message : "Objects are already arranged.",
+                                   {{"objectIds", IdList(roots)}, {"changed", changed}});
+    };
+    const auto created = [&](const std::vector<SceneObjectId>& objects, const char* message) {
+        if (objects.empty()) {
+            return EDITOR::OperationFailure("CREATE_FAILED", "No copies were created.");
+        }
+        SelectViewportObjects(*scene, objects, EditorObjectSelectionMode::Replace);
+        return EDITOR::OperationOk(message, {{"createdIds", IdList(objects)}});
+    };
+    switch (*action) {
+    case EDITOR::LookDevArrangeAction::Align: {
+        const std::optional<EDITOR::LookDevAlign> anchor =
+            ParseNamed(p, "anchor", EDITOR::kLookDevAlignNames, EDITOR::LookDevAlign::Center);
+        if (!anchor) {
+            return EDITOR::OperationFailure("INVALID_ANCHOR", "anchor is min, center or max.");
+        }
+        // 基準：referenceId（無ければ選択の主の物）。並べる物に無い referenceId はその物自身の外接箱、
+        // どちらも無ければ最初の物。
+        const SceneObjectId reference{p.value("referenceId", context_.selection.GetActiveObjectId().value)};
+        const auto found =
+            std::find_if(items.begin(), items.end(), [&](const auto& item) { return item.id == reference.value; });
+        Bounds target = items.front().bounds;
+        if (found != items.end()) {
+            target = found->bounds;
+        } else if (p.contains("referenceId") && FindSceneObjectData(document, reference) != nullptr) {
+            target = CollectLookDevArrangeItems(*scene, std::span<const SceneObjectId>(&reference, 1u)).front().bounds;
+        }
+        return moved(MoveLookDevItems(*scene, "Align", items, EDITOR::AlignLookDevItems(items, target, *axis, *anchor)),
+                     "Objects aligned.");
+    }
+    case EDITOR::LookDevArrangeAction::Distribute:
+        return moved(MoveLookDevItems(*scene, "Distribute", items, EDITOR::DistributeLookDevItems(items, *axis)),
+                     "Objects distributed.");
+    case EDITOR::LookDevArrangeAction::Drop: {
+        std::vector<MATH::Vec3> moves;
+        for (const EDITOR::LookDevArrangeItem& item : items) {
+            const MATH::Vec3 center = (item.bounds.min + item.bounds.max) * 0.5f;
+            const std::unordered_set<uint64_t> own = CollectObjectSubtreeIds(document, SceneObjectId{item.id});
+            const float ground = EDITOR::FindLookDevGroundHeight({center.x, item.bounds.min.y + 0.01f, center.z}, own);
+            moves.push_back({0.0f, ground - item.bounds.min.y, 0.0f});
+        }
+        return moved(MoveLookDevItems(*scene, "Drop To Ground", items, moves),
+                     "Objects dropped onto the surface below.");
+    }
+    case EDITOR::LookDevArrangeAction::Group: {
+        const SceneObjectId group =
+            GroupLookDevObjects(*scene, roots, p.value("name", TEXT::Localize("ui.lookDev.groupName")));
+        if (group.value == 0u) {
+            return EDITOR::OperationFailure("GROUP_FAILED", "The objects could not be grouped.");
+        }
+        SelectViewportObjects(*scene, {group}, EditorObjectSelectionMode::Replace);
+        return EDITOR::OperationOk("Objects grouped.", {{"groupId", group.value}});
+    }
+    case EDITOR::LookDevArrangeAction::Mirror:
+        return created(MirrorLookDevObjects(*scene, roots, *axis), "Mirrored copies created.");
+    case EDITOR::LookDevArrangeAction::Array: {
+        EDITOR::LookDevArraySettings settings{};
+        const std::optional<EDITOR::LookDevArrayKind> kind =
+            ParseNamed(p, "kind", EDITOR::kLookDevArrayKindNames, settings.kind);
+        if (!kind) {
+            return EDITOR::OperationFailure("INVALID_KIND", "kind is linear, grid or ring.");
+        }
+        settings.kind = *kind;
+        settings.count = std::clamp(p.value("count", settings.count), 2, 24);
+        settings.rows = std::clamp(p.value("rows", settings.rows), 1, 24);
+        settings.spacing = p.value("spacing", settings.spacing);
+        settings.radius = p.value("radius", settings.radius);
+        if (!MATH::IsFinite(settings.spacing) || !MATH::IsFinite(settings.radius)) {
+            return EDITOR::OperationFailure("INVALID_DISTANCE", "spacing and radius must be finite.");
+        }
+        settings.spacing = std::clamp(settings.spacing, 0.05f, 500.0f);
+        settings.radius = std::clamp(settings.radius, 0.05f, 500.0f);
+        return created(CreateLookDevArray(*scene, roots, settings), "Array created.");
+    }
+    }
+    return EDITOR::OperationFailure("INVALID_ACTION", "Unknown action.");
+}
+
+EDITOR::EditorOperationResult DocumentSceneEditorController::ReplaceLookDevShapeWithModel(const nlohmann::json& p) {
+    DocumentSceneBase* scene = aiOperationScene_;
+    if (scene == nullptr || scene->IsRuntimePlayActive()) {
+        return EDITOR::OperationFailure("EDIT_MODE_REQUIRED", "Replace objects outside Play mode.");
+    }
+    const SceneObjectId objectId{p.at("objectId").get<uint64_t>()};
+    const std::string modelGuid = p.at("modelId").get<std::string>();
+    ModelAsset* model = ResolveModelAssetNow(scene->GetModelManager(), scene->GetAssetRegistry(), modelGuid);
     if (model == nullptr || !BOUNDS::IsUsable(model->bounds)) {
-        viewportDropMessage_ = TEXT::Localize("ui.lookDev.replaceFailed");
-        return;
+        return EDITOR::OperationFailure("MODEL_UNAVAILABLE", TEXT::Localize("ui.lookDev.replaceFailed"));
     }
     const Bounds modelBounds = model->bounds;
-    EditLookDevDocument(scene, "Replace With Model", [&](SceneDocument& document) {
+    float fitScale = 0.0f;
+    const bool replaced = EditLookDevDocument(*scene, "Replace With Model", [&](SceneDocument& document) {
         SceneObjectData* object = FindSceneObjectData(document, objectId);
         SceneComponentData* shape =
             object != nullptr ? EDITOR::FindLookDevComponent(*object, "ProceduralMeshComponent") : nullptr;
         SceneComponentData* modelComponent =
             object != nullptr ? EDITOR::FindLookDevComponent(*object, "ModelComponent") : nullptr;
-        if (shape == nullptr || modelComponent == nullptr) {
+        if (shape == nullptr || modelComponent == nullptr || EDITOR::IsObjectEditorLocked(document, objectId)) {
             return false;
         }
         ProceduralMeshComponent probe;
         probe.Deserialize(shape->properties);
         const MATH::Vec3 objectScale = object->transform.scale;
-        const MATH::Vec3 local = EDITOR::LookDevShapeExtent(probe.GetSettings());
+        const MATH::Vec3 local = GetProceduralMeshExtent(probe.GetSettings());
         const MATH::Vec3 box{local.x * objectScale.x, local.y * objectScale.y, local.z * objectScale.z};
         const MATH::Vec3 modelSize = modelBounds.max - modelBounds.min;
         // 比率を保ったまま白模の箱に収まる倍率。
         float fit = 0.0f;
         for (int axis = 0; axis < 3; ++axis) {
-            const float boxSize = axis == 0 ? box.x : (axis == 1 ? box.y : box.z);
-            const float size = axis == 0 ? modelSize.x : (axis == 1 ? modelSize.y : modelSize.z);
+            const float boxSize = EDITOR::LookDevAxis(box, axis);
+            const float size = EDITOR::LookDevAxis(modelSize, axis);
             if (boxSize > 1.0e-4f && size > 1.0e-4f) {
                 fit = fit > 0.0f ? (std::min)(fit, boxSize / size) : boxSize / size;
             }
@@ -337,8 +472,13 @@ void DocumentSceneEditorController::ReplaceLookDevShapeWithModel(DocumentSceneBa
         object->transform.scale = {fit, fit, fit};
         modelComponent->properties["assetId"] = modelGuid;
         object->components.erase(object->components.begin() + (shape - object->components.data()));
+        fitScale = fit;
         return true;
     });
+    if (!replaced) {
+        return EDITOR::OperationFailure("NOT_A_SHAPE", "The object is not an unlocked procedural shape.");
+    }
+    return EDITOR::OperationOk("Shape replaced with the model.", {{"objectId", objectId.value}, {"scale", fitScale}});
 }
 
 void DocumentSceneEditorController::DrawLookDevArrangeSection(DocumentSceneBase& scene) {
@@ -351,6 +491,12 @@ void DocumentSceneEditorController::DrawLookDevArrangeSection(DocumentSceneBase&
         ImGui::TextDisabled("%s", TEXT::Localize("ui.lookDev.arrangeHint").c_str());
         return;
     }
+    // ボタンは scene.arrange を選んだ物に対して呼ぶ（智能体と同じ操作）。
+    const nlohmann::json selection = IdList(context_.selection.GetSelectedObjectIds());
+    const auto arrange = [&](nlohmann::json parameters) {
+        parameters["objectIds"] = selection;
+        RunLookDevOperation("scene.arrange", parameters);
+    };
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
     const float labelWidth = ImGui::CalcTextSize("XX").x;
     const auto buttonWidth = [&](int count) {
@@ -375,16 +521,10 @@ void DocumentSceneEditorController::DrawLookDevArrangeSection(DocumentSceneBase&
             ImGui::PushID(anchor);
             if (EDITOR::ActionButton(TEXT::Localize(kAnchorKeys[anchor]).c_str(), "##align",
                                      EDITOR::EditorButtonTone::Neutral, ImVec2(width, 0.0f))) {
-                const auto items = CollectLookDevArrangeItems(scene);
-                const auto reference = EDITOR::FindLookDevObjectBounds(context_.selection.GetActiveObjectId().value);
-                const auto active = std::find_if(items.begin(), items.end(), [&](const auto& item) {
-                    return item.id == context_.selection.GetActiveObjectId().value;
-                });
-                const Bounds target =
-                    active != items.end() ? active->bounds : (reference ? *reference : items.front().bounds);
-                MoveLookDevItems(
-                    scene, "Align", items,
-                    EDITOR::AlignLookDevItems(items, target, axis, static_cast<EDITOR::LookDevAlign>(anchor)));
+                arrange({{"action", "align"},
+                         {"axis", EDITOR::kLookDevAxisNames[axis].name},
+                         {"anchor", EDITOR::kLookDevAlignNames[anchor].name},
+                         {"referenceId", context_.selection.GetActiveObjectId().value}});
             }
             ImGui::PopID();
         }
@@ -398,8 +538,7 @@ void DocumentSceneEditorController::DrawLookDevArrangeSection(DocumentSceneBase&
         ImGui::SameLine();
         ImGui::PushID(10 + axis);
         if (EDITOR::ActionButton(kAxisNames[axis], "##distribute", EDITOR::EditorButtonTone::Neutral)) {
-            const auto items = CollectLookDevArrangeItems(scene);
-            MoveLookDevItems(scene, "Distribute", items, EDITOR::DistributeLookDevItems(items, axis));
+            arrange({{"action", "distribute"}, {"axis", EDITOR::kLookDevAxisNames[axis].name}});
         }
         ImGui::PopID();
     }
@@ -409,13 +548,13 @@ void DocumentSceneEditorController::DrawLookDevArrangeSection(DocumentSceneBase&
     if (EDITOR::ActionButton(TEXT::Localize("ui.lookDev.dropToGround").c_str(), "##drop",
                              EDITOR::EditorButtonTone::Neutral, ImVec2(half, 0.0f),
                              TEXT::Localize("ui.lookDev.dropToGroundHint").c_str())) {
-        DropLookDevSelection(scene);
+        arrange({{"action", "drop"}});
     }
     ImGui::SameLine();
     ImGui::BeginDisabled(selected < 2u);
     if (EDITOR::ActionButton(TEXT::Localize("ui.lookDev.group").c_str(), "##group", EDITOR::EditorButtonTone::Neutral,
                              ImVec2(half, 0.0f), TEXT::Localize("ui.lookDev.groupHint").c_str())) {
-        GroupLookDevSelection(scene);
+        arrange({{"action", "group"}});
     }
     ImGui::EndDisabled();
     ImGui::AlignTextToFramePadding();
@@ -425,7 +564,7 @@ void DocumentSceneEditorController::DrawLookDevArrangeSection(DocumentSceneBase&
         ImGui::PushID(20 + axis);
         if (EDITOR::ActionButton(kAxisNames[axis], "##mirror", EDITOR::EditorButtonTone::Neutral, ImVec2(0.0f, 0.0f),
                                  TEXT::Localize("ui.lookDev.mirrorHint").c_str())) {
-            MirrorLookDevSelection(scene, axis);
+            arrange({{"action", "mirror"}, {"axis", EDITOR::kLookDevAxisNames[axis].name}});
         }
         ImGui::PopID();
     }
@@ -459,7 +598,12 @@ void DocumentSceneEditorController::DrawLookDevArrangeSection(DocumentSceneBase&
     if (EDITOR::ActionButton(TEXT::Localize("ui.lookDev.arrayCreate").c_str(), "##arrayCreate",
                              EDITOR::EditorButtonTone::Primary, ImVec2(-1.0f, 0.0f),
                              TEXT::Localize("ui.lookDev.arrayHint").c_str())) {
-        CreateLookDevArray(scene);
+        arrange({{"action", "array"},
+                 {"kind", TEXT::EnumToName(EDITOR::kLookDevArrayKindNames, array.kind)},
+                 {"count", array.count},
+                 {"rows", array.rows},
+                 {"spacing", array.spacing},
+                 {"radius", array.radius}});
     }
 
     DrawLookDevOpeningsSection(scene);
@@ -492,7 +636,7 @@ void DocumentSceneEditorController::DrawLookDevArrangeSection(DocumentSceneBase&
     if (EDITOR::ActionButton(TEXT::Localize("ui.lookDev.replaceApply").c_str(), "##replaceApply",
                              EDITOR::EditorButtonTone::Primary, ImVec2(-1.0f, 0.0f),
                              TEXT::Localize("ui.lookDev.replaceHint").c_str())) {
-        ReplaceLookDevShapeWithModel(scene, active, model);
+        RunLookDevOperation("scene.replace_model", {{"objectId", active.value}, {"modelId", model}});
     }
     ImGui::EndDisabled();
 }

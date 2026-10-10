@@ -98,6 +98,9 @@ void FitProceduralSlopeBox(const ProceduralMeshSettings& settings, MATH::Vec3& c
                            MATH::Vec3& size) noexcept;
 
 const char* GetProceduralMeshDisplayName(ProceduralMeshKind kind) noexcept;
+// 局所の外形の寸法（中心が原点）。箱・斜面・階段は x 幅・y 高さ・z 奥行き、円柱と胶囊は x と z が直径、球は全部が
+// 直径、平面は y が 0。
+MATH::Vec3 GetProceduralMeshExtent(const ProceduralMeshSettings& settings) noexcept;
 ProceduralMeshSettings SanitizeProceduralMeshSettings(ProceduralMeshSettings settings) noexcept;
 
 } // namespace HIKARI
