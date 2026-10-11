@@ -34,6 +34,8 @@ constexpr UINT kSkyParameter = kPreviousShParameter + 3u;
 // 近景の高さを決める相機の ray の結果（当たった点の高さ）を書く UAV。中央・上下左右・真下の 6 本。
 constexpr UINT kFocusParameter = kSkyParameter + 1u;
 constexpr uint32_t kFocusRayCount = 6;
+// 一本ごとに当たった点の高さと、相機からの水平距離を書く。
+constexpr uint32_t kFocusValueCount = kFocusRayCount * 2;
 constexpr float kFocusMiss = 1.0e30f;
 // SH0 は一様な入射 radiance の約 3.54 倍。FP16 上限で HDR を壊さない。
 constexpr auto kProbeShFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
@@ -221,42 +223,68 @@ struct ProbeSet {
         commands->ResourceBarrier(UINT(barriers.size()), barriers.data());
     }
 };
-// 近景の cascade の中心の高さ。視線の 5 本が当たった点の高さの中央値の少し上（格子の高さの半分の半分）へ下ろすが、
-// 相機より上へは上げない（室内や地面に立った視点では変わらない）。下ろさないと、高い所から見下ろした時に地面の近くが
-// 間隔 6m の遠景だけになり、小さな部屋の床や壁が塊のような汚れになった。真下の ray が近くの地面に当たる時は、その
-// 地面を格子に残す（崖の縁から谷を見下ろしても足元が粗くならない）。真下にも何も無ければ相機の高さ。
-float NearFieldCenterHeight(const std::array<float, kFocusRayCount>& heights, float cameraHeight, float halfHeight,
-                            float spacing) {
-    std::array<float, kFocusRayCount - 1> view{};
+// 近景の cascade の置き場所（中心の高さと、視線の水平方向へ前に出す距離）。
+struct NearFieldPlacement {
+    float height = 0.0f;
+    float reach = 0.0f;
+};
+// 高さは視線の 5 本が当たった点の高さの中央値の少し上（格子の高さの半分の半分）へ下ろすが、相機より上へは上げない
+// （室内や地面に立った視点では変わらない）。下ろさないと、高い所から見下ろした時に地面の近くが間隔 6m の遠景だけに
+// なり、小さな部屋の床や壁が塊のような汚れになった。真下の ray が近くの地面に当たる時は、その地面を格子に残す（崖の
+// 縁から谷を見下ろしても足元が粗くならない）。視線がどこにも当たらなければ真下の地面、それも無ければ相機の高さ。
+// 前に出す距離は、視線の当たった点までの水平距離の中央値を、相機の地面からの高さの 1.5 倍までで取る。高い所から
+// 斜めに見ると見ている面が近景の外（前へ約 19m 先）になりやすく、20m 先の家が遠景の塊の汚れになった。地面に立った
+// 視点では高さが小さいのでほとんど出さない（足元の近くの面が一番大事）。
+NearFieldPlacement PlaceNearField(const std::array<float, kFocusValueCount>& values, float cameraHeight,
+                                  float halfHeight, float spacing) {
+    std::array<float, kFocusRayCount - 1> heights{}, distances{};
     size_t count = 0;
-    const auto hit = [&](size_t index) { return std::isfinite(heights[index]) && heights[index] < kFocusMiss; };
+    const auto hit = [&](size_t index) { return std::isfinite(values[index]) && values[index] < kFocusMiss; };
     for (size_t index = 0; index + 1 < kFocusRayCount; ++index)
-        if (hit(index))
-            view[count++] = heights[index];
-    // 視線がどこにも当たらない（高い所から地平線の方を見る）時は、真下の地面を見ている面の代わりにする。
-    if (count == 0 && hit(kFocusRayCount - 1))
-        view[count++] = heights[kFocusRayCount - 1];
+        if (hit(index)) {
+            heights[count] = values[index];
+            distances[count++] = values[kFocusRayCount + index];
+        }
+    const size_t viewCount = count;
+    const size_t belowIndex = kFocusRayCount - 1;
+    const bool belowHit = hit(belowIndex);
+    const float below = values[belowIndex];
+    NearFieldPlacement placement{cameraHeight, 0.0f};
+    if (count == 0 && belowHit)
+        heights[count++] = below;
     if (count == 0)
-        return cameraHeight;
-    std::sort(view.begin(), view.begin() + count);
-    float center = (std::min)(cameraHeight, view[count / 2] + 0.5f * halfHeight);
-    const float below = heights[kFocusRayCount - 1];
-    if (hit(kFocusRayCount - 1) && cameraHeight - below < halfHeight)
-        center = (std::max)(center, below - halfHeight + spacing);
-    return center;
+        return placement;
+    std::sort(heights.begin(), heights.begin() + count);
+    placement.height = (std::min)(cameraHeight, heights[count / 2] + 0.5f * halfHeight);
+    if (belowHit && cameraHeight - below < halfHeight)
+        placement.height = (std::max)(placement.height, below - halfHeight + spacing);
+    if (viewCount > 0) {
+        std::sort(distances.begin(), distances.begin() + viewCount);
+        const float elevation = belowHit ? (std::max)(cameraHeight - below, 0.0f) : distances[viewCount / 2];
+        placement.reach = (std::min)(distances[viewCount / 2], 1.5f * elevation);
+    }
+    return placement;
 }
 // 一つの probe 場。履歴は二組の ProbeSet を交互に書き、前の組を読む。
 struct Field {
     std::array<ProbeSet, 2> sets;
+    // 画質の档位を切り替えて格子を作り直した時の、直前の公開中の組。新しい格子の最初の更新が近い probe を引き継ぎ
+    // （carry）、GPU がそのフレームを終えてから放す。
+    ProbeSet legacy;
     FieldLayout layout{};
     std::string id{}, failedId{};
     MATH::Vec3 fixedOrigin{};
     UINT published = 0, firstProbe = 0;
+    // 履歴なしで始めた後、全 probe を更新する残りの回数。
+    UINT fullUpdates = 0;
     uint64_t lastFrame = 0;
-    bool history = false, active = false;
+    bool history = false, active = false, carry = false;
     void Reset(const GFX::Context& graphics) {
         for (auto& set : sets)
             set.Reset(graphics);
+        legacy.Reset(graphics);
+        carry = false;
+        fullUpdates = 0;
         layout = {};
         id.clear();
         fixedOrigin = {};
@@ -280,7 +308,7 @@ struct DynamicDiffuseGi::State {
     uint64_t lastRaySceneVersion = 0, lastLightingContentHash = 0;
     RAYTRACING::RuntimeRayTracingMaterialVersion lastMaterialVersion{};
     Stats stats;
-    // 相機の ray の結果。GPU が書き、フレーム資源の数だけ遅れて読む。nearCenterHeight は近景の中心の高さ。
+    // 相機の ray の結果。GPU が書き、フレーム資源の数だけ遅れて読む。nearPlacement は近景の置き場所。
     struct FocusReadback {
         ComPtr<ID3D12Resource> buffer;
         uint64_t fence = 0;
@@ -288,7 +316,7 @@ struct DynamicDiffuseGi::State {
     ComPtr<ID3D12Resource> focus;
     std::array<FocusReadback, GFX::kFrameResourceCount> focusReadbacks;
     uint64_t focusFence = 0;
-    std::optional<float> nearCenterHeight;
+    std::optional<NearFieldPlacement> nearPlacement;
 
     bool EnsurePipeline(const GFX::Context& graphics) {
         if (pipeline)
@@ -310,11 +338,11 @@ struct DynamicDiffuseGi::State {
         namespace SHADER = ASSETS::SHADER;
         SHADER::ShaderAssetContractExpectation contract{};
         contract.engineInterfaceId = "HIKARI.DynamicDiffuseGi";
-        contract.engineInterfaceVersion = 3;
+        contract.engineInterfaceVersion = 4;
         contract.rootLayoutId = "HIKARI.DynamicDiffuseGi.Root";
         contract.rootLayoutVersion = 2;
         if (!HASH::ComputeSha256(
-                "DynamicDiffuseGiCB:400;origin,axis spacing,focus origin/direction;SH9 radiance/validity/sky L1;atlas RGBA16F tile28x18 irradiance^(1/5)+sky oct8,moments+validity oct16,border,neighbor links A(11+octant,1) 7bit;focus hit heights u10 x6;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
+                "DynamicDiffuseGiCB:400;origin,axis spacing,focus origin/direction;SH9 radiance/validity/sky L1;atlas RGBA16F tile28x18 irradiance^(1/5)+sky oct8,moments+validity oct16,border,neighbor links A(11+octant,1) 7bit;focus hit heights+horizontal distances u10 x12;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
                 contract.engineInterfaceHash) ||
             !HASH::ComputeSha256(
                 "CBV(b0);AS(t0,s8);Hits(t1,s8);Materials(t16);Programs(t0,t1,s6);Lights(t1,t2,s7);Geometry(t0,s1,1024);Textures(t20);Deformed(t2,s8);PreviousSH(t0,s2,9);SH(u0,9);ProbeAtlas(u9);Sky(t0,s7);Focus(u10);Sampler(s0,clamp);Sampler(s1,wrap)",
@@ -335,7 +363,7 @@ struct DynamicDiffuseGi::State {
         desc.CS = {bytes.data(), bytes.size()};
         if (FAILED(graphics.device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline))))
             return false;
-        constexpr UINT64 focusBytes = kFocusRayCount * sizeof(float);
+        constexpr UINT64 focusBytes = kFocusValueCount * sizeof(float);
         const CD3DX12_HEAP_PROPERTIES defaultHeap(D3D12_HEAP_TYPE_DEFAULT), readbackHeap(D3D12_HEAP_TYPE_READBACK);
         const auto focusDesc = CD3DX12_RESOURCE_DESC::Buffer(focusBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         const auto readbackDesc = CD3DX12_RESOURCE_DESC::Buffer(focusBytes);
@@ -464,6 +492,9 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         field.active = false;
         if (layouts[index] == nullptr)
             continue;
+        // 引き継ぎに使った前の組は、それを読んだフレームの GPU が終わってから放す。
+        if (!field.carry && field.legacy.bytes != 0 && previousFenceDone)
+            field.legacy.Reset(graphics);
         const bool changed = !(field.layout == *layouts[index]) || field.id != id ||
                              (index == kRegionField && !SameVec3(field.fixedOrigin, region->origin));
         if (changed && field.sets[0].bytes != 0) {
@@ -472,7 +503,17 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
                 field.history = false;
                 continue;
             }
+            // 近景・遠景の档位の切り替えでは公開中の組を一回だけ残し、新しい格子の最初の更新が近い probe を引き継ぐ。
+            // 空から作り直すと、収まるまでの数秒、部屋が暗くなった（逆に明るくなった）。
+            const bool keep = field.history && index != kRegionField;
+            ProbeSet legacy;
+            if (keep) {
+                legacy = std::move(field.sets[field.published]);
+                field.sets[field.published] = ProbeSet{};
+            }
             field.Reset(graphics);
+            field.legacy = std::move(legacy);
+            field.carry = keep;
         }
         if (!field.sets[0].textures[0]) {
             if (index == kRegionField && field.failedId == id)
@@ -517,23 +558,27 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
     for (auto& readback : state.focusReadbacks) {
         if (readback.fence <= state.focusFence || !GFX::IsCurrentFenceComplete(readback.fence))
             continue;
-        std::array<float, kFocusRayCount> heights{};
-        const D3D12_RANGE range{0, sizeof(heights)};
+        std::array<float, kFocusValueCount> values{};
+        const D3D12_RANGE range{0, sizeof(values)};
         void* mapped = nullptr;
         if (SUCCEEDED(readback.buffer->Map(0, &range, &mapped)) && mapped != nullptr) {
-            std::memcpy(heights.data(), mapped, sizeof(heights));
+            std::memcpy(values.data(), mapped, sizeof(values));
             const D3D12_RANGE written{0, 0};
             readback.buffer->Unmap(0, &written);
             const FieldLayout& nearLayout = cascades[0];
-            const float desired = NearFieldCenterHeight(
-                heights, cameraPosition.y, 0.5f * float(nearLayout.y - 1) * nearLayout.spacing.y, nearLayout.spacing.y);
+            const NearFieldPlacement desired = PlaceNearField(
+                values, cameraPosition.y, 0.5f * float(nearLayout.y - 1) * nearLayout.spacing.y, nearLayout.spacing.y);
             // 間隔より小さい揺れでは動かさない（格子の境で行き来しない）。
-            if (!state.nearCenterHeight || std::abs(desired - *state.nearCenterHeight) > nearLayout.spacing.y)
-                state.nearCenterHeight = desired;
+            if (!state.nearPlacement)
+                state.nearPlacement = desired;
+            if (std::abs(desired.height - state.nearPlacement->height) > nearLayout.spacing.y)
+                state.nearPlacement->height = desired.height;
+            if (std::abs(desired.reach - state.nearPlacement->reach) > nearLayout.spacing.x)
+                state.nearPlacement->reach = desired.reach;
         }
         state.focusFence = readback.fence;
     }
-    const float nearCenterHeight = state.nearCenterHeight.value_or(cameraPosition.y);
+    const NearFieldPlacement nearPlacement = state.nearPlacement.value_or(NearFieldPlacement{cameraPosition.y, 0.0f});
     state.stats.probes = state.stats.updatedProbes = 0;
     state.stats.probeBytes = 0;
     // 相機の cascade の中心は視線の水平方向へ幅の 3 割だけ前に置く。相機の後ろへ半分を割くと、見えている奥が近景から
@@ -548,11 +593,17 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         if (!field.active)
             continue;
         const FieldLayout& layout = field.layout;
-        auto& previous = field.sets[field.published];
+        auto& previous = field.carry ? field.legacy : field.sets[field.published];
         auto& target = field.sets[1 - field.published];
-        const bool compatible = field.history && sameSource && frameSerial == field.lastFrame + 1;
-        if (!compatible)
+        const bool compatible = sameSource && (field.carry || (field.history && frameSerial == field.lastFrame + 1));
+        // 履歴なしで始める時と、档位の切り替えで格子が広がった時（前の格子に無かった probe は空から始まる）は、
+        // 最初の数回だけ全 probe を更新し、空の probe のまま暗い期間を短くする。
+        if (!compatible || field.carry) {
             field.firstProbe = 0;
+            // 空から始める時は反射を重ねる分だけ多く（一回で一回分の反射が積み上がる）。
+            field.fullUpdates = compatible ? 3u : 6u;
+        }
+        const UINT budget = field.fullUpdates > 0 ? layout.x * layout.y * layout.z : layout.budget;
         if (index == kRegionField) {
             target.data.origin = field.fixedOrigin;
         } else {
@@ -562,9 +613,10 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
             const auto gridOrigin = [spacing](float camera, UINT count) {
                 return (std::floor(camera / spacing - 0.5f) + 0.5f - float(count / 2)) * spacing;
             };
-            const float lead = 0.3f * float(layout.x - 1) * spacing;
+            const float lead =
+                (std::max)(0.3f * float(layout.x - 1) * spacing, index == kNearField ? nearPlacement.reach : 0.0f);
             target.data.origin = {gridOrigin(cameraPosition.x + ahead.x * lead, layout.x),
-                                  gridOrigin(index == kNearField ? nearCenterHeight : cameraPosition.y, layout.y),
+                                  gridOrigin(index == kNearField ? nearPlacement.height : cameraPosition.y, layout.y),
                                   gridOrigin(cameraPosition.z + ahead.z * lead, layout.z)};
         }
         Constants constants{};
@@ -572,8 +624,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         constants.origin = {target.data.origin.x, target.data.origin.y, target.data.origin.z, 0.0f};
         constants.spacing = {layout.spacing.x, layout.spacing.y, layout.spacing.z, 0.0f};
         constants.counts = {layout.x, layout.y, layout.z, layout.x * layout.y * layout.z};
-        constants.work = {UINT(state.sequence), field.firstProbe % constants.counts[3], layout.budget,
-                          compatible ? 1u : 0u};
+        constants.work = {UINT(state.sequence), field.firstProbe % constants.counts[3], budget, compatible ? 1u : 0u};
         constants.lighting = lighting.data;
         const MATH::Vec3 forward = viewTarget - cameraPosition;
         constants.focusOrigin = {cameraPosition.x, cameraPosition.y, cameraPosition.z,
@@ -592,7 +643,8 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
             auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
                 state.focus.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
             commands->ResourceBarrier(1, &barrier);
-            commands->CopyBufferRegion(readback.buffer.Get(), 0, state.focus.Get(), 0, kFocusRayCount * sizeof(float));
+            commands->CopyBufferRegion(readback.buffer.Get(), 0, state.focus.Get(), 0,
+                                       kFocusValueCount * sizeof(float));
             barrier = CD3DX12_RESOURCE_BARRIER::Transition(state.focus.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
                                                            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             commands->ResourceBarrier(1, &barrier);
@@ -602,9 +654,12 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         field.published = 1 - field.published;
         field.history = true;
         field.lastFrame = frameSerial;
-        field.firstProbe = (constants.work[1] + layout.budget) % constants.counts[3];
+        field.firstProbe = (constants.work[1] + budget) % constants.counts[3];
+        if (field.fullUpdates > 0)
+            --field.fullUpdates;
+        field.carry = false;
         state.stats.probes += constants.counts[3];
-        state.stats.updatedProbes += layout.budget;
+        state.stats.updatedProbes += budget;
         state.stats.probeBytes += previous.bytes + target.bytes;
     }
     state.lastFence = graphics.currentFrameRetireFenceValue;
@@ -635,7 +690,7 @@ void DynamicDiffuseGi::Reset(const GFX::Context& graphics) {
         readback.fence = 0;
     }
     state.focusFence = 0;
-    state.nearCenterHeight.reset();
+    state.nearPlacement.reset();
     state.device = nullptr;
     state.fence.Reset();
     state.lastFence = 0;

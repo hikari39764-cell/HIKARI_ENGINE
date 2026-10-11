@@ -88,6 +88,7 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
     // --agent-play-run <request.json>：後ろの無頭の编辑器として play.run を一回走らせる。
     pendingBackgroundRun_ = ReadRuntimeCommandLinePath(L"--agent-play-run");
     cameraPath_ = EDITOR::EditorCameraPath::FromCommandLine();
+    qualitySchedule_ = EDITOR::EditorQualitySchedule::FromCommandLine();
     EDITOR::RegisterBuiltInEditorTools(toolHost_);
     EDITOR::RegisterBuiltInSystemAuthoring(systemAuthoringRegistry_);
     agentHost_.SetPermissionResolver(
@@ -491,6 +492,8 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
         cameraPath_->Apply(scene.GetCamera(), TIME::GetFrameContext().frameIndex);
         scene.GetDebugCamera().ResetFromCamera(scene.GetCamera());
     }
+    if (qualitySchedule_)
+        qualitySchedule_->Apply(TIME::GetFrameContext().frameIndex);
     agentHost_.PumpActions();
     TickAgentPlayRun();
     TickAgentPanel();

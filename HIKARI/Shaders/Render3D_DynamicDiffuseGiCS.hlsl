@@ -10,7 +10,8 @@ SamplerState gMaterialWrap : register(s1);
 #include "Include/Lighting/HIKARI_LightingProviderSampling.hlsli"
 RWTexture3D<float4> gOutputSh[9] : register(u0);
 RWTexture2D<float4> gOutputAtlas : register(u9);
-// 近景の高さを決める相機の ray が当たった点の高さ（中央・右・左・上・下・真下、当たらなければ 1e30）。
+// 近景の置き場所を決める相機の ray（中央・右・左・上・下・真下）が当たった点の高さ（当たらなければ 1e30）と、
+// その後ろ 6 個に相機からの水平距離。
 RWStructuredBuffer<float> gFocusHeights : register(u10);
 
 cbuffer DynamicDiffuseGiCB : register(b0)
@@ -103,7 +104,7 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
     const uint probeIndex = groupId.x;
     if (probeIndex >= gCounts.w) return;
     // 近景の cascade を相機が見ている面の近くへ下ろすため、近景の更新の最初の group が相機から ray を撃つ
-    // （C++ の NearFieldCenterHeight が数フレーム遅れて読む）。
+    // （C++ の PlaceNearField が数フレーム遅れて読む）。
     if (probeIndex == 0u && lane < 6u && gFocusOrigin.w > 0.5f)
     {
         const float3 forward = normalize(gFocusDirection.xyz);
@@ -120,16 +121,20 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         const bool found = gRayLighting.scene.w == 0u && HikariTraceRuntimeScene(focus, gRayLighting.scene.x,
             gRayLighting.scene.y, gRayLighting.time, gMaterialWrap, HIKARI_RAY_REPORT_BACKFACES, focusHit);
         gFocusHeights[lane] = found ? focus.Origin.y + focus.Direction.y * focusHit.distance : 1.0e30f;
+        gFocusHeights[lane + 6u] = found ? length(focus.Direction.xz) * focusHit.distance : 0.0f;
     }
     const uint3 coordinate = uint3(probeIndex%gCounts.x,(probeIndex/gCounts.x)%gCounts.y,probeIndex/(gCounts.x*gCounts.y));
     const float3 nominalPosition = gOrigin.xyz+float3(coordinate)*gSpacing.xyz;
-    const int3 previousCoordinate = int3(round((nominalPosition-gPrevious.originSampling.xyz)/gSpacing.xyz));
-    const bool hasPrevious = gWork.w != 0u && all(previousCoordinate>=0) && all(previousCoordinate<int3(gCounts.xyz));
+    // 前の格子は自分の間隔と数で引く（画質の档位を切り替えた直後は前の格子と間隔も数も違い、近い probe を引き継ぐ）。
+    const uint3 previousCounts = uint3(gPrevious.countsProbeCount.xyz + 0.5f);
+    const int3 previousCoordinate =
+        int3(round((nominalPosition-gPrevious.originSampling.xyz)/gPrevious.spacingIntensity.xyz));
+    const bool hasPrevious = gWork.w != 0u && all(previousCoordinate>=0) && all(previousCoordinate<int3(previousCounts));
     float4 previousSh[9];
     [unroll] for (uint c=0u;c<9u;++c) previousSh[c] = hasPrevious ? gLightProbeShVolume0[c].Load(int4(previousCoordinate,0)) : 0.0f.xxxx;
     const uint2 tileSize = uint2(HIKARI_DYNAMIC_GI_TILE_WIDTH,HIKARI_DYNAMIC_GI_TILE_HEIGHT);
     const uint2 tile = uint2(coordinate.x+coordinate.y*gCounts.x,coordinate.z)*tileSize;
-    const uint2 previousTile = uint2(previousCoordinate.x+previousCoordinate.y*gCounts.x,previousCoordinate.z)*tileSize;
+    const uint2 previousTile = uint2(previousCoordinate.x+previousCoordinate.y*previousCounts.x,previousCoordinate.z)*tileSize;
     const uint previousAtlasIndex = uint(gPrevious.selectionParams.y+0.5f)-1u;
     // 物理格納順と更新順を分離し、再初期化時はカメラ付近から有効にする。
     const int3 centerDelta = int3(coordinate)-int3(gCounts.xyz/2u);

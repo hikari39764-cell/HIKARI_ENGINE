@@ -135,6 +135,16 @@ float HikariSampleDirectionalShadowCascade(
         HikariShadowReceiverFade(cascadeUv));
 }
 
+// 影の距離（最後の cascade の終わり）の手前 15% で影を薄くし、距離の所でちょうど無くす。最後の cascade は外接球で
+// 取るので、その外は視線の向きと太陽の向きで変わる斜めの線で影が切れ、遠くの影が途中で断ち切れて見えた。
+// 光線追跡の影も同じ距離で薄くして、二つの影の届く所を揃える。
+float HikariDirectionalShadowDistanceFade(float viewDepth)
+{
+    const uint cascadeCount = clamp((uint)round(gShadowCascadeParams.x), 1u, 4u);
+    const float shadowEnd = gShadowCascadeSplits[cascadeCount - 1u];
+    return saturate((viewDepth - shadowEnd * 0.85f) / max(shadowEnd * 0.15f, 0.0001f));
+}
+
 float SampleDirectionalVisibility(float3 worldPosWS, float3 geometricNormalWS, uint receiveShadow)
 {
     if (gShadowEnabled == 0 || receiveShadow == 0)
@@ -182,7 +192,7 @@ float SampleDirectionalVisibility(float3 worldPosWS, float3 geometricNormalWS, u
             visibility = lerp(visibility, nextVisibility, blend);
         }
     }
-    return visibility;
+    return lerp(visibility, 1.0f, HikariDirectionalShadowDistanceFade(viewDistance));
 }
 
 float SampleLocalLightVisibility(HikariLocalLightGpuData light, float3 worldPosWS,

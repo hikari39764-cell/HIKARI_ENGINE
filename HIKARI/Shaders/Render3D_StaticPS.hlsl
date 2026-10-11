@@ -446,7 +446,8 @@ float4 main(PSInput input) : SV_TARGET
         if ((gScreenSpaceTraceFlags & HIKARI_SCREEN_SPACE_RAY_SHADOW_VALID) != 0u && receiveShadow != 0u &&
             gShadowEnabled != 0u)
         {
-            shadowVisibility = gRayTracedShadow.Load(int3(int2(input.position.xy), 0));
+            shadowVisibility = lerp(gRayTracedShadow.Load(int3(int2(input.position.xy), 0)), 1.0f,
+                HikariDirectionalShadowDistanceFade(HikariCameraViewDepth(input.worldPosWS)));
         }
         else
         {
