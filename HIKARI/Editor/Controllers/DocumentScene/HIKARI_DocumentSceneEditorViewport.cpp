@@ -381,13 +381,27 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
     playSession.UpdateEmbeddedViewportInput(embeddedInputRegion,
                                             viewportImageHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left));
 
+    // 機位を選んでいる間は、その機位の画面を右下の小窓に出す（その機位から見ている時、演出の画面、試玩中は出さない）。
+    // 小窓の上のクリックは選択や手柄に使わない。
+    SceneObjectId insetCamera{};
+    if (const GameObject* selected = context_.selection.selectedObject;
+        context_.overlays.showCameraPreview && !playSession.IsRunning() && !cameraPath_ &&
+        !workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Cinematics) && selected != nullptr &&
+        selected->GetComponent<CameraComponent>() != nullptr &&
+        !(scene.IsEditorCameraPreviewActive() && scene.GetEditorCameraPreviewObjectId() == selected->GetDocumentId()))
+        insetCamera = selected->GetDocumentId();
+    const EDITOR::SceneViewportRect insetRect = cameraInset_.Layout(scene, insetCamera, sceneViewportRect);
+    if (insetRect.width > 0.0f && insetRect.Contains({ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y}))
+        viewportImageHovered = false;
+
     // 布景の手柄（主光・灯の範囲や角度）は選択より先にマウスを取る。
     if (lookDevActive && !playSession.IsRunning() &&
         UpdateLookDevHandles(scene, sceneViewportRect, viewportImageHovered, gameViewFocused, gizmoCapture)) {
         gizmoCapture = true;
     }
     const bool authoringInteractionEnabled = !playSession.IsRunning() && !lookDevPlacing;
-    const EDITOR::SceneViewportRect blockedViewportRegion{-1.0f, -1.0f, 0.0f, 0.0f};
+    const EDITOR::SceneViewportRect blockedViewportRegion =
+        insetRect.width > 0.0f ? insetRect : EDITOR::SceneViewportRect{-1.0f, -1.0f, 0.0f, 0.0f};
     const EDITOR::SceneViewportInteractionResult interaction =
         viewportSelectionService_.UpdateInput(scene.GetCamera(), sceneViewportRect, blockedViewportRegion,
                                               authoringInteractionEnabled, viewportImageHovered, gizmoCapture);
@@ -416,6 +430,7 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
             HandleTerrainBrush(scene, sceneViewportRect, viewportImageHovered);
         }
     }
+    cameraInset_.Draw(scene, *ImGui::GetWindowDrawList());
     viewportTransformHistory_.EndFrame(scene.GetSceneDocument());
 
     if (playSession.IsEmbeddedRunning()) {

@@ -30,6 +30,7 @@ void DrawViewportDebugOptions(ViewportOverlayState& overlays, ViewportPerformanc
     ImGui::Checkbox(TEXT::Localize("ui.viewport.debugLights").c_str(), &overlays.showLights);
     ImGui::Checkbox(TEXT::Localize("ui.viewport.debugLabels").c_str(), &overlays.showProbeLabels);
     ImGui::Checkbox(TEXT::Localize("ui.viewport.debugXRayGizmos").c_str(), &overlays.showXRayGizmos);
+    ImGui::Checkbox(TEXT::Localize("ui.viewport.cameraPreview").c_str(), &overlays.showCameraPreview);
     ImGui::TextDisabled("%s", TEXT::Localize("ui.viewport.debugLightingShapes").c_str());
     ImGui::Separator();
     ImGui::Checkbox(TEXT::Localize("ui.viewport.disableSsaoInEditor").c_str(),

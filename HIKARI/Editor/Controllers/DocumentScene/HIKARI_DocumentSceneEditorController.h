@@ -49,6 +49,7 @@
 #include "Editor/Assets/Workspace/HIKARI_ResourceWorkspacePanel.h"
 #include "Editor/Panels/HIKARI_ValidationLabPanel.h"
 #include "Editor/Tools/HIKARI_EditorToolHost.h"
+#include "Editor/Viewport/HIKARI_SceneCameraInset.h"
 #include "Editor/Viewport/HIKARI_SceneViewportSelectionService.h"
 #include "Editor/Views/HIKARI_EditorViewGuides.h"
 #include "Editor/Workspaces/LookDev/HIKARI_LookDevArrange.h"
@@ -123,6 +124,7 @@ private:
     EDITOR::SceneCreationPanel sceneCreationPanel_{};
     EDITOR::SceneInspectorPanel sceneInspectorPanel_{};
     EDITOR::SceneViewportSelectionService viewportSelectionService_{};
+    EDITOR::SceneCameraInset cameraInset_{};
 
     HierarchyPanel hierarchyPanel_{};
     TimePanel timePanel_{};

@@ -682,6 +682,7 @@
     {"ui.viewport.debugAxis", "坐标轴"}, {"ui.viewport.debugGrid", "网格"}, {"ui.viewport.debugGridFloor", "网格地面"},
     {"ui.viewport.debugLabels", "调试标签"}, {"ui.viewport.debugLightingShapes", "光照形状由组件辅助轴提供者控制。"},
     {"ui.viewport.debugLights", "灯光"}, {"ui.viewport.debugXRayGizmos", "X光辅助轴"},
+    {"ui.viewport.cameraPreview", "选中机位时在右下角显示机位画面"},
     {"ui.viewport.degFormat", "%.1f°"}, {"ui.viewport.diagnosticOutput", "诊断输出"},
     {"ui.viewport.disableSsaoInEditor", "在编辑器中禁用 SSAO"},
     {"ui.viewport.gameInputActive", "游戏输入已激活 | Esc 释放鼠标"},

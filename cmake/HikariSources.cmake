@@ -1236,6 +1236,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Panels/HIKARI_SceneCreationPanelUi.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Scene/Inspector/HIKARI_SceneInspectorPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Viewport/HIKARI_SceneViewportSelectionService.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Viewport/HIKARI_SceneCameraInset.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Windows/HIKARI_SceneAuthoringUtilityWindows.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_SelectionSyncService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_DocumentComponentAuthoringService.cpp"

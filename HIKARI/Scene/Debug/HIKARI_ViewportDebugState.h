@@ -15,6 +15,8 @@ struct ViewportOverlayState {
     bool showLights = true;
     bool showProbeLabels = true;
     bool showXRayGizmos = false;
+    // 機位を選んでいる間、その機位から見た画面を主视口の右下に小さく出す。
+    bool showCameraPreview = true;
     // 主ビューを成片と同じにする（グリッド・ギズモ・光源の印など編集の補助を一切描かない）。镜头演出の画面で使う。
     bool cleanFrame = false;
     // 明暗：画面を白黒にして、明暗の配置（値の構成）だけを見る。

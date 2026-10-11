@@ -812,6 +812,7 @@
     {"ui.viewport.debugGridFloor", "地面グリッド"}, {"ui.viewport.debugLabels", "デバッグラベル"},
     {"ui.viewport.debugLightingShapes", "ライティング形状はコンポーネントギズモプロバイダーによって制御されます。"},
     {"ui.viewport.debugLights", "ライト"}, {"ui.viewport.debugXRayGizmos", "X線ギズモ"},
+    {"ui.viewport.cameraPreview", "選んだカメラの画面を右下に表示"},
     {"ui.viewport.degFormat", "%.1f°"}, {"ui.viewport.diagnosticOutput", "診断出力"},
     {"ui.viewport.disableSsaoInEditor", "エディタでSSAOを無効化"},
     {"ui.viewport.gameInputActive", "ゲーム入力中 | Esc でマウスを解放"},

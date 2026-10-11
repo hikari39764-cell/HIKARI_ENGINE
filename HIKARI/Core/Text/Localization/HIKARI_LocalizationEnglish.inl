@@ -783,6 +783,7 @@
     {"ui.viewport.debugLabels", "Debug Labels"},
     {"ui.viewport.debugLightingShapes", "Lighting shapes are controlled by component gizmo providers."},
     {"ui.viewport.debugLights", "Lights"}, {"ui.viewport.debugXRayGizmos", "XRay Gizmos"},
+    {"ui.viewport.cameraPreview", "Camera preview for the selected camera"},
     {"ui.viewport.degFormat", "%.1f deg"}, {"ui.viewport.diagnosticOutput", "Diagnostic output"},
     {"ui.viewport.disableSsaoInEditor", "Disable SSAO In Editor"},
     {"ui.viewport.gameInputActive", "Game input active  |  Esc releases mouse"},

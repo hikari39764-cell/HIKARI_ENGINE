@@ -110,6 +110,8 @@ struct EditorViewInstance {
 
 inline constexpr RENDER3D::RenderViewId kGameplayCameraObserverRenderViewId{8};
 inline constexpr RENDER3D::RenderViewId kGameplayCameraPreviewRenderViewId{9};
+// 場面の主视口の右下に出す機位の小窓。
+inline constexpr RENDER3D::RenderViewId kSceneCameraInsetRenderViewId{10};
 inline constexpr RENDER3D::RenderViewId kEditorDirectorRenderViewId{2};
 inline constexpr RENDER3D::RenderViewId kModelCollisionPreviewRenderViewId{4};
 inline constexpr RENDER3D::RenderViewId kModelMaterialPreviewRenderViewId{5};
