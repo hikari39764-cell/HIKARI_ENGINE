@@ -93,6 +93,15 @@ void ProjectCodeJob::Poll() {
         status_["message"] = "Worker failed before reporting a result. Inspect worker.log.";
     process_.reset();
 }
+std::filesystem::path ProjectCodeJob::BuiltModule() const {
+    if (status_.value("state", std::string{}) != "Built")
+        return {};
+    const std::filesystem::path module =
+        job_ / "workspace" / "Library" / "Build" / "editor-release" / "bin" / "HIKARI_GameProject.dll";
+    std::error_code error;
+    return std::filesystem::is_regular_file(module, error) ? module : std::filesystem::path{};
+}
+
 void ProjectCodeJob::Cancel() {
     cancelled_ = true;
     if (process_) {

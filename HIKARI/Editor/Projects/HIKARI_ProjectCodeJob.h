@@ -19,6 +19,8 @@ public:
     void Cancel();
     bool Running() const;
     const nlohmann::json& Status() const { return status_; }
+    // 最後に成功した構築の模块（無ければ空）。後台試玩は重载せずにこれで新しい规则を試せる。
+    std::filesystem::path BuiltModule() const;
     static std::filesystem::path SdkRoot();
 
 private:

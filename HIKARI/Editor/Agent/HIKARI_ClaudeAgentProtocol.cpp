@@ -184,9 +184,12 @@ public:
         }
     }
 
-    void Respond(AgentSession& session, const AgentToolApproval& approval, bool allow) override {
+    void Respond(AgentSession& session, const AgentToolApproval& approval, bool allow,
+                 std::string_view denial) override {
         if (!allow)
-            return Deny(session, approval, "The user denied this in the HIKARI editor.");
+            return Deny(session, approval,
+                        denial.empty() ? std::string("The user denied this in the HIKARI editor.")
+                                       : std::string(denial));
         Answer(session, approval,
                {{"behavior", "allow"}, {"updatedInput", approval.token.value("input", nlohmann::json::object())}});
     }
@@ -279,7 +282,7 @@ private:
                     session, approval, "content", target,
                     "File edits are off in the Content access mode. Change content through hikari operations.");
             if (IsInsideAgentRoot(path, settings.projectRoot, settings.projectRoot))
-                return Respond(session, approval, true);
+                return Respond(session, approval, true, {});
             approval.warning = "outsideProject";
         } else if (!command.empty()) {
             if (MentionsEngineRoots(settings.protectedRoots, command))
@@ -289,7 +292,7 @@ private:
             approval.warning = "command";
         }
         if (session.AddApproval(approval))
-            Respond(session, approval, true);
+            Respond(session, approval, true, {});
     }
 
     uint64_t requestSerial_ = 0;

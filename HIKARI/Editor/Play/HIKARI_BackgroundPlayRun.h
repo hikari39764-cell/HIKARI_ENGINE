@@ -28,8 +28,9 @@ public:
         std::filesystem::path engine{};
         std::filesystem::path descriptor{};
         std::filesystem::path libraryRoot{};
-        // 编辑器が読み込んでいる项目模块（無ければ模块なしで動かす）。
+        // 遊ばせる项目模块（無ければ模块なしで動かす）と、その出所（loaded：编辑器と同じ、projectBuild：最新の構築）。
         std::filesystem::path projectModule{};
+        std::string moduleSource{};
         std::string sceneGuid{};
         const SceneDocument* scene = nullptr;
         // 確かめ済みの play.run の引数（ticks、track / path、captureAt、trackObjects）。
@@ -46,6 +47,7 @@ public:
     EditorOperationResult Start(const Request& request);
     // 走っている間は pending、終われば play.run.status と同じ結果（截图・位置の記録・警告と错误）。
     EditorOperationResult Status();
+    uint64_t RunId() const noexcept { return runId_; }
 
 private:
     // 結果を書く前に引擎が終わった・止めた時の、その回の日志の警告と错误。
@@ -59,6 +61,7 @@ private:
     std::chrono::seconds timeout_{};
     uint64_t nextId_ = 1u;
     uint64_t runId_ = 0u;
+    std::string moduleSource_{};
     std::optional<EditorOperationResult> finished_{};
 };
 

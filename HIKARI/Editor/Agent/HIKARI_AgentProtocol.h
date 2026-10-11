@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <json.hpp>
@@ -28,7 +29,9 @@ public:
     virtual void Interrupt(AgentSession& session) = 0;
     virtual bool Compact(AgentSession& session, std::string& outError) = 0;
     virtual void HandleLine(AgentSession& session, const nlohmann::json& line) = 0;
-    virtual void Respond(AgentSession& session, const AgentToolApproval& approval, bool allow) = 0;
+    // denial は断る時に智能体へ伝える理由（空なら「用户拒绝」）。Codex の協議には理由を返す欄が無いので使わない。
+    virtual void Respond(AgentSession& session, const AgentToolApproval& approval, bool allow,
+                         std::string_view denial) = 0;
 };
 
 std::unique_ptr<AgentProtocol> CreateClaudeProtocol();

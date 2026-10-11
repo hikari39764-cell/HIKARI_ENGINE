@@ -43,6 +43,16 @@ std::string BuildHierarchyPath(const SceneDocument& document, const SceneObjectD
     return path.empty() ? "/GameObject[" + std::to_string(object.id.value) + "]" : path;
 }
 
+// 程序化の方块に開けた门・窗・洞の数（procedural.opening の index は 0 から）。摘要と detail の両方に付ける。
+void AddOpeningCount(const SceneObjectData& object, nlohmann::json& out) {
+    for (const SceneComponentData& component : object.components) {
+        const auto cuts = component.properties.find("cuts");
+        if (component.type == "ProceduralMeshComponent" && cuts != component.properties.end() && cuts->is_array() &&
+            !cuts->empty())
+            out["openings"] = cuts->size();
+    }
+}
+
 } // namespace
 
 EditorOperationResult ComponentAuthoringQueryService::QueryTypes(DocumentSceneBase& scene, std::string_view keyword,
@@ -167,6 +177,7 @@ EditorOperationResult ComponentAuthoringQueryService::QueryObjects(const Documen
         }
         auto item = SerializeObject(document, object);
         item.update(ObserveSceneObject(scene, object));
+        AddOpeningCount(object, item);
         objects.push_back(std::move(item));
     }
     const auto count = objects.size();
@@ -229,13 +240,7 @@ nlohmann::json ComponentAuthoringQueryService::SummarizeObject(const DocumentSce
         result["parentObjectId"] = object.parent->value;
     if (!object.enabled)
         result["enabled"] = false;
-    // 程序化の方块に開けた门・窗・洞の数（procedural.opening の index は 0 から）。
-    for (const SceneComponentData& component : object.components) {
-        const auto cuts = component.properties.find("cuts");
-        if (component.type == "ProceduralMeshComponent" && cuts != component.properties.end() && cuts->is_array() &&
-            !cuts->empty())
-            result["openings"] = cuts->size();
-    }
+    AddOpeningCount(object, result);
     if (const GameObject* runtime = scene.GetWorld().FindObject(object.id)) {
         const MATH::Mat4 world = runtime->GetTransform().GetWorldMatrix();
         result["worldPosition"] = {world.m[3][0], world.m[3][1], world.m[3][2]};

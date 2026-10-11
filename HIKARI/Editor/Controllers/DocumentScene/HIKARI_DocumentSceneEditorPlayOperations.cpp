@@ -303,7 +303,8 @@ void DocumentSceneEditorController::RegisterPlayOperations() {
         "view captures at captureAt ticks, positions of trackObjects every 30 ticks), then captures, positions and "
         "log warnings and errors. Poll play.background.status. Prefer this to play.run for gameplay checks while the "
         "user is working. Only the current scene's unsaved changes are carried over; other assets (materials, VFX, "
-        "cameras) are read from disk, so save them first.",
+        "cameras) are read from disk, so save them first. After C++ changes, a successful project.build is used "
+        "directly (module: projectBuild), so no project.reload is needed to test rules.",
         "runtime",
         {{"ticks",
           EditorOperationParameterType::Int,
@@ -334,10 +335,17 @@ void DocumentSceneEditorController::RegisterPlayOperations() {
         EDITOR::EditorOperationPermission::ExecuteExternalProcess,
         {"background play", "test gameplay", "headless", "playtest", "后台试玩", "自测"});
     add({"play.background.status",
-         "Result of play.background: pending while the engine runs, then captures, exit code, log warnings and errors.",
+         "Result of play.background: pending while the engine runs, then captures, positions, log warnings and "
+         "errors.",
          "runtime",
-         {},
-         [this](const nlohmann::json&) { return backgroundPlay_.Status(); }},
+         {{"runId", EditorOperationParameterType::Int, false,
+           "Optional id from play.background; only the latest run is "
+           "kept"}},
+         [this](const nlohmann::json& parameters) {
+             if (parameters.contains("runId") && parameters["runId"].get<uint64_t>() != backgroundPlay_.RunId())
+                 return EDITOR::OperationFailure("UNKNOWN_RUN", "Only the latest background run is kept.");
+             return backgroundPlay_.Status();
+         }},
         EDITOR::EditorOperationKind::Query, read, {});
 
     add({"runtime.objects.query",
@@ -700,8 +708,20 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::StartBackgroundPlay
     request.engine = PLATFORM::GetExecutablePath();
     request.descriptor = EDITOR::AGENT::FindProjectDescriptor(assets.GetProjectRoot());
     request.libraryRoot = assets.GetLibraryRoot();
-    // 编辑器と同じ项目模块で遊ばせる。
+    // 编辑器と同じ项目模块で遊ばせる。project.build がそれより新しい模块を作っていればそれを使う
+    // （C++ の规则を直すたびに编辑器を重载しなくても試せる）。
     request.projectModule = ReadRuntimeCommandLinePath(L"--project-module").value_or(std::filesystem::path{});
+    request.moduleSource = "loaded";
+    if (const std::filesystem::path built = projectCodeJob_.BuiltModule(); !built.empty()) {
+        std::error_code error;
+        const bool newer =
+            request.projectModule.empty() || std::filesystem::last_write_time(built, error) >
+                                                 std::filesystem::last_write_time(request.projectModule, error);
+        if (!error && newer) {
+            request.projectModule = built;
+            request.moduleSource = "projectBuild";
+        }
+    }
     request.sceneGuid = scene.GetCurrentSceneAssetGuid().value;
     request.scene = &scene.GetSceneDocument();
     EDITOR::AGENT::AgentPlayRun checked{};

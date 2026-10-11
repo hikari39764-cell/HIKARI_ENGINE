@@ -66,9 +66,12 @@ EditorOperationResult BackgroundPlayRun::Start(const Request& request) {
                         folder / "engine.out", message))
         return OperationFailure("LAUNCH_FAILED", message);
     process_ = std::move(process);
+    moduleSource_ = request.moduleSource;
     started_ = std::chrono::steady_clock::now();
     timeout_ = std::chrono::seconds(AGENT::HeadlessRunTimeoutSeconds(run_.ticks, !request.projectQuality));
-    return OperationOk("Background Play started; the editor stays free.", Pending(runId_));
+    nlohmann::json data = Pending(runId_);
+    data["module"] = moduleSource_;
+    return OperationOk("Background Play started; the editor stays free.", std::move(data));
 }
 
 EditorOperationResult BackgroundPlayRun::Failure(std::string code, std::string message, uint32_t exitCode) const {
@@ -94,6 +97,7 @@ EditorOperationResult BackgroundPlayRun::Status() {
                                      written.value("message", std::string{}),
                                      written.value("data", nlohmann::json::object())};
         result.data["runId"] = runId_;
+        result.data["module"] = moduleSource_;
         finished_ = std::move(result);
         return *finished_;
     }

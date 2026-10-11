@@ -398,7 +398,12 @@ bool AgentSession::AddApproval(AgentToolApproval approval) {
         const bool contentCommand = !request_.allowProjectEdits && approval.warning == "command";
         if (contentCommand || approval.warning == "outsideProject" || approval.warning == "unknownTarget") {
             AddEvent({AgentEvent::Kind::Blocked, contentCommand ? "content" : "auto", target, true});
-            protocol_->Respond(*this, approval, false);
+            protocol_->Respond(*this, approval, false,
+                               contentCommand ? "Commands are off in the Content access mode while HIKARI runs without "
+                                                "approvals. Use hikari operations instead; play.background takes the "
+                                                "input track inline as track, so no file is needed."
+                                              : "HIKARI runs without approvals here and only allows changes inside "
+                                                "the project.");
             return false;
         }
         AddEvent({AgentEvent::Kind::AutoApproved, {}, target, false});
@@ -426,7 +431,7 @@ void AgentSession::ResolveApproval(uint64_t id, AgentToolDecision decision) {
     if (decision == AgentToolDecision::AllowTurn && !approval.grantKey.empty())
         turnGrants_.insert(approval.grantKey);
     if (Running())
-        protocol_->Respond(*this, approval, decision != AgentToolDecision::Deny);
+        protocol_->Respond(*this, approval, decision != AgentToolDecision::Deny, {});
 }
 
 void AgentSession::SetBusy(bool busy) {

@@ -122,7 +122,7 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
   位置、旋转（度）、缩放和颜色在所有操作里都写成 `[x, y, z]`。
 - 游戏镜头区域：`camera_zone.edit`。
 - 对话：`dialogue.new_asset` → `dialogue.edit`（传整份定义，`dialogue.query` 返回当前定义）→ `dialogue.save`。
-- 界面文字（HUD 等）：`ui.create`。引擎不自带字体，项目里没有字体资产时文字不显示（结果里有 `warning`），
+- 界面文字（HUD 等）：`ui.create`。`scene.capture_views` 只画 3D 场景，界面要在 `play.background` 的截图里看。引擎不自带字体，项目里没有字体资产时文字不显示（结果里有 `warning`），
   先用 `asset.import` 导入 .ttf/.otf，或请用户提供字体。
 - 撤回自己的修改：`scene.undo`。修改的结果里 `undo.label` 是这次积下的撤销步；撤销栈和用户共用，`hikari_state` 的
   `scene.undoLabel` 不是你的修改时不要撤。
@@ -142,8 +142,9 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
 1. 直接修改 `Source/` 下的代码。
 2. `project.build`：编辑器在后台构建当前源码的副本（不影响正在用的模块），用 `project.build.status` 看编译和
    `Tests/HikariVerification.json` 行为检查的结果。
-3. 通过后 `project.reload`：重新构建并重启编辑器，加载新的模块。每次都要用户批准，要求文档已保存、不在 Play；
-   编辑器重启后 hikari 会自动重连。
+3. 测试规则不用重载：`project.build` 通过后，`play.background` 直接用这次构建的模块（结果里 `module` 为 `projectBuild`）。
+4. 只有要在编辑器里给物体加新写的组件、或让编辑器加载新代码时才 `project.reload`：重新构建并重启编辑器，
+   要求文档已保存、不在 Play；编辑器重启后 hikari 会自动重连（访问模式和自动模式保持不变）。
 
 ## 参考资料（已安装 SDK）
 

@@ -217,7 +217,7 @@ public:
         }
     }
 
-    void Respond(AgentSession& session, const AgentToolApproval& approval, bool allow) override {
+    void Respond(AgentSession& session, const AgentToolApproval& approval, bool allow, std::string_view) override {
         const std::string method = approval.token.value("method", std::string{});
         nlohmann::json result;
         if (method == "item/permissions/requestApproval")
@@ -351,7 +351,7 @@ private:
     void Block(AgentSession& session, const AgentToolApproval& approval, const char* reason,
                const std::string& target) {
         session.AddEvent({AgentEvent::Kind::Blocked, reason, ClipAgentText(approval.tool + ": " + target), true});
-        Respond(session, approval, false);
+        Respond(session, approval, false, {});
     }
 
     void HandleServerRequest(AgentSession& session, const nlohmann::json& line) {
@@ -400,7 +400,7 @@ private:
                 return IsInsideAgentRoot(TEXT::PathFromUtf8(path), request.projectRoot, request.projectRoot);
             };
             if (!paths.empty() && grantRoot.empty() && std::all_of(paths.begin(), paths.end(), insideProject))
-                return Respond(session, approval, true);
+                return Respond(session, approval, true, {});
             approval.warning = "outsideProject";
             // 変更先が分からない時は人に見せる目標が無い。本轮允许では通さず、毎回聞く。
             if (paths.empty() && grantRoot.empty()) {
@@ -426,7 +426,7 @@ private:
         }
         approval.detail = ClipAgentText(approval.detail);
         if (session.AddApproval(approval))
-            Respond(session, approval, true);
+            Respond(session, approval, true, {});
     }
 
     int64_t nextId_ = 1;

@@ -23,6 +23,7 @@
 #include "Editor/Agent/HIKARI_AgentPanelState.h"
 #include "Editor/Agent/HIKARI_AgentPlayRun.h"
 #include "Editor/Play/HIKARI_BackgroundPlayRun.h"
+#include "Editor/Diagnostics/HIKARI_EditorCameraPath.h"
 #include "Editor/HIKARI_DebugCameraPanel.h"
 #include "Editor/HIKARI_DebugMenuBar.h"
 #include "Editor/Export/HIKARI_GameExportJob.h"
@@ -382,6 +383,8 @@ private:
     std::optional<std::filesystem::path> pendingBackgroundRun_{};
     // その結果を書く result.json（走っている間だけ）。
     std::optional<std::filesystem::path> backgroundResult_{};
+    // 診断用の --editor-camera-path。编辑中は毎フレーム编辑相机をこの経路に置く。
+    std::optional<EDITOR::EditorCameraPath> cameraPath_{};
     // 助手页签の「外部智能体」（HIKARI_DocumentSceneEditorAgentPanel.cpp）。
     void DrawAgentPanel(DocumentSceneBase& scene);
     void StartAgentTurn(DocumentSceneBase& scene);
