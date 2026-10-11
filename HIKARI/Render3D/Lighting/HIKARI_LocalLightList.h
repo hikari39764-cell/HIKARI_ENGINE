@@ -77,6 +77,8 @@ struct LocalLightListGpuBindings {
 struct LocalLightShadowAssignment {
     uint32_t sourceIndex = 0;
     uint32_t firstFace = 0;
+    // 影の濃さ（0〜1）。名額の境目の灯は薄くして、入れ替わりで影が跳ばないようにする。
+    float fade = 1.0f;
 };
 
 // IsLocalLightUploadable を満たす入力の共通 wire projection。選択/cluster は所有しない。
@@ -85,10 +87,11 @@ LocalLightGpuData BuildLocalLightGpuData(const SceneLightProvider& light) noexce
 uint64_t LocalLightListInputSignature(const SceneLightingSet& lighting, const Camera3D& camera, uint32_t width,
                                       uint32_t height, std::span<const LocalLightShadowAssignment> shadows) noexcept;
 
-// クラスタの index buffer を作らず、同じ可視性/上限制限で光源を選択する。
+// クラスタの index buffer を作らず、同じ可視性/上限制限で光源を選択する。screenCoverage には各灯の影響球が
+// 掛かる画面の割合（タイル単位、0〜1）を sourceIndices と同じ順で書く。
 LocalLightListView SelectVisibleLocalLights(const SceneLightingSet& lighting, const Camera3D& camera,
                                             uint32_t screenWidth, uint32_t screenHeight,
-                                            std::span<uint32_t> sourceIndices);
+                                            std::span<uint32_t> sourceIndices, std::span<float> screenCoverage);
 
 LocalLightListView BuildLocalLightList(const SceneLightingSet& lighting, const Camera3D& camera, uint32_t screenWidth,
                                        uint32_t screenHeight, const LocalLightListBuildOutput& output,

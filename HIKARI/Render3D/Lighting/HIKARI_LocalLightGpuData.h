@@ -40,7 +40,7 @@ struct alignas(16) LocalLightGpuData {
     MATH::Vec4 directionInnerCos{};
     float outerConeCos = -1.0f;
     float angularFalloff = 1.0f;
-    // 下位 8 bit: type、上位 16 bit: shadow 先頭 face + 1（0 は無効）。
+    // 下位 8 bit: type、8〜15 bit: 影の濃さ（0〜255）、上位 16 bit: shadow 先頭 face + 1（0 は無効）。
     uint32_t kind = 0u;
     // 点・スポットは発光球、管は管の半径。
     float sourceRadius = 0.0f;

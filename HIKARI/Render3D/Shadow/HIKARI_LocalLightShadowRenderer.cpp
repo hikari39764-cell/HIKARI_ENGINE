@@ -57,9 +57,21 @@ struct Candidate {
 struct Job {
     CachedLight cache;
     LocalLightShadowFrameSet views;
+    const Candidate* candidate = nullptr;
+    float fade = 1.0f;
     bool render = true;
     bool complete = true;
 };
+// 名額の境目の灯の影の濃さ。同じ優先度で外れた灯のうち、この灯の場所に入れるもの（面の数が同じか少ない）の
+// 重要度を基準に、それと同じなら 0、2 倍以上で 1。重要度は相机の動きに連れて連続に変わり、入れ替わるのは
+// 入る灯と出る灯の重要度が等しい瞬間なので、その時どちらの影も 0 で、名額が動いても影は跳ばない。
+float ShadowFade(const Candidate& candidate, const std::vector<const Candidate*>& rejected) {
+    double threshold = 0.0;
+    for (const Candidate* other : rejected)
+        if (other->priority == candidate.priority && other->faces <= candidate.faces)
+            threshold = (std::max)(threshold, other->importance);
+    return threshold > 0.0 ? float(std::clamp(candidate.importance / threshold - 1.0, 0.0, 1.0)) : 1.0f;
+}
 bool SameLight(const CachedLight& cached, uint32_t sourceIndex, const SceneLightProvider& light) {
     return cached.valid && cached.sourceIndex == sourceIndex && cached.id == light.id;
 }
@@ -130,8 +142,10 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
     state.stats.budgetFaces = budget.maximumFaces;
 
     std::array<uint32_t, kMaximumLocalLightCount> sourceIndices{};
-    const auto selection = SelectVisibleLocalLights(lighting, camera, uint32_t((std::max)(1, graphics.backBufferWidth)),
-                                                    uint32_t((std::max)(1, graphics.backBufferHeight)), sourceIndices);
+    std::array<float, kMaximumLocalLightCount> screenCoverage{};
+    const auto selection =
+        SelectVisibleLocalLights(lighting, camera, uint32_t((std::max)(1, graphics.backBufferWidth)),
+                                 uint32_t((std::max)(1, graphics.backBufferHeight)), sourceIndices, screenCoverage);
     std::vector<Candidate> candidates;
     candidates.reserve(selection.lightCount);
     for (uint32_t index = 0; index < selection.lightCount; ++index) {
@@ -142,11 +156,10 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
         const auto delta = light.position - camera.GetPosition();
         const double distanceSquared =
             double(delta.x) * delta.x + double(delta.y) * delta.y + double(delta.z) * delta.z;
-        const double coverage = (std::min)(1.0, double(light.range) * light.range / (distanceSquared + 1.0));
-        double importance = coverage * light.intensity;
-        if (std::any_of(state.cache.begin(), state.cache.end(),
-                        [&](const auto& old) { return SameLight(old, sourceIndex, light); }))
-            importance *= 1.15;
+        // 画面に掛かる割合 × 近さ × 強さ。どれも相机に連れて連続に変わり、近い灯どうしでも同点にならない
+        // （近さを 1 で頭打ちにすると影響範囲内の灯が皆同点になり、作った順で名額が決まって跳ぶ）。
+        const double importance = double(screenCoverage[index]) * double(light.range) * light.range /
+                                  (distanceSquared + 1.0) * light.intensity;
         candidates.push_back({sourceIndex, light.type == SceneLightType::Spot ? 1u : 6u, light.priority, importance});
     }
     state.stats.requestedLights = uint32_t(candidates.size());
@@ -161,11 +174,11 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
     });
     std::vector<Job> jobs;
     jobs.reserve(kMaximumLocalShadowFaceCount);
+    std::vector<const Candidate*> rejected;
     uint32_t nextFace = 0;
     for (const auto& candidate : candidates) {
         if (candidate.faces > budget.maximumFaces - nextFace) {
-            ++state.stats.budgetRejectedLights;
-            state.stats.budgetRejectedLightIds.push_back(lighting.lights[candidate.sourceIndex].id);
+            rejected.push_back(&candidate);
             continue;
         }
         const auto& light = lighting.lights[candidate.sourceIndex];
@@ -177,8 +190,61 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
         Job job;
         job.cache = {light.id, candidate.sourceIndex, nextFace, candidate.faces, 0, false};
         job.views = frames;
+        job.candidate = &candidate;
         jobs.push_back(std::move(job));
         nextFace += candidate.faces;
+    }
+    // 影が 0 になる灯は描かない（名額の判定には数えたまま）。
+    for (auto& job : jobs)
+        job.fade = ShadowFade(*job.candidate, rejected);
+    std::erase_if(jobs, [&](const Job& job) {
+        if (job.fade * 255.0f >= 0.5f)
+            return false;
+        rejected.push_back(job.candidate);
+        return true;
+    });
+    for (const Candidate* candidate : rejected) {
+        ++state.stats.budgetRejectedLights;
+        state.stats.budgetRejectedLightIds.push_back(lighting.lights[candidate->sourceIndex].id);
+    }
+    // 前の帧にも影を持っていた灯は同じ面を使い続ける（順位が入れ替わっただけで描き直さない）。残りは空いた面へ
+    // 先頭から詰め、続きの面が空いていなければ全部を順に並べ直す（面の合計は上で上限内に収めてある）。
+    std::array<bool, kMaximumLocalShadowFaceCount> usedFaces{};
+    const auto isFree = [&](uint32_t first, uint32_t count) {
+        return first + count <= budget.maximumFaces &&
+               std::none_of(usedFaces.begin() + first, usedFaces.begin() + first + count,
+                            [](bool used) { return used; });
+    };
+    for (auto& job : jobs) {
+        const auto old = std::find_if(state.cache.begin(), state.cache.end(), [&](const auto& entry) {
+            return SameLight(entry, job.cache.sourceIndex, lighting.lights[job.cache.sourceIndex]) &&
+                   entry.faceCount == job.cache.faceCount;
+        });
+        job.cache.firstFace =
+            old != state.cache.end() && isFree(old->firstFace, old->faceCount) ? old->firstFace : UINT32_MAX;
+        if (job.cache.firstFace != UINT32_MAX)
+            std::fill_n(usedFaces.begin() + job.cache.firstFace, job.cache.faceCount, true);
+    }
+    bool packed = true;
+    for (auto& job : jobs) {
+        if (job.cache.firstFace != UINT32_MAX)
+            continue;
+        uint32_t first = 0;
+        while (first < budget.maximumFaces && !isFree(first, job.cache.faceCount))
+            ++first;
+        if (first >= budget.maximumFaces) {
+            packed = false;
+            break;
+        }
+        job.cache.firstFace = first;
+        std::fill_n(usedFaces.begin() + first, job.cache.faceCount, true);
+    }
+    if (!packed) {
+        uint32_t face = 0;
+        for (auto& job : jobs) {
+            job.cache.firstFace = face;
+            face += job.cache.faceCount;
+        }
     }
     state.stats.selectedLights = uint32_t(jobs.size());
     if (jobs.empty())
@@ -315,7 +381,7 @@ void RenderLocalLightShadows(const GFX::Context& graphics, const SceneLightingSe
         state.cache.push_back(job.cache);
         state.stats.usedFaces += job.cache.faceCount;
         state.stats.shadowedLightIds.push_back(lighting.lights[job.cache.sourceIndex].id);
-        state.frame.assignments[state.frame.assignmentCount++] = {job.cache.sourceIndex, job.cache.firstFace};
+        state.frame.assignments[state.frame.assignmentCount++] = {job.cache.sourceIndex, job.cache.firstFace, job.fade};
         state.frame.data.faceCount = (std::max)(state.frame.data.faceCount, job.cache.firstFace + job.cache.faceCount);
         for (uint32_t face = 0; face < job.views.faceCount; ++face)
             state.frame.data.viewProj[job.cache.firstFace + face] = job.views.faces[face].viewProj;

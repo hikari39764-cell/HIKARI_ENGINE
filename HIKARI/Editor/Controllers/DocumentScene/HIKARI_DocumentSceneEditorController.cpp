@@ -519,7 +519,8 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
     }
     scene.SetComponentGizmoState(context_.gizmos);
     ViewportOverlayState overlays = context_.overlays;
-    overlays.cleanFrame = workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Cinematics);
+    // 診断の相机経路で動かしている時は渲染の跳変だけを見たいので、灯や相机の辅助表示を描かない。
+    overlays.cleanFrame = workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Cinematics) || cameraPath_.has_value();
     scene.SetViewportOverlayState(overlays);
     scene.SetViewportPerformanceState(context_.viewportPerformance);
     scene.SetViewportDebugViewState(context_.viewportDebug);

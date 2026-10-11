@@ -254,7 +254,7 @@ void VisitVisibleLocalLights(const SceneLightingSet& lighting, const Camera3D& c
 
 LocalLightListView SelectVisibleLocalLights(const SceneLightingSet& lighting, const Camera3D& camera,
                                             uint32_t screenWidth, uint32_t screenHeight,
-                                            std::span<uint32_t> sourceIndices) {
+                                            std::span<uint32_t> sourceIndices, std::span<float> screenCoverage) {
     LocalLightListView view{};
     view.sourceCount = static_cast<uint32_t>(lighting.lights.size());
     if (sourceIndices.empty() ||
@@ -262,10 +262,16 @@ LocalLightListView SelectVisibleLocalLights(const SceneLightingSet& lighting, co
         view.rejectedCount = view.sourceCount;
         return view;
     }
-    VisitVisibleLocalLights(lighting, camera, screenWidth, screenHeight,
-                            uint32_t((std::min)(sourceIndices.size(), size_t(kMaximumLocalLightCount))), view,
-                            [&](const SceneLightProvider&, uint32_t sourceIndex, uint32_t lightIndex,
-                                const ClusterBounds&) { sourceIndices[lightIndex] = sourceIndex; });
+    VisitVisibleLocalLights(
+        lighting, camera, screenWidth, screenHeight,
+        uint32_t((std::min)(sourceIndices.size(), size_t(kMaximumLocalLightCount))), view,
+        [&](const SceneLightProvider&, uint32_t sourceIndex, uint32_t lightIndex, const ClusterBounds& bounds) {
+            sourceIndices[lightIndex] = sourceIndex;
+            if (lightIndex < screenCoverage.size())
+                screenCoverage[lightIndex] =
+                    float((bounds.maxX - bounds.minX + 1u) * (bounds.maxY - bounds.minY + 1u)) /
+                    float(view.clusterCountX * view.clusterCountY);
+        });
     return view;
 }
 
@@ -298,6 +304,7 @@ uint64_t LocalLightListInputSignature(const SceneLightingSet& lighting, const Ca
     for (const auto& shadow : shadows) {
         append(shadow.sourceIndex);
         append(shadow.firstFace);
+        append(shadow.fade);
     }
     return hash;
 }
@@ -343,7 +350,8 @@ LocalLightListView BuildLocalLightList(const SceneLightingSet& lighting, const C
             for (const auto& shadow : shadows) {
                 if (shadow.sourceIndex == sourceIndex && shadow.firstFace < kMaximumLocalShadowFaceCount &&
                     light.castsShadows) {
-                    output.records[lightIndex].kind |= (shadow.firstFace + 1u) << 16u;
+                    const uint32_t fade = uint32_t(std::clamp(shadow.fade, 0.0f, 1.0f) * 255.0f + 0.5f);
+                    output.records[lightIndex].kind |= fade << 8u | (shadow.firstFace + 1u) << 16u;
                     break;
                 }
             }

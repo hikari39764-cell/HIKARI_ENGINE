@@ -18,7 +18,7 @@ struct HikariLocalLightGpuData
     float4 directionInnerCos;
     float outerConeCos;
     float angularFalloff;
-    uint kind; // low byte: type, upper16: shadow first face + 1
+    uint kind; // low byte: type, bits 8-15: shadow strength (0-255), upper16: shadow first face + 1
     // 点・スポットは発光球、管は管の半径。
     float sourceRadius;
     // 長方形: 幅の向き（xyz）と半高（w）。点・スポット: 配光とクッキーの水平の基準（ローカル +X）と、
@@ -316,6 +316,8 @@ float HikariSampleLocalLightShadow(Texture2D atlas, SamplerComparisonState compa
     if (encodedFace == 0u || shadow.faceCount == 0u || shadow.tilesPerRow == 0u || shadow.tileResolution == 0u)
         return 1.0f;
     const uint type = light.kind & 255u;
+    // 影の名額の境目の灯は薄くしてある（入れ替わりで影が跳ばないように）。
+    const float strength = float((light.kind >> 8u) & 255u) / 255.0f;
     // 管と長方形は中心から点光源と同じ六面で影を取る。
     const uint faceCount = type == HIKARI_LOCAL_LIGHT_TYPE_SPOT ? 1u : 6u;
     const uint firstFace = encodedFace - 1u;
@@ -348,8 +350,8 @@ float HikariSampleLocalLightShadow(Texture2D atlas, SamplerComparisonState compa
     const float2 uv = (tile + faceUv) / float(grid);
     const float2 minimumUv = tile / float(grid) + 0.5f / atlasSize;
     const float2 maximumUv = (tile + 1.0f) / float(grid) - 0.5f / atlasSize;
-    if (!filter) return atlas.SampleCmpLevelZero(comparisonSampler,
-        clamp(uv, minimumUv, maximumUv), ndc.z);
+    if (!filter) return lerp(1.0f, atlas.SampleCmpLevelZero(comparisonSampler,
+        clamp(uv, minimumUv, maximumUv), ndc.z), strength);
 
     float2 depthGradient = 0.0f.xx;
     const bool hasDepthGradient =
@@ -367,7 +369,7 @@ float HikariSampleLocalLightShadow(Texture2D atlas, SamplerComparisonState compa
             : ndc.z;
         visibility += atlas.SampleCmpLevelZero(comparisonSampler, sampleUv, referenceDepth);
     }
-    return visibility / 9.0f;
+    return lerp(1.0f, visibility / 9.0f, strength);
 }
 
 #endif

@@ -406,7 +406,8 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
                                                            ImGui::GetWindowDrawList());
         }
         viewportSelectionService_.DrawMarquee(ImGui::GetWindowDrawList());
-        DrawLightOverlayIcons(scene, context_.overlays, imageOrigin, imageSize);
+        if (!cameraPath_) // 診断の相机経路で動かしている間は辅助表示を描かない（Draw の cleanFrame と同じ）。
+            DrawLightOverlayIcons(scene, context_.overlays, imageOrigin, imageSize);
         if (lookDevActive) {
             UpdateLookDevViewport(scene, sceneViewportRect, viewportImageHovered, gameViewFocused, gizmoCapture);
         }

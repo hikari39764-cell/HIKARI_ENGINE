@@ -15,7 +15,7 @@ namespace HIKARI::EDITOR {
 // 起動参数 --editor-camera-path "帧:x,y,z,pitch,yaw;帧:x,y,z,pitch,yaw;..."（世界の位置 [m]、向き [度]、
 // 場景の rotationEulerDeg と同じ pitch/yaw：yaw 0 が +Z、pitch 正が下向き）。鍵の間は smoothstep で補間し、
 // 最初の鍵より前と最後の鍵より後はその姿勢で止まる。--editor-camera-freeze F は帧 F の姿勢で止める
-// （同じ帧号の「静止して収束した画」と比べるため）。Play 中は使わない。
+// （同じ帧号の「静止して収束した画」と比べるため）。Play 中は使わない。経路がある間は灯・相机などの辅助表示を描かない。
 class EditorCameraPath {
 public:
     // 起動参数から読む。無ければ空。
