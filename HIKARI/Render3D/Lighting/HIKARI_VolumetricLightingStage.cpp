@@ -123,6 +123,9 @@ constexpr uint32_t kAmbientCellFroxels = 4u;
 // 高さ霧の揺らぎのノイズの周期（ノイズ単位）と細かい方の周波数の倍率（Render3D_VolumetricLighting.hlsl と同じ）。
 constexpr uint32_t kFogNoisePeriod = 256u;
 constexpr double kFogNoiseDetailFrequency = 2.37;
+// 揺らぎが流れる速さの地上の風に対する割合。風と同じ速さでは晴天（3 m/s）でも 5 m の濃淡が 1 秒足らずで光柱を
+// 横切り、屋根の穴から差す強い光柱で部屋全体が明滅した。霧は物陰や屋内で風が弱まるので、ゆっくり漂う程度にする。
+constexpr double kFogNoiseWindScale = 0.2;
 
 struct StageState {
     GFX::Context context{};
@@ -516,15 +519,15 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     const MATH::Vec3& albedo = environment.fog.albedo;
     constants.fogColorDensity = {albedo.x, albedo.y, albedo.z, globalFog ? environment.fog.density : 0.0f};
     std::copy(localFogVolumes.begin(), localFogVolumes.end(), constants.localFogVolumes);
-    // 揺らぎは地上の風の積分した移動で流す。細かい方は 1.6 倍の速さで流れ、二つの重なりが形を変える。移動量は倍精度で
-    // ノイズの周期へ折り、float の精度を保つ。
+    // 揺らぎは地上の風の積分した移動（kFogNoiseWindScale 倍）で流す。細かい方は 1.6 倍の速さで流れ、二つの重なりが
+    // 形を変える。移動量は倍精度でノイズの周期へ折り、float の精度を保つ。
     if (environment.fog.noise > 0.0f) {
         const double scale = std::clamp(static_cast<double>(environment.fog.noiseScale), 1.0, 500.0);
         const double windX = std::isfinite(environment.frame.clouds.windDisplacementX)
-                                 ? environment.frame.clouds.windDisplacementX
+                                 ? environment.frame.clouds.windDisplacementX * kFogNoiseWindScale
                                  : 0.0;
         const double windZ = std::isfinite(environment.frame.clouds.windDisplacementZ)
-                                 ? environment.frame.clouds.windDisplacementZ
+                                 ? environment.frame.clouds.windDisplacementZ * kFogNoiseWindScale
                                  : 0.0;
         const auto wrap = [](double value) {
             const double period = static_cast<double>(kFogNoisePeriod);

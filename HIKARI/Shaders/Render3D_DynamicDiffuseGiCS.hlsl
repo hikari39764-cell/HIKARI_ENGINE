@@ -167,8 +167,12 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         sBackFace[rayIndex] = found ? hit.backFace : 0u;
         sSky[rayIndex] = found ? 0.0f : 1.0f;
         const float2 randomUv = frac(float2(rayIndex+1u,gWork.x+probeIndex+1u)*float2(0.754877666f,0.569840296f)+float2(gWork.x,rayIndex)*0.618033989f);
-        sRadiance[rayIndex] = rayIndex < kClassifyRays || (found && hit.backFace != 0u) ? 0.0f.xxx
-            : found ? HitRadiance(hit,-direction,randomUv,hasPrevious ? previousCoordinate : int3(-1,-1,-1))
+        // 分類 ray も向きと光の標本を固定して明るさを測る（球面調和には入れない）。場面が変わらなければ毎回同じ値になり、
+        // 光が本当に変わったかどうかの手掛かりになる（下の履歴の重み）。
+        const float2 fixedUv = frac(float2(rayIndex+1u,probeIndex+1u)*float2(0.754877666f,0.569840296f));
+        sRadiance[rayIndex] = found && hit.backFace != 0u ? 0.0f.xxx
+            : found ? HitRadiance(hit,-direction,rayIndex < kClassifyRays ? fixedUv : randomUv,
+                hasPrevious ? previousCoordinate : int3(-1,-1,-1))
             : HikariRayEnvironmentRadiance(gRayLighting,direction,gLinearClamp);
     }
     // 隣の probe との間を影の ray で調べる。描画側は補間の基準の角から塞がれた角を混ぜない（probe 間隔より薄い壁の
@@ -201,38 +205,30 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
     {
         float3 coefficient=0.0f.xxx;
         for(uint i=kClassifyRays;i<kRayCount;++i) coefficient+=sRadiance[i]*HikariSh9Basis(sDirection[i],lane)*(12.56637061436f/float(kRadianceRays));
-        float3 average=0.0f.xxx;
-        for(uint j=kClassifyRays;j<kRayCount;++j) average+=sRadiance[j]/float(kRadianceRays);
-        const float3 oldAverage=previousSh[0].rgb*0.2820947918f;
-        const float change=length(average-oldAverage)/max(0.01f,max(length(average),length(oldAverage)));
-        // 開口から差す小さく明るい面を拾うかどうかで一回の平均は大きく揺れる。揺れで履歴を捨てるとその probe だけ
-        // 一回分の雑音に跳び、壁に probe 単位の明暗の斑が出る。履歴は保ち、点灯や消灯のような変化（平均の相対差が
-        // 7 割以上）でだけ減らす。ただしそれは前回までの傾き（下の trend）も同じ向きの時だけ。一回だけの外れ値を
-        // 点灯として受け入れると、相機が止まっていても probe 一つ分の明るい斑が突然現れて数秒かけて消えた。
-        // 更新回数（5 番の係数の alpha、描画側は読まない）で、新しい probe は最初の数回を単純平均にして早く収める。
-        // 固定の 0.95 では、読み込み直後や cascade が動いて入った probe の一次の照り返しが収まるまで近景で約 60 回
-        // （約 480 フレーム）かかり、その間ずっと光が明るくなり続けた。回数が増えると重みは 0.95 へ戻る。
+        // 履歴の重みは今回の放射標本の明るさで決めない（明るい標本だけ重く混ぜると明るく、抑えると暗く偏る）。代わりに
+        // 向きと光の標本を固定した分類 ray の明るさ（6 番の alpha、描画側は読まない）の変わり方で決める。固定した ray も
+        // 当たった面の照り返し（隣の probe）を読むので、照り返しが主な部屋では隣の揺れの分だけ毎回動く。そこで変化の
+        // 移動平均と二乗の移動平均（7・8 番の alpha）を持ち、前回までの揺れと比べて、一回で大きく変わった時（点灯・消灯）
+        // か同じ向きに変わり続ける時（多重反射の積み上がり）だけ光が変わったとみなし、度合いに応じて 0.97 から 0.6 まで
+        // 軽くして早く追いつく。止まった場面では 0.97 で放射標本の揺れを均す（屋根の穴の日だまりを拾う本数が毎回変わり、
+        // 0.95 では壁の明るさが 8 フレームごとに段になって変わり続けた）。固定の 0.95 では白い壁の通路で、相機が
+        // 止まってからも約 15 秒明るくなり続けた。更新回数（5 番の alpha）で、新しい probe は最初の数回を単純平均にする。
         const bool continuing=previousSh[0].a>0.0f && sValidity>0.0f;
         const float updates=continuing ? previousSh[5].a : 0.0f;
-        // 多重反射が積み上がる間は、毎回の平均が履歴より同じ向きにずれ続ける。符号付きの相対差の移動平均と二乗の
-        // 移動平均（6・7 番の係数の alpha、描画側は読まない）から、ずれの平均がその揺れより確かに大きい（約 3 倍）間だけ
-        // 履歴を 0.6 まで軽くして早く追いつく。光の標本の雑音だけなら 0.95 のまま。固定の 0.95 では白い壁の通路で、
-        // 相機が止まってからも約 15 秒明るくなり続けた。
-        const float signedChange=(length(average)-length(oldAverage))/max(0.01f,max(length(average),length(oldAverage)));
-        const float trend=continuing ? lerp(previousSh[6].a,signedChange,0.25f) : 0.0f;
-        const float trendSquare=continuing ? lerp(previousSh[7].a,signedChange*signedChange,0.25f) : 0.0f;
-        // 重み 0.25 の移動平均の標準誤差は揺れの約 0.38 倍。
-        const float trendError=0.378f*sqrt(max(trendSquare-trend*trend,0.0f));
-        const float drift=smoothstep(2.5f,4.0f,abs(trend)/max(trendError,0.01f))*smoothstep(0.03f,0.08f,abs(trend));
-        const float settle=lerp(0.95f,0.6f,drift);
-        const float previousTrend=continuing ? previousSh[6].a : 0.0f;
-        const bool sustained=abs(previousTrend)>0.15f && previousTrend*signedChange>0.0f;
-        const float history=continuing ? min(min(lerp(0.95f,0.5f,sustained ? smoothstep(0.7f,1.0f,change) : 0.0f),settle),
-            updates/(updates+1.0f)) : 0.0f;
-        // 続いていない明るい外れ値は履歴の 4 倍までに抑えて混ぜる（続けば上の sustained で抑えなくなる）。小さな開口を
-        // 時々拾う probe の平均を下げ過ぎないよう、抑えるのは稀な大きい値だけにする。
-        const float outlierLimit=continuing && !sustained
-            ? min(1.0f,(4.0f*length(oldAverage)+0.01f)/max(length(average),1e-4f)) : 1.0f;
+        float fixedLevel=0.0f;
+        for(uint f=0u;f<kClassifyRays;++f) fixedLevel+=dot(sRadiance[f],float3(0.2126f,0.7152f,0.0722f))/float(kClassifyRays);
+        const float fixedPrevious=continuing ? previousSh[6].a : fixedLevel;
+        const float lightStep=(fixedLevel-fixedPrevious)/max(max(fixedLevel,fixedPrevious),1.0e-4f);
+        const float trendPrevious=continuing ? previousSh[7].a : 0.0f;
+        const float squarePrevious=continuing ? previousSh[8].a : 0.0f;
+        const float lightTrend=lerp(trendPrevious,lightStep,0.3f);
+        const float lightSquare=lerp(squarePrevious,lightStep*lightStep,0.3f);
+        const float spread=sqrt(max(squarePrevious-trendPrevious*trendPrevious,0.0f));
+        // 重み 0.3 の移動平均の標準誤差は揺れの約 0.42 倍。
+        const float lightChange=max(
+            smoothstep(3.0f,5.0f,abs(lightTrend)/(0.42f*spread+0.005f))*smoothstep(0.01f,0.03f,abs(lightTrend)),
+            smoothstep(4.0f,6.0f,abs(lightStep)/(spread+0.01f))*smoothstep(0.1f,0.3f,abs(lightStep)));
+        const float history=continuing ? min(lerp(0.97f,0.6f,lightChange),updates/(updates+1.0f)) : 0.0f;
         // 0 番の alpha は validity、1..4 番は空の見える割合の L1 SH（全 ray）。描画側の空の鏡面反射を遮る。
         float sky=0.0f;
         if (lane>=1u && lane<=4u)
@@ -241,8 +237,8 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
             sky=lerp(sky,previousSh[lane].a,history);
             sSkySh[lane-1u]=sky;
         }
-        const float alpha=lane==0u ? sValidity : (lane==5u ? min(updates+1.0f,64.0f) : (lane==6u ? trend : (lane==7u ? trendSquare : sky)));
-        sSh[lane]=lerp(coefficient*outlierLimit,previousSh[lane].rgb,history);
+        const float alpha=lane==0u ? sValidity : (lane==5u ? min(updates+1.0f,64.0f) : (lane==6u ? fixedLevel : (lane==7u ? lightTrend : (lane==8u ? lightSquare : sky))));
+        sSh[lane]=lerp(coefficient,previousSh[lane].rgb,history);
         gOutputSh[lane][coordinate]=float4(sSh[lane],alpha);
     }
     GroupMemoryBarrierWithGroupSync();
