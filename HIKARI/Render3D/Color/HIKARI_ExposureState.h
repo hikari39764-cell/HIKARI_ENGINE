@@ -39,8 +39,9 @@ struct ExposureSettings {
     // 昼の光（入射 EV100 15）より暗い天気（曇り・雨・薄暮）で、照度の差のうちこの割合だけ露出を上げずに残す
     // （曇天はおよそ 0.5 段、暴風雨はおよそ 1 段暗い）。夜が近づくと暗所の順応へ移る。
     float dimAdaptationStrength = 0.3f;
-    float speedUp = 3.0f;
-    float speedDown = 1.0f;
+    // 時間定数はおよそ 0.2 秒と 0.4 秒。暗い所へ歩いて入った時、画が数秒暗いまま残らないようにする。
+    float speedUp = 5.0f;
+    float speedDown = 2.5f;
 
     bool operator==(const ExposureSettings&) const = default;
 };

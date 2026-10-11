@@ -184,13 +184,32 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         const float change=length(average-oldAverage)/max(0.01f,max(length(average),length(oldAverage)));
         // 開口から差す小さく明るい面を拾うかどうかで一回の平均は大きく揺れる。揺れで履歴を捨てるとその probe だけ
         // 一回分の雑音に跳び、壁に probe 単位の明暗の斑が出る。履歴は保ち、点灯や消灯のような変化（平均の相対差が
-        // 7 割以上）でだけ減らす。
+        // 7 割以上）でだけ減らす。ただしそれは前回までの傾き（下の trend）も同じ向きの時だけ。一回だけの外れ値を
+        // 点灯として受け入れると、相機が止まっていても probe 一つ分の明るい斑が突然現れて数秒かけて消えた。
         // 更新回数（5 番の係数の alpha、描画側は読まない）で、新しい probe は最初の数回を単純平均にして早く収める。
         // 固定の 0.95 では、読み込み直後や cascade が動いて入った probe の一次の照り返しが収まるまで近景で約 60 回
         // （約 480 フレーム）かかり、その間ずっと光が明るくなり続けた。回数が増えると重みは 0.95 へ戻る。
         const bool continuing=previousSh[0].a>0.0f && sValidity>0.0f;
         const float updates=continuing ? previousSh[5].a : 0.0f;
-        const float history=continuing ? min(lerp(0.95f,0.5f,smoothstep(0.7f,1.0f,change)),updates/(updates+1.0f)) : 0.0f;
+        // 多重反射が積み上がる間は、毎回の平均が履歴より同じ向きにずれ続ける。符号付きの相対差の移動平均と二乗の
+        // 移動平均（6・7 番の係数の alpha、描画側は読まない）から、ずれの平均がその揺れより確かに大きい（約 3 倍）間だけ
+        // 履歴を 0.6 まで軽くして早く追いつく。光の標本の雑音だけなら 0.95 のまま。固定の 0.95 では白い壁の通路で、
+        // 相機が止まってからも約 15 秒明るくなり続けた。
+        const float signedChange=(length(average)-length(oldAverage))/max(0.01f,max(length(average),length(oldAverage)));
+        const float trend=continuing ? lerp(previousSh[6].a,signedChange,0.25f) : 0.0f;
+        const float trendSquare=continuing ? lerp(previousSh[7].a,signedChange*signedChange,0.25f) : 0.0f;
+        // 重み 0.25 の移動平均の標準誤差は揺れの約 0.38 倍。
+        const float trendError=0.378f*sqrt(max(trendSquare-trend*trend,0.0f));
+        const float drift=smoothstep(2.5f,4.0f,abs(trend)/max(trendError,0.01f))*smoothstep(0.03f,0.08f,abs(trend));
+        const float settle=lerp(0.95f,0.6f,drift);
+        const float previousTrend=continuing ? previousSh[6].a : 0.0f;
+        const bool sustained=abs(previousTrend)>0.15f && previousTrend*signedChange>0.0f;
+        const float history=continuing ? min(min(lerp(0.95f,0.5f,sustained ? smoothstep(0.7f,1.0f,change) : 0.0f),settle),
+            updates/(updates+1.0f)) : 0.0f;
+        // 続いていない明るい外れ値は履歴の 4 倍までに抑えて混ぜる（続けば上の sustained で抑えなくなる）。小さな開口を
+        // 時々拾う probe の平均を下げ過ぎないよう、抑えるのは稀な大きい値だけにする。
+        const float outlierLimit=continuing && !sustained
+            ? min(1.0f,(4.0f*length(oldAverage)+0.01f)/max(length(average),1e-4f)) : 1.0f;
         // 0 番の alpha は validity、1..4 番は空の見える割合の L1 SH（全 ray）。描画側の空の鏡面反射を遮る。
         float sky=0.0f;
         if (lane>=1u && lane<=4u)
@@ -199,8 +218,8 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
             sky=lerp(sky,previousSh[lane].a,history);
             sSkySh[lane-1u]=sky;
         }
-        const float alpha=lane==0u ? sValidity : (lane==5u ? min(updates+1.0f,64.0f) : sky);
-        sSh[lane]=lerp(coefficient,previousSh[lane].rgb,history);
+        const float alpha=lane==0u ? sValidity : (lane==5u ? min(updates+1.0f,64.0f) : (lane==6u ? trend : (lane==7u ? trendSquare : sky)));
+        sSh[lane]=lerp(coefficient*outlierLimit,previousSh[lane].rgb,history);
         gOutputSh[lane][coordinate]=float4(sSh[lane],alpha);
     }
     GroupMemoryBarrierWithGroupSync();
