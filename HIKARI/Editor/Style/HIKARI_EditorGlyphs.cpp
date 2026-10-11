@@ -99,6 +99,7 @@ void DrawEditorGlyph(ImDrawList& drawList, EditorGlyph glyph, const ImVec2& cent
             canvas.Line(-0.7f, 0.7f, 0.7f, -0.7f);
         break;
     }
+    case EditorGlyph::Record: canvas.Circle(0, 0, 0.5f, true); break;
     case EditorGlyph::Solo:
         canvas.Circle(0, 0, 0.7f);
         canvas.Circle(0, 0, 0.25f, true);

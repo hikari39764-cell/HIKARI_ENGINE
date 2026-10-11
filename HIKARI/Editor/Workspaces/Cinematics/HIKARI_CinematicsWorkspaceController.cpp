@@ -253,17 +253,23 @@ void CinematicsWorkspaceController::CapturePose(DocumentSceneBase& scene, Cinema
     }
     shot->camera.owned = true;
     const float local = std::clamp(cursor_.GetTimeSeconds() - shot->startTimeSeconds, 0.0f, shot->durationSeconds);
-    SceneObjectId anchorId;
-    const auto* anchor = previewBindings_.Resolve(sequence.bindings, shot->camera.anchor, anchorId)
-                             ? scene.GetWorld().FindObject(anchorId)
-                             : nullptr;
-    const auto anchorMatrix = anchor ? anchor->GetTransform().GetWorldMatrix() : MATH::Mat4::Identity();
-    const float keyTime = autoKey_ ? local : 0.0f;
-    const auto pose = SEQUENCER::CaptureShotPose(camera, keyTime, anchor ? &anchorMatrix : nullptr);
-    SEQUENCER::SetShotPose(shot->camera, pose, autoKey_);
+    SEQUENCER::SetShotPose(shot->camera, CaptureShotPoseFor(scene, sequence, *shot, camera, autoKey_ ? local : 0.0f),
+                           autoKey_);
     SEQUENCER::NormalizeShotCamera(shot->camera);
     previewChanged_ = true;
     previewEnabled_ = true;
+}
+
+SEQUENCER::ShotPose CinematicsWorkspaceController::CaptureShotPoseFor(DocumentSceneBase& scene,
+                                                                      CinematicSequence& sequence,
+                                                                      const SEQUENCER::CameraCutClip& shot,
+                                                                      const Camera3D& camera, float keyTime) const {
+    SceneObjectId anchorId;
+    const auto* anchor = previewBindings_.Resolve(sequence.bindings, shot.camera.anchor, anchorId)
+                             ? scene.GetWorld().FindObject(anchorId)
+                             : nullptr;
+    const auto anchorMatrix = anchor ? anchor->GetTransform().GetWorldMatrix() : MATH::Mat4::Identity();
+    return SEQUENCER::CaptureShotPose(camera, keyTime, anchor ? &anchorMatrix : nullptr);
 }
 
 bool CinematicsWorkspaceController::IsDocumentOpen() const noexcept {

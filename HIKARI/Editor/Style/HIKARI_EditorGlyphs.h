@@ -83,6 +83,7 @@ enum class EditorGlyph {
     Assistant,
     CollapseRight,
     Send,
+    Record,
 };
 
 #if defined(HIKARI_WITH_EDITOR)

@@ -129,7 +129,8 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase&
         else
             document.RecordApplied(std::move(before), mergeId_);
     }
-    if (ImGui::IsAnyItemActive())
+    // 飛行録画の間は右ボタンを離しても一つの取り消しにまとめる。
+    if (ImGui::IsAnyItemActive() || flight_ == FlightState::Recording)
         result.timelineEditMergeId = mergeId_;
     else {
         document.SealMerge();

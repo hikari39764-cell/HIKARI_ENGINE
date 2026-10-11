@@ -107,6 +107,37 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence& sequence) {
     return changed;
 }
 
+// 镜头の入り方。前の镜头と接している時だけ（EvaluateSequenceCameraView と同じ判定）、混ぜる区間を帯と SmoothStep の
+// 線で、硬切りを縦の線で示す。混ぜるのは前の镜头の最後の画を止めたまま、この镜头の始めから durationSeconds の間。
+void CinematicsWorkspaceController::DrawShotTransition(ImDrawList& draw, const CinematicSequence& sequence,
+                                                       const SEQUENCER::CameraCutClip& shot, float timeOriginX, float y,
+                                                       float rowHeight) const {
+    using namespace SEQUENCER;
+    const float before = std::nextafter(shot.startTimeSeconds, -1.0f);
+    const bool joined = std::any_of(sequence.cameraCutTrack.clips.begin(), sequence.cameraCutTrack.clips.end(),
+                                    [&](const CameraCutClip& other) {
+                                        return other.id != shot.id && other.startTimeSeconds <= before &&
+                                               before < other.startTimeSeconds + other.durationSeconds;
+                                    });
+    if (!joined)
+        return;
+    const float x = timeOriginX + shot.startTimeSeconds * zoom_;
+    const float top = y + 3, bottom = y + rowHeight - 3;
+    if (shot.transition.mode != CameraCutTransitionMode::EaseInOut || shot.transition.durationSeconds <= 0) {
+        draw.AddLine({x, top - 2}, {x, bottom + 2}, IM_COL32(235, 245, 255, 230), 2);
+        return;
+    }
+    const float width = shot.transition.durationSeconds * zoom_;
+    draw.AddRectFilled({x, top}, {x + width, bottom}, IM_COL32(235, 245, 255, 45), 4);
+    ImVec2 previous{x, bottom};
+    for (int step = 1; step <= 12; ++step) {
+        const float t = step / 12.0f;
+        const ImVec2 point{x + width * t, bottom - (bottom - top) * t * t * (3 - 2 * t)};
+        draw.AddLine(previous, point, IM_COL32(235, 245, 255, 220), 1.5f);
+        previous = point;
+    }
+}
+
 bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, CinematicSequence& sequence) {
     bool changed = false;
 #if defined(HIKARI_WITH_EDITOR)
@@ -199,6 +230,7 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
     for (auto& s : sequence.cameraCutTrack.clips) {
         clip(s.id, SelectionKind::Shot, s.startTimeSeconds, s.durationSeconds, s.camera.name.c_str(), shotY,
              IM_COL32(44, 105, 151, 255));
+        DrawShotTransition(*draw, sequence, s, origin.x + labelWidth, shotY, rowHeight);
         for (const auto& channel : s.camera.channels)
             for (const auto& key : channel.keys) {
                 if (key.time > s.durationSeconds)

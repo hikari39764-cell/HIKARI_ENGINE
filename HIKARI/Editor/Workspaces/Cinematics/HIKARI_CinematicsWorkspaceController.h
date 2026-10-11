@@ -18,6 +18,8 @@
 #include "Scene/HIKARI_SceneObjectId.h"
 #include "Input/Runtime/HIKARI_InputTypes.h"
 
+struct ImDrawList;
+
 namespace HIKARI {
 
 class DocumentSceneBase;
@@ -105,6 +107,15 @@ private:
     bool DeleteSelectedClip(CinematicSequence& sequence);
     void CreateShot(CinematicSequence& sequence, const Camera3D& camera);
     void CapturePose(DocumentSceneBase& scene, CinematicSequence& sequence, const Camera3D& camera);
+    // 镜头の局所時刻 keyTime に、camera の位置と注視点（と画角・傾き）を镜头の掛け先に合わせた姿勢にする。
+    SEQUENCER::ShotPose CaptureShotPoseFor(DocumentSceneBase& scene, CinematicSequence& sequence,
+                                           const SEQUENCER::CameraCutClip& shot, const Camera3D& camera,
+                                           float keyTime) const;
+    // 飛行録画（HIKARI_CinematicsStageWindow.cpp）：録画を押した後、空間视图で右ボタンを押して飛び始めると镜头の
+    // 始めから再生し、一定間隔で視点の位置と注視点を键にする（画角と傾きは変えない）。録った範囲の键は置き換える。
+    bool UpdateFlightRecording(DocumentSceneBase& scene, CinematicSequence& sequence, bool startRequested);
+    void DrawShotTransition(ImDrawList& draw, const CinematicSequence& sequence, const SEQUENCER::CameraCutClip& shot,
+                            float timeOriginX, float y, float rowHeight) const;
 
     SequenceEditorDocumentController sequenceDocumentController_{};
     SequenceEditorDocumentToolbar sequenceDocumentToolbar_{};
@@ -127,6 +138,10 @@ private:
     bool showShotPaths_ = true;
     EditorTransformGizmo stageGizmo_;
     bool autoKey_ = false;
+    enum class FlightState { Off, Armed, Recording };
+    FlightState flight_ = FlightState::Off;
+    uint64_t flightShot_ = 0;
+    float flightLastKey_ = 0.0f;
     bool sequenceLibraryVisible_ = true;
     float zoom_ = 80.0f;
     float timelineScroll_ = 0.0f;

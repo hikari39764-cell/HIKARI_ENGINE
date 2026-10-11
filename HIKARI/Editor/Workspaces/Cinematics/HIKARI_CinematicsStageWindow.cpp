@@ -10,6 +10,7 @@
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include "imgui.h"
 
@@ -131,15 +132,83 @@ bool CinematicsWorkspaceController::DrawStage(DocumentSceneBase& scene, Cinemati
         ImGui::EndDisabled();
         if (rotationLocked && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip("%s", TEXT::Localize("cine.boundRotation").c_str());
+        NextToolbarItem();
+        // 飛行録画は自由に向きを変えられる镜头だけ（注視の相手に結んだ镜头は向きが決まっている）。
+        ImGui::BeginDisabled(selected == nullptr || rotationLocked);
+        if (IconToggleButton(flight_ == FlightState::Off ? EditorGlyph::Record : EditorGlyph::Stop, "flightRecord",
+                             flight_ != FlightState::Off, {26, 26}, TEXT::Localize("cine.recordFlight").c_str())) {
+            flight_ = flight_ == FlightState::Off ? FlightState::Armed : FlightState::Off;
+            flightShot_ = selected != nullptr ? selected->id : 0;
+            if (flight_ == FlightState::Off)
+                cursor_.Pause();
+        }
+        ImGui::EndDisabled();
+        if (flight_ != FlightState::Off) {
+            NextToolbarItem();
+            ImGui::TextColored(
+                {1.0f, 0.55f, 0.45f, 1.0f}, "%s",
+                TEXT::Localize(flight_ == FlightState::Armed ? "cine.flightArmed" : "cine.flightRecording").c_str());
+        }
         ImGui::EndDisabled();
         directorViewPanel_.SetTargetCamera({});
         const auto result = directorViewPanel_.DrawContents(scene, view, {}, context.transformGizmo,
                                                             TIME::GetFrameContext().unscaledDt, !enabled, false);
+        // 右ボタンで飛び始めると视口のボタンが活性になるので、活性の項目があっても窓の上かどうかで判定する。
+        changed |= UpdateFlightRecording(scene, sequence,
+                                         enabled &&
+                                             ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows |
+                                                                    ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
+                                             ImGui::IsMouseDown(ImGuiMouseButton_Right));
         changed |= DrawShotOverlays(scene, sequence, result.viewport, enabled);
-    } else
+    } else {
         RENDER3D::EDITORVIEW::ClearRequest(view.renderViewId);
+        flight_ = FlightState::Off;
+    }
     ImGui::End();
     return changed;
+}
+
+bool CinematicsWorkspaceController::UpdateFlightRecording(DocumentSceneBase& scene, CinematicSequence& sequence,
+                                                          bool startRequested) {
+    // 键の間隔 [s]。镜头の曲線は键の間を滑らかにつなぐので、これで手の揺れの細部は残しつつ键が増えすぎない。
+    constexpr float kKeyInterval = 0.1f;
+    auto shot = std::find_if(sequence.cameraCutTrack.clips.begin(), sequence.cameraCutTrack.clips.end(),
+                             [&](const auto& clip) { return clip.id == flightShot_; });
+    if (flight_ == FlightState::Off || shot == sequence.cameraCutTrack.clips.end()) {
+        flight_ = FlightState::Off;
+        return false;
+    }
+    if (flight_ == FlightState::Armed) {
+        if (!startRequested)
+            return false;
+        cursor_.Seek(shot->startTimeSeconds);
+        SEQUENCER::SequencePlaybackOptions options;
+        options.holdAtEnd = true;
+        cursor_.Play(options);
+        previewEnabled_ = true;
+        flight_ = FlightState::Recording;
+        flightLastKey_ = -kKeyInterval;
+    }
+    const float local = std::clamp(cursor_.GetTimeSeconds() - shot->startTimeSeconds, 0.0f, shot->durationSeconds);
+    const bool ended = !cursor_.IsPlaying() || local >= shot->durationSeconds;
+    if (!ended && local - flightLastKey_ < kKeyInterval)
+        return false;
+    shot->camera.owned = true;
+    const auto pose = CaptureShotPoseFor(scene, sequence, *shot, directorViewPanel_.GetViewCamera(), local);
+    const std::array values{pose.eye.x, pose.eye.y, pose.eye.z, pose.target.x, pose.target.y, pose.target.z};
+    for (size_t i = 0; i < values.size(); ++i) {
+        auto& keys = shot->camera.channels[i].keys;
+        // 前の键からこの時刻までにあった键は、録り直した区間なので消す。
+        std::erase_if(keys, [&](const auto& key) { return key.time > flightLastKey_ && key.time <= local; });
+        HIKARI::SetScalarCurveKey(shot->camera.channels[i], local, values[i]);
+    }
+    flightLastKey_ = local;
+    previewChanged_ = true;
+    if (ended) {
+        flight_ = FlightState::Off;
+        cursor_.Pause();
+    }
+    return true;
 }
 
 bool CinematicsWorkspaceController::DrawShotOverlays(DocumentSceneBase& scene, CinematicSequence& sequence,

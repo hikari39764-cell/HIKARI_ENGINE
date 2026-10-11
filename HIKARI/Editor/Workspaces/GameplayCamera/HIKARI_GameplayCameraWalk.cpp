@@ -247,7 +247,7 @@ void GameplayCameraWalk::DrawControls(const World& world) {
     if (!Active())
         return;
     ImGui::TextDisabled("%s", TEXT::Localize("gc.walkKeys").c_str());
-    if (IconTextButton(recording_ ? EditorGlyph::Stop : EditorGlyph::Dirty,
+    if (IconTextButton(recording_ ? EditorGlyph::Stop : EditorGlyph::Record,
                        TEXT::Localize(recording_ ? "gc.stopRecord" : "gc.record").c_str(), "walkRecord"))
         SetRecording(!recording_);
     ImGui::SameLine();
