@@ -11,6 +11,7 @@
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 #include "imgui.h"
 #include <algorithm>
@@ -37,15 +38,22 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
     if (!lookTarget_.value && live)
         lookTarget_ = live->GameplayBinding().lookTarget;
     const bool runtime = scene.IsRuntimePlayActive();
-    if (!runtime && cameraObject && target_.value && document_.IsOpen()) {
+    // 模拟走动：前の帧に集めた WASD で、前の帧に相机画面に出した向きに対して替身を歩かせてから、相机を評価する。
+    if (walk_.Active() && !runtime)
+        walk_.Step(scene.GetWorld(), walkInput_, lastMonitorCamera_.GetTarget() - lastMonitorCamera_.GetPosition(),
+                   ImGui::GetIO().DeltaTime);
+    // 追従の無い机位は、実行時の CameraDirector と同じく物体の位置と向きの画面になる（方案で動かさない）。
+    const bool shotCamera = cameraObject != nullptr && live == nullptr;
+    if (!runtime && cameraObject && live && target_.value && document_.IsOpen()) {
         const auto binding = std::to_string(camera_.value) + ":" + std::to_string(target_.value) + ":" +
                              std::to_string(lookTarget_.value);
         if (previewBinding_ != binding || sceneRevision_ != scene.GetSceneDocumentRevision()) {
             nlohmann::json values;
             if (live)
                 live->Serialize(values);
-            values["targetObjectId"] = target_.value;
-            values["cameraLookTarget"] = lookTarget_.value;
+            // 部件の JSON は物体を参照の形（$hikariRef）で読む。数値を入れると読まれず、追う物が無いままになる。
+            values["targetObjectId"] = SCENE::SERIALIZATION::WriteSceneObjectReference(target_.value);
+            values["cameraLookTarget"] = SCENE::SERIALIZATION::WriteSceneObjectReference(lookTarget_.value);
             preview_.Deserialize(values);
             previewBinding_ = binding;
             previewRevision_ = 0;
@@ -72,11 +80,6 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
                                      preview_.Runtime().desiredDistance + previewZoom_, preview_.Runtime().distance, 0);
         previewYaw_ = previewPitch_ = previewZoom_ = 0;
         preview_.GameplayState().previewSpeed = previewSpeed_;
-        // 模拟走动：前の帧に集めた WASD で替身を今の相机の向きに対して歩かせてから、相机を評価する。
-        if (walk_.Active() && preview_.GameplayState().hasPose) {
-            const auto& pose = preview_.GameplayState().outputPose;
-            walk_.Step(scene.GetWorld(), walkInput_, pose.target - pose.eye, ImGui::GetIO().DeltaTime);
-        }
         evaluator_.EvaluatePreview(scene.GetWorld(), *cameraObject, preview_, simulate_ ? ImGui::GetIO().DeltaTime : 0);
     }
 
@@ -148,7 +151,7 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
         DrawZoneOverlay(scene, result.viewport);
         walk_.DrawOverlay(*ImGui::GetWindowDrawList(), scene.GetWorld(), observer_.GetViewCamera(), result.viewport,
                           walk_.Active() && !runtime ? &lastMonitorCamera_ : nullptr);
-        if (shown && shown->GameplayState().hasPose) {
+        if (shown && !(shotCamera && !runtime) && shown->GameplayState().hasPose) {
             const auto& pose = shown->GameplayState().outputPose;
             ImVec2 eye, target;
             const auto& rect = result.viewport;
@@ -194,12 +197,16 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
                                             static_cast<int32_t>(std::lround(origin.y)),
                                             static_cast<int32_t>(std::lround(origin.x + fit.width)),
                                             static_cast<int32_t>(std::lround(origin.y + fit.height))};
-        } else if (cameraObject && preview_.GameplayState().hasPose) {
-            const auto& pose = preview_.GameplayState().outputPose;
+        } else if (cameraObject && (shotCamera || preview_.GameplayState().hasPose)) {
             Camera3D camera;
-            camera.SetPerspective(pose.verticalFovRadians, 16.0f / 9, pose.nearClip, pose.farClip);
-            camera.SetLookAt(pose.eye, pose.target, pose.up);
-            CAMERA::ResolveGameplayCameraSafety(scene.GetWorld(), camera_, camera, nullptr, &preview_);
+            if (shotCamera)
+                (void)scene.TryResolveCameraObjectView(camera_, 16.0f / 9, camera);
+            else {
+                const auto& pose = preview_.GameplayState().outputPose;
+                camera.SetPerspective(pose.verticalFovRadians, 16.0f / 9, pose.nearClip, pose.farClip);
+                camera.SetLookAt(pose.eye, pose.target, pose.up);
+                CAMERA::ResolveGameplayCameraSafety(scene.GetWorld(), camera_, camera, nullptr, &preview_);
+            }
             if (walk_.Active()) {
                 camera = walk_.Resolve(camera, ImGui::GetIO().DeltaTime);
                 walk_.Observe(scene.GetWorld(), camera, activeZone_);

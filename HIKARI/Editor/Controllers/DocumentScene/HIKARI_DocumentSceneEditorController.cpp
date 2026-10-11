@@ -89,6 +89,7 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
     pendingBackgroundRun_ = ReadRuntimeCommandLinePath(L"--agent-play-run");
     cameraPath_ = EDITOR::EditorCameraPath::FromCommandLine();
     qualitySchedule_ = EDITOR::EditorQualitySchedule::FromCommandLine();
+    inputScript_ = EDITOR::EditorInputScript::FromCommandLine();
     EDITOR::RegisterBuiltInEditorTools(toolHost_);
     EDITOR::RegisterBuiltInSystemAuthoring(systemAuthoringRegistry_);
     agentHost_.SetPermissionResolver(
@@ -265,13 +266,16 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteTerrainOpera
     return std::move(output.result);
 }
 
-DocumentSceneEditorController::~DocumentSceneEditorController() {
+DocumentSceneEditorController::~DocumentSceneEditorController() { Shutdown(); }
+
+void DocumentSceneEditorController::Shutdown() {
     VfxWorkspace().Deactivate(workspaceHost_.GetVfxPreviewView().renderViewId);
     agentPanel_.session.Stop();
     agentHost_.SetOpen(false);
     agentBridge_.Stop();
     CancelAiSceneCapture();
     authoringSessions_.Reset();
+    aiOperationScene_ = nullptr;
 }
 
 EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAiAssetImport(const nlohmann::json& parameters) {
@@ -494,6 +498,8 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
     }
     if (qualitySchedule_)
         qualitySchedule_->Apply(TIME::GetFrameContext().frameIndex);
+    if (inputScript_)
+        inputScript_->Apply(TIME::GetFrameContext().frameIndex);
     agentHost_.PumpActions();
     TickAgentPlayRun();
     TickAgentPanel();

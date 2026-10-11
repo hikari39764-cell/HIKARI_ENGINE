@@ -24,6 +24,7 @@
 #include "Editor/Agent/HIKARI_AgentPlayRun.h"
 #include "Editor/Play/HIKARI_BackgroundPlayRun.h"
 #include "Editor/Diagnostics/HIKARI_EditorCameraPath.h"
+#include "Editor/Diagnostics/HIKARI_EditorInputScript.h"
 #include "Editor/Diagnostics/HIKARI_EditorQualitySchedule.h"
 #include "Editor/HIKARI_DebugCameraPanel.h"
 #include "Editor/HIKARI_DebugMenuBar.h"
@@ -90,6 +91,9 @@ class DocumentSceneEditorController {
 public:
     DocumentSceneEditorController();
     ~DocumentSceneEditorController();
+    // 場面を壊す前に呼ぶ。文書の会話は閉じる時に場面の预览を終わらせるので、場面がある内に閉じ、以後は場面を指さない
+    // （二度目は何もしない）。
+    void Shutdown();
     EDITOR::EditorAuthoringSessionHost& AuthoringSessions() noexcept { return authoringSessions_; }
     EDITOR::EditorOperationRegistry& Operations() noexcept { return operationRegistry_; }
     void SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host) noexcept {
@@ -389,6 +393,7 @@ private:
     // 診断用の --editor-camera-path。编辑中は毎フレーム编辑相机をこの経路に置く。
     std::optional<EDITOR::EditorCameraPath> cameraPath_{};
     std::optional<EDITOR::EditorQualitySchedule> qualitySchedule_{};
+    std::optional<EDITOR::EditorInputScript> inputScript_{};
     // 助手页签の「外部智能体」（HIKARI_DocumentSceneEditorAgentPanel.cpp）。
     void DrawAgentPanel(DocumentSceneBase& scene);
     void StartAgentTurn(DocumentSceneBase& scene);

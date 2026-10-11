@@ -96,6 +96,8 @@ void EditorEngineApp::Shutdown() {
     gameProjectWorkspaceHost_.Shutdown();
     gameProjectEditorModule_.Reset();
     editorPlaySession_.Shutdown(dynamic_cast<DocumentSceneBase*>(runtimeApp_.GetCurrentScene()));
+    // 场景は runtimeApp_ が壊すので、その前に编辑器の文書の会話を閉じる（镜头演出の预览が场景を使う）。
+    documentSceneEditorController_.Shutdown();
     runtimeApp_.Shutdown();
 }
 

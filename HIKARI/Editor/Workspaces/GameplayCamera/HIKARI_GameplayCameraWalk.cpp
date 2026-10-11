@@ -265,10 +265,15 @@ void GameplayCameraWalk::DrawControls(const World& world) {
     const float width = ImGui::GetContentRegionAvail().x;
     const ImVec2 bar = ImGui::GetCursorScreenPos();
     ImDrawList& draw = *ImGui::GetWindowDrawList();
-    for (size_t index = 0; index + 1 < take_.size(); ++index) {
-        const float x0 = bar.x + width * take_[index].time / duration;
-        const float x1 = bar.x + width * take_[index + 1].time / duration;
-        draw.AddRectFilled({x0, bar.y}, {x1 + 1.0f, bar.y + 6.0f}, ZoneColor(take_[index].zone, 200));
+    // 同じ区域が続く間は一つの帯にする（標本ごとに描くと半透明の重なりで縞になる）。
+    for (size_t begin = 0; begin + 1 < take_.size();) {
+        size_t end = begin + 1;
+        while (end + 1 < take_.size() && take_[end].zone == take_[begin].zone)
+            ++end;
+        const float x0 = bar.x + width * take_[begin].time / duration;
+        const float x1 = bar.x + width * take_[end].time / duration;
+        draw.AddRectFilled({x0, bar.y}, {x1, bar.y + 6.0f}, ZoneColor(take_[begin].zone, 200));
+        begin = end;
     }
     ImGui::Dummy({width, 8.0f});
     float shown = replaying_ || scrubbing_ ? takeTime_ : duration;
