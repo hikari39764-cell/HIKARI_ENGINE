@@ -117,7 +117,8 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
   选一个后把 `ProceduralMeshComponent` 的 `materialSelection` 设成它的 `guid`。不要直接改共用的材质，否则所有用它的物体都会变。
 - 搭布景：`procedural.create_primitive`（方块、墙、地板、柱、坡、台阶）、`procedural.opening`（门、窗、洞，含圆形）、
   `procedural.subtract`（挖空）、`scene.arrange`（对齐、等距、落地、编组、镜像、阵列）。
-- 灯光：`scene.create_light`、`lighting.three_point`。
+- 灯光：`scene.create_light`、`lighting.three_point`。给物体加“发光”或点缀用的灯时，放在物体中心附近并关掉投影
+  （`settings` 里 `"castsShadows": false`）：灯贴着物体又投影，物体会在地上投出一个放大的、比太阳影子还深的影子。
 - 移动、删除、复制：`scene.set_transform`、`scene.delete_object`、`scene.duplicate_object`（传 `objectId`，不会改用户的选中）。
   位置、旋转（度）、缩放和颜色在所有操作里都写成 `[x, y, z]`。
 - 游戏镜头区域：`camera_zone.edit`。

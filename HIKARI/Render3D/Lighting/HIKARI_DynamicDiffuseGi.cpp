@@ -31,6 +31,10 @@ constexpr auto kReadState = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
 // 光線クエリの共通根パラメーターの後に、前フレーム SH・SH の UAV・probe atlas の UAV・空の順に並べる。
 constexpr UINT kPreviousShParameter = RAYTRACING::kRuntimeRayQueryRootParameterCount;
 constexpr UINT kSkyParameter = kPreviousShParameter + 3u;
+// 近景の高さを決める相機の ray の結果（当たった点の高さ）を書く UAV。中央・上下左右・真下の 6 本。
+constexpr UINT kFocusParameter = kSkyParameter + 1u;
+constexpr uint32_t kFocusRayCount = 6;
+constexpr float kFocusMiss = 1.0e30f;
 // SH0 は一様な入射 radiance の約 3.54 倍。FP16 上限で HDR を壊さない。
 constexpr auto kProbeShFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
 // 描画側が読む probe atlas。probe ごとに放射照度と深度 moment の八面体、validity の tile を持つ
@@ -56,7 +60,7 @@ struct FieldLayout {
     }
 };
 // 描画側の動的 GI volume と同じ並び（優先順）。
-constexpr size_t kRegionField = 0, kFieldCount = LIGHTPROBE::kDynamicGiVolumeCount;
+constexpr size_t kRegionField = 0, kNearField = 1, kFieldCount = LIGHTPROBE::kDynamicGiVolumeCount;
 // 区域を更新する相機からの最大距離。外れた区域は cascade に任せる。
 constexpr float kRegionReach = 32.0f;
 UINT ProbeBudget(DynamicGiQuality quality) {
@@ -112,8 +116,10 @@ struct Constants {
     MATH::Vec4 spacing{0, 0, 0, 0};
     std::array<uint32_t, 4> counts{}, work{};
     RAYTRACING::RuntimeRayLightingGpuData lighting{};
+    // 相機の位置（w は近景の更新で 1、その時だけ ray を撃つ）と視線の向き。
+    MATH::Vec4 focusOrigin{}, focusDirection{};
 };
-static_assert(sizeof(Constants) == 304);
+static_assert(sizeof(Constants) == 336);
 struct ProbeSet {
     std::array<ComPtr<ID3D12Resource>, 10> textures;
     std::vector<RenderResourceView> srvs, uavs;
@@ -215,6 +221,30 @@ struct ProbeSet {
         commands->ResourceBarrier(UINT(barriers.size()), barriers.data());
     }
 };
+// 近景の cascade の中心の高さ。視線の 5 本が当たった点の高さの中央値の少し上（格子の高さの半分の半分）へ下ろすが、
+// 相機より上へは上げない（室内や地面に立った視点では変わらない）。下ろさないと、高い所から見下ろした時に地面の近くが
+// 間隔 6m の遠景だけになり、小さな部屋の床や壁が塊のような汚れになった。真下の ray が近くの地面に当たる時は、その
+// 地面を格子に残す（崖の縁から谷を見下ろしても足元が粗くならない）。真下にも何も無ければ相機の高さ。
+float NearFieldCenterHeight(const std::array<float, kFocusRayCount>& heights, float cameraHeight, float halfHeight,
+                            float spacing) {
+    std::array<float, kFocusRayCount - 1> view{};
+    size_t count = 0;
+    const auto hit = [&](size_t index) { return std::isfinite(heights[index]) && heights[index] < kFocusMiss; };
+    for (size_t index = 0; index + 1 < kFocusRayCount; ++index)
+        if (hit(index))
+            view[count++] = heights[index];
+    // 視線がどこにも当たらない（高い所から地平線の方を見る）時は、真下の地面を見ている面の代わりにする。
+    if (count == 0 && hit(kFocusRayCount - 1))
+        view[count++] = heights[kFocusRayCount - 1];
+    if (count == 0)
+        return cameraHeight;
+    std::sort(view.begin(), view.begin() + count);
+    float center = (std::min)(cameraHeight, view[count / 2] + 0.5f * halfHeight);
+    const float below = heights[kFocusRayCount - 1];
+    if (hit(kFocusRayCount - 1) && cameraHeight - below < halfHeight)
+        center = (std::max)(center, below - halfHeight + spacing);
+    return center;
+}
 // 一つの probe 場。履歴は二組の ProbeSet を交互に書き、前の組を読む。
 struct Field {
     std::array<ProbeSet, 2> sets;
@@ -250,12 +280,21 @@ struct DynamicDiffuseGi::State {
     uint64_t lastRaySceneVersion = 0, lastLightingContentHash = 0;
     RAYTRACING::RuntimeRayTracingMaterialVersion lastMaterialVersion{};
     Stats stats;
+    // 相機の ray の結果。GPU が書き、フレーム資源の数だけ遅れて読む。nearCenterHeight は近景の中心の高さ。
+    struct FocusReadback {
+        ComPtr<ID3D12Resource> buffer;
+        uint64_t fence = 0;
+    };
+    ComPtr<ID3D12Resource> focus;
+    std::array<FocusReadback, GFX::kFrameResourceCount> focusReadbacks;
+    uint64_t focusFence = 0;
+    std::optional<float> nearCenterHeight;
 
     bool EnsurePipeline(const GFX::Context& graphics) {
         if (pipeline)
             return true;
         // 共通の後に前フレーム SH・SH の UAV・probe atlas の UAV・空。
-        std::array<CD3DX12_ROOT_PARAMETER, kSkyParameter + 1u> parameters;
+        std::array<CD3DX12_ROOT_PARAMETER, kFocusParameter + 1u> parameters;
         std::array<CD3DX12_DESCRIPTOR_RANGE, 6> ranges;
         RAYTRACING::InitRuntimeRayQueryRootParameters(parameters, ranges, kSkyParameter);
         ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 9, 0, 2);
@@ -263,6 +302,7 @@ struct DynamicDiffuseGi::State {
         ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 9);
         for (UINT i = 0; i < 3; ++i)
             parameters[kPreviousShParameter + i].InitAsDescriptorTable(1, &ranges[3 + i]);
+        parameters[kFocusParameter].InitAsUnorderedAccessView(10);
         const auto samplers = RAYTRACING::RuntimeRayQueryStaticSamplers();
         const CD3DX12_ROOT_SIGNATURE_DESC rootDesc(UINT(parameters.size()), parameters.data(), 2, samplers.data());
         if (FAILED(GFX::CreateRootSignature(graphics.device, rootDesc, &root)))
@@ -270,14 +310,14 @@ struct DynamicDiffuseGi::State {
         namespace SHADER = ASSETS::SHADER;
         SHADER::ShaderAssetContractExpectation contract{};
         contract.engineInterfaceId = "HIKARI.DynamicDiffuseGi";
-        contract.engineInterfaceVersion = 2;
+        contract.engineInterfaceVersion = 3;
         contract.rootLayoutId = "HIKARI.DynamicDiffuseGi.Root";
-        contract.rootLayoutVersion = 1;
+        contract.rootLayoutVersion = 2;
         if (!HASH::ComputeSha256(
-                "DynamicDiffuseGiCB:368;origin,axis spacing;SH9 radiance/validity/sky L1;atlas RGBA16F tile28x18 irradiance^(1/5)+sky oct8,moments+validity oct16,border,neighbor links A(11+octant,1) 7bit;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
+                "DynamicDiffuseGiCB:400;origin,axis spacing,focus origin/direction;SH9 radiance/validity/sky L1;atlas RGBA16F tile28x18 irradiance^(1/5)+sky oct8,moments+validity oct16,border,neighbor links A(11+octant,1) 7bit;focus hit heights u10 x6;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
                 contract.engineInterfaceHash) ||
             !HASH::ComputeSha256(
-                "CBV(b0);AS(t0,s8);Hits(t1,s8);Materials(t16);Programs(t0,t1,s6);Lights(t1,t2,s7);Geometry(t0,s1,1024);Textures(t20);Deformed(t2,s8);PreviousSH(t0,s2,9);SH(u0,9);ProbeAtlas(u9);Sky(t0,s7);Sampler(s0,clamp);Sampler(s1,wrap)",
+                "CBV(b0);AS(t0,s8);Hits(t1,s8);Materials(t16);Programs(t0,t1,s6);Lights(t1,t2,s7);Geometry(t0,s1,1024);Textures(t20);Deformed(t2,s8);PreviousSH(t0,s2,9);SH(u0,9);ProbeAtlas(u9);Sky(t0,s7);Focus(u10);Sampler(s0,clamp);Sampler(s1,wrap)",
                 contract.rootLayoutHash))
             return false;
         const auto caps = GFX::QueryShaderDeviceCapabilities(graphics.device);
@@ -295,6 +335,19 @@ struct DynamicDiffuseGi::State {
         desc.CS = {bytes.data(), bytes.size()};
         if (FAILED(graphics.device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pipeline))))
             return false;
+        constexpr UINT64 focusBytes = kFocusRayCount * sizeof(float);
+        const CD3DX12_HEAP_PROPERTIES defaultHeap(D3D12_HEAP_TYPE_DEFAULT), readbackHeap(D3D12_HEAP_TYPE_READBACK);
+        const auto focusDesc = CD3DX12_RESOURCE_DESC::Buffer(focusBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        const auto readbackDesc = CD3DX12_RESOURCE_DESC::Buffer(focusBytes);
+        if (FAILED(graphics.device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &focusDesc,
+                                                            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+                                                            IID_PPV_ARGS(&focus))))
+            return false;
+        for (auto& readback : focusReadbacks)
+            if (FAILED(graphics.device->CreateCommittedResource(&readbackHeap, D3D12_HEAP_FLAG_NONE, &readbackDesc,
+                                                                D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+                                                                IID_PPV_ARGS(&readback.buffer))))
+                return false;
         return true;
     }
 };
@@ -459,6 +512,28 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
     commands->SetComputeRootSignature(state.root.Get());
     commands->SetPipelineState(state.pipeline.Get());
     RAYTRACING::BindRuntimeRayQueryRoots(commands, graphics, lighting, materials, kSkyParameter);
+    commands->SetComputeRootUnorderedAccessView(kFocusParameter, state.focus->GetGPUVirtualAddress());
+    // 前のフレームまでに GPU が書いた相機の ray の結果のうち、終わった中で一番新しいものを読む。
+    for (auto& readback : state.focusReadbacks) {
+        if (readback.fence <= state.focusFence || !GFX::IsCurrentFenceComplete(readback.fence))
+            continue;
+        std::array<float, kFocusRayCount> heights{};
+        const D3D12_RANGE range{0, sizeof(heights)};
+        void* mapped = nullptr;
+        if (SUCCEEDED(readback.buffer->Map(0, &range, &mapped)) && mapped != nullptr) {
+            std::memcpy(heights.data(), mapped, sizeof(heights));
+            const D3D12_RANGE written{0, 0};
+            readback.buffer->Unmap(0, &written);
+            const FieldLayout& nearLayout = cascades[0];
+            const float desired = NearFieldCenterHeight(
+                heights, cameraPosition.y, 0.5f * float(nearLayout.y - 1) * nearLayout.spacing.y, nearLayout.spacing.y);
+            // 間隔より小さい揺れでは動かさない（格子の境で行き来しない）。
+            if (!state.nearCenterHeight || std::abs(desired - *state.nearCenterHeight) > nearLayout.spacing.y)
+                state.nearCenterHeight = desired;
+        }
+        state.focusFence = readback.fence;
+    }
+    const float nearCenterHeight = state.nearCenterHeight.value_or(cameraPosition.y);
     state.stats.probes = state.stats.updatedProbes = 0;
     state.stats.probeBytes = 0;
     // 相機の cascade の中心は視線の水平方向へ幅の 3 割だけ前に置く。相機の後ろへ半分を割くと、見えている奥が近景から
@@ -489,7 +564,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
             };
             const float lead = 0.3f * float(layout.x - 1) * spacing;
             target.data.origin = {gridOrigin(cameraPosition.x + ahead.x * lead, layout.x),
-                                  gridOrigin(cameraPosition.y, layout.y),
+                                  gridOrigin(index == kNearField ? nearCenterHeight : cameraPosition.y, layout.y),
                                   gridOrigin(cameraPosition.z + ahead.z * lead, layout.z)};
         }
         Constants constants{};
@@ -500,6 +575,10 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         constants.work = {UINT(state.sequence), field.firstProbe % constants.counts[3], layout.budget,
                           compatible ? 1u : 0u};
         constants.lighting = lighting.data;
+        const MATH::Vec3 forward = viewTarget - cameraPosition;
+        constants.focusOrigin = {cameraPosition.x, cameraPosition.y, cameraPosition.z,
+                                 index == kNearField ? 1.0f : 0.0f};
+        constants.focusDirection = {forward.x, forward.y, forward.z, 0.0f};
         std::memcpy(constantBuffers[index].cpuAddress, &constants, sizeof(constants));
         target.Transition(commands, true);
         commands->SetComputeRootConstantBufferView(0, constantBuffers[index].gpuAddress);
@@ -508,6 +587,17 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         commands->SetComputeRootDescriptorTable(kPreviousShParameter + 2u, target.uavs[9].gpu);
         commands->Dispatch(constants.counts[3], 1, 1);
         target.Transition(commands, false);
+        if (index == kNearField) {
+            auto& readback = state.focusReadbacks[graphics.frameIndex];
+            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+                state.focus.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+            commands->ResourceBarrier(1, &barrier);
+            commands->CopyBufferRegion(readback.buffer.Get(), 0, state.focus.Get(), 0, kFocusRayCount * sizeof(float));
+            barrier = CD3DX12_RESOURCE_BARRIER::Transition(state.focus.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+                                                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            commands->ResourceBarrier(1, &barrier);
+            readback.fence = graphics.currentFrameRetireFenceValue;
+        }
         target.data.valid = true;
         field.published = 1 - field.published;
         field.history = true;
@@ -539,6 +629,13 @@ void DynamicDiffuseGi::Reset(const GFX::Context& graphics) {
         upload.Finalize(&graphics);
     GFX::RetireD3D12ObjectForFrame(state.pipeline, graphics, "DynamicGI.PSO");
     GFX::RetireD3D12ObjectForFrame(state.root, graphics, "DynamicGI.Root");
+    GFX::RetireD3D12ObjectForFrame(state.focus, graphics, "DynamicGI.Focus");
+    for (auto& readback : state.focusReadbacks) {
+        GFX::RetireD3D12ObjectForFrame(readback.buffer, graphics, "DynamicGI.FocusReadback");
+        readback.fence = 0;
+    }
+    state.focusFence = 0;
+    state.nearCenterHeight.reset();
     state.device = nullptr;
     state.fence.Reset();
     state.lastFence = 0;

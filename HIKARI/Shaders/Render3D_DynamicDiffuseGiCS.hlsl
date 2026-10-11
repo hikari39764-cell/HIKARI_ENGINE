@@ -10,6 +10,8 @@ SamplerState gMaterialWrap : register(s1);
 #include "Include/Lighting/HIKARI_LightingProviderSampling.hlsli"
 RWTexture3D<float4> gOutputSh[9] : register(u0);
 RWTexture2D<float4> gOutputAtlas : register(u9);
+// 近景の高さを決める相機の ray が当たった点の高さ（中央・右・左・上・下・真下、当たらなければ 1e30）。
+RWStructuredBuffer<float> gFocusHeights : register(u10);
 
 cbuffer DynamicDiffuseGiCB : register(b0)
 {
@@ -19,6 +21,8 @@ cbuffer DynamicDiffuseGiCB : register(b0)
     uint4 gCounts; // xyz counts, w total
     uint4 gWork; // sequence, first probe, budget, history compatible
     HikariRayLightingData gRayLighting;
+    float4 gFocusOrigin;    // xyz 相機の位置、w は近景の更新で 1（相機の ray を撃つ）
+    float4 gFocusDirection; // xyz 視線の向き
 };
 
 // probe 一回の更新の ray。先頭 16 本は形状の内外を調べる固定の分類 ray、残りは更新ごとに回す放射サンプル。
@@ -98,6 +102,25 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
 {
     const uint probeIndex = groupId.x;
     if (probeIndex >= gCounts.w) return;
+    // 近景の cascade を相機が見ている面の近くへ下ろすため、近景の更新の最初の group が相機から ray を撃つ
+    // （C++ の NearFieldCenterHeight が数フレーム遅れて読む）。
+    if (probeIndex == 0u && lane < 6u && gFocusOrigin.w > 0.5f)
+    {
+        const float3 forward = normalize(gFocusDirection.xyz);
+        const float3 right = abs(forward.y) < 0.99f ? normalize(cross(float3(0.0f, 1.0f, 0.0f), forward))
+            : float3(1.0f, 0.0f, 0.0f);
+        const float3 up = cross(forward, right);
+        const float3 offsets[5] = {0.0f.xxx, right, -right, up, -up};
+        RayDesc focus;
+        focus.Origin = gFocusOrigin.xyz;
+        focus.Direction = lane == 5u ? float3(0.0f, -1.0f, 0.0f) : normalize(forward + offsets[min(lane, 4u)] * 0.3f);
+        focus.TMin = 0.01f;
+        focus.TMax = 500.0f;
+        HikariRaySurface focusHit = (HikariRaySurface)0;
+        const bool found = gRayLighting.scene.w == 0u && HikariTraceRuntimeScene(focus, gRayLighting.scene.x,
+            gRayLighting.scene.y, gRayLighting.time, gMaterialWrap, HIKARI_RAY_REPORT_BACKFACES, focusHit);
+        gFocusHeights[lane] = found ? focus.Origin.y + focus.Direction.y * focusHit.distance : 1.0e30f;
+    }
     const uint3 coordinate = uint3(probeIndex%gCounts.x,(probeIndex/gCounts.x)%gCounts.y,probeIndex/(gCounts.x*gCounts.y));
     const float3 nominalPosition = gOrigin.xyz+float3(coordinate)*gSpacing.xyz;
     const int3 previousCoordinate = int3(round((nominalPosition-gPrevious.originSampling.xyz)/gSpacing.xyz));
