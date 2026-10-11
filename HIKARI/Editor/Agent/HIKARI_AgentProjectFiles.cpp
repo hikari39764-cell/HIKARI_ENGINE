@@ -143,6 +143,8 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
 2. `project.build`：编辑器在后台构建当前源码的副本（不影响正在用的模块），用 `project.build.status` 看编译和
    `Tests/HikariVerification.json` 行为检查的结果。
 3. 测试规则不用重载：`project.build` 通过后，`play.background` 直接用这次构建的模块（结果里 `module` 为 `projectBuild`）。
+   新写的系统只在 `GetDefaultSystems()` 里声明时，已有场景不会运行它：用 `BindComponentSystem` 把系统绑到组件上
+   （场景里有该组件就自动导入），日志的 `[SceneSystem] active schedule` 能看到正在运行的系统。
 4. 只有要在编辑器里给物体加新写的组件、或让编辑器加载新代码时才 `project.reload`：重新构建并重启编辑器，
    要求文档已保存、不在 Play；编辑器重启后 hikari 会自动重连（访问模式和自动模式保持不变）。
 

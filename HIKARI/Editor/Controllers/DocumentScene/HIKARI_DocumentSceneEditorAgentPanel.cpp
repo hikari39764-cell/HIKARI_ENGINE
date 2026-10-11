@@ -23,6 +23,13 @@ namespace {
 
 using EDITOR::AGENT::AgentKind;
 
+// 面板の幅で折り返す説明文（权限の説明や自動模式の警告が右端で切れないように）。
+void WrappedText(const ImVec4& color, const std::string& text) {
+    ImGui::PushStyleColor(ImGuiCol_Text, color);
+    ImGui::TextWrapped("%s", text.c_str());
+    ImGui::PopStyleColor();
+}
+
 constexpr size_t kMaximumAgentOperations = 50u;
 // 依頼に添える编辑器现场の上限（文脈を圧迫しないため）。
 constexpr size_t kMaximumAttachedStateBytes = 6000u;
@@ -600,15 +607,14 @@ void DocumentSceneEditorController::DrawAgentPanel(DocumentSceneBase& scene) {
     if (ImGui::RadioButton(TEXT::Localize("agent.mode.developShort").c_str(), mode == AgentAccessMode::DevelopProject))
         agentHost_.SetAccessMode(AgentAccessMode::DevelopProject);
     ImGui::EndDisabled();
-    ImGui::TextDisabled(
-        "%s",
-        TEXT::Localize(mode == AgentAccessMode::DevelopProject ? "agent.mode.develop" : "agent.mode.content").c_str());
+    WrappedText(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled),
+                TEXT::Localize(mode == AgentAccessMode::DevelopProject ? "agent.mode.develop" : "agent.mode.content"));
     // 自動（無需批准）は人だけが入れる（どの操作からも切り替えられず、文件にも保存しない）。入れている間は目立たせる。
     bool autoApprove = agentHost_.AutoApprove();
     if (ImGui::Checkbox(TEXT::Localize("agent.autoApprove").c_str(), &autoApprove))
         agentHost_.SetAutoApprove(autoApprove);
     if (autoApprove)
-        ImGui::TextColored({1.0f, 0.62f, 0.3f, 1.0f}, "%s", TEXT::Localize("agent.autoApproveOn").c_str());
+        WrappedText({1.0f, 0.62f, 0.3f, 1.0f}, TEXT::Localize("agent.autoApproveOn"));
     else if (ImGui::IsItemHovered())
         ImGui::SetTooltip("%s", TEXT::Localize("agent.autoApproveHint").c_str());
     if (panel.session.Running() && ImGui::CollapsingHeader(TEXT::Localize("agent.usage.title").c_str()))

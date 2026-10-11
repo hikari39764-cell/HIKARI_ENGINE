@@ -486,8 +486,11 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
     if (aiSceneCaptureTicket_ && (aiSceneCaptureIdentity_ != scene.GetSceneId() + "|" + scene.GetScenePath() ||
                                   aiSceneCaptureRevision_ != scene.GetSceneDocumentRevision()))
         CancelAiSceneCapture();
-    if (cameraPath_ && !scene.IsRuntimePlayActive())
+    if (cameraPath_ && !scene.IsRuntimePlayActive()) {
+        // 编辑相机は操作器（DebugCameraController3D）の姿勢から毎フレーム作られるので、操作器も合わせる。
         cameraPath_->Apply(scene.GetCamera(), TIME::GetFrameContext().frameIndex);
+        scene.GetDebugCamera().ResetFromCamera(scene.GetCamera());
+    }
     agentHost_.PumpActions();
     TickAgentPlayRun();
     TickAgentPanel();
