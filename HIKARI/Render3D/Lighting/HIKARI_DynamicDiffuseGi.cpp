@@ -228,10 +228,13 @@ struct NearFieldPlacement {
     float height = 0.0f;
     float reach = 0.0f;
 };
-// 高さは視線の 5 本が当たった点の高さの中央値の少し上（格子の高さの半分の半分）へ下ろすが、相機より上へは上げない
-// （室内や地面に立った視点では変わらない）。下ろさないと、高い所から見下ろした時に地面の近くが間隔 6m の遠景だけに
-// なり、小さな部屋の床や壁が塊のような汚れになった。真下の ray が近くの地面に当たる時は、その地面を格子に残す（崖の
-// 縁から谷を見下ろしても足元が粗くならない）。視線がどこにも当たらなければ真下の地面、それも無ければ相機の高さ。
+// 高さは視線の 5 本が当たった点の高さの中央値の少し上（格子の高さの半分の半分）へ下ろすが、視線では相機より上へは
+// 上げない。下ろさないと、高い所から見下ろした時に地面の近くが間隔 6m の遠景だけになり、小さな部屋の床や壁が塊の
+// ような汚れになった。真下の ray が近くの地面に当たる時は、その地面を格子に残す（崖の
+// 縁から谷を見下ろしても足元が粗くならない）。見下ろしていない時（中央値の少し上が相機以上）に真下の地面が近ければ、
+// 最下段の probe が地面の 1〜2 間隔下に来るまで格子を上げる。相機の高さを中心にすると半分の段が地面の下で無駄になり、
+// 低档（6 段）では高さ 3m の天井が上の縁の 1.5m の移行（間隔 6m の遠景）に入って、屋根越しに外の光で明るくなった。
+// 視線がどこにも当たらなければ真下の地面、それも無ければ相機の高さ。
 // 前に出す距離は、視線の当たった点までの水平距離の中央値を、相機の地面からの高さの 1.5 倍までで取る。高い所から
 // 斜めに見ると見ている面が近景の外（前へ約 19m 先）になりやすく、20m 先の家が遠景の塊の汚れになった。地面に立った
 // 視点では高さが小さいのでほとんど出さない（足元の近くの面が一番大事）。
@@ -255,9 +258,14 @@ NearFieldPlacement PlaceNearField(const std::array<float, kFocusValueCount>& val
     if (count == 0)
         return placement;
     std::sort(heights.begin(), heights.begin() + count);
-    placement.height = (std::min)(cameraHeight, heights[count / 2] + 0.5f * halfHeight);
+    const float viewHeight = heights[count / 2] + 0.5f * halfHeight;
+    placement.height = (std::min)(cameraHeight, viewHeight);
+    // 格子の中心は（高さ - 0.5 間隔）以下の間隔の倍数へ丸められる（gridOrigin）ので、高さを地面 + halfHeight - 0.5 間隔に
+    // すると最下段は地面の 1〜2 間隔下になる。
     if (belowHit && cameraHeight - below < halfHeight)
-        placement.height = (std::max)(placement.height, below - halfHeight + spacing);
+        placement.height = viewHeight >= cameraHeight
+                               ? (std::max)(placement.height, below + halfHeight - 0.5f * spacing)
+                               : (std::max)(placement.height, below - halfHeight + spacing);
     if (viewCount > 0) {
         std::sort(distances.begin(), distances.begin() + viewCount);
         const float elevation = belowHit ? (std::max)(cameraHeight - below, 0.0f) : distances[viewCount / 2];

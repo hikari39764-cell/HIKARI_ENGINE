@@ -63,9 +63,10 @@ float HikariCrushProbeWeight(float weight)
 // 法線まわりの空の見える割合（probe 間の重みで補間）。
 // probe ごとに atlas の深度 moment と validity、放射照度を一度ずつ読む（SH9 の 9 係数を読まない）。
 // 動的 probe は ray が疎で深度 moment が粗いので、面の裏側の probe を滑らかに弱める（DDGI の backface 項）。
-// 画面の面（referenceProbe が負）は深度 moment の可視性だけで角を重み付ける。連通で角を落とすと、基準の角が隣の格子で
-// 変わる所で共有面の角が片側で落とされ片側で残り、格子の面に沿った楔形の段差（球の下面の黒い楔）になる（画面で連通を
-// 外しても GIReference / CornellBox の室内は 1/255 も明るくならない）。
+// 画面の面（referenceProbe が負）は深度 moment の可視性と面の表裏（面の平面の奥の probe を除く）で角を重み付ける。
+// 連通で角を落とすと、基準の角が隣の格子で変わる所で共有面の角が片側で落とされ片側で残り、格子の面に沿った楔形の段差
+// （球の下面の黒い楔）になる。基準を全角の連続な重みで平均すれば段差は消えるが、前向きのシェーダでは ForwardOpaque が
+// 約 1ms 以上増えた（2026-10-11 の計測。格子ごとの組を probe 側で求めて画素では 2 texel 読むだけにしても同じ）。
 // referenceProbe は probe の ray の当たった点（照り返しが probe に溜まる所）を評価する時のその probe の格子座標。ここでは
 // 壁を越えて光を運んではならない。白い閉じた部屋は反射を重ねて光を何倍にも増やすので、壁の向こうの日なたの角がわずかに
 // 混ざるだけで昼の部屋が太陽の当たる壁の側から明るくなった。深度 moment の可視性は壁沿いの掠める向きで深度が混ざって
@@ -108,6 +109,8 @@ float4 HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData volume, float3 w
     float cornerWeights[8];
     float2 cornerTiles[8];
     float validWeight = 0.0f;
+    const float minimumSpacing =
+        min(volume.spacingIntensity.x, min(volume.spacingIntensity.y, volume.spacingIntensity.z));
     [unroll] for (uint corner = 0u; corner < 8u; ++corner)
     {
         const uint3 offset = uint3(corner & 1u, (corner >> 1u) & 1u, (corner >> 2u) & 1u);
@@ -126,7 +129,13 @@ float4 HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData volume, float3 w
             // 全 probe が遮られた点は補間の重みへ戻す。黒にすると地面など probe 層に重なる面が丸ごと暗くなる。
             const float visibility = HikariProbeChebyshevVisibility(moments.xy, moments.w);
             const float crushed = HikariCrushProbeWeight(visibility * (facing * facing + 0.2f));
-            cornerWeights[corner] = interpolationWeight * max(crushed, 1e-6f) * moments.z;
+            // 画面の面では、面の平面より間隔の 1 割強以上奥にある probe（面の裏）を使わない（Unity APV の法線による漏光
+            // 抑制と同じ）。間隔より薄い屋根や壁の向こうの probe は、開口や縁で深度 moment の分布が混ざると可視と判定され、
+            // 天井の穴のまわりに外の光の輪が出た。表の probe が無い点（小さな物の裏など）は下の下限で残り、全体で正規化
+            // される。probe の ray の当たった点は連通で守る。
+            const float frontSide =
+                probeRay ? 1.0f : smoothstep(-0.15f, -0.05f, dot(probePosition - worldPos, n) / minimumSpacing);
+            cornerWeights[corner] = interpolationWeight * max(crushed * frontSide, 1e-6f) * moments.z;
             validWeight += interpolationWeight * moments.z;
             // 撃った probe から連通していない角を落とす（軸の差の組 x=1, y=2, z=4 から 1 を引いた bit）。
             const uint axes = ((int)coordinate.x != referenceProbe.x ? 1u : 0u) |
@@ -142,13 +151,14 @@ float4 HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData volume, float3 w
     {
         [branch] if (cornerWeights[linked] > 0.0f)
         {
-            result += HikariSampleDynamicGiIrradiance(descriptorIndex, cornerTiles[linked], atlasSize, normalUv) *
-                cornerWeights[linked];
+            const float4 irradiance =
+                HikariSampleDynamicGiIrradiance(descriptorIndex, cornerTiles[linked], atlasSize, normalUv);
+            result += float4(HikariDynamicGiBlendSpace(irradiance.rgb), irradiance.a) * cornerWeights[linked];
             totalWeight += cornerWeights[linked];
         }
     }
     result /= max(totalWeight, 1e-20f);
-    result.rgb = pow(max(result.rgb, 0.0f.xxx), kIrradianceGamma);
+    result.rgb *= result.rgb;
     skyVisibility = saturate(result.a);
     // 壁や屋根の中の無効な probe の分を下位（空の光）へ回すと、壁際に遮られない空の光が差し込む。有効な probe
     // が少しでもあればその間で正規化して全面を覆い、ほぼ全部が無効な時だけ下位へ移す。

@@ -16,8 +16,17 @@ static const uint HIKARI_DYNAMIC_GI_TILE_WIDTH = 28u;
 static const uint HIKARI_DYNAMIC_GI_TILE_HEIGHT = 18u;
 static const float HIKARI_DYNAMIC_GI_OCTAHEDRAL_SIDE = 8.0f;
 static const float HIKARI_DYNAMIC_GI_DEPTH_SIDE = 16.0f;
-// 放射照度は E/pi の 1/5 乗で保存し、その空間で補間する。
+// 放射照度は E/pi の 1/5 乗で保存する（暗い所の精度を保つ）。補間は RTXGI の DDGIGetVolumeIrradiance と同じく 1/2 乗の
+// 空間で行い、最後に二乗して戻す。1/5 乗のまま混ぜると暗い probe へ強く引かれ、明暗の境の補間が線形の平均よりずっと
+// 暗くなる（半々なら線形 0.525、1/2 乗 0.374、1/5 乗 0.278）。壁際や開口のまわりが汚く暗くなり、probe の配置が違う
+// 画質の档位ごとに明るさがずれた。
 static const float kIrradianceGamma = 5.0f;
+
+// 保存値（E/pi の 1/5 乗）を補間の空間（E/pi の 1/2 乗）へ。
+float3 HikariDynamicGiBlendSpace(float3 stored)
+{
+    return pow(max(stored, 0.0f.xxx), kIrradianceGamma * 0.5f);
+}
 
 // 境界 1 texel を含む八面体 tile 内の方向の uv。
 float2 HikariProbeAtlasUv(float2 tileTexel, float side, float2 directionUv, float2 atlasSize)
@@ -232,14 +241,17 @@ float4 HikariEvaluateDynamicGiMedium(HikariIrradianceVolumeData volume, float3 w
             HikariDynamicGiCornerLinked(links, reference, linked))
         {
             [unroll] for (uint direction = 0u; direction < 4u; ++direction)
-                irradiance[direction] += HikariSampleDynamicGiIrradiance(descriptorIndex, cornerTiles[linked], atlasSize,
-                    directionUv[direction]).rgb * cornerWeights[linked];
+                irradiance[direction] += HikariDynamicGiBlendSpace(HikariSampleDynamicGiIrradiance(descriptorIndex,
+                    cornerTiles[linked], atlasSize, directionUv[direction]).rgb) * cornerWeights[linked];
             totalWeight += cornerWeights[linked];
         }
     }
     float3 radiance = 0.0f.xxx;
     [unroll] for (uint direction = 0u; direction < 4u; ++direction)
-        radiance += pow(max(irradiance[direction] / max(totalWeight, 1e-20f), 0.0f.xxx), kIrradianceGamma);
+    {
+        const float3 blended = irradiance[direction] / max(totalWeight, 1e-20f);
+        radiance += blended * blended;
+    }
     return float4(radiance * 0.25f, saturate(validWeight * 50.0f));
 }
 

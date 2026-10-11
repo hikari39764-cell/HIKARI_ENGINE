@@ -248,8 +248,9 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
     }
     GroupMemoryBarrierWithGroupSync();
     const bool keepMoments=hasPrevious && previousSh[0].a>0.0f && sValidity>0.0f;
-    // 深度 moment の履歴も更新回数で始めは軽くし、0.9 まで上げる。
-    const float momentHistory=keepMoments ? min(0.9f,previousSh[5].a/(previousSh[5].a+1.0f)) : 0.0f;
+    // 深度 moment の履歴も更新回数で始めは軽くし、RTXGI と同じ 0.97 まで上げる。一回の更新の ray は RTXGI の半分で、
+    // 0.9 では屋根の縁を抜ける疎な遠い ray の有無で壁の向こうの probe の可視性が更新ごとに揺れ、壁の上端が点滅した。
+    const float momentHistory=keepMoments ? min(0.97f,previousSh[5].a/(previousSh[5].a+1.0f)) : 0.0f;
     // 描画側が probe ごとに 9 係数を読まないよう、放射照度 E/pi を 8x8 の八面体へ展開する。
     for(uint texel=lane;texel<100u;texel+=64u)
     {
@@ -259,8 +260,8 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         [unroll] for(uint c=0u;c<9u;++c) irradiance+=sSh[c]*HikariSh9DiffuseWeight(axis,c);
         float skyVisibility=0.0f;
         [unroll] for(uint b=0u;b<4u;++b) skyVisibility+=sSkySh[b]*HikariSh9DiffuseWeight(axis,b);
-        // 放射照度は 1/5 乗で保存し、描画側も同じ空間で補間してから戻す（RTXGI の gamma 5）。暗い所の probe 間の
-        // 差が知覚に近い量で均され、明るい probe が暗い面へ滲む漏れと斑が目立たない。
+        // 放射照度は 1/5 乗で保存する（RTXGI の gamma 5。暗い所の精度）。描画側は 1/2 乗の空間で補間する
+        // （HikariDynamicGiBlendSpace）。
         gOutputAtlas[tile+pixel]=float4(pow(clamp(irradiance,0.0f,65000.0f),1.0f/kIrradianceGamma),saturate(skyVisibility));
     }
     // 深度 moment は 16x16 の八面体。波瓣は鋭く取る（DDGI と同じ cos^50）。広いと壁に沿って抜ける長い ray が隣の方向へ
@@ -279,12 +280,16 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         const float2 fresh=moments/max(weightSum,1e-20f);
         // 一回の更新の ray は少なく、向きは更新ごとに回る。probe が動かない間は前回の moment と重ね、
         // 17 度以内に ray が来なかった方向は前回を保つ。新しい probe や無効だった probe では前回を捨てる。
+        // 波瓣の中心に十分な ray があって前回の平均より揺れの幅を大きく超えて近い時は、遮るもの（閉じた扉など）が現れた
+        // とみなして早く追う（遠い深度のまま漏れ続けない）。遠くなる向きは疎な ray の揺れと区別できないので遅いまま。
         const uint2 momentTexel=uint2(10u,0u)+pixel;
         float2 result=fresh;
         if (keepMoments)
         {
             const float2 previousMoments=gMaterialTexturePool[NonUniformResourceIndex(previousAtlasIndex)].Load(int3(previousTile+momentTexel,0)).rg;
-            result=weightSum>=0.1f ? lerp(fresh,previousMoments,momentHistory) : previousMoments;
+            const float previousSpread=sqrt(max(previousMoments.y-previousMoments.x*previousMoments.x,0.0f));
+            const bool occluded=weightSum>=0.5f && fresh.x<previousMoments.x-3.0f*previousSpread-0.05f;
+            result=weightSum>=0.1f ? lerp(fresh,previousMoments,occluded ? 0.5f : momentHistory) : previousMoments;
         }
         const float links = pixel.y == 1u && pixel.x >= 1u && pixel.x <= 8u ? float(ProbeOctantLinks(pixel.x - 1u)) : 0.0f;
         gOutputAtlas[tile+momentTexel]=float4(result,sValidity,links);

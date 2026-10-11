@@ -90,6 +90,9 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
     cameraPath_ = EDITOR::EditorCameraPath::FromCommandLine();
     qualitySchedule_ = EDITOR::EditorQualitySchedule::FromCommandLine();
     inputScript_ = EDITOR::EditorInputScript::FromCommandLine();
+    // 診断用：--editor-debug-view <番号>（RenderDebugView の値、41 は間接拡散）で視口の表示を最初から切り替える。
+    if (const auto debugView = ReadRuntimeCommandLineUint32(L"--editor-debug-view"))
+        context_.viewportDebug.renderView = static_cast<RenderDebugView>(*debugView);
     EDITOR::RegisterBuiltInEditorTools(toolHost_);
     EDITOR::RegisterBuiltInSystemAuthoring(systemAuthoringRegistry_);
     agentHost_.SetPermissionResolver(
