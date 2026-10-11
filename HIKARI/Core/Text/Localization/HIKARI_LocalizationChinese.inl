@@ -2224,7 +2224,15 @@
     {"gc.arenaHint", "摄像机站在场地中心到玩家连线的延长线上，看向玩家和中心之间。"}, {"gc.arenaCenter", "场地中心"},
     {"gc.arenaCenterFromLook", "中心设为注视目标"}, {"gc.arenaHeight", "仰角 (度)"}, {"gc.minDistance", "最近距离"},
     {"gc.maxDistance", "最远距离"}, {"gc.walk", "模拟走动"},
-    {"gc.walkHint", "在视口里拖动玩家：相机画面会按区域切换机位（不修改场景）"}, {"gc.inZone", "当前区域："},
+    {"gc.walkHint", "用 WASD 让玩家替身沿地面走动：相机画面会像游戏里一样按区域切换并过渡"
+                    "（不修改场景，停止后替身回到原位）"},
+    {"gc.walkKeys", "观察视图或相机画面获得焦点时：WASD 走动，按住 Shift 跑"
+                    "（按住右键时 WASD 用于观察视图飞行）"},
+    {"gc.record", "录制走位"}, {"gc.stopRecord", "停止录制"}, {"gc.replay", "按录制走位重放"},
+    {"gc.stopReplay", "停止重放"},
+    {"gc.noTake", "还没有录制的走位：录一段后可以改参数再重放对比，"
+                  "拖动时间条查看当时的相机画面"},
+    {"gc.defaultCameraShort", "默认相机"}, {"gc.inZone", "当前区域："},
     {"gc.outsideZones", "不在任何区域内：使用默认摄像机"}, {"gc.distance", "距离"}, {"gc.height", "目标高度"},
     {"gc.pitch", "俯仰角"}, {"gc.yaw", "水平角"}, {"gc.fov", "垂直视野"}, {"gc.shoulder", "偏肩距离"},
     {"gc.lockTarget", "锁定注视目标"}, {"gc.response", "输入与过渡"}, {"gc.blend", "切换时间"},

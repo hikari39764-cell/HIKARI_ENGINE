@@ -2550,7 +2550,15 @@
     {"gc.arenaCenter", "Arena center"}, {"gc.arenaCenterFromLook", "Center = look target"},
     {"gc.arenaHeight", "Elevation (deg)"}, {"gc.minDistance", "Minimum distance"},
     {"gc.maxDistance", "Maximum distance"}, {"gc.walk", "Simulate walk"},
-    {"gc.walkHint", "Drag the player in the viewport: the camera view switches by zone (the scene is not changed)"},
+    {"gc.walkHint", "Walk a stand-in for the player along the ground with WASD: the camera switches and blends by "
+                    "zone as in game (the scene is not changed; the stand-in returns when you stop)"},
+    {"gc.walkKeys", "With the observer or camera view focused: WASD to walk, hold Shift to run (with the right "
+                    "button held, WASD flies the observer)"},
+    {"gc.record", "Record walk"}, {"gc.stopRecord", "Stop recording"}, {"gc.replay", "Replay walk"},
+    {"gc.stopReplay", "Stop replay"},
+    {"gc.noTake", "No recorded walk yet: record one, change settings and replay it to compare; drag the timeline "
+                  "to see the camera at that moment"},
+    {"gc.defaultCameraShort", "Default camera"},
     {"gc.inZone", "In zone: "}, {"gc.outsideZones", "Outside all zones: default camera"}, {"gc.distance", "Distance"},
     {"gc.height", "Target height"}, {"gc.pitch", "Pitch"}, {"gc.yaw", "Yaw"}, {"gc.fov", "Vertical FOV"},
     {"gc.shoulder", "Shoulder offset"}, {"gc.lockTarget", "Track look target"}, {"gc.response", "Input & transitions"},

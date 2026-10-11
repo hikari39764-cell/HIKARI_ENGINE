@@ -350,7 +350,7 @@ GameplayCameraWorkspaceResult GameplayCameraWorkspaceController::Draw(DocumentSc
         ImGui::SameLine();
         ImGui::Checkbox(L("gc.simulate"), &simulate_);
         ImGui::SameLine();
-        bool walk = simulateZones_;
+        bool walk = walk_.Active();
         ImGui::BeginDisabled(scene.IsRuntimePlayActive() || !target_.value);
         if (ImGui::Checkbox(L("gc.walk"), &walk))
             SetZoneSimulation(scene, walk);
@@ -384,6 +384,7 @@ GameplayCameraWorkspaceResult GameplayCameraWorkspaceController::Draw(DocumentSc
             ImGui::Text("%s%s", L("gc.inZone"), zone->GetName().c_str());
         else if (target_.value)
             ImGui::TextDisabled("%s", L("gc.outsideZones"));
+        walk_.DrawControls(scene.GetWorld());
         if (effectsEditing_)
             DrawEffectTimeline(scene);
         if (!message_.empty())

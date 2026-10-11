@@ -470,6 +470,7 @@ void GameplayCameraWorkspaceController::UpdateZoneSimulation(DocumentSceneBase& 
     const MATH::Vec3 position = CAMERA::WorldPosition(*target);
     int bestPriority = 0;
     SceneObjectId zoneCamera{};
+    float zoneBlend = 0.0f;
     scene.GetWorld().ForEachObjectWith<CameraActivationVolumeComponent>(
         [&](GameObject& object, CameraActivationVolumeComponent& zone) {
             if (!zone.IsEnabled() || (zone.GetSubjectObjectId().value && zone.GetSubjectObjectId() != target_) ||
@@ -480,38 +481,36 @@ void GameplayCameraWorkspaceController::UpdateZoneSimulation(DocumentSceneBase& 
                 activeZone_ = object.GetDocumentId();
                 bestPriority = zone.GetPriority();
                 zoneCamera = zone.GetCameraObjectId();
+                zoneBlend = zone.GetBlendSeconds();
             }
         });
-    if (!simulateZones_ || scene.IsRuntimePlayActive()) {
+    if (!walk_.Active() || scene.IsRuntimePlayActive()) {
         return;
     }
-    // 模拟走动：区域の機位（区域の外なら既定の機位）を相机画面に出す。
+    // 模拟走动：区域の機位（区域の外なら既定の機位）を相机画面に出す。入る時はその区域の、出る時は出た区域の
+    // 過渡時間で、今見えている画面から混ぜる（CameraActivationVolumeSystem と CameraDirector と同じ）。
     const auto defaultCamera = scene.GetSceneDocument().camera.defaultCameraObjectId;
     const SceneObjectId wanted = zoneCamera.value ? zoneCamera : defaultCamera.value_or(SceneObjectId{});
     if (wanted.value && wanted != camera_) {
+        walk_.BeginBlend(lastMonitorCamera_, activeZone_.value ? zoneBlend : zoneBlendSeconds_);
         const SceneObjectId keepTarget = target_;
         SelectCamera(scene, wanted);
         target_ = keepTarget;
     }
+    if (activeZone_.value)
+        zoneBlendSeconds_ = zoneBlend;
 }
 
 void GameplayCameraWorkspaceController::SetZoneSimulation(DocumentSceneBase& scene, bool enabled) {
-    if (simulateZones_ == enabled) {
+    if (walk_.Active() == enabled) {
         return;
     }
-    simulateZones_ = enabled;
-    GameObject* target = scene.GetWorld().FindObject(target_);
+    // 動かす前の位置を覚え、終わったら戻す（模拟は文書を変えない）。歩く間は相机の追従を動かす。
     if (enabled) {
-        // 動かす前の位置を覚え、終わったら戻す（模拟は文書を変えない）。
-        simulatedTargetOrigin_ = target ? std::optional<Transform3D>(target->GetTransform()) : std::nullopt;
-        simulatedTarget_ = target_;
-        return;
-    }
-    if (GameObject* moved = scene.GetWorld().FindObject(simulatedTarget_); moved && simulatedTargetOrigin_) {
-        (void)moved->SetLocalTransform(*simulatedTargetOrigin_);
-    }
-    simulatedTargetOrigin_.reset();
-    simulatedTarget_ = {};
+        walk_.Start(scene.GetWorld(), target_);
+        simulate_ = true;
+    } else
+        walk_.Stop(scene.GetWorld());
 }
 
 } // namespace HIKARI::EDITOR

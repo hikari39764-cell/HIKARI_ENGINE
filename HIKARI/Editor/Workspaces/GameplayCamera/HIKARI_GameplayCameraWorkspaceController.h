@@ -2,6 +2,7 @@
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Documents/HIKARI_GameplayCameraEditorDocument.h"
 #include "Editor/Views/Director/HIKARI_DirectorViewPanel.h"
+#include "Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraWalk.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Scene/Components/HIKARI_CameraFollowComponent.h"
 #include "Scene/HIKARI_CameraFollowSystem.h"
@@ -74,7 +75,7 @@ private:
     // 機位の型と、その型で効く常用の項目。変えたら true。
     bool DrawMountSettings(DocumentSceneBase& scene, CAMERA::GameplayCameraMode& mode);
     void DrawZoneOverlay(DocumentSceneBase& scene, const EditorViewportRect& rect);
-    // 追う物が入っている区域を探し、模拟走动なら相机画面をその区域の機位に切り替える。
+    // 追う物が入っている区域を探し、模拟走动なら相机画面をその区域の機位に切り替える（実行時と同じ過渡で混ぜる）。
     void UpdateZoneSimulation(DocumentSceneBase& scene);
     void SetZoneSimulation(DocumentSceneBase& scene, bool enabled);
     // 追う物・注視の相手を変えたら、今の方案のまま場面の機位へ結び直す。
@@ -84,9 +85,11 @@ private:
     CameraFollowSystem evaluator_;
     CameraFollowComponent preview_;
     SceneObjectId camera_, target_, lookTarget_;
-    SceneObjectId selectedZone_{}, activeZone_{}, simulatedTarget_{};
-    bool simulateZones_ = false;
-    std::optional<Transform3D> simulatedTargetOrigin_{};
+    SceneObjectId selectedZone_{}, activeZone_{};
+    GameplayCameraWalk walk_;
+    GameplayCameraWalk::Input walkInput_{};
+    // 最後に入っていた区域の過渡時間。区域を出て既定の機位へ戻る時に使う（実行時と同じ）。
+    float zoneBlendSeconds_ = 0.0f;
     std::string mode_, message_, search_;
     Camera3D lastMonitorCamera_;
     uint64_t monitorRevision_ = 1;

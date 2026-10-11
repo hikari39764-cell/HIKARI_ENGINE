@@ -72,6 +72,11 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
                                      preview_.Runtime().desiredDistance + previewZoom_, preview_.Runtime().distance, 0);
         previewYaw_ = previewPitch_ = previewZoom_ = 0;
         preview_.GameplayState().previewSpeed = previewSpeed_;
+        // 模拟走动：前の帧に集めた WASD で替身を今の相机の向きに対して歩かせてから、相机を評価する。
+        if (walk_.Active() && preview_.GameplayState().hasPose) {
+            const auto& pose = preview_.GameplayState().outputPose;
+            walk_.Step(scene.GetWorld(), walkInput_, pose.target - pose.eye, ImGui::GetIO().DeltaTime);
+        }
         evaluator_.EvaluatePreview(scene.GetWorld(), *cameraObject, preview_, simulate_ ? ImGui::GetIO().DeltaTime : 0);
     }
 
@@ -98,6 +103,17 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
         }
     }
     const CameraFollowComponent* shown = runtime ? live : &preview_;
+    // WASD は観察視口か相机画面に焦点がある時だけ（右ボタンを押している間は観察視口の飛行に使う）。
+    walkInput_ = {};
+    const auto readWalkInput = [&] {
+        if (!walk_.Active() || runtime || !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) ||
+            ImGui::GetIO().WantTextInput || ImGui::IsMouseDown(ImGuiMouseButton_Right))
+            return;
+        walkInput_.forward +=
+            (ImGui::IsKeyDown(ImGuiKey_W) ? 1.0f : 0.0f) - (ImGui::IsKeyDown(ImGuiKey_S) ? 1.0f : 0.0f);
+        walkInput_.right += (ImGui::IsKeyDown(ImGuiKey_D) ? 1.0f : 0.0f) - (ImGui::IsKeyDown(ImGuiKey_A) ? 1.0f : 0.0f);
+        walkInput_.run = walkInput_.run || ImGui::GetIO().KeyShift;
+    };
     if (ImGui::Begin(TEXT::LocalizeWindow("gc.observer", "GameplayCamera/Observer").c_str(), nullptr,
                      ImGuiWindowFlags_NoScrollbar)) {
         if (!focused_ && cameraObject) {
@@ -119,18 +135,10 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
             observer_.SetTargetCamera(camera_);
             focused_ = true;
         }
-        // 模拟走动の間は追う物を視口で動かせる（実行時の位置だけで、文書は変えない）。
+        readWalkInput();
         EditorTransformGizmoState gizmo{};
-        const SceneObjectId walker = simulateZones_ && !runtime ? target_ : SceneObjectId{};
         const auto result =
-            observer_.DrawContents(scene, stage, walker, gizmo, ImGui::GetIO().DeltaTime, runtime, false);
-        if (walker.value && result.gizmo.changed && result.gizmo.objectId == walker) {
-            if (auto* moved = scene.GetWorld().FindObject(walker)) {
-                Transform3D transform = moved->GetTransform();
-                transform.position = result.gizmo.transform.position;
-                (void)moved->SetLocalTransform(transform);
-            }
-        }
+            observer_.DrawContents(scene, stage, SceneObjectId{}, gizmo, ImGui::GetIO().DeltaTime, runtime, false);
         if (result.selectionRequested) {
             const auto* selected = scene.GetWorld().FindObject(result.selectedObjectId);
             if (selected && selected->GetComponent<CameraComponent>()) {
@@ -138,6 +146,8 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
             }
         }
         DrawZoneOverlay(scene, result.viewport);
+        walk_.DrawOverlay(*ImGui::GetWindowDrawList(), scene.GetWorld(), observer_.GetViewCamera(), result.viewport,
+                          walk_.Active() && !runtime ? &lastMonitorCamera_ : nullptr);
         if (shown && shown->GameplayState().hasPose) {
             const auto& pose = shown->GameplayState().outputPose;
             ImVec2 eye, target;
@@ -163,6 +173,7 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
     bool hasPlayViewport = false;
     if (ImGui::Begin(TEXT::LocalizeWindow("gc.monitor", "GameplayCamera/Monitor").c_str(), nullptr,
                      ImGuiWindowFlags_NoScrollbar)) {
+        readWalkInput();
         auto avail = ImGui::GetContentRegionAvail();
         const auto fit = FitEditorViewport((std::max)(avail.x, 1.0f), (std::max)(avail.y, 1.0f), 16.0f / 9);
         auto origin = ImGui::GetCursorScreenPos();
@@ -189,6 +200,10 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
             camera.SetPerspective(pose.verticalFovRadians, 16.0f / 9, pose.nearClip, pose.farClip);
             camera.SetLookAt(pose.eye, pose.target, pose.up);
             CAMERA::ResolveGameplayCameraSafety(scene.GetWorld(), camera_, camera, nullptr, &preview_);
+            if (walk_.Active()) {
+                camera = walk_.Resolve(camera, ImGui::GetIO().DeltaTime);
+                walk_.Observe(scene.GetWorld(), camera, activeZone_);
+            }
             RENDER3D::EDITORVIEW::EditorInteractiveViewRequest request;
             request.viewId = monitor.renderViewId;
             request.purpose = RENDER3D::RenderViewPurpose::EditorScene;

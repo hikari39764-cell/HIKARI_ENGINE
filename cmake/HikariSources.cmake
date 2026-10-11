@@ -1056,6 +1056,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraEffects.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraPreview.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraSetup.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraWalk.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraOperations.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceWindows.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Cinematics/HIKARI_CinematicsOperations.cpp"

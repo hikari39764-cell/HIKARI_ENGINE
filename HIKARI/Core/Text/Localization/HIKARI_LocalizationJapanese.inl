@@ -2576,8 +2576,16 @@
     {"gc.arenaHint", "場の中心からプレイヤーを通る線の先に立ち、両者の間を見ます。"}, {"gc.arenaCenter", "場の中心"},
     {"gc.arenaCenterFromLook", "中心を注視の相手に"}, {"gc.arenaHeight", "仰角 (度)"}, {"gc.minDistance", "最短距離"},
     {"gc.maxDistance", "最長距離"}, {"gc.walk", "歩いて試す"},
-    {"gc.walkHint",
-     "ビューポートでプレイヤーを動かすと、カメラ画面がエリアに合わせて切り替わります（シーンは変えません）"},
+    {"gc.walkHint", "WASD でプレイヤーの代役を地面に沿って歩かせると、カメラ画面がゲームと"
+                    "同じようにエリアで切り替わり混ざります（シーンは変えません。止めると代役は"
+                    "元の位置へ戻ります）"},
+    {"gc.walkKeys", "俯瞰かカメラ画面にフォーカスがある時：WASD で歩く、Shift で走る"
+                    "（右ボタンを押している間の WASD は俯瞰の移動）"},
+    {"gc.record", "歩きを録る"}, {"gc.stopRecord", "録画を止める"}, {"gc.replay", "録った歩きを再生"},
+    {"gc.stopReplay", "再生を止める"},
+    {"gc.noTake", "録った歩きはまだありません：録ってから設定を変えて再生すると比べられます。"
+                  "時間バーを動かすとその時のカメラ画面を見られます"},
+    {"gc.defaultCameraShort", "既定のカメラ"},
     {"gc.inZone", "今のエリア："}, {"gc.outsideZones", "どのエリアにも入っていません：既定のカメラ"},
     {"gc.distance", "距離"}, {"gc.height", "対象の高さ"}, {"gc.pitch", "ピッチ"}, {"gc.yaw", "ヨー"},
     {"gc.fov", "垂直視野角"}, {"gc.shoulder", "肩越しオフセット"}, {"gc.lockTarget", "注視対象を追跡"},
