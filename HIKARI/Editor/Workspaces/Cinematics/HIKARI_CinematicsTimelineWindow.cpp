@@ -4,7 +4,9 @@
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Editor/Views/HIKARI_EditorViewInstance.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
+#include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include <algorithm>
 #include <cmath>
@@ -138,6 +140,44 @@ void CinematicsWorkspaceController::DrawShotTransition(ImDrawList& draw, const C
     }
 }
 
+void CinematicsWorkspaceController::DrawShotHoverPreview(DocumentSceneBase& scene, CinematicSequence& sequence,
+                                                         const SEQUENCER::CameraCutClip* shot, float localTime) {
+    namespace VIEW = RENDER3D::EDITORVIEW;
+    if (shot == nullptr) {
+        if (shotPreviewSubmitted_)
+            VIEW::ClearRequest(kCinematicsShotPreviewRenderViewId);
+        shotPreviewSubmitted_ = false;
+        return;
+    }
+    constexpr float kWidth = 256.0f, kHeight = 144.0f;
+    // 1/60 秒単位の時刻と镜头で描き直しを決める（同じ所に置いている間は描き直さない）。
+    const uint64_t frame = static_cast<uint64_t>(std::lround(localTime * 60.0f));
+    VIEW::EditorInteractiveViewRequest request;
+    request.viewId = kCinematicsShotPreviewRenderViewId;
+    request.purpose = RENDER3D::RenderViewPurpose::EditorScene;
+    request.width = static_cast<uint32_t>(kWidth);
+    request.height = static_cast<uint32_t>(kHeight);
+    request.cameraFrame.camera = ResolveShotCamera(scene, sequence, *shot, localTime);
+    request.cameraFrame.valid = true;
+    request.cameraFrame.cameraCut = true;
+    request.cameraFrame.revision = (shot->id << 20) ^ frame;
+    request.sceneRevision = scene.GetSceneDocumentRevision();
+    request.visible = true;
+    request.drawDebug = false;
+    VIEW::SubmitRequest(request);
+    shotPreviewSubmitted_ = true;
+    ImGui::BeginTooltip();
+    ImGui::Text(TEXT::Localize("cine.clipTip").c_str(), shot->camera.name.c_str(), shot->startTimeSeconds,
+                shot->startTimeSeconds + shot->durationSeconds);
+    const VIEW::EditorInteractiveViewOutput output = VIEW::GetOutput(kCinematicsShotPreviewRenderViewId);
+    if (output.ready && output.colorSrv.ptr != 0)
+        ImGui::Image(reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(output.colorSrv.ptr)), {kWidth, kHeight});
+    else
+        ImGui::Dummy({kWidth, kHeight});
+    ImGui::TextDisabled("%.2f s", shot->startTimeSeconds + localTime);
+    ImGui::EndTooltip();
+}
+
 bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, CinematicSequence& sequence) {
     bool changed = false;
 #if defined(HIKARI_WITH_EDITOR)
@@ -174,6 +214,8 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         previewEnabled_ = true;
     }
     int row = 0;
+    const SEQUENCER::CameraCutClip* hoveredShot = nullptr;
+    float hoveredLocalTime = 0.0f;
     const auto lane = [&](const char* name) {
         const float y = origin.y + ruler + row++ * rowHeight;
         draw->AddText({origin.x + 8, y + 7}, IM_COL32(155, 172, 192, 255), name);
@@ -217,7 +259,8 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
                 start = (std::max)(0.0f, dragStart_ + next);
             changed = true;
         }
-        if (ImGui::IsItemHovered())
+        // 镜头は置いた時刻の画を DrawShotHoverPreview で添える。
+        if (ImGui::IsItemHovered() && kind != SelectionKind::Shot)
             ImGui::SetTooltip(TEXT::Localize("cine.clipTip").c_str(), name, start, start + duration);
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
             cursor_.Seek(start);
@@ -231,6 +274,12 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         clip(s.id, SelectionKind::Shot, s.startTimeSeconds, s.durationSeconds, s.camera.name.c_str(), shotY,
              IM_COL32(44, 105, 151, 255));
         DrawShotTransition(*draw, sequence, s, origin.x + labelWidth, shotY, rowHeight);
+        if (ImGui::IsItemHovered() && !ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+            hoveredShot = &s;
+            hoveredLocalTime =
+                std::clamp((ImGui::GetIO().MousePos.x - origin.x - labelWidth) / zoom_ - s.startTimeSeconds, 0.0f,
+                           s.durationSeconds);
+        }
         for (const auto& channel : s.camera.channels)
             for (const auto& key : channel.keys) {
                 if (key.time > s.durationSeconds)
@@ -239,6 +288,7 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
                 draw->AddLine({px, shotY + rowHeight - 7}, {px, shotY + rowHeight - 3}, IM_COL32(173, 231, 247, 200));
             }
     }
+    DrawShotHoverPreview(scene, sequence, hoveredShot, hoveredLocalTime);
     changed |= DrawChannelLanes(sequence, origin.x, origin.y + ruler + row * rowHeight, width, labelWidth, rowHeight);
     row += static_cast<int>(channelCount);
     for (auto& cue : sequence.presentationCueTrack.clips) {

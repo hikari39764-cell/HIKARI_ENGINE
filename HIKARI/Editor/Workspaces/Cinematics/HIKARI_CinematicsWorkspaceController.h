@@ -116,6 +116,9 @@ private:
     bool UpdateFlightRecording(DocumentSceneBase& scene, CinematicSequence& sequence, bool startRequested);
     void DrawShotTransition(ImDrawList& draw, const CinematicSequence& sequence, const SEQUENCER::CameraCutClip& shot,
                             float timeOriginX, float y, float rowHeight) const;
+    // 時間軸で镜头の上に置いた時刻の画を説明の小窓に出す（再生位置は動かさない）。shot が無ければ描画の依頼を取り下げる。
+    void DrawShotHoverPreview(DocumentSceneBase& scene, CinematicSequence& sequence,
+                              const SEQUENCER::CameraCutClip* shot, float localTime);
 
     SequenceEditorDocumentController sequenceDocumentController_{};
     SequenceEditorDocumentToolbar sequenceDocumentToolbar_{};
@@ -142,6 +145,7 @@ private:
     FlightState flight_ = FlightState::Off;
     uint64_t flightShot_ = 0;
     float flightLastKey_ = 0.0f;
+    bool shotPreviewSubmitted_ = false;
     bool sequenceLibraryVisible_ = true;
     float zoom_ = 80.0f;
     float timelineScroll_ = 0.0f;
