@@ -296,7 +296,14 @@ RenderResolution ResolveFixedRenderResolution(RenderResolutionPreset preset) {
 RenderResolution ResolveSceneOutputResolution(const RenderQualitySettings& settings, int viewportWidth,
                                               int viewportHeight) {
     if (IsFixedRenderResolutionPreset(settings.sceneResolution)) {
-        return ResolveFixedRenderResolution(settings.sceneResolution);
+        // 固定の预设は縦の画素数を決める。横は出す先（窓・编辑器の视口）の縦横比に合わせ、場面の投影と表示の縦横比を
+        // 揃える（16:9 で描いた画を別の比率の视口へ伸ばすと、形が歪み、非等倍の拡縮で画がぼける）。
+        const RenderResolution fixed = ResolveFixedRenderResolution(settings.sceneResolution);
+        if (viewportWidth <= 0 || viewportHeight <= 0) {
+            return fixed;
+        }
+        const double aspect = static_cast<double>(viewportWidth) / static_cast<double>(viewportHeight);
+        return ClampResolution({static_cast<int>(static_cast<double>(fixed.height) * aspect + 0.5), fixed.height});
     }
 
     const float scale = std::clamp(settings.viewportScale, 0.25f, 2.0f);

@@ -59,7 +59,6 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
     const float3 fraction = frac(grid);
     const uint descriptorIndex = (uint)(volume.selectionParams.y + 0.5f) - 1u;
     const float2 atlasSize = HikariDynamicGiAtlasSize(counts);
-    const float minimumSpacing = min(volume.spacingIntensity.x, min(volume.spacingIntensity.y, volume.spacingIntensity.z));
     float weights[8];
     float2 tiles[8];
     float maturities[8];
@@ -82,11 +81,10 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
             samplePosition - probePosition);
         const float visibility = HikariProbeChebyshevVisibility(moments.xy, moments.w);
         const float3 toProbe = probePosition - query.position;
-        // 受光面の接平面は世界空間の幾何。表側の問い合わせに、裏側の probe の光を混ぜない（DDGI の wrap shading）。
+        // 面の向きによる重み（RTXGI の wrap shading）。裏側の probe も 0 にはしない：0 にすると球の下面のように周りの
+        // probe がほぼ裏側になる点で支持が消え、下の層や空の光へ落ちて明るい欠けが出る。壁の向こうの光は可視性で止める。
         const float facing = 0.5f + 0.5f * dot(toProbe, query.surfaceNormal) * rsqrt(max(dot(toProbe, toProbe), 1e-8f));
-        const float frontSide = query.medium ? 1.0f :
-            smoothstep(-0.15f, -0.05f, dot(toProbe, query.surfaceNormal) / minimumSpacing);
-        const float surfaceWeight = query.medium ? 1.0f : (facing * facing + 0.2f) * frontSide;
+        const float surfaceWeight = query.medium ? 1.0f : facing * facing + 0.2f;
         const float patch = HikariDynamicGiProbePatchWeight(volume, descriptorIndex, tiles[corner],
             query.position - probePosition);
         weights[corner] = trilinear * active * patch * HikariDynamicGiWeight(visibility, surfaceWeight);

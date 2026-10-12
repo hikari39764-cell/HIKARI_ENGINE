@@ -1259,8 +1259,7 @@ bool ExecuteVolumetricCloudStage(const PIPELINE::RenderFrameContext& frame,
     if ((state.hasExecutedFrame &&
          (temporalFrame.frameIndex != state.lastFrameIndex + 1u || !(state.lastViewId == frame.viewId) ||
           state.lastPurpose != frame.purpose || state.lastQualityIndex != policy.qualityIndex)) ||
-        frame.cameraCut || temporalFrame.resetHistory || !temporalFrame.historyValid ||
-        !temporalFrame.camera.previousValid) {
+        frame.cameraCut || temporalFrame.resetHistory || !temporalFrame.camera.previousValid) {
         InvalidateHistory(state);
     }
     if (!PrepareStage(state, frame.graphics) ||

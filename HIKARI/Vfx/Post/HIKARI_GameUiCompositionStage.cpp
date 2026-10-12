@@ -3,7 +3,6 @@
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Render2D/HIKARI_DxRenderer.h"
 #include "Render2D/HIKARI_GameUiEffectRenderer.h"
-#include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 
 #include <array>
@@ -84,10 +83,10 @@ bool GameUiCompositionStage::Begin(RenderTarget2D& sceneColor, QuadDrawer& quad,
 
     D3D12_RECT sceneRect{0, 0, outputWidth, outputHeight};
     if (fitScene) {
+        // 場面は自分の縦横比のまま出力へ収める（投影はこの比率で描いてある）。UI の論理画面の比率で場面を伸縮しない。
         GameProjectUiCanvasFit fit{};
-        if (!ResolveGameProjectUiCanvasFit(outputWidth, outputHeight,
-                                           static_cast<float>(PRESENTATION::kDefaultLogicalWidth),
-                                           static_cast<float>(PRESENTATION::kDefaultLogicalHeight), fit)) {
+        if (!ResolveGameProjectUiCanvasFit(outputWidth, outputHeight, static_cast<float>(sceneColor.GetWidth()),
+                                           static_cast<float>(sceneColor.GetHeight()), fit)) {
             return false;
         }
         const int width = static_cast<int>(fit.fittedWidth + 0.5f);
