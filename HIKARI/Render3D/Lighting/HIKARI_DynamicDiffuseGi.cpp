@@ -29,23 +29,21 @@ namespace HIKARI::RENDER3D::DYNAMICGI {
 namespace {
 using Microsoft::WRL::ComPtr;
 constexpr auto kReadState = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
-// 光線クエリの共通根パラメーターの後に、前フレーム SH・SH の UAV・probe atlas の UAV・空の順に並べる。
-constexpr UINT kPreviousShParameter = RAYTRACING::kRuntimeRayQueryRootParameterCount;
-constexpr UINT kSkyParameter = kPreviousShParameter + 3u;
+// 光線クエリの共通根パラメーターの後に、probe atlas の UAV・空・相機 ray の UAV の順に並べる。
+constexpr UINT kAtlasParameter = RAYTRACING::kRuntimeRayQueryRootParameterCount;
+constexpr UINT kSkyParameter = kAtlasParameter + 1u;
 // 近景の高さを決める相機の ray の結果（当たった点の高さ）を書く UAV。中央・上下左右・真下の 6 本。
 constexpr UINT kFocusParameter = kSkyParameter + 1u;
 using DETAIL::kFocusValueCount;
 using DETAIL::NearFieldPlacement;
 using DETAIL::PlaceNearField;
 using DETAIL::ProbeGridOrigin;
-// SH0 は一様な入射 radiance の約 3.54 倍。FP16 上限で HDR を壊さない。
-constexpr auto kProbeShFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
-// 描画側が読む probe atlas。probe ごとに放射照度と深度 moment の八面体、validity の tile を持つ
-// （HIKARI_LightingProviderSampling.hlsli の HIKARI_DYNAMIC_GI_TILE_* と同じ寸法）。
+// 描画側が読む probe atlas。probe ごとに放射照度と深度 moment の八面体、円盤、状態の tile を持つ
+// （HIKARI_DynamicGiProbeAtlas.hlsli の HIKARI_DYNAMIC_GI_TILE_* と同じ寸法）。更新も前の組の atlas を読んで混ぜる。
 constexpr auto kProbeAtlasFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
-constexpr UINT kProbeAtlasTileWidth = 28, kProbeAtlasTileHeight = 18;
+constexpr UINT kProbeAtlasTileWidth = 30, kProbeAtlasTileHeight = 18;
 // probe 一回の更新の ray 数（Render3D_DynamicDiffuseGiCS.hlsl の kRayCount）。
-constexpr uint32_t kProbeRayCount = 128;
+constexpr uint32_t kProbeRayCount = 192;
 constexpr uint64_t kProbeBudgetBytes = 64ull * 1024 * 1024;
 bool SameVec3(const MATH::Vec3& lhs, const MATH::Vec3& rhs) {
     return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
@@ -123,8 +121,10 @@ struct Constants {
     // 相機の位置（w は近景の更新で 1、その時だけ ray を撃つ）と視線の向き。
     MATH::Vec4 focusOrigin{}, focusDirection{};
     std::array<uint32_t, 4> priorityOrigin{}, prioritySize{}; // xyz 格子範囲、w 予算/開始点
+    // 履歴の重み・光照の変化の検出・収束の判定と、probe の再配置・分類の閾値（shader の gBlend / gRelocate）。
+    MATH::Vec4 blend{}, relocate{};
 };
-static_assert(sizeof(Constants) == 544);
+static_assert(sizeof(Constants) == 576);
 
 // 形状が動いた範囲を局所的に先行更新する。通常の巡回は残し、追加 ray は通常予算の二倍まで。
 UINT SchedulePriority(Constants& constants, MATH::Vec4 minimum, MATH::Vec4 maximum, UINT budget) {
@@ -183,73 +183,45 @@ UINT SchedulePriority(Constants& constants, MATH::Vec4 minimum, MATH::Vec4 maxim
 }
 
 struct ProbeSet {
-    std::array<ComPtr<ID3D12Resource>, 10> textures;
-    std::vector<RenderResourceView> srvs, uavs;
+    ComPtr<ID3D12Resource> atlasTexture;
+    RenderResourceView uav;
     TextureResourceHandle atlas;
     LIGHTPROBE::LightProbeVolumeRuntimeData data;
     uint64_t bytes = 0;
     void Reset(const GFX::Context& graphics) {
-        for (auto& view : srvs)
-            RetireRenderResourceDescriptor(view, graphics, "DynamicGI.SRV");
-        for (auto& view : uavs)
-            RetireRenderResourceDescriptor(view, graphics, "DynamicGI.UAV");
-        srvs.clear();
-        uavs.clear();
+        RetireRenderResourceDescriptor(uav, graphics, "DynamicGI.UAV");
+        uav = {};
         if (atlas)
             ReleaseTextureResource(atlas);
         atlas = {};
-        for (auto& texture : textures)
-            GFX::RetireD3D12ObjectForFrame(texture, graphics, "DynamicGI.Probe");
+        GFX::RetireD3D12ObjectForFrame(atlasTexture, graphics, "DynamicGI.Probe");
         data = {};
         bytes = 0;
     }
-    static std::array<D3D12_RESOURCE_DESC, 10> Descriptions(UINT x, UINT y, UINT z) {
-        std::array<D3D12_RESOURCE_DESC, 10> result;
-        for (UINT index = 0; index < 9; ++index)
-            result[index] = CD3DX12_RESOURCE_DESC::Tex3D(kProbeShFormat, x, y, static_cast<UINT16>(z), 1,
-                                                         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-        result[9] =
-            CD3DX12_RESOURCE_DESC::Tex2D(kProbeAtlasFormat, x * y * kProbeAtlasTileWidth, z * kProbeAtlasTileHeight, 1,
-                                         1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-        return result;
+    static D3D12_RESOURCE_DESC Description(UINT x, UINT y, UINT z) {
+        return CD3DX12_RESOURCE_DESC::Tex2D(kProbeAtlasFormat, x * y * kProbeAtlasTileWidth, z * kProbeAtlasTileHeight,
+                                            1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     }
     bool Create(const GFX::Context& graphics, const FieldLayout& layout) {
         const UINT x = layout.x, y = layout.y, z = layout.z;
-        const auto descriptions = Descriptions(x, y, z);
-        for (const auto& desc : descriptions) {
-            const auto allocation = graphics.device->GetResourceAllocationInfo(0, 1, &desc);
-            if (allocation.SizeInBytes > kProbeBudgetBytes / 2 ||
-                bytes > kProbeBudgetBytes / 2 - allocation.SizeInBytes)
-                return false;
-            bytes += allocation.SizeInBytes;
-        }
-        srvs = AllocateRenderResourceDescriptorRange(9);
-        uavs = AllocateRenderResourceDescriptorRange(10);
-        if (srvs.size() != 9 || uavs.size() != 10)
+        const auto desc = Description(x, y, z);
+        const auto allocation = graphics.device->GetResourceAllocationInfo(0, 1, &desc);
+        if (allocation.SizeInBytes > kProbeBudgetBytes / 2)
+            return false;
+        bytes = allocation.SizeInBytes;
+        uav = AllocateRenderResourceDescriptor();
+        if (!uav.IsValid())
             return false;
         const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
-        for (UINT index = 0; index < 10; ++index) {
-            const auto& desc = descriptions[index];
-            if (FAILED(graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, kReadState, nullptr,
-                                                                IID_PPV_ARGS(&textures[index]))))
-                return false;
-            textures[index]->SetName(L"HIKARI.DynamicDiffuseGI.ProbeField");
-            D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
-            uav.Format = desc.Format;
-            uav.ViewDimension = index == 9 ? D3D12_UAV_DIMENSION_TEXTURE2D : D3D12_UAV_DIMENSION_TEXTURE3D;
-            if (index < 9)
-                uav.Texture3D.WSize = z;
-            graphics.device->CreateUnorderedAccessView(textures[index].Get(), nullptr, &uav, uavs[index].cpu);
-            if (index < 9) {
-                D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
-                srv.Format = desc.Format;
-                srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
-                srv.Texture3D.MipLevels = 1;
-                srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-                graphics.device->CreateShaderResourceView(textures[index].Get(), &srv, srvs[index].cpu);
-            }
-        }
-        atlas = RegisterTextureResourceFromNative(textures[9].Get(), kProbeAtlasFormat);
+        if (FAILED(graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, kReadState, nullptr,
+                                                            IID_PPV_ARGS(&atlasTexture))))
+            return false;
+        atlasTexture->SetName(L"HIKARI.DynamicDiffuseGI.ProbeAtlas");
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
+        uavDesc.Format = desc.Format;
+        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        graphics.device->CreateUnorderedAccessView(atlasTexture.Get(), nullptr, &uavDesc, uav.cpu);
+        atlas = RegisterTextureResourceFromNative(atlasTexture.Get(), kProbeAtlasFormat);
         if (!IsTextureResourceValid(atlas))
             return false;
         data.id = "DynamicDiffuseGi";
@@ -275,12 +247,10 @@ struct ProbeSet {
         return data.visibilityTextureDescriptorIndex < GFX::DESCRIPTOR::kUserSrvCount;
     }
     void Transition(ID3D12GraphicsCommandList* commands, bool toWrite) {
-        std::array<D3D12_RESOURCE_BARRIER, 10> barriers;
-        for (size_t i = 0; i < textures.size(); ++i)
-            barriers[i] = CD3DX12_RESOURCE_BARRIER::Transition(
-                textures[i].Get(), toWrite ? kReadState : D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                toWrite ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : kReadState);
-        commands->ResourceBarrier(UINT(barriers.size()), barriers.data());
+        const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            atlasTexture.Get(), toWrite ? kReadState : D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            toWrite ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : kReadState);
+        commands->ResourceBarrier(1, &barrier);
     }
 };
 // 一つの probe 場。履歴は二組の ProbeSet を交互に書き、前の組を読む。
@@ -342,16 +312,13 @@ struct DynamicDiffuseGi::State {
     bool EnsurePipeline(const GFX::Context& graphics) {
         if (pipeline)
             return true;
-        // 共通の後に前フレーム SH・SH の UAV・probe atlas の UAV・空。
+        // 共通の後に probe atlas の UAV・空・相機 ray の UAV。
         std::array<CD3DX12_ROOT_PARAMETER, kFocusParameter + 1u> parameters;
-        std::array<CD3DX12_DESCRIPTOR_RANGE, 6> ranges;
+        std::array<CD3DX12_DESCRIPTOR_RANGE, 4> ranges;
         RAYTRACING::InitRuntimeRayQueryRootParameters(parameters, ranges, kSkyParameter);
-        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 9, 0, 2);
-        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 9, 0);
-        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 9);
-        for (UINT i = 0; i < 3; ++i)
-            parameters[kPreviousShParameter + i].InitAsDescriptorTable(1, &ranges[3 + i]);
-        parameters[kFocusParameter].InitAsUnorderedAccessView(10);
+        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+        parameters[kAtlasParameter].InitAsDescriptorTable(1, &ranges[3]);
+        parameters[kFocusParameter].InitAsUnorderedAccessView(1);
         const auto samplers = RAYTRACING::RuntimeRayQueryStaticSamplers();
         const CD3DX12_ROOT_SIGNATURE_DESC rootDesc(UINT(parameters.size()), parameters.data(), 2, samplers.data());
         if (FAILED(GFX::CreateRootSignature(graphics.device, rootDesc, &root)))
@@ -359,14 +326,14 @@ struct DynamicDiffuseGi::State {
         namespace SHADER = ASSETS::SHADER;
         SHADER::ShaderAssetContractExpectation contract{};
         contract.engineInterfaceId = "HIKARI.DynamicDiffuseGi";
-        contract.engineInterfaceVersion = 8;
+        contract.engineInterfaceVersion = 9;
         contract.rootLayoutId = "HIKARI.DynamicDiffuseGi.Root";
-        contract.rootLayoutVersion = 2;
+        contract.rootLayoutVersion = 3;
         if (!HASH::ComputeSha256(
-                "DynamicDiffuseGiCB:544;previous volumes[3],field index;origin,axis spacing,focus origin/direction,priority origin/budget,size/start;SH9 radiance/validity/sky L1;atlas RGBA16F tile28x18 irradiance^(1/5)+sky oct8,moments+validity oct16,border,neighbor links A(11+octant,1) 7bit,maturity A(10,0),triangle-contained disk octNormal,signedDistance,radius oct8 at(0,10);focus hit heights+horizontal distances u10 x12;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
+                "DynamicDiffuseGiCB:576;previous volumes[3],field index;origin,axis spacing,focus origin/direction,priority origin/budget,size/start,blend hysteresis/light change/variability,relocate min front/backface/limit/reach;atlas RGBA16F tile30x18 irradiance^(1/5)+sky oct8 cosine accumulated,moments+active oct16 backface x0.2,fixed-ray triangle disk oct8 at(0,10),state(28,0) offset+maturity,(28,1) updates/variation/backface/fixed level;focus hit heights+horizontal distances u1 x12;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
                 contract.engineInterfaceHash) ||
             !HASH::ComputeSha256(
-                "CBV(b0);AS(t0,s8);Hits(t1,s8);Materials(t16);Programs(t0,t1,s6);Lights(t1,t2,s7);Geometry(t0,s1,1024);Textures(t20);Deformed(t2,s8);PreviousSH(t0,s2,9);SH(u0,9);ProbeAtlas(u9);Sky(t0,s7);Focus(u10);Sampler(s0,clamp);Sampler(s1,wrap)",
+                "CBV(b0);AS(t0,s8);Hits(t1,s8);Materials(t16);Programs(t0,t1,s6);Lights(t1,t2,s7);Geometry(t0,s1,1024);Textures(t20);Deformed(t2,s8);ProbeAtlas(u0);Sky(t0,s7);Focus(u1);Sampler(s0,clamp);Sampler(s1,wrap)",
                 contract.rootLayoutHash))
             return false;
         const auto caps = GFX::QueryShaderDeviceCapabilities(graphics.device);
@@ -409,7 +376,7 @@ const char* ToString(Status status) noexcept {
     case Status::Off: return "Off";
     case Status::Unsupported: return "DXR / shader format unavailable";
     case Status::PreparingScene: return "Ray scene preparing";
-    case Status::MissingOccluders: return "Ray scene lacks terrain or unresolved surfaces";
+    case Status::MissingOccluders: return "Ray scene has unresolved surfaces";
     case Status::MissingEnvironment: return "Environment radiance unavailable";
     case Status::ResourceFailure: return "GPU resource or shader unavailable";
     case Status::Ready: return "Ready";
@@ -449,14 +416,12 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
             state.stats.status = Status::Unsupported;
             return {};
         }
-        for (const auto format : {kProbeShFormat, kProbeAtlasFormat}) {
-            D3D12_FEATURE_DATA_FORMAT_SUPPORT support{format};
-            if (FAILED(graphics.device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support))) ||
-                !(support.Support1 & D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE) ||
-                !(support.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_STORE)) {
-                state.stats.status = Status::Unsupported;
-                return {};
-            }
+        D3D12_FEATURE_DATA_FORMAT_SUPPORT support{kProbeAtlasFormat};
+        if (FAILED(graphics.device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support))) ||
+            !(support.Support1 & D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE) ||
+            !(support.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_STORE)) {
+            state.stats.status = Status::Unsupported;
+            return {};
         }
         state.device = graphics.device;
         state.deviceGeneration = graphics.deviceGeneration;
@@ -553,7 +518,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
             field.legacy = std::move(legacy);
             field.carry = keep;
         }
-        if (!field.sets[0].textures[0]) {
+        if (!field.sets[0].atlasTexture) {
             if (index == kRegionField && field.failedId == id)
                 continue;
             if (!field.sets[0].Create(graphics, *layouts[index]) || !field.sets[1].Create(graphics, *layouts[index])) {
@@ -670,14 +635,20 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         constants.focusOrigin = {cameraPosition.x, cameraPosition.y, cameraPosition.z,
                                  index == kNearField ? 1.0f : 0.0f};
         constants.focusDirection = {forward.x, forward.y, forward.z, 0.0f};
+        const float minimumSpacing = (std::min)({layout.spacing.x, layout.spacing.y, layout.spacing.z});
+        const float maximumSpacing = (std::max)({layout.spacing.x, layout.spacing.y, layout.spacing.z});
+        // 収束後の履歴は 0.97（RTXGI）。固定 ray の明るさが 15% 変わり始めたら弱め、50% で 0.5 まで下げる。
+        // texel の相対変化の移動平均が 2% 未満なら収束とみなし、4 回に 1 回だけ更新する。
+        constants.blend = {0.97f, 0.15f, 0.5f, 0.02f};
+        // 面から間隔の 2 割以上離す。固定 ray の 1/4 超が裏面なら形状の中。移動は間隔の 45% まで（RTXGI）。
+        // 間隔の 1.75 倍以内に形状が無い probe は非活性（描画側は支持に数えず、空の光へ戻す）。
+        constants.relocate = {0.2f * minimumSpacing, 0.25f, 0.45f, 1.75f * maximumSpacing};
         const UINT extraUpdates =
             compatible ? SchedulePriority(constants, state.changedMinimum, state.changedMaximum, layout.budget) : 0;
         std::memcpy(constantBuffers[index].cpuAddress, &constants, sizeof(constants));
         target.Transition(commands, true);
         commands->SetComputeRootConstantBufferView(0, constantBuffers[index].gpuAddress);
-        commands->SetComputeRootDescriptorTable(kPreviousShParameter, previous.srvs[0].gpu);
-        commands->SetComputeRootDescriptorTable(kPreviousShParameter + 1u, target.uavs[0].gpu);
-        commands->SetComputeRootDescriptorTable(kPreviousShParameter + 2u, target.uavs[9].gpu);
+        commands->SetComputeRootDescriptorTable(kAtlasParameter, target.uav.gpu);
         commands->Dispatch(constants.counts[3], 1, 1);
         target.Transition(commands, false);
         if (index == kNearField) {

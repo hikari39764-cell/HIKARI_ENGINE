@@ -277,7 +277,10 @@ float4 HikariShadeTerrainSurface(
     // 影の側は空の光、日向は太陽の帯を足す。昼夜と天気で他の面と同じように明るさが変わる。
     const float3 sunRadiance = gDirectionalColor.rgb *
         (max(gDirectionalIntensity, 0.0f) * HikariForwardCloudSolarVisibility(worldPos) / 3.14159265f);
-    const float3 skyAmbient = max(HikariEvaluateSkyDiffuseIrradiance(shadingNormal), 0.0f.xxx);
+    // 空の拡散光と動的 GI の照り返し（他の面と同じ経路）。
+    float skyVisibility;
+    const float3 skyAmbient = max(HikariResolveSurfaceDiffuseIrradiance(worldPos, normalize(input.normalWS),
+        shadingNormal, viewDir, 0.0f.xxx, 0.0f, skyVisibility), 0.0f.xxx);
     const float3 sunLit = sunRadiance * shadowFactor;
     float3 color = albedo.rgb * (blendedDark * skyAmbient + blendedLight * sunLit * ramp);
 

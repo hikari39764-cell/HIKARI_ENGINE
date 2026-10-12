@@ -24,7 +24,7 @@ enum class Status : uint8_t {
     Off,
     Unsupported,
     PreparingScene,
-    // 地形など大きな遮蔽物が加速構造に無い（光線が抜けて光が漏れる）。
+    // 読み込み中などで解決できない面が加速構造に無い（光線が抜けて光が漏れる）。
     MissingOccluders,
     MissingEnvironment,
     ResourceFailure,
