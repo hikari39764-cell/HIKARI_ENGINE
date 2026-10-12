@@ -101,10 +101,10 @@ bool ScreenHitRadiance(float3 position, float3 normal, out float3 radiance, out 
 // 画面外の当たった点へ向き direction のまわりから届く光（E/pi）。動的 GI（手置き区域、近景、遠景の順）が覆う分は probe
 // から読み、覆わない分だけその向きの空（skyMip でぼかす）で近似する。閉じた部屋の中を空の光で照らさない。
 // 拡散は面の法線、鏡面（金属の下面が床を映すなど）は反射の向きで読む。
-float3 HitIncidentLight(HikariRaySurface hit, float3 direction, float skyMip)
+float3 HitIncidentLight(HikariRaySurface hit, float3 rayDirection, float3 direction, float skyMip)
 {
     const HikariDynamicGiSample sample = HikariQueryDynamicGi(gGiVolumes,
-        HikariSurfaceGiQuery(hit.position, hit.geometricNormal, direction));
+        HikariSurfaceGiQuery(hit.position, hit.geometricNormal, direction, -rayDirection));
     return sample.value + HikariRayEnvironmentRadiance(gRayLighting, direction, gLinearClamp, skyMip) * (1.0f - sample.coverage);
 }
 
@@ -165,8 +165,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     {
         const float3 hitView = -direction;
         radiance = HikariPreExpose(HikariRayHitRadiance(gRayLighting, hit, hitView, ReflectionRandom(pixel, frame, 1u),
-            HitIncidentLight(hit, hit.normal, 4.0f),
-            HitIncidentLight(hit, reflect(direction, hit.normal), hit.pbr.roughness * 6.0f), true,
+            HitIncidentLight(hit, direction, hit.normal, 4.0f),
+            HitIncidentLight(hit, direction, reflect(direction, hit.normal), hit.pbr.roughness * 6.0f), true,
             gMaterialWrap), gViewExposure);
     }
     gTraceHit[pixel] = float2(min(hit.distance, 65000.0f), isfinite(hitMotion) ? min(hitMotion, 65000.0f) : 0);

@@ -201,7 +201,8 @@ float4 HikariResolveBakedLightProbeDiffuse(float3 worldPos, float3 n, float3 v)
 // skyVisibility は空の見える割合。動的 GI が覆わない部分は 1（遮蔽を知らない）。
 float4 HikariResolveLightProbeDiffuse(float3 worldPos, float3 geometricNormal, float3 n, float3 v, out float skyVisibility)
 {
-    const HikariDynamicGiSample dynamic = HikariQueryDynamicGi(gDynamicGiVolumes, HikariSurfaceGiQuery(worldPos, geometricNormal, n));
+    const HikariDynamicGiSample dynamic = HikariQueryDynamicGi(gDynamicGiVolumes,
+        HikariSurfaceGiQuery(worldPos, geometricNormal, n, v));
     skyVisibility = saturate(dynamic.skyVisibility + 1.0f - dynamic.coverage);
     if (dynamic.coverage >= 1.0f) return float4(dynamic.value, 1.0f);
     const float4 baked = HikariResolveBakedLightProbeDiffuse(worldPos, n, v);

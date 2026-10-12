@@ -91,7 +91,7 @@ float Luminance(float3 color)
 float3 HitRadiance(HikariRaySurface hit, float3 view, float2 randomUv)
 {
     const HikariDynamicGiSample previous = HikariQueryDynamicGi(gPreviousVolumes,
-        HikariSurfaceGiQuery(hit.position, hit.geometricNormal, hit.normal));
+        HikariSurfaceGiQuery(hit.position, hit.geometricNormal, hit.normal, view));
     const float3 incident = previous.value +
         HikariRayEnvironmentRadiance(gRayLighting, hit.normal, gLinearClamp, 4.0f) * (1.0f - previous.coverage);
     return HikariRayHitRadiance(gRayLighting, hit, view, randomUv, incident, 0.0f.xxx, false, gMaterialWrap);

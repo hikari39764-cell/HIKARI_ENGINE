@@ -3,22 +3,25 @@
 
 #include "HIKARI_DynamicGiProbeAtlas.hlsli"
 
-// 位置と幾何の向きは可視性、direction は放射照度の角度だけを決める。
-// medium は全方向平均 radiance を返す。面の問い合わせは E/pi を返す。
+// 位置と幾何の向きは可視性、direction は放射照度の角度だけを決める。toViewer は面から見ている側（相機、ray の出発点）
+// への単位ベクトルで、無ければ 0。medium は全方向平均 radiance を返す。面の問い合わせは E/pi を返す。
 struct HikariDynamicGiQuery
 {
     float3 position;
     float3 surfaceNormal;
     float3 direction;
+    float3 toViewer;
     bool medium;
 };
 
-HikariDynamicGiQuery HikariSurfaceGiQuery(float3 position, float3 surfaceNormal, float3 direction)
+HikariDynamicGiQuery HikariSurfaceGiQuery(float3 position, float3 surfaceNormal, float3 direction,
+    float3 toViewer = 0.0f.xxx)
 {
     HikariDynamicGiQuery query;
     query.position = position;
     query.surfaceNormal = surfaceNormal;
     query.direction = direction;
+    query.toViewer = toViewer;
     query.medium = false;
     return query;
 }
@@ -33,12 +36,17 @@ struct HikariDynamicGiSample
     float confidence;
 };
 
+// 補間と可視性を評価する点。面から見ている側と法線へ半分ずつ離す（RTXGI の view bias + normal bias）。法線だけだと
+// 部屋の内角で隣の壁の面から離れず、壁の向こうの probe が可視性をすり抜けて交線に色の帯と probe 間隔の鋸歯が出た。
+// 見ている側を主にすると（焼き込み volume の 0.8）、掠め角で見る天井の点が面に沿って滑り、probe の列ごとに斜めの
+// 明るい筋が出た。見ている側が無い問い合わせは法線だけ。粗い層でも偏移を拡大しない。
 float3 HikariDynamicGiSamplePosition(HikariIrradianceVolumeData volume, HikariDynamicGiQuery query)
 {
-    // 相機や反射方向を動かしても同じ面を問い合わせる。粗い層でも偏移を拡大しない。
+    if (query.medium) return query.position;
     const float spacing = min(volume.spacingIntensity.x, min(volume.spacingIntensity.y, volume.spacingIntensity.z));
     const float bias = min(spacing, 1.5f) * 0.75f * clamp(volume.selectionParams.z, 0.0f, 0.5f);
-    return query.position + (query.medium ? 0.0f.xxx : query.surfaceNormal * bias);
+    const bool viewed = dot(query.toViewer, query.toViewer) > 0.25f;
+    return query.position + (viewed ? query.surfaceNormal * 0.5f + query.toViewer * 0.5f : query.surfaceNormal) * bias;
 }
 
 // 小さな重み（壁の向こうで半端に見えると判定された probe）は 3 乗で潰す（RTXGI の weight crush）。
