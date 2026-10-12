@@ -106,8 +106,6 @@ enum InjectRoot : UINT {
     kInjectAmbient,
     kInjectInjected,
     kInjectTexturePool,
-    kInjectHistorySignature,
-    kInjectOutputSignature,
     kInjectRootCount
 };
 // 合成側（CompositeCS）の root の引数。
@@ -120,8 +118,8 @@ enum CompositeRoot : UINT {
     kCompositeAerialPerspective,
     kCompositeRootCount
 };
-// 環境光の格子は froxel の横 4x4 と奥行き 2 層ごとに一点。probe 間隔より十分細かい。
-constexpr uint32_t kAmbientCellFroxels = 4u;
+// 環境光の格子は froxel の横 8x8 と奥行き 2 層ごとに一点（平衡で約 64 px）。probe 間隔より十分細かい。
+constexpr uint32_t kAmbientCellFroxels = 8u;
 // 高さ霧の揺らぎのノイズの周期（ノイズ単位）と細かい方の周波数の倍率（Render3D_VolumetricLighting.hlsl と同じ）。
 constexpr uint32_t kFogNoisePeriod = 256u;
 constexpr double kFogNoiseDetailFrequency = 2.37;
@@ -140,15 +138,16 @@ struct StageState {
     ComPtr<ID3D12RootSignature> compositeRoot{};
     ComPtr<ID3D12PipelineState> gatherPso{};
     ComPtr<ID3D12PipelineState> injectPso{};
+    ComPtr<ID3D12PipelineState> temporalPso{};
     ComPtr<ID3D12PipelineState> integratePso{};
     ComPtr<ID3D12PipelineState> compositePso{};
     UINT descriptorStride = 0;
     uint32_t ambientWidth = 0, ambientHeight = 0, ambientDepth = 0;
     std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads;
     D3D12_GPU_VIRTUAL_ADDRESS constantAddress = 0;
-    // 注入（今と前フレームを交互に書く）、積分、環境光。
+    // 生の注入、時間混合済みの注入（今と前フレームを交互に書く）、積分、環境光。
+    VolumeResource raw{};
     VolumeResource injected[2]{};
-    VolumeResource signature[2]{}; // jitter の無い中心標本。形状と照明の変化を検出する。
     VolumeResource integrated{};
     VolumeResource ambient{};
     RenderResourceView sceneColorUav{};
@@ -188,12 +187,14 @@ struct QualityPolicy {
     float farDistance = 160.0f;
 };
 
+// 平衡は UE5 の既定と同じ 8 px（履歴がある時は体素ごと毎フレーム 1 標本なので、16 px・4 標本と費用はほぼ同じ）。
+// 粗いと点光源や聚光灯の根元の細い光锥が体素の段になって見える。
 QualityPolicy ResolveQualityPolicy(VolumetricLightingQuality quality) {
     switch (quality) {
-    case VolumetricLightingQuality::Low: return {24u, 48u, 96.0f};
-    case VolumetricLightingQuality::High: return {12u, 80u, 256.0f};
+    case VolumetricLightingQuality::Low: return {16u, 48u, 96.0f};
+    case VolumetricLightingQuality::High: return {6u, 80u, 256.0f};
     case VolumetricLightingQuality::Balanced:
-    default: return {16u, 64u, 160.0f};
+    default: return {8u, 64u, 160.0f};
     }
 }
 
@@ -207,11 +208,9 @@ uint32_t ResolveDebugMode(RenderDebugView view) {
 }
 
 // 履歴を捨てるべき不連続な変化だけを数える。太陽・天気・霧の濃さなど連続に変わる値は含めない。
-uint64_t HashVolumetricSettings(const SceneEnvironment& environment, VolumetricLightingQuality quality,
-                                uint64_t localLightingContentHash) noexcept {
+uint64_t HashVolumetricSettings(const SceneEnvironment& environment, VolumetricLightingQuality quality) noexcept {
     uint64_t hash = HASH::kFnv1a64OffsetBasis;
     const auto Add = [&hash](const auto& value) { hash = HASH::Fnv1aBytes(hash, &value, sizeof(value)); };
-    Add(localLightingContentHash);
     Add(environment.fog.enabled);
     Add(environment.fog.volumetric);
     Add(environment.shadows.enabled);
@@ -278,8 +277,6 @@ bool CreateRootSignature(ID3D12Device* device, bool injection, ID3D12RootSignatu
         table(kInjectAmbient, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3);
         table(kInjectInjected, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 10);
         table(kInjectTexturePool, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 20, GFX::DESCRIPTOR::kUserSrvCount);
-        table(kInjectHistorySignature, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 11);
-        table(kInjectOutputSignature, D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2);
         parameterCount = kInjectRootCount;
     } else {
         params[kCompositeConstants].InitAsConstantBufferView(0);
@@ -330,6 +327,7 @@ bool EnsurePipeline(StageState& state) {
     };
     if (!createPso("GatherAmbientCS", state.computeRoot.Get(), state.gatherPso) ||
         !createPso("InjectCS", state.computeRoot.Get(), state.injectPso) ||
+        !createPso("TemporalCS", state.computeRoot.Get(), state.temporalPso) ||
         !createPso("IntegrateCS", state.computeRoot.Get(), state.integratePso) ||
         !createPso("CompositeCS", state.compositeRoot.Get(), state.compositePso))
         return false;
@@ -375,14 +373,12 @@ bool EnsureResources(StageState& state, uint32_t renderWidth, uint32_t renderHei
     const uint32_t ambientDepth = (std::max)(sliceCount / 2u, 2u);
     for (VolumeResource& volume : state.injected)
         RetireVolume(state, volume);
-    for (VolumeResource& volume : state.signature)
-        RetireVolume(state, volume);
+    RetireVolume(state, state.raw);
     RetireVolume(state, state.integrated);
     RetireVolume(state, state.ambient);
-    if (!CreateVolume(state, state.injected[0], width, height, sliceCount) ||
+    if (!CreateVolume(state, state.raw, width, height, sliceCount) ||
+        !CreateVolume(state, state.injected[0], width, height, sliceCount) ||
         !CreateVolume(state, state.injected[1], width, height, sliceCount) ||
-        !CreateVolume(state, state.signature[0], width, height, sliceCount) ||
-        !CreateVolume(state, state.signature[1], width, height, sliceCount) ||
         !CreateVolume(state, state.integrated, width, height, sliceCount) ||
         !CreateVolume(state, state.ambient, ambientWidth, ambientHeight, ambientDepth)) {
         state.resourcesReady = false;
@@ -572,9 +568,8 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
         std::clamp(environment.fog.sunShaftStrength, 0.0f, 8.0f),
     };
 
-    uint64_t settingsSignature = HashVolumetricSettings(environment, quality, localLights.view.lightingContentHash);
-    // 内容が変わったフレームは以前の媒体を混ぜない。静的編集では履歴を保持する。
-    settingsSignature = HASH::Fnv1aBytes(settingsSignature, localFogVolumes.data(), localFogVolumes.size_bytes());
+    // 霧の有無・影・画質が変わったフレームは以前の媒体を混ぜない。灯りや局所霧の箱の変化は履歴の重みの速さで追う。
+    const uint64_t settingsSignature = HashVolumetricSettings(environment, quality);
     if (state.lastSettingsSignature != 0u && state.lastSettingsSignature != settingsSignature &&
         state.volumeHistoryValid) {
         state.volumeHistoryValid = false;
@@ -589,7 +584,10 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
                           SHADOW::GetDirectionalShadowSrv().ptr != 0;
     // 体積はこのビューの P で書き、前フレームの体積は P/P_prev で今の空間へ換算する。
     const MATH::Vec4& viewExposure = RENDER3D::COLOR::GetActiveViewExposure();
-    constants.frameParams = {historyValid ? std::clamp(environment.fog.temporalWeight, 0.0f, 0.98f) : 0.0f,
+    // 設定は時間平滑の強さ。注入は体素ごと毎フレーム 1 標本なので、履歴の重みを 1-(1-設定)x0.4 へ延ばして揺らぎを
+    // 抑える（既定 0.9 で 0.96）。
+    const float historyWeight = 1.0f - (1.0f - std::clamp(environment.fog.temporalWeight, 0.0f, 0.98f)) * 0.4f;
+    constants.frameParams = {historyValid && environment.fog.temporalWeight > 0.0f ? historyWeight : 0.0f,
                              viewExposure.w, shadowed ? 1.0f : 0.0f, viewExposure.x};
     // 履歴を混ぜるフレームだけ froxel 内の標本位置を動かし、froxel 全体の平均へ収束させる（奥行きの層の段と影の縁の
     // 階段を消す）。位置は R3 の低食い違い列（shader が froxel ごとの乱数で回す）。履歴の無いフレームは中心で取る。
@@ -702,7 +700,6 @@ RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
     const D3D12_GPU_VIRTUAL_ADDRESS constantAddress = state.constantAddress;
     VolumeResource& output = state.injected[state.writeIndex];
     VolumeResource& history = state.injected[state.writeIndex ^ 1u];
-    VolumeResource& signature = state.signature[state.writeIndex];
     const auto uavBarrier = [cmd](VolumeResource& volume) {
         const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(volume.texture.Get());
         cmd->ResourceBarrier(1, &barrier);
@@ -726,17 +723,14 @@ RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
             uavBarrier(state.ambient);
             TransitionVolume(cmd, state.ambient, D3D12_RESOURCE_STATE_GENERIC_READ);
         }
-        TransitionVolume(cmd, output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        TransitionVolume(cmd, signature, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        TransitionVolume(cmd, state.raw, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         cmd->SetPipelineState(state.injectPso.Get());
         const D3D12_GPU_DESCRIPTOR_HANDLE shadow =
             state.stats.shadowed ? SHADOW::GetDirectionalShadowSrv() : state.sceneDepthSrv.gpu;
         cmd->SetComputeRootDescriptorTable(kInjectShadowMap, shadow);
         cmd->SetComputeRootDescriptorTable(kInjectHistory, history.srv.gpu);
-        cmd->SetComputeRootDescriptorTable(kInjectHistorySignature, state.signature[state.writeIndex ^ 1u].srv.gpu);
-        cmd->SetComputeRootDescriptorTable(kInjectOutputSignature, signature.uav.gpu);
         cmd->SetComputeRootDescriptorTable(kInjectAmbient, state.ambient.srv.gpu);
-        cmd->SetComputeRootDescriptorTable(kInjectOutput, output.uav.gpu);
+        cmd->SetComputeRootDescriptorTable(kInjectOutput, state.raw.uav.gpu);
         cmd->SetComputeRootDescriptorTable(kInjectLocalShadow,
                                            state.localShadowSrv.ptr ? state.localShadowSrv : state.sceneDepthSrv.gpu);
         if (state.localLights.IsValid()) {
@@ -746,9 +740,16 @@ RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
         }
         cmd->Dispatch((state.stats.froxelWidth + 7u) / 8u, (state.stats.froxelHeight + 7u) / 8u,
                       state.stats.froxelDepth);
+        uavBarrier(state.raw);
+        TransitionVolume(cmd, state.raw, D3D12_RESOURCE_STATE_GENERIC_READ);
+        // 前フレームの体積を再投影して今フレームの注入と混ぜる。
+        TransitionVolume(cmd, output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        cmd->SetPipelineState(state.temporalPso.Get());
+        cmd->SetComputeRootDescriptorTable(kInjectInjected, state.raw.srv.gpu);
+        cmd->SetComputeRootDescriptorTable(kInjectOutput, output.uav.gpu);
+        cmd->Dispatch((state.stats.froxelWidth + 7u) / 8u, (state.stats.froxelHeight + 7u) / 8u,
+                      state.stats.froxelDepth);
         uavBarrier(output);
-        uavBarrier(signature);
-        TransitionVolume(cmd, signature, D3D12_RESOURCE_STATE_GENERIC_READ);
         TransitionVolume(cmd, output, D3D12_RESOURCE_STATE_GENERIC_READ);
 
         TransitionVolume(cmd, state.integrated, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -813,8 +814,7 @@ void ShutdownVolumetricLightingStage() {
     StageState& state = State();
     for (VolumeResource& volume : state.injected)
         ReleaseVolume(volume);
-    for (VolumeResource& volume : state.signature)
-        ReleaseVolume(volume);
+    ReleaseVolume(state.raw);
     ReleaseVolume(state.integrated);
     ReleaseVolume(state.ambient);
     ReleaseView(state.sceneColorUav);
@@ -824,6 +824,7 @@ void ShutdownVolumetricLightingStage() {
     state.constantAddress = 0;
     state.gatherPso.Reset();
     state.injectPso.Reset();
+    state.temporalPso.Reset();
     state.integratePso.Reset();
     state.compositePso.Reset();
     state.descriptorStride = 0;

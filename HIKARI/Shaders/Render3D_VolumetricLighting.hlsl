@@ -6,9 +6,10 @@
 #include "Include/Lighting/HIKARI_LocalFogDensity.hlsli"
 #include "Include/Lighting/HIKARI_IrradianceSh9.hlsli"
 
-// 体積霧は四段で作る。GatherAmbientCS が粗い格子で媒質へ届く環境光（動的 GI の probe）を集め、InjectCS が froxel ごとに
-// 標本位置を毎フレーム動かして散乱と消散を求めて前フレームの注入と混ぜ、IntegrateCS が視線に沿って積分し、
-// CompositeCS が場面へ合成する。注入の k 番目の層は奥行き [d(k-1), d(k)] を受け持ち、積分の k 番目は near..d(k) を持つ。
+// 体積霧は五段で作る。GatherAmbientCS が粗い格子で媒質へ届く環境光（動的 GI の probe）を集め、InjectCS が froxel ごとに
+// 標本位置を毎フレーム動かして散乱と消散を求め、TemporalCS が前フレームの体積を再投影して時間方向に
+// 混ぜ、IntegrateCS が視線に沿って積分し、CompositeCS が場面へ合成する。注入の k 番目の層は奥行き
+// [d(k-1), d(k)] を受け持ち、積分の k 番目は near..d(k) を持つ。
 cbuffer VolumetricCB : register(b0)
 {
     float4x4 gInvViewProj;
@@ -54,18 +55,16 @@ cbuffer VolumetricCB : register(b0)
 
 Texture2D<float> gSceneDepth : register(t0);
 Texture2D<float> gShadowMap : register(t1);
-// 前フレームの注入（Pre-Exposure 済みの散乱係数 x 入射光、消散係数）。
+// 前フレームの時間混合済みの注入（Pre-Exposure 済みの散乱係数 x 入射光、消散係数）。TemporalCS が読む。
 Texture3D<float4> gHistoryVolume : register(t2);
 // 媒質へ届く環境光の全方向平均 radiance（GatherAmbientCS）。
 Texture3D<float4> gAmbientVolume : register(t3);
 Texture2D gLocalShadowAtlas : register(t7);
-// 今フレームの注入（IntegrateCS が読む）。
+// 今フレームの注入（TemporalCS は生の標本、IntegrateCS は時間混合済みを読む）。
 Texture3D<float4> gInjectedVolume : register(t10);
-Texture3D<float4> gHistorySignature : register(t11);
 static const uint HIKARI_MATERIAL_TEXTURE_POOL_COUNT = HIKARI_SHADER_USER_SRV_COUNT;
 Texture2D gMaterialTexturePool[HIKARI_MATERIAL_TEXTURE_POOL_COUNT] : register(t20);
 RWTexture3D<float4> gOutputVolume : register(u0);
-RWTexture3D<float4> gOutputSignature : register(u2);
 SamplerState gLinearClamp : register(s0);
 SamplerComparisonState gShadowSampler : register(s1);
 
@@ -143,9 +142,16 @@ float3 AmbientRadiance(float2 uv, float distanceToCamera)
     return gAmbientVolume.SampleLevel(gLinearClamp, float3(uv, slice), 0.0f).rgb;
 }
 
+// 標本の照明。日光と環境光は lightingPosition で、局所光は視線上の区間 segment（相機からの距離）の中で評価する。
+// 局所光の奥行きの位置は灯りからの距離の二乗の逆数に比例する密度で選んで密度で割る（equiangular sampling、
+// Kulla & Fajardo 2012）。区間の中で一様に選ぶと、灯りのすぐ近くを通る区間（聚光灯の根元）で標本ごとの明るさが
+// 桁で揺れ、時間方向に積んでも粒が残った。錐・影・位相・投影模様は選んだ点で評価する。
 float3 EvaluateLighting(
-    float3 worldPosition,
-    float3 viewRay,
+    float3 lightingPosition,
+    float3 rayOrigin,
+    float3 ray,
+    float2 segment,
+    float segmentFraction,
     float3 cameraForward,
     float2 pixelPosition,
     uint localLightDepthSlice,
@@ -155,12 +161,13 @@ float3 EvaluateLighting(
     float3 lighting = ambientRadiance * max(gVolumetricOptics.z, 0.0f);
     lighting += directionalRadiance *
         max(gVolumetricOptics.w, 0.0f) *
-        ShadowVisibility(worldPosition, cameraForward);
+        ShadowVisibility(lightingPosition, cameraForward);
 
     const uint2 localLightCluster =
         HikariResolveLocalLightClusterFromDepthSlice(
         pixelPosition,
         localLightDepthSlice);
+    const float segmentLength = segment.y - segment.x;
     [loop]
     for (uint clusterSlot = 0u;
          clusterSlot < localLightCluster.y;
@@ -178,26 +185,42 @@ float3 EvaluateLighting(
         {
             continue;
         }
+        const HikariLocalLightGpuData light = gHikariLocalLights[lightIndex];
+        // 灯りへの最接近点 closest と視線からの距離 spread（発光体の半径より近づけない）。区間の両端の角度の間を
+        // 一様に選ぶと、位置の密度は 1/((t-closest)^2 + spread^2) に比例する。
+        const float3 toLight = light.positionRange.xyz - rayOrigin;
+        const float closest = dot(toLight, ray);
+        const float spread = max(sqrt(max(dot(toLight, toLight) - closest * closest, 0.0f)),
+            max(light.sourceRadius, 1.0e-3f));
+        const float angleStart = atan((segment.x - closest) / spread);
+        const float angleEnd = atan((segment.y - closest) / spread);
+        float distance = segment.x + segmentLength * segmentFraction;
+        float weight = 1.0f;
+        if (segmentLength > 1.0e-4f && angleEnd - angleStart > 1.0e-6f)
+        {
+            distance = clamp(closest + spread * tan(lerp(angleStart, angleEnd, segmentFraction)), segment.x, segment.y);
+            const float offset = distance - closest;
+            weight = (offset * offset + spread * spread) * (angleEnd - angleStart) / (spread * segmentLength);
+        }
+        const float3 position = rayOrigin + ray * distance;
         HikariLocalLightSample lightSample;
-        if (!HikariResolveLocalLightSample(
-                gHikariLocalLights[lightIndex],
-                worldPosition,
-                lightSample))
+        if (!HikariResolveLocalLightSample(light, position, lightSample))
         {
             continue;
         }
-        HikariApplyLocalLightTextures(gHikariLocalLights[lightIndex], lightSample);
+        HikariApplyLocalLightTextures(light, lightSample);
         const float pointPhase = HikariHenyeyGreenstein(
-            dot(viewRay, lightSample.directionToLight),
+            dot(ray, lightSample.directionToLight),
             gFogDistances.w);
+        // 単一 compare は標本ごとに 0/1 で、聚光灯の影の縁の霧が粒になる。描画と同じ 3x3 の bilinear compare で読む。
         const float visibility = HikariSampleLocalLightShadow(gLocalShadowAtlas, gShadowSampler,
-            gLocalShadow, gHikariLocalLights[lightIndex], worldPosition, 0.0f.xxx, false);
-        lighting += lightSample.radiance * pointPhase * visibility;
+            gLocalShadow, light, position, 0.0f.xxx, true);
+        lighting += lightSample.radiance * pointPhase * visibility * weight;
     }
     return lighting;
 }
 
-// 環境光の粗い格子（froxel の 4x4 横、奥行き半分）。格納点は積分と同じ奥行きの分布で near..far に並ぶ。
+// 環境光の粗い格子（froxel の横 8x8、奥行き 2 層ごと）。格納点は積分と同じ奥行きの分布で near..far に並ぶ。
 [numthreads(8, 8, 1)]
 void GatherAmbientCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
@@ -244,8 +267,10 @@ float4 SampleFogInjection(uint3 cell, float3 fraction, uint2 sceneSize)
     bool orthographic;
     HikariReconstructVolumeRay(uv, gInvViewProj, gCameraPos.xyz, rayOrigin, ray, orthographic);
     const float3 cameraForward = HikariVolumeCameraForward(gInvViewProj, gCameraPos.xyz, orthographic);
-    const float sampleDistance = FractionDistance(((float)cell.z - 1.0f + fraction.z) / max(gVolumeSize.z - 1.0f, 1.0f));
+    const float sliceScale = 1.0f / max(gVolumeSize.z - 1.0f, 1.0f);
+    const float sampleDistance = FractionDistance(((float)cell.z - 1.0f + fraction.z) * sliceScale);
     const float3 worldPosition = rayOrigin + ray * sampleDistance;
+    float lightingEnd = FractionDistance((float)cell.z * sliceScale);
     // 照明は標本の画素で見えている範囲（不透明面の手前）で評価し、面より奥の点は面のすぐ手前で照らす。面の奥（日なたの
     // 外や灯りのついた部屋の中）の標本は二つの経路で壁のこちら側へ漏れた。合成は面の深さで層の間を補間して面をまたぐ層の
     // 散乱を一部取り込むので、層の境が壁を横切る所に相機を中心とした輪の光が出た。相機が動くと履歴の再投影（奥行きと横の
@@ -258,8 +283,12 @@ float4 SampleFogInjection(uint3 cell, float3 fraction, uint2 sceneSize)
     {
         const float surfaceDistance = HikariVolumeCameraDistance(
             HikariUnprojectVolumePosition(uv, surfaceDepth, gInvViewProj), gCameraPos.xyz, cameraForward, orthographic);
-        lightingPosition = rayOrigin + ray * min(sampleDistance, max(surfaceDistance - 0.05f, 0.0f));
+        const float lightingLimit = max(surfaceDistance - 0.05f, 0.0f);
+        lightingPosition = rayOrigin + ray * min(sampleDistance, lightingLimit);
+        lightingEnd = min(lightingEnd, lightingLimit);
     }
+    const float2 lightingSegment =
+        float2(min(FractionDistance(((float)cell.z - 1.0f) * sliceScale), lightingEnd), lightingEnd);
     const float heightAboveBase = max(worldPosition.y - gVolumetricOptics.x, 0.0f);
     float extinction = max(0.0f, gFogColorDensity.a) * exp(-heightAboveBase * gFogDistances.z) *
         FogNoiseDensityScale(worldPosition);
@@ -279,8 +308,8 @@ float4 SampleFogInjection(uint3 cell, float3 fraction, uint2 sceneSize)
             HikariHenyeyGreenstein(dot(ray, normalize(-gDirectionalDirIntensity.xyz)), gFogDistances.w);
         const uint localLightDepthSlice = HikariResolveLocalLightDepthSlice(
             HikariVolumeViewDepth(lightingPosition, gCameraPos.xyz, cameraForward));
-        inScattering = scatteringCoefficient * EvaluateLighting(lightingPosition, ray, cameraForward,
-            uv * float2(sceneSize), localLightDepthSlice, directionalRadiance,
+        inScattering = scatteringCoefficient * EvaluateLighting(lightingPosition, rayOrigin, ray, lightingSegment,
+            fraction.z, cameraForward, uv * float2(sceneSize), localLightDepthSlice, directionalRadiance,
             AmbientRadiance(uv, sampleDistance));
     }
     // 散乱はこのビューの HDR 空間で保持する（FP16 の体積に収め、合成で場面色と同じ空間になる）。
@@ -300,72 +329,80 @@ void InjectCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     {
         // 最初の格納点は near そのもの。受け持つ区間が無い。
         gOutputVolume[dispatchThreadId] = 0.0f.xxxx;
-        gOutputSignature[dispatchThreadId] = 0.0f.xxxx;
         return;
     }
-    const float sliceScale = 1.0f / max((float)volumeSize.z - 1.0f, 1.0f);
     const bool useHistory = gVolumeSize.w > 0.5f && gFrameParams.x > 0.0f;
-    // 横 2x2 と奥行き 4 区間へ標本を分散する。1 標本では狭い光柱の各セルが明暗を往復し、履歴にも散斑が残る。
-    // 履歴が無い時は各区間の中心。履歴がある時は格子全体を循環移動し、各標本がセル全域を偏りなく覆う。
-    float3 phase = float3(0.25f, 0.25f, 0.125f);
-    if (useHistory)
-    {
-        const uint hash = HikariNoiseHashInt3(int3(dispatchThreadId), 0x5f3759dfu);
-        phase = frac(float3(gFogJitter.xy + 0.5f, gFogJitter.z) + float3(
-            HikariNoiseHashUnit(hash), HikariNoiseHashUnit(HikariNoiseMixUint(hash ^ 0x3c6ef372u)),
-            HikariNoiseHashUnit(HikariNoiseMixUint(hash ^ 0xa54ff53au))));
-    }
     uint sceneWidth = 0u;
     uint sceneHeight = 0u;
     gSceneDepth.GetDimensions(sceneWidth, sceneHeight);
+    // 履歴がある時は体素ごとに毎フレーム 1 標本（UE5 の体积雾と同じ）。位置はフレームの R3 列に体素ごとの乱数を足して
+    // 体素全域を偏りなく回り、TemporalCS が時間方向に積む。履歴の無いフレームは横 2x2・奥行き 4 区間の中心で
+    // 4 標本を取り、最初の一枚から層を区切らない。
+    if (useHistory)
+    {
+        const uint hash = HikariNoiseHashInt3(int3(dispatchThreadId), 0x5f3759dfu);
+        const float3 phase = frac(float3(gFogJitter.xy + 0.5f, gFogJitter.z) + float3(
+            HikariNoiseHashUnit(hash), HikariNoiseHashUnit(HikariNoiseMixUint(hash ^ 0x3c6ef372u)),
+            HikariNoiseHashUnit(HikariNoiseMixUint(hash ^ 0xa54ff53au))));
+        gOutputVolume[dispatchThreadId] = SampleFogInjection(dispatchThreadId, phase, uint2(sceneWidth, sceneHeight));
+        return;
+    }
     float4 injected = 0.0f.xxxx;
     [unroll] for (uint sampleIndex = 0u; sampleIndex < 4u; ++sampleIndex)
     {
         const float3 offset = float3(float(sampleIndex & 1u) * 0.5f, float(sampleIndex >> 1u) * 0.5f,
             float(sampleIndex) * 0.25f);
-        injected += SampleFogInjection(dispatchThreadId, frac(phase + offset), uint2(sceneWidth, sceneHeight));
+        injected += SampleFogInjection(dispatchThreadId, float3(0.25f, 0.25f, 0.125f) + offset,
+            uint2(sceneWidth, sceneHeight));
     }
-    injected *= 0.25f;
-    // 時間標本の明暗ではなく、固定した中心標本を比較する。静止した光柱の標本雑音と移動遮蔽物を区別する。
-    const float4 signature = SampleFogInjection(dispatchThreadId, 0.5f.xxx, uint2(sceneWidth, sceneHeight));
-    gOutputSignature[dispatchThreadId] = signature;
+    gOutputVolume[dispatchThreadId] = injected * 0.25f;
+}
 
-    if (useHistory)
+// 前フレームの体積を froxel の中心（区間の奥行きの中点）で再投影して指数移動平均で混ぜる（UE5・Frostbite と同じ）。
+// 今フレームの近傍へ挟んだり切り詰めたりはしない。標本が体素ごとに 1 個なので、光锥の根元や縁のように一部の標本しか
+// 光に入らない体素では近傍 9 個がたまたま全部暗いことがあり（命中率 1/3 で 2.6%、1/10 で 39%）、履歴が一度で消えて
+// 暗い斑点と縁の粒が残った。灯りの変化には設定の重みの速さで追いつく。
+[numthreads(8, 8, 1)]
+void TemporalCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    const uint3 volumeSize = uint3(gVolumeSize.xyz + 0.5f);
+    if (any(dispatchThreadId >= volumeSize))
     {
-        // 履歴は froxel の中心（区間の奥行きの中点）で再投影する。
-        const float2 centerUv = (float2(dispatchThreadId.xy) + 0.5f) / float2(volumeSize.xy);
-        float3 centerOrigin;
-        float3 centerRay;
-        bool centerOrthographic;
-        HikariReconstructVolumeRay(centerUv, gInvViewProj, gCameraPos.xyz, centerOrigin, centerRay, centerOrthographic);
-        const float3 center = centerOrigin + centerRay * FractionDistance(((float)slice - 0.5f) * sliceScale);
-        const float4 previousClip = mul(gPrevViewProj, float4(center, 1.0f));
-        const float3 previousNdc = previousClip.xyz / max(abs(previousClip.w), 1e-6f);
-        const float2 previousUv = float2(previousNdc.x * 0.5f + 0.5f, 0.5f - previousNdc.y * 0.5f);
-        const bool previousOrthographic = HikariIsOrthographic(gPrevViewProj);
-        const float3 previousForward = previousOrthographic ? normalize(gPrevViewProj[2].xyz) : 0.0f.xxx;
-        const float previousDistance = HikariVolumeCameraDistance(
-            center, gPrevCameraPos.xyz, previousForward, previousOrthographic);
-        // 注入の層 k の中心は積分の格納点 k-1/2。積分の写像に半層を足すと注入の texel 中心になる。
-        const float previousSlice = DistanceToSlice(previousDistance) + 0.5f / gVolumeSize.z;
-        if (previousClip.w > 0.0f && all(previousUv >= 0.0f) && all(previousUv <= 1.0f) &&
-            previousNdc.z >= 0.0f && previousNdc.z <= 1.0f && previousDistance > gFogDistances.x &&
-            previousDistance <= gFogDistances.y)
-        {
-            float4 history = gHistoryVolume.SampleLevel(gLinearClamp, float3(previousUv, previousSlice), 0.0f);
-            history.rgb *= gFrameParams.y;
-            float4 previousSignature = gHistorySignature.SampleLevel(gLinearClamp, float3(previousUv, previousSlice), 0);
-            previousSignature.rgb *= gFrameParams.y;
-            const float3 change = abs(signature.rgb - previousSignature.rgb) /
-                max(max(signature.rgb, previousSignature.rgb), 1.0e-5f.xxx);
-            const float lightChange = max(change.x, max(change.y, change.z));
-            const float densityChange = abs(signature.a - previousSignature.a) /
-                max(max(signature.a, previousSignature.a), 1.0e-5f);
-            const float compatible = 1.0f - smoothstep(0.15f, 0.5f, max(lightChange, densityChange));
-            injected = lerp(injected, history, gFrameParams.x * compatible);
-        }
+        return;
     }
+    const uint slice = dispatchThreadId.z;
+    const float4 injected = gInjectedVolume.Load(int4(dispatchThreadId, 0));
     gOutputVolume[dispatchThreadId] = injected;
+    const bool useHistory = gVolumeSize.w > 0.5f && gFrameParams.x > 0.0f;
+    if (slice == 0u || !useHistory)
+    {
+        return;
+    }
+    const float sliceScale = 1.0f / max((float)volumeSize.z - 1.0f, 1.0f);
+    const float2 centerUv = (float2(dispatchThreadId.xy) + 0.5f) / float2(volumeSize.xy);
+    float3 centerOrigin;
+    float3 centerRay;
+    bool centerOrthographic;
+    HikariReconstructVolumeRay(centerUv, gInvViewProj, gCameraPos.xyz, centerOrigin, centerRay, centerOrthographic);
+    const float3 center = centerOrigin + centerRay * FractionDistance(((float)slice - 0.5f) * sliceScale);
+    const float4 previousClip = mul(gPrevViewProj, float4(center, 1.0f));
+    const float3 previousNdc = previousClip.xyz / max(abs(previousClip.w), 1e-6f);
+    const float2 previousUv = float2(previousNdc.x * 0.5f + 0.5f, 0.5f - previousNdc.y * 0.5f);
+    const bool previousOrthographic = HikariIsOrthographic(gPrevViewProj);
+    const float3 previousForward = previousOrthographic ? normalize(gPrevViewProj[2].xyz) : 0.0f.xxx;
+    const float previousDistance = HikariVolumeCameraDistance(
+        center, gPrevCameraPos.xyz, previousForward, previousOrthographic);
+    // 注入の層 k の中心は積分の格納点 k-1/2。積分の写像に半層を足すと注入の texel 中心になる。
+    const float previousSlice = DistanceToSlice(previousDistance) + 0.5f / gVolumeSize.z;
+    if (!(previousClip.w > 0.0f && all(previousUv >= 0.0f) && all(previousUv <= 1.0f) &&
+          previousNdc.z >= 0.0f && previousNdc.z <= 1.0f && previousDistance > gFogDistances.x &&
+          previousDistance <= gFogDistances.y))
+    {
+        return;
+    }
+    float4 history = gHistoryVolume.SampleLevel(gLinearClamp, float3(previousUv, previousSlice), 0.0f);
+    history.rgb *= gFrameParams.y;
+    gOutputVolume[dispatchThreadId] = lerp(injected, history, gFrameParams.x);
 }
 
 [numthreads(8, 8, 1)]

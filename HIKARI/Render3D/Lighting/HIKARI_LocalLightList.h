@@ -41,8 +41,6 @@ struct LocalLightListBuildOutput {
 };
 
 struct LocalLightListView {
-    // 選択済みの GPU 記録（光源とデカール）の内容のみ。カメラ行列とクラスタ配置は含めない。
-    uint64_t lightingContentHash = 0u;
     uint32_t lightCount = 0u;
     // 記録の [lightCount, lightCount + decalCount) がデカール。
     uint32_t decalCount = 0u;

@@ -3898,15 +3898,21 @@
           "stage": "Compute",
           "entry": "IntegrateCS",
           "profile": "cs_6_0"
+        },
+        {
+          "id": "TemporalCS",
+          "stage": "Compute",
+          "entry": "TemporalCS",
+          "profile": "cs_6_0"
         }
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.VolumetricFog",
-        "engineInterfaceVersion": 5,
-        "engineInterfaceHash": "7935f9bfdc452f3d8317f0dd9d457457ce6d5814b77653b7e5853dc41f57db84",
+        "engineInterfaceVersion": 6,
+        "engineInterfaceHash": "c0dfdb9ca143b1cbe1d0b6a60403019de21fc7eb6a2f02a053a1d9925806aef7",
         "rootLayoutId": "HIKARI.VolumetricFog.Root",
-        "rootLayoutVersion": 3,
-        "rootLayoutHash": "475c5f226e18a4e9983897316ccea5365181badf94527fd973105400b2c8b094",
+        "rootLayoutVersion": 4,
+        "rootLayoutHash": "893a0da8a495f2b1d8720c716491e26999ed6e0d130a4ea55728cf70fe23b666",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

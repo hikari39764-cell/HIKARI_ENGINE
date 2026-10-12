@@ -465,9 +465,6 @@ LocalLightListView BuildLocalLightList(const SceneLightingSet& lighting, const C
         std::memcpy(output.clusterIndices, clusterIndices.data(),
                     static_cast<size_t>(view.clusterIndexCount) * sizeof(uint32_t));
     }
-    view.lightingContentHash =
-        HASH::Fnv1aBytes(HASH::kFnv1a64OffsetBasis, output.records,
-                         static_cast<size_t>(view.lightCount + view.decalCount) * sizeof(LocalLightGpuData));
     return view;
 }
 
