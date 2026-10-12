@@ -30,6 +30,7 @@
 #include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Material/HIKARI_MaterialRuntimeBuilder.h"
+#include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
@@ -141,6 +142,24 @@ bool ImportOutdatedShaderArtifacts(AssetDatabase& database) {
     HIKARI_LOG_INFO("[ShaderImporter] authoring startup cooked " + std::to_string(imported.succeeded) +
                     " outdated shader asset(s).");
     return true;
+}
+
+// 無頭の後台試玩（--agent-play-run、hikari headless）は編集器の画面や本地桥から取り込みを起こせないため、
+// 場景を開く前に古い・未取り込みの資産を同期で取り込む。失敗した資産は記録だけして場景は開き、
+// 通常の編集器起動（利用者が取り込みを操作する）の振る舞いは変えない。
+void ImportOutdatedAssetsForHeadlessRun(AssetDatabase& database) {
+    if (database.IsCookedContent() || !HasRuntimeCommandLineFlag(L"--agent-play-run"))
+        return;
+    const AssetImportBatchResult imported = database.ImportAllOutdated();
+    if (imported.attempted == 0)
+        return;
+    const std::string summary = "[AssetImport] headless run imported outdated assets attempted=" +
+                                std::to_string(imported.attempted) + " succeeded=" +
+                                std::to_string(imported.succeeded) + " failed=" + std::to_string(imported.failed);
+    if (imported.failed != 0)
+        HIKARI_LOG_WARN(summary);
+    else
+        HIKARI_LOG_INFO(summary);
 }
 #endif
 
@@ -284,6 +303,7 @@ bool DocumentSceneAssetBindings::ReloadAssets(
             return false;
         }
         shaderTimer.Finish();
+        ImportOutdatedAssetsForHeadlessRun(database_);
         if (admissionRoot != nullptr) {
             std::string importError{};
             if (!ImportRequiredAssetClosure(database_, *admissionRoot, importError)) {

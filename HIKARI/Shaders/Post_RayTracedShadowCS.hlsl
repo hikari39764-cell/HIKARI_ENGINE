@@ -4,7 +4,7 @@
 
 // 光線追跡の太陽の影。場面の深度から画素の位置を戻し、太陽の円錐の中へ数本の影光線を飛ばして可視率（1 = 照らされる）を
 // 書く。Forward はこの面の可視率でカスケード影を置き換える（半透明や地形は従来どおりカスケードを読む）。
-// 円錐の半角は太陽の角半径 × 半影の倍率（カスケードの PCSS と同じ設定）で、光線は画素とフレームで揺らして TAA が均す。
+// 円錐の半角は太陽の角半径 × 半影の倍率。可視率を独立に時間積分し、色の TAA が無い時も半影を安定させる。
 
 cbuffer RayTracedShadowCB : register(b0)
 {
@@ -15,12 +15,16 @@ cbuffer RayTracedShadowCB : register(b0)
     float4 gRayParams;      // x 最大距離 [m], y 標本数, z フレーム番号, w 法線方向の始点のずらし [m]
     float4 gInputFlags;     // x 面の記述（法線）が束ねてあれば 1
     HikariRayLightingData gRayLighting;
+    float4x4 gPreviousViewProj;
+    float4 gPreviousCamera;
 };
 
 Texture2D<float> gSceneDepth : register(t0, space9);
 Texture2D<float4> gSceneSurface : register(t1, space9);
 Texture2D<float> gVisibilityIn : register(t2, space9); // CSFilter の入力（CSMain が書いた生の可視率）
+Texture2D<float4> gHistory : register(t3, space9);
 RWTexture2D<float> gVisibility : register(u0, space9);
+RWTexture2D<float4> gFiltered : register(u1, space9);
 SamplerState gLinearClamp : register(s0);
 SamplerState gMaterialWrap : register(s1);
 SamplerState gPointClamp : register(s2);
@@ -130,6 +134,7 @@ void CSFilter(uint3 id : SV_DispatchThreadID)
     if (any(pixel >= uint2(gScreenParams.xy)))
         return;
     const float raw = gVisibilityIn[pixel];
+    gFiltered[pixel] = float4(raw, 0, 0, 0);
     const int2 last = int2(gScreenParams.xy) - 1;
     // 近傍が全部照らされている／全部影なら平均する必要がない（画面の大半はここで終わる）。
     float lowest = raw;
@@ -146,14 +151,21 @@ void CSFilter(uint3 id : SV_DispatchThreadID)
     const float2 uv = (float2(pixel) + 0.5f) * gScreenParams.zw;
     const float depth = gSceneDepth.SampleLevel(gPointClamp, uv, 0.0f);
     float3 position;
-    if (highest - lowest < 0.002f || !HikariIsValidSceneDepth(depth) ||
+    if (!HikariIsValidSceneDepth(depth) ||
         !HikariReconstructWorldPosition(uv, depth, gInvViewProj, position))
     {
-        gVisibility[pixel] = raw;
         return;
     }
     const float3 smoothNormal = SmoothSurfaceNormal(uv);
     const float3 normal = dot(smoothNormal, smoothNormal) > 0.5f ? smoothNormal : NormalFromDepth(uv, position);
+    const float distanceToCamera = length(position - gCameraPosition.xyz);
+    if (distanceToCamera >= 65000.0f) return;
+    const float2 encodedNormal = HikariEncodeOctahedralDirection(normal);
+    if (highest - lowest < 0.002f)
+    {
+        gFiltered[pixel] = float4(raw, encodedNormal, distanceToCamera);
+        return;
+    }
     // 接平面からの許容距離：距離の 1.5% + 1cm（床をかすめて見る画素でも同じ面は通し、段差や輪郭は止める）。
     const float tolerance = 0.015f * length(position - gCameraPosition.xyz) + 0.01f;
     float sum = 0.0f;
@@ -174,5 +186,22 @@ void CSFilter(uint3 id : SV_DispatchThreadID)
             weight += 1.0f;
         }
     }
-    gVisibility[pixel] = weight > 0.0f ? sum / weight : raw;
+    float visibility = weight > 0.0f ? sum / weight : raw;
+    float2 previousUv;
+    float previousDepth, previousViewDepth;
+    if (gInputFlags.y > 0.5f && HikariProjectWorldPosition(position, gPreviousViewProj,
+        previousUv, previousDepth, previousViewDepth) && all(previousUv > 0) && all(previousUv < 1))
+    {
+        const float4 history = gHistory.SampleLevel(gPointClamp, previousUv, 0);
+        const float expectedDistance = length(position - gPreviousCamera.xyz);
+        if (history.w > 0 && abs(history.w - expectedDistance) < max(0.03f, expectedDistance * 0.01f) &&
+            dot(HikariDecodeOctahedralDirection(history.yz), normal) > 0.95f)
+        {
+            // 移動する影は受光面の運動に現れない。可視率の変化も調べ、全照明/全遮蔽の領域は上で即時更新する。
+            const float previous = clamp(history.x, lowest, highest);
+            const float historyWeight = 0.85f * (1.0f - smoothstep(0.08f, 0.3f, abs(previous - visibility)));
+            visibility = lerp(visibility, previous, historyWeight);
+        }
+    }
+    gFiltered[pixel] = float4(visibility, encodedNormal, distanceToCamera);
 }

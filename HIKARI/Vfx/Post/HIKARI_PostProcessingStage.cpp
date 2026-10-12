@@ -307,9 +307,6 @@ void PostProcessingStage::SetToneMappingSettings(const ToneMappingSettings& sett
 }
 
 void PostProcessingStage::SetExposureSettings(const RENDER3D::COLOR::ExposureSettings& settings) {
-    if (exposureSettings_.mode != settings.mode) {
-        automaticExposureMeter_.Reset(RENDER3D::COLOR::ResolveManualExposure(settings));
-    }
     exposureSettings_ = settings;
 }
 
@@ -834,7 +831,8 @@ RenderTarget2D* PostProcessingStage::ResolveHdr(RenderTarget2D& source, QuadDraw
     }
     // 測光は芸術的な全体後処理の前に行う。後処理の色調が露出を引き戻さない。
     if (!debugOutput && meterScene_) {
-        (void)automaticExposureMeter_.QueueMeasurement(*output, exposureState_.preExposure);
+        (void)automaticExposureMeter_.QueueMeasurement(*output, exposureState_.preExposure,
+                                                       TIME::GetFrameContext().frameIndex);
     }
     displaySceneDepthOwner_ = debugOutput ? nullptr : sceneDepthOwner;
     displaySurfaceFeatureMask_ = debugOutput ? nullptr : surfaceFeatureMask;

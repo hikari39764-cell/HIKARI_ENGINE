@@ -20,7 +20,7 @@ HikariPbrShadingContext HikariBuildForwardPbrShadingContext(
 }
 
 // skyVisibility は空の見える割合（動的 GI だけが知る。他は 1）。
-float3 HikariResolveSurfaceDiffuseIrradiance(float3 worldPos, float3 n, float3 v,
+float3 HikariResolveSurfaceDiffuseIrradiance(float3 worldPos, float3 geometricNormal, float3 n, float3 v,
     float3 surfaceLightmapIrradiance, float surfaceLightmapWeight, out float skyVisibility)
 {
     skyVisibility = 1.0f;
@@ -28,7 +28,7 @@ float3 HikariResolveSurfaceDiffuseIrradiance(float3 worldPos, float3 n, float3 v
     // Lightmap の全面 coverage は下位 provider を置換する。有効な黒も維持する。
     [branch]
     if (weight >= 1.0f) return surfaceLightmapIrradiance;
-    const float4 probes = HikariResolveLightProbeDiffuse(worldPos, n, v, skyVisibility);
+    const float4 probes = HikariResolveLightProbeDiffuse(worldPos, geometricNormal, n, v, skyVisibility);
     [branch] if (probes.a >= 1.0f)
         return lerp(probes.rgb, surfaceLightmapIrradiance, weight);
     // 固定の環境光（中立の確認表示だけが使う）と空の拡散光。
@@ -42,6 +42,7 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
     float occlusion,
     float screenAo,
     float3 worldPos,
+    float3 geometricNormal,
     float3 surfaceLightmapIrradiance,
     float surfaceLightmapWeight)
 {
@@ -53,7 +54,7 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
 
     float skyVisibility;
     const float3 diffuseIbl = HikariResolveSurfaceDiffuseIrradiance(
-        worldPos, n, v, surfaceLightmapIrradiance, surfaceLightmapWeight, skyVisibility);
+        worldPos, geometricNormal, n, v, surfaceLightmapIrradiance, surfaceLightmapWeight, skyVisibility);
     float3 diffuse =
         kD * baseColor * diffuseIbl;
 
@@ -98,11 +99,12 @@ float3 HikariEvaluateAmbientIbl(
     float occlusion,
     float screenAo,
     float3 worldPos,
+    float3 geometricNormal,
     float3 surfaceLightmapIrradiance,
     float surfaceLightmapWeight)
 {
     const HikariAmbientIblLobes lobes = HikariEvaluateAmbientIblLobes(
-        context, occlusion, screenAo, worldPos, surfaceLightmapIrradiance, surfaceLightmapWeight);
+        context, occlusion, screenAo, worldPos, geometricNormal, surfaceLightmapIrradiance, surfaceLightmapWeight);
     return lobes.diffuse + lobes.specular;
 }
 

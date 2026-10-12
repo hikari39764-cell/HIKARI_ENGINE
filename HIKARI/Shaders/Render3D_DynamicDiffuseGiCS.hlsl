@@ -2,12 +2,9 @@
 #include "Include/Lighting/HIKARI_IrradianceSh9.hlsli"
 
 Texture3D<float4> gLightProbeShVolume0[9] : register(t0, space2);
-#define gLightProbeShVolume1 gLightProbeShVolume0
 SamplerState gLinearClamp : register(s0);
 SamplerState gMaterialWrap : register(s1);
-#define gLinearWrap gLinearClamp
-#define HIKARI_IRRADIANCE_SAMPLE_ONLY 1
-#include "Include/Lighting/HIKARI_LightingProviderSampling.hlsli"
+#include "Include/Lighting/HIKARI_DynamicGiSampling.hlsli"
 RWTexture3D<float4> gOutputSh[9] : register(u0);
 RWTexture2D<float4> gOutputAtlas : register(u9);
 // 近景の置き場所を決める相機の ray（中央・右・左・上・下・真下）が当たった点の高さ（当たらなければ 1e30）と、
@@ -16,7 +13,8 @@ RWStructuredBuffer<float> gFocusHeights : register(u10);
 
 cbuffer DynamicDiffuseGiCB : register(b0)
 {
-    HikariIrradianceVolumeData gPrevious;
+    HikariIrradianceVolumeData gPreviousVolumes[HIKARI_DYNAMIC_GI_VOLUME_COUNT];
+    uint4 gField; // x この層の index
     float4 gOrigin; // xyz 格子の原点
     float4 gSpacing; // xyz 軸ごとの間隔
     uint4 gCounts; // xyz counts, w total
@@ -24,14 +22,21 @@ cbuffer DynamicDiffuseGiCB : register(b0)
     HikariRayLightingData gRayLighting;
     float4 gFocusOrigin;    // xyz 相機の位置、w は近景の更新で 1（相機の ray を撃つ）
     float4 gFocusDirection; // xyz 視線の向き
+    uint4 gPriorityOrigin; // xyz 格子範囲の始点、w 追加更新の上限
+    uint4 gPrioritySize;   // xyz 格子範囲の大きさ、w 巡回の開始点
 };
 
-// probe 一回の更新の ray。先頭 16 本は形状の内外を調べる固定の分類 ray、残りは更新ごとに回す放射サンプル。
-// 部屋の開口のような小さく明るい光源を拾う数が揺れるので、64 本ではちらつく。
-static const uint kRayCount = 128u, kClassifyRays = 16u, kRadianceRays = kRayCount - kClassifyRays;
+#define gPrevious gPreviousVolumes[gField.x]
+
+// 前半は固定の幾何・測光 ray、後半は更新ごとに回す放射サンプル。
+// 深度と分類は固定標本だけから作り、光照の Monte Carlo の揺れで遮蔽を変えない。
+static const uint kRayCount = 256u, kClassifyRays = 128u, kRadianceRays = kRayCount - kClassifyRays;
 groupshared float3 sDirection[kRayCount];
 groupshared float3 sRadiance[kRayCount];
 groupshared float sDistance[kRayCount];
+groupshared float3 sTriangleA[kClassifyRays];
+groupshared float3 sTriangleB[kClassifyRays];
+groupshared float3 sTriangleC[kClassifyRays];
 groupshared uint sBackFace[kRayCount];
 groupshared float3 sSh[9];
 groupshared float sSky[kRayCount];
@@ -63,9 +68,9 @@ uint ProbeHash(uint value)
 
 // 放射サンプルの球面 Fibonacci を更新ごと・probe ごとに一様な乱数回転で回す（Shoemake の単位四元数）。
 // 方位角だけ回すと仰角の帯が毎回同じになり、深度と放射照度の推定に偏りが残る。分類 ray は固定する。
-float3x3 ProbeRayRotation(uint sequence, uint probeIndex)
+float3x3 ProbeRayRotation(uint sequence, uint probeSeed)
 {
-    const uint seed = ProbeHash(sequence * 9781u + probeIndex * 6271u + 1u);
+    const uint seed = ProbeHash(sequence * 9781u + probeSeed * 6271u + 1u);
     const float u1 = float(ProbeHash(seed) & 0xffffu) / 65535.0f;
     const float u2 = float(ProbeHash(seed + 1u) & 0xffffu) / 65535.0f * 6.28318530718f;
     const float u3 = float(ProbeHash(seed + 2u) & 0xffffu) / 65535.0f * 6.28318530718f;
@@ -88,14 +93,12 @@ float3 ProbeRayDirection(uint rayIndex, float3x3 rotation)
     return rayIndex < kClassifyRays ? direction : mul(rotation, direction);
 }
 
-// shooter は ray を撃った probe の前回の格子座標。当たった点の補間の基準にする（その間に形状は無い）。
-float3 HitRadiance(HikariRaySurface hit, float3 view, float2 randomUv, int3 shooter)
+// 全層の同じ前フレームから、命中した位置の間接光を読む。発射 probe の有無で問い合わせを変えない。
+float3 HitRadiance(HikariRaySurface hit, float3 view, float2 randomUv)
 {
-    float sky;
-    const float4 previous = HikariEvaluateDynamicGiVolume(gPrevious,hit.position,hit.normal,view,shooter,sky);
-    // 未初期化 probe へ空を注入すると室内へ毎フレーム漏れる。有効な拡散履歴だけを渡す（coverage は有効な probe の有無）。
-    return HikariRayHitRadiance(gRayLighting,hit,view,randomUv,previous.rgb*previous.a*
-        HikariEvaluateIrradianceVolumeInfluence(gPrevious,hit.position),0.0f.xxx,false,gMaterialWrap);
+    const HikariDynamicGiSample previous = HikariQueryDynamicGi(gPreviousVolumes,
+        HikariSurfaceGiQuery(hit.position, hit.geometricNormal, hit.normal));
+    return HikariRayHitRadiance(gRayLighting,hit,view,randomUv,previous.value,0.0f.xxx,false,gMaterialWrap);
 }
 
 [numthreads(64,1,1)]
@@ -141,7 +144,15 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
     const uint3 centerRank = min(uint3(abs(centerDelta)*2-int3(centerDelta>0)),gCounts.xyz-1u);
     const uint updateIndex = centerRank.x+centerRank.y*gCounts.x+centerRank.z*gCounts.x*gCounts.y;
     const uint selected = (updateIndex+gCounts.w-gWork.y)%gCounts.w;
-    if (selected >= gWork.z)
+    const uint3 priorityCell = coordinate - gPriorityOrigin.xyz;
+    const uint priorityCount = gPrioritySize.x * gPrioritySize.y * gPrioritySize.z;
+    const bool affected = gPriorityOrigin.w > 0u && all(coordinate >= gPriorityOrigin.xyz) &&
+        all(priorityCell < gPrioritySize.xyz);
+    const uint priorityRank = priorityCell.x + gPrioritySize.x * (priorityCell.y + gPrioritySize.y * priorityCell.z);
+    const bool priorityUpdate = affected &&
+        (priorityRank + priorityCount - gPrioritySize.w) % max(priorityCount, 1u) < gPriorityOrigin.w;
+    // 新しく視野へ入った格子も待たせない。既存格子は変更の近傍だけ先行更新する。
+    if (hasPrevious && selected >= gWork.z && !priorityUpdate)
     {
         if (lane < 9u) gOutputSh[lane][coordinate] = previousSh[lane];
         for (uint texel=lane;texel<tileSize.x*tileSize.y;texel+=64u)
@@ -155,7 +166,13 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
     const float maximumDistance = gPrevious.selectionParams.w;
     // 放射サンプルが球面を分担する円錐。分類 ray は点で形状を検査する。
     const float coneCosine = 1.0f - 2.0f / float(kRadianceRays);
-    const float3x3 rayRotation = ProbeRayRotation(gWork.x, probeIndex);
+    // 格子がスクロールしても同じ世界位置の乱数列と固定の測光標本を保つ。
+    // atlas の添字が変わるだけで光が変わったと誤認し、履歴を弱めない。
+    const int3 worldCell = int3(floor(nominalPosition / gSpacing.xyz));
+    const uint probeSeed = ProbeHash(asuint(worldCell.x)) ^ ProbeHash(asuint(worldCell.y) + 6271u) ^
+        ProbeHash(asuint(worldCell.z) + 9781u);
+    const uint sampleSeed = probeSeed & 0xffffu;
+    const float3x3 rayRotation = ProbeRayRotation(gWork.x, probeSeed);
     for (uint rayIndex = lane; rayIndex < kRayCount; rayIndex += 64u)
     {
         const float3 direction = ProbeRayDirection(rayIndex,rayRotation);
@@ -169,19 +186,26 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
             HIKARI_RAY_REPORT_BACKFACES,hit,float2(0.0f,coneSpread));
         sDirection[rayIndex] = direction;
         sDistance[rayIndex] = found ? min(hit.distance,maximumDistance) : maximumDistance;
+        if (rayIndex < kClassifyRays)
+        {
+            const bool solid = found && hit.distance < maximumDistance &&
+                (HikariGetMeshMaterialData(hit.materialIndex).materialFlags & HIKARI_MATERIAL_FLAG_ALPHA_MASK) == 0u;
+            sTriangleA[rayIndex] = solid ? (hit.trianglePosition[0]-nominalPosition)/maximumDistance : 0.0f.xxx;
+            sTriangleB[rayIndex] = solid ? (hit.trianglePosition[1]-nominalPosition)/maximumDistance : 0.0f.xxx;
+            sTriangleC[rayIndex] = solid ? (hit.trianglePosition[2]-nominalPosition)/maximumDistance : 0.0f.xxx;
+        }
         sBackFace[rayIndex] = found ? hit.backFace : 0u;
         sSky[rayIndex] = found ? 0.0f : 1.0f;
-        const float2 randomUv = frac(float2(rayIndex+1u,gWork.x+probeIndex+1u)*float2(0.754877666f,0.569840296f)+float2(gWork.x,rayIndex)*0.618033989f);
+        const float2 randomUv = frac(float2(rayIndex+1u,gWork.x+sampleSeed+1u)*float2(0.754877666f,0.569840296f)+float2(gWork.x,rayIndex)*0.618033989f);
         // 分類 ray も向きと光の標本を固定して明るさを測る（球面調和には入れない）。場面が変わらなければ毎回同じ値になり、
         // 光が本当に変わったかどうかの手掛かりになる（下の履歴の重み）。
-        const float2 fixedUv = frac(float2(rayIndex+1u,probeIndex+1u)*float2(0.754877666f,0.569840296f));
+        const float2 fixedUv = frac(float2(rayIndex+1u,sampleSeed+1u)*float2(0.754877666f,0.569840296f));
         sRadiance[rayIndex] = found && hit.backFace != 0u ? 0.0f.xxx
-            : found ? HitRadiance(hit,-direction,rayIndex < kClassifyRays ? fixedUv : randomUv,
-                hasPrevious ? previousCoordinate : int3(-1,-1,-1))
+            : found ? HitRadiance(hit,-direction,rayIndex < kClassifyRays ? fixedUv : randomUv)
             : HikariRayEnvironmentRadiance(gRayLighting,direction,gLinearClamp);
     }
-    // 隣の probe との間を影の ray で調べる。描画側は補間の基準の角から塞がれた角を混ぜない（probe 間隔より薄い壁の
-    // 向こうの光は深度 moment では断てない）。影を落とさない形状は塞がない。
+    // 連通性も放射サンプルと同じ形状で調べる。castShadow は直接光の影の設定であり、
+    // GI の形状を取り除かない。薄い壁をまたぐ probe は別の連通成分になる。
     if (lane < 27u)
     {
         bool open = true;
@@ -192,7 +216,7 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
             link.TMax = length(delta);
             HikariRaySurface blocker;
             open = !HikariTraceRuntimeScene(link, gRayLighting.scene.x, gRayLighting.scene.y, gRayLighting.time,
-                gMaterialWrap, HIKARI_RAY_SHADOW | HIKARI_RAY_REPORT_BACKFACES, blocker);
+                gMaterialWrap, HIKARI_RAY_OCCLUSION | HIKARI_RAY_REPORT_BACKFACES, blocker);
         }
         sNeighborOpen[lane] = open ? 1u : 0u;
     }
@@ -203,7 +227,7 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
     {
         uint backFaces=0u;
         for (uint i=0u;i<kClassifyRays;++i) backFaces+=sBackFace[i]!=0u ? 1u : 0u;
-        sValidity=backFaces<=4u ? 1.0f : 0.0f;
+        sValidity=backFaces<=kClassifyRays/4u ? 1.0f : 0.0f;
     }
     GroupMemoryBarrierWithGroupSync();
     if (lane<9u)
@@ -214,8 +238,8 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         // 向きと光の標本を固定した分類 ray の明るさ（6 番の alpha、描画側は読まない）の変わり方で決める。固定した ray も
         // 当たった面の照り返し（隣の probe）を読むので、照り返しが主な部屋では隣の揺れの分だけ毎回動く。そこで変化の
         // 移動平均と二乗の移動平均（7・8 番の alpha）を持ち、前回までの揺れと比べて、一回で大きく変わった時（点灯・消灯）
-        // か同じ向きに変わり続ける時（多重反射の積み上がり）だけ光が変わったとみなし、度合いに応じて 0.97 から 0.6 まで
-        // 軽くして早く追いつく。止まった場面では 0.97 で放射標本の揺れを均す（屋根の穴の日だまりを拾う本数が毎回変わり、
+        // か同じ向きに変わり続ける時（多重反射の積み上がり）だけ光が変わったとみなし、度合いに応じて 0.99 から 0.6 まで
+        // 軽くして早く追いつく。止まった場面では 0.99 で放射標本の揺れを均す（屋根の穴の日だまりを拾う本数が毎回変わり、
         // 0.95 では壁の明るさが 8 フレームごとに段になって変わり続けた）。固定の 0.95 では白い壁の通路で、相機が
         // 止まってからも約 15 秒明るくなり続けた。更新回数（5 番の alpha）で、新しい probe は最初の数回を単純平均にする。
         const bool continuing=previousSh[0].a>0.0f && sValidity>0.0f;
@@ -233,7 +257,7 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         const float lightChange=max(
             smoothstep(3.0f,5.0f,abs(lightTrend)/(0.42f*spread+0.005f))*smoothstep(0.01f,0.03f,abs(lightTrend)),
             smoothstep(4.0f,6.0f,abs(lightStep)/(spread+0.01f))*smoothstep(0.1f,0.3f,abs(lightStep)));
-        const float history=continuing ? min(lerp(0.97f,0.6f,lightChange),updates/(updates+1.0f)) : 0.0f;
+        const float history=continuing ? min(lerp(affected ? 0.6f : 0.99f,0.6f,lightChange),updates/(updates+1.0f)) : 0.0f;
         // 0 番の alpha は validity、1..4 番は空の見える割合の L1 SH（全 ray）。描画側の空の鏡面反射を遮る。
         float sky=0.0f;
         if (lane>=1u && lane<=4u)
@@ -242,15 +266,11 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
             sky=lerp(sky,previousSh[lane].a,history);
             sSkySh[lane-1u]=sky;
         }
-        const float alpha=lane==0u ? sValidity : (lane==5u ? min(updates+1.0f,64.0f) : (lane==6u ? fixedLevel : (lane==7u ? lightTrend : (lane==8u ? lightSquare : sky))));
+        const float alpha=lane==0u ? sValidity : (lane==5u ? min(updates+1.0f,256.0f) : (lane==6u ? fixedLevel : (lane==7u ? lightTrend : (lane==8u ? lightSquare : sky))));
         sSh[lane]=lerp(coefficient,previousSh[lane].rgb,history);
         gOutputSh[lane][coordinate]=float4(sSh[lane],alpha);
     }
     GroupMemoryBarrierWithGroupSync();
-    const bool keepMoments=hasPrevious && previousSh[0].a>0.0f && sValidity>0.0f;
-    // 深度 moment の履歴も更新回数で始めは軽くし、RTXGI と同じ 0.97 まで上げる。一回の更新の ray は RTXGI の半分で、
-    // 0.9 では屋根の縁を抜ける疎な遠い ray の有無で壁の向こうの probe の可視性が更新ごとに揺れ、壁の上端が点滅した。
-    const float momentHistory=keepMoments ? min(0.97f,previousSh[5].a/(previousSh[5].a+1.0f)) : 0.0f;
     // 描画側が probe ごとに 9 係数を読まないよう、放射照度 E/pi を 8x8 の八面体へ展開する。
     for(uint texel=lane;texel<100u;texel+=64u)
     {
@@ -264,6 +284,37 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         // （HikariDynamicGiBlendSpace）。
         gOutputAtlas[tile+pixel]=float4(pow(clamp(irradiance,0.0f,65000.0f),1.0f/kIrradianceGamma),saturate(skyVisibility));
     }
+    // 実測三角形に内接する円盤。無限平面は柱の輪郭の外まで遮ってしまう。
+    {
+        const uint2 pixel = uint2(lane % 8u,lane / 8u);
+        const float3 axis = HikariDecodeOctahedralDirection((float2(pixel)+0.5f)/8.0f);
+        float best = -1.0f;
+        uint closest = 0u;
+        for (uint i = 0u; i < kClassifyRays; ++i)
+        {
+            const float alignment = dot(axis,sDirection[i]);
+            if (alignment > best) { best = alignment; closest = i; }
+        }
+        const float3 a = sTriangleA[closest], b = sTriangleB[closest], c = sTriangleC[closest];
+        const float3 crossEdges = cross(b-a,c-a);
+        const float area = length(crossEdges);
+        float4 patch = 0.0f.xxxx;
+        if (area > 1e-10f)
+        {
+            const float3 normal = crossEdges / area;
+            const float distance = dot(normal,a);
+            const float cosine = dot(normal,axis);
+            if (abs(cosine) > 1e-5f && distance/cosine > 0.0f)
+            {
+                const float3 center = axis * (distance/cosine);
+                const float radius = min(min(dot(cross(b-a,center-a),normal)/length(b-a),
+                    dot(cross(c-b,center-b),normal)/length(c-b)),dot(cross(a-c,center-c),normal)/length(a-c));
+                if (radius > 0.002f)
+                    patch = float4(HikariEncodeOctahedralDirection(normal),distance,min(radius,65000.0f));
+            }
+        }
+        gOutputAtlas[tile+uint2(pixel.x,pixel.y+10u)] = patch;
+    }
     // 深度 moment は 16x16 の八面体。波瓣は鋭く取る（DDGI と同じ cos^50）。広いと壁に沿って抜ける長い ray が隣の方向へ
     // 混ざり、壁の裏の probe が斜めから見えると判定されて外の光が漏れる。
     for(uint texel=lane;texel<324u;texel+=64u)
@@ -271,27 +322,17 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         const uint2 pixel=uint2(texel%18u,texel/18u);
         const float3 axis=HikariDecodeOctahedralDirection((float2(HikariWrapOctahedralTexel(int2(pixel)-1,16))+0.5f)/16.0f);
         float weightSum=0.0f; float2 moments=0.0f.xx;
-        for(uint i=0u;i<kRayCount;++i)
+        for(uint i=0u;i<kClassifyRays;++i)
         {
             const float weight=pow(saturate(dot(axis,sDirection[i])),50.0f);
             const float distance=sDistance[i]/maximumDistance;
             moments+=float2(distance,distance*distance)*weight; weightSum+=weight;
         }
-        const float2 fresh=moments/max(weightSum,1e-20f);
-        // 一回の更新の ray は少なく、向きは更新ごとに回る。probe が動かない間は前回の moment と重ね、
-        // 17 度以内に ray が来なかった方向は前回を保つ。新しい probe や無効だった probe では前回を捨てる。
-        // 波瓣の中心に十分な ray があって前回の平均より揺れの幅を大きく超えて近い時は、遮るもの（閉じた扉など）が現れた
-        // とみなして早く追う（遠い深度のまま漏れ続けない）。遠くなる向きは疎な ray の揺れと区別できないので遅いまま。
         const uint2 momentTexel=uint2(10u,0u)+pixel;
-        float2 result=fresh;
-        if (keepMoments)
-        {
-            const float2 previousMoments=gMaterialTexturePool[NonUniformResourceIndex(previousAtlasIndex)].Load(int3(previousTile+momentTexel,0)).rg;
-            const float previousSpread=sqrt(max(previousMoments.y-previousMoments.x*previousMoments.x,0.0f));
-            const bool occluded=weightSum>=0.5f && fresh.x<previousMoments.x-3.0f*previousSpread-0.05f;
-            result=weightSum>=0.1f ? lerp(fresh,previousMoments,occluded ? 0.5f : momentHistory) : previousMoments;
-        }
-        const float links = pixel.y == 1u && pixel.x >= 1u && pixel.x <= 8u ? float(ProbeOctantLinks(pixel.x - 1u)) : 0.0f;
+        // 固定の幾何標本は静止時に同じ値。幾何が変わった時は古い深度を混ぜず、今回の距離へ置き換える。
+        const float2 result=moments/max(weightSum,1e-20f);
+        const float maturity = saturate(((hasPrevious && previousSh[0].a > 0.0f ? previousSh[5].a : 0.0f) + 1.0f) / 4.0f);
+        const float links = pixel.y == 1u && pixel.x >= 1u && pixel.x <= 8u ? float(ProbeOctantLinks(pixel.x - 1u)) : maturity;
         gOutputAtlas[tile+momentTexel]=float4(result,sValidity,links);
     }
 }

@@ -1548,6 +1548,8 @@
     {"cine.value", "Value"}, {"cine.roll", "Roll"}, {"cine.createShot", "Create shot"},
     {"cine.deleteClip", "Delete clip"}, {"cine.refreshSound", "Refresh audio assets"},
     {"cine.modules", "Reusable modules"}, {"cine.addPose", "Add pose keyframe at playhead"},
+    {"cine.poseKeys", "Pose keys"}, {"cine.poseLaneHint", "Double-click to key the current pose at that time"},
+    {"cine.keyTip", "Pose key at %.3f s\nDrag to move · Right-click to delete"},
     {"cine.baseLook", "Base look · Scene overrides"}, {"cine.sound", "Audio"}, {"cine.presets", "Full sequences"},
     {"cine.bindings", "Object bindings"}, {"cine.inspector", "Properties & effects"},
     {"cine.blendMotion", "Blend camera movement"}, {"cine.amount", "Strength / target value"},

@@ -131,10 +131,8 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
             const float local =
                 std::clamp(cursor_.GetTimeSeconds() - shot->startTimeSeconds, 0.0f, shot->durationSeconds);
             if (IconTextButton(EditorGlyph::Keyframe, TEXT::Localize("cine.addKey").c_str(), "addPose",
-                               EditorButtonTone::Quiet, {}, TEXT::Localize("cine.addPose").c_str())) {
-                SetShotPose(shot->camera, EvaluateShotPose(shot->camera, local), true);
-                changed = true;
-            }
+                               EditorButtonTone::Quiet, {}, TEXT::Localize("cine.addPose").c_str()))
+                changed |= AddPoseKeyAtCursor(sequence);
             const bool table = !narrow && ImGui::BeginTable("cameraChannels", 2, ImGuiTableFlags_SizingStretchProp);
             if (table) {
                 ImGui::TableSetupColumn("labels", ImGuiTableColumnFlags_WidthFixed, 86);

@@ -6,6 +6,7 @@
 #include <span>
 
 #include "Core/Text/HIKARI_EnumNames.h"
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Gfx/HIKARI_GfxContext.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
@@ -160,6 +161,7 @@ struct RuntimeRayTracingFrame {
     uint32_t excludedShadowCasters = 0;
     // 変形した頂点の pool（無ければ 0）。命中の解決が読む。
     D3D12_GPU_VIRTUAL_ADDRESS deformedVertices = 0;
+    MATH::Vec4 changedMinimum{0, 0, 0, 0}, changedMaximum{0, 0, 0, 0};
 };
 
 bool IsRuntimeRayTracingFrameCurrent(const RuntimeRayTracingFrame& frame, const GFX::Context& graphics,

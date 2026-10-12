@@ -79,6 +79,10 @@ struct ShotCamera {
     SequenceBindingId anchor{};
     SequenceBindingId lookAt{};
     MATH::Vec3 targetOffset{};
+    // 姿勢の曲線（位置・注視点・画角・傾き）の接線を自動で決める。途中の键は前後の键から求めた傾きで止まらずに
+    // 通り、最初と最後の键だけ緩やかに加減速する。手で接線を詰めたい時だけ切る。新しい镜头は有効で作り、
+    // この項目の無い古い資産は手で決めた接線を保つため無効として読む。
+    bool smoothPath = false;
     float nearClip = 0.1f;
     float farClip = 2000.0f;
     std::vector<CameraMotionEffect> motion;
@@ -127,6 +131,12 @@ void ApplyCameraMotionEffects(std::span<const CameraMotionEffect> effects, float
                               float strength = 1, bool keepTarget = false);
 ShotPose EvaluateShotPose(const ShotCamera& shot, float seconds);
 void SetShotPose(ShotCamera& shot, const ShotPose& pose, bool keyed);
+// 姿勢の曲線のどれかに键がある時刻を昇順で返す（同じ時刻の键は一つにまとめる）。
+std::vector<float> CollectShotPoseKeyTimes(const ShotCamera& shot);
+// time の姿勢键（全ての姿勢の曲線）を newTime へ動かす。動かした键が無ければ false。
+bool MoveShotPoseKeys(ShotCamera& shot, float time, float newTime);
+// time の姿勢键を全ての姿勢の曲線から消す。消した曲線は消す直前の値を基準値として残す。
+bool RemoveShotPoseKeys(ShotCamera& shot, float time);
 void NormalizeScreenEffects(std::vector<SequenceScreenEffect>& effects);
 void SampleScreenEffects(const std::vector<SequenceScreenEffect>& effects, float seconds,
                          std::vector<ScreenEffectSample>& output);

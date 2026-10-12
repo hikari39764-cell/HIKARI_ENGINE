@@ -1,8 +1,8 @@
 #ifndef HIKARI_DYNAMIC_GI_PROBE_ATLAS_HLSLI
 #define HIKARI_DYNAMIC_GI_PROBE_ATLAS_HLSLI
 
-// 動的 GI の probe 格子と probe atlas の読み方。面の受光（HIKARI_LightingProviderSampling.hlsli）と媒質（体積霧）が
-// 共有する。include する側が gMaterialTexturePool、HIKARI_MATERIAL_TEXTURE_POOL_COUNT、gLinearClamp を宣言する。
+// 動的 GI の probe 格子と atlas の低水準読み取り。補間と provider 合成は HIKARI_DynamicGiSampling.hlsli が所有する。
+// include する側が gMaterialTexturePool、HIKARI_MATERIAL_TEXTURE_POOL_COUNT、gLinearClamp を宣言する。
 #include "HIKARI_IrradianceSh9.hlsli"
 #include "../HIKARI_DirectionEncoding.hlsli"
 
@@ -10,8 +10,10 @@
 // 1/5 乗（A は余弦で重みづけた空の見える割合）の 8x8 八面体、x=[10,28) は深度 moment（RG）と validity（B、tile 内で一定）の
 // 16x16 八面体（どちらも境界 1 texel 込み）。深度は鋭い波瓣（約 10 度）に合わせて細かく取る。8x8（約 22 度間隔）だと
 // 壁の縁を抜ける方向の深度が補間で混ざり、部屋の内角で壁の向こうの probe が半端に見えて鋸歯状に漏れる。
-// 深度 tile の (11 + 卦限, 1) texel の A は、その卦限の隣の 7 probe との間を形状が塞いでいないかの 7 bit（bit は軸の
+// 深度 tile の (10,0) の A は収束の重み（0..1）。(11 + 卦限, 1) texel の A は、その卦限の隣の 7 probe との間を形状が塞いでいないかの 7 bit（bit は軸の
 // 差の組 x=1, y=2, z=4 から 1 を引いた位置）。
+// x=[0,8), y=[10,18) は実測三角形に内接する円盤（oct 法線 xy、符号付き距離 z、半径 w）の 8x8 八面体。
+// 空・alpha mask・退化三角形は半径ゼロ。幾何は補間せず、同じ角度の texel から読む。
 static const uint HIKARI_DYNAMIC_GI_TILE_WIDTH = 28u;
 static const uint HIKARI_DYNAMIC_GI_TILE_HEIGHT = 18u;
 static const float HIKARI_DYNAMIC_GI_OCTAHEDRAL_SIDE = 8.0f;
@@ -149,110 +151,31 @@ uint HikariDynamicGiProbeLinks(uint descriptorIndex, float2 tile, uint octant)
         int3(int2(tile) + int2(11 + (int)octant, 1), 0)).a + 0.5f);
 }
 
-// 補間の基準の角 reference から角 corner までを形状が塞いでいないか（角の番号は x=1, y=2, z=4 の bit）。
-// 深度 moment の可視性は壁に沿う斜めの向きで深度が混ざって緩くなり、probe 間隔より薄い壁の向こうの probe を拾う。
-// 基準（最も重い角）と塞がれた角を混ぜないことで、壁の向こうの光を断つ。
-bool HikariDynamicGiCornerLinked(uint links, uint reference, uint corner)
+// 実測三角形に内接する円盤との線分交差。三角形の外や alpha-mask の穴を勝手に塞がない。
+// patch.xy は oct 法線、z は符号付き平面距離、w は円盤半径。長さは visibility scale で正規化済み。
+bool HikariDynamicGiPatchVisible(float4 patch, float3 axis, float3 toReceiver, float tolerance)
 {
-    const uint axes = reference ^ corner;
-    return axes == 0u || (links & (1u << (axes - 1u))) != 0u;
+    if (patch.w <= tolerance) return true;
+    const float3 normal = HikariDecodeOctahedralDirection(patch.xy);
+    const float cosine = dot(normal,toReceiver);
+    const float axisCosine = dot(normal,axis);
+    if (abs(cosine) < 1e-8f || abs(axisCosine) < 1e-5f) return true;
+    const float t = patch.z / cosine;
+    // 受光面自身との交差は遮蔽ではない。誤差は平面の垂直距離で扱う。光線に沿う距離は掠め角で発散する。
+    if (t <= 0.0f || t >= 1.0f || abs(cosine-patch.z) <= tolerance) return true;
+    const float3 center = axis * (patch.z/axisCosine);
+    return length(toReceiver*t-center) >= patch.w-tolerance;
 }
 
-// 媒質（霧）の一点へ届く全方向の平均 radiance。正四面体の四方向は 2 次までの球面調和を正しく平均するので、
-// 2 次までに収まる E/pi の四方向の平均は入射 radiance の全方向の平均に等しい。面ではないので面の向きの重みと
-// 標本点のずらしは掛けない。可視性は Chebyshev の上界そのもの（壁の向こうの probe だけを落とす）。面の受光の
-// 3 乗と小さな重みの潰しは面の自己遮蔽を抑えるためのもので、媒質では probe ごとの判定の切り替わりが斑に見える。
-// plane（法線, 定数項）は標本点の側の面（視線が最初に当たる面）。その裏の probe は面を挟んだ反対側なので、表の probe が
-// あれば使わない。間隔 6m の遠景が薄い屋根を挟むと、掠める向きの屋内の probe の深度の分布が屋根の上の点を見えると判定し、
-// 屋根の上の霧が灯りの色で光った。法線が 0 なら判定しない。
-// RGB は強度を掛ける前、A は coverage（HikariEvaluateDynamicGiVolume と同じ意味）。
-float4 HikariEvaluateDynamicGiMedium(HikariIrradianceVolumeData volume, float3 worldPos, float4 plane)
+bool HikariDynamicGiProbePatchVisible(HikariIrradianceVolumeData volume, uint descriptorIndex,
+    float2 tile, float3 toReceiver)
 {
-    if (!HikariHasIrradianceVolumeData(volume)) return 0.0f.xxxx;
-    if (volume.spacingIntensity.w == 0.0f) return float4(0,0,0,1);
-    const uint3 counts = (uint3)(volume.countsProbeCount.xyz + 0.5f);
-    const float3 grid = HikariProbeGrid(volume, counts, worldPos);
-    const uint descriptorIndex = (uint)(volume.selectionParams.y + 0.5f) - 1u;
-    const float2 atlasSize = HikariDynamicGiAtlasSize(counts);
-    const float2 directionUv[4] = {
-        HikariEncodeOctahedralDirection(float3(1.0f, 1.0f, 1.0f)),
-        HikariEncodeOctahedralDirection(float3(1.0f, -1.0f, -1.0f)),
-        HikariEncodeOctahedralDirection(float3(-1.0f, 1.0f, -1.0f)),
-        HikariEncodeOctahedralDirection(float3(-1.0f, -1.0f, 1.0f))};
-    const uint3 base = (uint3)floor(grid);
-    const float3 fraction = frac(grid);
-    float cornerWeights[8];
-    float2 cornerTiles[8];
-    float validWeight = 0.0f;
-    float frontWeight = 0.0f;
-    // 基準の候補は面の表と全体の二通り。表に有効な probe があれば表から選ぶ。
-    float2 strongest = -1.0f.xx;
-    uint2 references = 0u.xx;
-    float4 referenceTiles = 0.0f.xxxx;
-    uint front = 0u;
-    const float planeTolerance = 0.1f * max(volume.spacingIntensity.x, max(volume.spacingIntensity.y, volume.spacingIntensity.z));
-    [unroll] for (uint corner = 0u; corner < 8u; ++corner)
-    {
-        const uint3 offset = uint3(corner & 1u, (corner >> 1u) & 1u, (corner >> 2u) & 1u);
-        const uint3 coordinate = min(base + offset, counts - 1u);
-        const float3 axisWeight = lerp(1.0f.xxx - fraction, fraction, (float3)offset);
-        const float interpolationWeight = axisWeight.x * axisWeight.y * axisWeight.z;
-        cornerWeights[corner] = 0.0f;
-        cornerTiles[corner] = HikariDynamicGiProbeTile(coordinate, counts);
-        [branch] if (interpolationWeight > 0.0f)
-        {
-            const float3 probePosition = volume.originSampling.xyz + (float3)coordinate * volume.spacingIntensity.xyz;
-            const float4 moments = HikariDynamicGiProbeMoments(volume, descriptorIndex, cornerTiles[corner], atlasSize,
-                worldPos - probePosition);
-            cornerWeights[corner] =
-                interpolationWeight * max(HikariProbeChebyshevBound(moments.xy, moments.w), 1e-4f) * moments.z;
-            validWeight += interpolationWeight * moments.z;
-            const bool inFront = dot(plane.xyz, probePosition) + plane.w >= -planeTolerance;
-            front |= inFront ? (1u << corner) : 0u;
-            frontWeight += inFront ? interpolationWeight * moments.z : 0.0f;
-            // 基準は 3 乗の可視性（面と同じ厳しさ）で選ぶ。緩い可視性のままだと壁際で壁の向こうの probe が基準になる。
-            const float preference =
-                interpolationWeight * HikariProbeChebyshevVisibility(moments.xy, moments.w) * moments.z;
-            if (preference > strongest.x)
-            {
-                strongest.x = preference;
-                references.x = corner;
-                referenceTiles.xy = cornerTiles[corner];
-            }
-            if (inFront && preference > strongest.y)
-            {
-                strongest.y = preference;
-                references.y = corner;
-                referenceTiles.zw = cornerTiles[corner];
-            }
-        }
-    }
-    if (validWeight <= 1e-5f) return 0.0f.xxxx;
-    const bool frontOnly = frontWeight > 1e-5f;
-    const uint reference = frontOnly ? references.y : references.x;
-    const uint usable = frontOnly ? front : 0xffu;
-    const uint links =
-        HikariDynamicGiProbeLinks(descriptorIndex, frontOnly ? referenceTiles.zw : referenceTiles.xy, reference);
-    float3 irradiance[4] = {0.0f.xxx, 0.0f.xxx, 0.0f.xxx, 0.0f.xxx};
-    float totalWeight = 0.0f;
-    [unroll] for (uint linked = 0u; linked < 8u; ++linked)
-    {
-        [branch] if (cornerWeights[linked] > 0.0f && (usable & (1u << linked)) != 0u &&
-            HikariDynamicGiCornerLinked(links, reference, linked))
-        {
-            [unroll] for (uint direction = 0u; direction < 4u; ++direction)
-                irradiance[direction] += HikariDynamicGiBlendSpace(HikariSampleDynamicGiIrradiance(descriptorIndex,
-                    cornerTiles[linked], atlasSize, directionUv[direction]).rgb) * cornerWeights[linked];
-            totalWeight += cornerWeights[linked];
-        }
-    }
-    float3 radiance = 0.0f.xxx;
-    [unroll] for (uint direction = 0u; direction < 4u; ++direction)
-    {
-        const float3 blended = irradiance[direction] / max(totalWeight, 1e-20f);
-        radiance += blended * blended;
-    }
-    return float4(radiance * 0.25f, saturate(validWeight * 50.0f));
+    const uint2 pixel = min((uint2)(HikariEncodeOctahedralDirection(toReceiver)*8.0f),7u.xx);
+    const float3 axis = HikariDecodeOctahedralDirection((float2(pixel)+0.5f)/8.0f);
+    const float4 patch = gMaterialTexturePool[NonUniformResourceIndex(descriptorIndex)].Load(
+        int3(int2(tile)+int2(pixel.x,pixel.y+10u),0));
+    return HikariDynamicGiPatchVisible(patch,axis,toReceiver/volume.selectionParams.w,
+        max(0.002f/volume.selectionParams.w,0.002f));
 }
 
 #endif

@@ -8,6 +8,7 @@
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 #include "Runtime/Host/HIKARI_IEditorUiServices.h"
+#include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include <algorithm>
 #include <array>
 #include <string>
@@ -59,16 +60,20 @@ bool InputView::GetAction(std::string_view actionId, GameProjectInputActionState
         if (world_ == nullptr || actionId.empty()) {
             return false;
         }
-        if (!SERVICES::IsStandaloneGameHost() && !SERVICES::IsInProcessGamePresentationActive()) {
-            const auto* editor = RUNTIME::GetEditorUiServices();
-            if (editor == nullptr || !editor->IsGameViewportPlayInputActive()) {
-                return false;
-            }
-        }
         auto* world = static_cast<World*>(world_);
         INPUT::InputService* input = world->Services().Find<INPUT::InputService>();
         if (input == nullptr) {
             return false;
+        }
+        const auto* play = world->Services().Find<RuntimePlayStateService>();
+        // 無頭 Play の入力トラックは視口フォーカスを取得せず、実際の入力スナップショットを読む。
+        const bool headlessPlayback = HasRuntimeCommandLineFlag(L"--headless-render") && play != nullptr &&
+                                      play->IsActive() && input->GetPlaybackStatus().active;
+        if (!SERVICES::IsStandaloneGameHost() && !SERVICES::IsInProcessGamePresentationActive() && !headlessPlayback) {
+            const auto* editor = RUNTIME::GetEditorUiServices();
+            if (editor == nullptr || !editor->IsGameViewportPlayInputActive()) {
+                return false;
+            }
         }
         const INPUT::InputActionState* state = input->GetSnapshot().FindAction(std::string(actionId));
         return state != nullptr && ToProjectInputState(*state, outState);

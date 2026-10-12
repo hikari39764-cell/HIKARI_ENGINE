@@ -462,7 +462,10 @@ void DocumentSceneBase::Render() {
     ApplyRenderStyle(state_->runtime.environment.GetRenderStyleId(), state_->assets.RenderStyleAssets(),
                      state_->assets.PostAssets(), state_->assets.Registry(), state_->lighting.environment);
     // 露出の固定（編集中だけ）：固定した EV100 の手動露出に置き換える。補正はそのまま効く。編集器の視口も同じ露出を使う。
-    if (const auto locked = state_->editor.viewportOverlayState.lockedExposureEv100; locked && DrawDebugHelpers()) {
+    // cleanFrame は補助線の表示だけを抑える。露出固定まで無効にすると、相機の比較撮影中に明るさが変わる。
+    if (const auto locked = state_->editor.viewportOverlayState.lockedExposureEv100;
+        locked && !state_->runtime.playActive && !state_->camera.sequencePreview.IsValid() &&
+        SERVICES::IsEditorUIEnabled()) {
         state_->lighting.environment.exposure.mode = RENDER3D::COLOR::ExposureMode::Manual;
         state_->lighting.environment.exposure.manualEv100 = *locked;
     }

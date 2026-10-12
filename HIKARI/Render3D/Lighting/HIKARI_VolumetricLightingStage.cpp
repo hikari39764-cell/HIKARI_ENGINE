@@ -106,6 +106,8 @@ enum InjectRoot : UINT {
     kInjectAmbient,
     kInjectInjected,
     kInjectTexturePool,
+    kInjectHistorySignature,
+    kInjectOutputSignature,
     kInjectRootCount
 };
 // 合成側（CompositeCS）の root の引数。
@@ -146,6 +148,7 @@ struct StageState {
     D3D12_GPU_VIRTUAL_ADDRESS constantAddress = 0;
     // 注入（今と前フレームを交互に書く）、積分、環境光。
     VolumeResource injected[2]{};
+    VolumeResource signature[2]{}; // jitter の無い中心標本。形状と照明の変化を検出する。
     VolumeResource integrated{};
     VolumeResource ambient{};
     RenderResourceView sceneColorUav{};
@@ -275,6 +278,8 @@ bool CreateRootSignature(ID3D12Device* device, bool injection, ID3D12RootSignatu
         table(kInjectAmbient, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3);
         table(kInjectInjected, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 10);
         table(kInjectTexturePool, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 20, GFX::DESCRIPTOR::kUserSrvCount);
+        table(kInjectHistorySignature, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 11);
+        table(kInjectOutputSignature, D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2);
         parameterCount = kInjectRootCount;
     } else {
         params[kCompositeConstants].InitAsConstantBufferView(0);
@@ -370,10 +375,14 @@ bool EnsureResources(StageState& state, uint32_t renderWidth, uint32_t renderHei
     const uint32_t ambientDepth = (std::max)(sliceCount / 2u, 2u);
     for (VolumeResource& volume : state.injected)
         RetireVolume(state, volume);
+    for (VolumeResource& volume : state.signature)
+        RetireVolume(state, volume);
     RetireVolume(state, state.integrated);
     RetireVolume(state, state.ambient);
     if (!CreateVolume(state, state.injected[0], width, height, sliceCount) ||
         !CreateVolume(state, state.injected[1], width, height, sliceCount) ||
+        !CreateVolume(state, state.signature[0], width, height, sliceCount) ||
+        !CreateVolume(state, state.signature[1], width, height, sliceCount) ||
         !CreateVolume(state, state.integrated, width, height, sliceCount) ||
         !CreateVolume(state, state.ambient, ambientWidth, ambientHeight, ambientDepth)) {
         state.resourcesReady = false;
@@ -388,7 +397,7 @@ bool EnsureResources(StageState& state, uint32_t renderWidth, uint32_t renderHei
     state.stats.froxelHeight = height;
     state.stats.froxelDepth = sliceCount;
     state.stats.froxelPixelSize = pixelSize;
-    state.stats.workingSetBytes = static_cast<uint64_t>(width) * height * sliceCount * 8u * 3u +
+    state.stats.workingSetBytes = static_cast<uint64_t>(width) * height * sliceCount * 8u * 5u +
                                   static_cast<uint64_t>(ambientWidth) * ambientHeight * ambientDepth * 8u;
     ++state.stats.resizeCount;
     ++state.stats.historyResetCount;
@@ -572,7 +581,8 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
         ++state.stats.historyResetCount;
     }
     state.lastSettingsSignature = settingsSignature;
-    const bool historyValid = state.volumeHistoryValid && frame.historyValid && !frame.resetHistory;
+    // 体積は独立した履歴を持つ。AA Off/FXAA でも前の相機が有効なら再投影できる。
+    const bool historyValid = state.volumeHistoryValid && frame.camera.previousValid && !frame.resetHistory;
     constants.volumeSize = {static_cast<float>(state.stats.froxelWidth), static_cast<float>(state.stats.froxelHeight),
                             static_cast<float>(state.stats.froxelDepth), historyValid ? 1.0f : 0.0f};
     const bool shadowed = SHADOW::IsDirectionalShadowEnabled() && environment.shadows.enabled &&
@@ -692,6 +702,7 @@ RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
     const D3D12_GPU_VIRTUAL_ADDRESS constantAddress = state.constantAddress;
     VolumeResource& output = state.injected[state.writeIndex];
     VolumeResource& history = state.injected[state.writeIndex ^ 1u];
+    VolumeResource& signature = state.signature[state.writeIndex];
     const auto uavBarrier = [cmd](VolumeResource& volume) {
         const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(volume.texture.Get());
         cmd->ResourceBarrier(1, &barrier);
@@ -716,11 +727,14 @@ RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
             TransitionVolume(cmd, state.ambient, D3D12_RESOURCE_STATE_GENERIC_READ);
         }
         TransitionVolume(cmd, output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        TransitionVolume(cmd, signature, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         cmd->SetPipelineState(state.injectPso.Get());
         const D3D12_GPU_DESCRIPTOR_HANDLE shadow =
             state.stats.shadowed ? SHADOW::GetDirectionalShadowSrv() : state.sceneDepthSrv.gpu;
         cmd->SetComputeRootDescriptorTable(kInjectShadowMap, shadow);
         cmd->SetComputeRootDescriptorTable(kInjectHistory, history.srv.gpu);
+        cmd->SetComputeRootDescriptorTable(kInjectHistorySignature, state.signature[state.writeIndex ^ 1u].srv.gpu);
+        cmd->SetComputeRootDescriptorTable(kInjectOutputSignature, signature.uav.gpu);
         cmd->SetComputeRootDescriptorTable(kInjectAmbient, state.ambient.srv.gpu);
         cmd->SetComputeRootDescriptorTable(kInjectOutput, output.uav.gpu);
         cmd->SetComputeRootDescriptorTable(kInjectLocalShadow,
@@ -733,6 +747,8 @@ RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
         cmd->Dispatch((state.stats.froxelWidth + 7u) / 8u, (state.stats.froxelHeight + 7u) / 8u,
                       state.stats.froxelDepth);
         uavBarrier(output);
+        uavBarrier(signature);
+        TransitionVolume(cmd, signature, D3D12_RESOURCE_STATE_GENERIC_READ);
         TransitionVolume(cmd, output, D3D12_RESOURCE_STATE_GENERIC_READ);
 
         TransitionVolume(cmd, state.integrated, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -796,6 +812,8 @@ const VolumetricLightingStats& GetVolumetricLightingStats() { return State().sta
 void ShutdownVolumetricLightingStage() {
     StageState& state = State();
     for (VolumeResource& volume : state.injected)
+        ReleaseVolume(volume);
+    for (VolumeResource& volume : state.signature)
         ReleaseVolume(volume);
     ReleaseVolume(state.integrated);
     ReleaseVolume(state.ambient);

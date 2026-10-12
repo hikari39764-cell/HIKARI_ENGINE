@@ -364,7 +364,8 @@ bool ExecuteTemporalGeometryPass(const GFX::Context& graphics, const TemporalInp
         const MESHRENDERER::TemporalVelocityDraw& draw = draws[drawIndex];
         const DETAIL::TemporalGeometryHistoryKey historyKey = ResolveHistoryKey(draw);
         const auto historyIt = historyKey.IsValid() ? geometryHistory.find(historyKey) : geometryHistory.end();
-        const bool previousValid = inputs.frame.historyValid && historyIt != geometryHistory.end() &&
+        const bool previousValid = inputs.frame.camera.previousValid && !inputs.frame.resetHistory &&
+                                   historyIt != geometryHistory.end() &&
                                    inputs.frame.frameIndex > historyIt->second.frameIndex &&
                                    inputs.frame.frameIndex - historyIt->second.frameIndex == 1u &&
                                    draw.objectVersion >= historyIt->second.objectVersion;

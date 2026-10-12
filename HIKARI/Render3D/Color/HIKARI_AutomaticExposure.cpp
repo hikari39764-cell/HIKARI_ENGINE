@@ -48,7 +48,7 @@ struct AutomaticExposureMeter::Impl {
         ComPtr<ID3D12Resource> buffer{};
         uint64_t fenceValue = 0;
         uint64_t frameIndex = 0;
-        bool pending = false;
+        bool discard = false;
     };
 
     GFX::Context context{};
@@ -88,6 +88,8 @@ struct AutomaticExposureMeter::Impl {
         }
         measurementState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         nextReadbackSlot = 0;
+        latestMeasurementValid = false;
+        latestMeasuredFrame = 0;
         debug.initialized = false;
         debug.measurementQueued = false;
     }
@@ -165,7 +167,7 @@ struct AutomaticExposureMeter::Impl {
     bool CreateResources(ID3D12Device* device) {
         D3D12_DESCRIPTOR_HEAP_DESC descriptorDescription{};
         descriptorDescription.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        descriptorDescription.NumDescriptors = kDescriptorCount;
+        descriptorDescription.NumDescriptors = kDescriptorCount * GFX::kFrameResourceCount;
         descriptorDescription.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         if (!HIKARI_DX_CHECK(
                 device->CreateDescriptorHeap(&descriptorDescription, IID_PPV_ARGS(descriptorHeap.GetAddressOf())),
@@ -199,15 +201,17 @@ struct AutomaticExposureMeter::Impl {
         }
 
         const UINT descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle(descriptorHeap->GetCPUDescriptorHandleForHeapStart(), 1,
-                                                descriptorSize);
         D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
         uav.Format = DXGI_FORMAT_UNKNOWN;
         uav.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
         uav.Buffer.FirstElement = 0;
         uav.Buffer.NumElements = 1;
         uav.Buffer.StructureByteStride = static_cast<UINT>(kMeasurementBytes);
-        device->CreateUnorderedAccessView(measurementBuffer.Get(), nullptr, &uav, uavHandle);
+        for (UINT index = 0; index < GFX::kFrameResourceCount; ++index) {
+            const CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle(descriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+                                                          index * kDescriptorCount + 1u, descriptorSize);
+            device->CreateUnorderedAccessView(measurementBuffer.Get(), nullptr, &uav, uavHandle);
+        }
         return true;
     }
 
@@ -226,31 +230,27 @@ struct AutomaticExposureMeter::Impl {
     }
 
     void CollectMeasurements() {
-        bool collected = false;
         for (ReadbackSlot& slot : readbackSlots) {
-            if (!slot.pending || slot.buffer == nullptr || slot.fenceValue == 0 ||
-                !GFX::IsCurrentFenceComplete(slot.fenceValue)) {
+            if (slot.buffer == nullptr || slot.fenceValue == 0 || !GFX::IsCurrentFenceComplete(slot.fenceValue)) {
                 continue;
             }
 
             const D3D12_RANGE readRange{0, static_cast<SIZE_T>(kMeasurementBytes)};
             void* mapped = nullptr;
-            if (SUCCEEDED(slot.buffer->Map(0, &readRange, &mapped)) && mapped != nullptr) {
+            if (!slot.discard && SUCCEEDED(slot.buffer->Map(0, &readRange, &mapped)) && mapped != nullptr) {
                 MeasurementResult result{};
                 std::memcpy(&result, mapped, sizeof(result));
                 const D3D12_RANGE writeRange{0, 0};
                 slot.buffer->Unmap(0, &writeRange);
                 if (IsValidLuminance(result.meteredLuminance) && result.windowWeight > 0.0f &&
-                    (!collected || slot.frameIndex >= latestMeasuredFrame)) {
+                    (!latestMeasurementValid || slot.frameIndex > latestMeasuredFrame)) {
                     latestMeteredLuminance = result.meteredLuminance;
                     latestHighlightLuminance = IsValidLuminance(result.highlightLuminance) ? result.highlightLuminance
                                                                                            : result.meteredLuminance;
                     latestMeasuredFrame = slot.frameIndex;
                     latestMeasurementValid = true;
-                    collected = true;
                 }
             }
-            slot.pending = false;
             slot.fenceValue = 0;
         }
     }
@@ -276,20 +276,6 @@ void AutomaticExposureMeter::Shutdown() {
     impl_->context = {};
 }
 
-void AutomaticExposureMeter::Reset(float exposure) {
-    impl_->latestMeteredLuminance = 0.18f;
-    impl_->latestHighlightLuminance = 0.18f;
-    impl_->currentExposure = std::isfinite(exposure) && exposure > 0.0f ? exposure : 1.0f;
-    impl_->currentPreExposure = 0.0f;
-    impl_->latestMeasuredFrame = 0;
-    impl_->latestMeasurementValid = false;
-    impl_->automaticModeActive = false;
-    impl_->debug.measurementValid = false;
-    impl_->debug.meteredLuminance = 0.18f;
-    impl_->debug.currentExposure = impl_->currentExposure;
-    impl_->debug.targetExposure = impl_->currentExposure;
-}
-
 ExposureFrameState AutomaticExposureMeter::BeginFrame(const ExposureSettings& settings,
                                                       const ExposureIllumination& illumination, float deltaTime) {
     impl_->CollectMeasurements();
@@ -297,18 +283,27 @@ ExposureFrameState AutomaticExposureMeter::BeginFrame(const ExposureSettings& se
     const float manualExposure = ResolveManualExposure(settings);
     if (settings.mode != ExposureMode::Automatic) {
         impl_->automaticModeActive = false;
+        impl_->latestMeasurementValid = false;
+        // 旧い測光は切り替え後に採用しない。GPU が完了するまで slot と descriptor は再使用しない。
+        for (auto& slot : impl_->readbackSlots)
+            slot.discard = true;
         state = BuildManualExposureFrame(manualExposure, impl_->currentPreExposure);
         impl_->debug.measurementValid = impl_->latestMeasurementValid;
         impl_->debug.meteredLuminance = impl_->latestMeteredLuminance;
     } else {
         if (!impl_->automaticModeActive) {
-            impl_->currentExposure = std::isfinite(manualExposure) && manualExposure > 0.0f ? manualExposure : 1.0f;
             impl_->automaticModeActive = true;
-            impl_->snapToFirstMeasurement = true;
+            impl_->snapToFirstMeasurement = impl_->currentPreExposure <= 0.0f;
         }
-        state = BuildAutomaticExposureFrame(settings, illumination, impl_->latestMeteredLuminance,
-                                            impl_->latestHighlightLuminance, impl_->currentExposure,
-                                            impl_->currentPreExposure, deltaTime, impl_->latestMeasurementValid);
+        // 固定解除では現在の露出から順応を再開する。測光待ちに屋外の推定値へ飛ぶと、室内で一瞬暗転する。
+        if (!impl_->latestMeasurementValid && !impl_->snapToFirstMeasurement) {
+            state = BuildManualExposureFrame(impl_->currentExposure, impl_->currentPreExposure);
+            state.mode = ExposureMode::Automatic;
+        } else {
+            state = BuildAutomaticExposureFrame(settings, illumination, impl_->latestMeteredLuminance,
+                                                impl_->latestHighlightLuminance, impl_->currentExposure,
+                                                impl_->currentPreExposure, deltaTime, impl_->latestMeasurementValid);
+        }
         if (impl_->snapToFirstMeasurement && state.meteringValid) {
             state.exposure = state.targetExposure;
             state.preExposure = state.exposure;
@@ -325,7 +320,7 @@ ExposureFrameState AutomaticExposureMeter::BeginFrame(const ExposureSettings& se
     return state;
 }
 
-bool AutomaticExposureMeter::QueueMeasurement(RenderTarget2D& sceneColor, float preExposure) {
+bool AutomaticExposureMeter::QueueMeasurement(RenderTarget2D& sceneColor, float preExposure, uint64_t frameIndex) {
     impl_->debug.measurementQueued = false;
     if (!impl_->automaticModeActive || impl_->context.device == nullptr || impl_->context.cmdList == nullptr ||
         impl_->context.frameFence == nullptr || impl_->context.currentFrameRetireFenceValue == 0 ||
@@ -338,7 +333,7 @@ bool AutomaticExposureMeter::QueueMeasurement(RenderTarget2D& sceneColor, float 
     for (size_t offset = 0; offset < impl_->readbackSlots.size(); ++offset) {
         const size_t index = (impl_->nextReadbackSlot + offset) % impl_->readbackSlots.size();
         Impl::ReadbackSlot& slot = impl_->readbackSlots[index];
-        if (!slot.pending) {
+        if (slot.fenceValue == 0) {
             selectedSlot = &slot;
             impl_->nextReadbackSlot = (index + 1u) % impl_->readbackSlots.size();
             break;
@@ -350,7 +345,12 @@ bool AutomaticExposureMeter::QueueMeasurement(RenderTarget2D& sceneColor, float 
 
     ID3D12Device* device = impl_->context.device;
     const UINT descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    const D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = impl_->descriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    // 測光と readback の fence が終わるまで、同じ SRV を書き換えない（HDR 入力はフレームごとに入れ替わる）。
+    const UINT descriptorOffset = static_cast<UINT>(selectedSlot - impl_->readbackSlots.data()) * kDescriptorCount;
+    const CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(impl_->descriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+                                                  descriptorOffset, descriptorSize);
+    const CD3DX12_GPU_DESCRIPTOR_HANDLE table(impl_->descriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+                                              descriptorOffset, descriptorSize);
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
     srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srv.Format = sceneColor.GetFormat();
@@ -360,7 +360,6 @@ bool AutomaticExposureMeter::QueueMeasurement(RenderTarget2D& sceneColor, float 
     srv.Texture2D.PlaneSlice = 0;
     srv.Texture2D.ResourceMinLODClamp = 0.0f;
     device->CreateShaderResourceView(sceneColor.GetResource(), &srv, srvHandle);
-    (void)descriptorSize;
 
     ID3D12GraphicsCommandList* commandList = impl_->context.cmdList;
     const D3D12_RESOURCE_STATES previousSceneState = sceneColor.GetColorState();
@@ -371,7 +370,7 @@ bool AutomaticExposureMeter::QueueMeasurement(RenderTarget2D& sceneColor, float 
     commandList->SetDescriptorHeaps(1, heaps);
     commandList->SetComputeRootSignature(impl_->rootSignature.Get());
     commandList->SetPipelineState(impl_->pipelineState.Get());
-    commandList->SetComputeRootDescriptorTable(0, impl_->descriptorHeap->GetGPUDescriptorHandleForHeapStart());
+    commandList->SetComputeRootDescriptorTable(0, table);
     const uint32_t constants[4] = {static_cast<uint32_t>(sceneColor.GetWidth()),
                                    static_cast<uint32_t>(sceneColor.GetHeight()),
                                    std::bit_cast<uint32_t>(1.0f / preExposure), 0u};
@@ -392,8 +391,8 @@ bool AutomaticExposureMeter::QueueMeasurement(RenderTarget2D& sceneColor, float 
     sceneColor.TransitionColor(previousSceneState);
 
     selectedSlot->fenceValue = impl_->context.currentFrameRetireFenceValue;
-    selectedSlot->frameIndex = impl_->context.frameIndex;
-    selectedSlot->pending = true;
+    selectedSlot->frameIndex = frameIndex;
+    selectedSlot->discard = false;
     impl_->debug.measurementQueued = true;
     return true;
 }

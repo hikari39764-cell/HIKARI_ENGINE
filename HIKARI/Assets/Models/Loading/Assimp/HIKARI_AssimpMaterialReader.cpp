@@ -189,11 +189,9 @@ void ReadMaterials(const aiScene& scene, const std::filesystem::path& sourceDire
             material.baseColorFactor = ToVec4(color);
         }
 
-        if (aiGetMaterialColor(source, AI_MATKEY_COLOR_SPECULAR, &color) == AI_SUCCESS) {
-            material.specularColorFactor = {color.r, color.g, color.b};
-            material.specularFactor = (std::max)({color.r, color.g, color.b, 0.0f});
-        }
-
+        // FBX / OBJ の鏡面色（Ks）は Phong の値で、PBR の鏡面反射率（F0 の強さと色）ではない。Blender などは
+        // 底色をそのまま書くため、これを使うと暗い材質の反射が消え、明るい材質がプラスチックのように光る。
+        // 鏡面は明示の PBR 値（SPECULAR_FACTOR）だけを読み、無ければ既定（誘電体 F0 = 0.04）のままにする。
         float value = 0.0f;
         if (source->Get(AI_MATKEY_METALLIC_FACTOR, value) == AI_SUCCESS) {
             material.metallicFactor = Clamp01(value);

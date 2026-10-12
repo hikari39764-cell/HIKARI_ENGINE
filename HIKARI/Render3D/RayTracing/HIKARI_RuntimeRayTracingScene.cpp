@@ -24,6 +24,7 @@
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingDeformation.h"
+#include "Render3D/RayTracing/HIKARI_RuntimeRayTracingChanges.h"
 #include "Render3D/Resources/HIKARI_RenderResourceSystem.h"
 
 namespace HIKARI::RENDER3D::RAYTRACING {
@@ -143,6 +144,7 @@ struct RuntimeRayTracingScene::State {
     RuntimeRayTracingExclusions lastExcluded{};
     std::map<DeformedKey, Deformed> deformed;
     RuntimeRayTracingDeformation deformation;
+    RuntimeRayTracingChanges changes;
     // 変形の compute が使えない（shader の失敗など）時は蒙皮を外す面に戻す。
     bool deformationBroken = false;
 
@@ -336,6 +338,8 @@ struct RuntimeRayTracingScene::State {
                           graphics.currentFrameRetireFenceValue, true, false, graphics.frameFence,
                           graphics.deviceGeneration, sourceIdentity, layoutVersion, materialVersion});
         frame.deformedVertices = deformed.empty() ? 0 : deformation.PoolAddress();
+        frame.changedMinimum = changes.minimum;
+        frame.changedMaximum = changes.maximum;
         return frame;
     }
 };
@@ -356,6 +360,8 @@ void RuntimeRayTracingScene::Reset(const GFX::Context& graphics) {
         state.RetireDeformed(graphics, entry);
     state.deformed.clear();
     state.deformation.Reset(graphics);
+    state.changes.Reset();
+    state.workFence = 0;
     state.deformationBroken = false;
     state.converter.Reset(graphics);
     state.stats = {};
@@ -389,6 +395,9 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
     if (state.workFence != graphics.currentFrameRetireFenceValue) {
         state.workFence = graphics.currentFrameRetireFenceValue;
         state.frameBuilds = state.frameUploads = 0;
+        if (state.sourceIdentity != source.surfaceRecords)
+            state.changes.Reset();
+        state.changes.Update(*source.surfaceRecords);
     }
     std::erase_if(state.retiring, [](const auto& entry) { return entry.fence->GetCompletedValue() >= entry.value; });
     if (!state.supportsQueries)

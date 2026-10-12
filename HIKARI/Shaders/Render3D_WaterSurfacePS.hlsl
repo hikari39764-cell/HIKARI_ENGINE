@@ -567,6 +567,7 @@ float4 HikariShadeWaterSurface(
             1.0f,
             1.0f,
             input.worldPosWS,
+            geometricNormal,
             0.0f.xxx,
             0.0f),
         0.0f.xxx);

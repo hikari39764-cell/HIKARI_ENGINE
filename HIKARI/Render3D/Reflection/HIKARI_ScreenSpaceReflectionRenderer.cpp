@@ -30,6 +30,7 @@ using Microsoft::WRL::ComPtr;
 constexpr uint32_t kResidentViews = 2;
 constexpr uint64_t kViewTargetBudget = 32ull * 1024 * 1024;
 constexpr DXGI_FORMAT kFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+DXGI_FORMAT TargetFormat(uint32_t index) { return index == 1 || index >= 6 ? DXGI_FORMAT_R16G16_FLOAT : kFormat; }
 constexpr auto kReadState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 struct alignas(16) Constants {
     MATH::Mat4 viewProj{}, invViewProj{};
@@ -93,8 +94,8 @@ struct ViewResources {
     uint32_t width = 0, height = 0, writeIndex = 0, targetCount = 0;
     uint32_t sourceWidth = 0, sourceHeight = 0;
     bool valid = false;
-    // trace, radiance[2], validation[2] (oct-normal, roughness, linear distance)
-    std::array<Target, 5> targets;
+    // trace, hit(distance/motion), radiance[2], validation[2], hit history[2]
+    std::array<Target, 8> targets;
     ComPtr<ID3D12DescriptorHeap> rtvHeap;
     void Reset(const GFX::Context& graphics, bool completed = false) {
         for (auto& target : targets)
@@ -110,7 +111,7 @@ struct ViewResources {
     }
     bool Ensure(const GFX::Context& graphics, uint32_t requestedWidth, uint32_t requestedHeight, bool history,
                 TEMPORAL::TemporalViewLease requestedLease, bool& deferred) {
-        const uint32_t count = history ? 5u : 1u;
+        const uint32_t count = history ? 8u : 2u;
         if (sourceWidth == requestedWidth && sourceHeight == requestedHeight && targetCount == count &&
             lease.Matches(requestedLease))
             return true;
@@ -124,17 +125,25 @@ struct ViewResources {
         uint32_t resolvedWidth = requestedWidth, resolvedHeight = requestedHeight;
         auto desc = CD3DX12_RESOURCE_DESC::Tex2D(kFormat, resolvedWidth, resolvedHeight, 1, 1, 1, 0,
                                                  D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+        std::array<uint64_t, 8> allocations{};
         uint64_t allocationBytes = 0;
         for (;;) {
-            allocationBytes = graphics.device->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes;
+            allocationBytes = 0;
+            for (uint32_t i = 0; i < count; ++i) {
+                desc.Format = TargetFormat(i);
+                allocations[i] = graphics.device->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes;
+                if (allocations[i] == UINT64_MAX)
+                    return false;
+                allocationBytes += allocations[i];
+            }
             if (!allocationBytes || allocationBytes == UINT64_MAX)
                 return false;
-            if (allocationBytes <= kViewTargetBudget / count)
+            if (allocationBytes <= kViewTargetBudget)
                 break;
             if (resolvedWidth == 1 && resolvedHeight == 1)
                 return false;
             // アラインメントを含む実 allocation で判定し、縦横比を保って縮小する。
-            const double scale = std::min(0.95, std::sqrt(double(kViewTargetBudget / count) / allocationBytes));
+            const double scale = std::min(0.95, std::sqrt(double(kViewTargetBudget) / allocationBytes));
             resolvedWidth = std::max(1u, uint32_t(resolvedWidth * scale));
             resolvedHeight = std::max(1u, uint32_t(resolvedHeight * scale));
             desc.Width = resolvedWidth;
@@ -144,20 +153,22 @@ struct ViewResources {
         if (FAILED(graphics.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&rtvHeap))))
             return false;
         const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
-        const D3D12_CLEAR_VALUE clear{kFormat, {0, 0, 0, 0}};
+
         const UINT stride = graphics.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
         for (uint32_t i = 0; i < count; ++i) {
             auto& target = targets[i];
             auto targetDesc = desc;
-            if (i == 0)
+            targetDesc.Format = TargetFormat(i);
+            const D3D12_CLEAR_VALUE clear{targetDesc.Format, {0, 0, 0, 0}};
+            if (i < 2)
                 targetDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
             if (FAILED(graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &targetDesc, kReadState,
                                                                 &clear, IID_PPV_ARGS(&target.resource)))) {
                 Reset(graphics, true);
                 return false;
             }
-            if (i == 0) {
-                target.uav = AllocateTexture2DUavDescriptor(target.resource.Get(), kFormat);
+            if (i < 2) {
+                target.uav = AllocateTexture2DUavDescriptor(target.resource.Get(), targetDesc.Format);
                 if (!target.uav.IsValid()) {
                     Reset(graphics, true);
                     return false;
@@ -169,7 +180,7 @@ struct ViewResources {
                 return false;
             }
             D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
-            srv.Format = kFormat;
+            srv.Format = targetDesc.Format;
             srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
             srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
             srv.Texture2D.MipLevels = 1;
@@ -177,10 +188,12 @@ struct ViewResources {
             target.rtv = rtvHeap->GetCPUDescriptorHandleForHeapStart();
             target.rtv.ptr += i * stride;
             graphics.device->CreateRenderTargetView(target.resource.Get(), nullptr, target.rtv);
-            target.resource->SetName(i == 0  ? L"HIKARI.SSR.Trace"
-                                     : i < 3 ? L"HIKARI.SSR.HistoryRadiance"
-                                             : L"HIKARI.SSR.HistoryValidation");
-            target.allocatedBytes = allocationBytes;
+            target.resource->SetName(i == 0   ? L"HIKARI.SSR.Trace"
+                                     : i == 1 ? L"HIKARI.SSR.TraceHit"
+                                     : i < 4  ? L"HIKARI.SSR.HistoryRadiance"
+                                     : i < 6  ? L"HIKARI.SSR.HistoryValidation"
+                                              : L"HIKARI.SSR.HistoryHit");
+            target.allocatedBytes = allocations[i];
         }
         sourceWidth = requestedWidth;
         sourceHeight = requestedHeight;
@@ -212,14 +225,16 @@ struct ScreenSpaceReflectionRenderer::State {
         rayPipelineFailed = true;
         // 共通の 0..9 + 空(10) に、深度(11)・面(12)・画面の色(13)・trace の UAV(14) を続ける。
         constexpr UINT kSky = RAYTRACING::kRuntimeRayQueryRootParameterCount;
-        std::array<CD3DX12_ROOT_PARAMETER, kSky + 5u> parameters;
-        std::array<CD3DX12_DESCRIPTOR_RANGE, RAYTRACING::kRuntimeRayQueryRangeCount + 4u> ranges;
+        std::array<CD3DX12_ROOT_PARAMETER, kSky + 7u> parameters;
+        std::array<CD3DX12_DESCRIPTOR_RANGE, RAYTRACING::kRuntimeRayQueryRangeCount + 6u> ranges;
         RAYTRACING::InitRuntimeRayQueryRootParameters(parameters, ranges, kSky);
         ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 9);
         ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 9);
         ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 9);
         ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 9);
-        for (UINT i = 0; i < 4u; ++i)
+        ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1, 9);
+        ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 9);
+        for (UINT i = 0; i < 6u; ++i)
             parameters[kSky + 1u + i].InitAsDescriptorTable(1, &ranges[3u + i]);
         const auto common = RAYTRACING::RuntimeRayQueryStaticSamplers();
         std::array<CD3DX12_STATIC_SAMPLER_DESC, 3> samplers{common[0], common[1], {}};
@@ -248,8 +263,8 @@ struct ScreenSpaceReflectionRenderer::State {
     bool EnsurePipeline(const GFX::Context& graphics) {
         if (root && tracePipeline && historyPipeline && resolvePipeline)
             return true;
-        std::array<CD3DX12_DESCRIPTOR_RANGE, 11> ranges;
-        std::array<CD3DX12_ROOT_PARAMETER, 12> parameters;
+        std::array<CD3DX12_DESCRIPTOR_RANGE, 13> ranges;
+        std::array<CD3DX12_ROOT_PARAMETER, 14> parameters;
         parameters[0].InitAsConstantBufferView(0, 0, D3D12_SHADER_VISIBILITY_PIXEL);
         for (UINT i = 0; i < ranges.size(); ++i) {
             ranges[i].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, i);
@@ -267,13 +282,13 @@ struct ScreenSpaceReflectionRenderer::State {
         namespace SHADER = ASSETS::SHADER;
         SHADER::ShaderAssetContractExpectation contract{};
         contract.engineInterfaceId = "HIKARI.ScreenSpaceReflection";
-        contract.engineInterfaceVersion = 1;
+        contract.engineInterfaceVersion = 2;
         contract.rootLayoutId = "HIKARI.ScreenSpaceReflection.Root";
-        contract.rootLayoutVersion = 1;
+        contract.rootLayoutVersion = 2;
         if (!HASH::ComputeSha256(
-                "SSR:320;scene-linear radiance/confidence;half-resolution validated history;unjittered motion pixels;metadata RG32F",
+                "SSR:320;scene-linear radiance/confidence;half-resolution validated history;unjittered motion pixels;metadata RG32F;hit distance/motion RG16F trace and history",
                 contract.engineInterfaceHash) ||
-            !HASH::ComputeSha256("CBV(b0);SRV(t0..t10,individual);Sampler(s0,linearClamp);Sampler(s1,pointClamp)",
+            !HASH::ComputeSha256("CBV(b0);SRV(t0..t12,individual);Sampler(s0,linearClamp);Sampler(s1,pointClamp)",
                                  contract.rootLayoutHash))
             return false;
         const auto caps = GFX::QueryShaderDeviceCapabilities(graphics.device);
@@ -312,8 +327,9 @@ struct ScreenSpaceReflectionRenderer::State {
                 return false;
             const auto ps = pixel.lease.GetDxil();
             desc.PS = {ps.data(), ps.size()};
-            desc.NumRenderTargets = i == 1 ? 2u : 1u;
-            desc.RTVFormats[1] = i == 1 ? kFormat : DXGI_FORMAT_UNKNOWN;
+            desc.NumRenderTargets = i == 0 ? 2u : i == 1 ? 3u : 1u;
+            desc.RTVFormats[1] = i == 0 ? DXGI_FORMAT_R16G16_FLOAT : i == 1 ? kFormat : DXGI_FORMAT_UNKNOWN;
+            desc.RTVFormats[2] = i == 1 ? DXGI_FORMAT_R16G16_FLOAT : DXGI_FORMAT_UNKNOWN;
             auto& pipeline = i == 0 ? tracePipeline : i == 1 ? historyPipeline : resolvePipeline;
             if (!HIKARI_DX_CHECK(graphics.device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipeline)),
                                  "SSR pipeline creation"))
@@ -419,9 +435,8 @@ bool ScreenSpaceReflectionRenderer::Render(const GFX::Context& graphics,
     key = HASH::Fnv1aBytes(key, &constants.resolveParams, sizeof(constants.resolveParams));
     const bool motionReady = motion && metadata && motion->width == depth->width && motion->height == depth->height &&
                              metadata->width == depth->width && metadata->height == depth->height;
-    debugState_.historyUsed = useHistory && view->valid && temporal.historyValid && !temporal.resetHistory &&
-                              temporal.camera.previousValid && view->lastFrame + 1 == temporal.frameIndex &&
-                              view->settingsKey == key && motionReady;
+    debugState_.historyUsed = useHistory && view->valid && !temporal.resetHistory && temporal.camera.previousValid &&
+                              view->lastFrame + 1 == temporal.frameIndex && view->settingsKey == key && motionReady;
     constants.frameParams = {debugView == RenderDebugView::SsrConfidence ? 1.0f
                              : debugView == RenderDebugView::SsrHit      ? 2.0f
                                                                          : 0.0f,
@@ -449,13 +464,14 @@ bool ScreenSpaceReflectionRenderer::Render(const GFX::Context& graphics,
     GFX::PIX::ScopedGpuEvent event(commands, GFX::PIX::kColorPost, "ScreenSpaceReflections");
     GFX::GPU_PROFILE::ScopedGpuTimer timer(commands, GFX::GPU_PROFILE::Pass::ScreenSpaceReflections);
     auto& trace = view->targets[0];
+    auto& traceHit = view->targets[1];
     const auto bind = [&](D3D12_GPU_DESCRIPTOR_HANDLE traceSrv) {
         ID3D12DescriptorHeap* heaps[]{graphics.srvHeap};
         commands->SetDescriptorHeaps(1, heaps);
         commands->SetGraphicsRootSignature(state.root.Get());
         commands->SetGraphicsRootConstantBufferView(0, slice.gpuAddress);
-        const auto& history = view->targets[1 + (1 - view->writeIndex)];
-        const auto& validation = view->targets[3 + (1 - view->writeIndex)];
+        const auto& history = view->targets[2 + (1 - view->writeIndex)];
+        const auto& validation = view->targets[4 + (1 - view->writeIndex)];
         const std::array srvs{color->srv,
                               depth->srv,
                               surface->srv,
@@ -466,7 +482,9 @@ bool ScreenSpaceReflectionRenderer::Render(const GFX::Context& graphics,
                               useHistory ? history.srv.gpu : trace.srv.gpu,
                               useHistory ? validation.srv.gpu : trace.srv.gpu,
                               motionReady ? motion->srv : color->srv,
-                              motionReady ? metadata->srv : color->srv};
+                              motionReady ? metadata->srv : color->srv,
+                              traceHit.srv.gpu,
+                              useHistory ? view->targets[6 + (1 - view->writeIndex)].srv.gpu : traceHit.srv.gpu};
         for (UINT i = 0; i < srvs.size(); ++i)
             commands->SetGraphicsRootDescriptorTable(i + 1, srvs[i]);
         commands->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -493,7 +511,7 @@ bool ScreenSpaceReflectionRenderer::Render(const GFX::Context& graphics,
         rayConstants.screenParams = constants.screenParams;
         rayConstants.traceScreenParams = constants.traceScreenParams;
         rayConstants.rayParams = {debugState_.maxDistance, debugState_.maxRoughness, float(temporal.frameIndex % 1024u),
-                                  0.0f};
+                                  motionReady ? 1.0f : 0.0f};
         rayConstants.viewExposure = RENDER3D::COLOR::GetActiveViewExposure();
         const auto giVolumes = LIGHTPROBE::GetDynamicGiVolumes();
         for (size_t index = 0; index < giVolumes.size() && index < std::size(rayConstants.giVolumes); ++index)
@@ -503,15 +521,16 @@ bool ScreenSpaceReflectionRenderer::Render(const GFX::Context& graphics,
         std::memcpy(raySlice.cpuAddress, &rayConstants, sizeof(rayConstants));
         GFX::PIX::ScopedGpuEvent rayEvent(commands, GFX::PIX::kColorPost, "ScreenSpaceReflections.RayTraced");
         // 画面の色と面の記述は pixel shader 用の状態で渡されるので、compute からも読める状態を足して戻す。
-        std::array<D3D12_RESOURCE_BARRIER, 2> toCompute{};
+        std::array<D3D12_RESOURCE_BARRIER, 3> toCompute{};
         UINT inputBarriers = 0;
-        for (const auto* input : {color, surface})
-            if (input->resource && (input->state & D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) == 0)
+        for (const auto* input : {color, surface, motionReady ? motion : nullptr})
+            if (input && input->resource && (input->state & D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) == 0)
                 toCompute[inputBarriers++] = CD3DX12_RESOURCE_BARRIER::Transition(
                     input->resource, input->state, input->state | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         if (inputBarriers)
             commands->ResourceBarrier(inputBarriers, toCompute.data());
         trace.Transition(commands, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        traceHit.Transition(commands, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         commands->SetComputeRootSignature(state.rayRoot.Get());
         commands->SetPipelineState(state.rayPipeline.Get());
         commands->SetComputeRootConstantBufferView(0, raySlice.gpuAddress);
@@ -521,31 +540,40 @@ bool ScreenSpaceReflectionRenderer::Render(const GFX::Context& graphics,
         commands->SetComputeRootDescriptorTable(kSky + 2u, surface->srv);
         commands->SetComputeRootDescriptorTable(kSky + 3u, color->srv);
         commands->SetComputeRootDescriptorTable(kSky + 4u, trace.uav.gpu);
+        commands->SetComputeRootDescriptorTable(kSky + 5u, traceHit.uav.gpu);
+        commands->SetComputeRootDescriptorTable(kSky + 6u, motionReady ? motion->srv : surface->srv);
         commands->Dispatch((view->width + 7u) / 8u, (view->height + 7u) / 8u, 1u);
         trace.Transition(commands, kReadState);
+        traceHit.Transition(commands, kReadState);
         for (UINT i = 0; i < inputBarriers; ++i)
             std::swap(toCompute[i].Transition.StateBefore, toCompute[i].Transition.StateAfter);
         if (inputBarriers)
             commands->ResourceBarrier(inputBarriers, toCompute.data());
     } else {
         trace.Transition(commands, D3D12_RESOURCE_STATE_RENDER_TARGET);
-        commands->OMSetRenderTargets(1, &trace.rtv, FALSE, nullptr);
+        traceHit.Transition(commands, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        const std::array rtvs{trace.rtv, traceHit.rtv};
+        commands->OMSetRenderTargets(2, rtvs.data(), FALSE, nullptr);
         commands->SetPipelineState(state.tracePipeline.Get());
         commands->DrawInstanced(3, 1, 0, 0);
         trace.Transition(commands, kReadState);
+        traceHit.Transition(commands, kReadState);
     }
     auto resolvedTrace = trace.srv.gpu;
     if (useHistory) {
-        auto& history = view->targets[1 + view->writeIndex];
-        auto& validation = view->targets[3 + view->writeIndex];
+        auto& history = view->targets[2 + view->writeIndex];
+        auto& validation = view->targets[4 + view->writeIndex];
         history.Transition(commands, D3D12_RESOURCE_STATE_RENDER_TARGET);
         validation.Transition(commands, D3D12_RESOURCE_STATE_RENDER_TARGET);
-        const std::array rtvs{history.rtv, validation.rtv};
-        commands->OMSetRenderTargets(2, rtvs.data(), FALSE, nullptr);
+        auto& hitHistory = view->targets[6 + view->writeIndex];
+        hitHistory.Transition(commands, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        const std::array rtvs{history.rtv, validation.rtv, hitHistory.rtv};
+        commands->OMSetRenderTargets(3, rtvs.data(), FALSE, nullptr);
         commands->SetPipelineState(state.historyPipeline.Get());
         commands->DrawInstanced(3, 1, 0, 0);
         history.Transition(commands, kReadState);
         validation.Transition(commands, kReadState);
+        hitHistory.Transition(commands, kReadState);
         resolvedTrace = history.srv.gpu;
     }
     if (!targetAccess.BeginDepthRead()) {

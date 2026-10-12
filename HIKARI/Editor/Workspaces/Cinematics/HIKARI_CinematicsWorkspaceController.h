@@ -97,6 +97,12 @@ private:
     bool DrawChannelLanes(CinematicSequence& sequence, float x, float y, float width, float labelWidth,
                           float rowHeight);
     bool DrawChannelCurve(CinematicSequence& sequence);
+    // 姿勢键の帯（HIKARI_CinematicsTimelineWindow.cpp）：選んだ镜头の位置・注視点・画角・傾きの键を時刻ごとに一つの
+    // 菱形にまとめる。押すとその時刻へ、引くと全ての姿勢の曲線の键を一緒に動かし、右ボタンで消す。
+    bool DrawPoseKeyLane(DocumentSceneBase& scene, CinematicSequence& sequence, float x, float y, float width,
+                         float labelWidth, float rowHeight);
+    // 再生位置に、今の姿勢（運動効果を除く）を全ての姿勢の曲線の键として置く。
+    bool AddPoseKeyAtCursor(CinematicSequence& sequence);
     std::string selectedChannel_ = "eyeX";
     ScalarCurveView curveView_;
     bool curveMode_ = false;
@@ -140,7 +146,10 @@ private:
     bool stageRotate_ = false;
     bool showShotPaths_ = true;
     EditorTransformGizmo stageGizmo_;
-    bool autoKey_ = false;
+    // 既定で有効：動かした结果を再生位置の键として残す（姿勢を変えると今の時刻のキーが増える）。
+    bool autoKey_ = true;
+    // 時間轴で引いている姿勢键の今の時刻（镜头の局所時刻）。引いていない時は負。
+    float poseDragTime_ = -1.0f;
     enum class FlightState { Off, Armed, Recording };
     FlightState flight_ = FlightState::Off;
     uint64_t flightShot_ = 0;
@@ -148,7 +157,6 @@ private:
     bool shotPreviewSubmitted_ = false;
     bool sequenceLibraryVisible_ = true;
     float zoom_ = 80.0f;
-    float timelineScroll_ = 0.0f;
     std::filesystem::path audioProjectRoot_;
     std::vector<std::filesystem::path> audioAssets_;
     float dragMouseX_ = 0.0f;

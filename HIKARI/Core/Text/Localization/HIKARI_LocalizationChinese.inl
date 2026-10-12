@@ -1357,6 +1357,8 @@
     {"cine.startFrame", "从一个画面开始"}, {"cine.shotFromView", "从此视角创建镜头"}, {"cine.value", "值"},
     {"cine.roll", "倾斜"}, {"cine.createShot", "创建镜头"}, {"cine.deleteClip", "删除片段"},
     {"cine.refreshSound", "刷新声音素材"}, {"cine.modules", "可复用模块"}, {"cine.addPose", "在当前时间添加姿态关键帧"},
+    {"cine.poseKeys", "姿态关键帧"}, {"cine.poseLaneHint", "双击在该时刻记录当前姿态"},
+    {"cine.keyTip", "姿态关键帧 %.3f s\n拖动移动 · 右键删除"},
     {"cine.baseLook", "基础画面 · 覆盖场景参数"}, {"cine.sound", "声音"}, {"cine.presets", "完整演出"},
     {"cine.bindings", "对象绑定"}, {"cine.inspector", "属性与效果"}, {"cine.blendMotion", "平滑运镜过渡"},
     {"cine.amount", "强度 / 目标值"}, {"cine.current", "当前演出"}, {"cine.dropHint", "拖到时间轴，或双击加入当前时刻"},

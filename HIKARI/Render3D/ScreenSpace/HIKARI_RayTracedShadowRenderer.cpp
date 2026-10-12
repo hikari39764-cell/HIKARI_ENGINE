@@ -27,10 +27,13 @@ struct alignas(16) RayTracedShadowCB {
     MATH::Vec4 rayParams{};
     MATH::Vec4 inputFlags{};
     RAYTRACING::RuntimeRayLightingGpuData lighting{};
+    MATH::Mat4 previousViewProj{};
+    MATH::Vec4 previousCamera{};
 };
-static_assert(sizeof(RayTracedShadowCB) == 304);
+static_assert(sizeof(RayTracedShadowCB) == 384);
 
 constexpr DXGI_FORMAT kFormat = DXGI_FORMAT_R8_UNORM;
+constexpr DXGI_FORMAT kHistoryFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 constexpr size_t kUploadBytes = 4096u;
 constexpr const wchar_t* kShaderPath = L"HIKARI/Shaders/Post_RayTracedShadowCS.hlsl";
 // 共通の 0..9 + 空(10) の後：深度(11)・面(12)・可視率の UAV(13)・フィルター入力の生の可視率(14)。
@@ -39,6 +42,8 @@ constexpr UINT kDepthParameter = kSkyParameter + 1u;
 constexpr UINT kSurfaceParameter = kSkyParameter + 2u;
 constexpr UINT kOutputParameter = kSkyParameter + 3u;
 constexpr UINT kFilterInputParameter = kSkyParameter + 4u;
+constexpr UINT kHistoryParameter = kFilterInputParameter + 1u;
+constexpr UINT kFilterOutputParameter = kHistoryParameter + 1u;
 
 } // namespace
 
@@ -77,7 +82,14 @@ bool RayTracedShadowRenderer::Render(const GFX::Context& graphics, const RayTrac
     constants.rayParams = {std::max(inputs.maxDistance, 0.1f),
                            static_cast<float>(std::clamp(inputs.sampleCount, 1u, 8u)),
                            static_cast<float>(inputs.frameIndex % 1024u), std::max(inputs.normalOffset, 0.0f)};
-    constants.inputFlags = {surfaceValid ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f};
+    const auto* temporal = inputs.temporal;
+    const bool historyValid = temporal && temporal->camera.previousValid && !temporal->resetHistory &&
+                              historyView_.Matches(temporal->view) && historyFrame_ + 1 == temporal->frameIndex;
+    constants.inputFlags = {surfaceValid ? 1.0f : 0.0f, historyValid ? 1.0f : 0.0f, 0.0f, 0.0f};
+    if (temporal) {
+        constants.previousViewProj = temporal->camera.prevViewProj;
+        constants.previousCamera = temporal->camera.prevCameraPos;
+    }
     constants.lighting = inputs.rayLighting->data;
     std::memcpy(slice.cpuAddress, &constants, sizeof(constants));
 
@@ -101,25 +113,37 @@ bool RayTracedShadowRenderer::Render(const GFX::Context& graphics, const RayTrac
     commands->Dispatch(groupsX, groupsY, 1u);
     // 2) 同じ面の近傍で平均してフィルター済みの面へ。
     Transition(commands, raw_, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    Transition(commands, filtered_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    auto& filtered = filtered_[writeIndex_];
+    auto& history = filtered_[writeIndex_ ^ 1u];
+    Transition(commands, filtered, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    Transition(commands, history, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     commands->SetPipelineState(filterPipeline_.Get());
     commands->SetComputeRootDescriptorTable(kFilterInputParameter, raw_.srv.gpu);
-    commands->SetComputeRootDescriptorTable(kOutputParameter, filtered_.uav.gpu);
+    commands->SetComputeRootDescriptorTable(kFilterOutputParameter, filtered.uav.gpu);
+    commands->SetComputeRootDescriptorTable(kHistoryParameter, history.srv.gpu);
     commands->Dispatch(groupsX, groupsY, 1u);
-    Transition(commands, filtered_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    Transition(commands, filtered, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    if (temporal) {
+        historyFrame_ = temporal->frameIndex;
+        historyView_ = temporal->view;
+    } else {
+        historyView_ = {};
+    }
+    writeIndex_ ^= 1u;
     valid_ = true;
     return true;
 }
 
 RenderTextureView RayTracedShadowRenderer::GetVisibilityView() const noexcept {
-    return {filtered_.resource.Get(),
-            filtered_.srv.gpu,
-            kFormat,
+    const auto& filtered = filtered_[writeIndex_ ^ 1u];
+    return {filtered.resource.Get(),
+            filtered.srv.gpu,
+            kHistoryFormat,
             width_,
             height_,
             1u,
-            filtered_.state,
-            valid_ && filtered_.resource != nullptr};
+            filtered.state,
+            valid_ && filtered.resource != nullptr};
 }
 
 bool RayTracedShadowRenderer::EnsurePipeline(const GFX::Context& graphics) {
@@ -138,8 +162,8 @@ bool RayTracedShadowRenderer::EnsurePipeline(const GFX::Context& graphics) {
     if (device == nullptr || !GFX::SupportsShaderModel6(device)) {
         return false;
     }
-    std::array<CD3DX12_ROOT_PARAMETER, kFilterInputParameter + 1u> parameters;
-    std::array<CD3DX12_DESCRIPTOR_RANGE, RAYTRACING::kRuntimeRayQueryRangeCount + 4u> ranges;
+    std::array<CD3DX12_ROOT_PARAMETER, kFilterOutputParameter + 1u> parameters;
+    std::array<CD3DX12_DESCRIPTOR_RANGE, RAYTRACING::kRuntimeRayQueryRangeCount + 6u> ranges;
     RAYTRACING::InitRuntimeRayQueryRootParameters(parameters, ranges, kSkyParameter);
     ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 9);
     ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 9);
@@ -149,6 +173,10 @@ bool RayTracedShadowRenderer::EnsurePipeline(const GFX::Context& graphics) {
     parameters[kSurfaceParameter].InitAsDescriptorTable(1, &ranges[4]);
     parameters[kOutputParameter].InitAsDescriptorTable(1, &ranges[5]);
     parameters[kFilterInputParameter].InitAsDescriptorTable(1, &ranges[6]);
+    ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 9);
+    ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1, 9);
+    parameters[kHistoryParameter].InitAsDescriptorTable(1, &ranges[7]);
+    parameters[kFilterOutputParameter].InitAsDescriptorTable(1, &ranges[8]);
     const auto common = RAYTRACING::RuntimeRayQueryStaticSamplers();
     std::array<CD3DX12_STATIC_SAMPLER_DESC, 3> samplers{common[0], common[1], {}};
     samplers[2].Init(2, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
@@ -188,12 +216,13 @@ bool RayTracedShadowRenderer::EnsureTargets(const GFX::Context& graphics, uint32
     const auto ready = [](const Target& target) {
         return target.resource && target.srv.IsValid() && target.uav.IsValid();
     };
-    if (width_ == width && height_ == height && ready(raw_) && ready(filtered_)) {
+    if (width_ == width && height_ == height && ready(raw_) && ready(filtered_[0]) && ready(filtered_[1])) {
         return true;
     }
     ReleaseTargets(graphics);
-    if (!CreateTarget(graphics, raw_, width, height, L"HIKARI.RayTracedShadow.Visibility") ||
-        !CreateTarget(graphics, filtered_, width, height, L"HIKARI.RayTracedShadow.Filtered")) {
+    if (!CreateTarget(graphics, raw_, width, height, kFormat, L"HIKARI.RayTracedShadow.Visibility") ||
+        !CreateTarget(graphics, filtered_[0], width, height, kHistoryFormat, L"HIKARI.RayTracedShadow.History0") ||
+        !CreateTarget(graphics, filtered_[1], width, height, kHistoryFormat, L"HIKARI.RayTracedShadow.History1")) {
         return false;
     }
     width_ = width;
@@ -202,11 +231,11 @@ bool RayTracedShadowRenderer::EnsureTargets(const GFX::Context& graphics, uint32
 }
 
 bool RayTracedShadowRenderer::CreateTarget(const GFX::Context& graphics, Target& target, uint32_t width,
-                                           uint32_t height, const wchar_t* name) {
+                                           uint32_t height, DXGI_FORMAT format, const wchar_t* name) {
     ID3D12Device* device = graphics.device;
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     const auto desc =
-        CD3DX12_RESOURCE_DESC::Tex2D(kFormat, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        CD3DX12_RESOURCE_DESC::Tex2D(format, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     target.state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     if (!HIKARI_DX_CHECK(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, target.state, nullptr,
                                                          IID_PPV_ARGS(target.resource.GetAddressOf())),
@@ -214,14 +243,18 @@ bool RayTracedShadowRenderer::CreateTarget(const GFX::Context& graphics, Target&
         return false;
     }
     target.resource->SetName(name);
-    target.srv = AllocateTexture2DSrvDescriptor(target.resource.Get(), kFormat);
-    target.uav = AllocateTexture2DUavDescriptor(target.resource.Get(), kFormat);
+    target.srv = AllocateTexture2DSrvDescriptor(target.resource.Get(), format);
+    target.uav = AllocateTexture2DUavDescriptor(target.resource.Get(), format);
     return target.srv.IsValid() && target.uav.IsValid();
 }
 
 void RayTracedShadowRenderer::ReleaseTargets(const GFX::Context& graphics) {
     ReleaseTarget(graphics, raw_);
-    ReleaseTarget(graphics, filtered_);
+    for (auto& filtered : filtered_)
+        ReleaseTarget(graphics, filtered);
+    historyView_ = {};
+    historyFrame_ = UINT64_MAX;
+    writeIndex_ = 0;
     width_ = 0u;
     height_ = 0u;
     valid_ = false;

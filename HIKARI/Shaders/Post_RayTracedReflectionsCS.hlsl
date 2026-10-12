@@ -17,7 +17,7 @@ cbuffer RayTracedReflectionCB : register(b0)
     float4 gCameraPosition;
     float4 gScreenParams;      // 深度の大きさ（xy）と 1/大きさ（zw）
     float4 gTraceScreenParams; // trace の大きさ（xy）と 1/大きさ（zw）
-    float4 gRayParams;         // x 最大距離, y 最大粗さ, z フレーム番号, w 未使用
+    float4 gRayParams;         // x 最大距離, y 最大粗さ, z フレーム番号, w motion 有効
     float4 gViewExposure;
     HikariIrradianceVolumeData gGiVolumes[HIKARI_DYNAMIC_GI_VOLUME_COUNT];
     HikariRayLightingData gRayLighting;
@@ -26,17 +26,14 @@ cbuffer RayTracedReflectionCB : register(b0)
 Texture2D<float> gSceneDepth : register(t0, space9);
 Texture2D<float4> gSceneSurface : register(t1, space9);
 Texture2D<float4> gSceneColor : register(t2, space9);
+Texture2D<float2> gMotionVectors : register(t3, space9);
 RWTexture2D<float4> gTrace : register(u0, space9);
+RWTexture2D<float2> gTraceHit : register(u1, space9);
 SamplerState gLinearClamp : register(s0);
 SamplerState gMaterialWrap : register(s1);
 SamplerState gPointClamp : register(s2);
 
-// 動的 GI の probe atlas だけを読む（焼き込みの SH 体積は宣言だけで使わない）。
-Texture3D<float4> gLightProbeShVolume0[9] : register(t0, space2);
-#define gLightProbeShVolume1 gLightProbeShVolume0
-#define gLinearWrap gLinearClamp
-#define HIKARI_IRRADIANCE_SAMPLE_ONLY 1
-#include "Include/Lighting/HIKARI_LightingProviderSampling.hlsli"
+#include "Include/Lighting/HIKARI_DynamicGiSampling.hlsli"
 
 // これより滑らかな面は鏡の向きだけを使う（乱数の揺れが無い）。
 static const float kMirrorRoughness = 0.05f;
@@ -75,9 +72,10 @@ float3 SampleGgxReflection(float3 normal, float3 view, float roughness, float2 x
 }
 
 // 当たった点が画面に見えていれば（深度が一致し、面の向きも近い）、その画素の照明済みの色。
-bool ScreenHitRadiance(float3 position, float3 normal, out float3 radiance)
+bool ScreenHitRadiance(float3 position, float3 normal, out float3 radiance, out float motion)
 {
     radiance = 0.0f.xxx;
+    motion = 0.0f;
     float2 uv;
     float projectedDepth;
     float viewDepth;
@@ -96,33 +94,18 @@ bool ScreenHitRadiance(float3 position, float3 normal, out float3 radiance)
     if (dot(sceneNormal, normal) < 0.5f)
         return false;
     radiance = gSceneColor.SampleLevel(gPointClamp, uv, 0.0f).rgb;
+    motion = gRayParams.w > 0.5f ? length(gMotionVectors.SampleLevel(gPointClamp, uv, 0)) : 0.0f;
     return all(isfinite(radiance)) && all(radiance >= 0.0f);
 }
 
 // 画面外の当たった点へ向き direction のまわりから届く光（E/pi）。動的 GI（手置き区域、近景、遠景の順）が覆う分は probe
 // から読み、覆わない分だけその向きの空（skyMip でぼかす）で近似する。閉じた部屋の中を空の光で照らさない。
 // 拡散は面の法線、鏡面（金属の下面が床を映すなど）は反射の向きで読む。
-float3 HitIncidentLight(HikariRaySurface hit, float3 direction, float3 view, float skyMip)
+float3 HitIncidentLight(HikariRaySurface hit, float3 direction, float skyMip)
 {
-    float3 diffuse = 0.0f.xxx;
-    float coverage = 0.0f;
-    [loop] for (uint index = 0u; index < HIKARI_DYNAMIC_GI_VOLUME_COUNT; ++index)
-    {
-        const HikariIrradianceVolumeData volume = gGiVolumes[index];
-        const float influence = HikariEvaluateIrradianceVolumeInfluence(volume, hit.position);
-        [branch] if (influence > 0.0001f)
-        {
-            float sky;
-            const float4 sample =
-                HikariEvaluateDynamicGiVolume(volume, hit.position, direction, view, int3(-1, -1, -1), sky);
-            const float weight = influence * sample.a * (1.0f - coverage);
-            diffuse += sample.rgb * max(0.0f, volume.spacingIntensity.w) * weight;
-            coverage += weight;
-            [branch] if (coverage >= 0.9999f)
-                return diffuse;
-        }
-    }
-    return diffuse + HikariRayEnvironmentRadiance(gRayLighting, direction, gLinearClamp, skyMip) * (1.0f - coverage);
+    const HikariDynamicGiSample sample = HikariQueryDynamicGi(gGiVolumes,
+        HikariSurfaceGiQuery(hit.position, hit.geometricNormal, direction));
+    return sample.value + HikariRayEnvironmentRadiance(gRayLighting, direction, gLinearClamp, skyMip) * (1.0f - sample.coverage);
 }
 
 [numthreads(8, 8, 1)]
@@ -133,6 +116,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         return;
     // 全 texel を書く（SSR の trace はこのフレーム走っていない）。反射が無い texel は確信度 0。
     gTrace[pixel] = 0.0f.xxxx;
+    gTraceHit[pixel] = 0.0f.xx;
     const float2 uv = (float2(pixel) + 0.5f) * gTraceScreenParams.zw;
     const float depth = gSceneDepth.SampleLevel(gPointClamp, uv, 0.0f);
     if (!HikariIsValidSceneDepth(depth))
@@ -166,6 +150,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     if (!HikariTraceRuntimeScene(ray, gRayLighting.scene.x, gRayLighting.scene.y, gRayLighting.time, gMaterialWrap,
             HIKARI_RAY_REPORT_BACKFACES, hit))
         return;
+    gTraceHit[pixel] = float2(min(hit.distance, 65000.0f), 0);
     // 片面の物の裏に当たったのは始点が物の中にある時（接地した球の根元では法線方向のずらしで床の点が球の中へ入る）。
     // 裏を飛ばすと光線が物を抜けて空を映し、接地線が白く光るので、遮られた（暗い）ものとして数える。
     if (hit.backFace != 0u &&
@@ -175,13 +160,15 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         return;
     }
     float3 radiance;
-    if (!ScreenHitRadiance(hit.position, hit.normal, radiance))
+    float hitMotion;
+    if (!ScreenHitRadiance(hit.position, hit.normal, radiance, hitMotion))
     {
         const float3 hitView = -direction;
         radiance = HikariPreExpose(HikariRayHitRadiance(gRayLighting, hit, hitView, ReflectionRandom(pixel, frame, 1u),
-            HitIncidentLight(hit, hit.normal, hitView, 4.0f),
-            HitIncidentLight(hit, reflect(direction, hit.normal), hitView, hit.pbr.roughness * 6.0f), true,
+            HitIncidentLight(hit, hit.normal, 4.0f),
+            HitIncidentLight(hit, reflect(direction, hit.normal), hit.pbr.roughness * 6.0f), true,
             gMaterialWrap), gViewExposure);
     }
+    gTraceHit[pixel] = float2(min(hit.distance, 65000.0f), isfinite(hitMotion) ? min(hitMotion, 65000.0f) : 0);
     gTrace[pixel] = float4(radiance, 1.0f);
 }

@@ -257,14 +257,14 @@ const AgentTool* FindAgentTool(std::string_view name) {
 }
 
 const char* AgentUsageInstructions() {
-    return "HIKARI editor tools. The user keeps working in the same editor, so work in the background: do not move "
-           "their view, change their selection or switch workspaces unless asked. Start with hikari_state, then "
-           "hikari_search to find operations (hikari_describe only when a parameter's shape is unclear). Change scenes "
-           "and assets only through operations (hikari_run / hikari_batch), never by editing asset files; game rules "
-           "belong in the project's C++ under Source/ using the installed SDK. Group related edits with hikari_batch, "
-           "then check them with scene.capture_views (background renders) and hikari_logs before reporting. Use "
-           "hikari_capture only to see the user's current view, and hikari_play only when the user wants to watch Play "
-           "in the editor. Read AGENTS.md in the project root for the quick reference and project conventions.";
+    // 本地桥は便利な道具の一つで、智能体の作業方法を縛らない。文件の直接編集・脚本・命令行・無頭運行・引擎源码の
+    // 修改と構築も同じく使ってよい。利用者と同じ编辑器を使う時の気配りだけを伝える。
+    return "Optional HIKARI editor tools. Use them when they are the quickest way to inspect or change the open "
+           "editor; editing project files directly, scripts, the command line, headless runs (hikari headless) and "
+           "changing or building the engine source are equally valid, so never stop work because the editor, this "
+           "bridge or an approval is unavailable. hikari_state shows the live editor and hikari_search finds "
+           "operations. While the user works in the same editor, avoid moving their view or selection unless asked. "
+           "Read AGENTS.md in the project root for project conventions.";
 }
 
 } // namespace HIKARI::AGENT_CLI

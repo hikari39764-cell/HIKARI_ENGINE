@@ -1,5 +1,6 @@
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
 #include "Render3D/Lighting/HIKARI_DynamicDiffuseGi.h"
+#include "Render3D/Lighting/HIKARI_DynamicGiPlacement.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -33,10 +34,10 @@ constexpr UINT kPreviousShParameter = RAYTRACING::kRuntimeRayQueryRootParameterC
 constexpr UINT kSkyParameter = kPreviousShParameter + 3u;
 // 近景の高さを決める相機の ray の結果（当たった点の高さ）を書く UAV。中央・上下左右・真下の 6 本。
 constexpr UINT kFocusParameter = kSkyParameter + 1u;
-constexpr uint32_t kFocusRayCount = 6;
-// 一本ごとに当たった点の高さと、相機からの水平距離を書く。
-constexpr uint32_t kFocusValueCount = kFocusRayCount * 2;
-constexpr float kFocusMiss = 1.0e30f;
+using DETAIL::kFocusValueCount;
+using DETAIL::NearFieldPlacement;
+using DETAIL::PlaceNearField;
+using DETAIL::ProbeGridOrigin;
 // SH0 は一様な入射 radiance の約 3.54 倍。FP16 上限で HDR を壊さない。
 constexpr auto kProbeShFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
 // 描画側が読む probe atlas。probe ごとに放射照度と深度 moment の八面体、validity の tile を持つ
@@ -113,15 +114,74 @@ const LIGHTING::IrradianceVolumeProvider* SelectRegion(std::span<const LIGHTING:
     return best;
 }
 struct Constants {
-    LIGHTPROBE::IrradianceVolumeGpuData previous{};
+    std::array<LIGHTPROBE::IrradianceVolumeGpuData, kFieldCount> previous{};
+    std::array<uint32_t, 4> field{};
     MATH::Vec4 origin{0, 0, 0, 0}; // xyz 格子の原点
     MATH::Vec4 spacing{0, 0, 0, 0};
     std::array<uint32_t, 4> counts{}, work{};
     RAYTRACING::RuntimeRayLightingGpuData lighting{};
     // 相機の位置（w は近景の更新で 1、その時だけ ray を撃つ）と視線の向き。
     MATH::Vec4 focusOrigin{}, focusDirection{};
+    std::array<uint32_t, 4> priorityOrigin{}, prioritySize{}; // xyz 格子範囲、w 予算/開始点
 };
-static_assert(sizeof(Constants) == 336);
+static_assert(sizeof(Constants) == 544);
+
+// 形状が動いた範囲を局所的に先行更新する。通常の巡回は残し、追加 ray は通常予算の二倍まで。
+UINT SchedulePriority(Constants& constants, MATH::Vec4 minimum, MATH::Vec4 maximum, UINT budget) {
+    const float lo[]{minimum.x, minimum.y, minimum.z}, hi[]{maximum.x, maximum.y, maximum.z};
+    const float origin[]{constants.origin.x, constants.origin.y, constants.origin.z};
+    const float spacing[]{constants.spacing.x, constants.spacing.y, constants.spacing.z};
+    UINT count = minimum.w > 0 ? 1u : 0u;
+    for (UINT axis = 0; axis < 3 && count > 0; ++axis) {
+        const int first =
+            std::clamp(int(std::floor((lo[axis] - origin[axis]) / spacing[axis])) - 2, 0, int(constants.counts[axis]));
+        const int last =
+            std::clamp(int(std::ceil((hi[axis] - origin[axis]) / spacing[axis])) + 3, 0, int(constants.counts[axis]));
+        constants.priorityOrigin[axis] = UINT(first);
+        constants.prioritySize[axis] = UINT(last - first);
+        count *= UINT(last - first);
+    }
+    constants.priorityOrigin[3] = std::min(count, budget * 2u);
+    constants.prioritySize[3] = count > 0 ? (constants.work[0] * constants.priorityOrigin[3]) % count : 0;
+    const auto& previous = constants.previous[constants.field[0]];
+    const float previousOrigin[]{previous.originSampling.x, previous.originSampling.y, previous.originSampling.z};
+    const float previousSpacing[]{previous.spacingIntensity.x, previous.spacingIntensity.y,
+                                  previous.spacingIntensity.z};
+    const float previousCount[]{previous.countsProbeCount.x, previous.countsProbeCount.y, previous.countsProbeCount.z};
+    bool sameGrid = true;
+    for (UINT axis = 0; axis < 3; ++axis)
+        sameGrid &= origin[axis] == previousOrigin[axis] && spacing[axis] == previousSpacing[axis] &&
+                    float(constants.counts[axis]) == previousCount[axis];
+    if (count == 0 && sameGrid)
+        return 0;
+    // GPU と同じ選択を数える。新規格子（相機の移動で露出した端）は追加予算とは別に即時初期化される。
+    UINT extra = 0;
+    for (UINT i = 0; i < constants.counts[3]; ++i) {
+        const UINT cell[]{i % constants.counts[0], (i / constants.counts[0]) % constants.counts[1],
+                          i / (constants.counts[0] * constants.counts[1])};
+        UINT linear = 0, stride = 1, priorityRank = 0, priorityStride = 1;
+        bool newProbe = false, affected = count > 0;
+        for (UINT axis = 0; axis < 3; ++axis) {
+            const int delta = int(cell[axis]) - int(constants.counts[axis] / 2u);
+            linear += UINT(std::min(std::abs(delta) * 2 - int(delta > 0), int(constants.counts[axis]) - 1)) * stride;
+            stride *= constants.counts[axis];
+            const float oldCell = std::round((origin[axis] + float(cell[axis]) * spacing[axis] - previousOrigin[axis]) /
+                                             previousSpacing[axis]);
+            newProbe |= oldCell < 0 || oldCell >= previousCount[axis];
+            const UINT offset = cell[axis] - constants.priorityOrigin[axis];
+            affected &= cell[axis] >= constants.priorityOrigin[axis] && offset < constants.prioritySize[axis];
+            priorityRank += offset * priorityStride;
+            priorityStride *= constants.prioritySize[axis];
+        }
+        const bool scheduled =
+            (linear + constants.counts[3] - constants.work[1]) % constants.counts[3] < constants.work[2];
+        const bool priority =
+            affected && (priorityRank + count - constants.prioritySize[3]) % count < constants.priorityOrigin[3];
+        extra += !scheduled && (newProbe || priority);
+    }
+    return extra;
+}
+
 struct ProbeSet {
     std::array<ComPtr<ID3D12Resource>, 10> textures;
     std::vector<RenderResourceView> srvs, uavs;
@@ -223,56 +283,6 @@ struct ProbeSet {
         commands->ResourceBarrier(UINT(barriers.size()), barriers.data());
     }
 };
-// 近景の cascade の置き場所（中心の高さと、視線の水平方向へ前に出す距離）。
-struct NearFieldPlacement {
-    float height = 0.0f;
-    float reach = 0.0f;
-};
-// 高さは視線の 5 本が当たった点の高さの中央値の少し上（格子の高さの半分の半分）へ下ろすが、視線では相機より上へは
-// 上げない。下ろさないと、高い所から見下ろした時に地面の近くが間隔 6m の遠景だけになり、小さな部屋の床や壁が塊の
-// ような汚れになった。真下の ray が近くの地面に当たる時は、その地面を格子に残す（崖の
-// 縁から谷を見下ろしても足元が粗くならない）。見下ろしていない時（中央値の少し上が相機以上）に真下の地面が近ければ、
-// 最下段の probe が地面の 1〜2 間隔下に来るまで格子を上げる。相機の高さを中心にすると半分の段が地面の下で無駄になり、
-// 低档（6 段）では高さ 3m の天井が上の縁の 1.5m の移行（間隔 6m の遠景）に入って、屋根越しに外の光で明るくなった。
-// 視線がどこにも当たらなければ真下の地面、それも無ければ相機の高さ。
-// 前に出す距離は、視線の当たった点までの水平距離の中央値を、相機の地面からの高さの 1.5 倍までで取る。高い所から
-// 斜めに見ると見ている面が近景の外（前へ約 19m 先）になりやすく、20m 先の家が遠景の塊の汚れになった。地面に立った
-// 視点では高さが小さいのでほとんど出さない（足元の近くの面が一番大事）。
-NearFieldPlacement PlaceNearField(const std::array<float, kFocusValueCount>& values, float cameraHeight,
-                                  float halfHeight, float spacing) {
-    std::array<float, kFocusRayCount - 1> heights{}, distances{};
-    size_t count = 0;
-    const auto hit = [&](size_t index) { return std::isfinite(values[index]) && values[index] < kFocusMiss; };
-    for (size_t index = 0; index + 1 < kFocusRayCount; ++index)
-        if (hit(index)) {
-            heights[count] = values[index];
-            distances[count++] = values[kFocusRayCount + index];
-        }
-    const size_t viewCount = count;
-    const size_t belowIndex = kFocusRayCount - 1;
-    const bool belowHit = hit(belowIndex);
-    const float below = values[belowIndex];
-    NearFieldPlacement placement{cameraHeight, 0.0f};
-    if (count == 0 && belowHit)
-        heights[count++] = below;
-    if (count == 0)
-        return placement;
-    std::sort(heights.begin(), heights.begin() + count);
-    const float viewHeight = heights[count / 2] + 0.5f * halfHeight;
-    placement.height = (std::min)(cameraHeight, viewHeight);
-    // 格子の中心は（高さ - 0.5 間隔）以下の間隔の倍数へ丸められる（gridOrigin）ので、高さを地面 + halfHeight - 0.5 間隔に
-    // すると最下段は地面の 1〜2 間隔下になる。
-    if (belowHit && cameraHeight - below < halfHeight)
-        placement.height = viewHeight >= cameraHeight
-                               ? (std::max)(placement.height, below + halfHeight - 0.5f * spacing)
-                               : (std::max)(placement.height, below - halfHeight + spacing);
-    if (viewCount > 0) {
-        std::sort(distances.begin(), distances.begin() + viewCount);
-        const float elevation = belowHit ? (std::max)(cameraHeight - below, 0.0f) : distances[viewCount / 2];
-        placement.reach = (std::min)(distances[viewCount / 2], 1.5f * elevation);
-    }
-    return placement;
-}
 // 一つの probe 場。履歴は二組の ProbeSet を交互に書き、前の組を読む。
 struct Field {
     std::array<ProbeSet, 2> sets;
@@ -285,7 +295,7 @@ struct Field {
     UINT published = 0, firstProbe = 0;
     // 履歴なしで始めた後、全 probe を更新する残りの回数。
     UINT fullUpdates = 0;
-    uint64_t lastFrame = 0;
+    uint64_t lastFrame = 0, lastUseFence = 0, legacyRetireFence = 0;
     bool history = false, active = false, carry = false;
     void Reset(const GFX::Context& graphics) {
         for (auto& set : sets)
@@ -298,6 +308,7 @@ struct Field {
         fixedOrigin = {};
         published = firstProbe = 0;
         history = active = false;
+        lastUseFence = legacyRetireFence = 0;
     }
     const ProbeSet& Published() const { return sets[published]; }
 };
@@ -325,6 +336,8 @@ struct DynamicDiffuseGi::State {
     std::array<FocusReadback, GFX::kFrameResourceCount> focusReadbacks;
     uint64_t focusFence = 0;
     std::optional<NearFieldPlacement> nearPlacement;
+    MATH::Vec4 changedMinimum{0, 0, 0, 0}, changedMaximum{0, 0, 0, 0};
+    uint32_t changeFrames = 0;
 
     bool EnsurePipeline(const GFX::Context& graphics) {
         if (pipeline)
@@ -346,11 +359,11 @@ struct DynamicDiffuseGi::State {
         namespace SHADER = ASSETS::SHADER;
         SHADER::ShaderAssetContractExpectation contract{};
         contract.engineInterfaceId = "HIKARI.DynamicDiffuseGi";
-        contract.engineInterfaceVersion = 4;
+        contract.engineInterfaceVersion = 8;
         contract.rootLayoutId = "HIKARI.DynamicDiffuseGi.Root";
         contract.rootLayoutVersion = 2;
         if (!HASH::ComputeSha256(
-                "DynamicDiffuseGiCB:400;origin,axis spacing,focus origin/direction;SH9 radiance/validity/sky L1;atlas RGBA16F tile28x18 irradiance^(1/5)+sky oct8,moments+validity oct16,border,neighbor links A(11+octant,1) 7bit;focus hit heights+horizontal distances u10 x12;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
+                "DynamicDiffuseGiCB:544;previous volumes[3],field index;origin,axis spacing,focus origin/direction,priority origin/budget,size/start;SH9 radiance/validity/sky L1;atlas RGBA16F tile28x18 irradiance^(1/5)+sky oct8,moments+validity oct16,border,neighbor links A(11+octant,1) 7bit,maturity A(10,0),triangle-contained disk octNormal,signedDistance,radius oct8 at(0,10);focus hit heights+horizontal distances u10 x12;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
                 contract.engineInterfaceHash) ||
             !HASH::ComputeSha256(
                 "CBV(b0);AS(t0,s8);Hits(t1,s8);Materials(t16);Programs(t0,t1,s6);Lights(t1,t2,s7);Geometry(t0,s1,1024);Textures(t20);Deformed(t2,s8);PreviousSH(t0,s2,9);SH(u0,9);ProbeAtlas(u9);Sky(t0,s7);Focus(u10);Sampler(s0,clamp);Sampler(s1,wrap)",
@@ -476,6 +489,24 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
             return publish();
         return {};
     }
+    if (!sameSource || state.changeFrames == 0)
+        state.changedMinimum = state.changedMaximum = {0, 0, 0, 0};
+    if (sameSource && rt.changedMinimum.w > 0) {
+        if (state.changedMinimum.w == 0) {
+            state.changedMinimum = rt.changedMinimum;
+            state.changedMaximum = rt.changedMaximum;
+        } else {
+            state.changedMinimum = {std::min(state.changedMinimum.x, rt.changedMinimum.x),
+                                    std::min(state.changedMinimum.y, rt.changedMinimum.y),
+                                    std::min(state.changedMinimum.z, rt.changedMinimum.z), 1};
+            state.changedMaximum = {std::max(state.changedMaximum.x, rt.changedMaximum.x),
+                                    std::max(state.changedMaximum.y, rt.changedMaximum.y),
+                                    std::max(state.changedMaximum.z, rt.changedMaximum.z), 1};
+        }
+        state.changeFrames = 16;
+    } else if (state.changeFrames > 0) {
+        --state.changeFrames;
+    }
     GFX::GPU_PROFILE::ScopedGpuTimer timer(graphics.cmdList, GFX::GPU_PROFILE::Pass::DynamicDiffuseGi);
     state.stats.status = Status::ResourceFailure;
     if (frameSerial < state.retryFrame)
@@ -492,7 +523,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         regionLayout = RegionLayout(*region, quality);
     const std::array<const FieldLayout*, kFieldCount> layouts{regionLayout ? &*regionLayout : nullptr, &cascades[0],
                                                               &cascades[1]};
-    const bool previousFenceDone = state.fence->GetCompletedValue() >= state.lastFence;
+    const uint64_t completedFence = state.fence->GetCompletedValue();
     for (size_t index = 0; index < kFieldCount; ++index) {
         auto& field = state.fields[index];
         const std::string_view id =
@@ -501,14 +532,13 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         if (layouts[index] == nullptr)
             continue;
         // 引き継ぎに使った前の組は、それを読んだフレームの GPU が終わってから放す。
-        if (!field.carry && field.legacy.bytes != 0 && previousFenceDone)
+        if (!field.carry && field.legacy.bytes != 0 && completedFence >= field.legacyRetireFence)
             field.legacy.Reset(graphics);
         const bool changed = !(field.layout == *layouts[index]) || field.id != id ||
                              (index == kRegionField && !SameVec3(field.fixedOrigin, region->origin));
         if (changed && field.sets[0].bytes != 0) {
             // 配置換えは旧 field の fence を待ってから割り当て、世代数で予算を超えない。その間この field は休む。
-            if (!previousFenceDone) {
-                field.history = false;
+            if (completedFence < field.lastUseFence) {
                 continue;
             }
             // 近景・遠景の档位の切り替えでは公開中の組を一回だけ残し、新しい格子の最初の更新が近い probe を引き継ぐ。
@@ -574,19 +604,13 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
             const D3D12_RANGE written{0, 0};
             readback.buffer->Unmap(0, &written);
             const FieldLayout& nearLayout = cascades[0];
-            const NearFieldPlacement desired = PlaceNearField(
-                values, cameraPosition.y, 0.5f * float(nearLayout.y - 1) * nearLayout.spacing.y, nearLayout.spacing.y);
-            // 間隔より小さい揺れでは動かさない（格子の境で行き来しない）。
-            if (!state.nearPlacement)
-                state.nearPlacement = desired;
-            if (std::abs(desired.height - state.nearPlacement->height) > nearLayout.spacing.y)
-                state.nearPlacement->height = desired.height;
-            if (std::abs(desired.reach - state.nearPlacement->reach) > nearLayout.spacing.x)
-                state.nearPlacement->reach = desired.reach;
+            state.nearPlacement =
+                PlaceNearField(values, cameraPosition.y, nearLayout.y, nearLayout.spacing.y, state.nearPlacement);
         }
         state.focusFence = readback.fence;
     }
-    const NearFieldPlacement nearPlacement = state.nearPlacement.value_or(NearFieldPlacement{cameraPosition.y, 0.0f});
+    const NearFieldPlacement nearPlacement = state.nearPlacement.value_or(
+        NearFieldPlacement{ProbeGridOrigin(cameraPosition.y, cascades[0].y, cascades[0].spacing.y), 0.0f});
     state.stats.probes = state.stats.updatedProbes = 0;
     state.stats.probeBytes = 0;
     // 相機の cascade の中心は視線の水平方向へ幅の 3 割だけ前に置く。相機の後ろへ半分を割くと、見えている奥が近景から
@@ -596,6 +620,15 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
     ahead = aheadLength > 1e-4f && std::isfinite(aheadLength)
                 ? MATH::Vec3{ahead.x / aheadLength, 0.0f, ahead.z / aheadLength}
                 : MATH::Vec3{};
+    // 全層を更新する前の snapshot。後の層が今フレームの途中結果を読まない。
+    std::array<LIGHTPROBE::IrradianceVolumeGpuData, kFieldCount> previousVolumes{};
+    for (size_t index = 0; index < kFieldCount; ++index) {
+        const auto& field = state.fields[index];
+        const bool compatible =
+            field.active && sameSource && (field.carry || (field.history && frameSerial == field.lastFrame + 1));
+        const auto& previous = field.carry ? field.legacy : field.Published();
+        previousVolumes[index] = LIGHTPROBE::BuildIrradianceVolumeGpuData(previous.data, compatible ? 3.0f : 0.0f);
+    }
     for (size_t index = 0; index < kFieldCount; ++index) {
         auto& field = state.fields[index];
         if (!field.active)
@@ -618,17 +651,16 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
             // probe は間隔の半分ずらした格子に置く。床や壁は整数座標に揃うことが多く、面に重なった probe は
             // 面の表裏を判定できずに板の反対側へ移されてしまう。
             const float spacing = layout.spacing.x;
-            const auto gridOrigin = [spacing](float camera, UINT count) {
-                return (std::floor(camera / spacing - 0.5f) + 0.5f - float(count / 2)) * spacing;
-            };
             const float lead =
                 (std::max)(0.3f * float(layout.x - 1) * spacing, index == kNearField ? nearPlacement.reach : 0.0f);
-            target.data.origin = {gridOrigin(cameraPosition.x + ahead.x * lead, layout.x),
-                                  gridOrigin(index == kNearField ? nearPlacement.height : cameraPosition.y, layout.y),
-                                  gridOrigin(cameraPosition.z + ahead.z * lead, layout.z)};
+            target.data.origin = {ProbeGridOrigin(cameraPosition.x + ahead.x * lead, layout.x, spacing),
+                                  index == kNearField ? nearPlacement.originY
+                                                      : ProbeGridOrigin(cameraPosition.y, layout.y, spacing),
+                                  ProbeGridOrigin(cameraPosition.z + ahead.z * lead, layout.z, spacing)};
         }
         Constants constants{};
-        constants.previous = LIGHTPROBE::BuildIrradianceVolumeGpuData(previous.data, compatible ? 3.0f : 0.0f);
+        constants.previous = previousVolumes;
+        constants.field[0] = static_cast<uint32_t>(index);
         constants.origin = {target.data.origin.x, target.data.origin.y, target.data.origin.z, 0.0f};
         constants.spacing = {layout.spacing.x, layout.spacing.y, layout.spacing.z, 0.0f};
         constants.counts = {layout.x, layout.y, layout.z, layout.x * layout.y * layout.z};
@@ -638,6 +670,8 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         constants.focusOrigin = {cameraPosition.x, cameraPosition.y, cameraPosition.z,
                                  index == kNearField ? 1.0f : 0.0f};
         constants.focusDirection = {forward.x, forward.y, forward.z, 0.0f};
+        const UINT extraUpdates =
+            compatible ? SchedulePriority(constants, state.changedMinimum, state.changedMaximum, layout.budget) : 0;
         std::memcpy(constantBuffers[index].cpuAddress, &constants, sizeof(constants));
         target.Transition(commands, true);
         commands->SetComputeRootConstantBufferView(0, constantBuffers[index].gpuAddress);
@@ -665,9 +699,12 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         field.firstProbe = (constants.work[1] + budget) % constants.counts[3];
         if (field.fullUpdates > 0)
             --field.fullUpdates;
+        if (field.carry)
+            field.legacyRetireFence = graphics.currentFrameRetireFenceValue;
         field.carry = false;
+        field.lastUseFence = graphics.currentFrameRetireFenceValue;
         state.stats.probes += constants.counts[3];
-        state.stats.updatedProbes += budget;
+        state.stats.updatedProbes += budget + extraUpdates;
         state.stats.probeBytes += previous.bytes + target.bytes;
     }
     state.lastFence = graphics.currentFrameRetireFenceValue;
@@ -699,6 +736,8 @@ void DynamicDiffuseGi::Reset(const GFX::Context& graphics) {
     }
     state.focusFence = 0;
     state.nearPlacement.reset();
+    state.changedMinimum = state.changedMaximum = {0, 0, 0, 0};
+    state.changeFrames = 0;
     state.device = nullptr;
     state.fence.Reset();
     state.lastFence = 0;

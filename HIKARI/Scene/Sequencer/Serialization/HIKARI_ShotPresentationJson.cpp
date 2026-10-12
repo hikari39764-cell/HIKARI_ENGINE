@@ -86,6 +86,7 @@ nlohmann::json WriteShotCamera(const ShotCamera& c) {
               {"anchor", c.anchor.value},
               {"lookAt", c.lookAt.value},
               {"targetOffset", Vector(c.targetOffset)},
+              {"smoothPath", c.smoothPath},
               {"near", c.nearClip},
               {"far", c.farClip},
               {"channels", json::object()},
@@ -105,6 +106,7 @@ ShotCamera ReadShotCamera(const nlohmann::json& n) {
     c.anchor.value = n.value("anchor", uint64_t{});
     c.lookAt.value = n.value("lookAt", uint64_t{});
     c.targetOffset = Vector(n.value("targetOffset", json{}));
+    c.smoothPath = n.value("smoothPath", false);
     c.nearClip = n.value("near", 0.1f);
     c.farClip = n.value("far", 2000.0f);
     if (const auto channels = n.find("channels"); channels != n.end() && channels->is_object()) {

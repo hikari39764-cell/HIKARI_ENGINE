@@ -32,12 +32,11 @@ public:
 
     void UpdateContext(const GFX::Context& context);
     void Shutdown();
-    void Reset(float exposure = 1.0f);
 
     ExposureFrameState BeginFrame(const ExposureSettings& settings, const ExposureIllumination& illumination,
                                   float deltaTime);
     // sceneColor はこのフレームの P で Pre-Exposure 済み。測光は絶対輝度に戻して行う。
-    bool QueueMeasurement(RenderTarget2D& sceneColor, float preExposure);
+    bool QueueMeasurement(RenderTarget2D& sceneColor, float preExposure, uint64_t frameIndex);
 
     const AutomaticExposureDebugState& GetDebugState() const;
 

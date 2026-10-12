@@ -49,9 +49,73 @@ void SetShotPose(ShotCamera& shot, const ShotPose& pose, bool keyed) {
     }
 }
 
-void NormalizeShotCamera(ShotCamera& shot) {
+namespace {
+// 姿勢键を同じ時刻とみなす幅 [s]。時間轴の 1/60 秒刻みより十分小さい。
+constexpr float kPoseKeyEpsilon = 0.0005f;
+
+// 途中の键は前後の键を結ぶ傾き（Catmull-Rom）、両端の键は 0。时间の間隔が不揃いでも前後の键の時刻差で割る。
+void SmoothPoseTangents(ScalarCurve& curve) {
+    auto& keys = curve.keys;
+    for (size_t i = 0; i < keys.size(); ++i) {
+        float slope = 0.0f;
+        if (i > 0 && i + 1 < keys.size()) {
+            const float dt = keys[i + 1].time - keys[i - 1].time;
+            slope = dt > 0.00001f ? (keys[i + 1].value - keys[i - 1].value) / dt : 0.0f;
+        }
+        keys[i].inSlope = keys[i].outSlope = slope;
+    }
+}
+} // namespace
+
+std::vector<float> CollectShotPoseKeyTimes(const ShotCamera& shot) {
+    std::vector<float> times;
+    for (const auto& channel : shot.channels)
+        for (const auto& key : channel.keys)
+            times.push_back(key.time);
+    std::sort(times.begin(), times.end());
+    times.erase(std::unique(times.begin(), times.end(),
+                            [](float a, float b) { return std::abs(a - b) < kPoseKeyEpsilon; }),
+                times.end());
+    return times;
+}
+
+bool MoveShotPoseKeys(ShotCamera& shot, float time, float newTime) {
+    bool moved = false;
+    newTime = (std::max)(0.0f, Safe(newTime));
     for (auto& channel : shot.channels)
+        for (auto& key : channel.keys)
+            if (std::abs(key.time - time) < kPoseKeyEpsilon) {
+                key.time = newTime;
+                moved = true;
+            }
+    if (moved)
+        NormalizeShotCamera(shot);
+    return moved;
+}
+
+bool RemoveShotPoseKeys(ShotCamera& shot, float time) {
+    bool removed = false;
+    for (auto& channel : shot.channels) {
+        const float value = channel.Evaluate(time);
+        const auto before = channel.keys.size();
+        std::erase_if(channel.keys, [&](const ScalarCurveKey& key) { return std::abs(key.time - time) < kPoseKeyEpsilon; });
+        if (channel.keys.size() != before) {
+            removed = true;
+            if (channel.keys.empty())
+                channel.value = value;
+        }
+    }
+    if (removed)
+        NormalizeShotCamera(shot);
+    return removed;
+}
+
+void NormalizeShotCamera(ShotCamera& shot) {
+    for (auto& channel : shot.channels) {
         NormalizeScalarCurve(channel);
+        if (shot.smoothPath)
+            SmoothPoseTangents(channel);
+    }
     auto& fov = shot.channels[static_cast<size_t>(ShotChannel::Fov)];
     fov.value = std::clamp(fov.value, 1.0f, 179.0f);
     for (auto& key : fov.keys)

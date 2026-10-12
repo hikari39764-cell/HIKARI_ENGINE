@@ -12,6 +12,7 @@
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Resources/HIKARI_RenderResourcePool.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 
 namespace HIKARI::RENDER3D::RAYTRACING {
 struct RuntimeRayLightingFrame;
@@ -32,10 +33,11 @@ struct RayTracedShadowInputs {
     float normalOffset = 0.02f; // 始点を面から浮かせる距離 [m]
     uint32_t sampleCount = 2u;
     uint32_t frameIndex = 0u;
+    const TEMPORAL::TemporalFrameState* temporal = nullptr;
 };
 
 // 光線追跡の太陽の影。場面の深度から画素ごとに太陽の円錐へ影光線を飛ばし、可視率（R8, 1 = 照らされる）を書き、
-// 同じ面の近傍で空間フィルターを掛けてから Forward へ渡す。
+// 同じ面の近傍で空間フィルターを掛け、独立した履歴（RGBA16F: 可視率・法線・距離）で安定化して Forward へ渡す。
 // 加速構造・材質・局所光の束ね方は光線クエリの共通根パラメーター（RuntimeRayQueryBindings）に従う。
 class RayTracedShadowRenderer final {
 public:
@@ -59,7 +61,7 @@ private:
 
     bool EnsurePipeline(const GFX::Context& graphics);
     bool EnsureTargets(const GFX::Context& graphics, uint32_t width, uint32_t height);
-    bool CreateTarget(const GFX::Context& graphics, Target& target, uint32_t width, uint32_t height,
+    bool CreateTarget(const GFX::Context& graphics, Target& target, uint32_t width, uint32_t height, DXGI_FORMAT format,
                       const wchar_t* name);
     void ReleaseTargets(const GFX::Context& graphics);
     void ReleaseTarget(const GFX::Context& graphics, Target& target);
@@ -69,7 +71,10 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> tracePipeline_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> filterPipeline_{};
     Target raw_{};
-    Target filtered_{};
+    Target filtered_[2]{};
+    uint32_t writeIndex_ = 0;
+    uint64_t historyFrame_ = UINT64_MAX;
+    TEMPORAL::TemporalViewLease historyView_{};
     std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads_{};
     uint64_t deviceGeneration_ = 0u;
     uint32_t width_ = 0u;

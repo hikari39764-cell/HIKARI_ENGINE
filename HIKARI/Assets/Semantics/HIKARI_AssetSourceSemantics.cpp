@@ -65,7 +65,7 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         AssetImporterKind::Model,
         AssetType::Model,
         "ModelImporter",
-        41u,
+        42u,
         ".gltf, .obj, .fbx",
     },
     {

@@ -60,6 +60,16 @@ static bool ResolveView(const CinematicSequence& sequence, const SequenceBinding
             }
             out = EvaluateShotCamera(clip.camera, evaluation.localTimeSeconds, aspect, anchorObject ? &anchor : nullptr,
                                      targetObject ? &target : nullptr);
+            // 演出内の镜头は光学設定を持たないので、结んだ摄像机（無ければ游戏の基準摄像机）の被写界深度と運動ブラーを
+            // 引き継ぐ。区域切替のように游戏画面から入って游戏画面へ戻る演出で、ピントの合い方が途中で変わらない。
+            SceneObjectId opticsId;
+            if (!clip.cameraBindingId.IsValid() || !bindings.Resolve(sequence.bindings, clip.cameraBindingId, opticsId))
+                opticsId = director.GetBaseCamera();
+            Camera3D optics;
+            if (opticsId.value != 0 && director.TryResolveCameraObject(world, opticsId, aspect, optics)) {
+                out.SetDepthOfFieldSettings(optics.GetDepthOfFieldSettings());
+                out.SetMotionBlurSettings(optics.GetMotionBlurSettings());
+            }
             return true;
         }
     return false;

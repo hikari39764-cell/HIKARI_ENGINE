@@ -712,11 +712,11 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.ScreenSpaceReflection",
-        "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "e663ad210cefa5724a7704d855bae4ef4d9b3334b91562dd5cd3fa23ef8f90ea",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "3ee4ae831e87f74e8778ee90c8ed0f14c8705a0a1cd8dcab90c47835b51b29f7",
         "rootLayoutId": "HIKARI.ScreenSpaceReflection.Root",
-        "rootLayoutVersion": 1,
-        "rootLayoutHash": "03941f4018d489dfd7de9790b4cb8bb85f84dbf43f27f2dc9e4a0da938ff57d7",
+        "rootLayoutVersion": 2,
+        "rootLayoutHash": "98fe5bf58e8720c26cc4888d17bb5317b3a62bcabee3fe6c52153bd1cc9ede39",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -1695,8 +1695,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.DynamicDiffuseGi",
-        "engineInterfaceVersion": 4,
-        "engineInterfaceHash": "02606330abc87e01ad4212f19c71c37302c39b3ce1b438b378c2f945f46c23b5",
+        "engineInterfaceVersion": 8,
+        "engineInterfaceHash": "52d946a8c7312f701dcbed5d1c3d045366639cf9b899c34a424f719b2640c56f",
         "rootLayoutId": "HIKARI.DynamicDiffuseGi.Root",
         "rootLayoutVersion": 2,
         "rootLayoutHash": "61686594ef1f83d422b55172e0a77ad0131298938ee63184345280484cecd2b3",
@@ -3902,11 +3902,11 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.VolumetricFog",
-        "engineInterfaceVersion": 4,
-        "engineInterfaceHash": "597c6303ca2146f8936e5e54316d1019d847b4c2bb9a6195ef3e96c488614fa1",
+        "engineInterfaceVersion": 5,
+        "engineInterfaceHash": "7935f9bfdc452f3d8317f0dd9d457457ce6d5814b77653b7e5853dc41f57db84",
         "rootLayoutId": "HIKARI.VolumetricFog.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "893a0da8a495f2b1d8720c716491e26999ed6e0d130a4ea55728cf70fe23b666",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "475c5f226e18a4e9983897316ccea5365181badf94527fd973105400b2c8b094",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

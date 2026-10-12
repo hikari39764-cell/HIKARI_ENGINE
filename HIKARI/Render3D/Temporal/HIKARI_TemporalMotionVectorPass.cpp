@@ -173,7 +173,9 @@ bool ExecuteMotionVectorPass(const GFX::Context& graphics, const TemporalInputs&
     constants.viewProj = inputs.frame.camera.unjitteredViewProj;
     constants.prevViewProj = inputs.frame.camera.prevUnjitteredViewProj;
     constants.screenParams = inputs.frame.camera.screenParams;
-    constants.historyParams = {inputs.frame.historyValid ? 1.0f : 0.0f, inputs.sceneDepth.IsSampleable() ? 1.0f : 0.0f,
+    // 反射などは AA Off でも再投影する。色の履歴ではなく、前フレームの相機の連続性で判定する。
+    const bool previousValid = inputs.frame.camera.previousValid && !inputs.frame.resetHistory;
+    constants.historyParams = {previousValid ? 1.0f : 0.0f, inputs.sceneDepth.IsSampleable() ? 1.0f : 0.0f,
                                (std::max)(inputs.frame.camera.farZ, 1.0f), 0.0f};
     constants.cameraPos = inputs.frame.camera.cameraPos;
     constants.prevCameraPos = inputs.frame.camera.prevCameraPos;

@@ -1,7 +1,7 @@
 #ifndef HIKARI_LIGHTING_PROVIDER_SAMPLING_HLSLI
 #define HIKARI_LIGHTING_PROVIDER_SAMPLING_HLSLI
 
-#include "HIKARI_DynamicGiProbeAtlas.hlsli"
+#include "HIKARI_DynamicGiSampling.hlsli"
 
 float3 HikariSampleLightProbeCoefficient(
     uint providerSlot,
@@ -44,125 +44,13 @@ float3 HikariLoadLightProbeCoefficient(uint providerSlot, uint coefficientIndex,
         : gLightProbeShVolume1[coefficientIndex].Load(int4(coordinate, 0)).rgb;
 }
 
-// 面上の点は深度 moment の誤差で自分の面に遮られたと判定される。視線を主に法線を少し混ぜた向き（面の表）へ
+// 焼き込み volume：面上の点は深度 moment の誤差で自分の面に遮られたと判定される。視線を主に法線を少し混ぜた向き（面の表）へ
 // probe 間隔に比例して離してから補間と可視性を評価する（DDGI と RTXGI の surface bias）。法線が主だと部屋の内角で
 // 隣の壁から離れず、壁の向こうの probe が可視性をすり抜けて交線に probe 間隔の鋸歯が出る。
 float3 HikariProbeSamplePosition(HikariIrradianceVolumeData volume, float3 worldPos, float3 n, float3 v)
 {
     const float minimumSpacing = min(volume.spacingIntensity.x, min(volume.spacingIntensity.y, volume.spacingIntensity.z));
     return worldPos + (n * 0.2f + v * 0.8f) * (0.75f * minimumSpacing * clamp(volume.selectionParams.z, 0.0f, 0.5f));
-}
-
-// 小さな重み（壁の向こうで半端に見えると判定された probe）は 3 乗で潰す（RTXGI の weight crush）。
-float HikariCrushProbeWeight(float weight)
-{
-    return weight < 0.2f ? weight * weight * weight / 0.04f : weight;
-}
-
-// 動的 GI の volume。RGB は E/pi、A は coverage。v は受光点から視点への方向。skyVisibility は
-// 法線まわりの空の見える割合（probe 間の重みで補間）。
-// probe ごとに atlas の深度 moment と validity、放射照度を一度ずつ読む（SH9 の 9 係数を読まない）。
-// 動的 probe は ray が疎で深度 moment が粗いので、面の裏側の probe を滑らかに弱める（DDGI の backface 項）。
-// 画面の面（referenceProbe が負）は深度 moment の可視性と面の表裏（面の平面の奥の probe を除く）で角を重み付ける。
-// 連通で角を落とすと、基準の角が隣の格子で変わる所で共有面の角が片側で落とされ片側で残り、格子の面に沿った楔形の段差
-// （球の下面の黒い楔）になる。基準を全角の連続な重みで平均すれば段差は消えるが、前向きのシェーダでは ForwardOpaque が
-// 約 1ms 以上増えた（2026-10-11 の計測。格子ごとの組を probe 側で求めて画素では 2 texel 読むだけにしても同じ）。
-// referenceProbe は probe の ray の当たった点（照り返しが probe に溜まる所）を評価する時のその probe の格子座標。ここでは
-// 壁を越えて光を運んではならない。白い閉じた部屋は反射を重ねて光を何倍にも増やすので、壁の向こうの日なたの角がわずかに
-// 混ざるだけで昼の部屋が太陽の当たる壁の側から明るくなった。深度 moment の可視性は壁沿いの掠める向きで深度が混ざって
-// 緩むので、角の選び方に使わない。撃った probe が当たった点の格子の角にあれば、そこから連通している（形状が塞いでいない）
-// 角だけを使う。無ければ（ray が一格子より遠くへ届いた）撃った probe 自身の放射照度（当たった面の向き）で近似する。撃った
-// probe は当たった点と同じ側にあることが確か。
-float4 HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData volume, float3 worldPos, float3 n, float3 v,
-    int3 referenceProbe, out float skyVisibility)
-{
-    skyVisibility = 1.0f;
-    if (!HikariHasIrradianceVolumeData(volume)) return 0.0f.xxxx;
-    if (volume.spacingIntensity.w == 0.0f) return float4(0,0,0,1);
-    const uint3 counts = (uint3)(volume.countsProbeCount.xyz + 0.5f);
-    const float3 samplePos = HikariProbeSamplePosition(volume, worldPos, n, v);
-    const float3 grid = HikariProbeGrid(volume, counts, samplePos);
-    const uint descriptorIndex = (uint)(volume.selectionParams.y + 0.5f) - 1u;
-    const float2 atlasSize = HikariDynamicGiAtlasSize(counts);
-    const float2 normalUv = HikariEncodeOctahedralDirection(n);
-    const uint3 base = (uint3)floor(grid);
-    const float3 fraction = frac(grid);
-    const bool probeRay = referenceProbe.x >= 0;
-    // 撃った probe の連通 7 bit（当たった点の格子の他の角の向きの卦限）。画面の面では使わない。
-    uint shooterLinks = 0u;
-    [branch] if (probeRay)
-    {
-        const int3 low = int3(min(base, counts - 1u));
-        const int3 high = int3(min(base + 1u, counts - 1u));
-        const bool3 atLow = referenceProbe == low;
-        const bool3 atHigh = referenceProbe == high;
-        const float2 shooterTile = HikariDynamicGiProbeTile((uint3)referenceProbe, counts);
-        [branch] if (!((atLow.x || atHigh.x) && (atLow.y || atHigh.y) && (atLow.z || atHigh.z)))
-        {
-            const float4 own = HikariSampleDynamicGiIrradiance(descriptorIndex, shooterTile, atlasSize, normalUv);
-            skyVisibility = saturate(own.a);
-            return float4(pow(max(own.rgb, 0.0f.xxx), kIrradianceGamma), 1.0f);
-        }
-        shooterLinks = HikariDynamicGiProbeLinks(descriptorIndex, shooterTile,
-            (atLow.x ? 0u : 1u) | (atLow.y ? 0u : 2u) | (atLow.z ? 0u : 4u));
-    }
-    float cornerWeights[8];
-    float2 cornerTiles[8];
-    float validWeight = 0.0f;
-    const float minimumSpacing =
-        min(volume.spacingIntensity.x, min(volume.spacingIntensity.y, volume.spacingIntensity.z));
-    [unroll] for (uint corner = 0u; corner < 8u; ++corner)
-    {
-        const uint3 offset = uint3(corner & 1u, (corner >> 1u) & 1u, (corner >> 2u) & 1u);
-        const uint3 coordinate = min(base + offset, counts - 1u);
-        const float3 axisWeight = lerp(1.0f.xxx - fraction, fraction, (float3)offset);
-        const float interpolationWeight = axisWeight.x * axisWeight.y * axisWeight.z;
-        cornerWeights[corner] = 0.0f;
-        cornerTiles[corner] = HikariDynamicGiProbeTile(coordinate, counts);
-        [branch] if (interpolationWeight > 0.0f)
-        {
-            const float3 probePosition = volume.originSampling.xyz + (float3)coordinate * volume.spacingIntensity.xyz;
-            const float4 moments = HikariDynamicGiProbeMoments(volume, descriptorIndex, cornerTiles[corner], atlasSize,
-                samplePos - probePosition);
-            const float3 toProbe = probePosition - worldPos;
-            const float facing = (dot(toProbe, n) * rsqrt(max(dot(toProbe, toProbe), 1e-8f)) + 1.0f) * 0.5f;
-            // 全 probe が遮られた点は補間の重みへ戻す。黒にすると地面など probe 層に重なる面が丸ごと暗くなる。
-            const float visibility = HikariProbeChebyshevVisibility(moments.xy, moments.w);
-            const float crushed = HikariCrushProbeWeight(visibility * (facing * facing + 0.2f));
-            // 画面の面では、面の平面より間隔の 1 割強以上奥にある probe（面の裏）を使わない（Unity APV の法線による漏光
-            // 抑制と同じ）。間隔より薄い屋根や壁の向こうの probe は、開口や縁で深度 moment の分布が混ざると可視と判定され、
-            // 天井の穴のまわりに外の光の輪が出た。表の probe が無い点（小さな物の裏など）は下の下限で残り、全体で正規化
-            // される。probe の ray の当たった点は連通で守る。
-            const float frontSide =
-                probeRay ? 1.0f : smoothstep(-0.15f, -0.05f, dot(probePosition - worldPos, n) / minimumSpacing);
-            cornerWeights[corner] = interpolationWeight * max(crushed * frontSide, 1e-6f) * moments.z;
-            validWeight += interpolationWeight * moments.z;
-            // 撃った probe から連通していない角を落とす（軸の差の組 x=1, y=2, z=4 から 1 を引いた bit）。
-            const uint axes = ((int)coordinate.x != referenceProbe.x ? 1u : 0u) |
-                ((int)coordinate.y != referenceProbe.y ? 2u : 0u) | ((int)coordinate.z != referenceProbe.z ? 4u : 0u);
-            if (probeRay && axes != 0u && (shooterLinks & (1u << (axes - 1u))) == 0u)
-                cornerWeights[corner] = 0.0f;
-        }
-    }
-    if (validWeight <= 1e-5f) return 0.0f.xxxx;
-    float4 result = 0.0f.xxxx;
-    float totalWeight = 0.0f;
-    [unroll] for (uint linked = 0u; linked < 8u; ++linked)
-    {
-        [branch] if (cornerWeights[linked] > 0.0f)
-        {
-            const float4 irradiance =
-                HikariSampleDynamicGiIrradiance(descriptorIndex, cornerTiles[linked], atlasSize, normalUv);
-            result += float4(HikariDynamicGiBlendSpace(irradiance.rgb), irradiance.a) * cornerWeights[linked];
-            totalWeight += cornerWeights[linked];
-        }
-    }
-    result /= max(totalWeight, 1e-20f);
-    result.rgb *= result.rgb;
-    skyVisibility = saturate(result.a);
-    // 壁や屋根の中の無効な probe の分を下位（空の光）へ回すと、壁際に遮られない空の光が差し込む。有効な probe
-    // が少しでもあればその間で正規化して全面を覆い、ほぼ全部が無効な時だけ下位へ移す。
-    return float4(result.rgb, saturate(validWeight * 50.0f));
 }
 
 // 焼き込み volume（SH9）。RGB は E/pi、A は sample validity。空間 coverage は influence が所有する。
@@ -245,7 +133,6 @@ float4 HikariEvaluateLightProbeVolumeDiffuse(
     return float4(max(result, 0.0f.xxx), 1.0f);
 }
 
-#if !defined(HIKARI_IRRADIANCE_SAMPLE_ONLY)
 float2 HikariEvaluateIrradianceProviderWeights(
     float3 worldPos)
 {
@@ -312,35 +199,14 @@ float4 HikariResolveBakedLightProbeDiffuse(float3 worldPos, float3 n, float3 v)
 // RGB は coverage 適用済みの E/pi、A は下位（空）を置換する coverage。呼び出し側は A<1 の場合にだけ空の光を評価する。
 // 動的 GI の volume（手置きの区域、近景、遠景の優先順に CPU が並べる）を先に重ね、残りを焼き込み provider が埋める。
 // skyVisibility は空の見える割合。動的 GI が覆わない部分は 1（遮蔽を知らない）。
-float4 HikariResolveLightProbeDiffuse(float3 worldPos, float3 n, float3 v, out float skyVisibility)
+float4 HikariResolveLightProbeDiffuse(float3 worldPos, float3 geometricNormal, float3 n, float3 v, out float skyVisibility)
 {
-    float3 dynamicDiffuse = 0.0f.xxx;
-    float dynamicCoverage = 0.0f;
-    float dynamicSky = 0.0f;
-    [loop] for (uint index = 0u; index < HIKARI_DYNAMIC_GI_VOLUME_COUNT; ++index)
-    {
-        const HikariIrradianceVolumeData volume = gDynamicGiVolumes[index];
-        const float influence = HikariEvaluateIrradianceVolumeInfluence(volume, worldPos);
-        [branch] if (influence > 0.0001f)
-        {
-            float sky;
-            const float4 sample = HikariEvaluateDynamicGiVolume(volume, worldPos, n, v, int3(-1, -1, -1), sky);
-            const float weight = influence * sample.a * (1.0f - dynamicCoverage);
-            dynamicDiffuse += sample.rgb * max(0.0f, volume.spacingIntensity.w) * weight;
-            dynamicSky += sky * weight;
-            dynamicCoverage += weight;
-            // 上位の volume が全面を覆うなら、下位の volume と焼き込みを読まない。
-            [branch] if (dynamicCoverage >= 0.9999f)
-            {
-                skyVisibility = saturate(dynamicSky / dynamicCoverage);
-                return float4(dynamicDiffuse, 1.0f);
-            }
-        }
-    }
-    skyVisibility = saturate(dynamicSky + (1.0f - dynamicCoverage));
+    const HikariDynamicGiSample dynamic = HikariQueryDynamicGi(gDynamicGiVolumes, HikariSurfaceGiQuery(worldPos, geometricNormal, n));
+    skyVisibility = saturate(dynamic.skyVisibility + 1.0f - dynamic.coverage);
+    if (dynamic.coverage >= 1.0f) return float4(dynamic.value, 1.0f);
     const float4 baked = HikariResolveBakedLightProbeDiffuse(worldPos, n, v);
-    return float4(dynamicDiffuse + baked.rgb * (1.0f - dynamicCoverage),
-        saturate(dynamicCoverage + baked.a * (1.0f - dynamicCoverage)));
+    return float4(dynamic.value + baked.rgb * (1.0f - dynamic.coverage),
+        saturate(dynamic.coverage + baked.a * (1.0f - dynamic.coverage)));
 }
 
 float HikariEvaluateSphereReflectionProbeInfluence(
@@ -517,5 +383,4 @@ float3 HikariComputeReflectionProbeSampleDirection(
         hitPosition - probe.positionRadius.xyz);
 }
 
-#endif // HIKARI_IRRADIANCE_SAMPLE_ONLY
 #endif

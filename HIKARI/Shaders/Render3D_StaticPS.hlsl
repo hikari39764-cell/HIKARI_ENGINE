@@ -513,6 +513,7 @@ float4 main(PSInput input) : SV_TARGET
             occlusion,
             screenAo,
             input.worldPosWS,
+            geometricNormal,
             surfaceLightmapIrradiance,
             surfaceLightmapWeight);
         if (!programMaterials || HikariMaterialUsesStandardPbrLighting(materialData))

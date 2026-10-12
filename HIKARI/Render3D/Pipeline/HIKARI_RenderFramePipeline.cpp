@@ -40,6 +40,8 @@ FEATURES::StylizedScreenFeatureRenderer gStylizedScreenFeatures{};
 RAYTRACING::RuntimeRayTracingScene gRuntimeRayScene;
 RAYTRACING::RuntimeRayTracingLighting gRuntimeRayLighting;
 DYNAMICGI::DynamicDiffuseGi gDynamicDiffuseGi;
+// 動的 GI の状態（Ready 以外は寄与しない）は编辑器の面板でしか見えないので、無頭運行でも分かるよう変化を日志に残す。
+DYNAMICGI::Status gLoggedDynamicGiStatus = DYNAMICGI::Status::Off;
 uint64_t gPrimaryFrameFailureCount = 0;
 
 void LogPrimaryPipelineFailure(uint64_t frameIndex, const char* stage, const char* detail = nullptr) {
@@ -301,7 +303,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
                                            depthOfFieldEnabledBit | depthOfFieldQualityBits;
     const bool temporalDebugView = debugRoute.temporalVisualization;
     const bool volumetricDebugView = debugRoute.volumetricVisualization;
-    const bool temporalPipelineAllowed = !debugRoute.active || temporalDebugView;
+    const bool temporalPipelineAllowed = !debugRoute.active || temporalDebugView || volumetricDebugView;
     temporalDesc.temporalResolveAllowed = temporalPipelineAllowed;
     temporalDesc.forceHistoryReset = !temporalPipelineAllowed;
     temporalDesc.jitterEnabled = RENDER3D::UsesTemporalJitter(antiAliasingMode) && temporalPipelineAllowed;
@@ -381,6 +383,19 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         dynamicGi =
             gDynamicDiffuseGi.Prepare(frame.graphics, rayScene, materials, rayLighting, lighting.irradianceVolumes,
                                       camera.GetPosition(), camera.GetTarget(), giQuality, frame.frameIndex);
+        if (const DYNAMICGI::Stats& giStats = gDynamicDiffuseGi.GetStats(); giStats.status != gLoggedDynamicGiStatus) {
+            gLoggedDynamicGiStatus = giStats.status;
+            // 加速構造に入らなかった面の種類と数も添える（GI が止まる原因の特定用）。
+            std::string excluded;
+            const auto& counts = gRuntimeRayScene.GetStats().excluded.surfaces;
+            for (const auto& entry : RAYTRACING::kRuntimeRayTracingExclusionNames)
+                if (const uint32_t count = counts[static_cast<size_t>(entry.value)]; count != 0u)
+                    excluded += std::string(" ") + entry.name + "=" + std::to_string(count);
+            HIKARI_LOG_INFO(std::string("[DynamicGi] status=") + DYNAMICGI::ToString(giStats.status) +
+                            " probes=" + std::to_string(giStats.probes) + " localLights=" +
+                            std::to_string(giStats.localLights) + " published=" + std::to_string(dynamicGi.count) +
+                            " excluded:" + (excluded.empty() ? std::string(" none") : excluded));
+        }
         if (dynamicGi.count != 0)
             dynamicGiScope.emplace(dynamicGi.Volumes());
         if (!MESHRENDERER::RefreshLightingProviders(frame.graphics, cloudSolarVisibility.data)) {
@@ -504,6 +519,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         RENDER3D::SCREENSPACE::RayTracedShadowInputs shadowInputs{};
         shadowInputs.packedSurface = screenResult.packedSurface;
         shadowInputs.camera = cameraCb;
+        shadowInputs.temporal = &temporalFrame;
         shadowInputs.rayLighting = &rayLighting;
         shadowInputs.materials = &materials;
         const auto& sun = rayLighting.data.sunDirectionIntensity;
