@@ -25,12 +25,12 @@ namespace HIKARI::EDITOR {
 
 DirectorViewPanel::DirectorViewPanel() { currentViewCamera_ = freeCamera_.GetCamera(); }
 
-void DirectorViewPanel::SetFreeCamera(const Camera3D& camera) {
+void DirectorViewPanel::SetFreeCamera(const Camera3D& camera, bool cameraCut) {
     SetMode(DirectorViewMode::Free);
     freeCamera_.ResetFromCamera(camera);
     currentViewCamera_ = freeCamera_.GetCamera();
     ++cameraRevision_;
-    cameraCutPending_ = true;
+    cameraCutPending_ = cameraCutPending_ || cameraCut;
 }
 
 void DirectorViewPanel::FocusPoint(const MATH::Vec3& point, float distance) {

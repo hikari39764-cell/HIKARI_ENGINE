@@ -9,6 +9,7 @@
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <optional>
@@ -16,9 +17,42 @@
 #include "imgui.h"
 #endif
 namespace HIKARI::EDITOR {
+namespace {
+#if defined(HIKARI_WITH_EDITOR)
+constexpr float kLabelWidth = 150.0f, kRowHeight = 28.0f, kRuler = 26.0f;
+
+// 目盛りの間隔：主目盛りが 80 画素以上離れる最小の刻み（秒）。
+float RulerStep(float zoom) {
+    constexpr std::array<float, 11> steps{1.0f / 30, 0.1f, 0.25f, 0.5f, 1, 2, 5, 10, 30, 60, 120};
+    for (const float step : steps)
+        if (step * zoom >= 80.0f)
+            return step;
+    return steps.back();
+}
+
+void FormatRulerTime(char* text, size_t size, float seconds, float step) {
+    if (step < 1.0f)
+        std::snprintf(text, size, step < 0.1f ? "%.2f" : "%.1f", seconds);
+    else
+        std::snprintf(text, size, "%.0fs", seconds);
+}
+
+// 再生位置の表示（秒と 60 fps のフレーム番号）。
+void FormatTimecode(char* text, size_t size, float seconds) {
+    const int frames = static_cast<int>(std::lround((std::max)(0.0f, seconds) * 60.0f));
+    std::snprintf(text, size, "%d:%02d.%02d", frames / 3600, (frames / 60) % 60, frames % 60);
+}
+#endif
+} // namespace
+
 bool CinematicsWorkspaceController::DrawTransport(CinematicSequence& sequence) {
     bool changed = false;
 #if defined(HIKARI_WITH_EDITOR)
+    const auto seek = [&](float seconds) {
+        cursor_.Pause();
+        cursor_.Seek(std::clamp(seconds, 0.0f, sequence.durationSeconds));
+        previewEnabled_ = true;
+    };
     const bool playing = cursor_.IsPlaying();
     if (IconButton(playing ? EditorGlyph::Pause : EditorGlyph::Play, "sequencePlay", EditorButtonTone::Primary,
                    {28, 28}, TEXT::Localize(playing ? "cine.pause" : "cine.play").c_str())) {
@@ -39,21 +73,16 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence& sequence) {
                    TEXT::Localize("cine.stopRestore").c_str())) {
         cursor_.Stop();
         previewEnabled_ = false;
+        autoPreview_ = false;
     }
     NextToolbarItem();
     if (IconButton(EditorGlyph::StepBackward, "sequencePrevious", EditorButtonTone::Quiet, {28, 28},
-                   TEXT::Localize("cine.previousFrame").c_str())) {
-        cursor_.Pause();
-        cursor_.Seek(cursor_.GetTimeSeconds() - 1.0f / 60);
-        previewEnabled_ = true;
-    }
+                   TEXT::Localize("cine.previousFrame").c_str()))
+        seek(cursor_.GetTimeSeconds() - 1.0f / 60);
     NextToolbarItem();
     if (IconButton(EditorGlyph::StepForward, "sequenceNext", EditorButtonTone::Quiet, {28, 28},
-                   TEXT::Localize("cine.nextFrame").c_str())) {
-        cursor_.Pause();
-        cursor_.Seek(cursor_.GetTimeSeconds() + 1.0f / 60);
-        previewEnabled_ = true;
-    }
+                   TEXT::Localize("cine.nextFrame").c_str()))
+        seek(cursor_.GetTimeSeconds() + 1.0f / 60);
     NextToolbarItem();
     if (IconToggleButton(EditorGlyph::Loop, "sequenceLoop", loop_, {28, 28}, TEXT::Localize("cine.loop").c_str())) {
         loop_ = !loop_;
@@ -64,19 +93,23 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence& sequence) {
             cursor_.Play(options);
         }
     }
-    NextToolbarItem(110);
+    NextToolbarItem(90);
     float seconds = cursor_.GetTimeSeconds();
-    ImGui::SetNextItemWidth(95);
-    if (ImGui::DragFloat("##time", &seconds, 1.0f / 60, 0, sequence.durationSeconds, "%.3f s")) {
-        cursor_.Pause();
-        cursor_.Seek(seconds);
-        previewEnabled_ = true;
-    }
-    NextToolbarItem(110);
-    ImGui::TextDisabled(TEXT::Localize("editor.ui.2f.s.c5fe30").c_str(), sequence.durationSeconds);
-    NextToolbarItem(110);
-    ImGui::SetNextItemWidth(90);
-    ImGui::SliderFloat(TEXT::LocalizeWindow("ui.input.scale", "缩放").c_str(), &zoom_, 20, 240, "%.0f");
+    ImGui::SetNextItemWidth(82);
+    if (ImGui::DragFloat("##time", &seconds, 1.0f / 60, 0, sequence.durationSeconds, "%.3f s"))
+        seek(seconds);
+    NextToolbarItem(150);
+    // 分:秒.フレーム（60 fps）で今の位置と全体の長さ。
+    char now[32], total[32];
+    FormatTimecode(now, sizeof(now), cursor_.GetTimeSeconds());
+    FormatTimecode(total, sizeof(total), sequence.durationSeconds);
+    ImGui::TextDisabled("%s / %s", now, total);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", TEXT::Localize("cine.timecodeTip").c_str());
+    NextToolbarItem();
+    if (IconButton(EditorGlyph::Focus, "fitTimeline", EditorButtonTone::Quiet, {28, 28},
+                   TEXT::Localize("cine.fitTimeline").c_str()))
+        fitTimelineRequested_ = true;
     NextToolbarItem();
     if (IconTextButton(EditorGlyph::Add, TEXT::Localize("cine.screenFx").c_str(), "addSequenceEffect")) {
         SEQUENCER::SequenceScreenEffect e;
@@ -100,11 +133,7 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence& sequence) {
                          TEXT::Localize("cine.animatedChannels").c_str()))
         animatedChannelsOnly_ = !animatedChannelsOnly_;
     NextToolbarItem();
-    if (IconButton(EditorGlyph::Focus, "fitTimeline", EditorButtonTone::Quiet, {28, 28},
-                   TEXT::Localize("cine.fitTimeline").c_str()))
-        zoom_ = std::clamp((ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 200) /
-                               (std::max)(1.0f, sequence.durationSeconds),
-                           10.0f, 400.0f);
+    ImGui::TextDisabled("%s", TEXT::Localize("cine.timelineKeysHint").c_str());
     ImGui::Separator();
 #endif
     return changed;
@@ -179,36 +208,32 @@ void CinematicsWorkspaceController::DrawShotHoverPreview(DocumentSceneBase& scen
     ImGui::EndTooltip();
 }
 
-bool CinematicsWorkspaceController::AddPoseKeyAtCursor(CinematicSequence& sequence) {
-    auto* shot = SelectedShot(sequence);
-    if (shot == nullptr || !shot->camera.owned)
-        return false;
-    const float local = std::clamp(cursor_.GetTimeSeconds() - shot->startTimeSeconds, 0.0f, shot->durationSeconds);
-    SEQUENCER::SetShotPose(shot->camera, SEQUENCER::EvaluateShotPose(shot->camera, local), true);
-    SEQUENCER::NormalizeShotCamera(shot->camera);
-    previewChanged_ = true;
-    previewEnabled_ = true;
-    return true;
-}
-
-bool CinematicsWorkspaceController::DrawPoseKeyLane(DocumentSceneBase&, CinematicSequence& sequence, float x, float y,
-                                                    float width, float labelWidth, float rowHeight) {
+bool CinematicsWorkspaceController::DrawPoseKeyLane(CinematicSequence& sequence, float timeOriginX, float y,
+                                                    float rowHeight) {
     bool changed = false;
 #if defined(HIKARI_WITH_EDITOR)
-    auto* shot = SelectedShot(sequence);
-    if (shot == nullptr || !shot->camera.owned)
-        return false;
     auto* draw = ImGui::GetWindowDrawList();
+    auto* shot = SelectedShot(sequence);
+    if (shot == nullptr || !shot->camera.owned) {
+        draw->AddText({timeOriginX + 10, y + 7}, IM_COL32(110, 125, 142, 255),
+                      TEXT::Localize(shot ? "cine.poseLaneBound" : "cine.poseLaneSelect").c_str());
+        return false;
+    }
     const float middle = y + rowHeight * 0.5f;
-    const float timeX = x + labelWidth + shot->startTimeSeconds * zoom_;
+    const float shotX = timeOriginX + shot->startTimeSeconds * zoom_;
+    // 镜头の範囲を帯で示す（键はこの中だけ）。
+    draw->AddRectFilled({shotX, y + 4}, {shotX + shot->durationSeconds * zoom_, y + rowHeight - 4},
+                        IM_COL32(44, 105, 151, 60), 3);
     const float cursorLocal = cursor_.GetTimeSeconds() - shot->startTimeSeconds;
-    const auto times = SEQUENCER::CollectShotPoseKeyTimes(shot->camera);
+    std::vector<float> times;
+    for (const auto& key : shot->camera.keys)
+        times.push_back(key.time);
     std::optional<float> remove;
     ImGui::PushID("poseKeys");
     // 菱形の押し判定を背景より先に置く（先に置いた項目が重なりの上で優先される）。
     for (size_t i = 0; i < times.size(); ++i) {
         const float time = times[i];
-        const float px = timeX + time * zoom_;
+        const float px = shotX + time * zoom_;
         const bool current = std::abs(time - cursorLocal) <= 0.5f / 60.0f;
         const float r = 6.5f;
         const ImVec2 diamond[]{{px, middle - r}, {px + r, middle}, {px, middle + r}, {px - r, middle}};
@@ -224,15 +249,14 @@ bool CinematicsWorkspaceController::DrawPoseKeyLane(DocumentSceneBase&, Cinemati
             previewEnabled_ = true;
         }
         if (ImGui::IsItemActive() && ImGui::IsMouseDragging(0) && poseDragTime_ >= 0.0f) {
-            // 隣の键を越えない範囲で、全ての姿勢の曲線の键を一緒に動かす（1/60 秒に吸着、Alt で自由）。
-            float next = (ImGui::GetIO().MousePos.x - timeX) / zoom_;
-            if (!ImGui::GetIO().KeyAlt)
-                next = std::round(next * 60) / 60;
+            // 隣の键を越えない範囲で動かす（境目か 1/60 秒に吸着、Alt で自由）。
+            float next = SnapTimelineTime(sequence, (ImGui::GetIO().MousePos.x - timeOriginX) / zoom_, 0, false) -
+                         shot->startTimeSeconds;
             const float lo = i ? times[i - 1] + 1.0f / 120 : 0.0f;
             const float hi = i + 1 < times.size() ? times[i + 1] - 1.0f / 120 : shot->durationSeconds;
             next = std::clamp(next, lo, (std::max)(lo, hi));
             if (std::abs(next - poseDragTime_) > 0.00001f &&
-                SEQUENCER::MoveShotPoseKeys(shot->camera, poseDragTime_, next)) {
+                SEQUENCER::MoveShotPoseKey(shot->camera, poseDragTime_, next)) {
                 poseDragTime_ = next;
                 cursor_.Seek(shot->startTimeSeconds + next);
                 previewChanged_ = true;
@@ -251,18 +275,16 @@ bool CinematicsWorkspaceController::DrawPoseKeyLane(DocumentSceneBase&, Cinemati
         ImGui::PopID();
     }
     // 帯の空いた所を二度押すと、その時刻の今の姿勢を键にする。
-    ImGui::SetCursorScreenPos({x + labelWidth, y});
-    ImGui::InvisibleButton("poseLane", {(std::max)(1.0f, width - labelWidth), rowHeight});
+    ImGui::SetCursorScreenPos({shotX, y});
+    ImGui::InvisibleButton("poseLane", {(std::max)(1.0f, shot->durationSeconds * zoom_), rowHeight});
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
-        float time = std::clamp((ImGui::GetIO().MousePos.x - timeX) / zoom_, 0.0f, shot->durationSeconds);
-        if (!ImGui::GetIO().KeyAlt)
-            time = std::round(time * 60) / 60;
-        cursor_.Seek(shot->startTimeSeconds + time);
+        const float time = SnapTimelineTime(sequence, (ImGui::GetIO().MousePos.x - timeOriginX) / zoom_, 0);
+        cursor_.Seek(std::clamp(time, shot->startTimeSeconds, shot->startTimeSeconds + shot->durationSeconds));
         changed |= AddPoseKeyAtCursor(sequence);
     } else if (ImGui::IsItemHovered() && times.empty())
         ImGui::SetTooltip("%s", TEXT::Localize("cine.poseLaneHint").c_str());
     if (remove) {
-        changed |= SEQUENCER::RemoveShotPoseKeys(shot->camera, *remove);
+        changed |= SEQUENCER::RemoveShotPoseKey(shot->camera, *remove);
         previewChanged_ = true;
     }
     ImGui::PopID();
@@ -276,61 +298,90 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
     using namespace SEQUENCER;
     if (curveMode_)
         return DrawChannelCurve(sequence);
-    constexpr float labelWidth = 175, rowHeight = 30, ruler = 25;
+    const float available = ImGui::GetContentRegionAvail().x;
+    if (fitTimelineRequested_ && available > kLabelWidth + 40) {
+        const float content =
+            (std::max)(1.0f, (std::max)(sequence.durationSeconds, GetCinematicSequenceContentEnd(sequence)));
+        zoom_ = std::clamp((available - kLabelWidth - 24) / content, 8.0f, 600.0f);
+        fitTimelineRequested_ = false;
+    }
     const auto channelCount = CollectChannels(sequence, true).size();
-    const auto* poseShot = SelectedShot(sequence);
-    const bool poseLane = poseShot != nullptr && poseShot->camera.owned;
     if (!ImGui::BeginChild("SequenceCanvas", {0, 0}, false, ImGuiWindowFlags_HorizontalScrollbar)) {
         ImGui::EndChild();
         return false;
     }
+    const bool canvasFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    const bool canvasHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+    auto& io = ImGui::GetIO();
     const auto origin = ImGui::GetCursorScreenPos();
-    const float width =
-        (std::max)(ImGui::GetContentRegionAvail().x, labelWidth + (sequence.durationSeconds + 1) * zoom_);
-    const float height =
-        (2 + (poseLane ? 1 : 0) + channelCount + sequence.presentationCueTrack.clips.size() +
-         sequence.screenEffects.size()) *
-            rowHeight +
-        ruler;
+    const float timeOriginX = origin.x + kLabelWidth;
+    // Ctrl + 滚轮：指の下の時刻を止めたまま拡縮する。中ボタンで左右へ送る。
+    if (canvasHovered && io.KeyCtrl && io.MouseWheel != 0.0f) {
+        const float time = (io.MousePos.x - timeOriginX) / zoom_;
+        const float next = std::clamp(zoom_ * std::pow(1.18f, io.MouseWheel), 8.0f, 2000.0f);
+        ImGui::SetScrollX(ImGui::GetScrollX() + time * (next - zoom_));
+        zoom_ = next;
+    }
+    if (canvasHovered && ImGui::IsMouseDragging(ImGuiMouseButton_Middle))
+        ImGui::SetScrollX(ImGui::GetScrollX() - io.MouseDelta.x);
+    const float contentEnd = (std::max)(sequence.durationSeconds, GetCinematicSequenceContentEnd(sequence)) + 1.0f;
+    const float width = (std::max)(available, kLabelWidth + contentEnd * zoom_);
+    const float rows = 3 + static_cast<float>(channelCount + sequence.presentationCueTrack.clips.size() +
+                                              sequence.screenEffects.size());
+    const float height = rows * kRowHeight + kRuler;
     auto* draw = ImGui::GetWindowDrawList();
     draw->AddRectFilled(origin, {origin.x + width, origin.y + height}, IM_COL32(15, 20, 27, 255), 5);
-    const float step = zoom_ >= 60 ? 1.0f : 5.0f;
-    for (float t = 0; t <= sequence.durationSeconds + 1; t += step) {
-        const float x = origin.x + labelWidth + t * zoom_;
+    // 目盛り（主目盛りに時刻、副目盛りは 5 等分）と演出の終わり。
+    const float step = RulerStep(zoom_);
+    for (int index = 0; index * step <= contentEnd; ++index) {
+        const float t = index * step;
+        const float x = timeOriginX + t * zoom_;
         draw->AddLine({x, origin.y}, {x, origin.y + height}, IM_COL32(38, 46, 56, 255));
         char text[24];
-        std::snprintf(text, sizeof(text), "%.0f", t);
-        draw->AddText({x + 4, origin.y + 3}, IM_COL32(130, 145, 164, 255), text);
+        FormatRulerTime(text, sizeof(text), t, step);
+        draw->AddText({x + 4, origin.y + 4}, IM_COL32(130, 145, 164, 255), text);
+        for (int minor = 1; minor < 5; ++minor) {
+            const float mx = x + step * zoom_ * minor / 5.0f;
+            draw->AddLine({mx, origin.y + kRuler - 6}, {mx, origin.y + kRuler}, IM_COL32(60, 72, 86, 255));
+        }
     }
-    ImGui::SetCursorScreenPos({origin.x + labelWidth, origin.y});
-    ImGui::InvisibleButton("ruler", {width - labelWidth, ruler});
+    const float endX = timeOriginX + sequence.durationSeconds * zoom_;
+    draw->AddRectFilled({endX, origin.y + kRuler}, {origin.x + width, origin.y + height}, IM_COL32(0, 0, 0, 70));
+    ImGui::SetCursorScreenPos({timeOriginX, origin.y});
+    ImGui::InvisibleButton("ruler", {(std::max)(1.0f, width - kLabelWidth), kRuler});
     if (ImGui::IsItemActive()) {
         cursor_.Pause();
-        cursor_.Seek((ImGui::GetIO().MousePos.x - origin.x - labelWidth) / zoom_);
+        cursor_.Seek(std::clamp(std::round((io.MousePos.x - timeOriginX) / zoom_ * 60.0f) / 60.0f, 0.0f,
+                                sequence.durationSeconds));
         previewEnabled_ = true;
     }
     int row = 0;
+    std::vector<std::pair<float, std::string>> labels;
     const SEQUENCER::CameraCutClip* hoveredShot = nullptr;
     float hoveredLocalTime = 0.0f;
-    const auto lane = [&](const char* name) {
-        const float y = origin.y + ruler + row++ * rowHeight;
-        draw->AddText({origin.x + 8, y + 7}, IM_COL32(155, 172, 192, 255), name);
-        draw->AddLine({origin.x, y + rowHeight}, {origin.x + width, y + rowHeight}, IM_COL32(30, 38, 47, 255));
+    const auto lane = [&](std::string name) {
+        const float y = origin.y + kRuler + row++ * kRowHeight;
+        draw->AddLine({origin.x, y + kRowHeight}, {origin.x + width, y + kRowHeight}, IM_COL32(30, 38, 47, 255));
+        labels.emplace_back(y, std::move(name));
         return y;
     };
+    // 片段を引く：本体は前後の镜头に重ならない範囲で動かし、端は長さを変える（境目と 1/60 秒に吸着、Alt で自由）。
     const auto clip = [&](uint64_t id, SelectionKind kind, float& start, float& duration, const char* name, float y,
                           ImU32 color) {
-        const float x = origin.x + labelWidth + start * zoom_, w = (std::max)(10.0f, duration * zoom_);
+        const float x = timeOriginX + start * zoom_, w = (std::max)(10.0f, duration * zoom_);
         ImGui::PushID(static_cast<int>(kind));
         ImGui::PushID(static_cast<int>(id));
-        draw->AddRectFilled({x, y + 3}, {x + w, y + rowHeight - 3}, color, 4);
+        draw->AddRectFilled({x, y + 3}, {x + w, y + kRowHeight - 3}, color, 4);
         if (kind == selectionKind_ && id == selectedId_)
-            draw->AddRect({x, y + 3}, {x + w, y + rowHeight - 3}, IM_COL32(235, 245, 255, 255), 4, 0, 2);
-        draw->PushClipRect({x + 7, y + 4}, {x + w - 7, y + rowHeight - 4}, true);
-        draw->AddText({x + 8, y + 8}, IM_COL32(240, 244, 248, 255), name);
+            draw->AddRect({x, y + 3}, {x + w, y + kRowHeight - 3}, IM_COL32(235, 245, 255, 255), 4, 0, 2);
+        draw->PushClipRect({x + 7, y + 4}, {x + w - 7, y + kRowHeight - 4}, true);
+        draw->AddText({x + 8, y + 7}, IM_COL32(240, 244, 248, 255), name);
         draw->PopClipRect();
         ImGui::SetCursorScreenPos({x, y + 3});
-        ImGui::InvisibleButton("clip", {w, rowHeight - 6});
+        ImGui::InvisibleButton("clip", {w, kRowHeight - 6});
+        const bool hovered = ImGui::IsItemHovered();
+        if (hovered && (io.MousePos.x < x + 6 || io.MousePos.x > x + w - 6))
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
         if (ImGui::IsItemActivated()) {
             selectedId_ = id;
             selectionKind_ = kind;
@@ -339,73 +390,93 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
             draggingKind_ = kind;
             dragStart_ = start;
             dragDuration_ = duration;
-            dragMouseX_ = ImGui::GetIO().MousePos.x;
+            dragMouseX_ = io.MousePos.x;
             dragPart_ = dragMouseX_ < x + 6 ? -1 : dragMouseX_ > x + w - 6 ? 1 : 0;
         }
         if (ImGui::IsItemActive() && ImGui::IsMouseDragging(0)) {
-            const float delta = (ImGui::GetIO().MousePos.x - dragMouseX_) / zoom_;
-            const auto snap = [](float t) { return std::round(t * 60) / 60; };
-            const float next = ImGui::GetIO().KeyAlt ? delta : snap(delta);
-            if (dragPart_ == 1)
-                duration = (std::max)(0.1f, dragDuration_ + next);
-            else if (dragPart_ == -1) {
-                start = std::clamp(dragStart_ + next, 0.0f, dragStart_ + dragDuration_ - 0.1f);
-                duration = dragDuration_ + dragStart_ - start;
-            } else
-                start = (std::max)(0.0f, dragStart_ + next);
+            const float delta = (io.MousePos.x - dragMouseX_) / zoom_;
+            // 镜头どうしは重ねない。引き始めの並びで前後の镜头の端を境にする。
+            float lower = 0.0f, upper = 1.0e9f;
+            if (kind == SelectionKind::Shot)
+                for (const auto& other : sequence.cameraCutTrack.clips) {
+                    if (other.id == id)
+                        continue;
+                    const float otherEnd = other.startTimeSeconds + other.durationSeconds;
+                    if (otherEnd <= dragStart_ + 1.0e-4f)
+                        lower = (std::max)(lower, otherEnd);
+                    else if (other.startTimeSeconds >= dragStart_ + dragDuration_ - 1.0e-4f)
+                        upper = (std::min)(upper, other.startTimeSeconds);
+                }
+            const uint64_t ignore = kind == SelectionKind::Shot ? id : 0;
+            if (dragPart_ == 1) {
+                const float end = SnapTimelineTime(sequence, dragStart_ + dragDuration_ + delta, ignore);
+                duration = std::clamp(end, start + 0.1f, (std::max)(start + 0.1f, upper)) - start;
+            } else if (dragPart_ == -1) {
+                const float end = dragStart_ + dragDuration_;
+                start = std::clamp(SnapTimelineTime(sequence, dragStart_ + delta, ignore), lower, end - 0.1f);
+                duration = end - start;
+            } else {
+                start = std::clamp(SnapTimelineTime(sequence, dragStart_ + delta, ignore), lower,
+                                   (std::max)(lower, upper - duration));
+            }
             changed = true;
         }
         // 镜头は置いた時刻の画を DrawShotHoverPreview で添える。
-        if (ImGui::IsItemHovered() && kind != SelectionKind::Shot)
+        if (hovered && kind != SelectionKind::Shot)
             ImGui::SetTooltip(TEXT::Localize("cine.clipTip").c_str(), name, start, start + duration);
-        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
+        if (hovered && ImGui::IsMouseDoubleClicked(0)) {
             cursor_.Seek(start);
             previewEnabled_ = true;
         }
         ImGui::PopID();
         ImGui::PopID();
+        return hovered;
     };
-    const float shotY = lane(TEXT::Localize("cine.shot").c_str());
+    const float shotY = lane(TEXT::Localize("cine.shot"));
     for (auto& s : sequence.cameraCutTrack.clips) {
-        clip(s.id, SelectionKind::Shot, s.startTimeSeconds, s.durationSeconds, s.camera.name.c_str(), shotY,
-             IM_COL32(44, 105, 151, 255));
-        DrawShotTransition(*draw, sequence, s, origin.x + labelWidth, shotY, rowHeight);
-        if (ImGui::IsItemHovered() && !ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+        char name[160];
+        std::snprintf(name, sizeof(name), "%s  %.1fs", s.camera.name.c_str(), s.durationSeconds);
+        const bool hovered = clip(s.id, SelectionKind::Shot, s.startTimeSeconds, s.durationSeconds, name, shotY,
+                                  s.camera.owned ? IM_COL32(44, 105, 151, 255) : IM_COL32(70, 92, 112, 255));
+        DrawShotTransition(*draw, sequence, s, timeOriginX, shotY, kRowHeight);
+        if (hovered && !ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
             hoveredShot = &s;
             hoveredLocalTime =
-                std::clamp((ImGui::GetIO().MousePos.x - origin.x - labelWidth) / zoom_ - s.startTimeSeconds, 0.0f,
-                           s.durationSeconds);
+                std::clamp((io.MousePos.x - timeOriginX) / zoom_ - s.startTimeSeconds, 0.0f, s.durationSeconds);
         }
-        for (const auto& channel : s.camera.channels)
-            for (const auto& key : channel.keys) {
-                if (key.time > s.durationSeconds)
-                    continue;
-                const float px = origin.x + labelWidth + (s.startTimeSeconds + key.time) * zoom_;
-                draw->AddLine({px, shotY + rowHeight - 7}, {px, shotY + rowHeight - 3}, IM_COL32(173, 231, 247, 200));
-            }
+        for (const auto& key : s.camera.keys) {
+            if (key.time > s.durationSeconds)
+                continue;
+            const float px = timeOriginX + (s.startTimeSeconds + key.time) * zoom_;
+            draw->AddLine({px, shotY + kRowHeight - 8}, {px, shotY + kRowHeight - 3}, IM_COL32(173, 231, 247, 220));
+        }
     }
     DrawShotHoverPreview(scene, sequence, hoveredShot, hoveredLocalTime);
-    if (poseLane) {
-        const float poseY = lane(TEXT::Localize("cine.poseKeys").c_str());
-        changed |= DrawPoseKeyLane(scene, sequence, origin.x, poseY, width, labelWidth, rowHeight);
+    const float poseY = lane(TEXT::Localize("cine.poseKeys"));
+    changed |= DrawPoseKeyLane(sequence, timeOriginX, poseY, kRowHeight);
+    const float channelY = origin.y + kRuler + row * kRowHeight;
+    changed |= DrawChannelLanes(sequence, origin.x, channelY, width, kLabelWidth, kRowHeight);
+    for (const auto& channel : CollectChannels(sequence, true)) {
+        lane(channel.label);
+        (void)channel;
     }
-    changed |= DrawChannelLanes(sequence, origin.x, origin.y + ruler + row * rowHeight, width, labelWidth, rowHeight);
-    row += static_cast<int>(channelCount);
     for (auto& cue : sequence.presentationCueTrack.clips) {
-        const auto y = lane(
-            TEXT::Localize(cue.kind == PresentationCueKind::Vfx ? "ui.assetBrowser.typeVfx" : "cine.sound").c_str());
+        const auto y =
+            lane(TEXT::Localize(cue.kind == PresentationCueKind::Vfx ? "ui.assetBrowser.typeVfx" : "cine.sound"));
         clip(cue.id, SelectionKind::Cue, cue.startSeconds, cue.durationSeconds, cue.name.c_str(), y,
              cue.kind == PresentationCueKind::Vfx ? IM_COL32(143, 78, 48, 255) : IM_COL32(51, 116, 89, 255));
     }
     for (auto& effect : sequence.screenEffects) {
-        const auto y = lane(TEXT::Localize("cine.screenFx").c_str());
-        const auto name = effect.name.empty() ? "画面效果" : effect.name;
+        const auto y = lane(TEXT::Localize("cine.screenFx"));
+        const auto name = effect.name.empty() ? TEXT::Localize("cine.screenFx") : effect.name;
         clip(effect.id, SelectionKind::Effect, effect.start, effect.duration, name.c_str(), y,
              IM_COL32(105, 71, 146, 255));
     }
-    const float dropY = lane("添加素材");
-    ImGui::SetCursorScreenPos({origin.x + labelWidth, dropY});
-    ImGui::InvisibleButton("dropCue", {width - labelWidth, rowHeight});
+    const float dropY = lane(TEXT::Localize("cine.dropAssets"));
+    draw->AddText({timeOriginX + 10, dropY + 7}, IM_COL32(95, 110, 126, 255),
+                  TEXT::Localize("cine.dropAssetsHint").c_str());
+    ImGui::SetCursorScreenPos({timeOriginX, dropY});
+    ImGui::InvisibleButton("dropCue", {(std::max)(1.0f, width - kLabelWidth), kRowHeight});
     if (ImGui::BeginDragDropTarget()) {
         const auto accept = [&](const ImGuiPayload* payload, PresentationCueKind kind) {
             if (!payload || !payload->Data || !payload->DataSize)
@@ -416,7 +487,7 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
             cue.kind = kind;
             cue.name = TEXT::Localize(kind == PresentationCueKind::Vfx ? "ui.assetBrowser.typeVfx" : "cine.sound");
             cue.durationSeconds = 3;
-            cue.startSeconds = (std::max)(0.0f, (ImGui::GetIO().MousePos.x - origin.x - labelWidth) / zoom_);
+            cue.startSeconds = SnapTimelineTime(sequence, (io.MousePos.x - timeOriginX) / zoom_, 0);
             const char* bytes = static_cast<const char*>(payload->Data);
             if (bytes[payload->DataSize - 1] != '\0')
                 return;
@@ -440,13 +511,49 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         accept(ImGui::AcceptDragDropPayload("HIKARI_SEQUENCE_AUDIO"), PresentationCueKind::Audio);
         ImGui::EndDragDropTarget();
     }
-    const float x = origin.x + labelWidth + cursor_.GetTimeSeconds() * zoom_;
-    draw->AddLine({x, origin.y}, {x, origin.y + height}, IM_COL32(105, 220, 230, 255), 2);
+    const float playheadX = timeOriginX + cursor_.GetTimeSeconds() * zoom_;
+    draw->AddLine({playheadX, origin.y}, {playheadX, origin.y + height}, IM_COL32(105, 220, 230, 255), 2);
+    draw->AddTriangleFilled({playheadX - 6, origin.y}, {playheadX + 6, origin.y}, {playheadX, origin.y + 8},
+                            IM_COL32(105, 220, 230, 255));
+    // 行の名前は左端に固定して描く（横へ送っても読める）。
+    const float pinnedX = ImGui::GetWindowPos().x;
+    draw->AddRectFilled({pinnedX, origin.y}, {pinnedX + kLabelWidth, origin.y + height}, IM_COL32(19, 25, 33, 255));
+    draw->AddLine({pinnedX + kLabelWidth, origin.y}, {pinnedX + kLabelWidth, origin.y + height},
+                  IM_COL32(45, 56, 68, 255));
+    for (const auto& [y, name] : labels) {
+        draw->PushClipRect({pinnedX + 4, y}, {pinnedX + kLabelWidth - 4, y + kRowHeight}, true);
+        draw->AddText({pinnedX + 10, y + 7}, IM_COL32(155, 172, 192, 255), name.c_str());
+        draw->PopClipRect();
+    }
     ImGui::SetCursorScreenPos(origin);
     ImGui::Dummy({width, height});
-    if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete,
-                              ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)))
+    // 時間轴の操作：Delete で片段を消す、S で镜头を再生位置で分ける、Ctrl+D で複製、K で姿勢键を置く、
+    // [ ] で前後の姿勢键へ、空白で再生と一時停止。
+    if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete, canvasFocused))
         changed |= DeleteSelectedClip(sequence);
+    if (!io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_S, canvasFocused))
+        changed |= SplitSelectedShot(sequence);
+    if (io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_D, canvasFocused))
+        changed |= DuplicateSelectedShot(sequence);
+    if (!io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_K, canvasFocused))
+        changed |= AddPoseKeyAtCursor(sequence);
+    if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_LeftBracket, canvasFocused))
+        SeekPoseKey(sequence, -1);
+    if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_RightBracket, canvasFocused))
+        SeekPoseKey(sequence, 1);
+    if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Space, canvasFocused)) {
+        if (cursor_.IsPlaying())
+            cursor_.Pause();
+        else {
+            if (cursor_.GetTimeSeconds() >= sequence.durationSeconds)
+                cursor_.Seek(0);
+            SEQUENCER::SequencePlaybackOptions options;
+            options.loop = loop_;
+            options.holdAtEnd = true;
+            cursor_.Play(options);
+            previewEnabled_ = true;
+        }
+    }
     ImGui::EndChild();
 #endif
     return changed;

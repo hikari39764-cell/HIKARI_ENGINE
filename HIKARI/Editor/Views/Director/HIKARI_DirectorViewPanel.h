@@ -41,6 +41,8 @@ struct DirectorViewPanelResult {
     DirectorCameraPose pilotPose{};
 
     DirectorViewGizmoEdit gizmo{};
+    // このフレームに视图の操作（飛行・周回・平移・聚焦・视点の预设）で視点が動いた。
+    bool viewMoved = false;
     DirectorViewMode mode = DirectorViewMode::Free;
     SceneObjectId targetCameraObjectId{};
 };
@@ -54,7 +56,8 @@ public:
                                          float deltaTime, bool runtimePlayActive, bool sceneCameraControls = true);
 
     void SetTargetCamera(SceneObjectId cameraObjectId) noexcept;
-    void SetFreeCamera(const Camera3D& camera);
+    // cameraCut が偽なら前のフレームの画の履歴を保つ（再生や驾驶で視点を毎フレーム合わせる時）。
+    void SetFreeCamera(const Camera3D& camera, bool cameraCut = true);
     void FocusPoint(const MATH::Vec3& point, float distance);
     bool FrameTargetCamera(const DocumentSceneBase& scene, SceneObjectId cameraObjectId,
                            float preferredDistance = 10.0f);

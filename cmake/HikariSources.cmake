@@ -1295,6 +1295,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Assets/Workspace/HIKARI_ResourceWorkspaceSections.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Cinematics/HIKARI_CinematicsGameViewWindow.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Cinematics/HIKARI_CinematicsTimelineWindow.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Cinematics/HIKARI_CinematicsShotEditing.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Cinematics/HIKARI_CinematicsResources.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Cinematics/HIKARI_CinematicsInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Widgets/HIKARI_ScalarCurveEditor.cpp"

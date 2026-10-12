@@ -20,21 +20,27 @@ void CinematicsWorkspaceController::DrawDockSpace(bool reset) const {
         return;
     const auto* viewport = ImGui::GetMainViewport();
     // 二画面を既定配置に追加。安定 ID は言語を変更しても共通。
-    const auto id = ImGui::GetID("HIKARI_CinematicsDockSpace_v8");
+    const auto id = ImGui::GetID("HIKARI_CinematicsDockSpace_v10");
     if (reset || !ImGui::DockBuilderGetNode(id)) {
         ImGui::DockBuilderRemoveNode(id);
         ImGui::DockBuilderAddNode(id, ImGuiDockNodeFlags_DockSpace);
         ImGui::DockBuilderSetNodePos(id, viewport->WorkPos);
         ImGui::DockBuilderSetNodeSize(id, viewport->WorkSize);
         ImGuiID center = id, timeline = 0, left = 0, right = 0, monitor = 0;
-        ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.31f, &timeline, &center);
+        // 时间轴は行が増えても読める高さ、左の镜头と素材は页签の名前が省略されない幅。
+        ImGui::DockBuilderSplitNode(center, ImGuiDir_Down, 0.30f, &timeline, &center);
         const float scale = ImGui::GetFontSize() / 16.0f;
         const float width = (std::max)(1.0f, viewport->WorkSize.x);
-        const float leftWidth = std::clamp(240.0f * scale, width * 0.12f, width * 0.21f);
-        const float rightWidth = std::clamp(340.0f * scale, width * 0.17f, width * 0.28f);
+        const float leftWidth = std::clamp(280.0f * scale, width * 0.13f, width * 0.22f);
+        const float rightWidth = std::clamp(340.0f * scale, width * 0.17f, width * 0.26f);
         ImGui::DockBuilderSplitNode(center, ImGuiDir_Left, leftWidth / width, &left, &center);
         ImGui::DockBuilderSplitNode(center, ImGuiDir_Right, rightWidth / (width - leftWidth), &right, &center);
-        const bool stackViews = width - leftWidth - rightWidth < 1000.0f * scale;
+        // 空間视图と画面は、16:9 の画が大きく出る方の並べ方にする（縦長の中央に横に並べると上下が空く）。
+        const float centerWidth = width - leftWidth - rightWidth;
+        const float centerHeight = viewport->WorkSize.y * 0.70f;
+        const float sideBySide = (std::min)(centerWidth * 0.5f, centerHeight * 16.0f / 9.0f);
+        const float stacked = (std::min)(centerWidth, centerHeight * 0.5f * 16.0f / 9.0f);
+        const bool stackViews = stacked > sideBySide;
         ImGui::DockBuilderSplitNode(center, stackViews ? ImGuiDir_Down : ImGuiDir_Right, 0.48f, &monitor, &center);
         ImGui::DockBuilderDockWindow("###Cinematics/Space", center);
         ImGui::DockBuilderDockWindow("素材与镜头###Cinematics/Resources", left);
@@ -97,6 +103,10 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase&
     if (!cursor_.IsBound())
         cursor_.Bind(sequence.durationSeconds);
     cursor_.SetDuration(sequence.durationSeconds);
+    if (autoPreview_ && enabled && !sequence.cameraCutTrack.clips.empty()) {
+        previewEnabled_ = true;
+        autoPreview_ = false;
+    }
     bool changed = false;
     if (ImGui::Begin(TEXT::LocalizeWindow("cine.assetsShots", "Cinematics/Resources").c_str())) {
         ImGui::BeginDisabled(!enabled);

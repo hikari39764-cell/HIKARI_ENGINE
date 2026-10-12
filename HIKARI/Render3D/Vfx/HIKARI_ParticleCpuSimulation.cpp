@@ -145,21 +145,6 @@ MATH::Vec4 SampleDistribution(const ParticleDistributionFloat4& distribution, ui
                 PropertyRandom01(particleSeed, distribution.randomGroup, propertySalt));
 }
 
-MATH::Vec3 Rotate(const MATH::Quat& rotation, const MATH::Vec3& value) noexcept {
-    const MATH::Vec3 q{rotation.x, rotation.y, rotation.z};
-    const MATH::Vec3 uv{
-        q.y * value.z - q.z * value.y,
-        q.z * value.x - q.x * value.z,
-        q.x * value.y - q.y * value.x,
-    };
-    const MATH::Vec3 uuv{
-        q.y * uv.z - q.z * uv.y,
-        q.z * uv.x - q.x * uv.z,
-        q.x * uv.y - q.y * uv.x,
-    };
-    return value + uv * (2.0f * rotation.w) + uuv * 2.0f;
-}
-
 float EvaluateCurve(const ParticleCurve& curve, float time, float randomOffset) noexcept {
     return EvaluateParticleCurve(std::span(curve.keys.data(), curve.keyCount), curve.interpolation, time, randomOffset);
 }
@@ -385,13 +370,15 @@ void RefreshPresentation(CpuParticleState& particle, const ParticleEmitterSubmis
     if (submission.simulation.localSimulation != 0u) {
         particle.emitterRotation = submission.worldRotation;
         particle.emitterScale = submission.worldScale;
-        particle.position = submission.worldPosition +
-                            Rotate(particle.emitterRotation,
-                                   Multiply(particle.baseWorldPosition + particle.motionPosition + localPosition,
-                                            particle.emitterScale));
+        particle.position =
+            submission.worldPosition +
+            MATH::RotateVector(
+                particle.emitterRotation,
+                Multiply(particle.baseWorldPosition + particle.motionPosition + localPosition, particle.emitterScale));
     } else {
-        particle.position = particle.baseWorldPosition + particle.motionPosition +
-                            Rotate(particle.emitterRotation, Multiply(localPosition, particle.emitterScale));
+        particle.position =
+            particle.baseWorldPosition + particle.motionPosition +
+            MATH::RotateVector(particle.emitterRotation, Multiply(localPosition, particle.emitterScale));
     }
     particle.rotationRadians = EvaluateAnimated(submission.simulation.rotationRadians, particle.rotationAnimation,
                                                 particle.ageSeconds, normalizedAge);
@@ -481,10 +468,10 @@ void Spawn(CpuParticleEmitterState& emitter, const ParticleEmitterSubmission& su
             submission.simulation.localSimulation != 0u
                 ? shape.offset
                 : submission.worldPosition +
-                      Rotate(submission.worldRotation, Multiply(shape.offset, submission.worldScale));
+                      MATH::RotateVector(submission.worldRotation, Multiply(shape.offset, submission.worldScale));
         const MATH::Vec3 direction = submission.simulation.localSimulation != 0u
                                          ? shape.direction
-                                         : Rotate(submission.worldRotation, shape.direction);
+                                         : MATH::RotateVector(submission.worldRotation, shape.direction);
         const float radialSpeed =
             SampleDistribution(submission.simulation.radialSpeed, particleSeed, kRandomSaltRadialSpeed) *
             submission.overrides.radialSpeedMultiplier;

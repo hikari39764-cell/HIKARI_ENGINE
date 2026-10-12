@@ -30,9 +30,9 @@ public:
             pending.delta = delta;
             pending.delta.valid = true;
         } else {
-            pending.delta.translation =
-                pending.delta.translation + RotateVector(pending.delta.rotation, delta.translation);
-            pending.delta.rotation = ComposeRotation(pending.delta.rotation, delta.rotation);
+            pending.delta.translation = pending.delta.translation +
+                                        MATH::RotateVector(MATH::NormalizeQ(pending.delta.rotation), delta.translation);
+            pending.delta.rotation = MATH::MultiplyQ(pending.delta.rotation, delta.rotation);
             pending.delta.valid = true;
         }
         pending.revision = ++state.revision;
@@ -135,23 +135,6 @@ private:
         uint64_t lastConsumedTick = 0u;
         bool hasConsumedTick = false;
     };
-
-    static MATH::Quat ComposeRotation(const MATH::Quat& lhs, const MATH::Quat& rhs) noexcept {
-        return MATH::NormalizeQ({lhs.w * rhs.x + lhs.x * rhs.w + lhs.y * rhs.z - lhs.z * rhs.y,
-                                 lhs.w * rhs.y - lhs.x * rhs.z + lhs.y * rhs.w + lhs.z * rhs.x,
-                                 lhs.w * rhs.z + lhs.x * rhs.y - lhs.y * rhs.x + lhs.z * rhs.w,
-                                 lhs.w * rhs.w - lhs.x * rhs.x - lhs.y * rhs.y - lhs.z * rhs.z});
-    }
-
-    static MATH::Vec3 RotateVector(const MATH::Quat& rotation, const MATH::Vec3& value) noexcept {
-        const MATH::Quat q = MATH::NormalizeQ(rotation);
-        const MATH::Vec3 qVector{q.x, q.y, q.z};
-        const MATH::Vec3 uv{qVector.y * value.z - qVector.z * value.y, qVector.z * value.x - qVector.x * value.z,
-                            qVector.x * value.y - qVector.y * value.x};
-        const MATH::Vec3 uuv{qVector.y * uv.z - qVector.z * uv.y, qVector.z * uv.x - qVector.x * uv.z,
-                             qVector.x * uv.y - qVector.y * uv.x};
-        return value + uv * (2.0f * q.w) + uuv * 2.0f;
-    }
 
     std::unordered_map<uint64_t, ObjectState> states_{};
 };

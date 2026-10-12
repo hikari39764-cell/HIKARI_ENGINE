@@ -34,6 +34,29 @@ ScalarCurve Parameter(const json& n, float fallback) {
     }
     return p;
 }
+json Rotation(const MATH::Quat& q) { return json::array({q.x, q.y, q.z, q.w}); }
+MATH::Quat Rotation(const json& n) {
+    if (!n.is_array() || n.size() != 4)
+        throw std::runtime_error("Shot pose rotation must be [x, y, z, w]");
+    return {n[0].get<float>(), n[1].get<float>(), n[2].get<float>(), n[3].get<float>()};
+}
+json Pose(const ShotPose& pose, bool timed) {
+    json n = {{"position", Vector(pose.position)}, {"rotation", Rotation(pose.rotation)}, {"fov", pose.fov}};
+    if (timed)
+        n["time"] = pose.time;
+    return n;
+}
+ShotPose Pose(const json& n, bool timed) {
+    if (!n.is_object())
+        throw std::runtime_error("Shot pose must be an object");
+    ShotPose pose;
+    if (timed)
+        pose.time = n.at("time").get<float>();
+    pose.position = Vector(n.at("position"), pose.position);
+    pose.rotation = Rotation(n.at("rotation"));
+    pose.fov = n.value("fov", pose.fov);
+    return pose;
+}
 } // namespace
 
 nlohmann::json WriteCameraMotionEffects(const std::vector<CameraMotionEffect>& effects) {
@@ -81,20 +104,27 @@ std::vector<CameraMotionEffect> ReadCameraMotionEffects(const nlohmann::json& n)
 }
 
 nlohmann::json WriteShotCamera(const ShotCamera& c) {
-    json n = {{"owned", c.owned},
-              {"name", c.name},
-              {"anchor", c.anchor.value},
-              {"lookAt", c.lookAt.value},
-              {"targetOffset", Vector(c.targetOffset)},
-              {"smoothPath", c.smoothPath},
-              {"near", c.nearClip},
-              {"far", c.farClip},
-              {"channels", json::object()},
-              {"motion", json::array()}};
-    for (size_t i = 0; i < c.channels.size(); ++i)
-        n["channels"][kShotChannelNames[i]] = Parameter(c.channels[i]);
-    n["motion"] = WriteCameraMotionEffects(c.motion);
-    return n;
+    json keys = json::array();
+    for (const auto& key : c.keys)
+        keys.push_back(Pose(key, true));
+    json rail = {{"points", json::array()}, {"loop", c.rail.loop}};
+    for (const auto& point : c.rail.points)
+        rail["points"].push_back(Vector(point));
+    return {{"owned", c.owned},
+            {"name", c.name},
+            {"anchor", c.anchor.value},
+            {"lookAt", c.lookAt.value},
+            {"targetOffset", Vector(c.targetOffset)},
+            {"aimWeight", Parameter(c.aimWeight)},
+            {"pivotDistance", c.pivotDistance},
+            {"smoothPath", c.smoothPath},
+            {"near", c.nearClip},
+            {"far", c.farClip},
+            {"base", Pose(c.base, false)},
+            {"keys", std::move(keys)},
+            {"rail", std::move(rail)},
+            {"railT", Parameter(c.railT)},
+            {"motion", WriteCameraMotionEffects(c.motion)}};
 }
 
 ShotCamera ReadShotCamera(const nlohmann::json& n) {
@@ -106,13 +136,21 @@ ShotCamera ReadShotCamera(const nlohmann::json& n) {
     c.anchor.value = n.value("anchor", uint64_t{});
     c.lookAt.value = n.value("lookAt", uint64_t{});
     c.targetOffset = Vector(n.value("targetOffset", json{}));
-    c.smoothPath = n.value("smoothPath", false);
+    c.aimWeight = Parameter(n.value("aimWeight", json{}), 1.0f);
+    c.pivotDistance = n.value("pivotDistance", 5.0f);
+    c.smoothPath = n.value("smoothPath", true);
     c.nearClip = n.value("near", 0.1f);
     c.farClip = n.value("far", 2000.0f);
-    if (const auto channels = n.find("channels"); channels != n.end() && channels->is_object()) {
-        for (size_t i = 0; i < c.channels.size(); ++i)
-            c.channels[i] = Parameter(channels->value(kShotChannelNames[i], json{}), c.channels[i].value);
+    if (const auto base = n.find("base"); base != n.end())
+        c.base = Pose(*base, false);
+    for (const auto& key : n.value("keys", json::array()))
+        c.keys.push_back(Pose(key, true));
+    if (const auto rail = n.find("rail"); rail != n.end() && rail->is_object()) {
+        c.rail.loop = rail->value("loop", false);
+        for (const auto& point : rail->value("points", json::array()))
+            c.rail.points.push_back(Vector(point));
     }
+    c.railT = Parameter(n.value("railT", json{}), 0.0f);
     c.motion = ReadCameraMotionEffects(n.value("motion", json::array()));
     NormalizeShotCamera(c);
     return c;

@@ -10,17 +10,21 @@
 
 namespace HIKARI::SEQUENCER {
 
+// 镜头の姿勢（一つの時刻の位置・向き・画角）。向きは場面の摄像机物体と同じ約束（局所 +Z が前、+Y が上）の四元数で、
+// 傾き（roll）も向きに含む。位置と向きは anchor の局所空間（anchor が無ければ世界空間）。
 struct ShotPose {
     float time = 0.0f;
-    MATH::Vec3 eye{0.0f, 2.0f, -8.0f};
-    MATH::Vec3 target{0.0f, 1.0f, 0.0f};
+    MATH::Vec3 position{0.0f, 2.0f, -8.0f};
+    MATH::Quat rotation = MATH::Quat::Identity();
     float fov = 55.0f;
-    float roll = 0.0f;
 };
 
-enum class ShotChannel : size_t { EyeX, EyeY, EyeZ, TargetX, TargetY, TargetZ, Fov, Roll, Count };
-inline constexpr std::array<const char*, 8> kShotChannelNames{"eyeX",    "eyeY",    "eyeZ", "targetX",
-                                                              "targetY", "targetZ", "fov",  "roll"};
+// 镜头の軌道（anchor の局所空間の通過点を滑らかに結ぶ）。点が 2 つ以上あると位置は軌道上の道のりの割合 railT（0..1）
+// で決まり、姿勢键の位置は使わない（向きと画角は姿勢键のまま）。
+struct ShotRail {
+    std::vector<MATH::Vec3> points;
+    bool loop = false;
+};
 
 enum class CameraMotionKind {
     Dolly,
@@ -72,17 +76,26 @@ struct CameraMotionEffect {
     float maximumSpeed = 8;
 };
 
+// 演出内の镜头。層で組む：身体（姿勢键か軌道、anchor の局所空間）→ 瞄准（lookAt の相手へ向きを寄せる）→
+// 運動効果（手持ち・衝撃・相対的な推し引き）→ レンズ（near/far）。
 struct ShotCamera {
     bool owned = false;
     std::string name = "Shot";
-    std::array<ScalarCurve, 8> channels{{{0}, {2}, {-8}, {0}, {1}, {0}, {55}, {0}}};
+    // 姿勢键（時刻順、镜头の局所時刻）。空なら base の姿勢のまま。
+    ShotPose base{};
+    std::vector<ShotPose> keys;
+    // 键の間を滑らかに通す：途中の键は前後の键から求めた速さで止まらずに通り、最初と最後の键だけ緩やかに加減速する。
+    // 切ると键の間は一定の速さ（位置は直線、向きは最短の回転）。
+    bool smoothPath = true;
+    ShotRail rail{};
+    ScalarCurve railT{0.0f};
     SequenceBindingId anchor{};
     SequenceBindingId lookAt{};
     MATH::Vec3 targetOffset{};
-    // 姿勢の曲線（位置・注視点・画角・傾き）の接線を自動で決める。途中の键は前後の键から求めた傾きで止まらずに
-    // 通り、最初と最後の键だけ緩やかに加減速する。手で接線を詰めたい時だけ切る。新しい镜头は有効で作り、
-    // この項目の無い古い資産は手で決めた接線を保つため無効として読む。
-    bool smoothPath = false;
+    // lookAt がある時、向きをどれだけ相手へ寄せるか（0 = 姿勢键の向きのまま、1 = 常に相手を見る）。
+    ScalarCurve aimWeight{1.0f};
+    // 相手に結んでいない時の注視点までの距離 [m]。環繞などの運動効果はこの点を中心に回る。
+    float pivotDistance = 5.0f;
     float nearClip = 0.1f;
     float farClip = 2000.0f;
     std::vector<CameraMotionEffect> motion;
@@ -124,23 +137,37 @@ struct ScreenEffectSample {
     MATH::Vec3 color{1.0f, 1.0f, 1.0f};
 };
 
+// 姿勢键を同じ時刻とみなす幅 [s]。時間轴の 1/60 秒刻みより十分小さい。
+inline constexpr float kShotPoseKeyEpsilon = 0.0005f;
+
 void NormalizeShotCamera(ShotCamera& shot);
 void NormalizeCameraMotionEffects(std::vector<CameraMotionEffect>& effects);
 void ApplyCameraMotionEffects(std::span<const CameraMotionEffect> effects, float seconds, MATH::Vec3& eye,
                               MATH::Vec3& target, MATH::Vec3& up, float& fovDegrees, float speed = 0,
                               float strength = 1, bool keepTarget = false);
+// 姿勢键（と軌道）だけから求めた anchor の局所空間の姿勢。瞄准と運動効果は含まない。
 ShotPose EvaluateShotPose(const ShotCamera& shot, float seconds);
+// pose.time に姿勢键を置く（同じ時刻の键は置き換える）。keyed が偽で键が一つも無ければ base を変える。
 void SetShotPose(ShotCamera& shot, const ShotPose& pose, bool keyed);
-// 姿勢の曲線のどれかに键がある時刻を昇順で返す（同じ時刻の键は一つにまとめる）。
-std::vector<float> CollectShotPoseKeyTimes(const ShotCamera& shot);
-// time の姿勢键（全ての姿勢の曲線）を newTime へ動かす。動かした键が無ければ false。
-bool MoveShotPoseKeys(ShotCamera& shot, float time, float newTime);
-// time の姿勢键を全ての姿勢の曲線から消す。消した曲線は消す直前の値を基準値として残す。
-bool RemoveShotPoseKeys(ShotCamera& shot, float time);
+const ShotPose* FindShotPoseKey(const ShotCamera& shot, float time) noexcept;
+ShotPose* FindShotPoseKey(ShotCamera& shot, float time) noexcept;
+// time の姿勢键を newTime へ動かす。動かす键が無いか newTime に別の键があれば false。
+bool MoveShotPoseKey(ShotCamera& shot, float time, float newTime);
+// time の姿勢键を消す。最後の键を消した時は消す直前の姿勢を base に残す。
+bool RemoveShotPoseKey(ShotCamera& shot, float time);
+// 軌道上の位置。t は始点から終点までの道のりの割合（0..1）。点が 1 つならその点、無ければ原点。
+MATH::Vec3 EvaluateShotRail(const ShotRail& rail, float t);
 void NormalizeScreenEffects(std::vector<SequenceScreenEffect>& effects);
 void SampleScreenEffects(const std::vector<SequenceScreenEffect>& effects, float seconds,
                          std::vector<ScreenEffectSample>& output);
+// 姿勢を世界空間の摄像机にする。anchor は局所→世界、lookAt は瞄准の相手の世界位置（targetOffset を足す）。
 Camera3D EvaluateShotCamera(const ShotCamera& shot, float seconds, float aspect, const MATH::Mat4* anchor = nullptr,
                             const MATH::Vec3* lookAt = nullptr);
+// 摄像机の姿勢を（anchor があればその局所空間の）键の形にする。
 ShotPose CaptureShotPose(const Camera3D& camera, float seconds = 0.0f, const MATH::Mat4* anchor = nullptr);
+// 姿勢の向きの前（局所 +Z）と上（局所 +Y）。
+MATH::Vec3 ShotPoseForward(const ShotPose& pose);
+MATH::Vec3 ShotPoseUp(const ShotPose& pose);
+// 前を forward へ向け直した向き。水平に構えた時の上向きからの傾き（roll）は previous のまま保つ。
+MATH::Quat ShotRotationLookingAlong(const MATH::Vec3& forward, const MATH::Quat& previous);
 } // namespace HIKARI::SEQUENCER

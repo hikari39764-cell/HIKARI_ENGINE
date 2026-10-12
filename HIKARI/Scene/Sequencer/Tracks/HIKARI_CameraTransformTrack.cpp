@@ -15,29 +15,6 @@ namespace HIKARI::SEQUENCER {
 namespace {
 constexpr float kKeyframeTimeEpsilon = 0.0005f;
 
-MATH::Quat Slerp(MATH::Quat from, MATH::Quat to, float amount) noexcept {
-    from = MATH::NormalizeQ(from);
-    to = MATH::NormalizeQ(to);
-    float dot = from.x * to.x + from.y * to.y + from.z * to.z + from.w * to.w;
-    if (dot < 0.0f) {
-        dot = -dot;
-        to = {-to.x, -to.y, -to.z, -to.w};
-    }
-    if (dot > 0.9995f) {
-        return MATH::NormalizeQ({from.x + (to.x - from.x) * amount, from.y + (to.y - from.y) * amount,
-                                 from.z + (to.z - from.z) * amount, from.w + (to.w - from.w) * amount});
-    }
-    const float angle = std::acos(std::clamp(dot, -1.0f, 1.0f));
-    const float sinAngle = std::sin(angle);
-    if (std::abs(sinAngle) <= 0.00001f) {
-        return from;
-    }
-    const float fromWeight = std::sin((1.0f - amount) * angle) / sinAngle;
-    const float toWeight = std::sin(amount * angle) / sinAngle;
-    return MATH::NormalizeQ({from.x * fromWeight + to.x * toWeight, from.y * fromWeight + to.y * toWeight,
-                             from.z * fromWeight + to.z * toWeight, from.w * fromWeight + to.w * toWeight});
-}
-
 MATH::Quat RotationFromDegrees(const MATH::Vec3& degrees) noexcept {
     constexpr float kDegreesToRadians = MATH::kDegreesToRadians;
     return MATH::Quat::FromEulerXYZ(degrees.x * kDegreesToRadians, degrees.y * kDegreesToRadians,
@@ -123,7 +100,7 @@ CameraTransformTrackEvaluation EvaluateCameraTransformTrack(const CameraTransfor
     result.cameraBindingId = bindingId;
     result.position = from->position + (to->position - from->position) * amount;
     result.rotation =
-        Slerp(RotationFromDegrees(from->rotationEulerDeg), RotationFromDegrees(to->rotationEulerDeg), amount);
+        MATH::SlerpQ(RotationFromDegrees(from->rotationEulerDeg), RotationFromDegrees(to->rotationEulerDeg), amount);
     result.valid = true;
     return result;
 }

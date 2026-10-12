@@ -37,7 +37,8 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
     ImGui::TextWrapped("%s", TEXT::Localize("cine.workflowHelp").c_str());
     if (unresolved)
         ImGui::Text(TEXT::Localize("cine.missingBindings").c_str(), static_cast<int>(unresolved));
-    if (!ImGui::BeginTabBar("SequenceResources"))
+    // 窓が狭くても名前を省略しない（収まらない分は横へ送る）。
+    if (!ImGui::BeginTabBar("SequenceResources", ImGuiTabBarFlags_FittingPolicyScroll))
         return false;
     if (ImGui::BeginTabItem(TEXT::LocalizeWindow("cine.shot", "镜头").c_str())) {
         // 镜头は視口（無ければ主ビュー）の今の視点から作る。空の時は案内の中に同じ操作を置く。
@@ -67,9 +68,6 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
         if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete,
                                   ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)))
             changed |= DeleteSelectedClip(sequence);
-        // K：視口（無ければ主ビュー）の今の視点から镜头を作る。
-        if (!ImGui::GetIO().WantTextInput && !ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_K, false))
-            createShot();
         if (sequence.cameraCutTrack.clips.empty() &&
             EmptyState(TEXT::Localize("cine.startFrame").c_str(), TEXT::Localize("cine.createFirst").c_str(),
                        TEXT::Localize("cine.createShotFromView").c_str())) {

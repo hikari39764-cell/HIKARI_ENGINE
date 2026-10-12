@@ -95,6 +95,26 @@ inline Quat NormalizeQ(const Quat& q) {
     return {q.x * inv, q.y * inv, q.z * inv, q.w * inv};
 }
 
+// a * b（先に b、次に a を適用する回転）。
+inline Quat MultiplyQ(const Quat& a, const Quat& b) {
+    return NormalizeQ({a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+                       a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z});
+}
+
+// 単位四元数 q で v を回す。
+inline Vec3 RotateVector(const Quat& q, const Vec3& v) {
+    const Vec3 u{q.x, q.y, q.z};
+    const Vec3 t = Cross(u, v) * 2.0f;
+    return v + t * q.w + Cross(u, t);
+}
+
+// 最短弧の正規化線形補間（角速度は一定でない。近い姿勢の間や毎フレームの混合用）。
+inline Quat NlerpQ(const Quat& from, const Quat& to, float t) {
+    const float sign = from.x * to.x + from.y * to.y + from.z * to.z + from.w * to.w < 0.0f ? -1.0f : 1.0f;
+    return NormalizeQ({from.x + (to.x * sign - from.x) * t, from.y + (to.y * sign - from.y) * t,
+                       from.z + (to.z * sign - from.z) * t, from.w + (to.w * sign - from.w) * t});
+}
+
 inline Mat4 Mat4::Identity() {
     Mat4 r{};
     r.m[0][0] = 1.0f;
@@ -174,6 +194,12 @@ void DirectionToCubeFaceUv(const Vec3& direction, uint32_t& face, float& u, floa
 Vec3 DecodeOctahedralDirection(const Vec2& uv);
 Mat4 Inverse(const Mat4& value);
 bool DecomposeTRS(const Mat4& value, Vec3& outTranslation, Quat& outRotation, Vec3& outScale);
+// 最短弧の球面線形補間（角速度一定）。入力は正規化してから使う。
+Quat SlerpQ(const Quat& from, const Quat& to, float t);
+// 直交基底（右・上・前。行列の列が軸）から四元数。
+Quat QuatFromAxes(const Vec3& right, const Vec3& up, const Vec3& forward);
+// 局所 +Z を forward、+Y を up に最も近い向きへ回す四元数（場面の物体と摄像机物体の約束）。forward が零なら単位。
+Quat QuatFromForwardUp(const Vec3& forward, const Vec3& up);
 // QuaternionをHIKARIのXYZ Euler角へ戻す。戻り値はラジアン。
 Vec3 EulerXYZFromQuat(const Quat& q);
 // SceneDocument / Inspector用の度数版。

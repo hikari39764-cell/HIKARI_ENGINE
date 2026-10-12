@@ -60,24 +60,6 @@ nlohmann::json CinematicsWorkspaceController::AuthoringCommandSchema() {
     }
     return {{"oneOf", std::move(variants)}};
 }
-bool CinematicsWorkspaceController::DeleteSelectedClip(CinematicSequence& sequence) {
-    size_t removed = 0;
-    const auto selected = [this](const auto& clip) { return clip.id == selectedId_; };
-    if (selectionKind_ == SelectionKind::Shot)
-        removed = std::erase_if(sequence.cameraCutTrack.clips, selected);
-    else if (selectionKind_ == SelectionKind::Cue)
-        removed = std::erase_if(sequence.presentationCueTrack.clips, selected);
-    else if (selectionKind_ == SelectionKind::Effect)
-        removed = std::erase_if(sequence.screenEffects, selected);
-    if (!removed)
-        return false;
-    selectedId_ = 0;
-    curveView_.selectedKey = -1;
-    channelOwner_ = 0;
-    draggingId_ = 0;
-    return true;
-}
-
 nlohmann::json CinematicsWorkspaceController::DescribeAuthoring(DocumentSceneBase& scene) const {
     const auto& document = sequenceDocumentController_.GetDocument();
     const auto& settings = document.GetSettings(scene.GetSceneDocument().cinematics);

@@ -261,6 +261,7 @@ DirectorViewPanelResult DirectorViewPanel::DrawContents(const DocumentSceneBase&
         currentViewCamera_ = ActiveController().GetCamera();
     }
 
+    result.viewMoved = cameraChanged;
     if (mode_ == DirectorViewMode::Pilot && cameraChanged) {
         result.pilotPoseChanged = true;
         result.pilotCameraObjectId = targetCameraObjectId_;

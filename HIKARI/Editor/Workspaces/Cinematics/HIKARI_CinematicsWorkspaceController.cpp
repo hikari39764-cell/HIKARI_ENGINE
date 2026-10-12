@@ -6,11 +6,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Authoring/HIKARI_SequencePreviewBindingResolver.h"
 #include "Editor/HIKARI_EditorContext.h"
-#include "Editor/HIKARI_SelectionSyncService.h"
-#include "Editor/Views/Director/HIKARI_DirectorCameraPose.h"
-#include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-#include "Scene/HIKARI_GameObject.h"
 
 namespace HIKARI::EDITOR {
 
@@ -119,6 +115,10 @@ void CinematicsWorkspaceController::ResetEditing(DocumentSceneBase& scene) {
     selectedId_ = 0;
     curveView_ = {};
     stageInitialized_ = false;
+    pilot_ = false;
+    selectedRailPoint_ = -1;
+    fitTimelineRequested_ = true;
+    autoPreview_ = true;
     previewEnabled_ = false;
     previewChanged_ = true;
     previewBindings_.Clear();
@@ -218,58 +218,6 @@ SEQUENCER::CameraCutClip* CinematicsWorkspaceController::SelectedShot(CinematicS
         if (shot.id == selectedId_)
             return &shot;
     return nullptr;
-}
-
-void CinematicsWorkspaceController::CreateShot(CinematicSequence& sequence, const Camera3D& camera) {
-    SEQUENCER::CameraCutClip shot;
-    shot.id = SEQUENCER::AllocateCameraCutClipId(sequence.cameraCutTrack);
-    shot.startTimeSeconds = cursor_.GetTimeSeconds();
-    for (const auto& existing : sequence.cameraCutTrack.clips)
-        if (shot.startTimeSeconds >= existing.startTimeSeconds &&
-            shot.startTimeSeconds < existing.startTimeSeconds + existing.durationSeconds)
-            shot.startTimeSeconds = existing.startTimeSeconds + existing.durationSeconds;
-    shot.durationSeconds = 3.0f;
-    shot.camera.owned = true;
-    shot.camera.name = "Shot " + std::to_string(shot.id);
-    SEQUENCER::SetShotPose(shot.camera, SEQUENCER::CaptureShotPose(camera), false);
-    shot.camera.nearClip = camera.GetNearZ();
-    shot.camera.farClip = camera.GetFarZ();
-    sequence.cameraCutTrack.clips.push_back(shot);
-    selectedId_ = shot.id;
-    selectionKind_ = SelectionKind::Shot;
-    previewEnabled_ = true;
-    previewChanged_ = true;
-    sequence.durationSeconds = (std::max)(sequence.durationSeconds, shot.startTimeSeconds + shot.durationSeconds);
-    cursor_.SetDuration(sequence.durationSeconds);
-    cursor_.Seek(shot.startTimeSeconds);
-}
-
-void CinematicsWorkspaceController::CapturePose(DocumentSceneBase& scene, CinematicSequence& sequence,
-                                                const Camera3D& camera) {
-    auto* shot = SelectedShot(sequence);
-    if (!shot) {
-        CreateShot(sequence, camera);
-        return;
-    }
-    shot->camera.owned = true;
-    const float local = std::clamp(cursor_.GetTimeSeconds() - shot->startTimeSeconds, 0.0f, shot->durationSeconds);
-    SEQUENCER::SetShotPose(shot->camera, CaptureShotPoseFor(scene, sequence, *shot, camera, autoKey_ ? local : 0.0f),
-                           autoKey_);
-    SEQUENCER::NormalizeShotCamera(shot->camera);
-    previewChanged_ = true;
-    previewEnabled_ = true;
-}
-
-SEQUENCER::ShotPose CinematicsWorkspaceController::CaptureShotPoseFor(DocumentSceneBase& scene,
-                                                                      CinematicSequence& sequence,
-                                                                      const SEQUENCER::CameraCutClip& shot,
-                                                                      const Camera3D& camera, float keyTime) const {
-    SceneObjectId anchorId;
-    const auto* anchor = previewBindings_.Resolve(sequence.bindings, shot.camera.anchor, anchorId)
-                             ? scene.GetWorld().FindObject(anchorId)
-                             : nullptr;
-    const auto anchorMatrix = anchor ? anchor->GetTransform().GetWorldMatrix() : MATH::Mat4::Identity();
-    return SEQUENCER::CaptureShotPose(camera, keyTime, anchor ? &anchorMatrix : nullptr);
 }
 
 bool CinematicsWorkspaceController::IsDocumentOpen() const noexcept {

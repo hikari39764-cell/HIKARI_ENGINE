@@ -97,13 +97,25 @@ private:
     bool DrawChannelLanes(CinematicSequence& sequence, float x, float y, float width, float labelWidth,
                           float rowHeight);
     bool DrawChannelCurve(CinematicSequence& sequence);
-    // 姿勢键の帯（HIKARI_CinematicsTimelineWindow.cpp）：選んだ镜头の位置・注視点・画角・傾きの键を時刻ごとに一つの
-    // 菱形にまとめる。押すとその時刻へ、引くと全ての姿勢の曲線の键を一緒に動かし、右ボタンで消す。
-    bool DrawPoseKeyLane(DocumentSceneBase& scene, CinematicSequence& sequence, float x, float y, float width,
-                         float labelWidth, float rowHeight);
-    // 再生位置に、今の姿勢（運動効果を除く）を全ての姿勢の曲線の键として置く。
+    // 姿勢键の帯（HIKARI_CinematicsTimelineWindow.cpp）：選んだ镜头の姿勢键（位置・向き・画角）を菱形で示す。押すと
+    // その時刻へ、引くと键を動かし、右ボタンで消す。帯の空いた所を二度押すとその時刻の今の姿勢を键にする。
+    bool DrawPoseKeyLane(CinematicSequence& sequence, float timeOriginX, float y, float rowHeight);
+    // 再生位置に、今の姿勢（瞄准と運動効果を除く）を姿勢键として置く。
     bool AddPoseKeyAtCursor(CinematicSequence& sequence);
-    std::string selectedChannel_ = "eyeX";
+    // 再生位置の姿勢键を消す。
+    bool RemovePoseKeyAtCursor(CinematicSequence& sequence);
+    // 選んだ镜头の前後の姿勢键へ再生位置を移す（direction は -1 か 1）。
+    bool SeekPoseKey(CinematicSequence& sequence, int direction);
+    // 選んだ镜头を再生位置で二つに分ける（後半は同じ姿勢の続きから始まる）。
+    bool SplitSelectedShot(CinematicSequence& sequence);
+    bool DuplicateSelectedShot(CinematicSequence& sequence);
+    // 镜头の局所時刻での再生位置（镜头の範囲に収める）。
+    float ShotLocalTime(const SEQUENCER::CameraCutClip& shot) const;
+    // 時間轴の時刻を近くの境目（镜头の端、再生位置）か 1/60 秒へ寄せる。Alt で自由。再生位置が引いている物に
+    // ついて動く時（姿勢键を引く）は includeCursor を偽にする。
+    float SnapTimelineTime(const CinematicSequence& sequence, float seconds, uint64_t ignoreShot,
+                           bool includeCursor = true) const;
+    std::string selectedChannel_{};
     ScalarCurveView curveView_;
     bool curveMode_ = false;
     bool animatedChannelsOnly_ = true;
@@ -113,13 +125,22 @@ private:
     bool DeleteSelectedClip(CinematicSequence& sequence);
     void CreateShot(CinematicSequence& sequence, const Camera3D& camera);
     void CapturePose(DocumentSceneBase& scene, CinematicSequence& sequence, const Camera3D& camera);
-    // 镜头の局所時刻 keyTime に、camera の位置と注視点（と画角・傾き）を镜头の掛け先に合わせた姿勢にする。
+    // 镜头の局所時刻 keyTime に、camera の位置と向き（と画角）を镜头の掛け先（anchor）の局所空間の姿勢にする。
     SEQUENCER::ShotPose CaptureShotPoseFor(DocumentSceneBase& scene, CinematicSequence& sequence,
                                            const SEQUENCER::CameraCutClip& shot, const Camera3D& camera,
                                            float keyTime) const;
+    // 姿勢を镜头へ書く。自動键か键がある時は時刻の键、無ければ基準の姿勢。parts で変える要素を選ぶ。
+    enum PoseParts : uint32_t { kPosePosition = 1u, kPoseRotation = 2u, kPoseFov = 4u, kPoseAll = 7u };
+    void WriteShotPose(SEQUENCER::CameraCutClip& shot, const SEQUENCER::ShotPose& pose, uint32_t parts);
     // 飛行録画（HIKARI_CinematicsStageWindow.cpp）：録画を押した後、空間视图で右ボタンを押して飛び始めると镜头の
-    // 始めから再生し、一定間隔で視点の位置と注視点を键にする（画角と傾きは変えない）。録った範囲の键は置き換える。
+    // 始めから再生し、一定間隔で視点の位置と向きを键にする（画角と傾きは変えない）。録った範囲の键は置き換える。
     bool UpdateFlightRecording(DocumentSceneBase& scene, CinematicSequence& sequence, bool startRequested);
+    // 驾驶（HIKARI_CinematicsStageWindow.cpp）：空間视图の視点を選んだ镜头の再生位置の姿勢に重ね、视图で飛ぶと
+    // その姿勢を镜头へ書く（傾きと画角は镜头のまま）。
+    bool UpdatePilot(DocumentSceneBase& scene, CinematicSequence& sequence, bool viewMoved);
+    // 軌道の点（HIKARI_CinematicsStageWindow.cpp）：選んだ镜头の軌道を空間视图に描き、点を押して選び引いて動かす。
+    bool DrawRailOverlay(DocumentSceneBase& scene, CinematicSequence& sequence, SEQUENCER::CameraCutClip& shot,
+                         const EditorViewportRect& viewport, bool& interacting);
     void DrawShotTransition(ImDrawList& draw, const CinematicSequence& sequence, const SEQUENCER::CameraCutClip& shot,
                             float timeOriginX, float y, float rowHeight) const;
     // 時間軸で镜头の上に置いた時刻の画を説明の小窓に出す（再生位置は動かさない）。shot が無ければ描画の依頼を取り下げる。
@@ -138,13 +159,20 @@ private:
     uint64_t selectedId_ = 0;
     bool loop_ = false;
     bool previewEnabled_ = false;
+    // 镜头がある演出を開いたら画面に镜头の画を出す（停止して元へ戻すと、次に開くか再生するまで自由な視点）。
+    bool autoPreview_ = true;
     bool ownsPreview_ = false;
     bool previewChanged_ = true;
     bool spaceView_ = true;
     bool stageInitialized_ = false;
-    bool stageEditTarget_ = false;
-    bool stageRotate_ = false;
+    // 空間视图の手柄：位置を動かす、向きを回す、注視点を動かす（相手に結んだ镜头は注視の偏移、無ければ向きを変える）。
+    enum class StageTool { Move, Rotate, Aim };
+    StageTool stageTool_ = StageTool::Move;
     bool showShotPaths_ = true;
+    bool pilot_ = false;
+    uint64_t pilotShot_ = 0;
+    Camera3D pilotCamera_{};
+    int selectedRailPoint_ = -1;
     EditorTransformGizmo stageGizmo_;
     // 既定で有効：動かした结果を再生位置の键として残す（姿勢を変えると今の時刻のキーが増える）。
     bool autoKey_ = true;
@@ -156,7 +184,9 @@ private:
     float flightLastKey_ = 0.0f;
     bool shotPreviewSubmitted_ = false;
     bool sequenceLibraryVisible_ = true;
+    // 時間轴の 1 秒あたりの画素数。Ctrl + 滚轮で再生位置の下を中心に拡縮する。
     float zoom_ = 80.0f;
+    bool fitTimelineRequested_ = true;
     std::filesystem::path audioProjectRoot_;
     std::vector<std::filesystem::path> audioAssets_;
     float dragMouseX_ = 0.0f;

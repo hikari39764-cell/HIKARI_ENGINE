@@ -150,7 +150,11 @@ bool DecomposeTRS(const Mat4& value, Vec3& outTranslation, Quat& outRotation, Ve
         outScale.x = -outScale.x;
         right = right * -1.0f;
     }
+    outRotation = QuatFromAxes(right, up, forward);
+    return true;
+}
 
+Quat QuatFromAxes(const Vec3& right, const Vec3& up, const Vec3& forward) {
     const float m00 = right.x;
     const float m01 = up.x;
     const float m02 = forward.x;
@@ -187,8 +191,33 @@ bool DecomposeTRS(const Mat4& value, Vec3& outTranslation, Quat& outRotation, Ve
         rotation.y = (m12 + m21) / s;
         rotation.z = 0.25f * s;
     }
-    outRotation = NormalizeQ(rotation);
-    return true;
+    return NormalizeQ(rotation);
+}
+
+Quat QuatFromForwardUp(const Vec3& forward, const Vec3& up) {
+    if (Dot(forward, forward) <= 1.0e-12f)
+        return Quat::Identity();
+    const ViewBasisRH basis = BuildViewBasisRH(forward, up);
+    // 物体の局所 +X は up × forward（視線の右の逆向き）。
+    return QuatFromAxes(Cross(basis.up, basis.forward), basis.up, basis.forward);
+}
+
+Quat SlerpQ(const Quat& fromValue, const Quat& toValue, float t) {
+    const Quat from = NormalizeQ(fromValue);
+    Quat to = NormalizeQ(toValue);
+    float cosine = from.x * to.x + from.y * to.y + from.z * to.z + from.w * to.w;
+    if (cosine < 0.0f) {
+        cosine = -cosine;
+        to = {-to.x, -to.y, -to.z, -to.w};
+    }
+    if (cosine > 0.9995f)
+        return NlerpQ(from, to, t);
+    const float angle = std::acos(std::clamp(cosine, -1.0f, 1.0f));
+    const float sine = std::sin(angle);
+    const float fromWeight = std::sin((1.0f - t) * angle) / sine;
+    const float toWeight = std::sin(t * angle) / sine;
+    return NormalizeQ({from.x * fromWeight + to.x * toWeight, from.y * fromWeight + to.y * toWeight,
+                       from.z * fromWeight + to.z * toWeight, from.w * fromWeight + to.w * toWeight});
 }
 
 Quat Quat::FromEulerXYZ(float rx, float ry, float rz) {

@@ -31,16 +31,6 @@ MATH::Vec3 Lerp(const MATH::Vec3& from, const MATH::Vec3& to, float weight) noex
     return from + (to - from) * weight;
 }
 
-MATH::Quat Nlerp(const MATH::Quat& from, const MATH::Quat& to, float weight) noexcept {
-    MATH::Quat end = to;
-    const float dot = from.x * to.x + from.y * to.y + from.z * to.z + from.w * to.w;
-    if (dot < 0.0f) {
-        end = {-to.x, -to.y, -to.z, -to.w};
-    }
-    return MATH::NormalizeQ({from.x + (end.x - from.x) * weight, from.y + (end.y - from.y) * weight,
-                             from.z + (end.z - from.z) * weight, from.w + (end.w - from.w) * weight});
-}
-
 MATH::Vec3 Hermite(const MATH::Vec3& from, const MATH::Vec3& fromTangent, const MATH::Vec3& to,
                    const MATH::Vec3& toTangent, float weight, float span) noexcept {
     const float t2 = weight * weight;
@@ -120,7 +110,7 @@ MATH::Quat SampleQuat(const std::vector<AnimationKeyframe<MATH::Quat>>& keys, fl
     const float weight = ClampUnit((time - from.timeSec) / span);
     return interpolation == AnimationInterpolation::CubicSpline
                ? Hermite(from.value, from.outTangent, to.value, to.inTangent, weight, span)
-               : Nlerp(from.value, to.value, weight);
+               : MATH::NlerpQ(from.value, to.value, weight);
 }
 } // namespace
 
@@ -208,7 +198,7 @@ bool BlendAnimationPoses(const AnimationLocalPose& from, const AnimationLocalPos
         const Transform3D& b = to.nodes[index];
         Transform3D result{};
         result.position = Lerp(a.position, b.position, safeWeight);
-        result.rotation = Nlerp(a.rotation, b.rotation, safeWeight);
+        result.rotation = MATH::NlerpQ(a.rotation, b.rotation, safeWeight);
         result.scale = Lerp(a.scale, b.scale, safeWeight);
         outPose.nodes[index] = result;
     }
@@ -389,7 +379,7 @@ void BlendCachedNodes(const AnimationLocalPose& from, const AnimationLocalPose& 
             static_cast<int>(index) == cache.maskRootNode ? alignedRootRotation : toNode.rotation;
         Transform3D& result = outPose.nodes[index];
         result.position = Lerp(fromNode.position, toNode.position, safeWeight);
-        result.rotation = Nlerp(fromNode.rotation, targetRotation, safeWeight);
+        result.rotation = MATH::NlerpQ(fromNode.rotation, targetRotation, safeWeight);
         result.scale = Lerp(fromNode.scale, toNode.scale, safeWeight);
         result.useExplicitMatrix = false;
         result.explicitMatrix = {};
@@ -409,7 +399,7 @@ void ApplyCachedNodesInPlace(AnimationLocalPose& inOutPose, const AnimationLocal
             static_cast<int>(index) == cache.maskRootNode ? alignedRootRotation : toNode.rotation;
         Transform3D& result = inOutPose.nodes[index];
         result.position = Lerp(fromNode.position, toNode.position, safeWeight);
-        result.rotation = Nlerp(fromNode.rotation, targetRotation, safeWeight);
+        result.rotation = MATH::NlerpQ(fromNode.rotation, targetRotation, safeWeight);
         result.scale = Lerp(fromNode.scale, toNode.scale, safeWeight);
         result.useExplicitMatrix = false;
         result.explicitMatrix = {};

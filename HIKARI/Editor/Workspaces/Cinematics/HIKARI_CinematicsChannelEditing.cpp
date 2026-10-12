@@ -29,9 +29,13 @@ std::vector<CinematicsWorkspaceController::Channel> CinematicsWorkspaceControlle
         }
     };
     if (auto* shot = SelectedShot(sequence); shot && shot->camera.owned) {
-        for (size_t i = 0; i < shot->camera.channels.size(); ++i)
-            result.push_back({SEQUENCER::kShotChannelNames[i], TEXT::Localize(kCinematicChannelKeys[i]),
-                              &shot->camera.channels[i], shot->startTimeSeconds, shot->durationSeconds});
+        // 姿勢は姿勢键の帯で扱う。曲線で動かすのは瞄准の重み（相手に結んだ時）と軌道上の位置（軌道がある時）。
+        if (shot->camera.lookAt.IsValid())
+            result.push_back({"aimWeight", TEXT::Localize("cine.aimWeight"), &shot->camera.aimWeight,
+                              shot->startTimeSeconds, shot->durationSeconds});
+        if (shot->camera.rail.points.size() >= 2)
+            result.push_back({"railT", TEXT::Localize("cine.railProgress"), &shot->camera.railT, shot->startTimeSeconds,
+                              shot->durationSeconds});
         for (auto& motion : shot->camera.motion) {
             const auto name = TEXT::Localize(SEQUENCER::kCameraMotionDescriptors[static_cast<size_t>(motion.kind)].key);
             const auto prefix = "motion/" + std::to_string(motion.id);
