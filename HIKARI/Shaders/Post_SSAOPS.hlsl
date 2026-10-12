@@ -29,7 +29,7 @@ cbuffer SsaoPassCB : register(b0)
 static const float kPi = 3.14159265f;
 static const float kHalfPi = 1.57079633f;
 
-Texture2D gSceneDepthTex : register(t0);
+Texture2D<float> gSceneDepthTex : register(t0);
 Texture2D gNormalRoughnessTex : register(t1);
 SamplerState gPointClamp : register(s0);
 SamplerState gLinearClamp : register(s1);
@@ -70,23 +70,6 @@ float2 ProjectWorld(float3 world)
     return uv;
 }
 
-float3 ReconstructNormalFromDepth(float2 uv, float centerDepth)
-{
-    float2 texel = gDepthScreenParams.zw;
-    float2 uvRight = saturate(uv + float2(texel.x, 0.0f));
-    float2 uvDown = saturate(uv + float2(0.0f, texel.y));
-    float depthRight = gSceneDepthTex.SampleLevel(gPointClamp, uvRight, 0).r;
-    float depthDown = gSceneDepthTex.SampleLevel(gPointClamp, uvDown, 0).r;
-    depthRight = depthRight >= 0.99999f ? centerDepth : depthRight;
-    depthDown = depthDown >= 0.99999f ? centerDepth : depthDown;
-
-    float3 p = ReconstructWorld(uv, centerDepth);
-    float3 px = ReconstructWorld(uvRight, depthRight);
-    float3 py = ReconstructWorld(uvDown, depthDown);
-    float3 n = normalize(cross(py - p, px - p));
-    float3 viewDir = normalize(gCameraPos.xyz - p);
-    return dot(n, viewDir) < 0.0f ? -n : n;
-}
 
 // 世界半径を画面上の画素数へ。面の接線方向へ半径だけ動いた点を射影して測る。
 float ScreenRadiusPixels(float2 centerUv, float3 worldPos, float3 normal)
@@ -108,7 +91,7 @@ float HorizonCosine(float2 uv, float2 stepUv, float noise, uint stepCount, float
         if (any(sampleUv < 0.0f) || any(sampleUv > 1.0f))
             break;
         sampleUv = HikariSnapUvToTexelCenter(sampleUv, gDepthScreenParams);
-        const float sampleDepth = gSceneDepthTex.SampleLevel(gPointClamp, sampleUv, 0).r;
+        const float sampleDepth = gSceneDepthTex.SampleLevel(gPointClamp, sampleUv, 0);
         if (sampleDepth >= 0.99999f)
             continue;
         const float3 delta = ReconstructWorld(sampleUv, sampleDepth) - position;
@@ -168,7 +151,7 @@ float GroundTruthAo(float2 uv, float depth, float3 n)
 float PSMain(VSOut input) : SV_TARGET
 {
     const float2 uv = HikariSnapUvToTexelCenter(input.uv, gDepthScreenParams);
-    const float depth = gSceneDepthTex.SampleLevel(gPointClamp, uv, 0).r;
+    const float depth = gSceneDepthTex.SampleLevel(gPointClamp, uv, 0);
     if (depth >= 0.99999f)
         return 1.0f;
     return GroundTruthAo(uv, depth, DecodeNormal(gNormalRoughnessTex.SampleLevel(gPointClamp, uv, 0)));
@@ -177,8 +160,9 @@ float PSMain(VSOut input) : SV_TARGET
 float PSMainDepthOnly(VSOut input) : SV_TARGET
 {
     const float2 uv = HikariSnapUvToTexelCenter(input.uv, gDepthScreenParams);
-    const float depth = gSceneDepthTex.SampleLevel(gPointClamp, uv, 0).r;
+    const float depth = gSceneDepthTex.SampleLevel(gPointClamp, uv, 0);
     if (depth >= 0.99999f)
         return 1.0f;
-    return GroundTruthAo(uv, depth, ReconstructNormalFromDepth(uv, depth));
+    return GroundTruthAo(uv, depth, HikariNormalFromSceneDepth(gSceneDepthTex, gPointClamp, uv,
+        ReconstructWorld(uv, depth), gDepthScreenParams.zw, gInvViewProj, gCameraPos.xyz));
 }

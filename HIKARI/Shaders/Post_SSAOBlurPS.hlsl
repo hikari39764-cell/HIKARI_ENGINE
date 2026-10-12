@@ -14,7 +14,7 @@ cbuffer SsaoPassCB : register(b0)
 };
 
 Texture2D gAoTex : register(t0);
-Texture2D gSceneDepthTex : register(t1);
+Texture2D<float> gSceneDepthTex : register(t1);
 Texture2D gNormalRoughnessTex : register(t2);
 SamplerState gPointClamp : register(s0);
 SamplerState gLinearClamp : register(s1);
@@ -48,23 +48,6 @@ float3 ReconstructWorld(float2 uv, float depth)
     return world;
 }
 
-float3 ReconstructNormalFromDepth(float2 uv, float centerDepth)
-{
-    float2 texel = gDepthScreenParams.zw;
-    float2 uvRight = saturate(uv + float2(texel.x, 0.0f));
-    float2 uvDown = saturate(uv + float2(0.0f, texel.y));
-    float depthRight = gSceneDepthTex.SampleLevel(gPointClamp, uvRight, 0).r;
-    float depthDown = gSceneDepthTex.SampleLevel(gPointClamp, uvDown, 0).r;
-    depthRight = depthRight >= 0.99999f ? centerDepth : depthRight;
-    depthDown = depthDown >= 0.99999f ? centerDepth : depthDown;
-
-    float3 p = ReconstructWorld(uv, centerDepth);
-    float3 px = ReconstructWorld(uvRight, depthRight);
-    float3 py = ReconstructWorld(uvDown, depthDown);
-    float3 n = normalize(cross(py - p, px - p));
-    float3 viewDir = normalize(gCameraPos.xyz - p);
-    return dot(n, viewDir) < 0.0f ? -n : n;
-}
 
 float DepthAwareWeight(float3 centerWorld, float3 centerNormal, float3 sampleWorld)
 {
@@ -75,22 +58,24 @@ float DepthAwareWeight(float3 centerWorld, float3 centerNormal, float3 sampleWor
     return exp(-abs(dot(sampleWorld - centerWorld, centerNormal)) / depthScale);
 }
 
-// 半解像度の AO を一方向に 5 tap で均す。深度と法線が近いサンプルだけを強く採用する。
+// 半解像度の AO を一方向に 5 tap で均す。中心の接平面に近いサンプル（面の法線があれば向きも近いもの）を強く採る。
+// 深度から法線を作る時は中心だけで作る：tap ごとに作ると読み出しが 5 倍になり、接平面の距離だけで縁は分けられる。
 float BlurAo(float2 uv, bool depthOnlyNormals)
 {
     float2 texel = gScreenParams.zw * gBlurParams.xy;
     // 深度と法線は AO を求めた時と同じ全解像度の texel で読む（半解像度の画素の中心は texel の境目）。
     const float2 centerUv = HikariSnapUvToTexelCenter(uv, gDepthScreenParams);
-    float centerDepth = gSceneDepthTex.SampleLevel(gPointClamp, centerUv, 0).r;
+    float centerDepth = gSceneDepthTex.SampleLevel(gPointClamp, centerUv, 0);
     if (centerDepth >= 0.99999f)
     {
         return gAoTex.SampleLevel(gLinearClamp, uv, 0).r;
     }
 
-    float3 centerNormal = depthOnlyNormals
-        ? ReconstructNormalFromDepth(centerUv, centerDepth)
-        : DecodeNormal(gNormalRoughnessTex.SampleLevel(gPointClamp, centerUv, 0));
     float3 centerWorld = ReconstructWorld(centerUv, centerDepth);
+    float3 centerNormal = depthOnlyNormals
+        ? HikariNormalFromSceneDepth(gSceneDepthTex, gPointClamp, centerUv, centerWorld, gDepthScreenParams.zw,
+              gInvViewProj, gCameraPos.xyz)
+        : DecodeNormal(gNormalRoughnessTex.SampleLevel(gPointClamp, centerUv, 0));
 
     float sum = 0.0f;
     float weightSum = 0.0f;
@@ -101,18 +86,20 @@ float BlurAo(float2 uv, bool depthOnlyNormals)
         float2 sampleUv = uv + texel * float(i);
         float ao = gAoTex.SampleLevel(gLinearClamp, sampleUv, 0).r;
         sampleUv = HikariSnapUvToTexelCenter(sampleUv, gDepthScreenParams);
-        float depth = gSceneDepthTex.SampleLevel(gPointClamp, sampleUv, 0).r;
+        float depth = gSceneDepthTex.SampleLevel(gPointClamp, sampleUv, 0);
         if (depth >= 0.99999f)
         {
             continue;
         }
 
-        float3 normal = depthOnlyNormals
-            ? ReconstructNormalFromDepth(sampleUv, depth)
-            : DecodeNormal(gNormalRoughnessTex.SampleLevel(gPointClamp, sampleUv, 0));
         float3 sampleWorld = ReconstructWorld(sampleUv, depth);
-        float normalWeight = saturate(dot(centerNormal, normal));
-        normalWeight *= normalWeight;
+        float normalWeight = 1.0f;
+        if (!depthOnlyNormals)
+        {
+            normalWeight = saturate(dot(centerNormal,
+                DecodeNormal(gNormalRoughnessTex.SampleLevel(gPointClamp, sampleUv, 0))));
+            normalWeight *= normalWeight;
+        }
         float depthWeight = DepthAwareWeight(centerWorld, centerNormal, sampleWorld);
         float kernelWeight = (i == 0) ? 0.34f : ((abs(i) == 1) ? 0.22f : 0.10f);
         float weight = kernelWeight * normalWeight * depthWeight;
@@ -137,16 +124,17 @@ float PSMainDepthOnly(VSOut input) : SV_TARGET
 // 深度と法線が近い texel だけを強く採る。半解像度の blur が既に広く均しているので、3x3 の texel を読む必要はない。
 float UpsampleAo(float2 uv, bool depthOnlyNormals)
 {
-    float centerDepth = gSceneDepthTex.SampleLevel(gPointClamp, uv, 0).r;
+    float centerDepth = gSceneDepthTex.SampleLevel(gPointClamp, uv, 0);
     if (centerDepth >= 0.99999f)
     {
         return 1.0f;
     }
 
-    float3 centerNormal = depthOnlyNormals
-        ? ReconstructNormalFromDepth(uv, centerDepth)
-        : DecodeNormal(gNormalRoughnessTex.SampleLevel(gPointClamp, uv, 0));
     float3 centerWorld = ReconstructWorld(uv, centerDepth);
+    float3 centerNormal = depthOnlyNormals
+        ? HikariNormalFromSceneDepth(gSceneDepthTex, gPointClamp, uv, centerWorld, gDepthScreenParams.zw, gInvViewProj,
+              gCameraPos.xyz)
+        : DecodeNormal(gNormalRoughnessTex.SampleLevel(gPointClamp, uv, 0));
     float2 sourceTexel = max(gBlurParams.zw, gScreenParams.zw);
     float2 position = uv / sourceTexel - 0.5f;
     float2 base = floor(position);
@@ -162,17 +150,19 @@ float UpsampleAo(float2 uv, bool depthOnlyNormals)
         float2 sampleUv = saturate((base + offset + 0.5f) * sourceTexel);
         // AO の texel の値は、その中心の全解像度の texel で求めたもの。深度と法線もそこで読む。
         float2 depthUv = HikariSnapUvToTexelCenter(sampleUv, gDepthScreenParams);
-        float depth = gSceneDepthTex.SampleLevel(gPointClamp, depthUv, 0).r;
+        float depth = gSceneDepthTex.SampleLevel(gPointClamp, depthUv, 0);
         if (depth >= 0.99999f)
         {
             continue;
         }
 
-        float3 normal = depthOnlyNormals
-            ? ReconstructNormalFromDepth(depthUv, depth)
-            : DecodeNormal(gNormalRoughnessTex.SampleLevel(gPointClamp, depthUv, 0));
-        float normalWeight = saturate(dot(centerNormal, normal));
-        normalWeight *= normalWeight;
+        float normalWeight = 1.0f;
+        if (!depthOnlyNormals)
+        {
+            normalWeight = saturate(dot(centerNormal,
+                DecodeNormal(gNormalRoughnessTex.SampleLevel(gPointClamp, depthUv, 0))));
+            normalWeight *= normalWeight;
+        }
         float depthWeight = DepthAwareWeight(centerWorld, centerNormal, ReconstructWorld(depthUv, depth));
         // 双線形の重みが 0 の texel も、深度と法線が一致するなら縁で拾えるよう下限を持たせる。
         float2 bilinear = lerp(1.0f - fraction, fraction, offset);

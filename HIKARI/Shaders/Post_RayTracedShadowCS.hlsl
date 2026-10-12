@@ -29,34 +29,6 @@ SamplerState gLinearClamp : register(s0);
 SamplerState gMaterialWrap : register(s1);
 SamplerState gPointClamp : register(s2);
 
-// 隣の画素の位置との差と、その長さの二乗（深度が無ければ大きな値）。
-float4 NeighborDelta(float2 uv, float2 offset, float3 position)
-{
-    float3 neighbor;
-    const float depth = gSceneDepth.SampleLevel(gPointClamp, uv + offset, 0.0f);
-    if (!HikariIsValidSceneDepth(depth) || !HikariReconstructWorldPosition(uv + offset, depth, gInvViewProj, neighbor))
-        return float4(0.0f, 0.0f, 0.0f, 1.0e30f);
-    const float3 delta = neighbor - position;
-    return float4(delta, dot(delta, delta));
-}
-
-// 深度の差分から求める実際の面（多角形）の法線。輪郭で奥の物を拾わないよう、左右・上下それぞれ近い方の隣を使う。
-float3 NormalFromDepth(float2 uv, float3 position)
-{
-    const float2 texel = gScreenParams.zw;
-    const float4 right = NeighborDelta(uv, float2(texel.x, 0.0f), position);
-    const float4 left = NeighborDelta(uv, float2(-texel.x, 0.0f), position);
-    const float4 down = NeighborDelta(uv, float2(0.0f, texel.y), position);
-    const float4 up = NeighborDelta(uv, float2(0.0f, -texel.y), position);
-    const float3 dx = right.w <= left.w ? right.xyz : -left.xyz;
-    const float3 dy = down.w <= up.w ? down.xyz : -up.xyz;
-    const float3 normal = cross(dy, dx);
-    const float lengthSquared = dot(normal, normal);
-    if (lengthSquared < 1.0e-12f)
-        return normalize(gCameraPosition.xyz - position);
-    return normal * rsqrt(lengthSquared);
-}
-
 // 面の記述が束ねてあればその法線（頂点法線を補間した滑らかな法線）。無ければ 0。
 float3 SmoothSurfaceNormal(float2 uv)
 {
@@ -91,7 +63,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     }
     const float3 smoothNormal = SmoothSurfaceNormal(uv);
     const bool hasSmoothNormal = dot(smoothNormal, smoothNormal) > 0.5f;
-    const float3 normal = hasSmoothNormal ? smoothNormal : NormalFromDepth(uv, position);
+    const float3 normal = hasSmoothNormal ? smoothNormal : HikariNormalFromSceneDepth(gSceneDepth, gPointClamp, uv, position,
+        gScreenParams.zw, gInvViewProj, gCameraPosition.xyz);
     const float3 toSun = gSunCone.xyz;
     const float cosine = dot(normal, toSun);
     // 光に背く面は影。ただし深度の差分の法線は多角形の面ごとに平らなので、それで切ると球の明暗の境が面の形の
@@ -157,7 +130,9 @@ void CSFilter(uint3 id : SV_DispatchThreadID)
         return;
     }
     const float3 smoothNormal = SmoothSurfaceNormal(uv);
-    const float3 normal = dot(smoothNormal, smoothNormal) > 0.5f ? smoothNormal : NormalFromDepth(uv, position);
+    const float3 normal = dot(smoothNormal, smoothNormal) > 0.5f ? smoothNormal
+        : HikariNormalFromSceneDepth(gSceneDepth, gPointClamp, uv, position, gScreenParams.zw, gInvViewProj,
+            gCameraPosition.xyz);
     const float distanceToCamera = length(position - gCameraPosition.xyz);
     if (distanceToCamera >= 65000.0f) return;
     const float2 encodedNormal = HikariEncodeOctahedralDirection(normal);

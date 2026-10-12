@@ -60,6 +60,44 @@ bool HikariReconstructWorldPosition(
     return HikariIsFiniteFloat3(worldPosition);
 }
 
+// 隣の texel の位置との差と、その長さの二乗（画面外・深度が無い時は大きな値）。
+float4 HikariSceneDepthNeighborDelta(Texture2D<float> sceneDepth, SamplerState pointClamp, float2 uv, float2 offset,
+    float4x4 inverseViewProjection, float3 position)
+{
+    const float2 sampleUv = uv + offset;
+    float3 neighbor;
+    if (any(sampleUv < 0.0f) || any(sampleUv > 1.0f) ||
+        !HikariReconstructWorldPosition(sampleUv, sceneDepth.SampleLevel(pointClamp, sampleUv, 0.0f),
+            inverseViewProjection, neighbor))
+        return float4(0.0f, 0.0f, 0.0f, 1.0e30f);
+    const float3 delta = neighbor - position;
+    return float4(delta, dot(delta, delta));
+}
+
+// 深度の差分から求める実際の面（多角形）の法線。左右・上下それぞれ近い方の隣を使い、輪郭で奥や手前の物を拾わない
+// （片側の差分だけだと球の下端で床の texel を拾って法線が傾き、遮蔽が斑になった）。見ている側へ向ける。
+float3 HikariNormalFromSceneDepth(Texture2D<float> sceneDepth, SamplerState pointClamp, float2 uv, float3 position,
+    float2 texel, float4x4 inverseViewProjection, float3 cameraPosition)
+{
+    const float4 right = HikariSceneDepthNeighborDelta(sceneDepth, pointClamp, uv, float2(texel.x, 0.0f),
+        inverseViewProjection, position);
+    const float4 left = HikariSceneDepthNeighborDelta(sceneDepth, pointClamp, uv, float2(-texel.x, 0.0f),
+        inverseViewProjection, position);
+    const float4 down = HikariSceneDepthNeighborDelta(sceneDepth, pointClamp, uv, float2(0.0f, texel.y),
+        inverseViewProjection, position);
+    const float4 up = HikariSceneDepthNeighborDelta(sceneDepth, pointClamp, uv, float2(0.0f, -texel.y),
+        inverseViewProjection, position);
+    const float3 dx = right.w <= left.w ? right.xyz : -left.xyz;
+    const float3 dy = down.w <= up.w ? down.xyz : -up.xyz;
+    const float3 normal = cross(dy, dx);
+    const float lengthSquared = dot(normal, normal);
+    const float3 toCamera = normalize(cameraPosition - position);
+    if (lengthSquared < 1.0e-12f)
+        return toCamera;
+    const float3 unit = normal * rsqrt(lengthSquared);
+    return dot(unit, toCamera) < 0.0f ? -unit : unit;
+}
+
 bool HikariReconstructViewDepth(
     float2 uv,
     float depth,

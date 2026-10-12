@@ -107,7 +107,8 @@ SsaoResolvedMode ResolveModeParameters(const AmbientOcclusionSettings& settings)
         resolved.pixEventName = "SSAO.OptimizedHigh";
         break;
     case SsaoMode::Balanced:
-        resolved.sliceCount = 2u;
+        // 深度から法線を作る半解像度。2 スライスだと球の下側などで角度の偏りが斑に残った。
+        resolved.sliceCount = 3u;
         resolved.stepCount = std::clamp<uint32_t>(referenceSamples / 4u, 2u, 4u);
         resolved.blurIterations = NormalizeHalfResolutionBlurPasses(referenceBlur);
         resolved.radiusScale = 0.95f;
