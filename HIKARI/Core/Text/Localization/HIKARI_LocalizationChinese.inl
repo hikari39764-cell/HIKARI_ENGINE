@@ -2838,6 +2838,7 @@
     {"ui.renderStatus.missingSurfaces", "未生效：光追场景缺少下列表面"},
     {"ui.renderStatus.needsReflections", "未生效：需要先在画面配置中开启反射"},
     {"ui.renderStatus.withoutPrefix", "未包含："}, {"ui.renderStatus.deformedFormat", "含 %u 个动态角色（每帧更新）"},
+    {"ui.renderStatus.approximatedPrefix", "按静止姿态纳入："},
     {"ui.renderStatus.listSeparator", "、"}, {"ui.renderStatus.exclusion.Water", "水面"},
     {"ui.renderStatus.exclusion.Skinned", "角色（蒙皮）"}, {"ui.renderStatus.exclusion.FoliageWind", "风动植被"},
     {"ui.renderStatus.exclusion.Terrain", "地形"}, {"ui.renderStatus.exclusion.CustomVertex", "自定义顶点"},

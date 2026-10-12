@@ -49,7 +49,8 @@ std::optional<FeatureState> RaySceneProblem(const RuntimeRayTracingStats& stats)
 }
 
 // mask に含まれる種類を「透明 2、角色 1」の形で並べる。
-std::string ListExclusions(const RuntimeRayTracingStats& stats, uint32_t mask) {
+std::string ListExclusions(const std::array<uint32_t, RENDER3D::RAYTRACING::kRuntimeRayTracingExclusionCount>& counts,
+                           uint32_t mask) {
     std::string text;
     for (const auto& [exclusion, name] : RENDER3D::RAYTRACING::kRuntimeRayTracingExclusionNames) {
         if ((mask & RENDER3D::RAYTRACING::RuntimeRayTracingExclusionBit(exclusion)) == 0u) {
@@ -60,7 +61,7 @@ std::string ListExclusions(const RuntimeRayTracingStats& stats, uint32_t mask) {
         }
         text += TEXT::Localize("ui.renderStatus.exclusion." + std::string(name));
         text += ' ';
-        text += std::to_string(stats.excluded.surfaces[static_cast<size_t>(exclusion)]);
+        text += std::to_string(counts[static_cast<size_t>(exclusion)]);
     }
     return text;
 }
@@ -72,7 +73,7 @@ FeatureState RayFeature(const RuntimeRayTracingStats& stats, bool usable, uint32
     }
     if (!usable) {
         return {TEXT::Localize("ui.renderStatus.missingSurfaces"), EditorStatusTone::Warning,
-                ListExclusions(stats, blocking)};
+                ListExclusions(stats.excluded.surfaces, blocking)};
     }
     FeatureState state = Localized("ui.renderStatus.active", EditorStatusTone::Ready);
     if (stats.deformedObjects != 0u) {
@@ -83,7 +84,11 @@ FeatureState RayFeature(const RuntimeRayTracingStats& stats, bool usable, uint32
     }
     if (stats.excluded.mask != 0u) {
         state.detail += (state.detail.empty() ? "" : "  ") + TEXT::Localize("ui.renderStatus.withoutPrefix") +
-                        ListExclusions(stats, stats.excluded.mask);
+                        ListExclusions(stats.excluded.surfaces, stats.excluded.mask);
+    }
+    if (stats.excluded.approximatedMask != 0u) {
+        state.detail += (state.detail.empty() ? "" : "  ") + TEXT::Localize("ui.renderStatus.approximatedPrefix") +
+                        ListExclusions(stats.excluded.approximated, stats.excluded.approximatedMask);
     }
     return state;
 }
@@ -109,9 +114,8 @@ void DrawRenderFeatureStatus(const SceneEnvironment& environment) {
                     quality.lightProbeVolumeSampling != RENDER3D::LightProbeVolumeSamplingMode::Off;
     FeatureState giState = Localized("ui.renderStatus.offInQuality", EditorStatusTone::Normal);
     if (gi) {
-        // GI を妨げるのは地形と未解決の面。
-        constexpr uint32_t blocking = RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Terrain) |
-                                      RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Missing);
+        // GI を妨げるのは未解決の面だけ（地形は高さ場で変形して入る）。
+        constexpr uint32_t blocking = RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Missing);
         giState = RayFeature(rayScene, CanTraceDiffuse(rayScene.excluded.mask), rayScene.excluded.mask & blocking);
         if (giState.tone == EditorStatusTone::Ready &&
             RENDER3D::PIPELINE::GetDynamicDiffuseGiStats().status != RENDER3D::DYNAMICGI::Status::Ready) {

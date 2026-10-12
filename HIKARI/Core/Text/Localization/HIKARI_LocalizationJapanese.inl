@@ -3238,6 +3238,7 @@
     {"ui.renderStatus.missingSurfaces", "無効：光線追跡の場面に次の面がありません"},
     {"ui.renderStatus.needsReflections", "無効：先に画面設定で反射を有効にしてください"},
     {"ui.renderStatus.withoutPrefix", "含まない："},
+    {"ui.renderStatus.approximatedPrefix", "静止した形で含む："},
     {"ui.renderStatus.deformedFormat", "動くキャラクター %u 体を含む（毎フレーム更新）"},
     {"ui.renderStatus.listSeparator", "、"}, {"ui.renderStatus.exclusion.Water", "水面"},
     {"ui.renderStatus.exclusion.Skinned", "キャラクター（スキン）"},

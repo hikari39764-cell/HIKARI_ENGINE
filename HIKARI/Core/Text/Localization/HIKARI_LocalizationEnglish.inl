@@ -3211,6 +3211,7 @@
     {"ui.renderStatus.missingSurfaces", "Inactive: the ray tracing scene lacks these surfaces"},
     {"ui.renderStatus.needsReflections", "Inactive: turn on reflections in the look profile first"},
     {"ui.renderStatus.withoutPrefix", "Not included: "},
+    {"ui.renderStatus.approximatedPrefix", "Included at rest pose: "},
     {"ui.renderStatus.deformedFormat", "Includes %u animated characters (updated every frame)"},
     {"ui.renderStatus.listSeparator", ", "}, {"ui.renderStatus.exclusion.Water", "Water"},
     {"ui.renderStatus.exclusion.Skinned", "Characters (skinned)"},

@@ -58,10 +58,13 @@ constexpr uint32_t RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion excl
 }
 
 // 種類ごとの入れなかった面の数と、その種類のビット（影を落とす面だけのビットも）。
+// 静止した形で入れた面（風に揺れる植生など）は approximated に数える（入ってはいるが動きは追わない）。
 struct RuntimeRayTracingExclusions {
     std::array<uint32_t, kRuntimeRayTracingExclusionCount> surfaces{};
+    std::array<uint32_t, kRuntimeRayTracingExclusionCount> approximated{};
     uint32_t mask = 0;
     uint32_t shadowCasterMask = 0;
+    uint32_t approximatedMask = 0;
 
     void Add(RuntimeRayTracingExclusion exclusion, bool castsShadow) noexcept {
         ++surfaces[static_cast<size_t>(exclusion)];
@@ -70,12 +73,15 @@ struct RuntimeRayTracingExclusions {
             shadowCasterMask |= RuntimeRayTracingExclusionBit(exclusion);
         }
     }
+    void Approximate(RuntimeRayTracingExclusion exclusion) noexcept {
+        ++approximated[static_cast<size_t>(exclusion)];
+        approximatedMask |= RuntimeRayTracingExclusionBit(exclusion);
+    }
 };
 
-// GI は地形や未解決の面が抜けると光線が地面を抜けて空を拾い、場面へ光が漏れるので使わない。
+// GI は未解決の面（読み込み中の形状など）が抜けると光線が面を抜けて空を拾い、場面へ光が漏れるので、揃うまで待つ。
 constexpr bool CanTraceDiffuse(uint32_t excluded) noexcept {
-    return (excluded & (RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Terrain) |
-                        RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Missing))) == 0u;
+    return (excluded & RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Missing)) == 0u;
 }
 // 光追の影は不透明面のカスケード影と接触影を置き換えるので、影を落とす面が抜けると影が消える。
 // 水面は抜けても影の形が崩れないので許す。
@@ -83,6 +89,14 @@ constexpr bool CanTraceShadows(uint32_t excludedShadowCasters) noexcept {
     constexpr uint32_t tolerated = RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Water);
     return (excludedShadowCasters & ~tolerated) == 0u;
 }
+
+// 地形の高さ場（HIKARI_TerrainSurfaceParams.hlsli の記録と float pool）。地形の面を世界空間へ変形して入れるのに使う。
+// 無ければ地形は入れない。floatVersion が変わった時だけ地形を変形し直す。
+struct RuntimeRayTracingSurfaceBindings {
+    D3D12_GPU_VIRTUAL_ADDRESS terrainRecords = 0;
+    D3D12_GPU_VIRTUAL_ADDRESS surfaceFloats = 0;
+    uint64_t floatVersion = 0;
+};
 
 struct RuntimeRayTracingBudget {
     uint64_t maximumBytes = 128ull * 1024 * 1024;
@@ -180,7 +194,8 @@ public:
                                    std::span<const uint32_t> materialSlots,
                                    std::span<const MATERIAL::GpuMaterialData> materials,
                                    const RuntimeRayTracingBudget& budget,
-                                   RuntimeRayTracingMaterialVersion materialVersion = {});
+                                   RuntimeRayTracingMaterialVersion materialVersion = {},
+                                   const RuntimeRayTracingSurfaceBindings& surfaces = {});
     void Reset(const GFX::Context& graphics);
     const RuntimeRayTracingStats& GetStats() const;
 

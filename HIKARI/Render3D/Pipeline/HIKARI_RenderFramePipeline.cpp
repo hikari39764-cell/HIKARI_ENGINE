@@ -370,8 +370,10 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         if ((giQuality != DynamicGiQuality::Off || rayReflections || rayShadows) && materials) {
             GFX::GPU_PROFILE::ScopedGpuTimer rayTimer(frame.graphics.cmdList,
                                                       GFX::GPU_PROFILE::Pass::RuntimeRayScenePreparation);
+            const MESHRENDERER::TerrainSurfaceGpuBindings terrain = MESHRENDERER::GetTerrainSurfaceGpuBindings();
             rayScene = gRuntimeRayScene.Prepare(frame.graphics, source, materials.materialSlots, materials.materialData,
-                                                {}, {materials.dataVersion, materials.bindingVersion});
+                                                {}, {materials.dataVersion, materials.bindingVersion},
+                                                {terrain.records, terrain.floats, terrain.floatVersion});
         } else {
             gRuntimeRayScene.Reset(frame.graphics);
             gRuntimeRayLighting.Reset(frame.graphics);
@@ -391,9 +393,9 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
             for (const auto& entry : RAYTRACING::kRuntimeRayTracingExclusionNames)
                 if (const uint32_t count = counts[static_cast<size_t>(entry.value)]; count != 0u)
                     excluded += std::string(" ") + entry.name + "=" + std::to_string(count);
-            HIKARI_LOG_INFO(std::string("[DynamicGi] status=") + DYNAMICGI::ToString(giStats.status) +
-                            " probes=" + std::to_string(giStats.probes) + " localLights=" +
-                            std::to_string(giStats.localLights) + " published=" + std::to_string(dynamicGi.count) +
+            HIKARI_LOG_INFO(std::string("[DynamicGi] status=") + DYNAMICGI::ToString(giStats.status) + " probes=" +
+                            std::to_string(giStats.probes) + " localLights=" + std::to_string(giStats.localLights) +
+                            " published=" + std::to_string(dynamicGi.count) +
                             " excluded:" + (excluded.empty() ? std::string(" none") : excluded));
         }
         if (dynamicGi.count != 0)

@@ -2,8 +2,9 @@
 #include "Include/Cluster/HIKARI_ClusterGpuData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/Meshlet/HIKARI_GpuDrivenSkinning.hlsli"
+#include "Include/Surface/HIKARI_TerrainSurfaceDeform.hlsli"
 
-// 光線追跡の加速構造のために、変形する面（骨格の蒙皮）の頂点を描画と同じ変形関数で world 空間へ変形して書く。
+// 光線追跡の加速構造のために、変形する面（骨格の蒙皮・地形の高さ場）の頂点を描画と同じ変形関数で world 空間へ変形して書く。
 // 出力は一つの pool の中の [位置 float3 × N][法線 float3 × N][接線 float4 × N]。位置は BLAS の頂点、
 // 三つとも命中の解決（HikariDecodeRayCandidate）が読む。添字は HCMESH の頂点番号のまま。
 
@@ -14,10 +15,11 @@ cbuffer RayTracingDeformJob : register(b0)
     float4 gWorldRow2;
     uint gGeometryDescriptor;   // cluster geometry 記述子 arena 内の番号
     uint gVertexCount;
-    uint gPaletteOffsetBytes;
+    uint gPaletteOffsetBytes;   // 蒙皮は骨格の行列の byte 位置、地形は地形の記録の番号
     uint gPaletteMatrixCount;
     uint gOutputBase;           // pool 内の byte 位置
-    uint3 gJobPadding;
+    uint gJobKind;              // 0 蒙皮、1 地形
+    uint2 gJobPadding;
 };
 
 ByteAddressBuffer gDeformGeometry[HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_COUNT] : register(t0, space1);
@@ -49,10 +51,20 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float3 normal = vertex.normal.xyz;
     float3 tangent = vertex.tangent.xyz;
     HikariSurfaceGpuSceneInstance instance = (HikariSurfaceGpuSceneInstance)0;
-    instance.flags = HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED;
-    instance.jointPaletteOffsetBytes = gPaletteOffsetBytes;
-    instance.jointPaletteMatrixCount = gPaletteMatrixCount;
-    HikariApplyGpuDrivenSkinning(geometry, instance, vertexIndex, position, normal, tangent);
+    if (gJobKind == 1u)
+    {
+        instance.flags = HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE;
+        instance.surfaceFeatureDataIndex = gPaletteOffsetBytes;
+        float3 terrainSurfaceData;
+        HikariApplyTerrainSurfaceDeform(instance, position, normal, terrainSurfaceData);
+    }
+    else
+    {
+        instance.flags = HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED;
+        instance.jointPaletteOffsetBytes = gPaletteOffsetBytes;
+        instance.jointPaletteMatrixCount = gPaletteMatrixCount;
+        HikariApplyGpuDrivenSkinning(geometry, instance, vertexIndex, position, normal, tangent);
+    }
 
     // 法線は world の逆転置が正しいが、蒙皮の対象は一様な拡大の範囲として線形部分で回してから正規化する。
     const float3 worldPosition = TransformPoint(position);

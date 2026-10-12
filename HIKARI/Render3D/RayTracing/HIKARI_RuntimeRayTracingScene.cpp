@@ -63,8 +63,9 @@ struct Group {
     MATH::Mat4 world{};
     std::vector<std::pair<uint32_t, uint32_t>> surfaces; // material slot, flags
 };
-// 変形する面（骨格の蒙皮）。物体と形状ごとに BLAS を持ち、頂点は毎フレーム compute で world 空間へ変形して refit する。
-using DeformedKey = std::tuple<uint64_t, uint64_t, uint64_t>;
+// 変形する面。物体と形状ごとに BLAS を持ち、頂点は compute で world 空間へ変形して refit する。
+// 骨格の蒙皮は毎フレーム、地形（高さ場。鍵の 4 番目は地形の記録の番号）は高さ場か配置が変わった時だけ。
+using DeformedKey = std::tuple<uint64_t, uint64_t, uint64_t, uint32_t>;
 struct Deformed {
     Asset* asset = nullptr;
     std::vector<size_t> records; // 変形の行列と骨格を毎フレーム読み直す表面の番号
@@ -74,6 +75,11 @@ struct Deformed {
     const ID3D12Resource* builtIndices = nullptr; // BLAS を組んだ時の添字と pool（変われば組み直す）
     D3D12_GPU_VIRTUAL_ADDRESS builtPool = 0;
     uint64_t touched = 0;
+    bool terrain = false;
+    bool refresh = true; // このフレーム変形し直す（蒙皮は常に、地形は変化時）
+    uint32_t builtOutputBase = 0xffffffffu;
+    uint64_t builtFloatVersion = 0;
+    std::array<float, 16> builtWorld{};
     uint64_t Bytes() const {
         uint64_t bytes = 0;
         for (const auto& bottom : bottomLevels)
@@ -143,6 +149,7 @@ struct RuntimeRayTracingScene::State {
     // 最後に組んだ時の入れなかった面（大量配置は毎フレーム足す）。加速構造を使い回すフレームも同じ値を出す。
     RuntimeRayTracingExclusions lastExcluded{};
     std::map<DeformedKey, Deformed> deformed;
+    bool deformedRefreshed = false; // 直前の DeformAndRefit が頂点を書き直した（TLAS の refit が要る）
     RuntimeRayTracingDeformation deformation;
     RuntimeRayTracingChanges changes;
     // 変形の compute が使えない（shader の失敗など）時は蒙皮を外す面に戻す。
@@ -154,24 +161,40 @@ struct RuntimeRayTracingScene::State {
             bottom->Reset(&graphics);
         entry.bottomLevels.clear();
     }
-    // 表面から変形の行列と骨格を読み直し、頂点を変形して BLAS を作るか refit する。
+    // 表面から変形の行列と骨格（地形は高さ場の番号）を読み直し、頂点を変形して BLAS を作るか refit する。
     bool DeformAndRefit(const GFX::Context& graphics, const GPUDRIVEN::GpuDrivenSceneSource& source,
-                        const RuntimeRayTracingBudget& budget) {
+                        const RuntimeRayTracingBudget& budget, const RuntimeRayTracingSurfaceBindings& surfaces) {
         const auto& records = *source.surfaceRecords;
+        const D3D12_GPU_VIRTUAL_ADDRESS pool = deformation.PoolAddress();
         std::vector<RuntimeRayTracingDeformJob> jobs;
         jobs.reserve(deformed.size());
+        bool skinned = false;
         for (auto& [key, entry] : deformed) {
             const auto& record = records[entry.records.front()];
             entry.job.world = record.clusterWorldMatrix;
-            entry.job.paletteOffsetBytes = record.jointPaletteOffsetBytes;
-            entry.job.paletteMatrixCount = record.jointPaletteMatrixCount;
+            entry.job.kind = entry.terrain ? kRuntimeRayTracingDeformTerrain : kRuntimeRayTracingDeformSkinned;
+            entry.job.paletteOffsetBytes =
+                entry.terrain ? record.terrainSurfaceGpuDataIndex : record.jointPaletteOffsetBytes;
+            entry.job.paletteMatrixCount = entry.terrain ? 0u : record.jointPaletteMatrixCount;
+            std::array<float, 16> world{};
+            std::memcpy(world.data(), &record.clusterWorldMatrix, sizeof(world));
+            entry.refresh = !entry.terrain || entry.bottomLevels.empty() ||
+                            entry.builtIndices != entry.asset->geometry.indices.Get() || entry.builtPool != pool ||
+                            entry.builtOutputBase != entry.job.outputBase ||
+                            entry.builtFloatVersion != surfaces.floatVersion || entry.builtWorld != world;
+            if (!entry.refresh)
+                continue;
+            entry.builtOutputBase = entry.job.outputBase;
+            entry.builtFloatVersion = surfaces.floatVersion;
+            entry.builtWorld = world;
+            skinned = skinned || !entry.terrain;
             jobs.push_back(entry.job);
         }
+        deformedRefreshed = !jobs.empty();
         const D3D12_GPU_VIRTUAL_ADDRESS palettes =
-            GPUDRIVEN::UploadGpuSceneJointPaletteSnapshot(graphics, source.meshShaderJointPalettes);
-        if (!deformation.Dispatch(graphics, jobs, palettes))
+            skinned ? GPUDRIVEN::UploadGpuSceneJointPaletteSnapshot(graphics, source.meshShaderJointPalettes) : 0;
+        if (!deformation.Dispatch(graphics, jobs, palettes, surfaces.terrainRecords, surfaces.surfaceFloats))
             return false;
-        const D3D12_GPU_VIRTUAL_ADDRESS pool = deformation.PoolAddress();
         for (auto& [key, entry] : deformed) {
             Asset& asset = *entry.asset;
             if (entry.builtIndices != asset.geometry.indices.Get() || entry.builtPool != pool) {
@@ -179,6 +202,8 @@ struct RuntimeRayTracingScene::State {
                 entry.builtIndices = asset.geometry.indices.Get();
                 entry.builtPool = pool;
             }
+            if (!entry.refresh && entry.bottomLevels.size() == asset.chunks.size())
+                continue;
             for (size_t c = 0; c < asset.chunks.size(); ++c) {
                 const auto& chunk = asset.chunks[c];
                 std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> descriptions(chunk.ranges.size());
@@ -373,7 +398,8 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
                                                        std::span<const uint32_t> materialSlots,
                                                        std::span<const MATERIAL::GpuMaterialData> materials,
                                                        const RuntimeRayTracingBudget& budget,
-                                                       RuntimeRayTracingMaterialVersion materialVersion) {
+                                                       RuntimeRayTracingMaterialVersion materialVersion,
+                                                       const RuntimeRayTracingSurfaceBindings& surfaces) {
     auto& state = *state_;
     state.stats = {};
     if (!graphics.device || !graphics.cmdList || !graphics.frameFence || !graphics.deferredReleaseQueue ||
@@ -408,8 +434,8 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
         state.stats.sourceSurfaces = state.sourceSurfaceCount;
         state.ExcludeMassInstances(source);
         // 蒙皮は配置が同じでも毎フレーム動く。頂点を変形して BLAS と TLAS をその場で refit する。
-        if (!state.deformed.empty() &&
-            (!state.DeformAndRefit(graphics, source, budget) || !state.topLevel->RefitInPlace(graphics))) {
+        if (!state.deformed.empty() && (!state.DeformAndRefit(graphics, source, budget, surfaces) ||
+                                        (state.deformedRefreshed && !state.topLevel->RefitInPlace(graphics)))) {
             state.deformationBroken = true;
             return state.Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
         }
@@ -426,13 +452,20 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
         if (!record.visible)
             continue;
         ++state.stats.sourceSurfaces;
-        // 骨格の蒙皮は描画と同じ骨格の行列で頂点を変形して入れる（変形の pass が使えない時は外す）。
+        // 骨格の蒙皮は描画と同じ骨格の行列で、地形は高さ場で頂点を変形して入れる（変形の pass が使えない時は外す）。
+        // 風に揺れる植生・自定义頂点・材質特効は静止した形で入れる（拡散 GI と反射には足りる。影は揺れを追わない）。
         const auto exclusion = ClassifyExclusion(record);
-        const bool deform = exclusion == Skinned && record.jointPaletteMatrixCount != 0 && !state.deformationBroken;
-        if (exclusion && !deform) {
+        const bool deformSkin = exclusion == Skinned && record.jointPaletteMatrixCount != 0 && !state.deformationBroken;
+        const bool deformTerrain = exclusion == Terrain && record.terrainSurfaceGpuDataIndex != 0 &&
+                                   surfaces.terrainRecords != 0 && surfaces.surfaceFloats != 0 &&
+                                   !state.deformationBroken;
+        const bool approximate = exclusion == FoliageWind || exclusion == CustomVertex || exclusion == MaterialEffect;
+        if (exclusion && !deformSkin && !deformTerrain && !approximate) {
             excluded.Add(*exclusion, record.castShadow);
             continue;
         }
+        if (approximate)
+            excluded.Approximate(*exclusion);
         if (!record.valid || !ValidTransform(record.clusterWorldMatrix) || i >= materialSlots.size() ||
             materialSlots[i] >= materials.size()) {
             excluded.Add(Missing, record.castShadow);
@@ -445,7 +478,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
             continue;
         }
         included[i] = true;
-        deforms[i] = deform;
+        deforms[i] = deformSkin || deformTerrain;
     }
     state.stats.sharedAssets = static_cast<uint32_t>(state.assets.size());
     ++state.serial;
@@ -468,10 +501,12 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
             materialSlots[i], (record.key.doubleSided ? 1u : 0u) | (record.castShadow ? 2u : 0u) |
                                   (record.key.transparent ? kRuntimeRayTracingHitTransmissive : 0u)};
         if (deforms[i]) {
-            Deformed& entry = state.deformed[{record.objectId.value, record.objectLifetimeGeneration, assetKey}];
+            Deformed& entry = state.deformed[{record.objectId.value, record.objectLifetimeGeneration, assetKey,
+                                              record.terrainSurface ? record.terrainSurfaceGpuDataIndex : 0u}];
             if (entry.touched != state.serial) {
                 entry.touched = state.serial;
                 entry.asset = asset;
+                entry.terrain = record.terrainSurface;
                 entry.records.clear();
                 entry.surfaces.assign(asset->source->surfaceRanges.size(), {0xffffffffu, 0u});
             }
@@ -567,9 +602,9 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
         entry.job.outputBase = static_cast<uint32_t>(deformedBytes);
         deformedBytes += (uint64_t(entry.job.vertexCount) * kRuntimeRayTracingDeformedVertexBytes + 255u) & ~255ull;
     }
-    if (!state.deformed.empty() &&
-        (deformedBytes > UINT32_MAX || deformedBytes > state.Available(budget) ||
-         !state.deformation.EnsurePool(graphics, deformedBytes) || !state.DeformAndRefit(graphics, source, budget))) {
+    if (!state.deformed.empty() && (deformedBytes > UINT32_MAX || deformedBytes > state.Available(budget) ||
+                                    !state.deformation.EnsurePool(graphics, deformedBytes) ||
+                                    !state.DeformAndRefit(graphics, source, budget, surfaces))) {
         state.deformationBroken = true;
         return state.Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
     }

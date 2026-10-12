@@ -216,6 +216,15 @@ RENDER3D::LIGHTING::LocalLightListGpuBindings GetLocalLightListGpuBindings() {
     return frame.view.Bindings().localLights;
 }
 
+TerrainSurfaceGpuBindings GetTerrainSurfaceGpuBindings() {
+    const auto& buffer = gMeshRendererState.terrainSurfaceGpuFrameBuffer;
+    const auto* terrain = gMeshRendererState.gpuDrivenSceneSource.terrainSurfaceGpuData;
+    if (terrain == nullptr || terrain->size() <= 1u)
+        return {};
+    return {buffer.GetRecordGpuVirtualAddress(), buffer.GetFloatPoolGpuVirtualAddress(),
+            gMeshRendererState.gpuDrivenSceneSource.surfaceFeatureFloats.version};
+}
+
 void EndFrame() {
     gMeshRendererState.materialFrameReady = false;
     gMeshRendererState.frameObjectIndex = 0;
