@@ -27,13 +27,14 @@ HikariDynamicGiQuery HikariSurfaceGiQuery(float3 position, float3 surfaceNormal,
 }
 
 // value と skyVisibility は coverage 適用前の値。coverage は問い合わせ点を囲む 8 probe のうち活性で初期化済みの
-// ものの補間重みの和（0..1）。足りない分は呼び出し側が下位の層か空の光で埋める。confidence は時間的な収束（成熟度）。
+// ものの補間重みの和（0..1）。足りない分は呼び出し側が下位の層か空の光で埋める。support は活性な probe の補間重みの
+// うち、可視性（深度と円盤）でその点を見ている割合。
 struct HikariDynamicGiSample
 {
     float3 value;
     float skyVisibility;
     float coverage;
-    float confidence;
+    float support;
 };
 
 // 補間と可視性を評価する点。面から見ている側と法線へ半分ずつ離す（RTXGI の view bias + normal bias）。法線だけだと
@@ -69,9 +70,9 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
     const float2 atlasSize = HikariDynamicGiAtlasSize(counts);
     float weights[8];
     float2 tiles[8];
-    float maturities[8];
     float totalWeight = 0.0f;
     float missing = 0.0f; // 非活性（初期化前）の probe の補間重み。全部活性なら 0 で coverage は正確に 1。
+    float activeWeight = 0.0f, supported = 0.0f;
     [unroll] for (uint corner = 0u; corner < 8u; ++corner)
     {
         const uint3 offset = uint3(corner & 1u, (corner >> 1u) & 1u, (corner >> 2u) & 1u);
@@ -80,8 +81,9 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
         const float3 axes = lerp(1.0f.xxx - fraction, fraction, (float3)offset);
         const float trilinear = axes.x * axes.y * axes.z;
         const float4 state = HikariDynamicGiProbeState(descriptorIndex, tiles[corner]);
-        maturities[corner] = saturate(state.a);
-        const float active = maturities[corner] > 0.0f ? 1.0f : 0.0f;
+        const float active = state.a > 0.0f ? 1.0f : 0.0f;
+        // 非活性の probe（形状の中）も欠けとして下位の層へ渡す。重みを 0 にして残りで正規化すると、壁と箱に挟まれた
+        // 所で残った 1 つの壁の外の probe（可視性で潰しても）が全重みを持ち、外の光の多角形の破片が出た。
         missing += trilinear * (1.0f - active);
         // probe は格子点から動いている（形状の中や面のすぐ近くから離してある）。
         const float3 probePosition = volume.originSampling.xyz + coordinate * volume.spacingIntensity.xyz + state.rgb;
@@ -96,11 +98,14 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
         const float patch = HikariDynamicGiProbePatchWeight(volume, descriptorIndex, tiles[corner],
             query.position - probePosition);
         weights[corner] = trilinear * active * patch * HikariDynamicGiWeight(visibility, surfaceWeight);
+        activeWeight += trilinear * active;
+        supported += trilinear * active * patch * visibility;
         totalWeight += weights[corner];
     }
     // 可視性は統計なので下限（HikariDynamicGiWeight）を持ち、支持を切らない。重みが完全に消えるのは幾何の証明
     // （面の裏、円盤の向こう、非活性）だけで、その点はこの層の支持なしとして下位の層か空へ渡す。
     result.coverage = totalWeight > 0.0f ? saturate(1.0f - missing) : 0.0f;
+    result.support = activeWeight > 0.0f ? saturate(supported / activeWeight) : 0.0f;
     if (totalWeight <= 0.0f) return result;
 
     const float3 directions[4] = {float3(1,1,1), float3(1,-1,-1), float3(-1,1,-1), float3(-1,-1,1)};
@@ -117,7 +122,6 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
                 irradiance[direction] += HikariDynamicGiBlendSpace(value.rgb) * weight;
                 if (direction == 0u) result.skyVisibility += value.a * weight;
             }
-            result.confidence += maturities[corner] * weight;
         }
     }
     // 正四面体の四方向は 2 次までの球面調和を正しく平均するので、E/pi の四方向の平均は入射 radiance の全方向の平均。
@@ -128,12 +132,14 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
     }
     result.value *= max(volume.spacingIntensity.w, 0.0f);
     result.skyVisibility = saturate(result.skyVisibility / totalWeight);
-    result.confidence = saturate(result.confidence / totalWeight);
     return result;
 }
 
 // 全呼び出し側で同じ優先順と領域境界を使う。返す value と skyVisibility は coverage 適用済み。
 // 上位の層（手置きの区域、近景）の覆わない分を下位の層が埋め、最後に残った 1 - coverage を呼び出し側が空の光で埋める。
+// 層の受け渡しは覆う範囲だけで決め、上位の層が収束途中かどうかでは下位へ渡さない（RTXGI の cascade と同じ）。
+// 収束途中の近景を間隔 6m の遠景で補うと、閉じた部屋の中を壁の外の probe だけで補間した外の光が probe の命中に入り、
+// 反射と履歴の重みで何百回もの更新にわたって残った。
 HikariDynamicGiSample HikariQueryDynamicGi(HikariIrradianceVolumeData volumes[HIKARI_DYNAMIC_GI_VOLUME_COUNT],
     HikariDynamicGiQuery query)
 {
@@ -146,21 +152,20 @@ HikariDynamicGiSample HikariQueryDynamicGi(HikariIrradianceVolumeData volumes[HI
         samples[index] = (HikariDynamicGiSample)0;
         [branch] if (influences[index] > 0.0f)
             samples[index] = HikariEvaluateDynamicGiVolume(volumes[index], query);
-        // 収束済みの全面 coverage は下位層を必要としない。
-        if (influences[index] * samples[index].coverage >= 1.0f && samples[index].confidence >= 1.0f)
+        // 全面を覆う層があれば下位層は要らない。
+        if (influences[index] * samples[index].coverage >= 1.0f)
         {
             last = index;
             break;
         }
     }
     HikariDynamicGiSample result = (HikariDynamicGiSample)0;
-    // 未収束の上位層は有効な下位層から受け渡す。下位も無い時は初期標本を使い、空へ漏らさない。
     [loop] for (int index = (int)last; index >= 0; --index)
     {
-        const float coverage = influences[index] * samples[index].coverage;
-        const float weight = coverage * lerp(1.0f, samples[index].confidence, result.coverage);
+        const float weight = influences[index] * samples[index].coverage;
         result.value = result.value * (1.0f - weight) + samples[index].value * weight;
         result.skyVisibility = result.skyVisibility * (1.0f - weight) + samples[index].skyVisibility * weight;
+        result.support = lerp(result.support, samples[index].support, weight);
         result.coverage = result.coverage * (1.0f - weight) + weight;
     }
     return result;

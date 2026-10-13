@@ -326,11 +326,11 @@ struct DynamicDiffuseGi::State {
         namespace SHADER = ASSETS::SHADER;
         SHADER::ShaderAssetContractExpectation contract{};
         contract.engineInterfaceId = "HIKARI.DynamicDiffuseGi";
-        contract.engineInterfaceVersion = 9;
+        contract.engineInterfaceVersion = 10;
         contract.rootLayoutId = "HIKARI.DynamicDiffuseGi.Root";
         contract.rootLayoutVersion = 3;
         if (!HASH::ComputeSha256(
-                "DynamicDiffuseGiCB:576;previous volumes[3],field index;origin,axis spacing,focus origin/direction,priority origin/budget,size/start,blend hysteresis/light change/variability,relocate min front/backface/limit/reach;atlas RGBA16F tile30x18 irradiance^(1/5)+sky oct8 cosine accumulated,moments+active oct16 backface x0.2,fixed-ray triangle disk oct8 at(0,10),state(28,0) offset+maturity,(28,1) updates/variation/backface/fixed level;focus hit heights+horizontal distances u1 x12;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
+                "DynamicDiffuseGiCB:576;previous volumes[3],field index;origin,axis spacing,focus origin/direction,priority origin/budget,size/start,blend hysteresis/light change/variability,relocate min front/backface/limit/reach;atlas RGBA16F tile30x18 irradiance^(1/5)+sky oct8 cosine accumulated,moments+active oct16 backface x0.2,fixed-ray triangle disk oct8 at(0,10),state(28,0) offset+active,(28,1) updates/variation/backface/fixed level;focus hit heights+horizontal distances u1 x12;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
                 contract.engineInterfaceHash) ||
             !HASH::ComputeSha256(
                 "CBV(b0);AS(t0,s8);Hits(t1,s8);Materials(t16);Programs(t0,t1,s6);Lights(t1,t2,s7);Geometry(t0,s1,1024);Textures(t20);Deformed(t2,s8);ProbeAtlas(u0);Sky(t0,s7);Focus(u1);Sampler(s0,clamp);Sampler(s1,wrap)",
@@ -641,7 +641,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         // texel の相対変化の移動平均が 2% 未満なら収束とみなし、4 回に 1 回だけ更新する。
         constants.blend = {0.97f, 0.15f, 0.5f, 0.02f};
         // 面から間隔の 2 割以上離す。固定 ray の 1/4 超が裏面なら形状の中。移動は間隔の 45% まで（RTXGI）。
-        // 間隔の 1.75 倍以内に形状が無い probe は非活性（描画側は支持に数えず、空の光へ戻す）。
+        // 間隔の 1.75 倍以内に形状が無い probe は非活性（描画側は支持に数えず、下位の層へ渡す）。
         constants.relocate = {0.2f * minimumSpacing, 0.25f, 0.45f, 1.75f * maximumSpacing};
         const UINT extraUpdates =
             compatible ? SchedulePriority(constants, state.changedMinimum, state.changedMaximum, layout.budget) : 0;

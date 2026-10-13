@@ -13,8 +13,8 @@
 //                       向こうの probe が半端に見えて鋸歯状に漏れる。
 //   x=[0,8)   y=[10,18) 固定 ray が当たった三角形に内接する円盤（oct 法線 xy、符号付き距離 z、半径 w）の 8x8 八面体。
 //                       空・alpha mask・退化三角形は半径ゼロ。幾何は補間せず、同じ角度の texel から読む。
-//   x=[28,30) y=[0,18)  probe の状態。(28,0) は rgb = 格子点からの移動 [m]（RTXGI の probe relocation）、a = 成熟度
-//                       （0..1。0 は未初期化か非活性で、描画側は支持に数えない）。(28,1) は r = 更新回数、g = 変動の
+//   x=[28,30) y=[0,18)  probe の状態。(28,0) は rgb = 格子点からの移動 [m]（RTXGI の probe relocation）、a = 活性
+//                       （1 活性、0 は未初期化か非活性で、描画側は支持に数えない）。(28,1) は r = 更新回数、g = 変動の
 //                       移動平均、b = 固定 ray の裏面率、a = 固定 ray の明るさ（光照の変化の検出に使う）。
 static const uint HIKARI_DYNAMIC_GI_TILE_WIDTH = 30u;
 static const uint HIKARI_DYNAMIC_GI_TILE_HEIGHT = 18u;
@@ -131,7 +131,7 @@ float2 HikariDynamicGiProbeTile(uint3 coordinate, uint3 counts)
         uint2(HIKARI_DYNAMIC_GI_TILE_WIDTH, HIKARI_DYNAMIC_GI_TILE_HEIGHT));
 }
 
-// probe の状態（rgb = 格子点からの移動、a = 成熟度）。
+// probe の状態（rgb = 格子点からの移動、a = 1 活性、0 は未初期化か非活性）。
 float4 HikariDynamicGiProbeState(uint descriptorIndex, float2 tile)
 {
     return gMaterialTexturePool[NonUniformResourceIndex(descriptorIndex)].Load(

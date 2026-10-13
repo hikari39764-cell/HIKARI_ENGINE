@@ -88,12 +88,15 @@ float Luminance(float3 color)
 }
 
 // 命中した位置の間接光は全層の前フレームから読む。覆っていない分はその向きのぼかした空で近似する（開けた所の遠い命中）。
-float3 HitRadiance(HikariRaySurface hit, float3 view, float2 randomUv)
+// 前フレームの層が一つも無い時（読み込み直後や履歴の破棄後）は空で埋めない。全命中が空の光で照らされ、閉じた部屋に
+// 入った余分な光は反射と履歴の重みで何百回もの更新にわたって残った（白い箱で 900 フレーム後も直接光の数倍）。
+// 足りない分は最初の数回の全更新で反射が積み上がって埋まる。
+float3 HitRadiance(HikariRaySurface hit, float3 view, float2 randomUv, bool history)
 {
     const HikariDynamicGiSample previous = HikariQueryDynamicGi(gPreviousVolumes,
         HikariSurfaceGiQuery(hit.position, hit.geometricNormal, hit.normal, view));
-    const float3 incident = previous.value +
-        HikariRayEnvironmentRadiance(gRayLighting, hit.normal, gLinearClamp, 4.0f) * (1.0f - previous.coverage);
+    const float3 incident = previous.value + (history ? HikariRayEnvironmentRadiance(gRayLighting, hit.normal,
+        gLinearClamp, 4.0f) * (1.0f - previous.coverage) : 0.0f.xxx);
     return HikariRayHitRadiance(gRayLighting, hit, view, randomUv, incident, 0.0f.xxx, false, gMaterialWrap);
 }
 
@@ -184,6 +187,9 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         ProbeHash(asuint(worldCell.z) + 9781u);
     const uint sampleSeed = probeSeed & 0xffffu;
     const float3x3 rayRotation = ProbeRayRotation(gWork.x, probeSeed);
+    bool history = false;
+    [unroll] for (uint volume = 0u; volume < HIKARI_DYNAMIC_GI_VOLUME_COUNT; ++volume)
+        history = history || HikariHasIrradianceVolumeData(gPreviousVolumes[volume]);
     for (uint rayIndex = lane; rayIndex < kRayCount; rayIndex += 64u)
     {
         const bool fixedRay = rayIndex < kFixedRays;
@@ -214,7 +220,7 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         // 手掛かりになる（履歴の重み）。
         const float2 fixedUv = frac(float2(rayIndex + 1u, sampleSeed + 1u) * float2(0.754877666f, 0.569840296f));
         sRadiance[rayIndex] = found && hit.backFace != 0u ? 0.0f.xxx
-            : found ? HitRadiance(hit, -direction, fixedRay ? fixedUv : randomUv)
+            : found ? HitRadiance(hit, -direction, fixedRay ? fixedUv : randomUv, history)
             : HikariRayEnvironmentRadiance(gRayLighting, direction, gLinearClamp);
     }
     GroupMemoryBarrierWithGroupSync();
@@ -290,10 +296,11 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         }
         else
         {
-            // 新しい probe は粗い層（遠景）から初期値を取り、最初の一回で半分だけ更新する（粗から細）。
+            // 新しい probe は粗い層（遠景）から初期値を取り、最初の一回で半分だけ更新する（粗から細）。粗い層が
+            // この位置を見ていない時（壁の向こうの probe だけの時）は取らない。
             const HikariDynamicGiSample coarse = HikariQueryDynamicGi(gPreviousVolumes,
                 HikariSurfaceGiQuery(probePosition, axis, axis));
-            if (coarse.coverage > 0.5f)
+            if (coarse.coverage > 0.5f && coarse.support > 0.5f)
             {
                 previous = float4(pow(clamp(coarse.value / coarse.coverage, 0.0f, 65000.0f), 1.0f / kIrradianceGamma),
                     saturate(coarse.skyVisibility / coarse.coverage));
@@ -378,7 +385,7 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         const uint2 pixel = uint2(28u + lane / 18u, lane % 18u);
         float4 value = 0.0f.xxxx;
         if (lane == 0u)
-            value = float4(sOffset, sValidity > 0.0f ? saturate((updates + 1.0f) / 8.0f) : 0.0f);
+            value = float4(sOffset, sValidity > 0.0f ? 1.0f : 0.0f);
         else if (lane == 1u)
         {
             float change = 0.0f;
