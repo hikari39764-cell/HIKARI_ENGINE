@@ -5,6 +5,7 @@
 #include <array>
 #include <string>
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Resources/HIKARI_RenderResourcePool.h"
 
 namespace HIKARI {
 
@@ -53,9 +54,7 @@ public:
 
     ID3D12DescriptorHeap* GetSrvHeap() const { return srvHeap_.Get(); }
     D3D12_GPU_DESCRIPTOR_HANDLE GetSrvGpu() const { return srvGpuHandle_; }
-    D3D12_GPU_DESCRIPTOR_HANDLE GetDepthSrvGpu() const {
-        return depthSrvGpuHandles_[context_.frameIndex % GFX::kFrameResourceCount];
-    }
+    D3D12_GPU_DESCRIPTOR_HANDLE GetDepthSrvGpu() const { return depthSrv_.gpu; }
     D3D12_CPU_DESCRIPTOR_HANDLE GetRtvHandle() const { return rtvHandle_; }
     D3D12_CPU_DESCRIPTOR_HANDLE GetDsvHandle() const { return dsvHandle_; }
     D3D12_CPU_DESCRIPTOR_HANDLE GetReadOnlyDsvHandle() const { return readOnlyDsvHandle_; }
@@ -63,8 +62,8 @@ public:
 private:
     bool CreateResources();
     void TransitionDepth(D3D12_RESOURCE_STATES nextState);
-    bool RefreshDepthSrvForCurrentFrame();
-    void ResetDepthSrvTracking() noexcept;
+    bool EnsureDepthSrv();
+    void ReleaseDepthSrv() noexcept;
 
 private:
     Microsoft::WRL::ComPtr<ID3D12Resource> colorTex_;
@@ -81,10 +80,8 @@ private:
     D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle_{};
     D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle_{};
     D3D12_CPU_DESCRIPTOR_HANDLE readOnlyDsvHandle_{};
-    std::array<D3D12_CPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount> depthSrvCpuHandles_{};
-    std::array<D3D12_GPU_DESCRIPTOR_HANDLE, GFX::kFrameResourceCount> depthSrvGpuHandles_{};
-    std::array<ID3D12Resource*, GFX::kFrameResourceCount> depthSrvResources_{};
-    std::array<uint64_t, GFX::kFrameResourceCount> depthSrvGenerations_{};
+    // 深度と同じ寿命の不変 SRV。他の view や resize と共有せず、fence 後に退役する。
+    RENDER3D::RenderResourceView depthSrv_{};
     UINT dsvDescriptorSize_{};
 
     D3D12_VIEWPORT viewport_{};

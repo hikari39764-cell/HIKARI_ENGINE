@@ -18,7 +18,7 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/Vfx/HIKARI_VfxBuiltinTextureCatalog.h"
+#include "Assets/Vfx/HIKARI_VfxProgram.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
@@ -168,6 +168,8 @@ struct ParticleGpuDrivenPass::Impl {
     std::vector<DrawItem> drawItems{};
     std::vector<DrawOrderEntry> drawOrder{};
     std::unordered_set<std::string> residentStandardTextures{};
+    uint64_t prewarmedRegistryId = 0u;
+    uint64_t prewarmedRegistryRevision = 0u;
     ParticleGpuDrivenPassStats stats{};
     uint32_t emitterPageCapacity = 0u;
     uint32_t emitterUploadCapacity = 0u;
@@ -214,17 +216,15 @@ struct ParticleGpuDrivenPass::Impl {
         std::vector<std::string> residencyKeys{};
         std::unordered_set<std::string> queuedResidencyKeys{};
         std::unordered_set<std::string> requiredGuids{};
-        bool prewarmBuiltinCatalog = false;
+        // 一つの破損した VFX が、他の正常な依存資源の予熱まで妨げないようにする。
+        bool dependenciesValid = true;
 
-        const auto queueTexture = [&source, this, &requests, &residencyKeys,
-                                   &queuedResidencyKeys](std::string_view guid, std::string name,
-                                                         TextureResourceColorSpace colorSpace, bool required) {
+        const auto queueTexture = [&source, this, &requests, &residencyKeys, &queuedResidencyKeys](
+                                      std::string_view guid, std::string name, TextureResourceColorSpace colorSpace) {
             const auto* descriptor = source.assetRegistry->FindAs<TextureAssetDescriptor>(AssetId{std::string(guid)});
             if (descriptor == nullptr || descriptor->sourcePath.empty()) {
-                if (required) {
-                    HIKARI_LOG_ERROR("[ParticleGpuDrivenPass][TexturePreloadMissing] " + std::string(guid));
-                }
-                return !required;
+                HIKARI_LOG_ERROR("[ParticleGpuDrivenPass][TexturePreloadMissing] " + std::string(guid));
+                return false;
             }
             const std::string residencyKey = std::to_string(source.assetRegistry->GetInstanceId()) + ":" +
                                              std::to_string(source.assetRegistry->GetRevision()) + ":" +
@@ -248,21 +248,12 @@ struct ParticleGpuDrivenPass::Impl {
                 continue;
             }
             requiredGuids.insert(submission.render.colorTextureAssetGuid);
-            prewarmBuiltinCatalog =
-                prewarmBuiltinCatalog || VFX::IsVfxBuiltinTextureAssetId(submission.render.colorTextureAssetGuid);
         }
 
         for (const std::string& guid : requiredGuids) {
             if (!queueTexture(guid, "material_asset/standard:" + guid + "/baseColor",
-                              MaterialTextureColorSpace(MaterialTextureUsage::BaseColor), true)) {
-                return false;
-            }
-        }
-        if (prewarmBuiltinCatalog) {
-            for (const VFX::VfxBuiltinTextureDescriptor& descriptor : VFX::GetVfxBuiltinTextureCatalog()) {
-                (void)queueTexture(descriptor.assetId,
-                                   "material_asset/standard:" + std::string(descriptor.assetId) + "/baseColor",
-                                   MaterialTextureColorSpace(MaterialTextureUsage::BaseColor), false);
+                              MaterialTextureColorSpace(MaterialTextureUsage::BaseColor))) {
+                dependenciesValid = false;
             }
         }
 
@@ -279,7 +270,8 @@ struct ParticleGpuDrivenPass::Impl {
                 HIKARI_LOG_ERROR("[ParticleGpuDrivenPass]"
                                  "[MaterialPreloadMissing] " +
                                  materialGuid);
-                return false;
+                dependenciesValid = false;
+                continue;
             }
             for (const MaterialProgramResourceBinding& binding : material->compileResult.program.resources) {
                 if (!binding.assetGuid.IsValid() || binding.type != MaterialResourceType::Texture2D ||
@@ -292,13 +284,13 @@ struct ParticleGpuDrivenPass::Impl {
                                   binding.semantic == MaterialResourceSemantic::MatCap;
                 if (!queueTexture(binding.assetGuid.value,
                                   "material_program/" + materialGuid + "/" + binding.resourceId,
-                                  srgb ? TextureResourceColorSpace::Srgb : TextureResourceColorSpace::Linear, true)) {
-                    return false;
+                                  srgb ? TextureResourceColorSpace::Srgb : TextureResourceColorSpace::Linear)) {
+                    dependenciesValid = false;
                 }
             }
         }
         if (requests.empty())
-            return true;
+            return dependenciesValid;
 
         TextureResourceBatchLoadStats loadStats{};
         const std::vector<TextureResourceHandle> handles = PreloadTextureResourcesWithColorSpace(requests, &loadStats);
@@ -315,7 +307,7 @@ struct ParticleGpuDrivenPass::Impl {
             HIKARI_LOG_ERROR("[ParticleGpuDrivenPass][TexturePreloadFailed] requested=" +
                              std::to_string(loadStats.requested) + " failed=" + std::to_string(loadStats.failed));
         }
-        return resident;
+        return resident && dependenciesValid;
     }
 
     void CoalesceFreeRanges() {
@@ -986,6 +978,8 @@ struct ParticleGpuDrivenPass::Impl {
         drawItems.clear();
         drawOrder.clear();
         residentStandardTextures.clear();
+        prewarmedRegistryId = 0u;
+        prewarmedRegistryRevision = 0u;
         stats = {};
         emitterPageCapacity = 0u;
         emitterUploadCapacity = 0u;
@@ -1038,6 +1032,45 @@ void ParticleGpuDrivenPass::Shutdown() {
 
 bool ParticleGpuDrivenPass::PrepareFrame(const GFX::Context& context, const ParticleRenderFrameSource* source,
                                          MATERIAL::GpuMaterialRegistry& materialRegistry) {
+    if (impl_ && context.device && context.srvHeap && source && source->input && source->assetRegistry) {
+        const AssetRegistry& assets = *source->assetRegistry;
+        if (impl_->prewarmedRegistryId != assets.GetInstanceId() ||
+            impl_->prewarmedRegistryRevision != assets.GetRevision()) {
+            // 空の初回フレームでも、登録済み VFX の描画資源を準備する。事件の再生・時刻・乱数は進めない。
+            // 実際に参照する貼図だけを同じ常駐経路へ渡し、内蔵カタログ全体の遅延読込を避ける。
+            ParticleRenderInput dependencies{};
+            for (const AssetDescriptor* base : assets.CollectByType(AssetType::VfxEffect)) {
+                const auto* descriptor = dynamic_cast<const VfxAssetDescriptor*>(base);
+                if (descriptor == nullptr || !descriptor->program) {
+                    continue;
+                }
+                for (const VFX::VfxProgramEmitter& emitter : descriptor->program->emitters) {
+                    if ((emitter.kind != VFX::VfxLayerKind::Particles && emitter.kind != VFX::VfxLayerKind::Shape) ||
+                        !emitter.render.meshAssetGuid.empty()) {
+                        continue;
+                    }
+                    dependencies.emitters.emplace_back().render = emitter.render;
+                }
+            }
+            if (!dependencies.emitters.empty()) {
+                if (!impl_->initialized && !impl_->initializationAttempted) {
+                    (void)Initialize(context);
+                    impl_->initializationAttempted = true;
+                }
+                if (impl_->initialized) {
+                    // 不足資産があっても他の描画は止めず、実際の再生時に既存の検証経路で再試行する。
+                    (void)impl_->EnsureStandardTextureResidency(*source, dependencies);
+                    // 標準材質の中立貼図やカスタム材質の投影も初回再生から移す。粒子の生成要求は発行しない。
+                    for (const auto& dependency : dependencies.emitters) {
+                        (void)impl_->materialResolver.Resolve(dependency.render, &assets, source->externalValues);
+                    }
+                }
+            }
+            impl_->prewarmedRegistryId = assets.GetInstanceId();
+            impl_->prewarmedRegistryRevision = assets.GetRevision();
+        }
+    }
+    // 登録アセットを持たないツールの直接再生は、従来の初期化経路を維持する。
     if (impl_ && !impl_->initialized && !impl_->initializationAttempted && context.device && context.srvHeap &&
         source && source->input && !source->input->emitters.empty()) {
         (void)Initialize(context);

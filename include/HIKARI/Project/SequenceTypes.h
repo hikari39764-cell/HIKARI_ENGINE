@@ -24,6 +24,8 @@ inline constexpr uint32_t kGameProjectSequencePlayOptionsV1Size = 112u;
 // SequenceView; the editor hint never auto-plays the asset.
 inline constexpr char kGameProjectSequencePreviewAssetGuidProperty[] = "sequenceAssetGuid";
 inline constexpr char kGameProjectSequencePreviewSlotNameProperty[] = "sequenceSlotName";
+// 相機とは別の設定オブジェクトからも、型付き SceneObject 参照で同じプレビューを復元する。
+inline constexpr char kGameProjectSequencePreviewCameraProperty[] = "cameraObject";
 
 struct GameProjectSequencePlaybackHandle {
     uint64_t value = 0u;

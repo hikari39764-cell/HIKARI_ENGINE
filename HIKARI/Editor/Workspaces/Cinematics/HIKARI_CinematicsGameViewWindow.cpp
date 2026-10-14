@@ -4,6 +4,7 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Views/HIKARI_EditorViewportGeometry.h"
+#include "Editor/Views/HIKARI_EditorViewGuides.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -44,6 +45,18 @@ void CinematicsWorkspaceController::DrawMonitor(DocumentSceneBase& scene, Editor
     NextToolbarItem(130);
     ImGui::TextDisabled("%s", autoKey_ ? TEXT::Localize("cine.recordKeys").c_str()
                                        : TEXT::Localize("cine.updateBase").c_str());
+    // 構図補助は実際の画面にも提供する。設定はこの視口が持ち、演出資産やゲーム描画へ保存しない。
+    NextToolbarItem(ImGui::CalcTextSize("构图辅助").x + ImGui::GetStyle().FramePadding.x * 2);
+    if (ImGui::Button("构图辅助"))
+        ImGui::OpenPopup("cinematicsMonitorGuides");
+    if (ImGui::BeginPopup("cinematicsMonitorGuides")) {
+        DrawEditorViewGuidesMenu(view.visualization.guides);
+        ImGui::Separator();
+        ImGui::TextDisabled("仅影响编辑器预览，不改变实际输出画幅");
+        if (ImGui::Button("关闭全部辅助"))
+            view.visualization.guides = {};
+        ImGui::EndPopup();
+    }
     if (scene.IsRuntimePlayActive())
         ImGui::TextWrapped("%s", TEXT::Localize("cine.playInputHelp").c_str());
     auto size = ImGui::GetContentRegionAvail();
@@ -65,6 +78,12 @@ void CinematicsWorkspaceController::DrawMonitor(DocumentSceneBase& scene, Editor
         ImGui::Dummy({fit.width, fit.height});
         ImGui::GetWindowDrawList()->AddText({origin.x + 20, origin.y + 20}, IM_COL32(170, 180, 190, 255),
                                             TEXT::Localize("cine.waitingFrame").c_str());
+    }
+    if (ready) {
+        // Scene の自由視点ではなく、ゲーム／演出が解決した最終相機で水平線を投影する。
+        const auto& cameraFrame = scene.GetResolvedCameraFrame();
+        DrawEditorViewGuides(*ImGui::GetWindowDrawList(), origin.x, origin.y, fit.width, fit.height,
+                             view.visualization.guides, cameraFrame.valid ? &cameraFrame.camera : nullptr);
     }
     if (scene.IsRuntimePlayActive() && ready) {
         SetGameViewportInputRect(origin.x, origin.y, fit.width, fit.height, ImGui::IsWindowFocused());

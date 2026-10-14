@@ -1,5 +1,6 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "HIKARI_PerformanceAuditPanel.h"
+#include "Editor/Shell/HIKARI_EditorDockLayout.h"
 
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
@@ -37,12 +38,17 @@ namespace HIKARI {
 
 using namespace EDITOR::PERFORMANCE_AUDIT;
 
-void PerformanceAuditPanel::Draw(bool& open) const {
+void PerformanceAuditPanel::Draw(bool& open, bool revealRequested) const {
 #if defined(HIKARI_WITH_EDITOR)
     if (!open) {
         return;
     }
-    if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.performance.audit.e54bcf", "Performance Audit").c_str(), &open)) {
+    const std::string windowName = TEXT::LocalizeWindow("editor.ui.performance.audit.e54bcf", "Performance Audit");
+    // 開く操作と工作区の切替時だけ、旧配置の非表示ドックから復帰させる。
+    if (revealRequested) {
+        EDITOR::RevealEditorWindow(windowName.c_str());
+    }
+    if (!ImGui::Begin(windowName.c_str(), &open)) {
         ImGui::End();
         return;
     }
@@ -52,6 +58,7 @@ void PerformanceAuditPanel::Draw(bool& open) const {
     ImGui::End();
 #else
     (void)open;
+    (void)revealRequested;
 #endif
 }
 

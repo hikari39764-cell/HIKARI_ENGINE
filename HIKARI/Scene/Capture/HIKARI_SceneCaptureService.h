@@ -34,6 +34,7 @@ struct SceneCaptureRequest {
     GameProjectUiColor clearColor{0, 0, 0, 1};
     const GAME_UI::GameUiFrameSource* uiFrame = nullptr;
     uint64_t contentRevision = 0;
+    GameProjectSceneCaptureStyleDesc style{};
 
     bool IsEnabled() const noexcept {
         return (flags & GameProjectSceneCaptureFlags(GameProjectSceneCaptureFlag::Enabled)) != 0u;
@@ -194,6 +195,15 @@ public:
             state->snapshot.status = GameProjectSceneCaptureStatus::Pending;
             state->snapshot.failure = GameProjectSceneCaptureFailure::None;
         }
+        return true;
+    }
+
+    bool SetStyle(GameProjectSceneCaptureHandle capture, const GameProjectSceneCaptureStyleDesc& style) noexcept {
+        CaptureState* state = Find(capture);
+        if (state == nullptr || state->request.uiCanvas) {
+            return false;
+        }
+        state->request.style = style;
         return true;
     }
 

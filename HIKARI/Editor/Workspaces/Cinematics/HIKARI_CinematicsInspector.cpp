@@ -1,3 +1,4 @@
+#include "Editor/Authoring/HIKARI_SequenceCameraEditing.h"
 #include "Editor/Widgets/HIKARI_CameraMotionWidgets.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsPresentation.h"
 #include "Core/Text/HIKARI_Localization.h"
@@ -99,40 +100,8 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
         if (IconButton(EditorGlyph::Delete, "deleteShot", EditorButtonTone::Danger, {26, 26},
                        TEXT::Localize("cine.deleteShot").c_str()))
             return DeleteSelectedClip(sequence);
-        if (!shot->camera.owned) {
-            ImGui::TextWrapped("%s", TEXT::Localize("cine.convertHint").c_str());
-            if (ImGui::Button(TEXT::Localize("cine.convertCamera").c_str())) {
-                SceneObjectId id;
-                Camera3D camera;
-                if (previewBindings_.Resolve(sequence.bindings, shot->cameraBindingId, id) &&
-                    scene.TryResolveCameraObjectView(id, 16.0f / 9, camera)) {
-                    // 結んだ摄像机の動きを 30 fps の姿勢键に写す（键の間は一定の速さでつなぎ、元の動きをなぞる）。
-                    shot->camera.keys.clear();
-                    shot->camera.smoothPath = false;
-                    shot->camera.nearClip = camera.GetNearZ();
-                    shot->camera.farClip = camera.GetFarZ();
-                    const int count = static_cast<int>(std::ceil(shot->durationSeconds * 30));
-                    for (int frame = 0; frame <= count; ++frame) {
-                        const float local = (std::min)(frame / 30.0f, shot->durationSeconds);
-                        CinematicCameraEvaluation evaluation;
-                        evaluation.shotId = shot->id;
-                        evaluation.cameraObjectId = id;
-                        evaluation.transform = EvaluateCameraTransformTrack(
-                            sequence.cameraTransformTrack, shot->cameraBindingId, shot->startTimeSeconds + local);
-                        evaluation.lens = EvaluateCameraLensTrack(sequence.cameraLensTrack, shot->cameraBindingId,
-                                                                  shot->startTimeSeconds + local);
-                        auto sample = camera;
-                        if (evaluation.HasCameraAnimation())
-                            BuildEvaluatedCinematicCamera(evaluation, camera, 16.0f / 9, sample);
-                        SetShotPose(shot->camera, CaptureShotPose(sample, local), true);
-                        shot->camera.nearClip = (std::min)(shot->camera.nearClip, sample.GetNearZ());
-                        shot->camera.farClip = (std::max)(shot->camera.farClip, sample.GetFarZ());
-                    }
-                    shot->camera.owned = true;
-                    changed = true;
-                }
-            }
-        }
+        if (!shot->camera.owned)
+            changed |= DrawBoundCameraInspector(scene, sequence, *shot);
         if (shot->camera.owned &&
             ImGui::CollapsingHeader(TEXT::Localize("cine.poseSection").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
             const float local = ShotLocalTime(*shot);
@@ -167,7 +136,7 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
             ImGui::BeginDisabled(onRail);
             if (ImGui::DragFloat3(fieldLabel(TEXT::Localize("cine.position").c_str()).c_str(), &edited.position.x,
                                   0.02f, 0.0f, 0.0f, "%.2f")) {
-                WriteShotPose(*shot, edited, kPosePosition);
+                WriteShotPose(sequence, *shot, edited, kPosePosition);
                 changed = true;
             }
             ImGui::EndDisabled();
@@ -178,7 +147,7 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
                                   0.0f, 0.0f, "%.1f°")) {
                 angles.x = std::clamp(angles.x, -89.5f, 89.5f);
                 edited.rotation = RotationFromAngles(angles);
-                WriteShotPose(*shot, edited, kPoseRotation);
+                WriteShotPose(sequence, *shot, edited, kPoseRotation);
                 changed = true;
             }
             if (ImGui::IsItemHovered())
@@ -187,7 +156,7 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
             std::snprintf(lens, sizeof(lens), "%%.1f° (%.0fmm)", FocalLength(pose.fov));
             if (ImGui::DragFloat(fieldLabel(TEXT::Localize("cine.fov").c_str()).c_str(), &edited.fov, 0.1f, 1.0f,
                                  179.0f, lens)) {
-                WriteShotPose(*shot, edited, kPoseFov);
+                WriteShotPose(sequence, *shot, edited, kPoseFov);
                 changed = true;
             }
             changed |= ImGui::Checkbox(TEXT::Localize("cine.smoothPath").c_str(), &shot->camera.smoothPath);

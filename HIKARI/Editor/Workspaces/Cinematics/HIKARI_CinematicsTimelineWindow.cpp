@@ -1,3 +1,4 @@
+#include "Editor/Authoring/HIKARI_SequenceCameraEditing.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Assets/HIKARI_AssetRecord.h"
@@ -59,10 +60,13 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence& sequence) {
         if (playing)
             cursor_.Pause();
         else {
-            if (cursor_.GetTimeSeconds() >= sequence.durationSeconds)
+            if (previewRate_ > 0 && cursor_.GetTimeSeconds() >= sequence.durationSeconds)
                 cursor_.Seek(0);
+            if (previewRate_ < 0 && cursor_.GetTimeSeconds() <= 0)
+                cursor_.Seek(sequence.durationSeconds);
             SEQUENCER::SequencePlaybackOptions options;
             options.loop = loop_;
+            options.playbackRate = previewRate_;
             options.holdAtEnd = true;
             cursor_.Play(options);
             previewEnabled_ = true;
@@ -89,10 +93,18 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence& sequence) {
         if (cursor_.IsPlaying()) {
             SEQUENCER::SequencePlaybackOptions options;
             options.loop = loop_;
+            options.playbackRate = previewRate_;
             options.holdAtEnd = true;
             cursor_.Play(options);
         }
     }
+    NextToolbarItem(90);
+    if (ImGui::Button(previewRate_ < 0 ? "倒放预览" : "正放预览")) {
+        previewRate_ = -previewRate_;
+        cursor_.SetPlaybackRate(previewRate_);
+    }
+    NextToolbarItem(90);
+    ImGui::Text("%.2fx", std::abs(previewRate_));
     NextToolbarItem(90);
     float seconds = cursor_.GetTimeSeconds();
     ImGui::SetNextItemWidth(82);
@@ -214,7 +226,7 @@ bool CinematicsWorkspaceController::DrawPoseKeyLane(CinematicSequence& sequence,
 #if defined(HIKARI_WITH_EDITOR)
     auto* draw = ImGui::GetWindowDrawList();
     auto* shot = SelectedShot(sequence);
-    if (shot == nullptr || !shot->camera.owned) {
+    if (shot == nullptr) {
         draw->AddText({timeOriginX + 10, y + 7}, IM_COL32(110, 125, 142, 255),
                       TEXT::Localize(shot ? "cine.poseLaneBound" : "cine.poseLaneSelect").c_str());
         return false;
@@ -226,8 +238,13 @@ bool CinematicsWorkspaceController::DrawPoseKeyLane(CinematicSequence& sequence,
                         IM_COL32(44, 105, 151, 60), 3);
     const float cursorLocal = cursor_.GetTimeSeconds() - shot->startTimeSeconds;
     std::vector<float> times;
-    for (const auto& key : shot->camera.keys)
-        times.push_back(key.time);
+    if (shot->camera.owned)
+        for (const auto& key : shot->camera.keys)
+            times.push_back(key.time);
+    else
+        for (float t : BoundCameraKeyTimes(sequence, shot->cameraBindingId))
+            if (t >= shot->startTimeSeconds && t <= shot->startTimeSeconds + shot->durationSeconds)
+                times.push_back(t - shot->startTimeSeconds);
     std::optional<float> remove;
     ImGui::PushID("poseKeys");
     // 菱形の押し判定を背景より先に置く（先に置いた項目が重なりの上で優先される）。
@@ -256,7 +273,10 @@ bool CinematicsWorkspaceController::DrawPoseKeyLane(CinematicSequence& sequence,
             const float hi = i + 1 < times.size() ? times[i + 1] - 1.0f / 120 : shot->durationSeconds;
             next = std::clamp(next, lo, (std::max)(lo, hi));
             if (std::abs(next - poseDragTime_) > 0.00001f &&
-                SEQUENCER::MoveShotPoseKey(shot->camera, poseDragTime_, next)) {
+                (shot->camera.owned
+                     ? SEQUENCER::MoveShotPoseKey(shot->camera, poseDragTime_, next)
+                     : MoveBoundCameraKey(sequence, shot->cameraBindingId, shot->startTimeSeconds + poseDragTime_,
+                                          shot->startTimeSeconds + next))) {
                 poseDragTime_ = next;
                 cursor_.Seek(shot->startTimeSeconds + next);
                 previewChanged_ = true;
@@ -284,7 +304,9 @@ bool CinematicsWorkspaceController::DrawPoseKeyLane(CinematicSequence& sequence,
     } else if (ImGui::IsItemHovered() && times.empty())
         ImGui::SetTooltip("%s", TEXT::Localize("cine.poseLaneHint").c_str());
     if (remove) {
-        changed |= SEQUENCER::RemoveShotPoseKey(shot->camera, *remove);
+        changed |= shot->camera.owned
+                       ? SEQUENCER::RemoveShotPoseKey(shot->camera, *remove)
+                       : RemoveBoundCameraKey(sequence, shot->cameraBindingId, shot->startTimeSeconds + *remove);
         previewChanged_ = true;
     }
     ImGui::PopID();
@@ -545,10 +567,13 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         if (cursor_.IsPlaying())
             cursor_.Pause();
         else {
-            if (cursor_.GetTimeSeconds() >= sequence.durationSeconds)
+            if (previewRate_ > 0 && cursor_.GetTimeSeconds() >= sequence.durationSeconds)
                 cursor_.Seek(0);
+            if (previewRate_ < 0 && cursor_.GetTimeSeconds() <= 0)
+                cursor_.Seek(sequence.durationSeconds);
             SEQUENCER::SequencePlaybackOptions options;
             options.loop = loop_;
+            options.playbackRate = previewRate_;
             options.holdAtEnd = true;
             cursor_.Play(options);
             previewEnabled_ = true;

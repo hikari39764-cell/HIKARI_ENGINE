@@ -84,6 +84,90 @@ struct UploadedRecordBounds {
     ClusterBounds clusters{};
 };
 
+// 光錐を含む画面の列だけを残す。霧は同じ列の別の深度を標本にするため、Z は狭めない。
+ClusterBounds RefineSpotLightColumns(const LocalLightGpuData& light, ClusterBounds bounds,
+                                     const MATH::Mat4& viewProjection, uint32_t width, uint32_t height,
+                                     uint32_t tileSize) {
+    const MATH::Vec3 axis =
+        MATH::Normalize({light.directionInnerCos.x, light.directionInnerCos.y, light.directionInnerCos.z});
+    // GPU の正規化・射影の丸めで境界の光を落とさないよう、光錐と分離面を外側へ広げる。
+    const double cosine = std::clamp(double(light.outerConeCos) - 1.0e-5, 0.0, 1.0);
+    const double sine = std::sqrt(1.0 - cosine * cosine);
+    const auto outside = [&](uint32_t coordinate, double edge, double sign) {
+        double plane[4]{};
+        for (uint32_t i = 0u; i < 4u; ++i)
+            plane[i] = sign * (double(viewProjection.m[i][coordinate]) - edge * viewProjection.m[i][3]);
+        const double length = std::sqrt(plane[0] * plane[0] + plane[1] * plane[1] + plane[2] * plane[2]);
+        const double axial = plane[0] * axis.x + plane[1] * axis.y + plane[2] * axis.z;
+        const double radial = std::sqrt((std::max)(length * length - axial * axial, 0.0));
+        // range 球と光錐の共通部分の support。頂点も含み、近面を跨ぐ灯りにも除算なしで使える。
+        const double extent = double(light.positionRange.w) *
+                              (axial >= length * cosine ? length : (std::max)(0.0, axial * cosine + radial * sine));
+        const double x = plane[0] * light.positionRange.x;
+        const double y = plane[1] * light.positionRange.y;
+        const double z = plane[2] * light.positionRange.z;
+        const double tolerance = 1.0e-5 * (std::abs(x) + std::abs(y) + std::abs(z) + std::abs(plane[3]) +
+                                           double(light.positionRange.w) * length + 1.0);
+        return x + y + z + plane[3] + extent < -tolerance;
+    };
+    const auto trim = [&](uint32_t& first, uint32_t& last, uint32_t coordinate, uint32_t pixels) {
+        const double sign = coordinate == 0u ? 1.0 : -1.0;
+        // リストのカメラは非 jitter。画素中心と時域 AA の subpixel 移動を含む余白を残す。
+        const auto edge = [&](uint32_t tile, double padding) {
+            return sign * (2.0 * (double(tile * tileSize) + padding) / pixels - 1.0);
+        };
+        while (outside(coordinate, edge(first + 1u, 2.0), -sign)) {
+            if (first == last)
+                return false;
+            ++first;
+        }
+        while (outside(coordinate, edge(last, -2.0), sign)) {
+            if (first == last)
+                return false;
+            --last;
+        }
+        return true;
+    };
+    bounds.visible = trim(bounds.minX, bounds.maxX, 0u, width) && trim(bounds.minY, bounds.maxY, 1u, height);
+    return bounds;
+}
+
+void CompactSpotLightClusters(LocalLightListView& view, std::vector<UploadedRecordBounds>& bounds,
+                              const LocalLightGpuData* records, std::vector<LocalLightClusterHeader>& headers,
+                              std::vector<uint32_t>& indices, const Camera3D& camera, uint32_t width, uint32_t height) {
+    if (view.spotLightCount == 0u)
+        return;
+    const MATH::Mat4 viewProjection = camera.GetViewProj();
+    for (auto& uploaded : bounds) {
+        const auto& light = records[uploaded.recordIndex];
+        if ((light.kind & 0xffu) == static_cast<uint32_t>(LocalLightType::Spot))
+            uploaded.clusters =
+                RefineSpotLightColumns(light, uploaded.clusters, viewProjection, width, height, view.tileSizePixels);
+    }
+    // 元の名額・index 容量で選んだ後に詰める。除外した灯りの代わりに上限外の灯りを繰り上げない。
+    // 光源の順序、影の割当、後続デカールもそのまま保ち、別の GPU リストは増やさない。
+    uint32_t cursor = 0u;
+    for (uint32_t cluster = 0u; cluster < view.clusterCount; ++cluster) {
+        auto& header = headers[cluster];
+        const uint32_t previousOffset = header.offset;
+        const uint32_t lightCount = header.count & 0xffffu;
+        const uint32_t decalCount = header.count >> 16u;
+        const uint32_t x = cluster % view.clusterCountX;
+        const uint32_t y = (cluster / view.clusterCountX) % view.clusterCountY;
+        header.offset = cursor;
+        for (uint32_t i = 0u; i < lightCount; ++i) {
+            const uint32_t record = indices[previousOffset + i];
+            const auto& columns = bounds[record].clusters;
+            if (columns.visible && x >= columns.minX && x <= columns.maxX && y >= columns.minY && y <= columns.maxY)
+                indices[cursor++] = record;
+        }
+        header.count = (cursor - header.offset) | (decalCount << 16u);
+        for (uint32_t i = 0u; i < decalCount; ++i)
+            indices[cursor++] = indices[previousOffset + lightCount + i];
+    }
+    view.clusterIndexCount = cursor;
+}
+
 struct LocalLightListScratch {
     std::vector<uint8_t> clusterCounts{};
     std::vector<uint8_t> clusterWriteCounts{};
@@ -459,6 +543,8 @@ LocalLightListView BuildLocalLightList(const SceneLightingSet& lighting, const C
             }
         }
     }
+    CompactSpotLightClusters(view, uploadedBounds, output.records, clusterHeaders, clusterIndices, camera, screenWidth,
+                             screenHeight);
     std::memcpy(output.clusterHeaders, clusterHeaders.data(),
                 static_cast<size_t>(view.clusterCount) * sizeof(LocalLightClusterHeader));
     if (!clusterIndices.empty()) {

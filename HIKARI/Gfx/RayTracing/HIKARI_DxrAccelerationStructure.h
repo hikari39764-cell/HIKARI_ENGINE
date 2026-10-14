@@ -8,6 +8,8 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 
+#include "Gfx/HIKARI_FencedUploadBuffers.h"
+
 namespace HIKARI::GFX {
 struct Context;
 }
@@ -33,13 +35,17 @@ public:
     // 同じ形（記述の数・旗）のまま、結果を作り直さずにその場で refit する。毎フレーム頂点が動く BLAS と、
     // それを指す TLAS に使う。allowUpdate で build したものだけ。geometry は BLAS の時だけ渡す（build と同じ数）。
     bool RefitInPlace(const Context& graphics, std::span<const D3D12_RAYTRACING_GEOMETRY_DESC> geometry = {});
+    // 同じ数の instance で TLAS を組み直す。結果と scratch は作り直さずその場へ書く（配置だけが動いたフレーム用）。
+    // refit と違い BVH の質は落ちないので、遠くへ動いた instance があっても光線の走査は重くならない。
+    // instance の upload は GPU が読み終えたものを使い回す。収まらない・形が違う時は false（呼び出し側が build する）。
+    bool RebuildTopLevelInPlace(const Context& graphics, std::span<const D3D12_RAYTRACING_INSTANCE_DESC> instances);
     void Reset(const Context* retireContext = nullptr);
 
     bool IsReady() const noexcept { return result_ != nullptr; }
     D3D12_GPU_VIRTUAL_ADDRESS GetGpuAddress() const noexcept;
-    // 現在の result + scratch + instance upload の committed allocation。
+    // 現在の result + scratch + instance upload（予備を含む）の committed allocation。
     // 遅延解放待ちの旧世代、共有入力ジオメトリは含まない。
-    uint64_t GetAllocationBytes() const noexcept { return allocationBytes_; }
+    uint64_t GetAllocationBytes() const noexcept { return allocationBytes_ + instances_.AllocationBytes(); }
 
 private:
     bool Build(const Context& graphics, D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs,
@@ -48,10 +54,13 @@ private:
 
     Microsoft::WRL::ComPtr<ID3D12Resource> result_{};
     Microsoft::WRL::ComPtr<ID3D12Resource> scratch_{};
-    Microsoft::WRL::ComPtr<ID3D12Resource> instanceBuffer_{};
+    // TLAS の instance 記述。その場の組み直しは GPU が読み終えた予備へ書く。
+    FencedUploadBuffers instances_{};
     ID3D12Device* device_ = nullptr;
     uint64_t deviceGeneration_ = 0;
-    uint64_t allocationBytes_ = 0;
+    uint64_t allocationBytes_ = 0; // result + scratch
+    uint64_t resultBytes_ = 0;
+    uint64_t scratchBytes_ = 0;
     uint32_t descriptorCount_ = 0;
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE type_{};
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags_{};

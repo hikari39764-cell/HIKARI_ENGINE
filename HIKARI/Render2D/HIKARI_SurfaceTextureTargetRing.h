@@ -6,9 +6,11 @@
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 namespace HIKARI {
-struct SurfaceTextureTargetRing {
-    std::array<std::unique_ptr<RenderTarget2D>, GFX::kFrameResourceCount> targets{};
-    std::array<RENDER3D::TextureResourceHandle, GFX::kFrameResourceCount> textures{};
+// 画面へ貼る描画先の束。Count 枚を writeIndex で順に使う（Count = 1 は毎回同じ一枚へ書く公開用）。
+template <size_t Count>
+struct SurfaceTextureTargets {
+    std::array<std::unique_ptr<RenderTarget2D>, Count> targets{};
+    std::array<RENDER3D::TextureResourceHandle, Count> textures{};
     uint64_t deviceGeneration = 0u;
     uint64_t worldIdentity = 0u;
     uint64_t outputRevision = 0u;
@@ -90,4 +92,5 @@ struct SurfaceTextureTargetRing {
         return true;
     }
 };
+using SurfaceTextureTargetRing = SurfaceTextureTargets<GFX::kFrameResourceCount>;
 } // namespace HIKARI

@@ -23,6 +23,38 @@ inline constexpr uint32_t kGameProjectSceneCaptureMaximumExtent = 2048u;
 inline constexpr uint32_t kGameProjectSceneCaptureMaximumActiveCount = 4u;
 inline constexpr uint32_t kGameProjectInvalidMaterialIndex = 0xffffffffu;
 
+// 電視など、キャプチャを貼る画面だけに掛ける描き方。主画面の後処理とは別。
+// None   : 従来どおり前露出の HDR をそのまま公開する（後処理なし）。
+// Clean  : 3D 描画を表示参照の線形色へ直して明るさだけを掛ける（原版の確認用）。
+// Pixel  : ゲーム画素（pixelSize texel 四方）ごとに一色で塗り、背景へ落ち影と外側の輪郭を足す。
+// Sketch : 紙（paperColor）に鉛筆（lineColor）で外形と色の段の境を描き、暗い段に斜線、赤は accentColor の色鉛筆。
+// Pixel と Sketch は、線形輝度が backgroundLuminance 未満の画素を背景（壁）、以上を物体として扱う。
+// 物体の色は作者が決めた少数の色（陰影を焼いた無光照の材質）であることを前提にし、色の量子化はしない。
+enum class GameProjectSceneCaptureStyle : uint32_t { None = 0u, Clean = 1u, Pixel = 2u, Sketch = 3u };
+
+// 長さは「ゲーム画素」単位（1 ゲーム画素 = pixelSize texel）。色は表示 sRGB（各成分 0..1）。
+struct GameProjectSceneCaptureStyleDesc {
+    uint32_t structSize = 80u;
+    uint32_t version = 2u;
+    GameProjectSceneCaptureStyle style = GameProjectSceneCaptureStyle::None;
+    float pixelSize = 2.0f;             // 1..32 texel
+    float lineWidth = 1.0f;             // 0..4 ゲーム画素。Pixel の輪郭（0 で無し）、Sketch の鉛筆線
+    float shadowStrength = 0.4f;        // 0..1 Pixel は背景に落とす影の濃さ、Sketch は纵深の強さ（0 で無し）
+    float shadowOffsetX = 2.0f;         // -16..16 ゲーム画素。右と下が正
+    float shadowOffsetY = 4.0f;         // -16..16
+    float backgroundLuminance = 0.035f; // 0..1
+    float brightness = 1.0f;            // 0..4
+    GameProjectFloat3 lineColor{0.04f, 0.07f, 0.09f};
+    GameProjectFloat3 paperColor{0.10f, 0.15f, 0.20f};
+    GameProjectFloat3 accentColor{0.66f, 0.47f, 0.94f};   // この色相の鮮やかな物体を残影として横縞で描く
+    uint32_t reserved[1]{};
+};
+
+static_assert(std::is_standard_layout_v<GameProjectSceneCaptureStyleDesc>);
+static_assert(std::is_trivially_copyable_v<GameProjectSceneCaptureStyleDesc>);
+static_assert(sizeof(GameProjectSceneCaptureStyleDesc) == 80u);
+static_assert(offsetof(GameProjectSceneCaptureStyleDesc, lineColor) == 40u);
+
 enum class GameProjectSceneCaptureMaterialBindingFlag : uint32_t {
     None = 0u,
     FlipTextureX = 1u << 0u,

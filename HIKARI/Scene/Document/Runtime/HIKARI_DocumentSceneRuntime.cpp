@@ -111,7 +111,7 @@ bool DocumentSceneBase::ApplySystemRuntimeChanges() {
     }
     return configured;
 }
-bool DocumentSceneBase::BeginRuntimePlay() {
+bool DocumentSceneBase::BeginRuntimePlay(std::string_view spawnPointId, uint64_t entryUserData) {
     if (state_->runtime.playActive || !state_->identity.currentSceneAssetGuid.IsValid()) {
         return false;
     }
@@ -193,6 +193,11 @@ bool DocumentSceneBase::BeginRuntimePlay() {
     inputContexts.SetActive("Gameplay", true);
     AUDIO::UseCameraListener();
     state_->runtime.playActive = true;
+    // World 再構築後、Session の開始前に一回限りの入口を配送する。再構築失敗時の残留を防ぐ。
+    if (!spawnPointId.empty() || entryUserData != 0) {
+        RuntimeSceneContext::SetPendingSceneEntry(state_->identity.sceneId, std::string(spawnPointId), entryUserData);
+        RuntimeSceneContext::ResolvePendingSceneEntry(state_->runtime.world, state_->identity.sceneId);
+    }
     // Navigation is prepared at the Play boundary so the first enemy
     // query cannot synchronously scan and build the whole terrain.
     if (NAVIGATION::NavigationWorldService* navigation =

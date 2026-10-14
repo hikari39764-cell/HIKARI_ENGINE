@@ -11,16 +11,18 @@
 
 namespace HIKARI::EDITOR {
 
-void EditorPlaySession::RequestEmbeddedStart() {
-    if (IsRunning() || state_ == EditorPlayState::Starting) {
+void EditorPlaySession::RequestEmbeddedStart(std::string spawnPointId, uint64_t userData) {
+    if (IsRunning() || IsTransitioning() || HasPendingStart()) {
         return;
     }
+    pendingSpawnPointId_ = std::move(spawnPointId);
+    pendingEntryUserData_ = userData;
     pendingAction_ = PendingAction::StartEmbedded;
     statusMessage_ = "Embedded Play requested.";
 }
 
 void EditorPlaySession::RequestWindowedStart() {
-    if (IsRunning() || state_ == EditorPlayState::Starting) {
+    if (IsRunning() || IsTransitioning() || HasPendingStart()) {
         return;
     }
     pendingAction_ = PendingAction::StartWindowed;
@@ -134,6 +136,8 @@ void EditorPlaySession::Update(DocumentSceneBase& scene) {
 
 void EditorPlaySession::Shutdown(DocumentSceneBase* scene) {
     pendingAction_ = PendingAction::None;
+    pendingSpawnPointId_.clear();
+    pendingEntryUserData_ = 0;
     if (mode_ == EditorPlayMode::Embedded) {
         ReleaseEmbeddedInput();
         if (scene != nullptr) {
@@ -170,7 +174,10 @@ void EditorPlaySession::StartEmbedded(DocumentSceneBase& scene) {
     state_ = EditorPlayState::Starting;
     mode_ = EditorPlayMode::Embedded;
     BeginPlayTimeControl();
-    if (!scene.BeginRuntimePlay()) {
+    // 開始に失敗した場合も入口を消費し、次の通常 Play に残さない。
+    const auto spawnPointId = std::exchange(pendingSpawnPointId_, {});
+    const auto entryUserData = std::exchange(pendingEntryUserData_, 0);
+    if (!scene.BeginRuntimePlay(spawnPointId, entryUserData)) {
         Fail("Could not create the runtime scene for Embedded Play.");
         return;
     }

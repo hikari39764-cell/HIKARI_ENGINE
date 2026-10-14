@@ -52,6 +52,10 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    if (focusGameViewportAfterPreview_ && workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Scene)) {
+        ImGui::SetNextWindowFocus();
+        focusGameViewportAfterPreview_ = false;
+    }
     if (!ImGui::Begin(TEXT::LocalizeWindow("ui.window.gameView", stableWindowId).c_str(), &open, flags)) {
         context_.windows.viewport.showGameView = open;
         playSession.ReleaseEmbeddedInput();

@@ -26,7 +26,10 @@ void GameProjectEditorWorkspaceRegistry::ExecuteOperation(std::string_view id, s
     } reset{executingOperation_};
     try {
         const auto* definition = operationRegistry_->Find(std::string(id));
-        if (!definition || !HasEditorOperationExposure(definition->exposureMask, EditorOperationExposureMask::Human)) {
+        // 未登録と公開対象外を分け、項目 UI が古い Engine と権限不足を区別できるようにする。
+        if (!definition) {
+            result = {false, "OPERATION_NOT_FOUND", "Unregistered editor operation: " + std::string(id)};
+        } else if (!HasEditorOperationExposure(definition->exposureMask, EditorOperationExposureMask::Human)) {
             result = {false, "UNAVAILABLE", "The operation is not exposed to workspace controls."};
         } else if (definition->executionPolicy != EditorOperationExecutionPolicy::MainThread ||
                    (definition->permission == EditorOperationPermission::ExecuteExternalProcess &&

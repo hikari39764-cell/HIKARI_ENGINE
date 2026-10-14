@@ -1,5 +1,7 @@
 #include "HIKARI/Project/SceneCaptureView.h"
 #include <cmath>
+#include "Core/Math/HIKARI_MathValidation.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Scene/Capture/HIKARI_SceneCaptureService.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
@@ -100,6 +102,36 @@ bool SceneCaptureView::Destroy(GameProjectSceneCaptureHandle capture) const noex
         SCENE_CAPTURE::SceneCaptureService* service =
             world != nullptr ? world->Services().Find<SCENE_CAPTURE::SceneCaptureService>() : nullptr;
         return service != nullptr && capture.IsValid() && service->Destroy(capture);
+    } catch (...) {
+        return false;
+    }
+}
+
+bool SceneCaptureView::SetStyle(GameProjectSceneCaptureHandle capture,
+                                const GameProjectSceneCaptureStyleDesc& style) const noexcept {
+    constexpr TEXT::EnumName<GameProjectSceneCaptureStyle> styles[] = {{GameProjectSceneCaptureStyle::None, "None"},
+                                                                       {GameProjectSceneCaptureStyle::Clean, "Clean"},
+                                                                       {GameProjectSceneCaptureStyle::Pixel, "Pixel"},
+                                                                       {GameProjectSceneCaptureStyle::Sketch, "Sketch"}};
+    const auto inRange = [](float value, float low, float high) {
+        return MATH::IsFinite(value) && value >= low && value <= high;
+    };
+    const auto validColor = [&](const GameProjectFloat3& color) {
+        return inRange(color.x, 0.0f, 1.0f) && inRange(color.y, 0.0f, 1.0f) && inRange(color.z, 0.0f, 1.0f);
+    };
+    if (style.structSize != sizeof(GameProjectSceneCaptureStyleDesc) || style.version != 2u ||
+        HasNonZeroSceneCaptureReserved(style.reserved) || !TEXT::IsNamedEnum(styles, style.style) ||
+        !inRange(style.pixelSize, 1.0f, 32.0f) || !inRange(style.lineWidth, 0.0f, 4.0f) ||
+        !inRange(style.shadowStrength, 0.0f, 1.0f) || !inRange(style.shadowOffsetX, -16.0f, 16.0f) ||
+        !inRange(style.shadowOffsetY, -16.0f, 16.0f) || !inRange(style.backgroundLuminance, 0.0f, 1.0f) ||
+        !inRange(style.brightness, 0.0f, 4.0f) || !validColor(style.lineColor) || !validColor(style.paperColor) ||
+        !validColor(style.accentColor)) {
+        return false;
+    }
+    try {
+        World* world = PROJECT::INTERNAL::ResolveServiceWorld(world_);
+        auto* service = world != nullptr ? world->Services().Find<SCENE_CAPTURE::SceneCaptureService>() : nullptr;
+        return service != nullptr && service->SetStyle(capture, style);
     } catch (...) {
         return false;
     }

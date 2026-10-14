@@ -1,3 +1,4 @@
+#include "Editor/Authoring/HIKARI_SequenceCameraEditing.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 
 #include <algorithm>
@@ -81,8 +82,23 @@ SEQUENCER::ShotPose CinematicsWorkspaceController::CaptureShotPoseFor(DocumentSc
     return SEQUENCER::CaptureShotPose(camera, keyTime, anchor ? &anchorMatrix : nullptr);
 }
 
-void CinematicsWorkspaceController::WriteShotPose(SEQUENCER::CameraCutClip& shot, const SEQUENCER::ShotPose& pose,
-                                                  uint32_t parts) {
+void CinematicsWorkspaceController::WriteShotPose(CinematicSequence& sequence, SEQUENCER::CameraCutClip& shot,
+                                                  const SEQUENCER::ShotPose& pose, uint32_t parts) {
+    // 外部軌道は元の補間と未編集フィールドを保ったまま、その時刻の鍵だけを更新する。
+    if (!shot.camera.owned) {
+        BoundCameraPose value;
+        const float time = shot.startTimeSeconds + pose.time;
+        if (!ReadBoundCameraPose(sequence, shot.cameraBindingId, time, value))
+            return;
+        value.position = pose.position;
+        value.rotationEulerDeg = MATH::EulerXYZDegreesFromQuat(pose.rotation);
+        value.fov = pose.fov;
+        if (WriteBoundCameraPose(sequence, shot.cameraBindingId, time, value, parts)) {
+            previewChanged_ = true;
+            previewEnabled_ = true;
+        }
+        return;
+    }
     shot.camera.owned = true;
     SEQUENCER::ShotPose next = SEQUENCER::EvaluateShotPose(shot.camera, pose.time);
     if (parts & kPosePosition)
@@ -103,14 +119,23 @@ void CinematicsWorkspaceController::CapturePose(DocumentSceneBase& scene, Cinema
         CreateShot(sequence, camera);
         return;
     }
-    WriteShotPose(*shot, CaptureShotPoseFor(scene, sequence, *shot, camera, ShotLocalTime(*shot)), kPoseAll);
+    WriteShotPose(sequence, *shot, CaptureShotPoseFor(scene, sequence, *shot, camera, ShotLocalTime(*shot)), kPoseAll);
 }
 
 bool CinematicsWorkspaceController::AddPoseKeyAtCursor(CinematicSequence& sequence) {
     auto* shot = SelectedShot(sequence);
-    if (shot == nullptr || !shot->camera.owned)
+    if (shot == nullptr)
         return false;
     const float local = ShotLocalTime(*shot);
+    if (!shot->camera.owned) {
+        BoundCameraPose pose;
+        const float time = shot->startTimeSeconds + local;
+        if (!ReadBoundCameraPose(sequence, shot->cameraBindingId, time, pose))
+            return false;
+        previewChanged_ = WriteBoundCameraPose(sequence, shot->cameraBindingId, time, pose, BoundAll);
+        previewEnabled_ = true;
+        return previewChanged_;
+    }
     SEQUENCER::SetShotPose(shot->camera, SEQUENCER::EvaluateShotPose(shot->camera, local), true);
     previewChanged_ = true;
     previewEnabled_ = true;
@@ -119,7 +144,9 @@ bool CinematicsWorkspaceController::AddPoseKeyAtCursor(CinematicSequence& sequen
 
 bool CinematicsWorkspaceController::RemovePoseKeyAtCursor(CinematicSequence& sequence) {
     auto* shot = SelectedShot(sequence);
-    if (shot == nullptr || !SEQUENCER::RemoveShotPoseKey(shot->camera, ShotLocalTime(*shot)))
+    if (shot == nullptr || !(shot->camera.owned ? SEQUENCER::RemoveShotPoseKey(shot->camera, ShotLocalTime(*shot))
+                                                : RemoveBoundCameraKey(sequence, shot->cameraBindingId,
+                                                                       shot->startTimeSeconds + ShotLocalTime(*shot))))
         return false;
     previewChanged_ = true;
     return true;
@@ -127,20 +154,27 @@ bool CinematicsWorkspaceController::RemovePoseKeyAtCursor(CinematicSequence& seq
 
 bool CinematicsWorkspaceController::SeekPoseKey(CinematicSequence& sequence, int direction) {
     const auto* shot = SelectedShot(sequence);
-    if (shot == nullptr || shot->camera.keys.empty())
+    if (!shot)
         return false;
-    const float local = cursor_.GetTimeSeconds() - shot->startTimeSeconds;
-    const SEQUENCER::ShotPose* found = nullptr;
-    for (const auto& key : shot->camera.keys) {
-        const bool ahead = direction > 0 ? key.time > local + SEQUENCER::kShotPoseKeyEpsilon
-                                         : key.time < local - SEQUENCER::kShotPoseKeyEpsilon;
-        if (ahead && (found == nullptr || (direction > 0) == (key.time < found->time)))
-            found = &key;
+    std::vector<float> times;
+    if (shot->camera.owned)
+        for (const auto& key : shot->camera.keys)
+            times.push_back(shot->startTimeSeconds + key.time);
+    else
+        times = BoundCameraKeyTimes(sequence, shot->cameraBindingId);
+    std::optional<float> found;
+    for (float time : times) {
+        if (time < shot->startTimeSeconds || time > shot->startTimeSeconds + shot->durationSeconds)
+            continue;
+        const bool ahead = direction > 0 ? time > cursor_.GetTimeSeconds() + SEQUENCER::kShotPoseKeyEpsilon
+                                         : time < cursor_.GetTimeSeconds() - SEQUENCER::kShotPoseKeyEpsilon;
+        if (ahead && (!found || (direction > 0) == (time < *found)))
+            found = time;
     }
-    if (found == nullptr || found->time > shot->durationSeconds)
+    if (!found)
         return false;
     cursor_.Pause();
-    cursor_.Seek(shot->startTimeSeconds + found->time);
+    cursor_.Seek(*found);
     previewEnabled_ = true;
     return true;
 }

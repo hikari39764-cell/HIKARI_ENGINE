@@ -1,3 +1,4 @@
+#include "Editor/Authoring/HIKARI_SequenceCameraEditing.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 #include "Editor/Views/Director/HIKARI_DirectorViewInternal.h"
@@ -42,7 +43,17 @@ Camera3D CinematicsWorkspaceController::ResolveShotCamera(DocumentSceneBase& sce
         Camera3D camera = scene.GetCamera();
         if (previewBindings_.Resolve(sequence.bindings, shot.cameraBindingId, id))
             scene.TryResolveCameraObjectView(id, 16.0f / 9, camera);
-        return camera;
+        CinematicCameraEvaluation evaluation;
+        evaluation.shotId = shot.id;
+        evaluation.cameraObjectId = id;
+        evaluation.transform = SEQUENCER::EvaluateCameraTransformTrack(
+            sequence.cameraTransformTrack, shot.cameraBindingId, shot.startTimeSeconds + localTime);
+        evaluation.lens = SEQUENCER::EvaluateCameraLensTrack(sequence.cameraLensTrack, shot.cameraBindingId,
+                                                             shot.startTimeSeconds + localTime);
+        auto evaluated = camera;
+        if (evaluation.HasCameraAnimation())
+            BuildEvaluatedCinematicCamera(evaluation, camera, 16.f / 9, evaluated);
+        return evaluated;
     }
     const auto object = [&](SEQUENCER::SequenceBindingId binding) {
         SceneObjectId id;
@@ -82,9 +93,6 @@ bool CinematicsWorkspaceController::DrawStage(DocumentSceneBase& scene, Cinemati
                     positions.push_back(camera.GetTarget());
                 }
             }
-            for (const auto& object : scene.GetWorld().GetObjects())
-                if (object && object->GetComponent<CameraComponent>())
-                    positions.push_back(DIRECTOR_VIEW::ExtractPosition(object->GetTransform().GetWorldMatrix()));
             if (positions.empty())
                 positions.push_back(scene.GetCamera().GetTarget());
             auto low = positions.front(), high = low;
@@ -152,7 +160,7 @@ bool CinematicsWorkspaceController::DrawStage(DocumentSceneBase& scene, Cinemati
                 stageTool_ = StageTool::Aim;
         }
         // 驾驶：选んだ镜头の視点で飛ぶ。
-        ImGui::BeginDisabled(selected == nullptr || (selected && !selected->camera.owned));
+        ImGui::BeginDisabled(selected == nullptr);
         if (IconToggleButton(EditorGlyph::Camera, "pilotShot", pilot_, {26, 26},
                              TEXT::Localize("cine.pilotShot").c_str())) {
             pilot_ = !pilot_;
@@ -164,7 +172,7 @@ bool CinematicsWorkspaceController::DrawStage(DocumentSceneBase& scene, Cinemati
         NextToolbarItem();
         // 飛行録画は自由に向きを変えられる镜头だけ（注視の相手に結んだ镜头は向きが決まっている）。
         const bool aimLocked = selected && selected->camera.lookAt.IsValid();
-        ImGui::BeginDisabled(selected == nullptr || aimLocked || pilot_);
+        ImGui::BeginDisabled(selected == nullptr || (selected && !selected->camera.owned) || aimLocked || pilot_);
         if (IconToggleButton(flight_ == FlightState::Off ? EditorGlyph::Record : EditorGlyph::Stop, "flightRecord",
                              flight_ != FlightState::Off, {26, 26}, TEXT::Localize("cine.recordFlight").c_str())) {
             flight_ = flight_ == FlightState::Off ? FlightState::Armed : FlightState::Off;
@@ -212,7 +220,7 @@ bool CinematicsWorkspaceController::DrawStage(DocumentSceneBase& scene, Cinemati
 
 bool CinematicsWorkspaceController::UpdatePilot(DocumentSceneBase& scene, CinematicSequence& sequence, bool viewMoved) {
     auto* shot = SelectedShot(sequence);
-    if (!pilot_ || shot == nullptr || !shot->camera.owned) {
+    if (!pilot_ || shot == nullptr) {
         pilot_ = false;
         return false;
     }
@@ -220,10 +228,11 @@ bool CinematicsWorkspaceController::UpdatePilot(DocumentSceneBase& scene, Cinema
     if (viewMoved) {
         // 飛んだ視点を镜头の姿勢にする。傾きと画角は镜头のまま（视图の操作は傾けない）。
         const Camera3D view = directorViewPanel_.GetViewCamera();
-        const SEQUENCER::ShotPose current = SEQUENCER::EvaluateShotPose(shot->camera, local);
+        const auto current =
+            CaptureShotPoseFor(scene, sequence, *shot, ResolveShotCamera(scene, sequence, *shot, local, false), local);
         SEQUENCER::ShotPose pose = CaptureShotPoseFor(scene, sequence, *shot, view, local);
         pose.rotation = SEQUENCER::ShotRotationLookingAlong(SEQUENCER::ShotPoseForward(pose), current.rotation);
-        WriteShotPose(*shot, pose, kPosePosition | kPoseRotation);
+        WriteShotPose(sequence, *shot, pose, kPosePosition | kPoseRotation);
         cursor_.Pause();
         pilotCamera_ = view;
         pilotShot_ = shot->id;
@@ -382,7 +391,7 @@ bool CinematicsWorkspaceController::DrawShotOverlays(DocumentSceneBase& scene, C
         draw->AddRect(low, high, IM_COL32(255, 204, 104, 200), 0.0f, 0, 1.5f);
         draw->AddText({low.x + 8, low.y + 6}, IM_COL32(255, 204, 104, 230), selected->camera.name.c_str());
     }
-    if (selected && selected->camera.owned && enabled && !pilot_) {
+    if (selected && enabled && !pilot_) {
         changed |= DrawRailOverlay(scene, sequence, *selected, viewport, interacting);
         const bool railPoint =
             selectedRailPoint_ >= 0 && selectedRailPoint_ < static_cast<int>(selected->camera.rail.points.size());
@@ -405,15 +414,15 @@ bool CinematicsWorkspaceController::DrawShotOverlays(DocumentSceneBase& scene, C
             const auto edit = stageGizmo_.DrawTransform(transform, observer, state, viewport);
             interacting |= edit.interacting;
             if (edit.changed) {
-                const SEQUENCER::ShotPose current = SEQUENCER::EvaluateShotPose(selected->camera, local);
+                const auto current = CaptureShotPoseFor(scene, sequence, *selected, camera, local);
                 if (stageTool_ == StageTool::Rotate) {
                     const auto pose = CaptureShotPoseFor(
                         scene, sequence, *selected, CameraFromPose(camera, camera.GetPosition(), edit.rotation), local);
-                    WriteShotPose(*selected, pose, kPoseRotation);
+                    WriteShotPose(sequence, *selected, pose, kPoseRotation);
                 } else if (stageTool_ == StageTool::Move) {
                     const auto pose = CaptureShotPoseFor(
                         scene, sequence, *selected, CameraFromPose(camera, edit.transform.position, rotation), local);
-                    WriteShotPose(*selected, pose, kPosePosition);
+                    WriteShotPose(sequence, *selected, pose, kPosePosition);
                 } else if (bound) {
                     // 相手に結んだ镜头は注視の偏移を動かす。
                     selected->camera.targetOffset =
@@ -429,7 +438,7 @@ bool CinematicsWorkspaceController::DrawShotOverlays(DocumentSceneBase& scene, C
                         auto pose = CaptureShotPoseFor(scene, sequence, *selected, aimed, local);
                         pose.rotation =
                             SEQUENCER::ShotRotationLookingAlong(SEQUENCER::ShotPoseForward(pose), current.rotation);
-                        WriteShotPose(*selected, pose, kPoseRotation);
+                        WriteShotPose(sequence, *selected, pose, kPoseRotation);
                     }
                 }
                 cursor_.Pause();
@@ -466,7 +475,7 @@ bool CinematicsWorkspaceController::DrawShotOverlays(DocumentSceneBase& scene, C
                 std::abs(mouse.x - screen.x) < 12 && std::abs(mouse.y - screen.y) < 12 && ImGui::IsMouseClicked(0))
                 clicked = shot.id;
         }
-        if (showShotPaths_ && shot.camera.owned) {
+        if (showShotPaths_) {
             auto last = ResolveShotCamera(scene, sequence, shot, 0).GetPosition();
             for (int i = 1; i <= 48; ++i) {
                 const auto next = ResolveShotCamera(scene, sequence, shot, shot.durationSeconds * i / 48).GetPosition();

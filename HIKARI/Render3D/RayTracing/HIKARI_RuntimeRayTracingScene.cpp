@@ -12,7 +12,9 @@
 #include <d3dx12.h>
 
 #include "Core/Math/HIKARI_MathValidation.h"
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
+#include "Gfx/HIKARI_FencedUploadBuffers.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/RayTracing/HIKARI_DxrAccelerationStructure.h"
@@ -62,6 +64,7 @@ struct Group {
     Asset* asset = nullptr;
     MATH::Mat4 world{};
     std::vector<std::pair<uint32_t, uint32_t>> surfaces; // material slot, flags
+    uint32_t index = 0;                                  // instance を並べた順の番号（GroupUse の位置）
 };
 // 変形する面。物体と形状ごとに BLAS を持ち、頂点は compute で world 空間へ変形して refit する。
 // 骨格の蒙皮は毎フレーム、地形（高さ場。鍵の 4 番目は地形の記録の番号）は高さ場か配置が変わった時だけ。
@@ -115,6 +118,74 @@ template <class T>
 bool SameBytes(const std::vector<T>& a, const std::vector<T>& b) {
     return a.size() == b.size() && (a.empty() || std::memcmp(a.data(), b.data(), a.size() * sizeof(T)) == 0);
 }
+void WriteTransform(D3D12_RAYTRACING_INSTANCE_DESC& instance, const MATH::Mat4& world) {
+    for (int row = 0; row < 3; ++row)
+        for (int col = 0; col < 4; ++col)
+            instance.Transform[row][col] = world.m[col][row];
+}
+bool SameMatrix(const MATH::Mat4& a, const MATH::Mat4& b) { return std::memcmp(&a, &b, sizeof(a)) == 0; }
+
+// 表面を加速構造へどう入れるかを決める入力（world 行列と材質を除く）。前回と全部同じなら、変わったのは配置か
+// 材質だけ。材質はプログラム（画面や微分を使うと外す）だけが入れ方を変え、slot は hit 記録の番号を直せば足りる。
+struct RecordInputs {
+    uint64_t object = 0, lifetime = 0;
+    uint32_t geometryIndex = 0, geometryGeneration = 0;
+    uint32_t node = 0, mesh = 0, primitive = 0;
+    uint32_t materialProgram = 0;
+    uint32_t terrainIndex = 0;
+    uint32_t bits = 0;
+    friend bool operator==(const RecordInputs&, const RecordInputs&) = default;
+};
+RecordInputs ReadInputs(const GPUDRIVEN::GpuSceneSurfaceRecord& record, size_t index,
+                        std::span<const uint32_t> materialSlots, std::span<const MATERIAL::GpuMaterialData> materials) {
+    const bool flags[] = {record.visible,
+                          record.valid,
+                          record.skinned,
+                          record.foliageWind,
+                          record.waterSurface,
+                          record.terrainSurface,
+                          record.key.customVertexShader,
+                          record.key.materialFx,
+                          record.jointPaletteMatrixCount != 0,
+                          record.key.doubleSided,
+                          record.castShadow,
+                          record.key.transparent};
+    uint32_t bits = 0;
+    for (size_t b = 0; b < std::size(flags); ++b)
+        bits |= flags[b] ? 1u << b : 0u;
+    const auto handle = record.key.resources.clusterGeometry;
+    const uint32_t slot = index < materialSlots.size() ? materialSlots[index] : 0xffffffffu;
+    return {record.objectId.value,
+            record.objectLifetimeGeneration,
+            handle.index,
+            handle.generation,
+            record.nodeIndex,
+            record.meshIndex,
+            record.primitiveIndex,
+            slot < materials.size() ? materials[slot].materialProgramIndex : 0xffffffffu,
+            record.terrainSurfaceGpuDataIndex,
+            bits};
+}
+// 表面の前回の入れ方。group は静的な群の番号。変形する面は kDeformedGroup、入れなかった面は kNoGroup。
+inline constexpr uint32_t kNoGroup = 0xffffffffu;
+inline constexpr uint32_t kDeformedGroup = 0xfffffffeu;
+// materialSlot は hit 記録に書いた材質の slot、surfaceIndex は群の中の面の番号（静的な群の面だけ）。
+struct RecordUse {
+    RecordInputs inputs{};
+    uint32_t group = kNoGroup;
+    uint32_t materialSlot = 0xffffffffu;
+    uint32_t surfaceIndex = 0;
+};
+// 静的な群の前回の行列、lastInstances の中の instance の範囲と lastHits の中の hit 記録の先頭、面ごとの
+// （材質 slot, 旗）。同じ物体・形状の群は GroupKey の順で隣り合う。
+struct GroupUse {
+    uint64_t object = 0, lifetime = 0, assetKey = 0;
+    MATH::Mat4 world{};
+    uint32_t firstInstance = 0, instanceCount = 0;
+    const Asset* asset = nullptr;
+    uint32_t firstHit = 0;
+    std::vector<std::pair<uint32_t, uint32_t>> surfaces;
+};
 } // namespace
 
 struct RuntimeRayTracingScene::State {
@@ -140,8 +211,8 @@ struct RuntimeRayTracingScene::State {
     std::map<uint64_t, std::unique_ptr<Asset>> assets;
     CLUSTER::ClusterRayTracingGeometryBuilder converter;
     std::unique_ptr<AccelerationStructure> topLevel;
-    Microsoft::WRL::ComPtr<ID3D12Resource> hitBuffer;
-    uint64_t hitBufferBytes = 0;
+    // hit 記録。材質の slot だけが替わった時は GPU が読み終えた予備へ書き直す。
+    GFX::FencedUploadBuffers hitUploads;
     std::vector<D3D12_RAYTRACING_INSTANCE_DESC> lastInstances;
     std::vector<RuntimeRayTracingHitRecord> lastHits;
     std::vector<RetiringBytes> retiring;
@@ -154,6 +225,15 @@ struct RuntimeRayTracingScene::State {
     RuntimeRayTracingChanges changes;
     // 変形の compute が使えない（shader の失敗など）時は蒙皮を外す面に戻す。
     bool deformationBroken = false;
+    // 前回の全体の組み立てで決めた表面と群の入れ方。配置だけが動いたフレームはこれで instance の変換だけを直す。
+    std::vector<RecordUse> recordUses;
+    std::vector<GroupUse> groupUses;
+    bool terrainBound = false;
+    // UpdateInPlace の作業領域（毎フレーム確保し直さない）。groupStates は 0: 未確認, 1: 同じ, 2: 動いた。
+    // groupRetints は面の材質 slot が替わった群（hit 記録を書き直す）。
+    std::vector<MATH::Mat4> movedWorlds;
+    std::vector<uint8_t> groupStates;
+    std::vector<uint8_t> groupRetints;
 
     void RetireDeformed(const GFX::Context& graphics, Deformed& entry) {
         TrackRetirement(graphics, entry.Bytes());
@@ -240,20 +320,20 @@ struct RuntimeRayTracingScene::State {
     }
     void RetireTop(const GFX::Context& graphics, bool keepHits = false) {
         sourceIdentity = nullptr;
-        TrackRetirement(graphics, (keepHits ? 0 : hitBufferBytes) + (topLevel ? topLevel->GetAllocationBytes() : 0));
+        TrackRetirement(graphics, (keepHits ? 0 : hitUploads.AllocationBytes()) +
+                                      (topLevel ? topLevel->GetAllocationBytes() : 0));
         if (topLevel)
             topLevel->Reset(&graphics);
         topLevel.reset();
         if (!keepHits) {
-            GFX::RetireD3D12ObjectForFrame(hitBuffer, graphics, "RT.Scene.Hits");
-            hitBufferBytes = 0;
+            hitUploads.Reset(graphics, "RT.Scene.Hits");
             lastHits.clear();
         }
         lastInstances.clear();
     }
     uint64_t Available(const RuntimeRayTracingBudget& budget) {
         stats.residentBytes =
-            hitBufferBytes + (topLevel ? topLevel->GetAllocationBytes() : 0) + deformation.PoolBytes();
+            hitUploads.AllocationBytes() + (topLevel ? topLevel->GetAllocationBytes() : 0) + deformation.PoolBytes();
         for (const auto& [key, asset] : assets)
             stats.residentBytes += asset->Bytes();
         for (const auto& [key, entry] : deformed)
@@ -315,11 +395,12 @@ struct RuntimeRayTracingScene::State {
         slot->touched = serial;
         return slot.get();
     }
-    bool CanReuse(const GPUDRIVEN::GpuDrivenSceneSource& source, const RuntimeRayTracingBudget& budget,
-                  RuntimeRayTracingMaterialVersion materials) {
+    // 加速構造の形（表面の並び・形状の資源・予算）が前回のままか。配置（sourceVersion）と材質の値（版）が
+    // 変わったかは見ない。それは UpdateInPlace が表面ごとに確かめる。
+    bool SameStructure(const GPUDRIVEN::GpuDrivenSceneSource& source, const RuntimeRayTracingBudget& budget,
+                       RuntimeRayTracingMaterialVersion materials) {
         if (!topLevel || source.sourceVersion == 0 || materials.data == 0 || materials.bindings == 0 ||
-            sourceIdentity != source.surfaceRecords || sourceVersion != source.sourceVersion ||
-            layoutVersion != source.layoutVersion || materialVersion != materials ||
+            sourceIdentity != source.surfaceRecords || layoutVersion != source.layoutVersion ||
             (lastExcluded.mask & RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Missing)) != 0u)
             return false; // 未解決の面（読み込み中の形状など）があれば揃うまで毎フレーム組み直す。
         for (const auto& [key, asset] : assets) {
@@ -338,6 +419,128 @@ struct RuntimeRayTracingScene::State {
         return lastHits.size() <= budget.maximumHitRecords && lastInstances.size() <= budget.maximumInstances &&
                stats.residentBytes + stats.retiringBytes <= budget.maximumBytes;
     }
+    // 配置か材質だけが変わったフレーム。表面の入れ方が前回と同じなら群をまとめ直さず、動いた群の instance の変換を
+    // 書き換えて TLAS をその場で組み直し、材質の slot が替わった群は hit 記録の材質番号だけを書き直す（資源は作り
+    // 直さない。材質の値は版だけ進める）。群が割れる・重なる、行列が不正になるなど全体の組み直しと結果が変わる時は
+    // nullopt を返し、呼び出し側が全体を組み直す。
+    std::optional<RuntimeRayTracingFrame> UpdateInPlace(const GFX::Context& graphics,
+                                                        const GPUDRIVEN::GpuDrivenSceneSource& source,
+                                                        std::span<const uint32_t> materialSlots,
+                                                        std::span<const MATERIAL::GpuMaterialData> materials,
+                                                        RuntimeRayTracingMaterialVersion currentMaterials,
+                                                        const RuntimeRayTracingBudget& budget,
+                                                        const RuntimeRayTracingSurfaceBindings& surfaces) {
+        const auto& records = *source.surfaceRecords;
+        if (recordUses.size() != records.size() ||
+            terrainBound != (surfaces.terrainRecords != 0 && surfaces.surfaceFloats != 0))
+            return std::nullopt;
+        groupStates.assign(groupUses.size(), 0);
+        groupRetints.assign(groupUses.size(), 0);
+        movedWorlds.resize(groupUses.size());
+        for (size_t i = 0; i < records.size(); ++i) {
+            const auto& record = records[i];
+            auto& use = recordUses[i];
+            if (!(ReadInputs(record, i, materialSlots, materials) == use.inputs))
+                return std::nullopt;
+            const MATH::Mat4& world = record.clusterWorldMatrix;
+            const uint32_t slot = i < materialSlots.size() ? materialSlots[i] : 0xffffffffu;
+            if (use.group == kDeformedGroup) {
+                // 変形する面は DeformAndRefit が毎回行列を読む。不正な行列と材質替えは全体の組み直しで扱う。
+                if (slot != use.materialSlot || !ValidTransform(world))
+                    return std::nullopt;
+                continue;
+            }
+            // 入れなかった面は、材質プログラムが同じなら入れ方も同じ（inputs で確かめた）。
+            if (use.group == kNoGroup)
+                continue;
+            if (slot != use.materialSlot) {
+                groupUses[use.group].surfaces[use.surfaceIndex].first = slot;
+                use.materialSlot = slot;
+                groupRetints[use.group] = 1;
+            }
+            uint8_t& state = groupStates[use.group];
+            if (state == 0) {
+                const bool same = SameMatrix(world, groupUses[use.group].world);
+                if (!same && !ValidTransform(world))
+                    return std::nullopt;
+                state = same ? 1 : 2;
+                movedWorlds[use.group] = world;
+            } else if (!SameMatrix(world, movedWorlds[use.group])) {
+                return std::nullopt; // 同じ群の面が別々に動いた（全体では群が割れる）
+            }
+        }
+        bool moved = false;
+        for (size_t g = 0; g < groupUses.size(); ++g) {
+            if (groupStates[g] == 0)
+                return std::nullopt;
+            if (groupStates[g] != 2)
+                continue;
+            moved = true;
+            // 同じ物体・形状の別の群と行列が重なれば、全体の組み直しでは一つの群にまとまる。
+            const auto sameOwner = [&](size_t n) {
+                return groupUses[n].object == groupUses[g].object && groupUses[n].lifetime == groupUses[g].lifetime &&
+                       groupUses[n].assetKey == groupUses[g].assetKey;
+            };
+            for (size_t n = g; n-- > 0 && sameOwner(n);)
+                if (SameMatrix(movedWorlds[n], movedWorlds[g]))
+                    return std::nullopt;
+            for (size_t n = g + 1; n < groupUses.size() && sameOwner(n); ++n)
+                if (SameMatrix(movedWorlds[n], movedWorlds[g]))
+                    return std::nullopt;
+        }
+        // 変形する面を先に refit する（TLAS はそれを含めて組み直すか refit する）。
+        if (!deformed.empty() && !DeformAndRefit(graphics, source, budget, surfaces)) {
+            deformationBroken = true;
+            return Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
+        }
+        if (moved) {
+            for (size_t g = 0; g < groupUses.size(); ++g) {
+                if (groupStates[g] != 2)
+                    continue;
+                auto& group = groupUses[g];
+                group.world = movedWorlds[g];
+                for (uint32_t k = 0; k < group.instanceCount; ++k)
+                    WriteTransform(lastInstances[group.firstInstance + k], group.world);
+            }
+            if (!topLevel->RebuildTopLevelInPlace(graphics, lastInstances)) {
+                lastInstances.clear(); // 書き換えた記述を、組まれた TLAS と取り違えないようにする
+                return std::nullopt;
+            }
+        } else if (deformedRefreshed && !topLevel->RefitInPlace(graphics)) {
+            deformationBroken = true;
+            return Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
+        }
+        // hit 記録は全体の組み立てと同じ並び（使う塊の範囲の順）で、面ごとの材質から書き直す。
+        bool retinted = false;
+        for (size_t g = 0; g < groupUses.size(); ++g) {
+            if (!groupRetints[g])
+                continue;
+            retinted = true;
+            const auto& group = groupUses[g];
+            uint32_t hit = group.firstHit;
+            for (const auto& chunk : group.asset->chunks) {
+                if (std::none_of(chunk.ranges.begin(), chunk.ranges.end(), [&](const auto& range) {
+                        return group.surfaces[range.surfaceIndex].first != 0xffffffffu;
+                    }))
+                    continue;
+                for (const auto& range : chunk.ranges)
+                    lastHits[hit++].materialIndex = group.surfaces[range.surfaceIndex].first;
+            }
+        }
+        if (retinted &&
+            !hitUploads.Write(graphics, lastHits.data(), lastHits.size() * sizeof(lastHits[0]), "RT.Scene.Hits")) {
+            lastHits.clear(); // 書き換えた記録を、GPU にある記録と取り違えないようにする
+            return std::nullopt;
+        }
+        if (moved || retinted)
+            ++version;
+        sourceVersion = source.sourceVersion;
+        materialVersion = currentMaterials;
+        stats.reusedTopLevel = true;
+        stats.sourceSurfaces = sourceSurfaceCount;
+        ExcludeMassInstances(source);
+        return Publish(graphics, budget);
+    }
     // 加速構造に入れない大量配置（草や岩の散布）を足す。
     void ExcludeMassInstances(const GPUDRIVEN::GpuDrivenSceneSource& source) {
         stats.excluded = lastExcluded;
@@ -350,6 +553,7 @@ struct RuntimeRayTracingScene::State {
         return frame;
     }
     RuntimeRayTracingFrame Publish(const GFX::Context& graphics, const RuntimeRayTracingBudget& budget) {
+        hitUploads.MarkRead(graphics); // このフレームの光線も hit 記録を読む
         stats.status = RuntimeRayTracingStatus::Ready;
         stats.instances = static_cast<uint32_t>(lastInstances.size());
         stats.hitRecords = static_cast<uint32_t>(lastHits.size());
@@ -359,8 +563,8 @@ struct RuntimeRayTracingScene::State {
             stats.readyChunks += static_cast<uint32_t>(asset->bottomLevels.size());
         Available(budget);
         RuntimeRayTracingFrame frame =
-            WithCoverage({topLevel->GetGpuAddress(), hitBuffer->GetGPUVirtualAddress(), stats.hitRecords, version,
-                          graphics.currentFrameRetireFenceValue, true, false, graphics.frameFence,
+            WithCoverage({topLevel->GetGpuAddress(), hitUploads.Current()->GetGPUVirtualAddress(), stats.hitRecords,
+                          version, graphics.currentFrameRetireFenceValue, true, false, graphics.frameFence,
                           graphics.deviceGeneration, sourceIdentity, layoutVersion, materialVersion});
         frame.deformedVertices = deformed.empty() ? 0 : deformation.PoolAddress();
         frame.changedMinimum = changes.minimum;
@@ -400,6 +604,8 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
                                                        const RuntimeRayTracingBudget& budget,
                                                        RuntimeRayTracingMaterialVersion materialVersion,
                                                        const RuntimeRayTracingSurfaceBindings& surfaces) {
+    static const auto timer = CPU_PROFILE::RegisterDynamicPass("Render.RayScene");
+    const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
     auto& state = *state_;
     state.stats = {};
     if (!graphics.device || !graphics.cmdList || !graphics.frameFence || !graphics.deferredReleaseQueue ||
@@ -429,26 +635,42 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
     if (!state.supportsQueries)
         return state.Fail(graphics, budget, RuntimeRayTracingStatus::UnsupportedDevice);
     if (materialSlots.size() == state.materialSlotCount && materials.size() == state.materialCount &&
-        source.surfaceRecords->size() == state.sourceRecordCount && state.CanReuse(source, budget, materialVersion)) {
-        state.stats.reusedTopLevel = true;
-        state.stats.sourceSurfaces = state.sourceSurfaceCount;
-        state.ExcludeMassInstances(source);
-        // 蒙皮は配置が同じでも毎フレーム動く。頂点を変形して BLAS と TLAS をその場で refit する。
-        if (!state.deformed.empty() && (!state.DeformAndRefit(graphics, source, budget, surfaces) ||
-                                        (state.deformedRefreshed && !state.topLevel->RefitInPlace(graphics)))) {
-            state.deformationBroken = true;
-            return state.Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
+        source.surfaceRecords->size() == state.sourceRecordCount &&
+        state.SameStructure(source, budget, materialVersion)) {
+        // 配置か材質の値が変わっただけなら、群をまとめ直さず instance の変換と材質の版だけを直す
+        // （できなければ下で全体を組み直す）。
+        if (state.sourceVersion != source.sourceVersion || state.materialVersion != materialVersion) {
+            if (auto updated =
+                    state.UpdateInPlace(graphics, source, materialSlots, materials, materialVersion, budget, surfaces))
+                return *updated;
+        } else {
+            state.stats.reusedTopLevel = true;
+            state.stats.sourceSurfaces = state.sourceSurfaceCount;
+            state.ExcludeMassInstances(source);
+            // 蒙皮は配置が同じでも毎フレーム動く。頂点を変形して BLAS と TLAS をその場で refit する。
+            if (!state.deformed.empty() && (!state.DeformAndRefit(graphics, source, budget, surfaces) ||
+                                            (state.deformedRefreshed && !state.topLevel->RefitInPlace(graphics)))) {
+                state.deformationBroken = true;
+                return state.Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
+            }
+            return state.Publish(graphics, budget);
         }
-        return state.Publish(graphics, budget);
     }
+    static const auto rebuildTimer = CPU_PROFILE::RegisterDynamicPass("Render.RayScene.Rebuild");
+    const CPU_PROFILE::ScopedDynamicCpuTimer rebuildScope(rebuildTimer);
     const auto& records = *source.surfaceRecords;
     // 入れられない面は種類を数えて外す（場面全体は止めない）。どの機能が使えるかは外した種類で決まる。
     using enum RuntimeRayTracingExclusion;
     RuntimeRayTracingExclusions& excluded = state.stats.excluded;
     std::vector<bool> included(records.size(), false);
     std::vector<bool> deforms(records.size(), false);
+    // 次のフレームが配置だけの更新で済ませられるよう、表面と群の入れ方を残す。
+    std::vector<RecordUse> recordUses(records.size());
+    std::vector<Group*> groupOf(records.size(), nullptr);
     for (size_t i = 0; i < records.size(); ++i) {
         const auto& record = records[i];
+        recordUses[i].inputs = ReadInputs(record, i, materialSlots, materials);
+        recordUses[i].materialSlot = i < materialSlots.size() ? materialSlots[i] : 0xffffffffu;
         if (!record.visible)
             continue;
         ++state.stats.sourceSurfaces;
@@ -512,6 +734,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
             }
             entry.records.push_back(i);
             entry.surfaces[range->surfaceIndex] = surfaceState;
+            recordUses[i].group = kDeformedGroup;
             continue;
         }
         std::array<float, 16> matrix{};
@@ -522,6 +745,8 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
             group.world = record.clusterWorldMatrix;
             group.surfaces.resize(asset->source->surfaceRanges.size(), {0xffffffffu, 0u});
         }
+        groupOf[i] = &group;
+        recordUses[i].surfaceIndex = range->surfaceIndex;
         auto& surface = group.surfaces[range->surfaceIndex];
         // 同じ物体/transform/surface の競合を黙って上書きしない。
         if (surface.first != 0xffffffffu && surface.first != materialSlots[i])
@@ -610,8 +835,20 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
     }
     std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
     std::vector<RuntimeRayTracingHitRecord> hits;
-    for (const auto& [key, group] : groups) {
+    std::vector<GroupUse> groupUses;
+    groupUses.reserve(groups.size());
+    for (auto& [key, group] : groups) {
         const auto& asset = *group.asset;
+        group.index = static_cast<uint32_t>(groupUses.size());
+        groupUses.push_back({std::get<0>(key),
+                             std::get<1>(key),
+                             std::get<2>(key),
+                             group.world,
+                             static_cast<uint32_t>(instances.size()),
+                             0,
+                             group.asset,
+                             static_cast<uint32_t>(hits.size()),
+                             {}});
         for (size_t c = 0; c < asset.chunks.size(); ++c) {
             const auto& chunk = asset.chunks[c];
             if (std::none_of(chunk.ranges.begin(), chunk.ranges.end(), [&](const auto& range) {
@@ -622,9 +859,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
                 chunk.ranges.size() > budget.maximumHitRecords - hits.size())
                 return state.Fail(graphics, budget, RuntimeRayTracingStatus::BudgetExceeded);
             D3D12_RAYTRACING_INSTANCE_DESC instance{};
-            for (int row = 0; row < 3; ++row)
-                for (int col = 0; col < 4; ++col)
-                    instance.Transform[row][col] = group.world.m[col][row];
+            WriteTransform(instance, group.world);
             instance.InstanceID = static_cast<uint32_t>(hits.size());
             instance.InstanceMask = 0xff;
             instance.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE;
@@ -636,7 +871,12 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
                                 range.firstPrimitive, range.firstCluster, range.clusterCount, range.primitiveCount});
             }
         }
+        groupUses.back().instanceCount = static_cast<uint32_t>(instances.size()) - groupUses.back().firstInstance;
+        groupUses.back().surfaces = std::move(group.surfaces);
     }
+    for (size_t i = 0; i < records.size(); ++i)
+        if (groupOf[i])
+            recordUses[i].group = groupOf[i]->index;
     // 変形した面は world 空間の頂点なので instance の変換は単位。
     for (const auto& [key, entry] : state.deformed) {
         const Asset& asset = *entry.asset;
@@ -678,7 +918,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
         if (!state.deformed.empty() && !state.topLevel->RefitInPlace(graphics))
             return state.Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
     } else {
-        const bool keepHits = state.hitBuffer && SameBytes(hits, state.lastHits);
+        const bool keepHits = state.hitUploads.Current() && SameBytes(hits, state.lastHits);
         const auto desc = CD3DX12_RESOURCE_DESC::Buffer(hits.size() * sizeof(RuntimeRayTracingHitRecord));
         const uint64_t bytes = keepHits ? 0 : graphics.device->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes;
         uint64_t available = state.Available(budget);
@@ -689,23 +929,13 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
                                 state.topLevel && state.lastInstances.size() == instances.size() ? state.topLevel.get()
                                                                                                  : nullptr))
             return state.Fail(graphics, budget, RuntimeRayTracingStatus::BudgetExceeded);
-        Microsoft::WRL::ComPtr<ID3D12Resource> upload;
-        void* mapped = nullptr;
-        if (!keepHits && !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(graphics.device, desc.Width, upload, &mapped)) {
+        if (!keepHits && !state.hitUploads.Write(graphics, hits.data(), desc.Width, "RT.Scene.Hits")) {
             state.TrackRetirement(graphics, top->GetAllocationBytes());
             top->Reset(&graphics);
             return state.Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
         }
-        if (!keepHits) {
-            std::memcpy(mapped, hits.data(), static_cast<size_t>(desc.Width));
-            upload->Unmap(0, nullptr);
-        }
-        state.RetireTop(graphics, keepHits);
+        state.RetireTop(graphics, true); // 前の hit 記録は予備として残り、GPU が読み終えたら使い回す
         state.topLevel = std::move(top);
-        if (!keepHits) {
-            state.hitBuffer = std::move(upload);
-            state.hitBufferBytes = bytes;
-        }
         state.lastHits = std::move(hits);
         state.lastInstances = std::move(instances);
         ++state.version;
@@ -718,6 +948,9 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
     state.sourceRecordCount = source.surfaceRecords->size();
     state.materialSlotCount = materialSlots.size();
     state.materialCount = materials.size();
+    state.recordUses = std::move(recordUses);
+    state.groupUses = std::move(groupUses);
+    state.terrainBound = surfaces.terrainRecords != 0 && surfaces.surfaceFloats != 0;
     return state.Publish(graphics, budget);
 }
 

@@ -38,6 +38,22 @@ bool ValidTriangles(const D3D12_RAYTRACING_GEOMETRY_DESC& geometry) {
            triangles.IndexCount % 3 == 0;
 }
 
+// 不透明の強制と非不透明の強制は同時に指定できない。
+bool ValidInstances(std::span<const D3D12_RAYTRACING_INSTANCE_DESC> instances) {
+    constexpr UINT kForcedOpacityFlags =
+        D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE | D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_NON_OPAQUE;
+    bool valid = instances.size() <= (1u << 24);
+    for (const auto& instance : instances) {
+        valid &= instance.AccelerationStructure % kAlignment == 0 &&
+                 (instance.InstanceMask == 0 || instance.AccelerationStructure != 0) &&
+                 (instance.Flags & ~0x0fu) == 0 && (instance.Flags & kForcedOpacityFlags) != kForcedOpacityFlags;
+        for (const auto& row : instance.Transform)
+            for (const float value : row)
+                valid &= std::isfinite(value);
+    }
+    return valid;
+}
+
 template <class T>
 bool Upload(ID3D12Device* device, std::span<const T> values, Microsoft::WRL::ComPtr<ID3D12Resource>& resource) {
     void* mapped = nullptr;
@@ -74,19 +90,7 @@ bool DxrAccelerationStructure::BuildTopLevel(const Context& graphics,
                                              std::span<const D3D12_RAYTRACING_INSTANCE_DESC> instances,
                                              uint64_t maximumAllocationBytes, bool allowUpdate,
                                              const DxrAccelerationStructure* updateSource, std::string* outMessage) {
-    // 不透明の強制と非不透明の強制は同時に指定できない。
-    constexpr UINT kForcedOpacityFlags =
-        D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE | D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_NON_OPAQUE;
-    bool valid = instances.size() <= (1u << 24);
-    for (const auto& instance : instances) {
-        valid &= instance.AccelerationStructure % kAlignment == 0 &&
-                 (instance.InstanceMask == 0 || instance.AccelerationStructure != 0) &&
-                 (instance.Flags & ~0x0fu) == 0 && (instance.Flags & kForcedOpacityFlags) != kForcedOpacityFlags;
-        for (const auto& row : instance.Transform)
-            for (const float value : row)
-                valid &= std::isfinite(value);
-    }
-    if (!valid || (updateSource != nullptr && !allowUpdate)) {
+    if (!ValidInstances(instances) || (updateSource != nullptr && !allowUpdate)) {
         Reset(&graphics);
         SetMessage(outMessage, "DXR instance descriptors or update request are invalid.");
         return false;
@@ -132,11 +136,11 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
     if (info.ResultDataMaxSizeInBytes == 0)
         return fail("DXR prebuild returned no acceleration structure.");
     const uint64_t resultBytes = info.ResultDataMaxSizeInBytes;
-    // 更新できる構造は、後の RefitInPlace でも同じ scratch を使えるよう大きい方を取る。
+    // 更新できる構造は、後の RefitInPlace / RebuildTopLevelInPlace でも同じ scratch を使えるよう
+    // build と update の大きい方を取る。
     const bool updatable = (inputs.Flags & D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE) != 0;
-    const uint64_t scratchBytes = (std::max)(
-        {kAlignment, updateSource != nullptr ? info.UpdateScratchDataSizeInBytes : info.ScratchDataSizeInBytes,
-         updatable ? info.UpdateScratchDataSizeInBytes : 0ull});
+    const uint64_t scratchBytes =
+        (std::max)({kAlignment, info.ScratchDataSizeInBytes, updatable ? info.UpdateScratchDataSizeInBytes : 0ull});
     if (resultBytes > UINT64_MAX - kAlignment || scratchBytes > UINT64_MAX - kAlignment)
         return fail("DXR prebuild size overflow.");
     const auto resultDesc = CD3DX12_RESOURCE_DESC::Buffer((resultBytes + kAlignment - 1) & ~(kAlignment - 1),
@@ -144,7 +148,7 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
     const auto scratchDesc = CD3DX12_RESOURCE_DESC::Buffer((scratchBytes + kAlignment - 1) & ~(kAlignment - 1),
                                                            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     const auto instanceDesc = CD3DX12_RESOURCE_DESC::Buffer((std::max)(size_t{1}, instances.size_bytes()));
-    uint64_t allocationBytes = 0;
+    uint64_t allocationBytes = 0, instanceBytes = 0;
     for (const auto* desc : {&resultDesc, &scratchDesc, &instanceDesc}) {
         if (desc == &instanceDesc && instances.empty())
             continue;
@@ -152,6 +156,8 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
         if (bytes == UINT64_MAX || bytes > maximumAllocationBytes - allocationBytes)
             return fail("DXR build exceeds its committed-memory budget.");
         allocationBytes += bytes;
+        if (desc == &instanceDesc)
+            instanceBytes = bytes;
     }
 
     // 再 build/refit でも旧結果を上書きしない。記録済み View と GPU 読み取りを保護する。
@@ -181,10 +187,13 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
     Reset(&graphics);
     result_ = std::move(result);
     scratch_ = std::move(scratch);
-    instanceBuffer_ = std::move(instanceBuffer);
+    if (instanceBuffer)
+        instances_.Adopt(graphics, std::move(instanceBuffer), instances.size_bytes(), instanceBytes, "DXR.Instances");
     device_ = graphics.device;
     deviceGeneration_ = graphics.deviceGeneration;
-    allocationBytes_ = allocationBytes;
+    allocationBytes_ = allocationBytes - instanceBytes;
+    resultBytes_ = resultDesc.Width;
+    scratchBytes_ = scratchDesc.Width;
     descriptorCount_ = inputs.NumDescs;
     type_ = inputs.Type;
     flags_ = inputs.Flags;
@@ -209,10 +218,12 @@ bool DxrAccelerationStructure::RefitInPlace(const Context& graphics,
     build.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
     build.Inputs.Flags = flags_ | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
     build.Inputs.NumDescs = descriptorCount_;
-    if (bottom)
+    if (bottom) {
         build.Inputs.pGeometryDescs = geometry.data();
-    else
-        build.Inputs.InstanceDescs = instanceBuffer_ ? instanceBuffer_->GetGPUVirtualAddress() : 0;
+    } else {
+        build.Inputs.InstanceDescs = instances_.Current() ? instances_.Current()->GetGPUVirtualAddress() : 0;
+        instances_.MarkRead(graphics);
+    }
     build.SourceAccelerationStructureData = result_->GetGPUVirtualAddress();
     build.DestAccelerationStructureData = result_->GetGPUVirtualAddress();
     build.ScratchAccelerationStructureData = scratch_->GetGPUVirtualAddress();
@@ -222,15 +233,55 @@ bool DxrAccelerationStructure::RefitInPlace(const Context& graphics,
     return true;
 }
 
+bool DxrAccelerationStructure::RebuildTopLevelInPlace(const Context& graphics,
+                                                      std::span<const D3D12_RAYTRACING_INSTANCE_DESC> instances) {
+    if (!result_ || !scratch_ || type_ != D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL ||
+        graphics.cmdList == nullptr || graphics.frameFence == nullptr || device_ != graphics.device ||
+        deviceGeneration_ != graphics.deviceGeneration || instances.empty() || instances.size() != descriptorCount_ ||
+        !ValidInstances(instances))
+        return false;
+    Microsoft::WRL::ComPtr<ID3D12Device5> device;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> commands;
+    if (FAILED(graphics.device->QueryInterface(IID_PPV_ARGS(&device))) ||
+        FAILED(graphics.cmdList->QueryInterface(IID_PPV_ARGS(&commands))))
+        return false;
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build{};
+    build.Inputs.Type = type_;
+    build.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+    build.Inputs.Flags = flags_;
+    build.Inputs.NumDescs = descriptorCount_;
+    // 見積もりが今の結果と scratch に収まる時だけその場で組む。
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
+    device->GetRaytracingAccelerationStructurePrebuildInfo(&build.Inputs, &info);
+    if (info.ResultDataMaxSizeInBytes == 0 || info.ResultDataMaxSizeInBytes > resultBytes_ ||
+        info.ScratchDataSizeInBytes > scratchBytes_)
+        return false;
+
+    if (!instances_.Write(graphics, instances.data(), instances.size_bytes(), "DXR.Instances"))
+        return false;
+
+    // 先に積んだ光線の読み取りと、前の build の scratch 書き込みが終わってから上書きする。
+    const D3D12_RESOURCE_BARRIER before[] = {CD3DX12_RESOURCE_BARRIER::UAV(result_.Get()),
+                                             CD3DX12_RESOURCE_BARRIER::UAV(scratch_.Get())};
+    commands->ResourceBarrier(2, before);
+    build.Inputs.InstanceDescs = instances_.Current()->GetGPUVirtualAddress();
+    build.ScratchAccelerationStructureData = scratch_->GetGPUVirtualAddress();
+    build.DestAccelerationStructureData = result_->GetGPUVirtualAddress();
+    commands->BuildRaytracingAccelerationStructure(&build, 0, nullptr);
+    const auto after = CD3DX12_RESOURCE_BARRIER::UAV(result_.Get());
+    commands->ResourceBarrier(1, &after);
+    return true;
+}
+
 DxrAccelerationStructure::~DxrAccelerationStructure() { Reset(); }
 
 void DxrAccelerationStructure::Reset(const Context* retireContext) {
     const auto& context = retireContext != nullptr ? *retireContext : GetCurrentContext();
     RetireD3D12ObjectForFrame(result_, context, "DXR.Result");
     RetireD3D12ObjectForFrame(scratch_, context, "DXR.Scratch");
-    RetireD3D12ObjectForFrame(instanceBuffer_, context, "DXR.Instances");
+    instances_.Reset(context, "DXR.Instances");
     device_ = nullptr;
-    deviceGeneration_ = allocationBytes_ = descriptorCount_ = 0;
+    deviceGeneration_ = allocationBytes_ = resultBytes_ = scratchBytes_ = descriptorCount_ = 0;
     type_ = {};
     flags_ = {};
 }

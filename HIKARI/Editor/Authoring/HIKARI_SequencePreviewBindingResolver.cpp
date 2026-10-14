@@ -45,9 +45,10 @@ bool IsCameraPreviewSlot(std::string_view requestedSlot, std::string_view hinted
            requestedSlot.starts_with("Camera.");
 }
 
-bool IsMatchingGameProjectCameraHint(const SceneObjectData& object, const SceneComponentData& component,
-                                     const AssetGuid& sequenceAssetGuid, std::string_view requestedSlot) {
-    if (!sequenceAssetGuid.IsValid() || !HasCameraComponent(object) || !component.properties.is_object()) {
+bool ResolveGameProjectCameraHint(const SceneDocument& document, const SceneObjectData& object,
+                                  const SceneComponentData& component, const AssetGuid& sequenceAssetGuid,
+                                  std::string_view requestedSlot, SceneObjectId& cameraId) {
+    if (!sequenceAssetGuid.IsValid() || !component.properties.is_object()) {
         return false;
     }
     const auto guid = component.properties.find(kGameProjectSequencePreviewAssetGuidProperty);
@@ -58,7 +59,14 @@ bool IsMatchingGameProjectCameraHint(const SceneObjectData& object, const SceneC
     const auto slot = component.properties.find(kGameProjectSequencePreviewSlotNameProperty);
     const std::string hintedSlot =
         slot != component.properties.end() && slot->is_string() ? slot->get<std::string>() : std::string{};
-    return IsCameraPreviewSlot(requestedSlot, hintedSlot);
+    if (!IsCameraPreviewSlot(requestedSlot, hintedSlot))
+        return false;
+    cameraId = object.id;
+    const auto reference = component.properties.find(kGameProjectSequencePreviewCameraProperty);
+    if (reference != component.properties.end())
+        cameraId = SceneObjectId{SCENE::SERIALIZATION::SceneObjectReferenceOr(*reference)};
+    const auto* camera = FindSceneObject(document, cameraId);
+    return camera && HasCameraComponent(*camera);
 }
 
 PersistentBindingResult TryResolvePersistentBinding(const SceneDocument& document, const AssetGuid& sequenceAssetGuid,
@@ -67,11 +75,12 @@ PersistentBindingResult TryResolvePersistentBinding(const SceneDocument& documen
     SceneObjectId candidate{};
     for (const SceneObjectData& object : document.objects) {
         for (const SceneComponentData& component : object.components) {
-            if (IsMatchingGameProjectCameraHint(object, component, sequenceAssetGuid, slotName)) {
-                if (foundCandidate && candidate != object.id) {
+            SceneObjectId cameraId{};
+            if (ResolveGameProjectCameraHint(document, object, component, sequenceAssetGuid, slotName, cameraId)) {
+                if (foundCandidate && candidate != cameraId) {
                     return PersistentBindingResult::Conflict;
                 }
-                candidate = object.id;
+                candidate = cameraId;
                 foundCandidate = true;
             }
             if (!IsMatchingSequencePlayer(component, sequenceAssetGuid)) {

@@ -8,6 +8,8 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render2D/HIKARI_SurfaceTextureTargetRing.h"
+#include "Render3D/Render/HIKARI_SceneCaptureStylePass.h"
+#include "HIKARI/Project/UiCanvasTypes.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
@@ -25,7 +27,16 @@ ModelRendererDebugStats gDebugStats{};
 RENDER3D::RUNTIME::RenderModelCache gRenderModelCache{};
 constexpr DXGI_FORMAT kSecondaryCaptureFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
-using SecondaryCaptureTargetState = SurfaceTextureTargetRing;
+// 描画先は順送りの環。公開する画面（材質へ貼る texture）は捕捉ごとに固定の一枚で、描き終えた画面を
+// 毎回そこへ描き方を掛けて描くか写す。公開の texture が毎フレーム替わると貼った材質の版が進み、
+// 影の cache・GPU scene・光追の加速構造まで毎フレーム作り直しになる。
+struct SecondaryCaptureTargetState : SurfaceTextureTargetRing {
+    SurfaceTextureTargets<1> display;
+    void Reset() noexcept {
+        display.Reset();
+        SurfaceTextureTargetRing::Reset();
+    }
+};
 
 std::array<SecondaryCaptureTargetState, MESHRENDERER::kSecondarySceneCaptureMaximumCount>& SecondaryCaptureTargets() {
     static std::array<SecondaryCaptureTargetState, MESHRENDERER::kSecondarySceneCaptureMaximumCount> states{};
@@ -74,6 +85,7 @@ void Reset() {
         state.Reset();
     }
     MESHRENDERER::Reset();
+    RENDER3D::ResetSceneCaptureStylePass();
     SHADOW::Reset();
 }
 
@@ -138,6 +150,7 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
                                        const RENDER3D::LIGHTING::SceneLightingSet& lighting, ModelManager& modelManager,
                                        SkyManager& skyManager, uint64_t worldIdentity, uint32_t captureSlot,
                                        uint32_t width, uint32_t height, bool renderSky, bool renderTransparent,
+                                       const GameProjectSceneCaptureStyleDesc& style,
                                        SecondarySceneCaptureOutput& outOutput) {
     outOutput = {};
     if (captureSlot >= MESHRENDERER::kSecondarySceneCaptureMaximumCount) {
@@ -170,11 +183,32 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
         return false;
     }
 
+    // 公開用の一枚（描画先の環とは別の slot 番号で登録する）。
+    constexpr uint32_t displaySlotBase = kGameProjectSceneCaptureMaximumActiveCount + kGameProjectUiCanvasMaximumCount;
+    if (!state.display.Ensure(graphics, worldIdentity, displaySlotBase + captureSlot, width, height,
+                              kSecondaryCaptureFormat, false)) {
+        return false;
+    }
+    RenderTarget2D& display = *state.display.targets[0];
+    if (style.style != GameProjectSceneCaptureStyle::None) {
+        const bool drawn = RENDER3D::DrawSceneCaptureStyle(graphics, target, display, style);
+        (void)POST::PostSystem::RebindCurrentRenderTarget();
+        if (!drawn) {
+            return false;
+        }
+    } else {
+        target.TransitionColor(D3D12_RESOURCE_STATE_COPY_SOURCE);
+        display.TransitionColor(D3D12_RESOURCE_STATE_COPY_DEST);
+        graphics.cmdList->CopyResource(display.GetResource(), target.GetResource());
+        target.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        display.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    }
+
     ++state.outputRevision;
     if (state.outputRevision == 0u) {
         state.outputRevision = 1u;
     }
-    outOutput.texture = state.textures[state.writeIndex];
+    outOutput.texture = state.display.textures[0];
     outOutput.width = width;
     outOutput.height = height;
     outOutput.outputRevision = state.outputRevision;

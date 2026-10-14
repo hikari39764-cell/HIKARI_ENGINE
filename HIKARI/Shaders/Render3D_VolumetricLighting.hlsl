@@ -168,6 +168,8 @@ float3 EvaluateLighting(
         pixelPosition,
         localLightDepthSlice);
     const float segmentLength = segment.y - segment.x;
+    const float3 segmentCenter = rayOrigin + ray * (0.5f * (segment.x + segment.y));
+    const float segmentRadius = 0.5f * abs(segmentLength) * length(ray);
     [loop]
     for (uint clusterSlot = 0u;
          clusterSlot < localLightCluster.y;
@@ -186,6 +188,8 @@ float3 EvaluateLighting(
             continue;
         }
         const HikariLocalLightGpuData light = gHikariLocalLights[lightIndex];
+        if (!HikariLocalLightIntersectsSegment(light, segmentCenter, segmentRadius))
+            continue;
         // 灯りへの最接近点 closest と視線からの距離 spread（発光体の半径より近づけない）。区間の両端の角度の間を
         // 一様に選ぶと、位置の密度は 1/((t-closest)^2 + spread^2) に比例する。
         const float3 toLight = light.positionRange.xyz - rayOrigin;

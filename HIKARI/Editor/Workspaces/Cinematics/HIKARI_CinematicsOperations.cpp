@@ -64,6 +64,58 @@ void AppendDocumentState(const CinematicsWorkspaceController& controller, Editor
 
 void RegisterCinematicsOperations(EditorOperationRegistry& registry, CinematicsWorkspaceController& controller,
                                   std::function<DocumentSceneBase*()> sceneProvider) {
+    // プロジェクトの関係情報だけを受け取り、編集・保存は原生文書が所有する。
+    const nlohmann::json endpointSchema{{"type", "array"},
+                                        {"items",
+                                         {{"type", "object"},
+                                          {"required", {"assetGuid", "bindingId"}},
+                                          {"properties",
+                                           {{"assetGuid", {{"type", "string"}}},
+                                            {"bindingId", {{"type", "integer"}, {"minimum", 1}}},
+                                            {"end", {{"type", "boolean"}}}}}}}};
+    const nlohmann::json groupSchema{
+        {"type", "array"},
+        {"items",
+         {{"type", "object"},
+          {"required", {"endpoints"}},
+          {"properties", {{"label", {{"type", "string"}}}, {"endpoints", endpointSchema}}}}}};
+    EditorOperationDefinition cameraContext{
+        "cinematics.camera_edit_context",
+        "Select a camera endpoint and link both endpoint groups for synchronized station editing.",
+        "cinematics",
+        {EditorOperationParameter{"end", EditorOperationParameterType::Bool, false,
+                                  "Select the final pose instead of the first"},
+         EditorOperationParameter{"label", EditorOperationParameterType::String, false, "Station name"},
+         EditorOperationParameter{"speed", EditorOperationParameterType::Float, false,
+                                  "Runtime playback speed for preview"},
+         EditorOperationParameter{"groups", EditorOperationParameterType::Json, false,
+                                  "Station groups with label and endpoints; each starts with the open asset",
+                                  groupSchema}},
+        [&controller, sceneProvider](const nlohmann::json& p) {
+            EditorOperationResult result;
+            auto* scene = sceneProvider();
+            if (!scene)
+                return EditorOperationResult{false, "NO_SCENE", "No scene is open."};
+            result.ok = controller.ConfigureCameraEditing(*scene, p, result.message);
+            result.code = result.ok ? "OK" : "CAMERA_CONTEXT_REJECTED";
+            return result;
+        }};
+    registry.Register(std::move(cameraContext), EditorOperationKind::Session);
+    registry.Register(
+        {"cinematics.align_camera_endpoint",
+         "Use this endpoint as the shared station pose in the draft.",
+         "cinematics",
+         {EditorOperationParameter{"bindingId", EditorOperationParameterType::Int, true, "Camera binding"},
+          EditorOperationParameter{"end", EditorOperationParameterType::Bool, true, "Use the final endpoint"}},
+         [&controller, sceneProvider](const nlohmann::json& p) {
+             if (!sceneProvider() || sceneProvider()->IsRuntimePlayActive())
+                 return EditorOperationResult{false, "EDIT_UNAVAILABLE", "Stop Play before editing camera endpoints."};
+             std::string message;
+             const bool ok = controller.AlignCameraEndpoint(
+                 SEQUENCER::SequenceBindingId{p.at("bindingId").get<uint64_t>()}, p.at("end").get<bool>(), message);
+             return OperationResult(ok, "CAMERA_ALIGNMENT_FAILED", std::move(message));
+         }},
+        EditorOperationKind::Mutation);
     registry.Register(
         {
             "cinematics.document",

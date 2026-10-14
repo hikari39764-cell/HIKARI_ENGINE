@@ -31,9 +31,7 @@ inline constexpr uint32_t kGameProjectWorldMaximumSpawnComponentsPerObject = 16u
 inline constexpr uint32_t kGameProjectWorldMaximumSpawnComponentBytes = 16u * 1024u;
 inline constexpr uint32_t kGameProjectWorldMaximumSpawnBatchBytes = 1024u * 1024u;
 
-// Controls whether a runtime model-node visibility override affects only
-// the exact named node or also becomes the inherited visibility for its
-// descendants. An explicit override on a descendant takes precedence.
+// WorldViewのクエリは、オブジェクトの階層構造を横断するために使用されます。クエリは、指定された条件に一致するオブジェクトとそのコンポーネントを返します。クエリの結果は、コールバック関数を通じて逐次的に処理されます。
 enum class GameProjectModelNodeVisibilityScope : uint32_t {
     NodeOnly = 0u,
     NodeAndDescendants,
@@ -83,7 +81,7 @@ enum class GameProjectWorldQueryResultCode : uint32_t {
     InternalError,
 };
 
-// V1 term arrays have a fixed 24-byte stride; structSize must match V1.
+//GameProjectWorldQueryTermは、クエリの条件を表す構造体です。各条件は、特定のコンポーネントタイプに基づいてオブジェクトをフィルタリングします。
 struct GameProjectWorldQueryTerm {
     uint32_t structSize = kGameProjectWorldQueryTermV1Size;
     uint32_t version = kGameProjectWorldQueryVersion;
@@ -91,9 +89,7 @@ struct GameProjectWorldQueryTerm {
     uint32_t reserved[2] = {0u, 0u};
 };
 
-// Terms are required and row components use the same term order. One-term
-// queries may visit AllEntries (including allowMultiple); multi-term v1
-// queries use FirstPerObject. SmallestUniqueBucket ties use term order.
+// GameProjectWorldQueryDescは、クエリの全体的な設定を表す構造体です。クエリの条件、マッチングルール、結果の順序などを指定します。
 struct GameProjectWorldQueryDesc {
     uint32_t structSize = kGameProjectWorldQueryDescV1Size;
     uint32_t version = kGameProjectWorldQueryVersion;
@@ -106,8 +102,8 @@ struct GameProjectWorldQueryDesc {
     uint32_t reserved[4] = {0u, 0u, 0u, 0u};
 };
 
-// Callback-scoped borrowed row. Do not retain the row, component array, or
-// component pointers; the object handle itself may be copied and retained.
+// GameProjectWorldQueryRowは、クエリの結果として返される各オブジェクトとそのコンポーネントを表す構造体です。
+// 各行には、オブジェクトのハンドル、関連するコンポーネントの配列、およびコンポーネントの数が含まれます。
 struct GameProjectWorldQueryRow {
     uint32_t structSize = kGameProjectWorldQueryRowV1Size;
     uint32_t version = kGameProjectWorldQueryVersion;
@@ -117,8 +113,8 @@ struct GameProjectWorldQueryRow {
     uint32_t reserved[3] = {0u, 0u, 0u};
 };
 
-// rowsVisited counts delivered callback rows. QueryEnd command failures are
-// reported through WorldView's existing command-failure APIs, not here.
+// GameProjectWorldQueryResultは、クエリの実行結果を表す構造体です。クエリの成功、失敗、停止などの状態を示すコードや、訪問した行数、診断情報などが含まれます。
+// クエリの結果は、コールバック関数を通じて逐次的に処理されます。
 struct GameProjectWorldQueryResult {
     uint32_t structSize = kGameProjectWorldQueryResultV1Size;
     uint32_t version = kGameProjectWorldQueryVersion;
@@ -171,14 +167,11 @@ struct GameProjectWorldResult {
     constexpr bool IsQueued() const noexcept { return code == GameProjectWorldResultCode::Queued; }
 
     constexpr uint32_t GetCommandToken() const noexcept {
-        // Correlation token for the current World command/report window;
-        // it is not a persistent asset or globally unique identifier.
+
         return reserved;
     }
 };
-
-// V1 arrays have a fixed 72-byte stride. Writes are borrowed for one
-// synchronous WorldView::SetLocalTransforms call and are never queued.
+// GameProjectWorldTransformWriteは、オブジェクトのローカルトランスフォームを更新するための構造体です。オブジェクトのハンドルと新しいローカルトランスフォームを指定します。
 struct GameProjectWorldTransformWrite {
     uint32_t structSize = kGameProjectWorldTransformWriteV1Size;
     uint32_t version = kGameProjectWorldTransformWriteVersion;
@@ -199,9 +192,7 @@ enum class GameProjectSpawnComponentValuesFormat : uint32_t {
     Count,
 };
 
-// V1 component arrays use a fixed 40-byte stride. initialValues is borrowed
-// only for the call and may be null when initialValuesSize is zero. Accepted
-// JSON bytes are deep-copied by the World before this call returns.
+// GameProjectSpawnComponentDescは、オブジェクトのコンポーネントをスポーンするための構造体です。コンポーネントのタイプID、初期値、および初期値のフォーマットを指定します。
 struct GameProjectSpawnComponentDesc {
     uint32_t structSize = kGameProjectSpawnComponentDescV1Size;
     uint32_t version = kGameProjectSpawnComponentVersion;
@@ -212,9 +203,7 @@ struct GameProjectSpawnComponentDesc {
     uint32_t reserved[2] = {0u, 0u};
 };
 
-// Components are explicit, GameProject-owned registrations in dependency
-// order. Empty initial values keep constructor defaults. The nested object
-// keeps the original 200-byte Spawn contract and requires a live parent.
+// GameProjectSpawnObjectComponentsDescは、オブジェクトとそのコンポーネントをスポーンするための構造体です。オブジェクトの情報と、関連するコンポーネントの配列、およびコンポーネントの数を指定します。
 struct GameProjectSpawnObjectComponentsDesc {
     uint32_t structSize = kGameProjectSpawnObjectComponentsDescV1Size;
     uint32_t version = kGameProjectSpawnComponentVersion;

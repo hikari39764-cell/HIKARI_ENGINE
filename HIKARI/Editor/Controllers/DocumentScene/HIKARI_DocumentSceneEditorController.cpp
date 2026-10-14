@@ -538,6 +538,8 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
     scene.SetViewportDebugViewState(context_.viewportDebug);
 
     bool resetDockingLayoutRequested = false;
+    const auto previousWorkspace = workspaceHost_.GetActive();
+    const bool performanceAuditWasOpen = context_.windows.runtime.showPerformanceAudit;
     exportJob_.Poll();
     projectCodeJob_.Poll();
     projectBuildAllowed_ = playSession.GetMode() == EDITOR::EditorPlayMode::None && !playSession.IsTransitioning();
@@ -635,6 +637,11 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
     }
 
     DrawWorkspaceContent(scene, playSession);
+    // 診断窓は全工作区で共通。ドックを描いた後に復帰し、通常フレームではフォーカスを奪わない。
+    if (context_.windows.runtime.showPerformanceAudit) {
+        performanceAuditPanel_.Draw(context_.windows.runtime.showPerformanceAudit,
+                                    !performanceAuditWasOpen || previousWorkspace != workspaceHost_.GetActive());
+    }
     sceneInspectorPanel_.ExecutePendingObjectCommand(scene, context_, selectionSync_, sceneObjectCommands_);
     if (auto history = sceneObjectCommands_.ConsumeHistoryRequest())
         CommitSceneObjectAuthoringHistory(scene, std::move(*history));

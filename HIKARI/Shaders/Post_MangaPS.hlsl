@@ -20,7 +20,9 @@ float Screentone(float2 pixel, float cellPixels, float angleDegrees, float cover
 float4 main(HikariPostEffectInput input) : SV_TARGET
 {
     const float3 source = gSceneTex.Sample(gSamp, input.uv).rgb;
-    const float strength = saturate(gUser[0].x * gIntensity);
+    // 画面（キャプチャを貼った電視など、ProtectReadability の領域）には網点を掛けない。画面の中は画面専用の描き方に任せる。
+    const float2 resolution = max(float2(gResolutionX, gResolutionY), 1.0f.xx);
+    const float strength = saturate(gUser[0].x * gIntensity) * (1.0f - HikariScreenReadability(input.uv, resolution));
     if (strength <= 0.0001f)
         return float4(source, 1.0f);
 

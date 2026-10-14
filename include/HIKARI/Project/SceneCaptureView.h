@@ -25,6 +25,10 @@ public:
     HIKARI_GAME_PROJECT_SDK_API bool Update(GameProjectSceneCaptureHandle capture,
                                             const GameProjectSceneCaptureDesc& desc) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool Destroy(GameProjectSceneCaptureHandle capture) const noexcept;
+    // 設定をコピーする。非有限値・範囲外・無効な handle は状態を変えず false を返す。
+    // Update によるカメラ・寸法の変更はスタイルを保持する。
+    HIKARI_GAME_PROJECT_SDK_API bool SetStyle(GameProjectSceneCaptureHandle capture,
+                                              const GameProjectSceneCaptureStyleDesc& style) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool BindMaterial(
         const GameProjectSceneCaptureMaterialBindingDesc& binding) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool BindMaterialRegion(

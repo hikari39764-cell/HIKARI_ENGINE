@@ -114,7 +114,7 @@ bool EnsureInitialized(const GFX::Context& graphics) {
             "[MeshRenderer][WARN] Meshlet render backend is not ready. GPU-driven mesh shader route will be unavailable.");
     }
     meshletTimer.Finish();
-    // 任意の presentation pass は、最初の非空 PrepareFrame が初期化する。
+    // presentation pass の資源は各 PrepareFrame が所有する。登録済み VFX は空フレームでも予熱する。
     gMeshRendererState.clusterGpuDrivenProducer.Attach(&gMeshRendererState.clusterGpuCullingPass);
     gMeshRendererState.gpuDrivenLayer.Attach(
         &gMeshRendererState.surfaceGpuSceneBuffer, &gMeshRendererState.massGpuSceneBuffer,

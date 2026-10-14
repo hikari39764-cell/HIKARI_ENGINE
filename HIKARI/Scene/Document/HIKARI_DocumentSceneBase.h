@@ -141,7 +141,8 @@ public:
     bool PreviewSequence(const CinematicSequence& sequence, const SEQUENCER::SequenceBindingContext& bindings,
                          const SEQUENCER::SequenceEvaluationContext& context, bool contentChanged);
     void EndSequencePreview();
-    bool BeginRuntimePlay();
+    // 入口は新しい実行 World の Scene entry として一度だけ配送する。作者文書へは保存しない。
+    bool BeginRuntimePlay(std::string_view spawnPointId = {}, uint64_t entryUserData = 0);
     bool EndRuntimePlay();
     bool IsRuntimePlayActive() const;
     bool OpenSceneAssetNow(const AssetGuid& sceneGuid);

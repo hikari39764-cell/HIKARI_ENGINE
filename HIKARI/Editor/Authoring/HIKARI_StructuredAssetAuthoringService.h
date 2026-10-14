@@ -34,4 +34,6 @@ StructuredAssetAuthoringResult UpdateSequenceAsset(AssetDatabase& database, cons
                                                    const CinematicSequence& definition);
 bool LoadSequenceForAuthoring(const AssetDatabase& database, const AssetGuid& guid, CinematicSequence& definition,
                               std::string& message);
+// 端点の共有編集は全ソースを同じファイルトランザクションで保存する。
+bool UpdateSequenceAssets(AssetDatabase&, const std::vector<std::pair<AssetGuid, CinematicSequence>>&, std::string&);
 } // namespace HIKARI::EDITOR

@@ -443,6 +443,8 @@ private:
 
     AssetGuid pendingSceneOpenGuid_{};
     std::string viewportDropMessage_{};
+    // 項目の試遊から場景へ移った最初の描画だけ、ゲーム画面のタブを手前へ出す。
+    bool focusGameViewportAfterPreview_ = false;
     bool renderQualitySavePending_ = false;
     EDITOR::EditorDocumentHistory documentHistory_{};
     EDITOR::EditorCommandRouter commandRouter_{};

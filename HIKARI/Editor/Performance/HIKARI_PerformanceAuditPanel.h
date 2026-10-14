@@ -4,7 +4,7 @@ namespace HIKARI {
 
 class PerformanceAuditPanel {
 public:
-    void Draw(bool& open) const;
+    void Draw(bool& open, bool revealRequested) const;
     void DrawContents() const;
 };
 

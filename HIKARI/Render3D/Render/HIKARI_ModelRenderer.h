@@ -17,6 +17,7 @@ namespace HIKARI {
 class ModelManager;
 class SkyManager;
 class RenderTarget2D;
+struct GameProjectSceneCaptureStyleDesc;
 } // namespace HIKARI
 
 namespace HIKARI::MODELRENDERER {
@@ -80,6 +81,7 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
                                        const RENDER3D::LIGHTING::SceneLightingSet& lighting, ModelManager& modelManager,
                                        SkyManager& skyManager, uint64_t worldIdentity, uint32_t captureSlot,
                                        uint32_t width, uint32_t height, bool renderSky, bool renderTransparent,
+                                       const GameProjectSceneCaptureStyleDesc& style,
                                        SecondarySceneCaptureOutput& outOutput);
 void ResetSecondarySceneCaptureTarget(uint32_t captureSlot) noexcept;
 void ResetSecondarySceneCaptureTarget() noexcept;

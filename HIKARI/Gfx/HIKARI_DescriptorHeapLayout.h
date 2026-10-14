@@ -15,8 +15,7 @@ constexpr UINT kSystemSrvBegin = kUserSrvCount;
 constexpr UINT kLightProbeShVolumeTextureCount = 9;
 constexpr UINT kLightProbeVolumeSetCount = 2;
 constexpr UINT kLightProbeVolumeResidentSetCount = 8;
-// Ten appended slots complete the frame-1/frame-2 rings whose frame-0
-// slots remain in the original fixed block.
+// 既存の frame-1/frame-2 領域の予約幅。退役した深度の二枠も含み、他の固定番号を保つ。
 constexpr UINT kSystemSrvFixedFrameRingExtraCount = 10u;
 constexpr UINT kSystemSrvFixedCount =
     33 + kLightProbeVolumeResidentSetCount * kLightProbeShVolumeTextureCount + kSystemSrvFixedFrameRingExtraCount;
@@ -59,7 +58,7 @@ enum class SystemSrv : UINT {
     SceneColorPostOpaqueFrame2 = kSystemSrvBegin + 15,
     // 布景の A/B 分屏で凍結した A の画（編集器の出力の複製）。
     EditorViewportSnapshot = kSystemSrvBegin + 16,
-    PostSceneDepthFrame0 = kSystemSrvBegin + 17,
+    // +17 は退役済み。深度 SRV は各 RenderTarget2D が動的領域から所有する。
 
     MeshObjectDataFrame0 = kSystemSrvBegin + 18,
     MeshObjectDataFrame1 = kSystemSrvBegin + 19,
@@ -106,8 +105,7 @@ enum class SystemSrv : UINT {
     // keeps old frame-0 indices stable while avoiding dynamic leases.
     EditorViewportFrame1 = kSystemSrvBegin + 105,
     EditorViewportFrame2 = kSystemSrvBegin + 106,
-    PostSceneDepthFrame1 = kSystemSrvBegin + 107,
-    PostSceneDepthFrame2 = kSystemSrvBegin + 108,
+    // +107/+108 も退役済み。他の固定 descriptor の番号は変更しない。
     SsaoRawFrame1 = kSystemSrvBegin + 109,
     SsaoRawFrame2 = kSystemSrvBegin + 110,
     SsaoBlurredFrame1 = kSystemSrvBegin + 111,
@@ -165,14 +163,6 @@ constexpr SystemSrv EditorViewportFrameSlot(uint32_t frameIndex) {
     case 1u: return SystemSrv::EditorViewportFrame1;
     case 2u: return SystemSrv::EditorViewportFrame2;
     default: return SystemSrv::EditorViewportFrame0;
-    }
-}
-
-constexpr SystemSrv PostSceneDepthFrameSlot(uint32_t frameIndex) {
-    switch (frameIndex % GFX::kFrameResourceCount) {
-    case 1u: return SystemSrv::PostSceneDepthFrame1;
-    case 2u: return SystemSrv::PostSceneDepthFrame2;
-    default: return SystemSrv::PostSceneDepthFrame0;
     }
 }
 
@@ -282,13 +272,8 @@ static_assert(ToIndex(SystemSrv::LightProbeShVolume0) +
                   kLightProbeVolumeResidentSetCount * kLightProbeShVolumeTextureCount ==
               ToIndex(SystemSrv::EditorViewportFrame1));
 static_assert(ToIndex(SystemSrv::EditorViewportFrame2) < kSystemSrvBegin + kSystemSrvFixedCount);
-static_assert(ToIndex(SystemSrv::PostSceneDepthFrame0) == kSystemSrvBegin + 17u);
-static_assert(ToIndex(SystemSrv::PostSceneDepthFrame1) == ToIndex(SystemSrv::EditorViewportFrame2) + 1u);
-static_assert(ToIndex(PostSceneDepthFrameSlot(0u)) == ToIndex(SystemSrv::PostSceneDepthFrame0));
-static_assert(ToIndex(PostSceneDepthFrameSlot(2u)) == ToIndex(SystemSrv::PostSceneDepthFrame2));
-static_assert(ToIndex(SystemSrv::PostSceneDepthFrame2) < kSystemSrvBegin + kSystemSrvFixedCount);
 static_assert(ToIndex(SystemSrv::SsaoRawFrame0) == kSystemSrvBegin + 8u);
-static_assert(ToIndex(SystemSrv::SsaoRawFrame1) == ToIndex(SystemSrv::PostSceneDepthFrame2) + 1u);
+static_assert(ToIndex(SystemSrv::SsaoRawFrame1) == ToIndex(SystemSrv::EditorViewportFrame2) + 3u);
 static_assert(ToIndex(SystemSrv::SsaoRawFrame2) < kSystemSrvBegin + kSystemSrvFixedCount);
 static_assert(ToIndex(SystemSrv::SsaoBlurredFrame0) == kSystemSrvBegin + 9u);
 static_assert(ToIndex(SystemSrv::SsaoBlurredFrame1) == ToIndex(SystemSrv::SsaoRawFrame2) + 1u);
@@ -310,7 +295,6 @@ static_assert(ToIndex(SystemSrv::SceneSurface) < kSrvHeapCapacity);
 static_assert(ToIndex(SystemSrv::SsaoRawFrame0) < kSrvHeapCapacity);
 static_assert(ToIndex(SystemSrv::SsaoBlurredFrame0) < kSrvHeapCapacity);
 static_assert(ToIndex(SystemSrv::SsaoResolvedFrame0) < kSrvHeapCapacity);
-static_assert(ToIndex(SystemSrv::PostSceneDepthFrame0) < kSrvHeapCapacity);
 static_assert(ToIndex(SystemSrv::MeshObjectDataFrame0) < kSrvHeapCapacity);
 static_assert(ToIndex(SystemSrv::MeshObjectDataFrame2) < kSrvHeapCapacity);
 static_assert(ToIndex(SystemSrv::MeshMaterialDataFrame0) < kSrvHeapCapacity);

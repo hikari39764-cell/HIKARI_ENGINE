@@ -178,6 +178,38 @@ void DocumentSceneEditorController::RegisterPlayOperations() {
     const auto modify = EDITOR::EditorOperationPermission::ModifyEditorState;
     const auto read = EDITOR::EditorOperationPermission::ReadEditorState;
 
+    // 項目の制作 UI から、保存せず現在の Scene を試す入口。AI の保存確認経路とは公開対象を分ける。
+    EDITOR::EditorOperationDefinition preview{
+        "play.preview",
+        "Preview the current scene with an optional one-shot scene entry.",
+        "runtime",
+        {{"spawnPointId", EditorOperationParameterType::String, false, "Optional scene entry identifier"},
+         {"userData", EditorOperationParameterType::Int, false, "Project-owned scene entry data", {{"minimum", 0}}}},
+        [this](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
+            if (!aiPlaySession_ || !aiOperationScene_)
+                return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
+            if (aiPlaySession_->IsRunning() || aiPlaySession_->IsTransitioning() || aiPlaySession_->HasPendingStart())
+                return EDITOR::OperationFailure("PLAY_BUSY", "Stop the current Play session before choosing an entry.");
+            if (!aiOperationScene_->GetCurrentSceneAssetGuid().IsValid())
+                return EDITOR::OperationFailure("SCENE_NOT_SAVED", "Save the scene as an asset before previewing.");
+            const auto spawnPointId = parameters.value("spawnPointId", std::string{});
+            if (spawnPointId.size() >= 64 || spawnPointId.find('\0') != std::string::npos)
+                return EDITOR::OperationFailure("INVALID_ENTRY", "Scene entry must fit in 63 UTF-8 bytes.");
+            // 地図などの制作画面から試遊したら、実行画面まで一続きで案内する。
+            // Workspace の切替は Draw の外で適用し、項目 UI の callback を再入させない。
+            EDITOR::EditorWorkspaceOpenRequest sceneWorkspace{};
+            sceneWorkspace.workspaceId = EDITOR::EditorWorkspaceId::Scene;
+            if (!workspaceHost_.RequestOpen(std::move(sceneWorkspace)))
+                return EDITOR::OperationFailure("WORKSPACE_UNAVAILABLE", "Could not open the Scene workspace.");
+            context_.windows.viewport.showGameView = true;
+            focusGameViewportAfterPreview_ = true;
+            CinematicsWorkspace().PrepareForRuntimePlay(*aiOperationScene_);
+            aiPlaySession_->RequestEmbeddedStart(spawnPointId, parameters.value("userData", uint64_t{0}));
+            return DescribePlayState();
+        }};
+    preview.exposureMask = EDITOR::EditorOperationExposureMask::Human;
+    add(std::move(preview), EDITOR::EditorOperationKind::Session, modify, {"play", "preview", "scene entry"});
+
     add({"play.status",
          "Play state, simulation tick, remaining lockstep ticks and input-track playback. pending is true while Play is "
          "starting, stopping or stepping.",

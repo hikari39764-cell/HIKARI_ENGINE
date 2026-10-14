@@ -94,7 +94,7 @@ void DrawEditorDockSpace(bool resetDefaultDockLayout) {
         ImGui::DockBuilderDockWindow("###Environment", environmentNode);
         ImGui::DockBuilderDockWindow("###Quality", bottomNode);
         ImGui::DockBuilderDockWindow("###Debug View", bottomNode);
-        ImGui::DockBuilderDockWindow("Performance Audit", bottomNode);
+        ImGui::DockBuilderDockWindow("###Performance Audit", bottomNode);
 
         ImGui::DockBuilderFinish(dockspaceId);
     }
@@ -375,9 +375,6 @@ void DocumentSceneEditorController::DrawSceneWorkspace(DocumentSceneBase& scene,
     DrawEnvironmentPanels(scene);
     if (context_.windows.runtime.showDebugView) {
         DrawDebugViewWindow(scene, context_.windows.runtime.showDebugView);
-    }
-    if (context_.windows.runtime.showPerformanceAudit) {
-        performanceAuditPanel_.Draw(context_.windows.runtime.showPerformanceAudit);
     }
     DrawPendingSceneOpenModal(scene);
     SaveRenderQualityWhenIdle(scene);

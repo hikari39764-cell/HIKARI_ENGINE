@@ -103,6 +103,21 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase&
     if (!cursor_.IsBound())
         cursor_.Bind(sequence.durationSeconds);
     cursor_.SetDuration(sequence.durationSeconds);
+    if (requestedEndpoint_) {
+        const float time = *requestedEndpoint_ ? sequence.durationSeconds : 0.f;
+        cursor_.Pause();
+        cursor_.Seek(time);
+        for (const auto& shot : sequence.cameraCutTrack.clips)
+            if (time >= shot.startTimeSeconds && time <= shot.startTimeSeconds + shot.durationSeconds) {
+                selectedId_ = shot.id;
+                selectionKind_ = SelectionKind::Shot;
+                break;
+            }
+        stageInitialized_ = false;
+        previewEnabled_ = true;
+        previewChanged_ = true;
+        requestedEndpoint_.reset();
+    }
     if (autoPreview_ && enabled && !sequence.cameraCutTrack.clips.empty()) {
         previewEnabled_ = true;
         autoPreview_ = false;
@@ -125,6 +140,13 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase&
     if (ImGui::Begin(TEXT::LocalizeWindow("cine.inspector", "Cinematics/Inspector").c_str(), nullptr,
                      ImGuiWindowFlags_NoCollapse)) {
         ImGui::BeginDisabled(!enabled);
+        if (!document.GetCameraEndpointLabel().empty()) {
+            ImGui::TextWrapped("关卡机位：%s", document.GetCameraEndpointLabel().c_str());
+        }
+        if (!document.GetCameraEndpointGroups().empty())
+            ImGui::TextWrapped("起点和终点按区域自动关联；保存时同步，中间关键帧独立保留。");
+        if (!previewDiagnostic_.empty())
+            ImGui::TextWrapped("%s", previewDiagnostic_.c_str());
         changed |= DrawInspector(scene, sequence);
         ImGui::EndDisabled();
     }
@@ -150,12 +172,19 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase&
         auto evaluation = cursor_.Tick(ImGui::GetIO().DeltaTime, SEQUENCER::SequenceEvaluationMode::Preview);
         if (!scene.PreviewSequence(sequence, previewBindings_, evaluation, previewChanged_)) {
             pendingStatusMessage_ = TEXT::Localize("cine.previewNotReady");
+            previewDiagnostic_ = "无法预览。请在“对象绑定”指定有效相机；缺失槽：";
+            for (const auto& binding : sequence.bindings) {
+                SceneObjectId object;
+                if (binding.required && !previewBindings_.Resolve(sequence.bindings, binding.id, object))
+                    previewDiagnostic_ += binding.slotName + " ";
+            }
             previewEnabled_ = false;
             if (ownsPreview_) {
                 scene.EndSequencePreview();
                 ownsPreview_ = false;
             }
-        }
+        } else
+            previewDiagnostic_.clear();
         ownsPreview_ = previewEnabled_;
         previewChanged_ = false;
     } else if (ownsPreview_) {

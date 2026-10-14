@@ -47,6 +47,8 @@ public:
     CinematicsWorkspaceResult Draw(DocumentSceneBase& scene, EditorContext& context, EditorWorkspaceHost& workspaceHost,
                                    EditorOperationRegistry& operations);
     bool RequestOpenSequenceAsset(DocumentSceneBase& scene, const AssetGuid& assetGuid, std::string& outMessage);
+    bool ConfigureCameraEditing(DocumentSceneBase&, const nlohmann::json&, std::string&);
+    bool AlignCameraEndpoint(SEQUENCER::SequenceBindingId, bool end, std::string&);
     bool IsEditingSequenceAsset() const noexcept;
     bool IsSequenceDocumentDirty() const noexcept;
     // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
@@ -77,6 +79,8 @@ private:
     // 触发区域：玩家が入るとこの演出を流し、終わったら游戏摄像机を選んだ模式へ（場面の流程）。
     void DrawTriggers(DocumentSceneBase& scene, EditorOperationRegistry& operations);
     bool DrawInspector(DocumentSceneBase& scene, CinematicSequence& sequence);
+    bool DrawBoundCameraInspector(DocumentSceneBase& scene, CinematicSequence& sequence,
+                                  SEQUENCER::CameraCutClip& shot);
     bool DrawTimeline(DocumentSceneBase& scene, CinematicSequence& sequence);
     void DrawMonitor(DocumentSceneBase& scene, EditorWorkspaceHost& workspaceHost, CinematicsWorkspaceResult& result);
     bool DrawStage(DocumentSceneBase& scene, CinematicSequence& sequence, EditorContext& context,
@@ -131,7 +135,8 @@ private:
                                            float keyTime) const;
     // 姿勢を镜头へ書く。自動键か键がある時は時刻の键、無ければ基準の姿勢。parts で変える要素を選ぶ。
     enum PoseParts : uint32_t { kPosePosition = 1u, kPoseRotation = 2u, kPoseFov = 4u, kPoseAll = 7u };
-    void WriteShotPose(SEQUENCER::CameraCutClip& shot, const SEQUENCER::ShotPose& pose, uint32_t parts);
+    void WriteShotPose(CinematicSequence& sequence, SEQUENCER::CameraCutClip& shot, const SEQUENCER::ShotPose& pose,
+                       uint32_t parts);
     // 飛行録画（HIKARI_CinematicsStageWindow.cpp）：録画を押した後、空間视图で右ボタンを押して飛び始めると镜头の
     // 始めから再生し、一定間隔で視点の位置と向きを键にする（画角と傾きは変えない）。録った範囲の键は置き換える。
     bool UpdateFlightRecording(DocumentSceneBase& scene, CinematicSequence& sequence, bool startRequested);
@@ -158,11 +163,14 @@ private:
     SelectionKind selectionKind_ = SelectionKind::Shot;
     uint64_t selectedId_ = 0;
     bool loop_ = false;
+    float previewRate_ = 1.f;
     bool previewEnabled_ = false;
     // 镜头がある演出を開いたら画面に镜头の画を出す（停止して元へ戻すと、次に開くか再生するまで自由な視点）。
     bool autoPreview_ = true;
     bool ownsPreview_ = false;
     bool previewChanged_ = true;
+    std::optional<bool> requestedEndpoint_;
+    std::string previewDiagnostic_;
     bool spaceView_ = true;
     bool stageInitialized_ = false;
     // 空間视图の手柄：位置を動かす、向きを回す、注視点を動かす（相手に結んだ镜头は注視の偏移、無ければ向きを変える）。

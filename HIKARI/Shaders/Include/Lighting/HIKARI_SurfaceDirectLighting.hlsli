@@ -9,6 +9,9 @@ HikariDirectPbrLobes AccumulateLocalLightPbrLobes(
     HikariDirectPbrLobes sum = (HikariDirectPbrLobes)0;
     // Cluster のリストは隣接画素と異なるため、微分はループの外で一度だけ取る。
     const HikariPbrPixelFootprint footprint = HikariBuildPbrPixelFootprint(pbrContext, worldPosWS);
+    // 隣接画素の微分を取り終えてから早期終了する。
+    if (pbrContext.ndotView <= 0.0f)
+        return sum;
     const uint2 cluster = HikariResolveLocalLightCluster(
         pixelPosition,
         HikariCameraViewDepth(worldPosWS));
@@ -27,19 +30,34 @@ HikariDirectPbrLobes AccumulateLocalLightPbrLobes(
         {
             continue;
         }
+        // BRDF が 0 を返す半球では、配光・高光の濾波・影の読み出しも不要。
+        // 面光源の拡散と鏡面は別の代表点なので、それぞれの向きを調べる。
+        const bool diffuseFacing = dot(pbrContext.normal, lightSample.directionToLight) > 0.0f;
+        const bool separateSpecular = any(lightSample.specularDirectionToLight != lightSample.directionToLight);
+        const bool specularFacing = separateSpecular
+            ? dot(pbrContext.normal, lightSample.specularDirectionToLight) > 0.0f : diffuseFacing;
+        if (!diffuseFacing && !specularFacing)
+            continue;
         HikariApplyLocalLightTextures(gHikariLocalLights[i], lightSample);
-        HikariDirectPbrLobes lobes = HikariEvaluateDirectPbrLobes(
-            HikariFilterLocalPbrContext(pbrContext, footprint, lightSample.directionToLight,
-                lightSample.distanceToLight, lightSample.sourceHalfAngleSineSquared),
-            lightSample.directionToLight, lightSample.radiance);
-        if (any(lightSample.specularDirectionToLight != lightSample.directionToLight))
+        HikariDirectPbrLobes lobes = (HikariDirectPbrLobes)0;
+        if (diffuseFacing)
         {
-            // 面光源の鏡面は反射方向に最も近い発光体上の点から取る。
-            lobes.specular = HikariEvaluateDirectPbrLobes(
-                HikariFilterLocalPbrContext(pbrContext, footprint, lightSample.specularDirectionToLight,
+            lobes = HikariEvaluateDirectPbrLobes(
+                HikariFilterLocalPbrContext(pbrContext, footprint, lightSample.directionToLight,
                     lightSample.distanceToLight, lightSample.sourceHalfAngleSineSquared),
-                lightSample.specularDirectionToLight, lightSample.specularRadiance).specular;
+                lightSample.directionToLight, lightSample.radiance);
         }
+        if (separateSpecular)
+        {
+            lobes.specular = 0.0f.xxx;
+            if (specularFacing)
+                lobes.specular = HikariEvaluateDirectPbrLobes(
+                    HikariFilterLocalPbrContext(pbrContext, footprint, lightSample.specularDirectionToLight,
+                        lightSample.distanceToLight, lightSample.sourceHalfAngleSineSquared),
+                    lightSample.specularDirectionToLight, lightSample.specularRadiance).specular;
+        }
+        if (all(lobes.diffuse == 0.0f) && all(lobes.specular == 0.0f))
+            continue;
         const float visibility = SampleLocalLightVisibility(
             gHikariLocalLights[i], worldPosWS, geometricNormalWS, receiveShadow);
         sum.diffuse += lobes.diffuse * visibility;

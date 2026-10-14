@@ -260,7 +260,7 @@ inline void RenderSecondaryCapture(DocumentSceneState& state, const GFX::Context
         if (!MODELRENDERER::RenderSecondarySceneCaptureTarget(
                 graphics, view, environment, lighting, state.assets.Models(), state.lighting.sky,
                 state.runtime.world.GetRuntimeIdentity(), request.renderSlot, width, height,
-                (request.flags & renderSkyFlag) != 0u, renderTransparent, output) ||
+                (request.flags & renderSkyFlag) != 0u, renderTransparent, request.style, output) ||
             !output.ready) {
             service.PublishFailure(request.handle, GameProjectSceneCaptureFailure::RenderFailed);
             continue;

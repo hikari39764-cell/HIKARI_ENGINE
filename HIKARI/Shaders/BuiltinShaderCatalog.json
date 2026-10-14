@@ -673,6 +673,40 @@
       ]
     },
     {
+      "assetGuid": "cd72d33cc22c45838ebdee5427a2f325",
+      "programId": "HIKARI.EngineShader.Post_SceneCaptureStylePS",
+      "source": "Post_SceneCaptureStylePS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.SceneCapture",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.PostEffect.Common",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "rootLayoutId": "HIKARI.PostQuad.Root",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
       "assetGuid": "dad96ca0c4f40635772d7b93911ef29f",
       "programId": "HIKARI.EngineShader.Post_ScreenSpaceReflections",
       "source": "Post_ScreenSpaceReflections.hlsl",

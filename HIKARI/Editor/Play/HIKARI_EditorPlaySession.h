@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #include "Input/Runtime/HIKARI_InputTypes.h"
@@ -42,7 +43,8 @@ public:
     EditorPlaySession(const EditorPlaySession&) = delete;
     EditorPlaySession& operator=(const EditorPlaySession&) = delete;
 
-    void RequestEmbeddedStart();
+    // 一回の開始要求にだけ属する入口。停止後や通常の Play へ引き継がない。
+    void RequestEmbeddedStart(std::string spawnPointId = {}, uint64_t userData = 0);
     void RequestWindowedStart();
     void RequestStop(PlayStopReason reason = PlayStopReason::Toolbar);
     void TogglePause();
@@ -82,6 +84,8 @@ private:
     void Fail(std::string message);
 
     PendingAction pendingAction_ = PendingAction::None;
+    std::string pendingSpawnPointId_;
+    uint64_t pendingEntryUserData_ = 0;
     EditorPlayMode mode_ = EditorPlayMode::None;
     EditorPlayState state_ = EditorPlayState::Stopped;
     std::string statusMessage_{};

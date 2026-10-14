@@ -97,6 +97,35 @@ float HikariLocalLightConeAttenuation(
     return pow(weight, max(angularFalloff, 0.1f));
 }
 
+// 区間を包む球が灯りに届かなければ、等角度標本の atan/tan より前に棄却できる。
+// 中点だけでは判定せず、区間も重みも切り詰めない。面光源は固有の代表点評価をそのまま使う。
+bool HikariLocalLightIntersectsSegment(HikariLocalLightGpuData light, float3 center, float radius)
+{
+    const uint type = light.kind & 0xffu;
+    if (type != HIKARI_LOCAL_LIGHT_TYPE_POINT && type != HIKARI_LOCAL_LIGHT_TYPE_SPOT)
+        return true;
+    const float3 offset = center - light.positionRange.xyz;
+    const float tolerance = 1.0e-5f * (1.0f + radius + light.positionRange.w +
+        max(max(abs(center.x), abs(center.y)), abs(center.z)) +
+        max(max(abs(light.positionRange.x), abs(light.positionRange.y)), abs(light.positionRange.z)));
+    const float expandedRadius = radius + tolerance;
+    const float range = light.positionRange.w + expandedRadius;
+    if (dot(offset, offset) > range * range)
+        return false;
+    if (type == HIKARI_LOCAL_LIGHT_TYPE_SPOT)
+    {
+        const float axial = dot(offset, light.directionInnerCos.xyz);
+        if (axial < -expandedRadius)
+            return false;
+        const float radial = length(offset - axial * light.directionInnerCos.xyz);
+        const float cosine = saturate(light.outerConeCos - 1.0e-5f);
+        const float sine = sqrt(saturate(1.0f - cosine * cosine));
+        if (radial * cosine - axial * sine > expandedRadius)
+            return false;
+    }
+    return true;
+}
+
 // 面光源（管・長方形）。representative point（Karis 2013）で方向を選び、拡散は形に沿って積分した照度、鏡面は
 // 反射方向 reflection（無ければ 0）に最も近い発光体上の点から求める。
 bool HikariResolveAreaLightSample(
@@ -206,6 +235,10 @@ bool HikariResolveLocalLightSample(
         light.positionRange.w,
         light.sourceRadius);
 
+    // 寄与が厳密に 0 の場合だけ抜け、配光・発光体の角度を求めない。
+    if (!(attenuation > 0.0f))
+        return false;
+
     sample.directionToLight =
         distanceToLight > 1e-5f
         ? toLight / distanceToLight
@@ -222,6 +255,8 @@ bool HikariResolveLocalLightSample(
         const float outerCos = light.outerConeCos;
         attenuation *= HikariLocalLightConeAttenuation(
             coneCos, innerCos, outerCos, light.angularFalloff);
+        if (!(attenuation > 0.0f))
+            return false;
     }
 
     sample.radiance =
