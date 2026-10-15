@@ -31,75 +31,34 @@ RenderQualitySettings NormalizeRenderQualitySettings(RenderQualitySettings setti
     DirectionalShadowQualitySettings& shadow = settings.directionalShadow;
     shadow = JSONFIELDS::Sanitize(shadow, kDirectionalShadowFields);
     shadow.farPlane = (std::max)(shadow.farPlane, shadow.nearPlane + 1.0f);
-    if (static_cast<uint8_t>(settings.sceneResolution) > static_cast<uint8_t>(RenderResolutionPreset::P2160)) {
-        settings.sceneResolution = RenderResolutionPreset::P1080;
-    }
-    if (static_cast<uint8_t>(settings.windowSize) > static_cast<uint8_t>(RenderResolutionPreset::P2160) ||
-        settings.windowSize == RenderResolutionPreset::Viewport) {
+    // 表に無い値は既定へ戻す。窓の大きさは固定の大きさだけ（視口の大きさは場面の解像度だけが取る）。
+    const auto named = [](auto& value, const auto& names, auto fallback) {
+        if (!TEXT::IsNamedEnum(names, value)) {
+            value = fallback;
+        }
+    };
+    named(settings.sceneResolution, kRenderResolutionPresetNames, RenderResolutionPreset::P1080);
+    if (!IsFixedRenderResolutionPreset(settings.windowSize) ||
+        !TEXT::IsNamedEnum(kRenderResolutionPresetNames, settings.windowSize)) {
         settings.windowSize = RenderResolutionPreset::P720;
     }
-    if (static_cast<uint8_t>(settings.windowMode) > static_cast<uint8_t>(WindowPresentationMode::Fullscreen)) {
-        settings.windowMode = WindowPresentationMode::Windowed;
-    }
-    if (static_cast<uint8_t>(settings.geometryPipeline) > static_cast<uint8_t>(GeometryPipelineMode::AutoFallback)) {
-        settings.geometryPipeline = GeometryPipelineMode::MeshShader;
-    }
-    if (static_cast<uint8_t>(settings.antiAliasingMode) > static_cast<uint8_t>(RenderAntiAliasingMode::DLSS)) {
-        settings.antiAliasingMode = RenderAntiAliasingMode::Off;
-    }
-    if (static_cast<uint8_t>(settings.dlssQualityMode) > static_cast<uint8_t>(DlssQualityMode::UltraPerformance)) {
-        settings.dlssQualityMode = DlssQualityMode::Quality;
-    }
-    if (static_cast<uint8_t>(settings.frameGenerationMode) > static_cast<uint8_t>(RenderFrameGenerationMode::Dlss)) {
-        settings.frameGenerationMode = RenderFrameGenerationMode::Off;
-    }
+    named(settings.windowMode, kWindowPresentationModeNames, WindowPresentationMode::Windowed);
+    named(settings.geometryPipeline, kGeometryPipelineModeNames, GeometryPipelineMode::MeshShader);
+    named(settings.antiAliasingMode, kRenderAntiAliasingModeNames, RenderAntiAliasingMode::Off);
+    named(settings.dlssQualityMode, kDlssQualityModeNames, DlssQualityMode::Quality);
+    named(settings.frameGenerationMode, kRenderFrameGenerationModeNames, RenderFrameGenerationMode::Off);
     settings.frameGenerationMultiplier =
         static_cast<uint8_t>(std::clamp(static_cast<int>(settings.frameGenerationMultiplier), 2, 6));
-    if (static_cast<uint8_t>(settings.volumetricLightingQuality) >
-        static_cast<uint8_t>(VolumetricLightingQuality::High)) {
-        settings.volumetricLightingQuality = VolumetricLightingQuality::Balanced;
-    }
-    if (!TEXT::IsNamedEnum(kDepthOfFieldQualityNames, settings.depthOfFieldQuality)) {
-        settings.depthOfFieldQuality = DepthOfFieldQuality::Medium;
-    }
-    if (!TEXT::IsNamedEnum(kMotionBlurQualityNames, settings.motionBlurQuality)) {
-        settings.motionBlurQuality = MotionBlurQuality::Medium;
-    }
-    if (static_cast<uint8_t>(settings.dynamicGiQuality) > static_cast<uint8_t>(DynamicGiQuality::High)) {
-        settings.dynamicGiQuality = DynamicGiQuality::Off;
-    }
-    if (static_cast<uint8_t>(settings.localShadowQuality) > static_cast<uint8_t>(LocalShadowQuality::High)) {
-        settings.localShadowQuality = LocalShadowQuality::Balanced;
-    }
-    if (static_cast<uint8_t>(settings.volumetricCloudQuality) > static_cast<uint8_t>(VolumetricCloudQuality::High)) {
-        settings.volumetricCloudQuality = VolumetricCloudQuality::Balanced;
-    }
-    if (static_cast<uint8_t>(settings.forwardCostMode) >
-        static_cast<uint8_t>(ForwardShadingCostMode::NoMaterialExtras)) {
-        settings.forwardCostMode = ForwardShadingCostMode::Full;
-    }
-    if (static_cast<uint8_t>(settings.lightProbeVolumeSampling) >
-        static_cast<uint8_t>(LightProbeVolumeSamplingMode::Off)) {
-        settings.lightProbeVolumeSampling = LightProbeVolumeSamplingMode::FastSmooth;
-    }
+    named(settings.volumetricLightingQuality, kVolumetricLightingQualityNames, VolumetricLightingQuality::Balanced);
+    named(settings.depthOfFieldQuality, kDepthOfFieldQualityNames, DepthOfFieldQuality::Medium);
+    named(settings.motionBlurQuality, kMotionBlurQualityNames, MotionBlurQuality::Medium);
+    named(settings.dynamicGiQuality, kDynamicGiQualityNames, DynamicGiQuality::Off);
+    named(settings.localShadowQuality, kLocalShadowQualityNames, LocalShadowQuality::Balanced);
+    named(settings.volumetricCloudQuality, kVolumetricCloudQualityNames, VolumetricCloudQuality::Balanced);
+    named(settings.forwardCostMode, kForwardShadingCostModeNames, ForwardShadingCostMode::Full);
+    named(settings.lightProbeVolumeSampling, kLightProbeVolumeSamplingModeNames,
+          LightProbeVolumeSamplingMode::FastSmooth);
     return settings;
-}
-
-bool AreRenderQualitySettingsEqual(const RenderQualitySettings& lhs, const RenderQualitySettings& rhs) {
-    return lhs.sceneResolution == rhs.sceneResolution && lhs.windowSize == rhs.windowSize &&
-           lhs.windowMode == rhs.windowMode && lhs.geometryPipeline == rhs.geometryPipeline &&
-           lhs.forwardCostMode == rhs.forwardCostMode && lhs.lightProbeVolumeSampling == rhs.lightProbeVolumeSampling &&
-           lhs.viewportScale == rhs.viewportScale && lhs.vSync == rhs.vSync &&
-           lhs.antiAliasingMode == rhs.antiAliasingMode && lhs.dlssQualityMode == rhs.dlssQualityMode &&
-           lhs.frameGenerationMode == rhs.frameGenerationMode &&
-           lhs.frameGenerationMultiplier == rhs.frameGenerationMultiplier &&
-           lhs.volumetricLightingQuality == rhs.volumetricLightingQuality &&
-           lhs.depthOfFieldQuality == rhs.depthOfFieldQuality && lhs.motionBlurQuality == rhs.motionBlurQuality &&
-           lhs.volumetricCloudQuality == rhs.volumetricCloudQuality && lhs.dynamicGiQuality == rhs.dynamicGiQuality &&
-           lhs.localShadowQuality == rhs.localShadowQuality && lhs.taaHistoryWeight == rhs.taaHistoryWeight &&
-           lhs.taaVarianceClipGamma == rhs.taaVarianceClipGamma && lhs.taaDepthRejection == rhs.taaDepthRejection &&
-           lhs.taaLuminanceRejection == rhs.taaLuminanceRejection && lhs.taaSharpness == rhs.taaSharpness &&
-           lhs.sceneDepthPrepass == rhs.sceneDepthPrepass && lhs.rayTracedReflections == rhs.rayTracedReflections;
 }
 
 RenderQualityRuntimeChangeSet ClassifyRenderQualityRuntimeChanges(const RenderQualitySettings& before,
@@ -134,91 +93,39 @@ void SetRenderQualitySettings(const RenderQualitySettings& settings) {
 }
 
 const char* RenderResolutionPresetLabel(RenderResolutionPreset preset) {
-    switch (preset) {
-    case RenderResolutionPreset::Viewport: return "Viewport";
-    case RenderResolutionPreset::P720: return "1280 x 720";
-    case RenderResolutionPreset::P1080: return "1920 x 1080";
-    case RenderResolutionPreset::P1440: return "2560 x 1440";
-    case RenderResolutionPreset::P2160: return "3840 x 2160";
-    default: return "Unknown";
-    }
+    return TEXT::EnumToName(kRenderResolutionPresetLabels, preset, "Unknown");
 }
 
 const char* WindowPresentationModeLabel(WindowPresentationMode mode) {
-    switch (mode) {
-    case WindowPresentationMode::Windowed: return "Windowed";
-    case WindowPresentationMode::BorderlessWindow: return "Borderless";
-    case WindowPresentationMode::Fullscreen: return "Fullscreen";
-    default: return "Unknown";
-    }
+    return TEXT::EnumToName(kWindowPresentationModeNames, mode, "Unknown");
 }
 
 const char* GeometryPipelineModeLabel(GeometryPipelineMode mode) {
-    switch (mode) {
-    case GeometryPipelineMode::MeshShader: return "Mesh Shader";
-    case GeometryPipelineMode::TraditionalVsPs: return "VS + PS";
-    case GeometryPipelineMode::AutoFallback: return "Auto Fallback";
-    default: return "Unknown";
-    }
+    return TEXT::EnumToName(kGeometryPipelineModeLabels, mode, "Unknown");
 }
 
 const char* ForwardShadingCostModeLabel(ForwardShadingCostMode mode) {
-    switch (mode) {
-    case ForwardShadingCostMode::Full: return "Full";
-    case ForwardShadingCostMode::AlbedoOnly: return "Albedo Only";
-    case ForwardShadingCostMode::NoNormalMap: return "No Normal Map";
-    case ForwardShadingCostMode::NoShadow: return "No Shadow";
-    case ForwardShadingCostMode::NoSsao: return "No SSAO";
-    case ForwardShadingCostMode::NoMaterialExtras: return "No Material Extras";
-    default: return "Unknown";
-    }
+    return TEXT::EnumToName(kForwardShadingCostModeLabels, mode, "Unknown");
 }
 
 const char* LightProbeVolumeSamplingModeLabel(LightProbeVolumeSamplingMode mode) {
-    switch (mode) {
-    case LightProbeVolumeSamplingMode::FastSmooth: return "Fast Smooth";
-    case LightProbeVolumeSamplingMode::FullTrilinear: return "Full Trilinear";
-    case LightProbeVolumeSamplingMode::Off: return "Off";
-    default: return "Unknown";
-    }
+    return TEXT::EnumToName(kLightProbeVolumeSamplingModeLabels, mode, "Unknown");
 }
 
 const char* RenderAntiAliasingModeLabel(RenderAntiAliasingMode mode) {
-    switch (mode) {
-    case RenderAntiAliasingMode::Off: return "Off";
-    case RenderAntiAliasingMode::FXAA: return "FXAA";
-    case RenderAntiAliasingMode::TAA: return "TAA";
-    case RenderAntiAliasingMode::DLAA: return "DLAA";
-    case RenderAntiAliasingMode::DLSS: return "DLSS";
-    default: return "Unknown";
-    }
+    return TEXT::EnumToName(kRenderAntiAliasingModeNames, mode, "Unknown");
 }
 
 const char* DlssQualityModeLabel(DlssQualityMode mode) {
-    switch (mode) {
-    case DlssQualityMode::Quality: return "Quality";
-    case DlssQualityMode::Balanced: return "Balanced";
-    case DlssQualityMode::Performance: return "Performance";
-    case DlssQualityMode::UltraPerformance: return "Ultra Performance";
-    default: return "Unknown";
-    }
+    return TEXT::EnumToName(kDlssQualityModeLabels, mode, "Unknown");
 }
 
 const char* RenderFrameGenerationModeLabel(RenderFrameGenerationMode mode) {
-    switch (mode) {
-    case RenderFrameGenerationMode::Off: return "Off";
-    case RenderFrameGenerationMode::Dlss: return "DLSS Frame Generation";
-    default: return "Unknown";
-    }
+    return TEXT::EnumToName(kRenderFrameGenerationModeLabels, mode, "Unknown");
 }
 
 const char* VolumetricLightingQualityLabel(VolumetricLightingQuality quality) {
-    switch (quality) {
-    case VolumetricLightingQuality::Low: return "Low";
-    case VolumetricLightingQuality::Balanced: return "Balanced";
-    case VolumetricLightingQuality::High: return "High";
-    default: return "Unknown";
-    }
+    return TEXT::EnumToName(kVolumetricLightingQualityNames, quality, "Unknown");
 }
 
 const char* DepthOfFieldQualityLabel(DepthOfFieldQuality quality) {
@@ -230,30 +137,15 @@ const char* MotionBlurQualityLabel(MotionBlurQuality quality) {
 }
 
 const char* DynamicGiQualityLabel(DynamicGiQuality quality) {
-    switch (quality) {
-    case DynamicGiQuality::Off: return "Off";
-    case DynamicGiQuality::Low: return "Low";
-    case DynamicGiQuality::High: return "High";
-    default: return "Balanced";
-    }
+    return TEXT::EnumToName(kDynamicGiQualityNames, quality, "Unknown");
 }
 
 const char* LocalShadowQualityLabel(LocalShadowQuality quality) {
-    switch (quality) {
-    case LocalShadowQuality::Off: return "Off";
-    case LocalShadowQuality::Low: return "Low";
-    case LocalShadowQuality::High: return "High";
-    default: return "Balanced";
-    }
+    return TEXT::EnumToName(kLocalShadowQualityNames, quality, "Unknown");
 }
 
 const char* VolumetricCloudQualityLabel(VolumetricCloudQuality quality) {
-    switch (quality) {
-    case VolumetricCloudQuality::Low: return "Low";
-    case VolumetricCloudQuality::Balanced: return "Balanced";
-    case VolumetricCloudQuality::High: return "High";
-    default: return "Unknown";
-    }
+    return TEXT::EnumToName(kVolumetricCloudQualityNames, quality, "Unknown");
 }
 
 bool IsTemporalAntiAliasingMode(RenderAntiAliasingMode mode) { return mode == RenderAntiAliasingMode::TAA; }

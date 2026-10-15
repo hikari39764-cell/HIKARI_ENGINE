@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 
-#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Scene/Features/HIKARI_RuntimeFeatureContextAccess.h"
 #include "Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponent.h"
 #include "Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponentAuthoring.h"
 #include "HIKARI/Project/RuntimeFeature.h"

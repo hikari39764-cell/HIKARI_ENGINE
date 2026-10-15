@@ -15,16 +15,46 @@ enum class RenderResolutionPreset : uint8_t {
     P2160,
 };
 
+inline constexpr TEXT::EnumName<RenderResolutionPreset> kRenderResolutionPresetNames[] = {
+    {RenderResolutionPreset::Viewport, "Viewport"}, {RenderResolutionPreset::P720, "720p"},
+    {RenderResolutionPreset::P1080, "1080p"},       {RenderResolutionPreset::P1440, "1440p"},
+    {RenderResolutionPreset::P2160, "2160p"},
+};
+
+inline constexpr TEXT::EnumName<RenderResolutionPreset> kRenderResolutionPresetLabels[] = {
+    {RenderResolutionPreset::Viewport, "Viewport"}, {RenderResolutionPreset::P720, "1280 x 720"},
+    {RenderResolutionPreset::P1080, "1920 x 1080"}, {RenderResolutionPreset::P1440, "2560 x 1440"},
+    {RenderResolutionPreset::P2160, "3840 x 2160"},
+};
+
 enum class WindowPresentationMode : uint8_t {
     Windowed = 0,
     BorderlessWindow,
     Fullscreen,
 };
 
+inline constexpr TEXT::EnumName<WindowPresentationMode> kWindowPresentationModeNames[] = {
+    {WindowPresentationMode::Windowed, "Windowed"},
+    {WindowPresentationMode::BorderlessWindow, "Borderless"},
+    {WindowPresentationMode::Fullscreen, "Fullscreen"},
+};
+
 enum class GeometryPipelineMode : uint8_t {
     MeshShader = 0,
     TraditionalVsPs,
     AutoFallback,
+};
+
+inline constexpr TEXT::EnumName<GeometryPipelineMode> kGeometryPipelineModeNames[] = {
+    {GeometryPipelineMode::MeshShader, "MeshShader"},
+    {GeometryPipelineMode::TraditionalVsPs, "TraditionalVsPs"},
+    {GeometryPipelineMode::AutoFallback, "AutoFallback"},
+};
+
+inline constexpr TEXT::EnumName<GeometryPipelineMode> kGeometryPipelineModeLabels[] = {
+    {GeometryPipelineMode::MeshShader, "Mesh Shader"},
+    {GeometryPipelineMode::TraditionalVsPs, "VS + PS"},
+    {GeometryPipelineMode::AutoFallback, "Auto Fallback"},
 };
 
 enum class ForwardShadingCostMode : uint8_t {
@@ -36,10 +66,40 @@ enum class ForwardShadingCostMode : uint8_t {
     NoMaterialExtras,
 };
 
+inline constexpr TEXT::EnumName<ForwardShadingCostMode> kForwardShadingCostModeNames[] = {
+    {ForwardShadingCostMode::Full, "Full"},
+    {ForwardShadingCostMode::AlbedoOnly, "AlbedoOnly"},
+    {ForwardShadingCostMode::NoNormalMap, "NoNormalMap"},
+    {ForwardShadingCostMode::NoShadow, "NoShadow"},
+    {ForwardShadingCostMode::NoSsao, "NoSsao"},
+    {ForwardShadingCostMode::NoMaterialExtras, "NoMaterialExtras"},
+};
+
+inline constexpr TEXT::EnumName<ForwardShadingCostMode> kForwardShadingCostModeLabels[] = {
+    {ForwardShadingCostMode::Full, "Full"},
+    {ForwardShadingCostMode::AlbedoOnly, "Albedo Only"},
+    {ForwardShadingCostMode::NoNormalMap, "No Normal Map"},
+    {ForwardShadingCostMode::NoShadow, "No Shadow"},
+    {ForwardShadingCostMode::NoSsao, "No SSAO"},
+    {ForwardShadingCostMode::NoMaterialExtras, "No Material Extras"},
+};
+
 enum class LightProbeVolumeSamplingMode : uint8_t {
     FastSmooth = 0,
     FullTrilinear,
     Off,
+};
+
+inline constexpr TEXT::EnumName<LightProbeVolumeSamplingMode> kLightProbeVolumeSamplingModeNames[] = {
+    {LightProbeVolumeSamplingMode::FastSmooth, "FastSmooth"},
+    {LightProbeVolumeSamplingMode::FullTrilinear, "FullTrilinear"},
+    {LightProbeVolumeSamplingMode::Off, "Off"},
+};
+
+inline constexpr TEXT::EnumName<LightProbeVolumeSamplingMode> kLightProbeVolumeSamplingModeLabels[] = {
+    {LightProbeVolumeSamplingMode::FastSmooth, "Fast Smooth"},
+    {LightProbeVolumeSamplingMode::FullTrilinear, "Full Trilinear"},
+    {LightProbeVolumeSamplingMode::Off, "Off"},
 };
 
 enum class RenderAntiAliasingMode : uint8_t {
@@ -50,6 +110,12 @@ enum class RenderAntiAliasingMode : uint8_t {
     DLSS,
 };
 
+inline constexpr TEXT::EnumName<RenderAntiAliasingMode> kRenderAntiAliasingModeNames[] = {
+    {RenderAntiAliasingMode::Off, "Off"},   {RenderAntiAliasingMode::FXAA, "FXAA"},
+    {RenderAntiAliasingMode::TAA, "TAA"},   {RenderAntiAliasingMode::DLAA, "DLAA"},
+    {RenderAntiAliasingMode::DLSS, "DLSS"},
+};
+
 enum class DlssQualityMode : uint8_t {
     Quality = 0,
     Balanced,
@@ -57,9 +123,33 @@ enum class DlssQualityMode : uint8_t {
     UltraPerformance,
 };
 
+inline constexpr TEXT::EnumName<DlssQualityMode> kDlssQualityModeNames[] = {
+    {DlssQualityMode::Quality, "Quality"},
+    {DlssQualityMode::Balanced, "Balanced"},
+    {DlssQualityMode::Performance, "Performance"},
+    {DlssQualityMode::UltraPerformance, "UltraPerformance"},
+};
+
+inline constexpr TEXT::EnumName<DlssQualityMode> kDlssQualityModeLabels[] = {
+    {DlssQualityMode::Quality, "Quality"},
+    {DlssQualityMode::Balanced, "Balanced"},
+    {DlssQualityMode::Performance, "Performance"},
+    {DlssQualityMode::UltraPerformance, "Ultra Performance"},
+};
+
 enum class RenderFrameGenerationMode : uint8_t {
     Off = 0,
     Dlss,
+};
+
+inline constexpr TEXT::EnumName<RenderFrameGenerationMode> kRenderFrameGenerationModeNames[] = {
+    {RenderFrameGenerationMode::Off, "Off"},
+    {RenderFrameGenerationMode::Dlss, "DLSS"},
+};
+
+inline constexpr TEXT::EnumName<RenderFrameGenerationMode> kRenderFrameGenerationModeLabels[] = {
+    {RenderFrameGenerationMode::Off, "Off"},
+    {RenderFrameGenerationMode::Dlss, "DLSS Frame Generation"},
 };
 
 enum class VolumetricLightingQuality : uint8_t {
@@ -68,7 +158,20 @@ enum class VolumetricLightingQuality : uint8_t {
     High,
 };
 
+inline constexpr TEXT::EnumName<VolumetricLightingQuality> kVolumetricLightingQualityNames[] = {
+    {VolumetricLightingQuality::Low, "Low"},
+    {VolumetricLightingQuality::Balanced, "Balanced"},
+    {VolumetricLightingQuality::High, "High"},
+};
+
 enum class DynamicGiQuality : uint8_t { Off = 0, Low, Balanced, High };
+
+inline constexpr TEXT::EnumName<DynamicGiQuality> kDynamicGiQualityNames[] = {
+    {DynamicGiQuality::Off, "Off"},
+    {DynamicGiQuality::Low, "Low"},
+    {DynamicGiQuality::Balanced, "Balanced"},
+    {DynamicGiQuality::High, "High"},
+};
 
 enum class LocalShadowQuality : uint8_t {
     Off = 0,
@@ -77,11 +180,24 @@ enum class LocalShadowQuality : uint8_t {
     High,
 };
 
+inline constexpr TEXT::EnumName<LocalShadowQuality> kLocalShadowQualityNames[] = {
+    {LocalShadowQuality::Off, "Off"},
+    {LocalShadowQuality::Low, "Low"},
+    {LocalShadowQuality::Balanced, "Balanced"},
+    {LocalShadowQuality::High, "High"},
+};
+
 // 体積雲の追跡の画質（解像度・歩数・光源方向のサンプル数・届く距離）。
 enum class VolumetricCloudQuality : uint8_t {
     Low = 0,
     Balanced,
     High,
+};
+
+inline constexpr TEXT::EnumName<VolumetricCloudQuality> kVolumetricCloudQualityNames[] = {
+    {VolumetricCloudQuality::Low, "Low"},
+    {VolumetricCloudQuality::Balanced, "Balanced"},
+    {VolumetricCloudQuality::High, "High"},
 };
 
 enum class DepthOfFieldQuality : uint8_t {
@@ -178,6 +294,8 @@ struct RenderQualitySettings {
     // 光線追跡の反射：画面空間の反射が外した所（画面外・裏面）を光線で埋める。対応 GPU と加速構造が要る。
     // 機械の性能に依る選択なので画面の設定（環境配置）ではなく画質に置く。
     bool rayTracedReflections = false;
+
+    bool operator==(const RenderQualitySettings&) const = default;
 };
 
 // Runtime render-quality edits are applied between frames.  The
@@ -200,11 +318,11 @@ struct RenderQualityRuntimeChangeSet {
 
 RenderQualitySettings& GetRenderQualitySettings();
 RenderQualitySettings NormalizeRenderQualitySettings(RenderQualitySettings settings);
-bool AreRenderQualitySettingsEqual(const RenderQualitySettings& lhs, const RenderQualitySettings& rhs);
 RenderQualityRuntimeChangeSet ClassifyRenderQualityRuntimeChanges(const RenderQualitySettings& before,
                                                                   const RenderQualitySettings& after);
 void SetRenderQualitySettings(const RenderQualitySettings& settings);
 
+// 表示名（保存名と違うものは表示名の表、同じものは保存名の表から引く）。
 const char* RenderResolutionPresetLabel(RenderResolutionPreset preset);
 const char* WindowPresentationModeLabel(WindowPresentationMode mode);
 const char* GeometryPipelineModeLabel(GeometryPipelineMode mode);

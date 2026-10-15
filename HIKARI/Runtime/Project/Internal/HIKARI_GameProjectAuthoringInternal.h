@@ -20,8 +20,6 @@ namespace HIKARI {
 class AnimationView;
 class AudioView;
 class CameraView;
-class ComponentRegistry;
-class ComponentSystemPolicy;
 class DialogueView;
 class GameProjectComponentAdapter;
 class GameObject;
@@ -38,31 +36,15 @@ class SaveGameView;
 class SceneCaptureView;
 class SequenceView;
 class SceneFlowView;
-class SystemTypeRegistry;
 class TerrainView;
 class TimeDilationView;
 class UiView;
 class VfxView;
 class World;
-class WorldMassSchemaRegistry;
 struct WorldMassMutableRow;
 enum class RuntimeWorldAccessResult : uint8_t;
 enum class WorldComponentQueryAnchor : uint8_t;
 enum class WorldComponentQueryCardinality : uint8_t;
-
-struct RuntimeFeatureContextAccess {
-    static RuntimeFeatureContext Create(ComponentRegistry& componentRegistry,
-                                        WorldMassSchemaRegistry& massSchemaRegistry,
-                                        SystemTypeRegistry& systemTypeRegistry,
-                                        ComponentSystemPolicy& componentSystemPolicy) noexcept;
-
-    static ComponentRegistry& Components(RuntimeFeatureContext& context) noexcept;
-    static WorldMassSchemaRegistry& MassSchemas(RuntimeFeatureContext& context) noexcept;
-    static SystemTypeRegistry& Systems(RuntimeFeatureContext& context) noexcept;
-    static ComponentSystemPolicy& Policy(RuntimeFeatureContext& context) noexcept;
-    // 登録取引が Register 呼び出しの間だけ設定する。記述子の所属 Feature になる。
-    static void SetFeatureId(RuntimeFeatureContext& context, std::string_view featureId) noexcept;
-};
 
 struct GameProjectSdkAccess {
     using IndexedComponentVisitorFn = bool (*)(void* context, RuntimeObjectHandle object, IComponent* const* components,

@@ -5,7 +5,7 @@
 #include <string>
 #include <utility>
 
-#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Scene/Features/HIKARI_RuntimeFeatureContextAccess.h"
 #include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"

@@ -202,7 +202,7 @@ bool SynchronizeRenderQualityRuntime() {
         gRenderQualityRuntimeInitialized = true;
         return true;
     }
-    if (RENDER3D::AreRenderQualitySettingsEqual(gAppliedRenderQuality, requested)) {
+    if (gAppliedRenderQuality == requested) {
         return true;
     }
 

@@ -15,6 +15,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Scene/Features/HIKARI_RuntimeFeatureContextAccess.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectBindingConversion.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
@@ -65,29 +66,6 @@ BINDING::RuntimeBindingStore* FindObjectBindingStore(const WorldView& world, con
 }
 
 } // namespace
-
-RuntimeFeatureContext RuntimeFeatureContextAccess::Create(ComponentRegistry& componentRegistry,
-                                                          WorldMassSchemaRegistry& massSchemaRegistry,
-                                                          SystemTypeRegistry& systemTypeRegistry,
-                                                          ComponentSystemPolicy& componentSystemPolicy) noexcept {
-    return RuntimeFeatureContext(&componentRegistry, &massSchemaRegistry, &systemTypeRegistry, &componentSystemPolicy);
-}
-
-ComponentRegistry& RuntimeFeatureContextAccess::Components(RuntimeFeatureContext& context) noexcept {
-    return *static_cast<ComponentRegistry*>(context.componentRegistry_);
-}
-
-SystemTypeRegistry& RuntimeFeatureContextAccess::Systems(RuntimeFeatureContext& context) noexcept {
-    return *static_cast<SystemTypeRegistry*>(context.systemTypeRegistry_);
-}
-
-ComponentSystemPolicy& RuntimeFeatureContextAccess::Policy(RuntimeFeatureContext& context) noexcept {
-    return *static_cast<ComponentSystemPolicy*>(context.componentSystemPolicy_);
-}
-
-void RuntimeFeatureContextAccess::SetFeatureId(RuntimeFeatureContext& context, std::string_view featureId) noexcept {
-    context.featureId_ = featureId;
-}
 
 GameComponentContext GameProjectSdkAccess::MakeGameComponentContext(GameProjectComponentAdapter& adapter,
                                                                     GameObject& object, World& world) noexcept {
@@ -188,10 +166,6 @@ void GameProjectComponentAdapter::Serialize(nlohmann::json& out) const {
 void GameProjectComponentAdapter::Deserialize(const nlohmann::json& in) {
     std::string diagnostic{};
     (void)TryDeserialize(in, diagnostic);
-}
-
-WorldMassSchemaRegistry& RuntimeFeatureContextAccess::MassSchemas(RuntimeFeatureContext& context) noexcept {
-    return *static_cast<WorldMassSchemaRegistry*>(context.massSchemaRegistry_);
 }
 
 bool GameProjectComponentAdapter::TryDeserialize(const nlohmann::json& in, std::string& outDiagnostic) {

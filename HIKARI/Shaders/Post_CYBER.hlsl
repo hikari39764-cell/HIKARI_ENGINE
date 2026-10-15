@@ -1,17 +1,13 @@
 #include "Include/Post/HIKARI_PostEffectInterface.hlsli"
 #include "Include/Post/HIKARI_PostHash.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 Texture2D gSceneTex : register(t0);
 SamplerState gSamp : register(s0);
 
-float Luma(float3 color)
-{
-    return dot(color, float3(0.2126f, 0.7152f, 0.0722f));
-}
-
 float DisplayLuma(float3 color)
 {
-    const float value = max(Luma(color), 0.0f);
+    const float value = max(HikariLuminance(color), 0.0f);
     return value / (1.0f + value);
 }
 

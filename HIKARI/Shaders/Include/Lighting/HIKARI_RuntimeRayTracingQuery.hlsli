@@ -10,6 +10,7 @@
 #endif
 #include "../Material/HIKARI_MaterialBaseColorInputs.hlsli"
 #include "../Material/HIKARI_MaterialExpressionSurface.hlsli"
+#include "../Color/HIKARI_Luminance.hlsli"
 
 struct HikariRayTracingHitRecord
 {
@@ -176,7 +177,7 @@ float HikariRayTransmittance(HikariMeshMaterialData material, HikariRaySurface s
 {
     const float4 base = HikariResolveMaterialBaseColor(material, surface.uv0, surface.uv1, materialSampler, true);
     const float3 through = (1.0f - base.a) + base.a * saturate(material.surfaceLayers.z) * base.rgb;
-    return saturate(dot(through, float3(0.2126f, 0.7152f, 0.0722f)));
+    return saturate(HikariLuminance(through));
 }
 
 // transmittance は影の光線が通り抜けた半透明の面の透過率の積（不透明に当たれば戻り値が true）。

@@ -1,6 +1,7 @@
 #include "Include/Surface/HIKARI_ScreenSpaceReflectionTrace.hlsli"
 #include "Include/Surface/HIKARI_SceneReflectionContribution.hlsli"
 #include "Include/Temporal/HIKARI_TemporalReprojection.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 cbuffer ScreenSpaceReflectionCB : register(b0)
 {
@@ -334,7 +335,7 @@ ReflectionHistoryOutput PSHistory(FullscreenVertex input)
             {
                 const float colorWeight = spatial >= 0.01f ? spatial : 0.0f;
                 const float hit = sample.a * colorWeight;
-                const float karis = hit / (1.0f + dot(sample.rgb, float3(0.2126f, 0.7152f, 0.0722f)));
+                const float karis = hit / (1.0f + HikariLuminance(sample.rgb));
                 support += colorWeight;
                 confidenceSum += hit;
                 radianceSum += sample.rgb * karis;

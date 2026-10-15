@@ -18,7 +18,7 @@
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Physics/Backends/Jolt/HIKARI_JoltPhysicsBackend.h"
 #include "Project/HIKARI_ProjectSettings.h"
-#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Scene/Features/HIKARI_RuntimeFeatureContextAccess.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectSessionRuntimeExtension.h"
 #include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 #include "HIKARI/Project/RuntimeFeature.h"

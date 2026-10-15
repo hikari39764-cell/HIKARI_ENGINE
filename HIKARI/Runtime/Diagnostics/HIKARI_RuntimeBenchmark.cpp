@@ -110,12 +110,12 @@ struct RuntimeBenchmark::State {
                                                  static_cast<uint32_t>(graphics.backBufferWidth),
                                                  static_cast<uint32_t>(graphics.backBufferHeight)};
         if (run.SampleCount() > 1) {
-            configurationStable &=
-                RENDER3D::AreRenderQualitySettingsEqual(initialQuality, quality) && initialDimensions == dimensions &&
-                initialDeviceGeneration == graphics.deviceGeneration && initialDebugLayer == debug.enableDebugLayer &&
-                initialGpuValidation == debug.enableGpuBasedValidation &&
-                initialGpuFrameProfiler == debug.enableGpuFrameProfiler &&
-                initialGpuPipelineStats == debug.enableGpuPipelineStats;
+            configurationStable &= initialQuality == quality && initialDimensions == dimensions &&
+                                   initialDeviceGeneration == graphics.deviceGeneration &&
+                                   initialDebugLayer == debug.enableDebugLayer &&
+                                   initialGpuValidation == debug.enableGpuBasedValidation &&
+                                   initialGpuFrameProfiler == debug.enableGpuFrameProfiler &&
+                                   initialGpuPipelineStats == debug.enableGpuPipelineStats;
             temporalValid &= temporal.completed && !temporal.aborted;
             configurationStable &= (scene ? scene->GetSceneId() : "") == initialSceneId &&
                                    (!document || document->GetSceneDocumentRevision() == initialSceneRevision);

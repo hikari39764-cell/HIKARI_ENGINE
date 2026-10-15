@@ -1,6 +1,7 @@
 // 鉛筆の素描。表示の色の段階で明るさを斜線の重なり（明るい所は無し、暗くなるほど一方向・交差・三方向）に置き換え、
 // 深度の輪郭と折れ目、明るさの境を揺らいだ鉛筆の線で描く。紙の地に元の色を淡く残せる。
 #include "Include/Post/HIKARI_PostStylize.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 float4 main(HikariPostEffectInput input) : SV_TARGET
 {
@@ -36,7 +37,7 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
 
     graphite = max(graphite, HikariStylizeInkLines(uv, lineRadius, gUser[0].z, gUser[0].w) * pencilGrain);
 
-    const float3 ground = lerp(paper, paper * saturate(source / max(HikariStylizeLuma(source), 0.05f)), colorAmount);
+    const float3 ground = lerp(paper, paper * saturate(source / max(HikariLuminance(source), 0.05f)), colorAmount);
     const float3 sketch = lerp(saturate(ground), pencil, saturate(graphite));
     return float4(lerp(source, sketch, strength), 1.0f);
 }

@@ -1,6 +1,7 @@
 #define HIKARI_TEMPORAL_TAARESOLVE
 #include "Include/Temporal/HIKARI_TemporalShaderInterface.hlsli"
 #include "Include/Temporal/HIKARI_TemporalReprojection.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 struct VSOut
 {
@@ -40,11 +41,6 @@ VSOut VSMain(uint vertexId : SV_VertexID)
     return output;
 }
 
-float Luminance(float3 color)
-{
-    return dot(color, float3(0.2126f, 0.7152f, 0.0722f));
-}
-
 float3 RGBToYCoCg(float3 color)
 {
     return float3(
@@ -65,13 +61,13 @@ float3 YCoCgToRGB(float3 color)
 float3 EncodeTemporalColor(float3 color, float exposure)
 {
     float3 exposed = max(color, 0.0f) * max(exposure, 1e-4f);
-    return exposed / (1.0f + Luminance(exposed));
+    return exposed / (1.0f + HikariLuminance(exposed));
 }
 
 float3 DecodeTemporalColor(float3 encoded, float exposure)
 {
     float3 exposed = max(
-        encoded / max(1.0f - Luminance(encoded), 1e-4f),
+        encoded / max(1.0f - HikariLuminance(encoded), 1e-4f),
         0.0f);
     return exposed / max(exposure, 1e-4f);
 }
@@ -239,7 +235,7 @@ float3 SpatialFallback(uint2 pixel, float exposure)
         float depthDelta = abs(LoadDepth(samplePixel) - centerDepth);
         float depthWeight = rcp(1.0f + depthDelta * 2048.0f);
         float3 sample = EncodeTemporalColor(LoadCurrent(samplePixel).rgb, exposure);
-        float lumaWeight = rcp(1.0f + abs(Luminance(sample) - Luminance(center)) * 12.0f);
+        float lumaWeight = rcp(1.0f + abs(HikariLuminance(sample) - HikariLuminance(center)) * 12.0f);
         float weight = depthWeight * lumaWeight;
         sum += sample * weight;
         weightSum += weight;
@@ -264,8 +260,8 @@ RejectionResult EvaluateHistory(
         (depthError - depthThreshold) / max(depthThreshold * 3.0f, 1e-5f));
     depthReject = max(depthReject, 1.0f - saturate(motion.valid));
 
-    float currentLuma = Luminance(currentEncoded);
-    float historyLuma = Luminance(historyEncoded);
+    float currentLuma = HikariLuminance(currentEncoded);
+    float historyLuma = HikariLuminance(historyEncoded);
     float relativeLumaError =
         abs(currentLuma - historyLuma) /
         max(max(currentLuma, historyLuma), 0.1f);

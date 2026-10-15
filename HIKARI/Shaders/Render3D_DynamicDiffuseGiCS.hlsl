@@ -4,6 +4,7 @@
 SamplerState gLinearClamp : register(s0);
 SamplerState gMaterialWrap : register(s1);
 #include "Include/Lighting/HIKARI_DynamicGiSampling.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 RWTexture2D<float4> gOutputAtlas : register(u0);
 // 近景の置き場所を決める相機の ray（中央・右・左・上・下・真下）が当たった点の高さ（当たらなければ 1e30）と、
 // その後ろ 6 個に相機からの水平距離。
@@ -80,11 +81,6 @@ float3 ProbeRayDirection(uint rayIndex, float3x3 rotation)
     const float radius = sqrt(saturate(1.0f - y * y));
     const float3 direction = float3(cos(angle) * radius, y, sin(angle) * radius);
     return fixedRay ? direction : mul(rotation, direction);
-}
-
-float Luminance(float3 color)
-{
-    return dot(color, float3(0.2126f, 0.7152f, 0.0722f));
 }
 
 // 命中した位置の間接光は全層の前フレームから読む。覆っていない分はその向きのぼかした空で近似する（開けた所の遠い命中）。
@@ -234,7 +230,7 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         float level = 0.0f;
         for (uint i = 0u; i < kFixedRays; ++i)
         {
-            level += Luminance(sRadiance[i]) / float(kFixedRays);
+            level += HikariLuminance(sRadiance[i]) / float(kFixedRays);
             if (sDistance[i] >= 1.0e29f) continue;
             if (sBackFace[i] != 0u)
             {
@@ -310,8 +306,8 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         const float3 blended = lerp(encoded, previous.rgb, blend);
         sIrradianceTexel[lane] = blended;
         sSkyTexel[lane] = lerp(skyVisibility, previous.a, blend);
-        sVariation[lane] = continuing ? abs(Luminance(blended) - Luminance(previous.rgb)) /
-            max(Luminance(previous.rgb), 0.02f) : 1.0f;
+        sVariation[lane] = continuing ? abs(HikariLuminance(blended) - HikariLuminance(previous.rgb)) /
+            max(HikariLuminance(previous.rgb), 0.02f) : 1.0f;
     }
     GroupMemoryBarrierWithGroupSync();
     for (uint texel = lane; texel < 100u; texel += 64u)

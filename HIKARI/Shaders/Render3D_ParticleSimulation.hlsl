@@ -6,6 +6,7 @@
 
 #include "Include/Vfx/HIKARI_ParticleData.hlsli"
 #include "Include/Vfx/HIKARI_ParticleForceMath.hlsli"
+#include "Include/Math/HIKARI_BillboardMath.hlsli"
 
 #define HIKARI_PARTICLE_LAYOUT(name, value) static const uint name = value;
 #include "Include/Vfx/HIKARI_ParticleEmitterLayout.hlsli"
@@ -58,20 +59,6 @@ float4 LoadEmitterValue(uint emitterIndex, uint valueIndex)
     return asfloat(gEmitterData.Load4(byteOffset));
 }
 
-float3 RotateByQuaternion(float3 value, float4 rotation)
-{
-    float3 q = rotation.xyz;
-    return value + 2.0f * cross(q, cross(q, value) + rotation.w * value);
-}
-
-float4 NormalizeQuaternion(float4 value)
-{
-    float lengthSquared = dot(value, value);
-    return lengthSquared > 1.0e-8f
-        ? value * rsqrt(lengthSquared)
-        : float4(0.0f, 0.0f, 0.0f, 1.0f);
-}
-
 float4 MultiplyQuaternion(float4 left, float4 right)
 {
     return float4(
@@ -94,14 +81,6 @@ float4 QuaternionFromEulerXYZ(float3 rotation)
             sine.x * sine.y * cosine.z,
         cosine.x * cosine.y * cosine.z +
             sine.x * sine.y * sine.z));
-}
-
-float3 NormalizeOr(float3 value, float3 fallback)
-{
-    float lengthSquared = dot(value, value);
-    return lengthSquared > 1.0e-8f
-        ? value * rsqrt(lengthSquared)
-        : fallback;
 }
 
 float RandomForProperty(

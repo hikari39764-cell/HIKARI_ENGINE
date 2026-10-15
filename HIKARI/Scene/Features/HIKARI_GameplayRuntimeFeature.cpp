@@ -12,7 +12,7 @@
 #include "Scene/Components/HIKARI_DialogueTriggerComponent.h"
 #include "HIKARI/Project/RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
-#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Scene/Features/HIKARI_RuntimeFeatureContextAccess.h"
 #include "Scene/HIKARI_CharacterInputSystem.h"
 #include "Scene/HIKARI_CharacterLocomotionSystem.h"
 #include "Scene/HIKARI_CharacterMotionStateSystem.h"

@@ -1,4 +1,5 @@
 #include "Include/Post/HIKARI_PostEffectInterface.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 Texture2D gTex : register(t0);
 SamplerState gSamp : register(s0);
@@ -96,8 +97,7 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     float3 separated = centre.rgb;
     separated.r = gTex.Sample(gSamp, screenUv + separation).r;
     separated.b = gTex.Sample(gSamp, screenUv - separation).b;
-    const float luminance = dot(
-        separated, float3(0.2126, 0.7152, 0.0722));
+    const float luminance = HikariLuminance(separated);
     const float3 coldMonochrome =
         luminance * float3(0.91, 0.97, 1.045);
     const float3 graded = lerp(

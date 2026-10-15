@@ -1,4 +1,5 @@
 #include "Include/Post/HIKARI_PostEffectInterface.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 Texture2D gTex : register(t0);
 SamplerState gSamp : register(s0);
 
@@ -15,7 +16,7 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
         float2 p = uv * 2.0 - 1.0;
         color *= 1.0 - saturate(dot(p, p) * max(amount, 0.0));
     } else if (kind == 7) {
-        color = lerp(color, dot(color, float3(0.2126, 0.7152, 0.0722)).xxx, saturate(amount));
+        color = lerp(color, HikariLuminance(color).xxx, saturate(amount));
     } else if (kind == 8) {
         color *= lerp(1.0.xxx, tint, saturate(amount));
     } else if (kind == 9) {

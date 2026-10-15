@@ -9,7 +9,7 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "HIKARI/Project/RuntimeFeature.h"
-#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Scene/Features/HIKARI_RuntimeFeatureContextAccess.h"
 #include "Scene/Features/Internal/HIKARI_RuntimeFeatureRegistrationTransaction.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"

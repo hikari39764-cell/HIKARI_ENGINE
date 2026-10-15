@@ -1,5 +1,6 @@
 #define HIKARI_TEMPORAL_MASKS
 #include "Include/Temporal/HIKARI_TemporalShaderInterface.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 struct VSOut
 {
@@ -24,11 +25,6 @@ VSOut VSMain(uint vertexId : SV_VertexID)
     return output;
 }
 
-float Luminance(float3 color)
-{
-    return dot(color, float3(0.2126f, 0.7152f, 0.0722f));
-}
-
 PSOut PSMain(VSOut input)
 {
     uint width;
@@ -40,10 +36,10 @@ PSOut PSMain(VSOut input)
     float3 difference = abs(composited - base);
     float relativeDifference =
         max(max(difference.r, difference.g), difference.b) /
-        max(max(Luminance(base), Luminance(composited)), 0.25f);
+        max(max(HikariLuminance(base), HikariLuminance(composited)), 0.25f);
     float lumaDifference =
-        abs(Luminance(composited) - Luminance(base)) /
-        max(max(Luminance(base), Luminance(composited)), 0.25f);
+        abs(HikariLuminance(composited) - HikariLuminance(base)) /
+        max(max(HikariLuminance(base), HikariLuminance(composited)), 0.25f);
 
     PSOut output;
     output.transparency = saturate(relativeDifference * 2.0f);

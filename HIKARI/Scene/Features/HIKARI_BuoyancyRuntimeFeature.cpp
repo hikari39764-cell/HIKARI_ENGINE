@@ -5,7 +5,7 @@
 #include <string>
 #include <utility>
 
-#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Scene/Features/HIKARI_RuntimeFeatureContextAccess.h"
 #include "Scene/Features/HIKARI_BuoyancyComponent.h"
 #include "Scene/Features/HIKARI_BuoyancySystem.h"
 #include "HIKARI/Project/RuntimeFeature.h"

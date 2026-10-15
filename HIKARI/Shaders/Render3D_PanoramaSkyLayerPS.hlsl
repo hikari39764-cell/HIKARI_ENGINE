@@ -9,35 +9,13 @@ Texture2D gPanoramaCloudLayer : register(t0);
 SamplerState gPanoramaSampler : register(s0);
 
 #include "Include/Sky/HIKARI_EquirectangularSampling.hlsli"
+#include "Include/Sky/HIKARI_SkyViewRay.hlsli"
 
 struct PSInput
 {
     float4 position : SV_POSITION;
     float2 ndc : TEXCOORD0;
 };
-
-float3 ReconstructWorldRay(float2 ndc)
-{
-    float4 worldNear = mul(
-        gPanoramaInverseViewProj,
-        float4(ndc, 0.0f, 1.0f));
-    float4 worldFar = mul(
-        gPanoramaInverseViewProj,
-        float4(ndc, 1.0f, 1.0f));
-    if (abs(worldNear.w) <= 1.0e-6f ||
-        abs(worldFar.w) <= 1.0e-6f)
-    {
-        return float3(0.0f, 0.0f, 1.0f);
-    }
-    float3 direction = worldFar.xyz / worldFar.w -
-        worldNear.xyz / worldNear.w;
-    float lengthSquared = dot(direction, direction);
-    if (!all(isfinite(direction)) || lengthSquared <= 1.0e-8f)
-    {
-        return float3(0.0f, 0.0f, 1.0f);
-    }
-    return direction * rsqrt(lengthSquared);
-}
 
 float3 RotateYaw(float3 direction, float yaw)
 {
@@ -51,7 +29,7 @@ float3 RotateYaw(float3 direction, float yaw)
 
 float4 main(PSInput input) : SV_TARGET
 {
-    const float3 worldDirection = ReconstructWorldRay(input.ndc);
+    const float3 worldDirection = HikariSkyViewRay(gPanoramaInverseViewProj, input.ndc);
     const float3 sampleDirection = normalize(RotateYaw(
         worldDirection,
         gPanoramaYawOffsetOpacity.x));

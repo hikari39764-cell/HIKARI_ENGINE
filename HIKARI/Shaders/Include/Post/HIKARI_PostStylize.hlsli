@@ -5,14 +5,10 @@
 #include "HIKARI_PostEffectInterface.hlsli"
 #include "HIKARI_PostHash.hlsli"
 #include "HIKARI_PostSurfaceInputs.hlsli"
+#include "../Color/HIKARI_Luminance.hlsli"
 
 Texture2D gSceneTex : register(t0);
 SamplerState gSamp : register(s0);
-
-float HikariStylizeLuma(float3 color)
-{
-    return dot(color, float3(0.2126f, 0.7152f, 0.0722f));
-}
 
 // 1080p の画素を今の出力の画素へ。
 float HikariStylizePixelScale()
@@ -47,21 +43,21 @@ float2 HikariStylizeGeometryEdges(float2 uv, float radiusPixels)
 // 表示の明るさを白点と黒点で 0..1 へ伸ばす。白点より明るい所は紙の白、黒点より暗い所はベタになる。
 float HikariStylizeTone(float3 color, float blackPoint, float whitePoint)
 {
-    return saturate((HikariStylizeLuma(color) - blackPoint) / max(whitePoint - blackPoint, 0.01f));
+    return saturate((HikariLuminance(color) - blackPoint) / max(whitePoint - blackPoint, 0.01f));
 }
 
 // 明るさの線（Sobel）。模様や影の境に線を足す。
 float HikariStylizeLumaEdge(float2 uv, float radiusPixels)
 {
     const float2 t = HikariStylizeTexel() * max(radiusPixels, 0.5f);
-    const float nw = HikariStylizeLuma(gSceneTex.Sample(gSamp, uv - t).rgb);
-    const float n = HikariStylizeLuma(gSceneTex.Sample(gSamp, uv + float2(0.0f, -t.y)).rgb);
-    const float ne = HikariStylizeLuma(gSceneTex.Sample(gSamp, uv + float2(t.x, -t.y)).rgb);
-    const float w = HikariStylizeLuma(gSceneTex.Sample(gSamp, uv + float2(-t.x, 0.0f)).rgb);
-    const float e = HikariStylizeLuma(gSceneTex.Sample(gSamp, uv + float2(t.x, 0.0f)).rgb);
-    const float sw = HikariStylizeLuma(gSceneTex.Sample(gSamp, uv + float2(-t.x, t.y)).rgb);
-    const float s = HikariStylizeLuma(gSceneTex.Sample(gSamp, uv + float2(0.0f, t.y)).rgb);
-    const float se = HikariStylizeLuma(gSceneTex.Sample(gSamp, uv + t).rgb);
+    const float nw = HikariLuminance(gSceneTex.Sample(gSamp, uv - t).rgb);
+    const float n = HikariLuminance(gSceneTex.Sample(gSamp, uv + float2(0.0f, -t.y)).rgb);
+    const float ne = HikariLuminance(gSceneTex.Sample(gSamp, uv + float2(t.x, -t.y)).rgb);
+    const float w = HikariLuminance(gSceneTex.Sample(gSamp, uv + float2(-t.x, 0.0f)).rgb);
+    const float e = HikariLuminance(gSceneTex.Sample(gSamp, uv + float2(t.x, 0.0f)).rgb);
+    const float sw = HikariLuminance(gSceneTex.Sample(gSamp, uv + float2(-t.x, t.y)).rgb);
+    const float s = HikariLuminance(gSceneTex.Sample(gSamp, uv + float2(0.0f, t.y)).rgb);
+    const float se = HikariLuminance(gSceneTex.Sample(gSamp, uv + t).rgb);
     const float gx = (ne + 2.0f * e + se) - (nw + 2.0f * w + sw);
     const float gy = (sw + 2.0f * s + se) - (nw + 2.0f * n + ne);
     return length(float2(gx, gy));

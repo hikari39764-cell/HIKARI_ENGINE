@@ -1,4 +1,5 @@
 #include "Include/Post/HIKARI_PostEffectInterface.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 // Bloom のピラミッドの一段を作る 13 点の縮小（Jimenez 2014）。双線形の 13 回の取得で 4x4 texel を重なり付きで
 // 平均し、段を重ねても格子や角張った光の輪にならない。
@@ -17,11 +18,6 @@ float3 SampleSource(float2 uv)
     return all(isfinite(color)) ? max(color, 0.0f.xxx) : 0.0f.xxx;
 }
 
-float BloomLuminance(float3 color)
-{
-    return dot(color, float3(0.2126f, 0.7152f, 0.0722f));
-}
-
 float3 Prefilter(float3 color, float displayToScene)
 {
     const float peak = max(max(color.r, color.g), color.b);
@@ -36,7 +32,7 @@ float3 Prefilter(float3 color, float displayToScene)
         return color;
     }
     // 閾値の前後を半分の幅でなめらかにつなぐ。
-    const float luminance = BloomLuminance(color);
+    const float luminance = HikariLuminance(color);
     const float knee = threshold * 0.5f;
     float soft = clamp(luminance - threshold + knee, 0.0f, 2.0f * knee);
     soft = soft * soft / (4.0f * knee + 1.0e-4f);
@@ -84,7 +80,7 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     [unroll] for (uint index = 0u; index < 5u; ++index)
     {
         const float3 box = Prefilter(boxes[index], displayToScene);
-        const float weight = kBoxWeights[index] / (1.0f + BloomLuminance(box) / displayToScene);
+        const float weight = kBoxWeights[index] / (1.0f + HikariLuminance(box) / displayToScene);
         sum += box * weight;
         weightSum += weight;
     }

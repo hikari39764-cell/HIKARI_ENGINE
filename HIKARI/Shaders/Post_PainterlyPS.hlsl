@@ -1,6 +1,7 @@
 // 油彩風。表示の色の段階で一般化 Kuwahara（四つの扇の平均を、ばらつきの小さい扇ほど重く混ぜる）を掛け、輪郭を保った
 // まま細部を筆の塊にまとめる。明るさの勾配で縁を暗くし、キャンバスの織り目と筆のむらを重ねる。
 #include "Include/Post/HIKARI_PostStylize.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 float4 main(HikariPostEffectInput input) : SV_TARGET
 {
@@ -43,20 +44,20 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
             }
         }
         const float3 mean = sum / 9.0f;
-        const float variance = dot(max(sumSquares / 9.0f - mean * mean, 0.0f), float3(0.2126f, 0.7152f, 0.0722f));
+        const float variance = HikariLuminance(max(sumSquares / 9.0f - mean * mean, 0.0f));
         const float weight = rcp(1.0f + pow(max(variance * 255.0f, 0.0f), sharpness * 0.25f));
         weightedColor += mean * weight;
         weightSum += weight;
     }
     float3 painted = weightedColor / max(weightSum, 1e-5f);
-    painted = lerp(HikariStylizeLuma(painted).xxx, painted, saturation);
+    painted = lerp(HikariLuminance(painted).xxx, painted, saturation);
 
     // 筆の跡：明るさの等高線に沿って細長く伸ばした雑音で色を揺らし、絵の具の塊を数段に寄せる。
     const float2 t = texel * radius;
-    const float gx = HikariStylizeLuma(gSceneTex.SampleLevel(gSamp, input.uv + float2(t.x, 0.0f), 0.0f).rgb) -
-                     HikariStylizeLuma(gSceneTex.SampleLevel(gSamp, input.uv - float2(t.x, 0.0f), 0.0f).rgb);
-    const float gy = HikariStylizeLuma(gSceneTex.SampleLevel(gSamp, input.uv + float2(0.0f, t.y), 0.0f).rgb) -
-                     HikariStylizeLuma(gSceneTex.SampleLevel(gSamp, input.uv - float2(0.0f, t.y), 0.0f).rgb);
+    const float gx = HikariLuminance(gSceneTex.SampleLevel(gSamp, input.uv + float2(t.x, 0.0f), 0.0f).rgb) -
+                     HikariLuminance(gSceneTex.SampleLevel(gSamp, input.uv - float2(t.x, 0.0f), 0.0f).rgb);
+    const float gy = HikariLuminance(gSceneTex.SampleLevel(gSamp, input.uv + float2(0.0f, t.y), 0.0f).rgb) -
+                     HikariLuminance(gSceneTex.SampleLevel(gSamp, input.uv - float2(0.0f, t.y), 0.0f).rgb);
     const float2 across = length(float2(gx, gy)) > 1e-3f ? normalize(float2(gx, gy)) : float2(0.7071f, 0.7071f);
     const float2 along = float2(-across.y, across.x);
     const float2 strokeCoord = float2(dot(input.position.xy, along) / (radius * 3.0f),
@@ -74,6 +75,6 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     const float2 weave = input.position.xy / max(3.0f * scale, 1.0f);
     const float threads = 0.5f + 0.25f * (sin(weave.x * 3.14159265f) + sin(weave.y * 3.14159265f));
     const float grain = HikariHash12(floor(input.position.xy)) - 0.5f;
-    painted *= 1.0f - canvas * (0.2f * threads + 0.08f * grain) * (0.4f + 0.6f * HikariStylizeLuma(painted));
+    painted *= 1.0f - canvas * (0.2f * threads + 0.08f * grain) * (0.4f + 0.6f * HikariLuminance(painted));
     return float4(lerp(source, saturate(painted), strength), 1.0f);
 }

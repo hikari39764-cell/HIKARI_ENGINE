@@ -1,5 +1,6 @@
 #include "Include/Post/HIKARI_PostEffectInterface.hlsli"
 #include "Include/Post/HIKARI_PostHash.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 Texture2D<float4> gCapture : register(t0);
 SamplerState gSampler : register(s0);
@@ -47,14 +48,9 @@ float3 ReadTexel(float2 texel)
     return max(any(isnan(color)) ? 0.0 : color, 0.0) * gUser[2].w;
 }
 
-float StyleLuminance(float3 color)
-{
-    return dot(color, float3(0.2126, 0.7152, 0.0722));
-}
-
 bool IsObject(float3 color)
 {
-    return StyleLuminance(color) >= gUser[3].w;
+    return HikariLuminance(color) >= gUser[3].w;
 }
 
 bool IsDanger(float3 color)
@@ -98,7 +94,7 @@ bool IsGhost(float3 color)
 // 焼いた三段のうち一番暗い段か。象牙（明るく彩度が低い）、赤、それ以外（墨・青緑）で境の明るさを変える。
 bool IsShadowBand(float3 color)
 {
-    const float luminance = StyleLuminance(color);
+    const float luminance = HikariLuminance(color);
     if (IsDanger(color))
         return luminance < 0.08;
     const float saturation = max(color.r, max(color.g, color.b)) - min(color.r, min(color.g, color.b));
@@ -262,7 +258,7 @@ float3 StyleSketch(float2 position)
     {
         const float3 tone = StyleSrgb(color);
         // 読みやすさ：明るく彩度の低い面（象牙の天板＝立てる所）は白墨で厚く塗り、躯体も紙より一段はっきり乗せる。
-        const bool lightSurface = StyleLuminance(color) > 0.35 && StyleChroma(tone) < 0.2;
+        const bool lightSurface = HikariLuminance(color) > 0.35 && StyleChroma(tone) < 0.2;
         result = lerp(result, tone, lightSurface ? 0.55 : 0.32);
         if (IsShadowBand(color))
         {
@@ -274,7 +270,7 @@ float3 StyleSketch(float2 position)
     else
     {
         // 背景：光の輪が明るい所ほど白墨を淡く掃く（空気の層）。落ち影は一段暗く疎らな斜線、物体の周りは接地の暗さ。
-        const float lift = saturate(StyleLuminance(color) / max(gUser[3].w, 1e-4) * 1.2 - 0.35);
+        const float lift = saturate(HikariLuminance(color) / max(gUser[3].w, 1e-4) * 1.2 - 0.35);
         result = lerp(result, pencil, 0.12 * lift * depth);
         if (depth > 0.0 && CastShadow(floor(position / block), block) >= 1.0)
         {

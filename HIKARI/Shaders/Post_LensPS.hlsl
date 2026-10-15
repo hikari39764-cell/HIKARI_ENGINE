@@ -1,5 +1,6 @@
 #include "Include/Post/HIKARI_PostEffectInterface.hlsli"
 #include "Include/Post/HIKARI_PostHash.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 Texture2D gSceneTex : register(t0);
 SamplerState gSamp : register(s0);
@@ -47,7 +48,7 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
         const float frame = floor(gTime * 60.0f);
         const float noise = HikariHash12(cell + frame * float2(17.13f, 31.71f)) +
             HikariHash12(cell.yx + frame * float2(5.37f, 11.93f)) - 1.0f;
-        const float luminance = dot(color, float3(0.2126f, 0.7152f, 0.0722f));
+        const float luminance = HikariLuminance(color);
         const float response = lerp(1.0f, 1.0f - luminance / (luminance + 0.25f), grainShadowBias);
         color *= max(1.0f + grain * response * noise, 0.0f);
     }

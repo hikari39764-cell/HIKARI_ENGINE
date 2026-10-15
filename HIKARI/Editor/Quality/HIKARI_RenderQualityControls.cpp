@@ -9,11 +9,8 @@
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#include <algorithm>
-#include <cstring>
-#include <iterator>
 #include <string>
-#include <utility>
+#include <type_traits>
 
 #include "Editor/Widgets/HIKARI_JsonFieldsEditor.h"
 #include "Editor/Widgets/HIKARI_NumberField.h"
@@ -22,155 +19,23 @@
 namespace HIKARI::EDITOR::QUALITY_PANEL {
 
 #if defined(HIKARI_WITH_EDITOR)
-bool DrawResolutionPresetCombo(const char* label, RENDER3D::RenderResolutionPreset& preset, bool includeViewport) {
+// 表の順に選択肢を並べる（表示は labels の名前）。include が偽の候補は出さず、enabled が偽の候補は選べない。
+template <class E, size_t N>
+bool DrawEnumCombo(const char* label, E& value, const TEXT::EnumName<E> (&labels)[N],
+                   std::type_identity_t<bool (*)(E)> include = nullptr,
+                   std::type_identity_t<bool (*)(E)> enabled = nullptr) {
     bool changed = false;
     ImGui::PushID(label);
     EDITOR::PropertyLabel(label);
-    if (ImGui::BeginCombo("##Value", RENDER3D::RenderResolutionPresetLabel(preset))) {
-        const RENDER3D::RenderResolutionPreset presets[] = {
-            RENDER3D::RenderResolutionPreset::Viewport, RENDER3D::RenderResolutionPreset::P720,
-            RENDER3D::RenderResolutionPreset::P1080,    RENDER3D::RenderResolutionPreset::P1440,
-            RENDER3D::RenderResolutionPreset::P2160,
-        };
-        for (RENDER3D::RenderResolutionPreset candidate : presets) {
-            if (!includeViewport && candidate == RENDER3D::RenderResolutionPreset::Viewport) {
+    if (ImGui::BeginCombo("##Value", TEXT::EnumToName(labels, value, "Unknown"))) {
+        for (const TEXT::EnumName<E>& option : labels) {
+            if (include != nullptr && !include(option.value)) {
                 continue;
             }
-            const bool selected = preset == candidate;
-            if (ImGui::Selectable(RENDER3D::RenderResolutionPresetLabel(candidate), selected)) {
-                preset = candidate;
-                changed = true;
-            }
-            if (selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::PopID();
-    return changed;
-}
-
-bool DrawWindowModeCombo(const char* label, RENDER3D::WindowPresentationMode& mode) {
-    bool changed = false;
-    ImGui::PushID(label);
-    EDITOR::PropertyLabel(label);
-    if (ImGui::BeginCombo("##Value", RENDER3D::WindowPresentationModeLabel(mode))) {
-        const RENDER3D::WindowPresentationMode modes[] = {
-            RENDER3D::WindowPresentationMode::Windowed,
-            RENDER3D::WindowPresentationMode::BorderlessWindow,
-            RENDER3D::WindowPresentationMode::Fullscreen,
-        };
-        for (RENDER3D::WindowPresentationMode candidate : modes) {
-            const bool selected = mode == candidate;
-            if (ImGui::Selectable(RENDER3D::WindowPresentationModeLabel(candidate), selected)) {
-                mode = candidate;
-                changed = true;
-            }
-            if (selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::PopID();
-    return changed;
-}
-
-bool DrawGeometryPipelineCombo(RENDER3D::GeometryPipelineMode& mode) {
-    bool changed = false;
-    ImGui::PushID("Geometry Backend");
-    EDITOR::PropertyLabel(TEXT::Localize("ui.quality.geometryBackend").c_str());
-    if (ImGui::BeginCombo("##Value", RENDER3D::GeometryPipelineModeLabel(mode))) {
-        const RENDER3D::GeometryPipelineMode modes[] = {
-            RENDER3D::GeometryPipelineMode::MeshShader,
-            RENDER3D::GeometryPipelineMode::TraditionalVsPs,
-            RENDER3D::GeometryPipelineMode::AutoFallback,
-        };
-        for (RENDER3D::GeometryPipelineMode candidate : modes) {
-            const bool selected = mode == candidate;
-            if (ImGui::Selectable(RENDER3D::GeometryPipelineModeLabel(candidate), selected)) {
-                mode = candidate;
-                changed = true;
-            }
-            if (selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::PopID();
-    return changed;
-}
-
-bool DrawForwardCostModeCombo(RENDER3D::ForwardShadingCostMode& mode) {
-    bool changed = false;
-    ImGui::PushID("Forward Cost Mode");
-    EDITOR::PropertyLabel(TEXT::Localize("ui.quality.forwardCostMode").c_str());
-    if (ImGui::BeginCombo("##Value", RENDER3D::ForwardShadingCostModeLabel(mode))) {
-        const RENDER3D::ForwardShadingCostMode modes[] = {
-            RENDER3D::ForwardShadingCostMode::Full,        RENDER3D::ForwardShadingCostMode::AlbedoOnly,
-            RENDER3D::ForwardShadingCostMode::NoNormalMap, RENDER3D::ForwardShadingCostMode::NoShadow,
-            RENDER3D::ForwardShadingCostMode::NoSsao,      RENDER3D::ForwardShadingCostMode::NoMaterialExtras,
-        };
-        for (RENDER3D::ForwardShadingCostMode candidate : modes) {
-            const bool selected = mode == candidate;
-            if (ImGui::Selectable(RENDER3D::ForwardShadingCostModeLabel(candidate), selected)) {
-                mode = candidate;
-                changed = true;
-            }
-            if (selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::PopID();
-    return changed;
-}
-
-bool DrawLightProbeVolumeSamplingCombo(RENDER3D::LightProbeVolumeSamplingMode& mode) {
-    bool changed = false;
-    ImGui::PushID("Light Probe Sampling");
-    EDITOR::PropertyLabel(TEXT::Localize("ui.quality.lightProbeSampling").c_str());
-    if (ImGui::BeginCombo("##Value", RENDER3D::LightProbeVolumeSamplingModeLabel(mode))) {
-        const RENDER3D::LightProbeVolumeSamplingMode modes[] = {
-            RENDER3D::LightProbeVolumeSamplingMode::FastSmooth,
-            RENDER3D::LightProbeVolumeSamplingMode::FullTrilinear,
-            RENDER3D::LightProbeVolumeSamplingMode::Off,
-        };
-        for (RENDER3D::LightProbeVolumeSamplingMode candidate : modes) {
-            const bool selected = mode == candidate;
-            if (ImGui::Selectable(RENDER3D::LightProbeVolumeSamplingModeLabel(candidate), selected)) {
-                mode = candidate;
-                changed = true;
-            }
-            if (selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::PopID();
-    return changed;
-}
-
-bool DrawAntiAliasingModeCombo(RENDER3D::RenderAntiAliasingMode& mode) {
-    bool changed = false;
-    ImGui::PushID("Anti-Aliasing");
-    EDITOR::PropertyLabel(TEXT::Localize("ui.quality.antiAliasing").c_str());
-    if (ImGui::BeginCombo("##Value", RENDER3D::RenderAntiAliasingModeLabel(mode))) {
-        const RENDER3D::RenderAntiAliasingMode modes[] = {
-            RENDER3D::RenderAntiAliasingMode::Off,  RENDER3D::RenderAntiAliasingMode::FXAA,
-            RENDER3D::RenderAntiAliasingMode::TAA,  RENDER3D::RenderAntiAliasingMode::DLAA,
-            RENDER3D::RenderAntiAliasingMode::DLSS,
-        };
-        for (RENDER3D::RenderAntiAliasingMode candidate : modes) {
-            const bool selected = mode == candidate;
-            const bool available = RENDER3D::IsAntiAliasingModeAvailable(candidate);
-            ImGui::BeginDisabled(!available);
-            if (ImGui::Selectable(RENDER3D::RenderAntiAliasingModeLabel(candidate), selected)) {
-                mode = candidate;
+            const bool selected = value == option.value;
+            ImGui::BeginDisabled(enabled != nullptr && !enabled(option.value));
+            if (ImGui::Selectable(option.name, selected)) {
+                value = option.value;
                 changed = true;
             }
             if (selected) {
@@ -182,102 +47,6 @@ bool DrawAntiAliasingModeCombo(RENDER3D::RenderAntiAliasingMode& mode) {
     }
     ImGui::PopID();
     return changed;
-}
-
-bool DrawDlssQualityModeCombo(RENDER3D::DlssQualityMode& mode) {
-    bool changed = false;
-    ImGui::PushID("DLSS Quality");
-    EDITOR::PropertyLabel(TEXT::Localize("ui.quality.dlssQuality").c_str());
-    if (ImGui::BeginCombo("##Value", RENDER3D::DlssQualityModeLabel(mode))) {
-        const RENDER3D::DlssQualityMode modes[] = {
-            RENDER3D::DlssQualityMode::Quality,
-            RENDER3D::DlssQualityMode::Balanced,
-            RENDER3D::DlssQualityMode::Performance,
-            RENDER3D::DlssQualityMode::UltraPerformance,
-        };
-        for (RENDER3D::DlssQualityMode candidate : modes) {
-            const bool selected = mode == candidate;
-            if (ImGui::Selectable(RENDER3D::DlssQualityModeLabel(candidate), selected)) {
-                mode = candidate;
-                changed = true;
-            }
-            if (selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::PopID();
-    return changed;
-}
-
-bool DrawFrameGenerationModeCombo(RENDER3D::RenderFrameGenerationMode& mode) {
-    bool changed = false;
-    ImGui::PushID("Frame Generation");
-    EDITOR::PropertyLabel(TEXT::Localize("ui.quality.frameGeneration").c_str());
-    if (ImGui::BeginCombo("##Value", RENDER3D::RenderFrameGenerationModeLabel(mode))) {
-        const RENDER3D::RenderFrameGenerationMode modes[] = {
-            RENDER3D::RenderFrameGenerationMode::Off,
-            RENDER3D::RenderFrameGenerationMode::Dlss,
-        };
-        for (RENDER3D::RenderFrameGenerationMode candidate : modes) {
-            const bool selected = mode == candidate;
-            const bool available = RENDER3D::IsFrameGenerationModeAvailable(candidate);
-            ImGui::BeginDisabled(!available);
-            if (ImGui::Selectable(RENDER3D::RenderFrameGenerationModeLabel(candidate), selected)) {
-                mode = candidate;
-                changed = true;
-            }
-            if (selected) {
-                ImGui::SetItemDefaultFocus();
-            }
-            ImGui::EndDisabled();
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::PopID();
-    return changed;
-}
-
-template <typename Quality, typename Options, typename GetValue, typename GetName, typename GetCurrentName>
-bool DrawQualityCombo(const char* label, Quality& quality, const Options& options, GetValue getValue, GetName getName,
-                      GetCurrentName getCurrentName) {
-    bool changed = false;
-    ImGui::PushID(label);
-    EDITOR::PropertyLabel(label);
-    if (ImGui::BeginCombo("##Value", getCurrentName(quality))) {
-        for (const auto& option : options) {
-            const Quality candidate = getValue(option);
-            const bool selected = quality == candidate;
-            if (ImGui::Selectable(getName(option), selected)) {
-                quality = candidate;
-                changed = true;
-            }
-            if (selected)
-                ImGui::SetItemDefaultFocus();
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::PopID();
-    return changed;
-}
-
-template <typename Quality>
-bool DrawLightingQualityCombo(const char* label, Quality& quality, std::initializer_list<Quality> levels,
-                              const char* (*name)(Quality)) {
-    return DrawQualityCombo(
-        label, quality, levels, [](Quality candidate) { return candidate; },
-        [name](Quality candidate) { return name(candidate); }, name);
-}
-
-// TEXT::EnumName の表をそのまま選択肢にする段階の選択。
-template <class Quality, size_t Size>
-bool DrawNamedQualityCombo(const char* labelKey, Quality& quality, const TEXT::EnumName<Quality> (&names)[Size],
-                           const char* (*name)(Quality)) {
-    const std::string label = TEXT::Localize(labelKey);
-    return DrawQualityCombo(
-        label.c_str(), quality, names, [](const auto& option) { return option.value; },
-        [](const auto& option) { return option.name; }, name);
 }
 
 bool DrawFxaaSettings() {
@@ -304,16 +73,17 @@ bool DrawRenderSettings() {
 
     if (ImGui::TreeNodeEx(TEXT::Localize("ui.quality.display").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
         if (EDITOR::BeginPropertyTable("QualityDisplayProperties")) {
-            changed |= DrawResolutionPresetCombo(TEXT::Localize("ui.quality.renderResolution").c_str(),
-                                                 settings.sceneResolution, true);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.renderResolution").c_str(), settings.sceneResolution,
+                                     RENDER3D::kRenderResolutionPresetLabels);
             if (settings.sceneResolution == RENDER3D::RenderResolutionPreset::Viewport) {
                 EDITOR::PropertyLabel(TEXT::Localize("ui.quality.viewportScale").c_str());
                 changed |= EDITOR::SliderNumber("##ViewportScale", settings.viewportScale, 0.25, 2.0,
                                                 &kDefaults.viewportScale);
             }
-            changed |= DrawResolutionPresetCombo(TEXT::Localize("ui.quality.gameWindowSize").c_str(),
-                                                 settings.windowSize, false);
-            changed |= DrawWindowModeCombo(TEXT::Localize("ui.quality.gameWindowMode").c_str(), settings.windowMode);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.gameWindowSize").c_str(), settings.windowSize,
+                                     RENDER3D::kRenderResolutionPresetLabels, RENDER3D::IsFixedRenderResolutionPreset);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.gameWindowMode").c_str(), settings.windowMode,
+                                     RENDER3D::kWindowPresentationModeNames);
             EDITOR::PropertyLabel(TEXT::Localize("ui.quality.vsync").c_str());
             changed |= ImGui::Checkbox("##VSync", &settings.vSync);
 
@@ -334,33 +104,32 @@ bool DrawRenderSettings() {
 
     if (ImGui::TreeNodeEx(TEXT::Localize("ui.quality.pipeline").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
         if (EDITOR::BeginPropertyTable("QualityPipelineProperties")) {
-            changed |= DrawGeometryPipelineCombo(settings.geometryPipeline);
-            changed |= DrawForwardCostModeCombo(settings.forwardCostMode);
-            changed |= DrawLightProbeVolumeSamplingCombo(settings.lightProbeVolumeSampling);
-            changed |= DrawLightingQualityCombo(
-                TEXT::Localize("ui.quality.volumetricLighting").c_str(), settings.volumetricLightingQuality,
-                {RENDER3D::VolumetricLightingQuality::Low, RENDER3D::VolumetricLightingQuality::Balanced,
-                 RENDER3D::VolumetricLightingQuality::High},
-                RENDER3D::VolumetricLightingQualityLabel);
-            changed |= DrawNamedQualityCombo("ui.quality.depthOfField", settings.depthOfFieldQuality,
-                                             RENDER3D::kDepthOfFieldQualityNames, RENDER3D::DepthOfFieldQualityLabel);
-            changed |= DrawNamedQualityCombo("ui.quality.motionBlur", settings.motionBlurQuality,
-                                             RENDER3D::kMotionBlurQualityNames, RENDER3D::MotionBlurQualityLabel);
-            changed |= DrawLightingQualityCombo(
-                TEXT::Localize("ui.quality.volumetricClouds").c_str(), settings.volumetricCloudQuality,
-                {RENDER3D::VolumetricCloudQuality::Low, RENDER3D::VolumetricCloudQuality::Balanced,
-                 RENDER3D::VolumetricCloudQuality::High},
-                RENDER3D::VolumetricCloudQualityLabel);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.geometryBackend").c_str(), settings.geometryPipeline,
+                                     RENDER3D::kGeometryPipelineModeLabels);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.forwardCostMode").c_str(), settings.forwardCostMode,
+                                     RENDER3D::kForwardShadingCostModeLabels);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.lightProbeSampling").c_str(),
+                                     settings.lightProbeVolumeSampling, RENDER3D::kLightProbeVolumeSamplingModeLabels);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.volumetricLighting").c_str(),
+                                     settings.volumetricLightingQuality, RENDER3D::kVolumetricLightingQualityNames);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.depthOfField").c_str(), settings.depthOfFieldQuality,
+                                     RENDER3D::kDepthOfFieldQualityNames);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.motionBlur").c_str(), settings.motionBlurQuality,
+                                     RENDER3D::kMotionBlurQualityNames);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.volumetricClouds").c_str(),
+                                     settings.volumetricCloudQuality, RENDER3D::kVolumetricCloudQualityNames);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.localShadows").c_str(), settings.localShadowQuality,
+                                     RENDER3D::kLocalShadowQualityNames);
             changed |=
-                DrawLightingQualityCombo(TEXT::Localize("ui.quality.localShadows").c_str(), settings.localShadowQuality,
-                                         {RENDER3D::LocalShadowQuality::Off, RENDER3D::LocalShadowQuality::Low,
-                                          RENDER3D::LocalShadowQuality::Balanced, RENDER3D::LocalShadowQuality::High},
-                                         RENDER3D::LocalShadowQualityLabel);
-            changed |= DrawAntiAliasingModeCombo(settings.antiAliasingMode);
+                DrawEnumCombo(TEXT::Localize("ui.quality.antiAliasing").c_str(), settings.antiAliasingMode,
+                              RENDER3D::kRenderAntiAliasingModeNames, nullptr, RENDER3D::IsAntiAliasingModeAvailable);
             if (settings.antiAliasingMode == RENDER3D::RenderAntiAliasingMode::DLSS) {
-                changed |= DrawDlssQualityModeCombo(settings.dlssQualityMode);
+                changed |= DrawEnumCombo(TEXT::Localize("ui.quality.dlssQuality").c_str(), settings.dlssQualityMode,
+                                         RENDER3D::kDlssQualityModeLabels);
             }
-            changed |= DrawFrameGenerationModeCombo(settings.frameGenerationMode);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.frameGeneration").c_str(), settings.frameGenerationMode,
+                                     RENDER3D::kRenderFrameGenerationModeLabels, nullptr,
+                                     RENDER3D::IsFrameGenerationModeAvailable);
             if (settings.frameGenerationMode == RENDER3D::RenderFrameGenerationMode::Dlss &&
                 !RENDER3D::UPSCALING::IsStreamlineFrameGenerationInitialized()) {
                 ImGui::TextDisabled("%s", TEXT::Localize("ui.quality.frameGenerationRestart").c_str());
@@ -399,11 +168,8 @@ bool DrawRenderSettings() {
     // 光線追跡を使う機能を一か所に並べる（GI・反射・太陽の影）。どれも同じ加速構造を使う。
     if (ImGui::TreeNodeEx(TEXT::Localize("ui.quality.rayTracing").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
         if (EDITOR::BeginPropertyTable("QualityRayTracingProperties")) {
-            changed |=
-                DrawLightingQualityCombo(TEXT::Localize("ui.quality.dynamicGi").c_str(), settings.dynamicGiQuality,
-                                         {RENDER3D::DynamicGiQuality::Off, RENDER3D::DynamicGiQuality::Low,
-                                          RENDER3D::DynamicGiQuality::Balanced, RENDER3D::DynamicGiQuality::High},
-                                         RENDER3D::DynamicGiQualityLabel);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.dynamicGi").c_str(), settings.dynamicGiQuality,
+                                     RENDER3D::kDynamicGiQualityNames);
             EDITOR::PropertyLabel(TEXT::Localize("ui.quality.rayTracedReflections").c_str());
             changed |= ImGui::Checkbox("##RayTracedReflections", &settings.rayTracedReflections);
             EDITOR::PropertyLabel(TEXT::Localize("ui.quality.directionalShadow.rayTraced").c_str());
@@ -430,7 +196,7 @@ bool DrawRenderSettings() {
     if (changed) {
         RENDER3D::SetRenderQualitySettings(settings);
     }
-    return !RENDER3D::AreRenderQualitySettingsEqual(beforeEdit, RENDER3D::GetRenderQualitySettings());
+    return beforeEdit != RENDER3D::GetRenderQualitySettings();
 }
 #endif
 

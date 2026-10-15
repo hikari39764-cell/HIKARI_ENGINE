@@ -1,5 +1,6 @@
 #ifndef HIKARI_STYLIZED_EYE_MATERIAL_INCLUDED
 #define HIKARI_STYLIZED_EYE_MATERIAL_INCLUDED
+#include "../Color/HIKARI_Luminance.hlsli"
 
 void HikariResolveEyeTangentFrame(
     float3 normalWS,
@@ -338,8 +339,7 @@ float4 HikariResolveCorneaHighlightSample(
         saturate(dot(eyeNormal, driverWS)),
         max(1.0f, appearance.x));
     const float lightEnergy = max(
-        dot(max(lightRadiance, 0.0f.xxx),
-            float3(0.2126f, 0.7152f, 0.0722f)),
+        HikariLuminance(max(lightRadiance, 0.0f.xxx)),
         0.0f);
     const float reactiveGain = max(
         saturate(response.y),

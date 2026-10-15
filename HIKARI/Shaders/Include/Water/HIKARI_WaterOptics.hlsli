@@ -1,5 +1,6 @@
 #ifndef HIKARI_WATER_OPTICS_INCLUDED
 #define HIKARI_WATER_OPTICS_INCLUDED
+#include "../Color/HIKARI_Luminance.hlsli"
 
 // Shared water optical helpers.
 //
@@ -234,12 +235,8 @@ float3 HikariWaterBlendWithSceneHorizon(
     // panoramas remain authoritative because their captured radiance passes
     // this gate; procedural/atmosphere skies cannot create a black horizon
     // merely because their snapshot is empty.
-    const float capturedLuminance = dot(
-        safeScene,
-        float3(0.2126f, 0.7152f, 0.0722f));
-    const float skyLuminance = dot(
-        safeSky,
-        float3(0.2126f, 0.7152f, 0.0722f));
+    const float capturedLuminance = HikariLuminance(safeScene);
+    const float skyLuminance = HikariLuminance(safeSky);
     const float lowCaptureThreshold = skyLuminance * 0.025f;
     const float highCaptureThreshold = max(
         skyLuminance * 0.18f,

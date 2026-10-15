@@ -12,7 +12,7 @@
 #include "Scene/Components/HIKARI_PhysicsBodyComponent.h"
 #include "HIKARI/Project/RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
-#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Scene/Features/HIKARI_RuntimeFeatureContextAccess.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"

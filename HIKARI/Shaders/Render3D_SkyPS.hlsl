@@ -31,38 +31,16 @@ SamplerState gLinearClamp : register(s0);
 
 #include "Include/Atmosphere/HIKARI_AtmosphereScattering.hlsli"
 #include "Include/Sky/HIKARI_EquirectangularSampling.hlsli"
+#include "Include/Sky/HIKARI_SkyViewRay.hlsli"
 #include "Include/Sky/HIKARI_NightSky.hlsli"
 #include "Include/Sky/HIKARI_SkyRadiance.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 struct PSInput
 {
     float4 position : SV_POSITION;
     float2 ndc : TEXCOORD0;
 };
-
-float3 ReconstructWorldRay(float2 ndc)
-{
-    float4 worldNear = mul(
-        gSkyInverseViewProj,
-        float4(ndc, 0.0f, 1.0f));
-    float4 worldFar = mul(
-        gSkyInverseViewProj,
-        float4(ndc, 1.0f, 1.0f));
-    if (abs(worldNear.w) <= 1.0e-6f ||
-        abs(worldFar.w) <= 1.0e-6f)
-    {
-        return float3(0.0f, 0.0f, 1.0f);
-    }
-
-    float3 direction = worldFar.xyz / worldFar.w -
-        worldNear.xyz / worldNear.w;
-    float lengthSquared = dot(direction, direction);
-    if (!all(isfinite(direction)) || lengthSquared <= 1.0e-8f)
-    {
-        return float3(0.0f, 0.0f, 1.0f);
-    }
-    return direction * rsqrt(lengthSquared);
-}
 
 // 天空 LUT が無い時の空。カメラの高さを持たないので、背景の地面を見下ろす最低の高さから見る。
 float3 EvaluateAtmosphereSky(float3 dir)
@@ -111,7 +89,7 @@ float3 StarColor(float u)
         color = lerp(kG, kA, (u - 0.45f) / 0.37f);
     else
         color = lerp(kA, kB, (u - 0.82f) / 0.18f);
-    return color / dot(color, float3(0.2126f, 0.7152f, 0.0722f));
+    return color / HikariLuminance(color);
 }
 
 float MilkyWayHash(float3 p)
@@ -176,7 +154,7 @@ float3 EvaluateMilkyWay(float3 celestial)
     // いて座の星雲付近でおよそ 20 等/平方秒角。
     static const float kPeakLuminance = 6.0e-4f;
     const float3 color = lerp(float3(0.82f, 0.88f, 1.0f), float3(1.0f, 0.90f, 0.78f), saturate(toward + bulge));
-    return color / dot(color, float3(0.2126f, 0.7152f, 0.0722f)) * ((disk + bulge) * structure * kPeakLuminance);
+    return color / HikariLuminance(color) * ((disk + bulge) * structure * kPeakLuminance);
 }
 
 // 星空。天球に固定した立方体格子の各セルに確率 kDensity で星を一つ置く。星の数は実際の分布
@@ -368,7 +346,7 @@ float3 EvaluateBelowHorizonHaze(float3 dir)
         {
             const float3 color =
                 gAtmosphereSkyView.SampleLevel(gLinearClamp, float2((float(index) + 0.5f) / 8.0f, v), 0.0f).rgb;
-            const float luminance = dot(color, float3(0.2126f, 0.7152f, 0.0722f));
+            const float luminance = HikariLuminance(color);
             if (luminance < darkestLuminance)
             {
                 darkest = color;
@@ -392,7 +370,7 @@ float3 EvaluateBelowHorizonHaze(float3 dir)
 
 float4 main(PSInput input) : SV_TARGET
 {
-    float3 worldRayDir = ReconstructWorldRay(input.ndc);
+    float3 worldRayDir = HikariSkyViewRay(gSkyInverseViewProj, input.ndc);
     float3 skySampleDir = normalize(HikariRotateSkyYaw(worldRayDir, gSkyScaleYaw.y));
     uint mode = (uint)(gSkyTintMode.a + 0.5f);
 

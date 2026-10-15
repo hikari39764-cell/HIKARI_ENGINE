@@ -1,10 +1,11 @@
 // 像素風。表示の色の段階で画面を大きな画素の格子に揃え、各画素は格子の中心の色を取る。色は段数に量子化し、
 // Bayer 行列で揺らして段の境を点描にする。深度の段差の手前側の画素は輪郭色で縁取る。
 #include "Include/Post/HIKARI_PostStylize.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 float3 AdjustColor(float3 color, float saturation, float contrast)
 {
-    const float luma = HikariStylizeLuma(color);
+    const float luma = HikariLuminance(color);
     color = lerp(luma.xxx, color, saturation);
     return saturate((color - 0.5f) * contrast + 0.5f);
 }

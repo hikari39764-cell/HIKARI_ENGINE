@@ -2,6 +2,7 @@
 #include "Include/Lighting/HIKARI_CloudSolarVisibility.hlsli"
 #include "Include/Atmosphere/HIKARI_SkyViewMapping.hlsli"
 #include "Include/Post/HIKARI_PostHash.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 // 体積雲の描画。半分の解像度の 2x2 ごとに 1 画素だけを毎フレーム場所を変えて追跡し（TraceCloudPS）、
 // 前フレームの履歴と合わせて半分の解像度へ再構成し（ReprojectCloudPS）、全解像度の場面へ深度を見て合成する
@@ -220,7 +221,7 @@ float3 HikariCloudSourceRadiance(HikariCloudColumn column, float cosine, float l
         max(gCloudLightDirection.y, 0.03f);
     const float3 lowColor = lightColor * exp(-extraAirMass * gCloudAirRayleigh.rgb * gCloudAirRayleigh.w);
     const float3 reddening = lowColor / lightColor *
-        (dot(lightColor, float3(0.2126f, 0.7152f, 0.0722f)) / max(dot(lowColor, float3(0.2126f, 0.7152f, 0.0722f)),
+        (HikariLuminance(lightColor) / max(HikariLuminance(lowColor),
         1.0e-4f));
     // 主光源の光は、表面近くの向きの揃った散乱（銀の縁）と、雲の中で何度も散乱した拡散光（日向の面を白く輝かせ、
     // 陰の面と雲底を灰色に満たす）の和。

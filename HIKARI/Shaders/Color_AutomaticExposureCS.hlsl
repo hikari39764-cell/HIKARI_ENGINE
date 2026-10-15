@@ -1,4 +1,5 @@
 #include "Include/Color/HIKARI_AutomaticExposureInterface.hlsli"
+#include "Include/Color/HIKARI_Luminance.hlsli"
 
 // 対数輝度のヒストグラムから、暗部と明部の外れ値を除いた区間の対数平均を測る。
 // 太陽や発光体などの小さな高輝度領域と、黒つぶれした影が露出を引っ張らない。
@@ -53,7 +54,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
             min(gWidth - 1u, (uint)(uv.x * (float)gWidth)),
             min(gHeight - 1u, (uint)(uv.y * (float)gHeight)));
         const float3 color = max(gSceneColor.Load(int3(pixelCoord, 0)).rgb, 0.0f.xxx);
-        const float luminance = dot(color, float3(0.2126f, 0.7152f, 0.0722f)) * gInverseMeteringPreExposure;
+        const float luminance = HikariLuminance(color) * gInverseMeteringPreExposure;
         const float log2Luminance = clamp(log2(max(luminance, 1e-8f)), kMinimumLog2Luminance,
             kMaximumLog2Luminance - 1e-3f);
         const uint bin = min((uint)((log2Luminance - kMinimumLog2Luminance) * binsPerLog2), kBinCount - 1u);

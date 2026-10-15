@@ -1,5 +1,6 @@
 #ifndef HIKARI_NIGHT_SKY_INCLUDED
 #define HIKARI_NIGHT_SKY_INCLUDED
+#include "../Color/HIKARI_Luminance.hlsli"
 
 // 天体の光が大気で減る割合。天頂で約 0.2 等の減光、地平線へ向けて大気路長（エアマス）に比例して増える。
 float HikariNightSkyExtinction(float elevationSine)
@@ -18,7 +19,7 @@ float3 HikariNightSkyBackground(float3 direction, float zenithLuminance)
     const float sinZenithSquared = saturate(1.0f - direction.y * direction.y);
     const float vanRhijn = rsqrt(max(1.0f - 0.9724f * sinZenithSquared, 1.0e-3f));
     // 天頂の減光で割り、天頂の値を zenithLuminance に保つ。わずかに青みのある中性色（輝度 1）。
-    const float3 color = float3(0.86f, 0.95f, 1.0f) / dot(float3(0.86f, 0.95f, 1.0f), float3(0.2126f, 0.7152f, 0.0722f));
+    const float3 color = float3(0.86f, 0.95f, 1.0f) / HikariLuminance(float3(0.86f, 0.95f, 1.0f));
     return color * (zenithLuminance * vanRhijn * HikariNightSkyExtinction(direction.y) / HikariNightSkyExtinction(1.0f));
 }
 
