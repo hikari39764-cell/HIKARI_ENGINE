@@ -1,4 +1,5 @@
 #include "Core/Content/HIKARI_EngineContentContext.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 
 #include <system_error>
 #include <utility>
@@ -12,15 +13,6 @@ void SetMessage(std::string* outMessage, std::string message) {
     if (outMessage != nullptr) {
         *outMessage = std::move(message);
     }
-}
-
-bool ContainsParentTraversal(const std::filesystem::path& path) {
-    for (const std::filesystem::path& part : path) {
-        if (part == "..") {
-            return true;
-        }
-    }
-    return false;
 }
 
 } // namespace
@@ -60,7 +52,7 @@ bool EngineContentContext::IsOpen() const noexcept { return open_; }
 const std::filesystem::path& EngineContentContext::GetRoot() const noexcept { return root_; }
 
 std::filesystem::path EngineContentContext::Resolve(const std::filesystem::path& relativePath) const {
-    if (!open_ || relativePath.is_absolute() || ContainsParentTraversal(relativePath)) {
+    if (!open_ || relativePath.is_absolute() || PATHS::HasParentTraversal(relativePath)) {
         return {};
     }
     return (root_ / relativePath).lexically_normal();

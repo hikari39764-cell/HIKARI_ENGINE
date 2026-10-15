@@ -1,4 +1,5 @@
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 #include "Render2D/HIKARI_GameUiTextLayout.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 
@@ -26,15 +27,6 @@ bool IsValidTextEnum(const GameProjectUiTextRequest& request) {
            static_cast<uint32_t>(request.wrap) <= static_cast<uint32_t>(GameProjectUiTextWrap::Character);
 }
 
-bool HasParentTraversal(const std::filesystem::path& path) {
-    for (const auto& part : path) {
-        if (part == "..") {
-            return true;
-        }
-    }
-    return false;
-}
-
 std::filesystem::path PathBelowAssets(std::string_view text) {
     auto path = TEXT::PathFromUtf8(text);
     if (!path.empty() && !path.has_root_path() && *path.begin() == "Assets") {
@@ -43,18 +35,6 @@ std::filesystem::path PathBelowAssets(std::string_view text) {
     return path;
 }
 
-bool IsWithin(const std::filesystem::path& root, const std::filesystem::path& candidate) {
-    auto rootIt = root.begin();
-    auto candidateIt = candidate.begin();
-    while (rootIt != root.end()) {
-        if (candidateIt == candidate.end() || *rootIt != *candidateIt) {
-            return false;
-        }
-        ++rootIt;
-        ++candidateIt;
-    }
-    return true;
-}
 } // namespace
 
 void GameUiPresentationService::SetProjectRoot(const std::filesystem::path& projectRoot) {
@@ -99,7 +79,7 @@ bool GameUiPresentationService::ResolveTexturePath(std::string_view relativePath
             return true;
         }
         const std::filesystem::path relative = PathBelowAssets(cacheKey);
-        if (relative.is_absolute() || relative.has_root_path() || HasParentTraversal(relative)) {
+        if (relative.is_absolute() || relative.has_root_path() || PATHS::HasParentTraversal(relative)) {
             return false;
         }
         if (assetDatabase_ != nullptr) {
@@ -112,8 +92,8 @@ bool GameUiPresentationService::ResolveTexturePath(std::string_view relativePath
                     std::error_code error{};
                     const std::filesystem::path candidate =
                         std::filesystem::weakly_canonical(root / artifact->path, error);
-                    if (!error && IsWithin(root, candidate) && std::filesystem::is_regular_file(candidate, error) &&
-                        !error) {
+                    if (!error && PATHS::IsLexicallyWithin(root, candidate) &&
+                        std::filesystem::is_regular_file(candidate, error) && !error) {
                         outPath = candidate;
                         resolvedTexturePaths_.emplace(cacheKey, candidate);
                         return true;
@@ -145,7 +125,7 @@ bool GameUiPresentationService::ResolveDirectAssetPath(std::string_view relative
             return true;
         }
         const std::filesystem::path relative = PathBelowAssets(cacheKey);
-        if (relative.is_absolute() || relative.has_root_path() || HasParentTraversal(relative)) {
+        if (relative.is_absolute() || relative.has_root_path() || PATHS::HasParentTraversal(relative)) {
             return false;
         }
         const std::filesystem::path* roots[]{&assetsRoot_, &runtimePayloadAssetsRoot_};
@@ -155,7 +135,7 @@ bool GameUiPresentationService::ResolveDirectAssetPath(std::string_view relative
             }
             std::error_code error{};
             const std::filesystem::path candidate = std::filesystem::weakly_canonical(*root / relative, error);
-            if (error || !IsWithin(*root, candidate)) {
+            if (error || !PATHS::IsLexicallyWithin(*root, candidate)) {
                 continue;
             }
             error.clear();
@@ -240,7 +220,7 @@ bool GameUiPresentationService::ResolveTextureAsset(std::string_view assetGuid,
         }
         const std::filesystem::path assetsPrefix{"Assets"};
         const std::filesystem::path relative = record->sourcePath.lexically_relative(assetsPrefix);
-        if (relative.empty() || relative == "." || HasParentTraversal(relative)) {
+        if (relative.empty() || relative == "." || PATHS::HasParentTraversal(relative)) {
             return false;
         }
         return ResolveTexturePath(relative.generic_string(), outPath);

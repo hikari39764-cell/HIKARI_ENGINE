@@ -1,4 +1,5 @@
 #include "Assets/Sprite/HIKARI_SpriteAssetSerialization.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 
 #include <algorithm>
 #include <array>
@@ -25,22 +26,6 @@ constexpr uint32_t kMaximumPageEdge = 8192u;
 constexpr uint32_t kMaximumPageCount = 64u;
 constexpr uint32_t kMaximumFrameDurationMs = 600000u;
 
-bool IsContainedPath(const std::filesystem::path& root, const std::filesystem::path& path) {
-    std::error_code error{};
-    const std::filesystem::path canonicalRoot = std::filesystem::weakly_canonical(root, error);
-    if (error) {
-        return false;
-    }
-    const std::filesystem::path canonicalPath = std::filesystem::weakly_canonical(path, error);
-    if (error) {
-        return false;
-    }
-    const std::string rootKey = TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(canonicalRoot));
-    const std::string pathKey = TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(canonicalPath));
-    return pathKey.size() > rootKey.size() && pathKey.compare(0u, rootKey.size(), rootKey) == 0 &&
-           pathKey[rootKey.size()] == '/';
-}
-
 bool ResolvePagePath(const std::filesystem::path& sourcePath, std::string_view file, std::filesystem::path& outPath,
                      std::string& outError, std::string_view fieldPath) {
     const std::filesystem::path relative = TEXT::PathFromUtf8(file);
@@ -54,7 +39,7 @@ bool ResolvePagePath(const std::filesystem::path& sourcePath, std::string_view f
         }
     }
     const std::filesystem::path candidate = (sourcePath.parent_path() / relative).lexically_normal();
-    if (!IsContainedPath(sourcePath.parent_path(), candidate)) {
+    if (!PATHS::IsContainedPath(sourcePath.parent_path(), candidate)) {
         return JSONSTRICT::Fail(outError, std::string(fieldPath) + " resolves outside the Sprite source directory");
     }
     std::error_code error{};

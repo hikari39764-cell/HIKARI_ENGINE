@@ -1,4 +1,5 @@
 #include "Assets/Shader/Internal/HIKARI_ShaderJson.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 #include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 
 #include <unordered_set>
@@ -13,22 +14,13 @@
 namespace HIKARI::ASSETS::SHADER {
 namespace {
 
-bool HasParentTraversal(const std::filesystem::path& path) noexcept {
-    for (const std::filesystem::path& part : path) {
-        if (part == "..") {
-            return true;
-        }
-    }
-    return false;
-}
-
 bool ResolveContainedRegularFile(const std::filesystem::path& root, const std::filesystem::path& relative,
                                  std::filesystem::path& out, std::error_code& error) {
     out = std::filesystem::weakly_canonical(root / relative, error);
     const std::filesystem::path physicalRelative =
         error ? std::filesystem::path{} : std::filesystem::relative(out, root, error);
     return !error && !physicalRelative.empty() && !physicalRelative.is_absolute() &&
-           !HasParentTraversal(physicalRelative) && std::filesystem::is_regular_file(out, error) && !error;
+           !PATHS::HasParentTraversal(physicalRelative) && std::filesystem::is_regular_file(out, error) && !error;
 }
 
 const BuiltinShaderProgramDefinition* FindProgram(const BuiltinShaderCatalog& catalog,
@@ -83,7 +75,7 @@ bool LoadBuiltinShaderArtifactBundle(const std::filesystem::path& requestedShade
         std::filesystem::path catalogPath{};
         std::filesystem::path indexPath{};
         if (pathError || shaderRoot.empty() || cookedRoot.empty() || cookedRelative.empty() ||
-            cookedRelative.is_absolute() || HasParentTraversal(cookedRelative) ||
+            cookedRelative.is_absolute() || PATHS::HasParentTraversal(cookedRelative) ||
             !ResolveContainedRegularFile(shaderRoot, kBuiltinShaderCatalogFilename, catalogPath, pathError) ||
             !ResolveContainedRegularFile(cookedRoot, "BuiltinShaderArtifacts.json", indexPath, pathError)) {
             outError = "built-in Shader authority escapes its root";
@@ -137,7 +129,7 @@ bool LoadBuiltinShaderArtifactBundle(const std::filesystem::path& requestedShade
             if (program == nullptr || program->state != BuiltinShaderProgramState::Cooked ||
                 program->assetGuid.value != assetGuid || program->entries.size() != entryCount ||
                 !indexedPrograms.insert(programId).second || relative.empty() || relative.is_absolute() ||
-                relative.has_root_name() || relative.has_root_directory() || HasParentTraversal(relative) ||
+                relative.has_root_name() || relative.has_root_directory() || PATHS::HasParentTraversal(relative) ||
                 relative.extension() != ".hshaderc" || !JSON::ReadHash(node, "artifactHash", artifactHash) ||
                 !JSON::ReadHash(node, "sourceClosureHash", sourceClosureHash)) {
                 outError = "built-in Shader index identity is invalid";

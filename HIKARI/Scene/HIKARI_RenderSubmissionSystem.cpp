@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetTypes.h"
@@ -234,28 +235,6 @@ Bounds ResolveWorldTextBounds(const RENDER3D::WORLD_TEXT::WorldTextInstance& ins
             instance.worldPosition + MATH::Vec3{radius, radius, radius}};
 }
 
-bool HasParentTraversal(const std::filesystem::path& path) {
-    for (const auto& part : path) {
-        if (part == "..") {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool IsPathWithin(const std::filesystem::path& root, const std::filesystem::path& candidate) {
-    auto rootIt = root.begin();
-    auto candidateIt = candidate.begin();
-    while (rootIt != root.end()) {
-        if (candidateIt == candidate.end() || *rootIt != *candidateIt) {
-            return false;
-        }
-        ++rootIt;
-        ++candidateIt;
-    }
-    return true;
-}
-
 bool ResolveWorldTextFontPath(const std::filesystem::path& projectRoot, std::string_view fontAssetPath,
                               std::filesystem::path& outPath) {
     outPath.clear();
@@ -264,7 +243,7 @@ bool ResolveWorldTextFontPath(const std::filesystem::path& projectRoot, std::str
     }
     try {
         const std::filesystem::path relative = TEXT::PathFromUtf8(fontAssetPath);
-        if (relative.is_absolute() || relative.has_root_path() || HasParentTraversal(relative)) {
+        if (relative.is_absolute() || relative.has_root_path() || PATHS::HasParentTraversal(relative)) {
             return false;
         }
         const std::array roots{projectRoot / "Assets", projectRoot / "RuntimePayload" / "Assets"};
@@ -276,7 +255,7 @@ bool ResolveWorldTextFontPath(const std::filesystem::path& projectRoot, std::str
             }
             error.clear();
             const std::filesystem::path candidate = std::filesystem::weakly_canonical(root / relative, error);
-            if (error || !IsPathWithin(root, candidate)) {
+            if (error || !PATHS::IsLexicallyWithin(root, candidate)) {
                 continue;
             }
             error.clear();

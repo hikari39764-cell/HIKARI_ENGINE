@@ -1,4 +1,5 @@
 #include "Assets/Importers/HIKARI_SpriteAssetImporter.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 
 #include <algorithm>
 #include <array>
@@ -40,22 +41,6 @@ struct TemporaryOutputs {
         }
     }
 };
-
-bool IsContainedPath(const std::filesystem::path& root, const std::filesystem::path& path) {
-    std::error_code error{};
-    const std::filesystem::path canonicalRoot = std::filesystem::weakly_canonical(root, error);
-    if (error) {
-        return false;
-    }
-    const std::filesystem::path canonicalPath = std::filesystem::weakly_canonical(path, error);
-    if (error) {
-        return false;
-    }
-    const std::string rootKey = TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(canonicalRoot));
-    const std::string pathKey = TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(canonicalPath));
-    return pathKey.size() > rootKey.size() && pathKey.compare(0u, rootKey.size(), rootKey) == 0 &&
-           pathKey[rootKey.size()] == '/';
-}
 
 std::filesystem::path GetPageArtifactPath(const AssetImportContext& context, size_t index) {
     std::ostringstream filename{};
@@ -130,7 +115,7 @@ bool IsSafeOldPageArtifact(const std::filesystem::path& projectRoot, const std::
         }
     }
     outPath = (projectRoot / relative).lexically_normal();
-    return IsContainedPath(importedDirectory, outPath);
+    return PATHS::IsContainedPath(importedDirectory, outPath);
 }
 
 } // namespace
