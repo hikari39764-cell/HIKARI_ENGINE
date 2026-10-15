@@ -1631,10 +1631,6 @@
     {"cine.selectedOnly", "選択カメラのみ"}, {"cine.cameraOverlayScale", "カメラ補助線の大きさ"},
     {"cine.farClip", "ビューの遠クリップ"}, {"cine.frameAllCameras", "すべてのカメラを表示"},
     {"cine.showPaths", "カメラの軌跡を表示"},
-    {"cine.recordFlight",
-     "飛行録画：押した後、空間ビューで右ボタンを押して飛ぶと、選んだショットを最初から再生し、0.1 秒ごとに視点の位置と"
-     "注視点をキーにします（録った区間のキーは置き換え、画角と傾きは変えません）。もう一度押すかショットの終わりで"
-     "止まり、まとめて取り消せます"},
     {"cine.flightArmed", "空間ビューで右ボタンを押すと飛び始めます"}, {"cine.flightRecording", "録画中"},
     {"cine.captureView", "このビューを選択ショットに適用"},
     {"editor.ui.2f.s.elapsed.67ba42", "経過 %.2f 秒"},

@@ -1603,10 +1603,6 @@
     {"cine.cameraOverlays", "Camera overlays"}, {"cine.selectedOnly", "Selected camera only"},
     {"cine.cameraOverlayScale", "Camera overlay size"}, {"cine.farClip", "View far clip"},
     {"cine.frameAllCameras", "Frame all cameras"}, {"cine.showPaths", "Show camera paths"},
-    {"cine.recordFlight",
-     "Flight recording: after pressing, hold the right button in the Space view and fly. The selected shot plays from "
-     "its start and the view position and look-at point are keyed every 0.1 s (replacing keys in the recorded range; "
-     "lens and roll are kept). Press again or reach the end of the shot to stop; one undo removes the take"},
     {"cine.flightArmed", "Hold the right button in the Space view to start flying"},
     {"cine.flightRecording", "Recording"},
     {"cine.captureView", "Apply this view to the selected shot"},

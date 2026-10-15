@@ -1407,9 +1407,6 @@
     {"cine.cameraOverlays", "摄像机辅助线"}, {"cine.selectedOnly", "仅选中的摄像机"},
     {"cine.cameraOverlayScale", "摄像机辅助线大小"}, {"cine.farClip", "视图远裁剪面"},
     {"cine.frameAllCameras", "查看全部摄像机"}, {"cine.showPaths", "显示摄像机路径"},
-    {"cine.recordFlight",
-     "飞行录制：按下后在空间视图里按住右键开始飞，从所选镜头开头播放，每 0.1 秒把视角的位置和注视点记成关键帧"
-     "（覆盖录到的时间段，不改画角和倾斜）。再按一次或播到镜头结尾时停止，整段可一次撤销"},
     {"cine.flightArmed", "在空间视图里按住右键开始飞"}, {"cine.flightRecording", "录制中"},
     {"cine.captureView", "将此视角应用到选中镜头"},
     {"editor.ui.2f.s.elapsed.67ba42", "已用 %.2f 秒"},
