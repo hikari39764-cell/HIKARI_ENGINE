@@ -61,10 +61,20 @@ public:
     }
 
 private:
+    // 偏好で変わる文字倍率と様式。
+    struct AppliedStyle {
+        float uiScale = 0.0f;
+        bool compact = false;
+        bool highContrast = false;
+        bool operator==(const AppliedStyle&) const = default;
+    };
+
     void ConfigureContext();
+    void ApplyPreferencesIfChanged();
     bool InitializeBackend(PLATFORM::Win32Window& window, const GFX::Context& graphics);
     bool BindBackBufferForUi(const GFX::Context& graphics) const;
 
+    AppliedStyle appliedStyle_{};
     bool contextInitialized_ = false;
     bool backendInitialized_ = false;
     std::string iniPathStorage_{};
@@ -76,10 +86,9 @@ private:
 
 EditorUiServices gEditorUiServices{};
 
+// コンテキスト作成時に一度だけ行う設定（ini の場所・ドッキング・フォント）。
 void EditorUiServices::ConfigureContext() {
-    const auto& preferences = GetEditorPreferences();
     ImGuiIO& io = ImGui::GetIO();
-    io.FontGlobalScale = preferences.uiScale;
     iniPathStorage_ = ResolveEditorImGuiIniPath();
     if (!iniPathStorage_.empty()) {
         io.IniFilename = iniPathStorage_.c_str();
@@ -96,6 +105,19 @@ void EditorUiServices::ConfigureContext() {
     io.ConfigViewportsNoAutoMerge = false;
     io.ConfigViewportsNoTaskBarIcon = false;
     (void)EnsureEditorFonts();
+    appliedStyle_ = {};
+    ApplyPreferencesIfChanged();
+}
+
+// 様式の作り直しは偏好が変わった時だけ（毎フレームは比較のみ）。
+void EditorUiServices::ApplyPreferencesIfChanged() {
+    const EditorPreferences& preferences = GetEditorPreferences();
+    const AppliedStyle next{preferences.uiScale, preferences.compact, preferences.highContrast};
+    if (next == appliedStyle_) {
+        return;
+    }
+    appliedStyle_ = next;
+    ImGui::GetIO().FontGlobalScale = preferences.uiScale;
     ApplyEditorStyle();
 }
 
@@ -156,7 +178,7 @@ void EditorUiServices::BeginFrame(PLATFORM::Win32Window& window, const GFX::Cont
         return;
     }
 
-    ConfigureContext();
+    ApplyPreferencesIfChanged();
     if (!backendInitialized_) {
         (void)InitializeBackend(window, graphics);
     }

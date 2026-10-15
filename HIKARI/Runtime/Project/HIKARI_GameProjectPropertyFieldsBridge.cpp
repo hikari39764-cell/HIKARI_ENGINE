@@ -85,6 +85,21 @@ bool ReadFiniteFloat(const nlohmann::json* value, float& outValue) {
     return std::isfinite(outValue);
 }
 
+// 3 要素の有限値配列だけを受け付ける（Float3 と Color3 の保存形式）。
+bool LoadFloat3(const nlohmann::json* stored, GameProjectFloat3& value) {
+    if (stored == nullptr || !stored->is_array() || stored->size() != 3u) {
+        return false;
+    }
+    GameProjectFloat3 next{};
+    if (!ReadFiniteFloat(&(*stored)[0], next.x) || !ReadFiniteFloat(&(*stored)[1], next.y) ||
+        !ReadFiniteFloat(&(*stored)[2], next.z)) {
+        return false;
+    }
+    const bool changed = next.x != value.x || next.y != value.y || next.z != value.z;
+    value = next;
+    return changed;
+}
+
 AssetType ToAssetType(GameProjectAssetKind kind) noexcept {
     switch (kind) {
     case GameProjectAssetKind::Scene: return AssetType::Scene;
@@ -301,20 +316,7 @@ bool PropertyFields::Float(std::string_view id, std::string_view label, float& v
 
 bool PropertyFields::Float3(std::string_view id, std::string_view label, GameProjectFloat3& value) {
     return Visit(
-        mode_, id, archive_, inspector_,
-        [&](const nlohmann::json* stored) {
-            if (stored == nullptr || !stored->is_array() || stored->size() != 3u) {
-                return false;
-            }
-            GameProjectFloat3 next{};
-            if (!ReadFiniteFloat(&(*stored)[0], next.x) || !ReadFiniteFloat(&(*stored)[1], next.y) ||
-                !ReadFiniteFloat(&(*stored)[2], next.z)) {
-                return false;
-            }
-            const bool changed = next.x != value.x || next.y != value.y || next.z != value.z;
-            value = next;
-            return changed;
-        },
+        mode_, id, archive_, inspector_, [&](const nlohmann::json* stored) { return LoadFloat3(stored, value); },
         [&](nlohmann::json& slot) { slot = {value.x, value.y, value.z}; },
         [&](IInspectorBuilder& builder) {
             const std::string base(id);
@@ -328,20 +330,7 @@ bool PropertyFields::Float3(std::string_view id, std::string_view label, GamePro
 
 bool PropertyFields::Color3(std::string_view id, std::string_view label, GameProjectFloat3& value) {
     return Visit(
-        mode_, id, archive_, inspector_,
-        [&](const nlohmann::json* stored) {
-            if (stored == nullptr || !stored->is_array() || stored->size() != 3u) {
-                return false;
-            }
-            GameProjectFloat3 next{};
-            if (!ReadFiniteFloat(&(*stored)[0], next.x) || !ReadFiniteFloat(&(*stored)[1], next.y) ||
-                !ReadFiniteFloat(&(*stored)[2], next.z)) {
-                return false;
-            }
-            const bool changed = next.x != value.x || next.y != value.y || next.z != value.z;
-            value = next;
-            return changed;
-        },
+        mode_, id, archive_, inspector_, [&](const nlohmann::json* stored) { return LoadFloat3(stored, value); },
         [&](nlohmann::json& slot) { slot = {value.x, value.y, value.z}; },
         [&](IInspectorBuilder& builder) { return builder.Color3(MakeField(id, label), value.x, value.y, value.z); });
 }
