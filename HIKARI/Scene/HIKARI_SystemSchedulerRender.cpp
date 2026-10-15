@@ -92,7 +92,6 @@ bool SystemScheduler::ObserveRenderFrame(const GameProjectRenderFrameView& frame
         return false;
     }
     if (!IsValidRenderFrameView(frame, attachedWorldIdentity_)) {
-        ++renderObserverFailureCount_;
         return false;
     }
     for (const SystemEntry& entry : systems_) {
@@ -105,15 +104,12 @@ bool SystemScheduler::ObserveRenderFrame(const GameProjectRenderFrameView& frame
             continue;
         }
         if (!IsValidRenderObserverDesc(desc)) {
-            ++renderObserverFailureCount_;
             continue;
         }
         if (desc.stage != frame.stage) {
             continue;
         }
-        if (!observer->ObserveRenderFrame(frame)) {
-            ++renderObserverFailureCount_;
-        }
+        (void)observer->ObserveRenderFrame(frame);
     }
     return true;
 }

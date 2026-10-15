@@ -79,9 +79,6 @@ private:
     const std::thread::id ownerThread_{};
     uint64_t attachedWorldIdentity_ = 0u;
     uint64_t nextInsertionIndex_ = 0;
-    uint64_t parallelMassFailureCount_ = 0u;
-    uint64_t massSnapshotReuseCount_ = 0u;
-    uint64_t renderObserverFailureCount_ = 0u;
     uint64_t renderPassFailureCount_ = 0u;
     std::unique_ptr<ParallelRuntime> parallelRuntime_{};
 };

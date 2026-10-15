@@ -100,9 +100,6 @@ void SystemScheduler::Clear() {
     systems_.clear();
     attachedWorldIdentity_ = 0u;
     nextInsertionIndex_ = 0u;
-    parallelMassFailureCount_ = 0u;
-    massSnapshotReuseCount_ = 0u;
-    renderObserverFailureCount_ = 0u;
     renderPassFailureCount_ = 0u;
 }
 
@@ -185,8 +182,6 @@ bool SystemScheduler::ExecuteParallelMassSystem(World& world, const FrameContext
         }
     }
     scratch.snapshotValid = true;
-    if (reuseSnapshot)
-        ++massSnapshotReuseCount_;
     copyIf(HasMassField(schedule.access.writeMask, GameProjectMassSystemField::Transform), source.positions,
            scratch.outputPositions);
     copyIf(HasMassField(schedule.access.writeMask, GameProjectMassSystemField::Transform), source.rotations,

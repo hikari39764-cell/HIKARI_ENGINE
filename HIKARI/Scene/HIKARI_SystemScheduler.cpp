@@ -86,7 +86,6 @@ void SystemScheduler::ExecuteFramePhase(World& world, const FrameContext& frame,
             try {
                 completed = ExecuteParallelMassSystem(world, frame, entry, *massSystem);
             } catch (...) {
-                ++parallelMassFailureCount_;
                 DiscardParallelSystemScratch(entry.system.get());
                 world.RecordParallelMassSystemFailure(phase);
                 if (flushAfterEach) {
@@ -98,7 +97,6 @@ void SystemScheduler::ExecuteFramePhase(World& world, const FrameContext& frame,
                 (void)world.FlushQueuedCommands(phase);
             }
             if (!completed) {
-                ++parallelMassFailureCount_;
                 DiscardParallelSystemScratch(entry.system.get());
                 world.RecordParallelMassSystemFailure(phase);
                 // Do not let later systems observe a partially failed Mass

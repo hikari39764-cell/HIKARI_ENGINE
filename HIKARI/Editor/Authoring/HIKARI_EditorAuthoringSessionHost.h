@@ -53,7 +53,6 @@ public:
     void Reset();
     void SetRecoveryRoot(const std::filesystem::path& libraryRoot);
     void FlushRecovery();
-    void CancelPreviews();
     bool HasUnsavedDocuments() const noexcept;
     bool HasInteractiveEdit(const std::string& id) const {
         const auto found = sessions_.find(id);

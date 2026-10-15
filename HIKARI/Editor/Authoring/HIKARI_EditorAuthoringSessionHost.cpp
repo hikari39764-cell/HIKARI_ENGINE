@@ -241,11 +241,6 @@ bool EditorAuthoringSessionHost::ActivateDocument(const std::string& workspace, 
     return true;
 }
 
-void EditorAuthoringSessionHost::CancelPreviews() {
-    for (auto& [id, session] : sessions_)
-        session.backend->CancelPreview();
-}
-
 bool EditorAuthoringSessionHost::HasUnsavedDocuments() const noexcept {
     try {
         for (const auto& [id, session] : sessions_)
