@@ -1,6 +1,9 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <optional>
+#include <tuple>
 
 #include "Input/Platform/HIKARI_IInputBackend.h"
 
@@ -48,6 +51,8 @@ private:
     bool hasPendingImeCaretAnchor_ = false;
     long previousMouseX_ = 0;
     long previousMouseY_ = 0;
+    // 未接続の枠への XInputGetState は遅いので、次に探る時刻（GetTickCount64 の ms）まで飛ばす。接続中は 0（毎フレーム）。
+    std::array<uint64_t, std::tuple_size_v<decltype(InputDeviceState::gamepads)>> nextGamepadProbeMs_{};
 };
 
 } // namespace HIKARI::INPUT

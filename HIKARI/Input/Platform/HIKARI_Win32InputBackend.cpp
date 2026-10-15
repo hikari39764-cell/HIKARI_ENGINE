@@ -278,6 +278,7 @@ void Win32InputBackend::Reset() {
     hasPreviousMouse_ = false;
     previousMouseX_ = 0;
     previousMouseY_ = 0;
+    nextGamepadProbeMs_ = {};
 }
 
 void Win32InputBackend::ReleaseRelativeMouseCapture() noexcept {
@@ -398,10 +399,17 @@ void Win32InputBackend::Poll(InputDeviceState& out) {
     }
     externalWheel_ = 0.0f;
 
+    const uint64_t nowMs = ::GetTickCount64();
     for (DWORD index = 0; index < out.gamepads.size(); ++index) {
-        XINPUT_STATE state{};
-        if (::XInputGetState(index, &state) != ERROR_SUCCESS)
+        if (nowMs < nextGamepadProbeMs_[index])
             continue;
+        XINPUT_STATE state{};
+        if (::XInputGetState(index, &state) != ERROR_SUCCESS) {
+            // 抜き差しは約 1 秒で拾えれば足りる。
+            nextGamepadProbeMs_[index] = nowMs + 1000u;
+            continue;
+        }
+        nextGamepadProbeMs_[index] = 0u;
         GamepadState& gamepad = out.gamepads[index];
         gamepad.connected = true;
         gamepad.buttons = state.Gamepad.wButtons;
