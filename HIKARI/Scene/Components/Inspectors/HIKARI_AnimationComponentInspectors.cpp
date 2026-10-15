@@ -32,6 +32,10 @@ void AnimatorComponent::BuildInspector(IInspectorBuilder& builder) {
     builder.Float(AuthoringFieldDescriptor{"defaultBlendDurationSec", "Default Blend Sec"}, defaultBlendDurationSec_);
     builder.Bool(AuthoringFieldDescriptor{"loop", "Loop"}, loop_);
     builder.Bool(AuthoringFieldDescriptor{"autoPlay", "Auto Play"}, autoPlay_);
+    builder.Bool(AuthoringFieldDescriptor{"rootMotionEnabled", "Root Motion",
+                                          "Remove the root bone's movement from the pose and publish it for character "
+                                          "movement or project code to apply."},
+                 rootMotionEnabled_);
     builder.Bool(AuthoringFieldDescriptor{"playing", "Playing"}, playing_);
     builder.Bool(AuthoringFieldDescriptor{"finished", "Finished"}, finished_);
     timeSec_ = ClampInspectorTime(timeSec_);

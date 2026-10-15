@@ -5,38 +5,10 @@
 #include <utility>
 
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "Core/HIKARI_JsonRead.h"
 #include "Render3D/Core/HIKARI_Material.h"
 
 namespace HIKARI {
-
-namespace {
-const char* ToString(ModelRenderDebugMode mode) {
-    switch (mode) {
-    case ModelRenderDebugMode::WireOverlay: return "WireOverlay";
-    case ModelRenderDebugMode::WireOnly: return "WireOnly";
-    case ModelRenderDebugMode::BoundsOnly: return "BoundsOnly";
-    case ModelRenderDebugMode::Normal:
-    default: return "Normal";
-    }
-}
-
-ModelRenderDebugMode ParseRenderDebugMode(const nlohmann::json& node, ModelRenderDebugMode fallback) {
-    const std::string value = node.is_string() ? node.get<std::string>() : std::string{};
-    if (value == "WireOverlay") {
-        return ModelRenderDebugMode::WireOverlay;
-    }
-    if (value == "WireOnly") {
-        return ModelRenderDebugMode::WireOnly;
-    }
-    if (value == "BoundsOnly") {
-        return ModelRenderDebugMode::BoundsOnly;
-    }
-    if (value == "Normal") {
-        return ModelRenderDebugMode::Normal;
-    }
-    return fallback;
-}
-} // namespace
 
 void ModelComponent::Serialize(nlohmann::json& out) const {
     out[ModelComponentPropertyIds::AssetId] = assetId_;
@@ -47,7 +19,7 @@ void ModelComponent::Serialize(nlohmann::json& out) const {
     out[ModelComponentPropertyIds::ReceiveShadow] = receiveShadow_;
     out[ModelComponentPropertyIds::RenderStatic] = renderStatic_;
     out[ModelComponentPropertyIds::IncludeInLightingBake] = includeInLightingBake_;
-    out["debugRenderMode"] = ToString(debugRenderMode_);
+    out["debugRenderMode"] = TEXT::EnumToName(kModelRenderDebugModeNames, debugRenderMode_, "Normal");
     out["wireColor"] = wireColor_;
     out["maxWireLines"] = maxWireLines_;
     out["wirePerPrimitiveColor"] = wirePerPrimitiveColor_;
@@ -74,7 +46,8 @@ void ModelComponent::Deserialize(const nlohmann::json& in) {
     receiveShadow_ = in.value(ModelComponentPropertyIds::ReceiveShadow, receiveShadow_);
     renderStatic_ = in.value(ModelComponentPropertyIds::RenderStatic, renderStatic_);
     includeInLightingBake_ = in.value(ModelComponentPropertyIds::IncludeInLightingBake, includeInLightingBake_);
-    debugRenderMode_ = ParseRenderDebugMode(in.value("debugRenderMode", nlohmann::json{}), debugRenderMode_);
+    debugRenderMode_ =
+        JSONREAD::EnumOr(in.value("debugRenderMode", nlohmann::json{}), kModelRenderDebugModeNames, debugRenderMode_);
     wireColor_ = in.value("wireColor", wireColor_);
     maxWireLines_ = in.value("maxWireLines", maxWireLines_);
     wirePerPrimitiveColor_ = in.value("wirePerPrimitiveColor", wirePerPrimitiveColor_);

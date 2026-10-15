@@ -9,6 +9,7 @@
 
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Geometry/HIKARI_GeometryFitProvider.h"
@@ -33,6 +34,13 @@ enum class ModelRenderDebugMode {
     WireOverlay,
     WireOnly,
     BoundsOnly,
+};
+
+inline constexpr TEXT::EnumName<ModelRenderDebugMode> kModelRenderDebugModeNames[] = {
+    {ModelRenderDebugMode::Normal, "Normal"},
+    {ModelRenderDebugMode::WireOverlay, "WireOverlay"},
+    {ModelRenderDebugMode::WireOnly, "WireOnly"},
+    {ModelRenderDebugMode::BoundsOnly, "BoundsOnly"},
 };
 
 struct ModelMaterialOverrideSlot {
@@ -114,6 +122,9 @@ public:
 
 private:
     void NotifyRenderStateDirty();
+#if defined(HIKARI_WITH_EDITOR)
+    void BuildDebugDisplayInspector(IInspectorBuilder& builder);
+#endif
 
     ModelAsset* asset_ = nullptr;
     std::string assetId_{};

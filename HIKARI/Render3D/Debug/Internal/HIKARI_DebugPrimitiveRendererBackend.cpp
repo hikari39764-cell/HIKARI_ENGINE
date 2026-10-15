@@ -54,11 +54,6 @@ struct BackendState {
 #endif
 };
 BackendState g_backend;
-MATH::Vec4 DecodeRgba(uint32_t rgba) {
-    constexpr float inv255 = 1.0f / 255.0f;
-    return {static_cast<float>((rgba >> 24) & 0xFFu) * inv255, static_cast<float>((rgba >> 16) & 0xFFu) * inv255,
-            static_cast<float>((rgba >> 8) & 0xFFu) * inv255, static_cast<float>(rgba & 0xFFu) * inv255};
-}
 bool CompileShader(const wchar_t* relativePath, const char* target, ID3DBlob** output) {
     UINT flags = 0;
 #if defined(_DEBUG)

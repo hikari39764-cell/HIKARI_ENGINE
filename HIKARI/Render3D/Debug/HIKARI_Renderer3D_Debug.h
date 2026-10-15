@@ -13,6 +13,21 @@
 
 namespace HIKARI::RENDERER3D::DEBUG {
 
+// デバッグ描画の色は 0xRRGGBBAA（各 8 bit）。
+inline MATH::Vec4 DecodeRgba(uint32_t rgba) noexcept {
+    constexpr float inv255 = 1.0f / 255.0f;
+    return {static_cast<float>((rgba >> 24) & 0xFFu) * inv255, static_cast<float>((rgba >> 16) & 0xFFu) * inv255,
+            static_cast<float>((rgba >> 8) & 0xFFu) * inv255, static_cast<float>(rgba & 0xFFu) * inv255};
+}
+
+inline uint32_t EncodeRgba(const MATH::Vec4& color) noexcept {
+    const auto channel = [](float value) {
+        const float clamped = value > 0.0f ? (value < 1.0f ? value : 1.0f) : 0.0f;
+        return static_cast<uint32_t>(clamped * 255.0f + 0.5f);
+    };
+    return (channel(color.x) << 24) | (channel(color.y) << 16) | (channel(color.z) << 8) | channel(color.w);
+}
+
 // Editor overlay 3D debug primitive.
 enum class DebugDepthMode { DepthTest, XRay };
 

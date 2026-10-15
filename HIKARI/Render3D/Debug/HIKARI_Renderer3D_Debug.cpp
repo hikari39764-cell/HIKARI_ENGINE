@@ -47,12 +47,6 @@ DebugRendererFrameStats g_frameStats{};
 bool g_renderingEditorView = false;
 #endif
 
-MATH::Vec4 DecodeRgba(uint32_t rgba) {
-    constexpr float inv255 = 1.0f / 255.0f;
-    return {static_cast<float>((rgba >> 24) & 0xFFu) * inv255, static_cast<float>((rgba >> 16) & 0xFFu) * inv255,
-            static_cast<float>((rgba >> 8) & 0xFFu) * inv255, static_cast<float>(rgba & 0xFFu) * inv255};
-}
-
 MATH::Vec3 TransformPoint(const MATH::Mat4& world, const MATH::Vec3& local) {
     const MATH::Vec4 transformed = world.TransformPoint({local.x, local.y, local.z, 1.0f});
     return {transformed.x, transformed.y, transformed.z};

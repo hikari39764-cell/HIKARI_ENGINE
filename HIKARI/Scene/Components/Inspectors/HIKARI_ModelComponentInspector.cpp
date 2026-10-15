@@ -4,8 +4,12 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 
 #include "Core/Text/HIKARI_Localization.h"
+#include <algorithm>
+#include <array>
+#include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Assets/HIKARI_AssetTypes.h"
@@ -14,6 +18,7 @@
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Authoring/HIKARI_IModelMaterialSlotProvider.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
+#include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
 
 namespace HIKARI {
 
@@ -213,12 +218,49 @@ void ModelComponent::BuildInspector(IInspectorBuilder& builder) {
         postGroupMask_ = static_cast<uint32_t>(postMask < 0 ? 0 : postMask);
     }
 
+    const ModelRenderDebugMode oldDebugRenderMode = debugRenderMode_;
+    if (builder.Section("Debug Display", false)) {
+        BuildDebugDisplayInspector(builder);
+    }
+
     if (oldVisible != visible_ || oldCastShadow != castShadow_ || oldReceiveShadow != receiveShadow_ ||
         oldRenderStatic != renderStatic_ || oldIncludeInLightingBake != includeInLightingBake_ ||
         oldAssetId != assetId_ || oldMaterialSetAssetGuid != materialSetAssetGuid_ ||
-        oldMaterialSetSelectionAuthored != materialSetSelectionAuthored_ || oldPostGroupMask != postGroupMask_) {
+        oldMaterialSetSelectionAuthored != materialSetSelectionAuthored_ || oldPostGroupMask != postGroupMask_ ||
+        oldDebugRenderMode != debugRenderMode_) {
         NotifyRenderStateDirty();
     }
+}
+
+// ワイヤーフレーム・バウンディングボックスの確認表示（debugRenderMode / wireColor / maxWireLines /
+// wirePerPrimitiveColor）。保存と描画は以前から対応していたが、編集する手段が無かった。
+void ModelComponent::BuildDebugDisplayInspector(IInspectorBuilder& builder) {
+    static constexpr std::array<std::string_view, std::size(kModelRenderDebugModeNames)> modeLabels{
+        "Normal", "Wire Overlay", "Wire Only", "Bounds Only"};
+    (void)EnumChoice(builder,
+                     AuthoringFieldDescriptor{"debugRenderMode", "Render Debug Mode",
+                                              "Draw the model normally, with a wireframe overlay, as wireframe only, "
+                                              "or as its bounding box."},
+                     debugRenderMode_, kModelRenderDebugModeNames, &modeLabels);
+    if (debugRenderMode_ == ModelRenderDebugMode::Normal) {
+        return;
+    }
+    MATH::Vec4 color = RENDERER3D::DEBUG::DecodeRgba(wireColor_);
+    if (builder.Color3(AuthoringFieldDescriptor{"wireColor", "Wire Color"}, color.x, color.y, color.z)) {
+        wireColor_ = RENDERER3D::DEBUG::EncodeRgba(color);
+    }
+    if (debugRenderMode_ == ModelRenderDebugMode::BoundsOnly) {
+        return;
+    }
+    int maxLines = static_cast<int>((std::min)(maxWireLines_, static_cast<uint32_t>(INT32_MAX)));
+    if (builder.Int(AuthoringFieldDescriptor{"maxWireLines", "Max Wire Lines",
+                                             "Line budget for this model; lines beyond it are skipped."},
+                    maxLines)) {
+        maxWireLines_ = static_cast<uint32_t>((std::max)(maxLines, 1));
+    }
+    builder.Bool(AuthoringFieldDescriptor{"wirePerPrimitiveColor", "Color Per Primitive",
+                                          "Give each mesh primitive its own wire colour instead of Wire Color."},
+                 wirePerPrimitiveColor_);
 }
 
 } // namespace HIKARI
