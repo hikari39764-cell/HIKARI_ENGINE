@@ -7,14 +7,10 @@
 #include <string>
 #include <vector>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
-#endif
 #include "Editor/Views/Director/HIKARI_DirectorViewInternal.h"
 #include "Editor/Views/HIKARI_EditorViewInputGate.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
@@ -24,7 +20,6 @@
 
 namespace HIKARI::EDITOR::DIRECTOR_VIEW {
 
-#if defined(HIKARI_WITH_EDITOR)
 constexpr float kCameraHitDistance = 7.0f;
 constexpr float kRadiansToDegrees = 57.2957795131f;
 
@@ -278,6 +273,5 @@ uint32_t ExtentDimension(float value) {
     }
     return static_cast<uint32_t>((std::min)(value, static_cast<float>((std::numeric_limits<uint32_t>::max)())));
 }
-#endif
 
 } // namespace HIKARI::EDITOR::DIRECTOR_VIEW

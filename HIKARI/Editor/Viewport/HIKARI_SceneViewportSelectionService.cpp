@@ -13,9 +13,7 @@
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -51,7 +49,6 @@ MATH::Vec3 DenormalizePointInBounds(const MATH::Vec3& normalized, const Bounds& 
     };
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 bool ProjectPoint(const Camera3D& camera, const SceneViewportRect& viewport, const MATH::Vec3& worldPosition,
                   ImVec2& outScreenPosition) {
     const MATH::Vec4 clip =
@@ -250,7 +247,6 @@ std::vector<SceneObjectId> PickObjectsInRectangle(const Camera3D& camera, const 
     selected.erase(std::unique(selected.begin(), selected.end()), selected.end());
     return selected;
 }
-#endif
 } // namespace
 
 void SceneViewportSelectionService::SetLockedObjectIds(std::unordered_set<uint64_t> lockedObjectIds) {
@@ -380,7 +376,6 @@ SceneViewportInteractionResult SceneViewportSelectionService::UpdateInput(const 
                                                                           bool interactionEnabled, bool viewportHovered,
                                                                           bool gizmoCaptured) {
     SceneViewportInteractionResult result{};
-#if defined(HIKARI_WITH_EDITOR)
     const ImVec2 mouse = ImGui::GetMousePos();
     const MATH::Vec2 mousePosition{mouse.x, mouse.y};
     const bool blocked = blockedRegion.Contains(mousePosition);
@@ -449,19 +444,10 @@ SceneViewportInteractionResult SceneViewportSelectionService::UpdateInput(const 
         }
         contextPressActive_ = false;
     }
-#else
-    (void)camera;
-    (void)viewport;
-    (void)blockedRegion;
-    (void)interactionEnabled;
-    (void)viewportHovered;
-    (void)gizmoCaptured;
-#endif
     return result;
 }
 
 void SceneViewportSelectionService::DrawMarquee(ImDrawList* drawList) const {
-#if defined(HIKARI_WITH_EDITOR)
     if (!marqueeActive_ || drawList == nullptr) {
         return;
     }
@@ -473,14 +459,10 @@ void SceneViewportSelectionService::DrawMarquee(ImDrawList* drawList) const {
         marqueeMode_ == EditorObjectSelectionMode::Toggle ? IM_COL32(246, 184, 78, 245) : IM_COL32(73, 224, 235, 245);
     drawList->AddRectFilled(minimum, maximum, IM_COL32(54, 208, 224, 28));
     drawList->AddRect(minimum, maximum, border, 0.0f, 0, 1.5f);
-#else
-    (void)drawList;
-#endif
 }
 
 void SceneViewportSelectionService::DrawSelectionOutline(const Camera3D& camera, const SceneViewportRect& viewport,
                                                          SceneObjectId objectId, ImDrawList* drawList) const {
-#if defined(HIKARI_WITH_EDITOR)
     if (objectId.value == 0u || drawList == nullptr || viewport.width <= 0.0f || viewport.height <= 0.0f) {
         return;
     }
@@ -548,12 +530,6 @@ void SceneViewportSelectionService::DrawSelectionOutline(const Camera3D& camera,
         anchorScreen.y <= viewport.y + viewport.height) {
         DrawSelectionAnchor(*drawList, anchorScreen);
     }
-#else
-    (void)camera;
-    (void)viewport;
-    (void)objectId;
-    (void)drawList;
-#endif
 }
 
 SceneObjectId SceneViewportSelectionService::GetContextTarget() const noexcept { return contextTarget_; }

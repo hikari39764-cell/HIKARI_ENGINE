@@ -11,13 +11,10 @@
 #include "Render3D/Models/HIKARI_ModelManager.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 ModelAsset* ResolvePreviewModel(DocumentSceneBase& scene,
                                 const ANIMATION::AnimationStateMachineDefinition& definition) {
     if (definition.previewModelAssetId.value.empty())
@@ -54,12 +51,10 @@ bool DrawClipPicker(const char* label, const ModelAsset& model, ANIMATION::Anima
 const char* MotionTypeName(ANIMATION::AnimationStateMotionType type) noexcept {
     return type == ANIMATION::AnimationStateMotionType::BlendTree1D ? "1D Blend Tree" : "Animation Clip";
 }
-#endif
 } // namespace
 
 void AnimationStateMachineWorkspaceController::DrawSelectedStateMotionEditor(DocumentSceneBase& scene,
                                                                              ANIMATION::AnimationState& state) {
-#if defined(HIKARI_WITH_EDITOR)
     auto& definition = document_.Definition();
     ImGui::SeparatorText(TEXT::Localize("editor.ui.motion.e040db").c_str());
 
@@ -246,10 +241,6 @@ void AnimationStateMachineWorkspaceController::DrawSelectedStateMotionEditor(Doc
         ImGui::PopID();
     }
     ImGui::EndTable();
-#else
-    (void)scene;
-    (void)state;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

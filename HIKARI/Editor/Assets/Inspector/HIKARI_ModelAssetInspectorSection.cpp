@@ -23,14 +23,11 @@
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 #include "Editor/Assets/Inspector/HIKARI_AssetInspectorInternal.h"
 
 namespace HIKARI::EDITOR::ASSET_INSPECTOR {
 
-#if defined(HIKARI_WITH_EDITOR)
 std::string ToClusteredGeometryArtifactStateText(ClusteredGeometryArtifactState state) {
     switch (state) {
     case ClusteredGeometryArtifactState::Exists: return TEXT::Localize("ui.modelDiagnostics.stateExists");
@@ -263,6 +260,5 @@ void DrawModelDiagnostics(const ClusteredGeometryArtifactInfo& info, const nlohm
         ImGui::EndTable();
     }
 }
-#endif
 
 } // namespace HIKARI::EDITOR::ASSET_INSPECTOR

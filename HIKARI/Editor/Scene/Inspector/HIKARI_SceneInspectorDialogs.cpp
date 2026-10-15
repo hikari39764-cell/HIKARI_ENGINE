@@ -23,16 +23,13 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void SceneInspectorPanel::DrawDeferredDialogs(DocumentSceneBase& scene, EditorContext& context,
                                               const SelectionSyncService& selectionSync,
                                               SceneObjectCommandService& commands) {
-#if defined(HIKARI_WITH_EDITOR)
     DrawAddComponentPopup(scene, context, selectionSync, commands);
 
     if (openRenamePopup_) {
@@ -105,12 +102,6 @@ void SceneInspectorPanel::DrawDeferredDialogs(DocumentSceneBase& scene, EditorCo
                 dirtyBefore};
         }
     }
-#else
-    (void)scene;
-    (void)context;
-    (void)selectionSync;
-    (void)commands;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

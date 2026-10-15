@@ -1,4 +1,3 @@
-#if defined(HIKARI_WITH_EDITOR)
 
 #include "Editor/Widgets/HIKARI_JsonFieldsEditor.h"
 
@@ -40,5 +39,3 @@ bool IsColorFieldKey(std::string_view key) noexcept {
 }
 
 } // namespace HIKARI::EDITOR
-
-#endif

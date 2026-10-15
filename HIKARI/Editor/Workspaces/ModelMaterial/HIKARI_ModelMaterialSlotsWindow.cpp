@@ -13,9 +13,7 @@
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -41,7 +39,6 @@ const char* BindingLabel(ModelMaterialBindingSource source) noexcept {
 } // namespace
 
 void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.materials.parts.efb024", "ModelMaterial/Slots").c_str())) {
         ImGui::End();
         return;
@@ -338,9 +335,6 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(DocumentSceneBase
         ImGui::EndTable();
     }
     ImGui::End();
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

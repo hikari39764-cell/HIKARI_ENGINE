@@ -11,16 +11,13 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 namespace HIKARI::EDITOR {
 bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(DocumentSceneBase& scene,
                                                                            MaterialAssetData& source,
                                                                            MaterialGraphData& graph,
                                                                            MaterialGraphNodeData& node, float x,
                                                                            float y, float width) {
-#if defined(HIKARI_WITH_EDITOR)
     const ImVec2 restore = ImGui::GetCursorScreenPos();
     bool capturesPointer = false;
     ImGui::PushID(node.id.c_str());
@@ -395,15 +392,5 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(Docum
     ImGui::PopID();
     ImGui::SetCursorScreenPos(restore);
     return capturesPointer;
-#else
-    (void)scene;
-    (void)source;
-    (void)graph;
-    (void)node;
-    (void)x;
-    (void)y;
-    (void)width;
-    return false;
-#endif
 }
 } // namespace HIKARI::EDITOR

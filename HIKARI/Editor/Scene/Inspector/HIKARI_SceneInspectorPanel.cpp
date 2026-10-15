@@ -26,9 +26,7 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -65,26 +63,11 @@ bool MatchesComponent(const ComponentTypeInfo& info, std::string_view search) {
     if (search.empty()) {
         return true;
     }
-    const std::string haystack =
-        TEXT::ToLowerAsciiCopy(TEXT::Localize(info.presentation.displayName) + " " + info.presentation.displayName +
-                               " " + info.presentation.category + " " + info.typeName);
+    // 訳した名前・分類と英文の原文のどちらでも引ける。
+    const std::string haystack = TEXT::ToLowerAsciiCopy(
+        InspectorText(info.presentation.displayName) + " " + info.presentation.displayName + " " +
+        InspectorText(info.presentation.category) + " " + info.presentation.category + " " + info.typeName);
     return haystack.find(TEXT::ToLowerAsciiCopy(search)) != std::string::npos;
-}
-
-std::string LocalizeComponentCategory(std::string_view category) {
-    if (category == "Rendering") {
-        return TEXT::Localize("ui.inspector.category.rendering");
-    }
-    if (category == "Camera") {
-        return TEXT::Localize("ui.inspector.category.camera");
-    }
-    if (category == "Gameplay") {
-        return TEXT::Localize("ui.inspector.category.gameplay");
-    }
-    if (category == "Cinematics") {
-        return TEXT::Localize("ui.inspector.category.cinematics");
-    }
-    return std::string(category);
 }
 
 void SelectObject(EditorContext& context, GameObject& object) {
@@ -97,37 +80,24 @@ void DrawStatusMessage(std::string_view message, bool error) {
     if (message.empty()) {
         return;
     }
-#if defined(HIKARI_WITH_EDITOR)
     const std::string text(message);
     StatusBadge(text.c_str(), error ? EditorStatusTone::Error : EditorStatusTone::Ready);
-#else
-    (void)error;
-#endif
 }
 } // namespace
 
 void SceneInspectorPanel::Draw(DocumentSceneBase& scene, EditorContext& context,
                                const SelectionSyncService& selectionSync, SceneObjectCommandService& commands,
                                bool* open) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("ui.window.inspector", "Inspector").c_str(), open)) {
         ImGui::End();
         return;
     }
     DrawContents(scene, context, selectionSync, commands);
     ImGui::End();
-#else
-    (void)scene;
-    (void)context;
-    (void)selectionSync;
-    (void)commands;
-    (void)open;
-#endif
 }
 
 void SceneInspectorPanel::DrawContents(DocumentSceneBase& scene, EditorContext& context,
                                        const SelectionSyncService& selectionSync, SceneObjectCommandService& commands) {
-#if defined(HIKARI_WITH_EDITOR)
     GameObject* selected = context.selection.selectedObject;
     SceneObjectData* target =
         selected != nullptr ? selectionSync.FindDocumentObjectByRuntime(scene, selected) : nullptr;
@@ -191,8 +161,8 @@ void SceneInspectorPanel::DrawContents(DocumentSceneBase& scene, EditorContext& 
         ImGui::BeginDisabled(scene.IsRuntimePlayActive());
         for (const auto& type : optionalTypes) {
             const auto* info = scene.GetComponentRegistry().Find(type);
-            if (IconTextButton(EditorGlyph::Add, TEXT::Localize(info->presentation.displayName).c_str(), type.c_str(),
-                               EditorButtonTone::Quiet, {}, info->presentation.description.c_str()))
+            if (IconTextButton(EditorGlyph::Add, InspectorText(info->presentation.displayName).c_str(), type.c_str(),
+                               EditorButtonTone::Quiet, {}, InspectorText(info->presentation.description).c_str()))
                 optionalComponent = type;
         }
         ImGui::EndDisabled();
@@ -207,13 +177,6 @@ void SceneInspectorPanel::DrawContents(DocumentSceneBase& scene, EditorContext& 
     // 構造変更はパネル描画の後に既存の履歴付きコマンドへ渡す。
     if (!optionalComponent.empty())
         commands.Execute(SceneObjectCommandId::AddComponent, scene, context, selectionSync, optionalComponent);
-
-#else
-    (void)scene;
-    (void)context;
-    (void)selectionSync;
-    (void)commands;
-#endif
 }
 
 void SceneInspectorPanel::RequestRename(GameObject& object) {
@@ -223,7 +186,6 @@ void SceneInspectorPanel::RequestRename(GameObject& object) {
 }
 
 void SceneInspectorPanel::DrawTransform(DocumentSceneBase& scene, EditorContext& context, SceneObjectData& target) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::CollapsingHeader(TEXT::Localize("ui.inspector.transform").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
         return;
     }
@@ -304,17 +266,11 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase& scene, EditorContext&
         }
         finishHistoryIfDeactivated();
     }
-#else
-    (void)scene;
-    (void)context;
-    (void)target;
-#endif
 }
 
 void SceneInspectorPanel::DrawAddComponentPopup(DocumentSceneBase& scene, EditorContext& context,
                                                 const SelectionSyncService& selectionSync,
                                                 SceneObjectCommandService& commands) {
-#if defined(HIKARI_WITH_EDITOR)
     if (openComponentPicker_) {
         ImGui::OpenPopup("AddComponentPopup");
         openComponentPicker_ = false;
@@ -336,23 +292,16 @@ void SceneInspectorPanel::DrawAddComponentPopup(DocumentSceneBase& scene, Editor
         }
         if (currentCategory != typeInfo->presentation.category) {
             currentCategory = typeInfo->presentation.category;
-            const std::string categoryText = LocalizeComponentCategory(currentCategory);
-            ImGui::SeparatorText(categoryText.c_str());
+            ImGui::SeparatorText(InspectorText(currentCategory).c_str());
         }
-        if (ImGui::MenuItem(TEXT::Localize(typeInfo->presentation.displayName).c_str())) {
+        if (ImGui::MenuItem(InspectorText(typeInfo->presentation.displayName).c_str())) {
             commands.Execute(SceneObjectCommandId::AddComponent, scene, context, selectionSync, typeInfo->typeName);
         }
         if (ImGui::IsItemHovered() && !typeInfo->presentation.description.empty()) {
-            ImGui::SetTooltip("%s", typeInfo->presentation.description.c_str());
+            ImGui::SetTooltip("%s", InspectorText(typeInfo->presentation.description).c_str());
         }
     }
     ImGui::EndPopup();
-#else
-    (void)scene;
-    (void)context;
-    (void)selectionSync;
-    (void)commands;
-#endif
 }
 
 std::optional<SceneObjectAuthoringHistoryRequest> SceneInspectorPanel::ConsumeHistoryRequest() {

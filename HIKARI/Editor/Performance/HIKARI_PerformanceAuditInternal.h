@@ -31,9 +31,7 @@
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 #include <algorithm>
 #include <cstdint>
@@ -41,7 +39,6 @@
 
 namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
 
-#if defined(HIKARI_WITH_EDITOR)
 struct RuntimePerformanceSnapshot {
     float fpsRaw = 0.0f;
     uint32_t fixedStepsThisFrame = 0u;
@@ -135,6 +132,5 @@ void DrawEffectsTable(const RuntimePerformanceSnapshot& s);
 void DrawTemporalTable(const RuntimePerformanceSnapshot& s);
 
 void DrawReadiness(const RuntimePerformanceSnapshot& s);
-#endif
 
 } // namespace HIKARI::EDITOR::PERFORMANCE_AUDIT

@@ -7,14 +7,11 @@
 
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
 
-#if defined(HIKARI_WITH_EDITOR)
 bool ProjectPreviewPoint(const Camera3D& camera, const MATH::Vec3& point, const ImVec2& origin, const ImVec2& size,
                          ImVec2& outScreen) {
     const MATH::Vec4 clip = camera.GetViewProj().TransformPoint({point.x, point.y, point.z, 1.0f});
@@ -141,12 +138,10 @@ bool DrawSelectedLightSpatialOverlay(ImDrawList& drawList, const Camera3D& camer
     }
     return false;
 }
-#endif
 
 } // namespace
 
 void ModelMaterialWorkspaceController::DrawPreviewLightingProperties() {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::CollapsingHeader(TEXT::LocalizeWindow("editor.ui.preview.lighting.87cd64", "Preview Lighting").c_str(),
                                  ImGuiTreeNodeFlags_DefaultOpen)) {
         return;
@@ -192,14 +187,12 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingProperties() {
     if (ImGui::Button(TEXT::LocalizeWindow("editor.ui.delete.light.7d387e", "Delete Light").c_str())) {
         DeleteSelectedPreviewLight();
     }
-#endif
 }
 
 ModelMaterialWorkspaceController::PreviewLightViewportInteraction
 ModelMaterialWorkspaceController::DrawPreviewLightViewportInteraction(float originX, float originY, float width,
                                                                       float height) {
     PreviewLightViewportInteraction interaction{};
-#if defined(HIKARI_WITH_EDITOR)
     ImDrawList& drawList = *ImGui::GetWindowDrawList();
     const ImVec2 origin{originX, originY};
     const ImVec2 size{width, height};
@@ -242,12 +235,6 @@ ModelMaterialWorkspaceController::DrawPreviewLightViewportInteraction(float orig
         light.position = result.transform.position;
         MarkPreviewLightingChanged();
     }
-#else
-    (void)originX;
-    (void)originY;
-    (void)width;
-    (void)height;
-#endif
     return interaction;
 }
 

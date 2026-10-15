@@ -7,7 +7,6 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 std::unordered_map<std::string, int> gTexturePreviewHandles{};
 
 DXTEX::TextureColorSpace ToRuntimeColorSpace(TextureAssetColorSpace colorSpace) {
@@ -18,11 +17,9 @@ DXTEX::TextureColorSpace ToRuntimeColorSpace(TextureAssetColorSpace colorSpace) 
     default: return DXTEX::TextureColorSpace::Auto;
     }
 }
-#endif
 } // namespace
 
 int ResolveEditorTexturePreviewHandle(const AssetGuid& guid, const TextureAssetDescriptor& descriptor) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!guid.IsValid() || descriptor.sourcePath.empty()) {
         return -1;
     }
@@ -36,17 +33,8 @@ int ResolveEditorTexturePreviewHandle(const AssetGuid& guid, const TextureAssetD
         "editor/texture_preview/" + guid.value, descriptor.sourcePath, ToRuntimeColorSpace(descriptor.colorSpace));
     gTexturePreviewHandles.emplace(cacheKey, handle);
     return handle;
-#else
-    (void)guid;
-    (void)descriptor;
-    return -1;
-#endif
 }
 
-void ClearEditorTexturePreviewCache() {
-#if defined(HIKARI_WITH_EDITOR)
-    gTexturePreviewHandles.clear();
-#endif
-}
+void ClearEditorTexturePreviewCache() { gTexturePreviewHandles.clear(); }
 
 } // namespace HIKARI::EDITOR

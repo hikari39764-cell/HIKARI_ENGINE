@@ -4,9 +4,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
@@ -20,7 +18,6 @@ void DocumentSceneEditorController::RequestSceneOpen(DocumentSceneBase& scene, c
 }
 
 void DocumentSceneEditorController::DrawPendingSceneOpenModal(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!pendingSceneOpenGuid_.IsValid()) {
         return;
     }
@@ -74,9 +71,6 @@ void DocumentSceneEditorController::DrawPendingSceneOpenModal(DocumentSceneBase&
     }
 
     ImGui::EndPopup();
-#else
-    (void)scene;
-#endif
 }
 
 bool DocumentSceneEditorController::OpenSceneAssetFromEditor(DocumentSceneBase& scene, const AssetGuid& sceneGuid) {

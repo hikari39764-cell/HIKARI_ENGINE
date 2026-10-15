@@ -70,11 +70,14 @@ public:
         ComponentTypeInfo button = UiComponent<UiButtonComponent>(std::string(kUiButtonComponentType), "UI Button",
                                                                   "Pointer and action-driven UI activation.");
         button.requiredComponents = {std::string(kUiRectComponentType)};
-        ComponentTypeInfo textField =
-            UiComponent<UiTextFieldComponent>("UiTextFieldComponent", "uix.textField", "uix.textFieldHelp");
+        ComponentTypeInfo textField = UiComponent<UiTextFieldComponent>(
+            "UiTextFieldComponent", "UI Text Field",
+            "Accept keyboard input in the game window. Text is stored in this object's UiTextComponent.");
         textField.requiredComponents = {std::string(kUiRectComponentType), std::string(kUiTextComponentType)};
         ComponentTypeInfo scrollView =
-            UiComponent<UiScrollViewComponent>("UiScrollViewComponent", "uix.scrollView", "uix.scrollViewHelp");
+            UiComponent<UiScrollViewComponent>("UiScrollViewComponent", "UI Scroll View",
+                                               "Clip child content to this viewport and allow scrolling. "
+                                               "Add a layout group to this object to arrange its content.");
         scrollView.requiredComponents = {std::string(kUiRectComponentType)};
 
         bool success = components.Register(std::move(canvas));
@@ -97,25 +100,30 @@ public:
             "Fill an image from a value or a runtime variable, for health and progress bars.");
         progress.requiredComponents = {std::string(kUiImageComponentType)};
         success = components.Register(std::move(progress)) && success;
-        auto settings = UiComponent<UiDisplaySettingsPanelComponent>("UiDisplaySettingsPanelComponent", "display.panel",
-                                                                     "display.panelHelp");
+        auto settings = UiComponent<UiDisplaySettingsPanelComponent>(
+            "UiDisplaySettingsPanelComponent", "Display Settings Panel",
+            "Child controls edit a shared draft. Apply changes in a game window; window changes require confirmation.");
         settings.requiredComponents = {"UiRectComponent"};
         success = components.Register(std::move(settings)) && success;
-        auto setting = UiComponent<UiDisplaySettingComponent>("UiDisplaySettingComponent", "display.control",
-                                                              "display.controlHelp");
+        auto setting =
+            UiComponent<UiDisplaySettingComponent>("UiDisplaySettingComponent", "Display Setting Control",
+                                                   "Bind a text or button to a display option or panel action.");
         setting.requiredComponents = {"UiTextComponent"};
         success = components.Register(std::move(setting)) && success;
-        auto binding = UiComponent<UiDataBindingComponent>("UiDataBindingComponent", "uibind.component", "uibind.help");
+        auto binding =
+            UiComponent<UiDataBindingComponent>("UiDataBindingComponent", "UI Data Binding",
+                                                "Display runtime variables without writing game rules in the UI.");
         binding.requiredComponents = {"UiRectComponent"};
         success = components.Register(std::move(binding)) && success;
-        success = components.Register(UiComponent<UiBindingSourceComponent>("UiBindingSourceComponent", "uibind.source",
-                                                                            "uibind.sourceHelp")) &&
+        success = components.Register(UiComponent<UiBindingSourceComponent>(
+                      "UiBindingSourceComponent", "UI Variable Source",
+                      "Descendant UI elements read project runtime variables from this object.")) &&
                   success;
-        auto animator =
-            UiComponent<UiAnimatorComponent>("UiAnimatorComponent", "uianim.animator", "uianim.animatorHelp");
+        auto animator = UiComponent<UiAnimatorComponent>("UiAnimatorComponent", "UI Animator",
+                                                         "Play reusable clips on this UI hierarchy.");
         success = components.Register(std::move(animator)) && success;
-        auto target =
-            UiComponent<UiAnimationTargetComponent>("UiAnimationTargetComponent", "uianim.target", "uianim.targetHelp");
+        auto target = UiComponent<UiAnimationTargetComponent>("UiAnimationTargetComponent", "UI Animation Target",
+                                                              "A unique named slot inside the parent animator.");
         target.requiredComponents = {"UiRectComponent"};
         success = components.Register(std::move(target)) && success;
         success = systems.Register(SystemTypeInfo{

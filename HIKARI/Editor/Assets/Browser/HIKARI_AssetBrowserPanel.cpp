@@ -36,9 +36,7 @@
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
 
@@ -47,17 +45,12 @@ namespace HIKARI {
 using namespace EDITOR::ASSET_BROWSER;
 
 void AssetBrowserPanel::Draw(AssetDatabase& assetDatabase, EditorSelection& selection) const {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("ui.window.assetBrowser", "Asset Browser").c_str())) {
         ImGui::End();
         return;
     }
     DrawContents(assetDatabase, selection);
     ImGui::End();
-#else
-    (void)assetDatabase;
-    (void)selection;
-#endif
 }
 
 void AssetBrowserPanel::DrawContents(AssetDatabase& assetDatabase, EditorSelection& selection) const {
@@ -67,7 +60,6 @@ void AssetBrowserPanel::DrawContents(AssetDatabase& assetDatabase, EditorSelecti
 void AssetBrowserPanel::DrawContents(AssetDatabase& assetDatabase, EditorSelection& selection,
                                      const AssetUsageSummary* usageSummary, AssetBrowserScope scope,
                                      const AssetBrowserContext* context, uint64_t usageRevision) const {
-#if defined(HIKARI_WITH_EDITOR)
     if (currentDirectory_.empty()) {
         currentDirectory_ = "Assets";
     }
@@ -110,7 +102,7 @@ void AssetBrowserPanel::DrawContents(AssetDatabase& assetDatabase, EditorSelecti
         ImGui::OpenPopup("AssetBrowserCreateMenu");
     }
     if (ImGui::BeginPopup("AssetBrowserCreateMenu")) {
-        // 髣厄ｽｴ隲帛現繝ｻ鬩堺ｼ夲ｽｽ・ｻ驍ｵ・ｺ繝ｻ・ｯ驛｢譎｢・ｽ・｡驛｢・ｧ繝ｻ・､驛｢譎｢・ｽ・ｳ驛｢譎√・郢晢ｽｻ驍ｵ・ｺ闕ｵ譎｢・ｽ陋ｾ・ｨ・ｾ郢晢ｽｻ遯ｶ・ｲ驍ｵ・ｺ陷会ｽｱ・つ遶丞｣ｹ・・Δ譎｢・ｽ・ｳ驛｢譏ｴ繝ｻ・趣ｽｦ驛｢譏ｴ繝ｻ繝ｻ・ｰ闔ｨ諛茨ｽｲ・ｺ驍ｵ・ｺ繝ｻ・ｮ髫ｴ竏壹・・代・・ｬ・ｫ陜｣・ｺ繝ｻ・ｽ隲帛ｲｩ繝ｻ驍ｵ・ｺ陷会ｽｱ遯ｶ・ｻ髫ｰ繝ｻ・ｽ・ｱ驍ｵ・ｺ郢晢ｽｻ・つ郢晢ｽｻ
+        // 新規作成メニュー：現在のフォルダにフォルダ・シーン・各アセットを作る。
         if (ImGui::MenuItem(TEXT::Localize("ui.assetBrowser.folder").c_str())) {
             CreateFolderFromBrowser(assetDatabase, currentDirectory_, lastOperationMessage_);
         }
@@ -322,54 +314,30 @@ void AssetBrowserPanel::DrawContents(AssetDatabase& assetDatabase, EditorSelecti
     ImGui::EndChild();
     DrawSceneAssetModals(assetDatabase, selection, lastOperationMessage_, context, renameSceneGuid_, deleteSceneGuid_,
                          renameSceneNameBuffer_);
-#else
-    (void)assetDatabase;
-    (void)selection;
-    (void)usageSummary;
-    (void)scope;
-    (void)context;
-    (void)usageRevision;
-#endif
 }
 
 std::optional<AssetWorkspaceActivation> AssetBrowserPanel::ConsumeActivatedAsset() const {
-#if defined(HIKARI_WITH_EDITOR)
     std::optional<AssetWorkspaceActivation> value = std::move(activatedAsset_);
     activatedAsset_.reset();
     return value;
-#else
-    return {};
-#endif
 }
 
 std::string AssetBrowserPanel::ConsumeSaveSceneAsGuid() const {
-#if defined(HIKARI_WITH_EDITOR)
     std::string value = std::move(saveSceneAsGuid_);
     saveSceneAsGuid_.clear();
     return value;
-#else
-    return {};
-#endif
 }
 
 std::string AssetBrowserPanel::ConsumeRefreshRuntimeAssetGuid() const {
-#if defined(HIKARI_WITH_EDITOR)
     std::string value = std::move(refreshRuntimeAssetGuid_);
     refreshRuntimeAssetGuid_.clear();
     return value;
-#else
-    return {};
-#endif
 }
 
 std::string AssetBrowserPanel::ConsumeReimportAndRefreshRuntimeAssetGuid() const {
-#if defined(HIKARI_WITH_EDITOR)
     std::string value = std::move(reimportAndRefreshRuntimeAssetGuid_);
     reimportAndRefreshRuntimeAssetGuid_.clear();
     return value;
-#else
-    return {};
-#endif
 }
 
 std::filesystem::path AssetBrowserPanel::CurrentDirectory() const {

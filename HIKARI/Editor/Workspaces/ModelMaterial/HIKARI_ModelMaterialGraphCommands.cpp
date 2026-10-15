@@ -13,9 +13,7 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -37,7 +35,6 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphToolbar(DocumentSceneBas
                                                                 MaterialGraphData& graph, bool& requestFrameAll,
                                                                 bool& requestFocusSelection, bool& requestDeleteNode,
                                                                 bool& requestDeleteEdge) {
-#if defined(HIKARI_WITH_EDITOR)
     const bool hasSelection = !selectedGraphNodeIds_.empty() || !selectedGraphNodeId_.empty();
     std::string operation;
     bool paste = false, extract = false;
@@ -125,16 +122,6 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphToolbar(DocumentSceneBas
         return true;
     }
     return false;
-#else
-    (void)scene;
-    (void)source;
-    (void)graph;
-    (void)requestFrameAll;
-    (void)requestFocusSelection;
-    (void)requestDeleteNode;
-    (void)requestDeleteEdge;
-    return false;
-#endif
 }
 
 void ModelMaterialWorkspaceController::FinishMaterialGraphCanvasInteraction(
@@ -142,7 +129,6 @@ void ModelMaterialWorkspaceController::FinishMaterialGraphCanvasInteraction(
     std::string completedTargetPin, bool linkReleased, bool mouseInsideCanvas, bool pointerOverNode,
     const std::string& hoveredNodeId, const std::string& hoveredEdgeId, MATH::Vec2 canvasOrigin, MATH::Vec2 pointer,
     bool requestDeleteNode, bool requestDeleteEdge) {
-#if defined(HIKARI_WITH_EDITOR)
     const bool hasCompletedLink = !completedTargetNode.empty() && !completedTargetPin.empty();
     if (hasCompletedLink) {
         const auto edgeId =
@@ -288,22 +274,6 @@ void ModelMaterialWorkspaceController::FinishMaterialGraphCanvasInteraction(
         RunMaterialOperation(operationRegistry_, "material.delete_connection", statusMessage_);
         requestDeleteEdge = false;
     }
-#else
-    (void)scene;
-    (void)source;
-    (void)graph;
-    (void)completedTargetNode;
-    (void)completedTargetPin;
-    (void)linkReleased;
-    (void)mouseInsideCanvas;
-    (void)pointerOverNode;
-    (void)hoveredNodeId;
-    (void)hoveredEdgeId;
-    (void)canvasOrigin;
-    (void)pointer;
-    (void)requestDeleteNode;
-    (void)requestDeleteEdge;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

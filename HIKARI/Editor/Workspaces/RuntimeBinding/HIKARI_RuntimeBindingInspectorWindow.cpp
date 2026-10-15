@@ -13,13 +13,10 @@
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingEditorValue.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 template <size_t Size>
 void CopyToBuffer(std::array<char, Size>& buffer, std::string_view value) {
     buffer.fill('\0');
@@ -54,11 +51,9 @@ bool DrawValueTypeCombo(const char* id, BINDING::ValueType current, BINDING::Val
     }
     return changed;
 }
-#endif
 } // namespace
 
 void RuntimeBindingWorkspaceController::DrawInspectorWindow(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("ui.window.inspector", "RuntimeBinding/Inspector").c_str())) {
         ImGui::End();
         return;
@@ -213,9 +208,6 @@ void RuntimeBindingWorkspaceController::DrawInspectorWindow(DocumentSceneBase& s
             requestDeleteDialog_ = true;
         }
     }
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

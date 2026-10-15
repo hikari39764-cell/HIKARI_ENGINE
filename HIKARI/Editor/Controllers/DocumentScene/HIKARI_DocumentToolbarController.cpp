@@ -8,9 +8,7 @@
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
@@ -32,7 +30,6 @@ void DocumentToolbarController::SyncDocumentMeta(DocumentSceneBase& scene, Edito
 
 void DocumentToolbarController::Draw(DocumentSceneBase& scene, EditorContext& context,
                                      const SelectionSyncService& selectionSync) const {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("ui.window.sceneDocument", "Scene Document").c_str())) {
         ImGui::End();
         return;
@@ -41,16 +38,10 @@ void DocumentToolbarController::Draw(DocumentSceneBase& scene, EditorContext& co
     DrawContents(scene, context, selectionSync);
 
     ImGui::End();
-#else
-    (void)scene;
-    (void)context;
-    (void)selectionSync;
-#endif
 }
 
 void DocumentToolbarController::DrawContents(DocumentSceneBase& scene, EditorContext& context,
                                              const SelectionSyncService& selectionSync) const {
-#if defined(HIKARI_WITH_EDITOR)
     // Scene asset file actions live in Resource Workspace.
     ImGui::TextUnformatted(TEXT::Localize("ui.toolbar.fileNote").c_str());
     ImGui::Separator();
@@ -99,11 +90,6 @@ void DocumentToolbarController::DrawContents(DocumentSceneBase& scene, EditorCon
                 scene.GetCurrentSceneAssetGuid().IsValid() ? scene.GetCurrentSceneAssetGuid().value.c_str()
                                                            : TEXT::Localize("ui.common.transient").c_str());
     ImGui::Text(TEXT::Localize("ui.toolbar.objectsFormat").c_str(), scene.GetSceneDocument().objects.size());
-#else
-    (void)scene;
-    (void)context;
-    (void)selectionSync;
-#endif
 }
 
 } // namespace HIKARI

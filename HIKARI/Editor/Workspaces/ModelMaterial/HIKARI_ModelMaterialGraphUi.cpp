@@ -10,9 +10,7 @@
 #include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR::MATERIAL_GRAPH_UI {
 
@@ -229,7 +227,6 @@ MaterialGraphResourceData* FindRampResource(MaterialGraphData& graph, const Mate
 }
 
 void DrawRampStrip(const MaterialRampData& ramp, float width, float height) {
-#if defined(HIKARI_WITH_EDITOR)
     ASSETS::MATERIAL::MaterialRampRasterImage image{};
     std::string error{};
     const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -250,11 +247,6 @@ void DrawRampStrip(const MaterialRampData& ramp, float width, float height) {
     }
     drawList->AddRect(origin, {origin.x + width, origin.y + height}, IM_COL32(112, 126, 142, 255), 3.0f);
     ImGui::InvisibleButton("##RampStrip", {width, height});
-#else
-    (void)ramp;
-    (void)width;
-    (void)height;
-#endif
 }
 
 MaterialValueType DefaultNodeValueType(const MaterialNodeTypeId& typeId) noexcept {

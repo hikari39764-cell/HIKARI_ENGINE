@@ -14,7 +14,6 @@
 
 #include <json.hpp>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "Assets/Cooking/HIKARI_AssetCooker.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
@@ -33,12 +32,10 @@
 #include "Render3D/Settings/HIKARI_RenderQualityProfileStore.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineDeployment.h"
 #include "Runtime/HIKARI_RuntimeHost.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 constexpr const char* kExportOutputFolderName = "HIKARI_Game";
 constexpr const char* kProjectCookManifestPath = "ProjectSettings/game_export.json";
 
@@ -431,28 +428,18 @@ std::filesystem::path ResolveInstalledProjectModule(const std::filesystem::path&
     // incompatible SDK or stale gameplay binaries.
     return projectRoot / "out" / "install" / "game-shipping" / "HIKARI_GameProject.dll";
 }
-#endif
 } // namespace
 
 std::filesystem::path GameExporter::GetDefaultOutputDirectory() {
-#if defined(HIKARI_WITH_EDITOR)
     const std::filesystem::path projectRoot = FindProjectRoot();
     return ResolveOutputDirectory(projectRoot, {});
-#else
-    return {};
-#endif
 }
 
 std::vector<GameExportSceneInfo> GameExporter::CollectSceneAssets() {
-#if defined(HIKARI_WITH_EDITOR)
     return CollectSceneAssetsFromProjectRoot(FindProjectRoot());
-#else
-    return {};
-#endif
 }
 
 GameExportResult GameExporter::Export(const GameExportOptions& options) {
-#if defined(HIKARI_WITH_EDITOR)
     const std::filesystem::path projectRoot = FindProjectRoot();
     GameExportOptions effectiveOptions = options;
     ProjectCookManifest cookManifest{};
@@ -656,10 +643,6 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
                      std::to_string(cookResult.fileCount) + " cooked file(s) to " + TEXT::PathToUtf8(outputDirectory);
     HIKARI_LOG_INFO(std::string("[GameExporter] ") + result.message);
     return result;
-#else
-    (void)options;
-    return {false, {}, "Game export is only available in editor builds."};
-#endif
 }
 
 } // namespace HIKARI::EDITOR

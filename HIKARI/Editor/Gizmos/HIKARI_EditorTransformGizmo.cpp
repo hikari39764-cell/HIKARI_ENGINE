@@ -2,10 +2,8 @@
 
 #include "Core/HIKARI_MathConfig.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "ImGuizmo.h"
-#endif
 
 #include "Core/HIKARI_Logger.h"
 #include "Core/Math/HIKARI_MathValidation.h"
@@ -16,7 +14,6 @@
 
 namespace HIKARI::EDITOR {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 constexpr float kDegreesToRadians = MATH::kDegreesToRadians;
 
@@ -193,14 +190,12 @@ EditorTransformGizmoResult DrawTransformMatrix(const Camera3D& camera, const Edi
     return result;
 }
 } // namespace
-#endif
 
 EditorTransformGizmoResult EditorTransformGizmo::Draw(GameObject& object, const Camera3D& camera,
                                                       const EditorTransformGizmoState& state,
                                                       const EditorViewportRect& viewportRect) const {
     EditorTransformGizmoResult result{};
 
-#if defined(HIKARI_WITH_EDITOR)
     const Transform3D& sourceTransform = object.GetTransform();
     float model[16]{};
     CopyMat4ToFloat16(sourceTransform.GetWorldMatrix(), model);
@@ -269,12 +264,6 @@ EditorTransformGizmoResult EditorTransformGizmo::Draw(GameObject& object, const 
         result.transform = applied.transform;
         result.rotation = applied.rotation;
     }
-#else
-    (void)object;
-    (void)camera;
-    (void)state;
-    (void)viewportRect;
-#endif
 
     return result;
 }
@@ -284,17 +273,10 @@ EditorTransformGizmoResult EditorTransformGizmo::DrawTransform(const TransformDa
                                                                const EditorViewportRect& viewportRect) const {
     EditorTransformGizmoResult result{};
 
-#if defined(HIKARI_WITH_EDITOR)
     const DecomposedGizmoMatrix initial = MakeGizmoTransform(transform);
     float model[16]{};
     CopyMat4ToFloat16(MATH::Mat4::TRS(transform.position, initial.rotation, transform.scale), model);
     result = DrawTransformMatrix(camera, state, viewportRect, this, initial, model);
-#else
-    (void)transform;
-    (void)camera;
-    (void)state;
-    (void)viewportRect;
-#endif
 
     return result;
 }

@@ -5,16 +5,13 @@
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void ModelCollisionWorkspaceController::DrawPreviewToolbar(DocumentSceneBase& scene,
                                                            ModelCollisionWorkspaceResult& result,
                                                            EditorCommandRouter& commandRouter) {
-#if defined(HIKARI_WITH_EDITOR)
     (void)scene;
     constexpr ImVec2 kIconSize{28.0f, 28.0f};
     const std::string title = IsEditingModel() ? modelDisplayName_ : std::string("No model open");
@@ -185,11 +182,6 @@ void ModelCollisionWorkspaceController::DrawPreviewToolbar(DocumentSceneBase& sc
     }
     ImGui::EndDisabled();
     ImGui::Separator();
-#else
-    (void)scene;
-    (void)result;
-    (void)commandRouter;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

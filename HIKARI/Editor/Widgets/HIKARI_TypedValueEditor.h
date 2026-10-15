@@ -2,14 +2,11 @@
 
 #include <cstdint>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "Editor/Widgets/HIKARI_NumberField.h"
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
-#if defined(HIKARI_WITH_EDITOR)
 struct TypedValueEditResult {
     bool changed = false;
     bool committed = false;
@@ -46,6 +43,5 @@ TypedValueEditResult DrawTypedEditorValue(const char* id, Value& value, const Ty
     result.committed = ImGui::IsItemDeactivatedAfterEdit();
     return result;
 }
-#endif
 
 } // namespace HIKARI::EDITOR

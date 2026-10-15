@@ -8,9 +8,7 @@
 #include "Assets/Material/Compiler/HIKARI_MaterialRampRasterizer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -28,7 +26,6 @@ MaterialRampPointData* FindPoint(MaterialRampData& ramp, const std::string& id) 
 } // namespace
 
 void ModelMaterialWorkspaceController::DrawRampWindow(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("ui.terrain.toolRamp", "ModelMaterial/Ramp").c_str())) {
         ImGui::End();
         return;
@@ -192,9 +189,6 @@ void ModelMaterialWorkspaceController::DrawRampWindow(DocumentSceneBase& scene) 
     }
     ImGui::TextDisabled(TEXT::Localize("material.ramp.edit.gestureHint").c_str());
     ImGui::End();
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

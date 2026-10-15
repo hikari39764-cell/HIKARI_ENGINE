@@ -4,13 +4,10 @@
 #include <cmath>
 #include <limits>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR::MATERIAL_GRAPH_UI {
 
-#if defined(HIKARI_WITH_EDITOR)
 NodeCollapseControlResult DrawNodeCollapseControl(const MATH::Vec2& topRight, float screenScale, bool collapsed) {
     const float controlSize = (std::max)(14.0f, 20.0f * screenScale);
     const ImVec2 minimum{topRight.x - controlSize - 4.0f,
@@ -71,6 +68,5 @@ void DrawMaterialGraphGroups(ImDrawList* drawList, const MaterialGraphData& grap
         drawList->AddText({rectMin.x + 10.0f, rectMin.y + 5.0f}, IM_COL32(235, 242, 250, 255), group.name.c_str());
     }
 }
-#endif
 
 } // namespace HIKARI::EDITOR::MATERIAL_GRAPH_UI

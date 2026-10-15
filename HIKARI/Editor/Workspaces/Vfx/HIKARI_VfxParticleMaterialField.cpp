@@ -17,9 +17,7 @@
 #include "Editor/Widgets/HIKARI_EditorTexturePreview.h"
 #include "Render2D/HIKARI_DxTexture.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -82,7 +80,6 @@ std::vector<VfxParticleTextureChoice> CollectParticleTextures(AssetDatabase& dat
 bool DrawVfxParticleMaterialField(AssetDatabase& assetDatabase, VfxParticleMaterialCatalog& catalog,
                                   const AssetGuid& current, AssetGuid& outSelected, AssetGuid& outCreatedAssetGuid,
                                   AssetGuid& outEditAssetGuid, std::string& outMessage) {
-#if defined(HIKARI_WITH_EDITOR)
     outCreatedAssetGuid = {};
     outEditAssetGuid = {};
     const uint64_t contentRevision = assetDatabase.GetContentRevision();
@@ -166,22 +163,11 @@ bool DrawVfxParticleMaterialField(AssetDatabase& assetDatabase, VfxParticleMater
         VfxUiText("Surface and Particle materials share the main runtime; particle geometry supplies UV and Tint.")
             .c_str());
     return changed;
-#else
-    (void)assetDatabase;
-    (void)catalog;
-    (void)current;
-    (void)outSelected;
-    (void)outCreatedAssetGuid;
-    (void)outEditAssetGuid;
-    (void)outMessage;
-    return false;
-#endif
 }
 
 bool DrawVfxParticleTextureField(AssetDatabase& assetDatabase, const AssetRegistry* assetRegistry,
                                  VfxParticleTextureCatalog& catalog, const AssetGuid& current, AssetGuid& outSelected,
                                  std::string& outMessage) {
-#if defined(HIKARI_WITH_EDITOR)
     // 貼図の見た目を選ぶ時点で確認できるよう、一覧と選択中をサムネイル表示する。
     const auto resolvePreviewHandle = [assetRegistry](const AssetGuid& guid) {
         if (assetRegistry == nullptr || !guid.IsValid()) {
@@ -343,14 +329,6 @@ bool DrawVfxParticleTextureField(AssetDatabase& assetDatabase, const AssetRegist
     ImGui::TextDisabled(
         VfxUiText("Engine VFX textures are shared; project Texture assets can be dropped here.").c_str());
     return changed;
-#else
-    (void)assetDatabase;
-    (void)catalog;
-    (void)current;
-    (void)outSelected;
-    (void)outMessage;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

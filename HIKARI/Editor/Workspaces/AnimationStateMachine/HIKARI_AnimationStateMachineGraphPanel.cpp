@@ -12,26 +12,21 @@
 #include "Animation/StateMachine/HIKARI_AnimationStateMachineInstance.h"
 #include "Animation/StateMachine/HIKARI_AnimationStateMotionEvaluator.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 using namespace ANIMATION_STATE_MACHINE_GRAPH;
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 constexpr ImVec2 kNodeWorldSize{168.0f, 72.0f};
 constexpr float kMinimumGraphZoom = 0.35f;
 constexpr float kMaximumGraphZoom = 2.0f;
 
-#endif
 } // namespace
 
 void AnimationStateMachineWorkspaceController::DrawGraphWindow(DocumentSceneBase& scene,
                                                                AnimationStateMachineWorkspaceResult& result,
                                                                EditorCommandRouter& commandRouter) {
-#if defined(HIKARI_WITH_EDITOR)
     GraphMenuRequests requests{};
     constexpr ImGuiWindowFlags flags =
         ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoScrollbar;
@@ -435,10 +430,6 @@ void AnimationStateMachineWorkspaceController::DrawGraphWindow(DocumentSceneBase
     ImGui::SetCursorScreenPos(canvasOrigin);
     ImGui::Dummy(canvasSize);
     ImGui::End();
-#else
-    (void)scene;
-    (void)result;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

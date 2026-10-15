@@ -11,12 +11,10 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_World.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "Editor/Documents/HIKARI_ValidatedAssetDocumentUi.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
 #include "Editor/Widgets/HIKARI_JsonFieldsEditor.h"
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -36,7 +34,6 @@ void RenderStyleEditor::PublishDrafts(DocumentSceneBase& scene) {
     }
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 constexpr uint64_t kFieldMergeGroup = 0x525354u;
 
@@ -208,10 +205,5 @@ std::string RenderStyleEditor::DrawStyle(const std::string& id, DocumentSceneBas
     }
     return copiedId;
 }
-#else
-std::string ResolveRenderStyleLabel(std::string_view id, const AssetDatabase&) { return std::string(id); }
-bool DrawRenderStylePicker(const AssetDatabase&, std::string&) { return false; }
-std::string RenderStyleEditor::DrawStyle(const std::string&, DocumentSceneBase&) { return {}; }
-#endif
 
 } // namespace HIKARI::EDITOR

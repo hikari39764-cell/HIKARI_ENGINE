@@ -6,9 +6,7 @@
 
 #include "Input/Runtime/HIKARI_InputService.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
@@ -18,7 +16,6 @@ void InputActionMapEditor::SetStatus(std::string message, bool isError) {
 }
 
 void InputActionMapEditor::Draw(INPUT::InputService& inputService) {
-#if defined(HIKARI_WITH_EDITOR)
     INPUT::InputActionMap& map = inputService.EditActionMap();
     selectedAction_ = (std::clamp)(selectedAction_, 0, (std::max)(0, static_cast<int>(map.actions.size()) - 1));
     selectedContext_ = (std::clamp)(selectedContext_, 0, (std::max)(0, static_cast<int>(map.contexts.size()) - 1));
@@ -46,13 +43,9 @@ void InputActionMapEditor::Draw(INPUT::InputService& inputService) {
     DrawBindingPopup(inputService);
     DrawCompositePopup(inputService);
     DrawProjectPopups(inputService);
-#else
-    (void)inputService;
-#endif
 }
 
 void InputActionMapEditor::DrawToolbar(INPUT::InputService& inputService) {
-#if defined(HIKARI_WITH_EDITOR)
     if (ImGui::Button(TEXT::Localize("ui.input.save").c_str(), ImVec2(92.0f, 0.0f))) {
         std::string error;
         const bool saved = inputService.SaveProject(&error);
@@ -83,13 +76,9 @@ void InputActionMapEditor::DrawToolbar(INPUT::InputService& inputService) {
                            statusMessage_.c_str());
     }
     ImGui::TextDisabled("%s", inputService.GetInputDirectory().generic_string().c_str());
-#else
-    (void)inputService;
-#endif
 }
 
 void InputActionMapEditor::DrawProjectPopups(INPUT::InputService& inputService) {
-#if defined(HIKARI_WITH_EDITOR)
     if (reloadRequested_) {
         ImGui::OpenPopup((TEXT::Localize("ui.input.reloadTitle") + "###ReloadInputProject").c_str());
         reloadRequested_ = false;
@@ -137,9 +126,6 @@ void InputActionMapEditor::DrawProjectPopups(INPUT::InputService& inputService) 
         }
         ImGui::EndPopup();
     }
-#else
-    (void)inputService;
-#endif
 }
 
 } // namespace HIKARI

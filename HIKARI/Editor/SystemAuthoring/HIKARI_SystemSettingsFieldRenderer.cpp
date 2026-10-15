@@ -8,14 +8,11 @@
 #include <limits>
 #include <string>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
 
-#if defined(HIKARI_WITH_EDITOR)
 nlohmann::json* ResolveFieldValue(nlohmann::json& settings, const SystemSettingField& field) {
     if (field.jsonPointer.empty() || field.jsonPointer.front() != '/') {
         return nullptr;
@@ -160,11 +157,9 @@ bool DrawField(const SystemSettingField& field, nlohmann::json& settings) {
     ImGui::PopID();
     return changed;
 }
-#endif
 } // namespace
 
 bool DrawSystemSettingsFields(const std::vector<SystemSettingField>& fields, nlohmann::json& settings, bool advanced) {
-#if defined(HIKARI_WITH_EDITOR)
     bool changed = false;
     for (const SystemSettingField& field : fields) {
         if (field.advanced == advanced) {
@@ -172,12 +167,6 @@ bool DrawSystemSettingsFields(const std::vector<SystemSettingField>& fields, nlo
         }
     }
     return changed;
-#else
-    (void)fields;
-    (void)settings;
-    (void)advanced;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

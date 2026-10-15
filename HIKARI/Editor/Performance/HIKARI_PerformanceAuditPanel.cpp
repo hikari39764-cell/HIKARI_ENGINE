@@ -25,9 +25,7 @@
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 #include "Editor/Performance/HIKARI_PerformanceAuditInternal.h"
 #include <algorithm>
@@ -39,7 +37,6 @@ namespace HIKARI {
 using namespace EDITOR::PERFORMANCE_AUDIT;
 
 void PerformanceAuditPanel::Draw(bool& open, bool revealRequested) const {
-#if defined(HIKARI_WITH_EDITOR)
     if (!open) {
         return;
     }
@@ -56,14 +53,9 @@ void PerformanceAuditPanel::Draw(bool& open, bool revealRequested) const {
     DrawContents();
 
     ImGui::End();
-#else
-    (void)open;
-    (void)revealRequested;
-#endif
 }
 
 void PerformanceAuditPanel::DrawContents() const {
-#if defined(HIKARI_WITH_EDITOR)
     const bool copyRequested =
         ImGui::Button(TEXT::LocalizeWindow("editor.copyDiagnostics", "診断結果をコピー").c_str());
     ImGui::SameLine();
@@ -99,7 +91,6 @@ void PerformanceAuditPanel::DrawContents() const {
     DrawTemporalTable(snapshot);
     DrawEffectsTable(snapshot);
     DrawResourceSummaryTable(snapshot);
-#endif
 }
 
 } // namespace HIKARI

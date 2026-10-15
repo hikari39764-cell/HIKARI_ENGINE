@@ -7,9 +7,7 @@
 #include "Editor/Views/HIKARI_EditorViewportGeometry.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -80,7 +78,6 @@ std::optional<LookDevBoxResize> ResizeLookDevBox(const LookDevBoxFrame& frame, f
     return resize;
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 void DrawLookDevBox(ImDrawList& drawList, const Camera3D& camera, const LookDevView& view, const LookDevBoxFrame& frame,
                     const MATH::Vec3& extent, const MATH::Vec3& worldShift, uint32_t color) {
     const MATH::Vec3 center = frame.center + worldShift;
@@ -134,12 +131,6 @@ void DrawLookDevCylinder(ImDrawList& drawList, const Camera3D& camera, const Loo
     }
     drawList.PopClipRect();
 }
-#else
-void DrawLookDevBox(ImDrawList&, const Camera3D&, const LookDevView&, const LookDevBoxFrame&, const MATH::Vec3&,
-                    const MATH::Vec3&, uint32_t) {}
-void DrawLookDevCylinder(ImDrawList&, const Camera3D&, const LookDevView&, const LookDevBoxFrame&, int, float, float,
-                         uint32_t) {}
-#endif
 
 std::vector<LookDevShapeHandle> BuildLookDevShapeHandles(const ProceduralMeshSettings& settings,
                                                          const MATH::Mat4& world) {

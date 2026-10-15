@@ -9,14 +9,11 @@
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 void SceneCreationPanel::DrawUiCreationMenu(DocumentSceneBase& scene, EditorContext& context,
                                             const SelectionSyncService& selectionSync, std::string_view search) {
-#if defined(HIKARI_WITH_EDITOR)
     if (scene.GetComponentRegistry().Find("UiCanvasComponent") == nullptr) {
         return;
     }
@@ -39,12 +36,6 @@ void SceneCreationPanel::DrawUiCreationMenu(DocumentSceneBase& scene, EditorCont
         CreateUiObject(scene, context, selectionSync, true, true);
     }
     ImGui::EndMenu();
-#else
-    (void)scene;
-    (void)context;
-    (void)selectionSync;
-    (void)search;
-#endif
 }
 
 void SceneCreationPanel::CreateUiObject(DocumentSceneBase& scene, EditorContext& context,

@@ -6,9 +6,7 @@
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_World.h"
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAiCapturePreview(const nlohmann::json& parameters) {
@@ -94,12 +92,10 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteBackgroundSc
         return definition.execute(parameters);
     if (aiOperationScene_->IsRuntimePlayActive())
         return {false, "PLAY_ACTIVE", "Stop Play before editing the scene."};
-#if defined(HIKARI_WITH_EDITOR)
     if (ImGui::IsAnyItemActive() && (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Scene) ||
                                      workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::LookDev) ||
                                      workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::TerrainSurface)))
         return {false, "DOCUMENT_BUSY", "用户正在编辑场景。请等待当前操作完成后重试。"};
-#endif
     auto& scene = *aiOperationScene_;
     const auto selection = context_.selection;
     const auto windows = context_.windows;

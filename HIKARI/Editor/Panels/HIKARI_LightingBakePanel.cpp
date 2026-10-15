@@ -23,9 +23,7 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Tools/Baking/HIKARI_LightingBakeService.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
@@ -57,7 +55,6 @@ bool OpenFolder(const std::filesystem::path& folder, std::string& outMessage) {
     return true;
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 EDITOR::EditorGlyph ItemGlyph(TOOLS::BAKING::LightingBakeItemKind kind) {
     switch (kind) {
     case TOOLS::BAKING::LightingBakeItemKind::ReflectionProbe: return EDITOR::EditorGlyph::ReflectionProbe;
@@ -110,12 +107,9 @@ void DrawLines(const char* label, const std::vector<std::string>& lines, const I
     ImGui::TreePop();
 }
 
-#endif
-
 } // namespace
 
 void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
-#if defined(HIKARI_WITH_EDITOR)
     auto& scene = tool.scene;
     const std::string windowName = TEXT::LocalizeWindow("ui.window.lightingBake", "Lighting Bake");
     if (tool.openRequest)
@@ -353,10 +347,6 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
 
     wasBakeBusy_ = bakeBusy;
     ImGui::End();
-#else
-    (void)tool;
-    (void)open;
-#endif
 }
 
 } // namespace HIKARI

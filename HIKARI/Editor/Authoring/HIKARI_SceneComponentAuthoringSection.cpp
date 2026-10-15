@@ -8,6 +8,7 @@
 
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
+#include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
@@ -17,12 +18,9 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 void SyncRuntimeTransformToDocument(SceneObjectData& target, const EditorContext& context) {
     if (!context.selection.selectedObject || context.selection.selectedObject->GetDocumentId() != target.id) {
@@ -79,12 +77,10 @@ bool HasDocumentComponent(const SceneObjectData& object, std::string_view typeNa
 }
 
 } // namespace
-#endif
 
 std::optional<SceneObjectAuthoringHistoryRequest> SceneComponentAuthoringSection::Draw(
     DocumentSceneBase& scene, EditorContext& context, const SelectionSyncService& selectionSync,
     SceneObjectData& target, std::span<const std::string_view> filter) {
-#if defined(HIKARI_WITH_EDITOR)
     std::optional<SceneObjectAuthoringHistoryRequest> historyRequest{};
     NormalizeSceneComponentIds(target);
     bool needsRebuild = false;
@@ -120,7 +116,7 @@ std::optional<SceneObjectAuthoringHistoryRequest> SceneComponentAuthoringSection
             continue;
         const ComponentTypeInfo* typeInfo = scene.GetComponentRegistry().Find(component.type);
         const std::string componentDisplayName = typeInfo != nullptr && !typeInfo->presentation.displayName.empty()
-                                                     ? TEXT::Localize(typeInfo->presentation.displayName)
+                                                     ? EDITOR::InspectorText(typeInfo->presentation.displayName)
                                                      : component.type;
         const size_t componentTypeCount = static_cast<size_t>(std::count_if(
             target.components.begin(), target.components.end(),
@@ -305,14 +301,6 @@ std::optional<SceneObjectAuthoringHistoryRequest> SceneComponentAuthoringSection
             std::move(pending.beforeCamera), scene.GetSceneDocument().camera,  pending.dirtyBefore};
     }
     return historyRequest;
-#else
-    (void)scene;
-    (void)context;
-    (void)selectionSync;
-    (void)target;
-    (void)filter;
-    return std::nullopt;
-#endif
 }
 
 } // namespace HIKARI

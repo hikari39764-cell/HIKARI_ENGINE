@@ -4,9 +4,7 @@
 #include "Editor/Panels/HIKARI_InputActionMapEditorWidgets.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
@@ -28,7 +26,6 @@ void InputActionMapEditor::BeginBindingEdit(const INPUT::InputActionMap& map, in
 }
 
 void InputActionMapEditor::DrawBindingPopup(INPUT::InputService& inputService) {
-#if defined(HIKARI_WITH_EDITOR)
     using namespace EDITOR::INPUT_WIDGETS;
     INPUT::InputActionMap& map = inputService.EditActionMap();
     if (bindingPopupRequested_) {
@@ -181,9 +178,6 @@ void InputActionMapEditor::DrawBindingPopup(INPUT::InputService& inputService) {
         }
         ImGui::EndPopup();
     }
-#else
-    (void)inputService;
-#endif
 }
 
 } // namespace HIKARI

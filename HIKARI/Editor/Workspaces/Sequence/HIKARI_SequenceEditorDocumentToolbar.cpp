@@ -6,9 +6,7 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -16,7 +14,6 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
     SequenceEditorDocumentController& controller, AssetDatabase& assetDatabase, const CinematicSequence* activeSequence,
     const std::string& sceneDisplayName, bool libraryVisible, bool actionsAllowed) const {
     SequenceEditorDocumentToolbarResult result{};
-#if defined(HIKARI_WITH_EDITOR)
     (void)sceneDisplayName;
     SequenceEditorDocument& document = controller.GetDocument();
     if (IconToggleButton(EditorGlyph::Library, "SequenceLibraryToggle", libraryVisible, ImVec2(28.0f, 28.0f),
@@ -115,21 +112,12 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
     if (document.GetSourceKind() == SequenceEditorSourceKind::TransientAsset) {
         StatusText(TEXT::Localize("ui.sequence.toolbar.transientHint").c_str(), EditorStatusTone::Warning);
     }
-#else
-    (void)controller;
-    (void)assetDatabase;
-    (void)activeSequence;
-    (void)sceneDisplayName;
-    (void)libraryVisible;
-    (void)actionsAllowed;
-#endif
     return result;
 }
 
 void SequenceEditorDocumentToolbar::DrawPendingConfirmation(SequenceEditorDocumentController& controller,
                                                             AssetDatabase& assetDatabase,
                                                             std::string& inOutStatusMessage) const {
-#if defined(HIKARI_WITH_EDITOR)
     const std::string unsavedTitle =
         TEXT::LocalizeWindow("ui.sequence.toolbar.sourceTransient", "Unsaved Sequence Asset");
     if (controller.HasPendingConfirmation() && !ImGui::IsPopupOpen(unsavedTitle.c_str())) {
@@ -159,11 +147,6 @@ void SequenceEditorDocumentToolbar::DrawPendingConfirmation(SequenceEditorDocume
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
-#else
-    (void)controller;
-    (void)assetDatabase;
-    (void)inOutStatusMessage;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

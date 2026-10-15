@@ -10,21 +10,16 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceDomain.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 std::string PropertyLabel(const VFX::VfxPropertySchema& schema) {
     return std::string(VFX::ToString(schema.moduleKind)) + "." + std::string(schema.propertyId);
 }
-#endif
 } // namespace
 
 void VfxWorkspaceController::DrawEmitterBindingsInspector(const VFX::VfxEmitterData& emitter) {
-#if defined(HIKARI_WITH_EDITOR)
     const VFX::VfxAssetData* asset = GetAsset();
     if (asset == nullptr)
         return;
@@ -87,14 +82,10 @@ void VfxWorkspaceController::DrawEmitterBindingsInspector(const VFX::VfxEmitterD
         ImGui::EndMenu();
     }
     ImGui::EndPopup();
-#else
-    (void)emitter;
-#endif
 }
 
 void VfxWorkspaceController::DrawLinkInspector(AssetDatabase& database, const VFX::VfxEmitterData& source,
                                                const VFX::VfxInputLinkData& sourceLink) {
-#if defined(HIKARI_WITH_EDITOR)
     const VFX::VfxEmitterData emitter = source;
     const VFX::VfxInputLinkData link = sourceLink;
     const VFX::VfxPropertySchema* currentSchema = VFX::ResolveVfxPropertySchema(emitter, link.target);
@@ -147,11 +138,6 @@ void VfxWorkspaceController::DrawLinkInspector(AssetDatabase& database, const VF
     if (ImGui::Button(VfxUiText("Delete Binding").c_str())) {
         (void)RemoveInputLink(link.id, statusMessage_);
     }
-#else
-    (void)database;
-    (void)source;
-    (void)sourceLink;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

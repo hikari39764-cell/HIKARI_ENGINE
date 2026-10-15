@@ -28,13 +28,10 @@
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 
 constexpr uint64_t kLookDevMainLightMergeGroup = 0x4C4F4F4B53554Eull;
@@ -547,6 +544,5 @@ bool DocumentSceneEditorController::UpdateLookDevHandles(DocumentSceneBase& scen
     }
     return true;
 }
-#endif
 
 } // namespace HIKARI

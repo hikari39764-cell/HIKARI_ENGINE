@@ -23,14 +23,11 @@
 #include <string_view>
 #include <vector>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 struct SculptTool {
     EditorTerrainToolMode mode;
@@ -756,10 +753,8 @@ void FinishSettingsPatch(TerrainDrawFrame& frame) {
     }
 }
 } // namespace
-#endif
 
 void TerrainSurfaceWorkspaceController::DrawDockSpace(bool resetDefaultDockLayout) const {
-#if defined(HIKARI_WITH_EDITOR)
     ImGuiIO& io = ImGui::GetIO();
     if ((io.ConfigFlags & ImGuiConfigFlags_DockingEnable) == 0) {
         return;
@@ -792,14 +787,10 @@ void TerrainSurfaceWorkspaceController::DrawDockSpace(bool resetDefaultDockLayou
         ImGui::DockBuilderFinish(dockspaceId);
     }
     HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport);
-#else
-    (void)resetDefaultDockLayout;
-#endif
 }
 
 TerrainSurfaceWorkspaceResult TerrainSurfaceWorkspaceController::Draw(DocumentSceneBase& scene,
                                                                       EditorContext& context) {
-#if defined(HIKARI_WITH_EDITOR)
     TERRAIN::SurfaceLayerRegistry::Get().RegisterBuiltins();
     TerrainDrawFrame frame{scene, context};
     ResolveTarget(frame);
@@ -808,11 +799,6 @@ TerrainSurfaceWorkspaceResult TerrainSurfaceWorkspaceController::Draw(DocumentSc
     DrawDetailsWindow(frame);
     FinishSettingsPatch(frame);
     return frame.result;
-#else
-    (void)scene;
-    (void)context;
-    return {};
-#endif
 }
 
 } // namespace HIKARI::EDITOR

@@ -13,16 +13,13 @@
 #include <iterator>
 #include <unordered_set>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
 namespace EDITOR {
 namespace DOCUMENT_SCENE {
 
-#if defined(HIKARI_WITH_EDITOR)
 void DrawViewportDebugOptions(ViewportOverlayState& overlays, ViewportPerformanceState& performance) {
     ImGui::Checkbox(TEXT::Localize("ui.viewport.debugGrid").c_str(), &overlays.showGrid);
     ImGui::Checkbox(TEXT::Localize("ui.viewport.debugGridFloor").c_str(), &overlays.showGridFloor);
@@ -256,8 +253,6 @@ void DrawLightOverlayIcons(DocumentSceneBase& scene, const ViewportOverlayState&
         ++labelCount;
     }
 }
-
-#endif
 
 } // namespace DOCUMENT_SCENE
 } // namespace EDITOR

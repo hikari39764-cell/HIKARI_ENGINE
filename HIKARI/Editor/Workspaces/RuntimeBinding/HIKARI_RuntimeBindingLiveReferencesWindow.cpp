@@ -10,14 +10,11 @@
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingEditorValue.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void RuntimeBindingWorkspaceController::DrawLiveReferencesWindow(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(
             TEXT::LocalizeWindow("editor.ui.live.references.f80382", "RuntimeBinding/LiveReferences").c_str())) {
         ImGui::End();
@@ -202,9 +199,6 @@ void RuntimeBindingWorkspaceController::DrawLiveReferencesWindow(DocumentSceneBa
         ImGui::EndTabBar();
     }
     ImGui::End();
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

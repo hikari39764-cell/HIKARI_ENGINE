@@ -1,7 +1,5 @@
 #pragma once
 
-#if defined(HIKARI_WITH_EDITOR)
-
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -73,5 +71,3 @@ bool DragNumbers(const char* label, float* values, int count, const NumberRange&
                  const float* defaults = nullptr);
 
 } // namespace HIKARI::EDITOR
-
-#endif

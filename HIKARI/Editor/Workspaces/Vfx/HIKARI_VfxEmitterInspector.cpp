@@ -15,13 +15,10 @@
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 // 形状プリセット一覧の簡易シルエット。3D プレビューの代わりに、
 // どの形か一目で分かる図を描く。
 void DrawShapeSwatch(ImDrawList& list, const ImVec2& center, float size, VFX::VfxRenderShapeType shape, ImU32 color) {
@@ -111,10 +108,8 @@ VfxEmitterInspectorPage DrawPageNavigation(VfxEmitterInspectorPage current, bool
     ImGui::Separator();
     return requested;
 }
-#endif
 } // namespace
 
-#if defined(HIKARI_WITH_EDITOR)
 // 調整レイヤーは下位の兄弟とその子孫にだけ効くので、幾何や生成の頁を持たない。
 void VfxWorkspaceController::DrawAdjustmentLayerInspector(AssetDatabase& database, const VFX::VfxEmitterData& emitter) {
     VfxInspectorPropertyEditor edit(*this, database, emitter.id, statusMessage_);
@@ -525,10 +520,7 @@ void VfxWorkspaceController::DrawEmitterMotionPage(AssetDatabase& database, cons
     }
 }
 
-#endif
-
 void VfxWorkspaceController::DrawEmitterInspector(AssetDatabase& database, const VFX::VfxEmitterData& source) {
-#if defined(HIKARI_WITH_EDITOR)
     const VFX::VfxEmitterData emitter = source;
     if (emitterInspectorEmitterId_ != emitter.id) {
         emitterInspectorEmitterId_ = emitter.id;
@@ -569,9 +561,5 @@ void VfxWorkspaceController::DrawEmitterInspector(AssetDatabase& database, const
         break;
     case VfxEmitterInspectorPage::Bindings: DrawEmitterBindingsInspector(emitter); break;
     }
-#else
-    (void)database;
-    (void)source;
-#endif
 }
 } // namespace HIKARI::EDITOR

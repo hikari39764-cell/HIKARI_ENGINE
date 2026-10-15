@@ -4,9 +4,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <cmath>
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 std::vector<VfxPathKnot> ReadVfxBezierPath(const VFX::VfxEmitterData& layer, float span) {
@@ -97,7 +95,6 @@ bool VfxWorkspaceController::SetLayerPathControl(std::string_view layerId, float
     return SetLayerBezierPath(layerId, knots, message, mergeGroup);
 }
 void VfxWorkspaceController::DrawLayerPath(const VFX::VfxEmitterData& layer) {
-#if defined(HIKARI_WITH_EDITOR)
     if (layer.kind != VFX::VfxLayerKind::Shape && layer.kind != VFX::VfxLayerKind::Group)
         return;
     if (!ImGui::TreeNode(VfxUiText("Bezier motion path").c_str()))
@@ -178,8 +175,5 @@ void VfxWorkspaceController::DrawLayerPath(const VFX::VfxEmitterData& layer) {
             SealPropertyEdit();
     }
     ImGui::TreePop();
-#else
-    (void)layer;
-#endif
 }
 } // namespace HIKARI::EDITOR

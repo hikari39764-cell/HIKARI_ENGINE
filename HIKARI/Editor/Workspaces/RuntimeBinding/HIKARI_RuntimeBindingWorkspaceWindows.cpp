@@ -10,15 +10,12 @@
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void RuntimeBindingWorkspaceController::DrawDockSpace(bool resetDefaultDockLayout) const {
-#if defined(HIKARI_WITH_EDITOR)
     ImGuiIO& io = ImGui::GetIO();
     if ((io.ConfigFlags & ImGuiConfigFlags_DockingEnable) == 0) {
         return;
@@ -46,15 +43,11 @@ void RuntimeBindingWorkspaceController::DrawDockSpace(bool resetDefaultDockLayou
         ImGui::DockBuilderFinish(dockspaceId);
     }
     HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport);
-#else
-    (void)resetDefaultDockLayout;
-#endif
 }
 
 RuntimeBindingWorkspaceResult RuntimeBindingWorkspaceController::Draw(DocumentSceneBase& scene,
                                                                       EditorCommandRouter& commandRouter) {
     RuntimeBindingWorkspaceResult result{};
-#if defined(HIKARI_WITH_EDITOR)
     std::string openMessage{};
     if (!EnsureDocumentOpen(scene, openMessage)) {
         statusMessage_ = openMessage;
@@ -64,10 +57,6 @@ RuntimeBindingWorkspaceResult RuntimeBindingWorkspaceController::Draw(DocumentSc
     DrawCatalogWindow(scene);
     DrawLiveReferencesWindow(scene);
     DrawInspectorWindow(scene);
-#else
-    (void)scene;
-    (void)commandRouter;
-#endif
     result.statusMessage = statusMessage_;
     return result;
 }
@@ -75,7 +64,6 @@ RuntimeBindingWorkspaceResult RuntimeBindingWorkspaceController::Draw(DocumentSc
 void RuntimeBindingWorkspaceController::DrawToolbarWindow(DocumentSceneBase& scene,
                                                           RuntimeBindingWorkspaceResult& result,
                                                           EditorCommandRouter& commandRouter) {
-#if defined(HIKARI_WITH_EDITOR)
     (void)commandRouter;
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
     if (!ImGui::Begin(TEXT::LocalizeWindow("menu.workspace.runtimeBinding", "RuntimeBinding/Toolbar").c_str(), nullptr,
@@ -247,11 +235,6 @@ void RuntimeBindingWorkspaceController::DrawToolbarWindow(DocumentSceneBase& sce
         ImGui::EndPopup();
     }
     ImGui::End();
-#else
-    (void)scene;
-    (void)result;
-    (void)commandRouter;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

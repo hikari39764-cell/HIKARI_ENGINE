@@ -11,17 +11,14 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include <algorithm>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void ModelCollisionWorkspaceController::DrawPreviewWindow(DocumentSceneBase& scene, EditorWorkspaceHost& workspaceHost,
                                                           ModelCollisionWorkspaceResult& result,
                                                           EditorCommandRouter& commandRouter) {
-#if defined(HIKARI_WITH_EDITOR)
     constexpr ImGuiWindowFlags previewWindowFlags =
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse;
     if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.model.preview.5cdec1", "ModelCollision/Preview").c_str(), nullptr,
@@ -356,11 +353,6 @@ void ModelCollisionWorkspaceController::DrawPreviewWindow(DocumentSceneBase& sce
         ImGui::TextWrapped("%s", statusMessage_.c_str());
     }
     ImGui::End();
-#else
-    (void)scene;
-    (void)workspaceHost;
-    (void)result;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

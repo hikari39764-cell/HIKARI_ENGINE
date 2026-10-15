@@ -7,13 +7,10 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include <algorithm>
 #include <cmath>
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, float labelWidth, float duration) {
-#if defined(HIKARI_WITH_EDITOR)
     auto& state = timelineEdit_;
     const auto text = [](const char* key) { return TEXT::Localize(key); };
     if (IconToggleButton(EditorGlyph::Snap, "FrameSnap", state.snap, {26, 26}, text("ui.vfx.timeline.snap").c_str()))
@@ -261,11 +258,5 @@ void VfxWorkspaceController::DrawTimelineLayers(float originX, float width, floa
                                   ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), true))
             (void)MoveTimelineSelection(nudge);
     }
-#else
-    (void)originX;
-    (void)width;
-    (void)labelWidth;
-    (void)duration;
-#endif
 }
 } // namespace HIKARI::EDITOR

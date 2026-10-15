@@ -15,9 +15,7 @@
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 bool SceneCreationPanel::MatchesSearch(std::string_view label, std::string_view search) {
@@ -27,7 +25,6 @@ bool SceneCreationPanel::MatchesSearch(std::string_view label, std::string_view 
 void SceneCreationPanel::DrawCreationMenu(DocumentSceneBase& scene, EditorContext& context,
                                           const SelectionSyncService& selectionSync,
                                           SceneObjectCommandService& commands) {
-#if defined(HIKARI_WITH_EDITOR)
     ImGui::SetNextItemWidth(280.0f);
     ImGui::InputTextWithHint("##CreateSearch", TEXT::Localize("ui.sceneCreation.searchHint").c_str(), searchBuffer_,
                              sizeof(searchBuffer_));
@@ -185,17 +182,10 @@ void SceneCreationPanel::DrawCreationMenu(DocumentSceneBase& scene, EditorContex
         }
         ImGui::EndMenu();
     }
-#else
-    (void)scene;
-    (void)context;
-    (void)selectionSync;
-    (void)commands;
-#endif
 }
 
 void SceneCreationPanel::DrawDeferredDialogs(DocumentSceneBase& scene, EditorContext& context,
                                              const SelectionSyncService& selectionSync) {
-#if defined(HIKARI_WITH_EDITOR)
     CreatePrimitiveRequest primitiveRequest{};
     if (!primitiveCreationDialog_.Draw(primitiveRequest)) {
         return;
@@ -208,11 +198,6 @@ void SceneCreationPanel::DrawDeferredDialogs(DocumentSceneBase& scene, EditorCon
                               ComputePrimitivePlacementInView(scene.GetCamera(), primitiveRequest.mesh);
                           return CreatePrimitiveObject(scene, primitiveRequest);
                       });
-#else
-    (void)scene;
-    (void)context;
-    (void)selectionSync;
-#endif
 }
 
 void SceneCreationPanel::CreateWithHistory(DocumentSceneBase& scene, EditorContext& context,

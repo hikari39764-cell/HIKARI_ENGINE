@@ -3,9 +3,7 @@
 
 #include <string>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 // AI 消費者のための現在状態の要約。どの資産を開いていて、どの層があり、
@@ -67,7 +65,6 @@ nlohmann::json VfxWorkspaceController::DescribeDocumentState() const {
 }
 
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 const char* SeverityLabel(VFX::VfxDiagnosticSeverity severity) noexcept {
     switch (severity) {
     case VFX::VfxDiagnosticSeverity::Info: return TEXT::Localize("log.info").c_str();
@@ -85,11 +82,9 @@ ImVec4 SeverityColor(VFX::VfxDiagnosticSeverity severity) noexcept {
     }
     return {1.0f, 1.0f, 1.0f, 1.0f};
 }
-#endif
 } // namespace
 
 void VfxWorkspaceController::DrawDiagnostics() {
-#if defined(HIKARI_WITH_EDITOR)
     if (preview_.diagnostics_.empty()) {
         ImGui::TextColored(
             {0.42f, 0.88f, 0.55f, 1.0f},
@@ -130,7 +125,6 @@ void VfxWorkspaceController::DrawDiagnostics() {
         ImGui::PopID();
     }
     ImGui::EndTable();
-#endif
 }
 
 } // namespace HIKARI::EDITOR

@@ -1,7 +1,5 @@
 #include "Editor/Workspaces/LookDev/HIKARI_LookDevWorkspace.h"
 
-#if defined(HIKARI_WITH_EDITOR)
-
 #include <cmath>
 #include <string>
 
@@ -104,13 +102,3 @@ void LookDevWorkspace::HandlePlacementKeys(bool viewportFocused) {
 }
 
 } // namespace HIKARI::EDITOR
-
-#else
-
-namespace HIKARI::EDITOR {
-void LookDevWorkspace::DrawDockSpace(bool) {}
-void LookDevWorkspace::DrawPalette() {}
-void LookDevWorkspace::HandlePlacementKeys(bool) {}
-} // namespace HIKARI::EDITOR
-
-#endif

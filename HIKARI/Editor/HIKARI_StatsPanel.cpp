@@ -14,16 +14,13 @@
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Scene/HIKARI_World.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 #include "Scene/HIKARI_GameObject.h"
 
 namespace HIKARI {
 
 void StatsPanel::DrawContents(const char* sceneName, const World& world, const ModelManager& modelManager,
                               const EditorSelection& selection, const Camera3D& camera) const {
-#if defined(HIKARI_WITH_EDITOR)
     if (ImGui::TreeNodeEx(TEXT::LocalizeWindow("menu.scene", "Scene").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Text(TEXT::Localize("editor.ui.scene.s.3fdc78").c_str(), sceneName ? sceneName : "<none>");
         ImGui::Text(TEXT::Localize("editor.ui.world.objects.zu.b9705a").c_str(), world.GetObjects().size());
@@ -157,13 +154,6 @@ void StatsPanel::DrawContents(const char* sceneName, const World& world, const M
                     meshStats.localLightClusterOverflowCount);
         ImGui::TreePop();
     }
-#else
-    (void)sceneName;
-    (void)world;
-    (void)modelManager;
-    (void)selection;
-    (void)camera;
-#endif
 }
 
 } // namespace HIKARI

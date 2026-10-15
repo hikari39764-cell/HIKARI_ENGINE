@@ -17,9 +17,7 @@
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
@@ -28,7 +26,6 @@ using namespace EDITOR::RESOURCE_WORKSPACE;
 void ResourceWorkspacePanel::DrawContents(AssetDatabase& assetDatabase, AssetRegistry& assetRegistry,
                                           const SceneDocument& sceneDocument, EditorSelection& selection,
                                           const ResourceWorkspaceContext& context) const {
-#if defined(HIKARI_WITH_EDITOR)
     static const auto timer = CPU_PROFILE::RegisterDynamicPass("Editor.ResourceWorkspace");
     const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
     usageCache_.Update(sceneDocument, context.documentRevision, assetDatabase, context.editRevision);
@@ -237,13 +234,6 @@ void ResourceWorkspacePanel::DrawContents(AssetDatabase& assetDatabase, AssetReg
             DrawPreviewAndImportLog(assetDatabase, selection);
         ImGui::EndChild();
     }
-#else
-    (void)assetDatabase;
-    (void)assetRegistry;
-    (void)sceneDocument;
-    (void)selection;
-    (void)context;
-#endif
 }
 
 std::optional<AssetWorkspaceActivation> ResourceWorkspacePanel::ConsumeActivatedAsset() const {

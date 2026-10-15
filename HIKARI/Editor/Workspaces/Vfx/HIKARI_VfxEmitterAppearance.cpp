@@ -9,13 +9,10 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxParticleMaterialField.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 void VfxWorkspaceController::DrawEmitterAppearance(AssetDatabase& database, const VFX::VfxEmitterData& emitter) {
-#if defined(HIKARI_WITH_EDITOR)
     ImGui::SeparatorText(VfxUiText("Color").c_str());
     VfxInspectorPropertyEditor colorEditor(*this, database, emitter.color.id, statusMessage_);
     colorEditor.AnimatedColor(VfxUiText("Color over Life").c_str(), "value", emitter.color.value);
@@ -120,9 +117,5 @@ void VfxWorkspaceController::DrawEmitterAppearance(AssetDatabase& database, cons
         renderCommonEditor.Bool(VfxUiText("Random Start").c_str(), "flipbookRandomStart",
                                 emitter.renderCommon.flipbookRandomStart);
     }
-#else
-    (void)database;
-    (void)emitter;
-#endif
 }
 } // namespace HIKARI::EDITOR

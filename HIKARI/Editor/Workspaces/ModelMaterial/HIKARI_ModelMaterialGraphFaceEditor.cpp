@@ -6,15 +6,12 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 bool ModelMaterialWorkspaceController::DrawFaceRampNodeControl(DocumentSceneBase& scene, MaterialAssetData& source,
                                                                MaterialGraphData& graph, float width) {
-#if defined(HIKARI_WITH_EDITOR)
     MaterialGraphResourceData* resource = FindMaterialGraphResource(graph, "resource.diffuseRamp");
     if (resource == nullptr) {
         ImGui::TextDisabled(TEXT::Localize("editor.ui.diffuse.ramp.missing.cf5301").c_str());
@@ -49,13 +46,6 @@ bool ModelMaterialWorkspaceController::DrawFaceRampNodeControl(DocumentSceneBase
         }
     }
     return capturesPointer;
-#else
-    (void)scene;
-    (void)source;
-    (void)graph;
-    (void)width;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

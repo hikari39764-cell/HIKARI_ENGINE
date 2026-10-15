@@ -38,7 +38,6 @@ void CollectSubtreeIds(const VFX::VfxAssetData& asset, std::string_view rootId,
 } // namespace
 
 void VfxPreviewSession::AcknowledgePreviewRenderInput() {
-#if defined(HIKARI_WITH_EDITOR)
     if (activePreviewViewId_.value == 0u) {
         return;
     }
@@ -47,7 +46,6 @@ void VfxPreviewSession::AcknowledgePreviewRenderInput() {
     if (output.ready) {
         (void)previewRenderMailbox_.Acknowledge(output.sceneRevision);
     }
-#endif
 }
 std::vector<VFX::VfxParameterOverride> VfxPreviewSession::BuildPreviewParameters() const {
     std::vector<VFX::VfxParameterOverride> parameters{};

@@ -8,7 +8,6 @@
 namespace HIKARI {
 
 bool DocumentSceneEditorController::SaveRenderQualityProfile(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     std::string errorMessage{};
     if (!RENDER3D::SaveRenderQualityProfile(scene.GetAssetDatabase().GetProjectRoot(),
                                             RENDER3D::GetRenderQualitySettings(), &errorMessage)) {
@@ -18,15 +17,10 @@ bool DocumentSceneEditorController::SaveRenderQualityProfile(DocumentSceneBase& 
 
     renderQualitySavePending_ = false;
     return true;
-#else
-    (void)scene;
-    return false;
-#endif
 }
 
 void DocumentSceneEditorController::ToggleGamePreview(DocumentSceneBase& scene,
                                                       EDITOR::EditorPlaySession& playSession) {
-#if defined(HIKARI_WITH_EDITOR)
     if (playSession.IsRunning() || playSession.GetState() == EDITOR::EditorPlayState::Starting) {
         playSession.RequestStop();
         viewportDropMessage_ = playSession.GetStatusMessage();
@@ -38,15 +32,10 @@ void DocumentSceneEditorController::ToggleGamePreview(DocumentSceneBase& scene,
     }
     playSession.RequestEmbeddedStart();
     viewportDropMessage_ = playSession.GetStatusMessage();
-#else
-    (void)scene;
-    (void)playSession;
-#endif
 }
 
 void DocumentSceneEditorController::LaunchWindowedGamePreview(DocumentSceneBase& scene,
                                                               EDITOR::EditorPlaySession& playSession) {
-#if defined(HIKARI_WITH_EDITOR)
     if (playSession.IsRunning() || playSession.GetState() == EDITOR::EditorPlayState::Starting) {
         viewportDropMessage_ = "Stop the active Play session first.";
         return;
@@ -56,14 +45,9 @@ void DocumentSceneEditorController::LaunchWindowedGamePreview(DocumentSceneBase&
     }
     playSession.RequestWindowedStart();
     viewportDropMessage_ = playSession.GetStatusMessage();
-#else
-    (void)scene;
-    (void)playSession;
-#endif
 }
 
 bool DocumentSceneEditorController::PrepareGamePreview(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     CinematicsWorkspace().PrepareForRuntimePlay(scene);
     const AssetGuid& sceneGuid = scene.GetCurrentSceneAssetGuid();
     if (!sceneGuid.IsValid()) {
@@ -82,10 +66,6 @@ bool DocumentSceneEditorController::PrepareGamePreview(DocumentSceneBase& scene)
         return false;
     }
     return true;
-#else
-    (void)scene;
-    return false;
-#endif
 }
 
 } // namespace HIKARI

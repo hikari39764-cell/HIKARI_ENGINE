@@ -9,9 +9,7 @@
 #include "Scene/HIKARI_World.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -49,7 +47,6 @@ AnimationStateMachineWorkspaceController::ResolveRuntimeDebugSnapshot(DocumentSc
 }
 
 void AnimationStateMachineWorkspaceController::DrawRuntimeDebug(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     ImGui::SeparatorText(TEXT::Localize("editor.ui.live.runtime.90b49b").c_str());
     if (!document_.GetAssetGuid().IsValid()) {
         ImGui::TextDisabled(
@@ -144,9 +141,6 @@ void AnimationStateMachineWorkspaceController::DrawRuntimeDebug(DocumentSceneBas
     if (!snapshot->lastError.empty()) {
         ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.35f, 1.0f), "%s", snapshot->lastError.c_str());
     }
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

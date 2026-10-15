@@ -9,16 +9,13 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialInstanceResolver.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void ModelMaterialWorkspaceController::DrawMaterialParameterControls(MaterialAssetData& source,
                                                                      const MaterialGraphData& graph,
                                                                      const MaterialAssetData* parent) {
-#if defined(HIKARI_WITH_EDITOR)
     ImGui::PushID("MaterialParameterControls");
     const auto effectiveValue = [&](const MaterialGraphParameterData& parameter) {
         MaterialValueData value = parameter.defaultValue;
@@ -115,16 +112,10 @@ void ModelMaterialWorkspaceController::DrawMaterialParameterControls(MaterialAss
         }
     }
     ImGui::PopID();
-#else
-    (void)source;
-    (void)graph;
-    (void)parent;
-#endif
 }
 
 void ModelMaterialWorkspaceController::DrawOutlineThicknessPresets(MaterialAssetData& source,
                                                                    MaterialGraphData& graph) {
-#if defined(HIKARI_WITH_EDITOR)
     MaterialGraphParameterData* outlineThickness = FindMaterialGraphParameter(graph, "parameter.outlineThickness");
     if (outlineThickness == nullptr) {
         return;
@@ -147,10 +138,6 @@ void ModelMaterialWorkspaceController::DrawOutlineThicknessPresets(MaterialAsset
             TEXT::Localize("editor.ui.outline.thickness.is.measured.in.screen.pixels.and.clamped.to.0..2901c8")
                 .c_str());
     }
-#else
-    (void)source;
-    (void)graph;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

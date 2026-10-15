@@ -10,14 +10,11 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void ModelCollisionWorkspaceController::DrawAutoGenerateWindow() {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.auto.generate.0f86c2", "ModelCollision/Generate").c_str())) {
         ImGui::End();
         return;
@@ -171,7 +168,6 @@ void ModelCollisionWorkspaceController::DrawAutoGenerateWindow() {
         ImGui::TextWrapped("%s", statusMessage_.c_str());
     }
     ImGui::End();
-#endif
 }
 
 } // namespace HIKARI::EDITOR

@@ -1,7 +1,6 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include <algorithm>
 
 #include "Editor/Style/HIKARI_EditorFontManager.h"
@@ -298,5 +297,3 @@ void PropertyLabel(const char* label) {
 void EndPropertyTable() { ImGui::EndTable(); }
 
 } // namespace HIKARI::EDITOR
-
-#endif

@@ -8,14 +8,11 @@
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionPresentation.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void ModelCollisionWorkspaceController::DrawShapeDetailsWindow() {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.shape.details.095a79", "ModelCollision/Details").c_str())) {
         ImGui::End();
         return;
@@ -143,7 +140,6 @@ void ModelCollisionWorkspaceController::DrawShapeDetailsWindow() {
         detailsEditPending_ = false;
     }
     ImGui::End();
-#endif
 }
 
 } // namespace HIKARI::EDITOR

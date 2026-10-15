@@ -16,14 +16,11 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void VfxWorkspaceController::DrawPreviewWindow(EditorViewInstance& previewView, float deltaSeconds) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin((VfxUiText("Preview") + "###Vfx/Preview").c_str())) {
         RENDER3D::EDITORVIEW::ClearRequest(previewView.renderViewId);
         ImGui::End();
@@ -309,10 +306,6 @@ void VfxWorkspaceController::DrawPreviewWindow(EditorViewInstance& previewView, 
     ImGui::SetCursorScreenPos({origin.x, origin.y + canvasSize.y});
     ImGui::Dummy({1.0f, 1.0f});
     ImGui::End();
-#else
-    (void)previewView;
-    (void)deltaSeconds;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

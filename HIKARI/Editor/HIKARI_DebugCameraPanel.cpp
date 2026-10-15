@@ -1,15 +1,12 @@
 #include "HIKARI_DebugCameraPanel.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
-#if defined(HIKARI_WITH_EDITOR)
 #include "Editor/Widgets/HIKARI_NumberField.h"
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
 void DebugCameraPanel::Draw(DebugCameraController3D& debugCamera) const {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("ui.window.debugCamera", "Debug Camera").c_str())) {
         ImGui::End();
         return;
@@ -18,13 +15,9 @@ void DebugCameraPanel::Draw(DebugCameraController3D& debugCamera) const {
     DrawContents(debugCamera);
 
     ImGui::End();
-#else
-    (void)debugCamera;
-#endif
 }
 
 void DebugCameraPanel::DrawContents(DebugCameraController3D& debugCamera) const {
-#if defined(HIKARI_WITH_EDITOR)
     bool enabled = debugCamera.IsEnabled();
     if (ImGui::Checkbox(TEXT::Localize("ui.debugCamera.enabled").c_str(), &enabled)) {
         debugCamera.SetEnabled(enabled);
@@ -63,9 +56,6 @@ void DebugCameraPanel::DrawContents(DebugCameraController3D& debugCamera) const 
         const MATH::Vec3 resetPos{0.0f, 2.0f, -6.0f};
         debugCamera.Reset(resetPos, 0.0f, 0.0f);
     }
-#else
-    (void)debugCamera;
-#endif
 }
 
 } // namespace HIKARI

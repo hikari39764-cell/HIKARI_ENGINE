@@ -5,9 +5,7 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include <algorithm>
 #include <cmath>
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 bool VfxWorkspaceController::SetLayerParameterKey(std::string_view layerId, std::string_view targetId,
@@ -75,7 +73,6 @@ bool VfxWorkspaceController::RemoveLayerParameterTrack(std::string_view layerId,
 }
 bool VfxWorkspaceController::DrawLayerParameter(const VFX::VfxEmitterData& layer, std::string_view targetId,
                                                 std::string_view propertyId) {
-#if defined(HIKARI_WITH_EDITOR)
     const auto parameters = VFX::GetVfxAnimatableParameters(layer);
     const auto p = std::find_if(parameters.begin(), parameters.end(),
                                 [&](const auto& p) { return p.targetId == targetId && p.propertyId == propertyId; });
@@ -144,11 +141,5 @@ bool VfxWorkspaceController::DrawLayerParameter(const VFX::VfxEmitterData& layer
         ImGui::TextDisabled("%s", TEXT::Localize("ui.vfx.timeline.compositionTime").c_str());
     ImGui::PopID();
     return true;
-#else
-    (void)layer;
-    (void)targetId;
-    (void)propertyId;
-    return false;
-#endif
 }
 } // namespace HIKARI::EDITOR

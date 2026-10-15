@@ -8,9 +8,7 @@
 
 #include "Input/Runtime/HIKARI_InputService.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 namespace {
@@ -82,7 +80,6 @@ void InputActionMapEditor::BeginCompositeCapture(INPUT::InputService& inputServi
 }
 
 void InputActionMapEditor::DrawCompositeCapture(INPUT::InputService& inputService) {
-#if defined(HIKARI_WITH_EDITOR)
     if (rebindOwner_ == RebindOwner::Composite) {
         const INPUT::InputRebindStatus status = inputService.GetRebindOperation().GetStatus();
         if (status == INPUT::InputRebindStatus::Captured) {
@@ -141,13 +138,9 @@ void InputActionMapEditor::DrawCompositeCapture(INPUT::InputService& inputServic
     } else if (!compositeCaptureMessage_.empty()) {
         ImGui::TextWrapped("%s", compositeCaptureMessage_.c_str());
     }
-#else
-    (void)inputService;
-#endif
 }
 
 void InputActionMapEditor::DrawCompositePopup(INPUT::InputService& inputService) {
-#if defined(HIKARI_WITH_EDITOR)
     INPUT::InputActionMap& map = inputService.EditActionMap();
     if (compositePopupRequested_) {
         ImGui::OpenPopup((TEXT::Localize("ui.input.compositeTitle") + "###Axis2DCompositeBinding").c_str());
@@ -292,9 +285,6 @@ void InputActionMapEditor::DrawCompositePopup(INPUT::InputService& inputService)
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
-#else
-    (void)inputService;
-#endif
 }
 
 } // namespace HIKARI

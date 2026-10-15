@@ -11,9 +11,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetImportState.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -75,7 +73,6 @@ PickerEntry BuildEntry(const AssetRecord& record) {
 
 bool DrawAssetPickerPopup(const char* popupId, const AssetDatabase& assetDatabase, AssetType requiredType,
                           std::string& inOutGuid, AssetPickerPopupState& state) {
-#if defined(HIKARI_WITH_EDITOR)
     bool changed = false;
     if (!ImGui::BeginPopup(popupId)) {
         return false;
@@ -178,14 +175,6 @@ bool DrawAssetPickerPopup(const char* popupId, const AssetDatabase& assetDatabas
 
     ImGui::EndPopup();
     return changed;
-#else
-    (void)popupId;
-    (void)assetDatabase;
-    (void)requiredType;
-    (void)inOutGuid;
-    (void)state;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

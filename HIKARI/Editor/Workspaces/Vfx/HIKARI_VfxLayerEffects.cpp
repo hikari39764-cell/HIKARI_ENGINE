@@ -4,9 +4,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <cctype>
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -205,7 +203,6 @@ bool VfxWorkspaceController::SetLayerEffectColorStop(std::string_view layerId, s
 }
 
 void VfxWorkspaceController::DrawLayerEffects(AssetDatabase& database, const VFX::VfxEmitterData& layer) {
-#if defined(HIKARI_WITH_EDITOR)
     const bool adjustment = layer.kind == VFX::VfxLayerKind::Adjustment;
     ImGui::SeparatorText(TEXT::Localize("ui.vfx.effects").c_str());
     if (VFX::IsCustomVfxMaterial(layer.renderCommon.materialMode)) {
@@ -421,9 +418,5 @@ void VfxWorkspaceController::DrawLayerEffects(AssetDatabase& database, const VFX
         }
         ImGui::PopID();
     }
-#else
-    (void)database;
-    (void)layer;
-#endif
 }
 } // namespace HIKARI::EDITOR

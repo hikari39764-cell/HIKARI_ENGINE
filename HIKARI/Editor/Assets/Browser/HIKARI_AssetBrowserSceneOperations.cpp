@@ -35,9 +35,7 @@
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
 
@@ -179,7 +177,7 @@ bool RenameSceneAsset(AssetDatabase& assetDatabase, const AssetRecord& record, s
     const std::filesystem::path desiredSource =
         (oldSource.parent_path() / (cleanName + ".scene.json")).lexically_normal();
 
-    // 髯ｷ・ｷ隰疲ｻ・ｹ驛｢譎｢・ｽ・ｪ驛｢譎樔ｺらｹ晢ｽｻ驛｢譎｢・｣・ｰ驍ｵ・ｺ繝ｻ・ｧ驍ｵ・ｺ繝ｻ・ｯ驛｢譎・ｽｼ譁撰ｼ憺Δ・ｧ繝ｻ・､驛｢譎｢・ｽ・ｫ驛｢・ｧ髮区ｫ∝樺驍ｵ・ｺ闕ｵ譎｢・ｼ繝ｻ・ｸ・ｺ陞｢・ｹ・つ遶擾ｽｬ繝ｻ・｡繝ｻ・ｨ鬩穂ｼ夲ｽｽ・ｺ髯ｷ・ｷ鬮ｦ・ｪ隨・ｽ｡驍ｵ・ｺ陞滂ｽｧ鬩溽｢托ｽｭ蟶ｶ・ｺ蛟ｪ繝ｻ驛｢・ｧ闕ｵ謨鳴郢晢ｽｻ
+    // 同じファイル名になる場合は移動せず、シーン名と meta だけ更新する。
     if (IsSameFilePath(oldSource, desiredSource)) {
         if (!UpdateSceneJsonSceneName(oldSource, cleanName, outError)) {
             LogSceneAssetWarn("rename failed: " + outError);
@@ -209,7 +207,7 @@ bool RenameSceneAsset(AssetDatabase& assetDatabase, const AssetRecord& record, s
 
     bool movedScene = false;
     bool movedMeta = false;
-    // 鬩募∞・ｽ・ｻ髯ｷ閧ｴ蝮ｩ・つ雎郁ｲｻ・ｽ・ｸ繝ｻ・ｭ驍ｵ・ｺ繝ｻ・ｧ髯樊ｻゑｽｽ・ｱ髫ｰ・ｨ陷会ｽｱ繝ｻ・ｰ驍ｵ・ｺ雋・ｽｷ繝ｻ・ｰ繝ｻ・ｴ髯ｷ・ｷ陋ｹ・ｻ郢晢ｽｻ驍ｵ・ｲ遶乗剌・ｺ繝ｻ螯吶・・ｽ驍ｵ・ｺ繝ｻ・ｪ鬩包ｽｽ郢晢ｽｻ陝ｲ繝ｻ・ｸ・ｺ繝ｻ・ｧ髯ｷ蛹ｻ繝ｻ郢晢ｽｻ鬯ｩ貅ｷ隱ｿ繝ｻ・ｽ繝ｻ・ｮ驍ｵ・ｺ繝ｻ・ｸ髫ｰ魃会ｽｽ・ｻ驍ｵ・ｺ陷ｷ・ｶ・つ郢晢ｽｻ
+    // 途中で失敗したら移動済みのファイルを元へ戻す。
     if (!MoveFileSafe(oldSource, newSource, outError)) {
         outError = "Scene rename failed: " + outError;
         LogSceneAssetWarn("rename failed: " + outError);
@@ -321,9 +319,7 @@ bool DeleteSceneAssetToTrash(AssetDatabase& assetDatabase, const AssetRecord& re
         }
     }
 
-    // Startup Scene
-    // 驛｢・ｧ髮区ｨ抵ｽ朱ｬｮ・ｯ繝ｻ・､驍ｵ・ｺ陷会ｽｱ隨ｳ繝ｻ謦ｻ繝ｻ・ｴ髯ｷ・ｷ陋ｹ・ｻ郢晢ｽｻ驍ｵ・ｲ繝ｻ・｣rojectSettings
-    // 驍ｵ・ｺ繝ｻ・ｮ髯ｷ・ｿ郢ｧ蟲ｨ繝ｻ驛｢・ｧ郢ｧ繝ｻ繝ｻ髫ｴ蠑ｱ・・ｫ頑･｢譽碑ｬ費ｽｶ隨倥・・ｸ・ｲ郢晢ｽｻ
+    // 起動シーンを削除した場合は ProjectSettings の参照も外す。
     ProjectSettingsService settings{};
     settings.Load(assetDatabase.GetProjectRoot());
     if (settings.GetSettings().startupSceneGuid == record.guid) {

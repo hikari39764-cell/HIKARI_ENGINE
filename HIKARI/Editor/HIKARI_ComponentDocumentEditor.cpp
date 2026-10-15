@@ -8,9 +8,7 @@
 
 #include <exception>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
@@ -19,10 +17,8 @@ bool ComponentDocumentEditor::DrawComponent(const ComponentRegistry& componentRe
                                             const InspectorContext& context) const {
     const ComponentTypeInfo* typeInfo = componentRegistry.Find(componentData.type);
     if (!typeInfo || !typeInfo->factory) {
-#if defined(HIKARI_WITH_EDITOR)
         ImGui::TextDisabled(TEXT::Localize("editor.ui.inspector.unavailable.for.component.type.s.463372").c_str(),
                             componentData.type.c_str());
-#endif
         return false;
     }
 
@@ -35,13 +31,11 @@ bool ComponentDocumentEditor::DrawComponent(const ComponentRegistry& componentRe
     try {
         std::string deserializeDiagnostic{};
         if (!temporaryComponent->TryDeserialize(componentData.properties, deserializeDiagnostic)) {
-#if defined(HIKARI_WITH_EDITOR)
             ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
                                TEXT::Localize("editor.ui.component.data.is.invalid.for.s.s.c5f564").c_str(),
                                componentData.type.c_str(),
                                deserializeDiagnostic.empty() ? "deserialization failed"
                                                              : deserializeDiagnostic.c_str());
-#endif
             return false;
         }
         nlohmann::json before;
@@ -58,30 +52,22 @@ bool ComponentDocumentEditor::DrawComponent(const ComponentRegistry& componentRe
         if (typeInfo->validateAuthoring) {
             const AuthoringCommandResult validation = typeInfo->validateAuthoring(*temporaryComponent, context);
             if (!validation.ok) {
-#if defined(HIKARI_WITH_EDITOR)
                 ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.2f, 1.0f),
                                    TEXT::Localize("editor.ui.component.edit.rejected.s.9c95ed").c_str(),
                                    validation.message.empty() ? "authoring reference is invalid"
                                                               : validation.message.c_str());
-#endif
                 return false;
             }
         }
     } catch (const std::exception& e) {
-#if defined(HIKARI_WITH_EDITOR)
         ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
                            TEXT::Localize("editor.ui.component.inspector.failed.for.s.s.da6386").c_str(),
                            componentData.type.c_str(), e.what());
-#else
-        (void)e;
-#endif
         return false;
     } catch (...) {
-#if defined(HIKARI_WITH_EDITOR)
         ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
                            TEXT::Localize("editor.ui.component.inspector.failed.for.s.235dc2").c_str(),
                            componentData.type.c_str());
-#endif
         return false;
     }
 

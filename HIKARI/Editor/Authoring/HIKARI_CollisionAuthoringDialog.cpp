@@ -3,9 +3,7 @@
 
 #include <algorithm>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -20,7 +18,6 @@ void CollisionAuthoringDialog::Open(SceneObjectId selectedObject) {
 }
 
 bool CollisionAuthoringDialog::Draw(CollisionAuthoringRequest& outRequest) {
-#if defined(HIKARI_WITH_EDITOR)
     if (openRequested_) {
         ImGui::OpenPopup(TEXT::LocalizeWindow("editor.ui.collision.setup.f1b571", "Collision Setup").c_str());
         openRequested_ = false;
@@ -77,10 +74,6 @@ bool CollisionAuthoringDialog::Draw(CollisionAuthoringRequest& outRequest) {
         ImGui::EndPopup();
     }
     return applied;
-#else
-    (void)outRequest;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

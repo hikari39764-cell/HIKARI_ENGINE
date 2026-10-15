@@ -13,14 +13,11 @@
 #include "Scene/HIKARI_SystemTypeRegistry.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
 
-#if defined(HIKARI_WITH_EDITOR)
 constexpr const char* kPopupId = "System Manager###HikariSceneSystemsManager";
 constexpr const char* kDiscardPopupId = "Discard Changes?###HikariSystemManagerDiscard";
 
@@ -61,7 +58,6 @@ const char* SourceLabel(const SceneSystemAuthoringRow& row) noexcept {
     }
     return "Scene";
 }
-#endif
 } // namespace
 
 void SceneSystemsManager::Open() { openRequested_ = true; }
@@ -70,7 +66,6 @@ SceneSystemsManagerResult SceneSystemsManager::Draw(DocumentSceneBase& scene,
                                                     const SystemAuthoringRegistry& authoringRegistry,
                                                     EditorToolHost& toolHost) {
     SceneSystemsManagerResult result{};
-#if defined(HIKARI_WITH_EDITOR)
     if (openRequested_) {
         ImGui::OpenPopup(kPopupId);
         openRequested_ = false;
@@ -254,11 +249,6 @@ SceneSystemsManagerResult SceneSystemsManager::Draw(DocumentSceneBase& scene,
     }
 
     ImGui::EndPopup();
-#else
-    (void)scene;
-    (void)authoringRegistry;
-    (void)toolHost;
-#endif
     return result;
 }
 

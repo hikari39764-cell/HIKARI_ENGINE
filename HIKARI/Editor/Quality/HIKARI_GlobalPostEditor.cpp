@@ -13,13 +13,10 @@
 #include "Scene/HIKARI_World.h"
 #include "Vfx/Parameters/HIKARI_VfxParameterValues.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 std::string BuiltinLabel(const POST::BuiltinPostContent& content) {
     return std::string(content.displayName) + TEXT::Localize("asset.content.engineSuffix");
@@ -213,10 +210,5 @@ void GlobalPostEditor::PublishDraft(POST::PostAssetStore& store) {
         publishedRevision_ = document_.Revision();
     }
 }
-#else
-bool GlobalPostEditor::DrawProfilePicker(std::string&, const AssetDatabase&, const char*) const { return false; }
-std::string ResolvePostProfileLabel(std::string_view id, const AssetDatabase&) { return std::string(id); }
-std::string GlobalPostEditor::DrawSelectedProfile(const std::string&, DocumentSceneBase&) { return {}; }
-#endif
 
 } // namespace HIKARI::EDITOR

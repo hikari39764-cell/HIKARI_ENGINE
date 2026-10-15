@@ -11,7 +11,6 @@
 #include "Editor/Widgets/HIKARI_TypedValueEditor.h"
 
 namespace HIKARI {
-#if defined(HIKARI_WITH_EDITOR)
 bool AssetInspectorPanel::ResolveSpriteInspectorShader(AssetRegistry& registry, const AssetGuid& guid) const {
     const auto* descriptor = registry.FindAs<ShaderAssetDescriptor>(AssetId{guid.value});
     const auto program = descriptor ? descriptor->program : nullptr;
@@ -166,5 +165,4 @@ void AssetInspectorPanel::DrawSpriteMaterialEditor(AssetDatabase& database, Asse
     if (!spriteMaterialStatus_.empty())
         ImGui::TextWrapped("%s", spriteMaterialStatus_.c_str());
 }
-#endif
 } // namespace HIKARI

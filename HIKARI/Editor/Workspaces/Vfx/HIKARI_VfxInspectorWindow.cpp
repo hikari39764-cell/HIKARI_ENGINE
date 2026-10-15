@@ -4,13 +4,10 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 void VfxWorkspaceController::DrawInspectorWindow(AssetDatabase& database) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin((VfxUiText("Layer Settings") + "###Vfx/Inspector").c_str())) {
         ImGui::End();
         return;
@@ -96,9 +93,6 @@ void VfxWorkspaceController::DrawInspectorWindow(AssetDatabase& database) {
         DrawEmitterInspector(database, *emitter);
     }
     ImGui::End();
-#else
-    (void)database;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

@@ -1,7 +1,5 @@
 #pragma once
 
-#if defined(HIKARI_WITH_EDITOR)
-
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -168,5 +166,3 @@ FieldEditResult DrawJsonFields(std::string_view labelPrefix, T& object, const Fi
 }
 
 } // namespace HIKARI::EDITOR
-
-#endif

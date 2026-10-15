@@ -13,7 +13,6 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Environment/HIKARI_CelestialModel.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "Editor/Documents/HIKARI_ValidatedAssetDocumentUi.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
@@ -21,7 +20,6 @@
 #include "Editor/Widgets/HIKARI_JsonFieldsEditor.h"
 #include "Editor/Widgets/HIKARI_NumberField.h"
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -78,7 +76,6 @@ void EnvironmentAssetEditor::PublishDrafts(DocumentSceneBase& scene) {
     }
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 constexpr uint64_t kProfileFieldMergeGroup = 0x454E56u;
 constexpr uint64_t kWeatherFieldMergeGroup = 0x575448u;
@@ -549,13 +546,5 @@ std::string EnvironmentAssetEditor::DrawWeather(const std::string& id, DocumentS
     }
     return copiedId;
 }
-#else
-bool DrawEnvironmentAssetPicker(AssetType, const AssetDatabase&, std::string&, const char*) { return false; }
-std::string EnvironmentAssetEditor::DrawProfile(const std::string&, DocumentSceneBase&) { return {}; }
-std::string EnvironmentAssetEditor::DrawLightingControls(const std::string&, DocumentSceneBase&) { return {}; }
-std::string EnvironmentAssetEditor::SetSunMode(const std::string&, SunMode, DocumentSceneBase&) { return {}; }
-bool DrawEnvironmentProfilePresets(const AssetDatabase&, std::string&) { return false; }
-std::string EnvironmentAssetEditor::DrawWeather(const std::string&, DocumentSceneBase&) { return {}; }
-#endif
 
 } // namespace HIKARI::EDITOR

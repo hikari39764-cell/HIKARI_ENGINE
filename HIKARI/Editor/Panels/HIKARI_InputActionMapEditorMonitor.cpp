@@ -4,14 +4,11 @@
 #include "Editor/Panels/HIKARI_InputActionMapEditorWidgets.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
 void InputActionMapEditor::DrawMonitorTab(INPUT::InputService& inputService) {
-#if defined(HIKARI_WITH_EDITOR)
     using namespace EDITOR::INPUT_WIDGETS;
     const INPUT::InputActionMap& map = inputService.GetActionMap();
     const std::vector<std::string> validation = map.Validate();
@@ -86,9 +83,6 @@ void InputActionMapEditor::DrawMonitorTab(INPUT::InputService& inputService) {
         }
         ImGui::EndTable();
     }
-#else
-    (void)inputService;
-#endif
 }
 
 } // namespace HIKARI

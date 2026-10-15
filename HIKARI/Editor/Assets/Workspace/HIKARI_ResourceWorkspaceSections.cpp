@@ -15,13 +15,10 @@
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 #include "Editor/Assets/Workspace/HIKARI_ResourceWorkspaceSections.h"
 
 namespace HIKARI::EDITOR::RESOURCE_WORKSPACE {
-#if defined(HIKARI_WITH_EDITOR)
 ResourceImportBatchMonitor MakeImportMonitor(int attempted, int succeeded, int failed, std::string label) {
     const double visibilitySeconds = failed > 0 ? 8.0 : (attempted > 0 ? 3.5 : 2.0);
     return ResourceImportBatchMonitor{attempted, succeeded,        failed,
@@ -187,6 +184,5 @@ void DrawPreviewAndImportLog(AssetDatabase& assetDatabase, EditorSelection& sele
         }
     }
 }
-#endif
 
 } // namespace HIKARI::EDITOR::RESOURCE_WORKSPACE

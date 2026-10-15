@@ -36,15 +36,12 @@
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
 
 namespace HIKARI::EDITOR::ASSET_BROWSER {
 
-#if defined(HIKARI_WITH_EDITOR)
 ImVec4 StateColor(AssetImportState state) {
     switch (state) {
     case AssetImportState::Imported: return ImVec4(0.62f, 0.86f, 0.66f, 1.0f);
@@ -69,7 +66,7 @@ std::string BuildGridCardLabel(std::string_view text, float maxWidth) {
         return std::string(text);
     }
 
-    // 驛｢・ｧ繝ｻ・ｰ驛｢譎｢・ｽ・ｪ驛｢譏ｴ繝ｻ郢晢ｽｩ驍ｵ・ｺ繝ｻ・ｧ驍ｵ・ｺ繝ｻ・ｯ髯ｷ・ｷ隶朱｡披・驍ｵ・ｺ繝ｻ・ｰ驍ｵ・ｺ闔会ｽ｣繝ｻ蟶晢ｿ･繝ｻ・ｭ驍ｵ・ｺ陷托ｽｰ繝ｻ・｡繝ｻ・ｨ鬩穂ｼ夲ｽｽ・ｺ驍ｵ・ｺ陷会ｽｱ・つ遶擾ｽｬ繝ｻ・ｩ繝ｻ・ｳ鬩肴得・ｽ・ｰ驍ｵ・ｺ繝ｻ・ｯ驛｢譏ｴ繝ｻ郢晢ｽｻ驛｢譎｢・ｽ・ｫ驛｢譏ｶ繝ｻ郢晢ｽ｣驛｢譎・諛翫・驍ｵ・ｺ繝ｻ・ｫ髣比ｼ夲ｽｽ・ｻ驍ｵ・ｺ陝ｶ蜻ｻ・ｽ迢暦ｽｸ・ｲ郢晢ｽｻ
+    // 幅に収まらない名前は UTF-8 の文字境界で切り、末尾に "..." を付ける。
     constexpr const char* kSuffix = "...";
     std::vector<size_t> utf8Ends{};
     for (size_t i = 0; i < text.size();) {
@@ -200,6 +197,5 @@ ImVec4 CookedBadgeColor(const char* label) {
     }
     return ImVec4(0.62f, 0.66f, 0.72f, 1.0f);
 }
-#endif
 
 } // namespace HIKARI::EDITOR::ASSET_BROWSER

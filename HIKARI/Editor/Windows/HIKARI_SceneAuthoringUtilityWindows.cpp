@@ -7,9 +7,7 @@
 #include "Input/Runtime/HIKARI_InputService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -18,7 +16,6 @@ SceneSystemsPanelResult SceneAuthoringUtilityWindows::Draw(DocumentSceneBase& sc
                                                            const SystemAuthoringRegistry& systemRegistry,
                                                            EditorToolHost& toolHost) {
     SceneSystemsPanelResult systemsResult{};
-#if defined(HIKARI_WITH_EDITOR)
     constexpr ImGuiWindowFlags utilityFlags = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse;
 
     if (windowState.showProjectFeatures) {
@@ -44,13 +41,6 @@ SceneSystemsPanelResult SceneAuthoringUtilityWindows::Draw(DocumentSceneBase& sc
         windowState.openInputEditorRequested = false;
     }
     inputActionMapPanel_.DrawModal(inputService);
-#else
-    (void)scene;
-    (void)windowState;
-    (void)inputService;
-    (void)systemRegistry;
-    (void)toolHost;
-#endif
     return systemsResult;
 }
 

@@ -8,9 +8,7 @@
 #include "Scene/Features/HIKARI_RuntimeFeatureCatalog.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 namespace {
@@ -85,7 +83,6 @@ void ProjectFeaturesPanel::NormalizeDraft(const RuntimeFeatureCatalog& catalog) 
 }
 
 void ProjectFeaturesPanel::Draw(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     const std::filesystem::path& projectRoot = scene.GetAssetDatabase().GetProjectRoot();
     EnsureLoaded(projectRoot);
 
@@ -247,9 +244,6 @@ void ProjectFeaturesPanel::Draw(DocumentSceneBase& scene) {
         ImGui::TextColored(statusIsError_ ? ImVec4(1.0f, 0.4f, 0.35f, 1.0f) : ImVec4(0.45f, 0.9f, 0.55f, 1.0f), "%s",
                            statusMessage_.c_str());
     }
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI

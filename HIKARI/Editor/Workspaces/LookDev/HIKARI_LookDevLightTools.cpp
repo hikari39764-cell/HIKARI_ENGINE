@@ -8,9 +8,7 @@
 #include "Editor/Workspaces/LookDev/HIKARI_LookDevPlacement.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -190,7 +188,6 @@ bool ApplyLookDevLightHandle(LookDevLightHandle handle, const LightSettings& bef
     return settings != before;
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 void DrawLookDevLightShape(ImDrawList& drawList, const Camera3D& camera, float x, float y, float width, float height,
                            const LightSettings& settings, const MATH::Mat4& world) {
     const LookDevView view{x, y, width, height};
@@ -259,9 +256,5 @@ void DrawLookDevLightShape(ImDrawList& drawList, const Camera3D& camera, float x
     }
     drawList.PopClipRect();
 }
-#else
-void DrawLookDevLightShape(ImDrawList&, const Camera3D&, float, float, float, float, const LightSettings&,
-                           const MATH::Mat4&) {}
-#endif
 
 } // namespace HIKARI::EDITOR

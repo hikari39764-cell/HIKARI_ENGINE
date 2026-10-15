@@ -10,14 +10,11 @@
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 const char* ParameterTypeName(ANIMATION::AnimationParameterType type) noexcept {
     switch (type) {
     case ANIMATION::AnimationParameterType::Float: return TEXT::Localize("editor.ui.float.64435f").c_str();
@@ -27,11 +24,9 @@ const char* ParameterTypeName(ANIMATION::AnimationParameterType type) noexcept {
     default: return TEXT::Localize("editor.ui.bool.daf760").c_str();
     }
 }
-#endif
 } // namespace
 
 void AnimationStateMachineWorkspaceController::DrawDockSpace(bool resetDefaultDockLayout) const {
-#if defined(HIKARI_WITH_EDITOR)
     ImGuiIO& io = ImGui::GetIO();
     if ((io.ConfigFlags & ImGuiConfigFlags_DockingEnable) == 0)
         return;
@@ -59,15 +54,11 @@ void AnimationStateMachineWorkspaceController::DrawDockSpace(bool resetDefaultDo
         ImGui::DockBuilderFinish(dockspaceId);
     }
     HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport);
-#else
-    (void)resetDefaultDockLayout;
-#endif
 }
 
 AnimationStateMachineWorkspaceResult AnimationStateMachineWorkspaceController::Draw(
     DocumentSceneBase& scene, EditorCommandRouter& commandRouter) {
     AnimationStateMachineWorkspaceResult result{};
-#if defined(HIKARI_WITH_EDITOR)
     if (!document_.IsOpen())
         document_.New();
     DrawGraphWindow(scene, result, commandRouter);
@@ -75,16 +66,11 @@ AnimationStateMachineWorkspaceResult AnimationStateMachineWorkspaceController::D
     DrawTransitionsWindow();
     DrawDetailsWindow(scene);
     DrawDiagnosticsWindow(scene);
-#else
-    (void)scene;
-    (void)commandRouter;
-#endif
     result.statusMessage = statusMessage_;
     return result;
 }
 
 void AnimationStateMachineWorkspaceController::DrawParametersWindow() {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.parameters.a975ee", "AnimationSM/Parameters").c_str())) {
         ImGui::End();
         return;
@@ -129,11 +115,9 @@ void AnimationStateMachineWorkspaceController::DrawParametersWindow() {
         ImGui::TextDisabled(TEXT::Localize("editor.ui.add.parameters.for.gameplay.facts.or.c.controls.12ccc1").c_str());
     }
     ImGui::End();
-#endif
 }
 
 void AnimationStateMachineWorkspaceController::DrawTransitionsWindow() {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.transitions.ab3926", "AnimationSM/Transitions").c_str())) {
         ImGui::End();
         return;
@@ -188,11 +172,9 @@ void AnimationStateMachineWorkspaceController::DrawTransitionsWindow() {
         }
     }
     ImGui::End();
-#endif
 }
 
 void AnimationStateMachineWorkspaceController::DrawDiagnosticsWindow(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("shell.diagnostics", "AnimationSM/Diagnostics").c_str())) {
         ImGui::End();
         return;
@@ -213,9 +195,6 @@ void AnimationStateMachineWorkspaceController::DrawDiagnosticsWindow(DocumentSce
     }
     DrawRuntimeDebug(scene);
     ImGui::End();
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

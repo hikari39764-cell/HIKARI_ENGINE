@@ -681,7 +681,7 @@ int DocumentSceneAssetBindings::RebuildMaterialOverrides(DocumentSceneBase& scen
     int rebuiltCount = 0;
     MaterialRuntimeBuilder materialBuilder{};
 
-    // Material override 邵ｺ・ｯ scene load / refresh 隴弱ｅ笆｡邵ｺ螟ｧ繝ｻ隶堤距・ｯ蟲ｨ笘・ｹｧ荵敖繝ｻ
+    // Material override は scene の読み込み・更新時だけ再構築する。
     scene.state_->runtime.world.ForEachObjectWith<ModelComponent>(
         [this, &rebuiltCount, &materialBuilder](GameObject& object, ModelComponent& modelComponent) {
             modelComponent.ClearRuntimeMaterialOverrides();

@@ -17,25 +17,17 @@
 #include <cmath>
 #include <json.hpp>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
 void DocumentSceneEditorController::SelectViewportObjects(DocumentSceneBase& scene,
                                                           const std::vector<SceneObjectId>& objectIds,
                                                           EditorObjectSelectionMode mode) {
-#if defined(HIKARI_WITH_EDITOR)
     context_.selection.SelectObjectIds(scene.GetWorld(), objectIds, mode);
     scene.SetSelectedGizmoObjectId(context_.selection.selectedObject != nullptr
                                        ? context_.selection.selectedObject->GetDocumentId()
                                        : SceneObjectId{});
-#else
-    (void)scene;
-    (void)objectIds;
-    (void)mode;
-#endif
 }
 
 void DocumentSceneEditorController::FocusSceneObjects(DocumentSceneBase& scene,
@@ -90,7 +82,6 @@ void DocumentSceneEditorController::FocusSceneObjects(DocumentSceneBase& scene,
 }
 
 void DocumentSceneEditorController::DrawViewportContextMenu(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::BeginPopup("SceneViewportContextMenu")) {
         return;
     }
@@ -104,13 +95,9 @@ void DocumentSceneEditorController::DrawViewportContextMenu(DocumentSceneBase& s
         sceneCreationPanel_.DrawCreationMenu(scene, context_, selectionSync_, sceneObjectCommands_);
     }
     ImGui::EndPopup();
-#else
-    (void)scene;
-#endif
 }
 
 void DocumentSceneEditorController::HandleGameViewportAssetDrop(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     EDITOR::DroppedAssetPayload payload{};
     if (!EDITOR::AcceptAssetDrop(scene.GetAssetDatabase(), payload) || !payload.record) {
         return;
@@ -198,9 +185,6 @@ void DocumentSceneEditorController::HandleGameViewportAssetDrop(DocumentSceneBas
         break;
     default: viewportDropMessage_ = "This asset type cannot be dropped into Game View yet"; break;
     }
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI

@@ -2,9 +2,7 @@
 
 #include <cstddef>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -24,7 +22,6 @@ enum class EditorStatusTone {
     Error,
 };
 
-#if defined(HIKARI_WITH_EDITOR)
 bool ActionButton(const char* label, const char* id, EditorButtonTone tone = EditorButtonTone::Neutral,
                   const ImVec2& size = ImVec2(0.0f, 0.0f), const char* tooltip = nullptr);
 
@@ -62,6 +59,5 @@ bool BeginPropertyTable(const char* id, float labelWidth = 152.0f);
 bool BeginMetricTable(const char* id, float labelWidth = 210.0f);
 void PropertyLabel(const char* label);
 void EndPropertyTable();
-#endif
 
 } // namespace HIKARI::EDITOR

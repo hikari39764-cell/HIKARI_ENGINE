@@ -11,9 +11,7 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -84,7 +82,6 @@ bool ModelMaterialWorkspaceController::BeginInlineRampEdit(DocumentSceneBase& sc
 }
 
 void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (inlineRampPopupRequested_) {
         ImGui::OpenPopup("Ramp Editor###ModelMaterial/InlineRampEditor");
         inlineRampPopupRequested_ = false;
@@ -234,9 +231,6 @@ void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(DocumentSceneBa
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

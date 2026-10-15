@@ -1,13 +1,10 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include <algorithm>
 #include <cmath>
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 bool VfxWorkspaceController::DrawLayerGizmo(const EditorViewportRect& rect) {
-#if defined(HIKARI_WITH_EDITOR)
     auto& state = timelineEdit_;
     const auto* layer = FindEmitter(selection_.emitterId);
     if (!layer || layer->kind == VFX::VfxLayerKind::Adjustment || !viewportHandle_.id.empty() ||
@@ -91,9 +88,5 @@ bool VfxWorkspaceController::DrawLayerGizmo(const EditorViewportRect& rect) {
         EndTimelineEdit(false);
     layerGizmoEditing_ = edit.manipulating;
     return edit.interacting;
-#else
-    (void)rect;
-    return false;
-#endif
 }
 } // namespace HIKARI::EDITOR

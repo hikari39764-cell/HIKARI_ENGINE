@@ -6,16 +6,13 @@
 #include "Input/Assets/HIKARI_InputActionMap.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
 void InputActionMapPanel::RequestOpen() noexcept { openRequested_ = true; }
 
 void InputActionMapPanel::DrawModal(INPUT::InputService& inputService) {
-#if defined(HIKARI_WITH_EDITOR)
     constexpr const char* kPopupId = "Project Input Editor###HikariProjectInputEditor";
     if (openRequested_) {
         ImGui::OpenPopup(kPopupId);
@@ -55,9 +52,6 @@ void InputActionMapPanel::DrawModal(INPUT::InputService& inputService) {
         }
         ImGui::EndPopup();
     }
-#else
-    (void)inputService;
-#endif
 }
 
 } // namespace HIKARI

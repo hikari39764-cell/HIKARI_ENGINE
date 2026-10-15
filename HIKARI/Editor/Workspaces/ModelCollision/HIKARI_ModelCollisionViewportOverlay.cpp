@@ -8,9 +8,7 @@
 
 #include "Assets/Models/HIKARI_ModelBounds.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -36,7 +34,6 @@ MATH::Vec3 ShapeDisplaySize(const ASSETS::COLLISION::ModelCollisionShape& shape)
     return shape.size;
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 bool ProjectPoint(const Camera3D& camera, const MATH::Vec3& point, const ImVec2& origin, const ImVec2& size,
                   ImVec2& out) {
     const MATH::Vec4 clip = camera.GetViewProj().TransformPoint({point.x, point.y, point.z, 1.0f});
@@ -97,7 +94,6 @@ void DrawCirclePlane(ImDrawList* drawList, const Camera3D& camera, const ImVec2&
         DrawLocalLine(drawList, camera, origin, size, matrix, first, second, color, thickness);
     }
 }
-#endif
 } // namespace
 
 TransformData BuildModelCollisionShapeTransform(const ASSETS::COLLISION::ModelCollisionShape& shape) noexcept {
@@ -112,7 +108,6 @@ void DrawModelCollisionShapeOverlay(ImDrawList* drawList, const Camera3D& camera
                                     float viewportWidth, float viewportHeight,
                                     const ASSETS::COLLISION::ModelCollisionShape& shape, bool selected, bool hovered,
                                     bool locked, float opacity) {
-#if defined(HIKARI_WITH_EDITOR)
     if (drawList == nullptr || viewportWidth <= 0.0f || viewportHeight <= 0.0f) {
         return;
     }
@@ -209,24 +204,11 @@ void DrawModelCollisionShapeOverlay(ImDrawList* drawList, const Camera3D& camera
     if (ProjectPoint(camera, shape.center, origin, size, center)) {
         drawList->AddCircleFilled(center, selected ? 4.0f : 2.5f, color);
     }
-#else
-    (void)drawList;
-    (void)camera;
-    (void)viewportX;
-    (void)viewportY;
-    (void)viewportWidth;
-    (void)viewportHeight;
-    (void)shape;
-    (void)selected;
-    (void)hovered;
-    (void)locked;
-#endif
 }
 
 void DrawModelCollisionBoundsOverlay(ImDrawList* drawList, const Camera3D& camera, float viewportX, float viewportY,
                                      float viewportWidth, float viewportHeight, const Bounds& bounds, uint32_t color,
                                      float thickness) {
-#if defined(HIKARI_WITH_EDITOR)
     if (drawList == nullptr || !BOUNDS::IsUsable(bounds)) {
         return;
     }
@@ -244,17 +226,6 @@ void DrawModelCollisionBoundsOverlay(ImDrawList* drawList, const Camera3D& camer
         DrawWorldLine(drawList, camera, origin, size, corners[static_cast<size_t>(edge[0])],
                       corners[static_cast<size_t>(edge[1])], color, thickness);
     }
-#else
-    (void)drawList;
-    (void)camera;
-    (void)viewportX;
-    (void)viewportY;
-    (void)viewportWidth;
-    (void)viewportHeight;
-    (void)bounds;
-    (void)color;
-    (void)thickness;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

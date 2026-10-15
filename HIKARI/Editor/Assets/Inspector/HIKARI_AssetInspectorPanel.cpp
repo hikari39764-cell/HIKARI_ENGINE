@@ -27,9 +27,7 @@
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"
 #include "Editor/Widgets/HIKARI_EditorTexturePreview.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
@@ -95,7 +93,6 @@ std::string ReadTextFile(const std::filesystem::path& path) {
     return oss.str();
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 bool DrawComboSetting(const char* label, nlohmann::json& settings, const char* key, const char* const* items,
                       int itemCount) {
     int current = FindItemIndex(items, itemCount, settings.value(key, ""));
@@ -128,7 +125,6 @@ void DrawPathRow(const char* label, const std::filesystem::path& path) {
     ImGui::Text("%s: %s", label, path.generic_string().c_str());
 }
 
-#endif
 } // namespace
 
 void AssetInspectorPanel::RefreshFilePreview(const AssetDatabase& database, const AssetRecord& record) const {
@@ -150,7 +146,6 @@ void AssetInspectorPanel::RefreshFilePreview(const AssetDatabase& database, cons
 
 void AssetInspectorPanel::Draw(AssetDatabase& assetDatabase, AssetRegistry& assetRegistry,
                                EditorSelection& selection) const {
-#if defined(HIKARI_WITH_EDITOR)
     if (!pendingRefreshRuntimeMaterialGuid_.empty()) {
         const AssetImportBatchStatus status = assetDatabase.GetQueuedImportStatus();
         if (!status.active && status.completed) {
@@ -539,11 +534,6 @@ void AssetInspectorPanel::Draw(AssetDatabase& assetDatabase, AssetRegistry& asse
         ImGui::TextDisabled("%s", TEXT::Localize("ui.assetInspector.importInProgress").c_str());
     if (!importSettingsStatus_.empty())
         ImGui::TextWrapped("%s", importSettingsStatus_.c_str());
-#else
-    (void)assetDatabase;
-    (void)assetRegistry;
-    (void)selection;
-#endif
 }
 
 bool AssetInspectorPanel::ConsumeApplyRuntimeMaterialRequest(AssetGuid& outGuid, PbrMaterialAssetData& outData) const {

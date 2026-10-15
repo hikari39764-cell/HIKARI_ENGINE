@@ -14,10 +14,8 @@
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "Editor/Widgets/HIKARI_JsonFieldsEditor.h"
 #include "imgui.h"
-#endif
 #include "Assets/Environment/HIKARI_EnvironmentFields.h"
 #include "Scene/Environment/HIKARI_EnvironmentRuntime.h"
 
@@ -78,12 +76,8 @@ void ModelMaterialWorkspaceController::SaveActiveCameraState() {
 }
 
 void ModelMaterialWorkspaceController::ClosePreviewRequest(EditorWorkspaceHost& workspaceHost) const {
-#if defined(HIKARI_WITH_EDITOR)
     RENDER3D::EDITORVIEW::ClearRequest(workspaceHost.GetModelMaterialPreviewView().renderViewId);
     RENDER3D::EDITORVIEW::ClearRequest(workspaceHost.GetModelMaterialCompareView().renderViewId);
-#else
-    (void)workspaceHost;
-#endif
 }
 
 void ModelMaterialWorkspaceController::FitPreviewCamera() {
@@ -244,7 +238,6 @@ void ModelMaterialWorkspaceController::RebuildPreviewEnvironment() {
 }
 
 void ModelMaterialWorkspaceController::DrawPreviewCameraControls() {
-#if defined(HIKARI_WITH_EDITOR)
     if (ImGui::DragFloat(TEXT::LocalizeWindow("ui.debugCamera.moveSpeed", "Move Speed").c_str(),
                          &previewCameraSpeedScale_, 0.05f, 0.05f, 10.0f)) {
         EditorDirectorCameraSettings& navigation = cameraController_.Settings();
@@ -263,11 +256,9 @@ void ModelMaterialWorkspaceController::DrawPreviewCameraControls() {
         cameraController_.SetFovYRad(previewCameraFovYRad_);
         ++cameraRevision_;
     }
-#endif
 }
 
 void ModelMaterialWorkspaceController::DrawPreviewEnvironmentControls() {
-#if defined(HIKARI_WITH_EDITOR)
     const bool studioInspect = previewEnvironmentMode_ == PreviewEnvironmentMode::StudioInspect;
     ImGui::Text(TEXT::Localize("editor.ui.mode.s.2fc24d").c_str(), EnvironmentModeLabel(previewEnvironmentMode_));
     ImGui::TextWrapped(previewEnvironmentMode_ == PreviewEnvironmentMode::RuntimeMatch
@@ -302,7 +293,6 @@ void ModelMaterialWorkspaceController::DrawPreviewEnvironmentControls() {
         RebuildPreviewEnvironment();
     }
     ImGui::EndDisabled();
-#endif
 }
 
 void ModelMaterialWorkspaceController::SubmitPreviewRequests(EditorWorkspaceHost& workspaceHost,

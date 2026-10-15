@@ -9,16 +9,13 @@
 #include "Runtime/Binding/Adapters/HIKARI_RuntimeMaterialValueAdapter.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 bool ModelMaterialWorkspaceController::DrawMaterialGraphVariableInlineControl(DocumentSceneBase& scene,
                                                                               MaterialAssetData& source,
                                                                               MaterialGraphNodeData& node) {
-#if defined(HIKARI_WITH_EDITOR)
     if (node.kind != MaterialNodeKind::Variable) {
         return false;
     }
@@ -48,12 +45,6 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphVariableInlineControl(Do
         }
     }
     return ImGui::IsItemHovered() || ImGui::IsItemActive();
-#else
-    (void)scene;
-    (void)source;
-    (void)node;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

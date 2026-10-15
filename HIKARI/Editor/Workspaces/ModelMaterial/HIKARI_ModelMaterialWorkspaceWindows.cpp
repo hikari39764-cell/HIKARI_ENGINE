@@ -7,15 +7,12 @@
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void ModelMaterialWorkspaceController::DrawDockSpace(bool resetDefaultDockLayout) const {
-#if defined(HIKARI_WITH_EDITOR)
     ImGuiIO& io = ImGui::GetIO();
     if ((io.ConfigFlags & ImGuiConfigFlags_DockingEnable) == 0) {
         return;
@@ -48,9 +45,6 @@ void ModelMaterialWorkspaceController::DrawDockSpace(bool resetDefaultDockLayout
         ImGui::DockBuilderFinish(dockspaceId);
     }
     HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport);
-#else
-    (void)resetDefaultDockLayout;
-#endif
 }
 
 ModelMaterialWorkspaceResult ModelMaterialWorkspaceController::Draw(DocumentSceneBase& scene,
@@ -59,7 +53,6 @@ ModelMaterialWorkspaceResult ModelMaterialWorkspaceController::Draw(DocumentScen
     std::lock_guard<std::recursive_mutex> lock(authoringDocument_.GetMutex());
     ModelMaterialWorkspaceResult result{};
     result.statusMessage = statusMessage_;
-#if defined(HIKARI_WITH_EDITOR)
     materialActiveItem_ = 0;
     RefreshAssetChoices(scene.GetAssetDatabase());
     if (authoringDocument_.HasMaterialGesture() && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
@@ -92,11 +85,6 @@ ModelMaterialWorkspaceResult ModelMaterialWorkspaceController::Draw(DocumentScen
     authoringDocument_.FinishMaterialItems(materialActiveItem_);
     (void)FlushMaterialPreview(scene, statusMessage_);
 
-#else
-    (void)scene;
-    (void)workspaceHost;
-    (void)commandRouter;
-#endif
     result.statusMessage = statusMessage_;
     return result;
 }
@@ -184,7 +172,6 @@ bool ModelMaterialWorkspaceController::ExecutePendingTransition(DocumentSceneBas
 }
 
 void ModelMaterialWorkspaceController::DrawPendingTransitionModal(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (pendingTransition_.kind != PendingTransitionKind::None &&
         (pendingTransitionPopupRequested_ ||
          !ImGui::IsPopupOpen("Unsaved Material Changes###ModelMaterial/PendingTransition"))) {
@@ -240,9 +227,6 @@ void ModelMaterialWorkspaceController::DrawPendingTransitionModal(DocumentSceneB
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

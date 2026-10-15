@@ -7,18 +7,15 @@
 #include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include <string>
 #include <type_traits>
 
 #include "Editor/Widgets/HIKARI_JsonFieldsEditor.h"
 #include "Editor/Widgets/HIKARI_NumberField.h"
-#endif
 
 namespace HIKARI::EDITOR::QUALITY_PANEL {
 
-#if defined(HIKARI_WITH_EDITOR)
 // 表の順に選択肢を並べる（表示は labels の名前）。include が偽の候補は出さず、enabled が偽の候補は選べない。
 template <class E, size_t N>
 bool DrawEnumCombo(const char* label, E& value, const TEXT::EnumName<E> (&labels)[N],
@@ -198,6 +195,5 @@ bool DrawRenderSettings() {
     }
     return beforeEdit != RENDER3D::GetRenderQualitySettings();
 }
-#endif
 
 } // namespace HIKARI::EDITOR::QUALITY_PANEL

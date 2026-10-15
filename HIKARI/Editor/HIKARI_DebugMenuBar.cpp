@@ -17,7 +17,6 @@
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -28,11 +27,9 @@
 #include <vector>
 
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 constexpr size_t kExportPathBufferSize = 1024;
 
@@ -526,11 +523,5 @@ void DebugMenuBar::Draw(DebugWindowState& windows, EDITOR::EditorToolHost& toolH
     ImGui::EndMainMenuBar();
     DrawGameExportWindow(exportJob, operations, projectTransitionAllowed && !hasUnsavedProjectChanges);
 }
-#else
-void DebugMenuBar::Draw(DebugWindowState&, EDITOR::EditorToolHost&, EDITOR::EditorWorkspaceHost&,
-                        DebugCameraController3D&, bool&, bool&, EDITOR::EditorCommandRouter&,
-                        EDITOR::EditorProjectSessionController&, bool, bool, EDITOR::GameExportJob&,
-                        EDITOR::EditorOperationRegistry&) const {}
-#endif
 
 } // namespace HIKARI

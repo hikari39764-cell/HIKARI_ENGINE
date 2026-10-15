@@ -6,14 +6,11 @@
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionPresentation.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void ModelCollisionWorkspaceController::DrawSourceModelWindow() {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.source.model.acf996", "ModelCollision/Source").c_str())) {
         ImGui::End();
         return;
@@ -78,7 +75,6 @@ void ModelCollisionWorkspaceController::DrawSourceModelWindow() {
     }
     ImGui::EndChild();
     ImGui::End();
-#endif
 }
 
 } // namespace HIKARI::EDITOR

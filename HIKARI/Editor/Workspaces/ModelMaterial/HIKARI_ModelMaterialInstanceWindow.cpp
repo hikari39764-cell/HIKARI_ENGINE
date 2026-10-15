@@ -8,9 +8,7 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialInstanceResolver.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -25,7 +23,6 @@ AssetGuid EffectiveResourceGuid(const MaterialAssetData& instance, const Materia
 } // namespace
 
 void ModelMaterialWorkspaceController::DrawInstanceWindow(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.instance.5f97f8", "ModelMaterial/Instance").c_str())) {
         ImGui::End();
         return;
@@ -104,9 +101,6 @@ void ModelMaterialWorkspaceController::DrawInstanceWindow(DocumentSceneBase& sce
     }
     ImGui::EndDisabled();
     ImGui::End();
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

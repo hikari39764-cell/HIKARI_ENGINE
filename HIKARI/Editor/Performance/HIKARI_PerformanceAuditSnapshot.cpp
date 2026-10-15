@@ -25,9 +25,7 @@
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 #include "Editor/Performance/HIKARI_PerformanceAuditInternal.h"
 #include <algorithm>
@@ -43,7 +41,6 @@
 
 namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
 
-#if defined(HIKARI_WITH_EDITOR)
 const char* ReadyText(bool value) { return value ? "Ready" : "Missing"; }
 
 double SafeDivide(uint64_t numerator, uint64_t denominator) {
@@ -355,6 +352,5 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
         << s.jointPaletteUpload.snapshotReuseCount << '/' << s.jointPaletteUpload.emptyBindingUploadCount << '\n';
     return out.str();
 }
-#endif
 
 } // namespace HIKARI::EDITOR::PERFORMANCE_AUDIT

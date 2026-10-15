@@ -3,14 +3,11 @@
 
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void ModelMaterialWorkspaceController::DrawPreviewLightingPanel() {
-#if defined(HIKARI_WITH_EDITOR)
     if (!previewLightingPanelOpen_) {
         return;
     }
@@ -76,7 +73,6 @@ void ModelMaterialWorkspaceController::DrawPreviewLightingPanel() {
         }
     }
     ImGui::End();
-#endif
 }
 
 } // namespace HIKARI::EDITOR

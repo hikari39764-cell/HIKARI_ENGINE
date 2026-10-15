@@ -10,15 +10,12 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include <algorithm>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void ModelCollisionWorkspaceController::DrawDockSpace(bool resetDefaultDockLayout) const {
-#if defined(HIKARI_WITH_EDITOR)
     ImGuiIO& io = ImGui::GetIO();
     if ((io.ConfigFlags & ImGuiConfigFlags_DockingEnable) == 0) {
         return;
@@ -50,9 +47,6 @@ void ModelCollisionWorkspaceController::DrawDockSpace(bool resetDefaultDockLayou
         ImGui::DockBuilderFinish(dockspaceId);
     }
     HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport);
-#else
-    (void)resetDefaultDockLayout;
-#endif
 }
 
 ModelCollisionWorkspaceResult ModelCollisionWorkspaceController::Draw(DocumentSceneBase& scene,
@@ -60,7 +54,6 @@ ModelCollisionWorkspaceResult ModelCollisionWorkspaceController::Draw(DocumentSc
                                                                       EditorCommandRouter& commandRouter) {
     ModelCollisionWorkspaceResult result{};
     result.statusMessage = statusMessage_;
-#if defined(HIKARI_WITH_EDITOR)
     assetTaskService_ = &scene.GetAssetDatabase().GetAssetTaskService();
     BindSelectionCommands(commandRouter);
     DrawPreviewWindow(scene, workspaceHost, result, commandRouter);
@@ -70,11 +63,6 @@ ModelCollisionWorkspaceResult ModelCollisionWorkspaceController::Draw(DocumentSc
     DrawAutoGenerateWindow();
     DrawPendingModelOpenModal(scene, result);
     DrawPendingCloseModal(scene, result);
-#else
-    (void)scene;
-    (void)workspaceHost;
-    (void)commandRouter;
-#endif
     return result;
 }
 

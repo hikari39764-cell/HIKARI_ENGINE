@@ -12,15 +12,12 @@
 #include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(DocumentSceneBase& scene, MaterialAssetData& source,
                                                                   MaterialGraphData& graph) {
-#if defined(HIKARI_WITH_EDITOR)
     if (MaterialGraphNodeData* node = FindMaterialGraphNode(graph, selectedGraphNodeId_)) {
         const auto name = node->displayName.empty() || node->displayName == ToString(node->kind)
                               ? MATERIAL_GRAPH_UI::NodeDisplayName(node->kind)
@@ -233,12 +230,6 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(DocumentSceneB
         }
     }
     return requestDeleteEdge;
-#else
-    (void)scene;
-    (void)source;
-    (void)graph;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

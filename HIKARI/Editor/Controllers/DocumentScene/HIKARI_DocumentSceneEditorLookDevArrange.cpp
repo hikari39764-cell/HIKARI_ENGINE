@@ -30,13 +30,10 @@
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 
 constexpr float kDegreesToRadians = 0.0174532925f;
@@ -664,6 +661,5 @@ void DocumentSceneEditorController::DrawLookDevArrangeSection(DocumentSceneBase&
     }
     ImGui::EndDisabled();
 }
-#endif
 
 } // namespace HIKARI

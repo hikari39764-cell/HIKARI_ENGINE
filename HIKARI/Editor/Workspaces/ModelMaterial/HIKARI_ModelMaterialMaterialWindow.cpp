@@ -14,9 +14,7 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -35,7 +33,6 @@ const char* BindingLabel(ModelMaterialBindingSource source) noexcept {
 } // namespace
 
 void ModelMaterialWorkspaceController::DrawMaterialWindow(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.properties.bc6c88", "ModelMaterial/Material").c_str())) {
         ImGui::End();
         return;
@@ -248,9 +245,6 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(DocumentSceneBase& sce
     }
 
     ImGui::End();
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

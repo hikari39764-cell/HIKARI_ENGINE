@@ -5,9 +5,7 @@
 
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 //  アニメーションステートマシンのワークスペースコントローラーの実装を提供します。
 //  ワークスペースコントローラーは、ドキュメントの状態管理、選択状態の管理、ドキュメントアクションのリクエストと実行、未保存のドキュメントダイアログの描画などを担当します。
 namespace HIKARI::EDITOR {
@@ -73,7 +71,6 @@ void AnimationStateMachineWorkspaceController::ExecuteDocumentAction(DocumentSce
 void AnimationStateMachineWorkspaceController::DrawUnsavedDocumentDialog(DocumentSceneBase& scene,
                                                                          AnimationStateMachineWorkspaceResult& result,
                                                                          GraphMenuRequests& requests) {
-#if defined(HIKARI_WITH_EDITOR)
     if (requestUnsavedDocumentDialog_) {
         ImGui::OpenPopup(kUnsavedDocumentPopup);
         requestUnsavedDocumentDialog_ = false;
@@ -107,11 +104,6 @@ void AnimationStateMachineWorkspaceController::DrawUnsavedDocumentDialog(Documen
     }
 
     ImGui::EndPopup();
-#else
-    (void)scene;
-    (void)result;
-    (void)requests;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

@@ -1,7 +1,5 @@
 #include "Editor/Views/HIKARI_EditorViewGuides.h"
 
-#if defined(HIKARI_WITH_EDITOR)
-
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -172,5 +170,3 @@ void DrawEditorViewGuidesButton(const char* id, EditorViewGuides& guides) {
 }
 
 } // namespace HIKARI::EDITOR
-
-#endif

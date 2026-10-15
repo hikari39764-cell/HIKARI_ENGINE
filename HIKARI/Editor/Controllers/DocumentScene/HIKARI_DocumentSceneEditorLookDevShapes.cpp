@@ -24,13 +24,10 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 
 constexpr ImU32 kShapeColor = IM_COL32(120, 230, 255, 220);
@@ -530,6 +527,5 @@ void DocumentSceneEditorController::DrawLookDevOpeningsSection(DocumentSceneBase
         RunLookDevOperation("procedural.subtract", {{"cutterId", active.value}});
     }
 }
-#endif
 
 } // namespace HIKARI

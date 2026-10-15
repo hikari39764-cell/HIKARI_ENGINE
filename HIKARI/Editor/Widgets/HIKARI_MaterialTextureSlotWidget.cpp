@@ -11,9 +11,7 @@
 #include "Editor/Style/HIKARI_EditorAssetIcons.h"
 #include "Render2D/HIKARI_DxTexture.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -32,7 +30,6 @@ const AssetRecord* ResolveTextureRecord(const MaterialTextureSlotData& slot, con
     return assetDatabase.FindByGuid(slot.textureAssetGuid);
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 bool DrawTexturePreviewButton(const char* id, const MaterialTextureSlotData& slot,
                               const TextureAssetDescriptor* descriptor, const ImVec2& size) {
     const int previewHandle = !slot.useTexture || descriptor == nullptr
@@ -53,12 +50,10 @@ bool DrawTexturePreviewButton(const char* id, const MaterialTextureSlotData& slo
 
     return ImGui::Button(id, size);
 }
-#endif
 } // namespace
 
 bool DrawMaterialTextureSlot(const char* label, MaterialTextureSlotData& slot, AssetDatabase& assetDatabase,
                              AssetRegistry& assetRegistry, EditorSelection* selection) {
-#if defined(HIKARI_WITH_EDITOR)
     bool changed = false;
     const AssetRecord* record = ResolveTextureRecord(slot, assetDatabase);
     const auto* descriptor = slot.textureAssetGuid.IsValid()
@@ -135,14 +130,6 @@ bool DrawMaterialTextureSlot(const char* label, MaterialTextureSlotData& slot, A
     ImGui::EndGroup();
     ImGui::PopID();
     return changed;
-#else
-    (void)label;
-    (void)slot;
-    (void)assetDatabase;
-    (void)assetRegistry;
-    (void)selection;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

@@ -19,9 +19,7 @@
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 #include "Scene/HIKARI_World.h"
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 namespace {
@@ -51,7 +49,6 @@ EDITOR::EditorGlyph ResolveObjectGlyph(const GameObject& object) {
 } // namespace
 
 void HierarchyPanel::Draw(World& world, EditorSelection& selection) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::Localize("menu.windows.sceneHierarchy").c_str())) {
         ImGui::End();
         return;
@@ -60,10 +57,6 @@ void HierarchyPanel::Draw(World& world, EditorSelection& selection) {
     DrawContents(world, selection);
 
     ImGui::End();
-#else
-    (void)world;
-    (void)selection;
-#endif
 }
 
 void HierarchyPanel::DrawContents(World& world, EditorSelection& selection) { DrawContents(world, selection, {}); }
@@ -73,7 +66,6 @@ void HierarchyPanel::DrawContents(World& world, EditorSelection& selection,
                                   const std::function<bool(const GameObject&)>& isObjectLocked,
                                   const SceneDocument* document, const EDITOR::EditorOperationRegistry* operations,
                                   std::uint64_t documentRevision) {
-#if defined(HIKARI_WITH_EDITOR)
     const auto& objects = world.GetObjects();
     EDITOR::SearchField(TEXT::Localize("ui.hierarchy.search").c_str(),
                         TEXT::Localize("ui.hierarchy.searchPlaceholder").c_str(), searchBuffer_.data(),
@@ -179,11 +171,6 @@ void HierarchyPanel::DrawContents(World& world, EditorSelection& selection,
             for (int index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index)
                 drawObject(filteredObjects[index]);
     }
-#else
-    (void)world;
-    (void)selection;
-    (void)drawObjectContextMenu;
-#endif
 }
 
 } // namespace HIKARI

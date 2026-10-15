@@ -15,15 +15,12 @@
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void VfxWorkspaceController::DrawDockSpace(bool resetDefaultDockLayout) const {
-#if defined(HIKARI_WITH_EDITOR)
     ImGuiIO& io = ImGui::GetIO();
     if ((io.ConfigFlags & ImGuiConfigFlags_DockingEnable) == 0) {
         return;
@@ -54,9 +51,6 @@ void VfxWorkspaceController::DrawDockSpace(bool resetDefaultDockLayout) const {
         ImGui::DockBuilderFinish(dockspaceId);
     }
     HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport);
-#else
-    (void)resetDefaultDockLayout;
-#endif
 }
 
 VfxWorkspaceResult VfxWorkspaceController::Draw(AssetDatabase& database, const AssetRegistry& assetRegistry,
@@ -65,7 +59,6 @@ VfxWorkspaceResult VfxWorkspaceController::Draw(AssetDatabase& database, const A
     VfxWorkspaceResult result{};
     // 貼図プレビューなど、この描画パスからレジストリを参照する。
     frameAssetRegistry_ = &assetRegistry;
-#if defined(HIKARI_WITH_EDITOR)
     if (!document_.IsOpen()) {
         NewAsset();
     }
@@ -76,19 +69,11 @@ VfxWorkspaceResult VfxWorkspaceController::Draw(AssetDatabase& database, const A
     DrawPreviewWindow(previewView, deltaSeconds);
     DrawInspectorWindow(database);
     DrawPendingAssetOpenModal(database);
-#else
-    (void)database;
-    (void)previewView;
-    (void)frameIndex;
-    (void)deltaSeconds;
-    (void)commandRouter;
-#endif
     result.statusMessage = statusMessage_;
     return result;
 }
 
 void VfxWorkspaceController::DrawPendingAssetOpenModal(AssetDatabase& database) {
-#if defined(HIKARI_WITH_EDITOR)
     constexpr const char* kPopupId = "Unsaved VFX Changes###Vfx/PendingAssetOpen";
     if (!pendingAssetOpenGuid_.IsValid()) {
         return;
@@ -130,14 +115,10 @@ void VfxWorkspaceController::DrawPendingAssetOpenModal(AssetDatabase& database) 
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
-#else
-    (void)database;
-#endif
 }
 
 void VfxWorkspaceController::DrawToolbarWindow(AssetDatabase& database, VfxWorkspaceResult& result,
                                                EditorCommandRouter& commandRouter) {
-#if defined(HIKARI_WITH_EDITOR)
     (void)commandRouter;
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
     if (!ImGui::Begin(TEXT::LocalizeWindow("menu.workspace.vfx", "Vfx/Toolbar").c_str(), nullptr, flags)) {
@@ -230,11 +211,6 @@ void VfxWorkspaceController::DrawToolbarWindow(AssetDatabase& database, VfxWorks
         ImGui::EndPopup();
     }
     ImGui::End();
-#else
-    (void)database;
-    (void)result;
-    (void)commandRouter;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

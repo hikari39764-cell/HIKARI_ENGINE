@@ -11,9 +11,7 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -22,7 +20,6 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphRampNodeInlineControls(D
                                                                                MaterialGraphData& graph,
                                                                                MaterialGraphNodeData& node,
                                                                                float width) {
-#if defined(HIKARI_WITH_EDITOR)
     bool capturesPointer = false;
     const auto trackItem = [&capturesPointer]() {
         capturesPointer = capturesPointer || ImGui::IsItemHovered() || ImGui::IsItemActive();
@@ -177,14 +174,6 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphRampNodeInlineControls(D
         ImGui::TextDisabled(TEXT::Localize("editor.ui.weights.are.clamped.0.and.normalized.at.runtime.0c27c0").c_str());
     }
     return capturesPointer;
-#else
-    (void)scene;
-    (void)source;
-    (void)graph;
-    (void)node;
-    (void)width;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

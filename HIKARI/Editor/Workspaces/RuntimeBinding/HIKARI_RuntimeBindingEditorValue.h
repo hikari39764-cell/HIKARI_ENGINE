@@ -18,12 +18,10 @@ bool TryReadRuntimeBindingEditorValue(const nlohmann::json& node, BINDING::Value
 
 nlohmann::json WriteRuntimeBindingEditorValue(const BINDING::Value& value);
 
-#if defined(HIKARI_WITH_EDITOR)
 using RuntimeBindingValueEditResult = TypedValueEditResult;
 
 RuntimeBindingValueEditResult DrawRuntimeBindingValueEditor(const char* id, BINDING::Value& value,
                                                             const BINDING::VariableDefinition* range = nullptr,
                                                             float width = -1.0f);
-#endif
 
 } // namespace HIKARI::EDITOR

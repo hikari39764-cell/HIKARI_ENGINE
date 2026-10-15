@@ -5,9 +5,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
@@ -15,7 +13,6 @@ using EDITOR::DOCUMENT_SCENE::DrawRenderDebugViewCombo;
 using EDITOR::DOCUMENT_SCENE::DrawViewportDebugOptions;
 
 void DocumentSceneEditorController::DrawDebugViewWindow(DocumentSceneBase& scene, bool& open) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("ui.window.debugView", "Debug View").c_str(), &open)) {
         ImGui::End();
         return;
@@ -165,10 +162,6 @@ void DocumentSceneEditorController::DrawDebugViewWindow(DocumentSceneBase& scene
     }
 
     ImGui::End();
-#else
-    (void)scene;
-    (void)open;
-#endif
 }
 
 } // namespace HIKARI

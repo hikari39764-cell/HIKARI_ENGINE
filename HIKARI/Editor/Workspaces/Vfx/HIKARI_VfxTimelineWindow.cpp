@@ -10,13 +10,10 @@
 #include <cstdio>
 #include <string>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 constexpr float kTimelineFramesPerSecond = 60.0f;
 constexpr float kMinimumTimelineRange = 1.0f / kTimelineFramesPerSecond;
 
@@ -43,11 +40,9 @@ void DrawTimeLabel(ImDrawList& drawList, float x, float y, float seconds, ImU32 
     drawList.AddText({x - size.x * 0.5f, y}, color, label);
 }
 
-#endif
 } // namespace
 
 void VfxWorkspaceController::DrawTimeline() {
-#if defined(HIKARI_WITH_EDITOR)
     if (!document_.IsOpen()) {
         ImGui::TextDisabled(VfxUiText("Open or create a VFX asset to use the timeline.").c_str());
         return;
@@ -202,8 +197,6 @@ void VfxWorkspaceController::DrawTimeline() {
     }
 
     DrawTimelineLayers(canvasOrigin.x, canvasSize.x, labelWidth, duration);
-
-#endif
 }
 
 } // namespace HIKARI::EDITOR

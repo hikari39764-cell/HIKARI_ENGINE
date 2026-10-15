@@ -26,14 +26,11 @@
 
 #include <algorithm>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
 namespace HIKARI {
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 constexpr uint64_t kEnvironmentPanelMergeGroup = 0x454e5649524f4e4dull;
 constexpr uint64_t kTerrainSurfaceWorkspaceMergeGroup = 0x5445525241494e53ull;
 
@@ -101,12 +98,10 @@ void DrawEditorDockSpace(bool resetDefaultDockLayout) {
 
     HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport, dockspaceFlags);
 }
-#endif
 } // namespace
 
 void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scene,
                                                          EDITOR::EditorPlaySession& playSession) {
-#if defined(HIKARI_WITH_EDITOR)
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Project) && projectWorkspaceHost_) {
         projectWorkspaceHost_->Registry().SetOperationRegistry(&operationRegistry_);
         projectWorkspaceHost_->Draw(workspaceHost_, TIME::GetFrameContext().unscaledDt, scene.GetAssetDatabase(),
@@ -231,10 +226,6 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
         return;
     }
     DrawSceneWorkspace(scene, playSession);
-#else
-    (void)scene;
-    (void)playSession;
-#endif
 }
 
 bool DocumentSceneEditorController::IsDirtyOutsideHistory(const DocumentSceneBase& scene) const {
@@ -242,7 +233,6 @@ bool DocumentSceneEditorController::IsDirtyOutsideHistory(const DocumentSceneBas
            ((context_.sceneDirty || scene.HasUnsavedSceneChanges()) && !documentHistory_.IsDirty());
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 void DocumentSceneEditorController::FinishWorkspaceFrame(DocumentSceneBase& scene, bool exitToScene,
                                                          const std::string& statusMessage) {
     if (exitToScene) {
@@ -513,10 +503,8 @@ bool DocumentSceneEditorController::DrawEnvironmentWindow(DocumentSceneBase& sce
     }
     return result.editActive;
 }
-#endif
 
 void DocumentSceneEditorController::DrawSceneWorkspaceWindow(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("ui.window.sceneWorkspace", "Scene Workspace").c_str())) {
         ImGui::End();
         return;
@@ -555,18 +543,11 @@ void DocumentSceneEditorController::DrawSceneWorkspaceWindow(DocumentSceneBase& 
     if (!scene.IsRuntimePlayActive())
         (void)commandRouter_.ProcessViewportShortcuts(ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
     ImGui::End();
-#else
-    (void)scene;
-#endif
 }
 
 void DocumentSceneEditorController::DrawInspectorWindow(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     sceneInspectorPanel_.Draw(scene, context_, selectionSync_, sceneObjectCommands_,
                               &context_.windows.authoring.showInspector);
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI

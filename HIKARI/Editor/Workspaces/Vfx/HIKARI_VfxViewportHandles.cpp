@@ -4,9 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -17,7 +15,6 @@ MATH::Vec3 Transform(const MATH::Mat4& matrix, const MATH::Vec3& v, float w = 1)
 } // namespace
 bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect& rect, bool hovered, bool gizmoInteracting,
                                               std::string& pickedLayer) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!document_.IsOpen() || !preview_.previewProgram_)
         return false;
     const auto& camera = preview_.cameraController_.GetCamera();
@@ -378,12 +375,5 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect& rect, bo
         pickedLayer = std::move(picked);
     draw.PopClipRect();
     return handleHit;
-#else
-    (void)rect;
-    (void)hovered;
-    (void)gizmoInteracting;
-    (void)pickedLayer;
-    return false;
-#endif
 }
 } // namespace HIKARI::EDITOR

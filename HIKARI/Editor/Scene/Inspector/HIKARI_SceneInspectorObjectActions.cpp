@@ -22,9 +22,7 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -49,7 +47,6 @@ void SceneInspectorPanel::ExecutePendingObjectCommand(DocumentSceneBase& scene, 
 void SceneInspectorPanel::DrawObjectContextMenu(DocumentSceneBase& scene, EditorContext& context,
                                                 const SelectionSyncService& selectionSync,
                                                 SceneObjectCommandService& commands, GameObject& object) {
-#if defined(HIKARI_WITH_EDITOR)
     if (context.selection.selectedObject != &object) {
         if (World* world = object.GetWorld()) {
             context.selection.SelectObject(*world, &object,
@@ -167,13 +164,6 @@ void SceneInspectorPanel::DrawObjectContextMenu(DocumentSceneBase& scene, Editor
         }
         ImGui::EndMenu();
     }
-#else
-    (void)scene;
-    (void)context;
-    (void)selectionSync;
-    (void)commands;
-    (void)object;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

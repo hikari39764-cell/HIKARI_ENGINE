@@ -2,9 +2,7 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 bool VfxWorkspaceController::ResetLayerEffect(std::string_view layerId, std::string_view effectId,
@@ -29,7 +27,6 @@ bool VfxWorkspaceController::ResetLayerEffect(std::string_view layerId, std::str
 }
 void VfxWorkspaceController::DrawEffectBlend(AssetDatabase& database, const VFX::VfxEmitterData& layer,
                                              const MaterialEffectStep& effect) {
-#if defined(HIKARI_WITH_EDITOR)
     (void)DrawLayerParameter(layer, effect.id, "mix");
     if (ImGui::TreeNode(TEXT::Localize("ui.vfx.effects.mask").c_str())) {
         VfxInspectorPropertyEditor edit(*this, database, effect.id, statusMessage_);
@@ -66,14 +63,8 @@ void VfxWorkspaceController::DrawEffectBlend(AssetDatabase& database, const VFX:
         }
         ImGui::TreePop();
     }
-#else
-    (void)database;
-    (void)layer;
-    (void)effect;
-#endif
 }
 void VfxWorkspaceController::DrawLayerMatte(AssetDatabase& database, const VFX::VfxEmitterData& layer) {
-#if defined(HIKARI_WITH_EDITOR)
     if (layer.kind == VFX::VfxLayerKind::Adjustment)
         return;
     if (!ImGui::TreeNode(TEXT::Localize("ui.vfx.matte").c_str()))
@@ -105,9 +96,5 @@ void VfxWorkspaceController::DrawLayerMatte(AssetDatabase& database, const VFX::
     if (layer.kind != VFX::VfxLayerKind::Adjustment)
         edit.Bool(TEXT::Localize("ui.vfx.matte.only").c_str(), "matte.sourceOnly", layer.matte.sourceOnly);
     ImGui::TreePop();
-#else
-    (void)database;
-    (void)layer;
-#endif
 }
 } // namespace HIKARI::EDITOR

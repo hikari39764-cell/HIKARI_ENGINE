@@ -23,9 +23,7 @@
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 #include "Editor/Performance/HIKARI_PerformanceAuditInternal.h"
 #include <algorithm>
@@ -34,7 +32,6 @@
 
 namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
 
-#if defined(HIKARI_WITH_EDITOR)
 void DrawFrameSummary(const RuntimePerformanceSnapshot& s) {
     const size_t mainlineSubmittedCount = s.mesh.meshletBackend.submittedDispatchCount > 0
                                               ? s.mesh.meshletBackend.submittedDispatchCount
@@ -222,6 +219,5 @@ void DrawGpuTimingTable(const RuntimePerformanceSnapshot& s) {
         ImGui::EndTable();
     }
 }
-#endif
 
 } // namespace HIKARI::EDITOR::PERFORMANCE_AUDIT

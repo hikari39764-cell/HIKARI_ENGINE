@@ -24,14 +24,11 @@
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"
 #include "Editor/Widgets/HIKARI_EditorTexturePreview.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 #include "Editor/Assets/Inspector/HIKARI_AssetInspectorInternal.h"
 
 namespace HIKARI::EDITOR::ASSET_INSPECTOR {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 
 std::string LocalizeMaterialStatus(const std::string& status) {
@@ -255,6 +252,5 @@ bool DrawMaterialAssetEditor(AssetDatabase& assetDatabase, AssetRegistry& assetR
 
     return materialDirty;
 }
-#endif
 
 } // namespace HIKARI::EDITOR::ASSET_INSPECTOR

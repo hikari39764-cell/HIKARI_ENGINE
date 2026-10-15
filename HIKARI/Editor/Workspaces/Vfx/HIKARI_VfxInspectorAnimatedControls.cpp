@@ -4,9 +4,7 @@
 #include <array>
 #include <string>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -20,7 +18,6 @@ std::string ChildPath(std::string_view parent, std::string_view child) {
 void VfxInspectorPropertyEditor::FloatDistribution(const char* label, std::string_view propertyPrefix,
                                                    const VFX::VfxFloatDistributionData& value, float speed,
                                                    float minimum, float maximum) {
-#if defined(HIKARI_WITH_EDITOR)
     ImGui::PushID(VfxUiText(label).c_str());
     ImGui::SeparatorText(VfxUiText(label).c_str());
     Choice("Mode", ChildPath(propertyPrefix, "mode"), VFX::ToString(value.mode),
@@ -32,19 +29,10 @@ void VfxInspectorPropertyEditor::FloatDistribution(const char* label, std::strin
         Unsigned("Random Group", ChildPath(propertyPrefix, "randomGroup"), value.randomGroup);
     }
     ImGui::PopID();
-#else
-    (void)label;
-    (void)propertyPrefix;
-    (void)value;
-    (void)speed;
-    (void)minimum;
-    (void)maximum;
-#endif
 }
 
 void VfxInspectorPropertyEditor::Vec3Distribution(const char* label, std::string_view propertyPrefix,
                                                   const VFX::VfxVec3DistributionData& value, float speed) {
-#if defined(HIKARI_WITH_EDITOR)
     ImGui::PushID(VfxUiText(label).c_str());
     ImGui::SeparatorText(VfxUiText(label).c_str());
     Choice("Mode", ChildPath(propertyPrefix, "mode"), VFX::ToString(value.mode),
@@ -56,17 +44,10 @@ void VfxInspectorPropertyEditor::Vec3Distribution(const char* label, std::string
         Unsigned("Random Group", ChildPath(propertyPrefix, "randomGroup"), value.randomGroup);
     }
     ImGui::PopID();
-#else
-    (void)label;
-    (void)propertyPrefix;
-    (void)value;
-    (void)speed;
-#endif
 }
 
 void VfxInspectorPropertyEditor::ColorDistribution(const char* label, std::string_view propertyPrefix,
                                                    const VFX::VfxColorDistributionData& value) {
-#if defined(HIKARI_WITH_EDITOR)
     ImGui::PushID(VfxUiText(label).c_str());
     ImGui::SeparatorText(VfxUiText(label).c_str());
     Choice("Mode", ChildPath(propertyPrefix, "mode"), VFX::ToString(value.mode),
@@ -78,16 +59,10 @@ void VfxInspectorPropertyEditor::ColorDistribution(const char* label, std::strin
         Unsigned("Random Group", ChildPath(propertyPrefix, "randomGroup"), value.randomGroup);
     }
     ImGui::PopID();
-#else
-    (void)label;
-    (void)propertyPrefix;
-    (void)value;
-#endif
 }
 
 void VfxInspectorPropertyEditor::AnimatedVec3(const char* label, std::string_view propertyPrefix,
                                               const VFX::VfxAnimatedVec3Data& value, float speed) {
-#if defined(HIKARI_WITH_EDITOR)
     ImGui::PushID(VfxUiText(label).c_str());
     Choice("Mode", ChildPath(propertyPrefix, "mode"), VFX::ToString(value.mode),
            VFX::kVfxAnimatedValueModeChoices.data(), VFX::kVfxAnimatedValueModeChoices.size());
@@ -129,17 +104,10 @@ void VfxInspectorPropertyEditor::AnimatedVec3(const char* label, std::string_vie
     }
     }
     ImGui::PopID();
-#else
-    (void)label;
-    (void)propertyPrefix;
-    (void)value;
-    (void)speed;
-#endif
 }
 
 void VfxInspectorPropertyEditor::AnimatedColor(const char* label, std::string_view propertyPrefix,
                                                const VFX::VfxAnimatedColorData& value) {
-#if defined(HIKARI_WITH_EDITOR)
     ImGui::PushID(VfxUiText(label).c_str());
     if (ImGui::BeginCombo(VfxUiText("Mode").c_str(), VfxUiText(VFX::ToString(value.mode)).c_str())) {
         for (const std::string_view mode : VFX::kVfxAnimatedColorModeChoices) {
@@ -191,11 +159,6 @@ void VfxInspectorPropertyEditor::AnimatedColor(const char* label, std::string_vi
         break;
     }
     ImGui::PopID();
-#else
-    (void)label;
-    (void)propertyPrefix;
-    (void)value;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

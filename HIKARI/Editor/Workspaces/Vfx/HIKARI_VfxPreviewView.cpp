@@ -68,11 +68,9 @@ void VfxPreviewSession::UpdatePreviewKeyLight() {
 
 VfxPreviewSession::~VfxPreviewSession() {
     ReleasePreviewNamespace();
-#if defined(HIKARI_WITH_EDITOR)
     if (activePreviewViewId_.value != 0u) {
         RENDER3D::EDITORVIEW::ClearRequest(activePreviewViewId_);
     }
-#endif
 }
 
 nlohmann::json VfxPreviewSession::DescribeBackgroundPreview() const {
@@ -151,7 +149,6 @@ bool VfxPreviewSession::PrepareBackgroundPreview(EditorViewInstance& view, float
 }
 
 void VfxPreviewSession::SubmitPreviewRequest(EditorViewInstance& previewView, bool canvasVisible) {
-#if defined(HIKARI_WITH_EDITOR)
     if (activePreviewViewId_.value != 0u && activePreviewViewId_.value != previewView.renderViewId.value) {
         RENDER3D::EDITORVIEW::ClearRequest(activePreviewViewId_);
     }
@@ -205,10 +202,6 @@ void VfxPreviewSession::SubmitPreviewRequest(EditorViewInstance& previewView, bo
     request.spatialAntiAliasing = true;
     RENDER3D::EDITORVIEW::SubmitRequest(request);
     cameraCutPending_ = false;
-#else
-    (void)previewView;
-    (void)canvasVisible;
-#endif
 }
 
 void VfxPreviewSession::TickBackgroundPreview(EditorViewInstance& view, uint64_t frameIndex) {
@@ -224,13 +217,9 @@ void VfxPreviewSession::TickBackgroundPreview(EditorViewInstance& view, uint64_t
     SubmitPreviewRequest(view, true);
 }
 void VfxPreviewSession::Deactivate(RENDER3D::RenderViewId viewId) {
-#if defined(HIKARI_WITH_EDITOR)
     RENDER3D::EDITORVIEW::ClearRequest(viewId);
     if (activePreviewViewId_.value && activePreviewViewId_.value != viewId.value)
         RENDER3D::EDITORVIEW::ClearRequest(activePreviewViewId_);
-#else
-    (void)viewId;
-#endif
     activePreviewViewId_ = {};
     StopPreview();
     playbackService_.Reset();

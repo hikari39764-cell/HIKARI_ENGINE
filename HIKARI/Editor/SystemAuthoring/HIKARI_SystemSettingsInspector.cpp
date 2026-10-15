@@ -11,9 +11,7 @@
 #include "Scene/HIKARI_SystemTypeRegistry.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -23,7 +21,6 @@ bool EqualSystemData(const SceneSystemData& left, const SceneSystemData& right) 
            left.executionOrder == right.executionOrder && left.settings == right.settings;
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 const char* InstallationLabel(const SceneSystemAuthoringRow& row) noexcept {
     if (row.projectDefault) {
         return "Project";
@@ -43,7 +40,6 @@ void DrawSourceBadge(const SceneSystemAuthoringRow& row) {
                                                        : ImVec4(0.72f, 0.62f, 0.92f, 1.0f);
     ImGui::TextColored(color, "%s", InstallationLabel(row));
 }
-#endif
 } // namespace
 
 void SystemSettingsInspector::Select(SceneSystemData initial, std::string displayName) {
@@ -79,7 +75,6 @@ SystemSettingsInspectorResult SystemSettingsInspector::Draw(const SceneSystemAut
                                                             const SystemAuthoringRegistry& authoringRegistry,
                                                             EditorToolHost& toolHost, bool readOnly) {
     SystemSettingsInspectorResult result{};
-#if defined(HIKARI_WITH_EDITOR)
     if (!hasTarget_) {
         return result;
     }
@@ -234,14 +229,6 @@ SystemSettingsInspectorResult SystemSettingsInspector::Draw(const SceneSystemAut
         }
         ImGui::EndPopup();
     }
-#else
-    (void)row;
-    (void)scene;
-    (void)runtimeRegistry;
-    (void)authoringRegistry;
-    (void)toolHost;
-    (void)readOnly;
-#endif
     return result;
 }
 

@@ -1,12 +1,9 @@
 #pragma once
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
-#if defined(HIKARI_WITH_EDITOR)
 struct EditorThemeMetrics {
     float spacingXs = 4.0f;
     float spacingSm = 8.0f;
@@ -38,6 +35,5 @@ struct EditorThemePalette {
 
 const EditorThemeMetrics& GetEditorThemeMetrics() noexcept;
 const EditorThemePalette& GetEditorThemePalette() noexcept;
-#endif
 
 } // namespace HIKARI::EDITOR

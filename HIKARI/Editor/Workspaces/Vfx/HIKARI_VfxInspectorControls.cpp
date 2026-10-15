@@ -11,17 +11,11 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include "Core/Text/HIKARI_Localization.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "Editor/Widgets/HIKARI_NumberField.h"
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
-std::string VfxUiText(std::string_view text) {
-    const auto key = "ui.vfx.text." + std::string(text);
-    auto translated = TEXT::Localize(key);
-    return translated == key ? std::string(text) : translated;
-}
+std::string VfxUiText(std::string_view text) { return TEXT::LocalizeSourceText("ui.vfx.text.", text); }
 namespace {
 
 nlohmann::json Vec3Json(const MATH::Vec3& value) { return nlohmann::json::array({value.x, value.y, value.z}); }
@@ -54,7 +48,6 @@ void VfxInspectorPropertyEditor::Set(std::string_view propertyId, const nlohmann
 }
 
 void VfxInspectorPropertyEditor::Text(const char* label, std::string_view propertyId, const std::string& value) {
-#if defined(HIKARI_WITH_EDITOR)
     std::array<char, 256u> buffer{};
     std::snprintf(buffer.data(), buffer.size(), "%s", value.c_str());
     if (ImGui::InputText(VfxUiText(label).c_str(), buffer.data(), buffer.size())) {
@@ -63,64 +56,35 @@ void VfxInspectorPropertyEditor::Text(const char* label, std::string_view proper
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         controller_.SealPropertyEdit();
     }
-#else
-    (void)label;
-    (void)propertyId;
-    (void)value;
-#endif
 }
 
 void VfxInspectorPropertyEditor::Bool(const char* label, std::string_view propertyId, bool value) {
-#if defined(HIKARI_WITH_EDITOR)
     if (ImGui::Checkbox(VfxUiText(label).c_str(), &value))
         Set(propertyId, value, false);
-#else
-    (void)label;
-    (void)propertyId;
-    (void)value;
-#endif
 }
 
 void VfxInspectorPropertyEditor::Float(const char* label, std::string_view propertyId, float value, float speed,
                                        float minimum, float maximum) {
-#if defined(HIKARI_WITH_EDITOR)
     if (DragNumber(label, value, {.minimum = minimum, .maximum = maximum, .step = speed})) {
         Set(propertyId, value, true);
     }
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         controller_.SealPropertyEdit();
     }
-#else
-    (void)label;
-    (void)propertyId;
-    (void)value;
-    (void)speed;
-    (void)minimum;
-    (void)maximum;
-#endif
 }
 
 void VfxInspectorPropertyEditor::Unsigned(const char* label, std::string_view propertyId, uint32_t value,
                                           uint32_t minimum, uint32_t maximum) {
-#if defined(HIKARI_WITH_EDITOR)
     if (DragNumber(label, value, {.minimum = static_cast<double>(minimum), .maximum = static_cast<double>(maximum)})) {
         Set(propertyId, value, true);
     }
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         controller_.SealPropertyEdit();
     }
-#else
-    (void)label;
-    (void)propertyId;
-    (void)value;
-    (void)minimum;
-    (void)maximum;
-#endif
 }
 
 void VfxInspectorPropertyEditor::Vec3(const char* label, std::string_view propertyId, const MATH::Vec3& value,
                                       float speed) {
-#if defined(HIKARI_WITH_EDITOR)
     MATH::Vec3 edited = value;
     if (DragNumbers(VfxUiText(label).c_str(), &edited.x, 3, {.step = speed})) {
         Set(propertyId, Vec3Json(edited), true);
@@ -128,16 +92,9 @@ void VfxInspectorPropertyEditor::Vec3(const char* label, std::string_view proper
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         controller_.SealPropertyEdit();
     }
-#else
-    (void)label;
-    (void)propertyId;
-    (void)value;
-    (void)speed;
-#endif
 }
 
 void VfxInspectorPropertyEditor::Color(const char* label, std::string_view propertyId, const MATH::Vec4& value) {
-#if defined(HIKARI_WITH_EDITOR)
     MATH::Vec4 edited = value;
     if (ImGui::ColorEdit4(label, &edited.x, ImGuiColorEditFlags_Float)) {
         Set(propertyId, Vec4Json(edited), true);
@@ -145,16 +102,10 @@ void VfxInspectorPropertyEditor::Color(const char* label, std::string_view prope
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         controller_.SealPropertyEdit();
     }
-#else
-    (void)label;
-    (void)propertyId;
-    (void)value;
-#endif
 }
 
 void VfxInspectorPropertyEditor::TypedValue(const char* label, std::string_view propertyId,
                                             const VFX::VfxValue& value) {
-#if defined(HIKARI_WITH_EDITOR)
     VFX::VfxValue edited = value;
     const VfxValueEditResult result = DrawVfxValueEditor(label, edited);
     if (result.changed) {
@@ -162,16 +113,10 @@ void VfxInspectorPropertyEditor::TypedValue(const char* label, std::string_view 
     }
     if (result.committed)
         controller_.SealPropertyEdit();
-#else
-    (void)label;
-    (void)propertyId;
-    (void)value;
-#endif
 }
 
 void VfxInspectorPropertyEditor::Choice(const char* label, std::string_view propertyId, std::string_view current,
                                         const std::string_view* choices, size_t choiceCount) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::BeginCombo(VfxUiText(label).c_str(), VfxUiText(current).c_str()))
         return;
     for (size_t index = 0u; index < choiceCount; ++index) {
@@ -180,13 +125,6 @@ void VfxInspectorPropertyEditor::Choice(const char* label, std::string_view prop
         }
     }
     ImGui::EndCombo();
-#else
-    (void)label;
-    (void)propertyId;
-    (void)current;
-    (void)choices;
-    (void)choiceCount;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

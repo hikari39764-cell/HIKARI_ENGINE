@@ -13,9 +13,7 @@
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
 #include "Core/Math/HIKARI_Math3D.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR::MATERIAL_GRAPH_UI {
 
@@ -78,11 +76,9 @@ struct NodeCollapseControlResult {
     bool capturesPointer = false;
 };
 
-#if defined(HIKARI_WITH_EDITOR)
 bool DrawCompactMaterialValue(MaterialValueData& value, bool color);
 NodeCollapseControlResult DrawNodeCollapseControl(const MATH::Vec2& topRight, float screenScale, bool collapsed);
 void DrawPendingLink(const MATH::Vec2& start, const MATH::Vec2& end, float zoom, uint32_t color);
-#endif
 
 enum class NodeCardDetail : uint8_t {
     Overview,
@@ -112,10 +108,8 @@ bool InputUsesResourceDefault(const MaterialGraphData& graph, const MaterialGrap
 bool LooksLikeColor(std::string_view displayName, std::string_view id);
 bool DrawMaterialValueTypeCombo(MaterialValueType& valueType);
 bool DrawMaterialNodeTypeControl(MaterialGraphNodeData& node, MaterialGraphParameterData* parameter);
-#if defined(HIKARI_WITH_EDITOR)
 void DrawMaterialGraphGroups(ImDrawList* drawList, const MaterialGraphData& graph,
                              const std::unordered_map<std::string, ImVec4>& screenBounds);
-#endif
 bool IsRuntimeDrivenInput(const MaterialNodeTypeId& typeId, std::string_view pin) noexcept;
 bool IsInlineOwnedInput(const MaterialNodeTypeId& typeId, std::string_view pin) noexcept;
 NodeCardPresentation ResolveNodeCardPresentation(const MaterialGraphData& graph, const MaterialGraphNodeData& node,

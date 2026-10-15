@@ -112,7 +112,7 @@ bool DocumentSceneBakeCoordinator::ProcessReflectionProbeBakeJob(DocumentSceneBa
         lastReport_ = job.report;
         HIKARI_LOG_INFO("[LightingBake] reflection probe capture face submitted face=" + std::to_string(face) +
                         " fence=" + std::to_string(job.fenceValue));
-        // Capture 闕ｳ・ｭ邵ｺ・ｯ鬨ｾ螢ｼ・ｸ・ｸ隰蜀怜愛邵ｺ・ｧ CameraCB 郢ｧ蜑・ｽｸ鬆大ｶ檎ｸｺ髦ｪ・邵ｺ・ｪ邵ｺ繝ｻﾂ繝ｻ
+        // Capture 中は通常描画で CameraCB を上書きしない。
         return true;
     }
 

@@ -10,18 +10,15 @@
 #include "Render3D/Diagnostics/HIKARI_EnvironmentDiagnostics.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "Editor/Documents/HIKARI_ValidatedAssetDocumentUi.h"
 #include "Editor/Environment/HIKARI_RenderFeatureStatus.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
 #include "Editor/Widgets/HIKARI_JsonFieldsEditor.h"
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 constexpr ImVec4 kErrorColor{1.0f, 0.45f, 0.45f, 1.0f};
 
@@ -382,13 +379,6 @@ EnvironmentPanelResult EnvironmentPanel::Draw(ENVIRONMENT::SceneEnvironmentBindi
     ImGui::End();
     return result;
 }
-#else
-EnvironmentPanelResult EnvironmentPanel::Draw(ENVIRONMENT::SceneEnvironmentBinding&, DocumentSceneBase&) { return {}; }
-EnvironmentPanelResult EnvironmentPanel::DrawLookDev(ENVIRONMENT::SceneEnvironmentBinding&, DocumentSceneBase&) {
-    return {};
-}
-void EnvironmentPanel::DrawPreview(const ENVIRONMENT::SceneEnvironmentBinding&, DocumentSceneBase&) {}
-#endif
 
 std::array<EDITOR::EditorAssetDocument*, 4> EnvironmentPanel::Documents() {
     return {&assets_.Profile(), &assets_.Weather(), &style_.Document(), &style_.GlobalPost().Document()};

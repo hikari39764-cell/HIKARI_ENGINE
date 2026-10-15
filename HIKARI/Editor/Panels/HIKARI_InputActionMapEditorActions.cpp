@@ -6,14 +6,11 @@
 #include "Editor/Panels/HIKARI_InputActionMapEditorWidgets.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
 void InputActionMapEditor::DrawActionsTab(INPUT::InputService& inputService) {
-#if defined(HIKARI_WITH_EDITOR)
     using namespace EDITOR::INPUT_WIDGETS;
     INPUT::InputActionMap& map = inputService.EditActionMap();
     const float listWidth = (std::min)(340.0f, ImGui::GetContentRegionAvail().x * 0.38f);
@@ -80,13 +77,9 @@ void InputActionMapEditor::DrawActionsTab(INPUT::InputService& inputService) {
         }
     }
     ImGui::EndChild();
-#else
-    (void)inputService;
-#endif
 }
 
 void InputActionMapEditor::DrawActionPopups(INPUT::InputService& inputService) {
-#if defined(HIKARI_WITH_EDITOR)
     using namespace EDITOR::INPUT_WIDGETS;
     INPUT::InputActionMap& map = inputService.EditActionMap();
     if (addActionRequested_) {
@@ -146,9 +139,6 @@ void InputActionMapEditor::DrawActionPopups(INPUT::InputService& inputService) {
         }
         ImGui::EndPopup();
     }
-#else
-    (void)inputService;
-#endif
 }
 
 } // namespace HIKARI

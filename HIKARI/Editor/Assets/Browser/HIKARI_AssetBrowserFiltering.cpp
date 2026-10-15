@@ -36,9 +36,7 @@
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
 

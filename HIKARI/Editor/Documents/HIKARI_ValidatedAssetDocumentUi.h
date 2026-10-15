@@ -1,7 +1,5 @@
 #pragma once
 
-#if defined(HIKARI_WITH_EDITOR)
-
 #include <string>
 
 #include <imgui.h>
@@ -94,5 +92,3 @@ void DrawAssetDocumentToolbar(ValidatedAssetDocument<Traits>& document, AssetDat
 }
 
 } // namespace HIKARI::EDITOR
-
-#endif

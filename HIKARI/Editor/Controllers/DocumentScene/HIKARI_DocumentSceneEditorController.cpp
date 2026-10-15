@@ -49,16 +49,13 @@
 
 #include <json.hpp>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "ImGuizmo.h"
-#endif
 
 namespace HIKARI {
 
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 
 void KeepWorkspaceDockSpacesAlive() {
     // 非表示の workspace も dock node を維持し、切替で window が浮くことを防ぐ。
@@ -70,7 +67,6 @@ void KeepWorkspaceDockSpacesAlive() {
     }
 }
 
-#endif
 } // namespace
 
 DocumentSceneEditorController::DocumentSceneEditorController() {
@@ -472,7 +468,6 @@ bool DocumentSceneEditorController::HasKnownUnsavedProjectChanges(const Document
 
 void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession,
                                          EDITOR::EditorProjectSessionController& projectSession) {
-#if defined(HIKARI_WITH_EDITOR)
     aiOperationScene_ = &scene;
     aiPlaySession_ = &playSession;
     aiProjectSession_ = &projectSession;
@@ -647,11 +642,6 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
         CommitSceneObjectAuthoringHistory(scene, std::move(*history));
     EDITOR::EditorToolContext toolContext{scene, context_, operationRegistry_};
     toolHost_.Draw(toolContext);
-#else
-    (void)scene;
-    (void)playSession;
-    (void)projectSession;
-#endif
 }
 
 } // namespace HIKARI

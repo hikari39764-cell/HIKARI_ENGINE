@@ -10,13 +10,10 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 bool InputTextString(const char* label, std::string& value) {
     std::array<char, 256> buffer{};
     const size_t copyCount = (std::min)(value.size(), buffer.size() - 1u);
@@ -70,11 +67,9 @@ const char* ConditionOperatorName(ANIMATION::AnimationConditionOperator value) n
     default: return TEXT::Localize("editor.ui.is.true.905c77").c_str();
     }
 }
-#endif
 } // namespace
 
 void AnimationStateMachineWorkspaceController::DrawDetailsWindow(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.details.dc3dec", "AnimationSM/Details").c_str())) {
         ImGui::End();
         return;
@@ -191,8 +186,7 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(DocumentSceneBa
             before = definition;
             if (parameter->type == ANIMATION::AnimationParameterType::Float) {
                 float value = std::get<float>(parameter->defaultValue);
-                if (ImGui::DragFloat(TEXT::LocalizeWindow("ui.common.default", "Default").c_str(), &value,
-                                     0.02f)) {
+                if (ImGui::DragFloat(TEXT::LocalizeWindow("ui.common.default", "Default").c_str(), &value, 0.02f)) {
                     parameter->defaultValue = value;
                     RecordMutation(std::move(before), 4000u + parameter->id.value);
                 }
@@ -400,9 +394,6 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(DocumentSceneBa
             TEXT::Localize("editor.ui.select.a.state.parameter.or.transition.to.edit.it.7a9fef").c_str());
     }
     ImGui::End();
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

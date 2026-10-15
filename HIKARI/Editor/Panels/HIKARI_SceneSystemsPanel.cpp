@@ -11,9 +11,7 @@
 #include "Scene/HIKARI_SystemTypeRegistry.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
@@ -21,7 +19,6 @@ SceneSystemsPanelResult SceneSystemsPanel::Draw(DocumentSceneBase& scene,
                                                 const EDITOR::SystemAuthoringRegistry& authoringRegistry,
                                                 EDITOR::EditorToolHost& toolHost) {
     SceneSystemsPanelResult result{};
-#if defined(HIKARI_WITH_EDITOR)
     SceneDocument& document = scene.GetSceneDocument();
     const std::vector<SceneSystemData> defaults = scene.CreateProjectDefaultSceneSystems();
     if (document.systems.empty()) {
@@ -71,11 +68,6 @@ SceneSystemsPanelResult SceneSystemsPanel::Draw(DocumentSceneBase& scene,
     result.changed = managerResult.changed;
     result.label = std::move(managerResult.label);
     result.before = std::move(managerResult.before);
-#else
-    (void)scene;
-    (void)authoringRegistry;
-    (void)toolHost;
-#endif
     return result;
 }
 

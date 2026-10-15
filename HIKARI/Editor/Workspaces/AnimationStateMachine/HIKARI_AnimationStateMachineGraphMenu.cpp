@@ -10,9 +10,7 @@
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 //  グラフメニューバーを描画する関数
@@ -20,7 +18,6 @@ void AnimationStateMachineWorkspaceController::DrawGraphMenuBar(DocumentSceneBas
                                                                 AnimationStateMachineWorkspaceResult& result,
                                                                 GraphMenuRequests& requests,
                                                                 EditorCommandRouter& commandRouter) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::BeginMenuBar())
         return;
 
@@ -162,11 +159,6 @@ void AnimationStateMachineWorkspaceController::DrawGraphMenuBar(DocumentSceneBas
     }
     ImGui::EndMenuBar();
     DrawUnsavedDocumentDialog(scene, result, requests);
-#else
-    (void)scene;
-    (void)result;
-    (void)requests;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

@@ -193,11 +193,7 @@ bool ModelCollisionWorkspaceController::OpenModel(AssetDatabase& assetDatabase, 
 }
 
 void ModelCollisionWorkspaceController::ClosePreviewRequest(EditorWorkspaceHost& workspaceHost) const {
-#if defined(HIKARI_WITH_EDITOR)
     RENDER3D::EDITORVIEW::ClearRequest(workspaceHost.GetModelCollisionPreviewView().renderViewId);
-#else
-    (void)workspaceHost;
-#endif
 }
 
 void ModelCollisionWorkspaceController::FitPreviewCamera() {

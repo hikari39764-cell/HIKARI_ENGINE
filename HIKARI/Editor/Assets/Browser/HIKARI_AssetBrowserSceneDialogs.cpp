@@ -36,15 +36,12 @@
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
 
 namespace HIKARI::EDITOR::ASSET_BROWSER {
 
-#if defined(HIKARI_WITH_EDITOR)
 void DrawSceneAssetModals(AssetDatabase& assetDatabase, EditorSelection& selection, std::string& lastOperationMessage,
                           const AssetBrowserContext* context, std::string& renameSceneGuid,
                           std::string& deleteSceneGuid, std::array<char, 128>& renameSceneNameBuffer) {
@@ -136,6 +133,5 @@ void DrawSceneAssetModals(AssetDatabase& assetDatabase, EditorSelection& selecti
         ImGui::EndPopup();
     }
 }
-#endif
 
 } // namespace HIKARI::EDITOR::ASSET_BROWSER

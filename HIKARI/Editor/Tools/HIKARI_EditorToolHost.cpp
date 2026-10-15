@@ -6,9 +6,7 @@
 #include <algorithm>
 #include <utility>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -39,20 +37,15 @@ bool EditorToolHost::RequestOpen(EditorToolOpenRequest request) {
 }
 
 void EditorToolHost::DrawMenuItem(std::string_view toolId) {
-#if defined(HIKARI_WITH_EDITOR)
     ToolEntry* entry = Find(toolId);
     if (!entry) {
         return;
     }
     if (ImGui::MenuItem(TEXT::Localize(entry->displayName).c_str(), nullptr, entry->open))
         RequestOpen({entry->toolId});
-#else
-    (void)toolId;
-#endif
 }
 
 void EditorToolHost::DrawMenuContents() {
-#if defined(HIKARI_WITH_EDITOR)
     for (size_t i = 0; i < tools_.size(); ++i) {
         ToolEntry& entry = tools_[i];
         if (entry.menuGroup.empty()) {
@@ -74,7 +67,6 @@ void EditorToolHost::DrawMenuContents() {
         }
         ImGui::EndMenu();
     }
-#endif
 }
 
 void EditorToolHost::Draw(EditorToolContext& context) {

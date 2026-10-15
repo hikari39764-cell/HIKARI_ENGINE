@@ -1,6 +1,5 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -541,4 +540,3 @@ void DrawEditorGlyph(ImDrawList& drawList, EditorGlyph glyph, const ImVec2& cent
 }
 
 } // namespace HIKARI::EDITOR
-#endif

@@ -10,13 +10,10 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxParticleMaterialField.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 void VfxWorkspaceController::DrawEmitterAdvanced(AssetDatabase& database, const VFX::VfxEmitterData& emitter) {
-#if defined(HIKARI_WITH_EDITOR)
     ImGui::TextWrapped(TEXT::Localize("editor.ui.layer.id.s.e916c5").c_str(), emitter.id.c_str());
     VfxInspectorPropertyEditor orderEditor(*this, database, emitter.id, statusMessage_);
     orderEditor.Unsigned(VfxUiText("Sibling order").c_str(), "order", emitter.order);
@@ -193,9 +190,5 @@ void VfxWorkspaceController::DrawEmitterAdvanced(AssetDatabase& database, const 
         (void)RemoveSpecialOutput(removeOutputId, message);
         statusMessage_ = message;
     }
-#else
-    (void)database;
-    (void)emitter;
-#endif
 }
 } // namespace HIKARI::EDITOR

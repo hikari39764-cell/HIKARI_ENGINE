@@ -1,13 +1,10 @@
 #include "Editor/Views/HIKARI_EditorViewInputGate.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 EditorViewInputBlockState QueryEditorViewInputBlockState() noexcept {
-#if defined(HIKARI_WITH_EDITOR)
     if (ImGui::GetCurrentContext() == nullptr) {
         return {};
     }
@@ -19,9 +16,6 @@ EditorViewInputBlockState QueryEditorViewInputBlockState() noexcept {
     state.pointer = popupOpen || dragDropActive;
     state.keyboard = state.pointer || io.WantTextInput || ImGui::IsAnyItemActive();
     return state;
-#else
-    return {};
-#endif
 }
 
 } // namespace HIKARI::EDITOR

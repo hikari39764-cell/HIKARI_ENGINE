@@ -46,7 +46,6 @@ nlohmann::json WriteRuntimeBindingEditorValue(const BINDING::Value& value) {
     return SERIALIZATION::JSON::WriteTypedValue(value);
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 RuntimeBindingValueEditResult DrawRuntimeBindingValueEditor(const char* id, BINDING::Value& value,
                                                             const BINDING::VariableDefinition* range, float width) {
     TypedValueRange limits{};
@@ -55,6 +54,5 @@ RuntimeBindingValueEditResult DrawRuntimeBindingValueEditor(const char* id, BIND
     }
     return DrawTypedEditorValue(id, value, limits, width);
 }
-#endif
 
 } // namespace HIKARI::EDITOR

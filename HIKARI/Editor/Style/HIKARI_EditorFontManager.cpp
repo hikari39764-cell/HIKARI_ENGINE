@@ -1,6 +1,5 @@
 #include "Editor/Style/HIKARI_EditorFontManager.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include <algorithm>
 #include <array>
 #include <filesystem>
@@ -217,4 +216,3 @@ void PopEditorFont(bool pushed) {
 }
 
 } // namespace HIKARI::EDITOR
-#endif

@@ -1,10 +1,8 @@
 #include "Editor/Style/HIKARI_EditorAssetIcons.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include <algorithm>
 
 #include "Editor/Style/HIKARI_EditorTheme.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -37,7 +35,6 @@ EditorGlyph AssetTypeGlyph(AssetType type) noexcept {
     }
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 ImVec4 AssetTypeIconColor(AssetType type) noexcept {
     switch (type) {
     case AssetType::Texture: return ImVec4(0.32f, 0.76f, 0.92f, 1.0f);
@@ -82,6 +79,5 @@ void DrawAssetTypeGlyph(AssetType type, const ImVec2& size) {
 void DrawFolderGlyph(const ImVec2& size) {
     DrawGlyphAtCursor(EditorGlyph::Folder, size, ImVec4(0.92f, 0.68f, 0.28f, 1.0f));
 }
-#endif
 
 } // namespace HIKARI::EDITOR

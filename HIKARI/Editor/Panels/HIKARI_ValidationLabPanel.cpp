@@ -11,13 +11,10 @@
 #include <algorithm>
 #include <cstdio>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 
 struct RendererHealthSnapshot {
@@ -225,10 +222,8 @@ void DrawResourceSummary(const RendererHealthSnapshot& s) {
 }
 
 } // namespace
-#endif
 
 void ValidationLabPanel::Draw(EditorContext& context, bool& open) const {
-#if defined(HIKARI_WITH_EDITOR)
     if (!open) {
         return;
     }
@@ -240,22 +235,14 @@ void ValidationLabPanel::Draw(EditorContext& context, bool& open) const {
     DrawContents(context);
 
     ImGui::End();
-#else
-    (void)context;
-    (void)open;
-#endif
 }
 
 void ValidationLabPanel::DrawContents(EditorContext& context) const {
-#if defined(HIKARI_WITH_EDITOR)
     (void)context;
     const RendererHealthSnapshot snapshot = BuildSnapshot();
     DrawHealthOverview(snapshot);
     DrawIssueSummary(snapshot);
     DrawResourceSummary(snapshot);
-#else
-    (void)context;
-#endif
 }
 
 } // namespace HIKARI

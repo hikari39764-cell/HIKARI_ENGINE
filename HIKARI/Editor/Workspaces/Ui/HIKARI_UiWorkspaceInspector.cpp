@@ -8,6 +8,7 @@
 #include "Editor/Commands/HIKARI_SceneObjectCommandService.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
+#include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
 #include "Editor/Workspaces/Ui/HIKARI_UiWorkspaceController.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -70,7 +71,7 @@ void UiWorkspaceController::DrawInspector(DocumentSceneBase& scene, EditorContex
             if (type->typeName == "UiCanvasComponent")
                 continue;
             if (objects.CanExecute(SceneObjectCommandId::AddComponent, scene, context, type->typeName) &&
-                ImGui::Selectable(TEXT::Localize(type->presentation.displayName).c_str()))
+                ImGui::Selectable(InspectorText(type->presentation.displayName).c_str()))
                 addType = type->typeName;
         }
         ImGui::EndCombo();

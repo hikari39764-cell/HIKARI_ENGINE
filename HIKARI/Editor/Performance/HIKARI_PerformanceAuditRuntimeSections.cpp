@@ -25,9 +25,7 @@
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 #include "Editor/Performance/HIKARI_PerformanceAuditInternal.h"
 #include <algorithm>
@@ -36,7 +34,6 @@
 
 namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
 
-#if defined(HIKARI_WITH_EDITOR)
 void DrawResourceSummaryTable(const RuntimePerformanceSnapshot& s) {
     ImGui::SeparatorText(TEXT::Localize("shell.resources").c_str());
     if (BeginMetricTable("ClusterResourceMetrics")) {
@@ -309,6 +306,5 @@ void DrawReadiness(const RuntimePerformanceSnapshot& s) {
         ImGui::EndTable();
     }
 }
-#endif
 
 } // namespace HIKARI::EDITOR::PERFORMANCE_AUDIT

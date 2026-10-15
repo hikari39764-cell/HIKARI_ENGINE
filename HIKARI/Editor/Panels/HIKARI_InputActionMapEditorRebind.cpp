@@ -6,9 +6,7 @@
 
 #include "Input/Runtime/HIKARI_InputService.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
@@ -32,7 +30,6 @@ void InputActionMapEditor::BeginBindingCapture(INPUT::InputService& inputService
 }
 
 void InputActionMapEditor::DrawBindingCapture(INPUT::InputService& inputService) {
-#if defined(HIKARI_WITH_EDITOR)
     if (rebindOwner_ == RebindOwner::Binding) {
         const INPUT::InputRebindOperation& operation = inputService.GetRebindOperation();
         const INPUT::InputRebindStatus status = operation.GetStatus();
@@ -89,9 +86,6 @@ void InputActionMapEditor::DrawBindingCapture(INPUT::InputService& inputService)
     } else if (!bindingCaptureMessage_.empty()) {
         ImGui::TextDisabled("%s", bindingCaptureMessage_.c_str());
     }
-#else
-    (void)inputService;
-#endif
 }
 
 std::vector<int> InputActionMapEditor::FindBindingConflictIndices(const INPUT::InputActionMap& map) const {
@@ -141,7 +135,6 @@ void InputActionMapEditor::ApplyBindingDraft(INPUT::InputActionMap& map, bool re
 }
 
 bool InputActionMapEditor::DrawBindingConflictResolution(INPUT::InputActionMap& map) {
-#if defined(HIKARI_WITH_EDITOR)
     bindingConflictIndices_ = FindBindingConflictIndices(map);
     if (bindingConflictIndices_.empty()) {
         ApplyBindingDraft(map, false);
@@ -173,9 +166,6 @@ bool InputActionMapEditor::DrawBindingConflictResolution(INPUT::InputActionMap& 
         bindingApplyPending_ = false;
         bindingConflictIndices_.clear();
     }
-#else
-    (void)map;
-#endif
     return false;
 }
 

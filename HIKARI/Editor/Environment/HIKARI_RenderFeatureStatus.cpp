@@ -1,6 +1,5 @@
 #include "Editor/Environment/HIKARI_RenderFeatureStatus.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include <cstdio>
 #include <optional>
 #include <string>
@@ -14,11 +13,9 @@
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingScene.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 using RENDER3D::RAYTRACING::RuntimeRayTracingStats;
 using RENDER3D::RAYTRACING::RuntimeRayTracingStatus;
@@ -158,8 +155,5 @@ void DrawRenderFeatureStatus(const SceneEnvironment& environment) {
                                                 ? Localized("ui.renderStatus.active", EditorStatusTone::Ready)
                                                 : Localized("ui.renderStatus.offInProfile", EditorStatusTone::Normal));
 }
-#else
-void DrawRenderFeatureStatus(const SceneEnvironment&) {}
-#endif
 
 } // namespace HIKARI::EDITOR

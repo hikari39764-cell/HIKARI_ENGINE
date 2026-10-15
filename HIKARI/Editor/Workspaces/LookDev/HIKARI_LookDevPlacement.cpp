@@ -11,9 +11,7 @@
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -226,7 +224,6 @@ LookDevPlacementPose ComputeLookDevPlacement(LookDevPlaceItem item, const LookDe
     return pose;
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 void DrawLookDevPlacementPreview(ImDrawList& drawList, const Camera3D& camera, const LookDevView& view,
                                  const LookDevPlacementPose& pose, const LookDevSurfaceHit& hit) {
     const auto project = [&](const MATH::Vec3& point, ImVec2& screen) {
@@ -267,9 +264,5 @@ void DrawLookDevPlacementPreview(ImDrawList& drawList, const Camera3D& camera, c
     }
     drawList.PopClipRect();
 }
-#else
-void DrawLookDevPlacementPreview(ImDrawList&, const Camera3D&, const LookDevView&, const LookDevPlacementPose&,
-                                 const LookDevSurfaceHit&) {}
-#endif
 
 } // namespace HIKARI::EDITOR

@@ -4,14 +4,11 @@
 #include <algorithm>
 #include <cstring>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "Editor/Widgets/HIKARI_NumberField.h"
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 void DrawPositiveFloat(const char* label, float& value) {
     (void)DragNumber(label, value, {.minimum = 0.001, .maximum = 100000.0, .step = 0.01});
 }
@@ -19,7 +16,6 @@ void DrawPositiveFloat(const char* label, float& value) {
 void DrawCount(const char* label, uint32_t& value, int minimum, int maximum) {
     (void)DragNumber(label, value, {.minimum = static_cast<double>(minimum), .maximum = static_cast<double>(maximum)});
 }
-#endif
 } // namespace
 
 void PrimitiveCreationDialog::Open(ProceduralMeshKind kind) {
@@ -34,7 +30,6 @@ void PrimitiveCreationDialog::Open(ProceduralMeshKind kind) {
 }
 
 bool PrimitiveCreationDialog::Draw(CreatePrimitiveRequest& outRequest) {
-#if defined(HIKARI_WITH_EDITOR)
     if (openRequested_) {
         ImGui::OpenPopup(TEXT::LocalizeWindow("editor.ui.create.primitive.636e9c", "Create Primitive").c_str());
         openRequested_ = false;
@@ -126,10 +121,6 @@ bool PrimitiveCreationDialog::Draw(CreatePrimitiveRequest& outRequest) {
         ImGui::EndPopup();
     }
     return created;
-#else
-    (void)outRequest;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

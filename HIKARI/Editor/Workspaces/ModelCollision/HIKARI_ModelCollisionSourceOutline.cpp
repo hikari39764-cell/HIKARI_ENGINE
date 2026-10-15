@@ -6,9 +6,7 @@
 #include <limits>
 #include <unordered_map>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -91,7 +89,6 @@ MATH::Vec3 FaceNormal(const MATH::Vec3& first, const MATH::Vec3& second, const M
     return length > kNormalEpsilon ? normal * (1.0f / length) : MATH::Vec3{};
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 bool ProjectPoint(const Camera3D& camera, const MATH::Vec3& point, const ImVec2& origin, const ImVec2& size,
                   ImVec2& outPoint) noexcept {
     const MATH::Vec4 clip = camera.GetViewProj().TransformPoint({point.x, point.y, point.z, 1.0f});
@@ -108,7 +105,6 @@ bool ProjectPoint(const Camera3D& camera, const MATH::Vec3& point, const ImVec2&
     outPoint.y = origin.y + (0.5f - y * 0.5f) * size.y;
     return true;
 }
-#endif
 
 } // namespace
 
@@ -239,7 +235,6 @@ bool ModelCollisionSourceOutlineCache::Draw(ImDrawList* drawList, const Camera3D
                                             float viewportY, float viewportWidth, float viewportHeight,
                                             const ModelAsset& model, const ModelPreviewNode& node,
                                             uint64_t modelRevision, uint32_t color, float thickness) {
-#if defined(HIKARI_WITH_EDITOR)
     if (drawList == nullptr || viewportWidth <= 0.0f || viewportHeight <= 0.0f) {
         return false;
     }
@@ -274,20 +269,6 @@ bool ModelCollisionSourceOutlineCache::Draw(ImDrawList* drawList, const Camera3D
         ++drawnEdgeCount;
     }
     return drawnEdgeCount > 0u;
-#else
-    (void)drawList;
-    (void)camera;
-    (void)viewportX;
-    (void)viewportY;
-    (void)viewportWidth;
-    (void)viewportHeight;
-    (void)model;
-    (void)node;
-    (void)modelRevision;
-    (void)color;
-    (void)thickness;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

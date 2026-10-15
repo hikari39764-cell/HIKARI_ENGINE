@@ -5,13 +5,10 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR::MATERIAL_GRAPH_UI {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 const char* kMaterialValueTypeItems = "Float1\0Float2\0Float3\0Float4\0";
 int MaterialValueTypeIndex(MaterialValueType type) {
@@ -72,7 +69,6 @@ bool DrawCompactMaterialValue(MaterialValueData& value, bool color) {
     default: ImGui::TextDisabled("%s", ToString(value.type).data()); return false;
     }
 }
-#endif
 
 } // namespace HIKARI::EDITOR::MATERIAL_GRAPH_UI
 
@@ -82,7 +78,6 @@ bool ModelMaterialWorkspaceController::DrawGraphParameter(MaterialAssetData& sou
                                                           const MaterialGraphNodeData* node, std::string_view id,
                                                           const char* label, float width, std::string_view pin,
                                                           const MaterialValueData* fallback) {
-#if defined(HIKARI_WITH_EDITOR)
     namespace UI = MATERIAL_GRAPH_UI;
     auto* parameter = FindMaterialGraphParameter(graph, id);
     if (!parameter && !fallback) {
@@ -125,9 +120,6 @@ bool ModelMaterialWorkspaceController::DrawGraphParameter(MaterialAssetData& sou
             "%s", TEXT::Localize("editor.ui.runtime.default.editing.creates.the.authored.parameter.c91fef").c_str());
     ImGui::PopID();
     return capturesPointer;
-#else
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

@@ -15,9 +15,7 @@
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserPanel.h"
 #include "Editor/HIKARI_EditorContext.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR::ASSET_BROWSER {
 
@@ -136,7 +134,6 @@ std::filesystem::path MakeSceneTrashDirectory(const AssetDatabase& assetDatabase
 bool DeleteSceneAssetToTrash(AssetDatabase& assetDatabase, const AssetRecord& record, bool& outClearedStartupScene,
                              std::string& outError);
 
-#if defined(HIKARI_WITH_EDITOR)
 ImVec4 StateColor(AssetImportState state);
 
 std::string BuildGridCardLabel(std::string_view text, float maxWidth);
@@ -203,6 +200,5 @@ void DrawRecordGrid(AssetDatabase& assetDatabase, const std::vector<const AssetR
 void DrawSceneAssetModals(AssetDatabase& assetDatabase, EditorSelection& selection, std::string& lastOperationMessage,
                           const AssetBrowserContext* context, std::string& renameSceneGuid,
                           std::string& deleteSceneGuid, std::array<char, 128>& renameSceneNameBuffer);
-#endif
 
 } // namespace HIKARI::EDITOR::ASSET_BROWSER

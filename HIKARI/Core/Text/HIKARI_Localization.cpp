@@ -3,6 +3,7 @@
 #include <array>
 #include <functional>
 #include <mutex>
+#include <span>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -34,19 +35,52 @@ LocalizationTable& Table(Language language) {
     return tables[static_cast<size_t>(language)];
 }
 
+// 表は読み取り専用データに置き、初回に一度だけ写す。std::string の初期化子リストは数千件分が
+// スタックに積まれ、主スレッドのスタックを使い切る。
+struct TableEntry {
+    std::string_view key;
+    std::string_view text;
+};
+constexpr TableEntry kEnglishTable[] = {
+#include "Core/Text/Localization/HIKARI_LocalizationEnglish.inl"
+};
+constexpr TableEntry kChineseTable[] = {
+#include "Core/Text/Localization/HIKARI_LocalizationChinese.inl"
+};
+constexpr TableEntry kJapaneseTable[] = {
+#include "Core/Text/Localization/HIKARI_LocalizationJapanese.inl"
+};
+
+void Fill(LocalizationTable& table, std::span<const TableEntry> entries) {
+    table.reserve(entries.size());
+    for (const TableEntry& entry : entries) {
+        table.emplace(entry.key, entry.text);
+    }
+}
+
 void EnsureBuiltInTables() {
     static std::once_flag once;
     std::call_once(once, []() {
-        Table(Language::English) = {
-#include "Core/Text/Localization/HIKARI_LocalizationEnglish.inl"
-        };
-        Table(Language::Chinese) = {
-#include "Core/Text/Localization/HIKARI_LocalizationChinese.inl"
-        };
-        Table(Language::Japanese) = {
-#include "Core/Text/Localization/HIKARI_LocalizationJapanese.inl"
-        };
+        Fill(Table(Language::English), kEnglishTable);
+        Fill(Table(Language::Chinese), kChineseTable);
+        Fill(Table(Language::Japanese), kJapaneseTable);
     });
+}
+
+// 現在言語→英語の順に引く。無ければ nullptr。
+const std::string* FindTranslation(std::string_view key) {
+    EnsureBuiltInTables();
+    const auto& active = Table(gLanguage);
+    if (const auto found = active.find(key); found != active.end()) {
+        return &found->second;
+    }
+    if (gLanguage != Language::English) {
+        const auto& english = Table(Language::English);
+        if (const auto fallback = english.find(key); fallback != english.end()) {
+            return &fallback->second;
+        }
+    }
+    return nullptr;
 }
 
 } // namespace
@@ -60,22 +94,21 @@ bool SetLocalizationLanguage(Language language) noexcept {
 }
 
 const std::string& Localize(std::string_view key) {
-    EnsureBuiltInTables();
-    const auto& active = Table(gLanguage);
-    if (const auto found = active.find(key); found != active.end()) {
-        return found->second;
-    }
-    if (gLanguage != Language::English) {
-        const auto& english = Table(Language::English);
-        if (const auto fallback = english.find(key); fallback != english.end()) {
-            return fallback->second;
-        }
-    }
-    return InternMissingKey(key);
+    const std::string* translated = FindTranslation(key);
+    return translated != nullptr ? *translated : InternMissingKey(key);
 }
 
 std::string LocalizeWindow(std::string_view key, std::string_view stableId) {
     return Localize(key) + "###" + std::string(stableId);
+}
+
+std::string LocalizeSourceText(std::string_view prefix, std::string_view text) {
+    std::string key;
+    key.reserve(prefix.size() + text.size());
+    key.append(prefix).append(text);
+    // 動的な文も来るので、表に無いキーは Localize と違って保持しない。
+    const std::string* translated = FindTranslation(key);
+    return translated != nullptr ? *translated : std::string(text);
 }
 
 } // namespace HIKARI::TEXT

@@ -1,4 +1,3 @@
-#if defined(HIKARI_WITH_EDITOR)
 
 #include "Editor/Widgets/HIKARI_NumberField.h"
 
@@ -191,5 +190,3 @@ bool DragNumbers(const char* label, float* values, int count, const NumberRange&
 }
 
 } // namespace HIKARI::EDITOR
-
-#endif

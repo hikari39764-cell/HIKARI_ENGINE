@@ -16,13 +16,10 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 bool ContainsInsensitive(std::string_view text, std::string_view query) {
     if (query.empty())
         return true;
@@ -47,11 +44,9 @@ std::string LinkLabel(const VFX::VfxEmitterData& emitter, const VFX::VfxInputLin
                           : link.target.moduleId + "." + link.target.propertyId;
     return (input != nullptr ? input->name : link.inputId) + "  ->  " + target;
 }
-#endif
 } // namespace
 
 void VfxWorkspaceController::DrawHierarchyWindow(AssetDatabase& database) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin((VfxUiText("Library & Layers") + "###Vfx/Hierarchy").c_str())) {
         ImGui::End();
         return;
@@ -234,13 +229,9 @@ void VfxWorkspaceController::DrawHierarchyWindow(AssetDatabase& database) {
     }
     ImGui::EndTabBar();
     ImGui::End();
-#else
-    (void)database;
-#endif
 }
 
 void VfxWorkspaceController::DrawEmitterTree(const VFX::VfxAssetData& asset, std::string_view parentId) {
-#if defined(HIKARI_WITH_EDITOR)
     const auto children = VFX::CollectVfxLayerChildren(asset, parentId);
     for (const VFX::VfxEmitterData* emitter : children) {
         ImGui::PushID(emitter->id.c_str());
@@ -397,10 +388,6 @@ void VfxWorkspaceController::DrawEmitterTree(const VFX::VfxAssetData& asset, std
         }
         ImGui::PopID();
     }
-#else
-    (void)asset;
-    (void)parentId;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

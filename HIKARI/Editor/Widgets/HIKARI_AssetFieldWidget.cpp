@@ -15,14 +15,11 @@
 #include "Editor/Widgets/HIKARI_AssetPickerPopup.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 std::unordered_map<ImGuiID, AssetPickerPopupState> gPickerStates{};
 
 const char* ToAssetTypeText(AssetType type) {
@@ -76,12 +73,10 @@ bool AcceptAssetGuidPayload(const AssetDatabase* assetDatabase, AssetType requir
     inOutGuid = payload.guid.value;
     return true;
 }
-#endif
 } // namespace
 
 bool DrawAssetField(const AssetDatabase* assetDatabase, const AssetFieldOptions& options, std::string& inOutGuid,
                     EditorSelection* selection) {
-#if defined(HIKARI_WITH_EDITOR)
     const std::string labelText(options.label.empty() ? ToAssetTypeText(options.requiredType)
                                                       : std::string(options.label));
     if (!assetDatabase) {
@@ -174,13 +169,6 @@ bool DrawAssetField(const AssetDatabase* assetDatabase, const AssetFieldOptions&
 
     ImGui::PopID();
     return changed;
-#else
-    (void)assetDatabase;
-    (void)options;
-    (void)inOutGuid;
-    (void)selection;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

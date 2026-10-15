@@ -2,14 +2,11 @@
 
 #include "Core/Text/HIKARI_Localization.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void DrawEditorDocumentMenu(EditorCommandRouter& commandRouter) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::BeginMenu(TEXT::Localize("menu.edit").c_str())) {
         return;
     }
@@ -34,9 +31,6 @@ void DrawEditorDocumentMenu(EditorCommandRouter& commandRouter) {
         (void)commandRouter.Execute(EditorCommandId::SaveDocument);
     }
     ImGui::EndMenu();
-#else
-    (void)commandRouter;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

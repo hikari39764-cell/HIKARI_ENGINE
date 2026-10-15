@@ -5,10 +5,8 @@
 #include "Editor/Views/HIKARI_EditorViewInputGate.h"
 #include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -28,7 +26,6 @@ struct GameViewportInputState {
 
 GameViewportInputState gGameViewportInput{};
 
-#if defined(HIKARI_WITH_EDITOR)
 bool HasImGuiContext() { return ImGui::GetCurrentContext() != nullptr; }
 
 bool IsMouseInsideGameViewport() {
@@ -73,11 +70,9 @@ struct CameraControlCaptureRegistration {
 };
 
 CameraControlCaptureRegistration gCameraControlCaptureRegistration{};
-#endif
 } // namespace
 
 void SetGameViewportInputRect(float x, float y, float width, float height, bool windowFocused) {
-#if defined(HIKARI_WITH_EDITOR)
     if (width <= 1.0f || height <= 1.0f) {
         ClearGameViewportInputRect();
         return;
@@ -91,31 +86,17 @@ void SetGameViewportInputRect(float x, float y, float width, float height, bool 
     gGameViewportInput.y = y;
     gGameViewportInput.width = width;
     gGameViewportInput.height = height;
-#else
-    (void)x;
-    (void)y;
-    (void)width;
-    (void)height;
-    (void)windowFocused;
-#endif
 }
 
 void ClearGameViewportInputRect() { gGameViewportInput = {}; }
 
-void SetGameViewportGizmoCapture(bool captured) {
-#if defined(HIKARI_WITH_EDITOR)
-    gGameViewportInput.gizmoCaptured = captured;
-#else
-    (void)captured;
-#endif
-}
+void SetGameViewportGizmoCapture(bool captured) { gGameViewportInput.gizmoCaptured = captured; }
 
 bool HasGameViewportInputRect() { return gGameViewportInput.hasRect; }
 
 void SetGameViewportPlayInputEnabled(bool enabled) { gGameViewportInput.playInputEnabled = enabled; }
 
 bool IsGameViewportPlayInputActive() noexcept {
-#if defined(HIKARI_WITH_EDITOR)
     if (!gGameViewportInput.playInputEnabled) {
         return false;
     }
@@ -135,15 +116,11 @@ bool IsGameViewportPlayInputActive() noexcept {
         gGameViewportInput.playInputEnabled = false;
     }
     return active;
-#else
-    return false;
-#endif
 }
 
 bool TryGetGameViewportPointer(INPUT::InputPointerState& pointer, uint32_t& width, uint32_t& height) noexcept {
     pointer = {};
     width = height = 0u;
-#if defined(HIKARI_WITH_EDITOR)
     if (!IsGameViewportPlayInputActive()) {
         return false;
     }
@@ -160,13 +137,9 @@ bool TryGetGameViewportPointer(INPUT::InputPointerState& pointer, uint32_t& widt
     pointer.primaryDown = io.MouseDown[ImGuiMouseButton_Left];
     pointer.secondaryDown = io.MouseDown[ImGuiMouseButton_Right];
     return width > 0u && height > 0u;
-#else
-    return false;
-#endif
 }
 
 bool IsGameViewportMouseInputActive() {
-#if defined(HIKARI_WITH_EDITOR)
     if (!gGameViewportInput.hasRect || !HasImGuiContext()) {
         return false;
     }
@@ -187,13 +160,9 @@ bool IsGameViewportMouseInputActive() {
     }
 
     return hovered;
-#else
-    return false;
-#endif
 }
 
 bool IsGameViewportWheelInputActive() {
-#if defined(HIKARI_WITH_EDITOR)
     if (!gGameViewportInput.hasRect || !HasImGuiContext()) {
         return false;
     }
@@ -203,13 +172,9 @@ bool IsGameViewportWheelInputActive() {
     }
 
     return IsMouseInsideGameViewport();
-#else
-    return false;
-#endif
 }
 
 bool IsGameViewportKeyboardInputActive() {
-#if defined(HIKARI_WITH_EDITOR)
     if (!gGameViewportInput.hasRect || !HasImGuiContext()) {
         return false;
     }
@@ -219,9 +184,6 @@ bool IsGameViewportKeyboardInputActive() {
     }
 
     return gGameViewportInput.mouseCaptured || (gGameViewportInput.windowFocused && IsMouseInsideGameViewport());
-#else
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

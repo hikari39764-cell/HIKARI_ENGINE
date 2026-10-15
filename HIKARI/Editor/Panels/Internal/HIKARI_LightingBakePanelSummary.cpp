@@ -10,13 +10,10 @@
 #include "Gfx/RayTracing/HIKARI_DxrCapabilities.h"
 #include "Tools/Baking/HIKARI_LightingBakeService.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR::LIGHTING_BAKE_PANEL {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 
 uint32_t CountEnabledItems(const TOOLS::BAKING::LightingBakeStatus& status, TOOLS::BAKING::LightingBakeItemKind kind) {
@@ -26,10 +23,8 @@ uint32_t CountEnabledItems(const TOOLS::BAKING::LightingBakeStatus& status, TOOL
 }
 
 } // namespace
-#endif
 
 void DrawWorkflowSummary(const TOOLS::BAKING::LightingBakeStatus& status, const EditorThemePalette& palette) {
-#if defined(HIKARI_WITH_EDITOR)
     const uint32_t reflectionCount = CountEnabledItems(status, TOOLS::BAKING::LightingBakeItemKind::ReflectionProbe);
     const uint32_t irradianceCount = CountEnabledItems(status, TOOLS::BAKING::LightingBakeItemKind::IrradianceVolume);
     const uint32_t lightmapCount = CountEnabledItems(status, TOOLS::BAKING::LightingBakeItemKind::LightmapObject);
@@ -83,10 +78,6 @@ void DrawWorkflowSummary(const TOOLS::BAKING::LightingBakeStatus& status, const 
         ImGui::TextColored(palette.success, "%s", TEXT::Localize("ui.lightingBake.readyNote").c_str());
     }
     ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.surfaceLightmapHint").c_str());
-#else
-    (void)status;
-    (void)palette;
-#endif
 }
 
 } // namespace HIKARI::EDITOR::LIGHTING_BAKE_PANEL

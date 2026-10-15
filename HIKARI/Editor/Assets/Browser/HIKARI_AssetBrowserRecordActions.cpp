@@ -36,16 +36,13 @@
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
 #include "Editor/Platform/HIKARI_EditorShellActions.h"
 
 namespace HIKARI::EDITOR::ASSET_BROWSER {
 
-#if defined(HIKARI_WITH_EDITOR)
 void HandleRecordActivated(const AssetRecord& record, std::string& lastOperationMessage,
                            std::optional<AssetWorkspaceActivation>& activatedAsset) {
     if (!record.guid.IsValid()) {
@@ -287,6 +284,5 @@ void DrawRecordContextMenu(AssetDatabase& assetDatabase, const AssetRecord& reco
                                   : TEXT::Localize("ui.assetBrowser.metaRegenerationFailed");
     }
 }
-#endif
 
 } // namespace HIKARI::EDITOR::ASSET_BROWSER

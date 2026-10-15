@@ -8,9 +8,7 @@
 #include <cstdio>
 #include <vector>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR::INPUT_WIDGETS {
 namespace {
@@ -69,19 +67,12 @@ const std::vector<std::string>& ControlsForSource(INPUT::InputBindingSource sour
 } // namespace
 
 bool EditString(const char* label, std::string& value, size_t capacity) {
-#if defined(HIKARI_WITH_EDITOR)
     std::vector<char> buffer((std::max)(capacity, value.size() + 2), '\0');
     std::snprintf(buffer.data(), buffer.size(), "%s", value.c_str());
     if (!ImGui::InputText(label, buffer.data(), buffer.size()))
         return false;
     value = buffer.data();
     return true;
-#else
-    (void)label;
-    (void)value;
-    (void)capacity;
-    return false;
-#endif
 }
 
 bool MatchesFilter(std::string_view value, const char* filter) {
@@ -91,7 +82,6 @@ bool MatchesFilter(std::string_view value, const char* filter) {
 }
 
 bool DrawValueTypeCombo(const char* label, INPUT::InputActionValueType& valueType) {
-#if defined(HIKARI_WITH_EDITOR)
     bool changed = false;
     constexpr std::array types{
         INPUT::InputActionValueType::Button,
@@ -111,15 +101,9 @@ bool DrawValueTypeCombo(const char* label, INPUT::InputActionValueType& valueTyp
         ImGui::EndCombo();
     }
     return changed;
-#else
-    (void)label;
-    (void)valueType;
-    return false;
-#endif
 }
 
 bool DrawBindingSourceCombo(const char* label, INPUT::InputBindingSource& source) {
-#if defined(HIKARI_WITH_EDITOR)
     bool changed = false;
     constexpr std::array sources{
         INPUT::InputBindingSource::Keyboard,    INPUT::InputBindingSource::MouseButton,
@@ -140,11 +124,6 @@ bool DrawBindingSourceCombo(const char* label, INPUT::InputBindingSource& source
         ImGui::EndCombo();
     }
     return changed;
-#else
-    (void)label;
-    (void)source;
-    return false;
-#endif
 }
 
 std::string DefaultControl(INPUT::InputBindingSource source) {
@@ -153,7 +132,6 @@ std::string DefaultControl(INPUT::InputBindingSource source) {
 }
 
 bool DrawControlPicker(const char* label, INPUT::InputBindingSource source, std::string& control) {
-#if defined(HIKARI_WITH_EDITOR)
     bool changed = false;
     const std::vector<std::string>& options = ControlsForSource(source);
     if (ImGui::BeginCombo(label,
@@ -170,16 +148,9 @@ bool DrawControlPicker(const char* label, INPUT::InputBindingSource source, std:
         ImGui::EndCombo();
     }
     return changed;
-#else
-    (void)label;
-    (void)source;
-    (void)control;
-    return false;
-#endif
 }
 
 bool DrawModifierPicker(std::string& modifier) {
-#if defined(HIKARI_WITH_EDITOR)
     static constexpr std::array<const char*, 10> modifiers{"",
                                                            "Shift",
                                                            "Ctrl",
@@ -207,10 +178,6 @@ bool DrawModifierPicker(std::string& modifier) {
         ImGui::EndCombo();
     }
     return changed;
-#else
-    (void)modifier;
-    return false;
-#endif
 }
 
 std::string DeviceLabel(INPUT::InputDeviceKind device) {

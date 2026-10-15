@@ -2,9 +2,7 @@
 
 #include <utility>
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -17,13 +15,11 @@ bool ModelMaterialWorkspaceController::FlushMaterialPreview(DocumentSceneBase& s
 }
 
 void ModelMaterialWorkspaceController::TrackMaterialItem(MaterialAssetData before, std::string label, bool changed) {
-#if defined(HIKARI_WITH_EDITOR)
     const uint32_t item = ImGui::GetItemID();
     const bool active = ImGui::IsItemActive();
     if (active)
         materialActiveItem_ = item;
     authoringDocument_.UpdateMaterialItem(std::move(before), std::move(label), item, active, changed);
-#endif
 }
 
 bool ModelMaterialWorkspaceController::ApplyHistoryProjection(ModelMaterialWorkspaceDocument::ChangedDomain domain,

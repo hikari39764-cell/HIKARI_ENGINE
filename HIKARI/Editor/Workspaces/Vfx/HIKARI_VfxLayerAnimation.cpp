@@ -6,13 +6,10 @@
 #include "Render3D/Vfx/HIKARI_ParticleCpuSimulation.h"
 
 #include <algorithm>
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 void VfxWorkspaceController::DrawLayerAnimation(AssetDatabase& database, const VFX::VfxEmitterData& layer) {
-#if defined(HIKARI_WITH_EDITOR)
     using namespace RENDER3D::PARTICLES;
     ImGui::SeparatorText(TEXT::Localize("ui.vfx.layer.animation").c_str());
     LayerAnimationSample sample;
@@ -101,9 +98,5 @@ void VfxWorkspaceController::DrawLayerAnimation(AssetDatabase& database, const V
     (void)IconButton(EditorGlyph::Help, "KeyHelp", EditorButtonTone::Quiet, {26, ImGui::GetFrameHeight()},
                      TEXT::Localize("ui.vfx.layer.keyHelp").c_str());
     DrawLayerPath(layer);
-#else
-    (void)database;
-    (void)layer;
-#endif
 }
 } // namespace HIKARI::EDITOR

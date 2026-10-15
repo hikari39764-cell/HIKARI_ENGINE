@@ -24,5 +24,8 @@ const std::string& Localize(std::string_view key);
 // produces "检查器###Inspector" so the displayed title is translated
 // while docking/layout state keeps referencing "Inspector".
 std::string LocalizeWindow(std::string_view key, std::string_view stableId);
+// 英文の原文を "<prefix><原文>" のキーで引く。表に無ければ原文のまま（翻訳を足すまで英文で出る）。
+// 原文をキーにする UI（VFX の作成画面・コンポーネントのインスペクター）が共有する。
+std::string LocalizeSourceText(std::string_view prefix, std::string_view text);
 
 } // namespace HIKARI::TEXT

@@ -2,7 +2,6 @@
 
 namespace HIKARI::EDITOR {
 
-#if defined(HIKARI_WITH_EDITOR)
 const EditorThemeMetrics& GetEditorThemeMetrics() noexcept {
     static const EditorThemeMetrics metrics{};
     return metrics;
@@ -25,6 +24,5 @@ const EditorThemePalette& GetEditorThemePalette() noexcept {
                                             .error = {0.94f, 0.35f, 0.32f, 1.00f}};
     return palette;
 }
-#endif
 
 } // namespace HIKARI::EDITOR

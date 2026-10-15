@@ -1,8 +1,6 @@
 #pragma once
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -86,9 +84,7 @@ enum class EditorGlyph {
     Record,
 };
 
-#if defined(HIKARI_WITH_EDITOR)
 void DrawEditorGlyph(ImDrawList& drawList, EditorGlyph glyph, const ImVec2& center, float size, ImU32 color,
                      float thickness = 1.6f);
-#endif
 
 } // namespace HIKARI::EDITOR

@@ -39,9 +39,7 @@
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
 
@@ -125,10 +123,7 @@ bool CreateDefaultMaterialAsset(AssetDatabase& assetDatabase, const std::filesys
         data.materialName = "New Material";
     }
 
-    // Material Asset 驍ｵ・ｺ繝ｻ・ｯ Texture 驍ｵ・ｺ繝ｻ・ｮ GUID
-    // 驛｢・ｧ陷代・・ｽ・ｿ隴弱・莠憺し・ｺ陷会ｽｱ・つ遶乗劼・ｽ・ｮ雋翫・諤咎し・ｺ繝ｻ・ｮ
-    // HTEX 驍ｵ・ｺ繝ｻ・ｯ runtime builder
-    // 驍ｵ・ｺ霑ｹ螟ｲ・ｽ・ｧ繝ｻ・｣髮手ｶ｣・ｽ・ｺ驍ｵ・ｺ陷ｷ・ｶ繝ｻ迢暦ｽｸ・ｲ郢晢ｽｻ
+    // 新規 Material はテクスチャ未割り当てで保存する（Texture は後から GUID で割り当てる）。
     if (!SavePbrMaterialAssetData(absoluteMaterialPath, data, outError)) {
         return false;
     }

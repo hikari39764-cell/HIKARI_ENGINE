@@ -11,9 +11,7 @@
 #include <map>
 #include <set>
 #include <unordered_map>
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 void HierarchyPanel::DrawFolderContents(World& world, EditorSelection& selection,
@@ -22,7 +20,6 @@ void HierarchyPanel::DrawFolderContents(World& world, EditorSelection& selection
                                         const EDITOR::EditorOperationRegistry& operations,
                                         const std::function<void(GameObject*)>& drawObject,
                                         std::uint64_t documentRevision) {
-#if defined(HIKARI_WITH_EDITOR)
     const bool changedDocument = folderDocumentRevision_ != documentRevision;
     if (changedDocument) {
         folderDocumentRevision_ = documentRevision;
@@ -222,15 +219,5 @@ void HierarchyPanel::DrawFolderContents(World& world, EditorSelection& selection
         }
         ImGui::EndPopup();
     }
-#else
-    (void)world;
-    (void)selection;
-    (void)objects;
-    (void)search;
-    (void)document;
-    (void)operations;
-    (void)drawObject;
-    (void)documentRevision;
-#endif
 }
 } // namespace HIKARI

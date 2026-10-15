@@ -2,14 +2,11 @@
 
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void HandleTransformGizmoShortcuts(EditorTransformGizmoState& state, bool viewportFocused) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!CanUseEditorShortcut(EditorShortcutScope::Viewport, viewportFocused)) {
         return;
     }
@@ -36,10 +33,6 @@ void HandleTransformGizmoShortcuts(EditorTransformGizmoState& state, bool viewpo
         state.mode = state.mode == EditorTransformGizmoMode::World ? EditorTransformGizmoMode::Local
                                                                    : EditorTransformGizmoMode::World;
     }
-#else
-    (void)state;
-    (void)viewportFocused;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

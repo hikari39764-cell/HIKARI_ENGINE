@@ -9,9 +9,7 @@
 
 #include "Core/Text/HIKARI_AsciiCase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -23,7 +21,6 @@ struct BindingChoice {
 };
 
 bool DrawChoices(std::string_view widgetId, std::span<const BindingChoice> choices, std::string& value) {
-#if defined(HIKARI_WITH_EDITOR)
     const auto current = std::find_if(choices.begin(), choices.end(),
                                       [&value](const BindingChoice& choice) { return choice.id == value; });
     const std::string preview = value.empty()              ? std::string("<none>")
@@ -65,12 +62,6 @@ bool DrawChoices(std::string_view widgetId, std::span<const BindingChoice> choic
     }
     ImGui::PopID();
     return changed;
-#else
-    (void)widgetId;
-    (void)choices;
-    (void)value;
-    return false;
-#endif
 }
 
 void SortChoices(std::vector<BindingChoice>& choices) {

@@ -10,13 +10,10 @@
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 bool ContainsInsensitive(std::string_view text, std::string_view query) {
     if (query.empty()) {
         return true;
@@ -31,11 +28,9 @@ bool MatchesCatalogSearch(std::string_view name, std::string_view id, const char
     const std::string_view filter = query != nullptr ? std::string_view(query) : std::string_view{};
     return ContainsInsensitive(name, filter) || ContainsInsensitive(id, filter);
 }
-#endif
 } // namespace
 
 void RuntimeBindingWorkspaceController::DrawCatalogWindow(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.catalog.4a88d2", "RuntimeBinding/Catalog").c_str())) {
         ImGui::End();
         return;
@@ -137,9 +132,6 @@ void RuntimeBindingWorkspaceController::DrawCatalogWindow(DocumentSceneBase& sce
             requestDeleteDialog_ = true;
         }
     }
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

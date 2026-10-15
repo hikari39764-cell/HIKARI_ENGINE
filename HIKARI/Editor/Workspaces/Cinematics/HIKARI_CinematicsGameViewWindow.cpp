@@ -11,13 +11,10 @@
 #include "Vfx/Post/HIKARI_PostSystem.h"
 #include <algorithm>
 #include <cmath>
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 namespace HIKARI::EDITOR {
 void CinematicsWorkspaceController::DrawMonitor(DocumentSceneBase& scene, EditorWorkspaceHost& host,
                                                 CinematicsWorkspaceResult& result) {
-#if defined(HIKARI_WITH_EDITOR)
     auto& view = host.GetCinematicsGameView();
     view.cameraBinding.kind = EditorViewCameraSourceKind::SceneDirector;
     if (!ImGui::Begin(TEXT::LocalizeWindow("cine.view", "Cinematics/Monitor").c_str(), nullptr,
@@ -96,6 +93,5 @@ void CinematicsWorkspaceController::DrawMonitor(DocumentSceneBase& scene, Editor
     } else
         ClearGameViewportInputRect();
     ImGui::End();
-#endif
 }
 } // namespace HIKARI::EDITOR

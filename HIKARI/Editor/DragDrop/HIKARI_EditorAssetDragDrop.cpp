@@ -5,14 +5,11 @@
 
 #include "Editor/Style/HIKARI_EditorAssetIcons.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 bool BeginAssetDragSource(const AssetRecord& record) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!record.guid.IsValid()) {
         return false;
     }
@@ -30,14 +27,9 @@ bool BeginAssetDragSource(const AssetRecord& record) {
     ImGui::TextDisabled("%s", record.sourcePath.generic_string().c_str());
     ImGui::EndDragDropSource();
     return true;
-#else
-    (void)record;
-    return false;
-#endif
 }
 
 bool AcceptAssetDrop(const AssetDatabase& assetDatabase, DroppedAssetPayload& outPayload) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::BeginDragDropTarget()) {
         return false;
     }
@@ -54,11 +46,6 @@ bool AcceptAssetDrop(const AssetDatabase& assetDatabase, DroppedAssetPayload& ou
     }
     ImGui::EndDragDropTarget();
     return accepted;
-#else
-    (void)assetDatabase;
-    (void)outPayload;
-    return false;
-#endif
 }
 
 bool AcceptAssetDropOfType(const AssetDatabase& assetDatabase, AssetType requiredType,

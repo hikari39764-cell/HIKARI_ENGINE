@@ -3,14 +3,11 @@
 #include "Editor/Style/HIKARI_EditorTheme.h"
 #include "Editor/Settings/HIKARI_EditorPreferences.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void ApplyEditorStyle() {
-#if defined(HIKARI_WITH_EDITOR)
     const EditorThemeMetrics& metrics = GetEditorThemeMetrics();
     const EditorThemePalette& palette = GetEditorThemePalette();
     ImGuiStyle& style = ImGui::GetStyle();
@@ -109,7 +106,6 @@ void ApplyEditorStyle() {
         colors[ImGuiCol_TextDisabled] = {0.66f, 0.71f, 0.78f, 1};
         colors[ImGuiCol_Border] = {0.32f, 0.38f, 0.46f, 1};
     }
-#endif
 }
 
 } // namespace HIKARI::EDITOR

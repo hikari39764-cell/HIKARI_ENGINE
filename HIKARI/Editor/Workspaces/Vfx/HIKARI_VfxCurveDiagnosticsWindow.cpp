@@ -12,13 +12,10 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceDomain.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
-#if defined(HIKARI_WITH_EDITOR)
 struct CurveChoice {
     std::string moduleId{};
     std::string propertyId{};
@@ -105,11 +102,9 @@ void DrawGradient(VfxWorkspaceController& controller, const VFX::VfxEmitterData&
     ImGui::TextDisabled(TEXT::Localize("editor.ui.zu.u.stops.76ecd3").c_str(), gradient.stops.size(),
                         RENDER3D::PARTICLES::kMaxParticleColorStops);
 }
-#endif
 } // namespace
 
 void VfxWorkspaceController::DrawCurveDiagnosticsWindow() {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin((VfxUiText("Timing & Curves") + "###Vfx/CurvesDiagnostics").c_str())) {
         ImGui::End();
         return;
@@ -140,11 +135,9 @@ void VfxWorkspaceController::DrawCurveDiagnosticsWindow() {
         ImGui::EndTabBar();
     }
     ImGui::End();
-#endif
 }
 
 void VfxWorkspaceController::DrawCurveEditor(const VFX::VfxEmitterData& source) {
-#if defined(HIKARI_WITH_EDITOR)
     const VFX::VfxEmitterData emitter = source;
     ImGui::TextDisabled(TEXT::Localize("editor.ui.emitter.s.6d1333").c_str(), emitter.name.c_str());
     const std::vector<CurveChoice> choices = CollectCurveChoices(emitter);
@@ -363,9 +356,6 @@ void VfxWorkspaceController::DrawCurveEditor(const VFX::VfxEmitterData& source) 
     if (emitter.color.value.mode == VFX::VfxAnimatedColorMode::Gradient) {
         DrawGradient(*this, emitter, emitter.color.value.gradient, selectedColorStopId_, statusMessage_);
     }
-#else
-    (void)source;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

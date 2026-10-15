@@ -5,15 +5,12 @@
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include <string>
 
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 void DrawTransitionDebug() {
     const SceneTransitionBus* transitionBus = RuntimeSceneContext::GetTransitionBus();
@@ -64,8 +61,5 @@ bool QualityPanel::Draw() {
     ImGui::End();
     return renderQualityChanged;
 }
-#else
-bool QualityPanel::Draw() { return false; }
-#endif
 
 } // namespace HIKARI

@@ -3,14 +3,11 @@
 
 #include "Core/HIKARI_TimeService.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
 void TimePanel::DrawContents() const {
-#if defined(HIKARI_WITH_EDITOR)
     const FrameContext& frame = TIME::GetFrameContext();
 
     ImGui::Text(TEXT::Localize("editor.ui.frame.index.llu.85e39d").c_str(),
@@ -68,7 +65,6 @@ void TimePanel::DrawContents() const {
     ImGui::Text(TEXT::Localize("editor.ui.missing.bounds.d.3c8f02").c_str(), renderStats.missingBoundsCount);
     ImGui::Text(TEXT::Localize("editor.ui.skinned.safe.draw.d.ec2da9").c_str(), renderStats.skinnedCullSkippedCount);
     ImGui::Text(TEXT::Localize("editor.ui.fallback.wires.d.b6d968").c_str(), renderStats.fallbackWireCount);
-#endif
 }
 
 } // namespace HIKARI

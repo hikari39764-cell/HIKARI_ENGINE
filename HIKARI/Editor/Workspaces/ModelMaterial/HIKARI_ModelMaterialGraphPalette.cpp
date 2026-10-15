@@ -17,15 +17,12 @@
 #include "Runtime/Binding/Adapters/HIKARI_RuntimeMaterialValueAdapter.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(DocumentSceneBase& scene, MaterialAssetData& source,
                                                                     MaterialGraphData& graph, MATH::Vec2 position) {
-#if defined(HIKARI_WITH_EDITOR)
     constexpr std::array<std::string_view, 4u> categories{"Ready-made Shading", "Surface", "Advanced / Inputs",
                                                           "Advanced / Math & Masks"};
     constexpr std::string_view otherCategory = "Other";
@@ -367,12 +364,6 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(DocumentScen
         drawFunctions();
         ImGui::EndMenu();
     }
-#else
-    (void)scene;
-    (void)source;
-    (void)graph;
-    (void)position;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

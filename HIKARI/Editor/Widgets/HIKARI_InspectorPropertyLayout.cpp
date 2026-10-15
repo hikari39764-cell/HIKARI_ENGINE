@@ -2,32 +2,46 @@
 
 #include <algorithm>
 
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Style/HIKARI_EditorTheme.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
-void DrawInspectorPropertyLabel(std::string_view label, float availableWidth) {
-#if defined(HIKARI_WITH_EDITOR)
+std::string InspectorText(std::string_view text) {
+    constexpr std::string_view prefix = "ui.inspector.text.";
+    const size_t idStart = text.find("##");
+    if (idStart == std::string_view::npos) {
+        return TEXT::LocalizeSourceText(prefix, text);
+    }
+    return TEXT::LocalizeSourceText(prefix, text.substr(0, idStart)).append(text.substr(idStart));
+}
+
+void DrawInspectorPropertyLabel(std::string_view label, float availableWidth, std::string_view description) {
     const ImVec2 textSize = ImGui::CalcTextSize(label.data(), label.data() + label.size());
     const bool clipped = textSize.x > availableWidth;
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(label.data(), label.data() + label.size());
-    if (clipped && ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%.*s", static_cast<int>(label.size()), label.data());
+    if ((clipped || !description.empty()) && ImGui::IsItemHovered()) {
+        // 切れたラベルは全文を、説明があれば説明を（両方ならラベルの下に）出す。
+        if (ImGui::BeginTooltip()) {
+            if (clipped) {
+                ImGui::TextUnformatted(label.data(), label.data() + label.size());
+            }
+            if (!description.empty()) {
+                ImGui::PushTextWrapPos(ImGui::GetFontSize() * 24.0f);
+                ImGui::TextUnformatted(description.data(), description.data() + description.size());
+                ImGui::PopTextWrapPos();
+            }
+            ImGui::EndTooltip();
+        }
     }
-#else
-    (void)label;
-    (void)availableWidth;
-#endif
 }
 
-InspectorPropertyRow::InspectorPropertyRow(std::string_view label, InspectorPropertyValueKind valueKind)
-    : label_(label) {
-#if defined(HIKARI_WITH_EDITOR)
+InspectorPropertyRow::InspectorPropertyRow(std::string_view label, InspectorPropertyValueKind valueKind,
+                                           std::string_view description)
+    : label_(label), description_(description) {
     ImGui::PushID(label_.c_str());
     idPushed_ = true;
 
@@ -43,7 +57,7 @@ InspectorPropertyRow::InspectorPropertyRow(std::string_view label, InspectorProp
     const bool useStackedLayout =
         availableWidth < 280.0f || labelWidth + minimumValueWidth + rowSpacing > availableWidth;
     if (useStackedLayout) {
-        DrawInspectorPropertyLabel(label_, availableWidth);
+        DrawInspectorPropertyLabel(label_, availableWidth, description_);
         ImGui::Spacing();
         ImGui::SetNextItemWidth(-1.0f);
         visible_ = true;
@@ -59,22 +73,19 @@ InspectorPropertyRow::InspectorPropertyRow(std::string_view label, InspectorProp
     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
-    DrawInspectorPropertyLabel(label_, ImGui::GetContentRegionAvail().x);
+    DrawInspectorPropertyLabel(label_, ImGui::GetContentRegionAvail().x, description_);
     ImGui::TableSetColumnIndex(1);
     ImGui::SetNextItemWidth(-1.0f);
     visible_ = true;
-#endif
 }
 
 InspectorPropertyRow::~InspectorPropertyRow() {
-#if defined(HIKARI_WITH_EDITOR)
     if (tableOpen_) {
         ImGui::EndTable();
     }
     if (idPushed_) {
         ImGui::PopID();
     }
-#endif
 }
 
 bool InspectorPropertyRow::IsVisible() const noexcept { return visible_; }

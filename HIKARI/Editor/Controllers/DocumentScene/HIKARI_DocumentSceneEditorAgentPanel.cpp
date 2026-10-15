@@ -14,9 +14,7 @@
 #include <string>
 #include <system_error>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 namespace {
@@ -179,7 +177,6 @@ void LoadPreferences(EDITOR::AGENT::AgentPanelState& panel, const std::filesyste
     ApplyRemembered(panel);
 }
 
-#if defined(HIKARI_WITH_EDITOR)
 std::string FormatTokens(uint64_t tokens) {
     char text[32]{};
     if (tokens >= 1000000u)
@@ -429,7 +426,6 @@ void DrawUsage(const EDITOR::AGENT::AgentSession& session) {
             ImGui::SetTooltip("%s", TEXT::Localize("agent.usage.referenceCostHint").c_str());
     }
 }
-#endif
 
 } // namespace
 
@@ -515,7 +511,6 @@ void DocumentSceneEditorController::RecordAgentOperation(const std::string& acti
 }
 
 void DocumentSceneEditorController::DrawAgentPanel(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     EDITOR::AGENT::AgentPanelState& panel = agentPanel_;
     const std::filesystem::path agentRuns = scene.GetAssetDatabase().GetLibraryRoot() / "EditorAI" / "AgentRuns";
     const auto checkLogin = [&panel, &agentRuns](AgentKind kind) {
@@ -713,9 +708,6 @@ void DocumentSceneEditorController::DrawAgentPanel(DocumentSceneBase& scene) {
         if (!whole && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip("%s", TEXT::Localize("agent.undoTurnBlocked").c_str());
     }
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI

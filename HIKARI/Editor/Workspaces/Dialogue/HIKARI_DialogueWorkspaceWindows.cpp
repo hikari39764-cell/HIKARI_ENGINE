@@ -22,14 +22,11 @@
 #include "Editor/Workspaces/Dialogue/HIKARI_DialoguePreviewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 constexpr ImVec4 kAccent{0.20f, 0.58f, 1.0f, 1.0f};
 constexpr ImVec4 kModified{1.0f, 0.72f, 0.25f, 1.0f};
@@ -1377,10 +1374,8 @@ private:
     DIALOGUE::DialogueDefinition& definition_;
     DIALOGUE::DialogueProjectStyle& style_;
 };
-#endif
 
 void DialogueWorkspaceController::DrawDockSpace(bool resetDefaultDockLayout) const {
-#if defined(HIKARI_WITH_EDITOR)
     ImGuiIO& io = ImGui::GetIO();
     if ((io.ConfigFlags & ImGuiConfigFlags_DockingEnable) == 0)
         return;
@@ -1407,18 +1402,10 @@ void DialogueWorkspaceController::DrawDockSpace(bool resetDefaultDockLayout) con
         ImGui::DockBuilderFinish(dockspaceId);
     }
     HIKARI::EDITOR::DrawWorkspaceDockSpace(dockspaceId, viewport);
-#else
-    (void)resetDefaultDockLayout;
-#endif
 }
 
 void DrawDialogueWorkspaceWindows(DialogueWorkspaceController& controller, DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     DialogueWorkspaceWindows(controller, scene).Draw();
-#else
-    (void)controller;
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

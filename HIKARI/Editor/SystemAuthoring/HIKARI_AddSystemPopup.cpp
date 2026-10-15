@@ -7,14 +7,11 @@
 #include "Editor/SystemAuthoring/HIKARI_SystemAuthoringRegistry.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
 
-#if defined(HIKARI_WITH_EDITOR)
 constexpr const char* kPopupId = "Add System###HikariAddSystemPopup";
 
 bool CanAddSystem(const SceneSystemAuthoringRow& row, const SystemAuthoringRegistry& authoringRegistry) {
@@ -24,7 +21,6 @@ bool CanAddSystem(const SceneSystemAuthoringRow& row, const SystemAuthoringRegis
                                                 authoring->scope == SystemAuthoringScope::DedicatedTool);
     return !IsSceneSystemInstalled(row) && row.runtimeInfo != nullptr && sceneInstallable;
 }
-#endif
 } // namespace
 
 void AddSystemPopup::Open() {
@@ -35,7 +31,6 @@ void AddSystemPopup::Open() {
 
 std::optional<std::string> AddSystemPopup::Draw(const std::vector<SceneSystemAuthoringRow>& rows,
                                                 const SystemAuthoringRegistry& authoringRegistry) {
-#if defined(HIKARI_WITH_EDITOR)
     if (openRequested_) {
         ImGui::OpenPopup(kPopupId);
         openRequested_ = false;
@@ -110,11 +105,6 @@ std::optional<std::string> AddSystemPopup::Draw(const std::vector<SceneSystemAut
     }
     ImGui::EndPopup();
     return result;
-#else
-    (void)rows;
-    (void)authoringRegistry;
-    return std::nullopt;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

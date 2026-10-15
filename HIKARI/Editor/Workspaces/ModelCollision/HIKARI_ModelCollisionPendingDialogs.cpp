@@ -10,15 +10,12 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void ModelCollisionWorkspaceController::DrawPendingModelOpenModal(DocumentSceneBase& scene,
                                                                   ModelCollisionWorkspaceResult& result) {
-#if defined(HIKARI_WITH_EDITOR)
     (void)result;
     AssetDatabase& assetDatabase = scene.GetAssetDatabase();
     if (!pendingModelGuid_.IsValid()) {
@@ -61,15 +58,10 @@ void ModelCollisionWorkspaceController::DrawPendingModelOpenModal(DocumentSceneB
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
-#else
-    (void)scene;
-    (void)result;
-#endif
 }
 
 void ModelCollisionWorkspaceController::DrawPendingCloseModal(DocumentSceneBase& scene,
                                                               ModelCollisionWorkspaceResult& result) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!closeRequested_) {
         return;
     }
@@ -104,10 +96,6 @@ void ModelCollisionWorkspaceController::DrawPendingCloseModal(DocumentSceneBase&
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
-#else
-    (void)scene;
-    (void)result;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

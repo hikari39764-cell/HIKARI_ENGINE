@@ -9,14 +9,11 @@
 #include "Animation/StateMachine/HIKARI_AnimationStateMachineInstance.h"
 #include "Animation/StateMachine/HIKARI_AnimationStateMotionEvaluator.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineGraphSupport.h"
 
 namespace HIKARI::EDITOR::ANIMATION_STATE_MACHINE_GRAPH {
 
-#if defined(HIKARI_WITH_EDITOR)
 std::string MotionLabel(const ANIMATION::AnimationStateMotion& motion) {
     if (const auto* clip = std::get_if<ANIMATION::AnimationClipMotion>(&motion)) {
         return clip->clip.fallbackName.empty() ? "<no animation>" : clip->clip.fallbackName;
@@ -46,6 +43,5 @@ float DistanceToSegment(const ImVec2& point, const ImVec2& start, const ImVec2& 
     const float py = point.y - closestY;
     return std::sqrt(px * px + py * py);
 }
-#endif
 
 } // namespace HIKARI::EDITOR::ANIMATION_STATE_MACHINE_GRAPH

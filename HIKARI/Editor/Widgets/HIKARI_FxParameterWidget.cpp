@@ -1,14 +1,11 @@
 #include "Editor/Widgets/HIKARI_FxParameterWidget.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "Editor/Widgets/HIKARI_NumberField.h"
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 bool DrawFxParameter(const VFX::ParamDesc& parameter, DirectX::XMFLOAT4& slotValue) {
-#if defined(HIKARI_WITH_EDITOR)
     if (parameter.ref.channel >= 4) {
         return false;
     }
@@ -65,11 +62,6 @@ bool DrawFxParameter(const VFX::ParamDesc& parameter, DirectX::XMFLOAT4& slotVal
         slotValue = {value[0], value[1], value[2], value[3]};
     }
     return changed;
-#else
-    (void)parameter;
-    (void)slotValue;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

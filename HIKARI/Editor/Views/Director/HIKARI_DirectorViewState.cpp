@@ -7,14 +7,10 @@
 #include <string>
 #include <vector>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
-#endif
 #include "Editor/Views/HIKARI_EditorViewInputGate.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -87,9 +83,7 @@ void DirectorViewPanel::ExitPilot() noexcept {
 }
 
 void DirectorViewPanel::ResetForScene() {
-#if defined(HIKARI_WITH_EDITOR)
     RENDER3D::EDITORVIEW::ClearRequest(kEditorDirectorRenderViewId);
-#endif
     mode_ = DirectorViewMode::Free;
     targetCameraObjectId_ = {};
     freeCamera_.Reset();
@@ -102,9 +96,7 @@ void DirectorViewPanel::ResetForScene() {
 }
 
 void DirectorViewPanel::LeaveWorkspace() {
-#if defined(HIKARI_WITH_EDITOR)
     RENDER3D::EDITORVIEW::ClearRequest(kEditorDirectorRenderViewId);
-#endif
     SetMode(DirectorViewMode::Free);
     targetCameraObjectId_ = {};
     inputRouter_.Clear(kEditorDirectorRenderViewId);

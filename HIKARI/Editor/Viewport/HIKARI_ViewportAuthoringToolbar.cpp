@@ -5,15 +5,12 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 ViewportAuthoringToolbarResult DrawViewportAuthoringToolbar(EditorContext& context, bool scaleDisabled) {
     ViewportAuthoringToolbarResult result{};
-#if defined(HIKARI_WITH_EDITOR)
     const ImVec2 buttonSize{26.0f, 26.0f};
     const auto sameLine = [] { ImGui::SameLine(0.0f, 4.0f); };
 
@@ -83,10 +80,6 @@ ViewportAuthoringToolbarResult DrawViewportAuthoringToolbar(EditorContext& conte
     sameLine();
     result.settingsRequested = IconButton(EditorGlyph::Settings, "ViewportToolSettings", EditorButtonTone::Quiet,
                                           buttonSize, TEXT::Localize("ui.viewport.tooltipOptions").c_str());
-#else
-    (void)context;
-    (void)scaleDisabled;
-#endif
     return result;
 }
 

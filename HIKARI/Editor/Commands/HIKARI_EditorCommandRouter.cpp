@@ -5,10 +5,8 @@
 
 #include <json.hpp>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -82,7 +80,6 @@ bool EditorCommandRouter::Execute(EditorCommandId command) const {
 }
 
 bool EditorCommandRouter::ProcessDocumentShortcuts() const {
-#if defined(HIKARI_WITH_EDITOR)
     if (ImGui::GetCurrentContext() == nullptr) {
         return false;
     }
@@ -105,12 +102,10 @@ bool EditorCommandRouter::ProcessDocumentShortcuts() const {
     if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Z)) {
         return Execute(EditorCommandId::Undo);
     }
-#endif
     return false;
 }
 
 bool EditorCommandRouter::ProcessViewportShortcuts(bool focused) const {
-#if defined(HIKARI_WITH_EDITOR)
     if (!CanUseEditorShortcut(EditorShortcutScope::Viewport, focused)) {
         return false;
     }
@@ -126,9 +121,6 @@ bool EditorCommandRouter::ProcessViewportShortcuts(bool focused) const {
     if (!io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Viewport, ImGuiKey_F, focused)) {
         return Execute(EditorCommandId::FocusSelection);
     }
-#else
-    (void)focused;
-#endif
     return false;
 }
 
@@ -146,7 +138,6 @@ const char* EditorCommandRouter::Shortcut(EditorCommandId command) noexcept {
 }
 
 bool ConsumeEditorShortcut(EditorShortcutScope scope, int key, bool focused, bool repeat) noexcept {
-#if defined(HIKARI_WITH_EDITOR)
     if (!CanUseEditorShortcut(scope, focused))
         return false;
     const auto& io = ImGui::GetIO();
@@ -157,17 +148,9 @@ bool ConsumeEditorShortcut(EditorShortcutScope scope, int key, bool focused, boo
         return false;
     ImGui::SetKeyOwner(static_cast<ImGuiKey>(key), ImHashStr("HIKARI.EditorShortcut"), ImGuiInputFlags_LockThisFrame);
     return true;
-#else
-    (void)scope;
-    (void)key;
-    (void)focused;
-    (void)repeat;
-    return false;
-#endif
 }
 
 bool CanUseEditorShortcut(EditorShortcutScope scope, bool focused) noexcept {
-#if defined(HIKARI_WITH_EDITOR)
     if (ImGui::GetCurrentContext() == nullptr) {
         return false;
     }
@@ -192,11 +175,6 @@ bool CanUseEditorShortcut(EditorShortcutScope scope, bool focused) noexcept {
         return false;
     }
     return true;
-#else
-    (void)scope;
-    (void)focused;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

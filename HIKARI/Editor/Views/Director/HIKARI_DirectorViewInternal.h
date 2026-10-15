@@ -9,14 +9,10 @@
 #include <string>
 #include <vector>
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
-#endif
 #include "Editor/Views/HIKARI_EditorViewInputGate.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -25,7 +21,6 @@
 
 namespace HIKARI::EDITOR::DIRECTOR_VIEW {
 
-#if defined(HIKARI_WITH_EDITOR)
 constexpr float kMinimumCanvasSize = 64.0f;
 
 const GameObject* FindRuntimeObject(const DocumentSceneBase& scene, SceneObjectId objectId);
@@ -45,6 +40,5 @@ SceneObjectId DrawCameraOverlays(const DocumentSceneBase& scene, SceneObjectId s
 RENDER3D::EDITORVIEW::EditorInteractiveShadingMode ResolveShadingMode(EditorViewShadingMode mode);
 
 uint32_t ExtentDimension(float value);
-#endif
 
 } // namespace HIKARI::EDITOR::DIRECTOR_VIEW

@@ -5,9 +5,7 @@
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Platform/HIKARI_EditorFileDialog.h"
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 bool VfxWorkspaceController::SetContentLibraryRoot(AssetDatabase& database, const std::filesystem::path& root,
@@ -67,7 +65,6 @@ bool VfxWorkspaceController::PublishToLibrary(AssetDatabase& database, const ASS
 }
 
 void VfxWorkspaceController::DrawContentLibrary(AssetDatabase& database) {
-#if defined(HIKARI_WITH_EDITOR)
     if (libraryProjectRoot_ != database.GetProjectRoot()) {
         libraryProjectRoot_ = database.GetProjectRoot();
         libraryPackages_.clear();
@@ -135,8 +132,5 @@ void VfxWorkspaceController::DrawContentLibrary(AssetDatabase& database) {
             (void)PublishToLibrary(database, info, statusMessage_);
         }
     }
-#else
-    (void)database;
-#endif
 }
 } // namespace HIKARI::EDITOR

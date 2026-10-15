@@ -8,14 +8,11 @@
 #include <vector>
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 namespace HIKARI::EDITOR {
 using namespace MATERIAL_GRAPH_UI;
 
 void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
     if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.material.graph.d78482", "ModelMaterial/Graph").c_str(), nullptr,
                       flags)) {
@@ -393,8 +390,5 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase& scene)
     ImGui::SetCursorScreenPos({origin.x, origin.y + size.y});
     ImGui::Dummy({1.0f, 1.0f});
     ImGui::End();
-#else
-    (void)scene;
-#endif
 }
 } // namespace HIKARI::EDITOR

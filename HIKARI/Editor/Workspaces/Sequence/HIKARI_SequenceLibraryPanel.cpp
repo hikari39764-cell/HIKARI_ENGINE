@@ -9,9 +9,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
@@ -32,7 +30,6 @@ std::string ShortGuid(const AssetGuid& guid) { return guid.value.size() <= 8 ? g
 SequenceLibraryPanelResult SequenceLibraryPanel::Draw(AssetDatabase& assetDatabase, const AssetGuid& openAssetGuid,
                                                       bool actionsAllowed) {
     SequenceLibraryPanelResult result{};
-#if defined(HIKARI_WITH_EDITOR)
     ImGui::TextUnformatted(TEXT::Localize("editor.ui.sequence.library.66a878").c_str());
     ImGui::SameLine();
     ImGui::TextDisabled(TEXT::Localize("ui.assetBrowser.assetsFormat").c_str(),
@@ -106,11 +103,6 @@ SequenceLibraryPanelResult SequenceLibraryPanel::Draw(AssetDatabase& assetDataba
     if (!canOpen) {
         ImGui::EndDisabled();
     }
-#else
-    (void)assetDatabase;
-    (void)openAssetGuid;
-    (void)actionsAllowed;
-#endif
     return result;
 }
 

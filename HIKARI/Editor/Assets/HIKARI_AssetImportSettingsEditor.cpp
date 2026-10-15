@@ -10,9 +10,7 @@
 #include "Assets/Importers/Policy/HIKARI_ModelImportPolicy.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS {
 
@@ -35,10 +33,6 @@ nlohmann::json& EnsureLightmapUvSettings(nlohmann::json& settings) {
 } // namespace
 
 bool DrawModelImportSettings(nlohmann::json& settings) {
-#if !defined(HIKARI_WITH_EDITOR)
-    (void)settings;
-    return false;
-#else
     const std::array profileItems = {
         ASSETS::IMPORT_POLICY::ToString(ModelGeometryCookProfile::Scene).data(),
         ASSETS::IMPORT_POLICY::ToString(ModelGeometryCookProfile::Character).data(),
@@ -151,7 +145,6 @@ bool DrawModelImportSettings(nlohmann::json& settings) {
         settings["meshFormat"] = std::string(ASSETS::SEMANTICS::ToString(CookedAssetFormat::HCMESH));
     }
     return dirty;
-#endif
 }
 
 } // namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS

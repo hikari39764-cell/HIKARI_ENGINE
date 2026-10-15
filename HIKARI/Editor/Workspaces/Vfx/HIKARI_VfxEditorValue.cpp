@@ -16,10 +16,8 @@ bool TryReadVfxEditorValue(const nlohmann::json& node, VFX::VfxValueType expecte
 
 nlohmann::json WriteVfxEditorValue(const VFX::VfxValue& value) { return SERIALIZATION::JSON::WriteTypedValue(value); }
 
-#if defined(HIKARI_WITH_EDITOR)
 VfxValueEditResult DrawVfxValueEditor(const char* id, VFX::VfxValue& value, float width) {
     return DrawTypedEditorValue(id, value, {}, width);
 }
-#endif
 
 } // namespace HIKARI::EDITOR

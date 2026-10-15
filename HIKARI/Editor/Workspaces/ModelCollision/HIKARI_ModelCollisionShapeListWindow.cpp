@@ -9,14 +9,11 @@
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionPresentation.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 // 描画する衝突形状のリストウィンドウを描画します。
 void ModelCollisionWorkspaceController::DrawShapeListWindow() {
-#if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(TEXT::LocalizeWindow("editor.ui.collision.shapes.5aa237", "ModelCollision/Shapes").c_str())) {
         ImGui::End();
         return;
@@ -191,7 +188,6 @@ void ModelCollisionWorkspaceController::DrawShapeListWindow() {
     if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_F, focused))
         FocusSelection();
     ImGui::End();
-#endif
 }
 
 } // namespace HIKARI::EDITOR

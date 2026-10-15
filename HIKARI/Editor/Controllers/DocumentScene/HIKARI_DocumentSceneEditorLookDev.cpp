@@ -19,13 +19,10 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI {
 
-#if defined(HIKARI_WITH_EDITOR)
 namespace {
 
 constexpr float kDegreesPerRadian = 57.2957795f;
@@ -364,6 +361,5 @@ nlohmann::json DocumentSceneEditorController::DescribeLookDevState() const {
     state["cameraBookmarks"] = std::move(cameras);
     return state;
 }
-#endif
 
 } // namespace HIKARI

@@ -9,15 +9,12 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 bool ModelMaterialWorkspaceController::DrawEyeLightingNodeInlineControls(MaterialAssetData& source,
                                                                          MaterialGraphData& graph, float width) {
-#if defined(HIKARI_WITH_EDITOR)
     bool capturesPointer = false;
     const auto trackItem = [&capturesPointer]() {
         capturesPointer = capturesPointer || ImGui::IsItemHovered() || ImGui::IsItemActive();
@@ -93,17 +90,10 @@ bool ModelMaterialWorkspaceController::DrawEyeLightingNodeInlineControls(Materia
                       {0.28f, 0.0f, 0.0f, 0.0f});
     }
     return capturesPointer;
-#else
-    (void)source;
-    (void)graph;
-    (void)width;
-    return false;
-#endif
 }
 
 bool ModelMaterialWorkspaceController::DrawCorneaHighlightNodeInlineControls(MaterialAssetData& source,
                                                                              MaterialGraphData& graph, float width) {
-#if defined(HIKARI_WITH_EDITOR)
     bool capturesPointer = false;
     const auto trackItem = [&capturesPointer]() {
         capturesPointer = capturesPointer || ImGui::IsItemHovered() || ImGui::IsItemActive();
@@ -148,12 +138,6 @@ bool ModelMaterialWorkspaceController::DrawCorneaHighlightNodeInlineControls(Mat
     }
     drawParameter("parameter.corneaHighlightEdgeFade", "Iris Edge Fade");
     return capturesPointer;
-#else
-    (void)source;
-    (void)graph;
-    (void)width;
-    return false;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

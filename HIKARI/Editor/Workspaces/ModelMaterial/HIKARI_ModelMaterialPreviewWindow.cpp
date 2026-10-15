@@ -9,10 +9,8 @@
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
-#endif
 namespace HIKARI::EDITOR {
 namespace {
 const char* DebugModeLabel(ModelMaterialWorkspaceController::PreviewDebugMode mode) noexcept {
@@ -31,7 +29,6 @@ const char* DebugModeLabel(ModelMaterialWorkspaceController::PreviewDebugMode mo
 
 void ModelMaterialWorkspaceController::DrawPreviewToolbar(ModelMaterialWorkspaceResult& result,
                                                           EditorCommandRouter& commandRouter) {
-#if defined(HIKARI_WITH_EDITOR)
     if (!nodePreviewId_.empty()) {
         StatusBadge(TEXT::Localize("material.inspect.active").c_str(), EditorStatusTone::Warning);
         ImGui::SameLine();
@@ -171,16 +168,11 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(ModelMaterialWorkspace
         result.exitToSceneRequested = true;
     }
     ImGui::Separator();
-#else
-    (void)result;
-    (void)commandRouter;
-#endif
 }
 
 void ModelMaterialWorkspaceController::DrawPreviewWindow(DocumentSceneBase& scene, EditorWorkspaceHost& workspaceHost,
                                                          ModelMaterialWorkspaceResult& result,
                                                          EditorCommandRouter& commandRouter) {
-#if defined(HIKARI_WITH_EDITOR)
     (void)scene;
     constexpr ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse;
@@ -364,12 +356,6 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(DocumentSceneBase& scen
     ImGui::Dummy(ImVec2(1.0f, 1.0f));
     ImGui::End();
     DrawPreviewLightingPanel();
-#else
-    (void)scene;
-    (void)workspaceHost;
-    (void)result;
-    (void)commandRouter;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

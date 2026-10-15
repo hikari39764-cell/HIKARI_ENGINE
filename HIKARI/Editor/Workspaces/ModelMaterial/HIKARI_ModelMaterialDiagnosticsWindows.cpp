@@ -9,14 +9,11 @@
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 
 void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(const DocumentSceneBase& scene) {
-#if defined(HIKARI_WITH_EDITOR)
     (void)scene;
     if (!ImGui::Begin(TEXT::LocalizeWindow("shell.diagnostics", "ModelMaterial/Diagnostics").c_str())) {
         ImGui::End();
@@ -119,9 +116,6 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(const DocumentScene
     ImGui::TextWrapped(
         TEXT::Localize("editor.ui.the.preview.request.uses.toolpreview.purpose.the.shared.runtime..8967e0").c_str());
     ImGui::End();
-#else
-    (void)scene;
-#endif
 }
 
 } // namespace HIKARI::EDITOR

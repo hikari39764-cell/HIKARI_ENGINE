@@ -5,13 +5,10 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Core/Text/HIKARI_Localization.h"
 
-#if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
-#endif
 
 namespace HIKARI::EDITOR {
 void VfxWorkspaceController::DrawTemplateLibrary() {
-#if defined(HIKARI_WITH_EDITOR)
     ImGui::SetNextItemWidth(-1);
     ImGui::InputTextWithHint("##TemplateFilter", VfxUiText("Search templates").c_str(), templateSearch_.data(),
                              templateSearch_.size());
@@ -78,6 +75,5 @@ void VfxWorkspaceController::DrawTemplateLibrary() {
         }
         ImGui::EndPopup();
     }
-#endif
 }
 } // namespace HIKARI::EDITOR
