@@ -37,8 +37,6 @@ public:
                  RENDER3D::RUNTIME::RenderModelCache& renderModelCache, const AssetRegistry& assetRegistry,
                  ModelManager& modelManager, const std::filesystem::path& projectRoot);
 
-    size_t GetPublishedCount() const noexcept { return publishedIds_.size(); }
-
 private:
     std::unordered_set<uint64_t> publishedIds_{};
     struct MaterialBinding {

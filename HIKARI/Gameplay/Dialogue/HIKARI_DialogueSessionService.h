@@ -105,9 +105,6 @@ public:
     void Reset(World* world = nullptr) noexcept;
 
     bool IsActive() const noexcept { return active_; }
-    RuntimeObjectHandle GetTrigger() const noexcept { return trigger_; }
-    const std::string& GetCurrentNodeId() const noexcept { return currentNodeId_; }
-    size_t GetSelectedChoice() const noexcept { return selectedChoice_; }
     bool ConsumeEvent(DialogueRuntimeEvent& outEvent) noexcept { return eventQueue_.Consume(outEvent); }
     uint32_t GetPendingEventCount() const noexcept { return eventQueue_.GetCount(); }
     uint64_t GetDroppedEventCount() const noexcept { return eventQueue_.GetDroppedCount(); }

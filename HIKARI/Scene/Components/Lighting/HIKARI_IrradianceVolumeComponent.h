@@ -30,9 +30,7 @@ public:
     uint32_t GetCountZ() const noexcept { return countZ_; }
     float GetIntensity() const noexcept { return intensity_; }
     float GetBlendDistance() const noexcept { return blendDistance_; }
-    float GetNormalBias() const noexcept { return normalBias_; }
     uint32_t GetCaptureResolution() const noexcept { return captureResolution_; }
-    uint32_t GetShOrder() const noexcept { return shOrder_; }
     int GetPriority() const noexcept { return priority_; }
     const std::string& GetBakeSet() const noexcept { return bakeSet_; }
     const std::string& GetScenario() const noexcept { return scenario_; }

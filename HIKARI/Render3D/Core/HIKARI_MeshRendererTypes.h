@@ -292,11 +292,6 @@ struct DrawItem {
     MeshRenderDebugMode renderDebugMode = MeshRenderDebugMode::Normal;
 };
 
-inline bool IsDepthAwarePhaseItem(const DrawItem& item) {
-    return item.hasResolvedMaterialFxProfile &&
-           item.resolvedMaterialFxProfile.renderPhase == MaterialFxRenderPhase::DepthAware;
-}
-
 struct MeshRendererDebugStats {
     size_t skinnedGpuDrawCount = 0;
     size_t gpuDrivenSkinnedCommandCount = 0;

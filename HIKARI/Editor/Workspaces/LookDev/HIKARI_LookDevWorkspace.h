@@ -22,7 +22,6 @@ public:
     void HandlePlacementKeys(bool viewportFocused);
 
     std::optional<LookDevPlaceItem> ArmedItem() const noexcept { return armed_; }
-    void Disarm() noexcept { armed_.reset(); }
     float GridStep() const noexcept { return snap_ ? gridStep_ : 0.0f; }
     float PlacementYaw() const noexcept { return yawDegrees_; }
     // 「整理」の阵列の設定と、换成模型で選んだ模型（資産の GUID）。

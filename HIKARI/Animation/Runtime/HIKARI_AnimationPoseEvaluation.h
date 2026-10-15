@@ -300,8 +300,6 @@ inline std::vector<MATH::Mat4> BuildAnimationNodeGlobalMatrices(const ModelAsset
     return POSE_EVALUATION::BuildNodeGlobalMatrices(model, pose);
 }
 
-inline int ResolveAnimationRootNode(const ModelAsset& model) { return POSE_EVALUATION::ResolveRootNode(model); }
-
 inline bool EvaluateAnimationRootMotion(const ModelAsset& model, const AnimationPoseSnapshot* previous,
                                         const AnimationPoseSnapshot& current, AnimationRootMotionDelta& outDelta) {
     return POSE_EVALUATION::EvaluateRootMotion(model, previous, current, outDelta);

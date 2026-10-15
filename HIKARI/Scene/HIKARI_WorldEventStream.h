@@ -26,22 +26,10 @@ public:
         GetOrCreateChannel<EventType>().events.push_back(std::move(event));
     }
 
-    template <class Event, class... Args>
-    const Event& Emplace(Args&&... args) {
-        auto& events = GetOrCreateChannel<Event>().events;
-        events.emplace_back(std::forward<Args>(args)...);
-        return events.back();
-    }
-
     template <class Event>
     std::span<const Event> Read() const noexcept {
         const Channel<Event>* channel = FindChannel<Event>();
         return channel != nullptr ? std::span<const Event>(channel->events) : std::span<const Event>{};
-    }
-
-    template <class Event>
-    bool HasEvents() const noexcept {
-        return !Read<Event>().empty();
     }
 
     uint64_t GetScopeIndex() const noexcept { return scopeIndex_; }

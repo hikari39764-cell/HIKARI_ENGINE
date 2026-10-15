@@ -27,8 +27,6 @@ public:
 
     RENDER3D::TextureResourceHandle GetTexture() const noexcept { return texture_; }
 
-    uint32_t GetGeneration() const noexcept { return generation_; }
-
 private:
     RENDER3D::TextureResourceHandle texture_{};
     uint32_t generation_ = 0u;

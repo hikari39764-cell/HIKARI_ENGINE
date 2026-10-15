@@ -47,7 +47,6 @@ struct EditorAuthoringWorkspace {
 class EditorAuthoringSessionHost {
 public:
     bool RegisterWorkspace(EditorAuthoringWorkspace workspace);
-    bool SupportsWorkspace(const std::string& id) const { return workspaces_.contains(id); }
     void RegisterOperations(EditorOperationRegistry& registry);
     EditorOperationResult Execute(const std::string& action, const nlohmann::json& parameters);
     void Tick(uint64_t frameIndex, float deltaSeconds);

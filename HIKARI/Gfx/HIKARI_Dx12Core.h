@@ -79,9 +79,7 @@ public:
 
     uint32_t FrameIndex() const { return frameIndex_; }
     ID3D12Device* Device() { return device_.Get(); }
-    ID3D12GraphicsCommandList* CmdList() { return cmdList_.Get(); }
     ID3D12CommandQueue* Queue() { return queue_.Get(); }
-    ID3D12DescriptorHeap* SrvHeap() { return srvHeap_.Get(); }
 
     // ── 深度バッファ / RTV ハンドル ────────────────────────────
 
@@ -97,8 +95,6 @@ public:
     bool IsDeviceLost() const { return deviceLost_; }
     const std::string& InitializationError() const { return initializationError_; }
     void SetVSyncEnabled(bool enabled) { vSyncEnabled_ = enabled; }
-    bool IsVSyncEnabled() const { return vSyncEnabled_; }
-    bool IsGamePresentationSurfaceActive() const { return activeSurface_ == &gameSurface_; }
     bool HasGamePresentationSurface() const { return gameSurface_.IsValid(); }
     void SetFrameSubmissionCallbacks(FrameSubmissionCallbacks callbacks) {
         frameSubmissionCallbacks_ = std::move(callbacks);

@@ -4,6 +4,8 @@
 #include <string>
 #include <string_view>
 
+#include "Core/Text/HIKARI_EnumNames.h"
+
 namespace HIKARI::VFX {
 
 static constexpr size_t kMaterialFxUserCount = 8;
@@ -11,6 +13,11 @@ static constexpr size_t kMaterialFxUserCount = 8;
 enum class FxDomain { GlobalPost, ScopedPost, ObjectMaterial, Particle };
 
 enum class CompositeMode { Alpha, Additive, Multiply, Screen, Replace };
+
+inline constexpr TEXT::EnumName<CompositeMode> kCompositeModeNames[] = {
+    {CompositeMode::Alpha, "Alpha"},   {CompositeMode::Additive, "Additive"}, {CompositeMode::Multiply, "Multiply"},
+    {CompositeMode::Screen, "Screen"}, {CompositeMode::Replace, "Replace"},
+};
 
 enum class ParamType { Float, Float2, Float3, Float4, Color, Color3, Color4, Toggle };
 

@@ -66,11 +66,6 @@ public:
         return Resolve(object, model, &pose, socketName, space, outTransform);
     }
 
-    bool ResolveLocal(const ModelAsset& model, const AnimationPoseSnapshot* pose, std::string_view socketName,
-                      Transform3D& outTransform) const {
-        return Resolve(model, pose, MATH::Mat4::Identity(), socketName, AnimationSocketSpace::Local, outTransform);
-    }
-
     bool ResolveWorld(const ModelAsset& model, const AnimationPoseSnapshot* pose,
                       const MATH::Mat4& authoritativeObjectWorld, std::string_view socketName,
                       Transform3D& outTransform) const {

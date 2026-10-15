@@ -29,7 +29,6 @@ public:
     uint32_t GetWidth() const { return width_; }
     uint32_t GetHeight() const { return height_; }
     DXGI_FORMAT GetFormat() const { return kNormalRoughnessFormat; }
-    ID3D12Resource* GetPackedSurfaceResource() const { return packedSurface_.Get(); }
     D3D12_GPU_DESCRIPTOR_HANDLE GetPackedSurfaceSrv() const { return packedSurfaceSrvs_[activeFrameSlot_].gpu; }
     RenderTextureView GetPackedSurfaceView() const;
     bool HasFeatureMask() const;

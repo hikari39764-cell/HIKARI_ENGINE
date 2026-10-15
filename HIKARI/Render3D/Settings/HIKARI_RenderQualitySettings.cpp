@@ -128,14 +128,6 @@ const char* VolumetricLightingQualityLabel(VolumetricLightingQuality quality) {
     return TEXT::EnumToName(kVolumetricLightingQualityNames, quality, "Unknown");
 }
 
-const char* DepthOfFieldQualityLabel(DepthOfFieldQuality quality) {
-    return TEXT::EnumToName(kDepthOfFieldQualityNames, quality, "Unknown");
-}
-
-const char* MotionBlurQualityLabel(MotionBlurQuality quality) {
-    return TEXT::EnumToName(kMotionBlurQualityNames, quality, "Unknown");
-}
-
 const char* DynamicGiQualityLabel(DynamicGiQuality quality) {
     return TEXT::EnumToName(kDynamicGiQualityNames, quality, "Unknown");
 }

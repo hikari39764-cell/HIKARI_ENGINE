@@ -69,7 +69,6 @@ public:
                                                           D3D12_GPU_VIRTUAL_ADDRESS constantsGpu,
                                                           const AtmosphereViewConstants& view);
 
-    uint32_t GetLastDispatchCount() const noexcept { return lastDispatchCount_; }
     uint64_t GetWorkingSetBytes() const noexcept;
 
     const RENDER3D::RenderResourceView& GetSkyViewSrv() const noexcept { return skyViewGpu_.srv; }

@@ -41,7 +41,6 @@ public:
 #endif
 
     bool IsEnabled() const noexcept { return enabled_; }
-    const std::string& GetSourceCubemapAsset() const noexcept { return sourceCubemapAsset_; }
     float GetRadius() const noexcept { return radius_; }
     bool SetRadius(float radius) noexcept;
     float GetIntensity() const noexcept { return intensity_; }
@@ -57,9 +56,6 @@ public:
     bool SetProjectionBoxSize(const MATH::Vec3& size) noexcept;
     void AlignProjectionToInfluence() noexcept;
     ReflectionProbeViewportBoundsTarget GetViewportBoundsTarget() const noexcept { return viewportBoundsTarget_; }
-    void SetViewportBoundsTarget(ReflectionProbeViewportBoundsTarget target) noexcept {
-        viewportBoundsTarget_ = target;
-    }
     float GetBlendDistance() const noexcept { return blendDistance_; }
     int GetPriority() const noexcept { return priority_; }
     uint32_t GetCaptureResolution() const noexcept { return captureResolution_; }

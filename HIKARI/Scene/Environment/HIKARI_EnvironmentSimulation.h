@@ -62,7 +62,6 @@ public:
     void Reset(const CalendarTime& time, const GeoLocation& location, const WeatherParameters& weather,
                uint64_t weatherId, double timeScale);
     void SetTime(const CalendarTime& time);
-    void SetLocation(const GeoLocation& location);
     void SetTimeScale(double timeScale);
     // 現在の補間結果から target へ遷移する。seconds が負なら target.transitionSeconds を使う。
     void RequestWeather(const WeatherParameters& target, uint64_t targetId, float seconds = -1.0f);

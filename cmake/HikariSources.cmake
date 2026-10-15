@@ -766,7 +766,6 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/MaterialFx/HIKARI_MaterialFxParameterSet.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/Parameters/HIKARI_VfxParameterValues.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/Serialization/HIKARI_VfxParameterJson.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/Serialization/HIKARI_VfxProfileJson.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/Transition/HIKARI_TransitionProfile.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_MaterialRuntimeBuilder.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_MaterialTextureUsage.cpp"

@@ -49,8 +49,6 @@ public:
     int Height() const { return height_; }
     bool IsRunning() const { return running_; }
     bool HasCloseRequest() const { return closeRequested_; }
-    bool IsMinimized() const { return isMinimized_; }
-    WindowMode GetWindowMode() const { return windowMode_; }
 
     void SetResizeCallback(ResizeCallback cb) { onResize_ = std::move(cb); }
     void SetMessageHandler(MessageHandler handler) { messageHandler_ = std::move(handler); }

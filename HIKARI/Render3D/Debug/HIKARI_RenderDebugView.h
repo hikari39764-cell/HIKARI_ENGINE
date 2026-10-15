@@ -119,11 +119,6 @@ inline bool IsTemporalRenderDebugView(RenderDebugView view) {
            view == RenderDebugView::TemporalInvalidDepthMotion;
 }
 
-inline bool IsLightingProviderRenderDebugView(RenderDebugView view) {
-    return view == RenderDebugView::ReflectionProviderWeight || view == RenderDebugView::IrradianceProviderWeight ||
-           view == RenderDebugView::LightingFallbackWeight || view == RenderDebugView::SurfaceLightmap;
-}
-
 inline bool IsVolumetricRenderDebugView(RenderDebugView view) {
     return view == RenderDebugView::VolumetricScattering || view == RenderDebugView::VolumetricTransmittance ||
            view == RenderDebugView::VolumetricDepthSlice;

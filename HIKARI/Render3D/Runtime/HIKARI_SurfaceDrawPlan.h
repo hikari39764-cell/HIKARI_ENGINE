@@ -101,20 +101,6 @@ inline SurfaceDrawBatchKey BuildSurfaceDrawBatchKey(SurfaceDrawCommandPass pass,
     return batchKey;
 }
 
-inline bool IsValidSurfaceDrawBatchKey(const SurfaceDrawBatchKey& key) {
-    return key.psoKey != 0 && key.geometryKey != 0;
-}
-
-inline bool IsSameSurfaceDrawBatchKey(const SurfaceDrawBatchKey& lhs, const SurfaceDrawBatchKey& rhs) {
-    return lhs.pass == rhs.pass && lhs.geometryBackend == rhs.geometryBackend && lhs.backendRoute == rhs.backendRoute &&
-           lhs.psoKey == rhs.psoKey && lhs.geometryKey == rhs.geometryKey && lhs.materialKey == rhs.materialKey &&
-           lhs.textureSetKey == rhs.textureSetKey && lhs.transparent == rhs.transparent &&
-           lhs.alphaMasked == rhs.alphaMasked && lhs.doubleSided == rhs.doubleSided &&
-           lhs.materialFx == rhs.materialFx && lhs.waterMaterialFx == rhs.waterMaterialFx &&
-           lhs.materialFxUsesCustomVertexShader == rhs.materialFxUsesCustomVertexShader &&
-           lhs.depthAware == rhs.depthAware && lhs.clusterMainlineEligible == rhs.clusterMainlineEligible;
-}
-
 struct SurfaceDrawIndexedArgs {
     uint32_t indexCountPerInstance = 0;
     uint32_t instanceCount = 0;

@@ -39,7 +39,6 @@ public:
     bool IsRunning() const noexcept { return running_.load(); }
     std::string GetEndpoint() const;
     std::filesystem::path GetConnectionPath() const;
-    size_t ActiveConnections() const noexcept { return activeConnections_.load(); }
 
 private:
     struct Connection {

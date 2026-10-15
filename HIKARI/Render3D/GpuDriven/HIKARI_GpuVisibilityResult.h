@@ -20,8 +20,6 @@ struct GpuVisibilityBucketResult {
     bool visibleCommandCountKnown = false;
 
     bool HasGpuCounter() const { return gpuCounterBacked && commandCapacity != 0; }
-
-    bool HasKnownVisibleCommands() const { return visibleCommandCountKnown && visibleCommandCount != 0; }
 };
 
 struct GpuVisibilityPassResult {

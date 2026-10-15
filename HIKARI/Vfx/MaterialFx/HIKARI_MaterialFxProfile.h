@@ -22,6 +22,11 @@ enum class MaterialFxRenderPhase {
     DepthAware,
 };
 
+inline constexpr TEXT::EnumName<MaterialFxRenderPhase> kMaterialFxRenderPhaseNames[] = {
+    {MaterialFxRenderPhase::Opaque, "Opaque"},
+    {MaterialFxRenderPhase::DepthAware, "DepthAware"},
+};
+
 class MaterialFxProfile {
 public:
     std::string id;

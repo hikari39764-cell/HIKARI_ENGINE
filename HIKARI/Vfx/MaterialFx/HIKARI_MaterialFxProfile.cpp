@@ -4,23 +4,16 @@
 #include <unordered_map>
 
 #include <json.hpp>
+#include "Core/HIKARI_JsonRead.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Vfx/Parameters/HIKARI_VfxParameterValues.h"
 #include "Vfx/Serialization/HIKARI_VfxParameterJson.h"
-#include "Vfx/Serialization/HIKARI_VfxProfileJson.h"
 
 namespace HIKARI {
 
 namespace {
 std::unordered_map<std::string, MaterialFxProfile> gProfileCache;
 MaterialFxProfileCacheStats gProfileCacheStats{};
-
-MaterialFxRenderPhase ParseRenderPhase(const std::string& value) {
-    if (value == "DepthAware" || value == "SceneDepth") {
-        return MaterialFxRenderPhase::DepthAware;
-    }
-    return MaterialFxRenderPhase::Opaque;
-}
 
 bool ParseProfileNode(const nlohmann::json& node, const std::string& targetId, MaterialFxProfile& outProfile) {
     if (!node.is_object()) {
@@ -41,8 +34,9 @@ bool ParseProfileNode(const nlohmann::json& node, const std::string& targetId, M
     outProfile.depthWrite = node.value("depthWrite", outProfile.depthWrite);
     outProfile.doubleSided = node.value("doubleSided", outProfile.doubleSided);
     outProfile.composite =
-        VFX::SERIALIZATION::ParseCompositeMode(node.value("composite", nlohmann::json{}), outProfile.composite);
-    outProfile.renderPhase = ParseRenderPhase(node.value("renderPhase", std::string{"Opaque"}));
+        JSONREAD::EnumOr(node.value("composite", nlohmann::json{}), VFX::kCompositeModeNames, outProfile.composite);
+    outProfile.renderPhase = JSONREAD::EnumOr(node.value("renderPhase", nlohmann::json{}), kMaterialFxRenderPhaseNames,
+                                              MaterialFxRenderPhase::Opaque);
 
     std::string parameterError;
     if (!VFX::SERIALIZATION::ReadParameterDescriptorsFromJson(node.value("params", nlohmann::json::array()),

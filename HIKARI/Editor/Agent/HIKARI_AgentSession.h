@@ -210,7 +210,6 @@ public:
     void ResolveApproval(uint64_t id, AgentToolDecision decision);
     const AgentUsage& Usage() const noexcept { return usage_; }
     const std::string& SessionId() const noexcept { return sessionId_; }
-    const std::filesystem::path& RunFolder() const noexcept { return request_.runFolder; }
     // CLI が報告した模型（Codex の model/list）。報告が無ければ空。
     const std::vector<AgentModelOption>& Models() const noexcept { return models_; }
 

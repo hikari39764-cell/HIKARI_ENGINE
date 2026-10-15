@@ -94,7 +94,6 @@ public:
     // 場面を壊す前に呼ぶ。文書の会話は閉じる時に場面の预览を終わらせるので、場面がある内に閉じ、以後は場面を指さない
     // （二度目は何もしない）。
     void Shutdown();
-    EDITOR::EditorAuthoringSessionHost& AuthoringSessions() noexcept { return authoringSessions_; }
     EDITOR::EditorOperationRegistry& Operations() noexcept { return operationRegistry_; }
     void SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host) noexcept {
         projectWorkspaceHost_ = host;

@@ -28,7 +28,6 @@ public:
 
     bool IsEnabled() const noexcept { return settings_.enabled; }
     UiScrollAxis GetAxis() const noexcept { return settings_.axis; }
-    float GetContentExtent() const noexcept { return settings_.contentExtent; }
     float GetEffectiveContentExtent() const noexcept {
         return settings_.contentExtent > 0.0f ? settings_.contentExtent : resolvedContentExtent_;
     }

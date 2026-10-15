@@ -105,11 +105,6 @@ inline bool HasOpticalTransparencyCue(std::string_view text) {
            ContainsLowerAsciiToken(text, "transparent") || ContainsLowerAsciiToken(text, "translucent");
 }
 
-inline bool HasExplicitAlphaSurface(const MaterialAsset& material) {
-    return material.alphaMode != AlphaMode::Opaque || material.baseColorFactor.w < 0.999f ||
-           (material.featureBits & MATERIAL_FEATURES::AlphaMask) != 0u;
-}
-
 inline bool HasThinTransparentSurfaceHint(const MaterialAsset& material) {
     return (material.featureBits & MATERIAL_FEATURES::ThinTransparentSurface) != 0u ||
            HasThinTransparentCue(material.name);

@@ -45,10 +45,6 @@ public:
         return Publish(object, fixedTickIndex, delta);
     }
 
-    bool Accumulate(RuntimeObjectHandle object, uint64_t fixedTickIndex, const AnimationRootMotionDelta& delta) {
-        return Publish(object, fixedTickIndex, delta);
-    }
-
     bool Consume(RuntimeObjectHandle object, uint64_t fixedTickIndex, AnimationRootMotionDelta& outDelta) noexcept {
         outDelta = {};
         if (!object.IsValid()) {

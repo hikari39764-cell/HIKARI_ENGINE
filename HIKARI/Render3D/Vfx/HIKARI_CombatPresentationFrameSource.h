@@ -49,8 +49,6 @@ struct CombatPresentationFrameSource {
     float distortionStrengthScale = 1.0f;
     float blurScale = 1.0f;
 
-    bool HasWeaponTrails() const noexcept { return weaponTrailVertices != nullptr && weaponTrailVertexCount >= 3u; }
-
     bool HasGroundTelegraphs() const noexcept {
         return groundTelegraphVertices != nullptr && groundTelegraphVertexCount >= 3u;
     }

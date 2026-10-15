@@ -17,8 +17,6 @@ public:
 
     void SetRadius(float radius) noexcept { radius_ = (std::max)(radius, 0.01f); }
 
-    void SetDensity(float density) noexcept { density_ = (std::max)(density, 0.0f); }
-
 private:
     float radius_ = 0.5f;
     float density_ = 1000.0f;

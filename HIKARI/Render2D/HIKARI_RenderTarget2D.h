@@ -34,7 +34,6 @@ public:
     void EndDepthShaderRead();
     void EndCapture();
     void SetDebugName(std::string name);
-    const std::string& GetDebugName() const { return debugName_; }
     std::string DumpState() const;
 
     int GetWidth() const { return width_; }

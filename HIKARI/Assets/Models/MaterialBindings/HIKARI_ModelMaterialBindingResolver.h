@@ -28,8 +28,6 @@ struct DefaultModelMaterialBindingResolution {
     std::vector<ResolvedDefaultModelMaterialBinding> bindings{};
     std::vector<std::string> diagnostics{};
     uint32_t matchingAssetCount = 0u;
-
-    bool HasBindingAsset() const noexcept { return bindingDescriptor != nullptr; }
 };
 
 // Resolves the model-level default layer only. Scene instance overrides

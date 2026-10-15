@@ -76,8 +76,6 @@ struct GameUiFrameSource {
     uint64_t frameIndex = 0u;
     uint64_t revision = 0u;
 
-    bool HasSprites() const noexcept { return frameIndex != 0u && !sprites.empty(); }
-
     bool HasDraws() const noexcept { return frameIndex != 0u && (!sprites.empty() || !texts.empty()); }
 };
 

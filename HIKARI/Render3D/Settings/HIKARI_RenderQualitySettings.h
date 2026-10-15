@@ -335,8 +335,6 @@ const char* VolumetricLightingQualityLabel(VolumetricLightingQuality quality);
 const char* VolumetricCloudQualityLabel(VolumetricCloudQuality quality);
 const char* DynamicGiQualityLabel(DynamicGiQuality quality);
 const char* LocalShadowQualityLabel(LocalShadowQuality quality);
-const char* DepthOfFieldQualityLabel(DepthOfFieldQuality quality);
-const char* MotionBlurQualityLabel(MotionBlurQuality quality);
 
 bool IsTemporalAntiAliasingMode(RenderAntiAliasingMode mode);
 bool UsesTemporalJitter(RenderAntiAliasingMode mode);

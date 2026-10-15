@@ -131,7 +131,6 @@ public:
     const CAMERA::CameraFollowSettings& Settings() const noexcept {
         return evaluatedSettings_ ? *evaluatedSettings_ : settings_;
     }
-    const CAMERA::CameraFollowSettings& AuthoredSettings() const noexcept { return settings_; }
     void SetEvaluatedSettings(const CAMERA::CameraFollowSettings& settings) { evaluatedSettings_ = settings; }
     void ClearEvaluatedSettings() noexcept { evaluatedSettings_.reset(); }
 

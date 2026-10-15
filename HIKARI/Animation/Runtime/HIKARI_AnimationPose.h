@@ -41,8 +41,6 @@ struct AnimationMotionSample {
     float secondaryWeight = 0.0f;
 
     bool IsEmpty() const noexcept { return primaryClip.IsEmpty(); }
-
-    bool IsBlended() const noexcept { return !secondaryClip.IsEmpty() && secondaryWeight > 0.0f; }
 };
 
 struct AnimationRootMotionDelta {

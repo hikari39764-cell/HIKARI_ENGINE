@@ -52,7 +52,6 @@ public:
 
     InputRebindStatus GetStatus() const noexcept { return status_; }
     const InputRebindOptions& GetOptions() const noexcept { return options_; }
-    float GetElapsedSeconds() const noexcept { return elapsedSeconds_; }
     float GetRemainingSeconds() const noexcept;
     bool IsActive() const noexcept;
 

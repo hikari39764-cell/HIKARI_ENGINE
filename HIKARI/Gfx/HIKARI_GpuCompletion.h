@@ -67,16 +67,4 @@ inline bool WaitForGpuCompletion(ID3D12Device* device, ID3D12Fence* fence, uint6
     }
 }
 
-inline bool SignalAndWaitForGpuCompletion(ID3D12Device* device, ID3D12CommandQueue* queue, ID3D12Fence* fence,
-                                          uint64_t value, HANDLE event, const char* operation) {
-    if (!device || !queue || !fence)
-        AbortUnsafeGpuSubmission(operation);
-    const HRESULT result = queue->Signal(fence, value);
-    if (FAILED(result)) {
-        if (FAILED(device->GetDeviceRemovedReason()))
-            return false;
-        AbortUnsafeGpuSubmission(operation);
-    }
-    return WaitForGpuCompletion(device, fence, value, event, operation);
-}
 } // namespace HIKARI::GFX

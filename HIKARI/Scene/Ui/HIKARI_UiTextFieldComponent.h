@@ -26,11 +26,9 @@ public:
     void BuildInspector(IInspectorBuilder& builder) override;
 
     bool IsEnabled() const noexcept { return settings_.enabled; }
-    uint32_t GetMaximumCharacters() const noexcept { return settings_.maximumCharacters; }
     const std::string& GetSubmitEventId() const noexcept { return settings_.submitEventId; }
 
     size_t GetCaretByteOffset() const noexcept { return caretByteOffset_; }
-    size_t GetSelectionAnchorByteOffset() const noexcept { return selectionAnchorByteOffset_; }
     size_t GetSelectionStartByteOffset() const noexcept;
     size_t GetSelectionEndByteOffset() const noexcept;
     bool HasSelection() const noexcept { return caretByteOffset_ != selectionAnchorByteOffset_; }

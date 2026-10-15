@@ -57,12 +57,6 @@ void EnvironmentSimulation::SetTime(const CalendarTime& time) {
     }
 }
 
-void EnvironmentSimulation::SetLocation(const GeoLocation& location) {
-    if (IsValidLocation(location)) {
-        snapshot_.location = location;
-    }
-}
-
 void EnvironmentSimulation::SetTimeScale(double timeScale) { snapshot_.timeScale = SanitizeTimeScale(timeScale); }
 
 void EnvironmentSimulation::RequestWeather(const WeatherParameters& target, uint64_t targetId, float seconds) {

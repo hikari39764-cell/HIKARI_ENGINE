@@ -66,8 +66,6 @@ struct PerfectGuardShockwaveFrameSource {
     ActionCinematicGradeFrame cinematicGrade{};
     ActionBoostGradeFrame boostGrade{};
 
-    bool HasActiveWaves() const noexcept { return count != 0u; }
-
     bool HasActiveCinematicGrade() const noexcept { return cinematicGrade.IsActive(); }
 
     bool HasActiveBoostGrade() const noexcept { return boostGrade.IsActive(); }

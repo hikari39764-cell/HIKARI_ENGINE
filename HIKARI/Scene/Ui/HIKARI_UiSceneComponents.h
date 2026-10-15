@@ -50,7 +50,6 @@ public:
 
     bool IsEnabled() const noexcept { return enabled_; }
     bool IsInteractable() const noexcept { return interactable_; }
-    UiCanvasInputMode GetInputMode() const noexcept { return inputMode_; }
     bool IsInputActive() const noexcept { return inputMode_ == UiCanvasInputMode::Menu && inputActive_; }
     float GetReferenceWidth() const noexcept { return referenceWidth_; }
     void SetEnabled(bool value) noexcept { enabled_ = value; }

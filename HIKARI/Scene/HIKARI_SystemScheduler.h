@@ -27,7 +27,6 @@ public:
 
     bool AddSystem(std::string systemId, int executionOrder, std::unique_ptr<ISystem> system);
     bool HasSystem(std::string_view systemId) const;
-    uint64_t GetMassSnapshotReuseCount() const noexcept { return massSnapshotReuseCount_; }
     uint64_t GetRenderPassFailureCount() const noexcept;
     std::vector<std::string> GetExecutionOrder() const;
 

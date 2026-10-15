@@ -36,8 +36,6 @@ struct RenderSurfaceRecord {
     bool castShadowDefault = true;
     bool receiveShadowDefault = true;
 
-    bool HasNodeBinding() const { return nodeIndex != kInvalidRenderSurfaceIndex; }
-
     bool HasMeshPrimitive() const {
         return geometryKind == RenderSurfaceGeometryKind::MeshPrimitive && meshIndex != kInvalidRenderSurfaceIndex &&
                primitiveIndex != kInvalidRenderSurfaceIndex;
