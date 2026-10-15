@@ -70,7 +70,7 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         list(APPEND HIKARI_RUNTIME_GAMEPLAY_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Scene/Components/Rendering/")
         list(APPEND HIKARI_RUNTIME_SCENE_RENDERING_SOURCES "${runtime_source}")
-    elseif(runtime_relative_path MATCHES "^HIKARI/Scene/(Ui|Sequencer)/")
+    elseif(runtime_relative_path MATCHES "^HIKARI/Scene/(Ui|Sequencer|Camera)/")
         # UI projection and camera/sequence presentation; Scene owns world/ECS lifetime.
         list(APPEND HIKARI_RUNTIME_PRESENTATION_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Scene/")
