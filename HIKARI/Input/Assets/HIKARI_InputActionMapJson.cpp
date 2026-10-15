@@ -58,7 +58,8 @@ bool DeserializeBinding(const json& node, InputBinding& out, std::string* errorM
     out.modifierControl = node.value("modifier", std::string{});
     out.deadZone = (std::clamp)(node.value("deadZone", 0.0f), 0.0f, 0.99f);
     const std::string sourceName = node.value("source", std::string{});
-    if (out.actionId.empty() || out.control.empty() || !TryParseInputBindingSource(sourceName, out.source)) {
+    if (out.actionId.empty() || out.control.empty() ||
+        !TEXT::TryParseEnum(kInputBindingSourceNames, sourceName, out.source)) {
         SetError(errorMessage, "Input binding has an invalid action, source, or control.");
         return false;
     }
@@ -211,7 +212,7 @@ bool LoadInputActionMapProject(const std::filesystem::path& inputDirectory, Inpu
         action.displayName = node.value("displayName", action.actionId);
         action.clampValue = node.value("clamp", true);
         const std::string typeName = node.value("valueType", std::string{});
-        if (action.actionId.empty() || !TryParseInputActionValueType(typeName, action.valueType)) {
+        if (action.actionId.empty() || !TEXT::TryParseEnum(kInputActionValueTypeNames, typeName, action.valueType)) {
             SetError(errorMessage, "Input action definition is invalid.");
             return false;
         }

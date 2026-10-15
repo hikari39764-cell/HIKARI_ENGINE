@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "Core/Text/HIKARI_EnumNames.h"
+
 namespace HIKARI::INPUT {
 
 enum class InputDeviceKind {
@@ -66,6 +68,19 @@ enum class InputBindingSource {
     MouseWheel,
     GamepadButton,
     GamepadAxis,
+};
+
+inline constexpr TEXT::EnumName<InputActionValueType> kInputActionValueTypeNames[] = {
+    {InputActionValueType::Button, "Button"},
+    {InputActionValueType::Axis1D, "Axis1D"},
+    {InputActionValueType::Axis2D, "Axis2D"},
+};
+
+inline constexpr TEXT::EnumName<InputBindingSource> kInputBindingSourceNames[] = {
+    {InputBindingSource::Keyboard, "Keyboard"},       {InputBindingSource::MouseButton, "MouseButton"},
+    {InputBindingSource::MouseDeltaX, "MouseDeltaX"}, {InputBindingSource::MouseDeltaY, "MouseDeltaY"},
+    {InputBindingSource::MouseWheel, "MouseWheel"},   {InputBindingSource::GamepadButton, "GamepadButton"},
+    {InputBindingSource::GamepadAxis, "GamepadAxis"},
 };
 
 struct GamepadState {

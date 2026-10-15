@@ -8,6 +8,8 @@
 
 #include <json.hpp>
 
+#include "Core/Text/HIKARI_EnumNames.h"
+
 namespace HIKARI::DIALOGUE {
 
 enum class DialogueNodeType : uint8_t {
@@ -28,6 +30,26 @@ enum class DialoguePortraitAction : uint8_t {
     Show = 1u,
     Keep = 2u,
     Hide = 3u,
+};
+
+inline constexpr TEXT::EnumName<DialogueNodeType> kDialogueNodeTypeNames[] = {
+    {DialogueNodeType::Line, "Line"},
+    {DialogueNodeType::Choice, "Choice"},
+    {DialogueNodeType::Event, "Event"},
+    {DialogueNodeType::End, "End"},
+};
+
+inline constexpr TEXT::EnumName<DialoguePortraitSlot> kDialoguePortraitSlotNames[] = {
+    {DialoguePortraitSlot::Auto, "Auto"},
+    {DialoguePortraitSlot::Left, "Left"},
+    {DialoguePortraitSlot::Right, "Right"},
+};
+
+inline constexpr TEXT::EnumName<DialoguePortraitAction> kDialoguePortraitActionNames[] = {
+    {DialoguePortraitAction::Auto, "Auto"},
+    {DialoguePortraitAction::Show, "Show"},
+    {DialoguePortraitAction::Keep, "Keep"},
+    {DialoguePortraitAction::Hide, "Hide"},
 };
 
 struct LocalizedText {
@@ -71,11 +93,8 @@ struct DialogueValidationIssue {
 };
 
 const char* ToString(DialogueNodeType type) noexcept;
-bool TryParseDialogueNodeType(std::string_view text, DialogueNodeType& outType) noexcept;
 const char* ToString(DialoguePortraitSlot slot) noexcept;
-bool TryParseDialoguePortraitSlot(std::string_view text, DialoguePortraitSlot& outSlot) noexcept;
 const char* ToString(DialoguePortraitAction action) noexcept;
-bool TryParseDialoguePortraitAction(std::string_view text, DialoguePortraitAction& outAction) noexcept;
 
 void SerializeLocalizedTextJson(const LocalizedText& value, nlohmann::json& outJson);
 bool DeserializeLocalizedTextJson(const nlohmann::json& json, LocalizedText& outValue);

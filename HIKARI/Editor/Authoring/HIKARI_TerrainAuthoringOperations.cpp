@@ -135,13 +135,13 @@ TerrainAuthoringResult GenerateTerrain(DocumentSceneBase& document, const nlohma
 
     TERRAIN::TerrainProceduralSpec spec{};
     const std::string mode = parameters.value("mode", std::string("noise_hills"));
-    if (!TERRAIN::TryParseTerrainProceduralMode(mode, spec.mode)) {
+    if (!TEXT::TryParseEnum(TERRAIN::kTerrainProceduralModeNames, mode, spec.mode)) {
         result.code = "INVALID_TERRAIN_PROCEDURAL_MODE";
         result.message = "未知的程序化地形类型: " + mode;
         return output;
     }
     const std::string blendMode = parameters.value("blendMode", std::string("add"));
-    if (!TERRAIN::TryParseTerrainProceduralBlendMode(blendMode, spec.blendMode)) {
+    if (!TEXT::TryParseEnum(TERRAIN::kTerrainProceduralBlendModeNames, blendMode, spec.blendMode)) {
         result.code = "INVALID_TERRAIN_PROCEDURAL_BLEND_MODE";
         result.message = "未知的程序化地形混合方式: " + blendMode;
         return output;

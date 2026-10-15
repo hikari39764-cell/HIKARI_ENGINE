@@ -2,48 +2,20 @@
 
 #include <algorithm>
 #include <cmath>
+#include "Core/HIKARI_JsonRead.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 
 namespace HIKARI {
 
 namespace {
-const char* ToString(SEQUENCER::SequenceChannelPolicy policy) noexcept {
-    using Policy = SEQUENCER::SequenceChannelPolicy;
-    switch (policy) {
-    case Policy::Parallel: return "Parallel";
-    case Policy::Replace: return "Replace";
-    case Policy::RejectIfOccupied: return "RejectIfOccupied";
-    case Policy::ReplaceIfHigherOrEqual:
-    default: return "ReplaceIfHigherOrEqual";
-    }
-}
-
-SEQUENCER::SequenceChannelPolicy ParseChannelPolicy(const nlohmann::json& value,
-                                                    SEQUENCER::SequenceChannelPolicy fallback) noexcept {
-    using Policy = SEQUENCER::SequenceChannelPolicy;
-    if (value.is_number_integer()) {
-        const int raw = value.get<int>();
-        if (raw >= static_cast<int>(Policy::Parallel) && raw <= static_cast<int>(Policy::RejectIfOccupied)) {
-            return static_cast<Policy>(raw);
-        }
-        return fallback;
-    }
-    if (!value.is_string()) {
-        return fallback;
-    }
-    const std::string text = value.get<std::string>();
-    if (text == "Parallel")
-        return Policy::Parallel;
-    if (text == "Replace")
-        return Policy::Replace;
-    if (text == "RejectIfOccupied") {
-        return Policy::RejectIfOccupied;
-    }
-    if (text == "ReplaceIfHigherOrEqual") {
-        return Policy::ReplaceIfHigherOrEqual;
-    }
-    return fallback;
-}
+using Policy = SEQUENCER::SequenceChannelPolicy;
+constexpr TEXT::EnumName<Policy> kChannelPolicyNames[] = {
+    {Policy::Parallel, "Parallel"},
+    {Policy::Replace, "Replace"},
+    {Policy::ReplaceIfHigherOrEqual, "ReplaceIfHigherOrEqual"},
+    {Policy::RejectIfOccupied, "RejectIfOccupied"},
+};
 } // namespace
 
 void SequencePlayerComponent::OnAttach() { ResetRuntimeState(); }
@@ -58,7 +30,7 @@ void SequencePlayerComponent::Serialize(nlohmann::json& out) const {
     out["startTimeSeconds"] = startTimeSeconds_;
     out["channel"] = channel_;
     out["priority"] = priority_;
-    out["channelPolicy"] = ToString(channelPolicy_);
+    out["channelPolicy"] = TEXT::EnumToName(kChannelPolicyNames, channelPolicy_, "ReplaceIfHigherOrEqual");
     out["stopOnDisable"] = stopOnDisable_;
     out["restartIfPlaying"] = restartIfPlaying_;
     out["ownerSlotName"] = ownerSlotName_;
@@ -80,7 +52,7 @@ void SequencePlayerComponent::Deserialize(const nlohmann::json& in) {
     startTimeSeconds_ = in.value("startTimeSeconds", startTimeSeconds_);
     channel_ = in.value("channel", channel_);
     priority_ = in.value("priority", priority_);
-    channelPolicy_ = ParseChannelPolicy(in.value("channelPolicy", nlohmann::json{}), channelPolicy_);
+    channelPolicy_ = JSONREAD::EnumOr(in.value("channelPolicy", nlohmann::json{}), kChannelPolicyNames, channelPolicy_);
     stopOnDisable_ = in.value("stopOnDisable", stopOnDisable_);
     restartIfPlaying_ = in.value("restartIfPlaying", restartIfPlaying_);
     ownerSlotName_ = in.value("ownerSlotName", ownerSlotName_);

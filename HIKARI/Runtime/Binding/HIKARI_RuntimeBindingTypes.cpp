@@ -4,39 +4,7 @@
 
 namespace HIKARI::BINDING {
 
-std::string_view ToString(ValueType type) noexcept {
-    switch (type) {
-    case ValueType::Bool: return "Bool";
-    case ValueType::Int: return "Int";
-    case ValueType::Float: return "Float";
-    case ValueType::Float2: return "Float2";
-    case ValueType::Float3: return "Float3";
-    case ValueType::Float4: return "Float4";
-    case ValueType::Color: return "Color";
-    default: return "Float";
-    }
-}
-
-bool TryParseValueType(std::string_view text, ValueType& outType) noexcept {
-    if (text == "Bool") {
-        outType = ValueType::Bool;
-    } else if (text == "Int") {
-        outType = ValueType::Int;
-    } else if (text == "Float") {
-        outType = ValueType::Float;
-    } else if (text == "Float2") {
-        outType = ValueType::Float2;
-    } else if (text == "Float3") {
-        outType = ValueType::Float3;
-    } else if (text == "Float4") {
-        outType = ValueType::Float4;
-    } else if (text == "Color") {
-        outType = ValueType::Color;
-    } else {
-        return false;
-    }
-    return true;
-}
+std::string_view ToString(ValueType type) noexcept { return TEXT::EnumToName(kValueTypeNames, type, "Float"); }
 
 uint32_t GetValueComponentCount(ValueType type) noexcept {
     switch (type) {

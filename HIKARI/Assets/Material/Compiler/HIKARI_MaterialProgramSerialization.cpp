@@ -13,6 +13,7 @@
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Core/Serialization/Json/HIKARI_JsonStrict.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 
 namespace HIKARI::MATERIAL_SERIALIZATION {
 
@@ -20,30 +21,11 @@ namespace {
 
 namespace JsonMath = SERIALIZATION::JSON::MATH;
 
-std::string_view DiagnosticSeverityToString(MaterialCompileDiagnosticSeverity severity) noexcept {
-    switch (severity) {
-    case MaterialCompileDiagnosticSeverity::Info: return "Info";
-    case MaterialCompileDiagnosticSeverity::Warning: return "Warning";
-    case MaterialCompileDiagnosticSeverity::Error: return "Error";
-    }
-    return "Error";
-}
-
-bool ParseSeverity(std::string_view text, MaterialCompileDiagnosticSeverity& outSeverity) noexcept {
-    if (text == "Info") {
-        outSeverity = MaterialCompileDiagnosticSeverity::Info;
-        return true;
-    }
-    if (text == "Warning") {
-        outSeverity = MaterialCompileDiagnosticSeverity::Warning;
-        return true;
-    }
-    if (text == "Error") {
-        outSeverity = MaterialCompileDiagnosticSeverity::Error;
-        return true;
-    }
-    return false;
-}
+constexpr TEXT::EnumName<MaterialCompileDiagnosticSeverity> kSeverityNames[] = {
+    {MaterialCompileDiagnosticSeverity::Info, "Info"},
+    {MaterialCompileDiagnosticSeverity::Warning, "Warning"},
+    {MaterialCompileDiagnosticSeverity::Error, "Error"},
+};
 
 nlohmann::json WriteProgram(const MaterialProgramIR& program) {
     auto parameters = program.parameters;
@@ -355,7 +337,7 @@ bool SerializeMaterialCompileResult(const MaterialCompileResult& result, std::st
         nlohmann::json diagnosticArray = nlohmann::json::array();
         for (const MaterialCompileDiagnostic& diagnostic : result.diagnostics) {
             diagnosticArray.push_back(nlohmann::json{
-                {"severity", std::string(DiagnosticSeverityToString(diagnostic.severity))},
+                {"severity", TEXT::EnumToName(kSeverityNames, diagnostic.severity, "Error")},
                 {"code", diagnostic.code},
                 {"message", diagnostic.message},
                 {"subjectId", diagnostic.subjectId},
@@ -396,7 +378,7 @@ bool ParseMaterialCompileResult(std::string_view jsonText, MaterialCompileResult
             }
             for (const nlohmann::json& item : *diagnostics) {
                 MaterialCompileDiagnostic diagnostic{};
-                if (!ParseSeverity(item.value("severity", std::string{}), diagnostic.severity)) {
+                if (!TEXT::TryParseEnum(kSeverityNames, item.value("severity", std::string{}), diagnostic.severity)) {
                     outError = "compiled MaterialProgram contains an unknown diagnostic severity";
                     return false;
                 }

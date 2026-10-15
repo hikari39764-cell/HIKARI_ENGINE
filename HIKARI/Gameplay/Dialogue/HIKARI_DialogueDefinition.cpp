@@ -46,73 +46,14 @@ std::string_view BaseLocale(std::string_view locale) {
 }
 } // namespace
 
-const char* ToString(DialogueNodeType type) noexcept {
-    switch (type) {
-    case DialogueNodeType::Line: return "Line";
-    case DialogueNodeType::Choice: return "Choice";
-    case DialogueNodeType::Event: return "Event";
-    case DialogueNodeType::End: return "End";
-    default: return "Line";
-    }
-}
-
-bool TryParseDialogueNodeType(std::string_view text, DialogueNodeType& outType) noexcept {
-    if (text == "Line")
-        outType = DialogueNodeType::Line;
-    else if (text == "Choice")
-        outType = DialogueNodeType::Choice;
-    else if (text == "Event")
-        outType = DialogueNodeType::Event;
-    else if (text == "End")
-        outType = DialogueNodeType::End;
-    else
-        return false;
-    return true;
-}
+const char* ToString(DialogueNodeType type) noexcept { return TEXT::EnumToName(kDialogueNodeTypeNames, type, "Line"); }
 
 const char* ToString(DialoguePortraitSlot slot) noexcept {
-    switch (slot) {
-    case DialoguePortraitSlot::Auto: return "Auto";
-    case DialoguePortraitSlot::Left: return "Left";
-    case DialoguePortraitSlot::Right: return "Right";
-    default: return "Auto";
-    }
-}
-
-bool TryParseDialoguePortraitSlot(std::string_view text, DialoguePortraitSlot& outSlot) noexcept {
-    if (text == "Auto")
-        outSlot = DialoguePortraitSlot::Auto;
-    else if (text == "Left")
-        outSlot = DialoguePortraitSlot::Left;
-    else if (text == "Right")
-        outSlot = DialoguePortraitSlot::Right;
-    else
-        return false;
-    return true;
+    return TEXT::EnumToName(kDialoguePortraitSlotNames, slot, "Auto");
 }
 
 const char* ToString(DialoguePortraitAction action) noexcept {
-    switch (action) {
-    case DialoguePortraitAction::Auto: return "Auto";
-    case DialoguePortraitAction::Show: return "Show";
-    case DialoguePortraitAction::Keep: return "Keep";
-    case DialoguePortraitAction::Hide: return "Hide";
-    default: return "Auto";
-    }
-}
-
-bool TryParseDialoguePortraitAction(std::string_view text, DialoguePortraitAction& outAction) noexcept {
-    if (text == "Auto")
-        outAction = DialoguePortraitAction::Auto;
-    else if (text == "Show")
-        outAction = DialoguePortraitAction::Show;
-    else if (text == "Keep")
-        outAction = DialoguePortraitAction::Keep;
-    else if (text == "Hide")
-        outAction = DialoguePortraitAction::Hide;
-    else
-        return false;
-    return true;
+    return TEXT::EnumToName(kDialoguePortraitActionNames, action, "Auto");
 }
 
 void SerializeLocalizedTextJson(const LocalizedText& value, nlohmann::json& outJson) {
@@ -307,17 +248,17 @@ bool DeserializeDialogueJson(const nlohmann::json& jsonNode, DialogueDefinition&
         node.id = nodeJson.value("id", std::string{});
         node.speakerId = nodeJson.value("speakerId", std::string{});
         const std::string type = nodeJson.value("type", "Line");
-        if (!TryParseDialogueNodeType(type, node.type)) {
+        if (!TEXT::TryParseEnum(kDialogueNodeTypeNames, type, node.type)) {
             SetError(outError, "Dialogue node type is invalid: " + type);
             return false;
         }
         const std::string portraitSlot = nodeJson.value("portraitSlot", "Auto");
-        if (!TryParseDialoguePortraitSlot(portraitSlot, node.portraitSlot)) {
+        if (!TEXT::TryParseEnum(kDialoguePortraitSlotNames, portraitSlot, node.portraitSlot)) {
             SetError(outError, "Dialogue portrait slot is invalid: " + portraitSlot);
             return false;
         }
         const std::string portraitAction = nodeJson.value("portraitAction", "Auto");
-        if (!TryParseDialoguePortraitAction(portraitAction, node.portraitAction)) {
+        if (!TEXT::TryParseEnum(kDialoguePortraitActionNames, portraitAction, node.portraitAction)) {
             SetError(outError, "Dialogue portrait action is invalid: " + portraitAction);
             return false;
         }

@@ -107,57 +107,11 @@ std::vector<InputBindingConflict> InputActionMap::FindConflicts() const {
 }
 
 const char* ToString(InputActionValueType type) noexcept {
-    switch (type) {
-    case InputActionValueType::Button: return "Button";
-    case InputActionValueType::Axis1D: return "Axis1D";
-    case InputActionValueType::Axis2D: return "Axis2D";
-    default: return "Button";
-    }
-}
-
-bool TryParseInputActionValueType(std::string_view value, InputActionValueType& out) noexcept {
-    if (value == "Button")
-        out = InputActionValueType::Button;
-    else if (value == "Axis1D")
-        out = InputActionValueType::Axis1D;
-    else if (value == "Axis2D")
-        out = InputActionValueType::Axis2D;
-    else
-        return false;
-    return true;
+    return TEXT::EnumToName(kInputActionValueTypeNames, type, "Button");
 }
 
 const char* ToString(InputBindingSource source) noexcept {
-    switch (source) {
-    case InputBindingSource::Keyboard: return "Keyboard";
-    case InputBindingSource::MouseButton: return "MouseButton";
-    case InputBindingSource::MouseDeltaX: return "MouseDeltaX";
-    case InputBindingSource::MouseDeltaY: return "MouseDeltaY";
-    case InputBindingSource::MouseWheel: return "MouseWheel";
-    case InputBindingSource::GamepadButton: return "GamepadButton";
-    case InputBindingSource::GamepadAxis: return "GamepadAxis";
-    default: return "Keyboard";
-    }
-}
-
-bool TryParseInputBindingSource(std::string_view value, InputBindingSource& out) noexcept {
-    if (value == "Keyboard")
-        out = InputBindingSource::Keyboard;
-    else if (value == "MouseButton")
-        out = InputBindingSource::MouseButton;
-    else if (value == "MouseDeltaX")
-        out = InputBindingSource::MouseDeltaX;
-    else if (value == "MouseDeltaY")
-        out = InputBindingSource::MouseDeltaY;
-    else if (value == "MouseWheel")
-        out = InputBindingSource::MouseWheel;
-    else if (value == "GamepadButton")
-        out = InputBindingSource::GamepadButton;
-    else if (value == "GamepadAxis")
-        out = InputBindingSource::GamepadAxis;
-    else
-        return false;
-    return true;
+    return TEXT::EnumToName(kInputBindingSourceNames, source, "Keyboard");
 }
 
 } // namespace HIKARI::INPUT

@@ -150,7 +150,7 @@ bool ParseSpriteMaterialParameterValues(const nlohmann::json& node,
             return false;
         }
         BINDING::ValueType type{};
-        if (!BINDING::TryParseValueType(typeName, type)) {
+        if (!TEXT::TryParseEnum(BINDING::kValueTypeNames, typeName, type)) {
             return JSONSTRICT::Fail(outError, valuePath + ".type is unknown");
         }
         ASSETS::SHADER::ShaderParameterOverride parameter{};

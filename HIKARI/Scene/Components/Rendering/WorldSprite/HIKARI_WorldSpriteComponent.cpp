@@ -45,12 +45,12 @@ void WorldSpriteComponent::Serialize(nlohmann::json& out) const {
            {WorldSpriteComponentPropertyIds::SizeExplicit, sizeExplicit_},
            {"sizeInitializedFromSprite", sizeInitializedFromSprite_},
            {WorldSpriteComponentPropertyIds::PreserveAspect, preserveAspect_},
-           {WorldSpriteComponentPropertyIds::Facing, FacingName(facing_)},
+           {WorldSpriteComponentPropertyIds::Facing, TEXT::EnumToName(kFacingNames, facing_, "CameraFacing")},
            {WorldSpriteComponentPropertyIds::Tint, {tint_.x, tint_.y, tint_.z}},
            {WorldSpriteComponentPropertyIds::Opacity, opacity_},
            {WorldSpriteComponentPropertyIds::Pivot, {pivot_.x, pivot_.y}},
            {WorldSpriteComponentPropertyIds::PivotExplicit, pivotExplicit_},
-           {WorldSpriteComponentPropertyIds::AlphaMode, AlphaModeName(alphaMode_)},
+           {WorldSpriteComponentPropertyIds::AlphaMode, TEXT::EnumToName(kAlphaModeNames, alphaMode_, "Auto")},
            {WorldSpriteComponentPropertyIds::AlphaCutoff, alphaCutoff_},
            {WorldSpriteComponentPropertyIds::TransparentSortPriority, transparentSortPriority_}};
     SerializeMaterialState(out["spriteMaterial"]);
@@ -88,7 +88,8 @@ void WorldSpriteComponent::Deserialize(const nlohmann::json& in) {
                                   JSONREAD::FindMember(in, WorldSpriteComponentPropertyIds::Size) != nullptr);
     sizeInitializedFromSprite_ = JSONREAD::BooleanMemberOr(in, "sizeInitializedFromSprite", sizeExplicit_);
     preserveAspect_ = JSONREAD::BooleanMemberOr(in, WorldSpriteComponentPropertyIds::PreserveAspect, true);
-    facing_ = ParseFacing(JSONREAD::StringMemberOr(in, WorldSpriteComponentPropertyIds::Facing, "CameraFacing"));
+    facing_ = TEXT::ParseEnum(kFacingNames, JSONREAD::StringMemberOr(in, WorldSpriteComponentPropertyIds::Facing, {}),
+                              FacingMode::CameraFacing);
     if (const nlohmann::json* value = JSONREAD::FindMember(in, WorldSpriteComponentPropertyIds::Tint)) {
         tint_ = SanitizeColor(JSONREAD::Vec3Or(*value, tint_));
     }
@@ -100,7 +101,8 @@ void WorldSpriteComponent::Deserialize(const nlohmann::json& in) {
     pivotExplicit_ = JSONREAD::BooleanMemberOr(
         in, WorldSpriteComponentPropertyIds::PivotExplicit,
         !spriteAssetGuid_.IsValid() && JSONREAD::FindMember(in, WorldSpriteComponentPropertyIds::Pivot) != nullptr);
-    alphaMode_ = ParseAlphaMode(JSONREAD::StringMemberOr(in, WorldSpriteComponentPropertyIds::AlphaMode, "Auto"));
+    alphaMode_ = TEXT::ParseEnum(
+        kAlphaModeNames, JSONREAD::StringMemberOr(in, WorldSpriteComponentPropertyIds::AlphaMode, {}), AlphaMode::Auto);
     alphaCutoff_ =
         ClampFinite(JSONREAD::NumberMemberOr(in, WorldSpriteComponentPropertyIds::AlphaCutoff, 0.5f), 0.5f, 0.0f, 1.0f);
     transparentSortPriority_ = std::clamp(

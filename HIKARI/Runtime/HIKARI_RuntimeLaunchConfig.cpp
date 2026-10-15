@@ -215,7 +215,7 @@ RuntimeLaunchConfig LoadRuntimeLaunchConfigFromFile(const std::filesystem::path&
     // ホストモード、UI フラグ、デバッグ設定を読み込む
     if (runtime.contains("hostMode") && runtime["hostMode"].is_string()) {
         RuntimeHostMode mode{};
-        if (TryParseRuntimeHostMode(runtime["hostMode"].get<std::string>(), mode)) {
+        if (TEXT::TryParseEnum(kRuntimeHostModeNames, runtime["hostMode"].get<std::string>(), mode)) {
             cfg.hostMode = mode;
         }
     }

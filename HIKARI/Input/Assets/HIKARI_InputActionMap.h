@@ -57,10 +57,8 @@ public:
     std::vector<std::string> Validate() const;
     std::vector<InputBindingConflict> FindConflicts() const;
 };
-// 入力アクションの値の型を文字列に変換する
+// 保存名（kInputActionValueTypeNames / kInputBindingSourceNames）。
 const char* ToString(InputActionValueType type) noexcept;
-bool TryParseInputActionValueType(std::string_view value, InputActionValueType& out) noexcept;
 const char* ToString(InputBindingSource source) noexcept;
-bool TryParseInputBindingSource(std::string_view value, InputBindingSource& out) noexcept;
 
 } // namespace HIKARI::INPUT

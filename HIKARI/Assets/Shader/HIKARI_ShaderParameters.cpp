@@ -64,7 +64,8 @@ bool ReadSlot(const nlohmann::json& node, uint32_t& outSlot) {
 
 bool ReadValueType(const nlohmann::json& node, BINDING::ValueType& outType) {
     const auto found = node.find("type");
-    return found != node.end() && found->is_string() && BINDING::TryParseValueType(found->get<std::string>(), outType);
+    return found != node.end() && found->is_string() &&
+           TEXT::TryParseEnum(BINDING::kValueTypeNames, found->get<std::string>(), outType);
 }
 
 void PackValue(const BINDING::Value& value, ShaderParameterSlot& slot) noexcept {

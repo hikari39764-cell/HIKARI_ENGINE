@@ -1,6 +1,6 @@
 #pragma once
 
-#include <string_view>
+#include "Core/Text/HIKARI_EnumNames.h"
 
 namespace HIKARI {
 
@@ -23,36 +23,16 @@ inline constexpr bool IsStandaloneGameHostMode(RuntimeHostMode mode) {
     return mode == RuntimeHostMode::Game || mode == RuntimeHostMode::GamePreview || IsExportedGameHostMode(mode);
 }
 
-// ランタイムホストモードを文字列に変換
-inline constexpr const char* RuntimeHostModeName(RuntimeHostMode mode) {
-    switch (mode) {
-    case RuntimeHostMode::Game: return "Game";
-    case RuntimeHostMode::Editor: return "Editor";
-    case RuntimeHostMode::GamePreview: return "GamePreview";
-    case RuntimeHostMode::ExportedGame: return "ExportedGame";
-    default: return "Unknown";
-    }
-}
+// 起動設定（runtime.hostMode）に書く名前。
+inline constexpr TEXT::EnumName<RuntimeHostMode> kRuntimeHostModeNames[] = {
+    {RuntimeHostMode::Game, "Game"},
+    {RuntimeHostMode::Editor, "Editor"},
+    {RuntimeHostMode::GamePreview, "GamePreview"},
+    {RuntimeHostMode::ExportedGame, "ExportedGame"},
+};
 
-// 文字列からランタイムホストモードを解析（大文字小文字と表記揺れに対応）
-inline constexpr bool TryParseRuntimeHostMode(std::string_view name, RuntimeHostMode& outMode) {
-    if (name == "Game" || name == "game") {
-        outMode = RuntimeHostMode::Game;
-        return true;
-    }
-    if (name == "Editor" || name == "editor") {
-        outMode = RuntimeHostMode::Editor;
-        return true;
-    }
-    if (name == "GamePreview" || name == "gamePreview" || name == "game_preview") {
-        outMode = RuntimeHostMode::GamePreview;
-        return true;
-    }
-    if (name == "ExportedGame" || name == "exportedGame" || name == "exported_game") {
-        outMode = RuntimeHostMode::ExportedGame;
-        return true;
-    }
-    return false;
+inline constexpr const char* RuntimeHostModeName(RuntimeHostMode mode) {
+    return TEXT::EnumToName(kRuntimeHostModeNames, mode, "Unknown");
 }
 
 } // namespace HIKARI

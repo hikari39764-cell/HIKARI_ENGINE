@@ -16,6 +16,7 @@
 #include "Assets/Sprite/HIKARI_SpriteMaterialAsset.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Core/HIKARI_JsonRead.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Render3D/WorldSprite/HIKARI_WorldSpriteFrameSource.h"
 #include "Scene/Components/HIKARI_IComponent.h"
@@ -65,6 +66,18 @@ class WorldSpriteComponent final : public IComponent, public IGeometryFitProvide
 public:
     using FacingMode = RENDER3D::WORLD_SPRITES::WorldSpriteFacingMode;
     using AlphaMode = RENDER3D::WORLD_SPRITES::WorldSpriteAlphaMode;
+    // シーンに保存する名前。
+    static constexpr TEXT::EnumName<FacingMode> kFacingNames[] = {
+        {FacingMode::Fixed, "Fixed"},
+        {FacingMode::CameraFacing, "CameraFacing"},
+        {FacingMode::FixedYAxis, "FixedYAxis"},
+    };
+    static constexpr TEXT::EnumName<AlphaMode> kAlphaModeNames[] = {
+        {AlphaMode::Auto, "Auto"},
+        {AlphaMode::Opaque, "Opaque"},
+        {AlphaMode::Mask, "Mask"},
+        {AlphaMode::Blend, "Blend"},
+    };
 
     // Runtime-only mutations are composed against this complete value and
     // committed through ApplyRuntimeState. The component remains the
@@ -331,22 +344,11 @@ private:
     }
 
     static FacingMode SanitizeFacing(FacingMode mode) noexcept {
-        switch (mode) {
-        case FacingMode::Fixed:
-        case FacingMode::CameraFacing:
-        case FacingMode::FixedYAxis: return mode;
-        default: return FacingMode::CameraFacing;
-        }
+        return TEXT::IsNamedEnum(kFacingNames, mode) ? mode : FacingMode::CameraFacing;
     }
 
     static AlphaMode SanitizeAlphaMode(AlphaMode mode) noexcept {
-        switch (mode) {
-        case AlphaMode::Auto:
-        case AlphaMode::Opaque:
-        case AlphaMode::Mask:
-        case AlphaMode::Blend: return mode;
-        default: return AlphaMode::Auto;
-        }
+        return TEXT::IsNamedEnum(kAlphaModeNames, mode) ? mode : AlphaMode::Auto;
     }
 
     bool HasSameRuntimeState(const RuntimeState& state) const noexcept {
@@ -356,43 +358,6 @@ private:
                transparentSortPriority_ == state.transparentSortPriority && facing_ == state.facing &&
                alphaMode_ == state.alphaMode && visible_ == state.visible && preserveAspect_ == state.preserveAspect &&
                sizeExplicit_ == state.sizeExplicit && pivotExplicit_ == state.pivotExplicit && flipX_ == state.flipX;
-    }
-
-    static const char* FacingName(FacingMode mode) noexcept {
-        switch (mode) {
-        case FacingMode::Fixed: return "Fixed";
-        case FacingMode::FixedYAxis: return "FixedYAxis";
-        case FacingMode::CameraFacing:
-        default: return "CameraFacing";
-        }
-    }
-
-    static FacingMode ParseFacing(std::string_view value) noexcept {
-        if (value == "Fixed")
-            return FacingMode::Fixed;
-        if (value == "FixedYAxis")
-            return FacingMode::FixedYAxis;
-        return FacingMode::CameraFacing;
-    }
-
-    static const char* AlphaModeName(AlphaMode mode) noexcept {
-        switch (mode) {
-        case AlphaMode::Opaque: return "Opaque";
-        case AlphaMode::Mask: return "Mask";
-        case AlphaMode::Blend: return "Blend";
-        case AlphaMode::Auto:
-        default: return "Auto";
-        }
-    }
-
-    static AlphaMode ParseAlphaMode(std::string_view value) noexcept {
-        if (value == "Opaque")
-            return AlphaMode::Opaque;
-        if (value == "Mask")
-            return AlphaMode::Mask;
-        if (value == "Blend")
-            return AlphaMode::Blend;
-        return AlphaMode::Auto;
     }
 
     void NotifyRenderStateDirty() {

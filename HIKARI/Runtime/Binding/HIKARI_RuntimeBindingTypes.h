@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI::BINDING {
@@ -16,6 +17,12 @@ enum class ValueType : uint8_t {
     Float3,
     Float4,
     Color,
+};
+
+inline constexpr TEXT::EnumName<ValueType> kValueTypeNames[] = {
+    {ValueType::Bool, "Bool"},     {ValueType::Int, "Int"},       {ValueType::Float, "Float"},
+    {ValueType::Float2, "Float2"}, {ValueType::Float3, "Float3"}, {ValueType::Float4, "Float4"},
+    {ValueType::Color, "Color"},
 };
 
 struct NumericValue {
@@ -65,7 +72,6 @@ struct EventRecord {
 };
 
 std::string_view ToString(ValueType type) noexcept;
-bool TryParseValueType(std::string_view text, ValueType& outType) noexcept;
 uint32_t GetValueComponentCount(ValueType type) noexcept;
 bool IsNumeric(ValueType type) noexcept;
 bool IsValueCompatible(const Value& value, ValueType expectedType) noexcept;

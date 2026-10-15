@@ -26,7 +26,7 @@ bool ReadValue(const nlohmann::json& node, Value& outValue) {
         return false;
     }
     ValueType type{};
-    if (!TryParseValueType(node.value("type", ""), type)) {
+    if (!TEXT::TryParseEnum(kValueTypeNames, node.value("type", ""), type)) {
         return false;
     }
     const auto found = node.find("value");
@@ -144,7 +144,7 @@ bool LoadCatalog(const std::filesystem::path& path, Catalog& outCatalog, std::st
                 definition.hasPayload = node.value("hasPayload", false);
                 decodeContext = eventContext + ".payloadType";
                 if (definition.hasPayload &&
-                    !TryParseValueType(node.value("payloadType", ""), definition.payloadType)) {
+                    !TEXT::TryParseEnum(kValueTypeNames, node.value("payloadType", ""), definition.payloadType)) {
                     outError = "runtime binding event has an invalid payload type: " + definition.id;
                     return false;
                 }

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Scene/Terrain/HIKARI_TerrainSurface.h"
 
 namespace HIKARI::TERRAIN {
@@ -32,98 +33,26 @@ enum class TerrainProceduralBlendMode : uint8_t {
 // unbounded JSON history entry. Larger worlds are authored in tiles.
 constexpr uint64_t kTerrainProceduralMaximumCandidateVertices = 524288u;
 
+inline constexpr TEXT::EnumName<TerrainProceduralMode> kTerrainProceduralModeNames[] = {
+    {TerrainProceduralMode::NoiseHills, "noise_hills"},
+    {TerrainProceduralMode::IslandCoast, "island_coast"},
+    {TerrainProceduralMode::Ridge, "ridge"},
+    {TerrainProceduralMode::BasinCrater, "basin_crater"},
+    {TerrainProceduralMode::Dunes, "dunes"},
+};
+
+inline constexpr TEXT::EnumName<TerrainProceduralBlendMode> kTerrainProceduralBlendModeNames[] = {
+    {TerrainProceduralBlendMode::Add, "add"},
+    {TerrainProceduralBlendMode::Replace, "replace"},
+    {TerrainProceduralBlendMode::Max, "max"},
+};
+
 inline const char* ToString(TerrainProceduralMode mode) noexcept {
-    switch (mode) {
-    case TerrainProceduralMode::NoiseHills: return "noise_hills";
-    case TerrainProceduralMode::IslandCoast: return "island_coast";
-    case TerrainProceduralMode::Ridge: return "ridge";
-    case TerrainProceduralMode::BasinCrater: return "basin_crater";
-    case TerrainProceduralMode::Dunes: return "dunes";
-    }
-    return "noise_hills";
+    return TEXT::EnumToName(kTerrainProceduralModeNames, mode, "noise_hills");
 }
 
 inline const char* ToString(TerrainProceduralBlendMode mode) noexcept {
-    switch (mode) {
-    case TerrainProceduralBlendMode::Add: return "add";
-    case TerrainProceduralBlendMode::Replace: return "replace";
-    case TerrainProceduralBlendMode::Max: return "max";
-    }
-    return "add";
-}
-
-inline TerrainProceduralMode ParseTerrainProceduralMode(
-    std::string_view value, TerrainProceduralMode fallback = TerrainProceduralMode::NoiseHills) noexcept {
-    if (value == "noise_hills") {
-        return TerrainProceduralMode::NoiseHills;
-    }
-    if (value == "island_coast") {
-        return TerrainProceduralMode::IslandCoast;
-    }
-    if (value == "ridge") {
-        return TerrainProceduralMode::Ridge;
-    }
-    if (value == "basin_crater") {
-        return TerrainProceduralMode::BasinCrater;
-    }
-    if (value == "dunes") {
-        return TerrainProceduralMode::Dunes;
-    }
-    return fallback;
-}
-
-inline bool TryParseTerrainProceduralMode(std::string_view value, TerrainProceduralMode& outMode) noexcept {
-    if (value == "noise_hills") {
-        outMode = TerrainProceduralMode::NoiseHills;
-        return true;
-    }
-    if (value == "island_coast") {
-        outMode = TerrainProceduralMode::IslandCoast;
-        return true;
-    }
-    if (value == "ridge") {
-        outMode = TerrainProceduralMode::Ridge;
-        return true;
-    }
-    if (value == "basin_crater") {
-        outMode = TerrainProceduralMode::BasinCrater;
-        return true;
-    }
-    if (value == "dunes") {
-        outMode = TerrainProceduralMode::Dunes;
-        return true;
-    }
-    return false;
-}
-
-inline TerrainProceduralBlendMode ParseTerrainProceduralBlendMode(
-    std::string_view value, TerrainProceduralBlendMode fallback = TerrainProceduralBlendMode::Add) noexcept {
-    if (value == "add") {
-        return TerrainProceduralBlendMode::Add;
-    }
-    if (value == "replace") {
-        return TerrainProceduralBlendMode::Replace;
-    }
-    if (value == "max") {
-        return TerrainProceduralBlendMode::Max;
-    }
-    return fallback;
-}
-
-inline bool TryParseTerrainProceduralBlendMode(std::string_view value, TerrainProceduralBlendMode& outMode) noexcept {
-    if (value == "add") {
-        outMode = TerrainProceduralBlendMode::Add;
-        return true;
-    }
-    if (value == "replace") {
-        outMode = TerrainProceduralBlendMode::Replace;
-        return true;
-    }
-    if (value == "max") {
-        outMode = TerrainProceduralBlendMode::Max;
-        return true;
-    }
-    return false;
+    return TEXT::EnumToName(kTerrainProceduralBlendModeNames, mode, "add");
 }
 
 struct TerrainProceduralSpec {

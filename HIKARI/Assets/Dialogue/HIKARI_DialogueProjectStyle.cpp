@@ -342,7 +342,7 @@ bool DeserializeDialogueProjectStyleJson(const nlohmann::json& jsonNode, Dialogu
                 return false;
             }
             const std::string preferredSlot = character.value("preferredSlot", "Auto");
-            if (!TryParseDialoguePortraitSlot(preferredSlot, speaker.preferredSlot)) {
+            if (!TEXT::TryParseEnum(kDialoguePortraitSlotNames, preferredSlot, speaker.preferredSlot)) {
                 SetMessage(outError, "Dialogue character side is invalid");
                 return false;
             }
