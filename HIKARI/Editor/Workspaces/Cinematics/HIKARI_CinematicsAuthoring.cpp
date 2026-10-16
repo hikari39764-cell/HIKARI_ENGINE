@@ -102,8 +102,8 @@ bool CinematicsWorkspaceController::ExecuteAuthoring(DocumentSceneBase& scene, c
             shot["id"] = id;
             if (!shot.contains("camera"))
                 shot["camera"] = nlohmann::json::object();
-            if (!shot["camera"].contains("owned"))
-                shot["camera"]["owned"] = true;
+            if (!shot["camera"].contains("useScenePose"))
+                shot["camera"]["useScenePose"] = false;
             clips.push_back(shot);
         } else if (kind == EditKind::EditShot || kind == EditKind::RemoveShot) {
             const auto id = command.at("id").get<uint64_t>();

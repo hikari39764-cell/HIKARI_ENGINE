@@ -25,10 +25,11 @@ public:
     bool Pause(SequencePlaybackHandle handle);
     bool Resume(SequencePlaybackHandle handle);
     bool SetPlaybackRate(SequencePlaybackHandle handle, float playbackRate);
+    bool SetUseUnscaledTime(SequencePlaybackHandle handle, bool enabled);
     bool Seek(SequencePlaybackHandle handle, float timeSeconds);
 
     uint64_t Submit(SequencePlaybackCommand command);
-    void Update(float deltaTime);
+    void Update(float deltaTime, float unscaledDeltaTime = -1.0f);
     bool EvaluateExternal(SequencePlaybackHandle handle, const SequenceEvaluationContext& context);
     void Reset();
 
@@ -50,6 +51,7 @@ private:
         int priority = 0;
         uint64_t requestId = 0;
         bool externallyDriven = false;
+        bool useUnscaledTime = false;
     };
 
     SequencePlayResult PlayLoaded(std::shared_ptr<const SequenceAsset> asset, const SequencePlayRequest& request,

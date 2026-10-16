@@ -73,6 +73,7 @@ struct RenderFrameContext {
     RenderViewId viewId{kPrimaryRenderViewId};
     RenderViewPurpose purpose = RenderViewPurpose::Game;
     bool cameraCut = false;
+    bool continuousCameraSource = false;
     bool projectionChanged = false;
     uint64_t cameraSourceObjectId = 0;
     uint64_t cameraRevision = 0;

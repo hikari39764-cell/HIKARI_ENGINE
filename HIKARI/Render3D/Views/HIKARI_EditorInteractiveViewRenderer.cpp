@@ -251,6 +251,7 @@ bool RequestsDiffer(const EditorInteractiveViewRequest& previous,
            previous.cameraFrame.sourceCameraObjectId != current.cameraFrame.sourceCameraObjectId ||
            previous.cameraFrame.revision != current.cameraFrame.revision ||
            previous.cameraFrame.cameraCut != current.cameraFrame.cameraCut ||
+           previous.cameraFrame.continuousCameraSource != current.cameraFrame.continuousCameraSource ||
            previous.cameraFrame.projectionChanged != current.cameraFrame.projectionChanged ||
            previous.width != current.width || previous.height != current.height ||
            previous.sceneRevision != current.sceneRevision || previous.contentRevision != current.contentRevision ||

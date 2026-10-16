@@ -1,8 +1,8 @@
-#include "Editor/Commands/HIKARI_EditorCommandRouter.h"
+#include "Editor/Authoring/HIKARI_SequenceCameraEditing.h"
+#include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
+#include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsPresentation.h"
-#include "Editor/Style/HIKARI_EditorWidgets.h"
-#include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <cmath>
@@ -10,12 +10,20 @@
 
 namespace HIKARI::EDITOR {
 std::vector<CinematicsWorkspaceController::Channel> CinematicsWorkspaceController::CollectChannels(
-    CinematicSequence& sequence, bool visibleOnly) {
+    DocumentSceneBase& scene, CinematicSequence& sequence, bool visibleOnly) {
     std::vector<Channel> result;
     const uint64_t owner = (selectedId_ << 2) | static_cast<uint64_t>(selectionKind_);
     if (channelOwner_ != owner) {
         channelOwner_ = owner;
+        const float fps = curveView_.fps;
+        auto clipboard = std::move(curveView_.editing.clipboard);
+        const auto easing = curveView_.editing.easing;
         curveView_ = {};
+        curveView_.editing.clipboard = std::move(clipboard);
+        curveView_.editing.easing = easing;
+        curveView_.fps = fps;
+        curveView_.activeChannel = "timing";
+        curveView_.speedGraph = true;
     }
     const auto effects = [&](auto& items, float start) {
         for (auto& effect : items) {
@@ -28,28 +36,50 @@ std::vector<CinematicsWorkspaceController::Channel> CinematicsWorkspaceControlle
                               start + effect.start, effect.duration});
         }
     };
-    if (auto* shot = SelectedShot(sequence); shot && shot->camera.owned) {
-        // 姿勢は姿勢键の帯で扱う。曲線で動かすのは瞄准の重み（相手に結んだ時）と軌道上の位置（軌道がある時）。
+    if (auto* shot = SelectedShot(sequence)) {
+        const float start = shot->startTimeSeconds - shot->sourceOffsetSeconds;
+        const float end = shot->sourceOffsetSeconds + shot->durationSeconds;
+        // 表示を開くだけではキーを生成・保存しない。実際の編集があった時だけ timing へ反映する。
+        timingCurve_ = shot->camera.timing;
+        if (timingCurve_.keys.empty())
+            timingCurve_.keys = {{0, 0, 1, 1}, {end, end, 1, 1}};
+        result.push_back({"timing", "整体运镜 · 节奏", &timingCurve_, start, end});
+        auto& timing = result.back();
+        timing.locked = {0, timingCurve_.keys.size() - 1};
+        timing.monotonic = true;
+        timing.valueScale = 100.f / (std::max)(.001f, shot->durationSeconds);
+        timing.valueOffset = -shot->sourceOffsetSeconds * timing.valueScale;
+        timing.unit = "%（速度：%/s）";
+        SEQUENCER::ShotCamera resolved;
+        if (SEQUENCER::ResolveSequenceShotCamera(sequence, previewBindings_, *shot, scene.GetWorld(),
+                                                 scene.GetCameraDirector(), resolved)) {
+            constexpr const char* names[]{"位置 X", "位置 Y", "位置 Z", "视野 FOV"};
+            for (unsigned i = 0; i < poseCurves_.size(); ++i) {
+                poseCurves_[i] = SEQUENCER::GetShotPoseCurve(resolved, i);
+                result.push_back({"pose/" + std::to_string(i), names[i], &poseCurves_[i], start, end, 0});
+                auto& c = result.back();
+                c.unit = i == 3 ? "度（速度：度/s）" : "m（速度：m/s）";
+                if (!curveView_.allowStationOffsets)
+                    for (size_t key = 0; key < shot->camera.keys.size(); ++key)
+                        if (shot->camera.keys[key].reference.IsValid())
+                            c.locked.push_back(key);
+            }
+        }
         if (shot->camera.lookAt.IsValid())
-            result.push_back({"aimWeight", TEXT::Localize("cine.aimWeight"), &shot->camera.aimWeight,
-                              shot->startTimeSeconds, shot->durationSeconds});
+            result.push_back({"aimWeight", TEXT::Localize("cine.aimWeight"), &shot->camera.aimWeight, start, end});
         if (shot->camera.rail.points.size() >= 2)
-            result.push_back({"railT", TEXT::Localize("cine.railProgress"), &shot->camera.railT, shot->startTimeSeconds,
-                              shot->durationSeconds});
+            result.push_back({"railT", TEXT::Localize("cine.railProgress"), &shot->camera.railT, start, end});
         for (auto& motion : shot->camera.motion) {
             const auto name = TEXT::Localize(SEQUENCER::kCameraMotionDescriptors[static_cast<size_t>(motion.kind)].key);
             const auto prefix = "motion/" + std::to_string(motion.id);
-            result.push_back(
-                {prefix + "/amount", name + " · " + TEXT::Localize("cine.amount"), &motion.amount,
-                 shot->startTimeSeconds + motion.start,
-                 motion.duration > 0 ? motion.duration : std::max(0.0f, shot->durationSeconds - motion.start)});
-            result.push_back(
-                {prefix + "/weight", name + " · " + TEXT::Localize("cine.weight"), &motion.weight,
-                 shot->startTimeSeconds + motion.start,
-                 motion.duration > 0 ? motion.duration : std::max(0.0f, shot->durationSeconds - motion.start)});
+            const float duration = motion.duration > 0 ? motion.duration : (std::max)(0.f, end - motion.start);
+            result.push_back({prefix + "/amount", name + " · " + TEXT::Localize("cine.amount"), &motion.amount,
+                              start + motion.start, duration});
+            result.push_back({prefix + "/weight", name + " · " + TEXT::Localize("cine.weight"), &motion.weight,
+                              start + motion.start, duration});
         }
-        effects(shot->effects, shot->startTimeSeconds);
-    } else if (selectionKind_ == SelectionKind::Effect) {
+        effects(shot->effects, start);
+    } else if (selectionKind_ == SelectionKind::Effect)
         for (auto& effect : sequence.screenEffects)
             if (effect.id == selectedId_) {
                 const auto prefix = "effect/" + std::to_string(effect.id);
@@ -57,176 +87,114 @@ std::vector<CinematicsWorkspaceController::Channel> CinematicsWorkspaceControlle
                     {prefix + "/amount", TEXT::Localize("cine.amount"), &effect.amount, effect.start, effect.duration});
                 result.push_back(
                     {prefix + "/weight", TEXT::Localize("cine.weight"), &effect.weight, effect.start, effect.duration});
-                break;
             }
+    for (auto& c : result) {
+        c.visible =
+            !visibleOnly || !animatedChannelsOnly_ || !c.curve->keys.empty() || c.id == curveView_.activeChannel;
+        // 時間写像の素材キーを主時間軸の時刻として表示しない。曲線モードでは素材時間を明記する。
+        if (visibleOnly)
+            if (const auto* shot = SelectedShot(sequence);
+                shot && !shot->camera.timing.keys.empty() && c.id != "timing")
+                c.visible = c.id.starts_with("effect/");
     }
-    if (visibleOnly && animatedChannelsOnly_)
-        std::erase_if(result, [&](const auto& channel) {
-            return channel.parameter->keys.empty() && channel.id != selectedChannel_;
-        });
     return result;
 }
-
-bool CinematicsWorkspaceController::DrawChannelLanes(CinematicSequence& sequence, float x, float y, float width,
-                                                     float labelWidth, float rowHeight) {
-    bool changed = false;
-    auto channels = CollectChannels(sequence, true);
-    auto* draw = ImGui::GetWindowDrawList();
-    int row = 0;
-    for (auto& channel : channels) {
-        ImGui::PushID(channel.id.c_str());
-        const float top = y + row++ * rowHeight, middle = top + rowHeight * 0.5f;
-        const bool selected = channel.id == selectedChannel_;
-        if (selected)
-            draw->AddRectFilled({x, top}, {x + width, top + rowHeight}, IM_COL32(38, 63, 75, 125));
-        draw->AddLine({x, top + rowHeight}, {x + width, top + rowHeight}, IM_COL32(31, 41, 51, 255));
-        draw->PushClipRect({x + 5, top}, {x + labelWidth - 4, top + rowHeight}, true);
-        draw->AddText({x + 12, top + 6}, selected ? IM_COL32(136, 231, 235, 255) : IM_COL32(151, 170, 188, 255),
-                      channel.label.c_str());
-        draw->PopClipRect();
-        ImGui::SetCursorScreenPos({x, top});
-        ImGui::InvisibleButton("channel", {labelWidth, rowHeight});
-        if (ImGui::IsItemClicked()) {
-            selectedChannel_ = channel.id;
-            curveView_ = {};
-        }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("%s", channel.label.c_str());
-            if (ImGui::IsMouseDoubleClicked(0))
-                curveMode_ = true;
-        }
-        auto& keys = channel.parameter->keys;
-        int remove = -1;
-        for (size_t i = 0; i < keys.size(); ++i) {
-            auto& key = keys[i];
-            const float px = x + labelWidth + (channel.start + key.time) * zoom_;
-            const bool keySelected = selected && curveView_.selectedKey == static_cast<int>(i);
-            const ImVec2 diamond[]{{px, middle - 5}, {px + 5, middle}, {px, middle + 5}, {px - 5, middle}};
-            draw->AddConvexPolyFilled(diamond, 4,
-                                      keySelected ? IM_COL32(255, 207, 108, 255) : IM_COL32(123, 211, 221, 255));
-            ImGui::PushID(static_cast<int>(i));
-            ImGui::SetCursorScreenPos({px - 7, middle - 8});
-            ImGui::InvisibleButton("key", {14, 16});
-            if (ImGui::IsItemActivated()) {
-                selectedChannel_ = channel.id;
-                curveView_.selectedKey = static_cast<int>(i);
-                curveView_.fitted = false;
-                cursor_.Pause();
-                cursor_.Seek(channel.start + key.time);
-                previewEnabled_ = true;
-            }
-            if (ImGui::IsItemActive() && ImGui::IsMouseDragging(0)) {
-                float next = (ImGui::GetIO().MousePos.x - x - labelWidth) / zoom_ - channel.start;
-                if (!ImGui::GetIO().KeyAlt)
-                    next = std::round(next * 60) / 60;
-                const float lo = i ? keys[i - 1].time + 0.0001f : 0;
-                const float hi =
-                    i + 1 < keys.size() ? keys[i + 1].time - 0.0001f : (std::max)(key.time, channel.duration);
-                key.time = std::clamp(next, lo, (std::max)(lo, hi));
-                cursor_.Seek(channel.start + key.time);
-                changed = true;
-            }
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s\n%.3f s · %.3f", channel.label.c_str(), key.time, key.value);
-            if (ImGui::BeginPopupContextItem("keyMenu")) {
-                if (ImGui::MenuItem(TEXT::Localize("ui.materialGraph.copy").c_str()))
-                    keyClipboard_ = {key};
-                if (ImGui::MenuItem(TEXT::Localize("cine.deleteKey").c_str()))
-                    remove = static_cast<int>(i);
-                if (ImGui::MenuItem(TEXT::Localize("cine.editCurve").c_str())) {
-                    selectedChannel_ = channel.id;
-                    curveView_.selectedKey = static_cast<int>(i);
-                    curveMode_ = true;
-                }
-                ImGui::EndPopup();
-            }
-            ImGui::PopID();
-        }
-        ImGui::SetCursorScreenPos({x + labelWidth, top});
-        ImGui::InvisibleButton("channelBackground", {width - labelWidth, rowHeight});
-        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
-            float time = std::clamp((ImGui::GetIO().MousePos.x - x - labelWidth) / zoom_ - channel.start, 0.0f,
-                                    channel.duration);
-            if (!ImGui::GetIO().KeyAlt)
-                time = std::round(time * 60) / 60;
-            HIKARI::SetScalarCurveKey(*channel.parameter, time, channel.parameter->Evaluate(time));
-            selectedChannel_ = channel.id;
-            curveView_ = {};
-            changed = true;
-        }
-        if (selected && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-            !ImGui::GetIO().WantTextInput) {
-            const int selection = curveView_.selectedKey;
-            if (selection >= 0 && selection < static_cast<int>(keys.size()) &&
-                ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Delete,
-                                      ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false))
-                remove = selection;
-            if (ImGui::GetIO().KeyCtrl &&
-                ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_C,
-                                      ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false)) {
-                if (selection >= 0 && selection < static_cast<int>(keys.size()))
-                    keyClipboard_ = {keys[selection]};
-                else
-                    keyClipboard_ = keys;
-            }
-            if (ImGui::GetIO().KeyCtrl &&
-                ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_V,
-                                      ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows), false) &&
-                !keyClipboard_.empty()) {
-                const float start = std::clamp(cursor_.GetTimeSeconds() - channel.start, 0.0f, channel.duration);
-                for (auto key : keyClipboard_) {
-                    key.time = start + key.time - keyClipboard_.front().time;
-                    if (key.time > channel.duration)
-                        continue;
-                    HIKARI::SetScalarCurveKey(*channel.parameter, key.time, key.value);
-                    for (auto& pasted : keys)
-                        if (std::abs(pasted.time - key.time) < 0.00001f)
-                            pasted = key;
-                }
-                changed = true;
-                curveView_ = {};
-            }
-        }
-        if (remove >= 0 && remove < static_cast<int>(keys.size())) {
-            channel.parameter->value = keys[remove].value;
-            keys.erase(keys.begin() + remove);
-            curveView_.selectedKey = -1;
-            changed = true;
-        }
-        ImGui::PopID();
+void CinematicsWorkspaceController::WriteChannelEdits(DocumentSceneBase& scene, CinematicSequence& sequence,
+                                                      const std::array<ScalarCurve, 4>& beforePose,
+                                                      const ScalarCurve& beforeTiming) {
+    auto* shot = SelectedShot(sequence);
+    if (!shot)
+        return;
+    if (poseCurves_ != beforePose) {
+        SEQUENCER::ShotCamera resolved;
+        if (SEQUENCER::ResolveSequenceShotCamera(sequence, previewBindings_, *shot, scene.GetWorld(),
+                                                 scene.GetCameraDirector(), resolved))
+            ApplyResolvedShotPoseCurves(shot->camera, resolved, poseCurves_);
     }
+    if (timingCurve_ != beforeTiming)
+        shot->camera.timing = timingCurve_;
+}
+bool CinematicsWorkspaceController::DrawChannelToolbar(DocumentSceneBase& scene, CinematicSequence& sequence) {
+    auto channels = CollectChannels(scene, sequence, true);
+    if (channels.empty())
+        return false;
+    const auto beforePose = poseCurves_;
+    const auto beforeTiming = timingCurve_;
+    const bool changed = DrawCurveEditorToolbar(channels, cursor_.GetTimeSeconds(), curveView_, false);
+    if (changed)
+        WriteChannelEdits(scene, sequence, beforePose, beforeTiming);
     return changed;
 }
-
-bool CinematicsWorkspaceController::DrawChannelCurve(CinematicSequence& sequence) {
-    auto channels = CollectChannels(sequence);
+bool CinematicsWorkspaceController::DrawChannelLanes(DocumentSceneBase& scene, CinematicSequence& sequence, float x,
+                                                     float y, float width, float labelWidth, float rowHeight) {
+    auto channels = CollectChannels(scene, sequence, true);
+    const auto count = std::count_if(channels.begin(), channels.end(), [](const auto& c) { return c.visible; });
+    if (!count)
+        return false;
+    const auto beforePose = poseCurves_;
+    const auto beforeTiming = timingCurve_;
+    ImGui::SetCursorScreenPos({x, y});
+    const bool changed =
+        DrawCurveEditorCanvas(channels, cursor_.GetTimeSeconds(), curveView_,
+                              {{width, static_cast<float>(count) * rowHeight}, true, labelWidth, rowHeight, 0, zoom_});
+    if (changed)
+        WriteChannelEdits(scene, sequence, beforePose, beforeTiming);
+    return changed;
+}
+bool CinematicsWorkspaceController::DrawChannelCurve(DocumentSceneBase& scene, CinematicSequence& sequence) {
+    auto channels = CollectChannels(scene, sequence);
     if (channels.empty()) {
-        EmptyState(TEXT::Localize("cine.selectAnimated").c_str());
+        ImGui::TextDisabled("选择一个镜头以编辑关键帧");
         return false;
     }
     auto found =
-        std::find_if(channels.begin(), channels.end(), [&](const auto& c) { return c.id == selectedChannel_; });
+        std::find_if(channels.begin(), channels.end(), [&](const auto& c) { return c.id == curveView_.activeChannel; });
     if (found == channels.end()) {
-        selectedChannel_ = channels.front().id;
         found = channels.begin();
-        curveView_ = {};
+        curveView_.activeChannel = found->id;
     }
-    ImGui::SetNextItemWidth((std::min)(420.0f, ImGui::GetContentRegionAvail().x));
-    if (ImGui::BeginCombo("##animatedChannel", found->label.c_str())) {
-        for (const auto& channel : channels)
-            if (ImGui::Selectable(channel.label.c_str(), channel.id == selectedChannel_)) {
-                selectedChannel_ = channel.id;
-                curveView_ = {};
+    ImGui::SetNextItemWidth(230);
+    if (ImGui::BeginCombo("##curveChannel", found->label.c_str())) {
+        for (const auto& c : channels)
+            if (ImGui::Selectable(c.label.c_str(), c.id == curveView_.activeChannel)) {
+                curveView_.activeChannel = c.id;
+                curveView_.fitted = false;
             }
         ImGui::EndCombo();
     }
-    found = std::find_if(channels.begin(), channels.end(), [&](const auto& c) { return c.id == selectedChannel_; });
-    const float height = (std::max)(100.0f, ImGui::GetContentRegionAvail().y - 85);
-    ImGui::PushID(found->id.c_str());
-    const bool changed =
-        DrawScalarCurve(*found->parameter, found->duration,
-                        std::clamp(cursor_.GetTimeSeconds() - found->start, 0.0f, found->duration), curveView_, height);
-    ImGui::PopID();
+    ImGui::SameLine();
+    if (ImGui::Checkbox("叠加同类通道", &curveView_.overlay))
+        curveView_.fitted = false;
+    ImGui::SameLine();
+    ImGui::Checkbox("允许本演出机位偏移", &curveView_.allowStationOffsets);
+    found =
+        std::find_if(channels.begin(), channels.end(), [&](const auto& c) { return c.id == curveView_.activeChannel; });
+    for (auto& c : channels)
+        c.visible = c.id == found->id || (curveView_.overlay && c.unit == found->unit && c.offset == found->offset);
+    ImGui::TextDisabled(
+        "%s · %s", found->id == "timing" ? "播放时间 → 运镜进度；起终点受保护" : "素材时间 → 属性；位置关键帧共用时间",
+        found->unit.c_str());
+    const auto beforePose = poseCurves_;
+    const auto beforeTiming = timingCurve_;
+    float playhead = cursor_.GetTimeSeconds();
+    if (const auto* shot = SelectedShot(sequence); shot && found->id != "timing" && !found->id.starts_with("effect/"))
+        playhead = found->offset + ShotSourceTime(*shot);
+    bool changed = DrawCurveEditorToolbar(channels, playhead, curveView_, true);
+    changed |= DrawCurveEditorCanvas(
+        channels, playhead, curveView_,
+        {{ImGui::GetContentRegionAvail().x, (std::max)(140.f, ImGui::GetContentRegionAvail().y)}});
+    if (curveView_.seekTime) {
+        // 素材から再生時刻への逆写像が曖昧な場合は、時間曲線側でだけスクラブする。
+        const auto* shot = SelectedShot(sequence);
+        if (!shot || shot->camera.timing.keys.empty() || found->id == "timing") {
+            cursor_.Pause();
+            cursor_.Seek(std::clamp(*curveView_.seekTime, 0.f, sequence.durationSeconds));
+            previewEnabled_ = true;
+        }
+        curveView_.seekTime.reset();
+    }
+    if (changed)
+        WriteChannelEdits(scene, sequence, beforePose, beforeTiming);
     return changed;
 }
 } // namespace HIKARI::EDITOR

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 #include <optional>
 #include <string>
 
@@ -48,7 +49,6 @@ public:
                                    EditorOperationRegistry& operations);
     bool RequestOpenSequenceAsset(DocumentSceneBase& scene, const AssetGuid& assetGuid, std::string& outMessage);
     bool ConfigureCameraEditing(DocumentSceneBase&, const nlohmann::json&, std::string&);
-    bool AlignCameraEndpoint(SEQUENCER::SequenceBindingId, bool end, std::string&);
     bool IsEditingSequenceAsset() const noexcept;
     bool IsSequenceDocumentDirty() const noexcept;
     // 文書の状態。シェル、AI の文脈、バックグラウンドのセッションで共有する。
@@ -78,9 +78,8 @@ private:
                        EditorOperationRegistry& operations);
     // 触发区域：玩家が入るとこの演出を流し、終わったら游戏摄像机を選んだ模式へ（場面の流程）。
     void DrawTriggers(DocumentSceneBase& scene, EditorOperationRegistry& operations);
-    bool DrawInspector(DocumentSceneBase& scene, CinematicSequence& sequence);
-    bool DrawBoundCameraInspector(DocumentSceneBase& scene, CinematicSequence& sequence,
-                                  SEQUENCER::CameraCutClip& shot);
+    bool DrawInspector(DocumentSceneBase& scene, CinematicSequence& sequence, EditorOperationRegistry& operations);
+
     bool DrawTimeline(DocumentSceneBase& scene, CinematicSequence& sequence);
     void DrawMonitor(DocumentSceneBase& scene, EditorWorkspaceHost& workspaceHost, CinematicsWorkspaceResult& result);
     bool DrawStage(DocumentSceneBase& scene, CinematicSequence& sequence, EditorContext& context,
@@ -89,23 +88,22 @@ private:
                           bool enabled);
     Camera3D ResolveShotCamera(DocumentSceneBase& scene, CinematicSequence& sequence,
                                const SEQUENCER::CameraCutClip& shot, float localTime, bool includeMotion = true) const;
-    bool DrawTransport(CinematicSequence& sequence);
+    bool DrawTransport(DocumentSceneBase& scene, CinematicSequence& sequence);
     bool DrawEffects(std::vector<SEQUENCER::SequenceScreenEffect>& effects, float seconds);
     bool DrawCurve(HIKARI::ScalarCurve& parameter, float time, const std::string& channel);
-    struct Channel {
-        std::string id, label;
-        HIKARI::ScalarCurve* parameter = nullptr;
-        float start = 0, duration = 1;
-    };
-    std::vector<Channel> CollectChannels(CinematicSequence& sequence, bool visibleOnly = false);
-    bool DrawChannelLanes(CinematicSequence& sequence, float x, float y, float width, float labelWidth,
-                          float rowHeight);
-    bool DrawChannelCurve(CinematicSequence& sequence);
-    // 姿勢键の帯（HIKARI_CinematicsTimelineWindow.cpp）：選んだ镜头の姿勢键（位置・向き・画角）を菱形で示す。押すと
-    // その時刻へ、引くと键を動かし、右ボタンで消す。帯の空いた所を二度押すとその時刻の今の姿勢を键にする。
-    bool DrawPoseKeyLane(CinematicSequence& sequence, float timeOriginX, float y, float rowHeight);
+    using Channel = CurveEditChannel;
+    std::array<ScalarCurve, 4> poseCurves_; // 姿勢鍵の編集用投影。永続化しない。
+    ScalarCurve timingCurve_;               // 未編集時は等速の表示だけを作り、原本には書かない。
+    void WriteChannelEdits(DocumentSceneBase& scene, CinematicSequence& sequence,
+                           const std::array<ScalarCurve, 4>& beforePose, const ScalarCurve& beforeTiming);
+    bool DrawChannelToolbar(DocumentSceneBase& scene, CinematicSequence& sequence);
+    std::vector<Channel> CollectChannels(DocumentSceneBase& scene, CinematicSequence& sequence,
+                                         bool visibleOnly = false);
+    bool DrawChannelLanes(DocumentSceneBase& scene, CinematicSequence& sequence, float x, float y, float width,
+                          float labelWidth, float rowHeight);
+    bool DrawChannelCurve(DocumentSceneBase& scene, CinematicSequence& sequence);
     // 再生位置に、今の姿勢（瞄准と運動効果を除く）を姿勢键として置く。
-    bool AddPoseKeyAtCursor(CinematicSequence& sequence);
+    bool AddPoseKeyAtCursor(DocumentSceneBase& scene, CinematicSequence& sequence);
     // 再生位置の姿勢键を消す。
     bool RemovePoseKeyAtCursor(CinematicSequence& sequence);
     // 選んだ镜头の前後の姿勢键へ再生位置を移す（direction は -1 か 1）。
@@ -115,16 +113,17 @@ private:
     bool DuplicateSelectedShot(CinematicSequence& sequence);
     // 镜头の局所時刻での再生位置（镜头の範囲に収める）。
     float ShotLocalTime(const SEQUENCER::CameraCutClip& shot) const;
+    float ShotSourceTime(const SEQUENCER::CameraCutClip& shot) const;
+    bool SharedPoseAtCursor(const SEQUENCER::CameraCutClip& shot) const;
     // 時間轴の時刻を近くの境目（镜头の端、再生位置）か 1/60 秒へ寄せる。Alt で自由。再生位置が引いている物に
     // ついて動く時（姿勢键を引く）は includeCursor を偽にする。
     float SnapTimelineTime(const CinematicSequence& sequence, float seconds, uint64_t ignoreShot,
                            bool includeCursor = true) const;
-    std::string selectedChannel_{};
     ScalarCurveView curveView_;
+    std::optional<CinematicSequence> curveGestureBefore_;
     bool curveMode_ = false;
     bool animatedChannelsOnly_ = true;
     uint64_t channelOwner_ = 0;
-    std::vector<HIKARI::ScalarCurveKey> keyClipboard_;
     SEQUENCER::CameraCutClip* SelectedShot(CinematicSequence& sequence);
     bool DeleteSelectedClip(CinematicSequence& sequence);
     void CreateShot(CinematicSequence& sequence, const Camera3D& camera);
@@ -163,6 +162,7 @@ private:
     SelectionKind selectionKind_ = SelectionKind::Shot;
     uint64_t selectedId_ = 0;
     bool loop_ = false;
+    std::optional<std::pair<float, float>> selectionPreviewRange_;
     float previewRate_ = 1.f;
     bool previewEnabled_ = false;
     // 镜头がある演出を開いたら画面に镜头の画を出す（停止して元へ戻すと、次に開くか再生するまで自由な視点）。
@@ -184,8 +184,6 @@ private:
     EditorTransformGizmo stageGizmo_;
     // 既定で有効：動かした结果を再生位置の键として残す（姿勢を変えると今の時刻のキーが増える）。
     bool autoKey_ = true;
-    // 時間轴で引いている姿勢键の今の時刻（镜头の局所時刻）。引いていない時は負。
-    float poseDragTime_ = -1.0f;
     enum class FlightState { Off, Armed, Recording };
     FlightState flight_ = FlightState::Off;
     uint64_t flightShot_ = 0;

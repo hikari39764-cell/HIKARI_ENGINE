@@ -170,6 +170,8 @@ public:
 
     HIKARI_GAME_PROJECT_SDK_API bool SubmitModifier(const GameProjectCameraModifier& modifier) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SubmitRollModifier(const GameProjectCameraRollModifier& modifier) const noexcept;
+    // 基礎視点だけを切り替える。演出の優先権とプレイヤー入力は変更せず、Scene の作者値にも書き戻さない。
+    HIKARI_GAME_PROJECT_SDK_API bool SetGameplayCamera(uint64_t cameraObjectHandle) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool GetControlPose(GameProjectCameraPose& outPose) const noexcept;
     // ワールド更新スレッドで、直近に解決した実行時の描画カメラをコピーする。
     // カメラ未解決・実行停止時は false を返し、出力を初期化する。

@@ -10,7 +10,7 @@
 namespace HIKARI {
 
 struct SequenceAsset {
-    static constexpr uint32_t kFormatVersion = 4;
+    static constexpr uint32_t kFormatVersion = 5;
 
     AssetGuid guid{};
     std::string displayName{};

@@ -1,4 +1,4 @@
-#include "Editor/Authoring/HIKARI_SequenceCameraEditing.h"
+#include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 #include "Editor/Views/Director/HIKARI_DirectorViewInternal.h"
@@ -38,39 +38,11 @@ bool SameView(const Camera3D& a, const Camera3D& b) {
 Camera3D CinematicsWorkspaceController::ResolveShotCamera(DocumentSceneBase& scene, CinematicSequence& sequence,
                                                           const SEQUENCER::CameraCutClip& shot, float localTime,
                                                           bool includeMotion) const {
-    if (!shot.camera.owned) {
-        SceneObjectId id;
-        Camera3D camera = scene.GetCamera();
-        if (previewBindings_.Resolve(sequence.bindings, shot.cameraBindingId, id))
-            scene.TryResolveCameraObjectView(id, 16.0f / 9, camera);
-        CinematicCameraEvaluation evaluation;
-        evaluation.shotId = shot.id;
-        evaluation.cameraObjectId = id;
-        evaluation.transform = SEQUENCER::EvaluateCameraTransformTrack(
-            sequence.cameraTransformTrack, shot.cameraBindingId, shot.startTimeSeconds + localTime);
-        evaluation.lens = SEQUENCER::EvaluateCameraLensTrack(sequence.cameraLensTrack, shot.cameraBindingId,
-                                                             shot.startTimeSeconds + localTime);
-        auto evaluated = camera;
-        if (evaluation.HasCameraAnimation())
-            BuildEvaluatedCinematicCamera(evaluation, camera, 16.f / 9, evaluated);
-        return evaluated;
-    }
-    const auto object = [&](SEQUENCER::SequenceBindingId binding) {
-        SceneObjectId id;
-        return previewBindings_.Resolve(sequence.bindings, binding, id) ? scene.GetWorld().FindObject(id) : nullptr;
-    };
-    const auto* anchor = object(shot.camera.anchor);
-    const auto* target = object(shot.camera.lookAt);
-    const auto matrix = anchor ? anchor->GetTransform().GetWorldMatrix() : MATH::Mat4::Identity();
-    const auto position =
-        target ? DIRECTOR_VIEW::ExtractPosition(target->GetTransform().GetWorldMatrix()) : MATH::Vec3{};
-    if (includeMotion)
-        return SEQUENCER::EvaluateShotCamera(shot.camera, localTime, 16.0f / 9, anchor ? &matrix : nullptr,
-                                             target ? &position : nullptr);
-    auto base = shot.camera;
-    base.motion.clear();
-    return SEQUENCER::EvaluateShotCamera(base, localTime, 16.0f / 9, anchor ? &matrix : nullptr,
-                                         target ? &position : nullptr);
+    Camera3D camera;
+    if (!SEQUENCER::EvaluateSequenceShotView(sequence, previewBindings_, shot, scene.GetWorld(),
+                                             scene.GetCameraDirector(), localTime, 16.f / 9, camera, includeMotion))
+        return scene.GetCamera();
+    return camera;
 }
 
 bool CinematicsWorkspaceController::DrawStage(DocumentSceneBase& scene, CinematicSequence& sequence,
@@ -135,7 +107,7 @@ bool CinematicsWorkspaceController::DrawStage(DocumentSceneBase& scene, Cinemati
         }
         NextToolbarItem();
         auto* selected = SelectedShot(sequence);
-        ImGui::BeginDisabled(pilot_);
+        ImGui::BeginDisabled(pilot_ || (selected && SharedPoseAtCursor(*selected)));
         if (icon(EditorGlyph::Keyframe, "cine.captureView")) {
             CapturePose(scene, sequence, directorViewPanel_.GetViewCamera());
             changed = true;
@@ -160,7 +132,7 @@ bool CinematicsWorkspaceController::DrawStage(DocumentSceneBase& scene, Cinemati
                 stageTool_ = StageTool::Aim;
         }
         // 驾驶：选んだ镜头の視点で飛ぶ。
-        ImGui::BeginDisabled(selected == nullptr);
+        ImGui::BeginDisabled(selected == nullptr || SharedPoseAtCursor(*selected));
         if (IconToggleButton(EditorGlyph::Camera, "pilotShot", pilot_, {26, 26},
                              TEXT::Localize("cine.pilotShot").c_str())) {
             pilot_ = !pilot_;
@@ -172,7 +144,7 @@ bool CinematicsWorkspaceController::DrawStage(DocumentSceneBase& scene, Cinemati
         NextToolbarItem();
         // 飛行録画は自由に向きを変えられる镜头だけ（注視の相手に結んだ镜头は向きが決まっている）。
         const bool aimLocked = selected && selected->camera.lookAt.IsValid();
-        ImGui::BeginDisabled(selected == nullptr || (selected && !selected->camera.owned) || aimLocked || pilot_);
+        ImGui::BeginDisabled(selected == nullptr || aimLocked || pilot_ || !selected->camera.timing.keys.empty());
         if (IconToggleButton(flight_ == FlightState::Off ? EditorGlyph::Record : EditorGlyph::Stop, "flightRecord",
                              flight_ != FlightState::Off, {26, 26}, TEXT::Localize("cine.recordFlight").c_str())) {
             flight_ = flight_ == FlightState::Off ? FlightState::Armed : FlightState::Off;
@@ -220,7 +192,7 @@ bool CinematicsWorkspaceController::DrawStage(DocumentSceneBase& scene, Cinemati
 
 bool CinematicsWorkspaceController::UpdatePilot(DocumentSceneBase& scene, CinematicSequence& sequence, bool viewMoved) {
     auto* shot = SelectedShot(sequence);
-    if (!pilot_ || shot == nullptr) {
+    if (!pilot_ || shot == nullptr || SharedPoseAtCursor(*shot)) {
         pilot_ = false;
         return false;
     }
@@ -273,13 +245,23 @@ bool CinematicsWorkspaceController::UpdateFlightRecording(DocumentSceneBase& sce
     const bool ended = !cursor_.IsPlaying() || local >= shot->durationSeconds;
     if (!ended && local - flightLastKey_ < kKeyInterval)
         return false;
-    shot->camera.owned = true;
+    shot->camera.useScenePose = false;
     auto pose = CaptureShotPoseFor(scene, sequence, *shot, directorViewPanel_.GetViewCamera(), local);
     // 画角は镜头のまま。前の键からこの時刻までにあった键は、録り直した区間なので消す。
-    pose.fov = SEQUENCER::EvaluateShotPose(shot->camera, local).fov;
-    std::erase_if(shot->camera.keys,
-                  [&](const SEQUENCER::ShotPose& key) { return key.time > flightLastKey_ && key.time <= local; });
-    SEQUENCER::SetShotPose(shot->camera, pose, true);
+    SEQUENCER::ShotPose current;
+    if (!SEQUENCER::EvaluateSequenceShotPose(sequence, previewBindings_, *shot, scene.GetWorld(),
+                                             scene.GetCameraDirector(), pose.time, current)) {
+        flight_ = FlightState::Off;
+        return false;
+    }
+    pose.fov = current.fov;
+    std::erase_if(shot->camera.keys, [&](const SEQUENCER::ShotPose& key) {
+        return !key.reference.IsValid() && key.time > flightLastKey_ + shot->sourceOffsetSeconds &&
+               key.time <= pose.time;
+    });
+    // 録画は共有端点を切り離さず、途中の姿勢だけを書き換える。
+    if (!SharedPoseAtCursor(*shot))
+        SEQUENCER::SetShotPose(shot->camera, pose, true);
     flightLastKey_ = local;
     previewChanged_ = true;
     if (ended) {
@@ -391,7 +373,7 @@ bool CinematicsWorkspaceController::DrawShotOverlays(DocumentSceneBase& scene, C
         draw->AddRect(low, high, IM_COL32(255, 204, 104, 200), 0.0f, 0, 1.5f);
         draw->AddText({low.x + 8, low.y + 6}, IM_COL32(255, 204, 104, 230), selected->camera.name.c_str());
     }
-    if (selected && enabled && !pilot_) {
+    if (selected && enabled && !pilot_ && !SharedPoseAtCursor(*selected)) {
         changed |= DrawRailOverlay(scene, sequence, *selected, viewport, interacting);
         const bool railPoint =
             selectedRailPoint_ >= 0 && selectedRailPoint_ < static_cast<int>(selected->camera.rail.points.size());
@@ -485,8 +467,11 @@ bool CinematicsWorkspaceController::DrawShotOverlays(DocumentSceneBase& scene, C
             // 姿勢键の位置。
             for (const auto& key : shot.camera.keys) {
                 ImVec2 keyScreen;
-                if (key.time <= shot.durationSeconds &&
-                    project(ResolveShotCamera(scene, sequence, shot, key.time, false).GetPosition(), keyScreen))
+                if (shot.camera.timing.keys.empty() && key.time >= shot.sourceOffsetSeconds &&
+                    key.time <= shot.sourceOffsetSeconds + shot.durationSeconds &&
+                    project(ResolveShotCamera(scene, sequence, shot, key.time - shot.sourceOffsetSeconds, false)
+                                .GetPosition(),
+                            keyScreen))
                     draw->AddRectFilled({keyScreen.x - 3, keyScreen.y - 3}, {keyScreen.x + 3, keyScreen.y + 3}, color);
             }
         }

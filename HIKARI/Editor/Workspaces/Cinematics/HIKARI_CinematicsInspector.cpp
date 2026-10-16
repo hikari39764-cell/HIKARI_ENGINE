@@ -1,4 +1,5 @@
-#include "Editor/Authoring/HIKARI_SequenceCameraEditing.h"
+#include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
+#include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Widgets/HIKARI_CameraMotionWidgets.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsPresentation.h"
 #include "Core/Text/HIKARI_Localization.h"
@@ -40,7 +41,8 @@ MATH::Quat RotationFromAngles(const MATH::Vec3& degrees) {
 float FocalLength(float fovDegrees) { return 12.0f / std::tan(fovDegrees * 0.5f / kDegrees); }
 } // namespace
 
-bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, CinematicSequence& sequence) {
+bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, CinematicSequence& sequence,
+                                                  EditorOperationRegistry& operations) {
     bool changed = false;
 #if defined(HIKARI_WITH_EDITOR)
     using namespace SEQUENCER;
@@ -91,22 +93,54 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
         if (IconTextButton(EditorGlyph::Duplicate, TEXT::Localize("ui.materialGraph.copy").c_str(), "duplicateShot"))
             return DuplicateSelectedShot(sequence);
         ImGui::SameLine();
-        ImGui::BeginDisabled(ShotLocalTime(*shot) <= 0.0f || ShotLocalTime(*shot) >= shot->durationSeconds);
-        if (IconTextButton(EditorGlyph::Transform, TEXT::Localize("cine.splitShot").c_str(), "splitShot",
-                           EditorButtonTone::Quiet, {}, TEXT::Localize("cine.splitShotTip").c_str()))
-            changed |= SplitSelectedShot(sequence);
+        ImGui::BeginDisabled(ShotLocalTime(*shot) <= 0.0f || ShotLocalTime(*shot) >= shot->durationSeconds ||
+                             (shot->transition.mode == CameraCutTransitionMode::EaseInOut &&
+                              ShotLocalTime(*shot) < shot->transition.durationSeconds));
+        const bool split = IconTextButton(EditorGlyph::Transform, TEXT::Localize("cine.splitShot").c_str(), "splitShot",
+                                          EditorButtonTone::Quiet, {}, TEXT::Localize("cine.splitShotTip").c_str());
         ImGui::EndDisabled();
+        if (split)
+            return SplitSelectedShot(sequence);
         ImGui::SameLine();
         if (IconButton(EditorGlyph::Delete, "deleteShot", EditorButtonTone::Danger, {26, 26},
                        TEXT::Localize("cine.deleteShot").c_str()))
             return DeleteSelectedClip(sequence);
-        if (!shot->camera.owned)
-            changed |= DrawBoundCameraInspector(scene, sequence, *shot);
-        if (shot->camera.owned &&
-            ImGui::CollapsingHeader(TEXT::Localize("cine.poseSection").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::CollapsingHeader(TEXT::Localize("cine.poseSection").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
             const float local = ShotLocalTime(*shot);
-            const ShotPose pose = EvaluateShotPose(shot->camera, local);
-            const ShotPose* key = FindShotPoseKey(shot->camera, local);
+            ShotPose pose;
+            if (!EvaluateSequenceShotPose(sequence, previewBindings_, *shot, scene.GetWorld(),
+                                          scene.GetCameraDirector(), ShotSourceTime(*shot), pose)) {
+                ImGui::TextWrapped("机位引用无法解析，请检查对象绑定。");
+                return changed;
+            }
+            const ShotPose* key = FindShotPoseKey(shot->camera, ShotSourceTime(*shot));
+            const bool shared = SharedPoseAtCursor(*shot);
+            if (shared) {
+                const auto reference = key ? key->reference : shot->camera.base.reference;
+                const auto* info = FindSequenceBinding(sequence.bindings, reference);
+                ImGui::TextWrapped("共享机位：%s", info ? info->name.c_str() : "");
+                SceneObjectId id;
+                if (previewBindings_.Resolve(sequence.bindings, reference, id) && ImGui::Button("编辑共享机位"))
+                    operations.Execute("gameplay_camera.reveal", {{"cameraId", id.value}});
+                ImGui::TextWrapped("此端点引用场景机位。修改共享机位会更新所有连接的演出。");
+            }
+            if (key || shot->camera.keys.empty()) {
+                SequenceBindingId reference = key ? key->reference : shot->camera.base.reference;
+                if (binding("共享机位引用", reference)) {
+                    // 解除は現在の絶対姿勢を保持し、選択時は共有機位のゼロ偏移へ合わせる。
+                    auto assigned = pose;
+                    assigned.reference = reference;
+                    if (reference.IsValid()) {
+                        assigned.position = {};
+                        assigned.rotation = {};
+                        assigned.fov = 0;
+                    }
+                    SetShotPose(shot->camera, assigned, key != nullptr);
+                    return true;
+                }
+            }
+            ImGui::BeginDisabled(shared);
+
             // 今の時刻の键の状態と、前後の键・键の追加と削除。
             if (shot->camera.keys.empty())
                 ImGui::TextDisabled("%s", TEXT::Localize("cine.poseBase").c_str());
@@ -119,7 +153,7 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
             ImGui::SameLine();
             if (IconTextButton(EditorGlyph::Keyframe, TEXT::Localize(key ? "cine.updateKey" : "cine.addKey").c_str(),
                                "addPose", EditorButtonTone::Quiet, {}, TEXT::Localize("cine.addPose").c_str()))
-                changed |= AddPoseKeyAtCursor(sequence);
+                changed |= AddPoseKeyAtCursor(scene, sequence);
             ImGui::SameLine();
             ImGui::BeginDisabled(key == nullptr);
             if (IconButton(EditorGlyph::Delete, "deletePoseKey", EditorButtonTone::Quiet, {26, 26},
@@ -159,12 +193,43 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
                 WriteShotPose(sequence, *shot, edited, kPoseFov);
                 changed = true;
             }
-            changed |= ImGui::Checkbox(TEXT::Localize("cine.smoothPath").c_str(), &shot->camera.smoothPath);
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s", TEXT::Localize("cine.smoothPathTip").c_str());
+            ImGui::EndDisabled();
+            auto* editableKey = FindShotPoseKey(shot->camera, ShotSourceTime(*shot));
+            auto& interpolation = editableKey ? editableKey->interpolation : shot->camera.base.interpolation;
+            if (ImGui::BeginCombo("姿态路径插值", TEXT::EnumToName(kShotInterpolationNames, interpolation))) {
+                for (const auto& mode : kShotInterpolationNames)
+                    if (ImGui::Selectable(mode.name, mode.value == interpolation)) {
+                        interpolation = mode.value;
+                        changed = true;
+                    }
+                ImGui::EndCombo();
+            }
+            if (ImGui::Button("应用路径插值到全部姿态")) {
+                for (auto& k : shot->camera.keys) {
+                    k.interpolation = interpolation;
+                    k.customTangents = 0;
+                }
+                changed = true;
+            }
+            ImGui::TextDisabled("此处调整路径与姿态连接；只调快慢请使用整体运镜曲线。");
         }
-        if (shot->camera.owned &&
-            ImGui::CollapsingHeader(TEXT::Localize("cine.followAim").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::CollapsingHeader("整体运镜 · 节奏")) {
+            // 節奏の編集入口を一つにし、端点保護を迂回する数値フィールドを置かない。
+            if (ImGui::Button("编辑节奏曲线")) {
+                curveView_.activeChannel = "timing";
+                curveView_.fitted = false;
+                curveMode_ = true;
+            }
+            if (!shot->camera.timing.keys.empty() && ImGui::Button("恢复原始节奏")) {
+                shot->camera.timing = {};
+                curveView_.editing.selection.clear();
+                curveView_.fitted = false;
+                changed = true;
+            }
+            ImGui::TextWrapped(
+                "数值图显示运镜进度，速度图显示进度变化速度；调节奏保持起终机位。框选关键帧后按 F9 可应用缓动。");
+        }
+        if (ImGui::CollapsingHeader(TEXT::Localize("cine.followAim").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
             changed |= binding(TEXT::Localize("cine.anchor").c_str(), shot->camera.anchor);
             changed |= binding(TEXT::Localize("cine.lookAt").c_str(), shot->camera.lookAt);
             if (shot->camera.lookAt.IsValid()) {
@@ -172,7 +237,7 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
                 ImGui::TextUnformatted(TEXT::Localize("cine.aimWeight").c_str());
                 ImGui::SameLine();
                 ImGui::PushID("aimWeight");
-                changed |= DrawCurve(shot->camera.aimWeight, ShotLocalTime(*shot), "aimWeight");
+                changed |= DrawCurve(shot->camera.aimWeight, ShotSourceTime(*shot), "aimWeight");
                 ImGui::PopID();
                 changed |= ImGui::DragFloat3(fieldLabel(TEXT::Localize("cine.lookOffset").c_str()).c_str(),
                                              &shot->camera.targetOffset.x, 0.02f);
@@ -183,21 +248,25 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
                     ImGui::SetTooltip("%s", TEXT::Localize("cine.pivotDistanceTip").c_str());
             }
         }
-        if (shot->camera.owned && ImGui::CollapsingHeader(TEXT::Localize("cine.rail").c_str())) {
+        if (ImGui::CollapsingHeader(TEXT::Localize("cine.rail").c_str())) {
             auto& rail = shot->camera.rail;
             ImGui::TextWrapped("%s", TEXT::Localize("cine.railHint").c_str());
             if (rail.points.empty()) {
                 // 姿勢键の位置を通る軌道にする（键が無ければ今の位置から始める）。
                 if (IconTextButton(EditorGlyph::Animation, TEXT::Localize("cine.railFromKeys").c_str(),
                                    "railFromKeys")) {
-                    for (const auto& key : shot->camera.keys)
-                        rail.points.push_back(key.position);
+                    ShotCamera resolved;
+                    if (!ResolveSequenceShotCamera(sequence, previewBindings_, *shot, scene.GetWorld(),
+                                                   scene.GetCameraDirector(), resolved))
+                        return changed;
+                    for (const auto& poseKey : resolved.keys)
+                        rail.points.push_back(poseKey.position);
                     if (rail.points.empty())
-                        rail.points.push_back(shot->camera.base.position);
+                        rail.points.push_back(resolved.base.position);
                     shot->camera.railT = ScalarCurve{0.0f};
                     if (rail.points.size() >= 2) {
                         SetScalarCurveKey(shot->camera.railT, 0.0f, 0.0f);
-                        SetScalarCurveKey(shot->camera.railT, shot->durationSeconds, 1.0f);
+                        SetScalarCurveKey(shot->camera.railT, shot->sourceOffsetSeconds + shot->durationSeconds, 1.0f);
                     }
                     selectedRailPoint_ = 0;
                     changed = true;
@@ -232,7 +301,7 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
                     selectedRailPoint_ = static_cast<int>(rail.points.size() - 1);
                     if (rail.points.size() == 2 && shot->camera.railT.keys.empty()) {
                         SetScalarCurveKey(shot->camera.railT, 0.0f, 0.0f);
-                        SetScalarCurveKey(shot->camera.railT, shot->durationSeconds, 1.0f);
+                        SetScalarCurveKey(shot->camera.railT, shot->sourceOffsetSeconds + shot->durationSeconds, 1.0f);
                     }
                     changed = true;
                 }
@@ -249,22 +318,21 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
                     ImGui::TextUnformatted(TEXT::Localize("cine.railProgress").c_str());
                     ImGui::SameLine();
                     ImGui::PushID("railT");
-                    changed |= DrawCurve(shot->camera.railT, ShotLocalTime(*shot), "railT");
+                    changed |= DrawCurve(shot->camera.railT, ShotSourceTime(*shot), "railT");
                     ImGui::PopID();
                 }
             }
         }
-        if (shot->camera.owned &&
-            ImGui::CollapsingHeader(TEXT::Localize("cine.motionChain").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::CollapsingHeader(TEXT::Localize("cine.motionChain").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
             changed |= DrawCameraMotionStack(
-                shot->camera.motion, ShotLocalTime(*shot),
+                shot->camera.motion, ShotSourceTime(*shot),
                 [this](auto& parameter, float time, const auto& channel) {
                     return DrawCurve(parameter, time, channel);
                 },
                 false);
         }
         if (ImGui::CollapsingHeader(TEXT::Localize("cine.shotFx").c_str()))
-            changed |= DrawEffects(shot->effects, ShotLocalTime(*shot));
+            changed |= DrawEffects(shot->effects, ShotLocalTime(*shot) + shot->sourceOffsetSeconds);
         if (ImGui::CollapsingHeader(TEXT::Localize("cine.transition").c_str())) {
             bool blend = shot->transition.mode == CameraCutTransitionMode::EaseInOut;
             if (ImGui::Checkbox(TEXT::Localize("cine.blendMotion").c_str(), &blend)) {

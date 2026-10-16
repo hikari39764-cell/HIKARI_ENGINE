@@ -76,7 +76,7 @@ void RegisterUiAnimationOperations(EditorOperationRegistry& registry, UiAnimatio
                       EditorOperationKind::Session, false);
     registry.Register(
         {"ui.animation.edit",
-         "Apply validated clip/track/key data from ui.animation.describe as one undoable edit. Key arrays are [seconds,value,inSlope,outSlope]; channels and automatic triggers must be unique.",
+         "Apply validated clip/track/key data from ui.animation.describe as one undoable edit. Key arrays are [seconds,value,inSlope,outSlope,interpolation,optionalShape]; channels and automatic triggers must be unique.",
          "ui",
          {{"asset", P::Json, true, "Versioned UI animation asset data."},
           {"mergeGroup", P::Int, false, "Continuous editing transaction group."}},

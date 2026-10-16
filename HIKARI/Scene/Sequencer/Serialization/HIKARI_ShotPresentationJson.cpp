@@ -1,3 +1,4 @@
+#include "Core/Serialization/Json/HIKARI_ScalarCurveJson.h"
 #include "HIKARI_ShotPresentationJson.h"
 #include <stdexcept>
 #include <algorithm>
@@ -15,7 +16,7 @@ MATH::Vec3 Vector(const json& n, MATH::Vec3 fallback = {}) {
 json Parameter(const ScalarCurve& p) {
     json n = {{"value", p.value}, {"keys", json::array()}};
     for (const auto& k : p.keys)
-        n["keys"].push_back({k.time, k.value, k.inSlope, k.outSlope});
+        n["keys"].push_back(WriteScalarCurveKeyJson(k));
     return n;
 }
 ScalarCurve Parameter(const json& n, float fallback) {
@@ -27,11 +28,8 @@ ScalarCurve Parameter(const json& n, float fallback) {
     if (!n.is_object())
         return p;
     p.value = n.value("value", fallback);
-    for (const auto& k : n.value("keys", json::array())) {
-        if (!k.is_array() || k.size() != 4)
-            throw std::runtime_error("Invalid presentation key");
-        p.keys.push_back({k[0].get<float>(), k[1].get<float>(), k[2].get<float>(), k[3].get<float>()});
-    }
+    for (const auto& k : n.value("keys", json::array()))
+        p.keys.push_back(ReadScalarCurveKeyJson(k));
     return p;
 }
 json Rotation(const MATH::Quat& q) { return json::array({q.x, q.y, q.z, q.w}); }
@@ -41,9 +39,29 @@ MATH::Quat Rotation(const json& n) {
     return {n[0].get<float>(), n[1].get<float>(), n[2].get<float>(), n[3].get<float>()};
 }
 json Pose(const ShotPose& pose, bool timed) {
-    json n = {{"position", Vector(pose.position)}, {"rotation", Rotation(pose.rotation)}, {"fov", pose.fov}};
+    json n = {{"position", Vector(pose.position)},
+              {"rotation", Rotation(pose.rotation)},
+              {"fov", pose.fov},
+              {"near", pose.nearClip},
+              {"far", pose.farClip},
+              {"interpolation", TEXT::EnumToName(kShotInterpolationNames, pose.interpolation)},
+              {"reference", pose.reference.value},
+              {"inTangent", Vector(pose.inTangent)},
+              {"outTangent", Vector(pose.outTangent)},
+              {"inFovTangent", pose.inFovTangent},
+              {"outFovTangent", pose.outFovTangent},
+              {"customTangents", pose.customTangents}};
     if (timed)
         n["time"] = pose.time;
+    if (pose.customTangents) {
+        n["curveSettings"] = json::array();
+        for (unsigned c = 0; c < 4; ++c)
+            n["curveSettings"].push_back(
+                {{"interpolation", static_cast<int>(pose.curveInterpolations[c])},
+                 {"inWeight", pose.curveShapes[c].inWeight},
+                 {"outWeight", pose.curveShapes[c].outWeight},
+                 {"tangent", TEXT::EnumToName(kScalarTangentNames, pose.curveShapes[c].tangent)}});
+    }
     return n;
 }
 ShotPose Pose(const json& n, bool timed) {
@@ -55,6 +73,36 @@ ShotPose Pose(const json& n, bool timed) {
     pose.position = Vector(n.at("position"), pose.position);
     pose.rotation = Rotation(n.at("rotation"));
     pose.fov = n.value("fov", pose.fov);
+    pose.nearClip = n.value("near", pose.nearClip);
+    pose.farClip = n.value("far", pose.farClip);
+    const auto mode = n.value("interpolation", std::string{"spline"});
+    if (!TEXT::TryParseEnum(kShotInterpolationNames, mode, pose.interpolation))
+        throw std::runtime_error("Unknown camera interpolation");
+    pose.reference.value = n.value("reference", uint64_t{});
+    pose.inTangent = Vector(n.value("inTangent", json{}));
+    pose.outTangent = Vector(n.value("outTangent", json{}));
+    pose.inFovTangent = n.value("inFovTangent", 0.0f);
+    pose.outFovTangent = n.value("outFovTangent", 0.0f);
+    pose.customTangents = n.value("customTangents", 0u);
+    pose.curveInterpolations.fill(pose.interpolation == ShotInterpolation::Hold ? ScalarCurveInterpolation::Hold
+                                                                                : ScalarCurveInterpolation::Cubic);
+    if (const auto curves = n.find("curveSettings"); curves != n.end()) {
+        if (!curves->is_array() || curves->size() != 4)
+            throw std::runtime_error("Invalid pose curve settings");
+        for (unsigned c = 0; c < 4; ++c) {
+            const auto& settings = (*curves)[c];
+            const auto key = ReadScalarCurveKeyJson(json::array({0,
+                                                                 0,
+                                                                 0,
+                                                                 0,
+                                                                 settings.at("interpolation"),
+                                                                 {{"inWeight", settings.at("inWeight")},
+                                                                  {"outWeight", settings.at("outWeight")},
+                                                                  {"tangent", settings.at("tangent")}}}));
+            pose.curveShapes[c] = key.shape;
+            pose.curveInterpolations[c] = key.interpolation;
+        }
+    }
     return pose;
 }
 } // namespace
@@ -110,16 +158,14 @@ nlohmann::json WriteShotCamera(const ShotCamera& c) {
     json rail = {{"points", json::array()}, {"loop", c.rail.loop}};
     for (const auto& point : c.rail.points)
         rail["points"].push_back(Vector(point));
-    return {{"owned", c.owned},
+    return {{"useScenePose", c.useScenePose},
             {"name", c.name},
             {"anchor", c.anchor.value},
             {"lookAt", c.lookAt.value},
             {"targetOffset", Vector(c.targetOffset)},
             {"aimWeight", Parameter(c.aimWeight)},
             {"pivotDistance", c.pivotDistance},
-            {"smoothPath", c.smoothPath},
-            {"near", c.nearClip},
-            {"far", c.farClip},
+            {"timing", Parameter(c.timing)},
             {"base", Pose(c.base, false)},
             {"keys", std::move(keys)},
             {"rail", std::move(rail)},
@@ -131,16 +177,14 @@ ShotCamera ReadShotCamera(const nlohmann::json& n) {
     ShotCamera c;
     if (!n.is_object())
         return c;
-    c.owned = n.value("owned", false);
+    c.useScenePose = n.value("useScenePose", true);
     c.name = n.value("name", std::string{"Shot"});
     c.anchor.value = n.value("anchor", uint64_t{});
     c.lookAt.value = n.value("lookAt", uint64_t{});
     c.targetOffset = Vector(n.value("targetOffset", json{}));
     c.aimWeight = Parameter(n.value("aimWeight", json{}), 1.0f);
     c.pivotDistance = n.value("pivotDistance", 5.0f);
-    c.smoothPath = n.value("smoothPath", true);
-    c.nearClip = n.value("near", 0.1f);
-    c.farClip = n.value("far", 2000.0f);
+    c.timing = Parameter(n.value("timing", json{}), 0.0f);
     if (const auto base = n.find("base"); base != n.end())
         c.base = Pose(*base, false);
     for (const auto& key : n.value("keys", json::array()))

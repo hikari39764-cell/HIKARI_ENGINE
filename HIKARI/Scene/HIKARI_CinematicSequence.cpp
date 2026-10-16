@@ -13,27 +13,11 @@ namespace HIKARI {
 namespace {
 float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
 
-MATH::Vec3 ExtractAxis(const MATH::Mat4& matrix, int column) noexcept {
-    return {matrix.m[column][0], matrix.m[column][1], matrix.m[column][2]};
-}
-
-MATH::Vec3 SafeUp(const MATH::Vec3& forward, MATH::Vec3 up) noexcept {
-    up = MATH::Normalize(up);
-    if (MATH::Length(up) <= 0.00001f || std::abs(MATH::Dot(forward, up)) >= 0.999f) {
-        up = {0.0f, 1.0f, 0.0f};
-    }
-    if (std::abs(MATH::Dot(forward, up)) >= 0.999f) {
-        up = {1.0f, 0.0f, 0.0f};
-    }
-    return up;
-}
 } // namespace
 
 void NormalizeCinematicSequence(CinematicSequence& sequence) {
     SEQUENCER::NormalizeSequenceBindings(sequence.bindings);
     SEQUENCER::NormalizeCameraCutTrack(sequence.cameraCutTrack);
-    SEQUENCER::NormalizeCameraTransformTrack(sequence.cameraTransformTrack);
-    SEQUENCER::NormalizeCameraLensTrack(sequence.cameraLensTrack);
     SEQUENCER::NormalizeScreenEffects(sequence.screenEffects);
     sequence.durationSeconds =
         std::clamp((std::max)(FiniteOr(sequence.durationSeconds, kMinCinematicSequenceDurationSeconds),
@@ -114,8 +98,6 @@ float GetCinematicSequenceContentEnd(const CinematicSequence& sequence) noexcept
     for (const auto& effect : sequence.screenEffects)
         effectsEnd = (std::max)(effectsEnd, effect.start + effect.duration);
     return (std::max)({effectsEnd, SEQUENCER::GetCameraCutTrackContentEnd(sequence.cameraCutTrack),
-                       SEQUENCER::GetCameraTransformTrackContentEnd(sequence.cameraTransformTrack),
-                       SEQUENCER::GetCameraLensTrackContentEnd(sequence.cameraLensTrack),
                        SEQUENCER::GetPresentationCueContentEnd(sequence.presentationCueTrack)});
 }
 
@@ -138,8 +120,8 @@ CinematicCameraEvaluation EvaluateCinematicCameraTrackInternal(
             : SEQUENCER::ResolveSceneObjectBinding(sequence.bindings, trackEvaluation.cameraBindingId, cameraObjectId);
     const auto shot = std::find_if(sequence.cameraCutTrack.clips.begin(), sequence.cameraCutTrack.clips.end(),
                                    [&](const auto& clip) { return clip.id == trackEvaluation.clipId; });
-    result.ownedCamera = shot != sequence.cameraCutTrack.clips.end() && shot->camera.owned;
-    if (!resolved && !result.ownedCamera) {
+    if (!resolved && shot != sequence.cameraCutTrack.clips.end() && shot->camera.useScenePose &&
+        shot->camera.keys.empty()) {
         return result;
     }
 
@@ -147,10 +129,6 @@ CinematicCameraEvaluation EvaluateCinematicCameraTrackInternal(
     result.cameraBindingId = trackEvaluation.cameraBindingId;
     result.cameraObjectId = cameraObjectId;
     result.transition = trackEvaluation.transition;
-    result.transform = SEQUENCER::EvaluateCameraTransformTrack(sequence.cameraTransformTrack,
-                                                               trackEvaluation.cameraBindingId, timeSeconds);
-    result.lens =
-        SEQUENCER::EvaluateCameraLensTrack(sequence.cameraLensTrack, trackEvaluation.cameraBindingId, timeSeconds);
     result.sequenceTimeSeconds = trackEvaluation.sequenceTimeSeconds;
     result.localTimeSeconds = trackEvaluation.localTimeSeconds;
     return result;
@@ -165,35 +143,6 @@ CinematicCameraEvaluation EvaluateCinematicCameraTrack(
     const CinematicSequence& sequence, float timeSeconds,
     const SEQUENCER::SequenceBindingContext& bindingContext) noexcept {
     return EvaluateCinematicCameraTrackInternal(sequence, timeSeconds, &bindingContext);
-}
-
-bool BuildEvaluatedCinematicCamera(const CinematicCameraEvaluation& evaluation, const Camera3D& sourceCamera,
-                                   float aspect, Camera3D& outCamera) noexcept {
-    if (!evaluation.IsValid()) {
-        return false;
-    }
-    outCamera = sourceCamera;
-    const float safeAspect = std::isfinite(aspect) && aspect > 0.0001f ? aspect : sourceCamera.GetAspect();
-    const float fovYRadians = evaluation.lens.valid ? std::clamp(evaluation.lens.verticalFovDegrees, 1.0f, 179.0f) *
-                                                          std::numbers::pi_v<float> / 180.0f
-                                                    : sourceCamera.GetFovYRad();
-    const float nearClip = evaluation.lens.valid ? evaluation.lens.nearClip : sourceCamera.GetNearZ();
-    const float farClip = evaluation.lens.valid ? evaluation.lens.farClip : sourceCamera.GetFarZ();
-    outCamera.SetPerspective(fovYRadians, safeAspect, nearClip, farClip);
-
-    if (sourceCamera.IsOrthographic())
-        outCamera.SetOrthographic(sourceCamera.GetOrthographicHeight(), safeAspect, nearClip, farClip);
-
-    if (evaluation.transform.valid) {
-        const MATH::Mat4 rotationMatrix = MATH::Mat4::Rotate(evaluation.transform.rotation);
-        MATH::Vec3 forward = MATH::Normalize(ExtractAxis(rotationMatrix, 2));
-        if (MATH::Length(forward) <= 0.00001f) {
-            forward = {0.0f, 0.0f, 1.0f};
-        }
-        const MATH::Vec3 up = SafeUp(forward, ExtractAxis(rotationMatrix, 1));
-        outCamera.SetLookAt(evaluation.transform.position, evaluation.transform.position + forward, up);
-    }
-    return true;
 }
 
 } // namespace HIKARI

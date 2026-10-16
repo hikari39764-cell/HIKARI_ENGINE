@@ -269,6 +269,12 @@ bool SequenceView::Seek(GameProjectSequencePlaybackHandle handle, float timeSeco
            });
 }
 
+bool SequenceView::SetUseUnscaledTime(GameProjectSequencePlaybackHandle handle, bool enabled) const noexcept {
+    return InvokeSequence(world_, handle, [enabled](auto& service, auto runtimeHandle) {
+        return service.SetUseUnscaledTime(runtimeHandle, enabled);
+    });
+}
+
 bool SequenceView::IsActive(GameProjectSequencePlaybackHandle handle) const noexcept {
     return InvokeSequence(world_, handle,
                           [](auto& service, auto runtimeHandle) { return service.IsActive(runtimeHandle); });

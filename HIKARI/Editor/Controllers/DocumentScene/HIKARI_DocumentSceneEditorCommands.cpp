@@ -2,6 +2,7 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Core/Text/HIKARI_Localization.h"
+#include "Scene/HIKARI_GameObject.h"
 #include <cstdint>
 #include <span>
 #include <utility>
@@ -39,8 +40,12 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
         return;
     }
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::GameplayCamera)) {
-        GameplayCameraWorkspace().BindDocumentCommands(commandRouter_);
-        return;
+        const auto* camera = scene.GetWorld().FindObject(GameplayCameraWorkspace().CameraId());
+        // 固定機位は Scene の内容。保存・Undo を無関係な .hcamera 資産へ送らない。
+        if (!camera || camera->GetComponent<CameraFollowComponent>()) {
+            GameplayCameraWorkspace().BindDocumentCommands(commandRouter_);
+            return;
+        }
     }
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Project)) {
         if (projectWorkspaceHost_) {

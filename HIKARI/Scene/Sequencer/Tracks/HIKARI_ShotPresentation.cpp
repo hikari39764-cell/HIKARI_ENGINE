@@ -38,7 +38,18 @@ void SanitizePose(ShotPose& pose) {
     pose.position = Safe(pose.position, {0.0f, 2.0f, -8.0f});
     pose.rotation = MATH::NormalizeQ(
         {Safe(pose.rotation.x), Safe(pose.rotation.y), Safe(pose.rotation.z), Safe(pose.rotation.w, 1.0f)});
-    pose.fov = std::clamp(Safe(pose.fov, 55.0f), 1.0f, 179.0f);
+    pose.fov = pose.reference.IsValid() ? Safe(pose.fov) : std::clamp(Safe(pose.fov, 55.0f), 1.0f, 179.0f);
+    pose.nearClip = (std::max)(0.001f, Safe(pose.nearClip, 0.1f));
+    pose.farClip = (std::max)(pose.nearClip + 0.01f, Safe(pose.farClip, 2000));
+    pose.inTangent = Safe(pose.inTangent);
+    pose.outTangent = Safe(pose.outTangent);
+    pose.inFovTangent = Safe(pose.inFovTangent);
+    pose.outFovTangent = Safe(pose.outFovTangent);
+    pose.customTangents &= 15u;
+    for (auto& shape : pose.curveShapes)
+        NormalizeScalarCurveShape(shape);
+    if (!TEXT::IsNamedEnum(kShotInterpolationNames, pose.interpolation))
+        pose.interpolation = ShotInterpolation::Spline;
 }
 
 // 世界の向きで a から b へ回す回転ベクトル（軸 × 角度）と、回転ベクトルから四元数。
@@ -63,7 +74,7 @@ MATH::Quat RotationFromVector(const MATH::Vec3& v) {
 // 键 i での時刻あたりの変化。途中の键は前後の键の差を時刻差で割り（間隔が不揃いでも速さがつながる）、
 // 最初と最後の键は 0（そこで緩やかに止まる）。
 template <class Value, class Difference>
-Value KeyVelocity(const std::vector<ShotPose>& keys, size_t i, Difference difference) {
+Value KeyVelocity(std::span<const ShotPose> keys, size_t i, Difference difference) {
     if (i == 0 || i + 1 >= keys.size())
         return Value{};
     const float span = keys[i + 1].time - keys[i - 1].time;
@@ -79,37 +90,79 @@ struct Hermite {
         h11 = t3 - t2;
     }
 };
-ShotPose InterpolateKeys(const ShotCamera& shot, size_t i0, float seconds) {
-    const auto& keys = shot.keys;
-    const ShotPose& a = keys[i0];
-    const ShotPose& b = keys[i0 + 1];
+float& PoseChannel(ShotPose& pose, unsigned channel) {
+    return channel == 0 ? pose.position.x : channel == 1 ? pose.position.y : channel == 2 ? pose.position.z : pose.fov;
+}
+float PoseChannel(const ShotPose& pose, unsigned channel) {
+    return channel == 0 ? pose.position.x : channel == 1 ? pose.position.y : channel == 2 ? pose.position.z : pose.fov;
+}
+float& PoseTangent(ShotPose& pose, unsigned channel, bool incoming) {
+    auto& v = incoming ? pose.inTangent : pose.outTangent;
+    return channel == 0   ? v.x
+           : channel == 1 ? v.y
+           : channel == 2 ? v.z
+           : incoming     ? pose.inFovTangent
+                          : pose.outFovTangent;
+}
+float ChannelSlope(std::span<const ShotPose> keys, size_t i, unsigned channel, bool incoming) {
+    const auto& key = keys[i];
+    if ((key.customTangents & (1u << channel)) && key.curveShapes[channel].tangent != ScalarTangentMode::Auto) {
+        auto copy = key;
+        return PoseTangent(copy, channel, incoming);
+    }
+    if ((incoming && i == 0) || (!incoming && i + 1 == keys.size()))
+        return 0;
+    const size_t from = incoming ? i - 1 : i;
+    const auto mode = keys[from].interpolation;
+    if (mode == ShotInterpolation::Linear)
+        return (PoseChannel(keys[from + 1], channel) - PoseChannel(keys[from], channel)) /
+               (keys[from + 1].time - keys[from].time);
+    if (mode == ShotInterpolation::Spline ||
+        ((key.customTangents & (1u << channel)) && key.curveShapes[channel].tangent == ScalarTangentMode::Auto))
+        return KeyVelocity<float>(keys, i, [channel](const auto& a, const auto& b) {
+            return PoseChannel(b, channel) - PoseChannel(a, channel);
+        });
+    return 0;
+}
+ShotPose InterpolateKeys(std::span<const ShotPose> keys, size_t i0, float seconds) {
+    const auto& a = keys[i0];
+    const auto& b = keys[i0 + 1];
     const float span = (std::max)(b.time - a.time, 1.0e-5f);
     const float t = std::clamp((seconds - a.time) / span, 0.0f, 1.0f);
-    ShotPose pose{seconds, a.position, a.rotation, a.fov};
-    if (!shot.smoothPath) {
-        pose.position = a.position + (b.position - a.position) * t;
-        pose.rotation = MATH::SlerpQ(a.rotation, b.rotation, t);
-        pose.fov = a.fov + (b.fov - a.fov) * t;
+    ShotPose pose = a;
+    pose.time = seconds;
+    const Hermite h(t);
+    for (unsigned c = 0; c < 4; ++c) {
+        if ((a.customTangents | b.customTangents) & (1u << c)) {
+            ScalarCurveKey from{a.time, PoseChannel(a, c), 0, ChannelSlope(keys, i0, c, false)};
+            ScalarCurveKey to{b.time, PoseChannel(b, c), ChannelSlope(keys, i0 + 1, c, true), 0};
+            from.interpolation = (a.customTangents & (1u << c))               ? a.curveInterpolations[c]
+                                 : a.interpolation == ShotInterpolation::Hold ? ScalarCurveInterpolation::Hold
+                                                                              : ScalarCurveInterpolation::Cubic;
+            from.shape = a.curveShapes[c];
+            to.shape = b.curveShapes[c];
+            PoseChannel(pose, c) = EvaluateScalarSegment(from, to, seconds);
+        } else if (a.interpolation != ShotInterpolation::Hold)
+            PoseChannel(pose, c) = PoseChannel(a, c) * h.h00 + ChannelSlope(keys, i0, c, false) * h.h10 * span +
+                                   PoseChannel(b, c) * h.h01 + ChannelSlope(keys, i0 + 1, c, true) * h.h11 * span;
+    }
+    if (a.interpolation == ShotInterpolation::Hold)
+        return pose;
+    const float u = a.interpolation == ShotInterpolation::Smooth ? t * t * (3 - 2 * t) : t;
+    pose.nearClip = a.nearClip + (b.nearClip - a.nearClip) * u;
+    pose.farClip = a.farClip + (b.farClip - a.farClip) * u;
+    if (a.interpolation != ShotInterpolation::Spline) {
+        pose.rotation = MATH::SlerpQ(a.rotation, b.rotation, u);
         return pose;
     }
-    const Hermite h(t);
-    const auto positionDelta = [](const ShotPose& from, const ShotPose& to) { return to.position - from.position; };
-    const auto fovDelta = [](const ShotPose& from, const ShotPose& to) { return to.fov - from.fov; };
     const auto rotationDelta = [](const ShotPose& from, const ShotPose& to) {
         return RotationBetween(from.rotation, to.rotation);
     };
-    const auto va = KeyVelocity<MATH::Vec3>(keys, i0, positionDelta);
-    const auto vb = KeyVelocity<MATH::Vec3>(keys, i0 + 1, positionDelta);
-    pose.position = a.position * h.h00 + va * (h.h10 * span) + b.position * h.h01 + vb * (h.h11 * span);
-    const float fa = KeyVelocity<float>(keys, i0, fovDelta);
-    const float fb = KeyVelocity<float>(keys, i0 + 1, fovDelta);
-    pose.fov = a.fov * h.h00 + fa * (h.h10 * span) + b.fov * h.h01 + fb * (h.h11 * span);
-    // 向きは a からの世界の回転ベクトルを同じ三次式で補間する（両端で a と b に一致し、角速度は前後の键から決まる）。
     const auto wa = KeyVelocity<MATH::Vec3>(keys, i0, rotationDelta);
     const auto wb = KeyVelocity<MATH::Vec3>(keys, i0 + 1, rotationDelta);
-    const MATH::Vec3 turn = RotationBetween(a.rotation, b.rotation);
-    const MATH::Vec3 v = wa * (h.h10 * span) + turn * h.h01 + wb * (h.h11 * span);
-    pose.rotation = MATH::MultiplyQ(RotationFromVector(v), a.rotation);
+    const auto turn = RotationBetween(a.rotation, b.rotation);
+    pose.rotation =
+        MATH::MultiplyQ(RotationFromVector(wa * (h.h10 * span) + turn * h.h01 + wb * (h.h11 * span)), a.rotation);
     return pose;
 }
 
@@ -161,10 +214,15 @@ MATH::Vec3 EvaluateShotRail(const ShotRail& rail, float t) {
     return point((index - 1) / kSteps, step / kSteps);
 }
 
-ShotPose EvaluateShotPose(const ShotCamera& shot, float seconds) {
+float ShotMaterialTime(const ShotCamera& shot, float seconds) {
+    return shot.timing.keys.empty() ? Safe(seconds) : Safe(shot.timing.Evaluate(seconds));
+}
+
+ShotPose EvaluateShotPose(const ShotCamera& shot, float seconds, std::span<const ShotPose> resolvedKeys,
+                          const ShotPose* resolvedBase) {
     seconds = Safe(seconds);
-    const auto& keys = shot.keys;
-    ShotPose pose = shot.base;
+    const std::span<const ShotPose> keys = resolvedKeys.empty() ? std::span<const ShotPose>{shot.keys} : resolvedKeys;
+    ShotPose pose = resolvedBase ? *resolvedBase : shot.base;
     if (!keys.empty()) {
         if (seconds <= keys.front().time)
             pose = keys.front();
@@ -173,13 +231,49 @@ ShotPose EvaluateShotPose(const ShotCamera& shot, float seconds) {
         else {
             const auto next = std::upper_bound(keys.begin(), keys.end(), seconds,
                                                [](float value, const ShotPose& key) { return value < key.time; });
-            pose = InterpolateKeys(shot, static_cast<size_t>(next - keys.begin()) - 1, seconds);
+            pose = InterpolateKeys(keys, static_cast<size_t>(next - keys.begin()) - 1, seconds);
         }
     }
     pose.time = seconds;
     if (shot.rail.points.size() >= 2)
         pose.position = EvaluateShotRail(shot.rail, shot.railT.Evaluate(seconds));
     return pose;
+}
+
+ScalarCurve GetShotPoseCurve(const ShotCamera& shot, unsigned channel) {
+    channel = (std::min)(channel, 3u);
+    ScalarCurve result{PoseChannel(shot.base, channel)};
+    for (size_t i = 0; i < shot.keys.size(); ++i)
+        result.keys.push_back(
+            {shot.keys[i].time, PoseChannel(shot.keys[i], channel), ChannelSlope(shot.keys, i, channel, true),
+             ChannelSlope(shot.keys, i, channel, false),
+             (shot.keys[i].customTangents & (1u << channel))         ? shot.keys[i].curveInterpolations[channel]
+             : shot.keys[i].interpolation == ShotInterpolation::Hold ? ScalarCurveInterpolation::Hold
+                                                                     : ScalarCurveInterpolation::Cubic,
+             shot.keys[i].curveShapes[channel]});
+    return result;
+}
+void SetShotPoseCurve(ShotCamera& shot, unsigned channel, const ScalarCurve& curve) {
+    channel = (std::min)(channel, 3u);
+    const auto before = shot;
+    // 他軸の値は同じ素材時刻で採り直す。曲線編集は timing による再時刻化を二重適用しない。
+    auto source = before;
+    source.timing.keys.clear();
+    shot.keys.clear();
+    for (size_t i = 0; i < curve.keys.size(); ++i) {
+        const auto& key = curve.keys[i];
+        auto pose = curve.keys.size() == before.keys.size() ? before.keys[i] : EvaluateShotPose(source, key.time);
+        pose.time = key.time;
+        PoseChannel(pose, channel) = key.value;
+        PoseTangent(pose, channel, true) = key.inSlope;
+        PoseTangent(pose, channel, false) = key.outSlope;
+        pose.customTangents |= 1u << channel;
+        pose.curveShapes[channel] = key.shape;
+        pose.curveInterpolations[channel] = key.interpolation;
+        shot.keys.push_back(pose);
+    }
+    PoseChannel(shot.base, channel) = curve.value;
+    NormalizeShotCamera(shot);
 }
 
 const ShotPose* FindShotPoseKey(const ShotCamera& shot, float time) noexcept {
@@ -252,12 +346,11 @@ void NormalizeShotCamera(ShotCamera& shot) {
     shot.keys.resize(count);
     for (auto& point : shot.rail.points)
         point = Safe(point);
+    NormalizeScalarCurve(shot.timing);
     NormalizeScalarCurve(shot.railT);
     NormalizeScalarCurve(shot.aimWeight);
     shot.targetOffset = Safe(shot.targetOffset);
     shot.pivotDistance = std::clamp(Safe(shot.pivotDistance, 5.0f), 0.1f, 1000.0f);
-    shot.nearClip = (std::max)(0.001f, Safe(shot.nearClip, 0.1f));
-    shot.farClip = (std::max)(shot.nearClip + 0.01f, Safe(shot.farClip, 2000));
     NormalizeCameraMotionEffects(shot.motion);
 }
 
@@ -308,6 +401,8 @@ ShotPose CaptureShotPose(const Camera3D& camera, float seconds, const MATH::Mat4
     pose.time = seconds;
     pose.position = camera.GetPosition();
     pose.fov = camera.GetFovYRad() / radians;
+    pose.nearClip = camera.GetNearZ();
+    pose.farClip = camera.GetFarZ();
     MATH::Vec3 forward = camera.GetTarget() - camera.GetPosition();
     MATH::Vec3 up = camera.GetUp();
     if (anchor) {
@@ -321,8 +416,10 @@ ShotPose CaptureShotPose(const Camera3D& camera, float seconds, const MATH::Mat4
 }
 
 Camera3D EvaluateShotCamera(const ShotCamera& shot, float seconds, float aspect, const MATH::Mat4* anchor,
-                            const MATH::Vec3* lookAt) {
-    const ShotPose pose = EvaluateShotPose(shot, seconds);
+                            const MATH::Vec3* lookAt, std::span<const ShotPose> resolvedKeys,
+                            const ShotPose* resolvedBase, bool includeMotion) {
+    const ShotPose pose = EvaluateShotPose(shot, ShotMaterialTime(shot, seconds), resolvedKeys, resolvedBase);
+    seconds = pose.time;
     MATH::Vec3 eye = pose.position;
     MATH::Vec3 forward = ShotPoseForward(pose);
     MATH::Vec3 up = ShotPoseUp(pose);
@@ -346,11 +443,12 @@ Camera3D EvaluateShotCamera(const ShotCamera& shot, float seconds, float aspect,
         }
     }
     float fov = pose.fov;
-    ApplyCameraMotionEffects(shot.motion, seconds, eye, target, up, fov, 0, 1, lookAt != nullptr);
+    if (includeMotion)
+        ApplyCameraMotionEffects(shot.motion, seconds, eye, target, up, fov, 0, 1, lookAt != nullptr);
     if (MATH::Length(target - eye) < 0.0001f)
         target = eye + kForward;
     Camera3D camera;
-    camera.SetPerspective(std::clamp(fov, 1.0f, 179.0f) * radians, aspect, shot.nearClip, shot.farClip);
+    camera.SetPerspective(std::clamp(fov, 1.0f, 179.0f) * radians, aspect, pose.nearClip, pose.farClip);
     camera.SetLookAt(eye, target, up);
     return camera;
 }

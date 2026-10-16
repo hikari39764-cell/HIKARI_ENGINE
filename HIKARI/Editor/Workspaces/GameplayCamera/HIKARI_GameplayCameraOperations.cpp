@@ -1,3 +1,4 @@
+#include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraWorkspaceController.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Scene/Components/HIKARI_CameraFlowComponent.h"
@@ -238,11 +239,20 @@ void RegisterGameplayCameraOperations(EditorOperationRegistry& registry, Gamepla
     registry.Register({"gameplay_camera.reveal",
                        "Show the camera workspace and current profile.",
                        "gameplay_camera",
-                       {},
-                       [&controller, &host](const auto&) {
+                       {{"cameraId", EditorOperationParameterType::Int, false, "Scene camera station to edit"}},
+                       [&controller, &host, scene](const auto& parameters) {
                            EditorWorkspaceOpenRequest request;
                            request.workspaceId = EditorWorkspaceId::GameplayCamera;
-                           if (controller.Document().Guid().IsValid())
+                           const auto id = parameters.value("cameraId", uint64_t{0});
+                           if (id) {
+                               auto* sourceScene = scene();
+                               Camera3D camera;
+                               if (!sourceScene ||
+                                   !sourceScene->TryResolveCameraObjectView(SceneObjectId{id}, 16.f / 9, camera))
+                                   return OperationFailure("CAMERA_MISSING", "Camera station is unavailable.");
+                               request.targetCameraObjectId = SceneObjectId{id};
+                           }
+                           if (!id && controller.Document().Guid().IsValid())
                                request.cameraProfileAssetGuid = controller.Document().Guid();
                            host.RequestOpen(request);
                            return EditorOperationResult{true, "OK", "Camera workspace requested."};

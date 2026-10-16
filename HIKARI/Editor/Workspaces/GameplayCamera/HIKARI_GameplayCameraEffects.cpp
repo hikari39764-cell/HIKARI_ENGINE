@@ -60,6 +60,8 @@ bool GameplayCameraWorkspaceController::SelectCamera(DocumentSceneBase& scene, S
     if (guid.IsValid() && guid != document_.Guid() && !document_.Open(scene.GetAssetDatabase(), guid, message_))
         return false;
     camera_ = id;
+    if (!follow)
+        effectsEditing_ = false;
     target_ = follow ? follow->GetTargetObjectId() : SceneObjectId{};
     lookTarget_ = follow ? follow->GameplayBinding().lookTarget : SceneObjectId{};
     if (follow && !follow->GameplayBinding().initialMode.empty())

@@ -31,6 +31,10 @@ public:
     HIKARI_GAME_PROJECT_SDK_API bool Resume(GameProjectSequencePlaybackHandle handle) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool SetPlaybackRate(GameProjectSequencePlaybackHandle handle,
                                                      float playbackRate) const noexcept;
+    // この演出だけをゲーム停止から独立した時計へ切り替える（Editor Pause は維持）。
+    // Pause/Resume と正負の倍速は共通。所有スレッド専用で、失効ハンドルやサービス不在は false。
+    HIKARI_GAME_PROJECT_SDK_API bool SetUseUnscaledTime(GameProjectSequencePlaybackHandle handle,
+                                                        bool enabled) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool Seek(GameProjectSequencePlaybackHandle handle, float timeSeconds) const noexcept;
 
     HIKARI_GAME_PROJECT_SDK_API bool IsActive(GameProjectSequencePlaybackHandle handle) const noexcept;

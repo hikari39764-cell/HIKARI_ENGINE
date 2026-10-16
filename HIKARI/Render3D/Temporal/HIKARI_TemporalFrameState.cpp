@@ -174,7 +174,7 @@ TemporalHistoryResetReason ResolveResetReason(const TemporalFrameDesc& desc, con
     if (desc.purpose != store.committedPurpose) {
         return TemporalHistoryResetReason::ViewPurposeChanged;
     }
-    if (desc.cameraSourceObjectId != store.committedCameraSourceObjectId) {
+    if (desc.cameraSourceObjectId != store.committedCameraSourceObjectId && !desc.continuousCameraSource) {
         return TemporalHistoryResetReason::CameraSourceChanged;
     }
     if (desc.projectionChanged) {

@@ -25,79 +25,6 @@ int ToCameraPriority(int instancePriority) noexcept {
 }
 } // namespace
 
-static bool ResolveView(const CinematicSequence& sequence, const SequenceBindingContext& bindings,
-                        const CinematicCameraEvaluation& evaluation, const World& world, const CameraDirector& director,
-                        float aspect, Camera3D& out) {
-    if (!evaluation.IsValid())
-        return false;
-    if (!evaluation.ownedCamera) {
-        Camera3D source;
-        if (!director.TryResolveCameraObject(world, evaluation.cameraObjectId, aspect, source))
-            return false;
-        out = source;
-        if (evaluation.HasCameraAnimation())
-            BuildEvaluatedCinematicCamera(evaluation, source, aspect, out);
-        return true;
-    }
-    for (const auto& clip : sequence.cameraCutTrack.clips)
-        if (clip.id == evaluation.shotId) {
-            MATH::Mat4 anchor;
-            MATH::Vec3 target;
-            const auto resolveObject = [&](SequenceBindingId binding) -> const GameObject* {
-                SceneObjectId id;
-                return binding.IsValid() && bindings.Resolve(sequence.bindings, binding, id) ? world.FindObject(id)
-                                                                                             : nullptr;
-            };
-            const auto* anchorObject = resolveObject(clip.camera.anchor);
-            const auto* targetObject = resolveObject(clip.camera.lookAt);
-            if ((clip.camera.anchor.IsValid() && !anchorObject) || (clip.camera.lookAt.IsValid() && !targetObject))
-                return false;
-            if (anchorObject)
-                anchor = anchorObject->GetTransform().GetWorldMatrix();
-            if (targetObject) {
-                const auto& m = targetObject->GetTransform().GetWorldMatrix();
-                target = {m.m[3][0], m.m[3][1], m.m[3][2]};
-            }
-            out = EvaluateShotCamera(clip.camera, evaluation.localTimeSeconds, aspect, anchorObject ? &anchor : nullptr,
-                                     targetObject ? &target : nullptr);
-            // 演出内の镜头は光学設定を持たないので、结んだ摄像机（無ければ游戏の基準摄像机）の被写界深度と運動ブラーを
-            // 引き継ぐ。区域切替のように游戏画面から入って游戏画面へ戻る演出で、ピントの合い方が途中で変わらない。
-            SceneObjectId opticsId;
-            if (!clip.cameraBindingId.IsValid() || !bindings.Resolve(sequence.bindings, clip.cameraBindingId, opticsId))
-                opticsId = director.GetBaseCamera();
-            Camera3D optics;
-            if (opticsId.value != 0 && director.TryResolveCameraObject(world, opticsId, aspect, optics)) {
-                out.SetDepthOfFieldSettings(optics.GetDepthOfFieldSettings());
-                out.SetMotionBlurSettings(optics.GetMotionBlurSettings());
-            }
-            return true;
-        }
-    return false;
-}
-
-bool EvaluateSequenceCameraView(const CinematicSequence& sequence, const SequenceBindingContext& bindings,
-                                const World& world, const CameraDirector& director, float seconds, float aspect,
-                                CinematicCameraEvaluation& evaluation, Camera3D& evaluatedCamera) {
-    evaluation = EvaluateCinematicCameraTrack(sequence, seconds, bindings);
-    if (!ResolveView(sequence, bindings, evaluation, world, director, aspect, evaluatedCamera))
-        return false;
-    const auto shot = std::find_if(sequence.cameraCutTrack.clips.begin(), sequence.cameraCutTrack.clips.end(),
-                                   [&](const auto& clip) { return clip.id == evaluation.shotId; });
-    if (shot != sequence.cameraCutTrack.clips.end() &&
-        evaluation.transition.mode == CameraCutTransitionMode::EaseInOut && evaluation.transition.durationSeconds > 0 &&
-        evaluation.localTimeSeconds < evaluation.transition.durationSeconds) {
-        const float previousTime = std::nextafter(shot->startTimeSeconds, -1.0f);
-        const auto previous = EvaluateCinematicCameraTrack(sequence, previousTime, bindings);
-        Camera3D from;
-        if (previous.shotId != evaluation.shotId &&
-            ResolveView(sequence, bindings, previous, world, director, aspect, from)) {
-            const float t = std::clamp(evaluation.localTimeSeconds / evaluation.transition.durationSeconds, 0.0f, 1.0f);
-            evaluatedCamera = CameraDirector::BlendViews(from, evaluatedCamera, t * t * (3 - 2 * t));
-        }
-    }
-    return true;
-}
-
 CameraSequenceTrackDriver::CameraSequenceTrackDriver(CameraDirector& cameraDirector, const World& world,
                                                      const Camera3D& viewportCamera,
                                                      SequencePresentationState* presentation) noexcept
@@ -137,18 +64,31 @@ void CameraSequenceTrackDriver::Validate(const SequencePlaybackInstanceView& ins
     std::unordered_set<uint64_t> validatedObjectBindings{};
     std::unordered_set<uint64_t> validatedCameraBindings{};
     for (const CameraCutClip& clip : instance.asset->sequence.cameraCutTrack.clips) {
-        if (clip.camera.owned) {
-            for (const auto id : {clip.camera.anchor, clip.camera.lookAt}) {
-                if (!id.IsValid() || !validatedObjectBindings.insert(id.value).second)
-                    continue;
-                SceneObjectId objectId;
-                if (!instance.bindings->Resolve(instance.asset->sequence.bindings, id, objectId) ||
-                    !world_.FindObject(objectId))
-                    diagnostics.push_back({SequenceDiagnosticSeverity::Error, "ShotBindingMissing", "Camera",
-                                           "Shot anchor or look-at object is unavailable", id});
-            }
-            continue;
+        std::vector<SequenceBindingId> references{clip.camera.anchor, clip.camera.lookAt, clip.camera.base.reference};
+        for (const auto& key : clip.camera.keys)
+            references.push_back(key.reference);
+        for (const auto id : references) {
+            if (!id.IsValid() || !validatedObjectBindings.insert(id.value).second)
+                continue;
+            SceneObjectId objectId;
+            if (!instance.bindings->Resolve(instance.asset->sequence.bindings, id, objectId) ||
+                !world_.FindObject(objectId))
+                diagnostics.push_back({SequenceDiagnosticSeverity::Error, "ShotBindingMissing", "Camera",
+                                       "Shot reference, anchor or look-at object is unavailable", id});
         }
+        const auto validatePose = [&](const ShotPose& pose) {
+            if (!pose.reference.IsValid())
+                return;
+            SceneObjectId id;
+            Camera3D view;
+            if (!instance.bindings->Resolve(instance.asset->sequence.bindings, pose.reference, id) ||
+                !cameraDirector_.TryResolveCameraObject(world_, id, viewportCamera_.GetAspect(), view))
+                diagnostics.push_back({SequenceDiagnosticSeverity::Error, "ShotCameraReferenceMissing", "Camera",
+                                       "Shared pose requires an enabled CameraComponent", pose.reference});
+        };
+        validatePose(clip.camera.base);
+        for (const auto& key : clip.camera.keys)
+            validatePose(key);
         if (!clip.cameraBindingId.IsValid() || !validatedCameraBindings.insert(clip.cameraBindingId.value).second) {
             continue;
         }
@@ -210,7 +150,7 @@ void CameraSequenceTrackDriver::Evaluate(const SequencePlaybackInstanceView& ins
             return;
         std::vector<ScreenEffectSample> samples;
         if (shot != sequence.cameraCutTrack.clips.end())
-            SampleScreenEffects(shot->effects, evaluation.localTimeSeconds, samples);
+            SampleScreenEffects(shot->effects, evaluation.localTimeSeconds + shot->sourceOffsetSeconds, samples);
         SampleScreenEffects(sequence.screenEffects, context.currentTimeSeconds, samples);
         presentation_->Set(state->overrideToken, std::move(samples));
     };
@@ -225,6 +165,17 @@ void CameraSequenceTrackDriver::Evaluate(const SequencePlaybackInstanceView& ins
     CameraActivationRequest request{};
     request.cameraObjectId = evaluation.cameraObjectId;
     request.blend = {}; // authored transitions are evaluated from sequence time, including seeks
+    // 初回 tick の移動はカットではない。同じ shot 内の前時刻だけを照合し、
+    // 別 shot・seek・loop を連続交代として扱わない。評価時刻と運動曲線は変えない。
+    if (!context.IsDiscontinuous() && context.previousTimeSeconds != context.currentTimeSeconds) {
+        CinematicCameraEvaluation originEvaluation;
+        Camera3D origin;
+        if (EvaluateSequenceCameraView(sequence, *instance.bindings, world_, cameraDirector_,
+                                       context.previousTimeSeconds, viewportCamera_.GetAspect(), originEvaluation,
+                                       origin) &&
+            originEvaluation.shotId == evaluation.shotId)
+            request.continuityOrigin = origin;
+    }
     if (state->returnSeconds > 0)
         request.returnBlend = CameraBlendDesc{CameraBlendMode::EaseInOut, state->returnSeconds};
     request.priority = ToCameraPriority(instance.priority);

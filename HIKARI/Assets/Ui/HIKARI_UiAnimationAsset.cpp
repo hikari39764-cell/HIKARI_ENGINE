@@ -1,5 +1,6 @@
 #include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
+#include "Core/Serialization/Json/HIKARI_ScalarCurveJson.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -37,7 +38,7 @@ nlohmann::json WriteUiAnimationAsset(const UiAnimationAsset& asset) {
         for (const auto& track : clip.tracks) {
             auto keys = nlohmann::json::array();
             for (const auto& key : track.curve.keys)
-                keys.push_back({key.time, key.value, key.inSlope, key.outSlope});
+                keys.push_back(WriteScalarCurveKeyJson(key));
             tracks.push_back({{"id", track.id},
                               {"slot", track.slot},
                               {"property", (static_cast<size_t>(track.property) < UiMotionProperties().size()
@@ -105,9 +106,7 @@ bool ReadUiAnimationAsset(const nlohmann::json& data, UiAnimationAsset& out, std
                 if (!std::isfinite(track.curve.value))
                     return reject("Nonfinite animation value.");
                 for (const auto& k : t.at("keys")) {
-                    if (!k.is_array() || k.size() != 4)
-                        return reject("Invalid animation key.");
-                    ScalarCurveKey key{k[0].get<float>(), k[1].get<float>(), k[2].get<float>(), k[3].get<float>()};
+                    const auto key = ReadScalarCurveKeyJson(k);
                     if (!std::isfinite(key.time) || !std::isfinite(key.value) || !std::isfinite(key.inSlope) ||
                         !std::isfinite(key.outSlope) || key.time < 0 || key.time > clip.duration)
                         return reject("Keys must be finite and inside the clip duration.");

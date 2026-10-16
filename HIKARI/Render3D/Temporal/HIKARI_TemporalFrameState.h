@@ -138,6 +138,8 @@ struct TemporalFrameDesc {
     uint32_t outputWidth = 1;
     uint32_t outputHeight = 1;
     bool cameraCut = false;
+    // source ID の変更だけを許可する。切り替え・投影・view・失敗フレームの検査は維持する。
+    bool continuousCameraSource = false;
     bool projectionChanged = false;
     bool forceHistoryReset = false;
     bool temporalResolveAllowed = true;

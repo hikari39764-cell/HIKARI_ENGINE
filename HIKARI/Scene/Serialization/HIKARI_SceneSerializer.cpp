@@ -119,8 +119,9 @@ bool SceneSerializer::LoadFromFile(const std::string& path, SceneDocument& outDo
         }
         outDocument = std::move(decoded);
         return true;
-    } catch (const nlohmann::json::exception& exception) {
-        HIKARI_LOG_ERROR(std::string("[SceneAsset] malformed scene: ") + exception.what());
+    } catch (const std::exception& exception) {
+        // JSON の型違いも、現行形式でない内容（例：Sequence v5 以前の全体時間カメラトラック）も読込失敗として返す。
+        HIKARI_LOG_ERROR(std::string("[SceneAsset] unreadable scene: ") + exception.what());
         return false;
     }
 }

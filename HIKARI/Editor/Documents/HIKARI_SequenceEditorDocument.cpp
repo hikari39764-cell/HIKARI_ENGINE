@@ -1,4 +1,5 @@
 #include "Editor/Documents/HIKARI_SequenceEditorDocument.h"
+#include "Scene/Sequencer/Serialization/HIKARI_CinematicSequenceJson.h"
 
 #include <algorithm>
 #include <utility>
@@ -9,24 +10,22 @@
 namespace HIKARI::EDITOR {
 
 void SequenceEditorDocument::OpenEmbeddedScene() noexcept {
-    ClearCameraEndpoints();
     sourceKind_ = SequenceEditorSourceKind::EmbeddedScene;
     assetGuid_ = {};
     sourcePath_.clear();
     displayName_ = "Scene Cinematics";
-    state_.settings = {};
+    settings_ = {};
     ResetHistory(true);
 }
 
 void SequenceEditorDocument::NewAsset(std::string name) {
-    ClearCameraEndpoints();
     CinematicSequence sequence{};
     sequence.name = name.empty() ? "New Sequence" : std::move(name);
     SetAssetSettings(std::move(sequence));
     sourceKind_ = SequenceEditorSourceKind::TransientAsset;
     assetGuid_ = {};
     sourcePath_.clear();
-    displayName_ = state_.settings.sequences.front().name;
+    displayName_ = settings_.sequences.front().name;
     ResetHistory(false);
 }
 
@@ -41,7 +40,6 @@ bool SequenceEditorDocument::OpenAsset(const AssetDatabase& assetDatabase, const
         outMessage = "Sequence asset record disappeared while opening";
         return false;
     }
-    ClearCameraEndpoints();
     SetAssetSettings(std::move(sequence));
     sourceKind_ = SequenceEditorSourceKind::Asset;
     assetGuid_ = record->guid;
@@ -64,8 +62,6 @@ bool SequenceEditorDocument::Save(AssetDatabase& assetDatabase, std::string& out
     }
     if (assetGuid_.IsValid() && !sourceVersion_.CanSave(outMessage))
         return false;
-    if (!endpointGroups_.empty())
-        return SaveCameraEndpoints(assetDatabase, outMessage);
     const StructuredAssetAuthoringResult result = UpdateSequenceAsset(assetDatabase, assetGuid_, *sequence);
     outMessage = result.message;
     if (!result.success) {
@@ -84,7 +80,6 @@ bool SequenceEditorDocument::SaveAs(AssetDatabase& assetDatabase, const Cinemati
     if (!result.success || !result.assetGuid.IsValid()) {
         return false;
     }
-    ClearCameraEndpoints();
     assetGuid_ = result.assetGuid;
     sourcePath_ = result.sourcePath;
     sourceKind_ = SequenceEditorSourceKind::Asset;
@@ -100,54 +95,53 @@ bool SequenceEditorDocument::Revert(const AssetDatabase& assetDatabase, std::str
         outMessage = "Only a saved Sequence asset can be reverted";
         return false;
     }
-    const auto groups = endpointGroups_;
-    const auto label = endpointLabel_;
-    const bool atEnd = endpointAtEnd_;
-    return OpenAsset(assetDatabase, assetGuid_, outMessage) &&
-           SetCameraEndpointGroups(assetDatabase, groups, label, atEnd, outMessage);
+    return OpenAsset(assetDatabase, assetGuid_, outMessage);
 }
 
 bool SequenceEditorDocument::RefreshCleanSource(const AssetDatabase& database, std::string& message) {
     if (IsDirty() || sourceKind_ != SequenceEditorSourceKind::Asset)
         return true;
-    if (sourceVersion_.CanSave(message) &&
-        std::all_of(linkedSources_.begin(), linkedSources_.end(),
-                    [&](const auto& source) { return source.version.CanSave(message); }))
+    if (sourceVersion_.CanSave(message))
         return true;
     return Revert(database, message);
 }
 
 SceneCinematicsSettings& SequenceEditorDocument::GetSettings(SceneCinematicsSettings& embeddedSettings) noexcept {
-    return IsEmbeddedScene() ? embeddedSettings : state_.settings;
+    return IsEmbeddedScene() ? embeddedSettings : settings_;
 }
 
 const SceneCinematicsSettings& SequenceEditorDocument::GetSettings(
     const SceneCinematicsSettings& embeddedSettings) const noexcept {
-    return IsEmbeddedScene() ? embeddedSettings : state_.settings;
+    return IsEmbeddedScene() ? embeddedSettings : settings_;
 }
 
 CinematicSequence* SequenceEditorDocument::GetAssetSequence() noexcept {
-    return IsEmbeddedScene() || state_.settings.sequences.empty() ? nullptr : &state_.settings.sequences.front();
+    return IsEmbeddedScene() || settings_.sequences.empty() ? nullptr : &settings_.sequences.front();
 }
 
 const CinematicSequence* SequenceEditorDocument::GetAssetSequence() const noexcept {
-    return IsEmbeddedScene() || state_.settings.sequences.empty() ? nullptr : &state_.settings.sequences.front();
+    return IsEmbeddedScene() || settings_.sequences.empty() ? nullptr : &settings_.sequences.front();
 }
 
 void SequenceEditorDocument::RecordApplied(SceneCinematicsSettings before, uint64_t mergeGroup) {
     if (!IsEmbeddedScene()) {
-        State previous = state_;
-        previous.settings = std::move(before);
-        SyncChangedCameraEndpoints(previous.settings);
-        history_.Record(std::move(previous), state_, mergeGroup);
+        // 同じドラッグが出発点へ戻った時は空の Undo と dirty を残さない。
+        const auto equivalent = [](const auto& a, const auto& b) {
+            nlohmann::json left, right;
+            SerializeSceneCinematicsJson(a, left);
+            SerializeSceneCinematicsJson(b, right);
+            return left == right;
+        };
+        if (!equivalent(before, settings_))
+            history_.Record(std::move(before), settings_, mergeGroup, {}, equivalent);
     }
 }
 
 void SequenceEditorDocument::SealMerge() noexcept { history_.SealMerge(); }
 
-bool SequenceEditorDocument::Undo() { return !IsEmbeddedScene() && history_.Undo(state_); }
+bool SequenceEditorDocument::Undo() { return !IsEmbeddedScene() && history_.Undo(settings_); }
 
-bool SequenceEditorDocument::Redo() { return !IsEmbeddedScene() && history_.Redo(state_); }
+bool SequenceEditorDocument::Redo() { return !IsEmbeddedScene() && history_.Redo(settings_); }
 
 bool SequenceEditorDocument::CanUndo() const noexcept { return !IsEmbeddedScene() && history_.CanUndo(); }
 
@@ -173,11 +167,11 @@ void SequenceEditorDocument::ResetHistory(bool saved) noexcept { history_.Reset(
 
 void SequenceEditorDocument::SetAssetSettings(CinematicSequence sequence) {
     NormalizeCinematicSequence(sequence);
-    state_.settings = {};
-    state_.settings.defaultSequenceId = sequence.id;
-    state_.settings.sequences.clear();
-    state_.settings.sequences.push_back(std::move(sequence));
-    NormalizeSceneCinematicsSettings(state_.settings);
+    settings_ = {};
+    settings_.defaultSequenceId = sequence.id;
+    settings_.sequences.clear();
+    settings_.sequences.push_back(std::move(sequence));
+    NormalizeSceneCinematicsSettings(settings_);
 }
 
 } // namespace HIKARI::EDITOR

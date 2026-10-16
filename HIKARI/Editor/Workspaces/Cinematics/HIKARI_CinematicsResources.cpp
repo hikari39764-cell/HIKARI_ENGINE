@@ -59,7 +59,7 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
             if (ImGui::Selectable(label.c_str(), selectionKind_ == SelectionKind::Shot && selectedId_ == shot.id)) {
                 selectedId_ = shot.id;
                 selectionKind_ = SelectionKind::Shot;
-                curveView_.selectedKey = -1;
+                curveView_.editing.selection.clear();
                 cursor_.Seek(shot.startTimeSeconds);
                 previewEnabled_ = true;
             }

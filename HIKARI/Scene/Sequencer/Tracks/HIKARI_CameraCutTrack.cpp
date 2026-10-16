@@ -16,12 +16,14 @@ void NormalizeCameraCutTrack(CameraCutTrack& track) {
     }
     track.clips.erase(std::remove_if(track.clips.begin(), track.clips.end(),
                                      [](const CameraCutClip& clip) {
-                                         return clip.id == 0 || (!clip.camera.owned && !clip.cameraBindingId.IsValid());
+                                         return clip.id == 0 || (clip.camera.useScenePose && clip.camera.keys.empty() &&
+                                                                 !clip.cameraBindingId.IsValid());
                                      }),
                       track.clips.end());
 
     for (CameraCutClip& clip : track.clips) {
         NormalizeShotCamera(clip.camera);
+        clip.sourceOffsetSeconds = (std::max)(0.0f, FiniteOr(clip.sourceOffsetSeconds, 0.0f));
         NormalizeScreenEffects(clip.effects);
         clip.startTimeSeconds = std::clamp(FiniteOr(clip.startTimeSeconds, 0.0f), 0.0f,
                                            kMaxSequenceDurationSeconds - kMinCameraCutClipDurationSeconds);
@@ -87,7 +89,7 @@ CameraCutTrackEvaluation EvaluateCameraCutTrack(const CameraCutTrack& track, flo
     const float endTolerance = (std::max)(std::abs(contentEnd) * 1.0e-6f, 1.0e-6f);
     const CameraCutClip* activeClip = nullptr;
     for (const CameraCutClip& clip : track.clips) {
-        if (clip.id == 0 || (!clip.camera.owned && !clip.cameraBindingId.IsValid()) ||
+        if (clip.id == 0 || (clip.camera.useScenePose && clip.camera.keys.empty() && !clip.cameraBindingId.IsValid()) ||
             !std::isfinite(clip.startTimeSeconds) || !std::isfinite(clip.durationSeconds) ||
             clip.durationSeconds < kMinCameraCutClipDurationSeconds) {
             continue;

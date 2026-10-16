@@ -27,15 +27,15 @@ bool CinematicsWorkspaceController::DrawCurve(HIKARI::ScalarCurve& parameter, fl
     if (IconButton(EditorGlyph::Keyframe, "addParameterKey", EditorButtonTone::Quiet, {22, 22},
                    TEXT::Localize("cine.addKey").c_str())) {
         HIKARI::SetScalarCurveKey(parameter, seconds, value);
-        selectedChannel_ = channel;
-        curveView_ = {};
+        curveView_.activeChannel = channel;
+        curveView_.fitted = false;
         changed = true;
     }
     ImGui::SameLine();
     if (IconButton(EditorGlyph::Animation, "showCurve", EditorButtonTone::Quiet, {22, 22},
                    TEXT::Localize("cine.editCurve").c_str())) {
-        selectedChannel_ = channel;
-        curveView_ = {};
+        curveView_.activeChannel = channel;
+        curveView_.fitted = false;
         curveMode_ = true;
     }
 #endif

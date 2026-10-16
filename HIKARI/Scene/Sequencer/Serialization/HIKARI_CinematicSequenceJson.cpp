@@ -5,7 +5,7 @@
 #include <string>
 #include <utility>
 
-#include "Scene/Sequencer/Serialization/HIKARI_CameraAnimationTrackJson.h"
+#include <stdexcept>
 
 namespace HIKARI {
 
@@ -79,6 +79,7 @@ SEQUENCER::CameraCutClip DeserializeCameraCutClip(const json& clipNode) {
             clip.transition.durationSeconds = durationIt->get<float>();
         }
     }
+    clip.sourceOffsetSeconds = clipNode.value("sourceOffsetSeconds", 0.0f);
     clip.camera = SEQUENCER::ReadShotCamera(clipNode.value("camera", json{}));
     clip.effects = SEQUENCER::ReadScreenEffects(clipNode.value("effects", json{}));
     return clip;
@@ -127,7 +128,10 @@ CinematicSequence DeserializeSequence(const json& sequenceNode, CinematicSequenc
 
     DeserializeBindings(sequenceNode, sequence.bindings);
     DeserializeCameraCutTrack(sequenceNode, sequence);
-    DeserializeCameraAnimationTracksJson(sequenceNode, sequence);
+    // 現行形式だけを読む。旧全体時間トラックを黙って捨てて成功しない。
+    for (const auto& track : sequenceNode.value("tracks", json::array()))
+        if (track.value("type", "") == "cameraTransform" || track.value("type", "") == "cameraLens")
+            throw std::runtime_error("Camera animation must belong to its shot (Sequence v5).");
     SEQUENCER::ReadPresentationCueJson(sequenceNode, sequence.presentationCueTrack);
     sequence.screenEffects = SEQUENCER::ReadScreenEffects(sequenceNode.value("screenEffects", json{}));
     NormalizeCinematicSequence(sequence);
@@ -155,6 +159,7 @@ json SerializeCameraCutClip(const SEQUENCER::CameraCutClip& clip) {
             {"effects", SEQUENCER::WriteScreenEffects(clip.effects)},
             {"startTimeSeconds", clip.startTimeSeconds},
             {"durationSeconds", clip.durationSeconds},
+            {"sourceOffsetSeconds", clip.sourceOffsetSeconds},
             {"transition",
              {{"mode", ToString(clip.transition.mode)}, {"durationSeconds", clip.transition.durationSeconds}}}};
 }
@@ -208,7 +213,6 @@ void SerializeSceneCinematicsJson(const SceneCinematicsSettings& settings, nlohm
             cameraTrackNode["clips"].push_back(SerializeCameraCutClip(clip));
         }
         sequenceNode["tracks"].push_back(std::move(cameraTrackNode));
-        SerializeCameraAnimationTracksJson(sequence, sequenceNode["tracks"]);
         SEQUENCER::WritePresentationCueJson(sequence.presentationCueTrack, sequenceNode["tracks"]);
         sequenceNode["screenEffects"] = SEQUENCER::WriteScreenEffects(sequence.screenEffects);
         output["sequences"].push_back(std::move(sequenceNode));

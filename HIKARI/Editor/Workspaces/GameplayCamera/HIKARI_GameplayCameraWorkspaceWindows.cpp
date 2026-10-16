@@ -209,7 +209,7 @@ void GameplayCameraWorkspaceController::DrawInspector(DocumentSceneBase& scene, 
         PanelTitle(cameraObject->GetName().c_str(), L("gc.cameraTitle"));
         if (cameraObject->GetComponent<CameraFollowComponent>() == nullptr) {
             // 普通の機位（固定の镜头）。模板を選ぶと、玩家を追う游戏摄像机になる。
-            ImGui::TextWrapped("%s", L("gc.plainCameraHint"));
+            DrawStationInspector(scene, operations);
             if (ActionButton(L("gc.makeGameCamera"), "##makeGameCamera", EditorButtonTone::Primary))
                 ImGui::OpenPopup("CameraTemplates");
             DrawTemplateMenu(scene, operations, camera_);
@@ -343,7 +343,7 @@ GameplayCameraWorkspaceResult GameplayCameraWorkspaceController::Draw(DocumentSc
     UpdateZoneSimulation(scene);
     DrawLibrary(scene, operations);
     DrawInspector(scene, operations, selectedObject);
-    DrawViews(scene, host, result);
+    DrawViews(scene, host, operations, result);
     if (ImGui::Begin(TEXT::LocalizeWindow("gc.playtest", "GameplayCamera/Playtest").c_str())) {
         if (Icon(scene.IsRuntimePlayActive() ? EditorGlyph::Stop : EditorGlyph::Play, "gc.play"))
             result.togglePlay = true;

@@ -139,6 +139,7 @@ RenderFrameContext BuildRenderFrameContext(const GFX::Context& graphics, const R
     context.viewId = view.viewId;
     context.purpose = view.purpose;
     context.cameraCut = view.cameraFrame->cameraCut;
+    context.continuousCameraSource = view.cameraFrame->continuousCameraSource;
     context.projectionChanged = view.cameraFrame->projectionChanged;
     context.cameraSourceObjectId = view.cameraFrame->sourceCameraObjectId;
     context.cameraRevision = view.cameraFrame->revision;
@@ -293,6 +294,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     temporalDesc.outputWidth = frame.outputWidth;
     temporalDesc.outputHeight = frame.outputHeight;
     temporalDesc.cameraCut = frame.cameraCut;
+    temporalDesc.continuousCameraSource = frame.continuousCameraSource;
     temporalDesc.projectionChanged = frame.projectionChanged;
     const uint64_t depthOfFieldEnabledBit = camera.GetDepthOfFieldSettings().enabled ? uint64_t{1} << 48u : 0u;
     const uint64_t depthOfFieldQualityBits = static_cast<uint64_t>(renderQuality.depthOfFieldQuality) << 49u;

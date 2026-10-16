@@ -44,6 +44,43 @@ bool ProjectionDiffers(const Camera3D& lhs, const Camera3D& rhs) {
            !NearlyEqual(lhs.GetNearZ(), rhs.GetNearZ()) || !NearlyEqual(lhs.GetFarZ(), rhs.GetFarZ());
 }
 
+// 同じ源のまま毎フレーム進むカメラの投影が「跳んだ」か。演出の画角アニメーションのような連続した変焦（1 フレームの
+// 画角の変化が約 1° 以下）は跳びとみなさない。時域の履歴（TAA・DLSS）は前後のフレームの行列で再投影でき、変焦の
+// 間ずっと履歴を捨てると、細かい模様（画面に貼った捕捉など）が累積できずに崩れて揺れ続ける。投影の種類・縦横比・
+// 近遠の切断面の変化と、画角や正交の高さの大きな跳びは従来どおり投影の切り替えとして扱う。
+bool ProjectionJumps(const Camera3D& lhs, const Camera3D& rhs) {
+    constexpr float kContinuousFovStepRad = 0.0175f;
+    constexpr float kContinuousOrthographicStep = 0.02f;
+    if (lhs.IsOrthographic() != rhs.IsOrthographic() || !NearlyEqual(lhs.GetAspect(), rhs.GetAspect()) ||
+        !NearlyEqual(lhs.GetNearZ(), rhs.GetNearZ()) || !NearlyEqual(lhs.GetFarZ(), rhs.GetFarZ())) {
+        return true;
+    }
+    if (lhs.IsOrthographic()) {
+        const float height = (std::max)(std::abs(lhs.GetOrthographicHeight()), kFloatEpsilon);
+        return std::abs(lhs.GetOrthographicHeight() - rhs.GetOrthographicHeight()) >
+               height * kContinuousOrthographicStep;
+    }
+    return std::abs(lhs.GetFovYRad() - rhs.GetFovYRad()) > kContinuousFovStepRad;
+}
+
+// 同じ視点の機位と演出カメラの間で所有者だけを渡す場合、時系列を切らない。
+// 注視点までの距離は画に影響しないため、正規化済みの view 行列で比較する。演出の終わりの画から追従へ戻る時のように
+// 同じ所から続く機位でも、呼吸・手持ちなど毎フレーム動く分だけ数 mm・0.1° ほどずれる。完全一致だけを同じ画とすると
+// 戻るたびに時域の履歴を捨てて画面が一瞬崩れるので、回転成分は約 0.17°、平移は 1 cm まで同じ画とみなす。
+bool ViewMatches(const Camera3D& lhs, const Camera3D& rhs) {
+    constexpr float kRotationTolerance = 0.003f;
+    constexpr float kTranslationTolerance = 0.01f;
+    const auto& a = lhs.GetView();
+    const auto& b = rhs.GetView();
+    for (int column = 0; column < 4; ++column)
+        for (int row = 0; row < 4; ++row) {
+            const float tolerance = column == 3 && row < 3 ? kTranslationTolerance : kRotationTolerance;
+            if (std::abs(a.m[column][row] - b.m[column][row]) > tolerance)
+                return false;
+        }
+    return true;
+}
+
 CAMERA::DepthOfFieldSettings BlendDepthOfFieldSettings(const CAMERA::DepthOfFieldSettings& from,
                                                        const CAMERA::DepthOfFieldSettings& to, float amount) noexcept {
     CAMERA::DepthOfFieldSettings result{};
@@ -277,6 +314,7 @@ const RENDER3D::ResolvedCameraFrame& CameraDirector::Resolve(const World& world,
                                                              float aspect, float deltaTime) {
     resolvedFrame_.cameraCut = false;
     resolvedFrame_.projectionChanged = false;
+    resolvedFrame_.continuousCameraSource = false;
 
     const float resolvedAspect = ClampAspect(aspect, fallbackCamera);
     const OverrideEntry* winningOverride = FindWinningOverride();
@@ -333,13 +371,16 @@ const RENDER3D::ResolvedCameraFrame& CameraDirector::Resolve(const World& world,
 
         activeSourceCameraObjectId_ = requestedSource;
         activeOverrideToken_ = requestedOverrideToken;
-        BeginSourceTransition(resolvedSource, targetCamera, transitionBlend);
+        const auto* origin = winningOverride && winningOverride->request.continuityOrigin
+                                 ? &*winningOverride->request.continuityOrigin
+                                 : nullptr;
+        BeginSourceTransition(resolvedSource, targetCamera, transitionBlend, origin);
     }
 
     if (blendActive_) {
         AdvanceBlend(targetCamera, deltaTime);
     } else if (!sourceChanged) {
-        resolvedFrame_.projectionChanged = ProjectionDiffers(resolvedFrame_.camera, targetCamera);
+        resolvedFrame_.projectionChanged = ProjectionJumps(resolvedFrame_.camera, targetCamera);
         resolvedFrame_.camera = targetCamera;
     }
 
@@ -352,7 +393,7 @@ const RENDER3D::ResolvedCameraFrame& CameraDirector::Resolve(const World& world,
         CAMERA::GameplayCameraSafetyResult safety{};
         if (CAMERA::ResolveGameplayCameraSafety(world, resolvedSource, resolvedFrame_.camera, &safety)) {
             resolvedFrame_.projectionChanged =
-                resolvedFrame_.projectionChanged || ProjectionDiffers(unsafeResolvedCamera, resolvedFrame_.camera);
+                resolvedFrame_.projectionChanged || ProjectionJumps(unsafeResolvedCamera, resolvedFrame_.camera);
         }
     }
 
@@ -503,8 +544,8 @@ bool CameraDirector::TryResolveCameraObject(const World& world, SceneObjectId ca
     return true;
 }
 
-bool CameraDirector::BeginSourceTransition(SceneObjectId sourceCameraObjectId, const Camera3D& targetCamera,
-                                           const CameraBlendDesc& blend) {
+void CameraDirector::BeginSourceTransition(SceneObjectId sourceCameraObjectId, const Camera3D& targetCamera,
+                                           const CameraBlendDesc& blend, const Camera3D* continuityOrigin) {
     const bool hadResolvedCamera = resolvedFrame_.valid;
     const bool projectionChanged = !hadResolvedCamera || ProjectionDiffers(resolvedFrame_.camera, targetCamera);
 
@@ -527,11 +568,15 @@ bool CameraDirector::BeginSourceTransition(SceneObjectId sourceCameraObjectId, c
 
     resolvedFrame_.sourceCameraObjectId = sourceCameraObjectId.value;
     resolvedFrame_.projectionChanged = projectionChanged;
-    resolvedFrame_.cameraCut = !canBlend;
+    const bool originMatches = continuityOrigin && !ProjectionDiffers(resolvedFrame_.camera, *continuityOrigin) &&
+                               ViewMatches(resolvedFrame_.camera, *continuityOrigin);
+    const bool sameView =
+        hadResolvedCamera && !projectionChanged && (ViewMatches(resolvedFrame_.camera, targetCamera) || originMatches);
+    resolvedFrame_.cameraCut = !canBlend && !sameView;
+    resolvedFrame_.continuousCameraSource = !projectionChanged && (canBlend || sameView);
     resolvedFrame_.camera = canBlend ? blendStartCamera_ : targetCamera;
     resolvedFrame_.revision = revision_;
     resolvedFrame_.valid = true;
-    return canBlend;
 }
 
 void CameraDirector::AdvanceBlend(const Camera3D& targetCamera, float deltaTime) {

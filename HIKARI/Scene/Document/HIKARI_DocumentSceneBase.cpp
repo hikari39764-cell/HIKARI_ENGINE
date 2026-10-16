@@ -380,7 +380,7 @@ void DocumentSceneBase::Update(float dt) {
 
     if (state_->runtime.playActive) {
         if (IsRuntimeFeatureActive(RuntimeFeatureIds::Cinematics)) {
-            state_->camera.sequencePlayback.Update(dt);
+            state_->camera.sequencePlayback.Update(dt, frame.paused ? 0.0f : frame.unscaledDt);
         }
         state_->camera.resolvedFrame = state_->camera.director.Resolve(
             state_->runtime.world, state_->camera.gameplayCamera, state_->camera.editorCamera.GetAspect(), dt);

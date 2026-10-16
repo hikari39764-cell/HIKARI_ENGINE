@@ -61,7 +61,11 @@ private:
     // 模式の高级（模式名と呼び出し ID・響应・碰撞・構図・切入切出）。変えたら true。
     bool DrawModeAdvanced(CAMERA::GameplayCameraProfile& profile, CAMERA::GameplayCameraMode& mode);
     void DrawInspector(DocumentSceneBase& scene, EditorOperationRegistry& operations, SceneObjectId selectedObject);
-    void DrawViews(DocumentSceneBase& scene, EditorWorkspaceHost& host, GameplayCameraWorkspaceResult& result);
+    void DrawViews(DocumentSceneBase& scene, EditorWorkspaceHost& host, EditorOperationRegistry& operations,
+                   GameplayCameraWorkspaceResult& result);
+    void DrawStationInspector(DocumentSceneBase&, EditorOperationRegistry&);
+    void ApplyStationViewEdit(DocumentSceneBase&, EditorOperationRegistry&, const DirectorViewPanelResult&);
+    EditorTransformGizmoState stationGizmo_{};
     bool SelectObject(DocumentSceneBase& scene, const char* key, SceneObjectId& id, bool camerasOnly);
     // 機位と区域（HIKARI_GameplayCameraSetup.cpp）。
     void DrawCameraList(DocumentSceneBase& scene, EditorOperationRegistry& operations);

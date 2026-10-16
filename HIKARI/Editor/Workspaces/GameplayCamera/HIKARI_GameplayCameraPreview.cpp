@@ -1,3 +1,4 @@
+#include "Editor/Views/HIKARI_EditorViewGuides.h"
 #include "Scene/Camera/HIKARI_CameraCollision.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
@@ -20,6 +21,7 @@
 
 namespace HIKARI::EDITOR {
 void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, EditorWorkspaceHost& host,
+                                                  EditorOperationRegistry& operations,
                                                   GameplayCameraWorkspaceResult& workspaceResult) {
     auto& stage = host.GetGameplayCameraObserverView();
     auto& monitor = host.GetGameplayCameraPreviewView();
@@ -139,9 +141,17 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
             focused_ = true;
         }
         readWalkInput();
-        EditorTransformGizmoState gizmo{};
-        const auto result =
-            observer_.DrawContents(scene, stage, SceneObjectId{}, gizmo, ImGui::GetIO().DeltaTime, runtime, false);
+        if (shotCamera && !runtime) {
+            if (ImGui::Button("移动机位"))
+                stationGizmo_.operation = EditorTransformGizmoOperation::Translate;
+            ImGui::SameLine();
+            if (ImGui::Button("旋转机位"))
+                stationGizmo_.operation = EditorTransformGizmoOperation::Rotate;
+        }
+        const auto result = observer_.DrawContents(scene, stage, shotCamera ? camera_ : SceneObjectId{}, stationGizmo_,
+                                                   ImGui::GetIO().DeltaTime, runtime, shotCamera);
+        if (shotCamera && !runtime)
+            ApplyStationViewEdit(scene, operations, result);
         if (result.selectionRequested) {
             const auto* selected = scene.GetWorld().FindObject(result.selectedObjectId);
             if (selected && selected->GetComponent<CameraComponent>()) {
@@ -177,6 +187,12 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
     if (ImGui::Begin(TEXT::LocalizeWindow("gc.monitor", "GameplayCamera/Monitor").c_str(), nullptr,
                      ImGuiWindowFlags_NoScrollbar)) {
         readWalkInput();
+        if (ImGui::Button("构图辅助"))
+            ImGui::OpenPopup("gameplayMonitorGuides");
+        if (ImGui::BeginPopup("gameplayMonitorGuides")) {
+            DrawEditorViewGuidesMenu(monitor.visualization.guides);
+            ImGui::EndPopup();
+        }
         auto avail = ImGui::GetContentRegionAvail();
         const auto fit = FitEditorViewport((std::max)(avail.x, 1.0f), (std::max)(avail.y, 1.0f), 16.0f / 9);
         auto origin = ImGui::GetCursorScreenPos();
@@ -243,6 +259,12 @@ void GameplayCameraWorkspaceController::DrawViews(DocumentSceneBase& scene, Edit
             ImGui::InvisibleButton("CameraPreviewCanvas", {fit.width, fit.height});
             ImGui::GetWindowDrawList()->AddText({origin.x + 12, origin.y + 12}, IM_COL32(170, 185, 195, 255),
                                                 TEXT::Localize("gc.bindToPreview").c_str());
+        }
+        if (image.ptr) {
+            const auto& frame = scene.GetResolvedCameraFrame();
+            DrawEditorViewGuides(*ImGui::GetWindowDrawList(), origin.x, origin.y, fit.width, fit.height,
+                                 monitor.visualization.guides,
+                                 runtime && frame.valid ? &frame.camera : &lastMonitorCamera_);
         }
         workspaceResult.playViewportClicked =
             runtime && image.ptr && ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left);

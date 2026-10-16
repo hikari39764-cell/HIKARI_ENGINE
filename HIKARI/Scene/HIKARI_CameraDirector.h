@@ -28,6 +28,8 @@ struct CameraActivationRequest {
     int priority = 0;
     bool affectsControlBasis = false;
     std::optional<CameraBlendDesc> returnBlend;
+    // 初回サンプルが既に進んでいても、演出の開始姿勢で連続性を検証できる。
+    std::optional<Camera3D> continuityOrigin;
 };
 
 struct CameraOverrideToken {
@@ -77,8 +79,8 @@ private:
     };
 
     const OverrideEntry* FindWinningOverride() const;
-    bool BeginSourceTransition(SceneObjectId sourceCameraObjectId, const Camera3D& targetCamera,
-                               const CameraBlendDesc& blend);
+    void BeginSourceTransition(SceneObjectId sourceCameraObjectId, const Camera3D& targetCamera,
+                               const CameraBlendDesc& blend, const Camera3D* continuityOrigin);
     void AdvanceBlend(const Camera3D& targetCamera, float deltaTime);
 
     SceneObjectId baseCameraObjectId_{};

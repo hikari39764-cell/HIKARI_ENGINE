@@ -7,8 +7,6 @@
 #include "Scene/Sequencer/HIKARI_SequenceBinding.h"
 #include "Scene/Sequencer/Tracks/HIKARI_PresentationCueTrack.h"
 #include "Scene/Sequencer/Tracks/HIKARI_CameraCutTrack.h"
-#include "Scene/Sequencer/Tracks/HIKARI_CameraLensTrack.h"
-#include "Scene/Sequencer/Tracks/HIKARI_CameraTransformTrack.h"
 
 namespace HIKARI {
 
@@ -28,8 +26,6 @@ struct CinematicSequence {
     float durationSeconds = 10.0f;
     SEQUENCER::SequenceBindingTable bindings{};
     SEQUENCER::CameraCutTrack cameraCutTrack{};
-    SEQUENCER::CameraTransformTrack cameraTransformTrack{};
-    SEQUENCER::CameraLensTrack cameraLensTrack{};
     SEQUENCER::PresentationCueTrack presentationCueTrack{};
     std::vector<SEQUENCER::SequenceScreenEffect> screenEffects;
 };
@@ -44,15 +40,9 @@ struct CinematicCameraEvaluation {
     SEQUENCER::SequenceBindingId cameraBindingId{};
     SceneObjectId cameraObjectId{};
     SEQUENCER::CameraCutTransition transition{};
-    SEQUENCER::CameraTransformTrackEvaluation transform{};
-    SEQUENCER::CameraLensTrackEvaluation lens{};
     float sequenceTimeSeconds = 0.0f;
     float localTimeSeconds = 0.0f;
-    bool ownedCamera = false;
-
-    bool IsValid() const noexcept { return shotId != 0 && (ownedCamera || cameraObjectId.value != 0); }
-
-    bool HasCameraAnimation() const noexcept { return transform.valid || lens.valid; }
+    bool IsValid() const noexcept { return shotId != 0; }
 };
 
 constexpr float kMinCinematicSequenceDurationSeconds = 1.0f;
@@ -69,7 +59,5 @@ CinematicCameraEvaluation EvaluateCinematicCameraTrack(const CinematicSequence& 
 CinematicCameraEvaluation EvaluateCinematicCameraTrack(
     const CinematicSequence& sequence, float timeSeconds,
     const SEQUENCER::SequenceBindingContext& bindingContext) noexcept;
-bool BuildEvaluatedCinematicCamera(const CinematicCameraEvaluation& evaluation, const Camera3D& sourceCamera,
-                                   float aspect, Camera3D& outCamera) noexcept;
 
 } // namespace HIKARI

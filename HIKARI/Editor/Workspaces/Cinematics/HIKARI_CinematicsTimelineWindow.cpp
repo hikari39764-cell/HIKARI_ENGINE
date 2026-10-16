@@ -1,4 +1,3 @@
-#include "Editor/Authoring/HIKARI_SequenceCameraEditing.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Assets/HIKARI_AssetRecord.h"
@@ -38,15 +37,16 @@ void FormatRulerTime(char* text, size_t size, float seconds, float step) {
         std::snprintf(text, size, "%.0fs", seconds);
 }
 
-// 再生位置の表示（秒と 60 fps のフレーム番号）。
-void FormatTimecode(char* text, size_t size, float seconds) {
-    const int frames = static_cast<int>(std::lround((std::max)(0.0f, seconds) * 60.0f));
-    std::snprintf(text, size, "%d:%02d.%02d", frames / 3600, (frames / 60) % 60, frames % 60);
+// 再生位置の表示（秒と編集時に選んだ fps のフレーム番号）。
+void FormatTimecode(char* text, size_t size, float seconds, float fps) {
+    const int rate = static_cast<int>(std::lround(fps));
+    const int frames = static_cast<int>(std::lround((std::max)(0.0f, seconds) * fps));
+    std::snprintf(text, size, "%d:%02d.%02d", frames / (rate * 60), (frames / rate) % 60, frames % rate);
 }
 #endif
 } // namespace
 
-bool CinematicsWorkspaceController::DrawTransport(CinematicSequence& sequence) {
+bool CinematicsWorkspaceController::DrawTransport(DocumentSceneBase& scene, CinematicSequence& sequence) {
     bool changed = false;
 #if defined(HIKARI_WITH_EDITOR)
     const auto seek = [&](float seconds) {
@@ -55,17 +55,23 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence& sequence) {
         previewEnabled_ = true;
     };
     const bool playing = cursor_.IsPlaying();
+    const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    const bool playKey = ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Space, focused);
     if (IconButton(playing ? EditorGlyph::Pause : EditorGlyph::Play, "sequencePlay", EditorButtonTone::Primary,
-                   {28, 28}, TEXT::Localize(playing ? "cine.pause" : "cine.play").c_str())) {
+                   {28, 28}, TEXT::Localize(playing ? "cine.pause" : "cine.play").c_str()) ||
+        playKey) {
         if (playing)
             cursor_.Pause();
         else {
+            if (selectionPreviewRange_ && (cursor_.GetTimeSeconds() < selectionPreviewRange_->first ||
+                                           cursor_.GetTimeSeconds() >= selectionPreviewRange_->second))
+                cursor_.Seek(previewRate_ > 0 ? selectionPreviewRange_->first : selectionPreviewRange_->second);
             if (previewRate_ > 0 && cursor_.GetTimeSeconds() >= sequence.durationSeconds)
                 cursor_.Seek(0);
             if (previewRate_ < 0 && cursor_.GetTimeSeconds() <= 0)
                 cursor_.Seek(sequence.durationSeconds);
             SEQUENCER::SequencePlaybackOptions options;
-            options.loop = loop_;
+            options.loop = loop_ && !selectionPreviewRange_;
             options.playbackRate = previewRate_;
             options.holdAtEnd = true;
             cursor_.Play(options);
@@ -82,20 +88,58 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence& sequence) {
     NextToolbarItem();
     if (IconButton(EditorGlyph::StepBackward, "sequencePrevious", EditorButtonTone::Quiet, {28, 28},
                    TEXT::Localize("cine.previousFrame").c_str()))
-        seek(cursor_.GetTimeSeconds() - 1.0f / 60);
+        seek(cursor_.GetTimeSeconds() - 1.0f / curveView_.fps);
     NextToolbarItem();
     if (IconButton(EditorGlyph::StepForward, "sequenceNext", EditorButtonTone::Quiet, {28, 28},
                    TEXT::Localize("cine.nextFrame").c_str()))
-        seek(cursor_.GetTimeSeconds() + 1.0f / 60);
+        seek(cursor_.GetTimeSeconds() + 1.0f / curveView_.fps);
     NextToolbarItem();
     if (IconToggleButton(EditorGlyph::Loop, "sequenceLoop", loop_, {28, 28}, TEXT::Localize("cine.loop").c_str())) {
         loop_ = !loop_;
         if (cursor_.IsPlaying()) {
             SEQUENCER::SequencePlaybackOptions options;
-            options.loop = loop_;
+            options.loop = loop_ && !selectionPreviewRange_;
             options.playbackRate = previewRate_;
             options.holdAtEnd = true;
             cursor_.Play(options);
+        }
+    }
+    NextToolbarItem(90);
+    if (ImGui::Button(selectionPreviewRange_ ? "取消选区循环" : "选区循环")) {
+        if (selectionPreviewRange_)
+            selectionPreviewRange_.reset();
+        else {
+            const auto channels = CollectChannels(scene, sequence);
+            float first = sequence.durationSeconds, last = 0;
+            for (const auto& c : channels)
+                for (size_t i = 0; i < c.curve->keys.size(); ++i)
+                    if (curveView_.editing.Contains(c.id, i)) {
+                        float time = c.offset + c.curve->keys[i].time;
+                        if (const auto* shot = SelectedShot(sequence); shot && !shot->camera.timing.keys.empty() &&
+                                                                       c.id != "timing" &&
+                                                                       !c.id.starts_with("effect/")) {
+                            // 選んだ素材時刻を、同じ評価関数の時間写像から再生時刻へ戻す。
+                            float low = shot->sourceOffsetSeconds, high = low + shot->durationSeconds;
+                            const float source = time - (shot->startTimeSeconds - shot->sourceOffsetSeconds);
+                            for (int step = 0; step < 24; ++step) {
+                                const float mid = (low + high) * .5f;
+                                if (SEQUENCER::ShotMaterialTime(shot->camera, mid) < source)
+                                    low = mid;
+                                else
+                                    high = mid;
+                            }
+                            time = shot->startTimeSeconds + (low + high) * .5f - shot->sourceOffsetSeconds;
+                        }
+                        first = (std::min)(first, time);
+                        last = (std::max)(last, time);
+                    }
+            first = std::clamp(first, 0.f, sequence.durationSeconds);
+            last = std::clamp(last, 0.f, sequence.durationSeconds);
+            if (last > first + .0001f) {
+                selectionPreviewRange_ = {first, last};
+                seek(first);
+            } else
+                pendingStatusMessage_ = "请选择至少两个不同时刻的关键帧。";
         }
     }
     NextToolbarItem(90);
@@ -108,13 +152,13 @@ bool CinematicsWorkspaceController::DrawTransport(CinematicSequence& sequence) {
     NextToolbarItem(90);
     float seconds = cursor_.GetTimeSeconds();
     ImGui::SetNextItemWidth(82);
-    if (ImGui::DragFloat("##time", &seconds, 1.0f / 60, 0, sequence.durationSeconds, "%.3f s"))
+    if (ImGui::DragFloat("##time", &seconds, 1.0f / curveView_.fps, 0, sequence.durationSeconds, "%.3f s"))
         seek(seconds);
     NextToolbarItem(150);
-    // 分:秒.フレーム（60 fps）で今の位置と全体の長さ。
+    // 分:秒.フレーム（編集 fps）で今の位置と全体の長さ。
     char now[32], total[32];
-    FormatTimecode(now, sizeof(now), cursor_.GetTimeSeconds());
-    FormatTimecode(total, sizeof(total), sequence.durationSeconds);
+    FormatTimecode(now, sizeof(now), cursor_.GetTimeSeconds(), curveView_.fps);
+    FormatTimecode(total, sizeof(total), sequence.durationSeconds, curveView_.fps);
     ImGui::TextDisabled("%s / %s", now, total);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("%s", TEXT::Localize("cine.timecodeTip").c_str());
@@ -220,106 +264,13 @@ void CinematicsWorkspaceController::DrawShotHoverPreview(DocumentSceneBase& scen
     ImGui::EndTooltip();
 }
 
-bool CinematicsWorkspaceController::DrawPoseKeyLane(CinematicSequence& sequence, float timeOriginX, float y,
-                                                    float rowHeight) {
-    bool changed = false;
-#if defined(HIKARI_WITH_EDITOR)
-    auto* draw = ImGui::GetWindowDrawList();
-    auto* shot = SelectedShot(sequence);
-    if (shot == nullptr) {
-        draw->AddText({timeOriginX + 10, y + 7}, IM_COL32(110, 125, 142, 255),
-                      TEXT::Localize(shot ? "cine.poseLaneBound" : "cine.poseLaneSelect").c_str());
-        return false;
-    }
-    const float middle = y + rowHeight * 0.5f;
-    const float shotX = timeOriginX + shot->startTimeSeconds * zoom_;
-    // 镜头の範囲を帯で示す（键はこの中だけ）。
-    draw->AddRectFilled({shotX, y + 4}, {shotX + shot->durationSeconds * zoom_, y + rowHeight - 4},
-                        IM_COL32(44, 105, 151, 60), 3);
-    const float cursorLocal = cursor_.GetTimeSeconds() - shot->startTimeSeconds;
-    std::vector<float> times;
-    if (shot->camera.owned)
-        for (const auto& key : shot->camera.keys)
-            times.push_back(key.time);
-    else
-        for (float t : BoundCameraKeyTimes(sequence, shot->cameraBindingId))
-            if (t >= shot->startTimeSeconds && t <= shot->startTimeSeconds + shot->durationSeconds)
-                times.push_back(t - shot->startTimeSeconds);
-    std::optional<float> remove;
-    ImGui::PushID("poseKeys");
-    // 菱形の押し判定を背景より先に置く（先に置いた項目が重なりの上で優先される）。
-    for (size_t i = 0; i < times.size(); ++i) {
-        const float time = times[i];
-        const float px = shotX + time * zoom_;
-        const bool current = std::abs(time - cursorLocal) <= 0.5f / 60.0f;
-        const float r = 6.5f;
-        const ImVec2 diamond[]{{px, middle - r}, {px + r, middle}, {px, middle + r}, {px - r, middle}};
-        draw->AddConvexPolyFilled(diamond, 4, current ? IM_COL32(255, 207, 108, 255) : IM_COL32(123, 211, 221, 255));
-        draw->AddPolyline(diamond, 4, IM_COL32(10, 14, 20, 255), ImDrawFlags_Closed, 1.5f);
-        ImGui::PushID(static_cast<int>(i));
-        ImGui::SetCursorScreenPos({px - 8, middle - 9});
-        ImGui::InvisibleButton("poseKey", {16, 18});
-        if (ImGui::IsItemActivated()) {
-            poseDragTime_ = time;
-            cursor_.Pause();
-            cursor_.Seek(shot->startTimeSeconds + time);
-            previewEnabled_ = true;
-        }
-        if (ImGui::IsItemActive() && ImGui::IsMouseDragging(0) && poseDragTime_ >= 0.0f) {
-            // 隣の键を越えない範囲で動かす（境目か 1/60 秒に吸着、Alt で自由）。
-            float next = SnapTimelineTime(sequence, (ImGui::GetIO().MousePos.x - timeOriginX) / zoom_, 0, false) -
-                         shot->startTimeSeconds;
-            const float lo = i ? times[i - 1] + 1.0f / 120 : 0.0f;
-            const float hi = i + 1 < times.size() ? times[i + 1] - 1.0f / 120 : shot->durationSeconds;
-            next = std::clamp(next, lo, (std::max)(lo, hi));
-            if (std::abs(next - poseDragTime_) > 0.00001f &&
-                (shot->camera.owned
-                     ? SEQUENCER::MoveShotPoseKey(shot->camera, poseDragTime_, next)
-                     : MoveBoundCameraKey(sequence, shot->cameraBindingId, shot->startTimeSeconds + poseDragTime_,
-                                          shot->startTimeSeconds + next))) {
-                poseDragTime_ = next;
-                cursor_.Seek(shot->startTimeSeconds + next);
-                previewChanged_ = true;
-                changed = true;
-            }
-        }
-        if (ImGui::IsItemDeactivated())
-            poseDragTime_ = -1.0f;
-        if (ImGui::IsItemHovered() && !ImGui::IsMouseDragging(0))
-            ImGui::SetTooltip(TEXT::Localize("cine.keyTip").c_str(), shot->startTimeSeconds + time);
-        if (ImGui::BeginPopupContextItem("poseKeyMenu")) {
-            if (ImGui::MenuItem(TEXT::Localize("cine.deleteKey").c_str()))
-                remove = time;
-            ImGui::EndPopup();
-        }
-        ImGui::PopID();
-    }
-    // 帯の空いた所を二度押すと、その時刻の今の姿勢を键にする。
-    ImGui::SetCursorScreenPos({shotX, y});
-    ImGui::InvisibleButton("poseLane", {(std::max)(1.0f, shot->durationSeconds * zoom_), rowHeight});
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
-        const float time = SnapTimelineTime(sequence, (ImGui::GetIO().MousePos.x - timeOriginX) / zoom_, 0);
-        cursor_.Seek(std::clamp(time, shot->startTimeSeconds, shot->startTimeSeconds + shot->durationSeconds));
-        changed |= AddPoseKeyAtCursor(sequence);
-    } else if (ImGui::IsItemHovered() && times.empty())
-        ImGui::SetTooltip("%s", TEXT::Localize("cine.poseLaneHint").c_str());
-    if (remove) {
-        changed |= shot->camera.owned
-                       ? SEQUENCER::RemoveShotPoseKey(shot->camera, *remove)
-                       : RemoveBoundCameraKey(sequence, shot->cameraBindingId, shot->startTimeSeconds + *remove);
-        previewChanged_ = true;
-    }
-    ImGui::PopID();
-#endif
-    return changed;
-}
-
 bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, CinematicSequence& sequence) {
     bool changed = false;
 #if defined(HIKARI_WITH_EDITOR)
     using namespace SEQUENCER;
     if (curveMode_)
-        return DrawChannelCurve(sequence);
+        return DrawChannelCurve(scene, sequence);
+    changed |= DrawChannelToolbar(scene, sequence);
     const float available = ImGui::GetContentRegionAvail().x;
     if (fitTimelineRequested_ && available > kLabelWidth + 40) {
         const float content =
@@ -327,7 +278,9 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         zoom_ = std::clamp((available - kLabelWidth - 24) / content, 8.0f, 600.0f);
         fitTimelineRequested_ = false;
     }
-    const auto channelCount = CollectChannels(sequence, true).size();
+    const auto visibleChannels = CollectChannels(scene, sequence, true);
+    const auto channelCount =
+        std::count_if(visibleChannels.begin(), visibleChannels.end(), [](const auto& c) { return c.visible; });
     if (!ImGui::BeginChild("SequenceCanvas", {0, 0}, false, ImGuiWindowFlags_HorizontalScrollbar)) {
         ImGui::EndChild();
         return false;
@@ -348,7 +301,7 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         ImGui::SetScrollX(ImGui::GetScrollX() - io.MouseDelta.x);
     const float contentEnd = (std::max)(sequence.durationSeconds, GetCinematicSequenceContentEnd(sequence)) + 1.0f;
     const float width = (std::max)(available, kLabelWidth + contentEnd * zoom_);
-    const float rows = 3 + static_cast<float>(channelCount + sequence.presentationCueTrack.clips.size() +
+    const float rows = 2 + static_cast<float>(channelCount + sequence.presentationCueTrack.clips.size() +
                                               sequence.screenEffects.size());
     const float height = rows * kRowHeight + kRuler;
     auto* draw = ImGui::GetWindowDrawList();
@@ -407,7 +360,7 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         if (ImGui::IsItemActivated()) {
             selectedId_ = id;
             selectionKind_ = kind;
-            curveView_.selectedKey = -1;
+            curveView_.editing.selection.clear();
             draggingId_ = id;
             draggingKind_ = kind;
             dragStart_ = start;
@@ -458,8 +411,17 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
     for (auto& s : sequence.cameraCutTrack.clips) {
         char name[160];
         std::snprintf(name, sizeof(name), "%s  %.1fs", s.camera.name.c_str(), s.durationSeconds);
+        const float oldStart = s.startTimeSeconds;
+        const float oldEnd = oldStart + s.durationSeconds;
         const bool hovered = clip(s.id, SelectionKind::Shot, s.startTimeSeconds, s.durationSeconds, name, shotY,
-                                  s.camera.owned ? IM_COL32(44, 105, 151, 255) : IM_COL32(70, 92, 112, 255));
+                                  IM_COL32(44, 105, 151, 255));
+        // 左端のトリムは素材開始を移す。片段の移動は素材を変えない。
+        if (draggingId_ == s.id && dragPart_ == -1 && s.startTimeSeconds != oldStart) {
+            const float start = (std::max)(s.startTimeSeconds, oldStart - s.sourceOffsetSeconds);
+            s.sourceOffsetSeconds += start - oldStart;
+            s.startTimeSeconds = start;
+            s.durationSeconds = oldEnd - start;
+        }
         DrawShotTransition(*draw, sequence, s, timeOriginX, shotY, kRowHeight);
         if (hovered && !ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
             hoveredShot = &s;
@@ -467,18 +429,19 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
                 std::clamp((io.MousePos.x - timeOriginX) / zoom_ - s.startTimeSeconds, 0.0f, s.durationSeconds);
         }
         for (const auto& key : s.camera.keys) {
-            if (key.time > s.durationSeconds)
+            if (!s.camera.timing.keys.empty() || key.time < s.sourceOffsetSeconds ||
+                key.time > s.sourceOffsetSeconds + s.durationSeconds)
                 continue;
-            const float px = timeOriginX + (s.startTimeSeconds + key.time) * zoom_;
+            const float px = timeOriginX + (s.startTimeSeconds + key.time - s.sourceOffsetSeconds) * zoom_;
             draw->AddLine({px, shotY + kRowHeight - 8}, {px, shotY + kRowHeight - 3}, IM_COL32(173, 231, 247, 220));
         }
     }
     DrawShotHoverPreview(scene, sequence, hoveredShot, hoveredLocalTime);
-    const float poseY = lane(TEXT::Localize("cine.poseKeys"));
-    changed |= DrawPoseKeyLane(sequence, timeOriginX, poseY, kRowHeight);
     const float channelY = origin.y + kRuler + row * kRowHeight;
-    changed |= DrawChannelLanes(sequence, origin.x, channelY, width, kLabelWidth, kRowHeight);
-    for (const auto& channel : CollectChannels(sequence, true)) {
+    changed |= DrawChannelLanes(scene, sequence, origin.x, channelY, width, kLabelWidth, kRowHeight);
+    for (const auto& channel : CollectChannels(scene, sequence, true)) {
+        if (!channel.visible)
+            continue;
         lane(channel.label);
         (void)channel;
     }
@@ -558,27 +521,11 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
     if (io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_D, canvasFocused))
         changed |= DuplicateSelectedShot(sequence);
     if (!io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_K, canvasFocused))
-        changed |= AddPoseKeyAtCursor(sequence);
+        changed |= AddPoseKeyAtCursor(scene, sequence);
     if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_LeftBracket, canvasFocused))
         SeekPoseKey(sequence, -1);
     if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_RightBracket, canvasFocused))
         SeekPoseKey(sequence, 1);
-    if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_Space, canvasFocused)) {
-        if (cursor_.IsPlaying())
-            cursor_.Pause();
-        else {
-            if (previewRate_ > 0 && cursor_.GetTimeSeconds() >= sequence.durationSeconds)
-                cursor_.Seek(0);
-            if (previewRate_ < 0 && cursor_.GetTimeSeconds() <= 0)
-                cursor_.Seek(sequence.durationSeconds);
-            SEQUENCER::SequencePlaybackOptions options;
-            options.loop = loop_;
-            options.playbackRate = previewRate_;
-            options.holdAtEnd = true;
-            cursor_.Play(options);
-            previewEnabled_ = true;
-        }
-    }
     ImGui::EndChild();
 #endif
     return changed;

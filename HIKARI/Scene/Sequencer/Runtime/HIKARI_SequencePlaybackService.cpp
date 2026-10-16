@@ -224,6 +224,14 @@ bool SequencePlaybackService::Seek(SequencePlaybackHandle handle, float timeSeco
     return SeekInternal(handle, timeSeconds, 0);
 }
 
+bool SequencePlaybackService::SetUseUnscaledTime(SequencePlaybackHandle handle, bool enabled) {
+    const size_t index = FindInstanceIndex(handle);
+    if (index == kInvalidInstanceIndex)
+        return false;
+    instances_[index].useUnscaledTime = enabled;
+    return true;
+}
+
 bool SequencePlaybackService::StopInternal(SequencePlaybackHandle handle, SequenceStopReason reason,
                                            uint64_t requestId) {
     const size_t index = FindInstanceIndex(handle);
@@ -347,7 +355,7 @@ bool SequencePlaybackService::EvaluateExternal(SequencePlaybackHandle handle,
     return true;
 }
 
-void SequencePlaybackService::Update(float deltaTime) {
+void SequencePlaybackService::Update(float deltaTime, float unscaledDeltaTime) {
     FlushCommands();
     for (size_t index = 0; index < instances_.size();) {
         Instance& instance = instances_[index];
@@ -355,7 +363,9 @@ void SequencePlaybackService::Update(float deltaTime) {
             ++index;
             continue;
         }
-        const SequenceEvaluationContext context = instance.cursor.Tick(deltaTime, SequenceEvaluationMode::Runtime);
+        // 操作で進める镜头だけをゲーム停止から切り離す。曲線・逆再生・端点は共通 cursor が所有する。
+        const float clock = instance.useUnscaledTime && unscaledDeltaTime >= 0.0f ? unscaledDeltaTime : deltaTime;
+        const SequenceEvaluationContext context = instance.cursor.Tick(clock, SequenceEvaluationMode::Runtime);
         EvaluateInstance(instance, context);
         if (context.completed) {
             const uint64_t requestId = instance.requestId;

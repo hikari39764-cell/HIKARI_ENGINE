@@ -6,6 +6,7 @@
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Scene/Components/HIKARI_CameraFlowComponent.h"
+#include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/Camera/HIKARI_CameraRigService.h"
 #include "Scene/HIKARI_CameraDirector.h"
 #include "Core/Math/HIKARI_MathValidation.h"
@@ -249,6 +250,24 @@ bool CameraView::GetRadialScreenWarp(float& outCurvature, float& outStrength) co
         return POST::PostSystem::GetRadialScreenWarp(outCurvature, outStrength);
     } catch (...) {
         outCurvature = outStrength = 0.0f;
+        return false;
+    }
+}
+
+bool CameraView::SetGameplayCamera(uint64_t handle) const noexcept {
+    try {
+        auto* world = static_cast<World*>(world_);
+        if (!world || !world->IsOwnerThread() || GameProjectSdkAccess::IsWorldClosing(*world))
+            return false;
+        const auto* object = FindObject(world, handle);
+        const auto* camera = object ? object->GetComponent<CameraComponent>() : nullptr;
+        auto* director = world->Services().Find<CameraDirector>();
+        if (!camera || !camera->IsEnabled() || !director || !object->GetDocumentId().value)
+            return false;
+        // 作者の Transform を変更せず、Director の基礎視点だけを選択する。
+        director->SetBaseCamera(object->GetDocumentId());
+        return true;
+    } catch (...) {
         return false;
     }
 }

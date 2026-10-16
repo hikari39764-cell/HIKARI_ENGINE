@@ -1,117 +1,105 @@
 #include "Editor/Authoring/HIKARI_SequenceCameraEditing.h"
-#include "Core/Math/HIKARI_MathValidation.h"
 #include <algorithm>
 #include <cmath>
 
 namespace HIKARI::EDITOR {
-namespace {
-bool SameTime(float a, float b) { return std::abs(a - b) < 1.e-5f; }
-template <class Key>
-Key& KeyAt(std::vector<Key>& keys, float time) {
-    for (auto& key : keys)
-        if (SameTime(key.timeSeconds, time))
-            return key;
-    Key next{};
-    // 新しい鍵だけに左側の補間方式を継承し、既存の鍵の値・ID は触らない。
-    uint64_t id = 1;
-    for (const auto& key : keys) {
-        id = (std::max)(id, key.id + 1);
-        if (key.timeSeconds < time)
-            next.interpolation = key.interpolation;
-    }
-    next.id = id;
-    next.timeSeconds = time;
-    return *keys.insert(
-        std::lower_bound(keys.begin(), keys.end(), time, [](const Key& key, float t) { return key.timeSeconds < t; }),
-        next);
-}
-} // namespace
-bool ReadBoundCameraPose(const CinematicSequence& sequence, SEQUENCER::SequenceBindingId id, float time,
-                         BoundCameraPose& pose) {
-    const auto transform = SEQUENCER::EvaluateCameraTransformTrack(sequence.cameraTransformTrack, id, time);
-    const auto lens = SEQUENCER::EvaluateCameraLensTrack(sequence.cameraLensTrack, id, time);
-    if (!transform.valid || !lens.valid)
-        return false;
-    pose = {transform.position, MATH::EulerXYZDegreesFromQuat(transform.rotation), lens.verticalFovDegrees,
-            lens.nearClip, lens.farClip};
-    // 鍵上では Euler の同値表現へ変換しない。180 度付近の作者値もそのまま表示する。
-    if (const auto* channel = SEQUENCER::FindCameraTransformChannel(sequence.cameraTransformTrack, id))
-        for (const auto& key : channel->keyframes)
-            if (SameTime(key.timeSeconds, time))
-                pose.rotationEulerDeg = key.rotationEulerDeg;
-    return true;
-}
-bool WriteBoundCameraPose(CinematicSequence& sequence, SEQUENCER::SequenceBindingId id, float time,
-                          const BoundCameraPose& pose, uint32_t parts) {
-    BoundCameraPose current;
-    if (!ReadBoundCameraPose(sequence, id, time, current) || !std::isfinite(time) || time < 0 ||
-        !MATH::IsFinite(pose.position) || !MATH::IsFinite(pose.rotationEulerDeg) || !MATH::IsFinite(pose.fov))
-        return false;
-    if (parts & (BoundPosition | BoundRotation)) {
-        auto* channel = SEQUENCER::FindCameraTransformChannel(sequence.cameraTransformTrack, id);
-        const bool exists = std::any_of(channel->keyframes.begin(), channel->keyframes.end(),
-                                        [time](const auto& k) { return SameTime(k.timeSeconds, time); });
-        auto& key = KeyAt(channel->keyframes, time);
-        if (!exists) {
-            key.position = current.position;
-            key.rotationEulerDeg = current.rotationEulerDeg;
+void ApplyResolvedShotPoseCurves(SEQUENCER::ShotCamera& camera, const SEQUENCER::ShotCamera& resolved,
+                                 const std::array<ScalarCurve, 4>& curves) {
+    std::array<ScalarCurve, 4> before;
+    for (unsigned c = 0; c < 4; ++c)
+        before[c] = SEQUENCER::GetShotPoseCurve(resolved, c);
+    auto edited = camera;
+    edited.keys.clear();
+    // 同時に編集した XYZ/FOV を一つの姿勢へ戻す。先に書いた軸で他軸のキーを再生成しない。
+    for (size_t i = 0; i < curves[0].keys.size(); ++i) {
+        const float time = curves[0].keys[i].time;
+        size_t old = camera.keys.size();
+        if (curves[0].keys.size() == camera.keys.size())
+            old = i;
+        else
+            for (size_t j = 0; j < camera.keys.size(); ++j)
+                if (std::abs(camera.keys[j].time - time) < SEQUENCER::kShotPoseKeyEpsilon) {
+                    old = j;
+                    break;
+                }
+        auto pose = old < camera.keys.size() ? camera.keys[old] : SEQUENCER::EvaluateShotPose(resolved, time);
+        if (old == camera.keys.size())
+            pose.reference = {};
+        pose.time = time;
+        for (unsigned c = 0; c < 4; ++c) {
+            if (i >= curves[c].keys.size())
+                continue;
+            const auto& key = curves[c].keys[i];
+            auto oldKey = old < before[c].keys.size() ? before[c].keys[old] : key;
+            oldKey.time = key.time;
+            if (old < camera.keys.size() && key == oldKey)
+                continue;
+            float& value = c == 0 ? pose.position.x : c == 1 ? pose.position.y : c == 2 ? pose.position.z : pose.fov;
+            value = key.value + (pose.reference.IsValid() ? value - oldKey.value : 0);
+            float& in = c == 0   ? pose.inTangent.x
+                        : c == 1 ? pose.inTangent.y
+                        : c == 2 ? pose.inTangent.z
+                                 : pose.inFovTangent;
+            float& out = c == 0   ? pose.outTangent.x
+                         : c == 1 ? pose.outTangent.y
+                         : c == 2 ? pose.outTangent.z
+                                  : pose.outFovTangent;
+            in = key.inSlope;
+            out = key.outSlope;
+            pose.customTangents |= 1u << c;
+            pose.curveShapes[c] = key.shape;
+            pose.curveInterpolations[c] = key.interpolation;
         }
-        if (parts & BoundPosition)
-            key.position = pose.position;
-        if (parts & BoundRotation)
-            key.rotationEulerDeg = pose.rotationEulerDeg;
+        edited.keys.push_back(pose);
     }
-    if (parts & BoundFov) {
-        auto& key = KeyAt(SEQUENCER::FindCameraLensChannel(sequence.cameraLensTrack, id)->keyframes, time);
-        key.verticalFovDegrees = std::clamp(pose.fov, 1.f, 179.f);
-        key.nearClip = current.nearClip;
-        key.farClip = current.farClip;
+    camera = std::move(edited);
+    SEQUENCER::NormalizeShotCamera(camera);
+}
+uint64_t SplitSequenceShot(CinematicSequence& sequence, uint64_t shotId, float sequenceTime) {
+    auto& clips = sequence.cameraCutTrack.clips;
+    const auto found = std::find_if(clips.begin(), clips.end(), [=](const auto& clip) { return clip.id == shotId; });
+    if (found == clips.end() || !std::isfinite(sequenceTime))
+        return 0;
+    const float at = sequenceTime - found->startTimeSeconds;
+    if (at < SEQUENCER::kMinCameraCutClipDurationSeconds ||
+        found->durationSeconds - at < SEQUENCER::kMinCameraCutClipDurationSeconds)
+        return 0;
+    // 遷移の途中では前片段の画を参照するため、そこで分割して境界を増やさない。
+    if (found->transition.mode == SEQUENCER::CameraCutTransitionMode::EaseInOut &&
+        at < found->transition.durationSeconds)
+        return 0;
+    auto second = *found;
+    second.id = SEQUENCER::AllocateCameraCutClipId(sequence.cameraCutTrack);
+    second.startTimeSeconds = sequenceTime;
+    second.durationSeconds -= at;
+    second.sourceOffsetSeconds += at;
+    second.transition = {};
+    second.camera.name += " 2";
+    found->durationSeconds = at;
+    const auto id = second.id;
+    clips.push_back(std::move(second));
+    return id;
+}
+uint64_t DuplicateSequenceShot(CinematicSequence& sequence, uint64_t shotId) {
+    auto& clips = sequence.cameraCutTrack.clips;
+    const auto found = std::find_if(clips.begin(), clips.end(), [=](const auto& clip) { return clip.id == shotId; });
+    if (found == clips.end())
+        return 0;
+    auto copy = *found;
+    copy.id = SEQUENCER::AllocateCameraCutClipId(sequence.cameraCutTrack);
+    copy.camera.name += " Copy";
+    const float end = found->startTimeSeconds + found->durationSeconds;
+    float latest = 0;
+    bool occupied = false;
+    for (const auto& other : clips) {
+        latest = (std::max)(latest, other.startTimeSeconds + other.durationSeconds);
+        occupied |= other.id != found->id && other.startTimeSeconds < end + copy.durationSeconds &&
+                    other.startTimeSeconds + other.durationSeconds > end;
     }
-    return true;
-}
-std::vector<float> BoundCameraKeyTimes(const CinematicSequence& sequence, SEQUENCER::SequenceBindingId id) {
-    std::vector<float> times;
-    if (const auto* c = SEQUENCER::FindCameraTransformChannel(sequence.cameraTransformTrack, id))
-        for (const auto& k : c->keyframes)
-            times.push_back(k.timeSeconds);
-    if (const auto* c = SEQUENCER::FindCameraLensChannel(sequence.cameraLensTrack, id))
-        for (const auto& k : c->keyframes)
-            times.push_back(k.timeSeconds);
-    std::sort(times.begin(), times.end());
-    times.erase(std::unique(times.begin(), times.end(), SameTime), times.end());
-    return times;
-}
-bool MoveBoundCameraKey(CinematicSequence& sequence, SEQUENCER::SequenceBindingId id, float from, float to) {
-    if (!std::isfinite(to) || to < 0 || SameTime(from, to))
-        return false;
-    const auto times = BoundCameraKeyTimes(sequence, id);
-    if (std::any_of(times.begin(), times.end(), [to](float t) { return SameTime(t, to); }))
-        return false;
-    bool changed = false;
-    const auto move = [&](auto* c) {
-        if (!c)
-            return;
-        for (auto& k : c->keyframes)
-            if (SameTime(k.timeSeconds, from)) {
-                k.timeSeconds = to;
-                changed = true;
-            }
-        std::sort(c->keyframes.begin(), c->keyframes.end(),
-                  [](const auto& a, const auto& b) { return a.timeSeconds < b.timeSeconds; });
-    };
-    move(SEQUENCER::FindCameraTransformChannel(sequence.cameraTransformTrack, id));
-    move(SEQUENCER::FindCameraLensChannel(sequence.cameraLensTrack, id));
-    return changed;
-}
-bool RemoveBoundCameraKey(CinematicSequence& sequence, SEQUENCER::SequenceBindingId id, float time) {
-    bool changed = false;
-    const auto remove = [&](auto* c) {
-        if (c && c->keyframes.size() > 1)
-            changed |=
-                std::erase_if(c->keyframes, [time](const auto& k) { return SameTime(k.timeSeconds, time); }) != 0;
-    };
-    remove(SEQUENCER::FindCameraTransformChannel(sequence.cameraTransformTrack, id));
-    remove(SEQUENCER::FindCameraLensChannel(sequence.cameraLensTrack, id));
-    return changed;
+    copy.startTimeSeconds = occupied ? latest : end;
+    sequence.durationSeconds = (std::max)(sequence.durationSeconds, copy.startTimeSeconds + copy.durationSeconds);
+    const auto id = copy.id;
+    clips.push_back(std::move(copy));
+    return id;
 }
 } // namespace HIKARI::EDITOR

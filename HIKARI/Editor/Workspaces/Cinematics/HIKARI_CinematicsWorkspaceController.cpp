@@ -10,28 +10,10 @@
 
 namespace HIKARI::EDITOR {
 
-bool CinematicsWorkspaceController::AlignCameraEndpoint(SEQUENCER::SequenceBindingId binding, bool end,
-                                                        std::string& message) {
-    return sequenceDocumentController_.GetDocument().AlignCameraEndpoint(binding, end, message);
-}
-
 bool CinematicsWorkspaceController::ConfigureCameraEditing(DocumentSceneBase& scene, const nlohmann::json& parameters,
                                                            std::string& message) {
-    std::vector<SequenceCameraEndpointGroup> groups;
-    for (const auto& g : parameters.value("groups", nlohmann::json::array())) {
-        SequenceCameraEndpointGroup group;
-        group.label = g.value("label", std::string{});
-        for (const auto& e : g.at("endpoints"))
-            group.endpoints.push_back({AssetGuid{e.at("assetGuid").get<std::string>()},
-                                       SEQUENCER::SequenceBindingId{e.at("bindingId").get<uint64_t>()},
-                                       e.value("end", false)});
-        groups.push_back(std::move(group));
-    }
     auto& document = sequenceDocumentController_.GetDocument();
     if (!document.RefreshCleanSource(scene.GetAssetDatabase(), message))
-        return false;
-    if (!document.SetCameraEndpointGroups(scene.GetAssetDatabase(), groups, parameters.value("label", std::string{}),
-                                          parameters.value("end", false), message))
         return false;
     requestedEndpoint_ = parameters.value("end", false);
     previewRate_ = std::clamp(parameters.value("speed", 1.f), .25f, 4.f);
@@ -147,6 +129,8 @@ void CinematicsWorkspaceController::ResetEditing(DocumentSceneBase& scene) {
     cursor_.Clear();
     selectedId_ = 0;
     curveView_ = {};
+    curveGestureBefore_.reset();
+    selectionPreviewRange_.reset();
     stageInitialized_ = false;
     pilot_ = false;
     selectedRailPoint_ = -1;
@@ -159,8 +143,6 @@ void CinematicsWorkspaceController::ResetEditing(DocumentSceneBase& scene) {
     if (IsEditingSequenceAsset())
         RestoreSequencePreviewBindings(scene.GetSceneDocument(), GetSequenceDocument().GetAssetGuid(),
                                        ActiveSequence(scene), previewBindings_);
-    if (!GetSequenceDocument().GetCameraEndpointLabel().empty())
-        requestedEndpoint_ = GetSequenceDocument().GetCameraEndpointTime() > 0.f;
 }
 
 void CinematicsWorkspaceController::PrepareForRuntimePlay(DocumentSceneBase& scene) {

@@ -24,6 +24,8 @@ struct CameraCutClip {
     SequenceBindingId cameraBindingId{};
     float startTimeSeconds = 0.0f;
     float durationSeconds = 2.0f;
+    // 分割・トリムは素材の開始位置を変える。曲線の再計算で既存の運動を変えない。
+    float sourceOffsetSeconds = 0.0f;
     CameraCutTransition transition{};
     ShotCamera camera{};
     std::vector<SequenceScreenEffect> effects;

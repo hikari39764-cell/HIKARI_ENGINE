@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Animation/HIKARI_ScalarCurve.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include <string>
 #include <array>
 #include <vector>
@@ -10,6 +11,12 @@
 
 namespace HIKARI::SEQUENCER {
 
+enum class ShotInterpolation { Linear, Smooth, Spline, Hold };
+inline constexpr TEXT::EnumName<ShotInterpolation> kShotInterpolationNames[] = {{ShotInterpolation::Linear, "linear"},
+                                                                                {ShotInterpolation::Smooth, "smooth"},
+                                                                                {ShotInterpolation::Spline, "spline"},
+                                                                                {ShotInterpolation::Hold, "hold"}};
+
 // 镜头の姿勢（一つの時刻の位置・向き・画角）。向きは場面の摄像机物体と同じ約束（局所 +Z が前、+Y が上）の四元数で、
 // 傾き（roll）も向きに含む。位置と向きは anchor の局所空間（anchor が無ければ世界空間）。
 struct ShotPose {
@@ -17,6 +24,16 @@ struct ShotPose {
     MATH::Vec3 position{0.0f, 2.0f, -8.0f};
     MATH::Quat rotation = MATH::Quat::Identity();
     float fov = 55.0f;
+    float nearClip = 0.1f, farClip = 2000.0f;
+    ShotInterpolation interpolation = ShotInterpolation::Spline;
+    // 参照機位がある場合は差分。全ての演出が同じ Scene の機位を読み、端点を複製保存しない。
+    SequenceBindingId reference{};
+    MATH::Vec3 inTangent{}, outTangent{};
+    float inFovTangent = 0, outFovTangent = 0;
+    uint32_t customTangents = 0;
+    // 曲線で明示編集した軸だけに適用し、他軸や回転の既存補間は保つ。
+    std::array<ScalarCurveShape, 4> curveShapes{};
+    std::array<ScalarCurveInterpolation, 4> curveInterpolations{};
 };
 
 // 镜头の軌道（anchor の局所空間の通過点を滑らかに結ぶ）。点が 2 つ以上あると位置は軌道上の道のりの割合 railT（0..1）
@@ -79,14 +96,14 @@ struct CameraMotionEffect {
 // 演出内の镜头。層で組む：身体（姿勢键か軌道、anchor の局所空間）→ 瞄准（lookAt の相手へ向きを寄せる）→
 // 運動効果（手持ち・衝撃・相対的な推し引き）→ レンズ（near/far）。
 struct ShotCamera {
-    bool owned = false;
+    // 鍵が無い時だけ Scene の機位を基準にする。運動・軌道・瞄準の評価経路は共通。
+    bool useScenePose = true;
     std::string name = "Shot";
     // 姿勢键（時刻順、镜头の局所時刻）。空なら base の姿勢のまま。
     ShotPose base{};
     std::vector<ShotPose> keys;
-    // 键の間を滑らかに通す：途中の键は前後の键から求めた速さで止まらずに通り、最初と最後の键だけ緩やかに加減速する。
-    // 切ると键の間は一定の速さ（位置は直線、向きは最短の回転）。
-    bool smoothPath = true;
+    // 値は素材の秒数。空なら等速。逆再生も同じ時刻写像を逆向きにたどる。
+    ScalarCurve timing{};
     ShotRail rail{};
     ScalarCurve railT{0.0f};
     SequenceBindingId anchor{};
@@ -96,8 +113,6 @@ struct ShotCamera {
     ScalarCurve aimWeight{1.0f};
     // 相手に結んでいない時の注視点までの距離 [m]。環繞などの運動効果はこの点を中心に回る。
     float pivotDistance = 5.0f;
-    float nearClip = 0.1f;
-    float farClip = 2000.0f;
     std::vector<CameraMotionEffect> motion;
 };
 
@@ -146,7 +161,13 @@ void ApplyCameraMotionEffects(std::span<const CameraMotionEffect> effects, float
                               MATH::Vec3& target, MATH::Vec3& up, float& fovDegrees, float speed = 0,
                               float strength = 1, bool keepTarget = false);
 // 姿勢键（と軌道）だけから求めた anchor の局所空間の姿勢。瞄准と運動効果は含まない。
-ShotPose EvaluateShotPose(const ShotCamera& shot, float seconds);
+// 素材時刻の写像は実行・編集で共有し、姿勢の純粋な補間には二重適用しない。
+float ShotMaterialTime(const ShotCamera& shot, float playbackSeconds);
+ShotPose EvaluateShotPose(const ShotCamera& shot, float seconds, std::span<const ShotPose> resolvedKeys = {},
+                          const ShotPose* resolvedBase = nullptr);
+// 位置 XYZ と画角の曲線は姿勢鍵の投影。編集後も唯一の姿勢鍵へ書き戻す。
+ScalarCurve GetShotPoseCurve(const ShotCamera& shot, unsigned channel);
+void SetShotPoseCurve(ShotCamera& shot, unsigned channel, const ScalarCurve& curve);
 // pose.time に姿勢键を置く（同じ時刻の键は置き換える）。keyed が偽で键が一つも無ければ base を変える。
 void SetShotPose(ShotCamera& shot, const ShotPose& pose, bool keyed);
 const ShotPose* FindShotPoseKey(const ShotCamera& shot, float time) noexcept;
@@ -162,7 +183,8 @@ void SampleScreenEffects(const std::vector<SequenceScreenEffect>& effects, float
                          std::vector<ScreenEffectSample>& output);
 // 姿勢を世界空間の摄像机にする。anchor は局所→世界、lookAt は瞄准の相手の世界位置（targetOffset を足す）。
 Camera3D EvaluateShotCamera(const ShotCamera& shot, float seconds, float aspect, const MATH::Mat4* anchor = nullptr,
-                            const MATH::Vec3* lookAt = nullptr);
+                            const MATH::Vec3* lookAt = nullptr, std::span<const ShotPose> resolvedKeys = {},
+                            const ShotPose* resolvedBase = nullptr, bool includeMotion = true);
 // 摄像机の姿勢を（anchor があればその局所空間の）键の形にする。
 ShotPose CaptureShotPose(const Camera3D& camera, float seconds = 0.0f, const MATH::Mat4* anchor = nullptr);
 // 姿勢の向きの前（局所 +Z）と上（局所 +Y）。

@@ -132,7 +132,7 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase&
     if (ImGui::Begin(TEXT::LocalizeWindow("cine.timeline", "Cinematics/Timeline").c_str(), nullptr,
                      ImGuiWindowFlags_NoCollapse)) {
         ImGui::BeginDisabled(!enabled);
-        changed |= DrawTransport(sequence);
+        changed |= DrawTransport(scene, sequence);
         changed |= DrawTimeline(scene, sequence);
         ImGui::EndDisabled();
     }
@@ -140,19 +140,25 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase&
     if (ImGui::Begin(TEXT::LocalizeWindow("cine.inspector", "Cinematics/Inspector").c_str(), nullptr,
                      ImGuiWindowFlags_NoCollapse)) {
         ImGui::BeginDisabled(!enabled);
-        if (!document.GetCameraEndpointLabel().empty()) {
-            ImGui::TextWrapped("关卡机位：%s", document.GetCameraEndpointLabel().c_str());
-        }
-        if (!document.GetCameraEndpointGroups().empty())
-            ImGui::TextWrapped("起点和终点按区域自动关联；保存时同步，中间关键帧独立保留。");
         if (!previewDiagnostic_.empty())
             ImGui::TextWrapped("%s", previewDiagnostic_.c_str());
-        changed |= DrawInspector(scene, sequence);
+        changed |= DrawInspector(scene, sequence, operations);
         ImGui::EndDisabled();
     }
     ImGui::End();
     DrawMonitor(scene, workspaceHost, result);
     changed |= DrawStage(scene, sequence, context, workspaceHost, enabled);
+    // キーの投影だけでなく原本も戻し、キャンセルで自動補間や共有参照の状態を焼き込まない。
+    if (curveView_.editing.Active() && !curveGestureBefore_)
+        if (const auto* original = FindCinematicSequence(before, activeSequenceId_))
+            curveGestureBefore_ = *original;
+    if (curveView_.cancelled && curveGestureBefore_) {
+        sequence = *curveGestureBefore_;
+        changed = true;
+        curveView_.cancelled = false;
+    }
+    if (!curveView_.editing.Active())
+        curveGestureBefore_.reset();
     if (changed) {
         NormalizeCinematicSequence(sequence);
         previewChanged_ = true;
@@ -169,7 +175,20 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase&
         ++mergeId_;
     }
     if (enabled && previewEnabled_) {
+        const bool wasPlaying = cursor_.IsPlaying();
         auto evaluation = cursor_.Tick(ImGui::GetIO().DeltaTime, SEQUENCER::SequenceEvaluationMode::Preview);
+        if (selectionPreviewRange_ && wasPlaying) {
+            const auto [first, last] = *selectionPreviewRange_;
+            const float time = cursor_.GetTimeSeconds();
+            if ((previewRate_ > 0 && time >= last) || (previewRate_ < 0 && time <= first)) {
+                cursor_.Seek(previewRate_ > 0 ? first : last);
+                SEQUENCER::SequencePlaybackOptions options;
+                options.playbackRate = previewRate_;
+                options.holdAtEnd = true;
+                cursor_.Play(options);
+                evaluation = cursor_.Tick(0, SEQUENCER::SequenceEvaluationMode::Preview);
+            }
+        }
         if (!scene.PreviewSequence(sequence, previewBindings_, evaluation, previewChanged_)) {
             pendingStatusMessage_ = TEXT::Localize("cine.previewNotReady");
             previewDiagnostic_ = "无法预览。请在“对象绑定”指定有效相机；缺失槽：";

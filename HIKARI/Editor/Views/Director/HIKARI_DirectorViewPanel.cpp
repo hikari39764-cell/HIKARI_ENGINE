@@ -290,7 +290,12 @@ DirectorViewPanelResult DirectorViewPanel::DrawContents(const DocumentSceneBase&
         if (selectedObject != nullptr) {
             GameObject proxy{"Director Gizmo Proxy"};
             proxy.SetDocumentId(selectedObjectId);
-            Transform3D proxyTransform = selectedObject->GetTransform();
+            Transform3D proxyTransform;
+            const bool decomposed =
+                MATH::DecomposeTRS(selectedObject->GetTransform().GetWorldMatrix(), proxyTransform.position,
+                                   proxyTransform.rotation, proxyTransform.scale);
+            if (!decomposed)
+                proxyTransform = selectedObject->GetTransform();
             if (selectedObjectIsCamera) {
                 proxyTransform.scale = {1.0f, 1.0f, 1.0f};
                 proxyTransform.useExplicitMatrix = false;
@@ -308,6 +313,21 @@ DirectorViewPanelResult DirectorViewPanel::DrawContents(const DocumentSceneBase&
             result.gizmo.objectId = selectedObjectId;
             result.gizmo.transform = gizmoResult.transform;
             result.gizmo.rotation = gizmoResult.rotation;
+            if (gizmoResult.changed && selectedObject->GetParent()) {
+                const auto worldMatrix =
+                    MATH::Mat4::TRS(gizmoResult.transform.position, gizmoResult.rotation, gizmoResult.transform.scale);
+                MATH::Vec3 localPosition, localScale;
+                MATH::Quat localRotation;
+                if (MATH::DecomposeTRS(MATH::Inverse(selectedObject->GetParent()->GetTransform().GetWorldMatrix()) *
+                                           worldMatrix,
+                                       localPosition, localRotation, localScale)) {
+                    result.gizmo.transform.position = localPosition;
+                    result.gizmo.rotation = localRotation;
+                    result.gizmo.transform.rotationEulerDeg = MATH::EulerXYZDegreesFromQuat(localRotation);
+                    result.gizmo.transform.scale = localScale;
+                } else
+                    result.gizmo.changed = false;
+            }
         }
     }
     inputRouter_.SetGizmoCapture(view.renderViewId, result.gizmo.interacting);

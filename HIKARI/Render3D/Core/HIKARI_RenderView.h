@@ -49,6 +49,8 @@ struct ResolvedCameraFrame {
     uint64_t sourceCameraObjectId = 0;
     uint64_t revision = 0;
     bool cameraCut = false;
+    // Director が連続性を確認した所有者交代。既定では別カメラの履歴を流用しない。
+    bool continuousCameraSource = false;
     bool projectionChanged = false;
     bool valid = false;
 };
