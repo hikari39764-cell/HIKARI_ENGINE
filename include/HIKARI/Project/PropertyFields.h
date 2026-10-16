@@ -5,8 +5,10 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 #include "HIKARI/Project/ActionTypes.h"
@@ -82,6 +84,13 @@ enum class GameProjectTextFieldKind : uint8_t {
     Event,
 };
 
+// 列挙値と保存名の組（PropertyFields::Choice 用）。保存名は変えない識別子で、Inspector にもそのまま表示する。
+template <class Enum>
+struct GameProjectEnumName {
+    Enum value{};
+    std::string_view name{};
+};
+
 struct GameProjectTextFieldDesc {
     std::string_view id{};
     std::string_view label{};
@@ -117,6 +126,28 @@ public:
                                          GameProjectVfxAssetReference& reference);
     HIKARI_GAME_PROJECT_SDK_API bool Texture(std::string_view id, std::string_view label,
                                              GameProjectUiTextureReference& reference);
+    // 名前付きの選択肢。保存値は選んだ名前なので、並び順を変えても保存済みの Scene は変わらない。
+    // 知らない保存名は現在値を保ち、index が範囲外なら保存しない。空・重複した名前を含む表は受け付けない。
+    HIKARI_GAME_PROJECT_SDK_API bool Choice(std::string_view id, std::string_view label, int& index,
+                                            std::span<const std::string_view> names);
+    // 列挙値版。表に無い現在値は保存せず、Inspector で選び直すまで保つ。
+    template <class Enum, size_t N>
+    bool Choice(std::string_view id, std::string_view label, Enum& value, const GameProjectEnumName<Enum> (&names)[N]) {
+        static_assert(std::is_enum_v<Enum>);
+        std::array<std::string_view, N> choiceNames{};
+        int index = -1;
+        for (size_t entry = 0u; entry < N; ++entry) {
+            choiceNames[entry] = names[entry].name;
+            if (index < 0 && names[entry].value == value) {
+                index = static_cast<int>(entry);
+            }
+        }
+        if (!Choice(id, label, index, choiceNames) || index < 0 || static_cast<size_t>(index) >= N) {
+            return false;
+        }
+        value = names[static_cast<size_t>(index)].value;
+        return true;
+    }
 
     bool Text(std::string_view id, std::string_view label, GameProjectTextBuffer value) {
         return TextField({id, label}, value.Data(), value.Capacity());

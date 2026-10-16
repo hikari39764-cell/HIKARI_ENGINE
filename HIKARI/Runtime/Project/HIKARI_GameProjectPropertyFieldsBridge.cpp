@@ -4,7 +4,9 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 #include <string>
+#include <vector>
 
 #include <json.hpp>
 
@@ -245,6 +247,19 @@ void SaveAssetReference(nlohmann::json& slot, const Reference& reference) {
     slot = {{"assetGuid", ReadFixedString(reference.assetGuid)}, {"assetPath", ReadFixedString(reference.assetPath)}};
 }
 
+// 選択肢の名前は保存値なので、空・重複を許さない。
+bool IsValidChoiceTable(std::span<const std::string_view> names) noexcept {
+    if (names.empty() || names.size() > static_cast<size_t>((std::numeric_limits<int>::max)())) {
+        return false;
+    }
+    for (auto name = names.begin(); name != names.end(); ++name) {
+        if (name->empty() || std::find(names.begin(), name, *name) != name) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 PropertyFields GameProjectSdkAccess::MakePropertyFields(PropertyFieldsMode mode, const nlohmann::json* loadArchive,
@@ -370,6 +385,33 @@ bool PropertyFields::Texture(std::string_view id, std::string_view label, GamePr
         [&](IInspectorBuilder& builder) {
             return InspectAssetReference(builder, id, label, AssetType::Texture,
                                          "Texture asset GUID with a synchronized source path fallback.", reference);
+        });
+}
+
+bool PropertyFields::Choice(std::string_view id, std::string_view label, int& index,
+                            std::span<const std::string_view> names) {
+    if (!IsValidChoiceTable(names) ||
+        (mode_ == PropertyFieldsMode::Save && (index < 0 || static_cast<size_t>(index) >= names.size()))) {
+        return false;
+    }
+    return Visit(
+        mode_, id, archive_, inspector_,
+        [&](const nlohmann::json* stored) {
+            if (stored == nullptr || !stored->is_string()) {
+                return false;
+            }
+            const auto found = std::find(names.begin(), names.end(), stored->get_ref<const std::string&>());
+            return found != names.end() && Assign(index, static_cast<int>(found - names.begin()));
+        },
+        [&](nlohmann::json& slot) { slot = std::string(names[static_cast<size_t>(index)]); },
+        [&](IInspectorBuilder& builder) {
+            std::vector<AuthoringChoice> choices{};
+            choices.reserve(names.size());
+            for (const std::string_view name : names) {
+                choices.push_back({name, name});
+            }
+            int selected = index;
+            return builder.Choice(MakeField(id, label), selected, choices) && Assign(index, selected);
         });
 }
 
