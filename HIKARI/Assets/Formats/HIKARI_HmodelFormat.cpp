@@ -112,11 +112,8 @@ bool ReadMaterial(std::ifstream& ifs, MaterialAsset& material) {
            ReadTrivial(ifs, material.featureBits);
 }
 
-bool IsValidLightmapUvLayoutMetadata(const MeshPrimitive& primitive);
-
 bool WritePrimitive(std::ofstream& ofs, const MeshPrimitive& primitive) {
-    return IsValidLightmapUvLayoutMetadata(primitive) &&
-           WriteLengthPrefixedString32<kMaxStringBytes>(ofs, primitive.name) && WriteTrivial(ofs, primitive.layout) &&
+    return WriteLengthPrefixedString32<kMaxStringBytes>(ofs, primitive.name) && WriteTrivial(ofs, primitive.layout) &&
            WriteLengthPrefixedTrivialVector32<kMaxVectorCount>(ofs, primitive.staticVertices) &&
            WriteLengthPrefixedTrivialVector32<kMaxVectorCount>(ofs, primitive.skinnedVertices) &&
            WriteLengthPrefixedTrivialVector32<kMaxVectorCount>(ofs, primitive.indices) &&
@@ -314,6 +311,19 @@ bool WriteHmodelFile(const std::filesystem::path& path, const ModelAsset& model,
     if (model.meshes.empty() || !ASSETS::MODELS::HaveValidUniqueMaterialSlotIds(model.materials)) {
         outMessage = "[HMODEL] invalid model data";
         return false;
+    }
+
+    // 不正な UV メタ情報と I/O 障害を区別し、失敗した部品を特定できるようにする。
+    for (const auto& mesh : model.meshes) {
+        for (const auto& primitive : mesh.primitives) {
+            if (!IsValidLightmapUvLayoutMetadata(primitive)) {
+                const auto& layout = primitive.lightmapUvLayout;
+                outMessage = "[HMODEL] invalid lightmap UV layout: " + mesh.name + "/" + primitive.name +
+                             " size=" + std::to_string(layout.referenceWidth) + "x" +
+                             std::to_string(layout.referenceHeight) + " padding=" + std::to_string(layout.chartPadding);
+                return false;
+            }
+        }
     }
 
     std::error_code ec{};

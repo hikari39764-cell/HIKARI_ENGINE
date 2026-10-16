@@ -142,8 +142,15 @@ PrimitiveGenerationResult GeneratePrimitiveLightmapUv(MeshPrimitive& primitive,
     }
     std::vector<Vertex3D> vertices{};
     vertices.reserve(generated.vertexCount);
-    const float invWidth = 1.0f / static_cast<float>(atlas->width);
-    const float invHeight = 1.0f / static_cast<float>(atlas->height);
+    // xatlas は細い単一 chart の外周を切り詰める。参照解像度に padding の
+    // 両側分を確保し、UV だけを中央へ移す（UV0 と描画形状は変更しない）。
+    const uint32_t minimumExtent = packOptions.padding * 2u + 1u;
+    const uint32_t width = (std::max)(atlas->width, minimumExtent);
+    const uint32_t height = (std::max)(atlas->height, minimumExtent);
+    const float offsetX = static_cast<float>(width - atlas->width) * 0.5f;
+    const float offsetY = static_cast<float>(height - atlas->height) * 0.5f;
+    const float invWidth = 1.0f / static_cast<float>(width);
+    const float invHeight = 1.0f / static_cast<float>(height);
     for (uint32_t index = 0u; index < generated.vertexCount; ++index) {
         const xatlas::Vertex& generatedVertex = generated.vertexArray[index];
         if (generatedVertex.xref >= primitive.staticVertices.size() || generatedVertex.atlasIndex != 0) {
@@ -152,7 +159,7 @@ PrimitiveGenerationResult GeneratePrimitiveLightmapUv(MeshPrimitive& primitive,
             return PrimitiveGenerationResult::Failed;
         }
         Vertex3D vertex = primitive.staticVertices[generatedVertex.xref];
-        vertex.uv1 = {generatedVertex.uv[0] * invWidth, generatedVertex.uv[1] * invHeight};
+        vertex.uv1 = {(generatedVertex.uv[0] + offsetX) * invWidth, (generatedVertex.uv[1] + offsetY) * invHeight};
         vertices.push_back(vertex);
     }
 
@@ -161,7 +168,7 @@ PrimitiveGenerationResult GeneratePrimitiveLightmapUv(MeshPrimitive& primitive,
     candidate.staticVertices = std::move(vertices);
     candidate.indices = std::move(indices);
     candidate.hasLightmapUv = true;
-    candidate.lightmapUvLayout = {atlas->width, atlas->height, packOptions.padding};
+    candidate.lightmapUvLayout = {width, height, packOptions.padding};
 
     const LightmapSurfaceAnalysis validation = AnalyzeLightmapSurface(candidate, AlphaMode::Opaque);
     if (!validation.IsEligible()) {
