@@ -5,8 +5,6 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <iomanip>
-#include <sstream>
 #include <utility>
 
 #include "Core/HIKARI_Logger.h"
@@ -15,12 +13,6 @@
 namespace HIKARI {
 
 namespace {
-
-std::string ToHexHr(HRESULT hr) {
-    std::ostringstream oss;
-    oss << "0x" << std::hex << std::setw(8) << std::setfill('0') << static_cast<unsigned long>(hr);
-    return oss.str();
-}
 
 bool IsRgba8Format(DXGI_FORMAT format) {
     return format == DXGI_FORMAT_R8G8B8A8_UNORM || format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
@@ -63,7 +55,7 @@ bool LoadScalarTextureSource(const std::filesystem::path& sourcePath, ScalarText
     HRESULT hr = LoadScalarScratchImage(sourcePath, metadata, loaded);
     if (FAILED(hr)) {
         outMessage = "[MaterialTexturePacking] failed to load scalar texture: " + sourcePath.generic_string() +
-                     " hr=" + ToHexHr(hr);
+                     " hr=" + FormatHResultHex(hr);
         return false;
     }
     if (metadata.IsCubemap() || metadata.dimension != DirectX::TEX_DIMENSION_TEXTURE2D || metadata.arraySize != 1u ||
@@ -88,7 +80,7 @@ bool LoadScalarTextureSource(const std::filesystem::path& sourcePath, ScalarText
 
     if (FAILED(hr)) {
         outMessage = "[MaterialTexturePacking] failed to convert scalar texture: " + sourcePath.generic_string() +
-                     " hr=" + ToHexHr(hr);
+                     " hr=" + FormatHResultHex(hr);
         return false;
     }
     outSource.image = std::move(rgba);
@@ -109,7 +101,7 @@ bool ResizeScalarTextureSource(ScalarTextureSource& source, size_t width, size_t
     const HRESULT hr = DirectX::Resize(source.image.GetImages(), source.image.GetImageCount(), metadata, width, height,
                                        DirectX::TEX_FILTER_DEFAULT, resized);
     if (FAILED(hr)) {
-        outMessage = "[MaterialTexturePacking] failed to align scalar texture dimensions hr=" + ToHexHr(hr);
+        outMessage = "[MaterialTexturePacking] failed to align scalar texture dimensions hr=" + FormatHResultHex(hr);
         return false;
     }
     source.image = std::move(resized);
@@ -140,8 +132,8 @@ bool SavePackedDds(const DirectX::ScratchImage& image, const std::filesystem::pa
     const HRESULT hr = DirectX::SaveToDDSFile(image.GetImages(), image.GetImageCount(), image.GetMetadata(),
                                               DirectX::DDS_FLAGS_FORCE_DX10_EXT, outputPath.wstring().c_str());
     if (FAILED(hr)) {
-        outMessage =
-            "[MaterialTexturePacking] failed to write DDS: " + outputPath.generic_string() + " hr=" + ToHexHr(hr);
+        outMessage = "[MaterialTexturePacking] failed to write DDS: " + outputPath.generic_string() +
+                     " hr=" + FormatHResultHex(hr);
         return false;
     }
     return true;
@@ -194,7 +186,7 @@ bool WritePackedMetallicRoughnessDdsWithDirectXTex(const MetallicRoughnessPackRe
     DirectX::ScratchImage packed{};
     HRESULT hr = packed.Initialize2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1u, 1u);
     if (FAILED(hr)) {
-        outMessage = "[MaterialTexturePacking] failed to allocate output image hr=" + ToHexHr(hr);
+        outMessage = "[MaterialTexturePacking] failed to allocate output image hr=" + FormatHResultHex(hr);
         HIKARI_LOG_ERROR(outMessage);
         return false;
     }

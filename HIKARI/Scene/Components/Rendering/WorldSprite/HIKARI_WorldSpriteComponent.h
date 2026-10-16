@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include "Core/Math/HIKARI_ScalarMath.h"
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -266,8 +267,8 @@ public:
         state.size = SanitizeSize(state.size);
         state.tint = SanitizeColor(state.tint);
         state.pivot = SanitizePivot(state.pivot);
-        state.opacity = ClampFinite(state.opacity, 1.0f, 0.0f, 1.0f);
-        state.alphaCutoff = ClampFinite(state.alphaCutoff, 0.5f, 0.0f, 1.0f);
+        state.opacity = MATH::ClampFinite(state.opacity, 1.0f, 0.0f, 1.0f);
+        state.alphaCutoff = MATH::ClampFinite(state.alphaCutoff, 0.5f, 0.0f, 1.0f);
         state.transparentSortPriority = std::clamp(state.transparentSortPriority, -32768, 32767);
         state.facing = SanitizeFacing(state.facing);
         state.alphaMode = SanitizeAlphaMode(state.alphaMode);
@@ -321,26 +322,22 @@ public:
     void BuildInspector(IInspectorBuilder& builder) override;
 
 private:
-    static float ClampFinite(float value, float fallback, float minimum, float maximum) noexcept {
-        return std::clamp(std::isfinite(value) ? value : fallback, minimum, maximum);
-    }
-
     static MATH::Vec2 SanitizeSize(MATH::Vec2 value) noexcept {
-        value.x = ClampFinite(value.x, 1.0f, 0.001f, 100000.0f);
-        value.y = ClampFinite(value.y, 1.0f, 0.001f, 100000.0f);
+        value.x = MATH::ClampFinite(value.x, 1.0f, 0.001f, 100000.0f);
+        value.y = MATH::ClampFinite(value.y, 1.0f, 0.001f, 100000.0f);
         return value;
     }
 
     static MATH::Vec2 SanitizePivot(MATH::Vec2 value) noexcept {
-        value.x = ClampFinite(value.x, 0.5f, 0.0f, 1.0f);
-        value.y = ClampFinite(value.y, 0.5f, 0.0f, 1.0f);
+        value.x = MATH::ClampFinite(value.x, 0.5f, 0.0f, 1.0f);
+        value.y = MATH::ClampFinite(value.y, 0.5f, 0.0f, 1.0f);
         return value;
     }
 
     static MATH::Vec3 SanitizeColor(MATH::Vec3 value) noexcept {
-        value.x = ClampFinite(value.x, 1.0f, 0.0f, 16.0f);
-        value.y = ClampFinite(value.y, 1.0f, 0.0f, 16.0f);
-        value.z = ClampFinite(value.z, 1.0f, 0.0f, 16.0f);
+        value.x = MATH::ClampFinite(value.x, 1.0f, 0.0f, 16.0f);
+        value.y = MATH::ClampFinite(value.y, 1.0f, 0.0f, 16.0f);
+        value.z = MATH::ClampFinite(value.z, 1.0f, 0.0f, 16.0f);
         return value;
     }
 

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Assets/HIKARI_AssetGuid.h"
@@ -10,11 +11,29 @@
 
 namespace HIKARI {
 
+// ノードのピンを一意に表すキー（"<nodeId>:<pin>"）。
+inline std::string MaterialPinKey(std::string_view nodeId, std::string_view pin) {
+    std::string key{};
+    key.reserve(nodeId.size() + pin.size() + 1u);
+    key.append(nodeId);
+    key.push_back(':');
+    key.append(pin);
+    return key;
+}
+
 struct MaterialValueData {
     MaterialValueType type = MaterialValueType::Float1;
     MATH::Vec4 numeric{0.0f, 0.0f, 0.0f, 0.0f};
     bool boolean = false;
 };
+
+inline MaterialValueData MakeMaterialValue(MaterialValueType type, float x, float y = 0.0f, float z = 0.0f,
+                                           float w = 0.0f) {
+    MaterialValueData value{};
+    value.type = type;
+    value.numeric = {x, y, z, w};
+    return value;
+}
 
 struct MaterialGraphParameterData {
     std::string id{};

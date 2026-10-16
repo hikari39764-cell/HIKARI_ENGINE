@@ -10,13 +10,10 @@ namespace JsonMath = SERIALIZATION::JSON::MATH;
 namespace {
 constexpr float kMinimumRange = 0.01f;
 
-float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
-
-float NonNegativeFinite(float value, float fallback) noexcept { return (std::max)(FiniteOr(value, fallback), 0.0f); }
-
-MATH::Vec3 FiniteOr(const MATH::Vec3& value, const MATH::Vec3& fallback) noexcept {
-    return MATH::IsFinite(value) ? value : fallback;
+float NonNegativeFinite(float value, float fallback) noexcept {
+    return (std::max)(MATH::FiniteOr(value, fallback), 0.0f);
 }
+
 } // namespace
 void CameraFollowSettings::Serialize(nlohmann::json& out) const {
     out["pivotOffset"] = JsonMath::ToJsonArray(pivotOffset);
@@ -129,14 +126,14 @@ void CameraFollowSettings::Deserialize(const nlohmann::json& in) {
     Normalize();
 }
 void CameraFollowSettings::Normalize() noexcept {
-    pivotOffset = FiniteOr(pivotOffset, MATH::Vec3{0.0f, 1.2f, 0.0f});
-    initialYawDegrees = FiniteOr(initialYawDegrees, 0.0f);
-    minimumPitchDegrees = FiniteOr(minimumPitchDegrees, -65.0f);
-    maximumPitchDegrees = FiniteOr(maximumPitchDegrees, 75.0f);
-    initialPitchDegrees = FiniteOr(initialPitchDegrees, 28.0f);
-    minimumDistance = FiniteOr(minimumDistance, 1.0f);
-    maximumDistance = FiniteOr(maximumDistance, 20.0f);
-    initialDistance = FiniteOr(initialDistance, 8.0f);
+    pivotOffset = MATH::FiniteOr(pivotOffset, MATH::Vec3{0.0f, 1.2f, 0.0f});
+    initialYawDegrees = MATH::FiniteOr(initialYawDegrees, 0.0f);
+    minimumPitchDegrees = MATH::FiniteOr(minimumPitchDegrees, -65.0f);
+    maximumPitchDegrees = MATH::FiniteOr(maximumPitchDegrees, 75.0f);
+    initialPitchDegrees = MATH::FiniteOr(initialPitchDegrees, 28.0f);
+    minimumDistance = MATH::FiniteOr(minimumDistance, 1.0f);
+    maximumDistance = MATH::FiniteOr(maximumDistance, 20.0f);
+    initialDistance = MATH::FiniteOr(initialDistance, 8.0f);
     minimumPitchDegrees = std::clamp(minimumPitchDegrees, -89.0f, 89.0f);
     maximumPitchDegrees = std::clamp(maximumPitchDegrees, minimumPitchDegrees, 89.0f);
     initialPitchDegrees = std::clamp(initialPitchDegrees, minimumPitchDegrees, maximumPitchDegrees);
@@ -157,9 +154,10 @@ void CameraFollowSettings::Normalize() noexcept {
     autoRecenterSpeedDegreesPerSecond = NonNegativeFinite(autoRecenterSpeedDegreesPerSecond, 90.0f);
     collisionRadius = (std::max)(NonNegativeFinite(collisionRadius, 0.25f), 0.01f);
     collisionPadding = NonNegativeFinite(collisionPadding, 0.08f);
-    screenCompositionPrimaryAnchorX = std::clamp(FiniteOr(screenCompositionPrimaryAnchorX, 0.38f), 0.05f, 0.95f);
-    screenCompositionPrimaryAnchorY = std::clamp(FiniteOr(screenCompositionPrimaryAnchorY, 0.58f), 0.05f, 0.95f);
-    screenCompositionSecondaryAnchorX = std::clamp(FiniteOr(screenCompositionSecondaryAnchorX, 0.62f), 0.05f, 0.95f);
+    screenCompositionPrimaryAnchorX = std::clamp(MATH::FiniteOr(screenCompositionPrimaryAnchorX, 0.38f), 0.05f, 0.95f);
+    screenCompositionPrimaryAnchorY = std::clamp(MATH::FiniteOr(screenCompositionPrimaryAnchorY, 0.58f), 0.05f, 0.95f);
+    screenCompositionSecondaryAnchorX =
+        std::clamp(MATH::FiniteOr(screenCompositionSecondaryAnchorX, 0.62f), 0.05f, 0.95f);
     if (screenCompositionPrimaryAnchorX > screenCompositionSecondaryAnchorX) {
         std::swap(screenCompositionPrimaryAnchorX, screenCompositionSecondaryAnchorX);
     }
@@ -169,21 +167,25 @@ void CameraFollowSettings::Normalize() noexcept {
         screenCompositionPrimaryAnchorX = center - 0.02f;
         screenCompositionSecondaryAnchorX = center + 0.02f;
     }
-    screenCompositionSecondaryAnchorY = std::clamp(FiniteOr(screenCompositionSecondaryAnchorY, 0.46f), 0.05f, 0.95f);
-    screenCompositionSoftZoneHalfWidth = std::clamp(FiniteOr(screenCompositionSoftZoneHalfWidth, 0.075f), 0.0f, 0.45f);
-    screenCompositionSoftZoneHalfHeight = std::clamp(FiniteOr(screenCompositionSoftZoneHalfHeight, 0.10f), 0.0f, 0.45f);
-    screenCompositionHardZoneHalfWidth = std::clamp(FiniteOr(screenCompositionHardZoneHalfWidth, 0.20f),
+    screenCompositionSecondaryAnchorY =
+        std::clamp(MATH::FiniteOr(screenCompositionSecondaryAnchorY, 0.46f), 0.05f, 0.95f);
+    screenCompositionSoftZoneHalfWidth =
+        std::clamp(MATH::FiniteOr(screenCompositionSoftZoneHalfWidth, 0.075f), 0.0f, 0.45f);
+    screenCompositionSoftZoneHalfHeight =
+        std::clamp(MATH::FiniteOr(screenCompositionSoftZoneHalfHeight, 0.10f), 0.0f, 0.45f);
+    screenCompositionHardZoneHalfWidth = std::clamp(MATH::FiniteOr(screenCompositionHardZoneHalfWidth, 0.20f),
                                                     screenCompositionSoftZoneHalfWidth + 0.01f, 0.50f);
-    screenCompositionHardZoneHalfHeight = std::clamp(FiniteOr(screenCompositionHardZoneHalfHeight, 0.24f),
+    screenCompositionHardZoneHalfHeight = std::clamp(MATH::FiniteOr(screenCompositionHardZoneHalfHeight, 0.24f),
                                                      screenCompositionSoftZoneHalfHeight + 0.01f, 0.50f);
     screenCompositionPreferredShoulderAngleDegrees =
-        std::clamp(FiniteOr(screenCompositionPreferredShoulderAngleDegrees, 32.0f), 0.0f, 89.0f);
+        std::clamp(MATH::FiniteOr(screenCompositionPreferredShoulderAngleDegrees, 32.0f), 0.0f, 89.0f);
     screenCompositionMaximumShoulderAngleDegrees =
-        std::clamp(FiniteOr(screenCompositionMaximumShoulderAngleDegrees, 58.0f),
+        std::clamp(MATH::FiniteOr(screenCompositionMaximumShoulderAngleDegrees, 58.0f),
                    screenCompositionPreferredShoulderAngleDegrees, 89.0f);
-    screenCompositionFocusHeightBias = std::clamp(FiniteOr(screenCompositionFocusHeightBias, 0.22f), -5.0f, 5.0f);
-    screenCompositionHardResponseScale = std::clamp(FiniteOr(screenCompositionHardResponseScale, 0.45f), 0.10f, 1.0f);
+    screenCompositionFocusHeightBias = std::clamp(MATH::FiniteOr(screenCompositionFocusHeightBias, 0.22f), -5.0f, 5.0f);
+    screenCompositionHardResponseScale =
+        std::clamp(MATH::FiniteOr(screenCompositionHardResponseScale, 0.45f), 0.10f, 1.0f);
     screenCompositionCollisionCenteringStrength =
-        std::clamp(FiniteOr(screenCompositionCollisionCenteringStrength, 0.72f), 0.0f, 1.0f);
+        std::clamp(MATH::FiniteOr(screenCompositionCollisionCenteringStrength, 0.72f), 0.0f, 1.0f);
 }
 } // namespace HIKARI::CAMERA

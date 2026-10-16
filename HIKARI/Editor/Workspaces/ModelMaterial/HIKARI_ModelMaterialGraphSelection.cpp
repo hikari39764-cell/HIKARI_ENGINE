@@ -124,7 +124,7 @@ bool ModelMaterialWorkspaceController::DuplicateSelectedGraphNodes(DocumentScene
         return false;
     }
     MaterialAssetData& source = authoringDocument_.EditMaterial();
-    MaterialGraphData* graph = MATERIAL_GRAPH_UI::EditableGraph(source);
+    MaterialGraphData* graph = source.ActiveGraph();
     if (graph == nullptr) {
         outMessage = "当前资产没有可编辑的节点图";
         return false;
@@ -175,7 +175,7 @@ bool ModelMaterialWorkspaceController::CreateGraphGroupFromSelection(DocumentSce
         return false;
     }
     MaterialAssetData& source = authoringDocument_.EditMaterial();
-    MaterialGraphData* graph = MATERIAL_GRAPH_UI::EditableGraph(source);
+    MaterialGraphData* graph = source.ActiveGraph();
     if (graph == nullptr) {
         outMessage = "当前资产没有可编辑的节点图";
         return false;
@@ -195,7 +195,7 @@ bool ModelMaterialWorkspaceController::UngroupSelectedGraphNodes(DocumentSceneBa
         return false;
     }
     MaterialAssetData& source = authoringDocument_.EditMaterial();
-    MaterialGraphData* graph = MATERIAL_GRAPH_UI::EditableGraph(source);
+    MaterialGraphData* graph = source.ActiveGraph();
     if (graph == nullptr) {
         outMessage = "当前资产没有可编辑的节点图";
         return false;
@@ -220,7 +220,7 @@ bool ModelMaterialWorkspaceController::LayoutMaterialGraph(DocumentSceneBase& sc
     std::lock_guard<std::recursive_mutex> guard(authoringDocument_.GetMutex());
     outCode = "OK";
     auto& material = authoringDocument_.EditMaterial();
-    auto* graph = MATERIAL_GRAPH_UI::EditableGraph(material);
+    auto* graph = material.ActiveGraph();
     if (!authoringDocument_.HasMaterial() || graph == nullptr || graph->nodes.empty()) {
         outCode = "GRAPH_EMPTY";
         outMessage = TEXT::Localize("material.layout.empty");
@@ -252,7 +252,7 @@ void ModelMaterialWorkspaceController::FrameMaterialGraph(bool selection, const 
         return;
     }
     MaterialAssetData& source = authoringDocument_.EditMaterial();
-    MaterialGraphData* graph = MATERIAL_GRAPH_UI::EditableGraph(source);
+    MaterialGraphData* graph = source.ActiveGraph();
     if (graph == nullptr || graph->nodes.empty()) {
         return;
     }
@@ -298,7 +298,7 @@ void ModelMaterialWorkspaceController::SetAllGraphNodesCollapsed(bool collapsed)
         return;
     }
     MaterialAssetData& source = authoringDocument_.EditMaterial();
-    MaterialGraphData* graph = MATERIAL_GRAPH_UI::EditableGraph(source);
+    MaterialGraphData* graph = source.ActiveGraph();
     if (graph == nullptr) {
         return;
     }

@@ -1,4 +1,5 @@
 #include "Render3D/Terrain/HIKARI_TerrainSurfaceRenderData.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 
 #include "Render3D/Terrain/HIKARI_TerrainSurfaceGpuData.h"
 
@@ -8,8 +9,6 @@
 namespace HIKARI::RENDER3D::TERRAIN {
 
 namespace {
-float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
-
 bool LayerStylesEqual(const std::vector<TerrainSurfaceLayerRenderStyle>& lhs,
                       const std::vector<TerrainSurfaceLayerRenderStyle>& rhs) noexcept {
     if (lhs.size() != rhs.size()) {
@@ -68,26 +67,26 @@ TerrainSurfaceGpuData BuildTerrainSurfaceGpuData(const TerrainSurfaceRenderData&
     result.deformationOffset = offsets.deformation;
     result.layerWeightsOffset = offsets.layerWeights;
     result.layerStylesOffset = offsets.layerStyles;
-    result.extentsScale = {(std::max)(FiniteOr(source.extents.x, 20.0f), 0.001f),
-                           (std::max)(FiniteOr(source.extents.y, 20.0f), 0.001f),
-                           std::clamp(FiniteOr(source.heightScale, 0.32f), 0.0f, 2.0f),
-                           std::clamp(FiniteOr(source.rimStrength, 0.28f), 0.0f, 2.0f)};
-    result.styleLight = {std::clamp(FiniteOr(source.lightTint.x, 1.0f), 0.0f, 1.0f),
-                         std::clamp(FiniteOr(source.lightTint.y, 1.0f), 0.0f, 1.0f),
-                         std::clamp(FiniteOr(source.lightTint.z, 1.0f), 0.0f, 1.0f),
-                         std::clamp(FiniteOr(source.sparkleStrength, 0.35f), 0.0f, 2.0f)};
-    result.styleDark = {std::clamp(FiniteOr(source.darkTint.x, 0.0f), 0.0f, 1.0f),
-                        std::clamp(FiniteOr(source.darkTint.y, 0.0f), 0.0f, 1.0f),
-                        std::clamp(FiniteOr(source.darkTint.z, 0.0f), 0.0f, 1.0f),
-                        std::clamp(FiniteOr(source.rippleAmount, 0.45f), 0.0f, 3.0f)};
-    result.styleShade = {std::clamp(FiniteOr(source.pitDarkening, 0.32f), 0.0f, 1.0f),
-                         std::clamp(FiniteOr(source.toonBandHardness, 0.14f), 0.0f, 0.5f),
+    result.extentsScale = {(std::max)(MATH::FiniteOr(source.extents.x, 20.0f), 0.001f),
+                           (std::max)(MATH::FiniteOr(source.extents.y, 20.0f), 0.001f),
+                           std::clamp(MATH::FiniteOr(source.heightScale, 0.32f), 0.0f, 2.0f),
+                           std::clamp(MATH::FiniteOr(source.rimStrength, 0.28f), 0.0f, 2.0f)};
+    result.styleLight = {std::clamp(MATH::FiniteOr(source.lightTint.x, 1.0f), 0.0f, 1.0f),
+                         std::clamp(MATH::FiniteOr(source.lightTint.y, 1.0f), 0.0f, 1.0f),
+                         std::clamp(MATH::FiniteOr(source.lightTint.z, 1.0f), 0.0f, 1.0f),
+                         std::clamp(MATH::FiniteOr(source.sparkleStrength, 0.35f), 0.0f, 2.0f)};
+    result.styleDark = {std::clamp(MATH::FiniteOr(source.darkTint.x, 0.0f), 0.0f, 1.0f),
+                        std::clamp(MATH::FiniteOr(source.darkTint.y, 0.0f), 0.0f, 1.0f),
+                        std::clamp(MATH::FiniteOr(source.darkTint.z, 0.0f), 0.0f, 1.0f),
+                        std::clamp(MATH::FiniteOr(source.rippleAmount, 0.45f), 0.0f, 3.0f)};
+    result.styleShade = {std::clamp(MATH::FiniteOr(source.pitDarkening, 0.32f), 0.0f, 1.0f),
+                         std::clamp(MATH::FiniteOr(source.toonBandHardness, 0.14f), 0.0f, 0.5f),
                          static_cast<float>(std::clamp(source.toonBandCount, 2u, 4u)),
-                         std::clamp(FiniteOr(source.wetness, 0.0f), 0.0f, 1.0f)};
+                         std::clamp(MATH::FiniteOr(source.wetness, 0.0f), 0.0f, 1.0f)};
     // 包絡が未確定 (min > max) なら AS は剔除せず可視側へ倒す。
-    const float minY = FiniteOr(source.boundsMinY, 1.0f);
-    const float maxY = FiniteOr(source.boundsMaxY, 0.0f);
-    result.envelope = {minY, maxY, std::clamp(FiniteOr(source.edgeDepth, 1.5f), 0.0f, 100.0f), 0.0f};
+    const float minY = MATH::FiniteOr(source.boundsMinY, 1.0f);
+    const float maxY = MATH::FiniteOr(source.boundsMaxY, 0.0f);
+    result.envelope = {minY, maxY, std::clamp(MATH::FiniteOr(source.edgeDepth, 1.5f), 0.0f, 100.0f), 0.0f};
     return result;
 }
 

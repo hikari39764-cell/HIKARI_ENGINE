@@ -18,10 +18,6 @@ GameProjectUiColor ReadColor(const nlohmann::json& in, const char* key, GameProj
     }
     return fallback;
 }
-float ReadNumber(const nlohmann::json& in, const char* key, float fallback, float low, float high) {
-    const float value = JSONREAD::NumberMemberOr(in, key, fallback);
-    return std::clamp(std::isfinite(value) ? value : fallback, low, high);
-}
 void InspectColor(IInspectorBuilder& b, const char* id, const char* label, GameProjectUiColor& color) {
     MATH::Vec3 rgb{color.r, color.g, color.b};
     b.Color3(AuthoringFieldDescriptor{id, TEXT::Localize(label).c_str()}, rgb.x, rgb.y, rgb.z);
@@ -46,10 +42,10 @@ void UiTextStyle::Write(nlohmann::json& out) const {
     out["glowIntensity"] = glow.glowIntensity;
 }
 void UiTextStyle::Read(const nlohmann::json& in) {
-    lineHeight = ReadNumber(in, "lineHeight", 1.15f, .5f, 5);
-    letterSpacing = ReadNumber(in, "letterSpacing", 0, -128, 256);
-    reveal = ReadNumber(in, "reveal", 1, 0, 1);
-    outlineWidth = ReadNumber(in, "outlineWidth", 1.5f, 0, 32);
+    lineHeight = JSONREAD::ClampedNumberMemberOr(in, "lineHeight", 1.15f, .5f, 5);
+    letterSpacing = JSONREAD::ClampedNumberMemberOr(in, "letterSpacing", 0, -128, 256);
+    reveal = JSONREAD::ClampedNumberMemberOr(in, "reveal", 1, 0, 1);
+    outlineWidth = JSONREAD::ClampedNumberMemberOr(in, "outlineWidth", 1.5f, 0, 32);
     wrap = static_cast<GameProjectUiTextWrap>(std::clamp(JSONREAD::IntegerMemberOr(in, "wrap", 1), 0, 1));
     outline = ReadColor(in, "outlineColor", {.0156863f, .1686275f, .5058824f, 1});
     shadow = ReadColor(in, "shadowColor", {0, 0, 0, .55f});
@@ -59,8 +55,8 @@ void UiTextStyle::Read(const nlohmann::json& in) {
     shadowX = std::clamp(std::isfinite(offset.x) ? offset.x : 2.f, -256.f, 256.f);
     shadowY = std::clamp(std::isfinite(offset.y) ? offset.y : 2.f, -256.f, 256.f);
     glow.glowColor = ReadColor(in, "glowColor", {});
-    glow.glowWidth = ReadNumber(in, "glowWidth", 0, 0, 32);
-    glow.glowIntensity = ReadNumber(in, "glowIntensity", 0, 0, 16);
+    glow.glowWidth = JSONREAD::ClampedNumberMemberOr(in, "glowWidth", 0, 0, 32);
+    glow.glowIntensity = JSONREAD::ClampedNumberMemberOr(in, "glowIntensity", 0, 0, 16);
 }
 void UiTextStyle::Apply(GameProjectUiTextRequest& r) const noexcept {
     r.lineHeightMultiplier = lineHeight;

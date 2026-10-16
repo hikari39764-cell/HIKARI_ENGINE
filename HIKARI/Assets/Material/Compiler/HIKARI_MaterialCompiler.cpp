@@ -156,16 +156,6 @@ void AddReachableOutlineFeatureRequests(const MaterialGraphData& graph, std::vec
     }
 }
 
-const MaterialGraphData* SelectGraph(const MaterialAssetData& source) noexcept {
-    if (source.kind == MaterialAssetKind::Material) {
-        return &source.graph;
-    }
-    if (source.kind == MaterialAssetKind::Function) {
-        return &source.function.graph;
-    }
-    return nullptr;
-}
-
 std::string BuildStructureDescription(const MaterialAssetData& source, const MaterialProgramIR& program) {
     std::ostringstream stream{};
     stream << kMaterialProgramIrVersion << ':' << ToString(source.kind) << ':' << ToString(source.domain) << ':'
@@ -175,7 +165,7 @@ std::string BuildStructureDescription(const MaterialAssetData& source, const Mat
     for (const MaterialFeatureRequest feature : program.featureRequests) {
         stream << "|F:" << ToString(feature);
     }
-    if (const MaterialGraphData* graph = SelectGraph(source)) {
+    if (const MaterialGraphData* graph = source.ActiveGraph()) {
         const std::unordered_set<std::string> reachable = CollectMaterialGraphUpstreamNodes(*graph);
         auto nodes = graph->nodes;
         auto edges = graph->edges;
@@ -247,7 +237,7 @@ MaterialProgramIR BuildProgram(const MaterialAssetData& source,
         AddCapability(program.capabilities, MaterialProgramCapability::AlphaBlend);
     }
 
-    const MaterialGraphData* graph = SelectGraph(source);
+    const MaterialGraphData* graph = source.ActiveGraph();
     if (graph) {
         const std::unordered_set<std::string> reachable = CollectMaterialGraphUpstreamNodes(*graph);
         AddNodeCapabilities(*graph, program.capabilities);

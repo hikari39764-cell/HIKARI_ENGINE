@@ -13,6 +13,9 @@ struct MetallicRoughnessPackRequest {
 bool InspectTextureAlphaWithDirectXTex(const std::filesystem::path& sourcePath, TextureImportSettings& inOutSettings,
                                        std::string& outMessage);
 
+// DirectXTex の HRESULT（long）を診断用の "0x%08x" 表記にする。
+std::string FormatHResultHex(long hr);
+
 // Converts separate linear scalar maps into the engine's canonical
 // glTF-style material texture: G=roughness, B=metallic.
 bool WritePackedMetallicRoughnessDdsWithDirectXTex(const MetallicRoughnessPackRequest& request,

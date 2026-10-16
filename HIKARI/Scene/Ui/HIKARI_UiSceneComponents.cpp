@@ -1,4 +1,5 @@
 #include "Scene/Ui/HIKARI_UiSceneComponents.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Scene/Ui/HIKARI_UiAnimationPlayer.h"
 
@@ -21,8 +22,6 @@ namespace HIKARI {
 namespace {
 const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 
-float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
-
 constexpr TEXT::EnumName<UiCanvasInputMode> kCanvasInputModeNames[] = {
     {UiCanvasInputMode::Hud, "Hud"},
     {UiCanvasInputMode::Menu, "Menu"},
@@ -39,8 +38,8 @@ GameProjectUiColor ReadColorMember(const nlohmann::json& source, const char* key
         return fallback;
     }
     const MATH::Vec4 value = JSONREAD::Vec4Or(*node, {fallback.r, fallback.g, fallback.b, fallback.a});
-    return {FiniteOr(value.x, fallback.r), FiniteOr(value.y, fallback.g), FiniteOr(value.z, fallback.b),
-            FiniteOr(value.w, fallback.a)};
+    return {MATH::FiniteOr(value.x, fallback.r), MATH::FiniteOr(value.y, fallback.g),
+            MATH::FiniteOr(value.z, fallback.b), MATH::FiniteOr(value.w, fallback.a)};
 }
 
 nlohmann::json WriteVec2(const MATH::Vec2& value) { return nlohmann::json::array({value.x, value.y}); }
@@ -108,9 +107,9 @@ void UiCanvasComponent::Deserialize(const nlohmann::json& in) {
     inputActive_ = true;
     pendingFocus_ = {};
     referenceWidth_ =
-        std::clamp(FiniteOr(JSONREAD::NumberMemberOr(in, "referenceWidth", 1920.0f), 1920.0f), 1.0f, 16384.0f);
+        std::clamp(MATH::FiniteOr(JSONREAD::NumberMemberOr(in, "referenceWidth", 1920.0f), 1920.0f), 1.0f, 16384.0f);
     referenceHeight_ =
-        std::clamp(FiniteOr(JSONREAD::NumberMemberOr(in, "referenceHeight", 1080.0f), 1080.0f), 1.0f, 16384.0f);
+        std::clamp(MATH::FiniteOr(JSONREAD::NumberMemberOr(in, "referenceHeight", 1080.0f), 1080.0f), 1.0f, 16384.0f);
     sortOrder_ = JSONREAD::IntegerMemberOr(in, "sortOrder", 0);
     sortOrder_ = std::clamp(sortOrder_, -kUiCanvasSortOrderLimit, kUiCanvasSortOrderLimit);
 }
@@ -162,7 +161,7 @@ void UiRectComponent::Deserialize(const nlohmann::json& in) {
     offsetMinimum_ = ReadVec2Member(in, "offsetMinimum", {-160.0f, -40.0f});
     offsetMaximum_ = ReadVec2Member(in, "offsetMaximum", {160.0f, 40.0f});
     pivot_ = ReadVec2Member(in, "pivot", {0.5f, 0.5f});
-    rotationDegrees_ = FiniteOr(JSONREAD::NumberMemberOr(in, "rotationDegrees", 0.0f), 0.0f);
+    rotationDegrees_ = MATH::FiniteOr(JSONREAD::NumberMemberOr(in, "rotationDegrees", 0.0f), 0.0f);
     order_ = JSONREAD::IntegerMemberOr(in, "order", 0);
     Sanitize();
 }
@@ -286,7 +285,7 @@ void UiTextComponent::Deserialize(const nlohmann::json& in) {
     enabled_ = JSONREAD::BooleanMemberOr(in, "enabled", true);
     text_ = JSONREAD::StringMemberOr(in, "text", "Button");
     fontAssetPath_ = JSONREAD::StringMemberOr(in, "fontAssetPath", {});
-    pixelHeight_ = std::clamp(FiniteOr(JSONREAD::NumberMemberOr(in, "pixelHeight", 34.0f), 34.0f), 4.0f, 512.0f);
+    pixelHeight_ = std::clamp(MATH::FiniteOr(JSONREAD::NumberMemberOr(in, "pixelHeight", 34.0f), 34.0f), 4.0f, 512.0f);
     color_ = ReadColorMember(in, "color", {});
     horizontalAlign_ = ParseHorizontalAlign(JSONREAD::StringMemberOr(in, "horizontalAlign", "Center"));
     verticalAlign_ = ParseVerticalAlign(JSONREAD::StringMemberOr(in, "verticalAlign", "Center"));
@@ -362,7 +361,7 @@ void UiButtonComponent::Deserialize(const nlohmann::json& in) {
     disabledTint_ = ReadColorMember(in, "disabledTint", {0.38f, 0.38f, 0.42f, 0.65f});
     visualState_ = UiButtonVisualState::Normal;
     transitionSeconds_ =
-        std::clamp(FiniteOr(JSONREAD::NumberMemberOr(in, "transitionSeconds", 0.1f), 0.1f), 0.0f, 2.0f);
+        std::clamp(MATH::FiniteOr(JSONREAD::NumberMemberOr(in, "transitionSeconds", 0.1f), 0.1f), 0.0f, 2.0f);
 }
 
 void UiButtonComponent::BuildInspector(IInspectorBuilder& builder) {

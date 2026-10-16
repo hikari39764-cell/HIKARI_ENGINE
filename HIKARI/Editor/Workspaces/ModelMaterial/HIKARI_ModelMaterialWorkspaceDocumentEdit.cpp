@@ -15,9 +15,7 @@ namespace HIKARI::EDITOR {
 MaterialGraphData* ModelMaterialWorkspaceDocument::EditableGraph() noexcept {
     if (!materialOpen_ || HasMaterialGesture())
         return nullptr;
-    return material_.kind == MaterialAssetKind::Material   ? &material_.graph
-           : material_.kind == MaterialAssetKind::Function ? &material_.function.graph
-                                                           : nullptr;
+    return material_.ActiveGraph();
 }
 
 bool ModelMaterialWorkspaceDocument::ConnectMaterialNodes(MaterialGraphEdgeData edge, std::string& outMessage) {

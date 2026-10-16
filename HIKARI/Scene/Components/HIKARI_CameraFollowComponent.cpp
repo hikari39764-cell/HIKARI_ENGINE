@@ -14,12 +14,8 @@ namespace JsonMath = SERIALIZATION::JSON::MATH;
 
 namespace {
 
-float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
-
-float NonNegativeFinite(float value, float fallback) noexcept { return (std::max)(FiniteOr(value, fallback), 0.0f); }
-
-MATH::Vec3 FiniteOr(const MATH::Vec3& value, const MATH::Vec3& fallback) noexcept {
-    return MATH::IsFinite(value) ? value : fallback;
+float NonNegativeFinite(float value, float fallback) noexcept {
+    return (std::max)(MATH::FiniteOr(value, fallback), 0.0f);
 }
 
 CAMERA::CameraTargetFramingDynamics SanitizeDynamics(const CAMERA::CameraTargetFramingDynamics& dynamics) noexcept {
@@ -37,7 +33,7 @@ CAMERA::CameraTargetFramingDynamics SanitizeDynamics(const CAMERA::CameraTargetF
     result.distanceContractSmoothSeconds =
         NonNegativeFinite(result.distanceContractSmoothSeconds, defaults.distanceContractSmoothSeconds);
     result.yawDeadZoneDegrees =
-        std::clamp(FiniteOr(result.yawDeadZoneDegrees, defaults.yawDeadZoneDegrees), 0.0f, 180.0f);
+        std::clamp(MATH::FiniteOr(result.yawDeadZoneDegrees, defaults.yawDeadZoneDegrees), 0.0f, 180.0f);
     return result;
 }
 
@@ -98,8 +94,8 @@ void CameraFollowComponent::InitializeRuntimeState(const MATH::Vec3& eye, const 
 }
 
 void CameraFollowComponent::SetRuntimeTracking(const MATH::Vec3& followPivot, const MATH::Vec3& targetPivot) noexcept {
-    runtime_.followPivot = FiniteOr(followPivot, runtime_.followPivot);
-    runtime_.targetPivot = FiniteOr(targetPivot, runtime_.targetPivot);
+    runtime_.followPivot = MATH::FiniteOr(followPivot, runtime_.followPivot);
+    runtime_.targetPivot = MATH::FiniteOr(targetPivot, runtime_.targetPivot);
 }
 
 void CameraFollowComponent::SetRuntimeFramingState(
@@ -116,25 +112,25 @@ void CameraFollowComponent::SetRuntimeFramingState(
     runtime_.framingSourceId = sourceId;
     runtime_.framingPriority = priority;
     runtime_.framingDynamics = SanitizeDynamics(dynamics);
-    runtime_.framingTargetWeight = std::clamp(FiniteOr(targetWeight, 0.0f), 0.0f, 1.0f);
+    runtime_.framingTargetWeight = std::clamp(MATH::FiniteOr(targetWeight, 0.0f), 0.0f, 1.0f);
     runtime_.framingDistanceScale = NonNegativeFinite(distanceScale, 0.0f);
     runtime_.framingMaximumDistanceOffset = NonNegativeFinite(maximumDistanceOffset, 0.0f);
     runtime_.framingYawTrackingSpeed = NonNegativeFinite(yawTrackingSpeed, 0.0f);
-    runtime_.framingPreferredPitchDegrees = FiniteOr(preferredPitchDegrees, 17.0f);
+    runtime_.framingPreferredPitchDegrees = MATH::FiniteOr(preferredPitchDegrees, 17.0f);
     runtime_.framingPitchTrackingSpeed = NonNegativeFinite(pitchTrackingSpeed, 0.0f);
     runtime_.framingSuppressOrbitInput = suppressOrbitInput;
     runtime_.framingSuppressZoomInput = suppressZoomInput;
     runtime_.framingSwitchActive = switchActive;
     runtime_.framingSwitchRemainingSeconds = NonNegativeFinite(switchRemainingSeconds, 0.0f);
-    runtime_.framingSecondaryPivot = FiniteOr(secondaryPivot, MATH::Vec3{});
-    runtime_.framingWeight = std::clamp(FiniteOr(framingWeight, 0.0f), 0.0f, 1.0f);
-    runtime_.framingWeightVelocity = FiniteOr(framingWeightVelocity, 0.0f);
-    runtime_.framingSecondaryPivotVelocity = FiniteOr(secondaryPivotVelocity, MATH::Vec3{});
-    runtime_.framingYawVelocity = FiniteOr(yawVelocity, 0.0f);
-    runtime_.framingPitchVelocity = FiniteOr(pitchVelocity, 0.0f);
-    runtime_.framingFocusOffset = FiniteOr(focusOffset, MATH::Vec3{});
-    runtime_.framingFocusVelocity = FiniteOr(focusVelocity, MATH::Vec3{});
-    runtime_.framingDistanceVelocity = FiniteOr(distanceVelocity, 0.0f);
+    runtime_.framingSecondaryPivot = MATH::FiniteOr(secondaryPivot, MATH::Vec3{});
+    runtime_.framingWeight = std::clamp(MATH::FiniteOr(framingWeight, 0.0f), 0.0f, 1.0f);
+    runtime_.framingWeightVelocity = MATH::FiniteOr(framingWeightVelocity, 0.0f);
+    runtime_.framingSecondaryPivotVelocity = MATH::FiniteOr(secondaryPivotVelocity, MATH::Vec3{});
+    runtime_.framingYawVelocity = MATH::FiniteOr(yawVelocity, 0.0f);
+    runtime_.framingPitchVelocity = MATH::FiniteOr(pitchVelocity, 0.0f);
+    runtime_.framingFocusOffset = MATH::FiniteOr(focusOffset, MATH::Vec3{});
+    runtime_.framingFocusVelocity = MATH::FiniteOr(focusVelocity, MATH::Vec3{});
+    runtime_.framingDistanceVelocity = MATH::FiniteOr(distanceVelocity, 0.0f);
 }
 
 void CameraFollowComponent::SetRuntimeScreenCompositionState(bool active, float side, float primaryX, float primaryY,
@@ -143,14 +139,14 @@ void CameraFollowComponent::SetRuntimeScreenCompositionState(bool active, float 
                                                              float collisionBlendVelocity) noexcept {
     runtime_.screenCompositionActive = active;
     runtime_.screenCompositionSide = side >= 0.0f ? 1.0f : -1.0f;
-    runtime_.screenCompositionPrimaryX = FiniteOr(primaryX, 0.5f);
-    runtime_.screenCompositionPrimaryY = FiniteOr(primaryY, 0.5f);
-    runtime_.screenCompositionSecondaryX = FiniteOr(secondaryX, 0.5f);
-    runtime_.screenCompositionSecondaryY = FiniteOr(secondaryY, 0.5f);
+    runtime_.screenCompositionPrimaryX = MATH::FiniteOr(primaryX, 0.5f);
+    runtime_.screenCompositionPrimaryY = MATH::FiniteOr(primaryY, 0.5f);
+    runtime_.screenCompositionSecondaryX = MATH::FiniteOr(secondaryX, 0.5f);
+    runtime_.screenCompositionSecondaryY = MATH::FiniteOr(secondaryY, 0.5f);
     runtime_.screenCompositionSoftViolation = softViolation;
     runtime_.screenCompositionHardViolation = hardViolation;
-    runtime_.screenCompositionCollisionBlend = std::clamp(FiniteOr(collisionBlend, 0.0f), 0.0f, 1.0f);
-    runtime_.screenCompositionCollisionBlendVelocity = FiniteOr(collisionBlendVelocity, 0.0f);
+    runtime_.screenCompositionCollisionBlend = std::clamp(MATH::FiniteOr(collisionBlend, 0.0f), 0.0f, 1.0f);
+    runtime_.screenCompositionCollisionBlendVelocity = MATH::FiniteOr(collisionBlendVelocity, 0.0f);
 }
 
 void CameraFollowComponent::SetRuntimeRelationshipShotState(bool hasSubmission, float preferredSide,
@@ -162,37 +158,38 @@ void CameraFollowComponent::SetRuntimeRelationshipShotState(bool hasSubmission, 
                                                             float weight, float weightVelocity) noexcept {
     runtime_.relationshipShotInitialized = true;
     runtime_.relationshipShotHasSubmission = hasSubmission;
-    runtime_.relationshipPreferredSide = std::clamp(FiniteOr(preferredSide, 0.0f), -1.0f, 1.0f);
+    runtime_.relationshipPreferredSide = std::clamp(MATH::FiniteOr(preferredSide, 0.0f), -1.0f, 1.0f);
     runtime_.relationshipShoulderAngleDegrees = std::clamp(NonNegativeFinite(shoulderAngleDegrees, 0.0f), 0.0f, 75.0f);
-    runtime_.relationshipVerticalFovOffsetRadians = std::clamp(FiniteOr(verticalFovOffsetRadians, 0.0f), -1.5f, 1.5f);
-    runtime_.relationshipRollRadians = std::clamp(FiniteOr(rollRadians, 0.0f), -3.14159265f, 3.14159265f);
+    runtime_.relationshipVerticalFovOffsetRadians =
+        std::clamp(MATH::FiniteOr(verticalFovOffsetRadians, 0.0f), -1.5f, 1.5f);
+    runtime_.relationshipRollRadians = std::clamp(MATH::FiniteOr(rollRadians, 0.0f), -3.14159265f, 3.14159265f);
     runtime_.relationshipSideClearanceBias = std::clamp(NonNegativeFinite(sideClearanceBias, 0.0f), 0.0f, 5.0f);
-    runtime_.relationshipDistanceOffset = std::clamp(FiniteOr(distanceOffset, 0.0f), -10.0f, 10.0f);
-    runtime_.relationshipPivotHeightOffset = std::clamp(FiniteOr(pivotHeightOffset, 0.0f), -5.0f, 5.0f);
-    runtime_.relationshipFocusLateralOffset = std::clamp(FiniteOr(focusLateralOffset, 0.0f), -5.0f, 5.0f);
-    runtime_.relationshipFocusHeightOffset = std::clamp(FiniteOr(focusHeightOffset, 0.0f), -5.0f, 5.0f);
+    runtime_.relationshipDistanceOffset = std::clamp(MATH::FiniteOr(distanceOffset, 0.0f), -10.0f, 10.0f);
+    runtime_.relationshipPivotHeightOffset = std::clamp(MATH::FiniteOr(pivotHeightOffset, 0.0f), -5.0f, 5.0f);
+    runtime_.relationshipFocusLateralOffset = std::clamp(MATH::FiniteOr(focusLateralOffset, 0.0f), -5.0f, 5.0f);
+    runtime_.relationshipFocusHeightOffset = std::clamp(MATH::FiniteOr(focusHeightOffset, 0.0f), -5.0f, 5.0f);
     runtime_.relationshipSuppressModifiers = suppressModifiers;
-    runtime_.relationshipYawOffsetDegrees = std::clamp(FiniteOr(yawOffsetDegrees, 0.0f), -75.0f, 75.0f);
-    runtime_.relationshipWeight = std::clamp(FiniteOr(weight, 0.0f), 0.0f, 1.0f);
-    runtime_.relationshipWeightVelocity = FiniteOr(weightVelocity, 0.0f);
+    runtime_.relationshipYawOffsetDegrees = std::clamp(MATH::FiniteOr(yawOffsetDegrees, 0.0f), -75.0f, 75.0f);
+    runtime_.relationshipWeight = std::clamp(MATH::FiniteOr(weight, 0.0f), 0.0f, 1.0f);
+    runtime_.relationshipWeightVelocity = MATH::FiniteOr(weightVelocity, 0.0f);
 }
 
 void CameraFollowComponent::SetRuntimeOrbit(float yawDegrees, float pitchDegrees, float desiredDistance,
                                             float resolvedDistance, float lookIdleSeconds) noexcept {
-    runtime_.yawDegrees = FiniteOr(yawDegrees, Settings().initialYawDegrees);
-    runtime_.pitchDegrees = std::clamp(FiniteOr(pitchDegrees, GetInitialPitchDegrees()), Settings().minimumPitchDegrees,
-                                       Settings().maximumPitchDegrees);
-    runtime_.desiredDistance = std::clamp(FiniteOr(desiredDistance, GetInitialDistance()), Settings().minimumDistance,
-                                          Settings().maximumDistance);
+    runtime_.yawDegrees = MATH::FiniteOr(yawDegrees, Settings().initialYawDegrees);
+    runtime_.pitchDegrees = std::clamp(MATH::FiniteOr(pitchDegrees, GetInitialPitchDegrees()),
+                                       Settings().minimumPitchDegrees, Settings().maximumPitchDegrees);
+    runtime_.desiredDistance = std::clamp(MATH::FiniteOr(desiredDistance, GetInitialDistance()),
+                                          Settings().minimumDistance, Settings().maximumDistance);
     runtime_.distance =
-        std::clamp(FiniteOr(resolvedDistance, runtime_.desiredDistance), 0.001f, Settings().maximumDistance);
+        std::clamp(MATH::FiniteOr(resolvedDistance, runtime_.desiredDistance), 0.001f, Settings().maximumDistance);
     runtime_.lookIdleSeconds = NonNegativeFinite(lookIdleSeconds, 0.0f);
 }
 
 void CameraFollowComponent::SetRuntimeView(const MATH::Vec3& eye, const MATH::Vec3& lookAt,
                                            bool collisionLimited) noexcept {
-    runtime_.eye = FiniteOr(eye, runtime_.eye);
-    runtime_.lookAt = FiniteOr(lookAt, runtime_.lookAt);
+    runtime_.eye = MATH::FiniteOr(eye, runtime_.eye);
+    runtime_.lookAt = MATH::FiniteOr(lookAt, runtime_.lookAt);
     runtime_.collisionLimited = collisionLimited;
     runtime_.initialized = true;
 }

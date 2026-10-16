@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include "Core/Math/HIKARI_ScalarMath.h"
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -152,17 +153,14 @@ struct TerrainStylizationSettings {
 };
 
 inline TerrainStylizationSettings SanitizeTerrainStylizationSettings(TerrainStylizationSettings settings) noexcept {
-    const auto clampFinite = [](float value, float fallback, float minimum, float maximum) noexcept {
-        return std::clamp(std::isfinite(value) ? value : fallback, minimum, maximum);
-    };
-    settings.textureScale = clampFinite(settings.textureScale, 1.0f, 0.1f, 8.0f);
-    settings.textureStrength = clampFinite(settings.textureStrength, 1.0f, 0.0f, 2.0f);
-    settings.normalStrength = clampFinite(settings.normalStrength, 1.0f, 0.0f, 2.0f);
-    settings.saturation = clampFinite(settings.saturation, 1.0f, 0.0f, 2.0f);
-    settings.shadowStrength = clampFinite(settings.shadowStrength, 1.0f, 0.0f, 1.0f);
-    settings.rockSaturation = clampFinite(settings.rockSaturation, 0.30f, 0.0f, 1.0f);
-    settings.facetSizeMeters = clampFinite(settings.facetSizeMeters, 1.6f, 0.25f, 16.0f);
-    settings.facetStrength = clampFinite(settings.facetStrength, 0.0f, 0.0f, 1.0f);
+    settings.textureScale = MATH::ClampFinite(settings.textureScale, 1.0f, 0.1f, 8.0f);
+    settings.textureStrength = MATH::ClampFinite(settings.textureStrength, 1.0f, 0.0f, 2.0f);
+    settings.normalStrength = MATH::ClampFinite(settings.normalStrength, 1.0f, 0.0f, 2.0f);
+    settings.saturation = MATH::ClampFinite(settings.saturation, 1.0f, 0.0f, 2.0f);
+    settings.shadowStrength = MATH::ClampFinite(settings.shadowStrength, 1.0f, 0.0f, 1.0f);
+    settings.rockSaturation = MATH::ClampFinite(settings.rockSaturation, 0.30f, 0.0f, 1.0f);
+    settings.facetSizeMeters = MATH::ClampFinite(settings.facetSizeMeters, 1.6f, 0.25f, 16.0f);
+    settings.facetStrength = MATH::ClampFinite(settings.facetStrength, 0.0f, 0.0f, 1.0f);
     return settings;
 }
 

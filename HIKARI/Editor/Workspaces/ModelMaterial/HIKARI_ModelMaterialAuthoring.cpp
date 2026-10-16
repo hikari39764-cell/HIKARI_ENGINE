@@ -44,7 +44,7 @@ bool ModelMaterialWorkspaceController::EditMaterialParameter(DocumentSceneBase& 
     const auto* parent = material.kind == MaterialAssetKind::Instance
                              ? LoadInstanceParent(scene.GetAssetDatabase(), outMessage)
                              : nullptr;
-    const auto* graph = parent ? &parent->graph : MATERIAL_GRAPH_UI::EditableGraph(material);
+    const auto* graph = parent ? &parent->graph : material.ActiveGraph();
     std::string id = parameterId;
     if (graph && !FindMaterialGraphParameter(*graph, id))
         id = "parameter." + id;

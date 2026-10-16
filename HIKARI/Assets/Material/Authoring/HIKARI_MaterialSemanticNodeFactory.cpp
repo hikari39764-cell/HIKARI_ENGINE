@@ -110,13 +110,6 @@ std::span<const std::string_view> AsSpan(const std::array<std::string_view, Size
 
 std::span<const std::string_view> EmptyBindings() noexcept { return {kNoBindings.data(), 0u}; }
 
-MaterialValueData Value(MaterialValueType type, float x, float y = 0.0f, float z = 0.0f, float w = 0.0f) {
-    MaterialValueData value{};
-    value.type = type;
-    value.numeric = {x, y, z, w};
-    return value;
-}
-
 void EnsureParameter(MaterialGraphData& graph, std::string_view id, std::string_view name, MaterialValueData value) {
     if (std::any_of(graph.parameters.begin(), graph.parameters.end(),
                     [id](const auto& parameter) { return parameter.id == id; })) {
@@ -140,22 +133,29 @@ void EnsureResource(MaterialGraphData& graph, std::string_view id, std::string_v
 }
 
 void EnsureRamp(MaterialGraphData& graph, bool multiRamp) {
-    EnsureParameter(graph, "parameter.shadowThreshold", "Shadow Threshold", Value(MaterialValueType::Float1, 0.46f));
-    EnsureParameter(graph, "parameter.shadowSoftness", "Shadow Softness", Value(MaterialValueType::Float1, 0.025f));
-    EnsureParameter(graph, "parameter.midThreshold", "Midtone Threshold", Value(MaterialValueType::Float1, 0.70f));
+    EnsureParameter(graph, "parameter.shadowThreshold", "Shadow Threshold",
+                    MakeMaterialValue(MaterialValueType::Float1, 0.46f));
+    EnsureParameter(graph, "parameter.shadowSoftness", "Shadow Softness",
+                    MakeMaterialValue(MaterialValueType::Float1, 0.025f));
+    EnsureParameter(graph, "parameter.midThreshold", "Midtone Threshold",
+                    MakeMaterialValue(MaterialValueType::Float1, 0.70f));
     EnsureParameter(graph, "parameter.shadowTint", "Shadow Tint",
-                    Value(MaterialValueType::Float3, 0.38f, 0.45f, 0.62f));
-    EnsureParameter(graph, "parameter.midTint", "Midtone Tint", Value(MaterialValueType::Float3, 0.72f, 0.78f, 0.88f));
-    EnsureParameter(graph, "parameter.litTint", "Lit Tint", Value(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
-    EnsureParameter(graph, "parameter.rampRow", "Ramp Row", Value(MaterialValueType::Float1, 0.5f));
+                    MakeMaterialValue(MaterialValueType::Float3, 0.38f, 0.45f, 0.62f));
+    EnsureParameter(graph, "parameter.midTint", "Midtone Tint",
+                    MakeMaterialValue(MaterialValueType::Float3, 0.72f, 0.78f, 0.88f));
+    EnsureParameter(graph, "parameter.litTint", "Lit Tint",
+                    MakeMaterialValue(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
+    EnsureParameter(graph, "parameter.rampRow", "Ramp Row", MakeMaterialValue(MaterialValueType::Float1, 0.5f));
     EnsureParameter(graph, "parameter.rampMaskInfluence", "Ramp Mask Influence",
-                    Value(MaterialValueType::Float1, 0.0f));
+                    MakeMaterialValue(MaterialValueType::Float1, 0.0f));
     EnsureParameter(graph, "parameter.rampBlend", "Secondary Ramp Blend",
-                    Value(MaterialValueType::Float1, multiRamp ? 0.5f : 0.0f));
+                    MakeMaterialValue(MaterialValueType::Float1, multiRamp ? 0.5f : 0.0f));
     EnsureParameter(graph, "parameter.rampLayerWeights", "Ramp Layer Weights",
-                    Value(MaterialValueType::Float4, 1.0f, 0.0f, 0.0f, 0.0f));
-    EnsureParameter(graph, "parameter.rampIntensity", "Ramp Influence", Value(MaterialValueType::Float1, 1.0f));
-    EnsureParameter(graph, "parameter.toonDirectGain", "Direct Light Gain", Value(MaterialValueType::Float1, 1.0f));
+                    MakeMaterialValue(MaterialValueType::Float4, 1.0f, 0.0f, 0.0f, 0.0f));
+    EnsureParameter(graph, "parameter.rampIntensity", "Ramp Influence",
+                    MakeMaterialValue(MaterialValueType::Float1, 1.0f));
+    EnsureParameter(graph, "parameter.toonDirectGain", "Direct Light Gain",
+                    MakeMaterialValue(MaterialValueType::Float1, 1.0f));
     EnsureResource(graph, "resource.diffuseRamp", "Diffuse Ramp",
                    multiRamp ? MaterialResourceType::Ramp2D : MaterialResourceType::Ramp1D,
                    MaterialResourceSemantic::Ramp);
@@ -532,38 +532,39 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material, MaterialGraphN
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::Surface;
         EnsureParameter(graph, "parameter.baseColor", "Base Color",
-                        Value(MaterialValueType::Float4, material.pbr.baseColorFactor.x, material.pbr.baseColorFactor.y,
-                              material.pbr.baseColorFactor.z, material.pbr.baseColorFactor.w));
+                        MakeMaterialValue(MaterialValueType::Float4, material.pbr.baseColorFactor.x,
+                                          material.pbr.baseColorFactor.y, material.pbr.baseColorFactor.z,
+                                          material.pbr.baseColorFactor.w));
         EnsureParameter(graph, "parameter.metallic", "Metallic",
-                        Value(MaterialValueType::Float1, material.pbr.metallicFactor));
+                        MakeMaterialValue(MaterialValueType::Float1, material.pbr.metallicFactor));
         EnsureParameter(graph, "parameter.roughness", "Roughness",
-                        Value(MaterialValueType::Float1, material.pbr.roughnessFactor));
+                        MakeMaterialValue(MaterialValueType::Float1, material.pbr.roughnessFactor));
         EnsureParameter(graph, "parameter.specular", "Specular",
-                        Value(MaterialValueType::Float1, material.pbr.specularFactor));
+                        MakeMaterialValue(MaterialValueType::Float1, material.pbr.specularFactor));
         EnsureParameter(graph, "parameter.specularColor", "Specular Color",
-                        Value(MaterialValueType::Float3, material.pbr.specularColorFactor.x,
-                              material.pbr.specularColorFactor.y, material.pbr.specularColorFactor.z));
+                        MakeMaterialValue(MaterialValueType::Float3, material.pbr.specularColorFactor.x,
+                                          material.pbr.specularColorFactor.y, material.pbr.specularColorFactor.z));
         EnsureParameter(graph, "parameter.normalScale", "Normal Scale",
-                        Value(MaterialValueType::Float1, material.pbr.normalScale));
+                        MakeMaterialValue(MaterialValueType::Float1, material.pbr.normalScale));
         EnsureParameter(graph, "parameter.occlusionStrength", "Occlusion Strength",
-                        Value(MaterialValueType::Float1, material.pbr.occlusionStrength));
+                        MakeMaterialValue(MaterialValueType::Float1, material.pbr.occlusionStrength));
         EnsureParameter(graph, "parameter.emissive", "Emissive",
-                        Value(MaterialValueType::Float3, material.pbr.emissiveFactor.x, material.pbr.emissiveFactor.y,
-                              material.pbr.emissiveFactor.z));
+                        MakeMaterialValue(MaterialValueType::Float3, material.pbr.emissiveFactor.x,
+                                          material.pbr.emissiveFactor.y, material.pbr.emissiveFactor.z));
         EnsureParameter(graph, "parameter.emissiveStrength", "Emissive Strength",
-                        Value(MaterialValueType::Float1, material.pbr.emissiveStrength));
+                        MakeMaterialValue(MaterialValueType::Float1, material.pbr.emissiveStrength));
         EnsureParameter(graph, "parameter.clearCoat", "Clear Coat",
-                        Value(MaterialValueType::Float1, material.pbr.clearCoatFactor));
+                        MakeMaterialValue(MaterialValueType::Float1, material.pbr.clearCoatFactor));
         EnsureParameter(graph, "parameter.clearCoatRoughness", "Clear Coat Roughness",
-                        Value(MaterialValueType::Float1, material.pbr.clearCoatRoughnessFactor));
+                        MakeMaterialValue(MaterialValueType::Float1, material.pbr.clearCoatRoughnessFactor));
         EnsureParameter(graph, "parameter.transmission", "Transmission",
-                        Value(MaterialValueType::Float1, material.pbr.transmissionFactor));
+                        MakeMaterialValue(MaterialValueType::Float1, material.pbr.transmissionFactor));
         EnsureParameter(graph, "parameter.ior", "Index of Refraction",
-                        Value(MaterialValueType::Float1, material.pbr.ior));
+                        MakeMaterialValue(MaterialValueType::Float1, material.pbr.ior));
         EnsureParameter(graph, "parameter.subsurface", "Subsurface",
-                        Value(MaterialValueType::Float1, material.pbr.subsurfaceFactor));
+                        MakeMaterialValue(MaterialValueType::Float1, material.pbr.subsurfaceFactor));
         EnsureParameter(graph, "parameter.subsurfaceRadius", "Subsurface Radius",
-                        Value(MaterialValueType::Float1, material.pbr.subsurfaceRadius));
+                        MakeMaterialValue(MaterialValueType::Float1, material.pbr.subsurfaceRadius));
         break;
     case MaterialNodeKind::RampDiffuse:
     case MaterialNodeKind::MultiRampDiffuse: {
@@ -577,180 +578,202 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material, MaterialGraphN
     case MaterialNodeKind::SpecularBand:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::SpecularResponse;
-        EnsureParameter(graph, "parameter.specularBandWidth", "Band Width", Value(MaterialValueType::Float1, 0.075f));
+        EnsureParameter(graph, "parameter.specularBandWidth", "Band Width",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.075f));
         EnsureParameter(graph, "parameter.specularBandSoftness", "Band Softness",
-                        Value(MaterialValueType::Float1, 0.012f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.012f));
         EnsureParameter(graph, "parameter.specularIntensity", "Band Intensity",
-                        Value(MaterialValueType::Float1, 0.35f));
-        EnsureParameter(graph, "parameter.specularPower", "Band Power", Value(MaterialValueType::Float1, 96.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.35f));
+        EnsureParameter(graph, "parameter.specularPower", "Band Power",
+                        MakeMaterialValue(MaterialValueType::Float1, 96.0f));
         EnsureParameter(graph, "parameter.specularTint", "Band Tint",
-                        Value(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
+                        MakeMaterialValue(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
         break;
     case MaterialNodeKind::FresnelRim:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::Float3;
-        EnsureParameter(graph, "parameter.rimColor", "Rim Color", Value(MaterialValueType::Float3, 0.68f, 0.78f, 1.0f));
-        EnsureParameter(graph, "parameter.rimPower", "Rim Power", Value(MaterialValueType::Float1, 4.0f));
-        EnsureParameter(graph, "parameter.rimWidth", "Rim Width", Value(MaterialValueType::Float1, 0.22f));
-        EnsureParameter(graph, "parameter.rimIntensity", "Rim Intensity", Value(MaterialValueType::Float1, 0.28f));
+        EnsureParameter(graph, "parameter.rimColor", "Rim Color",
+                        MakeMaterialValue(MaterialValueType::Float3, 0.68f, 0.78f, 1.0f));
+        EnsureParameter(graph, "parameter.rimPower", "Rim Power", MakeMaterialValue(MaterialValueType::Float1, 4.0f));
+        EnsureParameter(graph, "parameter.rimWidth", "Rim Width", MakeMaterialValue(MaterialValueType::Float1, 0.22f));
+        EnsureParameter(graph, "parameter.rimIntensity", "Rim Intensity",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.28f));
         EnsureParameter(graph, "parameter.rimLightAlignment", "Light Alignment",
-                        Value(MaterialValueType::Float1, 0.35f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.35f));
         break;
     case MaterialNodeKind::MatCap:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::Float3;
         EnsureParameter(graph, "parameter.matCapTint", "MatCap Tint",
-                        Value(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
+                        MakeMaterialValue(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
         EnsureParameter(graph, "parameter.matCapIntensity", "MatCap Intensity",
-                        Value(MaterialValueType::Float1, 0.25f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.25f));
         EnsureParameter(graph, "parameter.matCapViewCorrection", "View Correction",
-                        Value(MaterialValueType::Float1, 1.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 1.0f));
         EnsureParameter(graph, "parameter.matCapSphericalNormalBlend", "Spherical Normal Blend",
-                        Value(MaterialValueType::Float1, 0.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.0f));
         break;
     case MaterialNodeKind::AnisotropicHair:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::SpecularResponse;
-        EnsureParameter(graph, "parameter.hairShift", "Primary Shift", Value(MaterialValueType::Float1, 0.08f));
-        EnsureParameter(graph, "parameter.hairWidth", "Highlight Width", Value(MaterialValueType::Float1, 0.18f));
+        EnsureParameter(graph, "parameter.hairShift", "Primary Shift",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.08f));
+        EnsureParameter(graph, "parameter.hairWidth", "Highlight Width",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.18f));
         EnsureParameter(graph, "parameter.hairSecondaryShift", "Secondary Shift",
-                        Value(MaterialValueType::Float1, -0.10f));
+                        MakeMaterialValue(MaterialValueType::Float1, -0.10f));
         EnsureParameter(graph, "parameter.hairIntensity", "Highlight Intensity",
-                        Value(MaterialValueType::Float1, 1.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 1.0f));
         EnsureParameter(graph, "parameter.hairPrimaryPower", "Primary Sharpness",
-                        Value(MaterialValueType::Float1, 96.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 96.0f));
         EnsureParameter(graph, "parameter.hairSecondaryPower", "Secondary Sharpness",
-                        Value(MaterialValueType::Float1, 48.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 48.0f));
         EnsureParameter(graph, "parameter.hairSecondaryIntensity", "Secondary Intensity",
-                        Value(MaterialValueType::Float1, 0.45f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.45f));
         EnsureParameter(graph, "parameter.hairFlowStrength", "Flow Map Strength",
-                        Value(MaterialValueType::Float1, 1.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 1.0f));
         EnsureParameter(graph, "parameter.hairHighlightTint", "Hair Highlight Tint",
-                        Value(MaterialValueType::Float3, 1.0f, 0.92f, 0.84f));
+                        MakeMaterialValue(MaterialValueType::Float3, 1.0f, 0.92f, 0.84f));
         break;
     case MaterialNodeKind::FaceSdf:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::DiffuseResponse;
         EnsureRamp(graph, false);
         EnsureParameter(graph, "parameter.faceShadowSoftness", "Shadow Softness",
-                        Value(MaterialValueType::Float1, 0.04f));
-        EnsureParameter(graph, "parameter.faceShadowOffset", "Shadow Offset", Value(MaterialValueType::Float1, 0.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.04f));
+        EnsureParameter(graph, "parameter.faceShadowOffset", "Shadow Offset",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.0f));
         EnsureParameter(graph, "parameter.faceRight", "Face Local Right",
-                        Value(MaterialValueType::Float3, 1.0f, 0.0f, 0.0f));
+                        MakeMaterialValue(MaterialValueType::Float3, 1.0f, 0.0f, 0.0f));
         EnsureParameter(graph, "parameter.faceForward", "Face Local Forward",
-                        Value(MaterialValueType::Float3, 0.0f, 0.0f, 1.0f));
+                        MakeMaterialValue(MaterialValueType::Float3, 0.0f, 0.0f, 1.0f));
         break;
     case MaterialNodeKind::EyeLighting:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::Float3;
-        EnsureParameter(graph, "parameter.irisDepth", "Iris Depth", Value(MaterialValueType::Float1, 0.12f));
-        EnsureParameter(graph, "parameter.eyeSparkle", "Catchlight Intensity", Value(MaterialValueType::Float1, 0.35f));
+        EnsureParameter(graph, "parameter.irisDepth", "Iris Depth",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.12f));
+        EnsureParameter(graph, "parameter.eyeSparkle", "Catchlight Intensity",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.35f));
         EnsureParameter(graph, "parameter.eyeSparklePower", "Catchlight Sharpness",
-                        Value(MaterialValueType::Float1, 64.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 64.0f));
         EnsureParameter(graph, "parameter.irisCenter", "Iris UV Center",
-                        Value(MaterialValueType::Float2, 0.50f, 0.50f));
-        EnsureParameter(graph, "parameter.irisRadius", "Iris UV Radius", Value(MaterialValueType::Float1, 0.48f));
+                        MakeMaterialValue(MaterialValueType::Float2, 0.50f, 0.50f));
+        EnsureParameter(graph, "parameter.irisRadius", "Iris UV Radius",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.48f));
         EnsureParameter(graph, "parameter.irisMaskSoftness", "Iris Mask Softness",
-                        Value(MaterialValueType::Float1, 0.08f));
-        EnsureParameter(graph, "parameter.eyeLayerMode", "Eye Layer Mode", Value(MaterialValueType::Float1, 0.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.08f));
+        EnsureParameter(graph, "parameter.eyeLayerMode", "Eye Layer Mode",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.0f));
         EnsureParameter(graph, "parameter.eyeHighlightOpacity", "Highlight Opacity",
-                        Value(MaterialValueType::Float1, 1.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 1.0f));
         EnsureParameter(graph, "parameter.eyeHighlightThreshold", "Highlight Threshold",
-                        Value(MaterialValueType::Float1, 0.02f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.02f));
         EnsureParameter(graph, "parameter.eyeHighlightSoftness", "Highlight Softness",
-                        Value(MaterialValueType::Float1, 0.04f));
-        EnsureParameter(graph, "parameter.eyeParallaxScale", "Parallax Scale", Value(MaterialValueType::Float1, 0.10f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.04f));
+        EnsureParameter(graph, "parameter.eyeParallaxScale", "Parallax Scale",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.10f));
         EnsureParameter(graph, "parameter.eyeHighlightIntensity", "Highlight Intensity",
-                        Value(MaterialValueType::Float1, 2.0f));
-        EnsureParameter(graph, "parameter.eyeBaseLift", "Iris Light Lift", Value(MaterialValueType::Float1, 0.18f));
+                        MakeMaterialValue(MaterialValueType::Float1, 2.0f));
+        EnsureParameter(graph, "parameter.eyeBaseLift", "Iris Light Lift",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.18f));
         EnsureParameter(graph, "parameter.eyeCausticIntensity", "Caustic Intensity",
-                        Value(MaterialValueType::Float1, 0.25f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.25f));
         EnsureParameter(graph, "parameter.eyeCausticTint", "Caustic Tint",
-                        Value(MaterialValueType::Float3, 1.0f, 0.72f, 0.38f));
-        EnsureParameter(graph, "parameter.eyeCausticWidth", "Caustic Width", Value(MaterialValueType::Float1, 0.28f));
+                        MakeMaterialValue(MaterialValueType::Float3, 1.0f, 0.72f, 0.38f));
+        EnsureParameter(graph, "parameter.eyeCausticWidth", "Caustic Width",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.28f));
         break;
     case MaterialNodeKind::CorneaHighlight:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::Float3;
         material.surface.alphaMode = MaterialAlphaMode::Blend;
-        EnsureParameter(graph, "parameter.irisDepth", "Iris Depth", Value(MaterialValueType::Float1, 0.12f));
+        EnsureParameter(graph, "parameter.irisDepth", "Iris Depth",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.12f));
         EnsureParameter(graph, "parameter.irisCenter", "Iris UV Center",
-                        Value(MaterialValueType::Float2, 0.50f, 0.50f));
-        EnsureParameter(graph, "parameter.irisRadius", "Iris UV Radius", Value(MaterialValueType::Float1, 0.48f));
+                        MakeMaterialValue(MaterialValueType::Float2, 0.50f, 0.50f));
+        EnsureParameter(graph, "parameter.irisRadius", "Iris UV Radius",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.48f));
         EnsureParameter(graph, "parameter.irisMaskSoftness", "Iris Mask Softness",
-                        Value(MaterialValueType::Float1, 0.08f));
-        EnsureParameter(graph, "parameter.eyeLayerMode", "Eye Layer Mode", Value(MaterialValueType::Float1, 1.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.08f));
+        EnsureParameter(graph, "parameter.eyeLayerMode", "Eye Layer Mode",
+                        MakeMaterialValue(MaterialValueType::Float1, 1.0f));
         EnsureParameter(graph, "parameter.eyeHighlightOpacity", "Highlight Opacity",
-                        Value(MaterialValueType::Float1, 1.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 1.0f));
         EnsureParameter(graph, "parameter.eyeHighlightThreshold", "Highlight Threshold",
-                        Value(MaterialValueType::Float1, 0.02f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.02f));
         EnsureParameter(graph, "parameter.eyeHighlightSoftness", "Highlight Softness",
-                        Value(MaterialValueType::Float1, 0.04f));
-        EnsureParameter(graph, "parameter.eyeParallaxScale", "Parallax Scale", Value(MaterialValueType::Float1, 0.10f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.04f));
+        EnsureParameter(graph, "parameter.eyeParallaxScale", "Parallax Scale",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.10f));
         EnsureParameter(graph, "parameter.eyeHighlightIntensity", "Highlight Intensity",
-                        Value(MaterialValueType::Float1, 2.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 2.0f));
         EnsureParameter(graph, "parameter.corneaHighlightMode", "Lighting Mode",
-                        Value(MaterialValueType::Float1, 2.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 2.0f));
         EnsureParameter(graph, "parameter.corneaHighlightTravel", "Highlight Travel",
-                        Value(MaterialValueType::Float1, 0.10f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.10f));
         EnsureParameter(graph, "parameter.corneaHighlightViewInfluence", "View Influence",
-                        Value(MaterialValueType::Float1, 0.35f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.35f));
         EnsureParameter(graph, "parameter.corneaHighlightLightInfluence", "Light Influence",
-                        Value(MaterialValueType::Float1, 0.65f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.65f));
         EnsureParameter(graph, "parameter.corneaHighlightCurvature", "Cornea Curvature",
-                        Value(MaterialValueType::Float1, 0.75f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.75f));
         EnsureParameter(graph, "parameter.corneaHighlightMinBrightness", "Minimum Brightness",
-                        Value(MaterialValueType::Float1, 0.45f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.45f));
         EnsureParameter(graph, "parameter.corneaHighlightLightResponse", "Light Response",
-                        Value(MaterialValueType::Float1, 0.65f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.65f));
         EnsureParameter(graph, "parameter.corneaHighlightEdgeFade", "Edge Fade",
-                        Value(MaterialValueType::Float1, 0.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.0f));
         EnsureParameter(graph, "parameter.corneaHighlightSharpness", "Highlight Sharpness",
-                        Value(MaterialValueType::Float1, 12.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 12.0f));
         EnsureParameter(graph, "parameter.corneaHighlightLightColor", "Follow Light Color",
-                        Value(MaterialValueType::Float1, 0.25f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.25f));
         break;
     case MaterialNodeKind::SkinLighting:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::DiffuseResponse;
-        EnsureParameter(graph, "parameter.skinWrap", "Light Wrap", Value(MaterialValueType::Float1, 0.18f));
-        EnsureParameter(graph, "parameter.skinSubsurface", "Subsurface", Value(MaterialValueType::Float1, 0.12f));
+        EnsureParameter(graph, "parameter.skinWrap", "Light Wrap", MakeMaterialValue(MaterialValueType::Float1, 0.18f));
+        EnsureParameter(graph, "parameter.skinSubsurface", "Subsurface",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.12f));
         EnsureParameter(graph, "parameter.skinTint", "Scatter Tint",
-                        Value(MaterialValueType::Float3, 1.0f, 0.42f, 0.32f));
+                        MakeMaterialValue(MaterialValueType::Float3, 1.0f, 0.42f, 0.32f));
         break;
     case MaterialNodeKind::FabricSheen:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::Float3;
-        EnsureParameter(graph, "parameter.fabricSheen", "Sheen", Value(MaterialValueType::Float1, 0.28f));
-        EnsureParameter(graph, "parameter.fiberRoughness", "Fiber Roughness", Value(MaterialValueType::Float1, 0.72f));
-        EnsureParameter(graph, "parameter.fabricSheenPower", "Sheen Power", Value(MaterialValueType::Float1, 4.0f));
+        EnsureParameter(graph, "parameter.fabricSheen", "Sheen", MakeMaterialValue(MaterialValueType::Float1, 0.28f));
+        EnsureParameter(graph, "parameter.fiberRoughness", "Fiber Roughness",
+                        MakeMaterialValue(MaterialValueType::Float1, 0.72f));
+        EnsureParameter(graph, "parameter.fabricSheenPower", "Sheen Power",
+                        MakeMaterialValue(MaterialValueType::Float1, 4.0f));
         EnsureParameter(graph, "parameter.fabricSheenIntensity", "Sheen Intensity",
-                        Value(MaterialValueType::Float1, 1.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 1.0f));
         break;
     case MaterialNodeKind::HybridLighting:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::DiffuseResponse;
         EnsureParameter(graph, "parameter.directDiffusePbrBlend", "Diffuse PBR Blend",
-                        Value(MaterialValueType::Float1, 0.25f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.25f));
         EnsureParameter(graph, "parameter.directSpecularPbrBlend", "Specular PBR Blend",
-                        Value(MaterialValueType::Float1, 0.35f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.35f));
         EnsureParameter(graph, "parameter.indirectPbrBlend", "Indirect PBR Blend",
-                        Value(MaterialValueType::Float1, 0.65f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.65f));
         break;
     case MaterialNodeKind::Outline:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::OutlineResponse;
-        EnsureParameter(graph, "parameter.outlineMode", "Outline Mode", Value(MaterialValueType::Float1, 2.0f));
+        EnsureParameter(graph, "parameter.outlineMode", "Outline Mode",
+                        MakeMaterialValue(MaterialValueType::Float1, 2.0f));
         EnsureParameter(graph, "parameter.outlineColor", "Outline Color",
-                        Value(MaterialValueType::Float3, 0.025f, 0.030f, 0.045f));
+                        MakeMaterialValue(MaterialValueType::Float3, 0.025f, 0.030f, 0.045f));
         EnsureParameter(graph, "parameter.outlineThickness", "Outline Thickness",
-                        Value(MaterialValueType::Float1, 2.0f));
+                        MakeMaterialValue(MaterialValueType::Float1, 2.0f));
         break;
     case MaterialNodeKind::HairShadow:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::DiffuseResponse;
         EnsureParameter(graph, "parameter.hairShadowStrength", "Hair Shadow Strength",
-                        Value(MaterialValueType::Float1, 0.65f));
+                        MakeMaterialValue(MaterialValueType::Float1, 0.65f));
         break;
     default: break;
     }

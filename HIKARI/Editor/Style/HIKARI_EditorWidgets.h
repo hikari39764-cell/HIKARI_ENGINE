@@ -60,4 +60,14 @@ bool BeginMetricTable(const char* id, float labelWidth = 210.0f);
 void PropertyLabel(const char* label);
 void EndPropertyTable();
 
+// BeginMetricTable の表へ「ラベル | 書式付きの値」を 1 行足す。
+template <typename... Args>
+void MetricRow(const char* label, const char* format, Args... args) {
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextUnformatted(label);
+    ImGui::TableSetColumnIndex(1);
+    ImGui::Text(format, args...);
+}
+
 } // namespace HIKARI::EDITOR

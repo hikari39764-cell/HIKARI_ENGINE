@@ -1,4 +1,5 @@
 #include "HIKARI_WorldSpriteComponent.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 
 #include <algorithm>
 #include <array>
@@ -93,8 +94,8 @@ void WorldSpriteComponent::Deserialize(const nlohmann::json& in) {
     if (const nlohmann::json* value = JSONREAD::FindMember(in, WorldSpriteComponentPropertyIds::Tint)) {
         tint_ = SanitizeColor(JSONREAD::Vec3Or(*value, tint_));
     }
-    opacity_ =
-        ClampFinite(JSONREAD::NumberMemberOr(in, WorldSpriteComponentPropertyIds::Opacity, 1.0f), 1.0f, 0.0f, 1.0f);
+    opacity_ = MATH::ClampFinite(JSONREAD::NumberMemberOr(in, WorldSpriteComponentPropertyIds::Opacity, 1.0f), 1.0f,
+                                 0.0f, 1.0f);
     if (const nlohmann::json* value = JSONREAD::FindMember(in, WorldSpriteComponentPropertyIds::Pivot)) {
         pivot_ = SanitizePivot(JSONREAD::Vec2Or(*value, pivot_));
     }
@@ -103,8 +104,8 @@ void WorldSpriteComponent::Deserialize(const nlohmann::json& in) {
         !spriteAssetGuid_.IsValid() && JSONREAD::FindMember(in, WorldSpriteComponentPropertyIds::Pivot) != nullptr);
     alphaMode_ = TEXT::ParseEnum(
         kAlphaModeNames, JSONREAD::StringMemberOr(in, WorldSpriteComponentPropertyIds::AlphaMode, {}), AlphaMode::Auto);
-    alphaCutoff_ =
-        ClampFinite(JSONREAD::NumberMemberOr(in, WorldSpriteComponentPropertyIds::AlphaCutoff, 0.5f), 0.5f, 0.0f, 1.0f);
+    alphaCutoff_ = MATH::ClampFinite(JSONREAD::NumberMemberOr(in, WorldSpriteComponentPropertyIds::AlphaCutoff, 0.5f),
+                                     0.5f, 0.0f, 1.0f);
     transparentSortPriority_ = std::clamp(
         JSONREAD::IntegerMemberOr(in, WorldSpriteComponentPropertyIds::TransparentSortPriority, 0), -32768, 32767);
     const auto material = in.find("spriteMaterial");
@@ -334,8 +335,8 @@ void WorldSpriteComponent::BuildInspector(IInspectorBuilder& builder) {
     size_ = SanitizeSize(size_);
     pivot_ = SanitizePivot(pivot_);
     tint_ = SanitizeColor(tint_);
-    opacity_ = ClampFinite(opacity_, 1.0f, 0.0f, 1.0f);
-    alphaCutoff_ = ClampFinite(alphaCutoff_, 0.5f, 0.0f, 1.0f);
+    opacity_ = MATH::ClampFinite(opacity_, 1.0f, 0.0f, 1.0f);
+    alphaCutoff_ = MATH::ClampFinite(alphaCutoff_, 0.5f, 0.0f, 1.0f);
     transparentSortPriority_ = std::clamp(transparentSortPriority_, -32768, 32767);
     if (changed) {
         NotifyRenderStateDirty();
@@ -346,9 +347,9 @@ void WorldSpriteComponent::SanitizePresentation() noexcept {
     atlasColumns_ = std::clamp(atlasColumns_, 1, 64);
     atlasRows_ = std::clamp(atlasRows_, 1, 64);
     atlasFrames_ = std::clamp(atlasFrames_, 1, atlasColumns_ * atlasRows_);
-    framesPerSecond_ = ClampFinite(framesPerSecond_, 0, 0, 60);
-    roughness_ = ClampFinite(roughness_, 0.85f, 0.05f, 1);
-    specular_ = ClampFinite(specular_, 0.25f, 0, 1);
+    framesPerSecond_ = MATH::ClampFinite(framesPerSecond_, 0, 0, 60);
+    roughness_ = MATH::ClampFinite(roughness_, 0.85f, 0.05f, 1);
+    specular_ = MATH::ClampFinite(specular_, 0.25f, 0, 1);
 }
 
 void WorldSpriteComponent::SetTextureAssetGuid(AssetGuid guid) {

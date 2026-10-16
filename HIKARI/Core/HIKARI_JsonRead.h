@@ -10,6 +10,7 @@
 
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Core/Math/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 
 namespace HIKARI::JSONREAD {
 
@@ -24,6 +25,12 @@ inline const nlohmann::json* FindMember(const nlohmann::json& object, const char
 inline float NumberMemberOr(const nlohmann::json& object, const char* key, float fallback) {
     const nlohmann::json* value = FindMember(object, key);
     return value != nullptr && value->is_number() ? value->get<float>() : fallback;
+}
+
+// 数値を読み、非有限なら fallback にして [minimum, maximum] へ収める。
+inline float ClampedNumberMemberOr(const nlohmann::json& object, const char* key, float fallback, float minimum,
+                                   float maximum) {
+    return MATH::ClampFinite(NumberMemberOr(object, key, fallback), fallback, minimum, maximum);
 }
 
 inline int IntegerMemberOr(const nlohmann::json& object, const char* key, int fallback) {

@@ -1,4 +1,5 @@
 #include "Scene/Terrain/HIKARI_TerrainSurfaceBake.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Math/HIKARI_ScalarMath.h"
 
 #include <algorithm>
@@ -7,8 +8,6 @@
 namespace HIKARI::TERRAIN::RENDER {
 
 namespace {
-float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
-
 float SmoothEdge(float edge) noexcept { return edge * edge * (3.0f - 2.0f * edge); }
 
 // 格子上の双線形サンプル。uv は [0,1] へ丸め、端は外側の頂点を繰り返す。
@@ -122,22 +121,22 @@ bool TerrainSurfaceBakeInputs::operator==(const TerrainSurfaceBakeInputs& rhs) c
 TerrainSurfaceBakeInputs ResolveTerrainSurfaceBakeInputs(const RENDER3D::TERRAIN::TerrainSurfaceRenderData& data) {
     TerrainSurfaceBakeInputs inputs{};
     inputs.gridResolution = std::clamp(data.gridResolution, 1u, 512u);
-    inputs.extents = {(std::max)(FiniteOr(data.extents.x, 20.0f), 0.001f),
-                      (std::max)(FiniteOr(data.extents.y, 20.0f), 0.001f)};
-    inputs.rippleAmount = std::clamp(FiniteOr(data.rippleAmount, 0.0f), 0.0f, 3.0f);
-    inputs.heightScale = std::clamp(FiniteOr(data.heightScale, 0.0f), 0.0f, 2.0f);
-    const float edgeDepth = std::clamp(FiniteOr(data.edgeDepth, 0.0f), 0.0f, 100.0f);
-    const float rimStrength = std::clamp(FiniteOr(data.rimStrength, 0.0f), 0.0f, 2.0f);
+    inputs.extents = {(std::max)(MATH::FiniteOr(data.extents.x, 20.0f), 0.001f),
+                      (std::max)(MATH::FiniteOr(data.extents.y, 20.0f), 0.001f)};
+    inputs.rippleAmount = std::clamp(MATH::FiniteOr(data.rippleAmount, 0.0f), 0.0f, 3.0f);
+    inputs.heightScale = std::clamp(MATH::FiniteOr(data.heightScale, 0.0f), 0.0f, 2.0f);
+    const float edgeDepth = std::clamp(MATH::FiniteOr(data.edgeDepth, 0.0f), 0.0f, 100.0f);
+    const float rimStrength = std::clamp(MATH::FiniteOr(data.rimStrength, 0.0f), 0.0f, 2.0f);
     inputs.edgeSinkDepth = edgeDepth > 1.0e-4f ? edgeDepth : rimStrength;
     if (!data.layerStyles.empty()) {
-        inputs.facetSizeMeters = FiniteOr(data.layerStyles.front().facetSizeMeters, 1.6f);
-        inputs.facetStrength = FiniteOr(data.layerStyles.front().facetStrength, 0.0f);
+        inputs.facetSizeMeters = MATH::FiniteOr(data.layerStyles.front().facetSizeMeters, 1.6f);
+        inputs.facetStrength = MATH::FiniteOr(data.layerStyles.front().facetStrength, 0.0f);
     }
     const std::size_t layerCount =
         (std::min)(static_cast<std::size_t>((std::max)(data.layerCount, 1u)), data.layerStyles.size());
     inputs.granularStrength.reserve(layerCount);
     for (std::size_t layer = 0u; layer < layerCount; ++layer) {
-        inputs.granularStrength.push_back(FiniteOr(data.layerStyles[layer].granularStrength, 0.0f));
+        inputs.granularStrength.push_back(MATH::FiniteOr(data.layerStyles[layer].granularStrength, 0.0f));
     }
     return inputs;
 }

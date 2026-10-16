@@ -17,15 +17,6 @@ MaterialProgramOpcode ToProgramOpcode(const MaterialNodeTypeId& typeId) noexcept
     return kind;
 }
 
-std::string PinKey(std::string_view nodeId, std::string_view pin) {
-    std::string key{};
-    key.reserve(nodeId.size() + pin.size() + 1u);
-    key.append(nodeId);
-    key.push_back(':');
-    key.append(pin);
-    return key;
-}
-
 std::unordered_set<std::string> CollectReachable(const MaterialGraphData& graph) {
     std::unordered_set<std::string> reachable{};
     if (graph.outputNodeId.empty()) {
@@ -121,7 +112,7 @@ void BuildMaterialProgramInstructions(const MaterialGraphData& graph, MaterialPr
                     return candidate.targetNodeId == node.id && candidate.targetPin == inputPin;
                 });
             if (edge != graph.edges.end()) {
-                const auto source = outputRegisters.find(PinKey(edge->sourceNodeId, edge->sourcePin));
+                const auto source = outputRegisters.find(MaterialPinKey(edge->sourceNodeId, edge->sourcePin));
                 if (source != outputRegisters.end())
                     sourceRegister = source->second;
             }
@@ -130,7 +121,7 @@ void BuildMaterialProgramInstructions(const MaterialGraphData& graph, MaterialPr
         for (const std::string_view outputPin : GetMaterialGraphNodeOutputPins(node)) {
             instruction.outputPins.emplace_back(outputPin);
             instruction.outputRegisters.push_back(nextRegister);
-            outputRegisters.emplace(PinKey(node.id, outputPin), nextRegister++);
+            outputRegisters.emplace(MaterialPinKey(node.id, outputPin), nextRegister++);
         }
         if (node.kind == MaterialNodeKind::SurfaceOutput && !instruction.inputRegisters.empty()) {
             program.surfaceOutputRegister = instruction.inputRegisters.front();

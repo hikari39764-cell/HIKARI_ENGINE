@@ -1,4 +1,5 @@
 #include "Scene/Components/Rendering/WorldText/HIKARI_WorldTextComponent.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 
 #include <algorithm>
@@ -37,26 +38,22 @@ TextStyleAsset WorldTextComponent::ResolveAppearance(const TextAssetStore* store
 namespace {
 constexpr size_t kMaximumFontAssetPathBytes = 1024u;
 
-float ClampFinite(float value, float fallback, float minimum, float maximum) noexcept {
-    return std::clamp(std::isfinite(value) ? value : fallback, minimum, maximum);
-}
-
 MATH::Vec2 SanitizeSize(MATH::Vec2 value) noexcept {
-    value.x = ClampFinite(value.x, 4.0f, 0.001f, 100000.0f);
-    value.y = ClampFinite(value.y, 1.0f, 0.001f, 100000.0f);
+    value.x = MATH::ClampFinite(value.x, 4.0f, 0.001f, 100000.0f);
+    value.y = MATH::ClampFinite(value.y, 1.0f, 0.001f, 100000.0f);
     return value;
 }
 
 MATH::Vec2 SanitizePivot(MATH::Vec2 value) noexcept {
-    value.x = ClampFinite(value.x, 0.5f, 0.0f, 1.0f);
-    value.y = ClampFinite(value.y, 0.5f, 0.0f, 1.0f);
+    value.x = MATH::ClampFinite(value.x, 0.5f, 0.0f, 1.0f);
+    value.y = MATH::ClampFinite(value.y, 0.5f, 0.0f, 1.0f);
     return value;
 }
 
 MATH::Vec3 SanitizeColor(MATH::Vec3 value, MATH::Vec3 fallback) noexcept {
-    value.x = ClampFinite(value.x, fallback.x, 0.0f, 16.0f);
-    value.y = ClampFinite(value.y, fallback.y, 0.0f, 16.0f);
-    value.z = ClampFinite(value.z, fallback.z, 0.0f, 16.0f);
+    value.x = MATH::ClampFinite(value.x, fallback.x, 0.0f, 16.0f);
+    value.y = MATH::ClampFinite(value.y, fallback.y, 0.0f, 16.0f);
+    value.z = MATH::ClampFinite(value.z, fallback.z, 0.0f, 16.0f);
     return value;
 }
 
@@ -151,7 +148,7 @@ void WorldTextComponent::SetLayoutSize(MATH::Vec2 size) {
 }
 
 void WorldTextComponent::SetFontHeight(float height) {
-    const auto value = ClampFinite(height, 0.5f, 0.001f, 10000.0f);
+    const auto value = MATH::ClampFinite(height, 0.5f, 0.001f, 10000.0f);
     if (fontHeight_ == value)
         return;
     fontHeight_ = value;
@@ -186,7 +183,7 @@ void WorldTextComponent::SetWrapMode(WrapMode wrap) {
 }
 
 void WorldTextComponent::SetLineHeightMultiplier(float multiplier) {
-    const auto value = ClampFinite(multiplier, 1.2f, 0.25f, 4.0f);
+    const auto value = MATH::ClampFinite(multiplier, 1.2f, 0.25f, 4.0f);
     if (lineHeightMultiplier_ == value)
         return;
     lineHeightMultiplier_ = value;
@@ -194,7 +191,7 @@ void WorldTextComponent::SetLineHeightMultiplier(float multiplier) {
 }
 
 void WorldTextComponent::SetLetterSpacing(float spacing) {
-    const auto value = ClampFinite(spacing, 0.0f, -10000.0f, 10000.0f);
+    const auto value = MATH::ClampFinite(spacing, 0.0f, -10000.0f, 10000.0f);
     if (letterSpacing_ == value)
         return;
     letterSpacing_ = value;
@@ -228,7 +225,7 @@ void WorldTextComponent::SetOutlineColor(MATH::Vec3 color) {
 }
 
 void WorldTextComponent::SetOutlineWidth(float width) {
-    const auto value = ClampFinite(width, 0.04f, 0.0f, 0.25f);
+    const auto value = MATH::ClampFinite(width, 0.04f, 0.0f, 0.25f);
     if (outlineWidth_ == value)
         return;
     outlineWidth_ = value;
@@ -236,7 +233,7 @@ void WorldTextComponent::SetOutlineWidth(float width) {
 }
 
 void WorldTextComponent::SetOpacity(float opacity) {
-    const auto value = ClampFinite(opacity, 1.0f, 0.0f, 1.0f);
+    const auto value = MATH::ClampFinite(opacity, 1.0f, 0.0f, 1.0f);
     if (opacity_ == value)
         return;
     opacity_ = value;
@@ -244,7 +241,7 @@ void WorldTextComponent::SetOpacity(float opacity) {
 }
 
 void WorldTextComponent::SetRevealAmount(float amount) {
-    const auto value = ClampFinite(amount, 1.0f, 0.0f, 1.0f);
+    const auto value = MATH::ClampFinite(amount, 1.0f, 0.0f, 1.0f);
     if (revealAmount_ == value)
         return;
     revealAmount_ = value;
@@ -506,12 +503,12 @@ void WorldTextComponent::Sanitize() noexcept {
     pivot_ = SanitizePivot(pivot_);
     color_ = SanitizeColor(color_, {1.0f, 1.0f, 1.0f});
     outlineColor_ = SanitizeColor(outlineColor_, {});
-    fontHeight_ = ClampFinite(fontHeight_, 0.5f, 0.001f, 10000.0f);
-    lineHeightMultiplier_ = ClampFinite(lineHeightMultiplier_, 1.2f, 0.25f, 4.0f);
-    letterSpacing_ = ClampFinite(letterSpacing_, 0.0f, -10000.0f, 10000.0f);
-    outlineWidth_ = ClampFinite(outlineWidth_, 0.04f, 0.0f, 0.25f);
-    opacity_ = ClampFinite(opacity_, 1.0f, 0.0f, 1.0f);
-    revealAmount_ = ClampFinite(revealAmount_, 1.0f, 0.0f, 1.0f);
+    fontHeight_ = MATH::ClampFinite(fontHeight_, 0.5f, 0.001f, 10000.0f);
+    lineHeightMultiplier_ = MATH::ClampFinite(lineHeightMultiplier_, 1.2f, 0.25f, 4.0f);
+    letterSpacing_ = MATH::ClampFinite(letterSpacing_, 0.0f, -10000.0f, 10000.0f);
+    outlineWidth_ = MATH::ClampFinite(outlineWidth_, 0.04f, 0.0f, 0.25f);
+    opacity_ = MATH::ClampFinite(opacity_, 1.0f, 0.0f, 1.0f);
+    revealAmount_ = MATH::ClampFinite(revealAmount_, 1.0f, 0.0f, 1.0f);
     transparentSortPriority_ = std::clamp(transparentSortPriority_, -32768, 32767);
     if (static_cast<uint32_t>(horizontalAlign_) > static_cast<uint32_t>(HorizontalAlign::Right)) {
         horizontalAlign_ = HorizontalAlign::Left;

@@ -1,4 +1,5 @@
 #include "Scene/Terrain/HIKARI_TerrainSurfaceTypes.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 
 #include <algorithm>
@@ -9,10 +10,8 @@
 namespace HIKARI::TERRAIN {
 
 namespace {
-float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
-
 float ClampPositive(float value, float minimum, float maximum) noexcept {
-    return std::clamp(FiniteOr(value, minimum), minimum, maximum);
+    return std::clamp(MATH::FiniteOr(value, minimum), minimum, maximum);
 }
 
 } // namespace
@@ -23,37 +22,37 @@ TerrainSurfaceSettings SanitizeTerrainSurfaceSettings(TerrainSurfaceSettings set
     settings.heightScale = ClampPositive(settings.heightScale, 0.0f, 2.0f);
     settings.maxDepth = ClampPositive(settings.maxDepth, 0.01f, 2.0f);
     settings.stampRadius = ClampPositive(settings.stampRadius, 0.02f, 10.0f);
-    settings.rimStrength = std::clamp(FiniteOr(settings.rimStrength, 0.32f), 0.0f, 2.0f);
+    settings.rimStrength = std::clamp(MATH::FiniteOr(settings.rimStrength, 0.32f), 0.0f, 2.0f);
     settings.responseResolutionScale = std::clamp(settings.responseResolutionScale, 1u, 4u);
-    settings.restDepthScale = std::clamp(FiniteOr(settings.restDepthScale, 0.36f), 0.0f, 2.0f);
+    settings.restDepthScale = std::clamp(MATH::FiniteOr(settings.restDepthScale, 0.36f), 0.0f, 2.0f);
     settings.minimumDepth = ClampPositive(settings.minimumDepth, 0.0f, 2.0f);
-    settings.settleStartRatio = std::clamp(FiniteOr(settings.settleStartRatio, 0.72f), 0.0f, 1.0f);
+    settings.settleStartRatio = std::clamp(MATH::FiniteOr(settings.settleStartRatio, 0.72f), 0.0f, 1.0f);
     settings.settleSeconds = ClampPositive(settings.settleSeconds, 0.0f, 10.0f);
     settings.impactDepthScale = ClampPositive(settings.impactDepthScale, 0.0f, 2.0f);
-    settings.rimWidthScale = std::clamp(FiniteOr(settings.rimWidthScale, 0.42f), 0.05f, 2.0f);
+    settings.rimWidthScale = std::clamp(MATH::FiniteOr(settings.rimWidthScale, 0.42f), 0.05f, 2.0f);
     settings.refillPerSecond = ClampPositive(settings.refillPerSecond, 0.0f, 10.0f);
     settings.diffusionPerSecond = ClampPositive(settings.diffusionPerSecond, 0.0f, 100.0f);
-    settings.plasticity = std::clamp(FiniteOr(settings.plasticity, 0.93f), 0.0f, 1.0f);
+    settings.plasticity = std::clamp(MATH::FiniteOr(settings.plasticity, 0.93f), 0.0f, 1.0f);
     settings.plasticRefillPerSecond = ClampPositive(settings.plasticRefillPerSecond, 0.0f, 10.0f);
     settings.recoveryDelaySeconds = ClampPositive(settings.recoveryDelaySeconds, 0.0f, 60.0f);
     settings.edgeFalloff = ClampPositive(settings.edgeFalloff, 0.0f, 1000.0f);
-    settings.edgeDepth = std::clamp(FiniteOr(settings.edgeDepth, 1.5f), 0.0f, 100.0f);
+    settings.edgeDepth = std::clamp(MATH::FiniteOr(settings.edgeDepth, 1.5f), 0.0f, 100.0f);
 
     settings.lightTint = {
-        std::clamp(FiniteOr(settings.lightTint.x, 1.0f), 0.0f, 1.0f),
-        std::clamp(FiniteOr(settings.lightTint.y, 1.0f), 0.0f, 1.0f),
-        std::clamp(FiniteOr(settings.lightTint.z, 1.0f), 0.0f, 1.0f),
+        std::clamp(MATH::FiniteOr(settings.lightTint.x, 1.0f), 0.0f, 1.0f),
+        std::clamp(MATH::FiniteOr(settings.lightTint.y, 1.0f), 0.0f, 1.0f),
+        std::clamp(MATH::FiniteOr(settings.lightTint.z, 1.0f), 0.0f, 1.0f),
     };
     settings.darkTint = {
-        std::clamp(FiniteOr(settings.darkTint.x, 0.0f), 0.0f, 1.0f),
-        std::clamp(FiniteOr(settings.darkTint.y, 0.0f), 0.0f, 1.0f),
-        std::clamp(FiniteOr(settings.darkTint.z, 0.0f), 0.0f, 1.0f),
+        std::clamp(MATH::FiniteOr(settings.darkTint.x, 0.0f), 0.0f, 1.0f),
+        std::clamp(MATH::FiniteOr(settings.darkTint.y, 0.0f), 0.0f, 1.0f),
+        std::clamp(MATH::FiniteOr(settings.darkTint.z, 0.0f), 0.0f, 1.0f),
     };
     settings.sparkleStrength = ClampPositive(settings.sparkleStrength, 0.0f, 2.0f);
     settings.rippleAmount = ClampPositive(settings.rippleAmount, 0.0f, 3.0f);
-    settings.pitDarkening = std::clamp(FiniteOr(settings.pitDarkening, 0.32f), 0.0f, 1.0f);
+    settings.pitDarkening = std::clamp(MATH::FiniteOr(settings.pitDarkening, 0.32f), 0.0f, 1.0f);
     settings.toonBandCount = std::clamp(settings.toonBandCount, 2u, 4u);
-    settings.toonBandHardness = std::clamp(FiniteOr(settings.toonBandHardness, 0.14f), 0.0f, 0.5f);
+    settings.toonBandHardness = std::clamp(MATH::FiniteOr(settings.toonBandHardness, 0.14f), 0.0f, 0.5f);
     return settings;
 }
 
@@ -77,7 +76,7 @@ bool TerrainSurfaceSettingsEqual(const TerrainSurfaceSettings& lhs, const Terrai
 
 float EvaluateTerrainSurfaceEffectiveHeight(float baseHeight, float coverage, float edgeDepth,
                                             float fallbackDepth) noexcept {
-    const float edge = std::clamp(FiniteOr(coverage, 0.0f), 0.0f, 1.0f);
+    const float edge = std::clamp(MATH::FiniteOr(coverage, 0.0f), 0.0f, 1.0f);
     const float depth = edgeDepth > 1.0e-4f ? edgeDepth : (std::max)(fallbackDepth, 0.0f);
     const float smooth = edge * edge * (3.0f - 2.0f * edge);
     return baseHeight - depth * (1.0f - smooth);

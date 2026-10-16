@@ -97,7 +97,6 @@ struct NodeCardPresentation {
 
 std::vector<std::string_view> InputPins(const MaterialNodeTypeId& typeId);
 std::vector<std::string_view> InputPins(const MaterialGraphNodeData& node);
-MaterialGraphData* EditableGraph(MaterialAssetData& source) noexcept;
 
 bool InputUsesParameterDefault(const MaterialGraphData& graph, const MaterialGraphNodeData& node, std::string_view pin,
                                std::string_view parameterId);
@@ -121,7 +120,6 @@ std::vector<float> BuildNodeInputVerticalOffsets(const MaterialNodeTypeId& typeI
                                                  bool inlineControls, float zoom);
 uint32_t NodeHeaderColor(const MaterialNodeTypeId& typeId) noexcept;
 uint32_t PinColor(std::string_view pin) noexcept;
-std::string PinKey(std::string_view nodeId, std::string_view pin);
 float NodeInlineHeight(const MaterialNodeTypeId& typeId) noexcept;
 NodeInlineLayoutSpec ResolveNodeInlineLayoutSpec(const MaterialNodeTypeId& typeId) noexcept;
 bool PinHasConnection(const MaterialGraphData& graph, std::string_view nodeId, std::string_view pin,

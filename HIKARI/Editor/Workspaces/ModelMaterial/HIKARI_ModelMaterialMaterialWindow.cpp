@@ -172,7 +172,7 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(DocumentSceneBase& sce
             TEXT::Localize("editor.ui.profiles.group.a.base.template.and.reusable.stylized.resources.f4a3e0").c_str());
     }
 
-    if (MaterialGraphData* graph = MATERIAL_GRAPH_UI::EditableGraph(source)) {
+    if (MaterialGraphData* graph = source.ActiveGraph()) {
         if (source.kind == MaterialAssetKind::Material) {
             ImGui::SeparatorText(TEXT::Localize("material.parameters.quickControls").c_str());
             if (source.templateId == MaterialTemplateId::PainterlyShell)

@@ -1,4 +1,5 @@
 #include "Scene/Water/HIKARI_WaterSurfaceTypes.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Math/HIKARI_ScalarMath.h"
 
 #include <algorithm>
@@ -15,14 +16,8 @@ constexpr float kMaximumHorizontalSlope = 0.92f;
 constexpr float kMinimumShallowBlendDepthDelta = 1.0e-3f;
 constexpr float kMaximumShallowDepth = 1000.0f;
 
-float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
-
-float ClampFinite(float value, float fallback, float minimum, float maximum) noexcept {
-    return std::clamp(FiniteOr(value, fallback), minimum, maximum);
-}
-
 float WrapDegrees(float degrees) noexcept {
-    float wrapped = std::fmod(FiniteOr(degrees, 0.0f) + 180.0f, 360.0f);
+    float wrapped = std::fmod(MATH::FiniteOr(degrees, 0.0f) + 180.0f, 360.0f);
     if (wrapped < 0.0f) {
         wrapped += 360.0f;
     }
@@ -30,8 +25,9 @@ float WrapDegrees(float degrees) noexcept {
 }
 
 MATH::Vec3 SanitizeColor(const MATH::Vec3& value, const MATH::Vec3& fallback, float minimum, float maximum) noexcept {
-    return {ClampFinite(value.x, fallback.x, minimum, maximum), ClampFinite(value.y, fallback.y, minimum, maximum),
-            ClampFinite(value.z, fallback.z, minimum, maximum)};
+    return {MATH::ClampFinite(value.x, fallback.x, minimum, maximum),
+            MATH::ClampFinite(value.y, fallback.y, minimum, maximum),
+            MATH::ClampFinite(value.z, fallback.z, minimum, maximum)};
 }
 
 float WrappedTime(float timeSeconds) noexcept {
@@ -155,43 +151,45 @@ WaterSurfaceSettings SanitizeWaterSurfaceSettings(WaterSurfaceSettings settings)
         settings.geometryMode = WaterSurfaceGeometryMode::FiniteAuthored;
     }
     const WaterSurfaceSettings fallback = MakeWaterSurfacePresetSettings(settings.preset);
-    settings.timeScale = ClampFinite(settings.timeScale, fallback.timeScale, 0.0f, 4.0f);
-    settings.choppiness = ClampFinite(settings.choppiness, fallback.choppiness, 0.0f, 1.0f);
-    settings.microWaveStrength = ClampFinite(settings.microWaveStrength, fallback.microWaveStrength, 0.0f, 2.0f);
+    settings.timeScale = MATH::ClampFinite(settings.timeScale, fallback.timeScale, 0.0f, 4.0f);
+    settings.choppiness = MATH::ClampFinite(settings.choppiness, fallback.choppiness, 0.0f, 1.0f);
+    settings.microWaveStrength = MATH::ClampFinite(settings.microWaveStrength, fallback.microWaveStrength, 0.0f, 2.0f);
     settings.depthTransmittance = SanitizeColor(settings.depthTransmittance, fallback.depthTransmittance, 0.001f, 1.0f);
     settings.scatteringColor = SanitizeColor(settings.scatteringColor, fallback.scatteringColor, 0.0f, 8.0f);
-    settings.shallowClearDepth = ClampFinite(settings.shallowClearDepth, fallback.shallowClearDepth, 0.0f,
-                                             kMaximumShallowDepth - kMinimumShallowBlendDepthDelta);
+    settings.shallowClearDepth = MATH::ClampFinite(settings.shallowClearDepth, fallback.shallowClearDepth, 0.0f,
+                                                   kMaximumShallowDepth - kMinimumShallowBlendDepthDelta);
     settings.shallowBlendDepth =
-        ClampFinite(settings.shallowBlendDepth, fallback.shallowBlendDepth,
-                    settings.shallowClearDepth + kMinimumShallowBlendDepthDelta, kMaximumShallowDepth);
+        MATH::ClampFinite(settings.shallowBlendDepth, fallback.shallowBlendDepth,
+                          settings.shallowClearDepth + kMinimumShallowBlendDepthDelta, kMaximumShallowDepth);
     settings.shallowGraphicWeight =
-        ClampFinite(settings.shallowGraphicWeight, fallback.shallowGraphicWeight, 0.0f, 1.0f);
+        MATH::ClampFinite(settings.shallowGraphicWeight, fallback.shallowGraphicWeight, 0.0f, 1.0f);
     settings.foamColor = SanitizeColor(settings.foamColor, fallback.foamColor, 0.0f, 8.0f);
-    settings.foamAmount = ClampFinite(settings.foamAmount, fallback.foamAmount, 0.0f, 2.0f);
-    settings.absorptionDistance = ClampFinite(settings.absorptionDistance, fallback.absorptionDistance, 0.05f, 1000.0f);
-    settings.surfaceRoughness = ClampFinite(settings.surfaceRoughness, fallback.surfaceRoughness, 0.02f, 1.0f);
-    settings.directSunStrength = ClampFinite(settings.directSunStrength, fallback.directSunStrength, 0.0f, 2.0f);
+    settings.foamAmount = MATH::ClampFinite(settings.foamAmount, fallback.foamAmount, 0.0f, 2.0f);
+    settings.absorptionDistance =
+        MATH::ClampFinite(settings.absorptionDistance, fallback.absorptionDistance, 0.05f, 1000.0f);
+    settings.surfaceRoughness = MATH::ClampFinite(settings.surfaceRoughness, fallback.surfaceRoughness, 0.02f, 1.0f);
+    settings.directSunStrength = MATH::ClampFinite(settings.directSunStrength, fallback.directSunStrength, 0.0f, 2.0f);
     settings.transmissionStrength =
-        ClampFinite(settings.transmissionStrength, fallback.transmissionStrength, 0.0f, 2.0f);
-    settings.shadowStrength = ClampFinite(settings.shadowStrength, fallback.shadowStrength, 0.0f, 1.0f);
-    settings.reflectionStrength = ClampFinite(settings.reflectionStrength, fallback.reflectionStrength, 0.0f, 2.0f);
-    settings.sunGlintStrength = ClampFinite(settings.sunGlintStrength, fallback.sunGlintStrength, 0.0f, 2.0f);
-    settings.glintDensity = ClampFinite(settings.glintDensity, fallback.glintDensity, 0.0f, 1.0f);
-    settings.glintFlowSpeed = ClampFinite(settings.glintFlowSpeed, fallback.glintFlowSpeed, 0.0f, 4.0f);
-    settings.ribbonWidth = ClampFinite(settings.ribbonWidth, fallback.ribbonWidth, 0.02f, 0.5f);
-    settings.windDirectionDeg = WrapDegrees(FiniteOr(settings.windDirectionDeg, fallback.windDirectionDeg));
-    settings.windSpeed = ClampFinite(settings.windSpeed, fallback.windSpeed, 0.0f, 50.0f);
-    settings.shortWaveStrength = ClampFinite(settings.shortWaveStrength, fallback.shortWaveStrength, 0.0f, 2.0f);
-    settings.capillaryStrength = ClampFinite(settings.capillaryStrength, fallback.capillaryStrength, 0.0f, 2.0f);
+        MATH::ClampFinite(settings.transmissionStrength, fallback.transmissionStrength, 0.0f, 2.0f);
+    settings.shadowStrength = MATH::ClampFinite(settings.shadowStrength, fallback.shadowStrength, 0.0f, 1.0f);
+    settings.reflectionStrength =
+        MATH::ClampFinite(settings.reflectionStrength, fallback.reflectionStrength, 0.0f, 2.0f);
+    settings.sunGlintStrength = MATH::ClampFinite(settings.sunGlintStrength, fallback.sunGlintStrength, 0.0f, 2.0f);
+    settings.glintDensity = MATH::ClampFinite(settings.glintDensity, fallback.glintDensity, 0.0f, 1.0f);
+    settings.glintFlowSpeed = MATH::ClampFinite(settings.glintFlowSpeed, fallback.glintFlowSpeed, 0.0f, 4.0f);
+    settings.ribbonWidth = MATH::ClampFinite(settings.ribbonWidth, fallback.ribbonWidth, 0.02f, 0.5f);
+    settings.windDirectionDeg = WrapDegrees(MATH::FiniteOr(settings.windDirectionDeg, fallback.windDirectionDeg));
+    settings.windSpeed = MATH::ClampFinite(settings.windSpeed, fallback.windSpeed, 0.0f, 50.0f);
+    settings.shortWaveStrength = MATH::ClampFinite(settings.shortWaveStrength, fallback.shortWaveStrength, 0.0f, 2.0f);
+    settings.capillaryStrength = MATH::ClampFinite(settings.capillaryStrength, fallback.capillaryStrength, 0.0f, 2.0f);
 
     for (std::size_t index = 0; index < settings.waves.size(); ++index) {
         WaterGerstnerWave& wave = settings.waves[index];
         const WaterGerstnerWave& fallbackWave = fallback.waves[index];
         wave.directionDeg = WrapDegrees(wave.directionDeg);
-        wave.amplitude = ClampFinite(wave.amplitude, fallbackWave.amplitude, 0.0f, 25.0f);
-        wave.wavelength = ClampFinite(wave.wavelength, fallbackWave.wavelength, 0.05f, 10000.0f);
-        wave.steepness = ClampFinite(wave.steepness, fallbackWave.steepness, 0.0f, 1.0f);
+        wave.amplitude = MATH::ClampFinite(wave.amplitude, fallbackWave.amplitude, 0.0f, 25.0f);
+        wave.wavelength = MATH::ClampFinite(wave.wavelength, fallbackWave.wavelength, 0.05f, 10000.0f);
+        wave.steepness = MATH::ClampFinite(wave.steepness, fallbackWave.steepness, 0.0f, 1.0f);
     }
     return settings;
 }
@@ -199,7 +197,7 @@ WaterSurfaceSettings SanitizeWaterSurfaceSettings(WaterSurfaceSettings settings)
 WaterSurfaceSettings ResolveWaterSurfaceSettingsForMesh(const WaterSurfaceSettings& rawSettings,
                                                         float maximumVertexSpacing) noexcept {
     WaterSurfaceSettings settings = SanitizeWaterSurfaceSettings(rawSettings);
-    const float spacing = ClampFinite(maximumVertexSpacing, 0.0f, 0.0f, 100000.0f);
+    const float spacing = MATH::ClampFinite(maximumVertexSpacing, 0.0f, 0.0f, 100000.0f);
     if (spacing <= 1.0e-6f) {
         return settings;
     }
@@ -239,7 +237,7 @@ WaterSurfaceEvaluation EvaluateWaterSurface(const WaterSurfaceSettings& rawSetti
                                             float timeSeconds) noexcept {
     const WaterSurfaceSettings settings = SanitizeWaterSurfaceSettings(rawSettings);
     WaterSurfaceEvaluation result{};
-    result.positionLocal = {FiniteOr(sourceLocalXZ.x, 0.0f), 0.0f, FiniteOr(sourceLocalXZ.y, 0.0f)};
+    result.positionLocal = {MATH::FiniteOr(sourceLocalXZ.x, 0.0f), 0.0f, MATH::FiniteOr(sourceLocalXZ.y, 0.0f)};
     MATH::Vec3 tangentX{1.0f, 0.0f, 0.0f};
     MATH::Vec3 tangentZ{0.0f, 0.0f, 1.0f};
 
@@ -292,7 +290,7 @@ WaterSurfaceEvaluation EvaluateWaterSurface(const WaterSurfaceSettings& rawSetti
 WaterSurfaceEvaluation EvaluateWaterSurfaceAtHorizontalPosition(const WaterSurfaceSettings& settings,
                                                                 const MATH::Vec2& deformedLocalXZ, float timeSeconds,
                                                                 MATH::Vec2* outSourceLocalXZ) noexcept {
-    MATH::Vec2 source{FiniteOr(deformedLocalXZ.x, 0.0f), FiniteOr(deformedLocalXZ.y, 0.0f)};
+    MATH::Vec2 source{MATH::FiniteOr(deformedLocalXZ.x, 0.0f), MATH::FiniteOr(deformedLocalXZ.y, 0.0f)};
     WaterSurfaceEvaluation evaluation{};
     // Amplitude-coupled choppiness can legitimately move a tall authored
     // wave farther than the legacy wavelength-only approximation. Keep a

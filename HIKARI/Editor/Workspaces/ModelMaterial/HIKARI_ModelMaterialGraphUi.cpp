@@ -50,16 +50,6 @@ bool InputUsesResourceDefault(const MaterialGraphData& graph, const MaterialGrap
     return InputDependsOn(graph, node, pin, resourceId, MaterialNodeKind::TextureSample);
 }
 
-MaterialGraphData* EditableGraph(MaterialAssetData& source) noexcept {
-    if (source.kind == MaterialAssetKind::Material) {
-        return &source.graph;
-    }
-    if (source.kind == MaterialAssetKind::Function) {
-        return &source.function.graph;
-    }
-    return nullptr;
-}
-
 std::vector<std::string_view> InputPins(const MaterialNodeTypeId& typeId) {
     std::vector<std::string_view> pins = GetMaterialGraphNodeInputPins(typeId);
     std::erase_if(pins, [&typeId](std::string_view pin) { return IsRuntimeDrivenInput(typeId, pin); });
@@ -114,15 +104,6 @@ uint32_t PinColor(std::string_view pin) noexcept {
         return PackColor(109u, 208u, 232u);
     }
     return PackColor(188u, 205u, 214u);
-}
-
-std::string PinKey(std::string_view nodeId, std::string_view pin) {
-    std::string key{};
-    key.reserve(nodeId.size() + pin.size() + 1u);
-    key.append(nodeId);
-    key.push_back(':');
-    key.append(pin);
-    return key;
 }
 
 NodeInlineLayoutSpec ResolveNodeInlineLayoutSpec(const MaterialNodeTypeId& typeId) noexcept {

@@ -102,15 +102,6 @@ double GetCpuFrameMs(const CPU_PROFILE::FrameSnapshot& profile);
 
 uint32_t CountValidCpuPasses(const CPU_PROFILE::FrameSnapshot& profile);
 
-template <typename... Args>
-void MetricRow(const char* label, const char* format, Args... args) {
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::TextUnformatted(label);
-    ImGui::TableSetColumnIndex(1);
-    ImGui::Text(format, args...);
-}
-
 void DrawFrameSummary(const RuntimePerformanceSnapshot& s);
 
 void DrawCpuTimingTable(const RuntimePerformanceSnapshot& s);

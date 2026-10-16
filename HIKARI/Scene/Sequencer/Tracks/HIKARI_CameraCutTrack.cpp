@@ -1,4 +1,5 @@
 #include "Scene/Sequencer/Tracks/HIKARI_CameraCutTrack.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
@@ -7,9 +8,7 @@
 
 namespace HIKARI::SEQUENCER {
 
-namespace {
-float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
-} // namespace
+namespace {} // namespace
 
 void NormalizeCameraCutTrack(CameraCutTrack& track) {
     if (!track.id.IsValid()) {
@@ -24,18 +23,18 @@ void NormalizeCameraCutTrack(CameraCutTrack& track) {
 
     for (CameraCutClip& clip : track.clips) {
         NormalizeShotCamera(clip.camera);
-        clip.sourceOffsetSeconds = (std::max)(0.0f, FiniteOr(clip.sourceOffsetSeconds, 0.0f));
+        clip.sourceOffsetSeconds = (std::max)(0.0f, MATH::FiniteOr(clip.sourceOffsetSeconds, 0.0f));
         NormalizeScreenEffects(clip.effects);
-        clip.startTimeSeconds = std::clamp(FiniteOr(clip.startTimeSeconds, 0.0f), 0.0f,
+        clip.startTimeSeconds = std::clamp(MATH::FiniteOr(clip.startTimeSeconds, 0.0f), 0.0f,
                                            kMaxSequenceDurationSeconds - kMinCameraCutClipDurationSeconds);
         clip.durationSeconds =
-            std::clamp(FiniteOr(clip.durationSeconds, kMinCameraCutClipDurationSeconds),
+            std::clamp(MATH::FiniteOr(clip.durationSeconds, kMinCameraCutClipDurationSeconds),
                        kMinCameraCutClipDurationSeconds, kMaxSequenceDurationSeconds - clip.startTimeSeconds);
         if (clip.transition.mode == CameraCutTransitionMode::Cut) {
             clip.transition.durationSeconds = 0.0f;
         } else {
             clip.transition.durationSeconds =
-                std::clamp(FiniteOr(clip.transition.durationSeconds, 0.0f), 0.0f,
+                std::clamp(MATH::FiniteOr(clip.transition.durationSeconds, 0.0f), 0.0f,
                            (std::min)(clip.durationSeconds, kMaxCameraBlendDurationSeconds));
         }
     }
@@ -70,8 +69,8 @@ uint64_t AllocateCameraCutClipId(const CameraCutTrack& track) {
 float GetCameraCutTrackContentEnd(const CameraCutTrack& track) noexcept {
     float contentEnd = 0.0f;
     for (const CameraCutClip& clip : track.clips) {
-        const float start = FiniteOr(clip.startTimeSeconds, 0.0f);
-        const float duration = FiniteOr(clip.durationSeconds, 0.0f);
+        const float start = MATH::FiniteOr(clip.startTimeSeconds, 0.0f);
+        const float duration = MATH::FiniteOr(clip.durationSeconds, 0.0f);
         contentEnd = (std::max)(contentEnd, start + duration);
     }
     return contentEnd;

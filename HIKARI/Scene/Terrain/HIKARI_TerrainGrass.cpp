@@ -1,4 +1,6 @@
 #include "Scene/Terrain/HIKARI_TerrainGrass.h"
+#include "Core/Math/HIKARI_MathValidation.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 #include "Scene/Terrain/HIKARI_TerrainSurface.h"
 
 #include <algorithm>
@@ -41,12 +43,6 @@ float TerrainGrassUnitFloat(uint64_t hash) noexcept {
     constexpr double kInvTwoTo53 = 1.0 / 9007199254740992.0;
     return static_cast<float>(static_cast<double>(hash >> 11u) * kInvTwoTo53);
 }
-
-float ClampFinite(float value, float fallback, float minimum, float maximum) noexcept {
-    return std::clamp(std::isfinite(value) ? value : fallback, minimum, maximum);
-}
-
-float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
 
 float ReadFloat(const nlohmann::json& object, const char* key, float fallback) {
     const auto found = object.find(key);
@@ -135,15 +131,15 @@ bool ReadFourVertices(const std::vector<float>& values, std::size_t i00, std::si
 } // namespace
 
 TerrainGrassSettings SanitizeTerrainGrassSettings(TerrainGrassSettings value) noexcept {
-    value.density = ClampFinite(value.density, 0.42f, 0.0f, 1.0f);
-    value.bladeHeight = ClampFinite(value.bladeHeight, 0.34f, 0.005f, 10.0f);
-    value.bladeWidth = ClampFinite(value.bladeWidth, 0.028f, 0.001f, 2.0f);
-    value.heightVariation = ClampFinite(value.heightVariation, 0.24f, 0.0f, 1.0f);
-    value.layerWeightThreshold = ClampFinite(value.layerWeightThreshold, 0.35f, 0.0f, 1.0f);
-    value.maxSlopeDegrees = ClampFinite(value.maxSlopeDegrees, 42.0f, 0.0f, 90.0f);
-    value.windStrength = ClampFinite(value.windStrength, 0.055f, 0.0f, 0.5f);
-    value.windSpeed = ClampFinite(value.windSpeed, 1.25f, 0.0f, 20.0f);
-    value.spatialFrequency = ClampFinite(value.spatialFrequency, 0.85f, 0.0f, 20.0f);
+    value.density = MATH::ClampFinite(value.density, 0.42f, 0.0f, 1.0f);
+    value.bladeHeight = MATH::ClampFinite(value.bladeHeight, 0.34f, 0.005f, 10.0f);
+    value.bladeWidth = MATH::ClampFinite(value.bladeWidth, 0.028f, 0.001f, 2.0f);
+    value.heightVariation = MATH::ClampFinite(value.heightVariation, 0.24f, 0.0f, 1.0f);
+    value.layerWeightThreshold = MATH::ClampFinite(value.layerWeightThreshold, 0.35f, 0.0f, 1.0f);
+    value.maxSlopeDegrees = MATH::ClampFinite(value.maxSlopeDegrees, 42.0f, 0.0f, 90.0f);
+    value.windStrength = MATH::ClampFinite(value.windStrength, 0.055f, 0.0f, 0.5f);
+    value.windSpeed = MATH::ClampFinite(value.windSpeed, 1.25f, 0.0f, 20.0f);
+    value.spatialFrequency = MATH::ClampFinite(value.spatialFrequency, 0.85f, 0.0f, 20.0f);
     value.maxClumps = (std::min)(value.maxClumps, kTerrainGrassMaxClumps);
     return value;
 }
@@ -239,7 +235,7 @@ TerrainGrassPlacementSnapshot BuildTerrainGrassPlacementSnapshot(const TerrainGr
         reserveCount += (std::min)(cellCount, reserveLimit - reserveCount);
     }
     snapshot.placements.reserve(reserveCount);
-    const float cellSize = (std::max)(FiniteOr(chunkCellSize, 0.25f), 1.0e-4f);
+    const float cellSize = (std::max)(MATH::FiniteOr(chunkCellSize, 0.25f), 1.0e-4f);
     const float configuredChunkWorldSize = static_cast<float>(chunkCells) * cellSize;
     if (!std::isfinite(configuredChunkWorldSize)) {
         snapshot.enabled = false;

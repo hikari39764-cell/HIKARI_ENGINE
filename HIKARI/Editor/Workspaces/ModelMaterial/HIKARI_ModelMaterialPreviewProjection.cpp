@@ -29,7 +29,7 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(AssetDatabase& ass
         return false;
     }
     if (!nodePreviewId_.empty()) {
-        const auto* graph = MATERIAL_GRAPH_UI::EditableGraph(authoringDocument_.EditMaterial());
+        const auto* graph = authoringDocument_.EditMaterial().ActiveGraph();
         if (!graph || !FindMaterialGraphNode(*graph, nodePreviewId_))
             nodePreviewId_.clear();
     }

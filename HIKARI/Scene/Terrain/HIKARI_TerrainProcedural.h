@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include "Core/Math/HIKARI_ScalarMath.h"
 #include <cmath>
 #include <cstdint>
 #include <string_view>
@@ -73,9 +74,6 @@ struct TerrainProceduralSpec {
 };
 
 inline TerrainProceduralSpec SanitizeTerrainProceduralSpec(TerrainProceduralSpec spec) noexcept {
-    const auto finiteClamp = [](float value, float fallback, float minimum, float maximum) noexcept {
-        return std::clamp(std::isfinite(value) ? value : fallback, minimum, maximum);
-    };
     const uint8_t modeValue = static_cast<uint8_t>(spec.mode);
     if (modeValue > static_cast<uint8_t>(TerrainProceduralMode::Dunes)) {
         spec.mode = TerrainProceduralMode::NoiseHills;
@@ -84,16 +82,16 @@ inline TerrainProceduralSpec SanitizeTerrainProceduralSpec(TerrainProceduralSpec
     if (blendValue > static_cast<uint8_t>(TerrainProceduralBlendMode::Max)) {
         spec.blendMode = TerrainProceduralBlendMode::Add;
     }
-    spec.centerX = finiteClamp(spec.centerX, 0.0f, -8192.0f, 8192.0f);
-    spec.centerZ = finiteClamp(spec.centerZ, 0.0f, -8192.0f, 8192.0f);
-    spec.extentX = finiteClamp(spec.extentX, 16.0f, 0.5f, 2048.0f);
-    spec.extentZ = finiteClamp(spec.extentZ, 16.0f, 0.5f, 2048.0f);
-    spec.amplitude = finiteClamp(spec.amplitude, 1.0f, -64.0f, 64.0f);
-    spec.baseHeight = finiteClamp(spec.baseHeight, 0.0f, -64.0f, 64.0f);
-    spec.scale = finiteClamp(spec.scale, 8.0f, 0.25f, 512.0f);
-    spec.edgeFalloff = finiteClamp(spec.edgeFalloff, 0.18f, 0.01f, 1.0f);
-    spec.blendAmount = finiteClamp(spec.blendAmount, 1.0f, 0.0f, 1.0f);
-    spec.directionDegrees = finiteClamp(spec.directionDegrees, 0.0f, -180.0f, 180.0f);
+    spec.centerX = MATH::ClampFinite(spec.centerX, 0.0f, -8192.0f, 8192.0f);
+    spec.centerZ = MATH::ClampFinite(spec.centerZ, 0.0f, -8192.0f, 8192.0f);
+    spec.extentX = MATH::ClampFinite(spec.extentX, 16.0f, 0.5f, 2048.0f);
+    spec.extentZ = MATH::ClampFinite(spec.extentZ, 16.0f, 0.5f, 2048.0f);
+    spec.amplitude = MATH::ClampFinite(spec.amplitude, 1.0f, -64.0f, 64.0f);
+    spec.baseHeight = MATH::ClampFinite(spec.baseHeight, 0.0f, -64.0f, 64.0f);
+    spec.scale = MATH::ClampFinite(spec.scale, 8.0f, 0.25f, 512.0f);
+    spec.edgeFalloff = MATH::ClampFinite(spec.edgeFalloff, 0.18f, 0.01f, 1.0f);
+    spec.blendAmount = MATH::ClampFinite(spec.blendAmount, 1.0f, 0.0f, 1.0f);
+    spec.directionDegrees = MATH::ClampFinite(spec.directionDegrees, 0.0f, -180.0f, 180.0f);
     spec.octaves = std::clamp(spec.octaves, 1u, 8u);
     return spec;
 }

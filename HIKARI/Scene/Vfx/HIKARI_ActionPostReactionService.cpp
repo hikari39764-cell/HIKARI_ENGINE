@@ -1,4 +1,6 @@
 #include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
+#include "Core/Math/HIKARI_MathValidation.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 
 #include <algorithm>
 #include <cmath>
@@ -24,12 +26,6 @@ constexpr float kMaximumBoostEdgeIntensity = 4.0f;
 constexpr float kMaximumBoostEdgeWidth = 0.80f;
 constexpr float kMaximumBoostChromaticPixels = 16.0f;
 
-float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
-
-float ClampFinite(float value, float fallback, float minimum, float maximum) noexcept {
-    return std::clamp(FiniteOr(value, fallback), minimum, maximum);
-}
-
 float ActionScale(float requestValue, float defaultValue) noexcept {
     if (!std::isfinite(requestValue) || !std::isfinite(defaultValue) || defaultValue <= 0.0f) {
         return 1.0f;
@@ -39,17 +35,17 @@ float ActionScale(float requestValue, float defaultValue) noexcept {
 
 MATH::Vec3 ClampColor(const MATH::Vec3& value) noexcept {
     return {
-        ClampFinite(value.x, 0.32f, 0.0f, 8.0f),
-        ClampFinite(value.y, 0.78f, 0.0f, 8.0f),
-        ClampFinite(value.z, 1.0f, 0.0f, 8.0f),
+        MATH::ClampFinite(value.x, 0.32f, 0.0f, 8.0f),
+        MATH::ClampFinite(value.y, 0.78f, 0.0f, 8.0f),
+        MATH::ClampFinite(value.z, 1.0f, 0.0f, 8.0f),
     };
 }
 
 MATH::Vec3 SanitizePosition(const MATH::Vec3& value) noexcept {
     return {
-        ClampFinite(value.x, 0.0f, -100000.0f, 100000.0f),
-        ClampFinite(value.y, 0.0f, -100000.0f, 100000.0f),
-        ClampFinite(value.z, 0.0f, -100000.0f, 100000.0f),
+        MATH::ClampFinite(value.x, 0.0f, -100000.0f, 100000.0f),
+        MATH::ClampFinite(value.y, 0.0f, -100000.0f, 100000.0f),
+        MATH::ClampFinite(value.z, 0.0f, -100000.0f, 100000.0f),
     };
 }
 } // namespace
@@ -69,18 +65,19 @@ RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrame ActionPostReactionService::Sani
     const PerfectGuardShockwaveRequest& request) noexcept {
     RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrame result{};
     result.worldPosition = SanitizePosition(request.worldPosition);
-    result.durationSeconds =
-        ClampFinite(request.durationSeconds, kDefaultDurationSeconds, kMinimumDurationSeconds, kMaximumDurationSeconds);
-    result.maximumScreenRadius = ClampFinite(request.maximumScreenRadius, kDefaultMaximumScreenRadius, 0.02f, 1.5f);
-    result.ringThickness = ClampFinite(request.ringThickness, kDefaultRingThickness, 0.001f, 0.35f);
-    result.distortionStrength = ClampFinite(request.distortionStrength, kDefaultDistortionStrength, 0.0f, 0.25f);
-    result.intensity = ClampFinite(request.intensity, 1.0f, 0.0f, 8.0f);
+    result.durationSeconds = MATH::ClampFinite(request.durationSeconds, kDefaultDurationSeconds,
+                                               kMinimumDurationSeconds, kMaximumDurationSeconds);
+    result.maximumScreenRadius =
+        MATH::ClampFinite(request.maximumScreenRadius, kDefaultMaximumScreenRadius, 0.02f, 1.5f);
+    result.ringThickness = MATH::ClampFinite(request.ringThickness, kDefaultRingThickness, 0.001f, 0.35f);
+    result.distortionStrength = MATH::ClampFinite(request.distortionStrength, kDefaultDistortionStrength, 0.0f, 0.25f);
+    result.intensity = MATH::ClampFinite(request.intensity, 1.0f, 0.0f, 8.0f);
     result.color = ClampColor(request.color);
-    result.chromaticShift = ClampFinite(request.chromaticShift, kDefaultChromaticShift, 0.0f, 0.05f);
-    result.flashIntensity = ClampFinite(request.flashIntensity, kDefaultFlashIntensity, 0.0f, 4.0f);
-    result.waveFrequency = ClampFinite(request.waveFrequency, 1.0f, 0.05f, 8.0f);
-    result.waveAmplitude = ClampFinite(request.waveAmplitude, 1.0f, 0.0f, 8.0f);
-    result.waveDamping = ClampFinite(request.waveDamping, 1.0f, 0.05f, 8.0f);
+    result.chromaticShift = MATH::ClampFinite(request.chromaticShift, kDefaultChromaticShift, 0.0f, 0.05f);
+    result.flashIntensity = MATH::ClampFinite(request.flashIntensity, kDefaultFlashIntensity, 0.0f, 4.0f);
+    result.waveFrequency = MATH::ClampFinite(request.waveFrequency, 1.0f, 0.05f, 8.0f);
+    result.waveAmplitude = MATH::ClampFinite(request.waveAmplitude, 1.0f, 0.0f, 8.0f);
+    result.waveDamping = MATH::ClampFinite(request.waveDamping, 1.0f, 0.05f, 8.0f);
     result.waveCount = std::clamp(request.waveCount, 1u, 4u);
     result.flags = request.flags & RENDER3D::COMBAT_VFX::kPerfectGuardShockwaveConvergingFlag;
     result.ageSeconds = 0.0f;
@@ -99,11 +96,11 @@ void ActionPostReactionService::Remember(const PerfectGuardShockwaveRequest& req
 RENDER3D::COMBAT_VFX::ActionCinematicGradeFrame ActionPostReactionService::SanitizeGrade(
     const ActionCinematicGradeRequest& request) noexcept {
     RENDER3D::COMBAT_VFX::ActionCinematicGradeFrame result{};
-    result.weight = ClampFinite(request.weight, 0.0f, 0.0f, 1.0f);
-    result.monochromeStrength = ClampFinite(request.monochromeStrength, 0.0f, 0.0f, 1.0f);
+    result.weight = MATH::ClampFinite(request.weight, 0.0f, 0.0f, 1.0f);
+    result.monochromeStrength = MATH::ClampFinite(request.monochromeStrength, 0.0f, 0.0f, 1.0f);
     result.chromaticSeparationPixels =
-        ClampFinite(request.chromaticSeparationPixels, 0.0f, 0.0f, kMaximumGradeChromaticPixels);
-    result.contrastStrength = ClampFinite(request.contrastStrength, 0.0f, 0.0f, kMaximumGradeContrast);
+        MATH::ClampFinite(request.chromaticSeparationPixels, 0.0f, 0.0f, kMaximumGradeChromaticPixels);
+    result.contrastStrength = MATH::ClampFinite(request.contrastStrength, 0.0f, 0.0f, kMaximumGradeContrast);
     result.active = result.weight > 0.0f ? 1u : 0u;
     return result;
 }
@@ -141,11 +138,11 @@ bool ActionPostReactionService::SubmitActionCinematicGrade(const ActionCinematic
 RENDER3D::COMBAT_VFX::ActionBoostGradeFrame ActionPostReactionService::SanitizeBoostGrade(
     const ActionBoostGradeRequest& request) noexcept {
     RENDER3D::COMBAT_VFX::ActionBoostGradeFrame result{};
-    result.weight = ClampFinite(request.weight, 0.0f, 0.0f, 1.0f);
-    result.edgeIntensity = ClampFinite(request.edgeIntensity, 0.0f, 0.0f, kMaximumBoostEdgeIntensity);
-    result.edgeWidth = ClampFinite(request.edgeWidth, 0.20f, 0.01f, kMaximumBoostEdgeWidth);
+    result.weight = MATH::ClampFinite(request.weight, 0.0f, 0.0f, 1.0f);
+    result.edgeIntensity = MATH::ClampFinite(request.edgeIntensity, 0.0f, 0.0f, kMaximumBoostEdgeIntensity);
+    result.edgeWidth = MATH::ClampFinite(request.edgeWidth, 0.20f, 0.01f, kMaximumBoostEdgeWidth);
     result.chromaticSeparationPixels =
-        ClampFinite(request.chromaticSeparationPixels, 0.0f, 0.0f, kMaximumBoostChromaticPixels);
+        MATH::ClampFinite(request.chromaticSeparationPixels, 0.0f, 0.0f, kMaximumBoostChromaticPixels);
     result.active = result.weight > 0.0f && result.edgeIntensity > 0.0f ? 1u : 0u;
     return result;
 }
@@ -246,7 +243,7 @@ void ActionPostReactionService::Tick(float unscaledDeltaSeconds, uint64_t frameI
         boostGradeRequest_ = {};
         boostGradeSubmitted_ = false;
     }
-    const float delta = std::clamp(FiniteOr(unscaledDeltaSeconds, 0.0f), 0.0f, kMaximumTickSeconds);
+    const float delta = std::clamp(MATH::FiniteOr(unscaledDeltaSeconds, 0.0f), 0.0f, kMaximumTickSeconds);
     for (ActiveWave& wave : activeWaves_) {
         if (!wave.active) {
             continue;

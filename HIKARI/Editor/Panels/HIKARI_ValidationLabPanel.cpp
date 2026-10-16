@@ -75,15 +75,6 @@ void DrawHealthCard(const char* label, int score, const char* detail) {
     ImGui::TextDisabled("%s", detail);
 }
 
-template <typename... Args>
-void MetricRow(const char* label, const char* fmt, Args... args) {
-    ImGui::TableNextRow();
-    ImGui::TableSetColumnIndex(0);
-    ImGui::TextUnformatted(label);
-    ImGui::TableSetColumnIndex(1);
-    ImGui::Text(fmt, args...);
-}
-
 int ComputeGpuDrivenScore(const RendererHealthSnapshot& s) {
     int score = 100;
     if (!s.submission.gpuDrivenMainRouteActive) {
@@ -181,24 +172,25 @@ void DrawHealthOverview(const RendererHealthSnapshot& s) {
 void DrawIssueSummary(const RendererHealthSnapshot& s) {
     ImGui::SeparatorText(TEXT::Localize("editor.ui.issue.summary.536b9a").c_str());
     if (EDITOR::BeginMetricTable("RendererHealthIssueSummary", 230.0f)) {
-        MetricRow("Route / Mainline", "%s / %s", ToString(s.submission.routeMode),
-                  s.submission.gpuDrivenMainRouteActive ? "on" : "off");
-        MetricRow("GPU Scene Missing Resources / Overflow", "%u / %zu",
-                  s.registry.forwardOpaqueGpuSceneStats.missingResourceHandleInstanceCount,
-                  s.mesh.gpuSceneUpload.bufferStats.overflowInstanceCount);
-        MetricRow("Cluster Resources Ready / Failed / Missing SRV", "%u / %u / %u",
-                  s.clusterResources.readyResourceCount, s.clusterResources.failedCount,
-                  s.clusterResources.missingDescriptorCount);
-        MetricRow("Meshlet Requested / Submitted / Empty Buckets", "%zu / %zu / %zu",
-                  s.mesh.meshletBackend.requestedDispatchCount, s.mesh.meshletBackend.submittedDispatchCount,
-                  s.mesh.meshletBackend.skippedBucketCount);
-        MetricRow("Shadow Cache Valid / Hits / Misses / Updates", "%s / %zu / %zu / %zu",
-                  s.shadow.shadowCacheValid ? "yes" : "no", s.shadow.shadowCacheHitCount, s.shadow.shadowCacheMissCount,
-                  s.shadow.shadowStaticCacheUpdateCount);
-        MetricRow("Scene Objects Visible / Hidden / Dirty", "%u / %u / %u", s.scene.visibleObjectCount,
-                  s.scene.hiddenObjectCount, s.scene.dirtyObjectCount);
-        MetricRow("Scene Surfaces Static / Dynamic / Skinned", "%u / %u / %u", s.scene.staticSurfaceInstanceCount,
-                  s.scene.dynamicSurfaceInstanceCount, s.scene.skinnedSurfaceInstanceCount);
+        EDITOR::MetricRow("Route / Mainline", "%s / %s", ToString(s.submission.routeMode),
+                          s.submission.gpuDrivenMainRouteActive ? "on" : "off");
+        EDITOR::MetricRow("GPU Scene Missing Resources / Overflow", "%u / %zu",
+                          s.registry.forwardOpaqueGpuSceneStats.missingResourceHandleInstanceCount,
+                          s.mesh.gpuSceneUpload.bufferStats.overflowInstanceCount);
+        EDITOR::MetricRow("Cluster Resources Ready / Failed / Missing SRV", "%u / %u / %u",
+                          s.clusterResources.readyResourceCount, s.clusterResources.failedCount,
+                          s.clusterResources.missingDescriptorCount);
+        EDITOR::MetricRow("Meshlet Requested / Submitted / Empty Buckets", "%zu / %zu / %zu",
+                          s.mesh.meshletBackend.requestedDispatchCount, s.mesh.meshletBackend.submittedDispatchCount,
+                          s.mesh.meshletBackend.skippedBucketCount);
+        EDITOR::MetricRow("Shadow Cache Valid / Hits / Misses / Updates", "%s / %zu / %zu / %zu",
+                          s.shadow.shadowCacheValid ? "yes" : "no", s.shadow.shadowCacheHitCount,
+                          s.shadow.shadowCacheMissCount, s.shadow.shadowStaticCacheUpdateCount);
+        EDITOR::MetricRow("Scene Objects Visible / Hidden / Dirty", "%u / %u / %u", s.scene.visibleObjectCount,
+                          s.scene.hiddenObjectCount, s.scene.dirtyObjectCount);
+        EDITOR::MetricRow("Scene Surfaces Static / Dynamic / Skinned", "%u / %u / %u",
+                          s.scene.staticSurfaceInstanceCount, s.scene.dynamicSurfaceInstanceCount,
+                          s.scene.skinnedSurfaceInstanceCount);
         ImGui::EndTable();
     }
 }
@@ -206,17 +198,17 @@ void DrawIssueSummary(const RendererHealthSnapshot& s) {
 void DrawResourceSummary(const RendererHealthSnapshot& s) {
     ImGui::SeparatorText(TEXT::Localize("editor.ui.resource.summary.b6436e").c_str());
     if (EDITOR::BeginMetricTable("RendererHealthResourceSummary", 230.0f)) {
-        MetricRow("Cluster Surfaces / LOD Ranges / Clusters / Pages", "%u / %u / %u / %u",
-                  s.clusterResources.surfaceCount, s.clusterResources.surfaceLodRangeCount,
-                  s.clusterResources.clusterCount, s.clusterResources.pageCount);
-        MetricRow("Cluster Vertices / Indices / Primitives", "%u / %u / %u", s.clusterResources.vertexCount,
-                  s.clusterResources.indexCount, s.clusterResources.meshletPrimitiveCount);
-        MetricRow("Cluster GPU Buffer", "%.2f MB",
-                  static_cast<double>(s.clusterResources.gpuBufferBytes) / (1024.0 * 1024.0));
-        MetricRow("Descriptor Pool Used / Capacity / Failed", "%u / %u / %u", s.descriptorPool.used,
-                  s.descriptorPool.capacity, s.descriptorPool.failedAllocationCount);
-        MetricRow("Cluster Descriptor Used / Capacity / Failed", "%u / %u / %u", s.descriptorPool.clusterUsed,
-                  s.descriptorPool.clusterCapacity, s.descriptorPool.clusterFailedAllocationCount);
+        EDITOR::MetricRow("Cluster Surfaces / LOD Ranges / Clusters / Pages", "%u / %u / %u / %u",
+                          s.clusterResources.surfaceCount, s.clusterResources.surfaceLodRangeCount,
+                          s.clusterResources.clusterCount, s.clusterResources.pageCount);
+        EDITOR::MetricRow("Cluster Vertices / Indices / Primitives", "%u / %u / %u", s.clusterResources.vertexCount,
+                          s.clusterResources.indexCount, s.clusterResources.meshletPrimitiveCount);
+        EDITOR::MetricRow("Cluster GPU Buffer", "%.2f MB",
+                          static_cast<double>(s.clusterResources.gpuBufferBytes) / (1024.0 * 1024.0));
+        EDITOR::MetricRow("Descriptor Pool Used / Capacity / Failed", "%u / %u / %u", s.descriptorPool.used,
+                          s.descriptorPool.capacity, s.descriptorPool.failedAllocationCount);
+        EDITOR::MetricRow("Cluster Descriptor Used / Capacity / Failed", "%u / %u / %u", s.descriptorPool.clusterUsed,
+                          s.descriptorPool.clusterCapacity, s.descriptorPool.clusterFailedAllocationCount);
         ImGui::EndTable();
     }
 }

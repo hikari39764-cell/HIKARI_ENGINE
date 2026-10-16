@@ -1,4 +1,5 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxPreviewBounds.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 
 #include "Assets/Vfx/HIKARI_VfxLayerOrder.h"
 #include "Render3D/Vfx/HIKARI_ParticleSpatialReference.h"
@@ -34,8 +35,6 @@ struct ResolvedEmitterTransform {
     bool resolved = false;
 };
 
-float FiniteOr(float value, float fallback = 0.0f) noexcept { return std::isfinite(value) ? value : fallback; }
-
 float Component(const MATH::Vec3& value, size_t index) noexcept {
     if (index == 0u)
         return value.x;
@@ -55,8 +54,8 @@ void SetComponent(MATH::Vec3& value, size_t index, float component) noexcept {
 }
 
 ScalarInterval Ordered(float lhs, float rhs) noexcept {
-    lhs = FiniteOr(lhs);
-    rhs = FiniteOr(rhs, lhs);
+    lhs = MATH::FiniteOr(lhs, 0.0f);
+    rhs = MATH::FiniteOr(rhs, lhs);
     return {(std::min)(lhs, rhs), (std::max)(lhs, rhs)};
 }
 
@@ -99,7 +98,7 @@ ScalarInterval Multiply(ScalarInterval lhs, ScalarInterval rhs) noexcept {
 }
 
 ScalarInterval ScaleOverLifetime(ScalarInterval value, float coefficient) noexcept {
-    coefficient = (std::max)(FiniteOr(coefficient), 0.0f);
+    coefficient = (std::max)(MATH::FiniteOr(coefficient, 0.0f), 0.0f);
     return {
         (std::min)(0.0f, value.minimum * coefficient),
         (std::max)(0.0f, value.maximum * coefficient),
@@ -107,8 +106,8 @@ ScalarInterval ScaleOverLifetime(ScalarInterval value, float coefficient) noexce
 }
 
 ScalarInterval BallisticDisplacement(ScalarInterval velocity, float acceleration, float lifetime) noexcept {
-    acceleration = FiniteOr(acceleration);
-    lifetime = (std::max)(FiniteOr(lifetime), 0.0f);
+    acceleration = MATH::FiniteOr(acceleration, 0.0f);
+    lifetime = (std::max)(MATH::FiniteOr(lifetime, 0.0f), 0.0f);
     std::array<float, 5u> candidates{
         0.0f,
         velocity.minimum * lifetime + 0.5f * acceleration * lifetime * lifetime,
@@ -137,7 +136,7 @@ ScalarInterval CurveInterval(const VFX::VfxCurveData& curve) noexcept {
     ScalarInterval values{};
     bool hasValue = false;
     for (const VFX::VfxCurveKeyData& key : curve.keys) {
-        const float value = FiniteOr(key.value);
+        const float value = MATH::FiniteOr(key.value, 0.0f);
         if (!hasValue) {
             values = {value, value};
             hasValue = true;
@@ -227,9 +226,9 @@ VectorInterval ShapeInterval(const VFX::VfxEmitterData& emitter) noexcept {
         };
     case VFX::VfxShapeType::Box: {
         const MATH::Vec3 half{
-            std::abs(FiniteOr(emitter.shape.boxHalfExtents.x)),
-            std::abs(FiniteOr(emitter.shape.boxHalfExtents.y)),
-            std::abs(FiniteOr(emitter.shape.boxHalfExtents.z)),
+            std::abs(MATH::FiniteOr(emitter.shape.boxHalfExtents.x, 0.0f)),
+            std::abs(MATH::FiniteOr(emitter.shape.boxHalfExtents.y, 0.0f)),
+            std::abs(MATH::FiniteOr(emitter.shape.boxHalfExtents.z, 0.0f)),
         };
         return {
             {-half.x, -half.y, -half.z},
@@ -237,7 +236,7 @@ VectorInterval ShapeInterval(const VFX::VfxEmitterData& emitter) noexcept {
         };
     }
     case VFX::VfxShapeType::Cylinder: {
-        const float halfHeight = 0.5f * std::abs(FiniteOr(emitter.shape.cylinderHeight));
+        const float halfHeight = 0.5f * std::abs(MATH::FiniteOr(emitter.shape.cylinderHeight, 0.0f));
         return {
             {-radius, -halfHeight, -radius},
             {radius, halfHeight, radius},
@@ -249,7 +248,7 @@ VectorInterval ShapeInterval(const VFX::VfxEmitterData& emitter) noexcept {
             {radius, 0.0f, radius},
         };
     case VFX::VfxShapeType::Edge: {
-        const float halfLength = 0.5f * std::abs(FiniteOr(emitter.shape.edgeLength));
+        const float halfLength = 0.5f * std::abs(MATH::FiniteOr(emitter.shape.edgeLength, 0.0f));
         return {
             {-halfLength, 0.0f, 0.0f},
             {halfLength, 0.0f, 0.0f},
@@ -282,9 +281,10 @@ bool ResolveTransform(size_t emitterIndex, const VFX::VfxAssetData& asset,
     }
 
     const VFX::VfxTransformData& local = emitter.emitterTransform.transform;
-    const MATH::Quat rotation = MATH::Quat::FromEulerXYZ(FiniteOr(local.rotationEulerDegrees.x) * kDegreesToRadians,
-                                                         FiniteOr(local.rotationEulerDegrees.y) * kDegreesToRadians,
-                                                         FiniteOr(local.rotationEulerDegrees.z) * kDegreesToRadians);
+    const MATH::Quat rotation =
+        MATH::Quat::FromEulerXYZ(MATH::FiniteOr(local.rotationEulerDegrees.x, 0.0f) * kDegreesToRadians,
+                                 MATH::FiniteOr(local.rotationEulerDegrees.y, 0.0f) * kDegreesToRadians,
+                                 MATH::FiniteOr(local.rotationEulerDegrees.z, 0.0f) * kDegreesToRadians);
     result.matrix = parent * MATH::Mat4::TRS(local.position, rotation, local.scale);
     MATH::Quat worldRotation{};
     if (!MATH::DecomposeTRS(result.matrix, result.position, worldRotation, result.scale)) {
@@ -408,8 +408,8 @@ VectorInterval MovementInterval(const VFX::VfxEmitterData& emitter, const Resolv
         // velocity without applying emitter scale. Preserve that
         // narrow lobe instead of framing it as a full velocity sphere.
         constexpr float kPi = 3.14159265358979323846f;
-        const float halfAngle =
-            std::clamp(std::abs(FiniteOr(emitter.shape.coneAngleDegrees)) * kDegreesToRadians * 0.5f, 0.0f, kPi);
+        const float halfAngle = std::clamp(
+            std::abs(MATH::FiniteOr(emitter.shape.coneAngleDegrees, 0.0f)) * kDegreesToRadians * 0.5f, 0.0f, kPi);
         const float lateral = halfAngle >= kPi * 0.5f ? 1.0f : std::sin(halfAngle);
         const ScalarInterval lateralVelocity = Multiply({-lateral, lateral}, speed);
         const ScalarInterval forwardVelocity = Multiply({std::cos(halfAngle), 1.0f}, speed);

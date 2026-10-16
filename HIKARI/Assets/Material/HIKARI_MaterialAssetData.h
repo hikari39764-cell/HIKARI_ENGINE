@@ -122,6 +122,16 @@ struct MaterialAssetData {
     MaterialInstanceData instance{};
     MaterialProfileData profile{};
     MaterialRampData ramp{};
+
+    // 編集・コンパイルするノードグラフ。Material と Function だけが持ち、その他の種類は nullptr。
+    MaterialGraphData* ActiveGraph() noexcept {
+        return kind == MaterialAssetKind::Material   ? &graph
+               : kind == MaterialAssetKind::Function ? &function.graph
+                                                     : nullptr;
+    }
+    const MaterialGraphData* ActiveGraph() const noexcept {
+        return const_cast<MaterialAssetData*>(this)->ActiveGraph();
+    }
 };
 
 MaterialAssetData MakeStandardPbrMaterialAssetData(const PbrMaterialAssetData& pbr = {});

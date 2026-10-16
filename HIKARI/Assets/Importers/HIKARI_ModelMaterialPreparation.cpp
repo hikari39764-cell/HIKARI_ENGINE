@@ -1,4 +1,5 @@
 #include "Assets/Importers/HIKARI_ModelImportInternal.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Assets/Importers/HIKARI_TextureImportBackend_DirectXTex.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
@@ -399,21 +400,19 @@ void BuildCanonicalMetallicRoughnessTextures(ModelAsset& model, const AssetImpor
     }
 }
 
-float FiniteOr(float value, float fallback) { return std::isfinite(value) ? value : fallback; }
-
 void ApplyCanonicalSpecularPolicy(ModelAsset& model) {
     for (MaterialAsset& material : model.materials) {
         material.featureBits &= ~MATERIAL_FEATURES::SpecularGlossCompatibility;
         // 旧生成物の応答補正は再インポートで除去する。テクスチャの有無から
         // 材質ワークフローを推測して粗さや反射率を上書きしない。
-        material.roughnessFactor = std::clamp(FiniteOr(material.roughnessFactor, 1.0f), 0.04f, 1.0f);
-        material.metallicFactor = std::clamp(FiniteOr(material.metallicFactor, 0.0f), 0.0f, 1.0f);
-        material.specularFactor = std::clamp(FiniteOr(material.specularFactor, 1.0f), 0.0f, 1.0f);
+        material.roughnessFactor = std::clamp(MATH::FiniteOr(material.roughnessFactor, 1.0f), 0.04f, 1.0f);
+        material.metallicFactor = std::clamp(MATH::FiniteOr(material.metallicFactor, 0.0f), 0.0f, 1.0f);
+        material.specularFactor = std::clamp(MATH::FiniteOr(material.specularFactor, 1.0f), 0.0f, 1.0f);
         // KHR_materials_specular の色係数には上限 1 がない。
         // ソース値を保持し、最終反射率の上限は共有 PBR 評価で適用する。
         for (float* channel :
              {&material.specularColorFactor.x, &material.specularColorFactor.y, &material.specularColorFactor.z}) {
-            *channel = (std::max)(0.0f, FiniteOr(*channel, 1.0f));
+            *channel = (std::max)(0.0f, MATH::FiniteOr(*channel, 1.0f));
         }
     }
 }

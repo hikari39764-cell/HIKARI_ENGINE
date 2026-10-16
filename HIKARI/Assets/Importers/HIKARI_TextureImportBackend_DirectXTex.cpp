@@ -20,13 +20,13 @@
 
 namespace HIKARI {
 
-namespace {
-
-std::string ToHexHr(HRESULT hr) {
+std::string FormatHResultHex(long hr) {
     std::ostringstream oss;
     oss << "0x" << std::hex << std::setw(8) << std::setfill('0') << static_cast<unsigned long>(hr);
     return oss.str();
 }
+
+namespace {
 
 bool IsWicExtension(const std::string& ext) {
     return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tif" || ext == ".tiff";
@@ -212,7 +212,8 @@ bool SaveScratchImageToDds(const DirectX::ScratchImage& image, const std::filesy
     const HRESULT hr = DirectX::SaveToDDSFile(image.GetImages(), image.GetImageCount(), image.GetMetadata(),
                                               DirectX::DDS_FLAGS_FORCE_DX10_EXT, outputPath.wstring().c_str());
     if (FAILED(hr)) {
-        outMessage = "[DirectXTexBackend] SaveToDDSFile failed: " + outputPath.generic_string() + " hr=" + ToHexHr(hr);
+        outMessage =
+            "[DirectXTexBackend] SaveToDDSFile failed: " + outputPath.generic_string() + " hr=" + FormatHResultHex(hr);
         HIKARI_LOG_ERROR(outMessage);
         return false;
     }
@@ -317,7 +318,8 @@ bool CookTextureImage(const std::filesystem::path& sourcePath, TextureImportSett
     HRESULT hr = LoadScratchImage(sourcePath, metadata, loaded, outMessage);
     if (FAILED(hr)) {
         if (outMessage.empty()) {
-            outMessage = "[DirectXTexBackend] load failed: " + sourcePath.generic_string() + " hr=" + ToHexHr(hr);
+            outMessage =
+                "[DirectXTexBackend] load failed: " + sourcePath.generic_string() + " hr=" + FormatHResultHex(hr);
         }
         HIKARI_LOG_ERROR(outMessage);
         return false;
@@ -347,7 +349,7 @@ bool CookTextureImage(const std::filesystem::path& sourcePath, TextureImportSett
         hr = DirectX::Decompress(loaded.GetImages(), loaded.GetImageCount(), metadata, DXGI_FORMAT_UNKNOWN,
                                  decompressed);
         if (FAILED(hr)) {
-            outMessage = "[DirectXTexBackend] block decompression failed: " + ToHexHr(hr);
+            outMessage = "[DirectXTexBackend] block decompression failed: " + FormatHResultHex(hr);
             return false;
         }
         loaded = std::move(decompressed);
@@ -356,7 +358,7 @@ bool CookTextureImage(const std::filesystem::path& sourcePath, TextureImportSett
     if (settings.mipPolicy == TextureMipPolicy::None || settings.mipPolicy == TextureMipPolicy::Generate) {
         hr = KeepTopMip(loaded);
         if (FAILED(hr)) {
-            outMessage = "[DirectXTexBackend] top mip extraction failed: " + ToHexHr(hr);
+            outMessage = "[DirectXTexBackend] top mip extraction failed: " + FormatHResultHex(hr);
             return false;
         }
         metadata = loaded.GetMetadata();
@@ -371,8 +373,8 @@ bool CookTextureImage(const std::filesystem::path& sourcePath, TextureImportSett
         hr = DirectX::Convert(loaded.GetImages(), loaded.GetImageCount(), metadata, workingFormat,
                               ResolveFilterFlags(settings.colorSpace), DirectX::TEX_THRESHOLD_DEFAULT, working);
         if (FAILED(hr)) {
-            outMessage =
-                "[DirectXTexBackend] format conversion failed: " + sourcePath.generic_string() + " hr=" + ToHexHr(hr);
+            outMessage = "[DirectXTexBackend] format conversion failed: " + sourcePath.generic_string() +
+                         " hr=" + FormatHResultHex(hr);
             HIKARI_LOG_ERROR(outMessage);
             return false;
         }
@@ -383,7 +385,7 @@ bool CookTextureImage(const std::filesystem::path& sourcePath, TextureImportSett
     DirectX::ScratchImage normalDirections;
     if (settings.usage == TextureUsage::Normal && !settings.preserveNormalChannels &&
         FAILED(hr = FilterNormalDirections(loaded, true, normalDirections))) {
-        outMessage = "[DirectXTexBackend] normal direction decoding failed: " + ToHexHr(hr);
+        outMessage = "[DirectXTexBackend] normal direction decoding failed: " + FormatHResultHex(hr);
         return false;
     }
     if (normalDirections.GetImageCount() > 0)
@@ -419,8 +421,8 @@ bool CookTextureImage(const std::filesystem::path& sourcePath, TextureImportSett
             hr = DirectX::Resize(converted.GetImages(), converted.GetImageCount(), convertedMetadata, width, height,
                                  ResolveFilterFlags(settings.colorSpace), resized);
             if (FAILED(hr)) {
-                outMessage =
-                    "[DirectXTexBackend] texture resize failed: " + sourcePath.generic_string() + " hr=" + ToHexHr(hr);
+                outMessage = "[DirectXTexBackend] texture resize failed: " + sourcePath.generic_string() +
+                             " hr=" + FormatHResultHex(hr);
                 HIKARI_LOG_ERROR(outMessage);
                 return false;
             }
@@ -444,8 +446,8 @@ bool CookTextureImage(const std::filesystem::path& sourcePath, TextureImportSett
         hr = DirectX::GenerateMipMaps(mipInput.GetImages(), mipInput.GetImageCount(), mipInputMetadata,
                                       ResolveFilterFlags(settings.colorSpace), 0, mipmapped);
         if (FAILED(hr)) {
-            outMessage =
-                "[DirectXTexBackend] mipmap generation failed: " + sourcePath.generic_string() + " hr=" + ToHexHr(hr);
+            outMessage = "[DirectXTexBackend] mipmap generation failed: " + sourcePath.generic_string() +
+                         " hr=" + FormatHResultHex(hr);
             HIKARI_LOG_ERROR(outMessage);
             return false;
         }
@@ -458,7 +460,7 @@ bool CookTextureImage(const std::filesystem::path& sourcePath, TextureImportSett
     DirectX::ScratchImage normalizedMips;
     if (settings.usage == TextureUsage::Normal && !settings.preserveNormalChannels && directionsFiltered &&
         FAILED(hr = FilterNormalDirections(loaded, false, normalizedMips))) {
-        outMessage = "[DirectXTexBackend] normal mip normalization failed: " + ToHexHr(hr);
+        outMessage = "[DirectXTexBackend] normal mip normalization failed: " + FormatHResultHex(hr);
         return false;
     }
     if (normalizedMips.GetImageCount() > 0)
@@ -484,7 +486,7 @@ bool CookTextureImage(const std::filesystem::path& sourcePath, TextureImportSett
         if (FAILED(hr)) {
             compressed.Release();
             outMessage = "[DirectXTexBackend] block compression failed, writing uncompressed DDS: " +
-                         sourcePath.generic_string() + " hr=" + ToHexHr(hr);
+                         sourcePath.generic_string() + " hr=" + FormatHResultHex(hr);
             HIKARI_LOG_WARN(outMessage);
         }
     }
@@ -605,8 +607,8 @@ bool InspectTextureAlphaWithDirectXTex(const std::filesystem::path& sourcePath, 
     const HRESULT hr = LoadScratchImage(sourcePath, metadata, image, outMessage);
     if (FAILED(hr)) {
         if (outMessage.empty()) {
-            outMessage =
-                "[DirectXTexBackend] alpha inspect failed: " + sourcePath.generic_string() + " hr=" + ToHexHr(hr);
+            outMessage = "[DirectXTexBackend] alpha inspect failed: " + sourcePath.generic_string() +
+                         " hr=" + FormatHResultHex(hr);
         }
         return false;
     }
@@ -631,7 +633,8 @@ bool DirectXTexTextureImportBackend::Inspect(const std::filesystem::path& source
     const HRESULT hr = LoadScratchImage(sourcePath, metadata, image, outMessage);
     if (FAILED(hr)) {
         if (outMessage.empty()) {
-            outMessage = "[DirectXTexBackend] inspect failed: " + sourcePath.generic_string() + " hr=" + ToHexHr(hr);
+            outMessage =
+                "[DirectXTexBackend] inspect failed: " + sourcePath.generic_string() + " hr=" + FormatHResultHex(hr);
         }
         HIKARI_LOG_ERROR(outMessage);
         return false;

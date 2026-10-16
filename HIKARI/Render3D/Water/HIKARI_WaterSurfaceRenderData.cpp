@@ -1,4 +1,5 @@
 #include "Render3D/Water/HIKARI_WaterSurfaceRenderData.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuData.h"
 
 #include <algorithm>
@@ -18,9 +19,9 @@ constexpr float kMaximumShallowDepth = 1000.0f;
 constexpr float kDefaultReflectionStrength = 1.0f;
 constexpr float kDefaultRibbonWidth = 0.02f;
 
-float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
-
-float NonNegative(float value, float fallback = 0.0f) noexcept { return (std::max)(FiniteOr(value, fallback), 0.0f); }
+float NonNegative(float value, float fallback = 0.0f) noexcept {
+    return (std::max)(MATH::FiniteOr(value, fallback), 0.0f);
+}
 
 MATH::Vec3 NonNegative(const MATH::Vec3& value) noexcept {
     return {NonNegative(value.x), NonNegative(value.y), NonNegative(value.z)};
@@ -76,49 +77,52 @@ WaterSurfaceGpuData BuildWaterSurfaceGpuData(const WaterSurfaceRenderData& sourc
     result.waveCount = static_cast<uint32_t>(kWaterSurfaceWaveCount);
     // 非 sentinel の recordCount は liquidCoverage の buffer offset を運ぶ。
     result.recordCount = liquidCoverageOffset;
-    const float shallowClearDepth = std::clamp(FiniteOr(source.shallowClearDepth, kDefaultShallowClearDepth), 0.0f,
-                                               kMaximumShallowDepth - kMinimumShallowDepthRange);
-    const float shallowBlendDepth = std::clamp(FiniteOr(source.shallowBlendDepth, kDefaultShallowBlendDepth),
+    const float shallowClearDepth = std::clamp(MATH::FiniteOr(source.shallowClearDepth, kDefaultShallowClearDepth),
+                                               0.0f, kMaximumShallowDepth - kMinimumShallowDepthRange);
+    const float shallowBlendDepth = std::clamp(MATH::FiniteOr(source.shallowBlendDepth, kDefaultShallowBlendDepth),
                                                shallowClearDepth + kMinimumShallowDepthRange, kMaximumShallowDepth);
     const float shallowGraphicWeight =
-        std::clamp(FiniteOr(source.shallowGraphicWeight, kDefaultShallowGraphicWeight), 0.0f, 1.0f);
+        std::clamp(MATH::FiniteOr(source.shallowGraphicWeight, kDefaultShallowGraphicWeight), 0.0f, 1.0f);
     result.coverageParams = {static_cast<float>((std::max)(source.coverageResolution, 1u)), shallowClearDepth,
                              shallowBlendDepth, shallowGraphicWeight};
 
     const WaterSurfaceShadingModel shadingModel = source.shadingModel == WaterSurfaceShadingModel::RealisticClearSummer
                                                       ? WaterSurfaceShadingModel::RealisticClearSummer
                                                       : WaterSurfaceShadingModel::AnimeSummer;
-    result.surfaceParams = {FiniteOr(source.timeScale, 1.0f), NonNegative(source.choppiness),
+    result.surfaceParams = {MATH::FiniteOr(source.timeScale, 1.0f), NonNegative(source.choppiness),
                             static_cast<float>(shadingModel), NonNegative(source.microWaveStrength)};
 
     const MATH::Vec3 depthTransmittance = NonNegative(source.depthTransmittance);
     result.depthTransmittanceFoam = {depthTransmittance.x, depthTransmittance.y, depthTransmittance.z,
-                                     std::clamp(FiniteOr(source.foamAmount, 0.0f), 0.0f, 1.0f)};
+                                     std::clamp(MATH::FiniteOr(source.foamAmount, 0.0f), 0.0f, 1.0f)};
     const MATH::Vec3 scattering = NonNegative(source.scatteringColor);
     result.scatteringAbsorption = {scattering.x, scattering.y, scattering.z,
-                                   (std::max)(FiniteOr(source.absorptionDistance, 1.0f), 0.001f)};
+                                   (std::max)(MATH::FiniteOr(source.absorptionDistance, 1.0f), 0.001f)};
     const MATH::Vec3 foam = NonNegative(source.foamColor);
-    result.foamRoughness = {foam.x, foam.y, foam.z, std::clamp(FiniteOr(source.surfaceRoughness, 0.1f), 0.02f, 1.0f)};
-    result.reflectionParams = {std::clamp(FiniteOr(source.reflectionStrength, kDefaultReflectionStrength), 0.0f, 2.0f),
-                               std::clamp(FiniteOr(source.sunGlintStrength, 0.0f), 0.0f, 2.0f),
-                               std::clamp(FiniteOr(source.glintDensity, 0.0f), 0.0f, 1.0f),
-                               std::clamp(FiniteOr(source.glintFlowSpeed, 0.0f), 0.0f, 4.0f)};
-    result.ribbonEnergyParams = {std::clamp(FiniteOr(source.ribbonWidth, kDefaultRibbonWidth), 0.02f, 0.5f),
-                                 std::clamp(FiniteOr(source.directSunStrength, 1.0f), 0.0f, 2.0f),
-                                 std::clamp(FiniteOr(source.transmissionStrength, 1.0f), 0.0f, 2.0f),
-                                 std::clamp(FiniteOr(source.shadowStrength, 1.0f), 0.0f, 1.0f)};
-    result.microWaveParams = {FiniteOr(source.windDirectionRadians, 0.0f),
-                              std::clamp(FiniteOr(source.windSpeed, 0.0f), 0.0f, 50.0f),
-                              std::clamp(FiniteOr(source.shortWaveStrength, 0.0f), 0.0f, 2.0f),
-                              std::clamp(FiniteOr(source.capillaryStrength, 0.0f), 0.0f, 2.0f)};
-    result.geometryParams = {FiniteOr(source.geometryParams.x, 0.0f), FiniteOr(source.geometryParams.y, 0.0f),
+    result.foamRoughness = {foam.x, foam.y, foam.z,
+                            std::clamp(MATH::FiniteOr(source.surfaceRoughness, 0.1f), 0.02f, 1.0f)};
+    result.reflectionParams = {
+        std::clamp(MATH::FiniteOr(source.reflectionStrength, kDefaultReflectionStrength), 0.0f, 2.0f),
+        std::clamp(MATH::FiniteOr(source.sunGlintStrength, 0.0f), 0.0f, 2.0f),
+        std::clamp(MATH::FiniteOr(source.glintDensity, 0.0f), 0.0f, 1.0f),
+        std::clamp(MATH::FiniteOr(source.glintFlowSpeed, 0.0f), 0.0f, 4.0f)};
+    result.ribbonEnergyParams = {std::clamp(MATH::FiniteOr(source.ribbonWidth, kDefaultRibbonWidth), 0.02f, 0.5f),
+                                 std::clamp(MATH::FiniteOr(source.directSunStrength, 1.0f), 0.0f, 2.0f),
+                                 std::clamp(MATH::FiniteOr(source.transmissionStrength, 1.0f), 0.0f, 2.0f),
+                                 std::clamp(MATH::FiniteOr(source.shadowStrength, 1.0f), 0.0f, 1.0f)};
+    result.microWaveParams = {MATH::FiniteOr(source.windDirectionRadians, 0.0f),
+                              std::clamp(MATH::FiniteOr(source.windSpeed, 0.0f), 0.0f, 50.0f),
+                              std::clamp(MATH::FiniteOr(source.shortWaveStrength, 0.0f), 0.0f, 2.0f),
+                              std::clamp(MATH::FiniteOr(source.capillaryStrength, 0.0f), 0.0f, 2.0f)};
+    result.geometryParams = {MATH::FiniteOr(source.geometryParams.x, 0.0f),
+                             MATH::FiniteOr(source.geometryParams.y, 0.0f),
                              (std::max)(NonNegative(source.geometryParams.z, 0.5f), 0.001f),
                              (std::max)(NonNegative(source.geometryParams.w, 0.5f), 0.001f)};
 
     for (std::size_t index = 0u; index < source.waves.size(); ++index) {
         const WaterWaveRenderData& wave = source.waves[index];
-        const float directionRadians = FiniteOr(wave.directionRadians, 0.0f);
-        const float wavelength = (std::max)(FiniteOr(wave.wavelength, 1.0f), kMinimumWavelength);
+        const float directionRadians = MATH::FiniteOr(wave.directionRadians, 0.0f);
+        const float wavelength = (std::max)(MATH::FiniteOr(wave.wavelength, 1.0f), kMinimumWavelength);
         const float waveNumber = kTwoPi / wavelength;
         const float angularFrequency = std::sqrt(kGravity * waveNumber);
         result.waves[index].directionAmplitudeWaveNumber = {std::cos(directionRadians), std::sin(directionRadians),

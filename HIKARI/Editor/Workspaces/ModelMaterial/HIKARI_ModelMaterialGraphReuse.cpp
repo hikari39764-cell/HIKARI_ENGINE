@@ -13,7 +13,7 @@ bool ModelMaterialWorkspaceController::InsertMaterialModule(DocumentSceneBase& s
                                                             MATH::Vec2 position, std::string& message) {
     std::lock_guard<std::recursive_mutex> guard(authoringDocument_.GetMutex());
     auto& material = authoringDocument_.EditMaterial();
-    auto* graph = MATERIAL_GRAPH_UI::EditableGraph(material);
+    auto* graph = material.ActiveGraph();
     if (!authoringDocument_.HasMaterial() || !graph) {
         message = TEXT::Localize("material.layout.empty");
         return false;
@@ -89,7 +89,7 @@ bool ModelMaterialWorkspaceController::ExtractSelectedMaterialFunction(DocumentS
         message = saved.message;
         return false;
     }
-    auto* graph = MATERIAL_GRAPH_UI::EditableGraph(replaced);
+    auto* graph = replaced.ActiveGraph();
     FindMaterialGraphNode(*graph, callId)->assetReference = saved.assetGuid;
     // 新しい関数を登録してから、元の文書を一つの履歴操作で置換する。
     if (!scene.ReloadAssets()) {

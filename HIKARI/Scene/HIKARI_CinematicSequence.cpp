@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_CinematicSequence.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
@@ -11,17 +12,14 @@
 
 namespace HIKARI {
 
-namespace {
-float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
-
-} // namespace
+namespace {} // namespace
 
 void NormalizeCinematicSequence(CinematicSequence& sequence) {
     SEQUENCER::NormalizeSequenceBindings(sequence.bindings);
     SEQUENCER::NormalizeCameraCutTrack(sequence.cameraCutTrack);
     SEQUENCER::NormalizeScreenEffects(sequence.screenEffects);
     sequence.durationSeconds =
-        std::clamp((std::max)(FiniteOr(sequence.durationSeconds, kMinCinematicSequenceDurationSeconds),
+        std::clamp((std::max)(MATH::FiniteOr(sequence.durationSeconds, kMinCinematicSequenceDurationSeconds),
                               GetCinematicSequenceContentEnd(sequence)),
                    kMinCinematicSequenceDurationSeconds, kMaxCinematicSequenceDurationSeconds);
 }

@@ -47,13 +47,6 @@ MaterialRampPointData RampPoint(std::string id, float position, float red, float
     return point;
 }
 
-MaterialValueData MakeValue(MaterialValueType type, float x, float y = 0.0f, float z = 0.0f, float w = 0.0f) {
-    MaterialValueData value{};
-    value.type = type;
-    value.numeric = {x, y, z, w};
-    return value;
-}
-
 void AddParameter(MaterialAssetData& data, std::string id, std::string displayName, MaterialValueData value) {
     data.graph.parameters.push_back(MaterialGraphParameterData{std::move(id), std::move(displayName), value, true});
 }
@@ -94,21 +87,25 @@ void Connect(MaterialAssetData& data, std::string id, std::string sourceNode, st
 }
 
 void AddRampInputs(MaterialAssetData& data, bool multiRamp) {
-    AddParameter(data, "parameter.shadowThreshold", "Shadow Threshold", MakeValue(MaterialValueType::Float1, 0.46f));
-    AddParameter(data, "parameter.shadowSoftness", "Shadow Softness", MakeValue(MaterialValueType::Float1, 0.025f));
-    AddParameter(data, "parameter.midThreshold", "Midtone Threshold", MakeValue(MaterialValueType::Float1, 0.70f));
+    AddParameter(data, "parameter.shadowThreshold", "Shadow Threshold",
+                 MakeMaterialValue(MaterialValueType::Float1, 0.46f));
+    AddParameter(data, "parameter.shadowSoftness", "Shadow Softness",
+                 MakeMaterialValue(MaterialValueType::Float1, 0.025f));
+    AddParameter(data, "parameter.midThreshold", "Midtone Threshold",
+                 MakeMaterialValue(MaterialValueType::Float1, 0.70f));
     AddParameter(data, "parameter.shadowTint", "Shadow Tint",
-                 MakeValue(MaterialValueType::Float3, 0.38f, 0.45f, 0.62f));
-    AddParameter(data, "parameter.midTint", "Midtone Tint", MakeValue(MaterialValueType::Float3, 0.72f, 0.78f, 0.88f));
-    AddParameter(data, "parameter.litTint", "Lit Tint", MakeValue(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
-    AddParameter(data, "parameter.rampRow", "Ramp Row", MakeValue(MaterialValueType::Float1, 0.5f));
+                 MakeMaterialValue(MaterialValueType::Float3, 0.38f, 0.45f, 0.62f));
+    AddParameter(data, "parameter.midTint", "Midtone Tint",
+                 MakeMaterialValue(MaterialValueType::Float3, 0.72f, 0.78f, 0.88f));
+    AddParameter(data, "parameter.litTint", "Lit Tint", MakeMaterialValue(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
+    AddParameter(data, "parameter.rampRow", "Ramp Row", MakeMaterialValue(MaterialValueType::Float1, 0.5f));
     AddParameter(data, "parameter.rampMaskInfluence", "Ramp Mask Influence",
-                 MakeValue(MaterialValueType::Float1, 0.0f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.0f));
     AddParameter(data, "parameter.rampBlend", "Secondary Ramp Blend",
-                 MakeValue(MaterialValueType::Float1, multiRamp ? 0.5f : 0.0f));
+                 MakeMaterialValue(MaterialValueType::Float1, multiRamp ? 0.5f : 0.0f));
     AddParameter(data, "parameter.rampLayerWeights", "Ramp Layer Weights",
-                 MakeValue(MaterialValueType::Float4, 1.0f, 0.0f, 0.0f, 0.0f));
-    AddParameter(data, "parameter.rampIntensity", "Ramp Influence", MakeValue(MaterialValueType::Float1, 1.0f));
+                 MakeMaterialValue(MaterialValueType::Float4, 1.0f, 0.0f, 0.0f, 0.0f));
+    AddParameter(data, "parameter.rampIntensity", "Ramp Influence", MakeMaterialValue(MaterialValueType::Float1, 1.0f));
     AddResource(data, "resource.diffuseRamp", "Diffuse Ramp",
                 multiRamp ? MaterialResourceType::Ramp2D : MaterialResourceType::Ramp1D,
                 MaterialResourceSemantic::Ramp);
@@ -132,26 +129,28 @@ void AddRamp(MaterialAssetData& data, bool multiRamp = false) {
 
 void AddSpecularBand(MaterialAssetData& data) {
     AddParameter(data, "parameter.specularBandWidth", "Specular Band Width",
-                 MakeValue(MaterialValueType::Float1, 0.075f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.075f));
     AddParameter(data, "parameter.specularBandSoftness", "Specular Band Softness",
-                 MakeValue(MaterialValueType::Float1, 0.012f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.012f));
     AddParameter(data, "parameter.specularIntensity", "Specular Intensity",
-                 MakeValue(MaterialValueType::Float1, 0.35f));
-    AddParameter(data, "parameter.specularPower", "Specular Power", MakeValue(MaterialValueType::Float1, 96.0f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.35f));
+    AddParameter(data, "parameter.specularPower", "Specular Power",
+                 MakeMaterialValue(MaterialValueType::Float1, 96.0f));
     AddParameter(data, "parameter.specularTint", "Specular Tint",
-                 MakeValue(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
+                 MakeMaterialValue(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
     AddNode(data, "node.specularBand", "Specular Band", MaterialNodeKind::SpecularBand,
             MaterialValueType::SpecularResponse, -320.0f, 760.0f);
     Connect(data, "edge.specularBand.response", "node.specularBand", "Response", "SpecularResponse");
 }
 
 void AddFresnelRim(MaterialAssetData& data) {
-    AddParameter(data, "parameter.rimPower", "Rim Power", MakeValue(MaterialValueType::Float1, 4.0f));
-    AddParameter(data, "parameter.rimWidth", "Rim Width", MakeValue(MaterialValueType::Float1, 0.22f));
-    AddParameter(data, "parameter.rimColor", "Rim Color", MakeValue(MaterialValueType::Float3, 0.68f, 0.78f, 1.0f));
-    AddParameter(data, "parameter.rimIntensity", "Rim Intensity", MakeValue(MaterialValueType::Float1, 0.28f));
+    AddParameter(data, "parameter.rimPower", "Rim Power", MakeMaterialValue(MaterialValueType::Float1, 4.0f));
+    AddParameter(data, "parameter.rimWidth", "Rim Width", MakeMaterialValue(MaterialValueType::Float1, 0.22f));
+    AddParameter(data, "parameter.rimColor", "Rim Color",
+                 MakeMaterialValue(MaterialValueType::Float3, 0.68f, 0.78f, 1.0f));
+    AddParameter(data, "parameter.rimIntensity", "Rim Intensity", MakeMaterialValue(MaterialValueType::Float1, 0.28f));
     AddParameter(data, "parameter.rimLightAlignment", "Rim Light Alignment",
-                 MakeValue(MaterialValueType::Float1, 0.35f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.35f));
     AddNode(data, "node.fresnelRim", "Fresnel Rim", MaterialNodeKind::FresnelRim, MaterialValueType::Float3, -320.0f,
             1040.0f);
     Connect(data, "edge.fresnelRim.color", "node.fresnelRim", "Color", "Additive");
@@ -180,11 +179,11 @@ void ConfigureGenericToon(MaterialAssetData& data) {
 void ConfigureSkin(MaterialAssetData& data) {
     AddRamp(data);
     AddFresnelRim(data);
-    AddParameter(data, "parameter.skinWrap", "Skin Light Wrap", MakeValue(MaterialValueType::Float1, 0.18f));
+    AddParameter(data, "parameter.skinWrap", "Skin Light Wrap", MakeMaterialValue(MaterialValueType::Float1, 0.18f));
     AddParameter(data, "parameter.skinTint", "Skin Scatter Tint",
-                 MakeValue(MaterialValueType::Float3, 1.0f, 0.42f, 0.32f));
+                 MakeMaterialValue(MaterialValueType::Float3, 1.0f, 0.42f, 0.32f));
     AddParameter(data, "parameter.skinSubsurface", "Skin Subsurface Strength",
-                 MakeValue(MaterialValueType::Float1, 0.12f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.12f));
     TEMPLATE_FACTORY_INTERNAL::AddSkinLightingGraph(data);
     AddOutline(data, 2.0f);
     data.featureRequests.clear();
@@ -193,12 +192,13 @@ void ConfigureSkin(MaterialAssetData& data) {
 void ConfigureFace(MaterialAssetData& data) {
     AddRampInputs(data, false);
     AddParameter(data, "parameter.faceShadowSoftness", "Face Shadow Softness",
-                 MakeValue(MaterialValueType::Float1, 0.04f));
-    AddParameter(data, "parameter.faceShadowOffset", "Face Shadow Offset", MakeValue(MaterialValueType::Float1, 0.0f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.04f));
+    AddParameter(data, "parameter.faceShadowOffset", "Face Shadow Offset",
+                 MakeMaterialValue(MaterialValueType::Float1, 0.0f));
     AddParameter(data, "parameter.faceRight", "Face Local Right",
-                 MakeValue(MaterialValueType::Float3, 1.0f, 0.0f, 0.0f));
+                 MakeMaterialValue(MaterialValueType::Float3, 1.0f, 0.0f, 0.0f));
     AddParameter(data, "parameter.faceForward", "Face Local Forward",
-                 MakeValue(MaterialValueType::Float3, 0.0f, 0.0f, 1.0f));
+                 MakeMaterialValue(MaterialValueType::Float3, 0.0f, 0.0f, 1.0f));
     AddResource(data, "resource.faceSdf", "Face SDF", MaterialResourceType::Texture2D,
                 MaterialResourceSemantic::FaceSdf);
     AddNode(data, "node.faceSdf", "Face SDF Lighting", MaterialNodeKind::FaceSdf, MaterialValueType::DiffuseResponse,
@@ -208,7 +208,7 @@ void ConfigureFace(MaterialAssetData& data) {
     Connect(data, "edge.faceSdf.texture", "node.texture.faceSdf", "R", "node.faceSdf", "SDF");
     Connect(data, "edge.faceSdf.response", "node.faceSdf", "Response", "DiffuseResponse");
     AddParameter(data, "parameter.hairShadowStrength", "Hair Shadow Strength",
-                 MakeValue(MaterialValueType::Float1, 0.65f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.65f));
     AddResource(data, "resource.hairShadow", "Hair Shadow Visibility (linear R)", MaterialResourceType::Texture2D,
                 MaterialResourceSemantic::HairShadow);
     AddNode(data, "node.hairShadow", "Hair Shadow Mask", MaterialNodeKind::HairShadow,
@@ -231,21 +231,24 @@ void ConfigureFace(MaterialAssetData& data) {
 void ConfigureHair(MaterialAssetData& data) {
     AddRamp(data);
     AddOutline(data, 2.0f);
-    AddParameter(data, "parameter.hairShift", "Hair Highlight Shift", MakeValue(MaterialValueType::Float1, 0.08f));
-    AddParameter(data, "parameter.hairWidth", "Hair Highlight Width", MakeValue(MaterialValueType::Float1, 0.18f));
+    AddParameter(data, "parameter.hairShift", "Hair Highlight Shift",
+                 MakeMaterialValue(MaterialValueType::Float1, 0.08f));
+    AddParameter(data, "parameter.hairWidth", "Hair Highlight Width",
+                 MakeMaterialValue(MaterialValueType::Float1, 0.18f));
     AddParameter(data, "parameter.hairSecondaryShift", "Hair Secondary Shift",
-                 MakeValue(MaterialValueType::Float1, -0.10f));
+                 MakeMaterialValue(MaterialValueType::Float1, -0.10f));
     AddParameter(data, "parameter.hairIntensity", "Hair Highlight Intensity",
-                 MakeValue(MaterialValueType::Float1, 1.0f));
+                 MakeMaterialValue(MaterialValueType::Float1, 1.0f));
     AddParameter(data, "parameter.hairPrimaryPower", "Hair Primary Sharpness",
-                 MakeValue(MaterialValueType::Float1, 96.0f));
+                 MakeMaterialValue(MaterialValueType::Float1, 96.0f));
     AddParameter(data, "parameter.hairSecondaryPower", "Hair Secondary Sharpness",
-                 MakeValue(MaterialValueType::Float1, 48.0f));
+                 MakeMaterialValue(MaterialValueType::Float1, 48.0f));
     AddParameter(data, "parameter.hairSecondaryIntensity", "Hair Secondary Intensity",
-                 MakeValue(MaterialValueType::Float1, 0.45f));
-    AddParameter(data, "parameter.hairFlowStrength", "Hair Flow Strength", MakeValue(MaterialValueType::Float1, 1.0f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.45f));
+    AddParameter(data, "parameter.hairFlowStrength", "Hair Flow Strength",
+                 MakeMaterialValue(MaterialValueType::Float1, 1.0f));
     AddParameter(data, "parameter.hairHighlightTint", "Hair Highlight Tint",
-                 MakeValue(MaterialValueType::Float3, 1.0f, 0.92f, 0.84f));
+                 MakeMaterialValue(MaterialValueType::Float3, 1.0f, 0.92f, 0.84f));
     AddNode(data, "node.anisotropicHair", "Anisotropic Hair", MaterialNodeKind::AnisotropicHair,
             MaterialValueType::SpecularResponse, -320.0f, 760.0f);
     Connect(data, "edge.hair.response", "node.anisotropicHair", "Response", "SpecularResponse");
@@ -253,32 +256,37 @@ void ConfigureHair(MaterialAssetData& data) {
 }
 
 void ConfigureEye(MaterialAssetData& data) {
-    AddParameter(data, "parameter.irisDepth", "Iris Depth", MakeValue(MaterialValueType::Float1, 0.12f));
-    AddParameter(data, "parameter.eyeSparkle", "Eye Sparkle", MakeValue(MaterialValueType::Float1, 0.35f));
-    AddParameter(data, "parameter.eyeSparklePower", "Eye Sparkle Power", MakeValue(MaterialValueType::Float1, 64.0f));
-    AddParameter(data, "parameter.irisCenter", "Iris UV Center", MakeValue(MaterialValueType::Float2, 0.50f, 0.50f));
-    AddParameter(data, "parameter.irisRadius", "Iris UV Radius", MakeValue(MaterialValueType::Float1, 0.48f));
-    AddParameter(data, "parameter.irisMaskSoftness", "Iris Mask Softness", MakeValue(MaterialValueType::Float1, 0.08f));
-    AddParameter(data, "parameter.eyeLayerMode", "Eye Layer Mode", MakeValue(MaterialValueType::Float1, 0.0f));
+    AddParameter(data, "parameter.irisDepth", "Iris Depth", MakeMaterialValue(MaterialValueType::Float1, 0.12f));
+    AddParameter(data, "parameter.eyeSparkle", "Eye Sparkle", MakeMaterialValue(MaterialValueType::Float1, 0.35f));
+    AddParameter(data, "parameter.eyeSparklePower", "Eye Sparkle Power",
+                 MakeMaterialValue(MaterialValueType::Float1, 64.0f));
+    AddParameter(data, "parameter.irisCenter", "Iris UV Center",
+                 MakeMaterialValue(MaterialValueType::Float2, 0.50f, 0.50f));
+    AddParameter(data, "parameter.irisRadius", "Iris UV Radius", MakeMaterialValue(MaterialValueType::Float1, 0.48f));
+    AddParameter(data, "parameter.irisMaskSoftness", "Iris Mask Softness",
+                 MakeMaterialValue(MaterialValueType::Float1, 0.08f));
+    AddParameter(data, "parameter.eyeLayerMode", "Eye Layer Mode", MakeMaterialValue(MaterialValueType::Float1, 0.0f));
     AddParameter(data, "parameter.eyeHighlightOpacity", "Highlight Opacity",
-                 MakeValue(MaterialValueType::Float1, 1.0f));
+                 MakeMaterialValue(MaterialValueType::Float1, 1.0f));
     AddParameter(data, "parameter.eyeHighlightThreshold", "Highlight Threshold",
-                 MakeValue(MaterialValueType::Float1, 0.02f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.02f));
     AddParameter(data, "parameter.eyeHighlightSoftness", "Highlight Softness",
-                 MakeValue(MaterialValueType::Float1, 0.04f));
-    AddParameter(data, "parameter.eyeParallaxScale", "Parallax Scale", MakeValue(MaterialValueType::Float1, 0.10f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.04f));
+    AddParameter(data, "parameter.eyeParallaxScale", "Parallax Scale",
+                 MakeMaterialValue(MaterialValueType::Float1, 0.10f));
     AddParameter(data, "parameter.eyeHighlightIntensity", "Highlight Intensity",
-                 MakeValue(MaterialValueType::Float1, 2.0f));
-    AddParameter(data, "parameter.eyeBaseLift", "Iris Light Lift", MakeValue(MaterialValueType::Float1, 0.18f));
+                 MakeMaterialValue(MaterialValueType::Float1, 2.0f));
+    AddParameter(data, "parameter.eyeBaseLift", "Iris Light Lift", MakeMaterialValue(MaterialValueType::Float1, 0.18f));
     AddParameter(data, "parameter.eyeCausticIntensity", "Caustic Intensity",
-                 MakeValue(MaterialValueType::Float1, 0.25f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.25f));
     AddParameter(data, "parameter.eyeCausticTint", "Caustic Tint",
-                 MakeValue(MaterialValueType::Float3, 1.0f, 0.72f, 0.38f));
-    AddParameter(data, "parameter.eyeCausticWidth", "Caustic Width", MakeValue(MaterialValueType::Float1, 0.28f));
+                 MakeMaterialValue(MaterialValueType::Float3, 1.0f, 0.72f, 0.38f));
+    AddParameter(data, "parameter.eyeCausticWidth", "Caustic Width",
+                 MakeMaterialValue(MaterialValueType::Float1, 0.28f));
     AddParameter(data, "parameter.matCapViewCorrection", "MatCap View Correction",
-                 MakeValue(MaterialValueType::Float1, 1.0f));
+                 MakeMaterialValue(MaterialValueType::Float1, 1.0f));
     AddParameter(data, "parameter.matCapSphericalNormalBlend", "Eye Sphere Normal",
-                 MakeValue(MaterialValueType::Float1, 1.0f));
+                 MakeMaterialValue(MaterialValueType::Float1, 1.0f));
     AddNode(data, "node.eyeLighting", "Eye Layer", MaterialNodeKind::EyeLighting, MaterialValueType::Float3, -320.0f,
             420.0f);
     Connect(data, "edge.eyeLighting.color", "node.eyeLighting", "Color", "Eye");
@@ -295,11 +303,13 @@ void ConfigureEye(MaterialAssetData& data) {
 void ConfigureCloth(MaterialAssetData& data) {
     AddRamp(data);
     AddFresnelRim(data);
-    AddParameter(data, "parameter.fabricSheen", "Fabric Sheen", MakeValue(MaterialValueType::Float1, 0.28f));
-    AddParameter(data, "parameter.fiberRoughness", "Fiber Roughness", MakeValue(MaterialValueType::Float1, 0.72f));
-    AddParameter(data, "parameter.fabricSheenPower", "Fabric Sheen Power", MakeValue(MaterialValueType::Float1, 4.0f));
+    AddParameter(data, "parameter.fabricSheen", "Fabric Sheen", MakeMaterialValue(MaterialValueType::Float1, 0.28f));
+    AddParameter(data, "parameter.fiberRoughness", "Fiber Roughness",
+                 MakeMaterialValue(MaterialValueType::Float1, 0.72f));
+    AddParameter(data, "parameter.fabricSheenPower", "Fabric Sheen Power",
+                 MakeMaterialValue(MaterialValueType::Float1, 4.0f));
     AddParameter(data, "parameter.fabricSheenIntensity", "Fabric Sheen Intensity",
-                 MakeValue(MaterialValueType::Float1, 1.0f));
+                 MakeMaterialValue(MaterialValueType::Float1, 1.0f));
     TEMPLATE_FACTORY_INTERNAL::AddFabricSheenGraph(data);
     AddOutline(data, 2.0f);
     data.featureRequests.clear();
@@ -311,12 +321,15 @@ void ConfigureHybridMetal(MaterialAssetData& data) {
     AddSpecularBand(data);
     AddFresnelRim(data);
     AddParameter(data, "parameter.directDiffusePbrBlend", "Direct Diffuse PBR Blend",
-                 MakeValue(MaterialValueType::Float1, 0.25f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.25f));
     AddParameter(data, "parameter.directSpecularPbrBlend", "Direct Specular PBR Blend",
-                 MakeValue(MaterialValueType::Float1, 0.35f));
-    AddParameter(data, "parameter.indirectPbrBlend", "Indirect PBR Blend", MakeValue(MaterialValueType::Float1, 0.65f));
-    AddParameter(data, "parameter.matCapTint", "MatCap Tint", MakeValue(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
-    AddParameter(data, "parameter.matCapIntensity", "MatCap Intensity", MakeValue(MaterialValueType::Float1, 0.25f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.35f));
+    AddParameter(data, "parameter.indirectPbrBlend", "Indirect PBR Blend",
+                 MakeMaterialValue(MaterialValueType::Float1, 0.65f));
+    AddParameter(data, "parameter.matCapTint", "MatCap Tint",
+                 MakeMaterialValue(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
+    AddParameter(data, "parameter.matCapIntensity", "MatCap Intensity",
+                 MakeMaterialValue(MaterialValueType::Float1, 0.25f));
     AddResource(data, "resource.matCap", "MatCap", MaterialResourceType::Texture2D, MaterialResourceSemantic::MatCap);
     TEMPLATE_FACTORY_INTERNAL::AddHybridLightingGraph(data);
     data.featureRequests.clear();
@@ -331,12 +344,13 @@ void ConfigureParticleUnlit(MaterialAssetData& data, bool textured) {
     data.graph = {};
 
     AddParameter(data, "parameter.particleTint", "Particle Tint",
-                 MakeValue(MaterialValueType::Float4, 1.0f, 1.0f, 1.0f, 1.0f));
-    AddParameter(data, "parameter.particleOpacity", "Particle Opacity", MakeValue(MaterialValueType::Float1, 1.0f));
+                 MakeMaterialValue(MaterialValueType::Float4, 1.0f, 1.0f, 1.0f, 1.0f));
+    AddParameter(data, "parameter.particleOpacity", "Particle Opacity",
+                 MakeMaterialValue(MaterialValueType::Float1, 1.0f));
     AddParameter(data, "parameter.particleEmissive", "Particle Emissive",
-                 MakeValue(MaterialValueType::Float3, 0.0f, 0.0f, 0.0f));
+                 MakeMaterialValue(MaterialValueType::Float3, 0.0f, 0.0f, 0.0f));
     AddParameter(data, "parameter.particleAlphaClip", "Particle Alpha Clip",
-                 MakeValue(MaterialValueType::Float1, 0.0f));
+                 MakeMaterialValue(MaterialValueType::Float1, 0.0f));
 
     AddNode(data, "node.particleTint", "Particle Tint", MaterialNodeKind::Parameter, MaterialValueType::Float4, -520.0f,
             -120.0f, "parameter.particleTint");
@@ -393,10 +407,10 @@ MaterialAssetData CreatePassThroughMaterialFunction(std::string_view displayName
     MaterialGraphParameterData input{};
     input.id = "Input";
     input.displayName = "Input";
-    input.defaultValue = MakeValue(MaterialValueType::Float1, 0.0f);
+    input.defaultValue = MakeMaterialValue(MaterialValueType::Float1, 0.0f);
     data.function.inputs.push_back(input);
     data.function.outputs.push_back(
-        MaterialGraphParameterData{"Result", "Result", MakeValue(MaterialValueType::Float1, 0.0f), true});
+        MaterialGraphParameterData{"Result", "Result", MakeMaterialValue(MaterialValueType::Float1, 0.0f), true});
     data.function.graph.parameters.push_back(input);
 
     MaterialGraphNodeData inputNode{};

@@ -23,16 +23,6 @@ void AddError(MaterialCompileResult& result, std::string code, std::string messa
                                                            std::move(message), std::move(subjectId)});
 }
 
-MaterialGraphData* SelectGraph(MaterialAssetData& source) noexcept {
-    if (source.kind == MaterialAssetKind::Material) {
-        return &source.graph;
-    }
-    if (source.kind == MaterialAssetKind::Function) {
-        return &source.function.graph;
-    }
-    return nullptr;
-}
-
 const MaterialGraphNodeData* FindNode(const MaterialGraphData& graph, std::string_view id) noexcept {
     return FindMaterialGraphNode(graph, id);
 }
@@ -361,7 +351,7 @@ bool ExpandMaterialFunctions(const MaterialAssetData& source, const MaterialComp
                              MaterialCompileResult& result) {
     outExpanded = source;
     outFunctionDependencies.clear();
-    MaterialGraphData* graph = SelectGraph(outExpanded);
+    MaterialGraphData* graph = outExpanded.ActiveGraph();
     if (graph == nullptr) {
         return true;
     }

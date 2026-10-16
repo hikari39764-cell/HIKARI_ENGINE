@@ -25,7 +25,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase& scene)
         return;
     }
     MaterialAssetData& source = authoringDocument_.EditMaterial();
-    MaterialGraphData* graph = EditableGraph(source);
+    MaterialGraphData* graph = source.ActiveGraph();
     if (graph == nullptr) {
         ImGui::TextWrapped(TEXT::Localize("editor.ui.this.asset.kind.has.no.editable.node.graph.1593a8").c_str());
         ImGui::End();
@@ -104,11 +104,11 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase& scene)
         const std::vector<float> inputOffsets = BuildNodeInputVerticalOffsets(
             node.kind, layout.card.inputs, contentHeight, authoringControls, layout.screenScale);
         for (size_t index = 0u; index < layout.card.inputs.size(); ++index) {
-            inputPositions[PinKey(node.id, layout.card.inputs[index])] = {layout.position.x,
-                                                                          layout.position.y + inputOffsets[index]};
+            inputPositions[MaterialPinKey(node.id, layout.card.inputs[index])] = {
+                layout.position.x, layout.position.y + inputOffsets[index]};
         }
         for (size_t index = 0; index < layout.card.outputs.size(); ++index) {
-            outputPositions[PinKey(node.id, layout.card.outputs[index])] = {
+            outputPositions[MaterialPinKey(node.id, layout.card.outputs[index])] = {
                 layout.position.x + layout.size.x,
                 layout.position.y +
                     (kHeaderHeight + kNodePadding + (static_cast<float>(index) + 0.5f) * kPinRowHeight) *
@@ -136,8 +136,8 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase& scene)
     const MATH::Vec2 pointer{io.MousePos.x, io.MousePos.y};
     std::string hoveredEdgeId{};
     for (const MaterialGraphEdgeData& edge : graph->edges) {
-        const auto start = outputPositions.find(PinKey(edge.sourceNodeId, edge.sourcePin));
-        const auto end = inputPositions.find(PinKey(edge.targetNodeId, edge.targetPin));
+        const auto start = outputPositions.find(MaterialPinKey(edge.sourceNodeId, edge.sourcePin));
+        const auto end = inputPositions.find(MaterialPinKey(edge.targetNodeId, edge.targetPin));
         if (start == outputPositions.end() || end == inputPositions.end()) {
             continue;
         }
@@ -179,7 +179,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase& scene)
             const float pinHitRadius = (std::max)(12.0f, 10.0f * layout->second.screenScale);
             const auto& positions = output ? outputPositions : inputPositions;
             for (const std::string_view pin : pins) {
-                const auto position = positions.find(PinKey(node->id, pin));
+                const auto position = positions.find(MaterialPinKey(node->id, pin));
                 if (position != positions.end() &&
                     NodeGraphCanvas::HitPoint(pointer, {position->second.x, position->second.y}, pinHitRadius)) {
                     return PinHit{node->id, std::string(pin)};
@@ -345,7 +345,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase& scene)
         }
         for (size_t index = 0; index < layout.card.inputs.size(); ++index) {
             const std::string_view pin = layout.card.inputs[index];
-            const ImVec2 port = inputPositions.at(PinKey(node.id, pin));
+            const ImVec2 port = inputPositions.at(MaterialPinKey(node.id, pin));
             const bool hovered = hoveredInput && hoveredInput->nodeId == node.id && hoveredInput->pin == pin;
             drawList->AddCircleFilled(port, (hovered ? 7.0f : 5.5f) * layout.screenScale, PinColor(pin));
             const bool inlineOwned = layout.card.detail == NodeCardDetail::Authoring &&
@@ -358,7 +358,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase& scene)
         }
         for (size_t index = 0; index < layout.card.outputs.size(); ++index) {
             const std::string_view pin = layout.card.outputs[index];
-            const ImVec2 port = outputPositions.at(PinKey(node.id, pin));
+            const ImVec2 port = outputPositions.at(MaterialPinKey(node.id, pin));
             const bool hovered = hoveredOutput && hoveredOutput->nodeId == node.id && hoveredOutput->pin == pin;
             drawList->AddCircleFilled(port, (hovered ? 7.0f : 5.5f) * layout.screenScale, PinColor(pin));
             if (graphCanvas_.zoom >= 0.55f) {
@@ -374,7 +374,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase& scene)
         draggedGraphNodeId_.clear();
     }
     if (graphLinkDragActive_) {
-        const auto start = outputPositions.find(PinKey(edgeSourceNodeId_, edgeSourcePin_));
+        const auto start = outputPositions.find(MaterialPinKey(edgeSourceNodeId_, edgeSourcePin_));
         if (start != outputPositions.end()) {
             DrawPendingLink({start->second.x, start->second.y}, {io.MousePos.x, io.MousePos.y}, graphCanvas_.zoom,
                             PinColor(edgeSourcePin_));

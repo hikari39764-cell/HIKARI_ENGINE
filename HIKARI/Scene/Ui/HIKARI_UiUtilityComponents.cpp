@@ -10,10 +10,6 @@
 
 namespace HIKARI {
 namespace {
-float Number(const nlohmann::json& in, const char* key, float fallback, float minimum, float maximum) {
-    const float value = JSONREAD::NumberMemberOr(in, key, fallback);
-    return std::clamp(std::isfinite(value) ? value : fallback, minimum, maximum);
-}
 const char* L(const char* key) { return TEXT::Localize(key).c_str(); }
 } // namespace
 void UiGroupComponent::Serialize(nlohmann::json& out) const {
@@ -24,7 +20,7 @@ void UiGroupComponent::Deserialize(const nlohmann::json& in) {
     visible_ = JSONREAD::BooleanMemberOr(in, "visible", true);
     modal_ = JSONREAD::BooleanMemberOr(in, "modal", false);
     interactable_ = JSONREAD::BooleanMemberOr(in, "interactable", true);
-    opacity_ = Number(in, "opacity", 1, 0, 1);
+    opacity_ = JSONREAD::ClampedNumberMemberOr(in, "opacity", 1, 0, 1);
 }
 void UiGroupComponent::SetOpacity(float value) noexcept {
     if (std::isfinite(value))
@@ -53,8 +49,8 @@ void UiLayoutGroupComponent::Deserialize(const nlohmann::json& in) {
         cellSize_ = JSONREAD::Vec2Or(*v, {240, 56});
     cellSize_.x = std::clamp(std::isfinite(cellSize_.x) ? cellSize_.x : 240.f, 1.f, 16384.f);
     cellSize_.y = std::clamp(std::isfinite(cellSize_.y) ? cellSize_.y : 56.f, 1.f, 16384.f);
-    spacing_ = Number(in, "spacing", 12, 0, 16384);
-    padding_ = Number(in, "padding", 16, 0, 16384);
+    spacing_ = JSONREAD::ClampedNumberMemberOr(in, "spacing", 12, 0, 16384);
+    padding_ = JSONREAD::ClampedNumberMemberOr(in, "padding", 16, 0, 16384);
     columns_ = std::clamp(JSONREAD::IntegerMemberOr(in, "columns", 3), 1, 256);
 }
 void UiLayoutGroupComponent::BuildInspector(IInspectorBuilder& b) {
@@ -83,11 +79,11 @@ void UiProgressComponent::Serialize(nlohmann::json& out) const {
 }
 void UiProgressComponent::Deserialize(const nlohmann::json& in) {
     enabled_ = JSONREAD::BooleanMemberOr(in, "enabled", true);
-    minimum_ = Number(in, "minimum", 0, -1e9f, 1e9f);
-    maximum_ = Number(in, "maximum", 1, -1e9f, 1e9f);
+    minimum_ = JSONREAD::ClampedNumberMemberOr(in, "minimum", 0, -1e9f, 1e9f);
+    maximum_ = JSONREAD::ClampedNumberMemberOr(in, "maximum", 1, -1e9f, 1e9f);
     if (maximum_ < minimum_)
         std::swap(minimum_, maximum_);
-    value_ = Number(in, "value", .75f, minimum_, maximum_);
+    value_ = JSONREAD::ClampedNumberMemberOr(in, "value", .75f, minimum_, maximum_);
     direction_ = static_cast<UiFillDirection>(std::clamp(JSONREAD::IntegerMemberOr(in, "direction", 0), 0, 3));
     variableId_ = JSONREAD::StringMemberOr(in, "variableId", {});
 }
