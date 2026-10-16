@@ -69,7 +69,7 @@ bool DrawMaterialAssetEditor(AssetDatabase& assetDatabase, AssetRegistry& assetR
     static std::string materialStatus{};
     static bool materialDirty = false;
 
-    const std::filesystem::path sourcePath = (assetDatabase.GetProjectRoot() / record.sourcePath).lexically_normal();
+    const std::filesystem::path sourcePath = assetDatabase.ResolveSourcePath(record);
     if (loadedMaterialGuid != record.guid.value) {
         loadedMaterialGuid = record.guid.value;
         std::string error{};

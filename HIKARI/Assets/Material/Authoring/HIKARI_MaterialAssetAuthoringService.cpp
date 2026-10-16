@@ -66,11 +66,6 @@ bool IsUnderRoot(const std::filesystem::path& root, const std::filesystem::path&
     return *relative.begin() != "..";
 }
 
-std::filesystem::path ResolveSourcePath(const AssetDatabase& database, const AssetRecord& record) {
-    return record.sourcePath.is_absolute() ? record.sourcePath.lexically_normal()
-                                           : (database.GetProjectRoot() / record.sourcePath).lexically_normal();
-}
-
 std::filesystem::path ResolveDestination(const AssetDatabase& database, std::filesystem::path destination) {
     if (destination.empty()) {
         return {};
@@ -99,7 +94,7 @@ bool MaterialAssetAuthoringService::Load(const AssetGuid& assetGuid, MaterialAut
     MaterialAuthoringDocument document{};
     document.assetGuid = record->guid;
     document.sourcePath = record->sourcePath;
-    if (!LoadMaterialAssetData(ResolveSourcePath(assetDatabase_, *record), document.source, outMessage,
+    if (!LoadMaterialAssetData(assetDatabase_.ResolveSourcePath(*record), document.source, outMessage,
                                &document.migrationDiagnostics)) {
         return false;
     }
@@ -146,7 +141,7 @@ MaterialAuthoringResult MaterialAssetAuthoringService::Update(const AssetGuid& a
         result.message = "Selected asset is not a Material asset";
         return result;
     }
-    return SaveToPath(source, ResolveSourcePath(assetDatabase_, *record), false);
+    return SaveToPath(source, assetDatabase_.ResolveSourcePath(*record), false);
 }
 
 MaterialAuthoringResult MaterialAssetAuthoringService::Save(const AssetGuid& assetGuid,

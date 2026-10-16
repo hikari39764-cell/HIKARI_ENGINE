@@ -81,6 +81,9 @@ inline Vec3 Cross(const Vec3& a, const Vec3& b) {
 
 inline float Length(const Vec3& v) { return std::sqrt(Dot(v, v)); }
 
+// 成分ごとの線形補間（amount は制限しない）。
+inline Vec3 Lerp(const Vec3& from, const Vec3& to, float amount) { return from + (to - from) * amount; }
+
 inline Vec3 Normalize(const Vec3& v) {
     const float len = Length(v);
     if (len <= 1e-6f) {

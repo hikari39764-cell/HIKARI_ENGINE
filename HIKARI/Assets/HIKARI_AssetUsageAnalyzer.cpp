@@ -29,13 +29,13 @@ void AddReference(const std::string& assetId, const std::string& owner, const st
         if (first && record->type == AssetType::TextStyle) {
             TextStyleAsset style;
             std::string error;
-            if (LoadTextStyleAsset(assetDatabase.GetProjectRoot() / record->sourcePath, style, error))
+            if (LoadTextStyleAsset(assetDatabase.ResolveSourcePath(*record), style, error))
                 AddReference(style.font.value, owner, "TextStyle.Font", assetDatabase, engineTextures, summary);
         }
         if (first && record->type == AssetType::PostProfile) {
             POST::PostProfileAsset profile;
             std::string error;
-            if (POST::LoadPostProfileAsset(assetDatabase.GetProjectRoot() / record->sourcePath, profile, error)) {
+            if (POST::LoadPostProfileAsset(assetDatabase.ResolveSourcePath(*record), profile, error)) {
                 for (const AssetDependencyDesc& dependency : POST::CollectPostProfileDependencies(profile))
                     AddReference(dependency.guid.value, owner, dependency.role, assetDatabase, engineTextures, summary);
             }
@@ -43,8 +43,8 @@ void AddReference(const std::string& assetId, const std::string& owner, const st
         if (first && record->type == AssetType::Environment) {
             ENVIRONMENT::EnvironmentProfileAsset environment;
             std::string error;
-            if (ENVIRONMENT::LoadEnvironmentProfileAsset(assetDatabase.GetProjectRoot() / record->sourcePath,
-                                                         environment, error)) {
+            if (ENVIRONMENT::LoadEnvironmentProfileAsset(assetDatabase.ResolveSourcePath(*record), environment,
+                                                         error)) {
                 for (const AssetDependencyDesc& dependency :
                      ENVIRONMENT::CollectEnvironmentProfileDependencies(environment))
                     AddReference(dependency.guid.value, owner, dependency.role, assetDatabase, engineTextures, summary);
@@ -53,7 +53,7 @@ void AddReference(const std::string& assetId, const std::string& owner, const st
         if (first && record->type == AssetType::RenderStyle) {
             RENDERSTYLE::RenderStyleAsset style;
             std::string error;
-            if (RENDERSTYLE::LoadRenderStyleAsset(assetDatabase.GetProjectRoot() / record->sourcePath, style, error)) {
+            if (RENDERSTYLE::LoadRenderStyleAsset(assetDatabase.ResolveSourcePath(*record), style, error)) {
                 for (const AssetDependencyDesc& dependency : RENDERSTYLE::CollectRenderStyleDependencies(style))
                     AddReference(dependency.guid.value, owner, dependency.role, assetDatabase, engineTextures, summary);
             }
@@ -61,7 +61,7 @@ void AddReference(const std::string& assetId, const std::string& owner, const st
         if (first && record->type == AssetType::PostEffect) {
             POST::PostEffectDefinition effect;
             std::string error;
-            if (POST::LoadPostEffectDefinition(assetDatabase.GetProjectRoot() / record->sourcePath, effect, error)) {
+            if (POST::LoadPostEffectDefinition(assetDatabase.ResolveSourcePath(*record), effect, error)) {
                 for (const AssetDependencyDesc& dependency : POST::CollectPostEffectDependencies(effect))
                     AddReference(dependency.guid.value, owner, dependency.role, assetDatabase, engineTextures, summary);
             }
@@ -99,7 +99,7 @@ void AddMaterialReferences(const std::string& materialGuid, const std::string& o
 
     MaterialAssetData data{};
     std::string error{};
-    if (!LoadMaterialAssetData(assetDatabase.GetProjectRoot() / materialRecord->sourcePath, data, error)) {
+    if (!LoadMaterialAssetData(assetDatabase.ResolveSourcePath(*materialRecord), data, error)) {
         return;
     }
 
@@ -131,9 +131,7 @@ void AddModelMaterialBindingReferences(const std::string& modelGuid, const std::
         if (explicitSelection && record->guid.value != materialSetGuid) {
             continue;
         }
-        const std::filesystem::path sourcePath =
-            record->sourcePath.is_absolute() ? record->sourcePath
-                                             : (assetDatabase.GetProjectRoot() / record->sourcePath).lexically_normal();
+        const std::filesystem::path sourcePath = assetDatabase.ResolveSourcePath(*record);
         ASSETS::MODELS::ModelMaterialBindingAssetData data{};
         std::string error{};
         if (!ASSETS::MODELS::LoadModelMaterialBindingAsset(sourcePath, data, error) ||

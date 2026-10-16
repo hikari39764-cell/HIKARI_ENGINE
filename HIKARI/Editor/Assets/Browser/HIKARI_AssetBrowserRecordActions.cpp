@@ -258,7 +258,7 @@ void DrawRecordContextMenu(AssetDatabase& assetDatabase, const AssetRecord& reco
                                       : TEXT::Localize("ui.assetBrowser.importBatchRunning");
     }
     if (ImGui::MenuItem(TEXT::Localize("ui.assetBrowser.showInExplorer").c_str())) {
-        EDITOR::SHELL::ShowFileInExplorer(assetDatabase.GetProjectRoot() / record.sourcePath);
+        EDITOR::SHELL::ShowFileInExplorer(assetDatabase.ResolveSourcePath(record));
     }
     ImGui::Separator();
     if (ImGui::MenuItem(TEXT::Localize("ui.assetBrowser.copyGuid").c_str())) {

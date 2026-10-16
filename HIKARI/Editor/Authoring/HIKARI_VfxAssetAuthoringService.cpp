@@ -16,11 +16,6 @@
 namespace HIKARI::EDITOR {
 namespace {
 
-std::filesystem::path ResolveSourcePath(const AssetDatabase& database, const AssetRecord& record) {
-    return record.sourcePath.is_absolute() ? record.sourcePath
-                                           : (database.GetProjectRoot() / record.sourcePath).lexically_normal();
-}
-
 VfxAssetAuthoringResult FailCreatedVfxAsset(AssetDatabase& database, const INTERNAL::VfxAssetCreationFiles& files,
                                             std::string message) {
     VfxAssetAuthoringResult result{};
@@ -74,7 +69,7 @@ VfxAssetAuthoringResult SaveToRecord(AssetDatabase& database, const AssetRecord&
         return result;
     }
     std::filesystem::path resolvedSourcePath{};
-    if (!INTERNAL::ResolveVfxSourceWriteTarget(roots, ResolveSourcePath(database, record), resolvedSourcePath,
+    if (!INTERNAL::ResolveVfxSourceWriteTarget(roots, database.ResolveSourcePath(record), resolvedSourcePath,
                                                result.message)) {
         return result;
     }
@@ -225,7 +220,7 @@ bool LoadVfxForAuthoring(const AssetDatabase& database, const AssetGuid& assetGu
         outMessage = "Selected asset is not a VFX asset";
         return false;
     }
-    if (!VFX::SERIALIZATION::LoadVfxSourceJson(ResolveSourcePath(database, *record), outAsset, outMessage)) {
+    if (!VFX::SERIALIZATION::LoadVfxSourceJson(database.ResolveSourcePath(*record), outAsset, outMessage)) {
         return false;
     }
     outMessage = "VFX asset loaded for authoring";

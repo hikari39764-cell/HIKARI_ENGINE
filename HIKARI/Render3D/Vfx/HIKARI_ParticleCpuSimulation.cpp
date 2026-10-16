@@ -1,4 +1,5 @@
 #include "Render3D/Vfx/HIKARI_ParticleCpuSimulation.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 
 #include <algorithm>
 #include <cmath>
@@ -91,15 +92,7 @@ float PropertyRandom01(uint32_t particleSeed, uint32_t randomGroup, uint32_t pro
     return static_cast<float>(state & 0x00ffffffu) * (1.0f / 16777216.0f);
 }
 
-float Lerp(float left, float right, float alpha) noexcept { return left + (right - left) * alpha; }
-
-MATH::Vec3 Lerp(const MATH::Vec3& left, const MATH::Vec3& right, float alpha) noexcept {
-    return {
-        Lerp(left.x, right.x, alpha),
-        Lerp(left.y, right.y, alpha),
-        Lerp(left.z, right.z, alpha),
-    };
-}
+using MATH::Lerp;
 
 MATH::Vec4 Lerp(const MATH::Vec4& left, const MATH::Vec4& right, float alpha) noexcept {
     return {

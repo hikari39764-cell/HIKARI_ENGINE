@@ -19,14 +19,9 @@
 namespace HIKARI::EDITOR {
 namespace {
 
-std::filesystem::path ResolveMaterialSourcePath(const AssetDatabase& database, const AssetRecord& record) {
-    return record.sourcePath.is_absolute() ? record.sourcePath.lexically_normal()
-                                           : (database.GetProjectRoot() / record.sourcePath).lexically_normal();
-}
-
 bool TryLoadMaterialIdentity(const AssetDatabase& database, const AssetRecord& record, MaterialAssetData& outSource) {
     std::string error{};
-    return LoadMaterialAssetData(ResolveMaterialSourcePath(database, record), outSource, error);
+    return LoadMaterialAssetData(database.ResolveSourcePath(record), outSource, error);
 }
 
 EditorOperationResult PendingMaterialConfirmation() {

@@ -321,25 +321,21 @@ MATH::Vec2 LerpVec2(const MATH::Vec2& a, const MATH::Vec2& b, float t) {
     return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t};
 }
 
-MATH::Vec3 LerpVec3(const MATH::Vec3& a, const MATH::Vec3& b, float t) {
-    return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t};
-}
-
 MATH::Vec4 LerpVec4(const MATH::Vec4& a, const MATH::Vec4& b, float t) {
     return {a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t, a.w + (b.w - a.w) * t};
 }
 
 ClusterVertex LerpClusterVertex(const ClusterVertex& a, const ClusterVertex& b, float t) {
     ClusterVertex out{};
-    out.position = LerpVec3(a.position, b.position, t);
-    out.normal = MATH::Normalize(LerpVec3(a.normal, b.normal, t));
+    out.position = MATH::Lerp(a.position, b.position, t);
+    out.normal = MATH::Normalize(MATH::Lerp(a.normal, b.normal, t));
     if (MATH::Length(out.normal) <= 1.0e-5f) {
         out.normal = MATH::Length(a.normal) > 1.0e-5f ? a.normal : MATH::Vec3{0.0f, 1.0f, 0.0f};
     }
 
     const MATH::Vec3 tangentA{a.tangent.x, a.tangent.y, a.tangent.z};
     const MATH::Vec3 tangentB{b.tangent.x, b.tangent.y, b.tangent.z};
-    MATH::Vec3 tangent = MATH::Normalize(LerpVec3(tangentA, tangentB, t));
+    MATH::Vec3 tangent = MATH::Normalize(MATH::Lerp(tangentA, tangentB, t));
     if (MATH::Length(tangent) <= 1.0e-5f) {
         tangent = MATH::Length(tangentA) > 1.0e-5f ? tangentA : MATH::Vec3{1.0f, 0.0f, 0.0f};
     }

@@ -37,13 +37,11 @@ bool IsUnsupportedUri(const std::string& value) {
     return scheme != std::string::npos && value.rfind("file://", 0) != 0;
 }
 
-float Clamp01(float value) { return MATH::Clamp01(value); }
-
 float RoughnessFromPhongShininess(float shininess) {
     if (!std::isfinite(shininess) || shininess <= 0.0f) {
         return 1.0f;
     }
-    return Clamp01(std::sqrt(2.0f / (shininess + 2.0f)));
+    return MATH::Clamp01(std::sqrt(2.0f / (shininess + 2.0f)));
 }
 
 void SetCanonicalUvTransform(const aiUVTransform& source, TextureSlot& destination) {
@@ -194,18 +192,18 @@ void ReadMaterials(const aiScene& scene, const std::filesystem::path& sourceDire
         // 鏡面は明示の PBR 値（SPECULAR_FACTOR）だけを読み、無ければ既定（誘電体 F0 = 0.04）のままにする。
         float value = 0.0f;
         if (source->Get(AI_MATKEY_METALLIC_FACTOR, value) == AI_SUCCESS) {
-            material.metallicFactor = Clamp01(value);
+            material.metallicFactor = MATH::Clamp01(value);
         }
         if (source->Get(AI_MATKEY_ROUGHNESS_FACTOR, value) == AI_SUCCESS) {
-            material.roughnessFactor = Clamp01(value);
+            material.roughnessFactor = MATH::Clamp01(value);
         } else if (source->Get(AI_MATKEY_SHININESS, value) == AI_SUCCESS) {
             material.roughnessFactor = RoughnessFromPhongShininess(value);
         }
         if (source->Get(AI_MATKEY_SPECULAR_FACTOR, value) == AI_SUCCESS) {
-            material.specularFactor = Clamp01(value);
+            material.specularFactor = MATH::Clamp01(value);
         }
         if (source->Get(AI_MATKEY_OPACITY, value) == AI_SUCCESS) {
-            material.baseColorFactor.w = Clamp01(value);
+            material.baseColorFactor.w = MATH::Clamp01(value);
             if (material.baseColorFactor.w < 0.999f) {
                 material.alphaMode = AlphaMode::Blend;
             }

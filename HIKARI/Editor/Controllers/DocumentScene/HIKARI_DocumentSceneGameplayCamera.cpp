@@ -18,9 +18,7 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::BindGameplayCamera(
         return {false, "ASSET_NOT_FOUND", "Save a gameplay camera profile first."};
     CAMERA::GameplayCameraProfile profile;
     std::string error;
-    const auto path = record->sourcePath.is_absolute()
-                          ? record->sourcePath
-                          : scene->GetAssetDatabase().GetProjectRoot() / record->sourcePath;
+    const auto path = scene->GetAssetDatabase().ResolveSourcePath(*record);
     if (!LoadGameplayCameraAsset(path, profile, error))
         return {false, "INVALID_CAMERA_PROFILE", error};
     const SceneObjectId target{p.at("targetId").get<uint64_t>()};

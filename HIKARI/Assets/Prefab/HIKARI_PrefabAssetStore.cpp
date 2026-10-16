@@ -73,9 +73,7 @@ std::shared_ptr<const PrefabDocument> PrefabAssetStore::LoadSourceForAdmission(c
         outError = "Prefab source record is missing, invalid, or duplicated: " + guid.value;
         return {};
     }
-    const std::filesystem::path sourcePath =
-        record->sourcePath.is_absolute() ? record->sourcePath
-                                         : (assetDatabase_->GetProjectRoot() / record->sourcePath).lexically_normal();
+    const std::filesystem::path sourcePath = assetDatabase_->ResolveSourcePath(*record);
     return cache_.Load(guid, sourcePath, outError, true);
 }
 

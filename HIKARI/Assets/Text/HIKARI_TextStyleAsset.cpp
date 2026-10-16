@@ -122,8 +122,7 @@ std::shared_ptr<const TextStyleAsset> TextAssetStore::LoadStyle(const AssetGuid&
         entry.error = "Text style asset is missing: " + guid.value;
     else {
         auto value = std::make_shared<TextStyleAsset>();
-        const auto path =
-            record->sourcePath.is_absolute() ? record->sourcePath : database_->GetProjectRoot() / record->sourcePath;
+        const auto path = database_->ResolveSourcePath(*record);
         if (LoadTextStyleAsset(path, *value, entry.error))
             entry.style = std::move(value);
     }
@@ -136,8 +135,7 @@ std::string TextAssetStore::ResolveFont(const AssetGuid& guid) const {
     const auto* record = database_ ? database_->FindByGuid(guid) : nullptr;
     if (!record || record->type != AssetType::Font || !record->lastImportSucceeded)
         return {};
-    const auto path =
-        record->sourcePath.is_absolute() ? record->sourcePath : database_->GetProjectRoot() / record->sourcePath;
+    const auto path = database_->ResolveSourcePath(*record);
     // 参照先は GUID で追跡し、描画 API には Assets 相対パスを渡す。
     auto relative = path.lexically_relative(database_->GetAssetsRoot());
     if (relative.empty() || *relative.begin() == "..")

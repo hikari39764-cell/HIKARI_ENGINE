@@ -1,4 +1,5 @@
 #include "Scene/Terrain/HIKARI_TerrainSurfaceBake.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 
 #include <algorithm>
 #include <cmath>
@@ -7,8 +8,6 @@ namespace HIKARI::TERRAIN::RENDER {
 
 namespace {
 float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
-
-float Saturate(float value) noexcept { return std::clamp(value, 0.0f, 1.0f); }
 
 float SmoothEdge(float edge) noexcept { return edge * edge * (3.0f - 2.0f * edge); }
 
@@ -24,8 +23,8 @@ public:
     }
 
     float Sample(const std::vector<float>& values, float u, float v) const noexcept {
-        const float fu = Saturate(u) * static_cast<float>(grid_);
-        const float fv = Saturate(v) * static_cast<float>(grid_);
+        const float fu = MATH::Clamp01(u) * static_cast<float>(grid_);
+        const float fv = MATH::Clamp01(v) * static_cast<float>(grid_);
         const uint32_t x0 = (std::min)(static_cast<uint32_t>(fu), grid_);
         const uint32_t z0 = (std::min)(static_cast<uint32_t>(fv), grid_);
         const uint32_t x1 = (std::min)(x0 + 1u, grid_);
@@ -55,23 +54,23 @@ float ResolveGranularWeight(const TerrainSurfaceBakeInputs& inputs,
                             std::size_t cellCount) noexcept {
     const std::size_t layerCount = inputs.granularStrength.size();
     if (layerCount <= 1u || fields.layerWeights.size() < cellCount * layerCount) {
-        return layerCount != 0u ? Saturate(inputs.granularStrength[0]) : 1.0f;
+        return layerCount != 0u ? MATH::Clamp01(inputs.granularStrength[0]) : 1.0f;
     }
     float result = 0.0f;
     float weightSum = 0.0f;
     for (std::size_t layer = 0u; layer < layerCount; ++layer) {
-        const float weight = Saturate(fields.layerWeights[layer * cellCount + vertex]);
-        result += weight * Saturate(inputs.granularStrength[layer]);
+        const float weight = MATH::Clamp01(fields.layerWeights[layer * cellCount + vertex]);
+        result += weight * MATH::Clamp01(inputs.granularStrength[layer]);
         weightSum += weight;
     }
-    return weightSum > 1.0e-5f ? Saturate(result / weightSum) : 1.0f;
+    return weightSum > 1.0e-5f ? MATH::Clamp01(result / weightSum) : 1.0f;
 }
 
 // 高密度格子の微小三角を平らにせず、metre 尺度の仮想 coarse cell を 2 枚の
 // 三角平面で近似する。checkerboard の対角で一方向の筋を避ける。
 void ResolveFacetSlope(const TerrainSurfaceBakeInputs& inputs, const TerrainGrid& grid,
                        const std::vector<float>& heights, float localX, float localZ, float& slopeX, float& slopeZ) {
-    const float strength = Saturate(inputs.facetStrength);
+    const float strength = MATH::Clamp01(inputs.facetStrength);
     if (strength <= 1.0e-5f) {
         return;
     }
@@ -86,8 +85,8 @@ void ResolveFacetSlope(const TerrainSurfaceBakeInputs& inputs, const TerrainGrid
     const float maxZ = std::clamp(minZ + size, -halfZ, halfZ);
     const float extentX = (std::max)(maxX - minX, 1.0e-4f);
     const float extentZ = (std::max)(maxZ - minZ, 1.0e-4f);
-    const float cellU = Saturate((localX - minX) / extentX);
-    const float cellV = Saturate((localZ - minZ) / extentZ);
+    const float cellU = MATH::Clamp01((localX - minX) / extentX);
+    const float cellV = MATH::Clamp01((localZ - minZ) / extentZ);
     const auto heightAt = [&](float x, float z) {
         return grid.Sample(heights, x / inputs.extents.x + 0.5f, z / inputs.extents.y + 0.5f);
     };
@@ -144,7 +143,7 @@ TerrainSurfaceBakeInputs ResolveTerrainSurfaceBakeInputs(const RENDER3D::TERRAIN
 }
 
 uint32_t ResolveTerrainSurfaceBakeMargin(const TerrainSurfaceBakeInputs& inputs) noexcept {
-    if (Saturate(inputs.facetStrength) <= 1.0e-5f) {
+    if (MATH::Clamp01(inputs.facetStrength) <= 1.0e-5f) {
         return 1u;
     }
     const float cell = (std::min)(inputs.extents.x, inputs.extents.y) / static_cast<float>(inputs.gridResolution);
@@ -169,7 +168,9 @@ void BakeTerrainSurfaceRect(const TerrainSurfaceBakeInputs& inputs, const std::v
     const float cellX = inputs.extents.x / static_cast<float>(gridResolution);
     const float cellZ = inputs.extents.y / static_cast<float>(gridResolution);
     const float depth = inputs.edgeSinkDepth;
-    const auto edgeAt = [&](uint32_t x, uint32_t z) { return SmoothEdge(Saturate(fields.coverage[grid.Index(x, z)])); };
+    const auto edgeAt = [&](uint32_t x, uint32_t z) {
+        return SmoothEdge(MATH::Clamp01(fields.coverage[grid.Index(x, z)]));
+    };
     const uint32_t maxX = (std::min)(rect.maxX, gridResolution);
     const uint32_t maxZ = (std::min)(rect.maxZ, gridResolution);
     for (uint32_t z = rect.minZ; z <= maxZ; ++z) {

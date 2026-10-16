@@ -45,8 +45,7 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
         return false;
     }
 
-    const std::filesystem::path scenePath =
-        (state_->assets.Database().GetProjectRoot() / record->sourcePath).lexically_normal();
+    const std::filesystem::path scenePath = state_->assets.Database().ResolveSourcePath(*record);
     SceneDocument loaded{};
     const std::filesystem::path contentSource = contentPath.empty() ? scenePath : contentPath;
     if (!state_->identity.serializer.LoadFromFile(contentSource.generic_string(), loaded)) {
@@ -213,8 +212,7 @@ bool DocumentSceneBase::SaveCurrentSceneDocumentAs(const AssetGuid& sceneGuid) {
         return false;
     }
 
-    const std::filesystem::path absolutePath =
-        (state_->assets.Database().GetProjectRoot() / record->sourcePath).lexically_normal();
+    const std::filesystem::path absolutePath = state_->assets.Database().ResolveSourcePath(*record);
     if (!state_->identity.serializer.SaveToFile(absolutePath.generic_string(), state_->identity.document)) {
         return false;
     }

@@ -11,9 +11,7 @@ bool LoadMaterialAssetSource(const AssetDatabase& assetDatabase, const AssetGuid
         outError = "Material asset record was not found";
         return false;
     }
-    const std::filesystem::path sourcePath =
-        record->sourcePath.is_absolute() ? record->sourcePath.lexically_normal()
-                                         : (assetDatabase.GetProjectRoot() / record->sourcePath).lexically_normal();
+    const std::filesystem::path sourcePath = assetDatabase.ResolveSourcePath(*record);
     return LoadMaterialAssetData(sourcePath, outSource, outError);
 }
 

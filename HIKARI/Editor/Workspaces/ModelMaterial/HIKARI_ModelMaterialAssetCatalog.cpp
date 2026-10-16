@@ -131,8 +131,7 @@ void ModelMaterialWorkspaceController::RefreshAssetChoices(const AssetDatabase& 
         }
         ASSETS::MODELS::ModelMaterialBindingAssetData data{};
         std::string error{};
-        const std::filesystem::path sourcePath =
-            record->sourcePath.is_absolute() ? record->sourcePath : assetDatabase.GetProjectRoot() / record->sourcePath;
+        const std::filesystem::path sourcePath = assetDatabase.ResolveSourcePath(*record);
         if (!ASSETS::MODELS::LoadModelMaterialBindingAsset(sourcePath.lexically_normal(), data, error)) {
             continue;
         }
@@ -165,8 +164,7 @@ void ModelMaterialWorkspaceController::RefreshAssetChoices(const AssetDatabase& 
         choice.ready = record->lastImportSucceeded && !record->artifactMissing;
         MaterialAssetData source{};
         std::string error{};
-        const std::filesystem::path sourcePath =
-            record->sourcePath.is_absolute() ? record->sourcePath : assetDatabase.GetProjectRoot() / record->sourcePath;
+        const std::filesystem::path sourcePath = assetDatabase.ResolveSourcePath(*record);
         if (LoadMaterialAssetData(sourcePath.lexically_normal(), source, error)) {
             choice.materialKind = source.kind;
             if (source.kind == MaterialAssetKind::Ramp) {

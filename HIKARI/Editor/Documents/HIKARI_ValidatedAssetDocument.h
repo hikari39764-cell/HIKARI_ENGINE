@@ -76,8 +76,7 @@ bool ValidatedAssetDocument<Traits>::Open(const AssetDatabase& database, const A
         message = "Asset not found.";
         return false;
     }
-    const auto path =
-        record->sourcePath.is_absolute() ? record->sourcePath : database.GetProjectRoot() / record->sourcePath;
+    const auto path = database.ResolveSourcePath(*record);
     const bool sameSource =
         open_ && guid == guid_ && std::filesystem::weakly_canonical(path) == std::filesystem::weakly_canonical(path_);
     if (sameSource && !discard) {
@@ -112,9 +111,8 @@ bool ValidatedAssetDocument<Traits>::Save(AssetDatabase& database, std::string& 
         const auto relative = source.lexically_relative(std::filesystem::weakly_canonical(database.GetAssetsRoot()));
         const auto* record = guid_.IsValid() ? database.FindByGuid(guid_) : nullptr;
         if (relative.empty() || relative.is_absolute() || *relative.begin() == ".." ||
-            (guid_.IsValid() &&
-             (!record || record->type != Traits::type ||
-              std::filesystem::weakly_canonical(database.GetProjectRoot() / record->sourcePath) != source))) {
+            (guid_.IsValid() && (!record || record->type != Traits::type ||
+                                 std::filesystem::weakly_canonical(database.ResolveSourcePath(*record)) != source))) {
             message = "This asset draft belongs to another project. Use "
                       "Save As to create a copy.";
             return false;

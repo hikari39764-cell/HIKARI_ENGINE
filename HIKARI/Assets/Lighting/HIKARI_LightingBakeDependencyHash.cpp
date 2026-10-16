@@ -240,7 +240,7 @@ void AddAssetRecordRevision(StableHashBuilder& hash, const AssetDatabase& assetD
         hash.Add(node);
     }
 
-    AddFileStamp(hash, assetDatabase.GetProjectRoot() / record.sourcePath);
+    AddFileStamp(hash, assetDatabase.ResolveSourcePath(record));
     for (const AssetArtifactDesc& artifact : manifest.artifacts) {
         AddFileStamp(hash, assetDatabase.GetProjectRoot() / artifact.path);
     }

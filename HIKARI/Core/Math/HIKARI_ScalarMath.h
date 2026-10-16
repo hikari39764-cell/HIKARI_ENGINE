@@ -4,6 +4,9 @@ namespace HIKARI::MATH {
 
 inline float Clamp01(float value) noexcept { return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value); }
 
+// 線形補間（amount は制限しない）。
+inline float Lerp(float from, float to, float amount) noexcept { return from + (to - from) * amount; }
+
 // value を 0..1 に収めた三次の smoothstep。
 inline float SmoothStep01(float value) noexcept {
     const float t = Clamp01(value);

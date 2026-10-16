@@ -104,7 +104,7 @@ bool ResolveSpriteArtifactPath(const std::filesystem::path& projectRoot, std::st
 
 bool LoadMaterialSourceJson(const AssetDatabase& assetDatabase, const AssetRecord& record, MaterialAssetData& outData,
                             MaterialCompileResult& outCompileResult) {
-    const std::filesystem::path sourcePath = (assetDatabase.GetProjectRoot() / record.sourcePath).lexically_normal();
+    const std::filesystem::path sourcePath = assetDatabase.ResolveSourcePath(record);
     std::string loadError{};
     if (LoadMaterialAssetData(sourcePath, outData, loadError)) {
         outCompileResult = CompileMaterialAsset(outData, ASSETS::MATERIAL::MakeMaterialCompileOptions(assetDatabase));
@@ -610,10 +610,7 @@ bool AssetRegistryBuilder::RebuildRegistry(const AssetDatabase& assetDatabase, A
             descriptor->type = AssetType::ModelMaterialBinding;
             descriptor->sourcePath = record->sourcePath.generic_string();
             descriptor->version = record->meta.importerVersion;
-            const std::filesystem::path sourcePath =
-                record->sourcePath.is_absolute()
-                    ? record->sourcePath
-                    : (assetDatabase.GetProjectRoot() / record->sourcePath).lexically_normal();
+            const std::filesystem::path sourcePath = assetDatabase.ResolveSourcePath(*record);
             std::string loadError{};
             if (!ASSETS::MODELS::LoadModelMaterialBindingAsset(sourcePath, descriptor->data, loadError)) {
                 HIKARI_LOG_WARN("[AssetRegistryBuilder][ModelMaterialBinding] "

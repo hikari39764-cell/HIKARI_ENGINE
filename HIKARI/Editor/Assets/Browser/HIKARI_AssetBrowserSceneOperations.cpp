@@ -143,7 +143,7 @@ bool UpdateSceneMetaAfterMove(AssetDatabase& assetDatabase, const AssetRecord& o
 
 bool DuplicateSceneAsset(AssetDatabase& assetDatabase, const AssetRecord& record,
                          std::filesystem::path& outRelativePath, std::string& outError) {
-    const std::filesystem::path sourcePath = (assetDatabase.GetProjectRoot() / record.sourcePath).lexically_normal();
+    const std::filesystem::path sourcePath = assetDatabase.ResolveSourcePath(record);
     const std::string baseName = GetSceneAssetBaseName(sourcePath);
     const std::filesystem::path targetPath =
         MakeUniqueFilePath(sourcePath.parent_path() / (baseName + " Copy.scene.json"));
@@ -173,7 +173,7 @@ bool DuplicateSceneAsset(AssetDatabase& assetDatabase, const AssetRecord& record
 bool RenameSceneAsset(AssetDatabase& assetDatabase, const AssetRecord& record, std::string_view newName,
                       std::filesystem::path& outRelativePath, std::string& outError) {
     const std::string cleanName = SanitizeFileToken(std::string(newName), "Scene");
-    const std::filesystem::path oldSource = (assetDatabase.GetProjectRoot() / record.sourcePath).lexically_normal();
+    const std::filesystem::path oldSource = assetDatabase.ResolveSourcePath(record);
     const std::filesystem::path desiredSource =
         (oldSource.parent_path() / (cleanName + ".scene.json")).lexically_normal();
 
@@ -264,7 +264,7 @@ std::filesystem::path MakeSceneTrashDirectory(const AssetDatabase& assetDatabase
 bool DeleteSceneAssetToTrash(AssetDatabase& assetDatabase, const AssetRecord& record, bool& outClearedStartupScene,
                              std::string& outError) {
     outClearedStartupScene = false;
-    const std::filesystem::path sourcePath = (assetDatabase.GetProjectRoot() / record.sourcePath).lexically_normal();
+    const std::filesystem::path sourcePath = assetDatabase.ResolveSourcePath(record);
     const std::filesystem::path trashDirectory = MakeSceneTrashDirectory(assetDatabase);
     const std::filesystem::path trashSourcePath = trashDirectory / sourcePath.filename();
     const std::filesystem::path metaPath = record.metaPath;

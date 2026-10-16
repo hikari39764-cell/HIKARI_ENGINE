@@ -63,6 +63,8 @@ public:
     bool Initialize(const std::filesystem::path& projectRoot);
 
     const std::filesystem::path& GetProjectRoot() const;
+    // record の元資産の絶対パス。相対で記録されていればプロジェクト基準で解決し、字句的に正規化する。
+    std::filesystem::path ResolveSourcePath(const AssetRecord& record) const;
     const std::filesystem::path& GetAssetsRoot() const;
     const std::filesystem::path& GetLibraryRoot() const;
     const std::filesystem::path& GetSourceMetaRoot() const;

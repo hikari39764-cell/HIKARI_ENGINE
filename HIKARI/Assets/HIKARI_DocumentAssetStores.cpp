@@ -28,7 +28,7 @@ std::shared_ptr<const Asset> LoadSourceAsset(const AssetDatabase* database, cons
     const auto* record = database->FindByGuid(guid);
     if (!record || record->type != type)
         return fail("Asset record was not found or has the wrong type");
-    const auto path = (database->GetProjectRoot() / record->sourcePath).lexically_normal();
+    const auto path = database->ResolveSourcePath(*record);
     std::filesystem::file_time_type lastWrite{};
     if constexpr (WatchSource) {
         std::error_code ec;

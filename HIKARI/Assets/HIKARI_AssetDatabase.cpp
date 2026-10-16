@@ -114,6 +114,10 @@ bool AssetDatabase::Initialize(const std::filesystem::path& projectRoot) {
 
 const std::filesystem::path& AssetDatabase::GetProjectRoot() const { return projectRoot_; }
 
+std::filesystem::path AssetDatabase::ResolveSourcePath(const AssetRecord& record) const {
+    return (record.sourcePath.is_absolute() ? record.sourcePath : projectRoot_ / record.sourcePath).lexically_normal();
+}
+
 const std::filesystem::path& AssetDatabase::GetAssetsRoot() const { return assetsRoot_; }
 
 const std::filesystem::path& AssetDatabase::GetLibraryRoot() const { return libraryRoot_; }

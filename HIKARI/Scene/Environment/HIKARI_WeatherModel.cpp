@@ -1,4 +1,5 @@
 #include "Scene/Environment/HIKARI_WeatherModel.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 
 #include <algorithm>
 #include <cmath>
@@ -14,8 +15,6 @@ constexpr float kPuddleDrainRate = 0.002f;
 constexpr float kSnowFallRate = 0.004f;
 constexpr float kSnowMeltRate = 0.001f;
 constexpr float kRainMeltRate = 0.006f;
-
-float Lerp(float a, float b, float t) noexcept { return a + (b - a) * t; }
 
 float LerpDegrees(float from, float to, float t) noexcept {
     float delta = std::fmod(to - from + 540.0f, 360.0f) - 180.0f;
@@ -60,15 +59,15 @@ nlohmann::json WriteWeatherParameters(const WeatherParameters& weather) {
 WeatherParameters BlendWeather(const WeatherParameters& from, const WeatherParameters& to, float t) noexcept {
     t = std::isfinite(t) ? std::clamp(t, 0.0f, 1.0f) : 1.0f;
     WeatherParameters blended{};
-    blended.cloudCoverage = Lerp(from.cloudCoverage, to.cloudCoverage, t);
-    blended.cloudType = Lerp(from.cloudType, to.cloudType, t);
-    blended.cloudDensity = Lerp(from.cloudDensity, to.cloudDensity, t);
-    blended.haze = Lerp(from.haze, to.haze, t);
-    blended.fogDensity = Lerp(from.fogDensity, to.fogDensity, t);
-    blended.fogHeightFalloff = Lerp(from.fogHeightFalloff, to.fogHeightFalloff, t);
+    blended.cloudCoverage = MATH::Lerp(from.cloudCoverage, to.cloudCoverage, t);
+    blended.cloudType = MATH::Lerp(from.cloudType, to.cloudType, t);
+    blended.cloudDensity = MATH::Lerp(from.cloudDensity, to.cloudDensity, t);
+    blended.haze = MATH::Lerp(from.haze, to.haze, t);
+    blended.fogDensity = MATH::Lerp(from.fogDensity, to.fogDensity, t);
+    blended.fogHeightFalloff = MATH::Lerp(from.fogHeightFalloff, to.fogHeightFalloff, t);
     if (from.precipitation == to.precipitation) {
         blended.precipitation = to.precipitation;
-        blended.precipitationIntensity = Lerp(from.precipitationIntensity, to.precipitationIntensity, t);
+        blended.precipitationIntensity = MATH::Lerp(from.precipitationIntensity, to.precipitationIntensity, t);
     } else if (t < 0.5f) {
         blended.precipitation = from.precipitation;
         blended.precipitationIntensity = from.precipitationIntensity * (1.0f - 2.0f * t);
@@ -76,9 +75,9 @@ WeatherParameters BlendWeather(const WeatherParameters& from, const WeatherParam
         blended.precipitation = to.precipitation;
         blended.precipitationIntensity = to.precipitationIntensity * (2.0f * t - 1.0f);
     }
-    blended.windSpeed = Lerp(from.windSpeed, to.windSpeed, t);
+    blended.windSpeed = MATH::Lerp(from.windSpeed, to.windSpeed, t);
     blended.windFromDegrees = LerpDegrees(from.windFromDegrees, to.windFromDegrees, t);
-    blended.lightningPerMinute = Lerp(from.lightningPerMinute, to.lightningPerMinute, t);
+    blended.lightningPerMinute = MATH::Lerp(from.lightningPerMinute, to.lightningPerMinute, t);
     blended.transitionSeconds = to.transitionSeconds;
     return blended;
 }

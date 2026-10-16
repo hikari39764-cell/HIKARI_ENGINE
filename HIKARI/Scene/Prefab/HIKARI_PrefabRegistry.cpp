@@ -139,8 +139,7 @@ bool PrefabRegistry::Load(const AssetDatabase& assetDatabase, const AssetGuid& g
         outError = "Prefab authoring documents are unavailable from cooked content.";
         return false;
     }
-    const std::filesystem::path path =
-        record->sourcePath.is_absolute() ? record->sourcePath : assetDatabase.GetProjectRoot() / record->sourcePath;
+    const std::filesystem::path path = assetDatabase.ResolveSourcePath(*record);
     return serializer.LoadFromFile(path, outDocument, outError);
 }
 

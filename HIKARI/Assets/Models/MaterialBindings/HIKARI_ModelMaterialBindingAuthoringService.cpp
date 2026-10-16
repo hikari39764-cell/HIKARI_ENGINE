@@ -24,11 +24,6 @@ bool IsUnderRoot(const std::filesystem::path& root, const std::filesystem::path&
     return !ec && !relative.empty() && !relative.is_absolute() && *relative.begin() != "..";
 }
 
-std::filesystem::path ResolveSourcePath(const AssetDatabase& database, const AssetRecord& record) {
-    return record.sourcePath.is_absolute() ? record.sourcePath.lexically_normal()
-                                           : (database.GetProjectRoot() / record.sourcePath).lexically_normal();
-}
-
 std::filesystem::path ResolveDestination(const AssetDatabase& database, std::filesystem::path destination) {
     if (destination.empty()) {
         return {};
@@ -58,7 +53,7 @@ bool ModelMaterialBindingAuthoringService::Load(const AssetGuid& assetGuid,
     ModelMaterialBindingAuthoringDocument document{};
     document.assetGuid = record->guid;
     document.sourcePath = record->sourcePath;
-    if (!LoadModelMaterialBindingAsset(ResolveSourcePath(assetDatabase_, *record), document.data, outMessage,
+    if (!LoadModelMaterialBindingAsset(assetDatabase_.ResolveSourcePath(*record), document.data, outMessage,
                                        &document.migrationDiagnostics)) {
         return false;
     }
@@ -91,7 +86,7 @@ ModelMaterialBindingAuthoringResult ModelMaterialBindingAuthoringService::Update
         result.message = "Selected asset is not a ModelMaterialBinding asset";
         return result;
     }
-    return SaveToPath(data, ResolveSourcePath(assetDatabase_, *record), false);
+    return SaveToPath(data, assetDatabase_.ResolveSourcePath(*record), false);
 }
 
 ModelMaterialBindingAuthoringResult ModelMaterialBindingAuthoringService::Save(

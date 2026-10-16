@@ -49,10 +49,6 @@ float Distance(const MATH::Vec3& lhs, const MATH::Vec3& rhs) noexcept {
     return std::sqrt((std::max)(0.0f, LengthSquared(delta)));
 }
 
-MATH::Vec3 Lerp(const MATH::Vec3& from, const MATH::Vec3& to, float weight) noexcept {
-    return from + (to - from) * weight;
-}
-
 float ActionScale(float requestValue, float defaultValue) noexcept {
     if (!std::isfinite(requestValue) || !std::isfinite(defaultValue) || defaultValue <= 0.0f) {
         return 1.0f;
@@ -346,8 +342,8 @@ bool CombatPresentationService::AddWeaponTrailSample(const WeaponTrailSampleRequ
         for (uint32_t step = 1u; step < steps; ++step) {
             const float weight = static_cast<float>(step) / static_cast<float>(steps);
             TrailSample intermediate = next;
-            intermediate.bladeBaseWorld = Lerp(previous.bladeBaseWorld, next.bladeBaseWorld, weight);
-            intermediate.bladeTipWorld = Lerp(previous.bladeTipWorld, next.bladeTipWorld, weight);
+            intermediate.bladeBaseWorld = MATH::Lerp(previous.bladeBaseWorld, next.bladeBaseWorld, weight);
+            intermediate.bladeTipWorld = MATH::Lerp(previous.bladeTipWorld, next.bladeTipWorld, weight);
             trail.samples.push_back(std::move(intermediate));
         }
     }

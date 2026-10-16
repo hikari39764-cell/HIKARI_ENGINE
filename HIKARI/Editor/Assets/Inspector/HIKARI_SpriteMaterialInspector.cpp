@@ -139,7 +139,7 @@ void AssetInspectorPanel::DrawSpriteMaterialEditor(AssetDatabase& database, Asse
         data.parameters.clear();
         spriteMaterialDirty_ = true;
     }
-    const auto path = database.GetProjectRoot() / record.sourcePath;
+    const auto path = database.ResolveSourcePath(record);
     ImGui::BeginDisabled(!valid || !spriteMaterialDirty_ || database.GetQueuedImportStatus().active);
     if (ImGui::Button(TEXT::Localize("ui.assetInspector.saveMaterial").c_str())) {
         if (SPRITE::ValidateSpriteMaterialAsset(data, spriteShader_->parameters, spriteMaterialStatus_) &&

@@ -28,10 +28,6 @@ float ClampAspect(float aspect, const Camera3D& fallbackCamera) {
     return std::isfinite(fallbackAspect) && fallbackAspect >= kMinAspect ? fallbackAspect : 16.0f / 9.0f;
 }
 
-float Lerp(float from, float to, float amount) { return from + (to - from) * amount; }
-
-MATH::Vec3 Lerp(const MATH::Vec3& from, const MATH::Vec3& to, float amount) { return from + (to - from) * amount; }
-
 bool NearlyEqual(float lhs, float rhs) { return std::abs(lhs - rhs) <= kFloatEpsilon; }
 
 bool ProjectionDiffers(const Camera3D& lhs, const Camera3D& rhs) {
@@ -89,17 +85,17 @@ CAMERA::DepthOfFieldSettings BlendDepthOfFieldSettings(const CAMERA::DepthOfFiel
     const float toFarRadius = to.enabled ? to.farBlurRadius1080pPixels : 0.0f;
     result.nearBlurRadius1080pPixels = fromEndpoint ? from.nearBlurRadius1080pPixels
                                        : toEndpoint ? to.nearBlurRadius1080pPixels
-                                                    : Lerp(fromNearRadius, toNearRadius, amount);
+                                                    : MATH::Lerp(fromNearRadius, toNearRadius, amount);
     result.farBlurRadius1080pPixels = fromEndpoint ? from.farBlurRadius1080pPixels
                                       : toEndpoint ? to.farBlurRadius1080pPixels
-                                                   : Lerp(fromFarRadius, toFarRadius, amount);
+                                                   : MATH::Lerp(fromFarRadius, toFarRadius, amount);
     result.enabled = fromEndpoint ? from.enabled
                      : toEndpoint ? to.enabled
                                   : result.nearBlurRadius1080pPixels > 0.0f || result.farBlurRadius1080pPixels > 0.0f;
-    result.focusDistance = Lerp(from.focusDistance, to.focusDistance, amount);
-    result.focusRange = Lerp(from.focusRange, to.focusRange, amount);
-    result.nearTransition = Lerp(from.nearTransition, to.nearTransition, amount);
-    result.farTransition = Lerp(from.farTransition, to.farTransition, amount);
+    result.focusDistance = MATH::Lerp(from.focusDistance, to.focusDistance, amount);
+    result.focusRange = MATH::Lerp(from.focusRange, to.focusRange, amount);
+    result.nearTransition = MATH::Lerp(from.nearTransition, to.nearTransition, amount);
+    result.farTransition = MATH::Lerp(from.farTransition, to.farTransition, amount);
     return CAMERA::NormalizeDepthOfFieldSettings(result);
 }
 
@@ -111,8 +107,8 @@ CAMERA::MotionBlurSettings BlendMotionBlurSettings(const CAMERA::MotionBlurSetti
     }
     CAMERA::MotionBlurSettings result{};
     result.shutterAngleDegrees =
-        Lerp(from.enabled ? from.shutterAngleDegrees : 0.0f, to.enabled ? to.shutterAngleDegrees : 0.0f, amount);
-    result.maxBlur1080pPixels = Lerp(from.maxBlur1080pPixels, to.maxBlur1080pPixels, amount);
+        MATH::Lerp(from.enabled ? from.shutterAngleDegrees : 0.0f, to.enabled ? to.shutterAngleDegrees : 0.0f, amount);
+    result.maxBlur1080pPixels = MATH::Lerp(from.maxBlur1080pPixels, to.maxBlur1080pPixels, amount);
     result.enabled = result.shutterAngleDegrees > 0.0f;
     return CAMERA::NormalizeMotionBlurSettings(result);
 }
@@ -183,9 +179,9 @@ Camera3D CameraDirector::BlendViews(const Camera3D& from, const Camera3D& to, fl
         return to;
     const float blendAmount = std::clamp(std::isfinite(amount) ? amount : 1.0f, 0.0f, 1.0f);
     Camera3D result{};
-    const MATH::Vec3 eye = Lerp(from.GetPosition(), to.GetPosition(), blendAmount);
-    MATH::Vec3 target = Lerp(from.GetTarget(), to.GetTarget(), blendAmount);
-    MATH::Vec3 up = MATH::Normalize(Lerp(from.GetUp(), to.GetUp(), blendAmount));
+    const MATH::Vec3 eye = MATH::Lerp(from.GetPosition(), to.GetPosition(), blendAmount);
+    MATH::Vec3 target = MATH::Lerp(from.GetTarget(), to.GetTarget(), blendAmount);
+    MATH::Vec3 up = MATH::Normalize(MATH::Lerp(from.GetUp(), to.GetUp(), blendAmount));
     if (MATH::Length(target - eye) <= kVectorEpsilon) {
         target = eye + MATH::Vec3{0.0f, 0.0f, 1.0f};
     }
@@ -194,11 +190,12 @@ Camera3D CameraDirector::BlendViews(const Camera3D& from, const Camera3D& to, fl
     }
     up = SafeUpForForward(MATH::Normalize(target - eye), up);
 
-    result.SetPerspective(
-        Lerp(from.GetFovYRad(), to.GetFovYRad(), blendAmount), Lerp(from.GetAspect(), to.GetAspect(), blendAmount),
-        Lerp(from.GetNearZ(), to.GetNearZ(), blendAmount), Lerp(from.GetFarZ(), to.GetFarZ(), blendAmount));
+    result.SetPerspective(MATH::Lerp(from.GetFovYRad(), to.GetFovYRad(), blendAmount),
+                          MATH::Lerp(from.GetAspect(), to.GetAspect(), blendAmount),
+                          MATH::Lerp(from.GetNearZ(), to.GetNearZ(), blendAmount),
+                          MATH::Lerp(from.GetFarZ(), to.GetFarZ(), blendAmount));
     if (to.IsOrthographic())
-        result.SetOrthographic(Lerp(from.GetOrthographicHeight(), to.GetOrthographicHeight(), blendAmount),
+        result.SetOrthographic(MATH::Lerp(from.GetOrthographicHeight(), to.GetOrthographicHeight(), blendAmount),
                                result.GetAspect(), result.GetNearZ(), result.GetFarZ());
     result.SetLookAt(eye, target, up);
     result.SetDepthOfFieldSettings(
@@ -415,7 +412,7 @@ const RENDER3D::ResolvedCameraFrame& CameraDirector::Resolve(const World& world,
             if (ResolveFocusDistance(resolvedFrame_.camera, focusRequest, requestedFocusDistance)) {
                 CAMERA::DepthOfFieldSettings resolvedSettings = resolvedFrame_.camera.GetDepthOfFieldSettings();
                 resolvedSettings.focusDistance =
-                    Lerp(resolvedSettings.focusDistance, requestedFocusDistance, focusRequest.weight);
+                    MATH::Lerp(resolvedSettings.focusDistance, requestedFocusDistance, focusRequest.weight);
                 resolvedFrame_.camera.SetDepthOfFieldSettings(resolvedSettings);
             }
         }

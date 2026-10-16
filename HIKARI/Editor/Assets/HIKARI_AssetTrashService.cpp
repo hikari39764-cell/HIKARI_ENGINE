@@ -43,11 +43,6 @@ bool MoveFile(const std::filesystem::path& source, const std::filesystem::path& 
     return true;
 }
 
-std::filesystem::path ResolveSourcePath(const AssetDatabase& database, const AssetRecord& record) {
-    return record.sourcePath.is_absolute() ? record.sourcePath.lexically_normal()
-                                           : (database.GetProjectRoot() / record.sourcePath).lexically_normal();
-}
-
 bool SourceContainsGuid(const std::filesystem::path& sourcePath, const AssetGuid& guid) {
     std::ifstream stream(sourcePath, std::ios::binary);
     if (!stream) {
@@ -80,7 +75,7 @@ AssetTrashReferenceAnalysis AnalyzeAssetTrashReferences(const AssetDatabase& dat
         if (owner == nullptr || owner->guid == guid) {
             continue;
         }
-        const std::filesystem::path sourcePath = ResolveSourcePath(database, *owner);
+        const std::filesystem::path sourcePath = database.ResolveSourcePath(*owner);
         MaterialAssetData source{};
         std::string error{};
         if (LoadMaterialAssetData(sourcePath, source, error)) {
@@ -98,7 +93,7 @@ AssetTrashReferenceAnalysis AnalyzeAssetTrashReferences(const AssetDatabase& dat
         if (owner == nullptr || owner->guid == guid) {
             continue;
         }
-        const std::filesystem::path sourcePath = ResolveSourcePath(database, *owner);
+        const std::filesystem::path sourcePath = database.ResolveSourcePath(*owner);
         ASSETS::MODELS::ModelMaterialBindingAssetData source{};
         std::string error{};
         if (ASSETS::MODELS::LoadModelMaterialBindingAsset(sourcePath, source, error)) {
@@ -120,7 +115,7 @@ AssetTrashReferenceAnalysis AnalyzeAssetTrashReferences(const AssetDatabase& dat
         if (owner == nullptr || owner->guid == guid) {
             continue;
         }
-        const std::filesystem::path sourcePath = ResolveSourcePath(database, *owner);
+        const std::filesystem::path sourcePath = database.ResolveSourcePath(*owner);
         SceneDocument document{};
         if (sceneSerializer.LoadFromFile(sourcePath.string(), document)) {
             if (AnalyzeAssetUsage(document, database).IsUsed(guid)) {

@@ -34,7 +34,7 @@ StructuredAssetAuthoringResult Save(AssetDatabase& database, const AssetGuid& gu
             return result;
         }
         record = *found;
-        path = (database.GetProjectRoot() / record.sourcePath).lexically_normal();
+        path = database.ResolveSourcePath(record);
     } else {
         const auto directory = database.GetAssetsRoot() / format.directory;
         const auto stem = ASSETS::SEMANTICS::MakeAssetFileStem(definition.name, format.stem);
@@ -84,8 +84,7 @@ bool Load(const AssetDatabase& database, const AssetGuid& guid, Definition& defi
         return false;
     }
     Asset asset;
-    if (!format.load((database.GetProjectRoot() / record->sourcePath).lexically_normal(), record->guid, asset,
-                     &message))
+    if (!format.load(database.ResolveSourcePath(*record), record->guid, asset, &message))
         return false;
     definition = std::move(asset.*format.payload);
     message = "Asset loaded";

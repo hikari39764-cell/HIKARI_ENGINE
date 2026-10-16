@@ -236,7 +236,7 @@ void AssetInspectorPanel::Draw(AssetDatabase& assetDatabase, AssetRegistry& asse
             }
             ImGui::SameLine();
             if (ImGui::Button(TEXT::Localize("ui.assetInspector.showSource").c_str())) {
-                EDITOR::SHELL::ShowFileInExplorer(assetDatabase.GetProjectRoot() / record->sourcePath);
+                EDITOR::SHELL::ShowFileInExplorer(assetDatabase.ResolveSourcePath(*record));
             }
             ImGui::SameLine();
             if (ImGui::Button(TEXT::Localize("ui.assetInspector.showImportedDirectory").c_str()) &&

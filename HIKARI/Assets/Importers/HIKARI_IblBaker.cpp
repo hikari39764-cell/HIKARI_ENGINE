@@ -1,4 +1,5 @@
 #include "HIKARI_IblBaker.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 #include "Core/Text/HIKARI_OutMessage.h"
 
 #ifndef NOMINMAX
@@ -95,8 +96,6 @@ Float4 Mul(const Float4& value, float scalar) {
 }
 
 Float4 Lerp(const Float4& lhs, const Float4& rhs, float t) { return Add(Mul(lhs, 1.0f - t), Mul(rhs, t)); }
-
-float Saturate(float value) { return std::clamp(value, 0.0f, 1.0f); }
 
 float RadicalInverseVdc(uint32_t bits) {
     bits = (bits << 16u) | (bits >> 16u);
@@ -387,8 +386,8 @@ std::pair<float, float> IntegrateBrdf(float noV, float roughness, uint32_t sampl
         const float u2 = RadicalInverseVdc(i);
         const MATH::Vec3 h = sampleVisibleNormal(u1, u2);
         const MATH::Vec3 l = MATH::Normalize(Sub(Mul(h, 2.0f * MATH::Dot(v, h)), v));
-        const float noL = Saturate(l.z);
-        const float voH = Saturate(MATH::Dot(v, h));
+        const float noL = MATH::Clamp01(l.z);
+        const float voH = MATH::Clamp01(MATH::Dot(v, h));
 
         if (noL > 0.0f) {
             const float g = GeometrySmith(noV, noL, roughness);
