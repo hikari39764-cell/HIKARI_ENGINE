@@ -126,23 +126,7 @@ std::string MakeClusterGuidValue(const ProceduralModelKey& key) {
 }
 
 std::filesystem::path ResolveClusterCachePath(const ProceduralModelKey& key, const std::filesystem::path& projectRoot) {
-    const std::string fileName =
-        MakeClusterGuidValue(key) + "-hcmesh" + std::to_string(ASSETS::GEOMETRY::kHcmeshVersion) + ".hcmesh";
-    std::filesystem::path libraryRoot =
-        projectRoot.empty() ? std::filesystem::path("Library") : projectRoot / "Library";
-#if defined(HIKARI_SHIPPING)
-    const std::filesystem::path packagedPath =
-        (libraryRoot / "Generated" / "ProceduralCluster" / fileName).lexically_normal();
-    std::error_code packagedError{};
-    if (std::filesystem::is_regular_file(packagedPath, packagedError) && !packagedError) {
-        return packagedPath;
-    }
-    const std::filesystem::path runtimeUserRoot = PLATFORM::GetHikariRuntimeUserRoot();
-    if (!runtimeUserRoot.empty()) {
-        libraryRoot = runtimeUserRoot / "Cache";
-    }
-#endif
-    return (libraryRoot / "Generated" / "ProceduralCluster" / fileName).lexically_normal();
+    return ResolveGeneratedClusterGeometryPath(projectRoot, "ProceduralCluster", MakeClusterGuidValue(key));
 }
 
 ASSETS::GEOMETRY::ClusteredGeometryCookSettings MakeProceduralClusteredGeometryCookSettings() {
@@ -152,42 +136,6 @@ ASSETS::GEOMETRY::ClusteredGeometryCookSettings MakeProceduralClusteredGeometryC
     settings.partitionLargeStaticSurfaces = true;
     settings.surfacePartitionPolicy = ASSETS::GEOMETRY::SurfacePartitionPolicy::SceneStatic;
     return settings;
-}
-
-bool CookClusteredGeometryFromModel(const ModelAsset& model, const ProceduralModelKey& key,
-                                    const std::filesystem::path& outputPath, bool publishPackedSource,
-                                    RENDER3D::CLUSTER::ClusterGeometryPackedBytes* outPacked) {
-    RENDER3D::CLUSTER::ClusteredGeometryAsset clusteredGeometry{};
-    RENDER3D::CLUSTER::ClusteredGeometryBuildReport report{};
-    AssetGuid sourceGuid{};
-    sourceGuid.value = MakeClusterGuidValue(key);
-    if (!ASSETS::GEOMETRY::CookClusteredGeometryFromModel(
-            model, sourceGuid, MakeProceduralClusteredGeometryCookSettings(), clusteredGeometry, report)) {
-        HIKARI_LOG_WARN("[ProceduralModelFactory] clustered geometry cook failed: " + sourceGuid.value);
-        return false;
-    }
-
-    // ディスク書き込みに先立って packed データをメモリ登録し、
-    // 初回レンダリングがファイルを読まないようにする。
-    RENDER3D::CLUSTER::ClusterGeometryPackedBytes packed{};
-    std::string packMessage{};
-    if (RENDER3D::CLUSTER::PackClusterGeometryForGpu(clusteredGeometry, {}, packed, &packMessage)) {
-        if (publishPackedSource) {
-            RENDER3D::RegisterClusterGeometryPackedSource(outputPath.generic_string(), std::move(packed));
-        } else if (outPacked != nullptr) {
-            *outPacked = std::move(packed);
-        }
-    } else {
-        HIKARI_LOG_WARN("[ProceduralModelFactory] clustered geometry pack failed: " + packMessage);
-    }
-
-    std::string message;
-    if (!ASSETS::GEOMETRY::WriteHcmeshFile(outputPath, clusteredGeometry, message)) {
-        HIKARI_LOG_WARN("[ProceduralModelFactory] clustered geometry write failed: " + message);
-        return false;
-    }
-    HIKARI_LOG_INFO("[ProceduralModelFactory] cooked clustered geometry: " + outputPath.generic_string());
-    return true;
 }
 
 std::unique_ptr<ModelAsset> BuildModel(const ProceduralModelKey& key, bool recordStats) {
@@ -297,8 +245,9 @@ private:
             result.model = BuildModel(job.key, false);
             if (result.model != nullptr) {
                 if (job.cookClusteredGeometry) {
-                    result.success =
-                        CookClusteredGeometryFromModel(*result.model, job.key, job.path, false, &result.packed);
+                    result.success = CookGeneratedClusterGeometry(*result.model, MakeClusterGuidValue(job.key),
+                                                                  MakeProceduralClusteredGeometryCookSettings(),
+                                                                  job.path, result.packed);
                     result.packedValid = result.success &&
                                          (!result.packed.geometryBytes.empty() || !result.packed.metadataBytes.empty());
                 } else {
@@ -341,9 +290,67 @@ ClusterWarmUpWorker& GetClusterWarmUpWorker() {
 bool CookClusteredGeometry(const ProceduralMeshSettings& settings, const ProceduralModelKey& key,
                            const std::filesystem::path& outputPath) {
     const ModelAsset* model = GetOrCreateModel(settings);
-    return model != nullptr && CookClusteredGeometryFromModel(*model, key, outputPath, true, nullptr);
+    RENDER3D::CLUSTER::ClusterGeometryPackedBytes packed{};
+    if (model == nullptr ||
+        !CookGeneratedClusterGeometry(*model, MakeClusterGuidValue(key), MakeProceduralClusteredGeometryCookSettings(),
+                                      outputPath, packed)) {
+        return false;
+    }
+    // 初回の描画がファイルを読まないよう、packed データをメモリへ登録する。
+    if (!packed.geometryBytes.empty()) {
+        RENDER3D::RegisterClusterGeometryPackedSource(outputPath.generic_string(), std::move(packed));
+    }
+    return true;
 }
 } // namespace
+
+std::filesystem::path ResolveGeneratedClusterGeometryPath(const std::filesystem::path& projectRoot,
+                                                          std::string_view category, std::string_view sourceId) {
+    const std::string fileName =
+        std::string(sourceId) + "-hcmesh" + std::to_string(ASSETS::GEOMETRY::kHcmeshVersion) + ".hcmesh";
+    const std::filesystem::path relative =
+        std::filesystem::path("Generated") / std::filesystem::path(category) / fileName;
+    std::filesystem::path libraryRoot =
+        projectRoot.empty() ? std::filesystem::path("Library") : projectRoot / "Library";
+#if defined(HIKARI_SHIPPING)
+    const std::filesystem::path packagedPath = (libraryRoot / relative).lexically_normal();
+    std::error_code packagedError{};
+    if (std::filesystem::is_regular_file(packagedPath, packagedError) && !packagedError) {
+        return packagedPath;
+    }
+    const std::filesystem::path runtimeUserRoot = PLATFORM::GetHikariRuntimeUserRoot();
+    if (!runtimeUserRoot.empty()) {
+        libraryRoot = runtimeUserRoot / "Cache";
+    }
+#endif
+    return (libraryRoot / relative).lexically_normal();
+}
+
+bool CookGeneratedClusterGeometry(const ModelAsset& model, std::string_view sourceId,
+                                  const ASSETS::GEOMETRY::ClusteredGeometryCookSettings& settings,
+                                  const std::filesystem::path& outputPath,
+                                  RENDER3D::CLUSTER::ClusterGeometryPackedBytes& outPacked) {
+    outPacked = {};
+    RENDER3D::CLUSTER::ClusteredGeometryAsset clusteredGeometry{};
+    RENDER3D::CLUSTER::ClusteredGeometryBuildReport report{};
+    AssetGuid sourceGuid{};
+    sourceGuid.value = std::string(sourceId);
+    if (!ASSETS::GEOMETRY::CookClusteredGeometryFromModel(model, sourceGuid, settings, clusteredGeometry, report)) {
+        HIKARI_LOG_WARN("[GeneratedClusterGeometry] cook failed: " + sourceGuid.value);
+        return false;
+    }
+    std::string message{};
+    if (!RENDER3D::CLUSTER::PackClusterGeometryForGpu(clusteredGeometry, {}, outPacked, &message)) {
+        HIKARI_LOG_WARN("[GeneratedClusterGeometry] pack failed: " + sourceGuid.value + " " + message);
+        outPacked = {};
+    }
+    if (!ASSETS::GEOMETRY::WriteHcmeshFile(outputPath, clusteredGeometry, message)) {
+        HIKARI_LOG_WARN("[GeneratedClusterGeometry] write failed: " + message);
+        return false;
+    }
+    HIKARI_LOG_INFO("[GeneratedClusterGeometry] cooked: " + outputPath.generic_string());
+    return true;
+}
 
 const ModelAsset* GetOrCreateModel(const ProceduralMeshSettings& settings) {
     PumpClusteredGeometryWarmUps();

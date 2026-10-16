@@ -81,12 +81,14 @@ void TextAssetStore::Configure(const AssetDatabase* database) {
     revision_ = 0;
     styles_.clear();
     fonts_.clear();
+    fontPaths_.clear();
 }
 void TextAssetStore::Refresh() const {
     if (database_ && revision_ != database_->GetContentRevision()) {
         revision_ = database_->GetContentRevision();
         styles_.clear();
         fonts_.clear();
+        fontPaths_.clear();
     }
 }
 uint64_t TextAssetStore::FontRevision(const std::filesystem::path& source) const {
@@ -132,16 +134,23 @@ std::shared_ptr<const TextStyleAsset> TextAssetStore::LoadStyle(const AssetGuid&
     return result;
 }
 std::string TextAssetStore::ResolveFont(const AssetGuid& guid) const {
-    const auto* record = database_ ? database_->FindByGuid(guid) : nullptr;
-    if (!record || record->type != AssetType::Font || !record->lastImportSucceeded)
+    if (!database_)
         return {};
-    const auto path = database_->ResolveSourcePath(*record);
-    // 参照先は GUID で追跡し、描画 API には Assets 相対パスを渡す。
-    auto relative = path.lexically_relative(database_->GetAssetsRoot());
-    if (relative.empty() || *relative.begin() == "..")
-        relative = path.lexically_relative(database_->GetProjectRoot() / "RuntimePayload/Assets");
-    if (relative.empty() || *relative.begin() == "..")
-        return {};
-    return TEXT::PathToUtf8(relative);
+    Refresh();
+    if (const auto it = fontPaths_.find(guid.value); it != fontPaths_.end())
+        return it->second;
+    std::string resolved;
+    const auto* record = database_->FindByGuid(guid);
+    if (record && record->type == AssetType::Font && record->lastImportSucceeded) {
+        const auto path = database_->ResolveSourcePath(*record);
+        // 参照先は GUID で追跡し、描画 API には Assets 相対パスを渡す。
+        auto relative = path.lexically_relative(database_->GetAssetsRoot());
+        if (relative.empty() || *relative.begin() == "..")
+            relative = path.lexically_relative(database_->GetProjectRoot() / "RuntimePayload/Assets");
+        if (!relative.empty() && *relative.begin() != "..")
+            resolved = TEXT::PathToUtf8(relative);
+    }
+    fontPaths_.emplace(guid.value, resolved);
+    return resolved;
 }
 } // namespace HIKARI

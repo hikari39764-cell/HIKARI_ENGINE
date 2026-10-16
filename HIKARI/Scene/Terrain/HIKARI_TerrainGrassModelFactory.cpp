@@ -19,8 +19,7 @@
 #include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
-#include "Core/HIKARI_Logger.h"
-#include "Platform/Paths/HIKARI_UserDataPath.h"
+#include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 
 namespace HIKARI::TERRAIN {
@@ -199,20 +198,6 @@ std::string MakeGrassClusterGuid(uint32_t variantIndex) {
     return stream.str();
 }
 
-std::filesystem::path ResolveGrassClusterCachePath(uint32_t variantIndex, const std::filesystem::path& projectRoot) {
-    std::filesystem::path libraryRoot =
-        projectRoot.empty() ? std::filesystem::path("Library") : projectRoot / "Library";
-#if defined(HIKARI_SHIPPING)
-    const std::filesystem::path runtimeUserRoot = PLATFORM::GetHikariRuntimeUserRoot();
-    if (!runtimeUserRoot.empty()) {
-        libraryRoot = runtimeUserRoot / "Cache";
-    }
-#endif
-    const std::string fileName =
-        MakeGrassClusterGuid(variantIndex) + "-hcmesh" + std::to_string(ASSETS::GEOMETRY::kHcmeshVersion) + ".hcmesh";
-    return (libraryRoot / "Generated" / "TerrainGrass" / fileName).lexically_normal();
-}
-
 ASSETS::GEOMETRY::ClusteredGeometryCookSettings MakeGrassClusterCookSettings() {
     ASSETS::GEOMETRY::ClusteredGeometryCookSettings settings{};
     settings.maxSurfaceLodCount = 1u;
@@ -238,38 +223,12 @@ const ModelAsset* GetOrCreateModelUnlocked(uint32_t variantIndex) {
     return model.get();
 }
 
-bool CookGrassClusteredGeometry(uint32_t variantIndex, const std::filesystem::path& outputPath,
+bool CookGrassClusteredGeometry(uint32_t variant, const std::filesystem::path& outputPath,
                                 RENDER3D::CLUSTER::ClusterGeometryPackedBytes& outPacked) {
-    const uint32_t variant = variantIndex % kTerrainGrassModelVariantCount;
     const ModelAsset* model = GetOrCreateModelUnlocked(variant);
-    if (model == nullptr) {
-        return false;
-    }
-
-    RENDER3D::CLUSTER::ClusteredGeometryAsset clusteredGeometry{};
-    RENDER3D::CLUSTER::ClusteredGeometryBuildReport report{};
-    AssetGuid sourceGuid{};
-    sourceGuid.value = MakeGrassClusterGuid(variant);
-    if (!ASSETS::GEOMETRY::CookClusteredGeometryFromModel(*model, sourceGuid, MakeGrassClusterCookSettings(),
-                                                          clusteredGeometry, report)) {
-        HIKARI_LOG_WARN("[TerrainGrassModelFactory] clustered geometry cook failed: " + sourceGuid.value);
-        return false;
-    }
-
-    RENDER3D::CLUSTER::ClusterGeometryPackOptions packOptions{};
-    packOptions.includeFallbackIndices = true;
-    std::string packMessage{};
-    if (!RENDER3D::CLUSTER::PackClusterGeometryForGpu(clusteredGeometry, packOptions, outPacked, &packMessage)) {
-        HIKARI_LOG_WARN("[TerrainGrassModelFactory] clustered geometry pack failed: " + packMessage);
-        return false;
-    }
-
-    std::string writeMessage{};
-    if (!ASSETS::GEOMETRY::WriteHcmeshFile(outputPath, clusteredGeometry, writeMessage)) {
-        HIKARI_LOG_WARN("[TerrainGrassModelFactory] clustered geometry write failed: " + writeMessage);
-        return false;
-    }
-    return true;
+    return model != nullptr &&
+           PROCEDURAL::CookGeneratedClusterGeometry(*model, MakeGrassClusterGuid(variant),
+                                                    MakeGrassClusterCookSettings(), outputPath, outPacked);
 }
 } // namespace
 
@@ -281,7 +240,8 @@ const ModelAsset* GetOrCreateTerrainGrassModel(uint32_t variantIndex) {
 std::string GetOrCreateTerrainGrassClusteredGeometryPath(uint32_t variantIndex,
                                                          const std::filesystem::path& projectRoot) {
     const uint32_t variant = variantIndex % kTerrainGrassModelVariantCount;
-    const std::filesystem::path path = ResolveGrassClusterCachePath(variant, projectRoot);
+    const std::filesystem::path path =
+        PROCEDURAL::ResolveGeneratedClusterGeometryPath(projectRoot, "TerrainGrass", MakeGrassClusterGuid(variant));
     const std::string normalizedPath = path.generic_string();
     std::scoped_lock lock(gCacheMutex);
 
@@ -308,8 +268,10 @@ std::string GetOrCreateTerrainGrassClusteredGeometryPath(uint32_t variantIndex,
         gClusterPathCache[variant].clear();
         return {};
     }
-    RENDER3D::RegisterClusterGeometryPackedSource(normalizedPath, std::move(packed));
-    gPackedSourceRegistered[variant] = true;
+    if (!packed.geometryBytes.empty()) {
+        RENDER3D::RegisterClusterGeometryPackedSource(normalizedPath, std::move(packed));
+        gPackedSourceRegistered[variant] = true;
+    }
     return normalizedPath;
 }
 

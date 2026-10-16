@@ -31,6 +31,8 @@ public:
 private:
     void Refresh() const;
     mutable std::unordered_map<std::string, uint64_t> fonts_;
+    // 描画は毎フレーム文字ごとに書体を引くので、GUID → 描画用パスを内容版数の間だけ覚える。
+    mutable std::unordered_map<std::string, std::string> fontPaths_;
     const AssetDatabase* database_ = nullptr;
     mutable uint64_t revision_ = 0;
     struct Entry {
