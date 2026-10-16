@@ -1,4 +1,5 @@
 #include "HIKARI/Project/WorldView.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <array>
 #include <cstddef>
@@ -32,20 +33,10 @@ bool TryReadObjectName(const GameProjectSpawnObjectDesc& desc, std::string_view&
     return true;
 }
 
-template <size_t Count>
-bool HasNonZeroReserved(const uint32_t (&values)[Count]) noexcept {
-    for (const uint32_t value : values) {
-        if (value != 0u) {
-            return true;
-        }
-    }
-    return false;
-}
-
 GameProjectWorldResultCode TryBuildBatchSpawnRequest(World& world, const GameProjectSpawnObjectDesc& desc,
                                                      std::span<const WorldSpawnComponentRequest> components,
                                                      WorldSpawnRequest& outRequest) noexcept {
-    if (HasNonZeroReserved(desc.reserved)) {
+    if (NUMERIC::AnyNonZero(desc.reserved)) {
         return GameProjectWorldResultCode::InvalidRequest;
     }
     std::string_view name{};
@@ -97,7 +88,7 @@ bool SubmitPreparedBatch(World& world, std::span<const WorldSpawnRequest> reques
 }
 
 GameProjectWorldResult SubmitSingleSpawn(World& world, const GameProjectSpawnObjectDesc& desc) noexcept {
-    if (HasNonZeroReserved(desc.reserved)) {
+    if (NUMERIC::AnyNonZero(desc.reserved)) {
         return PROJECT::INTERNAL::MakeWorldResult(GameProjectWorldResultCode::InvalidRequest);
     }
     std::string_view name{};
@@ -209,7 +200,7 @@ bool WorldView::SpawnObjectsWithComponents(std::span<const GameProjectSpawnObjec
             if (object.version != kGameProjectSpawnComponentVersion) {
                 rejection = GameProjectWorldResultCode::Unsupported;
             } else if (object.structSize != kGameProjectSpawnObjectComponentsDescV1Size ||
-                       HasNonZeroReserved(object.reserved) ||
+                       NUMERIC::AnyNonZero(object.reserved) ||
                        object.componentCount > kGameProjectWorldMaximumSpawnComponentsPerObject ||
                        (object.componentCount != 0u && object.components == nullptr)) {
                 rejection = GameProjectWorldResultCode::InvalidRequest;
@@ -232,7 +223,7 @@ bool WorldView::SpawnObjectsWithComponents(std::span<const GameProjectSpawnObjec
                            component.initialValuesFormat != GameProjectSpawnComponentValuesFormat::JsonUtf8Object ||
                            component.initialValuesSize > kGameProjectWorldMaximumSpawnComponentBytes ||
                            (component.initialValuesSize != 0u && component.initialValues == nullptr) ||
-                           HasNonZeroReserved(component.reserved) ||
+                           NUMERIC::AnyNonZero(component.reserved) ||
                            totalBytes > kGameProjectWorldMaximumSpawnBatchBytes - component.initialValuesSize) {
                     rejection = GameProjectWorldResultCode::InvalidRequest;
                 }

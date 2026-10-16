@@ -94,10 +94,6 @@ struct SourceVertexRecord {
 
 using MATH::IsFinite;
 
-bool SameVertexValue(const MATH::Vec3& lhs, const MATH::Vec3& rhs) noexcept {
-    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
-}
-
 std::string ChunkLabel(const TERRAIN::TerrainChunkKey& key) {
     return "chunk(" + std::to_string(key.x) + "," + std::to_string(key.z) + ")";
 }
@@ -288,8 +284,7 @@ private:
         const auto found = sourceVertices_.find(vertex.key);
         if (found != sourceVertices_.end()) {
             const SourceVertexRecord& record = found->second;
-            if (record.index >= geometry_.vertices.size() ||
-                !SameVertexValue(geometry_.vertices[record.index], vertex.position) ||
+            if (record.index >= geometry_.vertices.size() || geometry_.vertices[record.index] != vertex.position ||
                 record.coverage != vertex.coverage) {
                 Fail("shared terrain lattice vertex has inconsistent "
                      "height or coverage");
@@ -348,8 +343,7 @@ private:
 
         const auto found = intersectionVertices_.find(edge);
         if (found != intersectionVertices_.end()) {
-            if (found->second >= geometry_.vertices.size() ||
-                !SameVertexValue(geometry_.vertices[found->second], position)) {
+            if (found->second >= geometry_.vertices.size() || geometry_.vertices[found->second] != position) {
                 Fail("shared coverage edge produced inconsistent "
                      "intersection positions");
                 return kInvalidVertexIndex;

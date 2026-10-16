@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_CinematicSequence.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <cmath>
@@ -35,16 +36,10 @@ void NormalizeSceneCinematicsSettings(SceneCinematicsSettings& settings) {
     for (CinematicSequence& sequence : settings.sequences) {
         if (!sequence.id.IsValid() || !usedIds.insert(sequence.id.value).second) {
             while (!usedIds.insert(nextId.value).second) {
-                ++nextId.value;
-                if (nextId.value == 0) {
-                    nextId.value = 1;
-                }
+                NUMERIC::AdvanceNonZero(nextId.value);
             }
             sequence.id = nextId;
-            ++nextId.value;
-            if (nextId.value == 0) {
-                nextId.value = 1;
-            }
+            NUMERIC::AdvanceNonZero(nextId.value);
         }
         if (sequence.name.empty()) {
             sequence.name = "Sequence " + std::to_string(sequence.id.value);
@@ -70,10 +65,7 @@ CinematicSequenceId AllocateCinematicSequenceId(const SceneCinematicsSettings& s
         nextId.value = sequence.id.value + 1;
     }
     while (FindCinematicSequence(settings, nextId) != nullptr) {
-        ++nextId.value;
-        if (nextId.value == 0) {
-            nextId.value = 1;
-        }
+        NUMERIC::AdvanceNonZero(nextId.value);
     }
     return nextId;
 }

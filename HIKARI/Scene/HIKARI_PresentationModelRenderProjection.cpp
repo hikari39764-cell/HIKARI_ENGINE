@@ -123,16 +123,6 @@ bool ResolveWorldMatrix(const PresentationModelRecord& record, World& world,
     return MATH::IsFinite(outWorldMatrix);
 }
 
-Bounds ResolveLocalBounds(const ModelAsset* model, const RENDER3D::RUNTIME::RenderModelAsset* renderModel) {
-    if (renderModel != nullptr && renderModel->valid && BOUNDS::IsUsable(renderModel->localBounds)) {
-        return renderModel->localBounds;
-    }
-    if (model != nullptr && BOUNDS::IsUsable(model->bounds)) {
-        return model->bounds;
-    }
-    return {};
-}
-
 bool BuildExclusiveNodeVisibilityMask(const ModelAsset& model, std::string_view nodeName,
                                       std::vector<uint8_t>& outMask) {
     outMask.clear();
@@ -265,7 +255,7 @@ RENDER3D::RUNTIME::SceneRenderObjectDesc BuildRenderObjectDesc(
         desc.worldTransform.useExplicitMatrix = true;
         desc.worldTransform.explicitMatrix = worldMatrix;
     }
-    desc.localBounds = ResolveLocalBounds(desc.model, desc.renderModel);
+    desc.localBounds = RENDER3D::RUNTIME::ResolveLocalBounds(desc.model, desc.renderModel);
     desc.worldBounds = BOUNDS::TransformBounds(desc.localBounds, worldMatrix);
     bool exclusiveNodeResolved = true;
     if (asset != nullptr && !record.exclusiveNodeName.empty()) {

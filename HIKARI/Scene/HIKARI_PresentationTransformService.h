@@ -25,8 +25,6 @@ private:
         MATH::Mat4 worldMatrix = MATH::Mat4::Identity();
     };
 
-    void AdvanceRevision() noexcept;
-
     std::unordered_map<uint64_t, Entry> entries_{};
     uint64_t revision_ = 1u;
 };

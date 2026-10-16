@@ -1,4 +1,5 @@
 #include "Editor/Documents/HIKARI_VfxEditorDocument.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <utility>
@@ -42,7 +43,7 @@ void VfxEditorDocument::NewAsset(std::string name) {
     sourcePath_.clear();
     displayName_ = asset_.name;
     ResetHistory(false);
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
 }
 
 bool VfxEditorDocument::ApplyPresetAsset(VFX::VfxAssetData package, std::string& outMessage) {
@@ -74,7 +75,7 @@ bool VfxEditorDocument::ApplyAsset(VFX::VfxAssetData asset, std::string& outMess
     displayName_ = asset_.name;
     lastImpact_ = impact;
     RecordApplied(std::move(before), mergeGroup, impact);
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
     outMessage = "VFX document updated";
     return true;
 }
@@ -85,7 +86,7 @@ bool VfxEditorDocument::Undo() {
     if (!history_.Undo(asset_, &lastImpact_))
         return false;
     displayName_ = asset_.name;
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
     return true;
 }
 
@@ -93,7 +94,7 @@ bool VfxEditorDocument::Redo() {
     if (!history_.Redo(asset_, &lastImpact_))
         return false;
     displayName_ = asset_.name;
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
     return true;
 }
 
@@ -133,13 +134,6 @@ void VfxEditorDocument::RecordApplied(VFX::VfxAssetData before, uint64_t mergeGr
 void VfxEditorDocument::ResetHistory(bool saved) noexcept {
     lastImpact_ = VfxDocumentImpact::Runtime;
     history_.Reset(saved);
-}
-
-void VfxEditorDocument::AdvanceRevision() noexcept {
-    ++revision_;
-    if (revision_ == 0u) {
-        revision_ = 1u;
-    }
 }
 
 } // namespace HIKARI::EDITOR

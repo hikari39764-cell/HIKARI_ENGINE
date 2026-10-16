@@ -23,8 +23,6 @@ public:
     uint64_t GetRevision() const noexcept;
 
 private:
-    void AdvanceRevision() noexcept;
-
     std::unordered_map<uint64_t, PhysicsBodyRuntimeStatus> bodyStatuses_{};
     std::unordered_map<uint64_t, std::vector<PhysicsShapeDesc>> bodyDebugShapes_{};
     PhysicsStepResult lastStepResult_{};

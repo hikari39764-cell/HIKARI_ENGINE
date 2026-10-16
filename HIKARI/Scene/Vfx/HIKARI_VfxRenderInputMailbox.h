@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 namespace HIKARI::VFX {
 
@@ -26,10 +27,7 @@ public:
         if (pending_ && mode == VfxRenderInputPublishMode::RequireAcknowledged) {
             return 0u;
         }
-        ++sequence_;
-        if (sequence_ == 0u) {
-            sequence_ = 1u;
-        }
+        NUMERIC::AdvanceNonZero(sequence_);
         current_ = std::make_shared<const RENDER3D::PARTICLES::ParticleRenderInput>(std::move(input));
         pending_ = true;
         return sequence_;

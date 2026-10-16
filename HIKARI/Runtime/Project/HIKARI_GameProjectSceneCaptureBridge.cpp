@@ -1,4 +1,5 @@
 #include "HIKARI/Project/SceneCaptureView.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include <cmath>
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Text/HIKARI_EnumNames.h"
@@ -12,23 +13,13 @@ namespace HIKARI {
 namespace {
 using PROJECT::INTERNAL::ReadFixedUtf8;
 
-template <size_t Count>
-bool HasNonZeroSceneCaptureReserved(const uint32_t (&values)[Count]) noexcept {
-    for (uint32_t value : values) {
-        if (value != 0u) {
-            return true;
-        }
-    }
-    return false;
-}
-
 bool ValidateSceneCaptureDesc(const GameProjectSceneCaptureDesc& desc) noexcept {
     constexpr uint32_t knownFlags = GameProjectSceneCaptureFlags(GameProjectSceneCaptureFlag::Enabled) |
                                     GameProjectSceneCaptureFlags(GameProjectSceneCaptureFlag::RenderSky) |
                                     GameProjectSceneCaptureFlags(GameProjectSceneCaptureFlag::RenderTransparent) |
                                     GameProjectSceneCaptureFlags(GameProjectSceneCaptureFlag::RenderVfx);
     return desc.structSize == kGameProjectSceneCaptureDescV1Size && desc.version == kGameProjectSceneCaptureVersion &&
-           !HasNonZeroSceneCaptureReserved(desc.reserved) && desc.cameraObject.IsValid() &&
+           !NUMERIC::AnyNonZero(desc.reserved) && desc.cameraObject.IsValid() &&
            desc.width >= kGameProjectSceneCaptureMinimumExtent && desc.width <= kGameProjectSceneCaptureMaximumExtent &&
            desc.height >= kGameProjectSceneCaptureMinimumExtent &&
            desc.height <= kGameProjectSceneCaptureMaximumExtent && (desc.flags & ~knownFlags) == 0u;
@@ -109,10 +100,11 @@ bool SceneCaptureView::Destroy(GameProjectSceneCaptureHandle capture) const noex
 
 bool SceneCaptureView::SetStyle(GameProjectSceneCaptureHandle capture,
                                 const GameProjectSceneCaptureStyleDesc& style) const noexcept {
-    constexpr TEXT::EnumName<GameProjectSceneCaptureStyle> styles[] = {{GameProjectSceneCaptureStyle::None, "None"},
-                                                                       {GameProjectSceneCaptureStyle::Clean, "Clean"},
-                                                                       {GameProjectSceneCaptureStyle::Pixel, "Pixel"},
-                                                                       {GameProjectSceneCaptureStyle::Sketch, "Sketch"}};
+    constexpr TEXT::EnumName<GameProjectSceneCaptureStyle> styles[] = {
+        {GameProjectSceneCaptureStyle::None, "None"},
+        {GameProjectSceneCaptureStyle::Clean, "Clean"},
+        {GameProjectSceneCaptureStyle::Pixel, "Pixel"},
+        {GameProjectSceneCaptureStyle::Sketch, "Sketch"}};
     const auto inRange = [](float value, float low, float high) {
         return MATH::IsFinite(value) && value >= low && value <= high;
     };
@@ -120,7 +112,7 @@ bool SceneCaptureView::SetStyle(GameProjectSceneCaptureHandle capture,
         return inRange(color.x, 0.0f, 1.0f) && inRange(color.y, 0.0f, 1.0f) && inRange(color.z, 0.0f, 1.0f);
     };
     if (style.structSize != sizeof(GameProjectSceneCaptureStyleDesc) || style.version != 2u ||
-        HasNonZeroSceneCaptureReserved(style.reserved) || !TEXT::IsNamedEnum(styles, style.style) ||
+        NUMERIC::AnyNonZero(style.reserved) || !TEXT::IsNamedEnum(styles, style.style) ||
         !inRange(style.pixelSize, 1.0f, 32.0f) || !inRange(style.lineWidth, 0.0f, 4.0f) ||
         !inRange(style.shadowStrength, 0.0f, 1.0f) || !inRange(style.shadowOffsetX, -16.0f, 16.0f) ||
         !inRange(style.shadowOffsetY, -16.0f, 16.0f) || !inRange(style.backgroundLuminance, 0.0f, 1.0f) ||
@@ -139,7 +131,7 @@ bool SceneCaptureView::SetStyle(GameProjectSceneCaptureHandle capture,
 
 bool SceneCaptureView::BindMaterial(const GameProjectSceneCaptureMaterialBindingDesc& binding) const noexcept {
     if (binding.structSize != kGameProjectSceneCaptureMaterialBindingDescV1Size ||
-        binding.version != kGameProjectSceneCaptureVersion || HasNonZeroSceneCaptureReserved(binding.reserved)) {
+        binding.version != kGameProjectSceneCaptureVersion || NUMERIC::AnyNonZero(binding.reserved)) {
         return false;
     }
     GameProjectSceneCaptureMaterialRegionBindingDesc region{};
@@ -158,7 +150,7 @@ bool SceneCaptureView::BindMaterialRegion(
         World* world = PROJECT::INTERNAL::ResolveServiceWorld(world_);
         if (world == nullptr || binding.structSize != kGameProjectSceneCaptureMaterialRegionBindingDescV1Size ||
             binding.version != kGameProjectSceneCaptureMaterialRegionBindingVersion || !binding.capture.IsValid() ||
-            !binding.modelObject.IsValid() || HasNonZeroSceneCaptureReserved(binding.reserved) ||
+            !binding.modelObject.IsValid() || NUMERIC::AnyNonZero(binding.reserved) ||
             (binding.flags & ~kGameProjectSceneCaptureMaterialBindingKnownFlags) != 0u || binding.quarterTurns >= 4u ||
             !ValidateSceneCaptureSourceRect(binding.sourceRect)) {
             return false;

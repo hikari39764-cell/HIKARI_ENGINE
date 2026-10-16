@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_WorldMassStore.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <array>
 #include <cmath>
@@ -36,12 +37,7 @@ constexpr uint32_t kMassSchedulingFieldMask = static_cast<uint32_t>(GameProjectM
 
 } // namespace
 
-void WorldMassStore::AdvanceMutationVersion(Store& store) noexcept {
-    ++store.mutationVersion;
-    if (store.mutationVersion == 0u) {
-        store.mutationVersion = 1u;
-    }
-}
+void WorldMassStore::AdvanceMutationVersion(Store& store) noexcept { NUMERIC::AdvanceNonZero(store.mutationVersion); }
 
 bool WorldMassStore::VisitMutable(ComponentTypeId typeId, void* context, MutableVisitorFn visitor) noexcept {
     Store* store = FindStore(typeId);

@@ -1,4 +1,5 @@
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 namespace HIKARI {
 
@@ -12,10 +13,7 @@ void LightComponent::SetSettings(LightSettings next) noexcept {
         return;
     }
     settings_ = next;
-    ++stateRevision_;
-    if (stateRevision_ == 0u) {
-        stateRevision_ = 1u;
-    }
+    NUMERIC::AdvanceNonZero(stateRevision_);
 }
 
 } // namespace HIKARI

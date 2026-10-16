@@ -1,4 +1,5 @@
 #include "Editor/Preview/HIKARI_ModelPreviewScene.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <utility>
@@ -149,7 +150,7 @@ bool ModelPreviewScene::Load(const AssetRecord& record, const std::filesystem::p
         return false;
     }
 
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
     RebuildSceneSource();
     ready_ = gpuSceneRegistry_.GetSceneSource().HasAnyGpuSceneInstances();
     if (!ready_) {
@@ -209,7 +210,7 @@ bool ModelPreviewScene::LoadMaterialSphere(const std::filesystem::path& projectR
         ResetState();
         return false;
     }
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
     RebuildSceneSource();
     ready_ = gpuSceneRegistry_.GetSceneSource().HasAnyGpuSceneInstances();
     if (!ready_) {
@@ -225,7 +226,7 @@ void ModelPreviewScene::Clear() {
     const bool hadState = ready_ || model_ != nullptr || assetGuid_.IsValid();
     ResetState();
     if (hadState) {
-        AdvanceRevision();
+        NUMERIC::AdvanceNonZero(revision_);
     }
 }
 
@@ -235,7 +236,7 @@ void ModelPreviewScene::SetRenderPolicy(const ModelPreviewRenderPolicy& policy) 
     }
     renderPolicy_ = policy;
     if (ready_) {
-        AdvanceRevision();
+        NUMERIC::AdvanceNonZero(revision_);
         RebuildSceneSource();
     }
 }
@@ -268,7 +269,7 @@ bool ModelPreviewScene::SetPreviewMaterialOverride(uint32_t materialIndex, const
                   [](const auto& left, const auto& right) { return left.materialIndex < right.materialIndex; });
     }
 
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
     RebuildSceneSource();
     return true;
 }
@@ -285,7 +286,7 @@ bool ModelPreviewScene::ClearPreviewMaterialOverride(uint32_t materialIndex) {
         return true;
     }
 
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
     RebuildSceneSource();
     return true;
 }
@@ -296,7 +297,7 @@ void ModelPreviewScene::ClearPreviewMaterialOverrides() {
     }
     materialOverrides_.clear();
     if (ready_) {
-        AdvanceRevision();
+        NUMERIC::AdvanceNonZero(revision_);
         RebuildSceneSource();
     }
 }
@@ -309,7 +310,7 @@ bool ModelPreviewScene::SetEditorSelectionOutline(uint32_t materialIndex) {
         return true;
     }
     editorSelectionMaterialIndex_ = materialIndex;
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
     RebuildSceneSource();
     return true;
 }
@@ -320,7 +321,7 @@ void ModelPreviewScene::ClearEditorSelectionOutline() {
     }
     editorSelectionMaterialIndex_ = RENDER3D::RUNTIME::kInvalidRenderSurfaceIndex;
     if (ready_) {
-        AdvanceRevision();
+        NUMERIC::AdvanceNonZero(revision_);
         RebuildSceneSource();
     }
 }
@@ -354,13 +355,6 @@ uint64_t ModelPreviewScene::GetRevision() const noexcept { return revision_; }
 bool ModelPreviewScene::HasSurfaceMaterialIndex(uint32_t materialIndex) const noexcept {
     return std::any_of(renderModel_.surfaces.begin(), renderModel_.surfaces.end(),
                        [materialIndex](const auto& surface) { return surface.materialIndex == materialIndex; });
-}
-
-void ModelPreviewScene::AdvanceRevision() noexcept {
-    ++revision_;
-    if (revision_ == 0u) {
-        revision_ = 1u;
-    }
 }
 
 void ModelPreviewScene::ResetState() {

@@ -25,13 +25,7 @@ struct TransformData {
     MATH::Vec3 rotationEulerDeg{0.0f, 0.0f, 0.0f};
     MATH::Vec3 scale{1.0f, 1.0f, 1.0f};
 
-    bool operator==(const TransformData& other) const noexcept {
-        const auto same = [](const MATH::Vec3& a, const MATH::Vec3& b) {
-            return a.x == b.x && a.y == b.y && a.z == b.z;
-        };
-        return same(position, other.position) && same(rotationEulerDeg, other.rotationEulerDeg) &&
-               same(scale, other.scale);
-    }
+    bool operator==(const TransformData&) const = default;
 };
 
 struct SceneComponentData {

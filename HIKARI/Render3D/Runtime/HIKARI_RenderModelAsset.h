@@ -40,5 +40,7 @@ struct RenderModelAsset {
 };
 
 bool BuildRenderModelAsset(const ModelAsset& source, RenderModelAsset& out, std::string* outMessage = nullptr);
+// 描画用に組んだ範囲を優先し、無ければ資産の範囲を使う。どちらも使えなければ空の範囲。
+Bounds ResolveLocalBounds(const ModelAsset* model, const RenderModelAsset* renderModel);
 
 } // namespace HIKARI::RENDER3D::RUNTIME

@@ -1,4 +1,5 @@
 #include "Scene/Camera/HIKARI_CameraCollision.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "HIKARI_CameraDirector.h"
 
 #include <algorithm>
@@ -225,10 +226,7 @@ void CameraDirector::Reset() {
     activeOverrideAffectsControlBasis_ = false;
     revision_ = 0;
 
-    ++epoch_;
-    if (epoch_ == 0) {
-        epoch_ = 1;
-    }
+    NUMERIC::AdvanceNonZero(epoch_);
     nextTokenValue_ = 1;
     nextInsertionOrder_ = 1;
 }
@@ -549,10 +547,7 @@ void CameraDirector::BeginSourceTransition(SceneObjectId sourceCameraObjectId, c
     const bool hadResolvedCamera = resolvedFrame_.valid;
     const bool projectionChanged = !hadResolvedCamera || ProjectionDiffers(resolvedFrame_.camera, targetCamera);
 
-    ++revision_;
-    if (revision_ == 0) {
-        revision_ = 1;
-    }
+    NUMERIC::AdvanceNonZero(revision_);
 
     activeBlend_ = blend;
     if (!std::isfinite(activeBlend_.durationSeconds)) {

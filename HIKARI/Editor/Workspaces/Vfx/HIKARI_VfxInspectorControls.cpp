@@ -7,6 +7,7 @@
 #include <json.hpp>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxEditorValue.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include "Core/Text/HIKARI_Localization.h"
@@ -29,16 +30,9 @@ VfxInspectorPropertyEditor::VfxInspectorPropertyEditor(VfxWorkspaceController& c
     : controller_(controller), assetDatabase_(assetDatabase), targetId_(targetId), statusMessage_(statusMessage) {}
 
 uint64_t VfxInspectorPropertyEditor::MergeGroup(std::string_view targetId, std::string_view propertyId) noexcept {
-    uint64_t hash = 1469598103934665603ull;
-    const auto append = [&hash](std::string_view text) {
-        for (const unsigned char character : text) {
-            hash ^= character;
-            hash *= 1099511628211ull;
-        }
-    };
-    append(targetId);
-    append("/");
-    append(propertyId);
+    uint64_t hash = HASH::Fnv1aString(targetId);
+    hash = HASH::Fnv1aBytes(hash, "/", 1u);
+    hash = HASH::Fnv1aBytes(hash, propertyId.data(), propertyId.size());
     return hash != 0u ? hash : 1u;
 }
 

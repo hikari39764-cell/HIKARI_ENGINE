@@ -35,16 +35,6 @@ uint64_t MakeSyntheticId(uint64_t ownerStableId, const TerrainGrassPlacement& pl
     return hash != 0u ? hash : (uint64_t{1u} << 63u);
 }
 
-Bounds ResolveLocalBounds(const ModelAsset* model, const RENDER3D::RUNTIME::RenderModelAsset* renderModel) {
-    if (renderModel != nullptr && renderModel->valid && BOUNDS::IsUsable(renderModel->localBounds)) {
-        return renderModel->localBounds;
-    }
-    if (model != nullptr && BOUNDS::IsUsable(model->bounds)) {
-        return model->bounds;
-    }
-    return {};
-}
-
 bool IsLightingBakeCapture(RENDER3D::RenderViewPurpose purpose) noexcept {
     return purpose == RENDER3D::RenderViewPurpose::ReflectionProbeCapture ||
            purpose == RENDER3D::RenderViewPurpose::LightProbeCapture;
@@ -173,7 +163,7 @@ void SyncTerrainGrassRenderObjects(const GameObject& object, const ModelComponen
             continue;
         }
         const auto* renderModel = renderModelCache.GetOrCreate(*model);
-        const Bounds localBounds = ResolveLocalBounds(model, renderModel);
+        const Bounds localBounds = RENDER3D::RUNTIME::ResolveLocalBounds(model, renderModel);
         if (renderModel == nullptr || !BOUNDS::IsUsable(localBounds)) {
             ++stats.skippedCount;
             continue;

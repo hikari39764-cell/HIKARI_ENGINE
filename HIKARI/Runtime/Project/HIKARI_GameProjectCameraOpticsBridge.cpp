@@ -1,4 +1,5 @@
 #include "HIKARI/Project/ActionViews.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <cmath>
 #include <cstring>
@@ -29,10 +30,6 @@ bool CanWriteRecord(const Record& record, uint32_t requiredSize, uint32_t requir
 template <typename Record>
 void WriteRecordPrefix(Record& destination, const Record& source, uint32_t size) noexcept {
     std::memcpy(&destination, &source, size);
-}
-
-bool HasZeroReserved(const GameProjectDepthOfFieldSettings& settings) noexcept {
-    return settings.reserved[0] == 0u && settings.reserved[1] == 0u && settings.reserved[2] == 0u;
 }
 
 bool CopyLens(const Camera3D& camera, uint64_t sourceCameraHandle, GameProjectCameraLensStage stage,
@@ -219,7 +216,7 @@ bool CameraView::SubmitDepthOfField(const GameProjectCameraDepthOfFieldRequest& 
         request.weight > 1.0f ||
         !CanWriteRecord(request.settings, kGameProjectDepthOfFieldSettingsV1Size,
                         kGameProjectDepthOfFieldSettingsVersion) ||
-        request.settings.enabled > 1u || !HasZeroReserved(request.settings)) {
+        request.settings.enabled > 1u || NUMERIC::AnyNonZero(request.settings.reserved)) {
         return false;
     }
     const CAMERA::DepthOfFieldSettings settings = ToRuntime(request.settings);
@@ -283,8 +280,7 @@ bool CameraView::SubmitMotionBlur(const GameProjectCameraMotionBlurRequest& requ
         request.reserved != 0u ||
         !CanWriteRecord(request.settings, kGameProjectMotionBlurSettingsV1Size,
                         kGameProjectMotionBlurSettingsVersion) ||
-        request.settings.enabled > 1u || request.settings.reserved[0] != 0u || request.settings.reserved[1] != 0u ||
-        request.settings.reserved[2] != 0u) {
+        request.settings.enabled > 1u || NUMERIC::AnyNonZero(request.settings.reserved)) {
         return false;
     }
     try {

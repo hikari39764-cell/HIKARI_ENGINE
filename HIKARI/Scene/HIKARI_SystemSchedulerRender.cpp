@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_SystemScheduler.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <cmath>
 #include <string_view>
@@ -10,16 +11,6 @@
 
 namespace HIKARI {
 namespace {
-
-template <size_t Count>
-bool HasNonZero(const uint32_t (&values)[Count]) noexcept {
-    for (const uint32_t value : values) {
-        if (value != 0u) {
-            return true;
-        }
-    }
-    return false;
-}
 
 bool IsFiniteRenderCamera(const GameProjectRenderCameraFrame& camera) noexcept {
     const auto finite = [](const float* values, size_t count) noexcept {
@@ -53,8 +44,8 @@ bool IsValidRenderFrameView(const GameProjectRenderFrameView& frame, uint64_t ex
         frame.camera->structSize != kGameProjectRenderCameraFrameV1Size ||
         frame.camera->version != kGameProjectRenderFrameVersion || frame.camera->renderWidth == 0u ||
         frame.camera->renderHeight == 0u || frame.camera->outputWidth == 0u || frame.camera->outputHeight == 0u ||
-        frame.camera->reserved0 != 0u || HasNonZero(frame.camera->reserved) || frame.reserved0 != 0u ||
-        HasNonZero(frame.reserved) || !IsFiniteRenderCamera(*frame.camera) ||
+        frame.camera->reserved0 != 0u || NUMERIC::AnyNonZero(frame.camera->reserved) || frame.reserved0 != 0u ||
+        NUMERIC::AnyNonZero(frame.reserved) || !IsFiniteRenderCamera(*frame.camera) ||
         (frame.availableCapabilityMask & ~frame.supportedCapabilityMask) != 0u ||
         (frame.validCapabilityMask & ~frame.availableCapabilityMask) != 0u || frame.exposureValid > 1u ||
         frame.exposureMode >= GameProjectRenderExposureMode::Count ||
@@ -74,7 +65,7 @@ bool IsValidRenderFrameView(const GameProjectRenderFrameView& frame, uint64_t ex
             surface.lifetime >= GameProjectRenderSurfaceLifetime::Count ||
             surface.fallback >= GameProjectRenderSurfaceFallback::Count || surface.sampleable > 1u ||
             surface.reserved0 != 0u || surface.width == 0u || surface.height == 0u || surface.mipCount == 0u ||
-            (surface.readAccessMask & ~kReadAccessMask) != 0u || HasNonZero(surface.reserved)) {
+            (surface.readAccessMask & ~kReadAccessMask) != 0u || NUMERIC::AnyNonZero(surface.reserved)) {
             return false;
         }
     }
@@ -181,7 +172,7 @@ bool SystemScheduler::ExecuteRenderPass(const char* stableId, const GameProjectR
          context.encoder.version != kGameProjectRenderComputeCommandEncoderVersion) ||
         context.encoder.context == nullptr || context.encoder.commandGeneration == 0u ||
         (context.encoder.capabilityMask & ~kKnownCapabilities) != 0u || context.encoder.reservedV1 != 0u ||
-        HasNonZero(context.reserved)) {
+        NUMERIC::AnyNonZero(context.reserved)) {
         ++renderPassFailureCount_;
         return false;
     }

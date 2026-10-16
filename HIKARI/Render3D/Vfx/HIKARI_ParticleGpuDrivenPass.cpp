@@ -1,4 +1,5 @@
 #include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Render3D/Vfx/HIKARI_ParticleCapacity.h"
 #include "Render3D/Vfx/HIKARI_ParticleGeometryLayout.h"
 #include "Render3D/Vfx/HIKARI_ParticleCompositionRenderer.h"
@@ -726,10 +727,7 @@ struct ParticleGpuDrivenPass::Impl {
         if (!SyncMaterials(*source, registry, layoutVersion, materialVersion)) {
             ++stats.materialFailures;
             inputAccepted = false;
-            ++materialSyncRetryVersion;
-            if (materialSyncRetryVersion == 0u) {
-                materialSyncRetryVersion = 1u;
-            }
+            NUMERIC::AdvanceNonZero(materialSyncRetryVersion);
             std::erase_if(drawItems, [](const DrawItem& item) { return !item.materialReady; });
             layoutVersion = 1469598103934665603ull;
             for (uint32_t index = 0u; index < static_cast<uint32_t>(drawItems.size()); ++index) {

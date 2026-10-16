@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_PresentationModelService.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 
 #include <algorithm>
@@ -133,7 +134,7 @@ bool PresentationModelService::Submit(const PresentationModelSubmission& submiss
         // accidentally make a stale record appear fresh.
         touchedFrames_[key] = frameIndex;
         if (payloadChanged) {
-            AdvanceRevision();
+            NUMERIC::AdvanceNonZero(revision_);
         }
         return true;
     } catch (...) {
@@ -160,7 +161,7 @@ bool PresentationModelService::Remove(uint64_t ownerObjectHandle, uint64_t insta
                                                return record.renderObjectId == renderObjectId;
                                            }),
                             frameRecords_.end());
-        AdvanceRevision();
+        NUMERIC::AdvanceNonZero(revision_);
         return true;
     } catch (...) {
         return false;
@@ -349,7 +350,7 @@ void PresentationModelService::PrepareForRender(uint64_t frameIndex,
                 if (oldId != 0u) {
                     AddUnique(removedRenderObjectIds_, removedRenderObjectIdSet_, oldId);
                 }
-                AdvanceRevision();
+                NUMERIC::AdvanceNonZero(revision_);
             }
             occupiedIds.insert(record.renderObjectId);
             if (frameRecordCount < frameRecords_.size()) {
@@ -379,7 +380,7 @@ void PresentationModelService::Clear() noexcept {
         records_.clear();
         touchedFrames_.clear();
         frameRecords_.clear();
-        AdvanceRevision();
+        NUMERIC::AdvanceNonZero(revision_);
     } catch (...) {
         records_.clear();
         touchedFrames_.clear();
@@ -410,13 +411,6 @@ uint64_t PresentationModelService::AllocateRenderObjectId(const std::unordered_s
         }
     }
     return 0u;
-}
-
-void PresentationModelService::AdvanceRevision() noexcept {
-    ++revision_;
-    if (revision_ == 0u) {
-        revision_ = 1u;
-    }
 }
 
 } // namespace HIKARI

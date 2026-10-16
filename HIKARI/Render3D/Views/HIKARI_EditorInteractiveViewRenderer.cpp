@@ -1,4 +1,5 @@
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Render3D/Views/HIKARI_EditorViewCapture.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -95,11 +96,6 @@ uint64_t g_requestSerial = 0u;
 uint32_t g_continuousRenderStreak = 0u;
 EditorInteractiveSchedulerStats g_schedulerStats{};
 std::unordered_map<uintptr_t, uint32_t> g_sceneSourceLeaseCounts{};
-
-uint64_t NextNonZero(uint64_t value) noexcept {
-    ++value;
-    return value != 0u ? value : 1u;
-}
 
 void AcquireSceneSourceLease(const GPUDRIVEN::GpuDrivenSceneSource* source) {
     if (source == nullptr) {
@@ -406,10 +402,7 @@ bool EnsureTarget(InteractiveViewState& state, uint32_t width, uint32_t height, 
     // 新しいターゲットにはまだ表示用の画像がない。
     // 旧 outputRevision の ready を引き継ぐと空の画像を取得してしまう。
     state.output.ready = false;
-    ++state.targetGeneration;
-    if (state.targetGeneration == 0) {
-        state.targetGeneration = 1;
-    }
+    NUMERIC::AdvanceNonZero(state.targetGeneration);
     state.lastGraphicsContext = graphics;
     state.deviceGeneration = graphics.deviceGeneration;
     return true;
@@ -588,7 +581,7 @@ void FailOutput(InteractiveViewState& state, EditorInteractiveViewFailure failur
     // scheduler's realtime burst limit bounds repeated attempts and
     // still gives static views a deterministic turn.
     state.pending = ShouldRetryFailure(failure);
-    state.pendingSerial = state.pending ? g_requestSerial = NextNonZero(g_requestSerial) : 0u;
+    state.pendingSerial = state.pending ? NUMERIC::AdvanceNonZero(g_requestSerial) : 0u;
     SetOutputStatus(state, EditorInteractiveViewStatus::Failed, failure);
 }
 
@@ -750,13 +743,13 @@ void SubmitRequest(const EditorInteractiveViewRequest& request) {
         state.hasRequest && state.request.spatialAntiAliasing != request.spatialAntiAliasing;
     state.request = request;
     if (outputRouteChanged) {
-        state.targetGeneration = NextNonZero(state.targetGeneration);
+        NUMERIC::AdvanceNonZero(state.targetGeneration);
     }
     state.output.viewId = request.viewId;
     state.output.requestedRevision = state.request.sceneRevision;
     state.hasRequest = true;
     if (requestChanged) {
-        state.pendingSerial = g_requestSerial = NextNonZero(g_requestSerial);
+        state.pendingSerial = NUMERIC::AdvanceNonZero(g_requestSerial);
         MarkOutputPending(state);
     }
 }
@@ -789,7 +782,7 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
             return {};
         auto& state = *found->second;
         if (!state.pending) {
-            state.pendingSerial = g_requestSerial = NextNonZero(g_requestSerial);
+            state.pendingSerial = NUMERIC::AdvanceNonZero(g_requestSerial);
             MarkOutputPending(state);
         }
         return state.output.outputRevision;
@@ -867,10 +860,7 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
     if (selected == nullptr || graphics.cmdList == nullptr || graphics.device == nullptr) {
         return false;
     }
-    ++g_scheduleSerial;
-    if (g_scheduleSerial == 0u) {
-        g_scheduleSerial = 1u;
-    }
+    NUMERIC::AdvanceNonZero(g_scheduleSerial);
     selected->lastRenderedSerial = g_scheduleSerial;
     if (selected->request.continuousRealtime) {
         if (g_continuousRenderStreak < kMaximumContinuousRenderBurst) {
@@ -1043,10 +1033,7 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
     selected->output.sceneRevision =
         selected->request.sceneSourceOverride != nullptr ? selected->request.sceneRevision : currentSceneRevision;
     selected->output.requestedRevision = selected->request.sceneRevision;
-    ++selected->output.outputRevision;
-    if (selected->output.outputRevision == 0) {
-        selected->output.outputRevision = 1;
-    }
+    NUMERIC::AdvanceNonZero(selected->output.outputRevision);
     selected->output.ready = true;
     selected->output.status = EditorInteractiveViewStatus::Ready;
     selected->output.failure = EditorInteractiveViewFailure::None;

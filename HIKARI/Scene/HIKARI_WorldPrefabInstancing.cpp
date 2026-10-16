@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_World.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <cmath>
@@ -29,10 +30,6 @@ namespace HIKARI {
 namespace {
 
 constexpr size_t kPrefabObjectMaximum = kGameProjectPrefabMaximumObjects;
-
-bool HasZeroReserved(const uint32_t (&values)[3]) noexcept {
-    return values[0] == 0u && values[1] == 0u && values[2] == 0u;
-}
 
 GameProjectPrefabSubmission RejectPrefabRequest(GameProjectPrefabError error) noexcept {
     return GameProjectPrefabSubmission{{}, error};
@@ -99,7 +96,7 @@ GameProjectPrefabSubmission World::RequestPrefabInstantiate(
     try {
         if (!IsOwnerThread() || worldClosing_ || options.structSize != kGameProjectPrefabInstantiateOptionsV1Size ||
             options.version != kGameProjectPrefabInstantiateOptionsVersion || options.overrideRootTransform > 1u ||
-            !HasZeroReserved(options.reserved) || !IsValidAssetGuid(prefabAssetGuid)) {
+            NUMERIC::AnyNonZero(options.reserved) || !IsValidAssetGuid(prefabAssetGuid)) {
             return RejectPrefabRequest(IsValidAssetGuid(prefabAssetGuid) ? GameProjectPrefabError::InvalidRequest
                                                                          : GameProjectPrefabError::InvalidAsset);
         }

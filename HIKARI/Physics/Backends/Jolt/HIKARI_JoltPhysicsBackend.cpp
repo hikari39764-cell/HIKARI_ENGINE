@@ -1,4 +1,5 @@
 #include "Physics/Backends/Jolt/HIKARI_JoltPhysicsBackendInternal.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <atomic>
@@ -276,10 +277,7 @@ PhysicsBodyHandle JoltPhysicsBackend::AllocateHandle() {
         handle.slot = freeSlots_.back();
         freeSlots_.pop_back();
         BodyRecord& record = bodyRecords_[handle.slot];
-        ++record.generation;
-        if (record.generation == 0) {
-            record.generation = 1;
-        }
+        NUMERIC::AdvanceNonZero(record.generation);
         handle.generation = record.generation;
         return handle;
     }

@@ -1,4 +1,5 @@
 #include "Runtime/Project/Internal/HIKARI_GameProjectActionValidation.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectFixedText.h"
 #include <algorithm>
 #include <array>
@@ -28,7 +29,6 @@
 
 namespace HIKARI {
 namespace {
-using PROJECT::INTERNAL::HasNonZeroReserved;
 using PROJECT::INTERNAL::IsFinite;
 using PROJECT::INTERNAL::IsFiniteNonNegative;
 using PROJECT::INTERNAL::IsFiniteNonZeroDirection;
@@ -383,7 +383,7 @@ GameProjectVfxPlaybackHandle VfxView::Play(const GameProjectVfxPlayRequest& requ
             EmitVfxBridgeDiagnostic("play_rejected", "world_unavailable");
             return {};
         }
-        if (HasNonZeroReserved(request.reserved, sizeof(request.reserved))) {
+        if (NUMERIC::AnyNonZero(request.reserved)) {
             EmitVfxBridgeDiagnostic("play_rejected", "reserved_bytes_nonzero");
             return {};
         }
@@ -492,7 +492,7 @@ bool VfxView::Update(GameProjectVfxPlaybackHandle handle, const GameProjectVfxUp
             EmitVfxBridgeDiagnostic("update_rejected", "world_unavailable");
             return false;
         }
-        if (HasNonZeroReserved(request.reserved, sizeof(request.reserved))) {
+        if (NUMERIC::AnyNonZero(request.reserved)) {
             EmitVfxBridgeDiagnostic("update_rejected", "reserved_bytes_nonzero");
             return false;
         }
@@ -694,7 +694,7 @@ bool PresentationVfxView::CaptureAfterimageProfiled(
             return false;
         }
         if (effect.sourceId == 0u || effect.effect != GameProjectCombatEffectType::DodgeAfterimage ||
-            HasNonZeroReserved(effect.reserved, sizeof(effect.reserved)) || !IsValidTransform(effect.transform) ||
+            NUMERIC::AnyNonZero(effect.reserved) || !IsValidTransform(effect.transform) ||
             !IsFiniteNonZeroDirection(effect.direction) || !IsFinitePositive(effect.scale) ||
             !IsFinitePositive(effect.intensity)) {
             EmitVfxBridgeDiagnostic("afterimage_profiled_rejected", "malformed_public_input");

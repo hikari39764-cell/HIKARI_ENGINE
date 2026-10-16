@@ -41,6 +41,7 @@ struct Quat {
     float z = 0.0f;
     float w = 1.0f;
 
+    bool operator==(const Quat&) const = default;
     static Quat Identity() { return {}; }
     static Quat FromEulerXYZ(float rx, float ry, float rz);
 };
@@ -55,6 +56,8 @@ struct Mat4 {
     // Column-major storage: m[col][row]
     float m[4][4]{};
 
+    // 全要素の完全一致（変更検出用）。
+    bool operator==(const Mat4&) const = default;
     static Mat4 Identity();
     static Mat4 Translate(const Vec3& t);
     static Mat4 Scale(const Vec3& s);

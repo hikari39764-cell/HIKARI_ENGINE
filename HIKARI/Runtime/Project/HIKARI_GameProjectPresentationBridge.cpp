@@ -1,4 +1,5 @@
 #include "Runtime/Project/Internal/HIKARI_GameProjectActionValidation.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectFixedText.h"
 #include "HIKARI/Project/PresentationViews.h"
 #include "HIKARI/Project/WorldView.h"
@@ -33,8 +34,7 @@ bool SubmitPresentationModelRequest(World* world, const GameProjectPresentationM
     try {
         if (request.ownerObjectHandle == 0u || request.instanceId == 0u || request.model.IsEmpty() ||
             request.visible > 1u || request.castShadow > 1u || request.receiveShadow > 1u || request.reserved != 0u ||
-            request.attachment.enabled > 1u || request.attachment.reserved[0] != 0u ||
-            request.attachment.reserved[1] != 0u || request.attachment.reserved[2] != 0u ||
+            request.attachment.enabled > 1u || NUMERIC::AnyNonZero(request.attachment.reserved) ||
             !IsValidTransform(request.worldTransform) ||
             (!exclusiveNodeName.empty() && exclusiveNodeName.size() > kGameProjectModelNodeNameMaximumBytes)) {
             return false;

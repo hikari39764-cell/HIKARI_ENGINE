@@ -1,6 +1,7 @@
 #include "HIKARI_EditorViewCapture.h"
 #if defined(HIKARI_WITH_EDITOR)
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
@@ -48,7 +49,6 @@ ResolvedCameraFrame g_primaryCaptureCamera{};
 uint64_t g_primaryCaptureSceneRevision = 0;
 uint64_t g_primaryCaptureFrame = UINT64_MAX;
 
-uint64_t NextNonZero(uint64_t value) { return ++value ? value : 1u; }
 bool WriteBmp(const std::string& path, int width, int height, UINT sourcePitch, const uint8_t* source) {
     const int destinationRow = ((width * 3 + 3) / 4) * 4;
     const uint32_t imageSize = static_cast<uint32_t>(destinationRow) * static_cast<uint32_t>(height);
@@ -286,7 +286,7 @@ PreviewCaptureId RequestViewCapture(RenderViewId viewId, const std::string& outp
     request.pending = true;
     // 主画面は再描画要求を作らず、次の実際の最終表示から読む。
     request.scheduled = viewId == kPrimaryRenderViewId;
-    request.id = g_captureSerial = NextNonZero(g_captureSerial);
+    request.id = NUMERIC::AdvanceNonZero(g_captureSerial);
     request.viewId = viewId;
     request.path = outputPath;
     g_captureRequests.emplace(request.id, request);
@@ -330,7 +330,7 @@ void ScheduleViewCaptures(const std::function<std::optional<uint64_t>(RenderView
             capture.done = true;
             capture.error = "目标预览不可用，请先准备对应文档的预览";
         } else if (!capture.scheduled) {
-            capture.minimumOutputRevision = NextNonZero(*revision);
+            capture.minimumOutputRevision = NUMERIC::NextNonZero(*revision);
             capture.scheduled = true;
         }
     }

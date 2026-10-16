@@ -37,13 +37,6 @@ const char* ToAssetTypeText(AssetType type) {
     }
 }
 
-std::string ShortGuid(std::string_view guid) {
-    if (guid.size() <= 8) {
-        return std::string(guid);
-    }
-    return std::string(guid.substr(0, 8));
-}
-
 std::string BuildPreviewText(const AssetRecord* record, const std::string& guid) {
     if (guid.empty()) {
         return "<none>";

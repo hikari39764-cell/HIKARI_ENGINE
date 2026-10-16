@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_PresentationTransformService.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include <cstring>
 
 namespace HIKARI {
@@ -12,13 +13,13 @@ bool PresentationTransformService::SetWorldMatrix(RuntimeObjectHandle object, co
     if (!inserted && std::memcmp(&entry->second.worldMatrix, &worldMatrix, sizeof(worldMatrix)) == 0)
         return false;
     entry->second.worldMatrix = worldMatrix;
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
     return true;
 }
 
 bool PresentationTransformService::Remove(RuntimeObjectHandle object) noexcept {
     if (object.IsValid() && entries_.erase(object.ToValue()) > 0u) {
-        AdvanceRevision();
+        NUMERIC::AdvanceNonZero(revision_);
         return true;
     }
     return false;
@@ -29,7 +30,7 @@ void PresentationTransformService::Clear() noexcept {
         return;
     }
     entries_.clear();
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
 }
 
 bool PresentationTransformService::TryGetWorldMatrix(RuntimeObjectHandle object,
@@ -46,12 +47,5 @@ bool PresentationTransformService::TryGetWorldMatrix(RuntimeObjectHandle object,
 }
 
 uint64_t PresentationTransformService::GetRevision() const noexcept { return revision_; }
-
-void PresentationTransformService::AdvanceRevision() noexcept {
-    ++revision_;
-    if (revision_ == 0u) {
-        revision_ = 1u;
-    }
-}
 
 } // namespace HIKARI

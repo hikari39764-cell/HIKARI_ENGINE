@@ -1,4 +1,5 @@
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
@@ -295,10 +296,7 @@ void VfxWorkspaceController::DrawPreviewWindow(EditorViewInstance& previewView, 
         input.wheelDelta = io.MouseWheel;
         const float aspect = canvasSize.y > 0.0f ? canvasSize.x / canvasSize.y : 1.0f;
         if (preview_.cameraController_.Update(input, deltaSeconds, aspect)) {
-            ++preview_.cameraRevision_;
-            if (preview_.cameraRevision_ == 0u) {
-                preview_.cameraRevision_ = 1u;
-            }
+            NUMERIC::AdvanceNonZero(preview_.cameraRevision_);
         }
     }
 

@@ -1,6 +1,7 @@
 #include "HIKARI_EditorSourceVersion.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/IO/HIKARI_NativeFilePath.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include <fstream>
 #include <array>
 
@@ -20,14 +21,11 @@ bool Fingerprint(const std::filesystem::path& path, uint64_t& hash) {
     std::ifstream input(nativePath, std::ios::binary);
     if (!input)
         return false;
-    hash = 14695981039346656037ull;
+    hash = HASH::kFnv1a64OffsetBasis;
     std::array<char, 8192> bytes;
     while (input) {
         input.read(bytes.data(), bytes.size());
-        for (std::streamsize i = 0; i < input.gcount(); ++i) {
-            hash ^= static_cast<unsigned char>(bytes[static_cast<size_t>(i)]);
-            hash *= 1099511628211ull;
-        }
+        hash = HASH::Fnv1aBytes(hash, bytes.data(), static_cast<size_t>(input.gcount()));
     }
     return input.eof();
 }

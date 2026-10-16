@@ -1,4 +1,5 @@
 #include "Scene/Sequencer/HIKARI_SequenceBinding.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Scene/Sequencer/HIKARI_SequenceBindingNaming.h"
 
 #include <algorithm>
@@ -28,16 +29,10 @@ void NormalizeSequenceBindings(SequenceBindingTable& bindings) {
     for (SequenceBinding& binding : bindings) {
         if (!binding.id.IsValid() || !usedIds.insert(binding.id.value).second) {
             while (!usedIds.insert(nextId.value).second) {
-                ++nextId.value;
-                if (nextId.value == 0) {
-                    nextId.value = 1;
-                }
+                NUMERIC::AdvanceNonZero(nextId.value);
             }
             binding.id = nextId;
-            ++nextId.value;
-            if (nextId.value == 0) {
-                nextId.value = 1;
-            }
+            NUMERIC::AdvanceNonZero(nextId.value);
         }
         if (binding.name.empty()) {
             binding.name = binding.targetKind == SequenceBindingTargetKind::Slot && !binding.slotName.empty()
@@ -63,10 +58,7 @@ SequenceBindingId AllocateSequenceBindingId(const SequenceBindingTable& bindings
         nextId.value = binding.id.value + 1;
     }
     while (FindSequenceBinding(bindings, nextId) != nullptr) {
-        ++nextId.value;
-        if (nextId.value == 0) {
-            nextId.value = 1;
-        }
+        NUMERIC::AdvanceNonZero(nextId.value);
     }
     return nextId;
 }

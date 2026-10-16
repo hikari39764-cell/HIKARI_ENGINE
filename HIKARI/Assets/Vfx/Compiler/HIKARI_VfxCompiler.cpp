@@ -2,6 +2,7 @@
 #include "Render3D/Vfx/HIKARI_ParticleCapacity.h"
 #include "Assets/Vfx/HIKARI_VfxLayerOrder.h"
 #include "Assets/HIKARI_AssetTypes.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 
 #include <algorithm>
@@ -18,15 +19,6 @@
 namespace HIKARI::VFX {
 namespace {
 using namespace RENDER3D::PARTICLES;
-
-uint64_t HashText(std::string_view text) noexcept {
-    uint64_t hash = 14695981039346656037ull;
-    for (const unsigned char value : text) {
-        hash ^= value;
-        hash *= 1099511628211ull;
-    }
-    return hash;
-}
 
 std::string MakeProgramId(uint64_t hash) {
     std::ostringstream stream{};
@@ -338,7 +330,7 @@ VfxCompileResult CompileVfxAsset(const VfxAssetData& asset) {
     }
 
     VfxProgram program{};
-    program.sourceHash = HashText(canonicalSource);
+    program.sourceHash = HASH::Fnv1aString(canonicalSource);
     program.programId = MakeProgramId(program.sourceHash);
     program.name = asset.name;
     program.durationSeconds = asset.durationSeconds;

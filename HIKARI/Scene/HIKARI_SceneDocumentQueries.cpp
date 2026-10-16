@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_SceneDocumentQueries.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <limits>
@@ -108,13 +109,11 @@ bool AppendClonedSceneObjects(std::span<const SceneObjectData> source, SceneDocu
         if (object.id.value == 0 || ids.contains(object.id.value))
             return false;
         while (used.contains(candidate)) {
-            if (++candidate == 0)
-                candidate = 1;
+            NUMERIC::AdvanceNonZero(candidate);
         }
         ids.emplace(object.id.value, candidate);
         used.insert(candidate);
-        if (++candidate == 0)
-            candidate = 1;
+        NUMERIC::AdvanceNonZero(candidate);
     }
     std::vector<SceneObjectData> clones(source.begin(), source.end());
     for (auto& object : clones) {
@@ -163,10 +162,7 @@ SceneObjectId AllocateSceneObjectId(const SceneDocument& document) {
     }
     uint64_t candidate = maximumId == (std::numeric_limits<uint64_t>::max)() ? 1u : maximumId + 1u;
     while (candidate == 0u || usedIds.contains(candidate)) {
-        ++candidate;
-        if (candidate == 0u) {
-            candidate = 1u;
-        }
+        NUMERIC::AdvanceNonZero(candidate);
     }
     return SceneObjectId{candidate};
 }

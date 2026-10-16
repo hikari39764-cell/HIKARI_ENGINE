@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_SceneComponentId.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <limits>
@@ -12,10 +13,7 @@ namespace {
 SceneComponentId FirstAvailableComponentId(const std::unordered_set<uint64_t>& usedIds, uint64_t preferred) {
     uint64_t candidate = preferred == 0u ? 1u : preferred;
     while (candidate == 0u || usedIds.contains(candidate)) {
-        ++candidate;
-        if (candidate == 0u) {
-            candidate = 1u;
-        }
+        NUMERIC::AdvanceNonZero(candidate);
     }
     return SceneComponentId{candidate};
 }

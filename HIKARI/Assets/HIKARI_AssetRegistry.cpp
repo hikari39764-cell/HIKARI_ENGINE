@@ -1,4 +1,5 @@
 #include "HIKARI_AssetRegistry.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <atomic>
 
@@ -28,7 +29,7 @@ bool AssetRegistry::RegisterDescriptor(std::unique_ptr<AssetDescriptor> descript
         return false;
     }
     descriptors_.emplace(id, std::move(descriptor));
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
     return true;
 }
 
@@ -55,7 +56,7 @@ std::vector<const AssetDescriptor*> AssetRegistry::CollectByType(AssetType type)
 
 void AssetRegistry::Clear() {
     descriptors_.clear();
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
 }
 
 void AssetRegistry::SwapContents(AssetRegistry& other) noexcept {
@@ -63,19 +64,12 @@ void AssetRegistry::SwapContents(AssetRegistry& other) noexcept {
         return;
     }
     descriptors_.swap(other.descriptors_);
-    AdvanceRevision();
-    other.AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
+    NUMERIC::AdvanceNonZero(other.revision_);
 }
 
 uint64_t AssetRegistry::GetInstanceId() const noexcept { return instanceId_; }
 
 uint64_t AssetRegistry::GetRevision() const noexcept { return revision_; }
-
-void AssetRegistry::AdvanceRevision() noexcept {
-    ++revision_;
-    if (revision_ == 0u) {
-        revision_ = 1u;
-    }
-}
 
 } // namespace HIKARI

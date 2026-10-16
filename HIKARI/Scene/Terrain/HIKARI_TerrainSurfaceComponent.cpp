@@ -16,13 +16,9 @@ namespace HIKARI {
 
 namespace {
 
-bool Vec3Equal(const MATH::Vec3& lhs, const MATH::Vec3& rhs) noexcept {
-    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
-}
-
 bool TerrainMaterialEqual(const TERRAIN::GranularMaterialParams& lhs,
                           const TERRAIN::GranularMaterialParams& rhs) noexcept {
-    return Vec3Equal(lhs.lightTint, rhs.lightTint) && Vec3Equal(lhs.darkTint, rhs.darkTint) &&
+    return lhs.lightTint == rhs.lightTint && lhs.darkTint == rhs.darkTint &&
            lhs.sparkleStrength == rhs.sparkleStrength && lhs.rippleAmount == rhs.rippleAmount &&
            lhs.pitDarkening == rhs.pitDarkening && lhs.toonBandCount == rhs.toonBandCount &&
            lhs.toonBandHardness == rhs.toonBandHardness;

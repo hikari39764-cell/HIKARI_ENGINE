@@ -45,9 +45,6 @@ constexpr UINT kProbeAtlasTileWidth = 30, kProbeAtlasTileHeight = 18;
 // probe 一回の更新の ray 数（Render3D_DynamicDiffuseGiCS.hlsl の kRayCount）。
 constexpr uint32_t kProbeRayCount = 192;
 constexpr uint64_t kProbeBudgetBytes = 64ull * 1024 * 1024;
-bool SameVec3(const MATH::Vec3& lhs, const MATH::Vec3& rhs) {
-    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
-}
 // 一つの probe 場の配置。相機を追う近景と遠景の cascade、または手置きの実時間区域。
 struct FieldLayout {
     MATH::Vec3 spacing{};
@@ -55,9 +52,9 @@ struct FieldLayout {
     float blendDistance = 0.0f, normalBias = 0.25f, intensity = 1.0f;
     int priority = 0;
     bool operator==(const FieldLayout& other) const {
-        return SameVec3(spacing, other.spacing) && x == other.x && y == other.y && z == other.z &&
-               budget == other.budget && blendDistance == other.blendDistance && normalBias == other.normalBias &&
-               intensity == other.intensity && priority == other.priority;
+        return spacing == other.spacing && x == other.x && y == other.y && z == other.z && budget == other.budget &&
+               blendDistance == other.blendDistance && normalBias == other.normalBias && intensity == other.intensity &&
+               priority == other.priority;
     }
 };
 // 描画側の動的 GI volume と同じ並び（優先順）。
@@ -500,7 +497,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         if (!field.carry && field.legacy.bytes != 0 && completedFence >= field.legacyRetireFence)
             field.legacy.Reset(graphics);
         const bool changed = !(field.layout == *layouts[index]) || field.id != id ||
-                             (index == kRegionField && !SameVec3(field.fixedOrigin, region->origin));
+                             (index == kRegionField && field.fixedOrigin != region->origin);
         if (changed && field.sets[0].bytes != 0) {
             // 配置換えは旧 field の fence を待ってから割り当て、世代数で予算を超えない。その間この field は休む。
             if (completedFence < field.lastUseFence) {

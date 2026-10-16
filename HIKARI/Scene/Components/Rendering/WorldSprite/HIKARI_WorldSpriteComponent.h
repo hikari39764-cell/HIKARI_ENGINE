@@ -23,6 +23,7 @@
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpritePlayer.h"
 #include "Scene/Geometry/HIKARI_GeometryFitProvider.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 namespace HIKARI {
 
@@ -361,10 +362,7 @@ private:
     }
 
     void NotifyRenderStateDirty() {
-        ++stateRevision_;
-        if (stateRevision_ == 0u) {
-            stateRevision_ = 1u;
-        }
+        NUMERIC::AdvanceNonZero(stateRevision_);
         if (GameObject* owner = GetOwner()) {
             owner->MarkRenderStateDirty();
         }

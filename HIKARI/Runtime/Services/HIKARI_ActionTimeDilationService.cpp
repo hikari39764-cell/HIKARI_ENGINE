@@ -1,4 +1,5 @@
 #include "Runtime/Services/HIKARI_ActionTimeDilationService.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <cmath>
@@ -34,10 +35,7 @@ uint32_t ActionTimeDilationService::DecodeValue(uint64_t token) noexcept {
 
 uint64_t ActionTimeDilationService::AllocateToken() noexcept {
     const uint64_t token = EncodeToken(epoch_, nextTokenValue_);
-    ++nextTokenValue_;
-    if (nextTokenValue_ == 0u) {
-        nextTokenValue_ = 1u;
-    }
+    NUMERIC::AdvanceNonZero(nextTokenValue_);
     return token;
 }
 
@@ -212,10 +210,7 @@ void ActionTimeDilationService::Reset() noexcept {
         TIME::SetGameTimeScale(baselineScale_);
     }
     requests_.clear();
-    ++epoch_;
-    if (epoch_ == 0u) {
-        epoch_ = 1u;
-    }
+    NUMERIC::AdvanceNonZero(epoch_);
     nextTokenValue_ = 1u;
     nextInsertionOrder_ = 1u;
     ownsTimeScale_ = false;

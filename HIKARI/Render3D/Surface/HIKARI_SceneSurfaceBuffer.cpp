@@ -1,4 +1,5 @@
 #include "Render3D/Surface/HIKARI_SceneSurfaceBuffer.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
@@ -142,10 +143,7 @@ bool SceneSurfaceBuffer::CreateResources(const GFX::Context& graphics, uint32_t 
     width_ = width;
     height_ = height;
     packedSurfaceState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    ++packedSurfaceGeneration_;
-    if (packedSurfaceGeneration_ == 0u) {
-        packedSurfaceGeneration_ = 1u;
-    }
+    NUMERIC::AdvanceNonZero(packedSurfaceGeneration_);
     packedSurface_->SetName(L"HIKARI.SceneSurface.PackedNormalRoughnessMetallic");
     if (!PublishPackedSurfaceSrv(graphics) || !EnsureFeatureMask(graphics, enableFeatureMask)) {
         return false;
@@ -160,18 +158,12 @@ bool SceneSurfaceBuffer::EnsureFeatureMask(const GFX::Context& graphics, bool en
         if (featureMask_ != nullptr) {
             GFX::RetireD3D12ObjectForCurrentFrame(featureMask_, "SceneSurfaceBuffer.FeatureMask");
             featureMaskState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-            ++featureMaskGeneration_;
-            if (featureMaskGeneration_ == 0u) {
-                featureMaskGeneration_ = 1u;
-            }
+            NUMERIC::AdvanceNonZero(featureMaskGeneration_);
         }
         if (stylizedOutlineStyle_ != nullptr) {
             GFX::RetireD3D12ObjectForCurrentFrame(stylizedOutlineStyle_, "SceneSurfaceBuffer.StylizedOutlineStyle");
             stylizedOutlineStyleState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-            ++stylizedOutlineStyleGeneration_;
-            if (stylizedOutlineStyleGeneration_ == 0u) {
-                stylizedOutlineStyleGeneration_ = 1u;
-            }
+            NUMERIC::AdvanceNonZero(stylizedOutlineStyleGeneration_);
         }
         return true;
     }
@@ -221,14 +213,8 @@ bool SceneSurfaceBuffer::EnsureFeatureMask(const GFX::Context& graphics, bool en
     graphics.device->CreateRenderTargetView(stylizedOutlineStyle_.Get(), nullptr, stylizedOutlineStyleRtv_);
     featureMaskState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     stylizedOutlineStyleState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    ++featureMaskGeneration_;
-    if (featureMaskGeneration_ == 0u) {
-        featureMaskGeneration_ = 1u;
-    }
-    ++stylizedOutlineStyleGeneration_;
-    if (stylizedOutlineStyleGeneration_ == 0u) {
-        stylizedOutlineStyleGeneration_ = 1u;
-    }
+    NUMERIC::AdvanceNonZero(featureMaskGeneration_);
+    NUMERIC::AdvanceNonZero(stylizedOutlineStyleGeneration_);
     featureMask_->SetName(L"HIKARI.SceneSurface.StylizedFeatureMask");
     stylizedOutlineStyle_->SetName(L"HIKARI.SceneSurface.StylizedOutlineStyle");
     return PublishFeatureMaskSrv(graphics) && PublishStylizedOutlineStyleSrv(graphics);

@@ -45,20 +45,9 @@ MATH::Vec2 WorldDeltaToLocalXZ(const WaterSurfaceSnapshotEntry& surface, const M
             (basisX.x * worldDelta.y - basisX.z * worldDelta.x) * inverseDeterminant};
 }
 
-bool MatrixEqual(const MATH::Mat4& left, const MATH::Mat4& right) noexcept {
-    for (uint32_t column = 0u; column < 4u; ++column) {
-        for (uint32_t row = 0u; row < 4u; ++row) {
-            if (left.m[column][row] != right.m[column][row]) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
 bool SnapshotEntryEqual(const WaterSurfaceSnapshotEntry& left, const WaterSurfaceSnapshotEntry& right) noexcept {
-    return left.object == right.object && MatrixEqual(left.world, right.world) &&
-           left.halfExtents.x == right.halfExtents.x && left.halfExtents.y == right.halfExtents.y &&
+    return left.object == right.object && left.world == right.world && left.halfExtents.x == right.halfExtents.x &&
+           left.halfExtents.y == right.halfExtents.y &&
            left.maximumHorizontalDisplacement == right.maximumHorizontalDisplacement &&
            WaterSurfaceSettingsEqual(left.settings, right.settings);
 }

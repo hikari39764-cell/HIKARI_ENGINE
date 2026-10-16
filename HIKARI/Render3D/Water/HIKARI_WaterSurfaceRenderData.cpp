@@ -18,14 +18,6 @@ constexpr float kMaximumShallowDepth = 1000.0f;
 constexpr float kDefaultReflectionStrength = 1.0f;
 constexpr float kDefaultRibbonWidth = 0.02f;
 
-bool Vec3Equal(const MATH::Vec3& left, const MATH::Vec3& right) noexcept {
-    return left.x == right.x && left.y == right.y && left.z == right.z;
-}
-
-bool Vec4Equal(const MATH::Vec4& left, const MATH::Vec4& right) noexcept {
-    return left.x == right.x && left.y == right.y && left.z == right.z && left.w == right.w;
-}
-
 float FiniteOr(float value, float fallback) noexcept { return std::isfinite(value) ? value : fallback; }
 
 float NonNegative(float value, float fallback = 0.0f) noexcept { return (std::max)(FiniteOr(value, fallback), 0.0f); }
@@ -38,9 +30,8 @@ MATH::Vec3 NonNegative(const MATH::Vec3& value) noexcept {
 bool WaterSurfaceRenderDataEqual(const WaterSurfaceRenderData& left, const WaterSurfaceRenderData& right) noexcept {
     if (left.shadingModel != right.shadingModel || left.geometryMode != right.geometryMode ||
         left.timeScale != right.timeScale || left.choppiness != right.choppiness ||
-        left.microWaveStrength != right.microWaveStrength ||
-        !Vec3Equal(left.depthTransmittance, right.depthTransmittance) ||
-        !Vec3Equal(left.scatteringColor, right.scatteringColor) || !Vec3Equal(left.foamColor, right.foamColor) ||
+        left.microWaveStrength != right.microWaveStrength || left.depthTransmittance != right.depthTransmittance ||
+        left.scatteringColor != right.scatteringColor || left.foamColor != right.foamColor ||
         left.foamAmount != right.foamAmount || left.absorptionDistance != right.absorptionDistance ||
         left.surfaceRoughness != right.surfaceRoughness || left.shallowClearDepth != right.shallowClearDepth ||
         left.shallowBlendDepth != right.shallowBlendDepth || left.shallowGraphicWeight != right.shallowGraphicWeight ||
@@ -50,7 +41,7 @@ bool WaterSurfaceRenderDataEqual(const WaterSurfaceRenderData& left, const Water
         left.transmissionStrength != right.transmissionStrength || left.shadowStrength != right.shadowStrength ||
         left.windDirectionRadians != right.windDirectionRadians || left.windSpeed != right.windSpeed ||
         left.shortWaveStrength != right.shortWaveStrength || left.capillaryStrength != right.capillaryStrength ||
-        !Vec4Equal(left.geometryParams, right.geometryParams) || left.coverageResolution != right.coverageResolution ||
+        left.geometryParams != right.geometryParams || left.coverageResolution != right.coverageResolution ||
         left.liquidCoverage != right.liquidCoverage) {
         return false;
     }

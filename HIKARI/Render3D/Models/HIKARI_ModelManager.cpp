@@ -1,4 +1,5 @@
 #include "Render3D/Models/HIKARI_ModelManager.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <utility>
 
@@ -9,10 +10,7 @@ namespace HIKARI {
 namespace {
 
 void ClearModelSourceData(ModelAsset& asset) {
-    ++asset.sourceRevision;
-    if (asset.sourceRevision == 0u) {
-        asset.sourceRevision = 1u;
-    }
+    NUMERIC::AdvanceNonZero(asset.sourceRevision);
     asset.nodes.clear();
     asset.meshes.clear();
     asset.materials.clear();

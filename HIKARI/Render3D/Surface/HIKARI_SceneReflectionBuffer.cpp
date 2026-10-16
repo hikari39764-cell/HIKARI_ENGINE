@@ -1,5 +1,6 @@
 #include "Render3D/Surface/HIKARI_SceneReflectionBuffer.h"
 #include <d3dx12.h>
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
@@ -76,8 +77,7 @@ bool SceneReflectionBuffer::Ensure(const GFX::Context& graphics, uint32_t width,
         workingSetBytes_ = bytes * count;
         width_ = width;
         height_ = height;
-        if (++generation_ == 0)
-            ++generation_;
+        NUMERIC::AdvanceNonZero(generation_);
     }
     ready_ = PublishDescriptors(graphics);
     return ready_;

@@ -25,6 +25,7 @@
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 namespace HIKARI {
 class AssetDatabase;
@@ -314,12 +315,7 @@ private:
     void ResetPreviewCamera();
     // Preview-only lighting and environment edits own a revision separate from
     // the camera receipt consumed by the interactive-view request.
-    void MarkPreviewLightingChanged() noexcept {
-        ++previewContentRevision_;
-        if (previewContentRevision_ == 0u) {
-            previewContentRevision_ = 1u;
-        }
-    }
+    void MarkPreviewLightingChanged() noexcept { NUMERIC::AdvanceNonZero(previewContentRevision_); }
     void ResetPreviewKeyLight();
     void InitializePreviewLighting();
     void AddPreviewLight();

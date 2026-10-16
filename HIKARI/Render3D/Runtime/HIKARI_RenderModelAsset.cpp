@@ -127,4 +127,14 @@ bool BuildRenderModelAsset(const ModelAsset& source, RenderModelAsset& out, std:
     return out.valid;
 }
 
+Bounds ResolveLocalBounds(const ModelAsset* model, const RenderModelAsset* renderModel) {
+    if (renderModel != nullptr && renderModel->valid && BOUNDS::IsUsable(renderModel->localBounds)) {
+        return renderModel->localBounds;
+    }
+    if (model != nullptr && BOUNDS::IsUsable(model->bounds)) {
+        return model->bounds;
+    }
+    return {};
+}
+
 } // namespace HIKARI::RENDER3D::RUNTIME

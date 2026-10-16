@@ -45,18 +45,6 @@ inline bool IsFiniteNonNegative(const GameProjectFloat3& value) noexcept {
     return IsFinite(value) && value.x >= 0.0f && value.y >= 0.0f && value.z >= 0.0f;
 }
 
-inline bool HasNonZeroReserved(const uint8_t* values, size_t count) noexcept {
-    if (values == nullptr) {
-        return true;
-    }
-    for (size_t index = 0u; index < count; ++index) {
-        if (values[index] != 0u) {
-            return true;
-        }
-    }
-    return false;
-}
-
 inline bool IsFiniteNonZeroDirection(const GameProjectFloat3& value) noexcept {
     if (!IsFinite(value)) {
         return false;

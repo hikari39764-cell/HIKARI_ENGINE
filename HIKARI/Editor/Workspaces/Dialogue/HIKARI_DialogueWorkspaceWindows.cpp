@@ -3,6 +3,7 @@
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Core/Text/HIKARI_Localization.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Editor/Workspaces/Dialogue/HIKARI_DialogueWorkspaceController.h"
 
 #include <algorithm>
@@ -34,11 +35,7 @@ constexpr ImVec4 kError{1.0f, 0.38f, 0.35f, 1.0f};
 constexpr ImVec4 kReady{0.36f, 0.86f, 0.58f, 1.0f};
 
 uint64_t MergeGroup(std::string_view field) noexcept {
-    uint64_t hash = 1469598103934665603ull;
-    for (const unsigned char character : field) {
-        hash ^= character;
-        hash *= 1099511628211ull;
-    }
+    const uint64_t hash = HASH::Fnv1aString(field);
     return hash != 0u ? hash : 1u;
 }
 

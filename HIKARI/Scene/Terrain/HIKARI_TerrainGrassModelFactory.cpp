@@ -16,6 +16,7 @@
 #include "Assets/Geometry/HIKARI_ClusteredGeometryCooker.h"
 #include "Assets/Geometry/HIKARI_HcmeshFormat.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/HIKARI_Logger.h"
@@ -114,32 +115,6 @@ void AppendRibbon(MeshPrimitive& primitive, float angle, float radius, float hei
                                                       });
 }
 
-void ExpandBounds(Bounds& bounds, const MATH::Vec3& position, bool& initialized) noexcept {
-    if (!initialized) {
-        bounds.min = position;
-        bounds.max = position;
-        initialized = true;
-        return;
-    }
-    bounds.min.x = (std::min)(bounds.min.x, position.x);
-    bounds.min.y = (std::min)(bounds.min.y, position.y);
-    bounds.min.z = (std::min)(bounds.min.z, position.z);
-    bounds.max.x = (std::max)(bounds.max.x, position.x);
-    bounds.max.y = (std::max)(bounds.max.y, position.y);
-    bounds.max.z = (std::max)(bounds.max.z, position.z);
-}
-
-void FinalizeBounds(MeshPrimitive& primitive, MeshAsset& mesh, ModelAsset& model) noexcept {
-    bool initialized = false;
-    Bounds bounds{};
-    for (const Vertex3D& vertex : primitive.staticVertices) {
-        ExpandBounds(bounds, vertex.position, initialized);
-    }
-    primitive.bounds = initialized ? bounds : Bounds{};
-    mesh.bounds = primitive.bounds;
-    model.bounds = primitive.bounds;
-}
-
 std::unique_ptr<ModelAsset> BuildModel(uint32_t variantIndex) {
     const uint32_t variant = variantIndex % kTerrainGrassModelVariantCount;
     const VariantProfile& profile = kVariantProfiles[variant];
@@ -190,7 +165,8 @@ std::unique_ptr<ModelAsset> BuildModel(uint32_t variantIndex) {
 
     MeshAsset mesh{};
     mesh.name = "Terrain Grass Clump Mesh";
-    FinalizeBounds(primitive, mesh, *model);
+    primitive.bounds = BOUNDS::ComputePrimitiveBounds(primitive);
+    mesh.bounds = model->bounds = primitive.bounds;
     mesh.primitives.push_back(std::move(primitive));
     model->meshes.push_back(std::move(mesh));
 

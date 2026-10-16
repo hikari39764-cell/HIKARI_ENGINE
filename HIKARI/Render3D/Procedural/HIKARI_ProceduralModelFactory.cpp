@@ -18,6 +18,7 @@
 #include "Assets/Geometry/HIKARI_ClusteredGeometryCooker.h"
 #include "Assets/Geometry/HIKARI_HcmeshFormat.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Tasks/HIKARI_TaskExecutor.h"
@@ -189,32 +190,6 @@ bool CookClusteredGeometryFromModel(const ModelAsset& model, const ProceduralMod
     return true;
 }
 
-void ExpandBounds(Bounds& bounds, const MATH::Vec3& position, bool& initialized) {
-    if (!initialized) {
-        bounds.min = position;
-        bounds.max = position;
-        initialized = true;
-        return;
-    }
-    bounds.min.x = (std::min)(bounds.min.x, position.x);
-    bounds.min.y = (std::min)(bounds.min.y, position.y);
-    bounds.min.z = (std::min)(bounds.min.z, position.z);
-    bounds.max.x = (std::max)(bounds.max.x, position.x);
-    bounds.max.y = (std::max)(bounds.max.y, position.y);
-    bounds.max.z = (std::max)(bounds.max.z, position.z);
-}
-
-void FinalizeBounds(MeshPrimitive& primitive, MeshAsset& mesh, ModelAsset& model) {
-    bool initialized = false;
-    Bounds bounds{};
-    for (const Vertex3D& vertex : primitive.staticVertices) {
-        ExpandBounds(bounds, vertex.position, initialized);
-    }
-    primitive.bounds = initialized ? bounds : Bounds{};
-    mesh.bounds = primitive.bounds;
-    model.bounds = primitive.bounds;
-}
-
 std::unique_ptr<ModelAsset> BuildModel(const ProceduralModelKey& key, bool recordStats) {
     auto model = std::make_unique<ModelAsset>();
     const std::string proceduralId = MakeClusterGuidValue(key);
@@ -243,7 +218,8 @@ std::unique_ptr<ModelAsset> BuildModel(const ProceduralModelKey& key, bool recor
 
     MeshAsset mesh{};
     mesh.name = "Procedural Mesh";
-    FinalizeBounds(primitive, mesh, *model);
+    primitive.bounds = BOUNDS::ComputePrimitiveBounds(primitive);
+    mesh.bounds = model->bounds = primitive.bounds;
     if (recordStats) {
         gStats.generatedVertexCount += primitive.staticVertices.size();
         gStats.generatedIndexCount += primitive.indices.size();

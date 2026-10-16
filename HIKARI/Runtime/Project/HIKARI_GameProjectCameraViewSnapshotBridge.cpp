@@ -1,4 +1,5 @@
 #include "HIKARI/Project/CameraViewSnapshot.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "HIKARI/Project/ActionViews.h"
 
 #include <cmath>
@@ -46,8 +47,7 @@ bool IsValidSnapshot(const GameProjectCameraViewSnapshot& snapshot) noexcept {
         snapshot.lens.reserved != 0u ||
         !HasWritableHeader(snapshot.lens.depthOfField, kGameProjectDepthOfFieldSettingsV1Size,
                            kGameProjectDepthOfFieldSettingsVersion) ||
-        snapshot.lens.depthOfField.enabled > 1u || snapshot.lens.depthOfField.reserved[0] != 0u ||
-        snapshot.lens.depthOfField.reserved[1] != 0u || snapshot.lens.depthOfField.reserved[2] != 0u ||
+        snapshot.lens.depthOfField.enabled > 1u || NUMERIC::AnyNonZero(snapshot.lens.depthOfField.reserved) ||
         !CAMERA::IsValidDepthOfFieldSettings(
             {snapshot.lens.depthOfField.enabled != 0u, snapshot.lens.depthOfField.focusDistance,
              snapshot.lens.depthOfField.focusRange, snapshot.lens.depthOfField.nearTransition,

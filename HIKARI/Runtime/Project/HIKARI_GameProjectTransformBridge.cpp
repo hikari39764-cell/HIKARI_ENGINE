@@ -1,4 +1,5 @@
 #include "HIKARI/Project/WorldView.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <cmath>
 
@@ -187,8 +188,7 @@ bool WorldView::SetLocalTransforms(std::span<const GameProjectWorldTransformWrit
             allSucceeded = false;
             continue;
         }
-        if (write.structSize != kGameProjectWorldTransformWriteV1Size || write.reserved[0] != 0u ||
-            write.reserved[1] != 0u) {
+        if (write.structSize != kGameProjectWorldTransformWriteV1Size || NUMERIC::AnyNonZero(write.reserved)) {
             outResults[index] =
                 PROJECT::INTERNAL::MakeWorldResult(GameProjectWorldResultCode::InvalidRequest, objectHandle);
             allSucceeded = false;

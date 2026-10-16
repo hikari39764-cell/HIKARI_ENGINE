@@ -33,39 +33,6 @@ uint64_t AllocateObjectLifetimeGeneration() noexcept {
     return generation;
 }
 
-bool EqualVec3(const MATH::Vec3& lhs, const MATH::Vec3& rhs) {
-    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
-}
-
-bool EqualVec4(const MATH::Vec4& lhs, const MATH::Vec4& rhs) {
-    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z && lhs.w == rhs.w;
-}
-
-bool EqualQuat(const MATH::Quat& lhs, const MATH::Quat& rhs) {
-    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z && lhs.w == rhs.w;
-}
-
-bool EqualMat4(const MATH::Mat4& lhs, const MATH::Mat4& rhs) {
-    for (int col = 0; col < 4; ++col) {
-        for (int row = 0; row < 4; ++row) {
-            if (lhs.m[col][row] != rhs.m[col][row]) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-bool EqualBounds(const Bounds& lhs, const Bounds& rhs) {
-    return EqualVec3(lhs.min, rhs.min) && EqualVec3(lhs.max, rhs.max);
-}
-
-bool EqualTransform(const Transform3D& lhs, const Transform3D& rhs) {
-    return EqualVec3(lhs.position, rhs.position) && EqualQuat(lhs.rotation, rhs.rotation) &&
-           EqualVec3(lhs.scale, rhs.scale) && lhs.GetParent() == rhs.GetParent() &&
-           lhs.useExplicitMatrix == rhs.useExplicitMatrix && EqualMat4(lhs.explicitMatrix, rhs.explicitMatrix);
-}
-
 bool EqualMaterialFxValues(const DirectX::XMFLOAT4* lhs, const DirectX::XMFLOAT4* rhs) {
     for (int i = 0; i < VFX::kMaterialFxUserCount; ++i) {
         if (lhs[i].x != rhs[i].x || lhs[i].y != rhs[i].y || lhs[i].z != rhs[i].z || lhs[i].w != rhs[i].w) {
@@ -115,21 +82,21 @@ DirtyFlags BuildDirtyFlags(const SceneRenderObjectDesc& oldDesc, const SceneRend
 
     flags.model = oldDesc.model != newDesc.model || oldDesc.renderModel != newDesc.renderModel ||
                   oldDesc.clusteredGeometryPath != newDesc.clusteredGeometryPath ||
-                  !EqualBounds(oldDesc.localBounds, newDesc.localBounds);
+                  oldDesc.localBounds != newDesc.localBounds;
 
-    flags.transform = !EqualTransform(oldDesc.worldTransform, newDesc.worldTransform) ||
-                      !EqualBounds(oldDesc.worldBounds, newDesc.worldBounds) ||
-                      !EqualVec3(oldDesc.worldBoundsPadding, newDesc.worldBoundsPadding);
+    flags.transform = !oldDesc.worldTransform.HasSameLocalValue(newDesc.worldTransform) ||
+                      oldDesc.worldTransform.GetParent() != newDesc.worldTransform.GetParent() ||
+                      oldDesc.worldBounds != newDesc.worldBounds ||
+                      oldDesc.worldBoundsPadding != newDesc.worldBoundsPadding;
 
-    flags.material = !EqualMaterialOverrides(oldDesc.materialOverrides, newDesc.materialOverrides) ||
-                     oldDesc.editorSelectionMaterialIndex != newDesc.editorSelectionMaterialIndex ||
-                     oldDesc.materialFxProfileId != newDesc.materialFxProfileId ||
-                     oldDesc.postGroupMask != newDesc.postGroupMask ||
-                     oldDesc.materialFxValuesInitialized != newDesc.materialFxValuesInitialized ||
-                     !EqualMaterialFxValues(oldDesc.materialFxParamValues, newDesc.materialFxParamValues) ||
-                     oldDesc.foliageWind != newDesc.foliageWind ||
-                     !EqualVec4(oldDesc.foliageWindParams, newDesc.foliageWindParams) ||
-                     oldDesc.waterSurface != newDesc.waterSurface || oldDesc.terrainSurface != newDesc.terrainSurface;
+    flags.material =
+        !EqualMaterialOverrides(oldDesc.materialOverrides, newDesc.materialOverrides) ||
+        oldDesc.editorSelectionMaterialIndex != newDesc.editorSelectionMaterialIndex ||
+        oldDesc.materialFxProfileId != newDesc.materialFxProfileId || oldDesc.postGroupMask != newDesc.postGroupMask ||
+        oldDesc.materialFxValuesInitialized != newDesc.materialFxValuesInitialized ||
+        !EqualMaterialFxValues(oldDesc.materialFxParamValues, newDesc.materialFxParamValues) ||
+        oldDesc.foliageWind != newDesc.foliageWind || oldDesc.foliageWindParams != newDesc.foliageWindParams ||
+        oldDesc.waterSurface != newDesc.waterSurface || oldDesc.terrainSurface != newDesc.terrainSurface;
 
     // Feature enable/disable changes routing, but per-frame terrain payload
     // changes only require the existing forward-data patch path.

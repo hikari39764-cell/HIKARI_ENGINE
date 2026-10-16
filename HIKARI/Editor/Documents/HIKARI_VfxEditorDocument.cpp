@@ -1,4 +1,5 @@
 #include "Editor/Documents/HIKARI_VfxEditorDocument.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <utility>
 #include <json.hpp>
@@ -75,7 +76,7 @@ bool VfxEditorDocument::OpenAsset(const AssetDatabase& database, const AssetGuid
     sourcePath_ = record->sourcePath;
     displayName_ = record->displayName.empty() ? sourcePath_.stem().string() : record->displayName;
     ResetHistory(true);
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
     outMessage = "Opened VFX asset: " + displayName_;
     return true;
 }

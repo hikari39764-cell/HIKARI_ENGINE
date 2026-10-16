@@ -64,7 +64,6 @@ private:
     void RecordApplied(VFX::VfxAssetData before, uint64_t mergeGroup,
                        VfxDocumentImpact impact = VfxDocumentImpact::Runtime);
     void ResetHistory(bool saved) noexcept;
-    void AdvanceRevision() noexcept;
 
     VfxEditorDocumentSource source_ = VfxEditorDocumentSource::None;
     AssetGuid assetGuid_{};

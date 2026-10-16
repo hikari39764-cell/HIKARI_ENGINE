@@ -11,6 +11,7 @@
 
 #include "Render3D/HIKARI_Transform3D.h"
 #include "Vfx/MaterialFx/HIKARI_MaterialFxParameterSet.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 namespace HIKARI {
 
@@ -139,13 +140,12 @@ private:
                 return true;
             }
             record->materialFx = std::move(next);
-            AdvanceRevision();
+            NUMERIC::AdvanceNonZero(revision_);
             return true;
         } catch (...) {
             return false;
         }
     }
-    void AdvanceRevision() noexcept;
     uint64_t AllocateRenderObjectId(const std::unordered_set<uint64_t>& occupiedIds) noexcept;
 
     std::unordered_map<Key, PresentationModelRecord, KeyHash> records_{};

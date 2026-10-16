@@ -1,4 +1,5 @@
 #include "Scene/Sequencer/Tracks/HIKARI_CameraCutTrack.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <cmath>
@@ -61,10 +62,7 @@ uint64_t AllocateCameraCutClipId(const CameraCutTrack& track) {
     }
     while (std::any_of(track.clips.begin(), track.clips.end(),
                        [nextId](const CameraCutClip& clip) { return clip.id == nextId; })) {
-        ++nextId;
-        if (nextId == 0) {
-            nextId = 1;
-        }
+        NUMERIC::AdvanceNonZero(nextId);
     }
     return nextId;
 }

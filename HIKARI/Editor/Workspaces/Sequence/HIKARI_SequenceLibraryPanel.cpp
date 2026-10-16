@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 
 #include "imgui.h"
 
@@ -24,7 +25,6 @@ bool MatchesSearch(const AssetRecord& record, const char* searchText) {
     return haystack.find(TEXT::ToLowerAsciiCopy(searchText)) != std::string::npos;
 }
 
-std::string ShortGuid(const AssetGuid& guid) { return guid.value.size() <= 8 ? guid.value : guid.value.substr(0, 8); }
 } // namespace
 
 SequenceLibraryPanelResult SequenceLibraryPanel::Draw(AssetDatabase& assetDatabase, const AssetGuid& openAssetGuid,
@@ -79,7 +79,7 @@ SequenceLibraryPanelResult SequenceLibraryPanel::Draw(AssetDatabase& assetDataba
                 }
             }
             ImGui::TextDisabled("%s", record->sourcePath.generic_string().c_str());
-            ImGui::TextDisabled("GUID %s", ShortGuid(record->guid).c_str());
+            ImGui::TextDisabled("GUID %s", ShortGuid(record->guid.value).c_str());
             ImGui::Separator();
             ImGui::PopID();
         }

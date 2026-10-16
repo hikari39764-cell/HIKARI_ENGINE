@@ -38,8 +38,6 @@ public:
     uint64_t GetRevision() const noexcept;
 
 private:
-    void AdvanceRevision() noexcept;
-
     std::unordered_map<std::string, std::unique_ptr<AssetDescriptor>> descriptors_{};
     uint64_t instanceId_ = 0u;
     uint64_t revision_ = 1u;

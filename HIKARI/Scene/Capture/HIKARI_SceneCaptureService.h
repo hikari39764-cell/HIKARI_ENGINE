@@ -1,6 +1,7 @@
 #pragma once
 
 #include "HIKARI/Project/UiCanvasTypes.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 
 #include <algorithm>
@@ -350,10 +351,7 @@ public:
         bindings_.clear();
         retiredBindings_.clear();
         retiredCaptureTargetSlots_.clear();
-        ++epoch_;
-        if (epoch_ == 0u) {
-            epoch_ = 1u;
-        }
+        NUMERIC::AdvanceNonZero(epoch_);
         nextHandleValue_ = 1u;
     }
 

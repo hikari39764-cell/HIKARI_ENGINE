@@ -1,4 +1,5 @@
 #include "Editor/Views/Director/HIKARI_DirectorViewPanel.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <array>
@@ -68,10 +69,7 @@ bool DirectorViewPanel::FrameTargetCamera(const DocumentSceneBase& scene, SceneO
     SetMode(DirectorViewMode::Free);
     freeCamera_.Focus(position, std::clamp(preferredDistance, 2.0f, 100.0f));
     currentViewCamera_ = freeCamera_.GetCamera();
-    ++cameraRevision_;
-    if (cameraRevision_ == 0u) {
-        cameraRevision_ = 1u;
-    }
+    NUMERIC::AdvanceNonZero(cameraRevision_);
     cameraCutPending_ = true;
     return true;
 }

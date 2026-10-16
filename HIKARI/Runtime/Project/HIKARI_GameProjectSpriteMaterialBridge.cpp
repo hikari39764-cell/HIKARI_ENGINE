@@ -1,4 +1,5 @@
 #include "HIKARI/Project/SpriteMaterialView.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <cstring>
@@ -31,10 +32,6 @@ bool CopyText(std::string_view source, char (&destination)[Capacity]) noexcept {
     std::copy(source.begin(), source.end(), destination);
     destination[source.size()] = '\0';
     return true;
-}
-
-bool HasNonZeroReserved(const uint8_t* values, size_t count) noexcept {
-    return std::any_of(values, values + count, [](uint8_t value) { return value != 0u; });
 }
 
 } // namespace
@@ -206,7 +203,7 @@ GameProjectWorldResult SpriteMaterialView::ResetParameters() const noexcept {
 
 GameProjectWorldResult SpriteMaterialView::TryGetState(GameProjectSpriteMaterialState& outState) const noexcept {
     if (outState.structSize != kGameProjectSpriteMaterialStateV1Size ||
-        outState.version != kGameProjectSpriteMaterialStateVersion || HasNonZeroReserved(outState.reserved, 3u)) {
+        outState.version != kGameProjectSpriteMaterialStateVersion || NUMERIC::AnyNonZero(outState.reserved)) {
         return GameProjectSpriteMaterialBridgeAccess::MakeResult(*this, GameProjectWorldResultCode::InvalidRequest);
     }
     ResolvedSpriteMaterialTarget target{};
@@ -259,7 +256,7 @@ bool SpriteMaterialView::TryGetParameter(std::string_view key, GameProjectBindin
 bool SpriteMaterialView::TryGetParameterInfo(uint32_t index,
                                              GameProjectSpriteMaterialParameterInfo& outInfo) const noexcept {
     if (outInfo.structSize != kGameProjectSpriteMaterialParameterInfoV1Size ||
-        outInfo.version != kGameProjectSpriteMaterialParameterInfoVersion || HasNonZeroReserved(outInfo.reserved, 2u) ||
+        outInfo.version != kGameProjectSpriteMaterialParameterInfoVersion || NUMERIC::AnyNonZero(outInfo.reserved) ||
         outInfo.reserved2 != 0u) {
         return false;
     }

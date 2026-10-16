@@ -1,4 +1,5 @@
 #include "HIKARI/Project/ActionViews.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "HIKARI/Project/WorldView.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectWorldBridgeInternal.h"
@@ -102,7 +103,7 @@ bool MotionView::SubmitMotionDelta(const GameProjectKinematicMotionDelta& delta)
 bool MotionView::RequestTeleport(const GameProjectKinematicTeleport& teleport) const noexcept {
     try {
         if (world_ == nullptr || teleport.sourceId == 0u || !IsFinite(teleport.position) ||
-            !IsFiniteNonZeroRotation(teleport.rotation) || HasNonZeroReserved(teleport.reserved, 3u)) {
+            !IsFiniteNonZeroRotation(teleport.rotation) || NUMERIC::AnyNonZero(teleport.reserved)) {
             return false;
         }
         World* world = static_cast<World*>(world_);

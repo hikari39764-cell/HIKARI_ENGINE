@@ -1,4 +1,5 @@
 #include "HIKARI/Project/WorldView.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <array>
 #include <cstddef>
@@ -19,16 +20,6 @@ static_assert(static_cast<uint8_t>(WorldCommandKind::DestroyMass) ==
               static_cast<uint8_t>(GameProjectWorldCommandKind::DestroyMass));
 static_assert(static_cast<uint8_t>(WorldCommandKind::ParallelMassSystem) ==
               static_cast<uint8_t>(GameProjectWorldCommandKind::ParallelMassSystem));
-
-template <size_t Count>
-bool HasNonZeroReserved(const uint32_t (&values)[Count]) noexcept {
-    for (const uint32_t value : values) {
-        if (value != 0u) {
-            return true;
-        }
-    }
-    return false;
-}
 
 } // namespace
 
@@ -66,7 +57,7 @@ bool WorldView::SpawnMassObjects(const GameProjectWorldMassSpawnBatchDesc& batch
         fillResults(PROJECT::INTERNAL::MakeWorldResult(GameProjectWorldResultCode::Unsupported));
         return false;
     }
-    if (batch.structSize != kGameProjectWorldMassSpawnBatchDescV1Size || HasNonZeroReserved(batch.reserved) ||
+    if (batch.structSize != kGameProjectWorldMassSpawnBatchDescV1Size || NUMERIC::AnyNonZero(batch.reserved) ||
         batch.objectCount > kGameProjectWorldMaximumMassSpawnBatchCount || !batch.typeId.IsValid() ||
         batch.transforms == nullptr || batch.velocities == nullptr || batch.podData == nullptr ||
         batch.podStride == 0u || outResults == nullptr ||

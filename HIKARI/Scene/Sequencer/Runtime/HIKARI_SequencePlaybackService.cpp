@@ -1,4 +1,5 @@
 #include "Scene/Sequencer/Runtime/HIKARI_SequencePlaybackService.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <cmath>
@@ -478,11 +479,6 @@ void SequencePlaybackService::PushRejected(uint64_t requestId, const AssetGuid& 
                        std::move(message)});
 }
 
-void SequencePlaybackService::AdvanceEpoch() noexcept {
-    ++epoch_;
-    if (epoch_ == 0) {
-        epoch_ = 1;
-    }
-}
+void SequencePlaybackService::AdvanceEpoch() noexcept { NUMERIC::AdvanceNonZero(epoch_); }
 
 } // namespace HIKARI::SEQUENCER

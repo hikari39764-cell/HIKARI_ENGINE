@@ -7,6 +7,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
 #include "Editor/HIKARI_EditorContext.h"
+#include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Editor/Widgets/HIKARI_EditorTexturePreview.h"
 #include "Editor/Style/HIKARI_EditorAssetIcons.h"
 #include "Render2D/HIKARI_DxTexture.h"
@@ -16,13 +17,6 @@
 namespace HIKARI::EDITOR {
 
 namespace {
-std::string ShortGuid(const std::string& guid) {
-    if (guid.size() <= 8) {
-        return guid;
-    }
-    return guid.substr(0, 8);
-}
-
 const AssetRecord* ResolveTextureRecord(const MaterialTextureSlotData& slot, const AssetDatabase& assetDatabase) {
     if (!slot.textureAssetGuid.IsValid()) {
         return nullptr;

@@ -23,6 +23,8 @@ enum class AlphaMode {
 struct Bounds {
     MATH::Vec3 min{0.0f, 0.0f, 0.0f};
     MATH::Vec3 max{0.0f, 0.0f, 0.0f};
+
+    bool operator==(const Bounds&) const = default;
 };
 
 struct TextureAsset3D {

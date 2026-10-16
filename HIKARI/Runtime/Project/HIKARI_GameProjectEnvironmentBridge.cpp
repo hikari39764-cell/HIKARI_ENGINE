@@ -1,4 +1,5 @@
 #include "HIKARI/Project/EnvironmentView.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "HIKARI/Project/WorldView.h"
 
 #include <algorithm>
@@ -189,9 +190,7 @@ GameProjectWorldResult EnvironmentView::SetColorGradingOverride(const GameProjec
     ColorGradingSettings settings{};
     if (grading.structSize != kGameProjectColorGradingV1Size || grading.version != kGameProjectColorGradingVersion ||
         !IsFinite(grading.shadowsTint) || !IsFinite(grading.midtonesTint) || !IsFinite(grading.highlightsTint) ||
-        !std::isfinite(grading.lutIntensity) ||
-        std::any_of(std::begin(grading.reserved), std::end(grading.reserved),
-                    [](uint8_t value) { return value != 0u; })) {
+        !std::isfinite(grading.lutIntensity) || NUMERIC::AnyNonZero(grading.reserved)) {
         return MakeWorldResult(GameProjectWorldResultCode::InvalidRequest);
     }
     EnvironmentRuntime* runtime = nullptr;

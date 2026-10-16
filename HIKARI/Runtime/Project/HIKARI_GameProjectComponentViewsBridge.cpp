@@ -1,4 +1,5 @@
 #include "HIKARI/Project/ComponentViews.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <cmath>
@@ -31,17 +32,6 @@ GameProjectLightType ToProjectLightType(RENDER3D::LIGHTING::SceneLightType type)
     case RENDER3D::LIGHTING::SceneLightType::Point: break;
     }
     return GameProjectLightType::Point;
-}
-
-bool HasNonZeroLightPatchReserved(const GameProjectLightPatch& patch) noexcept {
-    const auto zero = [](uint8_t value) { return value == 0u; };
-    return !std::all_of(std::begin(patch.reserved0), std::end(patch.reserved0), zero) || patch.reserved1 != 0u ||
-           patch.reserved2 != 0u || !std::all_of(std::begin(patch.reserved3), std::end(patch.reserved3), zero);
-}
-
-bool HasNonZeroWorldSpritePatchReserved(const GameProjectWorldSpritePatch& patch) noexcept {
-    return patch.reserved0 != 0u || std::any_of(std::begin(patch.reserved1), std::end(patch.reserved1),
-                                                [](uint8_t value) { return value != 0u; });
 }
 
 bool Finite(GameProjectFloat3 value) noexcept {
@@ -111,7 +101,8 @@ GameProjectWorldResult LightView::ApplyPatch(const GameProjectLightPatch& patch)
         std::string iesProfile;
         std::string cookie;
         if (patch.structSize != kGameProjectLightPatchV3Size || patch.version != kGameProjectLightPatchVersion ||
-            mask == 0u || (mask & ~kGameProjectLightPatchKnownFields) != 0u || HasNonZeroLightPatchReserved(patch) ||
+            mask == 0u || (mask & ~kGameProjectLightPatchKnownFields) != 0u || NUMERIC::AnyNonZero(patch.reserved0) ||
+            patch.reserved1 != 0u || patch.reserved2 != 0u || NUMERIC::AnyNonZero(patch.reserved3) ||
             (Selected(Field::Enabled) && patch.enabled > 1u) || (Selected(Field::Color) && !Finite(patch.color)) ||
             (Selected(Field::Intensity) && !std::isfinite(patch.intensity)) ||
             (Selected(Field::Range) && !std::isfinite(patch.range)) ||
@@ -208,15 +199,12 @@ GameProjectWorldResult DecalView::ApplyPatch(const GameProjectDecalPatch& patch)
         using Field = GameProjectDecalPatchField;
         const uint32_t mask = patch.fieldMask;
         const auto Selected = [mask](Field field) { return (mask & GameProjectDecalPatchFields(field)) != 0u; };
-        const auto zero = [](uint8_t value) { return value == 0u; };
         std::string baseColorTexture;
         std::string normalTexture;
         if (patch.structSize != kGameProjectDecalPatchV1Size || patch.version != kGameProjectDecalPatchVersion ||
-            mask == 0u || (mask & ~kGameProjectDecalPatchKnownFields) != 0u ||
-            !std::all_of(std::begin(patch.reserved0), std::end(patch.reserved0), zero) ||
-            !std::all_of(std::begin(patch.reserved1), std::end(patch.reserved1), zero) ||
-            (Selected(Field::Enabled) && patch.enabled > 1u) || (Selected(Field::Size) && !Finite(patch.size)) ||
-            (Selected(Field::Color) && !Finite(patch.color)) ||
+            mask == 0u || (mask & ~kGameProjectDecalPatchKnownFields) != 0u || NUMERIC::AnyNonZero(patch.reserved0) ||
+            NUMERIC::AnyNonZero(patch.reserved1) || (Selected(Field::Enabled) && patch.enabled > 1u) ||
+            (Selected(Field::Size) && !Finite(patch.size)) || (Selected(Field::Color) && !Finite(patch.color)) ||
             (Selected(Field::Opacity) && !std::isfinite(patch.opacity)) ||
             (Selected(Field::Weights) && (!std::isfinite(patch.colorWeight) || !std::isfinite(patch.normalWeight) ||
                                           !std::isfinite(patch.materialWeight))) ||
@@ -418,7 +406,8 @@ GameProjectWorldResult WorldSpriteView::ApplyPatch(const GameProjectWorldSpriteP
         };
         if (patch.structSize != kGameProjectWorldSpritePatchV1Size ||
             patch.version != kGameProjectWorldSpritePatchVersion || mask == 0u ||
-            (mask & ~kGameProjectWorldSpritePatchKnownFields) != 0u || HasNonZeroWorldSpritePatchReserved(patch) ||
+            (mask & ~kGameProjectWorldSpritePatchKnownFields) != 0u || patch.reserved0 != 0u ||
+            NUMERIC::AnyNonZero(patch.reserved1) ||
             (Selected(GameProjectWorldSpritePatchField::Visible) && patch.visible > 1u) ||
             (Selected(GameProjectWorldSpritePatchField::PreserveAspect) && patch.preserveAspect > 1u) ||
             (Selected(GameProjectWorldSpritePatchField::Facing) &&

@@ -1,4 +1,5 @@
 #include "Core/HIKARI_TimeService.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "HIKARI/Project/ActionViews.h"
 #include "HIKARI/Project/WorldView.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
@@ -54,10 +55,9 @@ PresentationVfxView WorldView::GetPresentationVfx() const noexcept {
 
 bool PresentationVfxView::PlayWorldEffect(const GameProjectCombatWorldEffectRequest& request) const noexcept {
     try {
-        if (world_ == nullptr || request.sourceId == 0u ||
-            HasNonZeroReserved(request.reserved, sizeof(request.reserved)) || !IsValidTransform(request.transform) ||
-            !IsFiniteNonZeroDirection(request.direction) || !IsFinitePositive(request.scale) ||
-            !IsFinitePositive(request.intensity)) {
+        if (world_ == nullptr || request.sourceId == 0u || NUMERIC::AnyNonZero(request.reserved) ||
+            !IsValidTransform(request.transform) || !IsFiniteNonZeroDirection(request.direction) ||
+            !IsFinitePositive(request.scale) || !IsFinitePositive(request.intensity)) {
             return false;
         }
 
@@ -123,14 +123,14 @@ bool PresentationVfxView::PlayWorldEffect(const GameProjectCombatWorldEffectRequ
 
 bool PresentationVfxView::SubmitGroundTelegraph(const GameProjectGroundTelegraphRequest& request) const noexcept {
     try {
-        if (world_ == nullptr || request.sourceId == 0u ||
-            HasNonZeroReserved(request.reserved, sizeof(request.reserved)) || !IsFinite(request.centerWorld) ||
-            !IsFiniteNonZeroDirection(request.directionWorld) || !IsFiniteNonNegative(request.fillColor) ||
-            !IsFiniteNonNegative(request.outlineColor) || !IsFinitePositive(request.radius) ||
-            !std::isfinite(request.sectorHalfAngleDegrees) || !IsFinitePositive(request.outlineWidthWorld) ||
-            !IsFiniteNonNegative(request.fillOpacity) || request.fillOpacity > 1.0f ||
-            !IsFiniteNonNegative(request.outlineOpacity) || request.outlineOpacity > 1.0f ||
-            !IsFinitePositive(request.intensity) || !IsFinitePositive(request.lifetimeUnscaledSeconds) ||
+        if (world_ == nullptr || request.sourceId == 0u || NUMERIC::AnyNonZero(request.reserved) ||
+            !IsFinite(request.centerWorld) || !IsFiniteNonZeroDirection(request.directionWorld) ||
+            !IsFiniteNonNegative(request.fillColor) || !IsFiniteNonNegative(request.outlineColor) ||
+            !IsFinitePositive(request.radius) || !std::isfinite(request.sectorHalfAngleDegrees) ||
+            !IsFinitePositive(request.outlineWidthWorld) || !IsFiniteNonNegative(request.fillOpacity) ||
+            request.fillOpacity > 1.0f || !IsFiniteNonNegative(request.outlineOpacity) ||
+            request.outlineOpacity > 1.0f || !IsFinitePositive(request.intensity) ||
+            !IsFinitePositive(request.lifetimeUnscaledSeconds) ||
             (request.shape != GameProjectGroundTelegraphShape::Circle &&
              request.shape != GameProjectGroundTelegraphShape::Sector)) {
             return false;

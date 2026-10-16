@@ -1,4 +1,5 @@
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <iterator>
@@ -301,12 +302,7 @@ void WorldSpriteComponent::NotifyMaterialStateDirty() noexcept {
     NotifyRenderStateDirty();
 }
 
-void WorldSpriteComponent::BumpMaterialStateRevision() noexcept {
-    ++materialStateRevision_;
-    if (materialStateRevision_ == 0u) {
-        materialStateRevision_ = 1u;
-    }
-}
+void WorldSpriteComponent::BumpMaterialStateRevision() noexcept { NUMERIC::AdvanceNonZero(materialStateRevision_); }
 
 void WorldSpriteComponent::BuildMaterialInspector(IInspectorBuilder& builder) {
     if (!builder.Section("Sprite material", false)) {

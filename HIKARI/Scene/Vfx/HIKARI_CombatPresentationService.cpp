@@ -1,4 +1,5 @@
 #include "Scene/Vfx/HIKARI_CombatPresentationService.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 
 #include <algorithm>
@@ -434,10 +435,7 @@ void CombatPresentationService::Tick(uint64_t frameIndex, float unscaledDeltaSec
     BuildWeaponTrailFrame();
     BuildGroundTelegraphFrame();
     BuildWorldBarrierFrame();
-    ++revision_;
-    if (revision_ == 0u) {
-        revision_ = 1u;
-    }
+    NUMERIC::AdvanceNonZero(revision_);
     frameSource_.revision = revision_;
 }
 

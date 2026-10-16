@@ -1,4 +1,5 @@
 #include "Scene/Vfx/HIKARI_VfxPlaybackState.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include "Render3D/Vfx/HIKARI_ParticleCpuSimulation.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackSchedule.h"
@@ -748,10 +749,7 @@ void VfxPlaybackService::PublishRenderInputDelivery() noexcept {
         renderInput_.deliverySequence = 0u;
         return;
     }
-    ++nextRenderDeliverySequence_;
-    if (nextRenderDeliverySequence_ == 0u) {
-        nextRenderDeliverySequence_ = 1u;
-    }
+    NUMERIC::AdvanceNonZero(nextRenderDeliverySequence_);
     renderInput_.deliverySequence = nextRenderDeliverySequence_;
     if (reliableRenderDeliveryEnabled_) {
         pendingRenderDeliverySequence_ = nextRenderDeliverySequence_;

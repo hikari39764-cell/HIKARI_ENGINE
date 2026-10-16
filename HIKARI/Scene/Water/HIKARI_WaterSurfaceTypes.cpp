@@ -327,22 +327,19 @@ float CalculateWaterMaximumHorizontalDisplacement(const WaterSurfaceSettings& ra
 }
 
 bool WaterSurfaceSettingsEqual(const WaterSurfaceSettings& lhs, const WaterSurfaceSettings& rhs) noexcept {
-    const auto equalVec3 = [](const MATH::Vec3& a, const MATH::Vec3& b) noexcept {
-        return a.x == b.x && a.y == b.y && a.z == b.z;
-    };
     if (lhs.preset != rhs.preset || lhs.geometryMode != rhs.geometryMode || lhs.timeScale != rhs.timeScale ||
         lhs.choppiness != rhs.choppiness || lhs.microWaveStrength != rhs.microWaveStrength ||
-        !equalVec3(lhs.depthTransmittance, rhs.depthTransmittance) ||
-        !equalVec3(lhs.scatteringColor, rhs.scatteringColor) || lhs.shallowClearDepth != rhs.shallowClearDepth ||
-        lhs.shallowBlendDepth != rhs.shallowBlendDepth || lhs.shallowGraphicWeight != rhs.shallowGraphicWeight ||
-        !equalVec3(lhs.foamColor, rhs.foamColor) || lhs.foamAmount != rhs.foamAmount ||
-        lhs.absorptionDistance != rhs.absorptionDistance || lhs.surfaceRoughness != rhs.surfaceRoughness ||
-        lhs.directSunStrength != rhs.directSunStrength || lhs.transmissionStrength != rhs.transmissionStrength ||
-        lhs.shadowStrength != rhs.shadowStrength || lhs.reflectionStrength != rhs.reflectionStrength ||
-        lhs.sunGlintStrength != rhs.sunGlintStrength || lhs.glintDensity != rhs.glintDensity ||
-        lhs.glintFlowSpeed != rhs.glintFlowSpeed || lhs.ribbonWidth != rhs.ribbonWidth ||
-        lhs.windDirectionDeg != rhs.windDirectionDeg || lhs.windSpeed != rhs.windSpeed ||
-        lhs.shortWaveStrength != rhs.shortWaveStrength || lhs.capillaryStrength != rhs.capillaryStrength) {
+        lhs.depthTransmittance != rhs.depthTransmittance || lhs.scatteringColor != rhs.scatteringColor ||
+        lhs.shallowClearDepth != rhs.shallowClearDepth || lhs.shallowBlendDepth != rhs.shallowBlendDepth ||
+        lhs.shallowGraphicWeight != rhs.shallowGraphicWeight || lhs.foamColor != rhs.foamColor ||
+        lhs.foamAmount != rhs.foamAmount || lhs.absorptionDistance != rhs.absorptionDistance ||
+        lhs.surfaceRoughness != rhs.surfaceRoughness || lhs.directSunStrength != rhs.directSunStrength ||
+        lhs.transmissionStrength != rhs.transmissionStrength || lhs.shadowStrength != rhs.shadowStrength ||
+        lhs.reflectionStrength != rhs.reflectionStrength || lhs.sunGlintStrength != rhs.sunGlintStrength ||
+        lhs.glintDensity != rhs.glintDensity || lhs.glintFlowSpeed != rhs.glintFlowSpeed ||
+        lhs.ribbonWidth != rhs.ribbonWidth || lhs.windDirectionDeg != rhs.windDirectionDeg ||
+        lhs.windSpeed != rhs.windSpeed || lhs.shortWaveStrength != rhs.shortWaveStrength ||
+        lhs.capillaryStrength != rhs.capillaryStrength) {
         return false;
     }
     for (std::size_t index = 0; index < lhs.waves.size(); ++index) {

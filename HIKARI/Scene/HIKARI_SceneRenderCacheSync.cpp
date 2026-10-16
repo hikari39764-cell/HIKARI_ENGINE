@@ -146,16 +146,6 @@ std::string ResolveClusteredGeometryPath(const GameObject& object, const ModelCo
     return path.lexically_normal().generic_string();
 }
 
-Bounds ResolveLocalBounds(const ModelAsset* model, const RENDER3D::RUNTIME::RenderModelAsset* renderModel) {
-    if (renderModel != nullptr && renderModel->valid && BOUNDS::IsUsable(renderModel->localBounds)) {
-        return renderModel->localBounds;
-    }
-    if (model != nullptr && BOUNDS::IsUsable(model->bounds)) {
-        return model->bounds;
-    }
-    return {};
-}
-
 bool HasRuntimeMaterialRevisionChange(const RENDER3D::RUNTIME::SceneRenderObjectDesc& cached,
                                       const ModelComponent& model) {
     size_t liveMaterialCount = 0u;
@@ -245,7 +235,7 @@ RENDER3D::RUNTIME::SceneRenderObjectDesc BuildSceneRenderObjectDesc(
         desc.worldTransform.useExplicitMatrix = true;
         desc.worldTransform.explicitMatrix = presentationWorld;
     }
-    desc.localBounds = ResolveLocalBounds(desc.model, desc.renderModel);
+    desc.localBounds = RENDER3D::RUNTIME::ResolveLocalBounds(desc.model, desc.renderModel);
     desc.worldBounds = BOUNDS::TransformBounds(desc.localBounds, desc.worldTransform.GetWorldMatrix());
 
     desc.isStatic = model.IsRenderStatic();

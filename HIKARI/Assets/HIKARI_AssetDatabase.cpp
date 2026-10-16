@@ -1,4 +1,5 @@
 #include "HIKARI_AssetDatabase.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "Importers/HIKARI_StructuredAssetImporters.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
@@ -364,12 +365,7 @@ bool AssetDatabase::LoadCookedRecords() {
     return true;
 }
 
-void AssetDatabase::AdvanceContentRevision() noexcept {
-    ++contentRevision_;
-    if (contentRevision_ == 0u) {
-        contentRevision_ = 1u;
-    }
-}
+void AssetDatabase::AdvanceContentRevision() noexcept { NUMERIC::AdvanceNonZero(contentRevision_); }
 
 const AssetRecord* AssetDatabase::FindByGuid(const AssetGuid& guid) const {
     const auto it = recordsByGuid_.find(guid.value);

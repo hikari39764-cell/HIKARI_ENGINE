@@ -67,7 +67,6 @@ public:
 
 private:
     bool HasSurfaceMaterialIndex(uint32_t materialIndex) const noexcept;
-    void AdvanceRevision() noexcept;
     void ResetState();
     void RebuildSceneSource();
 

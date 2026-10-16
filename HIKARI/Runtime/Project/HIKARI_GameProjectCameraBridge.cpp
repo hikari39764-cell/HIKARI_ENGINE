@@ -1,4 +1,5 @@
 #include "HIKARI/Project/ActionViews.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 #include "HIKARI/Project/WorldView.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectWorldBridgeInternal.h"
@@ -384,8 +385,8 @@ bool CameraView::SubmitRelationshipShot(const GameProjectCameraTargetFramingRequ
             std::abs(profile.distanceOffset) > 10.0f || !std::isfinite(profile.pivotHeightOffset) ||
             std::abs(profile.pivotHeightOffset) > 5.0f || !std::isfinite(profile.focusLateralOffset) ||
             std::abs(profile.focusLateralOffset) > 5.0f || !std::isfinite(profile.focusHeightOffset) ||
-            std::abs(profile.focusHeightOffset) > 5.0f || profile.suppressModifiers > 1u || profile.reserved[0] != 0u ||
-            profile.reserved[1] != 0u || profile.reserved[2] != 0u) {
+            std::abs(profile.focusHeightOffset) > 5.0f || profile.suppressModifiers > 1u ||
+            NUMERIC::AnyNonZero(profile.reserved)) {
             return false;
         }
         World* world = static_cast<World*>(world_);

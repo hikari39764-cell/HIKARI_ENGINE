@@ -14,18 +14,10 @@ std::atomic<uint64_t> gNextMaterialRevision{1u};
 
 uint64_t NextMaterialRevision() noexcept { return gNextMaterialRevision.fetch_add(1u, std::memory_order_relaxed); }
 
-bool Equal(const MATH::Vec2& lhs, const MATH::Vec2& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y; }
-
-bool Equal(const MATH::Vec3& lhs, const MATH::Vec3& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z; }
-
-bool Equal(const MATH::Vec4& lhs, const MATH::Vec4& rhs) {
-    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z && lhs.w == rhs.w;
-}
-
 bool Equal(const RuntimeTextureSlot& lhs, const RuntimeTextureSlot& rhs) {
     return lhs.sourcePath == rhs.sourcePath && lhs.resolvedPath == rhs.resolvedPath && lhs.resource == rhs.resource &&
            lhs.handle == rhs.handle && lhs.enabled == rhs.enabled && lhs.texCoord == rhs.texCoord &&
-           Equal(lhs.uvScale, rhs.uvScale) && Equal(lhs.uvOffset, rhs.uvOffset) && lhs.uvRotation == rhs.uvRotation;
+           lhs.uvScale == rhs.uvScale && lhs.uvOffset == rhs.uvOffset && lhs.uvRotation == rhs.uvRotation;
 }
 
 bool Equal(const std::vector<RuntimeTextureSlot>& lhs, const std::vector<RuntimeTextureSlot>& rhs) {
@@ -58,7 +50,7 @@ int RuntimeTextureSlot::ResolveBackendHandle() const {
 bool RuntimeTextureSlot::IsValid() const { return ResolveBackendHandle() >= 0; }
 
 void Material::SetBaseColor(const MATH::Vec4& color) {
-    if (Equal(baseColor_, color)) {
+    if (baseColor_ == color) {
         return;
     }
     baseColor_ = color;
@@ -240,7 +232,7 @@ void Material::SetSpecularFactor(float value) {
 float Material::GetSpecularFactor() const { return specularFactor_; }
 
 void Material::SetSpecularColorFactor(const MATH::Vec3& value) {
-    if (Equal(specularColorFactor_, value)) {
+    if (specularColorFactor_ == value) {
         return;
     }
     specularColorFactor_ = value;
@@ -252,7 +244,7 @@ const MATH::Vec3& Material::GetSpecularColorFactor() const { return specularColo
 void Material::SetSurfaceLayers(const MATH::Vec4& value) {
     const MATH::Vec4 next{std::clamp(value.x, 0.0f, 1.0f), std::clamp(value.y, 0.0f, 1.0f),
                           std::clamp(value.z, 0.0f, 1.0f), std::clamp(value.w, 1.0f, 3.0f)};
-    if (Equal(surfaceLayers_, next)) {
+    if (surfaceLayers_ == next) {
         return;
     }
     surfaceLayers_ = next;
@@ -261,7 +253,7 @@ void Material::SetSurfaceLayers(const MATH::Vec4& value) {
 
 void Material::SetSubsurface(const MATH::Vec2& value) {
     const MATH::Vec2 next{std::clamp(value.x, 0.0f, 1.0f), std::clamp(value.y, 0.0f, 1.0f)};
-    if (Equal(subsurface_, next)) {
+    if (subsurface_ == next) {
         return;
     }
     subsurface_ = next;
@@ -289,7 +281,7 @@ void Material::SetOcclusionStrength(float value) {
 float Material::GetOcclusionStrength() const { return occlusionStrength_; }
 
 void Material::SetEmissiveFactor(const MATH::Vec3& value) {
-    if (Equal(emissiveFactor_, value)) {
+    if (emissiveFactor_ == value) {
         return;
     }
     emissiveFactor_ = value;

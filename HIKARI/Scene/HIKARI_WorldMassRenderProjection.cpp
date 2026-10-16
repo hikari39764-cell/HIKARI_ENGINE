@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_WorldMassStore.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <cstring>
@@ -51,7 +52,7 @@ bool IsValidWorldMassRenderProxy(const GameProjectWorldMassRenderProxyDesc& desc
         descriptor.version != kGameProjectWorldMassVersion || !descriptor.typeId.IsValid() ||
         descriptor.layoutHash == 0u || descriptor.schemaVersion == 0u ||
         (descriptor.flags & ~kSupportedMassRenderFlags) != 0u || descriptor.reserved0 != 0u ||
-        descriptor.reserved[0] != 0u || descriptor.reserved[1] != 0u || descriptor.reserved[2] != 0u) {
+        NUMERIC::AnyNonZero(descriptor.reserved)) {
         return false;
     }
     const size_t guidLength = FixedTextLength(descriptor.modelAssetGuid, std::size(descriptor.modelAssetGuid));
@@ -191,10 +192,7 @@ void WorldMassStore::AdvanceRenderSourceVersion(Store& store) noexcept {
     ++store.renderSourceVersion;
     if (store.renderSourceVersion == 0u) {
         store.renderSourceVersion = 1u;
-        ++store.renderLayoutVersion;
-        if (store.renderLayoutVersion == 0u) {
-            store.renderLayoutVersion = 1u;
-        }
+        NUMERIC::AdvanceNonZero(store.renderLayoutVersion);
         store.renderDirtyBaseSourceVersion = 0u;
     }
 }
@@ -203,10 +201,7 @@ void WorldMassStore::AdvanceRenderLayoutVersion(Store& store) noexcept {
     if (!store.hasRenderProxy) {
         return;
     }
-    ++store.renderLayoutVersion;
-    if (store.renderLayoutVersion == 0u) {
-        store.renderLayoutVersion = 1u;
-    }
+    NUMERIC::AdvanceNonZero(store.renderLayoutVersion);
     AdvanceRenderSourceVersion(store);
 }
 

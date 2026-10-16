@@ -1,4 +1,5 @@
 #include "Physics/HIKARI_PhysicsRuntimeStatusService.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <utility>
@@ -10,7 +11,7 @@ void PhysicsRuntimeStatusService::Clear() noexcept {
     bodyDebugShapes_.clear();
     lastStepResult_ = {};
     backendStatistics_ = {};
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
 }
 
 void PhysicsRuntimeStatusService::Remove(RuntimeObjectHandle object) noexcept {
@@ -21,7 +22,7 @@ void PhysicsRuntimeStatusService::Remove(RuntimeObjectHandle object) noexcept {
     const bool removedStatus = bodyStatuses_.erase(key) > 0u;
     const bool removedShapes = bodyDebugShapes_.erase(key) > 0u;
     if (removedStatus || removedShapes) {
-        AdvanceRevision();
+        NUMERIC::AdvanceNonZero(revision_);
     }
 }
 
@@ -30,7 +31,7 @@ void PhysicsRuntimeStatusService::SetBodyStatus(PhysicsBodyRuntimeStatus status)
         return;
     }
     bodyStatuses_[status.object.ToValue()] = std::move(status);
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
 }
 
 void PhysicsRuntimeStatusService::SetBodyDebugShapes(RuntimeObjectHandle object, std::vector<PhysicsShapeDesc> shapes) {
@@ -38,13 +39,13 @@ void PhysicsRuntimeStatusService::SetBodyDebugShapes(RuntimeObjectHandle object,
         return;
     }
     bodyDebugShapes_.insert_or_assign(object.ToValue(), std::move(shapes));
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
 }
 
 void PhysicsRuntimeStatusService::SetStepResult(PhysicsStepResult result, PhysicsBackendStatistics statistics) {
     lastStepResult_ = std::move(result);
     backendStatistics_ = statistics;
-    AdvanceRevision();
+    NUMERIC::AdvanceNonZero(revision_);
 }
 
 const PhysicsBodyRuntimeStatus* PhysicsRuntimeStatusService::FindBodyStatus(RuntimeObjectHandle object) const noexcept {
@@ -65,12 +66,5 @@ const std::vector<PhysicsShapeDesc>* PhysicsRuntimeStatusService::FindBodyDebugS
 }
 
 uint64_t PhysicsRuntimeStatusService::GetRevision() const noexcept { return revision_; }
-
-void PhysicsRuntimeStatusService::AdvanceRevision() noexcept {
-    ++revision_;
-    if (revision_ == 0u) {
-        revision_ = 1u;
-    }
-}
 
 } // namespace HIKARI::PHYSICS

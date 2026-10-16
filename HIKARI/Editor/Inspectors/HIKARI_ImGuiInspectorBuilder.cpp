@@ -30,13 +30,6 @@ namespace HIKARI {
 
 namespace {
 
-std::string ShortGuid(std::string_view guid) {
-    if (guid.size() <= 8) {
-        return std::string(guid);
-    }
-    return std::string(guid.substr(0, 8));
-}
-
 struct AssetPickerEntry {
     std::string id{};
     std::string name{};
@@ -424,7 +417,7 @@ bool ImGuiInspectorBuilder::AssetIdPicker(const AuthoringFieldDescriptor& field,
 
         if (current) {
             ImGui::TextDisabled("%s | %s | %s", current->path.empty() ? "<no path>" : current->path.c_str(),
-                                current->state.c_str(), ShortGuid(current->id).c_str());
+                                current->state.c_str(), EDITOR::ShortGuid(current->id).c_str());
         } else {
             ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f),
                                TEXT::Localize("editor.ui.unresolved.asset.id.s.4d385d").c_str(), value.c_str());

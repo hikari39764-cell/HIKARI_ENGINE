@@ -1,4 +1,5 @@
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
+#include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <algorithm>
 #include <array>
@@ -204,10 +205,7 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
         display.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     }
 
-    ++state.outputRevision;
-    if (state.outputRevision == 0u) {
-        state.outputRevision = 1u;
-    }
+    NUMERIC::AdvanceNonZero(state.outputRevision);
     outOutput.texture = state.display.textures[0];
     outOutput.width = width;
     outOutput.height = height;
