@@ -135,10 +135,4 @@ void ProceduralMeshComponent::QueryGeometryFitParts(std::vector<GeometryFitDesc>
     }
 }
 
-void ProceduralMeshComponent::NotifyRenderStateDirty() {
-    if (GameObject* owner = GetOwner()) {
-        owner->MarkRenderStateDirty();
-    }
-}
-
 } // namespace HIKARI

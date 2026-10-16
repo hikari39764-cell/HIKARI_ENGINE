@@ -1,4 +1,5 @@
 #include "Scene/Environment/HIKARI_EnvironmentRuntime.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 
 #include <algorithm>
 #include <cmath>
@@ -16,15 +17,10 @@ uint64_t WeatherKey(std::string_view weatherId) noexcept {
     return HASH::Fnv1aBytes(HASH::kFnv1a64OffsetBasis, weatherId.data(), weatherId.size());
 }
 
-float Smoothstep(float edge0, float edge1, float value) noexcept {
-    const float t = std::clamp((value - edge0) / (edge1 - edge0), 0.0f, 1.0f);
-    return t * t * (3.0f - 2.0f * t);
-}
-
 // 地平線の下では方向光を消す。大気の透過率は描画側が掛けるので、ここは幾何的な遮蔽だけ。
 float HorizonFade(float altitudeDegrees, float angularRadius) noexcept {
     const float radiusDegrees = angularRadius * 57.2957795f;
-    return Smoothstep(-radiusDegrees, radiusDegrees, altitudeDegrees);
+    return MATH::SmoothStep(-radiusDegrees, radiusDegrees, altitudeDegrees);
 }
 
 } // namespace

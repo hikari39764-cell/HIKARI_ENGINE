@@ -1,4 +1,5 @@
 #include "Render3D/Color/HIKARI_ColorGradingBake.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 
 #include <algorithm>
 #include <cmath>
@@ -8,14 +9,7 @@
 #include "Assets/Color/HIKARI_ColorLutAsset.h"
 
 namespace HIKARI::RENDER3D::COLOR {
-namespace {
-
-float SmoothStep(float edge0, float edge1, float value) noexcept {
-    const float t = std::clamp((value - edge0) / (edge1 - edge0), 0.0f, 1.0f);
-    return t * t * (3.0f - 2.0f * t);
-}
-
-} // namespace
+namespace {} // namespace
 
 bool IsColorGradingActive(const ColorGradingSettings& settings, const ASSETS::COLOR::ColorLutAsset* lut) noexcept {
     const MATH::Vec3 one{1.0f, 1.0f, 1.0f};
@@ -45,8 +39,8 @@ void BakeColorGradingLut(const ColorGradingSettings& settings, const ASSETS::COL
                                  static_cast<float>(b) * step};
                 // 符号化した輝度で暗部 [0, 0.4]・明部 [0.6, 1] の重みを分け、残りを中間に配る（重みの和は 1）。
                 const float luma = color.x * 0.2126f + color.y * 0.7152f + color.z * 0.0722f;
-                const float shadowWeight = 1.0f - SmoothStep(0.0f, 0.4f, luma);
-                const float highlightWeight = SmoothStep(0.6f, 1.0f, luma);
+                const float shadowWeight = 1.0f - MATH::SmoothStep(0.0f, 0.4f, luma);
+                const float highlightWeight = MATH::SmoothStep(0.6f, 1.0f, luma);
                 const float midtoneWeight = 1.0f - shadowWeight - highlightWeight;
                 const MATH::Vec3 gain =
                     shadows * shadowWeight + midtones * midtoneWeight + highlights * highlightWeight;

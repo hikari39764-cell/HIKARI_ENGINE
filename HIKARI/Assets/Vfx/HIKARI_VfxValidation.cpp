@@ -190,19 +190,6 @@ void ValidateAnimatedColor(const VfxAnimatedColorData& value, std::string_view o
     }
 }
 
-bool IsValueFinite(const VfxValue& value) noexcept {
-    switch (value.type) {
-    case VfxValueType::Bool:
-    case VfxValueType::Int: return true;
-    case VfxValueType::Float:
-    case VfxValueType::Float2:
-    case VfxValueType::Float3:
-    case VfxValueType::Float4:
-    case VfxValueType::Color: return IsFinite(value.numeric);
-    default: return false;
-    }
-}
-
 void RegisterModuleIds(const VfxEmitterData& emitter, std::unordered_set<std::string>& ids,
                        std::vector<VfxDiagnostic>& diagnostics) {
     const std::array<std::pair<std::string_view, std::string_view>, 12u> modules{
@@ -732,7 +719,7 @@ std::vector<VfxDiagnostic> ValidateVfxAsset(const VfxAssetData& asset) {
         if (input.name.empty()) {
             AddError(diagnostics, "Vfx.MissingInputName", "exposed input name is empty", input.id);
         }
-        if (input.defaultValue.type != input.type || !IsValueFinite(input.defaultValue)) {
+        if (input.defaultValue.type != input.type || !input.defaultValue.IsFinite()) {
             AddError(diagnostics, "Vfx.InvalidInputDefault", "exposed input default value does not match its type",
                      input.id);
         }

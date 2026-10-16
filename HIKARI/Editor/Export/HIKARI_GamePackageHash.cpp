@@ -1,4 +1,5 @@
 #include "Editor/Export/HIKARI_GamePackageHash.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <Windows.h>
 #include <bcrypt.h>
@@ -29,12 +30,6 @@ struct HashContext final {
         }
     }
 };
-
-void SetMessage(std::string* output, std::string message) {
-    if (output != nullptr) {
-        *output = std::move(message);
-    }
-}
 
 std::string StatusMessage(std::string_view operation, NTSTATUS status) {
     std::ostringstream stream{};

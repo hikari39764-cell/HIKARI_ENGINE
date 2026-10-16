@@ -35,11 +35,6 @@ std::string TemplateText(const char* id, const char* suffix = "") {
     return TEXT::Localize(std::string("gc.template.") + id + suffix);
 }
 
-bool HasComponent(const SceneObjectData& object, std::string_view type) {
-    return std::any_of(object.components.begin(), object.components.end(),
-                       [type](const SceneComponentData& component) { return component.type == type; });
-}
-
 std::string ObjectName(const DocumentSceneBase& scene, SceneObjectId id) {
     const GameObject* object = scene.GetWorld().FindObject(id);
     return object != nullptr ? object->GetName() : std::string(L("gc.none"));
@@ -198,11 +193,11 @@ void GameplayCameraWorkspaceController::DrawCameraList(DocumentSceneBase& scene,
     const auto defaultCamera = scene.GetSceneDocument().camera.defaultCameraObjectId;
     bool any = false;
     for (const SceneObjectData& object : scene.GetSceneDocument().objects) {
-        if (!HasComponent(object, "CameraComponent")) {
+        if (object.FindComponent("CameraComponent") == nullptr) {
             continue;
         }
         any = true;
-        const bool follows = HasComponent(object, "CameraFollowComponent");
+        const bool follows = object.FindComponent("CameraFollowComponent") != nullptr;
         const bool isDefault = defaultCamera && *defaultCamera == object.id;
         const std::string label = std::string(isDefault ? "* " : "  ") + object.name + "   " +
                                   L(follows ? "gc.tag.game" : "gc.tag.shot") + "##" + std::to_string(object.id.value);
@@ -228,7 +223,7 @@ void GameplayCameraWorkspaceController::DrawZoneList(DocumentSceneBase& scene, E
         const MATH::Vec3 position = CAMERA::WorldPosition(*target);
         size_t count = 0;
         for (const SceneObjectData& object : scene.GetSceneDocument().objects) {
-            count += HasComponent(object, "CameraActivationVolumeComponent") ? 1u : 0u;
+            count += object.FindComponent("CameraActivationVolumeComponent") != nullptr ? 1u : 0u;
         }
         const EditorOperationResult result = operations.Execute(
             "camera_zone.edit", {{"action", "create"},
@@ -247,7 +242,7 @@ void GameplayCameraWorkspaceController::DrawZoneList(DocumentSceneBase& scene, E
         ImGui::TextDisabled("%s", L("gc.zoneNeedsCamera"));
     }
     for (const SceneObjectData& object : scene.GetSceneDocument().objects) {
-        if (!HasComponent(object, "CameraActivationVolumeComponent")) {
+        if (object.FindComponent("CameraActivationVolumeComponent") == nullptr) {
             continue;
         }
         const GameObject* zoneObject = scene.GetWorld().FindObject(object.id);

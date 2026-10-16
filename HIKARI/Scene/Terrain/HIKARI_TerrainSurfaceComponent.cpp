@@ -526,12 +526,6 @@ bool TerrainSurfaceComponent::ApplyProceduralTerrain(const TERRAIN::TerrainProce
     return true;
 }
 
-void TerrainSurfaceComponent::NotifyRenderStateDirty() {
-    if (GameObject* owner = GetOwner()) {
-        owner->MarkRenderStateDirty();
-    }
-}
-
 void TerrainSurfaceComponent::SerializeSettings(nlohmann::json& out) const {
     TERRAIN::SerializeTerrainSurfaceSettings(surface_, out);
 }

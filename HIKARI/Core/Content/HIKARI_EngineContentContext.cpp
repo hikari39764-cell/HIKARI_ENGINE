@@ -1,4 +1,5 @@
 #include "Core/Content/HIKARI_EngineContentContext.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 #include "Core/IO/HIKARI_PathNormalization.h"
 
 #include <system_error>
@@ -7,15 +8,7 @@
 #include "Platform/Paths/HIKARI_ExecutablePath.h"
 
 namespace HIKARI::CONTENT {
-namespace {
-
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr) {
-        *outMessage = std::move(message);
-    }
-}
-
-} // namespace
+namespace {} // namespace
 
 bool EngineContentContext::Open(const std::filesystem::path& root, std::string* outMessage) {
     Close();

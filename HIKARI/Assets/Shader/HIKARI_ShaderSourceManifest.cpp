@@ -1,4 +1,5 @@
 #include "Assets/Shader/Internal/HIKARI_ShaderIdentifier.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 #include "Assets/Shader/HIKARI_ShaderSourceManifest.h"
 
 #include <algorithm>
@@ -10,13 +11,8 @@ namespace HIKARI::ASSETS::SHADER {
 namespace {
 
 bool IsSafeRelativeShaderPath(const std::filesystem::path& path) {
-    if (path.empty() || path.is_absolute() || path.has_root_name() || path.has_root_directory()) {
+    if (!PATHS::IsSafeRelativePath(path)) {
         return false;
-    }
-    for (const std::filesystem::path& part : path) {
-        if (part == "..") {
-            return false;
-        }
     }
     const std::filesystem::path normalized = path.lexically_normal();
     const std::string generic = normalized.generic_string();

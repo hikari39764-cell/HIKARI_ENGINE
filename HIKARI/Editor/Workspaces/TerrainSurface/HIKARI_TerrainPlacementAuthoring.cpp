@@ -6,6 +6,7 @@
 
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
 #include "Editor/Selection/HIKARI_EditorSelection.h"
+#include "Editor/Selection/HIKARI_SceneSelectionTransform.h"
 #include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -18,15 +19,6 @@
 namespace HIKARI::EDITOR {
 namespace {
 constexpr float kDegreesToRadians = 3.14159265358979323846f / 180.0f;
-
-bool HasSelectedAncestor(const GameObject& object, const std::unordered_set<uint64_t>& selectedIds) {
-    for (const GameObject* parent = object.GetParent(); parent != nullptr; parent = parent->GetParent()) {
-        if (selectedIds.contains(parent->GetDocumentId().value)) {
-            return true;
-        }
-    }
-    return false;
-}
 
 bool ResolveWorldPosition(const GameObject& object, MATH::Vec3& outPosition) {
     const MATH::Vec4 world = object.GetTransform().GetWorldMatrix().TransformPoint({0.0f, 0.0f, 0.0f, 1.0f});

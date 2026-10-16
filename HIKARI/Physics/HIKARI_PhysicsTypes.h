@@ -73,6 +73,9 @@ struct PhysicsBodyHandle {
     uint64_t ToValue() const noexcept {
         return (static_cast<uint64_t>(generation) << 32u) | static_cast<uint64_t>(slot);
     }
+    static PhysicsBodyHandle FromValue(uint64_t value) noexcept {
+        return {static_cast<uint32_t>(value & 0xFFFFFFFFu), static_cast<uint32_t>(value >> 32u)};
+    }
 
     friend bool operator==(const PhysicsBodyHandle&, const PhysicsBodyHandle&) = default;
 };

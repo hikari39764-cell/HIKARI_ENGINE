@@ -12,6 +12,7 @@
 #include "Assets/Vfx/HIKARI_VfxAnimationTiming.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialEffectStack.h"
 #include "Core/Math/HIKARI_Math3D.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 
 namespace HIKARI::VFX {
 
@@ -35,6 +36,20 @@ struct VfxValue {
     bool boolean = false;
     int64_t integer = 0;
     MATH::Vec4 numeric{0.0f, 0.0f, 0.0f, 0.0f};
+
+    // Bool/Int は常に有効、数値型は 4 成分がすべて有限の時だけ有効。未知の型は無効。
+    bool IsFinite() const noexcept {
+        switch (type) {
+        case VfxValueType::Bool:
+        case VfxValueType::Int: return true;
+        case VfxValueType::Float:
+        case VfxValueType::Float2:
+        case VfxValueType::Float3:
+        case VfxValueType::Float4:
+        case VfxValueType::Color: return MATH::IsFinite(numeric);
+        default: return false;
+        }
+    }
 };
 
 enum class VfxShapeType : uint8_t {

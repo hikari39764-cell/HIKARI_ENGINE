@@ -1,4 +1,5 @@
 #include "Gameplay/Dialogue/HIKARI_DialogueProjectStyle.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,11 +11,6 @@ namespace {
 using json = nlohmann::json;
 
 constexpr uint32_t kProjectStyleFormatVersion = 2u;
-
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr)
-        *outMessage = std::move(message);
-}
 
 void NormalizeColor(DialogueColor& color) noexcept {
     float* channels[]{&color.r, &color.g, &color.b};

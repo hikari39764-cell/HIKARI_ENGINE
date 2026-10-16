@@ -33,13 +33,6 @@ bool WasDependencyAdded(const std::vector<std::string>& added, std::string_view 
     return std::find(added.begin(), added.end(), typeName) != added.end();
 }
 
-SceneComponentData* FindComponentData(SceneObjectData& object, std::string_view typeName) {
-    const auto found =
-        std::find_if(object.components.begin(), object.components.end(),
-                     [typeName](const SceneComponentData& component) { return component.type == typeName; });
-    return found != object.components.end() ? &*found : nullptr;
-}
-
 class GameplayRuntimeFeature final : public IRuntimeFeature {
 public:
     std::string_view GetFeatureId() const noexcept override { return RuntimeFeatureIds::GameplayBasic; }
@@ -118,14 +111,14 @@ public:
             // physics body, not a second body implementation. The
             // contract therefore applies equally to a pre-existing
             // PhysicsBodyComponent and an automatically added one.
-            if (SceneComponentData* body = FindComponentData(object, "PhysicsBodyComponent")) {
+            if (SceneComponentData* body = object.FindComponent("PhysicsBodyComponent")) {
                 body->properties["motionType"] = "Kinematic";
                 body->properties["mass"] = 70.0f;
                 body->properties["allowSleeping"] = false;
                 body->properties["continuousCollision"] = true;
             }
             if (WasDependencyAdded(added, "ColliderComponent")) {
-                if (SceneComponentData* collider = FindComponentData(object, "ColliderComponent")) {
+                if (SceneComponentData* collider = object.FindComponent("ColliderComponent")) {
                     collider->properties["fitMode"] = "Manual";
                     collider->properties["shape"] = "Capsule";
                     collider->properties["center"] = {0.0f, 0.9f, 0.0f};
@@ -178,14 +171,14 @@ public:
         };
         dialogueTrigger.configureDependencies = [](SceneObjectData& object, const std::vector<std::string>& added) {
             if (WasDependencyAdded(added, "PhysicsBodyComponent")) {
-                if (SceneComponentData* body = FindComponentData(object, "PhysicsBodyComponent")) {
+                if (SceneComponentData* body = object.FindComponent("PhysicsBodyComponent")) {
                     body->properties["motionType"] = "Static";
                     body->properties["gravityScale"] = 0.0f;
                     body->properties["allowSleeping"] = true;
                 }
             }
             if (WasDependencyAdded(added, "ColliderComponent")) {
-                if (SceneComponentData* collider = FindComponentData(object, "ColliderComponent")) {
+                if (SceneComponentData* collider = object.FindComponent("ColliderComponent")) {
                     collider->properties["fitMode"] = "Manual";
                     collider->properties["shape"] = "Box";
                     collider->properties["center"] = {0.0f, 1.0f, 0.0f};

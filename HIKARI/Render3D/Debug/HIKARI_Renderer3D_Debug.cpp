@@ -47,11 +47,6 @@ DebugRendererFrameStats g_frameStats{};
 bool g_renderingEditorView = false;
 #endif
 
-MATH::Vec3 TransformPoint(const MATH::Mat4& world, const MATH::Vec3& local) {
-    const MATH::Vec4 transformed = world.TransformPoint({local.x, local.y, local.z, 1.0f});
-    return {transformed.x, transformed.y, transformed.z};
-}
-
 void PushStroke(const MATH::Vec3& from, const MATH::Vec3& to, uint32_t rgba, DebugDepthMode depthMode,
                 float thicknessPixels) {
     Stroke3D stroke{};
@@ -96,19 +91,19 @@ std::array<MATH::Vec3, 8> BuildBoxCorners(const Box3D& box) {
     const MATH::Mat4 world = box.transform.GetWorldMatrix();
     std::array<MATH::Vec3, 8> corners{};
     for (size_t index = 0; index < corners.size(); ++index) {
-        corners[index] = TransformPoint(world, local[index]);
+        corners[index] = MATH::TransformPoint(world, local[index]);
     }
     return corners;
 }
 
 void ExpandAxis(const Axis3D& axis) {
     const MATH::Mat4 world = axis.transform.GetWorldMatrix();
-    const MATH::Vec3 origin = TransformPoint(world, {});
-    PushStroke(origin, TransformPoint(world, {axis.length, 0.0f, 0.0f}), axis.xColor, axis.depthMode,
+    const MATH::Vec3 origin = MATH::TransformPoint(world, {});
+    PushStroke(origin, MATH::TransformPoint(world, {axis.length, 0.0f, 0.0f}), axis.xColor, axis.depthMode,
                axis.thicknessPixels);
-    PushStroke(origin, TransformPoint(world, {0.0f, axis.length, 0.0f}), axis.yColor, axis.depthMode,
+    PushStroke(origin, MATH::TransformPoint(world, {0.0f, axis.length, 0.0f}), axis.yColor, axis.depthMode,
                axis.thicknessPixels);
-    PushStroke(origin, TransformPoint(world, {0.0f, 0.0f, axis.length}), axis.zColor, axis.depthMode,
+    PushStroke(origin, MATH::TransformPoint(world, {0.0f, 0.0f, axis.length}), axis.zColor, axis.depthMode,
                axis.thicknessPixels);
 }
 

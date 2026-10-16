@@ -6,6 +6,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Assets/Shader/HIKARI_ShaderCookedArtifact.h"
@@ -80,6 +81,13 @@ struct ShaderAssetResolveResult {
     ShaderAssetResolveCode code = ShaderAssetResolveCode::InvalidRequest;
     ShaderAssetEntryLease lease{};
     std::string diagnostic{};
+
+    static ShaderAssetResolveResult Failure(ShaderAssetResolveCode failureCode, std::string failureDiagnostic) {
+        ShaderAssetResolveResult result{};
+        result.code = failureCode;
+        result.diagnostic = std::move(failureDiagnostic);
+        return result;
+    }
 
     explicit operator bool() const noexcept {
         return code == ShaderAssetResolveCode::Success && static_cast<bool>(lease);

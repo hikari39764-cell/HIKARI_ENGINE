@@ -1,4 +1,5 @@
 #include "Project/HIKARI_ProjectLaunch.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <system_error>
 #include <utility>
@@ -7,15 +8,7 @@
 #include "Project/HIKARI_ProjectContext.h"
 
 namespace HIKARI {
-namespace {
-
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr) {
-        *outMessage = std::move(message);
-    }
-}
-
-} // namespace
+namespace {} // namespace
 
 bool OpenProjectForLaunch(const ProjectLaunchOptions& options, std::string* outMessage) {
     ProjectContext& context = GetProjectContext();

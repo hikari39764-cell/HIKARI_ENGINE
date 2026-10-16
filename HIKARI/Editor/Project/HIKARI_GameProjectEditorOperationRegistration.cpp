@@ -1,4 +1,5 @@
 #include "Editor/Project/HIKARI_GameProjectEditorOperationRegistration.h"
+#include "Editor/Project/HIKARI_GameProjectEditorWorkspaceRegistry.h"
 
 #include <algorithm>
 #include <limits>
@@ -56,22 +57,6 @@ std::string_view BoundedString(const char* value, size_t maximumLength) noexcept
     return length < maximumLength ? std::string_view(value, length) : std::string_view{};
 }
 
-bool IsIdentifier(std::string_view value) noexcept {
-    if (value.empty() || value.size() > 127u) {
-        return false;
-    }
-    const auto isAsciiAlphaNumeric = [](unsigned char character) {
-        return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
-               (character >= '0' && character <= '9');
-    };
-    if (!isAsciiAlphaNumeric(static_cast<unsigned char>(value.front()))) {
-        return false;
-    }
-    return std::all_of(value.begin(), value.end(), [isAsciiAlphaNumeric](unsigned char character) {
-        return isAsciiAlphaNumeric(character) || character == '.' || character == '_' || character == '-';
-    });
-}
-
 class OperationResultSink final : public EDITOR_PROJECT::IEditorOperationResultSink {
 public:
     void Receive(bool resultOk, std::string_view resultCode, std::string_view resultMessage,
@@ -126,7 +111,7 @@ EDITOR_PROJECT::EditorOperationRegistrationResult GameProjectEditorOperationRegi
     const std::string_view id = BoundedString(descriptor.id, 128u);
     const std::string_view summary = BoundedString(descriptor.summary, kMaximumOperationStringLength + 1u);
     const std::string_view workspace = BoundedString(descriptor.workspace, 128u);
-    if (!IsIdentifier(id) || summary.empty() || !IsIdentifier(workspace)) {
+    if (!IsGameProjectEditorIdentifier(id) || summary.empty() || !IsGameProjectEditorIdentifier(workspace)) {
         return Fail(PublicCode::InvalidDescriptor,
                     "Project Editor operation requires a bounded identifier, summary, and workspace.");
     }
@@ -188,7 +173,7 @@ EDITOR_PROJECT::EditorOperationRegistrationResult GameProjectEditorOperationRegi
         const std::string_view description =
             source.description == nullptr ? std::string_view{}
                                           : BoundedString(source.description, kMaximumOperationStringLength + 1u);
-        if (!IsIdentifier(name) || source.required > 1u || !parameterNames.emplace(name).second ||
+        if (!IsGameProjectEditorIdentifier(name) || source.required > 1u || !parameterNames.emplace(name).second ||
             (source.description != nullptr && description.empty() && source.description[0] != '\0')) {
             return Fail(PublicCode::InvalidParameter, "Project Editor operation parameter descriptor is invalid.");
         }

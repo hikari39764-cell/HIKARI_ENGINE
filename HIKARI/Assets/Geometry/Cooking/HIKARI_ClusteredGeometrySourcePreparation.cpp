@@ -13,22 +13,17 @@
 
 namespace HIKARI::ASSETS::GEOMETRY::COOKING {
 
-MATH::Vec3 TransformVector(const MATH::Mat4& matrix, const MATH::Vec3& value) {
-    const MATH::Vec4 transformed = matrix.TransformPoint({value.x, value.y, value.z, 0.0f});
-    return {transformed.x, transformed.y, transformed.z};
-}
-
 ClusterVertex ToClusterVertex(const Vertex3D& source, const MATH::Mat4& matrix, const MATH::Mat4& normalMatrix) {
     ClusterVertex out{};
     const MATH::Vec4 p = matrix.TransformPoint({source.position.x, source.position.y, source.position.z, 1.0f});
     out.position = {p.x, p.y, p.z};
-    out.normal = MATH::Normalize(TransformVector(normalMatrix, source.normal));
+    out.normal = MATH::Normalize(MATH::TransformVector(normalMatrix, source.normal));
     // 接線は位置の微分なので world 行列を使う。法線のみ逆転置で変換する。
     const MATH::Vec3 sourceTangent{source.tangent.x, source.tangent.y, source.tangent.z};
-    MATH::Vec3 tangent = TransformVector(matrix, sourceTangent);
+    MATH::Vec3 tangent = MATH::TransformVector(matrix, sourceTangent);
     tangent = MATH::Normalize(tangent - out.normal * MATH::Dot(out.normal, tangent));
-    const MATH::Vec3 bitangent =
-        TransformVector(matrix, MATH::Cross(source.normal, sourceTangent)) * (source.tangent.w < 0.0f ? -1.0f : 1.0f);
+    const MATH::Vec3 bitangent = MATH::TransformVector(matrix, MATH::Cross(source.normal, sourceTangent)) *
+                                 (source.tangent.w < 0.0f ? -1.0f : 1.0f);
     out.tangent = {tangent.x, tangent.y, tangent.z,
                    MATH::Dot(MATH::Cross(out.normal, tangent), bitangent) < 0.0f ? -1.0f : 1.0f};
     out.uv0 = source.uv0;
@@ -572,8 +567,9 @@ bool BuildSurfaceCookInput(const ModelAsset& model, const MeshPrimitive& primiti
         }
     }
     outWork.indices = primitive.indices;
-    if (!skinned && MATH::Dot(MATH::Cross(TransformVector(matrix, {1, 0, 0}), TransformVector(matrix, {0, 1, 0})),
-                              TransformVector(matrix, {0, 0, 1})) < 0.0f) {
+    if (!skinned &&
+        MATH::Dot(MATH::Cross(MATH::TransformVector(matrix, {1, 0, 0}), MATH::TransformVector(matrix, {0, 1, 0})),
+                  MATH::TransformVector(matrix, {0, 0, 1})) < 0.0f) {
         for (size_t i = 0; i + 2 < outWork.indices.size(); i += 3) {
             std::swap(outWork.indices[i + 1], outWork.indices[i + 2]);
         }

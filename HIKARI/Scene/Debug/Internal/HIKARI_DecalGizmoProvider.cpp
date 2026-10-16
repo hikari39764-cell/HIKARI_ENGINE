@@ -21,13 +21,13 @@ void DrawDecal(const GameObject& object, const ComponentGizmoDrawContext& contex
     const MATH::Mat4 world = object.GetTransform().GetWorldMatrix();
     const MATH::Vec3 size = decal->GetSettings().size;
     DRAW::SubmitStyledBox(world, {}, size, kDecalColor, selected);
-    const MATH::Vec3 back = DRAW::TransformPoint(world, {0.0f, 0.0f, -0.5f * size.z});
-    const MATH::Vec3 front = DRAW::TransformPoint(world, {0.0f, 0.0f, 0.5f * size.z});
+    const MATH::Vec3 back = MATH::TransformPoint(world, {0.0f, 0.0f, -0.5f * size.z});
+    const MATH::Vec3 front = MATH::TransformPoint(world, {0.0f, 0.0f, 0.5f * size.z});
     DRAW::SubmitStyledStroke(back, front, kDecalColor, selected);
-    const MATH::Vec3 head = DRAW::TransformPoint(world, {0.0f, 0.12f * size.y, 0.3f * size.z});
+    const MATH::Vec3 head = MATH::TransformPoint(world, {0.0f, 0.12f * size.y, 0.3f * size.z});
     DRAW::SubmitStyledStroke(front, head, kDecalColor, selected);
-    const MATH::Vec3 top = DRAW::TransformPoint(world, {0.0f, 0.5f * size.y, -0.5f * size.z});
-    const MATH::Vec3 topMark = DRAW::TransformPoint(world, {0.0f, 0.65f * size.y, -0.5f * size.z});
+    const MATH::Vec3 top = MATH::TransformPoint(world, {0.0f, 0.5f * size.y, -0.5f * size.z});
+    const MATH::Vec3 topMark = MATH::TransformPoint(world, {0.0f, 0.65f * size.y, -0.5f * size.z});
     DRAW::SubmitStyledStroke(top, topMark, kDecalColor, selected);
 }
 

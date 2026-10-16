@@ -25,13 +25,6 @@ ResolverState& GetState() noexcept {
     return state;
 }
 
-ShaderAssetResolveResult Failure(ShaderAssetResolveCode code, std::string diagnostic) {
-    ShaderAssetResolveResult result{};
-    result.code = code;
-    result.diagnostic = std::move(diagnostic);
-    return result;
-}
-
 bool Initialize(ResolverState& state) noexcept {
     if (state.initialized) {
         return !state.failed;
@@ -52,7 +45,7 @@ ShaderAssetResolveResult ResolveBuiltinShaderEntry(std::string_view programId, c
         ResolverState& state = GetState();
         const std::lock_guard lock(state.mutex);
         if (!Initialize(state)) {
-            return Failure(ShaderAssetResolveCode::ArtifactUnavailable, state.diagnostic);
+            return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::ArtifactUnavailable, state.diagnostic);
         }
         const BuiltinShaderArtifactProgram* match = nullptr;
         for (const BuiltinShaderArtifactProgram& program : state.programs) {
@@ -60,16 +53,19 @@ ShaderAssetResolveResult ResolveBuiltinShaderEntry(std::string_view programId, c
                 continue;
             }
             if (match != nullptr) {
-                return Failure(ShaderAssetResolveCode::ProgramAmbiguous, "built-in Shader program ID is duplicated");
+                return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::ProgramAmbiguous,
+                                                         "built-in Shader program ID is duplicated");
             }
             match = &program;
         }
         if (match == nullptr) {
-            return Failure(ShaderAssetResolveCode::ProgramNotFound, "built-in Shader program is not cooked");
+            return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::ProgramNotFound,
+                                                     "built-in Shader program is not cooked");
         }
         return ShaderAssetResolver::ResolveArtifact(match->artifact, entry, contract);
     } catch (...) {
-        return Failure(ShaderAssetResolveCode::ArtifactInvalid, "built-in Shader resolver threw an exception");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::ArtifactInvalid,
+                                                 "built-in Shader resolver threw an exception");
     }
 }
 
@@ -84,12 +80,14 @@ ShaderAssetResolveResult ResolveBuiltinRenderGeometryShaderEntry(
         std::string diagnostic;
         if (!artifact || !ValidateRenderGeometryShaderArtifact(*artifact, diagnostic) ||
             resolved.lease.GetDxil().empty()) {
-            return Failure(ShaderAssetResolveCode::ArtifactInvalid,
-                           diagnostic.empty() ? "invalid RenderGeometry shader artifact" : diagnostic);
+            return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::ArtifactInvalid,
+                                                     diagnostic.empty() ? "invalid RenderGeometry shader artifact"
+                                                                        : diagnostic);
         }
         return resolved;
     } catch (...) {
-        return Failure(ShaderAssetResolveCode::ArtifactInvalid, "RenderGeometry validation failed");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::ArtifactInvalid,
+                                                 "RenderGeometry validation failed");
     }
 }
 

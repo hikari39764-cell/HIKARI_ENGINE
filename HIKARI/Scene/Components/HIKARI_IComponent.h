@@ -62,6 +62,10 @@ public:
     }
     virtual void BuildInspector(IInspectorBuilder& builder) { (void)builder; }
 
+protected:
+    // 描画に効く値が変わった時、所有オブジェクトの描画状態を再投影させる。
+    void NotifyRenderStateDirty();
+
 private:
     friend class World;
 

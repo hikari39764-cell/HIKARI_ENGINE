@@ -74,11 +74,6 @@ std::unordered_map<uint64_t, ObjectBakePolicy> BuildObjectPolicies(const SceneDo
     return policies;
 }
 
-MATH::Vec3 TransformPosition(const MATH::Mat4& matrix, const MATH::Vec3& position) {
-    const MATH::Vec4 transformed = matrix.TransformPoint({position.x, position.y, position.z, 1.0f});
-    return {transformed.x, transformed.y, transformed.z};
-}
-
 MATH::Vec3 TransformNormal(const MATH::Mat4& matrix, const MATH::Vec3& normal) {
     const MATH::Vec4 transformed = matrix.TransformPoint({normal.x, normal.y, normal.z, 0.0f});
     return MATH::Normalize({transformed.x, transformed.y, transformed.z});
@@ -146,7 +141,7 @@ ASSETS::LIGHTING::LightmapSurfaceAnalysis AppendSurfaceTriangles(const RENDER3D:
         triangle.materialIndex = binding->second;
         for (uint32_t corner = 0u; corner < 3u; ++corner) {
             const Vertex3D& vertex = primitive.staticVertices[indices[corner]];
-            triangle.position[corner] = TransformPosition(surface.drawWorldMatrix, vertex.position);
+            triangle.position[corner] = MATH::TransformPoint(surface.drawWorldMatrix, vertex.position);
             triangle.normal[corner] = TransformNormal(normalMatrix, vertex.normal);
             triangle.lightmapUv[corner] = vertex.uv1;
             triangle.materialUv0[corner] = vertex.uv0;

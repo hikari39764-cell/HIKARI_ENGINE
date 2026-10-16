@@ -10,11 +10,6 @@ namespace HIKARI::DEBUG {
 namespace {
 constexpr int kCircleSegments = 24;
 
-MATH::Vec3 TransformPoint(const MATH::Mat4& matrix, const MATH::Vec3& point) {
-    const MATH::Vec4 transformed = matrix.TransformPoint({point.x, point.y, point.z, 1.0f});
-    return {transformed.x, transformed.y, transformed.z};
-}
-
 MATH::Vec3 Multiply(const MATH::Vec3& left, const MATH::Vec3& right) noexcept {
     return {left.x * right.x, left.y * right.y, left.z * right.z};
 }
@@ -22,8 +17,8 @@ MATH::Vec3 Multiply(const MATH::Vec3& left, const MATH::Vec3& right) noexcept {
 void SubmitLine(const MATH::Mat4& matrix, const MATH::Vec3& from, const MATH::Vec3& to,
                 const PhysicsShapeDebugStyle& style) {
     RENDERER3D::DEBUG::Stroke3D line{};
-    line.from = TransformPoint(matrix, from);
-    line.to = TransformPoint(matrix, to);
+    line.from = MATH::TransformPoint(matrix, from);
+    line.to = MATH::TransformPoint(matrix, to);
     line.rgba = style.outlineRgba;
     line.depthMode =
         style.xray ? RENDERER3D::DEBUG::DebugDepthMode::XRay : RENDERER3D::DEBUG::DebugDepthMode::DepthTest;

@@ -1,4 +1,5 @@
 #include "HIKARI_LightProbeVolumeFormat.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <array>
 #include <algorithm>
@@ -59,12 +60,6 @@ bool IsAxisValid(float origin, float size, float spacing, uint32_t count) {
         return true;
     const double extent = static_cast<double>(spacing) * (count - 1u);
     return std::abs(extent - size) <= (std::max)(1.0e-5, static_cast<double>(size) * 1.0e-5);
-}
-
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr) {
-        *outMessage = std::move(message);
-    }
 }
 
 bool IsMagicValid(const HlpvHeader& header) {

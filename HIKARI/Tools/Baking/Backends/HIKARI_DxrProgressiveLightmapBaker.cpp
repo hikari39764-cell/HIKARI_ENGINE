@@ -1,4 +1,5 @@
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 #include "Tools/Baking/Backends/HIKARI_DxrProgressiveLightmapBaker.h"
 
 #include <algorithm>
@@ -22,12 +23,6 @@ namespace TRANSPORT = RENDER3D::LIGHTING::TRANSPORT;
 namespace {
 
 using enum INTERNAL::DxrLightmapRootParameter;
-
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr) {
-        *outMessage = std::move(message);
-    }
-}
 
 bool CreateBuffer(ID3D12Device* device, UINT64 size, D3D12_HEAP_TYPE heapType, D3D12_RESOURCE_FLAGS flags,
                   D3D12_RESOURCE_STATES state, ID3D12Resource** outResource) {

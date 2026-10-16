@@ -1,5 +1,7 @@
 #include "Assets/Sprite/HIKARI_SpriteAssetSerialization.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 
+#include <algorithm>
 #include <cmath>
 #include <unordered_set>
 #include <utility>
@@ -29,16 +31,8 @@ constexpr TEXT::EnumName<TextureAssetAlphaClass> kTextureAssetAlphaClassNames[] 
 
 bool IsSafePageArtifactPath(std::string_view value) {
     const std::filesystem::path path = TEXT::PathFromUtf8(value);
-    if (value.empty() || path.is_absolute() || path.has_root_name() || path.has_root_directory() ||
-        TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(path.extension())) != ".htex") {
-        return false;
-    }
-    for (const std::filesystem::path& part : path) {
-        if (part == ".." || part == ".") {
-            return false;
-        }
-    }
-    return true;
+    return PATHS::IsSafeRelativePath(path) && TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(path.extension())) == ".htex" &&
+           std::none_of(path.begin(), path.end(), [](const std::filesystem::path& part) { return part == "."; });
 }
 
 std::string MakePageTextureAssetId(std::string_view prefix, std::string_view spriteGuid, std::string_view pageId) {

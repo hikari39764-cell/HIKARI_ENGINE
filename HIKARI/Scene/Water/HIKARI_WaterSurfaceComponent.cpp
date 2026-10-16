@@ -36,12 +36,6 @@ void WaterSurfaceComponent::ApplyPreset(WATER::WaterSurfacePreset preset) {
     SetSettings(next);
 }
 
-void WaterSurfaceComponent::NotifyRenderStateDirty() {
-    if (GameObject* owner = GetOwner()) {
-        owner->MarkRenderStateDirty();
-    }
-}
-
 void WaterSurfaceComponent::Serialize(nlohmann::json& out) const {
     const WATER::WaterSurfaceSettings settings = WATER::SanitizeWaterSurfaceSettings(settings_);
     out = {{"_schemaVersion", WATER::kWaterSurfaceSchemaVersion},

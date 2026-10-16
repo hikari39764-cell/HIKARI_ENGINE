@@ -1,4 +1,5 @@
 #include "Gameplay/Dialogue/HIKARI_DialogueProjectStyle.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <algorithm>
 #include <utility>
@@ -9,11 +10,6 @@
 namespace HIKARI::DIALOGUE {
 namespace {
 using json = nlohmann::json;
-
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr)
-        *outMessage = std::move(message);
-}
 
 std::string ToAssetRelativePath(const AssetDatabase& database, const AssetRecord& record) {
     std::filesystem::path source = record.sourcePath;

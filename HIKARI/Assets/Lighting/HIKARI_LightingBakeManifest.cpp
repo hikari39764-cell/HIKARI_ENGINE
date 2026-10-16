@@ -1,4 +1,5 @@
 #include "HIKARI_LightingBakeManifest.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <algorithm>
 #include <utility>
@@ -219,12 +220,6 @@ nlohmann::json ToJson(const LightmapBakeRecord& record) {
         {"bakeSet", record.bakeSet},
         {"scenario", record.scenario},
     };
-}
-
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage) {
-        *outMessage = std::move(message);
-    }
 }
 
 } // namespace

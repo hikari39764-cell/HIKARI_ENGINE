@@ -1,4 +1,6 @@
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <algorithm>
 #include <fstream>
@@ -68,12 +70,6 @@ bool ParseTextureMetadata(const nlohmann::json& node, AssetRecord& record, std::
     return true;
 }
 
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr) {
-        *outMessage = std::move(message);
-    }
-}
-
 nlohmann::json SerializeDependencies(std::vector<AssetDependencyDesc> dependencies) {
     std::sort(dependencies.begin(), dependencies.end(),
               [](const AssetDependencyDesc& lhs, const AssetDependencyDesc& rhs) {
@@ -137,7 +133,7 @@ bool ParseDependencies(const nlohmann::json& node, std::vector<AssetDependencyDe
         dependency.guid.value = dependencyNode.value("guid", "");
         dependency.path = dependencyNode.value("path", "");
         dependency.role = dependencyNode.value("role", "");
-        if (!dependency.path.empty() && !IsSafeCookedRelativePath(dependency.path)) {
+        if (!dependency.path.empty() && !PATHS::IsSafeRelativePath(dependency.path)) {
             outMessage = "Cooked asset dependency path is unsafe: " + dependency.path;
             return false;
         }
@@ -163,7 +159,7 @@ bool ParseArtifacts(const nlohmann::json& node, std::vector<AssetArtifactDesc>& 
         artifact.role = artifactNode.value("role", "");
         artifact.path = artifactNode.value("path", "");
         artifact.format = artifactNode.value("format", "");
-        if (artifact.path.empty() || !IsSafeCookedRelativePath(artifact.path)) {
+        if (artifact.path.empty() || !PATHS::IsSafeRelativePath(artifact.path)) {
             outMessage = "Cooked asset artifact path is unsafe: " + artifact.path;
             return false;
         }
@@ -191,7 +187,7 @@ bool ParseAssetRecord(const nlohmann::json& node, AssetRecord& outRecord, std::s
         outMessage = "Cooked asset has an unknown type: " + record.guid.value;
         return false;
     }
-    if (record.sourcePath.empty() || !IsSafeCookedRelativePath(record.sourcePath)) {
+    if (record.sourcePath.empty() || !PATHS::IsSafeRelativePath(record.sourcePath)) {
         outMessage = "Cooked asset source path is unsafe: " + record.sourcePath.generic_string();
         return false;
     }
@@ -241,19 +237,6 @@ bool ParseAssetRecord(const nlohmann::json& node, AssetRecord& outRecord, std::s
 }
 
 } // namespace
-
-bool IsSafeCookedRelativePath(const std::filesystem::path& path) noexcept {
-    if (path.empty() || path.is_absolute() || path.has_root_directory() || path.has_root_name()) {
-        return false;
-    }
-
-    for (const std::filesystem::path& component : path) {
-        if (component == "..") {
-            return false;
-        }
-    }
-    return true;
-}
 
 bool ReadCookedContentManifest(const std::filesystem::path& path, CookedContentManifest& outManifest,
                                std::string* outMessage) {
@@ -343,13 +326,13 @@ bool WriteCookedContentManifest(const std::filesystem::path& path, const CookedC
     nlohmann::json assets = nlohmann::json::array();
     for (const AssetRecord* record : records) {
         if (record == nullptr || !record->guid.IsValid() || record->type == AssetType::Unknown ||
-            !IsSafeCookedRelativePath(record->sourcePath)) {
+            !PATHS::IsSafeRelativePath(record->sourcePath)) {
             SetMessage(outMessage, "Cooked content contains an invalid asset entry.");
             return false;
         }
 
         for (const AssetArtifactDesc& artifact : record->artifactManifest.artifacts) {
-            if (!IsSafeCookedRelativePath(artifact.path)) {
+            if (!PATHS::IsSafeRelativePath(artifact.path)) {
                 SetMessage(outMessage, "Cooked artifact path is unsafe: " + artifact.path);
                 return false;
             }

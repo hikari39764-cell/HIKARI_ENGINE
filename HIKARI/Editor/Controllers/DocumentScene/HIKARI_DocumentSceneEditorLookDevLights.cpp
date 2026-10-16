@@ -111,7 +111,7 @@ void DocumentSceneEditorController::FinishLookDevObjectDrag(DocumentSceneBase& s
 void DocumentSceneEditorController::EditLookDevLight(DocumentSceneBase& scene, SceneObjectId objectId,
                                                      const LightSettings& settings) {
     ContinueLookDevObjectDrag(scene, objectId, "Edit Light", [&](SceneObjectData& object) {
-        SceneComponentData* light = EDITOR::FindLookDevComponent(object, "LightComponent");
+        SceneComponentData* light = object.FindComponent("LightComponent");
         if (light == nullptr) {
             return false;
         }

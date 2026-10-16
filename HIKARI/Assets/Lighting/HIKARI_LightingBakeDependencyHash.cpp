@@ -40,14 +40,8 @@ private:
     uint64_t hash_ = HASH::kFnv1a64OffsetBasis;
 };
 
-const SceneComponentData* FindComponent(const SceneObjectData& object, std::string_view type) {
-    const auto found = std::find_if(object.components.begin(), object.components.end(),
-                                    [type](const SceneComponentData& component) { return component.type == type; });
-    return found == object.components.end() ? nullptr : &*found;
-}
-
 bool IsLightingBakeModel(const SceneObjectData& object, const SceneComponentData*& outModel) {
-    outModel = FindComponent(object, "ModelComponent");
+    outModel = object.FindComponent("ModelComponent");
     if (!object.enabled || outModel == nullptr || !outModel->properties.is_object()) {
         return false;
     }
@@ -98,7 +92,7 @@ nlohmann::json BuildCaptureObjectNode(const SceneDocument& document, const Scene
     components.push_back({{"type", "ModelComponent"}, {"properties", BuildCaptureModelProperties(model.properties)}});
     for (std::string_view type :
          {std::string_view("MaterialFxComponent"), std::string_view("ProceduralMeshComponent")}) {
-        if (const SceneComponentData* component = FindComponent(object, type)) {
+        if (const SceneComponentData* component = object.FindComponent(type)) {
             components.push_back({{"type", component->type}, {"properties", component->properties}});
         }
     }
@@ -125,7 +119,7 @@ SceneDocument BuildLightingCaptureUsageDocument(const SceneDocument& document) {
         captureObject.components.push_back(*model);
         for (std::string_view type :
              {std::string_view("MaterialFxComponent"), std::string_view("ProceduralMeshComponent")}) {
-            if (const SceneComponentData* component = FindComponent(object, type)) {
+            if (const SceneComponentData* component = object.FindComponent(type)) {
                 captureObject.components.push_back(*component);
             }
         }
@@ -296,7 +290,7 @@ std::string BuildSceneHashInternal(const SceneDocument& document) {
     }
     std::vector<std::string> captureLights{};
     for (const SceneObjectData& object : document.objects) {
-        const SceneComponentData* light = FindComponent(object, LIGHTING_AUTHORING::kLightComponentType);
+        const SceneComponentData* light = object.FindComponent(LIGHTING_AUTHORING::kLightComponentType);
         if (!object.enabled || light == nullptr || !light->properties.is_object()) {
             continue;
         }
@@ -330,7 +324,7 @@ std::unordered_map<std::string, std::string> BuildLightingBakeRecordAuthoringHas
                        HashJson(BuildIrradianceVolumeCaptureNode(volume)));
     }
     for (const SceneObjectData& object : document.objects) {
-        const SceneComponentData* model = FindComponent(object, "ModelComponent");
+        const SceneComponentData* model = object.FindComponent("ModelComponent");
         if (model == nullptr || !model->properties.is_object() || !model->properties.value("renderStatic", false) ||
             !model->properties.value("includeInLightingBake", true)) {
             continue;

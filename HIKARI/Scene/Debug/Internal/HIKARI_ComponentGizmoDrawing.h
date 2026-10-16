@@ -16,11 +16,6 @@ inline unsigned int WithAlpha(unsigned int color, unsigned int alpha) noexcept {
     return (color & 0xFFFFFF00u) | (alpha & 0xFFu);
 }
 
-inline MATH::Vec3 TransformPoint(const MATH::Mat4& world, const MATH::Vec3& local) {
-    const MATH::Vec4 point = world.TransformPoint({local.x, local.y, local.z, 1.0f});
-    return {point.x, point.y, point.z};
-}
-
 inline void SubmitStroke(const MATH::Vec3& from, const MATH::Vec3& to, unsigned int color,
                          float thicknessPixels = kNormalStrokePixels,
                          RENDERER3D::DEBUG::DebugDepthMode depthMode = RENDERER3D::DEBUG::DebugDepthMode::DepthTest) {

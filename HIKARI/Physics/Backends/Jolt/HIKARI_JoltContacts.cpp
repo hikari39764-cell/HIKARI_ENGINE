@@ -11,13 +11,6 @@
 namespace HIKARI::PHYSICS::JOLT_BACKEND {
 namespace {
 
-PhysicsBodyHandle HandleFromUserData(uint64_t value) noexcept {
-    PhysicsBodyHandle result{};
-    result.slot = static_cast<uint32_t>(value & 0xFFFFFFFFu);
-    result.generation = static_cast<uint32_t>(value >> 32u);
-    return result;
-}
-
 float CombinedFriction(float a, float b) noexcept { return std::sqrt((std::max)(0.0f, a) * (std::max)(0.0f, b)); }
 
 float CombinedRestitution(float a, float b) noexcept {
@@ -124,8 +117,8 @@ void JoltPhysicsBackend::QueueContact(PhysicsContactPhase phase, const JPH::Body
     ContactKey key{};
     {
         std::scoped_lock lock(recordsMutex_);
-        const PhysicsBodyHandle handle1 = HandleFromUserData(body1.GetUserData());
-        const PhysicsBodyHandle handle2 = HandleFromUserData(body2.GetUserData());
+        const PhysicsBodyHandle handle1 = PhysicsBodyHandle::FromValue(body1.GetUserData());
+        const PhysicsBodyHandle handle2 = PhysicsBodyHandle::FromValue(body2.GetUserData());
         const BodyRecord* record1 = FindRecord(handle1);
         const BodyRecord* record2 = FindRecord(handle2);
         uint32_t shapeIndex1 = 0;

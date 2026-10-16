@@ -1,4 +1,5 @@
 #include "Gfx/RayTracing/HIKARI_DxrAccelerationStructure.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
@@ -13,11 +14,6 @@
 namespace HIKARI::GFX::RAYTRACING {
 namespace {
 constexpr uint64_t kAlignment = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT;
-
-void SetMessage(std::string* output, const char* message) {
-    if (output != nullptr)
-        *output = message;
-}
 
 bool ValidTriangles(const D3D12_RAYTRACING_GEOMETRY_DESC& geometry) {
     if (geometry.Type != D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES)

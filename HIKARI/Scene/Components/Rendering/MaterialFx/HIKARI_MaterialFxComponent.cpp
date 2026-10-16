@@ -15,12 +15,6 @@ bool MaterialFxComponent::CommitParameterState(MaterialFxParameterSet next) {
     return true;
 }
 
-void MaterialFxComponent::NotifyRenderStateDirty() {
-    if (GameObject* owner = GetOwner()) {
-        owner->MarkRenderStateDirty();
-    }
-}
-
 bool MaterialFxComponent::SetProfileId(std::string profileId) {
     MaterialFxParameterSet next = parameters_;
     if (!next.SetProfileId(std::move(profileId))) {

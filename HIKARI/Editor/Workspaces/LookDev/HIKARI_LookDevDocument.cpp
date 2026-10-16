@@ -11,12 +11,6 @@ namespace {
 constexpr float kDegreesToRadians = 0.0174532925f;
 }
 
-SceneComponentData* FindLookDevComponent(SceneObjectData& object, std::string_view type) noexcept {
-    const auto found = std::find_if(object.components.begin(), object.components.end(),
-                                    [type](const SceneComponentData& component) { return component.type == type; });
-    return found != object.components.end() ? &*found : nullptr;
-}
-
 void SyncLookDevRuntimeObject(DocumentSceneBase& scene, const SceneObjectData& object) {
     GameObject* runtime = scene.GetWorld().FindObject(object.id);
     if (runtime == nullptr) {

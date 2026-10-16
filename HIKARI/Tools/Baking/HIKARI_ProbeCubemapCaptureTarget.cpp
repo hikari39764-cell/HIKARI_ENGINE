@@ -1,4 +1,5 @@
 #include "HIKARI_ProbeCubemapCaptureTarget.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
@@ -18,12 +19,6 @@
 namespace HIKARI::TOOLS::BAKING {
 
 namespace {
-
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr) {
-        *outMessage = std::move(message);
-    }
-}
 
 bool IsValidFace(uint32_t faceIndex) { return faceIndex < 6u; }
 

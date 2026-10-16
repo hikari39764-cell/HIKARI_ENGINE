@@ -1,4 +1,5 @@
 #include "Gameplay/Dialogue/HIKARI_DialogueTheme.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -7,14 +8,7 @@ namespace HIKARI::DIALOGUE {
 namespace {
 using json = nlohmann::json;
 bool IsSafeAssetPath(std::string_view value) {
-    if (value.empty()) {
-        return false;
-    }
-    const std::filesystem::path path{std::string(value)};
-    if (path.is_absolute() || path.has_root_path()) {
-        return false;
-    }
-    return std::none_of(path.begin(), path.end(), [](const std::filesystem::path& part) { return part == ".."; });
+    return PATHS::IsSafeRelativePath(std::filesystem::path{std::string(value)});
 }
 
 bool IsFinitePositive(float value) { return std::isfinite(value) && value > 0.0f; }

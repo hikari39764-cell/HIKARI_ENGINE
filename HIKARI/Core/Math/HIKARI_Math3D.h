@@ -191,6 +191,22 @@ inline Vec4 Mat4::TransformPoint(const Vec4& v) const {
     return out;
 }
 
+// 点（w = 1）を変換する。射影で w が 1 以外になれば w で割る（w が非有限・ほぼ 0 なら割らない）。
+// アフィン行列では w がちょうど 1 なので割り算は起きない。
+inline Vec3 TransformPoint(const Mat4& matrix, const Vec3& point) {
+    const Vec4 v = matrix.TransformPoint({point.x, point.y, point.z, 1.0f});
+    if (v.w != 1.0f && std::isfinite(v.w) && std::abs(v.w) > 1.0e-6f) {
+        return {v.x / v.w, v.y / v.w, v.z / v.w};
+    }
+    return {v.x, v.y, v.z};
+}
+
+// 方向（w = 0）を変換する。平行移動は掛からない。
+inline Vec3 TransformVector(const Mat4& matrix, const Vec3& vector) {
+    const Vec4 v = matrix.TransformPoint({vector.x, vector.y, vector.z, 0.0f});
+    return {v.x, v.y, v.z};
+}
+
 // DirectX cubemap の +X,-X,+Y,-Y,+Z,-Z と [0,1] UV。
 Vec3 CubeFaceDirection(uint32_t face, float u, float v);
 void DirectionToCubeFaceUv(const Vec3& direction, uint32_t& face, float& u, float& v);

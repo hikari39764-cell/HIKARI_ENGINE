@@ -178,13 +178,6 @@ JPH::EAllowedDOFs BuildAllowedDofs(const PhysicsBodyDesc& body) noexcept {
     return allowed;
 }
 
-PhysicsBodyHandle HandleFromUserData(uint64_t value) noexcept {
-    PhysicsBodyHandle result{};
-    result.slot = static_cast<uint32_t>(value & 0xFFFFFFFFu);
-    result.generation = static_cast<uint32_t>(value >> 32u);
-    return result;
-}
-
 } // namespace
 
 JoltPhysicsBackend::JoltPhysicsBackend() = default;
@@ -306,7 +299,7 @@ const JoltPhysicsBackend::BodyRecord* JoltPhysicsBackend::FindRecord(PhysicsBody
 }
 
 const JoltPhysicsBackend::BodyRecord* JoltPhysicsBackend::FindRecordFromUserData(uint64_t value) const noexcept {
-    return FindRecord(HandleFromUserData(value));
+    return FindRecord(PhysicsBodyHandle::FromValue(value));
 }
 
 PhysicsBodyCreateResult JoltPhysicsBackend::CreateBody(const PhysicsBodyCreateInfo& createInfo) {

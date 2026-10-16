@@ -1,4 +1,5 @@
 #include "Gameplay/Dialogue/HIKARI_DialogueDefinition.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <algorithm>
 #include <cmath>
@@ -11,12 +12,6 @@
 namespace HIKARI::DIALOGUE {
 namespace {
 using json = nlohmann::json;
-
-void SetError(std::string* outError, std::string message) {
-    if (outError != nullptr) {
-        *outError = std::move(message);
-    }
-}
 
 void SerializeLocalized(const LocalizedText& value, json& outJson) {
     outJson = json::object();
@@ -227,7 +222,7 @@ void SerializeDialogueJson(const DialogueDefinition& definition, nlohmann::json&
 
 bool DeserializeDialogueJson(const nlohmann::json& jsonNode, DialogueDefinition& outDefinition, std::string* outError) {
     if (!jsonNode.is_object() || !jsonNode.contains("nodes") || !jsonNode["nodes"].is_array()) {
-        SetError(outError, "Dialogue payload must contain a node array");
+        SetMessage(outError, "Dialogue payload must contain a node array");
         return false;
     }
     DialogueDefinition definition{};
@@ -235,13 +230,13 @@ bool DeserializeDialogueJson(const nlohmann::json& jsonNode, DialogueDefinition&
     definition.entryNodeId = jsonNode.value("entryNodeId", definition.entryNodeId);
     definition.fallbackLocale = jsonNode.value("fallbackLocale", definition.fallbackLocale);
     if (jsonNode.contains("theme")) {
-        SetError(outError,
-                 "Embedded dialogue themes are retired; use the project dialogue style and TextStyle assets.");
+        SetMessage(outError,
+                   "Embedded dialogue themes are retired; use the project dialogue style and TextStyle assets.");
         return false;
     }
     for (const json& nodeJson : jsonNode["nodes"]) {
         if (!nodeJson.is_object()) {
-            SetError(outError, "Dialogue node must be an object");
+            SetMessage(outError, "Dialogue node must be an object");
             return false;
         }
         DialogueNode node{};
@@ -249,27 +244,27 @@ bool DeserializeDialogueJson(const nlohmann::json& jsonNode, DialogueDefinition&
         node.speakerId = nodeJson.value("speakerId", std::string{});
         const std::string type = nodeJson.value("type", "Line");
         if (!TEXT::TryParseEnum(kDialogueNodeTypeNames, type, node.type)) {
-            SetError(outError, "Dialogue node type is invalid: " + type);
+            SetMessage(outError, "Dialogue node type is invalid: " + type);
             return false;
         }
         const std::string portraitSlot = nodeJson.value("portraitSlot", "Auto");
         if (!TEXT::TryParseEnum(kDialoguePortraitSlotNames, portraitSlot, node.portraitSlot)) {
-            SetError(outError, "Dialogue portrait slot is invalid: " + portraitSlot);
+            SetMessage(outError, "Dialogue portrait slot is invalid: " + portraitSlot);
             return false;
         }
         const std::string portraitAction = nodeJson.value("portraitAction", "Auto");
         if (!TEXT::TryParseEnum(kDialoguePortraitActionNames, portraitAction, node.portraitAction)) {
-            SetError(outError, "Dialogue portrait action is invalid: " + portraitAction);
+            SetMessage(outError, "Dialogue portrait action is invalid: " + portraitAction);
             return false;
         }
         if (const auto speaker = nodeJson.find("speaker");
             speaker != nodeJson.end() && !DeserializeLocalized(*speaker, node.speaker)) {
-            SetError(outError, "Dialogue speaker localization is invalid");
+            SetMessage(outError, "Dialogue speaker localization is invalid");
             return false;
         }
         if (const auto text = nodeJson.find("text");
             text != nodeJson.end() && !DeserializeLocalized(*text, node.text)) {
-            SetError(outError, "Dialogue text localization is invalid");
+            SetMessage(outError, "Dialogue text localization is invalid");
             return false;
         }
         node.nextNodeId = nodeJson.value("nextNodeId", std::string{});
@@ -278,12 +273,12 @@ bool DeserializeDialogueJson(const nlohmann::json& jsonNode, DialogueDefinition&
         node.skippable = nodeJson.value("skippable", true);
         if (const auto choices = nodeJson.find("choices"); choices != nodeJson.end()) {
             if (!choices->is_array()) {
-                SetError(outError, "Dialogue choices must be an array");
+                SetMessage(outError, "Dialogue choices must be an array");
                 return false;
             }
             for (const json& choiceJson : *choices) {
                 if (!choiceJson.is_object()) {
-                    SetError(outError, "Dialogue choice must be an object");
+                    SetMessage(outError, "Dialogue choice must be an object");
                     return false;
                 }
                 DialogueChoice choice{};
@@ -291,7 +286,7 @@ bool DeserializeDialogueJson(const nlohmann::json& jsonNode, DialogueDefinition&
                 choice.nextNodeId = choiceJson.value("nextNodeId", std::string{});
                 const auto choiceText = choiceJson.find("text");
                 if (choiceText == choiceJson.end() || !DeserializeLocalized(*choiceText, choice.text)) {
-                    SetError(outError, "Dialogue choice localization is invalid");
+                    SetMessage(outError, "Dialogue choice localization is invalid");
                     return false;
                 }
                 node.choices.push_back(std::move(choice));

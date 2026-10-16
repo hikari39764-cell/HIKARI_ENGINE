@@ -20,15 +20,6 @@ namespace HIKARI::EDITOR::DETAIL {
 namespace {
 constexpr float kDegreesToRadians = MATH::kDegreesToRadians;
 
-MATH::Vec3 TransformPoint(const MATH::Mat4& transform, const MATH::Vec3& point) noexcept {
-    const MATH::Vec4 result = transform.TransformPoint({point.x, point.y, point.z, 1.0f});
-    if (std::abs(result.w) <= 1.0e-7f) {
-        return {result.x, result.y, result.z};
-    }
-    const float inverseW = 1.0f / result.w;
-    return {result.x * inverseW, result.y * inverseW, result.z * inverseW};
-}
-
 bool IntersectRayTriangle(const EditorPointerRay& ray, const MATH::Vec3& a, const MATH::Vec3& b, const MATH::Vec3& c,
                           float& outDistance) noexcept {
     constexpr float epsilon = 1.0e-7f;
@@ -74,8 +65,9 @@ bool IntersectGeometry(const EditorPointerRay& ray, const std::vector<MATH::Vec3
             continue;
         }
         float distance = 0.0f;
-        if (IntersectRayTriangle(ray, TransformPoint(transform, vertices[ia]), TransformPoint(transform, vertices[ib]),
-                                 TransformPoint(transform, vertices[ic]), distance)) {
+        if (IntersectRayTriangle(ray, MATH::TransformPoint(transform, vertices[ia]),
+                                 MATH::TransformPoint(transform, vertices[ib]),
+                                 MATH::TransformPoint(transform, vertices[ic]), distance)) {
             best = (std::min)(best, distance);
         }
     }
@@ -88,8 +80,8 @@ bool IntersectGeometry(const EditorPointerRay& ray, const std::vector<MATH::Vec3
 
 EditorPointerRay TransformRay(const EditorPointerRay& ray, const MATH::Mat4& inverseTransform) noexcept {
     EditorPointerRay local{};
-    local.origin = TransformPoint(inverseTransform, ray.origin);
-    const MATH::Vec3 end = TransformPoint(inverseTransform, ray.origin + ray.direction);
+    local.origin = MATH::TransformPoint(inverseTransform, ray.origin);
+    const MATH::Vec3 end = MATH::TransformPoint(inverseTransform, ray.origin + ray.direction);
     local.direction = MATH::Normalize(end - local.origin);
     return local;
 }
@@ -253,9 +245,9 @@ bool IntersectModelCollisionSourceNodeExact(const EditorPointerRay& ray, const M
                 return skinned ? primitive.skinnedVertices[index].position : primitive.staticVertices[index].position;
             };
             float distance = 0.0f;
-            if (IntersectRayTriangle(ray, TransformPoint(node.globalTransform, position(ia)),
-                                     TransformPoint(node.globalTransform, position(ib)),
-                                     TransformPoint(node.globalTransform, position(ic)), distance)) {
+            if (IntersectRayTriangle(ray, MATH::TransformPoint(node.globalTransform, position(ia)),
+                                     MATH::TransformPoint(node.globalTransform, position(ib)),
+                                     MATH::TransformPoint(node.globalTransform, position(ic)), distance)) {
                 best = (std::min)(best, distance);
             }
         }

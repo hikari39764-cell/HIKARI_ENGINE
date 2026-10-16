@@ -121,7 +121,6 @@ public:
     std::vector<uint8_t> ResolveRuntimeNodeVisibilityMask(const ModelAsset& model) const;
 
 private:
-    void NotifyRenderStateDirty();
 #if defined(HIKARI_WITH_EDITOR)
     void BuildDebugDisplayInspector(IInspectorBuilder& builder);
 #endif

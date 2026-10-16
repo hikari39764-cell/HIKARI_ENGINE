@@ -1,4 +1,5 @@
 #include "Assets/Shader/HIKARI_ShaderCookedArtifact.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -37,16 +38,7 @@ bool IsSafeLogicalDependencyPath(std::string_view text) {
         return false;
     }
     const std::filesystem::path path(text);
-    if (path.is_absolute() || path.has_root_name() || path.has_root_directory() ||
-        path.lexically_normal().generic_string() != text) {
-        return false;
-    }
-    for (const std::filesystem::path& part : path) {
-        if (part == "..") {
-            return false;
-        }
-    }
-    return true;
+    return PATHS::IsSafeRelativePath(path) && path.lexically_normal().generic_string() == text;
 }
 
 bool BindingLess(const ShaderResourceBinding& lhs, const ShaderResourceBinding& rhs) noexcept {

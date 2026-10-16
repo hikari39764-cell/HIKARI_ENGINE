@@ -12,6 +12,10 @@
 
 namespace HIKARI::EDITOR {
 
+// GameProject の editor 拡張が登録する module・workspace・操作の ID。ASCII 英数字で始まり、
+// 英数字と . _ - だけの 127 文字以内。
+bool IsGameProjectEditorIdentifier(std::string_view value) noexcept;
+
 class EditorOperationRegistry;
 
 enum class GameProjectWorkspaceCloseResolution : uint8_t {

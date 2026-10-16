@@ -459,10 +459,8 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ReplaceLookDevShape
     float fitScale = 0.0f;
     const bool replaced = EditLookDevDocument(*scene, "Replace With Model", [&](SceneDocument& document) {
         SceneObjectData* object = FindSceneObjectData(document, objectId);
-        SceneComponentData* shape =
-            object != nullptr ? EDITOR::FindLookDevComponent(*object, "ProceduralMeshComponent") : nullptr;
-        SceneComponentData* modelComponent =
-            object != nullptr ? EDITOR::FindLookDevComponent(*object, "ModelComponent") : nullptr;
+        SceneComponentData* shape = object != nullptr ? object->FindComponent("ProceduralMeshComponent") : nullptr;
+        SceneComponentData* modelComponent = object != nullptr ? object->FindComponent("ModelComponent") : nullptr;
         if (shape == nullptr || modelComponent == nullptr || EDITOR::IsObjectEditorLocked(document, objectId)) {
             return false;
         }

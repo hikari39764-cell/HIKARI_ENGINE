@@ -1,4 +1,5 @@
 #include "Runtime/Services/HIKARI_GameProjectSaveStorageService.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include "Platform/Paths/HIKARI_UserDataPath.h"
 
@@ -19,12 +20,6 @@ namespace {
 constexpr std::string_view kSaveDirectoryName = "SaveData";
 constexpr std::string_view kUserDirectoryName = "HIKARI";
 constexpr std::string_view kSlotExtension = ".save";
-
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr) {
-        *outMessage = std::move(message);
-    }
-}
 
 void RemoveIfPresent(const std::filesystem::path& path) noexcept {
     if (path.empty()) {

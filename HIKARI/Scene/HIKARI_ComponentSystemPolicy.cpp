@@ -13,13 +13,9 @@ namespace HIKARI {
 
 namespace {
 bool SceneUsesComponent(const SceneDocument& document, std::string_view componentType) {
-    return std::any_of(document.objects.begin(), document.objects.end(),
-                       [componentType](const SceneObjectData& object) {
-                           return std::any_of(object.components.begin(), object.components.end(),
-                                              [componentType](const SceneComponentData& component) {
-                                                  return component.type == componentType;
-                                              });
-                       });
+    return std::any_of(
+        document.objects.begin(), document.objects.end(),
+        [componentType](const SceneObjectData& object) { return object.FindComponent(componentType) != nullptr; });
 }
 
 const SceneSystemData* FindSystemSettings(const SceneDocument& document, std::string_view systemId) noexcept {

@@ -1,4 +1,5 @@
 #include "Scene/Camera/HIKARI_CameraCollision.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 #include "Core/Numeric/HIKARI_NonZero.h"
 #include "HIKARI_CameraDirector.h"
 
@@ -25,11 +26,6 @@ float ClampAspect(float aspect, const Camera3D& fallbackCamera) {
     }
     const float fallbackAspect = fallbackCamera.GetAspect();
     return std::isfinite(fallbackAspect) && fallbackAspect >= kMinAspect ? fallbackAspect : 16.0f / 9.0f;
-}
-
-float SmoothStep(float value) {
-    const float t = std::clamp(value, 0.0f, 1.0f);
-    return t * t * (3.0f - 2.0f * t);
 }
 
 float Lerp(float from, float to, float amount) { return from + (to - from) * amount; }
@@ -583,7 +579,7 @@ void CameraDirector::AdvanceBlend(const Camera3D& targetCamera, float deltaTime)
     blendElapsedSeconds_ += safeDeltaTime;
     const float normalizedTime =
         activeBlend_.durationSeconds > 0.0f ? blendElapsedSeconds_ / activeBlend_.durationSeconds : 1.0f;
-    const float blendAmount = SmoothStep(normalizedTime);
+    const float blendAmount = MATH::SmoothStep01(normalizedTime);
     resolvedFrame_.camera = BlendViews(blendStartCamera_, targetCamera, blendAmount);
 
     if (normalizedTime >= 1.0f) {

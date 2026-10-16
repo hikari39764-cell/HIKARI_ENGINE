@@ -12,12 +12,6 @@ namespace HIKARI {
 
 ModelComponent::~ModelComponent() = default;
 
-void ModelComponent::NotifyRenderStateDirty() {
-    if (GameObject* owner = GetOwner()) {
-        owner->MarkRenderStateDirty();
-    }
-}
-
 void ModelComponent::SetModelAsset(ModelAsset* asset) {
     asset_ = asset;
     if (asset_ != nullptr) {

@@ -38,7 +38,7 @@ std::vector<LightAuthoring> CollectLights(const SceneDocument& document) { retur
 std::vector<LightAuthoring> CollectLights(std::span<const SceneObjectData> objects) {
     std::vector<LightAuthoring> lights{};
     for (const SceneObjectData& object : objects) {
-        const SceneComponentData* component = FindLightingComponent(object, kLightComponentType);
+        const SceneComponentData* component = object.FindComponent(kLightComponentType);
         if (component != nullptr && component->properties.is_object()) {
             lights.push_back(ReadLight(object, *component));
         }

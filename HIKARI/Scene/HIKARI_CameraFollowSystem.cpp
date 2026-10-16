@@ -50,11 +50,6 @@ MATH::Vec3 ExtractAxis(const MATH::Mat4& matrix, int column) noexcept {
     return {matrix.m[column][0], matrix.m[column][1], matrix.m[column][2]};
 }
 
-MATH::Vec3 TransformPoint(const MATH::Mat4& matrix, const MATH::Vec3& point) noexcept {
-    const MATH::Vec4 transformed = matrix.TransformPoint({point.x, point.y, point.z, 1.0f});
-    return {transformed.x, transformed.y, transformed.z};
-}
-
 float ResolveGameplayAspect(const GameplayCameraService* cameraService) noexcept {
     if (cameraService != nullptr && cameraService->camera != nullptr) {
         const float aspect = cameraService->camera->GetAspect();
@@ -242,7 +237,7 @@ void CameraFollowSystem::EvaluateCamera(GameObject& cameraObject, CameraComponen
     }
 
     const MATH::Mat4 targetWorld = ResolveTargetWorldMatrix(*target, presentationTransforms_);
-    const MATH::Vec3 pivot = TransformPoint(targetWorld, component.Settings().pivotOffset);
+    const MATH::Vec3 pivot = MATH::TransformPoint(targetWorld, component.Settings().pivotOffset);
     if (!MATH::IsFinite(pivot)) {
         component.ResetRuntimeState();
         return;
@@ -271,7 +266,7 @@ void CameraFollowSystem::EvaluateCamera(GameObject& cameraObject, CameraComponen
         secondaryTarget = cameraObject.GetWorld()->FindObject(targetFraming.targetObject);
         if (secondaryTarget != nullptr) {
             const MATH::Mat4 secondaryWorld = ResolveTargetWorldMatrix(*secondaryTarget, presentationTransforms_);
-            requestedSecondaryPivot = TransformPoint(secondaryWorld, targetFraming.targetPivotOffset);
+            requestedSecondaryPivot = MATH::TransformPoint(secondaryWorld, targetFraming.targetPivotOffset);
             if (!MATH::IsFinite(requestedSecondaryPivot)) {
                 secondaryTarget = nullptr;
             }

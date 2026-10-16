@@ -9,31 +9,17 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-SceneComponentData* FindFirstComponent(SceneObjectData& object, std::string_view typeName) {
-    const auto found =
-        std::find_if(object.components.begin(), object.components.end(),
-                     [typeName](const SceneComponentData& component) { return component.type == typeName; });
-    return found != object.components.end() ? &*found : nullptr;
-}
-
-const SceneComponentData* FindFirstComponent(const SceneObjectData& object, std::string_view typeName) {
-    const auto found =
-        std::find_if(object.components.begin(), object.components.end(),
-                     [typeName](const SceneComponentData& component) { return component.type == typeName; });
-    return found != object.components.end() ? &*found : nullptr;
-}
-
 bool HasAuthoringGeometry(const SceneObjectData& object) {
-    if (FindFirstComponent(object, "ProceduralMeshComponent") != nullptr) {
+    if (object.FindComponent("ProceduralMeshComponent") != nullptr) {
         return true;
     }
-    const SceneComponentData* model = FindFirstComponent(object, "ModelComponent");
+    const SceneComponentData* model = object.FindComponent("ModelComponent");
     return model != nullptr && model->properties.is_object() &&
            !model->properties.value("assetId", std::string{}).empty();
 }
 
 std::string FindModelAssetId(const SceneObjectData& object) {
-    const SceneComponentData* model = FindFirstComponent(object, "ModelComponent");
+    const SceneComponentData* model = object.FindComponent("ModelComponent");
     return model != nullptr && model->properties.is_object() ? model->properties.value("assetId", std::string{})
                                                              : std::string{};
 }
@@ -82,14 +68,14 @@ CollisionAuthoringResult CollisionAuthoringService::Apply(const ComponentRegistr
         }
         ++result.matchedObjectCount;
         bool objectChanged = false;
-        SceneComponentData* collider = FindFirstComponent(object, "ColliderComponent");
+        SceneComponentData* collider = object.FindComponent("ColliderComponent");
         const bool createdCollider = collider == nullptr;
         if (createdCollider) {
             const ComponentAddResult addCollider = componentService.AddComponent(registry, object, "ColliderComponent");
             if (!addCollider.success) {
                 continue;
             }
-            collider = FindFirstComponent(object, "ColliderComponent");
+            collider = object.FindComponent("ColliderComponent");
             if (collider == nullptr) {
                 continue;
             }
@@ -114,11 +100,11 @@ CollisionAuthoringResult CollisionAuthoringService::Apply(const ComponentRegistr
             objectChanged |= fitChanged || assetChanged || triggerChanged;
         }
 
-        SceneComponentData* body = FindFirstComponent(object, "PhysicsBodyComponent");
+        SceneComponentData* body = object.FindComponent("PhysicsBodyComponent");
         if (request.bodyMode != CollisionBodyMode::Static && body == nullptr) {
             const ComponentAddResult addBody = componentService.AddComponent(registry, object, "PhysicsBodyComponent");
             if (addBody.success) {
-                body = FindFirstComponent(object, "PhysicsBodyComponent");
+                body = object.FindComponent("PhysicsBodyComponent");
                 ++result.createdBodyCount;
                 objectChanged = true;
             }

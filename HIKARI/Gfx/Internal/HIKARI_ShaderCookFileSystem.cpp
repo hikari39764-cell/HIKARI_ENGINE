@@ -9,16 +9,9 @@
 namespace HIKARI::GFX::INTERNAL {
 namespace {
 
-bool IsSafeRelativePath(const std::filesystem::path& path) {
-    if (path.empty() || path.is_absolute() || path.has_root_name() || path.has_root_directory()) {
-        return false;
-    }
-    for (const std::filesystem::path& component : path) {
-        if (component == "..") {
-            return false;
-        }
-    }
-    return path.lexically_normal() == path;
+// 正規化済みの形で書かれた安全な相対パスだけを受け付ける。
+bool IsSafeNormalizedRelativePath(const std::filesystem::path& path) {
+    return PATHS::IsSafeRelativePath(path) && path.lexically_normal() == path;
 }
 
 bool MakeRoot(ShaderCookIncludeRoot kind, const std::filesystem::path& physical, ShaderCookRoot& outRoot,
@@ -46,7 +39,7 @@ bool ResolveFile(const ShaderCookRoot& root, const std::filesystem::path& candid
         return false;
     }
     const std::filesystem::path relative = canonical.lexically_relative(root.physicalRoot);
-    if (!IsSafeRelativePath(relative)) {
+    if (!IsSafeNormalizedRelativePath(relative)) {
         outError = "shader source could not form a safe logical path";
         return false;
     }
@@ -126,7 +119,7 @@ bool BuildShaderCookRoots(const ShaderCookRequest& request, std::vector<ShaderCo
 
 bool ReadShaderCookFile(const ShaderCookRoot& root, const std::filesystem::path& relativePath,
                         std::string_view requiredExtension, ShaderCookFile& outFile, std::string& outError) {
-    if (!IsSafeRelativePath(relativePath) ||
+    if (!IsSafeNormalizedRelativePath(relativePath) ||
         TEXT::ToLowerAsciiCopy(relativePath.extension().string()) != requiredExtension) {
         outError = "shader source logical path or extension is invalid";
         return false;

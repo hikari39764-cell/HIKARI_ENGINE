@@ -49,6 +49,16 @@ struct SceneObjectData {
     std::string editorFolder{};
 
     bool operator==(const SceneObjectData&) const = default;
+
+    // 型名が一致する最初の component。無ければ nullptr。
+    SceneComponentData* FindComponent(std::string_view type) noexcept {
+        const auto found = std::find_if(components.begin(), components.end(),
+                                        [type](const SceneComponentData& component) { return component.type == type; });
+        return found != components.end() ? &*found : nullptr;
+    }
+    const SceneComponentData* FindComponent(std::string_view type) const noexcept {
+        return const_cast<SceneObjectData*>(this)->FindComponent(type);
+    }
 };
 
 // 編集操作で document の objects に起きた変化。runtime world の差分反映と差分履歴が使う。

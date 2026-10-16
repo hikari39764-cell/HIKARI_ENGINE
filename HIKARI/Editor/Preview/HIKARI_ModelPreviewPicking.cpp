@@ -18,15 +18,6 @@
 namespace HIKARI::EDITOR {
 namespace {
 
-MATH::Vec3 TransformPoint(const MATH::Mat4& transform, const MATH::Vec3& point) noexcept {
-    const MATH::Vec4 result = transform.TransformPoint({point.x, point.y, point.z, 1.0f});
-    if (std::abs(result.w) <= 1.0e-7f) {
-        return {result.x, result.y, result.z};
-    }
-    const float inverseW = 1.0f / result.w;
-    return {result.x * inverseW, result.y * inverseW, result.z * inverseW};
-}
-
 bool IntersectTriangle(const EditorPointerRay& ray, const MATH::Vec3& a, const MATH::Vec3& b, const MATH::Vec3& c,
                        float& outDistance) noexcept {
     const MATH::Vec3 edgeA = b - a;
@@ -94,9 +85,9 @@ ModelPreviewSurfacePick PickModelPreviewSurface(const EditorPointerRay& ray, con
                                    : primitive.staticVertices[index].position;
                 };
                 float distance = 0.0f;
-                if (IntersectTriangle(ray, TransformPoint(node.globalTransform, position(ia)),
-                                      TransformPoint(node.globalTransform, position(ib)),
-                                      TransformPoint(node.globalTransform, position(ic)), distance) &&
+                if (IntersectTriangle(ray, MATH::TransformPoint(node.globalTransform, position(ia)),
+                                      MATH::TransformPoint(node.globalTransform, position(ib)),
+                                      MATH::TransformPoint(node.globalTransform, position(ic)), distance) &&
                     distance < bestDistance) {
                     bestDistance = distance;
                     result.materialIndex = primitive.materialIndex;

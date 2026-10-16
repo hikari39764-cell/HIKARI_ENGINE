@@ -28,14 +28,6 @@ std::unordered_map<const MeshPrimitive*, CachedPrimitiveWire> gCache;
 MeshWireDebugStats gStats{};
 bool gSkinnedWarningEmitted = false;
 
-MATH::Vec3 TransformPoint(const MATH::Mat4& m, const MATH::Vec3& p) {
-    const MATH::Vec4 out = m.TransformPoint({p.x, p.y, p.z, 1.0f});
-    if (std::abs(out.w) > 1e-6f) {
-        return {out.x / out.w, out.y / out.w, out.z / out.w};
-    }
-    return {out.x, out.y, out.z};
-}
-
 MATH::Mat4 GetNodeLocalMatrix(const ModelNode& node) {
     return node.hasLocalMatrix ? node.localMatrix : node.localTransform.GetLocalMatrix();
 }
@@ -163,8 +155,8 @@ void SubmitBoundsLines(const Bounds& bounds, const MATH::Mat4& world, uint32_t c
     constexpr int edges[12][2] = {{0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7},
                                   {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
     for (const auto& edge : edges) {
-        RENDERER3D::DEBUG::SubmitStroke3D({TransformPoint(world, corners[edge[0]]),
-                                           TransformPoint(world, corners[edge[1]]), color,
+        RENDERER3D::DEBUG::SubmitStroke3D({MATH::TransformPoint(world, corners[edge[0]]),
+                                           MATH::TransformPoint(world, corners[edge[1]]), color,
                                            RENDERER3D::DEBUG::DebugDepthMode::XRay, 1.5f});
         ++gStats.submittedLineCount;
     }
@@ -184,8 +176,9 @@ bool SubmitPrimitiveWire(const MeshPrimitive& primitive, size_t primitiveIndex, 
             ++gStats.truncatedModelCount;
             return false;
         }
-        RENDERER3D::DEBUG::SubmitStroke3D({TransformPoint(worldMatrix, line.a), TransformPoint(worldMatrix, line.b),
-                                           primitiveColor, RENDERER3D::DEBUG::DebugDepthMode::XRay, 1.0f});
+        RENDERER3D::DEBUG::SubmitStroke3D({MATH::TransformPoint(worldMatrix, line.a),
+                                           MATH::TransformPoint(worldMatrix, line.b), primitiveColor,
+                                           RENDERER3D::DEBUG::DebugDepthMode::XRay, 1.0f});
         ++gStats.submittedLineCount;
         --remaining;
     }

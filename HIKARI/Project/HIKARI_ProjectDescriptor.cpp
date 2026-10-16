@@ -1,4 +1,6 @@
 #include "Project/HIKARI_ProjectDescriptor.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <limits>
 #include <system_error>
@@ -11,26 +13,8 @@
 namespace HIKARI {
 namespace {
 
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr) {
-        *outMessage = std::move(message);
-    }
-}
-
 bool LooksLikeDescriptorPath(const std::filesystem::path& path) {
     return path.filename() == std::filesystem::path(kProjectDescriptorFilename) || path.extension() == ".hikari";
-}
-
-bool IsSafeProjectRelativePath(const std::filesystem::path& path) {
-    if (path.empty() || path.is_absolute()) {
-        return false;
-    }
-    for (const std::filesystem::path& part : path) {
-        if (part == "..") {
-            return false;
-        }
-    }
-    return true;
 }
 
 } // namespace
@@ -129,7 +113,7 @@ bool LoadProjectDescriptor(const std::filesystem::path& descriptorPath, ProjectD
         }
         gameProjectManifest = root["gameProjectManifest"].get<std::string>();
     }
-    if (!IsSafeProjectRelativePath(gameProjectManifest)) {
+    if (!PATHS::IsSafeRelativePath(gameProjectManifest)) {
         SetMessage(outMessage, "Project.hikari gameProjectManifest must be a safe "
                                "project-relative path");
         return false;
@@ -152,7 +136,7 @@ bool SaveProjectDescriptor(const std::filesystem::path& descriptorPath, const Pr
         SetMessage(outMessage, "Project.hikari formatVersion is unsupported");
         return false;
     }
-    if (!IsSafeProjectRelativePath(descriptor.gameProjectManifest)) {
+    if (!PATHS::IsSafeRelativePath(descriptor.gameProjectManifest)) {
         SetMessage(outMessage, "Project.hikari gameProjectManifest must be a safe "
                                "project-relative path");
         return false;

@@ -30,8 +30,6 @@ public:
     void QueryGeometryFitParts(std::vector<GeometryFitDesc>& outParts) const override;
 
 private:
-    void NotifyRenderStateDirty();
-
     ProceduralMeshSettings settings_{};
     std::string materialSelection_{};
 };

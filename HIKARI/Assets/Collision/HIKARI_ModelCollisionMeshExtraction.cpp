@@ -8,11 +8,6 @@
 
 namespace HIKARI::ASSETS::COLLISION {
 namespace {
-MATH::Vec3 TransformPoint(const MATH::Mat4& transform, const MATH::Vec3& point) noexcept {
-    const MATH::Vec4 value = transform.TransformPoint({point.x, point.y, point.z, 1.0f});
-    return {value.x, value.y, value.z};
-}
-
 bool AppendPrimitive(const MeshPrimitive& primitive, const MATH::Mat4& transform, ModelCollisionMeshData& mesh) {
     const size_t vertexCount = primitive.layout == VertexLayoutKind::SkinnedPNTTJW ? primitive.skinnedVertices.size()
                                                                                    : primitive.staticVertices.size();
@@ -23,11 +18,11 @@ bool AppendPrimitive(const MeshPrimitive& primitive, const MATH::Mat4& transform
     mesh.vertices.reserve(mesh.vertices.size() + vertexCount);
     if (primitive.layout == VertexLayoutKind::SkinnedPNTTJW) {
         for (const SkinnedVertex3D& vertex : primitive.skinnedVertices) {
-            mesh.vertices.push_back(TransformPoint(transform, vertex.position));
+            mesh.vertices.push_back(MATH::TransformPoint(transform, vertex.position));
         }
     } else {
         for (const Vertex3D& vertex : primitive.staticVertices) {
-            mesh.vertices.push_back(TransformPoint(transform, vertex.position));
+            mesh.vertices.push_back(MATH::TransformPoint(transform, vertex.position));
         }
     }
 

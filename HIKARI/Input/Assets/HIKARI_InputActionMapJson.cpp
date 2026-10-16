@@ -1,4 +1,5 @@
 #include "Input/Assets/HIKARI_InputActionMapJson.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 
 #include <algorithm>
@@ -12,12 +13,6 @@ namespace HIKARI::INPUT {
 namespace {
 
 using nlohmann::json;
-
-void SetError(std::string* errorMessage, std::string message) {
-    if (errorMessage != nullptr) {
-        *errorMessage = std::move(message);
-    }
-}
 
 std::string ContextFileStem(std::string_view contextId) {
     std::string stem;
@@ -48,7 +43,7 @@ json SerializeBinding(const InputBinding& binding) {
 
 bool DeserializeBinding(const json& node, InputBinding& out, std::string* errorMessage) {
     if (!node.is_object()) {
-        SetError(errorMessage, "Input binding must be an object.");
+        SetMessage(errorMessage, "Input binding must be an object.");
         return false;
     }
     out.actionId = node.value("action", std::string{});
@@ -60,7 +55,7 @@ bool DeserializeBinding(const json& node, InputBinding& out, std::string* errorM
     const std::string sourceName = node.value("source", std::string{});
     if (out.actionId.empty() || out.control.empty() ||
         !TEXT::TryParseEnum(kInputBindingSourceNames, sourceName, out.source)) {
-        SetError(errorMessage, "Input binding has an invalid action, source, or control.");
+        SetMessage(errorMessage, "Input binding has an invalid action, source, or control.");
         return false;
     }
     return true;
@@ -197,12 +192,12 @@ bool LoadInputActionMapProject(const std::filesystem::path& inputDirectory, Inpu
     const std::filesystem::path actionsPath = inputDirectory / "actions.json";
     std::ifstream actionsFile(actionsPath);
     if (!actionsFile) {
-        SetError(errorMessage, "Input actions file is missing: " + actionsPath.string());
+        SetMessage(errorMessage, "Input actions file is missing: " + actionsPath.string());
         return false;
     }
     const json actionsRoot = json::parse(actionsFile, nullptr, false);
     if (!actionsRoot.is_object() || !actionsRoot.contains("actions") || !actionsRoot["actions"].is_array()) {
-        SetError(errorMessage, "Input actions file is invalid: " + actionsPath.string());
+        SetMessage(errorMessage, "Input actions file is invalid: " + actionsPath.string());
         return false;
     }
     out.version = actionsRoot.value("version", 1u);
@@ -213,7 +208,7 @@ bool LoadInputActionMapProject(const std::filesystem::path& inputDirectory, Inpu
         action.clampValue = node.value("clamp", true);
         const std::string typeName = node.value("valueType", std::string{});
         if (action.actionId.empty() || !TEXT::TryParseEnum(kInputActionValueTypeNames, typeName, action.valueType)) {
-            SetError(errorMessage, "Input action definition is invalid.");
+            SetMessage(errorMessage, "Input action definition is invalid.");
             return false;
         }
         out.actions.push_back(std::move(action));
@@ -228,7 +223,7 @@ bool LoadInputActionMapProject(const std::filesystem::path& inputDirectory, Inpu
         std::ifstream contextFile(entry.path());
         const json root = json::parse(contextFile, nullptr, false);
         if (!root.is_object()) {
-            SetError(errorMessage, "Input context file is invalid: " + entry.path().string());
+            SetMessage(errorMessage, "Input context file is invalid: " + entry.path().string());
             return false;
         }
         InputContextDefinition context{};
@@ -238,7 +233,7 @@ bool LoadInputActionMapProject(const std::filesystem::path& inputDirectory, Inpu
         context.consumeInput = root.value("consumeInput", false);
         context.enabledByDefault = root.value("enabledByDefault", true);
         if (context.contextId.empty() || !root.contains("bindings") || !root["bindings"].is_array()) {
-            SetError(errorMessage, "Input context is missing its ID or bindings.");
+            SetMessage(errorMessage, "Input context is missing its ID or bindings.");
             return false;
         }
         for (const json& bindingNode : root["bindings"]) {
@@ -251,12 +246,12 @@ bool LoadInputActionMapProject(const std::filesystem::path& inputDirectory, Inpu
         out.contexts.push_back(std::move(context));
     }
     if (ec) {
-        SetError(errorMessage, "Could not enumerate input contexts: " + ec.message());
+        SetMessage(errorMessage, "Could not enumerate input contexts: " + ec.message());
         return false;
     }
     const std::vector<std::string> issues = out.Validate();
     if (!issues.empty()) {
-        SetError(errorMessage, issues.front());
+        SetMessage(errorMessage, issues.front());
         return false;
     }
     return true;
@@ -266,13 +261,13 @@ bool SaveInputActionMapProject(const std::filesystem::path& inputDirectory, cons
                                std::string* errorMessage) {
     const std::vector<std::string> issues = map.Validate();
     if (!issues.empty()) {
-        SetError(errorMessage, issues.front());
+        SetMessage(errorMessage, issues.front());
         return false;
     }
     std::error_code ec{};
     std::filesystem::create_directories(inputDirectory, ec);
     if (ec) {
-        SetError(errorMessage, "Could not create input settings directory: " + ec.message());
+        SetMessage(errorMessage, "Could not create input settings directory: " + ec.message());
         return false;
     }
 
@@ -290,7 +285,7 @@ bool SaveInputActionMapProject(const std::filesystem::path& inputDirectory, cons
     }
     std::ofstream actionsFile(inputDirectory / "actions.json");
     if (!actionsFile) {
-        SetError(errorMessage, "Could not write input actions.");
+        SetMessage(errorMessage, "Could not write input actions.");
         return false;
     }
     actionsFile << actionsRoot.dump(2) << '\n';
@@ -313,7 +308,7 @@ bool SaveInputActionMapProject(const std::filesystem::path& inputDirectory, cons
         }
         std::ofstream contextFile(inputDirectory / fileName);
         if (!contextFile) {
-            SetError(errorMessage, "Could not write input context: " + context.contextId);
+            SetMessage(errorMessage, "Could not write input context: " + context.contextId);
             return false;
         }
         contextFile << root.dump(2) << '\n';
@@ -327,7 +322,7 @@ bool SaveInputActionMapProject(const std::filesystem::path& inputDirectory, cons
         }
         std::filesystem::remove(entry.path(), ec);
         if (ec) {
-            SetError(errorMessage, "Could not remove stale input context: " + ec.message());
+            SetMessage(errorMessage, "Could not remove stale input context: " + ec.message());
             return false;
         }
     }

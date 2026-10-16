@@ -363,9 +363,7 @@ private:
 
     void NotifyRenderStateDirty() {
         NUMERIC::AdvanceNonZero(stateRevision_);
-        if (GameObject* owner = GetOwner()) {
-            owner->MarkRenderStateDirty();
-        }
+        IComponent::NotifyRenderStateDirty();
     }
 
     void NotifyMaterialStateDirty() noexcept;

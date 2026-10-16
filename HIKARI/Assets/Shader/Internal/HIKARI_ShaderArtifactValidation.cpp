@@ -1,4 +1,5 @@
 #include "Assets/Shader/Internal/HIKARI_ShaderArtifactValidation.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -17,21 +18,9 @@
 namespace HIKARI::ASSETS::SHADER::INTERNAL {
 namespace {
 
-bool IsSafeRelativePath(const std::filesystem::path& path) noexcept {
-    if (path.empty() || path.is_absolute() || path.has_root_directory() || path.has_root_name()) {
-        return false;
-    }
-    for (const std::filesystem::path& component : path) {
-        if (component == "..") {
-            return false;
-        }
-    }
-    return true;
-}
-
 bool ResolveContainedFilePath(const std::filesystem::path& root, const std::filesystem::path& relativePath,
                               std::filesystem::path& outPath) {
-    if (!IsSafeRelativePath(relativePath)) {
+    if (!PATHS::IsSafeRelativePath(relativePath)) {
         return false;
     }
     std::error_code ec{};

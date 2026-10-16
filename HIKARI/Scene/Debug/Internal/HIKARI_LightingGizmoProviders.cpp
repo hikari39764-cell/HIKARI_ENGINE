@@ -44,7 +44,7 @@ void DrawLight(const GameObject& object, const ComponentGizmoDrawContext& contex
     }
     const bool selected = object.GetDocumentId() == context.selectedObjectId;
     const MATH::Mat4 world = object.GetTransform().GetWorldMatrix();
-    const MATH::Vec3 position = DRAW::TransformPoint(world, {});
+    const MATH::Vec3 position = MATH::TransformPoint(world, {});
     const MATH::Vec3 direction = WorldForward(world);
     SubmitProbeCenter(position, selected, kLightColor);
 
@@ -150,7 +150,7 @@ void SubmitSphereBoundary(const MATH::Mat4& world, float radius, unsigned int co
     if (radius <= 0.001f) {
         return;
     }
-    const MATH::Vec3 center = DRAW::TransformPoint(world, {});
+    const MATH::Vec3 center = MATH::TransformPoint(world, {});
     if (selected) {
         RENDERER3D::DEBUG::WireSphere3D halo{};
         halo.center = center;
@@ -181,7 +181,7 @@ void DrawReflectionProbe(const GameObject& object, const ComponentGizmoDrawConte
                      probe->GetViewportBoundsTarget() == ReflectionProbeViewportBoundsTarget::Projection);
     const bool influenceSelected = selected && (!projectionSelected || probe->GetProjectionFollowsInfluence());
     const MATH::Mat4 world = BuildTranslationOnlyWorld(object);
-    SubmitProbeCenter(DRAW::TransformPoint(world, {}), selected);
+    SubmitProbeCenter(MATH::TransformPoint(world, {}), selected);
     if (probe->GetInfluenceShape() == ReflectionProbeInfluenceShape::Box) {
         DRAW::SubmitStyledBox(world, probe->GetInfluenceBoxOffset(), probe->GetInfluenceBoxSize(),
                               kReflectionProbeColor, influenceSelected);
@@ -228,7 +228,7 @@ void DrawIrradianceVolume(const GameObject& object, const ComponentGizmoDrawCont
     }
     const bool selected = object.GetDocumentId() == context.selectedObjectId;
     const MATH::Mat4 world = BuildTranslationOnlyWorld(object);
-    SubmitProbeCenter(DRAW::TransformPoint(world, {}), selected, kIrradianceVolumeColor);
+    SubmitProbeCenter(MATH::TransformPoint(world, {}), selected, kIrradianceVolumeColor);
     DRAW::SubmitStyledBox(world, {}, volume->GetSize(), kIrradianceVolumeColor, selected);
     const MATH::Vec3 innerSize = BuildInnerBoxSize(volume->GetSize(), volume->GetBlendDistance());
     if (volume->GetBlendDistance() > 0.001f && HasDrawableBoxSize(innerSize)) {
@@ -253,7 +253,7 @@ void DrawIrradianceVolume(const GameObject& object, const ComponentGizmoDrawCont
                                            ProbeCoordinate(y, volume->GetCountY(), volume->GetSize().y),
                                            ProbeCoordinate(z, volume->GetCountZ(), volume->GetSize().z)};
             RENDERER3D::DEBUG::PointMarker3D marker{};
-            marker.position = DRAW::TransformPoint(world, localPosition);
+            marker.position = MATH::TransformPoint(world, localPosition);
             marker.radius = markerRadius;
             marker.rgba = DRAW::WithAlpha(kIrradianceVolumeColor, 0xE0u);
             marker.depthMode = RENDERER3D::DEBUG::DebugDepthMode::XRay;

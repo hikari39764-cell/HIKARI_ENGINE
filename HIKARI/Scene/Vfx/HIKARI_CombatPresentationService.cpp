@@ -1,4 +1,5 @@
 #include "Scene/Vfx/HIKARI_CombatPresentationService.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 #include "Core/Numeric/HIKARI_NonZero.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 
@@ -50,11 +51,6 @@ float Distance(const MATH::Vec3& lhs, const MATH::Vec3& rhs) noexcept {
 
 MATH::Vec3 Lerp(const MATH::Vec3& from, const MATH::Vec3& to, float weight) noexcept {
     return from + (to - from) * weight;
-}
-
-float SmoothStep01(float value) noexcept {
-    const float t = std::clamp(value, 0.0f, 1.0f);
-    return t * t * (3.0f - 2.0f * t);
 }
 
 float ActionScale(float requestValue, float defaultValue) noexcept {
@@ -509,7 +505,7 @@ void CombatPresentationService::BuildWeaponTrailFrame() noexcept {
                                                     float across) {
                 const float life = (std::max)(0.0001f, sample.lifetimeSeconds);
                 const float remaining = 1.0f - std::clamp(sample.ageSeconds / life, 0.0f, 1.0f);
-                const float alpha = sample.opacity * std::clamp(colorAlpha, 0.0f, 1.0f) * SmoothStep01(remaining);
+                const float alpha = sample.opacity * std::clamp(colorAlpha, 0.0f, 1.0f) * MATH::SmoothStep01(remaining);
                 RENDER3D::COMBAT_VFX::WeaponTrailVertex vertex{};
                 vertex.position = position;
                 vertex.uv = {along / denominator, across};
@@ -520,7 +516,7 @@ void CombatPresentationService::BuildWeaponTrailFrame() noexcept {
                 vertex.tangentWorld = tangent;
                 vertex.normalWorld = normal;
                 vertex.flowData = {along / denominator + sample.ageSeconds * 2.0f, alpha,
-                                   SmoothStep01(std::clamp(edgeDistance * 4.0f * sample.width, 0.0f, 1.0f)) *
+                                   MATH::SmoothStep01(std::clamp(edgeDistance * 4.0f * sample.width, 0.0f, 1.0f)) *
                                        std::clamp(sample.blurScale, 0.0f, 8.0f),
                                    std::clamp(sample.distortionStrength, 0.0f, 8.0f)};
                 weaponTrailVertices_.push_back(vertex);
@@ -578,7 +574,7 @@ void CombatPresentationService::BuildGroundTelegraphFrame() noexcept {
         const float timePhase =
             frameSource_.unscaledTimeSeconds * 8.0f + static_cast<float>(request.sourceId & 0xffu) * 0.037f;
         const float pulse = 0.88f + 0.12f * std::sin(timePhase);
-        const float fade = SmoothStep01(std::clamp(remaining * 4.0f, 0.0f, 1.0f));
+        const float fade = MATH::SmoothStep01(std::clamp(remaining * 4.0f, 0.0f, 1.0f));
         const auto color = [fade, pulse, &request](const MATH::Vec3& rgb, float opacity, float pulseWeight) {
             const float energy = request.intensity * (1.0f + (pulse - 1.0f) * pulseWeight);
             return MATH::Vec4{rgb.x * energy, rgb.y * energy, rgb.z * energy, std::clamp(opacity * fade, 0.0f, 1.0f)};
@@ -644,7 +640,7 @@ void CombatPresentationService::BuildWorldBarrierFrame() noexcept {
         const WorldBarrierRequest& request = state.request;
         const float remaining =
             1.0f - std::clamp(state.ageSeconds / (std::max)(request.lifetimeUnscaledSeconds, 0.03f), 0.0f, 1.0f);
-        const float fade = SmoothStep01(std::clamp(remaining * 4.0f, 0.0f, 1.0f));
+        const float fade = MATH::SmoothStep01(std::clamp(remaining * 4.0f, 0.0f, 1.0f));
         const MATH::Vec4 color{request.color.x, request.color.y, request.color.z,
                                std::clamp(request.opacity * fade, 0.0f, 1.0f)};
         const MATH::Vec2 effect{1.0f, request.interaction};

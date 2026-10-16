@@ -8,13 +8,6 @@
 namespace HIKARI::ASSETS::SHADER {
 namespace {
 
-ShaderAssetResolveResult Failure(ShaderAssetResolveCode code, std::string diagnostic) {
-    ShaderAssetResolveResult result{};
-    result.code = code;
-    result.diagnostic = std::move(diagnostic);
-    return result;
-}
-
 bool IsValidEntryExpectation(const ShaderAssetEntryExpectation& entry) noexcept {
     return !entry.entryId.empty() && entry.entryId.size() <= kMaximumShaderIdentifierBytes &&
            entry.entryId.find('\0') == std::string::npos && entry.stage < ShaderStage::Count &&
@@ -36,10 +29,12 @@ bool IsValidContractExpectation(const ShaderAssetContractExpectation& contract) 
 ShaderAssetResolveResult ValidateRequest(const ShaderAssetEntryExpectation& entry,
                                          const ShaderAssetContractExpectation& contract) {
     if (!IsValidEntryExpectation(entry)) {
-        return Failure(ShaderAssetResolveCode::InvalidRequest, "shader entry expectation is invalid");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::InvalidRequest,
+                                                 "shader entry expectation is invalid");
     }
     if (!IsValidContractExpectation(contract)) {
-        return Failure(ShaderAssetResolveCode::InvalidRequest, "shader contract expectation is invalid");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::InvalidRequest,
+                                                 "shader contract expectation is invalid");
     }
     ShaderAssetResolveResult result{};
     result.code = ShaderAssetResolveCode::Success;
@@ -97,19 +92,23 @@ ShaderAssetResolveResult ShaderAssetResolver::ResolveByGuid(const AssetRegistry&
         return request;
     }
     if (!IsValidAssetGuid(assetGuid.value)) {
-        return Failure(ShaderAssetResolveCode::InvalidRequest, "shader asset GUID is invalid");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::InvalidRequest,
+                                                 "shader asset GUID is invalid");
     }
 
     const AssetDescriptor* base = registry.FindDescriptor(assetGuid.value);
     if (base == nullptr) {
-        return Failure(ShaderAssetResolveCode::AssetNotFound, "shader asset is not registered");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::AssetNotFound,
+                                                 "shader asset is not registered");
     }
     if (base->type != AssetType::Shader) {
-        return Failure(ShaderAssetResolveCode::AssetTypeMismatch, "registered asset is not a Shader");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::AssetTypeMismatch,
+                                                 "registered asset is not a Shader");
     }
     const auto* descriptor = dynamic_cast<const ShaderAssetDescriptor*>(base);
     if (descriptor == nullptr) {
-        return Failure(ShaderAssetResolveCode::AssetTypeMismatch, "Shader descriptor type is invalid");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::AssetTypeMismatch,
+                                                 "Shader descriptor type is invalid");
     }
     return ResolveDescriptor(*descriptor, entry, contract);
 }
@@ -122,7 +121,8 @@ ShaderAssetResolveResult ShaderAssetResolver::ResolveArtifact(std::shared_ptr<co
         return request;
     }
     if (artifact == nullptr || !IsValidAssetGuid(artifact->sourceGuid.value)) {
-        return Failure(ShaderAssetResolveCode::ArtifactUnavailable, "Shader artifact is unavailable");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::ArtifactUnavailable,
+                                                 "Shader artifact is unavailable");
     }
     ShaderAssetDescriptor descriptor{};
     descriptor.id.value = artifact->sourceGuid.value;
@@ -136,32 +136,37 @@ ShaderAssetResolveResult ShaderAssetResolver::ResolveDescriptor(const ShaderAsse
                                                                 const ShaderAssetContractExpectation& contract) {
     const std::shared_ptr<const ShaderCookedArtifact>& artifact = descriptor.program;
     if (artifact == nullptr) {
-        return Failure(ShaderAssetResolveCode::ArtifactUnavailable, "Shader descriptor has no cooked artifact");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::ArtifactUnavailable,
+                                                 "Shader descriptor has no cooked artifact");
     }
     if (descriptor.id.value != artifact->sourceGuid.value) {
-        return Failure(ShaderAssetResolveCode::ArtifactInvalid, "Shader descriptor and artifact GUIDs differ");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::ArtifactInvalid,
+                                                 "Shader descriptor and artifact GUIDs differ");
     }
 
     std::string validationError{};
     if (!ValidateShaderCookedArtifact(*artifact, validationError)) {
-        return Failure(ShaderAssetResolveCode::ArtifactInvalid, "HSHADERC validation failed: " + validationError);
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::ArtifactInvalid,
+                                                 "HSHADERC validation failed: " + validationError);
     }
     if (artifact->engineInterfaceId != contract.engineInterfaceId ||
         artifact->engineInterfaceVersion != contract.engineInterfaceVersion ||
         artifact->engineInterfaceHash != contract.engineInterfaceHash) {
-        return Failure(ShaderAssetResolveCode::EngineInterfaceMismatch,
-                       "Shader engine-interface contract does not match");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::EngineInterfaceMismatch,
+                                                 "Shader engine-interface contract does not match");
     }
     if (artifact->rootLayoutId != contract.rootLayoutId || artifact->rootLayoutVersion != contract.rootLayoutVersion ||
         artifact->rootLayoutHash != contract.rootLayoutHash) {
-        return Failure(ShaderAssetResolveCode::RootLayoutMismatch, "Shader root-layout contract does not match");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::RootLayoutMismatch,
+                                                 "Shader root-layout contract does not match");
     }
     const ShaderRuntimeDeviceCapabilities& available = contract.availableDeviceCaps;
     const ShaderDeviceCaps& required = artifact->requiredCaps;
     if (available.shaderModel < required.minimumShaderModel ||
         available.rootSignatureVersion < required.minimumRootSignatureVersion ||
         (required.requiredFeatureMask & ~available.featureMask) != 0u) {
-        return Failure(ShaderAssetResolveCode::DeviceCapabilityMismatch, "Shader device requirements are unavailable");
+        return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::DeviceCapabilityMismatch,
+                                                 "Shader device requirements are unavailable");
     }
 
     for (size_t index = 0u; index < artifact->entries.size(); ++index) {
@@ -170,10 +175,12 @@ ShaderAssetResolveResult ShaderAssetResolver::ResolveDescriptor(const ShaderAsse
             continue;
         }
         if (candidate.entry.stage != entry.stage) {
-            return Failure(ShaderAssetResolveCode::StageMismatch, "Shader entry stage does not match");
+            return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::StageMismatch,
+                                                     "Shader entry stage does not match");
         }
         if (candidate.entry.profile != entry.profile) {
-            return Failure(ShaderAssetResolveCode::ProfileMismatch, "Shader entry profile does not match");
+            return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::ProfileMismatch,
+                                                     "Shader entry profile does not match");
         }
 
         ShaderAssetResolveResult result{};
@@ -181,7 +188,8 @@ ShaderAssetResolveResult ShaderAssetResolver::ResolveDescriptor(const ShaderAsse
         result.lease = ShaderAssetEntryLease(artifact, index);
         return result;
     }
-    return Failure(ShaderAssetResolveCode::EntryNotFound, "Shader entry ID is not present in the artifact");
+    return ShaderAssetResolveResult::Failure(ShaderAssetResolveCode::EntryNotFound,
+                                             "Shader entry ID is not present in the artifact");
 }
 
 } // namespace HIKARI::ASSETS::SHADER

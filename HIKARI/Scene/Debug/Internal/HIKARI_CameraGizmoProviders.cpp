@@ -55,10 +55,10 @@ void SubmitCameraBody(const MATH::Mat4& world, float scale, bool selected) {
         {-lensHalf, lensHalf, lensFront},
     }};
     for (size_t index = 0; index < lensCorners.size(); ++index) {
-        DRAW::SubmitStyledStroke(DRAW::TransformPoint(world, bodyCorners[index]),
-                                 DRAW::TransformPoint(world, lensCorners[index]), kCameraColor, selected);
-        DRAW::SubmitStyledStroke(DRAW::TransformPoint(world, lensCorners[index]),
-                                 DRAW::TransformPoint(world, lensCorners[(index + 1u) % lensCorners.size()]),
+        DRAW::SubmitStyledStroke(MATH::TransformPoint(world, bodyCorners[index]),
+                                 MATH::TransformPoint(world, lensCorners[index]), kCameraColor, selected);
+        DRAW::SubmitStyledStroke(MATH::TransformPoint(world, lensCorners[index]),
+                                 MATH::TransformPoint(world, lensCorners[(index + 1u) % lensCorners.size()]),
                                  kCameraColor, selected);
     }
     const std::array<MATH::Vec3, 3> handle{{
@@ -67,8 +67,8 @@ void SubmitCameraBody(const MATH::Mat4& world, float scale, bool selected) {
         {0.13f * scale, bodyHalfHeight, -0.05f * scale},
     }};
     for (size_t index = 0; index < handle.size(); ++index) {
-        DRAW::SubmitStyledStroke(DRAW::TransformPoint(world, handle[index]),
-                                 DRAW::TransformPoint(world, handle[(index + 1u) % handle.size()]), kCameraColor,
+        DRAW::SubmitStyledStroke(MATH::TransformPoint(world, handle[index]),
+                                 MATH::TransformPoint(world, handle[(index + 1u) % handle.size()]), kCameraColor,
                                  selected);
     }
 }
@@ -90,14 +90,14 @@ void DrawCamera(const GameObject& object, const ComponentGizmoDrawContext& conte
     const float farWidth = farHeight * aspect;
     const MATH::Mat4 world = object.GetTransform().GetWorldMatrix();
     const std::array<MATH::Vec3, 8> corners{{
-        DRAW::TransformPoint(world, {-nearWidth, -nearHeight, nearDistance}),
-        DRAW::TransformPoint(world, {nearWidth, -nearHeight, nearDistance}),
-        DRAW::TransformPoint(world, {nearWidth, nearHeight, nearDistance}),
-        DRAW::TransformPoint(world, {-nearWidth, nearHeight, nearDistance}),
-        DRAW::TransformPoint(world, {-farWidth, -farHeight, farDistance}),
-        DRAW::TransformPoint(world, {farWidth, -farHeight, farDistance}),
-        DRAW::TransformPoint(world, {farWidth, farHeight, farDistance}),
-        DRAW::TransformPoint(world, {-farWidth, farHeight, farDistance}),
+        MATH::TransformPoint(world, {-nearWidth, -nearHeight, nearDistance}),
+        MATH::TransformPoint(world, {nearWidth, -nearHeight, nearDistance}),
+        MATH::TransformPoint(world, {nearWidth, nearHeight, nearDistance}),
+        MATH::TransformPoint(world, {-nearWidth, nearHeight, nearDistance}),
+        MATH::TransformPoint(world, {-farWidth, -farHeight, farDistance}),
+        MATH::TransformPoint(world, {farWidth, -farHeight, farDistance}),
+        MATH::TransformPoint(world, {farWidth, farHeight, farDistance}),
+        MATH::TransformPoint(world, {-farWidth, farHeight, farDistance}),
     }};
     constexpr std::array<std::array<int, 2>, 12> edges{{
         {0, 1},
@@ -116,7 +116,7 @@ void DrawCamera(const GameObject& object, const ComponentGizmoDrawContext& conte
     for (const auto& edge : edges) {
         DRAW::SubmitStyledStroke(corners[edge[0]], corners[edge[1]], kCameraColor, selected);
     }
-    const MATH::Vec3 origin = DRAW::TransformPoint(world, {});
+    const MATH::Vec3 origin = MATH::TransformPoint(world, {});
     const float markerScale = std::clamp(MATH::Length(origin - context.viewportCameraPosition) * 0.035f, 0.25f, 1.25f);
     SubmitCameraBody(world, markerScale, selected);
 }

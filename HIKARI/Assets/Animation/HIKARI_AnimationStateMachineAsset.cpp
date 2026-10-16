@@ -1,4 +1,5 @@
 #include "Assets/Animation/HIKARI_AnimationStateMachineAsset.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <utility>
 
@@ -8,33 +9,28 @@
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 
 namespace HIKARI {
-namespace {
-void SetError(std::string* outError, std::string message) {
-    if (outError != nullptr)
-        *outError = std::move(message);
-}
-} // namespace
+namespace {} // namespace
 
 bool LoadAnimationStateMachineAsset(const std::filesystem::path& path, const AssetGuid& authoritativeGuid,
                                     AnimationStateMachineAsset& outAsset, std::string* outError) {
     nlohmann::json root{};
     std::string ioMessage{};
     if (!SERIALIZATION::JSON::ReadJsonFile(path, root, &ioMessage)) {
-        SetError(outError, "Unable to read animation state machine asset: " + ioMessage);
+        SetMessage(outError, "Unable to read animation state machine asset: " + ioMessage);
         return false;
     }
     if (!root.is_object()) {
-        SetError(outError, "Invalid animation state machine JSON");
+        SetMessage(outError, "Invalid animation state machine JSON");
         return false;
     }
     const uint32_t version = root.value("formatVersion", 0u);
     if (version != AnimationStateMachineAsset::kFormatVersion) {
-        SetError(outError, "Unsupported animation state machine version");
+        SetMessage(outError, "Unsupported animation state machine version");
         return false;
     }
     const auto definitionNode = root.find("stateMachine");
     if (definitionNode == root.end()) {
-        SetError(outError, "Animation state machine payload is missing");
+        SetMessage(outError, "Animation state machine payload is missing");
         return false;
     }
 
@@ -45,7 +41,7 @@ bool LoadAnimationStateMachineAsset(const std::filesystem::path& path, const Ass
     }
     loaded.displayName = root.value("displayName", path.stem().string());
     if (!ANIMATION::DeserializeAnimationStateMachineJson(*definitionNode, loaded.definition)) {
-        SetError(outError, "Invalid animation state machine payload");
+        SetMessage(outError, "Invalid animation state machine payload");
         return false;
     }
     if (loaded.displayName.empty()) {
@@ -70,7 +66,7 @@ bool SaveAnimationStateMachineAsset(const std::filesystem::path& path, const Ani
                               {"stateMachine", std::move(stateMachineJson)}};
     std::string ioMessage{};
     if (!SERIALIZATION::JSON::WriteJsonFile(path, root, &ioMessage)) {
-        SetError(outError, "Unable to write animation state machine asset: " + ioMessage);
+        SetMessage(outError, "Unable to write animation state machine asset: " + ioMessage);
         return false;
     }
     if (outError != nullptr)

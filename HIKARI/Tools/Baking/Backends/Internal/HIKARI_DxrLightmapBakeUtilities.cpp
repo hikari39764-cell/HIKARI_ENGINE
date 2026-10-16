@@ -1,4 +1,5 @@
 #include "Tools/Baking/Backends/Internal/HIKARI_DxrLightmapBakeUtilities.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <algorithm>
 #include <cmath>
@@ -32,12 +33,6 @@ bool IsUvTriangleInterior(const MATH::Vec2 (&uv)[3], const MATH::Vec2& point) {
     // 共有辺は面積を持たないため、両 Triangle の厳密な内部だけを重複とする。
     return edge(uv[1], uv[2], point) / area > 1.0e-8 && edge(uv[2], uv[0], point) / area > 1.0e-8 &&
            edge(uv[0], uv[1], point) / area > 1.0e-8;
-}
-
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr) {
-        *outMessage = std::move(message);
-    }
 }
 
 bool TryNormalize(const MATH::Vec3& value, MATH::Vec3& outNormal) {

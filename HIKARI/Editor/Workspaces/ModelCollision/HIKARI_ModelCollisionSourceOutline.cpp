@@ -78,11 +78,6 @@ QuantizedPosition QuantizePosition(const MATH::Vec3& position, double inverseSte
     return {quantize(position.x), quantize(position.y), quantize(position.z)};
 }
 
-MATH::Vec3 TransformPoint(const MATH::Mat4& matrix, const MATH::Vec3& point) noexcept {
-    const MATH::Vec4 transformed = matrix.TransformPoint({point.x, point.y, point.z, 1.0f});
-    return {transformed.x, transformed.y, transformed.z};
-}
-
 MATH::Vec3 FaceNormal(const MATH::Vec3& first, const MATH::Vec3& second, const MATH::Vec3& third) noexcept {
     const MATH::Vec3 normal = MATH::Cross(second - first, third - first);
     const float length = MATH::Length(normal);
@@ -189,7 +184,7 @@ ModelCollisionSourceOutlineCache::NodeOutline ModelCollisionSourceOutlineCache::
             const MATH::Vec3 localPosition = primitive.layout == VertexLayoutKind::SkinnedPNTTJW
                                                  ? primitive.skinnedVertices[vertexIndex].position
                                                  : primitive.staticVertices[vertexIndex].position;
-            positions[vertexIndex] = TransformPoint(node.globalTransform, localPosition);
+            positions[vertexIndex] = MATH::TransformPoint(node.globalTransform, localPosition);
         }
 
         for (size_t index = 0; index + 2u < primitive.indices.size(); index += 3u) {

@@ -1,4 +1,5 @@
 #include "Scene/Water/HIKARI_WaterSurfaceTypes.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 
 #include <algorithm>
 #include <cmath>
@@ -38,11 +39,6 @@ float WrappedTime(float timeSeconds) noexcept {
         return 0.0f;
     }
     return std::fmod(timeSeconds, kTimeWrapSeconds);
-}
-
-float SmoothStep01(float value) noexcept {
-    const float t = std::clamp(value, 0.0f, 1.0f);
-    return t * t * (3.0f - 2.0f * t);
 }
 
 float ResolveHorizontalSlopeScale(const WaterSurfaceSettings& settings) noexcept {
@@ -211,7 +207,8 @@ WaterSurfaceSettings ResolveWaterSurfaceSettingsForMesh(const WaterSurfaceSettin
     const float fadeStart = 2.0f * spacing;
     const float fadeEnd = 4.0f * spacing;
     for (WaterGerstnerWave& wave : settings.waves) {
-        const float resolved = SmoothStep01((wave.wavelength - fadeStart) / (std::max)(fadeEnd - fadeStart, 1.0e-6f));
+        const float resolved =
+            MATH::SmoothStep01((wave.wavelength - fadeStart) / (std::max)(fadeEnd - fadeStart, 1.0e-6f));
         wave.amplitude *= resolved;
         wave.steepness *= resolved;
     }

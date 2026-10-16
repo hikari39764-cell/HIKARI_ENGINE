@@ -10,22 +10,6 @@
 namespace HIKARI::EDITOR {
 namespace {
 
-bool IsIdentifier(std::string_view value) noexcept {
-    if (value.empty() || value.size() > 127u) {
-        return false;
-    }
-    const auto isAsciiAlphaNumeric = [](unsigned char character) {
-        return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
-               (character >= '0' && character <= '9');
-    };
-    if (!isAsciiAlphaNumeric(static_cast<unsigned char>(value.front()))) {
-        return false;
-    }
-    return std::all_of(value.begin(), value.end(), [isAsciiAlphaNumeric](unsigned char character) {
-        return isAsciiAlphaNumeric(character) || character == '.' || character == '_' || character == '-';
-    });
-}
-
 bool HasReservedEnginePrefix(std::string_view value) noexcept {
     constexpr std::string_view prefix = "hikari.";
     if (value.size() < prefix.size()) {
@@ -47,10 +31,26 @@ std::string ExceptionDetail(const std::exception& exception) {
 
 } // namespace
 
+bool IsGameProjectEditorIdentifier(std::string_view value) noexcept {
+    if (value.empty() || value.size() > 127u) {
+        return false;
+    }
+    const auto isAsciiAlphaNumeric = [](unsigned char character) {
+        return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+               (character >= '0' && character <= '9');
+    };
+    if (!isAsciiAlphaNumeric(static_cast<unsigned char>(value.front()))) {
+        return false;
+    }
+    return std::all_of(value.begin(), value.end(), [isAsciiAlphaNumeric](unsigned char character) {
+        return isAsciiAlphaNumeric(character) || character == '.' || character == '_' || character == '-';
+    });
+}
+
 bool GameProjectEditorWorkspaceRegistry::RegisterModule(std::string_view moduleId,
                                                         EDITOR_PROJECT::IEditorWorkspace* const* workspaces,
                                                         size_t workspaceCount, std::string& outMessage) {
-    if (!IsIdentifier(moduleId)) {
+    if (!IsGameProjectEditorIdentifier(moduleId)) {
         outMessage = "GameProject Editor module ID must be a non-empty ASCII "
                      "identifier no longer than 127 characters.";
         return false;
@@ -104,7 +104,7 @@ bool GameProjectEditorWorkspaceRegistry::RegisterModule(std::string_view moduleI
             outMessage = "GameProject Editor workspace descriptor contains unknown options or reserved values.";
             return false;
         }
-        if (!IsIdentifier(workspaceId) || HasReservedEnginePrefix(workspaceId)) {
+        if (!IsGameProjectEditorIdentifier(workspaceId) || HasReservedEnginePrefix(workspaceId)) {
             outMessage = "GameProject Editor workspace ID is invalid or uses "
                          "the reserved 'hikari.' namespace: " +
                          std::string(workspaceId);

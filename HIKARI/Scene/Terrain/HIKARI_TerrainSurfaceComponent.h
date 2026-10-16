@@ -139,7 +139,6 @@ private:
     // Runtime document rebuild は既に所有している大きな chunk payload を
     // move し、公開 const& API だけが必要な 1 回の copy を担当する。
     void SetSurfaceOwned(TERRAIN::TerrainSurface surface);
-    void NotifyRenderStateDirty();
     void MarkGeometryChanged() noexcept;
     void CaptureChunkBeforeEdit(const TERRAIN::TerrainChunkKey& key);
     void MarkChunkChanged(const TERRAIN::TerrainChunkKey& key) noexcept;

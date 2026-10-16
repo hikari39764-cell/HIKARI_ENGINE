@@ -91,10 +91,9 @@ IrradianceVolumeAuthoring ReadIrradianceVolume(const SceneObjectData& object, co
 }
 
 bool HasLightingComponent(const SceneDocument& document, const char* componentType) {
-    return std::any_of(document.objects.begin(), document.objects.end(),
-                       [componentType](const SceneObjectData& object) {
-                           return FindLightingComponent(object, componentType) != nullptr;
-                       });
+    return std::any_of(
+        document.objects.begin(), document.objects.end(),
+        [componentType](const SceneObjectData& object) { return object.FindComponent(componentType) != nullptr; });
 }
 
 } // namespace
@@ -104,20 +103,6 @@ bool IsLightingComponentType(std::string_view componentType) noexcept {
            componentType == kIrradianceVolumeComponentType;
 }
 
-const SceneComponentData* FindLightingComponent(const SceneObjectData& object, const char* componentType) {
-    const auto found =
-        std::find_if(object.components.begin(), object.components.end(),
-                     [componentType](const SceneComponentData& component) { return component.type == componentType; });
-    return found == object.components.end() ? nullptr : &*found;
-}
-
-SceneComponentData* FindLightingComponent(SceneObjectData& object, const char* componentType) {
-    const auto found =
-        std::find_if(object.components.begin(), object.components.end(),
-                     [componentType](const SceneComponentData& component) { return component.type == componentType; });
-    return found == object.components.end() ? nullptr : &*found;
-}
-
 std::vector<ReflectionProbeAuthoring> CollectReflectionProbes(const SceneDocument& document) {
     return CollectReflectionProbes(document.objects);
 }
@@ -125,7 +110,7 @@ std::vector<ReflectionProbeAuthoring> CollectReflectionProbes(const SceneDocumen
 std::vector<ReflectionProbeAuthoring> CollectReflectionProbes(std::span<const SceneObjectData> objects) {
     std::vector<ReflectionProbeAuthoring> probes{};
     for (const SceneObjectData& object : objects) {
-        const SceneComponentData* component = FindLightingComponent(object, kReflectionProbeComponentType);
+        const SceneComponentData* component = object.FindComponent(kReflectionProbeComponentType);
         if (component != nullptr && component->properties.is_object()) {
             probes.push_back(ReadReflectionProbe(object, *component));
         }
@@ -155,7 +140,7 @@ std::vector<IrradianceVolumeAuthoring> CollectBakedIrradianceVolumes(const Scene
 std::vector<IrradianceVolumeAuthoring> CollectIrradianceVolumes(std::span<const SceneObjectData> objects) {
     std::vector<IrradianceVolumeAuthoring> volumes{};
     for (const SceneObjectData& object : objects) {
-        const SceneComponentData* component = FindLightingComponent(object, kIrradianceVolumeComponentType);
+        const SceneComponentData* component = object.FindComponent(kIrradianceVolumeComponentType);
         if (component != nullptr && component->properties.is_object()) {
             volumes.push_back(ReadIrradianceVolume(object, *component));
         }

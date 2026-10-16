@@ -1,4 +1,5 @@
 #include "Editor/Projects/HIKARI_RecentProjectStore.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <ShlObj.h>
 
@@ -18,12 +19,6 @@ namespace HIKARI::EDITOR {
 namespace {
 
 constexpr size_t kMaximumRecentProjects = 64u;
-
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr) {
-        *outMessage = std::move(message);
-    }
-}
 
 std::filesystem::path ResolveStoragePath() {
     PWSTR localAppData = nullptr;

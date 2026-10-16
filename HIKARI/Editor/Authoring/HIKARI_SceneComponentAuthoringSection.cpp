@@ -71,11 +71,6 @@ bool ApplyDocumentComponentToRuntime(DocumentSceneBase& scene, const SceneObject
     return false;
 }
 
-bool HasDocumentComponent(const SceneObjectData& object, std::string_view typeName) {
-    return std::any_of(object.components.begin(), object.components.end(),
-                       [typeName](const SceneComponentData& component) { return component.type == typeName; });
-}
-
 } // namespace
 
 std::optional<SceneObjectAuthoringHistoryRequest> SceneComponentAuthoringSection::Draw(
@@ -180,7 +175,7 @@ std::optional<SceneObjectAuthoringHistoryRequest> SceneComponentAuthoringSection
             context.componentAddStatusMessage = result.message;
             context.componentAddStatusIsError = !result.success;
             if (result.documentChanged) {
-                if (removedType == "CameraComponent" && !HasDocumentComponent(target, "CameraComponent")) {
+                if (removedType == "CameraComponent" && target.FindComponent("CameraComponent") == nullptr) {
                     if (scene.GetSceneDocument().camera.defaultCameraObjectId == target.id) {
                         scene.ClearGameDefaultCamera();
                     }

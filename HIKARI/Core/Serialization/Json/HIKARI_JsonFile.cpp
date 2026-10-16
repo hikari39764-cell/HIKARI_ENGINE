@@ -1,4 +1,5 @@
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <atomic>
 #include <chrono>
@@ -12,12 +13,6 @@
 
 namespace HIKARI::SERIALIZATION::JSON {
 namespace {
-
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr) {
-        *outMessage = std::move(message);
-    }
-}
 
 std::filesystem::path MakeStagedPath(const std::filesystem::path& finalPath) {
     static std::atomic_uint64_t sequence{0u};

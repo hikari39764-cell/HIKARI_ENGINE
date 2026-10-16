@@ -10,20 +10,10 @@
 namespace HIKARI::WATER {
 
 namespace {
-MATH::Vec3 TransformPoint(const MATH::Mat4& matrix, const MATH::Vec3& value) noexcept {
-    const MATH::Vec4 transformed = matrix.TransformPoint({value.x, value.y, value.z, 1.0f});
-    return {transformed.x, transformed.y, transformed.z};
-}
-
-MATH::Vec3 TransformVector(const MATH::Mat4& matrix, const MATH::Vec3& value) noexcept {
-    const MATH::Vec4 transformed = matrix.TransformPoint({value.x, value.y, value.z, 0.0f});
-    return {transformed.x, transformed.y, transformed.z};
-}
-
 bool ResolveWorldPlanePoint(const WaterSurfaceSnapshotEntry& surface, const MATH::Vec2& worldXZ,
                             MATH::Vec3& outPoint) noexcept {
-    const MATH::Vec3 origin = TransformPoint(surface.world, {0.0f, 0.0f, 0.0f});
-    const MATH::Vec3 normal = MATH::Normalize(TransformVector(surface.normalMatrix, {0.0f, 1.0f, 0.0f}));
+    const MATH::Vec3 origin = MATH::TransformPoint(surface.world, {0.0f, 0.0f, 0.0f});
+    const MATH::Vec3 normal = MATH::Normalize(MATH::TransformVector(surface.normalMatrix, {0.0f, 1.0f, 0.0f}));
     if (MATH::Length(normal) <= 1.0e-6f || std::abs(normal.y) <= 1.0e-5f) {
         return false;
     }
@@ -34,8 +24,8 @@ bool ResolveWorldPlanePoint(const WaterSurfaceSnapshotEntry& surface, const MATH
 }
 
 MATH::Vec2 WorldDeltaToLocalXZ(const WaterSurfaceSnapshotEntry& surface, const MATH::Vec2& worldDelta) noexcept {
-    const MATH::Vec3 basisX = TransformVector(surface.world, {1.0f, 0.0f, 0.0f});
-    const MATH::Vec3 basisZ = TransformVector(surface.world, {0.0f, 0.0f, 1.0f});
+    const MATH::Vec3 basisX = MATH::TransformVector(surface.world, {1.0f, 0.0f, 0.0f});
+    const MATH::Vec3 basisZ = MATH::TransformVector(surface.world, {0.0f, 0.0f, 1.0f});
     const float determinant = basisX.x * basisZ.z - basisX.z * basisZ.x;
     if (!std::isfinite(determinant) || std::abs(determinant) <= 1.0e-6f) {
         return worldDelta;
@@ -68,7 +58,7 @@ bool SnapshotEqual(const std::vector<WaterSurfaceSnapshotEntry>& left,
 bool EvaluateCandidate(const WaterSurfaceSnapshotEntry& surface, const WaterSurfaceQuery& query, uint64_t revision,
                        WaterSurfaceSample& outSample) noexcept {
     const bool cameraCenteredOcean = surface.settings.geometryMode == WaterSurfaceGeometryMode::CameraCenteredOcean;
-    const MATH::Vec3 queryLocal = TransformPoint(surface.inverseWorld, query.positionWS);
+    const MATH::Vec3 queryLocal = MATH::TransformPoint(surface.inverseWorld, query.positionWS);
     MATH::Vec2 sourceLocalXZ{};
     const WaterSurfaceEvaluation evaluation = EvaluateWaterSurfaceAtHorizontalPosition(
         surface.settings,
@@ -86,16 +76,16 @@ bool EvaluateCandidate(const WaterSurfaceSnapshotEntry& surface, const WaterSurf
         if (!ResolveWorldPlanePoint(surface, sourceLocalXZ, baseWorld)) {
             return false;
         }
-        const MATH::Vec3 baseLocal = TransformPoint(surface.inverseWorld, baseWorld);
+        const MATH::Vec3 baseLocal = MATH::TransformPoint(surface.inverseWorld, baseWorld);
         const MATH::Vec2 localHorizontalDelta = WorldDeltaToLocalXZ(
             surface, {evaluation.positionLocal.x - sourceLocalXZ.x, evaluation.positionLocal.z - sourceLocalXZ.y});
-        positionWS = TransformPoint(surface.world,
-                                    {baseLocal.x + localHorizontalDelta.x, baseLocal.y + evaluation.positionLocal.y,
-                                     baseLocal.z + localHorizontalDelta.y});
+        positionWS = MATH::TransformPoint(surface.world, {baseLocal.x + localHorizontalDelta.x,
+                                                          baseLocal.y + evaluation.positionLocal.y,
+                                                          baseLocal.z + localHorizontalDelta.y});
         normalWS = MATH::Normalize(evaluation.normalLocal);
     } else {
-        positionWS = TransformPoint(surface.world, evaluation.positionLocal);
-        normalWS = MATH::Normalize(TransformVector(surface.normalMatrix, evaluation.normalLocal));
+        positionWS = MATH::TransformPoint(surface.world, evaluation.positionLocal);
+        normalWS = MATH::Normalize(MATH::TransformVector(surface.normalMatrix, evaluation.normalLocal));
     }
     if (MATH::Length(normalWS) <= 1.0e-6f) {
         normalWS = {0.0f, 1.0f, 0.0f};
@@ -115,10 +105,10 @@ bool EvaluateCandidate(const WaterSurfaceSnapshotEntry& surface, const WaterSurf
         if (cameraCenteredOcean) {
             const MATH::Vec2 localHorizontalVelocity =
                 WorldDeltaToLocalXZ(surface, {evaluation.velocityLocal.x, evaluation.velocityLocal.z});
-            outSample.velocityWS = TransformVector(
+            outSample.velocityWS = MATH::TransformVector(
                 surface.world, {localHorizontalVelocity.x, evaluation.velocityLocal.y, localHorizontalVelocity.y});
         } else {
-            outSample.velocityWS = TransformVector(surface.world, evaluation.velocityLocal);
+            outSample.velocityWS = MATH::TransformVector(surface.world, evaluation.velocityLocal);
         }
         outSample.validFields = outSample.validFields | WaterSurfaceSampleField::Velocity;
     }

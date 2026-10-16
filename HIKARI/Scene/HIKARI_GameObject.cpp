@@ -323,6 +323,12 @@ void GameObject::DetachComponents() {
 
 const std::vector<std::unique_ptr<IComponent>>& GameObject::GetComponents() const { return components_; }
 
+void IComponent::NotifyRenderStateDirty() {
+    if (owner_ != nullptr) {
+        owner_->MarkRenderStateDirty();
+    }
+}
+
 void GameObject::MarkRenderStateDirty() {
     if (!CanMutateOwnedState()) {
         return;

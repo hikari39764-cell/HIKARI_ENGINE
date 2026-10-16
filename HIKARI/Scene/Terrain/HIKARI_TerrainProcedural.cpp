@@ -1,4 +1,5 @@
 #include "Scene/Terrain/HIKARI_TerrainProcedural.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 
 #include <cmath>
 #include <limits>
@@ -24,18 +25,13 @@ float HashGrid(int64_t x, int64_t z, uint64_t seed) noexcept {
     return static_cast<float>(unit * 2.0 - 1.0);
 }
 
-float Smooth(float value) noexcept {
-    const float t = std::clamp(value, 0.0f, 1.0f);
-    return t * t * (3.0f - 2.0f * t);
-}
-
 float ValueNoise(float x, float z, uint64_t seed) noexcept {
     const float fx = std::floor(x);
     const float fz = std::floor(z);
     const int64_t x0 = static_cast<int64_t>(fx);
     const int64_t z0 = static_cast<int64_t>(fz);
-    const float tx = Smooth(x - fx);
-    const float tz = Smooth(z - fz);
+    const float tx = MATH::SmoothStep01(x - fx);
+    const float tz = MATH::SmoothStep01(z - fz);
     const float a = HashGrid(x0, z0, seed);
     const float b = HashGrid(x0 + 1, z0, seed);
     const float c = HashGrid(x0, z0 + 1, seed);
@@ -67,7 +63,7 @@ float RectMask(const TerrainProceduralSpec& spec, float localX, float localZ) no
         return 0.0f;
     }
     const float edge = (std::min)(1.0f - nx, 1.0f - nz);
-    return Smooth(edge / (std::max)(spec.edgeFalloff, 0.01f));
+    return MATH::SmoothStep01(edge / (std::max)(spec.edgeFalloff, 0.01f));
 }
 
 float IslandMask(const TerrainProceduralSpec& spec, float localX, float localZ) noexcept {
@@ -80,7 +76,7 @@ float IslandMask(const TerrainProceduralSpec& spec, float localX, float localZ) 
         return 0.0f;
     }
     const float inner = 1.0f - spec.edgeFalloff;
-    return 1.0f - Smooth((radius - inner) / (std::max)(spec.edgeFalloff, 0.01f));
+    return 1.0f - MATH::SmoothStep01((radius - inner) / (std::max)(spec.edgeFalloff, 0.01f));
 }
 
 float DirectionalCoordinates(const TerrainProceduralSpec& spec, float localX, float localZ, float& outAcross) noexcept {

@@ -42,7 +42,6 @@ public:
 
 private:
     bool CommitParameterState(MaterialFxParameterSet next);
-    void NotifyRenderStateDirty();
 
     MaterialFxParameterSet parameters_{};
 };

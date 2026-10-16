@@ -19,8 +19,6 @@ struct CookedContentManifest {
     std::vector<AssetRecord> assets{};
 };
 
-bool IsSafeCookedRelativePath(const std::filesystem::path& path) noexcept;
-
 bool ReadCookedContentManifest(const std::filesystem::path& path, CookedContentManifest& outManifest,
                                std::string* outMessage = nullptr);
 

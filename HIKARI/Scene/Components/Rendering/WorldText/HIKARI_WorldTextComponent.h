@@ -93,7 +93,6 @@ public:
 
 private:
     void Sanitize() noexcept;
-    void NotifyRenderStateDirty();
 
     TextStyleBinding binding_;
     std::string text_{"World Text"};

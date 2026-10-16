@@ -1,4 +1,5 @@
 #include "HIKARI_IblBaker.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -528,11 +529,6 @@ bool SaveScratchToDds(const DirectX::ScratchImage& source, const std::filesystem
     return SaveDdsAtomically(*saveImage, outputPath, outError);
 }
 
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage) {
-        *outMessage = std::move(message);
-    }
-}
 } // namespace
 
 bool IblBaker::BakePrefilteredCubemapOnly(const std::filesystem::path& sourceCubemapDds,

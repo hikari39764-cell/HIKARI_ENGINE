@@ -132,12 +132,7 @@ ComponentEditResult DocumentComponentAuthoringService::RemoveComponent(const Com
 }
 
 bool DocumentComponentAuthoringService::HasComponent(const SceneObjectData& object, std::string_view typeName) const {
-    for (const SceneComponentData& component : object.components) {
-        if (component.type == typeName) {
-            return true;
-        }
-    }
-    return false;
+    return object.FindComponent(typeName) != nullptr;
 }
 
 bool DocumentComponentAuthoringService::ContainsTypeName(const std::vector<std::string>& values,

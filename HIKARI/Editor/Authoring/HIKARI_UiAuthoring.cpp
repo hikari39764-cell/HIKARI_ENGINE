@@ -30,24 +30,19 @@ constexpr std::array<UiTemplateDefinition, 18> templates{{{"settings", "display.
                                                           {"title", "uix.title", true},
                                                           {"caption", "uix.caption", true},
                                                           {"world_text", "uix.worldText", true}}};
-bool Has(const SceneObjectData& object, std::string_view type) {
-    return std::any_of(object.components.begin(), object.components.end(),
-                       [&](const auto& c) { return c.type == type; });
-}
 void Patch(SceneObjectData& object, std::string_view type, const nlohmann::json& patch) {
-    for (auto& component : object.components)
-        if (component.type == type) {
-            component.properties.merge_patch(patch);
-            return;
-        }
+    if (SceneComponentData* component = object.FindComponent(type))
+        component->properties.merge_patch(patch);
 }
 } // namespace
 std::span<const UiTemplateDefinition> UiTemplates() { return templates; }
 bool ReparentUiElement(SceneDocument& document, SceneObjectId element, SceneObjectId parentId, std::string& error) {
     auto* object = FindSceneObjectData(document, element);
     const auto* parent = FindSceneObjectData(document, parentId);
-    if (!object || !parent || object->editorLocked || parent->editorLocked || !Has(*object, "UiRectComponent") ||
-        Has(*object, "UiCanvasComponent") || (!Has(*parent, "UiRectComponent") && !Has(*parent, "UiCanvasComponent"))) {
+    if (!object || !parent || object->editorLocked || parent->editorLocked ||
+        object->FindComponent("UiRectComponent") == nullptr || object->FindComponent("UiCanvasComponent") != nullptr ||
+        (parent->FindComponent("UiRectComponent") == nullptr &&
+         parent->FindComponent("UiCanvasComponent") == nullptr)) {
         error = "Choose an unlocked UI element and a Canvas or UI container.";
         return false;
     }
@@ -57,7 +52,7 @@ bool ReparentUiElement(SceneDocument& document, SceneObjectId element, SceneObje
             error = "An element cannot contain itself.";
             return false;
         }
-        if (Has(*ancestor, "UiCanvasComponent")) {
+        if (ancestor->FindComponent("UiCanvasComponent") != nullptr) {
             object->parent = parentId;
             error.clear();
             return true;
@@ -82,16 +77,17 @@ bool AttachUiPrefabToCanvas(SceneDocument& document, const ComponentRegistry& re
         error = "Prefab root is missing.";
         return false;
     }
-    if (!Has(*root, "UiRectComponent") || Has(*root, "UiCanvasComponent"))
+    if (root->FindComponent("UiRectComponent") == nullptr || root->FindComponent("UiCanvasComponent") != nullptr)
         return true;
     auto working = document;
     SceneObjectId parent{};
     const auto* candidate = FindSceneObjectData(working, selected);
-    if (candidate && (Has(*candidate, "UiCanvasComponent") || Has(*candidate, "UiGroupComponent") ||
-                      Has(*candidate, "UiLayoutGroupComponent"))) {
+    if (candidate && (candidate->FindComponent("UiCanvasComponent") != nullptr ||
+                      candidate->FindComponent("UiGroupComponent") != nullptr ||
+                      candidate->FindComponent("UiLayoutGroupComponent") != nullptr)) {
         const auto* ancestor = candidate;
         for (int depth = 0; ancestor && depth < 64; ++depth) {
-            if (Has(*ancestor, "UiCanvasComponent")) {
+            if (ancestor->FindComponent("UiCanvasComponent") != nullptr) {
                 parent = candidate->id;
                 break;
             }
@@ -100,7 +96,7 @@ bool AttachUiPrefabToCanvas(SceneDocument& document, const ComponentRegistry& re
     }
     if (!parent.value)
         for (const auto& o : working.objects)
-            if (Has(o, "UiCanvasComponent") && !o.editorLocked) {
+            if (o.FindComponent("UiCanvasComponent") != nullptr && !o.editorLocked) {
                 parent = o.id;
                 break;
             }
@@ -132,7 +128,7 @@ UiCreateResult CreateUiTemplate(SceneDocument& document, const ComponentRegistry
         if (!root.ok)
             return root;
         for (auto* ancestor = FindSceneObjectData(working, root.id); ancestor;) {
-            if (Has(*ancestor, "UiCanvasComponent")) {
+            if (ancestor->FindComponent("UiCanvasComponent") != nullptr) {
                 Patch(*ancestor, "UiCanvasComponent", {{"inputMode", templateId == "menu" ? "Menu" : "Hud"}});
                 break;
             }
@@ -221,13 +217,13 @@ UiCreateResult CreateUiTemplate(SceneDocument& document, const ComponentRegistry
     if (templateId != "canvas" && templateId != "world_text") {
         auto* parent = FindSceneObjectData(working, parentId);
         auto* ancestor = parent;
-        for (int i = 0; ancestor && i < 64 && !Has(*ancestor, "UiCanvasComponent"); ++i)
+        for (int i = 0; ancestor && i < 64 && ancestor->FindComponent("UiCanvasComponent") == nullptr; ++i)
             ancestor = FindSceneObjectData(working, ancestor->parent.value_or(SceneObjectId{}));
-        if (!ancestor || !Has(*ancestor, "UiCanvasComponent")) {
+        if (!ancestor || ancestor->FindComponent("UiCanvasComponent") == nullptr) {
             if (parentId.value)
                 return {false, {}, "Parent must belong to a UI Canvas."};
             auto first = std::find_if(working.objects.begin(), working.objects.end(),
-                                      [](const auto& o) { return Has(o, "UiCanvasComponent"); });
+                                      [](const auto& o) { return o.FindComponent("UiCanvasComponent") != nullptr; });
             if (first != working.objects.end())
                 parentId = first->id;
             else {

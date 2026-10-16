@@ -26,12 +26,7 @@
 
 namespace HIKARI::EDITOR {
 
-namespace {
-bool HasDocumentComponent(const SceneObjectData& object, std::string_view typeName) {
-    return std::any_of(object.components.begin(), object.components.end(),
-                       [typeName](const SceneComponentData& component) { return component.type == typeName; });
-}
-} // namespace
+namespace {} // namespace
 
 void SceneInspectorPanel::ExecutePendingObjectCommand(DocumentSceneBase& scene, EditorContext& context,
                                                       const SelectionSyncService& selectionSync,
@@ -130,7 +125,7 @@ void SceneInspectorPanel::DrawObjectContextMenu(DocumentSceneBase& scene, Editor
         ImGui::EndMenu();
     }
 
-    if (HasDocumentComponent(*target, "CameraComponent") &&
+    if (target->FindComponent("CameraComponent") != nullptr &&
         ImGui::BeginMenu(TEXT::LocalizeWindow("ui.inspector.category.camera", "Camera").c_str())) {
         const bool isDefault = scene.GetSceneDocument().camera.defaultCameraObjectId == target->id;
         if (ImGui::MenuItem(TEXT::LocalizeWindow("editor.ui.set.as.game.default.47a702", "Set as Game Default").c_str(),

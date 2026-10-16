@@ -1,4 +1,5 @@
 #include "Editor/Diagnostics/HIKARI_EditorCameraPath.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,14 +11,7 @@
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 
 namespace HIKARI::EDITOR {
-namespace {
-
-float Smooth(float t) {
-    t = std::clamp(t, 0.0f, 1.0f);
-    return t * t * (3.0f - 2.0f * t);
-}
-
-} // namespace
+namespace {} // namespace
 
 std::optional<EditorCameraPath> EditorCameraPath::FromCommandLine() {
     const auto path = ReadRuntimeCommandLinePath(L"--editor-camera-path");
@@ -61,7 +55,7 @@ void EditorCameraPath::Apply(Camera3D& camera, uint64_t frame) const {
         ++next;
     const Key& a = keys_[next == 0 ? 0 : next - 1];
     const Key& b = keys_[next < keys_.size() ? next : keys_.size() - 1];
-    const float t = b.frame > a.frame ? Smooth((f - a.frame) / (b.frame - a.frame)) : 0.0f;
+    const float t = b.frame > a.frame ? MATH::SmoothStep01((f - a.frame) / (b.frame - a.frame)) : 0.0f;
     float v[5];
     for (int i = 0; i < 5; ++i)
         v[i] = a.values[i] + (b.values[i] - a.values[i]) * t;

@@ -1,4 +1,5 @@
 #include "Assets/Shader/Internal/HIKARI_ShaderIdentifier.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 #include "Assets/Shader/HIKARI_BuiltinShaderCatalog.h"
 
 #include <filesystem>
@@ -11,14 +12,9 @@ namespace HIKARI::ASSETS::SHADER {
 namespace {
 
 bool IsSafeEngineShaderPath(const std::filesystem::path& path) {
-    if (path.empty() || path.is_absolute() || path.has_root_name() || path.has_root_directory() ||
-        path.lexically_normal() != path || TEXT::ToLowerAsciiCopy(path.extension().string()) != ".hlsl") {
+    if (!PATHS::IsSafeRelativePath(path) || path.lexically_normal() != path ||
+        TEXT::ToLowerAsciiCopy(path.extension().string()) != ".hlsl") {
         return false;
-    }
-    for (const std::filesystem::path& component : path) {
-        if (component == "..") {
-            return false;
-        }
     }
     const std::string generic = path.generic_string();
     return !generic.empty() && generic.size() <= kMaximumShaderPathBytes && generic.find(':') == std::string::npos;

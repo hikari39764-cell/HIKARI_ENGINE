@@ -137,14 +137,6 @@ void SubmitDebugOverlays(World& world, RenderSubmissionDebugStats& stats) {
     });
 }
 
-MATH::Vec3 TransformPoint(const MATH::Mat4& matrix, const MATH::Vec3& point) noexcept {
-    const MATH::Vec4 transformed = matrix.TransformPoint({point.x, point.y, point.z, 1.0f});
-    if (std::isfinite(transformed.w) && std::abs(transformed.w) > 1.0e-6f) {
-        return {transformed.x / transformed.w, transformed.y / transformed.w, transformed.z / transformed.w};
-    }
-    return {transformed.x, transformed.y, transformed.z};
-}
-
 Bounds ResolveWorldSpriteBounds(const RENDER3D::WORLD_SPRITES::WorldSpriteInstance& instance,
                                 const MATH::Mat4& worldMatrix) noexcept {
     const float width = instance.size.x;
@@ -165,7 +157,7 @@ Bounds ResolveWorldSpriteBounds(const RENDER3D::WORLD_SPRITES::WorldSpriteInstan
                       {(std::numeric_limits<float>::lowest)(), (std::numeric_limits<float>::lowest)(),
                        (std::numeric_limits<float>::lowest)()}};
         for (const MATH::Vec3& corner : corners) {
-            const MATH::Vec3 point = TransformPoint(worldMatrix, corner);
+            const MATH::Vec3 point = MATH::TransformPoint(worldMatrix, corner);
             bounds.min.x = (std::min)(bounds.min.x, point.x);
             bounds.min.y = (std::min)(bounds.min.y, point.y);
             bounds.min.z = (std::min)(bounds.min.z, point.z);
@@ -212,7 +204,7 @@ Bounds ResolveWorldTextBounds(const RENDER3D::WORLD_TEXT::WorldTextInstance& ins
                       {(std::numeric_limits<float>::lowest)(), (std::numeric_limits<float>::lowest)(),
                        (std::numeric_limits<float>::lowest)()}};
         for (const MATH::Vec3& corner : corners) {
-            const MATH::Vec3 point = TransformPoint(worldMatrix, corner);
+            const MATH::Vec3 point = MATH::TransformPoint(worldMatrix, corner);
             bounds.min.x = (std::min)(bounds.min.x, point.x);
             bounds.min.y = (std::min)(bounds.min.y, point.y);
             bounds.min.z = (std::min)(bounds.min.z, point.z);
@@ -302,7 +294,7 @@ void BuildWorldSpriteFrameSource(World& world, const FrameContext& frame, const 
         if (presentation != nullptr)
             (void)presentation->TryGetWorldMatrix(object.GetRuntimeHandle(), worldMatrix);
         if (!MATH::DecomposeTRS(worldMatrix, instance.worldPosition, instance.worldRotation, instance.worldScale)) {
-            instance.worldPosition = TransformPoint(worldMatrix, {});
+            instance.worldPosition = MATH::TransformPoint(worldMatrix, {});
             instance.worldRotation = MATH::Quat::Identity();
             instance.worldScale = {1.0f, 1.0f, 1.0f};
         }
@@ -400,7 +392,7 @@ void BuildWorldTextFrameSource(World& world, const FrameContext& frame, const st
 
         const MATH::Mat4 worldMatrix = object.GetTransform().GetWorldMatrix();
         if (!MATH::DecomposeTRS(worldMatrix, instance.worldPosition, instance.worldRotation, instance.worldScale)) {
-            instance.worldPosition = TransformPoint(worldMatrix, {});
+            instance.worldPosition = MATH::TransformPoint(worldMatrix, {});
             instance.worldRotation = MATH::Quat::Identity();
             instance.worldScale = {1.0f, 1.0f, 1.0f};
         }

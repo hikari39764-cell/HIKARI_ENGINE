@@ -23,15 +23,6 @@ std::size_t TerrainSurfaceSnapshotChunkKeyHash::operator()(const TerrainSurfaceS
 }
 
 namespace {
-MATH::Vec3 TransformPoint(const MATH::Mat4& matrix, const MATH::Vec3& point) noexcept {
-    const MATH::Vec4 transformed = matrix.TransformPoint({point.x, point.y, point.z, 1.0f});
-    if (std::fabs(transformed.w) > 1.0e-6f) {
-        const float invW = 1.0f / transformed.w;
-        return {transformed.x * invW, transformed.y * invW, transformed.z * invW};
-    }
-    return {transformed.x, transformed.y, transformed.z};
-}
-
 MATH::Vec3 TransformNormal(const MATH::Mat4& matrix, const MATH::Vec3& normal) noexcept {
     const MATH::Vec4 transformed = matrix.TransformPoint({normal.x, normal.y, normal.z, 0.0f});
     const MATH::Vec3 result{transformed.x, transformed.y, transformed.z};
@@ -327,7 +318,7 @@ bool TerrainSurfaceQueryService::SampleWorldHeight(const MATH::Vec3& worldPositi
             continue;
         }
         const TerrainChunkRuntimeState& chunk = *entry.chunk;
-        const MATH::Vec3 queryLocal = TransformPoint(entry.worldToLocal, worldPosition);
+        const MATH::Vec3 queryLocal = MATH::TransformPoint(entry.worldToLocal, worldPosition);
         float localHeight = 0.0f;
         float coverage = 0.0f;
         if (!sampleObjectLocal(entry.object, chunk.chunkWorldSize, queryLocal.x, queryLocal.z, localHeight, coverage) ||
@@ -349,7 +340,8 @@ bool TerrainSurfaceQueryService::SampleWorldHeight(const MATH::Vec3& worldPositi
         MATH::Vec3 normal{(hL - hR) / (2.0f * cell), 1.0f, (hD - hU) / (2.0f * cell)};
         const float lenSq = MATH::Dot(normal, normal);
         const MATH::Vec3 localNormal = lenSq > 1.0e-12f ? MATH::Normalize(normal) : MATH::Vec3{0.0f, 1.0f, 0.0f};
-        const MATH::Vec3 surfaceWorld = TransformPoint(entry.localToWorld, {queryLocal.x, localHeight, queryLocal.z});
+        const MATH::Vec3 surfaceWorld =
+            MATH::TransformPoint(entry.localToWorld, {queryLocal.x, localHeight, queryLocal.z});
         const float distance = std::fabs(worldPosition.y - surfaceWorld.y);
         if (distance < bestDistance) {
             bestDistance = distance;

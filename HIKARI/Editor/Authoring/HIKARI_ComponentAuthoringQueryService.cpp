@@ -165,9 +165,7 @@ EditorOperationResult ComponentAuthoringQueryService::QueryObjects(const Documen
             (!objectIds.empty() && std::find(objectIds.begin(), objectIds.end(), object.id.value) == objectIds.end()) ||
             (!keyword.empty() && object.name.find(keyword) == std::string::npos))
             continue;
-        if (!componentType.empty() &&
-            std::none_of(object.components.begin(), object.components.end(),
-                         [&componentType](const auto& component) { return component.type == componentType; }))
+        if (!componentType.empty() && object.FindComponent(componentType) == nullptr)
             continue;
         if (matched++ < static_cast<size_t>(offset) || objects.size() >= static_cast<size_t>(limit))
             continue;

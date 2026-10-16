@@ -65,7 +65,5 @@ SceneObjectId AddIrradianceVolume(SceneDocument& document, const IrradianceVolum
 
 // ライト・反射プローブ・放射照度ボリュームのいずれか（照明ランタイムの再読込が必要な種類）。
 bool IsLightingComponentType(std::string_view componentType) noexcept;
-const SceneComponentData* FindLightingComponent(const SceneObjectData& object, const char* componentType);
-SceneComponentData* FindLightingComponent(SceneObjectData& object, const char* componentType);
 
 } // namespace HIKARI::LIGHTING_AUTHORING

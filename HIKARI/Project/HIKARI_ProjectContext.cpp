@@ -1,4 +1,5 @@
 #include "Project/HIKARI_ProjectContext.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <system_error>
 #include <utility>
@@ -9,12 +10,6 @@ namespace HIKARI {
 namespace {
 
 ProjectContext gProjectContext{};
-
-void SetMessage(std::string* outMessage, std::string message) {
-    if (outMessage != nullptr) {
-        *outMessage = std::move(message);
-    }
-}
 
 } // namespace
 

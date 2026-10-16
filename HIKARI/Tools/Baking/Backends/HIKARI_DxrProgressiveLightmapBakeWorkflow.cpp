@@ -1,4 +1,5 @@
 #include "Tools/Baking/Backends/HIKARI_DxrProgressiveLightmapBaker.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <algorithm>
 #include <cmath>
@@ -15,12 +16,6 @@ namespace TRANSPORT = RENDER3D::LIGHTING::TRANSPORT;
 namespace {
 
 using enum INTERNAL::DxrLightmapRootParameter;
-
-void SetMessage(std::string* outMessage, const std::string& message) {
-    if (outMessage != nullptr) {
-        *outMessage = message;
-    }
-}
 
 MATH::Vec4 ToPosition4(const MATH::Vec3& value) { return {value.x, value.y, value.z, 1.0f}; }
 

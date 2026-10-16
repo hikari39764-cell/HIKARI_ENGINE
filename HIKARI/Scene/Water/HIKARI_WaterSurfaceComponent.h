@@ -51,8 +51,6 @@ public:
 #endif
 
 private:
-    void NotifyRenderStateDirty();
-
     WATER::WaterSurfaceSettings settings_{};
 };
 

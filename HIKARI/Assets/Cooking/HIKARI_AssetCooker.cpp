@@ -1,4 +1,5 @@
 #include "Assets/Cooking/HIKARI_AssetCookInternal.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Assets/Formats/HIKARI_HshadercFormat.h"
 #include "Assets/HIKARI_AssetDatabase.h"
@@ -94,7 +95,7 @@ bool ValidateShaderArtifactsForCook(const AssetRecord& record, const std::vector
         }
         primary = &artifact;
     }
-    if (primary == nullptr || !IsSafeCookedRelativePath(primary->path)) {
+    if (primary == nullptr || !PATHS::IsSafeRelativePath(primary->path)) {
         outMessage = "Shader asset is missing a safe HSHADERC artifact: " + record.guid.value;
         return false;
     }
@@ -182,7 +183,7 @@ AssetCookResult AssetCooker::Cook(const AssetCookOptions& options) const {
             result.message = "Cook asset record is invalid or duplicated: " + guid;
             return result;
         }
-        if (!IsSafeCookedRelativePath(record->sourcePath)) {
+        if (!PATHS::IsSafeRelativePath(record->sourcePath)) {
             result.message = "Authored asset source path is unsafe: " + record->sourcePath.generic_string();
             return result;
         }
@@ -299,7 +300,7 @@ AssetCookResult AssetCooker::Cook(const AssetCookOptions& options) const {
             const bool isShaderProgram =
                 sourceRecord->type == AssetType::Shader &&
                 ASSETS::SEMANTICS::MatchesAssetArtifact(artifact, ASSETS::SEMANTICS::AssetArtifactKind::ShaderProgram);
-            if (!IsSafeCookedRelativePath(artifact.path)) {
+            if (!PATHS::IsSafeRelativePath(artifact.path)) {
                 result.message = "Cooked artifact path is unsafe: " + artifact.path;
                 return result;
             }

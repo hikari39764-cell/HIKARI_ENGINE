@@ -191,16 +191,6 @@ VectorInterval AnimatedVectorInterval(const VFX::VfxAnimatedVec3Data& value, flo
     return result;
 }
 
-MATH::Vec3 TransformPoint(const MATH::Mat4& matrix, const MATH::Vec3& value) noexcept {
-    const MATH::Vec4 transformed = matrix.TransformPoint({value.x, value.y, value.z, 1.0f});
-    return {transformed.x, transformed.y, transformed.z};
-}
-
-MATH::Vec3 TransformVector(const MATH::Mat4& matrix, const MATH::Vec3& value) noexcept {
-    const MATH::Vec4 transformed = matrix.TransformPoint({value.x, value.y, value.z, 0.0f});
-    return {transformed.x, transformed.y, transformed.z};
-}
-
 VectorInterval TransformInterval(const MATH::Mat4& matrix, const VectorInterval& interval, bool vectorOnly) noexcept {
     VectorInterval result{
         {(std::numeric_limits<float>::max)(), (std::numeric_limits<float>::max)(), (std::numeric_limits<float>::max)()},
@@ -213,7 +203,8 @@ VectorInterval TransformInterval(const MATH::Mat4& matrix, const VectorInterval&
             (corner & 2u) != 0u ? interval.maximum.y : interval.minimum.y,
             (corner & 4u) != 0u ? interval.maximum.z : interval.minimum.z,
         };
-        const MATH::Vec3 transformed = vectorOnly ? TransformVector(matrix, value) : TransformPoint(matrix, value);
+        const MATH::Vec3 transformed =
+            vectorOnly ? MATH::TransformVector(matrix, value) : MATH::TransformPoint(matrix, value);
         result.minimum.x = (std::min)(result.minimum.x, transformed.x);
         result.minimum.y = (std::min)(result.minimum.y, transformed.y);
         result.minimum.z = (std::min)(result.minimum.z, transformed.z);
@@ -297,7 +288,7 @@ bool ResolveTransform(size_t emitterIndex, const VFX::VfxAssetData& asset,
     result.matrix = parent * MATH::Mat4::TRS(local.position, rotation, local.scale);
     MATH::Quat worldRotation{};
     if (!MATH::DecomposeTRS(result.matrix, result.position, worldRotation, result.scale)) {
-        result.position = TransformPoint(result.matrix, {});
+        result.position = MATH::TransformPoint(result.matrix, {});
         result.rotation = MATH::Quat::Identity();
         result.scale = {1.0f, 1.0f, 1.0f};
     } else {
@@ -438,7 +429,7 @@ VectorInterval MovementInterval(const VFX::VfxEmitterData& emitter, const Resolv
         velocity = TransformInterval(rotationMatrix, local, true);
     } else {
         const MATH::Mat4 rotationMatrix = MATH::Mat4::TRS({}, transform.rotation, {1.0f, 1.0f, 1.0f});
-        MATH::Vec3 direction = TransformVector(rotationMatrix, {0.0f, 1.0f, 0.0f});
+        MATH::Vec3 direction = MATH::TransformVector(rotationMatrix, {0.0f, 1.0f, 0.0f});
         const float directionLength = MATH::Length(direction);
         direction = directionLength > 1.0e-6f ? direction * (1.0f / directionLength) : MATH::Vec3{0.0f, 1.0f, 0.0f};
         for (size_t component = 0u; component < 3u; ++component) {

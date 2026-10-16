@@ -12,8 +12,6 @@ class DocumentSceneBase;
 // 布景の操作が文書の物体を書き換える時の小さな共通処理。
 namespace HIKARI::EDITOR {
 
-SceneComponentData* FindLookDevComponent(SceneObjectData& object, std::string_view type) noexcept;
-
 // 文書の物体を実行時の物体へ写す（局所の変形と、同じ種類の順番で対応させた部品の作者値）。ドラッグ中の見た目に使う。
 void SyncLookDevRuntimeObject(DocumentSceneBase& scene, const SceneObjectData& object);
 

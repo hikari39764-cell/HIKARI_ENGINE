@@ -1,4 +1,5 @@
 #include "Assets/Sequence/HIKARI_SequenceAsset.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <utility>
 
@@ -9,13 +10,7 @@
 
 namespace HIKARI {
 
-namespace {
-void SetError(std::string* outError, std::string message) {
-    if (outError != nullptr) {
-        *outError = std::move(message);
-    }
-}
-} // namespace
+namespace {} // namespace
 
 std::vector<AssetDependencyDesc> CollectSequenceDependencies(const CinematicSequence& sequence) {
     std::vector<AssetDependencyDesc> result;
@@ -33,21 +28,21 @@ bool LoadSequenceAsset(const std::filesystem::path& path, const AssetGuid& autho
     nlohmann::json root{};
     std::string ioMessage{};
     if (!SERIALIZATION::JSON::ReadJsonFile(path, root, &ioMessage)) {
-        SetError(outError, "Unable to read sequence asset: " + ioMessage);
+        SetMessage(outError, "Unable to read sequence asset: " + ioMessage);
         return false;
     }
     if (!root.is_object()) {
-        SetError(outError, "Invalid sequence asset JSON");
+        SetMessage(outError, "Invalid sequence asset JSON");
         return false;
     }
     const uint32_t version = root.value("formatVersion", 0u);
     if (version != SequenceAsset::kFormatVersion) {
-        SetError(outError, "Unsupported sequence asset version");
+        SetMessage(outError, "Unsupported sequence asset version");
         return false;
     }
     const auto sequenceIt = root.find("sequence");
     if (sequenceIt == root.end() || !sequenceIt->is_object()) {
-        SetError(outError, "Sequence asset has no sequence payload");
+        SetMessage(outError, "Sequence asset has no sequence payload");
         return false;
     }
 
@@ -60,7 +55,7 @@ bool LoadSequenceAsset(const std::filesystem::path& path, const AssetGuid& autho
     try {
         DeserializeCinematicSequenceJson(*sequenceIt, loaded.sequence);
     } catch (const std::exception& error) {
-        SetError(outError, error.what());
+        SetMessage(outError, error.what());
         return false;
     }
     if (loaded.displayName.empty()) {
@@ -76,7 +71,7 @@ bool LoadSequenceAsset(const std::filesystem::path& path, const AssetGuid& autho
 bool SaveSequenceAsset(const std::filesystem::path& path, const SequenceAsset& asset, std::string* outError) {
     std::string validationError;
     if (!SEQUENCER::ValidatePresentationCueTrack(asset.sequence.presentationCueTrack, validationError)) {
-        SetError(outError, validationError);
+        SetMessage(outError, validationError);
         return false;
     }
     CinematicSequence normalized = asset.sequence;
@@ -91,7 +86,7 @@ bool SaveSequenceAsset(const std::filesystem::path& path, const SequenceAsset& a
 
     std::string ioMessage{};
     if (!SERIALIZATION::JSON::WriteJsonFile(path, root, &ioMessage)) {
-        SetError(outError, "Unable to write sequence asset: " + ioMessage);
+        SetMessage(outError, "Unable to write sequence asset: " + ioMessage);
         return false;
     }
     if (outError != nullptr) {

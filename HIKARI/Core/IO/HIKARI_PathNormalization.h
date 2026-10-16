@@ -16,6 +16,9 @@ bool IsContainedPath(const std::filesystem::path& root, const std::filesystem::p
 // ".." を含むか（相対パスが外へ出るかの字句的な判定）。
 bool HasParentTraversal(const std::filesystem::path& path) noexcept;
 
+// 基準ディレクトリの中に留まる相対パスか（空でなく、ドライブ・ルートを持たず、".." を含まない）。
+bool IsSafeRelativePath(const std::filesystem::path& path) noexcept;
+
 // candidate が root の要素列で始まるか（字句比較、大文字小文字を区別）。
 bool IsLexicallyWithin(const std::filesystem::path& root, const std::filesystem::path& candidate) noexcept;
 

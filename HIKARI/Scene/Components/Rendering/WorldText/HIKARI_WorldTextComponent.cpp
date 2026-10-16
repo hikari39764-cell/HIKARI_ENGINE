@@ -527,10 +527,4 @@ void WorldTextComponent::Sanitize() noexcept {
     }
 }
 
-void WorldTextComponent::NotifyRenderStateDirty() {
-    if (GameObject* owner = GetOwner()) {
-        owner->MarkRenderStateDirty();
-    }
-}
-
 } // namespace HIKARI

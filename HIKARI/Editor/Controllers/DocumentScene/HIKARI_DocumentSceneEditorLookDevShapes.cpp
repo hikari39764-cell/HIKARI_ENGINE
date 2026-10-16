@@ -196,7 +196,7 @@ bool DocumentSceneEditorController::UpdateLookDevShapeHandles(DocumentSceneBase&
                                                        {"size", {edited.size.x, edited.size.y, edited.size.z}}});
         } else if (!cut && !(finished.result == finished.start)) {
             ContinueLookDevObjectDrag(scene, selected, "Resize Shape", [&](SceneObjectData& document) {
-                SceneComponentData* component = EDITOR::FindLookDevComponent(document, "ProceduralMeshComponent");
+                SceneComponentData* component = document.FindComponent("ProceduralMeshComponent");
                 if (component == nullptr) {
                     return false;
                 }
@@ -303,8 +303,7 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::EditLookDevOpening(
     const char* label = action == "add" ? "Add Opening" : (action == "edit" ? "Edit Opening" : "Remove Opening");
     const bool done = EditLookDevDocument(*scene, label, [&](SceneDocument& document) {
         SceneObjectData* object = FindSceneObjectData(document, objectId);
-        SceneComponentData* component =
-            object != nullptr ? EDITOR::FindLookDevComponent(*object, "ProceduralMeshComponent") : nullptr;
+        SceneComponentData* component = object != nullptr ? object->FindComponent("ProceduralMeshComponent") : nullptr;
         if (component == nullptr) {
             return fail("NOT_A_SHAPE", "The object has no ProceduralMeshComponent.");
         }
@@ -400,7 +399,7 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::SubtractLookDevShap
     const bool done = EditLookDevDocument(*scene, "Cut Out", [&](SceneDocument& document) {
         const std::unordered_set<uint64_t> cutterTree = CollectObjectSubtreeIds(document, cutterId);
         for (SceneObjectData& target : document.objects) {
-            SceneComponentData* component = EDITOR::FindLookDevComponent(target, "ProceduralMeshComponent");
+            SceneComponentData* component = target.FindComponent("ProceduralMeshComponent");
             const GameObject* runtime = scene->GetWorld().FindObject(target.id);
             if (component == nullptr || runtime == nullptr || cutterTree.contains(target.id.value) ||
                 (!targets.empty() && !targets.contains(target.id.value)) ||

@@ -1,4 +1,5 @@
 #include "Assets/Cooking/HIKARI_AssetCookInternal.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
@@ -57,7 +58,7 @@ bool CopyDirectory(const std::filesystem::path& source, const std::filesystem::p
         }
 
         const std::filesystem::path relative = std::filesystem::relative(iterator->path(), source, ec);
-        if (ec || !IsSafeCookedRelativePath(relative)) {
+        if (ec || !PATHS::IsSafeRelativePath(relative)) {
             outMessage = "Could not resolve cooked directory file: " + iterator->path().generic_string();
             return false;
         }
@@ -125,7 +126,7 @@ bool CopyOpeningAnimation(const std::filesystem::path& projectRoot, const std::f
         const std::string extension = TEXT::ToLowerAsciiCopy(pagePath.extension().string());
         if (line.find(':') != std::string::npos ||
             (extension != ".png" && extension != ".jpg" && extension != ".jpeg" && extension != ".dds") ||
-            !IsSafeCookedRelativePath(pagePath) || !copiedPages.insert(MakePathKey(pagePath)).second) {
+            !PATHS::IsSafeRelativePath(pagePath) || !copiedPages.insert(MakePathKey(pagePath)).second) {
             continue;
         }
 
@@ -263,7 +264,7 @@ bool CookProceduralGeometry(const AssetCookOptions& options, const CookPlan& pla
                 std::error_code relativeError{};
                 const std::filesystem::path relativePath =
                     std::filesystem::relative(generatedPath, options.projectRoot, relativeError);
-                if (relativeError || !IsSafeCookedRelativePath(relativePath)) {
+                if (relativeError || !PATHS::IsSafeRelativePath(relativePath)) {
                     outMessage = "Procedural clustered geometry escaped "
                                  "the project root: " +
                                  generatedPath.generic_string();

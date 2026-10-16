@@ -109,19 +109,6 @@ bool IsValidAnimated(const ParticleAnimatedColor& value) noexcept {
     }
 }
 
-bool IsValidValue(const VfxValue& value) noexcept {
-    switch (value.type) {
-    case VfxValueType::Bool:
-    case VfxValueType::Int: return true;
-    case VfxValueType::Float:
-    case VfxValueType::Float2:
-    case VfxValueType::Float3:
-    case VfxValueType::Float4:
-    case VfxValueType::Color: return IsFinite(value.numeric);
-    default: return false;
-    }
-}
-
 VfxValueType ExpectedInputType(VfxRuntimeBindingSemantic semantic) noexcept {
     switch (semantic) {
     case VfxRuntimeBindingSemantic::EmitterEnabled: return VfxValueType::Bool;
@@ -218,7 +205,7 @@ bool ValidateProgramHeader(const VfxProgram& program, std::string& outError) {
     std::unordered_set<std::string> inputIds{};
     for (const VfxProgramInput& input : program.inputs) {
         if (!IsValidProgramString(input.id) || !inputIds.emplace(input.id).second ||
-            input.defaultValue.type != input.type || !IsValidValue(input.defaultValue)) {
+            input.defaultValue.type != input.type || !input.defaultValue.IsFinite()) {
             return Fail(outError, "VFX program input table is invalid");
         }
     }

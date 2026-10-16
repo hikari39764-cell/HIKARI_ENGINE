@@ -61,17 +61,6 @@ PHYSICS::PhysicsMotionType ResolveMotionType(const GameObject& object,
     return body->GetMotionType();
 }
 
-MATH::Vec3 TransformPoint(const MATH::Mat4& matrix, const MATH::Vec3& point) noexcept {
-    const MATH::Vec4 transformed = matrix.TransformPoint({point.x, point.y, point.z, 1.0f});
-    const float inverseW = std::fabs(transformed.w) > 1.0e-6f ? 1.0f / transformed.w : 1.0f;
-    return {transformed.x * inverseW, transformed.y * inverseW, transformed.z * inverseW};
-}
-
-MATH::Vec3 TransformVector(const MATH::Mat4& matrix, const MATH::Vec3& vector) noexcept {
-    const MATH::Vec4 transformed = matrix.TransformPoint({vector.x, vector.y, vector.z, 0.0f});
-    return {transformed.x, transformed.y, transformed.z};
-}
-
 float AxisLength(const MATH::Vec3& axis) noexcept { return std::sqrt(MATH::Dot(axis, axis)); }
 
 MATH::Vec3 PlanarTangent(const MATH::Vec3& preferred, const MATH::Vec3& fallback) noexcept {
@@ -85,9 +74,9 @@ MATH::Vec3 PlanarTangent(const MATH::Vec3& preferred, const MATH::Vec3& fallback
 TERRAIN::TerrainInteractionFootprint BuildRuntimeFootprint(const MATH::Quat& bodyRotation,
                                                            const PHYSICS::PhysicsShapeDesc& shape) noexcept {
     const MATH::Mat4 shapeRotation = MATH::Mat4::Rotate(bodyRotation) * MATH::Mat4::Rotate(shape.localRotation);
-    const MATH::Vec3 axisX = TransformVector(shapeRotation, {1.0f, 0.0f, 0.0f});
-    const MATH::Vec3 axisY = TransformVector(shapeRotation, {0.0f, 1.0f, 0.0f});
-    const MATH::Vec3 axisZ = TransformVector(shapeRotation, {0.0f, 0.0f, 1.0f});
+    const MATH::Vec3 axisX = MATH::TransformVector(shapeRotation, {1.0f, 0.0f, 0.0f});
+    const MATH::Vec3 axisY = MATH::TransformVector(shapeRotation, {0.0f, 1.0f, 0.0f});
+    const MATH::Vec3 axisZ = MATH::TransformVector(shapeRotation, {0.0f, 0.0f, 1.0f});
     TERRAIN::TerrainInteractionFootprint footprint{};
     if (shape.type == PHYSICS::PhysicsShapeType::Sphere) {
         const float radius = std::fabs(shape.radius);
@@ -186,7 +175,7 @@ bool ResolveColliderSource(const PHYSICS::PhysicsRuntimeStatusService* runtimeSt
         runtimeShape = &authoredShape;
     }
     outSource.sourceShapeId = runtimeShape->key.sourceShapeId;
-    outSource.positionWS = TransformPoint(bodyWorld, runtimeShape->localCenter);
+    outSource.positionWS = MATH::TransformPoint(bodyWorld, runtimeShape->localCenter);
     outSource.footprint = BuildRuntimeFootprint(rotation, *runtimeShape);
     if (bodyStatus != nullptr && bodyStatus->state == PHYSICS::PhysicsBodyRuntimeState::Ready) {
         outSource.definitionSignature = bodyStatus->definitionSignature;
@@ -515,78 +504,79 @@ void TerrainInteractionSourceSystem::PublishRigidContacts(World& world, const Fr
 void TerrainInteractionSourceSystem::PublishCharacterSources(World& world, const FrameContext& frame) {
     std::unordered_set<TERRAIN::TerrainInteractionSourceKey, SourceKeyHash> seen{};
     if (kinematicMotionService_ != nullptr) {
-        world.ForEachObjectWith<CharacterLocomotionComponent>([&](GameObject& object,
-                                                                  CharacterLocomotionComponent& locomotion) {
-            if (!locomotion.IsEnabled()) {
-                return;
-            }
-            const RuntimeObjectHandle objectHandle = object.GetRuntimeHandle();
-            if (runtimeActivityService_ != nullptr && !runtimeActivityService_->IsActive(objectHandle)) {
-                return;
-            }
-            const PHYSICS::KinematicMotionState* motion = kinematicMotionService_->FindState(objectHandle);
-            if (motion == nullptr || !motion->IsGrounded() || !motion->groundObject.IsValid()) {
-                return;
-            }
-            GameObject* terrainObject = world.FindObject(motion->groundObject);
-            if (terrainObject == nullptr || terrainObject->GetComponent<TerrainSurfaceComponent>() == nullptr) {
-                return;
-            }
+        world.ForEachObjectWith<CharacterLocomotionComponent>(
+            [&](GameObject& object, CharacterLocomotionComponent& locomotion) {
+                if (!locomotion.IsEnabled()) {
+                    return;
+                }
+                const RuntimeObjectHandle objectHandle = object.GetRuntimeHandle();
+                if (runtimeActivityService_ != nullptr && !runtimeActivityService_->IsActive(objectHandle)) {
+                    return;
+                }
+                const PHYSICS::KinematicMotionState* motion = kinematicMotionService_->FindState(objectHandle);
+                if (motion == nullptr || !motion->IsGrounded() || !motion->groundObject.IsValid()) {
+                    return;
+                }
+                GameObject* terrainObject = world.FindObject(motion->groundObject);
+                if (terrainObject == nullptr || terrainObject->GetComponent<TerrainSurfaceComponent>() == nullptr) {
+                    return;
+                }
 
-            TERRAIN::TerrainInteractionSourceKey source{};
-            source.object = objectHandle;
-            source.featureId = kCharacterSupportFeature;
-            seen.insert(source);
+                TERRAIN::TerrainInteractionSourceKey source{};
+                source.object = objectHandle;
+                source.featureId = kCharacterSupportFeature;
+                seen.insert(source);
 
-            TERRAIN::TerrainInteractionFootprint footprint{};
-            footprint.kind = TERRAIN::TerrainFootprintKind::Ellipse;
-            footprint.halfExtentsWS = {0.22f, 0.14f};
-            footprint.verticalRadiusWS = 0.08f;
-            const MATH::Vec3 forwardWS = TransformVector(object.GetTransform().GetWorldMatrix(), {0.0f, 0.0f, 1.0f});
-            footprint.tangentWS = PlanarTangent({motion->velocity.x, 0.0f, motion->velocity.z}, forwardWS);
+                TERRAIN::TerrainInteractionFootprint footprint{};
+                footprint.kind = TERRAIN::TerrainFootprintKind::Ellipse;
+                footprint.halfExtentsWS = {0.22f, 0.14f};
+                footprint.verticalRadiusWS = 0.08f;
+                const MATH::Vec3 forwardWS =
+                    MATH::TransformVector(object.GetTransform().GetWorldMatrix(), {0.0f, 0.0f, 1.0f});
+                footprint.tangentWS = PlanarTangent({motion->velocity.x, 0.0f, motion->velocity.z}, forwardWS);
 
-            float normalLoadN = 0.0f;
-            const PhysicsBodyComponent* body = object.GetComponent<PhysicsBodyComponent>();
-            if (body != nullptr && body->IsEnabled()) {
-                normalLoadN = (std::max)(body->GetMass(), 0.0f) * std::fabs(body->GetGravityScale()) * 9.81f;
-            }
+                float normalLoadN = 0.0f;
+                const PhysicsBodyComponent* body = object.GetComponent<PhysicsBodyComponent>();
+                if (body != nullptr && body->IsEnabled()) {
+                    normalLoadN = (std::max)(body->GetMass(), 0.0f) * std::fabs(body->GetGravityScale()) * 9.81f;
+                }
 
-            auto activeIt = activeCharacterContacts_.find(source);
-            if (activeIt != activeCharacterContacts_.end() && activeIt->second.target != motion->groundObject) {
-                PublishSweptInteraction(
-                    world, frame, source, activeIt->second.target, TERRAIN::TerrainInteractionPhase::End,
-                    TERRAIN::TerrainInteractionSourceKind::CharacterFoot, activeIt->second.positionWS,
-                    activeIt->second.footprint, activeIt->second.normalLoadN, activeIt->second.normalWS, 0.0f, 0.0f,
-                    0.0f, activeIt->second.contactAgeSeconds);
-                activeCharacterContacts_.erase(activeIt);
-            }
+                auto activeIt = activeCharacterContacts_.find(source);
+                if (activeIt != activeCharacterContacts_.end() && activeIt->second.target != motion->groundObject) {
+                    PublishSweptInteraction(
+                        world, frame, source, activeIt->second.target, TERRAIN::TerrainInteractionPhase::End,
+                        TERRAIN::TerrainInteractionSourceKind::CharacterFoot, activeIt->second.positionWS,
+                        activeIt->second.footprint, activeIt->second.normalLoadN, activeIt->second.normalWS, 0.0f, 0.0f,
+                        0.0f, activeIt->second.contactAgeSeconds);
+                    activeCharacterContacts_.erase(activeIt);
+                }
 
-            const auto [insertedIt, inserted] = activeCharacterContacts_.try_emplace(
-                source, ActiveCharacterContact{motion->groundObject, motion->groundPosition, motion->groundNormal,
-                                               footprint, normalLoadN, 0.0f, 0.0f});
-            ActiveCharacterContact& active = insertedIt->second;
-            const float tangentAlignment = std::fabs(MATH::Dot(active.footprint.tangentWS, footprint.tangentWS));
-            const MATH::Vec3 horizontalVelocity{motion->velocity.x, 0.0f, motion->velocity.z};
-            const bool movingThisStep = MATH::Length(horizontalVelocity) > 1.0e-3f || tangentAlignment < 0.99999f;
-            active.target = motion->groundObject;
-            active.positionWS = motion->groundPosition;
-            active.normalWS = motion->groundNormal;
-            active.footprint = footprint;
-            active.normalLoadN = normalLoadN;
-            const float fixedStepSeconds = (std::max)(frame.fixedDt, 0.0f);
-            active.stationaryPublishRemainingSeconds =
-                (std::max)(0.0f, active.stationaryPublishRemainingSeconds - fixedStepSeconds);
-            if (inserted || movingThisStep || active.stationaryPublishRemainingSeconds <= 0.0f) {
-                PublishSweptInteraction(world, frame, source, active.target,
-                                        inserted ? TERRAIN::TerrainInteractionPhase::Begin
-                                                 : TERRAIN::TerrainInteractionPhase::Persist,
-                                        TERRAIN::TerrainInteractionSourceKind::CharacterFoot, active.positionWS,
-                                        active.footprint, active.normalLoadN, active.normalWS, 0.0f, 0.0f,
-                                        inserted || movingThisStep ? 1.0f : 0.0f, active.contactAgeSeconds);
-                active.stationaryPublishRemainingSeconds = kStationaryPublishIntervalSeconds;
-            }
-            active.contactAgeSeconds += fixedStepSeconds;
-        });
+                const auto [insertedIt, inserted] = activeCharacterContacts_.try_emplace(
+                    source, ActiveCharacterContact{motion->groundObject, motion->groundPosition, motion->groundNormal,
+                                                   footprint, normalLoadN, 0.0f, 0.0f});
+                ActiveCharacterContact& active = insertedIt->second;
+                const float tangentAlignment = std::fabs(MATH::Dot(active.footprint.tangentWS, footprint.tangentWS));
+                const MATH::Vec3 horizontalVelocity{motion->velocity.x, 0.0f, motion->velocity.z};
+                const bool movingThisStep = MATH::Length(horizontalVelocity) > 1.0e-3f || tangentAlignment < 0.99999f;
+                active.target = motion->groundObject;
+                active.positionWS = motion->groundPosition;
+                active.normalWS = motion->groundNormal;
+                active.footprint = footprint;
+                active.normalLoadN = normalLoadN;
+                const float fixedStepSeconds = (std::max)(frame.fixedDt, 0.0f);
+                active.stationaryPublishRemainingSeconds =
+                    (std::max)(0.0f, active.stationaryPublishRemainingSeconds - fixedStepSeconds);
+                if (inserted || movingThisStep || active.stationaryPublishRemainingSeconds <= 0.0f) {
+                    PublishSweptInteraction(world, frame, source, active.target,
+                                            inserted ? TERRAIN::TerrainInteractionPhase::Begin
+                                                     : TERRAIN::TerrainInteractionPhase::Persist,
+                                            TERRAIN::TerrainInteractionSourceKind::CharacterFoot, active.positionWS,
+                                            active.footprint, active.normalLoadN, active.normalWS, 0.0f, 0.0f,
+                                            inserted || movingThisStep ? 1.0f : 0.0f, active.contactAgeSeconds);
+                    active.stationaryPublishRemainingSeconds = kStationaryPublishIntervalSeconds;
+                }
+                active.contactAgeSeconds += fixedStepSeconds;
+            });
     }
 
     for (auto it = activeCharacterContacts_.begin(); it != activeCharacterContacts_.end();) {
@@ -741,7 +731,7 @@ void TerrainInteractionSourceSystem::PublishFollowerSources(World& world, const 
             return;
         }
         seen.insert(source);
-        const MATH::Vec3 center = TransformPoint(sourceWorld, {});
+        const MATH::Vec3 center = MATH::TransformPoint(sourceWorld, {});
         const float radius = std::fabs(follower.ResolveRadius()) *
                              (std::max)({std::fabs(scale.x), std::fabs(scale.y), std::fabs(scale.z)});
         if (!(radius > 1.0e-8f) || !std::isfinite(radius)) {

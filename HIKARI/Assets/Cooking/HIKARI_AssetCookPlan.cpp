@@ -1,4 +1,5 @@
 #include "Assets/Cooking/HIKARI_AssetCookInternal.h"
+#include "Core/IO/HIKARI_PathNormalization.h"
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
@@ -41,7 +42,7 @@ bool IsPathWithinRoot(const std::filesystem::path& path, const std::filesystem::
 }
 
 bool IsDeclaredProjectAssetRoot(const std::filesystem::path& root) {
-    if (!IsSafeCookedRelativePath(root)) {
+    if (!PATHS::IsSafeRelativePath(root)) {
         return false;
     }
     const std::string key = MakePathKey(root);
@@ -50,7 +51,7 @@ bool IsDeclaredProjectAssetRoot(const std::filesystem::path& root) {
 
 bool ResolveContainedFilePath(const std::filesystem::path& root, const std::filesystem::path& relativePath,
                               std::filesystem::path& outResolved, std::string& outMessage) {
-    if (!IsSafeCookedRelativePath(relativePath)) {
+    if (!PATHS::IsSafeRelativePath(relativePath)) {
         outMessage = "Cooked artifact path is unsafe: " + relativePath.generic_string();
         return false;
     }

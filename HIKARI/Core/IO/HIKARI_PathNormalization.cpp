@@ -41,6 +41,11 @@ bool HasParentTraversal(const std::filesystem::path& path) noexcept {
     return false;
 }
 
+bool IsSafeRelativePath(const std::filesystem::path& path) noexcept {
+    return !path.empty() && !path.is_absolute() && !path.has_root_name() && !path.has_root_directory() &&
+           !HasParentTraversal(path);
+}
+
 bool IsLexicallyWithin(const std::filesystem::path& root, const std::filesystem::path& candidate) noexcept {
     auto rootIt = root.begin();
     auto candidateIt = candidate.begin();

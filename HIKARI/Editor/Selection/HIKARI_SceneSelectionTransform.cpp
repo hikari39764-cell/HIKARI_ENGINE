@@ -169,15 +169,6 @@ void SyncLightingComponentProperties(DocumentSceneBase& scene, const GameObject&
     }
 }
 
-bool HasSelectedAncestor(const GameObject& object, const std::unordered_set<uint64_t>& selectedIds) {
-    for (const GameObject* parent = object.GetParent(); parent != nullptr; parent = parent->GetParent()) {
-        if (selectedIds.contains(parent->GetDocumentId().value)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 bool DecomposeWorldToLocal(const GameObject& object, const MATH::Mat4& worldMatrix, Transform3D& outTransform) {
     const MATH::Mat4 localMatrix =
         object.GetParent() != nullptr ? MATH::Inverse(object.GetParent()->GetTransform().GetWorldMatrix()) * worldMatrix
@@ -222,6 +213,15 @@ bool ApplyLocalTransform(GameObject& object, Transform3D transform) {
 }
 
 } // namespace
+
+bool HasSelectedAncestor(const GameObject& object, const std::unordered_set<uint64_t>& selectedIds) {
+    for (const GameObject* parent = object.GetParent(); parent != nullptr; parent = parent->GetParent()) {
+        if (selectedIds.contains(parent->GetDocumentId().value)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 SceneSelectionTransformResult DrawSceneSelectionTransformGizmo(DocumentSceneBase& scene, EditorSelection& selection,
                                                                const EditorTransformGizmo& gizmo,

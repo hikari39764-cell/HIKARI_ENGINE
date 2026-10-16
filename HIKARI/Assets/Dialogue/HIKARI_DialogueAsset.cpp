@@ -1,4 +1,5 @@
 #include "Assets/Dialogue/HIKARI_DialogueAsset.h"
+#include "Core/Text/HIKARI_OutMessage.h"
 
 #include <algorithm>
 #include <utility>
@@ -8,31 +9,26 @@
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 
 namespace HIKARI {
-namespace {
-void SetError(std::string* outError, std::string message) {
-    if (outError != nullptr)
-        *outError = std::move(message);
-}
-} // namespace
+namespace {} // namespace
 
 bool LoadDialogueAsset(const std::filesystem::path& path, const AssetGuid& authoritativeGuid, DialogueAsset& outAsset,
                        std::string* outError) {
     nlohmann::json root{};
     std::string ioMessage{};
     if (!SERIALIZATION::JSON::ReadJsonFile(path, root, &ioMessage)) {
-        SetError(outError, "Unable to read dialogue asset: " + ioMessage);
+        SetMessage(outError, "Unable to read dialogue asset: " + ioMessage);
         return false;
     }
     const uint32_t formatVersion = root.is_object() ? root.value("formatVersion", 0u) : 0u;
     if (!root.is_object() || formatVersion != DialogueAsset::kFormatVersion) {
-        SetError(
+        SetMessage(
             outError,
             "Dialogue v4 required: re-save content without an embedded theme and select TextStyle assets in Dialogue UI Style");
         return false;
     }
     const auto payload = root.find("dialogue");
     if (payload == root.end() || !payload->is_object()) {
-        SetError(outError, "Dialogue asset payload is missing");
+        SetMessage(outError, "Dialogue asset payload is missing");
         return false;
     }
 
@@ -50,7 +46,7 @@ bool LoadDialogueAsset(const std::filesystem::path& path, const AssetGuid& autho
     const auto error = std::find_if(issues.begin(), issues.end(),
                                     [](const DIALOGUE::DialogueValidationIssue& issue) { return issue.error; });
     if (error != issues.end()) {
-        SetError(outError, error->path + ": " + error->message);
+        SetMessage(outError, error->path + ": " + error->message);
         return false;
     }
     if (loaded.displayName.empty()) {
@@ -69,7 +65,7 @@ bool SaveDialogueAsset(const std::filesystem::path& path, const DialogueAsset& a
     const auto error = std::find_if(issues.begin(), issues.end(),
                                     [](const DIALOGUE::DialogueValidationIssue& issue) { return issue.error; });
     if (error != issues.end()) {
-        SetError(outError, error->path + ": " + error->message);
+        SetMessage(outError, error->path + ": " + error->message);
         return false;
     }
     nlohmann::json payload{};
@@ -83,7 +79,7 @@ bool SaveDialogueAsset(const std::filesystem::path& path, const DialogueAsset& a
     };
     std::string ioMessage{};
     if (!SERIALIZATION::JSON::WriteJsonFile(path, root, &ioMessage)) {
-        SetError(outError, "Unable to write dialogue asset: " + ioMessage);
+        SetMessage(outError, "Unable to write dialogue asset: " + ioMessage);
         return false;
     }
     if (outError != nullptr)
