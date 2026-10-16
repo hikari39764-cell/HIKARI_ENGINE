@@ -333,7 +333,7 @@ bool QuadDrawer::CreateRootSignature() {
     rp[1].Descriptor.RegisterSpace = 0;
     rp[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
     rp[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-    rp[2].Constants = {1u, 0u, 36u};
+    rp[2].Constants = {1u, 0u, RENDER3D::kScreenReadabilityConstantCount};
     auto auxiliaryRange = range;
     auxiliaryRange.BaseShaderRegister = 1;
     auxiliaryRange.NumDescriptors = 2;
@@ -466,7 +466,7 @@ void QuadDrawer::DrawBlended(ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIPTOR
     cmd->SetGraphicsRootDescriptorTable(0, currentSrvGpu_);
     if (auxiliarySrvGpu_.ptr)
         cmd->SetGraphicsRootDescriptorTable(3, auxiliarySrvGpu_);
-    cmd->SetGraphicsRoot32BitConstants(2u, 36u, &readability, 0u);
+    cmd->SetGraphicsRoot32BitConstants(2u, RENDER3D::kScreenReadabilityConstantCount, &readability, 0u);
     cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     cmd->DrawInstanced(3, 1, 0, 0);
 }
@@ -556,7 +556,7 @@ void QuadDrawer::DrawFullscreen(ID3D12DescriptorHeap* srvHeap, D3D12_GPU_DESCRIP
     cmd->SetGraphicsRootDescriptorTable(0, currentSrvGpu_);
     if (auxiliarySrvGpu_.ptr)
         cmd->SetGraphicsRootDescriptorTable(3, auxiliarySrvGpu_);
-    cmd->SetGraphicsRoot32BitConstants(2u, 36u, &readability_, 0u);
+    cmd->SetGraphicsRoot32BitConstants(2u, RENDER3D::kScreenReadabilityConstantCount, &readability_, 0u);
     cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     cmd->DrawInstanced(3, 1, 0, 0);
 }
@@ -593,7 +593,7 @@ void QuadDrawer::DrawFullscreen() {
     cmd->SetGraphicsRootDescriptorTable(0, currentSrvGpu_);
     if (auxiliarySrvGpu_.ptr)
         cmd->SetGraphicsRootDescriptorTable(3, auxiliarySrvGpu_);
-    cmd->SetGraphicsRoot32BitConstants(2u, 36u, &readability_, 0u);
+    cmd->SetGraphicsRoot32BitConstants(2u, RENDER3D::kScreenReadabilityConstantCount, &readability_, 0u);
     if (currentCBV0_ != 0) {
         cmd->SetGraphicsRootConstantBufferView(1, currentCBV0_);
     }

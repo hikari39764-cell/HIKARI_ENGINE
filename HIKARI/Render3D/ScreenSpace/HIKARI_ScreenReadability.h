@@ -10,22 +10,41 @@ namespace HIKARI::RENDER3D {
 
 // shader へ渡す保護の数と、そのために集める候補の数。候補は結んだ順に集め、投影した時に
 // このカメラで大きく見える順に選ぶ（結んだ順の先頭だけを保護すると、手前の画面が外れることがある）。
-inline constexpr uint32_t kScreenReadabilityRegionCount = 4u;
+// 画面が多く並ぶ場面で上限を超えると、カメラが動くたびに保護される画面が入れ替わって色調が跳ぶので 12 まで持つ。
+inline constexpr uint32_t kScreenReadabilityRegionCount = 12u;
 inline constexpr uint32_t kScreenReadabilityCandidateCount = 32u;
+// 四隅の画面座標（uv）を 1 語へ詰める範囲。x, y をこの範囲の 16 bit 正規化で上下に詰める（1920 画素で約 0.26 画素刻み）。
+// 画面の外へ大きくはみ出した隅は範囲の端へ寄せる。HLSL の HikariUnpackReadabilityCorner と同じ値を使う。
+inline constexpr float kScreenReadabilityUvMin = -4.0f;
+inline constexpr float kScreenReadabilityUvRange = 9.0f;
 
 struct ScreenReadabilityWorldFrame {
     uint32_t count = 0u;
     std::array<std::array<MATH::Vec3, 4>, kScreenReadabilityCandidateCount> regions{};
 };
 
+// root constant（上限 64 語）で渡すので、四隅は 1 隅 1 語に詰める（領域ごとに 4 語）。nearDepth は領域ごとの画面の一番
+// 手前の隅の 1 - 深度（16 bit 正規化、2 領域で 1 語、HLSL の uint4 に合わせて 8 語）。後処理はその画素の面がこれより
+// 手前なら画面の前に物があるとみなして保護しない（前の物に画面の保護が透けない）。
 struct ScreenReadabilityFrame {
     uint32_t count = 0u;
     uint32_t attenuateCopy = 0u;
     float curvature = 0.0f;
     float padding = 0.0f;
-    std::array<MATH::Vec4, kScreenReadabilityRegionCount * 2u> corners{};
+    std::array<uint32_t, kScreenReadabilityRegionCount * 4u> corners{};
+    std::array<uint32_t, 8u> nearDepth{};
 };
-static_assert(sizeof(ScreenReadabilityFrame) == 144u);
+static_assert(kScreenReadabilityRegionCount <= 16u);
+static_assert(sizeof(ScreenReadabilityFrame) == 16u + kScreenReadabilityRegionCount * 16u + 32u);
+inline constexpr uint32_t kScreenReadabilityConstantCount = sizeof(ScreenReadabilityFrame) / sizeof(uint32_t);
+
+inline uint32_t PackScreenReadabilityCorner(MATH::Vec2 uv) noexcept {
+    const auto quantize = [](float value) {
+        const float unit = std::clamp((value - kScreenReadabilityUvMin) / kScreenReadabilityUvRange, 0.0f, 1.0f);
+        return static_cast<uint32_t>(std::lround(unit * 65535.0f));
+    };
+    return quantize(uv.x) | (quantize(uv.y) << 16u);
+}
 
 inline ScreenReadabilityFrame ProjectScreenReadability(const ScreenReadabilityWorldFrame& source,
                                                        const MATH::Mat4& viewProjection) noexcept {
@@ -33,12 +52,14 @@ inline ScreenReadabilityFrame ProjectScreenReadability(const ScreenReadabilityWo
     struct Candidate {
         std::array<MATH::Vec2, 4> uv{};
         float visible = 0.0f;
+        float nearInverseDepth = 0.0f;
     };
     std::array<Candidate, kScreenReadabilityCandidateCount> candidates{};
     uint32_t candidateCount = 0u;
     for (uint32_t index = 0u; index < (std::min)(source.count, kScreenReadabilityCandidateCount); ++index) {
         std::array<MATH::Vec2, 4> uv{};
         bool valid = true;
+        float nearInverseDepth = 0.0f;
         for (uint32_t corner = 0u; corner < 4u; ++corner) {
             const auto& p = source.regions[index][corner];
             const auto clip = viewProjection.TransformPoint({p.x, p.y, p.z, 1.0f});
@@ -48,6 +69,7 @@ inline ScreenReadabilityFrame ProjectScreenReadability(const ScreenReadabilityWo
                 break;
             }
             uv[corner] = {clip.x / clip.w * .5f + .5f, .5f - clip.y / clip.w * .5f};
+            nearInverseDepth = (std::max)(nearInverseDepth, 1.0f - clip.z / clip.w);
         }
         if (!valid)
             continue;
@@ -65,7 +87,7 @@ inline ScreenReadabilityFrame ProjectScreenReadability(const ScreenReadabilityWo
         const float visible = (std::max)(right - left, 0.0f) * (std::max)(bottom - top, 0.0f);
         if (visible <= 0.0f)
             continue;
-        candidates[candidateCount++] = {uv, visible};
+        candidates[candidateCount++] = {uv, visible, nearInverseDepth};
     }
     const uint32_t selected = (std::min)(candidateCount, kScreenReadabilityRegionCount);
     std::partial_sort(candidates.begin(), candidates.begin() + selected, candidates.begin() + candidateCount,
@@ -73,8 +95,11 @@ inline ScreenReadabilityFrame ProjectScreenReadability(const ScreenReadabilityWo
     ScreenReadabilityFrame output{};
     for (uint32_t index = 0u; index < selected; ++index) {
         const auto& uv = candidates[index].uv;
-        output.corners[index * 2u] = {uv[0].x, uv[0].y, uv[1].x, uv[1].y};
-        output.corners[index * 2u + 1u] = {uv[2].x, uv[2].y, uv[3].x, uv[3].y};
+        for (uint32_t corner = 0u; corner < 4u; ++corner)
+            output.corners[index * 4u + corner] = PackScreenReadabilityCorner(uv[corner]);
+        const auto depth =
+            static_cast<uint32_t>(std::lround(std::clamp(candidates[index].nearInverseDepth, 0.0f, 1.0f) * 65535.0f));
+        output.nearDepth[index / 2u] |= depth << (16u * (index % 2u));
     }
     output.count = selected;
     return output;

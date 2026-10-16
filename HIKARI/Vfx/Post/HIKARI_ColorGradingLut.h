@@ -50,8 +50,9 @@ private:
 // 終わりに返す。LUT が無くても補助表を必ず束ね、shader が宣言する全レジスターを有効にしておく。
 class ToneMappingInputs {
 public:
-    ToneMappingInputs(const GFX::Context& context, QuadDrawer& quad, RenderTarget2D& source,
-                      ID3D12Resource* gradingLut);
+    // sceneDepth は画面の保護を前の物の上へ透けさせないための場景の深度（t2）。無ければ nullptr。
+    ToneMappingInputs(const GFX::Context& context, QuadDrawer& quad, RenderTarget2D& source, ID3D12Resource* gradingLut,
+                      ID3D12Resource* sceneDepth);
     ~ToneMappingInputs();
     ToneMappingInputs(const ToneMappingInputs&) = delete;
     ToneMappingInputs& operator=(const ToneMappingInputs&) = delete;

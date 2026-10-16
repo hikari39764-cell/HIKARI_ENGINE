@@ -660,7 +660,14 @@ RenderTarget2D* PostSystem::ResolveFinalSceneToLdr(RenderTarget2D& source, DXGI_
     if (RENDER3D::GetRenderDebugOutputRoute().bypassPostProcessing) {
         return processingStage_.ResolveDebugLdr(source, outputFormat, quad_);
     }
-    return processingStage_.ResolveLdr(source, outputFormat, quad_, captureStage_.GetLightTarget());
+    // 画面の保護（ProtectReadability）を、画面の前にある物の上では外せるよう場景の深度を渡す（ここでの今の目標は拡大後の
+    // 画で深度を持たないことがあるので、場景の目標の深度を使う）。
+    ID3D12Resource* const sceneDepth = captureStage_.BeginSceneDepthRead();
+    RenderTarget2D* resolved =
+        processingStage_.ResolveLdr(source, outputFormat, quad_, sceneDepth, captureStage_.GetLightTarget());
+    if (sceneDepth)
+        captureStage_.EndSceneDepthRead();
+    return resolved;
 }
 
 bool PostSystem::PrepareGameUiComposition(bool editorViewport, int uiLogicalWidth, int uiLogicalHeight) {

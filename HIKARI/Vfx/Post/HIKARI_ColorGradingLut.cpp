@@ -116,7 +116,7 @@ bool ColorGradingLut::Upload(const GFX::Context& context) {
 }
 
 ToneMappingInputs::ToneMappingInputs(const GFX::Context& context, QuadDrawer& quad, RenderTarget2D& source,
-                                     ID3D12Resource* gradingLut)
+                                     ID3D12Resource* gradingLut, ID3D12Resource* sceneDepth)
     : context_(context), views_(RENDER3D::AllocateRenderResourceDescriptorRange(3u)) {
     if (views_.size() != 3u || context.device == nullptr || context.srvHeap == nullptr) {
         for (auto& view : views_) {
@@ -131,8 +131,8 @@ ToneMappingInputs::ToneMappingInputs(const GFX::Context& context, QuadDrawer& qu
     view.Texture2D.MipLevels = 1u;
     view.Format = source.GetFormat();
     context.device->CreateShaderResourceView(source.GetResource(), &view, views_[0].cpu);
-    view.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    context.device->CreateShaderResourceView(nullptr, &view, views_[2].cpu);
+    view.Format = DXGI_FORMAT_R32_FLOAT;
+    context.device->CreateShaderResourceView(sceneDepth, &view, views_[2].cpu);
     view.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
     view.Format = kLutFormat;
     view.Texture3D.MostDetailedMip = 0u;

@@ -53,6 +53,8 @@ struct SceneCaptureMaterialBinding {
     RENDER3D::TextureResourceHandle appliedTexture{};
     const Material* appliedMaterial = nullptr;
     bool applied = false;
+    // 結び直しで貼っている材質を引き継いだ時、捕捉が同じでも切り出し（UV）を材質へ書き直す印。
+    bool refreshApplied = false;
 };
 
 // World-scoped CPU authority for a bounded set of secondary captures. GPU
@@ -228,7 +230,26 @@ public:
                 return IsSameMaterialDestination(existing, binding);
             });
         if (found != bindings_.end()) {
-            retiredBindings_.push_back(std::move(*found));
+            // 捕捉と切り出し（UV に効く指定）が同じなら、保護などの印だけを差し替えて材質には触れない（保護は毎フレーム
+            // binding の印から読む）。
+            constexpr uint32_t uvFlags =
+                GameProjectSceneCaptureMaterialBindingFlags(GameProjectSceneCaptureMaterialBindingFlag::FlipTextureX) |
+                GameProjectSceneCaptureMaterialBindingFlags(GameProjectSceneCaptureMaterialBindingFlag::FlipTextureY);
+            if (found->capture == binding.capture && found->quarterTurns == binding.quarterTurns &&
+                (found->flags & uvFlags) == (binding.flags & uvFlags) && found->sourceRect.x == binding.sourceRect.x &&
+                found->sourceRect.y == binding.sourceRect.y && found->sourceRect.width == binding.sourceRect.width &&
+                found->sourceRect.height == binding.sourceRect.height) {
+                found->flags = binding.flags;
+                return true;
+            }
+            // 同じ画面（物体と材質槽）の結び直しは、貼っている実行時の材質をそのまま使い、捕捉・切り出し・保護の指定だけを
+            // 差し替える。材質を作り直すと GPU の場景が組み直しになり（1 回 20 ms 前後）、画面の切り出しや保護を変えるたびに
+            // 画が止まる。
+            binding.resolvedMaterialIndex = found->resolvedMaterialIndex;
+            binding.appliedTexture = found->appliedTexture;
+            binding.appliedMaterial = found->appliedMaterial;
+            binding.applied = found->applied;
+            binding.refreshApplied = found->applied;
             *found = std::move(binding);
         } else {
             bindings_.push_back(std::move(binding));

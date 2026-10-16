@@ -1,5 +1,6 @@
 #include "Include/Post/HIKARI_PostEffectInterface.hlsli"
 #include "Include/Post/HIKARI_PostHash.hlsli"
+#include "Include/Post/HIKARI_PostSurfaceInputs.hlsli"
 
 Texture2D gSceneTex : register(t0);
 SamplerState gSamp : register(s0);
@@ -87,7 +88,8 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     const float2 sampleUv = saturate(
         uv + float2(horizontalShift, 0.0f));
 
-    const float readability = HikariScreenReadability(sampleUv, resolution);
+    // 画面の前にある物の上では保護を外す（場景の深度で判定）。
+    const float readability = HikariScreenReadabilityAt(sampleUv, resolution, 1.0f - HikariPostReadInverseDepth(sampleUv));
     const float glitchChromaPixels = lerp(chromaPixels, .25f, readability) *
         (1.0f + glitchGate * 3.0f);
     const float2 chromaOffset = float2(

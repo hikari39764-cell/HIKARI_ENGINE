@@ -1,6 +1,7 @@
 {
   "formatVersion": 1,
   "name": "CRTDY",
+  "inputs": ["SceneDepth"],
   "passes": [{"name": "CRTDY Resolve", "programId": "HIKARI.EngineShader.Post_CRTDY", "entryId": "Main"}],
   "params": [
     {"key": "strength", "label": "Strength", "type": "Float", "ref": {"slot": 0, "channel": 0}, "defaultValues": [1.0, 0, 0, 0], "minValues": [0.0, 0, 0, 0], "maxValues": [1.0, 0, 0, 0], "speed": 0.01},

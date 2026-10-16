@@ -8,9 +8,9 @@ namespace HIKARI {
 struct GameProjectSdkAccess;
 
 // Retainable non-owning World capability. All calls are owner-thread only.
-// Requests survive until Destroy or World teardown. Published screen
-// content is one frame behind its secondary render so a captured view can
-// never sample a target while it is being written. Up to
+// Requests survive until Destroy or World teardown. Each frame renders the
+// secondary views before the primary view, so bound screens show content of
+// the same frame and never sample a target while it is being written. Up to
 // kGameProjectSceneCaptureMaximumActiveCount independent captures may be
 // active at once.
 // Disabling or a transient render failure freezes the last good frame;

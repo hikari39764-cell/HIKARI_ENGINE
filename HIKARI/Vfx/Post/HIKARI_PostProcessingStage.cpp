@@ -928,7 +928,7 @@ RenderTarget2D* PostProcessingStage::ResolveHdrBloomOnly(RenderTarget2D& source,
 }
 
 RenderTarget2D* PostProcessingStage::ResolveLdr(RenderTarget2D& source, DXGI_FORMAT outputFormat, QuadDrawer& quad,
-                                                RenderTarget2D* lightTarget) {
+                                                ID3D12Resource* sceneDepth, RenderTarget2D* lightTarget) {
     if (!EnsureLdrTarget(source.GetWidth(), source.GetHeight(), outputFormat))
         return nullptr;
     if (!EnsureToneMappingEffect())
@@ -939,7 +939,7 @@ RenderTarget2D* PostProcessingStage::ResolveLdr(RenderTarget2D& source, DXGI_FOR
         return nullptr;
     }
     ID3D12Resource* gradingLut = colorGradingLut_.Prepare(context_, toneMappingSettings_.gamma);
-    const ToneMappingInputs inputs(context_, quad, source, gradingLut);
+    const ToneMappingInputs inputs(context_, quad, source, gradingLut, sceneDepth);
     if (!inputs) {
         quad.SetInputTexture(source.GetSrvHeap(), source.GetSrvGpu());
     }

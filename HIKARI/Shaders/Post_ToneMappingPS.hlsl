@@ -3,6 +3,18 @@
 Texture2D gSceneTex : register(t0);
 // 色調整の 3D LUT（表示の符号化した色で引く）。一辺の格子数は gUser[2].w、0 なら束ねていない。
 Texture3D gGradingLut : register(t1);
+// 場景の不透明な面の深度（描画解像度）。画面の保護を、画面の前にある物の上へ透けさせないのに使う。無い時は 0。
+Texture2D<float> gReadabilityDepth : register(t2);
+
+float ReadReadabilityDepth(float2 uv)
+{
+    uint width, height;
+    gReadabilityDepth.GetDimensions(width, height);
+    if (width == 0u || height == 0u)
+        return 0.0f;
+    const uint2 pixel = min(uint2(saturate(uv) * float2(width, height)), uint2(width - 1u, height - 1u));
+    return gReadabilityDepth.Load(int3(pixel, 0));
+}
 SamplerState gSamp : register(s0);
 
 // Scene lighting stays linear HDR through the render pipeline. This pass
@@ -104,7 +116,8 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     float2 screenUv = input.uv * 2.0f - 1.0f;
     screenUv *= 1.0f + gUser[2].y * gUser[2].z * dot(screenUv, screenUv);
     const float2 resolution = max(float2(gResolutionX, gResolutionY), 1.0f.xx);
-    const float readability = HikariScreenReadability(screenUv * .5f + .5f, resolution);
+    const float2 readabilityUv = screenUv * .5f + .5f;
+    const float readability = HikariScreenReadabilityAt(readabilityUv, resolution, ReadReadabilityDepth(readabilityUv));
     color = lerp(color, max(sceneColor.rgb, 0.0f), readability);
     color = pow(saturate(color), 1.0f / gamma);
     const float lutSize = gUser[2].w;

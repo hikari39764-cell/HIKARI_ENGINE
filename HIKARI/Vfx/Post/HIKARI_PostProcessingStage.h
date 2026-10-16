@@ -109,7 +109,7 @@ public:
     RenderTarget2D* ResolveHdrBloomOnly(RenderTarget2D& source, QuadDrawer& quad);
     RenderTarget2D* ResolveDebugLdr(RenderTarget2D& source, DXGI_FORMAT outputFormat, QuadDrawer& quad);
     RenderTarget2D* ResolveLdr(RenderTarget2D& source, DXGI_FORMAT outputFormat, QuadDrawer& quad,
-                               RenderTarget2D* lightTarget);
+                               ID3D12Resource* sceneDepth, RenderTarget2D* lightTarget);
 
     std::string DumpState() const;
 

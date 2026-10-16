@@ -34,6 +34,10 @@ public:
     D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentReadOnlyDsv() const;
     bool BeginCurrentDepthRead();
     void EndCurrentDepthRead();
+    // 場景の目標（描画解像度の HDR）の深度。今の目標が拡大後の画などで深度を持たない時も、場景の深度を返す。
+    // 後処理の終わりで画面の保護を前の物の上から外すのに使う。
+    ID3D12Resource* BeginSceneDepthRead();
+    void EndSceneDepthRead();
 
     RENDER3D::RenderTextureView CaptureSceneColorSnapshot(SceneColorSnapshotKind kind);
     RENDER3D::RenderTextureView GetSceneColorSnapshotView(SceneColorSnapshotKind kind) const;

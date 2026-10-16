@@ -225,6 +225,17 @@ void SceneCaptureStage::EndCurrentDepthRead() {
         currentTarget_->EndDepthRead();
 }
 
+ID3D12Resource* SceneCaptureStage::BeginSceneDepthRead() {
+    if (!sceneTarget_.GetResource() || !sceneTarget_.HasDepth() || !sceneTarget_.BeginDepthRead())
+        return nullptr;
+    return sceneTarget_.GetDepthResource();
+}
+
+void SceneCaptureStage::EndSceneDepthRead() {
+    if (sceneTarget_.GetResource() && sceneTarget_.HasDepth())
+        sceneTarget_.EndDepthRead();
+}
+
 bool SceneCaptureStage::EnsureSceneColorSnapshot(SceneColorSnapshotKind kind) {
     if (!IsValidSnapshotKind(kind) || !sceneTarget_.GetResource()) {
         return false;

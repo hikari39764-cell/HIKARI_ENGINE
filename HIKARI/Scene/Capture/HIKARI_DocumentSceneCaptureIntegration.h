@@ -140,7 +140,7 @@ inline void ApplyPublishedMaterialBinding(World& world, SceneCaptureService& ser
         Material* appliedMaterial = model->GetRuntimeMaterialOverride(materialIndex);
         const bool ownsAppliedMaterial = binding.applied && binding.resolvedMaterialIndex == materialIndex &&
                                          appliedMaterial == binding.appliedMaterial;
-        if (ownsAppliedMaterial && binding.appliedTexture == texture) {
+        if (ownsAppliedMaterial && binding.appliedTexture == texture && !binding.refreshApplied) {
             continue;
         }
         if (binding.applied && !ownsAppliedMaterial &&
@@ -173,6 +173,7 @@ inline void ApplyPublishedMaterialBinding(World& world, SceneCaptureService& ser
         binding.appliedTexture = texture;
         binding.appliedMaterial = appliedMaterial;
         binding.applied = true;
+        binding.refreshApplied = false;
     }
 }
 

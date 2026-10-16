@@ -691,7 +691,8 @@ bool ResolveDisplayTarget(InteractiveViewState& state, const SceneEnvironment& e
     const bool outputReady = g_displayQuad->SetOutputFormat(kInteractiveDisplayFormat);
     bool resolved = false;
     if (outputReady) {
-        const POST::ToneMappingInputs inputs(GFX::GetCurrentContext(), *g_displayQuad, sourceTarget, gradingLut);
+        const POST::ToneMappingInputs inputs(GFX::GetCurrentContext(), *g_displayQuad, sourceTarget, gradingLut,
+                                             nullptr);
         if (!inputs) {
             g_displayQuad->SetInputTexture(sourceTarget.GetSrvHeap(), sourceTarget.GetSrvGpu());
         }

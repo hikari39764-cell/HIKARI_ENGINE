@@ -109,7 +109,7 @@ bool CreateRootSignature(RuntimeState& state, std::string& outDiagnostic) {
 
     parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
     parameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-    parameters[2].Constants = {1u, 0u, 36u};
+    parameters[2].Constants = {1u, 0u, kScreenReadabilityConstantCount};
     D3D12_STATIC_SAMPLER_DESC sampler{};
     sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -320,7 +320,7 @@ bool DrawProjectFullscreenShader(const GFX::Context& graphics, const AssetRegist
         graphics.cmdList->SetGraphicsRootSignature(state.rootSignature.Get());
         graphics.cmdList->SetPipelineState(pipeline);
         graphics.cmdList->SetGraphicsRootDescriptorTable(0u, input.srv);
-        graphics.cmdList->SetGraphicsRoot32BitConstants(2u, 36u, &readability, 0u);
+        graphics.cmdList->SetGraphicsRoot32BitConstants(2u, kScreenReadabilityConstantCount, &readability, 0u);
 
         const D3D12_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f};
         const D3D12_RECT scissor{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
