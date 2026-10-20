@@ -11,6 +11,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_StartupTimer.h"
 #include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Render3D/Upscaling/HIKARI_StreamlineDeployment.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineInternal.h"
 
@@ -125,17 +126,23 @@ bool InitializeStreamlineEarly(bool enableFrameGenerationPlugins, const std::fil
     }
 
     signatureTimer.Finish();
+    const std::filesystem::path frameGenerationDirectory = moduleDirectory / kStreamlineFrameGenerationDirectory;
     state.pluginPath = moduleDirectory.wstring();
+    state.frameGenerationPluginPath = frameGenerationDirectory.wstring();
     const std::filesystem::path& logDirectory = requestedLogDirectory;
     std::error_code error{};
     std::filesystem::create_directories(logDirectory, error);
     state.logPath = logDirectory.wstring();
 
-    const wchar_t* pluginPaths[] = {state.pluginPath.c_str()};
+    // フレーム生成を使わない起動では DLSS-G 側のフォルダーを探索パスに入れない（HIKARI_StreamlineDeployment.h）。
+    // 使う時は plugin をそのフォルダーから読み、NGX は両方のフォルダーから snippet を探す。
+    const wchar_t* frameGenerationPluginPaths[] = {state.frameGenerationPluginPath.c_str(), state.pluginPath.c_str()};
+    const wchar_t* dlssPluginPaths[] = {state.pluginPath.c_str()};
     state.plugins.dlss = std::filesystem::is_regular_file(moduleDirectory / L"sl.dlss.dll");
-    const bool frameGenerationPluginPresent = std::filesystem::is_regular_file(moduleDirectory / L"sl.dlss_g.dll");
-    const bool reflexPluginPresent = std::filesystem::is_regular_file(moduleDirectory / L"sl.reflex.dll");
-    const bool pclPluginPresent = std::filesystem::is_regular_file(moduleDirectory / L"sl.pcl.dll");
+    const bool frameGenerationPluginPresent =
+        std::filesystem::is_regular_file(frameGenerationDirectory / L"sl.dlss_g.dll");
+    const bool reflexPluginPresent = std::filesystem::is_regular_file(frameGenerationDirectory / L"sl.reflex.dll");
+    const bool pclPluginPresent = std::filesystem::is_regular_file(frameGenerationDirectory / L"sl.pcl.dll");
     state.plugins.frameGeneration = enableFrameGenerationPlugins && frameGenerationPluginPresent;
     state.plugins.reflex = enableFrameGenerationPlugins && reflexPluginPresent;
     state.plugins.pcl = enableFrameGenerationPlugins && pclPluginPresent;
@@ -167,8 +174,10 @@ bool InitializeStreamlineEarly(bool enableFrameGenerationPlugins, const std::fil
     sl::Preferences preferences{};
     preferences.showConsole = false;
     preferences.logLevel = sl::LogLevel::eDefault;
-    preferences.pathsToPlugins = pluginPaths;
-    preferences.numPathsToPlugins = static_cast<uint32_t>(std::size(pluginPaths));
+    preferences.pathsToPlugins = enableFrameGenerationPlugins ? frameGenerationPluginPaths : dlssPluginPaths;
+    preferences.numPathsToPlugins = enableFrameGenerationPlugins
+                                        ? static_cast<uint32_t>(std::size(frameGenerationPluginPaths))
+                                        : static_cast<uint32_t>(std::size(dlssPluginPaths));
     preferences.pathToLogsAndData = state.logPath.c_str();
     preferences.logMessageCallback = StreamlineLogCallback;
     preferences.flags = sl::PreferenceFlags::eDisableDebugText | sl::PreferenceFlags::eUseFrameBasedResourceTagging;
@@ -358,6 +367,7 @@ bool ShutdownStreamline() {
     state.outputHeight = 0;
 #if defined(HIKARI_WITH_STREAMLINE)
     state.frameToken = nullptr;
+    state.dlssInstanceRetireFenceValue = 0;
     state.stats.initialized = false;
     state.stats.deviceAttached = false;
     state.stats.dlssPluginPresent = false;
@@ -382,11 +392,9 @@ bool ReleaseStreamlineTransientResources() {
         return false;
     }
 #if defined(HIKARI_WITH_STREAMLINE)
-    if (state.stats.initialized && (state.output.GetResource() != nullptr || state.optionsConfigured)) {
-        if (!INTERNAL::RecordResult(state, "slFreeResources(DLSS)", slFreeResources(sl::kFeatureDLSS, state.viewport),
-                                    false)) {
-            return false;
-        }
+    if (state.stats.initialized && state.dlssInstanceRetireFenceValue != 0u &&
+        !INTERNAL::RecordResult(state, "slFreeResources(DLSS)", INTERNAL::ReleaseDlssInstance(state), false)) {
+        return false;
     }
     state.optionsConfigured = false;
     state.configuredMode = StreamlineDlssMode::Off;

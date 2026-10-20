@@ -397,6 +397,10 @@ if(
         list(APPEND HIKARI_RUNTIME_DEPENDENCIES "${runtime_file}")
     endforeach()
 
+    # フレーム生成側は実行ファイル横の別フォルダーへ plugin 一式として置く。Streamline は plugin を見つけた最初の
+    # フォルダーだけを使うため common/dlss も複製する（HIKARI_StreamlineDeployment.h と同じ名前）。
+    set(HIKARI_STREAMLINE_FRAME_GENERATION_DIRECTORY "StreamlineFrameGeneration")
+    set(HIKARI_STREAMLINE_FRAME_GENERATION_RUNTIME)
     set(
         hikari_streamline_optional_runtime
         sl.dlss_g.dll
@@ -409,9 +413,15 @@ if(
             runtime_file
             "${HIKARI_STREAMLINE_SDK_ROOT}/bin/x64/${runtime_name}")
         if(EXISTS "${runtime_file}")
-            list(APPEND HIKARI_RUNTIME_DEPENDENCIES "${runtime_file}")
+            list(APPEND HIKARI_STREAMLINE_FRAME_GENERATION_RUNTIME "${runtime_file}")
         endif()
     endforeach()
+    if(HIKARI_STREAMLINE_FRAME_GENERATION_RUNTIME)
+        list(
+            APPEND HIKARI_STREAMLINE_FRAME_GENERATION_RUNTIME
+            "${HIKARI_STREAMLINE_SDK_ROOT}/bin/x64/sl.common.dll"
+            "${HIKARI_STREAMLINE_SDK_ROOT}/bin/x64/sl.dlss.dll")
+    endif()
     set(HIKARI_STREAMLINE_ENABLED TRUE)
 endif()
 

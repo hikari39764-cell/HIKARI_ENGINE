@@ -44,7 +44,7 @@ bool IsCodePath(const std::filesystem::path& relative) {
             return false;
     }
     const auto value = TEXT::PathToUtf8(relative.generic_wstring());
-    if (value == "Project.hikari" || value == "CMakeLists.txt" || value == "CMakePresets.json")
+    if (value == "Project.hikari" || value == "CMakeLists.txt")
         return true;
     const auto first = relative.begin()->string();
     if (first != "Source" && first != "Tests" && first != "Tools" && first != "cmake")
@@ -81,7 +81,7 @@ nlohmann::json Snapshot(const std::filesystem::path& root) {
         total += bytes;
         result[TEXT::PathToUtf8(relative.generic_wstring())] = HashFile(path);
     };
-    for (const auto* filename : {"Project.hikari", "CMakeLists.txt", "CMakePresets.json"}) {
+    for (const auto* filename : {"Project.hikari", "CMakeLists.txt"}) {
         if (std::filesystem::is_regular_file(root / filename))
             include(filename);
     }

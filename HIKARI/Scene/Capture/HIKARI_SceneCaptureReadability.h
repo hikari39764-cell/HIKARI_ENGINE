@@ -12,14 +12,17 @@
 
 namespace HIKARI::SCENE_CAPTURE {
 
-inline RENDER3D::ScreenReadabilityWorldFrame CollectScreenReadability(World& world, SceneCaptureService& captures) {
+// 場景キャプチャを映す平らな面の四隅を集める。protectedOnly なら ProtectReadability の面だけ（後処理の保護用）、
+// そうでなければ結んだ面全部（時間方向の upscaler に、面の動きと映る中身の動きが合わない画素を知らせる用）。
+inline RENDER3D::ScreenReadabilityWorldFrame CollectScreenReadability(World& world, SceneCaptureService& captures,
+                                                                     bool protectedOnly = true) {
     RENDER3D::ScreenReadabilityWorldFrame frame{};
     const auto* presentation = world.Services().Find<PresentationTransformService>();
     const auto* activity = world.Services().Find<RuntimeObjectActivityService>();
     for (const auto& binding : captures.Bindings()) {
         if (!binding.applied ||
-            (binding.flags & GameProjectSceneCaptureMaterialBindingFlags(
-                                 GameProjectSceneCaptureMaterialBindingFlag::ProtectReadability)) == 0u)
+            (protectedOnly && (binding.flags & GameProjectSceneCaptureMaterialBindingFlags(
+                                                   GameProjectSceneCaptureMaterialBindingFlag::ProtectReadability)) == 0u))
             continue;
         auto* object = world.FindObject(binding.modelObject);
         auto* model = object ? object->GetComponent<ModelComponent>() : nullptr;

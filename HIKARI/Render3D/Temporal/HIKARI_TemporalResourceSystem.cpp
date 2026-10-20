@@ -120,6 +120,7 @@ void ReleaseAllResources(TemporalResourceState& state, TemporalResourceReleaseMo
     ReleaseTarget(state, state.reactiveMask, mode);
     ReleaseTarget(state, state.transparencyMask, mode);
     ReleaseTarget(state, state.invalidDepthMotionMask, mode);
+    ReleaseTarget(state, state.biasCurrentColorMask, mode);
     ReleaseTarget(state, state.debugOutput, mode);
     state.historyColorValid = false;
     state.historyDepthValid = false;
@@ -224,6 +225,9 @@ bool EnsureResources(TemporalResourceState& state, const TemporalFrameState& fra
     ok = EnsureTarget(state, state.invalidDepthMotionMask, state.recordingContext, width, height, kMaskFormat,
                       "Temporal.InvalidDepthMotionMask", {0.0f, 0.0f, 0.0f, 0.0f}) &&
          ok;
+    ok = EnsureTarget(state, state.biasCurrentColorMask, state.recordingContext, width, height, kMaskFormat,
+                      "Temporal.BiasCurrentColorMask", {0.0f, 0.0f, 0.0f, 0.0f}) &&
+         ok;
     ok = EnsureTarget(state, state.debugOutput, state.recordingContext, width, height, kHistoryColorFormat,
                       "Temporal.DebugOutput", {0.0f, 0.0f, 0.0f, 1.0f}) &&
          ok;
@@ -244,7 +248,8 @@ bool HasCompleteBundle(const TemporalResourceState& state) {
     return state.motionVectors.ready && state.motionMetadata.ready && state.historyColor[0].ready &&
            state.historyColor[1].ready && state.historyDepth[0].ready && state.historyDepth[1].ready &&
            state.taaResolvedColor.ready && state.exposure.ready && state.reactiveMask.ready &&
-           state.transparencyMask.ready && state.invalidDepthMotionMask.ready && state.debugOutput.ready;
+           state.transparencyMask.ready && state.invalidDepthMotionMask.ready && state.biasCurrentColorMask.ready &&
+           state.debugOutput.ready;
 }
 
 bool StampMatches(TemporalResourceFrame stamp, TemporalResourceFrame expected) { return stamp.Matches(expected); }
@@ -395,6 +400,7 @@ TemporalInputs BuildResidentInputs(const TemporalResourceState& state, const Ren
     inputs.reactiveMask = MakeTextureView(state.reactiveMask);
     inputs.transparencyMask = MakeTextureView(state.transparencyMask);
     inputs.invalidDepthMotionMask = MakeTextureView(state.invalidDepthMotionMask);
+    inputs.biasCurrentColorMask = MakeTextureView(state.biasCurrentColorMask);
     inputs.debugOutput = MakeTextureView(state.debugOutput);
     return inputs;
 }
@@ -414,6 +420,7 @@ void ApplyResolveReadValidity(const TemporalResourceState& state, TemporalInputs
         inputs.reactiveMask = {};
         inputs.transparencyMask = {};
         inputs.invalidDepthMotionMask = {};
+        inputs.biasCurrentColorMask = {};
     }
 }
 } // namespace DETAIL

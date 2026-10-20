@@ -84,6 +84,7 @@ RenderTarget2D* GetTaaResolvedColorRenderTarget(TemporalResourceFrame frame);
 RenderTarget2D* GetReactiveMaskRenderTarget(TemporalResourceFrame frame);
 RenderTarget2D* GetTransparencyMaskRenderTarget(TemporalResourceFrame frame);
 RenderTarget2D* GetInvalidDepthMotionMaskRenderTarget(TemporalResourceFrame frame);
+RenderTarget2D* GetBiasCurrentColorMaskRenderTarget(TemporalResourceFrame frame);
 RenderTarget2D* GetTemporalDebugRenderTarget(TemporalResourceFrame frame);
 bool PrepareSceneColorInput(TemporalResourceFrame frame, RenderTarget2D& source);
 bool SetTemporalCompositionBase(TemporalResourceFrame frame, D3D12_GPU_DESCRIPTOR_HANDLE sceneColorSrv);

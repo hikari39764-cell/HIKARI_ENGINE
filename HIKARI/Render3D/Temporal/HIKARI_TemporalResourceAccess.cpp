@@ -57,6 +57,11 @@ RenderTarget2D* GetInvalidDepthMotionMaskRenderTarget(TemporalResourceFrame fram
     return state != nullptr && state->invalidDepthMotionMask.ready ? &state->invalidDepthMotionMask.target : nullptr;
 }
 
+RenderTarget2D* GetBiasCurrentColorMaskRenderTarget(TemporalResourceFrame frame) {
+    TemporalResourceState* state = FindWritableState(frame);
+    return state != nullptr && state->biasCurrentColorMask.ready ? &state->biasCurrentColorMask.target : nullptr;
+}
+
 RenderTarget2D* GetTemporalDebugRenderTarget(TemporalResourceFrame frame) {
     TemporalResourceState* state = FindActiveState(frame);
     return state != nullptr && state->debugOutput.ready ? &state->debugOutput.target : nullptr;
@@ -161,7 +166,8 @@ bool MarkTemporalMasksWritten(TemporalResourceFrame frame, bool written, bool co
         return false;
     }
     const bool ready =
-        written && state->reactiveMask.ready && state->transparencyMask.ready && state->invalidDepthMotionMask.ready;
+        written && state->reactiveMask.ready && state->transparencyMask.ready && state->invalidDepthMotionMask.ready &&
+        state->biasCurrentColorMask.ready;
     state->masksWritten = ready ? frame : TemporalResourceFrame{};
     state->stats.masksCompositionDerived = ready && compositionDerived;
     RefreshStats(*state);

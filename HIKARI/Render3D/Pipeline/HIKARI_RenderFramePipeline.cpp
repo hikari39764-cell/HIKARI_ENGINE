@@ -153,6 +153,7 @@ RenderFrameContext BuildRenderFrameContext(const GFX::Context& graphics, const R
     }
     context.camera = &view.cameraFrame->camera;
     context.screenReadability = ProjectScreenReadability(view.screenReadability, context.camera->GetViewProj());
+    context.sceneCaptureSurfaces = ProjectScreenReadability(view.sceneCaptureSurfaces, context.camera->GetViewProj());
     context.environment = &environment;
     context.assetRegistry = view.assetRegistry;
     context.projectRenderExtensions = view.projectRenderExtensions;
@@ -258,6 +259,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
 
     const RenderFrameContext frame = BuildRenderFrameContext(graphics, view, environment);
     POST::PostSystem::SetScreenReadability(frame.screenReadability);
+    POST::PostSystem::SetSceneCaptureSurfaces(frame.sceneCaptureSurfaces);
     if (frame.graphics.cmdList == nullptr) {
         return false;
     }

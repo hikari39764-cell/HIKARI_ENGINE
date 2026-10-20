@@ -1,6 +1,14 @@
 #define HIKARI_TEMPORAL_MASKS
 #include "Include/Temporal/HIKARI_TemporalShaderInterface.hlsli"
 #include "Include/Color/HIKARI_Luminance.hlsli"
+#include "Include/Post/HIKARI_ScreenReadability.hlsli"
+
+// 場景キャプチャを映す面の手前に物があるかを見る深度（0 = 近い面）。面の四隅は b1 の HikariScreenReadabilityConstants。
+Texture2D<float> gMaskSceneDepth : register(t2);
+
+// 場景キャプチャを映す面での履歴の捨て方。面の動きベクトルは映る中身の動きを表さないので、履歴を残すと中身が残像になる。
+static const float kSceneCaptureReactive = 1.0f;
+static const float kSceneCaptureHistoryBias = 1.0f;
 
 struct VSOut
 {
@@ -13,6 +21,7 @@ struct PSOut
     float reactive : SV_TARGET0;
     float transparency : SV_TARGET1;
     float invalidDepthMotion : SV_TARGET2;
+    float biasCurrentColor : SV_TARGET3;
 };
 
 VSOut VSMain(uint vertexId : SV_VertexID)
@@ -49,5 +58,11 @@ PSOut PSMain(VSOut input)
     output.invalidDepthMotion = saturate(max(
         relativeDifference * 4.0f,
         max(max(difference.r, difference.g), difference.b) * 8.0f));
+    // 場景キャプチャを映す面（手前に別の物が無い所だけ）。外部 upscaler の偏りはこの面だけに掛け、合成の差は含めない
+    // （霧や反射の合成まで履歴を捨てると画面全体がちらつく）。
+    const float surface = HikariScreenReadabilityAt((float2(pixel) + 0.5f) / float2(width, height), float2(width, height),
+                                                    gMaskSceneDepth.Load(int3(pixel, 0)));
+    output.reactive = max(output.reactive, surface * kSceneCaptureReactive);
+    output.biasCurrentColor = surface * kSceneCaptureHistoryBias;
     return output;
 }

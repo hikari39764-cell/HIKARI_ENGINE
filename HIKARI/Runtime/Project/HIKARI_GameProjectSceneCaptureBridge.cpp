@@ -1,6 +1,7 @@
 #include "HIKARI/Project/SceneCaptureView.h"
 #include "Core/Numeric/HIKARI_NonZero.h"
 #include <cmath>
+#include <cstring>
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Scene/Capture/HIKARI_SceneCaptureService.h"
@@ -111,19 +112,49 @@ bool SceneCaptureView::SetStyle(GameProjectSceneCaptureHandle capture,
     const auto validColor = [&](const GameProjectFloat3& color) {
         return inRange(color.x, 0.0f, 1.0f) && inRange(color.y, 0.0f, 1.0f) && inRange(color.z, 0.0f, 1.0f);
     };
-    if (style.structSize != sizeof(GameProjectSceneCaptureStyleDesc) || style.version != 2u ||
-        NUMERIC::AnyNonZero(style.reserved) || !TEXT::IsNamedEnum(styles, style.style) ||
-        !inRange(style.pixelSize, 1.0f, 32.0f) || !inRange(style.lineWidth, 0.0f, 4.0f) ||
-        !inRange(style.shadowStrength, 0.0f, 1.0f) || !inRange(style.shadowOffsetX, -16.0f, 16.0f) ||
-        !inRange(style.shadowOffsetY, -16.0f, 16.0f) || !inRange(style.backgroundLuminance, 0.0f, 1.0f) ||
-        !inRange(style.brightness, 0.0f, 4.0f) || !validColor(style.lineColor) || !validColor(style.paperColor) ||
-        !validColor(style.accentColor)) {
+    // 版 2・3 は 80 byte（fillStrength まで）で、深度の欄を持たない。読める分だけ写し、深度の効果は既定（無効）にする。
+    // 版 2 は塗りの濃さの欄が予約（0 でなければならない）で、既定の濃さを使う。版 3 以降は 0〜1 を受け付ける。
+    // 版 4 は 140 byte（depthLineGap まで）で、背景を透かす欄を持たない（既定の 0 で読む）。
+    constexpr uint32_t kLegacySize = offsetof(GameProjectSceneCaptureStyleDesc, depthFocus);
+    constexpr uint32_t kV4Size = offsetof(GameProjectSceneCaptureStyleDesc, transparentBackground);
+    const bool legacy = style.version == 2u;
+    const bool shortForm = style.version == 2u || style.version == 3u;
+    const uint32_t expected = shortForm ? kLegacySize
+                              : style.version == 4u ? kV4Size
+                              : style.version == 5u ? static_cast<uint32_t>(sizeof(GameProjectSceneCaptureStyleDesc))
+                                                    : 0u;
+    if (expected == 0u || style.structSize != expected) {
+        return false;
+    }
+    GameProjectSceneCaptureStyleDesc normalized{};
+    std::memcpy(&normalized, &style, expected);
+    if (legacy ? normalized.fillStrength != 0.0f : !inRange(normalized.fillStrength, 0.0f, 1.0f)) {
+        return false;
+    }
+    if (legacy) {
+        normalized.fillStrength = 0.32f;
+    }
+    normalized.structSize = sizeof(GameProjectSceneCaptureStyleDesc);
+    normalized.version = 5u;
+    const auto& v = normalized;
+    if (!TEXT::IsNamedEnum(styles, v.style) ||
+        !inRange(v.pixelSize, 1.0f, 32.0f) || !inRange(v.lineWidth, 0.0f, 4.0f) ||
+        !inRange(v.shadowStrength, 0.0f, 1.0f) || !inRange(v.shadowOffsetX, -16.0f, 16.0f) ||
+        !inRange(v.shadowOffsetY, -16.0f, 16.0f) || !inRange(v.backgroundLuminance, 0.0f, 1.0f) ||
+        !inRange(v.brightness, 0.0f, 4.0f) || !validColor(v.lineColor) || !validColor(v.paperColor) ||
+        !validColor(v.accentColor) || !inRange(v.depthFocus, 0.0f, 100000.0f) ||
+        !inRange(v.backgroundDepth, 0.0f, 100000.0f) || !inRange(v.fogStrength, 0.0f, 1.0f) ||
+        !inRange(v.fogDepth, 0.001f, 100000.0f) || !validColor(v.fogColor) || !inRange(v.occlusion, 0.0f, 1.0f) ||
+        !inRange(v.occlusionRadius, 0.0f, 16.0f) || !inRange(v.occlusionDepth, 0.001f, 100000.0f) ||
+        !inRange(v.depthLine, 0.0f, 1.0f) || !inRange(v.lightShadow, 0.0f, 1.0f) ||
+        !inRange(v.lightSlope, 0.0f, 100000.0f) || !inRange(v.lightReach, 0.0f, 32.0f) ||
+        !inRange(v.depthLineGap, 0.001f, 100000.0f) || !inRange(v.transparentBackground, 0.0f, 1.0f)) {
         return false;
     }
     try {
         World* world = PROJECT::INTERNAL::ResolveServiceWorld(world_);
         auto* service = world != nullptr ? world->Services().Find<SCENE_CAPTURE::SceneCaptureService>() : nullptr;
-        return service != nullptr && service->SetStyle(capture, style);
+        return service != nullptr && service->SetStyle(capture, normalized);
     } catch (...) {
         return false;
     }

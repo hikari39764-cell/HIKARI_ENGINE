@@ -70,6 +70,8 @@ struct SceneFrameResources {
 // Immutable per-frame contract shared by renderer stages.
 struct RenderFrameContext {
     ScreenReadabilityFrame screenReadability{};
+    // 場景キャプチャを映す面（画面に大きく写る順に上限まで）。時間方向の遮罩が使う。
+    ScreenReadabilityFrame sceneCaptureSurfaces{};
     RenderViewId viewId{kPrimaryRenderViewId};
     RenderViewPurpose purpose = RenderViewPurpose::Game;
     bool cameraCut = false;

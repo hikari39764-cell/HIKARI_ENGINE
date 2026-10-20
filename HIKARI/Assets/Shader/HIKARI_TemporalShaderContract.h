@@ -27,7 +27,7 @@ inline constexpr std::array<TemporalShaderDefinition, 4> kTemporalShaders{{
     {"HIKARI.EngineShader.Temporal_GeometryMotion", "HIKARI.Temporal.Geometry.Root",
      "HIKARI.Temporal.Geometry.Root.v1|0:CBV(b0,space0,All)|1:CBV(b1,space0,All)|Pipeline(Graphics)|Flags(AllowInputAssembler)"},
     {"HIKARI.EngineShader.Temporal_Masks", "HIKARI.Temporal.Masks.Root",
-     "HIKARI.Temporal.Masks.Root.v1|0:Table(SRV(t0,space0,count1),Pixel)|1:Table(SRV(t1,space0,count1),Pixel)|StaticSampler(s0,PointClamp,Pixel)|Pipeline(Graphics)|Flags(None)"},
+     "HIKARI.Temporal.Masks.Root.v1|0:Table(SRV(t0,space0,count1),Pixel)|1:Table(SRV(t1,space0,count1),Pixel)|2:Table(SRV(t2,space0,count1),Pixel)|3:Constants(b1,space0,count60,Pixel)|StaticSampler(s0,PointClamp,Pixel)|Pipeline(Graphics)|Flags(None)"},
     {"HIKARI.EngineShader.Temporal_MotionVector", "HIKARI.Temporal.MotionVector.Root",
      "HIKARI.Temporal.MotionVector.Root.v1|0:CBV(b0,space0,All)|1:Table(SRV(t0,space0,count1),Pixel)|Pipeline(Graphics)|Flags(None)"},
     {"HIKARI.EngineShader.Temporal_TaaResolve", "HIKARI.Temporal.TaaResolve.Root",
@@ -94,11 +94,10 @@ inline bool ValidateTemporalShaderArtifact(const ShaderCookedArtifact& artifact,
                 add(ShaderResourceBindingKind::ConstantBuffer, 1u);
             }
         } else if (pixel) {
-            if (pass != TemporalShaderPass::Masks) {
-                add(ShaderResourceBindingKind::ConstantBuffer, 0u);
-            }
+            // 遮罩は b1 に場景キャプチャを映す面の四隅、t2 に面の手前を確かめる深度を持つ。
+            add(ShaderResourceBindingKind::ConstantBuffer, pass == TemporalShaderPass::Masks ? 1u : 0u);
             const uint32_t count =
-                pass == TemporalShaderPass::TaaResolve ? 10u : (pass == TemporalShaderPass::Masks ? 2u : 1u);
+                pass == TemporalShaderPass::TaaResolve ? 10u : (pass == TemporalShaderPass::Masks ? 3u : 1u);
             for (uint32_t reg = 0u; reg < count; ++reg) {
                 add(ShaderResourceBindingKind::ShaderResource, reg);
             }

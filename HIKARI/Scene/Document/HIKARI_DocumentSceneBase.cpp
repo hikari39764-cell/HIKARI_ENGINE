@@ -597,6 +597,8 @@ void DocumentSceneBase::Render() {
         RENDER3D::RenderViewContext primaryView{};
         primaryView.screenReadability =
             SCENE_CAPTURE::CollectScreenReadability(state_->runtime.world, state_->runtime.sceneCaptureService);
+        primaryView.sceneCaptureSurfaces =
+            SCENE_CAPTURE::CollectScreenReadability(state_->runtime.world, state_->runtime.sceneCaptureService, false);
         primaryView.viewId = RENDER3D::kPrimaryRenderViewId;
         primaryView.purpose =
             state_->runtime.playActive ? RENDER3D::RenderViewPurpose::Game : RENDER3D::RenderViewPurpose::EditorScene;

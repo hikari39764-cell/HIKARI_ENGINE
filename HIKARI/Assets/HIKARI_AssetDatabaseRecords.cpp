@@ -80,8 +80,7 @@ ClusteredGeometryArtifactInfo AssetDatabase::GetClusteredGeometryArtifactInfo(co
     return GetClusteredGeometryArtifactInfo(*record);
 }
 
-AssetRecord AssetDatabase::BuildRecordForSource(const std::filesystem::path& sourcePath, bool createMissingMeta,
-                                                std::unordered_map<std::string, std::string>& scanDigests) {
+AssetRecord AssetDatabase::BuildRecordForSource(const std::filesystem::path& sourcePath, bool createMissingMeta) {
     const std::filesystem::path normalizedSource = NormalizeProjectPath(sourcePath);
     const std::filesystem::path absoluteSource = PROJECT_PATHS::ResolveProjectPath(projectRoot_, normalizedSource);
 
@@ -186,12 +185,11 @@ AssetRecord AssetDatabase::BuildRecordForSource(const std::filesystem::path& sou
         }
     }
 
-    RefreshRecordState(record, &scanDigests);
+    RefreshRecordState(record);
     return record;
 }
 
-void AssetDatabase::RefreshRecordState(AssetRecord& record,
-                                       std::unordered_map<std::string, std::string>* scanDigests) const {
+void AssetDatabase::RefreshRecordState(AssetRecord& record) {
     const std::filesystem::path absoluteSource = PROJECT_PATHS::ResolveProjectPath(projectRoot_, record.sourcePath);
     record.sourceExists = std::filesystem::exists(absoluteSource);
     record.metaExists = std::filesystem::exists(record.metaPath);
@@ -213,7 +211,7 @@ void AssetDatabase::RefreshRecordState(AssetRecord& record,
     const bool settingsChanged =
         record.artifactManifest.inputs.settings != CanonicalImportSettings(record.meta.importSettingsJson);
     const bool inputsChanged = !CheckAssetImportInputs(projectRoot_, record.artifactManifest.inputs,
-                                                       record.importOutdatedReason, nullptr, scanDigests);
+                                                       record.importOutdatedReason, nullptr, &inputDigests_);
     if (settingsChanged)
         record.importOutdatedReason = "Import settings changed";
 
@@ -235,25 +233,25 @@ void AssetDatabase::RefreshRecordState(AssetRecord& record,
     if (importerChanged || importerVersionOutdated)
         record.importOutdatedReason = "Importer changed";
 
-    const std::filesystem::path reportPath = record.importedDirectory / "import_report.json";
-    // manifest と report は同じ import 結果を持つ。大きな diagnostics を
-    // 起動ごとに二度 parse しない。失敗時は report だけが更新され得る。
-    bool needsReport = true;
-    if (record.guid.IsValid() && record.artifactManifest.guid == record.guid) {
+    // 成功した取り込みは manifest と report に同じ結果を書く。失敗時は report だけが更新されるので、
+    // 失敗一覧にある資産と manifest のない資産だけ report を読み、起動時の走査で大きな report を開かない。
+    const bool hasManifest = record.guid.IsValid() && record.artifactManifest.guid == record.guid;
+    if (hasManifest) {
         record.lastImportSucceeded = record.artifactManifest.lastImportSucceeded;
         record.lastImportMessage = record.artifactManifest.lastImportMessage;
-        std::error_code reportError{}, manifestError{};
-        const auto reportTime = std::filesystem::last_write_time(reportPath, reportError);
-        const auto manifestTime = std::filesystem::last_write_time(record.artifactManifestPath, manifestError);
-        // 同一時刻は低精度 filesystem 上の更新順を決められないため保守的に読む。
-        needsReport = !reportError && (manifestError || reportTime >= manifestTime);
     }
+    if (record.importedDirectory.empty() ||
+        (hasManifest && importFailures_.complete && !importFailures_.guids.contains(record.guid.value)))
+        return;
     nlohmann::json report;
-    if (needsReport && !record.importedDirectory.empty() && SERIALIZATION::JSON::ReadJsonFile(reportPath, report) &&
-        report.is_object()) {
+    const bool readReport =
+        SERIALIZATION::JSON::ReadJsonFile(record.importedDirectory / "import_report.json", report) &&
+        report.is_object();
+    if (readReport) {
         record.lastImportSucceeded = report.value("success", false);
         record.lastImportMessage = report.value("message", record.lastImportMessage);
     }
+    SetImportFailed(record.guid, readReport && !record.lastImportSucceeded);
 }
 
 void AssetDatabase::RefreshImportDependents(const AssetGuid& guid) {

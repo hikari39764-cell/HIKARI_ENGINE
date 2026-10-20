@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/ScreenSpace/HIKARI_ScreenReadability.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 
 namespace HIKARI {
@@ -43,7 +44,8 @@ TemporalResolveStageResult ExecuteTemporalResolveStage(TemporalViewLease view, R
                                                        RenderTarget2D& sceneColorTarget,
                                                        RenderTarget2D& sceneDepthTarget,
                                                        const RenderQualitySettings& quality,
-                                                       const COLOR::ExposureFrameState& exposureState);
+                                                       const COLOR::ExposureFrameState& exposureState,
+                                                       const ScreenReadabilityFrame& sceneCaptureSurfaces = {});
 
 const char* ToString(TemporalResolveBackend backend);
 

@@ -58,6 +58,7 @@ RENDER3D::TEMPORAL::TemporalResourceFrame PostSystem::temporalResources_{};
 RENDER3D::TEMPORAL::TemporalResourceFrame PostSystem::presentationTemporalResources_{};
 CAMERA::MotionBlurSettings PostSystem::cameraMotionBlur_{};
 bool PostSystem::cameraMotionBlurOrthographic_ = false;
+RENDER3D::ScreenReadabilityFrame PostSystem::sceneCaptureSurfaces_{};
 RENDER3D::SURFACE::RenderFrameSurfaceReceipt PostSystem::renderSurfaceReceipt_{};
 RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt PostSystem::renderGraphSessionReceipt_{};
 
@@ -152,6 +153,9 @@ bool PostSystem::GetRadialScreenWarp(float& curvature, float& strength) noexcept
 void PostSystem::SetBloomSettings(const BloomSettings& settings) { processingStage_.SetBloomSettings(settings); }
 void PostSystem::SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& frame) {
     quad_.SetScreenReadability(frame);
+}
+void PostSystem::SetSceneCaptureSurfaces(const RENDER3D::ScreenReadabilityFrame& frame) {
+    sceneCaptureSurfaces_ = frame;
 }
 void PostSystem::SetToneMappingSettings(const ToneMappingSettings& settings) {
     processingStage_.SetToneMappingSettings(settings);
@@ -257,6 +261,7 @@ void PostSystem::GetSceneOutputSize(int& width, int& height) {
 
 bool PostSystem::BeginSceneCapture(RENDER3D::RenderFrameToken frame, uint64_t deviceGeneration) {
     quad_.SetScreenReadability({});
+    sceneCaptureSurfaces_ = {};
     if (!frame.IsValid() || frame.viewId != RENDER3D::kPrimaryRenderViewId ||
         frame.frameIndex != TIME::GetFrameContext().frameIndex || deviceGeneration == 0u ||
         deviceGeneration != context_.deviceGeneration) {
@@ -593,7 +598,8 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
     (void)RENDER3D::TEMPORAL::TryGetTemporalFrameState(handoffView, handoffFrame, capturedTemporal);
     auto temporal = RENDER3D::TEMPORAL::ExecuteTemporalResolveStage(handoffView, handoffFrame, handoffResources,
                                                                     context_, *volumetric, *captured, quality,
-                                                                    processingStage_.GetExposureState());
+                                                                    processingStage_.GetExposureState(),
+                                                                    sceneCaptureSurfaces_);
     RENDER3D::TEMPORAL::TemporalInputs presentationInputs{};
     bool retainHandoff = false;
     if (handoffResources.IsValid() &&

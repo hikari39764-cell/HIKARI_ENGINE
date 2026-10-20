@@ -26,4 +26,4 @@ bool IsFinite(const Mat4& value) noexcept {
     return true;
 }
 
-} // namespace HIKARI::MATH
+} // namespace HIKARI::MATH     

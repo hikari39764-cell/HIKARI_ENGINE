@@ -170,6 +170,8 @@ struct TemporalInputs {
     RenderTextureView reactiveMask{};
     RenderTextureView transparencyMask{};
     RenderTextureView invalidDepthMotionMask{};
+    // 外部 upscaler の履歴の偏り（DLSS の BiasCurrentColor）。場景キャプチャを映す面と、明示的に失効させた範囲だけ。
+    RenderTextureView biasCurrentColorMask{};
     RenderTextureView debugOutput{};
 
     bool MatchesResourceFrame() const noexcept {

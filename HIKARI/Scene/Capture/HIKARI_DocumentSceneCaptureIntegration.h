@@ -155,8 +155,17 @@ inline void ApplyPublishedMaterialBinding(World& world, SceneCaptureService& ser
         textureSlot.handle = RENDER3D::GetTextureResourceBackendHandle(texture);
         textureSlot.enabled = textureSlot.handle >= 0;
         ApplyMaterialBindingUvTransform(binding, textureSlot);
+        // AlphaBlend の結び付けはキャプチャの alpha で混ぜる半透明の板（背景を透かした風格の重ね）。
+        // AlphaMask はキャプチャの alpha で切り抜く不透明面（深度と動きを書く）。
+        const auto has = [&](GameProjectSceneCaptureMaterialBindingFlag flag) {
+            return (binding.flags & GameProjectSceneCaptureMaterialBindingFlags(flag)) != 0u;
+        };
+        const auto alphaMode = has(GameProjectSceneCaptureMaterialBindingFlag::AlphaMask)    ? RuntimeMaterialAlphaMode::Mask
+                               : has(GameProjectSceneCaptureMaterialBindingFlag::AlphaBlend) ? RuntimeMaterialAlphaMode::Blend
+                                                                                              : RuntimeMaterialAlphaMode::Opaque;
         if (ownsAppliedMaterial && appliedMaterial != nullptr) {
             appliedMaterial->SetTextureSlot(MaterialTextureUsage::BaseColor, std::move(textureSlot));
+            appliedMaterial->SetMaterialAlphaMode(alphaMode);
         } else {
             auto runtimeMaterial = std::make_unique<Material>();
             runtimeMaterial->SetShaderProfileId("PBR");
@@ -166,6 +175,7 @@ inline void ApplyPublishedMaterialBinding(World& world, SceneCaptureService& ser
             runtimeMaterial->SetRoughnessFactor(1.0f);
             runtimeMaterial->SetInheritModelTextures(false);
             runtimeMaterial->SetTextureSlot(MaterialTextureUsage::BaseColor, std::move(textureSlot));
+            runtimeMaterial->SetMaterialAlphaMode(alphaMode);
             appliedMaterial = runtimeMaterial.get();
             model->SetRuntimeMaterialOverride(materialIndex, std::move(runtimeMaterial));
         }

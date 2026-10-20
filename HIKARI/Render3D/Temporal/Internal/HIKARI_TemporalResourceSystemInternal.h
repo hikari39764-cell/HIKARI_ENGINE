@@ -60,6 +60,8 @@ struct TemporalResourceState {
     TemporalTarget reactiveMask{};
     TemporalTarget transparencyMask{};
     TemporalTarget invalidDepthMotionMask{};
+    // 外部 upscaler へ渡す履歴の偏り（1 = 履歴を捨てる）。明示的に失効させる画素だけを書く。
+    TemporalTarget biasCurrentColorMask{};
     TemporalTarget debugOutput{};
     COLOR::ExposureFrameState exposureState{};
     D3D12_GPU_DESCRIPTOR_HANDLE compositionBaseSrv{};

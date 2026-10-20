@@ -30,8 +30,12 @@ release package:
   bin/x64/reflex.license.txt
 ```
 
-HIKARI loads and copies only the optional plugins that are present. Missing
-frame-generation plugins do not disable the DLSS/DLAA backend. Game exports
+HIKARI loads and copies only the optional plugins that are present. They are
+deployed with copies of `sl.common.dll` and `sl.dlss.dll` to
+`StreamlineFrameGeneration/` next to the executable, and that folder is searched
+only when frame generation is enabled: Streamline probes every plugin in its
+plugin folder during `slInit` and uses only the first folder that has plugins.
+Missing frame-generation plugins do not disable the DLSS/DLAA backend. Game exports
 deploy the same signed runtime set from the selected build output and fail with
 a concrete missing-dependency error when an enabled feature is incomplete.
 

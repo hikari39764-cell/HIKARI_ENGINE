@@ -6,8 +6,10 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
+#include "HIKARI_AssetImportInputs.h"
 #include "HIKARI_AssetRecord.h"
 #include "Importers/HIKARI_AssetImporterRegistry.h"
 #include "Tasks/HIKARI_AssetTaskService.h"
@@ -140,8 +142,7 @@ private:
     bool TryTakeContentSnapshot(ContentSnapshot& outSnapshot);
     bool CheckOwnerThread(const char* operation) const;
     bool CanReplaceContentSnapshot() const;
-    AssetRecord BuildRecordForSource(const std::filesystem::path& sourcePath, bool createMissingMeta,
-                                     std::unordered_map<std::string, std::string>& scanDigests);
+    AssetRecord BuildRecordForSource(const std::filesystem::path& sourcePath, bool createMissingMeta);
     AssetType GuessAssetTypeFromPath(const std::filesystem::path& sourcePath) const;
     std::string SelectDefaultImporterId(AssetType type, const std::filesystem::path& sourcePath) const;
 
@@ -151,12 +152,14 @@ private:
     bool LoadCookedRecords();
     void AddDirectoryToCache(const std::filesystem::path& directory);
     void SortAndUniqueDirectories();
-    void RefreshRecordState(AssetRecord& record,
-                            std::unordered_map<std::string, std::string>* scanDigests = nullptr) const;
+    void RefreshRecordState(AssetRecord& record);
     void RefreshImportDependents(const AssetGuid& guid);
     bool ReadArtifactManifest(const std::filesystem::path& manifestPath, AssetArtifactManifest& outManifest) const;
     bool WriteArtifactManifest(const AssetRecord& record, const AssetImportResult& result) const;
-    bool WriteImportReport(const AssetRecord& record, const AssetImportResult& result) const;
+    bool WriteImportReport(const AssetRecord& record, const AssetImportResult& result);
+    void LoadImportFailures();
+    void SetImportFailed(const AssetGuid& guid, bool failed);
+    void SaveImportFailures();
 
     std::filesystem::path NormalizeProjectPath(const std::filesystem::path& path) const;
     std::string MakePathKey(const std::filesystem::path& path) const;
@@ -174,6 +177,14 @@ private:
     void ScheduleQueuedImportWork();
 
     struct QueuedImportBatch;
+    // 最後の取り込みが失敗した GUID（Library/AssetDatabase/ImportFailures.json）。成功時は manifest と
+    // import_report.json が同じ結果を持つので、record の状態はここにある資産と manifest のない資産だけ report から読む。
+    // complete でない間（一覧がない・読めない）はすべての report を読み、次に成功した走査の終わりに作り直す。
+    struct ImportFailureList {
+        std::unordered_set<std::string> guids{};
+        bool complete = false;
+        bool dirty = false;
+    };
 
     std::filesystem::path projectRoot_{};
     std::filesystem::path assetsRoot_{};
@@ -189,6 +200,8 @@ private:
     std::unordered_map<std::string, size_t> recordsByGuid_{};
     std::unordered_map<std::string, size_t> guidByNormalizedPath_{};
     uint64_t contentRevision_ = 1u;
+    AssetInputDigestCache inputDigests_{};
+    ImportFailureList importFailures_{};
     std::shared_ptr<QueuedImportBatch> queuedImportBatch_{};
     AssetImportBatchStatus lastCompletedImportBatch_{};
     bool completedImportBatchPending_ = false;

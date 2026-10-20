@@ -11,8 +11,10 @@ namespace HIKARI::RENDER3D {
 // shader へ渡す保護の数と、そのために集める候補の数。候補は結んだ順に集め、投影した時に
 // このカメラで大きく見える順に選ぶ（結んだ順の先頭だけを保護すると、手前の画面が外れることがある）。
 // 画面が多く並ぶ場面で上限を超えると、カメラが動くたびに保護される画面が入れ替わって色調が跳ぶので 12 まで持つ。
+// 候補は画面が数十枚並ぶ場面（編集画面で全部の画面を結ぶ時など）でも全部を比べられるよう 128 まで集める
+// （32 では結んだ順の後ろにある、目の前の画面が候補から漏れて保護されなかった）。
 inline constexpr uint32_t kScreenReadabilityRegionCount = 12u;
-inline constexpr uint32_t kScreenReadabilityCandidateCount = 32u;
+inline constexpr uint32_t kScreenReadabilityCandidateCount = 128u;
 // 四隅の画面座標（uv）を 1 語へ詰める範囲。x, y をこの範囲の 16 bit 正規化で上下に詰める（1920 画素で約 0.26 画素刻み）。
 // 画面の外へ大きくはみ出した隅は範囲の端へ寄せる。HLSL の HikariUnpackReadabilityCorner と同じ値を使う。
 inline constexpr float kScreenReadabilityUvMin = -4.0f;

@@ -535,8 +535,10 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
 
     streamlineDeployment.requireDlss =
         streamlineDeployment.requireDlss || std::filesystem::exists(sourceExe.parent_path() / "sl.dlss.dll");
-    streamlineDeployment.requireFrameGeneration = streamlineDeployment.requireFrameGeneration ||
-                                                  std::filesystem::exists(sourceExe.parent_path() / "sl.dlss_g.dll");
+    streamlineDeployment.requireFrameGeneration =
+        streamlineDeployment.requireFrameGeneration ||
+        std::filesystem::exists(sourceExe.parent_path() / RENDER3D::UPSCALING::kStreamlineFrameGenerationDirectory /
+                                "sl.dlss_g.dll");
 
     std::error_code sourceExeError{};
     if (!std::filesystem::is_regular_file(sourceExe, sourceExeError) || sourceExeError) {

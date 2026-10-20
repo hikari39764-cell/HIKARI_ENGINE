@@ -5,6 +5,7 @@
 #include <iterator>
 
 #include "Gfx/HIKARI_D3D12DebugTools.h"
+#include "Gfx/HIKARI_GpuCompletion.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineInternal.h"
@@ -115,7 +116,45 @@ void RecordDlssFailure(INTERNAL::StreamlineState& state, const char* operation, 
     state.stats.status = result == sl::Result::eWarnOutOfVRAM ? StreamlineRuntimeStatus::ResourcePressure
                                                               : StreamlineRuntimeStatus::RuntimeFailure;
 }
+
+// 実例を最後に評価したフレームの GPU 完了を待つ。そのフレームの Signal がまだ積まれていない（提出に失敗した等）時は
+// 待てないので false を返し、次のフレームで再試行させる。
+bool WaitForDlssInstanceRetirement(const INTERNAL::StreamlineState& state) {
+    const GFX::Context& context = state.context;
+    const uint64_t lastUseFenceValue = state.dlssInstanceRetireFenceValue;
+    if (context.device == nullptr || context.frameFence == nullptr ||
+        lastUseFenceValue >= context.currentFrameRetireFenceValue) {
+        return false;
+    }
+    if (context.frameFence->GetCompletedValue() >= lastUseFenceValue) {
+        return true;
+    }
+    const HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    const bool completed = GFX::WaitForGpuCompletion(context.device, context.frameFence, lastUseFenceValue, event,
+                                                     "Streamline DLSS instance retirement");
+    if (event != nullptr) {
+        CloseHandle(event);
+    }
+    return completed;
+}
 } // namespace
+
+namespace INTERNAL {
+sl::Result ReleaseDlssInstance(StreamlineState& state) {
+    if (state.dlssInstanceRetireFenceValue == 0u) {
+        return sl::Result::eOk;
+    }
+    sl::Result result = slFreeResources(sl::kFeatureDLSS, state.viewport);
+    // 評価が sl.dlss の begin event に届く前に失敗していれば実例は作られておらず、未登録 viewport として返る。
+    if (result == sl::Result::eErrorInvalidParameter) {
+        result = sl::Result::eOk;
+    }
+    if (result == sl::Result::eOk) {
+        state.dlssInstanceRetireFenceValue = 0u;
+    }
+    return result;
+}
+} // namespace INTERNAL
 #endif
 
 const char* ToString(StreamlineDlssMode mode) {
@@ -225,7 +264,7 @@ RenderTarget2D* ExecuteStreamlineDlss(const TEMPORAL::TemporalInputs& inputs, St
         inputs.resourceFrame.view.viewId == kPrimaryRenderViewId &&
         inputs.resourceFrame.publication.Matches(inputs.frame.publication) && inputs.sceneColor.valid &&
         inputs.sceneDepth.valid && inputs.motionVectors.valid && inputs.exposure.valid && inputs.reactiveMask.valid &&
-        inputs.transparencyMask.valid && inputs.invalidDepthMotionMask.valid;
+        inputs.transparencyMask.valid && inputs.invalidDepthMotionMask.valid && inputs.biasCurrentColorMask.valid;
     StreamlineOptimalSettings optimal{};
     const bool optimalSettingsReady =
         QueryStreamlineDlssOptimalSettings(mode, inputs.frame.outputWidth, inputs.frame.outputHeight, optimal);
@@ -258,10 +297,28 @@ RenderTarget2D* ExecuteStreamlineDlss(const TEMPORAL::TemporalInputs& inputs, St
         return nullptr;
     }
 
-    if (!state.optionsConfigured || state.configuredMode != mode ||
-        state.configuredPreExposure != inputs.exposureState.preExposure ||
-        state.configuredOutputWidth != inputs.frame.outputWidth ||
-        state.configuredOutputHeight != inputs.frame.outputHeight) {
+    // sl.dlss は mode か出力サイズが変わると旧 NGX feature の解放を 3 フレーム後の遅延ラムダとして sl.common に積む。
+    // そのキューは Present フックでしか進まず、残ったまま slShutdown すると sl.dlss.dll を外した後でラムダが呼ばれて
+    // 落ちる。変更前に GPU 完了を待って自分で解放し、sl.dlss には常に新規作成させる。
+    const bool instanceOptionsChanged = state.configuredMode != mode ||
+                                        state.configuredOutputWidth != inputs.frame.outputWidth ||
+                                        state.configuredOutputHeight != inputs.frame.outputHeight;
+    if (instanceOptionsChanged && state.dlssInstanceRetireFenceValue != 0u) {
+        if (!WaitForDlssInstanceRetirement(state)) {
+            state.stats.lastOperation = "retire DLSS instance";
+            state.stats.lastResult = "previous instance GPU completion is not provable";
+            ++state.stats.failureCount;
+            return nullptr;
+        }
+        const sl::Result releaseResult = INTERNAL::ReleaseDlssInstance(state);
+        if (releaseResult != sl::Result::eOk) {
+            RecordDlssFailure(state, "slFreeResources(DLSS)", releaseResult, inputs, mode);
+            return nullptr;
+        }
+    }
+
+    if (!state.optionsConfigured || instanceOptionsChanged ||
+        state.configuredPreExposure != inputs.exposureState.preExposure) {
         const sl::DLSSOptions options = BuildDlssOptions(mode, inputs.frame.outputWidth, inputs.frame.outputHeight,
                                                          inputs.exposureState.preExposure);
         const sl::Result optionsResult = slDLSSSetOptions(state.viewport, options);
@@ -295,12 +352,14 @@ RenderTarget2D* ExecuteStreamlineDlss(const TEMPORAL::TemporalInputs& inputs, St
     sl::Resource reactive = INTERNAL::MakeStreamlineTextureResource(inputs.reactiveMask);
     sl::Resource transparency = INTERNAL::MakeStreamlineTextureResource(inputs.transparencyMask);
     sl::Resource invalidDepthMotion = INTERNAL::MakeStreamlineTextureResource(inputs.invalidDepthMotionMask);
+    sl::Resource biasCurrentColor = INTERNAL::MakeStreamlineTextureResource(inputs.biasCurrentColorMask);
 
     const sl::Extent renderExtent{0u, 0u, inputs.frame.renderWidth, inputs.frame.renderHeight};
     const sl::Extent outputExtent{0u, 0u, inputs.frame.outputWidth, inputs.frame.outputHeight};
     const sl::Extent exposureExtent{0u, 0u, 1u, 1u};
     const sl::ResourceLifecycle lifecycle = sl::ResourceLifecycle::eValidUntilEvaluate;
-    const std::array<sl::ResourceTag, 8> tags = {
+    // DLSS が履歴の扱いに読むのは BiasCurrentColor だけ（Reactive / TransparencyAndComposition は DirectSR 向けの印）。
+    const std::array<sl::ResourceTag, 9> tags = {
         sl::ResourceTag(&colorInput, sl::kBufferTypeScalingInputColor, lifecycle, &renderExtent),
         sl::ResourceTag(&colorOutput, sl::kBufferTypeScalingOutputColor, lifecycle, &outputExtent),
         sl::ResourceTag(&depth, sl::kBufferTypeDepth, lifecycle, &renderExtent),
@@ -309,6 +368,7 @@ RenderTarget2D* ExecuteStreamlineDlss(const TEMPORAL::TemporalInputs& inputs, St
         sl::ResourceTag(&reactive, sl::kBufferTypeReactiveMaskHint, lifecycle, &renderExtent),
         sl::ResourceTag(&transparency, sl::kBufferTypeTransparencyAndCompositionMaskHint, lifecycle, &renderExtent),
         sl::ResourceTag(&invalidDepthMotion, sl::kBufferTypeInvalidDepthMotionHint, lifecycle, &renderExtent),
+        sl::ResourceTag(&biasCurrentColor, sl::kBufferTypeBiasCurrentColorHint, lifecycle, &renderExtent),
     };
 
     ID3D12GraphicsCommandList* cmd = state.context.cmdList;
@@ -332,6 +392,8 @@ RenderTarget2D* ExecuteStreamlineDlss(const TEMPORAL::TemporalInputs& inputs, St
     const sl::Result evaluateResult =
         slEvaluateFeature(sl::kFeatureDLSS, *state.frameToken, evaluateInputs,
                           static_cast<uint32_t>(std::size(evaluateInputs)), reinterpret_cast<sl::CommandBuffer*>(cmd));
+    // 評価が失敗しても begin event で実例が作られている場合があるため、結果に関わらず記録する。
+    state.dlssInstanceRetireFenceValue = state.context.currentFrameRetireFenceValue;
     state.output.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     if (evaluateResult != sl::Result::eOk) {
         RecordDlssFailure(state, "slEvaluateFeature(DLSS)", evaluateResult, inputs, mode);

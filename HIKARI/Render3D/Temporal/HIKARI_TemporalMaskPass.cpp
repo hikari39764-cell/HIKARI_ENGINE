@@ -55,7 +55,8 @@ bool EnsurePipeline(const GFX::Context& graphics) {
     ComPtr<ID3D12RootSignature> rootSignature{};
     ComPtr<ID3D12PipelineState> pipelineState{};
 
-    D3D12_DESCRIPTOR_RANGE ranges[2]{};
+    // t0 合成前の色、t1 合成後の色、t2 深度。b1 は場景キャプチャを映す面の四隅（後処理の保護と同じ詰め方）。
+    D3D12_DESCRIPTOR_RANGE ranges[3]{};
     for (uint32_t index = 0; index < static_cast<uint32_t>(std::size(ranges)); ++index) {
         ranges[index].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         ranges[index].NumDescriptors = 1;
@@ -63,13 +64,16 @@ bool EnsurePipeline(const GFX::Context& graphics) {
         ranges[index].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
     }
 
-    D3D12_ROOT_PARAMETER params[2]{};
-    for (uint32_t index = 0; index < static_cast<uint32_t>(std::size(params)); ++index) {
+    D3D12_ROOT_PARAMETER params[4]{};
+    for (uint32_t index = 0; index < static_cast<uint32_t>(std::size(ranges)); ++index) {
         params[index].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         params[index].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         params[index].DescriptorTable.NumDescriptorRanges = 1;
         params[index].DescriptorTable.pDescriptorRanges = &ranges[index];
     }
+    params[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+    params[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    params[3].Constants = {1u, 0u, kScreenReadabilityConstantCount};
 
     D3D12_STATIC_SAMPLER_DESC sampler{};
     sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
@@ -112,10 +116,11 @@ bool EnsurePipeline(const GFX::Context& graphics) {
     psoDesc.DepthStencilState.DepthEnable = FALSE;
     psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    psoDesc.NumRenderTargets = 3;
+    psoDesc.NumRenderTargets = 4;
     psoDesc.RTVFormats[0] = DXGI_FORMAT_R8_UNORM;
     psoDesc.RTVFormats[1] = DXGI_FORMAT_R8_UNORM;
     psoDesc.RTVFormats[2] = DXGI_FORMAT_R8_UNORM;
+    psoDesc.RTVFormats[3] = DXGI_FORMAT_R8_UNORM;
     psoDesc.SampleDesc.Count = 1;
 
     hr = device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf()));
@@ -132,16 +137,18 @@ bool EnsurePipeline(const GFX::Context& graphics) {
 }
 } // namespace
 
-bool ExecuteTemporalMaskPass(const GFX::Context& graphics, const TemporalInputs& inputs) {
+bool ExecuteTemporalMaskPass(const GFX::Context& graphics, const TemporalInputs& inputs,
+                             const ScreenReadabilityFrame& sceneCaptureSurfaces) {
     ID3D12GraphicsCommandList* cmd = graphics.cmdList;
     ID3D12Device* device = graphics.device;
     ID3D12DescriptorHeap* srvHeap = graphics.srvHeap;
     RenderTarget2D* reactive = GetReactiveMaskRenderTarget(inputs.resourceFrame);
     RenderTarget2D* transparency = GetTransparencyMaskRenderTarget(inputs.resourceFrame);
     RenderTarget2D* invalidDepthMotion = GetInvalidDepthMotionMaskRenderTarget(inputs.resourceFrame);
+    RenderTarget2D* biasCurrentColor = GetBiasCurrentColorMaskRenderTarget(inputs.resourceFrame);
     if (cmd == nullptr || device == nullptr || !inputs.MatchesResourceFrame() ||
         graphics.deviceGeneration != inputs.resourceFrame.deviceGeneration || reactive == nullptr ||
-        transparency == nullptr || invalidDepthMotion == nullptr) {
+        transparency == nullptr || invalidDepthMotion == nullptr || biasCurrentColor == nullptr) {
         (void)MarkTemporalMasksWritten(inputs.resourceFrame, false, false);
         return false;
     }
@@ -149,17 +156,19 @@ bool ExecuteTemporalMaskPass(const GFX::Context& graphics, const TemporalInputs&
     reactive->TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
     transparency->TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
     invalidDepthMotion->TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
-    const D3D12_CPU_DESCRIPTOR_HANDLE rtvs[3] = {reactive->GetRtvHandle(), transparency->GetRtvHandle(),
-                                                 invalidDepthMotion->GetRtvHandle()};
-    cmd->OMSetRenderTargets(3, rtvs, FALSE, nullptr);
+    biasCurrentColor->TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
+    const D3D12_CPU_DESCRIPTOR_HANDLE rtvs[4] = {reactive->GetRtvHandle(), transparency->GetRtvHandle(),
+                                                 invalidDepthMotion->GetRtvHandle(), biasCurrentColor->GetRtvHandle()};
+    cmd->OMSetRenderTargets(4, rtvs, FALSE, nullptr);
     const float clear[4] = {};
-    cmd->ClearRenderTargetView(rtvs[0], clear, 0, nullptr);
-    cmd->ClearRenderTargetView(rtvs[1], clear, 0, nullptr);
-    cmd->ClearRenderTargetView(rtvs[2], clear, 0, nullptr);
+    for (const auto& rtv : rtvs)
+        cmd->ClearRenderTargetView(rtv, clear, 0, nullptr);
 
+    // 合成前の色が無い時は合成後の色を両方に渡す（合成の差は 0 になり、場景キャプチャの面だけが残る）。
     const D3D12_GPU_DESCRIPTOR_HANDLE compositionBase = GetTemporalCompositionBase(inputs.resourceFrame);
-    const bool canGenerate =
-        srvHeap != nullptr && inputs.sceneColor.valid && compositionBase.ptr != 0 && EnsurePipeline(graphics);
+    const bool canGenerate = srvHeap != nullptr && inputs.sceneColor.valid && EnsurePipeline(graphics);
+    // 深度が無ければ面の手前の物を確かめられないので、面の印は付けない。
+    ScreenReadabilityFrame surfaces = inputs.sceneDepth.valid ? sceneCaptureSurfaces : ScreenReadabilityFrame{};
     if (canGenerate) {
         GFX::PIX::ScopedGpuEvent pix(cmd, GFX::PIX::kColorPost, "Temporal.Masks");
         const D3D12_VIEWPORT viewport{0.0f,
@@ -174,8 +183,10 @@ bool ExecuteTemporalMaskPass(const GFX::Context& graphics, const TemporalInputs&
         cmd->SetDescriptorHeaps(1, &srvHeap);
         cmd->SetGraphicsRootSignature(State().rootSignature.Get());
         cmd->SetPipelineState(State().pipelineState.Get());
-        cmd->SetGraphicsRootDescriptorTable(0, compositionBase);
+        cmd->SetGraphicsRootDescriptorTable(0, compositionBase.ptr != 0 ? compositionBase : inputs.sceneColor.srv);
         cmd->SetGraphicsRootDescriptorTable(1, inputs.sceneColor.srv);
+        cmd->SetGraphicsRootDescriptorTable(2, inputs.sceneDepth.valid ? inputs.sceneDepth.srv : inputs.sceneColor.srv);
+        cmd->SetGraphicsRoot32BitConstants(3, kScreenReadabilityConstantCount, &surfaces, 0);
         cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         cmd->DrawInstanced(3, 1, 0, 0);
     }
@@ -189,15 +200,17 @@ bool ExecuteTemporalMaskPass(const GFX::Context& graphics, const TemporalInputs&
             const float rejected[4]{1.0f, 1.0f, 1.0f, 1.0f};
             cmd->ClearRenderTargetView(rtvs[0], rejected, static_cast<UINT>(rects.size()), rects.data());
             cmd->ClearRenderTargetView(rtvs[2], rejected, static_cast<UINT>(rects.size()), rects.data());
+            cmd->ClearRenderTargetView(rtvs[3], rejected, static_cast<UINT>(rects.size()), rects.data());
         }
     }
     reactive->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     transparency->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     invalidDepthMotion->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    biasCurrentColor->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     // Cleared zero masks are a valid opaque-only hint set. When a
     // post-opaque composition base exists, the draw refines them from the
     // actual color difference instead.
-    (void)MarkTemporalMasksWritten(inputs.resourceFrame, true, canGenerate);
+    (void)MarkTemporalMasksWritten(inputs.resourceFrame, true, canGenerate && compositionBase.ptr != 0);
     return true;
 }
 

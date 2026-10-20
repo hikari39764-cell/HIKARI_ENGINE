@@ -42,7 +42,8 @@ TemporalResolveStageResult ExecuteTemporalResolveStage(TemporalViewLease view, R
                                                        RenderTarget2D& sceneColorTarget,
                                                        RenderTarget2D& sceneDepthTarget,
                                                        const RenderQualitySettings& quality,
-                                                       const COLOR::ExposureFrameState& exposureState) {
+                                                       const COLOR::ExposureFrameState& exposureState,
+                                                       const ScreenReadabilityFrame& sceneCaptureSurfaces) {
     TemporalResolveStageResult result{};
     result.output = &sceneColorTarget;
 
@@ -111,7 +112,7 @@ TemporalResolveStageResult ExecuteTemporalResolveStage(TemporalViewLease view, R
         RejectTemporalFrame(frame, resources, nativeTaaRequested);
         return result;
     }
-    const bool masksWritten = ExecuteTemporalMaskPass(graphics, maskInputs);
+    const bool masksWritten = ExecuteTemporalMaskPass(graphics, maskInputs, sceneCaptureSurfaces);
     TemporalInputs inputs{};
     if (!TryBuildTemporalResolveInputs(resources, sceneColorTarget, sceneDepthTarget, inputs)) {
         sceneDepthTarget.EndDepthShaderRead();

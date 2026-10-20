@@ -4234,7 +4234,7 @@
         "engineInterfaceHash": "5f47c056f3ad74984780eae3e3d710ac3f63ee978d2dce0c83a05502582e9620",
         "rootLayoutId": "HIKARI.Temporal.Masks.Root",
         "rootLayoutVersion": 1,
-        "rootLayoutHash": "61e8da305ab5858d28f1a5806eaf84e51fb1ff8a8243407f7ed8c41838db5151",
+        "rootLayoutHash": "3aa9845f8af20872b9e37df0dce8c41cf13a6d85cdd1e8237cfe57bbbd15c407",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

@@ -7,8 +7,16 @@
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
+#include <algorithm>
+
 namespace HIKARI {
 namespace {
+constexpr int kImportFailuresVersion = 1;
+
+std::filesystem::path ImportFailuresPath(const std::filesystem::path& libraryRoot) {
+    return libraryRoot / "AssetDatabase" / "ImportFailures.json";
+}
+
 nlohmann::json SerializeDependencies(const std::vector<AssetDependencyDesc>& dependencies) {
     nlohmann::json out = nlohmann::json::array();
     for (const AssetDependencyDesc& dependency : dependencies) {
@@ -278,10 +286,22 @@ bool AssetDatabase::WriteArtifactManifest(const AssetRecord& record, const Asset
     return true;
 }
 
-bool AssetDatabase::WriteImportReport(const AssetRecord& record, const AssetImportResult& result) const {
+bool AssetDatabase::WriteImportReport(const AssetRecord& record, const AssetImportResult& result) {
     if (record.importedDirectory.empty()) {
         return false;
     }
+
+    // 失敗は report より先に、成功は report の後に一覧へ保存し、途中で止まっても失敗を隠さない。
+    // 他の database（書き出しや別プロセス）が記録した失敗を消さないよう、保存済みの一覧を読み直して重ねる。
+    const auto recordOutcome = [&] {
+        if (importFailures_.complete)
+            LoadImportFailures();
+        SetImportFailed(record.guid, !result.success);
+        if (importFailures_.complete && importFailures_.dirty)
+            SaveImportFailures();
+    };
+    if (!result.success)
+        recordOutcome();
 
     auto root = SerializeImportResult(record, result, true);
 
@@ -291,7 +311,43 @@ bool AssetDatabase::WriteImportReport(const AssetRecord& record, const AssetImpo
         HIKARI_LOG_ERROR("[AssetDatabase] failed to write import report: " + writeMessage);
         return false;
     }
+    if (result.success)
+        recordOutcome();
     return true;
+}
+
+void AssetDatabase::LoadImportFailures() {
+    importFailures_ = {};
+    nlohmann::json document;
+    if (cookedContent_ || !SERIALIZATION::JSON::ReadJsonFile(ImportFailuresPath(libraryRoot_), document))
+        return;
+    // Library のキャッシュなので、壊れている・版が違う時は complete にせず、次の走査で全 report から作り直す。
+    const auto version = document.find("version");
+    const auto guids = document.find("guids");
+    if (version == document.end() || *version != kImportFailuresVersion || guids == document.end() ||
+        !guids->is_array())
+        return;
+    for (const auto& guid : *guids)
+        if (guid.is_string())
+            importFailures_.guids.insert(guid.get<std::string>());
+    importFailures_.complete = true;
+}
+
+void AssetDatabase::SetImportFailed(const AssetGuid& guid, bool failed) {
+    if (guid.IsValid() &&
+        (failed ? importFailures_.guids.insert(guid.value).second : importFailures_.guids.erase(guid.value) != 0u))
+        importFailures_.dirty = true;
+}
+
+void AssetDatabase::SaveImportFailures() {
+    std::vector<std::string> guids(importFailures_.guids.begin(), importFailures_.guids.end());
+    std::sort(guids.begin(), guids.end());
+    std::string writeMessage{};
+    importFailures_.dirty = !SERIALIZATION::JSON::WriteJsonFile(
+        ImportFailuresPath(libraryRoot_), {{"version", kImportFailuresVersion}, {"guids", std::move(guids)}},
+        &writeMessage);
+    if (importFailures_.dirty)
+        HIKARI_LOG_WARN("[AssetDatabase] failed to write import failure list: " + writeMessage);
 }
 
 } // namespace HIKARI

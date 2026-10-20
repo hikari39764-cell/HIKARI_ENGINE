@@ -6,11 +6,49 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/Tasks/HIKARI_AssetImportPublication.h"
 #include "Core/Hashing/HIKARI_Sha256.h"
+#include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
+#include <Windows.h>
+
 namespace HIKARI {
 namespace {
+constexpr int kDigestCacheVersion = 1;
+// 同じ時刻の刻み内に書き直されたファイルを取り違えないよう、変更直後のファイルは保存しない（100 ns 単位で 2 秒）。
+constexpr int64_t kRecentChangeTicks = 20'000'000;
+
+struct InputFileStamp {
+    uint64_t size = 0;
+    int64_t changeTime = 0;
+};
+
+// 内容は開かず属性だけを読む。変更時刻を持たないファイルシステムでは false を返し、毎回ハッシュする。
+bool ReadInputFileStamp(const std::filesystem::path& path, InputFileStamp& outStamp) {
+    const HANDLE file =
+        CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE)
+        return false;
+    FILE_BASIC_INFO basic{};
+    FILE_STANDARD_INFO standard{};
+    const bool read = GetFileInformationByHandleEx(file, FileBasicInfo, &basic, sizeof(basic)) &&
+                      GetFileInformationByHandleEx(file, FileStandardInfo, &standard, sizeof(standard));
+    CloseHandle(file);
+    if (!read || standard.Directory || basic.ChangeTime.QuadPart <= 0)
+        return false;
+    outStamp = {static_cast<uint64_t>(standard.EndOfFile.QuadPart), basic.ChangeTime.QuadPart};
+    return true;
+}
+
+bool ChangedRecently(int64_t changeTime) {
+    FILETIME now{};
+    GetSystemTimeAsFileTime(&now);
+    const int64_t nowTicks =
+        static_cast<int64_t>((static_cast<uint64_t>(now.dwHighDateTime) << 32u) | now.dwLowDateTime);
+    return nowTicks - changeTime < kRecentChangeTicks;
+}
+
 bool ValidateSettingsShape(const nlohmann::json& edited, const nlohmann::json& defaults, const std::string& path,
                            std::string& error) {
     for (const auto& [key, fallback] : defaults.items()) {
@@ -35,6 +73,73 @@ std::string FileDigest(const std::filesystem::path& path, const AssetImportPubli
     return HASH::ComputeFileSha256(readable, digest, error) ? HASH::ToHex(digest) : std::string{};
 }
 } // namespace
+
+void AssetInputDigestCache::Open(const std::filesystem::path& cachePath) {
+    path_ = cachePath;
+    entries_.clear();
+    scanning_ = false;
+    dirty_ = false;
+    // キャッシュなので、読めない・版が違う時は空から作り直す。
+    nlohmann::json document;
+    if (!SERIALIZATION::JSON::ReadJsonFile(cachePath, document) || !document.is_object() ||
+        document.value("version", 0) != kDigestCacheVersion)
+        return;
+    const auto files = document.find("files");
+    if (files == document.end() || !files->is_object())
+        return;
+    for (const auto& [key, value] : files->items()) {
+        if (value.is_array() && value.size() == 3u && value[0].is_number_unsigned() && value[1].is_number_integer() &&
+            value[2].is_string())
+            entries_[key] = {value[0].get<uint64_t>(), value[1].get<int64_t>(), value[2].get<std::string>()};
+    }
+}
+
+void AssetInputDigestCache::BeginScan() {
+    for (auto& [key, entry] : entries_)
+        entry.scanned = false;
+    scanning_ = true;
+}
+
+void AssetInputDigestCache::FinishScan(bool succeeded) {
+    scanning_ = false;
+    if (!succeeded || path_.empty())
+        return;
+    if (std::erase_if(entries_, [](const auto& item) { return !item.second.scanned; }) != 0u)
+        dirty_ = true;
+    if (!dirty_)
+        return;
+    nlohmann::json files = nlohmann::json::object();
+    for (const auto& [key, entry] : entries_)
+        files[key] = nlohmann::json::array({entry.size, entry.changeTime, entry.digest});
+    dirty_ = !SERIALIZATION::JSON::WriteJsonFile(
+        path_, nlohmann::json{{"version", kDigestCacheVersion}, {"files", std::move(files)}});
+}
+
+std::string AssetInputDigestCache::Digest(const std::string& key, const std::filesystem::path& path) {
+    const auto found = entries_.find(key);
+    // 一回の走査では同じ入力を一度だけ確かめる。
+    if (scanning_ && found != entries_.end() && found->second.scanned)
+        return found->second.digest;
+    InputFileStamp stamp{};
+    if (!ReadInputFileStamp(path, stamp))
+        return FileDigest(path, nullptr);
+    if (found != entries_.end() && found->second.size == stamp.size && found->second.changeTime == stamp.changeTime) {
+        if (scanning_)
+            found->second.scanned = true;
+        return found->second.digest;
+    }
+    std::string digest = FileDigest(path, nullptr);
+    if (digest.empty() || ChangedRecently(stamp.changeTime)) {
+        if (found != entries_.end()) {
+            entries_.erase(found);
+            dirty_ = true;
+        }
+        return digest;
+    }
+    entries_.insert_or_assign(key, Entry{stamp.size, stamp.changeTime, digest, scanning_});
+    dirty_ = true;
+    return digest;
+}
 
 AssetImportInputFile CaptureAssetInputFile(const std::filesystem::path& path) {
     return {TEXT::PathToUtf8(path.lexically_normal()), FileDigest(path, nullptr)};
@@ -104,23 +209,14 @@ AssetImportInputs CaptureAssetImportInputs(const AssetDatabase& database, const 
 
 bool CheckAssetImportInputs(const std::filesystem::path& projectRoot, const AssetImportInputs& inputs,
                             std::string& reason, const AssetImportPublication* publication,
-                            std::unordered_map<std::string, std::string>* scanDigests) {
+                            AssetInputDigestCache* digests) {
     if (inputs.settings.empty() || inputs.files.empty()) {
         reason = "No completed import for the current inputs";
         return false;
     }
     for (const auto& file : inputs.files) {
         const auto path = PROJECT_PATHS::ResolveProjectPath(projectRoot, TEXT::PathFromUtf8(file.path));
-        std::string digest;
-        if (scanDigests) {
-            const auto key = TEXT::PathToUtf8(path.lexically_normal());
-            auto [entry, inserted] = scanDigests->try_emplace(key);
-            if (inserted)
-                entry->second = FileDigest(path, publication);
-            digest = entry->second;
-        } else {
-            digest = FileDigest(path, publication);
-        }
+        const std::string digest = digests ? digests->Digest(file.path, path) : FileDigest(path, publication);
         if (digest.empty()) {
             reason = "Input is missing or unreadable: " + file.path;
             return false;

@@ -108,8 +108,6 @@ bool ComputeProjectFingerprint(const std::filesystem::path& projectRoot, std::st
     std::vector<std::filesystem::path> files{
         projectRoot / kProjectDescriptorFilename,
         manifest,
-        projectRoot / "CMakePresets.json",
-        manifestRoot / "CMakePresets.json",
     };
     AddFingerprintTree(manifestRoot / "Source", true, files);
     AddFingerprintTree(manifestRoot / "cmake", false, files);

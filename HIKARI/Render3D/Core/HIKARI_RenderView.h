@@ -79,6 +79,8 @@ struct RenderFrameProjectExtensionSink {
 struct RenderViewContext {
     std::span<const VOLUMETRIC::LocalFogVolumeGpu> localFogVolumes{};
     ScreenReadabilityWorldFrame screenReadability{};
+    // 場景キャプチャを映す面すべて。中身が面と別に動くので、時間方向の解決で履歴を弱める。
+    ScreenReadabilityWorldFrame sceneCaptureSurfaces{};
     RenderViewId viewId{};
     RenderViewPurpose purpose = RenderViewPurpose::Game;
     const ResolvedCameraFrame* cameraFrame = nullptr;

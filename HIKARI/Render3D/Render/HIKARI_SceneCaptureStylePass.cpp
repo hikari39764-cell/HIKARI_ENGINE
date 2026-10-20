@@ -21,7 +21,7 @@ CaptureStylePass& State() {
 } // namespace
 
 bool DrawSceneCaptureStyle(const GFX::Context& graphics, const RenderTarget2D& input, RenderTarget2D& output,
-                           const GameProjectSceneCaptureStyleDesc& style) {
+                           const GameProjectSceneCaptureStyleDesc& style, const SceneCaptureStyleDepth& depth) {
     auto& state = State();
     if (graphics.device == nullptr || graphics.cmdList == nullptr || !input.IsInitialized() ||
         !output.IsInitialized() || input.GetResource() == output.GetResource() ||
@@ -54,9 +54,16 @@ bool DrawSceneCaptureStyle(const GFX::Context& graphics, const RenderTarget2D& i
     params.user[2] = {style.paperColor.x, style.paperColor.y, style.paperColor.z,
                       1.0f / COLOR::GetActiveViewExposure().z};
     params.user[3] = {style.accentColor.x, style.accentColor.y, style.accentColor.z, style.backgroundLuminance};
-    params.user[4] = {style.shadowOffsetX, style.shadowOffsetY, 0.0f, 0.0f};
+    params.user[4] = {style.shadowOffsetX, style.shadowOffsetY, style.fillStrength, 0.0f};
+    // 深度の効果（版 4）。深度が無い時は gUser[9].x = 0 でシェーダーが全部飛ばす。
+    const bool hasDepth = depth.srv.ptr != 0u && style.depthFocus > 0.0f && depth.farZ > depth.nearZ;
+    params.user[5] = {style.depthFocus, style.backgroundDepth, style.fogStrength, style.fogDepth};
+    params.user[6] = {style.fogColor.x, style.fogColor.y, style.fogColor.z, style.occlusion};
+    params.user[7] = {style.occlusionRadius, style.occlusionDepth, style.depthLine, style.lightShadow};
+    params.user[8] = {style.lightSlope, style.lightReach, depth.nearZ, depth.farZ};
+    params.user[9] = {hasDepth ? 1.0f : 0.0f, depth.orthographic ? 1.0f : 0.0f, style.depthLineGap, style.transparentBackground};
     state.effect->ApplyCommonParams(params);
-    state.quad.SetInputTexture(input.GetSrvHeap(), input.GetSrvGpu());
+    state.quad.SetInputTexture(input.GetSrvHeap(), input.GetSrvGpu(), hasDepth ? depth.srv : D3D12_GPU_DESCRIPTOR_HANDLE{});
     output.BeginCapture();
     const bool drawn = state.effect->BindAndDraw(state.quad);
     output.EndCapture();

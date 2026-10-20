@@ -69,6 +69,8 @@ struct StreamlineState {
 #if defined(HIKARI_WITH_STREAMLINE)
     sl::FrameToken* frameToken = nullptr;
     sl::ViewportHandle viewport{0u};
+    // sl.dlss が viewport に DLSS 実例を持つ間、それを最後に評価したフレームの retire fence 値（0 は実例なし）。
+    uint64_t dlssInstanceRetireFenceValue = 0;
     bool optionsConfigured = false;
     StreamlineDlssMode configuredMode = StreamlineDlssMode::Off;
     float configuredPreExposure = 1.0f;
@@ -80,6 +82,7 @@ struct StreamlineState {
     uint32_t optimalSettingsOutputHeight = 0;
     StreamlineOptimalSettings optimalSettings{};
     std::wstring pluginPath{};
+    std::wstring frameGenerationPluginPath{};
     std::wstring logPath{};
     sl::Result dlssLastFailureResult = sl::Result::eOk;
     StreamlineDlssMode dlssFailedMode = StreamlineDlssMode::Off;
@@ -95,6 +98,8 @@ void ResetFrameStats(StreamlineState& state, uint64_t frameIndex);
 
 #if defined(HIKARI_WITH_STREAMLINE)
 bool RecordResult(StreamlineState& state, const char* operation, sl::Result result, bool countFailure = true);
+// sl.dlss が viewport に持つ実例を即時解放する。最後に評価したフレームの GPU 完了は呼び出し側が保証する。
+sl::Result ReleaseDlssInstance(StreamlineState& state);
 #endif
 
 } // namespace HIKARI::RENDER3D::UPSCALING::INTERNAL

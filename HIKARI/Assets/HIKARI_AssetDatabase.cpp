@@ -102,6 +102,8 @@ bool AssetDatabase::Initialize(const std::filesystem::path& projectRoot) {
         return false;
     }
 #endif
+    // cooked content は入力を確かめないので、前のプロジェクトのキャッシュも持ち越さない。
+    inputDigests_.Open(cookedContent_ ? std::filesystem::path{} : libraryRoot_ / "AssetInputDigests.json");
     if (cookedContent_) {
         HIKARI_LOG_INFO("[AssetDatabase] cooked content mode: " + TEXT::PathToUtf8(cookedManifestPath_));
         return true;
@@ -187,20 +189,30 @@ bool AssetDatabase::ScanAssets(bool createMissingMeta) {
     }
 
     ContentSnapshot previous = TakeContentSnapshot();
-    const auto restore = [&]() noexcept { RestoreContentSnapshot(std::move(previous)); };
+    bool scanned = false;
+    inputDigests_.BeginScan();
+    LoadImportFailures();
     try {
-        if (!ScanAssetsInPlace(createMissingMeta)) {
-            restore();
-            return false;
-        }
-        return true;
+        scanned = ScanAssetsInPlace(createMissingMeta);
     } catch (const std::exception& error) {
         HIKARI_LOG_ERROR(std::string("[AssetDatabase] scan threw: ") + error.what());
     } catch (...) {
         HIKARI_LOG_ERROR("[AssetDatabase] scan threw an unknown exception.");
     }
-    restore();
-    return false;
+    inputDigests_.FinishScan(scanned);
+    if (!scanned) {
+        RestoreContentSnapshot(std::move(previous));
+    } else if (!cookedContent_) {
+        // 全 record の状態を確かめたので一覧は揃っている。消えた資産の GUID は捨てる。
+        if (std::erase_if(importFailures_.guids, [this](const auto& guid) { return !recordsByGuid_.contains(guid); }) !=
+            0u)
+            importFailures_.dirty = true;
+        if (!importFailures_.complete || importFailures_.dirty) {
+            importFailures_.complete = true;
+            SaveImportFailures();
+        }
+    }
+    return scanned;
 }
 
 bool AssetDatabase::ScanAssetsInPlace(bool createMissingMeta) {
@@ -223,7 +235,6 @@ bool AssetDatabase::ScanAssetsInPlace(bool createMissingMeta) {
         return false;
     }
 
-    std::unordered_map<std::string, std::string> scanDigests;
     auto appendRecordForSource = [&](const std::filesystem::path& sourcePath, bool allowCreateMissingMeta) {
         std::filesystem::path relativeSource = NormalizeProjectPath(sourcePath);
         if (ASSETS::SEMANTICS::IsAssetCompanionSource(relativeSource)) {
@@ -236,7 +247,7 @@ bool AssetDatabase::ScanAssetsInPlace(bool createMissingMeta) {
             return true;
         }
 
-        AssetRecord record = BuildRecordForSource(relativeSource, allowCreateMissingMeta, scanDigests);
+        AssetRecord record = BuildRecordForSource(relativeSource, allowCreateMissingMeta);
         const std::string pathKey = MakePathKey(record.sourcePath);
         if (guidByNormalizedPath_.find(pathKey) != guidByNormalizedPath_.end()) {
             return true;

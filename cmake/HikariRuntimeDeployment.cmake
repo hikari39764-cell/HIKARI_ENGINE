@@ -41,6 +41,19 @@ function(hikari_configure_runtime_deployment target_name)
                 "$<TARGET_FILE_DIR:${target_name}>"
             VERBATIM)
     endforeach()
+    if(HIKARI_STREAMLINE_FRAME_GENERATION_RUNTIME)
+        add_custom_command(
+            TARGET "${target_name}"
+            POST_BUILD
+            COMMAND
+                "${CMAKE_COMMAND}" -E make_directory
+                "$<TARGET_FILE_DIR:${target_name}>/${HIKARI_STREAMLINE_FRAME_GENERATION_DIRECTORY}"
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_if_different
+                ${HIKARI_STREAMLINE_FRAME_GENERATION_RUNTIME}
+                "$<TARGET_FILE_DIR:${target_name}>/${HIKARI_STREAMLINE_FRAME_GENERATION_DIRECTORY}"
+            VERBATIM)
+    endif()
 
     add_custom_command(
         TARGET "${target_name}"
@@ -86,6 +99,11 @@ function(hikari_configure_runtime_deployment target_name)
             install(
                 FILES ${HIKARI_RUNTIME_DEPENDENCIES}
                 DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}.")
+        endif()
+        if(HIKARI_STREAMLINE_FRAME_GENERATION_RUNTIME)
+            install(
+                FILES ${HIKARI_STREAMLINE_FRAME_GENERATION_RUNTIME}
+                DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}${HIKARI_STREAMLINE_FRAME_GENERATION_DIRECTORY}")
         endif()
         install(
             DIRECTORY

@@ -97,6 +97,8 @@ public:
     static bool GetRadialScreenWarp(float& curvature, float& strength) noexcept;
     static void SetBloomSettings(const BloomSettings& settings);
     static void SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& frame);
+    // 場景キャプチャを映す面。時間方向の解決（TAA・DLSS）がその画素で履歴を弱める。
+    static void SetSceneCaptureSurfaces(const RENDER3D::ScreenReadabilityFrame& frame);
     static void SetToneMappingSettings(const ToneMappingSettings& settings);
     // 表示するカメラの運動ブラー。TAA の後、HDR の後処理の前に掛ける。
     static void SetCameraMotionBlur(const CAMERA::MotionBlurSettings& settings, bool orthographic);
@@ -207,6 +209,7 @@ private:
     static RENDER3D::TEMPORAL::TemporalResourceFrame presentationTemporalResources_;
     static CAMERA::MotionBlurSettings cameraMotionBlur_;
     static bool cameraMotionBlurOrthographic_;
+    static RENDER3D::ScreenReadabilityFrame sceneCaptureSurfaces_;
     static RENDER3D::SURFACE::RenderFrameSurfaceReceipt renderSurfaceReceipt_;
     static RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt renderGraphSessionReceipt_;
 };

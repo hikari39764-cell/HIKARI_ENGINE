@@ -192,7 +192,20 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
     }
     RenderTarget2D& display = *state.display.targets[0];
     if (style.style != GameProjectSceneCaptureStyle::None) {
-        const bool drawn = RENDER3D::DrawSceneCaptureStyle(graphics, target, display, style);
+        // 深度の効果（版 4）を使う時だけ、キャプチャの深度を読める状態にして渡す。
+        RENDER3D::SceneCaptureStyleDepth depth{};
+        const bool readDepth = style.depthFocus > 0.0f && target.BeginDepthShaderRead();
+        if (readDepth) {
+            const Camera3D& camera = view.cameraFrame->camera;
+            depth.srv = target.GetDepthSrvGpu();
+            depth.nearZ = camera.GetNearZ();
+            depth.farZ = camera.GetFarZ();
+            depth.orthographic = camera.IsOrthographic();
+        }
+        const bool drawn = RENDER3D::DrawSceneCaptureStyle(graphics, target, display, style, depth);
+        if (readDepth) {
+            target.EndDepthShaderRead();
+        }
         (void)POST::PostSystem::RebindCurrentRenderTarget();
         if (!drawn) {
             return false;
