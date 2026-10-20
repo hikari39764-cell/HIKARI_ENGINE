@@ -42,6 +42,14 @@ public:
     HIKARI_GAME_PROJECT_SDK_API bool IsPaused(GameProjectSequencePlaybackHandle handle) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool GetSnapshot(GameProjectSequencePlaybackHandle handle,
                                                  GameProjectSequencePlaybackSnapshot& outSnapshot) const noexcept;
+    // 流れている演出の事件段を out へ先頭から最大 capacity 件写し、全部の件数を返す（無効な handle は 0）。
+    // 読み取りだけなので、Play の外でも編集器のプレビュー（GetEditorPreview の handle）に使える。
+    HIKARI_GAME_PROJECT_SDK_API uint32_t GetEventClips(GameProjectSequencePlaybackHandle handle,
+                                                       GameProjectSequenceEventClip* out,
+                                                       uint32_t capacity) const noexcept;
+    // 演出ワークスペースのプレビュー（Play の外だけ）。編集中の演出の資産 GUID（保存前の変更も流れる）、
+    // 時刻と状態を写す。プロジェクトは Play と同じ自分の効果をこの時刻で出せる。流れの操作はできない。
+    HIKARI_GAME_PROJECT_SDK_API bool GetEditorPreview(GameProjectSequencePlaybackSnapshot& outSnapshot) const noexcept;
 
     // Consumes all events currently owned by this World. The callback and
     // its event reference are valid only during this call and execute on

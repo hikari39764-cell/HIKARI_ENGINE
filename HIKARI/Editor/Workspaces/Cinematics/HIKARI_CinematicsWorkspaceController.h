@@ -158,7 +158,7 @@ private:
     DirectorViewPanel directorViewPanel_{};
     SEQUENCER::SequencePlaybackCursor cursor_{};
     CinematicSequenceId activeSequenceId_{1};
-    enum class SelectionKind { Shot, Cue, Effect };
+    enum class SelectionKind { Shot, Cue, Effect, Event };
     SelectionKind selectionKind_ = SelectionKind::Shot;
     uint64_t selectedId_ = 0;
     bool loop_ = false;

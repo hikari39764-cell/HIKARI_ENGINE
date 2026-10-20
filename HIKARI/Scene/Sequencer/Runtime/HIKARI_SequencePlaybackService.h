@@ -10,6 +10,9 @@
 
 namespace HIKARI::SEQUENCER {
 
+// 演出ワークスペースのプレビューが流す channel。ゲームのプロジェクトは SDK からこの再生を読み取りだけできる。
+inline constexpr std::string_view kEditorSequencePreviewChannel = "Editor.SequencePreview";
+
 class SequencePlaybackService {
 public:
     void SetAssetStore(SequenceAssetStore* assetStore) noexcept;
@@ -20,7 +23,8 @@ public:
     SequencePlaybackHandle PlayInline(
         const CinematicSequence& sequence, const SequenceBindingContext& bindings = {},
         const SequencePlaybackOptions& options = {}, float startTimeSeconds = 0.0f, std::string channel = {},
-        int priority = 0, SequenceChannelPolicy channelPolicy = SequenceChannelPolicy::ReplaceIfHigherOrEqual);
+        int priority = 0, SequenceChannelPolicy channelPolicy = SequenceChannelPolicy::ReplaceIfHigherOrEqual,
+        const AssetGuid& sourceAsset = {});
     bool Stop(SequencePlaybackHandle handle, SequenceStopReason reason = SequenceStopReason::Stopped);
     bool Pause(SequencePlaybackHandle handle);
     bool Resume(SequencePlaybackHandle handle);
@@ -38,6 +42,10 @@ public:
     bool IsActive(SequencePlaybackHandle handle) const noexcept;
     float GetTimeSeconds(SequencePlaybackHandle handle) const noexcept;
     bool TryGetSnapshot(SequencePlaybackHandle handle, SequencePlaybackSnapshot& outSnapshot) const noexcept;
+    // channel で流れている実例（無ければ無効な handle）。
+    SequencePlaybackHandle FindActiveByChannel(std::string_view channel) const noexcept;
+    // 実例が流している演出の中身（無ければ null）。事件段などを読む。
+    const CinematicSequence* GetSequence(SequencePlaybackHandle handle) const noexcept;
     size_t GetActiveInstanceCount() const noexcept;
     std::vector<SequencePlaybackEvent> ConsumeEvents();
 

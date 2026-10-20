@@ -1,5 +1,6 @@
 #include "Scene/Sequencer/Serialization/HIKARI_ShotPresentationJson.h"
 #include "Scene/Sequencer/Serialization/HIKARI_PresentationCueJson.h"
+#include "Scene/Sequencer/Serialization/HIKARI_SequenceEventJson.h"
 #include "Scene/Sequencer/Serialization/HIKARI_CinematicSequenceJson.h"
 
 #include <string>
@@ -133,6 +134,7 @@ CinematicSequence DeserializeSequence(const json& sequenceNode, CinematicSequenc
         if (track.value("type", "") == "cameraTransform" || track.value("type", "") == "cameraLens")
             throw std::runtime_error("Camera animation must belong to its shot (Sequence v5).");
     SEQUENCER::ReadPresentationCueJson(sequenceNode, sequence.presentationCueTrack);
+    SEQUENCER::ReadSequenceEventJson(sequenceNode, sequence.eventTrack);
     sequence.screenEffects = SEQUENCER::ReadScreenEffects(sequenceNode.value("screenEffects", json{}));
     NormalizeCinematicSequence(sequence);
     return sequence;
@@ -214,6 +216,7 @@ void SerializeSceneCinematicsJson(const SceneCinematicsSettings& settings, nlohm
         }
         sequenceNode["tracks"].push_back(std::move(cameraTrackNode));
         SEQUENCER::WritePresentationCueJson(sequence.presentationCueTrack, sequenceNode["tracks"]);
+        SEQUENCER::WriteSequenceEventJson(sequence.eventTrack, sequenceNode["tracks"]);
         sequenceNode["screenEffects"] = SEQUENCER::WriteScreenEffects(sequence.screenEffects);
         output["sequences"].push_back(std::move(sequenceNode));
     }

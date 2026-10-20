@@ -88,7 +88,8 @@ float GetCinematicSequenceContentEnd(const CinematicSequence& sequence) noexcept
     for (const auto& effect : sequence.screenEffects)
         effectsEnd = (std::max)(effectsEnd, effect.start + effect.duration);
     return (std::max)({effectsEnd, SEQUENCER::GetCameraCutTrackContentEnd(sequence.cameraCutTrack),
-                       SEQUENCER::GetPresentationCueContentEnd(sequence.presentationCueTrack)});
+                       SEQUENCER::GetPresentationCueContentEnd(sequence.presentationCueTrack),
+                       SEQUENCER::GetSequenceEventContentEnd(sequence.eventTrack)});
 }
 
 namespace {

@@ -41,7 +41,8 @@ bool IsCameraPreviewSlot(std::string_view requestedSlot, std::string_view hinted
     if (!hintedSlot.empty() && requestedSlot == hintedSlot) {
         return true;
     }
-    return requestedSlot == "CinematicCamera" || requestedSlot == "Camera.Camera" ||
+    // 「Camera」だけの槽名も镜头の槽として扱う（プロジェクトの演出で最もよく使う名前）。
+    return requestedSlot == "Camera" || requestedSlot == "CinematicCamera" || requestedSlot == "Camera.Camera" ||
            requestedSlot.starts_with("Camera.");
 }
 

@@ -6,6 +6,7 @@
 
 #include "Scene/Sequencer/HIKARI_SequenceBinding.h"
 #include "Scene/Sequencer/Tracks/HIKARI_PresentationCueTrack.h"
+#include "Scene/Sequencer/Tracks/HIKARI_SequenceEventTrack.h"
 #include "Scene/Sequencer/Tracks/HIKARI_CameraCutTrack.h"
 
 namespace HIKARI {
@@ -27,6 +28,8 @@ struct CinematicSequence {
     SEQUENCER::SequenceBindingTable bindings{};
     SEQUENCER::CameraCutTrack cameraCutTrack{};
     SEQUENCER::PresentationCueTrack presentationCueTrack{};
+    // ゲームのプロジェクトが名前で読む事件段（引擎は実行しない）。
+    SEQUENCER::SequenceEventTrack eventTrack{};
     std::vector<SEQUENCER::SequenceScreenEffect> screenEffects;
 };
 

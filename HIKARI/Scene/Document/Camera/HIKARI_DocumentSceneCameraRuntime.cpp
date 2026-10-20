@@ -11,7 +11,7 @@
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 
 namespace HIKARI {
-bool DocumentSceneBase::PreviewSequence(const CinematicSequence& sequence,
+bool DocumentSceneBase::PreviewSequence(const CinematicSequence& sequence, const AssetGuid& sourceAsset,
                                         const SEQUENCER::SequenceBindingContext& bindings,
                                         const SEQUENCER::SequenceEvaluationContext& context, bool contentChanged) {
     if (state_->runtime.playActive)
@@ -32,7 +32,8 @@ bool DocumentSceneBase::PreviewSequence(const CinematicSequence& sequence,
         SEQUENCER::SequencePlaybackOptions options;
         options.holdAtEnd = true;
         camera.sequencePreview = camera.sequencePlayback.PlayInline(
-            sequence, bindings, options, context.currentTimeSeconds, "Editor.SequencePreview", 1000);
+            sequence, bindings, options, context.currentTimeSeconds, std::string(SEQUENCER::kEditorSequencePreviewChannel),
+            1000, SEQUENCER::SequenceChannelPolicy::ReplaceIfHigherOrEqual, sourceAsset);
     }
     if (camera.sequencePlayback.EvaluateExternal(camera.sequencePreview, context))
         return true;

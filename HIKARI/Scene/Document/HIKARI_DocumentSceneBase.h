@@ -138,7 +138,9 @@ public:
     bool ApplyCameraObjectPose(SceneObjectId cameraObjectId, const MATH::Vec3& position, const MATH::Quat& rotation,
                                bool markDirty = true);
     bool SnapCameraObjectToEditorView(SceneObjectId cameraObjectId);
-    bool PreviewSequence(const CinematicSequence& sequence, const SEQUENCER::SequenceBindingContext& bindings,
+    // sourceAsset は編集中の演出の資産（ゲームのプロジェクトがプレビュー中の演出を見分ける）。
+    bool PreviewSequence(const CinematicSequence& sequence, const AssetGuid& sourceAsset,
+                         const SEQUENCER::SequenceBindingContext& bindings,
                          const SEQUENCER::SequenceEvaluationContext& context, bool contentChanged);
     void EndSequencePreview();
     // 入口は新しい実行 World の Scene entry として一度だけ配送する。作者文書へは保存しない。

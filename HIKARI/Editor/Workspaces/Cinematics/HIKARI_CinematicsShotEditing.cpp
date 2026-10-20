@@ -170,6 +170,8 @@ bool CinematicsWorkspaceController::DeleteSelectedClip(CinematicSequence& sequen
         removed = std::erase_if(sequence.presentationCueTrack.clips, selected);
     else if (selectionKind_ == SelectionKind::Effect)
         removed = std::erase_if(sequence.screenEffects, selected);
+    else if (selectionKind_ == SelectionKind::Event)
+        removed = std::erase_if(sequence.eventTrack.clips, selected);
     if (!removed)
         return false;
     selectedId_ = 0;

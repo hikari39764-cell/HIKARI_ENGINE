@@ -290,6 +290,52 @@ bool SequenceView::IsPaused(GameProjectSequencePlaybackHandle handle) const noex
                           [](auto& service, auto runtimeHandle) { return service.IsPaused(runtimeHandle); });
 }
 
+uint32_t SequenceView::GetEventClips(GameProjectSequencePlaybackHandle handle, GameProjectSequenceEventClip* out,
+                                     uint32_t capacity) const noexcept {
+    try {
+        // 読み取りだけなので Play の状態を問わない（編集器のプレビューにも使う）。
+        World* world = PROJECT::INTERNAL::ResolveServiceWorld(world_);
+        const auto* service = world != nullptr ? world->Services().Find<SEQUENCER::SequencePlaybackService>() : nullptr;
+        const CinematicSequence* sequence =
+            service != nullptr && handle.IsValid() ? service->GetSequence(ToRuntimeSequenceHandle(handle)) : nullptr;
+        if (sequence == nullptr || (out == nullptr && capacity != 0u)) {
+            return 0u;
+        }
+        const auto& clips = sequence->eventTrack.clips;
+        for (uint32_t index = 0u; index < capacity && index < clips.size(); ++index) {
+            out[index] = {};
+            (void)CopyFixedUtf8Truncated(clips[index].name, out[index].name);
+            out[index].startSeconds = clips[index].startSeconds;
+            out[index].durationSeconds = clips[index].durationSeconds;
+        }
+        return static_cast<uint32_t>(clips.size());
+    } catch (...) {
+        return 0u;
+    }
+}
+
+bool SequenceView::GetEditorPreview(GameProjectSequencePlaybackSnapshot& outSnapshot) const noexcept {
+    outSnapshot = {};
+    try {
+        World* world = PROJECT::INTERNAL::ResolveServiceWorld(world_);
+        if (world == nullptr) {
+            return false;
+        }
+        const RuntimePlayStateService* playState = world->Services().Find<RuntimePlayStateService>();
+        const auto* service = world->Services().Find<SEQUENCER::SequencePlaybackService>();
+        if (service == nullptr || (playState != nullptr && playState->IsActive())) {
+            return false;
+        }
+        SEQUENCER::SequencePlaybackSnapshot snapshot{};
+        const auto handle = service->FindActiveByChannel(SEQUENCER::kEditorSequencePreviewChannel);
+        return handle.IsValid() && service->TryGetSnapshot(handle, snapshot) &&
+               FillProjectSequenceSnapshot(snapshot, outSnapshot);
+    } catch (...) {
+        outSnapshot = {};
+        return false;
+    }
+}
+
 bool SequenceView::GetSnapshot(GameProjectSequencePlaybackHandle handle,
                                GameProjectSequencePlaybackSnapshot& outSnapshot) const noexcept {
     outSnapshot = {};

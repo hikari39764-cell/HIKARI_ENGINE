@@ -123,6 +123,16 @@ struct GameProjectSequencePlaybackSnapshot {
     uint8_t reserved[7] = {0u, 0u, 0u, 0u, 0u, 0u, 0u};
 };
 
+// 演出の事件段（演出ワークスペースの事件轨）：名前と範囲だけを写す。引擎は事件段を何も実行せず、
+// プロジェクトが名前で読んで自分の効果を動かす。名前は UTF-8、終端を含めて 64 バイトまで。
+inline constexpr uint32_t kGameProjectSequenceEventNameCapacity = 64u;
+inline constexpr uint32_t kGameProjectSequenceMaximumEventClips = 128u;
+struct GameProjectSequenceEventClip {
+    char name[kGameProjectSequenceEventNameCapacity]{};
+    float startSeconds = 0.0f;
+    float durationSeconds = 0.0f;
+};
+
 // Event values are delivered synchronously by ConsumeEvents. The event
 // pointer passed to the callback is borrowed only for that callback. A
 // message longer than the public buffer is truncated and marked, so a
@@ -170,6 +180,10 @@ static_assert(offsetof(GameProjectSequencePlaybackSnapshot, state) == 16u);
 static_assert(offsetof(GameProjectSequencePlaybackSnapshot, timeSeconds) == 20u);
 static_assert(offsetof(GameProjectSequencePlaybackSnapshot, assetGuid) == 32u);
 static_assert(offsetof(GameProjectSequencePlaybackSnapshot, channel) == 65u);
+static_assert(std::is_standard_layout_v<GameProjectSequenceEventClip>);
+static_assert(std::is_trivially_copyable_v<GameProjectSequenceEventClip>);
+static_assert(sizeof(GameProjectSequenceEventClip) == 72u);
+static_assert(offsetof(GameProjectSequenceEventClip, startSeconds) == 64u);
 static_assert(std::is_standard_layout_v<GameProjectSequencePlaybackEvent>);
 static_assert(std::is_trivially_copyable_v<GameProjectSequencePlaybackEvent>);
 static_assert(sizeof(GameProjectSequencePlaybackEvent) == 328u);

@@ -70,7 +70,8 @@ bool LoadSequenceAsset(const std::filesystem::path& path, const AssetGuid& autho
 
 bool SaveSequenceAsset(const std::filesystem::path& path, const SequenceAsset& asset, std::string* outError) {
     std::string validationError;
-    if (!SEQUENCER::ValidatePresentationCueTrack(asset.sequence.presentationCueTrack, validationError)) {
+    if (!SEQUENCER::ValidatePresentationCueTrack(asset.sequence.presentationCueTrack, validationError) ||
+        !SEQUENCER::ValidateSequenceEventTrack(asset.sequence.eventTrack, validationError)) {
         SetMessage(outError, validationError);
         return false;
     }

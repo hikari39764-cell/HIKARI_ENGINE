@@ -189,7 +189,8 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase&
                 evaluation = cursor_.Tick(0, SEQUENCER::SequenceEvaluationMode::Preview);
             }
         }
-        if (!scene.PreviewSequence(sequence, previewBindings_, evaluation, previewChanged_)) {
+        if (!scene.PreviewSequence(sequence, GetSequenceDocument().GetAssetGuid(), previewBindings_, evaluation,
+                                   previewChanged_)) {
             pendingStatusMessage_ = TEXT::Localize("cine.previewNotReady");
             previewDiagnostic_ = "无法预览。请在“对象绑定”指定有效相机；缺失槽：";
             for (const auto& binding : sequence.bindings) {

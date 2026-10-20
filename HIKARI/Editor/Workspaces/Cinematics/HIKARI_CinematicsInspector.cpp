@@ -368,6 +368,25 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
                     return DeleteSelectedClip(sequence);
                 break;
             }
+    } else if (selectionKind_ == SelectionKind::Event) {
+        for (auto& event : sequence.eventTrack.clips)
+            if (event.id == selectedId_) {
+                PanelTitle("事件段", "游戏项目按名字读取，在 Play 与本预览中同样生效");
+                if (text(TEXT::Localize("ui.input.name").c_str(), event.name)) {
+                    if (event.name.size() > SEQUENCER::kMaximumSequenceEventNameBytes)
+                        event.name.resize(SEQUENCER::kMaximumSequenceEventNameBytes);
+                    if (event.name.empty())
+                        event.name = "事件";
+                    changed = true;
+                }
+                changed |= ImGui::DragFloat(fieldLabel(TEXT::Localize("ui.vfx.text.Start").c_str()).c_str(),
+                                            &event.startSeconds, 0.02f, 0, 10000, "%.2f s");
+                changed |= ImGui::DragFloat(fieldLabel(TEXT::Localize("cine.duration").c_str()).c_str(),
+                                            &event.durationSeconds, 0.02f, 0.02f, 10000, "%.2f s");
+                if (ImGui::Button(TEXT::Localize("cine.deleteClip").c_str()))
+                    return DeleteSelectedClip(sequence);
+                break;
+            }
     } else if (selectionKind_ == SelectionKind::Effect) {
         PanelTitle(TEXT::Localize("cine.sequenceFx").c_str(), TEXT::Localize("cine.outputOnly").c_str());
         changed |= DrawEffects(sequence.screenEffects, cursor_.GetTimeSeconds());

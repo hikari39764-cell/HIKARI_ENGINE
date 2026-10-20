@@ -301,8 +301,14 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         ImGui::SetScrollX(ImGui::GetScrollX() - io.MouseDelta.x);
     const float contentEnd = (std::max)(sequence.durationSeconds, GetCinematicSequenceContentEnd(sequence)) + 1.0f;
     const float width = (std::max)(available, kLabelWidth + contentEnd * zoom_);
-    const float rows = 2 + static_cast<float>(channelCount + sequence.presentationCueTrack.clips.size() +
-                                              sequence.screenEffects.size());
+    // 事件段は名前ごとに一行（同じ名前の繰り返しは同じ行に並ぶ）。行の順は事件轨の中で名前が最初に出てくる順で、
+    // 片段を引いて時刻を変えても行が入れ替わらない。
+    std::vector<std::string> eventLanes;
+    for (const auto& event : sequence.eventTrack.clips)
+        if (std::find(eventLanes.begin(), eventLanes.end(), event.name) == eventLanes.end())
+            eventLanes.push_back(event.name);
+    const float rows = 3 + static_cast<float>(channelCount + sequence.presentationCueTrack.clips.size() +
+                                              sequence.screenEffects.size() + eventLanes.size());
     const float height = rows * kRowHeight + kRuler;
     auto* draw = ImGui::GetWindowDrawList();
     draw->AddRectFilled(origin, {origin.x + width, origin.y + height}, IM_COL32(15, 20, 27, 255), 5);
@@ -355,7 +361,9 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         ImGui::SetCursorScreenPos({x, y + 3});
         ImGui::InvisibleButton("clip", {w, kRowHeight - 6});
         const bool hovered = ImGui::IsItemHovered();
-        if (hovered && (io.MousePos.x < x + 6 || io.MousePos.x > x + w - 6))
+        // 端を掴むと長さを変える。細い片段（一瞬の事件など）は端の範囲が全体を覆うので、端を作らず全体を動かす。
+        const float edge = w >= 24.0f ? 6.0f : 0.0f;
+        if (hovered && edge > 0.0f && (io.MousePos.x < x + edge || io.MousePos.x > x + w - edge))
             ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
         if (ImGui::IsItemActivated()) {
             selectedId_ = id;
@@ -366,7 +374,7 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
             dragStart_ = start;
             dragDuration_ = duration;
             dragMouseX_ = io.MousePos.x;
-            dragPart_ = dragMouseX_ < x + 6 ? -1 : dragMouseX_ > x + w - 6 ? 1 : 0;
+            dragPart_ = edge > 0.0f && dragMouseX_ < x + edge ? -1 : edge > 0.0f && dragMouseX_ > x + w - edge ? 1 : 0;
         }
         if (ImGui::IsItemActive() && ImGui::IsMouseDragging(0)) {
             const float delta = (io.MousePos.x - dragMouseX_) / zoom_;
@@ -456,6 +464,29 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         const auto name = effect.name.empty() ? TEXT::Localize("cine.screenFx") : effect.name;
         clip(effect.id, SelectionKind::Effect, effect.start, effect.duration, name.c_str(), y,
              IM_COL32(105, 71, 146, 255));
+    }
+    for (const auto& eventName : eventLanes) {
+        const auto y = lane(eventName);
+        for (auto& event : sequence.eventTrack.clips)
+            if (event.name == eventName)
+                clip(event.id, SelectionKind::Event, event.startSeconds, event.durationSeconds, event.name.c_str(), y,
+                     IM_COL32(46, 120, 128, 255));
+    }
+    // 事件段を足す行：ダブルクリックした時刻に置く。名前はゲームのプロジェクトが読む事件の名前に直す。
+    const float eventAddY = lane("＋ 事件");
+    draw->AddText({timeOriginX + 10, eventAddY + 7}, IM_COL32(95, 110, 126, 255), "双击添加事件段（游戏项目按名字读取）");
+    ImGui::SetCursorScreenPos({timeOriginX, eventAddY});
+    ImGui::InvisibleButton("addEvent", {(std::max)(1.0f, width - kLabelWidth), kRowHeight});
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0) &&
+        sequence.eventTrack.clips.size() < SEQUENCER::kMaximumSequenceEvents) {
+        SEQUENCER::SequenceEventClip event;
+        for (const auto& e : sequence.eventTrack.clips)
+            event.id = (std::max)(event.id, e.id + 1);
+        event.startSeconds = SnapTimelineTime(sequence, (std::max)(0.0f, (io.MousePos.x - timeOriginX) / zoom_), 0);
+        sequence.eventTrack.clips.push_back(event);
+        selectionKind_ = SelectionKind::Event;
+        selectedId_ = event.id;
+        changed = true;
     }
     const float dropY = lane(TEXT::Localize("cine.dropAssets"));
     draw->AddText({timeOriginX + 10, dropY + 7}, IM_COL32(95, 110, 126, 255),

@@ -57,8 +57,11 @@ SequencePlaybackHandle SequencePlaybackService::PlayInline(const CinematicSequen
                                                            const SequenceBindingContext& bindings,
                                                            const SequencePlaybackOptions& options,
                                                            float startTimeSeconds, std::string channel, int priority,
-                                                           SequenceChannelPolicy channelPolicy) {
+                                                           SequenceChannelPolicy channelPolicy,
+                                                           const AssetGuid& sourceAsset) {
     auto asset = std::make_shared<SequenceAsset>();
+    // 編集中の演出は保存前でも元の資産として名乗る（snapshot の assetGuid で見分けられる）。
+    asset->guid = sourceAsset;
     asset->displayName = sequence.name;
     asset->sequence = sequence;
     NormalizeCinematicSequence(asset->sequence);
@@ -459,6 +462,18 @@ bool SequencePlaybackService::TryGetSnapshot(SequencePlaybackHandle handle,
     outSnapshot.channel = instance.channel;
     outSnapshot.priority = instance.priority;
     return true;
+}
+
+SequencePlaybackHandle SequencePlaybackService::FindActiveByChannel(std::string_view channel) const noexcept {
+    for (const Instance& instance : instances_)
+        if (instance.channel == channel)
+            return instance.handle;
+    return {};
+}
+
+const CinematicSequence* SequencePlaybackService::GetSequence(SequencePlaybackHandle handle) const noexcept {
+    const size_t index = FindInstanceIndex(handle);
+    return index != kInvalidInstanceIndex && instances_[index].asset ? &instances_[index].asset->sequence : nullptr;
 }
 
 size_t SequencePlaybackService::GetActiveInstanceCount() const noexcept { return instances_.size(); }
