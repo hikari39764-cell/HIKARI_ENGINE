@@ -212,11 +212,20 @@ bool BoundsOverlapRectangle(const Camera3D& camera, const SceneViewportRect& vie
 
 std::vector<SceneObjectId> PickObjectsInRectangle(const Camera3D& camera, const SceneViewportRect& viewport,
                                                   const MATH::Vec2& first, const MATH::Vec2& second,
-                                                  const std::unordered_set<uint64_t>& lockedObjectIds) {
+                                                  const std::unordered_set<uint64_t>& lockedObjectIds,
+                                                  const std::vector<SceneViewportIconTarget>& iconTargets) {
     const ImVec2 selectionMin{(std::min)(first.x, second.x), (std::min)(first.y, second.y)};
     const ImVec2 selectionMax{(std::max)(first.x, second.x), (std::max)(first.y, second.y)};
 
     std::vector<SceneObjectId> selected{};
+    // 印は中心が枠に入れば選ぶ。
+    for (const SceneViewportIconTarget& icon : iconTargets) {
+        if (icon.objectId.value != 0u && !lockedObjectIds.contains(icon.objectId.value) &&
+            icon.screenPosition.x >= selectionMin.x && icon.screenPosition.x <= selectionMax.x &&
+            icon.screenPosition.y >= selectionMin.y && icon.screenPosition.y <= selectionMax.y) {
+            selected.push_back(icon.objectId);
+        }
+    }
     for (const RENDER3D::RUNTIME::SceneRenderObject& object :
          RenderSubmissionSystem::GetSceneRenderCache().GetObjects()) {
         if (!object.valid || !object.desc.visible || !object.desc.id.IsValid() ||
@@ -249,6 +258,10 @@ std::vector<SceneObjectId> PickObjectsInRectangle(const Camera3D& camera, const 
 }
 } // namespace
 
+void SceneViewportSelectionService::SetIconTargets(std::vector<SceneViewportIconTarget> targets) {
+    iconTargets_ = std::move(targets);
+}
+
 void SceneViewportSelectionService::SetLockedObjectIds(std::unordered_set<uint64_t> lockedObjectIds) {
     lockedObjectIds_ = std::move(lockedObjectIds);
     if (lockedObjectIds_.contains(contextTarget_.value)) {
@@ -265,6 +278,24 @@ SceneObjectId SceneViewportSelectionService::PickObject(const Camera3D& camera, 
 
     if (viewport.width <= 0.0f || viewport.height <= 0.0f || !viewport.Contains(screenPosition)) {
         return {};
+    }
+
+    // 印は網目の上に描くので先に当てる（重なれば中心の近い方）。
+    SceneObjectId iconHit{};
+    float iconDistance = (std::numeric_limits<float>::max)();
+    for (const SceneViewportIconTarget& icon : iconTargets_) {
+        if (icon.objectId.value == 0u || lockedObjectIds_.contains(icon.objectId.value)) {
+            continue;
+        }
+        const float dx = screenPosition.x - icon.screenPosition.x, dy = screenPosition.y - icon.screenPosition.y;
+        const float distance = dx * dx + dy * dy;
+        if (distance <= icon.radius * icon.radius && distance < iconDistance) {
+            iconDistance = distance;
+            iconHit = icon.objectId;
+        }
+    }
+    if (iconHit.value != 0u) {
+        return iconHit;
     }
 
     EditorPointerRay ray{};
@@ -408,7 +439,7 @@ SceneViewportInteractionResult SceneViewportSelectionService::UpdateInput(const 
             constexpr float kMarqueeThresholdSquared = 16.0f;
             if (deltaX * deltaX + deltaY * deltaY > kMarqueeThresholdSquared) {
                 result.selections =
-                    PickObjectsInRectangle(camera, viewport, marqueeStart_, marqueeCurrent_, lockedObjectIds_);
+                    PickObjectsInRectangle(camera, viewport, marqueeStart_, marqueeCurrent_, lockedObjectIds_, iconTargets_);
                 result.selectionMode = marqueeMode_;
                 result.selectionChanged = true;
             } else if (marqueeMode_ == EditorObjectSelectionMode::Replace) {

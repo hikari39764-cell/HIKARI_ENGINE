@@ -139,7 +139,8 @@ EditorOperationResult SetSceneObjectTransform(SceneObjectOperationContext& opera
                                                            scene->GetSceneDocument().camera,
                                                            dirty,
                                                            true,
-                                                           true};
+                                                           true,
+                                                           parameters.value("mergeGroup", uint64_t{0})};
     result.message = "Object transform updated.";
     result.data = {{"objectId", id}};
     return result;

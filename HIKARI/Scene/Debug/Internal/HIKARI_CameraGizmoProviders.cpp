@@ -73,12 +73,10 @@ void SubmitCameraBody(const MATH::Mat4& world, float scale, bool selected) {
     }
 }
 
-void DrawCamera(const GameObject& object, const ComponentGizmoDrawContext& context) {
-    const CameraComponent* camera = object.GetComponent<CameraComponent>();
-    if (camera == nullptr || !camera->IsEnabled()) {
-        return;
-    }
-    const bool selected = object.GetDocumentId() == context.selectedObjectId;
+// 機位の視錐台と本体。選んだ機位は選択色で描き、選んでいない機位は種類の色を薄めて描く。
+void SubmitCameraShape(const GameObject& object, const CameraComponent& cameraComponent, const ComponentGizmoDrawContext& context,
+                       bool selected) {
+    const CameraComponent* camera = &cameraComponent;
     const float aspect =
         std::isfinite(context.cameraAspect) && context.cameraAspect > 0.0001f ? context.cameraAspect : 16.0f / 9.0f;
     const float nearDistance = camera->GetNearClip();
@@ -113,12 +111,37 @@ void DrawCamera(const GameObject& object, const ComponentGizmoDrawContext& conte
         {2, 6},
         {3, 7},
     }};
+    const unsigned int color = selected ? kCameraColor : DRAW::WithAlpha(kCameraColor, 0x60u);
     for (const auto& edge : edges) {
-        DRAW::SubmitStyledStroke(corners[edge[0]], corners[edge[1]], kCameraColor, selected);
+        DRAW::SubmitStyledStroke(corners[edge[0]], corners[edge[1]], color, selected);
+    }
+    if (!selected) {
+        return;
     }
     const MATH::Vec3 origin = MATH::TransformPoint(world, {});
     const float markerScale = std::clamp(MATH::Length(origin - context.viewportCameraPosition) * 0.035f, 0.25f, 1.25f);
     SubmitCameraBody(world, markerScale, selected);
+}
+
+const CameraComponent* DrawableCamera(const GameObject& object) {
+    const CameraComponent* camera = object.GetComponent<CameraComponent>();
+    return camera != nullptr && camera->IsEnabled() ? camera : nullptr;
+}
+
+// 「機位」：選んだ機位だけ視錐台を描く。選んでいない機位は視口の画面上の印（エディタ側）で示す。
+void DrawSelectedCamera(const GameObject& object, const ComponentGizmoDrawContext& context) {
+    const CameraComponent* camera = DrawableCamera(object);
+    if (camera != nullptr && object.GetDocumentId() == context.selectedObjectId) {
+        SubmitCameraShape(object, *camera, context, true);
+    }
+}
+
+// 「すべての視錐台」（既定で切）：選んでいない機位の視錐台も薄く描く（機位どうしの向きを見比べる時）。
+void DrawOtherCameraFrustums(const GameObject& object, const ComponentGizmoDrawContext& context) {
+    const CameraComponent* camera = DrawableCamera(object);
+    if (camera != nullptr && object.GetDocumentId() != context.selectedObjectId) {
+        SubmitCameraShape(object, *camera, context, false);
+    }
 }
 
 void DrawSpawnPoint(const GameObject& object, const ComponentGizmoDrawContext&) {
@@ -149,7 +172,9 @@ void DrawCameraActivationVolume(const GameObject& object, const ComponentGizmoDr
 
 void RegisterCameraGizmoProviders(ComponentGizmoRegistry& registry) {
     (void)registry.Register(
-        ComponentGizmoProvider{std::string(kCameraFrustumGizmoProviderId), "Camera Frustums", true, DrawCamera});
+        ComponentGizmoProvider{std::string(kCameraFrustumGizmoProviderId), "Camera Frustums", true, DrawSelectedCamera});
+    (void)registry.Register(ComponentGizmoProvider{std::string(kAllCameraFrustumsGizmoProviderId), "All Camera Frustums",
+                                                   false, DrawOtherCameraFrustums});
     (void)registry.Register(
         ComponentGizmoProvider{std::string(kSpawnPointGizmoProviderId), "Spawn Points", false, DrawSpawnPoint});
     (void)registry.Register(ComponentGizmoProvider{std::string(kCameraActivationVolumeGizmoProviderId),

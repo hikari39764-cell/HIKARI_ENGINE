@@ -73,6 +73,11 @@ ViewportAuthoringToolbarResult DrawViewportAuthoringToolbar(EditorContext& conte
         context.overlays.showLights = !context.overlays.showLights;
     }
     sameLine();
+    if (IconToggleButton(EditorGlyph::Camera, "ViewportCameras", context.overlays.showCameras, buttonSize,
+                         TEXT::Localize("ui.viewport.tooltipCameras").c_str())) {
+        context.overlays.showCameras = !context.overlays.showCameras;
+    }
+    sameLine();
     if (IconToggleButton(EditorGlyph::Gizmo, "ViewportComponentGizmos", context.gizmos.showComponentGizmos, buttonSize,
                          TEXT::Localize("ui.viewport.tooltipComponentGizmos").c_str())) {
         context.gizmos.showComponentGizmos = !context.gizmos.showComponentGizmos;

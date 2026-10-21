@@ -4,6 +4,7 @@
 #include <array>
 #include <iterator>
 
+#include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_GpuCompletion.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
@@ -395,18 +396,26 @@ RenderTarget2D* ExecuteStreamlineDlss(const TEMPORAL::TemporalInputs& inputs, St
     // 評価が失敗しても begin event で実例が作られている場合があるため、結果に関わらず記録する。
     state.dlssInstanceRetireFenceValue = state.context.currentFrameRetireFenceValue;
     state.output.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    if (evaluateResult != sl::Result::eOk) {
+    // eWarnOutOfVRAM は顕存の予算を超えたという警告で、評価は済んでいて出力は使える。失敗として TAA へ落とすと
+    // 再試行の待ち（数百フレーム）ごとに DLSS と TAA が入れ替わり、履歴が切れて画面が大きく揺れる。
+    // 状態だけ「資源の圧迫」にして DLSS を使い続ける。
+    const bool overBudget = evaluateResult == sl::Result::eWarnOutOfVRAM;
+    if (evaluateResult != sl::Result::eOk && !overBudget) {
         RecordDlssFailure(state, "slEvaluateFeature(DLSS)", evaluateResult, inputs, mode);
         GFX::DumpD3D12InfoQueue(state.context.device, "Streamline DLSS evaluate failed");
         return nullptr;
     }
 
+    if (overBudget && !state.dlssOverBudgetReported) {
+        HIKARI_LOG_WARN("[Streamline] DLSS evaluated over the VRAM budget (eWarnOutOfVRAM); keeping the DLSS output");
+    }
+    state.dlssOverBudgetReported = overBudget;
     ClearDlssFailure(state);
     state.stats.dlssEvaluated = true;
     ++state.stats.evaluationCount;
-    state.stats.status = StreamlineRuntimeStatus::Ready;
+    state.stats.status = overBudget ? StreamlineRuntimeStatus::ResourcePressure : StreamlineRuntimeStatus::Ready;
     state.stats.lastOperation = "slEvaluateFeature(DLSS)";
-    state.stats.lastResult = "eOk";
+    state.stats.lastResult = overBudget ? "eWarnOutOfVRAM" : "eOk";
 
     if (state.stats.evaluationCount == 1u || (state.stats.evaluationCount % 120u) == 0u) {
         sl::DLSSState dlssState{};

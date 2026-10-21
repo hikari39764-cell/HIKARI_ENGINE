@@ -85,6 +85,8 @@ struct StreamlineState {
     std::wstring frameGenerationPluginPath{};
     std::wstring logPath{};
     sl::Result dlssLastFailureResult = sl::Result::eOk;
+    // 顕存の予算超え（eWarnOutOfVRAM）は超えている間は毎フレーム返るので、記録は超え始めた一度だけにする。
+    bool dlssOverBudgetReported = false;
     StreamlineDlssMode dlssFailedMode = StreamlineDlssMode::Off;
     uint32_t dlssFailedRenderWidth = 0;
     uint32_t dlssFailedRenderHeight = 0;

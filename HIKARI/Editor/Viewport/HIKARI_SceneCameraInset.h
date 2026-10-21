@@ -25,9 +25,14 @@ private:
     SceneObjectId camera_{};
     SceneViewportRect rect_{};
     Camera3D view_{};
-    // 最後に描いた時の主ビューの露出（log2）と、それが変わるたびに増やす版。
+    // 最後に描いた時の主ビューの露出（log2）。
     float exposureLog2_ = 0.0f;
-    uint64_t exposureRevision_ = 0;
+    // 最後に描いた機位の姿勢と画角。動かした・合わせた時に描き直す（文書の版は場面を開いた時しか進まない）。
+    MATH::Vec3 drawnPosition_{};
+    MATH::Vec3 drawnTarget_{};
+    float drawnFovY_ = 0.0f;
+    // 露出か姿勢が変わるたびに進める描き直しの版。
+    uint64_t contentRevision_ = 0;
     bool submitted_ = false;
 };
 

@@ -36,7 +36,9 @@
 namespace HIKARI {
 
 using EDITOR::HandleTransformGizmoShortcuts;
-using EDITOR::DOCUMENT_SCENE::DrawLightOverlayIcons;
+using EDITOR::DOCUMENT_SCENE::CollectObjectOverlayIcons;
+using EDITOR::DOCUMENT_SCENE::DrawObjectOverlayIcons;
+using EDITOR::DOCUMENT_SCENE::ObjectIconTargets;
 using EDITOR::DOCUMENT_SCENE::DrawRenderDebugViewCombo;
 using EDITOR::DOCUMENT_SCENE::DrawViewportDebugOptions;
 
@@ -135,6 +137,7 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
                 ImGui::SameLine(0.0f, 8.0f);
                 const EDITOR::ViewportAuthoringToolbarResult authoringToolbar =
                     EDITOR::DrawViewportAuthoringToolbar(context_, selectedObjectIsCamera);
+                DrawCameraPilotButtons(scene);
                 ImGui::SameLine();
                 EDITOR::DrawEditorViewGuidesButton("sceneGuides", sceneViewGuides_);
                 // 美術向けの見え方の切り替え：素模（材質を灰色にして光と形だけ）と明暗（白黒）。
@@ -285,10 +288,13 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
     EDITOR::SetGameViewportInputRect(imageOrigin.x, imageOrigin.y, imageSize.x, imageSize.y, gameViewFocused);
     SERVICES::SetEditorGameViewportSize(static_cast<int>(imageSize.x + 0.5f), static_cast<int>(imageSize.y + 0.5f),
                                         true);
+    UpdateCameraPilot(scene, playSession.IsRunning());
     auto drawTransformGizmoOverlay = [&]() -> bool {
         bool gizmoCapture = false;
         const EDITOR::EditorViewportRect viewportRect{imageOrigin.x, imageOrigin.y, imageSize.x, imageSize.y};
+        // 操縦中の機位は視点そのものなので手柄を出さない。
         if (!ImGui::IsPopupOpen("SceneViewportContextMenu") && context_.selection.selectedObject != nullptr &&
+            !cameraPilot_.Active() &&
             !EDITOR::IsObjectEditorLocked(scene.GetSceneDocument(), context_.selection.GetActiveObjectId())) {
             EditorTransformGizmoState gizmoState = context_.transformGizmo;
             if (ImGui::IsKeyDown(ImGuiKey_ModCtrl)) {
@@ -386,7 +392,7 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
     // 小窓の上のクリックは選択や手柄に使わない。
     SceneObjectId insetCamera{};
     if (const GameObject* selected = context_.selection.selectedObject;
-        context_.overlays.showCameraPreview && !playSession.IsRunning() && !cameraPath_ &&
+        context_.overlays.showCameraPreview && !playSession.IsRunning() && !cameraPath_ && !cameraPilot_.Active() &&
         !workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Cinematics) && selected != nullptr &&
         selected->GetComponent<CameraComponent>() != nullptr &&
         !(scene.IsEditorCameraPreviewActive() && scene.GetEditorCameraPreviewObjectId() == selected->GetDocumentId()))
@@ -401,6 +407,11 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
         gizmoCapture = true;
     }
     const bool authoringInteractionEnabled = !playSession.IsRunning() && !lookDevPlacing;
+    // 灯と機位の画面上の印。点選で網目より先に当たるよう、選択を更新する前に集める（診断の相机経路の間は描かない）。
+    const auto objectIcons = !playSession.IsRunning() && !cameraPath_
+                                 ? CollectObjectOverlayIcons(scene, context_.overlays, imageOrigin, imageSize)
+                                 : std::vector<EDITOR::DOCUMENT_SCENE::ViewportObjectIcon>{};
+    viewportSelectionService_.SetIconTargets(ObjectIconTargets(objectIcons));
     const EDITOR::SceneViewportRect blockedViewportRegion =
         insetRect.width > 0.0f ? insetRect : EDITOR::SceneViewportRect{-1.0f, -1.0f, 0.0f, 0.0f};
     const EDITOR::SceneViewportInteractionResult interaction =
@@ -421,8 +432,20 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
                                                            ImGui::GetWindowDrawList());
         }
         viewportSelectionService_.DrawMarquee(ImGui::GetWindowDrawList());
-        if (!cameraPath_) // 診断の相机経路で動かしている間は辅助表示を描かない（Draw の cleanFrame と同じ）。
-            DrawLightOverlayIcons(scene, context_.overlays, imageOrigin, imageSize);
+        DrawObjectOverlayIcons(objectIcons, context_.overlays, context_.selection.GetSelectedObjectIds(),
+                               ImGui::GetIO().MousePos);
+        if (cameraPilot_.Active()) {
+            // 操縦中：視口の縁を機位の色で囲み、抜け方を左上に出す。
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            const ImVec2 max{imageOrigin.x + imageSize.x, imageOrigin.y + imageSize.y};
+            drawList->AddRect(imageOrigin, max, IM_COL32(101, 217, 255, 220), 0.0f, 0, 2.0f);
+            const std::string hint = TEXT::Localize("cine.pilotActive");
+            const ImVec2 textSize = ImGui::CalcTextSize(hint.c_str());
+            const ImVec2 textMin{imageOrigin.x + 12.0f, imageOrigin.y + 12.0f};
+            drawList->AddRectFilled(textMin, {textMin.x + textSize.x + 16.0f, textMin.y + textSize.y + 10.0f},
+                                    IM_COL32(8, 12, 17, 205), 4.0f);
+            drawList->AddText({textMin.x + 8.0f, textMin.y + 5.0f}, IM_COL32(170, 232, 255, 245), hint.c_str());
+        }
         if (lookDevActive) {
             UpdateLookDevViewport(scene, sceneViewportRect, viewportImageHovered, gameViewFocused, gizmoCapture);
         }

@@ -13,6 +13,8 @@ struct ViewportOverlayState {
     bool showGrid = false;
     bool showAxis = true;
     bool showLights = true;
+    // 機位（カメラ）の画面上の印。視錐台は選んだ機位だけ描く（すべて描くのは辅助線の「All Camera Frustums」）。
+    bool showCameras = true;
     bool showProbeLabels = true;
     bool showXRayGizmos = false;
     // 機位を選んでいる間、その機位から見た画面を主视口の右下に小さく出す。

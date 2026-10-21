@@ -128,6 +128,26 @@ private:
     EDITOR::SceneInspectorPanel sceneInspectorPanel_{};
     EDITOR::SceneViewportSelectionService viewportSelectionService_{};
     EDITOR::SceneCameraInset cameraInset_{};
+    // 機位の操縦：視口の視点がその機位になり（画角も合わせる）、飛ぶと機位が付いて動く。終わるまでを一つの取り消しにする。
+    struct CameraPilot {
+        SceneObjectId camera{};
+        uint64_t mergeGroup = 0;
+        float editorFovY = 0.0f;   // 終えた時に戻す視口の画角
+        // 最後に機位へ書いた視点（視口の画のカメラの位置と前の向き）。変わった時だけ書く。
+        MATH::Vec3 lastPosition{};
+        MATH::Vec3 lastForward{};
+        bool Active() const noexcept { return camera.value != 0u; }
+    };
+    CameraPilot cameraPilot_{};
+    uint64_t cameraPilotSessions_ = 0;
+    // 機位を一つだけ選んでいる時の「操縦」「機位を今の視点に合わせる」の釦。
+    void DrawCameraPilotButtons(DocumentSceneBase& scene);
+    void BeginCameraPilot(DocumentSceneBase& scene, SceneObjectId camera);
+    void EndCameraPilot(DocumentSceneBase& scene);
+    // 毎フレーム：選択が替わった・試玩が始まった・Esc で終え、視点が動いていれば機位へ書く。
+    void UpdateCameraPilot(DocumentSceneBase& scene, bool playRunning);
+    // 機位を今の視点の姿勢にする（scene.set_transform。mergeGroup が 0 以外なら続けた変更を一つの取り消しに）。
+    void AlignCameraToView(DocumentSceneBase& scene, SceneObjectId camera, uint64_t mergeGroup);
 
     HierarchyPanel hierarchyPanel_{};
     TimePanel timePanel_{};

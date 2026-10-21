@@ -3,6 +3,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Render3D/Lighting/HIKARI_SceneLightingRuntimeData.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
+#include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -25,6 +26,7 @@ void DrawViewportDebugOptions(ViewportOverlayState& overlays, ViewportPerformanc
     ImGui::Checkbox(TEXT::Localize("ui.viewport.debugGridFloor").c_str(), &overlays.showGridFloor);
     ImGui::Checkbox(TEXT::Localize("ui.viewport.debugAxis").c_str(), &overlays.showAxis);
     ImGui::Checkbox(TEXT::Localize("ui.viewport.debugLights").c_str(), &overlays.showLights);
+    ImGui::Checkbox(TEXT::Localize("ui.viewport.debugCameras").c_str(), &overlays.showCameras);
     ImGui::Checkbox(TEXT::Localize("ui.viewport.debugLabels").c_str(), &overlays.showProbeLabels);
     ImGui::Checkbox(TEXT::Localize("ui.viewport.debugXRayGizmos").c_str(), &overlays.showXRayGizmos);
     ImGui::Checkbox(TEXT::Localize("ui.viewport.cameraPreview").c_str(), &overlays.showCameraPreview);
@@ -173,84 +175,158 @@ ImU32 ToImGuiLightColor(const MATH::Vec3& color, int alpha) {
     return IM_COL32(toByte(color.x), toByte(color.y), toByte(color.z), alpha);
 }
 
-void DrawPointLightIcon(ImDrawList* drawList, const ImVec2& center, ImU32 color) {
-    constexpr float kRadius = 8.0f;
-    drawList->AddCircleFilled(center, kRadius, color, 12);
-    drawList->AddCircle(center, kRadius + 2.5f, IM_COL32(255, 248, 220, 245), 16, 2.0f);
-    drawList->AddLine(ImVec2(center.x - 15.0f, center.y), ImVec2(center.x - 10.5f, center.y), color, 2.0f);
-    drawList->AddLine(ImVec2(center.x + 10.5f, center.y), ImVec2(center.x + 15.0f, center.y), color, 2.0f);
-    drawList->AddLine(ImVec2(center.x, center.y - 15.0f), ImVec2(center.x, center.y - 10.5f), color, 2.0f);
-    drawList->AddLine(ImVec2(center.x, center.y + 10.5f), ImVec2(center.x, center.y + 15.0f), color, 2.0f);
-    drawList->AddText(ImVec2(center.x - 3.5f, center.y - 6.5f), IM_COL32(24, 21, 13, 255), "P");
+namespace {
+constexpr float kIconHitRadius = 13.0f;
+constexpr ImU32 kIconSelectionColor = IM_COL32(255, 209, 102, 255);
+
+ImU32 FadeColor(ImU32 color, float fade) {
+    const float alpha = static_cast<float>((color >> IM_COL32_A_SHIFT) & 0xFFu) * std::clamp(fade, 0.0f, 1.0f);
+    return (color & ~IM_COL32_A_MASK) | (static_cast<ImU32>(alpha) << IM_COL32_A_SHIFT);
 }
 
-void DrawSpotLightIcon(ImDrawList* drawList, const ImVec2& center, ImU32 color) {
-    const ImVec2 top{center.x, center.y - 10.0f};
-    const ImVec2 left{center.x - 9.0f, center.y + 9.0f};
-    const ImVec2 right{center.x + 9.0f, center.y + 9.0f};
-    drawList->AddTriangleFilled(top, left, right, color);
-    drawList->AddTriangle(top, left, right, IM_COL32(255, 248, 214, 230), 2.0f);
-    drawList->AddText(ImVec2(center.x - 3.5f, center.y - 5.5f), IM_COL32(24, 21, 13, 245), "S");
+void DrawPointLightIcon(ImDrawList* drawList, const ImVec2& center, ImU32 color, float scale) {
+    const float radius = 6.0f * scale;
+    drawList->AddCircleFilled(center, radius, color, 12);
+    drawList->AddCircle(center, radius + 2.0f * scale, color, 16, 1.5f);
 }
 
-void DrawLightOverlayIcons(DocumentSceneBase& scene, const ViewportOverlayState& overlays, const ImVec2& viewportOrigin,
-                           const ImVec2& viewportSize) {
-    if (!overlays.showLights) {
-        return;
+void DrawSpotLightIcon(ImDrawList* drawList, const ImVec2& center, ImU32 color, float scale) {
+    drawList->AddTriangleFilled({center.x, center.y - 7.5f * scale}, {center.x - 7.0f * scale, center.y + 6.5f * scale},
+                                {center.x + 7.0f * scale, center.y + 6.5f * scale}, color);
+}
+
+void DrawCameraIcon(ImDrawList* drawList, const ImVec2& center, ImU32 color, float scale) {
+    const ImVec2 bodyMin{center.x - 7.0f * scale, center.y - 4.5f * scale};
+    const ImVec2 bodyMax{center.x + 3.0f * scale, center.y + 4.5f * scale};
+    drawList->AddRectFilled(bodyMin, bodyMax, color, 1.5f * scale);
+    drawList->AddTriangleFilled({bodyMax.x, center.y}, {center.x + 8.0f * scale, center.y - 4.0f * scale},
+                                {center.x + 8.0f * scale, center.y + 4.0f * scale}, color);
+}
+
+// 物の前（ワールドの向き）を画面に写した向き。前が画面の外や真正面なら 0。
+MATH::Vec2 ProjectedDirection(const Camera3D& camera, const MATH::Vec3& position, const MATH::Vec3& forward,
+                              const ImVec2& origin, const ImVec2& size, const ImVec2& screen) {
+    ImVec2 tip{};
+    if (!ProjectWorldToViewport(camera, position + forward, origin, size, tip)) {
+        return {};
     }
+    const float dx = tip.x - screen.x, dy = tip.y - screen.y, length = std::sqrt(dx * dx + dy * dy);
+    return length > 1.0f ? MATH::Vec2{dx / length, dy / length} : MATH::Vec2{};
+}
 
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
+} // namespace
+
+std::vector<ViewportObjectIcon> CollectObjectOverlayIcons(DocumentSceneBase& scene, const ViewportOverlayState& overlays,
+                                                          const ImVec2& viewportOrigin, const ImVec2& viewportSize) {
+    std::vector<ViewportObjectIcon> icons{};
+    if (!overlays.showLights && !overlays.showCameras) {
+        return icons;
+    }
     const Camera3D& camera = scene.GetCamera();
-    std::unordered_set<uint64_t> hiddenLightObjectIds{};
+    std::unordered_set<uint64_t> hiddenObjectIds{};
     for (const SceneObjectData& object : scene.GetSceneDocument().objects) {
         if (!object.enabled || !object.editorVisible) {
-            hiddenLightObjectIds.insert(object.id.value);
+            hiddenObjectIds.insert(object.id.value);
         }
     }
-    constexpr size_t kMaxLightIcons = 64u;
-    constexpr size_t kMaxLightLabels = 12u;
-    size_t iconCount = 0u;
-    size_t labelCount = 0u;
+    constexpr size_t kMaxIcons = 160u;
     for (const std::unique_ptr<GameObject>& object : scene.GetWorld().GetObjects()) {
-        if (!object || iconCount >= kMaxLightIcons) {
+        if (!object || icons.size() >= kMaxIcons || hiddenObjectIds.contains(object->GetDocumentId().value)) {
             continue;
         }
-        if (hiddenLightObjectIds.contains(object->GetDocumentId().value)) {
+        const LightComponent* light = overlays.showLights ? object->GetComponent<LightComponent>() : nullptr;
+        const CameraComponent* cameraComponent = overlays.showCameras ? object->GetComponent<CameraComponent>() : nullptr;
+        const bool isLight = light != nullptr && light->IsEnabled();
+        if (!isLight && (cameraComponent == nullptr || !cameraComponent->IsEnabled())) {
             continue;
         }
-        const LightComponent* light = object->GetComponent<LightComponent>();
-        if (light == nullptr || !light->IsEnabled()) {
-            continue;
-        }
-
-        const MATH::Mat4 worldMatrix = object->GetTransform().GetWorldMatrix();
-        const MATH::Vec4 worldOrigin = worldMatrix.TransformPoint({0.0f, 0.0f, 0.0f, 1.0f});
-        const MATH::Vec3 worldPosition{worldOrigin.x, worldOrigin.y, worldOrigin.z};
+        const MATH::Mat4 world = object->GetTransform().GetWorldMatrix();
+        const MATH::Vec3 position{world.m[3][0], world.m[3][1], world.m[3][2]};
         ImVec2 screen{};
-        if (!ProjectWorldToViewport(camera, worldPosition, viewportOrigin, viewportSize, screen)) {
+        if (!ProjectWorldToViewport(camera, position, viewportOrigin, viewportSize, screen)) {
             continue;
         }
-
-        const ImU32 color = ToImGuiLightColor(light->GetColor(), 235);
-        if (light->GetLightType() == RENDER3D::LIGHTING::SceneLightType::Spot) {
-            DrawSpotLightIcon(drawList, screen, color);
-        } else {
-            DrawPointLightIcon(drawList, screen, color);
-        }
-        ++iconCount;
-        if (!overlays.showProbeLabels || labelCount >= kMaxLightLabels) {
-            continue;
-        }
+        const MATH::Vec3 forward = MATH::Normalize({world.m[2][0], world.m[2][1], world.m[2][2]});
+        ViewportObjectIcon icon{};
+        icon.objectId = object->GetDocumentId();
+        icon.screen = {screen.x, screen.y};
+        // 12 m までは濃く、45 m で最も薄く。
+        const MATH::Vec3 toIcon = position - camera.GetPosition();
+        icon.fade = std::clamp(1.0f - (std::sqrt(MATH::Dot(toIcon, toIcon)) - 12.0f) / 33.0f, 0.0f, 1.0f);
         char label[144]{};
-        if (light->GetLightType() == RENDER3D::LIGHTING::SceneLightType::Spot) {
-            std::snprintf(label, sizeof(label), TEXT::Localize("ui.viewport.lightLabelSpot").c_str(),
-                          object->GetName().c_str(), light->GetRange(), light->GetOuterConeAngleDegrees());
+        if (isLight) {
+            using RENDER3D::LIGHTING::SceneLightType;
+            const bool spot = light->GetLightType() == SceneLightType::Spot;
+            icon.kind = spot ? ViewportObjectIcon::Kind::SpotLight : ViewportObjectIcon::Kind::PointLight;
+            icon.color = ToImGuiLightColor(light->GetColor(), 235);
+            if (light->GetLightType() != SceneLightType::Point) {
+                icon.direction = ProjectedDirection(camera, position, forward, viewportOrigin, viewportSize, screen);
+            }
+            if (spot) {
+                std::snprintf(label, sizeof(label), TEXT::Localize("ui.viewport.lightLabelSpot").c_str(),
+                              object->GetName().c_str(), light->GetRange(), light->GetOuterConeAngleDegrees());
+            } else {
+                std::snprintf(label, sizeof(label), TEXT::Localize("ui.viewport.lightLabelPoint").c_str(),
+                              object->GetName().c_str(), light->GetRange(), light->GetIntensity());
+            }
         } else {
-            std::snprintf(label, sizeof(label), TEXT::Localize("ui.viewport.lightLabelPoint").c_str(),
-                          object->GetName().c_str(), light->GetRange(), light->GetIntensity());
+            icon.kind = ViewportObjectIcon::Kind::Camera;
+            icon.color = IM_COL32(101, 217, 255, 235);
+            icon.direction = ProjectedDirection(camera, position, forward, viewportOrigin, viewportSize, screen);
+            std::snprintf(label, sizeof(label), "%s", object->GetName().c_str());
         }
-        DrawViewportLabel(drawList, screen, label, color);
-        ++labelCount;
+        icon.label = label;
+        icons.push_back(std::move(icon));
+    }
+    return icons;
+}
+
+std::vector<SceneViewportIconTarget> ObjectIconTargets(const std::vector<ViewportObjectIcon>& icons) {
+    std::vector<SceneViewportIconTarget> targets{};
+    targets.reserve(icons.size());
+    for (const ViewportObjectIcon& icon : icons) {
+        targets.push_back({icon.objectId, icon.screen, kIconHitRadius});
+    }
+    return targets;
+}
+
+void DrawObjectOverlayIcons(const std::vector<ViewportObjectIcon>& icons, const ViewportOverlayState& overlays,
+                            const std::vector<SceneObjectId>& selected, const ImVec2& mouse) {
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    // 指している印は一つだけ（重なれば中心の近い方。点選と同じ決め方）。
+    const ViewportObjectIcon* hovered = nullptr;
+    float hoveredDistance = kIconHitRadius * kIconHitRadius;
+    for (const ViewportObjectIcon& icon : icons) {
+        const float dx = mouse.x - icon.screen.x, dy = mouse.y - icon.screen.y;
+        if (dx * dx + dy * dy <= hoveredDistance) {
+            hoveredDistance = dx * dx + dy * dy;
+            hovered = &icon;
+        }
+    }
+    for (const ViewportObjectIcon& icon : icons) {
+        const bool isSelected = std::find(selected.begin(), selected.end(), icon.objectId) != selected.end();
+        const bool emphasized = isSelected || &icon == hovered;
+        // 遠い印は薄く小さく。選んだ印と指している印は近くと同じ濃さで描く。
+        const float fade = emphasized ? 1.0f : 0.35f + 0.65f * icon.fade;
+        const float scale = emphasized ? 1.15f : 0.75f + 0.25f * icon.fade;
+        const ImU32 color = FadeColor(icon.color, fade);
+        const ImVec2 center{icon.screen.x, icon.screen.y};
+        if (icon.direction.x != 0.0f || icon.direction.y != 0.0f) {
+            const float length = 14.0f * scale;
+            drawList->AddLine(center, {center.x + icon.direction.x * length, center.y + icon.direction.y * length}, color,
+                              1.5f);
+        }
+        switch (icon.kind) {
+        case ViewportObjectIcon::Kind::SpotLight: DrawSpotLightIcon(drawList, center, color, scale); break;
+        case ViewportObjectIcon::Kind::Camera: DrawCameraIcon(drawList, center, color, scale); break;
+        case ViewportObjectIcon::Kind::PointLight: DrawPointLightIcon(drawList, center, color, scale); break;
+        }
+        if (isSelected) {
+            drawList->AddCircle(center, 11.0f * scale, kIconSelectionColor, 20, 2.0f);
+        }
+        if (emphasized && overlays.showProbeLabels) {
+            DrawViewportLabel(drawList, center, icon.label.c_str(), color);
+        }
     }
 }
 

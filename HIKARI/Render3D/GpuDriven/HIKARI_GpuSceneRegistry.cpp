@@ -157,6 +157,23 @@ bool IsDepthPrepassCoverageRecord(const GpuSceneSurfaceRecord& record) {
     return ComputeWorldBoundsRadius(record.worldBounds) >= kDepthVisibilityMinOccluderRadius;
 }
 
+// dirty patch で membership が変わったとして組み直すのは、半径が閾値から十分離れた時だけ。回る・脈打つ物の
+// 外接箱は閾値をまたいで伸び縮みし（回転で最大 √2 倍）、そのたびに全件再構築（1 回 4 ms 前後）になっていた。
+// patch は再構築時の選択を使い続けるので、閾値付近で membership が古いままでも描画は正しい。
+bool DepthPrepassCoverageClearlyChanged(const GpuSceneSurfaceRecord& oldRecord, const GpuSceneSurfaceRecord& newRecord) {
+    const bool oldCovered = IsDepthPrepassCoverageRecord(oldRecord);
+    if (oldCovered == IsDepthPrepassCoverageRecord(newRecord)) {
+        return false;
+    }
+    if (!IsGpuSceneForwardOpaqueResidentRecord(oldRecord) || !IsDepthPrepassSafeMaterial(oldRecord) ||
+        !IsGpuSceneForwardOpaqueResidentRecord(newRecord) || !IsDepthPrepassSafeMaterial(newRecord)) {
+        return true;
+    }
+    const float radius = ComputeWorldBoundsRadius(newRecord.worldBounds);
+    return oldCovered ? radius < kDepthVisibilityMinOccluderRadius * 0.5f
+                      : radius >= kDepthVisibilityMinOccluderRadius * 2.0f;
+}
+
 bool HasShadowCasterSafeMaterial(const GpuSceneSurfaceRecord& record) {
     const bool staticMaterialFx =
         record.key.materialFx && !record.key.waterMaterialFx && !record.key.materialFxUsesCustomVertexShader;
@@ -930,7 +947,7 @@ bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistryS
         if (oldForwardPass != newForwardPass) {
             return reject("forward pass changed");
         }
-        if (oldDepthOccluder != newDepthOccluder) {
+        if (DepthPrepassCoverageClearlyChanged(oldRecord, newRecord)) {
             return reject("depth coverage changed");
         }
         if (oldShadow != newShadow) {

@@ -63,9 +63,19 @@ void SceneCameraInset::Draw(const DocumentSceneBase& scene, ImDrawList& draw) {
     const float exposureLog2 = std::log2((std::max)(POST::PostSystem::GetExposureState().exposure, 1.0e-30f));
     if (std::abs(exposureLog2 - exposureLog2_) > kExposureRedrawStops) {
         exposureLog2_ = exposureLog2;
-        ++exposureRevision_;
+        ++contentRevision_;
     }
-    request.contentRevision = exposureRevision_;
+    const auto moved = [](const MATH::Vec3& a, const MATH::Vec3& b) {
+        return std::abs(a.x - b.x) > 1.0e-4f || std::abs(a.y - b.y) > 1.0e-4f || std::abs(a.z - b.z) > 1.0e-4f;
+    };
+    if (moved(view_.GetPosition(), drawnPosition_) || moved(view_.GetTarget(), drawnTarget_) ||
+        std::abs(view_.GetFovYRad() - drawnFovY_) > 1.0e-5f) {
+        drawnPosition_ = view_.GetPosition();
+        drawnTarget_ = view_.GetTarget();
+        drawnFovY_ = view_.GetFovYRad();
+        ++contentRevision_;
+    }
+    request.contentRevision = contentRevision_;
     request.visible = true;
     request.drawDebug = false;
     VIEW::SubmitRequest(request);

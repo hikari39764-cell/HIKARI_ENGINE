@@ -519,7 +519,8 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
     else
         runtimeDebugWindow_.Reset();
     scene.SetUnsavedSceneChanges(context_.sceneDirty);
-    if (context_.selection.selectedObject) {
+    // 操縦中の機位は視点そのものなので、選んでいても視錐台を描かない。
+    if (context_.selection.selectedObject && !cameraPilot_.Active()) {
         scene.SetSelectedGizmoObjectId(context_.selection.selectedObject->GetDocumentId());
     } else {
         scene.SetSelectedGizmoObjectId(SceneObjectId{});

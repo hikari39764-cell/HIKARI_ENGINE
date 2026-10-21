@@ -1221,6 +1221,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorLookDevOperations.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorLookDevShapes.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorViewportInteraction.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorCameraPilot.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorViewportPresentation.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorDebugView.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorSceneWorkflow.cpp"

@@ -26,6 +26,13 @@ struct SceneViewportRect {
     }
 };
 
+// 視口に描いた印（網目の無い灯・機位など）の当たり。点選と枠選で網目より先に当たる。
+struct SceneViewportIconTarget {
+    SceneObjectId objectId{};
+    MATH::Vec2 screenPosition{};
+    float radius = 0.0f;
+};
+
 struct SceneViewportInteractionResult {
     std::vector<SceneObjectId> selections{};
     EditorObjectSelectionMode selectionMode = EditorObjectSelectionMode::Replace;
@@ -36,6 +43,8 @@ struct SceneViewportInteractionResult {
 class SceneViewportSelectionService {
 public:
     void SetLockedObjectIds(std::unordered_set<uint64_t> lockedObjectIds);
+    // このフレームの印の当たり。毎フレーム描く前に入れ直す。
+    void SetIconTargets(std::vector<SceneViewportIconTarget> targets);
 
     SceneObjectId PickObject(const Camera3D& camera, const SceneViewportRect& viewport,
                              const MATH::Vec2& screenPosition);
@@ -71,6 +80,7 @@ private:
     MATH::Vec2 marqueeCurrent_{};
     EditorObjectSelectionMode marqueeMode_ = EditorObjectSelectionMode::Replace;
     std::unordered_set<uint64_t> lockedObjectIds_{};
+    std::vector<SceneViewportIconTarget> iconTargets_{};
 };
 
 } // namespace EDITOR
