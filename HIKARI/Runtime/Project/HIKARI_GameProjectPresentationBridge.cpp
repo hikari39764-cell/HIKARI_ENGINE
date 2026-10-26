@@ -33,7 +33,7 @@ bool SubmitPresentationModelRequest(World* world, const GameProjectPresentationM
                                     std::string_view exclusiveNodeName) noexcept {
     try {
         if (request.ownerObjectHandle == 0u || request.instanceId == 0u || request.model.IsEmpty() ||
-            request.visible > 1u || request.castShadow > 1u || request.receiveShadow > 1u || request.reserved != 0u ||
+            request.visible > 1u || request.castShadow > 1u || request.receiveShadow > 1u || request.retain > 1u ||
             request.attachment.enabled > 1u || NUMERIC::AnyNonZero(request.attachment.reserved) ||
             !IsValidTransform(request.worldTransform) ||
             (!exclusiveNodeName.empty() && exclusiveNodeName.size() > kGameProjectModelNodeNameMaximumBytes)) {
@@ -93,6 +93,7 @@ bool SubmitPresentationModelRequest(World* world, const GameProjectPresentationM
         submission.visible = request.visible != 0u;
         submission.castShadow = request.castShadow != 0u;
         submission.receiveShadow = request.receiveShadow != 0u;
+        submission.retain = request.retain != 0u;
         return service->Submit(submission, TIME::GetFrameContext().frameIndex);
     } catch (...) {
         return false;

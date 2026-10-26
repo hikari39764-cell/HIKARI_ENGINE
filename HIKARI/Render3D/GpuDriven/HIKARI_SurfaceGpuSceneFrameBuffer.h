@@ -16,7 +16,7 @@
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
-constexpr size_t kDefaultSurfaceGpuSceneInstanceCapacity = 8192u;
+constexpr size_t kDefaultSurfaceGpuSceneInstanceCapacity = 32768u;
 
 struct SurfaceGpuSceneFrameBufferStats {
     size_t capacity = 0;

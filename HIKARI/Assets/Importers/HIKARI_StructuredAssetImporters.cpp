@@ -12,6 +12,9 @@
 #include "Assets/RenderStyle/HIKARI_RenderStyleAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
+#include <array>
+#include <cstring>
+#include <fstream>
 #include <unordered_set>
 
 namespace HIKARI {
@@ -270,6 +273,36 @@ AssetImportResult ImportWeather(const std::filesystem::path& sourcePath, const A
     result.diagnosticsJson = nlohmann::json{{"valid", result.success}, {"name", asset.name}}.dump();
     return result;
 }
+// 音声：元の文件をそのまま使い、取り込みでは中身が読める形式かだけを頭の数バイトで確かめる。
+AssetImportResult ImportAudio(const std::filesystem::path& sourcePath, const AssetGuid&) {
+    AssetImportResult result;
+    std::array<unsigned char, 12> head{};
+    std::ifstream input(sourcePath, std::ios::binary);
+    input.read(reinterpret_cast<char*>(head.data()), static_cast<std::streamsize>(head.size()));
+    const auto read = static_cast<size_t>(input.gcount());
+    const auto starts = [&](const char* magic, size_t offset) {
+        const size_t length = std::strlen(magic);
+        return read >= offset + length && std::memcmp(head.data() + offset, magic, length) == 0;
+    };
+    std::string format;
+    if (starts("RIFF", 0) && starts("WAVE", 8))
+        format = "wav";
+    else if (starts("ID3", 0) || (read >= 2 && head[0] == 0xFF && (head[1] & 0xE0) == 0xE0))
+        format = "mp3";
+    else if (starts("OggS", 0))
+        format = "ogg";
+    else if (starts("fLaC", 0))
+        format = "flac";
+    std::error_code error;
+    const auto bytes = std::filesystem::file_size(sourcePath, error);
+    result.success = !format.empty() && !error && bytes > 0;
+    result.message = result.success ? "Audio file validated"
+                                    : "Audio file is not a readable wav, mp3, ogg or flac: " + sourcePath.generic_string();
+    result.diagnosticsJson =
+        nlohmann::json{{"valid", result.success}, {"format", format}, {"bytes", error ? 0 : static_cast<uint64_t>(bytes)}}
+            .dump();
+    return result;
+}
 } // namespace
 
 void RegisterStructuredAssetImporters(AssetImporterRegistry& registry) {
@@ -289,5 +322,6 @@ void RegisterStructuredAssetImporters(AssetImporterRegistry& registry) {
     add(ImporterKind::RenderStyle, nullptr, ImportRenderStyle);
     add(ImporterKind::ColorLut, nullptr, ImportColorLut);
     add(ImporterKind::LightProfile, nullptr, ImportLightProfile);
+    add(ImporterKind::Audio, nullptr, ImportAudio);
 }
 } // namespace HIKARI

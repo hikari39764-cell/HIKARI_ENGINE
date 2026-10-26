@@ -321,6 +321,10 @@ bool SetPlaybackRate(int handle, float rate) {
     found->second.options.playbackRate = rate;
     return true;
 }
+float GetSoundSeconds(int soundHandle) {
+    const auto found = g_sounds.find(soundHandle);
+    return g_backend && found != g_sounds.end() ? g_backend->GetSoundSeconds(found->second) : 0.0f;
+}
 void StopOwner(uint64_t owner) {
     for (auto it = g_playing.begin(); it != g_playing.end();) {
         if (it->second.owner != owner) {

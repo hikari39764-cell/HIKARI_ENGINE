@@ -226,7 +226,7 @@ std::vector<SequenceScreenEffect> ReadScreenEffects(const nlohmann::json& n) {
         e.id = item.value("id", uint64_t{1});
         e.name = item.value("name", std::string{});
         const int kind = item.value("kind", 0);
-        if (kind < 0 || kind > static_cast<int>(ScreenEffectKind::Chromatic))
+        if (kind < 0 || kind > static_cast<int>(ScreenEffectKind::RadialBlur))
             throw std::runtime_error("Unknown screen effect");
         e.kind = static_cast<ScreenEffectKind>(kind);
         e.enabled = item.value("enabled", true);

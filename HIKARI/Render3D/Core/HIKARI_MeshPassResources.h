@@ -25,6 +25,8 @@ struct MeshPassResources {
     D3D12_CPU_DESCRIPTOR_HANDLE compositionDepth{};
     const RENDER3D::DOF::WorldSpriteLayerCapture* worldSpriteDepthOfFieldCapture = nullptr;
     std::optional<VFX::VfxPostProcessMode> particlePostProcessMode;
+    // 歪み層の粒子だけを戦闘の画面歪み遮罩へ描く経路
+    bool particleDistortionMask = false;
     bool reflectionCapture = false;
     bool reflectionMaterialCapture = false;
     // Forward capture の 5 番目の出力（次表面散乱の拡散光）。reflectionCapture が前提。

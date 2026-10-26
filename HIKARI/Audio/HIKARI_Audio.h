@@ -42,6 +42,8 @@ void UseCameraListener();
 void UpdateCameraListener(const GameProjectAudioListener& listener);
 bool SetSource(int playHandle, const GameProjectAudioSource& source);
 bool SetPlaybackRate(int playHandle, float rate);
+// 読み込んだ音（Load の戻り値）の長さ（秒）。分からなければ 0。
+float GetSoundSeconds(int soundHandle);
 void StopOwner(uint64_t owner);
 bool BelongsToOwner(int playHandle, uint64_t owner);
 GameProjectAudioStats GetStats();

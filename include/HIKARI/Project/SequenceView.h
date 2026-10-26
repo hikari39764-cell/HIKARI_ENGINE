@@ -47,6 +47,15 @@ public:
     HIKARI_GAME_PROJECT_SDK_API uint32_t GetEventClips(GameProjectSequencePlaybackHandle handle,
                                                        GameProjectSequenceEventClip* out,
                                                        uint32_t capacity) const noexcept;
+    // 流れている演出の文字段を out へ先頭から最大 capacity 件写し、全部の件数を返す（無効な handle は 0）。
+    // GetEventClips と同じく読み取りだけで、編集器のプレビューの handle にも使える。
+    HIKARI_GAME_PROJECT_SDK_API uint32_t GetTextClips(GameProjectSequencePlaybackHandle handle,
+                                                      GameProjectSequenceTextClip* out,
+                                                      uint32_t capacity) const noexcept;
+    // 文字段 clipId の文字を out へ終端付きで写し（UTF-8 の字の途中では切らない）、全体のバイト数を返す。
+    // 片段が無ければ 0。capacity が足りなければ写せた所までで、戻り値で必要な大きさが分かる。
+    HIKARI_GAME_PROJECT_SDK_API uint32_t GetTextClipText(GameProjectSequencePlaybackHandle handle, uint64_t clipId,
+                                                         char* out, uint32_t capacity) const noexcept;
     // 演出ワークスペースのプレビュー（Play の外だけ）。編集中の演出の資産 GUID（保存前の変更も流れる）、
     // 時刻と状態を写す。プロジェクトは Play と同じ自分の効果をこの時刻で出せる。流れの操作はできない。
     HIKARI_GAME_PROJECT_SDK_API bool GetEditorPreview(GameProjectSequencePlaybackSnapshot& outSnapshot) const noexcept;

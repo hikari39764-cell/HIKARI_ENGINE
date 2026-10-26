@@ -2,15 +2,46 @@
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
 
 namespace HIKARI::MESHRENDERER {
 
 using namespace INTERNAL;
+namespace {
+// 包囲（中心と半径）が視錐の外か：包む立方体の 8 隅がそろって同じ側面の外か、そろってカメラの後ろ。
+// 同次座標の平面の判定なので、カメラの後ろの隅にもそのまま使える。
+bool OutsideView(const MATH::Vec4& bounds, const MATH::Mat4& viewProj) {
+    if (!MATH::IsFinite(bounds)) {
+        return false;
+    }
+    const float radius = std::abs(bounds.w) * 1.05f;
+    uint32_t outside = 0x1Fu;
+    for (uint32_t corner = 0u; corner < 8u && outside != 0u; ++corner) {
+        const auto clip = viewProj.TransformPoint({bounds.x + ((corner & 1u) ? radius : -radius),
+                                                   bounds.y + ((corner & 2u) ? radius : -radius),
+                                                   bounds.z + ((corner & 4u) ? radius : -radius), 1.0f});
+        if (!MATH::IsFinite(clip)) {
+            return false;
+        }
+        uint32_t mask = 0u;
+        mask |= clip.x < -clip.w ? 1u : 0u;
+        mask |= clip.x > clip.w ? 2u : 0u;
+        mask |= clip.y < -clip.w ? 4u : 0u;
+        mask |= clip.y > clip.w ? 8u : 0u;
+        mask |= clip.w <= 0.0f ? 16u : 0u;
+        outside &= mask;
+    }
+    return outside != 0u;
+}
+} // namespace
+
 bool GatherTemporalVelocityDraws(const GFX::Context& graphics, std::vector<TemporalVelocityDraw>& outDraws,
-                                 uint32_t maximumDrawCount, uint32_t maximumSkinnedDrawCount) {
+                                 uint32_t maximumDrawCount, uint32_t maximumSkinnedDrawCount,
+                                 const MATH::Mat4* cullViewProj) {
     outDraws.clear();
     uint32_t skinnedDrawCount = 0u;
     const auto appendDraw = [&](TemporalVelocityDraw draw) {
@@ -49,6 +80,10 @@ bool GatherTemporalVelocityDraws(const GFX::Context& graphics, std::vector<Tempo
                 continue;
             }
 
+            // 画面に写らない面（テレビの画面の中の舞台など）は運動を描かない。
+            if (cullViewProj != nullptr && OutsideView(instance.boundsCenterRadius, *cullViewProj)) {
+                continue;
+            }
             const MeshAsset& meshAsset = source.model->meshes[instance.meshIndex];
             if (instance.primitiveIndex >= meshAsset.primitives.size()) {
                 continue;
@@ -138,6 +173,9 @@ bool GatherTemporalVelocityDraws(const GFX::Context& graphics, std::vector<Tempo
         draw.jointPalette = &(*stream.jointPalettes)[recordIndex];
         if (stream.instances != nullptr && command.firstGpuSceneInstanceIndex < stream.instances->size()) {
             const auto& instance = (*stream.instances)[command.firstGpuSceneInstanceIndex];
+            if (cullViewProj != nullptr && OutsideView(instance.boundsCenterRadius, *cullViewProj)) {
+                continue;
+            }
             draw.shellSettings = instance.shellSettings;
             draw.boundsCenterRadius = instance.boundsCenterRadius;
         }

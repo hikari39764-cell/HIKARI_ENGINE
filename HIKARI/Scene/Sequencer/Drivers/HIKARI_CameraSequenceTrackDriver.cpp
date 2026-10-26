@@ -17,6 +17,9 @@ namespace HIKARI::SEQUENCER {
 
 namespace {
 constexpr int kCameraSequenceBasePriority = 100;
+// これ以下の時刻の移動で同じ镜头に留まる seek は、再生と同じ続きの画として扱う（毎コマ seek で進める演出や
+// 時間轴の引き）。切镜にすると画面の時間方向の蓄積（TAA・GI・体積）が毎コマ捨てられ、镜头が動く間ずっと粒が立つ。
+constexpr float kContinuousSeekSeconds = 0.25f;
 
 int ToCameraPriority(int instancePriority) noexcept {
     const int64_t combined = static_cast<int64_t>(kCameraSequenceBasePriority) + static_cast<int64_t>(instancePriority);
@@ -132,7 +135,13 @@ void CameraSequenceTrackDriver::Evaluate(const SequencePlaybackInstanceView& ins
         ReleaseOverride(*state);
         return;
     }
-    if (context.IsDiscontinuous())
+    // 镜头を跳ばすのは、大きな seek・loop・停止と、別の镜头や别の相機への移動だけ。
+    const bool continuousSeek =
+        context.reason == SequenceEvaluationReason::Seek && state->overrideToken.IsValid() &&
+        state->cameraObjectId == evaluation.cameraObjectId && state->shotId == evaluation.shotId &&
+        std::abs(context.currentTimeSeconds - context.previousTimeSeconds) <= kContinuousSeekSeconds;
+    const bool discontinuous = context.IsDiscontinuous() && !continuousSeek;
+    if (discontinuous)
         state->entryFinished = true;
     if (state->firstTime < 0)
         state->firstTime = context.currentTimeSeconds;
@@ -154,8 +163,8 @@ void CameraSequenceTrackDriver::Evaluate(const SequencePlaybackInstanceView& ins
         SampleScreenEffects(sequence.screenEffects, context.currentTimeSeconds, samples);
         presentation_->Set(state->overrideToken, std::move(samples));
     };
-    if (state->overrideToken.IsValid() && !context.IsDiscontinuous() &&
-        state->cameraObjectId == evaluation.cameraObjectId && state->shotId == evaluation.shotId) {
+    if (state->overrideToken.IsValid() && !discontinuous && state->cameraObjectId == evaluation.cameraObjectId &&
+        state->shotId == evaluation.shotId) {
         (void)cameraDirector_.SetOverrideCamera(state->overrideToken, evaluatedCamera);
         submitPresentation();
         return;
@@ -166,8 +175,8 @@ void CameraSequenceTrackDriver::Evaluate(const SequencePlaybackInstanceView& ins
     request.cameraObjectId = evaluation.cameraObjectId;
     request.blend = {}; // authored transitions are evaluated from sequence time, including seeks
     // 初回 tick の移動はカットではない。同じ shot 内の前時刻だけを照合し、
-    // 別 shot・seek・loop を連続交代として扱わない。評価時刻と運動曲線は変えない。
-    if (!context.IsDiscontinuous() && context.previousTimeSeconds != context.currentTimeSeconds) {
+    // 別 shot・大きな seek・loop を連続交代として扱わない。評価時刻と運動曲線は変えない。
+    if (!discontinuous && context.previousTimeSeconds != context.currentTimeSeconds) {
         CinematicCameraEvaluation originEvaluation;
         Camera3D origin;
         if (EvaluateSequenceCameraView(sequence, *instance.bindings, world_, cameraDirector_,

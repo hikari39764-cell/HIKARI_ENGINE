@@ -39,6 +39,12 @@ bool ValidatePresentationCueTrack(const PresentationCueTrack& track, std::string
                 a.source.minimumDistance <= 0.0f || a.source.maximumDistance <= a.source.minimumDistance ||
                 (a.spatial && !clip.targetBinding.IsValid()))
                 return invalid("invalid audio settings or missing spatial binding");
+            // 淡入と淡出が重なっても読める（掛け率は小さい方を使う）。片段を縮めた後でも演出を開けるように。
+            if (!std::isfinite(clip.fadeInSeconds) || !std::isfinite(clip.fadeOutSeconds) || clip.fadeInSeconds < 0.0f ||
+                clip.fadeOutSeconds < 0.0f || !std::isfinite(clip.sourceOffsetSeconds) ||
+                clip.sourceOffsetSeconds < 0.0f || clip.sourceOffsetSeconds > kMaxSequenceDurationSeconds ||
+                !std::isfinite(clip.pitch) || clip.pitch < 0.25f || clip.pitch > 4.0f || a.loop > 1u)
+                return invalid("invalid audio fade, source offset or pitch");
         } else
             return invalid("unknown cue kind");
     }
@@ -50,5 +56,14 @@ float GetPresentationCueContentEnd(const PresentationCueTrack& track) noexcept {
         if (std::isfinite(clip.startSeconds) && std::isfinite(clip.durationSeconds))
             end = (std::max)(end, clip.startSeconds + clip.durationSeconds);
     return end;
+}
+float GetPresentationCueFadeGain(const PresentationCueClip& clip, float localTimeSeconds) noexcept {
+    float gain = 1.0f;
+    if (clip.fadeInSeconds > 0.0f)
+        gain = (std::min)(gain, std::clamp(localTimeSeconds / clip.fadeInSeconds, 0.0f, 1.0f));
+    if (clip.fadeOutSeconds > 0.0f)
+        gain = (std::min)(gain, std::clamp((clip.durationSeconds - localTimeSeconds) / clip.fadeOutSeconds, 0.0f, 1.0f));
+    // 耳には音量が対数的に聞こえるので二乗で変える（直線だと消え際に急に途切れて聞こえる）。
+    return gain * gain;
 }
 } // namespace HIKARI::SEQUENCER

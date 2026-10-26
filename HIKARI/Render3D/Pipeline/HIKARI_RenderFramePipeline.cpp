@@ -1,4 +1,5 @@
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
@@ -347,6 +348,9 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         cameraOverrides.cullingViewProj = &temporalFrame.camera.unjitteredViewProj;
         cameraOverrides.cullingInvViewProj = &temporalFrame.camera.invUnjitteredViewProj;
     }
+    static const auto beginTimer = CPU_PROFILE::RegisterDynamicPass("Main.BeginFrame");
+    std::optional<CPU_PROFILE::ScopedDynamicCpuTimer> beginScope;
+    beginScope.emplace(beginTimer);
     if (!MESHRENDERER::BeginFrame(frame.graphics, camera, environment, lighting, screenSpaceContext.width,
                                   screenSpaceContext.height,
                                   (temporalDebugView || volumetricDebugView) ? RenderDebugView::None : debugView,
@@ -354,6 +358,10 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         MESHRENDERER::EndFrame();
         return false;
     }
+    beginScope.reset();
+    static const auto lightingTimer = CPU_PROFILE::RegisterDynamicPass("Main.LightingPrepare");
+    std::optional<CPU_PROFILE::ScopedDynamicCpuTimer> lightingScope;
+    lightingScope.emplace(lightingTimer);
     DYNAMICGI::Frame dynamicGi;
     RAYTRACING::RuntimeRayLightingFrame rayLighting;
     MESHRENDERER::MeshMaterialGpuFrameView materials{};
@@ -409,8 +417,13 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
             return false;
         }
     }
+    lightingScope.reset();
+    static const auto featureTimer = CPU_PROFILE::RegisterDynamicPass("Main.Features");
+    std::optional<CPU_PROFILE::ScopedDynamicCpuTimer> featureScope;
+    featureScope.emplace(featureTimer);
     const FEATURES::RenderFeatureRequestSet featureRequests =
         FEATURES::AnalyzeRenderFeatureRequests(MESHRENDERER::GetActiveGpuDrivenSceneSource());
+    featureScope.reset();
     const bool hasDepthAwareWork = MESHRENDERER::HasDepthAwarePassWork();
     const bool hasTransparentWork = MESHRENDERER::HasForwardTransparentPassWork();
     const bool hasSsrWork = environment.screenSpaceReflections.enabled &&
@@ -570,6 +583,8 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     postOpaqueResources.rayTracedShadow = {};
     FEATURES::RenderFeaturePlan renderFeaturePlan{};
 
+    static const auto graphTimer = CPU_PROFILE::RegisterDynamicPass("Main.Graph");
+    const CPU_PROFILE::ScopedDynamicCpuTimer graphScope(graphTimer);
     const RenderFrameGraphStageResult graphStage = ExecuteRenderFrameGraphStage(RenderFrameGraphStageContext{
         frame,
         screenSpaceContext,

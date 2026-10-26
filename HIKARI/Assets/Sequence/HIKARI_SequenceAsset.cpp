@@ -20,6 +20,9 @@ std::vector<AssetDependencyDesc> CollectSequenceDependencies(const CinematicSequ
         else
             result.push_back({{}, cue.soundPath, "Sequence.AudioCue"});
     }
+    for (const auto& text : sequence.textTrack.clips)
+        if (text.style.IsValid())
+            result.push_back({text.style, {}, "Sequence.TextStyle"});
     return result;
 }
 
@@ -71,7 +74,8 @@ bool LoadSequenceAsset(const std::filesystem::path& path, const AssetGuid& autho
 bool SaveSequenceAsset(const std::filesystem::path& path, const SequenceAsset& asset, std::string* outError) {
     std::string validationError;
     if (!SEQUENCER::ValidatePresentationCueTrack(asset.sequence.presentationCueTrack, validationError) ||
-        !SEQUENCER::ValidateSequenceEventTrack(asset.sequence.eventTrack, validationError)) {
+        !SEQUENCER::ValidateSequenceEventTrack(asset.sequence.eventTrack, validationError) ||
+        !SEQUENCER::ValidateSequenceTextTrack(asset.sequence.textTrack, validationError)) {
         SetMessage(outError, validationError);
         return false;
     }

@@ -21,7 +21,10 @@ SamplerState gSampler : register(s0);
 // gUser[6]: fogColor（sRGB）、occlusion
 // gUser[7]: occlusionRadius（ゲーム画素）、occlusionDepth、depthLine、lightShadow
 // gUser[8]: lightSlope、lightReach（ゲーム画素）、カメラの nearZ、farZ
-// gUser[9]: 深度がある（1）、正投影（1）、depthLineGap
+// gUser[9]: 深度がある（1）、正投影（1）、depthLineGap、背景を透かす（版 5）
+// 色調（版 6）。鮮やかな物体とその縁の外の画素だけに掛ける。
+// gUser[10]: toneTint（sRGB）、toneTintStrength
+// gUser[11]: toneHue（一周 = 1）、toneSaturation、toneBrightness、toneContrast
 static const uint kStylePixel = 2u;
 static const uint kStyleSketch = 3u;
 
@@ -611,6 +614,43 @@ float StyleCoverage(uint style, float2 position)
     return 0.0;
 }
 
+// 色調（版 6）：色の付いた物体（人物・仕掛け・危険）と、鮮やかな色の縁（2 texel 以内）の外の画素だけを、表示 sRGB で
+// 明るさ・明暗の差・彩度・色相・染めの順に調える。既定（何も変えない）なら飛ばす。
+bool ToneOn()
+{
+    return gUser[10].w > 0.0 || abs(gUser[11].x) > 1e-4 || abs(gUser[11].y - 1.0) > 1e-4 || abs(gUser[11].z - 1.0) > 1e-4 ||
+           abs(gUser[11].w - 1.0) > 1e-4;
+}
+
+float3 ApplyTone(float3 linearColor)
+{
+    float3 c = StyleSrgb(linearColor) * gUser[11].z;
+    c = (c - 0.5) * gUser[11].w + 0.5;
+    const float3 weights = float3(0.2126, 0.7152, 0.0722);
+    c = lerp(dot(c, weights).xxx, c, gUser[11].y);
+    // 灰の軸まわりに色相を回す（Rodrigues の回転）。
+    const float angle = gUser[11].x * 6.28318530718;
+    const float cosA = cos(angle), sinA = sin(angle);
+    const float3 k = float3(0.57735027, 0.57735027, 0.57735027);
+    c = c * cosA + cross(k, c) * sinA + k * dot(k, c) * (1.0 - cosA);
+    // 染め：明るさを保ったまま tint の色相へ寄せる。
+    const float luminance = max(dot(c, weights), 0.0);
+    const float3 tint = saturate(gUser[10].rgb);
+    const float3 tinted = tint * (luminance / max(dot(tint, weights), 1e-3));
+    c = lerp(c, tinted, saturate(gUser[10].w));
+    return StyleLinear(saturate(c));
+}
+
+// 色の付いた物体（鮮やかな物体より低い彩度 0.18 まで。人物の陰の側も含む）とその縁は調えない。地形・壁・背景の
+// 青瓷はほぼ灰色（彩度 0.12 以下）なので対象に残る。
+bool ToneTarget(float2 position)
+{
+    const float3 color = ReadTexel(position);
+    if (IsObject(color) && StyleChroma(StyleSrgb(color)) >= 0.18)
+        return false;
+    return NearestVivid(position, 1.0, 2).a <= 0.0;
+}
+
 float4 main(HikariPostEffectInput input) : SV_TARGET
 {
     const uint style = (uint)round(gUser[0].x);
@@ -622,6 +662,8 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
         result = StyleSketch(position);
     else
         result = StyleClean(position);
+    if (ToneOn() && ToneTarget(position))
+        result = ApplyTone(result);
     const float alpha = gUser[9].w > 0.5 ? StyleCoverage(style, position) : 1.0;
     return float4(result * gUser[1].w, alpha);
 }

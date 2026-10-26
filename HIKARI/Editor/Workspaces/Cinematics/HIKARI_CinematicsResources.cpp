@@ -1,10 +1,12 @@
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Core/Text/HIKARI_Localization.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
+#include "Scene/Sequencer/Drivers/HIKARI_PresentationCueDriver.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Assets/Camera/HIKARI_GameplayCameraAsset.h"
@@ -88,8 +90,12 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
             cue.durationSeconds = 3;
             if (kind == PresentationCueKind::Vfx)
                 cue.vfxAsset.value = asset;
-            else
+            else {
                 cue.soundPath = asset;
+                // 置いた音は素材の長さぶんの片段にする。
+                if (const float length = GetPresentationCueSoundSeconds(asset); length > 0.0f)
+                    cue.durationSeconds = length;
+            }
             sequence.presentationCueTrack.clips.push_back(cue);
             selectedId_ = cue.id;
             selectionKind_ = SelectionKind::Cue;
@@ -129,11 +135,12 @@ bool CinematicsWorkspaceController::DrawResources(DocumentSceneBase& scene, Cine
                 }
                 std::sort(audioAssets_.begin(), audioAssets_.end());
             }
+            // 名前と相対パスは UTF-8 で扱う（string() は ANSI 符号页になり、日本語の名前が化けるか例外になる）。
             for (const auto& path : audioAssets_) {
-                const auto name = path.stem().string();
+                const auto name = TEXT::PathToUtf8(path.stem());
                 if (search[0] && name.find(search.data()) == std::string::npos)
                     continue;
-                const auto relative = path.lexically_relative(root).generic_string();
+                const auto relative = TEXT::PathToUtf8(path.lexically_relative(root));
                 ImGui::PushID(relative.c_str());
                 if (ImGui::Selectable(name.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick) &&
                     ImGui::IsMouseDoubleClicked(0))

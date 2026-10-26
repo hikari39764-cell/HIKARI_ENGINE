@@ -5,6 +5,7 @@
 #include <optional>
 #include "Render3D/Lighting/HIKARI_SurfaceLightingBindings.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
+#include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
@@ -58,6 +59,8 @@ struct ParticleGpuDrivenDrawBindings : SurfaceLightingBindings {
     uint32_t width = 0, height = 0;
     // Tool/secondary views without Global Post draw both routes in their local target.
     std::optional<VFX::VfxPostProcessMode> postProcessMode;
+    // 歪み層だけを戦闘の画面歪み遮罩へ描く経路。色の経路は歪み層を描かない
+    bool distortionMask = false;
 };
 
 // Owned by one MeshRenderer view-resource set. This object has no
@@ -78,7 +81,11 @@ public:
                       MATERIAL::GpuMaterialRegistry& materialRegistry);
     bool ExecuteForwardTransparent(const GFX::Context& context, const ParticleGpuDrivenDrawBindings& bindings);
     void ReleaseNamespace(uint64_t playbackNamespace);
-    bool HasDrawWork(std::optional<VFX::VfxPostProcessMode> mode = std::nullopt) const noexcept;
+    // distortion が真なら歪み層だけを数え、偽なら歪み層を除いて数える
+    bool HasDrawWork(std::optional<VFX::VfxPostProcessMode> mode = std::nullopt,
+                     bool distortion = false) const noexcept;
+    // 直前の歪み経路が描いた遮罩（RG = UV のずれ、B = 覆い、A = ぼかし）。PostSystem へ渡す
+    bool GetDistortionMask(RenderTextureView& outView, D3D12_CPU_DESCRIPTOR_HANDLE& outSrvCpu) const noexcept;
     const ParticleGpuDrivenPassStats& GetStats() const noexcept;
 
 private:

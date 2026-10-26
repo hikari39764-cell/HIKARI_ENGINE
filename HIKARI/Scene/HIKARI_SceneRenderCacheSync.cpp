@@ -1,4 +1,6 @@
 #include "Scene/HIKARI_SceneRenderCacheSync.h"
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
+#include <optional>
 
 #include <algorithm>
 #include <array>
@@ -403,6 +405,8 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
                 }
             }
         }
+        static const auto prepareTimer = CPU_PROFILE::RegisterDynamicPass("Cache.PresentationPrepare");
+        const CPU_PROFILE::ScopedDynamicCpuTimer prepareScope(prepareTimer);
         presentationModels->PrepareForRender(frameIndex, occupiedObjectIds);
         for (const uint64_t removedId : presentationModels->GetRemovedRenderObjectIds()) {
             sceneRenderCache.Remove(RENDER3D::RUNTIME::SceneRenderObjectId{removedId});
@@ -456,12 +460,18 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
         }
     }
 
+    static const auto presentationTimer = CPU_PROFILE::RegisterDynamicPass("Cache.PresentationSync");
+    std::optional<CPU_PROFILE::ScopedDynamicCpuTimer> presentationScope;
+    presentationScope.emplace(presentationTimer);
     PRESENTATION_MODEL::SyncRenderObjects(world, presentationModels, renderModelCache, sceneRenderCache, assetRegistry,
                                           modelManager, clusteredGeometryPaths.GetProjectRoot(), presentationTransforms,
                                           animationPoses, presentationMaterials, presentationMissingAssetsLogged,
                                           presentationMissingNodesLogged, presentationAttachmentDiagnosticsLogged,
-                                          presentationMaterialDiagnosticsLogged);
+                                          presentationMaterialDiagnosticsLogged, fullSync);
 
+    presentationScope.reset();
+    static const auto endTimer = CPU_PROFILE::RegisterDynamicPass("Cache.EndSync");
+    const CPU_PROFILE::ScopedDynamicCpuTimer endScope(endTimer);
     if (fullSync) {
         sceneRenderCache.EndSync();
     } else {

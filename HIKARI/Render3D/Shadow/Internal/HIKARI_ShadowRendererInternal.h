@@ -198,6 +198,16 @@ bool UpdateShadowPrimaryInstance(const RENDER3D::RUNTIME::SurfaceGpuSceneInstanc
                                  const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* sourceMaterial,
                                  uint32_t localIndex, RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,
                                  RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource& material);
+// 影の元を一つ書き換え、前後の内容の要約と、並び（形・材質の資源）が変わったかを返す。
+struct ShadowPrimaryPatch {
+    uint64_t before = 0;
+    uint64_t after = 0;
+    bool layoutChanged = false;
+};
+ShadowPrimaryPatch PatchShadowPrimaryInstance(const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& sourceInstance,
+                                              const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* sourceMaterial,
+                                              uint32_t localIndex, RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,
+                                              RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource& material);
 void AppendShadowPrimaryInstance(const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& sourceInstance,
                                  const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* sourceMaterial,
                                  std::vector<RENDER3D::RUNTIME::SurfaceGpuSceneInstance>& instances,

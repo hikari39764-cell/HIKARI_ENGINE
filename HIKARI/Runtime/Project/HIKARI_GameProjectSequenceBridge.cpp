@@ -1,4 +1,5 @@
 #include "HIKARI/Project/SequenceView.h"
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -6,6 +7,7 @@
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/Sequencer/Runtime/HIKARI_SequencePlaybackService.h"
+#include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 #include "HIKARI/Project/WorldView.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectServiceBridgeInternal.h"
 
@@ -309,6 +311,91 @@ uint32_t SequenceView::GetEventClips(GameProjectSequencePlaybackHandle handle, G
             out[index].durationSeconds = clips[index].durationSeconds;
         }
         return static_cast<uint32_t>(clips.size());
+    } catch (...) {
+        return 0u;
+    }
+}
+
+namespace {
+// 読み取りだけの演出の中身（Play の状態を問わない）。
+const CinematicSequence* FindPlayingSequence(World* world, GameProjectSequencePlaybackHandle handle) {
+    const auto* service = world != nullptr ? world->Services().Find<SEQUENCER::SequencePlaybackService>() : nullptr;
+    return service != nullptr && handle.IsValid() ? service->GetSequence(ToRuntimeSequenceHandle(handle)) : nullptr;
+}
+} // namespace
+
+uint32_t SequenceView::GetTextClips(GameProjectSequencePlaybackHandle handle, GameProjectSequenceTextClip* out,
+                                    uint32_t capacity) const noexcept {
+    try {
+        World* world = PROJECT::INTERNAL::ResolveServiceWorld(world_);
+        const CinematicSequence* sequence = FindPlayingSequence(world, handle);
+        if (sequence == nullptr || (out == nullptr && capacity != 0u)) {
+            return 0u;
+        }
+        const auto* ui = world->Services().Find<GAME_UI::GameUiPresentationService>();
+        const auto& clips = sequence->textTrack.clips;
+        for (uint32_t index = 0u; index < capacity && index < clips.size(); ++index) {
+            const auto& clip = clips[index];
+            auto& value = out[index];
+            value = {};
+            value.id = clip.id;
+            value.startSeconds = clip.startSeconds;
+            value.durationSeconds = clip.durationSeconds;
+            value.x = clip.x;
+            value.y = clip.y;
+            value.width = clip.width;
+            value.columnSpacing = clip.columnSpacing;
+            value.scale = clip.scale;
+            value.revealSeconds = clip.revealSeconds;
+            value.fadeInSeconds = clip.fadeInSeconds;
+            value.fadeOutSeconds = clip.fadeOutSeconds;
+            value.tint = {clip.tint.r, clip.tint.g, clip.tint.b, clip.tint.a};
+            value.order = clip.order;
+            value.textBytes = static_cast<uint32_t>(clip.text.size());
+            value.layout = static_cast<GameProjectSequenceTextLayout>(clip.layout);
+            value.alignX = static_cast<GameProjectSequenceTextAlign>(clip.alignX);
+            value.alignY = static_cast<GameProjectSequenceTextAlign>(clip.alignY);
+            value.reveal = static_cast<GameProjectSequenceTextReveal>(clip.reveal);
+            (void)CopyFixedUtf8Truncated(clip.tag, value.tag);
+            (void)CopyFixedUtf8Truncated(clip.style.value, value.styleGuid);
+            if (const auto style = ui != nullptr && clip.style.IsValid() ? ui->FindTextStyle(clip.style) : nullptr) {
+                value.pixelHeight = style->pixelHeight * clip.scale;
+                value.lineHeight = style->effects.lineHeight;
+                value.engineDrawn = 1u;
+            }
+        }
+        return static_cast<uint32_t>(clips.size());
+    } catch (...) {
+        return 0u;
+    }
+}
+
+uint32_t SequenceView::GetTextClipText(GameProjectSequencePlaybackHandle handle, uint64_t clipId, char* out,
+                                       uint32_t capacity) const noexcept {
+    try {
+        const CinematicSequence* sequence =
+            FindPlayingSequence(PROJECT::INTERNAL::ResolveServiceWorld(world_), handle);
+        if (sequence == nullptr || (out == nullptr && capacity != 0u)) {
+            return 0u;
+        }
+        const auto& clips = sequence->textTrack.clips;
+        const auto found = std::find_if(clips.begin(), clips.end(), [clipId](const auto& clip) { return clip.id == clipId; });
+        if (found == clips.end()) {
+            return 0u;
+        }
+        const std::string& text = found->text;
+        if (capacity != 0u) {
+            // UTF-8 の字の途中で切らない（続きのバイトの前まで戻す）。
+            size_t length = (std::min)(text.size(), static_cast<size_t>(capacity - 1u));
+            while (length > 0u && length < text.size() && (static_cast<unsigned char>(text[length]) & 0xC0u) == 0x80u) {
+                --length;
+            }
+            if (length != 0u) {
+                std::memcpy(out, text.data(), length);
+            }
+            out[length] = '\0';
+        }
+        return static_cast<uint32_t>(text.size());
     } catch (...) {
         return 0u;
     }

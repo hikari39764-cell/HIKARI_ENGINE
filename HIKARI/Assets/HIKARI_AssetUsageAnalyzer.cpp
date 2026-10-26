@@ -310,6 +310,10 @@ AssetUsageSummary AnalyzeAssetUsage(const SceneDocument& document, const AssetDa
                 if (cue.kind == SEQUENCER::PresentationCueKind::Vfx)
                     AddReference(cue.vfxAsset.value, sequence.name, "Sequence.VfxCue", assetDatabase, engineTextures,
                                  summary);
+            for (const auto& text : sequence.textTrack.clips)
+                if (text.style.IsValid())
+                    AddReference(text.style.value, sequence.name, "Sequence.TextStyle", assetDatabase, engineTextures,
+                                 summary);
         }
     }
     return summary;

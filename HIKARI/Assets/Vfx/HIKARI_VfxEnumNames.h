@@ -53,6 +53,7 @@ inline constexpr auto kVfxShapeUvModeChoices = TEXT::EnumNameList(kVfxShapeUvMod
 inline constexpr TEXT::EnumName<VfxBlendMode> kVfxBlendModeNames[]{
     {VfxBlendMode::Alpha, "Alpha"},
     {VfxBlendMode::Additive, "Additive"},
+    {VfxBlendMode::Distortion, "Distortion"},
 };
 inline constexpr auto kVfxBlendModeChoices = TEXT::EnumNameList(kVfxBlendModeNames);
 

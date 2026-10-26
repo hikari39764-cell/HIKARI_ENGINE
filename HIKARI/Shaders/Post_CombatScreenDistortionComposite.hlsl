@@ -446,20 +446,14 @@ float4 main(PSInput input) : SV_TARGET
         const float2 chromaticOffset = normal * outputTexel * chromaticPixels;
         directionalBlur.r = HikariScene(uv + warp + chromaticOffset).r;
         directionalBlur.b = HikariScene(uv + warp - chromaticOffset).b;
-        const float gradientMagnitude = saturate(length(coverageGradient) * 4.0f);
-        const float tearEnergy = saturate(
-            length(bestWarp) * maximumMaskDimension / 12.0f);
         const float maskWeight = saturate(
             (coverage * 0.82f + expandedCoverage * 0.72f) *
             maskStrength * (0.72f + blurHint * 0.28f));
         resolved = lerp(resolved, directionalBlur, saturate(maskWeight * 0.96f));
 
-        // A restrained neutral rim makes refraction readable against flat sky
-        // or fog without turning the trail back into a painted blue ribbon.
-        const float airRim = saturate(
-            gradientMagnitude * 0.12f +
-            tearEnergy * expandedCoverage * 0.055f +
-            coverage * blurHint * 0.018f);
+        // 縁の光は足さない：遮罩の形（貼図で作った歪み層）全体が白く塗られ、絵柄を壊す。
+        // 屈折は色を持たず、ぼかしを求めた所にだけごく薄い光を残す
+        const float airRim = saturate(coverage * blurHint * 0.018f);
         resolved += float3(0.78f, 0.92f, 1.05f) * airRim;
     }
 

@@ -42,6 +42,11 @@ void ReadPresentationCueJson(const nlohmann::json& sequence, PresentationCueTrac
                 clip.audio.priority = node.value("priority", 0);
                 clip.audio.source.minimumDistance = node.value("minimumDistance", 1.0f);
                 clip.audio.source.maximumDistance = node.value("maximumDistance", 30.0f);
+                clip.audio.loop = node.value("loop", false) ? 1u : 0u;
+                clip.fadeInSeconds = node.value("fadeInSeconds", 0.0f);
+                clip.fadeOutSeconds = node.value("fadeOutSeconds", 0.0f);
+                clip.sourceOffsetSeconds = node.value("sourceOffsetSeconds", 0.0f);
+                clip.pitch = node.value("pitch", 1.0f);
                 candidate.clips.push_back(std::move(clip));
             }
         }
@@ -73,6 +78,18 @@ void WritePresentationCueJson(const PresentationCueTrack& track, nlohmann::json&
                                    {"priority", clip.audio.priority},
                                    {"minimumDistance", clip.audio.source.minimumDistance},
                                    {"maximumDistance", clip.audio.source.maximumDistance}});
+        // 音声の効果は既定から変えた時だけ書く（使っていない演出の文件を変えない）。
+        auto& written = result["clips"].back();
+        if (clip.audio.loop != 0u)
+            written["loop"] = true;
+        if (clip.fadeInSeconds > 0.0f)
+            written["fadeInSeconds"] = clip.fadeInSeconds;
+        if (clip.fadeOutSeconds > 0.0f)
+            written["fadeOutSeconds"] = clip.fadeOutSeconds;
+        if (clip.sourceOffsetSeconds > 0.0f)
+            written["sourceOffsetSeconds"] = clip.sourceOffsetSeconds;
+        if (clip.pitch != 1.0f)
+            written["pitch"] = clip.pitch;
     }
     tracks.push_back(std::move(result));
 }

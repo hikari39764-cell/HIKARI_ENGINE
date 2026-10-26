@@ -15,6 +15,7 @@
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 #include "Render3D/Water/HIKARI_WaterVisibleDepth.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
+#include "Core/HIKARI_TimeService.h"
 #include "Render3D/Debug/HIKARI_RenderDebugOutput.h"
 
 namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
@@ -93,6 +94,22 @@ bool ExecuteForwardTransparent(const GRAPH::RenderGraphPassContext& graphPass, v
         resources.worldSpriteDepthOfFieldCapture = nullptr;
         if (capture != nullptr) {
             DOF::EndWorldSpriteLayerCapture(context.frame.frameIndex);
+        }
+        // 歪み層の粒子：全体後処理のある画面だけ、戦闘の画面歪み遮罩へ描いて PostSystem に渡す
+        if (rendered && MESHRENDERER::HasVfxDistortionWork() &&
+            context.frame.surfaceReceipt.Matches(POST::PostSystem::GetSceneCaptureSurfaceReceipt()) &&
+            !GetRenderDebugOutputRoute().bypassPostProcessing) {
+            RENDER3D::RenderTextureView mask{};
+            D3D12_CPU_DESCRIPTOR_HANDLE maskSrvCpu{};
+            if (MESHRENDERER::RenderVfxDistortionMaskPass(context.frame.graphics, resources, mask, maskSrvCpu)) {
+                POST::PostSystem::ActionScreenDistortionMask submit{};
+                submit.texture = mask;
+                submit.srvCpu = maskSrvCpu;
+                submit.frameIndex = TIME::GetFrameContext().frameIndex;
+                submit.strength = 1.0f;
+                submit.blur = 1.0f;
+                POST::PostSystem::SetActionScreenDistortionMask(submit);
+            }
         }
         if (rendered && preserve) {
             if (!POST::PostSystem::BeginPreservedVfxCapture(context.frame, context.temporalFrame,

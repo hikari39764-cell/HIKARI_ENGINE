@@ -149,7 +149,8 @@ constexpr ParticleMaterialMode kMaterialModes[] = {
     ParticleMaterialMode::StandardLit,
     ParticleMaterialMode::CustomLit,
 };
-constexpr ParticleBlendMode kBlendModes[] = {ParticleBlendMode::Alpha, ParticleBlendMode::Additive};
+constexpr ParticleBlendMode kBlendModes[] = {ParticleBlendMode::Alpha, ParticleBlendMode::Additive,
+                                             ParticleBlendMode::Distortion};
 constexpr ParticleRenderShape kRenderShapes[] = {
     ParticleRenderShape::Sprite,    ParticleRenderShape::Ribbon,         ParticleRenderShape::Ring,
     ParticleRenderShape::MeshBox,   ParticleRenderShape::MeshSphere,     ParticleRenderShape::MeshCylinder,

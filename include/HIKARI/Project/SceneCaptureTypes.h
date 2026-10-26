@@ -42,8 +42,9 @@ enum class GameProjectSceneCaptureStyle : uint32_t { None = 0u, Clean = 1u, Pixe
 
 // 長さは「ゲーム画素」単位（1 ゲーム画素 = pixelSize texel）。色は表示 sRGB（各成分 0..1）。
 struct GameProjectSceneCaptureStyleDesc {
-    uint32_t structSize = 144u;         // 版 2・3 は 80（fillStrength まで）、版 4 は 140（depthLineGap まで）。足りない欄は既定として読む
-    uint32_t version = 5u;              // 2 は fillStrength の欄が予約（0）で、塗りは既定の 0.32
+    uint32_t structSize = 176u;         // 版 2・3 は 80（fillStrength まで）、版 4 は 140（depthLineGap まで）、版 5 は 144
+                                        // （transparentBackground まで）。足りない欄は既定として読む
+    uint32_t version = 6u;              // 2 は fillStrength の欄が予約（0）で、塗りは既定の 0.32
     GameProjectSceneCaptureStyle style = GameProjectSceneCaptureStyle::None;
     float pixelSize = 2.0f;             // 1..32 texel
     float lineWidth = 1.0f;             // 0..4 ゲーム画素。Pixel の輪郭（0 で無し）、Sketch の鉛筆線
@@ -73,12 +74,21 @@ struct GameProjectSceneCaptureStyleDesc {
     // 版 5：1 なら背景（物体でも線でもない画素）の alpha を 0 にして出す。主画面へ半透明の板で重ねる時に使う
     // （貼る材質は AlphaBlend の結び付けにする）。0 なら従来どおり全面 alpha 1。
     float transparentBackground = 0.0f; // 0..1
+    // 版 6：色調。鮮やかな物体（人物・仕掛け・危険）とその縁の外の画素だけを調える（地形・壁・背景の色合い）。
+    // 既定は何も変えない。色は表示 sRGB で計算する。
+    GameProjectFloat3 toneTint{1.0f, 1.0f, 1.0f}; // 0..1 寄せる色。明るさは保ったまま、この色相へ染める
+    float toneTintStrength = 0.0f;      // 0..1 染める強さ
+    float toneHue = 0.0f;               // -0.5..0.5 色相を回す量（一周 = 1）
+    float toneSaturation = 1.0f;        // 0..2 彩度（0 で灰色）
+    float toneBrightness = 1.0f;        // 0..2 明るさ
+    float toneContrast = 1.0f;          // 0..2 明暗の差（中間の灰を軸に）
 };
 
 static_assert(std::is_standard_layout_v<GameProjectSceneCaptureStyleDesc>);
 static_assert(std::is_trivially_copyable_v<GameProjectSceneCaptureStyleDesc>);
-static_assert(sizeof(GameProjectSceneCaptureStyleDesc) == 144u);
+static_assert(sizeof(GameProjectSceneCaptureStyleDesc) == 176u);
 static_assert(offsetof(GameProjectSceneCaptureStyleDesc, transparentBackground) == 140u);
+static_assert(offsetof(GameProjectSceneCaptureStyleDesc, toneTint) == 144u);
 static_assert(offsetof(GameProjectSceneCaptureStyleDesc, depthFocus) == 80u);
 static_assert(offsetof(GameProjectSceneCaptureStyleDesc, lineColor) == 40u);
 
@@ -216,6 +226,52 @@ struct GameProjectSceneCaptureSnapshot {
     uint32_t reserved[2] = {0u, 0u};
 };
 
+// 一つのキャプチャを複数の視点で描く（SceneCaptureView::SetViews）。各視点は自分の目と視錐台で、キャプチャの texel の
+// 矩形（左上原点）だけへ描く。視錐台は近い面での左・右・下・上（目の座標系：右と上が正、視線は forward）。正投影なら
+// 目の座標系での端の位置。一つのキャプチャの視点は近い面・遠い面・投影の種類をそろえる（描き方の深度の効果を像全体に
+// 一度掛けるため）。視点ごとに GPU の選別と描画を一回ずつ行うので、数は必要な分だけにする。
+inline constexpr uint32_t kGameProjectSceneCaptureViewVersion = 1u;
+inline constexpr uint32_t kGameProjectSceneCaptureViewDescV1Size = 92u;
+inline constexpr uint32_t kGameProjectSceneCaptureMaximumViewCount = 64u;
+
+// 視点の印。KeepPrevious：このフレームはその視点を描き直さず、公開する像のその矩形に前のフレームの絵を残す（遠くの
+// 小さな画面を間引いて描く用）。前のフレームに同じ矩形の絵が無い時（作り直した直後・矩形が変わった時）は描く。
+// 矩形に何が写るかは呼び手が保つ（前のフレームと同じ視点を同じ矩形に置いた時だけ印を付ける）。
+enum class GameProjectSceneCaptureViewFlag : uint32_t {
+    None = 0u,
+    KeepPrevious = 1u << 0u,
+};
+inline constexpr uint32_t GameProjectSceneCaptureViewFlags(GameProjectSceneCaptureViewFlag flag) noexcept {
+    return static_cast<uint32_t>(flag);
+}
+inline constexpr uint32_t kGameProjectSceneCaptureKnownViewFlags =
+    GameProjectSceneCaptureViewFlags(GameProjectSceneCaptureViewFlag::KeepPrevious);
+
+struct GameProjectSceneCaptureViewDesc {
+    uint32_t structSize = kGameProjectSceneCaptureViewDescV1Size;
+    uint32_t version = kGameProjectSceneCaptureViewVersion;
+    uint32_t x = 0u;
+    uint32_t y = 0u;
+    uint32_t width = 0u;
+    uint32_t height = 0u;
+    GameProjectFloat3 eye{};
+    GameProjectFloat3 forward{0.0f, 0.0f, -1.0f};
+    GameProjectFloat3 up{0.0f, 1.0f, 0.0f};
+    float left = -1.0f;
+    float right = 1.0f;
+    float bottom = -1.0f;
+    float top = 1.0f;
+    float nearZ = 0.1f;
+    float farZ = 100.0f;
+    uint32_t orthographic = 0u;
+    uint32_t flags = 0u;   // GameProjectSceneCaptureViewFlag の組み合わせ
+};
+
+static_assert(std::is_standard_layout_v<GameProjectSceneCaptureViewDesc>);
+static_assert(std::is_trivially_copyable_v<GameProjectSceneCaptureViewDesc>);
+static_assert(sizeof(GameProjectSceneCaptureViewDesc) == kGameProjectSceneCaptureViewDescV1Size);
+static_assert(offsetof(GameProjectSceneCaptureViewDesc, eye) == 24u);
+static_assert(offsetof(GameProjectSceneCaptureViewDesc, left) == 60u);
 static_assert(std::is_standard_layout_v<GameProjectSceneCaptureHandle>);
 static_assert(std::is_trivially_copyable_v<GameProjectSceneCaptureHandle>);
 static_assert(sizeof(GameProjectSceneCaptureHandle) == 16u);

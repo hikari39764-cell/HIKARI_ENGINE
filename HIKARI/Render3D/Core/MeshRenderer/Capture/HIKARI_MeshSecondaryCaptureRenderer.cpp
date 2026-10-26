@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -9,6 +12,7 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
@@ -31,6 +35,9 @@ constexpr size_t kCaptureMaterialTextureLoadsPerFrame = 4u;
 constexpr size_t kCaptureClusterPageTaskCapacity = 131072u;
 constexpr size_t kCaptureVisibleRangeCapacity = 131072u;
 constexpr size_t kCaptureCandidateCommandCapacity = 131072u;
+// 画面捕捉は網目形状（メッシュシェーダー）で描き、従来の命令の流れはほぼ使わない（実測 0 件）。既定の 4096 だと
+// 槽ごとに約 458 MB を先に取り、捕捉を何枚も使う場面で顕存の予算を超えて DLSS が乱れるので、小さく取る。溢れたら記録する。
+constexpr size_t kCaptureTraditionalCommandCapacity = 1024u;
 
 enum class CaptureFailureStage : uint8_t {
     None,
@@ -171,7 +178,8 @@ bool EnsureCaptureResources(SecondaryMeshViewResources& resources, const GFX::Co
         kCaptureClusterPageTaskCapacity, kCaptureVisibleRangeCapacity, kCaptureCandidateCommandCapacity);
     resources.traditionalCommandStreamReady =
         resources.traditionalCommandStreamBuffer.Initialize(
-            device, GetStaticRootSignature(gMeshRendererState.pipelines), ROOT_PARAM::SurfaceGpuSceneControl, 4u) &&
+            device, GetStaticRootSignature(gMeshRendererState.pipelines), ROOT_PARAM::SurfaceGpuSceneControl, 4u,
+            kCaptureTraditionalCommandCapacity) &&
         resources.traditionalCommandStreamBuffer.InitializeSkinnedCommandStream(
             device, GetSkinnedRootSignature(gMeshRendererState.pipelines), ROOT_PARAM::SurfaceGpuSceneControl,
             ROOT_PARAM::JointPalette);
@@ -200,7 +208,23 @@ void FillCaptureFrame(SecondaryMeshViewFrameResources& frame, const Camera3D& ca
     const MATH::Vec3 position = camera.GetPosition();
     const MATH::Mat4 viewProj = camera.GetViewProj();
     FillCameraCB(viewProj, MATH::Inverse(viewProj), position, width, height, cameraData);
-    frame.view.BuildLocalLights(lighting, camera, width, height);
+    static const auto lightsTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures.ViewSetup.Lights");
+    {
+        const CPU_PROFILE::ScopedDynamicCpuTimer lightsScope(lightsTimer);
+        frame.view.BuildLocalLights(lighting, camera, width, height);
+    }
+    // 診断（環境変数 HIKARI_CAPTURE_TRACE）：視点の数と、光も貼り絵も入らなかった視点の数とクラスタの数を 600 視点ごとに出す。
+    static const bool trace = std::getenv("HIKARI_CAPTURE_TRACE") != nullptr;
+    if (trace) {
+        static uint32_t views = 0u, empty = 0u;
+        ++views;
+        empty += frame.view.localLightList.lightCount == 0u && frame.view.localLightList.decalCount == 0u ? 1u : 0u;
+        if (views % 600u == 0u) {
+            std::fprintf(stderr, "[MeshCapture] views=%u emptyLight=%u clusters=%u lights=%u sources=%u\n", views, empty,
+                         frame.view.localLightList.clusterCount, frame.view.localLightList.lightCount,
+                         frame.view.localLightList.sourceCount);
+        }
+    }
     FillLightCB(environment, frame.view.localLightList, RenderDebugView::None, frame.view.light,
                 gMeshRendererState.debugStats);
     FillShadowCB(environment, TIME::GetFrameContext().frameIndex, frame.view.shadow);
@@ -212,7 +236,7 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
                                  const SceneEnvironment& environment,
                                  const RENDER3D::LIGHTING::SceneLightingSet& lighting, uint32_t captureSlot,
                                  uint32_t screenWidth, uint32_t screenHeight, bool renderTransparent,
-                                 const MeshPassResources* captureResources) {
+                                 const MeshPassResources* captureResources, bool prepareFrame) {
     if (view.cameraFrame == nullptr || !view.cameraFrame->valid || captureSlot >= kSecondarySceneCaptureMaximumCount ||
         screenWidth == 0u || screenHeight == 0u || graphics.cmdList == nullptr) {
         ReportCaptureFailure(CaptureFailureStage::InvalidRequest);
@@ -232,8 +256,11 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
         ReportCaptureFailure(CaptureFailureStage::FrameResourcesUnavailable);
         return false;
     }
-    gMeshRendererState.materialResolver.BeginFrame(kCaptureMaterialTextureLoadsPerFrame);
-    gMeshRendererState.gpuMaterialRegistry.BeginFrame();
+    // 一枚に並べた視点の二つ目からは、フレームの準備（材質・関節・粒子・場景の上載せ）を最初の視点のものを使う。
+    if (prepareFrame) {
+        gMeshRendererState.materialResolver.BeginFrame(kCaptureMaterialTextureLoadsPerFrame);
+        gMeshRendererState.gpuMaterialRegistry.BeginFrame();
+    }
 
     SecondaryMeshViewFrameResources& captureFrame = resources.frames[graphics.frameIndex % GFX::kFrameResourceCount];
     if (!captureFrame.IsReady()) {
@@ -241,68 +268,97 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
         return false;
     }
     const Camera3D& camera = view.cameraFrame->camera;
+    static const auto setupTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures.ViewSetup");
+    std::optional<CPU_PROFILE::ScopedDynamicCpuTimer> setupScope;
+    setupScope.emplace(setupTimer);
     FillCaptureFrame(captureFrame, camera, environment, lighting, screenWidth, screenHeight);
-    if (!captureFrame.view.Publish(graphics)) {
+    const bool published = captureFrame.view.Publish(graphics);
+    setupScope.reset();
+    if (!published) {
         ReportCaptureFailure(CaptureFailureStage::FrameResourcesUnavailable);
         return false;
     }
 
     const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& sceneSource = gMeshRendererState.gpuDrivenSceneSource;
-    captureFrame.jointPaletteAddress =
-        RENDER3D::GPUDRIVEN::UploadGpuSceneJointPaletteSnapshot(graphics, sceneSource.meshShaderJointPalettes);
-    if (captureFrame.jointPaletteAddress == 0u) {
-        ReportCaptureFailure(CaptureFailureStage::FrameResourcesUnavailable);
-        return false;
-    }
-    const uintptr_t sourceIdentity = reinterpret_cast<uintptr_t>(&sceneSource);
-    SyncGpuDrivenSceneMaterialSources(graphics, sourceIdentity, sceneSource);
-    if (!resources.particlePass.PrepareFrame(graphics, renderTransparent ? view.particleFrameSource : nullptr,
-                                             gMeshRendererState.gpuMaterialRegistry)) {
-        ReportCaptureFailure(CaptureFailureStage::ParticlePreparationFailed);
-        return false;
-    }
-    if (!resources.worldSpritePass.PrepareFrame(graphics, view.worldSpriteFrameSource, camera)) {
-        HIKARI_LOG_WARN("[SecondarySceneCapture] World Sprite preparation failed; "
-                        "capture remains available without World Sprites.");
-    }
-    if (!resources.worldTextPass.PrepareFrame(graphics, renderTransparent ? view.worldTextFrameSource : nullptr,
-                                              camera.GetPosition())) {
-        HIKARI_LOG_WARN("[SecondarySceneCapture] World Text preparation failed; "
-                        "capture remains available without World Text.");
-    }
-    if (!CommitActiveMaterialDataFrame(graphics.cmdList)) {
-        ReportCaptureFailure(CaptureFailureStage::MaterialUploadFailed);
-        return false;
-    }
-
     RENDER3D::GPUDRIVEN::GpuDrivenLayer& layer = resources.gpuDrivenLayer;
-    layer.BeginFrame(&sceneSource);
-    RENDER3D::GPUDRIVEN::GpuDrivenSceneUploadDesc upload{};
-    upload.commandList = graphics.cmdList;
-    upload.residency = &resources.sceneResidency;
-    upload.frameIndex = graphics.frameIndex;
-    const std::span<const uint32_t> materialBindings =
-        gMeshRendererState.gpuMaterialRegistry.GetSourceBindings(sourceIdentity);
-    upload.materialSlotBySourceRecord = materialBindings.data();
-    upload.materialSourceRecordCount = materialBindings.size();
-    upload.materialBindingVersion = gMeshRendererState.gpuMaterialRegistry.GetBindingVersion(sourceIdentity);
-    const auto& uploadStats = layer.UploadSceneFrame(upload);
-    if (sceneSource.CountGpuSceneInstances() != 0u && !uploadStats.sceneResident) {
-        ReportCaptureFailure(CaptureFailureStage::SceneResidencyUnavailable);
-        return false;
+    // CPU の内訳（捕捉ごとの準備・視点ごとの選別の組み立て・視点ごとの描画）。
+    static const auto prepareTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures.Prepare");
+    static const auto buildTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures.Build");
+    static const auto executeTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures.Execute");
+    std::optional<CPU_PROFILE::ScopedDynamicCpuTimer> stageTimer;
+    stageTimer.emplace(prepareTimer);
+    static const auto jointsTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures.Prepare.Joints");
+    static const auto materialsTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures.Prepare.Materials");
+    static const auto passesTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures.Prepare.Passes");
+    static const auto uploadTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures.Prepare.Upload");
+    std::optional<CPU_PROFILE::ScopedDynamicCpuTimer> partTimer;
+    if (prepareFrame) {
+        partTimer.emplace(jointsTimer);
+        captureFrame.jointPaletteAddress =
+            RENDER3D::GPUDRIVEN::UploadGpuSceneJointPaletteSnapshot(graphics, sceneSource.meshShaderJointPalettes);
+        if (captureFrame.jointPaletteAddress == 0u) {
+            ReportCaptureFailure(CaptureFailureStage::FrameResourcesUnavailable);
+            return false;
+        }
+        const uintptr_t sourceIdentity = reinterpret_cast<uintptr_t>(&sceneSource);
+        partTimer.reset();
+        partTimer.emplace(materialsTimer);
+        SyncGpuDrivenSceneMaterialSources(graphics, sourceIdentity, sceneSource);
+        partTimer.reset();
+        partTimer.emplace(passesTimer);
+        if (!resources.particlePass.PrepareFrame(graphics, renderTransparent ? view.particleFrameSource : nullptr,
+                                                 gMeshRendererState.gpuMaterialRegistry)) {
+            ReportCaptureFailure(CaptureFailureStage::ParticlePreparationFailed);
+            return false;
+        }
+        if (!resources.worldSpritePass.PrepareFrame(graphics, view.worldSpriteFrameSource, camera)) {
+            HIKARI_LOG_WARN("[SecondarySceneCapture] World Sprite preparation failed; "
+                            "capture remains available without World Sprites.");
+        }
+        if (!resources.worldTextPass.PrepareFrame(graphics, renderTransparent ? view.worldTextFrameSource : nullptr,
+                                                  camera.GetPosition())) {
+            HIKARI_LOG_WARN("[SecondarySceneCapture] World Text preparation failed; "
+                            "capture remains available without World Text.");
+        }
+        partTimer.reset();
+        partTimer.emplace(materialsTimer);
+        if (!CommitActiveMaterialDataFrame(graphics.cmdList)) {
+            ReportCaptureFailure(CaptureFailureStage::MaterialUploadFailed);
+            return false;
+        }
+
+        partTimer.reset();
+        partTimer.emplace(uploadTimer);
+        layer.BeginFrame(&sceneSource);
+        RENDER3D::GPUDRIVEN::GpuDrivenSceneUploadDesc upload{};
+        upload.commandList = graphics.cmdList;
+        upload.residency = &resources.sceneResidency;
+        upload.frameIndex = graphics.frameIndex;
+        const std::span<const uint32_t> materialBindings =
+            gMeshRendererState.gpuMaterialRegistry.GetSourceBindings(sourceIdentity);
+        upload.materialSlotBySourceRecord = materialBindings.data();
+        upload.materialSourceRecordCount = materialBindings.size();
+        upload.materialBindingVersion = gMeshRendererState.gpuMaterialRegistry.GetBindingVersion(sourceIdentity);
+        const auto& uploadStats = layer.UploadSceneFrame(upload);
+        if (sceneSource.CountGpuSceneInstances() != 0u && !uploadStats.sceneResident) {
+            ReportCaptureFailure(CaptureFailureStage::SceneResidencyUnavailable);
+            return false;
+        }
+        RecordOceanSpectrumForWaterFrame(graphics, resources.waterSurfaceGpuFrameBuffer);
+
+        RENDER3D::GPUDRIVEN::GpuDrivenBackendAvailability availability{};
+        const auto& meshletStats = gMeshRendererState.meshletRenderBackend.GetStats();
+        availability.meshShaderForwardPipelineReady = meshletStats.forwardPipelineReady &&
+                                                      meshletStats.depthAwarePipelineReady &&
+                                                      meshletStats.transparentPipelineReady;
+        availability.meshShaderGeometryAuxPipelineReady = meshletStats.geometryAuxPipelineReady;
+        availability.traditionalIndirectPipelineReady =
+            resources.traditionalCommandStreamReady && AreTraditionalMeshPipelineInputsReady(gMeshRendererState.pipelines);
+        layer.SetBackendAvailability(availability);
     }
-    RecordOceanSpectrumForWaterFrame(graphics, resources.waterSurfaceGpuFrameBuffer);
 
-    RENDER3D::GPUDRIVEN::GpuDrivenBackendAvailability availability{};
-    const auto& meshletStats = gMeshRendererState.meshletRenderBackend.GetStats();
-    availability.meshShaderForwardPipelineReady = meshletStats.forwardPipelineReady &&
-                                                  meshletStats.depthAwarePipelineReady &&
-                                                  meshletStats.transparentPipelineReady;
-    availability.meshShaderGeometryAuxPipelineReady = meshletStats.geometryAuxPipelineReady;
-    availability.traditionalIndirectPipelineReady =
-        resources.traditionalCommandStreamReady && AreTraditionalMeshPipelineInputsReady(gMeshRendererState.pipelines);
-    layer.SetBackendAvailability(availability);
-
+    stageTimer.reset();
+    stageTimer.emplace(buildTimer);
     const MATH::Mat4 cullViewProj = captureFrame.view.camera.viewProj;
     RENDER3D::GPUDRIVEN::GpuDrivenFrame gpuDrivenFrame =
         RENDER3D::GPUDRIVEN::BuildGpuDrivenFrame(RENDER3D::GPUDRIVEN::BuildGpuDrivenFrameInput(sceneSource));
@@ -333,6 +389,8 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
     commandFrame.enableSurfaceFrustumCull = true;
     layer.BuildCommandFrame(commandFrame);
 
+    stageTimer.reset();
+    stageTimer.emplace(executeTimer);
     MeshFrameBindingOverrides overrides{};
     overrides.cameraAddress = captureFrame.view.Bindings().camera;
     overrides.cullingCameraAddress = overrides.cameraAddress;
@@ -352,6 +410,25 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
     const GeometryBackendExecutionResult opaque = ExecuteSecondaryViewGeometryBackendPlan(
         graphics, RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque, passResources, MeshDrawPassKind::Forward,
         RENDER3D::MESHLET::MeshletPipelineKind::ForwardOpaque, layer, overrides, true);
+    // 診断：画面捕捉の槽ごとに、初めて使った時・容量の 9 割を超えた時・溢れが増えた時だけ、命令の流れと面の場面の量を記録する。
+    {
+        static std::array<bool, kSecondarySceneCaptureMaximumCount> reported{}, nearFull{};
+        static std::array<size_t, kSecondarySceneCaptureMaximumCount> peakOverflow{};
+        const auto& commandStats = resources.traditionalCommandStreamBuffer.GetStats();
+        const auto& sceneStats = resources.surfaceGpuSceneBuffer.GetStats();
+        const size_t overflow = commandStats.overflowCommandCount + sceneStats.overflowInstanceCount;
+        const bool full = commandStats.requestedCommandCount * 10u > commandStats.capacity * 9u ||
+                          sceneStats.requestedInstanceCount * 10u > sceneStats.capacity * 9u;
+        if (!reported[captureSlot] || (full && !nearFull[captureSlot]) || overflow > peakOverflow[captureSlot]) {
+            reported[captureSlot] = true; nearFull[captureSlot] = nearFull[captureSlot] || full;
+            peakOverflow[captureSlot] = (std::max)(peakOverflow[captureSlot], overflow);
+            const std::string line = "[MeshCapture] slot=" + std::to_string(captureSlot) + " commands=" +
+                std::to_string(commandStats.requestedCommandCount) + "/" + std::to_string(commandStats.capacity) + " instances=" +
+                std::to_string(sceneStats.requestedInstanceCount) + "/" + std::to_string(sceneStats.capacity) + " overflow=" +
+                std::to_string(commandStats.overflowCommandCount) + "+" + std::to_string(sceneStats.overflowInstanceCount);
+            if (overflow > 0u || full) HIKARI_LOG_WARN(line); else HIKARI_LOG_INFO(line);
+        }
+    }
     const bool worldSpriteOpaqueOk = resources.worldSpritePass.ExecuteForwardOpaque(graphics, overrides.cameraAddress);
     bool transparentOk = true;
     if (renderTransparent) {

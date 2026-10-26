@@ -36,6 +36,8 @@ struct SceneCaptureRequest {
     const GAME_UI::GameUiFrameSource* uiFrame = nullptr;
     uint64_t contentRevision = 0;
     GameProjectSceneCaptureStyleDesc style{};
+    // 空でなければ、カメラ物体の代わりにこれらの視点で描く（SetViews。検査済み）。
+    std::vector<GameProjectSceneCaptureViewDesc> views{};
 
     bool IsEnabled() const noexcept {
         return (flags & GameProjectSceneCaptureFlags(GameProjectSceneCaptureFlag::Enabled)) != 0u;
@@ -207,6 +209,24 @@ public:
             return false;
         }
         state->request.style = style;
+        return true;
+    }
+
+    // 視点の矩形がキャプチャに収まる時だけ写す（count 0 で視点を外す）。
+    bool SetViews(GameProjectSceneCaptureHandle capture, const GameProjectSceneCaptureViewDesc* views,
+                  uint32_t count) {
+        CaptureState* state = Find(capture);
+        if (state == nullptr || state->request.uiCanvas) {
+            return false;
+        }
+        for (uint32_t index = 0u; index < count; ++index) {
+            const GameProjectSceneCaptureViewDesc& view = views[index];
+            if (uint64_t(view.x) + view.width > state->request.width ||
+                uint64_t(view.y) + view.height > state->request.height) {
+                return false;
+            }
+        }
+        state->request.views.assign(views, views + count);
         return true;
     }
 

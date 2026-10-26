@@ -2,11 +2,16 @@
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
+#include <unordered_map>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
@@ -240,6 +245,10 @@ bool TryPatchShadowSceneSources(ShadowRendererState& state,
 
     bool staticChanged = false;
     bool dynamicChanged = false;
+    bool layoutChanged = false;
+    // 書き換えた面の位置と新しい内容の要約。区画の版はこれで進める（同じ内容なら版は変わらない）。
+    uint64_t staticDigest = HASH::kFnv1a64OffsetBasis;
+    uint64_t dynamicDigest = HASH::kFnv1a64OffsetBasis;
     for (const auto& range : sourcePass.dirtyRanges) {
         const size_t end = static_cast<size_t>(range.firstInstance) + range.instanceCount;
         for (size_t i = range.firstInstance; i < end; ++i) {
@@ -250,23 +259,87 @@ bool TryPatchShadowSceneSources(ShadowRendererState& state,
                 location.staticCaster ? state.staticShadowPrimaryInstances : state.dynamicShadowPrimaryInstances;
             auto& materials = location.staticCaster ? state.staticShadowPrimaryMaterialSources
                                                     : state.dynamicShadowPrimaryMaterialSources;
-            const bool changed =
-                UpdateShadowPrimaryInstance((*sourcePass.instances)[i], materialAt(i), location.localIndex,
-                                            instances[location.localIndex], materials[location.localIndex]);
-            (location.staticCaster ? staticChanged : dynamicChanged) |= changed;
+            // 診断（HIKARI_SHADOW_TRACE）：並びが変わった面の、変わった項目と物体を数える。
+            static const bool traceLayout = std::getenv("HIKARI_SHADOW_TRACE") != nullptr;
+            const RENDER3D::RUNTIME::SurfaceGpuSceneInstance before =
+                traceLayout ? instances[location.localIndex] : RENDER3D::RUNTIME::SurfaceGpuSceneInstance{};
+            const ShadowPrimaryPatch patch =
+                PatchShadowPrimaryInstance((*sourcePass.instances)[i], materialAt(i), location.localIndex,
+                                           instances[location.localIndex], materials[location.localIndex]);
+            if (traceLayout && patch.layoutChanged) {
+                static std::unordered_map<std::string, uint64_t> layoutCounts;
+                static uint64_t layoutEvents = 0;
+                const auto& after = instances[location.localIndex];
+                const uint64_t object = (static_cast<uint64_t>(after.objectIdHigh) << 32) | after.objectIdLow;
+                const auto note = [&](const char* field, bool changed) {
+                    if (changed) ++layoutCounts[std::string(field) + "@" + std::to_string(object)];
+                };
+                note("record", before.sourceRecordIndex != after.sourceRecordIndex);
+                note("surface", before.sourceSurfaceInstanceIndex != after.sourceSurfaceInstanceIndex);
+                note("mesh", before.meshIndex != after.meshIndex || before.primitiveIndex != after.primitiveIndex);
+                note("node", before.nodeIndex != after.nodeIndex);
+                note("meshRes", before.meshResourceIndex != after.meshResourceIndex ||
+                                    before.meshResourceGeneration != after.meshResourceGeneration);
+                note("matRes", before.materialResourceIndex != after.materialResourceIndex ||
+                                   before.materialResourceGeneration != after.materialResourceGeneration);
+                note("cluster", before.clusterGeometryResourceIndex != after.clusterGeometryResourceIndex);
+                note("backend", before.geometryBackend != after.geometryBackend);
+                if (++layoutEvents % 400u == 0u) {
+                    std::vector<std::pair<std::string, uint64_t>> top(layoutCounts.begin(), layoutCounts.end());
+                    std::sort(top.begin(), top.end(), [](const auto& l, const auto& r) { return l.second > r.second; });
+                    std::fprintf(stderr, "[ShadowSource] layout changes (400):");
+                    for (size_t k = 0; k < top.size() && k < 12u; ++k)
+                        std::fprintf(stderr, " %s=%llu", top[k].first.c_str(), static_cast<unsigned long long>(top[k].second));
+                    std::fprintf(stderr, "\n");
+                    layoutCounts.clear();
+                }
+            }
+            if (patch.before != patch.after) {
+                uint64_t& digest = location.staticCaster ? staticDigest : dynamicDigest;
+                digest = AppendShadowHashValue(AppendShadowHashValue(digest, location.localIndex), patch.after);
+                (location.staticCaster ? staticChanged : dynamicChanged) = true;
+            }
+            layoutChanged = layoutChanged || patch.layoutChanged;
             ++state.debugStats.shadowSourceUpdatedInstanceCount;
         }
     }
-    const auto updateVersion = [&](RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& partition, bool changed) {
+    // 診断（HIKARI_SHADOW_TRACE）：影の元の更新の内訳を、影の描き手ごとに 240 回ごとに出す。
+    static const bool trace = std::getenv("HIKARI_SHADOW_TRACE") != nullptr;
+    if (trace) {
+        struct Tally { uint64_t calls = 0, dirty = 0, staticChanged = 0, dynamicChanged = 0; };
+        static std::unordered_map<const void*, Tally> tallies;
+        auto& tally = tallies[&state];
+        ++tally.calls;
+        for (const auto& range : sourcePass.dirtyRanges) tally.dirty += range.instanceCount;
+        tally.staticChanged += staticChanged ? 1u : 0u;
+        tally.dynamicChanged += dynamicChanged ? 1u : 0u;
+        if (tally.calls % 240u == 0u) {
+            std::fprintf(stderr, "[ShadowSource] state=%p patch dirty=%.1f/call staticChanged=%llu dynamicChanged=%llu of 240 static=%zu dynamic=%zu full=%zu reuse=%zu\n",
+                         static_cast<const void*>(&state), tally.dirty / 240.0, static_cast<unsigned long long>(tally.staticChanged),
+                         static_cast<unsigned long long>(tally.dynamicChanged), state.staticShadowPrimaryInstances.size(),
+                         state.dynamicShadowPrimaryInstances.size(), state.debugStats.shadowSourceFullSyncCount,
+                         state.debugStats.shadowSourceReuseCount);
+            tally = {};
+        }
+    }
+    static const auto hashTimer = CPU_PROFILE::RegisterDynamicPass("ShadowSource.Hash");
+    // 並びが変わらなければ、書き換えた分の要約で版だけ進める（区画の全部の面を毎フレーム二度ハッシュしていた）。
+    // 版は「中身が変わったら変わる」印として比べるだけなので、全部を数え直した値と一致しなくてよい。
+    const auto updateVersion = [&](RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& partition, bool changed, uint64_t digest) {
         if (!changed)
             return;
+        const CPU_PROFILE::ScopedDynamicCpuTimer hashScope(hashTimer);
         const auto& pass = partition.GetPass(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow);
-        partition.layoutVersion = BuildShadowSourceLayoutHash(pass);
-        partition.sourceVersion = BuildShadowSourceContentHash(pass);
+        if (layoutChanged) {
+            partition.layoutVersion = BuildShadowSourceLayoutHash(pass);
+            partition.sourceVersion = BuildShadowSourceContentHash(pass);
+        } else {
+            partition.sourceVersion = AppendShadowHashValue(partition.sourceVersion, digest);
+        }
         partition.dirtyBaseSourceVersion = 0u;
     };
-    updateVersion(state.staticShadowSceneSource, staticChanged);
-    updateVersion(state.dynamicShadowSceneSource, dynamicChanged);
+    updateVersion(state.staticShadowSceneSource, staticChanged, staticDigest);
+    updateVersion(state.dynamicShadowSceneSource, dynamicChanged, dynamicDigest);
     ++state.debugStats.shadowSourcePatchCount;
     return true;
 }
@@ -299,6 +372,8 @@ bool BuildShadowGpuDrivenSceneSources(ShadowRendererState& state) {
         return PublishShadowSceneSources(state, *sourcePass);
 
     ++state.debugStats.shadowSourceFullSyncCount;
+    static const auto fullTimer = CPU_PROFILE::RegisterDynamicPass("ShadowSource.Full");
+    const CPU_PROFILE::ScopedDynamicCpuTimer fullScope(fullTimer);
     state.shadowPrimaryLocations.assign(sourcePass->instances != nullptr ? sourcePass->instances->size() : 0u, {});
     state.shadowSceneSource.Reset();
     state.staticShadowSceneSource.Reset();

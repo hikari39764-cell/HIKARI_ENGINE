@@ -171,13 +171,14 @@ RENDER3D::SurfaceLightingBindings ResolveSurfaceLightingBindings() {
 bool ExecuteParticleForwardTransparent(RENDER3D::PARTICLES::ParticleGpuDrivenPass& particlePass,
                                        const GFX::Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
                                        const MATH::Vec3& cameraPosition, const MeshPassResources& passResources) {
-    if (!particlePass.HasDrawWork(passResources.particlePostProcessMode)) {
+    if (!particlePass.HasDrawWork(passResources.particlePostProcessMode, passResources.particleDistortionMask)) {
         return true;
     }
     const MeshFrameResources& frame = GetActiveMeshFrameResources();
     RENDER3D::PARTICLES::ParticleGpuDrivenDrawBindings bindings{};
     bindings.camera = cameraAddress;
     bindings.postProcessMode = passResources.particlePostProcessMode;
+    bindings.distortionMask = passResources.particleDistortionMask;
     static_cast<RENDER3D::SurfaceLightingBindings&>(bindings) = ResolveSurfaceLightingBindings();
     bindings.materialData = frame.materialDataBuffer != nullptr ? frame.materialDataBuffer->GetGPUVirtualAddress() : 0u;
     bindings.materialParameters = frame.materialProgramParameterBuffer != nullptr
@@ -411,6 +412,17 @@ bool RenderPreservedVfxPass(const GFX::Context& graphics, const MeshPassResource
                                                      resources);
 }
 
+bool HasVfxDistortionWork() { return gMeshRendererState.particlePass.HasDrawWork(std::nullopt, true); }
+
+bool RenderVfxDistortionMaskPass(const GFX::Context& graphics, const MeshPassResources& passResources,
+                                 RENDER3D::RenderTextureView& outMask, D3D12_CPU_DESCRIPTOR_HANDLE& outMaskSrvCpu) {
+    auto resources = passResources;
+    resources.particleDistortionMask = true;
+    return ExecutePreparedParticleForwardTransparent(graphics, GetActiveMeshFrameResources().view.Bindings().camera,
+                                                     resources) &&
+           gMeshRendererState.particlePass.GetDistortionMask(outMask, outMaskSrvCpu);
+}
+
 bool HasDepthAwarePassWork() {
     return HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware);
 }
@@ -418,7 +430,8 @@ bool HasDepthAwarePassWork() {
 bool HasForwardTransparentPassWork() {
     return HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardTransparent) ||
            gMeshRendererState.worldSpritePass.HasTransparentWork() ||
-           gMeshRendererState.worldTextPass.HasTransparentWork() || gMeshRendererState.particlePass.HasDrawWork();
+           gMeshRendererState.worldTextPass.HasTransparentWork() || gMeshRendererState.particlePass.HasDrawWork() ||
+           gMeshRendererState.particlePass.HasDrawWork(std::nullopt, true);
 }
 
 bool RenderDepthAwarePass(const GFX::Context& graphics, const MeshPassResources& passResources) {

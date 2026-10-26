@@ -2,6 +2,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "HIKARI/Project/SceneCaptureTypes.h"
+#include <vector>
 
 namespace HIKARI {
 class RenderTarget2D;
@@ -19,8 +20,10 @@ struct SceneCaptureStyleDepth {
 };
 
 // 入力は前露出 HDR、出力はスクリーンの Unlit 材質が読む表示参照の線形色。
+// rects を渡すと出力を消さず、その矩形の中だけを描く（残りは前のフレームの絵のまま）。空なら何も描かない。
 bool DrawSceneCaptureStyle(const GFX::Context& graphics, const RenderTarget2D& input, RenderTarget2D& output,
-                           const GameProjectSceneCaptureStyleDesc& style, const SceneCaptureStyleDepth& depth = {});
+                           const GameProjectSceneCaptureStyleDesc& style, const SceneCaptureStyleDepth& depth = {},
+                           const std::vector<D3D12_RECT>* rects = nullptr);
 void ResetSceneCaptureStylePass() noexcept;
 
 } // namespace HIKARI::RENDER3D

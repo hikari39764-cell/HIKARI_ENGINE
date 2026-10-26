@@ -1,4 +1,5 @@
 #include "Audio/HIKARI_Audio.h"
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Core/HIKARI_StartupTimer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
@@ -40,7 +41,9 @@
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
+#include "Scene/Sequencer/Drivers/HIKARI_ObjectTrackDriver.h"
 #include "Scene/Sequencer/Drivers/HIKARI_PresentationCueDriver.h"
+#include "Scene/Sequencer/Drivers/HIKARI_SequenceTextPresenter.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 #include "Scene/Components/Lighting/HIKARI_LightSettings.h"
 #include "Vfx/Post/HIKARI_ActionPostProfile.h"
@@ -188,6 +191,9 @@ void SubmitFrozenCullingCameraDebugFrustum() {
 DocumentSceneBase::DocumentSceneBase(std::string sceneId) : state_(std::make_unique<DocumentSceneState>()) {
     state_->identity.sceneId = std::move(sceneId);
 
+    // 物体轨を先に動かす（镜头が動く物体に結ばれていても同じフレームで追う）。
+    (void)state_->camera.sequencePlayback.RegisterDriver(
+        std::make_unique<SEQUENCER::ObjectTrackDriver>(state_->runtime.world));
     (void)state_->camera.sequencePlayback.RegisterDriver(std::make_unique<SEQUENCER::CameraSequenceTrackDriver>(
         state_->camera.director, state_->runtime.world, state_->camera.editorCamera, &state_->camera.presentation));
     (void)state_->camera.sequencePlayback.RegisterDriver(
@@ -381,6 +387,7 @@ void DocumentSceneBase::Update(float dt) {
     if (state_->runtime.playActive) {
         if (IsRuntimeFeatureActive(RuntimeFeatureIds::Cinematics)) {
             state_->camera.sequencePlayback.Update(dt, frame.paused ? 0.0f : frame.unscaledDt);
+            SEQUENCER::SubmitSequenceTexts(state_->camera.sequencePlayback, state_->runtime.gameUiPresentationService);
         }
         state_->camera.resolvedFrame = state_->camera.director.Resolve(
             state_->runtime.world, state_->camera.gameplayCamera, state_->camera.editorCamera.GetAspect(), dt);
@@ -394,6 +401,8 @@ void DocumentSceneBase::Update(float dt) {
         AUDIO::UpdateCameraListener(
             {{position.x, position.y, position.z}, {forward.x, forward.y, forward.z}, {up.x, up.y, up.z}});
     } else if (state_->camera.sequencePreview.IsValid()) {
+        // 演出ワークスペースのプレビューの文字段（時刻はワークスペースが前のフレームで動かした位置）。
+        SEQUENCER::SubmitSequenceTexts(state_->camera.sequencePlayback, state_->runtime.gameUiPresentationService);
         state_->camera.resolvedFrame = state_->camera.director.Resolve(
             state_->runtime.world, state_->camera.sequencePreviewSnapshot, state_->camera.editorCamera.GetAspect(), dt);
         state_->camera.editorCamera = state_->camera.resolvedFrame.camera;
@@ -427,7 +436,11 @@ void DocumentSceneBase::Render() {
         state_->runtime.materialProjectionSourceSnapshot.reset();
         state_->runtime.materialExternalValueSnapshot.reset();
     }
-    SCENE_CAPTURE::ApplyPublishedMaterialBinding(state_->runtime.world, state_->runtime.sceneCaptureService);
+    {
+        static const auto timer = CPU_PROFILE::RegisterDynamicPass("Scene.CaptureBindings");
+        const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+        SCENE_CAPTURE::ApplyPublishedMaterialBinding(state_->runtime.world, state_->runtime.sceneCaptureService);
+    }
     int captureW = 0;
     int captureH = 0;
     POST::PostSystem::GetSceneCaptureSize(captureW, captureH);
@@ -525,15 +538,23 @@ void DocumentSceneBase::Render() {
     const FrameContext& frame = HIKARI::TIME::GetFrameContext();
     RenderSubmissionSystem::SetAssetContext(&state_->assets.Registry(), state_->assets.Database().GetProjectRoot(),
                                             &state_->assets.Models());
-    state_->runtime.systemScheduler.PreRender(state_->runtime.world, frame);
-    state_->runtime.systemScheduler.Render(state_->runtime.world, frame);
-    state_->runtime.systemScheduler.PostRender(state_->runtime.world, frame);
+    {
+        static const auto timer = CPU_PROFILE::RegisterDynamicPass("Scene.SystemsRender");
+        const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+        state_->runtime.systemScheduler.PreRender(state_->runtime.world, frame);
+        state_->runtime.systemScheduler.Render(state_->runtime.world, frame);
+        state_->runtime.systemScheduler.PostRender(state_->runtime.world, frame);
+    }
+    static const auto lightingTimer = CPU_PROFILE::RegisterDynamicPass("Scene.LightingSet");
+    std::optional<CPU_PROFILE::ScopedDynamicCpuTimer> lightingScope;
+    lightingScope.emplace(lightingTimer);
     const auto localFogVolumes = state_->runtime.localFogService.PrepareFrame(
         state_->runtime.world, frame.frameIndex, &state_->identity.document, state_->identity.documentRevision);
     SceneEnvironment activeEnvironment = state_->lighting.environment;
     RENDER3D::LIGHTING::SceneLightingSet sceneLighting =
         LIGHTING_AUTHORING::BuildRuntimeSceneLightingSet(state_->identity.document, state_->runtime.world);
     state_->assets.LocalTextures().Resolve(state_->assets.Database(), state_->assets.Registry(), sceneLighting);
+    lightingScope.reset();
     // VFX の光源出力はそのフレーム限りの一時光源。照明セットを組んだ
     // 直後に足し、方向光の解決より前に確定させる。
     if (const auto* vfxPlayback = state_->runtime.world.Services().Find<VFX::VfxPlaybackService>()) {
@@ -595,10 +616,14 @@ void DocumentSceneBase::Render() {
                 renderCamera.GetAspect(), renderCamera.GetPosition());
         }
         RENDER3D::RenderViewContext primaryView{};
-        primaryView.screenReadability =
-            SCENE_CAPTURE::CollectScreenReadability(state_->runtime.world, state_->runtime.sceneCaptureService);
-        primaryView.sceneCaptureSurfaces =
-            SCENE_CAPTURE::CollectScreenReadability(state_->runtime.world, state_->runtime.sceneCaptureService, false);
+        {
+            static const auto timer = CPU_PROFILE::RegisterDynamicPass("Scene.ScreenReadability");
+            const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+            primaryView.screenReadability =
+                SCENE_CAPTURE::CollectScreenReadability(state_->runtime.world, state_->runtime.sceneCaptureService);
+            primaryView.sceneCaptureSurfaces = SCENE_CAPTURE::CollectScreenReadability(
+                state_->runtime.world, state_->runtime.sceneCaptureService, false);
+        }
         primaryView.viewId = RENDER3D::kPrimaryRenderViewId;
         primaryView.purpose =
             state_->runtime.playActive ? RENDER3D::RenderViewPurpose::Game : RENDER3D::RenderViewPurpose::EditorScene;
@@ -664,8 +689,12 @@ void DocumentSceneBase::Render() {
         SCENE_CAPTURE::RenderSecondaryCapture(*state_, graphics, activeEnvironment, sceneLighting, frame,
                                               primaryView.particleFrameSource, primaryView.worldSpriteFrameSource,
                                               primaryView.worldTextFrameSource);
+        static const auto mainViewTimer = CPU_PROFILE::RegisterDynamicPass("Render.MainView");
+        std::optional<CPU_PROFILE::ScopedDynamicCpuTimer> mainViewScope;
+        mainViewScope.emplace(mainViewTimer);
         const MESHRENDERER::MeshRendererFrameResult modelFrame = MODELRENDERER::RenderAll(
             graphics, primaryView, activeEnvironment, sceneLighting, state_->editor.viewportDebugViewState.renderView);
+        mainViewScope.reset();
         if (modelFrame.CanAcknowledgeMassRenderPublication()) {
             RenderSubmissionSystem::AcknowledgeMassRenderFrame(state_->runtime.world, frame);
         }
@@ -678,6 +707,8 @@ void DocumentSceneBase::Render() {
         RENDERER3D::DEBUG::RenderAll(renderCamera, static_cast<float>(captureW), static_cast<float>(captureH));
     }
 #if defined(HIKARI_WITH_EDITOR)
+    static const auto editorViewTimer = CPU_PROFILE::RegisterDynamicPass("Render.EditorViews");
+    const CPU_PROFILE::ScopedDynamicCpuTimer editorViewScope(editorViewTimer);
     (void)RENDER3D::EDITORVIEW::RenderPending(
         activeEnvironment, sceneLighting, state_->identity.documentRevision, state_->assets.Models(),
         state_->lighting.sky, &state_->assets.Registry(), state_->runtime.materialExternalValueSnapshot.get(),

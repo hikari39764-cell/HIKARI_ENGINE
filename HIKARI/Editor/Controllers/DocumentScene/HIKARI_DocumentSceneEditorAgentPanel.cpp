@@ -201,6 +201,20 @@ std::string FormatRemaining(int64_t resetsAt) {
     return text;
 }
 
+// 一轮の途中の経過。長く考えている間も止まっていないと分かるよう、考えた量と経過時間を出す。
+void DrawRunningLine(const EDITOR::AGENT::AgentSession& session) {
+    const int seconds = static_cast<int>(session.BusySeconds());
+    char elapsed[32]{};
+    std::snprintf(elapsed, sizeof(elapsed), "%d:%02d", seconds / 60, seconds % 60);
+    if (const uint64_t thinking = session.ThinkingTokens(); thinking > 0u)
+        ImGui::TextDisabled("%s %s token · %s", TEXT::Localize("agent.thinking").c_str(),
+                            FormatTokens(thinking).c_str(), elapsed);
+    else
+        ImGui::TextDisabled("%s %s", TEXT::Localize("agent.running").c_str(), elapsed);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", TEXT::Localize("agent.runningHint").c_str());
+}
+
 void DrawAgentEvent(const EDITOR::AGENT::AgentEvent& event) {
     using Kind = EDITOR::AGENT::AgentEvent::Kind;
     switch (event.kind) {
@@ -623,7 +637,7 @@ void DocumentSceneEditorController::DrawAgentPanel(DocumentSceneBase& scene) {
     for (const EDITOR::AGENT::AgentEvent& event : panel.session.Events())
         DrawAgentEvent(event);
     if (panel.turnActive)
-        ImGui::TextDisabled("%s", TEXT::Localize("agent.running").c_str());
+        DrawRunningLine(panel.session);
     if (panel.turnActive && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 4.0f)
         ImGui::SetScrollHereY(1.0f);
     if (!panel.operations.empty() && ImGui::CollapsingHeader(TEXT::Localize("agent.operations").c_str())) {

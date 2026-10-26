@@ -51,7 +51,9 @@ bool NewerVersion(const std::string& lhs, const std::string& rhs) {
 }
 
 // Claude 桌面版は claude-code\<版本>\<识别码>\claude.exe に同梱する。桌面版は MSIX 包なので、包の外（编辑器）からは
-// %APPDATA% ではなく %LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code に見える。最も新しい版を使う。
+// %APPDATA% ではなく %LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code に見える。
+// 新しい桌面版は利用者データを包の外の %LOCALAPPDATA%\Claude-Data\claude_<包ID>\claude-code へ移す（旧い所には
+// .user-data-left の印だけが残る）。どの置き場でも最も新しい版を使う。
 std::filesystem::path FindBundledClaude() {
     std::vector<std::filesystem::path> roots{AgentEnvironmentPath(L"APPDATA") / "Claude" / "claude-code"};
     std::error_code error;
@@ -59,6 +61,12 @@ std::filesystem::path FindBundledClaude() {
          std::filesystem::directory_iterator(AgentEnvironmentPath(L"LOCALAPPDATA") / "Packages", error))
         if (TEXT::PathToUtf8(package.path().filename()).starts_with("Claude_"))
             roots.push_back(package.path() / "LocalCache" / "Roaming" / "Claude" / "claude-code");
+    for (const auto& data :
+         std::filesystem::directory_iterator(AgentEnvironmentPath(L"LOCALAPPDATA") / "Claude-Data", error)) {
+        const std::string name = TEXT::PathToUtf8(data.path().filename());
+        if (name.starts_with("claude_") || name.starts_with("Claude_"))
+            roots.push_back(data.path() / "claude-code");
+    }
     std::filesystem::path best;
     std::string bestVersion;
     for (const std::filesystem::path& root : roots) {
@@ -384,6 +392,7 @@ bool AgentSession::WriteLine(const nlohmann::json& message) {
 }
 
 void AgentSession::AddEvent(AgentEvent event) {
+    thinkingTokens_ = 0;
     if (events_.size() < kMaximumEvents)
         events_.push_back(std::move(event));
 }
@@ -434,8 +443,15 @@ void AgentSession::ResolveApproval(uint64_t id, AgentToolDecision decision) {
         protocol_->Respond(*this, approval, decision != AgentToolDecision::Deny, {});
 }
 
+double AgentSession::BusySeconds() const noexcept {
+    return busy_ ? std::chrono::duration<double>(std::chrono::steady_clock::now() - busySince_).count() : 0.0;
+}
+
 void AgentSession::SetBusy(bool busy) {
+    if (busy && !busy_)
+        busySince_ = std::chrono::steady_clock::now();
     busy_ = busy;
+    thinkingTokens_ = 0;
     if (!busy) {
         turnGrants_.clear();
         approvals_.clear();

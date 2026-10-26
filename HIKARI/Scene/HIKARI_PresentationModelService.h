@@ -32,6 +32,8 @@ struct PresentationModelSubmission {
     bool visible = true;
     bool castShadow = true;
     bool receiveShadow = true;
+    // 出し直さなくても残す（Remove まで）。
+    bool retain = false;
 };
 
 struct PresentationModelRecord {
@@ -53,6 +55,9 @@ struct PresentationModelRecord {
     bool castShadow = true;
     bool receiveShadow = true;
     MaterialFxParameterSet materialFx{};
+    bool retain = false;
+    // 中身（提出の内容と materialFx）が変わるたびに進む版。描画への写しが変わっていない記録を作り直さないのに使う。
+    uint64_t payloadRevision = 1u;
 };
 
 // World-owned render-only model submissions. These records never become
@@ -140,6 +145,7 @@ private:
                 return true;
             }
             record->materialFx = std::move(next);
+            ++record->payloadRevision;
             NUMERIC::AdvanceNonZero(revision_);
             return true;
         } catch (...) {
@@ -154,6 +160,8 @@ private:
     std::vector<uint64_t> removedRenderObjectIds_{};
     std::unordered_set<uint64_t> removedRenderObjectIdSet_{};
     uint64_t nextRenderObjectId_ = 0xA000000000000001ull;
+    // 割り当ての番号が一周したか。一周するまでは、割り当てる番号はどの記録の番号より大きく、記録と重ならない。
+    bool renderObjectIdsWrapped_ = false;
     uint64_t revision_ = 1u;
 };
 

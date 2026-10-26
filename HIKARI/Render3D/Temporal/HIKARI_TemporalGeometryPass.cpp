@@ -269,7 +269,7 @@ bool ExecuteTemporalGeometryPass(const GFX::Context& graphics, const TemporalInp
 
     std::vector<MESHRENDERER::TemporalVelocityDraw> draws;
     if (!MESHRENDERER::GatherTemporalVelocityDraws(graphics, draws, DETAIL::kTemporalMaximumGeometryDrawCount,
-                                                   DETAIL::kTemporalMaximumSkinnedDrawCount)) {
+                                                   DETAIL::kTemporalMaximumSkinnedDrawCount, &inputs.frame.camera.viewProj)) {
         return false;
     }
     if (draws.size() > static_cast<size_t>(DETAIL::kTemporalMaximumGeometryDrawCount)) {
@@ -322,13 +322,15 @@ bool ExecuteTemporalGeometryPass(const GFX::Context& graphics, const TemporalInp
     if (inputs.frame.resetHistory) {
         DETAIL::ClearTemporalGeometryHistory(*temporalState);
     }
+    // 動く物が無いフレームでも先に作っておく（止まった画面から初めて物が動いたフレームで、PSO の生成に 20 ms ほど
+    // 止まらないように。作るのは一度だけ）。
+    if (!EnsurePipeline(graphics)) {
+        return false;
+    }
     if (draws.empty()) {
         DETAIL::ClearTemporalGeometryHistory(*temporalState);
         invalidateShellHistory();
         return true;
-    }
-    if (!EnsurePipeline(graphics)) {
-        return false;
     }
 
     const UINT geometryStride = GFX::AlignD3D12ConstantBufferByteSize(sizeof(GeometryConstants));

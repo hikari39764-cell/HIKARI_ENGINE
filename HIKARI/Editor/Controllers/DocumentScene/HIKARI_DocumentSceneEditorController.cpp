@@ -633,6 +633,10 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
     }
 
     DrawWorkspaceContent(scene, playSession);
+    // 場景以外の工作区（項目の工作区・地形など）の視口で動かした分も、離した時に一つの撤销として記録する。
+    // 場景の工作区は ProcessSceneAuthoringRequests で先に記録済み。ここで拾わないと次のドラッグで上書きされて消える。
+    if (auto history = viewportTransformHistory_.ConsumeHistoryRequest())
+        CommitSceneObjectAuthoringHistory(scene, std::move(*history));
     // 診断窓は全工作区で共通。ドックを描いた後に復帰し、通常フレームではフォーカスを奪わない。
     if (context_.windows.runtime.showPerformanceAudit) {
         performanceAuditPanel_.Draw(context_.windows.runtime.showPerformanceAudit,

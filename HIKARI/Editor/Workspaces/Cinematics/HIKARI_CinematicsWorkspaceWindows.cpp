@@ -63,6 +63,7 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(DocumentSceneBase&
         ResetEditing(scene);
     auto& document = sequenceDocumentController_.GetDocument();
     bool enabled = !scene.IsRuntimePlayActive();
+    activeSceneObject_ = context.selection.GetActiveObjectId();
     if (ImGui::Begin(TEXT::LocalizeWindow("cine.assetsShots", "Cinematics/Resources").c_str(), nullptr,
                      ImGuiWindowFlags_NoCollapse)) {
         auto toolbar =

@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
+#include <vector>
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
@@ -51,6 +53,17 @@ struct ModelRendererDebugStats {
     ModelRendererCacheStats cache{};
 };
 
+// 一枚のキャプチャに並べて描く視点の一つ：そのカメラで、像の texel の矩形だけへ描く。
+struct SecondarySceneCaptureSubView {
+    Camera3D camera{};
+    uint32_t x = 0u;
+    uint32_t y = 0u;
+    uint32_t width = 0u;
+    uint32_t height = 0u;
+    // 描き直さず前のフレームの絵を残してよい（KeepPrevious）。前の絵が無ければ描く。
+    bool keepPrevious = false;
+};
+
 struct SecondarySceneCaptureOutput {
     RENDER3D::TextureResourceHandle texture{};
     uint32_t width = 0u;
@@ -75,14 +88,15 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
                                  const SceneEnvironment& environment,
                                  const RENDER3D::LIGHTING::SceneLightingSet& lighting, uint32_t captureSlot,
                                  uint32_t width, uint32_t height, bool renderTransparent,
-                                 RenderTarget2D* target = nullptr);
+                                 RenderTarget2D* target = nullptr, bool prepareFrame = true);
 bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDER3D::RenderViewContext& view,
                                        const SceneEnvironment& environment,
                                        const RENDER3D::LIGHTING::SceneLightingSet& lighting, ModelManager& modelManager,
                                        SkyManager& skyManager, uint64_t worldIdentity, uint32_t captureSlot,
                                        uint32_t width, uint32_t height, bool renderSky, bool renderTransparent,
                                        const GameProjectSceneCaptureStyleDesc& style,
-                                       SecondarySceneCaptureOutput& outOutput);
+                                       SecondarySceneCaptureOutput& outOutput,
+                                       const std::vector<SecondarySceneCaptureSubView>* subViews = nullptr);
 void ResetSecondarySceneCaptureTarget(uint32_t captureSlot) noexcept;
 void ResetSecondarySceneCaptureTarget() noexcept;
 const ModelRendererDebugStats& GetDebugStats();

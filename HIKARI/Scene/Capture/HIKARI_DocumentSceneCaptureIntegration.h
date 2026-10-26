@@ -119,6 +119,21 @@ inline void ApplyPublishedMaterialBinding(World& world, SceneCaptureService& ser
     for (SceneCaptureMaterialBinding& binding : service.Bindings()) {
         const RENDER3D::TextureResourceHandle texture = service.OutputTexture(binding.capture);
         if (!texture || !RENDER3D::IsTextureResourceValid(texture)) {
+            // 描画先がまだ無い間（作りたて・大きさを変えて作り直し中の捕捉へ結び直した時）は、貼っている材質を外さず、
+            // 古い描画先を参照しない黒い面にして待つ。外して貼り直すと材質が作り直しになり、GPU の場景が組み直しになる。
+            GameObject* holder = binding.applied ? world.FindObject(binding.modelObject) : nullptr;
+            ModelComponent* holderModel = holder != nullptr ? holder->GetComponent<ModelComponent>() : nullptr;
+            Material* held = holderModel != nullptr && binding.resolvedMaterialIndex != kGameProjectInvalidMaterialIndex
+                                 ? holderModel->GetRuntimeMaterialOverride(binding.resolvedMaterialIndex)
+                                 : nullptr;
+            if (held != nullptr && held == binding.appliedMaterial) {
+                if (binding.appliedTexture) {
+                    held->SetTextureSlot(MaterialTextureUsage::BaseColor, RuntimeTextureSlot{});
+                    held->SetBaseColor({0.0f, 0.0f, 0.0f, 1.0f});
+                    binding.appliedTexture = {};
+                }
+                continue;
+            }
             ClearMaterialBinding(world, binding);
             binding.resolvedMaterialIndex = kGameProjectInvalidMaterialIndex;
             binding.appliedTexture = {};
@@ -166,6 +181,8 @@ inline void ApplyPublishedMaterialBinding(World& world, SceneCaptureService& ser
         if (ownsAppliedMaterial && appliedMaterial != nullptr) {
             appliedMaterial->SetTextureSlot(MaterialTextureUsage::BaseColor, std::move(textureSlot));
             appliedMaterial->SetMaterialAlphaMode(alphaMode);
+            // 描画先を待つ間に黒くしていた面を戻す。
+            appliedMaterial->SetBaseColor({1.0f, 1.0f, 1.0f, 1.0f});
         } else {
             auto runtimeMaterial = std::make_unique<Material>();
             runtimeMaterial->SetShaderProfileId("PBR");
@@ -235,9 +252,34 @@ inline void RenderSecondaryCapture(DocumentSceneState& state, const GFX::Context
         }
         GameObject* cameraObject = state.runtime.world.FindObject(request.cameraObject);
         Camera3D camera{};
-        if (cameraObject == nullptr || !state.camera.director.TryResolveCameraObject(
-                                           state.runtime.world, cameraObject->GetDocumentId(),
-                                           static_cast<float>(width) / static_cast<float>(height), camera)) {
+        // 並べた視点（SetViews）：視点ごとのカメラで描く。カメラ物体は作成と更新の判定にだけ使う。はみ出す視点は描かない。
+        std::vector<MODELRENDERER::SecondarySceneCaptureSubView> subViews{};
+        if (!request.views.empty()) {
+            subViews.reserve(request.views.size());
+            for (const GameProjectSceneCaptureViewDesc& desc : request.views) {
+                if (uint64_t(desc.x) + desc.width > width || uint64_t(desc.y) + desc.height > height) {
+                    continue;
+                }
+                MODELRENDERER::SecondarySceneCaptureSubView sub{};
+                const MATH::Vec3 eye{desc.eye.x, desc.eye.y, desc.eye.z};
+                sub.camera.SetLookAt(eye, {eye.x + desc.forward.x, eye.y + desc.forward.y, eye.z + desc.forward.z},
+                                     {desc.up.x, desc.up.y, desc.up.z});
+                sub.camera.SetOffCenter(desc.left, desc.right, desc.bottom, desc.top, desc.nearZ, desc.farZ,
+                                        desc.orthographic != 0u);
+                sub.x = desc.x;
+                sub.y = desc.y;
+                sub.width = desc.width;
+                sub.height = desc.height;
+                sub.keepPrevious =
+                    (desc.flags & GameProjectSceneCaptureViewFlags(GameProjectSceneCaptureViewFlag::KeepPrevious)) != 0u;
+                subViews.push_back(sub);
+            }
+        }
+        if (!subViews.empty()) {
+            camera = subViews.front().camera;
+        } else if (cameraObject == nullptr || !state.camera.director.TryResolveCameraObject(
+                                                  state.runtime.world, cameraObject->GetDocumentId(),
+                                                  static_cast<float>(width) / static_cast<float>(height), camera)) {
             service.PublishFailure(request.handle, GameProjectSceneCaptureFailure::InvalidCamera);
             continue;
         }
@@ -246,7 +288,7 @@ inline void RenderSecondaryCapture(DocumentSceneState& state, const GFX::Context
         (void)service.TryGetSnapshot(request.handle, previous);
         RENDER3D::ResolvedCameraFrame captureCamera{};
         captureCamera.camera = camera;
-        captureCamera.sourceCameraObjectId = cameraObject->GetDocumentId().value;
+        captureCamera.sourceCameraObjectId = cameraObject != nullptr ? cameraObject->GetDocumentId().value : 0u;
         captureCamera.revision = previous.outputRevision + 1u;
         captureCamera.cameraCut = previous.outputRevision == 0u;
         captureCamera.projectionChanged = captureCamera.cameraCut;
@@ -271,7 +313,8 @@ inline void RenderSecondaryCapture(DocumentSceneState& state, const GFX::Context
         if (!MODELRENDERER::RenderSecondarySceneCaptureTarget(
                 graphics, view, environment, lighting, state.assets.Models(), state.lighting.sky,
                 state.runtime.world.GetRuntimeIdentity(), request.renderSlot, width, height,
-                (request.flags & renderSkyFlag) != 0u, renderTransparent, request.style, output) ||
+                (request.flags & renderSkyFlag) != 0u, renderTransparent, request.style, output,
+                request.views.empty() ? nullptr : &subViews) ||
             !output.ready) {
             service.PublishFailure(request.handle, GameProjectSceneCaptureFailure::RenderFailed);
             continue;

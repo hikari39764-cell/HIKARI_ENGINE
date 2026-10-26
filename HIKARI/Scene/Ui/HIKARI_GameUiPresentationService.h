@@ -37,6 +37,8 @@ public:
                           const GameUiTextEditing& editing = {}) noexcept;
     bool SubmitTextStyle(const AssetGuid& style, std::string_view utf8Text, const GameProjectUiTextRequest& request,
                          float scale = 1.f) noexcept;
+    // 文字样式资产（読めなければ null）。置き場所を字の大きさから決める描き手が SubmitTextStyle の前に読む。
+    std::shared_ptr<const TextStyleAsset> FindTextStyle(const AssetGuid& style) const noexcept;
     bool SubmitBackdrop(const GameProjectUiBackdropRequest& request) noexcept;
 
     void BeginInteractionFrame(uint64_t frameIndex) noexcept;

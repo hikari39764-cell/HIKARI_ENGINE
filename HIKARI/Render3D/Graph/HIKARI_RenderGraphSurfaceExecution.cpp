@@ -1,5 +1,10 @@
 #include "Render3D/Graph/HIKARI_RenderGraph.h"
 #include <cstdio>
+#include <cstdlib>
+#include <optional>
+#include <string>
+
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 
@@ -293,6 +298,12 @@ bool RenderGraph::ExecuteCompiledRange(uint32_t endOrderExclusive) noexcept {
             }
         }
         const RenderGraphPassContext context{this, frame_, passIndex, std::string_view(pass.id.data())};
+        // 診断（環境変数 HIKARI_GRAPH_PASS_TIMERS）：パスごとの CPU 時間を「Graph.パス名」で記録する。
+        static const bool passTimers = std::getenv("HIKARI_GRAPH_PASS_TIMERS") != nullptr;
+        std::optional<CPU_PROFILE::ScopedDynamicCpuTimer> passScope;
+        if (passTimers) {
+            passScope.emplace(CPU_PROFILE::RegisterDynamicPass(std::string("Graph.") + pass.id.data()));
+        }
         if (!pass.execute(context, pass.userData)) {
             executing_ = false;
             executionState_.status = RenderGraphExecutionStatus::Failed;

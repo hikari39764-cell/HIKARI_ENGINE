@@ -30,6 +30,7 @@ public:
     bool SetSpatial(int playHandle, const GameProjectAudioListener& listener,
                     const GameProjectAudioSource& source) override;
     bool SetPlaybackRate(int handle, float rate) override;
+    float GetSoundSeconds(int soundHandle) const override;
     GameProjectAudioStats GetStats() const override;
     void Stop(int playHandle) override;
     void Pause(int playHandle) override;

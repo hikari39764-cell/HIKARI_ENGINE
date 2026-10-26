@@ -1,11 +1,13 @@
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Core/Text/HIKARI_Localization.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
+#include "Scene/Sequencer/Drivers/HIKARI_PresentationCueDriver.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include <algorithm>
@@ -178,6 +180,11 @@ bool CinematicsWorkspaceController::DrawTransport(DocumentSceneBase& scene, Cine
         changed = true;
     }
     NextToolbarItem();
+    if (IconTextButton(EditorGlyph::Add, TEXT::Localize("cine.textTrack").c_str(), "addSequenceText"))
+        changed |= AddTextClip(sequence, cursor_.GetTimeSeconds());
+    NextToolbarItem();
+    changed |= DrawObjectTrackMenu(scene, sequence);
+    NextToolbarItem();
     if (IconToggleButton(EditorGlyph::List, "keyframeMode", !curveMode_, {28, 28}, TEXT::Localize("cine.keys").c_str()))
         curveMode_ = false;
     NextToolbarItem();
@@ -307,8 +314,10 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
     for (const auto& event : sequence.eventTrack.clips)
         if (std::find(eventLanes.begin(), eventLanes.end(), event.name) == eventLanes.end())
             eventLanes.push_back(event.name);
-    const float rows = 3 + static_cast<float>(channelCount + sequence.presentationCueTrack.clips.size() +
-                                              sequence.screenEffects.size() + eventLanes.size());
+    const size_t textRowCount = AssignTextRows(sequence);
+    const float rows = 4 + static_cast<float>(channelCount + sequence.objectTracks.size() +
+                                              sequence.presentationCueTrack.clips.size() +
+                                              sequence.screenEffects.size() + eventLanes.size() + textRowCount);
     const float height = rows * kRowHeight + kRuler;
     auto* draw = ImGui::GetWindowDrawList();
     draw->AddRectFilled(origin, {origin.x + width, origin.y + height}, IM_COL32(15, 20, 27, 255), 5);
@@ -359,6 +368,8 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         draw->AddText({x + 8, y + 7}, IM_COL32(240, 244, 248, 255), name);
         draw->PopClipRect();
         ImGui::SetCursorScreenPos({x, y + 3});
+        // 片段の上に後から置く小さな取っ手（音声の淡入・淡出）を掴めるようにする。
+        ImGui::SetNextItemAllowOverlap();
         ImGui::InvisibleButton("clip", {w, kRowHeight - 6});
         const bool hovered = ImGui::IsItemHovered();
         // 端を掴むと長さを変える。細い片段（一瞬の事件など）は端の範囲が全体を覆うので、端を作らず全体を動かす。
@@ -453,11 +464,79 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         lane(channel.label);
         (void)channel;
     }
+    for (auto& track : sequence.objectTracks) {
+        const float y = lane(track.name);
+        changed |= DrawObjectTrackLane(scene, sequence, track, timeOriginX, y, width - kLabelWidth, kRowHeight);
+    }
+    // 音声の片段：淡入・淡出の傾きを重ね、上の角の小さな四角を左右へ引いて長さを変える（0.01 秒刻み）。
+    const auto fades = [&](PresentationCueClip& cue, float y) {
+        bool edited = false;
+        // 片段を縮めた後も、淡入と淡出が片段の中に収まるように縮める。
+        if (const float sum = cue.fadeInSeconds + cue.fadeOutSeconds; sum > cue.durationSeconds && sum > 0.0f) {
+            const float scale = cue.durationSeconds / sum;
+            cue.fadeInSeconds *= scale;
+            cue.fadeOutSeconds *= scale;
+            edited = true;
+        }
+        const float x0 = timeOriginX + cue.startSeconds * zoom_, x1 = x0 + (std::max)(10.0f, cue.durationSeconds * zoom_);
+        const float top = y + 3, bottom = y + kRowHeight - 3;
+        const float inX = x0 + cue.fadeInSeconds * zoom_, outX = x1 - cue.fadeOutSeconds * zoom_;
+        const ImU32 shade = IM_COL32(10, 22, 16, 130), ramp = IM_COL32(214, 240, 226, 210);
+        if (inX > x0 + 0.5f) {
+            draw->AddTriangleFilled({x0, top}, {inX, top}, {x0, bottom}, shade);
+            draw->AddLine({x0, bottom}, {inX, top}, ramp, 1.5f);
+        }
+        if (outX < x1 - 0.5f) {
+            draw->AddTriangleFilled({outX, top}, {x1, top}, {x1, bottom}, shade);
+            draw->AddLine({outX, top}, {x1, bottom}, ramp, 1.5f);
+        }
+        ImGui::PushID("cueFade");
+        ImGui::PushID(static_cast<int>(cue.id));
+        for (int side = 0; side < 2; ++side) {
+            const float hx = side == 0 ? inX : outX;
+            ImGui::SetCursorScreenPos({hx - 5.0f, top - 1.0f});
+            ImGui::InvisibleButton(side == 0 ? "in" : "out", {10.0f, 10.0f});
+            const bool hot = ImGui::IsItemHovered() || ImGui::IsItemActive();
+            if (hot) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+                ImGui::SetTooltip("%s  %.2f s", TEXT::Localize(side == 0 ? "cine.fadeIn" : "cine.fadeOut").c_str(),
+                                  side == 0 ? cue.fadeInSeconds : cue.fadeOutSeconds);
+            }
+            if (ImGui::IsItemActivated()) {
+                selectedId_ = cue.id;
+                selectionKind_ = SelectionKind::Cue;
+            }
+            if (ImGui::IsItemActive() && ImGui::IsMouseDragging(0)) {
+                const float t = std::round((io.MousePos.x - x0) / zoom_ * 100.0f) / 100.0f;
+                if (side == 0)
+                    cue.fadeInSeconds = std::clamp(t, 0.0f, cue.durationSeconds - cue.fadeOutSeconds);
+                else
+                    cue.fadeOutSeconds = std::clamp(cue.durationSeconds - t, 0.0f, cue.durationSeconds - cue.fadeInSeconds);
+                edited = true;
+            }
+            draw->AddRectFilled({hx - 3.5f, top}, {hx + 3.5f, top + 7.0f}, hot ? IM_COL32(255, 255, 255, 255) : ramp, 1.5f);
+        }
+        ImGui::PopID();
+        ImGui::PopID();
+        return edited;
+    };
     for (auto& cue : sequence.presentationCueTrack.clips) {
         const auto y =
             lane(TEXT::Localize(cue.kind == PresentationCueKind::Vfx ? "ui.assetBrowser.typeVfx" : "cine.sound"));
+        const float oldStart = cue.startSeconds, oldEnd = cue.startSeconds + cue.durationSeconds;
         clip(cue.id, SelectionKind::Cue, cue.startSeconds, cue.durationSeconds, cue.name.c_str(), y,
              cue.kind == PresentationCueKind::Vfx ? IM_COL32(143, 78, 48, 255) : IM_COL32(51, 116, 89, 255));
+        if (cue.kind != PresentationCueKind::Audio)
+            continue;
+        // 左端のトリムは音の素材の始まりを移す（镜头と同じ。片段の移動は素材を変えない）。素材の頭より前へは伸ばさない。
+        if (draggingKind_ == SelectionKind::Cue && draggingId_ == cue.id && dragPart_ == -1 && cue.startSeconds != oldStart) {
+            const float pitch = (std::max)(0.25f, cue.pitch);
+            const float start = (std::max)(cue.startSeconds, oldStart - cue.sourceOffsetSeconds / pitch);
+            cue.sourceOffsetSeconds = (std::max)(0.0f, cue.sourceOffsetSeconds + (start - oldStart) * pitch);
+            cue.startSeconds = start;
+            cue.durationSeconds = oldEnd - start;
+        }
+        changed |= fades(cue, y);
     }
     for (auto& effect : sequence.screenEffects) {
         const auto y = lane(TEXT::Localize("cine.screenFx"));
@@ -465,6 +544,23 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
         clip(effect.id, SelectionKind::Effect, effect.start, effect.duration, name.c_str(), y,
              IM_COL32(105, 71, 146, 255));
     }
+    // 文字段：時間の重ならない行へ詰めて並べる（行の名前は最初の行だけ）。样式の無い片段は引擎が描かないので沈んだ色。
+    std::vector<float> textRowY;
+    for (size_t index = 0; index < textRowCount; ++index)
+        textRowY.push_back(lane(index == 0 ? TEXT::Localize("cine.textTrack") : std::string{}));
+    for (auto& text : sequence.textTrack.clips) {
+        const std::string label = SEQUENCER::GetSequenceTextLabel(text);
+        clip(text.id, SelectionKind::Text, text.startSeconds, text.durationSeconds, label.c_str(),
+             textRowY[textRows_[text.id]], text.style.IsValid() ? IM_COL32(156, 110, 40, 255) : IM_COL32(96, 86, 70, 255));
+    }
+    const float textAddY = lane(TEXT::Localize("cine.textAdd"));
+    draw->AddText({timeOriginX + 10, textAddY + 7}, IM_COL32(95, 110, 126, 255),
+                  TEXT::Localize("cine.textAddHint").c_str());
+    ImGui::SetCursorScreenPos({timeOriginX, textAddY});
+    ImGui::InvisibleButton("addText", {(std::max)(1.0f, width - kLabelWidth), kRowHeight});
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+        changed |= AddTextClip(sequence,
+                               SnapTimelineTime(sequence, (std::max)(0.0f, (io.MousePos.x - timeOriginX) / zoom_), 0));
     for (const auto& eventName : eventLanes) {
         const auto y = lane(eventName);
         for (auto& event : sequence.eventTrack.clips)
@@ -510,14 +606,34 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
             const std::string data(bytes, static_cast<size_t>(payload->DataSize - 1));
             if (kind == PresentationCueKind::Vfx) {
                 const auto* record = scene.GetAssetDatabase().FindByGuid(AssetGuid{data});
-                if (!record || record->type != AssetType::VfxEffect) {
+                if (record && record->type == AssetType::Audio) {
+                    // 資産の一覧から落とした音声は、その文件の場所で音の合図にする（演出は Assets/Audio の下だけを鳴らす）。
+                    auto source = record->sourcePath;
+                    if (source.is_absolute())
+                        source = source.lexically_relative(scene.GetAssetDatabase().GetProjectRoot());
+                    const std::string path = TEXT::PathToUtf8(source.lexically_normal());
+                    if (!path.starts_with("Assets/Audio/")) {
+                        pendingStatusMessage_ = TEXT::Localize("cine.audioFolderRequired");
+                        return;
+                    }
+                    cue.kind = PresentationCueKind::Audio;
+                    cue.soundPath = path;
+                    cue.name = GetAssetRecordDisplayName(*record);
+                    if (const float length = GetPresentationCueSoundSeconds(path); length > 0.0f)
+                        cue.durationSeconds = length;
+                } else if (!record || record->type != AssetType::VfxEffect) {
                     pendingStatusMessage_ = TEXT::Localize("cine.vfxRequired");
                     return;
+                } else {
+                    cue.vfxAsset.value = data;
+                    cue.name = GetAssetRecordDisplayName(*record);
                 }
-                cue.vfxAsset.value = data;
-                cue.name = GetAssetRecordDisplayName(*record);
-            } else
+            } else {
                 cue.soundPath = data;
+                // 置いた音は素材の長さぶんの片段にする。
+                if (const float length = GetPresentationCueSoundSeconds(data); length > 0.0f)
+                    cue.durationSeconds = length;
+            }
             sequence.presentationCueTrack.clips.push_back(cue);
             changed = true;
             selectionKind_ = SelectionKind::Cue;
@@ -552,7 +668,8 @@ bool CinematicsWorkspaceController::DrawTimeline(DocumentSceneBase& scene, Cinem
     if (io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_D, canvasFocused))
         changed |= DuplicateSelectedShot(sequence);
     if (!io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_K, canvasFocused))
-        changed |= AddPoseKeyAtCursor(scene, sequence);
+        changed |= selectionKind_ == SelectionKind::Object ? AddObjectKeyAtCursor(scene, sequence)
+                                                           : AddPoseKeyAtCursor(scene, sequence);
     if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_LeftBracket, canvasFocused))
         SeekPoseKey(sequence, -1);
     if (ConsumeEditorShortcut(EditorShortcutScope::Editing, ImGuiKey_RightBracket, canvasFocused))

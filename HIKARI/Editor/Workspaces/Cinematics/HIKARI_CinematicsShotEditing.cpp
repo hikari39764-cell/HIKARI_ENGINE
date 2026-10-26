@@ -164,6 +164,15 @@ bool CinematicsWorkspaceController::DuplicateSelectedShot(CinematicSequence& seq
 bool CinematicsWorkspaceController::DeleteSelectedClip(CinematicSequence& sequence) {
     size_t removed = 0;
     const auto selected = [this](const auto& clip) { return clip.id == selectedId_; };
+    // 物体轨は键を選んでいればその键だけ、轨だけを選んでいれば轨ごと消す。
+    if (auto* track = SelectedObjectTrack(sequence);
+        track && selectedObjectKey_ >= 0 && selectedObjectKey_ < static_cast<int>(track->keys.size())) {
+        track->keys.erase(track->keys.begin() + selectedObjectKey_);
+        selectedObjectKey_ = -1;
+        return true;
+    }
+    if (selectionKind_ == SelectionKind::Object)
+        removed = std::erase_if(sequence.objectTracks, selected);
     if (selectionKind_ == SelectionKind::Shot)
         removed = std::erase_if(sequence.cameraCutTrack.clips, selected);
     else if (selectionKind_ == SelectionKind::Cue)
@@ -172,6 +181,8 @@ bool CinematicsWorkspaceController::DeleteSelectedClip(CinematicSequence& sequen
         removed = std::erase_if(sequence.screenEffects, selected);
     else if (selectionKind_ == SelectionKind::Event)
         removed = std::erase_if(sequence.eventTrack.clips, selected);
+    else if (selectionKind_ == SelectionKind::Text)
+        removed = std::erase_if(sequence.textTrack.clips, selected);
     if (!removed)
         return false;
     selectedId_ = 0;

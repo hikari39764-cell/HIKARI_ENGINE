@@ -2,6 +2,7 @@
 
 #include "Scene/Sequencer/Runtime/HIKARI_SequenceTrackDriver.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackTypes.h"
+#include <string>
 
 namespace HIKARI {
 class World;
@@ -11,6 +12,9 @@ class VfxPlaybackService;
 }
 
 namespace HIKARI::SEQUENCER {
+// 演出の音声（Assets/Audio/… の相対パス）の素材の長さ（秒）。読めなければ 0。
+float GetPresentationCueSoundSeconds(const std::string& soundPath);
+
 class PresentationCueDriver final : public ISequenceTrackDriver {
 public:
     PresentationCueDriver(World& world, VFX::VfxPlaybackService& vfx);

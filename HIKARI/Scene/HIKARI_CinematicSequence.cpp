@@ -18,6 +18,7 @@ void NormalizeCinematicSequence(CinematicSequence& sequence) {
     SEQUENCER::NormalizeSequenceBindings(sequence.bindings);
     SEQUENCER::NormalizeCameraCutTrack(sequence.cameraCutTrack);
     SEQUENCER::NormalizeScreenEffects(sequence.screenEffects);
+    SEQUENCER::NormalizeObjectTracks(sequence.objectTracks);
     sequence.durationSeconds =
         std::clamp((std::max)(MATH::FiniteOr(sequence.durationSeconds, kMinCinematicSequenceDurationSeconds),
                               GetCinematicSequenceContentEnd(sequence)),
@@ -89,7 +90,9 @@ float GetCinematicSequenceContentEnd(const CinematicSequence& sequence) noexcept
         effectsEnd = (std::max)(effectsEnd, effect.start + effect.duration);
     return (std::max)({effectsEnd, SEQUENCER::GetCameraCutTrackContentEnd(sequence.cameraCutTrack),
                        SEQUENCER::GetPresentationCueContentEnd(sequence.presentationCueTrack),
-                       SEQUENCER::GetSequenceEventContentEnd(sequence.eventTrack)});
+                       SEQUENCER::GetSequenceEventContentEnd(sequence.eventTrack),
+                       SEQUENCER::GetSequenceTextContentEnd(sequence.textTrack),
+                       SEQUENCER::GetObjectTracksContentEnd(sequence.objectTracks)});
 }
 
 namespace {

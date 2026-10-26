@@ -11,6 +11,10 @@
 
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
+#include <cstdio>
+#include <cstdlib>
+#include <string>
+#include <unordered_map>
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
@@ -155,23 +159,6 @@ bool IsDepthPrepassCoverageRecord(const GpuSceneSurfaceRecord& record) {
         return false;
     }
     return ComputeWorldBoundsRadius(record.worldBounds) >= kDepthVisibilityMinOccluderRadius;
-}
-
-// dirty patch で membership が変わったとして組み直すのは、半径が閾値から十分離れた時だけ。回る・脈打つ物の
-// 外接箱は閾値をまたいで伸び縮みし（回転で最大 √2 倍）、そのたびに全件再構築（1 回 4 ms 前後）になっていた。
-// patch は再構築時の選択を使い続けるので、閾値付近で membership が古いままでも描画は正しい。
-bool DepthPrepassCoverageClearlyChanged(const GpuSceneSurfaceRecord& oldRecord, const GpuSceneSurfaceRecord& newRecord) {
-    const bool oldCovered = IsDepthPrepassCoverageRecord(oldRecord);
-    if (oldCovered == IsDepthPrepassCoverageRecord(newRecord)) {
-        return false;
-    }
-    if (!IsGpuSceneForwardOpaqueResidentRecord(oldRecord) || !IsDepthPrepassSafeMaterial(oldRecord) ||
-        !IsGpuSceneForwardOpaqueResidentRecord(newRecord) || !IsDepthPrepassSafeMaterial(newRecord)) {
-        return true;
-    }
-    const float radius = ComputeWorldBoundsRadius(newRecord.worldBounds);
-    return oldCovered ? radius < kDepthVisibilityMinOccluderRadius * 0.5f
-                      : radius >= kDepthVisibilityMinOccluderRadius * 2.0f;
 }
 
 bool HasShadowCasterSafeMaterial(const GpuSceneSurfaceRecord& record) {
@@ -528,7 +515,16 @@ void GpuSceneRegistry::SyncForwardFromSceneCache(const GpuSceneRegistrySyncInput
                                         : routingVersion_ != routingVersion ? GpuSceneSyncMode::RebuildRouting
                                         : traditionalStreamPolicyChanged    ? GpuSceneSyncMode::RebuildPolicy
                                                                             : GpuSceneSyncMode::RebuildEmpty;
-        RebuildForwardFromSceneCache(input);
+        // 診断（環境変数 HIKARI_GPUSCENE_TRACE）：作り直しの理由と、面の数・版の変わり方を記録する。
+        static const bool trace = std::getenv("HIKARI_GPUSCENE_TRACE") != nullptr;
+        if (trace)
+            std::fprintf(stderr, "[GpuScene] rebuild reason=%d surfaces=%u->%u layout=%llu->%llu routing=%llu->%llu\n",
+                         static_cast<int>(reason), sourceSurfaceCount_, surfaceCount,
+                         static_cast<unsigned long long>(layoutVersion_), static_cast<unsigned long long>(layoutVersion),
+                         static_cast<unsigned long long>(routingVersion_), static_cast<unsigned long long>(routingVersion));
+        // 経路だけの変化（材質の差し替え・表示の切り替えなど）は面の並びが同じなので、変わっていない面の記録を使い回す
+        // （全部の面の資源を解決し直すと面の数に比例して数十〜百 ms かかる）。
+        RebuildForwardFromSceneCache(input, reason == GpuSceneSyncMode::RebuildRouting);
         stats_.syncMode = reason;
         return;
     }
@@ -546,6 +542,10 @@ void GpuSceneRegistry::SyncForwardFromSceneCache(const GpuSceneRegistrySyncInput
     if (!TryPatchForwardDataFromSceneCache(input)) {
         const uint32_t patchRecordBuildCount = stats_.frameRecordBuildCount;
         GpuScenePatchRejection rejection = std::move(stats_.patchRejection);
+        static const bool tracePatch = std::getenv("HIKARI_GPUSCENE_TRACE") != nullptr;
+        if (tracePatch)
+            std::fprintf(stderr, "[GpuScene] rebuild patch-rejected reason=%s object=%llu model=%s\n", rejection.reason,
+                         static_cast<unsigned long long>(rejection.objectId), rejection.modelPath.c_str());
         RebuildForwardFromSceneCache(input, true);
         stats_.frameRecordBuildCount += patchRecordBuildCount;
         stats_.patchRejection = std::move(rejection);
@@ -828,6 +828,15 @@ void GpuSceneRegistry::SuppressCpuForwardViews(const GpuSceneRegistrySyncInput& 
     stats_.cpuForwardViewSuppressedCount = input.sceneCache != nullptr ? 1u : 0u;
 }
 
+namespace {
+// 診断用：書き換わった面の数（モデルの元のパスごと）。
+struct DirtyCount { uint64_t surfaces = 0, staticShadow = 0; };
+std::unordered_map<std::string, DirtyCount>& DirtyCounts() {
+    static std::unordered_map<std::string, DirtyCount> counts;
+    return counts;
+}
+} // namespace
+
 bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistrySyncInput& input) {
     static const auto timer = CPU_PROFILE::RegisterDynamicPass("Render.GpuScenePatch");
     const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
@@ -858,6 +867,21 @@ bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistryS
         return reject("surface count changed");
     }
 
+    // 診断（HIKARI_GPUSCENE_TRACE）：書き換わった面をモデルごとに数え、240 回（ほぼフレーム）ごとに多い順に出す。
+    static const bool traceDirty = std::getenv("HIKARI_GPUSCENE_TRACE") != nullptr;
+    if (traceDirty) {
+        static uint64_t calls = 0;
+        if (++calls % 240u == 0u) {
+            std::vector<std::pair<std::string, DirtyCount>> sorted(DirtyCounts().begin(), DirtyCounts().end());
+            std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) { return a.second.surfaces > b.second.surfaces; });
+            std::fprintf(stderr, "[GpuScene] dirty top (240 calls):");
+            for (size_t i = 0; i < sorted.size() && i < 10u; ++i)
+                std::fprintf(stderr, " %s=%.1f(static %.1f)", sorted[i].first.c_str(), sorted[i].second.surfaces / 240.0,
+                             sorted[i].second.staticShadow / 240.0);
+            std::fprintf(stderr, "\n");
+            DirtyCounts().clear();
+        }
+    }
     std::vector<uint32_t> dirtySurfaceIndices = input.sceneCache->GetDirtySurfaceIndices();
     std::sort(dirtySurfaceIndices.begin(), dirtySurfaceIndices.end());
     dirtySurfaceIndices.erase(std::unique(dirtySurfaceIndices.begin(), dirtySurfaceIndices.end()),
@@ -940,25 +964,28 @@ bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistryS
         }
         const auto oldForwardPass = ResolveForwardResidentPass(oldRecord);
         const auto newForwardPass = ResolveForwardResidentPass(newRecord);
-        const bool oldDepthOccluder = IsDepthPrepassCoverageRecord(oldRecord);
         const bool newDepthOccluder = IsDepthPrepassCoverageRecord(newRecord);
         const bool oldShadow = IsGpuSceneStaticShadowCasterRecord(oldRecord);
         const bool newShadow = IsGpuSceneStaticShadowCasterRecord(newRecord);
+        if (traceDirty) {
+            auto& count = DirtyCounts()[surfaces[surfaceIndex].model != nullptr ? surfaces[surfaceIndex].model->sourcePath : std::string("?")];
+            ++count.surfaces;
+            count.staticShadow += newShadow ? 1u : 0u;
+        }
         if (oldForwardPass != newForwardPass) {
             return reject("forward pass changed");
         }
-        if (DepthPrepassCoverageClearlyChanged(oldRecord, newRecord)) {
-            return reject("depth coverage changed");
-        }
+        // 遮蔽体かどうか（外接の大きさ）が変わっても組み直さない。patch は再構築時の選択（pass の印）をそのまま使い、
+        // 選択が古くても描画は正しい（骨つきの人形や長さの変わる光線が閾値をまたぐたびに全件の再構築になっていた）。
         if (oldShadow != newShadow) {
             return reject("shadow coverage changed");
         }
         if (!HasCompatibleGpuScenePatchLayout(oldRecord, newRecord)) {
             return reject("geometry or material layout changed");
         }
-        if ((oldDepthOccluder || newDepthOccluder) && stats_.depthPrepassBudgetClippedRecordCount != 0u) {
-            return reject("depth occluder budget");
-        }
+        // 遮蔽体の予算が溢れていても組み直さない。選択は外接の大きさだけで決まり、patch は再構築時の選択（pass の印）を
+        // そのまま使うので、動く物の選択が古くても描画は正しい（予算超えの場面では動く遮蔽体があるたびに毎フレーム全件
+        // 再構築になっていた）。
 
         const uint32_t waterSurfaceGpuDataIndex = oldRecord.waterSurfaceGpuDataIndex;
         if (newRecord.waterSurface) {

@@ -96,6 +96,8 @@ enum class ParticleRenderShape : uint32_t {
 enum class ParticleBlendMode : uint32_t {
     Alpha,
     Additive,
+    // 戦闘の画面歪み遮罩へ書く層（色の経路では描かない）
+    Distortion,
 };
 
 enum class ParticleMaterialMode : uint32_t {

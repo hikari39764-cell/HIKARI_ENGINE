@@ -28,6 +28,10 @@ public:
     void BeginCapture(float r = 0, float g = 0, float b = 0, float a = 0, float depthClear = 1.0f);
     bool ClearColor(float r, float g, float b, float a);
     void Rebind();
+    // 描く範囲を texel の矩形に絞る（一枚に複数の視点を並べて描く時）。以後の BeginCapture・Rebind・深度読みの切り替えが
+    // この範囲を使う（BeginCapture の消去は全面のまま）。ResetViewport で全面へ戻す。
+    void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
+    void ResetViewport();
     bool BeginDepthRead();
     void EndDepthRead();
     bool BeginDepthShaderRead();
@@ -53,6 +57,7 @@ public:
 
     ID3D12DescriptorHeap* GetSrvHeap() const { return srvHeap_.Get(); }
     D3D12_GPU_DESCRIPTOR_HANDLE GetSrvGpu() const { return srvGpuHandle_; }
+    D3D12_CPU_DESCRIPTOR_HANDLE GetSrvCpu() const { return srvCpuHandle_; }
     D3D12_GPU_DESCRIPTOR_HANDLE GetDepthSrvGpu() const { return depthSrv_.gpu; }
     D3D12_CPU_DESCRIPTOR_HANDLE GetRtvHandle() const { return rtvHandle_; }
     D3D12_CPU_DESCRIPTOR_HANDLE GetDsvHandle() const { return dsvHandle_; }

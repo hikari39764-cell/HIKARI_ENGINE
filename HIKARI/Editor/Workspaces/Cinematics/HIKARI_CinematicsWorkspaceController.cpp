@@ -128,6 +128,7 @@ void CinematicsWorkspaceController::ResetEditing(DocumentSceneBase& scene) {
     }
     cursor_.Clear();
     selectedId_ = 0;
+    selectedObjectKey_ = -1;
     curveView_ = {};
     curveGestureBefore_.reset();
     selectionPreviewRange_.reset();

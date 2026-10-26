@@ -141,6 +141,28 @@ void PostEffect::ApplyCommonParams(const CommonParams& p) { params_ = p; }
 void PostEffect::SetTime(float t) { params_.time = t; }
 
 bool PostEffect::BindAndDraw(QuadDrawer& drawer, bool additive) {
+    if (!BindConstants(drawer, additive)) {
+        return false;
+    }
+    drawer.DrawFullscreen();
+    return true;
+}
+
+bool PostEffect::BindAndDrawScissored(QuadDrawer& drawer, const std::vector<D3D12_RECT>& rects, bool additive) {
+    if (rects.empty()) {
+        return true;
+    }
+    if (context_.cmdList == nullptr || !BindConstants(drawer, additive)) {
+        return false;
+    }
+    for (const D3D12_RECT& rect : rects) {
+        context_.cmdList->RSSetScissorRects(1, &rect);
+        drawer.DrawFullscreen();
+    }
+    return true;
+}
+
+bool PostEffect::BindConstants(QuadDrawer& drawer, bool additive) {
     const std::span<const uint8_t> cooked = psLease_.GetDxil();
     if (cooked.empty()) {
         return false;
@@ -176,7 +198,6 @@ bool PostEffect::BindAndDraw(QuadDrawer& drawer, bool additive) {
         return false;
     }
     drawer.SetConstantBuffer(constantBuffer_->GetGPUVirtualAddress() + byteOffset);
-    drawer.DrawFullscreen();
     return true;
 }
 

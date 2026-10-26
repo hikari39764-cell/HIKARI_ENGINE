@@ -204,6 +204,10 @@ public:
     bool Running() const noexcept;
     // 一轮の途中（返答を待っている）。
     bool Busy() const noexcept { return busy_; }
+    // 今の一轮が始まってからの秒数（一轮の外では 0）。
+    double BusySeconds() const noexcept;
+    // 考えている途中の見積もり token（Claude の thinking_tokens）。文字や道具の記録が届けば 0 に戻る。
+    uint64_t ThinkingTokens() const noexcept { return thinkingTokens_; }
     AgentKind Kind() const noexcept { return request_.kind; }
     const std::vector<AgentEvent>& Events() const noexcept { return events_; }
     const std::vector<AgentToolApproval>& PendingApprovals() const noexcept { return approvals_; }
@@ -223,6 +227,7 @@ public:
     void SetSessionId(std::string id) { sessionId_ = std::move(id); }
     void SetModels(std::vector<AgentModelOption> models) { models_ = std::move(models); }
     void SetBusy(bool busy);
+    void SetThinkingTokens(uint64_t tokens) noexcept { thinkingTokens_ = tokens; }
     AgentUsage& MutableUsage() noexcept { return usage_; }
     const AgentSessionRequest& Request() const noexcept { return request_; }
 
@@ -243,6 +248,8 @@ private:
     std::vector<AgentModelOption> models_{};
     std::string sessionId_{};
     bool busy_ = false;
+    std::chrono::steady_clock::time_point busySince_{};
+    uint64_t thinkingTokens_ = 0;
     bool exited_ = false;
 };
 

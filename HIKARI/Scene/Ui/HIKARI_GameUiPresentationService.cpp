@@ -271,6 +271,15 @@ bool GameUiPresentationService::SubmitTextStyle(const AssetGuid& guid, std::stri
     }
 }
 
+std::shared_ptr<const TextStyleAsset> GameUiPresentationService::FindTextStyle(const AssetGuid& style) const noexcept {
+    try {
+        std::string error;
+        return textAssets_.LoadStyle(style, error);
+    } catch (...) {
+        return nullptr;
+    }
+}
+
 bool GameUiPresentationService::SubmitStyledText(std::string_view fontAssetPathBelowAssets, std::string_view utf8Text,
                                                  const GameProjectUiTextRequest& request,
                                                  const GameUiTextEffectStyle& style, const Affine2D& transform,

@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
 
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
@@ -11,6 +13,26 @@
 namespace HIKARI::RENDER3D::RUNTIME {
 
 namespace {
+// 診断（環境変数 HIKARI_GPUSCENE_TRACE）：GPU のシーンを組み直させる変化（物の出入り、モデル・経路の変化）を、
+// 同期ごとに 6 件まで記録する（どの物が作り直しを起こしているかを探す）。
+void TraceSceneChange(const char* what, const SceneRenderObjectDesc& desc, uint64_t frame) {
+    static const bool enabled = std::getenv("HIKARI_GPUSCENE_TRACE") != nullptr;
+    static uint64_t lastFrame = ~0ull;
+    static uint32_t count = 0u;
+    if (!enabled) {
+        return;
+    }
+    if (frame != lastFrame) {
+        lastFrame = frame;
+        count = 0u;
+    }
+    if (++count > 6u) {
+        return;
+    }
+    std::fprintf(stderr, "[SceneCache] frame=%llu %s id=%llu model=%s visible=%d\n", static_cast<unsigned long long>(frame),
+                 what, static_cast<unsigned long long>(desc.id.value),
+                 desc.model != nullptr ? desc.model->sourcePath.c_str() : "-", desc.visible ? 1 : 0);
+}
 std::atomic<uint64_t> gNextObjectLifetimeGeneration{1u};
 
 // float pool の version は全 cache で一意にする。GPU slot は version だけで内容を
@@ -251,6 +273,7 @@ void SceneRenderCache::Clear() {
     objectSurfaceRanges_.clear();
     dirtySurfaceIndices_.clear();
     indexById_.clear();
+    pendingRemovalCount_ = 0;
     frameStats_ = {};
     currentSyncFrame_ = 0;
     surfaceVersion_ = 0;
@@ -296,6 +319,7 @@ void SceneRenderCache::Upsert(const SceneRenderObjectDesc& desc) {
         indexById_[desc.id.value] = objects_.size();
         objects_.push_back(std::move(object));
         MarkSurfaceTopologyDirty();
+        TraceSceneChange("insert", desc, currentSyncFrame_);
         ++frameStats_.insertedCount;
         return;
     }
@@ -315,10 +339,12 @@ void SceneRenderCache::Upsert(const SceneRenderObjectDesc& desc) {
         ++object.version;
         if (dirty.model) {
             MarkSurfaceTopologyDirty();
+            TraceSceneChange("model", desc, currentSyncFrame_);
         } else {
             UpdateSurfaceInstancesForObject(found->second);
             if (dirty.routing) {
                 MarkSurfaceRoutingDirty();
+                TraceSceneChange("routing", desc, currentSyncFrame_);
             } else {
                 MarkSurfaceDataDirty();
                 if (terrainContentOnly) {
@@ -338,15 +364,16 @@ void SceneRenderCache::Upsert(const SceneRenderObjectDesc& desc) {
 }
 
 void SceneRenderCache::EndSync() {
-    for (size_t i = 0; i < objects_.size();) {
-        if (objects_[i].lastTouchedFrame != currentSyncFrame_) {
-            RemoveAt(i);
+    for (SceneRenderObject& object : objects_) {
+        if (!object.pendingRemoval && object.lastTouchedFrame != currentSyncFrame_) {
+            TraceSceneChange("expire", object.desc, currentSyncFrame_);
+            object.pendingRemoval = true;
+            ++pendingRemovalCount_;
             MarkSurfaceTopologyDirty();
             ++frameStats_.removedCount;
-            continue;
         }
-        ++i;
     }
+    CompactRemoved();
     RefreshStats();
 }
 
@@ -356,7 +383,10 @@ void SceneRenderCache::BeginPatchSync(uint64_t frameIndex) {
     dirtySurfaceIndices_.clear();
 }
 
-void SceneRenderCache::EndPatchSync() { RefreshStats(); }
+void SceneRenderCache::EndPatchSync() {
+    CompactRemoved();
+    RefreshStats();
+}
 
 void SceneRenderCache::Remove(SceneRenderObjectId id) {
     if (!id.IsValid()) {
@@ -366,13 +396,41 @@ void SceneRenderCache::Remove(SceneRenderObjectId id) {
     if (found == indexById_.end()) {
         return;
     }
-    RemoveAt(found->second);
+    // 一つずつ詰める（配列の中ほどを消して索引を作り直す）と、一度に多く消すフレームが O(N²) になる（部屋の部品が
+    // 数百まとめて消えると数十 ms）。印を付けて索引から外し、同期の終わりか描画の前にまとめて詰める。
+    TraceSceneChange("remove", objects_[found->second].desc, currentSyncFrame_);
+    objects_[found->second].pendingRemoval = true;
+    indexById_.erase(found);
+    ++pendingRemovalCount_;
     ++frameStats_.removedCount;
     MarkSurfaceTopologyDirty();
-    RefreshStats();
+}
+
+bool SceneRenderCache::Touch(SceneRenderObjectId id) {
+    const auto found = indexById_.find(id.value);
+    if (!id.IsValid() || found == indexById_.end()) {
+        return false;
+    }
+    SceneRenderObject& object = objects_[found->second];
+    object.lastTouchedFrame = currentSyncFrame_;
+    object.dirty = false;
+    object.transformDirty = false;
+    object.materialDirty = false;
+    object.modelDirty = false;
+    return true;
+}
+
+void SceneRenderCache::CompactRemoved() {
+    if (pendingRemovalCount_ == 0u) {
+        return;
+    }
+    std::erase_if(objects_, [](const SceneRenderObject& object) { return object.pendingRemoval; });
+    pendingRemovalCount_ = 0u;
+    RebuildIndex();
 }
 
 void SceneRenderCache::PreRenderSync() {
+    CompactRemoved();
     const bool repackSurfaceFloatPool = surfaceFloatPoolDirty_;
     const uint64_t dataVersionBeforePacking = surfaceDataVersion_;
     if (surfaceTopologyDirty_) {
@@ -593,14 +651,12 @@ uint64_t SceneRenderCache::GetSurfaceDataVersion() const { return surfaceDataVer
 
 uint64_t SceneRenderCache::GetSurfaceFloatPoolVersion() const { return surfaceFloatPoolVersion_; }
 
-const SceneRenderCache::Stats& SceneRenderCache::GetStats() const { return frameStats_; }
-
-void SceneRenderCache::RemoveAt(size_t index) {
-    if (index >= objects_.size()) {
-        return;
+const SceneRenderCache::Stats& SceneRenderCache::GetStats() const {
+    if (statsStale_) {
+        ComputeStats();
+        statsStale_ = false;
     }
-    objects_.erase(objects_.begin() + static_cast<std::ptrdiff_t>(index));
-    RebuildIndex();
+    return publishedStats_;
 }
 
 void SceneRenderCache::RebuildIndex() {
@@ -742,7 +798,9 @@ void SceneRenderCache::MarkAllSurfaceInstancesDirty() {
     }
 }
 
-void SceneRenderCache::RefreshStats() {
+void SceneRenderCache::RefreshStats() { statsStale_ = true; }
+
+void SceneRenderCache::ComputeStats() const {
     const uint32_t insertedCount = frameStats_.insertedCount;
     const uint32_t updatedCount = frameStats_.updatedCount;
     const uint32_t removedCount = frameStats_.removedCount;
@@ -811,7 +869,7 @@ void SceneRenderCache::RefreshStats() {
         }
     }
 
-    frameStats_ = stats;
+    publishedStats_ = stats;
 }
 
 } // namespace HIKARI::RENDER3D::RUNTIME

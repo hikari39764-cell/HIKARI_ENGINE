@@ -476,6 +476,14 @@ const CinematicSequence* SequencePlaybackService::GetSequence(SequencePlaybackHa
     return index != kInvalidInstanceIndex && instances_[index].asset ? &instances_[index].asset->sequence : nullptr;
 }
 
+std::vector<SequencePlaybackHandle> SequencePlaybackService::GetActiveHandles() const {
+    std::vector<SequencePlaybackHandle> handles;
+    handles.reserve(instances_.size());
+    for (const Instance& instance : instances_)
+        handles.push_back(instance.handle);
+    return handles;
+}
+
 size_t SequencePlaybackService::GetActiveInstanceCount() const noexcept { return instances_.size(); }
 
 std::vector<SequencePlaybackEvent> SequencePlaybackService::ConsumeEvents() {

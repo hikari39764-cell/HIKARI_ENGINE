@@ -208,7 +208,9 @@ ParticleShape ConvertShape(VfxShapeType shape) noexcept {
 }
 
 ParticleBlendMode ConvertBlend(VfxBlendMode blend) noexcept {
-    return blend == VfxBlendMode::Additive ? ParticleBlendMode::Additive : ParticleBlendMode::Alpha;
+    return blend == VfxBlendMode::Additive     ? ParticleBlendMode::Additive
+           : blend == VfxBlendMode::Distortion ? ParticleBlendMode::Distortion
+                                               : ParticleBlendMode::Alpha;
 }
 
 ParticleMaterialMode ConvertMaterialMode(VfxMaterialMode mode) noexcept {

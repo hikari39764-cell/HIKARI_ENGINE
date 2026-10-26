@@ -305,12 +305,30 @@ void SyncRenderObjects(
     const PresentationTransformService* presentationTransforms, const ANIMATION::AnimationPoseService* animationPoses,
     MaterialStorageByRenderObject& materialStorage, std::unordered_set<std::string>& missingAssetDiagnostics,
     std::unordered_set<std::string>& missingNodeDiagnostics, std::unordered_set<std::string>& attachmentDiagnostics,
-    std::unordered_set<std::string>& materialDiagnostics) {
+    std::unordered_set<std::string>& materialDiagnostics, bool fullSync) {
     if (presentationModels == nullptr) {
         materialStorage.clear();
         return;
     }
+    const uint64_t registryInstance = assetRegistry != nullptr ? assetRegistry->GetInstanceId() : 0u;
+    const uint64_t registryRevision = assetRegistry != nullptr ? assetRegistry->GetRevision() : 0u;
     for (const PresentationModelRecord& record : presentationModels->GetFrameRecords()) {
+        // 変わっていない記録：前の写しをそのまま使う。持ち主のソケットに付く記録は持ち主の動きで毎フレーム変わるので除く。
+        if (!record.attachmentEnabled) {
+            const auto stored = materialStorage.find(record.renderObjectId);
+            if (stored != materialStorage.end()) {
+                const MaterialStorage& synced = stored->second;
+                const bool same = synced.syncedAsset != nullptr && synced.syncedPayloadRevision == record.payloadRevision &&
+                                  synced.syncedAsset->GetState() == ModelAsset::State::Loaded &&
+                                  synced.syncedAssetRevision == synced.syncedAsset->sourceRevision &&
+                                  synced.assetRegistry == assetRegistry &&
+                                  synced.assetRegistryInstanceId == registryInstance &&
+                                  synced.assetRegistryRevision == registryRevision;
+                if (same && (!fullSync || sceneRenderCache.Touch(RENDER3D::RUNTIME::SceneRenderObjectId{record.renderObjectId}))) {
+                    continue;
+                }
+            }
+        }
         const ModelAssetDescriptor* descriptor = ResolveModelDescriptor(record, assetRegistry, projectRoot);
         const ModelAsset* asset = ResolveModelAsset(descriptor, assetRegistry, modelManager);
         if (asset == nullptr) {
@@ -326,6 +344,9 @@ void SyncRenderObjects(
         sceneRenderCache.Upsert(BuildRenderObjectDesc(
             record, asset, *descriptor, projectRoot, renderModelCache, world, assetRegistry, presentationTransforms,
             animationPoses, recordMaterials, missingNodeDiagnostics, attachmentDiagnostics, materialDiagnostics));
+        recordMaterials.syncedPayloadRevision = record.payloadRevision;
+        recordMaterials.syncedAsset = asset;
+        recordMaterials.syncedAssetRevision = asset->sourceRevision;
     }
 }
 } // namespace HIKARI::PRESENTATION_MODEL

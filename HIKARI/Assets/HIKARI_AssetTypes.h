@@ -45,6 +45,7 @@ enum class AssetType {
     RenderStyle,
     ColorLut,
     LightProfile,
+    Audio,
     Unknown
 };
 

@@ -7,6 +7,7 @@
 #include <string>
 #include <utility>
 
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render2D/HIKARI_SurfaceTextureTargetRing.h"
 #include "Render3D/Render/HIKARI_SceneCaptureStylePass.h"
@@ -33,9 +34,15 @@ constexpr DXGI_FORMAT kSecondaryCaptureFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 // 影の cache・GPU scene・光追の加速構造まで毎フレーム作り直しになる。
 struct SecondaryCaptureTargetState : SurfaceTextureTargetRing {
     SurfaceTextureTargets<1> display;
+    // 公開した一枚に絵が入っている並べた視点の矩形（x, y, 幅, 高さ）と、その一枚の資源。KeepPrevious の視点は
+    // 同じ一枚の同じ矩形に前の絵がある時だけ描かずに残す。
+    std::vector<std::array<uint32_t, 4>> shownRects;
+    const void* shownDisplay = nullptr;
     void Reset() noexcept {
         display.Reset();
         SurfaceTextureTargetRing::Reset();
+        shownRects.clear();
+        shownDisplay = nullptr;
     }
 };
 
@@ -120,7 +127,8 @@ void RenderOpaqueForReflectionProbeCapture(const GFX::Context& graphics, const C
 bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::RenderViewContext& view,
                                  const SceneEnvironment& environment,
                                  const RENDER3D::LIGHTING::SceneLightingSet& lighting, uint32_t captureSlot,
-                                 uint32_t width, uint32_t height, bool renderTransparent, RenderTarget2D* target) {
+                                 uint32_t width, uint32_t height, bool renderTransparent, RenderTarget2D* target,
+                                 bool prepareFrame) {
     BeginModelRendererFrame(ModelRendererFrameKind::SecondarySceneCapture);
     MESHRENDERER::MeshPassResources captureResources;
     if (target) {
@@ -143,7 +151,8 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
         captureResources.sceneDepth.valid = target->GetDepthResource() != nullptr;
     }
     return MESHRENDERER::RenderSecondarySceneCapture(graphics, view, environment, lighting, captureSlot, width, height,
-                                                     renderTransparent, target ? &captureResources : nullptr);
+                                                     renderTransparent, target ? &captureResources : nullptr,
+                                                     prepareFrame);
 }
 
 bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDER3D::RenderViewContext& view,
@@ -152,7 +161,8 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
                                        SkyManager& skyManager, uint64_t worldIdentity, uint32_t captureSlot,
                                        uint32_t width, uint32_t height, bool renderSky, bool renderTransparent,
                                        const GameProjectSceneCaptureStyleDesc& style,
-                                       SecondarySceneCaptureOutput& outOutput) {
+                                       SecondarySceneCaptureOutput& outOutput,
+                                       const std::vector<SecondarySceneCaptureSubView>* subViews) {
     outOutput = {};
     if (captureSlot >= MESHRENDERER::kSecondarySceneCaptureMaximumCount) {
         return false;
@@ -164,16 +174,67 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
         return false;
     }
 
+    // 公開用の一枚（描画先の環とは別の slot 番号で登録する）。前のフレームの絵を残せるかを決めるため、描く前に用意する。
+    constexpr uint32_t displaySlotBase = kGameProjectSceneCaptureMaximumActiveCount + kGameProjectUiCanvasMaximumCount;
+    if (!state.display.Ensure(graphics, worldIdentity, displaySlotBase + captureSlot, width, height,
+                              kSecondaryCaptureFormat, false)) {
+        return false;
+    }
+    RenderTarget2D& display = *state.display.targets[0];
+    // 並べた視点のうち描かずに残す視点：KeepPrevious の印があり、同じ一枚の同じ矩形に前のフレームの絵がある視点。
+    const bool sameDisplay = state.shownDisplay == static_cast<const void*>(display.GetResource());
+    std::vector<bool> keep(subViews != nullptr ? subViews->size() : 0u, false);
+    bool anyKept = false;
+    for (size_t index = 0; index < keep.size(); ++index) {
+        const SecondarySceneCaptureSubView& sub = (*subViews)[index];
+        const std::array<uint32_t, 4> rect{sub.x, sub.y, sub.width, sub.height};
+        keep[index] = sub.keepPrevious && sameDisplay &&
+                      std::find(state.shownRects.begin(), state.shownRects.end(), rect) != state.shownRects.end();
+        anyKept = anyKept || keep[index];
+    }
+
     RenderTarget2D& target = *state.targets[state.writeIndex];
     target.BeginCapture(0.015f, 0.02f, 0.035f, 1.0f, 1.0f);
-    if (renderSky) {
-        SKYRENDERER::Render(graphics, view.cameraFrame->camera, environment, modelManager, skyManager);
-        (void)RENDER3D::PANORAMA_SKY::RenderPanoramaSkyLayer(graphics, view.cameraFrame->camera, environment.sky,
-                                                             skyManager);
+    bool rendered = true;
+    if (subViews == nullptr) {
+        if (renderSky) {
+            SKYRENDERER::Render(graphics, view.cameraFrame->camera, environment, modelManager, skyManager);
+            (void)RENDER3D::PANORAMA_SKY::RenderPanoramaSkyLayer(graphics, view.cameraFrame->camera, environment.sky,
+                                                                 skyManager);
+            target.Rebind();
+        }
+        rendered = RenderSecondarySceneCapture(graphics, view, environment, lighting, captureSlot, width, height,
+                                               renderTransparent, &target);
+    } else {
+        // 並べた視点：消去は全面に一度、視点ごとに描く範囲を矩形へ絞って同じ深度へ描く。カメラ定数の画面の大きさは像全体
+        // （深度や合成を texel の位置で読む処理が像全体の座標を使う）。
+        // 場景の上載せ・材質・粒子の準備は最初の視点だけで行い、二つ目からは視点ごとの選別と描画だけにする。
+        bool prepareFrame = true;
+        for (size_t index = 0; index < subViews->size(); ++index) {
+            if (keep[index]) {
+                continue;
+            }
+            const SecondarySceneCaptureSubView& sub = (*subViews)[index];
+            RENDER3D::ResolvedCameraFrame subCamera = *view.cameraFrame;
+            subCamera.camera = sub.camera;
+            RENDER3D::RenderViewContext subContext = view;
+            subContext.cameraFrame = &subCamera;
+            target.SetViewport(sub.x, sub.y, sub.width, sub.height);
+            target.Rebind();
+            if (renderSky) {
+                SKYRENDERER::Render(graphics, sub.camera, environment, modelManager, skyManager);
+                (void)RENDER3D::PANORAMA_SKY::RenderPanoramaSkyLayer(graphics, sub.camera, environment.sky, skyManager);
+                target.Rebind();
+            }
+            const bool viewRendered = RenderSecondarySceneCapture(graphics, subContext, environment, lighting, captureSlot,
+                                                                  width, height, renderTransparent, &target, prepareFrame);
+            rendered = viewRendered && rendered;
+            // 準備に失敗したフレームは次の視点で準備し直す。
+            prepareFrame = prepareFrame && !viewRendered;
+        }
+        target.ResetViewport();
         target.Rebind();
     }
-    const bool rendered = RenderSecondarySceneCapture(graphics, view, environment, lighting, captureSlot, width, height,
-                                                      renderTransparent, &target);
     target.EndCapture();
     (void)POST::PostSystem::RebindCurrentRenderTarget();
     // Sky/clear is already a valid camera frame. Geometry residency and
@@ -184,25 +245,35 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
         return false;
     }
 
-    // 公開用の一枚（描画先の環とは別の slot 番号で登録する）。
-    constexpr uint32_t displaySlotBase = kGameProjectSceneCaptureMaximumActiveCount + kGameProjectUiCanvasMaximumCount;
-    if (!state.display.Ensure(graphics, worldIdentity, displaySlotBase + captureSlot, width, height,
-                              kSecondaryCaptureFormat, false)) {
-        return false;
+    // 残す視点があれば、描き方と写しは描き直した視点の矩形の中だけにする（残す矩形は前の絵のまま）。
+    std::vector<D3D12_RECT> drawnRects;
+    if (anyKept) {
+        for (size_t index = 0; index < keep.size(); ++index) {
+            if (keep[index]) {
+                continue;
+            }
+            const SecondarySceneCaptureSubView& sub = (*subViews)[index];
+            drawnRects.push_back({static_cast<LONG>(sub.x), static_cast<LONG>(sub.y), static_cast<LONG>(sub.x + sub.width),
+                                  static_cast<LONG>(sub.y + sub.height)});
+        }
     }
-    RenderTarget2D& display = *state.display.targets[0];
+    static const auto styleTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures.Style");
+    const CPU_PROFILE::ScopedDynamicCpuTimer styleScope(styleTimer);
     if (style.style != GameProjectSceneCaptureStyle::None) {
         // 深度の効果（版 4）を使う時だけ、キャプチャの深度を読める状態にして渡す。
         RENDER3D::SceneCaptureStyleDepth depth{};
         const bool readDepth = style.depthFocus > 0.0f && target.BeginDepthShaderRead();
         if (readDepth) {
-            const Camera3D& camera = view.cameraFrame->camera;
+            // 並べた視点は深度の範囲と投影の種類がそろっている（SetViews の検査）ので、最初の視点で読む。
+            const Camera3D& camera =
+                subViews != nullptr && !subViews->empty() ? subViews->front().camera : view.cameraFrame->camera;
             depth.srv = target.GetDepthSrvGpu();
             depth.nearZ = camera.GetNearZ();
             depth.farZ = camera.GetFarZ();
             depth.orthographic = camera.IsOrthographic();
         }
-        const bool drawn = RENDER3D::DrawSceneCaptureStyle(graphics, target, display, style, depth);
+        const bool drawn =
+            RENDER3D::DrawSceneCaptureStyle(graphics, target, display, style, depth, anyKept ? &drawnRects : nullptr);
         if (readDepth) {
             target.EndDepthShaderRead();
         }
@@ -213,11 +284,32 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
     } else {
         target.TransitionColor(D3D12_RESOURCE_STATE_COPY_SOURCE);
         display.TransitionColor(D3D12_RESOURCE_STATE_COPY_DEST);
-        graphics.cmdList->CopyResource(display.GetResource(), target.GetResource());
+        if (!anyKept) {
+            graphics.cmdList->CopyResource(display.GetResource(), target.GetResource());
+        } else {
+            for (const D3D12_RECT& rect : drawnRects) {
+                D3D12_TEXTURE_COPY_LOCATION destination{};
+                destination.pResource = display.GetResource();
+                destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+                D3D12_TEXTURE_COPY_LOCATION source = destination;
+                source.pResource = target.GetResource();
+                const D3D12_BOX box{static_cast<UINT>(rect.left), static_cast<UINT>(rect.top), 0u, static_cast<UINT>(rect.right),
+                                    static_cast<UINT>(rect.bottom), 1u};
+                graphics.cmdList->CopyTextureRegion(&destination, box.left, box.top, 0u, &source, &box);
+            }
+        }
         target.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         display.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     }
 
+    // 公開した一枚に絵が入った矩形を覚える（並べた視点は残した視点も含めて全部に絵がある）。
+    state.shownDisplay = display.GetResource();
+    state.shownRects.clear();
+    if (subViews != nullptr) {
+        for (const SecondarySceneCaptureSubView& sub : *subViews) {
+            state.shownRects.push_back({sub.x, sub.y, sub.width, sub.height});
+        }
+    }
     NUMERIC::AdvanceNonZero(state.outputRevision);
     outOutput.texture = state.display.textures[0];
     outOutput.width = width;

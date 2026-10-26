@@ -4,6 +4,7 @@
 #include <array>
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
@@ -150,6 +151,29 @@ private:
     // 時間軸で镜头の上に置いた時刻の画を説明の小窓に出す（再生位置は動かさない）。shot が無ければ描画の依頼を取り下げる。
     void DrawShotHoverPreview(DocumentSceneBase& scene, CinematicSequence& sequence,
                               const SEQUENCER::CameraCutClip* shot, float localTime);
+    // 物体轨（HIKARI_CinematicsObjectTracks.cpp）。键は物体の親に対する局所の姿勢。
+    SEQUENCER::ObjectTrack* SelectedObjectTrack(CinematicSequence& sequence);
+    // 物体の轨を作り（既にあれば選ぶ）、再生位置に今の姿勢の键を置く。
+    bool CreateObjectTrack(DocumentSceneBase& scene, CinematicSequence& sequence, SceneObjectId object);
+    // seconds の姿勢。键が無ければ物体の今の局所の姿勢。
+    bool ObjectPoseAt(DocumentSceneBase& scene, const CinematicSequence& sequence, const SEQUENCER::ObjectTrack& track,
+                      float seconds, SEQUENCER::ObjectTrackKey& out) const;
+    // 選んだ轨の再生位置に今の姿勢で键を置く（同じ時刻の键は書き換える）。
+    bool AddObjectKeyAtCursor(DocumentSceneBase& scene, CinematicSequence& sequence);
+    bool DrawObjectTrackMenu(DocumentSceneBase& scene, CinematicSequence& sequence);
+    // width は timeOriginX からの行の幅。
+    bool DrawObjectTrackLane(DocumentSceneBase& scene, CinematicSequence& sequence, SEQUENCER::ObjectTrack& track,
+                             float timeOriginX, float y, float width, float rowHeight);
+    bool DrawObjectTrackInspector(DocumentSceneBase& scene, CinematicSequence& sequence);
+    // 空間视图：選んだ轨の物体の道筋を描き、手柄で動かすと再生位置の键に書く。
+    bool DrawObjectTrackGizmo(DocumentSceneBase& scene, CinematicSequence& sequence,
+                              const EditorViewportRect& viewport, bool& interacting);
+    // 文字轨（HIKARI_CinematicsTextTrack.cpp）。片段は時間の重ならない行へ詰めて並べる。
+    // 行の割り当て（引いている間は変えない）。戻り値は行の数。
+    size_t AssignTextRows(const CinematicSequence& sequence);
+    // seconds に文字段を足して選ぶ。样式は直前に選んでいた文字段か、轨の最後の片段から引き継ぐ。
+    bool AddTextClip(CinematicSequence& sequence, float seconds);
+    bool DrawTextInspector(DocumentSceneBase& scene, CinematicSequence& sequence);
 
     SequenceEditorDocumentController sequenceDocumentController_{};
     SequenceEditorDocumentToolbar sequenceDocumentToolbar_{};
@@ -158,9 +182,18 @@ private:
     DirectorViewPanel directorViewPanel_{};
     SEQUENCER::SequencePlaybackCursor cursor_{};
     CinematicSequenceId activeSequenceId_{1};
-    enum class SelectionKind { Shot, Cue, Effect, Event };
+    enum class SelectionKind { Shot, Cue, Effect, Event, Object, Text };
     SelectionKind selectionKind_ = SelectionKind::Shot;
     uint64_t selectedId_ = 0;
+    // 文字段の時間轴の行（片段 id → 行）。
+    std::unordered_map<uint64_t, size_t> textRows_;
+    // 選んだ物体轨の键の番号（-1 は轨だけを選んでいる）。
+    int selectedObjectKey_ = -1;
+    // 場面で今選んでいる物体（物体轨を作る一覧の先頭に出す）。
+    SceneObjectId activeSceneObject_{};
+    // 検視器の角度表示。同じ向きの別表現へ跳ばないよう、前に出した度数に寄せる。
+    MATH::Vec3 objectEuler_{};
+    MATH::Quat objectEulerSource_{};
     bool loop_ = false;
     std::optional<std::pair<float, float>> selectionPreviewRange_;
     float previewRate_ = 1.f;

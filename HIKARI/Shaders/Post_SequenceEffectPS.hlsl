@@ -30,6 +30,19 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
         float2 shift = (uv - 0.5) * amount / max(float2(gResolutionX, gResolutionY), 1.0);
         color.r = gTex.Sample(gSamp, saturate(uv + shift)).r;
         color.b = gTex.Sample(gSamp, saturate(uv - shift)).b;
+    } else if (kind == 12) {
+        // 中間の灰（0.18）を軸に HDR のまま反転する。暗部は明るく、光る所は暗く沈む。
+        float3 inverted = min(0.0324 / max(color, 1.0e-3), 8.0);
+        color = lerp(color, inverted, saturate(amount));
+    } else if (kind == 13) {
+        // 画面中心へ向かって 16 点を平均する。画素ごとにずらして縞を目立たせない。
+        float2 toCenter = 0.5 - uv;
+        float stretch = saturate(amount);
+        float jitter = frac(52.9829189 * frac(dot(input.position.xy, float2(0.06711056, 0.00583715))));
+        float3 sum = 0.0;
+        [unroll] for (int i = 0; i < 16; ++i)
+            sum += gTex.Sample(gSamp, saturate(uv + toCenter * stretch * ((i + jitter) / 16.0))).rgb;
+        color = sum / 16.0;
     }
     // HDR を保持する。露出・トーンマッピングは後段の唯一の resolve が所有。
     return float4(max(lerp(source.rgb, color, weight), 0.0), source.a);

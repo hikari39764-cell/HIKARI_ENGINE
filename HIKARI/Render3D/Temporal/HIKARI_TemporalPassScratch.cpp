@@ -13,7 +13,8 @@ namespace HIKARI::RENDER3D::TEMPORAL::DETAIL {
 
 namespace {
 uint64_t GrowUploadCapacity(uint64_t requiredBytes) noexcept {
-    uint64_t capacity = 256u;
+    // 64 KiB から倍にする（小さく始めると、動く物が増えるたびにフレームごとの区画で何度も作り直して引っかかる）。
+    uint64_t capacity = 64u * 1024u;
     while (capacity < requiredBytes && capacity <= (std::numeric_limits<uint64_t>::max)() / 2u) {
         capacity *= 2u;
     }

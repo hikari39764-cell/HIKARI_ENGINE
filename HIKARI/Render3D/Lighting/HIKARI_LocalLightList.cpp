@@ -214,12 +214,28 @@ ClusterBounds ProjectSphereBounds(const MATH::Vec3& center, float radius, const 
     if (viewDepth + range < nearDistance || viewDepth - range > farDistance) {
         return bounds;
     }
+    const MATH::Mat4& projection = camera.GetProj();
+    if (!camera.IsOrthographic()) {
+        // 視錐台の側面（左右上下）の外にある球は外す。深度が近い面を跨ぐ球は下で画面全体の範囲にするので、ここで外さないと
+        // 横へ遠く離れた光まで入る（近い面が近い小さな視点を並べた時、遠くの光が全部の視点に入っていた）。
+        // 面は射影の列から作る（クリップ座標の成分 j = Σ v_i m[i][j]、w は 4 列目）。
+        const auto outside = [&](int axis, float sign) {
+            const float a = projection.m[0][3] + sign * projection.m[0][axis];
+            const float b = projection.m[1][3] + sign * projection.m[1][axis];
+            const float c = projection.m[2][3] + sign * projection.m[2][axis];
+            const float d = projection.m[3][3] + sign * projection.m[3][axis];
+            const float length = std::sqrt(a * a + b * b + c * c);
+            return length > 0.0f && (a * viewPosition.x + b * viewPosition.y + c * viewPosition.z + d) < -range * length;
+        };
+        if (outside(0, 1.0f) || outside(0, -1.0f) || outside(1, 1.0f) || outside(1, -1.0f)) {
+            return bounds;
+        }
+    }
 
     float minimumNdcX = -1.0f;
     float maximumNdcX = 1.0f;
     float minimumNdcY = -1.0f;
     float maximumNdcY = 1.0f;
-    const MATH::Mat4& projection = camera.GetProj();
     if (camera.IsOrthographic()) {
         // 正射影の XY 範囲は深度に依存しない。近面を跨ぐ球にも同じ投影を使う。
         const float centerX = viewPosition.x * projection.m[0][0] + projection.m[3][0];
@@ -237,10 +253,11 @@ ClusterBounds ProjectSphereBounds(const MATH::Vec3& center, float radius, const 
             ProjectViewAxisBounds(viewPosition.x, range, inverseNearestDepth, inverseFarthestDepth, projection.m[0][0]);
         const auto yBounds =
             ProjectViewAxisBounds(viewPosition.y, range, inverseNearestDepth, inverseFarthestDepth, projection.m[1][1]);
-        minimumNdcX = xBounds.x;
-        maximumNdcX = xBounds.y;
-        minimumNdcY = yBounds.x;
-        maximumNdcY = yBounds.y;
+        // 偏った視錐台（SetOffCenter）は NDC が深度によらず -m[2][0]・-m[2][1] だけずれる（対称の投影では 0）。
+        minimumNdcX = xBounds.x - projection.m[2][0];
+        maximumNdcX = xBounds.y - projection.m[2][0];
+        minimumNdcY = yBounds.x - projection.m[2][1];
+        maximumNdcY = yBounds.y - projection.m[2][1];
     }
     if (maximumNdcX < -1.0f || minimumNdcX > 1.0f || maximumNdcY < -1.0f || minimumNdcY > 1.0f) {
         return bounds;
@@ -408,6 +425,32 @@ LocalLightListView BuildLocalLightList(const SceneLightingSet& lighting, const C
     if (!InitializeLocalLightGrid(view, camera, screenWidth, screenHeight, output.clusterHeaderCapacity)) {
         view.rejectedCount = view.sourceCount;
         return view;
+    }
+
+    // 視錐台に入る光も貼り絵も無い視点（一枚に並べた小さな視点の多く）は、全部空のクラスタ表を書いて返す。
+    // クラスタの数（像全体の大きさで決まる）だけの確保・数え上げ・詰め直しを省く。
+    {
+        LocalLightListView probe = view;
+        bool any = false;
+        VisitVisibleLocalLights(lighting, camera, screenWidth, screenHeight, output.recordCapacity, probe,
+                                [&any](const SceneLightProvider&, uint32_t, uint32_t, const ClusterBounds&) { any = true; });
+        for (const DECAL::SceneDecalProvider& decal : lighting.decals) {
+            if (any) {
+                break;
+            }
+            if (!DECAL::IsDecalUploadable(decal)) {
+                continue;
+            }
+            MATH::Vec3 center{};
+            float radius = 0.0f;
+            DECAL::ResolveDecalBoundingSphere(decal, center, radius);
+            any = ProjectSphereBounds(center, radius, camera, screenWidth, screenHeight, view).visible;
+        }
+        if (!any) {
+            view = probe;
+            std::fill_n(output.clusterHeaders, view.clusterCount, LocalLightClusterHeader{});
+            return view;
+        }
     }
 
     LocalLightListScratch& scratch = GetLocalLightListScratch();

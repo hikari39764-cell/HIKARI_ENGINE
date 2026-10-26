@@ -428,6 +428,29 @@ float4 ParticlePS(ParticleVertex input, bool frontFace : SV_IsFrontFace) : SV_TA
 
     alpha *= HikariResolveParticleDepthFade(input);
     clip(alpha - alphaClipThreshold);
+    if ((gParticleMaterialFlags & 4u) != 0u)
+    {
+        // 歪み層：戦闘の画面歪み遮罩へ書く。RG = 画面 UV のずれ、B = 覆い、A = ぼかし。
+        // 層色の R が強さ（最大で画面の 6%）、G がぼかし。B が 0.5 以上なら底色貼図の RG を
+        // 法線場として使い、未満なら不透明度の縁に沿って内へ屈折する
+        const float strength = saturate(input.color.r) * 0.06f;
+        float2 field = 0.0f.xx;
+        if (input.color.b >= 0.5f)
+        {
+            field = materialColor.rg * 2.0f - 1.0f;
+        }
+        else
+        {
+            const float2 gradient = float2(ddx(alpha), ddy(alpha));
+            const float gradientLength = length(gradient);
+            if (gradientLength > 1.0e-5f)
+            {
+                field = -gradient / gradientLength * saturate(gradientLength * 6.0f);
+            }
+        }
+        // 画面の V は下向きなので法線場の Y を反転する
+        return float4(field * float2(1.0f, -1.0f) * strength * alpha, alpha, alpha * saturate(input.color.g));
+    }
     const float3 baseColor = layerColor.rgb * materialColor.rgb;
     // 受光と発光は絶対量、Unlit の色は表示参照。どちらもこのビューの HDR 空間へ移して書く。
     const float3 straightColor = (lit ? HikariShadeSimpleSurface(baseColor,pbrInputs.metallic,

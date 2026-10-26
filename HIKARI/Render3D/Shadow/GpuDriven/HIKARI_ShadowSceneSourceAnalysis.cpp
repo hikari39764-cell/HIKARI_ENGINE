@@ -220,7 +220,33 @@ void CopyShadowPrimaryInstance(const RENDER3D::RUNTIME::SurfaceGpuSceneInstance&
     material.sourceRecordIndex = sourceInstance.sourceRecordIndex;
     material.sourceSurfaceInstanceIndex = sourceInstance.sourceSurfaceInstanceIndex;
 }
+
+// 並びのハッシュ（BuildShadowSourceLayoutHash）に入る項目が同じか。
+bool SameShadowLayout(const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& a,
+                      const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& b) {
+    return a.sourceRecordIndex == b.sourceRecordIndex && a.sourceSurfaceInstanceIndex == b.sourceSurfaceInstanceIndex &&
+           a.meshIndex == b.meshIndex && a.primitiveIndex == b.primitiveIndex && a.nodeIndex == b.nodeIndex &&
+           a.meshResourceIndex == b.meshResourceIndex && a.meshResourceGeneration == b.meshResourceGeneration &&
+           a.materialResourceIndex == b.materialResourceIndex &&
+           a.materialResourceGeneration == b.materialResourceGeneration &&
+           a.clusterGeometryResourceIndex == b.clusterGeometryResourceIndex && a.geometryBackend == b.geometryBackend;
+}
 } // namespace
+
+ShadowPrimaryPatch PatchShadowPrimaryInstance(const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& sourceInstance,
+                                              const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* sourceMaterial,
+                                              uint32_t localIndex, RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance,
+                                              RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource& material) {
+    ShadowPrimaryPatch patch;
+    patch.before = HashSurfaceGpuSceneMaterialSourceForShadow(
+        HashSurfaceGpuSceneInstanceForShadow(HASH::kFnv1a64OffsetBasis, instance), material);
+    const RENDER3D::RUNTIME::SurfaceGpuSceneInstance previous = instance;
+    CopyShadowPrimaryInstance(sourceInstance, sourceMaterial, localIndex, instance, material);
+    patch.after = HashSurfaceGpuSceneMaterialSourceForShadow(
+        HashSurfaceGpuSceneInstanceForShadow(HASH::kFnv1a64OffsetBasis, instance), material);
+    patch.layoutChanged = !SameShadowLayout(previous, instance);
+    return patch;
+}
 
 bool UpdateShadowPrimaryInstance(const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& sourceInstance,
                                  const RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource* sourceMaterial,

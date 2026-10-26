@@ -36,6 +36,13 @@ uint64_t BuildSurfaceKey(const RUNTIME::SurfaceGpuSceneMaterialSource& source) n
 } // namespace
 
 RenderFeatureRequestSet AnalyzeRenderFeatureRequests(const GPUDRIVEN::GpuDrivenSceneSource& source) {
+    // 面の材質の種類は並び（組と経路）の作り直しでしか変わらないので、同じ場景の同じ並びなら前の結果を返す。
+    static const GPUDRIVEN::GpuDrivenSceneSource* cachedSource = nullptr;
+    static uint64_t cachedLayout = 0u;
+    static RenderFeatureRequestSet cached{};
+    if (cachedSource == &source && cachedLayout == source.layoutVersion && source.layoutVersion != 0u) {
+        return cached;
+    }
     RenderFeatureRequestSet requests{};
     std::unordered_set<uint64_t> visited{};
     constexpr std::array passes{
@@ -68,6 +75,9 @@ RenderFeatureRequestSet AnalyzeRenderFeatureRequests(const GPUDRIVEN::GpuDrivenS
             }
         }
     }
+    cachedSource = &source;
+    cachedLayout = source.layoutVersion;
+    cached = requests;
     return requests;
 }
 

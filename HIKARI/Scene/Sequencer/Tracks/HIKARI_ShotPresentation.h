@@ -128,7 +128,11 @@ enum class ScreenEffectKind {
     Tint,
     Fade,
     Pixelate,
-    Chromatic
+    Chromatic,
+    // 色を反転する（HDR のまま中間の灰を軸に反転）。
+    Invert,
+    // 画面中心へ向かって放射状にぼかす。量は中心へ寄せる割合。
+    RadialBlur
 };
 
 struct SequenceScreenEffect {

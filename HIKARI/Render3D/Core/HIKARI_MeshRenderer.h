@@ -129,9 +129,15 @@ bool HasDepthAwarePassWork();
 bool HasForwardTransparentPassWork();
 bool HasPreservedVfxWork();
 bool RenderPreservedVfxPass(const GFX::Context& graphics, const MeshPassResources& passResources);
+// 歪み層の粒子を戦闘の画面歪み遮罩へ描き、その貼図を返す（合成は PostSystem が行う）
+bool HasVfxDistortionWork();
+bool RenderVfxDistortionMaskPass(const GFX::Context& graphics, const MeshPassResources& passResources,
+                                 RENDER3D::RenderTextureView& outMask, D3D12_CPU_DESCRIPTOR_HANDLE& outMaskSrvCpu);
 bool RenderDepthAwarePass(const GFX::Context& graphics, const MeshPassResources& passResources);
+// cullViewProj があれば、その視錐の外の面は集めない。
 bool GatherTemporalVelocityDraws(const GFX::Context& graphics, std::vector<TemporalVelocityDraw>& outDraws,
-                                 uint32_t maximumDrawCount, uint32_t maximumSkinnedDrawCount);
+                                 uint32_t maximumDrawCount, uint32_t maximumSkinnedDrawCount,
+                                 const MATH::Mat4* cullViewProj = nullptr);
 bool SetAmbientOcclusionRuntimeEnabled(bool enabled);
 void EndFrame();
 MeshRendererFrameResult RenderAll(const GFX::Context& graphics, const RENDER3D::RenderViewContext& view,
@@ -188,7 +194,7 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
                                  const SceneEnvironment& environment,
                                  const RENDER3D::LIGHTING::SceneLightingSet& lighting, uint32_t captureSlot,
                                  uint32_t screenWidth, uint32_t screenHeight, bool renderTransparent,
-                                 const MeshPassResources* captureResources = nullptr);
+                                 const MeshPassResources* captureResources = nullptr, bool prepareFrame = true);
 void ResetSecondarySceneCaptureResources(uint32_t captureSlot) noexcept;
 void ResetSecondarySceneCaptureResources() noexcept;
 const MeshRendererDebugStats& GetDebugStats();

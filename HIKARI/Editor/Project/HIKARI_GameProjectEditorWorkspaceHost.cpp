@@ -578,7 +578,7 @@ bool GameProjectEditorWorkspaceHost::RegisterModule(const GameProjectEditorModul
     documents_ = std::make_unique<GameProjectEditorDocumentService>(TEXT::PathFromUtf8(projectRootUtf8) / "Data");
     registry_.SetDocuments(documents_.get());
     std::string operationMessage{};
-    if (!module.RegisterEditorOperations(operationRegistry, operationOwnerToken, documents_.get(), operationMessage)) {
+    if (!module.RegisterEditorOperations(operationRegistry, operationOwnerToken, documents_.get(), operationMessage, &registry_)) {
         (void)operationRegistry.UnregisterOwner(operationOwnerToken);
         registry_.SetDocuments(nullptr);
         documents_.reset();

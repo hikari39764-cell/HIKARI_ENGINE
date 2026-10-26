@@ -3,6 +3,7 @@
 #include "Project/HIKARI_ProjectContext.h"
 #include "HIKARI_PresentationCueDriver.h"
 #include <algorithm>
+#include <cmath>
 #include "Audio/HIKARI_Audio.h"
 #include "Core/HIKARI_Logger.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -10,6 +11,17 @@
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 
 namespace HIKARI::SEQUENCER {
+namespace {
+// 音の速さ：演出の再生速度 × 片段の音高。音声の層が受け付ける範囲に収める。
+float CueRate(const PresentationCueClip& clip, float playbackRate) {
+    return std::clamp(playbackRate * clip.pitch, 0.01f, 8.0f);
+}
+} // namespace
+// 読み込みは音声の層が文件ごとに一度だけ行い、二度目からは同じ番号を返す。
+float GetPresentationCueSoundSeconds(const std::string& soundPath) {
+    const auto path = PROJECT_PATHS::ResolveRuntimePayloadFile(GetProjectContext().GetRoot(), soundPath);
+    return path.empty() ? 0.0f : AUDIO::GetSoundSeconds(AUDIO::Load(TEXT::PathToUtf8(path).c_str()));
+}
 PresentationCueDriver::PresentationCueDriver(World& world, VFX::VfxPlaybackService& vfx) : world_(world), vfx_(vfx) {}
 
 bool PresentationCueDriver::ResolveTransform(const SequencePlaybackInstanceView& instance, SequenceBindingId binding,
@@ -93,12 +105,20 @@ void PresentationCueDriver::Evaluate(const SequencePlaybackInstanceView& instanc
             state.entered = true;
             if (clip.kind == PresentationCueKind::Audio) {
                 auto options = clip.audio;
-                options.startSeconds = localTime;
-                options.playbackRate = context.playbackRate;
+                // 素材の中の位置：素材の起点＋片段の中の時刻×音高。ループする音は素材の長さで折り返し、
+                // ループしない音が素材の終わりより後から始まる時は鳴らさない（止まっているのが正しい）。
+                float source = clip.sourceOffsetSeconds + localTime * clip.pitch;
+                const float length = AUDIO::GetSoundSeconds(state.sound);
+                if (options.loop && length > 0.0f)
+                    source = std::fmod(source, length);
+                const bool ended = !options.loop && length > 0.0f && source >= length;
+                options.startSeconds = source;
+                options.playbackRate = CueRate(clip, context.playbackRate);
+                options.volume = clip.audio.volume * GetPresentationCueFadeGain(clip, localTime);
                 options.paused = context.playing && !context.IsDiscontinuous() ? 0u : 1u;
                 options.source.position = {transform.position.x, transform.position.y, transform.position.z};
-                state.voice = AUDIO::PlayCue(state.sound, options, world_.GetRuntimeIdentity());
-                if (state.voice < 0 && !state.warned) {
+                state.voice = ended ? -1 : AUDIO::PlayCue(state.sound, options, world_.GetRuntimeIdentity());
+                if (state.voice < 0 && !ended && !state.warned) {
                     HIKARI_LOG_WARN("[Sequence][AudioCue] unavailable, expired, or budget rejected: " + clip.name);
                     state.warned = true;
                 }
@@ -122,7 +142,8 @@ void PresentationCueDriver::Evaluate(const SequencePlaybackInstanceView& instanc
                 source.position = {transform.position.x, transform.position.y, transform.position.z};
                 AUDIO::SetSource(state.voice, source);
             }
-            AUDIO::SetPlaybackRate(state.voice, context.playbackRate);
+            AUDIO::SetPlaybackRate(state.voice, CueRate(clip, context.playbackRate));
+            AUDIO::SetVolume(state.voice, clip.audio.volume * GetPresentationCueFadeGain(clip, localTime));
             if (context.playing && !(context.IsPreview() && context.IsDiscontinuous()))
                 AUDIO::Resume(state.voice);
             else

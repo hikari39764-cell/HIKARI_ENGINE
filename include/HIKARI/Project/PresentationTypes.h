@@ -53,7 +53,9 @@ struct GameProjectPresentationModelRequest {
     uint8_t visible = 1u;
     uint8_t castShadow = 1u;
     uint8_t receiveShadow = 1u;
-    uint8_t reserved = 0u;
+    // 1 なら次のフレームから出し直さなくても残る（Remove するか、同じ ID で出し直して中身を変えるまで）。動かない部品を
+    // 一度だけ出し、毎フレームの提出と比べ直しを省く。0 は従来どおり、そのフレームに出さなかった要求は消える。
+    uint8_t retain = 0u;
     // Empty selects imported glTF materials (or the existing model-level
     // default set when one is formally authored).  A non-empty value is
     // an exact-model Material Set GUID; invalid sets fail closed to the

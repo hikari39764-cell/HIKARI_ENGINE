@@ -428,6 +428,8 @@ bool CinematicsWorkspaceController::DrawShotOverlays(DocumentSceneBase& scene, C
             }
         }
     }
+    if (enabled && !pilot_ && selectionKind_ == SelectionKind::Object)
+        changed |= DrawObjectTrackGizmo(scene, sequence, viewport, interacting);
     for (const auto& shot : sequence.cameraCutTrack.clips) {
         const bool isSelected = selectionKind_ == SelectionKind::Shot && selectedId_ == shot.id;
         const float local = ShotLocalTime(shot);

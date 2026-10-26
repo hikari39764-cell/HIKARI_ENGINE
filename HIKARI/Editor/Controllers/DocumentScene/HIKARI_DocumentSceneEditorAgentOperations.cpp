@@ -174,9 +174,11 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::DescribeEditorState
     }
     state["project"] = {{"root", TEXT::PathToUtf8(scene->GetAssetDatabase().GetProjectRoot())}};
     const SceneDocument& document = scene->GetSceneDocument();
+    // editRevision は記録・撤销・重做のたびに進む（documentRevision は場景を読み込んだ時だけ）。同じ名前の操作が続いても変化が分かる。
     nlohmann::json sceneState{
         {"path", scene->GetScenePath()},         {"objects", document.objects.size()},
         {"dirty", context_.sceneDirty},          {"documentRevision", scene->GetSceneDocumentRevision()},
+        {"editRevision", documentHistory_.GetEditRevision()},
         {"canUndo", documentHistory_.CanUndo()}, {"canRedo", documentHistory_.CanRedo()}};
     if (const std::string* label = documentHistory_.GetUndoLabel())
         sceneState["undoLabel"] = *label;

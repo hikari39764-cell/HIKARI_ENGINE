@@ -13,6 +13,9 @@ public:
 
     void SetPerspective(float fovYRad, float aspect, float nearZ, float farZ);
     void SetOrthographic(float verticalSize, float aspect, float nearZ, float farZ);
+    // 視錐台を近い面での端（左・右・下・上。目の座標系で右と上が正）で決める。視線が像の中心を通らない投影（一枚の像に
+    // 並べる覗き窓の視点など）に使う。正投影なら端は目の座標系の位置。画角と縦横比は高さ・幅からの近似として残す。
+    void SetOffCenter(float left, float right, float bottom, float top, float nearZ, float farZ, bool orthographic);
     void SetAspect(float aspect);
     void SetLookAt(const MATH::Vec3& eye, const MATH::Vec3& target, const MATH::Vec3& up = {0.0f, 1.0f, 0.0f});
 

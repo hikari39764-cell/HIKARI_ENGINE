@@ -33,7 +33,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12RootSignature> compactionRootSignature_{};
     std::array<Microsoft::WRL::ComPtr<ID3D12PipelineState>, 3u> compactionPipelines_{};
     Microsoft::WRL::ComPtr<ID3D12RootSignature> drawRootSignature_{};
-    std::array<std::array<std::array<Microsoft::WRL::ComPtr<ID3D12PipelineState>, 2u>, 2u>, 2u> drawPipelines_{};
+    // [形状][混合 0 透明・1 加算・2 歪み][深度]
+    std::array<std::array<std::array<Microsoft::WRL::ComPtr<ID3D12PipelineState>, 2u>, 3u>, 2u> drawPipelines_{};
     Microsoft::WRL::ComPtr<ID3D12CommandSignature> drawCommandSignature_{};
 };
 

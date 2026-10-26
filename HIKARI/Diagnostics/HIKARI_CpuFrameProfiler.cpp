@@ -2,6 +2,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <utility>
+#include <vector>
 
 namespace HIKARI::CPU_PROFILE {
 
@@ -141,6 +145,37 @@ void EndFrame() {
         state.rolling.Push(state.elapsedMs);
         FillTiming(gState.latest.dynamicPasses[index], state.name.c_str(), state.elapsedMs, state.callCount,
                    state.rolling);
+    }
+    // 診断（環境変数 HIKARI_SPIKE_TRACE=閾値ms、既定 40）：CPU の 1 フレームか、前のフレームの終わりからの間隔が
+    // 閾値を超えたら、そのフレームで長かった計測を多い順に出す（突然の引っかかりの原因を探す）。
+    static const double spikeThreshold = [] {
+        const char* value = std::getenv("HIKARI_SPIKE_TRACE");
+        return value == nullptr ? -1.0 : (std::atof(value) > 0.0 ? std::atof(value) : 40.0);
+    }();
+    static Clock::time_point previousEnd{};
+    const double intervalMs = previousEnd == Clock::time_point{} ? 0.0
+                              : std::chrono::duration<double, std::milli>(frameEnd - previousEnd).count();
+    previousEnd = frameEnd;
+    const double cpuMs = gState.elapsedMs[framePassIndex];
+    if (spikeThreshold > 0.0 && (cpuMs > spikeThreshold || intervalMs > spikeThreshold)) {
+        std::vector<std::pair<double, const char*>> items;
+        for (size_t index = 0; index < gState.elapsedMs.size(); ++index) {
+            if (index != framePassIndex && gState.elapsedMs[index] > 1.0) {
+                items.emplace_back(gState.elapsedMs[index], ToString(static_cast<Pass>(index)));
+            }
+        }
+        for (uint32_t index = 0u; index < gState.dynamicPassCount; ++index) {
+            if (gState.dynamicPasses[index].elapsedMs > 1.0) {
+                items.emplace_back(gState.dynamicPasses[index].elapsedMs, gState.dynamicPasses[index].name.c_str());
+            }
+        }
+        std::sort(items.begin(), items.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+        std::fprintf(stderr, "[Spike] frame=%llu cpu=%.1fms interval=%.1fms", static_cast<unsigned long long>(gState.frameIndex),
+                     cpuMs, intervalMs);
+        for (size_t index = 0; index < items.size() && index < 12u; ++index) {
+            std::fprintf(stderr, " %s=%.1f", items[index].second, items[index].first);
+        }
+        std::fprintf(stderr, "\n");
     }
 }
 

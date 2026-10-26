@@ -42,6 +42,7 @@ enum class AssetImporterKind : uint8_t {
     RenderStyle,
     ColorLut,
     LightProfile,
+    Audio,
     Count,
 };
 

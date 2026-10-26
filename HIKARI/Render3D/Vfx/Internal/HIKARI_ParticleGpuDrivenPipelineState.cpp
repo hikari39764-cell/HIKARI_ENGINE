@@ -352,15 +352,16 @@ bool ParticleGpuDrivenPipelineState::CreateDrawPipelines(ID3D12Device* device) {
         return false;
     }
     for (uint32_t shapeIndex = 0u; shapeIndex < 2u; ++shapeIndex) {
-        for (uint32_t blendIndex = 0u; blendIndex < 2u; ++blendIndex) {
+        for (uint32_t blendIndex = 0u; blendIndex < 3u; ++blendIndex) {
             for (uint32_t depthIndex = 0u; depthIndex < 2u; ++depthIndex) {
+                // 0 = 透明合成、1 = 加算、2 = 歪み（ずれ・覆い・ぼかしをすべて加算で積む。遮罩は同じ RGBA16F）
                 CD3DX12_BLEND_DESC blend(D3D12_DEFAULT);
                 auto& target = blend.RenderTarget[0];
                 target.BlendEnable = TRUE;
                 target.SrcBlend = D3D12_BLEND_ONE;
                 target.DestBlend = blendIndex == 0u ? D3D12_BLEND_INV_SRC_ALPHA : D3D12_BLEND_ONE;
                 target.BlendOp = D3D12_BLEND_OP_ADD;
-                target.SrcBlendAlpha = blendIndex == 0u ? D3D12_BLEND_ONE : D3D12_BLEND_ZERO;
+                target.SrcBlendAlpha = blendIndex == 1u ? D3D12_BLEND_ZERO : D3D12_BLEND_ONE;
                 target.DestBlendAlpha = blendIndex == 0u ? D3D12_BLEND_INV_SRC_ALPHA : D3D12_BLEND_ONE;
                 target.BlendOpAlpha = D3D12_BLEND_OP_ADD;
 

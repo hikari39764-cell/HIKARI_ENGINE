@@ -406,6 +406,19 @@ void RenderTarget2D::Rebind() {
     cmd->RSSetScissorRects(1, &scissorRect_);
 }
 
+void RenderTarget2D::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
+    viewport_.TopLeftX = static_cast<float>(x);
+    viewport_.TopLeftY = static_cast<float>(y);
+    viewport_.Width = static_cast<float>(width);
+    viewport_.Height = static_cast<float>(height);
+    scissorRect_.left = static_cast<LONG>(x);
+    scissorRect_.top = static_cast<LONG>(y);
+    scissorRect_.right = static_cast<LONG>(x + width);
+    scissorRect_.bottom = static_cast<LONG>(y + height);
+}
+
+void RenderTarget2D::ResetViewport() { SetViewport(0u, 0u, static_cast<uint32_t>(width_), static_cast<uint32_t>(height_)); }
+
 bool RenderTarget2D::BeginDepthRead() {
     if (!initialized_ || !hasDepth_ || !depthTex_ || readOnlyDsvHandle_.ptr == 0) {
         return false;

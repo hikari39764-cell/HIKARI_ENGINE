@@ -137,6 +137,7 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
     {AssetImporterKind::RenderStyle, AssetType::RenderStyle, "RenderStyleAssetImporter", 1u, ".hrenderstyle"},
     {AssetImporterKind::ColorLut, AssetType::ColorLut, "ColorLutAssetImporter", 1u, ".cube"},
     {AssetImporterKind::LightProfile, AssetType::LightProfile, "LightProfileAssetImporter", 1u, ".ies"},
+    {AssetImporterKind::Audio, AssetType::Audio, "AudioAssetImporter", 1u, ".wav, .mp3, .ogg, .flac"},
 }};
 
 static_assert(
@@ -165,6 +166,11 @@ bool IsSkyDirectoryPath(const std::filesystem::path& path) {
 bool IsTextureExtension(std::string_view extension) noexcept {
     return extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".tga" ||
            extension == ".bmp" || extension == ".dds" || extension == ".hdr";
+}
+
+// 音声は元の文件のまま鳴らす（XAudio2 / Media Foundation が読める形式）。
+bool IsAudioExtension(std::string_view extension) noexcept {
+    return extension == ".wav" || extension == ".mp3" || extension == ".ogg" || extension == ".flac";
 }
 
 bool IsModelExtension(std::string_view extension) noexcept {
@@ -208,6 +214,7 @@ constexpr TEXT::EnumName<AssetType> kAssetTypeNames[] = {
     {AssetType::Dialogue, "Dialogue"},
     {AssetType::ModelMaterialBinding, "ModelMaterialBinding"},
     {AssetType::Shader, "Shader"},
+    {AssetType::Audio, "Audio"},
     {AssetType::Unknown, "Unknown"},
 };
 std::string_view ToString(AssetType type) noexcept { return TEXT::EnumToName(kAssetTypeNames, type, "Unknown"); }
@@ -255,6 +262,8 @@ const AssetImporterSemantics* ResolveAssetSourceSemantics(const std::filesystem:
         kind = AssetImporterKind::Prefab;
     } else if (extension == ".ttf" || extension == ".otf" || extension == ".ttc") {
         kind = AssetImporterKind::Font;
+    } else if (IsAudioExtension(extension)) {
+        kind = AssetImporterKind::Audio;
     } else if (extension == ".huianim") {
         kind = AssetImporterKind::UiAnimation;
     } else if (extension == ".htextstyle") {

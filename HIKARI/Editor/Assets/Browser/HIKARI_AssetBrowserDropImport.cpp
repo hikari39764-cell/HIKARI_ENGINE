@@ -67,6 +67,9 @@ std::filesystem::path SuggestedTargetDirectory(const std::filesystem::path& curr
 
     if (type == AssetType::Font)
         return "Assets/Fonts";
+    // 演出の音声は Assets/Audio の下だけを鳴らす。
+    if (type == AssetType::Audio)
+        return "Assets/Audio";
     if (type == AssetType::TextStyle)
         return "Assets/TextStyles";
     if (type == AssetType::Model) {

@@ -108,11 +108,14 @@ bool PresentationModelService::Submit(const PresentationModelSubmission& submiss
             record.visible = submission.visible;
             record.castShadow = submission.castShadow;
             record.receiveShadow = submission.receiveShadow;
+            record.retain = submission.retain;
             records_.emplace(key, std::move(record));
         } else {
             PresentationModelRecord& record = found->second;
+            record.retain = submission.retain;
             payloadChanged = !HasSamePayload(record, submission);
             if (payloadChanged) {
+                ++record.payloadRevision;
                 record.assetGuid = submission.assetGuid;
                 record.assetPath = submission.assetPath;
                 record.materialSetAssetGuid = submission.materialSetAssetGuid;
@@ -318,19 +321,33 @@ void PresentationModelService::PrepareForRender(uint64_t frameIndex,
             frameRecords_.clear();
             return;
         }
-        std::unordered_set<uint64_t> occupiedIds{};
-        occupiedIds.reserve(occupiedObjectIds.size() + records_.size());
+        // 場景の物体の ID が表示専用の前置きを使っていなければ、記録の ID とぶつかることはない（記録どうしは割り当てで
+        // 重ならず、割り当てる ID は必ず前置き付き）。その時は物体の ID の集合を作らず、記録ごとの照合と登録も省く
+        // （数万の物体の ID を毎フレーム集合へ入れていた）。
+        bool worldUsesPresentationIds = false;
         for (const uint64_t id : occupiedObjectIds) {
-            if (id != 0u) {
-                occupiedIds.insert(id);
+            if (id != 0u && (id & kPresentationIdMask) == kPresentationIdPrefix) {
+                worldUsesPresentationIds = true;
+                break;
+            }
+        }
+        std::unordered_set<uint64_t> occupiedIds{};
+        if (worldUsesPresentationIds) {
+            occupiedIds.reserve(occupiedObjectIds.size() + records_.size());
+            for (const uint64_t id : occupiedObjectIds) {
+                if (id != 0u) {
+                    occupiedIds.insert(id);
+                }
             }
         }
 
         frameRecords_.reserve(records_.size());
         size_t frameRecordCount = 0u;
         for (auto it = records_.begin(); it != records_.end();) {
-            const auto touched = touchedFrames_.find(it->first);
-            if (touched == touchedFrames_.end() || touched->second != frameIndex) {
+            if (!it->second.retain && [&] {
+                    const auto touched = touchedFrames_.find(it->first);
+                    return touched == touchedFrames_.end() || touched->second != frameIndex;
+                }()) {
                 AddUnique(removedRenderObjectIds_, removedRenderObjectIdSet_, it->second.renderObjectId);
                 touchedFrames_.erase(it->first);
                 it = records_.erase(it);
@@ -338,7 +355,7 @@ void PresentationModelService::PrepareForRender(uint64_t frameIndex,
             }
 
             PresentationModelRecord& record = it->second;
-            if (record.renderObjectId == 0u || occupiedIds.contains(record.renderObjectId)) {
+            if (record.renderObjectId == 0u || (worldUsesPresentationIds && occupiedIds.contains(record.renderObjectId))) {
                 const uint64_t oldId = record.renderObjectId;
                 record.renderObjectId = AllocateRenderObjectId(occupiedIds);
                 if (record.renderObjectId == 0u) {
@@ -352,9 +369,17 @@ void PresentationModelService::PrepareForRender(uint64_t frameIndex,
                 }
                 NUMERIC::AdvanceNonZero(revision_);
             }
-            occupiedIds.insert(record.renderObjectId);
+            if (worldUsesPresentationIds) {
+                occupiedIds.insert(record.renderObjectId);
+            }
             if (frameRecordCount < frameRecords_.size()) {
-                frameRecords_[frameRecordCount] = record;
+                // 前のフレームの同じ位置に同じ記録の同じ版があれば写し直さない（数千の部品の文字列を毎フレーム写していた）。
+                PresentationModelRecord& slot = frameRecords_[frameRecordCount];
+                if (slot.renderObjectId != record.renderObjectId || slot.payloadRevision != record.payloadRevision ||
+                    slot.ownerObjectHandle != record.ownerObjectHandle || slot.instanceId != record.instanceId ||
+                    slot.retain != record.retain) {
+                    slot = record;
+                }
             } else {
                 frameRecords_.push_back(record);
             }
@@ -394,10 +419,16 @@ uint64_t PresentationModelService::AllocateRenderObjectId(const std::unordered_s
         ++nextRenderObjectId_;
         if ((nextRenderObjectId_ & kPresentationIdMask) != kPresentationIdPrefix) {
             nextRenderObjectId_ = kPresentationIdPrefix | 1u;
+            renderObjectIdsWrapped_ = true;
         }
         if (candidate == 0u || (candidate & kPresentationIdMask) != kPresentationIdPrefix ||
             occupiedIds.contains(candidate)) {
             continue;
+        }
+        // 番号が一周するまでは記録と重ならないので、全部の記録を調べない（数千の部品を初めて出すフレームで、一つごとに
+        // 全部の記録を数え直していた）。
+        if (!renderObjectIdsWrapped_) {
+            return candidate;
         }
         bool usedByRecord = false;
         for (const auto& entry : records_) {

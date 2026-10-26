@@ -453,6 +453,20 @@ bool AudioBackendXAudio2::SetPlaybackRate(int handle, float rate) {
     const auto& playing = voices_[static_cast<size_t>(handle)];
     return playing.active && playing.voice && SUCCEEDED(playing.voice->SetFrequencyRatio(rate));
 }
+// 常駐の音は復号した PCM の長さ、stream の音は wav の data の長さから求める。
+float AudioBackendXAudio2::GetSoundSeconds(int soundHandle) const {
+    if (soundHandle < 0 || soundHandle >= static_cast<int>(sounds_.size()))
+        return 0.0f;
+    const SoundData& sound = sounds_[static_cast<size_t>(soundHandle)];
+    const auto& formatBytes = sound.streaming ? sound.wave.format : sound.formatBytes;
+    if (formatBytes.size() < sizeof(WAVEFORMATEX))
+        return 0.0f;
+    const auto* format = reinterpret_cast<const WAVEFORMATEX*>(formatBytes.data());
+    if (format->nBlockAlign == 0u || format->nSamplesPerSec == 0u)
+        return 0.0f;
+    const uint64_t bytes = sound.streaming ? sound.wave.dataBytes : sound.audioBytes.size();
+    return static_cast<float>(static_cast<double>(bytes / format->nBlockAlign) / format->nSamplesPerSec);
+}
 GameProjectAudioStats AudioBackendXAudio2::GetStats() const {
     GameProjectAudioStats stats;
     stats.residentBytes = residentSoundBytes_;

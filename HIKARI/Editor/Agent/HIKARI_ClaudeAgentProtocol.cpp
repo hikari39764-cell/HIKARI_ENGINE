@@ -175,6 +175,9 @@ public:
         } else if (type == "control_cancel_request") {
             session.RemoveApproval("request_id", line.value("request_id", std::string{}));
         } else if (type == "system") {
+            // 考えている間は文字が来ない。見積もりの token 数で、止まっていないことを面板に見せる。
+            if (line.value("subtype", std::string{}) == "thinking_tokens")
+                session.SetThinkingTokens(line.value("estimated_tokens", uint64_t{0}));
             for (const nlohmann::json& server : line.value("mcp_servers", nlohmann::json::array())) {
                 if (server.value("name", std::string{}) == "hikari" &&
                     server.value("status", std::string{}) != "connected")

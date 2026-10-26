@@ -133,6 +133,54 @@ struct GameProjectSequenceEventClip {
     float durationSeconds = 0.0f;
 };
 
+// 演出の文字段（演出ワークスペースの文字轨）。引擎は文字样式のある片段を Play とプレビューで自分で描く。
+// プロジェクトはこれを読んで装飾を足したり、样式の無い片段を自分で描いたりする。置き場所は 1920×1080 の
+// 基準画面（画面に収めて中央に置く）の割合。文字そのものは GetTextClipText で読む（UTF-8、最大 4096 バイト）。
+inline constexpr uint32_t kGameProjectSequenceTextTagCapacity = 64u;
+inline constexpr uint32_t kGameProjectSequenceMaximumTextClips = 256u;
+inline constexpr uint32_t kGameProjectSequenceTextMaximumBytes = 4096u;
+inline constexpr float kGameProjectSequenceTextReferenceWidth = 1920.0f;
+inline constexpr float kGameProjectSequenceTextReferenceHeight = 1080.0f;
+
+enum class GameProjectSequenceTextLayout : uint8_t {
+    Horizontal = 0u, // width で折り返す横書き
+    Vertical = 1u,   // 一行を一列にし、右の列から左へ並べる縦書き
+};
+// 置き場所 (x, y) に文字の箱のどこを合わせるか（横は 左・中・右、縦は 上・中・下）。
+enum class GameProjectSequenceTextAlign : uint8_t { Start = 0u, Center = 1u, End = 2u };
+enum class GameProjectSequenceTextReveal : uint8_t {
+    None = 0u,
+    Typewriter = 1u, // revealSeconds の間に先頭から一字ずつ現れる
+};
+
+struct GameProjectSequenceTextClip {
+    uint64_t id = 0u;
+    float startSeconds = 0.0f;
+    float durationSeconds = 0.0f;
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;         // 横書きの折り返しの幅（基準画面の幅の割合）
+    float columnSpacing = 0.0f; // 縦書きの列の間隔（字の大きさの倍数）
+    float scale = 1.0f;
+    float pixelHeight = 0.0f;   // 样式の字の大きさ×scale（基準画面の画素）。样式が読めなければ 0
+    float lineHeight = 0.0f;    // 样式の行の高さの倍率（縦書きの字の送り）
+    float revealSeconds = 0.0f;
+    float fadeInSeconds = 0.0f;
+    float fadeOutSeconds = 0.0f;
+    GameProjectFloat4 tint{1.0f, 1.0f, 1.0f, 1.0f}; // 样式の色に掛ける（w は不透明度）
+    int32_t order = 0;                               // UI の重なり順
+    uint32_t textBytes = 0u;                         // 文字の UTF-8 のバイト数（終端を含まない）
+    GameProjectSequenceTextLayout layout = GameProjectSequenceTextLayout::Horizontal;
+    GameProjectSequenceTextAlign alignX = GameProjectSequenceTextAlign::Center;
+    GameProjectSequenceTextAlign alignY = GameProjectSequenceTextAlign::End;
+    GameProjectSequenceTextReveal reveal = GameProjectSequenceTextReveal::None;
+    uint8_t engineDrawn = 0u; // 1 なら引擎がこの片段を描く（样式が読める）
+    uint8_t reserved0[3] = {0u, 0u, 0u};
+    char tag[kGameProjectSequenceTextTagCapacity]{};
+    char styleGuid[kGameProjectSequenceAssetGuidCapacity]{};
+    uint8_t reserved[7] = {0u, 0u, 0u, 0u, 0u, 0u, 0u};
+};
+
 // Event values are delivered synchronously by ConsumeEvents. The event
 // pointer passed to the callback is borrowed only for that callback. A
 // message longer than the public buffer is truncated and marked, so a
@@ -184,6 +232,14 @@ static_assert(std::is_standard_layout_v<GameProjectSequenceEventClip>);
 static_assert(std::is_trivially_copyable_v<GameProjectSequenceEventClip>);
 static_assert(sizeof(GameProjectSequenceEventClip) == 72u);
 static_assert(offsetof(GameProjectSequenceEventClip, startSeconds) == 64u);
+static_assert(std::is_standard_layout_v<GameProjectSequenceTextClip>);
+static_assert(std::is_trivially_copyable_v<GameProjectSequenceTextClip>);
+static_assert(sizeof(GameProjectSequenceTextClip) == 192u);
+static_assert(offsetof(GameProjectSequenceTextClip, tint) == 56u);
+static_assert(offsetof(GameProjectSequenceTextClip, order) == 72u);
+static_assert(offsetof(GameProjectSequenceTextClip, layout) == 80u);
+static_assert(offsetof(GameProjectSequenceTextClip, tag) == 88u);
+static_assert(offsetof(GameProjectSequenceTextClip, styleGuid) == 152u);
 static_assert(std::is_standard_layout_v<GameProjectSequencePlaybackEvent>);
 static_assert(std::is_trivially_copyable_v<GameProjectSequencePlaybackEvent>);
 static_assert(sizeof(GameProjectSequencePlaybackEvent) == 328u);

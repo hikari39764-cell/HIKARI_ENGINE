@@ -44,6 +44,11 @@ struct MaterialStorage {
     uint64_t assetRegistryRevision = 0u;
     std::vector<std::unique_ptr<Material>> owned{};
     std::vector<RENDER3D::RUNTIME::SceneRenderMaterialOverride> overrides{};
+    // 前のフレームに描画の写しを作った時の記録の版・モデル・モデルの版。どれも同じで資産の登録も変わっていなければ、
+    // 写しを作り直さず生存だけを伝える（部品を毎フレーム出し直す数千の記録で、写しの作り直しが毎フレーム数十 ms かかっていた）。
+    uint64_t syncedPayloadRevision = 0u;
+    const ModelAsset* syncedAsset = nullptr;
+    uint64_t syncedAssetRevision = 0u;
 };
 using MaterialStorageByRenderObject = std::unordered_map<uint64_t, MaterialStorage>;
 
@@ -57,7 +62,7 @@ void SyncRenderObjects(
     const PresentationTransformService* presentationTransforms, const ANIMATION::AnimationPoseService* animationPoses,
     MaterialStorageByRenderObject& materialStorage, std::unordered_set<std::string>& missingAssetDiagnostics,
     std::unordered_set<std::string>& missingNodeDiagnostics, std::unordered_set<std::string>& attachmentDiagnostics,
-    std::unordered_set<std::string>& materialDiagnostics);
+    std::unordered_set<std::string>& materialDiagnostics, bool fullSync = true);
 
 } // namespace PRESENTATION_MODEL
 } // namespace HIKARI

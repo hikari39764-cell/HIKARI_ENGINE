@@ -46,6 +46,8 @@ public:
     SequencePlaybackHandle FindActiveByChannel(std::string_view channel) const noexcept;
     // 実例が流している演出の中身（無ければ null）。事件段などを読む。
     const CinematicSequence* GetSequence(SequencePlaybackHandle handle) const noexcept;
+    // 流れている全ての実例（再生と外から動かすプレビュー）。毎フレームの文字の描画などが読む。
+    std::vector<SequencePlaybackHandle> GetActiveHandles() const;
     size_t GetActiveInstanceCount() const noexcept;
     std::vector<SequencePlaybackEvent> ConsumeEvents();
 

@@ -66,6 +66,7 @@ constexpr AssetTypeFilter kAssetTypeFilters[] = {
     {AssetType::RenderStyle, "renderstyle.asset"},
     {AssetType::ColorLut, "environment.colorLut.asset"},
     {AssetType::LightProfile, "light.profile.asset"},
+    {AssetType::Audio, "cine.sound"},
 };
 } // namespace
 
@@ -221,6 +222,7 @@ const char* ToCompactTypeBadge(AssetType type) {
     case AssetType::RenderStyle: return "RST";
     case AssetType::ColorLut: return "LUT";
     case AssetType::LightProfile: return "IES";
+    case AssetType::Audio: return "SND";
     case AssetType::Unknown:
     default: return "UNK";
     }

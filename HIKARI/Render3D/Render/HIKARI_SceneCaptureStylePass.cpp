@@ -21,7 +21,8 @@ CaptureStylePass& State() {
 } // namespace
 
 bool DrawSceneCaptureStyle(const GFX::Context& graphics, const RenderTarget2D& input, RenderTarget2D& output,
-                           const GameProjectSceneCaptureStyleDesc& style, const SceneCaptureStyleDepth& depth) {
+                           const GameProjectSceneCaptureStyleDesc& style, const SceneCaptureStyleDepth& depth,
+                           const std::vector<D3D12_RECT>* rects) {
     auto& state = State();
     if (graphics.device == nullptr || graphics.cmdList == nullptr || !input.IsInitialized() ||
         !output.IsInitialized() || input.GetResource() == output.GetResource() ||
@@ -62,10 +63,22 @@ bool DrawSceneCaptureStyle(const GFX::Context& graphics, const RenderTarget2D& i
     params.user[7] = {style.occlusionRadius, style.occlusionDepth, style.depthLine, style.lightShadow};
     params.user[8] = {style.lightSlope, style.lightReach, depth.nearZ, depth.farZ};
     params.user[9] = {hasDepth ? 1.0f : 0.0f, depth.orthographic ? 1.0f : 0.0f, style.depthLineGap, style.transparentBackground};
+    // 色調（版 6）：鮮やかな物体の外だけに掛ける。
+    params.user[10] = {style.toneTint.x, style.toneTint.y, style.toneTint.z, style.toneTintStrength};
+    params.user[11] = {style.toneHue, style.toneSaturation, style.toneBrightness, style.toneContrast};
     state.effect->ApplyCommonParams(params);
     state.quad.SetInputTexture(input.GetSrvHeap(), input.GetSrvGpu(), hasDepth ? depth.srv : D3D12_GPU_DESCRIPTOR_HANDLE{});
-    output.BeginCapture();
-    const bool drawn = state.effect->BindAndDraw(state.quad);
+    if (rects == nullptr) {
+        output.BeginCapture();
+        const bool drawn = state.effect->BindAndDraw(state.quad);
+        output.EndCapture();
+        return drawn;
+    }
+    // 矩形ごと：視口は全面のまま（四角の UV と texel の位置を像全体で合わせる）、切り抜きだけをその矩形へ絞る。
+    output.Rebind();
+    const bool drawn = state.effect->BindAndDrawScissored(state.quad, *rects);
+    output.ResetViewport();
+    output.Rebind();
     output.EndCapture();
     return drawn;
 }

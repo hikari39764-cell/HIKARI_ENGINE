@@ -46,7 +46,7 @@ bool CinematicsWorkspaceController::DrawEffects(std::vector<SEQUENCER::SequenceS
     bool changed = false;
 #if defined(HIKARI_WITH_EDITOR)
     using namespace SEQUENCER;
-    std::array<std::string, 12> names;
+    std::array<std::string, kCinematicEffectKeys.size()> names;
     for (size_t i = 0; i < names.size(); ++i)
         names[i] = TEXT::Localize(kCinematicEffectKeys[i]);
     if (IconTextButton(EditorGlyph::Add, TEXT::Localize("cine.addEffect").c_str(), "addEffect"))
@@ -54,7 +54,7 @@ bool CinematicsWorkspaceController::DrawEffects(std::vector<SEQUENCER::SequenceS
     if (ImGui::BeginPopup("effectMenu")) {
         static std::array<char, 96> filter{};
         SearchField("effectFilter", TEXT::Localize("ui.vfx.effects.search").c_str(), filter.data(), filter.size());
-        for (int i = 0; i < 12; ++i) {
+        for (int i = 0; i < static_cast<int>(names.size()); ++i) {
             if (i == 0)
                 ImGui::SeparatorText(TEXT::Localize("cine.baseLook").c_str());
             if (i == 6)
@@ -67,7 +67,11 @@ bool CinematicsWorkspaceController::DrawEffects(std::vector<SEQUENCER::SequenceS
                     e.id = (std::max)(e.id, old.id + 1);
                 e.kind = static_cast<ScreenEffectKind>(i);
                 e.name = names[i];
-                e.amount.value = i == 5 ? 6500.0f : i == 10 ? 8.0f : i == 2 || i == 3 || i == 4 ? 1.0f : 0.5f;
+                e.amount.value = i == 5    ? 6500.0f
+                                 : i == 10 ? 8.0f
+                                 : i == 13 ? 0.15f
+                                 : i == 2 || i == 3 || i == 4 || i == 12 ? 1.0f
+                                                                          : 0.5f;
                 if (i == 9)
                     e.color = {0, 0, 0};
                 effects.push_back(e);

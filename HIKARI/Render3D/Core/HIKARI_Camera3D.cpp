@@ -28,6 +28,34 @@ void Camera3D::SetOrthographic(float height, float aspect, float nearZ, float fa
     orthographic_ = true;
     proj_ = MATH::Mat4::OrthoRH_ZO(orthographicHeight_ * aspect_, orthographicHeight_, nearZ_, farZ_);
 }
+void Camera3D::SetOffCenter(float left, float right, float bottom, float top, float nearZ, float farZ,
+                            bool orthographic) {
+    const float width = (std::max)(right - left, 1.0e-6f), height = (std::max)(top - bottom, 1.0e-6f);
+    // 範囲の決まり（近い面・遠い面の下限）は対称の投影と同じにそろえる。
+    SetPerspective(2.0f * std::atan(0.5f * height / (std::max)(nearZ, 0.001f)), width / height, nearZ, farZ);
+    orthographic_ = orthographic;
+    orthographicHeight_ = height;
+    MATH::Mat4 m{};
+    if (orthographic) {
+        m = MATH::Mat4::Identity();
+        m.m[0][0] = 2.0f / width;
+        m.m[1][1] = 2.0f / height;
+        m.m[3][0] = -(right + left) / width;
+        m.m[3][1] = -(top + bottom) / height;
+        m.m[2][2] = 1.0f / (nearZ_ - farZ_);
+        m.m[3][2] = nearZ_ / (nearZ_ - farZ_);
+    } else {
+        m.m[0][0] = 2.0f * nearZ_ / width;
+        m.m[1][1] = 2.0f * nearZ_ / height;
+        m.m[2][0] = (right + left) / width;
+        m.m[2][1] = (top + bottom) / height;
+        m.m[2][2] = farZ_ / (nearZ_ - farZ_);
+        m.m[2][3] = -1.0f;
+        m.m[3][2] = (nearZ_ * farZ_) / (nearZ_ - farZ_);
+    }
+    proj_ = m;
+}
+
 void Camera3D::SetAspect(float aspect) {
     if (orthographic_)
         SetOrthographic(orthographicHeight_, aspect, nearZ_, farZ_);

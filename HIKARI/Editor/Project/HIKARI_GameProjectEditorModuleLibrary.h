@@ -18,6 +18,7 @@ class IEditorWorkspace;
 namespace HIKARI::EDITOR {
 
 class EditorOperationRegistry;
+class GameProjectEditorWorkspaceRegistry;
 
 class GameProjectEditorModuleLibrary {
 public:
@@ -37,7 +38,8 @@ public:
     size_t GetWorkspaceCount() const noexcept;
     EDITOR_PROJECT::IEditorWorkspace* GetWorkspace(size_t index) const noexcept;
     bool RegisterEditorOperations(EditorOperationRegistry& registry, uint64_t ownerToken,
-                                  EDITOR_PROJECT::IEditorDocumentService* documents, std::string& outMessage) const;
+                                  EDITOR_PROJECT::IEditorDocumentService* documents, std::string& outMessage,
+                                  GameProjectEditorWorkspaceRegistry* commands = nullptr) const;
     const std::filesystem::path& GetModulePath() const noexcept;
 
 private:

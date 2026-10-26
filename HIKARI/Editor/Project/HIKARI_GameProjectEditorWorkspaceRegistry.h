@@ -45,6 +45,9 @@ public:
     void SetDocuments(EDITOR_PROJECT::IEditorDocumentService* documents) noexcept;
     // The controller owns the operation registry; attach only for the frame.
     void SetOperationRegistry(EditorOperationRegistry* registry) noexcept;
+    // 項目の Editor 操作の処理の間（入れ子可）。この間は工作区の描画の外でも ExecuteOperation が使える。
+    void BeginOperationScope(EditorOperationRegistry& registry) noexcept;
+    void EndOperationScope() noexcept;
 
     size_t GetWorkspaceCount() const noexcept;
     GameProjectEditorWorkspaceInfo GetWorkspaceInfo(size_t index) const noexcept;
@@ -111,6 +114,8 @@ private:
     std::optional<NavigationRequest> awaitingClose_{};
     bool saveRequested_ = false;
     EditorOperationRegistry* operationRegistry_ = nullptr;
+    EditorOperationRegistry* scopeRegistry_ = nullptr;
+    uint32_t operationScopeDepth_ = 0u;
     const std::thread::id ownerThread_ = std::this_thread::get_id();
     bool executingOperation_ = false;
     EDITOR_PROJECT::IEditorWorkspaceUi* frameUi_ = nullptr;

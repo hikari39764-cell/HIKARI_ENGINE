@@ -105,6 +105,8 @@ struct SceneRenderObject {
 
     uint64_t lastTouchedFrame = 0;
     uint64_t version = 0;
+    // 消した印（同期の終わりにまとめて詰める。索引からは外してある）。
+    bool pendingRemoval = false;
 };
 
 struct SceneSurfaceInstance {
@@ -209,6 +211,8 @@ public:
     void EndPatchSync();
 
     void Remove(SceneRenderObjectId id);
+    // 内容が前と同じ物の生存だけを伝える（Upsert で変化が無かった時と同じ）。無ければ false（呼び手が Upsert する）。
+    bool Touch(SceneRenderObjectId id);
     void PreRenderSync();
 
     const SceneRenderObject* Find(SceneRenderObjectId id) const;
@@ -224,7 +228,8 @@ public:
     const Stats& GetStats() const;
 
 private:
-    void RemoveAt(size_t index);
+    // 消した印の物を配列から一度に詰め、索引を作り直す。
+    void CompactRemoved();
     void RebuildIndex();
     void RebuildSurfaceInstances();
     void UpdateSurfaceInstancesForObject(size_t objectIndex);
@@ -250,8 +255,13 @@ private:
     std::vector<SceneSurfaceFloatPoolDelta> surfaceFloatPoolHistory_{};
     std::vector<uint32_t> dirtySurfaceIndices_{};
     std::unordered_map<uint64_t, size_t> indexById_{};
+    size_t pendingRemovalCount_ = 0;
 
     Stats frameStats_{};
+    // 読まれた時に数え直す統計（同期の数は frameStats_ が持つ）。
+    mutable Stats publishedStats_{};
+    mutable bool statsStale_ = true;
+    void ComputeStats() const;
     uint64_t currentSyncFrame_ = 0;
     uint64_t surfaceVersion_ = 0;
     uint64_t surfaceRoutingVersion_ = 0;

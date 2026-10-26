@@ -90,8 +90,8 @@ public:
 
 GameProjectEditorOperationRegistration::GameProjectEditorOperationRegistration(
     EditorOperationRegistry& registry, EditorOperationOwnerToken ownerToken,
-    EDITOR_PROJECT::IEditorDocumentService* documents)
-    : registry_(registry), ownerToken_(ownerToken), documents_(documents) {}
+    EDITOR_PROJECT::IEditorDocumentService* documents, GameProjectEditorWorkspaceRegistry* commands)
+    : registry_(registry), ownerToken_(ownerToken), documents_(documents), commands_(commands) {}
 
 EDITOR_PROJECT::EditorOperationRegistrationResult GameProjectEditorOperationRegistration::RegisterOperation(
     const EDITOR_PROJECT::EditorOperationDescriptor& descriptor) {
@@ -207,9 +207,15 @@ EDITOR_PROJECT::EditorOperationRegistrationResult GameProjectEditorOperationRegi
     }
 
     EDITOR_PROJECT::IEditorOperationHandler* handler = descriptor.handler;
-    operation.execute = [handler](const nlohmann::json& parameters) {
+    // 処理の間だけ、項目の工作区の命令から他の Editor 操作を呼べるようにする（智能体の呼び出しでも同じ取り消しと検証を通す）。
+    operation.execute = [handler, commands = commands_, registry = &registry_](const nlohmann::json& parameters) {
         OperationResultSink sink{};
         const std::string parametersJson = parameters.dump();
+        struct Scope {
+            GameProjectEditorWorkspaceRegistry* commands;
+            ~Scope() { if (commands) commands->EndOperationScope(); }
+        } scope{commands};
+        if (commands) { commands->BeginOperationScope(*registry); }
         handler->Execute(parametersJson, sink);
         if (!sink.received) {
             return EditorOperationResult{false, "MISSING_RESULT", "Editor operation handler did not return a result."};
@@ -230,6 +236,10 @@ bool GameProjectEditorOperationRegistration::Failed() const noexcept { return fa
 
 EDITOR_PROJECT::IEditorDocumentService* GameProjectEditorOperationRegistration::Documents() noexcept {
     return documents_;
+}
+
+EDITOR_PROJECT::IEditorWorkspaceCommands* GameProjectEditorOperationRegistration::Commands() noexcept {
+    return commands_;
 }
 
 const std::string& GameProjectEditorOperationRegistration::FailureMessage() const noexcept { return failureMessage_; }

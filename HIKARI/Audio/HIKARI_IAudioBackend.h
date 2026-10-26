@@ -22,6 +22,8 @@ struct IAudioBackend {
     virtual bool TryGetPlaybackSnapshot(int, GameProjectAudioPlaybackSnapshot&) { return false; }
     virtual bool SetSpatial(int, const GameProjectAudioListener&, const GameProjectAudioSource&) { return false; }
     virtual bool SetPlaybackRate(int, float) { return false; }
+    // 読み込んだ音の長さ（秒）。分からなければ 0。
+    virtual float GetSoundSeconds(int) const { return 0.0f; }
     virtual GameProjectAudioStats GetStats() const { return {}; }
 };
 

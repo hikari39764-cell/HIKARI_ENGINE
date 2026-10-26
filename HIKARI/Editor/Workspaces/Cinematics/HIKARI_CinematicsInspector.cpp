@@ -1,4 +1,5 @@
 #include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
+#include "Scene/Sequencer/Drivers/HIKARI_PresentationCueDriver.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Widgets/HIKARI_CameraMotionWidgets.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsPresentation.h"
@@ -362,7 +363,54 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
                     changed |= DrawAssetField(&scene.GetAssetDatabase(), options, cue.vfxAsset.value);
                 } else {
                     changed |= text(TEXT::Localize("cine.audioFile").c_str(), cue.soundPath);
-                    changed |= ImGui::SliderFloat(TEXT::Localize("cine.volume").c_str(), &cue.audio.volume, 0, 1);
+                    changed |= ImGui::SliderFloat(fieldLabel(TEXT::Localize("cine.volume").c_str()).c_str(),
+                                                  &cue.audio.volume, 0, 1);
+                    // 淡入・淡出（時間軸の片段の上の角の四角を引いても変えられる）。片段の長さに収める。
+                    changed |= ImGui::DragFloat(fieldLabel(TEXT::Localize("cine.fadeIn").c_str()).c_str(),
+                                                &cue.fadeInSeconds, 0.02f, 0.0f, cue.durationSeconds, "%.2f s");
+                    changed |= ImGui::DragFloat(fieldLabel(TEXT::Localize("cine.fadeOut").c_str()).c_str(),
+                                                &cue.fadeOutSeconds, 0.02f, 0.0f, cue.durationSeconds, "%.2f s");
+                    cue.fadeInSeconds = std::clamp(cue.fadeInSeconds, 0.0f, cue.durationSeconds);
+                    cue.fadeOutSeconds = std::clamp(cue.fadeOutSeconds, 0.0f, cue.durationSeconds - cue.fadeInSeconds);
+                    changed |= ImGui::DragFloat(fieldLabel(TEXT::Localize("cine.sourceOffset").c_str()).c_str(),
+                                                &cue.sourceOffsetSeconds, 0.02f, 0.0f, 3600.0f, "%.2f s");
+                    changed |= ImGui::SliderFloat(fieldLabel(TEXT::Localize("cine.pitch").c_str()).c_str(), &cue.pitch,
+                                                  0.5f, 2.0f, "%.2f");
+                    // 声道：音量の設定を分ける（音楽・効果音・声）。
+                    constexpr std::array<GameProjectAudioBus, 3> buses{GameProjectAudioBus::Bgm, GameProjectAudioBus::Se,
+                                                                       GameProjectAudioBus::Voice};
+                    constexpr std::array<const char*, 3> busKeys{"cine.busBgm", "cine.busSe", "cine.busVoice"};
+                    const auto busIndex = static_cast<size_t>(cue.audio.bus) < buses.size() ? static_cast<size_t>(cue.audio.bus) : 1u;
+                    if (ImGui::BeginCombo(fieldLabel(TEXT::Localize("cine.bus").c_str()).c_str(),
+                                          TEXT::Localize(busKeys[busIndex]).c_str())) {
+                        for (size_t i = 0; i < buses.size(); ++i)
+                            if (ImGui::Selectable(TEXT::Localize(busKeys[i]).c_str(), i == busIndex)) {
+                                cue.audio.bus = buses[i];
+                                changed = true;
+                            }
+                        ImGui::EndCombo();
+                    }
+                    bool loop = cue.audio.loop != 0u;
+                    if (ImGui::Checkbox(TEXT::Localize("cine.soundLoop").c_str(), &loop)) {
+                        cue.audio.loop = loop ? 1u : 0u;
+                        changed = true;
+                    }
+                    // 素材の長さと、片段を素材の終わりに合わせる（ループしない時）。
+                    if (const float length = GetPresentationCueSoundSeconds(cue.soundPath); length > 0.0f) {
+                        char lengthText[96];
+                        std::snprintf(lengthText, sizeof(lengthText), TEXT::Localize("cine.soundLength").c_str(), length);
+                        ImGui::TextDisabled("%s", lengthText);
+                        const float fit = (length - cue.sourceOffsetSeconds) / (std::max)(0.25f, cue.pitch);
+                        if (!loop && fit > 0.05f) {
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton(TEXT::Localize("cine.fitSound").c_str())) {
+                                cue.durationSeconds = fit;
+                                cue.fadeInSeconds = (std::min)(cue.fadeInSeconds, fit);
+                                cue.fadeOutSeconds = (std::min)(cue.fadeOutSeconds, fit - cue.fadeInSeconds);
+                                changed = true;
+                            }
+                        }
+                    }
                 }
                 if (ImGui::Button(TEXT::Localize("cine.deleteClip").c_str()))
                     return DeleteSelectedClip(sequence);
@@ -387,6 +435,10 @@ bool CinematicsWorkspaceController::DrawInspector(DocumentSceneBase& scene, Cine
                     return DeleteSelectedClip(sequence);
                 break;
             }
+    } else if (selectionKind_ == SelectionKind::Text) {
+        changed |= DrawTextInspector(scene, sequence);
+    } else if (selectionKind_ == SelectionKind::Object && SelectedObjectTrack(sequence)) {
+        changed |= DrawObjectTrackInspector(scene, sequence);
     } else if (selectionKind_ == SelectionKind::Effect) {
         PanelTitle(TEXT::Localize("cine.sequenceFx").c_str(), TEXT::Localize("cine.outputOnly").c_str());
         changed |= DrawEffects(sequence.screenEffects, cursor_.GetTimeSeconds());

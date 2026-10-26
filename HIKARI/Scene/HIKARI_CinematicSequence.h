@@ -7,7 +7,9 @@
 #include "Scene/Sequencer/HIKARI_SequenceBinding.h"
 #include "Scene/Sequencer/Tracks/HIKARI_PresentationCueTrack.h"
 #include "Scene/Sequencer/Tracks/HIKARI_SequenceEventTrack.h"
+#include "Scene/Sequencer/Tracks/HIKARI_SequenceTextTrack.h"
 #include "Scene/Sequencer/Tracks/HIKARI_CameraCutTrack.h"
+#include "Scene/Sequencer/Tracks/HIKARI_ObjectTrack.h"
 
 namespace HIKARI {
 
@@ -30,7 +32,11 @@ struct CinematicSequence {
     SEQUENCER::PresentationCueTrack presentationCueTrack{};
     // ゲームのプロジェクトが名前で読む事件段（引擎は実行しない）。
     SEQUENCER::SequenceEventTrack eventTrack{};
+    // 画面に出す文字（字幕・語り）。引擎が Play とプレビューで描く。
+    SEQUENCER::SequenceTextTrack textTrack{};
     std::vector<SEQUENCER::SequenceScreenEffect> screenEffects;
+    // 結んだ物体を键で動かす轨（物体ごとに一本）。
+    std::vector<SEQUENCER::ObjectTrack> objectTracks;
 };
 
 struct SceneCinematicsSettings {

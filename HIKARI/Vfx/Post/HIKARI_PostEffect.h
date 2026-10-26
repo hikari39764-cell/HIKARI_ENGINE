@@ -31,9 +31,14 @@ public:
     void SetTime(float t);
 
     bool BindAndDraw(QuadDrawer& drawer, bool additive = false);
+    // 同じ定数で、矩形ごとに切り抜きを絞って描く（一フレームの定数の枠は一つだけ使う）。視口は呼び手のまま。
+    // 描いた後の切り抜きは最後の矩形のままなので、呼び手が戻す。rects が空なら何もしない。
+    bool BindAndDrawScissored(QuadDrawer& drawer, const std::vector<D3D12_RECT>& rects, bool additive = false);
     static constexpr uint32_t DrawCapacityPerFrame() noexcept { return kConstantDrawCapacityPerFrame; }
 
 private:
+    // 定数を一フレームの枠へ書き、描き方と定数を四角の描き手へ結ぶ。
+    bool BindConstants(QuadDrawer& drawer, bool additive);
     bool CreateConstantBuffer();
     void ReleaseConstantBuffer() noexcept;
 

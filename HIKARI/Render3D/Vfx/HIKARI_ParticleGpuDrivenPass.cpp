@@ -35,6 +35,7 @@
 #include "Render3D/Vfx/Internal/HIKARI_GpuParticleStorage.h"
 #include "Render3D/Vfx/Internal/HIKARI_ParticleGpuDrivenPipelineState.h"
 #include "Render3D/Vfx/Internal/HIKARI_ParticleMaterialResolver.h"
+#include "Render2D/HIKARI_RenderTarget2D.h"
 
 namespace HIKARI::RENDER3D::PARTICLES {
 namespace {
@@ -168,6 +169,8 @@ struct ParticleGpuDrivenPass::Impl {
     std::vector<bool> renderedCompositions;
     std::vector<DrawItem> drawItems{};
     std::vector<DrawOrderEntry> drawOrder{};
+    // 歪み層の的（戦闘の画面歪み遮罩）。この view の描画解像度で持ち、歪み層のある frame だけ描き直す
+    RenderTarget2D distortionMask{};
     std::unordered_set<std::string> residentStandardTextures{};
     uint64_t prewarmedRegistryId = 0u;
     uint64_t prewarmedRegistryRevision = 0u;
@@ -772,6 +775,32 @@ struct ParticleGpuDrivenPass::Impl {
         return inputAccepted;
     }
 
+    bool BeginDistortionMask(const ParticleGpuDrivenDrawBindings& bindings) {
+        if (bindings.width == 0u || bindings.height == 0u || context.cmdList == nullptr)
+            return false;
+        distortionMask.UpdateContext(context);
+        if (!distortionMask.IsInitialized() || distortionMask.GetWidth() != static_cast<int>(bindings.width) ||
+            distortionMask.GetHeight() != static_cast<int>(bindings.height)) {
+            distortionMask.Finalize();
+            if (!distortionMask.Init(static_cast<int>(bindings.width), static_cast<int>(bindings.height),
+                                     DXGI_FORMAT_R16G16B16A16_FLOAT, false))
+                return false;
+            distortionMask.SetDebugName("Particles.DistortionMask");
+        }
+        distortionMask.BeginCapture();
+        // 深度は場面の読み取り専用 DSV を借りる（遮られた歪みは描かない）
+        if (bindings.compositionDepth.ptr != 0u) {
+            const D3D12_CPU_DESCRIPTOR_HANDLE rtv = distortionMask.GetRtvHandle();
+            context.cmdList->OMSetRenderTargets(1u, &rtv, FALSE, &bindings.compositionDepth);
+        }
+        return true;
+    }
+
+    void EndDistortionMask(const ParticleGpuDrivenDrawBindings& bindings) {
+        distortionMask.EndCapture();
+        (void)bindings.compositionTarget.Rebind();
+    }
+
     bool ExecuteForwardTransparent(const GFX::Context& newContext, const ParticleGpuDrivenDrawBindings& bindings) {
         context = newContext;
         if (!initialized || drawItems.empty())
@@ -787,6 +816,29 @@ struct ParticleGpuDrivenPass::Impl {
         const D3D12_GPU_DESCRIPTOR_HANDLE texturePool = GetMaterialTexturePoolSrvGpuHandle(context);
         if (texturePool.ptr == 0u)
             return false;
+        // 歪み経路：色の的ではなく歪み遮罩へ描き、終わったら合成の的へ戻す
+        struct MaskScope {
+            Impl* owner;
+            const ParticleGpuDrivenDrawBindings& bindings;
+            bool active;
+            ~MaskScope() {
+                if (active)
+                    owner->EndDistortionMask(bindings);
+            }
+        } maskScope{this, bindings, false};
+        if (bindings.distortionMask) {
+            if (!BeginDistortionMask(bindings))
+                return false;
+            maskScope.active = true;
+        }
+        // 歪み層は歪み経路だけ、それ以外の層は色の経路だけ（後処理の経路が指定されていればそれにも合わせる）
+        const auto routed = [&](const DrawItem& item) {
+            const bool distortion = item.render.blendMode == ParticleBlendMode::Distortion;
+            if (distortion != bindings.distortionMask)
+                return false;
+            return bindings.distortionMask || !bindings.postProcessMode ||
+                   item.render.postProcessMode == *bindings.postProcessMode;
+        };
         const bool sceneDepthAvailable = bindings.sceneDepth.ptr != 0u;
         const auto bindParticleState = [&] {
             ID3D12DescriptorHeap* heaps[]{context.srvHeap};
@@ -819,7 +871,7 @@ struct ParticleGpuDrivenPass::Impl {
         drawOrder.clear();
         drawOrder.reserve(drawItems.size());
         for (uint32_t itemIndex = 0u; itemIndex < static_cast<uint32_t>(drawItems.size()); ++itemIndex) {
-            if (bindings.postProcessMode && drawItems[itemIndex].render.postProcessMode != *bindings.postProcessMode)
+            if (!routed(drawItems[itemIndex]))
                 continue;
             float distanceSquared = 0.0f;
             if (bindings.cameraPositionValid) {
@@ -850,9 +902,13 @@ struct ParticleGpuDrivenPass::Impl {
             bindParticleState();
             context.cmdList->SetGraphicsRootShaderResourceView(20u, preparedShapeAddress);
             const DrawItem& item = drawItems[itemIndex];
-            if (bindings.postProcessMode && item.render.postProcessMode != *bindings.postProcessMode)
-                return false; // reject a malformed raw composition crossing the two routes
-            const uint32_t blendIndex = item.render.blendMode == ParticleBlendMode::Additive ? 1u : 0u;
+            if (!routed(item)) {
+                // 歪み層とその他の層は別経路なので飛ばす。後処理の経路をまたぐ生の合成は不正として拒む
+                return item.render.blendMode == ParticleBlendMode::Distortion || bindings.distortionMask;
+            }
+            const uint32_t blendIndex = item.render.blendMode == ParticleBlendMode::Distortion ? 2u
+                                        : item.render.blendMode == ParticleBlendMode::Additive ? 1u
+                                                                                               : 0u;
             const uint32_t depthIndex = item.render.depthMode == ParticleDepthMode::ForegroundAccent ? 0u : 1u;
             const uint32_t shapeIndex =
                 item.render.shape == ParticleRenderShape::Sprite && item.render.spatialEffects.empty() ? 0u : 1u;
@@ -881,7 +937,8 @@ struct ParticleGpuDrivenPass::Impl {
             constants.sceneDepthAvailable = sceneDepthAvailable ? 1u : 0u;
             constants.materialFlags =
                 (IsLitParticleMaterial(item.render.materialMode) && bindings.IsValid() ? 1u : 0u) |
-                (item.render.effectMaterialIncludesParticleColor ? 2u : 0u);
+                (item.render.effectMaterialIncludesParticleColor ? 2u : 0u) |
+                (item.render.blendMode == ParticleBlendMode::Distortion ? 4u : 0u);
             // z/w は形状の幅テーパー。ルートシグネチャを増やさずに運ぶ。
             constants.depthParams = MakeGpuParticleFloat4(item.render.softIntersectionDistance, item.render.depthBias,
                                                           item.render.taperStart, item.render.taperEnd);
@@ -936,7 +993,9 @@ struct ParticleGpuDrivenPass::Impl {
             }
         }
         for (const auto& order : drawOrder) {
-            const auto found = compositionIndices.find(instanceKey(drawItems[order.itemIndex].key));
+            const auto found = bindings.distortionMask
+                                   ? compositionIndices.end()
+                                   : compositionIndices.find(instanceKey(drawItems[order.itemIndex].key));
             if (found == compositionIndices.end()) {
                 if (!drawItem(order.itemIndex))
                     return false;
@@ -1087,9 +1146,31 @@ void ParticleGpuDrivenPass::ReleaseNamespace(uint64_t playbackNamespace) {
         impl_->ReleaseNamespace(playbackNamespace);
 }
 
-bool ParticleGpuDrivenPass::HasDrawWork(std::optional<VFX::VfxPostProcessMode> mode) const noexcept {
-    return impl_ && std::any_of(impl_->drawItems.begin(), impl_->drawItems.end(),
-                                [&](const auto& item) { return !mode || item.render.postProcessMode == *mode; });
+bool ParticleGpuDrivenPass::HasDrawWork(std::optional<VFX::VfxPostProcessMode> mode, bool distortion) const noexcept {
+    return impl_ && std::any_of(impl_->drawItems.begin(), impl_->drawItems.end(), [&](const auto& item) {
+               const bool distortionItem = item.render.blendMode == ParticleBlendMode::Distortion;
+               if (distortion)
+                   return distortionItem;
+               return !distortionItem && (!mode || item.render.postProcessMode == *mode);
+           });
+}
+
+bool ParticleGpuDrivenPass::GetDistortionMask(RenderTextureView& outView,
+                                              D3D12_CPU_DESCRIPTOR_HANDLE& outSrvCpu) const noexcept {
+    if (impl_ == nullptr || !impl_->distortionMask.IsInitialized() || impl_->distortionMask.GetResource() == nullptr)
+        return false;
+    const RenderTarget2D& mask = impl_->distortionMask;
+    outView = {};
+    outView.resource = mask.GetResource();
+    outView.srv = mask.GetSrvGpu();
+    outView.format = mask.GetFormat();
+    outView.width = static_cast<uint32_t>(mask.GetWidth());
+    outView.height = static_cast<uint32_t>(mask.GetHeight());
+    outView.mipCount = 1u;
+    outView.state = mask.GetColorState();
+    outView.valid = true;
+    outSrvCpu = mask.GetSrvCpu();
+    return true;
 }
 
 const ParticleGpuDrivenPassStats& ParticleGpuDrivenPass::GetStats() const noexcept {

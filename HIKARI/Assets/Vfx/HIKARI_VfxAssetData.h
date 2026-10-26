@@ -86,6 +86,10 @@ enum class VfxShapeUvMode : uint8_t {
 enum class VfxBlendMode : uint8_t {
     Alpha,
     Additive,
+    // 画面の歪み：色は描かず、戦闘の画面歪み遮罩へ書く（RG = 画面 UV のずれ、B = 覆い、A = ぼかし）。
+    // 層色の R が強さ、G がぼかし。B が 0.5 以上なら底色貼図の RG を法線場に、未満なら不透明度の縁で屈折する。
+    // 全体後処理のある画面でだけ合成され、合成（グループ・マット）には参加しない。
+    Distortion,
 };
 
 enum class VfxMaterialMode : uint8_t {

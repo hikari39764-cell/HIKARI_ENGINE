@@ -47,12 +47,29 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
             return;
         }
     }
+    // 場面の履歴の元に戻す・やり直し（場景の工作区と、場面を直接編集する工作区で共通）。
+    const auto bindSceneHistory = [this, &scene] {
+        std::string undoLabel = TEXT::Localize("menu.edit.undo");
+        if (const std::string* label = documentHistory_.GetUndoLabel()) {
+            undoLabel += " " + *label;
+        }
+        std::string redoLabel = TEXT::Localize("menu.edit.redo");
+        if (const std::string* label = documentHistory_.GetRedoLabel()) {
+            redoLabel += " " + *label;
+        }
+        commandRouter_.Bind(EditorCommandId::Undo, std::move(undoLabel), documentHistory_.CanUndo(),
+                            [this, &scene]() { ExecuteSceneDocumentHistory(scene, false); });
+        commandRouter_.Bind(EditorCommandId::Redo, std::move(redoLabel), documentHistory_.CanRedo(),
+                            [this, &scene]() { ExecuteSceneDocumentHistory(scene, true); });
+    };
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Project)) {
         if (projectWorkspaceHost_) {
             commandRouter_.Bind(EditorCommandId::SaveDocument, TEXT::Localize("menu.edit.save"),
                                 projectWorkspaceHost_->Registry().HasActiveWorkspace(),
                                 [this] { (void)projectWorkspaceHost_->Registry().RequestSaveActiveWorkspace(); });
         }
+        // 項目の工作区（レベル編集など）は場面の操作で場面を直接書き換えるので、Ctrl+Z と編集メニューは場面の履歴へ送る。
+        bindSceneHistory();
         return;
     }
 
@@ -103,18 +120,7 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
         commandRouter_.Bind(EditorCommandId::Redo, TEXT::Localize("menu.edit.redo") + " " + name, focused->CanRedo(),
                             [focused]() { (void)focused->Redo(); });
     } else {
-        std::string undoLabel = TEXT::Localize("menu.edit.undo");
-        if (const std::string* label = documentHistory_.GetUndoLabel()) {
-            undoLabel += " " + *label;
-        }
-        std::string redoLabel = TEXT::Localize("menu.edit.redo");
-        if (const std::string* label = documentHistory_.GetRedoLabel()) {
-            redoLabel += " " + *label;
-        }
-        commandRouter_.Bind(EditorCommandId::Undo, std::move(undoLabel), documentHistory_.CanUndo(),
-                            [this, &scene]() { ExecuteSceneDocumentHistory(scene, false); });
-        commandRouter_.Bind(EditorCommandId::Redo, std::move(redoLabel), documentHistory_.CanRedo(),
-                            [this, &scene]() { ExecuteSceneDocumentHistory(scene, true); });
+        bindSceneHistory();
     }
 
     if (!workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Scene) &&

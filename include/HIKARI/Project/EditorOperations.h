@@ -10,6 +10,7 @@
 namespace HIKARI::EDITOR_PROJECT {
 
 class IEditorDocumentService;
+class IEditorWorkspaceCommands;
 
 inline constexpr uint32_t kEditorOperationsApiVersion = 1u;
 
@@ -116,6 +117,11 @@ public:
     // The borrowed service has the same owner-scoped documents exposed to the
     // module's workspace contexts and remains valid while the module is registered.
     virtual IEditorDocumentService* Documents() noexcept = 0;
+    // Editor commands for the module's operation handlers. The pointer stays valid while
+    // the module is registered, but ExecuteOperation only succeeds while one of this
+    // module's handlers is running (or inside a workspace callback). Handlers reuse the
+    // same Scene operations, transactions and undo as the module's workspaces.
+    virtual IEditorWorkspaceCommands* Commands() noexcept { return nullptr; }
 };
 
 static_assert(std::is_standard_layout_v<EditorOperationParameterDescriptor>);
