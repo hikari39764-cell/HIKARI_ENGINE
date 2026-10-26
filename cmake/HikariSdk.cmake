@@ -92,25 +92,6 @@ write_basic_package_version_file(
 
 function(hikari_configure_game_project_sdk host_target)
     set(_sdk_root "$<TARGET_FILE_DIR:${host_target}>/Sdk")
-    set(_sdk_docs
-        "${HIKARI_SOURCE_ROOT}/docs/game-project/GameDevelopmentResponsibilities.md"
-        "${HIKARI_SOURCE_ROOT}/docs/game-project/MakingAGame.md"
-        "${HIKARI_SOURCE_ROOT}/docs/game-project/GameProjectSdkApiGuide.md"
-        "${HIKARI_SOURCE_ROOT}/docs/game-project/ComponentsAndSystemsTutorial.md")
-    set(_sdk_ai_docs "${HIKARI_SOURCE_ROOT}/docs/ai/hikari-ai-capabilities.md")
-    set(_sdk_ui_docs "${HIKARI_SOURCE_ROOT}/docs/ui-text-workspaces.md")
-    # 文書だけの修正ではホストを再リンクしない。
-    add_custom_target("${host_target}_SdkDocs"
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "${_sdk_root}/docs/game-project"
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "${_sdk_root}/docs/ai"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${_sdk_docs} "${_sdk_root}/docs/game-project"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_sdk_ui_docs}" "${_sdk_root}/docs"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${_sdk_ai_docs} "${_sdk_root}/docs/ai"
-        VERBATIM)
-    add_dependencies("${host_target}" "${host_target}_SdkDocs")
-    install(FILES ${_sdk_docs} DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/docs/game-project")
-    install(FILES ${_sdk_ui_docs} DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/docs")
-    install(FILES ${_sdk_ai_docs} DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/docs/ai")
     if(MSVC)
         target_link_options(
             "${host_target}"

@@ -391,5 +391,5 @@ add_custom_target(
     WORKING_DIRECTORY "${HIKARI_SOURCE_ROOT}"
     VERBATIM)
 
-# Tests are explicit, excluded from product builds, and grouped by behavior.
-include(cmake/HikariTests.cmake)
+# Local behavior tests are registered only when present; product targets never depend on them.
+include(cmake/HikariTests.cmake OPTIONAL)

@@ -405,4 +405,3 @@ vcpkg_installed_static/
 # Sample projects live outside the engine repository and are built from their
 # own checkouts. The engine only globs their sources when present.
 /Samples/
-

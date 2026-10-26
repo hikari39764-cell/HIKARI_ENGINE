@@ -108,39 +108,9 @@ function Test-IsSourceDistributionPath {
 
     $normalizedPath =
         $RelativePath.Replace('\', '/').TrimStart('/')
-    $excludedRoots = @(
-        '.agents',
-        '.codex',
-        '.claude',
-        '.cursor',
-        'docs/ai-team',
-        'docs/superpowers',
-        'docs/change-contracts')
-    foreach ($excludedRoot in $excludedRoots) {
-        if (
-            $normalizedPath.Equals(
-                $excludedRoot,
-                [StringComparison]::OrdinalIgnoreCase) -or
-            $normalizedPath.StartsWith(
-                "$excludedRoot/",
-                [StringComparison]::OrdinalIgnoreCase)) {
-            return $false
-        }
-    }
-
-    $excludedFiles = @(
-        'AGENTS.md',
-        'CLAUDE.md',
-        'CODEX.md',
-        'Tools/Distribution/New-HikariSourceDistribution.ps1')
-    foreach ($excludedFile in $excludedFiles) {
-        if ($normalizedPath.Equals(
-                $excludedFile,
-                [StringComparison]::OrdinalIgnoreCase)) {
-            return $false
-        }
-    }
-    return $true
+    return -not $normalizedPath.Equals(
+        'Tools/Distribution/New-HikariSourceDistribution.ps1',
+        [StringComparison]::OrdinalIgnoreCase)
 }
 
 $sourceRevisionOutput =

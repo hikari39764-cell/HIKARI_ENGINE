@@ -152,9 +152,6 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
 ## 参考资料（已安装 SDK）
 
 )";
-    text += "- 制作游戏指南：`" + sdk + "/docs/game-project/MakingAGame.md`\n";
-    text += "- SDK API 参考：`" + sdk + "/docs/game-project/GameProjectSdkApiGuide.md`\n";
-    text += "- 职责与工作流：`" + sdk + "/docs/game-project/GameDevelopmentResponsibilities.md`\n";
     text += "- 公开头文件：`" + sdk + "/include/HIKARI/`\n\n";
     text += conventions.empty()
                 ? std::string(kConventionsHeading) + "\n\n（在这里写画风、命名、常用资产等项目约定。）\n"

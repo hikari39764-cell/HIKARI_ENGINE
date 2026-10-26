@@ -32,7 +32,6 @@ $sourceExtensions = @(
 $sourceRoots = @(
     'HIKARI',
     'include',
-    'Tests',
     'Tools',
     'cmake\SDK')
 

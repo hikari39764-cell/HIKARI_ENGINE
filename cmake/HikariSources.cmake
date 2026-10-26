@@ -1,5 +1,5 @@
 # Authoritative HIKARI compile-source manifest.
-# Add or remove translation units here and keep the source-closure test green.
+# Add or remove translation units here.
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_Camera.cpp"

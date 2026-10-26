@@ -30,8 +30,7 @@ void RegisterProjectCodeOperations(EditorOperationRegistry& registry, ProjectCod
         registry.Register(std::move(definition));
     };
     add(
-        "project.sdk.index",
-        "List the installed public SDK guides and headers with their intended starting points. This does not scan engine source.",
+        "project.sdk.index", "List the installed public SDK headers. This does not scan engine source.",
         {{"keyword", P::String, false, "Optional case-insensitive header path filter."},
          {"offset", P::Int, false, "Header page offset from a previous result.", {{"minimum", 0}}},
          {"limit", P::Int, false, "Header page size from 1 to 64; defaults to 32.", {{"minimum", 1}, {"maximum", 64}}}},
@@ -41,17 +40,15 @@ void RegisterProjectCodeOperations(EditorOperationRegistry& registry, ProjectCod
             auto index =
                 PROJECT_SDK::Index(ProjectCodeJob::SdkRoot(), p.value("keyword", std::string{}), offset, limit);
             const bool complete = index.value("complete", false);
-            return EditorOperationResult{complete, complete ? "OK" : "SDK_INCOMPLETE",
-                                         complete ? "Installed public SDK index."
-                                                  : "Installed SDK documentation or headers are incomplete.",
-                                         std::move(index)};
+            return EditorOperationResult{
+                complete, complete ? "OK" : "SDK_INCOMPLETE",
+                complete ? "Installed public SDK index." : "Installed SDK headers are incomplete.", std::move(index)};
         },
         EditorOperationKind::Query, EditorOperationPermission::ReadEditorState);
     add(
         "project.sdk.read",
-        "Read one bounded excerpt from an installed public SDK header or guide. Paths stay inside Sdk/include/HIKARI or Sdk/docs.",
-        {{"path", P::String, true,
-          "Path from project.sdk.index, such as include/HIKARI/Project/WorldView.h or docs/game-project/MakingAGame.md."},
+        "Read one bounded excerpt from an installed public SDK header. Paths stay inside Sdk/include/HIKARI.",
+        {{"path", P::String, true, "Path from project.sdk.index, such as include/HIKARI/Project/WorldView.h."},
          {"startLine", P::Int, false, "One-based first line; defaults to 1.", {{"minimum", 1}}},
          {"maxLines",
           P::Int,

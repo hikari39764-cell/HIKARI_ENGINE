@@ -25,33 +25,6 @@ constexpr size_t kMaximumReadLines = 400u;
 constexpr size_t kDefaultReadLines = 160u;
 constexpr size_t kMaximumResponseBytes = 32u * 1024u;
 
-struct GuideEntry {
-    const char* path;
-    const char* title;
-    const char* purpose;
-    const char* startsWith;
-};
-
-constexpr GuideEntry kGuideEntries[] = {
-    {"game-project/GameDevelopmentResponsibilities.md", "Game development responsibilities",
-     "Which decisions belong in project code, Editor authoring, and runtime instance ownership.",
-     "Read this first when deciding where gameplay behavior or authored data belongs."},
-    {"game-project/MakingAGame.md", "Making a game",
-     "Project setup, asset authoring, runtime flow, and packaging workflow.",
-     "Start with the project template and follow the first playable scene path."},
-    {"game-project/GameProjectSdkApiGuide.md", "Game Project SDK API guide",
-     "Public C++ SDK types, registration, WorldView access, and runtime callbacks.",
-     "Start with GameComponent, GameSystem, RuntimeRegistration, and WorldView."},
-    {"game-project/ComponentsAndSystemsTutorial.md", "Components and systems tutorial",
-     "A focused walkthrough for project-owned components and systems.",
-     "Start with registration and the component/system lifecycle examples."},
-    {"ui-text-workspaces.md", "UI text workspaces", "Public UI text, style, and workspace authoring surfaces.",
-     "Start with the workspace and text-style sections when building menus or HUDs."},
-    {"ai/hikari-ai-capabilities.md", "AI project access modes",
-     "Assistant and Local Bridge access levels, approvals, and installed SDK material access.",
-     "Choose Content, Read project code, or Develop project explicitly in the assistant."},
-};
-
 std::filesystem::path Canonical(const std::filesystem::path& path) {
     std::error_code error;
     const auto result = std::filesystem::canonical(path, error);
@@ -98,27 +71,17 @@ std::filesystem::path ResolveInstalledFile(const std::filesystem::path& sdkRoot,
     }
     const auto relative = TEXT::PathFromUtf8(relativePath);
     if (relative.is_absolute() || relative.has_root_name() || relative.has_root_directory()) {
-        throw std::runtime_error("SDK paths must be relative to docs/ or include/HIKARI/.");
+        throw std::runtime_error("SDK paths must be relative to include/HIKARI/.");
     }
 
-    std::filesystem::path base;
-    std::filesystem::path child;
-    constexpr std::string_view docsPrefix = "docs/";
     constexpr std::string_view includePrefix = "include/HIKARI/";
-    if (relativePath.starts_with(docsPrefix)) {
-        base = sdkRoot / "docs";
-        child = TEXT::PathFromUtf8(relativePath.substr(docsPrefix.size()));
-        if (child.extension() != ".md") {
-            throw std::runtime_error("Only installed Markdown guides can be read from docs/.");
-        }
-    } else if (relativePath.starts_with(includePrefix)) {
-        base = sdkRoot / "include/HIKARI";
-        child = TEXT::PathFromUtf8(relativePath.substr(includePrefix.size()));
-        if (child.extension() != ".h") {
-            throw std::runtime_error("Only public .h headers can be read from include/HIKARI/.");
-        }
-    } else {
-        throw std::runtime_error("Choose a path under docs/ or include/HIKARI/.");
+    if (!relativePath.starts_with(includePrefix)) {
+        throw std::runtime_error("Choose a path under include/HIKARI/.");
+    }
+    const auto base = sdkRoot / "include/HIKARI";
+    const auto child = TEXT::PathFromUtf8(relativePath.substr(includePrefix.size()));
+    if (child.extension() != ".h") {
+        throw std::runtime_error("Only public .h headers can be read from include/HIKARI/.");
     }
 
     if (child.empty() || child.is_absolute() || child.has_root_name() || child.has_root_directory()) {
@@ -157,7 +120,6 @@ nlohmann::json Index(const std::filesystem::path& sdkRoot, std::string_view keyw
     limit = std::clamp(limit, size_t{1}, kMaximumIndexPageSize);
     const std::string foldedKeyword = Fold(keyword);
     nlohmann::json result{{"complete", false},
-                          {"guides", nlohmann::json::array()},
                           {"headers", nlohmann::json::array()},
                           {"missing", nlohmann::json::array()},
                           {"offset", offset},
@@ -166,34 +128,13 @@ nlohmann::json Index(const std::filesystem::path& sdkRoot, std::string_view keyw
     const bool hasSdkRoot = std::filesystem::is_directory(sdkRoot, error) && !error;
     error.clear();
     const auto includeRoot = sdkRoot / "include/HIKARI";
-    const auto docsRoot = sdkRoot / "docs";
     const bool hasInclude = hasSdkRoot && std::filesystem::is_directory(includeRoot, error) && !error;
-    error.clear();
-    const bool hasDocs = hasSdkRoot && std::filesystem::is_directory(docsRoot, error) && !error;
     error.clear();
     if (!hasSdkRoot) {
         result["missing"].push_back("Sdk package");
     }
     if (!hasInclude) {
         result["missing"].push_back("include/HIKARI");
-    }
-    if (!hasDocs) {
-        result["missing"].push_back("docs");
-    }
-
-    if (hasDocs) {
-        for (const GuideEntry& guide : kGuideEntries) {
-            const std::string path = std::string("docs/") + guide.path;
-            try {
-                (void)ResolveInstalledFile(sdkRoot, path);
-                result["guides"].push_back({{"path", path},
-                                            {"title", guide.title},
-                                            {"purpose", guide.purpose},
-                                            {"startsWith", guide.startsWith}});
-            } catch (const std::exception&) {
-                result["missing"].push_back(path);
-            }
-        }
     }
 
     if (hasInclude) {
@@ -247,7 +188,7 @@ nlohmann::json Index(const std::filesystem::path& sdkRoot, std::string_view keyw
         }
     }
 
-    result["complete"] = hasSdkRoot && hasInclude && hasDocs && result["missing"].empty();
+    result["complete"] = hasSdkRoot && hasInclude;
     return result;
 }
 
