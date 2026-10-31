@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/HIKARI_AssetTypeEnum.h"
 #include "Authoring/HIKARI_FieldDraw.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"

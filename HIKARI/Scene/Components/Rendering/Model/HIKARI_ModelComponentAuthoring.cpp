@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 

@@ -9,7 +9,7 @@
 #include <memory>
 #include <utility>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Vfx/Compiler/HIKARI_VfxCompiler.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"

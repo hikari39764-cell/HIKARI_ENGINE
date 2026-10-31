@@ -37,7 +37,7 @@ function(hikari_configure_engine_target target_name)
         target_sources(
             "${target_name}"
             PRIVATE
-                "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/HIKARI_WindowsApplication.manifest")
+                "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/Private/Platform/HIKARI_WindowsApplication.manifest")
     endif()
 
     # 契約テストは HIKARI_KEEP_ASSERTIONS で assert を全構成で有効にする（判定と副作用を省かない）。

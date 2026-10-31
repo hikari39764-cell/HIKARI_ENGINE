@@ -6,7 +6,7 @@
 #include <string>
 
 #include "Animation/StateMachine/HIKARI_AnimationStateMachine.h"
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Documents/HIKARI_AnimationStateMachineEditorDocument.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspace.h"

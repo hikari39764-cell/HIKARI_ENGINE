@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Scene/Debug/HIKARI_ComponentGizmoRenderer.h"
 #include "Scene/Debug/HIKARI_ViewportDebugState.h"
 #include "Scene/HIKARI_SceneDocument.h"

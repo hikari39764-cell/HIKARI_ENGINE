@@ -4,7 +4,7 @@
 #include <utility>
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 

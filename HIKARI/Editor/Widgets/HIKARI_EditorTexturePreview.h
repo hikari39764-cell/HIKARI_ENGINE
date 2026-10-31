@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/HIKARI_AssetTypes.h"
 
 namespace HIKARI::EDITOR {

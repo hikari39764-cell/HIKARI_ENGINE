@@ -21,7 +21,7 @@
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Platform/HIKARI_LoadingScreen.h"
-#include "Platform/Paths/HIKARI_UserDataPath.h"
+#include "Core/Paths/HIKARI_UserDataPath.h"
 #include "Render2D/HIKARI_Camera.h"
 #include "Render2D/HIKARI_DxRenderer.h"
 #include "Render2D/HIKARI_GameUiEffectRenderer.h"

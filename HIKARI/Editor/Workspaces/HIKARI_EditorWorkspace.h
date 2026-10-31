@@ -4,7 +4,7 @@
 #include <optional>
 #include <string_view>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
 namespace HIKARI::EDITOR {

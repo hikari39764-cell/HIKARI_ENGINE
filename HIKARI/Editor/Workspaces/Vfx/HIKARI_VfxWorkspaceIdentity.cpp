@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <array>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceDomain.h"
 
 namespace HIKARI::EDITOR {

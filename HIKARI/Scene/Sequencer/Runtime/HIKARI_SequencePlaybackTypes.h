@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Scene/Sequencer/HIKARI_SequenceBinding.h"
 #include "Scene/Sequencer/HIKARI_SequencePlayback.h"
 

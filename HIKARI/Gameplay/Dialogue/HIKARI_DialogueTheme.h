@@ -1,6 +1,6 @@
 #pragma once
 #include "Gameplay/Dialogue/HIKARI_DialogueDefinition.h"
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 namespace HIKARI::DIALOGUE {
 struct DialogueColor {
     float r = 1.0f;

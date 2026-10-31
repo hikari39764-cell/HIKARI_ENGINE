@@ -13,7 +13,7 @@
 
 #include <json.hpp>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Prefab/HIKARI_PrefabAssetStore.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Math/HIKARI_MathValidation.h"

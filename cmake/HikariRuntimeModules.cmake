@@ -14,17 +14,14 @@ include_guard(GLOBAL)
 # - Moved modules (hikari_add_module): HIKARI/<Dir>/Public/<Dir>/ holds the headers other modules may include,
 #   HIKARI/<Dir>/Private/<Dir>/ holds the .cpp files and the module-internal headers. Include paths stay
 #   "<Dir>/...". A moved module sees only its own Public and Private, the SDK headers, third-party libraries and
-#   the modules it DEPENDS on, so an include of a module it does not depend on fails to compile. The only
-#   exceptions are sources that CMakeLists.txt gives their own INCLUDE_DIRECTORIES.
+#   the modules it DEPENDS on, so an include of a module it does not depend on fails to compile.
 # - The groups in HIKARI_RUNTIME_MODULE_SPECS: modules not moved yet. They share the old include roots and link
 #   every moved module to see its Public.
 
 set(
     HIKARI_RUNTIME_MODULE_SPECS
-    "hikari_runtime_foundation|HIKARI_RUNTIME_FOUNDATION_SOURCES"
     "hikari_runtime_assets|HIKARI_RUNTIME_ASSET_SOURCES"
     "hikari_runtime_asset_pipeline|HIKARI_RUNTIME_ASSET_PIPELINE_SOURCES"
-    "hikari_runtime_project|HIKARI_RUNTIME_PROJECT_SOURCES"
     "hikari_runtime_game_project_sdk|HIKARI_RUNTIME_GAME_PROJECT_SDK_SOURCES"
     "hikari_runtime_navigation|HIKARI_RUNTIME_NAVIGATION_SOURCES"
     "hikari_runtime_animation|HIKARI_RUNTIME_ANIMATION_SOURCES"
@@ -33,7 +30,7 @@ set(
     "hikari_runtime_presentation|HIKARI_RUNTIME_PRESENTATION_SOURCES"
     "hikari_runtime_scene_rendering|HIKARI_RUNTIME_SCENE_RENDERING_SOURCES"
     "hikari_runtime_physics|HIKARI_RUNTIME_PHYSICS_SOURCES"
-    "hikari_runtime_gfx|HIKARI_RUNTIME_GFX_SOURCES"
+    "hikari_runtime_render2d|HIKARI_RUNTIME_RENDER2D_SOURCES"
     "hikari_runtime_render3d|HIKARI_RUNTIME_RENDER3D_SOURCES"
     "hikari_runtime_render3d_features|HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES"
     "hikari_runtime_authoring|HIKARI_RUNTIME_AUTHORING_SOURCES"
@@ -68,17 +65,11 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
             APPEND
             HIKARI_RUNTIME_GAME_PROJECT_SDK_SOURCES
             "${runtime_source}")
-    elseif(
-        runtime_relative_path MATCHES
-        "^HIKARI/(Platform|Input|Audio)/")
-        list(APPEND HIKARI_RUNTIME_FOUNDATION_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Assets/(Importers|Cooking|Geometry|Lighting)/")
         # Source conversion, validation and packaging; records/readers remain asset-owned.
         list(APPEND HIKARI_RUNTIME_ASSET_PIPELINE_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Assets/")
         list(APPEND HIKARI_RUNTIME_ASSET_SOURCES "${runtime_source}")
-    elseif(runtime_relative_path MATCHES "^HIKARI/Project/")
-        list(APPEND HIKARI_RUNTIME_PROJECT_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Scene/Navigation/")
         list(APPEND HIKARI_RUNTIME_NAVIGATION_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Animation/")
@@ -94,8 +85,8 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         list(APPEND HIKARI_RUNTIME_SCENE_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Physics/")
         list(APPEND HIKARI_RUNTIME_PHYSICS_SOURCES "${runtime_source}")
-    elseif(runtime_relative_path MATCHES "^HIKARI/(Gfx|Render2D|Vfx)/")
-        list(APPEND HIKARI_RUNTIME_GFX_SOURCES "${runtime_source}")
+    elseif(runtime_relative_path MATCHES "^HIKARI/Render2D/")
+        list(APPEND HIKARI_RUNTIME_RENDER2D_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES
         "^HIKARI/Render3D/Surface/HIKARI_(SceneSurfaceSet|RenderFrameSurfaceRegistry)\\.cpp$")
         # The surface set and its cross-stage registry are core semantic
@@ -103,7 +94,7 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         list(APPEND HIKARI_RUNTIME_RENDER3D_SOURCES "${runtime_source}")
     elseif(
         runtime_relative_path MATCHES
-        "^HIKARI/Render3D/(Color|Features|Lighting|Reflection|ScreenSpace|Shadow|Surface|Terrain|Vfx|Water)/")
+        "^HIKARI/(Vfx|Render3D/(Color|Features|Lighting|Reflection|ScreenSpace|Shadow|Surface|Terrain|Vfx|Water))/")
         list(APPEND HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Render3D/")
         list(APPEND HIKARI_RUNTIME_RENDER3D_SOURCES "${runtime_source}")
@@ -235,6 +226,11 @@ function(hikari_define_runtime_modules output_variable)
     # Moved modules, lowest first: a DEPENDS module must be listed before the module that uses it.
     hikari_add_module(core)
     hikari_add_module(diagnostics DEPENDS core)
+    hikari_add_module(platform DEPENDS core)
+    hikari_add_module(input DEPENDS core platform)
+    hikari_add_module(audio DEPENDS core)
+    hikari_add_module(project DEPENDS core)
+    hikari_add_module(gfx DEPENDS core diagnostics project)
     foreach(module_key IN LISTS HIKARI_MODULE_KEYS)
         if(NOT TARGET "hikari_${module_key}")
             message(

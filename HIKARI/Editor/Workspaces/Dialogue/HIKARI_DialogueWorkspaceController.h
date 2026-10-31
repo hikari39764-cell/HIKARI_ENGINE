@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Documents/HIKARI_DialogueEditorDocument.h"
 #include "Editor/Documents/HIKARI_DialogueStyleEditorDocument.h"

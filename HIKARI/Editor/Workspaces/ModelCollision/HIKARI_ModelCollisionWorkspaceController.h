@@ -12,7 +12,7 @@
 
 #include "Assets/Collision/HIKARI_ModelCollisionGenerator.h"
 #include "Assets/Collision/HIKARI_ModelCollisionSetup.h"
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Tasks/HIKARI_AssetTaskService.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Gizmos/HIKARI_EditorTransformGizmo.h"

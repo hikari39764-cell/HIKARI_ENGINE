@@ -5,7 +5,7 @@
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Editor/Export/HIKARI_GameShippingArtifactValidator.h"
 #include "Editor/Projects/HIKARI_EditorChildProcess.h"
-#include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Core/Paths/HIKARI_ExecutablePath.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include <Windows.h>

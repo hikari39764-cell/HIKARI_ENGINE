@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
 #include "Assets/Vfx/HIKARI_VfxPropertySchema.h"
 #include "Assets/Vfx/HIKARI_VfxLayerAnimation.h"

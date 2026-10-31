@@ -1,6 +1,6 @@
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "HIKARI_EditorPreviewCapture.h"
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 
 namespace HIKARI::EDITOR {
 EditorOperationResult PollEditorPreviewCapture(RENDER3D::EDITORVIEW::PreviewCaptureId id) {

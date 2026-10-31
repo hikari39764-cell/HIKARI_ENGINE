@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <string>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Scene/HIKARI_CinematicSequence.h"
 #include "Scene/HIKARI_SceneDocument.h"
 

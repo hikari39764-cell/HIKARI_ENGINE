@@ -4,7 +4,7 @@
 
 #include <string>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Gameplay/Dialogue/HIKARI_DialogueDefinition.h"
 
 namespace HIKARI {

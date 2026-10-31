@@ -8,7 +8,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "HIKARI_IScene.h"
 #include "HIKARI_SceneManager.h"
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"

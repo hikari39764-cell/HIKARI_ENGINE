@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"

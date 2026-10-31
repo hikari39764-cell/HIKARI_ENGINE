@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-#include "HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "HIKARI_AssetTypes.h"
 
 namespace HIKARI {

@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Vfx/HIKARI_VfxAnimationTiming.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialEffectStack.h"
 #include "Core/Math/HIKARI_Math3D.h"

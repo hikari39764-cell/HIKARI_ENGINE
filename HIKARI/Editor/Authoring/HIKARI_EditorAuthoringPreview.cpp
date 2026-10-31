@@ -1,6 +1,6 @@
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "HIKARI_EditorAuthoringPreview.h"
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include <atomic>
 #include "Editor/Preview/HIKARI_EditorPreviewCapture.h"
 

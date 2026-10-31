@@ -15,7 +15,7 @@
 #include "Editor/Host/HIKARI_EditorUiServices.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Project/HIKARI_ProjectLaunch.h"
-#include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Core/Paths/HIKARI_ExecutablePath.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Runtime/Host/HIKARI_EngineHostRunner.h"

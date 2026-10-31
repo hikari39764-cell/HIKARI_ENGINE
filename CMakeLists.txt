@@ -33,7 +33,7 @@ configure_file(
     "${HIKARI_SOURCE_ROOT}/cmake/Templates/HIKARI_StartupResources.rc.in"
     "${CMAKE_BINARY_DIR}/generated/HIKARI_StartupResources.rc" @ONLY)
 set_source_files_properties("${CMAKE_BINARY_DIR}/generated/HIKARI_StartupResources.rc"
-    PROPERTIES OBJECT_DEPENDS "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/Resources/HIKARI_StartupLogo.png;${HIKARI_SOURCE_ROOT}/HIKARI/Platform/Resources/HIKARI_LoadingFont_MPlus12B.ttf;${HIKARI_SOURCE_ROOT}/HIKARI/Platform/Resources/HIKARI_LoadingFont_K12x10.ttf")
+    PROPERTIES OBJECT_DEPENDS "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/Private/Platform/Resources/HIKARI_StartupLogo.png;${HIKARI_SOURCE_ROOT}/HIKARI/Platform/Private/Platform/Resources/HIKARI_LoadingFont_MPlus12B.ttf;${HIKARI_SOURCE_ROOT}/HIKARI/Platform/Private/Platform/Resources/HIKARI_LoadingFont_K12x10.ttf")
 add_library(HIKARI_StartupResources OBJECT "${CMAKE_BINARY_DIR}/generated/HIKARI_StartupResources.rc")
 
 file(
@@ -106,38 +106,46 @@ target_link_libraries(
         HIKARI::Nlohmann
     PRIVATE
         Bcrypt)
-# Core の 2 つの .cpp は未移行の Platform/Paths（同層）を参照する。Platform が Public/Private へ移るまで、
-# この 2 ファイルだけ旧共用 include ルートを許す。
-set_source_files_properties(
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Core/Private/Core/HIKARI_Logger.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Core/Private/Core/Content/HIKARI_EngineContentContext.cpp"
-    PROPERTIES INCLUDE_DIRECTORIES "${HIKARI_SOURCE_ROOT}/HIKARI")
 target_link_libraries(
-    hikari_runtime_foundation
+    hikari_platform
     PRIVATE
-        mfuuid
-        windowscodecs)
+        windowscodecs
+        imm32)
+target_link_libraries(
+    hikari_audio
+    PRIVATE
+        xaudio2
+        mfuuid)
+target_link_libraries(
+    hikari_gfx
+    PUBLIC
+        HIKARI::DirectXTex
+    PRIVATE
+        d3d12
+        dxgi
+        dxguid
+        Version)
+target_include_directories(
+    hikari_gfx
+    PRIVATE
+        "${CMAKE_BINARY_DIR}/generated")
 target_link_libraries(
     hikari_runtime_navigation
     PRIVATE
         HIKARI::RecastNavigation)
-target_link_libraries(
-    hikari_runtime_gfx
-    PRIVATE
-        Version)
-target_include_directories(
-    hikari_runtime_gfx
-    PRIVATE
-        "${CMAKE_BINARY_DIR}/generated")
 if(HIKARI_WITH_EDITOR_BUILD)
     target_link_libraries(
         hikari_runtime_asset_pipeline
         PRIVATE
             HIKARI::Xatlas)
     target_link_libraries(
-        hikari_runtime_foundation
+        hikari_platform
         PRIVATE
             Comctl32)
+    target_link_libraries(
+        hikari_gfx
+        PRIVATE
+            HIKARI::WinPix)
 endif()
 
 add_library(HIKARI_Runtime INTERFACE)
@@ -170,6 +178,11 @@ target_link_libraries(
     HIKARI_BuiltinShaderCookTool
     PRIVATE
         HIKARI::Runtime)
+# cook cache は Gfx の cook 実装内部（Gfx/Internal）を直接使うため、この実行ファイルだけ Gfx の Private を見る。
+target_include_directories(
+    HIKARI_BuiltinShaderCookTool
+    PRIVATE
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/Private")
 hikari_configure_engine_target(HIKARI_BuiltinShaderCookTool)
 set_target_properties(
     HIKARI_BuiltinShaderCookTool

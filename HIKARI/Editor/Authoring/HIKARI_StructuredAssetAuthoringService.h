@@ -2,7 +2,7 @@
 #include <filesystem>
 #include <string>
 #include "Animation/StateMachine/HIKARI_AnimationStateMachine.h"
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Gameplay/Dialogue/HIKARI_DialogueDefinition.h"
 #include "Scene/HIKARI_CinematicSequence.h"
 

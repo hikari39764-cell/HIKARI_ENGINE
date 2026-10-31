@@ -5,7 +5,7 @@
 #include <system_error>
 #include <utility>
 
-#include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Core/Paths/HIKARI_ExecutablePath.h"
 
 namespace HIKARI::CONTENT {
 namespace {} // namespace

@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Shader/HIKARI_ShaderCookedArtifact.h"
 #include "Assets/Shader/HIKARI_ShaderSourceManifest.h"
 #include "Gfx/HIKARI_ShaderCookCompiler.h"

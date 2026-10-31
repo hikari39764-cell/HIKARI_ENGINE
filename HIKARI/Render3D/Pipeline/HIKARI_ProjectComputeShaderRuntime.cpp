@@ -10,7 +10,7 @@
 #include <d3dx12.h>
 #include <wrl/client.h>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/Shader/HIKARI_ProjectDispatchShaderContract.h"
 #include "Assets/Shader/HIKARI_ShaderAssetResolver.h"

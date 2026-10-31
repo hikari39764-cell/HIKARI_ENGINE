@@ -74,7 +74,7 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentToolbarController.h"
 #include "Editor/HIKARI_TimePanel.h"
 #include "Editor/Authoring/HIKARI_SceneObjectAuthoringTypes.h"
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 
 namespace HIKARI {
 

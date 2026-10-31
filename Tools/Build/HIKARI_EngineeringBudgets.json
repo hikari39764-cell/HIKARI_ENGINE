@@ -10,7 +10,7 @@
     "moduleCompileUnitCeilings": {
       "Render3D": 235,
       "Scene": 206,
-      "Assets": 170
+      "Assets": 169
     },
     "modulePhysicalLineCeilings": {
       "Editor": 50271,

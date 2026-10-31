@@ -5,7 +5,7 @@
 
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
-#include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Core/Paths/HIKARI_ExecutablePath.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>

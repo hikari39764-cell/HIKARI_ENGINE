@@ -2,7 +2,7 @@
 
 #include <utility>
 #include <algorithm>
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 
 namespace HIKARI::EDITOR {
 bool EditorAuthoringSessionHost::RegisterWorkspace(EditorAuthoringWorkspace workspace) {

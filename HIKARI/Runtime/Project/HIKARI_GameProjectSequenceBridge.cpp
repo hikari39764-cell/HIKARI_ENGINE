@@ -4,7 +4,7 @@
 #include <cstring>
 #include <limits>
 #include <vector>
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/Sequencer/Runtime/HIKARI_SequencePlaybackService.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"

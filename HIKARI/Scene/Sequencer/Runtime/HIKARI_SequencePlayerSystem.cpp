@@ -4,7 +4,7 @@
 #include <sstream>
 #include <utility>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Core/HIKARI_Logger.h"
 #include "Scene/Components/HIKARI_SequencePlayerComponent.h"
 #include "Scene/HIKARI_GameObject.h"

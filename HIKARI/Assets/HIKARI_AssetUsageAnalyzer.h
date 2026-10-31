@@ -4,7 +4,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 
 namespace HIKARI {
 

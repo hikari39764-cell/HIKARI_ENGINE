@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 
 namespace HIKARI::PROJECT::DETAIL {
 template <size_t Capacity>

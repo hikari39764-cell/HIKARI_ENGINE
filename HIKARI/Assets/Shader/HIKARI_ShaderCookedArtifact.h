@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Shader/HIKARI_ShaderParameters.h"
 #include "Assets/Shader/HIKARI_ShaderSourceManifest.h"
 #include "Core/Hashing/HIKARI_Sha256.h"

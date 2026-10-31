@@ -18,7 +18,7 @@
 #include "Editor/Export/HIKARI_GameExportIdentity.h"
 #include "Editor/Export/HIKARI_GamePackageHash.h"
 #include "Project/HIKARI_ProjectContext.h"
-#include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Core/Paths/HIKARI_ExecutablePath.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
 
 namespace HIKARI::EDITOR {

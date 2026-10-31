@@ -2,7 +2,7 @@
 
 #include <optional>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspace.h"
 
 namespace HIKARI {

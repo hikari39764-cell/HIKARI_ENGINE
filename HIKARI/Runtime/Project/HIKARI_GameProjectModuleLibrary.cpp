@@ -6,7 +6,7 @@
 #include <system_error>
 #include <utility>
 
-#include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Core/Paths/HIKARI_ExecutablePath.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Scene/Features/HIKARI_RuntimeExtension.h"
 

@@ -20,7 +20,7 @@
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Gfx/HIKARI_GfxDebugConfig.h"
-#include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Core/Paths/HIKARI_ExecutablePath.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Render3D/Settings/HIKARI_RenderQualityProfileStore.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"

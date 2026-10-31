@@ -5,7 +5,7 @@
 #include <optional>
 #include <string>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserCache.h"
 
 namespace HIKARI {

@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <utility>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Post/HIKARI_PostAsset.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"

@@ -10,7 +10,7 @@
 
 #include "Assets/Lighting/HIKARI_LightingBakeDependencyHash.h"
 #include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Scene/Document/Baking/HIKARI_LightingTransportSceneBuilder.h"

@@ -1,5 +1,5 @@
 #pragma once
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Scene/Camera/HIKARI_CameraRigTypes.h"
 #include "Scene/Camera/HIKARI_GameplayCameraProfile.h"
 #include <memory>

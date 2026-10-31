@@ -4,7 +4,7 @@
 
 #include <string>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "HIKARI/Project/UiTypes.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "HIKARI/Runtime/ComponentTypeId.h"

@@ -7,7 +7,7 @@
 
 #include <Windows.h>
 
-#include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Core/Paths/HIKARI_ExecutablePath.h"
 #include "Assets/Models/HIKARI_ModelBounds.h"
 #include "coacd_c_api.h"
 

@@ -37,8 +37,6 @@ Assets/Text/HIKARI_TextStyleAsset.h -> Scene/Ui/HIKARI_UiTextStyle.h
 Authoring/HIKARI_IInspectorBuilder.h -> Runtime/Binding/HIKARI_RuntimeBindingTypes.h
 Gameplay/Dialogue/HIKARI_DialogueSessionService.cpp -> Runtime/Services/HIKARI_ActionTimeDilationService.h
 Gameplay/Dialogue/HIKARI_DialogueSessionService.cpp -> Runtime/Services/HIKARI_RuntimeServices.h
-Platform/HIKARI_Win32Window.h -> Input/Runtime/HIKARI_InputTypes.h
-Project/HIKARI_ProjectSettings.h -> Assets/HIKARI_AssetGuid.h
 Render2D/HIKARI_DxRenderer.cpp -> Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h
 Render2D/HIKARI_DxRenderer.cpp -> Assets/Shader/HIKARI_Render2DBuiltinShaderContract.h
 Render2D/HIKARI_DxTexture.cpp -> Assets/Semantics/HIKARI_AssetArtifactSemantics.h
@@ -49,7 +47,6 @@ Render3D/Cluster/HIKARI_ClusterGpuCullingPass.cpp -> Assets/Shader/HIKARI_Builti
 Render3D/Cluster/HIKARI_ClusterGpuCullingPass.cpp -> Assets/Shader/HIKARI_RenderGeometryShaderContract.h
 Render3D/Cluster/HIKARI_ClusterRayTracingGeometry.cpp -> Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h
 Render3D/Cluster/HIKARI_ClusterRayTracingGeometry.cpp -> Assets/Shader/HIKARI_RenderGeometryShaderContract.h
-Render3D/Cluster/HIKARI_ClusteredGeometryAsset.h -> Assets/HIKARI_AssetGuid.h
 Render3D/Cluster/HIKARI_ClusteredGeometryAsset.h -> Assets/Models/HIKARI_ModelAsset.h
 Render3D/Color/HIKARI_AutomaticExposure.cpp -> Assets/Shader/HIKARI_AutomaticExposureShaderContract.h
 Render3D/Color/HIKARI_AutomaticExposure.cpp -> Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h
@@ -118,11 +115,9 @@ Render3D/Models/Runtime/HIKARI_ModelTextureResolver.cpp -> Assets/Models/HIKARI_
 Render3D/Models/Runtime/HIKARI_ModelTextureResolver.cpp -> Assets/Semantics/HIKARI_AssetArtifactSemantics.h
 Render3D/Models/Runtime/HIKARI_ModelTextureResolver.h -> Assets/Models/HIKARI_ModelAsset.h
 Render3D/MotionBlur/HIKARI_CameraMotionBlurStage.cpp -> Assets/Shader/HIKARI_CameraMotionBlurShaderContract.h
-Render3D/Pipeline/HIKARI_ProjectComputeShaderRuntime.cpp -> Assets/HIKARI_AssetGuid.h
 Render3D/Pipeline/HIKARI_ProjectComputeShaderRuntime.cpp -> Assets/HIKARI_AssetRegistry.h
 Render3D/Pipeline/HIKARI_ProjectComputeShaderRuntime.cpp -> Assets/Shader/HIKARI_ProjectDispatchShaderContract.h
 Render3D/Pipeline/HIKARI_ProjectComputeShaderRuntime.cpp -> Assets/Shader/HIKARI_ShaderAssetResolver.h
-Render3D/Pipeline/HIKARI_ProjectFullscreenShaderRuntime.cpp -> Assets/HIKARI_AssetGuid.h
 Render3D/Pipeline/HIKARI_ProjectFullscreenShaderRuntime.cpp -> Assets/HIKARI_AssetRegistry.h
 Render3D/Pipeline/HIKARI_ProjectFullscreenShaderRuntime.cpp -> Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h
 Render3D/Pipeline/HIKARI_ProjectFullscreenShaderRuntime.cpp -> Assets/Shader/HIKARI_ProjectFullscreenShaderContract.h

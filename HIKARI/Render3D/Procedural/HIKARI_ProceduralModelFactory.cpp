@@ -22,7 +22,7 @@
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Tasks/HIKARI_TaskExecutor.h"
-#include "Platform/Paths/HIKARI_UserDataPath.h"
+#include "Core/Paths/HIKARI_UserDataPath.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshBuilder.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"

@@ -10,7 +10,7 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_StartupTimer.h"
-#include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Core/Paths/HIKARI_ExecutablePath.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineDeployment.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineInternal.h"

@@ -2,7 +2,7 @@
 #include <filesystem>
 #include <string>
 #include <cstdint>
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 
 namespace HIKARI {
 class AssetDatabase;

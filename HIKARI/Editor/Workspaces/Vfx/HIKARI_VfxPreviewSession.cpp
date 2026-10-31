@@ -9,7 +9,7 @@
 #include <memory>
 #include <utility>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Vfx/Compiler/HIKARI_VfxCompiler.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"

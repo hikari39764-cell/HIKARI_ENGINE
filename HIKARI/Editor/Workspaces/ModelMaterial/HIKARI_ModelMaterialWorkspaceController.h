@@ -11,7 +11,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Models/HIKARI_ModelAssetTypes.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Gizmos/HIKARI_EditorTransformGizmo.h"

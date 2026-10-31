@@ -9,7 +9,7 @@
 #include "Editor/Authoring/HIKARI_SceneObjectObservation.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
-#include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Core/Paths/HIKARI_ExecutablePath.h"
 #include "Editor/Agent/HIKARI_HeadlessEngineRun.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
 #include "Physics/HIKARI_PhysicsWorldService.h"

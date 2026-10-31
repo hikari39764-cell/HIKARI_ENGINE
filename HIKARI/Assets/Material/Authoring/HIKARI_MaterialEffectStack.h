@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 #include "Core/Math/HIKARI_Math3D.h"
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 
 namespace HIKARI {

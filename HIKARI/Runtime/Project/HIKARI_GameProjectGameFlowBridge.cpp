@@ -10,7 +10,7 @@
 #include <span>
 #include <string>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Core/HIKARI_Logger.h"
 #include "Gameplay/Dialogue/HIKARI_DialogueSessionService.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"

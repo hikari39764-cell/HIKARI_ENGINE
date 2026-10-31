@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Sprite/HIKARI_SpriteAsset.h"
 
 namespace HIKARI {

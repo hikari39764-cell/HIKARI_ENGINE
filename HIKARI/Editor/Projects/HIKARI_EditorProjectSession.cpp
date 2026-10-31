@@ -9,7 +9,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Projects/HIKARI_ProjectProcess.h"
-#include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Core/Paths/HIKARI_ExecutablePath.h"
 #include "Project/HIKARI_ProjectContext.h"
 
 #include "imgui.h"

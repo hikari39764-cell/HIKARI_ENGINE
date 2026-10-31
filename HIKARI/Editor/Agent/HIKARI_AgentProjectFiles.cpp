@@ -1,7 +1,7 @@
 #include "Editor/Agent/HIKARI_AgentProjectFiles.h"
 
 #include "Core/Text/HIKARI_UtfPath.h"
-#include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Core/Paths/HIKARI_ExecutablePath.h"
 
 #include <fstream>
 #include <iterator>

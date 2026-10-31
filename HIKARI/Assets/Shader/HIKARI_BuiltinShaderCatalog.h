@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Shader/HIKARI_ShaderSourceManifest.h"
 
 namespace HIKARI::ASSETS::SHADER {

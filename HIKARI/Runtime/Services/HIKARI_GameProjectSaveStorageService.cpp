@@ -1,7 +1,7 @@
 #include "Runtime/Services/HIKARI_GameProjectSaveStorageService.h"
 #include "Core/Text/HIKARI_OutMessage.h"
 
-#include "Platform/Paths/HIKARI_UserDataPath.h"
+#include "Core/Paths/HIKARI_UserDataPath.h"
 
 #include <algorithm>
 #include <atomic>

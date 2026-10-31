@@ -5,7 +5,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "Assets/HIKARI_AssetGuid.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Editor/Views/Director/HIKARI_EditorDirectorCameraController.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspace.h"
 

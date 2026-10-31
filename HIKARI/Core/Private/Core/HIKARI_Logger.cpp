@@ -1,5 +1,5 @@
 #include "Core/HIKARI_Logger.h"
-#include "Platform/Paths/HIKARI_UserDataPath.h"
+#include "Core/Paths/HIKARI_UserDataPath.h"
 
 #include <Windows.h>
 
