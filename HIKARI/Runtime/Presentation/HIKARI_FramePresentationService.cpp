@@ -606,9 +606,10 @@ bool PrepareFramePresentation(FramePresentationDestination destination) {
         return RecoverLastEditorPresentation(editorViewport, "render-graph continuation failed");
     }
     {
-        CPU_PROFILE::ScopedCpuTimer cpuPost(CPU_PROFILE::Pass::PostResolve);
+        CPU_PROFILE::ScopedCpuTimer cpuPost(CPU_PROFILE::Pass::PresentationComposition);
         GFX::PIX::ScopedGpuEvent pixPost(GFX::GetCurrentContext().cmdList, GFX::PIX::kColorPost, "PostSystem");
-        GFX::GPU_PROFILE::ScopedGpuTimer gpuPost(GFX::GetCurrentContext().cmdList, GFX::GPU_PROFILE::Pass::PostResolve);
+        GFX::GPU_PROFILE::ScopedGpuTimer gpuPost(GFX::GetCurrentContext().cmdList,
+                                                 GFX::GPU_PROFILE::Pass::PresentationComposition);
         if (!HIKARI::POST::PostSystem::PrepareGameUiComposition(
                 editorViewport,
                 editorViewport && gEditorGameViewportWidth > 0 ? gEditorGameViewportWidth : gLogicalScreenWidth,

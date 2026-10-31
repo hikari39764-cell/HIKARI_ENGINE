@@ -19,6 +19,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/HIKARI_AssetTypes.h"
+#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Export/HIKARI_GamePackageManifest.h"
@@ -188,11 +189,8 @@ bool CopyDirectoryChecked(const std::filesystem::path& from, const std::filesyst
             continue;
         }
 
-        if (generatedRuntimeOnly) {
-            const std::string genericPath = TEXT::ToLowerAsciiCopy(relativePath.generic_string());
-            if (genericPath.find("/captures/") != std::string::npos || genericPath.ends_with("_capture.dds")) {
-                continue;
-            }
+        if (generatedRuntimeOnly && ASSETS::LIGHTING::IsLightingBakeCaptureFile(relativePath.generic_string())) {
+            continue;
         }
 
         std::filesystem::create_directories(targetPath.parent_path(), ec);

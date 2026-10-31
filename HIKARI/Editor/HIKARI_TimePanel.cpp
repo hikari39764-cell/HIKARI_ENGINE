@@ -1,6 +1,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "HIKARI_TimePanel.h"
 
+#include "Core/HIKARI_FrameRate.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "imgui.h"
@@ -32,8 +33,11 @@ void TimePanel::DrawContents() const {
     ImGui::Text(TEXT::Localize("editor.ui.paused.s.9579bd").c_str(), frame.paused ? "true" : "false");
 
     ImGui::Separator();
-    ImGui::Text("FPS(raw):   %.1f", frame.rawDt > 0.0f ? (1.0f / frame.rawDt) : 0.0f);
-    ImGui::Text("FPS(game):  %.1f", frame.gameDt > 0.0f ? (1.0f / frame.gameDt) : 0.0f);
+    const auto fpsText = [](float frameSeconds) {
+        return PERFORMANCE::FormatFramesPerSecond(PERFORMANCE::FramesPerSecond(1u, frameSeconds));
+    };
+    ImGui::Text("FPS(raw):   %s", fpsText(frame.rawDt).c_str());
+    ImGui::Text("FPS(game):  %s", fpsText(frame.gameDt).c_str());
 
     ImGui::Separator();
     ImGui::TextUnformatted(TEXT::Localize("ui.environment.quickControls").c_str());

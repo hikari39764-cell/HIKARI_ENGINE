@@ -16,15 +16,25 @@ using Microsoft::WRL::ComPtr;
 
 constexpr uint32_t kBufferedFrameCount = 3u;
 constexpr uint32_t kPassCount = static_cast<uint32_t>(Pass::Count);
-constexpr uint32_t kQueriesPerPass = 2u;
-constexpr uint32_t kQueryCount = kPassCount * kQueriesPerPass;
+constexpr uint32_t kQueriesPerExecution = 2u;
+// 1 フレームで計れる実行回数の上限。同じ pass も実行のたびに 1 組ずつ使う。固定長なのでフレームごとの確保はない。
+constexpr uint32_t kMaxExecutionsPerFrame = 512u;
+constexpr uint32_t kQueryCount = kMaxExecutionsPerFrame * kQueriesPerExecution;
+constexpr uint32_t kNoExecution = UINT32_MAX;
+
+struct Execution {
+    Pass pass = Pass::Count;
+    Pass parent = Pass::Count;
+};
 
 struct FrameSlot {
     ComPtr<ID3D12QueryHeap> queryHeap{};
     ComPtr<ID3D12Resource> readbackBuffer{};
-    std::array<uint8_t, kPassCount> used{};
-    std::array<uint8_t, kPassCount> active{};
-    std::array<Pass, kPassCount> parents{};
+    // 実行順。i 番目の実行は query の 2i（開始）と 2i + 1（終了）を使う。
+    std::array<Execution, kMaxExecutionsPerFrame> executions{};
+    uint32_t executionCount = 0;
+    // 実行中の pass が使っている executions の添字。実行中でなければ kNoExecution。
+    std::array<uint32_t, kPassCount> activeExecution{};
     std::array<Pass, kPassCount> activeStack{};
     uint32_t activeDepth = 0;
     bool resolved = false;
@@ -44,6 +54,7 @@ struct ProfilerState {
     uint64_t statisticsEpoch = 1u;
     bool initialized = false;
     bool enabled = true;
+    bool executionOverflowReported = false;
     const char* unavailableReason = "";
 };
 
@@ -51,7 +62,7 @@ ProfilerState gState{};
 
 uint32_t PassIndex(Pass pass) { return static_cast<uint32_t>(pass); }
 
-uint32_t QueryIndex(Pass pass, uint32_t endpoint) { return PassIndex(pass) * kQueriesPerPass + endpoint; }
+uint32_t QueryIndex(uint32_t execution, uint32_t endpoint) { return execution * kQueriesPerExecution + endpoint; }
 
 bool IsValidPass(Pass pass) { return PassIndex(pass) < kPassCount; }
 
@@ -140,7 +151,7 @@ void CollectResolvedSlot(FrameSlot& slot) {
         return;
     }
 
-    const D3D12_RANGE readRange{0, sizeof(uint64_t) * kQueryCount};
+    const D3D12_RANGE readRange{0, sizeof(uint64_t) * slot.executionCount * kQueriesPerExecution};
     void* mapped = nullptr;
     if (FAILED(slot.readbackBuffer->Map(0, &readRange, &mapped)) || mapped == nullptr) {
         return;
@@ -156,22 +167,38 @@ void CollectResolvedSlot(FrameSlot& slot) {
     snapshot.unavailableReason = "";
     ResetLatestNames(snapshot);
 
-    for (uint32_t i = 0; i < kPassCount; ++i) {
-        if (slot.used[i] == 0) {
-            continue;
-        }
-
-        const uint64_t start = queryData[QueryIndex(static_cast<Pass>(i), 0u)];
-        const uint64_t end = queryData[QueryIndex(static_cast<Pass>(i), 1u)];
+    // 同じ pass の実行は合計する。self 時間は、実行ごとに自分の親 pass の分から引く。
+    for (uint32_t run = 0; run < slot.executionCount; ++run) {
+        const uint64_t start = queryData[QueryIndex(run, 0u)];
+        const uint64_t end = queryData[QueryIndex(run, 1u)];
         if (end < start) {
             continue;
         }
 
+        const Execution& execution = slot.executions[run];
+        PassTiming& timing = snapshot.passes[PassIndex(execution.pass)];
+        const uint64_t ticks = end - start;
+        const double ms = static_cast<double>(ticks) * 1000.0 / static_cast<double>(gState.timestampFrequency);
+        if (!timing.valid) {
+            timing.valid = true;
+            timing.parentPass = execution.parent;
+        }
+        ++timing.callCount;
+        timing.ticks += ticks;
+        timing.gpuMs += ms;
+        timing.exclusiveGpuMs += ms;
+        if (IsValidPass(execution.parent)) {
+            snapshot.passes[PassIndex(execution.parent)].exclusiveGpuMs -= ms;
+        }
+    }
+
+    // 窓へ入れる標本は、フレームごとの合計。
+    for (uint32_t i = 0; i < kPassCount; ++i) {
         PassTiming& timing = snapshot.passes[i];
-        timing.valid = true;
-        timing.parentPass = slot.parents[i];
-        timing.ticks = end - start;
-        timing.gpuMs = static_cast<double>(timing.ticks) * 1000.0 / static_cast<double>(gState.timestampFrequency);
+        timing.exclusiveGpuMs = (std::max)(0.0, timing.exclusiveGpuMs);
+        if (!timing.valid) {
+            continue;
+        }
         auto& window = gState.rolling[i];
         window.Push(timing.gpuMs);
         timing.averageMs = window.Average();
@@ -181,15 +208,6 @@ void CollectResolvedSlot(FrameSlot& slot) {
         timing.rollingSampleCount = static_cast<uint32_t>(window.count);
     }
 
-    for (auto& timing : snapshot.passes)
-        timing.exclusiveGpuMs = timing.gpuMs;
-    for (const auto& timing : snapshot.passes) {
-        if (timing.valid && IsValidPass(timing.parentPass))
-            snapshot.passes[PassIndex(timing.parentPass)].exclusiveGpuMs -= timing.gpuMs;
-    }
-    for (auto& timing : snapshot.passes)
-        timing.exclusiveGpuMs = (std::max)(0.0, timing.exclusiveGpuMs);
-
     const D3D12_RANGE writeRange{0, 0};
     slot.readbackBuffer->Unmap(0, &writeRange);
     slot.resolved = false;
@@ -197,9 +215,8 @@ void CollectResolvedSlot(FrameSlot& slot) {
 }
 
 void ResetSlot(FrameSlot& slot, uint64_t frameIndex) {
-    slot.used.fill(0u);
-    slot.active.fill(0u);
-    slot.parents.fill(Pass::Count);
+    slot.executionCount = 0;
+    slot.activeExecution.fill(kNoExecution);
     slot.activeDepth = 0;
     slot.frameIndex = frameIndex;
     slot.resolved = false;
@@ -276,7 +293,8 @@ const char* ToString(Pass pass) {
     case Pass::StylizedGeometryOutline: return "Stylized Geometry Outline";
     case Pass::StylizedVisibilityOverlay: return "Stylized Visibility Overlay";
     case Pass::StylizedScreenFeatures: return "Stylized Screen Features";
-    case Pass::PostResolve: return "Post Resolve";
+    case Pass::PostSceneResolve: return "Post Scene Resolve";
+    case Pass::PresentationComposition: return "Presentation Composition";
     case Pass::GameViewResolve: return "GameView Resolve";
     case Pass::SceneLayers: return "Scene Layers";
     case Pass::UiLayers: return "UI Layers";
@@ -329,17 +347,16 @@ void EndFrame(ID3D12GraphicsCommandList* cmd) {
     }
 
     EndPass(cmd, Pass::CommandFrame);
-    for (uint32_t i = 0; i < kPassCount; ++i) {
-        if (slot->active[i] != 0) {
-            const Pass pass = static_cast<Pass>(i);
-            cmd->EndQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, QueryIndex(pass, 1u));
-            slot->active[i] = 0;
+    // 閉じられなかった pass は、フレームの終わりで閉じる。
+    for (uint32_t& execution : slot->activeExecution) {
+        if (execution != kNoExecution) {
+            cmd->EndQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, QueryIndex(execution, 1u));
+            execution = kNoExecution;
         }
-        if (slot->used[i] != 0) {
-            const Pass pass = static_cast<Pass>(i);
-            cmd->ResolveQueryData(slot->queryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, QueryIndex(pass, 0u),
-                                  kQueriesPerPass, slot->readbackBuffer.Get(), sizeof(uint64_t) * QueryIndex(pass, 0u));
-        }
+    }
+    if (slot->executionCount > 0) {
+        cmd->ResolveQueryData(slot->queryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, 0u,
+                              slot->executionCount * kQueriesPerExecution, slot->readbackBuffer.Get(), 0u);
     }
 
     slot->resolved = true;
@@ -350,8 +367,6 @@ void Shutdown() {
     for (FrameSlot& slot : gState.slots) {
         slot.queryHeap.Reset();
         slot.readbackBuffer.Reset();
-        slot.used.fill(0u);
-        slot.active.fill(0u);
         slot.resolved = false;
     }
     gState = {};
@@ -365,16 +380,25 @@ bool BeginPass(ID3D12GraphicsCommandList* cmd, Pass pass) {
         return false;
     }
 
+    // 実行中の同じ pass を入れ子で計ると二重計上になる。終わった後の再実行は 1 回ずつ計る。
     const uint32_t index = PassIndex(pass);
-    if (slot->active[index] != 0 || slot->used[index] != 0 || slot->queryHeap == nullptr) {
+    if (slot->activeExecution[index] != kNoExecution || slot->queryHeap == nullptr) {
+        return false;
+    }
+    if (slot->executionCount == kMaxExecutionsPerFrame) {
+        if (!gState.executionOverflowReported) {
+            gState.executionOverflowReported = true;
+            HIKARI_LOG_WARN("[GpuFrameProfiler] more than " + std::to_string(kMaxExecutionsPerFrame) +
+                            " GPU pass executions in one frame; the rest are not timed.");
+        }
         return false;
     }
 
-    cmd->EndQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, QueryIndex(pass, 0u));
-    slot->parents[index] = slot->activeDepth > 0u ? slot->activeStack[slot->activeDepth - 1u] : Pass::Count;
+    const uint32_t run = slot->executionCount++;
+    cmd->EndQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, QueryIndex(run, 0u));
+    slot->executions[run] = {pass, slot->activeDepth > 0u ? slot->activeStack[slot->activeDepth - 1u] : Pass::Count};
     slot->activeStack[slot->activeDepth++] = pass;
-    slot->active[index] = 1u;
-    slot->used[index] = 1u;
+    slot->activeExecution[index] = run;
     return true;
 }
 
@@ -385,12 +409,12 @@ void EndPass(ID3D12GraphicsCommandList* cmd, Pass pass) {
     }
 
     const uint32_t index = PassIndex(pass);
-    if (slot->active[index] == 0 || slot->queryHeap == nullptr) {
+    if (slot->activeExecution[index] == kNoExecution || slot->queryHeap == nullptr) {
         return;
     }
 
-    cmd->EndQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, QueryIndex(pass, 1u));
-    slot->active[index] = 0u;
+    cmd->EndQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_TIMESTAMP, QueryIndex(slot->activeExecution[index], 1u));
+    slot->activeExecution[index] = kNoExecution;
     for (uint32_t i = 0; i < slot->activeDepth; ++i) {
         if (slot->activeStack[i] != pass)
             continue;

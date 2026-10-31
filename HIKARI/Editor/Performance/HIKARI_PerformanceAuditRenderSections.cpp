@@ -41,8 +41,8 @@ void DrawRenderPathTable(const RuntimePerformanceSnapshot& s) {
         MetricRow("Mainline / Strict / CPU Views Suppressed", "%s / %s / %u",
                   s.submission.gpuDrivenMainRouteActive ? "on" : "off",
                   s.gpuRegistry.strictGpuDrivenMainline ? "on" : "off", s.gpuRegistry.cpuForwardViewSuppressedCount);
-        MetricRow("Scene Objects Total / Visible / Hidden", "%u / %u / %u", s.scene.renderObjectCount,
-                  s.scene.visibleObjectCount, s.scene.hiddenObjectCount);
+        MetricRow("Scene Objects Total / Author-Visible / Hidden", "%u / %u / %u", s.scene.renderObjectCount,
+                  s.scene.authorVisibleObjectCount, s.scene.hiddenObjectCount);
         MetricRow("Surfaces Total / Clustered / Dirty", "%u / %u / %u", s.scene.surfaceInstanceCount,
                   s.scene.clusteredGeometrySurfaceInstanceCount, s.scene.dirtySurfaceInstanceCount);
         MetricRow("GPU Records Source / Routed / Unsupported", "%u / %u / %u", s.gpuRegistry.sourceRecordCount,

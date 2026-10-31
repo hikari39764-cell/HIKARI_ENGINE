@@ -676,6 +676,29 @@ void CheckPainterlyEngineDependencies(const fs::path& root) {
     assert(SaveMaterialAssetData(materialPath, material, error) && database.ScanAssets(true));
     assert(!database.ImportAsset(materialGuid));
     assert(!AnalyzeAssetUsage(scene, database).missingReferences.empty());
+
+    // どのコンポーネントのどのフィールドでも、GUID 形式の値は参照として数える。欠落ならフィールドの経路が役割に残る。
+    const std::string danglingGuid(32, 'a');
+    scene.objects.front().components.push_back(
+        {"Test.Anything",
+         nlohmann::json::parse(R"({"layers":[{"textureAssetGuid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]})"),
+         SceneComponentId{2u}});
+    const auto dangling = AnalyzeAssetUsage(scene, database);
+    assert(std::any_of(dangling.missingReferences.begin(), dangling.missingReferences.end(),
+                       [&](const AssetMissingReference& missing) {
+                           return missing.assetId == danglingGuid &&
+                                  missing.role == "Test.Anything.layers[0].textureAssetGuid";
+                       }));
+
+    // 中身を読めない資産は使用中のまま、理由つきで残す（削除保護・書き出し・焼き込みの依存ハッシュが判断に使う）。
+    {
+        std::ofstream broken(materialPath, std::ios::trunc);
+        broken << "{ not a material";
+    }
+    const auto unreadable = AnalyzeAssetUsage(scene, database);
+    assert(unreadable.IsUsed(materialGuid) && unreadable.unreadableReferences.size() == 1u &&
+           unreadable.unreadableReferences.front().assetId == materialGuid.value &&
+           !unreadable.unreadableReferences.front().reason.empty());
     content.Close();
 }
 

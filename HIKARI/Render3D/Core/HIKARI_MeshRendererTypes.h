@@ -292,11 +292,10 @@ struct DrawItem {
     MeshRenderDebugMode renderDebugMode = MeshRenderDebugMode::Normal;
 };
 
-struct MeshRendererDebugStats {
-    size_t skinnedGpuDrawCount = 0;
+// 描画の準備で積み上げる回数。MESHRENDERER::BeginFrame が毎フレーム 0 に戻す。
+// MeshRendererDebugStats の残りは毎フレーム上書きされる値なので、戻さない（ここへ置かない）。
+struct MeshRendererFrameCounters {
     size_t gpuDrivenSkinnedCommandCount = 0;
-    size_t gpuDrivenSkinnedSourceRecordCount = 0;
-    size_t uploadedJointCount = 0;
     size_t primitiveMeshCacheHitCount = 0;
     size_t primitiveMeshCacheMissCount = 0;
     size_t primitiveSkinnedMeshCacheHitCount = 0;
@@ -306,9 +305,6 @@ struct MeshRendererDebugStats {
     size_t materialTextureLoadDeferredCount = 0;
     size_t psoCacheHitCount = 0;
     size_t psoCacheMissCount = 0;
-    size_t materialFxProfileCacheHitCount = 0;
-    size_t materialFxProfileCacheMissCount = 0;
-    size_t materialFxProfileCacheFailCount = 0;
     size_t normalTextureCacheHitCount = 0;
     size_t normalTextureCacheMissCount = 0;
     size_t normalMappedPrimitiveCount = 0;
@@ -317,6 +313,12 @@ struct MeshRendererDebugStats {
     size_t emissiveTextureCacheMissCount = 0;
     size_t emissiveMappedPrimitiveCount = 0;
     size_t emissiveMapFallbackCount = 0;
+};
+
+struct MeshRendererDebugStats : MeshRendererFrameCounters {
+    size_t materialFxProfileCacheHitCount = 0;
+    size_t materialFxProfileCacheMissCount = 0;
+    size_t materialFxProfileCacheFailCount = 0;
     RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamStats traditionalCommandStream{};
     RENDER3D::GPUDRIVEN::GpuDrivenSceneUploadStats gpuSceneUpload{};
     size_t gpuDrivenCommandStreamGpuCommandCount = 0;

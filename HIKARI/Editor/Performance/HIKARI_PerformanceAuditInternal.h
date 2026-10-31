@@ -35,12 +35,13 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
 
 struct RuntimePerformanceSnapshot {
-    float fpsRaw = 0.0f;
+    std::optional<double> fpsRaw{};
     uint32_t fixedStepsThisFrame = 0u;
     float droppedFixedTimeSeconds = 0.0f;
     int backBufferWidth = 0;

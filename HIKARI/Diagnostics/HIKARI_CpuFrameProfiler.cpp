@@ -7,6 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include "Core/HIKARI_Logger.h"
+
 namespace HIKARI::CPU_PROFILE {
 
 namespace {
@@ -24,6 +26,7 @@ struct DynamicPassState {
 struct State {
     bool frameActive = false;
     bool discardActiveFrame = false;
+    bool dynamicPassOverflowReported = false;
     uint64_t frameIndex = 0;
     Clock::time_point frameBegin{};
     std::array<double, static_cast<size_t>(Pass::Count)> elapsedMs{};
@@ -93,7 +96,7 @@ const char* ToString(Pass pass) {
     case Pass::ShadowSourceSync: return "Shadow Source Sync";
     case Pass::MeshPrepare: return "Mesh Prepare";
     case Pass::MaterialPrepare: return "Material Prepare";
-    case Pass::PostResolve: return "Post Resolve";
+    case Pass::PresentationComposition: return "Presentation Composition";
     case Pass::UiLayers: return "UI Layers";
     case Pass::ImGui: return "ImGui Render";
     case Pass::CommandSubmit: return "Command Submit";
@@ -200,6 +203,13 @@ DynamicPassHandle RegisterDynamicPass(std::string_view name) {
         }
     }
     if (gState.dynamicPassCount >= kMaximumDynamicPasses) {
+        // 溢れた計時区間は計られない。黙って捨てず、最初の一回だけ知らせる。
+        if (!gState.dynamicPassOverflowReported) {
+            gState.dynamicPassOverflowReported = true;
+            HIKARI_LOG_WARN("[CpuFrameProfiler] all " + std::to_string(kMaximumDynamicPasses) +
+                            " dynamic timing segments are in use; '" + std::string(name) +
+                            "' and later new segments are not timed.");
+        }
         return kInvalidDynamicPassHandle;
     }
     const DynamicPassHandle handle = gState.dynamicPassCount++;

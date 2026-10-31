@@ -186,8 +186,8 @@ void DrawIssueSummary(const RendererHealthSnapshot& s) {
         EDITOR::MetricRow("Shadow Cache Valid / Hits / Misses / Updates", "%s / %zu / %zu / %zu",
                           s.shadow.shadowCacheValid ? "yes" : "no", s.shadow.shadowCacheHitCount,
                           s.shadow.shadowCacheMissCount, s.shadow.shadowStaticCacheUpdateCount);
-        EDITOR::MetricRow("Scene Objects Visible / Hidden / Dirty", "%u / %u / %u", s.scene.visibleObjectCount,
-                          s.scene.hiddenObjectCount, s.scene.dirtyObjectCount);
+        EDITOR::MetricRow("Scene Objects Author-Visible / Hidden / Dirty", "%u / %u / %u",
+                          s.scene.authorVisibleObjectCount, s.scene.hiddenObjectCount, s.scene.dirtyObjectCount);
         EDITOR::MetricRow("Scene Surfaces Static / Dynamic / Skinned", "%u / %u / %u",
                           s.scene.staticSurfaceInstanceCount, s.scene.dynamicSurfaceInstanceCount,
                           s.scene.skinnedSurfaceInstanceCount);

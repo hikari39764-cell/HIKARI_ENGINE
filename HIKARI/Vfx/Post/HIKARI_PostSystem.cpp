@@ -585,7 +585,7 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
         AbortSceneCaptureTemporalFrame(RENDER3D::TEMPORAL::TemporalHistoryResetReason::PreviousFrameIncomplete);
         return nullptr;
     }
-    GFX::GPU_PROFILE::ScopedGpuTimer timer(context_.cmdList, GFX::GPU_PROFILE::Pass::PostResolve);
+    GFX::GPU_PROFILE::ScopedGpuTimer timer(context_.cmdList, GFX::GPU_PROFILE::Pass::PostSceneResolve);
     RenderTarget2D* captured = captureStage_.End();
     if (!captured) {
         AbortSceneCaptureTemporalFrame(RENDER3D::TEMPORAL::TemporalHistoryResetReason::PreviousFrameIncomplete);

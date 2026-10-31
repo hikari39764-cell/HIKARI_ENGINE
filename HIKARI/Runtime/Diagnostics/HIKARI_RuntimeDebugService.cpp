@@ -96,6 +96,7 @@ Json Performance() {
                            {"meanMs", pass.averageMs},
                            {"exclusiveMs", pass.exclusiveGpuMs},
                            {"p95Ms", pass.p95Ms},
+                           {"calls", pass.callCount},
                            {"samples", pass.rollingSampleCount}});
     }
     result["gpuTop"] = std::move(timings);

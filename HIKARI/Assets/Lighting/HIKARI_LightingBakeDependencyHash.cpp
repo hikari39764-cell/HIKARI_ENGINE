@@ -348,6 +348,9 @@ LightingBakeHashSnapshot BuildLightingBakeHashSnapshot(const SceneDocument& docu
     for (const AssetMissingReference& missing : usage.missingReferences) {
         snapshot.missingAssetIds.push_back(missing.assetId);
     }
+    for (const AssetUnreadableReference& unreadable : usage.unreadableReferences) {
+        snapshot.unreadableAssets.push_back(unreadable.assetId + " (" + unreadable.reason + ")");
+    }
     const std::vector<std::string> usedGuids =
         BuildAssetDependencyClosure(usage, assetDatabase, snapshot.missingAssetIds);
     for (const std::string& guid : usedGuids) {

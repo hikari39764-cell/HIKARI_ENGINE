@@ -290,7 +290,6 @@ bool ExecuteTraditionalDrawFrame(const GFX::Context& graphics, const MeshPassRes
     }
 
     gMeshRendererState.debugStats.gpuDrivenSkinnedCommandCount += range->skinnedCommandCount;
-    gMeshRendererState.debugStats.gpuDrivenSkinnedSourceRecordCount += range->skinnedCommandCount;
     return executed;
 }
 

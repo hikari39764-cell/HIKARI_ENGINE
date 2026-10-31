@@ -27,7 +27,7 @@ enum class Pass : uint32_t {
     ShadowSourceSync,
     MeshPrepare,
     MaterialPrepare,
-    PostResolve,
+    PresentationComposition,
     UiLayers,
     ImGui,
     CommandSubmit,

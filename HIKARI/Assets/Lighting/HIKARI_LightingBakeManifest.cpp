@@ -9,6 +9,7 @@
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
+#include "Core/Text/HIKARI_AsciiCase.h"
 
 namespace HIKARI::ASSETS::LIGHTING {
 
@@ -317,6 +318,11 @@ std::filesystem::path BuildLightingBakeRoot(const std::filesystem::path& project
 std::filesystem::path BuildLightingBakeManifestPath(const std::filesystem::path& projectRoot,
                                                     const std::string& sceneGuid) {
     return BuildLightingBakeRoot(projectRoot, sceneGuid) / "bake_manifest.json";
+}
+
+bool IsLightingBakeCaptureFile(std::string_view path) {
+    const std::string lower = TEXT::ToLowerAsciiCopy(path);
+    return lower.find("/captures/") != std::string::npos || lower.ends_with("_capture.dds");
 }
 
 } // namespace HIKARI::ASSETS::LIGHTING

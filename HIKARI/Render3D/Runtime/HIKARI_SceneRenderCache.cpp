@@ -815,7 +815,7 @@ void SceneRenderCache::ComputeStats() const {
     for (const SceneRenderObject& object : objects_) {
         ++stats.renderObjectCount;
         if (object.desc.visible) {
-            ++stats.visibleObjectCount;
+            ++stats.authorVisibleObjectCount;
         } else {
             ++stats.hiddenObjectCount;
         }
@@ -840,11 +840,6 @@ void SceneRenderCache::ComputeStats() const {
     stats.surfaceInstanceCount = NUMERIC::SaturateToUint32(surfaceInstances_.size());
     stats.dirtySurfaceInstanceCount = NUMERIC::SaturateToUint32(dirtySurfaceIndices_.size());
     for (const SceneSurfaceInstance& instance : surfaceInstances_) {
-        if (instance.visible) {
-            ++stats.visibleSurfaceInstanceCount;
-        } else {
-            ++stats.hiddenSurfaceInstanceCount;
-        }
         if (instance.isStatic) {
             ++stats.staticSurfaceInstanceCount;
         } else {

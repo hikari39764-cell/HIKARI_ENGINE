@@ -136,6 +136,7 @@ bool HasSubmittedItems() {
 bool BeginFrame(const GFX::Context& graphics, const Camera3D& camera, const SceneEnvironment& environment,
                 const RENDER3D::LIGHTING::SceneLightingSet& lighting, uint32_t screenWidth, uint32_t screenHeight,
                 RenderDebugView debugView, const MeshFrameCameraOverrides* cameraOverrides) {
+    static_cast<MeshRendererFrameCounters&>(gMeshRendererState.debugStats) = {};
     gMeshRendererState.materialFrameReady = false;
     const bool ready = BeginFrameInternal(graphics, camera, environment, lighting, screenWidth, screenHeight, debugView,
                                           cameraOverrides);

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
@@ -112,5 +113,9 @@ std::filesystem::path BuildLightingBakeRoot(const std::filesystem::path& project
 
 std::filesystem::path BuildLightingBakeManifestPath(const std::filesystem::path& projectRoot,
                                                     const std::string& sceneGuid);
+
+// 探針の撮影用の中間ファイル（captures ディレクトリの下、または *_capture.dds）か。ランタイム向けの出力には含めない。
+// path は / 区切りの相対パス。大文字小文字は区別しない。
+bool IsLightingBakeCaptureFile(std::string_view path);
 
 } // namespace HIKARI::ASSETS::LIGHTING

@@ -49,7 +49,8 @@ enum class Pass : uint32_t {
     StylizedGeometryOutline,
     StylizedVisibilityOverlay,
     StylizedScreenFeatures,
-    PostResolve,
+    PostSceneResolve,
+    PresentationComposition,
     GameViewResolve,
     SceneLayers,
     UiLayers,
@@ -68,8 +69,11 @@ enum class Pass : uint32_t {
 struct PassTiming {
     const char* name = "";
     bool valid = false;
+    // 同じフレームで同じ pass を複数回実行した場合は、全実行の合計。回数は callCount。
     double gpuMs = 0.0;
     uint64_t ticks = 0;
+    uint32_t callCount = 0;
+    // 最初の実行の親 pass。
     Pass parentPass = Pass::Count;
     double exclusiveGpuMs = 0.0;
     double averageMs = 0.0;

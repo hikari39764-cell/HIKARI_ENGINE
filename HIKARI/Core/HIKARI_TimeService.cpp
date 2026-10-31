@@ -46,11 +46,8 @@ void ResetFrameClock() {
 const FrameContext& BeginFrame() { return INTERNAL::BeginFrameAt(Clock::now()); }
 
 const FrameContext& INTERNAL::BeginFrameAt(Clock::time_point now) {
-    float rawDt = gFrame.fixedDt;
-    if (gHasLastTick) {
-        const std::chrono::duration<float> elapsed = now - gLastTick;
-        rawDt = elapsed.count();
-    }
+    const bool measured = gHasLastTick;
+    float rawDt = measured ? std::chrono::duration<float>(now - gLastTick).count() : 0.0f;
 
     gLastTick = now;
     gHasLastTick = true;
@@ -59,9 +56,13 @@ const FrameContext& INTERNAL::BeginFrameAt(Clock::time_point now) {
         rawDt = 0.0f;
     }
 
+    // 前のフレームが無い（初回・ResetFrameClock 直後）間隔は測れないので、rawDt は 0 のまま渡す（FPS は「データなし」）。
+    // シミュレーションだけは、固定刻み 1 つ分として進める。
+    const float simulationDt = measured ? rawDt : gFrame.fixedDt;
+
     // 計測値は保持し、シミュレーションに渡す時間だけを制限する。
     gFrame.rawDt = rawDt;
-    gFrame.unscaledDt = gMaxDeltaSeconds > 0.0f ? (std::min)(rawDt, gMaxDeltaSeconds) : rawDt;
+    gFrame.unscaledDt = gMaxDeltaSeconds > 0.0f ? (std::min)(simulationDt, gMaxDeltaSeconds) : simulationDt;
     if (gLockstepFrames > 0u) {
         --gLockstepFrames;
         gFrame.paused = false;

@@ -2,6 +2,7 @@
 #include "Core/IO/HIKARI_PathNormalization.h"
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
@@ -69,8 +70,7 @@ bool CopyDirectory(const std::filesystem::path& source, const std::filesystem::p
             relativeKey.ends_with(".hikari.asset.json")) {
             continue;
         }
-        if (generatedRuntimeOnly &&
-            (relativeKey.find("/captures/") != std::string::npos || relativeKey.ends_with("_capture.dds"))) {
+        if (generatedRuntimeOnly && LIGHTING::IsLightingBakeCaptureFile(relativeKey)) {
             continue;
         }
 

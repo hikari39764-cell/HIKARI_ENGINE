@@ -63,7 +63,7 @@ struct RuntimeBenchmark::State {
     bool temporalValid = false;
     uint32_t drainFrames = 0;
     uint64_t previousRenderFailures = 0, rejectedRenderSamples = 0;
-    uint64_t peakObjects = 0, peakVisibleObjects = 0, peakMassInstances = 0;
+    uint64_t peakObjects = 0, peakAuthorVisibleObjects = 0, peakMassInstances = 0;
     uint64_t peakWorkingSet = 0, peakPrivateBytes = 0, peakVram = 0;
     uint64_t jointPaletteMatrixPayloadBytes = 0, jointPaletteSnapshotUploads = 0;
     uint64_t jointPaletteSnapshotReuses = 0, jointPaletteEmptyBindingUploads = 0;
@@ -255,7 +255,8 @@ void RuntimeBenchmark::OnPresentedFrame(uint64_t frameId, bool applicationFrame,
         s.jointPaletteEmptyBindingUploads += jointPaletteUpload.emptyBindingUploadCount;
         const auto& sceneStats = RenderSubmissionSystem::GetSceneRenderCacheStats();
         s.peakObjects = (std::max)(s.peakObjects, static_cast<uint64_t>(sceneStats.renderObjectCount));
-        s.peakVisibleObjects = (std::max)(s.peakVisibleObjects, static_cast<uint64_t>(sceneStats.visibleObjectCount));
+        s.peakAuthorVisibleObjects =
+            (std::max)(s.peakAuthorVisibleObjects, static_cast<uint64_t>(sceneStats.authorVisibleObjectCount));
         s.peakMassInstances =
             (std::max)(s.peakMassInstances,
                        static_cast<uint64_t>(RenderSubmissionSystem::GetDebugStats().massRenderInstanceCount));
@@ -292,7 +293,7 @@ void RuntimeBenchmark::Finish() {
                                                 s.nativeFullQuality && s.rejectedRenderSamples == 0 &&
                                                 report["invalidIntervals"] == 0;
         report["scenePeaks"] = {{"objects", s.peakObjects},
-                                {"visibleObjects", s.peakVisibleObjects},
+                                {"authorVisibleObjects", s.peakAuthorVisibleObjects},
                                 {"massRenderInstances", s.peakMassInstances}};
         report["jointPaletteUploads"] = {{"sampleFrames", s.run.SampleCount()},
                                          {"matrixPayloadBytes", s.jointPaletteMatrixPayloadBytes},

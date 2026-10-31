@@ -82,6 +82,9 @@ LightingBakeStatus LightingBakeService::AnalyzeLightingBakeStatus(const Lighting
     for (const std::string& missing : hashes.missingAssetIds) {
         status.warnings.push_back("Missing lighting dependency: " + missing);
     }
+    for (const std::string& unreadable : hashes.unreadableAssets) {
+        status.warnings.push_back("Unreadable lighting dependency: " + unreadable);
+    }
 
     ASSETS::LIGHTING::LightingBakeManifest manifest{};
     const std::filesystem::path manifestPath =
@@ -104,6 +107,9 @@ LightingBakeStatus LightingBakeService::AnalyzeLightingBakeStatus(const Lighting
             item.dirtyReason = "Capture settings changed";
         } else if (recordCaptureSceneHash != hashes.sceneHash) {
             item.dirtyReason = "Lighting capture scene changed";
+        } else if (!hashes.unreadableAssets.empty()) {
+            // 中身を読めない資産の先の依存は確かめられないので、焼き込み済みの結果を最新とは見なさない。
+            item.dirtyReason = "Lighting dependency could not be read";
         } else if (recordDependencyHash != hashes.dependencyHash) {
             item.dirtyReason = "Lighting capture asset changed";
         } else if (!outputExists) {

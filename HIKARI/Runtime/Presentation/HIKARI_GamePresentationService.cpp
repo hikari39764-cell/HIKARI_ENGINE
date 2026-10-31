@@ -9,6 +9,7 @@
 #include <sstream>
 #include <string>
 
+#include "Core/HIKARI_FrameRate.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Render2D/HIKARI_Camera.h"
@@ -248,8 +249,12 @@ void UpdateGamePresentationPerformanceTitle() {
         return;
     }
 
+    // 間隔を測れていないフレーム（時計のリセット直後）は、枚数にも秒数にも入れない。
     const FrameContext& frame = TIME::GetFrameContext();
-    gPreviewTelemetrySeconds += (std::max)(0.0f, frame.rawDt);
+    if (!(frame.rawDt > 0.0f)) {
+        return;
+    }
+    gPreviewTelemetrySeconds += frame.rawDt;
     ++gPreviewTelemetryRenderFrames;
 
     const auto& frameGeneration = RENDER3D::UPSCALING::GetStreamlineFrameGenerationStats();
@@ -263,8 +268,9 @@ void UpdateGamePresentationPerformanceTitle() {
         return;
     }
 
-    const double renderFps = static_cast<double>(gPreviewTelemetryRenderFrames) / gPreviewTelemetrySeconds;
-    const double displayFps = static_cast<double>(gPreviewTelemetryPresentedFrames) / gPreviewTelemetrySeconds;
+    // 0.5 秒以上・1 枚以上を溜めた後なので、必ず値がある。
+    const double renderFps = *PERFORMANCE::FramesPerSecond(gPreviewTelemetryRenderFrames, gPreviewTelemetrySeconds);
+    const double displayFps = *PERFORMANCE::FramesPerSecond(gPreviewTelemetryPresentedFrames, gPreviewTelemetrySeconds);
     const double actualMultiplier =
         gPreviewTelemetryRenderFrames > 0
             ? static_cast<double>(gPreviewTelemetryPresentedFrames) / static_cast<double>(gPreviewTelemetryRenderFrames)

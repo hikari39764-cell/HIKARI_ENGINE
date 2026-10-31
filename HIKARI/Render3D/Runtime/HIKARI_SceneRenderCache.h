@@ -172,7 +172,8 @@ class SceneRenderCache {
 public:
     struct Stats {
         uint32_t renderObjectCount = 0;
-        uint32_t visibleObjectCount = 0;
+        // 作者が設定した可見フラグの数。カリング（画面に入るか）の結果ではない。
+        uint32_t authorVisibleObjectCount = 0;
         uint32_t hiddenObjectCount = 0;
 
         uint32_t dirtyObjectCount = 0;
@@ -188,8 +189,6 @@ public:
         uint32_t renderModelInvalidCount = 0;
 
         uint32_t surfaceInstanceCount = 0;
-        uint32_t visibleSurfaceInstanceCount = 0;
-        uint32_t hiddenSurfaceInstanceCount = 0;
         uint32_t staticSurfaceInstanceCount = 0;
         uint32_t dynamicSurfaceInstanceCount = 0;
         uint32_t skinnedSurfaceInstanceCount = 0;

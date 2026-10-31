@@ -1,6 +1,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Performance/HIKARI_PerformanceAuditPanel.h"
 
+#include "Core/HIKARI_FrameRate.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_DXCheck.h"
@@ -45,7 +46,7 @@ void DrawFrameSummary(const RuntimePerformanceSnapshot& s) {
 
     if (ImGui::BeginTable("GpuDrivenFrameSummary", 4, ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableNextColumn();
-        ImGui::Text("FPS %.1f", s.fpsRaw);
+        ImGui::Text("FPS %s", PERFORMANCE::FormatFramesPerSecond(s.fpsRaw).c_str());
         if (s.cpu.valid) {
             ImGui::Text(TEXT::Localize("editor.ui.cpu.frame.3f.ms.f03a1f").c_str(), cpuFrameMs);
             const CPU_PROFILE::PassTiming& frameTiming = s.cpu.passes[static_cast<size_t>(CPU_PROFILE::Pass::Frame)];
@@ -187,10 +188,11 @@ void DrawGpuTimingTable(const RuntimePerformanceSnapshot& s) {
     ImGui::Text(TEXT::Localize("editor.ui.frame.llu.u.measured.passes.bcd895").c_str(),
                 static_cast<unsigned long long>(s.gpu.frameIndex), CountValidGpuPasses(s.gpu));
     ImGui::TextDisabled(
-        TEXT::Localize("editor.ui.sample.includes.child.passes.self.excludes.them.avg.p95.p99.last.c827ca").c_str());
-    if (ImGui::BeginTable("GpuDrivenTimingTable", 8,
+        TEXT::Localize("editor.ui.sample.sums.all.executions.of.a.pass.in.the.frame.and.includes.c.6c68c4").c_str());
+    if (ImGui::BeginTable("GpuDrivenTimingTable", 9,
                           ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
-        for (const char* title : {"Pass", "Parent", "Sample ms", "Self ms", "Avg ms", "P95 ms", "P99 ms", "Samples"})
+        for (const char* title :
+             {"Pass", "Parent", "Sample ms", "Calls", "Self ms", "Avg ms", "P95 ms", "P99 ms", "Samples"})
             ImGui::TableSetupColumn(title);
         ImGui::TableHeadersRow();
         for (const auto& timing : s.gpu.passes) {
@@ -206,14 +208,16 @@ void DrawGpuTimingTable(const RuntimePerformanceSnapshot& s) {
             ImGui::TableSetColumnIndex(2);
             ImGui::Text("%.3f", timing.gpuMs);
             ImGui::TableSetColumnIndex(3);
-            ImGui::Text("%.3f", timing.exclusiveGpuMs);
+            ImGui::Text("%u", timing.callCount);
             ImGui::TableSetColumnIndex(4);
-            ImGui::Text("%.3f", timing.averageMs);
+            ImGui::Text("%.3f", timing.exclusiveGpuMs);
             ImGui::TableSetColumnIndex(5);
-            ImGui::Text("%.3f", timing.p95Ms);
+            ImGui::Text("%.3f", timing.averageMs);
             ImGui::TableSetColumnIndex(6);
-            ImGui::Text("%.3f", timing.p99Ms);
+            ImGui::Text("%.3f", timing.p95Ms);
             ImGui::TableSetColumnIndex(7);
+            ImGui::Text("%.3f", timing.p99Ms);
+            ImGui::TableSetColumnIndex(8);
             ImGui::Text("%u", timing.rollingSampleCount);
         }
         ImGui::EndTable();

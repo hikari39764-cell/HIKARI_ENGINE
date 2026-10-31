@@ -3,12 +3,12 @@
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Assets/Formats/HIKARI_HshadercFormat.h"
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Assets/Shader/Internal/HIKARI_ShaderArtifactValidation.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/HIKARI_Logger.h"
-#include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
@@ -28,8 +28,7 @@ bool IsRuntimeArtifact(const AssetArtifactDesc& artifact) {
         return false;
     }
 
-    const std::string path = TEXT::ToLowerAsciiCopy(artifact.path);
-    return path.find("/captures/") == std::string::npos && !path.ends_with("_capture.dds");
+    return !LIGHTING::IsLightingBakeCaptureFile(artifact.path);
 }
 
 bool HasArtifactKind(const std::vector<AssetArtifactDesc>& artifacts, ASSETS::SEMANTICS::AssetArtifactKind kind,

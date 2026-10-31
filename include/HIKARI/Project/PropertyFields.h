@@ -21,7 +21,7 @@ namespace HIKARI {
 
 struct GameProjectSdkAccess;
 
-// 資産 GUID 項目の保存形式（Scene 上の {"$hikari.assetGuid": "<guid>"}）。Cook の依存収集もこの印を読む。
+// 資産 GUID 項目の保存形式（Scene 上の {"$hikari.assetGuid": "<guid>"}）。Cook の依存収集は印ではなく、GUID 形式の値で拾う。
 inline constexpr std::string_view kGameProjectAssetGuidArchiveMarker = "$hikari.assetGuid";
 
 // 同じ宣言を読込・保存・Inspector の三つの用途で順に評価する。
@@ -161,7 +161,7 @@ public:
     bool Asset(std::string_view id, std::string_view label, GameProjectAssetKind kind, std::string& guid) {
         return TextString({id, label, GameProjectTextFieldKind::Asset, kind}, guid);
     }
-    // Engine が既定のキー名で読む資産 GUID。素の文字列で保存し、ID が AssetGuid で終われば Cook が依存に数える。
+    // Engine が既定のキー名で読む資産 GUID。素の文字列で保存する（GUID 形式の値は Cook が依存に数える）。
     bool AssetId(std::string_view id, std::string_view label, GameProjectAssetKind kind, GameProjectTextBuffer guid) {
         return TextField({id, label, GameProjectTextFieldKind::AssetId, kind}, guid.Data(), guid.Capacity());
     }

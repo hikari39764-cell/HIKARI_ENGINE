@@ -8,6 +8,7 @@
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
+#include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/Models/HIKARI_ModelManager.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
@@ -57,8 +58,8 @@ void StatsPanel::DrawContents(const char* sceneName, const World& world, const M
                           ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Text(TEXT::Localize("editor.ui.modelrenderer.frame.s.986990").c_str(),
                     MODELRENDERER::ToString(modelStats.frameKind));
-        ImGui::Text(TEXT::Localize("editor.ui.objects.visible.hidden.dirty.u.u.u.8e5dd1").c_str(),
-                    sceneRenderCacheStats.visibleObjectCount, sceneRenderCacheStats.hiddenObjectCount,
+        ImGui::Text(TEXT::Localize("editor.ui.objects.author.visible.hidden.dirty.u.u.u.8c7ece").c_str(),
+                    sceneRenderCacheStats.authorVisibleObjectCount, sceneRenderCacheStats.hiddenObjectCount,
                     sceneRenderCacheStats.dirtyObjectCount);
         ImGui::Text(TEXT::Localize("editor.ui.surfaces.total.static.dynamic.skinned.u.u.u.u.f5e424").c_str(),
                     sceneRenderCacheStats.surfaceInstanceCount, sceneRenderCacheStats.staticSurfaceInstanceCount,
@@ -133,8 +134,12 @@ void StatsPanel::DrawContents(const char* sceneName, const World& world, const M
     }
 
     if (ImGui::TreeNode(TEXT::LocalizeWindow("editor.ui.animation.skinning.74b194", "Animation / Skinning").c_str())) {
-        ImGui::Text(TEXT::Localize("editor.ui.skinned.gpu.draws.zu.484e22").c_str(), meshStats.skinnedGpuDrawCount);
-        ImGui::Text(TEXT::Localize("editor.ui.uploaded.joints.zu.201370").c_str(), meshStats.uploadedJointCount);
+        const RENDER3D::GPUDRIVEN::GpuSceneJointPaletteUploadStats jointUpload =
+            RENDER3D::GPUDRIVEN::GetGpuSceneJointPaletteUploadStats(GFX::GetCurrentContext());
+        ImGui::Text(TEXT::Localize("editor.ui.skinned.gpu.draws.zu.484e22").c_str(),
+                    meshStats.gpuDrivenSkinnedCommandCount);
+        ImGui::Text(TEXT::Localize("editor.ui.uploaded.joints.zu.201370").c_str(),
+                    static_cast<size_t>(jointUpload.matrixPayloadBytes / sizeof(MATH::Mat4)));
         ImGui::TreePop();
     }
 

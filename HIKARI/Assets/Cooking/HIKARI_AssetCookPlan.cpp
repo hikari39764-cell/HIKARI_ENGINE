@@ -344,6 +344,13 @@ bool BuildCookPlan(const AssetCookOptions& options, AssetDatabase& assetDatabase
             outMessage = "Missing scene asset: " + missing.assetId + " (" + missing.owner + ", " + missing.role + ").";
             return false;
         }
+        // 中身を読めない資産があると、その先の依存を書き出しに含められない。
+        if (!usage.unreadableReferences.empty()) {
+            const auto& unreadable = usage.unreadableReferences.front();
+            outMessage = "Scene asset could not be read: " + unreadable.assetId + " (" + unreadable.owner +
+                         "): " + unreadable.reason;
+            return false;
+        }
     }
 
     const std::vector<const AssetRecord*> allRecords = assetDatabase.CollectAll();

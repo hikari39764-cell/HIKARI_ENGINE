@@ -12,17 +12,9 @@ inline constexpr std::string_view kBuiltInWhiteMaterialAssetId = "generated://so
 // プロシージャルグラフィックス用の内置「チェッカー(デバッグ)」ID。
 inline constexpr std::string_view kBuiltInCheckerMaterialAssetId = "generated://checker/bfbfbfff/8a8a8aff";
 
-// 旧プロシージャル選択名は、依存解決と実体生成で同じ ID に移行する。
+// 旧プロシージャル選択名は、コンポーネントの読込と設定で同じ ID に移行する。
 constexpr std::string_view CanonicalizeProceduralMaterialSelection(std::string_view selection) noexcept {
     return selection == "checker" ? kBuiltInCheckerMaterialAssetId : selection;
-}
-
-constexpr bool IsBuiltInWhiteMaterialAssetId(std::string_view id) noexcept {
-    return id == kBuiltInWhiteMaterialAssetId;
-}
-
-constexpr bool IsBuiltInCheckerMaterialAssetId(std::string_view id) noexcept {
-    return id == kBuiltInCheckerMaterialAssetId;
 }
 
 // プロシージャル砂地の既定マテリアル。SceneRuntimeBuilder が
@@ -45,7 +37,5 @@ inline constexpr std::string_view kBuiltInTerrainLayerNormalTextureId = "engine.
 // Painterly/BuiltinAssets.json が所有する筆致データ。両方とも Linear で読む。
 inline constexpr std::string_view kBuiltInPainterlyStrokeMaskTextureId = "engine.painterly.texture.stroke_mask";
 inline constexpr std::string_view kBuiltInPainterlyStrokeNormalTextureId = "engine.painterly.texture.stroke_normal";
-
-constexpr bool IsBuiltInSandMaterialAssetId(std::string_view id) noexcept { return id == kBuiltInSandMaterialAssetId; }
 
 } // namespace HIKARI::ASSETS::MATERIAL

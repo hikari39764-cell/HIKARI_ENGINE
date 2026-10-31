@@ -118,8 +118,15 @@ AssetTrashReferenceAnalysis AnalyzeAssetTrashReferences(const AssetDatabase& dat
         const std::filesystem::path sourcePath = database.ResolveSourcePath(*owner);
         SceneDocument document{};
         if (sceneSerializer.LoadFromFile(sourcePath.string(), document)) {
-            if (AnalyzeAssetUsage(document, database).IsUsed(guid)) {
+            const AssetUsageSummary usage = AnalyzeAssetUsage(document, database);
+            if (usage.IsUsed(guid)) {
                 AddTrashReference(*owner, "Scene asset dependency", analysis, uniqueReferences);
+            }
+            // 中身を読めなかった資産の先に guid があるかは確かめられない。確かめられるまで削除させない。
+            for (const AssetUnreadableReference& unreadable : usage.unreadableReferences) {
+                AddTrashReference(*owner,
+                                  "unreadable nested asset " + unreadable.assetId + " (" + unreadable.reason + ")",
+                                  analysis, uniqueReferences);
             }
         } else if (SourceContainsGuid(sourcePath, guid)) {
             AddTrashReference(*owner, "unreadable Scene source reference", analysis, uniqueReferences);

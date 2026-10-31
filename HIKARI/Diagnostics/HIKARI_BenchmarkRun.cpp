@@ -1,5 +1,7 @@
 #include "Diagnostics/HIKARI_BenchmarkRun.h"
 
+#include "Core/HIKARI_FrameRate.h"
+
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -119,8 +121,8 @@ nlohmann::json BenchmarkRun::BuildReport() const {
         {"timingSemantics",
          "Frame intervals are host presents, excluding generated frames. CPU/GPU passes may overlap and must not be added as frame time. Percentiles use nearest rank over this capture only."}};
     const double elapsedMs = std::accumulate(intervals_.begin(), intervals_.end(), 0.0);
-    if (elapsedMs > 0.0)
-        report["renderedFps"] = 1000.0 * intervals_.size() / elapsedMs;
+    if (const auto fps = PERFORMANCE::FramesPerSecond(intervals_.size(), elapsedMs / 1000.0))
+        report["renderedFps"] = *fps;
     for (const double threshold : {33.333333, 50.0, 100.0, 250.0}) {
         report["longFrames"].push_back(
             {{"thresholdMs", threshold},

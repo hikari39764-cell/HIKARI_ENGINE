@@ -75,6 +75,12 @@ AssetImportResult PrefabAssetImporter::Import(const AssetRecord& record, const A
             "Prefab dependency is missing: " + missing.assetId + " (" + missing.owner + ", " + missing.role + ").";
         return result;
     }
+    if (!usage.unreadableReferences.empty()) {
+        const AssetUnreadableReference& unreadable = usage.unreadableReferences.front();
+        result.message = "Prefab dependency could not be read: " + unreadable.assetId + " (" + unreadable.owner +
+                         "): " + unreadable.reason;
+        return result;
+    }
     result.dependencies.reserve(usage.usedGuids.size());
     for (const std::string& guid : usage.usedGuids) {
         result.dependencies.push_back(AssetDependencyDesc{AssetGuid{guid}, {}, "Prefab.ComponentAsset"});

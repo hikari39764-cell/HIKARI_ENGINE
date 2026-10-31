@@ -1,5 +1,6 @@
 #include "Editor/Performance/HIKARI_PerformanceAuditPanel.h"
 
+#include "Core/HIKARI_FrameRate.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
@@ -107,7 +108,7 @@ RuntimePerformanceSnapshot BuildSnapshot() {
     RuntimePerformanceSnapshot out{};
     const FrameContext& frame = TIME::GetFrameContext();
     const GFX::Context& graphics = GFX::GetCurrentContext();
-    out.fpsRaw = frame.rawDt > 0.0f ? 1.0f / frame.rawDt : 0.0f;
+    out.fpsRaw = PERFORMANCE::FramesPerSecond(1u, frame.rawDt);
     out.fixedStepsThisFrame = frame.fixedStepsThisFrame;
     out.droppedFixedTimeSeconds = frame.droppedFixedTime;
     out.sceneId = RuntimeSceneContext::GetCurrentSceneId();
@@ -212,7 +213,7 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
         << "\nScene output: " << s.temporalFrame.outputWidth << 'x' << s.temporalFrame.outputHeight
         << "\nBack buffer: " << s.backBufferWidth << 'x' << s.backBufferHeight
         << "\nAA: " << RENDER3D::RenderAntiAliasingModeLabel(s.renderQuality.antiAliasingMode)
-        << "\nFPS raw: " << s.fpsRaw << '\n';
+        << "\nFPS raw: " << PERFORMANCE::FormatFramesPerSecond(s.fpsRaw) << '\n';
     out << "Scene: " << (s.sceneId.empty() ? "unavailable" : s.sceneId) << '\n';
     out << "Camera valid/source/position: " << s.temporalFrame.camera.valid << '/'
         << s.temporalFrame.cameraSourceObjectId << "/(" << s.temporalFrame.camera.cameraPos.x << ','
@@ -275,11 +276,13 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
                 << " parent="
                 << (pass.parentPass == GFX::GPU_PROFILE::Pass::Count ? "none"
                                                                      : GFX::GPU_PROFILE::ToString(pass.parentPass))
-                << " self=" << pass.exclusiveGpuMs << " avg/p95/p99/max=" << pass.averageMs << '/' << pass.p95Ms << '/'
-                << pass.p99Ms << '/' << pass.maximumMs << " samples=" << pass.rollingSampleCount << '\n';
+                << " calls=" << pass.callCount << " self=" << pass.exclusiveGpuMs
+                << " avg/p95/p99/max=" << pass.averageMs << '/' << pass.p95Ms << '/' << pass.p99Ms << '/'
+                << pass.maximumMs << " samples=" << pass.rollingSampleCount << '\n';
     }
     out << "GPU timings are pass samples, not additive frame time; nested passes overlap.\n";
-    out << "GPU rolling window: last 300 executions per pass; quantiles refresh every 15 samples.\n";
+    out << "GPU ms sums every execution of the pass in the frame (calls = executions).\n";
+    out << "GPU rolling window: last 300 frames per pass; quantiles refresh every 15 samples.\n";
     out << "Pipeline stats frame: " << s.pipelineStats.frameIndex
         << " available=" << s.pipelineStats.pipelineStatsAvailable << '\n';
     for (const auto& pass : s.pipelineStats.passes) {
@@ -330,9 +333,10 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
         << RENDER3D::DynamicGiQualityLabel(s.renderQuality.dynamicGiQuality) << '/'
         << RENDER3D::DYNAMICGI::ToString(s.dynamicGi.status) << '/' << s.dynamicGi.probes << '/'
         << s.dynamicGi.updatedProbes << '/' << s.dynamicGi.primaryRays << '/' << s.dynamicGi.probeBytes << '\n';
-    out << "Scene objects total/visible/hidden: " << s.scene.renderObjectCount << '/' << s.scene.visibleObjectCount
-        << '/' << s.scene.hiddenObjectCount << "\nSurfaces total/dirty: " << s.scene.surfaceInstanceCount << '/'
-        << s.scene.dirtySurfaceInstanceCount << '\n';
+    out << "Scene objects total/author-visible/hidden: " << s.scene.renderObjectCount << '/'
+        << s.scene.authorVisibleObjectCount << '/' << s.scene.hiddenObjectCount
+        << "\nSurfaces total/dirty: " << s.scene.surfaceInstanceCount << '/' << s.scene.dirtySurfaceInstanceCount
+        << '\n';
     out << "GPU scene CPU sync: " << RENDER3D::GPUDRIVEN::ToString(s.gpuRegistry.syncMode)
         << "; records rebuilt this frame: " << s.gpuRegistry.frameRecordBuildCount << '\n';
     out << "GPU scene records reused/hidden: " << s.gpuRegistry.frameRecordReuseCount << '/'
