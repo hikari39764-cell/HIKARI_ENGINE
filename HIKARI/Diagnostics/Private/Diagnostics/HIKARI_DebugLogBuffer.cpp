@@ -1,4 +1,4 @@
-#include "HIKARI_DebugLogBuffer.h"
+#include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Core/HIKARI_Logger.h"
 
 #include <algorithm>

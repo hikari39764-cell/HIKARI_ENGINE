@@ -101,11 +101,22 @@ set(
     ${HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES})
 hikari_define_runtime_modules(HIKARI_RUNTIME_MODULE_TARGETS)
 target_link_libraries(
+    hikari_core
+    PUBLIC
+        HIKARI::Nlohmann
+    PRIVATE
+        Bcrypt)
+# Core の 2 つの .cpp は未移行の Platform/Paths（同層）を参照する。Platform が Public/Private へ移るまで、
+# この 2 ファイルだけ旧共用 include ルートを許す。
+set_source_files_properties(
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Core/Private/Core/HIKARI_Logger.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Core/Private/Core/Content/HIKARI_EngineContentContext.cpp"
+    PROPERTIES INCLUDE_DIRECTORIES "${HIKARI_SOURCE_ROOT}/HIKARI")
+target_link_libraries(
     hikari_runtime_foundation
     PRIVATE
         mfuuid
-        windowscodecs
-        Bcrypt)
+        windowscodecs)
 target_link_libraries(
     hikari_runtime_navigation
     PRIVATE
@@ -325,7 +336,7 @@ if(HIKARI_WITH_EDITOR_BUILD)
         "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Agent/HIKARI_AgentConnection.cpp"
         "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Agent/HIKARI_HeadlessEngineRun.cpp")
     target_include_directories(HIKARI_AgentCli PRIVATE "${HIKARI_SOURCE_ROOT}/HIKARI")
-    target_link_libraries(HIKARI_AgentCli PRIVATE HIKARI::Nlohmann ws2_32 advapi32 ole32 windowscodecs)
+    target_link_libraries(HIKARI_AgentCli PRIVATE hikari_core HIKARI::Nlohmann ws2_32 advapi32 ole32 windowscodecs)
     hikari_configure_engine_target(HIKARI_AgentCli)
     set_target_properties(HIKARI_AgentCli PROPERTIES
         OUTPUT_NAME "hikari"

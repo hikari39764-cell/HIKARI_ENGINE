@@ -7,6 +7,11 @@
     "softLargeFileCountCeiling": 65,
     "hardLargeFileCountCeiling": 9,
     "runtimeModuleCompileUnitCeiling": 150,
+    "moduleCompileUnitCeilings": {
+      "Render3D": 235,
+      "Scene": 206,
+      "Assets": 170
+    },
     "modulePhysicalLineCeilings": {
       "Editor": 50271,
       "Render3D": 50235,

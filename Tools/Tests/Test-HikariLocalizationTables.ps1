@@ -1,11 +1,11 @@
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$runtimePath = Join-Path $repoRoot 'HIKARI\Core\Text\HIKARI_Localization.cpp'
+$runtimePath = Join-Path $repoRoot 'HIKARI\Core\Private\Core\Text\HIKARI_Localization.cpp'
 $tablePaths = @{
-    English = Join-Path $repoRoot 'HIKARI\Core\Text\Localization\HIKARI_LocalizationEnglish.inl'
-    Chinese = Join-Path $repoRoot 'HIKARI\Core\Text\Localization\HIKARI_LocalizationChinese.inl'
-    Japanese = Join-Path $repoRoot 'HIKARI\Core\Text\Localization\HIKARI_LocalizationJapanese.inl'
+    English = Join-Path $repoRoot 'HIKARI\Core\Private\Core\Text\Localization\HIKARI_LocalizationEnglish.inl'
+    Chinese = Join-Path $repoRoot 'HIKARI\Core\Private\Core\Text\Localization\HIKARI_LocalizationChinese.inl'
+    Japanese = Join-Path $repoRoot 'HIKARI\Core\Private\Core\Text\Localization\HIKARI_LocalizationJapanese.inl'
 }
 
 $runtimeSource = [System.IO.File]::ReadAllText(

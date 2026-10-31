@@ -5,6 +5,41 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+$engineRoot = Join-Path $repoRoot 'HIKARI'
+
+# Engine module layers, bottom to top (docs/alpha/design.html, section 1). A source may include its own module,
+# a module of the same group, or a lower group. Scene core sits below the domain systems that run on the World
+# (Physics, Animation, Gameplay), which in turn sit below Runtime. Authoring (inspector interfaces) is placed
+# beside Assets. RenderContracts is planned and has no directory yet. A header under an Internal directory
+# belongs to that directory's parent and is not included from outside it.
+$layers = @(
+    @('Core', 'Platform', 'Diagnostics'),
+    @('Gfx', 'Input', 'Audio', 'Project'),
+    @('RenderContracts'),
+    @('Render3D', 'Render2D'),
+    @('Assets', 'Authoring'),
+    @('Scene'),
+    @('Physics', 'Animation', 'Gameplay'),
+    @('Runtime'),
+    @('Editor', 'Tools'))
+$rank = @{}
+for ($index = 0; $index -lt $layers.Count; ++$index) {
+    foreach ($name in $layers[$index]) { $rank[$name] = $index }
+}
+# Vfx (with its Post) is folded into Render3D; drop this entry when the directory moves.
+$moduleAlias = @{ Vfx = 'Render3D' }
+
+# A moved module keeps its include paths under HIKARI/<Module>/Public|Private/, so 'Core/Private/Core/Math/X.h'
+# is the include path 'Core/Math/X.h'. Baseline entries use the include path and stay valid when files move.
+function Get-IncludePath([string]$relative) {
+    return [regex]::Replace($relative, '^[A-Za-z0-9_]+/(?:Public|Private)/', '')
+}
+function Get-EngineModule([string]$includePath) {
+    $name = $includePath.Split('/')[0]
+    if ($moduleAlias.ContainsKey($name)) { return $moduleAlias[$name] }
+    return $name
+}
+
 $output = Join-Path $repoRoot 'out/build/editor-release/tests/source-ownership'
 [IO.Directory]::CreateDirectory($output) | Out-Null
 $probe = Join-Path $output 'inspect.cmake'
@@ -25,10 +60,13 @@ endforeach()
 & cmake "-DHIKARI_SOURCE_ROOT=$($repoRoot.Replace('\','/'))" "-DOUTPUT_PATH=$($report.Replace('\','/'))" -P $probe
 if ($LASTEXITCODE -ne 0) { throw 'Runtime ownership rules rejected the source manifest.' }
 $counts = @{}
+$moduleUnits = @{}
+$engineRootPrefix = $engineRoot.Replace('\', '/') + '/'
 $forbidden = '#include\s+["<](Editor/|imgui\.h|imgui_impl_|ImGuizmo\.h)'
 foreach ($line in [IO.File]::ReadAllLines($report)) {
     $owner, $path = $line -split '\|', 2
     $counts[$owner]++
+    $moduleUnits[(Get-EngineModule (Get-IncludePath $path.Substring($engineRootPrefix.Length)))]++
     $source = [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8)
     if ($source -match $forbidden) { throw "Runtime source directly includes Editor UI: $path" }
 }
@@ -38,39 +76,52 @@ if (-not $closure.Success) { throw 'Runtime public dependency closure is missing
 if ($closure.Groups['body'].Value -match 'HIKARI::(Assimp|RecastNavigation|ImGui|ImGuizmo)\b') {
     throw 'Editor/importer or private navigation dependencies leaked into public Runtime linkage.'
 }
+# Compile units are counted per module, because the module is one library once it is moved. Vfx counts as Render3D
+# (Render3D 235 = 216 + Vfx 19). Render3D, Scene and Assets are bigger than the default ceiling and are frozen at
+# their current size in moduleCompileUnitCeilings; the numbers only go down.
 $budget = Get-Content -LiteralPath (Join-Path $repoRoot 'Tools/Build/HIKARI_EngineeringBudgets.json') -Raw | ConvertFrom-Json
-$limit = [int]$budget.source.runtimeModuleCompileUnitCeiling
-$violations = @($counts.GetEnumerator() | Where-Object { $_.Value -gt $limit } |
-    ForEach-Object { "$($_.Key): $($_.Value) > $limit" })
+$defaultLimit = [int]$budget.source.runtimeModuleCompileUnitCeiling
+$violations = foreach ($entry in $moduleUnits.GetEnumerator()) {
+    $override = $budget.source.moduleCompileUnitCeilings.PSObject.Properties[$entry.Key]
+    $limit = if ($override) { [int]$override.Value } else { $defaultLimit }
+    if ($entry.Value -gt $limit) { "$($entry.Key): $($entry.Value) > $limit" }
+}
 Write-Host "Runtime ownership and UI dependency boundaries passed ($($counts.Count) modules)."
 $failures = [Collections.Generic.List[string]]::new()
-if ($violations.Count) { $failures.Add('Compile-unit budgets exceeded: ' + ($violations -join '; ')) }
+if ($violations) { $failures.Add('Compile-unit budgets exceeded: ' + (@($violations) -join '; ')) }
 
-# Engine module layers, bottom to top. A source may include its own module or a lower layer.
-# Domain systems that run on the World (Animation, Physics, Gameplay) sit above Scene; Runtime
-# composes them; Render3D consumes the runtime contracts of Assets. A header under an Internal
-# directory belongs to that directory's parent and is not included from outside it.
 # Existing exceptions are listed in the baseline: new ones fail, and fixed ones must be pruned
 # with -PruneBaseline, so the list only shrinks.
-$layers = @('Core', 'Platform', 'Diagnostics', 'Project', 'Authoring', 'Gfx', 'Input', 'Audio', 'Assets',
-    'Render2D', 'Render3D', 'Vfx', 'Scene', 'Animation', 'Physics', 'Gameplay', 'Runtime', 'Tools', 'Editor')
-$rank = @{}
-for ($index = 0; $index -lt $layers.Count; ++$index) { $rank[$layers[$index]] = $index }
-$engineRoot = Join-Path $repoRoot 'HIKARI'
 $includePattern = [regex]'(?m)^\s*#\s*include\s+"(?<path>[A-Za-z0-9_]+/[^"]+)"'
 $found = [Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)
+$upward = @{}
 foreach ($file in Get-ChildItem -LiteralPath $engineRoot -Recurse -File -Include '*.cpp', '*.h') {
-    $relative = $file.FullName.Substring($engineRoot.Length + 1).Replace('\', '/')
-    $module = $relative.Split('/')[0]
+    $relative = Get-IncludePath $file.FullName.Substring($engineRoot.Length + 1).Replace('\', '/')
+    $module = Get-EngineModule $relative
     if (-not $rank.ContainsKey($module)) { continue }
     foreach ($match in $includePattern.Matches([IO.File]::ReadAllText($file.FullName, [Text.Encoding]::UTF8))) {
         $target = $match.Groups['path'].Value
-        $targetModule = $target.Split('/')[0]
+        $targetModule = Get-EngineModule $target
         if (-not $rank.ContainsKey($targetModule)) { continue }
         $internal = $target.IndexOf('/Internal/', [StringComparison]::Ordinal)
         $foreignInternal = $internal -ge 0 -and
             -not $relative.StartsWith($target.Substring(0, $internal + 1), [StringComparison]::Ordinal)
-        if ($rank[$targetModule] -gt $rank[$module] -or $foreignInternal) { [void]$found.Add("$relative -> $target") }
+        $isUpward = $rank[$targetModule] -gt $rank[$module]
+        if (($isUpward -or $foreignInternal) -and $found.Add("$relative -> $target")) {
+            $label = if ($isUpward) { $targetModule } else { "$targetModule/Internal" }
+            if (-not $upward.ContainsKey($module)) { $upward[$module] = @{} }
+            $upward[$module][$label]++
+        }
+    }
+}
+Write-Host 'Upward and foreign Internal includes per module (0 = no layer violation):'
+foreach ($group in $layers) {
+    foreach ($name in $group) {
+        if (-not (Test-Path -LiteralPath (Join-Path $engineRoot $name))) { continue }
+        $entries = @()
+        if ($upward.ContainsKey($name)) { $entries = @($upward[$name].GetEnumerator() | Sort-Object Value -Descending) }
+        $total = [int]($entries | Measure-Object -Property Value -Sum).Sum
+        Write-Host ('  {0,-12}{1,4}  {2}' -f $name, $total, (($entries | ForEach-Object { "$($_.Key):$($_.Value)" }) -join ', '))
     }
 }
 $baselinePath = Join-Path $PSScriptRoot 'HIKARI_ModuleBoundaryBaseline.txt'

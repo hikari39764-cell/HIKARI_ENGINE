@@ -9,6 +9,15 @@ include_guard(GLOBAL)
 # - Internal archives are aggregated by the public Runtime target; these are
 #   compile/size ownership boundaries, not independently consumable SDKs.
 # - Fallback: HIKARI_Runtime remains the only public link target.
+#
+# Two kinds of module live here:
+# - Moved modules (hikari_add_module): HIKARI/<Dir>/Public/<Dir>/ holds the headers other modules may include,
+#   HIKARI/<Dir>/Private/<Dir>/ holds the .cpp files and the module-internal headers. Include paths stay
+#   "<Dir>/...". A moved module sees only its own Public and Private, the SDK headers, third-party libraries and
+#   the modules it DEPENDS on, so an include of a module it does not depend on fails to compile. The only
+#   exceptions are sources that CMakeLists.txt gives their own INCLUDE_DIRECTORIES.
+# - The groups in HIKARI_RUNTIME_MODULE_SPECS: modules not moved yet. They share the old include roots and link
+#   every moved module to see its Public.
 
 set(
     HIKARI_RUNTIME_MODULE_SPECS
@@ -38,6 +47,8 @@ foreach(module_spec IN LISTS HIKARI_RUNTIME_MODULE_SPECS)
     list(APPEND HIKARI_RUNTIME_MODULE_SOURCE_VARIABLES "${source_variable}")
 endforeach()
 
+# A moved module is found by its directory layout; its key is the directory name in lower case.
+set(HIKARI_MODULE_KEYS)
 foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
     file(
         RELATIVE_PATH
@@ -46,14 +57,20 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         "${runtime_source}")
     string(REPLACE "\\" "/" runtime_relative_path "${runtime_relative_path}")
 
-    if(runtime_source IN_LIST HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES)
+    if(runtime_relative_path MATCHES "^HIKARI/([A-Za-z0-9]+)/(Public|Private)/")
+        set(module_directory "${CMAKE_MATCH_1}")
+        string(TOLOWER "${module_directory}" module_key)
+        set(HIKARI_MODULE_DIRECTORY_${module_key} "${module_directory}")
+        list(APPEND HIKARI_MODULE_KEYS "${module_key}")
+        list(APPEND HIKARI_MODULE_SOURCES_${module_key} "${runtime_source}")
+    elseif(runtime_source IN_LIST HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES)
         list(
             APPEND
             HIKARI_RUNTIME_GAME_PROJECT_SDK_SOURCES
             "${runtime_source}")
     elseif(
         runtime_relative_path MATCHES
-        "^HIKARI/(Core|Diagnostics|Platform|Input|Audio)/")
+        "^HIKARI/(Platform|Input|Audio)/")
         list(APPEND HIKARI_RUNTIME_FOUNDATION_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Assets/(Importers|Cooking|Geometry|Lighting)/")
         # Source conversion, validation and packaging; records/readers remain asset-owned.
@@ -101,6 +118,10 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
             "${runtime_relative_path}")
     endif()
 endforeach()
+list(REMOVE_DUPLICATES HIKARI_MODULE_KEYS)
+foreach(module_key IN LISTS HIKARI_MODULE_KEYS)
+    list(APPEND HIKARI_RUNTIME_MODULE_SOURCE_VARIABLES "HIKARI_MODULE_SOURCES_${module_key}")
+endforeach()
 
 set(hikari_owned_runtime_sources)
 foreach(source_variable IN LISTS HIKARI_RUNTIME_MODULE_SOURCE_VARIABLES)
@@ -125,6 +146,58 @@ if(
         "exactly once.")
 endif()
 
+# A module name is the directory name under HIKARI/ in lower case; underscores are ignored, so
+# render_contracts is HIKARI/RenderContracts.
+function(hikari_module_key name output_variable)
+    string(REPLACE "_" "" module_key "${name}")
+    string(TOLOWER "${module_key}" module_key)
+    set("${output_variable}" "${module_key}" PARENT_SCOPE)
+endfunction()
+
+# hikari_add_module(<name> [DEPENDS <lower module>...])
+# PUBLIC include directories are the module's Public and the SDK headers (the stable contract below every
+# module); Private is a PRIVATE include directory. DEPENDS modules and their Public pass down through
+# target_link_libraries. Third-party and system libraries are linked by the caller.
+function(hikari_add_module name)
+    cmake_parse_arguments(PARSE_ARGV 1 module "" "" "DEPENDS")
+    hikari_module_key("${name}" module_key)
+    if(NOT HIKARI_MODULE_SOURCES_${module_key})
+        message(
+            FATAL_ERROR
+            "Module '${name}' has no sources under HIKARI/<Dir>/Public or HIKARI/<Dir>/Private.")
+    endif()
+    set(target_name "hikari_${module_key}")
+    set(module_directory "${HIKARI_SOURCE_ROOT}/HIKARI/${HIKARI_MODULE_DIRECTORY_${module_key}}")
+    add_library("${target_name}" STATIC ${HIKARI_MODULE_SOURCES_${module_key}})
+    target_include_directories(
+        "${target_name}"
+        PUBLIC
+            "${module_directory}/Public"
+            "${HIKARI_SOURCE_ROOT}/include"
+        PRIVATE
+            "${module_directory}/Private")
+    foreach(dependency IN LISTS module_DEPENDS)
+        hikari_module_key("${dependency}" dependency_key)
+        # Only an already defined module can be a dependency, so the module graph cannot contain a cycle.
+        if(NOT TARGET "hikari_${dependency_key}")
+            message(
+                FATAL_ERROR
+                "Module '${name}' depends on '${dependency}', which is not defined before it.")
+        endif()
+        target_link_libraries("${target_name}" PUBLIC "hikari_${dependency_key}")
+    endforeach()
+    hikari_configure_engine_target("${target_name}")
+    set_target_properties(
+        "${target_name}"
+        PROPERTIES
+            FOLDER "Engine/Runtime/Internal")
+    source_group(
+        TREE "${HIKARI_SOURCE_ROOT}"
+        FILES
+            ${HIKARI_MODULE_SOURCES_${module_key}})
+    set_property(GLOBAL APPEND PROPERTY HIKARI_MODULE_TARGETS "${target_name}")
+endfunction()
+
 function(
     hikari_add_runtime_module
     target_name
@@ -140,9 +213,11 @@ function(
             "${HIKARI_SOURCE_ROOT}"
             "${HIKARI_SOURCE_ROOT}/include"
             "${HIKARI_SOURCE_ROOT}/HIKARI")
+    get_property(moved_modules GLOBAL PROPERTY HIKARI_MODULE_TARGETS)
     target_link_libraries(
         "${target_name}"
         PRIVATE
+            ${moved_modules}
             ${HIKARI_RUNTIME_BUILD_DEPENDENCIES})
     hikari_configure_engine_target("${target_name}")
     set_target_properties(
@@ -157,7 +232,19 @@ endfunction()
 
 function(hikari_define_runtime_modules output_variable)
 
-    set(runtime_targets)
+    # Moved modules, lowest first: a DEPENDS module must be listed before the module that uses it.
+    hikari_add_module(core)
+    hikari_add_module(diagnostics DEPENDS core)
+    foreach(module_key IN LISTS HIKARI_MODULE_KEYS)
+        if(NOT TARGET "hikari_${module_key}")
+            message(
+                FATAL_ERROR
+                "HIKARI/${HIKARI_MODULE_DIRECTORY_${module_key}} is laid out as Public/Private "
+                "but is not declared with hikari_add_module.")
+        endif()
+    endforeach()
+
+    get_property(runtime_targets GLOBAL PROPERTY HIKARI_MODULE_TARGETS)
     foreach(module_spec IN LISTS HIKARI_RUNTIME_MODULE_SPECS)
         string(REPLACE "|" ";" module_parts "${module_spec}")
         list(GET module_parts 0 module_target)

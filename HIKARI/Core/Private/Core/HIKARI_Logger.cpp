@@ -1,4 +1,4 @@
-#include "HIKARI_Logger.h"
+#include "Core/HIKARI_Logger.h"
 #include "Platform/Paths/HIKARI_UserDataPath.h"
 
 #include <Windows.h>
