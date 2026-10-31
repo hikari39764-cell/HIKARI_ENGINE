@@ -88,8 +88,8 @@ void SequencePlayerSystem::ProcessComponent(GameObject& owner, SequencePlayerCom
         StopComponent(component, SEQUENCER::SequenceStopReason::Stopped);
         component.pendingAction_ = Action::None;
     }
-    if (!component.enabled_) {
-        if (component.stopOnDisable_) {
+    if (!component.settings_.enabled) {
+        if (component.settings_.stopOnDisable) {
             StopComponent(component, SEQUENCER::SequenceStopReason::Disabled);
         }
         return;
@@ -119,12 +119,12 @@ void SequencePlayerSystem::ProcessComponent(GameObject& owner, SequencePlayerCom
 }
 
 void SequencePlayerSystem::PlayComponent(GameObject& owner, SequencePlayerComponent& component) {
-    if (component.sequenceAssetGuid_.empty()) {
+    if (!component.settings_.sequenceAssetGuid.IsValid()) {
         component.lastDiagnostic_ = "[InvalidAssetRequest] Sequence Asset is not assigned";
         return;
     }
     if (playbackService_->IsActive(component.playbackHandle_)) {
-        if (!component.restartIfPlaying_) {
+        if (!component.settings_.restartIfPlaying) {
             component.lastDiagnostic_ = "Sequence is already active";
             return;
         }
@@ -133,18 +133,18 @@ void SequencePlayerSystem::PlayComponent(GameObject& owner, SequencePlayerCompon
     }
 
     SEQUENCER::SequencePlayRequest request{};
-    request.assetGuid = AssetGuid{component.sequenceAssetGuid_};
-    request.options.loop = component.loop_;
-    request.options.holdAtEnd = component.holdAtEnd_;
-    request.options.playbackRate = component.playbackRate_;
-    request.startTimeSeconds = component.startTimeSeconds_;
-    request.channel = component.channel_;
-    request.priority = component.priority_;
-    request.channelPolicy = component.channelPolicy_;
-    if (!component.ownerSlotName_.empty()) {
-        (void)request.bindings.BindSlot(component.ownerSlotName_, owner.GetDocumentId());
+    request.assetGuid = component.settings_.sequenceAssetGuid;
+    request.options.loop = component.settings_.loop;
+    request.options.holdAtEnd = component.settings_.holdAtEnd;
+    request.options.playbackRate = component.settings_.playbackRate;
+    request.startTimeSeconds = component.settings_.startTimeSeconds;
+    request.channel = component.settings_.channel;
+    request.priority = component.settings_.priority;
+    request.channelPolicy = component.settings_.channelPolicy;
+    if (!component.settings_.ownerSlotName.empty()) {
+        (void)request.bindings.BindSlot(component.settings_.ownerSlotName, owner.GetDocumentId());
     }
-    for (const SequencePlayerBinding& binding : component.bindings_) {
+    for (const SequencePlayerBinding& binding : component.settings_.bindings) {
         if (!binding.slotName.empty() && binding.sceneObjectId.value != 0) {
             (void)request.bindings.BindSlot(binding.slotName, binding.sceneObjectId);
         }
@@ -158,11 +158,12 @@ void SequencePlayerSystem::PlayComponent(GameObject& owner, SequencePlayerCompon
         component.lastDiagnostic_ = "Sequence playback started";
     }
     if (result.IsAccepted()) {
-        HIKARI_LOG_INFO("[SequencePlayer] started asset=" + component.sequenceAssetGuid_ + " owner=" + owner.GetName());
+        HIKARI_LOG_INFO("[SequencePlayer] started asset=" + component.settings_.sequenceAssetGuid.value +
+                        " owner=" + owner.GetName());
     } else {
-        HIKARI_LOG_WARN(
-            "[SequencePlayer] rejected asset=" + component.sequenceAssetGuid_ + " owner=" + owner.GetName() +
-            " reason=" + (component.lastDiagnostic_.empty() ? std::string("Unknown") : component.lastDiagnostic_));
+        HIKARI_LOG_WARN("[SequencePlayer] rejected asset=" + component.settings_.sequenceAssetGuid.value +
+                        " owner=" + owner.GetName() + " reason=" +
+                        (component.lastDiagnostic_.empty() ? std::string("Unknown") : component.lastDiagnostic_));
     }
 }
 

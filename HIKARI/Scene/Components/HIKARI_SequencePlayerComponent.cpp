@@ -2,77 +2,95 @@
 
 #include <algorithm>
 #include <cmath>
-#include "Core/HIKARI_JsonRead.h"
-#include "Core/Text/HIKARI_EnumNames.h"
-#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
+#include <utility>
+
+#if defined(HIKARI_WITH_EDITOR)
+#include <memory>
+
+#include "Assets/HIKARI_DocumentAssetStores.h"
+#include "Authoring/HIKARI_FieldInspector.h"
+#endif
 
 namespace HIKARI {
 
 namespace {
-using Policy = SEQUENCER::SequenceChannelPolicy;
-constexpr TEXT::EnumName<Policy> kChannelPolicyNames[] = {
-    {Policy::Parallel, "Parallel"},
-    {Policy::Replace, "Replace"},
-    {Policy::ReplaceIfHigherOrEqual, "ReplaceIfHigherOrEqual"},
-    {Policy::RejectIfOccupied, "RejectIfOccupied"},
-};
+constexpr size_t kMaximumBindings = 32;
+constexpr float kMinimumPlaybackRate = 0.01f;
+
+// 範囲へ丸める。逆再生（負の速さ）は残し、止まってしまう 0 付近は最小の速さにする。
+SequencePlayerSettings Normalize(SequencePlayerSettings settings) {
+    settings = JSONFIELDS::Sanitize(std::move(settings), kSequencePlayerFields);
+    const float magnitude = (std::max)(std::abs(settings.playbackRate), kMinimumPlaybackRate);
+    settings.playbackRate = settings.playbackRate < 0.0f ? -magnitude : magnitude;
+    if (settings.bindings.size() > kMaximumBindings) {
+        settings.bindings.resize(kMaximumBindings);
+    }
+    return settings;
+}
 } // namespace
 
 void SequencePlayerComponent::OnAttach() { ResetRuntimeState(); }
 
 void SequencePlayerComponent::Serialize(nlohmann::json& out) const {
-    out["enabled"] = enabled_;
-    out["sequenceAssetGuid"] = sequenceAssetGuid_;
-    out["playOnStart"] = playOnStart_;
-    out["loop"] = loop_;
-    out["holdAtEnd"] = holdAtEnd_;
-    out["playbackRate"] = playbackRate_;
-    out["startTimeSeconds"] = startTimeSeconds_;
-    out["channel"] = channel_;
-    out["priority"] = priority_;
-    out["channelPolicy"] = TEXT::EnumToName(kChannelPolicyNames, channelPolicy_, "ReplaceIfHigherOrEqual");
-    out["stopOnDisable"] = stopOnDisable_;
-    out["restartIfPlaying"] = restartIfPlaying_;
-    out["ownerSlotName"] = ownerSlotName_;
-    out["bindings"] = nlohmann::json::array();
-    for (const SequencePlayerBinding& binding : bindings_) {
-        out["bindings"].push_back(
-            {{"slotName", binding.slotName},
-             {"sceneObjectId", SCENE::SERIALIZATION::WriteSceneObjectReference(binding.sceneObjectId.value)}});
-    }
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings_, kSequencePlayerFields);
 }
 
 void SequencePlayerComponent::Deserialize(const nlohmann::json& in) {
-    enabled_ = in.value("enabled", enabled_);
-    sequenceAssetGuid_ = in.value("sequenceAssetGuid", sequenceAssetGuid_);
-    playOnStart_ = in.value("playOnStart", playOnStart_);
-    loop_ = in.value("loop", loop_);
-    holdAtEnd_ = in.value("holdAtEnd", holdAtEnd_);
-    playbackRate_ = in.value("playbackRate", playbackRate_);
-    startTimeSeconds_ = in.value("startTimeSeconds", startTimeSeconds_);
-    channel_ = in.value("channel", channel_);
-    priority_ = in.value("priority", priority_);
-    channelPolicy_ = JSONREAD::EnumOr(in.value("channelPolicy", nlohmann::json{}), kChannelPolicyNames, channelPolicy_);
-    stopOnDisable_ = in.value("stopOnDisable", stopOnDisable_);
-    restartIfPlaying_ = in.value("restartIfPlaying", restartIfPlaying_);
-    ownerSlotName_ = in.value("ownerSlotName", ownerSlotName_);
-
-    if (in.contains("bindings") && in["bindings"].is_array()) {
-        bindings_.clear();
-        for (const nlohmann::json& node : in["bindings"]) {
-            if (!node.is_object()) {
-                continue;
-            }
-            SequencePlayerBinding binding{};
-            binding.slotName = node.value("slotName", std::string{});
-            binding.sceneObjectId.value =
-                SCENE::SERIALIZATION::SceneObjectReferenceOr(node.value("sceneObjectId", nlohmann::json{}));
-            bindings_.push_back(std::move(binding));
-        }
-    }
-    NormalizeSettings();
+    SequencePlayerSettings decoded{};
+    JSONFIELDS::Read(in, decoded, kSequencePlayerFields);
+    settings_ = Normalize(std::move(decoded));
     ResetRuntimeState();
 }
+
+#if defined(HIKARI_WITH_EDITOR)
+void SequencePlayerComponent::BuildInspector(IInspectorBuilder& builder) {
+    SequencePlayerSettings next = settings_;
+    const bool edited = InspectFields(builder, next, kSequencePlayerFields);
+    const bool assetChanged = next.sequenceAssetGuid != settings_.sequenceAssetGuid;
+    if (edited) {
+        settings_ = Normalize(std::move(next));
+    }
+
+    // 束縛スロットは、資産を替えた時とボタンを押した時に、資産が宣言するスロットへ合わせる（当てた物体は残す）。
+    const bool syncBindingsRequested = builder.Button("Sync Binding Slots");
+    if (assetChanged || syncBindingsRequested) {
+        const InspectorContext& context = builder.GetContext();
+        if (context.assetDatabase == nullptr || !settings_.sequenceAssetGuid.IsValid()) {
+            lastDiagnostic_ = "Assign a valid Sequence Asset before synchronizing slots.";
+        } else {
+            SequenceAssetStore store{};
+            store.SetAssetDatabase(context.assetDatabase);
+            std::string error{};
+            const std::shared_ptr<const SequenceAsset> asset = store.Load(settings_.sequenceAssetGuid, &error);
+            if (!asset) {
+                lastDiagnostic_ = error.empty() ? "Sequence Asset could not be loaded." : error;
+            } else {
+                std::vector<SequencePlayerBinding> synchronized{};
+                for (const SEQUENCER::SequenceBinding& assetBinding : asset->sequence.bindings) {
+                    if (assetBinding.targetKind != SEQUENCER::SequenceBindingTargetKind::Slot ||
+                        assetBinding.slotName.empty() || assetBinding.slotName == settings_.ownerSlotName) {
+                        continue;
+                    }
+                    const auto existing = std::find_if(settings_.bindings.begin(), settings_.bindings.end(),
+                                                       [&](const SequencePlayerBinding& binding) {
+                                                           return binding.slotName == assetBinding.slotName;
+                                                       });
+                    synchronized.push_back({assetBinding.slotName, existing != settings_.bindings.end()
+                                                                       ? existing->sceneObjectId
+                                                                       : SceneObjectId{}});
+                }
+                settings_.bindings = std::move(synchronized);
+                settings_ = Normalize(std::move(settings_));
+                lastDiagnostic_ = "Binding slots synchronized from asset.";
+            }
+        }
+    }
+    if (!lastDiagnostic_.empty()) {
+        builder.Text(lastDiagnostic_);
+    }
+}
+#endif
 
 void SequencePlayerComponent::Play() { pendingAction_ = PendingAction::Play; }
 
@@ -87,27 +105,17 @@ void SequencePlayerComponent::Seek(float timeSeconds) {
     pendingAction_ = PendingAction::Seek;
 }
 
-bool SequencePlayerComponent::IsEnabled() const noexcept { return enabled_; }
+bool SequencePlayerComponent::IsEnabled() const noexcept { return settings_.enabled; }
 
 bool SequencePlayerComponent::IsPlaying() const noexcept { return playbackHandle_.IsValid() && !runtimePaused_; }
 
 bool SequencePlayerComponent::IsPaused() const noexcept { return playbackHandle_.IsValid() && runtimePaused_; }
 
-void SequencePlayerComponent::NormalizeSettings() {
-    const float finiteRate = std::isfinite(playbackRate_) ? playbackRate_ : 1.0f;
-    const float magnitude = std::clamp(std::abs(finiteRate), 0.01f, 8.0f);
-    playbackRate_ = finiteRate < 0.0f ? -magnitude : magnitude;
-    startTimeSeconds_ = std::isfinite(startTimeSeconds_) ? (std::max)(startTimeSeconds_, 0.0f) : 0.0f;
-    if (bindings_.size() > 32) {
-        bindings_.resize(32);
-    }
-}
-
 void SequencePlayerComponent::ResetRuntimeState() {
     playbackHandle_ = {};
     pendingAction_ = PendingAction::None;
     pendingSeekTimeSeconds_ = 0.0f;
-    autoPlayPending_ = playOnStart_;
+    autoPlayPending_ = settings_.playOnStart;
     runtimePaused_ = false;
     lastDiagnostic_.clear();
 }

@@ -98,8 +98,9 @@ struct Setter {
         return true;
     }
 
-    template <class M, class... Options>
-    void operator()(const char* key, M T::* member, const Options&... options) const {
+    template <class C, class M, class... Options>
+        requires std::is_base_of_v<C, T>
+    void operator()(const char* key, M C::* member, const Options&... options) const {
         if (!Targets(key, options...)) {
             return;
         }
@@ -129,8 +130,9 @@ struct Setter {
             Unwrap(object.*member) = std::move(next);
         }
     }
-    template <class E, std::size_t N, class... Options>
-    void operator()(const char* key, E T::* member, const TEXT::EnumName<E> (&names)[N],
+    template <class C, class E, std::size_t N, class... Options>
+        requires std::is_base_of_v<C, T>
+    void operator()(const char* key, E C::* member, const TEXT::EnumName<E> (&names)[N],
                     const Options&... options) const {
         if (!Targets(key, options...)) {
             return;

@@ -34,20 +34,9 @@ public:
         player.typeName = "SequencePlayerComponent";
         player.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<SequencePlayerComponent>(); };
         player.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties["enabled"] = true;
-            properties["sequenceAssetGuid"] = "";
-            properties["playOnStart"] = false;
-            properties["loop"] = false;
-            properties["playbackRate"] = 1.0f;
-            properties["startTimeSeconds"] = 0.0f;
-            properties["channel"] = "Cinematics";
-            properties["priority"] = 0;
-            properties["channelPolicy"] = "ReplaceIfHigherOrEqual";
-            properties["stopOnDisable"] = true;
-            properties["restartIfPlaying"] = true;
-            properties["ownerSlotName"] = "Owner";
-            properties["bindings"] = nlohmann::json::array();
+            SequencePlayerComponent{}.Serialize(properties);
         };
+        player.fields = JSONFIELDS::Describe<SequencePlayerSettings>(kSequencePlayerFields);
         player.presentation = ComponentTypePresentation{
             "Sequence Player", "Cinematics", "Plays a reusable sequence asset during runtime.", "Cinematics"};
 
@@ -65,9 +54,9 @@ public:
         flow.typeName = "CameraFlowComponent";
         flow.factory = [] { return IComponent::Create<CameraFlowComponent>(); };
         flow.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            CameraFlowComponent defaults;
-            defaults.Serialize(properties);
+            CameraFlowComponent{}.Serialize(properties);
         };
+        flow.fields = JSONFIELDS::Describe<CameraFlowSettings>(kCameraFlowFields);
         flow.presentation = {"Camera Flow", "Cinematics",
                              "Enter a region, play a sequence, hand control to a gameplay camera mode.", "Cinematics"};
         success = componentRegistry.Register(std::move(flow)) && success;

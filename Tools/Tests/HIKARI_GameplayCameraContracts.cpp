@@ -125,6 +125,16 @@ static void Documents() {
     CHECK(Near(follow.GetInitialDistance(), 1));
     follow.ClearEvaluatedSettings();
     CHECK(Near(follow.GetInitialDistance(), 6));
+    // 項目表の厳密な読み取り: 型違いは項目名つきで拒み、組件は変わらない。null は指定なし、物体参照の 0 は参照なし
+    // （以前の既定値や検証プロジェクトの文書にある）。
+    std::string diagnostic;
+    const nlohmann::json wrongType = {{"initialDistance", "far"}};
+    CHECK(!follow.TryDeserialize(wrongType, diagnostic) && diagnostic.find("initialDistance") != std::string::npos);
+    CHECK(Near(follow.GetInitialDistance(), 6));
+    const nlohmann::json withNull = {
+        {"targetObjectId", 0}, {"cameraLookTarget", nullptr}, {"cameraProfile", nullptr}, {"priority", 3}};
+    CHECK(follow.TryDeserialize(withNull, diagnostic) && follow.GetPriority() == 3 &&
+          follow.GetTargetObjectId().value == 0 && !follow.GameplayBinding().profile.IsValid());
 }
 static void DocumentSourceIdentity(const std::filesystem::path& root) {
     const auto first = root / "first";
@@ -1135,19 +1145,19 @@ static void CameraFlows(const std::filesystem::path& root) {
     rejected = style;
     rejected.depthLineGap = 0.0f;
     CHECK(!captureView.SetStyle(capture, rejected));
-    // 版 4 は 140 byte、版 2・3 は 80 byte だけを受け付ける。大きさの合わない版と未知の版は拒む。
+    // 現行の版 6 は全長、版 2・3 は 80 byte だけを受け付ける。大きさの合わない版と未知の版は拒む。
     for (const uint32_t version : {1u, 3u, 5u}) {
         rejected = style;
         rejected.version = version;
         CHECK(!captureView.SetStyle(capture, rejected));
     }
-    // 版 3（80 byte）は深度の欄を読まず、深度の効果は無効のまま。
+    // 版 3（80 byte）は深度の欄を読まず、深度の効果は無効のまま。受け付けた値は現行の版 6 に直して持つ。
     auto legacy = style;
     legacy.version = 3u;
     legacy.structSize = 80u;
     legacy.depthFocus = 5.0f;
     CHECK(captureView.SetStyle(capture, legacy));
-    CHECK(captures.Requests()[0].style.depthFocus == 0.0f && captures.Requests()[0].style.version == 4u);
+    CHECK(captures.Requests()[0].style.depthFocus == 0.0f && captures.Requests()[0].style.version == 6u);
     CHECK(captureView.SetStyle(capture, style));
     std::thread captureWorker([&] { CHECK(!captureView.SetStyle(capture, style)); });
     captureWorker.join();

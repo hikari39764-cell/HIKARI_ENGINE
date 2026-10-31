@@ -1,9 +1,9 @@
 #include "Scene/Components/HIKARI_CameraFlowComponent.h"
-#include "Core/HIKARI_JsonRead.h"
-#include "Core/Serialization/Json/HIKARI_JsonMath.h"
-#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
-#include <algorithm>
-#include <cmath>
+
+#if defined(HIKARI_WITH_EDITOR)
+#include "Authoring/HIKARI_FieldInspector.h"
+#endif
+
 namespace HIKARI {
 const char* CameraFlowStageId(CameraFlowStage stage) noexcept {
     switch (stage) {
@@ -17,35 +17,20 @@ const char* CameraFlowStageId(CameraFlowStage stage) noexcept {
     }
 }
 void CameraFlowComponent::Serialize(nlohmann::json& out) const {
-    const auto& s = settings_;
-    out = {{"enabled", s.enabled},
-           {"subjectObjectId", SCENE::SERIALIZATION::WriteSceneObjectReference(s.subjectObjectId.value)},
-           {"cameraObjectId", SCENE::SERIALIZATION::WriteSceneObjectReference(s.cameraObjectId.value)},
-           {"halfExtents", SERIALIZATION::JSON::MATH::ToJsonArray(s.halfExtents)},
-           {"sequenceAssetGuid", s.sequence.value},
-           {"afterMode", s.afterMode},
-           {"priority", s.priority},
-           {"requiredMode", s.requiredMode},
-           {"triggerOnExit", s.triggerOnExit},
-           {"repeatOnReentry", s.repeatOnReentry},
-           {"finishOnInterrupt", s.finishOnInterrupt}};
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings_, kCameraFlowFields);
 }
 void CameraFlowComponent::Deserialize(const nlohmann::json& in) {
-    auto& s = settings_;
-    s.enabled = in.value("enabled", true);
-    s.subjectObjectId.value =
-        SCENE::SERIALIZATION::SceneObjectReferenceOr(in.value("subjectObjectId", nlohmann::json{}), 0);
-    s.cameraObjectId.value =
-        SCENE::SERIALIZATION::SceneObjectReferenceOr(in.value("cameraObjectId", nlohmann::json{}), 0);
-    s.halfExtents = JSONREAD::Vec3Or(in.value("halfExtents", nlohmann::json{}), {2, 2, 2});
-    for (auto* value : {&s.halfExtents.x, &s.halfExtents.y, &s.halfExtents.z})
-        *value = std::isfinite(*value) ? std::clamp(*value, 0.01f, 10000.0f) : 2.0f;
-    s.sequence = {in.value("sequenceAssetGuid", std::string{})};
-    s.afterMode = in.value("afterMode", std::string{"first_person"});
-    s.requiredMode = in.value("requiredMode", std::string{});
-    s.triggerOnExit = in.value("triggerOnExit", false);
-    s.priority = in.value("priority", 50);
-    s.repeatOnReentry = in.value("repeatOnReentry", false);
-    s.finishOnInterrupt = in.value("finishOnInterrupt", false);
+    CameraFlowSettings decoded{};
+    JSONFIELDS::Read(in, decoded, kCameraFlowFields);
+    settings_ = JSONFIELDS::Sanitize(decoded, kCameraFlowFields);
 }
+#if defined(HIKARI_WITH_EDITOR)
+void CameraFlowComponent::BuildInspector(IInspectorBuilder& builder) {
+    CameraFlowSettings next = settings_;
+    if (InspectFields(builder, next, kCameraFlowFields)) {
+        settings_ = JSONFIELDS::Sanitize(next, kCameraFlowFields);
+    }
+}
+#endif
 } // namespace HIKARI

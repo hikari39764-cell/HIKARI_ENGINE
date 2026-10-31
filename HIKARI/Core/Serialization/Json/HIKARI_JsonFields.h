@@ -25,7 +25,7 @@
 //       field("mode", &FogSettings::mode, kFogModeNames);
 //   };
 //   JSONFIELDS::Write(out, fog, kFogFields);
-//   JSONFIELDS::Read(in, fog, kFogFields);            // 厳密: 型違いや未知の列挙名は項目のパス付きの std::runtime_error
+//   JSONFIELDS::Read(in, fog, kFogFields);            // 厳密: 型違いや未知の列挙名は項目のパス付きの std::runtime_error（null は指定なし）
 //   JSONFIELDS::ReadLenient(in, fog, kFogFields);     // 型不一致は現在値を保持（例外なし）
 //   fog = JSONFIELDS::Sanitize(fog, kFogFields);      // Range: 非有限値は既定値、範囲外は丸め（Vec は成分ごと）
 //
@@ -34,6 +34,7 @@
 //
 // 項目に付けるオプション（Label・Group・Common・Show・Elements など）は HIKARI_JsonFieldOptions.h。
 // Elements / Nested の入れ子も同じ関数で読み書きする。Describe は項目の静的な説明（FieldInfo）を作る。
+// 項目は構造体自身か、その基底クラスのメンバ。基底の構造体の表は、派生構造体の表の中から呼んでそのまま使える。
 namespace HIKARI::JSONFIELDS {
 
 // Write / Sanitize / Describe は入れ子の構造体で自分自身を呼ぶ。
@@ -208,8 +209,9 @@ struct Writer {
     nlohmann::json& out;
     const T& object;
 
-    template <class M, class... Options>
-    void operator()(const char* key, M T::* member, [[maybe_unused]] const Options&... options) const {
+    template <class C, class M, class... Options>
+        requires std::is_base_of_v<C, T>
+    void operator()(const char* key, M C::* member, [[maybe_unused]] const Options&... options) const {
         if constexpr ((kIsElements<Options> || ...)) {
             nlohmann::json list = nlohmann::json::array();
             for (const auto& element : object.*member) {
@@ -226,8 +228,9 @@ struct Writer {
             out[key] = ToJson(Unwrap(object.*member));
         }
     }
-    template <class E, std::size_t N, class... Options>
-    void operator()(const char* key, E T::* member, const TEXT::EnumName<E> (&names)[N], const Options&...) const {
+    template <class C, class E, std::size_t N, class... Options>
+        requires std::is_base_of_v<C, T>
+    void operator()(const char* key, E C::* member, const TEXT::EnumName<E> (&names)[N], const Options&...) const {
         out[key] = TEXT::EnumToName(names, object.*member);
     }
 };
@@ -283,9 +286,16 @@ struct Reader {
     const nlohmann::json& in;
     T& object;
 
-    template <class M, class... Options>
-    void operator()(const char* key, M T::* member, [[maybe_unused]] const Options&... options) const {
+    template <class C, class M, class... Options>
+        requires std::is_base_of_v<C, T>
+    void operator()(const char* key, M C::* member, [[maybe_unused]] const Options&... options) const {
         [[maybe_unused]] const nlohmann::json* node = JSONREAD::FindMember(in, key);
+        // 厳密な読みでは null は「指定なし」で、現在値のまま。
+        if constexpr (!Lenient) {
+            if (node != nullptr && node->is_null()) {
+                node = nullptr;
+            }
+        }
         CheckObjectRef<M, Options...>();
         if constexpr ((kIsElements<Options> || ...)) {
             if (node != nullptr) {
@@ -301,10 +311,11 @@ struct Reader {
             ReadStrict(*node, key, Unwrap(object.*member));
         }
     }
-    template <class E, std::size_t N, class... Options>
-    void operator()(const char* key, E T::* member, const TEXT::EnumName<E> (&names)[N], const Options&...) const {
+    template <class C, class E, std::size_t N, class... Options>
+        requires std::is_base_of_v<C, T>
+    void operator()(const char* key, E C::* member, const TEXT::EnumName<E> (&names)[N], const Options&...) const {
         const nlohmann::json* node = JSONREAD::FindMember(in, key);
-        if (node == nullptr) {
+        if (node == nullptr || node->is_null()) {
             return;
         }
         if constexpr (Lenient) {
@@ -322,8 +333,9 @@ struct Sanitizer {
     T& object;
     const T& defaults;
 
-    template <class M, class... Options>
-    void operator()(const char*, M T::* member, [[maybe_unused]] const Options&... options) const {
+    template <class C, class M, class... Options>
+        requires std::is_base_of_v<C, T>
+    void operator()(const char*, M C::* member, [[maybe_unused]] const Options&... options) const {
         if constexpr ((kIsElements<Options> || ...)) {
             for (auto& element : object.*member) {
                 element = JSONFIELDS::Sanitize(std::move(element), SubFields(options...));
@@ -363,8 +375,9 @@ struct Describer {
         return info;
     }
 
-    template <class M, class... Options>
-    void operator()(const char* key, M T::*, const Options&... options) const {
+    template <class C, class M, class... Options>
+        requires std::is_base_of_v<C, T>
+    void operator()(const char* key, M C::*, const Options&... options) const {
         FieldInfo info = Make(key, KindOf<M, Options...>(), options...);
         if constexpr ((kIsElements<Options> || ...)) {
             info.children = JSONFIELDS::Describe<typename M::value_type>(SubFields(options...));
@@ -373,8 +386,9 @@ struct Describer {
         }
         infos.push_back(std::move(info));
     }
-    template <class E, std::size_t N, class... Options>
-    void operator()(const char* key, E T::*, const TEXT::EnumName<E> (&names)[N], const Options&... options) const {
+    template <class C, class E, std::size_t N, class... Options>
+        requires std::is_base_of_v<C, T>
+    void operator()(const char* key, E C::*, const TEXT::EnumName<E> (&names)[N], const Options&... options) const {
         FieldInfo info = Make(key, FieldKind::Enum, options...);
         for (const TEXT::EnumName<E>& entry : names) {
             info.enumNames.emplace_back(entry.name);

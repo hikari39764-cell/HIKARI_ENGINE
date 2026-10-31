@@ -106,8 +106,8 @@ nlohmann::json WriteGameplayCameraProfile(const GameplayCameraProfile& profile) 
                         {"effects", nlohmann::json::array()},
                         {"modes", nlohmann::json::array()}};
     for (const auto& mode : profile.modes) {
-        nlohmann::json follow;
-        mode.follow.Serialize(follow);
+        nlohmann::json follow = nlohmann::json::object();
+        JSONFIELDS::Write(follow, mode.follow, kCameraFollowFields);
         root["modes"].push_back({{"id", mode.id},
                                  {"name", mode.name},
                                  {"mount", TEXT::EnumToName(kCameraMountNames, mode.mount)},
@@ -165,8 +165,10 @@ bool ReadGameplayCameraProfile(const nlohmann::json& root, GameplayCameraProfile
             mode.railStart = JSONREAD::Vec3MemberOr(item, "railStart", mode.railStart);
             mode.railEnd = JSONREAD::Vec3MemberOr(item, "railEnd", mode.railEnd);
             mode.arenaCenter = JSONREAD::Vec3MemberOr(item, "arenaCenter", mode.arenaCenter);
-            if (item.contains("follow"))
-                mode.follow.Deserialize(item.at("follow"));
+            if (item.contains("follow")) {
+                JSONFIELDS::Read(item.at("follow"), mode.follow, kCameraFollowFields);
+                mode.follow.Normalize();
+            }
 #define HIKARI_READ_MODE(member) mode.member = item.value(#member, mode.member)
             HIKARI_READ_MODE(verticalFovDegrees);
             HIKARI_READ_MODE(nearClip);

@@ -3,14 +3,18 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <stdexcept>
+#include <string>
+#include <utility>
 
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Math/HIKARI_MathValidation.h"
-#include "Core/Serialization/Json/HIKARI_JsonMath.h"
-#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
-namespace HIKARI {
 
-namespace JsonMath = SERIALIZATION::JSON::MATH;
+#if defined(HIKARI_WITH_EDITOR)
+#include "Authoring/HIKARI_FieldInspector.h"
+#endif
+
+namespace HIKARI {
 
 namespace {
 
@@ -40,37 +44,49 @@ CAMERA::CameraTargetFramingDynamics SanitizeDynamics(const CAMERA::CameraTargetF
 } // namespace
 
 void CameraFollowComponent::Serialize(nlohmann::json& out) const {
-    out["enabled"] = enabled_;
-    out["priority"] = priority_;
-    out["targetObjectId"] = SCENE::SERIALIZATION::WriteSceneObjectReference(targetObjectId_.value);
-    out["useOwnerAsFallbackTarget"] = useOwnerAsFallbackTarget_;
-
-    settings_.Serialize(out);
-    if (gameplayBinding_.profile.IsValid()) {
-        out["cameraProfile"] = gameplayBinding_.profile.value;
-        out["cameraMode"] = gameplayBinding_.initialMode;
-        out["cameraLookTarget"] = SCENE::SERIALIZATION::WriteSceneObjectReference(gameplayBinding_.lookTarget.value);
-        out["cameraOverrides"] = gameplayBinding_.overrides;
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings_, kCameraRigFields);
+    if (!settings_.overrides.empty()) {
+        out["cameraOverrides"] = settings_.overrides;
     }
 }
 
 void CameraFollowComponent::Deserialize(const nlohmann::json& in) {
-    enabled_ = in.value("enabled", enabled_);
-    priority_ = in.value("priority", priority_);
-    targetObjectId_.value = SCENE::SERIALIZATION::SceneObjectReferenceOr(in.value("targetObjectId", nlohmann::json{}),
-                                                                         targetObjectId_.value);
-    useOwnerAsFallbackTarget_ = in.value("useOwnerAsFallbackTarget", useOwnerAsFallbackTarget_);
+    CameraRigSettings decoded{};
+    JSONFIELDS::Read(in, decoded, kCameraRigFields);
+    if (const nlohmann::json* overrides = JSONREAD::FindMember(in, "cameraOverrides");
+        overrides != nullptr && !overrides->is_null()) {
+        if (!overrides->is_object()) {
+            throw std::runtime_error("cameraOverrides: expects an object");
+        }
+        decoded.overrides = *overrides;
+    }
+    decoded.Normalize();
+    settings_ = std::move(decoded);
     evaluatedSettings_.reset();
-    settings_.Deserialize(in);
-    gameplayBinding_.profile.value = in.value("cameraProfile", std::string{});
-    gameplayBinding_.initialMode = in.value("cameraMode", std::string{});
-    gameplayBinding_.lookTarget.value =
-        SCENE::SERIALIZATION::SceneObjectReferenceOr(in.value("cameraLookTarget", nlohmann::json{}), 0);
-    gameplayBinding_.overrides = in.value("cameraOverrides", nlohmann::json::object());
     gameplayState_.Reset();
-    ClampSettings();
     ResetRuntimeState();
 }
+
+#if defined(HIKARI_WITH_EDITOR)
+void CameraFollowComponent::BuildInspector(IInspectorBuilder& builder) {
+    if (InspectFields(builder, settings_, kCameraRigFields)) {
+        settings_.Normalize();
+        ResetRuntimeState();
+    }
+    if (runtime_.screenCompositionActive) {
+        builder.Text("Runtime composition P(" + std::to_string(runtime_.screenCompositionPrimaryX) + ", " +
+                     std::to_string(runtime_.screenCompositionPrimaryY) + ") T(" +
+                     std::to_string(runtime_.screenCompositionSecondaryX) + ", " +
+                     std::to_string(runtime_.screenCompositionSecondaryY) + ")");
+        builder.Text(std::string("Runtime zone: ") +
+                     (runtime_.screenCompositionHardViolation
+                          ? "hard correction"
+                          : (runtime_.screenCompositionSoftViolation ? "soft correction" : "stable")) +
+                     " | collision blend=" + std::to_string(runtime_.screenCompositionCollisionBlend));
+    }
+}
+#endif
 
 float CameraFollowComponent::GetInitialPitchDegrees() const noexcept {
     return std::clamp(Settings().initialPitchDegrees, Settings().minimumPitchDegrees, Settings().maximumPitchDegrees);
@@ -195,7 +211,5 @@ void CameraFollowComponent::SetRuntimeView(const MATH::Vec3& eye, const MATH::Ve
 }
 
 void CameraFollowComponent::ResetRuntimeState() noexcept { runtime_ = {}; }
-
-void CameraFollowComponent::ClampSettings() noexcept { settings_.Normalize(); }
 
 } // namespace HIKARI

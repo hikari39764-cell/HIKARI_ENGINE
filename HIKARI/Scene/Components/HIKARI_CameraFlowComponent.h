@@ -1,7 +1,11 @@
 #pragma once
+#include "Assets/HIKARI_AssetGuid.h"
+#include "Assets/HIKARI_AssetTypeEnum.h"
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Scene/Camera/HIKARI_CameraRigTypes.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Sequencer/Runtime/HIKARI_SequencePlaybackTypes.h"
+#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 namespace HIKARI {
 enum class CameraFlowStage { Armed, Playing, Returning, Completed, Interrupted, Invalid, Disabled };
 const char* CameraFlowStageId(CameraFlowStage stage) noexcept;
@@ -12,6 +16,23 @@ struct CameraFlowSettings {
     AssetGuid sequence;
     std::string afterMode = "first_person", requiredMode;
     int priority = 50;
+};
+// 保存・読み取り・検査器・説明が共有する項目表。JSON のキー sequenceAssetGuid は sequence に対応する。
+inline constexpr auto kCameraFlowFields = [](auto&& field) {
+    using S = CameraFlowSettings;
+    using namespace JSONFIELDS;
+    field("enabled", &S::enabled, Label{"Enabled"}, Common{});
+    field("subjectObjectId", &S::subjectObjectId, Label{"Follow target"}, ObjectRef{}, Common{});
+    field("cameraObjectId", &S::cameraObjectId, Label{"Camera"}, ObjectRef{}, Common{});
+    field("sequenceAssetGuid", &S::sequence, Label{"Cinematic"}, AssetRef{AssetType::Sequence}, Common{});
+    field("triggerOnExit", &S::triggerOnExit, Label{"Trigger on exit"});
+    field("requiredMode", &S::requiredMode, Label{"Only from mode"});
+    field("afterMode", &S::afterMode, Label{"Gameplay after handoff"});
+    field("halfExtents", &S::halfExtents, Range{0.01, 10000.0}, Label{"Half Extents"}, Unit{"m"},
+          Help{"Half width (X), height (Y) and depth (Z) of the region."});
+    field("priority", &S::priority, Label{"Priority"});
+    field("repeatOnReentry", &S::repeatOnReentry, Label{"Repeat on re-entry"});
+    field("finishOnInterrupt", &S::finishOnInterrupt, Label{"Use destination mode if interrupted"});
 };
 struct CameraFlowRuntime {
     CameraFlowStage stage = CameraFlowStage::Armed;

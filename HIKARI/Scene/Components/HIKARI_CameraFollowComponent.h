@@ -8,11 +8,39 @@
 #include "Scene/Camera/HIKARI_CameraFollowSettings.h"
 
 #include "HIKARI_IComponent.h"
+#include "Assets/HIKARI_AssetTypeEnum.h"
 #include "Core/Math/HIKARI_Math3D.h"
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Scene/Camera/HIKARI_CameraRigTypes.h"
 #include "Scene/HIKARI_SceneDocument.h"
+#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 
 namespace HIKARI {
+
+// 部件の作者値。追従設定（プロファイルの機位と共通）と、結び付けるプロファイル（GameplayCameraBinding）に、追う物などを
+// 重ねたもので、JSON ではどれも同じ階層のキーになる。cameraOverrides（モードごとの差分）だけは項目表に載せず、部件が
+// 読み書きする。
+struct CameraRigSettings : CAMERA::CameraFollowSettings, CAMERA::GameplayCameraBinding {
+    bool enabled = true;
+    int priority = 0;
+    SceneObjectId targetObjectId{};
+    bool useOwnerAsFallbackTarget = true;
+};
+
+inline constexpr auto kCameraRigFields = [](auto&& field) {
+    using S = CameraRigSettings;
+    using B = CAMERA::GameplayCameraBinding;
+    using namespace JSONFIELDS;
+    field("enabled", &S::enabled, Label{"Enabled"}, Common{});
+    field("cameraProfile", &B::profile, Label{"Camera Profile"}, Help{"Reusable gameplay camera profile"},
+          AssetRef{AssetType::GameplayCamera}, Common{});
+    field("cameraMode", &B::initialMode, Label{"Initial Camera Mode"}, Common{});
+    field("cameraLookTarget", &B::lookTarget, Label{"Camera Look Target"}, ObjectRef{}, Common{});
+    field("targetObjectId", &S::targetObjectId, Label{"Follow Target"}, ObjectRef{}, Common{});
+    field("priority", &S::priority, Label{"Rig Priority"});
+    field("useOwnerAsFallbackTarget", &S::useOwnerAsFallbackTarget, Label{"Use Parent as Target Fallback"});
+    CAMERA::kCameraFollowFields(field);
+};
 
 class CameraFollowComponent final : public IComponent {
 public:
@@ -24,10 +52,10 @@ public:
     void BuildInspector(IInspectorBuilder& builder) override;
 #endif
 
-    bool IsEnabled() const noexcept { return enabled_; }
-    int GetPriority() const noexcept { return priority_; }
-    SceneObjectId GetTargetObjectId() const noexcept { return targetObjectId_; }
-    bool GetUseOwnerAsFallbackTarget() const noexcept { return useOwnerAsFallbackTarget_; }
+    bool IsEnabled() const noexcept { return settings_.enabled; }
+    int GetPriority() const noexcept { return settings_.priority; }
+    SceneObjectId GetTargetObjectId() const noexcept { return settings_.targetObjectId; }
+    bool GetUseOwnerAsFallbackTarget() const noexcept { return settings_.useOwnerAsFallbackTarget; }
     float GetInitialPitchDegrees() const noexcept;
     float GetInitialDistance() const noexcept;
 
@@ -123,27 +151,20 @@ public:
     void SetRuntimeScreenCompositionState(bool active, float side, float primaryX, float primaryY, float secondaryX,
                                           float secondaryY, bool softViolation, bool hardViolation,
                                           float collisionBlend, float collisionBlendVelocity) noexcept;
-    CAMERA::GameplayCameraBinding& GameplayBinding() noexcept { return gameplayBinding_; }
-    const CAMERA::GameplayCameraBinding& GameplayBinding() const noexcept { return gameplayBinding_; }
+    CAMERA::GameplayCameraBinding& GameplayBinding() noexcept { return settings_; }
+    const CAMERA::GameplayCameraBinding& GameplayBinding() const noexcept { return settings_; }
     CAMERA::GameplayCameraEvaluation& GameplayState() noexcept { return gameplayState_; }
     const CAMERA::GameplayCameraEvaluation& GameplayState() const noexcept { return gameplayState_; }
     void ResetRuntimeState() noexcept;
     const CAMERA::CameraFollowSettings& Settings() const noexcept {
-        return evaluatedSettings_ ? *evaluatedSettings_ : settings_;
+        return evaluatedSettings_ ? *evaluatedSettings_ : static_cast<const CAMERA::CameraFollowSettings&>(settings_);
     }
     void SetEvaluatedSettings(const CAMERA::CameraFollowSettings& settings) { evaluatedSettings_ = settings; }
     void ClearEvaluatedSettings() noexcept { evaluatedSettings_.reset(); }
 
 private:
-    void ClampSettings() noexcept;
-
-    bool enabled_ = true;
-    int priority_ = 0;
-    SceneObjectId targetObjectId_{};
-    bool useOwnerAsFallbackTarget_ = true;
-    CAMERA::GameplayCameraBinding gameplayBinding_;
+    CameraRigSettings settings_{};
     CAMERA::GameplayCameraEvaluation gameplayState_;
-    CAMERA::CameraFollowSettings settings_{};
     std::optional<CAMERA::CameraFollowSettings> evaluatedSettings_;
 
     RuntimeState runtime_{};

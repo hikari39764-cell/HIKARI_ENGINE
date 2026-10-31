@@ -46,13 +46,16 @@ uint32_t RemapSceneObjectReferences(nlohmann::json& properties, const std::unord
 } // namespace SCENE::SERIALIZATION
 
 // SceneObjectId を項目表（JSONFIELDS の ObjectRef）などから nlohmann で直接読み書きできるようにする。
-// 保存形は上の物体参照で、形が違えば例外を投げる。
+// 保存形は上の物体参照で、形が違えば例外を投げる。参照なしは数値の 0 でも読む（以前の既定値が書いた文書がある）。
+// 0 以外の数値は物体の ID として読まない。
 inline void to_json(nlohmann::json& json, const SceneObjectId& id) {
     json = SCENE::SERIALIZATION::WriteSceneObjectReference(id.value);
 }
 
 inline void from_json(const nlohmann::json& json, SceneObjectId& id) {
-    if (!SCENE::SERIALIZATION::ReadSceneObjectReference(json, id.value)) {
+    if (json.is_number() && json.get<double>() == 0.0) {
+        id.value = 0;
+    } else if (!SCENE::SERIALIZATION::ReadSceneObjectReference(json, id.value)) {
         throw nlohmann::json::type_error::create(302, "type must be a scene object reference", &json);
     }
 }

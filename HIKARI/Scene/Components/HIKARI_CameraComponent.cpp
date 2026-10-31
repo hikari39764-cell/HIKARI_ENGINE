@@ -1,79 +1,48 @@
 #include "HIKARI_CameraComponent.h"
 
 #include <algorithm>
-#include <cmath>
 #include <numbers>
 
-#include "Render3D/Core/HIKARI_CameraOpticsSerialization.h"
+#if defined(HIKARI_WITH_EDITOR)
+#include "Authoring/HIKARI_FieldInspector.h"
+#endif
 
 namespace HIKARI {
 
 namespace {
-constexpr float kMinVerticalFovDegrees = 1.0f;
-constexpr float kMaxVerticalFovDegrees = 179.0f;
-constexpr float kMinNearClip = 0.001f;
+// 遠面は近面より少なくこの距離だけ先に置く（項目間の関係なので表の範囲では表せない）。
 constexpr float kMinClipRange = 0.001f;
+
+// 範囲へ丸め（非有限値は既定値）、遠面を近面より先に置く。
+CameraSettings NormalizeCameraSettings(CameraSettings settings) {
+    settings = JSONFIELDS::Sanitize(settings, kCameraFields);
+    settings.farClip = (std::max)(settings.farClip, settings.nearClip + kMinClipRange);
+    return settings;
+}
 } // namespace
 
 void CameraComponent::Serialize(nlohmann::json& out) const {
-    out["enabled"] = enabled_;
-    out["orthographic"] = orthographic_;
-    out["orthographicHeight"] = orthographicHeight_;
-    out["pixelSnap"] = pixelSnap_;
-    out["pixelsPerUnit"] = pixelsPerUnit_;
-    out["verticalFovDegrees"] = verticalFovDegrees_;
-    out["nearClip"] = nearClip_;
-    out["farClip"] = farClip_;
-    out["depthOfField"] = CAMERA::WriteDepthOfFieldSettings(depthOfFieldSettings_);
-    out["motionBlur"] = CAMERA::WriteMotionBlurSettings(motionBlurSettings_);
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings_, kCameraFields);
 }
 
 void CameraComponent::Deserialize(const nlohmann::json& in) {
-    enabled_ = in.value("enabled", enabled_);
-    orthographic_ = in.value("orthographic", false);
-    orthographicHeight_ = in.value("orthographicHeight", 10.0f);
-    pixelSnap_ = in.value("pixelSnap", false);
-    pixelsPerUnit_ = in.value("pixelsPerUnit", 32.0f);
-    verticalFovDegrees_ = in.value("verticalFovDegrees", verticalFovDegrees_);
-    nearClip_ = in.value("nearClip", nearClip_);
-    farClip_ = in.value("farClip", farClip_);
-    depthOfFieldSettings_ = {};
-    if (const auto depthOfField = in.find("depthOfField"); depthOfField != in.end()) {
-        CAMERA::ReadDepthOfFieldSettings(*depthOfField, depthOfFieldSettings_);
-    }
-    motionBlurSettings_ = {};
-    if (const auto motionBlur = in.find("motionBlur"); motionBlur != in.end()) {
-        CAMERA::ReadMotionBlurSettings(*motionBlur, motionBlurSettings_);
-    }
-    ClampLens();
+    CameraSettings decoded{};
+    JSONFIELDS::Read(in, decoded, kCameraFields);
+    settings_ = NormalizeCameraSettings(decoded);
 }
 
-bool CameraComponent::IsEnabled() const noexcept { return enabled_; }
-
-float CameraComponent::GetFovYRad() const noexcept { return verticalFovDegrees_ * std::numbers::pi_v<float> / 180.0f; }
-
-float CameraComponent::GetNearClip() const noexcept { return nearClip_; }
-
-float CameraComponent::GetFarClip() const noexcept { return farClip_; }
-
-void CameraComponent::ClampLens() noexcept {
-    orthographicHeight_ =
-        std::isfinite(orthographicHeight_) ? std::clamp(orthographicHeight_, 0.01f, 100000.0f) : 10.0f;
-    pixelsPerUnit_ = std::isfinite(pixelsPerUnit_) ? std::clamp(pixelsPerUnit_, 1.0f, 4096.0f) : 32.0f;
-    if (!std::isfinite(verticalFovDegrees_)) {
-        verticalFovDegrees_ = 60.0f;
+#if defined(HIKARI_WITH_EDITOR)
+void CameraComponent::BuildInspector(IInspectorBuilder& builder) {
+    CameraSettings next = settings_;
+    if (InspectFields(builder, next, kCameraFields)) {
+        settings_ = NormalizeCameraSettings(next);
     }
-    if (!std::isfinite(nearClip_)) {
-        nearClip_ = Camera3D::kDefaultNearZ;
-    }
-    if (!std::isfinite(farClip_)) {
-        farClip_ = Camera3D::kDefaultFarZ;
-    }
-    verticalFovDegrees_ = std::clamp(verticalFovDegrees_, kMinVerticalFovDegrees, kMaxVerticalFovDegrees);
-    nearClip_ = (std::max)(nearClip_, kMinNearClip);
-    farClip_ = (std::max)(farClip_, nearClip_ + kMinClipRange);
-    depthOfFieldSettings_ = CAMERA::NormalizeDepthOfFieldSettings(depthOfFieldSettings_);
-    motionBlurSettings_ = CAMERA::NormalizeMotionBlurSettings(motionBlurSettings_);
+}
+#endif
+
+float CameraComponent::GetFovYRad() const noexcept {
+    return settings_.verticalFovDegrees * std::numbers::pi_v<float> / 180.0f;
 }
 
 } // namespace HIKARI

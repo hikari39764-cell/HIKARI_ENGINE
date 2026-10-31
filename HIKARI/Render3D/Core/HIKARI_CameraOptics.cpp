@@ -1,72 +1,19 @@
 #include "Render3D/Core/HIKARI_CameraOptics.h"
 
-#include <limits>
-
-#include "Core/Serialization/Json/HIKARI_JsonFields.h"
-#include "Render3D/Core/HIKARI_CameraOpticsSerialization.h"
+#include "Render3D/Core/HIKARI_CameraOpticsFields.h"
 
 namespace HIKARI::CAMERA {
 
-namespace {
-inline constexpr auto kDepthOfFieldSettingsFields = [](auto&& field) {
-    field("enabled", &DepthOfFieldSettings::enabled);
-    field("focusDistance", &DepthOfFieldSettings::focusDistance,
-          JSONFIELDS::Range{kMinDepthOfFieldFocusDistance, std::numeric_limits<float>::max()});
-    field("focusRange", &DepthOfFieldSettings::focusRange, JSONFIELDS::Range{0.0, std::numeric_limits<float>::max()});
-    field("nearTransition", &DepthOfFieldSettings::nearTransition,
-          JSONFIELDS::Range{kMinDepthOfFieldTransition, std::numeric_limits<float>::max()});
-    field("farTransition", &DepthOfFieldSettings::farTransition,
-          JSONFIELDS::Range{kMinDepthOfFieldTransition, std::numeric_limits<float>::max()});
-    field("nearBlurRadius1080pPixels", &DepthOfFieldSettings::nearBlurRadius1080pPixels,
-          JSONFIELDS::Range{0.0, kMaxDepthOfFieldBlurRadius1080pPixels});
-    field("farBlurRadius1080pPixels", &DepthOfFieldSettings::farBlurRadius1080pPixels,
-          JSONFIELDS::Range{0.0, kMaxDepthOfFieldBlurRadius1080pPixels});
-};
-
-inline constexpr auto kMotionBlurSettingsFields = [](auto&& field) {
-    field("enabled", &MotionBlurSettings::enabled);
-    field("shutterAngleDegrees", &MotionBlurSettings::shutterAngleDegrees, JSONFIELDS::Range{0.0, 360.0});
-    field("maxBlur1080pPixels", &MotionBlurSettings::maxBlur1080pPixels,
-          JSONFIELDS::Range{0.0, kMaxMotionBlurBlur1080pPixels});
-};
-} // namespace
-
 DepthOfFieldSettings NormalizeDepthOfFieldSettings(DepthOfFieldSettings settings) noexcept {
-    return JSONFIELDS::Sanitize(settings, kDepthOfFieldSettingsFields);
+    return JSONFIELDS::Sanitize(settings, kDepthOfFieldFields);
 }
 
 bool IsValidDepthOfFieldSettings(const DepthOfFieldSettings& settings) noexcept {
     return NormalizeDepthOfFieldSettings(settings) == settings;
 }
 
-void ReadDepthOfFieldSettings(const nlohmann::json& node, DepthOfFieldSettings& settings) {
-    if (node.is_object()) {
-        JSONFIELDS::ReadLenient(node, settings, kDepthOfFieldSettingsFields);
-    }
-    settings = NormalizeDepthOfFieldSettings(settings);
-}
-
-nlohmann::json WriteDepthOfFieldSettings(const DepthOfFieldSettings& settings) {
-    nlohmann::json node = nlohmann::json::object();
-    JSONFIELDS::Write(node, NormalizeDepthOfFieldSettings(settings), kDepthOfFieldSettingsFields);
-    return node;
-}
-
 MotionBlurSettings NormalizeMotionBlurSettings(MotionBlurSettings settings) noexcept {
-    return JSONFIELDS::Sanitize(settings, kMotionBlurSettingsFields);
-}
-
-void ReadMotionBlurSettings(const nlohmann::json& node, MotionBlurSettings& settings) {
-    if (node.is_object()) {
-        JSONFIELDS::ReadLenient(node, settings, kMotionBlurSettingsFields);
-    }
-    settings = NormalizeMotionBlurSettings(settings);
-}
-
-nlohmann::json WriteMotionBlurSettings(const MotionBlurSettings& settings) {
-    nlohmann::json node = nlohmann::json::object();
-    JSONFIELDS::Write(node, NormalizeMotionBlurSettings(settings), kMotionBlurSettingsFields);
-    return node;
+    return JSONFIELDS::Sanitize(settings, kMotionBlurFields);
 }
 
 } // namespace HIKARI::CAMERA

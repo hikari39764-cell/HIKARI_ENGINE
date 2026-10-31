@@ -39,11 +39,9 @@ public:
         camera.typeName = "CameraComponent";
         camera.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<CameraComponent>(); };
         camera.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties["enabled"] = true;
-            properties["verticalFovDegrees"] = 60.0f;
-            properties["nearClip"] = Camera3D::kDefaultNearZ;
-            properties["farClip"] = Camera3D::kDefaultFarZ;
+            CameraComponent{}.Serialize(properties);
         };
+        camera.fields = JSONFIELDS::Describe<CameraSettings>(kCameraFields);
         camera.presentation = CameraPresentation("Camera", "Defines a renderable scene camera and its lens.");
 
         ComponentTypeInfo follow{};
@@ -51,9 +49,9 @@ public:
         follow.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<CameraFollowComponent>(); };
         follow.requiredComponents = {"CameraComponent"};
         follow.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            CameraFollowComponent defaults;
-            defaults.Serialize(properties);
+            CameraFollowComponent{}.Serialize(properties);
         };
+        follow.fields = JSONFIELDS::Describe<CameraRigSettings>(kCameraRigFields);
         follow.presentation = CameraPresentation(
             "Gameplay Camera Rig",
             "Orbit-follow gameplay camera with input, recentering, smoothing, and collision avoidance.");
@@ -64,14 +62,9 @@ public:
             return std::make_unique<CameraActivationVolumeComponent>();
         };
         activationVolume.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties["enabled"] = true;
-            properties["subjectObjectId"] = 0;
-            properties["cameraObjectId"] = 0;
-            properties["halfExtents"] = nlohmann::json::array({4.0f, 3.0f, 4.0f});
-            properties["priority"] = 50;
-            properties["blendSeconds"] = 0.5f;
-            properties["affectsControlBasis"] = true;
+            CameraActivationVolumeComponent{}.Serialize(properties);
         };
+        activationVolume.fields = JSONFIELDS::Describe<CameraActivationVolumeSettings>(kCameraActivationVolumeFields);
         activationVolume.presentation = CameraPresentation(
             "Camera Activation Volume", "Activates a camera while a selected subject is inside this oriented volume.");
 

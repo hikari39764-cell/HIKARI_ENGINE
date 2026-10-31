@@ -1,7 +1,9 @@
 #pragma once
 
 #include <array>
+#include <bit>
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
 #include <limits>
 #include <string>
@@ -19,6 +21,7 @@
 // Show が false の項目は描かない。Elements は 1 要素 1 節で、複製・上へ・下へ・削除のボタンと、末尾の追加ボタンを持つ。
 // Draw を付けた項目は fn が描く（表での位置・Group・Show は同じ）。
 // 項目 ID は表のキーで、Elements の中は "slots[0].name"、Nested の中は "offset.position" のようになる。
+// 項目は構造体自身か基底クラスのメンバ（基底の表を派生構造体の表から呼べる）。
 // 表示名・説明は英語の原文のまま builder へ渡す（翻訳は検査器の側）。戻り値は値が変わったか（要素の追加・削除を含む）。
 namespace HIKARI {
 namespace FIELD_INSPECTOR {
@@ -29,25 +32,35 @@ enum class Phase { Common, Normal, Advanced };
 template <class T, class Fields>
 bool InspectTable(IInspectorBuilder& builder, T& object, const Fields& fields, const std::string& prefix);
 
-// 整数の項目は int の欄で編集する。int に収まらない値は端へ寄せる。
+// 整数の項目は int の欄で編集する。int に収まらない値は端へ寄せる。32 ビットの符号なし（マスクや乱数の種）は全ての値に
+// 届くよう、ビット列のまま符号付きで見せる。
 template <class I>
 bool EditInteger(IInspectorBuilder& builder, const AuthoringFieldDescriptor& field, I& value) {
-    constexpr int kMinimum = (std::numeric_limits<int>::min)();
-    constexpr int kMaximum = (std::numeric_limits<int>::max)();
-    int shown = std::cmp_less(value, kMinimum)
-                    ? kMinimum
-                    : (std::cmp_greater(value, kMaximum) ? kMaximum : static_cast<int>(value));
-    if (!builder.Int(field, shown)) {
-        return false;
-    }
-    if (std::cmp_less(shown, (std::numeric_limits<I>::min)())) {
-        value = (std::numeric_limits<I>::min)();
-    } else if (std::cmp_greater(shown, (std::numeric_limits<I>::max)())) {
-        value = (std::numeric_limits<I>::max)();
+    if constexpr (std::is_same_v<I, uint32_t>) {
+        int bits = std::bit_cast<int>(value);
+        if (!builder.Int(field, bits)) {
+            return false;
+        }
+        value = std::bit_cast<uint32_t>(bits);
+        return true;
     } else {
-        value = static_cast<I>(shown);
+        constexpr int kMinimum = (std::numeric_limits<int>::min)();
+        constexpr int kMaximum = (std::numeric_limits<int>::max)();
+        int shown = std::cmp_less(value, kMinimum)
+                        ? kMinimum
+                        : (std::cmp_greater(value, kMaximum) ? kMaximum : static_cast<int>(value));
+        if (!builder.Int(field, shown)) {
+            return false;
+        }
+        if (std::cmp_less(shown, (std::numeric_limits<I>::min)())) {
+            value = (std::numeric_limits<I>::min)();
+        } else if (std::cmp_greater(shown, (std::numeric_limits<I>::max)())) {
+            value = (std::numeric_limits<I>::max)();
+        } else {
+            value = static_cast<I>(shown);
+        }
+        return true;
     }
-    return true;
 }
 
 // 要素の見出し用に、空でない String の "name" 項目を探す。
@@ -56,8 +69,9 @@ struct NameFinder {
     const E& element;
     const std::string*& name;
 
-    template <class M, class... Options>
-    void operator()(const char* key, M E::* member, const Options&...) const {
+    template <class C, class M, class... Options>
+        requires std::is_base_of_v<C, E>
+    void operator()(const char* key, M C::* member, const Options&...) const {
         if constexpr (std::is_same_v<M, std::string>) {
             if (std::string_view(key) == "name" && !(element.*member).empty()) {
                 name = &(element.*member);
@@ -225,8 +239,9 @@ struct Drawer {
         return {id, label, meta.help, !meta.readOnly, meta.hasRange && meta.range.slider};
     }
 
-    template <class M, class... Options>
-    void operator()(const char* key, M T::* member, const Options&... options) {
+    template <class C, class M, class... Options>
+        requires std::is_base_of_v<C, T>
+    void operator()(const char* key, M C::* member, const Options&... options) {
         JSONFIELDS::Meta meta;
         if (!Select(meta, options...)) {
             return;
@@ -248,8 +263,9 @@ struct Drawer {
     }
 
     // 列挙は表の名前を選択肢にする（表示は語に分けた名前）。
-    template <class E, std::size_t N, class... Options>
-    void operator()(const char* key, E T::* member, [[maybe_unused]] const TEXT::EnumName<E> (&names)[N],
+    template <class C, class E, std::size_t N, class... Options>
+        requires std::is_base_of_v<C, T>
+    void operator()(const char* key, E C::* member, [[maybe_unused]] const TEXT::EnumName<E> (&names)[N],
                     const Options&... options) {
         JSONFIELDS::Meta meta;
         if (!Select(meta, options...)) {
