@@ -39,15 +39,26 @@ struct AssetPickerEntry {
     std::string searchText{};
 };
 
-// 項目 ID を ImGui の ID 範囲にする（同じ表示名の項目が並んでも衝突しない）。
+// 項目 ID を ImGui の ID 範囲にする（同じ表示名の項目が並んでも衝突しない）。読み取り専用の項目は灰色にして触れなくする。
 class FieldIdScope {
 public:
-    explicit FieldIdScope(const AuthoringFieldDescriptor& field) {
+    explicit FieldIdScope(const AuthoringFieldDescriptor& field) : readOnly_(!field.writable) {
         ImGui::PushID(field.id.data(), field.id.data() + field.id.size());
+        if (readOnly_) {
+            ImGui::BeginDisabled();
+        }
     }
-    ~FieldIdScope() { ImGui::PopID(); }
+    ~FieldIdScope() {
+        if (readOnly_) {
+            ImGui::EndDisabled();
+        }
+        ImGui::PopID();
+    }
     FieldIdScope(const FieldIdScope&) = delete;
     FieldIdScope& operator=(const FieldIdScope&) = delete;
+
+private:
+    bool readOnly_;
 };
 
 using EDITOR::InspectorText;

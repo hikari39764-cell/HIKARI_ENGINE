@@ -61,6 +61,16 @@ constexpr std::array<std::string_view, N> EnumNameList(const EnumName<E> (&table
     return names;
 }
 
+// 表の値を並び順のまま返す。別名を持たない表の全値の一覧に使う。
+template <class E, std::size_t N>
+constexpr std::array<E, N> EnumValueList(const EnumName<E> (&table)[N]) noexcept {
+    std::array<E, N> values{};
+    for (std::size_t index = 0; index < N; ++index) {
+        values[index] = table[index].value;
+    }
+    return values;
+}
+
 template <class E, std::size_t N>
 constexpr E ParseEnum(const EnumName<E> (&table)[N], std::string_view text, E fallback) noexcept {
     return TryParseEnum(table, text).value_or(fallback);

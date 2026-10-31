@@ -84,6 +84,7 @@ public:
         decal.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
             DecalComponent{}.Serialize(properties);
         };
+        decal.fields = JSONFIELDS::Describe<RENDER3D::DECAL::DecalSettings>(kDecalSettingsFields);
         decal.presentation = RenderingPresentation(
             "Decal", "Projects colour, normal, and roughness onto opaque surfaces inside a box along local +Z.");
 

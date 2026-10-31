@@ -22,6 +22,7 @@
 #include "Assets/Vfx/HIKARI_VfxPropertySchema.h"
 #include "Assets/Vfx/Serialization/HIKARI_VfxSourceJson.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
+#include "Core/Serialization/Json/HIKARI_JsonFieldPath.h"
 #include "Render3D/Vfx/HIKARI_ParticleCpuSimulation.h"
 #include "Render3D/Vfx/HIKARI_GpuParticleParameterPacking.h"
 #include "Render3D/Vfx/HIKARI_ParticleGeometryLayout.h"
@@ -223,6 +224,7 @@ const HIKARI::ComponentAuthoringCommandDefinition* FindCommand(
     return nullptr;
 }
 
+// 壊れた文書は拒まれ、診断は壊れた項目のパス（slots[0].offset など）から始まり、組件の状態は変わらない。
 void AssertVfxComponentDecodeRejected(HIKARI::VfxPlayerComponent& component, const nlohmann::json& malformed,
                                       const char* diagnosticFragment) {
     nlohmann::json before{};
@@ -1093,28 +1095,44 @@ int main() {
 
     nlohmann::json stableComponentJson{};
     componentRoundTrip.Serialize(stableComponentJson);
+
+    // 項目表: Describe は槽位の子項目を持ち、パス指定で配列の中の項目を読み書きする（添字・型・読み取り専用を検査する）。
+    const std::vector<JSONFIELDS::FieldInfo> described = JSONFIELDS::Describe<VfxPlayerSettings>(kVfxPlayerFields);
+    assert(described.size() == 2u && described[1].id == "slots" &&
+           described[1].kind == JSONFIELDS::FieldKind::Elements && !described[1].children.empty());
+    const auto trigger = std::find_if(described[1].children.begin(), described[1].children.end(),
+                                      [](const JSONFIELDS::FieldInfo& child) { return child.id == "triggerEventId"; });
+    assert(trigger != described[1].children.end() && trigger->kind == JSONFIELDS::FieldKind::EventRef);
+    VfxPlayerSettings pathSettings{};
+    pathSettings.slots.push_back({});
+    std::string pathError{};
+    assert(JSONFIELDS::SetField(pathSettings, kVfxPlayerFields, "slots[0].offset.scale",
+                                nlohmann::json::array({2, 2, 2}), pathError));
+    assert(JSONFIELDS::GetField(pathSettings, kVfxPlayerFields, "slots[0].offset.scale")->dump() == "[2.0,2.0,2.0]");
+    assert(!JSONFIELDS::SetField(pathSettings, kVfxPlayerFields, "slots[1].name", "x", pathError) &&
+           !pathError.empty());
+    assert(!JSONFIELDS::SetField(pathSettings, kVfxPlayerFields, "slots[0].id", 5, pathError));
     nlohmann::json wrongSlotId = stableComponentJson;
     wrongSlotId["slots"][0]["id"] = "not-an-id";
-    AssertVfxComponentDecodeRejected(componentRoundTrip, wrongSlotId, ".id must be a non-negative integer");
+    AssertVfxComponentDecodeRejected(componentRoundTrip, wrongSlotId, "slots[0].id");
     nlohmann::json wrongEffectGuid = stableComponentJson;
     wrongEffectGuid["slots"][0]["effectAssetGuid"] = 17;
-    AssertVfxComponentDecodeRejected(componentRoundTrip, wrongEffectGuid, ".effectAssetGuid must be a string");
+    AssertVfxComponentDecodeRejected(componentRoundTrip, wrongEffectGuid, "slots[0].effectAssetGuid");
     nlohmann::json wrongOffset = stableComponentJson;
     wrongOffset["slots"][0]["offset"] = "not-a-transform";
-    AssertVfxComponentDecodeRejected(componentRoundTrip, wrongOffset, ".offset must be an object");
+    AssertVfxComponentDecodeRejected(componentRoundTrip, wrongOffset, "slots[0].offset");
     nlohmann::json wrongPosition = stableComponentJson;
     wrongPosition["slots"][0]["offset"]["position"] = {0.0f, "not-a-number", 0.0f};
-    AssertVfxComponentDecodeRejected(componentRoundTrip, wrongPosition,
-                                     ".offset.position must be an array of three finite numbers");
+    AssertVfxComponentDecodeRejected(componentRoundTrip, wrongPosition, "slots[0].offset.position");
     nlohmann::json wrongBindings = stableComponentJson;
     wrongBindings["slots"][0]["variableBindings"] = {
         {"inputId", "input.speed"},
         {"variableId", "variable.speed"},
     };
-    AssertVfxComponentDecodeRejected(componentRoundTrip, wrongBindings, ".variableBindings must be an array");
+    AssertVfxComponentDecodeRejected(componentRoundTrip, wrongBindings, "slots[0].variableBindings");
     nlohmann::json wrongBindingId = stableComponentJson;
     wrongBindingId["slots"][0]["variableBindings"][0]["inputId"] = 5;
-    AssertVfxComponentDecodeRejected(componentRoundTrip, wrongBindingId, ".inputId must be a string");
+    AssertVfxComponentDecodeRejected(componentRoundTrip, wrongBindingId, "slots[0].variableBindings[0].inputId");
     assert(componentRoundTrip.RequestPlay(componentRoundTrip.GetSlots().front().id));
     nlohmann::json wrongBindingVariable = stableComponentJson;
     wrongBindingVariable["slots"][0]["variableBindings"][0]["variableId"] = false;

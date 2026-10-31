@@ -40,9 +40,9 @@ public:
         player.typeName = "VfxPlayerComponent";
         player.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<VfxPlayerComponent>(); };
         player.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties["enabled"] = true;
-            properties["slots"] = nlohmann::json::array();
+            VfxPlayerComponent{}.Serialize(properties);
         };
+        player.fields = JSONFIELDS::Describe<VfxPlayerSettings>(kVfxPlayerFields);
         player.presentation = ComponentTypePresentation{
             "VFX Player", "Rendering/VFX", "Plays one or more reusable VFX assets from runtime events and variables.",
             std::string(RuntimeFeatureIds::Vfx)};

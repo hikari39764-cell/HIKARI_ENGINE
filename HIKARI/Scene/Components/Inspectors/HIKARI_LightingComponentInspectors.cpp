@@ -1,7 +1,6 @@
 // Inspector の項目記述はオーサリング専用。Shipping では IComponent の既定実装を使う。
 #if defined(HIKARI_WITH_EDITOR)
 
-#include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
 #include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 
@@ -9,7 +8,6 @@
 #include <array>
 #include <cmath>
 
-#include "Assets/HIKARI_AssetTypes.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
@@ -46,97 +44,6 @@ bool CaptureResolutionChoice(IInspectorBuilder& builder, uint32_t& resolution,
     return true;
 }
 } // namespace
-
-void LightComponent::BuildInspector(IInspectorBuilder& builder) {
-    using RENDER3D::LIGHTING::SceneLightType;
-    LightSettings next = settings_;
-    builder.Text("Light");
-    builder.Bool(AuthoringFieldDescriptor{"enabled", "Enabled"}, next.enabled);
-
-    int lightType = static_cast<int>(next.type);
-    static constexpr std::array<AuthoringChoice, 4> typeChoices{
-        AuthoringChoice{"Point", "Point"}, AuthoringChoice{"Spot", "Spot"}, AuthoringChoice{"Tube", "Tube"},
-        AuthoringChoice{"Rect", "Rect"}};
-    if (builder.Choice(AuthoringFieldDescriptor{"type", "Type"}, lightType, typeChoices)) {
-        next.type = static_cast<SceneLightType>(std::clamp(lightType, 0, static_cast<int>(typeChoices.size()) - 1));
-    }
-
-    builder.Color3(AuthoringFieldDescriptor{"color", "Color"}, next.color.x, next.color.y, next.color.z);
-    int unit = static_cast<int>(next.intensityUnit);
-    static constexpr std::array<AuthoringChoice, 2> unitChoices{AuthoringChoice{"Lumens", "Physical (lm)"},
-                                                                AuthoringChoice{"SceneRelative", "Relative to Scene"}};
-    if (builder.Choice(
-            AuthoringFieldDescriptor{"intensityUnit", "Brightness Unit",
-                                     "Physical: real lamps in lumens; they fade out in daylight as real lamps "
-                                     "do. Relative: a multiple of the sun and sky light, so fill and accent "
-                                     "lights keep their look across time of day, weather and presets."},
-            unit, unitChoices)) {
-        // 単位を変えても今の明るさを保つ。
-        next = ConvertLightIntensityUnit(next, static_cast<LightIntensityUnit>(std::clamp(unit, 0, 1)));
-    }
-    if (next.intensityUnit == LightIntensityUnit::SceneRelative) {
-        builder.FloatRange(AuthoringFieldDescriptor{"sceneRelativeIntensity", "Brightness (x scene light at 1 m)",
-                                                    "1 lights a surface 1 m away as brightly as the sun and sky light "
-                                                    "the open ground."},
-                           next.sceneRelativeIntensity, 0.0f, kMaximumSceneRelativeIntensity, 0.01f);
-    } else {
-        builder.FloatRange(
-            AuthoringFieldDescriptor{"intensity", "Luminous Flux (lm)",
-                                     "Total emitted light. A 60 W bulb is about 800 lm. Spot cones mask, they do not "
-                                     "concentrate the flux; rect lights emit it from the front face only."},
-            next.intensity, 0.0f, kMaximumLightLumens, 10.0f);
-    }
-    builder.Int(AuthoringFieldDescriptor{"priority", "Priority"}, next.priority);
-    builder.Bool(AuthoringFieldDescriptor{"castsShadows", "Cast Shadows",
-                                          "Request local-light shadows within the active rendering budget."},
-                 next.castsShadows);
-    builder.FloatRange(AuthoringFieldDescriptor{"range", "Range (m)",
-                                                "Inverse-square falloff fades smoothly to zero at this distance."},
-                       next.range, 0.05f, 1000.0f, 0.1f);
-    const bool tube = next.type == SceneLightType::Tube;
-    const bool rect = next.type == SceneLightType::Rect;
-    if (!rect) {
-        builder.FloatRange(
-            AuthoringFieldDescriptor{
-                "sourceRadius", tube ? "Tube Radius" : "Source Radius",
-                "Emitter radius in metres. Broadens direct specular independently of material roughness and light range. Zero preserves punctual lighting."},
-            next.sourceRadius, 0.0f, RENDER3D::LIGHTING::kMaximumLocalLightSourceRadius, 0.01f);
-    }
-    if (tube || rect) {
-        builder.Text(tube ? "Tube (along local X)" : "Rect Emitter (local X width, Y height, lights +Z)");
-        builder.FloatRange(AuthoringFieldDescriptor{"length", tube ? "Length (m)" : "Width (m)"}, next.length, 0.01f,
-                           kMaximumAreaLightExtent, 0.01f);
-        if (rect) {
-            builder.FloatRange(AuthoringFieldDescriptor{"height", "Height (m)"}, next.height, 0.01f,
-                               kMaximumAreaLightExtent, 0.01f);
-        }
-    }
-    if (next.type == SceneLightType::Spot) {
-        builder.Text("Spot Cone (+Z forward)");
-        builder.FloatRange(
-            AuthoringFieldDescriptor{.id = "innerConeAngleDegrees", .label = "Inner Cone Angle", .slider = true},
-            next.innerConeAngleDegrees, 0.1f, 89.0f, 0.1f);
-        builder.FloatRange(
-            AuthoringFieldDescriptor{.id = "outerConeAngleDegrees", .label = "Outer Cone Angle", .slider = true},
-            next.outerConeAngleDegrees, 0.1f, 89.0f, 0.1f);
-        builder.FloatRange(AuthoringFieldDescriptor{"angularFalloff", "Angular Falloff"}, next.angularFalloff, 0.05f,
-                           8.0f, 0.05f);
-        builder.AssetIdPicker(
-            AuthoringFieldDescriptor{"cookie", "Cookie Texture",
-                                     "Projected colour pattern multiplied into the light. It fills the outer cone and "
-                                     "reads unmirrored from behind the light (texture up = local +Y)."},
-            AssetType::Texture, next.cookie);
-    }
-    if (!tube && !rect) {
-        builder.AssetIdPicker(
-            AuthoringFieldDescriptor{
-                "iesProfile", "IES Profile",
-                "Photometric distribution (.ies, Type C). Vertical 0 degrees points along local +Z, "
-                "horizontal 0 degrees along local +X. The flux setting stays the total output."},
-            AssetType::LightProfile, next.iesProfile);
-    }
-    SetSettings(next);
-}
 
 void ReflectionProbeComponent::BuildInspector(IInspectorBuilder& builder) {
     using D = AuthoringFieldDescriptor;

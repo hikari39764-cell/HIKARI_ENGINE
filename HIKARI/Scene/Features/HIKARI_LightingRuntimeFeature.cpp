@@ -47,6 +47,7 @@ public:
             LightComponent defaults{};
             defaults.Serialize(properties);
         };
+        light.fields = JSONFIELDS::Describe<LightSettings>(kLightSettingsFields);
         light.presentation =
             LightingPresentation("Light", "Point, spot, tube, or rect light from the object transform.");
 

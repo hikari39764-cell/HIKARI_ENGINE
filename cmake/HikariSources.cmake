@@ -106,8 +106,6 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponentAuthoring.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponentAuthoringCommands.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponentInspector.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponentSerialization.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gameplay/Motion/HIKARI_MotionIntentService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gameplay/Motion/HIKARI_CharacterMotionStateService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_DialogueTriggerComponent.cpp"

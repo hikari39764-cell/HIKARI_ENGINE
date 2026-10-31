@@ -393,7 +393,8 @@ void RegisterComponentAuthoringOperations(EditorOperationRegistry& registry,
         EditorOperationKind::Query, false);
     registry.Register(
         {"component.type.describe",
-         "Describe default editable fields and commands before adding a component. Instance fields may depend on its current settings.",
+         "Describe default editable fields and commands before adding a component. Instance fields may depend on its current settings. "
+         "Components with a field table also return schema: every declared field with unit, range, group, common/advanced flags, choices and conditional visibility, including list elements.",
          "scene",
          {{"componentType", ParameterType::String, true, "Type from component.types.query"}},
          [handler](const nlohmann::json& parameters) { return handler->DescribeType(parameters); }},

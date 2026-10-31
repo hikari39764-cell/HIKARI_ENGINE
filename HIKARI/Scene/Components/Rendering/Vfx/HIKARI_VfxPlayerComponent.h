@@ -5,10 +5,13 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetGuid.h"
+#include "Assets/HIKARI_AssetTypeEnum.h"
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/HIKARI_SceneObjectId.h"
+#include "Scene/Serialization/Objects/HIKARI_SceneObjectJson.h"
 
 namespace HIKARI {
 
@@ -87,6 +90,63 @@ struct VfxSlotCommand {
     VfxSlotId slotId{};
 };
 
+struct AuthoringFieldDescriptor;
+
+// 槽位の variableBindings の編集欄（kVfxPlayerSlotFields の Draw）。効果資産が公開する入力ごとに 1 行で、型の合う
+// 実行時変数を選ぶ（空は結合なし）。bindings の追加・更新・削除はこの関数が行う。
+bool DrawVfxVariableBindings(IInspectorBuilder& builder, const AuthoringFieldDescriptor& field,
+                             std::vector<VfxVariableBinding>& bindings, const VfxPlayerSlot& slot);
+
+// 作者値。シーン文書の properties と同じ形で、項目表（kVfxPlayerFields）が保存・読み取り・検査器・説明を決める。
+struct VfxPlayerSettings {
+    bool enabled = true;
+    std::vector<VfxPlayerSlot> slots{};
+};
+
+inline constexpr auto kVfxOffsetFields = [](auto&& field) {
+    using S = VFX::VfxTransformData;
+    using namespace JSONFIELDS;
+    field("position", &S::position, Label{"Offset Position"});
+    field("rotationEulerDegrees", &S::rotationEulerDegrees, Label{"Offset Rotation"});
+    field("scale", &S::scale, Label{"Offset Scale"});
+};
+
+inline constexpr auto kVfxVariableBindingFields = [](auto&& field) {
+    using S = VfxVariableBinding;
+    using namespace JSONFIELDS;
+    field("inputId", &S::inputId, Label{"Exposed Input"});
+    field("variableId", &S::variableId, Label{"Runtime Variable"}, VariableRef{});
+};
+
+inline constexpr auto kVfxPlayerSlotFields = [](auto&& field) {
+    using S = VfxPlayerSlot;
+    using namespace JSONFIELDS;
+    field("name", &S::name, Label{"Name"}, Common{});
+    field("enabled", &S::enabled, Label{"Slot Enabled"}, Common{});
+    field("effectAssetGuid", &S::effectAssetGuid, Label{"Effect"}, AssetRef{AssetType::VfxEffect}, Common{});
+    field("playOnStart", &S::playOnStart, Label{"Play On Start"}, Common{});
+    field("triggerEventId", &S::triggerEventId, Label{"Trigger Event"}, EventRef{}, Common{});
+    field("spawnTarget", &S::spawnTarget, kVfxSpawnTargetNames, Label{"Spawn Target"}, Common{});
+    field("fixedObjectId", &S::fixedObjectId, Label{"Fixed Object"}, ObjectRef{}, Common{},
+          Show{[](const S& slot) { return slot.spawnTarget == VfxSpawnTarget::FixedObject; }});
+    field("followTarget", &S::followTarget, Label{"Follow Target"});
+    field("offset", &S::offset, Nested{kVfxOffsetFields});
+    field("variableBindings", &S::variableBindings, Label{"Input Binding"}, Elements{kVfxVariableBindingFields},
+          Draw{&DrawVfxVariableBindings});
+    field("loopMode", &S::loopMode, kVfxLoopModeNames, Label{"Loop Mode"}, Advanced{});
+    field("retriggerPolicy", &S::retriggerPolicy, kVfxRetriggerPolicyNames, Label{"Retrigger"}, Advanced{});
+    field("randomSeed", &S::randomSeed, Label{"Random Seed"}, Advanced{});
+    // 槽位の安定した ID。智能体の slot.* コマンドが slotId で指す。
+    field("id", &S::id, Label{"Slot ID"}, ReadOnly{}, Advanced{});
+};
+
+inline constexpr auto kVfxPlayerFields = [](auto&& field) {
+    using S = VfxPlayerSettings;
+    using namespace JSONFIELDS;
+    field("enabled", &S::enabled, Label{"Enabled"}, Common{});
+    field("slots", &S::slots, Label{"VFX Slot"}, Elements{kVfxPlayerSlotFields});
+};
+
 class VfxPlayerComponent final : public IComponent {
 public:
     std::string_view GetTypeName() const override { return "VfxPlayerComponent"; }
@@ -117,8 +177,7 @@ private:
     VfxSlotId AllocateSlotId() noexcept;
     void NormalizeSlots();
 
-    bool enabled_ = true;
-    std::vector<VfxPlayerSlot> slots_{};
+    VfxPlayerSettings settings_{};
     uint64_t nextSlotId_ = 1u;
     std::vector<VfxSlotCommand> pendingCommands_{};
 };

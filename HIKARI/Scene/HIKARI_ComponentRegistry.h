@@ -11,6 +11,7 @@
 #include <json.hpp>
 
 #include "Authoring/HIKARI_ComponentAuthoringTypes.h"
+#include "Core/Serialization/Json/HIKARI_JsonFieldInfo.h"
 #include "HIKARI/Runtime/ComponentTypeId.h"
 
 namespace HIKARI {
@@ -62,6 +63,9 @@ struct ComponentTypeInfo {
     ComponentTypePresentation presentation{};
     std::vector<ComponentAuthoringCommandDefinition> authoringCommands{};
     ValidateAuthoringFn validateAuthoring{};
+    // 項目表の静的な説明（JSONFIELDS::Describe）。空は表にまだ移していない組件で、component.type.describe は検査器が
+    // 描いた項目だけを返す。
+    std::vector<JSONFIELDS::FieldInfo> fields{};
 };
 
 class ComponentRegistry {

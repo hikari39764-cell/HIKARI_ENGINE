@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 
+#include "Assets/HIKARI_AssetTypeEnum.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_EnumNames.h"
@@ -62,26 +63,59 @@ struct LightSettings {
     bool operator==(const LightSettings&) const = default;
 };
 
+// 保存・読み取り・検査器・説明が共有する項目表。並びは検査器の並び（Common が先頭、Advanced は最後の折りたたみ）。
 inline constexpr auto kLightSettingsFields = [](auto&& field) {
     using S = LightSettings;
-    using JSONFIELDS::Range;
-    field("enabled", &S::enabled);
-    field("type", &S::type, RENDER3D::LIGHTING::kSceneLightTypeNames);
-    field("color", &S::color, Range{0.0, 1.0});
-    field("intensityUnit", &S::intensityUnit, kLightIntensityUnitNames);
-    field("intensity", &S::intensity, Range{0.0, kMaximumLightLumens});
-    field("sceneRelativeIntensity", &S::sceneRelativeIntensity, Range{0.0, kMaximumSceneRelativeIntensity});
-    field("range", &S::range, Range{0.05, 1000.0});
-    field("sourceRadius", &S::sourceRadius, Range{0.0, RENDER3D::LIGHTING::kMaximumLocalLightSourceRadius});
-    field("length", &S::length, Range{0.01, kMaximumAreaLightExtent});
-    field("height", &S::height, Range{0.01, kMaximumAreaLightExtent});
-    field("castsShadows", &S::castsShadows);
-    field("innerConeAngleDegrees", &S::innerConeAngleDegrees, Range{0.1, 89.0});
-    field("outerConeAngleDegrees", &S::outerConeAngleDegrees, Range{0.1, 89.0});
-    field("angularFalloff", &S::angularFalloff, Range{0.05, 8.0});
-    field("priority", &S::priority);
-    field("iesProfile", &S::iesProfile);
-    field("cookie", &S::cookie);
+    using RENDER3D::LIGHTING::SceneLightType;
+    using namespace JSONFIELDS;
+    field("enabled", &S::enabled, Label{"Enabled"}, Common{});
+    field("type", &S::type, RENDER3D::LIGHTING::kSceneLightTypeNames, Label{"Type"}, Common{});
+    field("color", &S::color, Range{0.0, 1.0}, Label{"Color"}, Color{}, Common{});
+    field("intensityUnit", &S::intensityUnit, kLightIntensityUnitNames, Label{"Brightness Unit"},
+          Help{"Physical: real lamps in lumens; they fade out in daylight as real lamps do. Relative: a multiple of "
+               "the sun and sky light, so fill and accent lights keep their look across time of day, weather and "
+               "presets."},
+          Common{});
+    field("intensity", &S::intensity, Range{0.0, kMaximumLightLumens}, Label{"Luminous Flux"}, Unit{"lm"},
+          Help{"Total emitted light. A 60 W bulb is about 800 lm. Spot cones mask, they do not concentrate the flux; "
+               "rect lights emit it from the front face only."},
+          Common{}, Show{[](const S& s) { return s.intensityUnit == LightIntensityUnit::Lumens; }});
+    field("sceneRelativeIntensity", &S::sceneRelativeIntensity, Range{0.0, kMaximumSceneRelativeIntensity},
+          Label{"Brightness (x scene light at 1 m)"},
+          Help{"1 lights a surface 1 m away as brightly as the sun and sky light the open ground."}, Common{},
+          Show{[](const S& s) { return s.intensityUnit == LightIntensityUnit::SceneRelative; }});
+    field("range", &S::range, Range{0.05, 1000.0}, Label{"Range"}, Unit{"m"},
+          Help{"Inverse-square falloff fades smoothly to zero at this distance."}, Common{});
+    field("castsShadows", &S::castsShadows, Label{"Cast Shadows"},
+          Help{"Request local-light shadows within the active rendering budget."}, Common{});
+    field("sourceRadius", &S::sourceRadius, Range{0.0, RENDER3D::LIGHTING::kMaximumLocalLightSourceRadius},
+          Label{"Source Radius"},
+          Help{"Emitter radius in metres. Broadens direct specular independently of material roughness and light "
+               "range. Zero preserves punctual lighting."},
+          Show{[](const S& s) { return s.type != SceneLightType::Rect; }});
+    field("length", &S::length, Range{0.01, kMaximumAreaLightExtent}, Label{"Length / Width"}, Unit{"m"},
+          Help{"Tube length or rect width, along local X."},
+          Show{[](const S& s) { return s.type == SceneLightType::Tube || s.type == SceneLightType::Rect; }});
+    field("height", &S::height, Range{0.01, kMaximumAreaLightExtent}, Label{"Height"}, Unit{"m"},
+          Help{"Rect height, along local Y. The front face looks along +Z."},
+          Show{[](const S& s) { return s.type == SceneLightType::Rect; }});
+    const auto spot = [](const S& s) { return s.type == SceneLightType::Spot; };
+    field("innerConeAngleDegrees", &S::innerConeAngleDegrees, Slider(0.1, 89.0), Label{"Inner Cone Angle"},
+          Group{"Spot Cone (+Z forward)"}, Show{spot});
+    field("outerConeAngleDegrees", &S::outerConeAngleDegrees, Slider(0.1, 89.0), Label{"Outer Cone Angle"},
+          Group{"Spot Cone (+Z forward)"}, Show{spot});
+    field("angularFalloff", &S::angularFalloff, Range{0.05, 8.0}, Label{"Angular Falloff"},
+          Group{"Spot Cone (+Z forward)"}, Show{spot});
+    field("cookie", &S::cookie, Label{"Cookie Texture"},
+          Help{"Projected colour pattern multiplied into the light. It fills the outer cone and reads unmirrored from "
+               "behind the light (texture up = local +Y)."},
+          AssetRef{AssetType::Texture}, Group{"Spot Cone (+Z forward)"}, Show{spot});
+    field("iesProfile", &S::iesProfile, Label{"IES Profile"},
+          Help{"Photometric distribution (.ies, Type C). Vertical 0 degrees points along local +Z, horizontal 0 "
+               "degrees along local +X. The flux setting stays the total output."},
+          AssetRef{AssetType::LightProfile},
+          Show{[](const S& s) { return s.type == SceneLightType::Point || s.type == SceneLightType::Spot; }});
+    field("priority", &S::priority, Label{"Priority"}, Advanced{});
 };
 
 // 範囲へ丸め、外側の円錐角を内側以上にする。

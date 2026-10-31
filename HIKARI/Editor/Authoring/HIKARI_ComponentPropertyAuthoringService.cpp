@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "Authoring/HIKARI_IInspectorBuilder.h"
+#include "Core/Serialization/Json/HIKARI_JsonFieldPath.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_SceneComponentId.h"
@@ -289,23 +290,11 @@ ComponentAuthoringServiceResult ComponentPropertyAuthoringService::Apply(
                                     {"componentId", mutation.target.componentId.value},
                                     {"componentType", resolved.component->type},
                                     {"propertyId", mutation.propertyId}};
-        // 字段 ID は JSON の键と同じ（入れ子は . 区切り）。辿れる時だけ改前・改后の値を添え、回读を省けるようにする。
-        const auto lookup = [&id = mutation.propertyId](const nlohmann::json& properties) -> const nlohmann::json* {
-            const nlohmann::json* node = &properties;
-            for (size_t begin = 0u; node != nullptr;) {
-                const size_t dot = id.find('.', begin);
-                const std::string key = id.substr(begin, dot == std::string::npos ? std::string::npos : dot - begin);
-                const auto found = node->is_object() ? node->find(key) : node->end();
-                node = node->is_object() && found != node->end() ? &*found : nullptr;
-                if (dot == std::string::npos)
-                    return node;
-                begin = dot + 1u;
-            }
-            return nullptr;
-        };
-        if (const nlohmann::json* oldValue = lookup(before))
+        // 字段 ID は JSON のパス（入れ子は . 区切り、配列は slots[0] のような添字）。辿れる時だけ改前・改后の値を添え、
+        // 回读を省けるようにする。
+        if (const nlohmann::json* oldValue = JSONFIELDS::FindByPath(before, mutation.propertyId))
             changedField["oldValue"] = *oldValue;
-        if (const nlohmann::json* newValue = lookup(serialized))
+        if (const nlohmann::json* newValue = JSONFIELDS::FindByPath(serialized, mutation.propertyId))
             changedField["newValue"] = *newValue;
         changedFields.push_back(std::move(changedField));
     }

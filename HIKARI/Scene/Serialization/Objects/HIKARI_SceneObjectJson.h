@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <unordered_map>
 
+#include "Scene/HIKARI_SceneObjectId.h"
+
 namespace HIKARI {
 
 struct SceneObjectData;
@@ -42,5 +44,17 @@ uint32_t RemapSceneObjectReferences(nlohmann::json& properties, const std::unord
                                     bool clearExternalReferences = false);
 
 } // namespace SCENE::SERIALIZATION
+
+// SceneObjectId を項目表（JSONFIELDS の ObjectRef）などから nlohmann で直接読み書きできるようにする。
+// 保存形は上の物体参照で、形が違えば例外を投げる。
+inline void to_json(nlohmann::json& json, const SceneObjectId& id) {
+    json = SCENE::SERIALIZATION::WriteSceneObjectReference(id.value);
+}
+
+inline void from_json(const nlohmann::json& json, SceneObjectId& id) {
+    if (!SCENE::SERIALIZATION::ReadSceneObjectReference(json, id.value)) {
+        throw nlohmann::json::type_error::create(302, "type must be a scene object reference", &json);
+    }
+}
 
 } // namespace HIKARI

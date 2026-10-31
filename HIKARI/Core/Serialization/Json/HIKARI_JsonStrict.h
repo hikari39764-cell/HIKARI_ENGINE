@@ -119,20 +119,4 @@ inline bool RequireFormatVersion(const nlohmann::json& root, uint32_t expected, 
     return true;
 }
 
-// node 自体が [x, y, z] であること（path は node の位置）
-inline bool ReadVec3(const nlohmann::json& node, MATH::Vec3& outValue, std::string& outDiagnostic,
-                     std::string_view path) {
-    if (!node.is_array() || node.size() != 3u || !node[0].is_number() || !node[1].is_number() || !node[2].is_number()) {
-        return Fail(outDiagnostic, std::string(path) + " must be an array of three finite numbers");
-    }
-    const double x = node[0].get<double>();
-    const double y = node[1].get<double>();
-    const double z = node[2].get<double>();
-    if (!IsFloatRange(x) || !IsFloatRange(y) || !IsFloatRange(z)) {
-        return Fail(outDiagnostic, std::string(path) + " must contain finite float values");
-    }
-    outValue = {static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)};
-    return true;
-}
-
 } // namespace HIKARI::JSONSTRICT

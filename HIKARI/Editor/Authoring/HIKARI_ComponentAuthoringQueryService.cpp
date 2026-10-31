@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "Assets/Models/HIKARI_ModelBounds.h"
+#include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
@@ -51,6 +52,63 @@ void AddOpeningCount(const SceneObjectData& object, nlohmann::json& out) {
             !cuts->empty())
             out["openings"] = cuts->size();
     }
+}
+
+// 項目表の種類を、検査器の field.type と同じ語にする。
+const char* FieldKindName(const JSONFIELDS::FieldInfo& info) noexcept {
+    using Kind = JSONFIELDS::FieldKind;
+    switch (info.kind) {
+    case Kind::Bool: return "bool";
+    case Kind::Int: return "int";
+    case Kind::Float: return "float";
+    case Kind::Vec2: return "vec2";
+    case Kind::Vec3: return info.color ? "color3" : "vec3";
+    case Kind::String: return "string";
+    case Kind::Enum: return "choice";
+    case Kind::AssetRef: return "assetId";
+    case Kind::ObjectRef: return "sceneObjectId";
+    case Kind::EventRef: return "runtimeEventId";
+    case Kind::VariableRef: return "runtimeVariableId";
+    case Kind::Elements: return "list";
+    case Kind::Nested: return "struct";
+    }
+    return "unknown";
+}
+
+// 項目表の説明（単位・範囲・節・常用/高度・列挙の保存名・子項目）。条件付きの項目は conditional で示す。
+nlohmann::json DescribeFieldInfos(const std::vector<JSONFIELDS::FieldInfo>& infos) {
+    nlohmann::json list = nlohmann::json::array();
+    for (const JSONFIELDS::FieldInfo& info : infos) {
+        nlohmann::json entry{{"id", info.id}, {"label", info.label}, {"type", FieldKindName(info)}};
+        const auto set = [&entry](const char* key, const std::string& text) {
+            if (!text.empty())
+                entry[key] = text;
+        };
+        set("help", info.help);
+        set("unit", info.unit);
+        set("group", info.group);
+        if (info.hasRange) {
+            entry["minimum"] = info.minimum;
+            entry["maximum"] = info.maximum;
+        }
+        const std::pair<const char*, bool> flags[] = {{"slider", info.slider},
+                                                      {"common", info.common},
+                                                      {"advanced", info.advanced},
+                                                      {"readOnly", info.readOnly},
+                                                      {"conditional", info.hasShow}};
+        for (const auto& [key, enabled] : flags) {
+            if (enabled)
+                entry[key] = true;
+        }
+        if (info.kind == JSONFIELDS::FieldKind::AssetRef)
+            entry["assetType"] = std::string(ASSETS::SEMANTICS::ToString(static_cast<AssetType>(info.assetType)));
+        if (info.kind == JSONFIELDS::FieldKind::Enum)
+            entry["choices"] = info.enumNames;
+        if (!info.children.empty())
+            entry["fields"] = DescribeFieldInfos(info.children);
+        list.push_back(std::move(entry));
+    }
+    return list;
 }
 
 } // namespace
@@ -145,6 +203,8 @@ EditorOperationResult ComponentAuthoringQueryService::DescribeType(DocumentScene
     described.data.erase("componentId");
     described.data.erase("objectName");
     described.data["scope"] = "type_defaults";
+    if (described.ok && !type->fields.empty())
+        described.data["schema"] = DescribeFieldInfos(type->fields);
     return {described.ok, described.code, described.message, std::move(described.data)};
 }
 

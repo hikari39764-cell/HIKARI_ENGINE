@@ -1,23 +1,60 @@
 #include "Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponent.h"
 
 #include <algorithm>
+#include <exception>
 #include <unordered_set>
 #include <utility>
+
+#include "Authoring/HIKARI_FieldInspector.h"
 
 namespace HIKARI {
 
 void VfxPlayerComponent::OnAttach() { pendingCommands_.clear(); }
 
-bool VfxPlayerComponent::IsEnabled() const noexcept { return enabled_; }
+void VfxPlayerComponent::Serialize(nlohmann::json& out) const {
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings_, kVfxPlayerFields);
+}
 
-void VfxPlayerComponent::SetEnabled(bool enabled) noexcept { enabled_ = enabled; }
+void VfxPlayerComponent::Deserialize(const nlohmann::json& in) {
+    std::string ignoredDiagnostic{};
+    (void)TryDeserialize(in, ignoredDiagnostic);
+}
 
-const std::vector<VfxPlayerSlot>& VfxPlayerComponent::GetSlots() const noexcept { return slots_; }
+// 厳密に読む。壊れた文書は拒み（診断は項目のパスから始まる）、この組件は変えない。
+bool VfxPlayerComponent::TryDeserialize(const nlohmann::json& in, std::string& outDiagnostic) {
+    VfxPlayerComponent decoded{};
+    try {
+        JSONFIELDS::Read(in, decoded.settings_, kVfxPlayerFields);
+    } catch (const std::exception& error) {
+        outDiagnostic = std::string("VfxPlayerComponent: ") + error.what();
+        return false;
+    }
+    decoded.NormalizeSlots();
+    settings_ = std::move(decoded.settings_);
+    nextSlotId_ = decoded.nextSlotId_;
+    pendingCommands_.clear();
+    outDiagnostic.clear();
+    return true;
+}
+
+// 追加した要素の ID と既定名はここで付ける。
+void VfxPlayerComponent::BuildInspector(IInspectorBuilder& builder) {
+    if (InspectFields(builder, settings_, kVfxPlayerFields)) {
+        NormalizeSlots();
+    }
+}
+
+bool VfxPlayerComponent::IsEnabled() const noexcept { return settings_.enabled; }
+
+void VfxPlayerComponent::SetEnabled(bool enabled) noexcept { settings_.enabled = enabled; }
+
+const std::vector<VfxPlayerSlot>& VfxPlayerComponent::GetSlots() const noexcept { return settings_.slots; }
 
 VfxPlayerSlot* VfxPlayerComponent::FindSlot(VfxSlotId id) noexcept {
-    const auto found =
-        std::find_if(slots_.begin(), slots_.end(), [id](const VfxPlayerSlot& slot) { return slot.id == id; });
-    return found == slots_.end() ? nullptr : &*found;
+    const auto found = std::find_if(settings_.slots.begin(), settings_.slots.end(),
+                                    [id](const VfxPlayerSlot& slot) { return slot.id == id; });
+    return found == settings_.slots.end() ? nullptr : &*found;
 }
 
 const VfxPlayerSlot* VfxPlayerComponent::FindSlot(VfxSlotId id) const noexcept {
@@ -39,8 +76,8 @@ VfxPlayerSlot& VfxPlayerComponent::AppendSlot(VfxPlayerSlot slot) {
     if (slot.name.empty()) {
         slot.name = "VFX Slot " + std::to_string(slot.id.value);
     }
-    slots_.push_back(std::move(slot));
-    return slots_.back();
+    settings_.slots.push_back(std::move(slot));
+    return settings_.slots.back();
 }
 
 VfxPlayerSlot* VfxPlayerComponent::DuplicateSlot(VfxSlotId id) {
@@ -55,9 +92,9 @@ VfxPlayerSlot* VfxPlayerComponent::DuplicateSlot(VfxSlotId id) {
 }
 
 bool VfxPlayerComponent::RemoveSlot(VfxSlotId id) {
-    const size_t previousSize = slots_.size();
-    std::erase_if(slots_, [id](const VfxPlayerSlot& slot) { return slot.id == id; });
-    if (previousSize == slots_.size()) {
+    const size_t previousSize = settings_.slots.size();
+    std::erase_if(settings_.slots, [id](const VfxPlayerSlot& slot) { return slot.id == id; });
+    if (previousSize == settings_.slots.size()) {
         return false;
     }
     std::erase_if(pendingCommands_, [id](const VfxSlotCommand& command) { return command.slotId == id; });
@@ -65,19 +102,19 @@ bool VfxPlayerComponent::RemoveSlot(VfxSlotId id) {
 }
 
 bool VfxPlayerComponent::MoveSlot(VfxSlotId id, size_t targetIndex) {
-    const auto found =
-        std::find_if(slots_.begin(), slots_.end(), [id](const VfxPlayerSlot& slot) { return slot.id == id; });
-    if (found == slots_.end()) {
+    const auto found = std::find_if(settings_.slots.begin(), settings_.slots.end(),
+                                    [id](const VfxPlayerSlot& slot) { return slot.id == id; });
+    if (found == settings_.slots.end()) {
         return false;
     }
-    const size_t sourceIndex = static_cast<size_t>(found - slots_.begin());
-    targetIndex = (std::min)(targetIndex, slots_.size() - 1u);
+    const size_t sourceIndex = static_cast<size_t>(found - settings_.slots.begin());
+    targetIndex = (std::min)(targetIndex, settings_.slots.size() - 1u);
     if (sourceIndex == targetIndex) {
         return true;
     }
-    VfxPlayerSlot slot = std::move(slots_[sourceIndex]);
-    slots_.erase(slots_.begin() + sourceIndex);
-    slots_.insert(slots_.begin() + targetIndex, std::move(slot));
+    VfxPlayerSlot slot = std::move(settings_.slots[sourceIndex]);
+    settings_.slots.erase(settings_.slots.begin() + sourceIndex);
+    settings_.slots.insert(settings_.slots.begin() + targetIndex, std::move(slot));
     return true;
 }
 
@@ -113,7 +150,7 @@ VfxSlotId VfxPlayerComponent::AllocateSlotId() noexcept {
 void VfxPlayerComponent::NormalizeSlots() {
     std::unordered_set<uint64_t> ids{};
     uint64_t maximumId = 0u;
-    for (VfxPlayerSlot& slot : slots_) {
+    for (VfxPlayerSlot& slot : settings_.slots) {
         if (!slot.id.IsValid() || !ids.emplace(slot.id.value).second) {
             slot.id = {};
         } else {
@@ -121,7 +158,7 @@ void VfxPlayerComponent::NormalizeSlots() {
         }
     }
     nextSlotId_ = maximumId + 1u;
-    for (VfxPlayerSlot& slot : slots_) {
+    for (VfxPlayerSlot& slot : settings_.slots) {
         if (!slot.id.IsValid()) {
             slot.id = AllocateSlotId();
         }

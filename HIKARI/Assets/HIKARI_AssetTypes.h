@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "Assets/HIKARI_AssetTypeEnum.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
@@ -16,38 +17,6 @@ namespace HIKARI {
 namespace ASSETS::SHADER {
 struct ShaderCookedArtifact;
 }
-
-enum class AssetType {
-    Model,
-    Scene,
-    Prefab,
-    Sky,
-    Texture,
-    Sprite,
-    SpriteMaterial,
-    Material,
-    Animation,
-    Particle,
-    VfxEffect,
-    Sequence,
-    AnimationStateMachine,
-    Dialogue,
-    ModelMaterialBinding,
-    Shader,
-    GameplayCamera,
-    Font,
-    TextStyle,
-    UiAnimation,
-    PostEffect,
-    PostProfile,
-    Environment,
-    Weather,
-    RenderStyle,
-    ColorLut,
-    LightProfile,
-    Audio,
-    Unknown
-};
 
 enum class ModelImporterKind {
     Builtin,

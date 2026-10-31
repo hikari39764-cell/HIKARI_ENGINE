@@ -25,6 +25,9 @@ inline constexpr TEXT::EnumName<ValueType> kValueTypeNames[] = {
     {ValueType::Color, "Color"},
 };
 
+// 全ての値型。型を問わない変数選択（検査器の VariableRef など）が使う。
+inline constexpr auto kAllValueTypes = TEXT::EnumValueList(kValueTypeNames);
+
 struct NumericValue {
     float x = 0.0f;
     float y = 0.0f;

@@ -20,8 +20,6 @@
 // "enabled" が false なら、その後の項目は灰色にする。
 namespace HIKARI::EDITOR {
 
-// "textureIlluminance" -> "Texture Illuminance"
-std::string HumanizeFieldKey(std::string_view key);
 std::string ResolveFieldLabel(std::string_view labelPrefix, std::string_view key);
 // 0..1 の色らしい項目（color / albedo / tint）を色の選択で表示する。
 bool IsColorFieldKey(std::string_view key) noexcept;

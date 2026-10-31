@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -66,6 +67,65 @@ const VfxPlayerComponent* Cast(const IComponent& component) noexcept {
     return dynamic_cast<const VfxPlayerComponent*>(&component);
 }
 } // namespace VfxPlayerAuthoringInternal
+
+bool DrawVfxVariableBindings(IInspectorBuilder& builder, const AuthoringFieldDescriptor& field,
+                             std::vector<VfxVariableBinding>& bindings, const VfxPlayerSlot& slot) {
+    using VfxPlayerAuthoringInternal::FindProgramInput;
+    using VfxPlayerAuthoringInternal::ResolveProgram;
+    using VfxPlayerAuthoringInternal::ToBindingType;
+
+    const VFX::VfxProgram* program = ResolveProgram(builder.GetContext().assetRegistry, slot);
+    if (program == nullptr) {
+        builder.Text("Import a VFX asset to expose its typed inputs.");
+    } else if (program->inputs.empty()) {
+        builder.Text("This VFX asset exposes no inputs.");
+    } else {
+        builder.Text(field.label);
+    }
+
+    bool changed = false;
+    // 入力 1 つの結合を選ぶ。空の選択は結合を外し、選べば追加か更新になる。
+    const auto edit = [&](const std::string& inputId, const std::string& label, std::string_view description,
+                          std::span<const BINDING::ValueType> types) {
+        const std::string id = std::string(field.id) + "." + inputId;
+        const auto bound =
+            std::find_if(bindings.begin(), bindings.end(),
+                         [&inputId](const VfxVariableBinding& binding) { return binding.inputId == inputId; });
+        std::string variableId = bound != bindings.end() ? bound->variableId : std::string{};
+        if (!builder.RuntimeVariableIdPicker(AuthoringFieldDescriptor{id, label, description, field.writable}, types,
+                                             variableId)) {
+            return;
+        }
+        changed = true;
+        if (variableId.empty()) {
+            if (bound != bindings.end()) {
+                bindings.erase(bound);
+            }
+        } else if (bound != bindings.end()) {
+            bound->variableId = std::move(variableId);
+        } else {
+            bindings.push_back({inputId, std::move(variableId)});
+        }
+    };
+    if (program != nullptr) {
+        for (const VFX::VfxProgramInput& input : program->inputs) {
+            const BINDING::ValueType type = ToBindingType(input.type);
+            edit(input.id, input.id + " (" + std::string(VFX::ToString(input.type)) + ")", "Runtime Variable",
+                 std::span<const BINDING::ValueType>(&type, 1u));
+        }
+    }
+    // 効果資産に無い入力の結合は、型を問わず選び直すか空にして外せるように行を残す。
+    std::vector<std::string> missing{};
+    for (const VfxVariableBinding& binding : bindings) {
+        if (FindProgramInput(program, binding.inputId) == nullptr) {
+            missing.push_back(binding.inputId);
+        }
+    }
+    for (const std::string& inputId : missing) {
+        edit(inputId, inputId, "This exposed input no longer exists in the VFX asset.", BINDING::kAllValueTypes);
+    }
+    return changed;
+}
 
 AuthoringCommandResult ValidateVfxPlayerComponentAuthoring(const IComponent& base, const InspectorContext& context) {
     using VfxPlayerAuthoringInternal::Cast;
