@@ -96,11 +96,6 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
                 ImGui::SetTooltip("%s", TEXT::Localize("ui.viewport.playOptions").c_str());
             }
             if (ImGui::BeginPopup("Play Mode Menu")) {
-                if (ImGui::MenuItem(
-                        TEXT::LocalizeWindow("editor.ui.developer.console.20aa93", "Developer Console").c_str(), "F10",
-                        false, previewRunning)) {
-                    runtimeDebugWindow_.Open();
-                }
                 if (ImGui::MenuItem(TEXT::Localize("ui.viewport.playInNewWindow").c_str(), nullptr, false,
                                     !previewRunning)) {
                     LaunchWindowedGamePreview(scene, playSession);

@@ -16,6 +16,9 @@ public:
     bool Register(EditorToolDescriptor descriptor);
 
     bool RequestOpen(EditorToolOpenRequest request);
+    // 開いていれば閉じ、閉じていれば RequestOpen と同じに開く。ツールが無ければ false。
+    bool Toggle(std::string_view toolId);
+    bool IsOpen(std::string_view toolId) const;
 
     void DrawMenuItem(std::string_view toolId);
     void DrawMenuContents();

@@ -16,7 +16,6 @@
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
 
-#include "Editor/Diagnostics/HIKARI_RuntimeDebugWindow.h"
 #include "Editor/Agent/HIKARI_AgentBridge.h"
 #include "Editor/Agent/HIKARI_AgentEngineRoots.h"
 #include "Editor/Agent/HIKARI_AgentHost.h"
@@ -103,7 +102,6 @@ public:
               EDITOR::EditorProjectSessionController& projectSession);
 
 private:
-    RUNTIME::RuntimeDebugWindow runtimeDebugWindow_{};
     void RegisterEditorOperations();
     // 環境・光照ベイクの操作。
     void RegisterEnvironmentOperations();

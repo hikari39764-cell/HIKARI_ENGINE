@@ -180,22 +180,24 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
     EDITOR::RegisterGameExportOperations(operationRegistry_, exportJob_, [this] {
         return projectBuildAllowed_ && aiOperationScene_ && !HasKnownUnsavedProjectChanges(*aiOperationScene_);
     });
-    operationRegistry_.Register(
-        {"runtime.debug.execute",
-         "Execute a bounded developer command against the playing World. Same owner as the F10 console; use help to discover commands.",
-         "runtime",
-         {{"command", EditorOperationParameterType::String, true, "Developer command, up to 512 bytes."}},
-         [this](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
-             if (!aiOperationScene_ || !aiOperationScene_->IsRuntimePlayActive())
-                 return {false, "PLAY_REQUIRED", "Start Play first."};
-             auto& world = aiOperationScene_->GetWorld();
-             auto* debug = world.Services().Find<RUNTIME::RuntimeDebugService>();
-             if (!debug)
-                 return {false, "UNAVAILABLE", "Developer diagnostics are unavailable."};
-             const auto reply = debug->Execute(world, parameters.value("command", std::string{}));
-             return {reply.success, reply.success ? "OK" : "REJECTED", reply.text};
-         }},
-        EditorOperationKind::Session, false);
+    EDITOR::EditorOperationDefinition debugExecute{
+        "runtime.debug.execute",
+        "Execute a bounded developer command against the scene World, while editing or in Play. Same runtime commands as the editor console; use help to discover them. Commands that need Play say so.",
+        "runtime",
+        {{"command", EditorOperationParameterType::String, true, "Developer command, up to 512 bytes."}},
+        [this](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
+            if (!aiOperationScene_)
+                return {false, "NO_SCENE", "No scene is open."};
+            auto& world = aiOperationScene_->GetWorld();
+            auto* debug = world.Services().Find<RUNTIME::RuntimeDebugService>();
+            if (!debug)
+                return {false, "UNAVAILABLE", "Developer diagnostics are unavailable."};
+            const auto reply = debug->Execute(world, parameters.value("command", std::string{}));
+            return {reply.success, reply.success ? "OK" : "REJECTED", reply.text};
+        }};
+    // 人は編集器のコンソール（~）で実行時コマンドを直接打つ。この操作は智能体の入口。
+    debugExecute.exposureMask = EDITOR::EditorOperationExposureMask::Agent;
+    operationRegistry_.Register(std::move(debugExecute), EditorOperationKind::Session, false);
 
     for (SceneObjectOperationSpec& spec : SceneObjectOperationSpecs()) {
         operationRegistry_.Register({spec.id, spec.summary, spec.workspace, std::move(spec.parameters),

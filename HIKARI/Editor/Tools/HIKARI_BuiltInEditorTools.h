@@ -10,6 +10,7 @@ namespace HIKARI::EDITOR {
 class EditorToolHost;
 
 inline constexpr std::string_view kLightingBakeToolId = "LightingBakeTool";
+inline constexpr std::string_view kConsoleToolId = "ConsoleTool";
 
 std::span<const EditorToolDescriptor> GetBuiltInEditorTools();
 void RegisterBuiltInEditorTools(EditorToolHost& host);

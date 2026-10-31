@@ -323,10 +323,8 @@ void DocumentSceneBase::Update(float dt) {
         state_->runtime.fixedStepClock.SetSettings(settings);
     }
     state_->runtime.world.BeginFrame(frame.frameIndex);
-    state_->runtime.debugService.SetEnabled(state_->runtime.world,
-                                            state_->runtime.playActive && state_->runtime.developerDiagnosticsAllowed);
-    if (!state_->runtime.playActive)
-        SERVICES::GetInputService().SetDeveloperInputCaptured(false);
+    // 編集中も有効にする（Play 中だけのコマンドは各コマンドが理由を返す）。
+    state_->runtime.debugService.SetEnabled(state_->runtime.world, state_->runtime.developerDiagnosticsAllowed);
     NAVIGATION::NavigationWorldService* navigation =
         state_->runtime.world.Services().Find<NAVIGATION::NavigationWorldService>();
     if (state_->runtime.playActive && navigation != nullptr) {

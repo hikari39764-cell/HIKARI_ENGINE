@@ -11,6 +11,7 @@
 #include "Core/HIKARI_TimeService.h"
 
 #include "Core/Text/HIKARI_Localization.h"
+#include "Core/Text/HIKARI_ParseNumber.h"
 
 #include <algorithm>
 #include <limits>
@@ -29,7 +30,6 @@
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingReferenceIndex.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
-#include "Runtime/Diagnostics/HIKARI_RuntimeDebugService.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
@@ -38,7 +38,6 @@
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 #include <cstdio>
-#include <charconv>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -126,10 +125,7 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
             return;
         }
         uint64_t value = 0u;
-        const char* begin = reference.targetId.data();
-        const char* end = begin + reference.targetId.size();
-        const auto parsed = std::from_chars(begin, end, value);
-        if (parsed.ec != std::errc{} || parsed.ptr != end || value == 0u) {
+        if (!TEXT::ParseNumber(reference.targetId, value) || value == 0u) {
             return;
         }
         SelectViewportObjects(*aiOperationScene_, {SceneObjectId{value}}, EditorObjectSelectionMode::Replace);
@@ -512,12 +508,17 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
     if (commandRouter_.ProcessDocumentShortcuts()) {
         ConfigureEditorCommands(scene);
     }
+    // ~ でコンソールを開閉する。他の入力欄に打っている間は文字として通す（コンソールが開いていれば閉じる側に回す）。
+    if ((toolHost_.IsOpen(EDITOR::kConsoleToolId) || !ImGui::GetIO().WantTextInput) &&
+        EDITOR::ConsumeEditorShortcut(EDITOR::EditorShortcutScope::Document, ImGuiKey_GraveAccent)) {
+        toolHost_.Toggle(EDITOR::kConsoleToolId);
+    }
+    // 試遊中にコンソールが開いている間は、ゲームの入力を止める（打鍵でゲームが動かないように）。
+    // 編集中は止めない（編集カメラの操作を残す）。
+    SERVICES::GetInputService().SetDeveloperInputCaptured(scene.IsRuntimePlayActive() &&
+                                                          toolHost_.IsOpen(EDITOR::kConsoleToolId));
 
     documentToolbarController_.SyncDocumentMeta(scene, context_, selectionSync_);
-    if (auto* diagnostics = scene.GetWorld().Services().Find<RUNTIME::RuntimeDebugService>())
-        runtimeDebugWindow_.Draw(scene.GetWorld(), *diagnostics);
-    else
-        runtimeDebugWindow_.Reset();
     scene.SetUnsavedSceneChanges(context_.sceneDirty);
     // 操縦中の機位は視点そのものなので、選んでいても視錐台を描かない。
     if (context_.selection.selectedObject && !cameraPilot_.Active()) {

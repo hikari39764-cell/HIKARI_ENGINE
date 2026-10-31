@@ -36,6 +36,24 @@ bool EditorToolHost::RequestOpen(EditorToolOpenRequest request) {
     return true;
 }
 
+bool EditorToolHost::Toggle(std::string_view toolId) {
+    ToolEntry* entry = Find(toolId);
+    if (!entry) {
+        return false;
+    }
+    if (!entry->open) {
+        return RequestOpen({entry->toolId});
+    }
+    entry->open = false;
+    entry->pendingOpenRequest.reset();
+    return true;
+}
+
+bool EditorToolHost::IsOpen(std::string_view toolId) const {
+    const ToolEntry* entry = Find(toolId);
+    return entry != nullptr && entry->open;
+}
+
 void EditorToolHost::DrawMenuItem(std::string_view toolId) {
     ToolEntry* entry = Find(toolId);
     if (!entry) {

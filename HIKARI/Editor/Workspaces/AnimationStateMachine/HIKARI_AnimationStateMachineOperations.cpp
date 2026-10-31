@@ -1,13 +1,13 @@
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineOperations.h"
 
-#include <charconv>
 #include <string>
 
 #include "Animation/StateMachine/HIKARI_AnimationStateMachine.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/HIKARI_AssetTypes.h"
+#include "Core/Text/HIKARI_ParseNumber.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineWorkspaceController.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -32,8 +32,7 @@ bool ResolveStateId(const ANIMATION::AnimationStateMachineDefinition& definition
         return false;
     }
     uint32_t numericId = 0u;
-    const auto parsed = std::from_chars(value.data(), value.data() + value.size(), numericId);
-    if (parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size()) {
+    if (TEXT::ParseNumber(value, numericId)) {
         outId.value = numericId;
         if (ANIMATION::FindAnimationState(definition, outId) != nullptr) {
             return true;
@@ -61,8 +60,7 @@ bool ResolveParameterId(const ANIMATION::AnimationStateMachineDefinition& defini
         return false;
     }
     uint32_t numericId = 0u;
-    const auto parsed = std::from_chars(value.data(), value.data() + value.size(), numericId);
-    if (parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size()) {
+    if (TEXT::ParseNumber(value, numericId)) {
         outId.value = numericId;
         if (ANIMATION::FindAnimationParameter(definition, outId) != nullptr) {
             return true;
@@ -454,10 +452,7 @@ void RegisterAnimationStateMachineOperations(EditorOperationRegistry& registry,
                 }
                 const std::string transitionText = parameters.value("transition", std::string{});
                 uint32_t numericId = 0u;
-                const auto parsed =
-                    std::from_chars(transitionText.data(), transitionText.data() + transitionText.size(), numericId);
-                if (transitionText.empty() || parsed.ec != std::errc{} ||
-                    parsed.ptr != transitionText.data() + transitionText.size()) {
+                if (!TEXT::ParseNumber(transitionText, numericId)) {
                     return OperationFailure("MISSING_FIELD", "transition 需要数字 id");
                 }
                 std::string message;

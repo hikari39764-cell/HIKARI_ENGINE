@@ -9,8 +9,8 @@ struct GameProjectDebugReply {
     uint32_t success = 0;
     char text[8193]{};
 };
-// Callback-scoped, owner-thread diagnostics. The same commands back F10
-// and editor/AI operations. Disabled outside an explicit development session.
+// Callback-scoped, owner-thread diagnostics. The same commands back the editor
+// console (~) and editor/AI operations. Disabled outside an explicit development session.
 // Projects extend the command surface through declared runtime events (emit).
 class DebugView final {
 public:

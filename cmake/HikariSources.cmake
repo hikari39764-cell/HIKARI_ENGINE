@@ -862,7 +862,6 @@ set(HIKARI_GAME_HOST_SOURCES
 )
 
 set(HIKARI_EDITOR_SOURCES
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Diagnostics/HIKARI_RuntimeDebugWindow.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/HIKARI_AssimpModelLoader.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Assimp/HIKARI_AssimpMaterialReader.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Assimp/HIKARI_AssimpMeshReader.cpp"
@@ -968,6 +967,10 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Menus/HIKARI_EditorDocumentMenu.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Tools/HIKARI_BuiltInEditorTools.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Tools/HIKARI_EditorToolHost.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Tools/Console/HIKARI_ConsoleCommandLine.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Tools/Console/HIKARI_ConsoleCompletion.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Tools/Console/HIKARI_ConsoleHistory.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Tools/Console/HIKARI_ConsoleTool.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Views/Director/HIKARI_DirectorViewPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Views/Director/HIKARI_EditorDirectorCameraController.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Views/HIKARI_EditorViewInputRouter.cpp"
