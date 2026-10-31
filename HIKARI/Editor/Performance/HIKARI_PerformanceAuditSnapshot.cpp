@@ -1,12 +1,10 @@
 #include "Editor/Performance/HIKARI_PerformanceAuditPanel.h"
 
-#include "Core/HIKARI_FrameRate.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_DXCheck.h"
-#include "Gfx/HIKARI_GpuFrameProfiler.h"
-#include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
@@ -35,8 +33,6 @@
 #include <sstream>
 #include <iomanip>
 #include <locale>
-#include <dxgi1_6.h>
-#include <wrl/client.h>
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GfxDebugConfig.h"
 
@@ -48,16 +44,42 @@ double SafeDivide(uint64_t numerator, uint64_t denominator) {
     return denominator != 0u ? static_cast<double>(numerator) / static_cast<double>(denominator) : 0.0;
 }
 
-bool IsMeshletPipelineStatsPass(GFX::GPU_PROFILE::Pass pass) {
-    return pass == GFX::GPU_PROFILE::Pass::MeshletDrawGeometryAux ||
-           pass == GFX::GPU_PROFILE::Pass::MeshletDrawDepthPrepass ||
-           pass == GFX::GPU_PROFILE::Pass::MeshletDrawForward ||
-           pass == GFX::GPU_PROFILE::Pass::MeshletDrawDepthAware ||
-           pass == GFX::GPU_PROFILE::Pass::MeshletDrawTransparent ||
-           pass == GFX::GPU_PROFILE::Pass::MeshletDrawShadow ||
-           pass == GFX::GPU_PROFILE::Pass::MeshletDrawShadowStatic ||
-           pass == GFX::GPU_PROFILE::Pass::MeshletDrawShadowDynamic ||
-           pass == GFX::GPU_PROFILE::Pass::MeshletDrawShadowFallback;
+std::vector<PipelineStatsRow> PipelineStatsRows(const std::vector<METRIC::MetricReading>& metrics) {
+    struct Item {
+        std::string_view name;
+        const METRIC::MetricReading* PipelineStatsRow::* field;
+    };
+    static constexpr Item kItems[] = {
+        {"calls", &PipelineStatsRow::calls},
+        {"asInvocations", &PipelineStatsRow::asInvocations},
+        {"msInvocations", &PipelineStatsRow::msInvocations},
+        {"msPrimitives", &PipelineStatsRow::msPrimitives},
+        {"clipPrimitives", &PipelineStatsRow::clipPrimitives},
+        {"psInvocations", &PipelineStatsRow::psInvocations},
+    };
+    constexpr std::string_view kMarker = ".pipeline.";
+    constexpr std::string_view kDomain = "gpu.";
+
+    std::vector<PipelineStatsRow> rows;
+    for (const METRIC::MetricReading& reading : metrics) {
+        const std::string_view id = reading.descriptor->id;
+        const size_t marker = id.rfind(kMarker);
+        if (!id.starts_with(kDomain) || marker == std::string_view::npos || marker <= kDomain.size()) {
+            continue;
+        }
+        const std::string_view name = id.substr(kDomain.size(), marker - kDomain.size());
+        const std::string_view item = id.substr(marker + kMarker.size());
+        auto row = std::find_if(rows.begin(), rows.end(), [name](const PipelineStatsRow& r) { return r.name == name; });
+        if (row == rows.end()) {
+            row = rows.insert(rows.end(), PipelineStatsRow{name});
+        }
+        for (const Item& entry : kItems) {
+            if (entry.name == item) {
+                (*row).*entry.field = &reading;
+            }
+        }
+    }
+    return rows;
 }
 
 void AppendShadowCacheReason(std::string& text, uint32_t flags, uint32_t bit, const char* label) {
@@ -108,7 +130,7 @@ RuntimePerformanceSnapshot BuildSnapshot() {
     RuntimePerformanceSnapshot out{};
     const FrameContext& frame = TIME::GetFrameContext();
     const GFX::Context& graphics = GFX::GetCurrentContext();
-    out.fpsRaw = PERFORMANCE::FramesPerSecond(1u, frame.rawDt);
+    out.metrics = METRIC::Snapshot(frame.frameIndex);
     out.fixedStepsThisFrame = frame.fixedStepsThisFrame;
     out.droppedFixedTimeSeconds = frame.droppedFixedTime;
     out.sceneId = RuntimeSceneContext::GetCurrentSceneId();
@@ -138,50 +160,47 @@ RuntimePerformanceSnapshot BuildSnapshot() {
     out.streamlineReflex = RENDER3D::UPSCALING::GetStreamlineReflexStats();
     out.streamlineFrameGeneration = RENDER3D::UPSCALING::GetStreamlineFrameGenerationStats();
     out.presentation = POST::PostSystem::GetPresentationFrameResources();
-    out.cpu = CPU_PROFILE::GetLatestSnapshot();
-    out.gpu = GFX::GPU_PROFILE::GetLatestSnapshot();
-    out.pipelineStats = GFX::GPU_PIPELINE_STATS::GetLatestSnapshot();
     return out;
 }
 
-double SumGpuMsByScope(const GFX::GPU_PROFILE::FrameSnapshot& profile, bool nestedSubpass) {
-    double total = 0.0;
-    for (size_t i = 0; i < profile.passes.size(); ++i) {
-        const GFX::GPU_PROFILE::Pass pass = static_cast<GFX::GPU_PROFILE::Pass>(i);
-        const GFX::GPU_PROFILE::PassTiming& timing = profile.passes[i];
-        if (pass != GFX::GPU_PROFILE::Pass::CommandFrame && timing.valid &&
-            (timing.parentPass != GFX::GPU_PROFILE::Pass::Count &&
-             timing.parentPass != GFX::GPU_PROFILE::Pass::CommandFrame) == nestedSubpass) {
-            total += timing.gpuMs;
-        }
-    }
-    return total;
+namespace {
+const char* StatusName(const METRIC::MetricReading* reading) {
+    return reading != nullptr ? METRIC::ToString(reading->status) : METRIC::ToString(METRIC::MetricStatus::NoData);
 }
 
-uint32_t CountValidGpuPasses(const GFX::GPU_PROFILE::FrameSnapshot& profile) {
-    uint32_t count = 0;
-    for (const GFX::GPU_PROFILE::PassTiming& timing : profile.passes) {
-        if (timing.valid) {
-            ++count;
-        }
+// レポート用の値。値のない状態は 0 ではなく状態名で書く。scale で単位を割る。
+std::string ReportValue(const METRIC::MetricReading* reading, int precision = 3, double scale = 1.0) {
+    if (reading == nullptr || reading->status == METRIC::MetricStatus::NoData ||
+        reading->status == METRIC::MetricStatus::Unsupported) {
+        return StatusName(reading);
     }
-    return count;
+    std::ostringstream text;
+    text.imbue(std::locale::classic());
+    text << std::fixed << std::setprecision(precision) << reading->value / scale;
+    if (reading->status == METRIC::MetricStatus::Stale) {
+        text << "(stale)";
+    }
+    return text.str();
 }
 
-double GetCpuFrameMs(const CPU_PROFILE::FrameSnapshot& profile) {
-    const CPU_PROFILE::PassTiming& frameTiming = profile.passes[static_cast<size_t>(CPU_PROFILE::Pass::Frame)];
-    return frameTiming.valid ? frameTiming.cpuMs : 0.0;
-}
-
-uint32_t CountValidCpuPasses(const CPU_PROFILE::FrameSnapshot& profile) {
-    uint32_t count = 0;
-    for (const CPU_PROFILE::PassTiming& timing : profile.passes) {
-        if (timing.valid) {
-            ++count;
-        }
+// CPU / GPU の計時を 1 行にする。値のある指標（Fresh か Stale）だけを書く。
+void AppendTimingLine(std::ostream& out, const char* domain, std::string_view name, const METRIC::MetricReading* ms,
+                      const METRIC::MetricReading* calls, const METRIC::MetricReading* selfMs) {
+    if (ms == nullptr || (ms->status != METRIC::MetricStatus::Fresh && ms->status != METRIC::MetricStatus::Stale)) {
+        return;
     }
-    return count;
+    out << domain << ' ' << name << " ms: " << ReportValue(ms);
+    if (calls != nullptr) {
+        out << " calls=" << ReportValue(calls, 0);
+    }
+    if (selfMs != nullptr) {
+        out << " self=" << ReportValue(selfMs);
+    }
+    out << " avg/p95/p99/max=" << ms->window.average << '/' << ms->window.p95 << '/' << ms->window.p99 << '/'
+        << ms->window.maximum << " samples=" << ms->window.sampleCount << '\n';
 }
+} // namespace
+
 std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
     static constexpr TEXT::EnumName<RENDER3D::UPSCALING::StreamlineReflexMode> reflexModes[] = {
         {RENDER3D::UPSCALING::StreamlineReflexMode::Off, "Off"},
@@ -192,28 +211,20 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
     out.imbue(std::locale::classic());
     out << std::fixed << std::setprecision(3);
     out << "HIKARI performance snapshot\n";
-    const auto& context = GFX::GetCurrentContext();
-    Microsoft::WRL::ComPtr<IDXGIFactory4> factory;
-    Microsoft::WRL::ComPtr<IDXGIAdapter3> adapter;
-    if (context.device && SUCCEEDED(CreateDXGIFactory2(0, IID_PPV_ARGS(&factory))) &&
-        SUCCEEDED(factory->EnumAdapterByLuid(context.device->GetAdapterLuid(), IID_PPV_ARGS(&adapter)))) {
-        DXGI_ADAPTER_DESC1 desc{};
-        if (SUCCEEDED(adapter->GetDesc1(&desc))) {
-            char name[512]{};
-            WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, name, sizeof(name), nullptr, nullptr);
-            out << "Adapter: " << name << "\nDedicated VRAM MiB: " << desc.DedicatedVideoMemory / 1048576.0 << '\n';
-        }
-        DXGI_QUERY_VIDEO_MEMORY_INFO memory{};
-        if (SUCCEEDED(adapter->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &memory)))
-            out << "Local VRAM usage / budget MiB: " << memory.CurrentUsage / 1048576.0 << " / "
-                << memory.Budget / 1048576.0 << '\n';
-    } else
+    constexpr double kMiB = 1048576.0;
+    if (const auto adapter = GFX::VIDEO_MEMORY::GetAdapterInfo()) {
+        out << "Adapter: " << adapter->name
+            << "\nDedicated VRAM MiB: " << static_cast<double>(adapter->dedicatedVideoMemoryBytes) / kMiB << '\n';
+    } else {
         out << "Adapter: unavailable\n";
+    }
+    out << "Local VRAM usage / budget MiB: " << ReportValue(METRIC::FindReading(s.metrics, METRIC::kVramUsage), 3, kMiB)
+        << " / " << ReportValue(METRIC::FindReading(s.metrics, METRIC::kVramBudget), 3, kMiB) << '\n';
     out << "Scene render: " << s.temporalFrame.renderWidth << 'x' << s.temporalFrame.renderHeight
         << "\nScene output: " << s.temporalFrame.outputWidth << 'x' << s.temporalFrame.outputHeight
         << "\nBack buffer: " << s.backBufferWidth << 'x' << s.backBufferHeight
         << "\nAA: " << RENDER3D::RenderAntiAliasingModeLabel(s.renderQuality.antiAliasingMode)
-        << "\nFPS raw: " << PERFORMANCE::FormatFramesPerSecond(s.fpsRaw) << '\n';
+        << "\nFPS raw: " << ReportValue(METRIC::FindReading(s.metrics, METRIC::kFrameFps), 1) << '\n';
     out << "Scene: " << (s.sceneId.empty() ? "unavailable" : s.sceneId) << '\n';
     out << "Camera valid/source/position: " << s.temporalFrame.camera.valid << '/'
         << s.temporalFrame.cameraSourceObjectId << "/(" << s.temporalFrame.camera.cameraPos.x << ','
@@ -249,46 +260,37 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
         << " GPU validation configured: " << s.debugConfig.enableGpuBasedValidation << '\n';
     out << "GPU timing / pipeline statistics configured: " << s.debugConfig.enableGpuFrameProfiler << '/'
         << s.debugConfig.enableGpuPipelineStats << '\n';
-    out << "CPU frame: " << s.cpu.frameIndex << " valid=" << s.cpu.valid << '\n';
-    const auto cpu = [&](const CPU_PROFILE::PassTiming& p) {
-        if (!p.valid && p.rollingSampleCount == 0)
-            return;
-        out << "CPU " << p.name << " now/avg/p95/p99/max ms: " << p.cpuMs << '/' << p.averageMs << '/' << p.p95Ms << '/'
-            << p.p99Ms << '/' << p.maximumMs << " samples=" << p.rollingSampleCount << '\n';
-    };
-    for (const auto& pass : s.cpu.passes)
-        cpu(pass);
-    for (uint32_t i = 0; i < s.cpu.dynamicPassCount; ++i)
-        cpu(s.cpu.dynamicPasses[i]);
-    out << "GPU frame: " << s.gpu.frameIndex << " available=" << s.gpu.gpuTimingAvailable << '\n';
-    if (!s.gpu.gpuTimingAvailable)
-        out << "GPU reason: " << s.gpu.unavailableReason << '\n';
-    for (size_t i = 0; i < s.gpu.passes.size(); ++i) {
-        const auto& pass = s.gpu.passes[i];
-        if (pass.valid)
-            out << "GPU " << pass.name << " ms: " << pass.gpuMs << " scope="
-                << (i == static_cast<size_t>(GFX::GPU_PROFILE::Pass::CommandFrame)
-                        ? "command-group"
-                        : (pass.parentPass == GFX::GPU_PROFILE::Pass::CommandFrame ||
-                                   pass.parentPass == GFX::GPU_PROFILE::Pass::Count
-                               ? "parent"
-                               : "nested"))
-                << " parent="
-                << (pass.parentPass == GFX::GPU_PROFILE::Pass::Count ? "none"
-                                                                     : GFX::GPU_PROFILE::ToString(pass.parentPass))
-                << " calls=" << pass.callCount << " self=" << pass.exclusiveGpuMs
-                << " avg/p95/p99/max=" << pass.averageMs << '/' << pass.p95Ms << '/' << pass.p99Ms << '/'
-                << pass.maximumMs << " samples=" << pass.rollingSampleCount << '\n';
+    const METRIC::MetricReading* cpuFrame = METRIC::FindReading(s.metrics, METRIC::kFrameCpuMs);
+    out << "CPU frame: " << (cpuFrame != nullptr ? cpuFrame->sourceFrame : 0u) << " status=" << StatusName(cpuFrame)
+        << '\n';
+    AppendTimingLine(out, "CPU", CPU_PROFILE::ToString(CPU_PROFILE::Pass::Frame), cpuFrame, nullptr, nullptr);
+    for (const METRIC::TimingRow& row : METRIC::TimingRows(s.metrics, "cpu")) {
+        AppendTimingLine(out, "CPU", row.name, row.ms, row.calls, nullptr);
+    }
+    const METRIC::MetricReading* gpuFrame = METRIC::FindReading(s.metrics, METRIC::kFrameGpuMs);
+    out << "GPU frame: " << (gpuFrame != nullptr ? gpuFrame->sourceFrame : 0u) << " status=" << StatusName(gpuFrame)
+        << '\n';
+    if (gpuFrame != nullptr && gpuFrame->status == METRIC::MetricStatus::Unsupported) {
+        out << "GPU reason: " << gpuFrame->note << '\n';
+    }
+    AppendTimingLine(out, "GPU", "Command Frame", gpuFrame, nullptr, nullptr);
+    for (const METRIC::TimingRow& row : METRIC::TimingRows(s.metrics, "gpu")) {
+        AppendTimingLine(out, "GPU", row.name, row.ms, row.calls, row.selfMs);
     }
     out << "GPU timings are pass samples, not additive frame time; nested passes overlap.\n";
     out << "GPU ms sums every execution of the pass in the frame (calls = executions).\n";
-    out << "GPU rolling window: last 300 frames per pass; quantiles refresh every 15 samples.\n";
-    out << "Pipeline stats frame: " << s.pipelineStats.frameIndex
-        << " available=" << s.pipelineStats.pipelineStatsAvailable << '\n';
-    for (const auto& pass : s.pipelineStats.passes) {
-        if (pass.valid)
-            out << "Pipeline " << pass.name << " PS/MS invocations; MS triangles: " << pass.counters.PSInvocations
-                << '/' << pass.counters.MSInvocations << "; " << pass.counters.MSPrimitives << '\n';
+    out << "Rolling window: last 300 frames in which the metric was measured; quantiles refresh every 15 samples.\n";
+    const METRIC::MetricReading* pipelineExecutions = METRIC::FindReading(s.metrics, METRIC::kGpuPipelineExecutions);
+    out << "Pipeline stats frame: " << (pipelineExecutions != nullptr ? pipelineExecutions->sourceFrame : 0u)
+        << " status=" << StatusName(pipelineExecutions) << '\n';
+    if (pipelineExecutions != nullptr && pipelineExecutions->status == METRIC::MetricStatus::Unsupported) {
+        out << "Pipeline stats reason: " << pipelineExecutions->note << '\n';
+    }
+    for (const PipelineStatsRow& row : PipelineStatsRows(s.metrics)) {
+        if (IsFresh(row.calls)) {
+            out << "Pipeline " << row.name << " PS/MS invocations; MS triangles: " << ReportValue(row.psInvocations, 0)
+                << '/' << ReportValue(row.msInvocations, 0) << "; " << ReportValue(row.msPrimitives, 0) << '\n';
+        }
     }
     out << "Scene HZB builds/Aux reused: " << s.depthVisibility.sceneDepthPyramidBuildCount << '/'
         << s.depthVisibility.auxiliaryDepthReused << '\n';

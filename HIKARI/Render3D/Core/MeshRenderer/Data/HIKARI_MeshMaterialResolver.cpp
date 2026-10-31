@@ -62,6 +62,9 @@ bool MeshMaterialResolver::TryAcquireTextureLoadBudget(MeshRendererDebugStats* s
     }
 
     --textureLoadBudgetRemaining_;
+    if (stats != nullptr) {
+        ++stats->materialTextureLoadCount;
+    }
     return true;
 }
 
@@ -99,9 +102,6 @@ int MeshMaterialResolver::ResolveBaseColorTexture(const ModelAsset& asset, const
 
     auto found = materialTextureCache_.find(texturePath);
     if (found != materialTextureCache_.end()) {
-        if (stats != nullptr) {
-            ++stats->materialTextureCacheHitCount;
-        }
         return BackendOrFallback(found->second, fallbacks_.whiteTexture);
     }
 
@@ -109,17 +109,11 @@ int MeshMaterialResolver::ResolveBaseColorTexture(const ModelAsset& asset, const
     if (TryResolveLoadedMaterialTexture(materialTextureCache_, texturePath, "model_material/baseColor/", texturePath,
                                         RENDER3D::TextureResourceColorSpace::Srgb, fallbacks_.whiteTexture,
                                         loadedHandle)) {
-        if (stats != nullptr) {
-            ++stats->materialTextureCacheHitCount;
-        }
         return loadedHandle;
     }
 
     if (!TryAcquireTextureLoadBudget(stats)) {
         return fallbacks_.whiteTexture;
-    }
-    if (stats != nullptr) {
-        ++stats->materialTextureCacheMissCount;
     }
     const RENDER3D::TextureResourceHandle resource = LoadMaterialTextureResource(
         "model_material/baseColor/", texturePath, RENDER3D::TextureResourceColorSpace::Srgb);
@@ -136,26 +130,17 @@ int MeshMaterialResolver::ResolveNormalTexture(const ModelAsset& asset, const Ma
     const int textureIndex = materialAsset->normalTexture.textureIndex;
     const TextureAsset3D* texture = FindTextureByIndex(asset, textureIndex);
     if (texture == nullptr) {
-        if (stats != nullptr) {
-            ++stats->normalMapFallbackCount;
-        }
         return fallbacks_.normalTexture;
     }
 
     const std::string& texturePath = GetMaterialTextureRuntimePath(*texture);
     if (texturePath.empty()) {
-        if (stats != nullptr) {
-            ++stats->normalMapFallbackCount;
-        }
         return fallbacks_.normalTexture;
     }
 
     const std::string cacheKey = "normal:" + texturePath;
     auto found = materialTextureCache_.find(cacheKey);
     if (found != materialTextureCache_.end()) {
-        if (stats != nullptr) {
-            ++stats->normalTextureCacheHitCount;
-        }
         return BackendOrFallback(found->second, fallbacks_.normalTexture);
     }
 
@@ -163,17 +148,11 @@ int MeshMaterialResolver::ResolveNormalTexture(const ModelAsset& asset, const Ma
     if (TryResolveLoadedMaterialTexture(materialTextureCache_, cacheKey, "model_material/normal/", texturePath,
                                         RENDER3D::TextureResourceColorSpace::Linear, fallbacks_.normalTexture,
                                         loadedHandle)) {
-        if (stats != nullptr) {
-            ++stats->normalTextureCacheHitCount;
-        }
         return loadedHandle;
     }
 
     if (!TryAcquireTextureLoadBudget(stats)) {
         return fallbacks_.normalTexture;
-    }
-    if (stats != nullptr) {
-        ++stats->normalTextureCacheMissCount;
     }
     const RENDER3D::TextureResourceHandle resource =
         LoadMaterialTextureResource("model_material/normal/", texturePath, RENDER3D::TextureResourceColorSpace::Linear);
@@ -190,26 +169,17 @@ int MeshMaterialResolver::ResolveEmissiveTexture(const ModelAsset& asset, const 
     const int textureIndex = materialAsset->emissiveTexture.textureIndex;
     const TextureAsset3D* texture = FindTextureByIndex(asset, textureIndex);
     if (texture == nullptr) {
-        if (stats != nullptr) {
-            ++stats->emissiveMapFallbackCount;
-        }
         return fallbacks_.blackTexture;
     }
 
     const std::string& texturePath = GetMaterialTextureRuntimePath(*texture);
     if (texturePath.empty()) {
-        if (stats != nullptr) {
-            ++stats->emissiveMapFallbackCount;
-        }
         return fallbacks_.blackTexture;
     }
 
     const std::string cacheKey = "emissive:" + texturePath;
     auto found = materialTextureCache_.find(cacheKey);
     if (found != materialTextureCache_.end()) {
-        if (stats != nullptr) {
-            ++stats->emissiveTextureCacheHitCount;
-        }
         return BackendOrFallback(found->second, fallbacks_.blackTexture);
     }
 
@@ -217,17 +187,11 @@ int MeshMaterialResolver::ResolveEmissiveTexture(const ModelAsset& asset, const 
     if (TryResolveLoadedMaterialTexture(materialTextureCache_, cacheKey, "model_material/emissive/", texturePath,
                                         RENDER3D::TextureResourceColorSpace::Srgb, fallbacks_.blackTexture,
                                         loadedHandle)) {
-        if (stats != nullptr) {
-            ++stats->emissiveTextureCacheHitCount;
-        }
         return loadedHandle;
     }
 
     if (!TryAcquireTextureLoadBudget(stats)) {
         return fallbacks_.blackTexture;
-    }
-    if (stats != nullptr) {
-        ++stats->emissiveTextureCacheMissCount;
     }
     const RENDER3D::TextureResourceHandle resource =
         LoadMaterialTextureResource("model_material/emissive/", texturePath, RENDER3D::TextureResourceColorSpace::Srgb);
@@ -344,9 +308,6 @@ int MeshMaterialResolver::ResolveSpecularTexture(const ModelAsset& asset, const 
     const std::string cacheKey = "specular:" + texturePath;
     auto found = materialTextureCache_.find(cacheKey);
     if (found != materialTextureCache_.end()) {
-        if (stats != nullptr) {
-            ++stats->materialTextureCacheHitCount;
-        }
         return BackendOrFallback(found->second, fallbacks_.whiteTexture);
     }
 
@@ -354,17 +315,11 @@ int MeshMaterialResolver::ResolveSpecularTexture(const ModelAsset& asset, const 
     if (TryResolveLoadedMaterialTexture(materialTextureCache_, cacheKey, "model_material/specular/", texturePath,
                                         RENDER3D::TextureResourceColorSpace::Linear, fallbacks_.whiteTexture,
                                         loadedHandle)) {
-        if (stats != nullptr) {
-            ++stats->materialTextureCacheHitCount;
-        }
         return loadedHandle;
     }
 
     if (!TryAcquireTextureLoadBudget(stats)) {
         return fallbacks_.whiteTexture;
-    }
-    if (stats != nullptr) {
-        ++stats->materialTextureCacheMissCount;
     }
     const RENDER3D::TextureResourceHandle resource = LoadMaterialTextureResource(
         "model_material/specular/", texturePath, RENDER3D::TextureResourceColorSpace::Linear);
@@ -392,9 +347,6 @@ int MeshMaterialResolver::ResolveSpecularColorTexture(const ModelAsset& asset, c
     const std::string cacheKey = "specularColor:" + texturePath;
     auto found = materialTextureCache_.find(cacheKey);
     if (found != materialTextureCache_.end()) {
-        if (stats != nullptr) {
-            ++stats->materialTextureCacheHitCount;
-        }
         return BackendOrFallback(found->second, fallbacks_.whiteTexture);
     }
 
@@ -402,17 +354,11 @@ int MeshMaterialResolver::ResolveSpecularColorTexture(const ModelAsset& asset, c
     if (TryResolveLoadedMaterialTexture(materialTextureCache_, cacheKey, "model_material/specular_color/", texturePath,
                                         RENDER3D::TextureResourceColorSpace::Srgb, fallbacks_.whiteTexture,
                                         loadedHandle)) {
-        if (stats != nullptr) {
-            ++stats->materialTextureCacheHitCount;
-        }
         return loadedHandle;
     }
 
     if (!TryAcquireTextureLoadBudget(stats)) {
         return fallbacks_.whiteTexture;
-    }
-    if (stats != nullptr) {
-        ++stats->materialTextureCacheMissCount;
     }
     const RENDER3D::TextureResourceHandle resource = LoadMaterialTextureResource(
         "model_material/specular_color/", texturePath, RENDER3D::TextureResourceColorSpace::Srgb);

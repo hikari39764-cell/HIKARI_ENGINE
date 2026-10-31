@@ -4,11 +4,10 @@
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 
 #include "Core/HIKARI_TimeService.h"
-#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
+#include "Diagnostics/HIKARI_MetricRegistry.h"
+#include "Editor/Performance/HIKARI_MetricText.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GfxDebugConfig.h"
-#include "Gfx/HIKARI_GpuFrameProfiler.h"
-#include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
@@ -35,13 +34,15 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
 
 struct RuntimePerformanceSnapshot {
-    std::optional<double> fpsRaw{};
+    // 性能指標はここから読む（CPU・GPU の計時、管線統計、FPS、VRAM、render.* の計数）。
+    std::vector<METRIC::MetricReading> metrics{};
     uint32_t fixedStepsThisFrame = 0u;
     float droppedFixedTimeSeconds = 0.0f;
     int backBufferWidth = 0;
@@ -71,16 +72,23 @@ struct RuntimePerformanceSnapshot {
     RENDER3D::UPSCALING::StreamlineReflexStats streamlineReflex{};
     RENDER3D::UPSCALING::StreamlineFrameGenerationStats streamlineFrameGeneration{};
     POST::PresentationFrameResources presentation{};
-    CPU_PROFILE::FrameSnapshot cpu{};
-    GFX::GPU_PROFILE::FrameSnapshot gpu{};
-    GFX::GPU_PIPELINE_STATS::FrameSnapshot pipelineStats{};
 };
 
 const char* ReadyText(bool value);
 
 double SafeDivide(uint64_t numerator, uint64_t denominator);
 
-bool IsMeshletPipelineStatsPass(GFX::GPU_PROFILE::Pass pass);
+// gpu.<pass 名>.pipeline.<項> の指標を pass ごとに束ねた行。
+struct PipelineStatsRow {
+    std::string_view name{};
+    const METRIC::MetricReading* calls = nullptr;
+    const METRIC::MetricReading* asInvocations = nullptr;
+    const METRIC::MetricReading* msInvocations = nullptr;
+    const METRIC::MetricReading* msPrimitives = nullptr;
+    const METRIC::MetricReading* clipPrimitives = nullptr;
+    const METRIC::MetricReading* psInvocations = nullptr;
+};
+std::vector<PipelineStatsRow> PipelineStatsRows(const std::vector<METRIC::MetricReading>& metrics);
 
 void AppendShadowCacheReason(std::string& text, uint32_t flags, uint32_t bit, const char* label);
 
@@ -94,14 +102,6 @@ void MetricRowText(const char* label, const char* value);
 
 RuntimePerformanceSnapshot BuildSnapshot();
 std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& snapshot);
-
-double SumGpuMsByScope(const GFX::GPU_PROFILE::FrameSnapshot& profile, bool nestedSubpass);
-
-uint32_t CountValidGpuPasses(const GFX::GPU_PROFILE::FrameSnapshot& profile);
-
-double GetCpuFrameMs(const CPU_PROFILE::FrameSnapshot& profile);
-
-uint32_t CountValidCpuPasses(const CPU_PROFILE::FrameSnapshot& profile);
 
 void DrawFrameSummary(const RuntimePerformanceSnapshot& s);
 

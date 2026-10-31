@@ -1,11 +1,16 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 
 #include <d3d12.h>
 
 namespace HIKARI::GFX::GPU_PROFILE {
+
+// GPU の計時は登録表（Diagnostics/HIKARI_MetricRegistry.h）へ出す。
+// frame.gpuMs（コマンド全体）と gpu.<pass 名>.ms|calls|selfMs。結果は読み戻しのため数フレーム遅れて届く。
+
+// 1 フレームで計れる実行回数の上限。同じ pass も実行のたびに 1 組ずつ使う。固定長なのでフレームごとの確保はない。
+inline constexpr uint32_t kMaxExecutionsPerFrame = 512u;
 
 enum class Pass : uint32_t {
     ShadowMap = 0,
@@ -66,33 +71,6 @@ enum class Pass : uint32_t {
     Count
 };
 
-struct PassTiming {
-    const char* name = "";
-    bool valid = false;
-    // 同じフレームで同じ pass を複数回実行した場合は、全実行の合計。回数は callCount。
-    double gpuMs = 0.0;
-    uint64_t ticks = 0;
-    uint32_t callCount = 0;
-    // 最初の実行の親 pass。
-    Pass parentPass = Pass::Count;
-    double exclusiveGpuMs = 0.0;
-    double averageMs = 0.0;
-    double p95Ms = 0.0;
-    double p99Ms = 0.0;
-    double maximumMs = 0.0;
-    uint32_t rollingSampleCount = 0;
-};
-
-struct FrameSnapshot {
-    bool initialized = false;
-    bool profilerEnabled = true;
-    bool gpuTimingAvailable = false;
-    uint64_t frameIndex = 0;
-    uint64_t timestampFrequency = 0;
-    const char* unavailableReason = "";
-    std::array<PassTiming, static_cast<size_t>(Pass::Count)> passes{};
-};
-
 const char* ToString(Pass pass);
 void SetEnabled(bool enabled, const char* unavailableReason = "");
 bool IsEnabled();
@@ -105,8 +83,6 @@ void ResetStatistics();
 
 bool BeginPass(ID3D12GraphicsCommandList* cmd, Pass pass);
 void EndPass(ID3D12GraphicsCommandList* cmd, Pass pass);
-
-const FrameSnapshot& GetLatestSnapshot();
 
 class ScopedGpuTimer {
 public:

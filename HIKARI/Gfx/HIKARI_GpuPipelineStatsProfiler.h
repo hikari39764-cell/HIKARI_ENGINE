@@ -1,6 +1,5 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 
 #include <d3d12.h>
@@ -9,21 +8,8 @@
 
 namespace HIKARI::GFX::GPU_PIPELINE_STATS {
 
-struct PassPipelineStats {
-    const char* name = "";
-    bool valid = false;
-    D3D12_QUERY_DATA_PIPELINE_STATISTICS1 counters{};
-};
-
-struct FrameSnapshot {
-    bool initialized = false;
-    bool profilerEnabled = true;
-    bool pipelineStatsAvailable = false;
-    bool meshShaderPipelineStatsSupported = false;
-    uint64_t frameIndex = 0;
-    const char* unavailableReason = "";
-    std::array<PassPipelineStats, static_cast<size_t>(GPU_PROFILE::Pass::Count)> passes{};
-};
+// 管線統計は登録表（Diagnostics/HIKARI_MetricRegistry.h）へ出す。
+// gpu.pipeline.executions（1 フレームの実行数）と gpu.<pass 名>.pipeline.<項>。同じ pass の実行は合計する。
 
 void SetEnabled(bool enabled, const char* unavailableReason = "");
 bool IsEnabled();
@@ -36,8 +22,6 @@ void ResetStatistics();
 
 bool BeginPass(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass);
 void EndPass(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass);
-
-const FrameSnapshot& GetLatestSnapshot();
 
 class ScopedPipelineStats {
 public:

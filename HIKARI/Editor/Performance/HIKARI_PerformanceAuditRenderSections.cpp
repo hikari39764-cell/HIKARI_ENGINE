@@ -2,10 +2,7 @@
 #include "Editor/Performance/HIKARI_PerformanceAuditPanel.h"
 
 #include "Core/HIKARI_TimeService.h"
-#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_DXCheck.h"
-#include "Gfx/HIKARI_GpuFrameProfiler.h"
-#include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
@@ -138,15 +135,20 @@ void DrawGpuMaterialTable(const RuntimePerformanceSnapshot& s) {
 
 void DrawMeshShaderPipelineStatsTable(const RuntimePerformanceSnapshot& s) {
     ImGui::SeparatorText(TEXT::Localize("editor.ui.mesh.shader.pipeline.stats.b8b8b8").c_str());
-    if (!s.pipelineStats.pipelineStatsAvailable) {
-        const char* reason =
-            s.pipelineStats.unavailableReason != nullptr && s.pipelineStats.unavailableReason[0] != '\0'
-                ? s.pipelineStats.unavailableReason
-                : "Pipeline statistics query data is waiting.";
-        ImGui::TextDisabled("%s", reason);
+    const METRIC::MetricReading* executions = METRIC::FindReading(s.metrics, METRIC::kGpuPipelineExecutions);
+    if (!IsFresh(executions)) {
+        // 取れない構成ではその理由を、それ以外は状態を示す。
+        if (executions != nullptr && executions->status == METRIC::MetricStatus::Unsupported) {
+            ImGui::TextDisabled("%s", std::string(executions->note).c_str());
+        } else {
+            ImGui::TextDisabled("%s", MetricText(executions, 0).c_str());
+        }
         return;
     }
 
+    const auto count = [](const METRIC::MetricReading* reading) {
+        return reading != nullptr ? static_cast<uint64_t>(reading->value) : uint64_t{0};
+    };
     bool drewRows = false;
     if (ImGui::BeginTable("MeshShaderPipelineStatsTable", 8,
                           ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
@@ -160,36 +162,32 @@ void DrawMeshShaderPipelineStatsTable(const RuntimePerformanceSnapshot& s) {
         ImGui::TableSetupColumn("PS / Prim");
         ImGui::TableHeadersRow();
 
-        for (size_t i = 0; i < s.pipelineStats.passes.size(); ++i) {
-            const GFX::GPU_PROFILE::Pass pass = static_cast<GFX::GPU_PROFILE::Pass>(i);
-            if (!IsMeshletPipelineStatsPass(pass)) {
-                continue;
-            }
-
-            const GFX::GPU_PIPELINE_STATS::PassPipelineStats& stats = s.pipelineStats.passes[i];
-            if (!stats.valid) {
+        for (const PipelineStatsRow& row : PipelineStatsRows(s.metrics)) {
+            if (!IsFresh(row.calls)) {
                 continue;
             }
             drewRows = true;
 
-            const D3D12_QUERY_DATA_PIPELINE_STATISTICS1& c = stats.counters;
+            const uint64_t msInvocations = count(row.msInvocations);
+            const uint64_t msPrimitives = count(row.msPrimitives);
+            const uint64_t psInvocations = count(row.psInvocations);
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted(stats.name);
+            ImGui::TextUnformatted(row.name.data(), row.name.data() + row.name.size());
             ImGui::TableSetColumnIndex(1);
-            ImGui::Text("%llu", static_cast<unsigned long long>(c.ASInvocations));
+            ImGui::Text("%llu", static_cast<unsigned long long>(count(row.asInvocations)));
             ImGui::TableSetColumnIndex(2);
-            ImGui::Text("%llu", static_cast<unsigned long long>(c.MSInvocations));
+            ImGui::Text("%llu", static_cast<unsigned long long>(msInvocations));
             ImGui::TableSetColumnIndex(3);
-            ImGui::Text("%llu", static_cast<unsigned long long>(c.MSPrimitives));
+            ImGui::Text("%llu", static_cast<unsigned long long>(msPrimitives));
             ImGui::TableSetColumnIndex(4);
-            ImGui::Text("%llu", static_cast<unsigned long long>(c.CPrimitives));
+            ImGui::Text("%llu", static_cast<unsigned long long>(count(row.clipPrimitives)));
             ImGui::TableSetColumnIndex(5);
-            ImGui::Text("%llu", static_cast<unsigned long long>(c.PSInvocations));
+            ImGui::Text("%llu", static_cast<unsigned long long>(psInvocations));
             ImGui::TableSetColumnIndex(6);
-            ImGui::Text("%.2f", SafeDivide(c.MSPrimitives, c.MSInvocations));
+            ImGui::Text("%.2f", SafeDivide(msPrimitives, msInvocations));
             ImGui::TableSetColumnIndex(7);
-            ImGui::Text("%.2f", SafeDivide(c.PSInvocations, c.MSPrimitives));
+            ImGui::Text("%.2f", SafeDivide(psInvocations, msPrimitives));
         }
         ImGui::EndTable();
     }

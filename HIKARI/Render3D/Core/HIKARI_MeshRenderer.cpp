@@ -1,5 +1,7 @@
 #include "HIKARI_MeshRenderer.h"
 
+#include "Core/HIKARI_TimeService.h"
+#include "Diagnostics/HIKARI_MetricRegistry.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
@@ -19,6 +21,40 @@ void InvalidateGpuDrivenSceneResidency() {
     gMeshRendererState.massGpuSceneBuffer.InvalidateResidency();
     gMeshRendererState.gpuDrivenSceneResidency.Reset();
     gMeshRendererState.gpuDrivenLayer.ResetFrame();
+}
+
+// MeshRendererFrameCounters の各計数を、render.* 指標として登録表へ出すための表。
+struct FrameCounterMetric {
+    const char* id;
+    const char* help;
+    size_t MeshRendererFrameCounters::* counter;
+    METRIC::MetricHandle handle = METRIC::kInvalidMetric;
+};
+
+FrameCounterMetric gFrameCounterMetrics[] = {
+    {"render.skinnedGpuDraws", "GPU-driven skinned draw commands issued in the frame.",
+     &MeshRendererFrameCounters::gpuDrivenSkinnedCommandCount},
+    {"render.meshCacheMisses", "GPU meshes created because the primitive was not cached.",
+     &MeshRendererFrameCounters::meshCacheMissCount},
+    {"render.textureLoads", "Material texture loads started in the frame.",
+     &MeshRendererFrameCounters::materialTextureLoadCount},
+    {"render.textureLoadsDeferred", "Material texture loads postponed by the per-frame load budget.",
+     &MeshRendererFrameCounters::materialTextureLoadDeferredCount},
+    {"render.psoCacheMisses", "Variant pipeline states created because they were not cached.",
+     &MeshRendererFrameCounters::psoCacheMissCount},
+};
+
+// 計数を 0 に戻した論理フレーム。同じフレームの 2 つ目以降のビューでは戻さず、フレーム全体の合計にする。
+uint64_t gCounterFrameIndex = UINT64_MAX;
+
+void PublishFrameCounters(uint64_t frameIndex) {
+    for (FrameCounterMetric& metric : gFrameCounterMetrics) {
+        if (metric.handle == METRIC::kInvalidMetric) {
+            metric.handle = METRIC::Register(
+                {metric.id, "Render3D.MeshRenderer", "count", METRIC::MetricCategory::Count, metric.help});
+        }
+        METRIC::Publish(metric.handle, static_cast<double>(gMeshRendererState.debugStats.*metric.counter), frameIndex);
+    }
 }
 } // namespace
 
@@ -136,7 +172,10 @@ bool HasSubmittedItems() {
 bool BeginFrame(const GFX::Context& graphics, const Camera3D& camera, const SceneEnvironment& environment,
                 const RENDER3D::LIGHTING::SceneLightingSet& lighting, uint32_t screenWidth, uint32_t screenHeight,
                 RenderDebugView debugView, const MeshFrameCameraOverrides* cameraOverrides) {
-    static_cast<MeshRendererFrameCounters&>(gMeshRendererState.debugStats) = {};
+    if (const uint64_t frameIndex = TIME::GetFrameContext().frameIndex; frameIndex != gCounterFrameIndex) {
+        gCounterFrameIndex = frameIndex;
+        static_cast<MeshRendererFrameCounters&>(gMeshRendererState.debugStats) = {};
+    }
     gMeshRendererState.materialFrameReady = false;
     const bool ready = BeginFrameInternal(graphics, camera, environment, lighting, screenWidth, screenHeight, debugView,
                                           cameraOverrides);
@@ -235,6 +274,8 @@ TerrainSurfaceGpuBindings GetTerrainSurfaceGpuBindings() {
 void EndFrame() {
     gMeshRendererState.materialFrameReady = false;
     gMeshRendererState.frameObjectIndex = 0;
+    // ビューごとに、そのフレームのここまでの合計を出す。最後のビューの値がフレーム全体になる。
+    PublishFrameCounters(TIME::GetFrameContext().frameIndex);
 }
 
 MeshRendererFrameResult RenderAll(const GFX::Context& graphics, const RENDER3D::RenderViewContext& view,

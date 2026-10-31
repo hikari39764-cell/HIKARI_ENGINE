@@ -143,7 +143,6 @@ void FillDebugStateBase(uint32_t width, uint32_t height, const AmbientOcclusionS
     gDebugState.strength = std::max(0.0f, settings.strength) * resolved.strengthScale;
     gDebugState.power = settings.power;
     gDebugState.pixMarkersAvailable = true;
-    gDebugState.gpuTimingAvailable = GFX::GPU_PROFILE::GetLatestSnapshot().gpuTimingAvailable;
     gDebugState.mainCpuMs = 0.0f;
     gDebugState.blurCpuMs = 0.0f;
     gDebugState.compositeCpuMs = 0.0f;

@@ -292,27 +292,15 @@ struct DrawItem {
     MeshRenderDebugMode renderDebugMode = MeshRenderDebugMode::Normal;
 };
 
-// 描画の準備で積み上げる回数。MESHRENDERER::BeginFrame が毎フレーム 0 に戻す。
+// 描画の準備で積み上げる回数。論理フレームの最初のビューが 0 に戻し、そのフレームの全ビュー分が溜まる。
+// MeshRenderer.cpp が render.* 指標として登録表へ出す。回数を足す時は、そこの表にも 1 行足す。
 // MeshRendererDebugStats の残りは毎フレーム上書きされる値なので、戻さない（ここへ置かない）。
 struct MeshRendererFrameCounters {
     size_t gpuDrivenSkinnedCommandCount = 0;
-    size_t primitiveMeshCacheHitCount = 0;
-    size_t primitiveMeshCacheMissCount = 0;
-    size_t primitiveSkinnedMeshCacheHitCount = 0;
-    size_t primitiveSkinnedMeshCacheMissCount = 0;
-    size_t materialTextureCacheHitCount = 0;
-    size_t materialTextureCacheMissCount = 0;
+    size_t meshCacheMissCount = 0;
+    size_t materialTextureLoadCount = 0;
     size_t materialTextureLoadDeferredCount = 0;
-    size_t psoCacheHitCount = 0;
     size_t psoCacheMissCount = 0;
-    size_t normalTextureCacheHitCount = 0;
-    size_t normalTextureCacheMissCount = 0;
-    size_t normalMappedPrimitiveCount = 0;
-    size_t normalMapFallbackCount = 0;
-    size_t emissiveTextureCacheHitCount = 0;
-    size_t emissiveTextureCacheMissCount = 0;
-    size_t emissiveMappedPrimitiveCount = 0;
-    size_t emissiveMapFallbackCount = 0;
 };
 
 struct MeshRendererDebugStats : MeshRendererFrameCounters {

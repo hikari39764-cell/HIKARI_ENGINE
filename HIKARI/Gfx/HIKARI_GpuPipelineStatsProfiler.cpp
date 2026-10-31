@@ -1,9 +1,14 @@
 #include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
 
+#include <array>
+#include <string>
+#include <string_view>
+
 #include <d3dx12.h>
 #include <wrl.h>
 
 #include "Core/HIKARI_Logger.h"
+#include "Diagnostics/HIKARI_MetricRegistry.h"
 #include "Gfx/HIKARI_DXCheck.h"
 
 namespace HIKARI::GFX::GPU_PIPELINE_STATS {
@@ -13,13 +18,18 @@ using Microsoft::WRL::ComPtr;
 
 constexpr uint32_t kBufferedFrameCount = 3u;
 constexpr uint32_t kPassCount = static_cast<uint32_t>(GPU_PROFILE::Pass::Count);
-constexpr uint32_t kQueryCount = kPassCount;
+constexpr uint32_t kQueryCount = GPU_PROFILE::kMaxExecutionsPerFrame;
+constexpr uint32_t kNoExecution = UINT32_MAX;
+constexpr const char* kMetricOwner = "Gfx.GpuPipelineStats";
 
 struct FrameSlot {
     ComPtr<ID3D12QueryHeap> queryHeap{};
     ComPtr<ID3D12Resource> readbackBuffer{};
-    std::array<uint8_t, kPassCount> used{};
-    std::array<uint8_t, kPassCount> active{};
+    // 実行順。i 番目の実行は query i を使う。同じ pass も実行のたびに 1 つずつ使う。
+    std::array<GPU_PROFILE::Pass, kQueryCount> executions{};
+    uint32_t executionCount = 0;
+    // 実行中の pass が使っている query。実行中でなければ kNoExecution。
+    std::array<uint32_t, kPassCount> activeExecution{};
     bool resolved = false;
     uint64_t frameIndex = 0;
     uint64_t retireFence = 0;
@@ -29,47 +39,74 @@ struct FrameSlot {
 struct ProfilerState {
     std::array<FrameSlot, kBufferedFrameCount> slots{};
     FrameSlot* currentSlot = nullptr;
-    FrameSnapshot latest{};
     uint32_t writeSlotIndex = 0;
     uint64_t statisticsEpoch = 1u;
     bool initialized = false;
     bool enabled = true;
-    bool meshShaderPipelineStatsSupported = false;
+    bool executionOverflowReported = false;
     const char* unavailableReason = "";
 };
 
 ProfilerState gState{};
 
+// pass 1 つ分の指標。その pass が初めて計測された時に登録する。
+struct PassMetrics {
+    METRIC::MetricHandle calls = METRIC::kInvalidMetric;
+    METRIC::MetricHandle asInvocations = METRIC::kInvalidMetric;
+    METRIC::MetricHandle msInvocations = METRIC::kInvalidMetric;
+    METRIC::MetricHandle msPrimitives = METRIC::kInvalidMetric;
+    METRIC::MetricHandle clipPrimitives = METRIC::kInvalidMetric;
+    METRIC::MetricHandle psInvocations = METRIC::kInvalidMetric;
+};
+std::array<PassMetrics, kPassCount> gPassMetrics{};
+
 uint32_t PassIndex(GPU_PROFILE::Pass pass) { return static_cast<uint32_t>(pass); }
 
 bool IsValidPass(GPU_PROFILE::Pass pass) { return PassIndex(pass) < kPassCount; }
 
-void ResetLatestNames(FrameSnapshot& snapshot) {
-    for (uint32_t i = 0; i < kPassCount; ++i) {
-        const GPU_PROFILE::Pass pass = static_cast<GPU_PROFILE::Pass>(i);
-        snapshot.passes[i].name = GPU_PROFILE::ToString(pass);
+METRIC::MetricHandle ExecutionsMetric() {
+    static const METRIC::MetricHandle handle =
+        METRIC::Register({METRIC::kGpuPipelineExecutions, kMetricOwner, "count", METRIC::MetricCategory::Count,
+                          "Pipeline statistics queries recorded in the frame."});
+    return handle;
+}
+
+const PassMetrics& MetricsOf(GPU_PROFILE::Pass pass) {
+    PassMetrics& metrics = gPassMetrics[PassIndex(pass)];
+    if (metrics.calls == METRIC::kInvalidMetric) {
+        const std::string base = std::string("gpu.") + GPU_PROFILE::ToString(pass) + ".pipeline.";
+        const auto add = [&base](const char* item, const char* help) {
+            return METRIC::Register({base + item, kMetricOwner, "count", METRIC::MetricCategory::Count, help});
+        };
+        metrics.calls = add("calls", "Pipeline statistics queries of the pass in the frame.");
+        metrics.asInvocations = add("asInvocations", "Amplification shader invocations, summed over the frame.");
+        metrics.msInvocations = add("msInvocations", "Mesh shader invocations, summed over the frame.");
+        metrics.msPrimitives = add("msPrimitives", "Primitives emitted by mesh shaders, summed over the frame.");
+        metrics.clipPrimitives = add("clipPrimitives", "Primitives that reached the clipper, summed over the frame.");
+        metrics.psInvocations = add("psInvocations", "Pixel shader invocations, summed over the frame.");
+    }
+    return metrics;
+}
+
+// 管線統計が取れない理由を指標へ出す。登録済みの指標がすべて「非対応」になる。
+void MarkUnavailable(const char* reason) {
+    const std::string_view text = reason != nullptr ? reason : "";
+    METRIC::MarkUnsupported(ExecutionsMetric(), text);
+    for (const PassMetrics& metrics : gPassMetrics) {
+        for (const METRIC::MetricHandle handle :
+             {metrics.calls, metrics.asInvocations, metrics.msInvocations, metrics.msPrimitives, metrics.clipPrimitives,
+              metrics.psInvocations}) {
+            METRIC::MarkUnsupported(handle, text);
+        }
     }
 }
 
-void ResetUnavailableSnapshot(const char* reason) {
-    gState.latest = {};
-    gState.latest.initialized = gState.initialized;
-    gState.latest.profilerEnabled = gState.enabled;
-    gState.latest.pipelineStatsAvailable = false;
-    gState.latest.meshShaderPipelineStatsSupported = gState.meshShaderPipelineStatsSupported;
-    gState.latest.unavailableReason = reason != nullptr ? reason : "";
-    ResetLatestNames(gState.latest);
-}
-
-void ResetStatisticsSnapshot() {
-    gState.latest = {};
-    gState.latest.initialized = gState.initialized;
-    gState.latest.profilerEnabled = gState.enabled;
-    gState.latest.pipelineStatsAvailable = false;
-    gState.latest.meshShaderPipelineStatsSupported = gState.meshShaderPipelineStatsSupported;
-    gState.latest.unavailableReason =
-        gState.enabled ? "Waiting for pipeline statistics after reset." : gState.unavailableReason;
-    ResetLatestNames(gState.latest);
+// 指標を捨てて、次の完了フレームを待つ状態へ戻す。取れない構成ならその理由は残す。
+void ClearMetrics() {
+    METRIC::ClearOwner(kMetricOwner);
+    if (!gState.enabled) {
+        MarkUnavailable(gState.unavailableReason);
+    }
 }
 
 bool CheckPipelineStatsSupport(ID3D12Device* device) {
@@ -83,13 +120,12 @@ bool EnsureInitialized(ID3D12Device* device) {
         return true;
     }
     if (device == nullptr) {
-        ResetUnavailableSnapshot("Pipeline stats profiler requires a valid device.");
+        MarkUnavailable("Pipeline stats profiler requires a valid device.");
         return false;
     }
 
-    gState.meshShaderPipelineStatsSupported = CheckPipelineStatsSupport(device);
-    if (!gState.meshShaderPipelineStatsSupported) {
-        ResetUnavailableSnapshot("Mesh shader pipeline statistics are not supported by this device/runtime.");
+    if (!CheckPipelineStatsSupport(device)) {
+        MarkUnavailable("Mesh shader pipeline statistics are not supported by this device/runtime.");
         return false;
     }
 
@@ -99,6 +135,7 @@ bool EnsureInitialized(ID3D12Device* device) {
         heapDesc.Count = kQueryCount;
         if (!HIKARI_DX_CHECK(device->CreateQueryHeap(&heapDesc, IID_PPV_ARGS(slot.queryHeap.GetAddressOf())),
                              "GpuPipelineStatsProfiler::CreateQueryHeap")) {
+            MarkUnavailable("Pipeline stats query resources could not be created.");
             return false;
         }
 
@@ -109,19 +146,14 @@ bool EnsureInitialized(ID3D12Device* device) {
                                                              D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
                                                              IID_PPV_ARGS(slot.readbackBuffer.GetAddressOf())),
                              "GpuPipelineStatsProfiler::CreateReadbackBuffer")) {
+            MarkUnavailable("Pipeline stats query resources could not be created.");
             return false;
         }
         slot.readbackBuffer->SetName(L"HIKARI.GpuPipelineStatsProfiler.Readback");
     }
 
     gState.initialized = true;
-    gState.latest = {};
-    gState.latest.initialized = true;
-    gState.latest.profilerEnabled = true;
-    gState.latest.pipelineStatsAvailable = true;
-    gState.latest.meshShaderPipelineStatsSupported = true;
-    gState.latest.unavailableReason = "";
-    ResetLatestNames(gState.latest);
+    ClearMetrics();
     return true;
 }
 
@@ -134,41 +166,57 @@ void CollectResolvedSlot(FrameSlot& slot) {
         return;
     }
 
-    const D3D12_RANGE readRange{0, sizeof(D3D12_QUERY_DATA_PIPELINE_STATISTICS1) * kQueryCount};
+    const D3D12_RANGE readRange{0, sizeof(D3D12_QUERY_DATA_PIPELINE_STATISTICS1) * slot.executionCount};
     void* mapped = nullptr;
     if (FAILED(slot.readbackBuffer->Map(0, &readRange, &mapped)) || mapped == nullptr) {
         return;
     }
     const auto* queryData = static_cast<const D3D12_QUERY_DATA_PIPELINE_STATISTICS1*>(mapped);
 
-    FrameSnapshot snapshot{};
-    snapshot.initialized = true;
-    snapshot.profilerEnabled = true;
-    snapshot.pipelineStatsAvailable = true;
-    snapshot.meshShaderPipelineStatsSupported = gState.meshShaderPipelineStatsSupported;
-    snapshot.frameIndex = slot.frameIndex;
-    snapshot.unavailableReason = "";
-    ResetLatestNames(snapshot);
-
-    for (uint32_t i = 0; i < kPassCount; ++i) {
-        if (slot.used[i] == 0) {
-            continue;
-        }
-
-        PassPipelineStats& stats = snapshot.passes[i];
-        stats.valid = true;
-        stats.counters = queryData[i];
+    // 同じ pass の実行は合計する。
+    struct PassTotal {
+        uint32_t calls = 0;
+        uint64_t asInvocations = 0;
+        uint64_t msInvocations = 0;
+        uint64_t msPrimitives = 0;
+        uint64_t clipPrimitives = 0;
+        uint64_t psInvocations = 0;
+    };
+    std::array<PassTotal, kPassCount> totals{};
+    for (uint32_t run = 0; run < slot.executionCount; ++run) {
+        const D3D12_QUERY_DATA_PIPELINE_STATISTICS1& counters = queryData[run];
+        PassTotal& total = totals[PassIndex(slot.executions[run])];
+        ++total.calls;
+        total.asInvocations += counters.ASInvocations;
+        total.msInvocations += counters.MSInvocations;
+        total.msPrimitives += counters.MSPrimitives;
+        total.clipPrimitives += counters.CPrimitives;
+        total.psInvocations += counters.PSInvocations;
     }
 
     const D3D12_RANGE writeRange{0, 0};
     slot.readbackBuffer->Unmap(0, &writeRange);
     slot.resolved = false;
-    gState.latest = snapshot;
+
+    METRIC::Publish(ExecutionsMetric(), slot.executionCount, slot.frameIndex);
+    for (uint32_t i = 0; i < kPassCount; ++i) {
+        const PassTotal& total = totals[i];
+        if (total.calls == 0u) {
+            continue;
+        }
+        const PassMetrics& metrics = MetricsOf(static_cast<GPU_PROFILE::Pass>(i));
+        METRIC::Publish(metrics.calls, total.calls, slot.frameIndex);
+        METRIC::Publish(metrics.asInvocations, static_cast<double>(total.asInvocations), slot.frameIndex);
+        METRIC::Publish(metrics.msInvocations, static_cast<double>(total.msInvocations), slot.frameIndex);
+        METRIC::Publish(metrics.msPrimitives, static_cast<double>(total.msPrimitives), slot.frameIndex);
+        METRIC::Publish(metrics.clipPrimitives, static_cast<double>(total.clipPrimitives), slot.frameIndex);
+        METRIC::Publish(metrics.psInvocations, static_cast<double>(total.psInvocations), slot.frameIndex);
+    }
 }
 
 void ResetSlot(FrameSlot& slot, uint64_t frameIndex) {
-    slot.used.fill(0u);
-    slot.active.fill(0u);
+    slot.executionCount = 0;
+    slot.activeExecution.fill(kNoExecution);
     slot.frameIndex = frameIndex;
     slot.resolved = false;
     slot.statisticsEpoch = gState.statisticsEpoch;
@@ -176,24 +224,30 @@ void ResetSlot(FrameSlot& slot, uint64_t frameIndex) {
 } // namespace
 
 void SetEnabled(bool enabled, const char* unavailableReason) {
+    // 「非対応」の理由を読み手が見つけられるよう、実行数の指標は最初の呼び出しで必ず登録する。
+    (void)ExecutionsMetric();
     const bool changed = gState.enabled != enabled;
+    const char* reason = enabled ? "" : (unavailableReason != nullptr ? unavailableReason : "");
+    const bool reasonChanged = std::string_view(gState.unavailableReason) != reason;
     if (changed) {
         ++gState.statisticsEpoch;
     }
     gState.enabled = enabled;
-    gState.unavailableReason = enabled ? "" : (unavailableReason != nullptr ? unavailableReason : "");
+    gState.unavailableReason = reason;
     if (!enabled) {
         gState.currentSlot = nullptr;
-        ResetUnavailableSnapshot(gState.unavailableReason);
+        if (changed || reasonChanged) {
+            MarkUnavailable(reason);
+        }
     } else if (changed) {
-        ResetStatisticsSnapshot();
+        ClearMetrics();
     }
 }
 
 void ResetStatistics() {
     ++gState.statisticsEpoch;
     // アクティブなクエリ状態は変更せず、フレームの解決後に世代番号で破棄する。
-    ResetStatisticsSnapshot();
+    ClearMetrics();
 }
 
 bool IsEnabled() { return gState.enabled; }
@@ -202,7 +256,6 @@ void BeginFrame(ID3D12Device* device, ID3D12GraphicsCommandList* cmd, uint64_t f
                 uint64_t retireFence) {
     if (!gState.enabled) {
         gState.currentSlot = nullptr;
-        ResetUnavailableSnapshot(gState.unavailableReason);
         return;
     }
     if (cmd == nullptr || !EnsureInitialized(device)) {
@@ -229,15 +282,16 @@ void EndFrame(ID3D12GraphicsCommandList* cmd) {
         return;
     }
 
-    for (uint32_t i = 0; i < kPassCount; ++i) {
-        if (slot->active[i] != 0) {
-            cmd->EndQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_PIPELINE_STATISTICS1, i);
-            slot->active[i] = 0;
+    // 閉じられなかった pass は、フレームの終わりで閉じる。
+    for (uint32_t& execution : slot->activeExecution) {
+        if (execution != kNoExecution) {
+            cmd->EndQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_PIPELINE_STATISTICS1, execution);
+            execution = kNoExecution;
         }
-        if (slot->used[i] != 0) {
-            cmd->ResolveQueryData(slot->queryHeap.Get(), D3D12_QUERY_TYPE_PIPELINE_STATISTICS1, i, 1u,
-                                  slot->readbackBuffer.Get(), sizeof(D3D12_QUERY_DATA_PIPELINE_STATISTICS1) * i);
-        }
+    }
+    if (slot->executionCount > 0) {
+        cmd->ResolveQueryData(slot->queryHeap.Get(), D3D12_QUERY_TYPE_PIPELINE_STATISTICS1, 0u, slot->executionCount,
+                              slot->readbackBuffer.Get(), 0u);
     }
 
     slot->resolved = true;
@@ -248,11 +302,10 @@ void Shutdown() {
     for (FrameSlot& slot : gState.slots) {
         slot.queryHeap.Reset();
         slot.readbackBuffer.Reset();
-        slot.used.fill(0u);
-        slot.active.fill(0u);
         slot.resolved = false;
     }
     gState = {};
+    METRIC::ClearOwner(kMetricOwner);
 }
 
 bool BeginPass(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass) {
@@ -261,14 +314,24 @@ bool BeginPass(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass) {
         return false;
     }
 
+    // 実行中の同じ pass を入れ子で計ると二重計上になる。終わった後の再実行は 1 回ずつ計る。
     const uint32_t index = PassIndex(pass);
-    if (slot->active[index] != 0 || slot->used[index] != 0 || slot->queryHeap == nullptr) {
+    if (slot->activeExecution[index] != kNoExecution || slot->queryHeap == nullptr) {
+        return false;
+    }
+    if (slot->executionCount == kQueryCount) {
+        if (!gState.executionOverflowReported) {
+            gState.executionOverflowReported = true;
+            HIKARI_LOG_WARN("[GpuPipelineStatsProfiler] more than " + std::to_string(kQueryCount) +
+                            " pipeline statistics executions in one frame; the rest are not counted.");
+        }
         return false;
     }
 
-    cmd->BeginQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_PIPELINE_STATISTICS1, index);
-    slot->active[index] = 1u;
-    slot->used[index] = 1u;
+    const uint32_t run = slot->executionCount++;
+    cmd->BeginQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_PIPELINE_STATISTICS1, run);
+    slot->executions[run] = pass;
+    slot->activeExecution[index] = run;
     return true;
 }
 
@@ -279,15 +342,13 @@ void EndPass(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass) {
     }
 
     const uint32_t index = PassIndex(pass);
-    if (slot->active[index] == 0 || slot->queryHeap == nullptr) {
+    if (slot->activeExecution[index] == kNoExecution || slot->queryHeap == nullptr) {
         return;
     }
 
-    cmd->EndQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_PIPELINE_STATISTICS1, index);
-    slot->active[index] = 0u;
+    cmd->EndQuery(slot->queryHeap.Get(), D3D12_QUERY_TYPE_PIPELINE_STATISTICS1, slot->activeExecution[index]);
+    slot->activeExecution[index] = kNoExecution;
 }
-
-const FrameSnapshot& GetLatestSnapshot() { return gState.latest; }
 
 ScopedPipelineStats::ScopedPipelineStats(ID3D12GraphicsCommandList* cmd, GPU_PROFILE::Pass pass)
     : cmd_(cmd), pass_(pass) {

@@ -280,18 +280,11 @@ void FillMaterialValues(ObjectCB& obj, const MaterialAsset* materialAsset, int n
         return;
     }
 
-    MeshRendererDebugStats* stats = ctx.stats;
     if (normalTextureHandle >= 0 && normalTextureHandle != ctx.fallbackNormalTextureHandle) {
         obj.hasNormalTexture = 1;
-        if (stats) {
-            ++stats->normalMappedPrimitiveCount;
-        }
     }
     if (emissiveTextureHandle >= 0 && emissiveTextureHandle != ctx.fallbackBlackTextureHandle) {
         obj.hasEmissiveTexture = 1;
-        if (stats) {
-            ++stats->emissiveMappedPrimitiveCount;
-        }
     }
     if (metallicRoughnessTextureHandle >= 0 && metallicRoughnessTextureHandle != ctx.fallbackTextureHandle) {
         obj.hasMetallicRoughnessTexture = 1;

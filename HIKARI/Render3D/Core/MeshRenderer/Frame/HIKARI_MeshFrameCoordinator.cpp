@@ -260,7 +260,6 @@ MeshDrawContext BuildDrawContext(const GFX::Context& graphics, bool depthAwarePh
     ctx.materialFill.fallbackTextureHandle = gMeshRendererState.fallbackTextureHandle;
     ctx.materialFill.fallbackNormalTextureHandle = gMeshRendererState.fallbackNormalTextureHandle;
     ctx.materialFill.fallbackBlackTextureHandle = gMeshRendererState.fallbackBlackTextureHandle;
-    ctx.materialFill.stats = &gMeshRendererState.debugStats;
     ctx.services.device = graphics.device;
     ctx.services.primitiveCache = &gMeshRendererState.primitiveCache;
     ctx.services.materialResolver = &gMeshRendererState.materialResolver;

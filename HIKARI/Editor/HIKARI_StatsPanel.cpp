@@ -1,6 +1,9 @@
+#include "Core/HIKARI_TimeService.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "HIKARI_StatsPanel.h"
+#include "Diagnostics/HIKARI_MetricRegistry.h"
 #include "Editor/HIKARI_EditorContext.h"
+#include "Editor/Performance/HIKARI_MetricText.h"
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_GfxContext.h"
@@ -54,6 +57,7 @@ void StatsPanel::DrawContents(const char* sceneName, const World& world, const M
     const RENDER3D::RUNTIME::SceneRenderCache::Stats& sceneRenderCacheStats =
         RenderSubmissionSystem::GetSceneRenderCacheStats();
     const MESHRENDERER::MeshRendererDebugStats& meshStats = MESHRENDERER::GetDebugStats();
+    const std::vector<METRIC::MetricReading> metrics = METRIC::Snapshot(TIME::GetFrameContext().frameIndex);
     if (ImGui::TreeNodeEx(TEXT::LocalizeWindow("editor.ui.render.summary.c7fd99", "Render Summary").c_str(),
                           ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Text(TEXT::Localize("editor.ui.modelrenderer.frame.s.986990").c_str(),
@@ -70,8 +74,8 @@ void StatsPanel::DrawContents(const char* sceneName, const World& world, const M
                             meshStats.gpuSceneUpload.bufferStats.initialized
                         ? "Ready"
                         : "Missing");
-        ImGui::Text(TEXT::Localize("editor.ui.texture.loads.deferred.zu.4c0307").c_str(),
-                    meshStats.materialTextureLoadDeferredCount);
+        ImGui::Text(TEXT::Localize("editor.stats.textureLoadsDeferred").c_str(),
+                    EDITOR::MetricText(METRIC::FindReading(metrics, "render.textureLoadsDeferred"), 0).c_str());
         ImGui::TreePop();
     }
 
@@ -136,8 +140,8 @@ void StatsPanel::DrawContents(const char* sceneName, const World& world, const M
     if (ImGui::TreeNode(TEXT::LocalizeWindow("editor.ui.animation.skinning.74b194", "Animation / Skinning").c_str())) {
         const RENDER3D::GPUDRIVEN::GpuSceneJointPaletteUploadStats jointUpload =
             RENDER3D::GPUDRIVEN::GetGpuSceneJointPaletteUploadStats(GFX::GetCurrentContext());
-        ImGui::Text(TEXT::Localize("editor.ui.skinned.gpu.draws.zu.484e22").c_str(),
-                    meshStats.gpuDrivenSkinnedCommandCount);
+        ImGui::Text(TEXT::Localize("editor.stats.skinnedGpuDraws").c_str(),
+                    EDITOR::MetricText(METRIC::FindReading(metrics, "render.skinnedGpuDraws"), 0).c_str());
         ImGui::Text(TEXT::Localize("editor.ui.uploaded.joints.zu.201370").c_str(),
                     static_cast<size_t>(jointUpload.matrixPayloadBytes / sizeof(MATH::Mat4)));
         ImGui::TreePop();

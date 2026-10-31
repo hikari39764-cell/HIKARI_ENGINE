@@ -37,21 +37,15 @@ BenchmarkRun::BenchmarkRun(uint32_t warmupFrames, uint32_t sampleFrames)
       sampleFrames_((std::clamp)(sampleFrames, 1u, kMaximumFrames)) {
     frames_.reserve(sampleFrames_);
     intervals_.reserve(sampleFrames_);
+    timings_.reserve(kMaximumPasses);
 }
 
-void BenchmarkRun::RecordPasses(Series& destination, std::span<const BenchmarkTiming> passes) {
-    // 同じフレームで同名のパスを二重計上しない。入力名も容量も制限する。
+// 登録表の id は重複しないので、同じフレームで同名の区間が二重に入ることはない。入力名も容量も制限する。
+void BenchmarkRun::RecordPasses(Series& destination, std::span<const Timing> passes) {
     for (size_t i = 0; i < (std::min)(passes.size(), kMaximumPasses); ++i) {
         const auto& pass = passes[i];
         if (pass.name.empty() || pass.name.size() > 128 || !std::isfinite(pass.milliseconds) ||
             pass.milliseconds < 0.0) {
-            ++rejectedPasses_;
-            continue;
-        }
-        bool duplicate = false;
-        for (size_t earlier = 0; earlier < i; ++earlier)
-            duplicate |= passes[earlier].name == pass.name;
-        if (duplicate) {
             ++rejectedPasses_;
             continue;
         }
@@ -69,7 +63,24 @@ void BenchmarkRun::RecordPasses(Series& destination, std::span<const BenchmarkTi
     rejectedPasses_ += static_cast<uint32_t>(passes.size() - (std::min)(passes.size(), kMaximumPasses));
 }
 
-bool BenchmarkRun::RecordFrame(uint64_t frameId, double intervalMs, std::span<const BenchmarkTiming> cpuPasses) {
+void BenchmarkRun::CollectTimings(const std::vector<METRIC::MetricReading>& metrics, std::string_view domain,
+                                  std::string_view frameMetricId, std::string_view frameName, uint64_t sourceFrame) {
+    const auto observed = [sourceFrame](const METRIC::MetricReading* reading) {
+        return reading != nullptr && reading->status == METRIC::MetricStatus::Fresh &&
+               reading->sourceFrame == sourceFrame;
+    };
+    timings_.clear();
+    if (const METRIC::MetricReading* frame = METRIC::FindReading(metrics, frameMetricId); observed(frame)) {
+        timings_.push_back({frameName, frame->value});
+    }
+    for (const METRIC::TimingRow& row : METRIC::TimingRows(metrics, domain)) {
+        if (observed(row.ms)) {
+            timings_.push_back({row.name, row.ms->value});
+        }
+    }
+}
+
+bool BenchmarkRun::RecordFrame(uint64_t frameId, double intervalMs, const std::vector<METRIC::MetricReading>& metrics) {
     if (CaptureComplete() || (hasFrame_ && frameId <= lastFrameId_))
         return false;
     hasFrame_ = true;
@@ -83,18 +94,24 @@ bool BenchmarkRun::RecordFrame(uint64_t frameId, double intervalMs, std::span<co
         intervals_.push_back(intervalMs);
     else
         ++invalidIntervals_;
-    RecordPasses(cpuPasses_, cpuPasses);
+    CollectTimings(metrics, "cpu", METRIC::kFrameCpuMs, "CPU Frame", frameId);
+    RecordPasses(cpuPasses_, timings_);
     return true;
 }
 
-bool BenchmarkRun::RecordGpu(uint64_t frameId, std::span<const BenchmarkTiming> passes) {
+bool BenchmarkRun::RecordGpu(const std::vector<METRIC::MetricReading>& metrics) {
+    const METRIC::MetricReading* gpuFrame = METRIC::FindReading(metrics, METRIC::kFrameGpuMs);
+    if (gpuFrame == nullptr || gpuFrame->status != METRIC::MetricStatus::Fresh)
+        return false;
+    const uint64_t frameId = gpuFrame->sourceFrame;
     auto found = std::lower_bound(frames_.begin(), frames_.end(), frameId,
                                   [](const CapturedFrame& frame, uint64_t id) { return frame.id < id; });
     if (found == frames_.end() || found->id != frameId || found->gpuObserved)
         return false;
     found->gpuObserved = true;
     ++gpuFrames_;
-    RecordPasses(gpuPasses_, passes);
+    CollectTimings(metrics, "gpu", METRIC::kFrameGpuMs, "Command Frame", frameId);
+    RecordPasses(gpuPasses_, timings_);
     return true;
 }
 

@@ -478,7 +478,7 @@ bool BeginFrame(const RUNTIME::HostBootstrapConfig& cfg) {
     gActionTimeDilationService.ApplyPending();
     const FrameContext& frame = HIKARI::TIME::BeginFrame();
     gActionTimeDilationService.Advance(frame.unscaledDt);
-    CPU_PROFILE::BeginFrame(frame.frameIndex);
+    CPU_PROFILE::BeginFrame(frame.frameIndex, frame.rawDt);
     CPU_PROFILE::ScopedCpuTimer cpuBeginFrame(CPU_PROFILE::Pass::ServicesBeginFrame);
     {
         static const auto qualityPass = CPU_PROFILE::RegisterDynamicPass("Frame.QualityAndResize");

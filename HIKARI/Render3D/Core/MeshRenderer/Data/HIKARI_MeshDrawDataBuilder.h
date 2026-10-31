@@ -25,7 +25,6 @@ struct MeshMaterialFillContext {
     int fallbackTextureHandle = -1;
     int fallbackNormalTextureHandle = -1;
     int fallbackBlackTextureHandle = -1;
-    MeshRendererDebugStats* stats = nullptr;
 };
 
 void FillCameraCB(const MATH::Mat4& viewProj, const MATH::Mat4& inverseViewProj, const MATH::Vec3& cameraPosition,

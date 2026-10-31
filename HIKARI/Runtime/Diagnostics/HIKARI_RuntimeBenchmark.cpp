@@ -5,16 +5,14 @@
 #include <exception>
 #include <Windows.h>
 #include <Psapi.h>
-#include <dxgi1_6.h>
-#include <wrl/client.h>
 #include "Core/HIKARI_Logger.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Diagnostics/HIKARI_BenchmarkRun.h"
-#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
+#include "Diagnostics/HIKARI_MetricRegistry.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GfxDebugConfig.h"
-#include "Gfx/HIKARI_GpuFrameProfiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
@@ -30,7 +28,6 @@
 namespace HIKARI::RUNTIME {
 using Clock = std::chrono::steady_clock;
 using Json = nlohmann::json;
-using Timing = DIAGNOSTICS::BenchmarkTiming;
 
 namespace {
 // 測定条件として、環境の参照・解決済みのプロファイル・その時点の主光源を残す。
@@ -44,6 +41,27 @@ Json DescribeEnvironment(const DocumentSceneBase& document) {
               {"illuminance", light.illuminance},
               {"moon", environment.frame.moonIsPrimary},
               {"localHours", environment.frame.localHours}}}};
+}
+
+// 登録表の全指標を、最後に見えた状態のまま書き出す。値のない指標は値を書かず、状態で示す。
+Json DescribeMetrics(const std::vector<METRIC::MetricReading>& metrics) {
+    Json result = Json::object();
+    for (const METRIC::MetricReading& reading : metrics) {
+        const METRIC::MetricDescriptor& descriptor = *reading.descriptor;
+        Json entry = {{"unit", descriptor.unit},
+                      {"category", METRIC::ToString(descriptor.category)},
+                      {"owner", descriptor.owner},
+                      {"help", descriptor.help},
+                      {"status", METRIC::ToString(reading.status)}};
+        if (reading.status == METRIC::MetricStatus::Fresh || reading.status == METRIC::MetricStatus::Stale) {
+            entry["value"] = reading.value;
+            entry["sourceFrame"] = reading.sourceFrame;
+        } else if (reading.status == METRIC::MetricStatus::Unsupported) {
+            entry["note"] = reading.note;
+        }
+        result[descriptor.id] = std::move(entry);
+    }
+    return result;
 }
 } // namespace
 
@@ -68,6 +86,7 @@ struct RuntimeBenchmark::State {
     uint64_t jointPaletteMatrixPayloadBytes = 0, jointPaletteSnapshotUploads = 0;
     uint64_t jointPaletteSnapshotReuses = 0, jointPaletteEmptyBindingUploads = 0;
     uint64_t minimumVramBudget = UINT64_MAX;
+    uint64_t lastFrameId = 0;
     uint32_t processMemorySamples = 0, videoMemorySamples = 0;
     RENDER3D::RenderQualitySettings initialQuality{};
     std::array<uint32_t, 6> initialDimensions{};
@@ -78,9 +97,8 @@ struct RuntimeBenchmark::State {
     uint64_t initialSceneRevision = 0;
     Json context = Json::object();
     Json startup = Json::object();
-    Microsoft::WRL::ComPtr<IDXGIAdapter3> adapter;
 
-    void SampleMemory() {
+    void SampleMemory(const std::vector<METRIC::MetricReading>& metrics) {
         PROCESS_MEMORY_COUNTERS_EX memory{};
         memory.cb = sizeof(memory);
         if (K32GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory),
@@ -89,11 +107,13 @@ struct RuntimeBenchmark::State {
             peakWorkingSet = (std::max)(peakWorkingSet, static_cast<uint64_t>(memory.WorkingSetSize));
             peakPrivateBytes = (std::max)(peakPrivateBytes, static_cast<uint64_t>(memory.PrivateUsage));
         }
-        DXGI_QUERY_VIDEO_MEMORY_INFO video{};
-        if (adapter && SUCCEEDED(adapter->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &video))) {
+        const METRIC::MetricReading* usage = METRIC::FindReading(metrics, METRIC::kVramUsage);
+        const METRIC::MetricReading* budget = METRIC::FindReading(metrics, METRIC::kVramBudget);
+        if (usage != nullptr && budget != nullptr && usage->status == METRIC::MetricStatus::Fresh &&
+            budget->status == METRIC::MetricStatus::Fresh) {
             ++videoMemorySamples;
-            peakVram = (std::max)(peakVram, video.CurrentUsage);
-            minimumVramBudget = (std::min)(minimumVramBudget, video.Budget);
+            peakVram = (std::max)(peakVram, static_cast<uint64_t>(usage->value));
+            minimumVramBudget = (std::min)(minimumVramBudget, static_cast<uint64_t>(budget->value));
         }
     }
 
@@ -176,18 +196,11 @@ struct RuntimeBenchmark::State {
 #else
         context["configuration"] = "Debug";
 #endif
-        Microsoft::WRL::ComPtr<IDXGIFactory4> factory;
-        if (graphics.device && SUCCEEDED(CreateDXGIFactory2(0, IID_PPV_ARGS(&factory))) &&
-            SUCCEEDED(factory->EnumAdapterByLuid(graphics.device->GetAdapterLuid(), IID_PPV_ARGS(&adapter)))) {
-            DXGI_ADAPTER_DESC1 desc{};
-            if (SUCCEEDED(adapter->GetDesc1(&desc))) {
-                char name[512]{};
-                WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, name, sizeof(name), nullptr, nullptr);
-                context["adapter"] = {{"name", name},
-                                      {"vendorId", desc.VendorId},
-                                      {"deviceId", desc.DeviceId},
-                                      {"dedicatedVideoMemoryBytes", desc.DedicatedVideoMemory}};
-            }
+        if (const auto adapter = GFX::VIDEO_MEMORY::GetAdapterInfo()) {
+            context["adapter"] = {{"name", adapter->name},
+                                  {"vendorId", adapter->vendorId},
+                                  {"deviceId", adapter->deviceId},
+                                  {"dedicatedVideoMemoryBytes", adapter->dedicatedVideoMemoryBytes}};
         }
     }
 };
@@ -228,22 +241,9 @@ void RuntimeBenchmark::OnPresentedFrame(uint64_t frameId, bool applicationFrame,
     }
     const double intervalMs = std::chrono::duration<double, std::milli>(now - s.previousPresent).count();
     s.previousPresent = now;
-    std::array<Timing, static_cast<size_t>(CPU_PROFILE::Pass::Count) + CPU_PROFILE::kMaximumDynamicPasses> cpu{};
-    size_t count = 0;
-    const auto& cpuSnapshot = CPU_PROFILE::GetLatestSnapshot();
-    if (cpuSnapshot.valid && cpuSnapshot.frameIndex == frameId) {
-        for (const auto& pass : cpuSnapshot.passes)
-            if (pass.valid)
-                cpu[count++] = {pass.name, pass.cpuMs};
-        for (uint32_t i = 0;
-             i < (std::min)(cpuSnapshot.dynamicPassCount, static_cast<uint32_t>(CPU_PROFILE::kMaximumDynamicPasses));
-             ++i) {
-            const auto& pass = cpuSnapshot.dynamicPasses[i];
-            if (pass.valid)
-                cpu[count++] = {pass.name, pass.cpuMs};
-        }
-    }
-    if (s.run.RecordFrame(frameId, intervalMs, {cpu.data(), count})) {
+    s.lastFrameId = frameId;
+    const std::vector<METRIC::MetricReading> metrics = METRIC::Snapshot(frameId);
+    if (s.run.RecordFrame(frameId, intervalMs, metrics)) {
         if (renderRejected)
             ++s.rejectedRenderSamples;
         s.CaptureContext(scene);
@@ -261,18 +261,9 @@ void RuntimeBenchmark::OnPresentedFrame(uint64_t frameId, bool applicationFrame,
             (std::max)(s.peakMassInstances,
                        static_cast<uint64_t>(RenderSubmissionSystem::GetDebugStats().massRenderInstanceCount));
         if (s.run.SampleCount() == 1 || s.run.SampleCount() % 60 == 0 || s.run.CaptureComplete())
-            s.SampleMemory();
+            s.SampleMemory(metrics);
     }
-    const auto& gpuSnapshot = GFX::GPU_PROFILE::GetLatestSnapshot();
-    if (gpuSnapshot.gpuTimingAvailable) {
-        std::array<Timing, static_cast<size_t>(GFX::GPU_PROFILE::Pass::Count)> gpu{};
-        count = 0;
-        for (const auto& pass : gpuSnapshot.passes)
-            if (pass.valid)
-                gpu[count++] = {pass.name, pass.gpuMs};
-        if (count > 0)
-            s.run.RecordGpu(gpuSnapshot.frameIndex, {gpu.data(), count});
-    }
+    s.run.RecordGpu(metrics);
     // GPU の末尾回読は追加フレームで回収し、計測用の同期待機は行わない。
     if (s.run.CaptureComplete() && (s.run.GpuCoverageComplete() || ++s.drainFrames >= 8))
         Finish();
@@ -308,8 +299,12 @@ void RuntimeBenchmark::Finish() {
             {"peakPrivateBytes", s.processMemorySamples ? Json(s.peakPrivateBytes) : Json(nullptr)},
             {"peakLocalVideoUsageBytes", s.videoMemorySamples ? Json(s.peakVram) : Json(nullptr)},
             {"minimumLocalVideoBudgetBytes", s.videoMemorySamples ? Json(s.minimumVramBudget) : Json(nullptr)}};
-        const auto& gpu = GFX::GPU_PROFILE::GetLatestSnapshot();
-        report["gpuUnavailableReasonAtFinish"] = gpu.unavailableReason ? gpu.unavailableReason : "";
+        const std::vector<METRIC::MetricReading> metrics = METRIC::Snapshot(s.lastFrameId);
+        const METRIC::MetricReading* gpuFrame = METRIC::FindReading(metrics, METRIC::kFrameGpuMs);
+        report["gpuUnavailableReasonAtFinish"] =
+            gpuFrame != nullptr && gpuFrame->status == METRIC::MetricStatus::Unsupported ? std::string(gpuFrame->note)
+                                                                                         : std::string();
+        report["metricsAtFinish"] = DescribeMetrics(metrics);
         const auto& fg = RENDER3D::UPSCALING::GetStreamlineFrameGenerationStats();
         report["frameGenerationAtFinish"] = {{"status", RENDER3D::UPSCALING::ToString(fg.status)},
                                              {"requested", fg.requested},

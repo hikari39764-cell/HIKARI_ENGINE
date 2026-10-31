@@ -1,12 +1,15 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 
 #include <algorithm>
-#include "Core/HIKARI_RollingTimingWindow.h"
+#include <array>
+#include <string>
+#include <string_view>
 
 #include <d3dx12.h>
 #include <wrl.h>
 
 #include "Core/HIKARI_Logger.h"
+#include "Diagnostics/HIKARI_MetricRegistry.h"
 #include "Gfx/HIKARI_DXCheck.h"
 
 namespace HIKARI::GFX::GPU_PROFILE {
@@ -17,10 +20,9 @@ using Microsoft::WRL::ComPtr;
 constexpr uint32_t kBufferedFrameCount = 3u;
 constexpr uint32_t kPassCount = static_cast<uint32_t>(Pass::Count);
 constexpr uint32_t kQueriesPerExecution = 2u;
-// 1 フレームで計れる実行回数の上限。同じ pass も実行のたびに 1 組ずつ使う。固定長なのでフレームごとの確保はない。
-constexpr uint32_t kMaxExecutionsPerFrame = 512u;
 constexpr uint32_t kQueryCount = kMaxExecutionsPerFrame * kQueriesPerExecution;
 constexpr uint32_t kNoExecution = UINT32_MAX;
+constexpr const char* kMetricOwner = "Gfx.GpuFrameProfiler";
 
 struct Execution {
     Pass pass = Pass::Count;
@@ -46,8 +48,6 @@ struct FrameSlot {
 struct ProfilerState {
     std::array<FrameSlot, kBufferedFrameCount> slots{};
     FrameSlot* currentSlot = nullptr;
-    FrameSnapshot latest{};
-    std::array<PERFORMANCE::RollingTimingWindow, kPassCount> rolling{};
     uint64_t timestampFrequency = 0;
     uint32_t writeSlotIndex = 0;
     uint32_t groupDepth = 0;
@@ -60,38 +60,58 @@ struct ProfilerState {
 
 ProfilerState gState{};
 
+// pass 1 つ分の指標。その pass が初めて計測された時に登録する。
+struct PassMetrics {
+    METRIC::MetricHandle ms = METRIC::kInvalidMetric;
+    METRIC::MetricHandle calls = METRIC::kInvalidMetric;
+    METRIC::MetricHandle selfMs = METRIC::kInvalidMetric;
+};
+std::array<PassMetrics, kPassCount> gPassMetrics{};
+
 uint32_t PassIndex(Pass pass) { return static_cast<uint32_t>(pass); }
 
 uint32_t QueryIndex(uint32_t execution, uint32_t endpoint) { return execution * kQueriesPerExecution + endpoint; }
 
 bool IsValidPass(Pass pass) { return PassIndex(pass) < kPassCount; }
 
-void ResetLatestNames(FrameSnapshot& snapshot) {
-    for (uint32_t i = 0; i < kPassCount; ++i) {
-        const Pass pass = static_cast<Pass>(i);
-        snapshot.passes[i].name = ToString(pass);
+METRIC::MetricHandle FrameMetric() {
+    static const METRIC::MetricHandle handle =
+        METRIC::Register({METRIC::kFrameGpuMs, kMetricOwner, "ms", METRIC::MetricCategory::Work,
+                          "GPU time of the whole frame's commands."});
+    return handle;
+}
+
+const PassMetrics& MetricsOf(Pass pass) {
+    PassMetrics& metrics = gPassMetrics[PassIndex(pass)];
+    if (metrics.ms == METRIC::kInvalidMetric) {
+        const std::string base = std::string("gpu.") + ToString(pass);
+        metrics.ms = METRIC::Register({base + ".ms", kMetricOwner, "ms", METRIC::MetricCategory::Work,
+                                       "GPU time of the pass, summed over every execution in the frame."});
+        metrics.calls = METRIC::Register({base + ".calls", kMetricOwner, "count", METRIC::MetricCategory::Count,
+                                          "Executions of the pass in the frame."});
+        metrics.selfMs = METRIC::Register({base + ".selfMs", kMetricOwner, "ms", METRIC::MetricCategory::Work,
+                                           "GPU time of the pass without the passes nested inside it."});
+    }
+    return metrics;
+}
+
+// 計時が取れない理由を指標へ出す。登録済みの指標がすべて「非対応」になる。
+void MarkUnavailable(const char* reason) {
+    const std::string_view text = reason != nullptr ? reason : "";
+    METRIC::MarkUnsupported(FrameMetric(), text);
+    for (const PassMetrics& metrics : gPassMetrics) {
+        METRIC::MarkUnsupported(metrics.ms, text);
+        METRIC::MarkUnsupported(metrics.calls, text);
+        METRIC::MarkUnsupported(metrics.selfMs, text);
     }
 }
 
-void ResetUnavailableSnapshot(const char* reason) {
-    gState.latest = {};
-    gState.latest.initialized = gState.initialized;
-    gState.latest.profilerEnabled = gState.enabled;
-    gState.latest.gpuTimingAvailable = false;
-    gState.latest.timestampFrequency = gState.timestampFrequency;
-    gState.latest.unavailableReason = reason != nullptr ? reason : "";
-    ResetLatestNames(gState.latest);
-}
-
-void ResetStatisticsSnapshot() {
-    gState.latest = {};
-    gState.latest.initialized = gState.initialized;
-    gState.latest.profilerEnabled = gState.enabled;
-    gState.latest.gpuTimingAvailable = false;
-    gState.latest.timestampFrequency = gState.timestampFrequency;
-    gState.latest.unavailableReason =
-        gState.enabled ? "Waiting for a completed GPU frame after statistics reset." : gState.unavailableReason;
-    ResetLatestNames(gState.latest);
+// 指標と標本窓を捨てて、次の完了フレームを待つ状態へ戻す。計時できない構成ならその理由は残す。
+void ClearMetrics() {
+    METRIC::ClearOwner(kMetricOwner);
+    if (!gState.enabled) {
+        MarkUnavailable(gState.unavailableReason);
+    }
 }
 
 bool EnsureInitialized(ID3D12Device* device, ID3D12CommandQueue* queue) {
@@ -99,14 +119,14 @@ bool EnsureInitialized(ID3D12Device* device, ID3D12CommandQueue* queue) {
         return true;
     }
     if (device == nullptr || queue == nullptr) {
-        ResetUnavailableSnapshot("GPU profiler requires a valid device and command queue.");
+        MarkUnavailable("GPU profiler requires a valid device and command queue.");
         return false;
     }
 
     uint64_t frequency = 0;
     if (FAILED(queue->GetTimestampFrequency(&frequency)) || frequency == 0) {
         HIKARI_LOG_WARN("[GpuFrameProfiler] timestamp frequency is unavailable.");
-        ResetUnavailableSnapshot("Timestamp frequency is unavailable.");
+        MarkUnavailable("Timestamp frequency is unavailable.");
         return false;
     }
 
@@ -116,6 +136,7 @@ bool EnsureInitialized(ID3D12Device* device, ID3D12CommandQueue* queue) {
         heapDesc.Count = kQueryCount;
         if (!HIKARI_DX_CHECK(device->CreateQueryHeap(&heapDesc, IID_PPV_ARGS(slot.queryHeap.GetAddressOf())),
                              "GpuFrameProfiler::CreateQueryHeap")) {
+            MarkUnavailable("GPU profiler query resources could not be created.");
             return false;
         }
 
@@ -125,6 +146,7 @@ bool EnsureInitialized(ID3D12Device* device, ID3D12CommandQueue* queue) {
                                                              D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
                                                              IID_PPV_ARGS(slot.readbackBuffer.GetAddressOf())),
                              "GpuFrameProfiler::CreateReadbackBuffer")) {
+            MarkUnavailable("GPU profiler query resources could not be created.");
             return false;
         }
         slot.readbackBuffer->SetName(L"HIKARI.GpuFrameProfiler.Readback");
@@ -132,13 +154,7 @@ bool EnsureInitialized(ID3D12Device* device, ID3D12CommandQueue* queue) {
 
     gState.timestampFrequency = frequency;
     gState.initialized = true;
-    gState.latest = {};
-    gState.latest.initialized = true;
-    gState.latest.profilerEnabled = true;
-    gState.latest.gpuTimingAvailable = true;
-    gState.latest.timestampFrequency = frequency;
-    gState.latest.unavailableReason = "";
-    ResetLatestNames(gState.latest);
+    ClearMetrics();
     return true;
 }
 
@@ -158,16 +174,13 @@ void CollectResolvedSlot(FrameSlot& slot) {
     }
     const uint64_t* queryData = static_cast<const uint64_t*>(mapped);
 
-    FrameSnapshot snapshot{};
-    snapshot.initialized = true;
-    snapshot.profilerEnabled = true;
-    snapshot.gpuTimingAvailable = true;
-    snapshot.frameIndex = slot.frameIndex;
-    snapshot.timestampFrequency = gState.timestampFrequency;
-    snapshot.unavailableReason = "";
-    ResetLatestNames(snapshot);
-
     // 同じ pass の実行は合計する。self 時間は、実行ごとに自分の親 pass の分から引く。
+    struct PassTotal {
+        double ms = 0.0;
+        double selfMs = 0.0;
+        uint32_t calls = 0;
+    };
+    std::array<PassTotal, kPassCount> totals{};
     for (uint32_t run = 0; run < slot.executionCount; ++run) {
         const uint64_t start = queryData[QueryIndex(run, 0u)];
         const uint64_t end = queryData[QueryIndex(run, 1u)];
@@ -176,42 +189,36 @@ void CollectResolvedSlot(FrameSlot& slot) {
         }
 
         const Execution& execution = slot.executions[run];
-        PassTiming& timing = snapshot.passes[PassIndex(execution.pass)];
-        const uint64_t ticks = end - start;
-        const double ms = static_cast<double>(ticks) * 1000.0 / static_cast<double>(gState.timestampFrequency);
-        if (!timing.valid) {
-            timing.valid = true;
-            timing.parentPass = execution.parent;
-        }
-        ++timing.callCount;
-        timing.ticks += ticks;
-        timing.gpuMs += ms;
-        timing.exclusiveGpuMs += ms;
+        const double ms = static_cast<double>(end - start) * 1000.0 / static_cast<double>(gState.timestampFrequency);
+        PassTotal& total = totals[PassIndex(execution.pass)];
+        ++total.calls;
+        total.ms += ms;
+        total.selfMs += ms;
         if (IsValidPass(execution.parent)) {
-            snapshot.passes[PassIndex(execution.parent)].exclusiveGpuMs -= ms;
+            totals[PassIndex(execution.parent)].selfMs -= ms;
         }
-    }
-
-    // 窓へ入れる標本は、フレームごとの合計。
-    for (uint32_t i = 0; i < kPassCount; ++i) {
-        PassTiming& timing = snapshot.passes[i];
-        timing.exclusiveGpuMs = (std::max)(0.0, timing.exclusiveGpuMs);
-        if (!timing.valid) {
-            continue;
-        }
-        auto& window = gState.rolling[i];
-        window.Push(timing.gpuMs);
-        timing.averageMs = window.Average();
-        timing.p95Ms = window.p95;
-        timing.p99Ms = window.p99;
-        timing.maximumMs = window.maximum;
-        timing.rollingSampleCount = static_cast<uint32_t>(window.count);
     }
 
     const D3D12_RANGE writeRange{0, 0};
     slot.readbackBuffer->Unmap(0, &writeRange);
     slot.resolved = false;
-    gState.latest = snapshot;
+
+    // 登録表の標本窓へ入れる標本は、フレームごとの合計。
+    for (uint32_t i = 0; i < kPassCount; ++i) {
+        const PassTotal& total = totals[i];
+        if (total.calls == 0u) {
+            continue;
+        }
+        const Pass pass = static_cast<Pass>(i);
+        if (pass == Pass::CommandFrame) {
+            METRIC::Publish(FrameMetric(), total.ms, slot.frameIndex);
+            continue;
+        }
+        const PassMetrics& metrics = MetricsOf(pass);
+        METRIC::Publish(metrics.ms, total.ms, slot.frameIndex);
+        METRIC::Publish(metrics.calls, total.calls, slot.frameIndex);
+        METRIC::Publish(metrics.selfMs, (std::max)(0.0, total.selfMs), slot.frameIndex);
+    }
 }
 
 void ResetSlot(FrameSlot& slot, uint64_t frameIndex) {
@@ -225,27 +232,31 @@ void ResetSlot(FrameSlot& slot, uint64_t frameIndex) {
 } // namespace
 
 void SetEnabled(bool enabled, const char* unavailableReason) {
+    // 「非対応」の理由を読み手が見つけられるよう、フレーム指標は最初の呼び出しで必ず登録する。
+    (void)FrameMetric();
     const bool changed = gState.enabled != enabled;
+    const char* reason = enabled ? "" : (unavailableReason != nullptr ? unavailableReason : "");
+    const bool reasonChanged = std::string_view(gState.unavailableReason) != reason;
     if (changed) {
-        gState.rolling = {};
         ++gState.statisticsEpoch;
     }
     gState.enabled = enabled;
-    gState.unavailableReason = enabled ? "" : (unavailableReason != nullptr ? unavailableReason : "");
+    gState.unavailableReason = reason;
     if (!enabled) {
         gState.currentSlot = nullptr;
-        ResetUnavailableSnapshot(gState.unavailableReason);
+        if (changed || reasonChanged) {
+            MarkUnavailable(reason);
+        }
     } else if (changed) {
-        ResetStatisticsSnapshot();
+        ClearMetrics();
     }
 }
 
 void ResetStatistics() {
-    gState.rolling = {};
     ++gState.statisticsEpoch;
     // 記録中のスコープは維持し、EndPass/EndFrame まで完了させる。
     // ただし、この世代の結果は統計リセット後の値として採用しない。
-    ResetStatisticsSnapshot();
+    ClearMetrics();
 }
 
 bool IsEnabled() { return gState.enabled; }
@@ -316,7 +327,6 @@ void BeginFrame(ID3D12Device* device, ID3D12CommandQueue* queue, ID3D12GraphicsC
                 uint64_t completedFence, uint64_t retireFence) {
     if (!gState.enabled) {
         gState.currentSlot = nullptr;
-        ResetUnavailableSnapshot(gState.unavailableReason);
         return;
     }
     if (cmd == nullptr || !EnsureInitialized(device, queue)) {
@@ -370,6 +380,7 @@ void Shutdown() {
         slot.resolved = false;
     }
     gState = {};
+    METRIC::ClearOwner(kMetricOwner);
 }
 
 bool BeginPass(ID3D12GraphicsCommandList* cmd, Pass pass) {
@@ -424,8 +435,6 @@ void EndPass(ID3D12GraphicsCommandList* cmd, Pass pass) {
         break;
     }
 }
-
-const FrameSnapshot& GetLatestSnapshot() { return gState.latest; }
 
 ScopedGpuTimer::ScopedGpuTimer(ID3D12GraphicsCommandList* cmd, Pass pass) : cmd_(cmd), pass_(pass) {
     if (cmd_ != nullptr && IsValidPass(pass_)) {

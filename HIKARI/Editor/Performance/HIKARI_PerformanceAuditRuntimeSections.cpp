@@ -2,10 +2,7 @@
 #include "Editor/Performance/HIKARI_PerformanceAuditPanel.h"
 
 #include "Core/HIKARI_TimeService.h"
-#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_DXCheck.h"
-#include "Gfx/HIKARI_GpuFrameProfiler.h"
-#include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
@@ -302,7 +299,7 @@ void DrawReadiness(const RuntimePerformanceSnapshot& s) {
         ImGui::TableNextColumn();
         TextStatus("Cluster Resource", s.clusterResources.initialized && s.clusterResources.readyResourceCount > 0);
         TextStatus("Meshlet Backend", s.mesh.meshletBackend.pipelineReady);
-        TextStatus("GPU Timing", s.gpu.gpuTimingAvailable);
+        TextStatus("GPU Timing", IsFresh(METRIC::FindReading(s.metrics, METRIC::kFrameGpuMs)));
         ImGui::EndTable();
     }
 }

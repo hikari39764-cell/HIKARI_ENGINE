@@ -1,18 +1,12 @@
 #pragma once
 
-#include "Core/HIKARI_RollingTimingWindow.h"
-
-#include <array>
 #include <chrono>
-#include <cstddef>
 #include <cstdint>
-#include <string>
 #include <string_view>
 
 namespace HIKARI::CPU_PROFILE {
 
-inline constexpr std::size_t kRollingWindowFrameCount = PERFORMANCE::kTimingWindowSampleCount;
-inline constexpr std::size_t kMaximumDynamicPasses = 128u;
+// CPU の計時は登録表（Diagnostics/HIKARI_MetricRegistry.h）へ出す。frame.fps / frame.cpuMs / cpu.<区間名>.ms|calls。
 using DynamicPassHandle = uint32_t;
 inline constexpr DynamicPassHandle kInvalidDynamicPassHandle = static_cast<DynamicPassHandle>(-1);
 
@@ -36,31 +30,11 @@ enum class Pass : uint32_t {
     Count
 };
 
-struct PassTiming {
-    const char* name = "";
-    bool valid = false;
-    double cpuMs = 0.0;
-    double averageMs = 0.0;
-    double p95Ms = 0.0;
-    double p99Ms = 0.0;
-    double maximumMs = 0.0;
-    uint32_t callCount = 0;
-    uint32_t rollingSampleCount = 0;
-};
-
-struct FrameSnapshot {
-    bool valid = false;
-    uint64_t frameIndex = 0;
-    std::array<PassTiming, static_cast<size_t>(Pass::Count)> passes{};
-    std::array<PassTiming, kMaximumDynamicPasses> dynamicPasses{};
-    uint32_t dynamicPassCount = 0;
-};
-
 const char* ToString(Pass pass);
-void BeginFrame(uint64_t frameIndex);
+// previousFrameSeconds は前のフレームの開始からの経過秒。測れていない時（初回など）は 0 を渡す。
+void BeginFrame(uint64_t frameIndex, double previousFrameSeconds);
 void EndFrame();
 void ResetStatistics();
-const FrameSnapshot& GetLatestSnapshot();
 DynamicPassHandle RegisterDynamicPass(std::string_view name);
 
 class ScopedCpuTimer {

@@ -36,7 +36,6 @@ struct SsaoDebugState {
     float strength = 0.0f;
     float power = 0.0f;
     bool pixMarkersAvailable = false;
-    bool gpuTimingAvailable = false;
     float geometryAuxCpuMs = 0.0f;
     float mainCpuMs = 0.0f;
     float blurCpuMs = 0.0f;

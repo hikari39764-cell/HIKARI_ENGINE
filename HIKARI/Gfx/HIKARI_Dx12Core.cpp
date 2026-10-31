@@ -20,6 +20,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Core/HIKARI_Logger.h"
 
 using Microsoft::WRL::ComPtr;
@@ -424,6 +425,7 @@ GraphicsShutdownResult Dx12Core::Shutdown() {
         gpuIdle ? GraphicsShutdownResult::DrainedAfterGpuIdle : GraphicsShutdownResult::DrainedAfterDeviceLost;
     GPU_PIPELINE_STATS::Shutdown();
     GPU_PROFILE::Shutdown();
+    VIDEO_MEMORY::Shutdown();
     deferredReleaseQueue_.FlushAll();
     ReleaseDepthBuffer();
     gameSurface_.Shutdown(resourceStates_);
@@ -473,6 +475,7 @@ bool Dx12Core::BeginFrame(float clearR, float clearG, float clearB, float clearA
     const uint64_t completedFence = fence_->GetCompletedValue();
     GPU_PROFILE::BeginFrame(device_.Get(), queue_.Get(), cmdList_.Get(), logicalFrameId, completedFence, fenceValue_);
     GPU_PIPELINE_STATS::BeginFrame(device_.Get(), cmdList_.Get(), logicalFrameId, completedFence, fenceValue_);
+    VIDEO_MEMORY::Publish(device_.Get(), logicalFrameId);
     PIX::BeginGpuEvent(cmdList_.Get(), PIX::kColorFrame, "Frame");
 
     resourceStates_.Transition(cmdList_.Get(), CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET);

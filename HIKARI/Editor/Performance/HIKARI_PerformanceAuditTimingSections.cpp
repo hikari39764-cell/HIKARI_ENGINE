@@ -1,12 +1,9 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Performance/HIKARI_PerformanceAuditPanel.h"
 
-#include "Core/HIKARI_FrameRate.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_DXCheck.h"
-#include "Gfx/HIKARI_GpuFrameProfiler.h"
-#include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
@@ -30,8 +27,22 @@
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
+
+namespace {
+// フレームの区間（CPU_PROFILE::Pass）なら列挙の番号、そうでなければ -1。後者はシーンのシステムごとの計時。
+int FramePhaseOrder(std::string_view name) {
+    for (uint32_t pass = 1; pass < static_cast<uint32_t>(CPU_PROFILE::Pass::Count); ++pass) {
+        if (name == CPU_PROFILE::ToString(static_cast<CPU_PROFILE::Pass>(pass))) {
+            return static_cast<int>(pass);
+        }
+    }
+    return -1;
+}
+} // namespace
 
 void DrawFrameSummary(const RuntimePerformanceSnapshot& s) {
     const size_t mainlineSubmittedCount = s.mesh.meshletBackend.submittedDispatchCount > 0
@@ -40,20 +51,20 @@ void DrawFrameSummary(const RuntimePerformanceSnapshot& s) {
     const bool clusterMainline = s.mesh.clusterGpuCull.submittedInstanceCount > 0 || mainlineSubmittedCount > 0;
     const bool gpuDrivenReady =
         s.mesh.gpuSceneUpload.bufferStats.srv.ptr != 0 && s.mesh.gpuSceneUpload.bufferStats.initialized;
-    const double cpuFrameMs = GetCpuFrameMs(s.cpu);
-    const double parentGpuMs = SumGpuMsByScope(s.gpu, false);
-    const double nestedSubpassGpuMs = SumGpuMsByScope(s.gpu, true);
+    const METRIC::MetricReading* fps = METRIC::FindReading(s.metrics, METRIC::kFrameFps);
+    const METRIC::MetricReading* cpuFrame = METRIC::FindReading(s.metrics, METRIC::kFrameCpuMs);
+    const METRIC::MetricReading* gpuFrame = METRIC::FindReading(s.metrics, METRIC::kFrameGpuMs);
 
     if (ImGui::BeginTable("GpuDrivenFrameSummary", 4, ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableNextColumn();
-        ImGui::Text("FPS %s", PERFORMANCE::FormatFramesPerSecond(s.fpsRaw).c_str());
-        if (s.cpu.valid) {
-            ImGui::Text(TEXT::Localize("editor.ui.cpu.frame.3f.ms.f03a1f").c_str(), cpuFrameMs);
-            const CPU_PROFILE::PassTiming& frameTiming = s.cpu.passes[static_cast<size_t>(CPU_PROFILE::Pass::Frame)];
-            ImGui::Text(TEXT::Localize("editor.ui.avg.3f.p95.3f.ms.220a6d").c_str(), frameTiming.averageMs,
-                        frameTiming.p95Ms);
+        ImGui::Text("FPS %s", MetricText(fps, 1).c_str());
+        if (IsFresh(cpuFrame)) {
+            ImGui::Text(TEXT::Localize("editor.ui.cpu.frame.3f.ms.f03a1f").c_str(), cpuFrame->value);
+            ImGui::Text(TEXT::Localize("editor.ui.avg.3f.p95.3f.ms.220a6d").c_str(), cpuFrame->window.average,
+                        cpuFrame->window.p95);
         } else {
-            ImGui::TextDisabled(TEXT::Localize("editor.ui.cpu.timing.waiting.06aa72").c_str());
+            ImGui::TextDisabled(TEXT::Localize("editor.performance.cpuFrameState").c_str(),
+                                MetricText(cpuFrame, 3).c_str());
         }
         ImGui::Text(TEXT::Localize("editor.ui.fixed.u.dropped.2f.ms.b59587").c_str(), s.fixedStepsThisFrame,
                     static_cast<double>(s.droppedFixedTimeSeconds) * 1000.0);
@@ -72,47 +83,73 @@ void DrawFrameSummary(const RuntimePerformanceSnapshot& s) {
                     s.mesh.clusterGpuCull.gpuDrawCommandCount);
 
         ImGui::TableNextColumn();
-        ImGui::Text(TEXT::Localize("editor.ui.gpu.parent.3f.ms.ea7ff2").c_str(), parentGpuMs);
-        ImGui::Text(TEXT::Localize("editor.ui.nested.sub.3f.ms.bf7e52").c_str(), nestedSubpassGpuMs);
+        if (IsFresh(gpuFrame)) {
+            ImGui::Text(TEXT::Localize("editor.performance.gpuFrame").c_str(), gpuFrame->value);
+            ImGui::Text(TEXT::Localize("editor.ui.avg.3f.p95.3f.ms.220a6d").c_str(), gpuFrame->window.average,
+                        gpuFrame->window.p95);
+        } else {
+            ImGui::TextDisabled(TEXT::Localize("editor.performance.gpuFrameState").c_str(),
+                                MetricText(gpuFrame, 3).c_str());
+        }
         ImGui::EndTable();
     }
 }
 
 void DrawCpuTimingTable(const RuntimePerformanceSnapshot& s) {
     ImGui::SeparatorText(TEXT::Localize("editor.ui.cpu.timing.cff982").c_str());
-    if (!s.cpu.valid) {
-        ImGui::TextDisabled(
-            TEXT::Localize("editor.ui.cpu.timing.data.is.waiting.for.a.completed.frame.0848ab").c_str());
+    const METRIC::MetricReading* frame = METRIC::FindReading(s.metrics, METRIC::kFrameCpuMs);
+    if (!IsFresh(frame)) {
+        ImGui::TextDisabled(TEXT::Localize("editor.performance.cpuFrameState").c_str(), MetricText(frame, 3).c_str());
         return;
     }
 
-    const double frameMs = (std::max)(0.0001, GetCpuFrameMs(s.cpu));
+    // フレームの区間は列挙の順に、残りはシステムごとの計時として p95 の大きい順に並べる。
+    const std::vector<METRIC::TimingRow> rows = METRIC::TimingRows(s.metrics, "cpu");
+    std::vector<const METRIC::TimingRow*> phases;
+    std::vector<const METRIC::TimingRow*> systems;
+    for (const METRIC::TimingRow& row : rows) {
+        if (IsFresh(row.ms)) {
+            (FramePhaseOrder(row.name) >= 0 ? phases : systems).push_back(&row);
+        }
+    }
+    std::sort(phases.begin(), phases.end(), [](const METRIC::TimingRow* lhs, const METRIC::TimingRow* rhs) {
+        return FramePhaseOrder(lhs->name) < FramePhaseOrder(rhs->name);
+    });
+    std::sort(systems.begin(), systems.end(), [](const METRIC::TimingRow* lhs, const METRIC::TimingRow* rhs) {
+        if (lhs->ms->window.p95 != rhs->ms->window.p95) {
+            return lhs->ms->window.p95 > rhs->ms->window.p95;
+        }
+        return lhs->ms->window.average > rhs->ms->window.average;
+    });
+
+    const double frameMs = (std::max)(0.0001, frame->value);
     ImGui::Text(TEXT::Localize("editor.ui.frame.llu.scopes.u.frame.3f.ms.ea6fdd").c_str(),
-                static_cast<unsigned long long>(s.cpu.frameIndex), CountValidCpuPasses(s.cpu), frameMs);
-    const CPU_PROFILE::PassTiming& frameTiming = s.cpu.passes[static_cast<size_t>(CPU_PROFILE::Pass::Frame)];
+                static_cast<unsigned long long>(frame->sourceFrame), static_cast<unsigned>(phases.size() + 1u),
+                frameMs);
     ImGui::Text(TEXT::Localize("editor.ui.rolling.u.frames.avg.3f.p95.3f.p99.3f.max.3f.ms.fdf253").c_str(),
-                frameTiming.rollingSampleCount, frameTiming.averageMs, frameTiming.p95Ms, frameTiming.p99Ms,
-                frameTiming.maximumMs);
+                frame->window.sampleCount, frame->window.average, frame->window.p95, frame->window.p99,
+                frame->window.maximum);
     ImGui::TextDisabled(TEXT::Localize("editor.ui.inclusive.timings.nested.scopes.are.not.additive.e24523").c_str());
 
-    const auto drawTimingRow = [frameMs](const CPU_PROFILE::PassTiming& timing) {
+    const auto drawTimingRow = [frameMs](std::string_view name, const METRIC::MetricReading& ms,
+                                         const METRIC::MetricReading* calls) {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted(timing.name);
+        ImGui::TextUnformatted(name.data(), name.data() + name.size());
         ImGui::TableSetColumnIndex(1);
-        ImGui::Text("%.3f", timing.cpuMs);
+        ImGui::Text("%.3f", ms.value);
         ImGui::TableSetColumnIndex(2);
-        ImGui::Text("%.3f", timing.averageMs);
+        ImGui::Text("%.3f", ms.window.average);
         ImGui::TableSetColumnIndex(3);
-        ImGui::Text("%.3f", timing.p95Ms);
+        ImGui::Text("%.3f", ms.window.p95);
         ImGui::TableSetColumnIndex(4);
-        ImGui::Text("%.3f", timing.p99Ms);
+        ImGui::Text("%.3f", ms.window.p99);
         ImGui::TableSetColumnIndex(5);
-        ImGui::Text("%.3f", timing.maximumMs);
+        ImGui::Text("%.3f", ms.window.maximum);
         ImGui::TableSetColumnIndex(6);
-        ImGui::Text("%u", timing.callCount);
+        ImGui::TextUnformatted(calls != nullptr ? MetricText(calls, 0).c_str() : "-");
         ImGui::TableSetColumnIndex(7);
-        ImGui::ProgressBar(static_cast<float>((std::min)(1.0, timing.cpuMs / frameMs)), ImVec2(-1.0f, 0.0f), "");
+        ImGui::ProgressBar(static_cast<float>((std::min)(1.0, ms.value / frameMs)), ImVec2(-1.0f, 0.0f), "");
     };
 
     if (ImGui::BeginTable("CpuFrameTimingTable", 8,
@@ -127,36 +164,17 @@ void DrawCpuTimingTable(const RuntimePerformanceSnapshot& s) {
         ImGui::TableSetupColumn("Frame Share");
         ImGui::TableHeadersRow();
 
-        for (size_t i = 0; i < s.cpu.passes.size(); ++i) {
-            const CPU_PROFILE::PassTiming& timing = s.cpu.passes[i];
-            if (!timing.valid && timing.maximumMs <= 0.0) {
-                continue;
-            }
-            drawTimingRow(timing);
+        drawTimingRow(CPU_PROFILE::ToString(CPU_PROFILE::Pass::Frame), *frame, nullptr);
+        for (const METRIC::TimingRow* row : phases) {
+            drawTimingRow(row->name, *row->ms, row->calls);
         }
         ImGui::EndTable();
     }
 
-    std::array<const CPU_PROFILE::PassTiming*, CPU_PROFILE::kMaximumDynamicPasses> systemTimings{};
-    uint32_t systemTimingCount = 0u;
-    for (uint32_t index = 0u; index < s.cpu.dynamicPassCount; ++index) {
-        const CPU_PROFILE::PassTiming& timing = s.cpu.dynamicPasses[index];
-        if (timing.valid || timing.maximumMs > 0.0) {
-            systemTimings[systemTimingCount++] = &timing;
-        }
-    }
-    std::sort(systemTimings.begin(), systemTimings.begin() + systemTimingCount,
-              [](const CPU_PROFILE::PassTiming* lhs, const CPU_PROFILE::PassTiming* rhs) {
-                  if (lhs->p95Ms != rhs->p95Ms) {
-                      return lhs->p95Ms > rhs->p95Ms;
-                  }
-                  return lhs->averageMs > rhs->averageMs;
-              });
-
     ImGui::SeparatorText(TEXT::Localize("editor.ui.scene.system.cpu.e8ace7").c_str());
     ImGui::TextDisabled(
         TEXT::Localize("editor.ui.frame.scopes.aggregate.variable.updates.fixed.scopes.aggregate.a.93f7e5").c_str());
-    if (systemTimingCount == 0u) {
+    if (systems.empty()) {
         ImGui::TextDisabled(
             TEXT::Localize("editor.ui.system.timing.data.is.waiting.for.an.active.scene.768221").c_str());
     } else if (ImGui::BeginTable("CpuSystemTimingTable", 8,
@@ -171,8 +189,8 @@ void DrawCpuTimingTable(const RuntimePerformanceSnapshot& s) {
         ImGui::TableSetupColumn("Calls", ImGuiTableColumnFlags_WidthFixed, 70.0f);
         ImGui::TableSetupColumn("Frame Share");
         ImGui::TableHeadersRow();
-        for (uint32_t index = 0u; index < systemTimingCount; ++index) {
-            drawTimingRow(*systemTimings[index]);
+        for (const METRIC::TimingRow* row : systems) {
+            drawTimingRow(row->name, *row->ms, row->calls);
         }
         ImGui::EndTable();
     }
@@ -180,45 +198,48 @@ void DrawCpuTimingTable(const RuntimePerformanceSnapshot& s) {
 
 void DrawGpuTimingTable(const RuntimePerformanceSnapshot& s) {
     ImGui::SeparatorText(TEXT::Localize("editor.ui.gpu.timing.10adc4").c_str());
-    if (!s.gpu.gpuTimingAvailable) {
-        ImGui::TextDisabled("%s", s.gpu.profilerEnabled ? "Timestamp query data is waiting." : s.gpu.unavailableReason);
+    const METRIC::MetricReading* frame = METRIC::FindReading(s.metrics, METRIC::kFrameGpuMs);
+    if (!IsFresh(frame)) {
+        // 計時できない構成ではその理由を、それ以外は状態を示す。
+        if (frame != nullptr && frame->status == METRIC::MetricStatus::Unsupported) {
+            ImGui::TextDisabled("%s", std::string(frame->note).c_str());
+        } else {
+            ImGui::TextDisabled(TEXT::Localize("editor.performance.gpuFrameState").c_str(),
+                                MetricText(frame, 3).c_str());
+        }
         return;
     }
 
+    std::vector<METRIC::TimingRow> rows = METRIC::TimingRows(s.metrics, "gpu");
+    rows.erase(std::remove_if(rows.begin(), rows.end(), [](const METRIC::TimingRow& row) { return !IsFresh(row.ms); }),
+               rows.end());
     ImGui::Text(TEXT::Localize("editor.ui.frame.llu.u.measured.passes.bcd895").c_str(),
-                static_cast<unsigned long long>(s.gpu.frameIndex), CountValidGpuPasses(s.gpu));
+                static_cast<unsigned long long>(frame->sourceFrame), static_cast<unsigned>(rows.size()));
     ImGui::TextDisabled(
         TEXT::Localize("editor.ui.sample.sums.all.executions.of.a.pass.in.the.frame.and.includes.c.6c68c4").c_str());
-    if (ImGui::BeginTable("GpuDrivenTimingTable", 9,
+    if (ImGui::BeginTable("GpuDrivenTimingTable", 8,
                           ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
-        for (const char* title :
-             {"Pass", "Parent", "Sample ms", "Calls", "Self ms", "Avg ms", "P95 ms", "P99 ms", "Samples"})
+        for (const char* title : {"Pass", "Sample ms", "Calls", "Self ms", "Avg ms", "P95 ms", "P99 ms", "Samples"})
             ImGui::TableSetupColumn(title);
         ImGui::TableHeadersRow();
-        for (const auto& timing : s.gpu.passes) {
-            if (!timing.valid)
-                continue;
+        for (const METRIC::TimingRow& row : rows) {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted(timing.name);
+            ImGui::TextUnformatted(row.name.data(), row.name.data() + row.name.size());
             ImGui::TableSetColumnIndex(1);
-            ImGui::TextUnformatted(timing.parentPass == GFX::GPU_PROFILE::Pass::Count
-                                       ? "-"
-                                       : GFX::GPU_PROFILE::ToString(timing.parentPass));
+            ImGui::Text("%.3f", row.ms->value);
             ImGui::TableSetColumnIndex(2);
-            ImGui::Text("%.3f", timing.gpuMs);
+            ImGui::TextUnformatted(MetricText(row.calls, 0).c_str());
             ImGui::TableSetColumnIndex(3);
-            ImGui::Text("%u", timing.callCount);
+            ImGui::TextUnformatted(MetricText(row.selfMs, 3).c_str());
             ImGui::TableSetColumnIndex(4);
-            ImGui::Text("%.3f", timing.exclusiveGpuMs);
+            ImGui::Text("%.3f", row.ms->window.average);
             ImGui::TableSetColumnIndex(5);
-            ImGui::Text("%.3f", timing.averageMs);
+            ImGui::Text("%.3f", row.ms->window.p95);
             ImGui::TableSetColumnIndex(6);
-            ImGui::Text("%.3f", timing.p95Ms);
+            ImGui::Text("%.3f", row.ms->window.p99);
             ImGui::TableSetColumnIndex(7);
-            ImGui::Text("%.3f", timing.p99Ms);
-            ImGui::TableSetColumnIndex(8);
-            ImGui::Text("%u", timing.rollingSampleCount);
+            ImGui::Text("%u", row.ms->window.sampleCount);
         }
         ImGui::EndTable();
     }

@@ -317,8 +317,6 @@ ID3D12PipelineState* GetOrCreateVariantPso(MeshPipelineStore& store, ID3D12Devic
                     .emplace(MeshPipelineVariantKey{key, reflectionCapture, reflectionMaterialCapture},
                              std::move(variantPso))
                     .first;
-    } else {
-        ++stats.psoCacheHitCount;
     }
 
     return found->second.Get();

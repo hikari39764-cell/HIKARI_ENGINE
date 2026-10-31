@@ -26,9 +26,6 @@ Mesh* MeshPrimitiveCache::GetOrCreateStatic(ID3D12Device* device, const MeshPrim
                                             MeshRendererDebugStats* stats) {
     auto found = primitiveMeshCache_.find(&primitive);
     if (found != primitiveMeshCache_.end()) {
-        if (stats != nullptr) {
-            ++stats->primitiveMeshCacheHitCount;
-        }
         return found->second.get();
     }
 
@@ -38,7 +35,7 @@ Mesh* MeshPrimitiveCache::GetOrCreateStatic(ID3D12Device* device, const MeshPrim
     }
 
     if (stats != nullptr) {
-        ++stats->primitiveMeshCacheMissCount;
+        ++stats->meshCacheMissCount;
     }
     std::vector<VertexStatic3D> vertices;
     vertices.reserve(primitive.staticVertices.size());
@@ -67,9 +64,6 @@ Mesh* MeshPrimitiveCache::GetOrCreateSkinned(ID3D12Device* device, const MeshPri
                                              MeshRendererDebugStats* stats) {
     auto found = primitiveSkinnedMeshCache_.find(&primitive);
     if (found != primitiveSkinnedMeshCache_.end()) {
-        if (stats != nullptr) {
-            ++stats->primitiveSkinnedMeshCacheHitCount;
-        }
         return found->second.get();
     }
 
@@ -78,7 +72,7 @@ Mesh* MeshPrimitiveCache::GetOrCreateSkinned(ID3D12Device* device, const MeshPri
     }
 
     if (stats != nullptr) {
-        ++stats->primitiveSkinnedMeshCacheMissCount;
+        ++stats->meshCacheMissCount;
     }
     std::vector<VertexSkinnedGpu3D> vertices;
     vertices.reserve(primitive.skinnedVertices.size());

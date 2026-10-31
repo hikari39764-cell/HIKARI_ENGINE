@@ -7,8 +7,7 @@
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Text/HIKARI_ParseNumber.h"
 #include "Core/Text/HIKARI_Utf8.h"
-#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
-#include "Gfx/HIKARI_GpuFrameProfiler.h"
+#include "Diagnostics/HIKARI_MetricRegistry.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/WorldSprite/HIKARI_WorldSpritePass.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
@@ -21,7 +20,6 @@
 namespace HIKARI::RUNTIME {
 namespace {
 using Json = nlohmann::json;
-namespace GPU_PROFILE = GFX::GPU_PROFILE;
 DebugReply OkReply(const Json& output) { return {true, output.dump(2)}; }
 DebugReply ErrorReply(std::string reason) { return {false, Json{{"error", std::move(reason)}}.dump(2)}; }
 // Play 中だけ意味のあるコマンドの前提。編集中の World ではゲームが動いていないので、効果も観測もできない。
@@ -49,47 +47,48 @@ Json ObjectDescription(const GameObject& object) {
             {"components", std::move(types)}};
 }
 Json Performance() {
-    const auto& cpu = CPU_PROFILE::GetLatestSnapshot();
-    const auto& gpu = GPU_PROFILE::GetLatestSnapshot();
-    Json result{{"cpuAvailable", cpu.valid},
-                {"cpuFrame", cpu.frameIndex},
-                {"gpuAvailable", gpu.gpuTimingAvailable},
-                {"gpuFrame", gpu.frameIndex},
-                {"gpuUnavailableReason", gpu.unavailableReason ? gpu.unavailableReason : ""}};
-    Json timings = Json::array();
-    std::vector<const CPU_PROFILE::PassTiming*> cpuPasses;
-    for (const auto& pass : cpu.passes)
-        if (pass.valid)
-            cpuPasses.push_back(&pass);
-    for (uint32_t i = 0; i < cpu.dynamicPassCount && i < cpu.dynamicPasses.size(); ++i)
-        if (cpu.dynamicPasses[i].valid)
-            cpuPasses.push_back(&cpu.dynamicPasses[i]);
-    std::stable_sort(cpuPasses.begin(), cpuPasses.end(), [](auto* a, auto* b) { return a->averageMs > b->averageMs; });
-    for (size_t i = 0; i < (std::min)(cpuPasses.size(), size_t(12)); ++i) {
-        const auto& pass = *cpuPasses[i];
-        timings.push_back({{"name", pass.name},
-                           {"meanMs", pass.averageMs},
-                           {"p95Ms", pass.p95Ms},
-                           {"p99Ms", pass.p99Ms},
-                           {"samples", pass.rollingSampleCount}});
-    }
-    result["cpuTop"] = std::move(timings);
-    timings = Json::array();
-    std::vector<const GPU_PROFILE::PassTiming*> gpuPasses;
-    for (const auto& pass : gpu.passes)
-        if (pass.valid)
-            gpuPasses.push_back(&pass);
-    std::stable_sort(gpuPasses.begin(), gpuPasses.end(), [](auto* a, auto* b) { return a->averageMs > b->averageMs; });
-    for (size_t i = 0; i < (std::min)(gpuPasses.size(), size_t(12)); ++i) {
-        const auto& pass = *gpuPasses[i];
-        timings.push_back({{"name", pass.name},
-                           {"meanMs", pass.averageMs},
-                           {"exclusiveMs", pass.exclusiveGpuMs},
-                           {"p95Ms", pass.p95Ms},
-                           {"calls", pass.callCount},
-                           {"samples", pass.rollingSampleCount}});
-    }
-    result["gpuTop"] = std::move(timings);
+    const std::vector<METRIC::MetricReading> metrics = METRIC::Snapshot(TIME::GetFrameContext().frameIndex);
+    const METRIC::MetricReading* cpuFrame = METRIC::FindReading(metrics, METRIC::kFrameCpuMs);
+    const METRIC::MetricReading* gpuFrame = METRIC::FindReading(metrics, METRIC::kFrameGpuMs);
+    const auto statusOf = [](const METRIC::MetricReading* reading) {
+        return METRIC::ToString(reading != nullptr ? reading->status : METRIC::MetricStatus::NoData);
+    };
+    Json result{{"cpuStatus", statusOf(cpuFrame)},
+                {"cpuFrame", cpuFrame != nullptr ? cpuFrame->sourceFrame : 0u},
+                {"gpuStatus", statusOf(gpuFrame)},
+                {"gpuFrame", gpuFrame != nullptr ? gpuFrame->sourceFrame : 0u},
+                {"gpuUnavailableReason", gpuFrame != nullptr && gpuFrame->status == METRIC::MetricStatus::Unsupported
+                                             ? std::string(gpuFrame->note)
+                                             : std::string()}};
+    // 平均の大きい順に上位 12 件。新しい値（Fresh）のある区間だけを並べる。
+    const auto top = [&metrics](std::string_view domain, bool gpu) {
+        std::vector<METRIC::TimingRow> rows = METRIC::TimingRows(metrics, domain);
+        rows.erase(
+            std::remove_if(rows.begin(), rows.end(),
+                           [](const METRIC::TimingRow& row) { return row.ms->status != METRIC::MetricStatus::Fresh; }),
+            rows.end());
+        std::stable_sort(rows.begin(), rows.end(), [](const METRIC::TimingRow& a, const METRIC::TimingRow& b) {
+            return a.ms->window.average > b.ms->window.average;
+        });
+        Json timings = Json::array();
+        for (size_t i = 0; i < (std::min)(rows.size(), size_t(12)); ++i) {
+            const METRIC::TimingRow& row = rows[i];
+            Json timing{{"name", std::string(row.name)},
+                        {"meanMs", row.ms->window.average},
+                        {"p95Ms", row.ms->window.p95},
+                        {"samples", row.ms->window.sampleCount}};
+            if (gpu) {
+                timing["exclusiveMs"] = row.selfMs != nullptr ? row.selfMs->value : 0.0;
+                timing["calls"] = row.calls != nullptr ? static_cast<uint32_t>(row.calls->value) : 0u;
+            } else {
+                timing["p99Ms"] = row.ms->window.p99;
+            }
+            timings.push_back(std::move(timing));
+        }
+        return timings;
+    };
+    result["cpuTop"] = top("cpu", false);
+    result["gpuTop"] = top("gpu", true);
     const auto& sprites = MESHRENDERER::GetWorldSpritePassStats();
     result["worldSprites"] = {{"submitted", sprites.submittedCount},
                               {"uploadBytes", sprites.uploadedBytes},

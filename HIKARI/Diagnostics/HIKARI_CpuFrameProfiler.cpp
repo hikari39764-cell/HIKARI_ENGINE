@@ -1,26 +1,38 @@
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "Core/HIKARI_FrameRate.h"
 #include "Core/HIKARI_Logger.h"
+#include "Diagnostics/HIKARI_MetricRegistry.h"
 
 namespace HIKARI::CPU_PROFILE {
 
 namespace {
 using Clock = std::chrono::steady_clock;
 
-using RollingWindow = PERFORMANCE::RollingTimingWindow;
+constexpr std::size_t kMaximumDynamicPasses = 128u;
+constexpr const char* kMetricOwner = "Diagnostics.CpuFrameProfiler";
+
+// 区間 1 つ分の指標。初めて計測された時に登録する。
+struct SegmentMetrics {
+    METRIC::MetricHandle ms = METRIC::kInvalidMetric;
+    METRIC::MetricHandle calls = METRIC::kInvalidMetric;
+};
 
 struct DynamicPassState {
     std::string name{};
     double elapsedMs = 0.0;
     uint32_t callCount = 0u;
-    RollingWindow rolling{};
+    SegmentMetrics metrics{};
 };
 
 struct State {
@@ -31,10 +43,9 @@ struct State {
     Clock::time_point frameBegin{};
     std::array<double, static_cast<size_t>(Pass::Count)> elapsedMs{};
     std::array<uint32_t, static_cast<size_t>(Pass::Count)> callCounts{};
-    std::array<RollingWindow, static_cast<size_t>(Pass::Count)> rolling{};
+    std::array<SegmentMetrics, static_cast<size_t>(Pass::Count)> passMetrics{};
     std::array<DynamicPassState, kMaximumDynamicPasses> dynamicPasses{};
     uint32_t dynamicPassCount = 0u;
-    FrameSnapshot latest{};
 };
 
 State gState{};
@@ -59,28 +70,33 @@ void RecordDynamic(DynamicPassHandle pass, Clock::duration elapsed) {
     ++state.callCount;
 }
 
-void FillTiming(PassTiming& target, const char* name, double elapsedMs, uint32_t callCount,
-                const RollingWindow& rolling) {
-    target.name = name;
-    target.callCount = callCount;
-    target.valid = callCount != 0u;
-    target.cpuMs = elapsedMs;
-    target.averageMs = rolling.Average();
-    target.p95Ms = rolling.p95;
-    target.p99Ms = rolling.p99;
-    target.maximumMs = rolling.maximum;
-    target.rollingSampleCount = static_cast<uint32_t>(rolling.count);
+// 実行された区間だけを出す。標本窓は「実行された回の値」だけを持つ。
+void PublishSegment(SegmentMetrics& metrics, std::string_view name, METRIC::MetricCategory category, double elapsedMs,
+                    uint32_t callCount) {
+    if (callCount == 0u) {
+        return;
+    }
+    if (metrics.ms == METRIC::kInvalidMetric) {
+        const std::string base = "cpu." + std::string(name);
+        metrics.ms = METRIC::Register(
+            {base + ".ms", kMetricOwner, "ms", category, "CPU time of the scope in the frame, summed over its calls."});
+        metrics.calls = METRIC::Register({base + ".calls", kMetricOwner, "count", METRIC::MetricCategory::Count,
+                                          "Calls of the scope in the frame."});
+    }
+    METRIC::Publish(metrics.ms, elapsedMs, gState.frameIndex);
+    METRIC::Publish(metrics.calls, callCount, gState.frameIndex);
 }
 
-void ResetSnapshot() {
-    gState.latest = {};
-    for (size_t index = 0; index < gState.latest.passes.size(); ++index) {
-        gState.latest.passes[index].name = ToString(static_cast<Pass>(index));
-    }
-    gState.latest.dynamicPassCount = gState.dynamicPassCount;
-    for (uint32_t index = 0; index < gState.dynamicPassCount; ++index) {
-        gState.latest.dynamicPasses[index].name = gState.dynamicPasses[index].name.c_str();
-    }
+// 待ち時間の区間（Present と GPU のフェンス待ち）は Wait、そのほかは Work。
+METRIC::MetricCategory CategoryOf(Pass pass) {
+    return pass == Pass::Present || pass == Pass::FenceWait ? METRIC::MetricCategory::Wait
+                                                            : METRIC::MetricCategory::Work;
+}
+
+void PublishFrameMetrics(double frameMs) {
+    static const METRIC::MetricHandle cpuMs = METRIC::Register(
+        {METRIC::kFrameCpuMs, kMetricOwner, "ms", METRIC::MetricCategory::Work, "CPU time of the whole frame."});
+    METRIC::Publish(cpuMs, frameMs, gState.frameIndex);
 }
 } // namespace
 
@@ -107,7 +123,13 @@ const char* ToString(Pass pass) {
     }
 }
 
-void BeginFrame(uint64_t frameIndex) {
+void BeginFrame(uint64_t frameIndex, double previousFrameSeconds) {
+    static const METRIC::MetricHandle fps =
+        METRIC::Register({METRIC::kFrameFps, kMetricOwner, "fps", METRIC::MetricCategory::Count,
+                          "Frames per second at the start of the frame."});
+    if (const auto framesPerSecond = PERFORMANCE::FramesPerSecond(1u, previousFrameSeconds)) {
+        METRIC::Publish(fps, *framesPerSecond, frameIndex);
+    }
     gState.frameActive = true;
     gState.frameIndex = frameIndex;
     gState.frameBegin = Clock::now();
@@ -135,19 +157,17 @@ void EndFrame() {
     gState.elapsedMs[framePassIndex] = std::chrono::duration<double, std::milli>(frameEnd - gState.frameBegin).count();
     gState.callCounts[framePassIndex] = 1u;
 
-    gState.latest.valid = true;
-    gState.latest.frameIndex = gState.frameIndex;
-    for (size_t index = 0; index < gState.latest.passes.size(); ++index) {
-        gState.rolling[index].Push(gState.elapsedMs[index]);
-        FillTiming(gState.latest.passes[index], ToString(static_cast<Pass>(index)), gState.elapsedMs[index],
-                   gState.callCounts[index], gState.rolling[index]);
+    PublishFrameMetrics(gState.elapsedMs[framePassIndex]);
+    for (size_t index = 0; index < gState.passMetrics.size(); ++index) {
+        const Pass pass = static_cast<Pass>(index);
+        if (pass != Pass::Frame) {
+            PublishSegment(gState.passMetrics[index], ToString(pass), CategoryOf(pass), gState.elapsedMs[index],
+                           gState.callCounts[index]);
+        }
     }
-    gState.latest.dynamicPassCount = gState.dynamicPassCount;
     for (uint32_t index = 0u; index < gState.dynamicPassCount; ++index) {
         DynamicPassState& state = gState.dynamicPasses[index];
-        state.rolling.Push(state.elapsedMs);
-        FillTiming(gState.latest.dynamicPasses[index], state.name.c_str(), state.elapsedMs, state.callCount,
-                   state.rolling);
+        PublishSegment(state.metrics, state.name, METRIC::MetricCategory::Work, state.elapsedMs, state.callCount);
     }
     // 診断（環境変数 HIKARI_SPIKE_TRACE=閾値ms、既定 40）：CPU の 1 フレームか、前のフレームの終わりからの間隔が
     // 閾値を超えたら、そのフレームで長かった計測を多い順に出す（突然の引っかかりの原因を探す）。
@@ -183,15 +203,9 @@ void EndFrame() {
 }
 
 void ResetStatistics() {
-    gState.rolling = {};
-    for (uint32_t index = 0u; index < gState.dynamicPassCount; ++index) {
-        gState.dynamicPasses[index].rolling = {};
-    }
     gState.discardActiveFrame = gState.frameActive;
-    ResetSnapshot();
+    METRIC::ClearOwner(kMetricOwner);
 }
-
-const FrameSnapshot& GetLatestSnapshot() { return gState.latest; }
 
 DynamicPassHandle RegisterDynamicPass(std::string_view name) {
     if (name.empty()) {
