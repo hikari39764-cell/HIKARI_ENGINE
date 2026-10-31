@@ -25,8 +25,8 @@
 //   Nested{表}               入れ子の構造体の項目表
 //   Draw{fn}                 項目 1 つの編集欄を自前で描く（唯一の逃げ道。下を参照）
 //
-// .value に実体を持つ ID 型（AssetGuid など）はその実体の項目として扱う。独自の保存形を持つ型は nlohmann の
-// to_json / from_json を定義する。
+// .value に実体を持つ ID 型（AssetGuid など）はその実体の項目として扱う。名前の表を持たない列挙は基底の整数として
+// 保存する。独自の保存形を持つ型は nlohmann の to_json / from_json を定義する。
 namespace HIKARI::JSONFIELDS {
 
 struct Range {
@@ -253,7 +253,8 @@ constexpr FieldKind KindOf() noexcept {
         return FieldKind::VariableRef;
     } else if constexpr (std::is_same_v<ValueOf<M>, bool>) {
         return FieldKind::Bool;
-    } else if constexpr (std::is_integral_v<ValueOf<M>>) {
+    } else if constexpr (std::is_integral_v<ValueOf<M>> || std::is_enum_v<ValueOf<M>>) {
+        // 名前の表を持たない列挙は基底の整数として保存する。
         return FieldKind::Int;
     } else if constexpr (std::is_floating_point_v<ValueOf<M>>) {
         return FieldKind::Float;

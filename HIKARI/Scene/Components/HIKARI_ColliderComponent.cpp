@@ -4,9 +4,8 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <utility>
 
-#include "Core/HIKARI_JsonRead.h"
-#include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Physics/HIKARI_PhysicsBodyValidator.h"
 #include "Scene/Components/HIKARI_PhysicsBodyComponent.h"
 #include "Scene/Geometry/HIKARI_GeometryFitProvider.h"
@@ -14,79 +13,37 @@
 
 namespace HIKARI {
 
-namespace JsonMath = SERIALIZATION::JSON::MATH;
+ColliderSettings NormalizeColliderSettings(ColliderSettings settings) {
+    settings = JSONFIELDS::Sanitize(std::move(settings), kColliderFields);
+    settings.height = (std::max)(settings.height, settings.radius * 2.0f);
+    if (settings.filter.layer == 0u) {
+        settings.filter.layer = 1u;
+    }
+    return settings;
+}
 
 void ColliderComponent::Serialize(nlohmann::json& out) const {
-    out["enabled"] = enabled_;
-    out["fitMode"] = TEXT::EnumToName(kColliderFitModeNames, fitMode_, "Manual");
-    out["shape"] = TEXT::EnumToName(kColliderShapeTypeNames, shapeType_, "Box");
-    out["collisionAssetId"] = collisionGeometryAssetId_;
-    out["center"] = JsonMath::ToJsonArray(center_);
-    out["rotation"] = JsonMath::ToJsonArray(rotationEulerDegrees_);
-    out["size"] = JsonMath::ToJsonArray(size_);
-    out["radius"] = radius_;
-    out["height"] = height_;
-    out["trigger"] = trigger_;
-    out["material"] = {{"friction", friction_}, {"restitution", restitution_}, {"density", density_}};
-    out["filter"] = {{"layer", collisionLayer_}, {"mask", collisionMask_}};
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings_, kColliderFields);
 }
 
 void ColliderComponent::Deserialize(const nlohmann::json& in) {
-    enabled_ = in.value("enabled", enabled_);
-    TEXT::TryParseEnum(kColliderFitModeNames, in.value("fitMode", std::string{}), fitMode_);
-    TEXT::TryParseEnum(kColliderShapeTypeNames, in.value("shape", std::string{}), shapeType_);
-    collisionGeometryAssetId_ = in.value("collisionAssetId", collisionGeometryAssetId_);
-    if (in.contains("center")) {
-        center_ = JSONREAD::Vec3Or(in["center"], center_);
-    }
-    if (in.contains("rotation")) {
-        rotationEulerDegrees_ = JSONREAD::Vec3Or(in["rotation"], rotationEulerDegrees_);
-    }
-    if (in.contains("size")) {
-        size_ = JSONREAD::Vec3Or(in["size"], size_);
-    }
-    radius_ = in.value("radius", radius_);
-    height_ = in.value("height", height_);
-    trigger_ = in.value("trigger", trigger_);
-    if (in.contains("material") && in["material"].is_object()) {
-        const nlohmann::json& material = in["material"];
-        friction_ = material.value("friction", friction_);
-        restitution_ = material.value("restitution", restitution_);
-        density_ = material.value("density", density_);
-    }
-    if (in.contains("filter") && in["filter"].is_object()) {
-        const nlohmann::json& filter = in["filter"];
-        collisionLayer_ = filter.value("layer", collisionLayer_);
-        collisionMask_ = filter.value("mask", collisionMask_);
-    }
-    ClampSettings();
+    ColliderSettings decoded{};
+    JSONFIELDS::Read(in, decoded, kColliderFields);
+    settings_ = NormalizeColliderSettings(std::move(decoded));
 }
 
-void ColliderComponent::ClampSettings() noexcept {
-    size_.x = (std::max)(size_.x, 0.001f);
-    size_.y = (std::max)(size_.y, 0.001f);
-    size_.z = (std::max)(size_.z, 0.001f);
-    radius_ = (std::max)(radius_, 0.0005f);
-    height_ = (std::max)(height_, radius_ * 2.0f);
-    friction_ = (std::max)(friction_, 0.0f);
-    restitution_ = (std::clamp)(restitution_, 0.0f, 1.0f);
-    density_ = (std::max)(density_, 0.0001f);
-    if (collisionLayer_ == 0u) {
-        collisionLayer_ = 1u;
-    }
-}
-
-bool ColliderComponent::IsEnabled() const noexcept { return enabled_; }
-ColliderFitMode ColliderComponent::GetFitMode() const noexcept { return fitMode_; }
+bool ColliderComponent::IsEnabled() const noexcept { return settings_.enabled; }
+ColliderFitMode ColliderComponent::GetFitMode() const noexcept { return settings_.fitMode; }
 ResolvedColliderShape ColliderComponent::ResolveShape() const noexcept {
     ResolvedColliderShape resolved{};
-    resolved.type = shapeType_;
-    resolved.center = center_;
-    resolved.rotationEulerDegrees = rotationEulerDegrees_;
-    resolved.size = size_;
-    resolved.radius = radius_;
-    resolved.height = height_;
-    if (fitMode_ != ColliderFitMode::Geometry) {
+    resolved.type = settings_.shape;
+    resolved.center = settings_.center;
+    resolved.rotationEulerDegrees = settings_.rotation;
+    resolved.size = settings_.size;
+    resolved.radius = settings_.radius;
+    resolved.height = settings_.height;
+    if (settings_.fitMode != ColliderFitMode::Geometry) {
         return resolved;
     }
 
@@ -166,22 +123,29 @@ std::vector<ResolvedColliderShape> ColliderComponent::ResolveShapes() const {
     return shapes;
 }
 
-const MATH::Vec3& ColliderComponent::GetCenter() const noexcept { return center_; }
-const MATH::Vec3& ColliderComponent::GetSize() const noexcept { return size_; }
-float ColliderComponent::GetRadius() const noexcept { return radius_; }
-float ColliderComponent::GetHeight() const noexcept { return height_; }
-bool ColliderComponent::IsTrigger() const noexcept { return trigger_; }
-float ColliderComponent::GetFriction() const noexcept { return friction_; }
-float ColliderComponent::GetRestitution() const noexcept { return restitution_; }
-float ColliderComponent::GetDensity() const noexcept { return density_; }
-uint32_t ColliderComponent::GetCollisionLayer() const noexcept { return collisionLayer_; }
-uint32_t ColliderComponent::GetCollisionMask() const noexcept { return collisionMask_; }
-const std::string& ColliderComponent::GetCollisionGeometryAssetId() const noexcept { return collisionGeometryAssetId_; }
+const MATH::Vec3& ColliderComponent::GetCenter() const noexcept { return settings_.center; }
+const MATH::Vec3& ColliderComponent::GetSize() const noexcept { return settings_.size; }
+float ColliderComponent::GetRadius() const noexcept { return settings_.radius; }
+float ColliderComponent::GetHeight() const noexcept { return settings_.height; }
+bool ColliderComponent::IsTrigger() const noexcept { return settings_.trigger; }
+float ColliderComponent::GetFriction() const noexcept { return settings_.material.friction; }
+float ColliderComponent::GetRestitution() const noexcept { return settings_.material.restitution; }
+float ColliderComponent::GetDensity() const noexcept { return settings_.material.density; }
+uint32_t ColliderComponent::GetCollisionLayer() const noexcept { return settings_.filter.layer; }
+uint32_t ColliderComponent::GetCollisionMask() const noexcept { return settings_.filter.mask; }
+const std::string& ColliderComponent::GetCollisionGeometryAssetId() const noexcept {
+    return settings_.collisionAssetId;
+}
 bool ColliderComponent::UsesCollisionGeometryAsset() const noexcept {
-    return fitMode_ == ColliderFitMode::CollisionAsset && !collisionGeometryAssetId_.empty();
+    return settings_.fitMode == ColliderFitMode::CollisionAsset && !settings_.collisionAssetId.empty();
 }
 
-void ColliderComponent::SetEnabled(bool enabled) noexcept { enabled_ = enabled; }
-void ColliderComponent::SetShapeType(PHYSICS::PhysicsShapeType type) noexcept { shapeType_ = type; }
+void ColliderComponent::SetEnabled(bool enabled) noexcept { settings_.enabled = enabled; }
+void ColliderComponent::SetShapeType(PHYSICS::PhysicsShapeType type) noexcept {
+    // 名前の表に無い形は保存できないので受け付けない。
+    if (TEXT::IsNamedEnum(kColliderShapeTypeNames, type)) {
+        settings_.shape = type;
+    }
+}
 
 } // namespace HIKARI

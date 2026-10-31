@@ -1,25 +1,18 @@
 #include "Scene/Components/HIKARI_DialogueTriggerComponent.h"
 
+#include <utility>
+
 namespace HIKARI {
 
 void DialogueTriggerComponent::Serialize(nlohmann::json& out) const {
-    out["enabled"] = enabled_;
-    out["dialogueAssetGuid"] = dialogueAssetGuid_.value;
-    out["locale"] = locale_;
-    out["activation"] = TEXT::EnumToName(kDialogueTriggerActivationNames, activation_, "OnEnter");
-    out["interactAction"] = interactActionId_;
-    out["pauseWorld"] = pauseWorld_;
-    out["oneShot"] = oneShot_;
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings_, kDialogueTriggerFields);
 }
 
 void DialogueTriggerComponent::Deserialize(const nlohmann::json& in) {
-    enabled_ = in.value("enabled", enabled_);
-    dialogueAssetGuid_.value = in.value("dialogueAssetGuid", dialogueAssetGuid_.value);
-    locale_ = in.value("locale", locale_);
-    interactActionId_ = in.value("interactAction", interactActionId_);
-    pauseWorld_ = in.value("pauseWorld", pauseWorld_);
-    oneShot_ = in.value("oneShot", oneShot_);
-    TEXT::TryParseEnum(kDialogueTriggerActivationNames, in.value("activation", std::string{}), activation_);
+    DialogueTriggerSettings decoded{};
+    JSONFIELDS::Read(in, decoded, kDialogueTriggerFields);
+    settings_ = std::move(decoded);
     consumed_ = false;
 }
 

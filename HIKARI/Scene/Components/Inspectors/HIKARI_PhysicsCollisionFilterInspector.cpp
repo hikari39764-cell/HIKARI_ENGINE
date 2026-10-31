@@ -1,35 +1,29 @@
-// Inspector の項目記述はオーサリング専用。Shipping では IComponent の既定実装を使う。
-#if defined(HIKARI_WITH_EDITOR)
+#include "Scene/Components/HIKARI_ColliderComponent.h"
 
-#include "Scene/Components/Inspectors/HIKARI_PhysicsCollisionFilterInspector.h"
-
-#include <algorithm>
 #include <string>
 #include <vector>
 
-#include "Authoring/HIKARI_IInspectorBuilder.h"
+#include "Authoring/HIKARI_FieldInspector.h"
 #include "Physics/HIKARI_PhysicsProjectSettings.h"
 #include "Scene/HIKARI_WorldServiceRegistry.h"
 
 namespace HIKARI {
 
-bool DrawPhysicsCollisionFilterInspector(IInspectorBuilder& builder, uint32_t& collisionLayer,
-                                         uint32_t& collisionMask) {
+// 衝突の層と、当たる層の集合を、プロジェクトの層名（ProjectSettings/Physics/collision.json）で編集する。部件が持つのは
+// 数値の層と集合だけで、名前は編集器が足す。層名が無い間は数値のまま編集する。
+bool DrawColliderFilter(IInspectorBuilder& builder, const AuthoringFieldDescriptor& field,
+                        PHYSICS::PhysicsCollisionFilter& filter, const ColliderSettings&) {
+    const std::string layerId = std::string(field.id) + ".layer";
+    const std::string maskId = std::string(field.id) + ".mask";
+    const AuthoringFieldDescriptor layerField{layerId, "Collision Layer", {}, field.writable};
+    const AuthoringFieldDescriptor maskField{maskId, "Collision Mask", {}, field.writable};
+
     const InspectorContext& context = builder.GetContext();
     const auto* projectSettings =
         context.worldServices != nullptr ? context.worldServices->Find<PHYSICS::PhysicsProjectSettings>() : nullptr;
     if (projectSettings == nullptr || projectSettings->GetLayers().empty()) {
-        int layer = static_cast<int>(collisionLayer);
-        int mask = static_cast<int>(collisionMask);
-        bool changed = false;
-        if (builder.Int(AuthoringFieldDescriptor{"collisionLayer", "Collision Layer"}, layer)) {
-            collisionLayer = static_cast<uint32_t>((std::max)(layer, 1));
-            changed = true;
-        }
-        if (builder.Int(AuthoringFieldDescriptor{"collisionMask", "Collision Mask"}, mask)) {
-            collisionMask = static_cast<uint32_t>(mask);
-            changed = true;
-        }
+        bool changed = FIELD_INSPECTOR::EditInteger(builder, layerField, filter.layer);
+        changed |= FIELD_INSPECTOR::EditInteger(builder, maskField, filter.mask);
         return changed;
     }
 
@@ -40,29 +34,29 @@ bool DrawPhysicsCollisionFilterInspector(IInspectorBuilder& builder, uint32_t& c
         layerChoices.push_back({layer.name, layer.name});
     }
 
-    int selectedLayer = projectSettings->FindLayerIndex(collisionLayer);
+    int selectedLayer = projectSettings->FindLayerIndex(filter.layer);
     int layerIndexOffset = 0;
     std::string unmappedLayerName{};
     if (selectedLayer < 0) {
-        unmappedLayerName = "Unmapped (" + std::to_string(collisionLayer) + ")";
+        unmappedLayerName = "Unmapped (" + std::to_string(filter.layer) + ")";
         layerChoices.insert(layerChoices.begin(), {"unmapped", unmappedLayerName});
         selectedLayer = 0;
         layerIndexOffset = 1;
     }
 
     bool changed = false;
-    if (builder.Choice(AuthoringFieldDescriptor{"collisionLayer", "Collision Layer"}, selectedLayer, layerChoices)) {
+    if (builder.Choice(layerField, selectedLayer, layerChoices)) {
         const int configuredLayerIndex = selectedLayer - layerIndexOffset;
         if (configuredLayerIndex >= 0) {
-            collisionLayer = layers[static_cast<size_t>(configuredLayerIndex)].bit;
+            filter.layer = layers[static_cast<size_t>(configuredLayerIndex)].bit;
             changed = true;
         }
     }
 
-    const int activeLayerIndex = projectSettings->FindLayerIndex(collisionLayer);
+    const int activeLayerIndex = projectSettings->FindLayerIndex(filter.layer);
     if (activeLayerIndex >= 0) {
         if (builder.Button("Use Layer Default Mask")) {
-            collisionMask = layers[static_cast<size_t>(activeLayerIndex)].defaultMask;
+            filter.mask = layers[static_cast<size_t>(activeLayerIndex)].defaultMask;
             changed = true;
         }
     } else {
@@ -70,16 +64,16 @@ bool DrawPhysicsCollisionFilterInspector(IInspectorBuilder& builder, uint32_t& c
     }
 
     for (const PHYSICS::PhysicsCollisionLayerSetting& layer : layers) {
-        bool enabled = (collisionMask & layer.bit) != 0u;
+        bool enabled = (filter.mask & layer.bit) != 0u;
         const std::string id = "collidesWith." + layer.name;
         const std::string label = "Collides With " + layer.name;
-        if (!builder.Bool(AuthoringFieldDescriptor{id, label}, enabled)) {
+        if (!builder.Bool(AuthoringFieldDescriptor{id, label, {}, field.writable}, enabled)) {
             continue;
         }
         if (enabled) {
-            collisionMask |= layer.bit;
+            filter.mask |= layer.bit;
         } else {
-            collisionMask &= ~layer.bit;
+            filter.mask &= ~layer.bit;
         }
         changed = true;
     }
@@ -87,5 +81,3 @@ bool DrawPhysicsCollisionFilterInspector(IInspectorBuilder& builder, uint32_t& c
 }
 
 } // namespace HIKARI
-
-#endif // defined(HIKARI_WITH_EDITOR)

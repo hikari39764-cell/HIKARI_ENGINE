@@ -42,11 +42,9 @@ public:
         animator.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<AnimatorComponent>(); };
         animator.requiredComponents = {"ModelComponent"};
         animator.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties = {{"clip", ""},       {"clipModelAssetId", ""}, {"clipId", 0u},
-                          {"timeSec", 0.0f},  {"speed", 1.0f},          {"defaultBlendDurationSec", 0.2f},
-                          {"loop", true},     {"autoPlay", true},       {"playing", true},
-                          {"finished", false}};
+            AnimatorComponent{}.Serialize(properties);
         };
+        animator.fields = JSONFIELDS::Describe<AnimatorSettings>(kAnimatorFields);
         animator.presentation =
             ComponentTypePresentation{"Animator", "Animation", "Evaluates model clips and publishes a reusable pose.",
                                       std::string(RuntimeFeatureIds::Animation)};
@@ -59,9 +57,9 @@ public:
         };
         stateMachine.requiredComponents = {"AnimatorComponent"};
         stateMachine.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties = {
-                {"enabled", true}, {"stateMachineAssetGuid", ""}, {"playOnStart", true}, {"syncCharacterMotion", true}};
+            AnimationStateMachineComponent{}.Serialize(properties);
         };
+        stateMachine.fields = JSONFIELDS::Describe<AnimationStateMachineSettings>(kAnimationStateMachineFields);
         stateMachine.presentation =
             ComponentTypePresentation{"Animation State Machine", "Animation",
                                       "Selects animation states from parameters without owning pose evaluation.",

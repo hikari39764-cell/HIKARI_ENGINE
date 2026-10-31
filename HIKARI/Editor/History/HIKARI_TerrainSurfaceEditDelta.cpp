@@ -73,7 +73,6 @@ bool ApplyTerrainSurfaceEditDelta(nlohmann::json& componentProperties, const nlo
         rebuilt.push_back(chunk);
     }
     componentProperties["chunks"] = std::move(rebuilt);
-    componentProperties["chunked"] = true;
     return changed;
 }
 

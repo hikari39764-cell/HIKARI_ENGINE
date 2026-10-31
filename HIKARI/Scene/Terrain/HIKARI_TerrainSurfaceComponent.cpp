@@ -533,7 +533,7 @@ void TerrainSurfaceComponent::SerializeSettings(nlohmann::json& out) const {
 void TerrainSurfaceComponent::Serialize(nlohmann::json& out) const { TERRAIN::SerializeTerrainSurface(surface_, out); }
 
 void TerrainSurfaceComponent::Deserialize(const nlohmann::json& in) {
-    auto surface = surface_;
+    TERRAIN::TerrainSurface surface{};
     if (TERRAIN::DeserializeTerrainSurface(in, surface)) {
         SetSurfaceOwned(std::move(surface));
     }

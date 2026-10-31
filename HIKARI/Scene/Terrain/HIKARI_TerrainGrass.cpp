@@ -1,12 +1,10 @@
 #include "Scene/Terrain/HIKARI_TerrainGrass.h"
 #include "Core/Math/HIKARI_MathValidation.h"
-#include "Core/Math/HIKARI_ScalarMath.h"
 #include "Scene/Terrain/HIKARI_TerrainSurface.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <limits>
 #include <optional>
 #include <utility>
 
@@ -42,50 +40,6 @@ uint64_t HashTerrainGrass(uint64_t seed, const TerrainChunkKey& chunk, uint32_t 
 float TerrainGrassUnitFloat(uint64_t hash) noexcept {
     constexpr double kInvTwoTo53 = 1.0 / 9007199254740992.0;
     return static_cast<float>(static_cast<double>(hash >> 11u) * kInvTwoTo53);
-}
-
-float ReadFloat(const nlohmann::json& object, const char* key, float fallback) {
-    const auto found = object.find(key);
-    return found != object.end() && found->is_number() ? found->get<float>() : fallback;
-}
-
-bool ReadBool(const nlohmann::json& object, const char* key, bool fallback) {
-    const auto found = object.find(key);
-    return found != object.end() && found->is_boolean() ? found->get<bool>() : fallback;
-}
-
-uint32_t ReadUnsigned(const nlohmann::json& object, const char* key, uint32_t fallback) {
-    const auto found = object.find(key);
-    if (found == object.end()) {
-        return fallback;
-    }
-    if (found->is_number_integer()) {
-        const int64_t value = found->get<int64_t>();
-        return value >= 0 && value <= static_cast<int64_t>((std::numeric_limits<uint32_t>::max)())
-                   ? static_cast<uint32_t>(value)
-                   : fallback;
-    }
-    if (!found->is_number_unsigned()) {
-        return fallback;
-    }
-    const uint64_t value = found->get<uint64_t>();
-    return value <= static_cast<uint64_t>((std::numeric_limits<uint32_t>::max)()) ? static_cast<uint32_t>(value)
-                                                                                  : fallback;
-}
-
-uint64_t ReadSeed(const nlohmann::json& object, const char* key, uint64_t fallback) {
-    const auto found = object.find(key);
-    if (found == object.end()) {
-        return fallback;
-    }
-    if (found->is_number_unsigned()) {
-        return found->get<uint64_t>();
-    }
-    if (found->is_number_integer()) {
-        const int64_t value = found->get<int64_t>();
-        return value >= 0 ? static_cast<uint64_t>(value) : fallback;
-    }
-    return fallback;
 }
 
 float SampleBilinear(float v00, float v10, float v01, float v11, float tx, float tz) noexcept {
@@ -131,56 +85,7 @@ bool ReadFourVertices(const std::vector<float>& values, std::size_t i00, std::si
 } // namespace
 
 TerrainGrassSettings SanitizeTerrainGrassSettings(TerrainGrassSettings value) noexcept {
-    value.density = MATH::ClampFinite(value.density, 0.42f, 0.0f, 1.0f);
-    value.bladeHeight = MATH::ClampFinite(value.bladeHeight, 0.34f, 0.005f, 10.0f);
-    value.bladeWidth = MATH::ClampFinite(value.bladeWidth, 0.028f, 0.001f, 2.0f);
-    value.heightVariation = MATH::ClampFinite(value.heightVariation, 0.24f, 0.0f, 1.0f);
-    value.layerWeightThreshold = MATH::ClampFinite(value.layerWeightThreshold, 0.35f, 0.0f, 1.0f);
-    value.maxSlopeDegrees = MATH::ClampFinite(value.maxSlopeDegrees, 42.0f, 0.0f, 90.0f);
-    value.windStrength = MATH::ClampFinite(value.windStrength, 0.055f, 0.0f, 0.5f);
-    value.windSpeed = MATH::ClampFinite(value.windSpeed, 1.25f, 0.0f, 20.0f);
-    value.spatialFrequency = MATH::ClampFinite(value.spatialFrequency, 0.85f, 0.0f, 20.0f);
-    value.maxClumps = (std::min)(value.maxClumps, kTerrainGrassMaxClumps);
-    return value;
-}
-
-nlohmann::json SerializeTerrainGrassSettings(const TerrainGrassSettings& source) {
-    const TerrainGrassSettings value = SanitizeTerrainGrassSettings(source);
-    return {
-        {"schemaVersion", kTerrainGrassSchemaVersion},
-        {"enabled", value.enabled},
-        {"density", value.density},
-        {"bladeHeight", value.bladeHeight},
-        {"bladeWidth", value.bladeWidth},
-        {"heightVariation", value.heightVariation},
-        {"layerWeightThreshold", value.layerWeightThreshold},
-        {"maxSlopeDegrees", value.maxSlopeDegrees},
-        {"windStrength", value.windStrength},
-        {"windSpeed", value.windSpeed},
-        {"spatialFrequency", value.spatialFrequency},
-        {"seed", value.seed},
-        {"maxClumps", value.maxClumps},
-    };
-}
-
-TerrainGrassSettings DeserializeTerrainGrassSettings(const nlohmann::json& source) {
-    TerrainGrassSettings value{};
-    if (!source.is_object()) {
-        return value;
-    }
-    value.enabled = ReadBool(source, "enabled", value.enabled);
-    value.density = ReadFloat(source, "density", value.density);
-    value.bladeHeight = ReadFloat(source, "bladeHeight", value.bladeHeight);
-    value.bladeWidth = ReadFloat(source, "bladeWidth", value.bladeWidth);
-    value.heightVariation = ReadFloat(source, "heightVariation", value.heightVariation);
-    value.layerWeightThreshold = ReadFloat(source, "layerWeightThreshold", value.layerWeightThreshold);
-    value.maxSlopeDegrees = ReadFloat(source, "maxSlopeDegrees", value.maxSlopeDegrees);
-    value.windStrength = ReadFloat(source, "windStrength", value.windStrength);
-    value.windSpeed = ReadFloat(source, "windSpeed", value.windSpeed);
-    value.spatialFrequency = ReadFloat(source, "spatialFrequency", value.spatialFrequency);
-    value.seed = ReadSeed(source, "seed", value.seed);
-    value.maxClumps = ReadUnsigned(source, "maxClumps", value.maxClumps);
-    return SanitizeTerrainGrassSettings(value);
+    return JSONFIELDS::Sanitize(std::move(value), kTerrainGrassFields);
 }
 
 bool IsTerrainGrassPlacementValid(const TerrainGrassPlacement& placement) noexcept {

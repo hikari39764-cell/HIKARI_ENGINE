@@ -39,9 +39,9 @@ public:
         terrain.requiredComponents = {"ModelComponent", "ProceduralMeshComponent"};
         terrain.runtimeApplyPolicy = ComponentRuntimeApplyPolicy::OnEditCommit;
         terrain.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            TerrainSurfaceComponent defaults{};
-            defaults.Serialize(properties);
+            TerrainSurfaceComponent{}.Serialize(properties);
         };
+        terrain.fields = JSONFIELDS::Describe<TERRAIN::TerrainSurfaceParams>(TERRAIN::kTerrainSurfaceFields);
         terrain.presentation = ComponentTypePresentation{"Terrain Surface", "Terrain",
                                                          "Editable heightfield terrain with paintable layers.",
                                                          std::string(RuntimeFeatureIds::Terrain)};

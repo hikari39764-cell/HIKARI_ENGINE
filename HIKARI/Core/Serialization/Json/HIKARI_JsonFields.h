@@ -164,6 +164,11 @@ void AssignJson(const nlohmann::json& node, T& value) {
             throw std::runtime_error("expects a finite number");
         }
         value = parsed;
+    } else if constexpr (std::is_enum_v<T>) {
+        // 名前の表を持たない列挙は基底の整数。範囲外の数は誤り。
+        std::underlying_type_t<T> parsed{};
+        AssignJson(node, parsed);
+        value = static_cast<T>(parsed);
     } else if constexpr (kIsVector<T>) {
         AssignVector(node, value);
     } else if constexpr (std::is_same_v<T, std::string>) {

@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include "Animation/Runtime/HIKARI_AnimationClipSampler.h"
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "HIKARI_IComponent.h"
 
 namespace HIKARI {
@@ -11,6 +12,39 @@ class ModelAsset;
 }
 
 namespace HIKARI {
+
+// 作者値（シーン文書の properties と同じ形）。項目表（kAnimatorFields）が保存・読み取り・検査器・説明を決める。クリップの
+// 指定（名前・モデル資産・クリップ ID）は ANIMATION::AnimationClipReference そのもので、部件は再生の入口からこれを書き換える。
+// 再生中の状態（時刻・再生中・終了）も保存する。
+struct AnimatorSettings : ANIMATION::AnimationClipReference {
+    float timeSec = 0.0f;
+    float speed = 1.0f;
+    bool loop = true;
+    bool rootMotionEnabled = false;
+    bool playing = true;
+    bool finished = false;
+};
+
+inline constexpr auto kAnimatorFields = [](auto&& field) {
+    using S = AnimatorSettings;
+    using R = ANIMATION::AnimationClipReference;
+    using namespace JSONFIELDS;
+    field("clip", &R::fallbackName, Label{"Clip"});
+    // クリップの指定を解決した結果。名前を手で替えた時は捨てる（AnimationSystem が次の更新で解決し直す）。
+    field("clipModelAssetId", &R::modelAssetId, Label{"Clip Model Asset"}, Hidden{});
+    field("clipId", &R::clipId, Label{"Clip ID"}, Hidden{});
+    field("timeSec", &S::timeSec, Range{0.0, 3600.0}, Label{"Time Sec"});
+    field("speed", &S::speed, Label{"Speed"});
+    field("loop", &S::loop, Label{"Loop"});
+    field("rootMotionEnabled", &S::rootMotionEnabled, Label{"Root Motion"},
+          Help{"Remove the root bone's movement from the pose and publish it for character movement or project code "
+               "to apply."});
+    field("playing", &S::playing, Label{"Playing"});
+    field("finished", &S::finished, Label{"Finished"});
+};
+
+// 範囲へ丸める。
+AnimatorSettings NormalizeAnimatorSettings(AnimatorSettings settings);
 
 class AnimatorComponent final : public IComponent {
 public:
@@ -117,18 +151,13 @@ private:
     void AdvanceMaskedPoseLayer(float deltaTimeSec) noexcept;
     void ResetMaskedPoseLayer() noexcept;
 
-    ANIMATION::AnimationClipReference clip_{};
+    ANIMATION::AnimationClipReference& Clip() noexcept { return settings_; }
+    const ANIMATION::AnimationClipReference& Clip() const noexcept { return settings_; }
+
+    AnimatorSettings settings_{};
     ANIMATION::AnimationClipReference secondaryClip_{};
     float secondaryWeight_ = 0.0f;
-    float timeSec_ = 0.0f;
-    float speed_ = 1.0f;
-    float defaultBlendDurationSec_ = 0.2f;
-    bool loop_ = true;
-    bool autoPlay_ = true;
-    bool rootMotionEnabled_ = false;
     bool runtimeEvaluationEnabled_ = true;
-    bool playing_ = true;
-    bool finished_ = false;
 
     ANIMATION::AnimationClipReference transitionSourceClip_{};
     ANIMATION::AnimationClipReference transitionSourceSecondaryClip_{};

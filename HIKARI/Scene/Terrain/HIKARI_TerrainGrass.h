@@ -7,6 +7,7 @@
 
 #include <json.hpp>
 
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Scene/Terrain/HIKARI_SurfacePreset.h"
 #include "Scene/Terrain/HIKARI_TerrainChunks.h"
 
@@ -14,7 +15,6 @@ namespace HIKARI::TERRAIN {
 
 // 草层 authored settings。草几何不是场景对象；这个值型设置只描述
 // 草层投影的可重复输入，实际 blade/clump 由 Render3D 消费 placement。
-constexpr uint32_t kTerrainGrassSchemaVersion = 1u;
 constexpr uint32_t kTerrainGrassVariantCount = 4u;
 // SurfaceGpuSceneFrameBuffer 的默认 resident capacity 是 8192。每个
 // grass clump 会投影成一个 SceneRenderObject/surface，因此这里不能
@@ -44,6 +44,34 @@ struct TerrainGrassSettings {
     bool operator==(const TerrainGrassSettings&) const = default;
 };
 
+// 保存・読み取り・検査器・説明の項目表。範囲は SanitizeTerrainGrassSettings の丸めと同じ。
+inline constexpr auto kTerrainGrassFields = [](auto&& field) {
+    using S = TerrainGrassSettings;
+    using namespace JSONFIELDS;
+    field("enabled", &S::enabled, Label{"Enabled"}, Help{"Enable the deterministic grass placement projection."});
+    field("density", &S::density, Range{0.0, 1.0}, Label{"Density"},
+          Help{"Probability of a grass clump per terrain cell."});
+    field("bladeHeight", &S::bladeHeight, Range{0.005, 10.0}, Label{"Blade Height"},
+          Help{"Base height of each generated blade."});
+    field("bladeWidth", &S::bladeWidth, Range{0.001, 2.0}, Label{"Blade Width"},
+          Help{"Base width of each generated blade."});
+    field("layerWeightThreshold", &S::layerWeightThreshold, Range{0.0, 1.0}, Label{"Layer Weight Threshold"},
+          Help{"Minimum grass layer weight required for placement."});
+    field("maxSlopeDegrees", &S::maxSlopeDegrees, Range{0.0, 90.0}, Label{"Max Slope"},
+          Help{"Maximum terrain slope that can receive grass."});
+    field("windStrength", &S::windStrength, Range{0.0, 0.5}, Label{"Wind Strength"},
+          Help{"Amplitude of the animated foliage wind."});
+    field("windSpeed", &S::windSpeed, Range{0.0, 20.0}, Label{"Wind Speed"},
+          Help{"Speed of the animated foliage wind."});
+    field("spatialFrequency", &S::spatialFrequency, Range{0.0, 20.0}, Label{"Spatial Frequency"},
+          Help{"World-space frequency of the wind field."});
+    field("heightVariation", &S::heightVariation, Range{0.0, 1.0}, Label{"Height Variation"},
+          Help{"Per-clump height variation multiplier."});
+    field("seed", &S::seed, Label{"Grass Seed"}, Help{"Stable seed used to generate grass placements."});
+    field("maxClumps", &S::maxClumps, Range{0.0, static_cast<double>(kTerrainGrassMaxClumps)}, Label{"Max Clumps"},
+          Help{"Upper bound for generated grass clumps."});
+};
+
 // Placement 是每次 terrain snapshot 生成的非持久值；它不拥有
 // GameObject、mesh、material 或 GPU resource，也不进入 scene JSON。
 struct TerrainGrassPlacement {
@@ -65,10 +93,8 @@ struct TerrainGrassPlacementSnapshot {
     std::vector<TerrainGrassPlacement> placements{};
 };
 
+// 項目表の範囲へ丸める（非有限値は既定値）。
 TerrainGrassSettings SanitizeTerrainGrassSettings(TerrainGrassSettings value) noexcept;
-
-nlohmann::json SerializeTerrainGrassSettings(const TerrainGrassSettings& source);
-TerrainGrassSettings DeserializeTerrainGrassSettings(const nlohmann::json& source);
 
 bool IsTerrainGrassPlacementValid(const TerrainGrassPlacement& placement) noexcept;
 

@@ -298,8 +298,7 @@ int main() {
         const auto revision = object->GetRenderStateRevision();
         if (!EDITOR::DescribeComponentProperties(*terrain, {}).ok || object->GetRenderStateRevision() != revision)
             return Fail("reading terrain settings must not invalidate rendering");
-        for (const char* property :
-             {"terrain.wetness", "terrain.stylization.textureScale", "terrain.grass.windStrength"}) {
+        for (const char* property : {"shoreline.wetness", "stylization.textureScale", "grass.windStrength"}) {
             EDITOR::ComponentPropertyMutation edit{{}, property, 0.25f};
             if (!EDITOR::ApplyComponentProperty(*terrain, {}, edit).ok)
                 return Fail("shared terrain settings edit");
@@ -315,8 +314,11 @@ int main() {
         TERRAIN::TerrainSurface authored;
         authored.chunkCells = 2;
         authored.chunks[{-1, 2}] = TERRAIN::MakeTerrainChunk(2, 2);
+        authored.deform.behavior = TERRAIN::DeformBehaviorId::SoftSnow;
         nlohmann::json expected;
         TERRAIN::SerializeTerrainSurface(authored, expected);
+        if (expected["deform"]["behavior"] != 1u)
+            return Fail("terrain deform behavior is stored as its number");
         for (const char* block : {"material", "stylization", "deform", "shoreline", "brush"}) {
             for (auto& value : expected[block]) {
                 if (value.is_number_float())
@@ -436,7 +438,6 @@ int main() {
     const nlohmann::json originalTerrainProperties{
         {"presetId", "sand"},
         {"layerPresetIds", {"sand"}},
-        {"chunked", true},
         {"chunks",
          {
              deltaChunk(0, 0, 0.0f),
@@ -1156,10 +1157,13 @@ int main() {
         !Near(grassSettings.spatialFrequency, 0.0f) || grassSettings.maxClumps != TERRAIN::kTerrainGrassMaxClumps) {
         return Fail("grass sanitize bounds");
     }
-    const nlohmann::json grassJson = TERRAIN::SerializeTerrainGrassSettings(grassSettings);
-    const auto grassRoundTrip = TERRAIN::DeserializeTerrainGrassSettings(grassJson);
-    if (TERRAIN::SerializeTerrainGrassSettings(grassRoundTrip) != grassJson ||
-        grassJson.at("heightVariation") != grassSettings.heightVariation ||
+    nlohmann::json grassJson = nlohmann::json::object();
+    JSONFIELDS::Write(grassJson, grassSettings, TERRAIN::kTerrainGrassFields);
+    TERRAIN::TerrainGrassSettings grassRoundTrip{};
+    JSONFIELDS::Read(grassJson, grassRoundTrip, TERRAIN::kTerrainGrassFields);
+    nlohmann::json grassRoundTripJson = nlohmann::json::object();
+    JSONFIELDS::Write(grassRoundTripJson, grassRoundTrip, TERRAIN::kTerrainGrassFields);
+    if (grassRoundTripJson != grassJson || grassJson.at("heightVariation") != grassSettings.heightVariation ||
         grassJson.at("seed") != grassSettings.seed || grassJson.contains("placements") ||
         grassJson.contains("transform")) {
         return Fail("grass authored settings round trip");

@@ -46,9 +46,9 @@ public:
         };
         follower.runtimeApplyPolicy = ComponentRuntimeApplyPolicy::Immediate;
         follower.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            TerrainSurfaceFollowerComponent defaults{};
-            defaults.Serialize(properties);
+            TerrainSurfaceFollowerComponent{}.Serialize(properties);
         };
+        follower.fields = JSONFIELDS::Describe<TerrainSurfaceFollowerSettings>(kTerrainSurfaceFollowerFields);
         follower.presentation = ComponentTypePresentation{"Surface Follower", "Surface Interaction",
                                                           "Keeps a presentation object aligned to a sampled surface.",
                                                           std::string(RuntimeFeatureIds::SurfaceInteraction)};

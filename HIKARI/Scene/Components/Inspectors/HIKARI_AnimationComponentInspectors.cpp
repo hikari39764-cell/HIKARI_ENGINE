@@ -4,50 +4,35 @@
 #include "Scene/Components/HIKARI_AnimationStateMachineComponent.h"
 #include "Scene/Components/HIKARI_AnimatorComponent.h"
 
-#include <algorithm>
 #include <string>
+#include <utility>
 
 #include "Animation/StateMachine/HIKARI_AnimationStateMachineRuntimeService.h"
-#include "Assets/HIKARI_AssetTypes.h"
-#include "Authoring/HIKARI_IInspectorBuilder.h"
+#include "Authoring/HIKARI_FieldInspector.h"
 #include "Scene/HIKARI_WorldServiceRegistry.h"
 
 namespace HIKARI {
 
-namespace {
-float ClampInspectorTime(float value) { return (std::max)(0.0f, value); }
-} // namespace
-
 void AnimatorComponent::BuildInspector(IInspectorBuilder& builder) {
-    if (builder.String(AuthoringFieldDescriptor{"clip", "Clip"}, clip_.fallbackName)) {
-        // A hand-edited name is no longer guaranteed to describe the
-        // previously resolved asset/clip pair. The AnimationSystem will
-        // resolve and bind the new name on its next update.
-        clip_.modelAssetId = {};
-        clip_.clipId = {};
+    AnimatorSettings next = settings_;
+    if (!InspectFields(builder, next, kAnimatorFields)) {
+        return;
+    }
+    if (next.fallbackName != settings_.fallbackName) {
+        // 手で替えた名前は、解決済みの資産とクリップの組を指している保証が無い。AnimationSystem が次の更新で名前を解決して
+        // 結び付け直す。
+        next.modelAssetId = {};
+        next.clipId = {};
         ClearTransition();
     }
-    builder.Float(AuthoringFieldDescriptor{"timeSec", "Time Sec"}, timeSec_);
-    builder.Float(AuthoringFieldDescriptor{"speed", "Speed"}, speed_);
-    builder.Float(AuthoringFieldDescriptor{"defaultBlendDurationSec", "Default Blend Sec"}, defaultBlendDurationSec_);
-    builder.Bool(AuthoringFieldDescriptor{"loop", "Loop"}, loop_);
-    builder.Bool(AuthoringFieldDescriptor{"autoPlay", "Auto Play"}, autoPlay_);
-    builder.Bool(AuthoringFieldDescriptor{"rootMotionEnabled", "Root Motion",
-                                          "Remove the root bone's movement from the pose and publish it for character "
-                                          "movement or project code to apply."},
-                 rootMotionEnabled_);
-    builder.Bool(AuthoringFieldDescriptor{"playing", "Playing"}, playing_);
-    builder.Bool(AuthoringFieldDescriptor{"finished", "Finished"}, finished_);
-    timeSec_ = ClampInspectorTime(timeSec_);
-    defaultBlendDurationSec_ = (std::max)(0.0f, defaultBlendDurationSec_);
+    settings_ = NormalizeAnimatorSettings(std::move(next));
 }
 
 void AnimationStateMachineComponent::BuildInspector(IInspectorBuilder& builder) {
-    builder.Bool(AuthoringFieldDescriptor{"enabled", "Enabled"}, enabled_);
-    builder.AssetIdPicker(AuthoringFieldDescriptor{"stateMachineAssetGuid", "State Machine Asset"},
-                          AssetType::AnimationStateMachine, assetGuid_);
-    builder.Bool(AuthoringFieldDescriptor{"playOnStart", "Play On Start"}, playOnStart_);
-    builder.Bool(AuthoringFieldDescriptor{"syncCharacterMotion", "Sync Character Motion"}, syncCharacterMotion_);
+    AnimationStateMachineSettings next = settings_;
+    if (InspectFields(builder, next, kAnimationStateMachineFields)) {
+        settings_ = std::move(next);
+    }
 
     const InspectorContext& context = builder.GetContext();
     if (context.worldServices != nullptr && context.runtimeObject != nullptr) {

@@ -1,4 +1,5 @@
 #pragma once
+#include "Authoring/HIKARI_FieldDraw.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Input/Runtime/HIKARI_InputTypes.h"
@@ -67,15 +68,6 @@ struct CameraFollowSettings {
     void Normalize();
 };
 
-// 入力アクションの選択欄（項目表の Draw 用）。Type は選べるアクションの値の型。
-template <INPUT::InputActionValueType Type>
-struct InputActionPicker {
-    template <class Builder, class Field, class Owner>
-    bool operator()(Builder& builder, const Field& field, std::string& value, const Owner&) const {
-        return builder.InputActionIdPicker(field, Type, value);
-    }
-};
-
 // 保存（プロファイルの follow と、組件の JSON）・読み取り・検査器・説明が共有する項目表。JSON のキー lookAction /
 // zoomAction / recenterAction は lookActionId / zoomActionId / recenterActionId に対応する。
 inline constexpr auto kCameraFollowFields = [](auto&& field) {
@@ -107,11 +99,11 @@ inline constexpr auto kCameraFollowFields = [](auto&& field) {
 
     field("orbitInputEnabled", &S::orbitInputEnabled, Label{"Enable Orbit Input"}, Group{"Input"});
     field("lookAction", &S::lookActionId, Label{"Look Action"},
-          Draw{InputActionPicker<INPUT::InputActionValueType::Axis2D>{}}, Show{orbiting}, Group{"Input"});
+          Draw{FIELD_DRAW::InputActionPicker<INPUT::InputActionValueType::Axis2D>{}}, Show{orbiting}, Group{"Input"});
     field("zoomAction", &S::zoomActionId, Label{"Zoom Action"},
-          Draw{InputActionPicker<INPUT::InputActionValueType::Axis1D>{}}, Show{orbiting}, Group{"Input"});
+          Draw{FIELD_DRAW::InputActionPicker<INPUT::InputActionValueType::Axis1D>{}}, Show{orbiting}, Group{"Input"});
     field("recenterAction", &S::recenterActionId, Label{"Recenter Action"},
-          Draw{InputActionPicker<INPUT::InputActionValueType::Button>{}}, Show{orbiting}, Group{"Input"});
+          Draw{FIELD_DRAW::InputActionPicker<INPUT::InputActionValueType::Button>{}}, Show{orbiting}, Group{"Input"});
     field("yawSpeedDegreesPerSecond", &S::yawSpeedDegreesPerSecond, Range{0.0, 3600.0}, Label{"Gamepad Yaw Speed"},
           Unit{"deg/s"}, Show{orbiting}, Group{"Input"});
     field("pitchSpeedDegreesPerSecond", &S::pitchSpeedDegreesPerSecond, Range{0.0, 3600.0},

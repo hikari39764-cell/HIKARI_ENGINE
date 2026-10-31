@@ -8,6 +8,8 @@
 #include <string_view>
 #include <vector>
 
+#include "Authoring/HIKARI_FieldDraw.h"
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Terrain/HIKARI_SurfacePreset.h"
@@ -37,10 +39,6 @@ inline constexpr TEXT::EnumName<TerrainBrushMode> kTerrainBrushModeNames[] = {
     {TerrainBrushMode::Shaft, "shaft"},   {TerrainBrushMode::Noise, "noise"},
 };
 
-inline const char* ToString(TerrainBrushMode mode) noexcept {
-    return TEXT::EnumToName(kTerrainBrushModeNames, mode, "raise");
-}
-
 constexpr float kTerrainBrushMaximumStrength = 8.0f;
 
 // 地形ブラシのオーサリング状態。
@@ -63,23 +61,39 @@ struct TerrainBrush {
     bool operator==(const TerrainBrush&) const = default;
 };
 
+// 保存・読み取り・検査器・説明の項目表。範囲は SanitizeTerrainBrush の丸めと同じ（flattenHeight だけは範囲なし）。
+// モードと乱数の種は筆刷の道具が決めるので、検査器には出さない。
+inline constexpr auto kTerrainBrushFields = [](auto&& field) {
+    using S = TerrainBrush;
+    using namespace JSONFIELDS;
+    field("mode", &S::mode, kTerrainBrushModeNames, Label{"Mode"}, Hidden{});
+    field("radius", &S::radius, Range{0.05, 100.0}, Label{"Radius"}, Help{"Brush radius in meters."});
+    field("strength", &S::strength, Range{0.0, kTerrainBrushMaximumStrength}, Label{"Strength"},
+          Help{"Frame-rate-independent brush rate from zero to eight."});
+    field("hardness", &S::hardness, Range{0.0, 1.0}, Label{"Hardness"}, Help{"Inner brush hardness from zero to one."});
+    field("flattenHeight", &S::flattenHeight, Label{"Target Height"},
+          Help{"Terrain-local target used by Set Height and Shaft."});
+    field("falloff", &S::falloff, Range{0.0, 1.0}, Label{"Falloff"},
+          Help{"Outer soft brush falloff from zero to one."});
+    field("ridgeDirectionDegrees", &S::ridgeDirectionDegrees, Range{-180.0, 180.0}, Label{"Ridge Direction"},
+          Unit{"deg"}, Help{"Ridge axis orientation in local XZ degrees."});
+    field("ridgeSharpness", &S::ridgeSharpness, Range{0.05, 1.0}, Label{"Ridge Sharpness"},
+          Help{"Width and sharpness of the line-shaped ridge."});
+    field("terraceStepHeight", &S::terraceStepHeight, Range{0.05, 8.0}, Label{"Terrace Step Height"},
+          Help{"Height increment used by the terrace brush."});
+    field("shaftDepth", &S::shaftDepth, Range{0.05, 256.0}, Label{"Shaft Depth"},
+          Help{"Depth sampled below the shaft rim at stroke start."});
+    field("shaftWallWidth", &S::shaftWallWidth, Range{0.01, 100.0}, Label{"Wall Width"},
+          Help{"Width of the heightfield transition from floor to rim."});
+    field("noiseAmplitude", &S::noiseAmplitude, Range{0.0, 16.0}, Label{"Noise Amplitude"},
+          Help{"Height multiplier for deterministic local noise."});
+    field("noiseScale", &S::noiseScale, Range{0.05, 512.0}, Label{"Noise Scale"},
+          Help{"World-space feature size of deterministic local noise."});
+    field("noiseSeed", &S::noiseSeed, Label{"Noise Seed"}, Hidden{});
+};
+
 inline TerrainBrush SanitizeTerrainBrush(TerrainBrush brush) noexcept {
-    brush.radius = std::clamp(brush.radius, 0.05f, 100.0f);
-    brush.strength =
-        std::clamp(std::isfinite(brush.strength) ? brush.strength : 0.4f, 0.0f, kTerrainBrushMaximumStrength);
-    brush.hardness = std::clamp(brush.hardness, 0.0f, 1.0f);
-    brush.falloff = std::clamp(brush.falloff, 0.0f, 1.0f);
-    brush.ridgeDirectionDegrees =
-        std::clamp(std::isfinite(brush.ridgeDirectionDegrees) ? brush.ridgeDirectionDegrees : 0.0f, -180.0f, 180.0f);
-    brush.ridgeSharpness = std::clamp(std::isfinite(brush.ridgeSharpness) ? brush.ridgeSharpness : 0.65f, 0.05f, 1.0f);
-    brush.terraceStepHeight =
-        std::clamp(std::isfinite(brush.terraceStepHeight) ? brush.terraceStepHeight : 0.45f, 0.05f, 8.0f);
-    brush.shaftDepth = std::clamp(std::isfinite(brush.shaftDepth) ? brush.shaftDepth : 4.0f, 0.05f, 256.0f);
-    brush.shaftWallWidth =
-        std::clamp(std::isfinite(brush.shaftWallWidth) ? brush.shaftWallWidth : 0.75f, 0.01f, 100.0f);
-    brush.noiseAmplitude = std::clamp(std::isfinite(brush.noiseAmplitude) ? brush.noiseAmplitude : 0.35f, 0.0f, 16.0f);
-    brush.noiseScale = std::clamp(std::isfinite(brush.noiseScale) ? brush.noiseScale : 2.0f, 0.05f, 512.0f);
-    return brush;
+    return JSONFIELDS::Sanitize(std::move(brush), kTerrainBrushFields);
 }
 
 // Two-point authoring request. Coordinates are terrain-local and the
@@ -152,35 +166,71 @@ struct TerrainStylizationSettings {
     bool operator==(const TerrainStylizationSettings&) const = default;
 };
 
+// 保存・読み取り・検査器・説明の項目表。範囲は SanitizeTerrainStylizationSettings の丸めと同じ。
+inline constexpr auto kTerrainStylizationFields = [](auto&& field) {
+    using S = TerrainStylizationSettings;
+    using namespace JSONFIELDS;
+    field("textureScale", &S::textureScale, Range{0.1, 8.0}, Label{"Texture Scale"},
+          Help{"Global world-space texture tiling multiplier."});
+    field("textureStrength", &S::textureStrength, Range{0.0, 2.0}, Label{"Texture Strength"},
+          Help{"Texture blend and contrast strength (0..2)."});
+    field("normalStrength", &S::normalStrength, Range{0.0, 2.0}, Label{"Normal Strength"},
+          Help{"Global normal-map multiplier."});
+    field("saturation", &S::saturation, Range{0.0, 2.0}, Label{"Saturation"},
+          Help{"Global non-rock layer saturation multiplier."});
+    field("shadowStrength", &S::shadowStrength, Range{0.0, 1.0}, Label{"Shadow Strength"},
+          Help{"Global received-shadow multiplier."});
+    field("rockSaturation", &S::rockSaturation, Range{0.0, 1.0}, Label{"Rock Saturation"},
+          Help{"Neutral rock layer saturation."});
+    field("facetSizeMeters", &S::facetSizeMeters, Range{0.25, 16.0}, Label{"Facet Size"}, Unit{"m"},
+          Help{"World-space size of the stylized terrain facets."});
+    field("facetStrength", &S::facetStrength, Range{0.0, 1.0}, Label{"Facet Strength"},
+          Help{"Blend from the authored smooth normal to broad facets."});
+};
+
 inline TerrainStylizationSettings SanitizeTerrainStylizationSettings(TerrainStylizationSettings settings) noexcept {
-    settings.textureScale = MATH::ClampFinite(settings.textureScale, 1.0f, 0.1f, 8.0f);
-    settings.textureStrength = MATH::ClampFinite(settings.textureStrength, 1.0f, 0.0f, 2.0f);
-    settings.normalStrength = MATH::ClampFinite(settings.normalStrength, 1.0f, 0.0f, 2.0f);
-    settings.saturation = MATH::ClampFinite(settings.saturation, 1.0f, 0.0f, 2.0f);
-    settings.shadowStrength = MATH::ClampFinite(settings.shadowStrength, 1.0f, 0.0f, 1.0f);
-    settings.rockSaturation = MATH::ClampFinite(settings.rockSaturation, 0.30f, 0.0f, 1.0f);
-    settings.facetSizeMeters = MATH::ClampFinite(settings.facetSizeMeters, 1.6f, 0.25f, 16.0f);
-    settings.facetStrength = MATH::ClampFinite(settings.facetStrength, 0.0f, 0.0f, 1.0f);
-    return settings;
+    return JSONFIELDS::Sanitize(std::move(settings), kTerrainStylizationFields);
 }
 
-// 疎 chunk 化された固体地形。chunk はワールド XZ に整列し、
-// 筆刷が届いた場所に自動で生える。水面は独立コンポーネント。
-struct TerrainSurface {
+// 地形の設定（疎 chunk の中身を除いた作者値）。項目表（kTerrainSurfaceFields）が保存・読み取り・検査器・説明を決める。
+// 検査器はこれだけを複製して編集する（chunk の配列は複製しない）。
+struct TerrainSurfaceParams {
     std::string presetId = "sand";
     GranularMaterialParams material{};
     TerrainStylizationSettings stylization{};
     DeformParams deform{};
     ShorelineParams shoreline{};
     float heightScale = 0.32f;
-    // 層 index -> preset id（層 tint 解決用）。
+    // 層 index -> preset id（層 tint 解決用）。表には載せず、chunk の層と一緒に読み書きする。
     std::vector<std::string> layerPresetIds{};
     TerrainBrush brush{};
     // 草も authored settings だけを地形コンポーネントが所有する。
     // blade/clump の実体は BuildTerrainGrassPlacementSnapshot() が
     // deterministic に再構築し、scene に個別オブジェクトを保存しない。
     TerrainGrassSettings grass{};
+};
 
+inline constexpr auto kTerrainSurfaceFields = [](auto&& field) {
+    using S = TerrainSurfaceParams;
+    using namespace JSONFIELDS;
+    field("presetId", &S::presetId, Label{"Solid Preset"}, Help{"Solid surface appearance and deformation preset."},
+          Draw{FIELD_DRAW::StringChoice<5>{{AuthoringChoice{"sand", "Sand"}, AuthoringChoice{"snow", "Snow"},
+                                            AuthoringChoice{"dirt", "Dirt"}, AuthoringChoice{"grass", "Grass"},
+                                            AuthoringChoice{"rock", "Rock"}}}},
+          Common{});
+    field("heightScale", &S::heightScale, Range{0.0, 2.0}, Label{"Height Scale"},
+          Help{"Overall dent depth scale in meters."}, Common{});
+    field("material", &S::material, Nested{kGranularMaterialFields}, Hidden{});
+    field("deform", &S::deform, Nested{kDeformFields}, Hidden{});
+    field("shoreline", &S::shoreline, Nested{kShorelineFields}, Group{"Shoreline"});
+    field("stylization", &S::stylization, Nested{kTerrainStylizationFields}, Group{"Stylization"});
+    field("grass", &S::grass, Nested{kTerrainGrassFields}, Group{"Grass"});
+    field("brush", &S::brush, Nested{kTerrainBrushFields}, Group{"Brush"});
+};
+
+// 疎 chunk 化された固体地形。chunk はワールド XZ に整列し、
+// 筆刷が届いた場所に自動で生える。水面は独立コンポーネント。
+struct TerrainSurface : TerrainSurfaceParams {
     // chunk 一辺のセル数と 1 セルのワールド寸法（メートル）。
     uint32_t chunkCells = 32u;
     float chunkCellSize = 0.25f;

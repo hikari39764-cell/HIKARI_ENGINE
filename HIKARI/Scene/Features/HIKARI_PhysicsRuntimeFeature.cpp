@@ -62,19 +62,9 @@ public:
         body.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<PhysicsBodyComponent>(); };
         body.requiredComponents = {"ColliderComponent"};
         body.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties["enabled"] = true;
-            properties["motionType"] = "Dynamic";
-            properties["mass"] = 1.0f;
-            properties["gravityScale"] = 1.0f;
-            properties["linearDamping"] = 0.05f;
-            properties["angularDamping"] = 0.05f;
-            properties["allowSleeping"] = true;
-            properties["continuousCollision"] = false;
-            properties["initialLinearVelocity"] = {0.0f, 0.0f, 0.0f};
-            properties["initialAngularVelocity"] = {0.0f, 0.0f, 0.0f};
-            properties["lockTranslation"] = {0.0f, 0.0f, 0.0f};
-            properties["lockRotation"] = {0.0f, 0.0f, 0.0f};
+            PhysicsBodyComponent{}.Serialize(properties);
         };
+        body.fields = JSONFIELDS::Describe<PhysicsBodySettings>(kPhysicsBodyFields);
         body.presentation = PhysicsPresentation("Physics Body", "Defines static, kinematic, or dynamic body behavior.");
 
         ComponentTypeInfo collider{};
@@ -83,19 +73,9 @@ public:
         collider.optionalComponents = {"PhysicsBodyComponent", "ModelComponent"};
         collider.allowMultiple = true;
         collider.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties["enabled"] = true;
-            properties["fitMode"] = "Manual";
-            properties["shape"] = "Box";
-            properties["collisionAssetId"] = "";
-            properties["center"] = {0.0f, 0.0f, 0.0f};
-            properties["rotation"] = {0.0f, 0.0f, 0.0f};
-            properties["size"] = {1.0f, 1.0f, 1.0f};
-            properties["radius"] = 0.5f;
-            properties["height"] = 1.0f;
-            properties["trigger"] = false;
-            properties["material"] = {{"friction", 0.5f}, {"restitution", 0.0f}, {"density", 1.0f}};
-            properties["filter"] = {{"layer", 1u}, {"mask", 0xFFFFFFFFu}};
+            ColliderComponent{}.Serialize(properties);
         };
+        collider.fields = JSONFIELDS::Describe<ColliderSettings>(kColliderFields);
         collider.presentation = PhysicsPresentation("Collider", "Adds a box, sphere, or capsule collision shape.");
 
         SystemSettingsContract settings{};

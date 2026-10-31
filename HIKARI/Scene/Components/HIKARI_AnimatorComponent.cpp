@@ -19,32 +19,19 @@ float ResolveDuration(const ModelAsset& model, const ANIMATION::AnimationClipRef
 }
 } // namespace
 
+AnimatorSettings NormalizeAnimatorSettings(AnimatorSettings settings) {
+    return JSONFIELDS::Sanitize(std::move(settings), kAnimatorFields);
+}
+
 void AnimatorComponent::Serialize(nlohmann::json& out) const {
-    out["clip"] = clip_.fallbackName;
-    out["clipModelAssetId"] = clip_.modelAssetId.value;
-    out["clipId"] = clip_.clipId.value;
-    out["timeSec"] = timeSec_;
-    out["speed"] = speed_;
-    out["defaultBlendDurationSec"] = defaultBlendDurationSec_;
-    out["loop"] = loop_;
-    out["autoPlay"] = autoPlay_;
-    out["rootMotionEnabled"] = rootMotionEnabled_;
-    out["playing"] = playing_;
-    out["finished"] = finished_;
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings_, kAnimatorFields);
 }
 
 void AnimatorComponent::Deserialize(const nlohmann::json& in) {
-    clip_.fallbackName = in.value("clip", clip_.fallbackName);
-    clip_.modelAssetId.value = in.value("clipModelAssetId", clip_.modelAssetId.value);
-    clip_.clipId.value = in.value("clipId", clip_.clipId.value);
-    timeSec_ = ClampTime(in.value("timeSec", timeSec_));
-    speed_ = in.value("speed", speed_);
-    defaultBlendDurationSec_ = (std::max)(0.0f, in.value("defaultBlendDurationSec", defaultBlendDurationSec_));
-    loop_ = in.value("loop", loop_);
-    autoPlay_ = in.value("autoPlay", autoPlay_);
-    rootMotionEnabled_ = in.value("rootMotionEnabled", rootMotionEnabled_);
-    playing_ = in.value("playing", autoPlay_);
-    finished_ = in.value("finished", finished_);
+    AnimatorSettings decoded{};
+    JSONFIELDS::Read(in, decoded, kAnimatorFields);
+    settings_ = NormalizeAnimatorSettings(std::move(decoded));
     runtimeEvaluationEnabled_ = true;
     secondaryClip_ = {};
     secondaryWeight_ = 0.0f;
@@ -61,20 +48,20 @@ void AnimatorComponent::Play(std::string clip, bool loop, bool restart) {
 void AnimatorComponent::Play(ANIMATION::AnimationClipReference clip, bool loop, bool restart) {
     ANIMATION::AnimationMotionSample motion{};
     motion.primaryClip = std::move(clip);
-    PlayMotion(std::move(motion), speed_, loop, restart);
+    PlayMotion(std::move(motion), settings_.speed, loop, restart);
 }
 
 void AnimatorComponent::PlayMotion(ANIMATION::AnimationMotionSample motion, float speed, bool loop, bool restart) {
-    clip_ = std::move(motion.primaryClip);
+    Clip() = std::move(motion.primaryClip);
     secondaryClip_ = std::move(motion.secondaryClip);
     secondaryWeight_ = std::clamp(motion.secondaryWeight, 0.0f, 1.0f);
-    speed_ = speed;
-    loop_ = loop;
-    playing_ = !clip_.IsEmpty();
-    finished_ = false;
+    settings_.speed = speed;
+    settings_.loop = loop;
+    settings_.playing = !Clip().IsEmpty();
+    settings_.finished = false;
     ClearTransition();
     if (restart)
-        timeSec_ = 0.0f;
+        settings_.timeSec = 0.0f;
 }
 
 void AnimatorComponent::CrossFade(std::string clip, float durationSeconds, bool loop, bool restart) {
@@ -87,87 +74,87 @@ void AnimatorComponent::CrossFade(ANIMATION::AnimationClipReference clip, float 
                                   bool restart) {
     ANIMATION::AnimationMotionSample motion{};
     motion.primaryClip = std::move(clip);
-    CrossFadeMotion(std::move(motion), durationSeconds, speed_, loop, restart);
+    CrossFadeMotion(std::move(motion), durationSeconds, settings_.speed, loop, restart);
 }
 
 void AnimatorComponent::CrossFadeMotion(ANIMATION::AnimationMotionSample motion, float durationSeconds, float speed,
                                         bool loop, bool restart) {
     const float safeDuration = std::isfinite(durationSeconds) ? (std::max)(0.0f, durationSeconds) : 0.0f;
-    if (safeDuration <= 0.0f || clip_.IsEmpty()) {
+    if (safeDuration <= 0.0f || Clip().IsEmpty()) {
         PlayMotion(std::move(motion), speed, loop, restart);
         return;
     }
-    if (motion.primaryClip == clip_ && motion.secondaryClip == secondaryClip_ && !restart) {
+    if (motion.primaryClip == Clip() && motion.secondaryClip == secondaryClip_ && !restart) {
         secondaryWeight_ = std::clamp(motion.secondaryWeight, 0.0f, 1.0f);
-        speed_ = speed;
-        loop_ = loop;
-        playing_ = true;
+        settings_.speed = speed;
+        settings_.loop = loop;
+        settings_.playing = true;
         return;
     }
 
-    transitionSourceClip_ = clip_;
+    transitionSourceClip_ = Clip();
     transitionSourceSecondaryClip_ = secondaryClip_;
     transitionSourceSecondaryWeight_ = secondaryWeight_;
-    transitionSourceTimeSec_ = timeSec_;
-    transitionSourceSpeed_ = speed_;
-    transitionSourceLoop_ = loop_;
+    transitionSourceTimeSec_ = settings_.timeSec;
+    transitionSourceSpeed_ = settings_.speed;
+    transitionSourceLoop_ = settings_.loop;
     transitionDurationSec_ = safeDuration;
     transitionElapsedSec_ = 0.0f;
 
-    clip_ = std::move(motion.primaryClip);
+    Clip() = std::move(motion.primaryClip);
     secondaryClip_ = std::move(motion.secondaryClip);
     secondaryWeight_ = std::clamp(motion.secondaryWeight, 0.0f, 1.0f);
-    speed_ = speed;
-    loop_ = loop;
-    playing_ = !clip_.IsEmpty();
-    finished_ = false;
+    settings_.speed = speed;
+    settings_.loop = loop;
+    settings_.playing = !Clip().IsEmpty();
+    settings_.finished = false;
     if (restart)
-        timeSec_ = 0.0f;
+        settings_.timeSec = 0.0f;
 }
 
 void AnimatorComponent::UpdateMotion(ANIMATION::AnimationMotionSample motion, const ModelAsset& model) {
-    const bool primaryChanged = motion.primaryClip != clip_;
+    const bool primaryChanged = motion.primaryClip != Clip();
     if (primaryChanged) {
-        const float oldDuration = ResolveDuration(model, clip_);
+        const float oldDuration = ResolveDuration(model, Clip());
         const float newDuration = ResolveDuration(model, motion.primaryClip);
         if (oldDuration > 0.0f && newDuration > 0.0f) {
-            float phase = std::fmod(timeSec_ / oldDuration, 1.0f);
+            float phase = std::fmod(settings_.timeSec / oldDuration, 1.0f);
             if (phase < 0.0f)
                 phase += 1.0f;
-            timeSec_ = phase * newDuration;
+            settings_.timeSec = phase * newDuration;
         }
     }
-    clip_ = std::move(motion.primaryClip);
+    Clip() = std::move(motion.primaryClip);
     secondaryClip_ = std::move(motion.secondaryClip);
     secondaryWeight_ = std::clamp(motion.secondaryWeight, 0.0f, 1.0f);
-    playing_ = !clip_.IsEmpty() && !finished_;
+    settings_.playing = !Clip().IsEmpty() && !settings_.finished;
 }
 
 void AnimatorComponent::PlayOnce(std::string clip, bool restart) { Play(std::move(clip), false, restart); }
 
-void AnimatorComponent::Pause() { playing_ = false; }
+void AnimatorComponent::Pause() { settings_.playing = false; }
 
 void AnimatorComponent::Resume() {
-    if (!clip_.IsEmpty()) {
-        playing_ = true;
-        finished_ = false;
+    if (!Clip().IsEmpty()) {
+        settings_.playing = true;
+        settings_.finished = false;
     }
 }
 
 void AnimatorComponent::Stop() {
-    playing_ = false;
-    finished_ = true;
-    timeSec_ = 0.0f;
+    settings_.playing = false;
+    settings_.finished = true;
+    settings_.timeSec = 0.0f;
     ClearTransition();
 }
 
 void AnimatorComponent::Advance(float deltaTimeSec, float clipDurationSec) {
     AdvanceMaskedPoseLayer(deltaTimeSec);
-    if (!playing_ || clip_.IsEmpty()) {
+    if (!settings_.playing || Clip().IsEmpty()) {
         return;
     }
 
-    timeSec_ += deltaTimeSec * speed_;
+    settings_.timeSec += deltaTimeSec * settings_.speed;
     if (IsTransitioning()) {
         transitionSourceTimeSec_ += deltaTimeSec * transitionSourceSpeed_;
         transitionElapsedSec_ += (std::max)(0.0f, deltaTimeSec);
@@ -176,27 +163,27 @@ void AnimatorComponent::Advance(float deltaTimeSec, float clipDurationSec) {
         }
     }
     if (clipDurationSec <= 0.0f) {
-        timeSec_ = ClampTime(timeSec_);
+        settings_.timeSec = ClampTime(settings_.timeSec);
         return;
     }
 
-    if (loop_) {
-        timeSec_ = std::fmod(timeSec_, clipDurationSec);
-        if (timeSec_ < 0.0f) {
-            timeSec_ += clipDurationSec;
+    if (settings_.loop) {
+        settings_.timeSec = std::fmod(settings_.timeSec, clipDurationSec);
+        if (settings_.timeSec < 0.0f) {
+            settings_.timeSec += clipDurationSec;
         }
-        finished_ = false;
+        settings_.finished = false;
         return;
     }
 
-    if (speed_ >= 0.0f && timeSec_ >= clipDurationSec) {
-        timeSec_ = clipDurationSec;
-        playing_ = false;
-        finished_ = true;
-    } else if (speed_ < 0.0f && timeSec_ <= 0.0f) {
-        timeSec_ = 0.0f;
-        playing_ = false;
-        finished_ = true;
+    if (settings_.speed >= 0.0f && settings_.timeSec >= clipDurationSec) {
+        settings_.timeSec = clipDurationSec;
+        settings_.playing = false;
+        settings_.finished = true;
+    } else if (settings_.speed < 0.0f && settings_.timeSec <= 0.0f) {
+        settings_.timeSec = 0.0f;
+        settings_.playing = false;
+        settings_.finished = true;
     }
 }
 
@@ -207,17 +194,17 @@ void AnimatorComponent::SetClip(std::string clip) {
 }
 
 void AnimatorComponent::SetClip(ANIMATION::AnimationClipReference clip) {
-    clip_ = std::move(clip);
+    Clip() = std::move(clip);
     secondaryClip_ = {};
     secondaryWeight_ = 0.0f;
-    finished_ = false;
+    settings_.finished = false;
     ClearTransition();
 }
 
-const ANIMATION::AnimationClipReference& AnimatorComponent::GetClipReference() const { return clip_; }
+const ANIMATION::AnimationClipReference& AnimatorComponent::GetClipReference() const { return Clip(); }
 
 ANIMATION::AnimationMotionSample AnimatorComponent::GetMotionSample() const noexcept {
-    return {clip_, secondaryClip_, secondaryWeight_};
+    return {Clip(), secondaryClip_, secondaryWeight_};
 }
 
 void AnimatorComponent::BindClipToModel(const ModelAsset& model) {
@@ -231,7 +218,7 @@ void AnimatorComponent::BindClipToModel(const ModelAsset& model) {
             }
         }
     };
-    bind(clip_);
+    bind(Clip());
     bind(secondaryClip_);
     bind(transitionSourceClip_);
     bind(transitionSourceSecondaryClip_);
@@ -239,36 +226,36 @@ void AnimatorComponent::BindClipToModel(const ModelAsset& model) {
 }
 
 void AnimatorComponent::SetTime(float timeSec) {
-    timeSec_ = ClampTime(timeSec);
-    finished_ = false;
+    settings_.timeSec = ClampTime(timeSec);
+    settings_.finished = false;
 }
 
-float AnimatorComponent::GetTime() const { return timeSec_; }
+float AnimatorComponent::GetTime() const { return settings_.timeSec; }
 
-void AnimatorComponent::SetSpeed(float speed) { speed_ = speed; }
+void AnimatorComponent::SetSpeed(float speed) { settings_.speed = speed; }
 
-float AnimatorComponent::GetSpeed() const { return speed_; }
+float AnimatorComponent::GetSpeed() const { return settings_.speed; }
 
-void AnimatorComponent::SetLoop(bool loop) { loop_ = loop; }
+void AnimatorComponent::SetLoop(bool loop) { settings_.loop = loop; }
 
-bool AnimatorComponent::GetLoop() const { return loop_; }
+bool AnimatorComponent::GetLoop() const { return settings_.loop; }
 
-void AnimatorComponent::SetRootMotionEnabled(bool enabled) noexcept { rootMotionEnabled_ = enabled; }
+void AnimatorComponent::SetRootMotionEnabled(bool enabled) noexcept { settings_.rootMotionEnabled = enabled; }
 
-bool AnimatorComponent::IsRootMotionEnabled() const noexcept { return rootMotionEnabled_; }
+bool AnimatorComponent::IsRootMotionEnabled() const noexcept { return settings_.rootMotionEnabled; }
 
-bool AnimatorComponent::IsPlaying() const { return playing_; }
+bool AnimatorComponent::IsPlaying() const { return settings_.playing; }
 
-bool AnimatorComponent::IsFinished() const { return finished_; }
+bool AnimatorComponent::IsFinished() const { return settings_.finished; }
 
 bool AnimatorComponent::IsFinished(float clipDurationSec) const {
-    if (finished_) {
+    if (settings_.finished) {
         return true;
     }
-    if (clipDurationSec <= 0.0f || loop_) {
+    if (clipDurationSec <= 0.0f || settings_.loop) {
         return false;
     }
-    return speed_ >= 0.0f ? timeSec_ >= clipDurationSec : timeSec_ <= 0.0f;
+    return settings_.speed >= 0.0f ? settings_.timeSec >= clipDurationSec : settings_.timeSec <= 0.0f;
 }
 
 bool AnimatorComponent::IsTransitioning() const noexcept {

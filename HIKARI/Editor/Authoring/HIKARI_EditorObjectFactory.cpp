@@ -10,6 +10,9 @@
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
+#include "Scene/Components/HIKARI_ColliderComponent.h"
+#include "Scene/Components/HIKARI_DialogueTriggerComponent.h"
+#include "Scene/Components/HIKARI_PhysicsBodyComponent.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Components/Rendering/Decal/HIKARI_DecalComponent.h"
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
@@ -284,41 +287,25 @@ GameObject* CreateDialogueTriggerObject(DocumentSceneBase& scene, const CreateOb
     SceneObjectData object = BuildBaseObject(scene, nullptr, objectRequest);
     const SceneObjectId id = object.id;
 
-    object.components.push_back(SceneComponentData{"PhysicsBodyComponent",
-                                                   {{"enabled", true},
-                                                    {"motionType", "Static"},
-                                                    {"mass", 1.0f},
-                                                    {"gravityScale", 0.0f},
-                                                    {"linearDamping", 0.0f},
-                                                    {"angularDamping", 0.0f},
-                                                    {"allowSleeping", true},
-                                                    {"continuousCollision", false},
-                                                    {"initialLinearVelocity", {0.0f, 0.0f, 0.0f}},
-                                                    {"initialAngularVelocity", {0.0f, 0.0f, 0.0f}},
-                                                    {"lockTranslation", {0.0f, 0.0f, 0.0f}},
-                                                    {"lockRotation", {0.0f, 0.0f, 0.0f}}}});
-    object.components.push_back(
-        SceneComponentData{"ColliderComponent",
-                           {{"enabled", true},
-                            {"fitMode", "Manual"},
-                            {"shape", "Box"},
-                            {"collisionAssetId", ""},
-                            {"center", {0.0f, 1.0f, 0.0f}},
-                            {"rotation", {0.0f, 0.0f, 0.0f}},
-                            {"size", {4.0f, 2.0f, 4.0f}},
-                            {"radius", 1.0f},
-                            {"height", 2.0f},
-                            {"trigger", true},
-                            {"material", {{"friction", 0.5f}, {"restitution", 0.0f}, {"density", 1.0f}}},
-                            {"filter", {{"layer", 1u}, {"mask", 0xFFFFFFFFu}}}}});
-    object.components.push_back(SceneComponentData{"DialogueTriggerComponent",
-                                                   {{"enabled", true},
-                                                    {"dialogueAssetGuid", ""},
-                                                    {"locale", "ja-JP"},
-                                                    {"activation", "OnEnter"},
-                                                    {"interactAction", "Gameplay.Interact"},
-                                                    {"pauseWorld", true},
-                                                    {"oneShot", false}}});
+    // 動かない範囲の箱（トリガー）。既定値は部品が持つので、変える項目だけを渡す。
+    PhysicsBodyComponent body;
+    body.Deserialize(
+        {{"motionType", "Static"}, {"gravityScale", 0.0f}, {"linearDamping", 0.0f}, {"angularDamping", 0.0f}});
+    ColliderComponent collider;
+    collider.Deserialize({{"center", {0.0f, 1.0f, 0.0f}},
+                          {"size", {4.0f, 2.0f, 4.0f}},
+                          {"radius", 1.0f},
+                          {"height", 2.0f},
+                          {"trigger", true}});
+    nlohmann::json bodyProperties = nlohmann::json::object();
+    nlohmann::json colliderProperties = nlohmann::json::object();
+    nlohmann::json triggerProperties = nlohmann::json::object();
+    body.Serialize(bodyProperties);
+    collider.Serialize(colliderProperties);
+    DialogueTriggerComponent{}.Serialize(triggerProperties);
+    object.components.push_back(SceneComponentData{"PhysicsBodyComponent", std::move(bodyProperties)});
+    object.components.push_back(SceneComponentData{"ColliderComponent", std::move(colliderProperties)});
+    object.components.push_back(SceneComponentData{"DialogueTriggerComponent", std::move(triggerProperties)});
 
     NormalizeSceneComponentIds(object);
     scene.GetSceneDocument().objects.push_back(std::move(object));

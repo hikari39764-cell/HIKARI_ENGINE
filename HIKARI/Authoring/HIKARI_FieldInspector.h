@@ -15,6 +15,7 @@
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Core/Serialization/Json/HIKARI_JsonFieldOptions.h"
 #include "Core/Text/HIKARI_HumanizeKey.h"
+#include "Core/Text/HIKARI_ParseNumber.h"
 
 // JSONFIELDS の項目表から検査器の項目を作る。保存・読み取り・説明と同じ一つの表を使い、項目ごとの UI を書かない。
 // 並びは Common の項目が先頭、続いて宣言順（Group が同じ項目は 1 つの節）、最後に既定で閉じた "Advanced" 節。
@@ -34,7 +35,7 @@ template <class T, class Fields>
 bool InspectTable(IInspectorBuilder& builder, T& object, const Fields& fields, const std::string& prefix);
 
 // 整数の項目は int の欄で編集する。int に収まらない値は端へ寄せる。32 ビットの符号なし（マスクや乱数の種）は全ての値に
-// 届くよう、ビット列のまま符号付きで見せる。
+// 届くよう、ビット列のまま符号付きで見せる。64 ビットの整数は 10 進の文字で編集し、整数として読めない文字は捨てる。
 template <class I>
 bool EditInteger(IInspectorBuilder& builder, const AuthoringFieldDescriptor& field, I& value) {
     if constexpr (std::is_same_v<I, uint32_t>) {
@@ -44,6 +45,9 @@ bool EditInteger(IInspectorBuilder& builder, const AuthoringFieldDescriptor& fie
         }
         value = std::bit_cast<uint32_t>(bits);
         return true;
+    } else if constexpr (sizeof(I) > sizeof(int)) {
+        std::string text = std::to_string(value);
+        return builder.String(field, text) && TEXT::ParseNumber(text, value);
     } else {
         constexpr int kMinimum = (std::numeric_limits<int>::min)();
         constexpr int kMaximum = (std::numeric_limits<int>::max)();
@@ -146,6 +150,14 @@ struct Drawer {
                   [[maybe_unused]] const Options&... options) {
         if constexpr (kind == JSONFIELDS::FieldKind::Bool) {
             return builder.Bool(field, value);
+        } else if constexpr (kind == JSONFIELDS::FieldKind::Int && std::is_enum_v<V>) {
+            // 名前の表を持たない列挙は基底の整数として編集する。
+            auto number = static_cast<std::underlying_type_t<V>>(value);
+            if (!EditInteger(builder, field, number)) {
+                return false;
+            }
+            value = static_cast<V>(number);
+            return true;
         } else if constexpr (kind == JSONFIELDS::FieldKind::Int) {
             return EditInteger(builder, field, value);
         } else if constexpr (kind == JSONFIELDS::FieldKind::Float) {

@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
-#include "Core/HIKARI_JsonRead.h"
 #include "Scene/Components/HIKARI_ColliderComponent.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Geometry/HIKARI_GeometryFitProvider.h"
@@ -12,29 +12,22 @@
 #include "Scene/HIKARI_World.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceQueryService.h"
 
+#if defined(HIKARI_WITH_EDITOR)
+#include "Authoring/HIKARI_FieldInspector.h"
+#endif
+
 namespace HIKARI {
 
-float TerrainSurfaceFollowerComponent::GetRadius() const noexcept { return radius_; }
-
-void TerrainSurfaceFollowerComponent::SetRadius(float radius) {
-    radius_ = (std::max)(std::isfinite(radius) ? radius : 0.0f, 0.0f);
+namespace {
+// 範囲へ丸める。
+TerrainSurfaceFollowerSettings Normalize(TerrainSurfaceFollowerSettings settings) {
+    return JSONFIELDS::Sanitize(std::move(settings), kTerrainSurfaceFollowerFields);
 }
-
-float TerrainSurfaceFollowerComponent::GetHeightOffset() const noexcept { return heightOffset_; }
-
-void TerrainSurfaceFollowerComponent::SetHeightOffset(float offset) {
-    heightOffset_ = std::isfinite(offset) ? offset : 0.0f;
-}
-
-float TerrainSurfaceFollowerComponent::GetSmoothingTime() const noexcept { return smoothingTime_; }
-
-void TerrainSurfaceFollowerComponent::SetSmoothingTime(float seconds) {
-    smoothingTime_ = (std::max)(std::isfinite(seconds) ? seconds : 0.08f, 0.001f);
-}
+} // namespace
 
 float TerrainSurfaceFollowerComponent::ResolveRadius() const noexcept {
-    if (radius_ > 0.0f) {
-        return radius_;
+    if (settings_.radius > 0.0f) {
+        return settings_.radius;
     }
     const GameObject* owner = GetOwner();
     float localRadius = 0.0f;
@@ -67,22 +60,24 @@ float TerrainSurfaceFollowerComponent::ResolveRadius() const noexcept {
 }
 
 void TerrainSurfaceFollowerComponent::Serialize(nlohmann::json& out) const {
-    out = {
-        {"_schemaVersion", 1u},
-        {"radius", radius_},
-        {"heightOffset", heightOffset_},
-        {"smoothingTime", smoothingTime_},
-    };
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings_, kTerrainSurfaceFollowerFields);
 }
 
 void TerrainSurfaceFollowerComponent::Deserialize(const nlohmann::json& in) {
-    if (!in.is_object()) {
-        return;
-    }
-    SetRadius(in.value("radius", radius_));
-    SetHeightOffset(in.value("heightOffset", heightOffset_));
-    SetSmoothingTime(in.value("smoothingTime", smoothingTime_));
+    TerrainSurfaceFollowerSettings decoded{};
+    JSONFIELDS::Read(in, decoded, kTerrainSurfaceFollowerFields);
+    settings_ = Normalize(std::move(decoded));
 }
+
+#if defined(HIKARI_WITH_EDITOR)
+void TerrainSurfaceFollowerComponent::BuildInspector(IInspectorBuilder& builder) {
+    TerrainSurfaceFollowerSettings next = settings_;
+    if (InspectFields(builder, next, kTerrainSurfaceFollowerFields)) {
+        settings_ = Normalize(std::move(next));
+    }
+}
+#endif
 
 void TerrainSurfaceFollowerComponent::OnDetach() {
     GameObject* owner = GetOwner();
@@ -113,7 +108,7 @@ void TerrainSurfaceFollowerComponent::Update(float dt) {
         float surfaceHeight = 0.0f;
         MATH::Vec3 normal{};
         if (query->SampleWorldHeight(physicsPosition, surfaceHeight, normal)) {
-            targetY = surfaceHeight + heightOffset_ + ResolveRadius();
+            targetY = surfaceHeight + settings_.heightOffset + ResolveRadius();
         }
     }
 
@@ -121,7 +116,7 @@ void TerrainSurfaceFollowerComponent::Update(float dt) {
         smoothedHeight_ = targetY;
         smoothedHeightValid_ = true;
     } else {
-        const float rate = 1.0f - std::exp(-dt / smoothingTime_);
+        const float rate = 1.0f - std::exp(-dt / settings_.smoothingTime);
         smoothedHeight_ += (targetY - smoothedHeight_) * rate;
     }
 

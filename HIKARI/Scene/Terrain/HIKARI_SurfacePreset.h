@@ -7,6 +7,7 @@
 #include <string_view>
 
 #include "Core/Math/HIKARI_Math3D.h"
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
 
 namespace HIKARI::TERRAIN {
 
@@ -96,6 +97,51 @@ struct ShorelineParams {
     float wetness = 0.0f;
 
     bool operator==(const ShorelineParams&) const = default;
+};
+
+// 保存・読み取り・説明の項目表。材質と変形は地表の preset が決める値で、TerrainSurface の項目表では検査器に出さない。
+inline constexpr auto kGranularMaterialFields = [](auto&& field) {
+    using S = GranularMaterialParams;
+    using namespace JSONFIELDS;
+    field("lightTint", &S::lightTint, Color{});
+    field("darkTint", &S::darkTint, Color{});
+    field("sparkleStrength", &S::sparkleStrength);
+    field("rippleAmount", &S::rippleAmount);
+    field("pitDarkening", &S::pitDarkening);
+    field("toonBandCount", &S::toonBandCount);
+    field("toonBandHardness", &S::toonBandHardness);
+};
+
+// behavior は名前の表を持たず、列挙の番号のまま保存する。
+inline constexpr auto kDeformFields = [](auto&& field) {
+    using S = DeformParams;
+    using namespace JSONFIELDS;
+    field("behavior", &S::behavior);
+    field("maxDepth", &S::maxDepth);
+    field("stampRadius", &S::stampRadius);
+    field("rimStrength", &S::rimStrength);
+    field("responseResolutionScale", &S::responseResolutionScale);
+    field("restDepthScale", &S::restDepthScale);
+    field("minimumDepth", &S::minimumDepth);
+    field("settleStartRatio", &S::settleStartRatio);
+    field("settleSeconds", &S::settleSeconds);
+    field("impactDepthScale", &S::impactDepthScale);
+    field("rimWidthScale", &S::rimWidthScale);
+    field("refillPerSecond", &S::refillPerSecond);
+    field("diffusionPerSecond", &S::diffusionPerSecond);
+    field("plasticity", &S::plasticity);
+    field("plasticRefillPerSecond", &S::plasticRefillPerSecond);
+    field("recoveryDelaySeconds", &S::recoveryDelaySeconds);
+};
+
+inline constexpr auto kShorelineFields = [](auto&& field) {
+    using S = ShorelineParams;
+    using namespace JSONFIELDS;
+    field("edgeFalloff", &S::edgeFalloff, Range{0.0, 40.0}, Label{"Edge Falloff"},
+          Help{"Shoreline transition width in meters."});
+    field("edgeDepth", &S::edgeDepth, Range{0.0, 20.0}, Label{"Edge Depth"}, Help{"Shoreline sink depth in meters."});
+    field("wetness", &S::wetness, Range{0.0, 1.0}, Label{"Wetness"},
+          Help{"Shoreline wet-surface strength (0 disables)."});
 };
 
 // 実心地表の preset。砂 / 雪 / 泥 / 草 / 岩はこの構造を差し替える。

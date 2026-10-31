@@ -3,15 +3,13 @@
 
 #include "Scene/Components/HIKARI_ColliderComponent.h"
 
-#include <array>
 #include <string>
-#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetTypes.h"
-#include "Authoring/HIKARI_IInspectorBuilder.h"
-#include "Scene/Components/Inspectors/HIKARI_PhysicsCollisionFilterInspector.h"
+#include "Authoring/HIKARI_FieldInspector.h"
 #include "Physics/HIKARI_PhysicsBodyValidator.h"
 #include "Physics/HIKARI_PhysicsProjectSettings.h"
 #include "Physics/HIKARI_PhysicsRuntimeStatusService.h"
@@ -19,24 +17,17 @@
 
 namespace HIKARI {
 
-namespace {
-constexpr std::array<std::string_view, std::size(kColliderFitModeNames)> kFitModeLabels{"Manual", "Fit Object Geometry",
-                                                                                        "Model Default Collision"};
-} // namespace
-
 void ColliderComponent::BuildInspector(IInspectorBuilder& builder) {
-    builder.Bool(AuthoringFieldDescriptor{"enabled", "Enabled"}, enabled_);
-    (void)EnumChoice(builder, AuthoringFieldDescriptor{"fitMode", "Shape Source"}, fitMode_, kColliderFitModeNames,
-                     &kFitModeLabels);
-    if (fitMode_ == ColliderFitMode::CollisionAsset) {
-        builder.AssetIdPicker(AuthoringFieldDescriptor{"collisionAssetId", "Collision Source Model"}, AssetType::Model,
-                              collisionGeometryAssetId_);
-        const InspectorContext& context = builder.GetContext();
+    ColliderSettings next = settings_;
+    bool changed = InspectFields(builder, next, kColliderFields);
+    const InspectorContext& context = builder.GetContext();
+
+    if (next.fitMode == ColliderFitMode::CollisionAsset) {
         const ModelAssetDescriptor* descriptor =
             context.assetRegistry != nullptr
-                ? context.assetRegistry->FindAs<ModelAssetDescriptor>(AssetId{collisionGeometryAssetId_})
+                ? context.assetRegistry->FindAs<ModelAssetDescriptor>(AssetId{next.collisionAssetId})
                 : nullptr;
-        if (collisionGeometryAssetId_.empty()) {
+        if (next.collisionAssetId.empty()) {
             builder.Text("Select a model and author its default collision in the Model Collision workspace.");
         } else if (descriptor == nullptr || descriptor->collisionGeometryPath.empty()) {
             builder.Text(
@@ -45,22 +36,7 @@ void ColliderComponent::BuildInspector(IInspectorBuilder& builder) {
             builder.Text("Model collision ready: " + descriptor->collisionGeometryPath);
         }
     }
-    if (fitMode_ == ColliderFitMode::Manual) {
-        (void)EnumChoice(builder, AuthoringFieldDescriptor{"shape", "Shape"}, shapeType_, kColliderShapeTypeNames);
-        builder.Vec3(AuthoringFieldDescriptor{"center", "Center"}, center_.x, center_.y, center_.z);
-        builder.Vec3(AuthoringFieldDescriptor{"rotation", "Rotation"}, rotationEulerDegrees_.x, rotationEulerDegrees_.y,
-                     rotationEulerDegrees_.z);
-        if (shapeType_ == PHYSICS::PhysicsShapeType::Box) {
-            builder.Vec3(AuthoringFieldDescriptor{"size", "Size"}, size_.x, size_.y, size_.z);
-        } else {
-            builder.Float(AuthoringFieldDescriptor{"radius", "Radius"}, radius_);
-            if (shapeType_ == PHYSICS::PhysicsShapeType::Capsule) {
-                builder.Float(AuthoringFieldDescriptor{"height", "Height"}, height_);
-            }
-        }
-    }
-    builder.Bool(AuthoringFieldDescriptor{"trigger", "Is Trigger"}, trigger_);
-    const InspectorContext& context = builder.GetContext();
+
     const auto* projectSettings =
         context.worldServices != nullptr ? context.worldServices->Find<PHYSICS::PhysicsProjectSettings>() : nullptr;
     if (projectSettings != nullptr && !projectSettings->GetMaterialPresets().empty()) {
@@ -68,23 +44,24 @@ void ColliderComponent::BuildInspector(IInspectorBuilder& builder) {
         for (const PHYSICS::PhysicsMaterialPreset& preset : projectSettings->GetMaterialPresets()) {
             presets.push_back({preset.name, preset.name});
         }
-        int selectedPreset = projectSettings->FindMaterialPreset(friction_, restitution_, density_) + 1;
+        PHYSICS::PhysicsMaterialDesc& material = next.material;
+        int selectedPreset =
+            projectSettings->FindMaterialPreset(material.friction, material.restitution, material.density) + 1;
         if (builder.Choice(AuthoringFieldDescriptor{"materialPreset", "Material Preset",
                                                     "Copies friction, restitution and density from a project preset."},
                            selectedPreset, presets) &&
             selectedPreset > 0) {
             const PHYSICS::PhysicsMaterialPreset& preset =
                 projectSettings->GetMaterialPresets()[static_cast<size_t>(selectedPreset - 1)];
-            friction_ = preset.friction;
-            restitution_ = preset.restitution;
-            density_ = preset.density;
+            material.friction = preset.friction;
+            material.restitution = preset.restitution;
+            material.density = preset.density;
+            changed = true;
         }
     }
-    builder.Float(AuthoringFieldDescriptor{"friction", "Friction"}, friction_);
-    builder.Float(AuthoringFieldDescriptor{"restitution", "Restitution"}, restitution_);
-    builder.Float(AuthoringFieldDescriptor{"density", "Density"}, density_);
-    DrawPhysicsCollisionFilterInspector(builder, collisionLayer_, collisionMask_);
-    ClampSettings();
+    if (changed) {
+        settings_ = NormalizeColliderSettings(std::move(next));
+    }
 
     const auto* statusService = context.worldServices != nullptr
                                     ? context.worldServices->Find<PHYSICS::PhysicsRuntimeStatusService>()

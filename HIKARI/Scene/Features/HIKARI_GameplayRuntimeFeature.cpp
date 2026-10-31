@@ -57,13 +57,9 @@ public:
         input.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<CharacterInputComponent>(); };
         input.requiredComponents = {"CharacterLocomotionComponent"};
         input.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties = {{"enabled", true},
-                          {"priority", 100},
-                          {"moveAction", "Gameplay.Move"},
-                          {"lookAction", "Gameplay.Look"},
-                          {"jumpAction", "Gameplay.Jump"},
-                          {"sprintAction", "Gameplay.Sprint"}};
+            CharacterInputComponent{}.Serialize(properties);
         };
+        input.fields = JSONFIELDS::Describe<CharacterInputSettings>(kCharacterInputFields);
         input.presentation =
             GameplayPresentation("Character Input", "Maps project actions into a replaceable motion intent source.");
 
@@ -75,37 +71,9 @@ public:
         locomotion.requiredComponents = {"PhysicsBodyComponent"};
         locomotion.optionalComponents = {"CharacterInputComponent"};
         locomotion.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties = {{"enabled", true},
-                          {"motionPriority", 100},
-                          {"movementSpace", "Camera"},
-                          {"maximumSpeed", 5.0f},
-                          {"sprintMultiplier", 1.5f},
-                          {"acceleration", 30.0f},
-                          {"deceleration", 40.0f},
-                          {"airAcceleration", 10.0f},
-                          {"airDeceleration", 12.0f},
-                          {"turnSpeedDegrees", 720.0f},
-                          {"jumpHeight", 1.2f},
-                          {"jumpBufferSeconds", 0.12f},
-                          {"groundGraceSeconds", 0.10f},
-                          {"maximumFallSpeed", 55.0f},
-                          {"maximumSlopeAngleDegrees", 42.0f},
-                          {"stepHeight", 0.25f},
-                          {"stickToFloorDistance", 0.28f},
-                          {"stepForwardTestDistance", 0.30f},
-                          {"edgeProbeDistance", 0.45f},
-                          {"edgeProbeRadius", 0.18f},
-                          {"maximumGroundedDrop", 0.35f},
-                          {"characterPadding", 0.02f},
-                          {"predictiveContactDistance", 0.1f},
-                          {"penetrationRecoverySpeed", 1.0f},
-                          {"maximumCollisionHits", 256u},
-                          {"cancelVelocityTowardsSteepSlopes", true},
-                          {"edgeGuardEnabled", true},
-                          {"enhancedInternalEdgeRemoval", true},
-                          {"inputDeadZone", 0.08f},
-                          {"rotateToMove", true}};
+            CharacterLocomotionComponent{}.Serialize(properties);
         };
+        locomotion.fields = JSONFIELDS::Describe<CharacterLocomotionSettings>(kCharacterLocomotionFields);
         locomotion.configureDependencies = [](SceneObjectData& object, const std::vector<std::string>& added) {
             // Character locomotion is a controller for the existing
             // physics body, not a second body implementation. The
@@ -136,9 +104,12 @@ public:
         spawnPoint.typeName = "SpawnPointComponent";
         spawnPoint.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<SpawnPointComponent>(); };
         spawnPoint.initializeDefaults = [](const SceneObjectData& object, nlohmann::json& properties) {
-            properties["spawnPointId"] = object.name.empty() ? "DefaultSpawn" : object.name;
-            properties["enabled"] = true;
+            SpawnPointComponent{}.Serialize(properties);
+            if (!object.name.empty()) {
+                properties["spawnPointId"] = object.name;
+            }
         };
+        spawnPoint.fields = JSONFIELDS::Describe<SpawnPointSettings>(kSpawnPointFields);
         spawnPoint.presentation = GameplayPresentation("Spawn Point", "Names a reusable spawn location in the scene.");
 
         ComponentTypeInfo dialogueInteractor{};
@@ -147,8 +118,9 @@ public:
             return std::make_unique<DialogueInteractorComponent>();
         };
         dialogueInteractor.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties = {{"enabled", true}};
+            DialogueInteractorComponent{}.Serialize(properties);
         };
+        dialogueInteractor.fields = JSONFIELDS::Describe<DialogueInteractorSettings>(kDialogueInteractorFields);
         dialogueInteractor.presentation = GameplayPresentation(
             "Dialogue Interactor", "Marks an actor that can enter and activate dialogue trigger volumes.");
 
@@ -159,16 +131,9 @@ public:
         };
         dialogueTrigger.requiredComponents = {"PhysicsBodyComponent", "ColliderComponent"};
         dialogueTrigger.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties = {
-                {"enabled", true},
-                {"dialogueAssetGuid", ""},
-                {"locale", "ja-JP"},
-                {"activation", "OnEnter"},
-                {"interactAction", "Gameplay.Interact"},
-                {"pauseWorld", true},
-                {"oneShot", false},
-            };
+            DialogueTriggerComponent{}.Serialize(properties);
         };
+        dialogueTrigger.fields = JSONFIELDS::Describe<DialogueTriggerSettings>(kDialogueTriggerFields);
         dialogueTrigger.configureDependencies = [](SceneObjectData& object, const std::vector<std::string>& added) {
             if (WasDependencyAdded(added, "PhysicsBodyComponent")) {
                 if (SceneComponentData* body = object.FindComponent("PhysicsBodyComponent")) {

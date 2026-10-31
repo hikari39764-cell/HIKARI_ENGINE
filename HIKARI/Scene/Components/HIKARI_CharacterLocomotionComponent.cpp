@@ -3,113 +3,33 @@
 #include "Core/HIKARI_MathConfig.h"
 
 #include <algorithm>
-#include <cmath>
-#include <string>
+#include <utility>
 
 namespace HIKARI {
-namespace {
-constexpr float kDegreesToRadians = MATH::kDegreesToRadians;
-} // namespace
+
+CharacterLocomotionSettings NormalizeCharacterLocomotionSettings(CharacterLocomotionSettings settings) {
+    settings = JSONFIELDS::Sanitize(std::move(settings), kCharacterLocomotionFields);
+    settings.predictiveContactDistance = (std::max)(settings.predictiveContactDistance, settings.characterPadding);
+    return settings;
+}
 
 void CharacterLocomotionComponent::Serialize(nlohmann::json& out) const {
-    out["enabled"] = enabled_;
-    out["motionPriority"] = motionPriority_;
-    out["movementSpace"] = TEXT::EnumToName(kCharacterMovementSpaceNames, movementSpace_, "Camera");
-    out["maximumSpeed"] = maximumSpeed_;
-    out["sprintMultiplier"] = sprintMultiplier_;
-    out["acceleration"] = acceleration_;
-    out["deceleration"] = deceleration_;
-    out["airAcceleration"] = airAcceleration_;
-    out["airDeceleration"] = airDeceleration_;
-    out["turnSpeedDegrees"] = turnSpeedDegrees_;
-    out["jumpHeight"] = jumpHeight_;
-    out["jumpBufferSeconds"] = jumpBufferSeconds_;
-    out["groundGraceSeconds"] = groundGraceSeconds_;
-    out["maximumFallSpeed"] = maximumFallSpeed_;
-    out["maximumSlopeAngleDegrees"] = maximumSlopeAngleDegrees_;
-    out["stepHeight"] = stepHeight_;
-    out["stickToFloorDistance"] = stickToFloorDistance_;
-    out["stepForwardTestDistance"] = stepForwardTestDistance_;
-    out["edgeProbeDistance"] = edgeProbeDistance_;
-    out["edgeProbeRadius"] = edgeProbeRadius_;
-    out["maximumGroundedDrop"] = maximumGroundedDrop_;
-    out["characterPadding"] = characterPadding_;
-    out["predictiveContactDistance"] = predictiveContactDistance_;
-    out["penetrationRecoverySpeed"] = penetrationRecoverySpeed_;
-    out["maximumCollisionHits"] = maximumCollisionHits_;
-    out["cancelVelocityTowardsSteepSlopes"] = cancelVelocityTowardsSteepSlopes_;
-    out["edgeGuardEnabled"] = edgeGuardEnabled_;
-    out["enhancedInternalEdgeRemoval"] = enhancedInternalEdgeRemoval_;
-    out["inputDeadZone"] = inputDeadZone_;
-    out["rotateToMove"] = rotateToMove_;
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings_, kCharacterLocomotionFields);
 }
 
 void CharacterLocomotionComponent::Deserialize(const nlohmann::json& in) {
-    enabled_ = in.value("enabled", enabled_);
-    motionPriority_ = in.value("motionPriority", motionPriority_);
-    TEXT::TryParseEnum(kCharacterMovementSpaceNames, in.value("movementSpace", std::string{}), movementSpace_);
-    maximumSpeed_ = in.value("maximumSpeed", maximumSpeed_);
-    sprintMultiplier_ = in.value("sprintMultiplier", sprintMultiplier_);
-    acceleration_ = in.value("acceleration", acceleration_);
-    deceleration_ = in.value("deceleration", deceleration_);
-    airAcceleration_ = in.value("airAcceleration", airAcceleration_);
-    airDeceleration_ = in.value("airDeceleration", airDeceleration_);
-    turnSpeedDegrees_ = in.value("turnSpeedDegrees", turnSpeedDegrees_);
-    jumpHeight_ = in.value("jumpHeight", jumpHeight_);
-    jumpBufferSeconds_ = in.value("jumpBufferSeconds", jumpBufferSeconds_);
-    groundGraceSeconds_ = in.value("groundGraceSeconds", groundGraceSeconds_);
-    maximumFallSpeed_ = in.value("maximumFallSpeed", maximumFallSpeed_);
-    maximumSlopeAngleDegrees_ = in.value("maximumSlopeAngleDegrees", maximumSlopeAngleDegrees_);
-    stepHeight_ = in.value("stepHeight", stepHeight_);
-    stickToFloorDistance_ = in.value("stickToFloorDistance", stickToFloorDistance_);
-    stepForwardTestDistance_ = in.value("stepForwardTestDistance", stepForwardTestDistance_);
-    edgeProbeDistance_ = in.value("edgeProbeDistance", edgeProbeDistance_);
-    edgeProbeRadius_ = in.value("edgeProbeRadius", edgeProbeRadius_);
-    maximumGroundedDrop_ = in.value("maximumGroundedDrop", maximumGroundedDrop_);
-    characterPadding_ = in.value("characterPadding", characterPadding_);
-    predictiveContactDistance_ = in.value("predictiveContactDistance", predictiveContactDistance_);
-    penetrationRecoverySpeed_ = in.value("penetrationRecoverySpeed", penetrationRecoverySpeed_);
-    maximumCollisionHits_ = in.value("maximumCollisionHits", maximumCollisionHits_);
-    cancelVelocityTowardsSteepSlopes_ = in.value("cancelVelocityTowardsSteepSlopes", cancelVelocityTowardsSteepSlopes_);
-    edgeGuardEnabled_ = in.value("edgeGuardEnabled", edgeGuardEnabled_);
-    enhancedInternalEdgeRemoval_ = in.value("enhancedInternalEdgeRemoval", enhancedInternalEdgeRemoval_);
-    inputDeadZone_ = in.value("inputDeadZone", inputDeadZone_);
-    rotateToMove_ = in.value("rotateToMove", rotateToMove_);
-    ClampSettings();
-}
-
-void CharacterLocomotionComponent::ClampSettings() noexcept {
-    maximumSpeed_ = (std::max)(maximumSpeed_, 0.0f);
-    sprintMultiplier_ = (std::max)(sprintMultiplier_, 1.0f);
-    acceleration_ = (std::max)(acceleration_, 0.0f);
-    deceleration_ = (std::max)(deceleration_, 0.0f);
-    airAcceleration_ = (std::max)(airAcceleration_, 0.0f);
-    airDeceleration_ = (std::max)(airDeceleration_, 0.0f);
-    turnSpeedDegrees_ = (std::max)(turnSpeedDegrees_, 0.0f);
-    jumpHeight_ = (std::max)(jumpHeight_, 0.0f);
-    jumpBufferSeconds_ = (std::max)(jumpBufferSeconds_, 0.0f);
-    groundGraceSeconds_ = (std::max)(groundGraceSeconds_, 0.0f);
-    maximumFallSpeed_ = (std::max)(maximumFallSpeed_, 0.0f);
-    maximumSlopeAngleDegrees_ = (std::clamp)(maximumSlopeAngleDegrees_, 0.0f, 89.0f);
-    stepHeight_ = (std::max)(stepHeight_, 0.0f);
-    stickToFloorDistance_ = (std::max)(stickToFloorDistance_, 0.0f);
-    stepForwardTestDistance_ = (std::max)(stepForwardTestDistance_, 0.0f);
-    edgeProbeDistance_ = (std::clamp)(edgeProbeDistance_, 0.05f, 5.0f);
-    edgeProbeRadius_ = (std::clamp)(edgeProbeRadius_, 0.01f, 2.0f);
-    maximumGroundedDrop_ = (std::clamp)(maximumGroundedDrop_, 0.0f, 5.0f);
-    characterPadding_ = (std::clamp)(characterPadding_, 0.001f, 1.0f);
-    predictiveContactDistance_ = (std::max)(predictiveContactDistance_, characterPadding_);
-    penetrationRecoverySpeed_ = (std::clamp)(penetrationRecoverySpeed_, 0.0f, 1.0f);
-    maximumCollisionHits_ = (std::clamp)(maximumCollisionHits_, 16u, 4096u);
-    inputDeadZone_ = (std::clamp)(inputDeadZone_, 0.0f, 0.95f);
+    CharacterLocomotionSettings decoded{};
+    JSONFIELDS::Read(in, decoded, kCharacterLocomotionFields);
+    settings_ = NormalizeCharacterLocomotionSettings(std::move(decoded));
 }
 
 float CharacterLocomotionComponent::GetTurnSpeedRadians() const noexcept {
-    return turnSpeedDegrees_ * kDegreesToRadians;
+    return settings_.turnSpeedDegrees * MATH::kDegreesToRadians;
 }
 
 float CharacterLocomotionComponent::GetMaximumSlopeAngleRadians() const noexcept {
-    return maximumSlopeAngleDegrees_ * kDegreesToRadians;
+    return settings_.maximumSlopeAngleDegrees * MATH::kDegreesToRadians;
 }
 
 } // namespace HIKARI
