@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "actions": [
+    {
+      "id": "Gameplay.Sprint",
+      "displayName": "Sprint",
+      "valueType": "Button",
+      "clamp": true
+    }
+  ]
+}
