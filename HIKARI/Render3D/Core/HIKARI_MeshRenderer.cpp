@@ -51,7 +51,7 @@ void PublishFrameCounters(uint64_t frameIndex) {
     for (FrameCounterMetric& metric : gFrameCounterMetrics) {
         if (metric.handle == METRIC::kInvalidMetric) {
             metric.handle = METRIC::Register(
-                {metric.id, "Render3D.MeshRenderer", "count", METRIC::MetricCategory::Count, metric.help});
+                {metric.id, "Render3D.MeshRenderer", "Render3D", "count", METRIC::MetricCategory::Count, metric.help});
         }
         METRIC::Publish(metric.handle, static_cast<double>(gMeshRendererState.debugStats.*metric.counter), frameIndex);
     }

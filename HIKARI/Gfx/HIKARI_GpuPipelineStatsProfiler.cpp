@@ -66,7 +66,7 @@ bool IsValidPass(GPU_PROFILE::Pass pass) { return PassIndex(pass) < kPassCount; 
 
 METRIC::MetricHandle ExecutionsMetric() {
     static const METRIC::MetricHandle handle =
-        METRIC::Register({METRIC::kGpuPipelineExecutions, kMetricOwner, "count", METRIC::MetricCategory::Count,
+        METRIC::Register({METRIC::kGpuPipelineExecutions, kMetricOwner, "Gfx", "count", METRIC::MetricCategory::Count,
                           "Pipeline statistics queries recorded in the frame."});
     return handle;
 }
@@ -75,8 +75,9 @@ const PassMetrics& MetricsOf(GPU_PROFILE::Pass pass) {
     PassMetrics& metrics = gPassMetrics[PassIndex(pass)];
     if (metrics.calls == METRIC::kInvalidMetric) {
         const std::string base = std::string("gpu.") + GPU_PROFILE::ToString(pass) + ".pipeline.";
-        const auto add = [&base](const char* item, const char* help) {
-            return METRIC::Register({base + item, kMetricOwner, "count", METRIC::MetricCategory::Count, help});
+        const char* module = GPU_PROFILE::ModuleOf(pass);
+        const auto add = [&base, module](const char* item, const char* help) {
+            return METRIC::Register({base + item, kMetricOwner, module, "count", METRIC::MetricCategory::Count, help});
         };
         metrics.calls = add("calls", "Pipeline statistics queries of the pass in the frame.");
         metrics.asInvocations = add("asInvocations", "Amplification shader invocations, summed over the frame.");

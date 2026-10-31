@@ -7,6 +7,7 @@
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_UtfPath.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 using Microsoft::WRL::ComPtr;
 namespace HIKARI::DXTEX {
@@ -244,6 +245,7 @@ std::vector<TextureLoadResult> DxTextureManager::LoadTextureBatch(const std::vec
             failResults(load.resultIndices);
             continue;
         }
+        GFX::VIDEO_MEMORY::Track(load.textureResource.Get(), GFX::VIDEO_MEMORY::Category::Texture);
 
         load.subresources.reserve(load.htex.subresources.size());
         for (const HtexSubresource& source : load.htex.subresources) {

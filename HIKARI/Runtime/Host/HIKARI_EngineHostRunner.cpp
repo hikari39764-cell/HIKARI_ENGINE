@@ -25,7 +25,7 @@
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 #include "Runtime/App/HIKARI_IHostApplication.h"
-#include "Runtime/Diagnostics/HIKARI_RuntimeBenchmark.h"
+#include "Runtime/Diagnostics/HIKARI_PerformanceCapture.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
 #include "Runtime/Host/HIKARI_IEditorUiServices.h"
@@ -256,7 +256,7 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
     const uint32_t captureCount = (std::max)(ReadRuntimeCommandLineUint32(L"--capture-count").value_or(1u), 1u);
     const uint32_t captureStride = (std::max)(ReadRuntimeCommandLineUint32(L"--capture-stride").value_or(1u), 1u);
     const auto exitFrame = ReadRuntimeCommandLineUint32(L"--exit-after-frame");
-    auto benchmark = RuntimeBenchmark::FromCommandLine(startupStarted);
+    PERFORMANCE_CAPTURE::StartFromCommandLine(startupStarted);
     uint64_t presentedFrames = 0;
     bool applicationPresented = false;
     TIME::ResetFrameClock();
@@ -363,11 +363,9 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
                 options.onFirstApplicationPresented();
             CORE::StartupTimer::ReportSince("Host.first_application_present", startupStarted);
         }
-        if (benchmark) {
-            benchmark->OnPresentedFrame(frame.frameIndex, renderingApplication, application.GetCurrentScene());
-            if (benchmark->ShouldExit())
-                break;
-        }
+        PERFORMANCE_CAPTURE::OnPresentedFrame(frame.frameIndex, renderingApplication, application.GetCurrentScene());
+        if (PERFORMANCE_CAPTURE::ShouldExitHost())
+            break;
         if (application.ShouldExitHost()) {
             break;
         }
@@ -383,9 +381,8 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
         }
     }
 
-    if (benchmark)
-        benchmark->Finish();
-    const int benchmarkExitCode = benchmark ? benchmark->ExitCode() : 0;
+    PERFORMANCE_CAPTURE::Shutdown();
+    const int benchmarkExitCode = PERFORMANCE_CAPTURE::ExitCode();
     // Shutdown が状態を解放する前にアプリケーションの失敗を保持する。
     const int applicationExitCode = application.GetExitCode();
     splash.Stop();

@@ -17,6 +17,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -151,6 +152,7 @@ int UploadTextureImage(const GFX::Context& context, GFX::UploadSubmissionQueue& 
     ComPtr<ID3D12Resource> texture;
     if (FAILED(DirectX::CreateTexture(context.device, metadata, &texture)))
         return fail("CreateTexture failed");
+    GFX::VIDEO_MEMORY::Track(texture.Get(), GFX::VIDEO_MEMORY::Category::Texture);
     std::vector<D3D12_SUBRESOURCE_DATA> subresources;
     if (FAILED(DirectX::PrepareUpload(context.device, images, imageCount, metadata, subresources)) ||
         subresources.empty())

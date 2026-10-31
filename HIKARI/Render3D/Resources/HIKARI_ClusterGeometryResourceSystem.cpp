@@ -17,6 +17,7 @@
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_UploadSubmissionQueue.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_RenderResourceSystem.h"
 #include "Render3D/Resources/Internal/HIKARI_ClusterGeometrySourceIdentity.h"
@@ -111,6 +112,7 @@ bool CreateClusterGeometryUploadBuffer(ClusterGeometryResourceSystemState& state
         return false;
     }
     GFX::SetD3D12Name(out.gpu.Get(), gpuName);
+    GFX::VIDEO_MEMORY::Track(out.gpu.Get(), GFX::VIDEO_MEMORY::Category::Geometry);
 
     const CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
     ++state.stats.gpuResourceCreateCount;

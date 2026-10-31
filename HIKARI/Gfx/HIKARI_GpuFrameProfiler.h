@@ -72,6 +72,8 @@ enum class Pass : uint32_t {
 };
 
 const char* ToString(Pass pass);
+// pass の所属モジュール（Render3D、Vfx、Post など）。pass の表の同じ行で宣言している。
+const char* ModuleOf(Pass pass);
 void SetEnabled(bool enabled, const char* unavailableReason = "");
 bool IsEnabled();
 

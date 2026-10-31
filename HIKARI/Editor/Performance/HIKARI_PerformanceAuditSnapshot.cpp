@@ -265,7 +265,7 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
         << '\n';
     AppendTimingLine(out, "CPU", CPU_PROFILE::ToString(CPU_PROFILE::Pass::Frame), cpuFrame, nullptr, nullptr);
     for (const METRIC::TimingRow& row : METRIC::TimingRows(s.metrics, "cpu")) {
-        AppendTimingLine(out, "CPU", row.name, row.ms, row.calls, nullptr);
+        AppendTimingLine(out, "CPU", row.name, row.ms, row.calls, row.selfMs);
     }
     const METRIC::MetricReading* gpuFrame = METRIC::FindReading(s.metrics, METRIC::kFrameGpuMs);
     out << "GPU frame: " << (gpuFrame != nullptr ? gpuFrame->sourceFrame : 0u) << " status=" << StatusName(gpuFrame)

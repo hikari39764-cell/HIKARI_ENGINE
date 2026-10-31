@@ -5,6 +5,7 @@
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 using Microsoft::WRL::ComPtr;
@@ -189,6 +190,7 @@ bool RenderTarget2D::CreateResources() {
         DEBUGLOG::PushRenderError(DumpState());
         return false;
     }
+    GFX::VIDEO_MEMORY::Track(colorTex_.Get(), GFX::VIDEO_MEMORY::Category::RenderTarget);
     colorState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     SetDebugName(debugName_);
 
@@ -243,6 +245,7 @@ bool RenderTarget2D::CreateResources() {
             DEBUGLOG::PushRenderError(DumpState());
             return false;
         }
+        GFX::VIDEO_MEMORY::Track(depthTex_.Get(), GFX::VIDEO_MEMORY::Category::RenderTarget);
         depthState_ = D3D12_RESOURCE_STATE_DEPTH_WRITE;
 
         D3D12_DESCRIPTOR_HEAP_DESC dsvDesc{};

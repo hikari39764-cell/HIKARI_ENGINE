@@ -1,6 +1,7 @@
 ﻿#include "HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 #include <algorithm>
 #include <utility>
@@ -64,6 +65,7 @@ bool DynamicUploadBuffer::CreatePage(size_t capacity) {
     if (!HIKARI_DX_CHECK(hr, "DynamicUploadBuffer::CreateCommittedResource")) {
         return false;
     }
+    HIKARI::GFX::VIDEO_MEMORY::Track(page.resource.Get(), HIKARI::GFX::VIDEO_MEMORY::Category::Upload);
 
     const D3D12_RANGE readRange{0u, 0u};
     hr = page.resource->Map(0u, &readRange, reinterpret_cast<void**>(&page.cpuBase));

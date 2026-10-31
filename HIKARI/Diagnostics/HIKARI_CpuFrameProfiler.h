@@ -6,7 +6,8 @@
 
 namespace HIKARI::CPU_PROFILE {
 
-// CPU の計時は登録表（Diagnostics/HIKARI_MetricRegistry.h）へ出す。frame.fps / frame.cpuMs / cpu.<区間名>.ms|calls。
+// CPU の計時は登録表（Diagnostics/HIKARI_MetricRegistry.h）へ出す。
+// frame.fps / frame.cpuMs / cpu.<区間名>.ms|calls|selfMs（selfMs は入れ子の子区間を除いた時間）。
 using DynamicPassHandle = uint32_t;
 inline constexpr DynamicPassHandle kInvalidDynamicPassHandle = static_cast<DynamicPassHandle>(-1);
 
@@ -49,6 +50,7 @@ private:
     Pass pass_ = Pass::Count;
     std::chrono::steady_clock::time_point begin_{};
     bool active_ = false;
+    uint32_t depth_ = 0;
 };
 
 class ScopedDynamicCpuTimer {
@@ -63,6 +65,7 @@ private:
     DynamicPassHandle pass_ = kInvalidDynamicPassHandle;
     std::chrono::steady_clock::time_point begin_{};
     bool active_ = false;
+    uint32_t depth_ = 0;
 };
 
 } // namespace HIKARI::CPU_PROFILE

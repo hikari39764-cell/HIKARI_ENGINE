@@ -6,6 +6,7 @@
 #include "Editor/Authoring/HIKARI_ComponentAuthoringOperations.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Environment/HIKARI_EnvironmentAssetOperations.h"
+#include "Editor/Performance/HIKARI_PerformanceOperations.h"
 #include "Editor/Projects/HIKARI_EditorProjectSession.h"
 #include "Editor/Tools/Console/HIKARI_ConsoleVariables.h"
 #include "Editor/Quality/HIKARI_GlobalPostOperations.h"
@@ -414,6 +415,7 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
     EDITOR::RegisterRenderStyleOperations(operationRegistry_, environmentPanel_.Style(),
                                           [this] { return aiOperationScene_; });
     EDITOR::RegisterAssetQueryOperation(operationRegistry_, [this] { return aiOperationScene_; });
+    EDITOR::RegisterPerformanceOperations(operationRegistry_, [this] { return aiOperationScene_; });
     EDITOR::RegisterModelCollisionOperations(operationRegistry_, ModelCollisionWorkspace(),
                                              [this]() { return aiOperationScene_; });
     EDITOR::RegisterAnimationStateMachineOperations(operationRegistry_, AnimationStateMachineWorkspace(),

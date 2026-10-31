@@ -22,7 +22,11 @@ enum class MetricStatus : uint8_t { NoData, Unsupported, Stale, Fresh };
 
 struct MetricDescriptor {
     std::string id;
+    // 値を出すコードの持ち主（"Gfx.GpuFrameProfiler" など）。ClearOwner の単位。
     std::string owner;
+    // 費用の帰属先になる、コードの置き場の単位（Render3D、Vfx、Post、Gfx、Scene、Runtime、Editor など）。
+    // 作る側が登録時に決める。モジュール別の集計はこれを見る。
+    std::string module;
     std::string unit;
     MetricCategory category = MetricCategory::Count;
     std::string help;

@@ -1,6 +1,7 @@
 #include "Render3D/HIKARI_Mesh.h"
 #include <cstring>
 #include <d3dx12.h>
+#include "Gfx/HIKARI_VideoMemory.h"
 
 namespace HIKARI {
 
@@ -27,6 +28,7 @@ bool CreateMeshBuffers(ID3D12Device* device, const std::vector<TVertex>& vertice
                                                IID_PPV_ARGS(vertexBuffer.GetAddressOf())))) {
         return false;
     }
+    GFX::VIDEO_MEMORY::Track(vertexBuffer.Get(), GFX::VIDEO_MEMORY::Category::Geometry);
 
     void* vbMapped = nullptr;
     if (FAILED(vertexBuffer->Map(0, nullptr, &vbMapped))) {
@@ -41,6 +43,7 @@ bool CreateMeshBuffers(ID3D12Device* device, const std::vector<TVertex>& vertice
                                                IID_PPV_ARGS(indexBuffer.GetAddressOf())))) {
         return false;
     }
+    GFX::VIDEO_MEMORY::Track(indexBuffer.Get(), GFX::VIDEO_MEMORY::Category::Geometry);
 
     void* ibMapped = nullptr;
     if (FAILED(indexBuffer->Map(0, nullptr, &ibMapped))) {

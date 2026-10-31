@@ -4,6 +4,8 @@
 
 #include <d3dx12.h>
 
+#include "Gfx/HIKARI_VideoMemory.h"
+
 namespace HIKARI::GFX::D3D12_BUFFER {
 
 bool CreateMappedUploadBuffer(ID3D12Device* device, UINT64 byteSize, Microsoft::WRL::ComPtr<ID3D12Resource>& resource,
@@ -20,6 +22,7 @@ bool CreateMappedUploadBuffer(ID3D12Device* device, UINT64 byteSize, Microsoft::
                                                nullptr, IID_PPV_ARGS(resource.GetAddressOf())))) {
         return false;
     }
+    VIDEO_MEMORY::Track(resource.Get(), VIDEO_MEMORY::Category::Upload);
 
     return SUCCEEDED(resource->Map(0, nullptr, mappedData));
 }
@@ -32,8 +35,12 @@ bool CreateDefaultBuffer(ID3D12Device* device, UINT64 byteSize, Microsoft::WRL::
     resource.Reset();
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     const auto desc = CD3DX12_RESOURCE_DESC::Buffer(byteSize);
-    return SUCCEEDED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON,
-                                                     nullptr, IID_PPV_ARGS(resource.GetAddressOf())));
+    if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                               IID_PPV_ARGS(resource.GetAddressOf())))) {
+        return false;
+    }
+    VIDEO_MEMORY::Track(resource.Get(), VIDEO_MEMORY::Category::Buffer);
+    return true;
 }
 
 bool CreateGpuResidentMappedBuffer(ID3D12Device* device, UINT64 byteSize,

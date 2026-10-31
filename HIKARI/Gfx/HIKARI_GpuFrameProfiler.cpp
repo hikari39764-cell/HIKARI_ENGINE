@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <iterator>
 #include <string>
 #include <string_view>
 
@@ -10,6 +11,7 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_MetricRegistry.h"
+#include "Diagnostics/HIKARI_TraceRecorder.h"
 #include "Gfx/HIKARI_DXCheck.h"
 
 namespace HIKARI::GFX::GPU_PROFILE {
@@ -76,8 +78,8 @@ bool IsValidPass(Pass pass) { return PassIndex(pass) < kPassCount; }
 
 METRIC::MetricHandle FrameMetric() {
     static const METRIC::MetricHandle handle =
-        METRIC::Register({METRIC::kFrameGpuMs, kMetricOwner, "ms", METRIC::MetricCategory::Work,
-                          "GPU time of the whole frame's commands."});
+        METRIC::Register({METRIC::kFrameGpuMs, kMetricOwner, ModuleOf(Pass::CommandFrame), "ms",
+                          METRIC::MetricCategory::Work, "GPU time of the whole frame's commands."});
     return handle;
 }
 
@@ -85,11 +87,12 @@ const PassMetrics& MetricsOf(Pass pass) {
     PassMetrics& metrics = gPassMetrics[PassIndex(pass)];
     if (metrics.ms == METRIC::kInvalidMetric) {
         const std::string base = std::string("gpu.") + ToString(pass);
-        metrics.ms = METRIC::Register({base + ".ms", kMetricOwner, "ms", METRIC::MetricCategory::Work,
+        const char* module = ModuleOf(pass);
+        metrics.ms = METRIC::Register({base + ".ms", kMetricOwner, module, "ms", METRIC::MetricCategory::Work,
                                        "GPU time of the pass, summed over every execution in the frame."});
-        metrics.calls = METRIC::Register({base + ".calls", kMetricOwner, "count", METRIC::MetricCategory::Count,
+        metrics.calls = METRIC::Register({base + ".calls", kMetricOwner, module, "count", METRIC::MetricCategory::Count,
                                           "Executions of the pass in the frame."});
-        metrics.selfMs = METRIC::Register({base + ".selfMs", kMetricOwner, "ms", METRIC::MetricCategory::Work,
+        metrics.selfMs = METRIC::Register({base + ".selfMs", kMetricOwner, module, "ms", METRIC::MetricCategory::Work,
                                            "GPU time of the pass without the passes nested inside it."});
     }
     return metrics;
@@ -104,6 +107,25 @@ void MarkUnavailable(const char* reason) {
         METRIC::MarkUnsupported(metrics.calls, text);
         METRIC::MarkUnsupported(metrics.selfMs, text);
     }
+}
+
+// 時間線の記録用に、GPU のタイムスタンプを CPU の時計（steady_clock と同じ QPC）へ写す 1 対を取る。
+// 取れない時は周波数だけを渡す（GPU の時計のまま、先頭だけ CPU 側に揃えて書かれる）。
+void CalibrateTraceClock(ID3D12CommandQueue* queue) {
+    TRACING::GpuClock clock{};
+    clock.ticksPerSecond = gState.timestampFrequency;
+    uint64_t gpuTicks = 0;
+    uint64_t cpuTicks = 0;
+    LARGE_INTEGER counterFrequency{};
+    if (queue != nullptr && SUCCEEDED(queue->GetClockCalibration(&gpuTicks, &cpuTicks)) &&
+        QueryPerformanceFrequency(&counterFrequency) && counterFrequency.QuadPart > 0) {
+        const uint64_t perSecond = static_cast<uint64_t>(counterFrequency.QuadPart);
+        clock.gpuTicks = gpuTicks;
+        clock.cpuNanoseconds = static_cast<int64_t>((cpuTicks / perSecond) * 1000000000ull +
+                                                    (cpuTicks % perSecond) * 1000000000ull / perSecond);
+        clock.calibrated = true;
+    }
+    TRACING::SetGpuClock(clock);
 }
 
 // 指標と標本窓を捨てて、次の完了フレームを待つ状態へ戻す。計時できない構成ならその理由は残す。
@@ -189,6 +211,11 @@ void CollectResolvedSlot(FrameSlot& slot) {
         }
 
         const Execution& execution = slot.executions[run];
+        if (TRACING::IsRecording()) {
+            TRACING::RecordGpu(ToString(execution.pass), ModuleOf(execution.pass),
+                               IsValidPass(execution.parent) ? ToString(execution.parent) : nullptr, start, end,
+                               slot.frameIndex);
+        }
         const double ms = static_cast<double>(end - start) * 1000.0 / static_cast<double>(gState.timestampFrequency);
         PassTotal& total = totals[PassIndex(execution.pass)];
         ++total.calls;
@@ -261,67 +288,85 @@ void ResetStatistics() {
 
 bool IsEnabled() { return gState.enabled; }
 
-const char* ToString(Pass pass) {
-    switch (pass) {
-    case Pass::ShadowMap: return "ShadowMap";
-    case Pass::GeometryAux: return "GeometryAux";
-    case Pass::ClusterCull: return "Cluster Cull";
-    case Pass::DepthPrepass: return "Depth Prepass";
-    case Pass::TraditionalDrawGeometryAux: return "Traditional Draw GeometryAux";
-    case Pass::TraditionalDrawForward: return "Traditional Draw Forward";
-    case Pass::MeshletDrawGeometryAux: return "Meshlet Draw GeometryAux";
-    case Pass::MeshletDrawDepthPrepass: return "Meshlet Draw DepthPrepass";
-    case Pass::MeshletDrawForward: return "Meshlet Draw Forward";
-    case Pass::MeshletDrawDepthAware: return "Meshlet Draw DepthAware";
-    case Pass::MeshletDrawTransparent: return "Meshlet Draw Transparent";
-    case Pass::MeshletDrawGeometryOutline: return "Meshlet Draw Geometry Outline";
-    case Pass::MeshletDrawVisibilityOverlay: return "Meshlet Draw Visibility Overlay";
-    case Pass::TraditionalDrawShadow: return "Traditional Draw Shadow";
-    case Pass::MeshletDrawShadow: return "Meshlet Draw Shadow";
-    case Pass::TraditionalDrawShadowStatic: return "Traditional Draw Shadow Static";
-    case Pass::MeshletDrawShadowStatic: return "Meshlet Draw Shadow Static";
-    case Pass::TraditionalDrawShadowDynamic: return "Traditional Draw Shadow Dynamic";
-    case Pass::MeshletDrawShadowDynamic: return "Meshlet Draw Shadow Dynamic";
-    case Pass::TraditionalDrawShadowFallback: return "Traditional Draw Shadow Fallback";
-    case Pass::MeshletDrawShadowFallback: return "Meshlet Draw Shadow Fallback";
-    case Pass::SsaoMain: return "SSAO Main";
-    case Pass::SsaoBlur: return "SSAO Blur";
-    case Pass::ScreenSpaceReflections: return "Screen Space Reflections";
-    case Pass::SubsurfaceScattering: return "Subsurface Scattering";
-    case Pass::RayTracedShadow: return "Ray Traced Shadow";
-    case Pass::TemporalMotionVectors: return "Temporal MotionVectors";
-    case Pass::TemporalTaaResolve: return "Temporal TAA";
-    case Pass::TemporalDlaaResolve: return "Temporal DLAA";
-    case Pass::TemporalDlssResolve: return "Temporal DLSS";
-    case Pass::ForwardOpaque: return "ForwardOpaque";
-    case Pass::DepthAware: return "DepthAware";
-    case Pass::ForwardTransparent: return "ForwardTransparent";
-    case Pass::DepthOfField: return "Depth Of Field";
-    case Pass::MotionBlur: return "Motion Blur";
-    case Pass::ParticleSimulation: return "Particle Simulation";
-    case Pass::ParticleDraw: return "Particle Draw";
-    case Pass::VolumetricLighting: return "Volumetric Lighting";
-    case Pass::StylizedGeometryOutline: return "Stylized Geometry Outline";
-    case Pass::StylizedVisibilityOverlay: return "Stylized Visibility Overlay";
-    case Pass::StylizedScreenFeatures: return "Stylized Screen Features";
-    case Pass::PostSceneResolve: return "Post Scene Resolve";
-    case Pass::PresentationComposition: return "Presentation Composition";
-    case Pass::GameViewResolve: return "GameView Resolve";
-    case Pass::SceneLayers: return "Scene Layers";
-    case Pass::UiLayers: return "UI Layers";
-    case Pass::ImGui: return "ImGui";
-    case Pass::WaterVisibilityDepth: return "Water Visibility Depth";
-    case Pass::VolumetricClouds: return "Volumetric Clouds";
-    case Pass::EnvironmentLighting: return "Environment Lighting";
-    case Pass::DynamicDiffuseGi: return "Dynamic Diffuse GI";
-    case Pass::CloudSolarVisibility: return "Cloud Solar Visibility";
-    case Pass::RuntimeRayScenePreparation: return "Shared Ray Scene Preparation";
-    case Pass::SceneCaptures: return "Scene Captures";
-    case Pass::CommandFrame: return "Command Frame";
-    case Pass::Count:
-    default: return "";
+namespace {
+// pass の表。名前と所属モジュールを 1 行にまとめる（登録表の id と時間線の cat になる）。列挙の順に並べる。
+struct PassInfo {
+    Pass pass;
+    const char* name;
+    const char* module;
+};
+constexpr PassInfo kPassInfo[] = {
+    {Pass::ShadowMap, "ShadowMap", "Render3D"},
+    {Pass::GeometryAux, "GeometryAux", "Render3D"},
+    {Pass::ClusterCull, "Cluster Cull", "Render3D"},
+    {Pass::DepthPrepass, "Depth Prepass", "Render3D"},
+    {Pass::TraditionalDrawGeometryAux, "Traditional Draw GeometryAux", "Render3D"},
+    {Pass::TraditionalDrawForward, "Traditional Draw Forward", "Render3D"},
+    {Pass::MeshletDrawGeometryAux, "Meshlet Draw GeometryAux", "Render3D"},
+    {Pass::MeshletDrawDepthPrepass, "Meshlet Draw DepthPrepass", "Render3D"},
+    {Pass::MeshletDrawForward, "Meshlet Draw Forward", "Render3D"},
+    {Pass::MeshletDrawDepthAware, "Meshlet Draw DepthAware", "Render3D"},
+    {Pass::MeshletDrawTransparent, "Meshlet Draw Transparent", "Render3D"},
+    {Pass::MeshletDrawGeometryOutline, "Meshlet Draw Geometry Outline", "Render3D"},
+    {Pass::MeshletDrawVisibilityOverlay, "Meshlet Draw Visibility Overlay", "Render3D"},
+    {Pass::TraditionalDrawShadow, "Traditional Draw Shadow", "Render3D"},
+    {Pass::MeshletDrawShadow, "Meshlet Draw Shadow", "Render3D"},
+    {Pass::TraditionalDrawShadowStatic, "Traditional Draw Shadow Static", "Render3D"},
+    {Pass::MeshletDrawShadowStatic, "Meshlet Draw Shadow Static", "Render3D"},
+    {Pass::TraditionalDrawShadowDynamic, "Traditional Draw Shadow Dynamic", "Render3D"},
+    {Pass::MeshletDrawShadowDynamic, "Meshlet Draw Shadow Dynamic", "Render3D"},
+    {Pass::TraditionalDrawShadowFallback, "Traditional Draw Shadow Fallback", "Render3D"},
+    {Pass::MeshletDrawShadowFallback, "Meshlet Draw Shadow Fallback", "Render3D"},
+    {Pass::SsaoMain, "SSAO Main", "Render3D"},
+    {Pass::SsaoBlur, "SSAO Blur", "Render3D"},
+    {Pass::ScreenSpaceReflections, "Screen Space Reflections", "Render3D"},
+    {Pass::SubsurfaceScattering, "Subsurface Scattering", "Render3D"},
+    {Pass::RayTracedShadow, "Ray Traced Shadow", "Render3D"},
+    {Pass::TemporalMotionVectors, "Temporal MotionVectors", "Render3D"},
+    {Pass::TemporalTaaResolve, "Temporal TAA", "Render3D"},
+    {Pass::TemporalDlaaResolve, "Temporal DLAA", "Render3D"},
+    {Pass::TemporalDlssResolve, "Temporal DLSS", "Render3D"},
+    {Pass::ForwardOpaque, "ForwardOpaque", "Render3D"},
+    {Pass::DepthAware, "DepthAware", "Render3D"},
+    {Pass::ForwardTransparent, "ForwardTransparent", "Render3D"},
+    {Pass::DepthOfField, "Depth Of Field", "Render3D"},
+    {Pass::MotionBlur, "Motion Blur", "Render3D"},
+    {Pass::ParticleSimulation, "Particle Simulation", "Vfx"},
+    {Pass::ParticleDraw, "Particle Draw", "Vfx"},
+    {Pass::VolumetricLighting, "Volumetric Lighting", "Render3D"},
+    {Pass::StylizedGeometryOutline, "Stylized Geometry Outline", "Render3D"},
+    {Pass::StylizedVisibilityOverlay, "Stylized Visibility Overlay", "Render3D"},
+    {Pass::StylizedScreenFeatures, "Stylized Screen Features", "Render3D"},
+    {Pass::PostSceneResolve, "Post Scene Resolve", "Post"},
+    {Pass::PresentationComposition, "Presentation Composition", "Runtime"},
+    {Pass::GameViewResolve, "GameView Resolve", "Post"},
+    {Pass::SceneLayers, "Scene Layers", "Runtime"},
+    {Pass::UiLayers, "UI Layers", "Render2D"},
+    {Pass::ImGui, "ImGui", "Editor"},
+    {Pass::WaterVisibilityDepth, "Water Visibility Depth", "Render3D"},
+    {Pass::VolumetricClouds, "Volumetric Clouds", "Render3D"},
+    {Pass::SceneCaptures, "Scene Captures", "Scene"},
+    {Pass::CommandFrame, "Command Frame", "Gfx"},
+    {Pass::EnvironmentLighting, "Environment Lighting", "Render3D"},
+    {Pass::DynamicDiffuseGi, "Dynamic Diffuse GI", "Render3D"},
+    {Pass::CloudSolarVisibility, "Cloud Solar Visibility", "Render3D"},
+    {Pass::RuntimeRayScenePreparation, "Shared Ray Scene Preparation", "Render3D"},
+};
+constexpr bool PassInfoFollowsEnum() {
+    for (size_t index = 0; index < std::size(kPassInfo); ++index) {
+        if (static_cast<size_t>(kPassInfo[index].pass) != index) {
+            return false;
+        }
     }
+    return true;
 }
+static_assert(std::size(kPassInfo) == static_cast<size_t>(Pass::Count), "every Pass needs a row");
+static_assert(PassInfoFollowsEnum(), "kPassInfo must follow the Pass order");
+} // namespace
+
+const char* ToString(Pass pass) { return IsValidPass(pass) ? kPassInfo[PassIndex(pass)].name : ""; }
+
+const char* ModuleOf(Pass pass) { return IsValidPass(pass) ? kPassInfo[PassIndex(pass)].module : ""; }
 
 void BeginFrame(ID3D12Device* device, ID3D12CommandQueue* queue, ID3D12GraphicsCommandList* cmd, uint64_t frameIndex,
                 uint64_t completedFence, uint64_t retireFence) {
@@ -332,6 +377,9 @@ void BeginFrame(ID3D12Device* device, ID3D12CommandQueue* queue, ID3D12GraphicsC
     if (cmd == nullptr || !EnsureInitialized(device, queue)) {
         gState.currentSlot = nullptr;
         return;
+    }
+    if (TRACING::IsRecording() && !TRACING::HasGpuClock()) {
+        CalibrateTraceClock(queue);
     }
 
     FrameSlot& slot = gState.slots[gState.writeSlotIndex % kBufferedFrameCount];
