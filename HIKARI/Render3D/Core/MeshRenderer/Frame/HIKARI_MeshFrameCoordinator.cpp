@@ -169,6 +169,8 @@ bool PrepareMeshFrame(const GFX::Context& graphics, const Camera3D& camera, cons
                                          static_cast<uint32_t>(screenH), shadows);
     FillLightCB(environment, frameResources.view.localLightList, debugView, frameResources.view.light,
                 gMeshRendererState.debugStats);
+    gMeshRendererState.mainViewFogParams = frameResources.view.light.fogParams;
+    gMeshRendererState.mainViewFogColorDensity = frameResources.view.light.fogColorDensity;
     FillShadowCB(environment, TIME::GetFrameContext().frameIndex, frameResources.view.shadow);
     if (localShadow) {
         frameResources.view.shadow.localShadow = localShadow->data;

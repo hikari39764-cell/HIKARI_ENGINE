@@ -60,6 +60,8 @@ struct SecondaryMeshViewResources {
     RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamBuffer traditionalCommandStreamBuffer{};
     RENDER3D::GPUDRIVEN::GpuDrivenLayer gpuDrivenLayer{};
     RENDER3D::PARTICLES::ParticleGpuDrivenPass particlePass{};
+    // このフレームの粒子の準備が通ったか（通らなかったフレームは粒子だけ描かず、キャプチャ自体は描く）。
+    bool particlesPrepared = false;
     RENDER3D::WORLD_SPRITES::WorldSpritePass worldSpritePass{};
     RENDER3D::WORLD_TEXT::WorldTextPass worldTextPass{};
     bool clusterGpuDrivenReady = false;
@@ -81,6 +83,9 @@ struct MeshRendererState {
     MeshFrameResourceStore frameResources{};
 
     MeshRendererDebugStats debugStats;
+    // 主ビューの前向きの解析霧（このフレームの LightCB と同じ値）。画面の貼り直しが同じ霧を掛ける。
+    MATH::Vec4 mainViewFogParams{};
+    MATH::Vec4 mainViewFogColorDensity{};
     CameraCB frozenCullingCamera{};
     bool freezeGpuDrivenCullingCamera = false;
     bool frozenCullingCameraValid = false;

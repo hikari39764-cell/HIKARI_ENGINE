@@ -4,6 +4,7 @@
 #include <future>
 #include <thread>
 #include <algorithm>
+#include <utility>
 #include "Core/HIKARI_StartupTimer.h"
 #include <memory>
 #include <system_error>
@@ -362,8 +363,27 @@ bool RegisterEngineContentTextures(const CONTENT::EngineContentContext& content,
     }
 
     bool ok = AppendEngineContentTextureManifest(registry, content, "Vfx/BuiltinAssets.json", "VFX");
-    ok = AppendEngineContentTextureManifest(registry, content, "Sand/BuiltinAssets.json", "Sand") && ok;
-    ok = AppendEngineContentTextureManifest(registry, content, "Terrain/BuiltinAssets.json", "Terrain") && ok;
+    // 地形を使わない書き出しは Terrain と Sand の領域のファイルを運ばない（書き出しはフォルダだけ作ることがある）。
+    // 領域の中にファイルが一つも無い時だけ省いたものとして扱い、ファイルがあって目録が壊れている時は従来どおり失敗にする。
+    const auto hasFiles = [](const std::filesystem::path& root) {
+        std::error_code ec{};
+        if (root.empty() || !std::filesystem::is_directory(root, ec) || ec) {
+            return false;
+        }
+        for (std::filesystem::recursive_directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it->is_regular_file(ec)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    for (const auto& [domain, manifest] : {std::pair{"Sand", "Sand/BuiltinAssets.json"}, std::pair{"Terrain", "Terrain/BuiltinAssets.json"}}) {
+        if (!hasFiles(content.Resolve(domain))) {
+            HIKARI_LOG_INFO(std::string("[AssetRegistryBuilder][EngineContent] ") + domain + " content is not packaged; skipped.");
+            continue;
+        }
+        ok = AppendEngineContentTextureManifest(registry, content, manifest, domain) && ok;
+    }
     ok = AppendEngineContentTextureManifest(registry, content, "Painterly/BuiltinAssets.json", "Painterly") && ok;
     return ok;
 }

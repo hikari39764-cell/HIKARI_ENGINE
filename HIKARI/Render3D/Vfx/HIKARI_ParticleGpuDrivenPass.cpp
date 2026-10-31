@@ -187,6 +187,8 @@ struct ParticleGpuDrivenPass::Impl {
     bool drawBuffersValid = false;
     bool initialized = false;
     bool initializationAttempted = false;
+    // 直前の準備が失敗した理由（成功時は空）。呼び出し側の診断用。
+    const char* lastPrepareFailure = "";
 
     void ResetFrameStats() noexcept {
         stats.simulatedEmitters = 0u;
@@ -598,14 +600,17 @@ struct ParticleGpuDrivenPass::Impl {
             return true;
         }
         if (!initialized) {
+            lastPrepareFailure = initializationAttempted ? "initialization failed" : "not initialized";
             return false;
         }
         if (context.cmdList == nullptr || context.srvHeap == nullptr || !storage.IsReady()) {
+            lastPrepareFailure = "storage not ready";
             return false;
         }
         if (!EnsureStandardTextureResidency(*source, input)) {
             ++stats.materialFailures;
             RefreshAllocationStats();
+            lastPrepareFailure = "texture residency";
             return false;
         }
         GFX::PIX::ScopedGpuEvent simulationEvent(context.cmdList, GFX::PIX::kColorRender, "Particles.SimulateCompact");
@@ -1133,7 +1138,14 @@ bool ParticleGpuDrivenPass::PrepareFrame(const GFX::Context& context, const Part
         (void)Initialize(context);
         impl_->initializationAttempted = true;
     }
-    return impl_ != nullptr && impl_->PrepareFrame(context, source, materialRegistry);
+    if (impl_ == nullptr)
+        return false;
+    impl_->lastPrepareFailure = "";
+    return impl_->PrepareFrame(context, source, materialRegistry);
+}
+
+const char* ParticleGpuDrivenPass::GetLastPrepareFailure() const noexcept {
+    return impl_ != nullptr ? impl_->lastPrepareFailure : "no pass";
 }
 
 bool ParticleGpuDrivenPass::ExecuteForwardTransparent(const GFX::Context& context,

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <future>
 #include <iomanip>
 #include <objbase.h>
 #include <sstream>
@@ -19,6 +20,7 @@
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Project/HIKARI_ProjectContext.h"
+#include "Platform/HIKARI_LoadingScreen.h"
 #include "Platform/Paths/HIKARI_UserDataPath.h"
 #include "Render2D/HIKARI_Camera.h"
 #include "Render2D/HIKARI_DxRenderer.h"
@@ -41,6 +43,8 @@
 #include "Render3D/Temporal/HIKARI_TaaResolvePass.h"
 #include "Render3D/Temporal/HIKARI_TemporalGeometryPass.h"
 #include "Render3D/Temporal/HIKARI_TemporalMaskPass.h"
+#include "Render3D/Temporal/HIKARI_TemporalScreenCompositePass.h"
+#include "Render3D/Temporal/HIKARI_TemporalStableDepthPass.h"
 #include "Render3D/Temporal/HIKARI_TemporalMotionVectorPass.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
@@ -144,6 +148,8 @@ bool Initialize(const char* title, const RUNTIME::HostBootstrapConfig& cfg, std:
         runtimeUserRoot = PLATFORM::GetHikariGameUserRoot(launchProject.GetDescriptor().name);
     }
     PLATFORM::SetHikariRuntimeUserRoot(runtimeUserRoot);
+    if (!runtimeUserRoot.empty())
+        PLATFORM::ReportStartupUserRoot(runtimeUserRoot);
     // 単体ゲームはユーザー領域、エディタは開いているプロジェクトの Library に記録する。
     const std::filesystem::path logRoot = !runtimeUserRoot.empty() ? runtimeUserRoot / "Logs"
                                           : launchProject.IsOpen() ? launchProject.GetLibraryRoot() / "Logs"
@@ -226,14 +232,17 @@ bool Initialize(const char* title, const RUNTIME::HostBootstrapConfig& cfg, std:
         AUDIO::PreloadDirectory(launchProject.Resolve("RuntimePayload"));
     }
 
+    PLATFORM::ReportStartupStage(PLATFORM::StartupStage::Graphics);
+    // 内蔵シェーダーの束（約 0.5 秒）は GPU を要らないので、DLSS とデバイスの初期化の間に別スレッドで読んでおく。
+    // 2D 描画の初期化が最初に使う（読み終わっていなければそこで待つ）。この関数を出る時には必ず読み終えている。
+    std::future<void> builtinShaderPrewarm =
+        std::async(std::launch::async, [] { ASSETS::SHADER::PrewarmBuiltinShaderArtifacts(); });
     CORE::StartupTimer streamlineTimer("Streamline.early");
     gStreamlineEnabled = cfg.enableStreamline;
-    // DLSS-G の読み込みは起動を 2.5〜3 秒延ばす。エディタはプロジェクトの画質設定で有効な時だけ読み込み（途中で有効に
-    // した時は再起動で反映）、単体ゲームはプレイヤーが途中で切り替えられるよう常に読み込む。
+    // DLSS-G の読み込みは起動を約 2 秒延ばすので、エディタも単体ゲームも画質設定で有効な時だけ読み込む（途中で有効に
+    // した時は再起動で反映）。単体ゲームが DLSS-G を同梱していない時は、設定の正規化で Off に戻る。
     const bool enableFrameGenerationPlugins =
-        IsStandaloneGameHostMode(cfg.hostMode) ||
-        (IsEditorHostMode(cfg.hostMode) &&
-         RENDER3D::GetRenderQualitySettings().frameGenerationMode == RENDER3D::RenderFrameGenerationMode::Dlss);
+        RENDER3D::GetRenderQualitySettings().frameGenerationMode == RENDER3D::RenderFrameGenerationMode::Dlss;
     if (gStreamlineEnabled) {
         gStreamlineEnabled = RENDER3D::UPSCALING::InitializeStreamlineEarly(
             enableFrameGenerationPlugins, CORE::GetLogFilePath().parent_path() / "Streamline");
@@ -245,6 +254,9 @@ bool Initialize(const char* title, const RUNTIME::HostBootstrapConfig& cfg, std:
     CORE::StartupTimer graphicsTimer("D3D12.initialize");
     HIKARI_LOG_INFO("D3D12 core initialization started.");
     GFX::GraphicsBootstrapCallbacks graphicsCallbacks{};
+    // 網格シェーダーに対応しない GPU しか無い時は、一度目の初期化を断ったあと従来の頂点経路で初期化し直す。
+    static bool meshShaderRejected = false;
+    meshShaderRejected = false;
     graphicsCallbacks.acceptDevice = [](ID3D12Device* device, std::string& message) {
         const auto caps = GFX::QueryShaderDeviceCapabilities(device);
         if (caps.shaderModel < 60) {
@@ -255,6 +267,7 @@ bool Initialize(const char* title, const RUNTIME::HostBootstrapConfig& cfg, std:
             (caps.shaderModel < 65 || !(caps.featureMask & GFX::ShaderDeviceFeature::MeshShader))) {
             message =
                 "This project's Mesh Shader renderer requires Shader Model 6.5 and Mesh Shader support. Update the driver or use a compatible GPU.";
+            meshShaderRejected = true;
             return false;
         }
         return true;
@@ -275,8 +288,18 @@ bool Initialize(const char* title, const RUNTIME::HostBootstrapConfig& cfg, std:
     // 否则 150% 缩放下窗口 2880x1620 但交换链只有 1920x1080，内容被截断。
     const int physicalClientWidth = (std::max)(gWindow.Width(), 16);
     const int physicalClientHeight = (std::max)(gWindow.Height(), 16);
-    if (!gGraphicsCore.Initialize(gWindow.GetHWND(), physicalClientWidth, physicalClientHeight, cfg.enableDebugLayer,
-                                  graphicsCallbacks)) {
+    bool graphicsReady = gGraphicsCore.Initialize(gWindow.GetHWND(), physicalClientWidth, physicalClientHeight,
+                                                  cfg.enableDebugLayer, graphicsCallbacks);
+    if (!graphicsReady && meshShaderRejected && cfg.allowTraditionalGeometryFallback &&
+        RENDER3D::GetRenderQualitySettings().geometryPipeline == RENDER3D::GeometryPipelineMode::MeshShader) {
+        RENDER3D::RenderQualitySettings fallback = RENDER3D::GetRenderQualitySettings();
+        fallback.geometryPipeline = RENDER3D::GeometryPipelineMode::TraditionalVsPs;
+        RENDER3D::SetRenderQualitySettings(fallback);
+        HIKARI_LOG_WARN("[D3D12] No adapter supports Mesh Shaders; falling back to the traditional vertex pipeline.");
+        graphicsReady = gGraphicsCore.Initialize(gWindow.GetHWND(), physicalClientWidth, physicalClientHeight,
+                                                 cfg.enableDebugLayer, graphicsCallbacks);
+    }
+    if (!graphicsReady) {
         HIKARI_LOG_ERROR("D3D12 core initialization failed.");
         if (gStreamlineEnabled) {
             gStreamlineEnabled = !RENDER3D::UPSCALING::ShutdownStreamline();
@@ -287,9 +310,11 @@ bool Initialize(const char* title, const RUNTIME::HostBootstrapConfig& cfg, std:
     }
     GFX::FrameSubmissionCallbacks submissionCallbacks{};
     submissionCallbacks.presentStart = [headless = cfg.headlessRender] {
-        // 最初の描画コマンドを送出してから本体ウィンドウを公開する。
-        if (gWindow.IsStartupHidden() && !headless)
+        // 最初の描画コマンドを送出してから本体ウィンドウを公開する。読み込み画面があれば、黒へ溶け終えてから。
+        if (gWindow.IsStartupHidden() && !headless) {
+            PLATFORM::WaitForStartupReveal(1500u);
             gWindow.Show();
+        }
         if (gStreamlineEnabled)
             RENDER3D::UPSCALING::MarkStreamlineReflexPresentStart();
     };
@@ -455,6 +480,8 @@ void FinalizeAll() {
         HIKARI_LOG_INFO("Default PBR resources finalized.");
         RENDER3D::TEMPORAL::ShutdownTaaResolvePass();
         RENDER3D::TEMPORAL::ShutdownTemporalMaskPass();
+        RENDER3D::TEMPORAL::ShutdownTemporalStableDepthPass();
+        RENDER3D::TEMPORAL::ShutdownTemporalScreenCompositePass();
         RENDER3D::TEMPORAL::ShutdownTemporalGeometryPass();
         RENDER3D::TEMPORAL::ShutdownMotionVectorPass();
         RENDER3D::TEMPORAL::ShutdownTemporalResourceSystem(temporalReleaseMode);

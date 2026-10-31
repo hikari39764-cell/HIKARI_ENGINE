@@ -104,7 +104,7 @@ void PrepareActionPost(World& world, bool playActive, const POST::PostAssetStore
     const auto profile = store.LoadProfile(winner->profileId, error);
     const auto effect = profile ? store.LoadEffect(profile->effectId, error) : nullptr;
     // 行動の後処理は HDR の段階で特性マスクだけを受け取る（画面の曲げ・深度・表示の色の効果は全体後処理の層で使う）。
-    if (!effect || effect->screenWarp || effect->requiresSceneDepth || effect->phase != POST::PostEffectPhase::Scene ||
+    if (!effect || !POST::IsActionPostEffectCompatible(*effect) ||
         !POST::ValidatePostProfileValues(*profile, *effect, error)) {
         POST::PostSystem::ClearActionPostFrame(worldId);
         HIKARI_LOG_ERROR("[ActionPost] Profile unavailable or incompatible: " + winner->profileId + " " + error);
@@ -616,6 +616,8 @@ void DocumentSceneBase::Render() {
                 renderCamera.GetAspect(), renderCamera.GetPosition());
         }
         RENDER3D::RenderViewContext primaryView{};
+        // 拡大の後に貼り直す画面（主ビューの描画が終わるまで持つ）。
+        RENDER3D::ScreenCompositeWorldFrame screenComposites{};
         {
             static const auto timer = CPU_PROFILE::RegisterDynamicPass("Scene.ScreenReadability");
             const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
@@ -623,6 +625,9 @@ void DocumentSceneBase::Render() {
                 SCENE_CAPTURE::CollectScreenReadability(state_->runtime.world, state_->runtime.sceneCaptureService);
             primaryView.sceneCaptureSurfaces = SCENE_CAPTURE::CollectScreenReadability(
                 state_->runtime.world, state_->runtime.sceneCaptureService, false);
+            screenComposites =
+                SCENE_CAPTURE::CollectScreenComposites(state_->runtime.world, state_->runtime.sceneCaptureService);
+            primaryView.screenComposites = &screenComposites;
         }
         primaryView.viewId = RENDER3D::kPrimaryRenderViewId;
         primaryView.purpose =

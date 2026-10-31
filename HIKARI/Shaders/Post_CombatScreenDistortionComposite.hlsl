@@ -8,6 +8,10 @@ cbuffer CommonParams : register(b0)
     float gResolutionY;
     float2 gCommonPadding;
     float4 gUser[16];
+    // Post の共通定数と同じ並び。戦闘専用の値はこの後に置く。
+    float gDisplayToScene;
+    float gDisplayGamma;
+    float2 gRasterJitterPixels;
     // x=weight, y=monochrome, z=chromatic separation in pixels,
     // w=contrast. This is frame-local and independent from radial waves.
     float4 gActionCinematicGrade;

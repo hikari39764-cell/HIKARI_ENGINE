@@ -264,6 +264,16 @@ int ResolveTexture(RendererState& state, const std::string& path) {
 
 void FillQuad(UiVertex* destination, const GameProjectUiSpriteRequest& request, const Affine2D& transform,
               int logicalWidth, int logicalHeight, float u0, float v0, float u1, float v1) noexcept {
+    if ((request.flags & kGameProjectUiFillViewport) != 0u) {
+        // 前のフレームの参照寸法やウィンドウの比率に依存させない。UI alpha も描画先の全面を覆う。
+        const float width = static_cast<float>(logicalWidth), height = static_cast<float>(logicalHeight);
+        const UiVertex vertices[kVerticesPerSprite] = {
+            {0, 0, u0, v0},      {width, 0, u1, v0}, {0, height, u0, v1},
+            {0, height, u0, v1}, {width, 0, u1, v0}, {width, height, u1, v1},
+        };
+        std::memcpy(destination, vertices, sizeof(vertices));
+        return;
+    }
     GameProjectUiCanvasFit fit{};
     if (!ResolveGameProjectUiCanvasFit(static_cast<uint32_t>(logicalWidth), static_cast<uint32_t>(logicalHeight),
                                        request.referenceWidth, request.referenceHeight, fit)) {

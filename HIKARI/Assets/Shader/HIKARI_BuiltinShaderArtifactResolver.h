@@ -33,4 +33,8 @@ ShaderAssetResolveResult ResolveBuiltinRenderGeometryShaderEntry(
 
 void ResetBuiltinShaderArtifactResolver() noexcept;
 
+// 起動の待ち時間（DLSS の初期化など）に重ねて、内蔵シェーダーの束を先に読み込む。どのスレッドからでも呼べ、
+// 読み込み中に解決を求めたスレッドは読み終わるまで待つ。
+void PrewarmBuiltinShaderArtifacts() noexcept;
+
 } // namespace HIKARI::ASSETS::SHADER

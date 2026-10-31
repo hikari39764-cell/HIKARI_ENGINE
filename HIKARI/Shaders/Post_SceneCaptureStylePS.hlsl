@@ -25,6 +25,10 @@ SamplerState gSampler : register(s0);
 // 色調（版 6）。鮮やかな物体とその縁の外の画素だけに掛ける。
 // gUser[10]: toneTint（sRGB）、toneTintStrength
 // gUser[11]: toneHue（一周 = 1）、toneSaturation、toneBrightness、toneContrast
+// 描き方を受けない面（版 7）。結び付けに Unstyled の付いた平らな面が写った所（最大 2 つ）。深度が読める時だけ来る。
+// gUser[12] / [14]: 面の texel の外接矩形（左・上・右・下）
+// gUser[13] / [15]: 面の奥行きの式 a·x + b·y + c（透視は 1 / 視線方向の距離、正投影は距離）。[13].w は面の数、
+//                   [15].w は奥行きの許し（距離に対する割合）
 static const uint kStylePixel = 2u;
 static const uint kStyleSketch = 3u;
 
@@ -69,17 +73,44 @@ bool DepthOn()
     return gUser[9].x > 0.5 && gUser[5].x > 0.0;
 }
 
-// texel の前景の面からの奥行き（world 単位、手前が負）。何も描かれていない所は far の奥行き。
-float DepthBehind(float2 texel)
+// texel のカメラからの視線方向の距離（world 単位）。何も描かれていない所は far。
+float ViewDistance(float2 texel)
 {
     const float2 resolution = StyleResolution();
     const int2 p = int2(clamp(floor(texel), 0.0, resolution - 1.0));
     const float d = gDepth.Load(int3(p, 0));
     const float nearZ = gUser[8].z;
     const float farZ = gUser[8].w;
-    const float distance = gUser[9].y > 0.5 ? nearZ + d * (farZ - nearZ)
-                                             : nearZ * farZ / max(farZ - d * (farZ - nearZ), 1e-6);
-    return distance - gUser[5].x;
+    return gUser[9].y > 0.5 ? nearZ + d * (farZ - nearZ) : nearZ * farZ / max(farZ - d * (farZ - nearZ), 1e-6);
+}
+
+// texel の前景の面からの奥行き（world 単位、手前が負）。何も描かれていない所は far の奥行き。
+float DepthBehind(float2 texel)
+{
+    return ViewDistance(texel) - gUser[5].x;
+}
+
+// 描き方を受けない面（版 7）が見えている画素か：面の矩形の中で、深度がその面の上にある（手前に人物などが無い）。
+bool UnstyledAt(float2 position)
+{
+    const uint count = (uint)round(gUser[13].w);
+    if (count == 0u)
+        return false;
+    const float distance = ViewDistance(position);
+    [unroll] for (uint i = 0u; i < 2u; ++i)
+    {
+        if (i >= count)
+            break;
+        const float4 rect = i == 0u ? gUser[12] : gUser[14];
+        const float3 plane = i == 0u ? gUser[13].xyz : gUser[15].xyz;
+        if (position.x < rect.x || position.y < rect.y || position.x > rect.z || position.y > rect.w)
+            continue;
+        const float value = dot(plane, float3(position, 1.0));
+        const float expected = gUser[9].y > 0.5 ? value : 1.0 / max(value, 1e-12);
+        if (expected > 0.0 && abs(distance - expected) <= gUser[15].w * expected)
+            return true;
+    }
+    return false;
 }
 
 // 深度で分ける時も、輝度がこれ以上の画素（光る演出など、深度を書かない物）は物体として扱う。
@@ -655,6 +686,9 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
 {
     const uint style = (uint)round(gUser[0].x);
     const float2 position = floor(input.position.xy) + 0.5;
+    // 描き方を受けない面は、写った色に明るさだけを掛けて出す（画布の字や窓を線画や色調で崩さない）。
+    if (UnstyledAt(position))
+        return float4(ReadTexel(position) * gUser[1].w, 1.0);
     float3 result;
     if (style == kStylePixel)
         result = StylePixel(position);

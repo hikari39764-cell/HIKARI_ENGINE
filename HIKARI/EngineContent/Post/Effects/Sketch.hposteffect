@@ -7,6 +7,12 @@
   ],
   "passes": [
     {
+      "name": "Geometry Ink",
+      "programId": "HIKARI.EngineShader.Post_GeometryInkPS",
+      "entryId": "Sketch",
+      "phase": "PreTemporal"
+    },
+    {
       "name": "Sketch Resolve",
       "programId": "HIKARI.EngineShader.Post_SketchPS",
       "entryId": "Main"

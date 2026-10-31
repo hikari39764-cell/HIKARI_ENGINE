@@ -13,6 +13,10 @@ cbuffer CommonParams : register(b0)
     float gResolutionY;
     float2 gCommonPadding;
     float4 gUser[16];
+    // 表示参照の色から、このビューの前露出済み HDR への変換。
+    float gDisplayToScene;
+    float gDisplayGamma;
+    float2 gRasterJitterPixels;
 };
 
 struct HikariPostEffectInput

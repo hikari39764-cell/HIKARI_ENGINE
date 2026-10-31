@@ -79,6 +79,8 @@ public:
     void Shutdown();
     bool PrepareFrame(const GFX::Context& context, const ParticleRenderFrameSource* source,
                       MATERIAL::GpuMaterialRegistry& materialRegistry);
+    // 直前の PrepareFrame が失敗した理由（成功時は空文字列）。
+    const char* GetLastPrepareFailure() const noexcept;
     bool ExecuteForwardTransparent(const GFX::Context& context, const ParticleGpuDrivenDrawBindings& bindings);
     void ReleaseNamespace(uint64_t playbackNamespace);
     // distortion が真なら歪み層だけを数え、偽なら歪み層を除いて数える

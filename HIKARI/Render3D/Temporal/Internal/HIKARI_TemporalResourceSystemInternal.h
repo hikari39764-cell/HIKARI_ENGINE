@@ -62,6 +62,10 @@ struct TemporalResourceState {
     TemporalTarget invalidDepthMotionMask{};
     // 外部 upscaler へ渡す履歴の偏り（1 = 履歴を捨てる）。明示的に失効させる画素だけを書く。
     TemporalTarget biasCurrentColorMask{};
+    // 後処理の線が読む、出力の解像度で時間方向に均した深度（交互に読み書きする）。
+    TemporalTarget stableDepth[2]{};
+    uint32_t stableDepthWriteIndex = 0;
+    TemporalResourceFrame stableDepthWritten{};
     TemporalTarget debugOutput{};
     COLOR::ExposureFrameState exposureState{};
     D3D12_GPU_DESCRIPTOR_HANDLE compositionBaseSrv{};

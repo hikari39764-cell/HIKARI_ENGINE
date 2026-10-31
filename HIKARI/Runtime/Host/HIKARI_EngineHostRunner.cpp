@@ -1,6 +1,7 @@
 #include "Core/HIKARI_StartupTimer.h"
 #include "Runtime/Host/HIKARI_EngineHostRunner.h"
 #include "Core/Text/HIKARI_UtfPath.h"
+#include "Platform/HIKARI_LoadingScreen.h"
 #include "Platform/HIKARI_StartupSplash.h"
 
 #include <algorithm>
@@ -21,6 +22,7 @@
 #include "Render2D/HIKARI_Renderer.h"
 #include "Render2D/HIKARI_SpineActor.h"
 #include "Core/Math/HIKARI_Math3D.h"
+#include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 #include "Runtime/App/HIKARI_IHostApplication.h"
 #include "Runtime/Diagnostics/HIKARI_RuntimeBenchmark.h"
@@ -120,10 +122,15 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
     if (headless && (!boundedFrames || *boundedFrames == 0 || *boundedFrames > 10000)) {
         return ReportLaunchFailure("--headless-render requires --exit-after-frame in [1,10000].", false);
     }
+    // 単体ゲームは進捗つきの読み込み画面、エディタなどは標志だけの起動画面を出す。
     PLATFORM::StartupSplash splash;
-    const bool splashShown = !headless && splash.Start();
-    const auto launchFailure = [&splash, headless](const std::string& message) {
+    PLATFORM::LoadingScreen loadingScreen;
+    const bool useLoadingScreen =
+        options.product == EngineHostProduct::Game && options.projectPolicy == EngineHostProjectPolicy::Required;
+    const bool splashShown = !headless && (useLoadingScreen ? loadingScreen.Start() : splash.Start());
+    const auto launchFailure = [&splash, &loadingScreen, headless](const std::string& message) {
         splash.Stop();
+        loadingScreen.Stop();
         return ReportLaunchFailure(message, !headless);
     };
 
@@ -173,6 +180,15 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
     if (runtimeConfig.windowTitle && !runtimeConfig.windowTitle->empty()) {
         resolvedWindowTitle = runtimeConfig.windowTitle->c_str();
     }
+    {
+        // 読み込み画面をゲームの窓と同じ所に出す（窓の大きさは画質設定の窓の設定で決まる）。
+        const RENDER3D::RenderQualitySettings& quality = RENDER3D::GetRenderQualitySettings();
+        const RENDER3D::RenderResolution size = RENDER3D::ResolveFixedRenderResolution(quality.windowSize);
+        PLATFORM::ReportStartupWindowPlan(quality.windowMode != RENDER3D::WindowPresentationMode::Windowed,
+                                          size.width > 0 ? size.width : servicesConfig.windowWidth,
+                                          size.height > 0 ? size.height : servicesConfig.windowHeight,
+                                          TEXT::PathFromUtf8(resolvedWindowTitle ? resolvedWindowTitle : "").wstring());
+    }
     std::string initializationError;
     if (!SERVICES::Initialize(resolvedWindowTitle, servicesConfig, &initializationError, splashShown || headless)) {
         const auto logPath = CORE::GetLogFilePath();
@@ -183,6 +199,7 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
     }
     if (!splashShown && !headless)
         HIKARI_LOG_WARN("[Startup] native logo unavailable; using the application window.");
+    PLATFORM::ReportStartupStage(PLATFORM::StartupStage::Data);
     const CONTENT::EngineContentContext& engineContent = CONTENT::GetEngineContentContext();
     HIKARI_LOG_INFO("[EngineContent] opened root=" + engineContent.GetRoot().generic_string());
     if (projectContext.IsOpen()) {
@@ -293,6 +310,8 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
             RENDER3D::UPSCALING::EndStreamlineReflexSimulation();
             {
                 CPU_PROFILE::ScopedCpuTimer cpuRender(CPU_PROFILE::Pass::AppRender);
+                if (!applicationPresented)
+                    PLATFORM::ReportStartupStage(PLATFORM::StartupStage::Shaders);
                 CORE::StartupTimer firstRenderTimer("Application.first_render", !applicationPresented);
                 application.Render();
             }
@@ -335,6 +354,7 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
         }
         if (presentedFrames == 1u) {
             splash.Stop();
+            loadingScreen.Stop();
             CORE::StartupTimer::ReportSince("Host.first_present", startupStarted);
         }
         if (renderingApplication && !applicationPresented) {
@@ -369,6 +389,7 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
     // Shutdown が状態を解放する前にアプリケーションの失敗を保持する。
     const int applicationExitCode = application.GetExitCode();
     splash.Stop();
+    loadingScreen.Stop();
     application.Shutdown();
     SERVICES::FinalizeAll();
     GetProjectContext().Close();

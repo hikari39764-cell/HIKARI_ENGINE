@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
@@ -81,19 +83,37 @@ float Halton(uint32_t index, uint32_t base) {
     return result;
 }
 
-MATH::Vec4 MakeJitterParams(uint32_t phase, uint32_t renderWidth, uint32_t renderHeight, bool enabled) {
+// ずらしの位相の数。拡大して出す時は出力の 1 画素に届く標本が拡大率の二乗分だけ減るので、DLSS の推奨
+// （8 × 拡大率²）に合わせて増やす。足りないと一巡しても標本の来ない出力画素が残り、細い線がちらつき続ける。
+// 等倍（TAA・DLAA）は従来どおり 16。
+uint32_t JitterPhaseCount(uint32_t renderWidth, uint32_t renderHeight, uint32_t outputWidth, uint32_t outputHeight) {
+    const float ratio = (std::max)(static_cast<float>(outputWidth) / static_cast<float>((std::max)(1u, renderWidth)),
+                                   static_cast<float>(outputHeight) / static_cast<float>((std::max)(1u, renderHeight)));
+    const float wanted = std::ceil(8.0f * ratio * ratio - 1.0e-3f);
+    return static_cast<uint32_t>(std::clamp(wanted, 16.0f, 128.0f));
+}
+
+MATH::Vec4 MakeJitterParams(uint32_t phase, uint32_t renderWidth, uint32_t renderHeight, uint32_t outputWidth,
+                            uint32_t outputHeight, bool enabled) {
     if (!enabled || renderWidth == 0 || renderHeight == 0) {
         return {0.0f, 0.0f, 0.0f, 0.0f};
     }
 
-    const uint32_t sampleIndex = (phase % 16u) + 1u;
-    // Center the finite 16-phase sequence itself. The raw Halton prefix
+    const uint32_t phaseCount = JitterPhaseCount(renderWidth, renderHeight, outputWidth, outputHeight);
+    const uint32_t sampleIndex = (phase % phaseCount) + 1u;
+    // Center the finite sequence itself. The raw Halton prefix
     // has a small non-zero mean that otherwise becomes a persistent
     // sub-pixel camera offset after convergence.
-    constexpr float kPhaseMeanX = -0.029296875f;
-    constexpr float kPhaseMeanY = -0.037037037f;
-    const float pixelX = Halton(sampleIndex, 2u) - 0.5f - kPhaseMeanX;
-    const float pixelY = Halton(sampleIndex, 3u) - 0.5f - kPhaseMeanY;
+    float meanX = 0.0f;
+    float meanY = 0.0f;
+    for (uint32_t index = 1u; index <= phaseCount; ++index) {
+        meanX += Halton(index, 2u);
+        meanY += Halton(index, 3u);
+    }
+    meanX = meanX / static_cast<float>(phaseCount) - 0.5f;
+    meanY = meanY / static_cast<float>(phaseCount) - 0.5f;
+    const float pixelX = Halton(sampleIndex, 2u) - 0.5f - meanX;
+    const float pixelY = Halton(sampleIndex, 3u) - 0.5f - meanY;
     return {pixelX, pixelY, (2.0f * pixelX) / static_cast<float>((std::max)(1u, renderWidth)),
             (-2.0f * pixelY) / static_cast<float>((std::max)(1u, renderHeight))};
 }
@@ -333,7 +353,8 @@ TemporalFrameState BeginTemporalFrame(const TemporalFrameDesc& desc) {
     next.jitterEnabled = desc.jitterEnabled && next.temporalResolveAllowed;
     next.jitterPhase = static_cast<uint32_t>(desc.frame.frameIndex & 0xffffu);
     const MATH::Vec4 jitter =
-        MakeJitterParams(next.jitterPhase, next.renderWidth, next.renderHeight, next.jitterEnabled);
+        MakeJitterParams(next.jitterPhase, next.renderWidth, next.renderHeight, next.outputWidth, next.outputHeight,
+                         next.jitterEnabled);
 
     const bool previousCameraValid = !next.resetHistory && store.hasCommittedCamera && store.committedCamera.valid;
     if (desc.camera != nullptr) {
@@ -341,6 +362,13 @@ TemporalFrameState BeginTemporalFrame(const TemporalFrameDesc& desc) {
                                       next.renderHeight, next.outputWidth, next.outputHeight, jitter);
     }
 
+    // 診断（環境変数 HIKARI_TEMPORAL_TRACE）：履歴を捨てたフレームと理由を記録する。
+    static const bool traceResets = std::getenv("HIKARI_TEMPORAL_TRACE") != nullptr;
+    if (traceResets && next.resetHistory) {
+        std::fprintf(stderr, "[Temporal] reset frame=%llu reason=%s render=%ux%u output=%ux%u\n",
+                     static_cast<unsigned long long>(next.frameIndex), ToString(next.resetReason), next.renderWidth,
+                     next.renderHeight, next.outputWidth, next.outputHeight);
+    }
     if (next.resetHistory) {
         store.hasCommittedCamera = false;
         store.hasCommittedHistory = false;

@@ -35,17 +35,19 @@ struct TemporalResolveStageResult {
     bool requested = false;
     bool resolved = false;
     bool requiresOutputNormalization = false;
-    // Output raster phase in render pixels. Native TAA retains current jitter; DLSS removes it.
+    // Output raster phase in render pixels. Native TAA and DLSS both resolve to unjittered pixel centres.
     MATH::Vec2 outputJitterPixels{};
+    // 後処理の線が読む、出力の解像度で時間方向に均した深度（R32_FLOAT）。無い時は元の深度を読む。
+    RenderTarget2D* stableDepth = nullptr;
+    // その SRV（共有の記述子ヒープ上）。画面の貼り直しが読む。
+    D3D12_GPU_DESCRIPTOR_HANDLE stableDepthSrv{};
 };
 
-TemporalResolveStageResult ExecuteTemporalResolveStage(TemporalViewLease view, RenderFrameToken frame,
-                                                       TemporalResourceFrame resources, const GFX::Context& graphics,
-                                                       RenderTarget2D& sceneColorTarget,
-                                                       RenderTarget2D& sceneDepthTarget,
-                                                       const RenderQualitySettings& quality,
-                                                       const COLOR::ExposureFrameState& exposureState,
-                                                       const ScreenReadabilityFrame& sceneCaptureSurfaces = {});
+TemporalResolveStageResult ExecuteTemporalResolveStage(
+    TemporalViewLease view, RenderFrameToken frame, TemporalResourceFrame resources, const GFX::Context& graphics,
+    RenderTarget2D& sceneColorTarget, RenderTarget2D& sceneDepthTarget, const RenderQualitySettings& quality,
+    const COLOR::ExposureFrameState& exposureState, const ScreenReadabilityFrame& sceneCaptureSurfaces = {},
+    RenderTarget2D* maskSceneColor = nullptr);
 
 const char* ToString(TemporalResolveBackend backend);
 

@@ -98,10 +98,15 @@ public:
     void RequestFrameDump();
 
     RenderTarget2D* NormalizeTemporalOutput(RenderTarget2D& source, uint32_t width, uint32_t height, QuadDrawer& quad);
+    // 現フレームの jitter と深度を保ったまま、DLSS/TAA の入力色に幾何の線を含める。
+    RenderTarget2D* ResolvePreTemporal(RenderTarget2D& source, QuadDrawer& quad, RenderTarget2D& sceneDepthOwner,
+                                       const RENDER3D::RenderTextureView* surfaceFeatureMask = nullptr,
+                                       MATH::Vec2 rasterJitterPixels = {});
+    // stableSceneDepth は時間方向に均した出力の解像度の深度（R32_FLOAT）。あれば深度を読む全体の層はこちらを読む。
     RenderTarget2D* ResolveHdr(RenderTarget2D& source, QuadDrawer& quad, bool debugOutput, const char* temporalBackend,
                                bool lightingEnabled, RenderTarget2D* sceneDepthOwner,
                                const RENDER3D::RenderTextureView* surfaceFeatureMask = nullptr,
-                               RenderTarget2D* preservedVfx = nullptr);
+                               RenderTarget2D* preservedVfx = nullptr, ID3D12Resource* stableSceneDepth = nullptr);
     // Bloom だけを適用して source へ加算合成する。エディタのツールプレビュー
     // 用: 本編と同じ bloom を見せつつ、ゲーム状態に紐づく後処理
     // (画面衝撃・自動露出計測・サングレア・遷移) を引き込まない。
@@ -164,6 +169,8 @@ private:
     uint64_t actionPostViewWorld_ = 0u;
     uint64_t actionPostFrame_ = (std::numeric_limits<uint64_t>::max)();
     uint64_t actionPostDeviceGeneration_ = 0u;
+    // 解決前と解決後は大きさが違う。別々に保持し、毎フレームの目標の作り直しを防ぐ。
+    PostChain preTemporalChain_{};
     PostChain globalChain_{};
     // Bloom のピラミッドの各段（縮小した結果を段ごとに持つ）。
     std::array<PostChain, 6> bloomLevels_{};
@@ -184,6 +191,8 @@ private:
     std::vector<ActiveGlobalLayer> activeGlobalLayers_{};
     // Display の層が読む、このフレームの HDR 解決で渡された深度と特性マスク。ResolveLdr が使って消す。
     RenderTarget2D* displaySceneDepthOwner_ = nullptr;
+    // 同じく、時間方向に均した深度（無ければ displaySceneDepthOwner_ の深度を読む）。
+    ID3D12Resource* displayStableSceneDepth_ = nullptr;
     const RENDER3D::RenderTextureView* displaySurfaceFeatureMask_ = nullptr;
     uint64_t activeGlobalRegistryId_ = 0u;
     uint64_t activeGlobalRegistryRevision_ = 0u;

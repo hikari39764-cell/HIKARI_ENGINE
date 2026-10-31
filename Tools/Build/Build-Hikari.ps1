@@ -15,7 +15,43 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$cmake = Get-Command cmake.exe -ErrorAction Stop
+
+# Prefer cmake on PATH; fall back to the CMake bundled with the editor build, then the one shipped with
+# Visual Studio, so the export's Shipping build also works on machines without cmake on PATH.
+# (Comments stay ASCII: Windows PowerShell 5.1 reads this BOM-less script in the system code page.)
+function Resolve-HikariBuildCMake {
+    $candidates = @()
+    $pathCMake = Get-Command cmake.exe -ErrorAction SilentlyContinue
+    if ($null -ne $pathCMake) { $candidates += $pathCMake.Source }
+    $candidates += Join-Path $repoRoot 'out\build\editor-release\bin\Runtime\Sdk\Tools\CMake\bin\cmake.exe'
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (Test-Path -LiteralPath $vswhere -PathType Leaf) {
+        foreach ($installation in @(& $vswhere -products * -version '[17.0,)' -property installationPath)) {
+            $candidates += Join-Path $installation 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
+        }
+    }
+    foreach ($candidate in $candidates) {
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+        # A broken candidate (for example one missing its modules) writes to stderr, which is terminating
+        # under 'Stop' in Windows PowerShell 5.1; skip it and try the next one.
+        try {
+            $ErrorActionPreference = 'Continue'
+            $output = @(& $candidate --version 2>&1) -join "`n"
+            if ($LASTEXITCODE -ne 0) { continue }
+        } catch {
+            continue
+        } finally {
+            $ErrorActionPreference = 'Stop'
+        }
+        $version = [regex]::Match($output, '(?im)^cmake version\s+(\d+)\.(\d+)')
+        if ($version.Success -and ([int]$version.Groups[1].Value -gt 3 -or
+                ([int]$version.Groups[1].Value -eq 3 -and [int]$version.Groups[2].Value -ge 28))) {
+            return $candidate
+        }
+    }
+    throw 'CMake 3.28 or newer was not found (PATH, the editor build''s bundled CMake, or Visual Studio).'
+}
+$cmake = Resolve-HikariBuildCMake
 $buildStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 $configuration = switch ($Preset) {
@@ -46,7 +82,7 @@ try {
         $configureArguments +=
             "-DHIKARI_GAME_HOST_OUTPUT_NAME:STRING=$gameHostOutputName"
     }
-    & $cmake.Source @configureArguments
+    & $cmake @configureArguments
     if ($LASTEXITCODE -ne 0) {
         throw "CMake configure failed for preset '$Preset'."
     }
@@ -57,7 +93,7 @@ try {
         } else {
             'HIKARI_ProjectLauncher'
         }
-        & $cmake.Source `
+        & $cmake `
             --build $buildDirectory `
             --config $configuration `
             --target $projectTarget
@@ -99,7 +135,7 @@ try {
         }
     } else {
         if (-not $ConfigureOnly) {
-            & $cmake.Source --build --preset $Preset
+            & $cmake --build --preset $Preset
         }
     }
     if ($LASTEXITCODE -ne 0) {
@@ -123,7 +159,7 @@ try {
                 '--prefix',
                 $installDirectory)
         }
-        & $cmake.Source `
+        & $cmake `
             @installArguments
         if ($LASTEXITCODE -ne 0) {
             throw "CMake install failed for preset '$Preset'."

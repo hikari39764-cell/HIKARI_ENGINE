@@ -102,6 +102,11 @@ enum class GameProjectSceneCaptureMaterialBindingFlag : uint32_t {
     // 貼る材質をキャプチャの alpha で切り抜く（0.5 未満を捨てる不透明面）。深度と動きの情報を書くので、
     // 時間方向のアンチエイリアスで重ね板の跡が残らない。AlphaBlend より優先。
     AlphaMask = 1u << 4u,
+    // この面がほかのキャプチャに写った所は、そのキャプチャの描き方（Pixel・Sketch・色調）を受けず、写った色をそのまま出す
+    // （電視の中の舞台に置いた弾窓の板など、画布を貼った平らな面）。手前に別の物がある画素は普段どおり描く。
+    Unstyled = 1u << 5u,
+    // 主視点の DLSS/TAA の結果を保ち、キャプチャを後貼りしない。ProtectReadability の画風保護は独立して効く。
+    PreserveTemporalResolve = 1u << 6u,
 };
 
 constexpr uint32_t GameProjectSceneCaptureMaterialBindingFlags(
@@ -114,7 +119,9 @@ inline constexpr uint32_t kGameProjectSceneCaptureMaterialBindingKnownFlags =
     GameProjectSceneCaptureMaterialBindingFlags(GameProjectSceneCaptureMaterialBindingFlag::FlipTextureY) |
     GameProjectSceneCaptureMaterialBindingFlags(GameProjectSceneCaptureMaterialBindingFlag::ProtectReadability) |
     GameProjectSceneCaptureMaterialBindingFlags(GameProjectSceneCaptureMaterialBindingFlag::AlphaBlend) |
-    GameProjectSceneCaptureMaterialBindingFlags(GameProjectSceneCaptureMaterialBindingFlag::AlphaMask);
+    GameProjectSceneCaptureMaterialBindingFlags(GameProjectSceneCaptureMaterialBindingFlag::AlphaMask) |
+    GameProjectSceneCaptureMaterialBindingFlags(GameProjectSceneCaptureMaterialBindingFlag::Unstyled) |
+    GameProjectSceneCaptureMaterialBindingFlags(GameProjectSceneCaptureMaterialBindingFlag::PreserveTemporalResolve);
 
 struct GameProjectSceneCaptureHandle {
     uint64_t value = 0u;

@@ -1,0 +1,14 @@
+﻿== HIKARI_LoadingFont_MPlus12B.ttf (JF Dot M+ 12)
+Copyright(c) 2005 M+ FONTS PROJECT
+These fonts are free software.
+Unlimited permission is granted to use, copy, and distribute them, with or without modification, either commercially or noncommercially.
+THESE FONTS ARE PROVIDED "AS IS" WITHOUT WARRANTY.
+http://mplus-fonts.osdn.jp/
+
+== HIKARI_LoadingFont_K12x10.ttf (JF Dot k12x10)
+・このフォントは無保証です。
+・作者である私は、 このフォントに関する知的所有権の独占的な行使を行ないません。
+・このフォントを自由に配布してかまいませんし、 いかなる形式に変換してもかまいませんし、 販売される商品の一部として組み込むこともかまいません。
+・上のことを行なうにあたって、 作者の名前や権利を明らかにする必要はありませんし、 作者に許可を求めたり、報告したりする必要はありません。
+・このフォントを自由に修正してもかまいませんが、 修正に関する権利を主張したい場合は、 その権利が及ぶ範囲を明記してください。
+http://z.apps.atjp.jp/k12x10/

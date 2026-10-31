@@ -65,7 +65,8 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         AssetImporterKind::Model,
         AssetType::Model,
         "ModelImporter",
-        43u,
+        // 44: 線形補間の動作から冗長な鍵を除く（取り込み直しで HMODEL が小さくなる）。
+        44u,
         ".gltf, .obj, .fbx",
     },
     {

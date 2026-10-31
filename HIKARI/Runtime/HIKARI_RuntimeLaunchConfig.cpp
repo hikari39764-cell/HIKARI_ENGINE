@@ -234,6 +234,7 @@ RuntimeLaunchConfig LoadRuntimeLaunchConfigFromFile(const std::filesystem::path&
     }
     cfg.windowTitle = ReadString(runtime, "windowTitle");
     cfg.resizableWindow = ReadBool(runtime, "resizableWindow");
+    cfg.allowTraditionalGeometryFallback = ReadBool(runtime, "allowTraditionalGeometryFallback");
     cfg.windowWidth = ReadInt(runtime, "windowWidth");
     cfg.windowHeight = ReadInt(runtime, "windowHeight");
     // レンダリング品質プロファイルと関連設定を読み込む
@@ -374,6 +375,9 @@ void ApplyRuntimeLaunchConfig(const RuntimeLaunchConfig& runtimeCfg, RUNTIME::Ho
         }
     }
 
+    if (runtimeCfg.allowTraditionalGeometryFallback) {
+        servicesCfg.allowTraditionalGeometryFallback = *runtimeCfg.allowTraditionalGeometryFallback;
+    }
     // ウィンドウ設定の最終上書き（ユーザー設定を優先）
     if (runtimeCfg.resizableWindow) {
         servicesCfg.resizableWindow = *runtimeCfg.resizableWindow;

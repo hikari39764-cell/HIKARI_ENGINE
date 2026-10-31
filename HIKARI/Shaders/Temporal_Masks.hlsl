@@ -6,8 +6,7 @@
 // 場景キャプチャを映す面の手前に物があるかを見る深度（0 = 近い面）。面の四隅は b1 の HikariScreenReadabilityConstants。
 Texture2D<float> gMaskSceneDepth : register(t2);
 
-// 場景キャプチャを映す面での履歴の捨て方。面の動きベクトルは映る中身の動きを表さないので、履歴を残すと中身が残像になる。
-static const float kSceneCaptureReactive = 1.0f;
+static const float kSceneCaptureReactive = 0.25f;
 static const float kSceneCaptureHistoryBias = 1.0f;
 
 struct VSOut
@@ -53,8 +52,6 @@ PSOut PSMain(VSOut input)
     PSOut output;
     output.transparency = saturate(relativeDifference * 2.0f);
     output.reactive = saturate(max(relativeDifference * 1.5f, lumaDifference * 2.5f));
-    // Composited pixels use opaque depth and motion data that no longer
-    // describe the final color. Keep this as a separate vendor-neutral hint.
     output.invalidDepthMotion = saturate(max(
         relativeDifference * 4.0f,
         max(max(difference.r, difference.g), difference.b) * 8.0f));

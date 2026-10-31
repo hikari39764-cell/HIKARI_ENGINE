@@ -1,13 +1,74 @@
 #include "Assets/Models/Loading/Gltf/HIKARI_GltfAnimationReader.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI::ASSETS::MODELS::GLTF {
+namespace {
+
+// 線形補間の通道から、前後の鍵で補間し直しても許容誤差に収まる鍵を除く（書き出しは毎フレーム鍵を打つので、
+// 動かない骨の位置・拡大縮小や、等速で動く区間がそのまま冗長になる）。最初と最後の鍵は残すので長さは変わらない。
+// 誤差は再生時と同じ補間（位置・拡大縮小は Lerp、回転は NlerpQ）で測る。全体が一定なら一つの鍵にする。
+constexpr float kVec3KeyTolerance = 1.0e-4f;
+constexpr float kQuatKeyToleranceRadians = 5.0e-4f;
+
+float Vec3KeyError(const MATH::Vec3& a, const MATH::Vec3& b) {
+    return (std::max)({std::abs(a.x - b.x), std::abs(a.y - b.y), std::abs(a.z - b.z)});
+}
+
+float QuatKeyError(const MATH::Quat& a, const MATH::Quat& b) {
+    const MATH::Quat na = MATH::NormalizeQ(a), nb = MATH::NormalizeQ(b);
+    const float dot = std::abs(na.x * nb.x + na.y * nb.y + na.z * nb.z + na.w * nb.w);
+    return 2.0f * std::acos((std::min)(dot, 1.0f));
+}
+
+template <class T, class Interpolate, class Error>
+void ReduceLinearKeys(std::vector<AnimationKeyframe<T>>& keys, Interpolate interpolate, Error error, float tolerance) {
+    if (keys.size() < 2u) {
+        return;
+    }
+    std::vector<AnimationKeyframe<T>> kept;
+    kept.reserve(keys.size());
+    kept.push_back(keys.front());
+    size_t anchor = 0u;
+    for (size_t candidate = 2u; candidate < keys.size(); ++candidate) {
+        // anchor から candidate までを一本の補間にした時、間の鍵が全部許容誤差に収まるか。
+        const float start = keys[anchor].timeSec;
+        const float span = keys[candidate].timeSec - start;
+        bool fits = span > 0.0f;
+        for (size_t middle = anchor + 1u; fits && middle < candidate; ++middle) {
+            const float weight = (keys[middle].timeSec - start) / span;
+            fits = error(interpolate(keys[anchor].value, keys[candidate].value, weight), keys[middle].value) <= tolerance;
+        }
+        if (!fits) {
+            anchor = candidate - 1u;
+            kept.push_back(keys[anchor]);
+        }
+    }
+    kept.push_back(keys.back());
+    if (kept.size() == 2u && error(kept.front().value, kept.back().value) <= tolerance) {
+        kept.pop_back();
+    }
+    keys = std::move(kept);
+}
+
+void ReduceLinearChannel(NodeAnimationChannel& channel) {
+    if (channel.interpolation != AnimationInterpolation::Linear) {
+        return;
+    }
+    ReduceLinearKeys(channel.vec3Keys, [](const MATH::Vec3& a, const MATH::Vec3& b, float t) { return MATH::Lerp(a, b, t); },
+                     Vec3KeyError, kVec3KeyTolerance);
+    ReduceLinearKeys(channel.quatKeys, [](const MATH::Quat& a, const MATH::Quat& b, float t) { return MATH::NlerpQ(a, b, t); },
+                     QuatKeyError, kQuatKeyToleranceRadians);
+}
+
+} // namespace
 
 void ReadAnimations(const Json& root, const Json& accessors, const Json& bufferViews, const BufferStorage& buffers,
                     ModelAsset& asset) {
@@ -110,6 +171,7 @@ void ReadAnimations(const Json& root, const Json& accessors, const Json& bufferV
                 } else {
                     channel.interpolation = AnimationInterpolation::Linear;
                 }
+                ReduceLinearChannel(channel);
                 clip.channels.push_back(std::move(channel));
             }
             if (!clip.channels.empty()) {

@@ -92,8 +92,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -126,8 +126,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -160,8 +160,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -194,8 +194,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -228,8 +228,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -262,8 +262,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -296,8 +296,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -351,8 +351,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -385,6 +385,58 @@
       ]
     },
     {
+      "assetGuid": "e5e6064eebae4735a00f32319a8a5cb3",
+      "programId": "HIKARI.EngineShader.Post_GeometryInkPS",
+      "source": "Post_GeometryInkPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Vfx.Post",
+      "group": "StylizedPost",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "Manga",
+          "stage": "Pixel",
+          "entry": "Manga",
+          "profile": "ps_6_0"
+        },
+        {
+          "id": "Outline",
+          "stage": "Pixel",
+          "entry": "Outline",
+          "profile": "ps_6_0"
+        },
+        {
+          "id": "Pixel",
+          "stage": "Pixel",
+          "entry": "Pixel",
+          "profile": "ps_6_0"
+        },
+        {
+          "id": "Sketch",
+          "stage": "Pixel",
+          "entry": "Sketch",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.PostEffect.Common",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
+        "rootLayoutId": "HIKARI.PostQuad.Root",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
       "assetGuid": "40fe34b1e99141b7b1ca2ba006bf43d9",
       "programId": "HIKARI.EngineShader.Post_LensPS",
       "source": "Post_LensPS.hlsl",
@@ -406,8 +458,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -440,8 +492,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -474,8 +526,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -508,8 +560,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -542,8 +594,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -694,8 +746,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -780,8 +832,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -814,8 +866,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -875,8 +927,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -909,8 +961,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -943,8 +995,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -977,8 +1029,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -1011,8 +1063,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -1045,8 +1097,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -1079,8 +1131,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.PostEffect.Common",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
         "rootLayoutId": "HIKARI.PostQuad.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",
@@ -4275,6 +4327,86 @@
         "rootLayoutId": "HIKARI.Temporal.MotionVector.Root",
         "rootLayoutVersion": 1,
         "rootLayoutHash": "1ca5eb927ca7d437d6f7d321027acb6e27552fb96416d2bfad68d757d4500cbf",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "a1dc68fe218345768259adae25301df8",
+      "programId": "HIKARI.EngineShader.Temporal_ScreenComposite",
+      "source": "Temporal_ScreenComposite.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.Temporal",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "PSMain",
+          "stage": "Pixel",
+          "entry": "PSMain",
+          "profile": "ps_6_0"
+        },
+        {
+          "id": "VSMain",
+          "stage": "Vertex",
+          "entry": "VSMain",
+          "profile": "vs_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.Temporal",
+        "engineInterfaceVersion": 1,
+        "engineInterfaceHash": "5f47c056f3ad74984780eae3e3d710ac3f63ee978d2dce0c83a05502582e9620",
+        "rootLayoutId": "HIKARI.Temporal.ScreenComposite.Root",
+        "rootLayoutVersion": 1,
+        "rootLayoutHash": "90abc9df340cb1af2e691e672ebde47147aab4e617d2c1b669c4c54b07ddddf9",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "8ca0d442965541aa9486b37a2d3dd090",
+      "programId": "HIKARI.EngineShader.Temporal_StableDepth",
+      "source": "Temporal_StableDepth.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.Temporal",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "PSMain",
+          "stage": "Pixel",
+          "entry": "PSMain",
+          "profile": "ps_6_0"
+        },
+        {
+          "id": "VSMain",
+          "stage": "Vertex",
+          "entry": "VSMain",
+          "profile": "vs_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.Temporal",
+        "engineInterfaceVersion": 1,
+        "engineInterfaceHash": "5f47c056f3ad74984780eae3e3d710ac3f63ee978d2dce0c83a05502582e9620",
+        "rootLayoutId": "HIKARI.Temporal.StableDepth.Root",
+        "rootLayoutVersion": 1,
+        "rootLayoutHash": "3b2d7c7d36a7529f0996c3d21b6545bb883a20d930c755622ac3588dabd7ac16",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

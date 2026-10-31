@@ -16,6 +16,8 @@ struct HostBootstrapConfig {
     bool enableImGui = false;
     bool enableEditorUI = false;
     bool enableStreamline = true;
+    // 網格シェーダーに対応しない GPU で従来の頂点経路へ落としてよいか。描画が網格シェーダー頼みの項目は書き出しで切る。
+    bool allowTraditionalGeometryFallback = true;
     // 明示的な有界キャプチャ専用。ウィンドウ公開・音声・入力取得を行わない。
     bool headlessRender = false;
     int windowWidth = PRESENTATION::kDefaultLogicalWidth;

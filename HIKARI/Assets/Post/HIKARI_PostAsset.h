@@ -44,13 +44,15 @@ inline constexpr TEXT::EnumName<PostEffectInput> kPostEffectInputNames[] = {
     {PostEffectInput::SurfaceFeatureMask, "SurfaceFeatureMask"},
 };
 
-// 効果を通す段階。Scene は色調写像の前のシーン線形 HDR（露出済み）、Display は色調写像と FXAA の後の表示の色
+// 効果を通す段階。PreTemporal は jitter のある HDR、Scene は時系列解決後の HDR、Display は色調写像と FXAA の後の表示の色
 // （ガンマ符号化済みの 0..1）。調色板・網点・紙の白のように表示の色で決める効果は Display で書く。
 enum class PostEffectPhase : uint8_t {
+    PreTemporal,
     Scene,
     Display,
 };
 inline constexpr TEXT::EnumName<PostEffectPhase> kPostEffectPhaseNames[] = {
+    {PostEffectPhase::PreTemporal, "PreTemporal"},
     {PostEffectPhase::Scene, "Scene"},
     {PostEffectPhase::Display, "Display"},
 };
@@ -60,6 +62,8 @@ struct PostEffectPass {
     std::string programId;
     std::string entryId = "Main";
     AssetGuid shaderAssetGuid{};
+    // 同じパラメーターで、幾何の線は解決前、網点などは表示段階に分けられる。
+    PostEffectPhase phase = PostEffectPhase::Scene;
 };
 
 // 効果の ID は読み込んだ場所が決める（エンジン内蔵は "engine.post.effect.*"、プロジェクト資産は GUID）。
@@ -68,7 +72,6 @@ struct PostEffectDefinition {
     std::vector<PostEffectPass> passes;
     std::vector<VFX::ParamDesc> params;
     std::optional<PostScreenWarpBinding> screenWarp;
-    PostEffectPhase phase = PostEffectPhase::Scene;
     bool requiresSceneDepth = false;
     bool requiresSurfaceFeatureMask = false;
 };

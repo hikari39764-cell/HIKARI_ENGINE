@@ -65,17 +65,13 @@ float HikariStylizeLumaEdge(float2 uv, float radiusPixels)
 
 // 線の強さを感度（0..1）から。深度の段差は相対値、明るさの線は Sobel の大きさで測る。空の画素は明るさの線を引かない
 // （雲の細かな明暗が線の雑音になる）。
-float HikariStylizeInkLines(float2 uv, float radiusPixels, float depthSensitivity, float lumaSensitivity)
+float HikariStylizeToneLines(float2 uv, float radiusPixels, float lumaSensitivity)
 {
-    const float depthThreshold = lerp(0.25f, 0.01f, saturate(depthSensitivity));
     const float lumaThreshold = lerp(1.2f, 0.08f, saturate(lumaSensitivity));
-    const float2 geometry = HikariStylizeGeometryEdges(uv, radiusPixels);
-    const float geometryLine = max(smoothstep(depthThreshold, depthThreshold * 2.0f, geometry.x),
-                                   smoothstep(depthThreshold * 0.5f, depthThreshold, geometry.y));
     const float lumaLine = HikariPostReadInverseDepth(uv) > 0.0f
         ? smoothstep(lumaThreshold, lumaThreshold * 2.0f, HikariStylizeLumaEdge(uv, radiusPixels))
         : 0.0f;
-    return max(geometryLine, lumaLine);
+    return lumaLine;
 }
 
 // 格子点の乱数を双一次で補間した値の雑音（0..1）。

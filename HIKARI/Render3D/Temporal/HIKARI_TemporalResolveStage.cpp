@@ -11,6 +11,7 @@
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalMaskPass.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
+#include "Render3D/Temporal/HIKARI_TemporalStableDepthPass.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
 
 namespace HIKARI::RENDER3D::TEMPORAL {
@@ -37,13 +38,11 @@ TaaResolveSettings BuildTaaSettings(const RenderQualitySettings& quality) {
 }
 } // namespace
 
-TemporalResolveStageResult ExecuteTemporalResolveStage(TemporalViewLease view, RenderFrameToken publication,
-                                                       TemporalResourceFrame resources, const GFX::Context& graphics,
-                                                       RenderTarget2D& sceneColorTarget,
-                                                       RenderTarget2D& sceneDepthTarget,
-                                                       const RenderQualitySettings& quality,
-                                                       const COLOR::ExposureFrameState& exposureState,
-                                                       const ScreenReadabilityFrame& sceneCaptureSurfaces) {
+TemporalResolveStageResult ExecuteTemporalResolveStage(
+    TemporalViewLease view, RenderFrameToken publication, TemporalResourceFrame resources, const GFX::Context& graphics,
+    RenderTarget2D& sceneColorTarget, RenderTarget2D& sceneDepthTarget, const RenderQualitySettings& quality,
+    const COLOR::ExposureFrameState& exposureState, const ScreenReadabilityFrame& sceneCaptureSurfaces,
+    RenderTarget2D* maskSceneColor) {
     TemporalResolveStageResult result{};
     result.output = &sceneColorTarget;
 
@@ -97,7 +96,9 @@ TemporalResolveStageResult ExecuteTemporalResolveStage(TemporalViewLease view, R
     const D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv =
         sceneDepthTarget.HasDepth() ? sceneDepthTarget.GetDepthSrvGpu() : D3D12_GPU_DESCRIPTOR_HANDLE{};
     const bool depthReadActive = sceneDepthSrv.ptr != 0 && sceneDepthTarget.BeginDepthShaderRead();
-    if (!depthReadActive || !PrepareSceneColorInput(resources, sceneColorTarget)) {
+    // 表面の線は同じ深度・動きを使える。合成の拒否マスクに描線の色差を混ぜ、履歴を捨てない。
+    RenderTarget2D& maskColor = maskSceneColor ? *maskSceneColor : sceneColorTarget;
+    if (!depthReadActive || !PrepareSceneColorInput(resources, maskColor)) {
         if (depthReadActive) {
             sceneDepthTarget.EndDepthShaderRead();
         }
@@ -107,19 +108,23 @@ TemporalResolveStageResult ExecuteTemporalResolveStage(TemporalViewLease view, R
 
     (void)UpdateTemporalExposure(resources, exposureState);
     TemporalInputs maskInputs{};
-    if (!TryBuildTemporalResolveInputs(resources, sceneColorTarget, sceneDepthTarget, maskInputs)) {
+    if (!TryBuildTemporalResolveInputs(resources, maskColor, sceneDepthTarget, maskInputs)) {
         sceneDepthTarget.EndDepthShaderRead();
         RejectTemporalFrame(frame, resources, nativeTaaRequested);
         return result;
     }
     const bool masksWritten = ExecuteTemporalMaskPass(graphics, maskInputs, sceneCaptureSurfaces);
     TemporalInputs inputs{};
-    if (!TryBuildTemporalResolveInputs(resources, sceneColorTarget, sceneDepthTarget, inputs)) {
+    if (!PrepareSceneColorInput(resources, sceneColorTarget) ||
+        !TryBuildTemporalResolveInputs(resources, sceneColorTarget, sceneDepthTarget, inputs)) {
         sceneDepthTarget.EndDepthShaderRead();
         RejectTemporalFrame(frame, resources, nativeTaaRequested);
         return result;
     }
     const TaaResolveSettings taaSettings = BuildTaaSettings(quality);
+    // 解決の前に作る（解決の後はこのフレームの資源の組が閉じられる）。
+    D3D12_GPU_DESCRIPTOR_HANDLE stableDepthSrv{};
+    RenderTarget2D* const stableDepth = ExecuteTemporalStableDepthPass(graphics, inputs, &stableDepthSrv);
 
     RenderTarget2D* resolvedTarget = nullptr;
     if (streamlineRequested && masksWritten) {
@@ -154,11 +159,12 @@ TemporalResolveStageResult ExecuteTemporalResolveStage(TemporalViewLease view, R
         return result;
     }
 
-    result.outputJitterPixels = result.backend == TemporalResolveBackend::Streamline
-                                    ? MATH::Vec2{}
-                                    : MATH::Vec2{frame.camera.jitter.x, frame.camera.jitter.y};
+    // TAA も DLSS も、ずらさない画素の中心で出力する。
+    result.outputJitterPixels = MATH::Vec2{};
     result.output = resolvedTarget;
     result.resolved = true;
+    result.stableDepth = stableDepth;
+    result.stableDepthSrv = stableDepthSrv;
     result.requiresOutputNormalization =
         superResolutionRequested && (resolvedTarget->GetWidth() != static_cast<int>(frame.outputWidth) ||
                                      resolvedTarget->GetHeight() != static_cast<int>(frame.outputHeight));

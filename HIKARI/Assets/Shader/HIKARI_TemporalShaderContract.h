@@ -15,7 +15,7 @@ inline constexpr std::string_view kTemporalInterfaceDependency =
 inline constexpr std::string_view kTemporalEngineInterfaceHash =
     "5f47c056f3ad74984780eae3e3d710ac3f63ee978d2dce0c83a05502582e9620";
 
-enum class TemporalShaderPass : uint8_t { Geometry, Masks, MotionVector, TaaResolve, Count };
+enum class TemporalShaderPass : uint8_t { Geometry, Masks, MotionVector, TaaResolve, StableDepth, ScreenComposite, Count };
 
 struct TemporalShaderDefinition {
     std::string_view programId;
@@ -23,7 +23,7 @@ struct TemporalShaderDefinition {
     std::string_view rootCanonical;
 };
 
-inline constexpr std::array<TemporalShaderDefinition, 4> kTemporalShaders{{
+inline constexpr std::array<TemporalShaderDefinition, 6> kTemporalShaders{{
     {"HIKARI.EngineShader.Temporal_GeometryMotion", "HIKARI.Temporal.Geometry.Root",
      "HIKARI.Temporal.Geometry.Root.v1|0:CBV(b0,space0,All)|1:CBV(b1,space0,All)|Pipeline(Graphics)|Flags(AllowInputAssembler)"},
     {"HIKARI.EngineShader.Temporal_Masks", "HIKARI.Temporal.Masks.Root",
@@ -32,6 +32,10 @@ inline constexpr std::array<TemporalShaderDefinition, 4> kTemporalShaders{{
      "HIKARI.Temporal.MotionVector.Root.v1|0:CBV(b0,space0,All)|1:Table(SRV(t0,space0,count1),Pixel)|Pipeline(Graphics)|Flags(None)"},
     {"HIKARI.EngineShader.Temporal_TaaResolve", "HIKARI.Temporal.TaaResolve.Root",
      "HIKARI.Temporal.TaaResolve.Root.v1|0:CBV(b0,space0,All)|1:Table(SRV(t0,space0,count1),Pixel)|2:Table(SRV(t1,space0,count1),Pixel)|3:Table(SRV(t2,space0,count1),Pixel)|4:Table(SRV(t3,space0,count1),Pixel)|5:Table(SRV(t4,space0,count1),Pixel)|6:Table(SRV(t5,space0,count1),Pixel)|7:Table(SRV(t6,space0,count1),Pixel)|8:Table(SRV(t7,space0,count1),Pixel)|9:Table(SRV(t8,space0,count1),Pixel)|10:Table(SRV(t9,space0,count1),Pixel)|StaticSampler(s0,LinearClamp,Pixel)|Pipeline(Graphics)|Flags(None)"},
+    {"HIKARI.EngineShader.Temporal_StableDepth", "HIKARI.Temporal.StableDepth.Root",
+     "HIKARI.Temporal.StableDepth.Root.v1|0:Constants(b0,space0,count12,Pixel)|1:Table(SRV(t0,space0,count1),Pixel)|2:Table(SRV(t1,space0,count1),Pixel)|3:Table(SRV(t2,space0,count1),Pixel)|Pipeline(Graphics)|Flags(None)"},
+    {"HIKARI.EngineShader.Temporal_ScreenComposite", "HIKARI.Temporal.ScreenComposite.Root",
+     "HIKARI.Temporal.ScreenComposite.Root.v1|0:CBV(b0,space0,All)|1:Table(SRV(t0,space0,count1),Pixel)|2:Table(SRV(t1,space0,count1),Pixel)|3:Table(SRV(t2,space0,count1),Pixel)|4:Table(SRV(t3,space0,count1),Pixel)|5:Table(SRV(t4,space0,count1),Pixel)|6:Table(SRV(t5,space0,count1),Pixel)|7:Table(SRV(t6,space0,count1),Pixel)|8:Table(SRV(t7,space0,count1),Pixel)|9:Table(SRV(t8,space0,count1),Pixel)|StaticSampler(s0,LinearClamp,Pixel)|Pipeline(Graphics)|Flags(None)"},
 }};
 
 inline ShaderAssetContractExpectation MakeTemporalShaderContract(TemporalShaderPass pass,
@@ -96,10 +100,20 @@ inline bool ValidateTemporalShaderArtifact(const ShaderCookedArtifact& artifact,
         } else if (pixel) {
             // 遮罩は b1 に場景キャプチャを映す面の四隅、t2 に面の手前を確かめる深度を持つ。
             add(ShaderResourceBindingKind::ConstantBuffer, pass == TemporalShaderPass::Masks ? 1u : 0u);
-            const uint32_t count =
-                pass == TemporalShaderPass::TaaResolve ? 10u : (pass == TemporalShaderPass::Masks ? 3u : 1u);
+            // 安定深度は t0 深度、t1 運動、t2 前の結果。画面の貼り直しは t0 深度と t1..t8 キャプチャ、s0 で引く。
+            const uint32_t count = pass == TemporalShaderPass::TaaResolve
+                                       ? 10u
+                                       : (pass == TemporalShaderPass::ScreenComposite
+                                              ? 9u
+                                              : (pass == TemporalShaderPass::Masks ||
+                                                         pass == TemporalShaderPass::StableDepth
+                                                     ? 3u
+                                                     : 1u));
             for (uint32_t reg = 0u; reg < count; ++reg) {
                 add(ShaderResourceBindingKind::ShaderResource, reg);
+            }
+            if (pass == TemporalShaderPass::ScreenComposite) {
+                add(ShaderResourceBindingKind::Sampler, 0u);
             }
             // TAA は Load による補間を使う。ルートに残る s0 は DXIL に現れない。
         }

@@ -19,6 +19,7 @@
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "Render3D/ScreenSpace/HIKARI_ScreenComposite.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameGraphSession.h"
 #include "Render3D/Surface/HIKARI_RenderFrameSurfaceRegistry.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
@@ -99,6 +100,8 @@ public:
     static void SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& frame);
     // 場景キャプチャを映す面。時間方向の解決（TAA・DLSS）がその画素で履歴を弱める。
     static void SetSceneCaptureSurfaces(const RENDER3D::ScreenReadabilityFrame& frame);
+    // 時間方向の拡大の後に、出力の解像度で貼り直す画面（投影済み）。
+    static void SetScreenComposites(const RENDER3D::ScreenCompositeFrame& frame);
     static void SetToneMappingSettings(const ToneMappingSettings& settings);
     // 表示するカメラの運動ブラー。TAA の後、HDR の後処理の前に掛ける。
     static void SetCameraMotionBlur(const CAMERA::MotionBlurSettings& settings, bool orthographic);
@@ -210,6 +213,7 @@ private:
     static CAMERA::MotionBlurSettings cameraMotionBlur_;
     static bool cameraMotionBlurOrthographic_;
     static RENDER3D::ScreenReadabilityFrame sceneCaptureSurfaces_;
+    static RENDER3D::ScreenCompositeFrame screenComposites_;
     static RENDER3D::SURFACE::RenderFrameSurfaceReceipt renderSurfaceReceipt_;
     static RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt renderGraphSessionReceipt_;
 };

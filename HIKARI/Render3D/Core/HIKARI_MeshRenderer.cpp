@@ -172,7 +172,13 @@ bool FinalizeVolumetricFog(const GFX::Context& graphics, bool volumetricFogReady
     if (!volumetricFogReady || view.light.fogParams.x == 0.0f)
         return true;
     view.light.fogParams.x = 0.0f;
+    gMeshRendererState.mainViewFogParams.x = 0.0f;
     return view.PublishLight(graphics);
+}
+
+void GetMainViewFogConstants(MATH::Vec4& fogParams, MATH::Vec4& fogColorDensity) {
+    fogParams = gMeshRendererState.mainViewFogParams;
+    fogColorDensity = gMeshRendererState.mainViewFogColorDensity;
 }
 
 const CameraCB* GetGpuDrivenCullingCameraConstants() {

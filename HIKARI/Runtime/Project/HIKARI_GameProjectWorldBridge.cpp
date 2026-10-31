@@ -85,6 +85,19 @@ bool WorldView::CanMutateStructure() const noexcept {
     return world != nullptr && world->CanMutateStructure();
 }
 
+uint64_t WorldView::CopyObjectHandles(std::span<GameProjectObjectHandle> destination) const noexcept {
+    World* world = GameProjectSdkAccess::GetWorld(*this);
+    if (world == nullptr || !world->IsOwnerThread())
+        return 0u;
+    size_t written = 0u;
+    for (const auto& object : world->GetObjects()) {
+        if (written == destination.size())
+            break;
+        destination[written++] = GameProjectSdkAccess::MakeObjectView(*object).GetHandle();
+    }
+    return static_cast<uint64_t>(written);
+}
+
 GameProjectWorldResult WorldView::DestroyObject(GameProjectObjectHandle object) const noexcept {
     RuntimeWorldAccessResult access{};
     World* world = GameProjectSdkAccess::GetWorld(*this, &access);

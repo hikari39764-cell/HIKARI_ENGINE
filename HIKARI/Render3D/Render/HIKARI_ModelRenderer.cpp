@@ -17,6 +17,7 @@
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "Render3D/ScreenSpace/HIKARI_ScreenReadability.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 #include "Render3D/Shadow/HIKARI_LocalLightShadowRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -59,6 +60,75 @@ void SyncRenderModelCacheStats() {
     gDebugStats.cache.renderModelCacheInvalidCount = cacheStats.invalidModelCount;
     gDebugStats.cache.renderModelCachedModelCount = cacheStats.cachedModelCount;
     gDebugStats.cache.renderModelCachedSurfaceCount = cacheStats.cachedSurfaceCount;
+}
+
+// 描き方を受けない面（Unstyled の結び付け）の四隅を、描き直す視点ごとにキャプチャの texel へ写す。視点の矩形で切った
+// 外接矩形と、面の上の奥行きの式（透視は 1 / 視線方向の距離、正投影は距離。平らな面では texel の一次式）を求め、
+// 大きく写る順に描き方の定数に収まる数だけ残す。カメラの後ろへ回る隅のある面はその視点では使わない（普段どおり描く）。
+struct UnstyledView {
+    const Camera3D* camera = nullptr;
+    float x = 0.0f, y = 0.0f, width = 0.0f, height = 0.0f;
+};
+RENDER3D::SceneCaptureUnstyledRegions BuildUnstyledRegions(const RENDER3D::ScreenReadabilityWorldFrame& surfaces,
+                                                           const std::vector<UnstyledView>& views) {
+    struct Candidate {
+        RENDER3D::SceneCaptureUnstyledRegion region{};
+        float area = 0.0f;
+    };
+    std::vector<Candidate> candidates;
+    const uint32_t surfaceCount = (std::min)(surfaces.count, RENDER3D::kScreenReadabilityCandidateCount);
+    for (const UnstyledView& view : views) {
+        const MATH::Mat4 viewProjection = view.camera->GetViewProj();
+        const bool orthographic = view.camera->IsOrthographic();
+        const float nearZ = view.camera->GetNearZ(), farZ = view.camera->GetFarZ();
+        for (uint32_t index = 0u; index < surfaceCount; ++index) {
+            std::array<MATH::Vec3, 4> corners{};   // texel の x, y と奥行きの値
+            bool valid = true;
+            for (uint32_t corner = 0u; corner < 4u && valid; ++corner) {
+                const auto& p = surfaces.regions[index][corner];
+                const auto clip = viewProjection.TransformPoint({p.x, p.y, p.z, 1.0f});
+                if (!std::isfinite(clip.x) || !std::isfinite(clip.y) || !std::isfinite(clip.z) || !std::isfinite(clip.w) ||
+                    clip.w <= .0001f) {
+                    valid = false;
+                    break;
+                }
+                const float ndcX = clip.x / clip.w, ndcY = clip.y / clip.w;
+                const float value = orthographic ? nearZ + clip.z / clip.w * (farZ - nearZ) : 1.0f / clip.w;
+                corners[corner] = {view.x + (ndcX * .5f + .5f) * view.width, view.y + (.5f - ndcY * .5f) * view.height, value};
+            }
+            if (!valid)
+                continue;
+            RENDER3D::SceneCaptureUnstyledRegion region{};
+            region.left = (std::max)(view.x, (std::min)({corners[0].x, corners[1].x, corners[2].x, corners[3].x}));
+            region.right = (std::min)(view.x + view.width, (std::max)({corners[0].x, corners[1].x, corners[2].x, corners[3].x}));
+            region.top = (std::max)(view.y, (std::min)({corners[0].y, corners[1].y, corners[2].y, corners[3].y}));
+            region.bottom = (std::min)(view.y + view.height, (std::max)({corners[0].y, corners[1].y, corners[2].y, corners[3].y}));
+            if (region.right - region.left < 1.0f || region.bottom - region.top < 1.0f)
+                continue;
+            const float area = (region.right - region.left) * (region.bottom - region.top);
+            // 三つの隅を通る一次式 value = a·x + b·y + c（隅 0・1・2 が一直線なら 0・2・3 で）。
+            const auto solve = [&region](const MATH::Vec3& p0, const MATH::Vec3& p1, const MATH::Vec3& p2) {
+                const float det = (p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y);
+                if (std::abs(det) < 1e-4f)
+                    return false;
+                region.a = ((p1.z - p0.z) * (p2.y - p0.y) - (p2.z - p0.z) * (p1.y - p0.y)) / det;
+                region.b = ((p2.z - p0.z) * (p1.x - p0.x) - (p1.z - p0.z) * (p2.x - p0.x)) / det;
+                region.c = p0.z - region.a * p0.x - region.b * p0.y;
+                return true;
+            };
+            if (!solve(corners[0], corners[1], corners[2]) && !solve(corners[0], corners[2], corners[3]))
+                continue;
+            candidates.push_back({region, area});
+        }
+    }
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& l, const Candidate& r) { return l.area > r.area; });
+    RENDER3D::SceneCaptureUnstyledRegions out{};
+    for (const Candidate& candidate : candidates) {
+        if (out.count == RENDER3D::kSceneCaptureUnstyledRegionCount)
+            break;
+        out.regions[out.count++] = candidate.region;
+    }
+    return out;
 }
 } // namespace
 
@@ -162,7 +232,8 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
                                        uint32_t width, uint32_t height, bool renderSky, bool renderTransparent,
                                        const GameProjectSceneCaptureStyleDesc& style,
                                        SecondarySceneCaptureOutput& outOutput,
-                                       const std::vector<SecondarySceneCaptureSubView>* subViews) {
+                                       const std::vector<SecondarySceneCaptureSubView>* subViews,
+                                       const RENDER3D::ScreenReadabilityWorldFrame* unstyledSurfaces) {
     outOutput = {};
     if (captureSlot >= MESHRENDERER::kSecondarySceneCaptureMaximumCount) {
         return false;
@@ -260,9 +331,27 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
     static const auto styleTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures.Style");
     const CPU_PROFILE::ScopedDynamicCpuTimer styleScope(styleTimer);
     if (style.style != GameProjectSceneCaptureStyle::None) {
-        // 深度の効果（版 4）を使う時だけ、キャプチャの深度を読める状態にして渡す。
+        // 描き方を受けない面（Unstyled）：描き直した視点に写る所を texel の矩形と奥行きの式にする。
+        RENDER3D::SceneCaptureUnstyledRegions unstyled{};
+        if (unstyledSurfaces != nullptr && unstyledSurfaces->count > 0u) {
+            std::vector<UnstyledView> views;
+            if (subViews == nullptr) {
+                views.push_back({&view.cameraFrame->camera, 0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)});
+            } else {
+                for (size_t index = 0; index < subViews->size(); ++index) {
+                    if (keep[index]) {
+                        continue;
+                    }
+                    const SecondarySceneCaptureSubView& sub = (*subViews)[index];
+                    views.push_back({&sub.camera, static_cast<float>(sub.x), static_cast<float>(sub.y),
+                                     static_cast<float>(sub.width), static_cast<float>(sub.height)});
+                }
+            }
+            unstyled = BuildUnstyledRegions(*unstyledSurfaces, views);
+        }
+        // 深度の効果（版 4）か描き方を受けない面がある時だけ、キャプチャの深度を読める状態にして渡す。
         RENDER3D::SceneCaptureStyleDepth depth{};
-        const bool readDepth = style.depthFocus > 0.0f && target.BeginDepthShaderRead();
+        const bool readDepth = (style.depthFocus > 0.0f || unstyled.count > 0u) && target.BeginDepthShaderRead();
         if (readDepth) {
             // 並べた視点は深度の範囲と投影の種類がそろっている（SetViews の検査）ので、最初の視点で読む。
             const Camera3D& camera =
@@ -272,8 +361,8 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
             depth.farZ = camera.GetFarZ();
             depth.orthographic = camera.IsOrthographic();
         }
-        const bool drawn =
-            RENDER3D::DrawSceneCaptureStyle(graphics, target, display, style, depth, anyKept ? &drawnRects : nullptr);
+        const bool drawn = RENDER3D::DrawSceneCaptureStyle(graphics, target, display, style, depth,
+                                                           anyKept ? &drawnRects : nullptr, &unstyled);
         if (readDepth) {
             target.EndDepthShaderRead();
         }

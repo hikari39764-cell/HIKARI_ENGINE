@@ -1,6 +1,7 @@
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <sstream>
 
 #include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
@@ -14,8 +15,11 @@
 #include "Render3D/Debug/HIKARI_RenderDebugOutput.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
+#include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalResolveStage.h"
+#include "Render3D/Temporal/HIKARI_TemporalScreenCompositePass.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 #include "Vfx/Post/HIKARI_GameUiCompositionStage.h"
 #include "Vfx/Post/HIKARI_PostPresentationStage.h"
@@ -59,6 +63,7 @@ RENDER3D::TEMPORAL::TemporalResourceFrame PostSystem::presentationTemporalResour
 CAMERA::MotionBlurSettings PostSystem::cameraMotionBlur_{};
 bool PostSystem::cameraMotionBlurOrthographic_ = false;
 RENDER3D::ScreenReadabilityFrame PostSystem::sceneCaptureSurfaces_{};
+RENDER3D::ScreenCompositeFrame PostSystem::screenComposites_{};
 RENDER3D::SURFACE::RenderFrameSurfaceReceipt PostSystem::renderSurfaceReceipt_{};
 RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt PostSystem::renderGraphSessionReceipt_{};
 
@@ -157,6 +162,7 @@ void PostSystem::SetScreenReadability(const RENDER3D::ScreenReadabilityFrame& fr
 void PostSystem::SetSceneCaptureSurfaces(const RENDER3D::ScreenReadabilityFrame& frame) {
     sceneCaptureSurfaces_ = frame;
 }
+void PostSystem::SetScreenComposites(const RENDER3D::ScreenCompositeFrame& frame) { screenComposites_ = frame; }
 void PostSystem::SetToneMappingSettings(const ToneMappingSettings& settings) {
     processingStage_.SetToneMappingSettings(settings);
 }
@@ -262,6 +268,7 @@ void PostSystem::GetSceneOutputSize(int& width, int& height) {
 bool PostSystem::BeginSceneCapture(RENDER3D::RenderFrameToken frame, uint64_t deviceGeneration) {
     quad_.SetScreenReadability({});
     sceneCaptureSurfaces_ = {};
+    screenComposites_.count = 0u;
     if (!frame.IsValid() || frame.viewId != RENDER3D::kPrimaryRenderViewId ||
         frame.frameIndex != TIME::GetFrameContext().frameIndex || deviceGeneration == 0u ||
         deviceGeneration != context_.deviceGeneration) {
@@ -596,10 +603,23 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
     const auto handoffResources = temporalResources_;
     RENDER3D::TEMPORAL::TemporalFrameState capturedTemporal{};
     (void)RENDER3D::TEMPORAL::TryGetTemporalFrameState(handoffView, handoffFrame, capturedTemporal);
-    auto temporal = RENDER3D::TEMPORAL::ExecuteTemporalResolveStage(handoffView, handoffFrame, handoffResources,
-                                                                    context_, *volumetric, *captured, quality,
-                                                                    processingStage_.GetExposureState(),
-                                                                    sceneCaptureSurfaces_);
+    const RENDER3D::RenderTextureView* featureMask = nullptr;
+    if ((processingStage_.RequiresSurfaceFeatureMask() || processingStage_.RequiresActionSurfaceFeatureMask()) &&
+        renderSurfaceReceipt_.frame.Matches(handoffFrame) &&
+        renderSurfaceReceipt_.deviceGeneration == context_.deviceGeneration) {
+        if (const auto* surfaces = RENDER3D::SURFACE::TryGetRenderFrameSurfaces(renderSurfaceReceipt_))
+            featureMask = surfaces->TryGetTexture({RENDER3D::GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
+                                                   RENDER3D::GRAPH::RenderGraphSemanticPhase::PostOpaque});
+    }
+    // 幾何の線は色の履歴と同時に解決する。表示段階の画素格子や網点はここへ移さない。
+    RenderTarget2D* const maskSceneColor = volumetric;
+    if (!RENDER3D::GetRenderDebugOutputRoute().bypassPostProcessing)
+        volumetric =
+            processingStage_.ResolvePreTemporal(*volumetric, quad_, *captured, featureMask,
+                                                {capturedTemporal.camera.jitter.x, capturedTemporal.camera.jitter.y});
+    auto temporal = RENDER3D::TEMPORAL::ExecuteTemporalResolveStage(
+        handoffView, handoffFrame, handoffResources, context_, *volumetric, *captured, quality,
+        processingStage_.GetExposureState(), sceneCaptureSurfaces_, maskSceneColor);
     RENDER3D::TEMPORAL::TemporalInputs presentationInputs{};
     bool retainHandoff = false;
     if (handoffResources.IsValid() &&
@@ -617,6 +637,9 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
         temporalResources_ = {};
     }
     RenderTarget2D* output = temporal.output ? temporal.output : volumetric;
+    // 後処理の線が読む、時間方向に均した深度（解決できたフレームだけ）。
+    ID3D12Resource* stableDepth =
+        temporal.resolved && temporal.stableDepth != nullptr ? temporal.stableDepth->GetResource() : nullptr;
     if (temporal.requiresOutputNormalization) {
         RenderTarget2D* normalized = processingStage_.NormalizeTemporalOutput(*output, temporal.expectedOutputWidth,
                                                                               temporal.expectedOutputHeight, quad_);
@@ -624,6 +647,7 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
             output = normalized;
         } else {
             output = volumetric;
+            stableDepth = nullptr;
             temporal.outputJitterPixels = {capturedTemporal.camera.jitter.x, capturedTemporal.camera.jitter.y};
             RENDER3D::TEMPORAL::TemporalViewLease temporalView{};
             if (RENDER3D::TEMPORAL::AcquireTemporalView(RENDER3D::kPrimaryRenderViewId, temporalView)) {
@@ -631,6 +655,23 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
                     temporalView, RENDER3D::TEMPORAL::TemporalHistoryResetReason::ExplicitReset);
             }
         }
+    }
+    // 場景キャプチャを映す画面を、拡大の後に出力の解像度で貼り直す（中身は拡大を通さないので、残像も揺れも出ない）。
+    // 手前の物の判定に均した深度を使うので、それが出力と同じ大きさで作れたフレームだけ。
+    // 診断（環境変数 HIKARI_SCREEN_COMPOSITE_OFF）：貼り直さず、拡大の結果のまま出す。
+    static const bool screenCompositeOff = std::getenv("HIKARI_SCREEN_COMPOSITE_OFF") != nullptr;
+    if (!screenCompositeOff && stableDepth != nullptr && temporal.stableDepthSrv.ptr != 0u &&
+        screenComposites_.count != 0u &&
+        temporal.stableDepth->GetWidth() == output->GetWidth() &&
+        temporal.stableDepth->GetHeight() == output->GetHeight() &&
+        !RENDER3D::GetRenderDebugOutputRoute().active) {
+        MATH::Vec4 fogParams{};
+        MATH::Vec4 fogColorDensity{};
+        MESHRENDERER::GetMainViewFogConstants(fogParams, fogColorDensity);
+        (void)RENDER3D::TEMPORAL::ExecuteTemporalScreenComposite(
+            context_, *output, temporal.stableDepthSrv, screenComposites_,
+            RENDER3D::COLOR::MakeViewExposureConstants(processingStage_.GetExposureState()), fogParams,
+            fogColorDensity);
     }
     if (presentationInputs.motionVectors.valid && !RENDER3D::GetRenderDebugOutputRoute().bypassPostProcessing) {
         RENDER3D::MOTIONBLUR::CameraMotionBlurInputs motionBlur{};
@@ -643,14 +684,6 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
         motionBlur.orthographic = cameraMotionBlurOrthographic_;
         output = RENDER3D::MOTIONBLUR::ExecuteCameraMotionBlur(context_, motionBlur);
     }
-    const RENDER3D::RenderTextureView* featureMask = nullptr;
-    if ((processingStage_.RequiresSurfaceFeatureMask() || processingStage_.RequiresActionSurfaceFeatureMask()) &&
-        renderSurfaceReceipt_.frame.Matches(handoffFrame) &&
-        renderSurfaceReceipt_.deviceGeneration == context_.deviceGeneration) {
-        if (const auto* surfaces = RENDER3D::SURFACE::TryGetRenderFrameSurfaces(renderSurfaceReceipt_))
-            featureMask = surfaces->TryGetTexture({RENDER3D::GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
-                                                   RENDER3D::GRAPH::RenderGraphSemanticPhase::PostOpaque});
-    }
     RenderTarget2D* preserved = nullptr;
     if (!preservedVfxLayer_.Resolve(renderSurfaceReceipt_, temporal.outputJitterPixels, output->GetWidth(),
                                     output->GetHeight(), quad_, preserved)) {
@@ -659,7 +692,8 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
     }
     return processingStage_.ResolveHdr(*output, quad_, RENDER3D::GetRenderDebugOutputRoute().bypassPostProcessing,
                                        RENDER3D::TEMPORAL::ToString(temporal.backend),
-                                       captureStage_.IsLightingEnabled(), captured, featureMask, preserved);
+                                       captureStage_.IsLightingEnabled(), captured, featureMask, preserved,
+                                       stableDepth);
 }
 
 RenderTarget2D* PostSystem::ResolveFinalSceneToLdr(RenderTarget2D& source, DXGI_FORMAT outputFormat) {

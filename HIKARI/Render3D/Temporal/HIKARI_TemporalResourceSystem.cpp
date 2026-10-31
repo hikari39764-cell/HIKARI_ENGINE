@@ -121,6 +121,9 @@ void ReleaseAllResources(TemporalResourceState& state, TemporalResourceReleaseMo
     ReleaseTarget(state, state.transparencyMask, mode);
     ReleaseTarget(state, state.invalidDepthMotionMask, mode);
     ReleaseTarget(state, state.biasCurrentColorMask, mode);
+    ReleaseTarget(state, state.stableDepth[0], mode);
+    ReleaseTarget(state, state.stableDepth[1], mode);
+    state.stableDepthWritten = {};
     ReleaseTarget(state, state.debugOutput, mode);
     state.historyColorValid = false;
     state.historyDepthValid = false;
@@ -230,6 +233,15 @@ bool EnsureResources(TemporalResourceState& state, const TemporalFrameState& fra
          ok;
     ok = EnsureTarget(state, state.debugOutput, state.recordingContext, width, height, kHistoryColorFormat,
                       "Temporal.DebugOutput", {0.0f, 0.0f, 0.0f, 1.0f}) &&
+         ok;
+    // 安定深度は後処理と同じ出力の解像度で持つ。
+    const uint32_t outputWidth = (std::max)(1u, frame.outputWidth);
+    const uint32_t outputHeight = (std::max)(1u, frame.outputHeight);
+    ok = EnsureTarget(state, state.stableDepth[0], state.recordingContext, outputWidth, outputHeight,
+                      DXGI_FORMAT_R32_FLOAT, "Temporal.StableDepth0", {1.0f, 1.0f, 1.0f, 1.0f}) &&
+         ok;
+    ok = EnsureTarget(state, state.stableDepth[1], state.recordingContext, outputWidth, outputHeight,
+                      DXGI_FORMAT_R32_FLOAT, "Temporal.StableDepth1", {1.0f, 1.0f, 1.0f, 1.0f}) &&
          ok;
 
     if (!ok) {

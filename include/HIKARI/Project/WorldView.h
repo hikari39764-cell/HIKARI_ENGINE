@@ -114,6 +114,9 @@ public:
     HIKARI_GAME_PROJECT_SDK_API ObjectView FindSceneObject(uint64_t sceneObjectId) const noexcept;
 
     HIKARI_GAME_PROJECT_SDK_API uint64_t GetObjectCount() const noexcept;
+    // 通常オブジェクト（Mass を除く）のハンドルを格納し、書いた数を返す。所有スレッド上の一時スナップショット。
+    HIKARI_GAME_PROJECT_SDK_API uint64_t
+    CopyObjectHandles(std::span<GameProjectObjectHandle> destination) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API bool CanMutateStructure() const noexcept;
 
     // 複数オブジェクトのローカル変換をまとめて更新する。

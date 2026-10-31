@@ -1,5 +1,6 @@
 #include "Render3D/Render/HIKARI_SceneCaptureStylePass.h"
 
+#include <algorithm>
 #include <memory>
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
@@ -22,7 +23,7 @@ CaptureStylePass& State() {
 
 bool DrawSceneCaptureStyle(const GFX::Context& graphics, const RenderTarget2D& input, RenderTarget2D& output,
                            const GameProjectSceneCaptureStyleDesc& style, const SceneCaptureStyleDepth& depth,
-                           const std::vector<D3D12_RECT>* rects) {
+                           const std::vector<D3D12_RECT>* rects, const SceneCaptureUnstyledRegions* unstyled) {
     auto& state = State();
     if (graphics.device == nullptr || graphics.cmdList == nullptr || !input.IsInitialized() ||
         !output.IsInitialized() || input.GetResource() == output.GetResource() ||
@@ -58,6 +59,10 @@ bool DrawSceneCaptureStyle(const GFX::Context& graphics, const RenderTarget2D& i
     params.user[4] = {style.shadowOffsetX, style.shadowOffsetY, style.fillStrength, 0.0f};
     // 深度の効果（版 4）。深度が無い時は gUser[9].x = 0 でシェーダーが全部飛ばす。
     const bool hasDepth = depth.srv.ptr != 0u && style.depthFocus > 0.0f && depth.farZ > depth.nearZ;
+    // 描き方を受けない面（版 7）。深度で面に乗る画素を見分けるので、深度が読める時だけ。
+    const bool depthBound = depth.srv.ptr != 0u && depth.farZ > depth.nearZ;
+    const uint32_t unstyledCount =
+        depthBound && unstyled != nullptr ? (std::min)(unstyled->count, kSceneCaptureUnstyledRegionCount) : 0u;
     params.user[5] = {style.depthFocus, style.backgroundDepth, style.fogStrength, style.fogDepth};
     params.user[6] = {style.fogColor.x, style.fogColor.y, style.fogColor.z, style.occlusion};
     params.user[7] = {style.occlusionRadius, style.occlusionDepth, style.depthLine, style.lightShadow};
@@ -66,8 +71,18 @@ bool DrawSceneCaptureStyle(const GFX::Context& graphics, const RenderTarget2D& i
     // 色調（版 6）：鮮やかな物体の外だけに掛ける。
     params.user[10] = {style.toneTint.x, style.toneTint.y, style.toneTint.z, style.toneTintStrength};
     params.user[11] = {style.toneHue, style.toneSaturation, style.toneBrightness, style.toneContrast};
+    // 描き方を受けない面：[12]・[14] が矩形、[13]・[15] の xyz が奥行きの式。[13].w は面の数、[15].w は奥行きの許し
+    // （視線方向の距離に対する割合。面の上の画素は誤差ほどしか離れず、手前の人物などは 1 割ほど近い）。
+    for (uint32_t index = 0u; index < unstyledCount; ++index) {
+        const SceneCaptureUnstyledRegion& region = unstyled->regions[index];
+        params.user[12u + index * 2u] = {region.left, region.top, region.right, region.bottom};
+        params.user[13u + index * 2u] = {region.a, region.b, region.c, 0.0f};
+    }
+    params.user[13].w = static_cast<float>(unstyledCount);
+    params.user[15].w = 0.004f;
     state.effect->ApplyCommonParams(params);
-    state.quad.SetInputTexture(input.GetSrvHeap(), input.GetSrvGpu(), hasDepth ? depth.srv : D3D12_GPU_DESCRIPTOR_HANDLE{});
+    state.quad.SetInputTexture(input.GetSrvHeap(), input.GetSrvGpu(),
+                               hasDepth || unstyledCount > 0u ? depth.srv : D3D12_GPU_DESCRIPTOR_HANDLE{});
     if (rects == nullptr) {
         output.BeginCapture();
         const bool drawn = state.effect->BindAndDraw(state.quad);

@@ -23,7 +23,8 @@ constexpr BuiltinPostContent kBuiltinPostContent[]{
     {"engine.post.effect.lens", "engine.post.profile.lens", "Lens", "Lens"},
 };
 
-bool ReadPass(const nlohmann::json& node, PostEffectPass& pass, std::string& error, const std::string& path) {
+bool ReadPass(const nlohmann::json& node, PostEffectPhase defaultPhase, PostEffectPass& pass, std::string& error,
+              const std::string& path) {
     if (!node.is_object()) {
         return JSONSTRICT::Fail(error, path + " must be an object");
     }
@@ -38,6 +39,12 @@ bool ReadPass(const nlohmann::json& node, PostEffectPass& pass, std::string& err
     }
     if (!pass.shaderAssetGuid.value.empty() && !IsValidAssetGuid(pass.shaderAssetGuid.value)) {
         return JSONSTRICT::Fail(error, path + ".shaderAssetGuid must be a project asset GUID");
+    }
+    std::string phase;
+    if (!JSONSTRICT::ReadString(node, "phase", TEXT::EnumToName(kPostEffectPhaseNames, defaultPhase), phase, error,
+                                path) ||
+        !TEXT::TryParseEnum(kPostEffectPhaseNames, phase, pass.phase)) {
+        return JSONSTRICT::Fail(error, path + ".phase must be PreTemporal, Scene or Display");
     }
     return true;
 }
@@ -89,8 +96,9 @@ bool ReadPostEffectDefinition(const nlohmann::json& root, PostEffectDefinition& 
         !JSONSTRICT::ReadString(root, "phase", "Scene", phase, error, "root")) {
         return false;
     }
-    if (!TEXT::TryParseEnum(kPostEffectPhaseNames, phase, effect.phase)) {
-        return JSONSTRICT::Fail(error, "root.phase must be Scene or Display");
+    PostEffectPhase defaultPhase{};
+    if (!TEXT::TryParseEnum(kPostEffectPhaseNames, phase, defaultPhase)) {
+        return JSONSTRICT::Fail(error, "root.phase must be PreTemporal, Scene or Display");
     }
     const auto passes = root.find("passes");
     if (passes == root.end() || !passes->is_array() || passes->empty()) {
@@ -98,7 +106,7 @@ bool ReadPostEffectDefinition(const nlohmann::json& root, PostEffectDefinition& 
     }
     for (size_t index = 0; index < passes->size(); ++index) {
         PostEffectPass pass;
-        if (!ReadPass((*passes)[index], pass, error, "passes[" + std::to_string(index) + "]")) {
+        if (!ReadPass((*passes)[index], defaultPhase, pass, error, "passes[" + std::to_string(index) + "]")) {
             return false;
         }
         effect.passes.push_back(std::move(pass));

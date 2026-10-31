@@ -22,6 +22,10 @@ class RenderTarget2D;
 struct GameProjectSceneCaptureStyleDesc;
 } // namespace HIKARI
 
+namespace HIKARI::RENDER3D {
+struct ScreenReadabilityWorldFrame;
+}
+
 namespace HIKARI::MODELRENDERER {
 
 enum class ModelRendererFrameKind {
@@ -96,7 +100,8 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
                                        uint32_t width, uint32_t height, bool renderSky, bool renderTransparent,
                                        const GameProjectSceneCaptureStyleDesc& style,
                                        SecondarySceneCaptureOutput& outOutput,
-                                       const std::vector<SecondarySceneCaptureSubView>* subViews = nullptr);
+                                       const std::vector<SecondarySceneCaptureSubView>* subViews = nullptr,
+                                       const RENDER3D::ScreenReadabilityWorldFrame* unstyledSurfaces = nullptr);
 void ResetSecondarySceneCaptureTarget(uint32_t captureSlot) noexcept;
 void ResetSecondarySceneCaptureTarget() noexcept;
 const ModelRendererDebugStats& GetDebugStats();

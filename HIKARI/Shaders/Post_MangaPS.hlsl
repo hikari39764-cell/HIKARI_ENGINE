@@ -53,7 +53,8 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     const float dots = Screentone(pixel, dotPixels, dotAngle, coverage) * screentone;
     float inkMask = coverage >= 0.999f ? lerp(1.0f, crossHatch, hatching) : dots;
 
-    inkMask = max(inkMask, HikariStylizeInkLines(input.uv, lineRadius, gUser[1].w, gUser[2].x) * ink);
+    // 幾何の線は解決済みの色に含まれる。表示の明暗線だけを足し、同じ輪郭を二度描かない。
+    inkMask = max(inkMask, HikariStylizeToneLines(input.uv, lineRadius, gUser[2].x) * ink);
 
     // 色を残すと紙の白の代わりに元の色相を淡く載せる（カラー漫画）。
     const float3 tint = lerp(paper, paper * normalize(max(source, 1e-4f)) * 1.7320508f, keepColor);

@@ -12,17 +12,16 @@
 
 namespace HIKARI::SCENE_CAPTURE {
 
-// 場景キャプチャを映す平らな面の四隅を集める。protectedOnly なら ProtectReadability の面だけ（後処理の保護用）、
-// そうでなければ結んだ面全部（時間方向の upscaler に、面の動きと映る中身の動きが合わない画素を知らせる用）。
-inline RENDER3D::ScreenReadabilityWorldFrame CollectScreenReadability(World& world, SceneCaptureService& captures,
-                                                                     bool protectedOnly = true) {
+// 場景キャプチャを映す平らな面の四隅を集める。requiredFlags が 0 でなければ、その印を全部持つ結び付けの面だけ
+// （ProtectReadability は後処理の保護用、Unstyled はキャプチャの描き方を受けない面）、0 なら結んだ面全部（時間方向の
+// upscaler に、面の動きと映る中身の動きが合わない画素を知らせる用）。
+inline RENDER3D::ScreenReadabilityWorldFrame CollectCaptureSurfaces(World& world, SceneCaptureService& captures,
+                                                                   uint32_t requiredFlags) {
     RENDER3D::ScreenReadabilityWorldFrame frame{};
     const auto* presentation = world.Services().Find<PresentationTransformService>();
     const auto* activity = world.Services().Find<RuntimeObjectActivityService>();
     for (const auto& binding : captures.Bindings()) {
-        if (!binding.applied ||
-            (protectedOnly && (binding.flags & GameProjectSceneCaptureMaterialBindingFlags(
-                                                   GameProjectSceneCaptureMaterialBindingFlag::ProtectReadability)) == 0u))
+        if (!binding.applied || (binding.flags & requiredFlags) != requiredFlags)
             continue;
         auto* object = world.FindObject(binding.modelObject);
         auto* model = object ? object->GetComponent<ModelComponent>() : nullptr;
@@ -75,6 +74,15 @@ inline RENDER3D::ScreenReadabilityWorldFrame CollectScreenReadability(World& wor
         }
     }
     return frame;
+}
+
+// protectedOnly なら ProtectReadability の面だけ、そうでなければ結んだ面全部。
+inline RENDER3D::ScreenReadabilityWorldFrame CollectScreenReadability(World& world, SceneCaptureService& captures,
+                                                                     bool protectedOnly = true) {
+    return CollectCaptureSurfaces(world, captures,
+                                  protectedOnly ? GameProjectSceneCaptureMaterialBindingFlags(
+                                                      GameProjectSceneCaptureMaterialBindingFlag::ProtectReadability)
+                                                : 0u);
 }
 
 } // namespace HIKARI::SCENE_CAPTURE

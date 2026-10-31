@@ -1,6 +1,8 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <iterator>
 #include <memory>
 #include <utility>
@@ -14,9 +16,11 @@
 #include "Render2D/HIKARI_GameUiEffectRenderer.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "Render3D/ScreenSpace/HIKARI_ScreenComposite.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 #include "Render3D/WorldSprite/HIKARI_WorldSpriteFrameSource.h"
 #include "Render3D/WorldText/HIKARI_WorldTextFrameSource.h"
+#include "Scene/Capture/HIKARI_SceneCaptureReadability.h"
 #include "Scene/Capture/HIKARI_SceneCaptureService.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
@@ -204,6 +208,131 @@ inline void ApplyPublishedMaterialBinding(World& world, SceneCaptureService& ser
     }
 }
 
+// 面の (s, t)（bounds の二辺を 0..1 にした座標）から uv0 への一次式を頂点から最小二乗で求め、四隅の UV を出す。
+// 平らな四角の画面なら正確。外れの大きい面（曲がった UV や分割した UV）は貼り直さない。
+inline bool FitScreenSurfaceUv(const MeshPrimitive& primitive, const float low[3], const float extent[3], int u, int v,
+                               std::array<MATH::Vec2, 4>& corners) {
+    const auto axis = [](const MATH::Vec3& p, int index) { return index == 0 ? p.x : (index == 1 ? p.y : p.z); };
+    double m[3][3]{};
+    double bx[3]{}, by[3]{};
+    for (const Vertex3D& vertex : primitive.staticVertices) {
+        const double s = (axis(vertex.position, u) - low[u]) / extent[u];
+        const double t = (axis(vertex.position, v) - low[v]) / extent[v];
+        const double row[3]{s, t, 1.0};
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j)
+                m[i][j] += row[i] * row[j];
+            bx[i] += row[i] * vertex.uv0.x;
+            by[i] += row[i] * vertex.uv0.y;
+        }
+    }
+    const double det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+                       m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+                       m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    if (primitive.staticVertices.size() < 3u || std::abs(det) < 1e-12)
+        return false;
+    const auto solve = [&](const double rhs[3], double out[3]) {
+        for (int column = 0; column < 3; ++column) {
+            double replaced[3][3]{};
+            for (int i = 0; i < 3; ++i)
+                for (int j = 0; j < 3; ++j)
+                    replaced[i][j] = j == column ? rhs[i] : m[i][j];
+            out[column] = (replaced[0][0] * (replaced[1][1] * replaced[2][2] - replaced[1][2] * replaced[2][1]) -
+                           replaced[0][1] * (replaced[1][0] * replaced[2][2] - replaced[1][2] * replaced[2][0]) +
+                           replaced[0][2] * (replaced[1][0] * replaced[2][1] - replaced[1][1] * replaced[2][0])) /
+                          det;
+        }
+    };
+    double fx[3]{}, fy[3]{};
+    solve(bx, fx);
+    solve(by, fy);
+    for (const Vertex3D& vertex : primitive.staticVertices) {
+        const double s = (axis(vertex.position, u) - low[u]) / extent[u];
+        const double t = (axis(vertex.position, v) - low[v]) / extent[v];
+        if (std::abs(fx[0] * s + fx[1] * t + fx[2] - vertex.uv0.x) > 0.01 ||
+            std::abs(fy[0] * s + fy[1] * t + fy[2] - vertex.uv0.y) > 0.01)
+            return false;
+    }
+    constexpr double st[4][2]{{0, 0}, {1, 0}, {1, 1}, {0, 1}};
+    for (int corner = 0; corner < 4; ++corner)
+        corners[corner] = {static_cast<float>(fx[0] * st[corner][0] + fx[1] * st[corner][1] + fx[2]),
+                           static_cast<float>(fy[0] * st[corner][0] + fy[1] * st[corner][1] + fy[2])};
+    return true;
+}
+
+// 拡大の後に貼り直す画面を集める（ProtectReadability の不透明な結び付けの面）。四隅は CollectCaptureSurfaces と
+// 同じ求め方で、各隅の UV には結び付けの UV 変換（切り出し・回転・反転）を材質と同じ式で掛ける。
+inline RENDER3D::ScreenCompositeWorldFrame CollectScreenComposites(World& world, SceneCaptureService& captures) {
+    RENDER3D::ScreenCompositeWorldFrame frame{};
+    const auto* presentation = world.Services().Find<PresentationTransformService>();
+    const auto* activity = world.Services().Find<RuntimeObjectActivityService>();
+    for (const auto& binding : captures.Bindings()) {
+        if (!binding.applied || !binding.appliedTexture.IsValid() || !binding.ShouldCompositeAfterTemporal())
+            continue;
+        auto* object = world.FindObject(binding.modelObject);
+        auto* model = object ? object->GetComponent<ModelComponent>() : nullptr;
+        const auto* asset = model ? model->GetModelAsset() : nullptr;
+        if (!model || !model->IsVisible() || !asset ||
+            (activity && activity->Get(object->GetRuntimeHandle()) == GameProjectRuntimeActivity::SuspendedHidden))
+            continue;
+        Transform3D transform{};
+        if (!world.TryGetWorldTransform(object->GetRuntimeHandle(), transform))
+            continue;
+        auto worldMatrix = transform.GetWorldMatrix();
+        if (presentation)
+            (void)presentation->TryGetWorldMatrix(object->GetRuntimeHandle(), worldMatrix);
+        RuntimeTextureSlot slot{};
+        ApplyMaterialBindingUvTransform(binding, slot);
+        const float sine = std::sin(slot.uvRotation), cosine = std::cos(slot.uvRotation);
+        const MATH::Vec4 baseColor =
+            binding.appliedMaterial ? binding.appliedMaterial->GetBaseColor() : MATH::Vec4{1.0f, 1.0f, 1.0f, 1.0f};
+        const auto visibility = model->ResolveRuntimeNodeVisibilityMask(*asset);
+        const auto nodeGlobals = BOUNDS::BuildModelNodeGlobals(*asset);
+        for (size_t nodeIndex = 0; nodeIndex < asset->nodes.size(); ++nodeIndex) {
+            const auto& node = asset->nodes[nodeIndex];
+            if (node.meshIndex < 0 || static_cast<size_t>(node.meshIndex) >= asset->meshes.size() ||
+                node.skinIndex >= 0 || (!visibility.empty() && !visibility[nodeIndex]))
+                continue;
+            for (const auto& primitive : asset->meshes[node.meshIndex].primitives) {
+                if (primitive.materialIndex != binding.resolvedMaterialIndex ||
+                    primitive.layout != VertexLayoutKind::StaticPNTT)
+                    continue;
+                if (frame.count == RENDER3D::kScreenCompositeCandidateCount)
+                    return frame;
+                const auto& bounds = primitive.bounds;
+                const float low[]{bounds.min.x, bounds.min.y, bounds.min.z};
+                const float high[]{bounds.max.x, bounds.max.y, bounds.max.z};
+                const float extent[]{high[0] - low[0], high[1] - low[1], high[2] - low[2]};
+                const int thin = static_cast<int>(std::min_element(extent, extent + 3) - extent);
+                const int u = (thin + 1) % 3, v = (thin + 2) % 3;
+                if (extent[u] < .00001f || extent[v] < .00001f ||
+                    extent[thin] > (std::min)(extent[u], extent[v]) * .02f)
+                    continue;
+                std::array<MATH::Vec2, 4> meshUv{};
+                if (!FitScreenSurfaceUv(primitive, low, extent, u, v, meshUv))
+                    continue;
+                RENDER3D::ScreenCompositeWorldRegion& region = frame.regions[frame.count];
+                const auto matrix = worldMatrix * nodeGlobals[nodeIndex];
+                constexpr float signs[4][2]{{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
+                for (uint32_t corner = 0; corner < 4; ++corner) {
+                    float p[]{(low[0] + high[0]) * .5f, (low[1] + high[1]) * .5f, (low[2] + high[2]) * .5f};
+                    p[u] += extent[u] * .5f * signs[corner][0];
+                    p[v] += extent[v] * .5f * signs[corner][1];
+                    const auto point = matrix.TransformPoint({p[0], p[1], p[2], 1});
+                    region.corners[corner] = {point.x, point.y, point.z};
+                    // 材質の UV 変換（HikariApplyMaterialUvTransform と同じ：拡大縮小 → 回転 → ずらし）。
+                    const float x = meshUv[corner].x * slot.uvScale.x, y = meshUv[corner].y * slot.uvScale.y;
+                    region.uv[corner] = {x * cosine - y * sine + slot.uvOffset.x, x * sine + y * cosine + slot.uvOffset.y};
+                }
+                region.texture = binding.appliedTexture;
+                region.baseColor = baseColor;
+                ++frame.count;
+            }
+        }
+    }
+    return frame;
+}
+
 inline void RenderSecondaryCapture(DocumentSceneState& state, const GFX::Context& graphics,
                                    const SceneEnvironment& environment,
                                    const RENDER3D::LIGHTING::SceneLightingSet& lighting, const FrameContext& frame,
@@ -228,6 +357,10 @@ inline void RenderSecondaryCapture(DocumentSceneState& state, const GFX::Context
     const CPU_PROFILE::ScopedDynamicCpuTimer cpuScope(cpuTimer);
     const GFX::GPU_PROFILE::ScopedGpuTimerGroup gpuScope(graphics.cmdList, GFX::GPU_PROFILE::Pass::SceneCaptures);
     static_assert(kGameProjectSceneCaptureMaximumActiveCount == MESHRENDERER::kSecondarySceneCaptureMaximumCount);
+    // 描き方を受けない面（Unstyled の結び付け）。どのキャプチャに写っても同じなので、フレームに一度だけ集める。
+    const RENDER3D::ScreenReadabilityWorldFrame unstyledSurfaces = CollectCaptureSurfaces(
+        state.runtime.world, service,
+        GameProjectSceneCaptureMaterialBindingFlags(GameProjectSceneCaptureMaterialBindingFlag::Unstyled));
     for (const SceneCaptureRequest& request : requests) {
         if (!request.IsEnabled()) {
             continue;
@@ -314,7 +447,7 @@ inline void RenderSecondaryCapture(DocumentSceneState& state, const GFX::Context
                 graphics, view, environment, lighting, state.assets.Models(), state.lighting.sky,
                 state.runtime.world.GetRuntimeIdentity(), request.renderSlot, width, height,
                 (request.flags & renderSkyFlag) != 0u, renderTransparent, request.style, output,
-                request.views.empty() ? nullptr : &subViews) ||
+                request.views.empty() ? nullptr : &subViews, unstyledSurfaces.count > 0u ? &unstyledSurfaces : nullptr) ||
             !output.ready) {
             service.PublishFailure(request.handle, GameProjectSceneCaptureFailure::RenderFailed);
             continue;

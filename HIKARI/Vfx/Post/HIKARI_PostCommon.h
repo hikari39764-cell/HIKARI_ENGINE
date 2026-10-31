@@ -20,11 +20,17 @@ struct alignas(16) CommonParams {
 
     // 各 PostEffect 固有の自由パラメータ領域。
     DirectX::XMFLOAT4 user[16]{};
+    // 表示参照の線色を HDR へ戻す係数。既存の自由スロットと戦闘用 padding は占有しない。
+    float displayToScene = 1.0f;
+    float displayGamma = 2.2f;
+    float rasterJitterX = 0.0f;
+    float rasterJitterY = 0.0f;
 };
 
-static_assert(sizeof(CommonParams) == 288u);
+static_assert(sizeof(CommonParams) == 304u);
 static_assert(alignof(CommonParams) == 16u);
 static_assert(offsetof(CommonParams, user) == 32u);
+static_assert(offsetof(CommonParams, displayToScene) == 288u);
 
 static inline uint32_t Align256(uint32_t bytes) { return (bytes + 255u) & ~255u; }
 

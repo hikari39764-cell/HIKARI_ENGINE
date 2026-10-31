@@ -54,6 +54,7 @@ void PostProcessingStage::UpdateContext(const GFX::Context& context) {
         ClearActionPostFrame();
     context_ = context;
     PostEffect::UpdateContext(context);
+    preTemporalChain_.UpdateContext(context);
     globalChain_.UpdateContext(context);
     actionPostChain_.UpdateContext(context);
     sequenceChain_.UpdateContext(context);
@@ -70,6 +71,7 @@ void PostProcessingStage::UpdateContext(const GFX::Context& context) {
     temporalOutput_.UpdateContext(context);
     sunGlareTarget_.UpdateContext(context);
     automaticExposureMeter_.UpdateContext(context);
+    preTemporalChain_.SetDebugName("PostProcessing.PreTemporal");
     globalChain_.SetDebugName("PostProcessing.Global");
     actionPostChain_.SetDebugName("PostProcessing.ProjectAction");
     sequenceChain_.SetDebugName("PostProcessing.Sequence");
@@ -84,6 +86,7 @@ void PostProcessingStage::Shutdown() {
     ClearActionPostFrame();
     ClearGlobalEffects();
     ClearTransitionState();
+    preTemporalChain_.Finalize();
     globalChain_.Finalize();
     sequenceChain_.Clear();
     sequenceChain_.Finalize();
@@ -175,29 +178,39 @@ bool PostProcessingStage::SetGlobalEffects(std::span<const ResolvedPostLayer> la
 RenderTarget2D* PostProcessingStage::ExecuteGlobalLayers(PostEffectPhase phase, RenderTarget2D* output,
                                                          QuadDrawer& quad, RenderTarget2D* sceneDepthOwner,
                                                          const RENDER3D::RenderTextureView* surfaceFeatureMask) {
+    auto& chain = phase == PostEffectPhase::PreTemporal ? preTemporalChain_ : globalChain_;
     for (const ActiveGlobalLayer& layer : activeGlobalLayers_) {
-        if (layer.effect->phase != phase) {
+        chain.Clear();
+        for (size_t index = 0; index < layer.passes.size(); ++index) {
+            if (layer.effect->passes[index].phase == phase)
+                chain.Add(layer.passes[index].get());
+        }
+        if (!chain.HasAny()) {
             continue;
         }
         const bool mask = layer.effect->requiresSurfaceFeatureMask;
         const bool depth = layer.effect->requiresSceneDepth;
+        // 時間方向に均した深度があればそれを読む（ずらした描画の深度では、輪郭の線が毎フレーム跳ねる）。
+        const bool stableDepth = depth && phase != PostEffectPhase::PreTemporal && displayStableSceneDepth_ != nullptr;
+        const bool rawDepth = depth && !stableDepth;
         if ((mask && !surfaceFeatureMask) ||
-            (depth && (sceneDepthOwner == nullptr || !sceneDepthOwner->GetDepthResource() ||
-                       !sceneDepthOwner->BeginDepthShaderRead()))) {
+            (rawDepth && (sceneDepthOwner == nullptr || !sceneDepthOwner->GetDepthResource() ||
+                          !sceneDepthOwner->BeginDepthShaderRead()))) {
             continue;
         }
-        globalChain_.Clear();
-        for (const auto& pass : layer.passes) {
-            globalChain_.Add(pass.get());
-        }
-        output = globalChain_.Execute(*output, quad, ResolveGlobalFrameParams(layer), 0, 0,
-                                      mask ? surfaceFeatureMask : nullptr,
-                                      depth ? sceneDepthOwner->GetDepthResource() : nullptr);
-        if (depth) {
+        CommonParams params = ResolveGlobalFrameParams(layer);
+        params.resolutionX = static_cast<float>(output->GetWidth());
+        params.resolutionY = static_cast<float>(output->GetHeight());
+        params.displayToScene = RENDER3D::COLOR::MakeViewExposureConstants(exposureState_).z;
+        params.displayGamma = toneMappingSettings_.gamma;
+        output = chain.Execute(*output, quad, params, 0, 0, mask ? surfaceFeatureMask : nullptr,
+                               stableDepth ? displayStableSceneDepth_
+                                           : (rawDepth ? sceneDepthOwner->GetDepthResource() : nullptr));
+        if (rawDepth) {
             sceneDepthOwner->EndDepthShaderRead();
         }
     }
-    globalChain_.Clear();
+    chain.Clear();
     return output;
 }
 
@@ -274,6 +287,7 @@ void PostProcessingStage::ClearGlobalEffects() {
     effectOverrideId_.clear();
     effectOverrideFrame_ = (std::numeric_limits<uint64_t>::max)();
     activeGlobalRegistryId_ = activeGlobalRegistryRevision_ = 0u;
+    preTemporalChain_.Clear();
     globalChain_.Clear();
     activeGlobalLayers_.clear();
 }
@@ -815,11 +829,29 @@ RenderTarget2D* PostProcessingStage::ApplyFxaa(RenderTarget2D& source, QuadDrawe
     return fxaaChain_.Execute(source, quad, parameters);
 }
 
+RenderTarget2D* PostProcessingStage::ResolvePreTemporal(RenderTarget2D& source, QuadDrawer& quad,
+                                                        RenderTarget2D& sceneDepthOwner,
+                                                        const RENDER3D::RenderTextureView* surfaceFeatureMask,
+                                                        MATH::Vec2 rasterJitterPixels) {
+    // 前のビューの補助深度は使わず、色と同じ jitter の現フレーム深度で線を作る。
+    displayStableSceneDepth_ = nullptr;
+    // 測光は描線を加える前の HDR を読む。線の濃さが自動露出へ戻る循環を作らない。
+    if (meterScene_)
+        (void)automaticExposureMeter_.QueueMeasurement(source, exposureState_.preExposure,
+                                                       TIME::GetFrameContext().frameIndex);
+    commonParams_.rasterJitterX = rasterJitterPixels.x;
+    commonParams_.rasterJitterY = rasterJitterPixels.y;
+    auto* output =
+        ExecuteGlobalLayers(PostEffectPhase::PreTemporal, &source, quad, &sceneDepthOwner, surfaceFeatureMask);
+    commonParams_.rasterJitterX = commonParams_.rasterJitterY = 0.0f;
+    return output;
+}
+
 RenderTarget2D* PostProcessingStage::ResolveHdr(RenderTarget2D& source, QuadDrawer& quad, bool debugOutput,
                                                 const char* temporalBackend, bool lightingEnabled,
                                                 RenderTarget2D* sceneDepthOwner,
                                                 const RENDER3D::RenderTextureView* surfaceFeatureMask,
-                                                RenderTarget2D* preservedVfx) {
+                                                RenderTarget2D* preservedVfx, ID3D12Resource* stableSceneDepth) {
     RenderTarget2D* output = &source;
     commonParams_.resolutionX = static_cast<float>((std::max)(1, output->GetWidth()));
     commonParams_.resolutionY = static_cast<float>((std::max)(1, output->GetHeight()));
@@ -829,13 +861,9 @@ RenderTarget2D* PostProcessingStage::ResolveHdr(RenderTarget2D& source, QuadDraw
         sunGlareDebugStats_ = {};
         sunGlareDebugStats_.requested = sunGlareFrame_.enabled;
     }
-    // 測光は芸術的な全体後処理の前に行う。後処理の色調が露出を引き戻さない。
-    if (!debugOutput && meterScene_) {
-        (void)automaticExposureMeter_.QueueMeasurement(*output, exposureState_.preExposure,
-                                                       TIME::GetFrameContext().frameIndex);
-    }
     displaySceneDepthOwner_ = debugOutput ? nullptr : sceneDepthOwner;
     displaySurfaceFeatureMask_ = debugOutput ? nullptr : surfaceFeatureMask;
+    displayStableSceneDepth_ = debugOutput ? nullptr : stableSceneDepth;
     if (!debugOutput) {
         output = ExecuteGlobalLayers(PostEffectPhase::Scene, output, quad, sceneDepthOwner, surfaceFeatureMask);
     }
@@ -971,6 +999,7 @@ RenderTarget2D* PostProcessingStage::ResolveLdr(RenderTarget2D& source, DXGI_FOR
                                  displaySurfaceFeatureMask_);
     displaySceneDepthOwner_ = nullptr;
     displaySurfaceFeatureMask_ = nullptr;
+    displayStableSceneDepth_ = nullptr;
     if (dumpNextFrame_ || GFX::GetGfxDebugConfig().verbosePostLog) {
         LogState(dumpNextFrame_ ? "Requested frame dump" : "Verbose post log");
         dumpNextFrame_ = false;
@@ -1006,9 +1035,9 @@ std::string PostProcessingStage::DumpState() const {
            << " meteredLuminance=" << exposureState_.meteredLuminance
            << " meteringValid=" << exposureState_.meteringValid << " preExposure=" << exposureState_.preExposure
            << " transition=" << transitionActive_ << "\n  " << ldrTarget_.DumpState() << "\n  "
-           << temporalOutput_.DumpState() << "\n  " << sunGlareTarget_.DumpState() << "\n  " << globalChain_.DumpState()
-           << "\n  " << bloomLevels_[0].DumpState() << "\n  " << transitionChain_.DumpState() << "\n  "
-           << fxaaChain_.DumpState();
+           << temporalOutput_.DumpState() << "\n  " << sunGlareTarget_.DumpState() << "\n  "
+           << preTemporalChain_.DumpState() << "\n  " << globalChain_.DumpState() << "\n  "
+           << bloomLevels_[0].DumpState() << "\n  " << transitionChain_.DumpState() << "\n  " << fxaaChain_.DumpState();
     return stream.str();
 }
 

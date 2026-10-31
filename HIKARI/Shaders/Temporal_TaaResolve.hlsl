@@ -1,6 +1,5 @@
 #define HIKARI_TEMPORAL_TAARESOLVE
 #include "Include/Temporal/HIKARI_TemporalShaderInterface.hlsli"
-#include "Include/Temporal/HIKARI_TemporalReprojection.hlsli"
 #include "Include/Color/HIKARI_Luminance.hlsli"
 
 struct VSOut
@@ -80,7 +79,9 @@ int2 ClampPixel(int2 pixel)
 
 float4 LoadCurrent(int2 pixel)
 {
-    return gCurrentColor.Load(int3(ClampPixel(pixel), 0));
+    float4 color = gCurrentColor.Load(int3(ClampPixel(pixel), 0));
+    // 無限大や NaN は近傍の組み直しで周りに広がり、履歴に入ると消えないので、ここで 0 にする。
+    return all(isfinite(color)) ? color : 0.0f;
 }
 
 float LoadDepth(int2 pixel)
@@ -91,6 +92,30 @@ float LoadDepth(int2 pixel)
 float LoadMask(Texture2D<float> mask, int2 pixel)
 {
     return mask.Load(int3(ClampPixel(pixel), 0));
+}
+
+// 今のフレームの各画素は、ずらし（jitter）の分だけ動いた画を写している。近傍 3×3 を各標本の本当の位置から
+// 画素の中心までの距離で重み付けし、ずらさない中心の値を作る。出力も履歴もずらさない位置で持つので、画が
+// ずらしと一緒に毎フレーム揺れない。
+float3 ReconstructCurrentAtCenter(uint2 pixel, float exposure)
+{
+    int2 basePixel = int2(pixel);
+    float3 sum = 0.0f;
+    float weightSum = 0.0f;
+
+    [unroll]
+    for (int y = -1; y <= 1; ++y)
+    {
+        [unroll]
+        for (int x = -1; x <= 1; ++x)
+        {
+            float2 offset = float2(x, y) - gJitterPixels.xy;
+            float weight = exp(-2.29f * dot(offset, offset));
+            sum += EncodeTemporalColor(LoadCurrent(basePixel + int2(x, y)).rgb, exposure) * weight;
+            weightSum += weight;
+        }
+    }
+    return sum / max(weightSum, 1e-5f);
 }
 
 float CatmullRomWeight(float value)
@@ -217,11 +242,12 @@ float3 ClipHistoryToNeighborhood(
     return max(YCoCgToRGB(clamp(RGBToYCoCg(historyEncoded), lower, upper)), 0.0f);
 }
 
-float3 SpatialFallback(uint2 pixel, float exposure)
+// 履歴を捨てた所（現れたばかりの面など）で今のフレームを少しぼかす。中心は組み直した値を使い、周りには
+// ずらしを含めた本当の位置からの距離の重みも掛ける（そのままの画素を混ぜると、そこだけずらしと一緒に揺れる）。
+float3 SpatialFallback(uint2 pixel, float exposure, float3 center)
 {
     int2 basePixel = int2(pixel);
     float centerDepth = LoadDepth(basePixel);
-    float3 center = EncodeTemporalColor(LoadCurrent(basePixel).rgb, exposure);
     float3 sum = center * 4.0f;
     float weightSum = 4.0f;
     const int2 offsets[4] = {
@@ -236,7 +262,9 @@ float3 SpatialFallback(uint2 pixel, float exposure)
         float depthWeight = rcp(1.0f + depthDelta * 2048.0f);
         float3 sample = EncodeTemporalColor(LoadCurrent(samplePixel).rgb, exposure);
         float lumaWeight = rcp(1.0f + abs(HikariLuminance(sample) - HikariLuminance(center)) * 12.0f);
-        float weight = depthWeight * lumaWeight;
+        float2 offset = float2(offsets[index]) - gJitterPixels.xy;
+        float distanceWeight = exp(-0.8f * dot(offset, offset));
+        float weight = depthWeight * lumaWeight * distanceWeight;
         sum += sample * weight;
         weightSum += weight;
     }
@@ -301,10 +329,43 @@ float ResolveHistoryWeight(
     return saturate(weight) * confidence;
 }
 
+// 履歴の双一次補間（Load で組む。標本器を使うと DXIL の束縛が増え、着色器の契約と合わなくなる）。
+float4 SampleHistoryBilinear(float2 uv)
+{
+    float2 texel = uv * gScreenParams.xy - 0.5f;
+    int2 basePixel = int2(floor(texel));
+    float2 fraction = texel - float2(basePixel);
+    float4 top = lerp(gHistoryColor.Load(int3(ClampPixel(basePixel), 0)),
+                      gHistoryColor.Load(int3(ClampPixel(basePixel + int2(1, 0)), 0)), fraction.x);
+    float4 bottom = lerp(gHistoryColor.Load(int3(ClampPixel(basePixel + int2(0, 1)), 0)),
+                         gHistoryColor.Load(int3(ClampPixel(basePixel + int2(1, 1)), 0)), fraction.x);
+    return lerp(top, bottom, fraction.y);
+}
+
+// 鋭さの成分は累積済みの履歴（ずらしに依らない）の中心と十字の平均の差から取る。
+float3 HistoryDetail(float2 previousUv, float3 historyCenterEncoded, float currentExposure)
+{
+    const float2 offsets[4] = {
+        float2(-1.0f, 0.0f), float2(1.0f, 0.0f), float2(0.0f, -1.0f), float2(0.0f, 1.0f)
+    };
+    float3 crossSum = 0.0f;
+
+    [unroll]
+    for (uint index = 0; index < 4u; ++index)
+    {
+        float4 neighbor = SampleHistoryBilinear(previousUv + offsets[index] * gScreenParams.zw);
+        float3 neighborLinear =
+            DecodeTemporalColor(neighbor.rgb, max(neighbor.a, 1e-4f)) * gExposureParams.y;
+        crossSum += EncodeTemporalColor(neighborLinear, currentExposure);
+    }
+    return historyCenterEncoded - crossSum * 0.25f;
+}
+
+// 表示にだけ鋭さを足す（履歴へ書き戻すと毎フレーム重なって縁が切り詰めの端まで押し出され、ちらつく）。
+// 一度きりで以前の重なった分に近づくよう 2 倍する。
 float3 ApplyStableSharpen(
-    uint2 pixel,
     float3 resolved,
-    float exposure,
+    float3 detail,
     float confidence,
     float2 motionPixels)
 {
@@ -315,15 +376,10 @@ float3 ApplyStableSharpen(
     {
         return resolved;
     }
-
-    int2 basePixel = int2(pixel);
-    float3 center = EncodeTemporalColor(LoadCurrent(basePixel).rgb, exposure);
-    float3 crossAverage =
-        (EncodeTemporalColor(LoadCurrent(basePixel + int2(-1, 0)).rgb, exposure) +
-         EncodeTemporalColor(LoadCurrent(basePixel + int2(1, 0)).rgb, exposure) +
-         EncodeTemporalColor(LoadCurrent(basePixel + int2(0, -1)).rgb, exposure) +
-         EncodeTemporalColor(LoadCurrent(basePixel + int2(0, 1)).rgb, exposure)) * 0.25f;
-    return max(resolved + (center - crossAverage) * strength, 0.0f);
+    float3 sharpened = max(resolved + detail * (strength * 2.0f), 0.0f);
+    // 符号化した色は明るさ 1 未満でなければ戻せない（1 に近いと戻した値が跳ね上がる）。
+    float luma = HikariLuminance(sharpened);
+    return luma > 0.995f ? sharpened * (0.995f / luma) : sharpened;
 }
 
 float3 BuildDebugColor(
@@ -379,7 +435,7 @@ PSOut PSMain(VSOut input)
     // 履歴は残差露出 E/P で符号化する（Pre-Exposure 後は 1 付近、FP16 でも劣化しない）。
     float currentExposure =
         gTaaParams.z >= 0.5f ? max(gExposure.Load(int3(0, 0, 0)) * gExposureParams.x, 1e-4f) : 1.0f;
-    float3 currentEncoded = EncodeTemporalColor(current.rgb, currentExposure);
+    float3 currentEncoded = ReconstructCurrentAtCenter(pixel, currentExposure);
     MotionSample motion = LoadDilatedMotion(pixel);
     float reactive = LoadMask(gReactiveMask, int2(pixel));
     float transparency = LoadMask(gTransparencyMask, int2(pixel));
@@ -389,7 +445,7 @@ PSOut PSMain(VSOut input)
     PSOut output;
     output.historyColor = float4(currentEncoded, currentExposure);
     output.historyDepth = currentDepth;
-    output.resolvedColor = current;
+    output.resolvedColor = float4(DecodeTemporalColor(currentEncoded, currentExposure), current.a);
 
     RejectionResult rejection;
     rejection.depth = 1.0f;
@@ -399,8 +455,8 @@ PSOut PSMain(VSOut input)
 
     if (gTaaParams.x >= 0.5f && motion.valid >= 0.5f)
     {
-        float2 previousUv = HikariReprojectHistoryUv(input.uv, motion.pixels,
-            gScreenParams.zw, gJitterPixels.xy, gJitterPixels.zw);
+        // 履歴はずらさない画素の中心で持つので、運動ベクトル（ずらしを含まない）だけで前の位置を引く。
+        float2 previousUv = input.uv + motion.pixels * gScreenParams.zw;
         if (all(previousUv >= 0.0f) && all(previousUv <= 1.0f))
         {
             float4 historySample = SampleHistoryCatmullRom(previousUv);
@@ -408,6 +464,7 @@ PSOut PSMain(VSOut input)
             // 前フレームの Pre-Exposure 空間から現在の空間へ。
             float3 historyLinear = DecodeTemporalColor(historySample.rgb, historyExposure) * gExposureParams.y;
             float3 historyEncoded = EncodeTemporalColor(historyLinear, currentExposure);
+            float3 historyDetail = HistoryDetail(previousUv, historyEncoded, currentExposure);
             historyEncoded = ClipHistoryToNeighborhood(
                 pixel,
                 historyEncoded,
@@ -428,18 +485,17 @@ PSOut PSMain(VSOut input)
                 saturate((1.0f - rejection.confidence) * 0.12f + rejection.depth * 0.08f);
             float3 currentResolve = lerp(
                 currentEncoded,
-                SpatialFallback(pixel, currentExposure),
+                SpatialFallback(pixel, currentExposure, currentEncoded),
                 fallbackBlend);
             float3 resolvedEncoded = lerp(currentResolve, historyEncoded, historyWeight);
-            resolvedEncoded = ApplyStableSharpen(
-                pixel,
+            output.historyColor = float4(resolvedEncoded, currentExposure);
+            float3 displayedEncoded = ApplyStableSharpen(
                 resolvedEncoded,
-                currentExposure,
+                historyDetail,
                 rejection.confidence,
                 motion.pixels);
-            output.historyColor = float4(resolvedEncoded, currentExposure);
             output.resolvedColor = float4(
-                DecodeTemporalColor(resolvedEncoded, currentExposure),
+                DecodeTemporalColor(displayedEncoded, currentExposure),
                 current.a);
         }
     }

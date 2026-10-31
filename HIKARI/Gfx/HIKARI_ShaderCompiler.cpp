@@ -3,8 +3,12 @@
 
 #include <Windows.h>
 
+#include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -19,6 +23,7 @@
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/Internal/HIKARI_DxcRuntime.h"
+#include "Platform/Paths/HIKARI_UserDataPath.h"
 
 #pragma comment(lib, "d3dcompiler.lib")
 
@@ -142,6 +147,111 @@ bool CopyDxcBlobToD3DBlob(IDxcBlob* shaderBlob, ID3DBlob** outBlob) {
     return true;
 }
 
+// 単体ゲームでは、実行時に原文から作ったシェーダーを利用者フォルダーに残し、次の起動では読み直すだけにする
+// （原文の翻訳と dxcompiler の読み込みを省く）。同梱の原文と翻訳器は実行ファイルと一緒にしか変わらないので、
+// 実行ファイルの大きさと更新時刻を鍵に含める。原文を直す開発中のビルドでは使わない（出荷ビルドだけ）。
+uint64_t Fnv1a(const void* data, size_t size, uint64_t hash = 1469598103934665603ull) {
+    const auto* bytes = static_cast<const uint8_t*>(data);
+    for (size_t i = 0; i < size; ++i)
+        hash = (hash ^ bytes[i]) * 1099511628211ull;
+    return hash;
+}
+
+const std::string& ExecutableStamp() {
+    static const std::string stamp = [] {
+        wchar_t buffer[MAX_PATH * 2]{};
+        const DWORD length = GetModuleFileNameW(nullptr, buffer, static_cast<DWORD>(std::size(buffer)));
+        std::error_code error{};
+        const std::filesystem::path exe(std::wstring(buffer, length));
+        const auto size = std::filesystem::file_size(exe, error);
+        const auto time = std::filesystem::last_write_time(exe, error).time_since_epoch().count();
+        return std::to_string(error ? 0 : size) + ":" + std::to_string(time);
+    }();
+    return stamp;
+}
+
+std::filesystem::path RuntimeShaderCacheDirectory() {
+#if defined(HIKARI_SHIPPING)
+    const std::filesystem::path root = PLATFORM::GetHikariRuntimeUserRoot();
+    return root.empty() ? std::filesystem::path{} : root / "Cache" / "Shaders";
+#else
+    return {};
+#endif
+}
+
+uint64_t RuntimeShaderKey(const void* source, size_t sourceBytes, const wchar_t* name, const char* entry,
+                          const wchar_t* profile) {
+    uint64_t key = Fnv1a(source, sourceBytes);
+    const std::wstring nameText = name != nullptr ? name : L"";
+    const std::string entryText = entry != nullptr ? entry : "";
+    const std::wstring profileText = profile != nullptr ? profile : L"";
+    key = Fnv1a(nameText.data(), nameText.size() * sizeof(wchar_t), key);
+    key = Fnv1a(entryText.data(), entryText.size(), key);
+    key = Fnv1a(profileText.data(), profileText.size() * sizeof(wchar_t), key);
+    key = Fnv1a(ExecutableStamp().data(), ExecutableStamp().size(), key);
+#if defined(_DEBUG)
+    key = Fnv1a("debug", 5, key);
+#endif
+    return key;
+}
+
+struct RuntimeShaderCacheHeader {
+    uint32_t magic = 0x31435348u; // "HSC1"
+    uint32_t size = 0;
+    uint64_t key = 0;
+    uint64_t checksum = 0;
+};
+
+std::filesystem::path RuntimeShaderCachePath(const std::filesystem::path& directory, uint64_t key) {
+    char name[32]{};
+    std::snprintf(name, sizeof(name), "%016llx.dxil", static_cast<unsigned long long>(key));
+    return directory / name;
+}
+
+bool LoadRuntimeShaderCache(uint64_t key, ID3DBlob** outBlob) {
+    const std::filesystem::path directory = RuntimeShaderCacheDirectory();
+    if (directory.empty())
+        return false;
+    std::ifstream in(RuntimeShaderCachePath(directory, key), std::ios::binary);
+    RuntimeShaderCacheHeader header{};
+    if (!in.read(reinterpret_cast<char*>(&header), sizeof(header)) || header.magic != RuntimeShaderCacheHeader{}.magic ||
+        header.key != key || header.size == 0 || header.size > (64u << 20))
+        return false;
+    ComPtr<ID3DBlob> blob;
+    if (FAILED(D3DCreateBlob(header.size, blob.GetAddressOf())) ||
+        !in.read(static_cast<char*>(blob->GetBufferPointer()), header.size) ||
+        Fnv1a(blob->GetBufferPointer(), header.size) != header.checksum)
+        return false;
+    *outBlob = blob.Detach();
+    return true;
+}
+
+void StoreRuntimeShaderCache(uint64_t key, ID3DBlob* blob) {
+    const std::filesystem::path directory = RuntimeShaderCacheDirectory();
+    if (directory.empty() || blob == nullptr || blob->GetBufferSize() == 0)
+        return;
+    std::error_code error{};
+    std::filesystem::create_directories(directory, error);
+    RuntimeShaderCacheHeader header{};
+    header.size = static_cast<uint32_t>(blob->GetBufferSize());
+    header.key = key;
+    header.checksum = Fnv1a(blob->GetBufferPointer(), blob->GetBufferSize());
+    // 別のスレッドが同じ鍵を書いても壊れないよう、一時名で書いてから置き換える。
+    const std::filesystem::path path = RuntimeShaderCachePath(directory, key);
+    std::filesystem::path temporary = path;
+    temporary += L"." + std::to_wstring(GetCurrentThreadId()) + L".tmp";
+    {
+        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+        out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+        out.write(static_cast<const char*>(blob->GetBufferPointer()), header.size);
+        if (!out)
+            return;
+    }
+    std::filesystem::rename(temporary, path, error);
+    if (error)
+        std::filesystem::remove(temporary, error);
+}
+
 bool CompileDxcBuffer(const DxcBuffer& source, const wchar_t* sourceName, const char* entry, const wchar_t* profile,
                       const wchar_t* filePath, ID3DBlob** outBlob) {
     if (outBlob == nullptr) {
@@ -246,6 +356,21 @@ bool CompileShaderFileSm6(const wchar_t* path, const char* entry, const wchar_t*
     const std::string compileStage = "Shader.compile." + std::filesystem::path(path).filename().string() + "/" +
                                      (entry != nullptr ? entry : "<null>");
     CORE::StartupTimer compileTimer(compileStage);
+    if (outBlob == nullptr)
+        return false;
+    *outBlob = nullptr;
+    // 原文が前回と同じなら、残しておいた結果を使う。
+    uint64_t cacheKey = 0;
+    const bool cacheable = !RuntimeShaderCacheDirectory().empty();
+    if (cacheable) {
+        std::ifstream file(ResolveShaderSourcePath(path), std::ios::binary);
+        const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        if (!text.empty()) {
+            cacheKey = RuntimeShaderKey(text.data(), text.size(), path, entry, profile);
+            if (LoadRuntimeShaderCache(cacheKey, outBlob))
+                return true;
+        }
+    }
     INTERNAL::DxcRuntimeSnapshot runtime{};
     std::string runtimeError{};
     if (!INTERNAL::AcquireDxcRuntime(INTERNAL::DxcRuntimePurpose::RuntimeSourceFallback, runtime, runtimeError)) {
@@ -271,7 +396,11 @@ bool CompileShaderFileSm6(const wchar_t* path, const char* entry, const wchar_t*
     source.Ptr = sourceBlob->GetBufferPointer();
     source.Size = sourceBlob->GetBufferSize();
     source.Encoding = DXC_CP_UTF8;
-    return CompileDxcBuffer(source, resolvedPath.c_str(), entry, profile, resolvedPath.c_str(), outBlob);
+    if (!CompileDxcBuffer(source, resolvedPath.c_str(), entry, profile, resolvedPath.c_str(), outBlob))
+        return false;
+    if (cacheKey != 0)
+        StoreRuntimeShaderCache(cacheKey, *outBlob);
+    return true;
 }
 
 bool CompileShaderFileSm6(const wchar_t* path, const char* entry, ShaderStage stage, ID3DBlob** outBlob) {
@@ -284,11 +413,19 @@ bool CompileShaderSourceSm6(const char* source, size_t sourceBytes, const wchar_
         return false;
     }
 
+    const bool cacheable = outBlob != nullptr && !RuntimeShaderCacheDirectory().empty();
+    const uint64_t cacheKey = cacheable ? RuntimeShaderKey(source, sourceBytes, virtualName, entry, profile) : 0;
+    if (cacheable && LoadRuntimeShaderCache(cacheKey, outBlob))
+        return true;
     DxcBuffer buffer{};
     buffer.Ptr = source;
     buffer.Size = sourceBytes;
     buffer.Encoding = DXC_CP_UTF8;
-    return CompileDxcBuffer(buffer, virtualName, entry, profile, nullptr, outBlob);
+    if (!CompileDxcBuffer(buffer, virtualName, entry, profile, nullptr, outBlob))
+        return false;
+    if (cacheable)
+        StoreRuntimeShaderCache(cacheKey, *outBlob);
+    return true;
 }
 
 bool CompileShaderSourceSm6(const char* source, size_t sourceBytes, const wchar_t* virtualName, const char* entry,

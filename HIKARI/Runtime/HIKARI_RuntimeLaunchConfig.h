@@ -55,6 +55,8 @@ struct RuntimeLaunchConfig {
     std::optional<std::string> windowTitle{};
     // ウィンドウのリサイズを許可するか
     std::optional<bool> resizableWindow{};
+    // 網格シェーダー非対応の GPU で従来の頂点経路へ落としてよいか（既定は可）
+    std::optional<bool> allowTraditionalGeometryFallback{};
     // ウィンドウ幅（ピクセル単位）
     std::optional<int> windowWidth{};
     // ウィンドウ高さ（ピクセル単位）

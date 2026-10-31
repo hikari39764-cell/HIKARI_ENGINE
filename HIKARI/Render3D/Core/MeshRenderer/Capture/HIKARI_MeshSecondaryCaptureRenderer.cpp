@@ -306,10 +306,18 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
         SyncGpuDrivenSceneMaterialSources(graphics, sourceIdentity, sceneSource);
         partTimer.reset();
         partTimer.emplace(passesTimer);
-        if (!resources.particlePass.PrepareFrame(graphics, renderTransparent ? view.particleFrameSource : nullptr,
-                                                 gMeshRendererState.gpuMaterialRegistry)) {
-            ReportCaptureFailure(CaptureFailureStage::ParticlePreparationFailed);
-            return false;
+        // 粒子の準備に失敗しても、キャプチャは粒子なしで描く（視点ごと捨てると、その視点は消去色のまま出て画面が暗く
+        // 光ったり、前の絵のまま止まったりする）。理由が変わった時だけ記録する。
+        resources.particlesPrepared = resources.particlePass.PrepareFrame(
+            graphics, renderTransparent ? view.particleFrameSource : nullptr, gMeshRendererState.gpuMaterialRegistry);
+        if (!resources.particlesPrepared) {
+            static std::string loggedReason{};
+            const std::string reason = resources.particlePass.GetLastPrepareFailure();
+            if (reason != loggedReason) {
+                loggedReason = reason;
+                HIKARI_LOG_WARN("[SecondarySceneCapture] Particle preparation failed (" + reason +
+                                "); capture continues without particles.");
+            }
         }
         if (!resources.worldSpritePass.PrepareFrame(graphics, view.worldSpriteFrameSource, camera)) {
             HIKARI_LOG_WARN("[SecondarySceneCapture] World Sprite preparation failed; "
@@ -446,8 +454,9 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
         transparentOk =
             transparentOk && resources.worldSpritePass.ExecuteForwardTransparent(graphics, overrides.cameraAddress);
         transparentOk = transparentOk &&
-                        ExecuteParticleForwardTransparent(resources.particlePass, graphics, overrides.cameraAddress,
-                                                          camera.GetPosition(), passResources);
+                        (!resources.particlesPrepared ||
+                         ExecuteParticleForwardTransparent(resources.particlePass, graphics, overrides.cameraAddress,
+                                                           camera.GetPosition(), passResources));
         transparentOk =
             transparentOk && resources.worldTextPass.ExecuteForwardTransparent(graphics, overrides.cameraAddress);
     }

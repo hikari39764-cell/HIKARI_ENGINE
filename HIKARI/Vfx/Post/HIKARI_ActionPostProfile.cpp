@@ -8,6 +8,11 @@
 #include <algorithm>
 
 namespace HIKARI::POST {
+bool IsActionPostEffectCompatible(const PostEffectDefinition& effect) noexcept {
+    return !effect.screenWarp && !effect.requiresSceneDepth &&
+           std::all_of(effect.passes.begin(), effect.passes.end(),
+                       [](const auto& pass) { return pass.phase == PostEffectPhase::Scene; });
+}
 PostParameterBlock ResolveActionPostParameters(const PostEffectDefinition& effect, const PostProfileAsset& profile,
                                                const GameProjectActionPostFrameRequest& request) {
     static_assert(kPostParameterSlotCount == kGameProjectActionPostSlotCount);
@@ -27,7 +32,7 @@ bool PostProcessingStage::SetActionPostFrame(uint64_t worldId, uint64_t frameInd
                                              std::shared_ptr<const PostEffectDefinition> effect,
                                              const PostParameterBlock& values, const AssetRegistry& registry) {
     if (worldId == 0u || frameIndex != TIME::GetFrameContext().frameIndex || effectId.empty() || !effect ||
-        effect->screenWarp) {
+        !IsActionPostEffectCompatible(*effect)) {
         ClearActionPostFrame();
         return false;
     }

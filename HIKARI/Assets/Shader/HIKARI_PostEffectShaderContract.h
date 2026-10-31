@@ -12,8 +12,8 @@ inline constexpr std::string_view kPostEffectInterfaceDependency =
     "EngineSdk/Include/Post/HIKARI_PostEffectInterface.hlsli";
 inline constexpr ShaderContractIdentity kPostEffectContract{
     kPostEffectEngineInterfaceId,
-    2u,
-    "3210d64ed24339581f1173a98ba739837860adae27388299528ccc572bae6ee2",
+    3u,
+    "7082edc805606b1a36f367855cb1465cb11c8729fe94937cb376807ab19ca138",
     "HIKARI.PostQuad.Root",
     3u,
     "293c005f5adefecd38ef51a4ac9ecb2463c573970cd8f4b09632f7593de0d1ad",

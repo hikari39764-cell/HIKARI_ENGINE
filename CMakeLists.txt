@@ -33,7 +33,7 @@ configure_file(
     "${HIKARI_SOURCE_ROOT}/cmake/Templates/HIKARI_StartupResources.rc.in"
     "${CMAKE_BINARY_DIR}/generated/HIKARI_StartupResources.rc" @ONLY)
 set_source_files_properties("${CMAKE_BINARY_DIR}/generated/HIKARI_StartupResources.rc"
-    PROPERTIES OBJECT_DEPENDS "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/Resources/HIKARI_StartupLogo.png")
+    PROPERTIES OBJECT_DEPENDS "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/Resources/HIKARI_StartupLogo.png;${HIKARI_SOURCE_ROOT}/HIKARI/Platform/Resources/HIKARI_LoadingFont_MPlus12B.ttf;${HIKARI_SOURCE_ROOT}/HIKARI/Platform/Resources/HIKARI_LoadingFont_K12x10.ttf")
 add_library(HIKARI_StartupResources OBJECT "${CMAKE_BINARY_DIR}/generated/HIKARI_StartupResources.rc")
 
 file(

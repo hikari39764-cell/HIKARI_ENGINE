@@ -55,6 +55,8 @@ enum class GameProjectUiEffect : uint8_t {
 inline constexpr uint32_t kGameProjectUiPreserveSpriteAspect = 1u << 2u;
 inline constexpr uint32_t kGameProjectUiSubmissionModal = 1u << 0u;
 inline constexpr uint32_t kGameProjectUiSuppressNonModal = 1u << 1u;
+// 全画面の暗転など。参照画布の余白を含め、現在の描画先を覆う（sprite のみ）。
+inline constexpr uint32_t kGameProjectUiFillViewport = 1u << 3u;
 
 enum class GameProjectUiTextAlign : uint8_t {
     Left = 0u,

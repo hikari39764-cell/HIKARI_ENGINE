@@ -261,6 +261,11 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     const RenderFrameContext frame = BuildRenderFrameContext(graphics, view, environment);
     POST::PostSystem::SetScreenReadability(frame.screenReadability);
     POST::PostSystem::SetSceneCaptureSurfaces(frame.sceneCaptureSurfaces);
+    // 拡大の後に貼り直す画面は、ずらしの無い投影で出力の uv へ写す。
+    POST::PostSystem::SetScreenComposites(
+        view.screenComposites != nullptr && frame.camera != nullptr
+            ? ProjectScreenComposites(*view.screenComposites, frame.camera->GetViewProj(), frame.camera->GetPosition())
+            : ScreenCompositeFrame{});
     if (frame.graphics.cmdList == nullptr) {
         return false;
     }

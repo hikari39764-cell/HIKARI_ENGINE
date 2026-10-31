@@ -39,6 +39,16 @@ bool Initialize(ResolverState& state) noexcept {
 
 } // namespace
 
+void PrewarmBuiltinShaderArtifacts() noexcept {
+    try {
+        ResolverState& state = GetState();
+        const std::lock_guard lock(state.mutex);
+        (void)Initialize(state);
+    } catch (...) {
+        // 先読みに失敗しても、実際に使う時にもう一度読む。
+    }
+}
+
 ShaderAssetResolveResult ResolveBuiltinShaderEntry(std::string_view programId, const ShaderAssetEntryExpectation& entry,
                                                    const ShaderAssetContractExpectation& contract) noexcept {
     try {

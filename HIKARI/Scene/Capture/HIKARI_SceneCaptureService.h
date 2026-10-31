@@ -58,6 +58,18 @@ struct SceneCaptureMaterialBinding {
     bool applied = false;
     // 結び直しで貼っている材質を引き継いだ時、捕捉が同じでも切り出し（UV）を材質へ書き直す印。
     bool refreshApplied = false;
+
+    // 画風保護と後貼りは別の選択。時系列解決を保つ面でも、保護用の投影マスクは従来どおり作る。
+    bool ShouldCompositeAfterTemporal() const noexcept {
+        constexpr uint32_t protect =
+            GameProjectSceneCaptureMaterialBindingFlags(GameProjectSceneCaptureMaterialBindingFlag::ProtectReadability);
+        constexpr uint32_t excluded =
+            GameProjectSceneCaptureMaterialBindingFlags(GameProjectSceneCaptureMaterialBindingFlag::AlphaBlend) |
+            GameProjectSceneCaptureMaterialBindingFlags(GameProjectSceneCaptureMaterialBindingFlag::AlphaMask) |
+            GameProjectSceneCaptureMaterialBindingFlags(
+                GameProjectSceneCaptureMaterialBindingFlag::PreserveTemporalResolve);
+        return (flags & protect) != 0u && (flags & excluded) == 0u;
+    }
 };
 
 // World-scoped CPU authority for a bounded set of secondary captures. GPU

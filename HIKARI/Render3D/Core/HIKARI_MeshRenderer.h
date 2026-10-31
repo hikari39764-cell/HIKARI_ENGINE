@@ -90,6 +90,8 @@ bool BeginFrame(const GFX::Context& graphics, const Camera3D& camera, const Scen
                 const MeshFrameCameraOverrides* cameraOverrides = nullptr);
 // BeginFrame 後、Forward 提出前に一度確定。準備に失敗した体積霧は通常霧を消さない。
 bool FinalizeVolumetricFog(const GFX::Context& graphics, bool volumetricFogReady);
+// 主ビューの前向きの解析霧の定数（体積霧で消した時は無効の印）。画面の貼り直しが材質と同じ霧を掛けるのに使う。
+void GetMainViewFogConstants(MATH::Vec4& fogParams, MATH::Vec4& fogColorDensity);
 void SetGpuDrivenCullingCameraFreezeEnabled(bool enabled);
 bool IsGpuDrivenCullingCameraFrozen();
 const CameraCB* GetCameraConstants();

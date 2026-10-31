@@ -35,7 +35,8 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     const float hatchC = HikariStylizeLines(grid.y, 0.4f) * smoothstep(0.25f, 0.1f, luma);
     float graphite = max(max(hatchA, hatchB), hatchC) * pencilGrain * 0.8f;
 
-    graphite = max(graphite, HikariStylizeInkLines(uv, lineRadius, gUser[0].z, gUser[0].w) * pencilGrain);
+    // 幾何の線は PreTemporal に任せ、紙の段階では明暗線と筆触だけを足す。
+    graphite = max(graphite, HikariStylizeToneLines(uv, lineRadius, gUser[0].w) * pencilGrain);
 
     const float3 ground = lerp(paper, paper * saturate(source / max(HikariLuminance(source), 0.05f)), colorAmount);
     const float3 sketch = lerp(saturate(ground), pencil, saturate(graphite));

@@ -1,4 +1,5 @@
 #pragma once
+#include "Render3D/ScreenSpace/HIKARI_ScreenComposite.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenReadability.h"
 
 #include <cstdint>
@@ -81,6 +82,8 @@ struct RenderViewContext {
     ScreenReadabilityWorldFrame screenReadability{};
     // 場景キャプチャを映す面すべて。中身が面と別に動くので、時間方向の解決で履歴を弱める。
     ScreenReadabilityWorldFrame sceneCaptureSurfaces{};
+    // 時間方向の拡大の後に出力の解像度で貼り直す画面（無ければ貼り直さない）。呼び出し側が描画の間持つ。
+    const ScreenCompositeWorldFrame* screenComposites = nullptr;
     RenderViewId viewId{};
     RenderViewPurpose purpose = RenderViewPurpose::Game;
     const ResolvedCameraFrame* cameraFrame = nullptr;
