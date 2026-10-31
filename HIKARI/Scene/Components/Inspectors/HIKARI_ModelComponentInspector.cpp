@@ -3,81 +3,44 @@
 
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 
-#include "Core/Text/HIKARI_Localization.h"
-#include <algorithm>
-#include <array>
-#include <cstdint>
 #include <span>
 #include <string>
-#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
-#include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "Authoring/HIKARI_FieldInspector.h"
 #include "Authoring/HIKARI_IModelMaterialSlotProvider.h"
-#include "Authoring/HIKARI_IInspectorBuilder.h"
-#include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
+#include "Core/Text/HIKARI_Localization.h"
 
 namespace HIKARI {
 
 void ModelComponent::BuildInspector(IInspectorBuilder& builder) {
-    const bool oldVisible = visible_;
-    const bool oldCastShadow = castShadow_;
-    const bool oldReceiveShadow = receiveShadow_;
-    const bool oldRenderStatic = renderStatic_;
-    const bool oldIncludeInLightingBake = includeInLightingBake_;
-    const std::string oldAssetId = assetId_;
-    const AssetGuid oldMaterialSetAssetGuid = materialSetAssetGuid_;
-    const bool oldMaterialSetSelectionAuthored = materialSetSelectionAuthored_;
-    const uint32_t oldPostGroupMask = postGroupMask_;
-
-    builder.Bool(AuthoringFieldDescriptor{ModelComponentPropertyIds::Visible,
-                                          TEXT::Localize("ui.inspector.model.visible"),
-                                          "Controls whether the model is submitted for rendering."},
-                 visible_);
-    builder.Bool(AuthoringFieldDescriptor{ModelComponentPropertyIds::CastShadow,
-                                          TEXT::Localize("ui.inspector.model.castShadow"),
-                                          "Controls whether the model casts shadows."},
-                 castShadow_);
-    builder.Bool(AuthoringFieldDescriptor{ModelComponentPropertyIds::ReceiveShadow,
-                                          TEXT::Localize("ui.inspector.model.receiveShadow"),
-                                          "Controls whether the model receives shadows."},
-                 receiveShadow_);
-    builder.Bool(AuthoringFieldDescriptor{ModelComponentPropertyIds::RenderStatic,
-                                          TEXT::Localize("ui.inspector.model.renderStatic"),
-                                          "Marks the render surface as static authoring data."},
-                 renderStatic_);
-    builder.Bool(AuthoringFieldDescriptor{ModelComponentPropertyIds::IncludeInLightingBake,
-                                          TEXT::Localize("ui.inspector.model.includeInLightingBake"),
-                                          "Includes the model surface in authored lighting bakes."},
-                 includeInLightingBake_);
-    if (renderStatic_ && includeInLightingBake_) {
-        builder.Text(TEXT::Localize("ui.inspector.model.surfaceGiHint"));
-    }
-    const bool modelAssetChanged = builder.AssetIdPicker(
-        AuthoringFieldDescriptor{ModelComponentPropertyIds::AssetId, TEXT::Localize("ui.inspector.model.modelAsset"),
-                                 "Model asset GUID assigned to this component."},
-        AssetType::Model, assetId_);
-    if (modelAssetChanged) {
-        materialSetAssetGuid_ = {};
-        materialSetSelectionAuthored_ = true;
-        materialOverrides_.clear();
-        ClearRuntimeMaterialOverrides();
+    ModelSettings next = settings_;
+    if (InspectFields(builder, next, kModelFields)) {
+        // モデルを替えると、材質セットと上書きは前のモデルのスロットを指すので捨てる。SetAssetId が前のモデルと比べて
+        // 捨てるので、ここでは前の ID を残したまま他の項目を置き換える。
+        std::string assetId = std::move(next.assetId);
+        next.assetId = settings_.assetId;
+        settings_ = NormalizeModelSettings(std::move(next));
+        SetAssetId(std::move(assetId));
     }
 
+    // ここから先は、モデルの材質スロットごとに決まる欄（材質セットの選択と、スロットごとの上書き）。
     std::vector<ModelMaterialSlotAuthoringView> runtimeSlots{};
     std::span<const ModelMaterialSlotAuthoringView> materialSlots{};
     std::string slotDiagnostic{};
     std::span<const ModelMaterialSetAuthoringView> materialSets{};
     std::string materialSetDiagnostic{};
     const InspectorContext& context = builder.GetContext();
-    if (context.modelMaterialSlotProvider != nullptr && context.assetDatabase != nullptr && !assetId_.empty()) {
+    const std::string& assetId = settings_.assetId;
+    if (context.modelMaterialSlotProvider != nullptr && context.assetDatabase != nullptr && !assetId.empty()) {
         materialSlots = context.modelMaterialSlotProvider->ResolveMaterialSlots(*context.assetDatabase,
-                                                                                AssetGuid{assetId_}, slotDiagnostic);
+                                                                                AssetGuid{assetId}, slotDiagnostic);
         materialSets = context.modelMaterialSlotProvider->ResolveCompatibleMaterialSets(
-            *context.assetDatabase, AssetGuid{assetId_}, materialSetDiagnostic);
+            *context.assetDatabase, AssetGuid{assetId}, materialSetDiagnostic);
     } else if (asset_ != nullptr) {
         runtimeSlots.reserve(asset_->materials.size());
         for (size_t materialIndex = 0u; materialIndex < asset_->materials.size(); ++materialIndex) {
@@ -90,7 +53,7 @@ void ModelComponent::BuildInspector(IInspectorBuilder& builder) {
         materialSlots = runtimeSlots;
     }
 
-    const bool proceduralMaterialSlots = assetId_.empty() && context.proceduralMeshSettings != nullptr;
+    const bool proceduralMaterialSlots = assetId.empty() && context.proceduralMeshSettings != nullptr;
     if (proceduralMaterialSlots) {
         runtimeSlots.push_back(ModelMaterialSlotAuthoringView{
             0u,
@@ -100,7 +63,9 @@ void ModelComponent::BuildInspector(IInspectorBuilder& builder) {
         materialSlots = runtimeSlots;
     }
 
-    if (!assetId_.empty()) {
+    const bool oldMaterialSetSelectionAuthored = materialSetSelectionAuthored_;
+    const AssetGuid oldMaterialSetAssetGuid = materialSetAssetGuid_;
+    if (!assetId.empty()) {
         std::vector<std::string> materialSetLabels{};
         std::vector<std::string> materialSetIds{};
         materialSetLabels.reserve(materialSets.size() + 3u);
@@ -134,7 +99,7 @@ void ModelComponent::BuildInspector(IInspectorBuilder& builder) {
         for (size_t index = 0u; index < materialSetLabels.size(); ++index) {
             materialSetChoices.push_back({materialSetIds[index], materialSetLabels[index]});
         }
-        if (builder.Choice(AuthoringFieldDescriptor{ModelComponentPropertyIds::MaterialSetAssetGuid,
+        if (builder.Choice(AuthoringFieldDescriptor{"materialSetAssetGuid",
                                                     TEXT::Localize("ui.inspector.model.materialSet"),
                                                     "Compatible whole-model Material Set asset GUID."},
                            selectedSetIndex, materialSetChoices)) {
@@ -210,57 +175,10 @@ void ModelComponent::BuildInspector(IInspectorBuilder& builder) {
         builder.Text(slotDiagnostic.empty() ? TEXT::Localize("ui.inspector.model.selectImportedHint") : slotDiagnostic);
     }
 
-    int postMask = static_cast<int>(postGroupMask_);
-    if (builder.Int(AuthoringFieldDescriptor{ModelComponentPropertyIds::PostGroupMask,
-                                             TEXT::Localize("ui.inspector.model.postGroupMask"),
-                                             "Post-process group bit mask."},
-                    postMask)) {
-        postGroupMask_ = static_cast<uint32_t>(postMask < 0 ? 0 : postMask);
-    }
-
-    const ModelRenderDebugMode oldDebugRenderMode = debugRenderMode_;
-    if (builder.Section("Debug Display", false)) {
-        BuildDebugDisplayInspector(builder);
-    }
-
-    if (oldVisible != visible_ || oldCastShadow != castShadow_ || oldReceiveShadow != receiveShadow_ ||
-        oldRenderStatic != renderStatic_ || oldIncludeInLightingBake != includeInLightingBake_ ||
-        oldAssetId != assetId_ || oldMaterialSetAssetGuid != materialSetAssetGuid_ ||
-        oldMaterialSetSelectionAuthored != materialSetSelectionAuthored_ || oldPostGroupMask != postGroupMask_ ||
-        oldDebugRenderMode != debugRenderMode_) {
+    if (oldMaterialSetAssetGuid != materialSetAssetGuid_ ||
+        oldMaterialSetSelectionAuthored != materialSetSelectionAuthored_) {
         NotifyRenderStateDirty();
     }
-}
-
-// ワイヤーフレーム・バウンディングボックスの確認表示（debugRenderMode / wireColor / maxWireLines /
-// wirePerPrimitiveColor）。保存と描画は以前から対応していたが、編集する手段が無かった。
-void ModelComponent::BuildDebugDisplayInspector(IInspectorBuilder& builder) {
-    static constexpr std::array<std::string_view, std::size(kModelRenderDebugModeNames)> modeLabels{
-        "Normal", "Wire Overlay", "Wire Only", "Bounds Only"};
-    (void)EnumChoice(builder,
-                     AuthoringFieldDescriptor{"debugRenderMode", "Render Debug Mode",
-                                              "Draw the model normally, with a wireframe overlay, as wireframe only, "
-                                              "or as its bounding box."},
-                     debugRenderMode_, kModelRenderDebugModeNames, &modeLabels);
-    if (debugRenderMode_ == ModelRenderDebugMode::Normal) {
-        return;
-    }
-    MATH::Vec4 color = RENDERER3D::DEBUG::DecodeRgba(wireColor_);
-    if (builder.Color3(AuthoringFieldDescriptor{"wireColor", "Wire Color"}, color.x, color.y, color.z)) {
-        wireColor_ = RENDERER3D::DEBUG::EncodeRgba(color);
-    }
-    if (debugRenderMode_ == ModelRenderDebugMode::BoundsOnly) {
-        return;
-    }
-    int maxLines = static_cast<int>((std::min)(maxWireLines_, static_cast<uint32_t>(INT32_MAX)));
-    if (builder.Int(AuthoringFieldDescriptor{"maxWireLines", "Max Wire Lines",
-                                             "Line budget for this model; lines beyond it are skipped."},
-                    maxLines)) {
-        maxWireLines_ = static_cast<uint32_t>((std::max)(maxLines, 1));
-    }
-    builder.Bool(AuthoringFieldDescriptor{"wirePerPrimitiveColor", "Color Per Primitive",
-                                          "Give each mesh primitive its own wire colour instead of Wire Color."},
-                 wirePerPrimitiveColor_);
 }
 
 } // namespace HIKARI

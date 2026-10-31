@@ -120,7 +120,7 @@ public:
         return widgets.RuntimeEventIdPicker(field, policy, type, value);
     }
     bool Choice(const AuthoringFieldDescriptor& field, int& index, std::span<const AuthoringChoice> choices) override {
-        if (field.id == WorldSpriteComponentPropertyIds::AnimationClip)
+        if (field.id == "animationClip")
             clips = choices.size();
         return widgets.Choice(field, index, choices);
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
@@ -260,6 +261,30 @@ bool ReadStruct(const nlohmann::json& node, const std::string& path, S& object, 
     return true;
 }
 
+// 固定長の配列（std::array）は要素をその場で読む。先頭から読んだ分だけが置き換わり、足りない要素と、要素の中で欠けた項目は
+// 現在値のまま。長さを超える要素は厳密な読みでは誤り、緩い読みでは無視する。
+template <bool Lenient, class E, std::size_t N, class Fields>
+void ReadList(const nlohmann::json& node, const char* key, std::array<E, N>& list, const Fields& fields) {
+    if (!node.is_array()) {
+        if constexpr (Lenient) {
+            return;
+        } else {
+            throw std::runtime_error(std::string(key) + ": expects an array");
+        }
+    }
+    if constexpr (!Lenient) {
+        if (node.size() > N) {
+            throw std::runtime_error(std::string(key) + ": expects at most " + std::to_string(N) + " elements");
+        }
+    }
+    std::array<E, N> decoded = list;
+    for (size_t index = 0; index < (std::min)(node.size(), N); ++index) {
+        (void)ReadStruct<Lenient>(node[index], std::string(key) + "[" + std::to_string(index) + "]", decoded[index],
+                                  fields);
+    }
+    list = decoded;
+}
+
 // 構造体の配列を読んで置き換える。緩い読みは配列でない値と object でない要素を無視する。
 template <bool Lenient, class E, class Fields>
 void ReadList(const nlohmann::json& node, const char* key, std::vector<E>& list, const Fields& fields) {
@@ -369,6 +394,7 @@ struct Describer {
         info.common = meta.common;
         info.advanced = meta.advanced;
         info.readOnly = meta.readOnly;
+        info.hidden = meta.hidden;
         info.color = meta.color;
         info.hasShow = meta.hasShow;
         info.assetType = meta.assetType;

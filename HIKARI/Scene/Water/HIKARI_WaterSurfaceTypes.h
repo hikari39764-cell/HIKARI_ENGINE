@@ -3,13 +3,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <string_view>
-
 #include "Core/Math/HIKARI_Math3D.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 
 namespace HIKARI::WATER {
 
-constexpr uint32_t kWaterSurfaceSchemaVersion = 6u;
 constexpr std::size_t kMaxWaterWaves = 4u;
 
 enum class WaterSurfacePreset : uint8_t {
@@ -22,12 +20,15 @@ enum class WaterSurfaceGeometryMode : uint8_t {
     CameraCenteredOcean = 1,
 };
 
-const char* ToString(WaterSurfacePreset preset) noexcept;
-const char* ToString(WaterSurfaceGeometryMode mode) noexcept;
-WaterSurfacePreset ParseWaterSurfacePreset(std::string_view value,
-                                           WaterSurfacePreset fallback = WaterSurfacePreset::AnimeSummer) noexcept;
-WaterSurfaceGeometryMode ParseWaterSurfaceGeometryMode(
-    std::string_view value, WaterSurfaceGeometryMode fallback = WaterSurfaceGeometryMode::FiniteAuthored) noexcept;
+// シーンに保存する名前。
+inline constexpr TEXT::EnumName<WaterSurfacePreset> kWaterSurfacePresetNames[] = {
+    {WaterSurfacePreset::AnimeSummer, "anime_summer"},
+    {WaterSurfacePreset::RealisticClearSummer, "realistic_clear_summer"},
+};
+inline constexpr TEXT::EnumName<WaterSurfaceGeometryMode> kWaterSurfaceGeometryModeNames[] = {
+    {WaterSurfaceGeometryMode::FiniteAuthored, "finite_authored"},
+    {WaterSurfaceGeometryMode::CameraCenteredOcean, "camera_centered_ocean"},
+};
 
 struct WaterGerstnerWave {
     float directionDeg = 0.0f;

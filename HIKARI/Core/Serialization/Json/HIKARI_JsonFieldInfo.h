@@ -47,6 +47,8 @@ struct FieldInfo {
     bool common = false;
     bool advanced = false;
     bool readOnly = false;
+    // 検査器には出さない保存項目。
+    bool hidden = false;
     // Vec3 を色として編集する。
     bool color = false;
     // 条件付きで出す項目（条件そのものは検査器の表だけが持つ）。

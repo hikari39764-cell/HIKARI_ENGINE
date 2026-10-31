@@ -1,92 +1,63 @@
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
 #include <algorithm>
-#include <cmath>
 #include <string>
 #include <utility>
 
-#include "Core/HIKARI_JsonRead.h"
-#include "Core/Serialization/Json/HIKARI_JsonMath.h"
+#include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
+#include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 
 namespace HIKARI::LIGHTING_AUTHORING {
 
-namespace JsonMath = SERIALIZATION::JSON::MATH;
-
 namespace {
 
-std::string NonEmptyOrDefault(const nlohmann::json& properties, const char* name) {
-    const std::string value = properties.value(name, std::string("Default"));
-    return value.empty() ? "Default" : value;
-}
-
-ReflectionProbeInfluenceShape ReadInfluenceShape(const nlohmann::json& properties) {
-    return properties.value("influenceShape", std::string("Sphere")) == "Box" ? ReflectionProbeInfluenceShape::Box
-                                                                              : ReflectionProbeInfluenceShape::Sphere;
-}
-
-ReflectionProbeProjectionShape ReadProjectionShape(const nlohmann::json& properties) {
-    return properties.value("projectionShape", std::string("Infinite")) == "Box"
-               ? ReflectionProbeProjectionShape::Box
-               : ReflectionProbeProjectionShape::Infinite;
-}
-
+// 部件と同じ項目表で読む（緩い読み）。位置は物体の位置からの相対で保存されているので、絶対座標へ直して渡す。
 ReflectionProbeAuthoring ReadReflectionProbe(const SceneObjectData& object, const SceneComponentData& component) {
-    const nlohmann::json& properties = component.properties;
+    ReflectionProbeComponentSettings authored{};
+    JSONFIELDS::ReadLenient(component.properties, authored, kReflectionProbeFields);
+    authored = NormalizeReflectionProbeSettings(authored);
+
     ReflectionProbeAuthoring probe{};
     probe.objectId = object.id;
     probe.name = object.name;
     probe.position = object.transform.position;
-    probe.settings.enabled = object.enabled && properties.value("enabled", true);
-    probe.settings.sourceCubemapAsset = properties.value("sourceCubemapAsset", std::string{});
+    probe.settings.enabled = object.enabled && authored.enabled;
+    probe.settings.sourceCubemapAsset = authored.sourceCubemapAsset;
     probe.settings.position = probe.position;
-    probe.settings.radius = (std::max)(properties.value("radius", 8.0f), 0.05f);
-    probe.settings.intensity = std::clamp(properties.value("intensity", 1.0f), 0.0f, 8.0f);
-    probe.settings.influenceShape = ReadInfluenceShape(properties);
-    const MATH::Vec3 influenceOffset =
-        JSONREAD::Vec3Or(properties.value("influenceBoxOffset", nlohmann::json::array()), {});
-    probe.settings.influenceBoxCenter = probe.position + influenceOffset;
-    probe.settings.influenceBoxSize =
-        JSONREAD::Vec3Or(properties.value("influenceBoxSize", nlohmann::json::array()), {8.0f, 4.0f, 8.0f});
-    probe.settings.projectionShape = ReadProjectionShape(properties);
-    const MATH::Vec3 projectionOffset =
-        JSONREAD::Vec3Or(properties.value("projectionBoxOffset", nlohmann::json::array()), {});
-    probe.settings.projectionBoxCenter = probe.position + projectionOffset;
-    probe.settings.projectionBoxSize =
-        JSONREAD::Vec3Or(properties.value("projectionBoxSize", nlohmann::json::array()), {8.0f, 4.0f, 8.0f});
-    probe.settings.blendDistance = (std::max)(properties.value("blendDistance", 1.0f), 0.0f);
-    probe.settings.priority = properties.value("priority", 0);
-    probe.captureResolution = properties.value("captureResolution", 128u);
-    probe.bakeSet = NonEmptyOrDefault(properties, "bakeSet");
-    probe.scenario = NonEmptyOrDefault(properties, "scenario");
+    probe.settings.radius = authored.radius;
+    probe.settings.intensity = authored.intensity;
+    probe.settings.influenceShape = authored.influenceShape;
+    probe.settings.influenceBoxCenter = probe.position + authored.influenceBoxOffset;
+    probe.settings.influenceBoxSize = authored.influenceBoxSize;
+    probe.settings.projectionShape = authored.projectionShape;
+    probe.settings.projectionBoxCenter = probe.position + authored.projectionBoxOffset;
+    probe.settings.projectionBoxSize = authored.projectionBoxSize;
+    probe.settings.blendDistance = authored.blendDistance;
+    probe.settings.priority = authored.priority;
+    probe.captureResolution = authored.captureResolution;
+    probe.bakeSet = authored.bakeSet;
+    probe.scenario = authored.scenario;
     return probe;
 }
 
 IrradianceVolumeAuthoring ReadIrradianceVolume(const SceneObjectData& object, const SceneComponentData& component) {
-    const nlohmann::json& properties = component.properties;
+    IrradianceVolumeComponentSettings authored{};
+    JSONFIELDS::ReadLenient(component.properties, authored, kIrradianceVolumeFields);
+    authored = NormalizeIrradianceVolumeSettings(authored);
+
     IrradianceVolumeAuthoring volume{};
     volume.objectId = object.id;
     volume.name = object.name;
     volume.center = object.transform.position;
-    volume.settings.enabled = object.enabled && properties.value("enabled", true);
-    TEXT::TryParseEnum(kLightProbeVolumeModeNames, properties.value("mode", std::string{}), volume.settings.mode);
-    volume.settings.size = JSONREAD::Vec3Or(properties.value("size", nlohmann::json::array()), {10.0f, 4.0f, 10.0f});
-    volume.settings.origin = {volume.center.x - volume.settings.size.x * 0.5f,
-                              volume.center.y - volume.settings.size.y * 0.5f,
-                              volume.center.z - volume.settings.size.z * 0.5f};
-    volume.settings.countX = properties.value("countX", 4u);
-    volume.settings.countY = properties.value("countY", 2u);
-    volume.settings.countZ = properties.value("countZ", 4u);
-    volume.settings.intensity = properties.value("intensity", 1.0f);
-    volume.settings.blendDistance = properties.value("blendDistance", 1.0f);
-    volume.settings.normalBias = properties.value("normalBias", 0.2f);
-    volume.settings.captureResolution = properties.value("captureResolution", 32u);
-    volume.settings.shOrder = properties.value("shOrder", 3u);
-    ClampLightProbeVolumeSettings(volume.settings);
-    volume.priority = properties.value("priority", 0);
-    volume.bakeSet = NonEmptyOrDefault(properties, "bakeSet");
-    volume.scenario = NonEmptyOrDefault(properties, "scenario");
+    volume.settings = authored;
+    volume.settings.enabled = object.enabled && authored.enabled;
+    volume.settings.origin = {volume.center.x - authored.size.x * 0.5f, volume.center.y - authored.size.y * 0.5f,
+                              volume.center.z - authored.size.z * 0.5f};
+    volume.priority = authored.priority;
+    volume.bakeSet = authored.bakeSet;
+    volume.scenario = authored.scenario;
     return volume;
 }
 
@@ -160,24 +131,27 @@ SceneObjectId AddReflectionProbe(SceneDocument& document, const ReflectionProbeA
     object.id = probe.objectId.value != 0u ? probe.objectId : AllocateSceneObjectId(document);
     object.name = probe.name.empty() ? "Reflection Probe" : probe.name;
     object.transform.position = probe.position;
-    object.components.push_back(SceneComponentData{
-        kReflectionProbeComponentType,
-        {{"enabled", probe.settings.enabled},
-         {"sourceCubemapAsset", probe.settings.sourceCubemapAsset},
-         {"radius", probe.settings.radius},
-         {"intensity", probe.settings.intensity},
-         {"influenceShape", probe.settings.influenceShape == ReflectionProbeInfluenceShape::Box ? "Box" : "Sphere"},
-         {"influenceBoxOffset", JsonMath::ToJsonArray(probe.settings.influenceBoxCenter - probe.position)},
-         {"influenceBoxSize", JsonMath::ToJsonArray(probe.settings.influenceBoxSize)},
-         {"projectionShape",
-          probe.settings.projectionShape == ReflectionProbeProjectionShape::Box ? "Box" : "Infinite"},
-         {"projectionBoxOffset", JsonMath::ToJsonArray(probe.settings.projectionBoxCenter - probe.position)},
-         {"projectionBoxSize", JsonMath::ToJsonArray(probe.settings.projectionBoxSize)},
-         {"blendDistance", probe.settings.blendDistance},
-         {"priority", probe.settings.priority},
-         {"captureResolution", probe.captureResolution},
-         {"bakeSet", probe.bakeSet},
-         {"scenario", probe.scenario}}});
+    // 投影の箱は probe.settings が明示するので、影響範囲には連動させない。
+    ReflectionProbeComponentSettings authored{};
+    authored.projectionFollowsInfluence = false;
+    authored.enabled = probe.settings.enabled;
+    authored.sourceCubemapAsset = probe.settings.sourceCubemapAsset;
+    authored.radius = probe.settings.radius;
+    authored.intensity = probe.settings.intensity;
+    authored.influenceShape = probe.settings.influenceShape;
+    authored.influenceBoxOffset = probe.settings.influenceBoxCenter - probe.position;
+    authored.influenceBoxSize = probe.settings.influenceBoxSize;
+    authored.projectionShape = probe.settings.projectionShape;
+    authored.projectionBoxOffset = probe.settings.projectionBoxCenter - probe.position;
+    authored.projectionBoxSize = probe.settings.projectionBoxSize;
+    authored.blendDistance = probe.settings.blendDistance;
+    authored.priority = probe.settings.priority;
+    authored.captureResolution = probe.captureResolution;
+    authored.bakeSet = probe.bakeSet;
+    authored.scenario = probe.scenario;
+    nlohmann::json properties = nlohmann::json::object();
+    JSONFIELDS::Write(properties, NormalizeReflectionProbeSettings(authored), kReflectionProbeFields);
+    object.components.push_back(SceneComponentData{kReflectionProbeComponentType, std::move(properties)});
     NormalizeSceneComponentIds(object);
     const SceneObjectId id = object.id;
     document.objects.push_back(std::move(object));
@@ -185,28 +159,18 @@ SceneObjectId AddReflectionProbe(SceneDocument& document, const ReflectionProbeA
 }
 
 SceneObjectId AddIrradianceVolume(SceneDocument& document, const IrradianceVolumeAuthoring& volume) {
-    LightProbeVolumeSettings settings = volume.settings;
-    ClampLightProbeVolumeSettings(settings);
+    IrradianceVolumeComponentSettings authored{};
+    static_cast<LightProbeVolumeSettings&>(authored) = volume.settings;
+    authored.priority = volume.priority;
+    authored.bakeSet = volume.bakeSet;
+    authored.scenario = volume.scenario;
     SceneObjectData object{};
     object.id = volume.objectId.value != 0u ? volume.objectId : AllocateSceneObjectId(document);
     object.name = volume.name.empty() ? "Irradiance Volume" : volume.name;
     object.transform.position = volume.center;
-    object.components.push_back(
-        SceneComponentData{kIrradianceVolumeComponentType,
-                           {{"enabled", settings.enabled},
-                            {"mode", TEXT::EnumToName(kLightProbeVolumeModeNames, settings.mode)},
-                            {"size", JsonMath::ToJsonArray(settings.size)},
-                            {"countX", settings.countX},
-                            {"countY", settings.countY},
-                            {"countZ", settings.countZ},
-                            {"intensity", settings.intensity},
-                            {"blendDistance", settings.blendDistance},
-                            {"normalBias", settings.normalBias},
-                            {"captureResolution", settings.captureResolution},
-                            {"shOrder", settings.shOrder},
-                            {"priority", volume.priority},
-                            {"bakeSet", volume.bakeSet},
-                            {"scenario", volume.scenario}}});
+    nlohmann::json properties = nlohmann::json::object();
+    JSONFIELDS::Write(properties, NormalizeIrradianceVolumeSettings(authored), kIrradianceVolumeFields);
+    object.components.push_back(SceneComponentData{kIrradianceVolumeComponentType, std::move(properties)});
     NormalizeSceneComponentIds(object);
     const SceneObjectId id = object.id;
     document.objects.push_back(std::move(object));

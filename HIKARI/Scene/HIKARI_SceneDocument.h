@@ -113,6 +113,9 @@ inline uint32_t NormalizeLightProbeCaptureResolution(uint32_t resolution) {
     return 64u;
 }
 
+inline constexpr float kMaximumLightProbeVolumeIntensity = 4.0f;
+inline constexpr float kMaximumLightProbeVolumeNormalBias = 0.5f;
+
 inline void ClampLightProbeVolumeSettings(LightProbeVolumeSettings& settings) {
     // 実時間の区域は更新を数フレームに分けるので、焼き込みより細かい格子を取れる。
     const bool realtime = settings.mode == LightProbeVolumeMode::Realtime;
@@ -121,8 +124,8 @@ inline void ClampLightProbeVolumeSettings(LightProbeVolumeSettings& settings) {
     settings.countZ = std::clamp(settings.countZ, 2u, realtime ? 32u : 8u);
     settings.captureResolution = NormalizeLightProbeCaptureResolution(settings.captureResolution);
     settings.shOrder = 3u;
-    settings.intensity = std::clamp(settings.intensity, 0.0f, 4.0f);
-    settings.normalBias = std::clamp(settings.normalBias, 0.0f, 0.5f);
+    settings.intensity = std::clamp(settings.intensity, 0.0f, kMaximumLightProbeVolumeIntensity);
+    settings.normalBias = std::clamp(settings.normalBias, 0.0f, kMaximumLightProbeVolumeNormalBias);
     settings.blendDistance =
         std::clamp(settings.blendDistance, 0.0f,
                    (std::max)(0.0f, (std::min)({settings.size.x, settings.size.y, settings.size.z}) * 0.5f));

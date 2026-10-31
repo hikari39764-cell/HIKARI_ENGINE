@@ -61,6 +61,7 @@ public:
             ReflectionProbeComponent defaults{};
             defaults.Serialize(properties);
         };
+        reflectionProbe.fields = JSONFIELDS::Describe<ReflectionProbeComponentSettings>(kReflectionProbeFields);
         reflectionProbe.presentation =
             LightingPresentation("Reflection Probe", "Captures and blends local specular environment lighting.");
 
@@ -74,6 +75,7 @@ public:
             IrradianceVolumeComponent defaults{};
             defaults.Serialize(properties);
         };
+        irradianceVolume.fields = JSONFIELDS::Describe<IrradianceVolumeComponentSettings>(kIrradianceVolumeFields);
         irradianceVolume.presentation =
             LightingPresentation("Irradiance Volume", "Defines a baked diffuse-light probe grid.");
 

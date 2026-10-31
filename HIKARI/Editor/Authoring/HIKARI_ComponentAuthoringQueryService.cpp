@@ -91,11 +91,9 @@ nlohmann::json DescribeFieldInfos(const std::vector<JSONFIELDS::FieldInfo>& info
             entry["minimum"] = info.minimum;
             entry["maximum"] = info.maximum;
         }
-        const std::pair<const char*, bool> flags[] = {{"slider", info.slider},
-                                                      {"common", info.common},
-                                                      {"advanced", info.advanced},
-                                                      {"readOnly", info.readOnly},
-                                                      {"conditional", info.hasShow}};
+        const std::pair<const char*, bool> flags[] = {{"slider", info.slider},     {"common", info.common},
+                                                      {"advanced", info.advanced}, {"readOnly", info.readOnly},
+                                                      {"hidden", info.hidden},     {"conditional", info.hasShow}};
         for (const auto& [key, enabled] : flags) {
             if (enabled)
                 entry[key] = true;

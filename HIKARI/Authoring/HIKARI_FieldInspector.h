@@ -18,7 +18,8 @@
 
 // JSONFIELDS の項目表から検査器の項目を作る。保存・読み取り・説明と同じ一つの表を使い、項目ごとの UI を書かない。
 // 並びは Common の項目が先頭、続いて宣言順（Group が同じ項目は 1 つの節）、最後に既定で閉じた "Advanced" 節。
-// Show が false の項目は描かない。Elements は 1 要素 1 節で、複製・上へ・下へ・削除のボタンと、末尾の追加ボタンを持つ。
+// Show が false の項目は描かない。Elements は 1 要素 1 節で、複製・上へ・下へ・削除のボタンと、末尾の追加ボタンを持つ
+// （std::array の固定長は節だけ）。
 // Draw を付けた項目は fn が描く（表での位置・Group・Show は同じ）。
 // 項目 ID は表のキーで、Elements の中は "slots[0].name"、Nested の中は "offset.position" のようになる。
 // 項目は構造体自身か基底クラスのメンバ（基底の表を派生構造体の表から呼べる）。
@@ -133,11 +134,11 @@ struct Drawer {
         return sectionOpen;
     }
 
-    // 今の段階で描く項目か（Show が真で、節が開いている）。meta にオプションの集計を返す。
+    // 今の段階で描く項目か（Hidden でなく、Show が真で、節が開いている）。meta にオプションの集計を返す。
     template <class... Options>
     bool Select(JSONFIELDS::Meta& meta, const Options&... options) {
         meta = JSONFIELDS::MetaOf(options...);
-        return Wanted(meta) && (Shown(options) && ...) && EnterSection(meta);
+        return Wanted(meta) && !meta.hidden && (Shown(options) && ...) && EnterSection(meta);
     }
 
     template <JSONFIELDS::FieldKind kind, class V, class... Options>
@@ -175,6 +176,20 @@ struct Drawer {
             static_assert(kind == JSONFIELDS::FieldKind::VariableRef);
             return builder.RuntimeVariableIdPicker(field, BINDING::kAllValueTypes, value);
         }
+    }
+
+    // 固定長の配列（std::array）は要素ごとの節だけを描く（追加・削除・並べ替えは無い）。先頭の節だけ開く。
+    template <class E, std::size_t N, class ElementFields>
+    bool EditElements(const std::string& id, const std::string& label, std::array<E, N>& list,
+                      const ElementFields& fields) {
+        bool edited = false;
+        for (size_t index = 0; index < N; ++index) {
+            const std::string path = id + "[" + std::to_string(index) + "]";
+            if (builder.Section(ElementTitle(list[index], fields, label, index) + "###" + path, index == 0u)) {
+                edited |= InspectTable(builder, list[index], fields, path + ".");
+            }
+        }
+        return edited;
     }
 
     // 配列の各要素を節にして描く。節の末尾に複製・上へ・下へ・削除、配列の末尾に追加のボタンを置く。

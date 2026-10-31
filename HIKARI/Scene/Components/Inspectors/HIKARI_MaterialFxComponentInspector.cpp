@@ -9,7 +9,7 @@
 #include <string_view>
 #include <utility>
 
-#include "Authoring/HIKARI_IInspectorBuilder.h"
+#include "Authoring/HIKARI_FieldInspector.h"
 #include "Vfx/MaterialFx/HIKARI_MaterialFxProfile.h"
 
 namespace HIKARI {
@@ -82,26 +82,23 @@ bool DrawMaterialFxParamInspector(IInspectorBuilder& builder, const VFX::ParamDe
 } // namespace
 
 void MaterialFxComponent::BuildInspector(IInspectorBuilder& builder) {
-    const std::string& profileId_ = parameters_.profileId_;
-    const auto& paramValues_ = parameters_.values_;
-    const bool valuesInitialized_ = parameters_.valuesInitialized_;
-
-    std::string profileId = profileId_;
-    if (builder.String(AuthoringFieldDescriptor{"profileId", "Profile"}, profileId)) {
-        SetProfileId(std::move(profileId));
+    MaterialFxSettings settings{parameters_.GetProfileId()};
+    if (InspectFields(builder, settings, kMaterialFxFields)) {
+        SetProfileId(std::move(settings.profileId));
     }
-    if (profileId_.empty()) {
+    // ここから先はプロファイルが決めるパラメータの欄。
+    if (parameters_.GetProfileId().empty()) {
         return;
     }
 
     MaterialFxProfile profile{};
-    if (!MaterialFxProfile::LoadById(profileId_, profile)) {
+    if (!MaterialFxProfile::LoadById(parameters_.GetProfileId(), profile)) {
         return;
     }
 
     DirectX::XMFLOAT4 visibleValues[VFX::kMaterialFxUserCount]{};
-    if (valuesInitialized_) {
-        std::copy(std::begin(paramValues_), std::end(paramValues_), std::begin(visibleValues));
+    if (parameters_.AreValuesInitialized()) {
+        std::copy(parameters_.GetValues().begin(), parameters_.GetValues().end(), std::begin(visibleValues));
     } else {
         profile.CopyValuesTo(visibleValues);
     }

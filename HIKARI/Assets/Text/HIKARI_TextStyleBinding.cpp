@@ -2,23 +2,13 @@
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Core/Text/HIKARI_Localization.h"
-#include "Core/HIKARI_JsonRead.h"
 namespace HIKARI {
 void TextStyleBinding::Write(nlohmann::json& data) const {
-    data["textStyleAssetGuid"] = style.value;
-    data["fontAssetGuid"] = font.value;
-    data["overrideFont"] = overrideFont;
-    data["overrideTextSize"] = overrideSize;
-    data["overrideTextColor"] = overrideColor;
-    data["overrideTextEffects"] = overrideEffects;
+    JSONFIELDS::Write(data, *this, kTextStyleBindingFields<true>);
 }
 void TextStyleBinding::Read(const nlohmann::json& data) {
-    style.value = JSONREAD::StringMemberOr(data, "textStyleAssetGuid", {});
-    font.value = JSONREAD::StringMemberOr(data, "fontAssetGuid", {});
-    overrideFont = JSONREAD::BooleanMemberOr(data, "overrideFont", false);
-    overrideSize = JSONREAD::BooleanMemberOr(data, "overrideTextSize", false);
-    overrideColor = JSONREAD::BooleanMemberOr(data, "overrideTextColor", false);
-    overrideEffects = JSONREAD::BooleanMemberOr(data, "overrideTextEffects", false);
+    *this = TextStyleBinding{};
+    JSONFIELDS::ReadLenient(data, *this, kTextStyleBindingFields<true>);
 }
 bool TextStyleBinding::Inspect(IInspectorBuilder& b, bool allowSizeOverride) {
     const auto L = [](const char* k) { return TEXT::Localize(k).c_str(); };

@@ -74,8 +74,6 @@ nlohmann::json BuildTransformChain(const SceneDocument& document, const SceneObj
 
 nlohmann::json BuildCaptureModelProperties(const nlohmann::json& source) {
     nlohmann::json properties = source;
-    properties.erase("showSkeletonDebug");
-    properties.erase("skeletonDebugXRay");
     properties.erase("debugRenderMode");
     properties.erase("wireColor");
     properties.erase("maxWireLines");

@@ -3,57 +3,47 @@
 #include <algorithm>
 #include <cmath>
 
-#include "Core/HIKARI_JsonRead.h"
 #include "Core/Math/HIKARI_MathValidation.h"
-#include "Core/Serialization/Json/HIKARI_JsonMath.h"
 
 namespace HIKARI {
 
-namespace JsonMath = SERIALIZATION::JSON::MATH;
+void AlignReflectionProbeProjection(ReflectionProbeComponentSettings& settings) noexcept {
+    settings.projectionShape = ReflectionProbeProjectionShape::Box;
+    if (settings.influenceShape == ReflectionProbeInfluenceShape::Box) {
+        settings.projectionBoxOffset = settings.influenceBoxOffset;
+        settings.projectionBoxSize = settings.influenceBoxSize;
+        return;
+    }
+    const float diameter = settings.radius * 2.0f;
+    settings.projectionBoxOffset = {0.0f, 0.0f, 0.0f};
+    settings.projectionBoxSize = {diameter, diameter, diameter};
+}
+
+ReflectionProbeComponentSettings NormalizeReflectionProbeSettings(ReflectionProbeComponentSettings settings) {
+    settings = JSONFIELDS::Sanitize(settings, kReflectionProbeFields);
+    settings.captureResolution =
+        settings.captureResolution <= 64u ? 64u : (settings.captureResolution <= 128u ? 128u : 256u);
+    if (settings.bakeSet.empty()) {
+        settings.bakeSet = "Default";
+    }
+    if (settings.scenario.empty()) {
+        settings.scenario = "Default";
+    }
+    if (settings.projectionFollowsInfluence) {
+        AlignReflectionProbeProjection(settings);
+    }
+    return settings;
+}
 
 void ReflectionProbeComponent::Serialize(nlohmann::json& out) const {
-    out = {{"enabled", enabled_},
-           {"sourceCubemapAsset", sourceCubemapAsset_},
-           {"radius", radius_},
-           {"intensity", intensity_},
-           {"influenceShape", TEXT::EnumToName(kReflectionProbeInfluenceShapeNames, influenceShape_, "Sphere")},
-           {"influenceBoxOffset", JsonMath::ToJsonArray(influenceBoxOffset_)},
-           {"influenceBoxSize", JsonMath::ToJsonArray(influenceBoxSize_)},
-           {"projectionShape", TEXT::EnumToName(kReflectionProbeProjectionShapeNames, projectionShape_, "Infinite")},
-           {"projectionBoxOffset", JsonMath::ToJsonArray(projectionBoxOffset_)},
-           {"projectionBoxSize", JsonMath::ToJsonArray(projectionBoxSize_)},
-           {"projectionFollowsInfluence", projectionFollowsInfluence_},
-           {"blendDistance", blendDistance_},
-           {"priority", priority_},
-           {"captureResolution", captureResolution_},
-           {"bakeSet", bakeSet_},
-           {"scenario", scenario_}};
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings_, kReflectionProbeFields);
 }
 
 void ReflectionProbeComponent::Deserialize(const nlohmann::json& in) {
-    enabled_ = in.value("enabled", enabled_);
-    sourceCubemapAsset_ = in.value("sourceCubemapAsset", sourceCubemapAsset_);
-    radius_ = in.value("radius", radius_);
-    intensity_ = in.value("intensity", intensity_);
-    TEXT::TryParseEnum(kReflectionProbeInfluenceShapeNames, in.value("influenceShape", std::string{}), influenceShape_);
-    influenceBoxOffset_ =
-        JSONREAD::Vec3Or(in.value("influenceBoxOffset", nlohmann::json::array()), influenceBoxOffset_);
-    influenceBoxSize_ = JSONREAD::Vec3Or(in.value("influenceBoxSize", nlohmann::json::array()), influenceBoxSize_);
-    TEXT::TryParseEnum(kReflectionProbeProjectionShapeNames, in.value("projectionShape", std::string{}),
-                       projectionShape_);
-    projectionBoxOffset_ =
-        JSONREAD::Vec3Or(in.value("projectionBoxOffset", nlohmann::json::array()), projectionBoxOffset_);
-    projectionBoxSize_ = JSONREAD::Vec3Or(in.value("projectionBoxSize", nlohmann::json::array()), projectionBoxSize_);
-    // Existing scenes predate linked authoring and must keep their two
-    // independently authored bounds until the user opts in.
-    projectionFollowsInfluence_ =
-        in.contains("projectionFollowsInfluence") ? in.value("projectionFollowsInfluence", false) : false;
-    blendDistance_ = in.value("blendDistance", blendDistance_);
-    priority_ = in.value("priority", priority_);
-    captureResolution_ = in.value("captureResolution", captureResolution_);
-    bakeSet_ = in.value("bakeSet", bakeSet_);
-    scenario_ = in.value("scenario", scenario_);
-    ClampSettings();
+    ReflectionProbeComponentSettings decoded{};
+    JSONFIELDS::Read(in, decoded, kReflectionProbeFields);
+    settings_ = NormalizeReflectionProbeSettings(decoded);
 }
 
 bool ReflectionProbeComponent::SetRadius(float radius) noexcept {
@@ -61,12 +51,12 @@ bool ReflectionProbeComponent::SetRadius(float radius) noexcept {
         return false;
     }
     const float clamped = (std::max)(radius, 0.05f);
-    if (radius_ == clamped) {
+    if (settings_.radius == clamped) {
         return false;
     }
-    radius_ = clamped;
-    if (projectionFollowsInfluence_ && projectionShape_ == ReflectionProbeProjectionShape::Box) {
-        AlignProjectionToInfluence();
+    settings_.radius = clamped;
+    if (settings_.projectionFollowsInfluence && settings_.projectionShape == ReflectionProbeProjectionShape::Box) {
+        AlignReflectionProbeProjection(settings_);
     }
     return true;
 }
@@ -76,75 +66,15 @@ bool ReflectionProbeComponent::SetInfluenceBoxSize(const MATH::Vec3& size) noexc
         return false;
     }
     const MATH::Vec3 clamped{(std::max)(size.x, 0.05f), (std::max)(size.y, 0.05f), (std::max)(size.z, 0.05f)};
-    if (influenceBoxSize_.x == clamped.x && influenceBoxSize_.y == clamped.y && influenceBoxSize_.z == clamped.z) {
+    const MATH::Vec3& current = settings_.influenceBoxSize;
+    if (current.x == clamped.x && current.y == clamped.y && current.z == clamped.z) {
         return false;
     }
-    influenceBoxSize_ = clamped;
-    if (projectionFollowsInfluence_) {
-        AlignProjectionToInfluence();
+    settings_.influenceBoxSize = clamped;
+    if (settings_.projectionFollowsInfluence) {
+        AlignReflectionProbeProjection(settings_);
     }
     return true;
-}
-
-void ReflectionProbeComponent::SetProjectionFollowsInfluence(bool enabled) noexcept {
-    projectionFollowsInfluence_ = enabled;
-    if (projectionFollowsInfluence_) {
-        viewportBoundsTarget_ = ReflectionProbeViewportBoundsTarget::Influence;
-        AlignProjectionToInfluence();
-    }
-}
-
-bool ReflectionProbeComponent::SetProjectionBoxSize(const MATH::Vec3& size) noexcept {
-    if (!MATH::IsFinite(size)) {
-        return false;
-    }
-    const MATH::Vec3 clamped{(std::max)(size.x, 0.05f), (std::max)(size.y, 0.05f), (std::max)(size.z, 0.05f)};
-    if (projectionBoxSize_.x == clamped.x && projectionBoxSize_.y == clamped.y && projectionBoxSize_.z == clamped.z) {
-        return false;
-    }
-    projectionBoxSize_ = clamped;
-    return true;
-}
-
-void ReflectionProbeComponent::AlignProjectionToInfluence() noexcept {
-    projectionShape_ = ReflectionProbeProjectionShape::Box;
-    if (influenceShape_ == ReflectionProbeInfluenceShape::Box) {
-        projectionBoxOffset_ = influenceBoxOffset_;
-        projectionBoxSize_ = influenceBoxSize_;
-        return;
-    }
-
-    projectionBoxOffset_ = {0.0f, 0.0f, 0.0f};
-    const float diameter = radius_ * 2.0f;
-    projectionBoxSize_ = {diameter, diameter, diameter};
-}
-
-void ReflectionProbeComponent::ClampSettings() noexcept {
-    radius_ = (std::max)(radius_, 0.05f);
-    intensity_ = std::clamp(intensity_, 0.0f, 8.0f);
-    influenceBoxSize_.x = (std::max)(influenceBoxSize_.x, 0.05f);
-    influenceBoxSize_.y = (std::max)(influenceBoxSize_.y, 0.05f);
-    influenceBoxSize_.z = (std::max)(influenceBoxSize_.z, 0.05f);
-    projectionBoxSize_.x = (std::max)(projectionBoxSize_.x, 0.05f);
-    projectionBoxSize_.y = (std::max)(projectionBoxSize_.y, 0.05f);
-    projectionBoxSize_.z = (std::max)(projectionBoxSize_.z, 0.05f);
-    blendDistance_ = (std::max)(blendDistance_, 0.0f);
-    if (captureResolution_ <= 64u) {
-        captureResolution_ = 64u;
-    } else if (captureResolution_ <= 128u) {
-        captureResolution_ = 128u;
-    } else {
-        captureResolution_ = 256u;
-    }
-    if (bakeSet_.empty()) {
-        bakeSet_ = "Default";
-    }
-    if (scenario_.empty()) {
-        scenario_ = "Default";
-    }
-    if (projectionFollowsInfluence_) {
-        AlignProjectionToInfluence();
-    }
 }
 
 } // namespace HIKARI

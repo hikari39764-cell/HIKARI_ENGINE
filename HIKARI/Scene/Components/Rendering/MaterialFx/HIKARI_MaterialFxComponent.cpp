@@ -1,10 +1,65 @@
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 
+#include <algorithm>
+#include <iterator>
+#include <stdexcept>
+#include <string>
 #include <utility>
 
+#include "Core/HIKARI_JsonRead.h"
+#include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Scene/HIKARI_GameObject.h"
 
 namespace HIKARI {
+
+namespace JsonMath = SERIALIZATION::JSON::MATH;
+
+void MaterialFxComponent::Serialize(nlohmann::json& out) const {
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, MaterialFxSettings{parameters_.GetProfileId()}, kMaterialFxFields);
+    out["valuesInitialized"] = parameters_.AreValuesInitialized();
+    if (!parameters_.AreValuesInitialized()) {
+        return;
+    }
+    out["paramValues"] = nlohmann::json::array();
+    for (const DirectX::XMFLOAT4& value : parameters_.GetValues()) {
+        out["paramValues"].push_back(JsonMath::ToJsonArray(value));
+    }
+}
+
+void MaterialFxComponent::Deserialize(const nlohmann::json& in) {
+    MaterialFxSettings settings{};
+    JSONFIELDS::Read(in, settings, kMaterialFxFields);
+
+    bool valuesInitialized = false;
+    if (const nlohmann::json* node = JSONREAD::FindMember(in, "valuesInitialized");
+        node != nullptr && !node->is_null()) {
+        if (!node->is_boolean()) {
+            throw std::runtime_error("valuesInitialized: expects a boolean");
+        }
+        valuesInitialized = node->get<bool>();
+    }
+    DirectX::XMFLOAT4 values[VFX::kMaterialFxUserCount]{};
+    if (const nlohmann::json* node = JSONREAD::FindMember(in, "paramValues"); node != nullptr && !node->is_null()) {
+        if (!node->is_array() || node->size() > std::size(values)) {
+            throw std::runtime_error("paramValues: expects an array of at most " + std::to_string(std::size(values)) +
+                                     " entries");
+        }
+        for (size_t index = 0; index < node->size(); ++index) {
+            const nlohmann::json& entry = (*node)[index];
+            if (!entry.is_array() || entry.size() != 4u ||
+                !std::all_of(entry.begin(), entry.end(), [](const nlohmann::json& v) { return v.is_number(); })) {
+                throw std::runtime_error("paramValues[" + std::to_string(index) + "]: expects an array of 4 numbers");
+            }
+            values[index] = {entry[0].get<float>(), entry[1].get<float>(), entry[2].get<float>(),
+                             entry[3].get<float>()};
+        }
+    }
+
+    MaterialFxParameterSet next = parameters_;
+    next.RestorePersistedState(std::move(settings.profileId), values, valuesInitialized);
+    (void)CommitParameterState(std::move(next));
+}
 
 bool MaterialFxComponent::CommitParameterState(MaterialFxParameterSet next) {
     if (parameters_.HasSameState(next)) {

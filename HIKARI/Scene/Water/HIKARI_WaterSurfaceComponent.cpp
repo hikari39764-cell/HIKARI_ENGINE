@@ -1,22 +1,15 @@
 #include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
 
-#include <algorithm>
-#include <cmath>
 #include <string>
 
 #include "Core/HIKARI_JsonRead.h"
 #include "Scene/HIKARI_GameObject.h"
 
-namespace HIKARI {
+#if defined(HIKARI_WITH_EDITOR)
+#include "Authoring/HIKARI_FieldInspector.h"
+#endif
 
-namespace {
-WATER::WaterSurfacePreset ReadPreset(const nlohmann::json& source, WATER::WaterSurfacePreset fallback) {
-    const nlohmann::json* preset = JSONREAD::FindMember(source, "preset");
-    return preset != nullptr && preset->is_string()
-               ? WATER::ParseWaterSurfacePreset(preset->get<std::string>(), fallback)
-               : fallback;
-}
-} // namespace
+namespace HIKARI {
 
 const WATER::WaterSurfaceSettings& WaterSurfaceComponent::GetSettings() const noexcept { return settings_; }
 
@@ -37,103 +30,35 @@ void WaterSurfaceComponent::ApplyPreset(WATER::WaterSurfacePreset preset) {
 }
 
 void WaterSurfaceComponent::Serialize(nlohmann::json& out) const {
-    const WATER::WaterSurfaceSettings settings = WATER::SanitizeWaterSurfaceSettings(settings_);
-    out = {{"_schemaVersion", WATER::kWaterSurfaceSchemaVersion},
-           {"preset", WATER::ToString(settings.preset)},
-           {"geometryMode", WATER::ToString(settings.geometryMode)},
-           {"timeScale", settings.timeScale},
-           {"choppiness", settings.choppiness},
-           {"microWaveStrength", settings.microWaveStrength},
-           {"depthTransmittance",
-            {settings.depthTransmittance.x, settings.depthTransmittance.y, settings.depthTransmittance.z}},
-           {"scatteringColor", {settings.scatteringColor.x, settings.scatteringColor.y, settings.scatteringColor.z}},
-           {"shallowClearDepth", settings.shallowClearDepth},
-           {"shallowBlendDepth", settings.shallowBlendDepth},
-           {"shallowGraphicWeight", settings.shallowGraphicWeight},
-           {"foamColor", {settings.foamColor.x, settings.foamColor.y, settings.foamColor.z}},
-           {"foamAmount", settings.foamAmount},
-           {"absorptionDistance", settings.absorptionDistance},
-           {"surfaceRoughness", settings.surfaceRoughness},
-           {"directSunStrength", settings.directSunStrength},
-           {"transmissionStrength", settings.transmissionStrength},
-           {"shadowStrength", settings.shadowStrength},
-           {"reflectionStrength", settings.reflectionStrength},
-           {"sunGlintStrength", settings.sunGlintStrength},
-           {"glintDensity", settings.glintDensity},
-           {"glintFlowSpeed", settings.glintFlowSpeed},
-           {"ribbonWidth", settings.ribbonWidth},
-           {"windDirectionDeg", settings.windDirectionDeg},
-           {"windSpeed", settings.windSpeed},
-           {"shortWaveStrength", settings.shortWaveStrength},
-           {"capillaryStrength", settings.capillaryStrength},
-           {"waves", nlohmann::json::array()}};
-    for (const WATER::WaterGerstnerWave& wave : settings.waves) {
-        out["waves"].push_back(nlohmann::json{{"directionDeg", wave.directionDeg},
-                                              {"amplitude", wave.amplitude},
-                                              {"wavelength", wave.wavelength},
-                                              {"steepness", wave.steepness}});
-    }
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings_, kWaterSurfaceFields);
 }
 
 void WaterSurfaceComponent::Deserialize(const nlohmann::json& in) {
-    if (!in.is_object()) {
+    // 文書で指定のない項目はプリセットの値になるので、先にプリセットだけを読んで土台にする。
+    WATER::WaterSurfaceSettings decoded{};
+    if (const nlohmann::json* preset = JSONREAD::FindMember(in, "preset"); preset != nullptr && preset->is_string()) {
+        TEXT::TryParseEnum(WATER::kWaterSurfacePresetNames, preset->get<std::string>(), decoded.preset);
+    }
+    decoded = WATER::MakeWaterSurfacePresetSettings(decoded.preset);
+    JSONFIELDS::Read(in, decoded, kWaterSurfaceFields);
+    SetSettings(decoded);
+}
+
+#if defined(HIKARI_WITH_EDITOR)
+void WaterSurfaceComponent::BuildInspector(IInspectorBuilder& builder) {
+    WATER::WaterSurfaceSettings next = settings_;
+    if (!InspectFields(builder, next, kWaterSurfaceFields)) {
         return;
     }
-
-    const WATER::WaterSurfacePreset preset = ReadPreset(in, settings_.preset);
-    WATER::WaterSurfaceSettings next = WATER::MakeWaterSurfacePresetSettings(preset);
-    next.preset = preset;
-    if (const nlohmann::json* geometryMode = JSONREAD::FindMember(in, "geometryMode");
-        geometryMode != nullptr && geometryMode->is_string()) {
-        next.geometryMode = WATER::ParseWaterSurfaceGeometryMode(geometryMode->get<std::string>(),
-                                                                 WATER::WaterSurfaceGeometryMode::FiniteAuthored);
+    if (next.preset != settings_.preset) {
+        // プリセットは見た目と動きの一式。形状の持ち方は別の選択なので、切り替えても保つ。
+        const WATER::WaterSurfaceGeometryMode geometryMode = next.geometryMode;
+        next = WATER::MakeWaterSurfacePresetSettings(next.preset);
+        next.geometryMode = geometryMode;
     }
-    next.timeScale = JSONREAD::NumberMemberOr(in, "timeScale", next.timeScale);
-    next.choppiness = JSONREAD::NumberMemberOr(in, "choppiness", next.choppiness);
-    next.microWaveStrength = JSONREAD::NumberMemberOr(
-        in, "microWaveStrength", JSONREAD::NumberMemberOr(in, "detailStrength", next.microWaveStrength));
-
-    next.depthTransmittance = JSONREAD::Vec3MemberOr(in, "depthTransmittance",
-                                                     JSONREAD::Vec3MemberOr(in, "deepColor", next.depthTransmittance));
-    next.scatteringColor =
-        JSONREAD::Vec3MemberOr(in, "scatteringColor", JSONREAD::Vec3MemberOr(in, "shallowColor", next.scatteringColor));
-    next.shallowClearDepth = JSONREAD::NumberMemberOr(in, "shallowClearDepth", next.shallowClearDepth);
-    next.shallowBlendDepth = JSONREAD::NumberMemberOr(in, "shallowBlendDepth", next.shallowBlendDepth);
-    next.shallowGraphicWeight = JSONREAD::NumberMemberOr(in, "shallowGraphicWeight", next.shallowGraphicWeight);
-    next.foamColor = JSONREAD::Vec3MemberOr(in, "foamColor", next.foamColor);
-    next.foamAmount = JSONREAD::NumberMemberOr(in, "foamAmount", next.foamAmount);
-    next.surfaceRoughness = JSONREAD::NumberMemberOr(in, "surfaceRoughness", next.surfaceRoughness);
-    next.directSunStrength = JSONREAD::NumberMemberOr(in, "directSunStrength", next.directSunStrength);
-    next.transmissionStrength = JSONREAD::NumberMemberOr(in, "transmissionStrength", next.transmissionStrength);
-    next.shadowStrength = JSONREAD::NumberMemberOr(in, "shadowStrength", next.shadowStrength);
-    next.reflectionStrength = JSONREAD::NumberMemberOr(in, "reflectionStrength", next.reflectionStrength);
-    next.sunGlintStrength = JSONREAD::NumberMemberOr(in, "sunGlintStrength", next.sunGlintStrength);
-    next.glintDensity = JSONREAD::NumberMemberOr(in, "glintDensity", next.glintDensity);
-    next.glintFlowSpeed = JSONREAD::NumberMemberOr(in, "glintFlowSpeed", next.glintFlowSpeed);
-    next.ribbonWidth = JSONREAD::NumberMemberOr(in, "ribbonWidth", next.ribbonWidth);
-    next.windDirectionDeg = JSONREAD::NumberMemberOr(in, "windDirectionDeg", next.windDirectionDeg);
-    next.windSpeed = JSONREAD::NumberMemberOr(in, "windSpeed", next.windSpeed);
-    next.shortWaveStrength = JSONREAD::NumberMemberOr(in, "shortWaveStrength", next.shortWaveStrength);
-    next.capillaryStrength = JSONREAD::NumberMemberOr(in, "capillaryStrength", next.capillaryStrength);
-
-    next.absorptionDistance = JSONREAD::NumberMemberOr(in, "absorptionDistance", next.absorptionDistance);
-
-    if (const nlohmann::json* waves = JSONREAD::FindMember(in, "waves"); waves != nullptr && waves->is_array()) {
-        const std::size_t count = (std::min)(waves->size(), next.waves.size());
-        for (std::size_t index = 0; index < count; ++index) {
-            const nlohmann::json& source = (*waves)[index];
-            if (!source.is_object()) {
-                continue;
-            }
-            WATER::WaterGerstnerWave& wave = next.waves[index];
-            wave.directionDeg = JSONREAD::NumberMemberOr(source, "directionDeg", wave.directionDeg);
-            wave.amplitude = JSONREAD::NumberMemberOr(source, "amplitude", wave.amplitude);
-            wave.wavelength = JSONREAD::NumberMemberOr(source, "wavelength", wave.wavelength);
-            wave.steepness = JSONREAD::NumberMemberOr(source, "steepness", wave.steepness);
-        }
-    }
-
     SetSettings(next);
 }
+#endif
 
 } // namespace HIKARI

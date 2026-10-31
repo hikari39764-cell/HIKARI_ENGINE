@@ -53,43 +53,6 @@ float ResolveHorizontalSlopeScale(const WaterSurfaceSettings& settings) noexcept
 }
 } // namespace
 
-const char* ToString(WaterSurfacePreset preset) noexcept {
-    switch (preset) {
-    case WaterSurfacePreset::RealisticClearSummer: return "realistic_clear_summer";
-    case WaterSurfacePreset::AnimeSummer:
-    default: return "anime_summer";
-    }
-}
-
-const char* ToString(WaterSurfaceGeometryMode mode) noexcept {
-    switch (mode) {
-    case WaterSurfaceGeometryMode::CameraCenteredOcean: return "camera_centered_ocean";
-    case WaterSurfaceGeometryMode::FiniteAuthored:
-    default: return "finite_authored";
-    }
-}
-
-WaterSurfacePreset ParseWaterSurfacePreset(std::string_view value, WaterSurfacePreset fallback) noexcept {
-    if (value == ToString(WaterSurfacePreset::AnimeSummer)) {
-        return WaterSurfacePreset::AnimeSummer;
-    }
-    if (value == ToString(WaterSurfacePreset::RealisticClearSummer)) {
-        return WaterSurfacePreset::RealisticClearSummer;
-    }
-    return fallback;
-}
-
-WaterSurfaceGeometryMode ParseWaterSurfaceGeometryMode(std::string_view value,
-                                                       WaterSurfaceGeometryMode fallback) noexcept {
-    if (value == ToString(WaterSurfaceGeometryMode::FiniteAuthored)) {
-        return WaterSurfaceGeometryMode::FiniteAuthored;
-    }
-    if (value == ToString(WaterSurfaceGeometryMode::CameraCenteredOcean)) {
-        return WaterSurfaceGeometryMode::CameraCenteredOcean;
-    }
-    return fallback;
-}
-
 WaterSurfaceSettings MakeWaterSurfacePresetSettings(WaterSurfacePreset preset) noexcept {
     WaterSurfaceSettings settings{};
     if (preset == WaterSurfacePreset::RealisticClearSummer) {

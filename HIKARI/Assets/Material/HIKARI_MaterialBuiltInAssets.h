@@ -12,11 +12,6 @@ inline constexpr std::string_view kBuiltInWhiteMaterialAssetId = "generated://so
 // プロシージャルグラフィックス用の内置「チェッカー(デバッグ)」ID。
 inline constexpr std::string_view kBuiltInCheckerMaterialAssetId = "generated://checker/bfbfbfff/8a8a8aff";
 
-// 旧プロシージャル選択名は、コンポーネントの読込と設定で同じ ID に移行する。
-constexpr std::string_view CanonicalizeProceduralMaterialSelection(std::string_view selection) noexcept {
-    return selection == "checker" ? kBuiltInCheckerMaterialAssetId : selection;
-}
-
 // プロシージャル砂地の既定マテリアル。SceneRuntimeBuilder が
 // TerrainSurfaceComponent を持つオブジェクトの slot 0 へ上書きする。
 inline constexpr std::string_view kBuiltInSandMaterialAssetId = "generated://sand/anime-dry";

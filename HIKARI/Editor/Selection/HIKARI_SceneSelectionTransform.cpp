@@ -22,7 +22,6 @@ enum class LightingComponentScaleTarget {
     None,
     ReflectionInfluenceBox,
     ReflectionInfluenceSphere,
-    ReflectionProjectionBox,
     IrradianceVolume
 };
 
@@ -44,16 +43,6 @@ LightingComponentScaleProxy BuildLightingComponentScaleProxy(const GameObject& o
 
     proxy.transform.position = object.GetTransform().position;
     if (reflectionProbe != nullptr) {
-        if (!reflectionProbe->GetProjectionFollowsInfluence() &&
-            reflectionProbe->GetViewportBoundsTarget() == ReflectionProbeViewportBoundsTarget::Projection &&
-            reflectionProbe->GetProjectionShape() == ReflectionProbeProjectionShape::Box) {
-            proxy.target = LightingComponentScaleTarget::ReflectionProjectionBox;
-            proxy.transform.position = proxy.transform.position + reflectionProbe->GetProjectionBoxOffset();
-            proxy.transform.scale = reflectionProbe->GetProjectionBoxSize();
-            proxy.historyLabel = "Resize Reflection Projection Bounds";
-            return proxy;
-        }
-
         proxy.historyLabel = reflectionProbe->GetProjectionFollowsInfluence() ? "Resize Linked Reflection Bounds"
                                                                               : "Resize Reflection Influence";
         if (reflectionProbe->GetInfluenceShape() == ReflectionProbeInfluenceShape::Box) {
@@ -107,10 +96,6 @@ bool ApplyLightingComponentScale(GameObject& object, LightingComponentScaleTarge
     case LightingComponentScaleTarget::ReflectionInfluenceSphere: {
         ReflectionProbeComponent* probe = object.GetComponent<ReflectionProbeComponent>();
         return probe != nullptr && probe->SetRadius(ResolveEditedSphereRadius(probe->GetRadius(), editedScale));
-    }
-    case LightingComponentScaleTarget::ReflectionProjectionBox: {
-        ReflectionProbeComponent* probe = object.GetComponent<ReflectionProbeComponent>();
-        return probe != nullptr && probe->SetProjectionBoxSize(PositiveSize(editedScale));
     }
     case LightingComponentScaleTarget::IrradianceVolume: {
         IrradianceVolumeComponent* volume = object.GetComponent<IrradianceVolumeComponent>();

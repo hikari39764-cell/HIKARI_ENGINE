@@ -11,8 +11,6 @@
 
 namespace HIKARI {
 
-class MaterialFxComponent;
-
 enum class MaterialFxParameterResult : uint8_t {
     Success = 0u,
     ProfileUnavailable,
@@ -54,8 +52,6 @@ public:
     MaterialFxParameterResult TryGetToggle(std::string_view key, bool& outValue) const;
 
 private:
-    friend class MaterialFxComponent;
-
     std::string profileId_{};
     std::array<DirectX::XMFLOAT4, VFX::kMaterialFxUserCount> values_{};
     bool valuesInitialized_ = false;

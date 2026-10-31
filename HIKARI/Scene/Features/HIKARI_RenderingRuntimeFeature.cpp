@@ -48,6 +48,7 @@ public:
         model.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<ModelComponent>(); };
         model.affectsRenderState = true;
         model.optionalComponents = {"MaterialFxComponent", "ProceduralMeshComponent"};
+        model.fields = JSONFIELDS::Describe<ModelSettings>(kModelFields);
         model.presentation =
             RenderingPresentation("Model", "Controls model assets, materials, visibility, and shadows.");
         model.authoringCommands = BuildModelComponentAuthoringCommands();
@@ -57,8 +58,9 @@ public:
         materialFx.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<MaterialFxComponent>(); };
         materialFx.requiredComponents = {"ModelComponent"};
         materialFx.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties = {{"profileId", ""}, {"valuesInitialized", false}};
+            MaterialFxComponent{}.Serialize(properties);
         };
+        materialFx.fields = JSONFIELDS::Describe<MaterialFxSettings>(kMaterialFxFields);
         materialFx.presentation =
             RenderingPresentation("Material FX", "Applies a Material FX profile and per-object overrides.");
 
@@ -70,11 +72,14 @@ public:
         procedural.requiredComponents = {"ModelComponent"};
         procedural.runtimeApplyPolicy = ComponentRuntimeApplyPolicy::OnEditCommit;
         procedural.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties = {{"kind", "Plane"},     {"width", 1.0f},           {"height", 1.0f},
-                          {"depth", 1.0f},       {"segmentsX", 10u},        {"segmentsY", 10u},
-                          {"segmentsZ", 1u},     {"sphereSlices", 32u},     {"sphereStacks", 16u},
-                          {"doubleSided", true}, {"generateTangents", true}};
+            ProceduralMeshSettings plane{};
+            plane.kind = ProceduralMeshKind::Plane;
+            plane.doubleSided = true;
+            ProceduralMeshComponent defaults{};
+            defaults.SetSettings(plane);
+            defaults.Serialize(properties);
         };
+        procedural.fields = JSONFIELDS::Describe<ProceduralMeshComponentSettings>(kProceduralMeshFields);
         procedural.presentation = RenderingPresentation("Procedural Mesh", "Generates editable primitive geometry.");
 
         ComponentTypeInfo decal{};
@@ -97,6 +102,7 @@ public:
         worldSprite.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
             WorldSpriteComponent{}.Serialize(properties);
         };
+        worldSprite.fields = JSONFIELDS::Describe<WorldSpriteSettings>(kWorldSpriteFields);
         worldSprite.presentation =
             RenderingPresentation("World Sprite (3D)", "Displays a texture directly on an engine-owned quad in "
                                                        "3D space, including transparent textures.");
@@ -106,26 +112,9 @@ public:
         worldText.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<WorldTextComponent>(); };
         worldText.affectsRenderState = true;
         worldText.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
-            properties = {{"version", 1u},
-                          {"text", "World Text"},
-                          {"fontAssetPath", "Fonts/NotoSansCJKjp-Regular.otf"},
-                          {"visible", true},
-                          {"layoutSize", {4.0f, 1.0f}},
-                          {"fontHeight", 0.5f},
-                          {"horizontalAlign", "Center"},
-                          {"verticalAlign", "Center"},
-                          {"wrap", "Character"},
-                          {"lineHeightMultiplier", 1.2f},
-                          {"letterSpacing", 0.0f},
-                          {"facing", "CameraFacing"},
-                          {"color", {1.0f, 1.0f, 1.0f}},
-                          {"outlineColor", {0.0f, 0.0f, 0.0f}},
-                          {"outlineWidth", 0.04f},
-                          {"opacity", 1.0f},
-                          {"revealAmount", 1.0f},
-                          {"pivot", {0.5f, 0.5f}},
-                          {"transparentSortPriority", 0}};
+            WorldTextComponent{}.Serialize(properties);
         };
+        worldText.fields = JSONFIELDS::Describe<WorldTextSettings>(kWorldTextFields);
         worldText.presentation =
             RenderingPresentation("World Text (3D)", "Lays out UTF-8 SDF text in world space with outline, "
                                                      "wrapping, alignment, and reveal controls.");

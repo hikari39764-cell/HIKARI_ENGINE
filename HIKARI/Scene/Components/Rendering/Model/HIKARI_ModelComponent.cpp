@@ -1,21 +1,109 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 
 #include <algorithm>
+#include <stdexcept>
+#include <string>
 #include <utility>
 
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Assets/Models/HIKARI_ModelBounds.h"
+#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "Authoring/HIKARI_IInspectorBuilder.h"
+#include "Core/HIKARI_JsonRead.h"
 #include "Render3D/Core/HIKARI_Material.h"
+#include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
 #include "Scene/HIKARI_GameObject.h"
 
 namespace HIKARI {
 
+ModelSettings NormalizeModelSettings(ModelSettings settings) {
+    settings = JSONFIELDS::Sanitize(settings, kModelFields);
+    settings.postGroupMask &= 0x7fffffffu;
+    return settings;
+}
+
+bool DrawModelWireColor(IInspectorBuilder& builder, const AuthoringFieldDescriptor& field, uint32_t& value,
+                        const ModelSettings&) {
+    MATH::Vec4 color = RENDERER3D::DEBUG::DecodeRgba(value);
+    if (!builder.Color3(field, color.x, color.y, color.z)) {
+        return false;
+    }
+    value = RENDERER3D::DEBUG::EncodeRgba(color);
+    return true;
+}
+
 ModelComponent::~ModelComponent() = default;
+
+void ModelComponent::Serialize(nlohmann::json& out) const {
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings_, kModelFields);
+    if (materialSetSelectionAuthored_) {
+        out["materialSetAssetGuid"] = materialSetAssetGuid_.value;
+    }
+    out["materialOverrides"] = nlohmann::json::array();
+    for (const ModelMaterialOverrideSlot& slot : materialOverrides_) {
+        if (!slot.materialAssetGuid.IsValid() || !slot.slotId.IsValid()) {
+            continue;
+        }
+        out["materialOverrides"].push_back({{"slotId", ASSETS::MODELS::MaterialSlotIdToString(slot.slotId)},
+                                            {"materialAssetGuid", slot.materialAssetGuid.value}});
+    }
+}
+
+void ModelComponent::Deserialize(const nlohmann::json& in) {
+    ModelSettings decoded{};
+    JSONFIELDS::Read(in, decoded, kModelFields);
+
+    // 材質セットは、項目があること自体が「作者が選んだ」印（無ければモデル既定のバインディング）。
+    const nlohmann::json* materialSet = JSONREAD::FindMember(in, "materialSetAssetGuid");
+    if (materialSet != nullptr && !materialSet->is_string()) {
+        throw std::runtime_error("materialSetAssetGuid: expects a string");
+    }
+    std::vector<ModelMaterialOverrideSlot> overrides{};
+    if (const nlohmann::json* list = JSONREAD::FindMember(in, "materialOverrides");
+        list != nullptr && !list->is_null()) {
+        if (!list->is_array()) {
+            throw std::runtime_error("materialOverrides: expects an array");
+        }
+        for (size_t index = 0; index < list->size(); ++index) {
+            const nlohmann::json& node = (*list)[index];
+            const std::string path = "materialOverrides[" + std::to_string(index) + "]";
+            const nlohmann::json* slotText = JSONREAD::FindMember(node, "slotId");
+            const nlohmann::json* guidText = JSONREAD::FindMember(node, "materialAssetGuid");
+            if (slotText == nullptr || guidText == nullptr || !slotText->is_string() || !guidText->is_string()) {
+                throw std::runtime_error(path + ": expects an object with string slotId and materialAssetGuid");
+            }
+            const auto slotId = ASSETS::MODELS::ParseMaterialSlotId(slotText->get<std::string>());
+            AssetGuid materialGuid{guidText->get<std::string>()};
+            if (!slotId.has_value() || !materialGuid.IsValid()) {
+                throw std::runtime_error(path + ": slotId or materialAssetGuid is invalid");
+            }
+            // 同じスロットが重なったら後の指定を採る。
+            const auto existing =
+                std::find_if(overrides.begin(), overrides.end(),
+                             [&](const ModelMaterialOverrideSlot& slot) { return slot.slotId == *slotId; });
+            if (existing != overrides.end()) {
+                existing->materialAssetGuid = std::move(materialGuid);
+            } else {
+                overrides.push_back(ModelMaterialOverrideSlot{*slotId, std::move(materialGuid)});
+            }
+        }
+    }
+
+    settings_ = NormalizeModelSettings(std::move(decoded));
+    runtimePostGroupMask_.reset();
+    materialSetSelectionAuthored_ = materialSet != nullptr;
+    materialSetAssetGuid_.value = materialSet != nullptr ? materialSet->get<std::string>() : std::string{};
+    materialOverrides_ = std::move(overrides);
+    runtimeMaterialOverrides_.clear();
+    runtimeNodeVisibilityOverrides_.clear();
+    NotifyRenderStateDirty();
+}
 
 void ModelComponent::SetModelAsset(ModelAsset* asset) {
     asset_ = asset;
     if (asset_ != nullptr) {
-        assetId_ = asset_->GetName();
+        settings_.assetId = asset_->GetName();
     }
     NotifyRenderStateDirty();
 }
@@ -42,52 +130,52 @@ bool ModelComponent::QueryGeometryFit(GeometryFitDesc& outFit) const noexcept {
 }
 
 void ModelComponent::SetVisible(bool visible) {
-    visible_ = visible;
+    settings_.visible = visible;
     NotifyRenderStateDirty();
 }
 
-bool ModelComponent::IsVisible() const { return visible_; }
+bool ModelComponent::IsVisible() const { return settings_.visible; }
 
-bool ModelComponent::GetCastShadow() const { return castShadow_; }
+bool ModelComponent::GetCastShadow() const { return settings_.castShadow; }
 
-bool ModelComponent::GetReceiveShadow() const { return receiveShadow_; }
+bool ModelComponent::GetReceiveShadow() const { return settings_.receiveShadow; }
 
 void ModelComponent::SetRenderStatic(bool enabled) {
-    renderStatic_ = enabled;
+    settings_.renderStatic = enabled;
     NotifyRenderStateDirty();
 }
 
-bool ModelComponent::IsRenderStatic() const { return renderStatic_; }
+bool ModelComponent::IsRenderStatic() const { return settings_.renderStatic; }
 
 void ModelComponent::SetIncludeInLightingBake(bool enabled) {
-    if (includeInLightingBake_ == enabled) {
+    if (settings_.includeInLightingBake == enabled) {
         return;
     }
-    includeInLightingBake_ = enabled;
+    settings_.includeInLightingBake = enabled;
     NotifyRenderStateDirty();
 }
 
-bool ModelComponent::GetIncludeInLightingBake() const { return includeInLightingBake_; }
+bool ModelComponent::GetIncludeInLightingBake() const { return settings_.includeInLightingBake; }
 
-ModelRenderDebugMode ModelComponent::GetRenderDebugMode() const { return debugRenderMode_; }
+ModelRenderDebugMode ModelComponent::GetRenderDebugMode() const { return settings_.debugRenderMode; }
 
-uint32_t ModelComponent::GetWireColor() const { return wireColor_; }
+uint32_t ModelComponent::GetWireColor() const { return settings_.wireColor; }
 
-uint32_t ModelComponent::GetMaxWireLines() const { return maxWireLines_; }
+uint32_t ModelComponent::GetMaxWireLines() const { return settings_.maxWireLines; }
 
-bool ModelComponent::GetWirePerPrimitiveColor() const { return wirePerPrimitiveColor_; }
+bool ModelComponent::GetWirePerPrimitiveColor() const { return settings_.wirePerPrimitiveColor; }
 
-const std::string& ModelComponent::GetAssetId() const { return assetId_; }
+const std::string& ModelComponent::GetAssetId() const { return settings_.assetId; }
 
 void ModelComponent::SetAssetId(std::string assetId) {
-    if (assetId_ != assetId) {
+    if (settings_.assetId != assetId) {
         materialSetAssetGuid_ = {};
         materialSetSelectionAuthored_ = true;
         materialOverrides_.clear();
         ClearRuntimeMaterialOverrides();
         runtimeNodeVisibilityOverrides_.clear();
     }
-    assetId_ = std::move(assetId);
+    settings_.assetId = std::move(assetId);
     NotifyRenderStateDirty();
 }
 
@@ -109,7 +197,7 @@ void ModelComponent::ClearMaterialSetAssetGuid() { SetMaterialSetAssetGuid({}); 
 
 void ModelComponent::UseImportedModelMaterials() { ClearMaterialSetAssetGuid(); }
 
-uint32_t ModelComponent::GetPostGroupMask() const { return runtimePostGroupMask_.value_or(postGroupMask_); }
+uint32_t ModelComponent::GetPostGroupMask() const { return runtimePostGroupMask_.value_or(settings_.postGroupMask); }
 
 bool ModelComponent::SetRuntimePostGroupMask(uint32_t mask) {
     if ((mask & 0x80000000u) != 0u)

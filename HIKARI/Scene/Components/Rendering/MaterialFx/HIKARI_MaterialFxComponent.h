@@ -5,11 +5,26 @@
 
 #include <DirectXMath.h>
 
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
 #include "Vfx/MaterialFx/HIKARI_MaterialFxParameterSet.h"
 
 namespace HIKARI {
+
+// 作者値のうち、プロファイルに依らず宣言できる項目。パラメータの値はプロファイルの定義で決まるので項目表には載せず、
+// 部件が valuesInitialized と paramValues（スロットごとの 4 成分）を読み書きし、検査器はプロファイルのパラメータごとに
+// 欄を出す。
+struct MaterialFxSettings {
+    std::string profileId{};
+};
+
+inline constexpr auto kMaterialFxFields = [](auto&& field) {
+    using S = MaterialFxSettings;
+    using namespace JSONFIELDS;
+    field("profileId", &S::profileId, Label{"Profile"}, Help{"Material FX profile that defines the parameters."},
+          Common{});
+};
 
 class MaterialFxComponent final : public IComponent {
 public:

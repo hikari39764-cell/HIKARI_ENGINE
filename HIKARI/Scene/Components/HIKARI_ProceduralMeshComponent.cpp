@@ -1,70 +1,118 @@
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 
 #include <algorithm>
-#include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
+#include <stdexcept>
+#include <utility>
 
+#include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
+#include "Authoring/HIKARI_IInspectorBuilder.h"
+#include "Core/HIKARI_JsonRead.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Scene/HIKARI_GameObject.h"
 
+#if defined(HIKARI_WITH_EDITOR)
+#include "Authoring/HIKARI_FieldInspector.h"
+#endif
+
 namespace HIKARI {
+
+ProceduralMeshComponentSettings NormalizeProceduralMeshSettings(ProceduralMeshComponentSettings settings) {
+    static_cast<ProceduralMeshSettings&>(settings) = SanitizeProceduralMeshSettings(settings);
+    return settings;
+}
+
+bool DrawProceduralMaterialSelection(IInspectorBuilder& builder, const AuthoringFieldDescriptor& field,
+                                     std::string& value, const ProceduralMeshComponentSettings&) {
+    std::vector<std::string> labels{TEXT::Localize("ui.inspector.procedural.materialNone"),
+                                    TEXT::Localize("ui.inspector.procedural.materialChecker")};
+    std::vector<std::string> ids{std::string{}, std::string(ASSETS::MATERIAL::kBuiltInCheckerMaterialAssetId)};
+    if (const AssetDatabase* assetDatabase = builder.GetContext().assetDatabase) {
+        for (const AssetRecord* record : assetDatabase->CollectByType(AssetType::Material)) {
+            if (record == nullptr || !record->guid.IsValid()) {
+                continue;
+            }
+            ids.push_back(record->guid.value);
+            labels.push_back(record->displayName.empty() ? record->sourcePath.stem().string() : record->displayName);
+        }
+    }
+
+    int selected = 0;
+    for (size_t index = 0; index < ids.size(); ++index) {
+        if (ids[index] == value) {
+            selected = static_cast<int>(index);
+            break;
+        }
+    }
+    if (selected == 0 && !value.empty()) {
+        ids.push_back(value);
+        labels.push_back(TEXT::Localize("ui.inspector.procedural.materialMissing"));
+        selected = static_cast<int>(ids.size() - 1u);
+    }
+
+    std::vector<AuthoringChoice> choices{};
+    choices.reserve(labels.size());
+    for (size_t index = 0u; index < labels.size(); ++index) {
+        choices.push_back({ids[index], labels[index]});
+    }
+    if (!builder.Choice(field, selected, choices) || selected < 0 || selected >= static_cast<int>(ids.size())) {
+        return false;
+    }
+    value = ids[static_cast<size_t>(selected)];
+    return true;
+}
+
 void ProceduralMeshComponent::Serialize(nlohmann::json& out) const {
-    const ProceduralMeshSettings settings = SanitizeProceduralMeshSettings(settings_);
-    out = {{"kind", TEXT::EnumToName(kProceduralMeshKindNames, settings.kind, "Box")},
-           {"width", settings.width},
-           {"height", settings.height},
-           {"depth", settings.depth},
-           {"segmentsX", settings.segmentsX},
-           {"segmentsY", settings.segmentsY},
-           {"segmentsZ", settings.segmentsZ},
-           {"sphereSlices", settings.sphereSlices},
-           {"sphereStacks", settings.sphereStacks},
-           {"doubleSided", settings.doubleSided},
-           {"generateTangents", settings.generateTangents},
-           {"uvTilesX", settings.uvTilesX},
-           {"uvTilesY", settings.uvTilesY},
-           {"cuts", WriteProceduralMeshCuts(settings.cuts)},
-           {"materialSelection", materialSelection_}};
+    // 丸い切り抜きは丸めを 1 回かけただけでは値が落ち着かない（2 回目で固定点になる）ので、保存は丸め直した値を書く。
+    const ProceduralMeshComponentSettings settings = NormalizeProceduralMeshSettings(settings_);
+    out = nlohmann::json::object();
+    JSONFIELDS::Write(out, settings, kProceduralMeshFields);
+    out["cuts"] = WriteProceduralMeshCuts(settings.cuts);
 }
 
 void ProceduralMeshComponent::Deserialize(const nlohmann::json& in) {
-    TEXT::TryParseEnum(kProceduralMeshKindNames, in.value("kind", std::string{}), settings_.kind);
-    settings_.width = in.value("width", settings_.width);
-    settings_.height = in.value("height", settings_.height);
-    settings_.depth = in.value("depth", settings_.depth);
-    settings_.segmentsX = in.value("segmentsX", settings_.segmentsX);
-    settings_.segmentsY = in.value("segmentsY", settings_.segmentsY);
-    settings_.segmentsZ = in.value("segmentsZ", settings_.segmentsZ);
-    settings_.sphereSlices = in.value("sphereSlices", settings_.sphereSlices);
-    settings_.sphereStacks = in.value("sphereStacks", settings_.sphereStacks);
-    settings_.doubleSided = in.value("doubleSided", settings_.doubleSided);
-    settings_.generateTangents = in.value("generateTangents", settings_.generateTangents);
-    settings_.uvTilesX = in.value("uvTilesX", settings_.uvTilesX);
-    settings_.uvTilesY = in.value("uvTilesY", settings_.uvTilesY);
-    settings_.cuts = ReadProceduralMeshCuts(in.value("cuts", nlohmann::json::array()));
-    materialSelection_ =
-        ASSETS::MATERIAL::CanonicalizeProceduralMaterialSelection(in.value("materialSelection", std::string{}));
-    settings_ = SanitizeProceduralMeshSettings(settings_);
+    ProceduralMeshComponentSettings decoded{};
+    JSONFIELDS::Read(in, decoded, kProceduralMeshFields);
+    if (const nlohmann::json* cuts = JSONREAD::FindMember(in, "cuts"); cuts != nullptr && !cuts->is_null()) {
+        if (!cuts->is_array()) {
+            throw std::runtime_error("cuts: expects an array");
+        }
+        decoded.cuts = ReadProceduralMeshCuts(*cuts);
+    }
+    settings_ = NormalizeProceduralMeshSettings(std::move(decoded));
     NotifyRenderStateDirty();
 }
+
+#if defined(HIKARI_WITH_EDITOR)
+void ProceduralMeshComponent::BuildInspector(IInspectorBuilder& builder) {
+    ProceduralMeshComponentSettings next = settings_;
+    if (InspectFields(builder, next, kProceduralMeshFields)) {
+        settings_ = NormalizeProceduralMeshSettings(std::move(next));
+        NotifyRenderStateDirty();
+    }
+}
+#endif
 
 const ProceduralMeshSettings& ProceduralMeshComponent::GetSettings() const noexcept { return settings_; }
 
 void ProceduralMeshComponent::SetSettings(const ProceduralMeshSettings& settings) {
     const ProceduralMeshSettings sanitized = SanitizeProceduralMeshSettings(settings);
-    if (settings_ == sanitized) {
+    if (static_cast<const ProceduralMeshSettings&>(settings_) == sanitized) {
         return;
     }
-    settings_ = sanitized;
+    static_cast<ProceduralMeshSettings&>(settings_) = sanitized;
     NotifyRenderStateDirty();
 }
 
-const std::string& ProceduralMeshComponent::GetMaterialSelection() const noexcept { return materialSelection_; }
+const std::string& ProceduralMeshComponent::GetMaterialSelection() const noexcept {
+    return settings_.materialSelection;
+}
 
 void ProceduralMeshComponent::SetMaterialSelection(std::string selection) {
-    selection = ASSETS::MATERIAL::CanonicalizeProceduralMaterialSelection(selection);
-    if (materialSelection_ == selection) {
+    if (settings_.materialSelection == selection) {
         return;
     }
-    materialSelection_ = std::move(selection);
+    settings_.materialSelection = std::move(selection);
     NotifyRenderStateDirty();
 }
 

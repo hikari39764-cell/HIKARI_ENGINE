@@ -47,6 +47,7 @@ public:
             WaterSurfaceComponent defaults{};
             defaults.Serialize(properties);
         };
+        water.fields = JSONFIELDS::Describe<WATER::WaterSurfaceSettings>(kWaterSurfaceFields);
         water.presentation =
             ComponentTypePresentation{"Water Surface", "Water", "Gerstner-driven water surface with runtime queries.",
                                       std::string(RuntimeFeatureIds::Water)};

@@ -12,11 +12,13 @@
 #include <utility>
 #include <vector>
 
+#include "Assets/HIKARI_AssetTypeEnum.h"
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/Sprite/HIKARI_SpriteAsset.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialAsset.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Core/HIKARI_JsonRead.h"
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Render3D/WorldSprite/HIKARI_WorldSpriteFrameSource.h"
@@ -27,27 +29,6 @@
 #include "Core/Numeric/HIKARI_NonZero.h"
 
 namespace HIKARI {
-
-namespace WorldSpriteComponentPropertyIds {
-inline constexpr char TextureAssetGuid[] = "textureAssetGuid";
-inline constexpr char SpriteAssetGuid[] = "spriteAssetGuid";
-inline constexpr char AnimationClip[] = "animationClip";
-inline constexpr char AnimationSpeed[] = "animationSpeed";
-inline constexpr char AnimationPaused[] = "animationPaused";
-inline constexpr char SizeExplicit[] = "sizeExplicit";
-inline constexpr char PivotExplicit[] = "pivotExplicit";
-inline constexpr char Visible[] = "visible";
-inline constexpr char FlipX[] = "flipX";
-inline constexpr char Size[] = "size";
-inline constexpr char PreserveAspect[] = "preserveAspect";
-inline constexpr char Facing[] = "facing";
-inline constexpr char Tint[] = "tint";
-inline constexpr char Opacity[] = "opacity";
-inline constexpr char Pivot[] = "pivot";
-inline constexpr char AlphaMode[] = "alphaMode";
-inline constexpr char AlphaCutoff[] = "alphaCutoff";
-inline constexpr char TransparentSortPriority[] = "transparentSortPriority";
-} // namespace WorldSpriteComponentPropertyIds
 
 struct WorldSpriteRenderProjection {
     AssetId textureAssetId{};
@@ -64,22 +45,135 @@ struct WorldSpriteRenderProjection {
     bool empty = false;
 };
 
+// シーンに保存する名前。
+inline constexpr TEXT::EnumName<RENDER3D::WORLD_SPRITES::WorldSpriteFacingMode> kWorldSpriteFacingNames[] = {
+    {RENDER3D::WORLD_SPRITES::WorldSpriteFacingMode::Fixed, "Fixed"},
+    {RENDER3D::WORLD_SPRITES::WorldSpriteFacingMode::CameraFacing, "CameraFacing"},
+    {RENDER3D::WORLD_SPRITES::WorldSpriteFacingMode::FixedYAxis, "FixedYAxis"},
+};
+inline constexpr TEXT::EnumName<RENDER3D::WORLD_SPRITES::WorldSpriteAlphaMode> kWorldSpriteAlphaModeNames[] = {
+    {RENDER3D::WORLD_SPRITES::WorldSpriteAlphaMode::Auto, "Auto"},
+    {RENDER3D::WORLD_SPRITES::WorldSpriteAlphaMode::Opaque, "Opaque"},
+    {RENDER3D::WORLD_SPRITES::WorldSpriteAlphaMode::Mask, "Mask"},
+    {RENDER3D::WORLD_SPRITES::WorldSpriteAlphaMode::Blend, "Blend"},
+};
+
+struct AuthoringFieldDescriptor;
+
+// 作者値（シーン文書の properties と同じ形）のうち、項目表（kWorldSpriteFields）で宣言できる項目。スプライト材質
+// （spriteMaterial）は材質アセットの束縛と上書きを持つので、部件が読み書きする。再生の状態（クリップ・速さ・一時停止）は
+// WorldSpritePlayer が持つので、保存と検査器はそこから写す（animationClip / animationSpeed / animationPaused の値は
+// 読み込み時に渡す初期値）。
+struct WorldSpriteSettings {
+    AssetGuid spriteAssetGuid{};
+    std::string animationClip{};
+    bool animationPaused = false;
+    float animationSpeed = 1.0f;
+    AssetGuid textureAssetGuid{};
+    bool pointSampling = false;
+    int atlasColumns = 1;
+    int atlasRows = 1;
+    int atlasFrames = 1;
+    float framesPerSecond = 0.0f;
+    bool visible = true;
+    bool flipX = false;
+    MATH::Vec2 size{1.0f, 1.0f};
+    // 作者が指定した大きさか。指定が無い間は、スプライトを結び付けた時にその大きさへ合わせる。
+    bool sizeExplicit = false;
+    bool sizeInitializedFromSprite = false;
+    bool preserveAspect = true;
+    RENDER3D::WORLD_SPRITES::WorldSpriteFacingMode facing =
+        RENDER3D::WORLD_SPRITES::WorldSpriteFacingMode::CameraFacing;
+    MATH::Vec3 tint{1.0f, 1.0f, 1.0f};
+    float opacity = 1.0f;
+    MATH::Vec2 pivot{0.5f, 0.5f};
+    // 作者が指定した軸心か。指定が無い間は、スプライトのフレームが持つ軸心を使う。
+    bool pivotExplicit = false;
+    RENDER3D::WORLD_SPRITES::WorldSpriteAlphaMode alphaMode = RENDER3D::WORLD_SPRITES::WorldSpriteAlphaMode::Auto;
+    float alphaCutoff = 0.5f;
+    int transparentSortPriority = 0;
+    bool lit = false;
+    bool castShadow = true;
+    bool receiveShadow = true;
+    float roughness = 0.85f;
+    float specular = 0.25f;
+
+    bool operator==(const WorldSpriteSettings&) const = default;
+};
+
+// animationClip の選択欄（kWorldSpriteFields の Draw）。結び付けたスプライト資産が持つクリップから選ぶ。
+bool DrawWorldSpriteClip(IInspectorBuilder& builder, const AuthoringFieldDescriptor& field, std::string& value,
+                         const WorldSpriteSettings& owner);
+
+inline constexpr auto kWorldSpriteFields = [](auto&& field) {
+    using S = WorldSpriteSettings;
+    using namespace JSONFIELDS;
+    constexpr auto animated = [](const S& s) { return s.spriteAssetGuid.IsValid(); };
+    constexpr auto plain = [](const S& s) { return !s.spriteAssetGuid.IsValid(); };
+
+    field("spriteAssetGuid", &S::spriteAssetGuid, Label{"Sprite animation"}, Help{"Hikari Sprite asset (.hsprite)."},
+          AssetRef{AssetType::Sprite}, Common{});
+    field("animationClip", &S::animationClip, Label{"Animation clip"}, Help{"Named clip from the bound sprite asset."},
+          Draw{&DrawWorldSpriteClip}, Show{animated}, Common{});
+    field("animationPaused", &S::animationPaused, Label{"Paused"}, Help{"Pause the current sprite clip."},
+          Show{animated}, Common{});
+    field("animationSpeed", &S::animationSpeed, Label{"Playback speed"}, Help{"Positive finite playback multiplier."},
+          Show{animated}, Common{});
+    field("textureAssetGuid", &S::textureAssetGuid, Label{"Texture"}, Help{"Texture displayed directly in 3D space."},
+          AssetRef{AssetType::Texture}, Show{plain}, Common{});
+    field("visible", &S::visible, Label{"Visible"}, Help{"Controls whether this World Sprite is rendered."}, Common{});
+    field("size", &S::size, Range{0.001, 100000.0}, Label{"Size"}, Help{"Width and height in world units."}, Common{});
+    field("tint", &S::tint, Range{0.0, 16.0}, Label{"Tint"}, Color{}, Help{"Linear color multiplier for the texture."},
+          Common{});
+    field("opacity", &S::opacity, Range{0.0, 1.0}, Label{"Opacity"}, Help{"Final sprite opacity."}, Common{});
+
+    field("flipX", &S::flipX, Label{"Flip X"}, Help{"Mirror sprite content horizontally around its pivot."});
+    field("preserveAspect", &S::preserveAspect, Label{"Preserve Aspect"},
+          Help{"Uses height and derives width from the texture aspect ratio."});
+    field("facing", &S::facing, kWorldSpriteFacingNames, Label{"Facing"},
+          Help{"Controls how the plane faces each render view."});
+    field("pointSampling", &S::pointSampling, Label{"Point sampling"}, Show{plain});
+    field("atlasColumns", &S::atlasColumns, Range{1.0, 64.0}, Label{"Atlas columns"}, Show{plain});
+    field("atlasRows", &S::atlasRows, Range{1.0, 64.0}, Label{"Atlas rows"}, Show{plain});
+    field("atlasFrames", &S::atlasFrames, Range{1.0, 4096.0}, Label{"Atlas frames"}, Show{plain});
+    field("framesPerSecond", &S::framesPerSecond, Range{0.0, 60.0}, Label{"Frames per second"}, Show{plain});
+
+    constexpr const char* kShading = "Shading";
+    field("lit", &S::lit, Label{"Lit surface"}, Help{"Receives scene lights, shadows and sky lighting."},
+          Group{kShading});
+    field("castShadow", &S::castShadow, Label{"Cast Shadow"},
+          Help{"Opaque and cutout pixels cast directional and local shadows; transparent fringes do not."},
+          Group{kShading});
+    field("receiveShadow", &S::receiveShadow, Label{"Receive Shadow"},
+          Help{"Apply scene shadow visibility to direct lighting."}, Group{kShading});
+    field("roughness", &S::roughness, Range{0.05, 1.0}, Label{"Roughness"}, Help{"Width of the reflected highlight."},
+          Group{kShading});
+    field("specular", &S::specular, Range{0.0, 1.0}, Label{"Specular"}, Group{kShading});
+
+    field("pivot", &S::pivot, Range{0.0, 1.0}, Label{"Pivot"},
+          Help{"Placement pivot in normalized texture coordinates."}, Advanced{});
+    field("alphaMode", &S::alphaMode, kWorldSpriteAlphaModeNames, Label{"Alpha Mode"},
+          Help{"Auto uses imported alpha diagnostics and anchors opaque coverage in depth while retaining soft "
+               "edges."},
+          Advanced{});
+    field("alphaCutoff", &S::alphaCutoff, Range{0.0, 1.0}, Label{"Alpha Cutoff"},
+          Help{"Pixels below this alpha value are discarded."},
+          Show{[](const S& s) { return s.alphaMode == RENDER3D::WORLD_SPRITES::WorldSpriteAlphaMode::Mask; }},
+          Advanced{});
+    field("transparentSortPriority", &S::transparentSortPriority, Range{-32768.0, 32767.0},
+          Label{"Transparent Sort Priority"}, Help{"Higher transparent priorities are drawn later."}, Advanced{});
+    field("sizeExplicit", &S::sizeExplicit, Label{"Size Explicit"}, Hidden{});
+    field("sizeInitializedFromSprite", &S::sizeInitializedFromSprite, Label{"Size Initialized From Sprite"}, Hidden{});
+    field("pivotExplicit", &S::pivotExplicit, Label{"Pivot Explicit"}, Hidden{});
+};
+
+// 範囲へ丸め、結び付けたスプライトがあれば貼り付けるテクスチャを外す。atlasFrames は格子の升の数まで。
+WorldSpriteSettings NormalizeWorldSpriteSettings(WorldSpriteSettings settings);
+
 class WorldSpriteComponent final : public IComponent, public IGeometryFitProvider {
 public:
     using FacingMode = RENDER3D::WORLD_SPRITES::WorldSpriteFacingMode;
     using AlphaMode = RENDER3D::WORLD_SPRITES::WorldSpriteAlphaMode;
-    // シーンに保存する名前。
-    static constexpr TEXT::EnumName<FacingMode> kFacingNames[] = {
-        {FacingMode::Fixed, "Fixed"},
-        {FacingMode::CameraFacing, "CameraFacing"},
-        {FacingMode::FixedYAxis, "FixedYAxis"},
-    };
-    static constexpr TEXT::EnumName<AlphaMode> kAlphaModeNames[] = {
-        {AlphaMode::Auto, "Auto"},
-        {AlphaMode::Opaque, "Opaque"},
-        {AlphaMode::Mask, "Mask"},
-        {AlphaMode::Blend, "Blend"},
-    };
 
     // Runtime-only mutations are composed against this complete value and
     // committed through ApplyRuntimeState. The component remains the
@@ -132,13 +226,13 @@ public:
     bool SetPlaybackSpeed(float speed) noexcept;
     bool RestartAnimation() noexcept;
     bool SeekAnimation(double timeMs) noexcept;
-    const AssetGuid& GetSpriteAssetGuid() const noexcept { return spriteAssetGuid_; }
+    const AssetGuid& GetSpriteAssetGuid() const noexcept { return settings_.spriteAssetGuid; }
     bool HasBoundSpriteAsset() const noexcept { return spritePlayer_.HasSpriteAsset(); }
     WorldSpriteAnimationState GetAnimationState() const noexcept;
     // Borrowed until the bound asset changes; no player mutation or asset reload.
     const SPRITE::SpriteClip* FindAnimationClip(std::string_view clipId) const noexcept;
     MATH::Vec2 GetEffectivePivot() const noexcept;
-    bool GetFlipX() const noexcept { return flipX_; }
+    bool GetFlipX() const noexcept { return settings_.flipX; }
     void SetFlipX(bool flipX) noexcept {
         RuntimeState state = GetRuntimeState();
         state.flipX = flipX;
@@ -146,14 +240,14 @@ public:
     }
     std::string_view GetAnimationClip() const noexcept {
         return spritePlayer_.HasSpriteAsset() ? std::string_view(spritePlayer_.GetClipName())
-                                              : std::string_view(animationClip_);
+                                              : std::string_view(settings_.animationClip);
     }
-    bool IsLit() const noexcept { return lit_; }
-    bool CastsShadow() const noexcept { return castShadow_; }
-    bool ReceivesShadow() const noexcept { return receiveShadow_; }
-    float GetRoughness() const noexcept { return roughness_; }
-    float GetSpecular() const noexcept { return specular_; }
-    bool UsesPointSampling() const noexcept { return spriteAssetGuid_.IsValid() || pointSampling_; }
+    bool IsLit() const noexcept { return settings_.lit; }
+    bool CastsShadow() const noexcept { return settings_.castShadow; }
+    bool ReceivesShadow() const noexcept { return settings_.receiveShadow; }
+    float GetRoughness() const noexcept { return settings_.roughness; }
+    float GetSpecular() const noexcept { return settings_.specular; }
+    bool UsesPointSampling() const noexcept { return settings_.spriteAssetGuid.IsValid() || settings_.pointSampling; }
     bool IsCanvasSourceOnly() const noexcept { return canvasSourceOnly_; }
     void SetCanvasSourceOnly(bool value) {
         if (canvasSourceOnly_ == value)
@@ -163,55 +257,55 @@ public:
     }
     std::string_view GetTypeName() const override { return "WorldSpriteComponent"; }
 
-    const AssetGuid& GetTextureAssetGuid() const noexcept { return textureAssetGuid_; }
+    const AssetGuid& GetTextureAssetGuid() const noexcept { return settings_.textureAssetGuid; }
 
     void SetTextureAssetGuid(AssetGuid guid);
 
-    bool IsVisible() const noexcept { return visible_; }
+    bool IsVisible() const noexcept { return settings_.visible; }
     void SetVisible(bool visible) {
         RuntimeState state = GetRuntimeState();
         state.visible = visible;
         (void)ApplyRuntimeState(state);
     }
 
-    const MATH::Vec2& GetSize() const noexcept { return size_; }
+    const MATH::Vec2& GetSize() const noexcept { return settings_.size; }
     void SetSize(MATH::Vec2 size) {
         RuntimeState state = GetRuntimeState();
         state.size = size;
         state.sizeExplicit = true;
         (void)ApplyRuntimeState(state);
-        sizeInitializedFromSprite_ = true;
+        settings_.sizeInitializedFromSprite = true;
     }
 
-    bool GetPreserveAspect() const noexcept { return preserveAspect_; }
+    bool GetPreserveAspect() const noexcept { return settings_.preserveAspect; }
     void SetPreserveAspect(bool preserve) {
         RuntimeState state = GetRuntimeState();
         state.preserveAspect = preserve;
         (void)ApplyRuntimeState(state);
     }
 
-    FacingMode GetFacingMode() const noexcept { return facing_; }
+    FacingMode GetFacingMode() const noexcept { return settings_.facing; }
     void SetFacingMode(FacingMode facing) {
         RuntimeState state = GetRuntimeState();
         state.facing = facing;
         (void)ApplyRuntimeState(state);
     }
 
-    const MATH::Vec3& GetTint() const noexcept { return tint_; }
+    const MATH::Vec3& GetTint() const noexcept { return settings_.tint; }
     void SetTint(MATH::Vec3 tint) {
         RuntimeState state = GetRuntimeState();
         state.tint = tint;
         (void)ApplyRuntimeState(state);
     }
 
-    float GetOpacity() const noexcept { return opacity_; }
+    float GetOpacity() const noexcept { return settings_.opacity; }
     void SetOpacity(float opacity) {
         RuntimeState state = GetRuntimeState();
         state.opacity = opacity;
         (void)ApplyRuntimeState(state);
     }
 
-    const MATH::Vec2& GetPivot() const noexcept { return pivot_; }
+    const MATH::Vec2& GetPivot() const noexcept { return settings_.pivot; }
     void SetPivot(MATH::Vec2 pivot) {
         RuntimeState state = GetRuntimeState();
         state.pivot = pivot;
@@ -219,21 +313,21 @@ public:
         (void)ApplyRuntimeState(state);
     }
 
-    AlphaMode GetAlphaMode() const noexcept { return alphaMode_; }
+    AlphaMode GetAlphaMode() const noexcept { return settings_.alphaMode; }
     void SetAlphaMode(AlphaMode mode) {
         RuntimeState state = GetRuntimeState();
         state.alphaMode = mode;
         (void)ApplyRuntimeState(state);
     }
 
-    float GetAlphaCutoff() const noexcept { return alphaCutoff_; }
+    float GetAlphaCutoff() const noexcept { return settings_.alphaCutoff; }
     void SetAlphaCutoff(float cutoff) {
         RuntimeState state = GetRuntimeState();
         state.alphaCutoff = cutoff;
         (void)ApplyRuntimeState(state);
     }
 
-    int GetTransparentSortPriority() const noexcept { return transparentSortPriority_; }
+    int GetTransparentSortPriority() const noexcept { return settings_.transparentSortPriority; }
 
     uint64_t GetStateRevision() const noexcept { return stateRevision_; }
 
@@ -245,54 +339,25 @@ public:
 
     RuntimeState GetRuntimeState() const noexcept {
         RuntimeState state{};
-        state.size = size_;
-        state.tint = tint_;
-        state.pivot = pivot_;
-        state.opacity = opacity_;
-        state.alphaCutoff = alphaCutoff_;
-        state.transparentSortPriority = transparentSortPriority_;
-        state.facing = facing_;
-        state.alphaMode = alphaMode_;
-        state.visible = visible_;
-        state.preserveAspect = preserveAspect_;
-        state.sizeExplicit = sizeExplicit_;
-        state.pivotExplicit = pivotExplicit_;
-        state.flipX = flipX_;
+        state.size = settings_.size;
+        state.tint = settings_.tint;
+        state.pivot = settings_.pivot;
+        state.opacity = settings_.opacity;
+        state.alphaCutoff = settings_.alphaCutoff;
+        state.transparentSortPriority = settings_.transparentSortPriority;
+        state.facing = settings_.facing;
+        state.alphaMode = settings_.alphaMode;
+        state.visible = settings_.visible;
+        state.preserveAspect = settings_.preserveAspect;
+        state.sizeExplicit = settings_.sizeExplicit;
+        state.pivotExplicit = settings_.pivotExplicit;
+        state.flipX = settings_.flipX;
         return state;
     }
 
     // Returns true only when the sanitized effective state changed. All
     // fields are assigned before the single dirty/revision notification.
-    bool ApplyRuntimeState(RuntimeState state) {
-        state.size = SanitizeSize(state.size);
-        state.tint = SanitizeColor(state.tint);
-        state.pivot = SanitizePivot(state.pivot);
-        state.opacity = MATH::ClampFinite(state.opacity, 1.0f, 0.0f, 1.0f);
-        state.alphaCutoff = MATH::ClampFinite(state.alphaCutoff, 0.5f, 0.0f, 1.0f);
-        state.transparentSortPriority = std::clamp(state.transparentSortPriority, -32768, 32767);
-        state.facing = SanitizeFacing(state.facing);
-        state.alphaMode = SanitizeAlphaMode(state.alphaMode);
-        if (HasSameRuntimeState(state)) {
-            return false;
-        }
-
-        size_ = state.size;
-        tint_ = state.tint;
-        pivot_ = state.pivot;
-        opacity_ = state.opacity;
-        alphaCutoff_ = state.alphaCutoff;
-        transparentSortPriority_ = state.transparentSortPriority;
-        facing_ = state.facing;
-        alphaMode_ = state.alphaMode;
-        visible_ = state.visible;
-        preserveAspect_ = state.preserveAspect;
-        sizeExplicit_ = state.sizeExplicit;
-        pivotExplicit_ = state.pivotExplicit;
-        flipX_ = state.flipX;
-        sizeInitializedFromSprite_ = sizeInitializedFromSprite_ || state.sizeExplicit;
-        NotifyRenderStateDirty();
-        return true;
-    }
+    bool ApplyRuntimeState(const RuntimeState& state);
 
     bool QueryGeometryFit(GeometryFitDesc& outFit) const noexcept override {
         try {
@@ -319,45 +384,11 @@ public:
 
     void Deserialize(const nlohmann::json& in) override;
 
+#if defined(HIKARI_WITH_EDITOR)
     void BuildInspector(IInspectorBuilder& builder) override;
+#endif
 
 private:
-    static MATH::Vec2 SanitizeSize(MATH::Vec2 value) noexcept {
-        value.x = MATH::ClampFinite(value.x, 1.0f, 0.001f, 100000.0f);
-        value.y = MATH::ClampFinite(value.y, 1.0f, 0.001f, 100000.0f);
-        return value;
-    }
-
-    static MATH::Vec2 SanitizePivot(MATH::Vec2 value) noexcept {
-        value.x = MATH::ClampFinite(value.x, 0.5f, 0.0f, 1.0f);
-        value.y = MATH::ClampFinite(value.y, 0.5f, 0.0f, 1.0f);
-        return value;
-    }
-
-    static MATH::Vec3 SanitizeColor(MATH::Vec3 value) noexcept {
-        value.x = MATH::ClampFinite(value.x, 1.0f, 0.0f, 16.0f);
-        value.y = MATH::ClampFinite(value.y, 1.0f, 0.0f, 16.0f);
-        value.z = MATH::ClampFinite(value.z, 1.0f, 0.0f, 16.0f);
-        return value;
-    }
-
-    static FacingMode SanitizeFacing(FacingMode mode) noexcept {
-        return TEXT::IsNamedEnum(kFacingNames, mode) ? mode : FacingMode::CameraFacing;
-    }
-
-    static AlphaMode SanitizeAlphaMode(AlphaMode mode) noexcept {
-        return TEXT::IsNamedEnum(kAlphaModeNames, mode) ? mode : AlphaMode::Auto;
-    }
-
-    bool HasSameRuntimeState(const RuntimeState& state) const noexcept {
-        return size_.x == state.size.x && size_.y == state.size.y && tint_.x == state.tint.x &&
-               tint_.y == state.tint.y && tint_.z == state.tint.z && pivot_.x == state.pivot.x &&
-               pivot_.y == state.pivot.y && opacity_ == state.opacity && alphaCutoff_ == state.alphaCutoff &&
-               transparentSortPriority_ == state.transparentSortPriority && facing_ == state.facing &&
-               alphaMode_ == state.alphaMode && visible_ == state.visible && preserveAspect_ == state.preserveAspect &&
-               sizeExplicit_ == state.sizeExplicit && pivotExplicit_ == state.pivotExplicit && flipX_ == state.flipX;
-    }
-
     void NotifyRenderStateDirty() {
         NUMERIC::AdvanceNonZero(stateRevision_);
         IComponent::NotifyRenderStateDirty();
@@ -369,29 +400,12 @@ private:
     void DeserializeMaterialState(const nlohmann::json& node);
     void BuildMaterialInspector(IInspectorBuilder& builder);
 
-    void SanitizePresentation() noexcept;
-    int atlasColumns_ = 1, atlasRows_ = 1, atlasFrames_ = 1;
-    float framesPerSecond_ = 0, roughness_ = 0.85f, specular_ = 0.25f;
-    bool lit_ = false, pointSampling_ = false;
-    bool castShadow_ = true, receiveShadow_ = true;
-    AssetGuid textureAssetGuid_{};
-    AssetGuid spriteAssetGuid_{};
-    std::string animationClip_{};
+    // 保存と検査器に出す値。再生の状態は player が持つので、そこから写す。
+    WorldSpriteSettings Snapshot() const;
+    void ApplyInspectorEdit(IInspectorBuilder& builder, const WorldSpriteSettings& before, WorldSpriteSettings next);
+
+    WorldSpriteSettings settings_{};
     WorldSpritePlayer spritePlayer_{};
-    MATH::Vec2 size_{1.0f, 1.0f};
-    MATH::Vec3 tint_{1.0f, 1.0f, 1.0f};
-    MATH::Vec2 pivot_{0.5f, 0.5f};
-    float opacity_ = 1.0f;
-    float alphaCutoff_ = 0.5f;
-    int transparentSortPriority_ = 0;
-    FacingMode facing_ = FacingMode::CameraFacing;
-    AlphaMode alphaMode_ = AlphaMode::Auto;
-    bool visible_ = true;
-    bool preserveAspect_ = true;
-    bool sizeExplicit_ = false;
-    bool pivotExplicit_ = false;
-    bool sizeInitializedFromSprite_ = false;
-    bool flipX_ = false;
     uint64_t stateRevision_ = 1u;
     AssetGuid materialAssetGuid_{};
     std::shared_ptr<const SPRITE::SpriteMaterialBinding> materialBinding_{};
@@ -400,8 +414,6 @@ private:
     bool materialEnabled_ = false;
     uint64_t materialStateRevision_ = 1u;
     std::string materialDiagnostic_{};
-
-private:
     bool canvasSourceOnly_ = false;
 };
 

@@ -16,11 +16,12 @@
 //   Group                    同じ Group の項目を 1 つの節にまとめる（続けて宣言する）
 //   Common / Advanced        先頭に出す / 閉じた "Advanced" 節に入れる
 //   ReadOnly / Color         読み取り専用 / Vec3 を色として編集する
+//   Hidden                   検査器に出さない（保存・読み取り・説明には出る。内部の印や、どの機能も使わない保存項目）
 //   AssetRef{AssetType::X}   資産参照（GUID の文字列か AssetGuid）
 //   ObjectRef                物体参照（SceneObjectId。HIKARI_SceneObjectJson.h の to_json / from_json で保存する）
 //   EventRef / VariableRef   実行時イベント / 実行時変数の ID（std::string）。検査器は選択欄を出す
 //   Show{[](const S& s) {}}  項目を出す条件
-//   Elements{表}             std::vector<構造体> の要素の項目表
+//   Elements{表}             std::vector<構造体> / std::array<構造体, N> の要素の項目表
 //   Nested{表}               入れ子の構造体の項目表
 //   Draw{fn}                 項目 1 つの編集欄を自前で描く（唯一の逃げ道。下を参照）
 //
@@ -51,6 +52,7 @@ struct Group {
 struct Common {};
 struct Advanced {};
 struct ReadOnly {};
+struct Hidden {};
 struct Color {};
 struct ObjectRef {};
 // 検査器は RuntimeEventIdPicker（ペイロードは問わない）と RuntimeVariableIdPicker（全ての値型を許す）で選ばせる。
@@ -151,6 +153,7 @@ struct Meta {
     bool common = false;
     bool advanced = false;
     bool readOnly = false;
+    bool hidden = false;
     bool color = false;
     bool hasRange = false;
     Range range{};
@@ -175,6 +178,7 @@ inline void Collect(Meta& meta, const Group& option) { meta.group = option.text;
 inline void Collect(Meta& meta, const Common&) { meta.common = true; }
 inline void Collect(Meta& meta, const Advanced&) { meta.advanced = true; }
 inline void Collect(Meta& meta, const ReadOnly&) { meta.readOnly = true; }
+inline void Collect(Meta& meta, const Hidden&) { meta.hidden = true; }
 inline void Collect(Meta& meta, const Color&) { meta.color = true; }
 template <class Asset>
 void Collect(Meta& meta, const AssetRef<Asset>& option) {

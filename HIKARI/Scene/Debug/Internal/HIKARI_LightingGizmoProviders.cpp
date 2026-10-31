@@ -202,22 +202,19 @@ void DrawReflectionProbe(const GameObject& object, const ComponentGizmoDrawConte
         return;
     }
     const bool selected = object.GetDocumentId() == context.selectedObjectId;
-    const bool projectionSelected =
-        selected && (probe->GetProjectionFollowsInfluence() ||
-                     probe->GetViewportBoundsTarget() == ReflectionProbeViewportBoundsTarget::Projection);
-    const bool influenceSelected = selected && (!projectionSelected || probe->GetProjectionFollowsInfluence());
+    const bool projectionSelected = selected && probe->GetProjectionFollowsInfluence();
     const MATH::Mat4 world = BuildTranslationOnlyWorld(object);
     SubmitProbeCenter(MATH::TransformPoint(world, {}), selected);
     if (probe->GetInfluenceShape() == ReflectionProbeInfluenceShape::Box) {
         DRAW::SubmitStyledBox(world, probe->GetInfluenceBoxOffset(), probe->GetInfluenceBoxSize(),
-                              kReflectionProbeColor, influenceSelected);
+                              kReflectionProbeColor, selected);
 
         const MATH::Vec3 innerSize = BuildInnerBoxSize(probe->GetInfluenceBoxSize(), probe->GetBlendDistance());
         if (probe->GetBlendDistance() > 0.001f && HasDrawableBoxSize(innerSize)) {
             DRAW::SubmitStyledBox(world, probe->GetInfluenceBoxOffset(), innerSize, kReflectionBlendCoreColor, false);
         }
     } else {
-        SubmitSphereBoundary(world, probe->GetRadius(), kReflectionProbeColor, influenceSelected);
+        SubmitSphereBoundary(world, probe->GetRadius(), kReflectionProbeColor, selected);
         const float innerRadius = probe->GetRadius() - probe->GetBlendDistance();
         if (probe->GetBlendDistance() > 0.001f) {
             SubmitSphereBoundary(world, innerRadius, kReflectionBlendCoreColor, false);
