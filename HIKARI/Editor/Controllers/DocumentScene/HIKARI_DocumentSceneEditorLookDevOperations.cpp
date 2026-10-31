@@ -6,6 +6,7 @@
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Workspaces/LookDev/HIKARI_LookDevArrange.h"
 #include "Editor/Workspaces/LookDev/HIKARI_LookDevShapeHandles.h"
+#include "Render3D/Debug/HIKARI_RenderDebugView.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -146,6 +147,20 @@ void DocumentSceneEditorController::RegisterLookDevOperations() {
         }};
     solo.permission = EDITOR::EditorOperationPermission::ModifyEditorState;
     operationRegistry_.Register(std::move(solo), EDITOR::EditorOperationKind::Session, false);
+    EDITOR::EditorOperationDefinition debugView{
+        "view.debug",
+        "Switch the editor viewport's debug view (lit restores the normal image). Editor view state: not saved and "
+        "not undoable.",
+        "scene",
+        {{"mode", EditorOperationParameterType::String, true, "Debug view name; lit is the normal image",
+          EnumSchema(kRenderDebugViewNames)}},
+        [this](const nlohmann::json& p) {
+            const std::string mode = p.at("mode").get<std::string>();
+            context_.viewportDebug.renderView = TEXT::ParseEnum(kRenderDebugViewNames, mode, RenderDebugView::None);
+            return EDITOR::OperationOk("Debug view: " + mode + ".", {{"mode", mode}});
+        }};
+    debugView.permission = EDITOR::EditorOperationPermission::ModifyEditorState;
+    operationRegistry_.Register(std::move(debugView), EDITOR::EditorOperationKind::Session, false);
 }
 
 } // namespace HIKARI

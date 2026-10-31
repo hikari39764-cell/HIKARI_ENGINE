@@ -8,6 +8,7 @@
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/Collision/HIKARI_ModelCollisionSetup.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
+#include "Editor/Commands/HIKARI_EditorOperationValue.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionWorkspaceController.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
@@ -82,7 +83,7 @@ void RegisterModelCollisionOperations(EditorOperationRegistry& registry, ModelCo
             "model_collision",
             {
                 EditorOperationParameter{"modelGuid", EditorOperationParameterType::String, true,
-                                         "模型资产 guid（asset.query 可查）"},
+                                         "模型资产：GUID（asset.query 可查）或项目路径"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -91,12 +92,8 @@ void RegisterModelCollisionOperations(EditorOperationRegistry& registry, ModelCo
                     return result;
                 }
                 const std::string guidText = parameters.value("modelGuid", std::string{});
-                const AssetGuid guid{guidText};
-                if (!guid.IsValid()) {
-                    return OperationFailure("MISSING_FIELD", "缺少 modelGuid 字段。");
-                }
-                const AssetRecord* record = scene->GetAssetDatabase().FindByGuid(guid);
-                if (record == nullptr || record->type != AssetType::Model) {
+                const AssetRecord* record = FindOperationAsset(scene->GetAssetDatabase(), guidText, AssetType::Model);
+                if (record == nullptr) {
                     result.code = "ASSET_NOT_FOUND";
                     result.message = "找不到该模型资产：" + guidText;
                     result.hints = {
@@ -104,6 +101,7 @@ void RegisterModelCollisionOperations(EditorOperationRegistry& registry, ModelCo
                     };
                     return result;
                 }
+                const AssetGuid guid = record->guid;
                 if (controller.IsDocumentDirty()) {
                     result.code = "PENDING_CONFIRMATION";
                     result.message = "当前碰撞设置未保存，打开新模型会丢弃未保存修改；"

@@ -1,5 +1,7 @@
 #include "Render3D/Settings/HIKARI_RenderQualityProfileStore.h"
 
+#include <system_error>
+
 #include <json.hpp>
 
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
@@ -42,6 +44,19 @@ bool LoadRenderQualityProfile(const std::filesystem::path& projectRoot, RenderQu
 bool SaveRenderQualityProfile(const std::filesystem::path& projectRoot, const RenderQualitySettings& settings,
                               std::string* errorMessage) {
     const std::filesystem::path path = RenderQualityProfilePath(projectRoot);
+    // 読めない档案（手で壊した等）は上書きしない。その時の画質は既定値なので、書くと元の設定が消える。
+    std::error_code existsError;
+    if (std::filesystem::exists(path, existsError)) {
+        RenderQualitySettings existing{};
+        std::string readError{};
+        if (!LoadRenderQualityProfile(projectRoot, existing, &readError)) {
+            if (errorMessage != nullptr) {
+                *errorMessage = (readError.empty() ? "Could not read " + path.string() + "." : readError) +
+                                " The file was not overwritten; fix or delete it.";
+            }
+            return false;
+        }
+    }
     const nlohmann::json root{
         {"version", 1u},
         {"renderQuality", SerializeRenderQualitySettings(settings)},

@@ -7,6 +7,7 @@
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
+#include "Editor/Commands/HIKARI_EditorOperationValue.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialAssetOperations.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
@@ -43,21 +44,17 @@ bool RequireEditingModel(const ModelMaterialWorkspaceController& controller, Edi
 
 bool ResolveAssetGuid(const nlohmann::json& parameters, AssetType expectedType, DocumentSceneBase* scene,
                       const char* field, AssetGuid& outGuid, EditorOperationResult& result) {
-    outGuid.value = parameters.value(field, std::string{});
-    if (!outGuid.IsValid()) {
-        result.code = "MISSING_FIELD";
-        result.message = std::string("缺少 ") + field + " 字段。";
-        return false;
-    }
-    const AssetRecord* record = scene->GetAssetDatabase().FindByGuid(outGuid);
-    if (record == nullptr || record->type != expectedType) {
+    const std::string text = parameters.value(field, std::string{});
+    const AssetRecord* record = FindOperationAsset(scene->GetAssetDatabase(), text, expectedType);
+    if (record == nullptr) {
         result.code = "ASSET_NOT_FOUND";
-        result.message = std::string("找不到 ") + field + " 对应资产：" + outGuid.value;
+        result.message = std::string("找不到 ") + field + " 对应资产：" + text;
         result.hints = {
             "先用 material.list_assets 查询可用资产 guid。",
         };
         return false;
     }
+    outGuid = record->guid;
     return true;
 }
 
@@ -123,7 +120,7 @@ void RegisterModelMaterialOperations(EditorOperationRegistry& registry, ModelMat
             "model_material",
             {
                 EditorOperationParameter{"modelGuid", EditorOperationParameterType::String, true,
-                                         "模型资产 guid（asset.query 可查）"},
+                                         "模型资产：GUID（asset.query 可查）或项目路径"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -161,7 +158,8 @@ void RegisterModelMaterialOperations(EditorOperationRegistry& registry, ModelMat
             "Open a Material asset in the Model Material workspace in the background.",
             "model_material",
             {
-                EditorOperationParameter{"materialGuid", EditorOperationParameterType::String, true, "材质资产 guid"},
+                EditorOperationParameter{"materialGuid", EditorOperationParameterType::String, true,
+                                         "材质资产：GUID 或项目路径"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -239,7 +237,7 @@ void RegisterModelMaterialOperations(EditorOperationRegistry& registry, ModelMat
                 EditorOperationParameter{"materialIndex", EditorOperationParameterType::Int, true,
                                          "model.list_slots 返回的 materialIndex"},
                 EditorOperationParameter{"materialAssetGuid", EditorOperationParameterType::String, true,
-                                         "material.list_assets 返回的 guid"},
+                                         "材质资产：GUID（material.list_assets 可查）或项目路径"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};

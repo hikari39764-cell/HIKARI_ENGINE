@@ -3,6 +3,7 @@
 #include "Assets/Models/HIKARI_ModelBounds.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
+#include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Authoring/HIKARI_SceneObjectObservation.h"
@@ -54,7 +55,7 @@ constexpr TEXT::EnumName<CORE::LogLevel> kLogLevelNames[] = {
     {CORE::LogLevel::D3D12, "d3d12"},
 };
 
-nlohmann::json Vec3Json(const MATH::Vec3& value) { return nlohmann::json::array({value.x, value.y, value.z}); }
+namespace JsonMath = SERIALIZATION::JSON::MATH;
 
 bool ReadVec3Parameter(const nlohmann::json& parameters, const char* key, MATH::Vec3& outValue) {
     const auto found = parameters.find(key);
@@ -415,12 +416,14 @@ void DocumentSceneEditorController::RegisterPlayOperations() {
                      break;
                  }
                  const auto world = object->GetTransform().GetWorldMatrix();
-                 nlohmann::json entry{{"objectId", id.value},
-                                      {"name", object->GetName()},
-                                      {"worldPosition", Vec3Json({world.m[3][0], world.m[3][1], world.m[3][2]})}};
+                 nlohmann::json entry{
+                     {"objectId", id.value},
+                     {"name", object->GetName()},
+                     {"worldPosition", JsonMath::ToJsonArray(MATH::Vec3{world.m[3][0], world.m[3][1], world.m[3][2]})}};
                  if (const Bounds bounds = EDITOR::ObserveSceneObjectBounds(*aiOperationScene_, id);
                      BOUNDS::IsUsable(bounds))
-                     entry["worldBounds"] = {{"min", Vec3Json(bounds.min)}, {"max", Vec3Json(bounds.max)}};
+                     entry["worldBounds"] = {{"min", JsonMath::ToJsonArray(bounds.min)},
+                                             {"max", JsonMath::ToJsonArray(bounds.max)}};
                  nlohmann::json components = nlohmann::json::array();
                  for (const auto& component : object->GetComponents())
                      components.push_back(std::string(component->GetTypeName()));
@@ -429,8 +432,8 @@ void DocumentSceneEditorController::RegisterPlayOperations() {
                      nlohmann::json shapes = nlohmann::json::array();
                      for (const ResolvedColliderShape& shape : collider->ResolveShapes())
                          shapes.push_back({{"shape", TEXT::EnumToName(kColliderShapeTypeNames, shape.type, "Box")},
-                                           {"center", Vec3Json(shape.center)},
-                                           {"size", Vec3Json(shape.size)},
+                                           {"center", JsonMath::ToJsonArray(shape.center)},
+                                           {"size", JsonMath::ToJsonArray(shape.size)},
                                            {"radius", shape.radius},
                                            {"height", shape.height}});
                      entry["colliderShapes"] = std::move(shapes);
@@ -474,8 +477,8 @@ void DocumentSceneEditorController::RegisterPlayOperations() {
              if (!physics->Raycast(query, hit))
                  return EDITOR::OperationOk("No hit.", {{"hit", false}});
              nlohmann::json data{{"hit", true},
-                                 {"position", Vec3Json(hit.position)},
-                                 {"normal", Vec3Json(hit.normal)},
+                                 {"position", JsonMath::ToJsonArray(hit.position)},
+                                 {"normal", JsonMath::ToJsonArray(hit.normal)},
                                  {"distance", hit.distance},
                                  {"isTrigger", hit.isTrigger}};
              if (const GameObject* object = world.FindObject(hit.object)) {

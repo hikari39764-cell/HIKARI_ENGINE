@@ -22,14 +22,9 @@ RenderResolution ClampResolution(RenderResolution resolution) {
 RenderQualitySettings& GetRenderQualitySettings() { return gRenderQualitySettings; }
 
 RenderQualitySettings NormalizeRenderQualitySettings(RenderQualitySettings settings) {
-    settings.viewportScale = std::clamp(settings.viewportScale, 0.25f, 2.0f);
-    settings.taaHistoryWeight = std::clamp(settings.taaHistoryWeight, 0.0f, 0.97f);
-    settings.taaVarianceClipGamma = std::clamp(settings.taaVarianceClipGamma, 0.0f, 4.0f);
-    settings.taaDepthRejection = std::clamp(settings.taaDepthRejection, 0.0001f, 0.05f);
-    settings.taaLuminanceRejection = std::clamp(settings.taaLuminanceRejection, 0.05f, 4.0f);
-    settings.taaSharpness = std::clamp(settings.taaSharpness, 0.0f, 1.0f);
+    // 数値の範囲は項目表の Range（入れ子の太陽の影も同じ表）。
+    settings = JSONFIELDS::Sanitize(settings, kRenderQualitySettingsFields);
     DirectionalShadowQualitySettings& shadow = settings.directionalShadow;
-    shadow = JSONFIELDS::Sanitize(shadow, kDirectionalShadowFields);
     shadow.farPlane = (std::max)(shadow.farPlane, shadow.nearPlane + 1.0f);
     // 表に無い値は既定へ戻す。窓の大きさは固定の大きさだけ（視口の大きさは場面の解像度だけが取る）。
     const auto named = [](auto& value, const auto& names, auto fallback) {
@@ -47,8 +42,6 @@ RenderQualitySettings NormalizeRenderQualitySettings(RenderQualitySettings setti
     named(settings.antiAliasingMode, kRenderAntiAliasingModeNames, RenderAntiAliasingMode::Off);
     named(settings.dlssQualityMode, kDlssQualityModeNames, DlssQualityMode::Quality);
     named(settings.frameGenerationMode, kRenderFrameGenerationModeNames, RenderFrameGenerationMode::Off);
-    settings.frameGenerationMultiplier =
-        static_cast<uint8_t>(std::clamp(static_cast<int>(settings.frameGenerationMultiplier), 2, 6));
     named(settings.volumetricLightingQuality, kVolumetricLightingQualityNames, VolumetricLightingQuality::Balanced);
     named(settings.depthOfFieldQuality, kDepthOfFieldQualityNames, DepthOfFieldQuality::Medium);
     named(settings.motionBlurQuality, kMotionBlurQualityNames, MotionBlurQuality::Medium);

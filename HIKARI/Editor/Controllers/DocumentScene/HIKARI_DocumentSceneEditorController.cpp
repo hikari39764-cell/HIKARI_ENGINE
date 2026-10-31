@@ -167,6 +167,7 @@ DocumentSceneEditorController::DocumentSceneEditorController() {
     RegisterAgentOperations();
     RegisterProjectOperations();
     RegisterPlayOperations();
+    RegisterPlaybackOperations();
     EDITOR::RegisterVfxAuthoringSessions(authoringSessions_, workspaceHost_, [this] { return aiOperationScene_; });
     EDITOR::RegisterMaterialAuthoringSessions(authoringSessions_, workspaceHost_, [this] { return aiOperationScene_; });
     EDITOR::RegisterDocumentAuthoringSessions(authoringSessions_, workspaceHost_, [this] { return aiOperationScene_; });

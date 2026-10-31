@@ -7,6 +7,7 @@
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Environment/HIKARI_EnvironmentAssetOperations.h"
 #include "Editor/Projects/HIKARI_EditorProjectSession.h"
+#include "Editor/Tools/Console/HIKARI_ConsoleVariables.h"
 #include "Editor/Quality/HIKARI_GlobalPostOperations.h"
 #include "Editor/RenderStyle/HIKARI_RenderStyleOperations.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineOperations.h"
@@ -164,6 +165,7 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
     RegisterSceneFolderOperations();
     RegisterSceneLayoutOperations();
     RegisterLookDevOperations();
+    EDITOR::RegisterConsoleVariableOperations(operationRegistry_);
     EDITOR::RegisterProjectCodeOperations(
         operationRegistry_, projectCodeJob_, [this]() -> EDITOR::EditorOperationResult {
             if (aiProjectSession_ == nullptr || aiOperationScene_ == nullptr || !projectBuildAllowed_)
@@ -422,7 +424,7 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
         {"gameplay_camera.bind",
          "Bind a saved camera profile to scene targets, creating a camera when cameraId is zero. Includes scene undo and sets the default gameplay camera.",
          "scene",
-         {{"assetGuid", EditorOperationParameterType::String, true, "Gameplay camera asset GUID"},
+         {{"assetGuid", EditorOperationParameterType::String, true, "Gameplay camera asset: GUID or project path"},
           {"cameraId", EditorOperationParameterType::Int, false, "Existing camera or zero to create"},
           {"targetId", EditorOperationParameterType::Int, true, "Follow target scene object ID"},
           {"lookTargetId", EditorOperationParameterType::Int, false, "Optional lock target ID"},

@@ -9,6 +9,7 @@
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Core/Text/HIKARI_ParseNumber.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
+#include "Editor/Commands/HIKARI_EditorOperationValue.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineWorkspaceController.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
@@ -170,7 +171,8 @@ void RegisterAnimationStateMachineOperations(EditorOperationRegistry& registry,
             "Open an Animation State Machine asset in the background.",
             "animation_state_machine",
             {
-                EditorOperationParameter{"assetGuid", EditorOperationParameterType::String, true, "状态机资产 guid"},
+                EditorOperationParameter{"assetGuid", EditorOperationParameterType::String, true,
+                                         "状态机资产：GUID 或项目路径"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -179,12 +181,9 @@ void RegisterAnimationStateMachineOperations(EditorOperationRegistry& registry,
                     return result;
                 }
                 const std::string guidText = parameters.value("assetGuid", std::string{});
-                const AssetGuid guid{guidText};
-                if (!guid.IsValid()) {
-                    return OperationFailure("MISSING_FIELD", "缺少 assetGuid 字段。");
-                }
-                const AssetRecord* record = scene->GetAssetDatabase().FindByGuid(guid);
-                if (record == nullptr || record->type != AssetType::AnimationStateMachine) {
+                const AssetRecord* record =
+                    FindOperationAsset(scene->GetAssetDatabase(), guidText, AssetType::AnimationStateMachine);
+                if (record == nullptr) {
                     result.code = "ASSET_NOT_FOUND";
                     result.message = "找不到该状态机资产：" + guidText;
                     result.hints = {
@@ -193,6 +192,7 @@ void RegisterAnimationStateMachineOperations(EditorOperationRegistry& registry,
                     };
                     return result;
                 }
+                const AssetGuid guid = record->guid;
                 std::string message;
                 if (controller.OpenAsset(scene->GetAssetDatabase(), guid, message)) {
                     result.ok = true;

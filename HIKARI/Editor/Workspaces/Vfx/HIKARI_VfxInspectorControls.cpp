@@ -8,6 +8,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
+#include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxEditorValue.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include "Core/Text/HIKARI_Localization.h"
@@ -19,7 +20,7 @@ namespace HIKARI::EDITOR {
 std::string VfxUiText(std::string_view text) { return TEXT::LocalizeSourceText("ui.vfx.text.", text); }
 namespace {
 
-nlohmann::json Vec3Json(const MATH::Vec3& value) { return nlohmann::json::array({value.x, value.y, value.z}); }
+namespace JsonMath = SERIALIZATION::JSON::MATH;
 
 nlohmann::json Vec4Json(const MATH::Vec4& value) { return nlohmann::json::array({value.x, value.y, value.z, value.w}); }
 
@@ -81,7 +82,7 @@ void VfxInspectorPropertyEditor::Vec3(const char* label, std::string_view proper
                                       float speed) {
     MATH::Vec3 edited = value;
     if (DragNumbers(VfxUiText(label).c_str(), &edited.x, 3, {.step = speed})) {
-        Set(propertyId, Vec3Json(edited), true);
+        Set(propertyId, JsonMath::ToJsonArray(edited), true);
     }
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         controller_.SealPropertyEdit();

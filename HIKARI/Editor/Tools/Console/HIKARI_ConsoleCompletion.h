@@ -16,6 +16,7 @@ class RuntimeDebugService;
 namespace HIKARI::EDITOR {
 
 class EditorOperationRegistry;
+struct EditorOperationParameter;
 
 // 候補と説明の出どころ。実行時コマンドは World が無ければ nullptr。
 struct ConsoleSources {
@@ -23,10 +24,11 @@ struct ConsoleSources {
     const RUNTIME::RuntimeDebugService* service = nullptr;
 };
 
-// コマンド名の補完と、入力欄の上に出す候補・引数の説明。候補は入力が変わった時だけ作り直す。
+// コマンド名と引数の値の補完、入力欄の上に出す候補・引数の説明。候補は入力が変わった時だけ作り直す。
+// 値の補完は、最後の語が当たる引数の schema が文字列の enum を持つ時だけ（実行時コマンドの引数は補完しない）。
 class ConsoleCompletion {
 public:
-    // Tab 一回分。入力欄に入れる文字列を返す（候補が無ければ空）。
+    // Tab 一回分。入力欄に入れる文字列を返す（候補が無ければ空）。置き換えるのは最後の語だけで、手前は入力のまま。
     // 候補が複数ならまず全候補に共通する部分まで補い、それ以上伸びなければ候補を順に入れる。
     std::string Complete(const ConsoleSources& sources, std::string_view text);
     // 名前を打っている間は候補を、名前が決まった後はその操作の引数を、入力欄の真上に重ねる。
@@ -48,9 +50,13 @@ private:
         bool required = false;
     };
 
+    static HintRow ParameterRow(const EditorOperationParameter& parameter);
+
     void Update(const ConsoleSources& sources, std::string_view text);
+    void CollectValueCandidates(const ConsoleSources& sources, std::string_view text);
     void RefreshOperationNames(const EditorOperationRegistry& operations);
     std::vector<HintRow> BuildHintRows(const ConsoleSources& sources, std::string_view text) const;
+    void AppendCandidateRows(std::vector<HintRow>& rows) const;
     std::string CommonPrefix() const;
 
     // 人に見える操作の名前と要約。登録表の版が変わった時だけ作り直す。
@@ -60,6 +66,10 @@ private:
     std::string candidateQuery_{};
     std::string appliedText_{};
     std::vector<Candidate> candidates_{};
+    // 候補が置き換える最後の語の先頭（candidateQuery_ の何バイト目か）。名前の補完では 0。
+    size_t wordBegin_ = 0;
+    // 値の候補を出している時の、その引数の行。
+    std::optional<HintRow> valueHeader_{};
     std::optional<size_t> completionIndex_{};
 };
 

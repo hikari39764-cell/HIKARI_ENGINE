@@ -4,8 +4,9 @@
 #include <cstdlib>
 
 #include "Core/HIKARI_Logger.h"
+#include "Core/Serialization/Json/HIKARI_JsonFieldPath.h"
 #include "Core/Text/HIKARI_UtfPath.h"
-#include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
+#include "Render3D/Settings/HIKARI_RenderQualityFields.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 
 namespace HIKARI::EDITOR {
@@ -47,29 +48,10 @@ void EditorQualitySchedule::Apply(uint64_t frame) {
         if (entry.applied || frame < entry.frame)
             continue;
         entry.applied = true;
-        nlohmann::json settings = RENDER3D::SerializeRenderQualitySettings(RENDER3D::GetRenderQualitySettings());
-        nlohmann::json* node = &settings;
-        size_t begin = 0;
-        while (node != nullptr) {
-            const size_t dot = entry.key.find('.', begin);
-            const std::string name =
-                entry.key.substr(begin, dot == std::string::npos ? std::string::npos : dot - begin);
-            if (!node->is_object() || !node->contains(name)) {
-                node = nullptr;
-                break;
-            }
-            node = &(*node)[name];
-            if (dot == std::string::npos)
-                break;
-            begin = dot + 1;
-        }
         RENDER3D::RenderQualitySettings next = RENDER3D::GetRenderQualitySettings();
         std::string error;
-        if (node != nullptr)
-            *node = entry.value;
-        if (node == nullptr || !RENDER3D::DeserializeRenderQualitySettings(settings, next, &error)) {
-            HIKARI_LOG_ERROR("[QualitySchedule] frame " + std::to_string(frame) + ": cannot set " + entry.key + " " +
-                             error);
+        if (!JSONFIELDS::SetField(next, RENDER3D::kRenderQualitySettingsFields, entry.key, entry.value, error)) {
+            HIKARI_LOG_ERROR("[QualitySchedule] frame " + std::to_string(frame) + ": cannot set " + error);
             continue;
         }
         RENDER3D::SetRenderQualitySettings(next);

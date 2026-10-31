@@ -389,6 +389,14 @@ private:
     std::string agentFilesMessage_{};
     // Play・運行時・ログの操作（HIKARI_DocumentSceneEditorPlayOperations.cpp）。
     void RegisterPlayOperations();
+    // コンソールからの再生の試し：vfx.spawn・vfx.clear・sequence.play・sequence.stop
+    // （HIKARI_DocumentSceneEditorPlaybackOperations.cpp）。場面の文書は変えない。
+    void RegisterPlaybackOperations();
+    // vfx.spawn が出した効果（vfx.clear が止める）と、それを出した再生サービスの名前空間。世界の作り直しや Play の
+    // 開始・終了は再生サービスを Reset してハンドルを無効にする。止める前に生きているかを確かめ、サービスごと替わって
+    // いたら記録を捨てる。
+    std::vector<VFX::VfxPlaybackHandle> consoleVfx_{};
+    uint64_t consoleVfxNamespace_ = 0;
     // play.run と --agent-play-run を毎フレーム進める。
     void TickAgentPlayRun();
     // --agent-play-run の結果を result.json に書く（書き終えたら backgroundResult_ を空にする）。

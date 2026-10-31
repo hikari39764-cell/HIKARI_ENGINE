@@ -221,7 +221,12 @@ bool ValidateShape(const nlohmann::json& value, const nlohmann::json& schema, co
     }
     if (schema.contains("enum") &&
         std::find(schema["enum"].begin(), schema["enum"].end(), value) == schema["enum"].end()) {
-        error = path + " must be one of " + schema["enum"].dump();
+        // 長い一覧（コンソール変数の名前など）は数だけ言う。全部は操作の説明の schema にある。
+        constexpr size_t kListedChoices = 12;
+        const nlohmann::json& choices = schema["enum"];
+        error = choices.size() <= kListedChoices ? path + " must be one of " + choices.dump()
+                                                 : path + " is not one of its " + std::to_string(choices.size()) +
+                                                       " allowed values (listed in the operation's parameter schema)";
         return false;
     }
     if (value.is_number()) {

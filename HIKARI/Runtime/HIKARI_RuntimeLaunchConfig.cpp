@@ -15,9 +15,10 @@
 
 #include <json.hpp>
 
+#include "Core/HIKARI_JsonRead.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
-#include "Core/Serialization/Json/HIKARI_JsonFields.h"
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Gfx/HIKARI_GfxDebugConfig.h"
 #include "Platform/Paths/HIKARI_ExecutablePath.h"
 #include "Project/HIKARI_ProjectContext.h"
@@ -29,10 +30,6 @@ namespace HIKARI {
 
 namespace {
 // JSON コンフィグファイル内の"runtime"ノードを抽出する補助関数群
-
-constexpr auto kRuntimeGfxDebugFields = [](auto&& field) {
-    field("enableGpuPipelineStats", &GFX::GfxDebugConfig::enableGpuPipelineStats);
-};
 
 // "runtime"キーを持つノードを取得、見つからなければ root 自体を返す
 const nlohmann::json& RuntimeNode(const nlohmann::json& root) {
@@ -225,12 +222,10 @@ RuntimeLaunchConfig LoadRuntimeLaunchConfigFromFile(const std::filesystem::path&
     cfg.enableEditorUI = ReadBool(runtime, "enableEditorUI");
     cfg.enableDebugLayer = ReadBool(runtime, "enableDebugLayer");
     cfg.enableDebugCamera = ReadBool(runtime, "enableDebugCamera");
+    // gfxDebug から起動時に取るのはこの 1 項目だけ（調試層は上の enableDebugLayer）。
     if (const nlohmann::json* gfxDebug = JSONREAD::FindMember(runtime, "gfxDebug");
-        gfxDebug != nullptr && gfxDebug->is_object() &&
-        JSONREAD::FindMember(*gfxDebug, "enableGpuPipelineStats") != nullptr) {
-        GFX::GfxDebugConfig parsedDebug{};
-        JSONFIELDS::ReadLenient(*gfxDebug, parsedDebug, kRuntimeGfxDebugFields);
-        cfg.enableGpuPipelineStats = parsedDebug.enableGpuPipelineStats;
+        gfxDebug != nullptr && gfxDebug->is_object()) {
+        cfg.enableGpuPipelineStats = ReadBool(*gfxDebug, "enableGpuPipelineStats");
     }
     cfg.windowTitle = ReadString(runtime, "windowTitle");
     cfg.resizableWindow = ReadBool(runtime, "resizableWindow");

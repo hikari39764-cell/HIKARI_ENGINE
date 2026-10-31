@@ -148,9 +148,8 @@ bool TokenizeConsoleLine(std::string_view line, std::vector<ConsoleToken>& token
     }
 }
 
-bool BuildOperationParameters(const EditorOperationDefinition& definition, std::span<const ConsoleToken> arguments,
-                              nlohmann::json& parameters, std::string& error) {
-    parameters = nlohmann::json::object();
+std::vector<const EditorOperationParameter*> AssignArgumentParameters(const EditorOperationDefinition& definition,
+                                                                      std::span<const ConsoleToken> arguments) {
     const size_t declared = definition.parameters.size();
     const auto indexOf = [&](const std::string& name) {
         size_t index = 0;
@@ -164,34 +163,47 @@ bool BuildOperationParameters(const EditorOperationDefinition& definition, std::
             named[index] = true;
     }
 
+    std::vector<const EditorOperationParameter*> assigned;
+    assigned.reserve(arguments.size());
     size_t next = 0;
     for (const ConsoleToken& argument : arguments) {
-        std::string name = argument.name;
         size_t index = declared;
-        if (name.empty()) {
+        if (!argument.name.empty()) {
+            index = indexOf(argument.name);
+        } else {
             while (next < declared && named[next])
                 ++next;
-            if (next == declared) {
-                error = definition.id + " takes " + std::to_string(declared) + " parameters at most.";
-                return false;
-            }
-            index = next++;
-            name = definition.parameters[index].name;
-        } else {
-            index = indexOf(name);
+            if (next < declared)
+                index = next++;
         }
+        assigned.push_back(index < declared ? &definition.parameters[index] : nullptr);
+    }
+    return assigned;
+}
+
+bool BuildOperationParameters(const EditorOperationDefinition& definition, std::span<const ConsoleToken> arguments,
+                              nlohmann::json& parameters, std::string& error) {
+    parameters = nlohmann::json::object();
+    const std::vector<const EditorOperationParameter*> assigned = AssignArgumentParameters(definition, arguments);
+    for (size_t position = 0; position < arguments.size(); ++position) {
+        const ConsoleToken& argument = arguments[position];
+        const EditorOperationParameter* parameter = assigned[position];
+        if (parameter == nullptr && argument.name.empty()) {
+            error = definition.id + " takes " + std::to_string(definition.parameters.size()) + " parameters at most.";
+            return false;
+        }
+        const std::string& name = parameter != nullptr ? parameter->name : argument.name;
         if (parameters.contains(name)) {
             error = "Parameter '" + name + "' was given twice.";
             return false;
         }
-        if (index == declared) {
+        if (parameter == nullptr) {
             parameters[name] = argument.text;
             continue;
         }
-        const EditorOperationParameter& parameter = definition.parameters[index];
-        if (!ConvertArgument(parameter, argument, parameters[name])) {
+        if (!ConvertArgument(*parameter, argument, parameters[name])) {
             error = "Parameter '" + name + "' must be " +
-                    TEXT::EnumToName(kEditorOperationParameterTypeNames, parameter.type) + ", got '" + argument.raw +
+                    TEXT::EnumToName(kEditorOperationParameterTypeNames, parameter->type) + ", got '" + argument.raw +
                     "'.";
             return false;
         }

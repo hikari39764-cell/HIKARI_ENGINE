@@ -30,7 +30,12 @@ struct ConsoleToken {
 // 先頭の語はコマンド名なので key=value として読まない。
 bool TokenizeConsoleLine(std::string_view line, std::vector<ConsoleToken>& tokens, std::string& error);
 
-// 位置引数を宣言順に（key=value で埋まった宣言は飛ばして）割り当て、宣言した型の JSON にする。
+// 各語が当たる引数の宣言。key=value は名前で、位置引数は key=value で埋まっていない宣言を宣言順に割り当てる。
+// 宣言に無い key と、宣言を使い切ったあとの位置引数は nullptr。実行と補完が同じ割り当てを使う。
+std::vector<const EditorOperationParameter*> AssignArgumentParameters(const EditorOperationDefinition& definition,
+                                                                      std::span<const ConsoleToken> arguments);
+
+// AssignArgumentParameters の割り当てで、宣言した型の JSON にする。
 // arguments にコマンド名は含めない。宣言に無い key はそのまま文字列にし、登録表の検証に断らせる。
 bool BuildOperationParameters(const EditorOperationDefinition& definition, std::span<const ConsoleToken> arguments,
                               nlohmann::json& parameters, std::string& error);

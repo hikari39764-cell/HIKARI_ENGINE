@@ -1,4 +1,5 @@
 #include "Assets/Camera/HIKARI_GameplayCameraAsset.h"
+#include "Editor/Commands/HIKARI_EditorOperationValue.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 #include "Editor/HIKARI_DocumentComponentAuthoringService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -12,10 +13,11 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::BindGameplayCamera(
     auto* scene = aiOperationScene_;
     if (!scene || scene->IsRuntimePlayActive())
         return {false, "EDIT_MODE_REQUIRED", "Bind a camera outside Play mode."};
-    const AssetGuid guid{p.at("assetGuid").get<std::string>()};
-    const auto* record = scene->GetAssetDatabase().FindByGuid(guid);
-    if (!record || record->type != AssetType::GameplayCamera)
+    const auto* record = EDITOR::FindOperationAsset(scene->GetAssetDatabase(), p.at("assetGuid").get<std::string>(),
+                                                    AssetType::GameplayCamera);
+    if (!record)
         return {false, "ASSET_NOT_FOUND", "Save a gameplay camera profile first."};
+    const AssetGuid guid = record->guid;
     CAMERA::GameplayCameraProfile profile;
     std::string error;
     const auto path = scene->GetAssetDatabase().ResolveSourcePath(*record);

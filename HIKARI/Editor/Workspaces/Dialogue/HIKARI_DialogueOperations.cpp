@@ -6,6 +6,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
+#include "Editor/Commands/HIKARI_EditorOperationValue.h"
 #include "Editor/Workspaces/Dialogue/HIKARI_DialogueWorkspaceController.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
@@ -116,22 +117,20 @@ void RegisterDialogueOperations(EditorOperationRegistry& registry, DialogueWorks
     {
         EditorOperationDefinition transition{
             "dialogue.open_asset",
-            "Open a Dialogue asset by guid.",
+            "Open a Dialogue asset by GUID or project path.",
             "dialogue",
-            {{"assetGuid", EditorOperationParameterType::String, true, "Dialogue asset guid"}},
+            {{"assetGuid", EditorOperationParameterType::String, true, "Dialogue asset: GUID or project path"}},
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
                 DocumentSceneBase* scene = nullptr;
                 if (!RequireDialogueScene(sceneProvider, result, scene))
                     return result;
-                const AssetGuid guid{parameters.value("assetGuid", std::string{})};
-                if (!guid.IsValid()) {
-                    return OperationFailure("MISSING_FIELD", "assetGuid is required.");
-                }
-                const AssetRecord* record = scene->GetAssetDatabase().FindByGuid(guid);
-                if (record == nullptr || record->type != AssetType::Dialogue) {
+                const AssetRecord* record = FindOperationAsset(
+                    scene->GetAssetDatabase(), parameters.value("assetGuid", std::string{}), AssetType::Dialogue);
+                if (record == nullptr) {
                     return OperationFailure("ASSET_NOT_FOUND", "Dialogue asset was not found.");
                 }
+                const AssetGuid guid = record->guid;
                 std::string message{};
                 if (!controller.RequestOpenAsset(scene->GetAssetDatabase(), guid, message)) {
                     if (controller.HasPendingConfirmation()) {

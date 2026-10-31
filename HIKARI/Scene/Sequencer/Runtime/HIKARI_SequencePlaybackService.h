@@ -16,6 +16,7 @@ inline constexpr std::string_view kEditorSequencePreviewChannel = "Editor.Sequen
 class SequencePlaybackService {
 public:
     void SetAssetStore(SequenceAssetStore* assetStore) noexcept;
+    SequenceAssetStore* GetAssetStore() const noexcept { return assetStore_; }
     bool RegisterDriver(std::unique_ptr<ISequenceTrackDriver> driver);
 
     SequencePlaybackHandle Play(const SequencePlayRequest& request);

@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "Core/Text/HIKARI_EnumNames.h"
+
 namespace HIKARI {
 
 enum class RenderDebugView : uint32_t {
@@ -47,6 +49,51 @@ enum class RenderDebugView : uint32_t {
     LocalSpecular = 40,
     IndirectDiffuse = 41,
     IndirectSpecular = 42,
+};
+
+// 操作・コンソールが使う安定した名前。視口の選択肢の表示名は ui.debugView.<この名前>（ToString は調試窗口の英語名）。
+inline constexpr TEXT::EnumName<RenderDebugView> kRenderDebugViewNames[] = {
+    {RenderDebugView::None, "lit"},
+    {RenderDebugView::Normal, "normal"},
+    {RenderDebugView::Tangent, "tangent"},
+    {RenderDebugView::LightingOnly, "lightingOnly"},
+    {RenderDebugView::BaseColor, "baseColor"},
+    {RenderDebugView::Roughness, "roughness"},
+    {RenderDebugView::Metallic, "metallic"},
+    {RenderDebugView::Occlusion, "occlusion"},
+    {RenderDebugView::Shadow, "shadow"},
+    {RenderDebugView::NdotL, "ndotl"},
+    {RenderDebugView::Emissive, "emissive"},
+    {RenderDebugView::SceneDepth, "sceneDepth"},
+    {RenderDebugView::SceneColor, "sceneColor"},
+    {RenderDebugView::MotionVectors, "motionVectors"},
+    {RenderDebugView::TemporalHistoryWeight, "taaHistoryWeight"},
+    {RenderDebugView::TemporalDepthRejection, "taaDepthRejection"},
+    {RenderDebugView::TemporalReactiveMask, "taaReactiveMask"},
+    {RenderDebugView::TemporalTransparencyMask, "taaTransparencyMask"},
+    {RenderDebugView::TemporalDisocclusion, "taaDisocclusion"},
+    {RenderDebugView::TemporalInvalidDepthMotion, "invalidDepthMotion"},
+    {RenderDebugView::VolumetricScattering, "volumetricScattering"},
+    {RenderDebugView::VolumetricTransmittance, "volumetricTransmittance"},
+    {RenderDebugView::VolumetricDepthSlice, "volumetricDepthSlice"},
+    {RenderDebugView::ReflectionProviderWeight, "reflectionProviderWeight"},
+    {RenderDebugView::IrradianceProviderWeight, "irradianceProviderWeight"},
+    {RenderDebugView::LightingFallbackWeight, "lightingFallbackWeight"},
+    {RenderDebugView::SsrConfidence, "ssrConfidence"},
+    {RenderDebugView::SsrHit, "ssrHit"},
+    {RenderDebugView::SurfaceLightmap, "surfaceLightmap"},
+    {RenderDebugView::NeutralClay, "neutralClay"},
+    {RenderDebugView::MeshletId, "meshletId"},
+    {RenderDebugView::ClusterId, "clusterId"},
+    {RenderDebugView::SurfaceId, "surfaceId"},
+    {RenderDebugView::LodLevel, "lodLevel"},
+    {RenderDebugView::LodHeat, "lodHeat"},
+    {RenderDebugView::DrawBucket, "drawBucket"},
+    {RenderDebugView::DirectDiffuse, "directDiffuse"},
+    {RenderDebugView::DirectionalSpecular, "directionalSpecular"},
+    {RenderDebugView::LocalSpecular, "localSpecular"},
+    {RenderDebugView::IndirectDiffuse, "indirectDiffuse"},
+    {RenderDebugView::IndirectSpecular, "indirectSpecular"},
 };
 
 inline const char* ToString(RenderDebugView view) {

@@ -8,6 +8,7 @@
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
+#include "Editor/Commands/HIKARI_EditorOperationValue.h"
 #include "Editor/Documents/HIKARI_SequenceEditorDocument.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -323,11 +324,11 @@ void RegisterCinematicsOperations(EditorOperationRegistry& registry, CinematicsW
     {
         EditorOperationDefinition transition{
             "cinematics.open_asset",
-            "Open a Sequence asset by its guid.",
+            "Open a Sequence asset by GUID or project path.",
             "cinematics",
             {
                 EditorOperationParameter{"assetGuid", EditorOperationParameterType::String, true,
-                                         "cinematics.list_assets 返回的 guid"},
+                                         "Sequence 资产：GUID（cinematics.list_assets 可查）或项目路径"},
             },
             [&controller, sceneProvider](const nlohmann::json& parameters) {
                 EditorOperationResult result{};
@@ -336,17 +337,9 @@ void RegisterCinematicsOperations(EditorOperationRegistry& registry, CinematicsW
                     return result;
                 }
                 const std::string guidText = parameters.value("assetGuid", std::string{});
-                const AssetGuid guid{guidText};
-                if (!guid.IsValid()) {
-                    result.code = "MISSING_FIELD";
-                    result.message = "缺少 assetGuid 字段。";
-                    result.hints = {
-                        "先用 cinematics.list_assets 查询可用 guid。",
-                    };
-                    return result;
-                }
-                const AssetRecord* record = scene->GetAssetDatabase().FindByGuid(guid);
-                if (record == nullptr || record->type != AssetType::Sequence) {
+                const AssetRecord* record =
+                    FindOperationAsset(scene->GetAssetDatabase(), guidText, AssetType::Sequence);
+                if (record == nullptr) {
                     result.code = "ASSET_NOT_FOUND";
                     result.message = "找不到该 Sequence 资产：" + guidText;
                     result.hints = {
@@ -354,6 +347,7 @@ void RegisterCinematicsOperations(EditorOperationRegistry& registry, CinematicsW
                     };
                     return result;
                 }
+                const AssetGuid guid = record->guid;
                 std::string message;
                 if (controller.RequestOpenSequenceAsset(*scene, guid, message)) {
                     return OperationOk(std::move(message));

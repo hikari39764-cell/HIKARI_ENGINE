@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <span>
 
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_Localization.h"
@@ -46,7 +47,8 @@ void ConsoleCompletion::RefreshOperationNames(const EditorOperationRegistry& ope
     }
 }
 
-// 候補は編集器の操作と実行時コマンドと clear を名前順に並べたもの。同じ名前は操作を優先する。
+// 最初の語の候補は、編集器の操作と実行時コマンドと clear を名前順に並べたもの（同じ名前は操作を優先する）。
+// 名前が決まった後は、最後の語が当たる引数の値の候補。
 void ConsoleCompletion::Update(const ConsoleSources& sources, std::string_view text) {
     if (text == candidateQuery_ || (!appliedText_.empty() && text == appliedText_))
         return;
@@ -54,9 +56,14 @@ void ConsoleCompletion::Update(const ConsoleSources& sources, std::string_view t
     appliedText_.clear();
     completionIndex_.reset();
     candidates_.clear();
-    // 候補を出すのは最初の語を打っている間だけ。
-    if (text.empty() || text.find_first_of(" \t") != std::string_view::npos)
+    wordBegin_ = 0;
+    valueHeader_.reset();
+    if (text.empty())
         return;
+    if (text.find_first_of(" \t") != std::string_view::npos) {
+        CollectValueCandidates(sources, text);
+        return;
+    }
     RefreshOperationNames(sources.operations);
     const auto add = [&](std::string_view name, std::string_view summary) {
         if (StartsWithIgnoreCase(name, text))
@@ -76,14 +83,49 @@ void ConsoleCompletion::Update(const ConsoleSources& sources, std::string_view t
                       candidates_.end());
 }
 
+// 最後の語が当たる引数の schema が文字列の enum を持つなら、その語で始まる値を候補にする。どの引数に当たるかは実行
+// （BuildOperationParameters）と同じ割り当てで、key=value は名前の引数、置き換えるのは = の後ろだけ。
+void ConsoleCompletion::CollectValueCandidates(const ConsoleSources& sources, std::string_view text) {
+    std::vector<ConsoleToken> tokens;
+    std::string error;
+    // 空白だけの行は語が無い。
+    if (!TokenizeConsoleLine(text, tokens, error) || tokens.empty())
+        return;
+    const EditorOperationDefinition* operation = FindConsoleOperation(sources.operations, tokens.front().text);
+    if (operation == nullptr)
+        return;
+    // 空白で終わっていれば、まだ打っていない次の語が補完の対象。
+    if (text.back() == ' ' || text.back() == '\t')
+        tokens.emplace_back();
+    const std::span<const ConsoleToken> arguments = std::span<const ConsoleToken>(tokens).subspan(1);
+    if (arguments.empty())
+        return;
+    const EditorOperationParameter* parameter = AssignArgumentParameters(*operation, arguments).back();
+    if (parameter == nullptr)
+        return;
+    const auto choices = parameter->schema.find("enum");
+    if (choices == parameter->schema.end() || !choices->is_array())
+        return;
+    const ConsoleToken& word = arguments.back();
+    for (const nlohmann::json& choice : *choices) {
+        if (choice.is_string() && StartsWithIgnoreCase(choice.get_ref<const std::string&>(), word.text))
+            candidates_.push_back({choice.get<std::string>(), {}});
+    }
+    if (candidates_.empty())
+        return;
+    wordBegin_ = text.size() - word.raw.size();
+    valueHeader_ = ParameterRow(*parameter);
+}
+
 std::string ConsoleCompletion::Complete(const ConsoleSources& sources, std::string_view text) {
     Update(sources, text);
     if (candidates_.empty())
         return {};
     std::string completed;
     if (candidates_.size() > 1 && !completionIndex_) {
+        // 今の最後の語より伸びなければ（共通部分まで補った後の Tab）、候補を順に入れる。
         completed = CommonPrefix();
-        if (completed.size() <= text.size())
+        if (completed.size() <= text.size() - wordBegin_)
             completed.clear();
     }
     if (completed.empty()) {
@@ -93,8 +135,30 @@ std::string ConsoleCompletion::Complete(const ConsoleSources& sources, std::stri
         if (candidates_.size() == 1)
             completed += ' ';
     }
-    appliedText_ = completed;
-    return completed;
+    std::string applied = candidateQuery_.substr(0, wordBegin_) + completed;
+    // 候補を順に回す間だけ今の候補を保つ。一つに決まった後は、次の語の候補を作り直させる。
+    appliedText_ = candidates_.size() > 1 ? applied : std::string{};
+    return applied;
+}
+
+ConsoleCompletion::HintRow ConsoleCompletion::ParameterRow(const EditorOperationParameter& parameter) {
+    return {parameter.name,
+            TEXT::EnumToName(kEditorOperationParameterTypeNames, parameter.type),
+            TEXT::Localize(parameter.required ? "ui.console.required" : "ui.console.optional"),
+            parameter.description,
+            false,
+            parameter.required};
+}
+
+// 候補の行。順に回して表示枠の外へ出た候補も見えるよう、選択中の行が枠の末尾に来るまで送る。
+void ConsoleCompletion::AppendCandidateRows(std::vector<HintRow>& rows) const {
+    const size_t shown = (std::min)(candidates_.size(), kVisibleCandidates);
+    const size_t first =
+        completionIndex_ && *completionIndex_ >= kVisibleCandidates ? *completionIndex_ + 1 - kVisibleCandidates : 0;
+    for (size_t index = first; index < first + shown; ++index)
+        rows.push_back({candidates_[index].name, {}, {}, candidates_[index].summary, completionIndex_ == index, false});
+    if (candidates_.size() > shown)
+        rows.push_back({"... +" + std::to_string(candidates_.size() - shown), {}, {}, {}, false, false});
 }
 
 std::vector<ConsoleCompletion::HintRow> ConsoleCompletion::BuildHintRows(const ConsoleSources& sources,
@@ -102,28 +166,21 @@ std::vector<ConsoleCompletion::HintRow> ConsoleCompletion::BuildHintRows(const C
     std::vector<HintRow> rows;
     const size_t nameEnd = text.find_first_of(" \t");
     if (nameEnd == std::string_view::npos) {
-        const size_t shown = (std::min)(candidates_.size(), kVisibleCandidates);
-        // 順に回して表示枠の外へ出た候補も見えるよう、選択中の行が枠の末尾に来るまで送る。
-        const size_t first = completionIndex_ && *completionIndex_ >= kVisibleCandidates
-                                 ? *completionIndex_ + 1 - kVisibleCandidates
-                                 : 0;
-        for (size_t index = first; index < first + shown; ++index)
-            rows.push_back(
-                {candidates_[index].name, {}, {}, candidates_[index].summary, completionIndex_ == index, false});
-        if (candidates_.size() > shown)
-            rows.push_back({"... +" + std::to_string(candidates_.size() - shown), {}, {}, {}, false, false});
+        AppendCandidateRows(rows);
+        return rows;
+    }
+    // 引数の値に候補がある間は、その引数の行と候補を出す。
+    if (valueHeader_) {
+        rows.push_back(*valueHeader_);
+        AppendCandidateRows(rows);
         return rows;
     }
     const std::string_view name = text.substr(0, nameEnd);
     if (const EditorOperationDefinition* operation = FindConsoleOperation(sources.operations, name)) {
         rows.push_back({operation->id, {}, {}, operation->summary, true, false});
         const size_t shown = (std::min)(operation->parameters.size(), kVisibleParameters);
-        for (size_t index = 0; index < shown; ++index) {
-            const EditorOperationParameter& parameter = operation->parameters[index];
-            rows.push_back({parameter.name, TEXT::EnumToName(kEditorOperationParameterTypeNames, parameter.type),
-                            TEXT::Localize(parameter.required ? "ui.console.required" : "ui.console.optional"),
-                            parameter.description, false, parameter.required});
-        }
+        for (size_t index = 0; index < shown; ++index)
+            rows.push_back(ParameterRow(operation->parameters[index]));
         if (operation->parameters.size() > shown)
             rows.push_back({"... +" + std::to_string(operation->parameters.size() - shown), {}, {}, {}, false, false});
     } else if (sources.service != nullptr) {

@@ -36,56 +36,56 @@ void DrawViewportDebugOptions(ViewportOverlayState& overlays, ViewportPerformanc
                     &performance.disableSsaoInEditorViewport);
 }
 
-struct RenderDebugViewOption {
-    RenderDebugView view = RenderDebugView::None;
-    const char* key = "ui.debugView.lit";
+// 視口の選択肢の並び。表示名は ui.debugView.<名前>（名前は kRenderDebugViewNames）。
+constexpr RenderDebugView kRenderDebugViewOptions[] = {
+    RenderDebugView::None,
+    RenderDebugView::BaseColor,
+    RenderDebugView::Normal,
+    RenderDebugView::Tangent,
+    RenderDebugView::Roughness,
+    RenderDebugView::Metallic,
+    RenderDebugView::Occlusion,
+    RenderDebugView::Shadow,
+    RenderDebugView::NdotL,
+    RenderDebugView::Emissive,
+    RenderDebugView::DirectDiffuse,
+    RenderDebugView::DirectionalSpecular,
+    RenderDebugView::LocalSpecular,
+    RenderDebugView::IndirectDiffuse,
+    RenderDebugView::IndirectSpecular,
+    RenderDebugView::SceneDepth,
+    RenderDebugView::SceneColor,
+    RenderDebugView::MotionVectors,
+    RenderDebugView::TemporalHistoryWeight,
+    RenderDebugView::TemporalDepthRejection,
+    RenderDebugView::TemporalReactiveMask,
+    RenderDebugView::TemporalTransparencyMask,
+    RenderDebugView::TemporalDisocclusion,
+    RenderDebugView::TemporalInvalidDepthMotion,
+    RenderDebugView::VolumetricScattering,
+    RenderDebugView::VolumetricTransmittance,
+    RenderDebugView::VolumetricDepthSlice,
+    RenderDebugView::ReflectionProviderWeight,
+    RenderDebugView::IrradianceProviderWeight,
+    RenderDebugView::LightingFallbackWeight,
+    RenderDebugView::SurfaceLightmap,
+    RenderDebugView::SsrConfidence,
+    RenderDebugView::SsrHit,
+    RenderDebugView::MeshletId,
+    RenderDebugView::ClusterId,
+    RenderDebugView::SurfaceId,
+    RenderDebugView::LodLevel,
+    RenderDebugView::LodHeat,
+    RenderDebugView::DrawBucket,
 };
 
-constexpr RenderDebugViewOption kRenderDebugViewOptions[] = {
-    {RenderDebugView::None, "ui.debugView.lit"},
-    {RenderDebugView::BaseColor, "ui.debugView.baseColor"},
-    {RenderDebugView::Normal, "ui.debugView.normal"},
-    {RenderDebugView::Tangent, "ui.debugView.tangent"},
-    {RenderDebugView::Roughness, "ui.debugView.roughness"},
-    {RenderDebugView::Metallic, "ui.debugView.metallic"},
-    {RenderDebugView::Occlusion, "ui.debugView.occlusion"},
-    {RenderDebugView::Shadow, "ui.debugView.shadow"},
-    {RenderDebugView::NdotL, "ui.debugView.ndotl"},
-    {RenderDebugView::Emissive, "ui.debugView.emissive"},
-    {RenderDebugView::DirectDiffuse, "ui.debugView.directDiffuse"},
-    {RenderDebugView::DirectionalSpecular, "ui.debugView.directionalSpecular"},
-    {RenderDebugView::LocalSpecular, "ui.debugView.localSpecular"},
-    {RenderDebugView::IndirectDiffuse, "ui.debugView.indirectDiffuse"},
-    {RenderDebugView::IndirectSpecular, "ui.debugView.indirectSpecular"},
-    {RenderDebugView::SceneDepth, "ui.debugView.sceneDepth"},
-    {RenderDebugView::SceneColor, "ui.debugView.sceneColor"},
-    {RenderDebugView::MotionVectors, "ui.debugView.motionVectors"},
-    {RenderDebugView::TemporalHistoryWeight, "ui.debugView.taaHistoryWeight"},
-    {RenderDebugView::TemporalDepthRejection, "ui.debugView.taaDepthRejection"},
-    {RenderDebugView::TemporalReactiveMask, "ui.debugView.taaReactiveMask"},
-    {RenderDebugView::TemporalTransparencyMask, "ui.debugView.taaTransparencyMask"},
-    {RenderDebugView::TemporalDisocclusion, "ui.debugView.taaDisocclusion"},
-    {RenderDebugView::TemporalInvalidDepthMotion, "ui.debugView.invalidDepthMotion"},
-    {RenderDebugView::VolumetricScattering, "ui.debugView.volumetricScattering"},
-    {RenderDebugView::VolumetricTransmittance, "ui.debugView.volumetricTransmittance"},
-    {RenderDebugView::VolumetricDepthSlice, "ui.debugView.volumetricDepthSlice"},
-    {RenderDebugView::ReflectionProviderWeight, "ui.debugView.reflectionProviderWeight"},
-    {RenderDebugView::IrradianceProviderWeight, "ui.debugView.irradianceProviderWeight"},
-    {RenderDebugView::LightingFallbackWeight, "ui.debugView.lightingFallbackWeight"},
-    {RenderDebugView::SurfaceLightmap, "ui.debugView.surfaceLightmap"},
-    {RenderDebugView::SsrConfidence, "ui.debugView.ssrConfidence"},
-    {RenderDebugView::SsrHit, "ui.debugView.ssrHit"},
-    {RenderDebugView::MeshletId, "ui.debugView.meshletId"},
-    {RenderDebugView::ClusterId, "ui.debugView.clusterId"},
-    {RenderDebugView::SurfaceId, "ui.debugView.surfaceId"},
-    {RenderDebugView::LodLevel, "ui.debugView.lodLevel"},
-    {RenderDebugView::LodHeat, "ui.debugView.lodHeat"},
-    {RenderDebugView::DrawBucket, "ui.debugView.drawBucket"},
-};
+std::string RenderDebugViewLabel(RenderDebugView view) {
+    return TEXT::Localize(std::string("ui.debugView.") + TEXT::EnumToName(kRenderDebugViewNames, view));
+}
 
 int RenderDebugViewOptionIndex(RenderDebugView view) {
     for (int i = 0; i < static_cast<int>(std::size(kRenderDebugViewOptions)); ++i) {
-        if (kRenderDebugViewOptions[i].view == view) {
+        if (kRenderDebugViewOptions[i] == view) {
             return i;
         }
     }
@@ -97,11 +97,11 @@ bool DrawRenderDebugViewCombo(const char* label, ViewportDebugViewState& debugVi
     int selectedIndex = currentIndex;
     bool changed = false;
     ImGui::SetNextItemWidth(width);
-    if (ImGui::BeginCombo(label, TEXT::Localize(kRenderDebugViewOptions[currentIndex].key).c_str(),
+    if (ImGui::BeginCombo(label, RenderDebugViewLabel(kRenderDebugViewOptions[currentIndex]).c_str(),
                           ImGuiComboFlags_NoArrowButton)) {
         ImGui::SeparatorText(TEXT::Localize("ui.debugView.shading").c_str());
         for (int i = 0; i < static_cast<int>(std::size(kRenderDebugViewOptions)); ++i) {
-            const RenderDebugView option = kRenderDebugViewOptions[i].view;
+            const RenderDebugView option = kRenderDebugViewOptions[i];
             if (option == RenderDebugView::SceneDepth) {
                 ImGui::SeparatorText(TEXT::Localize("ui.debugView.screenSpace").c_str());
             }
@@ -118,7 +118,7 @@ bool DrawRenderDebugViewCombo(const char* label, ViewportDebugViewState& debugVi
                 ImGui::SeparatorText(TEXT::Localize("ui.debugView.meshlet").c_str());
             }
             const bool selected = (i == selectedIndex);
-            if (ImGui::Selectable(TEXT::Localize(kRenderDebugViewOptions[i].key).c_str(), selected)) {
+            if (ImGui::Selectable(RenderDebugViewLabel(option).c_str(), selected)) {
                 selectedIndex = i;
                 changed = true;
             }
@@ -129,7 +129,7 @@ bool DrawRenderDebugViewCombo(const char* label, ViewportDebugViewState& debugVi
         ImGui::EndCombo();
     }
     if (changed) {
-        debugView.renderView = kRenderDebugViewOptions[selectedIndex].view;
+        debugView.renderView = kRenderDebugViewOptions[selectedIndex];
     }
     return changed;
 }

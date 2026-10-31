@@ -21,7 +21,6 @@ struct GfxDebugConfig {
     bool enableInfoQueueBreakOnError = false;
     bool enableInfoQueueBreakOnWarning = false;
     bool dumpInfoQueueOnFrameEnd = false;
-    bool verboseRenderTargetLog = false;
     bool verbosePostLog = false;
 };
 

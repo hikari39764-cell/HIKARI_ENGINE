@@ -4,7 +4,6 @@
 #include <utility>
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
-#include "Gfx/HIKARI_GfxDebugConfig.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 

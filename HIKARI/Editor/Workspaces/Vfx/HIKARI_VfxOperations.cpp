@@ -10,6 +10,7 @@
 #include <json.hpp>
 
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
+#include "Editor/Commands/HIKARI_EditorOperationValue.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxOperationSections.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxOperationSerialization.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxOperationSupport.h"
@@ -157,7 +158,7 @@ void RegisterDocumentOperations(EditorOperationRegistry& registry, VfxWorkspaceC
             "Open a VFX source asset by GUID",
             "vfx",
             {
-                {"assetGuid", EditorOperationParameterType::String, true, "Stable VFX asset GUID"},
+                {"assetGuid", EditorOperationParameterType::String, true, "VFX effect asset: GUID or project path"},
                 {"confirmDiscard", EditorOperationParameterType::Bool, false, "Confirm discarding unsaved VFX edits"},
             },
             [&controller, databaseProvider](const nlohmann::json& parameters) {
@@ -166,7 +167,12 @@ void RegisterDocumentOperations(EditorOperationRegistry& registry, VfxWorkspaceC
                 if (database == nullptr) {
                     return result;
                 }
-                const AssetGuid guid{parameters.at("assetGuid").get<std::string>()};
+                const std::string assetText = parameters.at("assetGuid").get<std::string>();
+                const AssetRecord* record = FindOperationAsset(*database, assetText, AssetType::VfxEffect);
+                if (record == nullptr) {
+                    return OperationFailure("ASSET_NOT_FOUND", "No VFX effect asset: " + assetText);
+                }
+                const AssetGuid guid = record->guid;
                 const bool confirmDiscard = parameters.value("confirmDiscard", false);
                 if (controller.GetDocument().IsDirty() && controller.GetDocument().GetAssetGuid() != guid &&
                     !confirmDiscard) {

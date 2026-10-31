@@ -1,6 +1,7 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Assets/Models/HIKARI_ModelBounds.h"
+#include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Agent/HIKARI_AgentProjectFiles.h"
@@ -22,7 +23,7 @@ namespace {
 constexpr size_t kMaximumBatchSteps = 64u;
 constexpr size_t kMaximumDescribedSelection = 16u;
 
-nlohmann::json Vec3Json(const MATH::Vec3& value) { return nlohmann::json::array({value.x, value.y, value.z}); }
+namespace JsonMath = SERIALIZATION::JSON::MATH;
 
 EDITOR::EditorOperationResult BatchFailure(std::string_view code, std::string message, size_t step,
                                            const std::string& operation = {}) {
@@ -200,7 +201,8 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::DescribeEditorState
         if (object->parent)
             entry["parentId"] = object->parent->value;
         if (const Bounds bounds = EDITOR::ObserveSceneObjectBounds(*scene, id); BOUNDS::IsUsable(bounds))
-            entry["worldBounds"] = {{"min", Vec3Json(bounds.min)}, {"max", Vec3Json(bounds.max)}};
+            entry["worldBounds"] = {{"min", JsonMath::ToJsonArray(bounds.min)},
+                                    {"max", JsonMath::ToJsonArray(bounds.max)}};
         selected.push_back(std::move(entry));
     }
     state["selection"] = {{"activeObjectId", context_.selection.GetActiveObjectId().value},
@@ -210,8 +212,8 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::DescribeEditorState
         state["selection"]["truncated"] = true;
 
     const Camera3D& camera = scene->GetCamera();
-    state["camera"] = {{"position", Vec3Json(camera.GetPosition())},
-                       {"target", Vec3Json(camera.GetTarget())},
+    state["camera"] = {{"position", JsonMath::ToJsonArray(camera.GetPosition())},
+                       {"target", JsonMath::ToJsonArray(camera.GetTarget())},
                        {"orthographic", camera.IsOrthographic()},
                        {"fovYDegrees", camera.GetFovYRad() * 180.0f / std::numbers::pi_v<float>}};
     state["play"] = {{"active", scene->IsRuntimePlayActive()}};

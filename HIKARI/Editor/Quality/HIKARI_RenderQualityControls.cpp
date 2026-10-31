@@ -141,7 +141,7 @@ bool DrawRenderSettings() {
                 changed |= EDITOR::SliderNumber("##TaaHistory", settings.taaHistoryWeight, 0.0, 0.97,
                                                 &kDefaults.taaHistoryWeight);
                 EDITOR::PropertyLabel(TEXT::Localize("ui.quality.varianceClip").c_str());
-                changed |= EDITOR::SliderNumber("##TaaVarianceClip", settings.taaVarianceClipGamma, 0.0, 3.0,
+                changed |= EDITOR::SliderNumber("##TaaVarianceClip", settings.taaVarianceClipGamma, 0.0, 4.0,
                                                 &kDefaults.taaVarianceClipGamma);
                 EDITOR::PropertyLabel(TEXT::Localize("ui.quality.depthReject").c_str());
                 changed |= EDITOR::DragNumber("##TaaDepthReject", settings.taaDepthRejection,
