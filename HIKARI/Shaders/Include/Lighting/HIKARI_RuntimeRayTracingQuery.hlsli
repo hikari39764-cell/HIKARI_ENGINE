@@ -165,12 +165,10 @@ bool HikariDecodeRayCandidate(inout RayQuery<RAY_FLAG_NONE> query,
 
 static const uint HIKARI_RAY_SHADOW = 1u;
 static const uint HIKARI_RAY_REPORT_BACKFACES = 2u;
-// GI の連通性など、影を落とす設定とは独立した形状の遮断だけを調べる。
-static const uint HIKARI_RAY_OCCLUSION = 4u;
 // 最も近い三角形の位置・距離・向き・裏面だけを返し、材質を読まない（alpha test もせず切り抜きは不透明として当たる）。
 // おおよその距離だけが要る ray に使う。材質を読む命令は呼び出しごとに展開されるので、大きな shader では
 // これだけで重さが変わる（動的 GI の更新の相機 ray をこれにして約 0.35 ms 軽くなった）。
-static const uint HIKARI_RAY_GEOMETRY_ONLY = 8u;
+static const uint HIKARI_RAY_GEOMETRY_ONLY = 4u;
 
 // 半透明の面が光を通す割合。被覆の外（1 - alpha）はそのまま、被覆の中は透過の分だけ底色で色づいて通る。
 float HikariRayTransmittance(HikariMeshMaterialData material, HikariRaySurface surface, SamplerState materialSampler)
@@ -187,15 +185,14 @@ bool HikariTraceRuntimeSceneCore(RayDesc ray, uint hitRecordCount, uint material
 {
     hit = (HikariRaySurface)0;
     const bool shadowRay = (queryFlags & HIKARI_RAY_SHADOW) != 0u;
-    const bool occlusionOnly = shadowRay || (queryFlags & HIKARI_RAY_OCCLUSION) != 0u;
     RayQuery<RAY_FLAG_NONE> query;
-    query.TraceRayInline(gRuntimeRayScene, occlusionOnly ? RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH : RAY_FLAG_NONE, 0xff, ray);
+    query.TraceRayInline(gRuntimeRayScene, shadowRay ? RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH : RAY_FLAG_NONE, 0xff, ray);
     while (query.Proceed())
     {
         if (query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE) continue;
         HikariRaySurface candidate;
         uint flags;
-        if (!HikariDecodeRayCandidate(query, hitRecordCount, occlusionOnly ? 0.0f.xx : rayCone, candidate, flags) ||
+        if (!HikariDecodeRayCandidate(query, hitRecordCount, shadowRay ? 0.0f.xx : rayCone, candidate, flags) ||
             candidate.materialIndex >= materialCount || (shadowRay && (flags & 2u) == 0u)) continue;
         const HikariMeshMaterialData material = HikariGetMeshMaterialData(candidate.materialIndex);
         const bool doubleSided = (flags & 1u) != 0u || (material.instanceFlags & HIKARI_PROGRAM_FLAG_DOUBLE_SIDED) != 0u;
@@ -229,7 +226,7 @@ bool HikariTraceRuntimeSceneCore(RayDesc ray, uint hitRecordCount, uint material
         hit = candidate;
     }
     const bool found = query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
-    if (found && !occlusionOnly && (queryFlags & HIKARI_RAY_GEOMETRY_ONLY) == 0u)
+    if (found && !shadowRay && (queryFlags & HIKARI_RAY_GEOMETRY_ONLY) == 0u)
     {
         const HikariMeshMaterialData material = HikariGetMeshMaterialData(hit.materialIndex);
         const float3 baseNormal = hit.normal;
