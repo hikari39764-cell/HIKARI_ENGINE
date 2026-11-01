@@ -28,7 +28,7 @@ HikariDynamicGiQuery HikariSurfaceGiQuery(float3 position, float3 surfaceNormal,
 
 // value と skyVisibility は coverage 適用前の値。coverage は問い合わせ点を囲む 8 probe のうち活性で初期化済みの
 // ものの補間重みの和（0..1）。足りない分は呼び出し側が下位の層か空の光で埋める。support は活性な probe の補間重みの
-// うち、可視性（深度と円盤）でその点を見ている割合。
+// うち、可視性（深度 moment）でその点を見ている割合。
 struct HikariDynamicGiSample
 {
     float3 value;
@@ -97,11 +97,9 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
         // probe がほぼ裏側になる点で支持が消え、下の層や空の光へ落ちて明るい欠けが出る。壁の向こうの光は可視性で止める。
         const float facing = 0.5f + 0.5f * dot(toProbe, query.surfaceNormal) * rsqrt(max(dot(toProbe, toProbe), 1e-8f));
         const float surfaceWeight = query.medium ? 1.0f : facing * facing + 0.2f;
-        const float patch = HikariDynamicGiProbePatchWeight(volume, descriptorIndex, tile,
-            query.position - probePosition);
-        const float weight = trilinear * active * patch * HikariDynamicGiWeight(visibility, surfaceWeight);
+        const float weight = trilinear * active * HikariDynamicGiWeight(visibility, surfaceWeight);
         activeWeight += trilinear * active;
-        supported += trilinear * active * patch * visibility;
+        supported += trilinear * active * visibility;
         totalWeight += weight;
         // 放射照度は重みの結果を待たずに読む（読み出しが重みの計算と重なる）。重み 0 の probe（まだ更新されていない tile は
         // 0 初期化のまま）も読み、NaN は max で 0 へ落としてから重みを掛ける。重みで条件を付けると読み出しが分岐の中へ移って
@@ -114,8 +112,8 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
             if (direction == 0u) skyVisibility += max(value.a, 0.0f) * weight;
         }
     }
-    // 可視性は統計なので下限（HikariDynamicGiWeight）を持ち、支持を切らない。重みが完全に消えるのは幾何の証明
-    // （面の裏、円盤の向こう、非活性）だけで、その点はこの層の支持なしとして下位の層か空へ渡す。
+    // 可視性は統計なので下限（HikariDynamicGiWeight）を持ち、支持を切らない。重みが完全に消えるのは非活性の probe
+    // だけで、その点はこの層の支持なしとして下位の層か空へ渡す。
     result.coverage = totalWeight > 0.0f ? saturate(1.0f - missing) : 0.0f;
     result.support = activeWeight > 0.0f ? saturate(supported / activeWeight) : 0.0f;
     if (totalWeight <= 0.0f) return result;

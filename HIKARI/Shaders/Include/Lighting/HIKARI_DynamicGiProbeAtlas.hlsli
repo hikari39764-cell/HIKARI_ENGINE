@@ -8,24 +8,23 @@
 #include "HIKARI_IrradianceSh9.hlsli"
 #include "../HIKARI_DirectionEncoding.hlsli"
 
-// 動的 GI の probe atlas（RGBA16F）。probe ごとに幅 30、高さ 18 の tile を持つ。
+// 動的 GI の probe atlas（RGBA16F）。probe ごとに幅 28、高さ 18 の tile を持つ。
 //   x=[0,10)  y=[0,10)  放射照度 E/pi の 1/5 乗（A は余弦で重みづけた空の見える割合）の 8x8 八面体、境界 1 texel 込み。
 //   x=[10,28) y=[0,18)  深度 moment（RG）と活性（B、tile 内で一定）の 16x16 八面体、境界 1 texel 込み。深度は鋭い波瓣
 //                       （約 10 度）に合わせて細かく取る。8x8 だと壁の縁を抜ける方向の深度が補間で混ざり、部屋の内角で壁の
 //                       向こうの probe が半端に見えて鋸歯状に漏れる。
-//   x=[0,8)   y=[10,18) 固定 ray が当たった三角形に内接する円盤（oct 法線 xy、符号付き距離 z、半径 w）の 8x8 八面体。
-//                       空・alpha mask・退化三角形は半径ゼロ。幾何は補間せず、同じ角度の texel から読む。
-//   x=[28,30) y=[0,18)  probe の状態。(28,0) は rgb = 格子点からの移動 [m]（RTXGI の probe relocation）、a = 活性
-//                       （1 活性、0 は未初期化か非活性で、描画側は支持に数えない）。(28,1) は r = 更新回数、g = 変動の
-//                       移動平均、b = 固定 ray の裏面率、a = 固定 ray の明るさ（光照の変化の検出に使う）。
-static const uint HIKARI_DYNAMIC_GI_TILE_WIDTH = 30u;
+//   (0,10)              probe の状態。rgb = 格子点からの移動 [m]（RTXGI の probe relocation）、a = 活性
+//                       （1 活性、0 は未初期化か非活性で、描画側は支持に数えない）。
+//   (0,11)              r = 更新回数、g = 変動の移動平均、b = 固定 ray の裏面率、a = 固定 ray の明るさ（光照の変化の検出）。
+// 遮蔽は深度 moment の Chebyshev 可視性だけで判定する（RTXGI と同じ）。固定 ray の三角形に内接する円盤で補った版は、
+// 円盤を最も近い角度の texel から選ぶため面に円や多角形の斑が出て、前向きの着色も 3 割重くなったので外した。
+static const uint HIKARI_DYNAMIC_GI_TILE_WIDTH = 28u;
 static const uint HIKARI_DYNAMIC_GI_TILE_HEIGHT = 18u;
 static const float HIKARI_DYNAMIC_GI_OCTAHEDRAL_SIDE = 8.0f;
 static const float HIKARI_DYNAMIC_GI_DEPTH_SIDE = 16.0f;
 static const int2 HIKARI_DYNAMIC_GI_DEPTH_ORIGIN = int2(10, 0);
-static const int2 HIKARI_DYNAMIC_GI_PATCH_ORIGIN = int2(0, 10);
-static const int2 HIKARI_DYNAMIC_GI_STATE_TEXEL = int2(28, 0);
-static const int2 HIKARI_DYNAMIC_GI_STATISTICS_TEXEL = int2(28, 1);
+static const int2 HIKARI_DYNAMIC_GI_STATE_TEXEL = int2(0, 10);
+static const int2 HIKARI_DYNAMIC_GI_STATISTICS_TEXEL = int2(0, 11);
 // 放射照度は E/pi の 1/5 乗で保存する（暗い所の精度を保つ）。補間は RTXGI の DDGIGetVolumeIrradiance と同じく 1/2 乗の
 // 空間で行い、最後に二乗して戻す。1/5 乗のまま混ぜると暗い probe へ強く引かれ、明暗の境の補間が線形の平均よりずっと
 // 暗くなる（半々なら線形 0.525、1/2 乗 0.374、1/5 乗 0.278）。
@@ -155,35 +154,6 @@ float4 HikariSampleDynamicGiIrradiance(uint descriptorIndex, float2 tile, float2
 {
     return gMaterialTexturePool[descriptorIndex].SampleLevel(gLinearClamp,
         HikariProbeAtlasUv(tile, HIKARI_DYNAMIC_GI_OCTAHEDRAL_SIDE, directionUv, atlasSize), 0.0f);
-}
-
-// 固定 ray が当たった三角形に内接する円盤を、probe から受光点への線分が貫くなら、受光点は形状の向こう側。
-// 貫いた点が円盤の縁からどれだけ内側かで 1..0 へ落とす（縁をかすめる線分は切らず、probe の並びに沿った段差を作らない）。
-// patch.xy は oct 法線、z は符号付き平面距離、w は円盤半径。長さは visibility scale で正規化済み。
-float HikariDynamicGiPatchWeight(float4 patch, float3 axis, float3 toReceiver, float tolerance)
-{
-    if (patch.w <= tolerance) return 1.0f;
-    const float3 normal = HikariDecodeOctahedralDirection(patch.xy);
-    const float cosine = dot(normal, toReceiver);
-    const float axisCosine = dot(normal, axis);
-    if (abs(cosine) < 1e-8f || abs(axisCosine) < 1e-5f) return 1.0f;
-    const float t = patch.z / cosine;
-    // 受光面自身との交差は遮蔽ではない。誤差は平面の垂直距離で扱う。光線に沿う距離は掠め角で発散する。
-    if (t <= 0.0f || t >= 1.0f || abs(cosine - patch.z) <= tolerance) return 1.0f;
-    const float3 center = axis * (patch.z / axisCosine);
-    const float inside = patch.w - length(toReceiver * t - center);
-    return 1.0f - smoothstep(tolerance, max(4.0f * tolerance, 0.25f * patch.w), inside);
-}
-
-float HikariDynamicGiProbePatchWeight(HikariIrradianceVolumeData volume, uint descriptorIndex,
-    float2 tile, float3 toReceiver)
-{
-    const uint2 pixel = min((uint2)(HikariEncodeOctahedralDirection(toReceiver) * 8.0f), 7u.xx);
-    const float3 axis = HikariDecodeOctahedralDirection((float2(pixel) + 0.5f) / 8.0f);
-    const float4 patch = gMaterialTexturePool[descriptorIndex].Load(
-        int3(int2(tile) + HIKARI_DYNAMIC_GI_PATCH_ORIGIN + int2(pixel), 0));
-    return HikariDynamicGiPatchWeight(patch, axis, toReceiver / volume.selectionParams.w,
-        max(0.002f / volume.selectionParams.w, 0.002f));
 }
 
 #endif

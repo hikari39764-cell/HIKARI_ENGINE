@@ -61,7 +61,6 @@ struct HikariRaySurface
     float3 emissive;
     uint backFace;
     HikariMaterialTextureFootprint footprint;
-    float3 trianglePosition[3];
 };
 
 // xy = 原点での直径 / 2*tan(開口全角/2)。world 単位で距離に沿って広がる。
@@ -151,9 +150,6 @@ bool HikariDecodeRayCandidate(inout RayQuery<RAY_FLAG_NONE> query,
     surface.tangent = float4(mul((float3x3)objectToWorld, tangentOS.xyz),
         (tangentOS.w < 0 ? -1.0f : 1.0f) * (determinant((float3x3)objectToWorld) < 0 ? -1.0f : 1.0f));
     surface.position = mul(objectToWorld, float4(a.position.xyz*weights.x + b.position.xyz*weights.y + c.position.xyz*weights.z, 1));
-    surface.trianglePosition[0] = mul(objectToWorld,float4(a.position.xyz,1));
-    surface.trianglePosition[1] = mul(objectToWorld,float4(b.position.xyz,1));
-    surface.trianglePosition[2] = mul(objectToWorld,float4(c.position.xyz,1));
     surface.distance = query.CandidateTriangleRayT();
     surface.geometricNormal = face;
     surface.normal = normal;

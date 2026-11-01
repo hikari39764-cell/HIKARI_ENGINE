@@ -29,7 +29,7 @@ cbuffer DynamicDiffuseGiCB : register(b0)
 
 #define gPrevious gPreviousVolumes[gField.x]
 
-// 前半は固定方向の ray（RTXGI の fixed rays）。再配置・分類・深度・円盤・光照の変化の検出に使い、放射照度には入れない。
+// 前半は固定方向の ray（RTXGI の fixed rays）。再配置・分類・深度・光照の変化の検出に使い、放射照度には入れない。
 // 後半は更新ごとに回す放射サンプル。放射照度は余弦の重みで八面体の texel へ直接積み（DDGI の方式）、球面調和を介さない。
 static const uint kFixedRays = 64u, kRadianceRays = 128u, kRayCount = kFixedRays + kRadianceRays;
 groupshared float3 sDirection[kRayCount];
@@ -37,9 +37,6 @@ groupshared float3 sRadiance[kRayCount];
 groupshared float sDistance[kRayCount]; // 命中までの距離 [m]。未命中は 1e30。
 groupshared uint sBackFace[kRayCount];
 groupshared float sSky[kRayCount];
-groupshared float3 sTriangleA[kFixedRays];
-groupshared float3 sTriangleB[kFixedRays];
-groupshared float3 sTriangleC[kFixedRays];
 groupshared float3 sIrradianceTexel[64];
 groupshared float sSkyTexel[64];
 groupshared float sVariation[64];
@@ -202,14 +199,6 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         sDistance[rayIndex] = found ? hit.distance : 1.0e30f;
         sBackFace[rayIndex] = found ? hit.backFace : 0u;
         sSky[rayIndex] = found ? 0.0f : 1.0f;
-        if (fixedRay)
-        {
-            const bool solid = found && hit.distance < maximumDistance &&
-                (HikariGetMeshMaterialData(hit.materialIndex).materialFlags & HIKARI_MATERIAL_FLAG_ALPHA_MASK) == 0u;
-            sTriangleA[rayIndex] = solid ? (hit.trianglePosition[0] - probePosition) / maximumDistance : 0.0f.xxx;
-            sTriangleB[rayIndex] = solid ? (hit.trianglePosition[1] - probePosition) / maximumDistance : 0.0f.xxx;
-            sTriangleC[rayIndex] = solid ? (hit.trianglePosition[2] - probePosition) / maximumDistance : 0.0f.xxx;
-        }
         const float2 randomUv = frac(float2(rayIndex + 1u, gWork.x + sampleSeed + 1u) *
             float2(0.754877666f, 0.569840296f) + float2(gWork.x, rayIndex) * 0.618033989f);
         // 固定 ray は光の標本も固定して明るさを測る。場面が変わらなければ毎回同じ値になり、光が本当に変わったかの
@@ -344,51 +333,15 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         }
         gOutputAtlas[tile + uint2(HIKARI_DYNAMIC_GI_DEPTH_ORIGIN) + pixel] = float4(result, sValidity, 0.0f);
     }
-    // 固定 ray が当たった三角形に内接する円盤。無限平面は柱の輪郭の外まで遮ってしまう。
+    // 状態。変動は texel ごとの相対変化の平均の移動平均（収束の判定）。
+    if (lane == 0u)
+        gOutputAtlas[tile + uint2(HIKARI_DYNAMIC_GI_STATE_TEXEL)] = float4(sOffset, sValidity > 0.0f ? 1.0f : 0.0f);
+    else if (lane == 1u)
     {
-        const uint2 pixel = uint2(lane % 8u, lane / 8u);
-        const float3 axis = HikariDecodeOctahedralDirection((float2(pixel) + 0.5f) / 8.0f);
-        float best = -1.0f;
-        uint closest = 0u;
-        for (uint i = 0u; i < kFixedRays; ++i)
-        {
-            const float alignment = dot(axis, sDirection[i]);
-            if (alignment > best) { best = alignment; closest = i; }
-        }
-        const float3 a = sTriangleA[closest], b = sTriangleB[closest], c = sTriangleC[closest];
-        const float3 crossEdges = cross(b - a, c - a);
-        const float area = length(crossEdges);
-        float4 patch = 0.0f.xxxx;
-        if (area > 1e-10f)
-        {
-            const float3 normal = crossEdges / area;
-            const float distance = dot(normal, a);
-            const float cosine = dot(normal, axis);
-            if (abs(cosine) > 1e-5f && distance / cosine > 0.0f)
-            {
-                const float3 center = axis * (distance / cosine);
-                const float radius = min(min(dot(cross(b - a, center - a), normal) / length(b - a),
-                    dot(cross(c - b, center - b), normal) / length(c - b)), dot(cross(a - c, center - c), normal) / length(a - c));
-                if (radius > 0.002f)
-                    patch = float4(HikariEncodeOctahedralDirection(normal), distance, min(radius, 65000.0f));
-            }
-        }
-        gOutputAtlas[tile + uint2(HIKARI_DYNAMIC_GI_PATCH_ORIGIN) + pixel] = patch;
-    }
-    // 状態の列。変動は texel ごとの相対変化の平均の移動平均（収束の判定）。
-    if (lane < 36u)
-    {
-        const uint2 pixel = uint2(28u + lane / 18u, lane % 18u);
-        float4 value = 0.0f.xxxx;
-        if (lane == 0u)
-            value = float4(sOffset, sValidity > 0.0f ? 1.0f : 0.0f);
-        else if (lane == 1u)
-        {
-            float change = 0.0f;
-            for (uint i = 0u; i < 64u; ++i) change += sVariation[i] / 64.0f;
-            const float nextVariation = continuing ? lerp(variation, change, 0.3f) : 1.0f;
-            value = float4(min(updates + 1.0f, 255.0f), nextVariation, sBackRatio, sFixedLevel);
-        }
-        gOutputAtlas[tile + pixel] = value;
+        float change = 0.0f;
+        for (uint i = 0u; i < 64u; ++i) change += sVariation[i] / 64.0f;
+        const float nextVariation = continuing ? lerp(variation, change, 0.3f) : 1.0f;
+        gOutputAtlas[tile + uint2(HIKARI_DYNAMIC_GI_STATISTICS_TEXEL)] =
+            float4(min(updates + 1.0f, 255.0f), nextVariation, sBackRatio, sFixedLevel);
     }
 }
