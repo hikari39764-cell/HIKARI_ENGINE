@@ -71,6 +71,10 @@ float HikariShadowPcss(Texture2D<float> depth, SamplerComparisonState comparison
     }
     if (blockerCount == 0u)
         return 1.0f;
+    // 探索の円（半径 maxTexels）の全点が遮蔽物なら、それより狭い滤波の円も影の中。滤波の 16 回の比較を省く
+    // （大きな物の影や、光の入らない室内の面）。
+    if (blockerCount == HIKARI_SHADOW_PCSS_SEARCH_TAPS)
+        return 0.0f;
     // 下限は従来の PCF と同じ程度のぼかし。影マップの texel の階段を見せない。
     const float penumbraTexels =
         clamp((receiverDepth - blockerSum / float(blockerCount)) * depthToTexels, 1.5f, maxTexels);

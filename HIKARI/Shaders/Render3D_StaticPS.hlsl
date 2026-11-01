@@ -450,7 +450,11 @@ float4 main(PSInput input) : SV_TARGET
         screenAo = gSsaoTex.Load(int3(int2(input.position.xy), 0)).r;
     }
     float shadowVisibility = 1.0f;
-    if (!costNoSunShadow)
+    // 標準 PBR の太陽の直射は n·l <= 0 で 0（HikariEvaluateDirectPbrLobes）で、Cel の段も影に依らないので、太陽に
+    // 背を向けた画素ではカスケード影と接触影を引かない。風格化の材質は包み込みの光で裏側にも影を使うので常に引く。
+    const bool sunShadowUsed = dot(n, l) > 0.0f || gDebugView == 8 ||
+        (programMaterials && !HikariMaterialUsesStandardPbrLighting(materialData));
+    if (!costNoSunShadow && sunShadowUsed)
     {
         const uint receiveShadow = HikariForwardVertexMetaReceiveShadow(input.forwardMeta);
         // 光線追跡の可視率があれば、カスケード影と接触影の代わりにそれを使う（不透明面は深度 prepass と同じ画素）。
