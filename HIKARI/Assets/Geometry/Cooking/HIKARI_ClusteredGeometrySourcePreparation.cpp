@@ -9,7 +9,7 @@
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Core/Math/HIKARI_TangentFrame.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::GEOMETRY::COOKING {
 

@@ -10,8 +10,9 @@ $engineRoot = Join-Path $repoRoot 'HIKARI'
 # Engine module layers, bottom to top (docs/alpha/design.html, section 1). A source may include its own module,
 # a module of the same group, or a lower group. Scene core sits below the domain systems that run on the World
 # (Physics, Animation, Gameplay), which in turn sit below Runtime. Authoring (inspector interfaces) is placed
-# beside Assets. RenderContracts is planned and has no directory yet. A header under an Internal directory
-# belongs to that directory's parent and is not included from outside it.
+# beside Assets. RenderContracts (shader contracts and artifact readers, cluster geometry and material program
+# formats, lightmap contracts, model data) sits between Gfx and Render3D/Render2D. A header under an Internal
+# directory belongs to that directory's parent and is not included from outside it.
 $layers = @(
     @('Core', 'Platform', 'Diagnostics'),
     @('Gfx', 'Input', 'Audio', 'Project'),

@@ -16,7 +16,7 @@
 #include <Windows.h>
 #endif
 
-#include "Assets/Lighting/HIKARI_LightProbeVolumeFormat.h"
+#include "RenderContracts/Lighting/HIKARI_LightProbeVolumeFormat.h"
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"

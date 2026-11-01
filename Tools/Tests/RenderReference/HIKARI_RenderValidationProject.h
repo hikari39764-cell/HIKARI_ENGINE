@@ -6,7 +6,7 @@
 #include <vector>
 #include <json.hpp>
 #include "Core/HIKARI_AssetGuid.h"
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 
 namespace HIKARI {
 class AssetDatabase;

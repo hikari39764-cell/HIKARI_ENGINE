@@ -7,7 +7,7 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 
-#include "Assets/Shader/HIKARI_ShaderAssetResolver.h"
+#include "RenderContracts/Shader/HIKARI_ShaderAssetResolver.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
 

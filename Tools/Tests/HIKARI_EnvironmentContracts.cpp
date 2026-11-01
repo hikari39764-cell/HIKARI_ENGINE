@@ -9,7 +9,7 @@
 
 #include <DirectXPackedVector.h>
 
-#include "Assets/Color/HIKARI_ColorLutAsset.h"
+#include "RenderContracts/Color/HIKARI_ColorLutAsset.h"
 #include "Assets/Environment/HIKARI_EnvironmentAsset.h"
 #include "Assets/Environment/HIKARI_EnvironmentAssetStore.h"
 #include "Assets/Lighting/HIKARI_IesProfileAsset.h"

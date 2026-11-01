@@ -8,8 +8,8 @@
 #include <vector>
 
 #include "Core/HIKARI_AssetGuid.h"
-#include "Assets/Shader/HIKARI_ShaderCookedArtifact.h"
-#include "Assets/Shader/HIKARI_ShaderParameters.h"
+#include "RenderContracts/Shader/HIKARI_ShaderCookedArtifact.h"
+#include "RenderContracts/Shader/HIKARI_ShaderParameters.h"
 
 namespace HIKARI::SPRITE {
 

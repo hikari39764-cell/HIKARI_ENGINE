@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 
 namespace HIKARI {
 class ModelAsset;

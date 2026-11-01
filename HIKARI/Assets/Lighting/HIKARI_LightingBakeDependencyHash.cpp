@@ -13,8 +13,8 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
-#include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakePolicy.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Scene/HIKARI_SceneDocument.h"

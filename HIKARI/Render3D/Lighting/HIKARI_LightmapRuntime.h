@@ -4,8 +4,8 @@
 #include <string>
 #include <vector>
 
-#include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
-#include "Assets/Lighting/HIKARI_LightmapSurfaceContract.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakePolicy.h"
+#include "RenderContracts/Lighting/HIKARI_LightmapSurfaceContract.h"
 #include "Render3D/Resources/HIKARI_RenderResourcePool.h"
 
 namespace HIKARI::RENDER3D::LIGHTMAP {

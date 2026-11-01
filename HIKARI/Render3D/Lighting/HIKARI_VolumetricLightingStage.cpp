@@ -19,7 +19,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
-#include "Assets/Shader/HIKARI_VolumetricShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_VolumetricShaderContract.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"

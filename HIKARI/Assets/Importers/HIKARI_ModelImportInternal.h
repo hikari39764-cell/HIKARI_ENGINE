@@ -2,7 +2,7 @@
 #include "Assets/Importers/HIKARI_ModelImporter.h"
 #include "Assets/Geometry/HIKARI_ClusteredGeometryCooker.h"
 #include "Assets/Geometry/HIKARI_ClusteredGeometryValidator.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include <json.hpp>
 
 namespace HIKARI::MODEL_IMPORT_INTERNAL {

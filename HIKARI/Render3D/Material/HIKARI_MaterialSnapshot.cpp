@@ -1,6 +1,6 @@
 #include "Render3D/Material/HIKARI_MaterialSnapshot.h"
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Render3D/Material/Program/HIKARI_GpuMaterialProgramBinding.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 

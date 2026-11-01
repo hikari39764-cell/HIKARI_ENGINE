@@ -6,7 +6,7 @@
 #include "Runtime/Project/Internal/HIKARI_GameProjectActionValidation.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Scene/Components/HIKARI_AnimatorComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Animation/Runtime/HIKARI_AnimationClipSampler.h"

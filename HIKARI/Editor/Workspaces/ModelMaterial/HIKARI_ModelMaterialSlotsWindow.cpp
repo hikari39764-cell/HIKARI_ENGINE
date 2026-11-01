@@ -8,7 +8,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
-#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
 #include "Editor/Assets/HIKARI_AssetTrashService.h"
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"

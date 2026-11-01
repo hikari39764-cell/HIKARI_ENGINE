@@ -12,7 +12,7 @@
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
 #include "Animation/Runtime/HIKARI_AnimationRootMotionService.h"
 #include "HIKARI/Project/FrameContext.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Scene/Components/HIKARI_AnimatorComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/HIKARI_RuntimeObjectActivityService.h"

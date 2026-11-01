@@ -16,7 +16,7 @@
 #include "Assets/Cooking/HIKARI_AssetCooker.h"
 #include "Assets/Post/HIKARI_PostAssetStore.h"
 #include "Assets/RenderStyle/HIKARI_RenderStyleAsset.h"
-#include "Assets/Shader/HIKARI_PostEffectShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_PostEffectShaderContract.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/Text/HIKARI_UtfPath.h"

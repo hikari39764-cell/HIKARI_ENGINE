@@ -12,7 +12,7 @@
 #include <json.hpp>
 
 #include "Assets/Formats/HIKARI_HmatFormat.h"
-#include "Assets/Formats/HIKARI_HtexFormat.h"
+#include "RenderContracts/Texture/HIKARI_HtexFormat.h"
 #include "Assets/Formats/HIKARI_HvfxcFormat.h"
 #include "Assets/Importers/Policy/HIKARI_ModelImportPolicy.h"
 #include "Assets/Importers/Policy/HIKARI_TextureImportPolicy.h"

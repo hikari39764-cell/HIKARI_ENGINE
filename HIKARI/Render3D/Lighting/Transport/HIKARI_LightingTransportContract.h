@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakePolicy.h"
 
 namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
 

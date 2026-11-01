@@ -4,7 +4,7 @@
 #include <memory>
 #include <span>
 
-#include "Assets/Shader/HIKARI_ShaderCookedArtifact.h"
+#include "RenderContracts/Shader/HIKARI_ShaderCookedArtifact.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/WorldSprite/HIKARI_WorldSpritePipelines.h"

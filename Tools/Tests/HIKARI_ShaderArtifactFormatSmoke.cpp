@@ -6,9 +6,9 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/Formats/HIKARI_HshadercFormat.h"
-#include "Assets/Shader/HIKARI_BuiltinShaderCatalog.h"
-#include "Assets/Shader/HIKARI_ShaderParameterSerialization.h"
+#include "RenderContracts/Shader/HIKARI_HshadercFormat.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderCatalog.h"
+#include "RenderContracts/Shader/HIKARI_ShaderParameterSerialization.h"
 #include <json.hpp>
 #include "Core/Hashing/HIKARI_Sha256.h"
 #include "Tools/Tests/Internal/HIKARI_ContractAssert.h"

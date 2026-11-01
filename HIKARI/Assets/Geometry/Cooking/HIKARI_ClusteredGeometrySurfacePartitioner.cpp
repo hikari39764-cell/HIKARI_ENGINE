@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::GEOMETRY::COOKING {
 

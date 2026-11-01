@@ -13,7 +13,7 @@
 #include <utility>
 
 #include "Audio/HIKARI_Audio.h"
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Gfx/HIKARI_GfxContext.h"

@@ -11,13 +11,13 @@
 #include <DirectXMath.h>
 #include <d3d12.h>
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Render3D/Cluster/HIKARI_ClusterGpuCullingPass.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenLayer.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Lighting/HIKARI_LocalLightGpuData.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
-#include "Render3D/HIKARI_Transform3D.h"
+#include "Core/Math/HIKARI_Transform3D.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Meshlet/HIKARI_MeshletRenderBackend.h"
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"

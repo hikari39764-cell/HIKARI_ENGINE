@@ -1,5 +1,6 @@
 #include "Assets/Vfx/Compiler/HIKARI_VfxCompiler.h"
 #include "Render3D/Vfx/HIKARI_ParticleCapacity.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialEffectStackBuilder.h"
 #include "Assets/Vfx/HIKARI_VfxLayerOrder.h"
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"

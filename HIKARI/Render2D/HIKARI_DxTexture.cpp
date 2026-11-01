@@ -12,7 +12,7 @@
 #include <sstream>
 #include <DirectXTex.h>
 #include <d3dx12.h>
-#include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
+#include "RenderContracts/Format/HIKARI_CookedAssetFormat.h"
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DXCheck.h"
 

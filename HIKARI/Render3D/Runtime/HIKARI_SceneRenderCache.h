@@ -12,7 +12,7 @@
 #include <Vfx/Common/HIKARI_FxTypes.h>
 
 #include "Animation/Runtime/HIKARI_AnimationPose.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Render3D/Runtime/HIKARI_RenderModelAsset.h"
 #include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceRenderData.h"

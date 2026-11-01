@@ -10,8 +10,8 @@
 #include <d3dcompiler.h>
 #include <d3dx12.h>
 
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
-#include "Assets/Shader/HIKARI_DepthPyramidShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "RenderContracts/Shader/HIKARI_DepthPyramidShaderContract.h"
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_DescriptorAllocator.h"

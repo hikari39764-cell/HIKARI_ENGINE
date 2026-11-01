@@ -9,7 +9,7 @@
 #include <unordered_set>
 #include <utility>
 
-#include "Assets/Formats/HIKARI_HtexFormat.h"
+#include "RenderContracts/Texture/HIKARI_HtexFormat.h"
 #include "Assets/Importers/Policy/HIKARI_TextureImportPolicy.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"

@@ -6,7 +6,7 @@
 #include <cstring>
 
 #include "Core/Hashing/HIKARI_FnvHash.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"

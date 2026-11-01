@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI::ASSETS::MODELS::GLTF {

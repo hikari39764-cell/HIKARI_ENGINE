@@ -9,7 +9,7 @@
 #include <string>
 #include <d3dx12.h>
 #include <wrl/client.h>
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"

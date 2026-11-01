@@ -5,9 +5,10 @@
 #include <memory>
 #include <vector>
 
-#include "Assets/HIKARI_AssetTypes.h"
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
-#include "Assets/Shader/HIKARI_ShaderParameters.h"
+#include "Core/HIKARI_AssetGuid.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Shader/HIKARI_ShaderCookedArtifact.h"
+#include "RenderContracts/Shader/HIKARI_ShaderParameters.h"
 #include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI {

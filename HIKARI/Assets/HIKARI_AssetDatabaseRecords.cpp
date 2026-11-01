@@ -1,6 +1,6 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetImportInputs.h"
-#include "Assets/Geometry/HIKARI_HcmeshFormat.h"
+#include "RenderContracts/Geometry/HIKARI_HcmeshFormat.h"
 #include "Assets/Importers/Policy/HIKARI_MaterialImportPolicy.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"

@@ -1,7 +1,7 @@
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
 #include "Render3D/Cluster/HIKARI_ClusterRayTracingGeometry.h"
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
-#include "Assets/Shader/HIKARI_RenderGeometryShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "RenderContracts/Shader/HIKARI_RenderGeometryShaderContract.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 

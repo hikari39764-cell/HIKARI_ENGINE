@@ -6,7 +6,7 @@
 
 #include <DirectXPackedVector.h>
 
-#include "Assets/Color/HIKARI_ColorLutAsset.h"
+#include "RenderContracts/Color/HIKARI_ColorLutAsset.h"
 
 namespace HIKARI::RENDER3D::COLOR {
 namespace {} // namespace

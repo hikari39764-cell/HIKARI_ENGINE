@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Render3D/ScreenSpace/HIKARI_ScreenReadability.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Scene/Capture/HIKARI_SceneCaptureService.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/HIKARI_GameObject.h"

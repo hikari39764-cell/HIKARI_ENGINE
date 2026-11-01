@@ -1,5 +1,5 @@
 #pragma once
-#include "Assets/Material/Authoring/HIKARI_MaterialEffectStack.h"
+#include "RenderContracts/Material/HIKARI_MaterialEffectStack.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
 #include "Assets/Material/Authoring/Internal/HIKARI_MaterialTemplateGraphBuilder.h"
 #include <algorithm>

@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "Core/Math/HIKARI_MathValidation.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "../../../../ThirdParty/meshoptimizer/src/meshoptimizer.h"
 
 namespace HIKARI::ASSETS::GEOMETRY::COOKING {

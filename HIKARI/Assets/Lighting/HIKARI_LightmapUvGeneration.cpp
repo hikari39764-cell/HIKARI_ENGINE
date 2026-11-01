@@ -13,9 +13,9 @@
 #endif
 
 #include "Assets/Lighting/HIKARI_LightmapSurfaceAnalysis.h"
-#include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakePolicy.h"
 #include "Assets/Lighting/HIKARI_LightmapUvGenerationInput.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 
 namespace HIKARI::ASSETS::LIGHTING {
 

@@ -8,7 +8,7 @@
 #include <Windows.h>
 
 #include "Core/Paths/HIKARI_ExecutablePath.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "coacd_c_api.h"
 
 namespace HIKARI::ASSETS::COLLISION {

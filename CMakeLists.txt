@@ -129,6 +129,14 @@ target_include_directories(
     hikari_gfx
     PRIVATE
         "${CMAKE_BINARY_DIR}/generated")
+# RenderContracts の Public ヘッダー（簇ジオメトリの設定、材質効果の種類表）は、HLSL と共有する Shaders/Include を
+# "Shaders/Include/..." の形で include する。この共有ヘッダー群にはまだ専用の include ルートがないため、
+# このモジュールだけ HIKARI ルートを PRIVATE で見る。未移行モジュールのヘッダーも見えてしまうが、
+# 上向きの include は分層検査（Test-HikariRuntimeModuleBoundaries.ps1）が止める。
+target_include_directories(
+    hikari_rendercontracts
+    PRIVATE
+        "${HIKARI_SOURCE_ROOT}/HIKARI")
 target_link_libraries(
     hikari_runtime_navigation
     PRIVATE

@@ -15,7 +15,7 @@
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 #include "Tools/Baking/HIKARI_LightProbeBaker.h"
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 
 namespace HIKARI {
 using namespace DOCUMENT_SCENE_BAKING;

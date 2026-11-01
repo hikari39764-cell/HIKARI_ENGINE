@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"

@@ -7,7 +7,7 @@
 
 #include <d3dx12.h>
 
-#include "Assets/Shader/HIKARI_ProjectSpriteShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_ProjectSpriteShaderContract.h"
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"

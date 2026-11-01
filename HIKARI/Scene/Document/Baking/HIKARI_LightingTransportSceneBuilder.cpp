@@ -10,8 +10,8 @@
 #include <utility>
 
 #include "Assets/Lighting/HIKARI_LightmapSurfaceAnalysis.h"
-#include "Assets/Lighting/HIKARI_LightmapAtlasLayout.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Lighting/HIKARI_LightmapAtlasLayout.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Core/Math/HIKARI_TangentFrame.h"
 #include "Render3D/Core/HIKARI_Material.h"

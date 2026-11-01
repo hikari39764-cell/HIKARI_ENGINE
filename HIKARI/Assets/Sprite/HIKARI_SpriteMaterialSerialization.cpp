@@ -8,11 +8,11 @@
 
 #include <json.hpp>
 
-#include "Assets/Shader/HIKARI_ShaderParameterSerialization.h"
+#include "RenderContracts/Shader/HIKARI_ShaderParameterSerialization.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/Serialization/Json/HIKARI_JsonStrict.h"
 #include "Core/Text/HIKARI_Utf8.h"
-#include "Runtime/Binding/HIKARI_RuntimeBindingTypes.h"
+#include "Core/Binding/HIKARI_BindingValue.h"
 
 namespace HIKARI::SPRITE {
 namespace {

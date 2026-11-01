@@ -10,7 +10,7 @@
 #include "Animation/StateMachine/HIKARI_CharacterMotionAnimationBridge.h"
 #include "Assets/HIKARI_DocumentAssetStores.h"
 #include "Gameplay/Motion/HIKARI_CharacterMotionStateService.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Scene/Components/HIKARI_AnimationStateMachineComponent.h"
 #include "Scene/Components/HIKARI_AnimatorComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"

@@ -4,7 +4,7 @@
 #include <cmath>
 #include <utility>
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Animation/Runtime/HIKARI_AnimationPoseEvaluation.h"
 

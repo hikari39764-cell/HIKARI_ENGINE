@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "Assets/Importers/HIKARI_AssetImporter.h"
-#include "Assets/Shader/HIKARI_ShaderCookedArtifact.h"
+#include "RenderContracts/Shader/HIKARI_ShaderCookedArtifact.h"
 #include "Core/Hashing/HIKARI_Sha256.h"
 #include "Gfx/HIKARI_ShaderCookCompiler.h"
 

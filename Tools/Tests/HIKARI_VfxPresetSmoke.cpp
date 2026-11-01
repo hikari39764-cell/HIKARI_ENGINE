@@ -1,4 +1,5 @@
 #include <algorithm>
+#include "Assets/Material/Authoring/HIKARI_MaterialEffectStackBuilder.h"
 #include "Assets/Vfx/HIKARI_VfxLayerOrder.h"
 #include <array>
 #include <cmath>

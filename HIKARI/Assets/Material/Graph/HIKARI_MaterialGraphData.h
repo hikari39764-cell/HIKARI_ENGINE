@@ -7,6 +7,7 @@
 
 #include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Material/HIKARI_MaterialAssetTypes.h"
+#include "RenderContracts/Material/HIKARI_MaterialProgramFormat.h"
 #include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI {
@@ -19,20 +20,6 @@ inline std::string MaterialPinKey(std::string_view nodeId, std::string_view pin)
     key.push_back(':');
     key.append(pin);
     return key;
-}
-
-struct MaterialValueData {
-    MaterialValueType type = MaterialValueType::Float1;
-    MATH::Vec4 numeric{0.0f, 0.0f, 0.0f, 0.0f};
-    bool boolean = false;
-};
-
-inline MaterialValueData MakeMaterialValue(MaterialValueType type, float x, float y = 0.0f, float z = 0.0f,
-                                           float w = 0.0f) {
-    MaterialValueData value{};
-    value.type = type;
-    value.numeric = {x, y, z, w};
-    return value;
 }
 
 struct MaterialGraphParameterData {
@@ -57,11 +44,6 @@ struct MaterialGraphResourceData {
     MATH::Vec2 uvScale{1.0f, 1.0f};
     MATH::Vec2 uvOffset{0.0f, 0.0f};
     float uvRotation = 0.0f;
-};
-
-struct MaterialNodePropertyData {
-    std::string id{};
-    MaterialValueData value{};
 };
 
 struct MaterialGraphNodeData {

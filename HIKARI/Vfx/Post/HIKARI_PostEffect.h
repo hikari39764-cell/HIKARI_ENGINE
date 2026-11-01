@@ -7,12 +7,13 @@
 #include <wrl.h>
 #include <d3d12.h>
 #include <DirectXMath.h>
-#include "Assets/Shader/HIKARI_ShaderAssetResolver.h"
+#include "RenderContracts/Shader/HIKARI_ShaderAssetResolver.h"
 #include "Assets/Post/HIKARI_PostAsset.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Gfx/HIKARI_GfxContext.h"
 
 namespace HIKARI {
+class AssetRegistry;
 namespace POST {
 
 class QuadDrawer;

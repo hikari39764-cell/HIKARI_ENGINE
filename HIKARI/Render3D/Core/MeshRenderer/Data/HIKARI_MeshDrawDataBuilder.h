@@ -6,7 +6,7 @@
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
-#include "Render3D/HIKARI_Transform3D.h"
+#include "Core/Math/HIKARI_Transform3D.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 
 namespace HIKARI {

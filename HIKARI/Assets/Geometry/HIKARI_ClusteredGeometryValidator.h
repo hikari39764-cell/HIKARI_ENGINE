@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include "Render3D/Cluster/HIKARI_ClusteredGeometryAsset.h"
+#include "RenderContracts/Geometry/HIKARI_ClusteredGeometryAsset.h"
 
 namespace HIKARI::ASSETS::GEOMETRY {
 

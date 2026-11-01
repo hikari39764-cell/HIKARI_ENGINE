@@ -3,7 +3,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 
-#include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakePolicy.h"
 #include "Editor/Style/HIKARI_EditorTheme.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Gfx/HIKARI_GfxContext.h"

@@ -3,7 +3,7 @@
 #include <string>
 #include <cstdint>
 
-#include "Assets/RenderStyle/HIKARI_RenderStyleShading.h"
+#include "RenderContracts/RenderStyle/HIKARI_RenderStyleShading.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
 

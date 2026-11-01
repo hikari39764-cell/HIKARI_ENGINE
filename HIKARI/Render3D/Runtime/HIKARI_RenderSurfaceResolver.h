@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "Animation/Runtime/HIKARI_AnimationPose.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Render3D/Runtime/HIKARI_RenderModelAsset.h"
 
 namespace HIKARI::RENDER3D::RUNTIME {

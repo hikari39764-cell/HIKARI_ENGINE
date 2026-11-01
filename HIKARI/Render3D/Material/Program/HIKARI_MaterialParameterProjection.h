@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
+#include "RenderContracts/Material/HIKARI_MaterialProgramFormat.h"
 
 namespace HIKARI {
 class Material;

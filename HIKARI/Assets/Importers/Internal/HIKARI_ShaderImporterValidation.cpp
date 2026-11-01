@@ -1,6 +1,6 @@
 #include "Assets/Importers/Internal/HIKARI_ShaderImporterValidation.h"
 
-#include "Assets/Shader/HIKARI_ShaderSourceManifest.h"
+#include "RenderContracts/Shader/HIKARI_ShaderSourceManifest.h"
 
 namespace HIKARI::ASSETS::IMPORTERS::INTERNAL {
 

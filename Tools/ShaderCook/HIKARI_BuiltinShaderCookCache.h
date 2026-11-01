@@ -1,5 +1,5 @@
 #pragma once
-#include "Assets/Formats/HIKARI_HshadercFormat.h"
+#include "RenderContracts/Shader/HIKARI_HshadercFormat.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Gfx/Internal/HIKARI_DxcRuntime.h"
 #include "Gfx/Internal/HIKARI_ShaderIncludePlan.h"

@@ -1,5 +1,5 @@
 #pragma once
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include <json.hpp>
 

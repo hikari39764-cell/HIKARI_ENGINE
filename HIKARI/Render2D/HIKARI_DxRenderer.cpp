@@ -8,8 +8,8 @@
 #include <string>
 #include <utility>
 
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
-#include "Assets/Shader/HIKARI_Render2DBuiltinShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "RenderContracts/Shader/HIKARI_Render2DBuiltinShaderContract.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"

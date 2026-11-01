@@ -10,10 +10,10 @@
 
 #include <assimp/scene.h>
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpTypeConversion.h"
 #include "Assets/Models/Processing/HIKARI_ModelGeometryPostprocess.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::MODELS::ASSIMP {
 

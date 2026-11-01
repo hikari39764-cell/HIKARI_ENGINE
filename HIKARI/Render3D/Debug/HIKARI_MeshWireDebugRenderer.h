@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <span>
 
-#include "Render3D/HIKARI_Transform3D.h"
+#include "Core/Math/HIKARI_Transform3D.h"
 
 namespace HIKARI {
 class ModelAsset;

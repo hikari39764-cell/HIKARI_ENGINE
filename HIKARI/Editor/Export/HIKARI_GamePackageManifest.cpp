@@ -14,7 +14,7 @@
 
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Assets/HIKARI_AssetRegistryBuilder.h"
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"

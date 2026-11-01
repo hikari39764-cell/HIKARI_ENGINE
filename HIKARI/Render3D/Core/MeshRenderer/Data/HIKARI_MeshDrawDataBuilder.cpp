@@ -10,7 +10,7 @@
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"

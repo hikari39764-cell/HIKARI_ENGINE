@@ -11,7 +11,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
-#include "Assets/Shader/HIKARI_VolumetricShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_VolumetricShaderContract.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 

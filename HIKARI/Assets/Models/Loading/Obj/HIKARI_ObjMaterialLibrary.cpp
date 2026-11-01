@@ -7,8 +7,8 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
-#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
 #include "Assets/Models/Loading/HIKARI_ModelSourcePath.h"
 #include "Assets/Models/Loading/Obj/HIKARI_ObjText.h"
 

@@ -3,7 +3,7 @@
 #include "Assets/Importers/HIKARI_AssetImporterRegistry.h"
 #include "Assets/Animation/HIKARI_AnimationStateMachineAsset.h"
 #include "Assets/Camera/HIKARI_GameplayCameraAsset.h"
-#include "Assets/Color/HIKARI_ColorLutAsset.h"
+#include "RenderContracts/Color/HIKARI_ColorLutAsset.h"
 #include "Assets/Lighting/HIKARI_IesProfileAsset.h"
 #include "Assets/Dialogue/HIKARI_DialogueAsset.h"
 #include "Assets/Sequence/HIKARI_SequenceAsset.h"

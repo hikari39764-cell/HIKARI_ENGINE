@@ -6,7 +6,7 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 
-#include "Assets/Shader/HIKARI_ShaderAssetResolver.h"
+#include "RenderContracts/Shader/HIKARI_ShaderAssetResolver.h"
 
 namespace HIKARI::RENDER3D::WORLD_SPRITES {
 enum class WorldSpritePipeline : uint32_t {

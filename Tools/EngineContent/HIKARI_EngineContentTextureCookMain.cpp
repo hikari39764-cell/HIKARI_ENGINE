@@ -19,7 +19,7 @@
 #include <DirectXTex.h>
 #include <json.hpp>
 
-#include "Assets/Formats/HIKARI_HtexFormat.h"
+#include "RenderContracts/Texture/HIKARI_HtexFormat.h"
 #include "Assets/Importers/HIKARI_TextureImportBackend_DirectXTex.h"
 #include "Assets/Importers/Policy/HIKARI_TextureImportPolicy.h"
 #include "Core/Hashing/HIKARI_Sha256.h"

@@ -16,8 +16,8 @@
 #include <d3dx12.h>
 #include <wrl.h>
 
-#include "Assets/Shader/HIKARI_AutomaticExposureShaderContract.h"
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "RenderContracts/Shader/HIKARI_AutomaticExposureShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"

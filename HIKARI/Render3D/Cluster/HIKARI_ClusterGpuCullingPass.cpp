@@ -10,8 +10,8 @@
 
 #include <d3dx12.h>
 
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
-#include "Assets/Shader/HIKARI_RenderGeometryShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "RenderContracts/Shader/HIKARI_RenderGeometryShaderContract.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"

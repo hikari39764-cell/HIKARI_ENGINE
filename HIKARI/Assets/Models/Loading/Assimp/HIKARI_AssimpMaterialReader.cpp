@@ -11,10 +11,10 @@
 #include <assimp/material.h>
 #include <assimp/scene.h>
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Core/Math/HIKARI_ScalarMath.h"
-#include "Assets/Models/HIKARI_ModelAssetLookup.h"
-#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetLookup.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpTypeConversion.h"
 #include "Assets/Models/Loading/HIKARI_ModelSourcePath.h"
 

@@ -9,8 +9,8 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetTypes.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
-#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
 #include "Authoring/HIKARI_FieldInspector.h"
 #include "Authoring/HIKARI_IModelMaterialSlotProvider.h"
 #include "Core/Text/HIKARI_Localization.h"

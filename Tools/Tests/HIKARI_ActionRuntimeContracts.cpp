@@ -4,6 +4,7 @@
 #include <iostream>
 #include <limits>
 #include <string_view>
+#include <vector>
 
 #include "Animation/Runtime/HIKARI_AnimationClipSampler.h"
 #include "Animation/Runtime/HIKARI_AnimationPoseEvaluation.h"
@@ -11,6 +12,7 @@
 #include "Core/HIKARI_FixedStepClock.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
+#include "Diagnostics/HIKARI_MetricRegistry.h"
 #include "Physics/HIKARI_KinematicMotionService.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Shadow/HIKARI_ShadowCachePolicy.h"
@@ -65,6 +67,7 @@ void TestFixedStepCatchUpBudget() {
 
 void TestCpuProfileRollingSystemTiming() {
     namespace PROFILE = HIKARI::CPU_PROFILE;
+    namespace METRIC = HIKARI::METRIC;
     const PROFILE::DynamicPassHandle handle = PROFILE::RegisterDynamicPass("Contract/System/Fixed");
     Check(handle != PROFILE::kInvalidDynamicPassHandle, "CPU profiler must register a dynamic system pass");
     Check(PROFILE::RegisterDynamicPass("Contract/System/Fixed") == handle,
@@ -72,7 +75,7 @@ void TestCpuProfileRollingSystemTiming() {
     Check(PROFILE::RegisterDynamicPass({}) == PROFILE::kInvalidDynamicPassHandle,
           "CPU profiler must reject an empty dynamic pass name");
 
-    PROFILE::BeginFrame(41u);
+    PROFILE::BeginFrame(41u, 0.0);
     {
         PROFILE::ScopedDynamicCpuTimer first(handle);
     }
@@ -81,51 +84,55 @@ void TestCpuProfileRollingSystemTiming() {
     }
     PROFILE::EndFrame();
 
-    const PROFILE::FrameSnapshot& first = PROFILE::GetLatestSnapshot();
-    Check(first.valid && first.frameIndex == 41u, "CPU profiler must publish the completed frame");
-    Check(handle < first.dynamicPassCount, "CPU profiler must publish registered dynamic passes");
-    if (handle < first.dynamicPassCount) {
-        const PROFILE::PassTiming& timing = first.dynamicPasses[handle];
-        Check(timing.callCount == 2u && timing.rollingSampleCount == 1u,
+    std::vector<METRIC::MetricReading> readings = METRIC::Snapshot(41u);
+    const METRIC::MetricReading* calls = METRIC::FindReading(readings, "cpu.Contract/System/Fixed.calls");
+    const METRIC::MetricReading* ms = METRIC::FindReading(readings, "cpu.Contract/System/Fixed.ms");
+    Check(calls != nullptr && ms != nullptr && calls->status == METRIC::MetricStatus::Fresh &&
+              calls->sourceFrame == 41u,
+          "CPU profiler must publish a registered dynamic segment under its stable name");
+    if (calls != nullptr && ms != nullptr) {
+        Check(calls->value == 2.0 && ms->window.sampleCount == 1u,
               "dynamic system timing must aggregate calls and history");
-        Check(std::string_view(timing.name) == "Contract/System/Fixed",
-              "dynamic system timing must retain its stable name");
     }
 
-    PROFILE::BeginFrame(42u);
+    PROFILE::BeginFrame(42u, 0.0);
     PROFILE::EndFrame();
-    const PROFILE::FrameSnapshot& second = PROFILE::GetLatestSnapshot();
-    if (handle < second.dynamicPassCount) {
-        const PROFILE::PassTiming& timing = second.dynamicPasses[handle];
-        Check(timing.callCount == 0u && timing.rollingSampleCount == 2u,
-              "rolling CPU history must include idle frames");
-        Check(timing.averageMs >= 0.0 && timing.maximumMs >= 0.0,
+    readings = METRIC::Snapshot(42u);
+    calls = METRIC::FindReading(readings, "cpu.Contract/System/Fixed.calls");
+    ms = METRIC::FindReading(readings, "cpu.Contract/System/Fixed.ms");
+    if (calls != nullptr && ms != nullptr) {
+        Check(calls->sourceFrame == 41u && ms->window.sampleCount == 1u,
+              "an idle frame must neither publish the segment nor enter its sample window");
+        Check(ms->window.average >= 0.0 && ms->window.maximum >= 0.0,
               "rolling CPU statistics must stay finite and non-negative");
     }
 }
 
 void TestCpuProfileResetDropsPartialFrame() {
     namespace PROFILE = HIKARI::CPU_PROFILE;
+    namespace METRIC = HIKARI::METRIC;
 
-    PROFILE::BeginFrame(50u);
+    PROFILE::BeginFrame(50u, 0.0);
     {
         PROFILE::ScopedCpuTimer partial(PROFILE::Pass::AppUpdate);
         PROFILE::ResetStatistics();
     }
     PROFILE::EndFrame();
-    Check(!PROFILE::GetLatestSnapshot().valid,
+    std::vector<METRIC::MetricReading> readings = METRIC::Snapshot(50u);
+    const METRIC::MetricReading* frame = METRIC::FindReading(readings, METRIC::kFrameCpuMs);
+    Check(frame != nullptr && frame->status == METRIC::MetricStatus::NoData,
           "resetting CPU statistics during a frame must discard the partial frame");
 
-    PROFILE::BeginFrame(51u);
+    PROFILE::BeginFrame(51u, 0.0);
     {
         PROFILE::ScopedCpuTimer complete(PROFILE::Pass::AppUpdate);
     }
     PROFILE::EndFrame();
-    const PROFILE::FrameSnapshot& snapshot = PROFILE::GetLatestSnapshot();
-    const PROFILE::PassTiming& appUpdate = snapshot.passes[static_cast<size_t>(PROFILE::Pass::AppUpdate)];
-    Check(snapshot.valid && snapshot.frameIndex == 51u,
+    readings = METRIC::Snapshot(51u);
+    const METRIC::MetricReading* appUpdate = METRIC::FindReading(readings, "cpu.App Update.ms");
+    Check(appUpdate != nullptr && appUpdate->status == METRIC::MetricStatus::Fresh && appUpdate->sourceFrame == 51u,
           "CPU statistics must resume with the first complete post-reset frame");
-    Check(appUpdate.valid && appUpdate.rollingSampleCount == 1u,
+    Check(appUpdate != nullptr && appUpdate->window.sampleCount == 1u,
           "post-reset CPU rolling history must exclude the discarded frame");
 }
 

@@ -6,7 +6,7 @@
 #include <system_error>
 #include <utility>
 
-#include "Assets/Formats/HIKARI_HshadercFormat.h"
+#include "RenderContracts/Shader/HIKARI_HshadercFormat.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetTypes.h"

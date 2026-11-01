@@ -3,8 +3,8 @@
 #include <string>
 
 #include "Core/HIKARI_AssetGuid.h"
-#include "Assets/Shader/HIKARI_ShaderCookedArtifact.h"
-#include "Assets/Shader/HIKARI_ShaderSourceManifest.h"
+#include "RenderContracts/Shader/HIKARI_ShaderCookedArtifact.h"
+#include "RenderContracts/Shader/HIKARI_ShaderSourceManifest.h"
 #include "Gfx/HIKARI_ShaderCookCompiler.h"
 
 namespace HIKARI::ASSETS::SHADER {

@@ -9,7 +9,7 @@
 #include <json.hpp>
 
 #include "Assets/Material/Serialization/HIKARI_MaterialGraphJson.h"
-#include "Assets/Material/Serialization/HIKARI_MaterialShellFields.h"
+#include "RenderContracts/Material/HIKARI_MaterialShellFields.h"
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Core/Serialization/Json/HIKARI_JsonStrict.h"

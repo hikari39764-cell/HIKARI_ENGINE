@@ -5,9 +5,9 @@
 
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Core/HIKARI_Logger.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Models/HIKARI_ModelManager.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"

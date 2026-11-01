@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <utility>
 
-#include "Assets/Models/HIKARI_ModelAssetLookup.h"
-#include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetLookup.h"
+#include "RenderContracts/Format/HIKARI_CookedAssetFormat.h"
 #include "Core/HIKARI_Logger.h"
 
 namespace HIKARI::RENDER3D::MODELS {

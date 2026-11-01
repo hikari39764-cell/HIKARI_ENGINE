@@ -8,6 +8,7 @@
 #include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphData.h"
 #include "Assets/Material/HIKARI_MaterialAssetTypes.h"
+#include "RenderContracts/Material/HIKARI_MaterialProgramFormat.h"
 #include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI {
@@ -52,14 +53,6 @@ struct PbrMaterialAssetData {
     float subsurfaceFactor = 0.0f;
     float subsurfaceRadius = 0.02f;
 
-    bool doubleSided = false;
-    bool unlit = false;
-};
-
-struct MaterialSurfaceData {
-    MaterialAlphaMode alphaMode = MaterialAlphaMode::Opaque;
-    MaterialAlphaRepresentation alphaRepresentation = MaterialAlphaRepresentation::Straight;
-    float alphaCutoff = 0.5f;
     bool doubleSided = false;
     bool unlit = false;
 };

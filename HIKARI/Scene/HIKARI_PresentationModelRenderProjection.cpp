@@ -12,7 +12,7 @@
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingResolver.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"

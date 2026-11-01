@@ -5,7 +5,7 @@
 #include <unordered_set>
 
 #include "Core/Math/HIKARI_MathValidation.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::COLLISION {
 namespace {

@@ -10,7 +10,7 @@
 
 #include "Assets/Environment/HIKARI_EnvironmentAsset.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 

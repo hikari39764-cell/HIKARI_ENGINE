@@ -7,7 +7,7 @@
 #include <string>
 #include <utility>
 
-#include "Assets/Shader/HIKARI_ShaderParameterSerialization.h"
+#include "RenderContracts/Shader/HIKARI_ShaderParameterSerialization.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialSerialization.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialStore.h"
 #include "Core/Serialization/Json/HIKARI_JsonStrict.h"

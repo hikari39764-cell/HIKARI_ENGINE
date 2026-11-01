@@ -22,7 +22,7 @@
 #include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Assets/Cooking/HIKARI_AssetCooker.h"
-#include "Assets/Formats/HIKARI_HtexFormat.h"
+#include "RenderContracts/Texture/HIKARI_HtexFormat.h"
 #include "Assets/Post/HIKARI_PostAssetStore.h"
 #include "Assets/Sprite/HIKARI_SpriteAssetStore.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"

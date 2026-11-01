@@ -5,7 +5,7 @@
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
 #include "Assets/HIKARI_AssetRegistryBuilder.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
-#include "Assets/Color/HIKARI_ColorLutAsset.h"
+#include "RenderContracts/Color/HIKARI_ColorLutAsset.h"
 #include "Assets/Lighting/HIKARI_IesProfileAsset.h"
 #include "Assets/Environment/HIKARI_EnvironmentAsset.h"
 #include "Assets/Post/HIKARI_PostAsset.h"

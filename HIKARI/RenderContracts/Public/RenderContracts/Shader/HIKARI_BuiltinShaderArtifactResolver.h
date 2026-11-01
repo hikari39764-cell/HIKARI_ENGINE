@@ -1,0 +1,40 @@
+#pragma once
+
+#include <filesystem>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "RenderContracts/Shader/HIKARI_ShaderAssetResolver.h"
+
+namespace HIKARI::ASSETS::SHADER {
+
+struct BuiltinShaderArtifactProgram {
+    std::string programId{};
+    AssetGuid assetGuid{};
+    std::shared_ptr<const ShaderCookedArtifact> artifact{};
+};
+
+bool LoadBuiltinShaderArtifactBundle(const std::filesystem::path& shaderRoot,
+                                     std::vector<BuiltinShaderArtifactProgram>& outPrograms,
+                                     std::string& outError) noexcept;
+
+// Resolves a build-produced EngineSdk HSHADERC artifact. The generated
+// index is the only runtime path authority; raw HLSL is never compiled by
+// this resolver.
+ShaderAssetResolveResult ResolveBuiltinShaderEntry(std::string_view programId, const ShaderAssetEntryExpectation& entry,
+                                                   const ShaderAssetContractExpectation& contract) noexcept;
+
+// RenderGeometry の詳細な成果物契約も検証する共通入口。
+ShaderAssetResolveResult ResolveBuiltinRenderGeometryShaderEntry(
+    std::string_view programId, const ShaderAssetEntryExpectation& entry,
+    const ShaderAssetContractExpectation& contract) noexcept;
+
+void ResetBuiltinShaderArtifactResolver() noexcept;
+
+// 起動の待ち時間（DLSS の初期化など）に重ねて、内蔵シェーダーの束を先に読み込む。どのスレッドからでも呼べ、
+// 読み込み中に解決を求めたスレッドは読み終わるまで待つ。
+void PrewarmBuiltinShaderArtifacts() noexcept;
+
+} // namespace HIKARI::ASSETS::SHADER

@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-#include "Assets/Color/HIKARI_ColorLutAsset.h"
+#include "RenderContracts/Color/HIKARI_ColorLutAsset.h"
 #include "Assets/Environment/HIKARI_EnvironmentAsset.h"
 #include "Assets/HIKARI_AssetFileCache.h"
 

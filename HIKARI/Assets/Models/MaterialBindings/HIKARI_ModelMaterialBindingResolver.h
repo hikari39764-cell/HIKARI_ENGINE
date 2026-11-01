@@ -5,8 +5,8 @@
 #include <vector>
 
 #include "Core/HIKARI_AssetGuid.h"
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
-#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
 
 namespace HIKARI {
 class AssetRegistry;

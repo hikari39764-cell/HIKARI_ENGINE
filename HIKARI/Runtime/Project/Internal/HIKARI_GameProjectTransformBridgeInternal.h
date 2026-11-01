@@ -1,7 +1,7 @@
 #pragma once
 
 #include "HIKARI/Project/ValueTypes.h"
-#include "Render3D/HIKARI_Transform3D.h"
+#include "Core/Math/HIKARI_Transform3D.h"
 
 namespace HIKARI::PROJECT::INTERNAL {
 

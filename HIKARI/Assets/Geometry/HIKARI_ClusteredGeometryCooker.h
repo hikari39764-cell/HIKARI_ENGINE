@@ -1,6 +1,7 @@
 #pragma once
 
-#include "Render3D/Cluster/HIKARI_ClusteredGeometryAsset.h"
+#include "RenderContracts/Geometry/HIKARI_ClusteredGeometryAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 
 namespace HIKARI::ASSETS::GEOMETRY {
 

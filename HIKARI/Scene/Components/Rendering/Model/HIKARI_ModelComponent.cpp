@@ -5,9 +5,9 @@
 #include <string>
 #include <utility>
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
-#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Core/HIKARI_JsonRead.h"
 #include "Render3D/Core/HIKARI_Material.h"

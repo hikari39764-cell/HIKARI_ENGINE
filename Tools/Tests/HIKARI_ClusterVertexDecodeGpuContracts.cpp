@@ -7,7 +7,7 @@
 #include <d3d12sdklayers.h>
 #include <d3dcompiler.h>
 #include <d3dx12.h>
-#include "Render3D/Cluster/HIKARI_ClusterGeometryPacked.h"
+#include "RenderContracts/Geometry/HIKARI_ClusterGeometryPacked.h"
 #include "Render3D/Cluster/HIKARI_ClusterRayTracingGeometry.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"

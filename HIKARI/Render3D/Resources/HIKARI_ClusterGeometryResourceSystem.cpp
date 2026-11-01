@@ -10,7 +10,7 @@
 #include <Windows.h>
 #include <d3dx12.h>
 
-#include "Assets/Geometry/HIKARI_HcmeshFormat.h"
+#include "RenderContracts/Geometry/HIKARI_HcmeshFormat.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
 #include "Gfx/HIKARI_DXCheck.h"

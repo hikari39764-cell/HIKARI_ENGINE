@@ -7,7 +7,7 @@
 #include <utility>
 
 #include "Core/HIKARI_AssetGuid.h"
-#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 
 namespace HIKARI {

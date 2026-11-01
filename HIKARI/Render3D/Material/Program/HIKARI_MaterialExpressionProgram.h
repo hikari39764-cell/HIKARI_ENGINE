@@ -5,7 +5,7 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
+#include "RenderContracts/Material/HIKARI_MaterialProgramFormat.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Material/Program/HIKARI_MaterialParameterProjection.h"
 

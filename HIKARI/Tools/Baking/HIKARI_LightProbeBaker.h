@@ -4,8 +4,8 @@
 #include <string>
 #include <vector>
 
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
-#include "Assets/Lighting/HIKARI_LightProbeVolumeFormat.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightProbeVolumeFormat.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
 namespace HIKARI::TOOLS::BAKING {

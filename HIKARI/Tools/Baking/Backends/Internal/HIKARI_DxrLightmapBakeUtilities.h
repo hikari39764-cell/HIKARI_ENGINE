@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-#include "Assets/Lighting/HIKARI_LightmapAtlasLayout.h"
+#include "RenderContracts/Lighting/HIKARI_LightmapAtlasLayout.h"
 #include "Render3D/Lighting/Transport/HIKARI_LightingTransportScene.h"
 
 namespace HIKARI::TOOLS::BAKING::INTERNAL {

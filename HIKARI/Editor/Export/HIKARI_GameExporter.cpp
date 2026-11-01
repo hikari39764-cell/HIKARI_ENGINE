@@ -19,7 +19,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/HIKARI_AssetTypes.h"
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Export/HIKARI_GamePackageManifest.h"

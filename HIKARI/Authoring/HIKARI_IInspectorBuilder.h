@@ -9,7 +9,7 @@
 
 #include "Authoring/HIKARI_ComponentAuthoringTypes.h"
 #include "Core/Text/HIKARI_EnumNames.h"
-#include "Runtime/Binding/HIKARI_RuntimeBindingTypes.h"
+#include "Core/Binding/HIKARI_BindingValue.h"
 
 namespace HIKARI {
 

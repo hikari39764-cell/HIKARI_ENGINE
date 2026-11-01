@@ -6,7 +6,7 @@
 #include <utility>
 
 #include "Animation/Runtime/HIKARI_AnimationClipSampler.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 
 namespace HIKARI {
 

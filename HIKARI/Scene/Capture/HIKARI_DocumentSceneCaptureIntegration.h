@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Core/HIKARI_TimeService.h"

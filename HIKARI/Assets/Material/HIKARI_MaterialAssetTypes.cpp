@@ -174,20 +174,4 @@ bool TryGetBuiltinMaterialNodeKind(const MaterialNodeTypeId& typeId, MaterialNod
     return TryParseMaterialNodeKind(typeId.value, outValue);
 }
 
-bool IsMaterialNumericType(MaterialValueType type) noexcept {
-    return type == MaterialValueType::Float1 || type == MaterialValueType::Float2 ||
-           type == MaterialValueType::Float3 || type == MaterialValueType::Float4;
-}
-
-uint32_t GetMaterialValueComponentCount(MaterialValueType type) noexcept {
-    switch (type) {
-    case MaterialValueType::Bool:
-    case MaterialValueType::Float1: return 1u;
-    case MaterialValueType::Float2: return 2u;
-    case MaterialValueType::Float3: return 3u;
-    case MaterialValueType::Float4: return 4u;
-    default: return 0u;
-    }
-}
-
 } // namespace HIKARI

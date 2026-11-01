@@ -1,7 +1,8 @@
 #include "Vfx/Post/HIKARI_PostEffect.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
-#include "Assets/Shader/HIKARI_PostEffectShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "Assets/Shader/HIKARI_ShaderRegistryResolve.h"
+#include "RenderContracts/Shader/HIKARI_PostEffectShaderContract.h"
 #include "Core/HIKARI_TimeService.h"
 #include <algorithm>
 #include <span>
@@ -111,9 +112,9 @@ bool PostEffect::LoadPixelShader(const PostEffectPass& pass, const AssetRegistry
     const ASSETS::SHADER::ShaderAssetContractExpectation contract = ASSETS::SHADER::MakePostEffectShaderContract(
         {capabilities.shaderModel, capabilities.rootSignatureVersion, capabilities.featureMask});
     const ASSETS::SHADER::ShaderAssetEntryExpectation entry{pass.entryId, ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0"};
-    auto resolved = projectShader ? ASSETS::SHADER::ShaderAssetResolver::ResolveByGuid(*registry, pass.shaderAssetGuid,
-                                                                                       entry, contract)
-                                  : ASSETS::SHADER::ResolveBuiltinShaderEntry(pass.programId, entry, contract);
+    auto resolved = projectShader
+                        ? ASSETS::SHADER::ResolveShaderAssetByGuid(*registry, pass.shaderAssetGuid, entry, contract)
+                        : ASSETS::SHADER::ResolveBuiltinShaderEntry(pass.programId, entry, contract);
     std::string diagnostic{};
     const ASSETS::SHADER::ShaderCookedArtifact* artifact = resolved ? resolved.lease.GetArtifact() : nullptr;
     if (!resolved || artifact == nullptr || !ASSETS::SHADER::ValidatePostEffectShaderArtifact(*artifact, diagnostic)) {

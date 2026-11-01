@@ -12,10 +12,11 @@
 
 #include "Core/HIKARI_AssetGuid.h"
 #include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
-#include "Assets/Shader/HIKARI_ShaderAssetResolver.h"
-#include "Assets/Shader/HIKARI_ShaderCookedArtifact.h"
-#include "Assets/Shader/HIKARI_ProjectFullscreenShaderContract.h"
+#include "Assets/Shader/HIKARI_ShaderRegistryResolve.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "RenderContracts/Shader/HIKARI_ShaderAssetResolver.h"
+#include "RenderContracts/Shader/HIKARI_ShaderCookedArtifact.h"
+#include "RenderContracts/Shader/HIKARI_ProjectFullscreenShaderContract.h"
 #include "Core/Hashing/HIKARI_Sha256.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GfxContext.h"
@@ -190,7 +191,7 @@ ID3D12PipelineState* ResolvePipeline(RuntimeState& state, const AssetRegistry& a
         outDiagnostic = "vertex resolve failed: " + vertex.diagnostic;
         return nullptr;
     }
-    SHADER::ShaderAssetResolveResult pixel = SHADER::ShaderAssetResolver::ResolveByGuid(
+    SHADER::ShaderAssetResolveResult pixel = SHADER::ResolveShaderAssetByGuid(
         assets, AssetGuid{program.assetGuid}, {program.pixelEntryId, SHADER::ShaderStage::Pixel, "ps_6_0"}, contract);
     if (!pixel) {
         outDiagnostic = "pixel resolve failed: " + pixel.diagnostic;

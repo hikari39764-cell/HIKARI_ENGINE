@@ -12,8 +12,9 @@
 
 #include "Core/HIKARI_AssetGuid.h"
 #include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/Shader/HIKARI_ProjectDispatchShaderContract.h"
-#include "Assets/Shader/HIKARI_ShaderAssetResolver.h"
+#include "Assets/Shader/HIKARI_ShaderRegistryResolve.h"
+#include "RenderContracts/Shader/HIKARI_ProjectDispatchShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_ShaderAssetResolver.h"
 #include "Core/Hashing/HIKARI_Sha256.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_DXCheck.h"
@@ -147,9 +148,9 @@ ID3D12PipelineState* ResolvePipeline(RuntimeState& state, const AssetRegistry& a
     const GFX::ShaderDeviceCapabilities capabilities = GFX::QueryShaderDeviceCapabilities(state.graphics.device);
     const SHADER::ShaderAssetContractExpectation contract = SHADER::MakeProjectDispatchShaderContract(
         {capabilities.shaderModel, capabilities.rootSignatureVersion, capabilities.featureMask});
-    SHADER::ShaderAssetResolveResult resolved = SHADER::ShaderAssetResolver::ResolveByGuid(
-        assets, AssetGuid{program.assetGuid}, {program.computeEntryId, SHADER::ShaderStage::Compute, "cs_6_0"},
-        contract);
+    SHADER::ShaderAssetResolveResult resolved =
+        SHADER::ResolveShaderAssetByGuid(assets, AssetGuid{program.assetGuid},
+                                         {program.computeEntryId, SHADER::ShaderStage::Compute, "cs_6_0"}, contract);
     const SHADER::ShaderCookedArtifact* artifact = resolved ? resolved.lease.GetArtifact() : nullptr;
     const SHADER::ShaderCookedEntry* entry = resolved ? resolved.lease.GetEntry() : nullptr;
     if (!resolved || artifact == nullptr || entry == nullptr ||

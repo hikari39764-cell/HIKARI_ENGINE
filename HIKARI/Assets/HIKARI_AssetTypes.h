@@ -6,6 +6,9 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetTypeEnum.h"
+#include "Core/HIKARI_AssetGuid.h"
+#include "RenderContracts/Format/HIKARI_CookedAssetFormat.h"
+#include "RenderContracts/Texture/HIKARI_TextureTypes.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
@@ -56,14 +59,6 @@ struct ModelAnimationImportDesc {
     std::vector<AnimationClipAlias> clips;
 };
 
-struct AssetId {
-    std::string value;
-
-    bool operator==(const AssetId& rhs) const { return value == rhs.value; }
-
-    bool operator!=(const AssetId& rhs) const { return !(*this == rhs); }
-};
-
 struct AssetDescriptor {
     virtual ~AssetDescriptor() = default;
 
@@ -91,76 +86,6 @@ struct SkyAssetDescriptor final : AssetDescriptor {
     std::string brdfLutPath{};
     uint32_t prefilteredMipCount = 1;
     bool hasIbl = false;
-};
-
-enum class TextureAssetDimension {
-    Texture2D,
-    TextureCube,
-};
-
-enum class TextureAssetColorSpace {
-    Auto,
-    Linear,
-    Srgb,
-};
-
-enum class TextureUsage {
-    Auto,
-    BaseColor,
-    Normal,
-    MetallicRoughness,
-    Occlusion,
-    Emissive,
-    Mask,
-    UI,
-    SkyCubemap,
-    IblIrradiance,
-    IblPrefiltered,
-    BrdfLut,
-};
-
-enum class TextureCompression {
-    Auto,
-    None,
-    BC1,
-    BC3,
-    BC4,
-    BC5,
-    BC6H,
-    BC7,
-};
-
-enum class TextureMipPolicy {
-    Auto,
-    Generate,
-    Preserve,
-    None,
-};
-
-enum class TextureAssetAlphaClass : uint8_t {
-    Unknown,
-    Opaque,
-    Cutout,
-    Translucent,
-};
-
-enum class CookedAssetFormat {
-    Unknown,
-    DDS,
-    HTEX,
-    HMODEL,
-    HMESH,
-    HCMESH,
-    HCOLLISION,
-    HMAT,
-    HSKY,
-    HIBL,
-    HVFX,
-    HSHADERC,
-    HPAK,
-    HPREFABC,
-    HSPRITEC,
-    HSPRITEMATERIALC,
 };
 
 struct TextureAssetDescriptor final : AssetDescriptor {

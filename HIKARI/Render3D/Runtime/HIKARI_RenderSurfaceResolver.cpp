@@ -3,7 +3,7 @@
 
 #include <cmath>
 
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 
 namespace HIKARI::RENDER3D::RUNTIME {
 

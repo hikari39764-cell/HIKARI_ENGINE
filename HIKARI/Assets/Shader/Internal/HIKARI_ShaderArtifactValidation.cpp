@@ -9,9 +9,9 @@
 
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
-#include "Assets/Shader/HIKARI_ShaderCookedArtifact.h"
-#include "Assets/Shader/HIKARI_ShaderParameterSerialization.h"
-#include "Assets/Shader/HIKARI_ShaderSourceManifest.h"
+#include "RenderContracts/Shader/HIKARI_ShaderCookedArtifact.h"
+#include "RenderContracts/Shader/HIKARI_ShaderParameterSerialization.h"
+#include "RenderContracts/Shader/HIKARI_ShaderSourceManifest.h"
 #include "Core/Hashing/HIKARI_Sha256.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 

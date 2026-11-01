@@ -9,7 +9,7 @@
 #if defined(HIKARI_WITH_EDITOR)
 #include "Render3D/Core/HIKARI_RenderView.h"
 #endif
-#include "Render3D/HIKARI_Transform3D.h"
+#include "Core/Math/HIKARI_Transform3D.h"
 
 namespace HIKARI::RENDERER3D::DEBUG {
 

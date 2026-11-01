@@ -2,7 +2,7 @@
 #include "Core/IO/HIKARI_PathNormalization.h"
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/HIKARI_ProjectDescriptor.h"

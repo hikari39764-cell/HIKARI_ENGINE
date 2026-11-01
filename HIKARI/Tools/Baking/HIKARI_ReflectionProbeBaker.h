@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/Math/HIKARI_Math3D.h"
 
 namespace HIKARI {

@@ -6,7 +6,7 @@
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshMaterialResolver.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"

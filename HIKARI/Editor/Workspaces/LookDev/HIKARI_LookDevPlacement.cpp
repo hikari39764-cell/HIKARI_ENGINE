@@ -5,7 +5,7 @@
 #include <cmath>
 #include <limits>
 
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Editor/Views/HIKARI_EditorViewportGeometry.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"

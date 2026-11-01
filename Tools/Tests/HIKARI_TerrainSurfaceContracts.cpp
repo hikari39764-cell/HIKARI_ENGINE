@@ -23,7 +23,7 @@
 #include <DirectXPackedVector.h>
 #include <json.hpp>
 
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Editor/History/HIKARI_TerrainSurfaceEditDelta.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshBuilder.h"

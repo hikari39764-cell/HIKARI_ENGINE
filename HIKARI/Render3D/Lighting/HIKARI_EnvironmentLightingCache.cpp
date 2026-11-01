@@ -7,7 +7,7 @@
 #include <limits>
 #include <d3dx12.h>
 #include "Core/Hashing/HIKARI_FnvHash.h"
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"

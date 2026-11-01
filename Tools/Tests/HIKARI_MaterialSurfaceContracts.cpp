@@ -10,11 +10,11 @@
 #include <vector>
 #include <d3dx12.h>
 #include "Gfx/HIKARI_ShaderCookCompiler.h"
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialProgramSerialization.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgram.h"
-#include "Assets/Models/Policies/HIKARI_ModelMaterialPolicy.h"
+#include "RenderContracts/Model/Policies/HIKARI_ModelMaterialPolicy.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshVariantResolver.h"
 #include "Render3D/Runtime/HIKARI_SurfaceDrawRoute.h"

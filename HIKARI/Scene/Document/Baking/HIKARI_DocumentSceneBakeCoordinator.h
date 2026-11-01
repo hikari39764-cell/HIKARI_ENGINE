@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <memory>
 #include <vector>
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 
 #include "Tools/Baking/HIKARI_LightingBakeReport.h"
 #include "Tools/Baking/HIKARI_LightProbeBaker.h"

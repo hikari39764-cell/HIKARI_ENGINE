@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <string>
 
-#include "Render3D/Cluster/HIKARI_ClusterGeometryPacked.h"
+#include "RenderContracts/Geometry/HIKARI_ClusterGeometryPacked.h"
 
 namespace HIKARI::RENDER3D::INTERNAL {
 

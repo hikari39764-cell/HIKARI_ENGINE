@@ -14,10 +14,10 @@
 #include <utility>
 
 #include "Assets/Geometry/HIKARI_ClusteredGeometryCooker.h"
-#include "Assets/Geometry/HIKARI_HcmeshFormat.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
-#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "RenderContracts/Geometry/HIKARI_HcmeshFormat.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"

@@ -4,7 +4,7 @@
 #include <array>
 #include <cmath>
 #include "Core/Math/HIKARI_MathValidation.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Scene/Vfx/HIKARI_AfterimageSnapshot.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_PresentationModelService.h"

@@ -7,7 +7,7 @@
 #include <limits>
 
 #include "Core/Math/HIKARI_MathValidation.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 
 #ifdef max
 #undef max

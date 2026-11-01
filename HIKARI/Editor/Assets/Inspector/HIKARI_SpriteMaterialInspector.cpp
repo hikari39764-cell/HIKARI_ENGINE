@@ -3,7 +3,7 @@
 #include <algorithm>
 
 #include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/Shader/HIKARI_ProjectSpriteShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_ProjectSpriteShaderContract.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"

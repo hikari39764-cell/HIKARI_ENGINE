@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Components/Lighting/HIKARI_LightSettings.h"
 

@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/HIKARI_Logger.h"
 #include "Editor/Panels/Internal/HIKARI_LightingBakePanelSummary.h"
 #include "Editor/Platform/HIKARI_EditorShellActions.h"

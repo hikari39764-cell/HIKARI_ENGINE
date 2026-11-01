@@ -4,7 +4,7 @@
 #include <optional>
 #include <unordered_set>
 
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"

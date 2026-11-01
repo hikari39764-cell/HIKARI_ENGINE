@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"

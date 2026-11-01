@@ -6,9 +6,9 @@
 #include <string_view>
 #include <utility>
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
-#include "Assets/Models/HIKARI_ModelAssetLookup.h"
-#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetLookup.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
 #include "Assets/Models/Loading/HIKARI_ModelSourcePath.h"
 
 namespace HIKARI::ASSETS::MODELS::GLTF {

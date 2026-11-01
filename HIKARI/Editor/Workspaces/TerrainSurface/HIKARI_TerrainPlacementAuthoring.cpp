@@ -7,7 +7,7 @@
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
 #include "Editor/Selection/HIKARI_EditorSelection.h"
 #include "Editor/Selection/HIKARI_SceneSelectionTransform.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Geometry/HIKARI_GeometryFitProvider.h"

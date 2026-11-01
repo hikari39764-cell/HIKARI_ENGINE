@@ -5,7 +5,7 @@
 #include <limits>
 #include <string>
 
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 
 namespace HIKARI::ASSETS::LIGHTING::INTERNAL {

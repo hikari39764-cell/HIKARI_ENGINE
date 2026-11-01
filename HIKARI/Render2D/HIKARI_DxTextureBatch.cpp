@@ -3,8 +3,8 @@
 #include <iterator>
 #include <sstream>
 #include <d3dx12.h>
-#include "Assets/Formats/HIKARI_HtexFormat.h"
-#include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
+#include "RenderContracts/Texture/HIKARI_HtexFormat.h"
+#include "RenderContracts/Format/HIKARI_CookedAssetFormat.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Gfx/HIKARI_VideoMemory.h"

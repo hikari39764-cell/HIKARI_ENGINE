@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "Core/Math/HIKARI_Math3D.h"
-#include "Assets/Material/Authoring/HIKARI_MaterialEffectStack.h"
+#include "RenderContracts/Material/HIKARI_MaterialEffectStack.h"
 
 namespace HIKARI {
 class AssetRegistry;

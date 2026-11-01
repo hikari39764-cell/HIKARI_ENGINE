@@ -6,8 +6,8 @@
 
 #include <d3dx12.h>
 
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
-#include "Assets/Shader/HIKARI_RenderGeometryShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "RenderContracts/Shader/HIKARI_RenderGeometryShaderContract.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"

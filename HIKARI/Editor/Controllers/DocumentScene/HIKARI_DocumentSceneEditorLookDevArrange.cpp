@@ -10,8 +10,8 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetRecord.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"

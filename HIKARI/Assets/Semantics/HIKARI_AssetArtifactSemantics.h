@@ -1,11 +1,11 @@
 #pragma once
 
 #include <cstdint>
-#include <filesystem>
 #include <string>
 #include <string_view>
 
 #include "Assets/HIKARI_AssetRecord.h"
+#include "RenderContracts/Format/HIKARI_CookedAssetFormat.h"
 
 namespace HIKARI::ASSETS::SEMANTICS {
 
@@ -41,9 +41,6 @@ struct AssetArtifactSemantics {
 
 const AssetArtifactSemantics& GetAssetArtifactSemantics(AssetArtifactKind kind) noexcept;
 const AssetArtifactSemantics* FindPrimaryAssetArtifactSemantics(AssetType type) noexcept;
-std::string_view ToString(CookedAssetFormat format) noexcept;
-CookedAssetFormat ParseCookedAssetFormat(std::string_view text) noexcept;
-CookedAssetFormat ClassifyCookedAssetFormat(const std::filesystem::path& path);
 
 AssetArtifactDesc MakeAssetArtifact(AssetArtifactKind kind, std::string path);
 

@@ -4,7 +4,7 @@
 #include <utility>
 
 #include "Assets/Formats/HIKARI_HmodelFormat.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #if defined(HIKARI_WITH_EDITOR)
 #include "Assets/Models/Loading/HIKARI_AssimpModelLoader.h"
 #include "Assets/Models/Loading/HIKARI_GltfModelLoader.h"
@@ -14,7 +14,7 @@
 #if defined(HIKARI_WITH_EDITOR)
 #include "Core/Text/HIKARI_AsciiCase.h"
 #endif
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::MODELS {
 

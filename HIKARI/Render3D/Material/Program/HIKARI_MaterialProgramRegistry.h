@@ -45,8 +45,6 @@ public:
 
     void Reset();
 
-    MaterialProgramResolution ResolveMaterialAsset(std::string_view sourceIdentity, const MaterialAssetData& source);
-
     MaterialProgramResolution ResolveCompileResult(std::string_view sourceIdentity,
                                                    const MaterialCompileResult& compileResult);
 

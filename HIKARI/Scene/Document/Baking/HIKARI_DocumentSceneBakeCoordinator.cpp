@@ -8,7 +8,7 @@
 #include <memory>
 #include <utility>
 
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Assets/Lighting/HIKARI_LightingBakeDependencyHash.h"
 #include "Core/HIKARI_Logger.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"

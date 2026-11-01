@@ -1,4 +1,4 @@
-#include "Assets/Material/Authoring/HIKARI_MaterialEffectStack.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialEffectStackBuilder.h"
 #include "Assets/Material/Authoring/Internal/HIKARI_MaterialEffectSampling.h"
 #include "Assets/Material/Authoring/Internal/HIKARI_MaterialEffectProcedural.h"
 #include "Assets/Material/Authoring/Internal/HIKARI_MaterialEffectStyle.h"

@@ -15,13 +15,13 @@
 
 #include "Core/Text/HIKARI_Base64.h"
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Assets/Models/Loading/Gltf/HIKARI_GltfAccessorReader.h"
 #include "Assets/Models/Loading/Gltf/HIKARI_GltfAnimationReader.h"
 #include "Assets/Models/Loading/Gltf/HIKARI_GltfMaterialReader.h"
 #include "Assets/Models/Loading/Gltf/HIKARI_GltfSceneReader.h"
 #include "Assets/Models/Processing/HIKARI_ModelGeometryPostprocess.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::MODELS {
 

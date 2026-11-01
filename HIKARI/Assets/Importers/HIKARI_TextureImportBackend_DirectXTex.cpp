@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/Formats/HIKARI_HtexFormat.h"
+#include "RenderContracts/Texture/HIKARI_HtexFormat.h"
 #include "Core/HIKARI_Logger.h"
 #include "Assets/Tasks/HIKARI_AssetTaskService.h"
 

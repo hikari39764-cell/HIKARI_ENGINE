@@ -6,7 +6,7 @@
 
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetTypes.h"
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/HIKARI_Logger.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 #include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"

@@ -1,12 +1,12 @@
 #include "Assets/Importers/HIKARI_ShaderImporter.h"
 #include <span>
 #include <json.hpp>
-#include "Assets/Formats/HIKARI_HshadercFormat.h"
+#include "RenderContracts/Shader/HIKARI_HshadercFormat.h"
 #include "Assets/Importers/Internal/HIKARI_ShaderImporterValidation.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
-#include "Assets/Shader/HIKARI_ShaderCookedArtifact.h"
+#include "RenderContracts/Shader/HIKARI_ShaderCookedArtifact.h"
 #include "Assets/Shader/HIKARI_ShaderCookedArtifactBuilder.h"
-#include "Assets/Shader/HIKARI_ShaderSourceManifest.h"
+#include "RenderContracts/Shader/HIKARI_ShaderSourceManifest.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/IO/HIKARI_PathNormalization.h"

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 

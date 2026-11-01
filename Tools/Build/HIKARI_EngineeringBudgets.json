@@ -8,9 +8,9 @@
     "hardLargeFileCountCeiling": 9,
     "runtimeModuleCompileUnitCeiling": 150,
     "moduleCompileUnitCeilings": {
-      "Render3D": 235,
+      "Render3D": 232,
       "Scene": 206,
-      "Assets": 169
+      "Assets": 147
     },
     "modulePhysicalLineCeilings": {
       "Editor": 50271,

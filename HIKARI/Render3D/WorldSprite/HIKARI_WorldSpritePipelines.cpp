@@ -5,8 +5,8 @@
 #include <limits>
 #include <span>
 #include <string>
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
-#include "Assets/Shader/HIKARI_RenderGeometryShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "RenderContracts/Shader/HIKARI_RenderGeometryShaderContract.h"
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"

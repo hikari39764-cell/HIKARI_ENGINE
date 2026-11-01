@@ -4,7 +4,7 @@
 
 #include <assimp/scene.h>
 
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 
 namespace HIKARI::ASSETS::MODELS::ASSIMP {
 

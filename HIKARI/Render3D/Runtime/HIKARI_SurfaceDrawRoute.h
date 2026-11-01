@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 
 namespace HIKARI {
 class Material;

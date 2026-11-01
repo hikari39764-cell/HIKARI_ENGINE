@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Text/HIKARI_SdfTextLayout.h"
 

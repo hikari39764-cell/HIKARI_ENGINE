@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Editor/Views/HIKARI_EditorViewportGeometry.h"
 #include "Editor/Workspaces/LookDev/HIKARI_LookDevPlacement.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"

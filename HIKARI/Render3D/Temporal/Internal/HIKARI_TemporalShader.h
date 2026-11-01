@@ -2,8 +2,8 @@
 
 #include <d3d12.h>
 
-#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
-#include "Assets/Shader/HIKARI_TemporalShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
+#include "RenderContracts/Shader/HIKARI_TemporalShaderContract.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 
 namespace HIKARI::RENDER3D::TEMPORAL::INTERNAL {

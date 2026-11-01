@@ -5,7 +5,7 @@
 #include <fstream>
 #include <utility>
 
-#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
 #include "Core/Serialization/Binary/HIKARI_BinaryStream.h"
 
 namespace HIKARI {

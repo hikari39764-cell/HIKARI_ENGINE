@@ -10,7 +10,7 @@
 
 #include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Vfx/HIKARI_VfxAnimationTiming.h"
-#include "Assets/Material/Authoring/HIKARI_MaterialEffectStack.h"
+#include "RenderContracts/Material/HIKARI_MaterialEffectStack.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 

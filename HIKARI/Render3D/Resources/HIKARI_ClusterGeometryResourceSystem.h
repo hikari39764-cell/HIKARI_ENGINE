@@ -9,8 +9,8 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render3D/Cluster/HIKARI_ClusterGeometryPacked.h"
-#include "Render3D/Cluster/HIKARI_ClusterGpuData.h"
+#include "RenderContracts/Geometry/HIKARI_ClusterGeometryPacked.h"
+#include "RenderContracts/Geometry/HIKARI_ClusterGpuData.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Resources/HIKARI_RenderResourcePool.h"
 

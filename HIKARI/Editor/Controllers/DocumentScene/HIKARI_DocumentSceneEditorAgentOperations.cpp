@@ -1,6 +1,6 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Core/Text/HIKARI_UtfPath.h"

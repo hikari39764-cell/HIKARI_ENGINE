@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <utility>
-#include "Assets/Models/Policies/HIKARI_ModelMaterialPolicy.h"
+#include "RenderContracts/Model/Policies/HIKARI_ModelMaterialPolicy.h"
 
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 

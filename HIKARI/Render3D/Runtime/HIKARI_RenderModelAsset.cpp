@@ -4,7 +4,7 @@
 #include <string>
 #include <utility>
 
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/Runtime/HIKARI_RenderSurfaceResolver.h"
 
 namespace HIKARI::RENDER3D::RUNTIME {

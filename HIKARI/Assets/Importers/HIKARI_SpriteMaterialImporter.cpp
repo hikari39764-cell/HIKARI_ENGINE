@@ -1,10 +1,10 @@
 #include "Assets/Importers/HIKARI_SpriteMaterialImporter.h"
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/Formats/HIKARI_HshadercFormat.h"
+#include "RenderContracts/Shader/HIKARI_HshadercFormat.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
-#include "Assets/Shader/HIKARI_ProjectSpriteShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_ProjectSpriteShaderContract.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialAsset.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialSerialization.h"
 #include "Core/Text/HIKARI_UtfPath.h"

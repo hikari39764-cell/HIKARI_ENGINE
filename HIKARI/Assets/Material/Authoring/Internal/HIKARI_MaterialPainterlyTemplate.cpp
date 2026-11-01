@@ -5,7 +5,7 @@
 #include <string_view>
 
 #include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
-#include "Assets/Material/Serialization/HIKARI_MaterialShellFields.h"
+#include "RenderContracts/Material/HIKARI_MaterialShellFields.h"
 
 namespace HIKARI::ASSETS::MATERIAL::TEMPLATE_FACTORY_INTERNAL {
 namespace {

@@ -1,7 +1,7 @@
 #include "Editor/Preview/HIKARI_SceneViewSeriesCapture.h"
 
 #include "Editor/Authoring/HIKARI_SceneObjectObservation.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>

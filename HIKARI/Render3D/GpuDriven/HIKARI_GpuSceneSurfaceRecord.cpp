@@ -10,7 +10,7 @@
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"

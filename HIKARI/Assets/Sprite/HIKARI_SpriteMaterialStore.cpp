@@ -3,7 +3,7 @@
 #include <memory>
 
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
-#include "Assets/Shader/HIKARI_ProjectSpriteShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_ProjectSpriteShaderContract.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 
 namespace HIKARI::SPRITE {

@@ -10,7 +10,7 @@
 #include <d3dx12.h>
 #include <wrl/client.h>
 
-#include "Assets/Shader/HIKARI_CameraDepthOfFieldShaderContract.h"
+#include "RenderContracts/Shader/HIKARI_CameraDepthOfFieldShaderContract.h"
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
 #include "Gfx/HIKARI_DXCheck.h"

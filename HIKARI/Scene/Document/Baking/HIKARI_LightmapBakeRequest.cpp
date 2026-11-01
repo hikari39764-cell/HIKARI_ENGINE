@@ -9,7 +9,7 @@
 #include <utility>
 
 #include "Assets/Lighting/HIKARI_LightingBakeDependencyHash.h"
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/HIKARI_AssetGuid.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Gfx/HIKARI_GfxContext.h"

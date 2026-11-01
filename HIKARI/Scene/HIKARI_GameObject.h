@@ -11,7 +11,7 @@
 #include "Components/HIKARI_IComponent.h"
 #include "HIKARI_RuntimeObjectHandle.h"
 #include "HIKARI_SceneDocument.h"
-#include "Render3D/HIKARI_Transform3D.h"
+#include "Core/Math/HIKARI_Transform3D.h"
 
 namespace HIKARI {
 

@@ -1,4 +1,5 @@
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
+#include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 
 #include <algorithm>
@@ -181,12 +182,6 @@ void MaterialProgramRegistry::Reset() {
     programs_.push_back(BuildRuntimeMaterialProgram(kStandardPbrMaterialProgramId, fallback, true));
     programByKey_.emplace(programs_.front().ir.key, kStandardPbrMaterialProgramId);
     RefreshStats();
-}
-
-MaterialProgramResolution MaterialProgramRegistry::ResolveMaterialAsset(std::string_view sourceIdentity,
-                                                                        const MaterialAssetData& source) {
-    const MaterialCompileResult compileResult = CompileMaterialAsset(source);
-    return ResolveCompileResult(sourceIdentity, compileResult);
 }
 
 MaterialProgramResolution MaterialProgramRegistry::ResolveCompileResult(std::string_view sourceIdentity,

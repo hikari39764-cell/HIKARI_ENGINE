@@ -9,7 +9,7 @@
 
 #include "Core/HIKARI_AssetGuid.h"
 #include "Assets/HIKARI_AssetTypeEnum.h"
-#include "Assets/Models/HIKARI_ModelAssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Render3D/Core/HIKARI_Material.h"

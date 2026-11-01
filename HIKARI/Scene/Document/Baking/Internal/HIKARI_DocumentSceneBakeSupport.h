@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"

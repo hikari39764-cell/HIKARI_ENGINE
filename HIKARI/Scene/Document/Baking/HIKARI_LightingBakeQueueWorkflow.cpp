@@ -4,7 +4,7 @@
 
 #include <utility>
 
-#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Tools/Baking/HIKARI_LightingBakeService.h"
 
 namespace HIKARI {

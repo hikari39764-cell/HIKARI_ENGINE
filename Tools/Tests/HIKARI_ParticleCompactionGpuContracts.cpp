@@ -7,7 +7,7 @@
 #include <vector>
 #include <d3dx12.h>
 #include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/Formats/HIKARI_HtexFormat.h"
+#include "RenderContracts/Texture/HIKARI_HtexFormat.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Core/HIKARI_Logger.h"

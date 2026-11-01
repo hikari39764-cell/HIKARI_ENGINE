@@ -10,7 +10,7 @@
 #include <json.hpp>
 
 #include "Assets/HIKARI_AssetArtifactManifest.h"
-#include "Assets/RenderStyle/HIKARI_RenderStyleShading.h"
+#include "RenderContracts/RenderStyle/HIKARI_RenderStyleShading.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 

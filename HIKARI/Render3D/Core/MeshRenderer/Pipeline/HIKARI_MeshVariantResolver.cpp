@@ -4,7 +4,7 @@
 
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 
 namespace HIKARI::MESHRENDERER {
 

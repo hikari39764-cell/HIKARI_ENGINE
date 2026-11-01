@@ -7,8 +7,8 @@
 #include <unordered_map>
 #include <utility>
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
-#include "Assets/Models/HIKARI_ModelBounds.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneSurfaceRecord.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"

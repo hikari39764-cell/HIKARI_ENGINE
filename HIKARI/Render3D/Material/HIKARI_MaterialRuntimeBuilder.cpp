@@ -9,7 +9,7 @@
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Core/HIKARI_Material.h"
-#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Render3D/Material/HIKARI_DefaultPbrResources.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
