@@ -163,8 +163,9 @@ struct WorldSpritePass::Impl {
             return false;
         }
         for (auto& frame : frames) {
-            if (!GFX::D3D12_BUFFER::CreateDefaultBuffer(
-                    context.device, UINT64(capacity) * 2u * sizeof(GpuWorldSpriteInstance), frame.instances) ||
+            if (!GFX::D3D12_BUFFER::CreateDefaultBuffer(context.device,
+                                                        UINT64(capacity) * 2u * sizeof(GpuWorldSpriteInstance),
+                                                        GFX::VIDEO_MEMORY::Owner::Vfx, frame.instances) ||
                 !frame.staging.Init(context.device, 64u * 1024u)) {
                 Shutdown();
                 return false;

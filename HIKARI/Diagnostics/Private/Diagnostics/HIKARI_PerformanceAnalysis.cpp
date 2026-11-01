@@ -38,6 +38,7 @@ constexpr double kFenceWaitShare = 0.25;
 // VRAM の使用がこの割合以上で警告、さらに高ければ重大。
 constexpr double kVramWarnRatio = 0.85;
 constexpr double kVramCriticalRatio = 0.95;
+constexpr double kVramUnattributedWarnRatio = 0.05;
 
 Threshold ThresholdFor(std::string_view unit) {
     if (unit == "bytes")
@@ -143,7 +144,7 @@ MetricMap ExtractMetrics(const Json& capture) {
     if (HasNumber(memory, "peakPrivateBytes"))
         metrics["memory.process.peakPrivate"] = {NumberOr(memory, "peakPrivateBytes"), "bytes", "Runtime"};
 
-    // 用途別の VRAM（最後の値）。usage と budget は peak の方で見る。
+    // 所有者別の VRAM（最後の値）。usage と budget は peak の方で見る。
     const Json& finish = Child(capture, "metricsAtFinish");
     if (finish.is_object()) {
         for (auto it = finish.begin(); it != finish.end(); ++it) {
@@ -444,33 +445,53 @@ void AddMemoryFindings(const Json& capture, std::vector<Json>& findings) {
     if (usage < 0.0 || budget <= 0.0)
         return;
     const double ratio = usage / budget;
-    double tracked = 0.0;
     const Json& finish = Child(capture, "metricsAtFinish");
-    Json categories = Json::object();
+    // 終了時点の所有者別の値。upload は本地 VRAM ではなく、unattributed は残りなので所有者の合計には入れない。
+    Json owners = Json::object();
+    std::vector<std::pair<std::string, double>> ranked;
+    double tracked = 0.0, unattributed = 0.0;
     if (finish.is_object()) {
         for (auto it = finish.begin(); it != finish.end(); ++it) {
             const std::string& id = it.key();
             if (id.rfind("memory.vram.", 0) != 0 || id == "memory.vram.usage" || id == "memory.vram.budget" ||
                 !HasNumber(it.value(), "value"))
                 continue;
-            categories[id.substr(std::string("memory.vram.").size())] = NumberOr(it.value(), "value");
-            if (id != "memory.vram.upload")
-                tracked += NumberOr(it.value(), "value");
+            const std::string name = id.substr(std::string("memory.vram.").size());
+            const double bytes = NumberOr(it.value(), "value");
+            owners[name] = bytes;
+            if (name == "unattributed")
+                unattributed = bytes;
+            else if (name != "upload") {
+                tracked += bytes;
+                ranked.emplace_back(name, bytes);
+            }
         }
     }
-    const char* severity = ratio >= kVramCriticalRatio ? "critical" : ratio >= kVramWarnRatio ? "warning" : "info";
+    std::sort(ranked.begin(), ranked.end(), [](const auto& l, const auto& r) { return l.second > r.second; });
+    const double finishUsage = NumberOr(Child(finish, "memory.vram.usage"), "value", -1.0);
+    const bool unattributedHigh = finishUsage > 0.0 && unattributed > finishUsage * kVramUnattributedWarnRatio;
+    const char* severity = ratio >= kVramCriticalRatio                     ? "critical"
+                           : (ratio >= kVramWarnRatio || unattributedHigh) ? "warning"
+                                                                           : "info";
     std::string detail = "Peak local VRAM use is " + Fixed(usage / kMiB, 0) + " MiB of a " + Fixed(budget / kMiB, 0) +
                          " MiB budget (" + Fixed(ratio * 100.0, 0) + "%).";
-    if (!categories.empty() && usage > 0.0)
-        detail += " The tracked categories account for " + Fixed(tracked / usage * 100.0, 0) +
-                  "% of the use; the rest is created outside the central creation functions.";
+    if (!ranked.empty()) {
+        detail += " Largest owners:";
+        for (size_t i = 0; i < ranked.size() && i < 3; ++i)
+            detail += (i == 0 ? " " : ", ") + ranked[i].first + " " + Fixed(ranked[i].second / kMiB, 0) + " MiB";
+        detail += ".";
+    }
+    if (unattributedHigh)
+        detail +=
+            " " + Fixed(unattributed / kMiB, 0) + " MiB (" + Fixed(unattributed / finishUsage * 100.0, 0) +
+            "% of the use) is not recorded by any owner; resources created outside VIDEO_MEMORY::CreateCommittedResource.";
     findings.push_back(Finding("memory.vram", severity, "Video memory headroom", detail,
                                {"memory.vram.usage", "memory.vram.budget"},
                                {{"peakUsageBytes", usage},
                                 {"budgetBytes", budget},
                                 {"usageRatio", ratio},
                                 {"trackedBytes", tracked},
-                                {"categories", std::move(categories)}}));
+                                {"owners", std::move(owners)}}));
 }
 
 // 値が出ていない指標とその理由。Unsupported は理由ごとに、Stale と NoData はまとめて。
@@ -672,17 +693,17 @@ Json BuildCaptureHighlights(const Json& capture) {
     const double usage = NumberOr(memory, "peakLocalVideoUsageBytes", -1.0);
     const double budget = NumberOr(memory, "minimumLocalVideoBudgetBytes", -1.0);
     vram["usageRatio"] = usage >= 0.0 && budget > 0.0 ? Json(usage / budget) : Json(nullptr);
-    Json categories = Json::object();
+    Json owners = Json::object();
     const Json& finish = Child(capture, "metricsAtFinish");
     if (finish.is_object()) {
         for (auto it = finish.begin(); it != finish.end(); ++it) {
             const std::string& id = it.key();
             if (id.rfind("memory.vram.", 0) == 0 && id != "memory.vram.usage" && id != "memory.vram.budget" &&
                 HasNumber(it.value(), "value"))
-                categories[id.substr(std::string("memory.vram.").size())] = NumberOr(it.value(), "value");
+                owners[id.substr(std::string("memory.vram.").size())] = NumberOr(it.value(), "value");
         }
     }
-    vram["categories"] = std::move(categories);
+    vram["owners"] = std::move(owners);
     highlights["vram"] = std::move(vram);
     return highlights;
 }

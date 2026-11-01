@@ -67,7 +67,8 @@ bool SceneCaptureStage::EnsureSceneTargets(int width, int height) {
     if (sceneInvalid) {
         sceneTarget_.Finalize();
         sceneTarget_.SetDebugName("SceneCapture.HDR");
-        if (!sceneTarget_.Init(width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, true, {0, 0, 0, 1}, true, true))
+        if (!sceneTarget_.Init(GFX::VIDEO_MEMORY::Owner::SceneTargets, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                               true, {0, 0, 0, 1}, true, true))
             return false;
     }
 
@@ -80,8 +81,8 @@ bool SceneCaptureStage::EnsureSceneTargets(int width, int height) {
         lightTarget_.Finalize();
         lightTarget_.SetDebugName("SceneCapture.LightHDR");
         std::copy(std::begin(ambientColor_), std::end(ambientColor_), lightClearColor_);
-        if (!lightTarget_.Init(width, height, DXGI_FORMAT_R16G16B16A16_FLOAT, false,
-                               {lightClearColor_[0], lightClearColor_[1], lightClearColor_[2], 1})) {
+        if (!lightTarget_.Init(GFX::VIDEO_MEMORY::Owner::SceneTargets, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                               false, {lightClearColor_[0], lightClearColor_[1], lightClearColor_[2], 1})) {
             return false;
         }
     }
@@ -248,8 +249,8 @@ bool SceneCaptureStage::EnsureSceneColorSnapshot(SceneColorSnapshotKind kind) {
         return true;
     snapshot.Finalize();
     snapshot.SetDebugName(SnapshotDebugName(kind));
-    if (!snapshot.Init(sceneTarget_.GetWidth(), sceneTarget_.GetHeight(), sceneTarget_.GetFormat(), false,
-                       {0, 0, 0, 1}))
+    if (!snapshot.Init(GFX::VIDEO_MEMORY::Owner::SceneTargets, sceneTarget_.GetWidth(), sceneTarget_.GetHeight(),
+                       sceneTarget_.GetFormat(), false, {0, 0, 0, 1}))
         return false;
     return true;
 }

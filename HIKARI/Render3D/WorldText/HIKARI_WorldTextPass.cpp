@@ -20,6 +20,7 @@
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
 #include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
@@ -130,9 +131,9 @@ bool CreateUploadBuffer(ID3D12Device* device, uint32_t capacity, ComPtr<ID3D12Re
     const UINT64 size = static_cast<UINT64>(capacity) * sizeof(GpuWorldTextGlyphInstance);
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     const auto description = CD3DX12_RESOURCE_DESC::Buffer(size);
-    if (!HIKARI_DX_CHECK(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &description,
-                                                         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                         IID_PPV_ARGS(outResource.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                             device, &heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ,
+                             nullptr, GFX::VIDEO_MEMORY::Owner::Vfx, IID_PPV_ARGS(outResource.GetAddressOf())),
                          "WorldTextPass::CreateUploadBuffer")) {
         return false;
     }

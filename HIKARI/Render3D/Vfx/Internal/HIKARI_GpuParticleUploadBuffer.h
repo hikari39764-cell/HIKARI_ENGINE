@@ -7,6 +7,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
 
@@ -19,9 +20,9 @@ bool CreateGpuParticleMappedUploadBuffer(ID3D12Device* device, size_t valueCount
     }
     const auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     const auto description = CD3DX12_RESOURCE_DESC::Buffer(static_cast<UINT64>(valueCount * sizeof(TValue)));
-    if (!HIKARI_DX_CHECK(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &description,
-                                                         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                         IID_PPV_ARGS(outResource.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                             device, &uploadHeap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ,
+                             nullptr, GFX::VIDEO_MEMORY::Owner::Vfx, IID_PPV_ARGS(outResource.GetAddressOf())),
                          diagnosticName)) {
         return false;
     }

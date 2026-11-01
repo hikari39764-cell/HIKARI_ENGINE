@@ -14,6 +14,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
@@ -54,8 +55,9 @@ struct Cube {
         const auto desc = CD3DX12_RESOURCE_DESC::Tex2D(kFormat, size, size, 6, static_cast<UINT16>(mips), 1, 0,
                                                        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
-        if (FAILED(graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, kReadState, nullptr,
-                                                            IID_PPV_ARGS(&resource))))
+        if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(graphics.device, &heap, D3D12_HEAP_FLAG_NONE, &desc,
+                                                              kReadState, nullptr, GFX::VIDEO_MEMORY::Owner::Lighting,
+                                                              IID_PPV_ARGS(&resource))))
             return false;
         resource->SetName(L"HIKARI.EnvironmentLighting.Cube");
         RenderResourceDesc record{};

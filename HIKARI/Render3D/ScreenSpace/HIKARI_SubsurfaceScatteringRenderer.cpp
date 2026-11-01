@@ -13,6 +13,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI::RENDER3D::SCREENSPACE {
@@ -230,8 +231,9 @@ bool SubsurfaceScatteringRenderer::EnsureTarget(const GFX::Context& graphics, ui
     const auto desc =
         CD3DX12_RESOURCE_DESC::Tex2D(kFormat, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
     state_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    if (!HIKARI_DX_CHECK(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state_, &clear,
-                                                         IID_PPV_ARGS(horizontal_.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(device, &heap, D3D12_HEAP_FLAG_NONE, &desc, state_,
+                                                                    &clear, GFX::VIDEO_MEMORY::Owner::ScreenSpace,
+                                                                    IID_PPV_ARGS(horizontal_.GetAddressOf())),
                          "SubsurfaceScattering horizontal target")) {
         return false;
     }

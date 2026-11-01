@@ -71,8 +71,8 @@ bool EnsureDlssOutput(INTERNAL::StreamlineState& state, uint32_t width, uint32_t
         state.output.Finalize();
         state.output.UpdateContext(state.context);
         state.output.SetDebugName("Streamline.DLSS.Output");
-        if (!state.output.Init(static_cast<int>(safeWidth), static_cast<int>(safeHeight), format, false,
-                               {0.0f, 0.0f, 0.0f, 0.0f}, false, true)) {
+        if (!state.output.Init(GFX::VIDEO_MEMORY::Owner::SceneTargets, static_cast<int>(safeWidth),
+                               static_cast<int>(safeHeight), format, false, {0.0f, 0.0f, 0.0f, 0.0f}, false, true)) {
             state.stats.outputReady = false;
             return false;
         }

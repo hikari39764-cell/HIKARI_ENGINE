@@ -135,7 +135,8 @@ bool CreateShadowFrameResources(ShadowRendererState& state, const GFX::Context& 
             return fail();
         }
         if (!frame.frameUploads.Init(device, 65536u) ||
-            !GFX::D3D12_BUFFER::CreateDefaultBuffer(device, materialDataBytes, frame.materialDataBuffer))
+            !GFX::D3D12_BUFFER::CreateDefaultBuffer(device, materialDataBytes, GFX::VIDEO_MEMORY::Owner::Shadow,
+                                                    frame.materialDataBuffer))
             return fail();
         const auto& descriptor = state.frameDescriptors[GFX::kFrameResourceCount + index];
         frame.materialDataSrvGpu = descriptor.gpu;

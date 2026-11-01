@@ -9,6 +9,7 @@
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 bool MassGpuSceneFrameBuffer::Initialize(ID3D12Device* device, ID3D12DescriptorHeap* srvHeap) {
@@ -113,9 +114,9 @@ bool MassGpuSceneFrameBuffer::CreateSlot(size_t capacity, FrameSlot& slot) {
     if (!slot.uploads.Init(device_, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
         return false;
     }
-    const HRESULT hr =
-        device_->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_COMMON,
-                                         nullptr, IID_PPV_ARGS(slot.defaultBuffer.GetAddressOf()));
+    const HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device_, &defaultHeap, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+        GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(slot.defaultBuffer.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "MassGpuScene::CreateDefault")) {
         return false;
     }

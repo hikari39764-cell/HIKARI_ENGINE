@@ -104,20 +104,20 @@ bool CreateClusterGeometryUploadBuffer(ClusterGeometryResourceSystemState& state
     const CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(out.byteSize);
     const CD3DX12_HEAP_PROPERTIES defaultHeap(D3D12_HEAP_TYPE_DEFAULT);
     ++state.stats.gpuResourceCreateCount;
-    HRESULT hr =
-        device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST,
-                                        nullptr, IID_PPV_ARGS(out.gpu.GetAddressOf()));
+    HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+        GFX::VIDEO_MEMORY::Owner::Geometry, IID_PPV_ARGS(out.gpu.GetAddressOf()));
     if (FAILED(hr)) {
         HIKARI_DX_CHECK(hr, "ClusterGeometryResourceSystem::Create default GPU buffer");
         return false;
     }
     GFX::SetD3D12Name(out.gpu.Get(), gpuName);
-    GFX::VIDEO_MEMORY::Track(out.gpu.Get(), GFX::VIDEO_MEMORY::Category::Geometry);
 
     const CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
     ++state.stats.gpuResourceCreateCount;
-    hr = device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ,
-                                         nullptr, IID_PPV_ARGS(out.upload.GetAddressOf()));
+    hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &uploadHeap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+        GFX::VIDEO_MEMORY::Owner::Geometry, IID_PPV_ARGS(out.upload.GetAddressOf()));
     if (FAILED(hr)) {
         HIKARI_DX_CHECK(hr, "ClusterGeometryResourceSystem::Create upload staging buffer");
         out = {};

@@ -11,6 +11,7 @@
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI::RENDER3D::SURFACE {
@@ -116,9 +117,9 @@ bool SceneSurfaceBuffer::CreateResources(const GFX::Context& graphics, uint32_t 
     const auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(kNormalRoughnessFormat, width, height, 1, 1, 1, 0,
                                                       D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 
-    HRESULT hr = device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc,
-                                                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clearValue,
-                                                 IID_PPV_ARGS(packedSurface_.GetAddressOf()));
+    HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clearValue,
+        GFX::VIDEO_MEMORY::Owner::SceneTargets, IID_PPV_ARGS(packedSurface_.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "SceneSurfaceBuffer::Create packed surface")) {
         DEBUGLOG::PushRenderError("[SceneSurfaceBuffer][ERROR] packed surface resource creation failed.");
         return false;
@@ -188,11 +189,12 @@ bool SceneSurfaceBuffer::EnsureFeatureMask(const GFX::Context& graphics, bool en
     const auto textureDescription = CD3DX12_RESOURCE_DESC::Tex2D(kFeatureMaskFormat, width_, height_, 1, 1, 1, 0,
                                                                  D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
     Microsoft::WRL::ComPtr<ID3D12Resource> featureMaskReplacement{};
-    if (!HIKARI_DX_CHECK(graphics.device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &textureDescription,
-                                                                  D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-                                                                  &clearValue,
-                                                                  IID_PPV_ARGS(featureMaskReplacement.GetAddressOf())),
-                         "SceneSurfaceBuffer::Create feature mask")) {
+    if (!HIKARI_DX_CHECK(
+            GFX::VIDEO_MEMORY::CreateCommittedResource(graphics.device, &heapProps, D3D12_HEAP_FLAG_NONE,
+                                                       &textureDescription, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                                                       &clearValue, GFX::VIDEO_MEMORY::Owner::SceneTargets,
+                                                       IID_PPV_ARGS(featureMaskReplacement.GetAddressOf())),
+            "SceneSurfaceBuffer::Create feature mask")) {
         return false;
     }
 
@@ -200,9 +202,10 @@ bool SceneSurfaceBuffer::EnsureFeatureMask(const GFX::Context& graphics, bool en
     const auto outlineStyleDescription = CD3DX12_RESOURCE_DESC::Tex2D(kStylizedOutlineStyleFormat, width_, height_, 1,
                                                                       1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
     Microsoft::WRL::ComPtr<ID3D12Resource> stylizedOutlineStyleReplacement{};
-    if (!HIKARI_DX_CHECK(graphics.device->CreateCommittedResource(
-                             &heapProps, D3D12_HEAP_FLAG_NONE, &outlineStyleDescription,
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                             graphics.device, &heapProps, D3D12_HEAP_FLAG_NONE, &outlineStyleDescription,
                              D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &outlineStyleClearValue,
+                             GFX::VIDEO_MEMORY::Owner::SceneTargets,
                              IID_PPV_ARGS(stylizedOutlineStyleReplacement.GetAddressOf())),
                          "SceneSurfaceBuffer::Create stylized outline style")) {
         return false;

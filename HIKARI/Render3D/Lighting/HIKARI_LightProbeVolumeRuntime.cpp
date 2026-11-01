@@ -22,6 +22,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderViewSelection.h"
 #include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
@@ -202,9 +203,9 @@ bool UploadVolumes(ResidentVolume& resident, size_t residentIndex,
         countZ * kVisibilityTileSize, 1u, 1u);
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kUploadTextureCount> volumes{};
     for (uint32_t coeff = 0; coeff < kUploadTextureCount; ++coeff) {
-        const HRESULT hr = device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &descriptions[coeff],
-                                                           D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                                           IID_PPV_ARGS(volumes[coeff].GetAddressOf()));
+        const HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &descriptions[coeff], D3D12_RESOURCE_STATE_COMMON, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Lighting, IID_PPV_ARGS(volumes[coeff].GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "LightProbeVolumeRuntime::CreateShVolume")) {
             outMessage = "Failed to create light probe SH volume.";
             return false;
@@ -227,9 +228,9 @@ bool UploadVolumes(ResidentVolume& resident, size_t residentIndex,
     const CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
     const CD3DX12_RESOURCE_DESC uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBytes);
     Microsoft::WRL::ComPtr<ID3D12Resource> uploadBuffer{};
-    HRESULT hr = device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc,
-                                                 D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                 IID_PPV_ARGS(uploadBuffer.GetAddressOf()));
+    HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+        GFX::VIDEO_MEMORY::Owner::Lighting, IID_PPV_ARGS(uploadBuffer.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "LightProbeVolumeRuntime::CreateUploadBuffer")) {
         outMessage = "Failed to create light probe upload buffer.";
         return false;

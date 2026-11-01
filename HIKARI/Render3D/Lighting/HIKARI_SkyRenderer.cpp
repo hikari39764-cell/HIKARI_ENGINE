@@ -20,6 +20,7 @@
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Lighting/HIKARI_VolumetricCloudStage.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereRuntime.h"
@@ -203,16 +204,16 @@ bool CreateBuffers(ID3D12Device* device) {
         static_cast<UINT64>(g.atmosphereConstantStride) * kSkyConstantDrawCapacityPerFrame * GFX::kFrameResourceCount;
     auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     auto cbDesc = CD3DX12_RESOURCE_DESC::Buffer(cbBytes);
-    if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &cbDesc,
-                                               D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                               IID_PPV_ARGS(g.cb.GetAddressOf())))) {
+    if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &uploadHeap, D3D12_HEAP_FLAG_NONE, &cbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Lighting, IID_PPV_ARGS(g.cb.GetAddressOf())))) {
         HIKARI_LOG_ERROR("[SkyRenderer][ERROR] Create constant buffer failed.");
         return false;
     }
     auto atmosphereCbDesc = CD3DX12_RESOURCE_DESC::Buffer(atmosphereCbBytes);
-    if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &atmosphereCbDesc,
-                                               D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                               IID_PPV_ARGS(g.atmosphereCb.GetAddressOf())))) {
+    if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &uploadHeap, D3D12_HEAP_FLAG_NONE, &atmosphereCbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Lighting, IID_PPV_ARGS(g.atmosphereCb.GetAddressOf())))) {
         HIKARI_LOG_ERROR("[SkyRenderer][ERROR] Create atmosphere constant buffer failed.");
         return false;
     }

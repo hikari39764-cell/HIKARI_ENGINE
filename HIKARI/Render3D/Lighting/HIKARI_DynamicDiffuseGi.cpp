@@ -19,6 +19,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Gfx/RayTracing/HIKARI_DxrCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayQueryBindings.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
@@ -210,8 +211,9 @@ struct ProbeSet {
         if (!uav.IsValid())
             return false;
         const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
-        if (FAILED(graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, kReadState, nullptr,
-                                                            IID_PPV_ARGS(&atlasTexture))))
+        if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(graphics.device, &heap, D3D12_HEAP_FLAG_NONE, &desc,
+                                                              kReadState, nullptr, GFX::VIDEO_MEMORY::Owner::Lighting,
+                                                              IID_PPV_ARGS(&atlasTexture))))
             return false;
         atlasTexture->SetName(L"HIKARI.DynamicDiffuseGI.ProbeAtlas");
         D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
@@ -352,14 +354,14 @@ struct DynamicDiffuseGi::State {
         const CD3DX12_HEAP_PROPERTIES defaultHeap(D3D12_HEAP_TYPE_DEFAULT), readbackHeap(D3D12_HEAP_TYPE_READBACK);
         const auto focusDesc = CD3DX12_RESOURCE_DESC::Buffer(focusBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         const auto readbackDesc = CD3DX12_RESOURCE_DESC::Buffer(focusBytes);
-        if (FAILED(graphics.device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &focusDesc,
-                                                            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
-                                                            IID_PPV_ARGS(&focus))))
+        if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                graphics.device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &focusDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                nullptr, GFX::VIDEO_MEMORY::Owner::Lighting, IID_PPV_ARGS(&focus))))
             return false;
         for (auto& readback : focusReadbacks)
-            if (FAILED(graphics.device->CreateCommittedResource(&readbackHeap, D3D12_HEAP_FLAG_NONE, &readbackDesc,
-                                                                D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                                                                IID_PPV_ARGS(&readback.buffer))))
+            if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                    graphics.device, &readbackHeap, D3D12_HEAP_FLAG_NONE, &readbackDesc, D3D12_RESOURCE_STATE_COPY_DEST,
+                    nullptr, GFX::VIDEO_MEMORY::Owner::Lighting, IID_PPV_ARGS(&readback.buffer))))
                 return false;
         return true;
     }

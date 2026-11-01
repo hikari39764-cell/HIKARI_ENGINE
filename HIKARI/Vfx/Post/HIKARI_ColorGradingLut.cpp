@@ -7,6 +7,7 @@
 
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Render3D/Color/HIKARI_ColorGradingBake.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
@@ -65,9 +66,9 @@ bool ColorGradingLut::Upload(const GFX::Context& context) {
     D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     if (!texture_) {
         const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
-        const HRESULT hr =
-            context.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST,
-                                                    nullptr, IID_PPV_ARGS(texture_.GetAddressOf()));
+        const HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            context.device, &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Post, IID_PPV_ARGS(texture_.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "ColorGradingLut::CreateTexture")) {
             return false;
         }
@@ -83,9 +84,9 @@ bool ColorGradingLut::Upload(const GFX::Context& context) {
     const CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
     const CD3DX12_RESOURCE_DESC uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(totalBytes);
     Microsoft::WRL::ComPtr<ID3D12Resource> upload{};
-    const HRESULT hr =
-        context.device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc,
-                                                D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&upload));
+    const HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        context.device, &uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+        GFX::VIDEO_MEMORY::Owner::Post, IID_PPV_ARGS(&upload));
     uint8_t* mapped = nullptr;
     if (!HIKARI_DX_CHECK(hr, "ColorGradingLut::CreateUpload") ||
         FAILED(upload->Map(0u, nullptr, reinterpret_cast<void**>(&mapped)))) {

@@ -23,6 +23,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 namespace HIKARI::RENDER3D::CLUSTER {
 
@@ -569,9 +570,9 @@ bool ClusterGpuCullingPass::EnsureCapacity(ID3D12Device* device, size_t pageTask
     HRESULT hr = S_OK;
 
     auto counterUploadDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(GpuCounterBuffer));
-    hr = device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &counterUploadDesc,
-                                         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                         IID_PPV_ARGS(counterResetUploadBuffer_.GetAddressOf()));
+    hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &uploadHeap, D3D12_HEAP_FLAG_NONE, &counterUploadDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+        GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(counterResetUploadBuffer_.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateCounterResetUpload")) {
         return false;
     }
@@ -584,8 +585,9 @@ bool ClusterGpuCullingPass::EnsureCapacity(ID3D12Device* device, size_t pageTask
     const UINT64 pageTaskBytes =
         static_cast<UINT64>(sizeof(GpuPageTask)) * static_cast<UINT64>(requestedPageTaskCapacity);
     auto pageTaskDesc = CD3DX12_RESOURCE_DESC::Buffer(pageTaskBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    hr = device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &pageTaskDesc, D3D12_RESOURCE_STATE_COMMON,
-                                         nullptr, IID_PPV_ARGS(pageTaskBuffer_.GetAddressOf()));
+    hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &pageTaskDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+        GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(pageTaskBuffer_.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreatePageTaskBuffer")) {
         return false;
     }
@@ -594,8 +596,9 @@ bool ClusterGpuCullingPass::EnsureCapacity(ID3D12Device* device, size_t pageTask
     const UINT64 visibleBytes =
         static_cast<UINT64>(sizeof(GpuVisibleRange)) * static_cast<UINT64>(requestedVisibleCapacity);
     auto visibleDesc = CD3DX12_RESOURCE_DESC::Buffer(visibleBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    hr = device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &visibleDesc, D3D12_RESOURCE_STATE_COMMON,
-                                         nullptr, IID_PPV_ARGS(visibleRangeBuffer_.GetAddressOf()));
+    hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &visibleDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+        GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(visibleRangeBuffer_.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateVisibleRangeBuffer")) {
         return false;
     }
@@ -605,9 +608,9 @@ bool ClusterGpuCullingPass::EnsureCapacity(ID3D12Device* device, size_t pageTask
                                                 kClusterGpuCullingPassKindCount * kGeometryCullModeBucketCount;
     auto meshletDispatchArgumentDesc =
         CD3DX12_RESOURCE_DESC::Buffer(meshletDispatchArgumentBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    hr = device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &meshletDispatchArgumentDesc,
-                                         D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                         IID_PPV_ARGS(meshletDispatchArgumentBuffer_.GetAddressOf()));
+    hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &meshletDispatchArgumentDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+        GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(meshletDispatchArgumentBuffer_.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateMeshletDispatchArgumentBuffer")) {
         return false;
     }
@@ -615,9 +618,9 @@ bool ClusterGpuCullingPass::EnsureCapacity(ID3D12Device* device, size_t pageTask
 
     auto dispatchArgumentDesc =
         CD3DX12_RESOURCE_DESC::Buffer(sizeof(D3D12_DISPATCH_ARGUMENTS), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    hr = device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &dispatchArgumentDesc,
-                                         D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                         IID_PPV_ARGS(dispatchArgumentBuffer_.GetAddressOf()));
+    hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &dispatchArgumentDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+        GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(dispatchArgumentBuffer_.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateDispatchArguments")) {
         return false;
     }
@@ -625,8 +628,9 @@ bool ClusterGpuCullingPass::EnsureCapacity(ID3D12Device* device, size_t pageTask
 
     auto counterDesc =
         CD3DX12_RESOURCE_DESC::Buffer(sizeof(GpuCounterBuffer), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    hr = device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &counterDesc, D3D12_RESOURCE_STATE_COMMON,
-                                         nullptr, IID_PPV_ARGS(counterBuffer_.GetAddressOf()));
+    hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &counterDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+        GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(counterBuffer_.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateCounterBuffer")) {
         return false;
     }
@@ -649,9 +653,9 @@ bool ClusterGpuCullingPass::EnsureCapacity(ID3D12Device* device, size_t pageTask
     for (uint32_t frameIndex = 1; frameIndex < GFX::kFrameResourceCount; ++frameIndex) {
         FrameResources& frame = frameResources_[frameIndex];
 
-        hr = device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &counterUploadDesc,
-                                             D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                             IID_PPV_ARGS(frame.counterResetUploadBuffer.GetAddressOf()));
+        hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &uploadHeap, D3D12_HEAP_FLAG_NONE, &counterUploadDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(frame.counterResetUploadBuffer.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateCounterResetUpload.Frame")) {
             return false;
         }
@@ -662,41 +666,42 @@ bool ClusterGpuCullingPass::EnsureCapacity(ID3D12Device* device, size_t pageTask
         }
         GFX::SetD3D12Name(frame.counterResetUploadBuffer.Get(), L"Cluster GPU Culling Counter Reset");
 
-        hr = device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &pageTaskDesc,
-                                             D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                             IID_PPV_ARGS(frame.pageTaskBuffer.GetAddressOf()));
+        hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &pageTaskDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+            GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(frame.pageTaskBuffer.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreatePageTaskBuffer.Frame")) {
             return false;
         }
         GFX::SetD3D12Name(frame.pageTaskBuffer.Get(), L"Cluster GPU Page Tasks");
 
-        hr = device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &visibleDesc,
-                                             D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                             IID_PPV_ARGS(frame.visibleRangeBuffer.GetAddressOf()));
+        hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &visibleDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+            GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(frame.visibleRangeBuffer.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateVisibleRangeBuffer.Frame")) {
             return false;
         }
         GFX::SetD3D12Name(frame.visibleRangeBuffer.Get(), L"Cluster GPU Culling Visible Ranges");
 
-        hr = device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &meshletDispatchArgumentDesc,
-                                             D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                             IID_PPV_ARGS(frame.meshletDispatchArgumentBuffer.GetAddressOf()));
+        hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &meshletDispatchArgumentDesc, D3D12_RESOURCE_STATE_COMMON,
+            nullptr, GFX::VIDEO_MEMORY::Owner::GpuDriven,
+            IID_PPV_ARGS(frame.meshletDispatchArgumentBuffer.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateMeshletDispatchArgumentBuffer.Frame")) {
             return false;
         }
         GFX::SetD3D12Name(frame.meshletDispatchArgumentBuffer.Get(), L"Cluster GPU Meshlet Dispatch Arguments");
 
-        hr = device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &dispatchArgumentDesc,
-                                             D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                             IID_PPV_ARGS(frame.dispatchArgumentBuffer.GetAddressOf()));
+        hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &dispatchArgumentDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+            GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(frame.dispatchArgumentBuffer.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateDispatchArguments.Frame")) {
             return false;
         }
         GFX::SetD3D12Name(frame.dispatchArgumentBuffer.Get(), L"Cluster GPU Cull Dispatch Arguments");
 
-        hr = device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &counterDesc,
-                                             D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                             IID_PPV_ARGS(frame.counterBuffer.GetAddressOf()));
+        hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &counterDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+            GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(frame.counterBuffer.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateCounterBuffer.Frame")) {
             return false;
         }
@@ -706,8 +711,9 @@ bool ClusterGpuCullingPass::EnsureCapacity(ID3D12Device* device, size_t pageTask
     const UINT64 historyBytes = static_cast<UINT64>(kClusterCullOcclusionHistoryEntryBytes) *
                                 static_cast<UINT64>(requestedOcclusionHistoryCapacity);
     auto historyDesc = CD3DX12_RESOURCE_DESC::Buffer(historyBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    hr = device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &historyDesc, D3D12_RESOURCE_STATE_COMMON,
-                                         nullptr, IID_PPV_ARGS(occlusionHistoryBuffer_.GetAddressOf()));
+    hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &historyDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+        GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(occlusionHistoryBuffer_.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateOcclusionHistoryBuffer")) {
         return false;
     }
@@ -715,9 +721,9 @@ bool ClusterGpuCullingPass::EnsureCapacity(ID3D12Device* device, size_t pageTask
 
     auto readbackDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(GpuCounterBuffer));
     for (size_t i = 0; i < counterReadbackSlots_.size(); ++i) {
-        hr = device->CreateCommittedResource(&readbackHeap, D3D12_HEAP_FLAG_NONE, &readbackDesc,
-                                             D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                                             IID_PPV_ARGS(counterReadbackSlots_[i].buffer.GetAddressOf()));
+        hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &readbackHeap, D3D12_HEAP_FLAG_NONE, &readbackDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(counterReadbackSlots_[i].buffer.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateCounterReadback")) {
             return false;
         }
@@ -783,8 +789,9 @@ bool ClusterGpuCullingPass::EnsureFallbackHzb(ID3D12Device* device) {
         CD3DX12_RESOURCE_DESC::Tex2D(kClusterCullHzbFallbackFormat, 1, 1, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_NONE);
     const D3D12_RESOURCE_STATES initialState =
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-    const HRESULT hr = device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, initialState, nullptr,
-                                                       IID_PPV_ARGS(fallbackHzb_.GetAddressOf()));
+    const HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &heapProps, D3D12_HEAP_FLAG_NONE, &desc, initialState, nullptr, GFX::VIDEO_MEMORY::Owner::GpuDriven,
+        IID_PPV_ARGS(fallbackHzb_.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "ClusterGpuCulling::CreateFallbackHzb")) {
         return false;
     }

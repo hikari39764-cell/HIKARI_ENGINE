@@ -10,6 +10,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_PixProfiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
@@ -223,9 +224,9 @@ bool GpuDepthVisibilityLayer::EnsureDepthResource(const GFX::Context& graphics, 
     clearValue.DepthStencil.Depth = 1.0f;
     clearValue.DepthStencil.Stencil = 0;
 
-    HRESULT hr =
-        device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &depthDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE,
-                                        &clearValue, IID_PPV_ARGS(visibilityDepth_.GetAddressOf()));
+    HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &heapProps, D3D12_HEAP_FLAG_NONE, &depthDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &clearValue,
+        GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(visibilityDepth_.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "GpuDepthVisibility::CreateVisibilityDepth")) {
         ReleaseDepthResource(&graphics);
         return false;

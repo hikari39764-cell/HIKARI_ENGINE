@@ -6,6 +6,7 @@
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_ResourceStateTracker.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -153,6 +154,8 @@ bool PresentationSurface::AcquireBackBuffers(ID3D12Device* device, ResourceState
         SetD3D12Name(backBuffer.Get(), name.c_str());
         device->CreateRenderTargetView(backBuffer.Get(), nullptr, Rtv(index));
         resourceStates.Track(backBuffer.Get(), D3D12_RESOURCE_STATE_PRESENT);
+        // スワップチェーンが作る資源なので CreateCommittedResource を通らない。ここで記帳に入れる。
+        VIDEO_MEMORY::Track(backBuffer.Get(), VIDEO_MEMORY::Owner::SceneTargets);
         backBuffers_[index] = std::move(backBuffer);
     }
     return complete;

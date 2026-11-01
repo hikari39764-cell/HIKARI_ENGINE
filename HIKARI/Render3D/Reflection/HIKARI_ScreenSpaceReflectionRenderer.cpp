@@ -18,6 +18,7 @@
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
@@ -162,8 +163,9 @@ struct ViewResources {
             const D3D12_CLEAR_VALUE clear{targetDesc.Format, {0, 0, 0, 0}};
             if (i < 2)
                 targetDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-            if (FAILED(graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &targetDesc, kReadState,
-                                                                &clear, IID_PPV_ARGS(&target.resource)))) {
+            if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                    graphics.device, &heap, D3D12_HEAP_FLAG_NONE, &targetDesc, kReadState, &clear,
+                    GFX::VIDEO_MEMORY::Owner::ScreenSpace, IID_PPV_ARGS(&target.resource)))) {
                 Reset(graphics, true);
                 return false;
             }

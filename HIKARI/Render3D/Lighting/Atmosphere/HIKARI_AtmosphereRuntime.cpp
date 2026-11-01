@@ -11,6 +11,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderContracts/Shader/HIKARI_VolumetricShaderContract.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
@@ -284,8 +285,9 @@ bool AtmosphereLutOwner::CreateLut(const GFX::Context& context, GpuLut& lut, uin
     desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    if (FAILED(context.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON,
-                                                       nullptr, IID_PPV_ARGS(lut.resource.GetAddressOf())))) {
+    if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+            context.device, &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Lighting, IID_PPV_ARGS(lut.resource.GetAddressOf())))) {
         return false;
     }
     if (debugName != nullptr) {

@@ -152,7 +152,7 @@ int UploadTextureImage(const GFX::Context& context, GFX::UploadSubmissionQueue& 
     ComPtr<ID3D12Resource> texture;
     if (FAILED(DirectX::CreateTexture(context.device, metadata, &texture)))
         return fail("CreateTexture failed");
-    GFX::VIDEO_MEMORY::Track(texture.Get(), GFX::VIDEO_MEMORY::Category::Texture);
+    GFX::VIDEO_MEMORY::Track(texture.Get(), GFX::VIDEO_MEMORY::Owner::Textures);
     std::vector<D3D12_SUBRESOURCE_DATA> subresources;
     if (FAILED(DirectX::PrepareUpload(context.device, images, imageCount, metadata, subresources)) ||
         subresources.empty())
@@ -163,8 +163,9 @@ int UploadTextureImage(const GFX::Context& context, GFX::UploadSubmissionQueue& 
     const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_UPLOAD);
     const auto desc = CD3DX12_RESOURCE_DESC::Buffer(bytes);
     ComPtr<ID3D12Resource> staging;
-    if (FAILED(context.device->CreateCommittedResource(
-            &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&staging))))
+    if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(context.device, &heap, D3D12_HEAP_FLAG_NONE, &desc,
+                                                          D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                          GFX::VIDEO_MEMORY::Owner::Textures, IID_PPV_ARGS(&staging))))
         return fail("Upload allocation failed");
     auto* commands = uploads.Begin();
     if (!commands)

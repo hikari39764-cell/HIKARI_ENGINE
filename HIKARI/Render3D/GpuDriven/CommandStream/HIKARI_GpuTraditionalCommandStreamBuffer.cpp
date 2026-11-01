@@ -14,6 +14,7 @@
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
@@ -294,44 +295,45 @@ bool GpuTraditionalCommandStreamBuffer::Initialize(ID3D12Device* device, ID3D12R
             return false;
         }
 
-        if (FAILED(device->CreateCommittedResource(&argumentHeap, D3D12_HEAP_FLAG_NONE, &argumentDesc,
-                                                   D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                                   IID_PPV_ARGS(frame.argumentBuffer.GetAddressOf())))) {
+        if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                device, &argumentHeap, D3D12_HEAP_FLAG_NONE, &argumentDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(frame.argumentBuffer.GetAddressOf())))) {
             return false;
         }
         GFX::SetD3D12Name(frame.argumentBuffer.Get(), L"GPU Traditional Command Stream Draw Argument Buffer");
 
-        if (FAILED(device->CreateCommittedResource(&argumentHeap, D3D12_HEAP_FLAG_NONE, &skinnedArgumentDesc,
-                                                   D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                                   IID_PPV_ARGS(frame.skinnedArgumentBuffer.GetAddressOf())))) {
+        if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                device, &argumentHeap, D3D12_HEAP_FLAG_NONE, &skinnedArgumentDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(frame.skinnedArgumentBuffer.GetAddressOf())))) {
             return false;
         }
         GFX::SetD3D12Name(frame.skinnedArgumentBuffer.Get(), L"Surface Skinned Indirect Draw Argument Buffer");
 
-        if (FAILED(device->CreateCommittedResource(&argumentHeap, D3D12_HEAP_FLAG_NONE, &seedDesc,
-                                                   D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                                   IID_PPV_ARGS(frame.seedBuffer.GetAddressOf())))) {
+        if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                device, &argumentHeap, D3D12_HEAP_FLAG_NONE, &seedDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(frame.seedBuffer.GetAddressOf())))) {
             return false;
         }
         GFX::SetD3D12Name(frame.seedBuffer.Get(), L"GPU Traditional Command Stream Draw Seed Buffer");
 
-        if (FAILED(device->CreateCommittedResource(&argumentHeap, D3D12_HEAP_FLAG_NONE, &payloadDesc,
-                                                   D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                                   IID_PPV_ARGS(frame.payloadBuffer.GetAddressOf())))) {
+        if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                device, &argumentHeap, D3D12_HEAP_FLAG_NONE, &payloadDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(frame.payloadBuffer.GetAddressOf())))) {
             return false;
         }
         GFX::SetD3D12Name(frame.payloadBuffer.Get(), L"GPU Traditional Command Stream Draw Payload Buffer");
 
-        if (FAILED(device->CreateCommittedResource(&argumentHeap, D3D12_HEAP_FLAG_NONE, &counterDesc,
-                                                   D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                                   IID_PPV_ARGS(frame.counterBuffer.GetAddressOf())))) {
+        if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                device, &argumentHeap, D3D12_HEAP_FLAG_NONE, &counterDesc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(frame.counterBuffer.GetAddressOf())))) {
             return false;
         }
         GFX::SetD3D12Name(frame.counterBuffer.Get(), L"GPU Traditional Command Stream Draw Counters");
 
-        if (FAILED(device->CreateCommittedResource(&counterUploadHeap, D3D12_HEAP_FLAG_NONE, &counterUploadDesc,
-                                                   D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                   IID_PPV_ARGS(frame.counterResetUploadBuffer.GetAddressOf())))) {
+        if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                device, &counterUploadHeap, D3D12_HEAP_FLAG_NONE, &counterUploadDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr, GFX::VIDEO_MEMORY::Owner::GpuDriven,
+                IID_PPV_ARGS(frame.counterResetUploadBuffer.GetAddressOf())))) {
             return false;
         }
         if (FAILED(

@@ -7,6 +7,7 @@ namespace HIKARI {
 
 namespace {
 // -------- メッシュバッファ作成の共通処理 --------
+// upload 堆に置く。主経路（meshlet / cluster）はこのバッファを読まず、読むのは非 cluster の従来描画だけ。
 template <class TVertex>
 // 指定された頂点とインデックスのデータを GPU に転送し、バッファビューを設定します。
 bool CreateMeshBuffers(ID3D12Device* device, const std::vector<TVertex>& vertices, const std::vector<uint32_t>& indices,
@@ -23,12 +24,11 @@ bool CreateMeshBuffers(ID3D12Device* device, const std::vector<TVertex>& vertice
     auto vbDesc = CD3DX12_RESOURCE_DESC::Buffer(vertexBufferBytes);
     auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 
-    if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &vbDesc,
-                                               D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                               IID_PPV_ARGS(vertexBuffer.GetAddressOf())))) {
+    if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &uploadHeap, D3D12_HEAP_FLAG_NONE, &vbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Geometry, IID_PPV_ARGS(vertexBuffer.GetAddressOf())))) {
         return false;
     }
-    GFX::VIDEO_MEMORY::Track(vertexBuffer.Get(), GFX::VIDEO_MEMORY::Category::Geometry);
 
     void* vbMapped = nullptr;
     if (FAILED(vertexBuffer->Map(0, nullptr, &vbMapped))) {
@@ -38,12 +38,11 @@ bool CreateMeshBuffers(ID3D12Device* device, const std::vector<TVertex>& vertice
     vertexBuffer->Unmap(0, nullptr);
 
     auto ibDesc = CD3DX12_RESOURCE_DESC::Buffer(indexBufferBytes);
-    if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &ibDesc,
-                                               D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                               IID_PPV_ARGS(indexBuffer.GetAddressOf())))) {
+    if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &uploadHeap, D3D12_HEAP_FLAG_NONE, &ibDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Geometry, IID_PPV_ARGS(indexBuffer.GetAddressOf())))) {
         return false;
     }
-    GFX::VIDEO_MEMORY::Track(indexBuffer.Get(), GFX::VIDEO_MEMORY::Category::Geometry);
 
     void* ibMapped = nullptr;
     if (FAILED(indexBuffer->Map(0, nullptr, &ibMapped))) {

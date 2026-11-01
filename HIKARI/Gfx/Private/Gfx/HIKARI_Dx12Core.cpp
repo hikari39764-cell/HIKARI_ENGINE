@@ -369,8 +369,9 @@ bool Dx12Core::CreateDepthBuffer() {
     clear.DepthStencil.Depth = 1.0f;
 
     auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    const HRESULT hr = device_->CreateCommittedResource(
-        &heap, D3D12_HEAP_FLAG_NONE, &depthDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &clear, IID_PPV_ARGS(&depthBuffer_));
+    const HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device_.Get(), &heap, D3D12_HEAP_FLAG_NONE, &depthDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE, &clear,
+        GFX::VIDEO_MEMORY::Owner::SceneTargets, IID_PPV_ARGS(&depthBuffer_));
     if (!HIKARI_DX_CHECK(hr, "Dx12Core::CreateDepthBuffer")) {
         CheckDeviceRemoved("Dx12Core::CreateDepthBuffer", hr);
         depthBuffer_.Reset();

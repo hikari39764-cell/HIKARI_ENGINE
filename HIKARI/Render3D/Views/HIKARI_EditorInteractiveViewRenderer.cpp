@@ -364,24 +364,25 @@ bool EnsureTarget(InteractiveViewState& state, uint32_t width, uint32_t height, 
 
     auto replacement = std::make_unique<RenderTarget2D>();
     replacement->UpdateContext(graphics);
-    if (!replacement->Init(static_cast<int>(width), static_cast<int>(height), kInteractiveViewFormat, true,
-                           {0.035f, 0.045f, 0.065f, 1.0f}, false, false)) {
+    if (!replacement->Init(GFX::VIDEO_MEMORY::Owner::Editor, static_cast<int>(width), static_cast<int>(height),
+                           kInteractiveViewFormat, true, {0.035f, 0.045f, 0.065f, 1.0f}, false, false)) {
         return false;
     }
     replacement->SetDebugName("EditorInteractiveView");
 
     auto sceneColorReplacement = std::make_unique<RenderTarget2D>();
     sceneColorReplacement->UpdateContext(graphics);
-    if (!sceneColorReplacement->Init(static_cast<int>(width), static_cast<int>(height), kInteractiveViewFormat, false,
-                                     {0.0f, 0.0f, 0.0f, 1.0f}, false, false)) {
+    if (!sceneColorReplacement->Init(GFX::VIDEO_MEMORY::Owner::Editor, static_cast<int>(width),
+                                     static_cast<int>(height), kInteractiveViewFormat, false, {0.0f, 0.0f, 0.0f, 1.0f},
+                                     false, false)) {
         return false;
     }
     sceneColorReplacement->SetDebugName("EditorInteractiveView.OpaqueSceneColor");
 
     auto displayReplacement = std::make_unique<RenderTarget2D>();
     displayReplacement->UpdateContext(graphics);
-    if (!displayReplacement->Init(static_cast<int>(width), static_cast<int>(height), kInteractiveDisplayFormat, false,
-                                  {0.0f, 0.0f, 0.0f, 1.0f}, false, false)) {
+    if (!displayReplacement->Init(GFX::VIDEO_MEMORY::Owner::Editor, static_cast<int>(width), static_cast<int>(height),
+                                  kInteractiveDisplayFormat, false, {0.0f, 0.0f, 0.0f, 1.0f}, false, false)) {
         return false;
     }
     displayReplacement->SetDebugName("EditorInteractiveView.Display");
@@ -389,8 +390,8 @@ bool EnsureTarget(InteractiveViewState& state, uint32_t width, uint32_t height, 
     if (spatialAntiAliasing) {
         aaReplacement = std::make_unique<RenderTarget2D>();
         aaReplacement->UpdateContext(graphics);
-        if (!aaReplacement->Init(static_cast<int>(width), static_cast<int>(height), kInteractiveDisplayFormat, false,
-                                 {0.0f, 0.0f, 0.0f, 1.0f}, false, false)) {
+        if (!aaReplacement->Init(GFX::VIDEO_MEMORY::Owner::Editor, static_cast<int>(width), static_cast<int>(height),
+                                 kInteractiveDisplayFormat, false, {0.0f, 0.0f, 0.0f, 1.0f}, false, false)) {
             return false;
         }
         aaReplacement->SetDebugName("EditorInteractiveView.SpatialAA");

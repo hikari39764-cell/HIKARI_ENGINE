@@ -13,6 +13,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #pragma comment(lib, "d3dcompiler.lib")
 namespace HIKARI::RENDERER3D::DEBUG::INTERNAL {
 namespace {
@@ -171,9 +172,9 @@ bool CreateCameraBuffer(ID3D12Device* device, FrameResources& frame) {
     const UINT byteCount = (sizeof(CameraCB) + 255u) & ~255u;
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     const auto description = CD3DX12_RESOURCE_DESC::Buffer(byteCount);
-    if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &description,
-                                               D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                               IID_PPV_ARGS(frame.cameraCB.GetAddressOf())))) {
+    if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Editor, IID_PPV_ARGS(frame.cameraCB.GetAddressOf())))) {
         return false;
     }
     return SUCCEEDED(frame.cameraCB->Map(0, nullptr, reinterpret_cast<void**>(&frame.cameraMapped)));
@@ -195,9 +196,9 @@ bool EnsureCapacity(ID3D12Device* device, ComPtr<ID3D12Resource>& buffer, TVerte
     capacity = (std::max)(required, size_t{1024u});
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     const auto description = CD3DX12_RESOURCE_DESC::Buffer(static_cast<UINT64>(capacity * sizeof(TVertex)));
-    if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &description,
-                                               D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                               IID_PPV_ARGS(buffer.GetAddressOf())))) {
+    if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Editor, IID_PPV_ARGS(buffer.GetAddressOf())))) {
         return false;
     }
     return SUCCEEDED(buffer->Map(0, nullptr, reinterpret_cast<void**>(&mapped)));

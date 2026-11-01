@@ -48,8 +48,8 @@ struct DialoguePreviewRenderer::Impl {
 
         auto replacement = std::make_unique<RenderTarget2D>();
         replacement->UpdateContext(graphics);
-        if (!replacement->Init(static_cast<int>(width), static_cast<int>(height), kPreviewFormat, false,
-                               {0.12f, 0.14f, 0.18f, 1.0f}, false, false)) {
+        if (!replacement->Init(GFX::VIDEO_MEMORY::Owner::Editor, static_cast<int>(width), static_cast<int>(height),
+                               kPreviewFormat, false, {0.12f, 0.14f, 0.18f, 1.0f}, false, false)) {
             status = "Unable to allocate the dialogue preview target";
             return false;
         }

@@ -19,6 +19,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
@@ -320,9 +321,10 @@ bool CreateTexture(StageState& state, Texture2DResource& texture, uint32_t width
     D3D12_CLEAR_VALUE clearValue{};
     clearValue.Format = format;
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    if (!HIKARI_DX_CHECK(state.context.device->CreateCommittedResource(
-                             &heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-                             renderTarget ? &clearValue : nullptr, IID_PPV_ARGS(texture.resource.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                             state.context.device, &heap, D3D12_HEAP_FLAG_NONE, &description,
+                             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, renderTarget ? &clearValue : nullptr,
+                             GFX::VIDEO_MEMORY::Owner::Post, IID_PPV_ARGS(texture.resource.GetAddressOf())),
                          "CameraDepthOfField::CreateTexture")) {
         return false;
     }
@@ -448,8 +450,9 @@ bool EnsureFallbackFog(StageState& state) {
         description.SampleDesc.Count = 1u;
         description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
         const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-        if (!HIKARI_DX_CHECK(state.context.device->CreateCommittedResource(
-                                 &heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+        if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                                 state.context.device, &heap, D3D12_HEAP_FLAG_NONE, &description,
+                                 D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, GFX::VIDEO_MEMORY::Owner::Post,
                                  IID_PPV_ARGS(state.fallbackFogVolume.GetAddressOf())),
                              "CameraDepthOfField::CreateFallbackFogVolume")) {
             return false;

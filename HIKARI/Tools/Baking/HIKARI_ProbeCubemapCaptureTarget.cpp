@@ -15,6 +15,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 namespace HIKARI::TOOLS::BAKING {
 
@@ -43,8 +44,8 @@ bool ProbeCubemapCaptureTarget::Initialize(uint32_t resolution, DXGI_FORMAT form
 
     for (uint32_t face = 0; face < 6u; ++face) {
         faces_[face].UpdateContext(GFX::GetCurrentContext());
-        if (!faces_[face].Init(static_cast<int>(resolution_), static_cast<int>(resolution_), format_, true,
-                               {0.0f, 0.0f, 0.0f, 1.0f}, false)) {
+        if (!faces_[face].Init(GFX::VIDEO_MEMORY::Owner::Editor, static_cast<int>(resolution_),
+                               static_cast<int>(resolution_), format_, true, {0.0f, 0.0f, 0.0f, 1.0f}, false)) {
             Release();
             return false;
         }
@@ -112,9 +113,9 @@ bool ProbeCubemapCaptureTarget::CreateReadback(ID3D12Resource* resource, FaceRea
     const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_READBACK);
     const CD3DX12_RESOURCE_DESC bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(readback.totalBytes);
 
-    const HRESULT hr =
-        device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_COPY_DEST,
-                                        nullptr, IID_PPV_ARGS(readback.buffer.GetAddressOf()));
+    const HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &heapProps, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+        GFX::VIDEO_MEMORY::Owner::Editor, IID_PPV_ARGS(readback.buffer.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "ProbeCubemapCaptureTarget::CreateReadback")) {
         SetMessage(outMessage, "Failed to create reflection probe readback buffer.");
         return false;

@@ -59,14 +59,12 @@ bool DynamicUploadBuffer::CreatePage(size_t capacity) {
     CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(capacity);
 
     Page page{};
-    HRESULT hr =
-        device_->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ,
-                                         nullptr, IID_PPV_ARGS(page.resource.GetAddressOf()));
+    HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device_.Get(), &heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+        GFX::VIDEO_MEMORY::Owner::Upload, IID_PPV_ARGS(page.resource.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "DynamicUploadBuffer::CreateCommittedResource")) {
         return false;
     }
-    HIKARI::GFX::VIDEO_MEMORY::Track(page.resource.Get(), HIKARI::GFX::VIDEO_MEMORY::Category::Upload);
-
     const D3D12_RANGE readRange{0u, 0u};
     hr = page.resource->Map(0u, &readRange, reinterpret_cast<void**>(&page.cpuBase));
     if (!HIKARI_DX_CHECK(hr, "DynamicUploadBuffer::Map")) {

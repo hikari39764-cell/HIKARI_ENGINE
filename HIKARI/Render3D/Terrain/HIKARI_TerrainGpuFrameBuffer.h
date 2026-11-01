@@ -65,8 +65,10 @@ public:
         std::memcpy(static_cast<std::byte*>(neutral) + sizeof(TRecord), &zero, sizeof(zero));
         neutralBuffer_->Unmap(0, nullptr);
         for (FrameSlot& slot : slots_) {
-            if (!GFX::D3D12_BUFFER::CreateDefaultBuffer(device, sizeof(TRecord) * recordCapacity, slot.recordBuffer) ||
-                !GFX::D3D12_BUFFER::CreateDefaultBuffer(device, sizeof(float) * floatCapacity, slot.floatBuffer) ||
+            if (!GFX::D3D12_BUFFER::CreateDefaultBuffer(device, sizeof(TRecord) * recordCapacity,
+                                                        GFX::VIDEO_MEMORY::Owner::Geometry, slot.recordBuffer) ||
+                !GFX::D3D12_BUFFER::CreateDefaultBuffer(device, sizeof(float) * floatCapacity,
+                                                        GFX::VIDEO_MEMORY::Owner::Geometry, slot.floatBuffer) ||
                 !slot.uploads.Init(device, 64u * 1024u)) {
                 Finalize();
                 return false;

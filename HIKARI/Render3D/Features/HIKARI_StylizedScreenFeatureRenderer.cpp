@@ -14,6 +14,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 namespace HIKARI::RENDER3D::FEATURES {
 
@@ -206,9 +207,9 @@ bool StylizedScreenFeatureRenderer::EnsureConstantBuffer(ID3D12Device* device) {
     constantStride_ = AlignConstantBufferSize(sizeof(ScreenFeatureConstants));
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     const auto desc = CD3DX12_RESOURCE_DESC::Buffer(static_cast<UINT64>(constantStride_) * GFX::kFrameResourceCount);
-    if (!HIKARI_DX_CHECK(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-                                                         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                         IID_PPV_ARGS(constantBuffer_.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                             device, &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                             GFX::VIDEO_MEMORY::Owner::Vfx, IID_PPV_ARGS(constantBuffer_.GetAddressOf())),
                          "StylizedScreenFeatures::CreateConstantBuffer") ||
         !HIKARI_DX_CHECK(constantBuffer_->Map(0u, nullptr, reinterpret_cast<void**>(&constantMapped_)),
                          "StylizedScreenFeatures::MapConstantBuffer")) {

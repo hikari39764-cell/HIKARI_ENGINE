@@ -22,6 +22,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 
 namespace HIKARI::RENDER3D::COLOR {
@@ -179,10 +180,10 @@ struct AutomaticExposureMeter::Impl {
         const auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
         const auto measurementDescription =
             CD3DX12_RESOURCE_DESC::Buffer(kMeasurementBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-        if (!HIKARI_DX_CHECK(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE,
-                                                             &measurementDescription,
-                                                             D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
-                                                             IID_PPV_ARGS(measurementBuffer.GetAddressOf())),
+        if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                                 device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &measurementDescription,
+                                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, GFX::VIDEO_MEMORY::Owner::Post,
+                                 IID_PPV_ARGS(measurementBuffer.GetAddressOf())),
                              "AutomaticExposure::CreateMeasurementBuffer")) {
             return false;
         }
@@ -191,9 +192,10 @@ struct AutomaticExposureMeter::Impl {
         const auto readbackHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
         const auto readbackDescription = CD3DX12_RESOURCE_DESC::Buffer(kMeasurementBytes);
         for (ReadbackSlot& slot : readbackSlots) {
-            if (!HIKARI_DX_CHECK(device->CreateCommittedResource(&readbackHeap, D3D12_HEAP_FLAG_NONE,
-                                                                 &readbackDescription, D3D12_RESOURCE_STATE_COPY_DEST,
-                                                                 nullptr, IID_PPV_ARGS(slot.buffer.GetAddressOf())),
+            if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                                     device, &readbackHeap, D3D12_HEAP_FLAG_NONE, &readbackDescription,
+                                     D3D12_RESOURCE_STATE_COPY_DEST, nullptr, GFX::VIDEO_MEMORY::Owner::Post,
+                                     IID_PPV_ARGS(slot.buffer.GetAddressOf())),
                                  "AutomaticExposure::CreateReadbackBuffer")) {
                 return false;
             }

@@ -29,7 +29,8 @@ bool ParticleCompositionRenderer::EnsureTarget(RenderTarget2D& target) {
     target.UpdateContext(context_);
     if (target.GetWidth() != int(bindings_.width) || target.GetHeight() != int(bindings_.height)) {
         target.Finalize();
-        if (!target.Init(bindings_.width, bindings_.height, DXGI_FORMAT_R16G16B16A16_FLOAT))
+        if (!target.Init(GFX::VIDEO_MEMORY::Owner::Vfx, bindings_.width, bindings_.height,
+                         DXGI_FORMAT_R16G16B16A16_FLOAT))
             return false;
         target.SetDebugName("Vfx.Composition");
     }

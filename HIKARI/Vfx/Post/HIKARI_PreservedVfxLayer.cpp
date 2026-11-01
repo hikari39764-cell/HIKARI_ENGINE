@@ -10,7 +10,7 @@ bool PreservedVfxLayer::EnsureTarget(RenderTarget2D& target, int width, int heig
     if (target.GetWidth() == width && target.GetHeight() == height && target.IsInitialized())
         return true;
     target.Finalize();
-    if (!target.Init(width, height, DXGI_FORMAT_R16G16B16A16_FLOAT))
+    if (!target.Init(GFX::VIDEO_MEMORY::Owner::Vfx, width, height, DXGI_FORMAT_R16G16B16A16_FLOAT))
         return false;
     target.SetDebugName("Vfx.PreservedColor");
     return true;

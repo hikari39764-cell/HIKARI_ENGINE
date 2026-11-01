@@ -13,6 +13,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_ResourceStateTracker.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Render3D/Graph/HIKARI_RenderGraphSurfaceContract.h"
 #include "Render3D/Pipeline/HIKARI_ProjectComputeShaderRuntime.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
@@ -152,9 +153,9 @@ bool EnsureOutputResource(OutputState& state, OutputFrame& output, uint32_t widt
     const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
     const D3D12_RESOURCE_DESC description = CD3DX12_RESOURCE_DESC::Tex2D(
         kDispatchOutputFormat, width, height, 1u, 1u, 1u, 0u, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    const HRESULT created =
-        state.graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &description, kDispatchReadState,
-                                                       nullptr, IID_PPV_ARGS(output.resource.GetAddressOf()));
+    const HRESULT created = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        state.graphics.device, &heap, D3D12_HEAP_FLAG_NONE, &description, kDispatchReadState, nullptr,
+        GFX::VIDEO_MEMORY::Owner::SceneTargets, IID_PPV_ARGS(output.resource.GetAddressOf()));
     if (!HIKARI_DX_CHECK(created, "CreateResource: ProjectDispatchOutput")) {
         outDiagnostic = "could not create project Dispatch output";
         return false;

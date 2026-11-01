@@ -19,23 +19,32 @@ using Microsoft::WRL::ComPtr;
 constexpr const char* kMetricOwner = "Gfx.VideoMemory";
 constexpr const char* kModule = "Gfx";
 
-// 用途の表。指標 id の末尾と説明を 1 行にまとめる。Category の順に並べる。
-struct CategoryInfo {
+// 所有者の表。指標 id の末尾と説明を 1 行にまとめる。Owner の順に並べる。
+struct OwnerInfo {
     const char* id;
     const char* help;
 };
-constexpr CategoryInfo kCategories[] = {
-    {"texture", "Textures created by the texture manager (DxTextureManager), asset and generated."},
-    {"renderTarget", "Render targets created through RenderTarget2D: scene, post, temporal and editor views."},
-    {"geometry", "Cluster geometry buffers in default heaps. Mesh vertex/index buffers sit in upload heaps."},
-    {"buffer", "GPU-resident buffers created through D3D12BufferFactory::CreateDefaultBuffer."},
-    {"upload", "Upload/readback-heap resources from the central creation functions: host-visible memory, not VRAM."},
+constexpr OwnerInfo kOwners[] = {
+    {"textures", "Asset and generated textures created by the texture manager (DxTextureManager)."},
+    {"sceneTargets", "Scene color/depth, scene surface and reflection buffers, temporal history, depth pyramid."},
+    {"post", "Post effects, color grading LUT, depth of field, motion blur, composites, automatic exposure."},
+    {"shadow", "Shadow maps and ray traced shadow targets."},
+    {"lighting", "Dynamic GI, probe volumes, environment cache, sky, atmosphere, volumetric clouds and lighting."},
+    {"screenSpace", "SSAO, SSR and subsurface scattering targets."},
+    {"geometry", "Meshes, clusters, meshlets, BLAS/TLAS and ocean spectrum."},
+    {"gpuDriven", "Visibility, culling, command streams and GPU scene frame buffers."},
+    {"vfx", "Particles, ground telegraphs, stylized screen features and world text."},
+    {"ui", "Game UI effects and backdrop composite."},
+    {"editor", "Editor view capture and baking tools."},
+    {"diagnostics", "GPU timing and pipeline statistics queries and readback."},
+    {"upload", "Upload/readback-heap resources of any owner: host-visible memory, not VRAM."},
 };
-constexpr size_t kCategoryCount = std::size(kCategories);
-static_assert(kCategoryCount == static_cast<size_t>(Category::Count), "every Category needs a row");
+constexpr size_t kOwnerCount = std::size(kOwners);
+static_assert(kOwnerCount == static_cast<size_t>(Owner::Count), "every Owner needs a row");
+constexpr const char* kUnattributedId = "memory.vram.unattributed";
 
 // 記帳中の資源のバイト数。資源はどのスレッドで壊れてもよいので atomic。
-std::array<std::atomic<int64_t>, kCategoryCount> gTrackedBytes{};
+std::array<std::atomic<int64_t>, kOwnerCount> gTrackedBytes{};
 
 // {7F1C6E2B-5D4A-4B38-9C0E-2A91B3D8E6F4}
 constexpr GUID kTrackerGuid = {0x7f1c6e2b, 0x5d4a, 0x4b38, {0x9c, 0x0e, 0x2a, 0x91, 0xb3, 0xd8, 0xe6, 0xf4}};
@@ -43,10 +52,10 @@ constexpr GUID kTrackerGuid = {0x7f1c6e2b, 0x5d4a, 0x4b38, {0x9c, 0x0e, 0x2a, 0x
 // 資源の private data に持たせる印。資源が壊れて参照が 0 になった時に、記帳から自分の分を引く。
 class ResourceTracker final : public IUnknown {
 public:
-    ResourceTracker(Category category, int64_t bytes) : category_(category), bytes_(bytes) {}
+    ResourceTracker(Owner owner, int64_t bytes) : owner_(owner), bytes_(bytes) {}
 
     void MarkCounted() {
-        gTrackedBytes[static_cast<size_t>(category_)].fetch_add(bytes_);
+        gTrackedBytes[static_cast<size_t>(owner_)].fetch_add(bytes_);
         counted_ = true;
     }
 
@@ -74,12 +83,12 @@ public:
 private:
     ~ResourceTracker() {
         if (counted_) {
-            gTrackedBytes[static_cast<size_t>(category_)].fetch_sub(bytes_);
+            gTrackedBytes[static_cast<size_t>(owner_)].fetch_sub(bytes_);
         }
     }
 
     std::atomic<ULONG> references_{1u};
-    Category category_;
+    Owner owner_;
     int64_t bytes_;
     bool counted_ = false;
 };
@@ -97,7 +106,8 @@ State gState{};
 struct Metrics {
     METRIC::MetricHandle usage = METRIC::kInvalidMetric;
     METRIC::MetricHandle budget = METRIC::kInvalidMetric;
-    std::array<METRIC::MetricHandle, kCategoryCount> categories{};
+    std::array<METRIC::MetricHandle, kOwnerCount> owners{};
+    METRIC::MetricHandle unattributed = METRIC::kInvalidMetric;
 };
 
 const Metrics& GetMetrics() {
@@ -108,11 +118,14 @@ const Metrics& GetMetrics() {
         created.budget =
             METRIC::Register({METRIC::kVramBudget, kMetricOwner, kModule, "bytes", METRIC::MetricCategory::Memory,
                               "Local video memory the OS currently lets this process use."});
-        for (size_t index = 0; index < kCategoryCount; ++index) {
-            created.categories[index] =
-                METRIC::Register({std::string("memory.vram.") + kCategories[index].id, kMetricOwner, kModule, "bytes",
-                                  METRIC::MetricCategory::Memory, kCategories[index].help});
+        for (size_t index = 0; index < kOwnerCount; ++index) {
+            created.owners[index] =
+                METRIC::Register({std::string("memory.vram.") + kOwners[index].id, kMetricOwner, kModule, "bytes",
+                                  METRIC::MetricCategory::Memory, kOwners[index].help});
         }
+        created.unattributed =
+            METRIC::Register({kUnattributedId, kMetricOwner, kModule, "bytes", METRIC::MetricCategory::Memory,
+                              "Local video memory in use that no owner recorded (usage minus owners)."});
         return created;
     }();
     return metrics;
@@ -147,16 +160,13 @@ bool ResolveAdapter(ID3D12Device* device) {
     }
     return true;
 }
-} // namespace
 
-void Track(ID3D12Resource* resource, Category category) {
-    if (resource == nullptr || static_cast<size_t>(category) >= kCategoryCount) {
+void TrackResource(ID3D12Resource* resource, Owner owner, D3D12_HEAP_TYPE heapType) {
+    if (resource == nullptr || static_cast<size_t>(owner) >= kOwnerCount) {
         return;
     }
-    D3D12_HEAP_PROPERTIES heap{};
-    if (SUCCEEDED(resource->GetHeapProperties(&heap, nullptr)) &&
-        (heap.Type == D3D12_HEAP_TYPE_UPLOAD || heap.Type == D3D12_HEAP_TYPE_READBACK)) {
-        category = Category::Upload;
+    if (heapType == D3D12_HEAP_TYPE_UPLOAD || heapType == D3D12_HEAP_TYPE_READBACK) {
+        owner = Owner::Upload;
     }
     ComPtr<ID3D12Device> device;
     if (FAILED(resource->GetDevice(IID_PPV_ARGS(&device)))) {
@@ -167,17 +177,47 @@ void Track(ID3D12Resource* resource, Category category) {
     if (info.SizeInBytes == UINT64_MAX) {
         return;
     }
-    auto* tracker = new ResourceTracker(category, static_cast<int64_t>(info.SizeInBytes));
+    auto* tracker = new ResourceTracker(owner, static_cast<int64_t>(info.SizeInBytes));
     if (SUCCEEDED(resource->SetPrivateDataInterface(kTrackerGuid, tracker))) {
         tracker->MarkCounted();
     }
     tracker->Release();
 }
+} // namespace
+
+HRESULT CreateCommittedResource(ID3D12Device* device, const D3D12_HEAP_PROPERTIES* heapProperties,
+                                D3D12_HEAP_FLAGS heapFlags, const D3D12_RESOURCE_DESC* desc,
+                                D3D12_RESOURCE_STATES initialState, const D3D12_CLEAR_VALUE* clearValue, Owner owner,
+                                REFIID riid, void** resource) {
+    ComPtr<ID3D12Resource> created;
+    const HRESULT hr = device->CreateCommittedResource(heapProperties, heapFlags, desc, initialState, clearValue,
+                                                       IID_PPV_ARGS(&created));
+    if (FAILED(hr)) {
+        if (resource != nullptr) {
+            *resource = nullptr;
+        }
+        return hr;
+    }
+    TrackResource(created.Get(), owner, heapProperties->Type);
+    return resource != nullptr ? created->QueryInterface(riid, resource) : S_OK;
+}
+
+void Track(ID3D12Resource* resource, Owner owner) {
+    D3D12_HEAP_PROPERTIES heap{};
+    if (resource != nullptr && SUCCEEDED(resource->GetHeapProperties(&heap, nullptr))) {
+        TrackResource(resource, owner, heap.Type);
+    }
+}
 
 void Publish(ID3D12Device* device, uint64_t frameIndex) {
     const Metrics& metrics = GetMetrics();
-    for (size_t index = 0; index < kCategoryCount; ++index) {
-        METRIC::Publish(metrics.categories[index], static_cast<double>(gTrackedBytes[index].load()), frameIndex);
+    int64_t tracked = 0;
+    for (size_t index = 0; index < kOwnerCount; ++index) {
+        const int64_t bytes = gTrackedBytes[index].load();
+        METRIC::Publish(metrics.owners[index], static_cast<double>(bytes), frameIndex);
+        if (index != static_cast<size_t>(Owner::Upload)) {
+            tracked += bytes;
+        }
     }
     if (device == nullptr || !ResolveAdapter(device)) {
         MarkUnavailable("The DXGI adapter of the device could not be found.");
@@ -188,6 +228,8 @@ void Publish(ID3D12Device* device, uint64_t frameIndex) {
         MarkUnavailable("DXGI could not report the local video memory.");
         return;
     }
+    const double untracked = static_cast<double>(memory.CurrentUsage) - static_cast<double>(tracked);
+    METRIC::Publish(metrics.unattributed, untracked > 0.0 ? untracked : 0.0, frameIndex);
     METRIC::Publish(metrics.usage, static_cast<double>(memory.CurrentUsage), frameIndex);
     METRIC::Publish(metrics.budget, static_cast<double>(memory.Budget), frameIndex);
 }

@@ -13,6 +13,7 @@
 #include "Diagnostics/HIKARI_MetricRegistry.h"
 #include "Diagnostics/HIKARI_TraceRecorder.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 namespace HIKARI::GFX::GPU_PROFILE {
 
@@ -164,9 +165,10 @@ bool EnsureInitialized(ID3D12Device* device, ID3D12CommandQueue* queue) {
 
         const auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
         const auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(uint64_t) * kQueryCount);
-        if (!HIKARI_DX_CHECK(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &bufferDesc,
-                                                             D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                                                             IID_PPV_ARGS(slot.readbackBuffer.GetAddressOf())),
+        if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                                 device, &heapProps, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_COPY_DEST,
+                                 nullptr, GFX::VIDEO_MEMORY::Owner::Diagnostics,
+                                 IID_PPV_ARGS(slot.readbackBuffer.GetAddressOf())),
                              "GpuFrameProfiler::CreateReadbackBuffer")) {
             MarkUnavailable("GPU profiler query resources could not be created.");
             return false;

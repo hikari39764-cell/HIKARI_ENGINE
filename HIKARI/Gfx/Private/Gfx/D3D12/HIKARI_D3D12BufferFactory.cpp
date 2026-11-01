@@ -18,16 +18,17 @@ bool CreateMappedUploadBuffer(ID3D12Device* device, UINT64 byteSize, Microsoft::
     *mappedData = nullptr;
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     const auto desc = CD3DX12_RESOURCE_DESC::Buffer(byteSize);
-    if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ,
-                                               nullptr, IID_PPV_ARGS(resource.GetAddressOf())))) {
+    if (FAILED(VIDEO_MEMORY::CreateCommittedResource(
+            device, &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            VIDEO_MEMORY::Owner::Upload, IID_PPV_ARGS(resource.GetAddressOf())))) {
         return false;
     }
-    VIDEO_MEMORY::Track(resource.Get(), VIDEO_MEMORY::Category::Upload);
 
     return SUCCEEDED(resource->Map(0, nullptr, mappedData));
 }
 
-bool CreateDefaultBuffer(ID3D12Device* device, UINT64 byteSize, Microsoft::WRL::ComPtr<ID3D12Resource>& resource) {
+bool CreateDefaultBuffer(ID3D12Device* device, UINT64 byteSize, VIDEO_MEMORY::Owner owner,
+                         Microsoft::WRL::ComPtr<ID3D12Resource>& resource) {
     if (device == nullptr || byteSize == 0) {
         return false;
     }
@@ -35,19 +36,19 @@ bool CreateDefaultBuffer(ID3D12Device* device, UINT64 byteSize, Microsoft::WRL::
     resource.Reset();
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     const auto desc = CD3DX12_RESOURCE_DESC::Buffer(byteSize);
-    if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                               IID_PPV_ARGS(resource.GetAddressOf())))) {
+    if (FAILED(VIDEO_MEMORY::CreateCommittedResource(device, &heap, D3D12_HEAP_FLAG_NONE, &desc,
+                                                     D3D12_RESOURCE_STATE_COMMON, nullptr, owner,
+                                                     IID_PPV_ARGS(resource.GetAddressOf())))) {
         return false;
     }
-    VIDEO_MEMORY::Track(resource.Get(), VIDEO_MEMORY::Category::Buffer);
     return true;
 }
 
-bool CreateGpuResidentMappedBuffer(ID3D12Device* device, UINT64 byteSize,
+bool CreateGpuResidentMappedBuffer(ID3D12Device* device, UINT64 byteSize, VIDEO_MEMORY::Owner owner,
                                    Microsoft::WRL::ComPtr<ID3D12Resource>& uploadResource,
                                    Microsoft::WRL::ComPtr<ID3D12Resource>& defaultResource, void** mappedData) {
     if (!CreateMappedUploadBuffer(device, byteSize, uploadResource, mappedData) ||
-        !CreateDefaultBuffer(device, byteSize, defaultResource)) {
+        !CreateDefaultBuffer(device, byteSize, owner, defaultResource)) {
         return false;
     }
 

@@ -77,8 +77,8 @@ bool EditorInteractiveStylizedView::EnsureCompositeTarget(uint32_t width, uint32
 
     auto replacement = std::make_unique<RenderTarget2D>();
     replacement->UpdateContext(graphics);
-    if (!replacement->Init(static_cast<int>(width), static_cast<int>(height), kCompositeFormat, false,
-                           {0.0f, 0.0f, 0.0f, 1.0f}, false, false)) {
+    if (!replacement->Init(GFX::VIDEO_MEMORY::Owner::Editor, static_cast<int>(width), static_cast<int>(height),
+                           kCompositeFormat, false, {0.0f, 0.0f, 0.0f, 1.0f}, false, false)) {
         return false;
     }
     replacement->SetDebugName("EditorInteractiveView.StylizedComposite");

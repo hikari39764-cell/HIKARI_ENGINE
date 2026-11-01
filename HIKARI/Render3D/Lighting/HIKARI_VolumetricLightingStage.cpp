@@ -19,6 +19,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderContracts/Shader/HIKARI_VolumetricShaderContract.h"
 #include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
@@ -349,9 +350,10 @@ bool CreateVolume(StageState& state, VolumeResource& volume, uint32_t width, uin
     desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    if (!HIKARI_DX_CHECK(state.context.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-                                                                       D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                                       IID_PPV_ARGS(volume.texture.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(state.context.device, &heap, D3D12_HEAP_FLAG_NONE,
+                                                                    &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                                    GFX::VIDEO_MEMORY::Owner::Lighting,
+                                                                    IID_PPV_ARGS(volume.texture.GetAddressOf())),
                          "VolumetricLighting::CreateVolume"))
         return false;
     volume.srv = AllocateTexture3DSrvDescriptor(volume.texture.Get(), kVolumeFormat);

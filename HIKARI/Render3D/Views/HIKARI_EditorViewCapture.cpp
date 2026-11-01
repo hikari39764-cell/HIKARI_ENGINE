@@ -5,6 +5,7 @@
 #include "Core/HIKARI_TimeService.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include <d3dx12.h>
 #include <DirectXTex.h>
 #include <wrl/client.h>
@@ -233,9 +234,9 @@ void RecordViewCapture(RenderViewId viewId, bool ready, uint64_t outputRevision,
     readback.pitch = sourcePitch;
     const auto stagingDesc = CD3DX12_RESOURCE_DESC::Buffer(totalBytes);
     const CD3DX12_HEAP_PROPERTIES readbackHeap(D3D12_HEAP_TYPE_READBACK);
-    if (FAILED(device->CreateCommittedResource(&readbackHeap, D3D12_HEAP_FLAG_NONE, &stagingDesc,
-                                               D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                                               IID_PPV_ARGS(&readback.staging)))) {
+    if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &readbackHeap, D3D12_HEAP_FLAG_NONE, &stagingDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Editor, IID_PPV_ARGS(&readback.staging)))) {
         finish("创建截图读回资源失败");
         return;
     }

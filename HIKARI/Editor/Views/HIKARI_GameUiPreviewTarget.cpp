@@ -17,6 +17,7 @@ GameUiPreviewTarget::Render(const GAME_UI::GameUiFrameSource& source, uint32_t w
         return published_;
     // ライブなプレビューごとに所有し、ゲーム用 Canvas スロットとは共有しない。
     const auto owner = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(this));
+    target_.memoryOwner = GFX::VIDEO_MEMORY::Owner::Editor;
     if (!target_.Ensure(graphics, owner, 0, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, false,
                         {clear.r, clear.g, clear.b, clear.a}))
         return {};

@@ -47,8 +47,8 @@ bool PostPresentationStage::CaptureEditorSnapshot(RenderTarget2D& source, QuadDr
         ClearEditorSnapshot();
         editorSnapshot_.UpdateContext(context_);
         editorSnapshot_.SetDebugName("Presentation.EditorSnapshot.LDR");
-        if (!editorSnapshot_.Init(source.GetWidth(), source.GetHeight(), DXGI_FORMAT_R8G8B8A8_UNORM, false,
-                                  {0.0f, 0.0f, 0.0f, 1.0f})) {
+        if (!editorSnapshot_.Init(GFX::VIDEO_MEMORY::Owner::Post, source.GetWidth(), source.GetHeight(),
+                                  DXGI_FORMAT_R8G8B8A8_UNORM, false, {0.0f, 0.0f, 0.0f, 1.0f})) {
             return false;
         }
         const UINT descriptorSize =
@@ -155,8 +155,8 @@ bool PostPresentationStage::PresentToEditor(RenderTarget2D& source, QuadDrawer& 
     if (replacingOutput) {
         replacement.UpdateContext(context_);
         replacement.SetDebugName("Presentation.EditorGameView.LDR");
-        if (!replacement.Init(source.GetWidth(), source.GetHeight(), DXGI_FORMAT_R8G8B8A8_UNORM, false,
-                              {0.0f, 0.0f, 0.0f, 1.0f})) {
+        if (!replacement.Init(GFX::VIDEO_MEMORY::Owner::Post, source.GetWidth(), source.GetHeight(),
+                              DXGI_FORMAT_R8G8B8A8_UNORM, false, {0.0f, 0.0f, 0.0f, 1.0f})) {
             DEBUGLOG::PushRenderError("[PresentationStage][ERROR] Editor output creation failed.");
             GFX::DumpD3D12InfoQueue(context_.device, "Presentation editor output creation failed");
             BindBackBufferFullViewport();

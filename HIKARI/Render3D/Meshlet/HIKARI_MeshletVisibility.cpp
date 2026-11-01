@@ -4,6 +4,7 @@
 #include <d3dx12.h>
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI::RENDER3D::MESHLET {
@@ -58,12 +59,12 @@ bool MeshletVisibility::EnsureFrame(const GFX::Context& graphics, Frame& frame) 
     const CD3DX12_HEAP_PROPERTIES gpuHeap(D3D12_HEAP_TYPE_DEFAULT), readHeap(D3D12_HEAP_TYPE_READBACK);
     const auto gpuDesc = CD3DX12_RESOURCE_DESC::Buffer(bytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     const auto readDesc = CD3DX12_RESOURCE_DESC::Buffer(bytes);
-    if (FAILED(graphics.device->CreateCommittedResource(&gpuHeap, D3D12_HEAP_FLAG_NONE, &gpuDesc,
-                                                        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
-                                                        IID_PPV_ARGS(&frame.counters))) ||
-        FAILED(graphics.device->CreateCommittedResource(&readHeap, D3D12_HEAP_FLAG_NONE, &readDesc,
-                                                        D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                                                        IID_PPV_ARGS(&frame.readback)))) {
+    if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+            graphics.device, &gpuHeap, D3D12_HEAP_FLAG_NONE, &gpuDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+            GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(&frame.counters))) ||
+        FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+            graphics.device, &readHeap, D3D12_HEAP_FLAG_NONE, &readDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(&frame.readback)))) {
         // 途中失敗した未送信リソースを残さず、次回の生成を安全にする。
         frame.counters.Reset();
         frame.readback.Reset();
@@ -105,9 +106,9 @@ MeshletVisibilityBinding MeshletVisibility::Begin(const GFX::Context& graphics, 
     if (!zeroUpload_) {
         const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_UPLOAD);
         const auto desc = CD3DX12_RESOURCE_DESC::Buffer(kMaxViewsPerFrame * sizeof(MeshletVisibilityCounters));
-        if (FAILED(graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-                                                            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                            IID_PPV_ARGS(&zeroUpload_))))
+        if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                graphics.device, &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(&zeroUpload_))))
             return {};
         void* mapped = nullptr;
         const D3D12_RANGE noRead{0, 0};

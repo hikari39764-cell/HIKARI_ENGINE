@@ -8,6 +8,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 
@@ -61,9 +62,10 @@ bool GameUiBackdropComposite::EnsureResources() {
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     const auto description =
         CD3DX12_RESOURCE_DESC::Buffer(static_cast<UINT64>(constantStride_) * GFX::kFrameResourceCount);
-    if (!HIKARI_DX_CHECK(context_.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &description,
-                                                                  D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                                  IID_PPV_ARGS(constants_.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(context_.device, &heap, D3D12_HEAP_FLAG_NONE,
+                                                                    &description, D3D12_RESOURCE_STATE_GENERIC_READ,
+                                                                    nullptr, GFX::VIDEO_MEMORY::Owner::Ui,
+                                                                    IID_PPV_ARGS(constants_.GetAddressOf())),
                          "GameUiBackdropComposite::CreateConstants") ||
         !HIKARI_DX_CHECK(constants_->Map(0u, nullptr, reinterpret_cast<void**>(&mappedConstants_)),
                          "GameUiBackdropComposite::MapConstants")) {

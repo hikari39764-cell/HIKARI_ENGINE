@@ -50,7 +50,7 @@ bool GameUiCompositionStage::EnsureTargets(int width, int height) {
 
         target.Finalize();
         target.SetDebugName(debugName);
-        return target.Init(width, height, kPresentationFormat, false, clearColor);
+        return target.Init(GFX::VIDEO_MEMORY::Owner::Ui, width, height, kPresentationFormat, false, clearColor);
     };
 
     return ensureTarget(uiColorAndAlpha_, "Presentation.UiColorAndAlpha", {0.0f, 0.0f, 0.0f, 0.0f}) &&
@@ -68,7 +68,8 @@ bool GameUiCompositionStage::EnsureHudlessFallback(int width, int height) {
 
     hudlessColor_.Finalize();
     hudlessColor_.SetDebugName("Presentation.HudlessFallback");
-    return hudlessColor_.Init(width, height, kPresentationFormat, false, {0.0f, 0.0f, 0.0f, 1.0f});
+    return hudlessColor_.Init(GFX::VIDEO_MEMORY::Owner::Ui, width, height, kPresentationFormat, false,
+                              {0.0f, 0.0f, 0.0f, 1.0f});
 }
 
 void GameUiCompositionStage::InvalidateFrame() { frame_ = {}; }

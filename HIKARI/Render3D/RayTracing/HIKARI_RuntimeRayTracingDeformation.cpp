@@ -13,6 +13,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 namespace HIKARI::RENDER3D::RAYTRACING {
 namespace {
@@ -89,9 +90,9 @@ bool RuntimeRayTracingDeformation::EnsurePool(const GFX::Context& graphics, uint
     const uint64_t size = (std::max<uint64_t>)(bytes + bytes / 2, 1ull << 20);
     const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
     const auto desc = CD3DX12_RESOURCE_DESC::Buffer(size, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    if (FAILED(graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-                                                        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
-                                                        IID_PPV_ARGS(pool_.GetAddressOf())))) {
+    if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+            graphics.device, &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Geometry, IID_PPV_ARGS(pool_.GetAddressOf())))) {
         pool_.Reset();
         return false;
     }

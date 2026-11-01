@@ -6,6 +6,7 @@
 #include <d3dx12.h>
 
 #include "Gfx/HIKARI_ResourceStateTracker.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Vfx/Internal/HIKARI_GpuParticleShaderInterop.h"
@@ -40,9 +41,10 @@ bool GpuParticleStorage::Initialize(const GFX::Context& context, uint32_t partic
     const auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     const auto particleDescription = CD3DX12_RESOURCE_DESC::Buffer(
         static_cast<UINT64>(particleCapacity) * sizeof(GpuParticle), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    if (!HIKARI_DX_CHECK(context.device->CreateCommittedResource(
-                             &defaultHeap, D3D12_HEAP_FLAG_NONE, &particleDescription,
-                             D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(particles_.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                             context.device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &particleDescription,
+                             D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, GFX::VIDEO_MEMORY::Owner::Vfx,
+                             IID_PPV_ARGS(particles_.GetAddressOf())),
                          "ParticleGpuDrivenPass::CreateParticleBuffer")) {
         return false;
     }
@@ -70,9 +72,10 @@ bool GpuParticleStorage::Initialize(const GFX::Context& context, uint32_t partic
 
     const auto createGpuBuffer = [&](UINT64 byteSize, const wchar_t* name, ComPtr<ID3D12Resource>& resource) {
         const auto description = CD3DX12_RESOURCE_DESC::Buffer(byteSize, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-        if (!HIKARI_DX_CHECK(context.device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &description,
-                                                                     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
-                                                                     IID_PPV_ARGS(resource.GetAddressOf())),
+        if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                                 context.device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &description,
+                                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, GFX::VIDEO_MEMORY::Owner::Vfx,
+                                 IID_PPV_ARGS(resource.GetAddressOf())),
                              "ParticleGpuDrivenPass::CreateDrawBuffer")) {
             return false;
         }

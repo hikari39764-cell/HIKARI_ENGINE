@@ -7,6 +7,7 @@
 #include <d3dx12.h>
 
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI::SHADOW::INTERNAL {
@@ -47,18 +48,18 @@ bool CreateShadowMapResources(ShadowRendererState& state, const GFX::Context& gr
     clearValue.Format = DXGI_FORMAT_D32_FLOAT;
     clearValue.DepthStencil.Depth = 1.0f;
     clearValue.DepthStencil.Stencil = 0;
-    const HRESULT hr =
-        device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, kShadowShaderReadState, &clearValue,
-                                        IID_PPV_ARGS(state.shadowMap.GetAddressOf()));
+    const HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, kShadowShaderReadState, &clearValue,
+        GFX::VIDEO_MEMORY::Owner::Shadow, IID_PPV_ARGS(state.shadowMap.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "ShadowMapRenderer::CreateShadowMapResource")) {
         return false;
     }
     GFX::SetD3D12Name(state.shadowMap.Get(), L"Shadow Depth Atlas");
 
     if (allocation.cacheStaticDepth) {
-        const HRESULT staticHr =
-            device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COMMON,
-                                            &clearValue, IID_PPV_ARGS(state.staticShadowMap.GetAddressOf()));
+        const HRESULT staticHr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COMMON, &clearValue,
+            GFX::VIDEO_MEMORY::Owner::Shadow, IID_PPV_ARGS(state.staticShadowMap.GetAddressOf()));
         if (!HIKARI_DX_CHECK(staticHr, "ShadowMapRenderer::CreateStaticShadowCacheResource")) {
             // 部分初期化失敗時も GPU 参照を待ってから解放する
             GFX::RetireD3D12ObjectForFrame(state.shadowMap, graphics, "ShadowRenderer.ShadowMap.PartialInit");

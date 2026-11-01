@@ -19,6 +19,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Texture/HIKARI_DxTexture.h"
 #include "Render3D/Ui/HIKARI_GameUiTextLayout.h"
 #include "RenderCore/Targets/HIKARI_SurfaceTextureTargetRing.h"
@@ -231,13 +232,14 @@ bool EnsureFrameResources(ID3D12Device* device, FrameResources& frame, size_t sp
     const auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     const auto vertexDesc = CD3DX12_RESOURCE_DESC::Buffer(frame.spriteCapacity * kVerticesPerSprite * sizeof(UiVertex));
     const auto constantDesc = CD3DX12_RESOURCE_DESC::Buffer(frame.spriteCapacity * kConstantStride);
-    if (!HIKARI_DX_CHECK(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &vertexDesc,
-                                                         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                         IID_PPV_ARGS(frame.vertices.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                             device, &uploadHeap, D3D12_HEAP_FLAG_NONE, &vertexDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+                             nullptr, GFX::VIDEO_MEMORY::Owner::Ui, IID_PPV_ARGS(frame.vertices.GetAddressOf())),
                          "GameUi::CreateVertexBuffer") ||
-        !HIKARI_DX_CHECK(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &constantDesc,
-                                                         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                         IID_PPV_ARGS(frame.constants.GetAddressOf())),
+        !HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(device, &uploadHeap, D3D12_HEAP_FLAG_NONE,
+                                                                    &constantDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+                                                                    nullptr, GFX::VIDEO_MEMORY::Owner::Ui,
+                                                                    IID_PPV_ARGS(frame.constants.GetAddressOf())),
                          "GameUi::CreateConstantBuffer") ||
         !HIKARI_DX_CHECK(frame.vertices->Map(0u, nullptr, reinterpret_cast<void**>(&frame.vertexMapped)),
                          "GameUi::MapVertexBuffer") ||
@@ -526,6 +528,7 @@ bool RenderGameUiCanvasTarget(uint32_t slot, uint64_t worldIdentity, const GameU
             state.renderedFrame = 0;
             state.renderedFence = 0;
         }
+        state.target.memoryOwner = GFX::VIDEO_MEMORY::Owner::Ui;
         if (!state.target.Ensure(graphics, worldIdentity, slot + 4, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, false,
                                  {clearColor.r, clearColor.g, clearColor.b, clearColor.a}))
             return false;

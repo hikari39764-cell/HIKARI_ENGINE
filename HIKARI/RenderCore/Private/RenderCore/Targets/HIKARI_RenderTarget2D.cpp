@@ -12,13 +12,14 @@ using Microsoft::WRL::ComPtr;
 
 namespace HIKARI {
 
-bool RenderTarget2D::Init(int width, int height, DXGI_FORMAT format, bool withDepth,
+bool RenderTarget2D::Init(GFX::VIDEO_MEMORY::Owner owner, int width, int height, DXGI_FORMAT format, bool withDepth,
                           const std::array<float, 4>& optimizedClearColor, bool publishDepthSrv,
                           bool allowUnorderedAccess) {
     if (initialized_) {
         return true;
     }
 
+    owner_ = owner;
     width_ = width;
     height_ = height;
     format_ = format;
@@ -59,6 +60,7 @@ void RenderTarget2D::UpdateContext(const HIKARI::GFX::Context& ctx) {
 
 void RenderTarget2D::Swap(RenderTarget2D& other) noexcept {
     using std::swap;
+    swap(owner_, other.owner_);
     swap(colorTex_, other.colorTex_);
     swap(colorState_, other.colorState_);
     swap(depthTex_, other.depthTex_);
@@ -183,14 +185,13 @@ bool RenderTarget2D::CreateResources() {
     colorClearValue.Color[2] = optimizedClearColor_[2];
     colorClearValue.Color[3] = optimizedClearColor_[3];
 
-    HRESULT hr = device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc,
-                                                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &colorClearValue,
-                                                 IID_PPV_ARGS(&colorTex_));
+    HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(device, &heapProps, D3D12_HEAP_FLAG_NONE, &texDesc,
+                                                            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                                                            &colorClearValue, owner_, IID_PPV_ARGS(&colorTex_));
     if (!HIKARI_DX_CHECK(hr, "RenderTarget2D::CreateCommittedResource color")) {
         DEBUGLOG::PushRenderError(DumpState());
         return false;
     }
-    GFX::VIDEO_MEMORY::Track(colorTex_.Get(), GFX::VIDEO_MEMORY::Category::RenderTarget);
     colorState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     SetDebugName(debugName_);
 
@@ -239,13 +240,13 @@ bool RenderTarget2D::CreateResources() {
             DXGI_FORMAT_R32_TYPELESS, static_cast<UINT64>(width_), static_cast<UINT>(height_), 1, 1, 1, 0,
             D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 
-        hr = device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &depthDesc,
-                                             D3D12_RESOURCE_STATE_DEPTH_WRITE, &depthClear, IID_PPV_ARGS(&depthTex_));
+        hr = GFX::VIDEO_MEMORY::CreateCommittedResource(device, &heapProps, D3D12_HEAP_FLAG_NONE, &depthDesc,
+                                                        D3D12_RESOURCE_STATE_DEPTH_WRITE, &depthClear, owner_,
+                                                        IID_PPV_ARGS(&depthTex_));
         if (!HIKARI_DX_CHECK(hr, "RenderTarget2D::CreateCommittedResource depth")) {
             DEBUGLOG::PushRenderError(DumpState());
             return false;
         }
-        GFX::VIDEO_MEMORY::Track(depthTex_.Get(), GFX::VIDEO_MEMORY::Category::RenderTarget);
         depthState_ = D3D12_RESOURCE_STATE_DEPTH_WRITE;
 
         D3D12_DESCRIPTOR_HEAP_DESC dsvDesc{};

@@ -4,6 +4,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/RayTracing/HIKARI_DxrCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 #include <algorithm>
 #include <cmath>
@@ -159,12 +160,13 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
     // 再 build/refit でも旧結果を上書きしない。記録済み View と GPU 読み取りを保護する。
     Microsoft::WRL::ComPtr<ID3D12Resource> result, scratch, instanceBuffer;
     const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
-    if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &resultDesc,
-                                               D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nullptr,
-                                               IID_PPV_ARGS(&result))) ||
-        FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &scratchDesc,
-                                               D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
-                                               IID_PPV_ARGS(&scratch))) ||
+    if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(device.Get(), &heap, D3D12_HEAP_FLAG_NONE, &resultDesc,
+                                                          D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,
+                                                          nullptr, GFX::VIDEO_MEMORY::Owner::Geometry,
+                                                          IID_PPV_ARGS(&result))) ||
+        FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device.Get(), &heap, D3D12_HEAP_FLAG_NONE, &scratchDesc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Geometry, IID_PPV_ARGS(&scratch))) ||
         (!instances.empty() && !Upload(graphics.device, instances, instanceBuffer)))
         return fail("Failed to allocate DXR build resources.");
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build{};

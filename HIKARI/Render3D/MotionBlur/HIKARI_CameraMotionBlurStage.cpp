@@ -18,6 +18,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
@@ -189,9 +190,10 @@ bool CreateTile(ID3D12Device* device, TileTexture& tile, uint32_t width, uint32_
     const auto description = CD3DX12_RESOURCE_DESC::Tex2D(kTileFormat, width, height, 1u, 1u, 1u, 0u,
                                                           D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
-    if (!HIKARI_DX_CHECK(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &description,
-                                                         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
-                                                         IID_PPV_ARGS(tile.resource.ReleaseAndGetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                             device, &heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                             nullptr, GFX::VIDEO_MEMORY::Owner::Post,
+                             IID_PPV_ARGS(tile.resource.ReleaseAndGetAddressOf())),
                          "CameraMotionBlur::CreateTile")) {
         return false;
     }
@@ -215,8 +217,8 @@ bool EnsureTargets(StageState& state, const GFX::Context& context, const RenderT
     }
     ReleaseTargets(state, context);
     state.output.SetDebugName("CameraMotionBlur.Output");
-    if (!state.output.Init(sceneColor.GetWidth(), sceneColor.GetHeight(), sceneColor.GetFormat(), false,
-                           {0.0f, 0.0f, 0.0f, 0.0f}, false, true)) {
+    if (!state.output.Init(GFX::VIDEO_MEMORY::Owner::Post, sceneColor.GetWidth(), sceneColor.GetHeight(),
+                           sceneColor.GetFormat(), false, {0.0f, 0.0f, 0.0f, 0.0f}, false, true)) {
         return false;
     }
     state.outputUav = AllocateTexture2DUavDescriptor(state.output.GetResource(), sceneColor.GetFormat());

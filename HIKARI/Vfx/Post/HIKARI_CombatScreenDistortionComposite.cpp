@@ -12,6 +12,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 namespace HIKARI::POST {
 
@@ -214,7 +215,8 @@ private:
         }
         output.UpdateContext(context_);
         output.Finalize();
-        if (!output.Init(source.GetWidth(), source.GetHeight(), source.GetFormat(), false)) {
+        if (!output.Init(GFX::VIDEO_MEMORY::Owner::Post, source.GetWidth(), source.GetHeight(), source.GetFormat(),
+                         false)) {
             LogCompositeError("output target creation failed");
             return false;
         }
@@ -271,9 +273,9 @@ private:
         const UINT64 size = static_cast<UINT64>(constantStride_) * GFX::kFrameResourceCount;
         CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
         CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(size);
-        HRESULT hr = context_.device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &resourceDesc,
-                                                              D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                              IID_PPV_ARGS(constantBuffer_.GetAddressOf()));
+        HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            context_.device, &heapProps, D3D12_HEAP_FLAG_NONE, &resourceDesc, D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr, GFX::VIDEO_MEMORY::Owner::Post, IID_PPV_ARGS(constantBuffer_.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "CombatScreenDistortionComposite constant buffer")) {
             constantStride_ = 0u;
             return false;

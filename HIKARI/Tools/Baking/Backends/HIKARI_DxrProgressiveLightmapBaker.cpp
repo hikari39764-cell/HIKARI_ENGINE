@@ -13,6 +13,7 @@
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Gfx/RayTracing/HIKARI_DxrCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Tools/Baking/Backends/Internal/HIKARI_DxrLightmapBakeUtilities.h"
 #include "Tools/Baking/Backends/Internal/HIKARI_DxrLightmapGpuData.h"
 
@@ -41,8 +42,9 @@ bool CreateBuffer(ID3D12Device* device, UINT64 size, D3D12_HEAP_TYPE heapType, D
     desc.SampleDesc.Count = 1u;
     desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     desc.Flags = flags;
-    return SUCCEEDED(
-        device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state, nullptr, IID_PPV_ARGS(outResource)));
+    return SUCCEEDED(GFX::VIDEO_MEMORY::CreateCommittedResource(device, &heap, D3D12_HEAP_FLAG_NONE, &desc, state,
+                                                                nullptr, GFX::VIDEO_MEMORY::Owner::Editor,
+                                                                IID_PPV_ARGS(outResource)));
 }
 
 template <class T>

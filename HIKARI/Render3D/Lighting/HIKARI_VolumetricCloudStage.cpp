@@ -23,6 +23,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderContracts/Shader/HIKARI_VolumetricShaderContract.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
@@ -362,9 +363,10 @@ bool CreateCloudTexture(StageState& state, CloudTexture& texture, uint32_t width
         CD3DX12_RESOURCE_DESC::Tex2D(format, width, height, 1u, 1u, 1u, 0u, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
     D3D12_CLEAR_VALUE clear{};
     clear.Format = format;
-    if (!HIKARI_DX_CHECK(state.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-                                                               D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clear,
-                                                               IID_PPV_ARGS(texture.resource.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(state.device, &heap, D3D12_HEAP_FLAG_NONE, &desc,
+                                                                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clear,
+                                                                    GFX::VIDEO_MEMORY::Owner::Lighting,
+                                                                    IID_PPV_ARGS(texture.resource.GetAddressOf())),
                          "VolumetricCloudStage::CreateCloudTexture")) {
         return false;
     }
@@ -392,9 +394,9 @@ bool CreateNoiseTexture(StageState& state, NoiseTexture& texture, uint32_t width
                    : CD3DX12_RESOURCE_DESC::Tex2D(format, width, height, 1u, 1u, 1u, 0u,
                                                   D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    if (!HIKARI_DX_CHECK(state.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-                                                               D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                                               IID_PPV_ARGS(texture.resource.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                             state.device, &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                             GFX::VIDEO_MEMORY::Owner::Lighting, IID_PPV_ARGS(texture.resource.GetAddressOf())),
                          "VolumetricCloudStage::CreateNoiseTexture")) {
         return false;
     }
@@ -436,9 +438,10 @@ bool CreateNoiseHistogram(StageState& state) {
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     const auto desc = CD3DX12_RESOURCE_DESC::Buffer(uint64_t(kNoiseHistogramUints) * sizeof(uint32_t),
                                                     D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    if (!HIKARI_DX_CHECK(state.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-                                                               D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
-                                                               IID_PPV_ARGS(state.noiseHistogram.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(state.device, &heap, D3D12_HEAP_FLAG_NONE, &desc,
+                                                                    D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+                                                                    GFX::VIDEO_MEMORY::Owner::Lighting,
+                                                                    IID_PPV_ARGS(state.noiseHistogram.GetAddressOf())),
                          "VolumetricCloudStage::CreateNoiseHistogram")) {
         return false;
     }

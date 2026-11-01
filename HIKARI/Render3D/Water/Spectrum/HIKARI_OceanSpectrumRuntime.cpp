@@ -17,6 +17,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_ResourceStateTracker.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI::RENDER3D::WATER::SPECTRUM {
@@ -429,9 +430,9 @@ bool CreateStructuredUploadBuffer(const GFX::Context& context, const std::vector
     const uint64_t byteSize = static_cast<uint64_t>(values.size()) * sizeof(Float4);
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
     const auto desc = CD3DX12_RESOURCE_DESC::Buffer(byteSize);
-    if (!HIKARI_DX_CHECK(context.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-                                                                 D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                                 IID_PPV_ARGS(output.resource.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                             context.device, &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ,
+                             nullptr, GFX::VIDEO_MEMORY::Owner::Geometry, IID_PPV_ARGS(output.resource.GetAddressOf())),
                          "OceanSpectrum::CreateUploadBuffer")) {
         return false;
     }
@@ -480,9 +481,9 @@ bool CreateSpectrumTexture(const GFX::Context& context, uint32_t resolution, con
     const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     const auto desc = CD3DX12_RESOURCE_DESC::Tex2D(kSpectrumFormat, resolution, resolution, 1u, 1u, 1u, 0u,
                                                    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-    if (!HIKARI_DX_CHECK(context.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-                                                                 D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                                                 IID_PPV_ARGS(output.resource.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                             context.device, &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                             GFX::VIDEO_MEMORY::Owner::Geometry, IID_PPV_ARGS(output.resource.GetAddressOf())),
                          "OceanSpectrum::CreateTexture")) {
         return false;
     }

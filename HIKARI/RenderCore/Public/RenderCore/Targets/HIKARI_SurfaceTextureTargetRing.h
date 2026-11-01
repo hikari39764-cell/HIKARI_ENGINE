@@ -35,6 +35,8 @@ struct SurfaceTextureTargets {
     }
 
     bool depthSrvPublished = false;
+    // 記帳の所有者。既定は実行時の面（シーン描画先）。使う側が別なら Ensure の前に差し替える。
+    GFX::VIDEO_MEMORY::Owner memoryOwner = GFX::VIDEO_MEMORY::Owner::SceneTargets;
 
     bool Ensure(const GFX::Context& graphics, uint64_t requestedWorldIdentity, uint32_t captureSlot,
                 uint32_t requestedWidth, uint32_t requestedHeight, DXGI_FORMAT format = DXGI_FORMAT_R16G16B16A16_FLOAT,
@@ -59,8 +61,8 @@ struct SurfaceTextureTargets {
                 targets[index]->UpdateContext(graphics);
                 targets[index]->SetDebugName("Runtime.Surface." + std::to_string(captureSlot) + "." +
                                              std::to_string(index));
-                if (!targets[index]->Init(static_cast<int>(width), static_cast<int>(height), format, withDepth,
-                                          clearColor, publishDepthSrv)) {
+                if (!targets[index]->Init(memoryOwner, static_cast<int>(width), static_cast<int>(height), format,
+                                          withDepth, clearColor, publishDepthSrv)) {
                     Reset();
                     return false;
                 }

@@ -166,8 +166,8 @@ bool EnsureTarget(TemporalResourceState& state, TemporalTarget& target, const GF
     ReleaseTarget(state, target, TemporalResourceReleaseMode::DeferredUntilFence);
     target.target.UpdateContext(ctx);
     target.target.SetDebugName(debugName != nullptr ? debugName : "Temporal.Target");
-    if (!target.target.Init(static_cast<int>(safeWidth), static_cast<int>(safeHeight), format, false, clearColor,
-                            false)) {
+    if (!target.target.Init(GFX::VIDEO_MEMORY::Owner::SceneTargets, static_cast<int>(safeWidth),
+                            static_cast<int>(safeHeight), format, false, clearColor, false)) {
         ReleaseTarget(state, target, TemporalResourceReleaseMode::DeferredUntilFence);
         return false;
     }

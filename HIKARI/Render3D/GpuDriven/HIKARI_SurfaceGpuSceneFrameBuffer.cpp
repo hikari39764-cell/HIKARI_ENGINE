@@ -5,6 +5,7 @@
 
 #include <d3dx12.h>
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
 
@@ -91,9 +92,9 @@ bool SurfaceGpuSceneFrameBuffer::Initialize(
             }
 
             auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-            if (FAILED(device->CreateCommittedResource(&defaultHeap, D3D12_HEAP_FLAG_NONE, &desc,
-                                                       D3D12_RESOURCE_STATE_COMMON, nullptr,
-                                                       IID_PPV_ARGS(slot.defaultBuffer.GetAddressOf())))) {
+            if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                    device, &defaultHeap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                    GFX::VIDEO_MEMORY::Owner::GpuDriven, IID_PPV_ARGS(slot.defaultBuffer.GetAddressOf())))) {
                 allSlotsReady = false;
                 break;
             }

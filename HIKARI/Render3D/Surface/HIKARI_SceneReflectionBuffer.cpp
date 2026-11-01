@@ -2,6 +2,7 @@
 #include <d3dx12.h>
 #include "Core/Numeric/HIKARI_NonZero.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI::RENDER3D::SURFACE {
@@ -49,8 +50,9 @@ bool SceneReflectionBuffer::Ensure(const GFX::Context& graphics, uint32_t width,
         std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, kTargetCount> replacements;
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> replacementHeap;
         for (size_t i = 0; i < kTargetCount; ++i) {
-            if (wanted[i] && FAILED(graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, state_,
-                                                                             &clear, IID_PPV_ARGS(&replacements[i]))))
+            if (wanted[i] && FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                                 graphics.device, &heap, D3D12_HEAP_FLAG_NONE, &desc, state_, &clear,
+                                 GFX::VIDEO_MEMORY::Owner::SceneTargets, IID_PPV_ARGS(&replacements[i]))))
                 return false;
         }
         const D3D12_DESCRIPTOR_HEAP_DESC rtvDesc{D3D12_DESCRIPTOR_HEAP_TYPE_RTV, kTargetCount};

@@ -14,6 +14,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 
 namespace HIKARI::RENDER3D::COMBAT_VFX {
@@ -40,9 +41,9 @@ bool CreateUploadBuffer(ID3D12Device* device, UINT64 bytes, const wchar_t* name,
     }
     const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_UPLOAD);
     const CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(bytes);
-    if (!HIKARI_DX_CHECK(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-                                                         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                         IID_PPV_ARGS(resource.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                             device, &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                             GFX::VIDEO_MEMORY::Owner::Vfx, IID_PPV_ARGS(resource.GetAddressOf())),
                          "GroundTelegraph::CreateUploadBuffer")) {
         return false;
     }

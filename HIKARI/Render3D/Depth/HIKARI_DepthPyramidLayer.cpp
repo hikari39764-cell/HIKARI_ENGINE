@@ -19,6 +19,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 namespace HIKARI::RENDER3D::DEPTH {
 
@@ -374,8 +375,9 @@ bool DepthPyramidLayer::EnsureResources(uint32_t sourceWidth, uint32_t sourceHei
     const D3D12_RESOURCE_STATES initialState =
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 
-    HRESULT hr = device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc, initialState, nullptr,
-                                                 IID_PPV_ARGS(texture_.GetAddressOf()));
+    HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &heapProps, D3D12_HEAP_FLAG_NONE, &desc, initialState, nullptr, GFX::VIDEO_MEMORY::Owner::SceneTargets,
+        IID_PPV_ARGS(texture_.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "DepthPyramid::CreateTexture")) {
         ReleaseResources();
         return false;

@@ -13,6 +13,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayQueryBindings.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
@@ -237,8 +238,9 @@ bool RayTracedShadowRenderer::CreateTarget(const GFX::Context& graphics, Target&
     const auto desc =
         CD3DX12_RESOURCE_DESC::Tex2D(format, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     target.state = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    if (!HIKARI_DX_CHECK(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, target.state, nullptr,
-                                                         IID_PPV_ARGS(target.resource.GetAddressOf())),
+    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                             device, &heap, D3D12_HEAP_FLAG_NONE, &desc, target.state, nullptr,
+                             GFX::VIDEO_MEMORY::Owner::Shadow, IID_PPV_ARGS(target.resource.GetAddressOf())),
                          "RayTracedShadow visibility target")) {
         return false;
     }

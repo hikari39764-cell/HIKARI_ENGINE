@@ -786,8 +786,8 @@ struct ParticleGpuDrivenPass::Impl {
         if (!distortionMask.IsInitialized() || distortionMask.GetWidth() != static_cast<int>(bindings.width) ||
             distortionMask.GetHeight() != static_cast<int>(bindings.height)) {
             distortionMask.Finalize();
-            if (!distortionMask.Init(static_cast<int>(bindings.width), static_cast<int>(bindings.height),
-                                     DXGI_FORMAT_R16G16B16A16_FLOAT, false))
+            if (!distortionMask.Init(GFX::VIDEO_MEMORY::Owner::Vfx, static_cast<int>(bindings.width),
+                                     static_cast<int>(bindings.height), DXGI_FORMAT_R16G16B16A16_FLOAT, false))
                 return false;
             distortionMask.SetDebugName("Particles.DistortionMask");
         }

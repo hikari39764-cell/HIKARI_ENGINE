@@ -4,6 +4,7 @@
 #include "RenderContracts/Shader/HIKARI_RenderGeometryShaderContract.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 #include <algorithm>
 #include <cstring>
@@ -167,9 +168,9 @@ bool ClusterRayTracingGeometryBuilder::Build(const GFX::Context& graphics, const
         return fail();
     Microsoft::WRL::ComPtr<ID3D12Resource> indices;
     const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
-    if (FAILED(graphics.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
-                                                        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
-                                                        IID_PPV_ARGS(&indices))))
+    if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(graphics.device, &heap, D3D12_HEAP_FLAG_NONE, &desc,
+                                                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+                                                          GFX::VIDEO_MEMORY::Owner::Geometry, IID_PPV_ARGS(&indices))))
         return fail();
     const uint32_t dispatchWidth = (std::min)(layout.clusterCount, 65535u);
     const uint32_t constants[]{layout.clusterCount, layout.meshletPrimitiveCount, layout.vertexCount, dispatchWidth};

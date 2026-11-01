@@ -10,6 +10,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_MetricRegistry.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 
 namespace HIKARI::GFX::GPU_PIPELINE_STATS {
 
@@ -143,9 +144,10 @@ bool EnsureInitialized(ID3D12Device* device) {
         const auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
         const auto bufferDesc =
             CD3DX12_RESOURCE_DESC::Buffer(sizeof(D3D12_QUERY_DATA_PIPELINE_STATISTICS1) * kQueryCount);
-        if (!HIKARI_DX_CHECK(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &bufferDesc,
-                                                             D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                                                             IID_PPV_ARGS(slot.readbackBuffer.GetAddressOf())),
+        if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                                 device, &heapProps, D3D12_HEAP_FLAG_NONE, &bufferDesc, D3D12_RESOURCE_STATE_COPY_DEST,
+                                 nullptr, GFX::VIDEO_MEMORY::Owner::Diagnostics,
+                                 IID_PPV_ARGS(slot.readbackBuffer.GetAddressOf())),
                              "GpuPipelineStatsProfiler::CreateReadbackBuffer")) {
             MarkUnavailable("Pipeline stats query resources could not be created.");
             return false;

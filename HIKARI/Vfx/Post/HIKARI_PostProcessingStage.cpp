@@ -529,7 +529,7 @@ bool PostProcessingStage::EnsureLdrTarget(int width, int height, DXGI_FORMAT for
         return true;
     ldrTarget_.Finalize();
     ldrTarget_.SetDebugName("PostProcessing.ToneMappedLDR");
-    return ldrTarget_.Init(width, height, format, false, {0, 0, 0, 1});
+    return ldrTarget_.Init(GFX::VIDEO_MEMORY::Owner::Post, width, height, format, false, {0, 0, 0, 1});
 }
 
 bool PostProcessingStage::EnsureTemporalOutput(int width, int height, DXGI_FORMAT format) {
@@ -543,7 +543,7 @@ bool PostProcessingStage::EnsureTemporalOutput(int width, int height, DXGI_FORMA
         return true;
     temporalOutput_.Finalize();
     temporalOutput_.SetDebugName("PostProcessing.TemporalOutput");
-    return temporalOutput_.Init(width, height, format, false, {0, 0, 0, 0});
+    return temporalOutput_.Init(GFX::VIDEO_MEMORY::Owner::Post, width, height, format, false, {0, 0, 0, 0});
 }
 
 bool PostProcessingStage::EnsureSunGlareTarget(int width, int height) {
@@ -559,7 +559,8 @@ bool PostProcessingStage::EnsureSunGlareTarget(int width, int height) {
         return true;
     sunGlareTarget_.Finalize();
     sunGlareTarget_.SetDebugName("PostProcessing.SunGlareQuarterRes");
-    return sunGlareTarget_.Init(targetWidth, targetHeight, DXGI_FORMAT_R16G16B16A16_FLOAT, false, {0, 0, 0, 0});
+    return sunGlareTarget_.Init(GFX::VIDEO_MEMORY::Owner::Post, targetWidth, targetHeight,
+                                DXGI_FORMAT_R16G16B16A16_FLOAT, false, {0, 0, 0, 0});
 }
 
 bool PostProcessingStage::ApplySunGlare(RenderTarget2D& source, RenderTarget2D& sceneDepthOwner, QuadDrawer& quad) {

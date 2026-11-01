@@ -5,6 +5,7 @@
 #include <array>
 #include <string>
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Resources/HIKARI_RenderResourcePool.h"
 
 namespace HIKARI {
@@ -17,9 +18,10 @@ public:
     RenderTarget2D(const RenderTarget2D&) = delete;
     RenderTarget2D& operator=(const RenderTarget2D&) = delete;
 
-    bool Init(int width, int height, DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM, bool withDepth = false,
-              const std::array<float, 4>& optimizedClearColor = {0.0f, 0.0f, 0.0f, 0.0f}, bool publishDepthSrv = false,
-              bool allowUnorderedAccess = false);
+    // owner は VRAM 記帳の所有者（作る側のサブシステム）。
+    bool Init(GFX::VIDEO_MEMORY::Owner owner, int width, int height, DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM,
+              bool withDepth = false, const std::array<float, 4>& optimizedClearColor = {0.0f, 0.0f, 0.0f, 0.0f},
+              bool publishDepthSrv = false, bool allowUnorderedAccess = false);
 
     void UpdateContext(const HIKARI::GFX::Context& ctx);
     void Finalize();
@@ -98,6 +100,7 @@ private:
     bool hasDepth_ = false;
     bool publishDepthSrv_ = false;
     bool allowUnorderedAccess_ = false;
+    GFX::VIDEO_MEMORY::Owner owner_ = GFX::VIDEO_MEMORY::Owner::SceneTargets;
     std::string debugName_ = "RenderTarget2D";
     HIKARI::GFX::Context context_{};
 

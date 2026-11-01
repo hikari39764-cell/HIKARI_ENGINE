@@ -128,13 +128,16 @@ bool MeshFrameResourceStore::Initialize(ID3D12Device* device, ID3D12DescriptorHe
         frame.materialProgramUploadNeedsRetry = false;
         if (!GFX::D3D12_BUFFER::CreateMappedUploadBuffer(device, objectBytes, frame.objectCB,
                                                          reinterpret_cast<void**>(&frame.objectMapped)) ||
-            !GFX::D3D12_BUFFER::CreateGpuResidentMappedBuffer(device, objectDataBytes, frame.objectDataUploadBuffer,
-                                                              frame.objectDataBuffer,
-                                                              reinterpret_cast<void**>(&frame.objectDataMapped)) ||
-            !GFX::D3D12_BUFFER::CreateDefaultBuffer(device, materialDataBytes, frame.materialDataBuffer) ||
+            !GFX::D3D12_BUFFER::CreateGpuResidentMappedBuffer(
+                device, objectDataBytes, GFX::VIDEO_MEMORY::Owner::GpuDriven, frame.objectDataUploadBuffer,
+                frame.objectDataBuffer, reinterpret_cast<void**>(&frame.objectDataMapped)) ||
+            !GFX::D3D12_BUFFER::CreateDefaultBuffer(device, materialDataBytes, GFX::VIDEO_MEMORY::Owner::GpuDriven,
+                                                    frame.materialDataBuffer) ||
             !GFX::D3D12_BUFFER::CreateDefaultBuffer(device, materialProgramParameterBytes,
+                                                    GFX::VIDEO_MEMORY::Owner::GpuDriven,
                                                     frame.materialProgramParameterBuffer) ||
             !GFX::D3D12_BUFFER::CreateDefaultBuffer(device, materialProgramResourceBytes,
+                                                    GFX::VIDEO_MEMORY::Owner::GpuDriven,
                                                     frame.materialProgramResourceBuffer)) {
             return false;
         }

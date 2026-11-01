@@ -18,6 +18,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_VideoMemory.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 
 namespace HIKARI::RENDER3D::SCREENSPACE {
@@ -486,9 +487,9 @@ bool SsaoRenderer::EnsureResources(const GFX::Context& graphics, uint32_t width,
         const UINT constantStride = GFX::AlignD3D12ConstantBufferByteSize(sizeof(SsaoPassCB));
         const auto cbDesc =
             CD3DX12_RESOURCE_DESC::Buffer(static_cast<UINT64>(constantStride) * kSsaoConstantSliceCount);
-        hr = device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &cbDesc,
-                                             D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                             IID_PPV_ARGS(constantBuffer_.GetAddressOf()));
+        hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &uploadHeap, D3D12_HEAP_FLAG_NONE, &cbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            GFX::VIDEO_MEMORY::Owner::ScreenSpace, IID_PPV_ARGS(constantBuffer_.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "SsaoRenderer::Create constant buffer")) {
             return false;
         }
@@ -578,9 +579,9 @@ bool SsaoRenderer::CreateAoResource(const GFX::Context& graphics, uint32_t width
     const auto desc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8_UNORM, width, height, 1, 1, 1, 0,
                                                    D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 
-    HRESULT hr = device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
-                                                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clearValue,
-                                                 IID_PPV_ARGS(outResource.GetAddressOf()));
+    HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+        device, &heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clearValue,
+        GFX::VIDEO_MEMORY::Owner::ScreenSpace, IID_PPV_ARGS(outResource.GetAddressOf()));
     if (!HIKARI_DX_CHECK(hr, "SsaoRenderer::Create AO texture")) {
         return false;
     }

@@ -234,9 +234,9 @@ std::vector<TextureLoadResult> DxTextureManager::LoadTextureBatch(const std::vec
         textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
         auto textureHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-        HRESULT hr = device->CreateCommittedResource(&textureHeap, D3D12_HEAP_FLAG_NONE, &textureDesc,
-                                                     D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
-                                                     IID_PPV_ARGS(load.textureResource.GetAddressOf()));
+        HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &textureHeap, D3D12_HEAP_FLAG_NONE, &textureDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Textures, IID_PPV_ARGS(load.textureResource.GetAddressOf()));
         if (FAILED(hr) || !load.textureResource) {
             std::ostringstream oss;
             oss << "[DxTextureManager][HTEXBatch][ERROR] CreateCommittedResource failed. path=" << load.request.path
@@ -245,7 +245,6 @@ std::vector<TextureLoadResult> DxTextureManager::LoadTextureBatch(const std::vec
             failResults(load.resultIndices);
             continue;
         }
-        GFX::VIDEO_MEMORY::Track(load.textureResource.Get(), GFX::VIDEO_MEMORY::Category::Texture);
 
         load.subresources.reserve(load.htex.subresources.size());
         for (const HtexSubresource& source : load.htex.subresources) {
@@ -266,9 +265,9 @@ std::vector<TextureLoadResult> DxTextureManager::LoadTextureBatch(const std::vec
 
         auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
         auto uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(load.uploadBytes);
-        hr = device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc,
-                                             D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                             IID_PPV_ARGS(load.uploadResource.GetAddressOf()));
+        hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
+            device, &uploadHeap, D3D12_HEAP_FLAG_NONE, &uploadDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            GFX::VIDEO_MEMORY::Owner::Textures, IID_PPV_ARGS(load.uploadResource.GetAddressOf()));
         if (FAILED(hr) || !load.uploadResource) {
             std::ostringstream oss;
             oss << "[DxTextureManager][HTEXBatch][ERROR] upload buffer creation failed. path=" << load.request.path

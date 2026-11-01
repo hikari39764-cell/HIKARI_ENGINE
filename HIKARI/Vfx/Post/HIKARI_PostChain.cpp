@@ -64,8 +64,10 @@ bool PostChain::EnsureTempSize(int w, int h) {
     tempsInitialized_ = false;
     ping_.UpdateContext(context_);
     pong_.UpdateContext(context_);
-    const bool okPing = ping_.Init(w, h, kPostChainFormat, false, {0.0f, 0.0f, 0.0f, 0.0f});
-    const bool okPong = pong_.Init(w, h, kPostChainFormat, false, {0.0f, 0.0f, 0.0f, 0.0f});
+    const bool okPing =
+        ping_.Init(GFX::VIDEO_MEMORY::Owner::Post, w, h, kPostChainFormat, false, {0.0f, 0.0f, 0.0f, 0.0f});
+    const bool okPong =
+        pong_.Init(GFX::VIDEO_MEMORY::Owner::Post, w, h, kPostChainFormat, false, {0.0f, 0.0f, 0.0f, 0.0f});
     tempsInitialized_ = okPing && okPong;
     if (!tempsInitialized_) {
         ping_.Finalize();
