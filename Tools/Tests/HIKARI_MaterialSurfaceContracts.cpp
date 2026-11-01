@@ -11,7 +11,7 @@
 #include <d3dx12.h>
 #include "Gfx/HIKARI_ShaderCookCompiler.h"
 #include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialProgramSerialization.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgram.h"
 #include "RenderContracts/Model/Policies/HIKARI_ModelMaterialPolicy.h"

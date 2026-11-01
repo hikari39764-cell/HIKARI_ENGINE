@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
 #include "Authoring/HIKARI_FieldInspector.h"

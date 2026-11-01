@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "Core/HIKARI_AssetGuid.h"
-#include "Assets/Material/HIKARI_MaterialAssetTypes.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetTypes.h"
 #include "RenderContracts/Material/HIKARI_MaterialProgramFormat.h"
 #include "Core/Math/HIKARI_Math3D.h"
 

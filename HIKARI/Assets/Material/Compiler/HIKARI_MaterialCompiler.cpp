@@ -1,4 +1,4 @@
-#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
+#include "RenderContracts/Material/HIKARI_MaterialGraphQuery.h"
 #include "HIKARI_MaterialCompiler.h"
 
 #include <algorithm>

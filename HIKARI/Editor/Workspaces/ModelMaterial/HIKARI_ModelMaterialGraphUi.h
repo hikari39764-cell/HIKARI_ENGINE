@@ -8,8 +8,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
-#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialGraphQuery.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
 #include "Core/Math/HIKARI_Math3D.h"
 

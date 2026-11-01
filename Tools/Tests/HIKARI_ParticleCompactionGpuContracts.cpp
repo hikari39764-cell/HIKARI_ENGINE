@@ -6,7 +6,10 @@
 #include <string>
 #include <vector>
 #include <d3dx12.h>
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "Assets/Material/Compiler/HIKARI_StandardPbrProgramSource.h"
+#include "Assets/Vfx/HIKARI_VfxPrewarm.h"
+#include "Assets/Vfx/HIKARI_VfxProgram.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "RenderContracts/Texture/HIKARI_HtexFormat.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/HIKARI_TimeService.h"
@@ -41,6 +44,8 @@ void CheckParticleAssetPrewarm() {
     assert(DXTEX::DxTextureManager::Init(graphics));
     RENDER3D::MATERIAL::GpuMaterialRegistry materials;
     assert(materials.Initialize(64, GFX::kFrameResourceCount));
+    // 標準材質は registry の標準 PBR の出どころ（Assets のコンパイラ）から作る。起動する側の代わりにここで渡す。
+    RENDER3D::MATERIAL::ResetRuntimeMaterialProgramRegistry(ASSETS::MATERIAL::MakeStandardPbrProgramSource());
     AssetRegistry assets;
     ParticleRenderInput input{};
     input.sourceIdentity = 42;
@@ -67,7 +72,7 @@ void CheckParticleAssetPrewarm() {
         std::string error;
         assert(WriteHtexFile(path, texture, error));
         auto descriptor = std::make_unique<TextureAssetDescriptor>();
-        descriptor->id = AssetId{guid};
+        descriptor->id = AssetGuid{guid};
         descriptor->type = AssetType::Texture;
         descriptor->sourcePath = path.string();
         assert(assets.RegisterDescriptor(std::move(descriptor)));
@@ -83,9 +88,10 @@ void CheckParticleAssetPrewarm() {
     program->emitters.emplace_back().render.colorTextureAssetGuid = "test.missing.texture";
     const auto registerProgram = [&] {
         auto descriptor = std::make_unique<VfxAssetDescriptor>();
-        descriptor->id = AssetId{"test.prewarm." + std::to_string(program->emitters.size())};
+        descriptor->id = AssetGuid{"test.prewarm." + std::to_string(program->emitters.size())};
         descriptor->type = AssetType::VfxEffect;
         descriptor->program = std::make_shared<const VFX::VfxProgram>(*program);
+        descriptor->prewarm = VFX::CollectVfxPrewarmMaterials(*descriptor->program);
         assert(assets.RegisterDescriptor(std::move(descriptor)));
     };
     const auto findTexture = [](const char* guid, const std::string& path) {

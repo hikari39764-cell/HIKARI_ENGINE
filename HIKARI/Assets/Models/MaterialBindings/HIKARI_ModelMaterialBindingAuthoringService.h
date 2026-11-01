@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialBindingAsset.h"
 
 namespace HIKARI {
 class AssetDatabase;

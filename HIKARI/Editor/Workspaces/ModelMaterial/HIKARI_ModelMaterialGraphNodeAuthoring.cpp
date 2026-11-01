@@ -11,7 +11,7 @@
 
 #include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
-#include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
+#include "RenderContracts/Material/HIKARI_MaterialNodeDefinition.h"
 #include "Editor/NodeGraph/HIKARI_NodeGraphCanvas.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialNodeQuery.h"

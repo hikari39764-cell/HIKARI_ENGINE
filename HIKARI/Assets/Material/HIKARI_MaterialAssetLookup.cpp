@@ -1,6 +1,7 @@
 #include "Assets/Material/HIKARI_MaterialAssetLookup.h"
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
 namespace HIKARI::ASSETS::MATERIAL {
 
@@ -12,7 +13,7 @@ bool LoadMaterialAssetSource(const AssetDatabase& assetDatabase, const AssetGuid
         return false;
     }
     const std::filesystem::path sourcePath = assetDatabase.ResolveSourcePath(*record);
-    return LoadMaterialAssetData(sourcePath, outSource, outError);
+    return MATERIAL_SERIALIZATION::LoadMaterialSourceJson(sourcePath, outSource, outError);
 }
 
 MaterialCompileOptions MakeMaterialCompileOptions(const AssetDatabase& assetDatabase) {

@@ -5,8 +5,8 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
@@ -46,7 +46,7 @@ RuntimeTextureSlot BuildSlot(const MaterialTextureSlotData& slotData, MaterialTe
         return DefaultSlotForUsage(usage);
     }
 
-    const auto* texture = assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{slotData.textureAssetGuid.value});
+    const auto* texture = assetRegistry.FindAs<TextureAssetDescriptor>(slotData.textureAssetGuid);
     if (!texture || texture->sourcePath.empty()) {
         HIKARI_LOG_WARN("[MaterialRuntimeBuilder] texture asset not resolved: " + slotData.textureAssetGuid.value);
         return ActiveMissingSlot();
@@ -178,11 +178,12 @@ void ApplyProgramResolution(const PbrMaterialAssetData& pbr, const AssetRegistry
     outMaterial.SetFeatureBits(featureBits);
 }
 
-RENDER3D::MATERIAL::MaterialProgramResolution StandardPbrResolution(const MaterialCompileResult& compileResult) {
+RENDER3D::MATERIAL::MaterialProgramResolution StandardPbrResolution(
+    const MaterialCompileResult& compileResult, const RENDER3D::MATERIAL::MaterialProgramRegistry& programRegistry) {
     return {RENDER3D::MATERIAL::kStandardPbrMaterialProgramId,
             compileResult.success ? RENDER3D::MATERIAL::MaterialProgramResolutionKind::Reused
                                   : RENDER3D::MATERIAL::MaterialProgramResolutionKind::StandardPbrFallback,
-            compileResult.success ? compileResult.program : BuildStandardPbrMaterialProgramFallback(),
+            compileResult.success ? compileResult.program : programRegistry.GetStandardPbrFallback().ir,
             compileResult.diagnostics};
 }
 
@@ -190,33 +191,29 @@ RENDER3D::MATERIAL::MaterialProgramResolution StandardPbrResolution(const Materi
 // ProjectPbrMaterialAssetData の slot と係数で固定経路がそのまま描ける。専用 program にすると画素ごとに式を
 // 解釈するので（網目の床で 1 フレーム数十 ms）、構造が一致するものは program 0 へ寄せる。
 bool IsStandardPbrForm(const MaterialAssetData& data, const PbrMaterialAssetData& pbr,
-                       const MaterialCompileResult& compileResult) {
+                       const MaterialCompileResult& compileResult,
+                       const RENDER3D::MATERIAL::MaterialProgramRegistry& programRegistry) {
     if (!compileResult.success || compileResult.usedFallback || data.kind != MaterialAssetKind::Material ||
         data.templateId != MaterialTemplateId::StandardPbr) {
         return false;
     }
     MaterialAssetData standard = MakeStandardPbrMaterialAssetData(pbr);
     standard.surface = data.surface;
-    const MaterialCompileResult standardCompile = CompileMaterialAsset(standard);
+    const MaterialCompileResult standardCompile = programRegistry.CompileStandardForm(standard);
     return standardCompile.success && standardCompile.program.key == compileResult.program.key;
 }
 } // namespace
 
 bool MaterialRuntimeBuilder::BuildRuntimeMaterial(const PbrMaterialAssetData& data, const AssetRegistry& assetRegistry,
+                                                  RENDER3D::MATERIAL::MaterialProgramRegistry& programRegistry,
                                                   Material& outMaterial, std::string_view debugName) const {
     ApplyPbrCompatibilityData(data, assetRegistry, outMaterial, debugName);
-    ApplyProgramResolution(data, assetRegistry,
-                           StandardPbrResolution(CompileMaterialAsset(MakeStandardPbrMaterialAssetData(data))),
-                           outMaterial, debugName);
+    ApplyProgramResolution(
+        data, assetRegistry,
+        StandardPbrResolution(programRegistry.CompileStandardForm(MakeStandardPbrMaterialAssetData(data)),
+                              programRegistry),
+        outMaterial, debugName);
     return true;
-}
-
-bool MaterialRuntimeBuilder::BuildRuntimeMaterial(const MaterialAssetData& data, const AssetRegistry& assetRegistry,
-                                                  RENDER3D::MATERIAL::MaterialProgramRegistry& programRegistry,
-                                                  Material& outMaterial, std::string_view debugName,
-                                                  RENDER3D::MATERIAL::MaterialProgramResolution* outResolution) const {
-    return BuildRuntimeMaterial(data, CompileMaterialAsset(data), assetRegistry, programRegistry, outMaterial,
-                                debugName, outResolution);
 }
 
 bool MaterialRuntimeBuilder::BuildRuntimeMaterial(const MaterialAssetData& data,
@@ -227,8 +224,9 @@ bool MaterialRuntimeBuilder::BuildRuntimeMaterial(const MaterialAssetData& data,
                                                   RENDER3D::MATERIAL::MaterialProgramResolution* outResolution) const {
     const PbrMaterialAssetData pbr = ProjectPbrMaterialAssetData(data);
     const RENDER3D::MATERIAL::MaterialProgramResolution resolution =
-        IsStandardPbrForm(data, pbr, compileResult) ? StandardPbrResolution(compileResult)
-                                                    : programRegistry.ResolveCompileResult(debugName, compileResult);
+        IsStandardPbrForm(data, pbr, compileResult, programRegistry)
+            ? StandardPbrResolution(compileResult, programRegistry)
+            : programRegistry.ResolveCompileResult(debugName, compileResult);
     ApplyPbrCompatibilityData(pbr, assetRegistry, outMaterial, debugName);
     ApplyProgramResolution(pbr, assetRegistry, resolution, outMaterial, debugName);
     if (outResolution != nullptr) {

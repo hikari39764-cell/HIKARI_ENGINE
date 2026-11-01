@@ -1,4 +1,4 @@
-#include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
+#include "RenderContracts/Material/HIKARI_MaterialNodeDefinition.h"
 
 #include <algorithm>
 #include <array>

@@ -9,8 +9,8 @@
 #include <vector>
 
 #include "Core/HIKARI_AssetGuid.h"
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponentAuthoringInternal.h"
@@ -36,7 +36,7 @@ const VFX::VfxProgram* ResolveProgram(const AssetRegistry* registry, const VfxPl
     if (registry == nullptr || !slot.effectAssetGuid.IsValid()) {
         return nullptr;
     }
-    const auto* descriptor = registry->FindAs<VfxAssetDescriptor>(AssetId{slot.effectAssetGuid.value});
+    const auto* descriptor = registry->FindAs<VfxAssetDescriptor>(slot.effectAssetGuid);
     return descriptor != nullptr && descriptor->program != nullptr ? descriptor->program.get() : nullptr;
 }
 

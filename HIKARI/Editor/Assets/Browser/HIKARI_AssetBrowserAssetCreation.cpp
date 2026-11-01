@@ -21,7 +21,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetImportState.h"
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
@@ -42,6 +42,7 @@
 #include "imgui.h"
 
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialAssetFile.h"
 
 namespace HIKARI::EDITOR::ASSET_BROWSER {
 

@@ -10,8 +10,8 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetImportState.h"
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Editor/Widgets/HIKARI_InputActionFieldWidget.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
@@ -89,7 +89,7 @@ AssetPickerEntry BuildAssetPickerEntry(const AssetDescriptor& descriptor, const 
     entry.path = descriptor.sourcePath;
 
     if (assetDatabase) {
-        if (const AssetRecord* record = assetDatabase->FindByGuid(AssetGuid{descriptor.id.value})) {
+        if (const AssetRecord* record = assetDatabase->FindByGuid(descriptor.id)) {
             entry.name = record->displayName.empty() ? record->sourcePath.stem().string() : record->displayName;
             entry.path = record->sourcePath.generic_string();
             entry.state = ToString(GetImportState(*record));

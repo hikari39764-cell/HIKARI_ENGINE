@@ -8,7 +8,7 @@
 #include "Scene/Camera/HIKARI_CameraFollowSettings.h"
 
 #include "HIKARI_IComponent.h"
-#include "Assets/HIKARI_AssetTypeEnum.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypeEnum.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Scene/Camera/HIKARI_CameraRigTypes.h"

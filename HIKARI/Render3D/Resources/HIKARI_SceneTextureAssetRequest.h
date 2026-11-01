@@ -3,8 +3,8 @@
 #include <optional>
 #include <string>
 
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D {
@@ -13,7 +13,7 @@ namespace HIKARI::RENDER3D {
 // 事前読み込みと描画時の解決が同じ名前・色空間で共有キャッシュを引く。2D でない・未登録の資産は空。
 inline std::optional<TextureResourceLoadRequest> FindSceneTextureAssetRequest(const AssetRegistry& registry,
                                                                               const std::string& assetId) {
-    const auto* descriptor = registry.FindAs<TextureAssetDescriptor>(AssetId{assetId});
+    const auto* descriptor = registry.FindAs<TextureAssetDescriptor>(AssetGuid{assetId});
     if (descriptor == nullptr || descriptor->dimension != TextureAssetDimension::Texture2D ||
         descriptor->sourcePath.empty()) {
         return std::nullopt;

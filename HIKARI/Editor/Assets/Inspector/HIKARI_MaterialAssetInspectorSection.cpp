@@ -15,7 +15,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetImportState.h"
 #include "Assets/Importers/Policy/HIKARI_TextureImportPolicy.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
@@ -26,6 +26,7 @@
 
 #include "imgui.h"
 #include "Editor/Assets/Inspector/HIKARI_AssetInspectorInternal.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialAssetFile.h"
 
 namespace HIKARI::EDITOR::ASSET_INSPECTOR {
 

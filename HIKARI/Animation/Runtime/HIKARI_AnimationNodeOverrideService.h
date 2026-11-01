@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Animation/Runtime/HIKARI_AnimationPose.h"
+#include "RenderContracts/Model/HIKARI_AnimationPose.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI {

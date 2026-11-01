@@ -1,5 +1,5 @@
 #pragma once
-#include "Assets/Post/HIKARI_PostAsset.h"
+#include "Vfx/Post/HIKARI_PostTypes.h"
 
 namespace HIKARI {
 struct GameProjectActionPostFrameRequest;

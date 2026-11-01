@@ -19,7 +19,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/Text/HIKARI_Utf8.h"
 #include "Core/Text/HIKARI_UtfPath.h"

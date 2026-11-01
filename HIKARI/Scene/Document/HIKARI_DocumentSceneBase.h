@@ -9,10 +9,10 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/HIKARI_AssetGuid.h"
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
-#include "Render3D/Models/HIKARI_ModelManager.h"
+#include "Assets/Models/HIKARI_ModelManager.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
@@ -159,7 +159,7 @@ public:
     // 環境プロファイル（編集中の下書きを含む）を引き直す。時刻と天気の進行は保ち、空の資源が変わった時だけ読み直す。
     bool RefreshEnvironmentProfile();
     bool RefreshTextureRuntimeByPath(const std::string& path);
-    bool ReloadModelAssetRuntime(const AssetId& modelId);
+    bool ReloadModelAssetRuntime(const AssetGuid& modelId);
     int RebindModelComponents();
     int RebuildMaterialOverrides();
     int RebuildMaterialOverridesForMaterial(const AssetGuid& materialGuid);

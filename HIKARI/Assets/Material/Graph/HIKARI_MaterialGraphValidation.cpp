@@ -10,8 +10,8 @@
 #include <unordered_set>
 #include <utility>
 
-#include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
-#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
+#include "RenderContracts/Material/HIKARI_MaterialNodeDefinition.h"
+#include "RenderContracts/Material/HIKARI_MaterialGraphQuery.h"
 
 namespace HIKARI {
 namespace {

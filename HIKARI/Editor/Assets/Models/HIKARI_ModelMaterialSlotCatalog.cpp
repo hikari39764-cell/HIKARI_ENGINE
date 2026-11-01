@@ -7,10 +7,11 @@
 #include "Assets/Formats/HIKARI_HmodelFormat.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
-#include "Assets/HIKARI_AssetTypes.h"
-#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialBindingAsset.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingSource.h"
 
 namespace HIKARI::EDITOR {
 

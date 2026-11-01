@@ -1,9 +1,9 @@
-#include "HIKARI_MaterialAssetTypes.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetTypes.h"
 
 #include <algorithm>
 #include <utility>
 
-#include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
+#include "RenderContracts/Material/HIKARI_MaterialNodeDefinition.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 
 namespace HIKARI {

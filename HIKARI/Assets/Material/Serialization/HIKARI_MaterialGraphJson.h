@@ -4,7 +4,7 @@
 
 #include <json.hpp>
 
-#include "Assets/Material/Graph/HIKARI_MaterialGraphData.h"
+#include "RenderContracts/Material/HIKARI_MaterialGraphData.h"
 
 namespace HIKARI::MATERIAL_SERIALIZATION {
 

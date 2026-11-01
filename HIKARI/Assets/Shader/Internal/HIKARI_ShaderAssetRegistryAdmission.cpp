@@ -8,8 +8,8 @@
 
 #include "RenderContracts/Shader/HIKARI_HshadercFormat.h"
 #include "Assets/HIKARI_AssetRecord.h"
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Shader/Internal/HIKARI_ShaderArtifactValidation.h"
 #include "Core/HIKARI_Logger.h"

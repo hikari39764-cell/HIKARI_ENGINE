@@ -1,4 +1,4 @@
-#include "Assets/Material/Compiler/HIKARI_MaterialRampRasterizer.h"
+#include "RenderContracts/Material/HIKARI_MaterialRampRasterizer.h"
 
 #include <algorithm>
 #include <array>

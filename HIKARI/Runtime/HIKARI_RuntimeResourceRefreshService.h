@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 
 namespace HIKARI {
 
@@ -23,7 +23,7 @@ struct RuntimeResourceRefreshReport {
 
 class RuntimeResourceRefreshService {
 public:
-    RuntimeResourceRefreshReport RefreshAssets(DocumentSceneBase& scene, const std::vector<AssetId>& assetIds,
+    RuntimeResourceRefreshReport RefreshAssets(DocumentSceneBase& scene, const std::vector<AssetGuid>& assetIds,
                                                bool assetRegistryAlreadyPublished = false);
 
     RuntimeResourceRefreshReport RefreshCurrentSceneResources(DocumentSceneBase& scene,

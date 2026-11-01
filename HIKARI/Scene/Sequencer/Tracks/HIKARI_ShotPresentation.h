@@ -7,6 +7,7 @@
 #include <vector>
 #include <span>
 #include "Render3D/Core/HIKARI_Camera3D.h"
+#include "Vfx/Post/HIKARI_ScreenEffectSample.h"
 #include "Scene/Sequencer/HIKARI_SequenceBinding.h"
 
 namespace HIKARI::SEQUENCER {
@@ -116,25 +117,6 @@ struct ShotCamera {
     std::vector<CameraMotionEffect> motion;
 };
 
-enum class ScreenEffectKind {
-    BloomIntensity,
-    BloomThreshold,
-    Exposure,
-    Saturation,
-    Contrast,
-    Temperature,
-    Vignette,
-    Monochrome,
-    Tint,
-    Fade,
-    Pixelate,
-    Chromatic,
-    // 色を反転する（HDR のまま中間の灰を軸に反転）。
-    Invert,
-    // 画面中心へ向かって放射状にぼかす。量は中心へ寄せる割合。
-    RadialBlur
-};
-
 struct SequenceScreenEffect {
     uint64_t id = 1;
     std::string name;
@@ -146,13 +128,6 @@ struct SequenceScreenEffect {
     float fadeOut = 0.0f;
     ScalarCurve amount{0.5f};
     ScalarCurve weight{1.0f};
-    MATH::Vec3 color{1.0f, 1.0f, 1.0f};
-};
-
-struct ScreenEffectSample {
-    ScreenEffectKind kind{};
-    float amount = 0.0f;
-    float weight = 0.0f;
     MATH::Vec3 color{1.0f, 1.0f, 1.0f};
 };
 

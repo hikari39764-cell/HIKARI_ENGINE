@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include "Assets/HIKARI_AssetTypeEnum.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypeEnum.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Physics/HIKARI_PhysicsTypes.h"

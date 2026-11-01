@@ -11,8 +11,8 @@
 #include <wrl/client.h>
 
 #include "Core/HIKARI_AssetGuid.h"
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/Shader/HIKARI_ShaderRegistryResolve.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Shader/HIKARI_ShaderRegistryResolve.h"
 #include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "RenderContracts/Shader/HIKARI_ShaderAssetResolver.h"
 #include "RenderContracts/Shader/HIKARI_ShaderCookedArtifact.h"

@@ -16,7 +16,7 @@
 #include "Assets/HIKARI_AssetImportState.h"
 #include "Assets/HIKARI_AssetImportInputs.h"
 #include "Assets/Importers/Policy/HIKARI_TextureImportPolicy.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"

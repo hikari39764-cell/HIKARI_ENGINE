@@ -11,6 +11,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "Assets/Material/Compiler/HIKARI_StandardPbrProgramSource.h"
 #include "Core/HIKARI_AssetGuid.h"
 #include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
@@ -442,7 +443,8 @@ private:
     uint32_t previewOutputHeight_ = 0u;
     uint64_t previewOutputRevision_ = 0u;
 
-    RENDER3D::MATERIAL::MaterialProgramRegistry materialProgramRegistry_{};
+    RENDER3D::MATERIAL::MaterialProgramRegistry materialProgramRegistry_{
+        ASSETS::MATERIAL::MakeStandardPbrProgramSource()};
     // Studio 確認用の環境。プロファイルを編集し、描画には光源を解いた previewEnvironment_ を渡す。
     EnvironmentProfile previewProfile_{};
     SceneEnvironment previewEnvironment_{};

@@ -7,8 +7,8 @@
 
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
 #include "Animation/Runtime/HIKARI_AnimationSocketService.h"
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingResolver.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
@@ -34,7 +34,7 @@ const ModelAssetDescriptor* ResolveModelDescriptor(const PresentationModelRecord
         return nullptr;
     }
     if (!record.assetGuid.empty()) {
-        const ModelAssetDescriptor* byGuid = assetRegistry->FindAs<ModelAssetDescriptor>(AssetId{record.assetGuid});
+        const ModelAssetDescriptor* byGuid = assetRegistry->FindAs<ModelAssetDescriptor>(AssetGuid{record.assetGuid});
         if (byGuid != nullptr || record.assetPath.empty()) {
             return byGuid;
         }
@@ -185,9 +185,8 @@ void ProjectMaterialSet(const PresentationModelRecord& record, const ModelAsset&
     }
 
     const AssetGuid materialSetAssetGuid{record.materialSetAssetGuid};
-    const auto resolution =
-        ASSETS::MODELS::ResolveModelMaterialBindings(*assetRegistry, AssetGuid{asset.id.value}, materialSetAssetGuid,
-                                                     asset.materials, !materialSetAssetGuid.IsValid());
+    const auto resolution = ASSETS::MODELS::ResolveModelMaterialBindings(
+        *assetRegistry, asset.id, materialSetAssetGuid, asset.materials, !materialSetAssetGuid.IsValid());
     for (const std::string& diagnostic : resolution.diagnostics) {
         const std::string key = asset.id.value + "|" + record.materialSetAssetGuid + "|" + diagnostic;
         if (diagnostics.insert(key).second) {

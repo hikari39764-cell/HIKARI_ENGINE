@@ -2,7 +2,7 @@
 #include "Render3D/Vfx/HIKARI_ParticleCapacity.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialEffectStackBuilder.h"
 #include "Assets/Vfx/HIKARI_VfxLayerOrder.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 
@@ -16,6 +16,7 @@
 #include "Assets/Vfx/HIKARI_VfxPropertySchema.h"
 #include "Assets/Vfx/HIKARI_VfxBuiltinTextureCatalog.h"
 #include "Assets/Vfx/Serialization/HIKARI_VfxSourceJson.h"
+#include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 
 namespace HIKARI::VFX {
 namespace {

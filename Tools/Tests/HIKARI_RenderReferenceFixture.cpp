@@ -10,7 +10,7 @@
 #include "Assets/Environment/HIKARI_EnvironmentAsset.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
@@ -24,6 +24,7 @@
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
 #if defined(HIKARI_REFERENCE_PROJECT)
 #include "RenderReference/HIKARI_RenderValidationProject.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 #endif
 
 namespace {
@@ -89,7 +90,8 @@ void WriteStageFloor(const std::filesystem::path& root, AssetDatabase& database)
     floor.roughnessFactor = 0.85f;
     const std::filesystem::path path = "Assets/Materials/MatteStage.material.json";
     std::string error;
-    Require(SaveMaterialAssetData(root / path, MakeStandardPbrMaterialAssetData(floor), error), error);
+    Require(MATERIAL_SERIALIZATION::SaveMaterialSourceJson(root / path, MakeStandardPbrMaterialAssetData(floor), error),
+            error);
     WriteMeta(database, path, Guid(164));
 }
 
@@ -129,7 +131,7 @@ void WriteSurfaceMaterials(const std::filesystem::path& root, AssetDatabase& dat
                 material.surface.alphaMode = MaterialAlphaMode::Blend;
             const auto path = std::filesystem::path("Assets/Materials") / (pbr.materialName + ".material.json");
             std::string error;
-            Require(SaveMaterialAssetData(root / path, material, error), error);
+            Require(MATERIAL_SERIALIZATION::SaveMaterialSourceJson(root / path, material, error), error);
             WriteMeta(database, path, Guid(100 + row * 4 + column));
         }
     }
@@ -167,7 +169,7 @@ void WritePainterlyMaterials(const std::filesystem::path& root, AssetDatabase& d
         Require(compiled.success, "Painterly fixture material did not compile");
         const auto path = std::filesystem::path("Assets/Materials") / (name + ".material.json");
         std::string error;
-        Require(SaveMaterialAssetData(root / path, material, error), error);
+        Require(MATERIAL_SERIALIZATION::SaveMaterialSourceJson(root / path, material, error), error);
         WriteMeta(database, path, Guid(100 + static_cast<unsigned>(column)));
     }
     WriteStageFloor(root, database);
@@ -210,7 +212,9 @@ void Generate(const std::filesystem::path& root, unsigned count, Workload worklo
             {0.5f, 0.5f, 0.5f, 1}, {0.8f, 0.12f, 0.06f, 1}, {0.08f, 0.45f, 0.7f, 1}, {0.95f, 0.7f, 0.25f, 1}};
         pbr.baseColorFactor = i == 64 ? MATH::Vec4{0.18f, 0.18f, 0.18f, 1} : colors[row % 4];
         const auto path = std::filesystem::path("Assets/Materials") / (pbr.materialName + ".material.json");
-        Require(SaveMaterialAssetData(root / path, MakeStandardPbrMaterialAssetData(pbr), error), error);
+        Require(
+            MATERIAL_SERIALIZATION::SaveMaterialSourceJson(root / path, MakeStandardPbrMaterialAssetData(pbr), error),
+            error);
         WriteMeta(database, path, Guid(100 + i));
     }
 

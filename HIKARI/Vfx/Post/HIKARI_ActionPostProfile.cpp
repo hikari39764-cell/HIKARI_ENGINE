@@ -1,7 +1,7 @@
 #include "Vfx/Post/HIKARI_PostProcessingStage.h"
 #include "Vfx/Post/HIKARI_ActionPostProfile.h"
 #include "Vfx/Post/HIKARI_PostEffect.h"
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "HIKARI/Project/ActionTypes.h"

@@ -8,7 +8,7 @@
 #include "Animation/Runtime/HIKARI_AnimationClipSampler.h"
 #include "Animation/StateMachine/HIKARI_AnimationStateMotionEvaluator.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
-#include "Render3D/Models/HIKARI_ModelManager.h"
+#include "Assets/Models/HIKARI_ModelManager.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 #include "imgui.h"

@@ -19,7 +19,7 @@
 #include "Editor/Project/HIKARI_GameProjectEditorDocumentService.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
@@ -84,7 +84,7 @@ public:
             if (ImGui::Selectable(TEXT::LocalizeWindow("editor.noImage", "画像なし").c_str(), buffer[0] == '\0'))
                 assign({});
             for (const auto* descriptor : assets_->CollectByType(AssetType::Texture)) {
-                const auto* asset = database_->FindByGuid(AssetGuid{descriptor->id.value});
+                const auto* asset = database_->FindByGuid(descriptor->id);
                 const auto name = asset ? asset->displayName : descriptor->sourcePath;
                 ImGui::PushID(descriptor->id.value.c_str());
                 if (ImGui::Selectable(name.c_str(), descriptor->id.value == buffer))
@@ -102,7 +102,7 @@ public:
                      EDITOR_PROJECT::EditorWorkspacePoint maximum, EDITOR_PROJECT::EditorWorkspaceColor tint) override {
         if (!canvasActive_ || !assets_ || guid.empty())
             return false;
-        const auto* texture = assets_->FindAs<TextureAssetDescriptor>(AssetId{std::string(guid)});
+        const auto* texture = assets_->FindAs<TextureAssetDescriptor>(AssetGuid{std::string(guid)});
         if (!texture || texture->sourcePath.empty())
             return false;
         const auto space = texture->colorSpace == TextureAssetColorSpace::Linear ? DXTEX::TextureColorSpace::Linear

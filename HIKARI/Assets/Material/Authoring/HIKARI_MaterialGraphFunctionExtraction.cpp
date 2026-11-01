@@ -1,5 +1,5 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialGraphReuse.h"
-#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
+#include "RenderContracts/Material/HIKARI_MaterialGraphQuery.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
 #include <algorithm>
 #include <map>

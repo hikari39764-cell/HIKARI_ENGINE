@@ -3,13 +3,13 @@
 #include <algorithm>
 #include <vector>
 
-#include "Assets/HIKARI_AssetTypes.h"
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Core/HIKARI_Logger.h"
 #include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_Material.h"
-#include "Render3D/Models/HIKARI_ModelManager.h"
+#include "Assets/Models/HIKARI_ModelManager.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
@@ -66,7 +66,7 @@ void VfxMeshInstancePublisher::Publish(const VfxPlaybackService& playback, Scene
         if (liveIds.contains(id) ||
             (sceneCache.Find(SceneRenderObjectId{id}) != nullptr && !publishedIds_.contains(id)))
             continue;
-        const auto* descriptor = assetRegistry.FindAs<ModelAssetDescriptor>(AssetId{sample.meshAssetGuid});
+        const auto* descriptor = assetRegistry.FindAs<ModelAssetDescriptor>(AssetGuid{sample.meshAssetGuid});
         if (descriptor == nullptr) {
             static bool warned = false;
             if (!warned) {
@@ -105,7 +105,7 @@ void VfxMeshInstancePublisher::Publish(const VfxPlaybackService& playback, Scene
                 binding.registryRevision != assetRegistry.GetRevision()) {
                 binding = {sample.materialAssetGuid, assetRegistry.GetInstanceId(), assetRegistry.GetRevision(), {}};
                 if (const auto* material =
-                        assetRegistry.FindAs<MaterialAssetDescriptor>(AssetId{sample.materialAssetGuid}))
+                        assetRegistry.FindAs<MaterialAssetDescriptor>(AssetGuid{sample.materialAssetGuid}))
                     binding.material = BuildRuntimeMaterialOverride(assetRegistry, *material, false);
             }
             if (!binding.material)

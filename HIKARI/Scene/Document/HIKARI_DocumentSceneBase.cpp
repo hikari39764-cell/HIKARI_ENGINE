@@ -603,7 +603,7 @@ void DocumentSceneBase::Render() {
     if (renderPrimaryView) {
         // 主ビューの HDR へ書く間は、このフレームに固定した露出（P = E）を使う。
         const RENDER3D::COLOR::ScopedViewExposure primaryExposure(POST::PostSystem::GetExposureState());
-        SKYRENDERER::Render(graphics, renderCamera, activeEnvironment, state_->assets.Models(), state_->lighting.sky);
+        SKYRENDERER::Render(graphics, renderCamera, activeEnvironment, state_->lighting.sky);
         (void)RENDER3D::PANORAMA_SKY::RenderPanoramaSkyLayer(graphics, renderCamera, activeEnvironment.sky,
                                                              state_->lighting.sky);
         if (DrawDebugHelpers()) {
@@ -713,8 +713,8 @@ void DocumentSceneBase::Render() {
     static const auto editorViewTimer = CPU_PROFILE::RegisterDynamicPass("Render.EditorViews");
     const CPU_PROFILE::ScopedDynamicCpuTimer editorViewScope(editorViewTimer);
     (void)RENDER3D::EDITORVIEW::RenderPending(
-        activeEnvironment, sceneLighting, state_->identity.documentRevision, state_->assets.Models(),
-        state_->lighting.sky, &state_->assets.Registry(), state_->runtime.materialExternalValueSnapshot.get(),
+        activeEnvironment, sceneLighting, state_->identity.documentRevision, state_->lighting.sky,
+        &state_->assets.Registry(), state_->runtime.materialExternalValueSnapshot.get(),
         &RenderSubmissionSystem::GetWorldSpriteFrameSource(), &RenderSubmissionSystem::GetWorldTextFrameSource());
 #endif
 }

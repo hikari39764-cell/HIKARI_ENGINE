@@ -1,6 +1,6 @@
 #include "Assets/Vfx/HIKARI_VfxBudgets.h"
 #include "Assets/Formats/HIKARI_HvfxcFormat.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialProgramSerialization.h"
 

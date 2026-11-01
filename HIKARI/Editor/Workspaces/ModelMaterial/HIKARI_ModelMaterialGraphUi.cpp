@@ -1,13 +1,13 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 
-#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
+#include "RenderContracts/Material/HIKARI_MaterialGraphQuery.h"
 #include <algorithm>
 #include <cctype>
 #include <unordered_set>
 
-#include "Assets/Material/Compiler/HIKARI_MaterialRampRasterizer.h"
-#include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
+#include "RenderContracts/Material/HIKARI_MaterialRampRasterizer.h"
+#include "RenderContracts/Material/HIKARI_MaterialNodeDefinition.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
 
 #include "imgui.h"

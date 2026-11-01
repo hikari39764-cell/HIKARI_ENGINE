@@ -369,9 +369,9 @@ bool WorldSpriteComponent::ResolveRenderProjection(const MATH::Vec3& worldScale,
             page->height == 0u || frame->sourceWidth == 0u || frame->sourceHeight == 0u) {
             return false;
         }
-        outProjection.textureAssetId = AssetId{page->textureAssetId};
+        outProjection.textureAssetId = AssetGuid{page->textureAssetId};
         if (!page->normalTextureAssetId.empty()) {
-            outProjection.normalTextureAssetId = AssetId{page->normalTextureAssetId};
+            outProjection.normalTextureAssetId = AssetGuid{page->normalTextureAssetId};
         }
         outProjection.usesSpriteAsset = true;
         outProjection.rotated = frame->rotated;
@@ -418,7 +418,7 @@ bool WorldSpriteComponent::ResolveRenderProjection(const MATH::Vec3& worldScale,
     if (!settings_.textureAssetGuid.IsValid()) {
         return false;
     }
-    outProjection.textureAssetId = AssetId{settings_.textureAssetGuid.value};
+    outProjection.textureAssetId = settings_.textureAssetGuid;
     outProjection.size = settings_.size;
     outProjection.pivot = {settings_.flipX ? 1.0f - settings_.pivot.x : settings_.pivot.x, settings_.pivot.y};
     outProjection.uvRect = GetUvRect();

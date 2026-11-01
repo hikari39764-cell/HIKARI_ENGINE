@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 
 namespace HIKARI::ASSETS::MATERIAL {
 

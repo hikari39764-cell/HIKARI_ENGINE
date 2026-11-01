@@ -771,8 +771,7 @@ void ClearRequest(RenderViewId viewId) {
 }
 
 bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLightingSet& lighting,
-                   uint64_t currentSceneRevision, ModelManager& modelManager, SkyManager& skyManager,
-                   const AssetRegistry* assetRegistry,
+                   uint64_t currentSceneRevision, SkyManager& skyManager, const AssetRegistry* assetRegistry,
                    const MATERIAL::MaterialExternalValueSnapshot* materialExternalValues,
                    const WORLD_SPRITES::WorldSpriteFrameSource* worldSpriteFrameSource,
                    const WORLD_TEXT::WorldTextFrameSource* worldTextFrameSource) {
@@ -936,7 +935,7 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
         }
     }
     SKYRENDERER::Render(GFX::GetCurrentContext(), selected->request.cameraFrame.camera, effectiveEnvironment,
-                        modelManager, skyManager, !uniformBackground && !neutralLighting);
+                        skyManager, !uniformBackground && !neutralLighting);
     if (!uniformBackground && !neutralLighting) {
         (void)PANORAMA_SKY::RenderPanoramaSkyLayer(GFX::GetCurrentContext(), selected->request.cameraFrame.camera,
                                                    effectiveEnvironment.sky, skyManager);

@@ -7,8 +7,8 @@
 #include <variant>
 #include <vector>
 
-#include "Animation/Runtime/HIKARI_AnimationPose.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Model/HIKARI_AnimationPose.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 
 namespace HIKARI::ANIMATION {
 
@@ -125,7 +125,7 @@ struct AnimationStateTransition {
 
 struct AnimationStateMachineDefinition {
     std::string name{"New Animation State Machine"};
-    AssetId previewModelAssetId{};
+    AssetGuid previewModelAssetId{};
     AnimationStateId entryStateId{};
     std::vector<AnimationParameterDefinition> parameters{};
     std::vector<AnimationState> states{};

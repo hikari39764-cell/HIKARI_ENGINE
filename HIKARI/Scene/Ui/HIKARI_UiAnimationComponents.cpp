@@ -1,6 +1,6 @@
 #include "Scene/Ui/HIKARI_UiAnimationComponents.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>

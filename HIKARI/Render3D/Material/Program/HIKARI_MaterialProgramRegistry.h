@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Render3D/Material/Program/HIKARI_MaterialProgram.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 
 namespace HIKARI::RENDER3D::MATERIAL {
 
@@ -36,14 +37,27 @@ struct MaterialProgramRegistryStats {
     uint32_t keyCollisionCount = 0u;
 };
 
+// 標準 PBR の固定経路（program 0）が材質コンパイラ（Assets）から受け取るもの。コンパイラは上の層にあるので、
+// registry の持ち主が組んで渡す。
+struct StandardPbrProgramSource {
+    // コンパイルに失敗した材質が使う回退プログラム。registry の slot 0 に入る。
+    MaterialProgramIR fallback{};
+    // 標準 PBR の形の資産データを一つコンパイルする。固定経路へ寄せてよい材質かの判定と、パラメーターだけで組む
+    // 材質のプログラム作りが使う。
+    MaterialCompileResult (*compile)(const MaterialAssetData&) = nullptr;
+};
+
 // CPU-side, single-writer registry. Editor/background compilation may
 // produce MaterialCompileResult off-thread, but publication happens on the
 // render/runtime owner before a frame consumes the selected program.
 class MaterialProgramRegistry final {
 public:
-    MaterialProgramRegistry();
+    // source を渡すまで slot 0 は空のプログラムで、標準 PBR の固定経路へ寄せる判定とコンパイルは働かない。
+    explicit MaterialProgramRegistry(StandardPbrProgramSource source = {});
 
-    void Reset();
+    void Reset(StandardPbrProgramSource source);
+    // 標準 PBR の形の資産データをコンパイルする。source に compile が無ければ失敗の結果を返す。
+    MaterialCompileResult CompileStandardForm(const MaterialAssetData& data) const;
 
     MaterialProgramResolution ResolveCompileResult(std::string_view sourceIdentity,
                                                    const MaterialCompileResult& compileResult);
@@ -70,6 +84,7 @@ private:
     std::unordered_map<MaterialProgramKey, MaterialProgramId, MaterialProgramKeyHasher> programByKey_{};
     std::unordered_map<std::string, std::vector<MaterialCompileDiagnostic>> diagnosticsBySource_{};
     MaterialProgramRegistryStats stats_{};
+    MaterialCompileResult (*compileStandardForm_)(const MaterialAssetData&) = nullptr;
 };
 
 std::string_view ToString(MaterialProgramResolutionKind kind) noexcept;
@@ -77,6 +92,7 @@ std::string_view ToString(MaterialProgramResolutionKind kind) noexcept;
 // Process-wide runtime publication owner. Material compilation can happen
 // elsewhere, but scene/runtime publication remains single-writer.
 MaterialProgramRegistry& GetRuntimeMaterialProgramRegistry();
-void ResetRuntimeMaterialProgramRegistry();
+// 生成した Ramp 貼図を手放し、registry を source で作り直す。起動で標準 PBR の出どころを渡し、終了で空に戻す。
+void ResetRuntimeMaterialProgramRegistry(StandardPbrProgramSource source = {});
 
 } // namespace HIKARI::RENDER3D::MATERIAL

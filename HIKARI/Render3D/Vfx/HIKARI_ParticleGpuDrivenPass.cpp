@@ -18,8 +18,7 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/Vfx/HIKARI_VfxProgram.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
@@ -227,7 +226,7 @@ struct ParticleGpuDrivenPass::Impl {
 
         const auto queueTexture = [&source, this, &requests, &residencyKeys, &queuedResidencyKeys](
                                       std::string_view guid, std::string name, TextureResourceColorSpace colorSpace) {
-            const auto* descriptor = source.assetRegistry->FindAs<TextureAssetDescriptor>(AssetId{std::string(guid)});
+            const auto* descriptor = source.assetRegistry->FindAs<TextureAssetDescriptor>(AssetGuid{std::string(guid)});
             if (descriptor == nullptr || descriptor->sourcePath.empty()) {
                 HIKARI_LOG_ERROR("[ParticleGpuDrivenPass][TexturePreloadMissing] " + std::string(guid));
                 return false;
@@ -271,7 +270,7 @@ struct ParticleGpuDrivenPass::Impl {
                 continue;
             }
             const std::string& materialGuid = submission.render.materialAssetGuid;
-            const auto* material = source.assetRegistry->FindAs<MaterialAssetDescriptor>(AssetId{materialGuid});
+            const auto* material = source.assetRegistry->FindAs<MaterialAssetDescriptor>(AssetGuid{materialGuid});
             if (material == nullptr || !material->compileResult.success) {
                 HIKARI_LOG_ERROR("[ParticleGpuDrivenPass]"
                                  "[MaterialPreloadMissing] " +
@@ -1092,6 +1091,15 @@ void ParticleGpuDrivenPass::Shutdown() {
         impl_->Shutdown();
 }
 
+namespace {
+ParticleMaterialMode MakePrewarmMaterialMode(const VfxPrewarmMaterial& material) noexcept {
+    if (material.custom) {
+        return material.lit ? ParticleMaterialMode::CustomLit : ParticleMaterialMode::CustomMaterial;
+    }
+    return material.lit ? ParticleMaterialMode::StandardLit : ParticleMaterialMode::StandardUnlit;
+}
+} // namespace
+
 bool ParticleGpuDrivenPass::PrepareFrame(const GFX::Context& context, const ParticleRenderFrameSource* source,
                                          MATERIAL::GpuMaterialRegistry& materialRegistry) {
     if (impl_ && context.device && context.srvHeap && source && source->input && source->assetRegistry) {
@@ -1103,15 +1111,17 @@ bool ParticleGpuDrivenPass::PrepareFrame(const GFX::Context& context, const Part
             ParticleRenderInput dependencies{};
             for (const AssetDescriptor* base : assets.CollectByType(AssetType::VfxEffect)) {
                 const auto* descriptor = dynamic_cast<const VfxAssetDescriptor*>(base);
-                if (descriptor == nullptr || !descriptor->program) {
+                if (descriptor == nullptr) {
                     continue;
                 }
-                for (const VFX::VfxProgramEmitter& emitter : descriptor->program->emitters) {
-                    if ((emitter.kind != VFX::VfxLayerKind::Particles && emitter.kind != VFX::VfxLayerKind::Shape) ||
-                        !emitter.render.meshAssetGuid.empty()) {
-                        continue;
-                    }
-                    dependencies.emitters.emplace_back().render = emitter.render;
+                // 用意する材質の一覧は VFX を読み込んだ側が descriptor に入れてある。
+                for (const VfxPrewarmMaterial& material : descriptor->prewarm) {
+                    ParticleEmitterRenderParameters& render = dependencies.emitters.emplace_back().render;
+                    render.materialMode = MakePrewarmMaterialMode(material);
+                    render.colorTextureAssetGuid = material.colorTextureAssetGuid;
+                    render.materialAssetGuid = material.materialAssetGuid;
+                    render.effectMaterial = material.effectMaterial;
+                    render.effectMaterialKey = material.effectMaterialKey;
                 }
             }
             if (!dependencies.emitters.empty()) {

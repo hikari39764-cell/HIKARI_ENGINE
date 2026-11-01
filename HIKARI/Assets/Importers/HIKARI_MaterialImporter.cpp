@@ -7,13 +7,14 @@
 #include "Assets/Importers/Policy/HIKARI_MaterialImportPolicy.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialProgramSerialization.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Material/HIKARI_MaterialAssetLookup.h"
 #include "Assets/Material/HIKARI_MaterialDependencies.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
 namespace HIKARI {
 
@@ -41,7 +42,7 @@ AssetImportResult MaterialImporter::Import(const AssetRecord& record, const Asse
     MaterialAssetData data{};
     std::vector<std::string> migrationDiagnostics{};
     std::string error{};
-    if (!LoadMaterialAssetData(sourcePath, data, error, &migrationDiagnostics)) {
+    if (!MATERIAL_SERIALIZATION::LoadMaterialSourceJson(sourcePath, data, error, &migrationDiagnostics)) {
         result.message = "[MaterialImporter][ERROR] Material JSON validation failed. " + error;
         HIKARI_LOG_ERROR(result.message);
         return result;
@@ -85,7 +86,7 @@ AssetImportResult MaterialImporter::Import(const AssetRecord& record, const Asse
         if (compiledDependency) {
             if (dependency.kind == MaterialDependencyKind::Texture &&
                 dependency.assetGuid.value.starts_with("engine.") &&
-                !engineTextures.FindAs<TextureAssetDescriptor>(AssetId{dependency.assetGuid.value})) {
+                !engineTextures.FindAs<TextureAssetDescriptor>(dependency.assetGuid)) {
                 result.message =
                     "[MaterialImporter] engine texture is missing or invalid: " + dependency.assetGuid.value;
                 return result;

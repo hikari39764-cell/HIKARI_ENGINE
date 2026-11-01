@@ -8,7 +8,7 @@
 #include <string_view>
 
 #include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
-#include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
+#include "RenderContracts/Material/HIKARI_MaterialNodeDefinition.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"

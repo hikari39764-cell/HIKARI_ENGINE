@@ -1,7 +1,7 @@
-#include "Assets/Shader/HIKARI_ShaderRegistryResolve.h"
+#include "RenderContracts/Shader/HIKARI_ShaderRegistryResolve.h"
 
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 
 namespace HIKARI::ASSETS::SHADER {
 

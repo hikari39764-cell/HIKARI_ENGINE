@@ -6,7 +6,7 @@
 #include "Animation/StateMachine/HIKARI_AnimationStateMachine.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Core/Text/HIKARI_ParseNumber.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Commands/HIKARI_EditorOperationValue.h"

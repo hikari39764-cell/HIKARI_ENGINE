@@ -4,8 +4,8 @@
 #include <unordered_set>
 #include <utility>
 
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/HIKARI_Logger.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
@@ -310,9 +310,9 @@ void LightingRuntimeLoader::LoadSkyLightingFromAssets(const LightingRuntimeLoadR
         const bool isActiveSky = !activeSkyId.empty() && skyId == activeSkyId;
         if (skyId == kDefaultSkyAssetName && (!isActiveSky || !usesCubemapIbl))
             continue;
-        const auto* descriptor = assetRegistry.FindAs<SkyAssetDescriptor>(AssetId{skyId});
+        const auto* descriptor = assetRegistry.FindAs<SkyAssetDescriptor>(AssetGuid{skyId});
         if (descriptor == nullptr) {
-            if (const auto* texture = assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{skyId});
+            if (const auto* texture = assetRegistry.FindAs<TextureAssetDescriptor>(AssetGuid{skyId});
                 texture != nullptr && texture->dimension == TextureAssetDimension::Texture2D) {
                 skyManager.RegisterOrUpdateAsset(SkyAsset{
                     texture->id.value,
@@ -344,7 +344,7 @@ void LightingRuntimeLoader::LoadSkyLightingFromAssets(const LightingRuntimeLoadR
         std::string texturePath = descriptor->sourcePath;
         if (!descriptor->textureAssetId.empty()) {
             if (const auto* texture =
-                    assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{descriptor->textureAssetId})) {
+                    assetRegistry.FindAs<TextureAssetDescriptor>(AssetGuid{descriptor->textureAssetId})) {
                 texturePath = texture->sourcePath;
             }
         }
@@ -406,7 +406,7 @@ void LightingRuntimeLoader::LoadReflectionProbesFromAuthoringSources(const Light
             continue;
         }
 
-        const auto* descriptor = assetRegistry.FindAs<SkyAssetDescriptor>(AssetId{authored.sourceCubemapAssetId});
+        const auto* descriptor = assetRegistry.FindAs<SkyAssetDescriptor>(AssetGuid{authored.sourceCubemapAssetId});
         if (descriptor == nullptr) {
             AppendMessage(messages, "[LightingRuntimeLoader][ReflectionProbeSet] source missing provider=" +
                                         authored.id + " asset=" + authored.sourceCubemapAssetId);

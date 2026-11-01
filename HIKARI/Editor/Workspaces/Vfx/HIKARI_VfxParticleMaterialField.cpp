@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
 #include "Assets/Vfx/HIKARI_VfxBuiltinTextureCatalog.h"
@@ -173,7 +173,7 @@ bool DrawVfxParticleTextureField(AssetDatabase& assetDatabase, const AssetRegist
         if (assetRegistry == nullptr || !guid.IsValid()) {
             return -1;
         }
-        const auto* descriptor = assetRegistry->FindAs<TextureAssetDescriptor>(AssetId{guid.value});
+        const auto* descriptor = assetRegistry->FindAs<TextureAssetDescriptor>(guid);
         if (descriptor == nullptr) {
             return -1;
         }

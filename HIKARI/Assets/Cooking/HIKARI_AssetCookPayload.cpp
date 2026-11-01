@@ -6,7 +6,7 @@
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
-#include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
+#include "Assets/Geometry/HIKARI_ProceduralModelFactory.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"

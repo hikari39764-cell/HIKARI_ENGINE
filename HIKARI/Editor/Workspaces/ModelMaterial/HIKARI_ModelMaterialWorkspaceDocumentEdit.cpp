@@ -2,13 +2,13 @@
 
 #include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
-#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
+#include "RenderContracts/Material/HIKARI_MaterialGraphQuery.h"
 
 #include <string>
 #include <utility>
 #include <unordered_set>
 
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 
 namespace HIKARI::EDITOR {
 

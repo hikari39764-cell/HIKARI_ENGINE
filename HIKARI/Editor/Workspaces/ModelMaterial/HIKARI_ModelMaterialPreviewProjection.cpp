@@ -5,7 +5,7 @@
 #include <utility>
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialInstanceResolver.h"
 #include "Assets/Material/HIKARI_MaterialAssetLookup.h"

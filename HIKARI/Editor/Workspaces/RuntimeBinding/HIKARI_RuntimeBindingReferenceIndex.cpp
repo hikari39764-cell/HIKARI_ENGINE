@@ -2,8 +2,8 @@
 
 #include <string>
 
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 
 #include "imgui.h"

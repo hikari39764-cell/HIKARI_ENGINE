@@ -177,7 +177,7 @@ EditorOperationResult CreateSceneModel(SceneObjectOperationContext& operation, c
         request.name = "AI Model";
     }
     ReadObjectTransform(parameters, request);
-    GameObject* object = EDITOR::CreateModelObject(*scene, AssetGuid{descriptor->id.value}, request);
+    GameObject* object = EDITOR::CreateModelObject(*scene, descriptor->id, request);
     if (object == nullptr) {
         return OperationFailure("CREATE_FAILED", "创建模型物体失败：" + request.name);
     }
@@ -217,7 +217,7 @@ EditorOperationResult CreateSceneWorldSprite(SceneObjectOperationContext& operat
     EDITOR::CreateObjectRequest request{};
     request.name = parameters.value("name", std::string{});
     ReadObjectTransform(parameters, request);
-    GameObject* object = EDITOR::CreateWorldSpriteObject(*scene, AssetGuid{descriptor->id.value}, request);
+    GameObject* object = EDITOR::CreateWorldSpriteObject(*scene, descriptor->id, request);
     if (object == nullptr) {
         return OperationFailure("CREATE_FAILED", "创建 3D 世界贴图失败");
     }

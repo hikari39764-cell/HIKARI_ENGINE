@@ -1,6 +1,6 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialInstanceResolver.h"
 
-#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
+#include "RenderContracts/Material/HIKARI_MaterialGraphQuery.h"
 
 #include <algorithm>
 #include <cmath>

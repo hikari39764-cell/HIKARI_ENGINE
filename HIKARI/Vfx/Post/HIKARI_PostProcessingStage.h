@@ -1,6 +1,6 @@
 #pragma once
 #include <span>
-#include "Scene/Sequencer/Tracks/HIKARI_ShotPresentation.h"
+#include "Vfx/Post/HIKARI_ScreenEffectSample.h"
 
 #include <cstdint>
 #include <array>
@@ -19,13 +19,13 @@
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Vfx/HIKARI_ActionPostReactionFrameSource.h"
-#include "Scene/HIKARI_SceneTransitionBus.h"
+#include "Vfx/Transition/HIKARI_TransitionVisualState.h"
 #include "Vfx/Post/HIKARI_ActionScreenImpulseProvider.h"
 #include "Vfx/Post/HIKARI_ColorGradingLut.h"
 #include "Vfx/Post/HIKARI_PostChain.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Vfx/Post/HIKARI_PostProcessingTypes.h"
-#include "Assets/Post/HIKARI_PostAsset.h"
+#include "Vfx/Post/HIKARI_PostTypes.h"
 #include "Vfx/Transition/HIKARI_TransitionProfile.h"
 
 namespace HIKARI {

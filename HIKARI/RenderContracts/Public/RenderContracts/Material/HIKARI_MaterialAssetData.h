@@ -1,13 +1,12 @@
 #pragma once
 
 #include <cstdint>
-#include <filesystem>
 #include <string>
 #include <vector>
 
 #include "Core/HIKARI_AssetGuid.h"
-#include "Assets/Material/Graph/HIKARI_MaterialGraphData.h"
-#include "Assets/Material/HIKARI_MaterialAssetTypes.h"
+#include "RenderContracts/Material/HIKARI_MaterialGraphData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetTypes.h"
 #include "RenderContracts/Material/HIKARI_MaterialProgramFormat.h"
 #include "Core/Math/HIKARI_Math3D.h"
 
@@ -135,16 +134,5 @@ MaterialAssetData MakeStandardPbrMaterialAssetData(const PbrMaterialAssetData& p
 void SyncPbrFromGraphParameters(MaterialAssetData& material);
 
 PbrMaterialAssetData ProjectPbrMaterialAssetData(const MaterialAssetData& data);
-
-bool LoadMaterialAssetData(const std::filesystem::path& path, MaterialAssetData& outData, std::string& outError,
-                           std::vector<std::string>* outDiagnostics = nullptr);
-
-bool SaveMaterialAssetData(const std::filesystem::path& path, const MaterialAssetData& data, std::string& outError);
-
-// v1-v3 の固定 PBR API は既存 consumer の移行窓口として保持する。
-bool LoadPbrMaterialAssetData(const std::filesystem::path& path, PbrMaterialAssetData& outData, std::string& outError);
-
-bool SavePbrMaterialAssetData(const std::filesystem::path& path, const PbrMaterialAssetData& data,
-                              std::string& outError);
 
 } // namespace HIKARI

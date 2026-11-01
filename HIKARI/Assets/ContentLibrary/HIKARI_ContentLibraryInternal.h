@@ -1,7 +1,7 @@
 #pragma once
 #include "Assets/ContentLibrary/HIKARI_ContentLibrary.h"
-#include "Assets/HIKARI_AssetTypes.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
 #include "Core/IO/HIKARI_FileReplacementTransaction.h"
 #include <functional>

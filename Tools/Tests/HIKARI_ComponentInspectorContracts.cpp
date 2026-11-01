@@ -25,7 +25,7 @@
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
-#include "Render3D/Models/HIKARI_ModelManager.h"
+#include "Assets/Models/HIKARI_ModelManager.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 

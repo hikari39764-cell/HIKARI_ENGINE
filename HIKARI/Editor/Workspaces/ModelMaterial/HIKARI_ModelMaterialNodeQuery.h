@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
+#include "RenderContracts/Material/HIKARI_MaterialNodeDefinition.h"
 
 namespace HIKARI::EDITOR {
 

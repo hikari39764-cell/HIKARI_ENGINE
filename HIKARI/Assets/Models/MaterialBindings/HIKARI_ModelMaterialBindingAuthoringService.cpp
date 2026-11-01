@@ -7,6 +7,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingSource.h"
 
 namespace HIKARI::ASSETS::MODELS {
 

@@ -9,11 +9,13 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Material/HIKARI_MaterialDependencies.h"
-#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialBindingAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingSource.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -78,7 +80,7 @@ AssetTrashReferenceAnalysis AnalyzeAssetTrashReferences(const AssetDatabase& dat
         const std::filesystem::path sourcePath = database.ResolveSourcePath(*owner);
         MaterialAssetData source{};
         std::string error{};
-        if (LoadMaterialAssetData(sourcePath, source, error)) {
+        if (MATERIAL_SERIALIZATION::LoadMaterialSourceJson(sourcePath, source, error)) {
             for (const MaterialAssetDependency& dependency : CollectMaterialAssetDependencies(source)) {
                 if (dependency.assetGuid == guid) {
                     AddTrashReference(*owner, "Material " + dependency.role, analysis, uniqueReferences);

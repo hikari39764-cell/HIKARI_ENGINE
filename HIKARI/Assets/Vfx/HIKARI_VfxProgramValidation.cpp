@@ -2,7 +2,7 @@
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Render3D/Vfx/HIKARI_ParticleCapacity.h"
 #include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Assets/Vfx/HIKARI_VfxProgram.h"
 

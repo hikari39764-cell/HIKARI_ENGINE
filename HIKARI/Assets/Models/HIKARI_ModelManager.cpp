@@ -1,4 +1,4 @@
-#include "Render3D/Models/HIKARI_ModelManager.h"
+#include "Assets/Models/HIKARI_ModelManager.h"
 #include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <utility>

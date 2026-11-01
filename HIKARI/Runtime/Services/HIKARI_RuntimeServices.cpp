@@ -33,6 +33,7 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
 #include "Render3D/Material/HIKARI_DefaultPbrResources.h"
+#include "Assets/Material/Compiler/HIKARI_StandardPbrProgramSource.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameGraphSession.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
@@ -352,6 +353,8 @@ bool Initialize(const char* title, const RUNTIME::HostBootstrapConfig& cfg, std:
     HIKARI::DefaultPbrResources::Initialize();
     pbrTimer.Finish();
     HIKARI_LOG_INFO("Default PBR resources initialized.");
+    // 標準 PBR の回退プログラムとコンパイルは Assets のものなので、起動する側が材質プログラム registry に渡す。
+    RENDER3D::MATERIAL::ResetRuntimeMaterialProgramRegistry(ASSETS::MATERIAL::MakeStandardPbrProgramSource());
     CORE::StartupTimer rendererTimer("Renderer2D.initialize");
     if (!DX::DxRenderer::Init(graphicsContext)) {
         return fail(

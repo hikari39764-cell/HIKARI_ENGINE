@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "RenderContracts/Shader/HIKARI_ProjectSpriteShaderContract.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Core/Text/HIKARI_UtfPath.h"
@@ -12,7 +12,7 @@
 
 namespace HIKARI {
 bool AssetInspectorPanel::ResolveSpriteInspectorShader(AssetRegistry& registry, const AssetGuid& guid) const {
-    const auto* descriptor = registry.FindAs<ShaderAssetDescriptor>(AssetId{guid.value});
+    const auto* descriptor = registry.FindAs<ShaderAssetDescriptor>(guid);
     const auto program = descriptor ? descriptor->program : nullptr;
     if (!program) {
         spriteShader_.reset();

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-#include "Assets/HIKARI_AssetTypeEnum.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypeEnum.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_EnumNames.h"

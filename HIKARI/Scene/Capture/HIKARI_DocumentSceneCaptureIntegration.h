@@ -444,10 +444,10 @@ inline void RenderSecondaryCapture(DocumentSceneState& state, const GFX::Context
         const uint32_t renderSkyFlag = GameProjectSceneCaptureFlags(GameProjectSceneCaptureFlag::RenderSky);
         MODELRENDERER::SecondarySceneCaptureOutput output{};
         if (!MODELRENDERER::RenderSecondarySceneCaptureTarget(
-                graphics, view, environment, lighting, state.assets.Models(), state.lighting.sky,
-                state.runtime.world.GetRuntimeIdentity(), request.renderSlot, width, height,
-                (request.flags & renderSkyFlag) != 0u, renderTransparent, request.style, output,
-                request.views.empty() ? nullptr : &subViews, unstyledSurfaces.count > 0u ? &unstyledSurfaces : nullptr) ||
+                graphics, view, environment, lighting, state.lighting.sky, state.runtime.world.GetRuntimeIdentity(),
+                request.renderSlot, width, height, (request.flags & renderSkyFlag) != 0u, renderTransparent,
+                request.style, output, request.views.empty() ? nullptr : &subViews,
+                unstyledSurfaces.count > 0u ? &unstyledSurfaces : nullptr) ||
             !output.ready) {
             service.PublishFailure(request.handle, GameProjectSceneCaptureFailure::RenderFailed);
             continue;

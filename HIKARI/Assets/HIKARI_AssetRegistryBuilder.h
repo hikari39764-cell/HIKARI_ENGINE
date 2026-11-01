@@ -1,7 +1,7 @@
 #pragma once
 
 #include "HIKARI_AssetDatabase.h"
-#include "HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 
 namespace HIKARI {
 

@@ -5,20 +5,23 @@
 #include <string>
 #include <vector>
 
-#include "Assets/HIKARI_AssetTypeEnum.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypeEnum.h"
 #include "Core/HIKARI_AssetGuid.h"
 #include "RenderContracts/Format/HIKARI_CookedAssetFormat.h"
+#include "RenderContracts/Lighting/HIKARI_SkyMode.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialProgramFormat.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialBindingAsset.h"
 #include "RenderContracts/Texture/HIKARI_TextureTypes.h"
-#include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
-#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
-#include "Assets/Vfx/HIKARI_VfxProgram.h"
-#include "Render3D/Lighting/HIKARI_SkyAsset.h"
 
 namespace HIKARI {
 
 namespace ASSETS::SHADER {
 struct ShaderCookedArtifact;
+}
+
+namespace VFX {
+struct VfxProgram;
 }
 
 enum class ModelImporterKind {
@@ -62,7 +65,7 @@ struct ModelAnimationImportDesc {
 struct AssetDescriptor {
     virtual ~AssetDescriptor() = default;
 
-    AssetId id{};
+    AssetGuid id{};
     AssetType type = AssetType::Unknown;
     std::string sourcePath{};
     uint32_t version = 2;
@@ -110,8 +113,20 @@ struct ModelMaterialBindingAssetDescriptor final : AssetDescriptor {
     ASSETS::MODELS::ModelMaterialBindingAssetData data{};
 };
 
+// VFX の描画資源（貼図・材質）を最初のフレームで先に用意するための、放出器ごとの材質の参照。
+// VFX プログラムの中身は Assets のもので、読み込む側が写して渡し、描画側はこれだけを読む。
+struct VfxPrewarmMaterial {
+    bool custom = false;
+    bool lit = false;
+    std::string colorTextureAssetGuid{};
+    std::string materialAssetGuid{};
+    std::shared_ptr<const MaterialAssetDescriptor> effectMaterial{};
+    std::string effectMaterialKey{};
+};
+
 struct VfxAssetDescriptor final : AssetDescriptor {
     std::shared_ptr<const VFX::VfxProgram> program{};
+    std::vector<VfxPrewarmMaterial> prewarm{};
 };
 
 struct ShaderAssetDescriptor final : AssetDescriptor {

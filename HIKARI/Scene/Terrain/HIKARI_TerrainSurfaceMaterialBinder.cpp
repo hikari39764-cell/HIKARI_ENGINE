@@ -4,9 +4,9 @@
 #include <string>
 #include <string_view>
 
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_MaterialRuntimeBuilder.h"
@@ -16,7 +16,7 @@ namespace HIKARI::TERRAIN {
 
 bool EnsureTerrainSurfaceMaterialOverride(ModelComponent& model, const AssetRegistry& assetRegistry) noexcept {
     const auto* sandMaterial = assetRegistry.FindAs<MaterialAssetDescriptor>(
-        AssetId{std::string(ASSETS::MATERIAL::kBuiltInSandMaterialAssetId)});
+        AssetGuid{std::string(ASSETS::MATERIAL::kBuiltInSandMaterialAssetId)});
     if (sandMaterial == nullptr) {
         return false;
     }

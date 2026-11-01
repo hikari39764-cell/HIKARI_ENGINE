@@ -6,9 +6,9 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_MaterialRuntimeBuilder.h"
@@ -108,7 +108,8 @@ ResolvedParticleMaterial ParticleMaterialResolver::Resolve(
         if (standardMaterial) {
             const bool textured = !resourceGuid.empty();
             const TextureAssetDescriptor* textureDescriptor =
-                textured ? assetRegistry->FindAs<TextureAssetDescriptor>(AssetId{std::string(resourceGuid)}) : nullptr;
+                textured ? assetRegistry->FindAs<TextureAssetDescriptor>(AssetGuid{std::string(resourceGuid)})
+                         : nullptr;
             if (textured && (textureDescriptor == nullptr || textureDescriptor->sourcePath.empty())) {
                 cached.sourceRejected = true;
                 result.rejected = true;
@@ -133,7 +134,8 @@ ResolvedParticleMaterial ParticleMaterialResolver::Resolve(
             }
             auto material = std::make_unique<Material>();
             MaterialRuntimeBuilder builder{};
-            if (!builder.BuildRuntimeMaterial(source, *assetRegistry, *material, cacheKey)) {
+            if (!builder.BuildRuntimeMaterial(source, *assetRegistry, MATERIAL::GetRuntimeMaterialProgramRegistry(),
+                                              *material, cacheKey)) {
                 cached.resourceRejected = true;
                 result.rejected = true;
                 HIKARI_LOG_ERROR("[ParticleGpuDrivenPass]"
@@ -159,7 +161,7 @@ ResolvedParticleMaterial ParticleMaterialResolver::Resolve(
         } else {
             const auto* descriptor =
                 embeddedMaterial ? render.effectMaterial.get()
-                                 : assetRegistry->FindAs<MaterialAssetDescriptor>(AssetId{std::string(resourceGuid)});
+                                 : assetRegistry->FindAs<MaterialAssetDescriptor>(AssetGuid{std::string(resourceGuid)});
             if (descriptor == nullptr) {
                 cached.resourceRejected = true;
                 result.rejected = true;

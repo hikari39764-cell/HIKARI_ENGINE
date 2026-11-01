@@ -4,7 +4,7 @@
 #include <json.hpp>
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/HIKARI_AssetTypeEnum.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypeEnum.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 
 namespace HIKARI::EDITOR {

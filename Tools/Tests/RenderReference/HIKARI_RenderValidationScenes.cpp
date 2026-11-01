@@ -5,7 +5,7 @@
 #include <numbers>
 #include "Assets/Environment/HIKARI_EnvironmentAsset.h"
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Core/HIKARI_Material.h"
@@ -15,6 +15,7 @@
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
 namespace HIKARI::REFERENCE {
 namespace {
@@ -191,7 +192,9 @@ nlohmann::json CreateValidationScenes(const std::filesystem::path& root, AssetDa
             data.baseColorFactor = {0.025f, 0.18f, 0.7f, 1};
         const std::filesystem::path path = "Assets/Materials/" + data.materialName + ".material.json";
         std::string error;
-        Require(SaveMaterialAssetData(root / path, MakeStandardPbrMaterialAssetData(data), error), error);
+        Require(
+            MATERIAL_SERIALIZATION::SaveMaterialSourceJson(root / path, MakeStandardPbrMaterialAssetData(data), error),
+            error);
         WriteReferenceMeta(database, path);
     }
     nlohmann::json entries = nlohmann::json::array();

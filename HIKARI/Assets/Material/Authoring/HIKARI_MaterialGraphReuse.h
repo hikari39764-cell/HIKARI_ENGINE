@@ -1,5 +1,5 @@
 #pragma once
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include <span>
 #include <string_view>
 namespace HIKARI::ASSETS::MATERIAL {

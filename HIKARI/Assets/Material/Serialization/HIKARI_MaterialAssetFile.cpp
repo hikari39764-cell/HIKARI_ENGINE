@@ -1,9 +1,7 @@
-#include "HIKARI_MaterialAssetData.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialAssetFile.h"
 
 #include <algorithm>
 #include <string_view>
-#include <type_traits>
-#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
 
 #include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
@@ -71,48 +69,9 @@ void ApplyPbrAdapterEdits(const PbrMaterialAssetData& pbr, MaterialAssetData& so
 
 } // namespace
 
-void SyncPbrFromGraphParameters(MaterialAssetData& material) {
-    const auto apply = [&](std::string_view id, auto& target) {
-        const auto* parameter = FindMaterialGraphParameter(material.graph, id);
-        if (!parameter || !IsMaterialNumericType(parameter->defaultValue.type))
-            return;
-        const auto& value = parameter->defaultValue;
-        using Target = std::remove_reference_t<decltype(target)>;
-        if constexpr (std::is_same_v<Target, float>) {
-            target = value.numeric.x;
-        } else {
-            target.x = value.numeric.x;
-            target.y = value.numeric.y;
-            target.z = value.numeric.z;
-            if constexpr (std::is_same_v<Target, MATH::Vec4>) {
-                if (value.type == MaterialValueType::Float4)
-                    target.w = value.numeric.w;
-            }
-        }
-    };
-    apply("parameter.baseColor", material.pbr.baseColorFactor);
-    apply("parameter.metallic", material.pbr.metallicFactor);
-    apply("parameter.roughness", material.pbr.roughnessFactor);
-    apply("parameter.specular", material.pbr.specularFactor);
-    apply("parameter.specularColor", material.pbr.specularColorFactor);
-    apply("parameter.normalScale", material.pbr.normalScale);
-    apply("parameter.occlusionStrength", material.pbr.occlusionStrength);
-    apply("parameter.emissive", material.pbr.emissiveFactor);
-    apply("parameter.emissiveStrength", material.pbr.emissiveStrength);
-}
-
-bool LoadMaterialAssetData(const std::filesystem::path& path, MaterialAssetData& outData, std::string& outError,
-                           std::vector<std::string>* outDiagnostics) {
-    return MATERIAL_SERIALIZATION::LoadMaterialSourceJson(path, outData, outError, outDiagnostics);
-}
-
-bool SaveMaterialAssetData(const std::filesystem::path& path, const MaterialAssetData& data, std::string& outError) {
-    return MATERIAL_SERIALIZATION::SaveMaterialSourceJson(path, data, outError);
-}
-
 bool LoadPbrMaterialAssetData(const std::filesystem::path& path, PbrMaterialAssetData& outData, std::string& outError) {
     MaterialAssetData source{};
-    if (!LoadMaterialAssetData(path, source, outError)) {
+    if (!MATERIAL_SERIALIZATION::LoadMaterialSourceJson(path, source, outError)) {
         return false;
     }
     if (source.kind != MaterialAssetKind::Material && source.kind != MaterialAssetKind::Instance) {
@@ -128,7 +87,7 @@ bool SavePbrMaterialAssetData(const std::filesystem::path& path, const PbrMateri
     MaterialAssetData source{};
     std::error_code existsError{};
     const bool exists = std::filesystem::is_regular_file(path, existsError);
-    if (exists && !LoadMaterialAssetData(path, source, outError)) {
+    if (exists && !MATERIAL_SERIALIZATION::LoadMaterialSourceJson(path, source, outError)) {
         outError = "refusing to overwrite an unreadable Material source: " + outError;
         return false;
     }
@@ -141,7 +100,7 @@ bool SavePbrMaterialAssetData(const std::filesystem::path& path, const PbrMateri
     } else {
         ApplyPbrAdapterEdits(data, source);
     }
-    return SaveMaterialAssetData(path, source, outError);
+    return MATERIAL_SERIALIZATION::SaveMaterialSourceJson(path, source, outError);
 }
 
 } // namespace HIKARI

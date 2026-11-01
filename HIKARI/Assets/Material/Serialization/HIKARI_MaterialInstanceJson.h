@@ -4,7 +4,7 @@
 
 #include <json.hpp>
 
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 
 namespace HIKARI::MATERIAL_SERIALIZATION {
 

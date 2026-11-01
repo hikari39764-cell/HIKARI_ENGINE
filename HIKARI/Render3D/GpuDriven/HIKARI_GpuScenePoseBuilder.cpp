@@ -1,6 +1,6 @@
 #include "Render3D/GpuDriven/HIKARI_GpuScenePoseBuilder.h"
 
-#include "Animation/Runtime/HIKARI_AnimationPoseEvaluation.h"
+#include "RenderContracts/Model/HIKARI_PoseNodeMatrices.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 

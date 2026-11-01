@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "Animation/Runtime/HIKARI_AnimationPose.h"
+#include "RenderContracts/Model/HIKARI_AnimationPose.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Render3D/Runtime/HIKARI_RenderModelAsset.h"
 

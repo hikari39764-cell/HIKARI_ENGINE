@@ -10,7 +10,7 @@
 #include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Models/Runtime/HIKARI_ModelTextureResolver.h"
-#include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
+#include "Assets/Geometry/HIKARI_ProceduralModelFactory.h"
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -99,7 +99,7 @@ bool ModelPreviewScene::Load(const AssetRecord& record, const std::filesystem::p
         return false;
     }
     assetGuid_ = record.guid;
-    model_->id = AssetId{record.guid.value};
+    model_->id = record.guid;
     model_->SetName(record.displayName);
     model_->SetSourcePath(modelPath.generic_string());
     model_->SetState(ModelAsset::State::Loaded);

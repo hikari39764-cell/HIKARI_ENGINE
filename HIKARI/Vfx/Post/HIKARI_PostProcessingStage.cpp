@@ -1,5 +1,5 @@
 #include "Vfx/Post/HIKARI_PostProcessingStage.h"
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 
 #include <algorithm>
 #include <cmath>

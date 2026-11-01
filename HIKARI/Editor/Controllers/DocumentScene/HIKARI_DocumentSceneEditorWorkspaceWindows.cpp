@@ -12,7 +12,7 @@
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Editor/Tools/HIKARI_BuiltInEditorTools.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
@@ -432,13 +432,13 @@ void DocumentSceneEditorController::HandleResourceWorkspaceRequests(DocumentScen
     const std::string reimportAndRefreshRuntimeGuid =
         resourceWorkspacePanel_.ConsumeReimportAndRefreshRuntimeAssetGuid();
     const std::string refreshRuntimeMaterialGuid = resourceWorkspacePanel_.ConsumeRefreshRuntimeMaterialGuid();
-    std::vector<AssetId> targetedRefreshAssets{};
+    std::vector<AssetGuid> targetedRefreshAssets{};
     const auto appendTargetedRefresh = [&targetedRefreshAssets](const std::string& guid) {
         if (guid.empty() ||
-            std::ranges::any_of(targetedRefreshAssets, [&guid](const AssetId& id) { return id.value == guid; })) {
+            std::ranges::any_of(targetedRefreshAssets, [&guid](const AssetGuid& id) { return id.value == guid; })) {
             return;
         }
-        targetedRefreshAssets.push_back(AssetId{guid});
+        targetedRefreshAssets.push_back(AssetGuid{guid});
     };
     appendTargetedRefresh(refreshRuntimeGuid);
     appendTargetedRefresh(reimportAndRefreshRuntimeGuid);

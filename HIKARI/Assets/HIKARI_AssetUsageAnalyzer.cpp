@@ -8,10 +8,12 @@
 #include "Assets/RenderStyle/HIKARI_RenderStyleAsset.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
 #include "Gameplay/Dialogue/HIKARI_DialogueProjectStyle.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Material/HIKARI_MaterialDependencies.h"
-#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialBindingAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingSource.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
 namespace HIKARI {
 
@@ -36,7 +38,7 @@ public:
             }
             return;
         }
-        if (engineTextures_.FindAs<TextureAssetDescriptor>(AssetId{assetId})) {
+        if (engineTextures_.FindAs<TextureAssetDescriptor>(AssetGuid{assetId})) {
             return;
         }
         summary_.missingReferences.push_back(AssetMissingReference{assetId, owner, role});
@@ -148,7 +150,7 @@ private:
         }
         case AssetType::Material: {
             MaterialAssetData data{};
-            if (!LoadMaterialAssetData(path, data, error)) {
+            if (!MATERIAL_SERIALIZATION::LoadMaterialSourceJson(path, data, error)) {
                 break;
             }
             // Material v4 の Texture / Function / Ramp / Profile / Parent を同じ依存契約で辿る。

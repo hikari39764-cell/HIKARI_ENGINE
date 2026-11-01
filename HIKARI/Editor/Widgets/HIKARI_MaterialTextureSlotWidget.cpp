@@ -50,9 +50,8 @@ bool DrawMaterialTextureSlot(const char* label, MaterialTextureSlotData& slot, A
                              AssetRegistry& assetRegistry, EditorSelection* selection) {
     bool changed = false;
     const AssetRecord* record = ResolveTextureRecord(slot, assetDatabase);
-    const auto* descriptor = slot.textureAssetGuid.IsValid()
-                                 ? assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{slot.textureAssetGuid.value})
-                                 : nullptr;
+    const auto* descriptor =
+        slot.textureAssetGuid.IsValid() ? assetRegistry.FindAs<TextureAssetDescriptor>(slot.textureAssetGuid) : nullptr;
 
     ImGui::PushID(label);
     ImGui::BeginGroup();

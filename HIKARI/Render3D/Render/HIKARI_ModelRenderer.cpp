@@ -227,9 +227,9 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
 
 bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDER3D::RenderViewContext& view,
                                        const SceneEnvironment& environment,
-                                       const RENDER3D::LIGHTING::SceneLightingSet& lighting, ModelManager& modelManager,
-                                       SkyManager& skyManager, uint64_t worldIdentity, uint32_t captureSlot,
-                                       uint32_t width, uint32_t height, bool renderSky, bool renderTransparent,
+                                       const RENDER3D::LIGHTING::SceneLightingSet& lighting, SkyManager& skyManager,
+                                       uint64_t worldIdentity, uint32_t captureSlot, uint32_t width, uint32_t height,
+                                       bool renderSky, bool renderTransparent,
                                        const GameProjectSceneCaptureStyleDesc& style,
                                        SecondarySceneCaptureOutput& outOutput,
                                        const std::vector<SecondarySceneCaptureSubView>* subViews,
@@ -269,7 +269,7 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
     bool rendered = true;
     if (subViews == nullptr) {
         if (renderSky) {
-            SKYRENDERER::Render(graphics, view.cameraFrame->camera, environment, modelManager, skyManager);
+            SKYRENDERER::Render(graphics, view.cameraFrame->camera, environment, skyManager);
             (void)RENDER3D::PANORAMA_SKY::RenderPanoramaSkyLayer(graphics, view.cameraFrame->camera, environment.sky,
                                                                  skyManager);
             target.Rebind();
@@ -293,7 +293,7 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
             target.SetViewport(sub.x, sub.y, sub.width, sub.height);
             target.Rebind();
             if (renderSky) {
-                SKYRENDERER::Render(graphics, sub.camera, environment, modelManager, skyManager);
+                SKYRENDERER::Render(graphics, sub.camera, environment, skyManager);
                 (void)RENDER3D::PANORAMA_SKY::RenderPanoramaSkyLayer(graphics, sub.camera, environment.sky, skyManager);
                 target.Rebind();
             }

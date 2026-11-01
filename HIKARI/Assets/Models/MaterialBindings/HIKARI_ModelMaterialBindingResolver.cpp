@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <limits>
 
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 
 namespace HIKARI::ASSETS::MODELS {
 namespace {
@@ -29,8 +29,7 @@ DefaultModelMaterialBindingResolution ResolveModelMaterialBindings(const AssetRe
 
     std::vector<const ModelMaterialBindingAssetDescriptor*> candidates{};
     if (materialSetAssetGuid.IsValid()) {
-        const auto* explicitSet =
-            registry.FindAs<ModelMaterialBindingAssetDescriptor>(AssetId{materialSetAssetGuid.value});
+        const auto* explicitSet = registry.FindAs<ModelMaterialBindingAssetDescriptor>(materialSetAssetGuid);
         if (explicitSet == nullptr) {
             result.diagnostics.push_back("selected Material Set is unavailable: " + materialSetAssetGuid.value);
             return result;
@@ -72,7 +71,7 @@ DefaultModelMaterialBindingResolution ResolveModelMaterialBindings(const AssetRe
                                          MaterialSlotIdToString(authored.slotId));
             continue;
         }
-        const auto* material = registry.FindAs<MaterialAssetDescriptor>(AssetId{authored.materialAssetGuid.value});
+        const auto* material = registry.FindAs<MaterialAssetDescriptor>(authored.materialAssetGuid);
         if (material == nullptr) {
             result.diagnostics.push_back("default material binding references an unavailable material " +
                                          authored.materialAssetGuid.value);

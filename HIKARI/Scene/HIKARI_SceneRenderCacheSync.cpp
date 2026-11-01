@@ -14,16 +14,16 @@
 #include <utility>
 
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Core/HIKARI_Logger.h"
 #include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_Material.h"
-#include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
+#include "Assets/Geometry/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
-#include "Render3D/Models/HIKARI_ModelManager.h"
+#include "Assets/Models/HIKARI_ModelManager.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceRenderData.h"
 #include "Render3D/Terrain/HIKARI_TerrainSurfaceRenderData.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
@@ -136,7 +136,7 @@ std::string ResolveClusteredGeometryPath(const GameObject& object, const ModelCo
         return {};
     }
 
-    const auto* descriptor = assetRegistry->FindAs<ModelAssetDescriptor>(AssetId{model.GetAssetId()});
+    const auto* descriptor = assetRegistry->FindAs<ModelAssetDescriptor>(AssetGuid{model.GetAssetId()});
     if (descriptor == nullptr || descriptor->clusteredGeometryPath.empty()) {
         return {};
     }

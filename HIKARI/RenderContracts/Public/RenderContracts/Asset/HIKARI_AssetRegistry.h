@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 
 namespace HIKARI {
 
@@ -20,11 +20,11 @@ public:
 
     bool RegisterDescriptor(std::unique_ptr<AssetDescriptor> descriptor);
 
-    const AssetDescriptor* FindDescriptor(const AssetId& id) const;
+    const AssetDescriptor* FindDescriptor(const AssetGuid& id) const;
     const AssetDescriptor* FindDescriptor(std::string_view id) const;
 
     template <class TDesc>
-    const TDesc* FindAs(const AssetId& id) const {
+    const TDesc* FindAs(const AssetGuid& id) const {
         const AssetDescriptor* descriptor = FindDescriptor(id);
         return dynamic_cast<const TDesc*>(descriptor);
     }

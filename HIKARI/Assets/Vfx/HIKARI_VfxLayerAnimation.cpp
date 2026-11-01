@@ -1,5 +1,5 @@
 #include "Assets/Vfx/HIKARI_VfxLayerAnimation.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Assets/Vfx/HIKARI_VfxProgram.h"
 #include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 #include <algorithm>

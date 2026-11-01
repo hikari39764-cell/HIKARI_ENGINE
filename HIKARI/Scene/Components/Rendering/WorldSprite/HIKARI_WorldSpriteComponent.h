@@ -12,8 +12,8 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/HIKARI_AssetTypeEnum.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypeEnum.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Assets/Sprite/HIKARI_SpriteAsset.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialAsset.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
@@ -31,8 +31,8 @@
 namespace HIKARI {
 
 struct WorldSpriteRenderProjection {
-    AssetId textureAssetId{};
-    AssetId normalTextureAssetId{};
+    AssetGuid textureAssetId{};
+    AssetGuid normalTextureAssetId{};
     MATH::Vec2 size{1.0f, 1.0f};
     MATH::Vec2 pivot{0.5f, 0.5f};
     MATH::Vec4 uvRect{0.0f, 0.0f, 1.0f, 1.0f};

@@ -5,7 +5,7 @@
 #include <string>
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 
 namespace HIKARI {
 class AssetRegistry;

@@ -5,7 +5,7 @@
 #include <optional>
 #include <vector>
 
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"

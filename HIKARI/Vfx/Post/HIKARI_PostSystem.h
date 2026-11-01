@@ -1,6 +1,6 @@
 #pragma once
 #include <span>
-#include "Scene/Sequencer/Tracks/HIKARI_ShotPresentation.h"
+#include "Vfx/Post/HIKARI_ScreenEffectSample.h"
 
 #include <span>
 
@@ -12,7 +12,7 @@
 
 #include <DirectXMath.h>
 
-#include "Assets/Post/HIKARI_PostAsset.h"
+#include "Vfx/Post/HIKARI_PostTypes.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Color/HIKARI_AutomaticExposure.h"
@@ -25,7 +25,7 @@
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 #include "Render3D/Vfx/HIKARI_ActionPostReactionFrameSource.h"
-#include "Scene/HIKARI_SceneTransitionBus.h"
+#include "Vfx/Transition/HIKARI_TransitionVisualState.h"
 #include "Vfx/Post/HIKARI_ActionScreenImpulseProvider.h"
 #include "Vfx/Post/HIKARI_PostProcessingTypes.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"

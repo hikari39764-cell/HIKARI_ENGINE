@@ -1,30 +1,16 @@
 #pragma once
 
-#include <cstdint>
 #include <filesystem>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "Core/HIKARI_AssetGuid.h"
-#include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialBindingAsset.h"
 
+// 作者が編集するモデル材質バインディング原稿（JSON）の検証・読み書きと、依存の収集。
+// 描画側が読むデータ本体は RenderContracts の HIKARI_ModelMaterialBindingAsset.h。
 namespace HIKARI::ASSETS::MODELS {
-
-inline constexpr uint32_t kModelMaterialBindingAssetVersion = 1u;
-
-struct ModelMaterialBindingEntry {
-    MaterialSlotId slotId{};
-    AssetGuid materialAssetGuid{};
-};
-
-struct ModelMaterialBindingAssetData {
-    uint32_t version = kModelMaterialBindingAssetVersion;
-    std::string displayName = "Model Material Bindings";
-    AssetGuid modelAssetGuid{};
-    std::vector<ModelMaterialBindingEntry> bindings{};
-};
 
 enum class ModelMaterialBindingDependencyKind : uint8_t {
     Model,

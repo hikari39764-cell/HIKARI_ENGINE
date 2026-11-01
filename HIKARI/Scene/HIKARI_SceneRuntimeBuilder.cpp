@@ -9,7 +9,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Assets/Lighting/HIKARI_LightingBakeDependencyHash.h"
 #include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
@@ -21,7 +21,7 @@
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 #include "Core/HIKARI_Logger.h"
-#include "Render3D/Models/HIKARI_ModelManager.h"
+#include "Assets/Models/HIKARI_ModelManager.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneSurfaceRecord.h"
 #include "Render3D/Lighting/HIKARI_LightingRuntimeLoader.h"
@@ -43,6 +43,7 @@
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_World.h"
+#include "Assets/Vfx/HIKARI_VfxProgram.h"
 
 namespace HIKARI {
 
@@ -116,7 +117,7 @@ void AddMaterialTextureSlot(RuntimeAssetLoadPlan& plan, const AssetRegistry& ass
         return;
     }
 
-    const auto* texture = assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{slot.textureAssetGuid.value});
+    const auto* texture = assetRegistry.FindAs<TextureAssetDescriptor>(slot.textureAssetGuid);
     if (texture == nullptr || texture->sourcePath.empty()) {
         return;
     }
@@ -219,7 +220,7 @@ ModelAsset* ResolveModelAssetNowInternal(ModelManager& modelManager, const Asset
         return nullptr;
     }
 
-    const auto* descriptor = assetRegistry.FindAs<ModelAssetDescriptor>(AssetId{assetId});
+    const auto* descriptor = assetRegistry.FindAs<ModelAssetDescriptor>(AssetGuid{assetId});
     if (descriptor != nullptr) {
         EnsureModelLoaded(modelManager, *descriptor);
         return modelManager.FindAsset(assetId);
@@ -255,7 +256,7 @@ void BuildModelMaterialOverrides(ModelComponent& modelComponent, const AssetRegi
     if (proceduralMaterialSelection != nullptr) {
         if (!proceduralMaterialSelection->empty()) {
             const auto* descriptor =
-                assetRegistry.FindAs<MaterialAssetDescriptor>(AssetId{*proceduralMaterialSelection});
+                assetRegistry.FindAs<MaterialAssetDescriptor>(AssetGuid{*proceduralMaterialSelection});
             if (descriptor != nullptr) {
                 (void)applyMaterial(0, *descriptor, false);
             } else {
@@ -286,7 +287,7 @@ void BuildModelMaterialOverrides(ModelComponent& modelComponent, const AssetRegi
             continue;
         }
 
-        const auto* descriptor = assetRegistry.FindAs<MaterialAssetDescriptor>(AssetId{slot.materialAssetGuid.value});
+        const auto* descriptor = assetRegistry.FindAs<MaterialAssetDescriptor>(slot.materialAssetGuid);
         if (!descriptor) {
             continue;
         }
@@ -534,7 +535,7 @@ bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependen
     };
 
     for (const std::string& modelId : dependencies.modelAssetIds) {
-        const auto* descriptor = assetRegistry.FindAs<ModelAssetDescriptor>(AssetId{modelId});
+        const auto* descriptor = assetRegistry.FindAs<ModelAssetDescriptor>(AssetGuid{modelId});
         if (!descriptor) {
             continue;
         }
@@ -553,13 +554,12 @@ bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependen
     }
 
     for (const std::string& materialSetId : dependencies.modelMaterialSetAssetIds) {
-        const auto* materialSet = assetRegistry.FindAs<ModelMaterialBindingAssetDescriptor>(AssetId{materialSetId});
+        const auto* materialSet = assetRegistry.FindAs<ModelMaterialBindingAssetDescriptor>(AssetGuid{materialSetId});
         if (materialSet == nullptr) {
             continue;
         }
         for (const auto& binding : materialSet->data.bindings) {
-            const auto* material =
-                assetRegistry.FindAs<MaterialAssetDescriptor>(AssetId{binding.materialAssetGuid.value});
+            const auto* material = assetRegistry.FindAs<MaterialAssetDescriptor>(binding.materialAssetGuid);
             if (material != nullptr) {
                 CollectMaterialTextureRequests(loadPlan, assetRegistry, *material);
             }
@@ -593,7 +593,7 @@ bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependen
                     return true;
                 }
                 const TextureAssetDescriptor* texture =
-                    assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{std::string(textureId)});
+                    assetRegistry.FindAs<TextureAssetDescriptor>(AssetGuid{std::string(textureId)});
                 if (texture == nullptr || texture->dimension != TextureAssetDimension::Texture2D ||
                     texture->sourcePath.empty()) {
                     return false;
@@ -614,9 +614,9 @@ bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependen
     }
 
     for (const std::string& skyId : dependencies.skyAssetIds) {
-        const auto* descriptor = assetRegistry.FindAs<SkyAssetDescriptor>(AssetId{skyId});
+        const auto* descriptor = assetRegistry.FindAs<SkyAssetDescriptor>(AssetGuid{skyId});
         if (!descriptor) {
-            if (const auto* textureDescriptor = assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{skyId});
+            if (const auto* textureDescriptor = assetRegistry.FindAs<TextureAssetDescriptor>(AssetGuid{skyId});
                 textureDescriptor != nullptr && textureDescriptor->dimension == TextureAssetDimension::Texture2D) {
                 const RENDER3D::TextureResourceColorSpace colorSpace =
                     textureDescriptor->colorSpace == TextureAssetColorSpace::Linear
@@ -629,14 +629,14 @@ bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependen
 
         if (!descriptor->meshAssetId.empty()) {
             if (const auto* meshDescriptor =
-                    assetRegistry.FindAs<ModelAssetDescriptor>(AssetId{descriptor->meshAssetId})) {
+                    assetRegistry.FindAs<ModelAssetDescriptor>(AssetGuid{descriptor->meshAssetId})) {
                 addModelToLoadPlan(descriptor->meshAssetId, *meshDescriptor);
             }
         }
     }
 
     for (const std::string& materialId : dependencies.materialAssetIds) {
-        const auto* descriptor = assetRegistry.FindAs<MaterialAssetDescriptor>(AssetId{materialId});
+        const auto* descriptor = assetRegistry.FindAs<MaterialAssetDescriptor>(AssetGuid{materialId});
         if (descriptor == nullptr) {
             continue;
         }
@@ -644,7 +644,7 @@ bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependen
     }
 
     for (const std::string& vfxId : dependencies.vfxAssetIds) {
-        const auto* vfx = assetRegistry.FindAs<VfxAssetDescriptor>(AssetId{vfxId});
+        const auto* vfx = assetRegistry.FindAs<VfxAssetDescriptor>(AssetGuid{vfxId});
         if (vfx == nullptr || !vfx->program) {
             continue;
         }
@@ -654,19 +654,19 @@ bool SceneRuntimeBuilder::PreloadDependencies(const SceneDependencySet& dependen
                 continue;
             }
             const auto* texture =
-                assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{emitter.render.colorTextureAssetGuid});
+                assetRegistry.FindAs<TextureAssetDescriptor>(AssetGuid{emitter.render.colorTextureAssetGuid});
             if (texture != nullptr && !texture->sourcePath.empty()) {
                 AddTextureRequest(loadPlan, "runtime_vfx/" + vfxId + "/" + emitter.render.colorTextureAssetGuid,
                                   texture->sourcePath, RENDER3D::TextureResourceColorSpace::Srgb);
             }
         }
         for (const AssetGuid& materialGuid : vfx->program->dependencyGuids) {
-            const auto* material = assetRegistry.FindAs<MaterialAssetDescriptor>(AssetId{materialGuid.value});
+            const auto* material = assetRegistry.FindAs<MaterialAssetDescriptor>(materialGuid);
             if (material != nullptr) {
                 CollectMaterialTextureRequests(loadPlan, assetRegistry, *material);
                 continue;
             }
-            const auto* texture = assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{materialGuid.value});
+            const auto* texture = assetRegistry.FindAs<TextureAssetDescriptor>(materialGuid);
             if (texture != nullptr && !texture->sourcePath.empty()) {
                 AddTextureRequest(loadPlan, "runtime_vfx/" + vfxId + "/" + materialGuid.value, texture->sourcePath,
                                   RENDER3D::TextureResourceColorSpace::Srgb);

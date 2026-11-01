@@ -2,7 +2,7 @@
 
 #include <optional>
 
-#include "Assets/Material/Graph/HIKARI_MaterialGraphData.h"
+#include "RenderContracts/Material/HIKARI_MaterialGraphData.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingTypes.h"
 
 namespace HIKARI::BINDING::MATERIAL_ADAPTER {

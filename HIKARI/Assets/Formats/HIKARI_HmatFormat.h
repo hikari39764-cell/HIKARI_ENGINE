@@ -4,7 +4,7 @@
 #include <string>
 
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 
 namespace HIKARI {
 

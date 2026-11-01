@@ -1,6 +1,6 @@
 #include "Assets/Text/HIKARI_TextStyleBinding.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Core/Text/HIKARI_Localization.h"
 namespace HIKARI {
 void TextStyleBinding::Write(nlohmann::json& data) const {

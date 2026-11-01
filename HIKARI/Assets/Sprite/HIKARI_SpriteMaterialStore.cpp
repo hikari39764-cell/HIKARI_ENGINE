@@ -59,7 +59,7 @@ std::shared_ptr<const SpriteMaterialBinding> SpriteMaterialStore::Resolve(const 
     if (!asset) {
         return {};
     }
-    const AssetId shaderId{asset->shaderAssetGuid.value};
+    const AssetGuid shaderId{asset->shaderAssetGuid.value};
     const ShaderAssetDescriptor* shaderDescriptor = registry_->FindAs<ShaderAssetDescriptor>(shaderId);
     if (shaderDescriptor == nullptr || !shaderDescriptor->program ||
         shaderDescriptor->program->sourceGuid != asset->shaderAssetGuid) {

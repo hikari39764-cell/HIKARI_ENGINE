@@ -7,8 +7,8 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Authoring/HIKARI_FieldInspector.h"
 #include "Physics/HIKARI_PhysicsBodyValidator.h"
 #include "Physics/HIKARI_PhysicsProjectSettings.h"
@@ -25,7 +25,7 @@ void ColliderComponent::BuildInspector(IInspectorBuilder& builder) {
     if (next.fitMode == ColliderFitMode::CollisionAsset) {
         const ModelAssetDescriptor* descriptor =
             context.assetRegistry != nullptr
-                ? context.assetRegistry->FindAs<ModelAssetDescriptor>(AssetId{next.collisionAssetId})
+                ? context.assetRegistry->FindAs<ModelAssetDescriptor>(AssetGuid{next.collisionAssetId})
                 : nullptr;
         if (next.collisionAssetId.empty()) {
             builder.Text("Select a model and author its default collision in the Model Collision workspace.");

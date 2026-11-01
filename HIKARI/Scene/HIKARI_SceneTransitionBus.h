@@ -6,16 +6,9 @@
 #include <string>
 #include <string_view>
 
-namespace HIKARI {
+#include "Vfx/Transition/HIKARI_TransitionVisualState.h"
 
-struct TransitionVisualState {
-    bool active = false;
-    std::string profileId{};
-    float progress = 0.0f;
-    bool isTransitionIn = false;
-    float outDuration = 0.0f; // 追加: outDuration メンバー
-    float inDuration = 0.0f;  // 追加: inDuration メンバー（必要に応じて）
-};
+namespace HIKARI {
 
 class SceneManager;
 

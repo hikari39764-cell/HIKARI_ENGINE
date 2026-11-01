@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 
 namespace HIKARI::MATERIAL_SERIALIZATION {
 bool SerializeMaterialCompileInputJson(const MaterialAssetData& source, std::string& outJson, std::string& outError);

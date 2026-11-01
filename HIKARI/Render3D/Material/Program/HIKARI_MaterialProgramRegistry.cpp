@@ -1,5 +1,4 @@
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
-#include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 
 #include <algorithm>
@@ -170,18 +169,22 @@ bool IsRuntimeProgramShapeValid(const MaterialProgramIR& program, std::vector<Ma
 }
 } // namespace
 
-MaterialProgramRegistry::MaterialProgramRegistry() { Reset(); }
+MaterialProgramRegistry::MaterialProgramRegistry(StandardPbrProgramSource source) { Reset(std::move(source)); }
 
-void MaterialProgramRegistry::Reset() {
+void MaterialProgramRegistry::Reset(StandardPbrProgramSource source) {
     programs_.clear();
     programByKey_.clear();
     diagnosticsBySource_.clear();
     stats_ = {};
 
-    MaterialProgramIR fallback = BuildStandardPbrMaterialProgramFallback();
-    programs_.push_back(BuildRuntimeMaterialProgram(kStandardPbrMaterialProgramId, fallback, true));
+    compileStandardForm_ = source.compile;
+    programs_.push_back(BuildRuntimeMaterialProgram(kStandardPbrMaterialProgramId, source.fallback, true));
     programByKey_.emplace(programs_.front().ir.key, kStandardPbrMaterialProgramId);
     RefreshStats();
+}
+
+MaterialCompileResult MaterialProgramRegistry::CompileStandardForm(const MaterialAssetData& data) const {
+    return compileStandardForm_ != nullptr ? compileStandardForm_(data) : MaterialCompileResult{};
 }
 
 MaterialProgramResolution MaterialProgramRegistry::ResolveCompileResult(std::string_view sourceIdentity,

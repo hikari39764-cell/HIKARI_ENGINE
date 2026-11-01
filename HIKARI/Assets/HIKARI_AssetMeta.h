@@ -4,7 +4,7 @@
 #include <string>
 
 #include "Core/HIKARI_AssetGuid.h"
-#include "HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 
 namespace HIKARI {
 

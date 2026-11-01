@@ -5,7 +5,7 @@
 #include <numeric>
 #include <vector>
 
-#include "Assets/Material/Compiler/HIKARI_MaterialRampRasterizer.h"
+#include "RenderContracts/Material/HIKARI_MaterialRampRasterizer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 #include "imgui.h"

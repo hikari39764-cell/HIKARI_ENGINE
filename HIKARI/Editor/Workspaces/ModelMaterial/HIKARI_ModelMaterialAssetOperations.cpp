@@ -7,21 +7,22 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
 namespace HIKARI::EDITOR {
 namespace {
 
 bool TryLoadMaterialIdentity(const AssetDatabase& database, const AssetRecord& record, MaterialAssetData& outSource) {
     std::string error{};
-    return LoadMaterialAssetData(database.ResolveSourcePath(record), outSource, error);
+    return MATERIAL_SERIALIZATION::LoadMaterialSourceJson(database.ResolveSourcePath(record), outSource, error);
 }
 
 EditorOperationResult PendingMaterialConfirmation() {

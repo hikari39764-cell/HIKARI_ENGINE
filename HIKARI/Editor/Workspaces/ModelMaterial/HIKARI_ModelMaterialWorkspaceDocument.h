@@ -13,7 +13,7 @@
 
 #include "Core/HIKARI_AssetGuid.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 
 namespace HIKARI::EDITOR {
 

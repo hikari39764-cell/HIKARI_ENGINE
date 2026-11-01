@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-#include "Assets/HIKARI_AssetTypeEnum.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypeEnum.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Render3D/Decal/HIKARI_DecalContract.h"
 #include "Scene/Components/HIKARI_IComponent.h"

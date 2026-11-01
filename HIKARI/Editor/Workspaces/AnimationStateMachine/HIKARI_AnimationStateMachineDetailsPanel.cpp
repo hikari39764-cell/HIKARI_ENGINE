@@ -86,8 +86,7 @@ void AnimationStateMachineWorkspaceController::DrawDetailsWindow(DocumentSceneBa
     const std::vector<const AssetRecord*> models = scene.GetAssetDatabase().CollectByType(AssetType::Model);
     std::string modelPreview = "<select model>";
     if (!definition.previewModelAssetId.value.empty()) {
-        const AssetRecord* selectedRecord =
-            scene.GetAssetDatabase().FindByGuid(AssetGuid{definition.previewModelAssetId.value});
+        const AssetRecord* selectedRecord = scene.GetAssetDatabase().FindByGuid(definition.previewModelAssetId);
         modelPreview = selectedRecord != nullptr && !selectedRecord->displayName.empty()
                            ? selectedRecord->displayName
                            : definition.previewModelAssetId.value;

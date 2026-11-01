@@ -16,7 +16,6 @@
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 
 namespace HIKARI {
-class ModelManager;
 class SkyManager;
 class RenderTarget2D;
 struct GameProjectSceneCaptureStyleDesc;
@@ -95,9 +94,9 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
                                  RenderTarget2D* target = nullptr, bool prepareFrame = true);
 bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDER3D::RenderViewContext& view,
                                        const SceneEnvironment& environment,
-                                       const RENDER3D::LIGHTING::SceneLightingSet& lighting, ModelManager& modelManager,
-                                       SkyManager& skyManager, uint64_t worldIdentity, uint32_t captureSlot,
-                                       uint32_t width, uint32_t height, bool renderSky, bool renderTransparent,
+                                       const RENDER3D::LIGHTING::SceneLightingSet& lighting, SkyManager& skyManager,
+                                       uint64_t worldIdentity, uint32_t captureSlot, uint32_t width, uint32_t height,
+                                       bool renderSky, bool renderTransparent,
                                        const GameProjectSceneCaptureStyleDesc& style,
                                        SecondarySceneCaptureOutput& outOutput,
                                        const std::vector<SecondarySceneCaptureSubView>* subViews = nullptr,

@@ -1,5 +1,5 @@
 #pragma once
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include <string_view>
 namespace HIKARI::ASSETS::MATERIAL {
 // 作業用コピーを生成。保存文書と実行中シーンには適用しない。

@@ -34,7 +34,7 @@ public:
     AnimationClipId GetAnimationClipId(size_t index) const noexcept;
 
 public:
-    AssetId id{};
+    AssetGuid id{};
     std::string sourcePath;
     State state = State::Unloaded;
     // Monotonic in-memory source generation. Runtime caches may retain

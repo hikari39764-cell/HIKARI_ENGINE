@@ -6,11 +6,13 @@
 #include <utility>
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
-#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialBindingAsset.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingSource.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
 namespace HIKARI::EDITOR {
 
@@ -165,7 +167,7 @@ void ModelMaterialWorkspaceController::RefreshAssetChoices(const AssetDatabase& 
         MaterialAssetData source{};
         std::string error{};
         const std::filesystem::path sourcePath = assetDatabase.ResolveSourcePath(*record);
-        if (LoadMaterialAssetData(sourcePath.lexically_normal(), source, error)) {
+        if (MATERIAL_SERIALIZATION::LoadMaterialSourceJson(sourcePath.lexically_normal(), source, error)) {
             choice.materialKind = source.kind;
             if (source.kind == MaterialAssetKind::Ramp) {
                 choice.rampPreview = source.ramp;

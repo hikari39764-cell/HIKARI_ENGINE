@@ -35,6 +35,7 @@
 #include <json.hpp>
 #include <DirectXTex.h>
 #include "Internal/HIKARI_ContractAssert.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
 namespace {
 namespace fs = std::filesystem;
@@ -423,10 +424,11 @@ void CheckSpriteAssetIntegration(const fs::path& sourceManifestPath, const fs::p
     const AssetDescriptor* spriteDescriptor = registry.FindDescriptor(spriteGuid.value);
     assert(spriteDescriptor != nullptr && spriteDescriptor->type == AssetType::Sprite);
     for (const SPRITE::SpritePage& page : sprite->pages) {
-        const auto* colorDescriptor = registry.FindAs<TextureAssetDescriptor>(AssetId{page.textureAssetId});
+        const auto* colorDescriptor = registry.FindAs<TextureAssetDescriptor>(AssetGuid{page.textureAssetId});
         assert(colorDescriptor != nullptr && colorDescriptor->alphaClass == page.colorAlphaClass);
         if (!page.normalTextureAssetId.empty()) {
-            const auto* normalDescriptor = registry.FindAs<TextureAssetDescriptor>(AssetId{page.normalTextureAssetId});
+            const auto* normalDescriptor =
+                registry.FindAs<TextureAssetDescriptor>(AssetGuid{page.normalTextureAssetId});
             assert(normalDescriptor != nullptr && normalDescriptor->usage == TextureUsage::Normal &&
                    normalDescriptor->alphaClass == TextureAssetAlphaClass::Unknown);
         }
@@ -483,7 +485,7 @@ void CheckSpriteAssetIntegration(const fs::path& sourceManifestPath, const fs::p
     AssetRegistry cookedRegistry{};
     assert(registryBuilder.RebuildRegistry(cookedDatabase, cookedRegistry));
     for (const SPRITE::SpritePage& page : cookedSprite->pages) {
-        const auto* descriptor = cookedRegistry.FindAs<TextureAssetDescriptor>(AssetId{page.textureAssetId});
+        const auto* descriptor = cookedRegistry.FindAs<TextureAssetDescriptor>(AssetGuid{page.textureAssetId});
         assert(descriptor != nullptr && descriptor->alphaClass == page.colorAlphaClass);
     }
 }
@@ -625,7 +627,7 @@ void CheckPainterlyEngineDependencies(const fs::path& root) {
     AssetRegistry textures{};
     assert(RegisterEngineContentTextures(content, textures));
     for (const auto id : {kBuiltInPainterlyStrokeMaskTextureId, kBuiltInPainterlyStrokeNormalTextureId}) {
-        const auto* texture = textures.FindAs<TextureAssetDescriptor>(AssetId{std::string(id)});
+        const auto* texture = textures.FindAs<TextureAssetDescriptor>(AssetGuid{std::string(id)});
         assert(texture && texture->colorSpace == TextureAssetColorSpace::Linear && texture->width == 1024u);
     }
 
@@ -636,7 +638,7 @@ void CheckPainterlyEngineDependencies(const fs::path& root) {
     std::string error;
     MaterialAssetData material = CreateMaterialFromTemplate(MaterialTemplateId::PainterlyShell);
     const auto materialPath = project / "Assets/Painterly.material.json";
-    assert(SaveMaterialAssetData(materialPath, material, error));
+    assert(MATERIAL_SERIALIZATION::SaveMaterialSourceJson(materialPath, material, error));
     AssetDatabase database;
     assert(database.Initialize(project) && database.ScanAssets(true));
     const AssetGuid materialGuid = database.FindByPath("Assets/Painterly.material.json")->guid;
@@ -673,7 +675,7 @@ void CheckPainterlyEngineDependencies(const fs::path& root) {
     for (auto& resource : material.graph.resources)
         if (resource.assetGuid.value == kBuiltInPainterlyStrokeMaskTextureId)
             resource.assetGuid.value = "engine.painterly.texture.missing";
-    assert(SaveMaterialAssetData(materialPath, material, error) && database.ScanAssets(true));
+    assert(MATERIAL_SERIALIZATION::SaveMaterialSourceJson(materialPath, material, error) && database.ScanAssets(true));
     assert(!database.ImportAsset(materialGuid));
     assert(!AnalyzeAssetUsage(scene, database).missingReferences.empty());
 

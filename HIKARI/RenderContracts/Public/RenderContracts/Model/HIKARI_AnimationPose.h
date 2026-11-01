@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 
-#include "RenderContracts/Model/HIKARI_AnimationAssetTypes.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "Core/HIKARI_AssetGuid.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Math/HIKARI_Transform3D.h"
+#include "RenderContracts/Model/HIKARI_AnimationAssetTypes.h"
 
 namespace HIKARI::ANIMATION {
 
@@ -17,7 +17,7 @@ enum class AnimationSubtreeRootAlignment : uint8_t {
 };
 
 struct AnimationClipReference {
-    AssetId modelAssetId{};
+    AssetGuid modelAssetId{};
     AnimationClipId clipId{};
     std::string fallbackName{};
 

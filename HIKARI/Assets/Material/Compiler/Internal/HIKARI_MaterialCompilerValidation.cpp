@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <utility>
 
-#include "Assets/Material/Compiler/HIKARI_MaterialRampRasterizer.h"
+#include "RenderContracts/Material/HIKARI_MaterialRampRasterizer.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
 

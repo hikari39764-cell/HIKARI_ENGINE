@@ -11,7 +11,7 @@
 #include <DirectXMath.h>
 #include <Vfx/Common/HIKARI_FxTypes.h>
 
-#include "Animation/Runtime/HIKARI_AnimationPose.h"
+#include "RenderContracts/Model/HIKARI_AnimationPose.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Render3D/Runtime/HIKARI_RenderModelAsset.h"
 #include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"

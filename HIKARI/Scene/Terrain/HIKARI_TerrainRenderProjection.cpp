@@ -4,7 +4,7 @@
 #include <cmath>
 #include <limits>
 #include "Core/Math/HIKARI_GridBilinearSample.h"
-#include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
+#include "Assets/Geometry/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceMaterialBinder.h"

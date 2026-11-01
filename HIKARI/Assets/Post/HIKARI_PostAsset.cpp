@@ -6,7 +6,6 @@
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/Serialization/Json/HIKARI_JsonStrict.h"
-#include "Vfx/Parameters/HIKARI_VfxParameterValues.h"
 #include "Vfx/Serialization/HIKARI_VfxParameterJson.h"
 
 namespace HIKARI::POST {
@@ -49,12 +48,6 @@ bool ReadPass(const nlohmann::json& node, PostEffectPhase defaultPhase, PostEffe
     return true;
 }
 
-const VFX::ParamDesc* FindParameter(const PostEffectDefinition& effect, std::string_view key) {
-    const auto found = std::find_if(effect.params.begin(), effect.params.end(),
-                                    [key](const VFX::ParamDesc& param) { return param.key == key; });
-    return found != effect.params.end() ? &*found : nullptr;
-}
-
 bool ReadScreenWarp(const nlohmann::json& node, PostEffectDefinition& effect, std::string& error) {
     PostScreenWarpBinding binding;
     if (!node.is_object()) {
@@ -64,7 +57,7 @@ bool ReadScreenWarp(const nlohmann::json& node, PostEffectDefinition& effect, st
         !JSONSTRICT::ReadString(node, "curvature", {}, binding.curvatureParam, error, "screenWarp")) {
         return false;
     }
-    if (!FindParameter(effect, binding.strengthParam) || !FindParameter(effect, binding.curvatureParam)) {
+    if (!FindPostParameter(effect, binding.strengthParam) || !FindPostParameter(effect, binding.curvatureParam)) {
         return JSONSTRICT::Fail(error, "screenWarp must reference declared parameters");
     }
     effect.screenWarp = std::move(binding);
@@ -205,43 +198,11 @@ std::vector<AssetDependencyDesc> CollectPostEffectDependencies(const PostEffectD
 bool ValidatePostProfileValues(const PostProfileAsset& profile, const PostEffectDefinition& effect,
                                std::string& error) {
     for (const auto& [key, value] : profile.values) {
-        if (!FindParameter(effect, key)) {
+        if (!FindPostParameter(effect, key)) {
             return JSONSTRICT::Fail(error, "post profile value '" + key + "' is not a parameter of " + effect.name);
         }
     }
     return true;
-}
-
-PostParameterValue GetPostParameterValue(const VFX::ParamDesc& param, const PostProfileAsset* profile) {
-    if (profile) {
-        if (const auto found = profile->values.find(param.key); found != profile->values.end()) {
-            return found->second;
-        }
-    }
-    return {param.defaultValues[0], param.defaultValues[1], param.defaultValues[2], param.defaultValues[3]};
-}
-
-void SetPostParameterValue(const VFX::ParamDesc& param, PostProfileAsset& profile, const PostParameterValue& value) {
-    profile.values.insert_or_assign(param.key, value);
-}
-
-PostParameterBlock ResolvePostParameters(const PostEffectDefinition& effect, const PostProfileAsset* profile) {
-    PostParameterBlock block{};
-    for (const VFX::ParamDesc& param : effect.params) {
-        const PostParameterValue value = GetPostParameterValue(param, profile);
-        VFX::WriteParameterValue(param, value.data(), block.data(), block.size());
-    }
-    return block;
-}
-
-std::optional<float> ReadPostParameter(const PostEffectDefinition& effect, std::span<const DirectX::XMFLOAT4> values,
-                                       std::string_view key) {
-    const VFX::ParamDesc* param = FindParameter(effect, key);
-    if (!param || param->ref.slot >= values.size() || param->ref.channel >= 4u) {
-        return std::nullopt;
-    }
-    const float* channels = &values[param->ref.slot].x;
-    return channels[param->ref.channel];
 }
 
 std::span<const BuiltinPostContent> GetBuiltinPostContent() noexcept { return kBuiltinPostContent; }

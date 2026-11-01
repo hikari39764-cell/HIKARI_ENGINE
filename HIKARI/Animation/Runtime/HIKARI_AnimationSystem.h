@@ -4,7 +4,7 @@
 
 #include "Scene/HIKARI_ISystem.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
-#include "Animation/Runtime/HIKARI_AnimationPose.h"
+#include "RenderContracts/Model/HIKARI_AnimationPose.h"
 
 namespace HIKARI {
 class RuntimeObjectActivityService;

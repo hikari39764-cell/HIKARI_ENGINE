@@ -6,8 +6,8 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/HIKARI_AssetGuid.h"
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Assets/HIKARI_DocumentAssetStores.h"
 #include "Assets/Camera/HIKARI_GameplayCameraAsset.h"
 #include "Assets/Environment/HIKARI_EnvironmentAssetStore.h"
@@ -17,7 +17,7 @@
 #include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Assets/Sprite/HIKARI_SpriteAssetStore.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialStore.h"
-#include "Render3D/Models/HIKARI_ModelManager.h"
+#include "Assets/Models/HIKARI_ModelManager.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
 #include "Scene/Lighting/HIKARI_LocalTextureResolver.h"
 
@@ -64,7 +64,7 @@ public:
     bool NeedsRuntimeDependencyRegistryRefresh(const SceneDependencySet& dependencies,
                                                std::string* outReason = nullptr) const;
     bool RefreshTextureByPath(const std::string& path);
-    bool ReloadModelAsset(const AssetId& modelId);
+    bool ReloadModelAsset(const AssetGuid& modelId);
     int RebindModelComponents(DocumentSceneBase& scene);
     int RebuildMaterialOverrides(DocumentSceneBase& scene);
     int RebuildMaterialOverridesForMaterial(DocumentSceneBase& scene, const AssetGuid& materialGuid);

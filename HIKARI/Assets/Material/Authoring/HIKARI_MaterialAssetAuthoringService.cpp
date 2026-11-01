@@ -7,10 +7,11 @@
 #include <system_error>
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Material/HIKARI_MaterialAssetLookup.h"
-#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
+#include "RenderContracts/Material/HIKARI_MaterialGraphQuery.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
 namespace HIKARI::ASSETS::MATERIAL {
 
@@ -94,8 +95,8 @@ bool MaterialAssetAuthoringService::Load(const AssetGuid& assetGuid, MaterialAut
     MaterialAuthoringDocument document{};
     document.assetGuid = record->guid;
     document.sourcePath = record->sourcePath;
-    if (!LoadMaterialAssetData(assetDatabase_.ResolveSourcePath(*record), document.source, outMessage,
-                               &document.migrationDiagnostics)) {
+    if (!MATERIAL_SERIALIZATION::LoadMaterialSourceJson(assetDatabase_.ResolveSourcePath(*record), document.source,
+                                                        outMessage, &document.migrationDiagnostics)) {
         return false;
     }
     document.compile = CompileMaterialAsset(document.source, MakeMaterialCompileOptions(assetDatabase_));
@@ -201,7 +202,7 @@ MaterialAuthoringResult MaterialAssetAuthoringService::SaveToPath(const Material
         return result;
     }
     std::string error{};
-    result.sourceSaved = SaveMaterialAssetData(destination, source, error);
+    result.sourceSaved = MATERIAL_SERIALIZATION::SaveMaterialSourceJson(destination, source, error);
     if (!result.sourceSaved) {
         result.message = std::move(error);
         return result;

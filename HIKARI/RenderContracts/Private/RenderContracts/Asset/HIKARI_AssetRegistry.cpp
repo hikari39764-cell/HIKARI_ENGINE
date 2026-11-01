@@ -1,4 +1,4 @@
-#include "HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Core/Numeric/HIKARI_NonZero.h"
 
 #include <atomic>
@@ -33,7 +33,7 @@ bool AssetRegistry::RegisterDescriptor(std::unique_ptr<AssetDescriptor> descript
     return true;
 }
 
-const AssetDescriptor* AssetRegistry::FindDescriptor(const AssetId& id) const { return FindDescriptor(id.value); }
+const AssetDescriptor* AssetRegistry::FindDescriptor(const AssetGuid& id) const { return FindDescriptor(id.value); }
 
 const AssetDescriptor* AssetRegistry::FindDescriptor(std::string_view id) const {
     const auto it = descriptors_.find(std::string(id));

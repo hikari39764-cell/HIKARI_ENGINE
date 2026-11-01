@@ -4,7 +4,7 @@
 #include <unordered_set>
 #include <utility>
 
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Assets/Sprite/HIKARI_SpriteAssetStore.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialStore.h"
 #include "Core/HIKARI_Logger.h"
@@ -80,7 +80,7 @@ bool RefreshSpriteAsset(DocumentSceneBase& scene, const AssetGuid& spriteGuid, R
         if (textureAssetId.empty()) {
             return true;
         }
-        const auto* texture = registry.FindAs<TextureAssetDescriptor>(AssetId{textureAssetId});
+        const auto* texture = registry.FindAs<TextureAssetDescriptor>(AssetGuid{textureAssetId});
         if (texture == nullptr || texture->sourcePath.empty()) {
             ++report.failedCount;
             append("Missing sprite page texture descriptor: " + textureAssetId);
@@ -132,7 +132,7 @@ bool RefreshSpriteAsset(DocumentSceneBase& scene, const AssetGuid& spriteGuid, R
 } // namespace
 
 RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshAssets(DocumentSceneBase& scene,
-                                                                          const std::vector<AssetId>& assetIds,
+                                                                          const std::vector<AssetGuid>& assetIds,
                                                                           bool assetRegistryAlreadyPublished) {
     RuntimeResourceRefreshReport report{};
     if (!EnsureAssetRegistryPublished(scene, assetRegistryAlreadyPublished, report)) {
@@ -144,7 +144,7 @@ RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshAssets(Docume
     bool skyTextureTouched = false;
     bool modelTouched = false;
     const AssetRegistry& registry = scene.GetAssetRegistry();
-    for (const AssetId& assetId : assetIds) {
+    for (const AssetGuid& assetId : assetIds) {
         if (const auto* texture = registry.FindAs<TextureAssetDescriptor>(assetId)) {
             const bool refreshed = RefreshTextureAsset(scene, *texture, report);
             textureTouched = refreshed || textureTouched;
@@ -157,7 +157,7 @@ RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshAssets(Docume
             RefreshMaterialAsset(scene, *material, report);
         } else if (const AssetDescriptor* descriptor = registry.FindDescriptor(assetId);
                    descriptor != nullptr && descriptor->type == AssetType::Sprite) {
-            (void)RefreshSpriteAsset(scene, AssetGuid{assetId.value}, report);
+            (void)RefreshSpriteAsset(scene, assetId, report);
         } else if (descriptor != nullptr &&
                    (descriptor->type == AssetType::SpriteMaterial || descriptor->type == AssetType::Shader)) {
             spriteMaterialTouched = true;
@@ -193,7 +193,7 @@ RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshCurrentSceneR
     bool modelTouched = false;
     const AssetRegistry& registry = scene.GetAssetRegistry();
     for (const std::string& modelId : dependencies.modelAssetIds) {
-        if (const auto* model = registry.FindAs<ModelAssetDescriptor>(AssetId{modelId})) {
+        if (const auto* model = registry.FindAs<ModelAssetDescriptor>(AssetGuid{modelId})) {
             modelTouched = RefreshModelAsset(scene, *model, report, false) || modelTouched;
         } else {
             ++report.failedCount;
@@ -209,9 +209,9 @@ RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshCurrentSceneR
         if (skyId == RENDER3D::LIGHTING::kDefaultSkyAssetName) {
             continue;
         }
-        if (const auto* sky = registry.FindAs<SkyAssetDescriptor>(AssetId{skyId})) {
+        if (const auto* sky = registry.FindAs<SkyAssetDescriptor>(AssetGuid{skyId})) {
             RefreshSkyAsset(scene, *sky, report);
-        } else if (const auto* texture = registry.FindAs<TextureAssetDescriptor>(AssetId{skyId})) {
+        } else if (const auto* texture = registry.FindAs<TextureAssetDescriptor>(AssetGuid{skyId})) {
             RefreshTextureAsset(scene, *texture, report);
         } else {
             ++report.failedCount;
@@ -227,7 +227,7 @@ RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshCurrentSceneR
         if (dependencies.skyAssetIds.find(probeSourceId) != dependencies.skyAssetIds.end()) {
             continue;
         }
-        if (const auto* probeSky = registry.FindAs<SkyAssetDescriptor>(AssetId{probeSourceId})) {
+        if (const auto* probeSky = registry.FindAs<SkyAssetDescriptor>(AssetGuid{probeSourceId})) {
             scene.RefreshTextureRuntimeByPath(probeSky->prefilteredPath);
             scene.RefreshTextureRuntimeByPath(probeSky->brdfLutPath);
             AppendMessage(report, "Invalidated reflection probe source: " + probeSourceId);
@@ -238,7 +238,7 @@ RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshCurrentSceneR
     }
 
     for (const std::string& materialId : dependencies.materialAssetIds) {
-        if (const auto* material = registry.FindAs<MaterialAssetDescriptor>(AssetId{materialId})) {
+        if (const auto* material = registry.FindAs<MaterialAssetDescriptor>(AssetGuid{materialId})) {
             RefreshMaterialAsset(scene, *material, report);
         } else {
             ++report.failedCount;
@@ -330,7 +330,7 @@ bool RuntimeResourceRefreshService::RefreshSkyAsset(DocumentSceneBase& scene, co
 
 bool RuntimeResourceRefreshService::RefreshModelAsset(DocumentSceneBase& scene, const ModelAssetDescriptor& descriptor,
                                                       RuntimeResourceRefreshReport& report, bool rebindAfterReload) {
-    const AssetId modelId = descriptor.id;
+    const AssetGuid modelId = descriptor.id;
     if (!scene.ReloadModelAssetRuntime(modelId)) {
         ++report.failedCount;
         AppendMessage(report, "Failed to reload model: " + modelId.value);
@@ -348,7 +348,7 @@ bool RuntimeResourceRefreshService::RefreshModelAsset(DocumentSceneBase& scene, 
 bool RuntimeResourceRefreshService::RefreshMaterialAsset(DocumentSceneBase& scene,
                                                          const MaterialAssetDescriptor& descriptor,
                                                          RuntimeResourceRefreshReport& report) {
-    const int rebuilt = scene.RebuildMaterialOverridesForMaterial(AssetGuid{descriptor.id.value});
+    const int rebuilt = scene.RebuildMaterialOverridesForMaterial(descriptor.id);
     ++report.materialReloadedCount;
     report.materialReboundComponentCount += rebuilt;
     AppendMessage(report, "Rebuilt material override: " + descriptor.id.value);
@@ -362,7 +362,7 @@ void RuntimeResourceRefreshService::ReloadCurrentSceneModelDependencies(Document
     bool modelTouched = false;
     const AssetRegistry& registry = scene.GetAssetRegistry();
     for (const std::string& modelId : dependencies.modelAssetIds) {
-        if (const auto* model = registry.FindAs<ModelAssetDescriptor>(AssetId{modelId})) {
+        if (const auto* model = registry.FindAs<ModelAssetDescriptor>(AssetGuid{modelId})) {
             modelTouched = RefreshModelAsset(scene, *model, report, false) || modelTouched;
         }
     }

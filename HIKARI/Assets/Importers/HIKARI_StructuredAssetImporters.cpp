@@ -99,11 +99,11 @@ AssetImportResult ImportAnimationStateMachine(const std::filesystem::path& sourc
     }
 
     std::unordered_set<std::string> dependencyGuids{};
-    const auto addModelDependency = [&result, &dependencyGuids](const AssetId& modelAssetId, const char* role) {
+    const auto addModelDependency = [&result, &dependencyGuids](const AssetGuid& modelAssetId, const char* role) {
         if (modelAssetId.value.empty() || !dependencyGuids.insert(modelAssetId.value).second) {
             return;
         }
-        result.dependencies.push_back(AssetDependencyDesc{AssetGuid{modelAssetId.value}, {}, role});
+        result.dependencies.push_back(AssetDependencyDesc{modelAssetId, {}, role});
     };
     addModelDependency(asset.definition.previewModelAssetId, "Animation Preview Model");
     for (const ANIMATION::AnimationState& state : asset.definition.states) {

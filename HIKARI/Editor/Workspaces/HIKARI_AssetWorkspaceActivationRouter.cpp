@@ -1,6 +1,6 @@
 #include "Editor/Workspaces/HIKARI_AssetWorkspaceActivationRouter.h"
 
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserPanel.h"
 
 namespace HIKARI::EDITOR {

@@ -4,7 +4,7 @@
 #include <string>
 
 #include "Assets/HIKARI_AssetFileCache.h"
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialAsset.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialSerialization.h"
 

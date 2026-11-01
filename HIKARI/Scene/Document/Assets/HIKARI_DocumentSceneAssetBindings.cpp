@@ -17,7 +17,7 @@
 #include "Assets/HIKARI_AssetRegistryBuilder.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
 #include "Assets/Material/HIKARI_MaterialAssetLookup.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
 #include "Assets/Prefab/HIKARI_PrefabAssetStore.h"
@@ -570,7 +570,7 @@ std::string DocumentSceneAssetBindings::ResolveModelTexturePath(const std::strin
         return sourceTexturePath;
     }
 
-    const auto* descriptor = registry_.FindAs<TextureAssetDescriptor>(AssetId{record->guid.value});
+    const auto* descriptor = registry_.FindAs<TextureAssetDescriptor>(record->guid);
     if (!descriptor || descriptor->sourcePath.empty()) {
         models_.RecordTextureResolveFailure(ModelTextureResolveFailureKind::Missing);
         HIKARI_LOG_WARN("[ModelTextureResolver] fallback raw texture source=" + sourceTexturePath +
@@ -630,7 +630,7 @@ bool DocumentSceneAssetBindings::RefreshTextureByPath(const std::string& path) {
     return true;
 }
 
-bool DocumentSceneAssetBindings::ReloadModelAsset(const AssetId& modelId) {
+bool DocumentSceneAssetBindings::ReloadModelAsset(const AssetGuid& modelId) {
     if (modelId.value.empty()) {
         return false;
     }
@@ -695,7 +695,7 @@ int DocumentSceneAssetBindings::RebuildMaterialOverrides(DocumentSceneBase& scen
             if (const auto* procedural = object.GetComponent<ProceduralMeshComponent>()) {
                 const std::string& selection = procedural->GetMaterialSelection();
                 if (!selection.empty()) {
-                    const auto* descriptor = registry_.FindAs<MaterialAssetDescriptor>(AssetId{selection});
+                    const auto* descriptor = registry_.FindAs<MaterialAssetDescriptor>(AssetGuid{selection});
                     if (descriptor != nullptr) {
                         auto runtimeMaterial = std::make_unique<Material>();
                         if (materialBuilder.BuildRuntimeMaterial(descriptor->sourceData, descriptor->compileResult,
@@ -744,8 +744,7 @@ int DocumentSceneAssetBindings::RebuildMaterialOverrides(DocumentSceneBase& scen
                     continue;
                 }
 
-                const auto* descriptor =
-                    registry_.FindAs<MaterialAssetDescriptor>(AssetId{slot.materialAssetGuid.value});
+                const auto* descriptor = registry_.FindAs<MaterialAssetDescriptor>(slot.materialAssetGuid);
                 if (!descriptor) {
                     HIKARI_LOG_WARN("[MaterialRuntime] material asset not registered: " + slot.materialAssetGuid.value);
                     continue;
@@ -878,7 +877,7 @@ bool DocumentSceneBase::RefreshTextureRuntimeByPath(const std::string& path) {
     return state_->assets.RefreshTextureByPath(path);
 }
 
-bool DocumentSceneBase::ReloadModelAssetRuntime(const AssetId& modelId) {
+bool DocumentSceneBase::ReloadModelAssetRuntime(const AssetGuid& modelId) {
     return state_->assets.ReloadModelAsset(modelId);
 }
 

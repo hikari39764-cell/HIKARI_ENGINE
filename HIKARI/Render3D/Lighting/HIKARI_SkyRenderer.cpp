@@ -550,7 +550,7 @@ void InvalidateSkyTextureCache() {
     g.debug.activeTexturePath.clear();
 }
 
-void Render(const GFX::Context& graphics, const Camera3D& camera, const SceneEnvironment& environment, ModelManager&,
+void Render(const GFX::Context& graphics, const Camera3D& camera, const SceneEnvironment& environment,
             SkyManager& skyManager, bool drawSky) {
     const SkySettings& settings = environment.sky;
     IBL::BeginEnvironmentFrame();

@@ -8,7 +8,7 @@
 #include <cmath>
 #include "Core/Text/HIKARI_Localization.h"
 
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Authoring/HIKARI_ComponentAuthoringTypes.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Core/HIKARI_JsonRead.h"

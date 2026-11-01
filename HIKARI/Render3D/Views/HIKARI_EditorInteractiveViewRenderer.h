@@ -15,7 +15,6 @@
 namespace HIKARI {
 class AssetRegistry;
 struct SceneEnvironment;
-class ModelManager;
 class SkyManager;
 } // namespace HIKARI
 
@@ -160,8 +159,7 @@ struct PreviewCaptureResult {
 PreviewCaptureResult GetViewCaptureResult(PreviewCaptureId id);
 void CancelViewCapture(PreviewCaptureId id);
 bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLightingSet& lighting,
-                   uint64_t currentSceneRevision, ModelManager& modelManager, SkyManager& skyManager,
-                   const AssetRegistry* assetRegistry = nullptr,
+                   uint64_t currentSceneRevision, SkyManager& skyManager, const AssetRegistry* assetRegistry = nullptr,
                    const MATERIAL::MaterialExternalValueSnapshot* materialExternalValues = nullptr,
                    const WORLD_SPRITES::WorldSpriteFrameSource* worldSpriteFrameSource = nullptr,
                    const WORLD_TEXT::WorldTextFrameSource* worldTextFrameSource = nullptr);

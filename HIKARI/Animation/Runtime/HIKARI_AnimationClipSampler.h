@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-#include "Animation/Runtime/HIKARI_AnimationPose.h"
+#include "RenderContracts/Model/HIKARI_AnimationPose.h"
 
 namespace HIKARI {
 class ModelAsset;

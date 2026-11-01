@@ -9,7 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include "Assets/Formats/HIKARI_HvfxcFormat.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 #if defined(HIKARI_WITH_EDITOR)
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
@@ -34,6 +34,7 @@
 #include "Render3D/Vfx/HIKARI_GpuParticleParameterPacking.h"
 #include "Internal/HIKARI_VfxFlowContracts.h"
 #include "Internal/HIKARI_MaterialRegisterContracts.h"
+#include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 
 namespace {
 // 材料グラフの配線エラーを端点つきで出す。原因の切り分けに必要な情報だけ。

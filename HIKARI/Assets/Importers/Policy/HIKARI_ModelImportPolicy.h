@@ -5,7 +5,7 @@
 #include <string_view>
 
 #include "Assets/Geometry/HIKARI_ClusteredGeometryCooker.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Assets/Lighting/HIKARI_LightmapUvGeneration.h"
 
 namespace HIKARI::ASSETS::IMPORT_POLICY {

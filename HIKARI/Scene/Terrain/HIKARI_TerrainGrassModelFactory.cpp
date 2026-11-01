@@ -19,7 +19,7 @@
 #include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "RenderContracts/Model/HIKARI_ModelMaterialSlot.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
-#include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
+#include "Assets/Geometry/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 
 namespace HIKARI::TERRAIN {

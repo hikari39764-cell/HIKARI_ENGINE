@@ -1,5 +1,5 @@
 #pragma once
-#include "Assets/HIKARI_AssetTypeEnum.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypeEnum.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 namespace HIKARI {

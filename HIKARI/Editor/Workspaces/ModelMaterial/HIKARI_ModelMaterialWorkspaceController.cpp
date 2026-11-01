@@ -5,11 +5,11 @@
 #include <utility>
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
-#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialBindingAsset.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"

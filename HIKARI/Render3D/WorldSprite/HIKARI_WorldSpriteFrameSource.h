@@ -41,8 +41,8 @@ struct WorldSpriteInstance {
     MATH::Vec2 size{1.0f, 1.0f};
     MATH::Vec2 pivot{0.5f, 0.5f};
     MATH::Vec3 tint{1.0f, 1.0f, 1.0f};
-    AssetId textureAssetId{};
-    AssetId normalTextureAssetId{};
+    AssetGuid textureAssetId{};
+    AssetGuid normalTextureAssetId{};
     std::shared_ptr<const ASSETS::SHADER::ShaderCookedArtifact> spriteShaderArtifact{};
     std::array<MATH::Vec4, ASSETS::SHADER::kShaderParameterSlotCount> spriteMaterialParameters{};
     MATH::Vec4 uvRect{0, 0, 1, 1};

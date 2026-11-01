@@ -19,9 +19,12 @@
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialInstanceResolver.h"
 #include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Material/HIKARI_MaterialAssetLookup.h"
-#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingSource.h"
+#include "Assets/Vfx/HIKARI_VfxPrewarm.h"
+#include "Assets/Vfx/HIKARI_VfxProgram.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialBindingAsset.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Shader/Internal/HIKARI_ShaderAssetRegistryAdmission.h"
 #include "Assets/Sprite/HIKARI_SpriteAssetSerialization.h"
@@ -31,6 +34,7 @@
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
+#include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
 namespace HIKARI {
 
@@ -107,7 +111,7 @@ bool LoadMaterialSourceJson(const AssetDatabase& assetDatabase, const AssetRecor
                             MaterialCompileResult& outCompileResult) {
     const std::filesystem::path sourcePath = assetDatabase.ResolveSourcePath(record);
     std::string loadError{};
-    if (LoadMaterialAssetData(sourcePath, outData, loadError)) {
+    if (MATERIAL_SERIALIZATION::LoadMaterialSourceJson(sourcePath, outData, loadError)) {
         outCompileResult = CompileMaterialAsset(outData, ASSETS::MATERIAL::MakeMaterialCompileOptions(assetDatabase));
         return true;
     }
@@ -665,6 +669,7 @@ bool AssetRegistryBuilder::RebuildRegistry(const AssetDatabase& assetDatabase, A
                 continue;
             }
             descriptor->program = std::make_shared<const VFX::VfxProgram>(std::move(program));
+            descriptor->prewarm = VFX::CollectVfxPrewarmMaterials(*descriptor->program);
             ok = registry.RegisterDescriptor(std::move(descriptor)) && ok;
         } else if (record->type == AssetType::Shader) {
             ok = ASSETS::SHADER::INTERNAL::AppendProjectShaderAssetDescriptor(shaderContext, *record, registry) && ok;

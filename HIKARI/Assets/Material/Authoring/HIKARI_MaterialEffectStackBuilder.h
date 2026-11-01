@@ -5,7 +5,7 @@
 #include <span>
 #include <string>
 
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Core/HIKARI_AssetGuid.h"
 #include "RenderContracts/Material/HIKARI_MaterialEffectStack.h"
 

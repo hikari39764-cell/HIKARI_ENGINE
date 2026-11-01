@@ -92,8 +92,7 @@ bool RasterLightingTransportBackend::RenderProbeFace(DocumentSceneBase& scene,
             return false;
         }
         faceBegun = true;
-        SKYRENDERER::Render(graphics, faceCamera, resolvedCaptureEnvironment, scene.state_->assets.Models(),
-                            scene.state_->lighting.sky);
+        SKYRENDERER::Render(graphics, faceCamera, resolvedCaptureEnvironment, scene.state_->lighting.sky);
         MODELRENDERER::RenderOpaqueForReflectionProbeCapture(
             graphics, faceCamera, resolvedCaptureEnvironment, lighting, captureTarget.GetResolution(),
             captureTarget.GetResolution(),

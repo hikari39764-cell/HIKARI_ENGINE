@@ -6,7 +6,6 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
-#include "Render3D/Models/HIKARI_ModelManager.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Lighting/HIKARI_SkyManager.h"
@@ -102,7 +101,7 @@ void ShutdownAtmosphereRuntime();
 void InvalidateSkyTextureCache();
 // drawSky が false なら空を描かず、環境光・大気・IBL の状態だけを更新する（一様な背景で塗る確認用ビュー）。
 void Render(const GFX::Context& graphics, const Camera3D& camera, const SceneEnvironment& environment,
-            ModelManager& modelManager, SkyManager& skyManager, bool drawSky = true);
+            SkyManager& skyManager, bool drawSky = true);
 const SkyRendererDebugState& GetDebugState();
 const SkyEnvironmentData& GetEnvironmentData();
 // 直近の Render のビューの空気遠近の体積 LUT（Pre-Exposure 済みの内散乱光と平均透過率）。

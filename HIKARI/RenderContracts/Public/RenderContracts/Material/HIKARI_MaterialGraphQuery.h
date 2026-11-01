@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "Assets/Material/Graph/HIKARI_MaterialGraphData.h"
+#include "RenderContracts/Material/HIKARI_MaterialGraphData.h"
 
 namespace HIKARI {
 inline std::unordered_set<std::string> CollectMaterialGraphUpstreamNodes(const MaterialGraphData& graph,

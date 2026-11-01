@@ -1,4 +1,4 @@
-#include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
+#include "Assets/Geometry/HIKARI_ProceduralModelFactory.h"
 
 #include <algorithm>
 #include <array>

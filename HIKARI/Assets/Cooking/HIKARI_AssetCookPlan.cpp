@@ -13,7 +13,7 @@
 #include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
 #include "Assets/Sequence/HIKARI_SequenceAsset.h"
-#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelMaterialBindingAsset.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialSerialization.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
@@ -21,6 +21,7 @@
 #include "Gameplay/Dialogue/HIKARI_DialogueProjectStyle.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingSource.h"
 #include <algorithm>
 #include <deque>
 #include <utility>
@@ -444,7 +445,7 @@ bool BuildCookPlan(const AssetCookOptions& options, AssetDatabase& assetDatabase
                 dependencyRecord = assetDatabase.FindByPath(dependency.path);
             }
             if (dependencyRecord == nullptr) {
-                if (engineTextures.FindAs<TextureAssetDescriptor>(AssetId{dependency.guid.value})) {
+                if (engineTextures.FindAs<TextureAssetDescriptor>(dependency.guid)) {
                     // EngineContent はインストール済み bundle として別途配布する。
                     continue;
                 }

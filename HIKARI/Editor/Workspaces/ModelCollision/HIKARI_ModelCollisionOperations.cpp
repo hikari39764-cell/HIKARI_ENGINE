@@ -5,7 +5,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Assets/Collision/HIKARI_ModelCollisionSetup.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Commands/HIKARI_EditorOperationValue.h"

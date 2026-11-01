@@ -9,9 +9,9 @@
 #include <string>
 #include <unordered_map>
 
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
-#include "Assets/Material/Compiler/HIKARI_MaterialRampRasterizer.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
+#include "RenderContracts/Material/HIKARI_MaterialRampRasterizer.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
@@ -65,7 +65,7 @@ RuntimeTextureSlot BuildRampResourceSlot(const MaterialProgramResourceBinding& b
     slot.uvScale = binding.uvScale;
     slot.uvOffset = binding.uvOffset;
     slot.uvRotation = binding.uvRotation;
-    const auto* rampAsset = assetRegistry.FindAs<MaterialAssetDescriptor>(AssetId{binding.assetGuid.value});
+    const auto* rampAsset = assetRegistry.FindAs<MaterialAssetDescriptor>(binding.assetGuid);
     if (rampAsset == nullptr || rampAsset->sourceData.kind != MaterialAssetKind::Ramp) {
         HIKARI_LOG_WARN("[MaterialProgram] neutral fallback for unresolved Ramp asset: " + binding.assetGuid.value);
         return slot;
@@ -122,7 +122,7 @@ RuntimeTextureSlot BuildResourceSlot(const MaterialProgramResourceBinding& bindi
     if (IsRampResource(binding)) {
         return BuildRampResourceSlot(binding, assetRegistry);
     }
-    const auto* texture = assetRegistry.FindAs<TextureAssetDescriptor>(AssetId{binding.assetGuid.value});
+    const auto* texture = assetRegistry.FindAs<TextureAssetDescriptor>(binding.assetGuid);
     if (texture == nullptr || texture->sourcePath.empty()) {
         HIKARI_LOG_WARN("[MaterialProgram] neutral fallback for unresolved resource: " + binding.assetGuid.value);
         return slot;
@@ -323,9 +323,9 @@ void ResetGeneratedMaterialRuntimeResources() {
     gRampResourcesByAsset.clear();
 }
 
-void ResetRuntimeMaterialProgramRegistry() {
+void ResetRuntimeMaterialProgramRegistry(StandardPbrProgramSource source) {
     ResetGeneratedMaterialRuntimeResources();
-    GetRuntimeMaterialProgramRegistry().Reset();
+    GetRuntimeMaterialProgramRegistry().Reset(std::move(source));
 }
 
 } // namespace HIKARI::RENDER3D::MATERIAL

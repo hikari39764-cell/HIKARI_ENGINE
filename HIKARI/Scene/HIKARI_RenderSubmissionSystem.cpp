@@ -1,8 +1,8 @@
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Core/IO/HIKARI_PathNormalization.h"
 
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "HIKARI/Project/FrameContext.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
@@ -13,9 +13,9 @@
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Render3D/Debug/HIKARI_MeshWireDebugRenderer.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
-#include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
+#include "Assets/Geometry/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
-#include "Render3D/Models/HIKARI_ModelManager.h"
+#include "Assets/Models/HIKARI_ModelManager.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 #include "Render2D/HIKARI_GameUiEffectRenderer.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
@@ -438,7 +438,7 @@ bool ResolveMassRenderModel(const GameProjectWorldMassRenderProxyDesc& proxy, co
         return false;
     }
     const std::string assetGuid(proxy.modelAssetGuid);
-    const auto* descriptor = assetRegistry->FindAs<ModelAssetDescriptor>(AssetId{assetGuid});
+    const auto* descriptor = assetRegistry->FindAs<ModelAssetDescriptor>(AssetGuid{assetGuid});
     if (descriptor == nullptr) {
         return false;
     }

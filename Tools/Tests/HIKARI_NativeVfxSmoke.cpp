@@ -15,7 +15,7 @@
 #include <string_view>
 #include <utility>
 
-#include "Assets/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Assets/Formats/HIKARI_HvfxcFormat.h"
 #include "Assets/Vfx/Compiler/HIKARI_VfxCompiler.h"
 #include "Assets/Vfx/HIKARI_VfxBuiltinTextureCatalog.h"
@@ -28,7 +28,7 @@
 #include "Render3D/Vfx/HIKARI_ParticleGeometryLayout.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
-#include "Render3D/Models/HIKARI_ModelManager.h"
+#include "Assets/Models/HIKARI_ModelManager.h"
 #include "Scene/Vfx/HIKARI_VfxMeshOutput.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponent.h"

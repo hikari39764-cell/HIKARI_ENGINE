@@ -13,7 +13,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "RenderContracts/Shader/HIKARI_ShaderParameterSerialization.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Core/Serialization/Json/HIKARI_JsonStrict.h"

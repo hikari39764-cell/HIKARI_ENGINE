@@ -4,7 +4,7 @@
 #include <functional>
 #include <string>
 
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "RenderContracts/Material/HIKARI_MaterialProgramFormat.h"
 
 namespace HIKARI {

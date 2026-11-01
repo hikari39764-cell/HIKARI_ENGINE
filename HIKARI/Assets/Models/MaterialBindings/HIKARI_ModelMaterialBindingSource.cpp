@@ -1,4 +1,4 @@
-#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingSource.h"
 
 #include <algorithm>
 #include <exception>

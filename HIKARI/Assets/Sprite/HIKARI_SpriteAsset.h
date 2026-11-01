@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 
 namespace HIKARI::SPRITE {
 

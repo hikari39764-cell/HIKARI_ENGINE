@@ -1,7 +1,7 @@
 #include "Vfx/Post/HIKARI_PostEffect.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 #include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
-#include "Assets/Shader/HIKARI_ShaderRegistryResolve.h"
+#include "RenderContracts/Shader/HIKARI_ShaderRegistryResolve.h"
 #include "RenderContracts/Shader/HIKARI_PostEffectShaderContract.h"
 #include "Core/HIKARI_TimeService.h"
 #include <algorithm>

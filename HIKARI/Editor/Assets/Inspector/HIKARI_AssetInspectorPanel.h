@@ -8,7 +8,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 
 #include "Core/HIKARI_AssetGuid.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/HIKARI_AssetFileCache.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialAsset.h"
 #include "Editor/Assets/HIKARI_AssetImportSettingsService.h"

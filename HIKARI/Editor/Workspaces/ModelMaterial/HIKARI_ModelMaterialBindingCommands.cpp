@@ -3,8 +3,8 @@
 #include <utility>
 
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_MaterialRuntimeBuilder.h"
 
@@ -38,7 +38,7 @@ std::shared_ptr<Material> ModelMaterialWorkspaceController::BuildPreviewMaterial
         return {};
     }
 
-    const auto* descriptor = assetRegistry.FindAs<MaterialAssetDescriptor>(AssetId{materialGuid.value});
+    const auto* descriptor = assetRegistry.FindAs<MaterialAssetDescriptor>(materialGuid);
     if (descriptor == nullptr) {
         outMessage = "material is not imported into the runtime registry";
         return {};

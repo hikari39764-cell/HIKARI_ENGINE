@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 
 namespace HIKARI {
 class AssetDatabase;

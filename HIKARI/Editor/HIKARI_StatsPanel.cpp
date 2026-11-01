@@ -12,7 +12,7 @@
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
-#include "Render3D/Models/HIKARI_ModelManager.h"
+#include "Assets/Models/HIKARI_ModelManager.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
