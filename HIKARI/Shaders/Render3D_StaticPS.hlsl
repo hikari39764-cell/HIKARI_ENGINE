@@ -45,12 +45,11 @@ struct HikariForwardReflectionOutput
     float4 color : SV_Target0;
     float4 fallbackSpecular : SV_Target1;
     float4 specularResponse : SV_Target2;
-    float4 reflectionMaterial : SV_Target3; // RGB=F0, A=F90 (減衰前の材質)
-    float4 subsurface : SV_Target4;         // RGB=拡散光 × 散乱の強さ (Pre-Exposure 済み), A=散乱半径 [m]
+    float4 subsurface : SV_Target3; // RGB=拡散光 × 散乱の強さ (Pre-Exposure 済み), A=散乱半径 [m]
 };
 
 float4 HikariShadeForwardWithReflections(PSInput input,
-    out float4 fallbackSpecular, out float4 specularResponse, out float4 reflectionMaterial, out float4 subsurface)
+    out float4 fallbackSpecular, out float4 specularResponse, out float4 subsurface)
 #else
 float4 main(PSInput input) : SV_TARGET
 #endif
@@ -59,7 +58,6 @@ float4 main(PSInput input) : SV_TARGET
     // 未対応の早期 return も必ず無効値を書き、背後の面の反射を残さない。
     fallbackSpecular = 0.0f.xxxx;
     specularResponse = 0.0f.xxxx;
-    reflectionMaterial = 0.0f.xxxx;
     subsurface = 0.0f.xxxx;
 #endif
 #if HIKARI_FORWARD_COST_MODE_STATIC != 255
@@ -580,7 +578,6 @@ float4 main(PSInput input) : SV_TARGET
             // SSR が場面色（Pre-Exposure 済み）と差し替えるので同じ空間で書く。
             fallbackSpecular = float4(HikariPreExpose(ambient.specular, gViewExposure), 1.0f);
             specularResponse = float4(ambient.specularResponse, 1.0f);
-            reflectionMaterial = float4(pbrContext.specularF0, pbrContext.specularF90);
         }
         if (gDebugView == 0u && !neutralClay && pbrInputs.subsurface > 0.0f && pbrInputs.subsurfaceRadius > 0.0f)
         {
@@ -684,7 +681,6 @@ float4 main(PSInput input) : SV_TARGET
     reflectionSupported = reflectionSupported && albedo.a == 1.0f;
     HikariAttenuateReflectionContribution(fallbackSpecular, specularResponse,
         1.0f - HikariForwardFogFactor(input.worldPosWS), reflectionSupported);
-    if (!HikariHasReflectionContribution(fallbackSpecular, specularResponse)) reflectionMaterial = 0.0f.xxxx;
     // 散乱は霧の手前で起きる。合成が霧の後なので、霧で減った分だけ差分も減らす。半透明の面は散らさない。
     subsurface = alphaBlended ? 0.0f.xxxx
         : float4(subsurface.rgb * (1.0f - HikariForwardFogFactor(input.worldPosWS)), subsurface.a);
@@ -700,7 +696,7 @@ HikariForwardReflectionOutput main(PSInput input)
 {
     HikariForwardReflectionOutput result;
     result.color = HikariShadeForwardWithReflections(input, result.fallbackSpecular, result.specularResponse,
-        result.reflectionMaterial, result.subsurface);
+        result.subsurface);
     return result;
 }
 #endif

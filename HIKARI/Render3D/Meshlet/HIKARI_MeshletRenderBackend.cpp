@@ -527,8 +527,6 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
     ASSETS::SHADER::ShaderAssetEntryLease terrainAmplificationShader{};
     ASSETS::SHADER::ShaderAssetEntryLease standardAmplificationShader{};
     ASSETS::SHADER::ShaderAssetEntryLease programAmplificationShader{};
-    ASSETS::SHADER::ShaderAssetEntryLease standardAllAmplificationShader{};
-    ASSETS::SHADER::ShaderAssetEntryLease programAllAmplificationShader{};
     ASSETS::SHADER::ShaderAssetEntryLease shadowAmplificationShader{};
     ASSETS::SHADER::ShaderAssetEntryLease forwardMeshShader{};
     ASSETS::SHADER::ShaderAssetEntryLease shadowMeshShader{};
@@ -542,6 +540,7 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
     ASSETS::SHADER::ShaderAssetEntryLease surfacePixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease reflectionPixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease programReflectionPixelShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease terrainReflectionPixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease shadowPixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease waterVisibilityPixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease geometryPixelShader{};
@@ -688,35 +687,33 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                                   "is unavailable; core Mesh rendering remains active.");
     }
     if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque) &&
-        (!resolveShader("HIKARI.EngineShader.Render3D_MeshletAllStandardAS", ASSETS::SHADER::ShaderStage::Amplification,
-                        "as_6_5", standardAllAmplificationShader) ||
-         !resolveShader("HIKARI.EngineShader.Render3D_MeshletAllProgramAS", ASSETS::SHADER::ShaderStage::Amplification,
-                        "as_6_5", programAllAmplificationShader) ||
-         !resolveShader("HIKARI.EngineShader.Render3D_GpuDrivenOpaqueStandardReflectionPS",
+        (!resolveShader("HIKARI.EngineShader.Render3D_GpuDrivenOpaqueStandardReflectionPS",
                         ASSETS::SHADER::ShaderStage::Pixel, "ps_6_0", reflectionPixelShader) ||
          !resolveShader("HIKARI.EngineShader.Render3D_GpuDrivenOpaqueReflectionPS", ASSETS::SHADER::ShaderStage::Pixel,
-                        "ps_6_0", programReflectionPixelShader))) {
+                        "ps_6_0", programReflectionPixelShader) ||
+         !resolveShader("HIKARI.EngineShader.Render3D_GpuDrivenTerrainReflectionPS", ASSETS::SHADER::ShaderStage::Pixel,
+                        "ps_6_0", terrainReflectionPixelShader))) {
         reflectionPixelShader = {};
         DEBUGLOG::PushRenderError("[MeshletBackend][SSR] Capture shaders unavailable; environment fallback retained.");
     }
     stats_.shaderCompileReady = true;
 
-    // 全経路の表面（depth-aware/transparent）と SSR capture の pixel shader は大きく、shader 更新後の初回起動では
-    // driver の compile に PSO 一つあたり数秒かかる。どちらも別スレッドで作り、このスレッドの一般面 Forward と
+    // 全経路の表面（depth-aware/transparent）の pixel shader は大きく、shader 更新後の初回起動では driver の compile に
+    // PSO 一つあたり数秒かかる。SSR capture の PSO も含めて別スレッドで作り、このスレッドの一般面 Forward と
     // 重ねる（D3D12 の PSO 生成は free-threaded）。capture は描画に必須ではないので Initialize では待たない。
     if (reflectionPixelShader) {
         reflectionCaptureTask_ = std::async(
             std::launch::async,
-            [device = device_, rootSignature = rootSignature_, standardAs = standardAllAmplificationShader,
-             programAs = programAllAmplificationShader, ms = forwardMeshShader, standardPs = reflectionPixelShader,
-             programPs = programReflectionPixelShader]() {
+            [device = device_, rootSignature = rootSignature_, standardAs = standardAmplificationShader,
+             programAs = programAmplificationShader, terrainAs = terrainAmplificationShader, ms = forwardMeshShader,
+             standardPs = reflectionPixelShader, programPs = programReflectionPixelShader,
+             terrainPs = terrainReflectionPixelShader]() {
                 ReflectionCapturePipelines pipelines{};
                 const auto create = [&](const ASSETS::SHADER::ShaderAssetEntryLease& as,
                                         const ASSETS::SHADER::ShaderAssetEntryLease& ps,
                                         std::array<PipelineBucketArray, kCaptureVariantCount>& out) {
                     for (size_t variant = 0; variant < out.size(); ++variant) {
-                        const bool captureMaterial = (variant & 1u) != 0u;
-                        const bool captureSubsurface = (variant & 2u) != 0u;
+                        const bool captureSubsurface = variant != 0u;
                         for (size_t i = 0; i < GPUDRIVEN::kGpuDrivenCommandBucketCount; ++i) {
                             if (!CreateMeshletPipelineState(
                                     device.Get(), rootSignature.Get(), ShaderBytecode(as), ShaderBytecode(ms),
@@ -725,7 +722,6 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                                     true, L"Meshlet.ForwardReflectionCapture", out[variant][i].GetAddressOf(),
                                     DXGI_FORMAT_R16G16B16A16_FLOAT, D3D12_COMPARISON_FUNC_LESS_EQUAL,
                                     DXGI_FORMAT_R16G16B16A16_FLOAT,
-                                    captureMaterial ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_UNKNOWN,
                                     captureSubsurface ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_UNKNOWN)) {
                                 out[variant] = {};
                                 break;
@@ -735,6 +731,7 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                 };
                 create(standardAs, standardPs, pipelines.standard);
                 create(programAs, programPs, pipelines.program);
+                create(terrainAs, terrainPs, pipelines.terrain);
                 return pipelines;
             });
     }
@@ -923,20 +920,21 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
     return stats_.pipelineReady;
 }
 
-bool MeshletRenderBackend::PrepareReflectionCapture(bool captureMaterial, bool captureSubsurface) {
+bool MeshletRenderBackend::PrepareReflectionCapture(bool captureSubsurface) {
     // capture PSO は Initialize が別スレッドで作る。完成までは false を返し、呼び出し側は capture なしで描く。
     if (reflectionCaptureTask_.valid()) {
         if (reflectionCaptureTask_.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
             return false;
         reflectionPipelines_ = reflectionCaptureTask_.get();
     }
-    return stats_.forwardPipelineReady && AreReflectionPipelinesReady(captureMaterial, captureSubsurface);
+    return stats_.forwardPipelineReady && AreReflectionPipelinesReady(captureSubsurface);
 }
 
-bool MeshletRenderBackend::AreReflectionPipelinesReady(bool captureMaterial, bool captureSubsurface) const {
-    const size_t variant = CaptureVariantIndex(captureMaterial, captureSubsurface);
+bool MeshletRenderBackend::AreReflectionPipelinesReady(bool captureSubsurface) const {
+    const size_t variant = CaptureVariantIndex(captureSubsurface);
     return ArePipelinesReady(reflectionPipelines_.standard[variant]) &&
-           ArePipelinesReady(reflectionPipelines_.program[variant]);
+           ArePipelinesReady(reflectionPipelines_.program[variant]) &&
+           ArePipelinesReady(reflectionPipelines_.terrain[variant]);
 }
 
 bool MeshletRenderBackend::PrepareForwardVariant(ForwardShadingCostMode mode) {
@@ -1052,7 +1050,8 @@ void MeshletRenderBackend::Reset() {
     // 作成中の capture PSO は GPU に渡っていないので、完成を待ってそのまま捨てる。
     if (reflectionCaptureTask_.valid())
         (void)reflectionCaptureTask_.get();
-    for (auto* captures : {&reflectionPipelines_.standard, &reflectionPipelines_.program})
+    for (auto* captures :
+         {&reflectionPipelines_.standard, &reflectionPipelines_.program, &reflectionPipelines_.terrain})
         for (auto& capture : *captures)
             for (auto& pipeline : capture)
                 GFX::RetireD3D12ObjectForCurrentFrame(pipeline, "Meshlet.ReflectionCapturePSO");
@@ -1166,12 +1165,12 @@ void MeshletRenderBackend::ResetFrame() {
 }
 
 bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
-    if ((ctx.reflectionMaterialCapture || ctx.subsurfaceCapture) && !ctx.reflectionCapture)
+    if (ctx.subsurfaceCapture && !ctx.reflectionCapture)
         return false;
-    if (ctx.reflectionCapture && (ctx.pipelineKind != MeshletPipelineKind::ForwardOpaque ||
-                                  !AreReflectionPipelinesReady(ctx.reflectionMaterialCapture, ctx.subsurfaceCapture)))
+    if (ctx.reflectionCapture &&
+        (ctx.pipelineKind != MeshletPipelineKind::ForwardOpaque || !AreReflectionPipelinesReady(ctx.subsurfaceCapture)))
         return false;
-    const size_t captureVariant = CaptureVariantIndex(ctx.reflectionMaterialCapture, ctx.subsurfaceCapture);
+    const size_t captureVariant = CaptureVariantIndex(ctx.subsurfaceCapture);
     if (ctx.visibility == nullptr || ctx.drawCommandRange == nullptr) {
         return false;
     }
@@ -1290,8 +1289,9 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
         }
         // 一般 PSO の AS は地形を除外する。同じ可視範囲を地形 PSO（診断モードでは地形の診断 PSO）で描き足す。
         ID3D12PipelineState* terrainPipeline = nullptr;
-        if (!ctx.reflectionCapture && !forwardDebug && ctx.terrainSurfacesPresent) {
-            terrainPipeline = ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque &&
+        if (!forwardDebug && ctx.terrainSurfacesPresent) {
+            terrainPipeline = ctx.reflectionCapture ? reflectionPipelines_.terrain[captureVariant][bucketIndex].Get()
+                              : ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque &&
                                       effectiveForwardCostMode != ForwardShadingCostMode::Full
                                   ? terrainDiagnosticPipelineStates_[bucketIndex].Get()
                                   : GetTerrainPipelineState(ctx.pipelineKind, bucket);

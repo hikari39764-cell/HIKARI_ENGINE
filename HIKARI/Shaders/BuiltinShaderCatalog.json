@@ -2480,10 +2480,6 @@
         {
           "value": "1",
           "name": "HIKARI_FORWARD_REFLECTION_CAPTURE"
-        },
-        {
-          "value": "0",
-          "name": "HIKARI_SURFACE_PARTITION"
         }
       ],
       "entries": [
@@ -2605,10 +2601,6 @@
         {
           "value": "1",
           "name": "HIKARI_MATERIAL_CLASS"
-        },
-        {
-          "value": "0",
-          "name": "HIKARI_SURFACE_PARTITION"
         }
       ],
       "entries": [
@@ -2755,6 +2747,49 @@
       }
     },
     {
+      "assetGuid": "73601a51ce7d441f95e20780127efd47",
+      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenTerrainReflectionPS",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "1",
+          "name": "HIKARI_FORWARD_REFLECTION_CAPTURE"
+        },
+        {
+          "value": "2",
+          "name": "HIKARI_SURFACE_PARTITION"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 8,
+        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
       "assetGuid": "030961a9da653e038b7b8541b383c982",
       "programId": "HIKARI.EngineShader.Render3D_GpuTraditionalCommandCompactCS",
       "source": "Render3D_GpuTraditionalCommandCompactCS.hlsl",
@@ -2827,92 +2862,6 @@
         "EngineSdk"
       ],
       "defines": [],
-      "entries": [
-        {
-          "id": "Main",
-          "stage": "Amplification",
-          "entry": "main",
-          "profile": "as_6_5"
-        }
-      ],
-      "contract": {
-        "engineInterfaceId": "HIKARI.RenderGeometry",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
-        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 8,
-        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
-        "requiredCaps": {
-          "minimumShaderModel": 65,
-          "minimumRootSignatureVersion": 10,
-          "requiredFeatureMask": 2
-        }
-      }
-    },
-    {
-      "assetGuid": "9455fdb63e6f49278fac30a68c015e51",
-      "programId": "HIKARI.EngineShader.Render3D_MeshletAllProgramAS",
-      "source": "Render3D_MeshletAS.hlsl",
-      "scope": "Runtime",
-      "state": "Cooked",
-      "owner": "Render3D.GpuDriven",
-      "group": "",
-      "includeRoots": [
-        "EngineSdk"
-      ],
-      "defines": [
-        {
-          "value": "2",
-          "name": "HIKARI_MATERIAL_CLASS"
-        },
-        {
-          "value": "0",
-          "name": "HIKARI_SURFACE_PARTITION"
-        }
-      ],
-      "entries": [
-        {
-          "id": "Main",
-          "stage": "Amplification",
-          "entry": "main",
-          "profile": "as_6_5"
-        }
-      ],
-      "contract": {
-        "engineInterfaceId": "HIKARI.RenderGeometry",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
-        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 8,
-        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
-        "requiredCaps": {
-          "minimumShaderModel": 65,
-          "minimumRootSignatureVersion": 10,
-          "requiredFeatureMask": 2
-        }
-      }
-    },
-    {
-      "assetGuid": "4194965c311c4d6a8a06e162a260ef3b",
-      "programId": "HIKARI.EngineShader.Render3D_MeshletAllStandardAS",
-      "source": "Render3D_MeshletAS.hlsl",
-      "scope": "Runtime",
-      "state": "Cooked",
-      "owner": "Render3D.GpuDriven",
-      "group": "",
-      "includeRoots": [
-        "EngineSdk"
-      ],
-      "defines": [
-        {
-          "value": "1",
-          "name": "HIKARI_MATERIAL_CLASS"
-        },
-        {
-          "value": "0",
-          "name": "HIKARI_SURFACE_PARTITION"
-        }
-      ],
       "entries": [
         {
           "id": "Main",

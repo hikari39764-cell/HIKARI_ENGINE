@@ -74,13 +74,10 @@ bool ExecuteForwardOpaque(const GRAPH::RenderGraphPassContext& graphPass, void* 
                                                        GRAPH::RenderGraphSemanticPhase::Opaque};
     constexpr GRAPH::RenderGraphSurfaceKey responseKey{GRAPH::RenderGraphSemantic::ReflectionSpecularResponse,
                                                        GRAPH::RenderGraphSemanticPhase::Opaque};
-    constexpr GRAPH::RenderGraphSurfaceKey materialKey{GRAPH::RenderGraphSemantic::ReflectionMaterial,
-                                                       GRAPH::RenderGraphSemanticPhase::Opaque};
     constexpr GRAPH::RenderGraphSurfaceKey subsurfaceKey{GRAPH::RenderGraphSemantic::SubsurfaceDiffuse,
                                                          GRAPH::RenderGraphSemanticPhase::Opaque};
     (void)context.sceneSurfaces.Invalidate(fallbackKey);
     (void)context.sceneSurfaces.Invalidate(responseKey);
-    (void)context.sceneSurfaces.Invalidate(materialKey);
     (void)context.sceneSurfaces.Invalidate(subsurfaceKey);
     bool beganCapture = false;
     try {
@@ -95,24 +92,19 @@ bool ExecuteForwardOpaque(const GRAPH::RenderGraphPassContext& graphPass, void* 
             frame.targetAccess.bindAdditionalColors;
         MESHRENDERER::MeshPassResources resources = context.opaqueResources;
         resources.reflectionCapture = false;
-        resources.reflectionMaterialCapture = false;
         resources.subsurfaceCapture = false;
         // 任意の capture 準備に失敗しても、通常の Forward 描画は続ける。
         try {
-            const bool captureMaterial = context.hasSsrWork && context.renderQuality.rayTracedReflections;
             const bool captureSubsurface = context.hasSubsurfaceWork;
-            const bool captureReady = eligible && MESHRENDERER::PrepareForwardReflectionCapture(
-                                                      frame.graphics, captureMaterial, captureSubsurface);
-            if (buffer.Ensure(frame.graphics, frame.renderWidth, frame.renderHeight, captureReady, captureMaterial,
-                              captureSubsurface)) {
+            const bool captureReady =
+                eligible && MESHRENDERER::PrepareForwardReflectionCapture(frame.graphics, captureSubsurface);
+            if (buffer.Ensure(frame.graphics, frame.renderWidth, frame.renderHeight, captureReady, captureSubsurface)) {
                 beganCapture = buffer.BeginWrite(frame.graphics.cmdList);
                 resources.reflectionCapture = beganCapture && frame.targetAccess.BindAdditionalColors(buffer.GetRtvs());
-                resources.reflectionMaterialCapture = resources.reflectionCapture && captureMaterial;
                 resources.subsurfaceCapture = resources.reflectionCapture && captureSubsurface;
             }
         } catch (...) {
             resources.reflectionCapture = false;
-            resources.reflectionMaterialCapture = false;
             resources.subsurfaceCapture = false;
         }
         if (beganCapture && !resources.reflectionCapture) {
@@ -137,9 +129,6 @@ bool ExecuteForwardOpaque(const GRAPH::RenderGraphPassContext& graphPass, void* 
                 (void)context.sceneSurfaces.Invalidate(fallbackKey);
                 (void)context.sceneSurfaces.Invalidate(responseKey);
             }
-            if (state.result.opaqueSucceeded && buffer.GetMaterialView().IsSampleable())
-                (void)ReplaceTexturePublication(context.sceneSurfaces, materialKey, buffer.GetMaterialView(),
-                                                SURFACE::SceneSurfaceProducer::ForwardOpaque);
             if (state.result.opaqueSucceeded && resources.subsurfaceCapture &&
                 buffer.GetSubsurfaceView().IsSampleable())
                 (void)ReplaceTexturePublication(context.sceneSurfaces, subsurfaceKey, buffer.GetSubsurfaceView(),

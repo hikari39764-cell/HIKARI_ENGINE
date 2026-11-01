@@ -85,7 +85,7 @@ bool BuildRenderFrameGraphPlan(const RenderFrameGraphPlanOptions& options, void*
             GRAPH::RenderGraphSemanticPhase::PostOpaque, SURFACE::SceneSurfaceProducer::ProjectDispatch,
             GRAPH::RenderGraphResourceRequirement::Optional);
     }
-    GRAPH::RenderGraphResourceId reflectionFallback{}, reflectionResponse{}, reflectionMaterial{};
+    GRAPH::RenderGraphResourceId reflectionFallback{}, reflectionResponse{};
     if (options.includeSsr) {
         reflectionFallback = AddRenderFrameGraphSurfaceResource(
             graph, "ReflectionFallbackSpecular", GRAPH::RenderGraphSemantic::ReflectionFallbackSpecular, false,
@@ -95,11 +95,7 @@ bool BuildRenderFrameGraphPlan(const RenderFrameGraphPlanOptions& options, void*
             graph, "ReflectionSpecularResponse", GRAPH::RenderGraphSemantic::ReflectionSpecularResponse, false,
             GRAPH::RenderGraphSemanticPhase::Opaque, SURFACE::SceneSurfaceProducer::ForwardOpaque,
             GRAPH::RenderGraphResourceRequirement::Optional);
-        reflectionMaterial = AddRenderFrameGraphSurfaceResource(
-            graph, "ReflectionMaterial", GRAPH::RenderGraphSemantic::ReflectionMaterial, false,
-            GRAPH::RenderGraphSemanticPhase::Opaque, SURFACE::SceneSurfaceProducer::ForwardOpaque,
-            GRAPH::RenderGraphResourceRequirement::Optional);
-        if (!reflectionFallback.IsValid() || !reflectionResponse.IsValid() || !reflectionMaterial.IsValid())
+        if (!reflectionFallback.IsValid() || !reflectionResponse.IsValid())
             return false;
     }
     GRAPH::RenderGraphResourceId subsurfaceDiffuse{};
@@ -137,7 +133,7 @@ bool BuildRenderFrameGraphPlan(const RenderFrameGraphPlanOptions& options, void*
         GRAPH::RenderGraphResourceUse{packedSurfaceInput, GRAPH::RenderGraphAccess::ReadSampled},
         GRAPH::RenderGraphResourceUse{forwardDepthPyramid, GRAPH::RenderGraphAccess::ReadSampled},
         GRAPH::RenderGraphResourceUse{ambientOcclusionInput, GRAPH::RenderGraphAccess::ReadSampled}};
-    std::array<GRAPH::RenderGraphResourceUse, 5u> forwardWrites{
+    std::array<GRAPH::RenderGraphResourceUse, 4u> forwardWrites{
         GRAPH::RenderGraphResourceUse{forwardComplete, GRAPH::RenderGraphAccess::WriteDependency}};
     std::size_t forwardWriteCount = 1u;
     if (options.includeSsr) {
@@ -145,8 +141,6 @@ bool BuildRenderFrameGraphPlan(const RenderFrameGraphPlanOptions& options, void*
             reflectionFallback, GRAPH::RenderGraphAccess::WriteColor, SURFACE::SceneSurfaceProducer::ForwardOpaque};
         forwardWrites[forwardWriteCount++] = GRAPH::RenderGraphResourceUse{
             reflectionResponse, GRAPH::RenderGraphAccess::WriteColor, SURFACE::SceneSurfaceProducer::ForwardOpaque};
-        forwardWrites[forwardWriteCount++] = GRAPH::RenderGraphResourceUse{
-            reflectionMaterial, GRAPH::RenderGraphAccess::WriteColor, SURFACE::SceneSurfaceProducer::ForwardOpaque};
     }
     if (options.includeSubsurface) {
         forwardWrites[forwardWriteCount++] = GRAPH::RenderGraphResourceUse{
@@ -259,7 +253,6 @@ bool BuildRenderFrameGraphPlan(const RenderFrameGraphPlanOptions& options, void*
             GRAPH::RenderGraphResourceUse{currentDepthPyramid, GRAPH::RenderGraphAccess::ReadSampled},
             GRAPH::RenderGraphResourceUse{reflectionFallback, GRAPH::RenderGraphAccess::ReadSampled},
             GRAPH::RenderGraphResourceUse{reflectionResponse, GRAPH::RenderGraphAccess::ReadSampled},
-            GRAPH::RenderGraphResourceUse{reflectionMaterial, GRAPH::RenderGraphAccess::ReadSampled},
             GRAPH::RenderGraphResourceUse{motionVectors, GRAPH::RenderGraphAccess::ReadSampled},
             GRAPH::RenderGraphResourceUse{motionMetadata, GRAPH::RenderGraphAccess::ReadSampled}};
         const std::array ssrWrites{

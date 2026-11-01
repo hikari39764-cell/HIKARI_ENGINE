@@ -7,7 +7,7 @@
 namespace HIKARI::RENDER3D::SURFACE {
 
 bool SceneReflectionBuffer::Ensure(const GFX::Context& graphics, uint32_t width, uint32_t height, bool enabled,
-                                   bool captureMaterial, bool captureSubsurface) {
+                                   bool captureSubsurface) {
     ready_ = written_ = false;
     if (!enabled) {
         if (!context_.frameFence || context_.frameFence->GetCompletedValue() >= lastRetireFence_)
@@ -30,7 +30,7 @@ bool SceneReflectionBuffer::Ensure(const GFX::Context& graphics, uint32_t width,
     context_ = graphics;
     frameSlot_ = graphics.frameIndex;
     if (!textures_[0] || !textures_[1] || width_ != width || height_ != height ||
-        bool(textures_[2]) != captureMaterial || bool(textures_[3]) != captureSubsurface) {
+        bool(textures_[2]) != captureSubsurface) {
         const auto completed = graphics.frameFence->GetCompletedValue();
         if (completed == UINT64_MAX || completed < lastRetireFence_)
             return false;
@@ -39,8 +39,8 @@ bool SceneReflectionBuffer::Ensure(const GFX::Context& graphics, uint32_t width,
         const auto desc =
             CD3DX12_RESOURCE_DESC::Tex2D(kFormat, width, height, 1, 1, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
         const D3D12_CLEAR_VALUE clear{kFormat, {0, 0, 0, 0}};
-        const std::array<bool, kTargetCount> wanted{true, true, captureMaterial, captureSubsurface};
-        const uint32_t count = 2u + (captureMaterial ? 1u : 0u) + (captureSubsurface ? 1u : 0u);
+        const std::array<bool, kTargetCount> wanted{true, true, captureSubsurface};
+        const uint32_t count = 2u + (captureSubsurface ? 1u : 0u);
         const auto bytes = graphics.device->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes;
         // MRT は scene と同寸が必要。予算超過は低解像度の誤った capture でなく provider を辞退する。
         constexpr uint64_t budget = 192ull * 1024 * 1024;
@@ -65,15 +65,13 @@ bool SceneReflectionBuffer::Ensure(const GFX::Context& graphics, uint32_t width,
             D3D12_RENDER_TARGET_VIEW_DESC view{};
             view.Format = kFormat;
             view.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-            // SSR 単独時は F0/F90 の実画像を持たず、null RTV への書込みを破棄する。
+            // 次表面散乱を持たない時は実画像を持たず、null RTV への書込みを破棄する。
             graphics.device->CreateRenderTargetView(textures_[i].Get(), &view, rtvs_[i]);
         }
         textures_[0]->SetName(L"HIKARI.SceneSurface.ReflectionFallbackSpecular");
         textures_[1]->SetName(L"HIKARI.SceneSurface.ReflectionSpecularResponse");
         if (textures_[2])
-            textures_[2]->SetName(L"HIKARI.SceneSurface.ReflectionMaterial");
-        if (textures_[3])
-            textures_[3]->SetName(L"HIKARI.SceneSurface.SubsurfaceDiffuse");
+            textures_[2]->SetName(L"HIKARI.SceneSurface.SubsurfaceDiffuse");
         workingSetBytes_ = bytes * count;
         width_ = width;
         height_ = height;

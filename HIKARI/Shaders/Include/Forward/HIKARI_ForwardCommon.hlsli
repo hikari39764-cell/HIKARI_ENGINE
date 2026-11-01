@@ -96,7 +96,7 @@ float HikariForwardCloudSolarVisibility(float3 worldPosition)
 {
     if(gCloudSolarVisibility.originDescriptor.w<0.5f || gDirectionalIntensity<=0) return 1.0f;
     const uint descriptor=uint(gCloudSolarVisibility.originDescriptor.w)-1u;
-    return HikariSampleCloudSolarVisibility(gMaterialTexturePool[NonUniformResourceIndex(descriptor)],gCloudSolarVisibility,worldPosition);
+    return HikariSampleCloudSolarVisibility(gMaterialTexturePool[descriptor],gCloudSolarVisibility,worldPosition);
 }
 #include "Include/HIKARI_DebugViewCommon.hlsli"
 #include "Include/Forward/HIKARI_ForwardVertexMeta.hlsli"

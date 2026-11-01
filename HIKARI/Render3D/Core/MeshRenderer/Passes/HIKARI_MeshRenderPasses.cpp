@@ -350,11 +350,11 @@ bool FinalizeGpuDrivenVisibilityFromDepth(const GFX::Context& graphics,
     return true;
 }
 
-bool PrepareForwardReflectionCapture(const GFX::Context& graphics, bool captureMaterial, bool captureSubsurface) {
+bool PrepareForwardReflectionCapture(const GFX::Context& graphics, bool captureSubsurface) {
     if (gMeshRendererState.worldSpritePass.HasOpaqueWork())
         return false;
     return !HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque) ||
-           PrepareForwardReflectionCapturePipelines(graphics, captureMaterial, captureSubsurface);
+           PrepareForwardReflectionCapturePipelines(graphics, captureSubsurface);
 }
 
 RENDER3D::WORLD_SPRITES::WorldSpritePass* PrepareWorldSpritesForView(const GFX::Context& graphics,

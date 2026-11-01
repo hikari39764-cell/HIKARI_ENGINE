@@ -31,7 +31,6 @@ enum class RenderGraphSemantic : uint16_t {
     ProjectDispatchOutput,
     ReflectionFallbackSpecular,
     ReflectionSpecularResponse,
-    ReflectionMaterial,
     SubsurfaceDiffuse,
     Count,
 };
@@ -180,7 +179,6 @@ constexpr uint32_t AllowedSurfacePhases(GRAPH::RenderGraphSemantic semantic) noe
     case Semantic::SceneDepth: return bit(Phase::Imported);
     case Semantic::ReflectionFallbackSpecular:
     case Semantic::ReflectionSpecularResponse:
-    case Semantic::ReflectionMaterial:
     case Semantic::SubsurfaceDiffuse:
     case Semantic::SceneColorOpaque: return bit(Phase::Opaque);
     case Semantic::SceneColorPostOpaque: return bit(Phase::PostOpaque);
@@ -213,7 +211,6 @@ constexpr uint64_t AllowedSurfaceProducers(GRAPH::RenderGraphSemantic semantic) 
         return SceneSurfaceProducerBit(Producer::PostSceneDepth) | SceneSurfaceProducerBit(Producer::EditorInteractive);
     case Semantic::ReflectionFallbackSpecular:
     case Semantic::ReflectionSpecularResponse:
-    case Semantic::ReflectionMaterial:
     case Semantic::SubsurfaceDiffuse: return SceneSurfaceProducerBit(Producer::ForwardOpaque);
     case Semantic::SceneColorOpaque:
         return SceneSurfaceProducerBit(Producer::ForwardOpaque) | SceneSurfaceProducerBit(Producer::SceneColorCapture) |
@@ -318,8 +315,6 @@ inline constexpr std::array<SceneSurfaceSemanticDesc, static_cast<size_t>(GRAPH:
         SurfaceDesc(Semantic::ReflectionSpecularResponse, Kind::Texture2D, Format::R16G16B16A16Float,
                     Lifetime::FrameLocal, Fallback::SkipProvider,
                     SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
-        SurfaceDesc(Semantic::ReflectionMaterial, Kind::Texture2D, Format::R16G16B16A16Float, Lifetime::FrameLocal,
-                    Fallback::SkipProvider, SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
         SurfaceDesc(Semantic::SubsurfaceDiffuse, Kind::Texture2D, Format::R16G16B16A16Float, Lifetime::FrameLocal,
                     Fallback::SkipProvider, SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
     };

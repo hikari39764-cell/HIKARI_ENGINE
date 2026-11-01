@@ -206,7 +206,7 @@ float SampleLocalLightVisibility(HikariLocalLightGpuData light, float3 worldPosW
     if ((uint)(gForwardCostMode + 0.5f) == HIKARI_FORWARD_COST_NO_SHADOW) return 1.0f;
 #endif
     return HikariSampleLocalLightShadow(
-        gMaterialTexturePool[NonUniformResourceIndex(gLocalShadow.textureDescriptorIndex)], gShadowSampler,
+        gMaterialTexturePool[gLocalShadow.textureDescriptorIndex], gShadowSampler,
         gLocalShadow, light, worldPosWS, geometricNormalWS);
 }
 

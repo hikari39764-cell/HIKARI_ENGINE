@@ -10,7 +10,7 @@
 namespace HIKARI::RENDER3D::SURFACE {
 
 // Forward が生成する捕捉出力（反射分量と次表面散乱の拡散光）の保管だけを所有する。追跡・合成・履歴は所有しない。
-// 出力の並びは PSO の RT 1..4 と同じ：fallback 鏡面・鏡面応答・材質（任意）・次表面散乱（任意）。
+// 出力の並びは PSO の RT 1..3 と同じ：fallback 鏡面・鏡面応答・次表面散乱（任意）。
 class SceneReflectionBuffer final {
 public:
     SceneReflectionBuffer() = default;
@@ -18,16 +18,15 @@ public:
     SceneReflectionBuffer& operator=(const SceneReflectionBuffer&) = delete;
     static constexpr DXGI_FORMAT kFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
     bool Ensure(const GFX::Context& graphics, uint32_t width, uint32_t height, bool enabled,
-                bool captureMaterial = false, bool captureSubsurface = false);
+                bool captureSubsurface = false);
     bool BeginWrite(ID3D12GraphicsCommandList* commands);
     void EndWrite(ID3D12GraphicsCommandList* commands, bool succeeded);
     void Release();
-    static constexpr size_t kTargetCount = 4u;
+    static constexpr size_t kTargetCount = 3u;
     const std::array<D3D12_CPU_DESCRIPTOR_HANDLE, kTargetCount>& GetRtvs() const { return rtvs_; }
     RenderTextureView GetFallbackSpecularView() const { return GetView(0); }
     RenderTextureView GetSpecularResponseView() const { return GetView(1); }
-    RenderTextureView GetMaterialView() const { return GetView(2); }   // RGB=F0, A=F90
-    RenderTextureView GetSubsurfaceView() const { return GetView(3); } // RGB=拡散光 × 強さ, A=散乱半径
+    RenderTextureView GetSubsurfaceView() const { return GetView(2); } // RGB=拡散光 × 強さ, A=散乱半径
     uint64_t GetWorkingSetBytes() const { return workingSetBytes_; }
 
 private:

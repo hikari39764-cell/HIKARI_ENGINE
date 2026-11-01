@@ -122,8 +122,7 @@ bool RenderWaterVisibilityDepth(const GFX::Context& graphics, D3D12_CPU_DESCRIPT
 bool FinalizeGpuDrivenVisibilityWithoutDepth(const GFX::Context& graphics);
 bool FinalizeGpuDrivenVisibilityFromDepth(const GFX::Context& graphics,
                                           const RENDER3D::GPUDRIVEN::GpuDepthVisibilityStats& depthVisibilityStats);
-bool PrepareForwardReflectionCapture(const GFX::Context& graphics, bool captureMaterial = false,
-                                     bool captureSubsurface = false);
+bool PrepareForwardReflectionCapture(const GFX::Context& graphics, bool captureSubsurface = false);
 
 bool RenderForwardOpaquePass(const GFX::Context& graphics, const MeshPassResources& passResources);
 bool RenderForwardTransparentPass(const GFX::Context& graphics, const MeshPassResources& passResources);

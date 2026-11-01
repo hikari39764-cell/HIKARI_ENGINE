@@ -28,8 +28,7 @@ struct MeshPassResources {
     // 歪み層の粒子だけを戦闘の画面歪み遮罩へ描く経路
     bool particleDistortionMask = false;
     bool reflectionCapture = false;
-    bool reflectionMaterialCapture = false;
-    // Forward capture の 5 番目の出力（次表面散乱の拡散光）。reflectionCapture が前提。
+    // Forward capture の 4 番目の出力（次表面散乱の拡散光）。reflectionCapture が前提。
     bool subsurfaceCapture = false;
 };
 

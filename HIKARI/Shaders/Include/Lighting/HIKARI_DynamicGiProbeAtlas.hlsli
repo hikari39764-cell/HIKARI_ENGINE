@@ -3,6 +3,8 @@
 
 // 動的 GI の probe 格子と atlas の低水準読み取り。補間と provider 合成は HIKARI_DynamicGiSampling.hlsli が所有する。
 // include する側が gMaterialTexturePool、HIKARI_MATERIAL_TEXTURE_POOL_COUNT、gLinearClamp を宣言する。
+// atlas の descriptor は volume（定数バッファ）の値で、同時に走る画素どうしで同じ。NonUniformResourceIndex は付けない
+// （付けると描画ごとに descriptor を画素単位で読み直す）。
 #include "HIKARI_IrradianceSh9.hlsli"
 #include "../HIKARI_DirectionEncoding.hlsli"
 
@@ -134,8 +136,7 @@ float2 HikariDynamicGiProbeTile(uint3 coordinate, uint3 counts)
 // probe の状態（rgb = 格子点からの移動、a = 1 活性、0 は未初期化か非活性）。
 float4 HikariDynamicGiProbeState(uint descriptorIndex, float2 tile)
 {
-    return gMaterialTexturePool[NonUniformResourceIndex(descriptorIndex)].Load(
-        int3(int2(tile) + HIKARI_DYNAMIC_GI_STATE_TEXEL, 0));
+    return gMaterialTexturePool[descriptorIndex].Load(int3(int2(tile) + HIKARI_DYNAMIC_GI_STATE_TEXEL, 0));
 }
 
 // probe から toSample の向きの深度 moment（xy）、probe の活性（z）、visibility scale で正規化した距離（w）。
@@ -143,7 +144,7 @@ float4 HikariDynamicGiProbeMoments(HikariIrradianceVolumeData volume, uint descr
     float2 atlasSize, float3 toSample)
 {
     const float distance = max(length(toSample), 1e-6f);
-    const float3 depth = gMaterialTexturePool[NonUniformResourceIndex(descriptorIndex)].SampleLevel(
+    const float3 depth = gMaterialTexturePool[descriptorIndex].SampleLevel(
         gLinearClamp, HikariProbeAtlasUv(tile + (float2)HIKARI_DYNAMIC_GI_DEPTH_ORIGIN,
             HIKARI_DYNAMIC_GI_DEPTH_SIDE, HikariEncodeOctahedralDirection(toSample / distance), atlasSize), 0.0f).rgb;
     return float4(depth.rg, saturate(depth.b), distance / volume.selectionParams.w);
@@ -152,7 +153,7 @@ float4 HikariDynamicGiProbeMoments(HikariIrradianceVolumeData volume, uint descr
 // probe の放射照度（E/pi の 1/kIrradianceGamma 乗。A は余弦で重みづけた空の見える割合）。
 float4 HikariSampleDynamicGiIrradiance(uint descriptorIndex, float2 tile, float2 atlasSize, float2 directionUv)
 {
-    return gMaterialTexturePool[NonUniformResourceIndex(descriptorIndex)].SampleLevel(gLinearClamp,
+    return gMaterialTexturePool[descriptorIndex].SampleLevel(gLinearClamp,
         HikariProbeAtlasUv(tile, HIKARI_DYNAMIC_GI_OCTAHEDRAL_SIDE, directionUv, atlasSize), 0.0f);
 }
 
@@ -179,7 +180,7 @@ float HikariDynamicGiProbePatchWeight(HikariIrradianceVolumeData volume, uint de
 {
     const uint2 pixel = min((uint2)(HikariEncodeOctahedralDirection(toReceiver) * 8.0f), 7u.xx);
     const float3 axis = HikariDecodeOctahedralDirection((float2(pixel) + 0.5f) / 8.0f);
-    const float4 patch = gMaterialTexturePool[NonUniformResourceIndex(descriptorIndex)].Load(
+    const float4 patch = gMaterialTexturePool[descriptorIndex].Load(
         int3(int2(tile) + HIKARI_DYNAMIC_GI_PATCH_ORIGIN + int2(pixel), 0));
     return HikariDynamicGiPatchWeight(patch, axis, toReceiver / volume.selectionParams.w,
         max(0.002f / volume.selectionParams.w, 0.002f));

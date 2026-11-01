@@ -16,7 +16,6 @@ namespace HIKARI::MESHRENDERER {
 struct MeshPipelineVariantKey {
     VFX::VariantKey material;
     bool reflectionCapture = false;
-    bool reflectionMaterialCapture = false;
     bool subsurfaceCapture = false;
     bool operator==(const MeshPipelineVariantKey&) const = default;
 };
@@ -24,24 +23,21 @@ struct MeshPipelineVariantKey {
 struct MeshPipelineVariantQuery {
     const VFX::VariantKey& material;
     bool reflectionCapture = false;
-    bool reflectionMaterialCapture = false;
     bool subsurfaceCapture = false;
 };
 struct VariantKeyHasher {
     using is_transparent = void;
     size_t operator()(const MeshPipelineVariantQuery& key) const noexcept;
     size_t operator()(const MeshPipelineVariantKey& key) const noexcept {
-        return operator()(MeshPipelineVariantQuery{key.material, key.reflectionCapture, key.reflectionMaterialCapture,
-                                                   key.subsurfaceCapture});
+        return operator()(MeshPipelineVariantQuery{key.material, key.reflectionCapture, key.subsurfaceCapture});
     }
 };
 struct VariantKeyEqual {
     using is_transparent = void;
     template <class L, class R>
     bool operator()(const L& left, const R& right) const noexcept {
-        return left.reflectionCapture == right.reflectionCapture &&
-               left.reflectionMaterialCapture == right.reflectionMaterialCapture &&
-               left.subsurfaceCapture == right.subsurfaceCapture && left.material == right.material;
+        return left.reflectionCapture == right.reflectionCapture && left.subsurfaceCapture == right.subsurfaceCapture &&
+               left.material == right.material;
     }
 };
 
@@ -103,7 +99,7 @@ ID3D12RootSignature* GetSkinnedRootSignature(MeshPipelineStore& store);
 ID3D12PipelineState* GetOrCreateVariantPso(MeshPipelineStore& store, ID3D12Device* device,
                                            MeshRendererDebugStats& stats, const VFX::VariantKey& key, bool skinned,
                                            bool wireframe, bool reflectionCapture = false,
-                                           bool reflectionMaterialCapture = false, bool subsurfaceCapture = false);
+                                           bool subsurfaceCapture = false);
 
 void ApplyCompositeBlendState(D3D12_BLEND_DESC& blendState, VFX::CompositeMode composite,
                               bool reflectionCapture = false);

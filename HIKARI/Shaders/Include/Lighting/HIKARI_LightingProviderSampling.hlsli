@@ -32,7 +32,7 @@ float HikariLightProbeVisibility(HikariIrradianceVolumeData volume, uint3 probeC
     const float side = 16.0f;
     const float2 tile = float2(probeCoordinate.x + probeCoordinate.y * counts.x, probeCoordinate.z) * (side + 2.0f);
     const float2 atlasSize = float2(counts.x * counts.y, counts.z) * (side + 2.0f);
-    const float2 moments = gMaterialTexturePool[NonUniformResourceIndex(descriptorIndex)].SampleLevel(gLinearClamp,
+    const float2 moments = gMaterialTexturePool[descriptorIndex].SampleLevel(gLinearClamp,
         HikariProbeAtlasUv(tile, side, HikariEncodeOctahedralDirection(offset / distance), atlasSize), 0.0f).rg;
     return HikariProbeChebyshevVisibility(moments, distance / volume.selectionParams.w);
 }

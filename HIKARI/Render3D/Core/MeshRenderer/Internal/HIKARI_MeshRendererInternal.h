@@ -73,8 +73,7 @@ bool ExecuteTraditionalDrawFrame(const GFX::Context& graphics, const MeshPassRes
                                  RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass, MeshDrawPassKind passKind,
                                  RENDER3D::GPUDRIVEN::GpuDrivenLayer* layerOverride = nullptr,
                                  const MeshFrameBindingOverrides* bindingOverrides = nullptr);
-bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics, bool captureMaterial,
-                                              bool captureSubsurface);
+bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics, bool captureSubsurface);
 
 GeometryBackendExecutionResult ExecuteGeometryBackendPlan(const GFX::Context& graphics,
                                                           RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass,

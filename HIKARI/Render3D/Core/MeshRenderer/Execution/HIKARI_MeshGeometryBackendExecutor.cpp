@@ -75,7 +75,6 @@ bool ExecuteMeshletDrawFrame(const GFX::Context& graphics, const MeshPassResourc
     ctx.drawCommandRange = backendContext.drawCommandRange;
     ctx.pipelineKind = pipelineKind;
     ctx.reflectionCapture = passResources.reflectionCapture;
-    ctx.reflectionMaterialCapture = passResources.reflectionMaterialCapture;
     ctx.subsurfaceCapture = passResources.subsurfaceCapture;
     ctx.forwardCostMode = RENDER3D::GetRenderQualitySettings().forwardCostMode;
     // record 0 は sentinel。地形 record があるフレームだけ地形 PSO を dispatch する。
@@ -92,7 +91,7 @@ bool ExecuteMeshletDrawFrame(const GFX::Context& graphics, const MeshPassResourc
 ID3D12PipelineState* ResolveTraditionalStaticPso(const GFX::Context& graphics, MeshDrawPassKind passKind,
                                                  RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
                                                  const VFX::VariantKey& bucketVariant, bool reflectionCapture,
-                                                 bool reflectionMaterialCapture, bool subsurfaceCapture) {
+                                                 bool subsurfaceCapture) {
     (void)gpuPass;
 
     if (passKind == MeshDrawPassKind::GeometryAux) {
@@ -118,14 +117,13 @@ ID3D12PipelineState* ResolveTraditionalStaticPso(const GFX::Context& graphics, M
     }
 
     return GetOrCreateVariantPso(gMeshRendererState.pipelines, graphics.device, gMeshRendererState.debugStats,
-                                 bucketVariant, false, false, reflectionCapture, reflectionMaterialCapture,
-                                 subsurfaceCapture);
+                                 bucketVariant, false, false, reflectionCapture, subsurfaceCapture);
 }
 
 ID3D12PipelineState* ResolveTraditionalSkinnedPso(const GFX::Context& graphics, MeshDrawPassKind passKind,
                                                   RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
                                                   const VFX::VariantKey& bucketVariant, bool reflectionCapture,
-                                                  bool reflectionMaterialCapture, bool subsurfaceCapture) {
+                                                  bool subsurfaceCapture) {
     (void)gpuPass;
 
     if (!bucketVariant.vertexShaderId.empty() && bucketVariant.vertexShaderId != "Render3D_StaticVS") {
@@ -156,11 +154,10 @@ ID3D12PipelineState* ResolveTraditionalSkinnedPso(const GFX::Context& graphics, 
     VFX::VariantKey key = bucketVariant;
     key.vertexShaderId.clear();
     return GetOrCreateVariantPso(gMeshRendererState.pipelines, graphics.device, gMeshRendererState.debugStats, key,
-                                 true, false, reflectionCapture, reflectionMaterialCapture, subsurfaceCapture);
+                                 true, false, reflectionCapture, subsurfaceCapture);
 }
 
-bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics, bool captureMaterial,
-                                              bool captureSubsurface) {
+bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics, bool captureSubsurface) {
     using namespace RENDER3D::GPUDRIVEN;
     if (!graphics.device || !graphics.cmdList)
         return false;
@@ -172,7 +169,7 @@ bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics, bool
         return false;
     for (size_t i = 0; i < plan.gpuBackendCount; ++i) {
         if (plan.gpuBackends[i] == GeometryBackendKind::GpuDrivenMeshShader) {
-            if (!gMeshRendererState.meshletRenderBackend.PrepareReflectionCapture(captureMaterial, captureSubsurface))
+            if (!gMeshRendererState.meshletRenderBackend.PrepareReflectionCapture(captureSubsurface))
                 return false;
             continue;
         }
@@ -186,13 +183,11 @@ bool PrepareForwardReflectionCapturePipelines(const GFX::Context& graphics, bool
         if (range->commandBucketCount > variants.size())
             return false;
         for (size_t bucket = 0; bucket < range->commandBucketCount; ++bucket) {
-            if (range->staticCommandCount &&
-                !ResolveTraditionalStaticPso(graphics, MeshDrawPassKind::Forward, pass, variants[bucket], true,
-                                             captureMaterial, captureSubsurface))
+            if (range->staticCommandCount && !ResolveTraditionalStaticPso(graphics, MeshDrawPassKind::Forward, pass,
+                                                                          variants[bucket], true, captureSubsurface))
                 return false;
-            if (range->skinnedCommandCount &&
-                !ResolveTraditionalSkinnedPso(graphics, MeshDrawPassKind::Forward, pass, variants[bucket], true,
-                                              captureMaterial, captureSubsurface))
+            if (range->skinnedCommandCount && !ResolveTraditionalSkinnedPso(graphics, MeshDrawPassKind::Forward, pass,
+                                                                            variants[bucket], true, captureSubsurface))
                 return false;
         }
     }
@@ -238,7 +233,7 @@ bool ExecuteTraditionalDrawFrame(const GFX::Context& graphics, const MeshPassRes
             const VFX::VariantKey& bucketVariant = (*bucketVariants)[bucketIndex];
             ID3D12PipelineState* bucketPso =
                 ResolveTraditionalStaticPso(graphics, passKind, gpuPass, bucketVariant, passResources.reflectionCapture,
-                                            passResources.reflectionMaterialCapture, passResources.subsurfaceCapture);
+                                            passResources.subsurfaceCapture);
             if (bucketPso == nullptr) {
                 continue;
             }
@@ -277,9 +272,9 @@ bool ExecuteTraditionalDrawFrame(const GFX::Context& graphics, const MeshPassRes
         BindMaterialDataIndex(drawCtx.binding, 0u);
         for (size_t bucketIndex = 0; bucketIndex < skinnedStream->bucketCount; ++bucketIndex) {
             const VFX::VariantKey& bucketVariant = (*bucketVariants)[bucketIndex];
-            ID3D12PipelineState* bucketPso = ResolveTraditionalSkinnedPso(
-                graphics, passKind, gpuPass, bucketVariant, passResources.reflectionCapture,
-                passResources.reflectionMaterialCapture, passResources.subsurfaceCapture);
+            ID3D12PipelineState* bucketPso =
+                ResolveTraditionalSkinnedPso(graphics, passKind, gpuPass, bucketVariant,
+                                             passResources.reflectionCapture, passResources.subsurfaceCapture);
             if (bucketPso == nullptr) {
                 continue;
             }
