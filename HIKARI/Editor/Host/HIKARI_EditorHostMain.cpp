@@ -13,6 +13,7 @@
 #include "Editor/App/HIKARI_ProjectLauncherApp.h"
 #include "Editor/Export/HIKARI_GameExportJob.h"
 #include "Editor/Host/HIKARI_EditorUiServices.h"
+#include "Editor/ShaderPlayground/HIKARI_ShaderPlaygroundRunner.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Project/HIKARI_ProjectLaunch.h"
 #include "Core/Paths/HIKARI_ExecutablePath.h"
@@ -143,6 +144,39 @@ std::optional<int> RunHeadlessGamePackageIfRequested() {
     return code;
 }
 
+// --shader-playground <spec.json>：編集器の shader.play と同じ実行。--project があればその Library、
+// 無ければ設定のフォルダの Library/ShaderPlayground へ書く。
+std::optional<int> RunHeadlessShaderPlaygroundIfRequested() {
+    const std::optional<std::filesystem::path> specPath = HIKARI::ReadRuntimeCommandLinePath(L"--shader-playground");
+    if (!specPath) {
+        return std::nullopt;
+    }
+    std::filesystem::path outputRoot = std::filesystem::absolute(*specPath).parent_path() / "Library";
+    if (const auto projectPath = HIKARI::ReadRuntimeCommandLinePath(L"--project")) {
+        HIKARI::ProjectLaunchOptions launchOptions{};
+        launchOptions.explicitProjectPath = projectPath;
+        std::string message{};
+        if (!HIKARI::OpenProjectForLaunch(launchOptions, &message)) {
+            HIKARI_LOG_ERROR("[ShaderPlayground] " + message);
+            HIKARI::GetProjectContext().Close();
+            return 3;
+        }
+        outputRoot = HIKARI::GetProjectContext().GetLibraryRoot();
+    }
+    HIKARI::CORE::InitializeLogger(outputRoot / "Logs");
+    nlohmann::json summary{};
+    std::string error{};
+    const bool ok =
+        HIKARI::EDITOR::PLAYGROUND::RunShaderPlayground(*specPath, outputRoot / "ShaderPlayground", summary, error);
+    if (ok) {
+        HIKARI_LOG_INFO("[ShaderPlayground] wrote " + summary.value("output", std::string{}));
+    } else {
+        HIKARI_LOG_ERROR("[ShaderPlayground] " + error);
+    }
+    HIKARI::GetProjectContext().Close();
+    return ok ? 0 : 5;
+}
+
 // 配布ルートの Launcher から --project-hub で起動される項目中心。
 int RunProjectHub() {
     HIKARI::EDITOR::ProjectLauncherStartupRequest startup{};
@@ -186,16 +220,20 @@ int RunEditor() {
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     if (HIKARI::ReadRuntimeCommandLinePath(L"--import-assets") ||
         HIKARI::ReadRuntimeCommandLinePath(L"--package-game") ||
-        HIKARI::ReadRuntimeCommandLinePath(L"--export-request")) {
+        HIKARI::ReadRuntimeCommandLinePath(L"--export-request") ||
+        HIKARI::ReadRuntimeCommandLinePath(L"--shader-playground")) {
         std::string message;
         if (!HIKARI::CONTENT::OpenEngineContentForLaunch(&message)) {
             HIKARI_LOG_ERROR(message);
             return 3;
         }
-        const auto importExitCode = RunHeadlessAssetImportIfRequested();
-        const int exitCode = importExitCode ? *importExitCode : RunHeadlessGamePackageIfRequested().value_or(2);
+        std::optional<int> exitCode = RunHeadlessShaderPlaygroundIfRequested();
+        if (!exitCode)
+            exitCode = RunHeadlessAssetImportIfRequested();
+        if (!exitCode)
+            exitCode = RunHeadlessGamePackageIfRequested();
         HIKARI::CONTENT::GetEngineContentContext().Close();
-        return exitCode;
+        return exitCode.value_or(2);
     }
 
     if (!HIKARI::EDITOR::InstallEditorUiServices()) {

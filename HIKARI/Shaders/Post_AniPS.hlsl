@@ -83,7 +83,7 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     float3 softened = lerp(c, alongEdge, aaAmount);
 
     float3 stylized = HikariApplySaturation(softened, saturation);
-    stylized = HikariApplyContrast(stylized, contrast);
+    stylized = HikariAdjustContrast(stylized, contrast, 0.5f);
     stylized = TonePosterize(stylized, posterizeAmount, toneLevels);
     stylized += shadowLift.xxx *
         (1.0f - saturate(HikariPostLuma(DisplayMap(stylized))));

@@ -1,6 +1,7 @@
 #include "HIKARI_BuiltInEditorTools.h"
 
 #include "Editor/Panels/HIKARI_LightingBakePanel.h"
+#include "Editor/ShaderPlayground/HIKARI_ShaderPlaygroundPanel.h"
 #include "Editor/Tools/Console/HIKARI_ConsoleTool.h"
 #include "Editor/Tools/HIKARI_EditorToolHost.h"
 
@@ -21,9 +22,11 @@ private:
 
 std::unique_ptr<IEditorTool> CreateLightingBakeTool() { return std::make_unique<LightingBakeEditorTool>(); }
 
-constexpr std::array<EditorToolDescriptor, 2> kBuiltInEditorTools{
+constexpr std::array<EditorToolDescriptor, 3> kBuiltInEditorTools{
     EditorToolDescriptor{kLightingBakeToolId, "ui.window.lightingBake", "Lighting", false, &CreateLightingBakeTool},
-    EditorToolDescriptor{kConsoleToolId, "ui.window.console", {}, false, &CreateConsoleTool}};
+    EditorToolDescriptor{kConsoleToolId, "ui.window.console", {}, false, &CreateConsoleTool},
+    EditorToolDescriptor{
+        kShaderPlaygroundToolId, "ui.window.shaderPlayground", {}, false, &CreateShaderPlaygroundTool}};
 
 } // namespace
 

@@ -11,6 +11,7 @@
 #include "Editor/Tools/Console/HIKARI_ConsoleVariables.h"
 #include "Editor/Quality/HIKARI_GlobalPostOperations.h"
 #include "Editor/RenderStyle/HIKARI_RenderStyleOperations.h"
+#include "Editor/ShaderPlayground/HIKARI_ShaderPlaygroundOperations.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineOperations.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsOperations.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionOperations.h"
@@ -25,7 +26,6 @@
 
 #include <initializer_list>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -416,6 +416,7 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
                                           [this] { return aiOperationScene_; });
     EDITOR::RegisterAssetQueryOperation(operationRegistry_, [this] { return aiOperationScene_; });
     EDITOR::RegisterPerformanceOperations(operationRegistry_, [this] { return aiOperationScene_; });
+    EDITOR::RegisterShaderPlaygroundOperations(operationRegistry_);
     EDITOR::RegisterModelCollisionOperations(operationRegistry_, ModelCollisionWorkspace(),
                                              [this]() { return aiOperationScene_; });
     EDITOR::RegisterAnimationStateMachineOperations(operationRegistry_, AnimationStateMachineWorkspace(),

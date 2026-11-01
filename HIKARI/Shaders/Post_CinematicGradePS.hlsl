@@ -28,7 +28,7 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     float3 color = float3(r, g, b);
 
     color = HikariApplySaturation(color, saturation);
-    color = HikariApplyContrast(color, contrast);
+    color = HikariAdjustContrast(color, contrast, 0.5f);
     color *= gain;
 
     float2 center = uv * 2.0 - 1.0;

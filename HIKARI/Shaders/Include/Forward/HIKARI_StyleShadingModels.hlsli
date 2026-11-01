@@ -2,11 +2,11 @@
 #define HIKARI_STYLE_SHADING_MODELS_HLSLI
 
 // 描画の様式が選ぶ着色モデルの本体。引数だけで計算し、エンジンの定数バッファを読まない（ShaderPlayground からも
-// 同じ関数を呼ぶ）。どのモデルを使うかと定数からの取り出しは HIKARI_StyleShading.hlsli が受け持つ。
+// 同じ関数を呼ぶ）。前向きの描画は HIKARI_StyleShading.hlsli が LightCB の値を渡す。
 // 登録表は RenderContracts/RenderStyle/HIKARI_RenderStyleShading.h（Physical は鏡面反射の強さだけで、ここに本体はない）。
 #include "Include/HIKARI_PbrCommon.hlsli"
 
-// Cel の値。並びは LightCB の gStyleShading0/1 と同じ（HikariApplyStyleShading が詰め替える）。
+// Cel の値。並びは詰めた 2 つの float4（HikariApplyPackedStyleShading が詰め替える）と同じ。
 struct HikariCelStyleParams
 {
     float bands;      // 明るい側の段数
@@ -41,6 +41,24 @@ void HikariShadeCelStyle(HikariPbrShadingContext context, float3 n, float3 l, fl
     ambientDiffuse *= lerp(params.shadowTint, 1.0f.xxx, band);
     const float rim = smoothstep(0.55f, 0.72f, 1.0f - saturate(context.ndotView)) * band * params.rim;
     directional.diffuse += diffuseColor * radiance * rim * 0.6f;
+}
+
+// 詰めた値（C++ の PackRenderStyleShading と対）でモデルを選んで当てる。鏡面反射の強さはどのモデルでも掛ける。
+// 段数 0 は Physical（それ以外は変えない）。
+void HikariApplyPackedStyleShading(float4 shading0, float4 shading1, HikariPbrShadingContext context, float3 n,
+                                   float3 l, float3 radiance, float shadowVisibility,
+                                   inout HikariDirectPbrLobes directional, inout float3 ambientDiffuse)
+{
+    directional.specular *= shading0.w;
+    if (shading0.x < 0.5f)
+        return;
+    HikariCelStyleParams params;
+    params.bands = shading0.x;
+    params.threshold = shading0.y;
+    params.softness = shading0.z;
+    params.shadowTint = shading1.rgb;
+    params.rim = shading1.w;
+    HikariShadeCelStyle(context, n, l, radiance, shadowVisibility, params, directional, ambientDiffuse);
 }
 
 #endif

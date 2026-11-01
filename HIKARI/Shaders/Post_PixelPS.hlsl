@@ -1,14 +1,8 @@
 // 像素風。表示の色の段階で画面を大きな画素の格子に揃え、各画素は格子の中心の色を取る。色は段数に量子化し、
 // Bayer 行列で揺らして段の境を点描にする。幾何の線は PreTemporal の共通 pass で既に色へ含まれている。
 #include "Include/Post/HIKARI_PostStylize.hlsli"
-#include "Include/Color/HIKARI_Luminance.hlsli"
-
-float3 AdjustColor(float3 color, float saturation, float contrast)
-{
-    const float luma = HikariLuminance(color);
-    color = lerp(luma.xxx, color, saturation);
-    return saturate((color - 0.5f) * contrast + 0.5f);
-}
+#include "Include/Lib/HIKARI_LibColor.hlsli"
+#include "Include/Lib/HIKARI_LibDither.hlsli"
 
 float4 main(HikariPostEffectInput input) : SV_TARGET
 {
@@ -27,10 +21,11 @@ float4 main(HikariPostEffectInput input) : SV_TARGET
     const float2 resolution = max(float2(gResolutionX, gResolutionY), 1.0f.xx);
     const float2 block = floor(input.position.xy / blockPixels);
     const float2 blockUv = (block + 0.5f) * blockPixels / resolution;
-    float3 color = AdjustColor(gSceneTex.SampleLevel(gSamp, blockUv, 0.0f).rgb, saturation, contrast);
+    const float3 blockColor = gSceneTex.SampleLevel(gSamp, blockUv, 0.0f).rgb;
+    float3 color = saturate(HikariAdjustContrast(HikariAdjustSaturation(blockColor, saturation), contrast, 0.5f));
 
     // 段の量子化。揺らしは格子の画素単位で掛け、大きな画素の中は一色に保つ。
-    const float threshold = HikariStylizeBayer4(uint2(block)) * dither;
+    const float threshold = HikariBayer4x4(uint2(block)) * dither;
     color = saturate(floor(color * (levels - 1.0f) + 0.5f + threshold) / (levels - 1.0f));
 
     return float4(lerp(source, color, strength), 1.0f);
