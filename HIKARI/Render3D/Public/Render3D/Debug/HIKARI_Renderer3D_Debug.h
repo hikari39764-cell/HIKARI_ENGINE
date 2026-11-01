@@ -1,0 +1,143 @@
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <span>
+
+#include "Render2D/HIKARI_Transform2D.h"
+#include "Render3D/Core/HIKARI_Camera3D.h"
+#if defined(HIKARI_WITH_EDITOR)
+#include "Render3D/Core/HIKARI_RenderView.h"
+#endif
+#include "Core/Math/HIKARI_Transform3D.h"
+
+namespace HIKARI::RENDERER3D::DEBUG {
+
+// デバッグ描画の色は 0xRRGGBBAA（各 8 bit）。
+inline MATH::Vec4 DecodeRgba(uint32_t rgba) noexcept {
+    constexpr float inv255 = 1.0f / 255.0f;
+    return {static_cast<float>((rgba >> 24) & 0xFFu) * inv255, static_cast<float>((rgba >> 16) & 0xFFu) * inv255,
+            static_cast<float>((rgba >> 8) & 0xFFu) * inv255, static_cast<float>(rgba & 0xFFu) * inv255};
+}
+
+inline uint32_t EncodeRgba(const MATH::Vec4& color) noexcept {
+    const auto channel = [](float value) {
+        const float clamped = value > 0.0f ? (value < 1.0f ? value : 1.0f) : 0.0f;
+        return static_cast<uint32_t>(clamped * 255.0f + 0.5f);
+    };
+    return (channel(color.x) << 24) | (channel(color.y) << 16) | (channel(color.z) << 8) | channel(color.w);
+}
+
+// Editor overlay 3D debug primitive.
+enum class DebugDepthMode { DepthTest, XRay };
+
+struct Box3D {
+    Transform3D transform{};
+    MATH::Vec3 size{1.0f, 1.0f, 1.0f};
+    unsigned int outlineRgba = 0xFFFFFFFF;
+    unsigned int fillRgba = 0x00000000;
+    float outlineThicknessPixels = 1.5f;
+    DebugDepthMode depthMode = DebugDepthMode::DepthTest;
+};
+
+struct Stroke3D {
+    MATH::Vec3 from{};
+    MATH::Vec3 to{};
+    unsigned int rgba = 0xFFFFFFFF;
+    DebugDepthMode depthMode = DebugDepthMode::DepthTest;
+    float thicknessPixels = 1.5f;
+};
+
+struct PointMarker3D {
+    MATH::Vec3 position{};
+    float radius = 0.08f;
+    unsigned int rgba = 0xFFFFFFFF;
+    DebugDepthMode depthMode = DebugDepthMode::DepthTest;
+    float thicknessPixels = 1.5f;
+};
+
+struct Axis3D {
+    Transform3D transform{};
+    float length = 1.0f;
+    unsigned int xColor = 0xFF4C4CFF;
+    unsigned int yColor = 0x4CFF4CFF;
+    unsigned int zColor = 0x4C4CFFFF;
+    DebugDepthMode depthMode = DebugDepthMode::DepthTest;
+    float thicknessPixels = 1.5f;
+};
+
+struct Grid3D {
+    int halfCount = 10;
+    float spacing = 1.0f;
+    unsigned int rgba = 0x888888FF;
+    // majorLineEvery > 0 のとき、N 本ごとの線を majorRgba で強調する。0 は無効。
+    int majorLineEvery = 0;
+    unsigned int majorRgba = 0x888888FF;
+    // 0x00000000 以外のとき、地面パネル（XZ 平面、Y=0）を半透明塗りで描画する。
+    unsigned int fillRgba = 0x00000000;
+    DebugDepthMode depthMode = DebugDepthMode::DepthTest;
+    float thicknessPixels = 1.0f;
+};
+
+struct WireSphere3D {
+    MATH::Vec3 center{};
+    float radius = 1.0f;
+    uint32_t rgba = 0xFFFFFFFF;
+    int segments = 16;
+    DebugDepthMode depthMode = DebugDepthMode::DepthTest;
+    float thicknessPixels = 1.2f;
+};
+
+struct WireCone3D {
+    MATH::Vec3 origin{};
+    MATH::Vec3 direction{0.0f, -1.0f, 0.0f};
+    float length = 1.0f;
+    float angleDegrees = 30.0f;
+    uint32_t rgba = 0xFFFFFFFF;
+    int segments = 20;
+    bool drawRadials = true;
+    DebugDepthMode depthMode = DebugDepthMode::DepthTest;
+    float thicknessPixels = 1.2f;
+};
+
+struct DebugRendererFrameStats {
+    size_t submittedStrokeCount = 0;
+    size_t submittedXRayStrokeCount = 0;
+    size_t expandedStrokeCount = 0;
+    size_t depthTestStrokeCount = 0;
+    size_t xrayStrokeCount = 0;
+    size_t boxCount = 0;
+    size_t pointMarkerCount = 0;
+    size_t solidTriangleCount = 0;
+    size_t axisCount = 0;
+    size_t gridCount = 0;
+    size_t wireSphereCount = 0;
+    size_t wireConeCount = 0;
+    uint32_t lightProbeGizmoTotalPointCount = 0;
+    uint32_t lightProbeGizmoDrawnPointCount = 0;
+    uint32_t lightProbeGizmoMode = 0;
+    bool lightProbeGizmoCapped = false;
+};
+
+void Reset();
+void SubmitBox3D(const Box3D& box);
+void SubmitStroke3D(const Stroke3D& stroke);
+void SubmitPointMarker3D(const PointMarker3D& marker);
+void SubmitAxis3D(const Axis3D& axis);
+void SubmitGrid3D(const Grid3D& grid);
+void SubmitWireSphere3D(const WireSphere3D& sphere);
+void SubmitWireCone3D(const WireCone3D& cone);
+void AccumulateLightProbeVolumeGizmoStats(uint32_t totalPointCount, uint32_t drawnPointCount, uint32_t mode,
+                                          bool capped);
+const DebugRendererFrameStats& GetDebugRendererFrameStats();
+void RenderAll(const Camera3D& camera, float screenW, float screenH);
+#if defined(HIKARI_WITH_EDITOR)
+void RenderAllForView(RENDER3D::RenderViewId viewId, const Camera3D& camera, float screenW, float screenH);
+// 提交キューを通さず、深度テスト付きの線だけを編集ビュー用に即時描画する（ガイド用）。
+void RenderEditorViewStrokes(const Camera3D& camera, float screenW, float screenH,
+                             std::span<const Stroke3D> depthStrokes);
+void ShutdownEditorViewResources();
+#endif
+
+} // namespace HIKARI::RENDERER3D::DEBUG

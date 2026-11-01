@@ -31,7 +31,7 @@ $rank = @{}
 for ($index = 0; $index -lt $layers.Count; ++$index) {
     foreach ($name in $layers[$index]) { $rank[$name] = $index }
 }
-# Vfx (with its Post) is folded into Render3D; drop this entry when the directory moves.
+# Vfx (with its Post) is one layer with Render3D: its directory has its own Public/Private but the same library.
 $moduleAlias = @{ Vfx = 'Render3D' }
 
 # A moved module keeps its include paths under HIKARI/<Module>/Public|Private/, so 'Core/Private/Core/Math/X.h'

@@ -16,8 +16,12 @@ include_guard(GLOBAL)
 #   "<Dir>/...". A moved module sees only its own Public and Private, the SDK headers, third-party libraries and
 #   the modules it DEPENDS on, so an include of a module it does not depend on fails to compile. The headers
 #   shared with HLSL (HIKARI/Shaders/Include) have their own include root, hikari_shader_include (CMakeLists.txt).
-# - The groups in HIKARI_RUNTIME_MODULE_SPECS: modules not moved yet. They share the old include roots and link
-#   every moved module to see its Public.
+# - Render3D (with Vfx, which is one layer with it) is laid out the same way but built as two libraries,
+#   hikari_runtime_render3d and hikari_runtime_render3d_features: HIKARI/Render3D and HIKARI/Vfx keep their own
+#   Public and Private, both libraries see both Private directories, and every other target sees the two Public
+#   directories through the INTERFACE target hikari_render3d_public. They do not see the shared HIKARI include root.
+# - The other groups in HIKARI_RUNTIME_MODULE_SPECS: modules not moved yet. They share the old include roots and
+#   link every moved module to see its Public.
 
 set(
     HIKARI_RUNTIME_MODULE_SPECS
@@ -31,7 +35,6 @@ set(
     "hikari_runtime_presentation|HIKARI_RUNTIME_PRESENTATION_SOURCES"
     "hikari_runtime_scene_rendering|HIKARI_RUNTIME_SCENE_RENDERING_SOURCES"
     "hikari_runtime_physics|HIKARI_RUNTIME_PHYSICS_SOURCES"
-    "hikari_runtime_render2d|HIKARI_RUNTIME_RENDER2D_SOURCES"
     "hikari_runtime_render3d|HIKARI_RUNTIME_RENDER3D_SOURCES"
     "hikari_runtime_render3d_features|HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES"
     "hikari_runtime_authoring|HIKARI_RUNTIME_AUTHORING_SOURCES"
@@ -54,8 +57,15 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         "${HIKARI_SOURCE_ROOT}"
         "${runtime_source}")
     string(REPLACE "\\" "/" runtime_relative_path "${runtime_relative_path}")
+    # Render3D and Vfx sources are sorted below by their include path (HIKARI/Render3D/Surface/...).
+    set(runtime_group_path "${runtime_relative_path}")
+    set(runtime_in_render3d FALSE)
+    if(runtime_relative_path MATCHES "^HIKARI/(Render3D|Vfx)/(Public|Private)/(.*)$")
+        set(runtime_group_path "HIKARI/${CMAKE_MATCH_3}")
+        set(runtime_in_render3d TRUE)
+    endif()
 
-    if(runtime_relative_path MATCHES "^HIKARI/([A-Za-z0-9]+)/(Public|Private)/")
+    if(NOT runtime_in_render3d AND runtime_relative_path MATCHES "^HIKARI/([A-Za-z0-9]+)/(Public|Private)/")
         set(module_directory "${CMAKE_MATCH_1}")
         string(TOLOWER "${module_directory}" module_key)
         set(HIKARI_MODULE_DIRECTORY_${module_key} "${module_directory}")
@@ -86,18 +96,16 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         list(APPEND HIKARI_RUNTIME_SCENE_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Physics/")
         list(APPEND HIKARI_RUNTIME_PHYSICS_SOURCES "${runtime_source}")
-    elseif(runtime_relative_path MATCHES "^HIKARI/Render2D/")
-        list(APPEND HIKARI_RUNTIME_RENDER2D_SOURCES "${runtime_source}")
-    elseif(runtime_relative_path MATCHES
+    elseif(runtime_group_path MATCHES
         "^HIKARI/Render3D/Surface/HIKARI_(SceneSurfaceSet|RenderFrameSurfaceRegistry)\\.cpp$")
         # The surface set and its cross-stage registry are core semantic
         # handoffs. Concrete Surface render targets remain feature-owned.
         list(APPEND HIKARI_RUNTIME_RENDER3D_SOURCES "${runtime_source}")
     elseif(
-        runtime_relative_path MATCHES
+        runtime_group_path MATCHES
         "^HIKARI/(Vfx|Render3D/(Color|Features|Lighting|Reflection|ScreenSpace|Shadow|Surface|Terrain|Ui|Vfx|Water))/")
         list(APPEND HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES "${runtime_source}")
-    elseif(runtime_relative_path MATCHES "^HIKARI/Render3D/")
+    elseif(runtime_group_path MATCHES "^HIKARI/Render3D/")
         list(APPEND HIKARI_RUNTIME_RENDER3D_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Tools/")
         list(APPEND HIKARI_RUNTIME_AUTHORING_SOURCES "${runtime_source}")
@@ -190,21 +198,34 @@ function(hikari_add_module name)
     set_property(GLOBAL APPEND PROPERTY HIKARI_MODULE_TARGETS "${target_name}")
 endfunction()
 
+# hikari_add_runtime_module(<target> <source variable> [RENDER3D_LAYOUT])
+# RENDER3D_LAYOUT: the sources are Render3D / Vfx (Public/Private layout); the target sees the Private of both and
+# the Public headers of the moved modules, not the shared HIKARI include root.
 function(
     hikari_add_runtime_module
     target_name
     source_variable)
+    cmake_parse_arguments(PARSE_ARGV 2 module "RENDER3D_LAYOUT" "" "")
     add_library("${target_name}" STATIC)
     target_sources(
         "${target_name}"
         PRIVATE
             ${${source_variable}})
-    target_include_directories(
-        "${target_name}"
-        PRIVATE
-            "${HIKARI_SOURCE_ROOT}"
-            "${HIKARI_SOURCE_ROOT}/include"
-            "${HIKARI_SOURCE_ROOT}/HIKARI")
+    if(module_RENDER3D_LAYOUT)
+        target_include_directories(
+            "${target_name}"
+            PRIVATE
+                "${HIKARI_SOURCE_ROOT}/include"
+                "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private"
+                "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/Private")
+    else()
+        target_include_directories(
+            "${target_name}"
+            PRIVATE
+                "${HIKARI_SOURCE_ROOT}"
+                "${HIKARI_SOURCE_ROOT}/include"
+                "${HIKARI_SOURCE_ROOT}/HIKARI")
+    endif()
     get_property(moved_modules GLOBAL PROPERTY HIKARI_MODULE_TARGETS)
     target_link_libraries(
         "${target_name}"
@@ -234,6 +255,25 @@ function(hikari_define_runtime_modules output_variable)
     hikari_add_module(gfx DEPENDS core diagnostics project)
     hikari_add_module(render_contracts DEPENDS core gfx)
     hikari_add_module(render_core DEPENDS core diagnostics gfx render_contracts)
+    hikari_add_module(render2d DEPENDS core gfx input render_contracts render_core)
+    # Render3D and Vfx headers other modules may include; the libraries themselves are the groups below.
+    add_library(hikari_render3d_public INTERFACE)
+    target_include_directories(
+        hikari_render3d_public
+        INTERFACE
+            "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Public"
+            "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/Public")
+    target_link_libraries(
+        hikari_render3d_public
+        INTERFACE
+            hikari_core
+            hikari_diagnostics
+            hikari_gfx
+            hikari_input
+            hikari_rendercontracts
+            hikari_rendercore
+            hikari_render2d)
+    set_property(GLOBAL APPEND PROPERTY HIKARI_MODULE_TARGETS hikari_render3d_public)
     foreach(module_key IN LISTS HIKARI_MODULE_KEYS)
         if(NOT TARGET "hikari_${module_key}")
             message(
@@ -248,9 +288,14 @@ function(hikari_define_runtime_modules output_variable)
         string(REPLACE "|" ";" module_parts "${module_spec}")
         list(GET module_parts 0 module_target)
         list(GET module_parts 1 module_sources)
+        set(module_options)
+        if(module_target MATCHES "^hikari_runtime_render3d")
+            set(module_options RENDER3D_LAYOUT)
+        endif()
         hikari_add_runtime_module(
             "${module_target}"
-            "${module_sources}")
+            "${module_sources}"
+            ${module_options})
         list(APPEND runtime_targets "${module_target}")
     endforeach()
     set("${output_variable}" "${runtime_targets}" PARENT_SCOPE)

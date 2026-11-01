@@ -40,8 +40,10 @@ bld/
 
 # Engine debug-renderer source lives under this folder; keep it trackable even
 # though Visual Studio build-output Debug directories are ignored above.
-!HIKARI/Render3D/Debug/
-!HIKARI/Render3D/Debug/**
+!HIKARI/Render3D/Public/Render3D/Debug/
+!HIKARI/Render3D/Public/Render3D/Debug/**
+!HIKARI/Render3D/Private/Render3D/Debug/
+!HIKARI/Render3D/Private/Render3D/Debug/**
 !HIKARI/Scene/Debug/
 !HIKARI/Scene/Debug/**
 

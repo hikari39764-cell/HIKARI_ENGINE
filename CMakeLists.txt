@@ -145,6 +145,11 @@ target_include_directories(
     hikari_rendercore
     PRIVATE
         "${HIKARI_SOURCE_ROOT}/ThirdParty/imgui")
+# Render2D の公開ヘッダーが Spine の型を使う。
+target_link_libraries(
+    hikari_render2d
+    PUBLIC
+        HIKARI::Spine)
 target_link_libraries(
     hikari_runtime_navigation
     PRIVATE
@@ -299,6 +304,11 @@ if(HIKARI_WITH_EDITOR_BUILD)
     target_link_libraries(HIKARI_Editor PUBLIC
         HIKARI::Runtime HIKARI::ImGui HIKARI::ImGuizmo HIKARI::Assimp HIKARI::WinPix
         PRIVATE Bcrypt)
+    # 編集専用の Render3D ビュー（Render3D/Views の EditorInteractive*、Core/MeshRenderer/Editor）はこのライブラリでコンパイルするため、
+    # Render3D のモジュール内部ヘッダーを見る。Runtime 側のターゲットには編集専用コードを入れない。
+    target_include_directories(HIKARI_Editor PRIVATE
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private"
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/Private")
     hikari_configure_engine_target(HIKARI_Editor)
     # 編集 UI はゲームの毎フレーム経路ではないため、全体最適化の中間物と再リンク時間を持たない。
     set_target_properties(HIKARI_Editor PROPERTIES HIKARI_WHOLE_PROGRAM_OPTIMIZATION OFF)

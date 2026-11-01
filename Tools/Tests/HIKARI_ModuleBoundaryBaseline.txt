@@ -32,8 +32,6 @@ Assets/Sequence/HIKARI_SequenceAsset.h -> Scene/HIKARI_CinematicSequence.h
 Assets/Text/HIKARI_TextStyleAsset.h -> Scene/Ui/HIKARI_UiTextStyle.h
 Gameplay/Dialogue/HIKARI_DialogueSessionService.cpp -> Runtime/Services/HIKARI_ActionTimeDilationService.h
 Gameplay/Dialogue/HIKARI_DialogueSessionService.cpp -> Runtime/Services/HIKARI_RuntimeServices.h
-Render3D/Core/HIKARI_MeshRenderer.cpp -> Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h
-Render3D/Views/HIKARI_EditorInteractiveViewGuides.cpp -> Render3D/Debug/Internal/HIKARI_DebugPrimitiveRendererBackend.h
 Runtime/App/HIKARI_RuntimeEngineApp.h -> Runtime/Project/Internal/HIKARI_GameProjectSessionRuntimeExtension.h
 Runtime/Presentation/HIKARI_FramePresentationService.cpp -> Runtime/Project/Internal/HIKARI_GameProjectCameraLensConversion.h
 Runtime/Presentation/HIKARI_FramePresentationService.cpp -> Runtime/Services/Internal/HIKARI_RuntimeServiceState.h
