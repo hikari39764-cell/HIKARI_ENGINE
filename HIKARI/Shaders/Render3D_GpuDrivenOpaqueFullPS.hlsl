@@ -4,10 +4,10 @@
 #define HIKARI_SURFACE_PARTITION 1
 #endif
 #include "Include/Surface/HIKARI_SurfacePartition.hlsli"
-// SSR capture と地形専用 PSO は cost mode を実行時に読む (地形は全 mode を 1 PSO で扱う)。
-#if HIKARI_FORWARD_REFLECTION_CAPTURE || HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_TERRAIN
-#define HIKARI_FORWARD_COST_MODE_STATIC 255
-#else
+// 通常の描画 (SSR capture と地形専用を含む) は Full (0) に固定し、診断の分岐を持たない。診断用の PSO は catalog の
+// define が mode を固定する (番号は C++ の ForwardShadingCostMode と同じ。何も省かない GeneralFull はこの既定と同じ
+// PS なので define を持たない FullPS をそのまま使う)。地形の診断 PSO だけは全 mode を 1 つで扱う 255 (実行時に読む)。
+#ifndef HIKARI_FORWARD_COST_MODE_STATIC
 #define HIKARI_FORWARD_COST_MODE_STATIC 0
 #endif
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"

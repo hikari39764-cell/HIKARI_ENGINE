@@ -10,38 +10,51 @@
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Diagnostics/HIKARI_BenchmarkRun.h"
 #include "Diagnostics/HIKARI_PerformanceAnalysis.h"
+#include "Diagnostics/HIKARI_PerformanceBreakdownAnalysis.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Project/HIKARI_ProjectContext.h"
+#include "Runtime/Diagnostics/HIKARI_PerformanceBreakdown.h"
 #include "Runtime/Diagnostics/HIKARI_PerformanceCapture.h"
 
 namespace HIKARI::EDITOR {
 namespace {
 using Json = nlohmann::json;
 namespace CAPTURE = RUNTIME::PERFORMANCE_CAPTURE;
+namespace BREAKDOWN = RUNTIME::PERFORMANCE_BREAKDOWN;
 
 constexpr const char* kCapturePrefix = "capture-";
+constexpr const char* kBreakdownPrefix = "breakdown-";
 constexpr const char* kTraceSuffix = ".trace.json";
 
 std::filesystem::path PerformanceDirectory() { return GetProjectContext().GetLibraryRoot() / "Performance"; }
 
-// 保存済みの捕獲（時間線は除く）を古い順に。名前に時刻を入れてあるので、名前順が時間順。
-std::vector<std::filesystem::path> ListCaptures() {
+// 保存済みの捕獲（時間線は除く）を古い順に。名前に時刻を入れてあるので、時刻の部分の順が時間順。
+// includeBreakdowns は、性能の分解の結果も数える（発見は捕獲も分解も説明する。比較は捕獲だけ）。
+std::vector<std::filesystem::path> ListCaptures(bool includeBreakdowns = false) {
     std::vector<std::filesystem::path> captures;
     std::error_code error;
     for (std::filesystem::directory_iterator it(PerformanceDirectory(), error), end; !error && it != end;
          it.increment(error)) {
         const std::string name = it->path().filename().string();
-        if (it->is_regular_file(error) && name.rfind(kCapturePrefix, 0) == 0 && name.ends_with(".json") &&
-            !name.ends_with(kTraceSuffix))
+        const bool known =
+            name.rfind(kCapturePrefix, 0) == 0 || (includeBreakdowns && name.rfind(kBreakdownPrefix, 0) == 0);
+        if (it->is_regular_file(error) && known && name.ends_with(".json") && !name.ends_with(kTraceSuffix))
             captures.push_back(it->path());
     }
-    std::sort(captures.begin(), captures.end());
+    const auto stamp = [](const std::filesystem::path& path) {
+        const std::string name = path.filename().string();
+        return name.substr(name.find('-') + 1);
+    };
+    std::sort(captures.begin(), captures.end(), [&stamp](const auto& lhs, const auto& rhs) {
+        return stamp(lhs) != stamp(rhs) ? stamp(lhs) < stamp(rhs) : lhs < rhs;
+    });
     return captures;
 }
 
 // "latest" / "previous"、または Library/Performance の中のファイル（名前だけ、.json は省いてよい）。
-bool ResolveCapture(const std::string& text, std::filesystem::path& outPath, std::string& error) {
-    const std::vector<std::filesystem::path> captures = ListCaptures();
+bool ResolveCapture(const std::string& text, std::filesystem::path& outPath, std::string& error,
+                    bool includeBreakdowns = false) {
+    const std::vector<std::filesystem::path> captures = ListCaptures(includeBreakdowns);
     if (text.empty() || text == "latest" || text == "previous") {
         const size_t back = text == "previous" ? 2u : 1u;
         if (captures.size() < back) {
@@ -79,6 +92,15 @@ bool LoadCapture(const std::filesystem::path& path, Json& outCapture, std::strin
     return error.empty();
 }
 
+// 捕獲か性能の分解のどちらか（perf.findings が説明できるもの）。
+bool LoadPerformanceFile(const std::filesystem::path& path, Json& outFile, std::string& error) {
+    if (!SERIALIZATION::JSON::ReadJsonFile(path, outFile, &error))
+        return false;
+    error = DIAGNOSTICS::IsBreakdown(outFile) ? DIAGNOSTICS::BreakdownSchemaError(outFile)
+                                              : DIAGNOSTICS::CaptureSchemaError(outFile);
+    return error.empty();
+}
+
 Json DescribeCaptureFile(const std::filesystem::path& path, const Json& capture) {
     return {{"path", TEXT::PathToUtf8(path)},
             {"capturedAt", capture.value("capturedAt", std::string{})},
@@ -97,6 +119,8 @@ EditorOperationResult StartCapture(const Json& parameters, const std::function<D
         return OperationFailure("NO_PROJECT", "Open a project first.");
     if (sceneProvider() == nullptr)
         return OperationFailure("NO_SCENE", "No scene is open.");
+    if (BREAKDOWN::IsRunning())
+        return OperationFailure("CAPTURE_BUSY", "A performance breakdown is running; wait for it or cancel it first.");
     const uint32_t maximum = DIAGNOSTICS::kMaximumCaptureFrames;
     CAPTURE::Request request;
     const int limit = static_cast<int>(maximum);
@@ -159,6 +183,76 @@ EditorOperationResult CaptureStatus() {
     return OperationOk("Capture saved to " + TEXT::PathToUtf8(status.output), std::move(data));
 }
 
+EditorOperationResult StartBreakdown(const Json& parameters, const std::function<DocumentSceneBase*()>& sceneProvider) {
+    if (parameters.value("cancel", false)) {
+        return BREAKDOWN::Cancel()
+                   ? OperationOk("The performance breakdown was cancelled and the render quality restored.")
+                   : OperationFailure("NO_BREAKDOWN", "No performance breakdown is running.");
+    }
+    if (!GetProjectContext().IsOpen())
+        return OperationFailure("NO_PROJECT", "Open a project first.");
+    if (sceneProvider() == nullptr)
+        return OperationFailure("NO_SCENE", "No scene is open.");
+    const int limit = static_cast<int>(DIAGNOSTICS::kMaximumCaptureFrames);
+    BREAKDOWN::Request request;
+    request.preset = parameters.value("preset", request.preset);
+    request.warmupFrames =
+        static_cast<uint32_t>(std::clamp(parameters.value("warmup", static_cast<int>(request.warmupFrames)), 0, limit));
+    request.sampleFrames = static_cast<uint32_t>(
+        std::clamp(parameters.value("samples", static_cast<int>(request.sampleFrames)), 1, limit));
+    request.rounds =
+        std::clamp(parameters.value("rounds", request.rounds), BREAKDOWN::kMinimumRounds, BREAKDOWN::kMaximumRounds);
+    request.output = PerformanceDirectory() / (std::string(kBreakdownPrefix) + CAPTURE::LocalTimestamp(true) + ".json");
+    std::string error;
+    if (!BREAKDOWN::Start(request, error))
+        return OperationFailure("BREAKDOWN_FAILED", error);
+    const BREAKDOWN::Status status = BREAKDOWN::GetStatus();
+    Json data = {{"state", "running"},
+                 {"preset", status.preset},
+                 {"segments", status.segmentsTotal},
+                 {"path", TEXT::PathToUtf8(request.output)},
+                 {"pending", true},
+                 {"poll", {{"operation", "perf.breakdown.status"}, {"parameters", Json::object()}}}};
+    return OperationOk("Performance breakdown started: " + std::to_string(status.segmentsTotal) +
+                           " segments of the current editor world. It changes the render quality item by item and "
+                           "restores it at the end; keep the editor view, scene and quality as they are, then poll "
+                           "perf.breakdown.status.",
+                       std::move(data));
+}
+
+EditorOperationResult BreakdownStatus() {
+    const BREAKDOWN::Status status = BREAKDOWN::GetStatus();
+    Json data = {{"state", TEXT::EnumToName(kStateNames, status.state, "idle")},
+                 {"preset", status.preset},
+                 {"segmentsDone", status.segmentsDone},
+                 {"segmentsTotal", status.segmentsTotal}};
+    if (status.state == CAPTURE::CaptureState::Idle)
+        return OperationOk("No performance breakdown has run in this session.", std::move(data));
+    data["path"] = TEXT::PathToUtf8(status.output);
+    if (status.state == CAPTURE::CaptureState::Running) {
+        data["pending"] = true;
+        data["poll"] = {{"operation", "perf.breakdown.status"}, {"parameters", Json::object()}};
+        return OperationOk("Breakdown running: " + std::to_string(status.segmentsDone) + "/" +
+                               std::to_string(status.segmentsTotal) + " segments, now " + status.current + ".",
+                           std::move(data));
+    }
+    if (status.state == CAPTURE::CaptureState::Failed) {
+        EditorOperationResult failure =
+            OperationFailure("BREAKDOWN_FAILED", "The breakdown could not be saved: " + status.message);
+        failure.data = std::move(data);
+        return failure;
+    }
+    if (!status.message.empty())
+        data["message"] = status.message;
+    data["complete"] = status.report.value("complete", false);
+    data["analysis"] = status.report.value("analysis", Json::object());
+    data["next"] = "perf.findings explains the breakdown.";
+    EditorOperationResult result =
+        OperationOk("Breakdown saved to " + TEXT::PathToUtf8(status.output), std::move(data));
+    result.details = DIAGNOSTICS::FormatBreakdownTable(status.report);
+    return result;
+}
+
 EditorOperationResult CompareOperation(const Json& parameters) {
     if (!GetProjectContext().IsOpen())
         return OperationFailure("NO_PROJECT", "Open a project first.");
@@ -187,9 +281,11 @@ EditorOperationResult FindingsOperation(const Json& parameters) {
     std::filesystem::path path;
     Json capture;
     std::string error;
-    if (!ResolveCapture(parameters.value("capture", std::string{}), path, error) || !LoadCapture(path, capture, error))
+    if (!ResolveCapture(parameters.value("capture", std::string{}), path, error, true) ||
+        !LoadPerformanceFile(path, capture, error))
         return OperationFailure("INVALID_CAPTURE", error);
-    Json result = DIAGNOSTICS::BuildFindings(capture);
+    Json result = DIAGNOSTICS::IsBreakdown(capture) ? DIAGNOSTICS::BuildBreakdownFindings(capture)
+                                                    : DIAGNOSTICS::BuildFindings(capture);
     result["capture"] = DescribeCaptureFile(path, capture);
     const Json& summary = result["summary"];
     return OperationOk("Findings: " + std::to_string(summary.value("critical", 0)) + " critical, " +
@@ -225,6 +321,53 @@ void RegisterPerformanceOperations(EditorOperationRegistry& registry,
         [sceneProvider](const Json& parameters) { return StartCapture(parameters, sceneProvider); }};
     capture.searchTerms = {"performance", "profile", "benchmark", "fps", "frame time", "性能", "性能分析", "捕获"};
     registry.Register(std::move(capture), EditorOperationKind::Session, false);
+
+    Json presetSchema = Json::object();
+    presetSchema["enum"] = Json::array();
+    for (const std::string_view name : BREAKDOWN::PresetNames())
+        presetSchema["enum"].push_back(std::string(name));
+    const BREAKDOWN::Request breakdownDefaults;
+    EditorOperationDefinition breakdown{
+        "perf.breakdown",
+        "Find which part of a GPU pass is heavy, in the current editor world: switch one render-quality item at a time "
+        "(forward shading features such as normal map, shadows, local lights, GI sampling, reflections; the dynamic "
+        "GI system; the depth prepass), interleave every variant with a baseline, wait until each setting really took "
+        "effect, sample frames, and report each item's cost, its share of the target pass, the noise, the whole-frame "
+        "saving, and the share that no switch explains. The result is saved to the project's Library/Performance and "
+        "explained by perf.findings. The render quality is changed during the run and restored at the end (it takes "
+        "about two minutes); keep the editor view, scene and quality as they are. Poll perf.breakdown.status; "
+        "cancel=true stops a running breakdown.",
+        "general",
+        {{"preset", P::String, false, "What to break down; default " + breakdownDefaults.preset + ".", presetSchema},
+         {"warmup", P::Int, false,
+          "Frames to skip in every segment after the setting took effect; default " +
+              std::to_string(breakdownDefaults.warmupFrames) + ".",
+          frameRange},
+         {"samples",
+          P::Int,
+          false,
+          "Frames to record in every segment; default " + std::to_string(breakdownDefaults.sampleFrames) + ".",
+          {{"minimum", 1}, {"maximum", DIAGNOSTICS::kMaximumCaptureFrames}}},
+         {"rounds",
+          P::Int,
+          false,
+          "How many times the whole sequence repeats; default " + std::to_string(breakdownDefaults.rounds) + ".",
+          {{"minimum", BREAKDOWN::kMinimumRounds}, {"maximum", BREAKDOWN::kMaximumRounds}}},
+         {"cancel", P::Bool, false, "Stop the running breakdown and restore the render quality."}},
+        [sceneProvider](const Json& parameters) { return StartBreakdown(parameters, sceneProvider); }};
+    breakdown.searchTerms = {"performance", "breakdown", "profile", "which part is slow",
+                             "性能",        "性能分解",  "哪部分重"};
+    registry.Register(std::move(breakdown), EditorOperationKind::Session, false);
+
+    EditorOperationDefinition breakdownStatus{
+        "perf.breakdown.status",
+        "Report the running performance breakdown, or the table of the last finished one (cost of every item, share, "
+        "noise, unattributed share).",
+        "general",
+        {},
+        [](const Json&) { return BreakdownStatus(); }};
+    breakdownStatus.permission = EditorOperationPermission::ReadEditorState;
+    registry.Register(std::move(breakdownStatus), EditorOperationKind::Query, false);
 
     EditorOperationDefinition status{
         "perf.capture.status",

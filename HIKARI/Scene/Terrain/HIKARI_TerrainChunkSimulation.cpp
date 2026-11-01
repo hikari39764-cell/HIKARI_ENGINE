@@ -44,7 +44,7 @@ bool EvaluateFootprintFactor(TERRAIN::TerrainFootprintKind kind, float dx, float
 namespace {
 constexpr float kRelaxationIntervalSeconds = 0.125f;
 CPU_PROFILE::DynamicPassHandle TerrainRelaxTiming() {
-    static const CPU_PROFILE::DynamicPassHandle handle = CPU_PROFILE::RegisterDynamicPass("Sand/RelaxChunk");
+    static const CPU_PROFILE::DynamicPassHandle handle = CPU_PROFILE::RegisterDynamicPass("Terrain/RelaxChunk");
     return handle;
 }
 

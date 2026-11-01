@@ -41,12 +41,21 @@ static const uint MATERIAL_SPECULAR_GLOSS_COMPAT = HIKARI_MATERIAL_FLAG_LEGACY_S
 
 #include "Include/Lighting/HIKARI_ViewLightingData.hlsli"
 
+// 診断モード。C++ の ForwardShadingCostMode と同じ番号（6 の GeneralFull は何も省かないので定数を持たない）。
 static const uint HIKARI_FORWARD_COST_FULL = 0u;
 static const uint HIKARI_FORWARD_COST_ALBEDO_ONLY = 1u;
 static const uint HIKARI_FORWARD_COST_NO_NORMAL_MAP = 2u;
 static const uint HIKARI_FORWARD_COST_NO_SHADOW = 3u;
 static const uint HIKARI_FORWARD_COST_NO_SSAO = 4u;
 static const uint HIKARI_FORWARD_COST_NO_MATERIAL_EXTRAS = 5u;
+static const uint HIKARI_FORWARD_COST_NO_SUN_SHADOW = 7u;
+static const uint HIKARI_FORWARD_COST_NO_CONTACT_SHADOW = 8u;
+static const uint HIKARI_FORWARD_COST_NO_LIGHT_PROBES = 9u;
+static const uint HIKARI_FORWARD_COST_NO_ENV_REFLECTION = 10u;
+static const uint HIKARI_FORWARD_COST_NO_LOCAL_LIGHTS = 11u;
+static const uint HIKARI_FORWARD_COST_NO_CLOUD_SHADOW = 12u;
+static const uint HIKARI_FORWARD_COST_NO_DECALS = 13u;
+static const uint HIKARI_FORWARD_COST_SKELETON = 14u;
 
 #ifndef HIKARI_FORWARD_COST_MODE_STATIC
 #define HIKARI_FORWARD_COST_MODE_STATIC 255

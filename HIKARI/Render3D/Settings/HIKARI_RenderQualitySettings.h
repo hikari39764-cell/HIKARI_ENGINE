@@ -57,6 +57,11 @@ inline constexpr TEXT::EnumName<GeometryPipelineMode> kGeometryPipelineModeLabel
     {GeometryPipelineMode::AutoFallback, "Auto Fallback"},
 };
 
+// 前向き不透明の診断モード。Full は通常の描画（標準 PBR の面は専用 PS、材質 program の面は別 PS）で、それ以外は一般面
+// すべてを描く 1 本の PS から 1 項目だけを省く。GeneralFull は何も省かない同じ PS で、診断モードの差を測る基準にする
+// （Full との差が専用 PS の効果）。SSR / 次表面散乱の capture 中は PSO を切り替えず、capture の PS が mode を
+// 実行時に読んで省く。地形の PS は NoShadow だけを読む。HLSL の HIKARI_FORWARD_COST_* と BuiltinShaderCatalog.json の
+// 診断 PS の define は、この列挙の番号と同じ並びにする。
 enum class ForwardShadingCostMode : uint8_t {
     Full = 0,
     AlbedoOnly,
@@ -64,6 +69,18 @@ enum class ForwardShadingCostMode : uint8_t {
     NoShadow,
     NoSsao,
     NoMaterialExtras,
+    GeneralFull,
+    NoSunShadow,
+    NoContactShadow,
+    NoLightProbes,
+    NoEnvReflection,
+    NoLocalLights,
+    NoCloudShadow,
+    NoDecals,
+    // 切り替えられる項目（法線、材質の追加項目、デカール、SSAO、雲影、太陽の影、局所光源、probe、環境反射）を全部省く。
+    // 残る基礎の着色の費用を測る。
+    Skeleton,
+    Count,
 };
 
 inline constexpr TEXT::EnumName<ForwardShadingCostMode> kForwardShadingCostModeNames[] = {
@@ -73,6 +90,15 @@ inline constexpr TEXT::EnumName<ForwardShadingCostMode> kForwardShadingCostModeN
     {ForwardShadingCostMode::NoShadow, "NoShadow"},
     {ForwardShadingCostMode::NoSsao, "NoSsao"},
     {ForwardShadingCostMode::NoMaterialExtras, "NoMaterialExtras"},
+    {ForwardShadingCostMode::GeneralFull, "GeneralFull"},
+    {ForwardShadingCostMode::NoSunShadow, "NoSunShadow"},
+    {ForwardShadingCostMode::NoContactShadow, "NoContactShadow"},
+    {ForwardShadingCostMode::NoLightProbes, "NoLightProbes"},
+    {ForwardShadingCostMode::NoEnvReflection, "NoEnvReflection"},
+    {ForwardShadingCostMode::NoLocalLights, "NoLocalLights"},
+    {ForwardShadingCostMode::NoCloudShadow, "NoCloudShadow"},
+    {ForwardShadingCostMode::NoDecals, "NoDecals"},
+    {ForwardShadingCostMode::Skeleton, "Skeleton"},
 };
 
 inline constexpr TEXT::EnumName<ForwardShadingCostMode> kForwardShadingCostModeLabels[] = {
@@ -82,6 +108,15 @@ inline constexpr TEXT::EnumName<ForwardShadingCostMode> kForwardShadingCostModeL
     {ForwardShadingCostMode::NoShadow, "No Shadow"},
     {ForwardShadingCostMode::NoSsao, "No SSAO"},
     {ForwardShadingCostMode::NoMaterialExtras, "No Material Extras"},
+    {ForwardShadingCostMode::GeneralFull, "General Full"},
+    {ForwardShadingCostMode::NoSunShadow, "No Sun Shadow"},
+    {ForwardShadingCostMode::NoContactShadow, "No Contact Shadow"},
+    {ForwardShadingCostMode::NoLightProbes, "No Light Probes / GI"},
+    {ForwardShadingCostMode::NoEnvReflection, "No Environment Reflection"},
+    {ForwardShadingCostMode::NoLocalLights, "No Local Lights"},
+    {ForwardShadingCostMode::NoCloudShadow, "No Cloud Shadow"},
+    {ForwardShadingCostMode::NoDecals, "No Decals"},
+    {ForwardShadingCostMode::Skeleton, "Skeleton (Every Optional Feature Off)"},
 };
 
 enum class LightProbeVolumeSamplingMode : uint8_t {

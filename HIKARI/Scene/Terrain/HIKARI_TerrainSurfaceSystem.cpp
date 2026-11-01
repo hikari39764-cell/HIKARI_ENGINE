@@ -41,27 +41,27 @@ using TERRAIN::SyncChunkFromAuthored;
 namespace {
 
 CPU_PROFILE::DynamicPassHandle TerrainRefreshTiming() {
-    static const CPU_PROFILE::DynamicPassHandle handle = CPU_PROFILE::RegisterDynamicPass("Sand/Refresh");
+    static const CPU_PROFILE::DynamicPassHandle handle = CPU_PROFILE::RegisterDynamicPass("Terrain/Refresh");
     return handle;
 }
 
 CPU_PROFILE::DynamicPassHandle TerrainInteractionTiming() {
-    static const CPU_PROFILE::DynamicPassHandle handle = CPU_PROFILE::RegisterDynamicPass("Sand/Interactions");
+    static const CPU_PROFILE::DynamicPassHandle handle = CPU_PROFILE::RegisterDynamicPass("Terrain/Interactions");
     return handle;
 }
 
 CPU_PROFILE::DynamicPassHandle TerrainStitchTiming() {
-    static const CPU_PROFILE::DynamicPassHandle handle = CPU_PROFILE::RegisterDynamicPass("Sand/StitchBorders");
+    static const CPU_PROFILE::DynamicPassHandle handle = CPU_PROFILE::RegisterDynamicPass("Terrain/StitchBorders");
     return handle;
 }
 
 CPU_PROFILE::DynamicPassHandle TerrainSnapshotCloneTiming() {
-    static const CPU_PROFILE::DynamicPassHandle handle = CPU_PROFILE::RegisterDynamicPass("Sand/SnapshotClone");
+    static const CPU_PROFILE::DynamicPassHandle handle = CPU_PROFILE::RegisterDynamicPass("Terrain/SnapshotClone");
     return handle;
 }
 
 CPU_PROFILE::DynamicPassHandle TerrainSnapshotPublishTiming() {
-    static const CPU_PROFILE::DynamicPassHandle handle = CPU_PROFILE::RegisterDynamicPass("Sand/SnapshotPublish");
+    static const CPU_PROFILE::DynamicPassHandle handle = CPU_PROFILE::RegisterDynamicPass("Terrain/SnapshotPublish");
     return handle;
 }
 

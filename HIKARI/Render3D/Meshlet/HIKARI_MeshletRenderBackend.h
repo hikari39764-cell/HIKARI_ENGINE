@@ -16,8 +16,7 @@
 
 namespace HIKARI::RENDER3D::MESHLET {
 
-constexpr size_t kForwardOpaquePipelineVariantCount =
-    static_cast<size_t>(ForwardShadingCostMode::NoMaterialExtras) + 1u;
+constexpr size_t kForwardOpaquePipelineVariantCount = static_cast<size_t>(ForwardShadingCostMode::Count);
 
 enum class MeshletPipelineKind : uint32_t {
     ForwardOpaque,
@@ -156,6 +155,12 @@ private:
                                                  GPUDRIVEN::GpuDrivenCommandBucket bucket) const;
     // 分割した kind は分割したすべての PSO（一般面・材質 program・地形）が揃って初めて描ける。
     void ApplySurfacePartitionReadiness();
+    // AS・MS・PS から bucket ごとの Forward PSO を作る。どれかが失敗すれば out を変えない。
+    bool CreateForwardBucketPipelines(const char* amplificationId, const char* pixelId, const wchar_t* debugName,
+                                      PipelineBucketArray& out);
+    // 診断モードで地形の面を描く PSO（全 mode を 1 つで扱い、mode を実行時に読む）。最初の要求時にだけ作り、
+    // 失敗は Reset まで再試行しない。通常の地形 PSO は Full だけを持つ。
+    bool PrepareTerrainDiagnosticPipelines();
     bool AreReflectionPipelinesReady(bool captureMaterial, bool captureSubsurface) const;
 
     // Forward capture の PSO。[captureMaterial + 2 * captureSubsurface] ごとに標準 PBR の面と材質 program の面を
@@ -192,6 +197,8 @@ private:
     PipelineBucketArray terrainGeometryFeatureMaskPipelineStates_{};
     PipelineBucketArray forwardDebugPipelineStates_{};
     bool forwardDebugAttempted_ = false;
+    PipelineBucketArray terrainDiagnosticPipelineStates_{};
+    bool terrainDiagnosticAttempted_ = false;
     uint32_t pipelineMask_ = MeshletPipelineMask::All;
     MeshletRenderBackendStats stats_{};
 };

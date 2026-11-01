@@ -1,4 +1,5 @@
 #include "Diagnostics/HIKARI_PerformanceAnalysis.h"
+#include "Diagnostics/Internal/HIKARI_AnalysisJson.h"
 
 #include <algorithm>
 #include <cmath>
@@ -11,6 +12,7 @@
 namespace HIKARI::DIAGNOSTICS {
 namespace {
 using Json = nlohmann::json;
+using namespace ANALYSIS;
 
 constexpr double kMiB = 1024.0 * 1024.0;
 
@@ -45,38 +47,6 @@ Threshold ThresholdFor(std::string_view unit) {
     if (unit == "count")
         return kCountThreshold;
     return kMsThreshold;
-}
-
-// ---- JSON の安全な取り出し（無い・null・型違いは既定値） ----
-const Json& Child(const Json& object, const char* key) {
-    static const Json kNull;
-    if (!object.is_object())
-        return kNull;
-    const auto found = object.find(key);
-    return found != object.end() ? *found : kNull;
-}
-
-double NumberOr(const Json& object, const char* key, double fallback = 0.0) {
-    const Json& value = Child(object, key);
-    return value.is_number() ? value.get<double>() : fallback;
-}
-
-bool BoolOr(const Json& object, const char* key, bool fallback) {
-    const Json& value = Child(object, key);
-    return value.is_boolean() ? value.get<bool>() : fallback;
-}
-
-std::string StringOr(const Json& object, const char* key, const std::string& fallback = {}) {
-    const Json& value = Child(object, key);
-    return value.is_string() ? value.get<std::string>() : fallback;
-}
-
-bool HasNumber(const Json& object, const char* key) { return Child(object, key).is_number(); }
-
-std::string Fixed(double value, int decimals) {
-    char text[64]{};
-    std::snprintf(text, sizeof(text), "%.*f", decimals, value);
-    return text;
 }
 
 // ---- 区間（pass）の行 ----
@@ -274,18 +244,6 @@ Json ThresholdsJson() {
 }
 
 // ---- 発見 ----
-int SeverityRank(std::string_view severity) { return severity == "critical" ? 0 : severity == "warning" ? 1 : 2; }
-
-Json Finding(std::string id, const char* severity, std::string title, std::string detail,
-             std::vector<std::string> evidence, Json data = Json::object()) {
-    return {{"id", std::move(id)},
-            {"severity", severity},
-            {"title", std::move(title)},
-            {"detail", std::move(detail)},
-            {"evidence", std::move(evidence)},
-            {"data", std::move(data)}};
-}
-
 // CPU / GPU のどちらが足りないか。フレーム間隔・GPU のフレーム・CPU の稼働（待ちを除く）を比べる。
 void AddBoundFinding(const Json& capture, std::vector<Json>& findings, std::string& bound) {
     const double interval = NumberOr(Child(capture, "frameInterval"), "meanMs");
@@ -658,6 +616,8 @@ void AddHitchFindings(const Json& capture, std::vector<Json>& findings) {
 std::string CaptureSchemaError(const Json& capture) {
     if (!capture.is_object())
         return "The file is not a performance capture (a JSON object was expected).";
+    if (StringOr(capture, "kind") == "breakdown")
+        return "The file is a performance breakdown, not a capture.";
     const Json& version = Child(capture, "schemaVersion");
     if (!version.is_number_integer() || version.get<int>() != kCaptureSchemaVersion) {
         return "Unsupported capture format (schemaVersion " +
@@ -822,19 +782,7 @@ Json BuildFindings(const Json& capture) {
     AddMemoryFindings(capture, findings);
     AddHitchFindings(capture, findings);
     AddMetricStatusFindings(capture, findings);
-    std::stable_sort(findings.begin(), findings.end(), [](const Json& lhs, const Json& rhs) {
-        return SeverityRank(StringOr(lhs, "severity")) < SeverityRank(StringOr(rhs, "severity"));
-    });
-    size_t critical = 0, warning = 0, info = 0;
-    for (const Json& finding : findings) {
-        const std::string severity = StringOr(finding, "severity");
-        (severity == "critical" ? critical : severity == "warning" ? warning : info) += 1;
-    }
-    Json result = Json::object();
-    result["bound"] = bound;
-    result["summary"] = {{"critical", critical}, {"warning", warning}, {"info", info}};
-    result["findings"] = findings;
-    return result;
+    return FindingsResult(std::move(findings), bound);
 }
 
 } // namespace HIKARI::DIAGNOSTICS

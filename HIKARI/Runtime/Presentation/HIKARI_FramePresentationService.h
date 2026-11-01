@@ -35,6 +35,9 @@ void ClearPendingWindowResize();
 bool ApplyPendingWindowResize();
 bool ApplyWindowPresentationSettings();
 bool QueueRenderQualitySettings(const RENDER3D::RenderQualitySettings& settings);
+// 今の画質が、フレームの頭の同期（SynchronizeRenderQualityRuntime）で実行時へ反映済みか。設定を変えた直後は、
+// 次のフレームの頭までは偽。
+bool IsRenderQualityApplied();
 FrameSceneResolutionPlan ResolveFrameSceneResolutionPlan();
 void ApplyFrameSceneCaptureSize();
 

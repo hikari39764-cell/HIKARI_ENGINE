@@ -351,6 +351,10 @@ constexpr PassInfo kPassInfo[] = {
     {Pass::DynamicDiffuseGi, "Dynamic Diffuse GI", "Render3D"},
     {Pass::CloudSolarVisibility, "Cloud Solar Visibility", "Render3D"},
     {Pass::RuntimeRayScenePreparation, "Shared Ray Scene Preparation", "Render3D"},
+    {Pass::MeshletForwardStandard, "Meshlet Forward Standard PBR", "Render3D"},
+    {Pass::MeshletForwardMaterialProgram, "Meshlet Forward Material Program", "Render3D"},
+    {Pass::MeshletForwardTerrain, "Meshlet Forward Terrain", "Render3D"},
+    {Pass::GameUi, "Game UI", "Render3D"},
 };
 constexpr bool PassInfoFollowsEnum() {
     for (size_t index = 0; index < std::size(kPassInfo); ++index) {

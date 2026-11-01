@@ -43,6 +43,8 @@ inline constexpr const char* kFrameFps = "frame.fps";
 inline constexpr const char* kFrameCpuMs = "frame.cpuMs";
 inline constexpr const char* kFrameGpuMs = "frame.gpuMs";
 inline constexpr const char* kGpuPipelineExecutions = "gpu.pipeline.executions";
+// 前向き不透明が実際に描いた診断モード（ForwardShadingCostMode の番号）。性能の分解が、頼んだモードで描けたかを確かめる。
+inline constexpr const char* kForwardCostMode = "render.forwardCostMode";
 inline constexpr const char* kVramUsage = "memory.vram.usage";
 inline constexpr const char* kVramBudget = "memory.vram.budget";
 

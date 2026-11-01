@@ -24,6 +24,7 @@ enum class Pass : uint32_t {
     MaterialPrepare,
     PresentationComposition,
     UiLayers,
+    GameUi,
     ImGui,
     CommandSubmit,
     Present,

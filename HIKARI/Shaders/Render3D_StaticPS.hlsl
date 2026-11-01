@@ -152,16 +152,29 @@ float4 main(PSInput input) : SV_TARGET
             ? -surfaceGeometricNormal
             : surfaceGeometricNormal;
     const bool costAlbedoOnly = forwardCostMode == HIKARI_FORWARD_COST_ALBEDO_ONLY;
-    const bool costNoNormalMap = forwardCostMode == HIKARI_FORWARD_COST_NO_NORMAL_MAP;
-    const bool costNoSsao = forwardCostMode == HIKARI_FORWARD_COST_NO_SSAO;
+    // Skeleton は切り替えられる項目を全部省く（残る基礎の着色の費用を測る）。
+    const bool costSkeleton = forwardCostMode == HIKARI_FORWARD_COST_SKELETON;
+    const bool costNoNormalMap = forwardCostMode == HIKARI_FORWARD_COST_NO_NORMAL_MAP || costSkeleton;
+    const bool costNoSsao = forwardCostMode == HIKARI_FORWARD_COST_NO_SSAO || costSkeleton;
     const bool costNoMaterialExtras =
-        forwardCostMode == HIKARI_FORWARD_COST_NO_MATERIAL_EXTRAS;
+        forwardCostMode == HIKARI_FORWARD_COST_NO_MATERIAL_EXTRAS || costSkeleton;
+    // 太陽の影（カスケード + 接触影）だけを省く。局所光源の影は NoShadow だけが省く。
+    const bool costNoSunShadow =
+        costNoShadow || forwardCostMode == HIKARI_FORWARD_COST_NO_SUN_SHADOW || costSkeleton;
+    const bool costNoContactShadow =
+        costNoSunShadow || forwardCostMode == HIKARI_FORWARD_COST_NO_CONTACT_SHADOW;
+    const bool costNoLightProbes = forwardCostMode == HIKARI_FORWARD_COST_NO_LIGHT_PROBES || costSkeleton;
+    const bool costNoEnvReflection = forwardCostMode == HIKARI_FORWARD_COST_NO_ENV_REFLECTION || costSkeleton;
+    const bool costNoLocalLights = forwardCostMode == HIKARI_FORWARD_COST_NO_LOCAL_LIGHTS || costSkeleton;
+    const bool costNoCloudShadow = forwardCostMode == HIKARI_FORWARD_COST_NO_CLOUD_SHADOW || costSkeleton;
+    const bool costNoDecals = forwardCostMode == HIKARI_FORWARD_COST_NO_DECALS || costSkeleton;
 
     const float3 toCamera = gCameraPos.xyz - input.worldPosWS;
     const float distanceToCamera = length(toCamera);
     const float3 v = HikariCameraViewDirection(input.worldPosWS);
     const float3 l = normalize(-gDirectionalDir.xyz);
-    const float cloudSolarVisibility=costAlbedoOnly || (materialData.materialFlags & HIKARI_MATERIAL_FLAG_UNLIT)!=0u
+    const float cloudSolarVisibility=costAlbedoOnly || costNoCloudShadow ||
+        (materialData.materialFlags & HIKARI_MATERIAL_FLAG_UNLIT)!=0u
         ? 1.0f : HikariForwardCloudSolarVisibility(input.worldPosWS);
 
     // 筆触の殻は固定経路。殻の被覆は GeometryAux と同じ関数で決め、式の解釈器は走らせない。
@@ -401,7 +414,7 @@ float4 main(PSInput input) : SV_TARGET
     // デカールは不透明面の材質の入力を確定した後、受光の前に色・法線・粗さ・金属度を書き換える。微分はループの外で取る。
     const float3 positionDx = ddx(input.worldPosWS);
     const float3 positionDy = ddy(input.worldPosWS);
-    if (!neutralClay && !alphaBlended)
+    if (!neutralClay && !alphaBlended && !costNoDecals)
     {
         HikariDecalSurface decalSurface;
         decalSurface.albedo = albedo.rgb;
@@ -439,7 +452,7 @@ float4 main(PSInput input) : SV_TARGET
         screenAo = gSsaoTex.Load(int3(int2(input.position.xy), 0)).r;
     }
     float shadowVisibility = 1.0f;
-    if (!costNoShadow)
+    if (!costNoSunShadow)
     {
         const uint receiveShadow = HikariForwardVertexMetaReceiveShadow(input.forwardMeta);
         // 光線追跡の可視率があれば、カスケード影と接触影の代わりにそれを使う（不透明面は深度 prepass と同じ画素）。
@@ -451,8 +464,12 @@ float4 main(PSInput input) : SV_TARGET
         }
         else
         {
-            shadowVisibility = SampleDirectionalVisibility(input.worldPosWS, geometricNormal, receiveShadow) *
-                HikariContactShadow(input.worldPosWS, geometricNormal, input.position.xy, receiveShadow);
+            shadowVisibility = SampleDirectionalVisibility(input.worldPosWS, geometricNormal, receiveShadow);
+            if (!costNoContactShadow)
+            {
+                shadowVisibility *=
+                    HikariContactShadow(input.worldPosWS, geometricNormal, input.position.xy, receiveShadow);
+            }
         }
     }
     if (gDebugView == 8)
@@ -515,7 +532,9 @@ float4 main(PSInput input) : SV_TARGET
             input.worldPosWS,
             geometricNormal,
             surfaceLightmapIrradiance,
-            surfaceLightmapWeight);
+            surfaceLightmapWeight,
+            !costNoLightProbes,
+            !costNoEnvReflection);
         if (!programMaterials || HikariMaterialUsesStandardPbrLighting(materialData))
         {
         const float3 directionalRadiance = gDirectionalColor.rgb * (gDirectionalIntensity * cloudSolarVisibility);
@@ -530,11 +549,15 @@ float4 main(PSInput input) : SV_TARGET
         float3 ambientDiffuse = ambient.diffuse;
         HikariApplyStyleShading(pbrContext, n, l, directionalRadiance, shadowVisibility, directional, ambientDiffuse);
 
-        const HikariDirectPbrLobes local = AccumulateLocalLightPbrLobes(
-            pbrContext,
-            input.worldPosWS,
-            input.position.xy, geometricNormal,
-            HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
+        HikariDirectPbrLobes local = (HikariDirectPbrLobes)0;
+        if (!costNoLocalLights)
+        {
+            local = AccumulateLocalLightPbrLobes(
+                pbrContext,
+                input.worldPosWS,
+                input.position.xy, geometricNormal,
+                HikariForwardVertexMetaReceiveShadow(input.forwardMeta));
+        }
 
         shadedColor = directional.diffuse + directional.specular +
             local.diffuse + local.specular + ambientDiffuse + ambient.specular;

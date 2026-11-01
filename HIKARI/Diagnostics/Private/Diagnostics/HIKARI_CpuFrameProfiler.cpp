@@ -46,6 +46,7 @@ constexpr PassInfo kPassInfo[] = {
     {Pass::MaterialPrepare, "Material Prepare", "Render3D"},
     {Pass::PresentationComposition, "Presentation Composition", "Runtime"},
     {Pass::UiLayers, "UI Layers", "Render2D"},
+    {Pass::GameUi, "Game UI", "Render3D"},
     {Pass::ImGui, "ImGui Render", "Editor"},
     {Pass::CommandSubmit, "Command Submit", "Gfx"},
     {Pass::Present, "Present", "Gfx"},
@@ -70,9 +71,9 @@ std::string ModuleOfSegment(std::string_view name) {
         const char* module;
     };
     static constexpr Domain kDomains[] = {
-        {"Cache", "Scene"},           {"Frame", "Runtime"},   {"Graph", "Render3D"},
-        {"Main", "Render3D"},         {"Render", "Render3D"}, {"Sand", "Scene"},
-        {"ShadowSource", "Render3D"}, {"System", "Scene"},    {"Text", "Render3D"},
+        {"Cache", "Scene"},   {"Frame", "Runtime"},   {"Graph", "Render3D"},
+        {"Main", "Render3D"}, {"Render", "Render3D"}, {"ShadowSource", "Render3D"},
+        {"System", "Scene"},  {"Terrain", "Scene"},   {"Text", "Render3D"},
     };
     const std::string_view domain = name.substr(0, name.find_first_of("./"));
     for (const Domain& entry : kDomains) {

@@ -15,7 +15,7 @@ namespace HIKARI::ASSETS::SHADER {
 inline constexpr uint32_t kBuiltinShaderCatalogVersion = 1u;
 inline constexpr std::string_view kBuiltinShaderCatalogSchema = "HIKARI.BuiltinShaderCatalog";
 inline constexpr std::string_view kBuiltinShaderCatalogFilename = "BuiltinShaderCatalog.json";
-inline constexpr uint32_t kMaximumBuiltinShaderProgramCount = 128u;
+inline constexpr uint32_t kMaximumBuiltinShaderProgramCount = 192u;
 inline constexpr uint32_t kMaximumBuiltinShaderExclusionCount = 64u;
 inline constexpr size_t kMaximumBuiltinShaderCatalogBytes = 1024u * 1024u;
 

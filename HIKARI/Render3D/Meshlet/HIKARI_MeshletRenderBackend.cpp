@@ -18,7 +18,9 @@
 #include "RenderContracts/Shader/HIKARI_RenderGeometryShaderContract.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_StartupTimer.h"
+#include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
+#include "Diagnostics/HIKARI_MetricRegistry.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
@@ -32,7 +34,10 @@ namespace HIKARI::RENDER3D::MESHLET {
 namespace {
 using ForwardPipelineVariantArray = MeshletRenderBackend::ForwardPipelineVariantArray;
 
-// [0] は標準 PBR の面だけを描く通常の PS。材質 program の面は kProgramForwardProgramId で描く。
+constexpr const char* kProgramForwardProgramId = "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueFullPS";
+
+// 前向き不透明の PS（ForwardShadingCostMode の順）。[0] は標準 PBR の面だけを描く通常の PS（材質 program の面は
+// kProgramForwardProgramId で描く）。それ以外は一般面すべてを描く診断用で、GeneralFull は材質 program の PS と同じ。
 constexpr std::array<const char*, kForwardOpaquePipelineVariantCount> kForwardOpaqueProgramIds = {
     "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueStandardPS",
     "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueAlbedoOnlyPS",
@@ -40,12 +45,15 @@ constexpr std::array<const char*, kForwardOpaquePipelineVariantCount> kForwardOp
     "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoShadowPS",
     "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoSsaoPS",
     "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoMaterialExtrasPS",
-};
-
-constexpr const char* kProgramForwardProgramId = "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueFullPS";
-
-constexpr std::array<const wchar_t*, kForwardOpaquePipelineVariantCount> kForwardOpaqueVariantNames = {
-    L"Full", L"AlbedoOnly", L"NoNormalMap", L"NoShadow", L"NoSSAO", L"NoMaterialExtras",
+    kProgramForwardProgramId,
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoSunShadowPS",
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoContactShadowPS",
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoLightProbesPS",
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoEnvReflectionPS",
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoLocalLightsPS",
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoCloudShadowPS",
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoDecalsPS",
+    "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueSkeletonPS",
 };
 
 D3D12_SHADER_BYTECODE ShaderBytecode(const ASSETS::SHADER::ShaderAssetEntryLease& shader) noexcept {
@@ -71,10 +79,17 @@ bool ResolveMeshletShader(const GFX::ShaderDeviceCapabilities& capabilities, con
     return true;
 }
 
+// 前向き不透明が実際に描いたモード。診断の PSO が用意できず Full に戻った時は Full を出す。
+void PublishForwardCostMode(ForwardShadingCostMode mode) {
+    static const METRIC::MetricHandle handle = METRIC::Register(
+        {METRIC::kForwardCostMode, "Render3D.MeshletRenderBackend", "Render3D", "mode", METRIC::MetricCategory::Count,
+         "Forward cost mode the opaque forward pass drew with (ForwardShadingCostMode index)."});
+    METRIC::Publish(handle, static_cast<double>(mode), HIKARI::TIME::GetFrameContext().frameIndex);
+}
+
 size_t ForwardPipelineVariantIndex(ForwardShadingCostMode mode) {
-    const uint8_t raw = static_cast<uint8_t>(mode);
-    const uint8_t maxRaw = static_cast<uint8_t>(ForwardShadingCostMode::NoMaterialExtras);
-    return raw <= maxRaw ? static_cast<size_t>(raw) : 0u;
+    const size_t raw = static_cast<size_t>(mode);
+    return raw < kForwardOpaquePipelineVariantCount ? raw : 0u;
 }
 
 uint32_t PipelineMaskForKind(MeshletPipelineKind kind) {
@@ -217,10 +232,9 @@ const wchar_t* ForwardDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
 }
 
 std::wstring ForwardDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket, size_t variantIndex) {
-    std::wstring result = ForwardDebugName(bucket);
-    result += L" ";
-    result += variantIndex < kForwardOpaqueVariantNames.size() ? kForwardOpaqueVariantNames[variantIndex] : L"Unknown";
-    return result;
+    const std::string_view variant =
+        TEXT::EnumToName(kForwardShadingCostModeNames, static_cast<ForwardShadingCostMode>(variantIndex), "Unknown");
+    return std::wstring(ForwardDebugName(bucket)) + L" " + std::wstring(variant.begin(), variant.end());
 }
 
 const wchar_t* DepthAwareDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
@@ -951,6 +965,27 @@ bool MeshletRenderBackend::PrepareForwardVariant(ForwardShadingCostMode mode) {
     return true;
 }
 
+bool MeshletRenderBackend::CreateForwardBucketPipelines(const char* amplificationId, const char* pixelId,
+                                                        const wchar_t* debugName, PipelineBucketArray& out) {
+    const auto caps = GFX::QueryShaderDeviceCapabilities(device_.Get());
+    ASSETS::SHADER::ShaderAssetEntryLease amplification, mesh, pixel;
+    using Stage = ASSETS::SHADER::ShaderStage;
+    if (!ResolveMeshletShader(caps, amplificationId, Stage::Amplification, "as_6_5", amplification) ||
+        !ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_MeshletMS", Stage::Mesh, "ms_6_5", mesh) ||
+        !ResolveMeshletShader(caps, pixelId, Stage::Pixel, "ps_6_0", pixel))
+        return false;
+    PipelineBucketArray pipelines{};
+    for (size_t i = 0; i < pipelines.size(); ++i) {
+        if (!CreateMeshletPipelineState(device_.Get(), rootSignature_.Get(), ShaderBytecode(amplification),
+                                        ShaderBytecode(mesh), ShaderBytecode(pixel), DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                        CullModeForBucket(static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i)), false,
+                                        true, true, debugName, pipelines[i].GetAddressOf()))
+            return false;
+    }
+    out.swap(pipelines);
+    return true;
+}
+
 bool MeshletRenderBackend::PrepareForwardDebugPipelines() {
     if (ArePipelinesReady(forwardDebugPipelineStates_))
         return true;
@@ -958,26 +993,28 @@ bool MeshletRenderBackend::PrepareForwardDebugPipelines() {
         !IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque))
         return false;
     forwardDebugAttempted_ = true;
-    const auto caps = GFX::QueryShaderDeviceCapabilities(device_.Get());
-    ASSETS::SHADER::ShaderAssetEntryLease amplification, mesh, pixel;
-    using Stage = ASSETS::SHADER::ShaderStage;
-    if (!ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_MeshletAS", Stage::Amplification, "as_6_5",
-                              amplification) ||
-        !ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_MeshletMS", Stage::Mesh, "ms_6_5", mesh) ||
-        !ResolveMeshletShader(caps, "HIKARI.EngineShader.Render3D_GpuDrivenSurfacePS", Stage::Pixel, "ps_6_0", pixel)) {
-        DEBUGLOG::PushRenderError("[MeshletBackend] Debug-view Forward shaders unavailable; using split Forward.");
+    if (!CreateForwardBucketPipelines("HIKARI.EngineShader.Render3D_MeshletAS",
+                                      "HIKARI.EngineShader.Render3D_GpuDrivenSurfacePS",
+                                      L"Meshlet Forward DebugView PSO", forwardDebugPipelineStates_)) {
+        DEBUGLOG::PushRenderError("[MeshletBackend] Debug-view Forward pipelines unavailable; using split Forward.");
         return false;
     }
-    PipelineBucketArray replacements{};
-    for (size_t i = 0; i < replacements.size(); ++i) {
-        if (!CreateMeshletPipelineState(device_.Get(), rootSignature_.Get(), ShaderBytecode(amplification),
-                                        ShaderBytecode(mesh), ShaderBytecode(pixel), DXGI_FORMAT_R16G16B16A16_FLOAT,
-                                        CullModeForBucket(static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i)), false,
-                                        true, true, L"Meshlet Forward DebugView PSO", replacements[i].GetAddressOf())) {
-            return false;
-        }
+    return true;
+}
+
+bool MeshletRenderBackend::PrepareTerrainDiagnosticPipelines() {
+    if (ArePipelinesReady(terrainDiagnosticPipelineStates_))
+        return true;
+    if (terrainDiagnosticAttempted_ || !device_ || !rootSignature_)
+        return false;
+    terrainDiagnosticAttempted_ = true;
+    if (!CreateForwardBucketPipelines("HIKARI.EngineShader.Render3D_MeshletTerrainAS",
+                                      "HIKARI.EngineShader.Render3D_GpuDrivenTerrainDiagnosticPS",
+                                      L"Meshlet Forward Terrain Diagnostic PSO", terrainDiagnosticPipelineStates_)) {
+        DEBUGLOG::PushRenderError(
+            "[MeshletBackend] Diagnostic terrain Forward unavailable; using full Forward shading.");
+        return false;
     }
-    forwardDebugPipelineStates_.swap(replacements);
     return true;
 }
 
@@ -1064,7 +1101,11 @@ void MeshletRenderBackend::Reset() {
     for (auto& pipeline : forwardDebugPipelineStates_) {
         GFX::RetireD3D12ObjectForCurrentFrame(pipeline, "Meshlet.ForwardDebugPSO");
     }
+    for (auto& pipeline : terrainDiagnosticPipelineStates_) {
+        GFX::RetireD3D12ObjectForCurrentFrame(pipeline, "Meshlet.TerrainDiagnosticPSO");
+    }
     forwardDebugAttempted_ = false;
+    terrainDiagnosticAttempted_ = false;
     pipelineMask_ = MeshletPipelineMask::All;
     stats_ = {};
 }
@@ -1194,9 +1235,13 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
         return false;
     }
 
-    auto effectiveForwardCostMode = ctx.forwardCostMode;
-    if (ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque && !ctx.reflectionCapture &&
-        !PrepareForwardVariant(ctx.forwardCostMode))
+    // capture の PSO は Full だけを描く（診断モードの間は frame graph が capture を使わない）。診断の PSO（地形の面の
+    // 分を含む）が作れなければ Full で描く。
+    auto effectiveForwardCostMode = ctx.reflectionCapture ? ForwardShadingCostMode::Full : ctx.forwardCostMode;
+    if (ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque &&
+        effectiveForwardCostMode != ForwardShadingCostMode::Full &&
+        (!PrepareForwardVariant(effectiveForwardCostMode) ||
+         (ctx.terrainSurfacesPresent && !PrepareTerrainDiagnosticPipelines())))
         effectiveForwardCostMode = ForwardShadingCostMode::Full;
 
     ID3D12Resource* argumentBuffer = range.argumentBuffer;
@@ -1218,6 +1263,12 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
     bool submittedAnyBucket = false;
     const bool forwardDebug = ctx.forwardDebugView && !ctx.reflectionCapture &&
                               ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque && PrepareForwardDebugPipelines();
+    if (ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque)
+        PublishForwardCostMode(forwardDebug ? ForwardShadingCostMode::Full : effectiveForwardCostMode);
+    // Full の前向きは、描く PSO の種類（標準 PBR・材質 program・地形）ごとに Meshlet Draw Forward の中で計る。
+    // 診断モードと debug view の PSO は一般面すべてを描くので、種類で分けない。
+    const bool timeByPipelineClass = ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque && !forwardDebug &&
+                                     effectiveForwardCostMode == ForwardShadingCostMode::Full;
     const GFX::GPU_PROFILE::Pass profilePass = ctx.profilePass != GFX::GPU_PROFILE::Pass::Count
                                                    ? ctx.profilePass
                                                    : ProfilePassForPipelineKind(ctx.pipelineKind);
@@ -1237,10 +1288,14 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
         if (selectedPipeline == nullptr) {
             continue;
         }
-        // 一般 PSO の AS は地形を除外する。同じ可視範囲を地形 PSO で描き足す。
-        ID3D12PipelineState* terrainPipeline = ctx.reflectionCapture || forwardDebug || !ctx.terrainSurfacesPresent
-                                                   ? nullptr
-                                                   : GetTerrainPipelineState(ctx.pipelineKind, bucket);
+        // 一般 PSO の AS は地形を除外する。同じ可視範囲を地形 PSO（診断モードでは地形の診断 PSO）で描き足す。
+        ID3D12PipelineState* terrainPipeline = nullptr;
+        if (!ctx.reflectionCapture && !forwardDebug && ctx.terrainSurfacesPresent) {
+            terrainPipeline = ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque &&
+                                      effectiveForwardCostMode != ForwardShadingCostMode::Full
+                                  ? terrainDiagnosticPipelineStates_[bucketIndex].Get()
+                                  : GetTerrainPipelineState(ctx.pipelineKind, bucket);
+        }
         // 通常の Forward と SSR capture の PSO は標準 PBR の面だけを描く。材質 program の面を別 PSO で描き足す。
         // 診断 variant と debug view の PSO は一般面すべてを描く。
         ID3D12PipelineState* programPipeline = nullptr;
@@ -1262,23 +1317,22 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
         GFX::PIX::ScopedGpuEvent pix(ctx.commandList, GFX::PIX::kColorRender,
                                      PipelineEventName(ctx.pipelineKind, bucket));
 
-        ctx.commandList->SetPipelineState(selectedPipeline);
-        ctx.commandList->ExecuteIndirect(commandSignature, maxCommandCount, argumentBuffer,
-                                         DispatchArgumentOffsetForBucket(layout, bucket), countBuffer,
-                                         CounterOffsetForBucket(layout, bucket));
-        if (programPipeline != nullptr) {
-            ++stats_.submitCallCount;
-            ctx.commandList->SetPipelineState(programPipeline);
+        const auto submit = [&](ID3D12PipelineState* pipeline, GFX::GPU_PROFILE::Pass classPass) {
+            GFX::GPU_PROFILE::ScopedGpuTimer classTimer(
+                ctx.commandList, timeByPipelineClass ? classPass : GFX::GPU_PROFILE::Pass::Count);
+            ctx.commandList->SetPipelineState(pipeline);
             ctx.commandList->ExecuteIndirect(commandSignature, maxCommandCount, argumentBuffer,
                                              DispatchArgumentOffsetForBucket(layout, bucket), countBuffer,
                                              CounterOffsetForBucket(layout, bucket));
+        };
+        submit(selectedPipeline, GFX::GPU_PROFILE::Pass::MeshletForwardStandard);
+        if (programPipeline != nullptr) {
+            ++stats_.submitCallCount;
+            submit(programPipeline, GFX::GPU_PROFILE::Pass::MeshletForwardMaterialProgram);
         }
         if (terrainPipeline != nullptr) {
             ++stats_.submitCallCount;
-            ctx.commandList->SetPipelineState(terrainPipeline);
-            ctx.commandList->ExecuteIndirect(commandSignature, maxCommandCount, argumentBuffer,
-                                             DispatchArgumentOffsetForBucket(layout, bucket), countBuffer,
-                                             CounterOffsetForBucket(layout, bucket));
+            submit(terrainPipeline, GFX::GPU_PROFILE::Pass::MeshletForwardTerrain);
         }
         submittedAnyBucket = true;
     }

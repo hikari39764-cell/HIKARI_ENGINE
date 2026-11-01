@@ -85,10 +85,11 @@ bool ExecuteForwardOpaque(const GRAPH::RenderGraphPassContext& graphPass, void* 
     bool beganCapture = false;
     try {
         const auto& frame = context.frame;
-        // capture（追加 RT）は SSR か次表面散乱のどちらかが要る時に有効。
+        // capture（追加 RT）は SSR か次表面散乱のどちらかが要る時に有効。capture の PSO は Full だけを持つので、
+        // 前向きの診断モード（何も省かない GeneralFull を含む）の間は使わない（診断どうしの出力をそろえる）。
         const bool eligible =
             (context.hasSsrWork || context.hasSubsurfaceWork) && context.cameraConstants &&
-            context.renderQuality.forwardCostMode != ForwardShadingCostMode::AlbedoOnly &&
+            context.renderQuality.forwardCostMode == ForwardShadingCostMode::Full &&
             (context.debugView == RenderDebugView::None || context.debugView == RenderDebugView::SsrConfidence ||
              context.debugView == RenderDebugView::SsrHit) &&
             frame.targetAccess.bindAdditionalColors;

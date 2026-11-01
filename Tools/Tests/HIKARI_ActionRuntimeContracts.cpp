@@ -13,6 +13,7 @@
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Diagnostics/HIKARI_MetricRegistry.h"
+#include "Diagnostics/HIKARI_PerformanceBreakdownAnalysis.h"
 #include "Physics/HIKARI_KinematicMotionService.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Shadow/HIKARI_ShadowCachePolicy.h"
@@ -106,6 +107,180 @@ void TestCpuProfileRollingSystemTiming() {
         Check(ms->window.average >= 0.0 && ms->window.maximum >= 0.0,
               "rolling CPU statistics must stay finite and non-negative");
     }
+
+    // 名前域が所属モジュールを決める。地形の区間は Terrain（地形のシミュレーションの区間）で、Scene の費用になる。
+    const PROFILE::DynamicPassHandle terrain = PROFILE::RegisterDynamicPass("Terrain/Contract");
+    PROFILE::BeginFrame(43u, 0.0);
+    {
+        PROFILE::ScopedDynamicCpuTimer timer(terrain);
+    }
+    PROFILE::EndFrame();
+    readings = METRIC::Snapshot(43u);
+    const METRIC::MetricReading* terrainMs = METRIC::FindReading(readings, "cpu.Terrain/Contract.ms");
+    Check(terrainMs != nullptr && terrainMs->descriptor->module == "Scene",
+          "a Terrain/ CPU segment must be attributed to the Scene module");
+    // 実行しなかった区間は公開されないので、両方を実行した 1 フレームで読む。
+    PROFILE::BeginFrame(44u, 0.0);
+    {
+        PROFILE::ScopedCpuTimer timer(PROFILE::Pass::UiLayers);
+    }
+    {
+        PROFILE::ScopedCpuTimer timer(PROFILE::Pass::GameUi);
+    }
+    PROFILE::EndFrame();
+    readings = METRIC::Snapshot(44u);
+    const METRIC::MetricReading* gameUi = METRIC::FindReading(readings, "cpu.Game UI.ms");
+    const METRIC::MetricReading* uiLayers = METRIC::FindReading(readings, "cpu.UI Layers.ms");
+    Check(gameUi != nullptr && gameUi->descriptor->module == "Render3D" && uiLayers != nullptr &&
+              uiLayers->descriptor->module == "Render2D",
+          "UI Layers belongs to Render2D and the game UI effect drawing to Render3D");
+}
+
+// 性能の分解の解析：基準と変種を交互に測った区間から、項目の費用・状態・未帰因・専用シェーダーの収益を求める。
+void TestPerformanceBreakdownAnalysis() {
+    using Json = nlohmann::json;
+    namespace DIAG = HIKARI::DIAGNOSTICS;
+    const auto step = [](const char* id, const char* role, const char* baseline) {
+        Json entry = {{"id", id}, {"label", id}, {"role", role}};
+        if (baseline != nullptr)
+            entry["baseline"] = baseline;
+        return entry;
+    };
+    Json unchanged = step("giOff", "system", "full");
+    unchanged["status"] = "unchanged";
+    Json report = {
+        {"schemaVersion", DIAG::kBreakdownSchemaVersion},
+        {"kind", "breakdown"},
+        {"preset", "test"},
+        {"targetPass", "Forward"},
+        {"totalReference", "generalFull"},
+        {"productionReference", "full"},
+        {"complete", true},
+        {"rounds", 2},
+        {"sampleFrames", 60},
+        {"steps", Json::array({step("full", "reference", nullptr), step("generalFull", "reference", nullptr),
+                               step("albedoOnly", "floor", "generalFull"), step("skeleton", "base", "generalFull"),
+                               step("normalMap", "part", "generalFull"), step("shadow", "part", "generalFull"),
+                               step("slower", "part", "generalFull"), step("tiny", "part", "generalFull"),
+                               step("missing", "part", "generalFull"), step("prepass", "system", "full"), unchanged})},
+        {"segments", Json::array()}};
+    size_t order = 0;
+    const auto add = [&](const char* config, bool baseline, const char* status, double target, double frame) {
+        Json segment = {
+            {"index", order++}, {"config", config}, {"kind", baseline ? "baseline" : "variant"}, {"status", status}};
+        if (std::string_view(status) == "ok") {
+            segment["targetMs"] = target;
+            segment["frameMs"] = frame;
+        }
+        report["segments"].push_back(segment);
+    };
+    // 1 回目と 2 回目で normalMap の差だけ変える（1.0 と 0.8 の平均 0.9）。基準は常に 10.0。
+    for (const double normalMap : {9.0, 9.2}) {
+        add("generalFull", true, "ok", 10.0, 14.0);
+        add("albedoOnly", false, "ok", 0.2, 4.0);
+        add("generalFull", true, "ok", 10.0, 14.0);
+        add("skeleton", false, "ok", 3.0, 7.0);
+        add("generalFull", true, "ok", 10.0, 14.0);
+        add("normalMap", false, "ok", normalMap, 13.0);
+        add("generalFull", true, "ok", 10.0, 14.0);
+        add("shadow", false, "ok", 6.0, 10.0);
+        add("generalFull", true, "ok", 10.0, 14.0);
+        add("slower", false, "ok", 10.5, 14.5);
+        add("generalFull", true, "ok", 10.0, 14.0);
+        add("tiny", false, "ok", 10.0, 14.0);
+        add("generalFull", true, "ok", 10.0, 14.0);
+        add("missing", false, "notApplied", 0.0, 0.0);
+        add("generalFull", true, "ok", 10.0, 14.0);
+        add("full", true, "ok", 9.5, 13.5);
+        add("prepass", false, "ok", 9.0, 14.0);
+        add("full", true, "ok", 9.5, 13.5);
+    }
+    Check(DIAG::IsBreakdown(report) && DIAG::BreakdownSchemaError(report).empty(),
+          "a breakdown must pass its schema check");
+    Json wrongVersion = report;
+    wrongVersion["schemaVersion"] = DIAG::kBreakdownSchemaVersion + 1;
+    Check(!DIAG::BreakdownSchemaError(wrongVersion).empty(), "another breakdown schema version must be rejected");
+
+    const Json analysis = DIAG::AnalyzeBreakdown(report);
+    const auto find = [&analysis](const char* id) -> const Json* {
+        for (const Json& entry : analysis["steps"]) {
+            if (entry["id"] == id)
+                return &entry;
+        }
+        return nullptr;
+    };
+    const Json* normalMap = find("normalMap");
+    Check(normalMap != nullptr && (*normalMap)["status"] == "ok" && Near(float((*normalMap)["deltaMs"]), 0.9f) &&
+              Near(float((*normalMap)["share"]), 0.09f) && Near(float((*normalMap)["frameDeltaMs"]), 1.0f),
+          "a step's cost is the baseline minus the variant, averaged over the rounds");
+    const Json* slower = find("slower");
+    Check(slower != nullptr && (*slower)["status"] == "unreliable" && (*slower)["counted"] == false,
+          "a variant slower than its baseline must be flagged unreliable and not counted");
+    const Json* tiny = find("tiny");
+    Check(tiny != nullptr && (*tiny)["status"] == "belowNoise", "a cost within the noise must be flagged");
+    const Json* missing = find("missing");
+    Check(missing != nullptr && (*missing)["status"] == "notApplied",
+          "a setting that never took effect is not measured");
+    const Json* skipped = find("giOff");
+    Check(skipped != nullptr && (*skipped)["status"] == "unchanged",
+          "a setting already in place is reported unchanged");
+    const Json* prepass = find("prepass");
+    Check(prepass != nullptr && Near(float((*prepass)["deltaMs"]), 0.5f) &&
+              Near(float((*prepass)["frameDeltaMs"]), -0.5f),
+          "a system step is compared with its own baseline and reports the whole-frame change");
+
+    const Json& decomposition = analysis["decomposition"];
+    Check(decomposition.is_object() && Near(float(decomposition["floorMs"]), 0.2f) &&
+              Near(float(decomposition["partsMs"]), 4.9f) && Near(float(decomposition["baseShadingMs"]), 2.8f) &&
+              Near(float(decomposition["jointMs"]), 7.0f) && Near(float(decomposition["differenceMs"]), -2.1f) &&
+              Near(float(decomposition["uncoveredMs"]), 2.8f) && Near(float(decomposition["uncoveredShare"]), 0.28f),
+          "total = floor + base shading + the features off together; the single-feature sum is compared with it");
+    Check(analysis["normalOverGeneral"].is_object() && Near(float(analysis["normalOverGeneral"]["ms"]), -0.5f),
+          "the normal pass is compared with the general baseline");
+
+    const Json findings = DIAG::BuildBreakdownFindings(report);
+    bool uncoveredWarned = false, missingWarned = false, shadowReported = false, overlapReported = false;
+    for (const Json& finding : findings["findings"]) {
+        const std::string id = finding["id"];
+        overlapReported |= id == "breakdown.overlap";
+        uncoveredWarned |= id == "breakdown.uncovered" && finding["severity"] == "warning";
+        missingWarned |= id == "breakdown.notApplied.missing" && finding["severity"] == "warning";
+        shadowReported |=
+            id == "breakdown.step.shadow" && finding["title"].get<std::string>().find("4.00 ms") != std::string::npos;
+    }
+    Check(uncoveredWarned && missingWarned && shadowReported && overlapReported,
+          "findings must name the expensive features, the overlap, the share outside every switch and the steps that "
+          "did not apply");
+    const std::vector<std::string> table = DIAG::FormatBreakdownTable(report);
+    bool hasBaseShading = false;
+    for (const std::string& line : table)
+        hasBaseShading |= line.find("Base shading (no switch removes it)") != std::string::npos;
+    Check(table.size() >= 12 && hasBaseShading, "the console table must list every step and the decomposition");
+
+    // 前後の基準が段差（10 → 13 ms）を挟んだ測定は数えず、残りの回で費用を出す。
+    Json drift = {
+        {"schemaVersion", DIAG::kBreakdownSchemaVersion},
+        {"kind", "breakdown"},
+        {"targetPass", "Forward"},
+        {"totalReference", "generalFull"},
+        {"steps", Json::array({step("generalFull", "reference", nullptr), step("shadow", "part", "generalFull")})},
+        {"segments", Json::array()}};
+    const std::pair<const char*, double> driftSegments[] = {
+        {"generalFull", 10.0}, {"shadow", 6.0}, {"generalFull", 10.0}, {"shadow", 6.0},
+        {"generalFull", 13.0}, {"shadow", 9.0}, {"generalFull", 13.0}};
+    for (const auto& [config, target] : driftSegments) {
+        Json segment = {{"index", drift["segments"].size()},
+                        {"config", config},
+                        {"kind", std::string_view(config) == "generalFull" ? "baseline" : "variant"},
+                        {"status", "ok"},
+                        {"targetMs", target},
+                        {"frameMs", target}};
+        drift["segments"].push_back(std::move(segment));
+    }
+    const Json driftAnalysis = DIAG::AnalyzeBreakdown(drift);
+    const Json& drifting = driftAnalysis["steps"][0];
+    Check(drifting["status"] == "ok" && drifting["driftedRounds"] == 1 && Near(float(drifting["deltaMs"]), 4.0f),
+          "a measurement whose baselines straddle a jump must be dropped and the other rounds still counted");
 }
 
 void TestCpuProfileResetDropsPartialFrame() {
@@ -603,6 +778,7 @@ int main(int argc, char** argv) {
     TestFixedStepCatchUpBudget();
     TestCpuProfileRollingSystemTiming();
     TestCpuProfileResetDropsPartialFrame();
+    TestPerformanceBreakdownAnalysis();
     TestShadowCacheLastMissSurvivesHitAndInvalidation();
     TestActionTimeDilation();
     TestAnimationRootMotion();

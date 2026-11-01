@@ -68,6 +68,11 @@ enum class Pass : uint32_t {
     DynamicDiffuseGi,
     CloudSolarVisibility,
     RuntimeRayScenePreparation,
+    // 前向き不透明の Meshlet Draw Forward の中を、描く PSO の種類で分けた入れ子の区間。
+    MeshletForwardStandard,
+    MeshletForwardMaterialProgram,
+    MeshletForwardTerrain,
+    GameUi,
     Count
 };
 

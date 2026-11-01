@@ -1966,7 +1966,7 @@
     {
       "assetGuid": "5a53ee5093569c993e7c8c33c98bd635",
       "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueAlbedoOnlyPS",
-      "source": "Render3D_GpuDrivenOpaqueAlbedoOnlyPS.hlsl",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
       "scope": "Runtime",
       "state": "Cooked",
       "owner": "Render3D.GpuDriven",
@@ -1974,7 +1974,12 @@
       "includeRoots": [
         "EngineSdk"
       ],
-      "defines": [],
+      "defines": [
+        {
+          "value": "1",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
+        }
+      ],
       "entries": [
         {
           "id": "Main",
@@ -2032,9 +2037,9 @@
       }
     },
     {
-      "assetGuid": "56cc0d4b28661916b5987a8d560c1201",
-      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoMaterialExtrasPS",
-      "source": "Render3D_GpuDrivenOpaqueNoMaterialExtrasPS.hlsl",
+      "assetGuid": "dd43af9e0e004e54a155478340f4d137",
+      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoCloudShadowPS",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
       "scope": "Runtime",
       "state": "Cooked",
       "owner": "Render3D.GpuDriven",
@@ -2042,7 +2047,246 @@
       "includeRoots": [
         "EngineSdk"
       ],
-      "defines": [],
+      "defines": [
+        {
+          "value": "12",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 8,
+        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "be8517a2ab024efd9442181d6b43ca94",
+      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoContactShadowPS",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "8",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 8,
+        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "abad562439ad488e984d497d03e5c1e6",
+      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoDecalsPS",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "13",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 8,
+        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "c8d4837ce4f247ee8c3c5a367e40c184",
+      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoEnvReflectionPS",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "10",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 8,
+        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "56f8b4bca04a4062952926771e1e8871",
+      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoLightProbesPS",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "9",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 8,
+        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "d0ac210554bd45239a8a8df0afb10235",
+      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoLocalLightsPS",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "11",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 8,
+        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "56cc0d4b28661916b5987a8d560c1201",
+      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoMaterialExtrasPS",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "5",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
+        }
+      ],
       "entries": [
         {
           "id": "Main",
@@ -2068,7 +2312,7 @@
     {
       "assetGuid": "6e393af01029346b042f404bc5ff1733",
       "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoNormalMapPS",
-      "source": "Render3D_GpuDrivenOpaqueNoNormalMapPS.hlsl",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
       "scope": "Runtime",
       "state": "Cooked",
       "owner": "Render3D.GpuDriven",
@@ -2076,7 +2320,12 @@
       "includeRoots": [
         "EngineSdk"
       ],
-      "defines": [],
+      "defines": [
+        {
+          "value": "2",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
+        }
+      ],
       "entries": [
         {
           "id": "Main",
@@ -2102,7 +2351,7 @@
     {
       "assetGuid": "2253bc3316cda4cf2fa78b14504d932a",
       "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoShadowPS",
-      "source": "Render3D_GpuDrivenOpaqueNoShadowPS.hlsl",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
       "scope": "Runtime",
       "state": "Cooked",
       "owner": "Render3D.GpuDriven",
@@ -2110,7 +2359,12 @@
       "includeRoots": [
         "EngineSdk"
       ],
-      "defines": [],
+      "defines": [
+        {
+          "value": "3",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
+        }
+      ],
       "entries": [
         {
           "id": "Main",
@@ -2136,7 +2390,7 @@
     {
       "assetGuid": "30379c2c0469362f1db6cef1f28a4bb5",
       "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoSsaoPS",
-      "source": "Render3D_GpuDrivenOpaqueNoSsaoPS.hlsl",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
       "scope": "Runtime",
       "state": "Cooked",
       "owner": "Render3D.GpuDriven",
@@ -2144,7 +2398,51 @@
       "includeRoots": [
         "EngineSdk"
       ],
-      "defines": [],
+      "defines": [
+        {
+          "value": "4",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 8,
+        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "2a35fb00a6764c59ba1a309459b6732a",
+      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueNoSunShadowPS",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "7",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
+        }
+      ],
       "entries": [
         {
           "id": "Main",
@@ -2186,6 +2484,45 @@
         {
           "value": "0",
           "name": "HIKARI_SURFACE_PARTITION"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 8,
+        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "b622fd3ec76541dca47ac3491fa9e474",
+      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenOpaqueSkeletonPS",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "14",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
         }
       ],
       "entries": [
@@ -2310,6 +2647,49 @@
       "defines": [
         {
           "value": "0",
+          "name": "HIKARI_SURFACE_PARTITION"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 8,
+        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "ccfcbfa093ec4e05832cb06696b5c771",
+      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenTerrainDiagnosticPS",
+      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "255",
+          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
+        },
+        {
+          "value": "2",
           "name": "HIKARI_SURFACE_PARTITION"
         }
       ],

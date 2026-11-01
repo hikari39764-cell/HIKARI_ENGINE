@@ -401,6 +401,10 @@ bool ApplyPendingWindowResize() {
     return true;
 }
 
+bool IsRenderQualityApplied() {
+    return gRenderQualityRuntimeInitialized && gAppliedRenderQuality == RENDER3D::GetRenderQualitySettings();
+}
+
 bool QueueRenderQualitySettings(const RENDER3D::RenderQualitySettings& settings) {
     if (!IsGamePresentationActive())
         return false;
@@ -623,20 +627,29 @@ bool PrepareFramePresentation(FramePresentationDestination destination) {
     }
 
     {
-        CPU_PROFILE::ScopedCpuTimer cpuUi(CPU_PROFILE::Pass::UiLayers);
         GFX::PIX::ScopedGpuEvent pixUi(GFX::GetCurrentContext().cmdList, GFX::PIX::kColorEditor,
                                        "Game UI and Debug Layers");
-        GFX::GPU_PROFILE::ScopedGpuTimer gpuUi(GFX::GetCurrentContext().cmdList, GFX::GPU_PROFILE::Pass::UiLayers);
-        HIKARI::RENDERER::RenderLayerRange(HIKARI::RENDERER::RenderLayer::UI, HIKARI::RENDERER::RenderLayer::UI, false);
-        const HIKARI::POST::PresentationFrameResources& presentation =
-            HIKARI::POST::PostSystem::GetPresentationFrameResources();
-        if (!HIKARI::GAME_UI::RenderGameUiFrame(HIKARI::TIME::GetFrameContext().frameIndex, presentation.uiLogicalWidth,
-                                                presentation.uiLogicalHeight, presentation.width,
-                                                presentation.height)) {
-            HIKARI_LOG_ERROR("Game project UI effect rendering failed.");
+        // UI 層とデバッグ層は Render2D、ゲーム UI の効果描画は Render3D/Ui が持つ。計時もその持ち主ごとに分ける。
+        const auto renderLayer = [](HIKARI::RENDERER::RenderLayer layer, bool debug) {
+            CPU_PROFILE::ScopedCpuTimer cpuLayer(CPU_PROFILE::Pass::UiLayers);
+            GFX::GPU_PROFILE::ScopedGpuTimer gpuLayer(GFX::GetCurrentContext().cmdList,
+                                                      GFX::GPU_PROFILE::Pass::UiLayers);
+            HIKARI::RENDERER::RenderLayerRange(layer, layer, debug);
+        };
+        renderLayer(HIKARI::RENDERER::RenderLayer::UI, false);
+        {
+            CPU_PROFILE::ScopedCpuTimer cpuGameUi(CPU_PROFILE::Pass::GameUi);
+            GFX::GPU_PROFILE::ScopedGpuTimer gpuGameUi(GFX::GetCurrentContext().cmdList,
+                                                       GFX::GPU_PROFILE::Pass::GameUi);
+            const HIKARI::POST::PresentationFrameResources& presentation =
+                HIKARI::POST::PostSystem::GetPresentationFrameResources();
+            if (!HIKARI::GAME_UI::RenderGameUiFrame(HIKARI::TIME::GetFrameContext().frameIndex,
+                                                    presentation.uiLogicalWidth, presentation.uiLogicalHeight,
+                                                    presentation.width, presentation.height)) {
+                HIKARI_LOG_ERROR("Game project UI effect rendering failed.");
+            }
         }
-        HIKARI::RENDERER::RenderLayerRange(HIKARI::RENDERER::RenderLayer::Debug, HIKARI::RENDERER::RenderLayer::Debug,
-                                           true);
+        renderLayer(HIKARI::RENDERER::RenderLayer::Debug, true);
     }
 
     if (!HIKARI::POST::PostSystem::FinalizeGameUiComposition(editorViewport)) {

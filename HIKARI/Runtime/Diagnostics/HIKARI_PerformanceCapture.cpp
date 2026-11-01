@@ -1,4 +1,5 @@
 #include "Runtime/Diagnostics/HIKARI_PerformanceCapture.h"
+#include "Runtime/Diagnostics/HIKARI_PerformanceBreakdown.h"
 
 #include <algorithm>
 #include <array>
@@ -345,16 +346,20 @@ struct Session {
                                                  {"requested", fg.requested},
                                                  {"actuallyPresentedFrames", fg.presentedFrames}};
             report["trace"] = traceStarted ? WriteTrace() : Json(nullptr);
-            std::error_code directoryError;
-            if (request.output.has_parent_path())
-                std::filesystem::create_directories(request.output.parent_path(), directoryError);
-            std::string writeMessage;
-            writeSucceeded = SERIALIZATION::JSON::WriteJsonFile(request.output, report, &writeMessage);
-            if (writeSucceeded) {
-                CORE::LogInfo("[Benchmark] report saved: " + TEXT::PathToUtf8(request.output));
+            if (request.onFinished) {
+                writeSucceeded = true;
             } else {
-                message = writeMessage;
-                CORE::LogError("[Benchmark] report failed: " + writeMessage);
+                std::error_code directoryError;
+                if (request.output.has_parent_path())
+                    std::filesystem::create_directories(request.output.parent_path(), directoryError);
+                std::string writeMessage;
+                writeSucceeded = SERIALIZATION::JSON::WriteJsonFile(request.output, report, &writeMessage);
+                if (writeSucceeded) {
+                    CORE::LogInfo("[Benchmark] report saved: " + TEXT::PathToUtf8(request.output));
+                } else {
+                    message = writeMessage;
+                    CORE::LogError("[Benchmark] report failed: " + writeMessage);
+                }
             }
         } catch (const std::exception& error) {
             message = error.what();
@@ -387,6 +392,14 @@ Status StatusOf(const Session& session) {
 // 終わった捕獲を最後の結果に移し、次の捕獲を始められる状態にする。
 void Conclude() {
     Session& session = *gSession;
+    if (session.request.onFinished) {
+        const auto onFinished = std::move(session.request.onFinished);
+        const Json report = std::move(session.report);
+        const std::string message = session.message;
+        gSession.reset();
+        onFinished(report, message);
+        return;
+    }
     gLast = StatusOf(session);
     gLast.state = session.writeSucceeded ? CaptureState::Finished : CaptureState::Failed;
     gLast.message = session.message;
@@ -415,16 +428,18 @@ bool Start(Request request, std::string& error) {
         error = "A performance capture is already running.";
         return false;
     }
-    if (request.output.empty()) {
+    if (!request.onFinished && request.output.empty()) {
         error = "A performance capture needs an output path.";
         return false;
     }
-    gLast = {};
+    if (!request.onFinished)
+        gLast = {};
     gSession = std::make_unique<Session>(std::move(request));
     return true;
 }
 
 void StartFromCommandLine(Clock::time_point startupStarted) {
+    PERFORMANCE_BREAKDOWN::StartFromCommandLine();
     const auto output = ReadRuntimeCommandLinePath(L"--benchmark-output");
     if (!output)
         return;
@@ -446,24 +461,30 @@ void StartFromCommandLine(Clock::time_point startupStarted) {
 }
 
 void OnPresentedFrame(uint64_t frameId, bool applicationFrame, const IScene* scene) {
-    if (!gSession)
-        return;
-    gSession->OnPresentedFrame(frameId, applicationFrame, scene);
-    if (gSession->finished)
-        Conclude();
+    if (gSession) {
+        gSession->OnPresentedFrame(frameId, applicationFrame, scene);
+        if (gSession->finished)
+            Conclude();
+    }
+    PERFORMANCE_BREAKDOWN::OnPresentedFrame(frameId, applicationFrame, scene);
 }
 
-Status GetStatus() { return gSession ? StatusOf(*gSession) : gLast; }
+Status GetStatus() { return gSession && !gSession->request.onFinished ? StatusOf(*gSession) : gLast; }
 
-bool ShouldExitHost() noexcept { return gExitRequested; }
-
-int ExitCode() noexcept { return gCommandLine ? gExitCode : 0; }
-
-void Shutdown() {
+void Cancel() {
     if (!gSession)
         return;
     gSession->Finish();
     Conclude();
+}
+
+bool ShouldExitHost() noexcept { return gExitRequested || PERFORMANCE_BREAKDOWN::ShouldExitHost(); }
+
+int ExitCode() noexcept { return (std::max)(gCommandLine ? gExitCode : 0, PERFORMANCE_BREAKDOWN::ExitCode()); }
+
+void Shutdown() {
+    PERFORMANCE_BREAKDOWN::Shutdown();
+    Cancel();
 }
 
 } // namespace HIKARI::RUNTIME::PERFORMANCE_CAPTURE

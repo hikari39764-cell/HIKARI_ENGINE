@@ -19,16 +19,19 @@ HikariPbrShadingContext HikariBuildForwardPbrShadingContext(
     return context;
 }
 
-// skyVisibility は空の見える割合（動的 GI だけが知る。他は 1）。
+// skyVisibility は空の見える割合（動的 GI だけが知る。他は 1）。sampleProbes を偽にすると動的 GI と焼き込み probe を
+// 読まず、固定の環境光と空の拡散光だけにする（前向きの診断モードが probe の読み出し費用を測る）。
 float3 HikariResolveSurfaceDiffuseIrradiance(float3 worldPos, float3 geometricNormal, float3 n, float3 v,
-    float3 surfaceLightmapIrradiance, float surfaceLightmapWeight, out float skyVisibility)
+    float3 surfaceLightmapIrradiance, float surfaceLightmapWeight, out float skyVisibility, bool sampleProbes = true)
 {
     skyVisibility = 1.0f;
     const float weight = saturate(surfaceLightmapWeight);
     // Lightmap の全面 coverage は下位 provider を置換する。有効な黒も維持する。
     [branch]
     if (weight >= 1.0f) return surfaceLightmapIrradiance;
-    const float4 probes = HikariResolveLightProbeDiffuse(worldPos, geometricNormal, n, v, skyVisibility);
+    float4 probes = 0.0f.xxxx;
+    [branch] if (sampleProbes)
+        probes = HikariResolveLightProbeDiffuse(worldPos, geometricNormal, n, v, skyVisibility);
     [branch] if (probes.a >= 1.0f)
         return lerp(probes.rgb, surfaceLightmapIrradiance, weight);
     // 固定の環境光（中立の確認表示だけが使う）と空の拡散光。
@@ -37,6 +40,8 @@ float3 HikariResolveSurfaceDiffuseIrradiance(float3 worldPos, float3 geometricNo
     return lerp(diffuse, surfaceLightmapIrradiance, weight);
 }
 
+// sampleProbes / sampleReflection を偽にすると、probe の読み出し（上の関数）と環境の鏡面反射を省く。前向きの診断モードが
+// それぞれの費用を測るための引数で、通常の描画は既定の真のまま。
 HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
     HikariPbrShadingContext context,
     float occlusion,
@@ -44,7 +49,9 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
     float3 worldPos,
     float3 geometricNormal,
     float3 surfaceLightmapIrradiance,
-    float surfaceLightmapWeight)
+    float surfaceLightmapWeight,
+    bool sampleProbes = true,
+    bool sampleReflection = true)
 {
     const float3 baseColor = context.baseColor;
     const float roughness = context.roughness;
@@ -54,23 +61,26 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
 
     float skyVisibility;
     const float3 diffuseIbl = HikariResolveSurfaceDiffuseIrradiance(
-        worldPos, geometricNormal, n, v, surfaceLightmapIrradiance, surfaceLightmapWeight, skyVisibility);
+        worldPos, geometricNormal, n, v, surfaceLightmapIrradiance, surfaceLightmapWeight, skyVisibility, sampleProbes);
     float3 diffuse =
         kD * baseColor * diffuseIbl;
 
     // 空が遮られた所では空の反射の代わりに周囲の照り返し（拡散の E/pi）を映す（Lagarde の鏡面遮蔽）。
     const float skyOcclusion = saturate(pow(context.ndotView + skyVisibility, exp2(-16.0f * roughness - 1.0f)) -
         1.0f + skyVisibility);
-    float3 specular = HikariSampleEnvironmentReflection(
-        worldPos, normalize(reflect(-v, n)), roughness, skyOcclusion, diffuseIbl) * context.environmentSpecularResponse;
+    float3 specular = 0.0f.xxx;
+    [branch] if (sampleReflection)
+        specular = HikariSampleEnvironmentReflection(
+            worldPos, normalize(reflect(-v, n)), roughness, skyOcclusion, diffuseIbl) * context.environmentSpecularResponse;
     float3 specularResponse = context.environmentSpecularResponse;
     if (context.clearCoat > 0.0f)
     {
         // コートの環境反射。基底の応答は HikariApplyClearCoat で既にコートの Fresnel 分だけ減っている。
         const float2 coatBrdf = HikariAnalyticEnvBrdf(context.ndotView, context.clearCoatRoughness);
         const float coatResponse = (HIKARI_CLEAR_COAT_F0 * coatBrdf.x + coatBrdf.y) * context.clearCoat;
-        specular += HikariSampleEnvironmentReflection(worldPos, normalize(reflect(-v, n)), context.clearCoatRoughness,
-            skyOcclusion, diffuseIbl) * coatResponse;
+        [branch] if (sampleReflection)
+            specular += HikariSampleEnvironmentReflection(worldPos, normalize(reflect(-v, n)),
+                context.clearCoatRoughness, skyOcclusion, diffuseIbl) * coatResponse;
         specularResponse += coatResponse.xxx;
     }
 
