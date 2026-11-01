@@ -105,12 +105,7 @@ void FillLightCB(const SceneEnvironment& environment, const RENDER3D::LIGHTING::
         std::clamp(ssr.thickness, 0.0001f, 0.05f), std::clamp(ssr.maxRoughness, 0.05f, 1.0f)};
     out.screenSpaceReflectionParams1 = {std::clamp(ssr.stride, 0.02f, 2.0f), std::clamp(ssr.edgeFade, 0.01f, 0.35f),
                                         static_cast<float>(ResolveScreenSpaceReflectionMaxSteps(ssr.quality)), 0.0f};
-    const RENDERSTYLE::RenderStyleShading& shading = environment.styleShading;
-    const bool cel = shading.model == RENDERSTYLE::RenderStyleShadingModel::Cel;
-    out.styleShading0 = {cel ? static_cast<float>(shading.bands) : 0.0f, shading.threshold, shading.softness,
-                         shading.specular};
-    out.styleShading1 = {cel ? shading.shadowTint.x : 1.0f, cel ? shading.shadowTint.y : 1.0f,
-                         cel ? shading.shadowTint.z : 1.0f, cel ? shading.rim : 0.0f};
+    RENDERSTYLE::PackRenderStyleShading(environment.styleShading, out.styleShading0, out.styleShading1);
 
     // 記録の総数（光源とデカール）。シェーダーはクラスタを引くかどうかだけに使う。
     out.localLightCount = localLightList.lightCount + localLightList.decalCount;

@@ -506,12 +506,11 @@ int main() {
     // Production terrain work must not silently retune the five shipped
     // looks. These are the render-facing values used by existing scenes.
     const auto presetVisualMatches = [](const TERRAIN::SurfacePreset& preset, std::string_view id,
-                                        TERRAIN::ShadingModelId shading, const MATH::Vec3& lightTint,
-                                        const MATH::Vec3& darkTint, float sparkle, float ripple,
-                                        TERRAIN::SurfaceLayerMaterialKind kind, uint32_t atlasTile, float metersPerTile,
-                                        float textureStrength, float normalStrength, float roughness,
-                                        float saturation) {
-        return preset.id == id && preset.shading == shading && Near(preset.material.lightTint.x, lightTint.x) &&
+                                        const MATH::Vec3& lightTint, const MATH::Vec3& darkTint, float sparkle,
+                                        float ripple, TERRAIN::SurfaceLayerMaterialKind kind, uint32_t atlasTile,
+                                        float metersPerTile, float textureStrength, float normalStrength,
+                                        float roughness, float saturation) {
+        return preset.id == id && Near(preset.material.lightTint.x, lightTint.x) &&
                Near(preset.material.lightTint.y, lightTint.y) && Near(preset.material.lightTint.z, lightTint.z) &&
                Near(preset.material.darkTint.x, darkTint.x) && Near(preset.material.darkTint.y, darkTint.y) &&
                Near(preset.material.darkTint.z, darkTint.z) && Near(preset.material.sparkleStrength, sparkle) &&
@@ -527,21 +526,16 @@ int main() {
                Near(preset.layerMaterial.shadowStrength, 1.0f) && Near(preset.shoreline.edgeFalloff, 4.0f) &&
                Near(preset.shoreline.edgeDepth, 1.5f) && Near(preset.shoreline.wetness, 0.0f);
     };
-    if (!presetVisualMatches(TERRAIN::MakeSandPreset(), "sand", TERRAIN::ShadingModelId::GranularAnime,
-                             {0.95f, 0.84f, 0.60f}, {0.62f, 0.47f, 0.29f}, 0.35f, 0.45f,
-                             TERRAIN::SurfaceLayerMaterialKind::Sand, 0u, 25.0f, 0.52f, 0.72f, 0.92f, 1.14f) ||
-        !presetVisualMatches(TERRAIN::MakeSnowPreset(), "snow", TERRAIN::ShadingModelId::GranularAnime,
-                             {1.0f, 1.0f, 1.0f}, {0.68f, 0.78f, 0.90f}, 0.35f, 0.45f,
+    if (!presetVisualMatches(TERRAIN::MakeSandPreset(), "sand", {0.95f, 0.84f, 0.60f}, {0.62f, 0.47f, 0.29f}, 0.35f,
+                             0.45f, TERRAIN::SurfaceLayerMaterialKind::Sand, 0u, 25.0f, 0.52f, 0.72f, 0.92f, 1.14f) ||
+        !presetVisualMatches(TERRAIN::MakeSnowPreset(), "snow", {1.0f, 1.0f, 1.0f}, {0.68f, 0.78f, 0.90f}, 0.35f, 0.45f,
                              TERRAIN::SurfaceLayerMaterialKind::Snow, 0u, 2.8f, 0.30f, 0.42f, 0.96f, 0.18f) ||
-        !presetVisualMatches(TERRAIN::MakeDirtPreset(), "dirt", TERRAIN::ShadingModelId::StylizedGround,
-                             {0.52f, 0.38f, 0.24f}, {0.28f, 0.20f, 0.12f}, 0.0f, 0.45f,
-                             TERRAIN::SurfaceLayerMaterialKind::Dirt, 1u, 1.4f, 0.72f, 0.58f, 0.95f, 0.78f) ||
-        !presetVisualMatches(TERRAIN::MakeGrassPreset(), "grass", TERRAIN::ShadingModelId::StylizedGround,
-                             {0.68f, 0.90f, 0.50f}, {0.18f, 0.32f, 0.12f}, 0.0f, 0.0f,
-                             TERRAIN::SurfaceLayerMaterialKind::Grass, 2u, 1.4f, 0.68f, 0.48f, 0.92f, 0.82f) ||
-        !presetVisualMatches(TERRAIN::MakeRockPreset(), "rock", TERRAIN::ShadingModelId::StylizedGround,
-                             {0.86f, 0.86f, 0.86f}, {0.30f, 0.30f, 0.30f}, 0.0f, 0.0f,
-                             TERRAIN::SurfaceLayerMaterialKind::Rock, 3u, 1.4f, 0.76f, 0.74f, 0.88f, 0.30f)) {
+        !presetVisualMatches(TERRAIN::MakeDirtPreset(), "dirt", {0.52f, 0.38f, 0.24f}, {0.28f, 0.20f, 0.12f}, 0.0f,
+                             0.45f, TERRAIN::SurfaceLayerMaterialKind::Dirt, 1u, 1.4f, 0.72f, 0.58f, 0.95f, 0.78f) ||
+        !presetVisualMatches(TERRAIN::MakeGrassPreset(), "grass", {0.68f, 0.90f, 0.50f}, {0.18f, 0.32f, 0.12f}, 0.0f,
+                             0.0f, TERRAIN::SurfaceLayerMaterialKind::Grass, 2u, 1.4f, 0.68f, 0.48f, 0.92f, 0.82f) ||
+        !presetVisualMatches(TERRAIN::MakeRockPreset(), "rock", {0.86f, 0.86f, 0.86f}, {0.30f, 0.30f, 0.30f}, 0.0f,
+                             0.0f, TERRAIN::SurfaceLayerMaterialKind::Rock, 3u, 1.4f, 0.76f, 0.74f, 0.88f, 0.30f)) {
         return Fail("built-in terrain visual preset baseline");
     }
 

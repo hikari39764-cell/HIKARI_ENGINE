@@ -11,12 +11,6 @@
 
 namespace HIKARI::TERRAIN {
 
-enum class ShadingModelId : uint8_t {
-    GranularAnime,
-    StylizedGround,
-    Flat,
-};
-
 enum class SurfaceLayerMaterialKind : uint8_t {
     Sand = 0,
     Snow = 1,
@@ -147,7 +141,6 @@ inline constexpr auto kShorelineFields = [](auto&& field) {
 // 実心地表の preset。砂 / 雪 / 泥 / 草 / 岩はこの構造を差し替える。
 struct SurfacePreset {
     std::string id{};
-    ShadingModelId shading = ShadingModelId::GranularAnime;
     GranularMaterialParams material{};
     DeformParams deform{};
     ShorelineParams shoreline{};
@@ -158,7 +151,6 @@ struct SurfacePreset {
 inline SurfacePreset MakeSandPreset() {
     SurfacePreset preset{};
     preset.id = "sand";
-    preset.shading = ShadingModelId::GranularAnime;
     preset.material = {};
     preset.deform.behavior = DeformBehaviorId::SphereCap;
     preset.shoreline = {};
@@ -211,7 +203,6 @@ inline SurfacePreset MakeSnowPreset() {
 inline SurfacePreset MakeDirtPreset() {
     SurfacePreset preset = MakeSandPreset();
     preset.id = "dirt";
-    preset.shading = ShadingModelId::StylizedGround;
     preset.material.lightTint = {0.52f, 0.38f, 0.24f};
     preset.material.darkTint = {0.28f, 0.20f, 0.12f};
     preset.material.sparkleStrength = 0.0f;
@@ -231,7 +222,6 @@ inline SurfacePreset MakeDirtPreset() {
 inline SurfacePreset MakeGrassPreset() {
     SurfacePreset preset = MakeSandPreset();
     preset.id = "grass";
-    preset.shading = ShadingModelId::StylizedGround;
     preset.material.lightTint = {0.68f, 0.90f, 0.50f};
     preset.material.darkTint = {0.18f, 0.32f, 0.12f};
     preset.material.sparkleStrength = 0.0f;
@@ -252,7 +242,6 @@ inline SurfacePreset MakeGrassPreset() {
 inline SurfacePreset MakeRockPreset() {
     SurfacePreset preset = MakeSandPreset();
     preset.id = "rock";
-    preset.shading = ShadingModelId::StylizedGround;
     preset.material.lightTint = {0.86f, 0.86f, 0.86f};
     preset.material.darkTint = {0.30f, 0.30f, 0.30f};
     preset.material.sparkleStrength = 0.0f;

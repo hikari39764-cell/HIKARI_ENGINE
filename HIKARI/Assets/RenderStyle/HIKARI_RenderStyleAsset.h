@@ -31,21 +31,19 @@ struct RenderStylePostLayer {
     bool operator==(const RenderStylePostLayer&) const = default;
 };
 
-inline constexpr TEXT::EnumName<RenderStyleShadingModel> kRenderStyleShadingModelNames[] = {
-    {RenderStyleShadingModel::Physical, "Physical"},
-    {RenderStyleShadingModel::Cel, "Cel"},
-};
-
 inline constexpr auto kRenderStyleShadingFields = [](auto&& field) {
     using JSONFIELDS::Range;
+    using JSONFIELDS::Show;
     using S = RenderStyleShading;
+    // Cel だけが読む値は Cel のときだけ出す（保存と読込は常に行う）。
+    constexpr auto cel = Show{[](const S& s) { return s.model == RenderStyleShadingModel::Cel; }};
     field("model", &S::model, kRenderStyleShadingModelNames);
-    field("bands", &S::bands, Range{1.0, 4.0});
-    field("threshold", &S::threshold, Range{0.0, 0.95});
-    field("softness", &S::softness, Range{0.0, 0.5});
-    field("shadowTint", &S::shadowTint, Range{0.0, 2.0});
+    field("bands", &S::bands, Range{1.0, 4.0}, cel);
+    field("threshold", &S::threshold, Range{0.0, 0.95}, cel);
+    field("softness", &S::softness, Range{0.0, 0.5}, cel);
+    field("shadowTint", &S::shadowTint, Range{0.0, 2.0}, cel);
     field("specular", &S::specular, Range{0.0, 2.0});
-    field("rim", &S::rim, Range{0.0, 2.0});
+    field("rim", &S::rim, Range{0.0, 2.0}, cel);
 };
 
 struct RenderStyleAsset {
