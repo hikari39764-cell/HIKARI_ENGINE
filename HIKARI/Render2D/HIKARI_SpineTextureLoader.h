@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 #include <unordered_map>
-#include "Render2D/HIKARI_DxTexture.h"
+#include "RenderCore/Texture/HIKARI_DxTexture.h"
 // Spine
 #include <spine/Atlas.h>
 #include <spine/TextureLoader.h>

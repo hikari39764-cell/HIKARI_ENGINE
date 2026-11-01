@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Vfx/Post/HIKARI_PresentationFrame.h"
 #include "Vfx/Post/HIKARI_GameUiBackdropComposite.h"
 

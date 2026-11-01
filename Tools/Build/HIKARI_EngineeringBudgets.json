@@ -8,7 +8,7 @@
     "hardLargeFileCountCeiling": 9,
     "runtimeModuleCompileUnitCeiling": 150,
     "moduleCompileUnitCeilings": {
-      "Render3D": 231,
+      "Render3D": 226,
       "Scene": 206,
       "Assets": 144
     },

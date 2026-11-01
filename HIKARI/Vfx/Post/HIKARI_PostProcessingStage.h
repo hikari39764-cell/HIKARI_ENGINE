@@ -13,7 +13,7 @@
 #include <DirectXMath.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Render3D/Color/HIKARI_AutomaticExposure.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"

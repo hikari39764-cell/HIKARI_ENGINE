@@ -5,7 +5,7 @@
 #include <unordered_map>
 
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
-#include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
+#include "RenderCore/Resources/HIKARI_RenderResourceHandle.h"
 
 namespace HIKARI {
 class ModelAsset;

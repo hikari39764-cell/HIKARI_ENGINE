@@ -53,7 +53,9 @@ struct GpuContractDevice final {
         queue->ExecuteCommandLists(1, lists);
         assert(SUCCEEDED(queue->Signal(fence.Get(), retireFence)));
         assert(SUCCEEDED(fence->SetEventOnCompletion(retireFence, event)));
-        const DWORD waitResult = WaitForSingleObject(event, 10000);
+        // WARP では VfxStyleGpuContracts の 37 効果の比較が 10 秒を超える。
+        // ctest の TIMEOUT（60 秒）に揃え、止まった時だけ落とす。
+        const DWORD waitResult = WaitForSingleObject(event, 60000);
         if (waitResult != WAIT_OBJECT_0)
             std::fprintf(stderr, "GPU wait=%lu completed=%llu target=%llu removed=0x%08lx\n", waitResult,
                          static_cast<unsigned long long>(fence->GetCompletedValue()),

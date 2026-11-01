@@ -22,7 +22,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Render3D/Pipeline/Internal/HIKARI_ProjectDispatchOutput.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 
 namespace HIKARI::RENDER3D::PIPELINE {

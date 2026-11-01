@@ -3,7 +3,7 @@
 #include <span>
 
 #include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI {
 class ModelAsset;

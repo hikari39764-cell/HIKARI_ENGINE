@@ -16,9 +16,9 @@
 #include "Render3D/Graph/HIKARI_RenderGraphSurfaceContract.h"
 #include "Render3D/Pipeline/HIKARI_ProjectComputeShaderRuntime.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
-#include "Render3D/Resources/HIKARI_RenderResourceSystem.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/HIKARI_RenderResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 
 namespace HIKARI::RENDER3D::PIPELINE {

@@ -13,8 +13,7 @@ std::vector<VfxPrewarmMaterial> CollectVfxPrewarmMaterials(const VfxProgram& pro
             continue;
         }
         VfxPrewarmMaterial& material = result.emplace_back();
-        material.custom = RENDER3D::PARTICLES::IsCustomParticleMaterial(render.materialMode);
-        material.lit = RENDER3D::PARTICLES::IsLitParticleMaterial(render.materialMode);
+        material.materialMode = render.materialMode;
         material.colorTextureAssetGuid = render.colorTextureAssetGuid;
         material.materialAssetGuid = render.materialAssetGuid;
         material.effectMaterial = render.effectMaterial;

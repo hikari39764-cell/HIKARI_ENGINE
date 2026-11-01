@@ -2,7 +2,7 @@
 
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Render2D/HIKARI_DxRenderer.h"
-#include "Render2D/HIKARI_GameUiEffectRenderer.h"
+#include "Render3D/Ui/HIKARI_GameUiEffectRenderer.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 
 #include <array>

@@ -3,7 +3,7 @@
 
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"

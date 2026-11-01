@@ -23,7 +23,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderViewSelection.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D::LIGHTPROBE {
 

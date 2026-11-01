@@ -10,7 +10,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceBuffer.h"
 
 namespace HIKARI::RENDER3D::SCREENSPACE {

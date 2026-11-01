@@ -7,7 +7,7 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Style/HIKARI_EditorTheme.h"
-#include "Render2D/HIKARI_DxTexture.h"
+#include "RenderCore/Texture/HIKARI_DxTexture.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
 #include <algorithm>
 #include <cstring>

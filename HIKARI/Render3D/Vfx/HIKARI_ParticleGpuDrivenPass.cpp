@@ -27,14 +27,14 @@
 #include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/Vfx/HIKARI_GpuParticleParameterPacking.h"
 #include "Render3D/Vfx/Internal/HIKARI_GpuParticleShaderInterop.h"
 #include "Render3D/Vfx/Internal/HIKARI_GpuParticleStorage.h"
 #include "Render3D/Vfx/Internal/HIKARI_ParticleGpuDrivenPipelineState.h"
 #include "Render3D/Vfx/Internal/HIKARI_ParticleMaterialResolver.h"
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 
 namespace HIKARI::RENDER3D::PARTICLES {
 namespace {
@@ -1091,15 +1091,6 @@ void ParticleGpuDrivenPass::Shutdown() {
         impl_->Shutdown();
 }
 
-namespace {
-ParticleMaterialMode MakePrewarmMaterialMode(const VfxPrewarmMaterial& material) noexcept {
-    if (material.custom) {
-        return material.lit ? ParticleMaterialMode::CustomLit : ParticleMaterialMode::CustomMaterial;
-    }
-    return material.lit ? ParticleMaterialMode::StandardLit : ParticleMaterialMode::StandardUnlit;
-}
-} // namespace
-
 bool ParticleGpuDrivenPass::PrepareFrame(const GFX::Context& context, const ParticleRenderFrameSource* source,
                                          MATERIAL::GpuMaterialRegistry& materialRegistry) {
     if (impl_ && context.device && context.srvHeap && source && source->input && source->assetRegistry) {
@@ -1117,7 +1108,7 @@ bool ParticleGpuDrivenPass::PrepareFrame(const GFX::Context& context, const Part
                 // 用意する材質の一覧は VFX を読み込んだ側が descriptor に入れてある。
                 for (const VfxPrewarmMaterial& material : descriptor->prewarm) {
                     ParticleEmitterRenderParameters& render = dependencies.emitters.emplace_back().render;
-                    render.materialMode = MakePrewarmMaterialMode(material);
+                    render.materialMode = material.materialMode;
                     render.colorTextureAssetGuid = material.colorTextureAssetGuid;
                     render.materialAssetGuid = material.materialAssetGuid;
                     render.effectMaterial = material.effectMaterial;

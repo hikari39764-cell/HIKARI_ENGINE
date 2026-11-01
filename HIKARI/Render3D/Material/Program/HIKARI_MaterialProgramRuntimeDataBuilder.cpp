@@ -17,7 +17,7 @@
 #include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramStaticEvaluator.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 #include "Core/Text/HIKARI_AsciiId.h"
 #include "Core/Text/HIKARI_HexString.h"
 

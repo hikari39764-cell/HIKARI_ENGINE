@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "HIKARI/Project/SceneCaptureTypes.h"
-#include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
+#include "RenderCore/Resources/HIKARI_RenderResourceHandle.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI {

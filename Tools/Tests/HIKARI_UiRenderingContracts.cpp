@@ -6,10 +6,10 @@
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Workspaces/TextStyle/HIKARI_TextStyleWorkspaceController.h"
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render2D/HIKARI_GameUiEffectRenderer.h"
-#include "Render2D/HIKARI_RenderTarget2D.h"
-#include "Render3D/Text/HIKARI_SdfTextLayout.h"
-#include "Render2D/HIKARI_GameUiTextLayout.h"
+#include "Render3D/Ui/HIKARI_GameUiEffectRenderer.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Text/HIKARI_SdfTextLayout.h"
+#include "Render3D/Ui/HIKARI_GameUiTextLayout.h"
 #include "HIKARI/Project/RuntimeFeature.h"
 #include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureContextAccess.h"
@@ -24,7 +24,7 @@
 #include "Scene/Ui/HIKARI_UiSceneSystem.h"
 #include "Scene/Ui/HIKARI_UiAnimationComponents.h"
 #include "Scene/Ui/HIKARI_UiSceneComponents.h"
-#include "Render2D/HIKARI_DxTexture.h"
+#include "RenderCore/Texture/HIKARI_DxTexture.h"
 #include <d3d12sdklayers.h>
 #include <DirectXTex.h>
 #include <array>

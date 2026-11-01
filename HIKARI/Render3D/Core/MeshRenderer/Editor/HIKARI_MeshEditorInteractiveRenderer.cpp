@@ -17,8 +17,8 @@
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::MESHRENDERER {
 

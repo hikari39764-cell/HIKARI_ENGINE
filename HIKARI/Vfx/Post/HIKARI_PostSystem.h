@@ -18,7 +18,7 @@
 #include "Render3D/Color/HIKARI_AutomaticExposure.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenComposite.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameGraphSession.h"
 #include "Render3D/Surface/HIKARI_RenderFrameSurfaceRegistry.h"

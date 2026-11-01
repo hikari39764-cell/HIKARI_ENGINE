@@ -7,7 +7,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_CameraOptics.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 
 namespace HIKARI {

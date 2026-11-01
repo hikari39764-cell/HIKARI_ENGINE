@@ -5,7 +5,7 @@
 #include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 #include "RenderContracts/Model/Policies/HIKARI_ModelMaterialPolicy.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D::MATERIAL {
 namespace {

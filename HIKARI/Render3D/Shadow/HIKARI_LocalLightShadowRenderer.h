@@ -7,7 +7,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 struct GpuDrivenSceneSource;

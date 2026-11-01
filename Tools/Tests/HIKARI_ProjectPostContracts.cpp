@@ -29,7 +29,7 @@
 #include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
 #include "Vfx/Post/HIKARI_PostEffect.h"

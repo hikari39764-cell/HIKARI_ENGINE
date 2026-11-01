@@ -14,7 +14,7 @@
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayQueryBindings.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI::RENDER3D::SCREENSPACE {
 namespace {

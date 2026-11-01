@@ -7,7 +7,7 @@
 
 #include "Core/HIKARI_AssetGuid.h"
 #include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
-#include "Shaders/Include/HIKARI_ClusterGeometryConfig.h"
+#include "Include/HIKARI_ClusterGeometryConfig.h"
 
 namespace HIKARI::RENDER3D::CLUSTER {
 

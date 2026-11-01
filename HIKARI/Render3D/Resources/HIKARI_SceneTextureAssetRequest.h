@@ -5,7 +5,7 @@
 
 #include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "RenderContracts/Asset/HIKARI_AssetTypes.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D {
 

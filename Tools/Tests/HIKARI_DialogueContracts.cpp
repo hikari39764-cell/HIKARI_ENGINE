@@ -15,7 +15,7 @@
 #include "Gameplay/Dialogue/HIKARI_DialogueDefinition.h"
 #include "Gameplay/Dialogue/HIKARI_DialoguePresentation.h"
 #include "Gameplay/Dialogue/HIKARI_DialogueProjectStyle.h"
-#include "Render2D/HIKARI_GameUiSignedDistanceField.h"
+#include "Render3D/Ui/HIKARI_GameUiSignedDistanceField.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 
 namespace {

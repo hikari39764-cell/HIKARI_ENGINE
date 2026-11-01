@@ -26,7 +26,7 @@
 #include "Render3D/GpuDriven/CommandStream/HIKARI_OwnedTraditionalIndirectStream.h"
 #include "Render3D/HIKARI_Mesh.h"
 #include "Render3D/Meshlet/HIKARI_MeshletRenderBackend.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/Terrain/HIKARI_TerrainSurfaceGpuFrameBuffer.h"
 #include "Render3D/Shadow/HIKARI_ShadowCachePolicy.h"
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"

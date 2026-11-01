@@ -5,7 +5,7 @@
 #include <d3d12.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
 

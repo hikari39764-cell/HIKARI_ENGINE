@@ -21,7 +21,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
-#include "Render2D/HIKARI_DxTexture.h"
+#include "RenderCore/Texture/HIKARI_DxTexture.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 

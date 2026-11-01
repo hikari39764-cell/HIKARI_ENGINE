@@ -6,7 +6,7 @@
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
 #include "Render3D/Lighting/HIKARI_SkyAsset.h"
 #include "Render3D/Lighting/HIKARI_SkyManager.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D::LIGHTING {
 

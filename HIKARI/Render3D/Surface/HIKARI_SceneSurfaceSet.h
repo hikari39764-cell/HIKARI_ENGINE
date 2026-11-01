@@ -8,7 +8,7 @@
 #include "Render3D/Core/HIKARI_RenderFrameToken.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/Graph/HIKARI_RenderGraphSurfaceContract.h"
 
 namespace HIKARI::RENDER3D::SURFACE {

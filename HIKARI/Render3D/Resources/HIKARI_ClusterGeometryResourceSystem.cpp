@@ -18,8 +18,8 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_UploadSubmissionQueue.h"
 #include "Gfx/HIKARI_VideoMemory.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
-#include "Render3D/Resources/HIKARI_RenderResourceSystem.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/HIKARI_RenderResourceSystem.h"
 #include "Render3D/Resources/Internal/HIKARI_ClusterGeometrySourceIdentity.h"
 
 namespace HIKARI::RENDER3D {

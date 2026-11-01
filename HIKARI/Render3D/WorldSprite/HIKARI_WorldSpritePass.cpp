@@ -27,9 +27,9 @@
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
 #include "Render3D/Resources/HIKARI_SceneTextureAssetRequest.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D::WORLD_SPRITES {
 namespace {

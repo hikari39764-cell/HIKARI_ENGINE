@@ -13,7 +13,7 @@
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "RenderContracts/Shader/HIKARI_VolumetricShaderContract.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI::ATMOSPHERE {
 

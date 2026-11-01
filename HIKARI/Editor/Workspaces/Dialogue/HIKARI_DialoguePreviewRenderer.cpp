@@ -7,9 +7,9 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Gameplay/Dialogue/HIKARI_DialoguePresentation.h"
-#include "Render2D/HIKARI_GameUiEffectRenderer.h"
-#include "Render2D/HIKARI_RenderTarget2D.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "Render3D/Ui/HIKARI_GameUiEffectRenderer.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 

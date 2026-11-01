@@ -22,7 +22,7 @@ int main() {
     constexpr UINT width = 16, pixels = width * width;
     constexpr UINT kinds[] = {
 #define HIKARI_EFFECT(name, id) id,
-#include "Shaders/Include/Vfx/HIKARI_MaterialEffectKinds.hlsli"
+#include "Include/Vfx/HIKARI_MaterialEffectKinds.hlsli"
 #undef HIKARI_EFFECT
     };
     constexpr UINT cases = UINT(std::size(kinds)) * 2;

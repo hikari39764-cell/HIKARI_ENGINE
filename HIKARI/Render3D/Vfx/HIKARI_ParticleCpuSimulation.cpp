@@ -3,7 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include "Shaders/Include/Vfx/HIKARI_ParticleForceMath.hlsli"
+#include "Include/Vfx/HIKARI_ParticleForceMath.hlsli"
 
 namespace HIKARI::RENDER3D::PARTICLES {
 float IntegrateParticleCurve(std::span<const ParticleCurveKey> keys, ParticleCurveInterpolation interpolation,

@@ -15,7 +15,7 @@
 #include "Assets/Vfx/HIKARI_VfxBuiltinTextureCatalog.h"
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
 #include "Editor/Widgets/HIKARI_EditorTexturePreview.h"
-#include "Render2D/HIKARI_DxTexture.h"
+#include "RenderCore/Texture/HIKARI_DxTexture.h"
 
 #include "imgui.h"
 

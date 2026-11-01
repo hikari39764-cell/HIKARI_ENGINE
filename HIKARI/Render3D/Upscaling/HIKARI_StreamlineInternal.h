@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"

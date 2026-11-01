@@ -11,13 +11,17 @@ $engineRoot = Join-Path $repoRoot 'HIKARI'
 # a module of the same group, or a lower group. Scene core sits below the domain systems that run on the World
 # (Physics, Animation, Gameplay), which in turn sit below Runtime. Authoring (inspector interfaces) is placed
 # beside Assets. RenderContracts (shader contracts and artifact readers, cluster geometry and material program
-# formats, lightmap contracts, model data) sits between Gfx and Render3D/Render2D. A header under an Internal
-# directory belongs to that directory's parent and is not included from outside it.
+# formats, lightmap contracts, model data) sits between Gfx and RenderCore. RenderCore (GPU resource pool and
+# descriptor pool, texture resources, render targets, SDF text layout) is the base both renderers share; Render2D
+# (2D drawing) sits below Render3D (3D rendering with Vfx, post processing and game UI drawing). A header under an
+# Internal directory belongs to that directory's parent and is not included from outside it.
 $layers = @(
     @('Core', 'Platform', 'Diagnostics'),
     @('Gfx', 'Input', 'Audio', 'Project'),
     @('RenderContracts'),
-    @('Render3D', 'Render2D'),
+    @('RenderCore'),
+    @('Render2D'),
+    @('Render3D'),
     @('Assets', 'Authoring'),
     @('Scene'),
     @('Physics', 'Animation', 'Gameplay'),
@@ -78,7 +82,7 @@ if ($closure.Groups['body'].Value -match 'HIKARI::(Assimp|RecastNavigation|ImGui
     throw 'Editor/importer or private navigation dependencies leaked into public Runtime linkage.'
 }
 # Compile units are counted per module, because the module is one library once it is moved. Vfx counts as Render3D
-# (Render3D 235 = 216 + Vfx 19). Render3D, Scene and Assets are bigger than the default ceiling and are frozen at
+# (Render3D 226 = 206 + Vfx 20). Render3D, Scene and Assets are bigger than the default ceiling and are frozen at
 # their current size in moduleCompileUnitCeilings; the numbers only go down.
 $budget = Get-Content -LiteralPath (Join-Path $repoRoot 'Tools/Build/HIKARI_EngineeringBudgets.json') -Raw | ConvertFrom-Json
 $defaultLimit = [int]$budget.source.runtimeModuleCompileUnitCeiling

@@ -9,7 +9,7 @@
 #include "Assets/HIKARI_AssetFileCache.h"
 #include "Assets/Lighting/HIKARI_IesProfileAsset.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
-#include "Render3D/Resources/HIKARI_RenderResourcePool.h"
+#include "RenderCore/Resources/HIKARI_RenderResourcePool.h"
 
 namespace HIKARI {
 

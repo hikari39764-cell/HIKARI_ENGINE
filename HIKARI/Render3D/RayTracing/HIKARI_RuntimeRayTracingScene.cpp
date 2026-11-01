@@ -27,7 +27,7 @@
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingDeformation.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingChanges.h"
-#include "Render3D/Resources/HIKARI_RenderResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_RenderResourceSystem.h"
 
 namespace HIKARI::RENDER3D::RAYTRACING {
 using AccelerationStructure = GFX::RAYTRACING::DxrAccelerationStructure;

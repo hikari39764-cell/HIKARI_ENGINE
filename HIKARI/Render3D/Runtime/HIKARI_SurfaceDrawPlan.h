@@ -5,7 +5,7 @@
 #include <d3d12.h>
 
 #include "Render3D/Runtime/HIKARI_RenderSurfaceContract.h"
-#include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
+#include "RenderCore/Resources/HIKARI_RenderResourceHandle.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
 
 namespace HIKARI::RENDER3D::RUNTIME {

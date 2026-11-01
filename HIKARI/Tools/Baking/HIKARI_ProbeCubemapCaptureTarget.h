@@ -9,7 +9,7 @@
 #include <dxgiformat.h>
 #include <wrl/client.h>
 
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 
 namespace HIKARI::TOOLS::BAKING {
 

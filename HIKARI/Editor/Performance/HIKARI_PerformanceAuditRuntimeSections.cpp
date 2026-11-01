@@ -9,7 +9,7 @@
 #include "Render3D/Lighting/HIKARI_SceneEnvironmentNames.h"
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.h"
 #include "Render3D/ScreenSpace/HIKARI_SsaoRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"

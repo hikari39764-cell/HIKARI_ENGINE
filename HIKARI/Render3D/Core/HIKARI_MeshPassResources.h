@@ -4,7 +4,7 @@
 
 #include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
 #include "Render3D/DepthOfField/HIKARI_CameraDepthOfFieldStage.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 
 namespace HIKARI::MESHRENDERER {

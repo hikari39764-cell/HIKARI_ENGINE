@@ -6,7 +6,7 @@
 #include <dxgiformat.h>
 
 #include "Render3D/Lighting/HIKARI_SkyAsset.h"
-#include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
+#include "RenderCore/Resources/HIKARI_RenderResourceHandle.h"
 
 namespace HIKARI::GFX {
 struct Context;

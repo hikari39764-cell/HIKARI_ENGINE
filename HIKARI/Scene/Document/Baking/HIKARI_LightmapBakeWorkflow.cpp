@@ -8,7 +8,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 #include "Render3D/Lighting/HIKARI_LightmapRuntime.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 #include "Scene/Document/Baking/Internal/HIKARI_DocumentSceneBakeSupport.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"

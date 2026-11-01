@@ -10,7 +10,7 @@
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
 bool CreateBuffers(const GFX::Context& graphics) {

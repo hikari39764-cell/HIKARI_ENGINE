@@ -4,7 +4,7 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDepthVisibilityLayer.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI::RENDER3D::WATER {
 

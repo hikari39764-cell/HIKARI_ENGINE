@@ -25,7 +25,7 @@
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereRuntime.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::SKYRENDERER {
 

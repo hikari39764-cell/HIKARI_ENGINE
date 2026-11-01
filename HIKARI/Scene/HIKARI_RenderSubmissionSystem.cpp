@@ -17,7 +17,7 @@
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
 #include "Assets/Models/HIKARI_ModelManager.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
-#include "Render2D/HIKARI_GameUiEffectRenderer.h"
+#include "Render3D/Ui/HIKARI_GameUiEffectRenderer.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"

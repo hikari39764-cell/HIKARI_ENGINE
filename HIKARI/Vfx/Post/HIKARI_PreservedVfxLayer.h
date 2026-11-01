@@ -1,7 +1,7 @@
 #pragma once
 
 #include <memory>
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Vfx/Post/HIKARI_PostEffect.h"

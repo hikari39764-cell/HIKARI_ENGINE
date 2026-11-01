@@ -9,7 +9,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
-#include "Render3D/Resources/HIKARI_RenderResourcePool.h"
+#include "RenderCore/Resources/HIKARI_RenderResourcePool.h"
 
 namespace HIKARI {
 class RenderTarget2D;

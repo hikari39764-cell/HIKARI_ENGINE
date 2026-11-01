@@ -8,7 +8,7 @@
 
 #include "Render3D/Material/HIKARI_GpuMaterialProgramBlockStore.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
-#include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
+#include "RenderCore/Resources/HIKARI_RenderResourceHandle.h"
 
 namespace HIKARI::RENDER3D::MATERIAL {
 

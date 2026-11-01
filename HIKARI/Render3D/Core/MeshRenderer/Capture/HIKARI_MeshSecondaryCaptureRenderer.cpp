@@ -22,9 +22,9 @@
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenWorkBuilder.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::MESHRENDERER {
 

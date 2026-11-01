@@ -1,7 +1,7 @@
 #include "Render3D/Shadow/Internal/HIKARI_ShadowRendererInternal.h"
 #include "Gfx/HIKARI_GfxContext.h"
 
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
 #include "Render3D/Shadow/Pipeline/HIKARI_ShadowRootParameters.h"
 
 namespace HIKARI::SHADOW::INTERNAL {

@@ -8,7 +8,7 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineInternal.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineResourceAdapter.h"
 

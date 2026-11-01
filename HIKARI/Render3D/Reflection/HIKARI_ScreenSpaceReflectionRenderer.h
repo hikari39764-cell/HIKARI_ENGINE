@@ -11,7 +11,7 @@
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
-#include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
+#include "RenderCore/Resources/HIKARI_RenderResourceHandle.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 

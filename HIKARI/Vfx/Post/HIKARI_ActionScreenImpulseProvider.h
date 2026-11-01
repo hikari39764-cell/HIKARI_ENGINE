@@ -6,7 +6,7 @@
 #include <cstdint>
 
 #include "Core/Math/HIKARI_Math3D.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/Vfx/HIKARI_ActionPostReactionFrameSource.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 

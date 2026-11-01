@@ -9,7 +9,7 @@
 #include <cstdint>
 
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 
 namespace HIKARI::RENDER3D::WATER::SPECTRUM {
 

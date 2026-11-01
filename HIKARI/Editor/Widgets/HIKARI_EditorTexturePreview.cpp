@@ -3,7 +3,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "Render2D/HIKARI_DxTexture.h"
+#include "RenderCore/Texture/HIKARI_DxTexture.h"
 
 namespace HIKARI::EDITOR {
 namespace {

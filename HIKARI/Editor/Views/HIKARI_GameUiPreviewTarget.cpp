@@ -1,5 +1,5 @@
 #include "Editor/Views/HIKARI_GameUiPreviewTarget.h"
-#include "Render2D/HIKARI_GameUiEffectRenderer.h"
+#include "Render3D/Ui/HIKARI_GameUiEffectRenderer.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI::EDITOR {

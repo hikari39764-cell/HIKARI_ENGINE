@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Vfx/Post/HIKARI_PostEffect.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 

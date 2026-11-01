@@ -5,7 +5,7 @@
 #include <optional>
 #include "Render3D/Lighting/HIKARI_SurfaceLightingBindings.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"

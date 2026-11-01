@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-#include "Render2D/HIKARI_DxTexture.h"
+#include "RenderCore/Texture/HIKARI_DxTexture.h"
 #include "Assets/HIKARI_AssetRegistryBuilder.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
 #include "Assets/Material/HIKARI_MaterialAssetLookup.h"

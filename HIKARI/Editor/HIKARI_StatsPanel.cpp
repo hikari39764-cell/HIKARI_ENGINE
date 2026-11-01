@@ -4,7 +4,7 @@
 #include "Diagnostics/HIKARI_MetricRegistry.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/Performance/HIKARI_MetricText.h"
-#include "Render2D/HIKARI_DxTexture.h"
+#include "RenderCore/Texture/HIKARI_DxTexture.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_PixProfiler.h"

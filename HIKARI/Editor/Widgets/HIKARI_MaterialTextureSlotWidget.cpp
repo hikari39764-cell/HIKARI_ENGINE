@@ -10,7 +10,7 @@
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Editor/Widgets/HIKARI_EditorTexturePreview.h"
 #include "Editor/Style/HIKARI_EditorAssetIcons.h"
-#include "Render2D/HIKARI_DxTexture.h"
+#include "RenderCore/Texture/HIKARI_DxTexture.h"
 
 #include "imgui.h"
 

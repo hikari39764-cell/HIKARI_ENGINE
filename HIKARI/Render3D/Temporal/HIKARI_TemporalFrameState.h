@@ -7,7 +7,7 @@
 #include "Render3D/Core/HIKARI_RenderFrameToken.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Core/Math/HIKARI_Math3D.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 
 namespace HIKARI::RENDER3D::TEMPORAL {
 

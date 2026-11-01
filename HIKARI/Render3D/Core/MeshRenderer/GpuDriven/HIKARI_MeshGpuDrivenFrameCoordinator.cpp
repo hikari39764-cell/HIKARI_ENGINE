@@ -6,8 +6,8 @@
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenWorkBuilder.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
 uint32_t MakePreDepthGpuDrivenPassMask() {

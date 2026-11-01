@@ -9,7 +9,7 @@
 
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Vfx/Post/HIKARI_ActionScreenImpulseProvider.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 

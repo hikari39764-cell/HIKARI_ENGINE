@@ -10,7 +10,7 @@
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 

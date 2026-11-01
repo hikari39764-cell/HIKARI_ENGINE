@@ -2,7 +2,7 @@
 #include "Render3D/Vfx/HIKARI_ParticleSpatialEffect.h"
 #include <algorithm>
 #include <cmath>
-#include "Shaders/Include/Vfx/HIKARI_ParticleSpatialMath.hlsli"
+#include "Include/Vfx/HIKARI_ParticleSpatialMath.hlsli"
 namespace HIKARI::RENDER3D::PARTICLES {
 inline MATH::Vec3 RotateSpatialVector(MATH::Quat q, MATH::Vec3 v) {
     const MATH::Vec3 axis{q.x, q.y, q.z};

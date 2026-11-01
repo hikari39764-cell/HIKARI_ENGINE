@@ -14,7 +14,7 @@
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
-#include "Render3D/Resources/HIKARI_RenderResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_RenderResourceSystem.h"
 #include "Render3D/Runtime/HIKARI_SurfaceDrawRoute.h"
 #include "Core/HIKARI_Logger.h"
 #include "Vfx/MaterialFx/HIKARI_MaterialFxProfile.h"

@@ -12,7 +12,7 @@
 #include "RenderContracts/Geometry/HIKARI_ClusterGeometryPacked.h"
 #include "RenderContracts/Geometry/HIKARI_ClusterGpuData.h"
 #include "Core/Math/HIKARI_Math3D.h"
-#include "Render3D/Resources/HIKARI_RenderResourcePool.h"
+#include "RenderCore/Resources/HIKARI_RenderResourcePool.h"
 
 namespace HIKARI::RENDER3D {
 

@@ -15,7 +15,7 @@
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 #include "Render3D/Lighting/HIKARI_SkyManager.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D::LIGHTING {
 

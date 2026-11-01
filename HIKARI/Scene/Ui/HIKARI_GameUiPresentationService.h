@@ -9,7 +9,7 @@
 
 #include "HIKARI/Project/UiTypes.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
-#include "Render2D/HIKARI_GameUiRenderData.h"
+#include "Render3D/Ui/HIKARI_GameUiRenderData.h"
 
 namespace HIKARI {
 class AssetDatabase;

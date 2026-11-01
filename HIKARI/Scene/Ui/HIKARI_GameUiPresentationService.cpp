@@ -1,6 +1,6 @@
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 #include "Core/IO/HIKARI_PathNormalization.h"
-#include "Render2D/HIKARI_GameUiTextLayout.h"
+#include "Render3D/Ui/HIKARI_GameUiTextLayout.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 
 #include <algorithm>

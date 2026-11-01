@@ -8,7 +8,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render3D/Resources/HIKARI_RenderResourcePool.h"
+#include "RenderCore/Resources/HIKARI_RenderResourcePool.h"
 #include "Render3D/Vfx/HIKARI_GpuParticleParameterPacking.h"
 
 namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {

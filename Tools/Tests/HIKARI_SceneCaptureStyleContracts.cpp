@@ -7,10 +7,10 @@
 #include <d3dx12.h>
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/HIKARI_TimeService.h"
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Render/HIKARI_SceneCaptureStylePass.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"

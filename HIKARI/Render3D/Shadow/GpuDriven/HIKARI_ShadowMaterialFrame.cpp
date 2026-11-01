@@ -8,7 +8,7 @@
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Render3D/Material/Program/HIKARI_GpuMaterialProgramBinding.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::SHADOW::INTERNAL {
 

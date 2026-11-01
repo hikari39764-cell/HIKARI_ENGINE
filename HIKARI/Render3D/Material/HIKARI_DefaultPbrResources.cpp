@@ -3,7 +3,7 @@
 #include <utility>
 
 #include "Core/HIKARI_Logger.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI {
 

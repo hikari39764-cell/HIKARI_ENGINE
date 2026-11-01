@@ -9,7 +9,7 @@
 #include <array>
 #include <filesystem>
 #include <DirectXTex.h>
-#include "Render2D/HIKARI_DxTexture.h"
+#include "RenderCore/Texture/HIKARI_DxTexture.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneRegistry.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshBuilder.h"

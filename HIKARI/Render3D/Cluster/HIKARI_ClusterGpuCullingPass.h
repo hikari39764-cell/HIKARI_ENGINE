@@ -10,7 +10,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Render3D/Cluster/HIKARI_ClusterGpuCullingTypes.h"
-#include "Render3D/Resources/HIKARI_RenderResourcePool.h"
+#include "RenderCore/Resources/HIKARI_RenderResourcePool.h"
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
 
 namespace HIKARI::RENDER3D::CLUSTER {

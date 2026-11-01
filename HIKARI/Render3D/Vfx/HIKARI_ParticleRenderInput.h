@@ -12,6 +12,7 @@
 
 #include "Core/Math/HIKARI_Math3D.h"
 #include "RenderContracts/Material/HIKARI_MaterialEffectStack.h"
+#include "RenderContracts/Vfx/HIKARI_ParticleMaterialMode.h"
 
 namespace HIKARI {
 class AssetRegistry;
@@ -99,20 +100,6 @@ enum class ParticleBlendMode : uint32_t {
     // 戦闘の画面歪み遮罩へ書く層（色の経路では描かない）
     Distortion,
 };
-
-enum class ParticleMaterialMode : uint32_t {
-    StandardUnlit,
-    CustomMaterial,
-    StandardLit,
-    CustomLit,
-};
-
-constexpr bool IsCustomParticleMaterial(ParticleMaterialMode mode) noexcept {
-    return mode == ParticleMaterialMode::CustomMaterial || mode == ParticleMaterialMode::CustomLit;
-}
-constexpr bool IsLitParticleMaterial(ParticleMaterialMode mode) noexcept {
-    return mode == ParticleMaterialMode::StandardLit || mode == ParticleMaterialMode::CustomLit;
-}
 
 enum class ParticleDepthMode : uint32_t {
     WorldOccluded,

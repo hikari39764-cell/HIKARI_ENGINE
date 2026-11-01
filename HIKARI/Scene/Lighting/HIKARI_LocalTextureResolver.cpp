@@ -11,7 +11,7 @@
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Render3D/Lighting/HIKARI_LocalLightGpuData.h"
 #include "Render3D/Resources/HIKARI_SceneTextureAssetRequest.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI {
 namespace {

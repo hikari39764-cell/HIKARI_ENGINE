@@ -2,7 +2,7 @@
 #include <d3dx12.h>
 #include "Core/Numeric/HIKARI_NonZero.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI::RENDER3D::SURFACE {
 

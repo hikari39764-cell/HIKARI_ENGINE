@@ -21,9 +21,9 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
-#include "Render3D/Text/HIKARI_SdfTextLayout.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Text/HIKARI_SdfTextLayout.h"
 
 namespace HIKARI::RENDER3D::WORLD_TEXT {
 namespace {

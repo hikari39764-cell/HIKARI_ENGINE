@@ -3,7 +3,7 @@
 #include "Vfx/Post/HIKARI_PostEffect.h"
 #include <sstream>
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI {
 namespace POST {

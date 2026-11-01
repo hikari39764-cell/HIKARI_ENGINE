@@ -3,7 +3,7 @@
 #include <span>
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Render3D/Material/HIKARI_MaterialSnapshot.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSnapshot.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSnapshot.h"
 
 namespace HIKARI::RENDER3D::MATERIAL {
 

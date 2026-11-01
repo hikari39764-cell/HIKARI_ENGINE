@@ -33,7 +33,7 @@
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 #include "Render3D/Resources/HIKARI_SceneTextureAssetRequest.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceMaterialBinder.h"

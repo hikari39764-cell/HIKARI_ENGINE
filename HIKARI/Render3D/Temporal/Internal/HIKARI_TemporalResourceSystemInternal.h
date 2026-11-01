@@ -5,7 +5,7 @@
 #include <thread>
 #include <unordered_map>
 
-#include "Render3D/Resources/HIKARI_RenderResourcePool.h"
+#include "RenderCore/Resources/HIKARI_RenderResourcePool.h"
 #include "Render3D/Temporal/Internal/HIKARI_TemporalPassScratch.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 

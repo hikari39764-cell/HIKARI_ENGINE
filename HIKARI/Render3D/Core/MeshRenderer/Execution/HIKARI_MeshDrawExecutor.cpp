@@ -8,7 +8,7 @@
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
 
 #ifdef max

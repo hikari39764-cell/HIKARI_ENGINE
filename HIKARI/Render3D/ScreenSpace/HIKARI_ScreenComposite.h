@@ -4,7 +4,7 @@
 #include <cstdint>
 
 #include "Core/Math/HIKARI_Math3D.h"
-#include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
+#include "RenderCore/Resources/HIKARI_RenderResourceHandle.h"
 
 namespace HIKARI::RENDER3D {
 

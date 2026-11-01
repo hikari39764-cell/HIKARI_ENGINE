@@ -42,7 +42,7 @@ std::string_view ValidateMaterialEffect(const MaterialEffectStep& s) noexcept {
 namespace {
 constexpr std::string_view names[]{
 #define HIKARI_EFFECT(name, id) #name,
-#include "Shaders/Include/Vfx/HIKARI_MaterialEffectKinds.hlsli"
+#include "Include/Vfx/HIKARI_MaterialEffectKinds.hlsli"
 #undef HIKARI_EFFECT
 };
 } // namespace

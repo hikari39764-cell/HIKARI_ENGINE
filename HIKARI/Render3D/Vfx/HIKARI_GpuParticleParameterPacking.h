@@ -8,7 +8,7 @@
 namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
 
 #define HIKARI_PARTICLE_LAYOUT(name, value) inline constexpr uint32_t name = value;
-#include "Shaders/Include/Vfx/HIKARI_ParticleEmitterLayout.hlsli"
+#include "Include/Vfx/HIKARI_ParticleEmitterLayout.hlsli"
 #undef HIKARI_PARTICLE_LAYOUT
 inline constexpr uint32_t kGpuParticleEmitterValueCount = HIKARI_PARTICLE_EMITTER_VALUE_COUNT;
 static_assert(HIKARI_PARTICLE_CURVE_KEYS == kMaxParticleCurveKeys);

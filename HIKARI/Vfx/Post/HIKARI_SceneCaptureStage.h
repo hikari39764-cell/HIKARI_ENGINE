@@ -7,8 +7,8 @@
 #include <span>
 
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render2D/HIKARI_RenderTarget2D.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 #include "Vfx/Post/HIKARI_SceneColorSnapshot.h"
 
 namespace HIKARI::POST {

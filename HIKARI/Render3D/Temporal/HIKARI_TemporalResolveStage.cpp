@@ -3,7 +3,7 @@
 #include <algorithm>
 
 #include "Core/HIKARI_TimeService.h"
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Render3D/Debug/HIKARI_RenderDebugOutput.h"
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"

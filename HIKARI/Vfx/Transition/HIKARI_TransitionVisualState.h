@@ -10,8 +10,8 @@ struct TransitionVisualState {
     std::string profileId{};
     float progress = 0.0f;
     bool isTransitionIn = false;
-    float outDuration = 0.0f; // 追加: outDuration メンバー
-    float inDuration = 0.0f;  // 追加: inDuration メンバー（必要に応じて）
+    float outDuration = 0.0f;
+    float inDuration = 0.0f;
 };
 
 } // namespace HIKARI

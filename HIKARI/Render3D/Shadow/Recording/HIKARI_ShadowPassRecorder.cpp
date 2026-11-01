@@ -9,7 +9,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenWorkBuilder.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
 #include "Render3D/WorldSprite/HIKARI_WorldSpritePass.h"
 

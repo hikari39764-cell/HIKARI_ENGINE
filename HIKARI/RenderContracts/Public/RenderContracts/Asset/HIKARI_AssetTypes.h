@@ -13,6 +13,7 @@
 #include "RenderContracts/Material/HIKARI_MaterialProgramFormat.h"
 #include "RenderContracts/Model/HIKARI_ModelMaterialBindingAsset.h"
 #include "RenderContracts/Texture/HIKARI_TextureTypes.h"
+#include "RenderContracts/Vfx/HIKARI_ParticleMaterialMode.h"
 
 namespace HIKARI {
 
@@ -116,8 +117,7 @@ struct ModelMaterialBindingAssetDescriptor final : AssetDescriptor {
 // VFX の描画資源（貼図・材質）を最初のフレームで先に用意するための、放出器ごとの材質の参照。
 // VFX プログラムの中身は Assets のもので、読み込む側が写して渡し、描画側はこれだけを読む。
 struct VfxPrewarmMaterial {
-    bool custom = false;
-    bool lit = false;
+    RENDER3D::PARTICLES::ParticleMaterialMode materialMode = RENDER3D::PARTICLES::ParticleMaterialMode::StandardUnlit;
     std::string colorTextureAssetGuid{};
     std::string materialAssetGuid{};
     std::shared_ptr<const MaterialAssetDescriptor> effectMaterial{};

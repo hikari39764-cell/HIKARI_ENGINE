@@ -1,6 +1,6 @@
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
 
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 #include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 #include "Render3D/Core/HIKARI_Material.h"
 

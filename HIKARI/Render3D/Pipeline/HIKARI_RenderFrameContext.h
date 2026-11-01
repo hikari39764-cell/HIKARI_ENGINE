@@ -9,7 +9,7 @@
 #include "Render3D/Core/HIKARI_RenderFrameToken.h"
 #include "Render3D/Surface/HIKARI_RenderFrameSurfaceRegistry.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 
 namespace HIKARI {
 class AssetRegistry;

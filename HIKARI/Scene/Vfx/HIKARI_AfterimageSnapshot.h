@@ -4,7 +4,7 @@
 #include <vector>
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::VFX::AFTERIMAGE {
 

@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Temporal/Internal/HIKARI_TemporalResourceSystemInternal.h"
 
 namespace HIKARI::RENDER3D::TEMPORAL {

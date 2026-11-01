@@ -14,8 +14,8 @@ include_guard(GLOBAL)
 # - Moved modules (hikari_add_module): HIKARI/<Dir>/Public/<Dir>/ holds the headers other modules may include,
 #   HIKARI/<Dir>/Private/<Dir>/ holds the .cpp files and the module-internal headers. Include paths stay
 #   "<Dir>/...". A moved module sees only its own Public and Private, the SDK headers, third-party libraries and
-#   the modules it DEPENDS on, so an include of a module it does not depend on fails to compile. The only
-#   exception is render_contracts, which also sees the HIKARI root for "Shaders/Include/..." (CMakeLists.txt).
+#   the modules it DEPENDS on, so an include of a module it does not depend on fails to compile. The headers
+#   shared with HLSL (HIKARI/Shaders/Include) have their own include root, hikari_shader_include (CMakeLists.txt).
 # - The groups in HIKARI_RUNTIME_MODULE_SPECS: modules not moved yet. They share the old include roots and link
 #   every moved module to see its Public.
 
@@ -95,7 +95,7 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         list(APPEND HIKARI_RUNTIME_RENDER3D_SOURCES "${runtime_source}")
     elseif(
         runtime_relative_path MATCHES
-        "^HIKARI/(Vfx|Render3D/(Color|Features|Lighting|Reflection|ScreenSpace|Shadow|Surface|Terrain|Vfx|Water))/")
+        "^HIKARI/(Vfx|Render3D/(Color|Features|Lighting|Reflection|ScreenSpace|Shadow|Surface|Terrain|Ui|Vfx|Water))/")
         list(APPEND HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Render3D/")
         list(APPEND HIKARI_RUNTIME_RENDER3D_SOURCES "${runtime_source}")
@@ -233,6 +233,7 @@ function(hikari_define_runtime_modules output_variable)
     hikari_add_module(project DEPENDS core)
     hikari_add_module(gfx DEPENDS core diagnostics project)
     hikari_add_module(render_contracts DEPENDS core gfx)
+    hikari_add_module(render_core DEPENDS core diagnostics gfx render_contracts)
     foreach(module_key IN LISTS HIKARI_MODULE_KEYS)
         if(NOT TARGET "hikari_${module_key}")
             message(

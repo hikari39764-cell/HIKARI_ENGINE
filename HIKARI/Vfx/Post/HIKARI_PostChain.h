@@ -2,10 +2,10 @@
 #include <vector>
 #include <string>
 
-#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "RenderCore/Resources/HIKARI_RenderTextureView.h"
 
 namespace HIKARI {
 namespace POST {

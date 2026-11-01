@@ -21,8 +21,8 @@
 #include "Gfx/RayTracing/HIKARI_DxrCapabilities.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayQueryBindings.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 
 namespace HIKARI::RENDER3D::DYNAMICGI {

@@ -9,7 +9,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Render3D/Features/HIKARI_RenderFeatureTypes.h"
-#include "Render3D/Resources/HIKARI_RenderResourcePool.h"
+#include "RenderCore/Resources/HIKARI_RenderResourcePool.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceBuffer.h"
 
 namespace HIKARI {

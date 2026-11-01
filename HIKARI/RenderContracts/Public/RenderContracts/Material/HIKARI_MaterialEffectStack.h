@@ -10,7 +10,7 @@
 namespace HIKARI {
 enum class MaterialEffectKind : uint8_t {
 #define HIKARI_EFFECT(name, id) name = id,
-#include "Shaders/Include/Vfx/HIKARI_MaterialEffectKinds.hlsli"
+#include "Include/Vfx/HIKARI_MaterialEffectKinds.hlsli"
 #undef HIKARI_EFFECT
 };
 enum class MaterialEffectTextureTarget : uint8_t { Shared, BaseColor, Mask, Noise, DetailNoise, FlowMap };

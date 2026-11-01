@@ -1,6 +1,6 @@
 #pragma once
-#include "Render2D/HIKARI_GameUiRenderData.h"
-#include "Render2D/HIKARI_SurfaceTextureTargetRing.h"
+#include "Render3D/Ui/HIKARI_GameUiRenderData.h"
+#include "RenderCore/Targets/HIKARI_SurfaceTextureTargetRing.h"
 
 namespace HIKARI::EDITOR {
 class GameUiPreviewTarget {

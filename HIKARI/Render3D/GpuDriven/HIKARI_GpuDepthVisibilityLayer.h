@@ -9,7 +9,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
-#include "Render3D/Resources/HIKARI_RenderResourcePool.h"
+#include "RenderCore/Resources/HIKARI_RenderResourcePool.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 

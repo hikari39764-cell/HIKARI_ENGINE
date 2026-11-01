@@ -14,7 +14,7 @@
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRuntimeDataBuilder.h"
-#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI {
 

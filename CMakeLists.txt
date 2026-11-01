@@ -129,14 +129,22 @@ target_include_directories(
     hikari_gfx
     PRIVATE
         "${CMAKE_BINARY_DIR}/generated")
-# RenderContracts の Public ヘッダー（簇ジオメトリの設定、材質効果の種類表）は、HLSL と共有する Shaders/Include を
-# "Shaders/Include/..." の形で include する。この共有ヘッダー群にはまだ専用の include ルートがないため、
-# このモジュールだけ HIKARI ルートを PRIVATE で見る。未移行モジュールのヘッダーも見えてしまうが、
-# 上向きの include は分層検査（Test-HikariRuntimeModuleBoundaries.ps1）が止める。
+# C++ と HLSL が共有するヘッダー（HIKARI/Shaders/Include）の include ルート。HLSL と同じ "Include/..." の形で include する。
+# RenderContracts の Public ヘッダー（簇ジオメトリの設定、材質効果の種類表）が include するので、PUBLIC で伝える。
+add_library(hikari_shader_include INTERFACE)
 target_include_directories(
+    hikari_shader_include
+    INTERFACE
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders")
+target_link_libraries(
     hikari_rendercontracts
+    PUBLIC
+        hikari_shader_include)
+# SDF 文字の字形生成は ThirdParty/imgui の imstb_truetype.h（ヘッダーのみ）を取り込む。ImGui 本体にはリンクしない。
+target_include_directories(
+    hikari_rendercore
     PRIVATE
-        "${HIKARI_SOURCE_ROOT}/HIKARI")
+        "${HIKARI_SOURCE_ROOT}/ThirdParty/imgui")
 target_link_libraries(
     hikari_runtime_navigation
     PRIVATE

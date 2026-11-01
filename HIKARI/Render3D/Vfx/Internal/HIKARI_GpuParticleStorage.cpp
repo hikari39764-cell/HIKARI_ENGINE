@@ -6,8 +6,8 @@
 #include <d3dx12.h>
 
 #include "Gfx/HIKARI_ResourceStateTracker.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
-#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Vfx/Internal/HIKARI_GpuParticleShaderInterop.h"
 #include "Render3D/Vfx/Internal/HIKARI_GpuParticleUploadBuffer.h"
 

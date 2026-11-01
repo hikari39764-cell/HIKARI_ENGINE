@@ -6,7 +6,7 @@
 
 #include "RenderContracts/Model/HIKARI_ModelAssetTypes.h"
 #include "Core/Math/HIKARI_Math3D.h"
-#include "Render3D/Text/HIKARI_SdfTextLayout.h"
+#include "RenderCore/Text/HIKARI_SdfTextLayout.h"
 
 namespace HIKARI::RENDER3D::WORLD_TEXT {
 

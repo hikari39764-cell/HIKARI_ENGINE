@@ -6,7 +6,7 @@
 #include <string_view>
 
 #include "Scene/Components/HIKARI_IComponent.h"
-#include "Render2D/HIKARI_GameUiRenderData.h"
+#include "Render3D/Ui/HIKARI_GameUiRenderData.h"
 
 namespace HIKARI {
 
