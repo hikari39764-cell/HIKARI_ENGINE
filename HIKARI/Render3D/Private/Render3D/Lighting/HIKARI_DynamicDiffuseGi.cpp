@@ -1,6 +1,7 @@
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
 #include "Render3D/Lighting/HIKARI_DynamicDiffuseGi.h"
 #include "Render3D/Lighting/HIKARI_DynamicGiPlacement.h"
+#include "Render3D/Lighting/HIKARI_DynamicGiProbeDump.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -305,6 +306,7 @@ struct DynamicDiffuseGi::State {
     std::array<FocusReadback, GFX::kFrameResourceCount> focusReadbacks;
     uint64_t focusFence = 0;
     std::optional<NearFieldPlacement> nearPlacement;
+    ProbeDump dump;
     MATH::Vec4 changedMinimum{0, 0, 0, 0}, changedMaximum{0, 0, 0, 0};
     uint32_t changeFrames = 0;
 
@@ -389,6 +391,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
                                 std::span<const LIGHTING::IrradianceVolumeProvider> volumes, MATH::Vec3 cameraPosition,
                                 MATH::Vec3 viewTarget, DynamicGiQuality quality, uint64_t frameSerial) {
     auto& state = *state_;
+    state.dump.Poll(graphics);
     if (state.lastFence != graphics.currentFrameRetireFenceValue)
         state.stats.updatedProbes = state.stats.primaryRays = 0;
     if (quality == DynamicGiQuality::Off) {
@@ -586,6 +589,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
                 : MATH::Vec3{};
     // 全層を更新する前の snapshot。後の層が今フレームの途中結果を読まない。
     std::array<LIGHTPROBE::IrradianceVolumeGpuData, kFieldCount> previousVolumes{};
+    const bool dumpProbes = state.dump.Pending();
     for (size_t index = 0; index < kFieldCount; ++index) {
         const auto& field = state.fields[index];
         const bool compatible =
@@ -650,6 +654,8 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         commands->SetComputeRootDescriptorTable(kAtlasParameter, target.uav.gpu);
         commands->Dispatch(constants.counts[3], 1, 1);
         target.Transition(commands, false);
+        if (dumpProbes)
+            state.dump.Record(graphics, commands, index, target.atlasTexture.Get(), target.data);
         if (index == kNearField) {
             auto& readback = state.focusReadbacks[graphics.frameIndex];
             auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -691,8 +697,10 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
     state.stats.sequence = state.sequence;
     return publish();
 }
+void DynamicDiffuseGi::RequestProbeDump(std::filesystem::path path) { state_->dump.Request(std::move(path)); }
 void DynamicDiffuseGi::Reset(const GFX::Context& graphics) {
     auto& state = *state_;
+    state.dump.Reset(graphics);
     for (auto& field : state.fields)
         field.Reset(graphics);
     for (auto& upload : state.uploads)

@@ -1,12 +1,16 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
+#include <filesystem>
 #include <string>
 #include <utility>
 
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/RenderStyle/HIKARI_RenderStyleAssetStore.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/History/HIKARI_EnvironmentHistoryCommand.h"
+#include "Project/HIKARI_ProjectContext.h"
+#include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Tools/Baking/HIKARI_LightingBakeReport.h"
 #include "Tools/Baking/HIKARI_LightingBakeService.h"
@@ -245,6 +249,30 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
                                      return EDITOR::OperationOk("Lighting bake status.", std::move(data));
                                  }},
                                 EditorOperationKind::Query);
+
+    EDITOR::EditorOperationDefinition giProbes{
+        "lighting.gi.probes.dump",
+        "Read back the dynamic GI probes once and write them to Library/Diagnostics/<name>.json a few frames later: "
+        "for every field (region, near, far) the grid origin, spacing and counts, and for every probe its world "
+        "position (grid point plus relocation), active flag, update count, backface ratio, fixed-ray brightness and "
+        "the irradiance E/pi and sky visibility toward +x,-x,+y,-y,+z,-z. Use it to check probe placement and values "
+        "against a reference; the file appears only while dynamic GI is running.",
+        "general",
+        {{"name", EditorOperationParameterType::String, false,
+          "File name in Library/Diagnostics without extension; default gi_probes."}},
+        [](const nlohmann::json& parameters) {
+            const std::string name = parameters.value("name", std::string("gi_probes"));
+            if (name.empty() || name.find_first_of("/\\:*?\"<>|") != std::string::npos)
+                return EDITOR::OperationFailure("INVALID_NAME", "name must be a plain file name.");
+            const std::filesystem::path path = GetProjectContext().GetLibraryRoot() / "Diagnostics" / (name + ".json");
+            std::error_code error;
+            std::filesystem::create_directories(path.parent_path(), error);
+            RENDER3D::PIPELINE::RequestDynamicDiffuseGiProbeDump(path);
+            return EDITOR::OperationOk("GI probe dump requested: " + TEXT::PathToUtf8(path),
+                                       {{"path", TEXT::PathToUtf8(path)}});
+        }};
+    giProbes.searchTerms = {"global illumination", "probes", "GI", "探针", "全局光照"};
+    operationRegistry_.Register(std::move(giProbes), EditorOperationKind::Session, false);
 }
 
 } // namespace HIKARI

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
@@ -33,6 +34,8 @@ bool RenderMeshCaptureOpaqueFrame(const GFX::Context& graphics, const Camera3D& 
 
 const RAYTRACING::RuntimeRayTracingStats& GetRuntimeRayTracingStats() noexcept;
 const DYNAMICGI::Stats& GetDynamicDiffuseGiStats() noexcept;
+// 動的 GI の probe を次の更新で読み戻し、数フレーム後に path へ JSON で書く（編集器の gi.probes.dump）。
+void RequestDynamicDiffuseGiProbeDump(std::filesystem::path path);
 uint64_t GetPrimaryFrameFailureCount() noexcept;
 void ShutdownRenderFramePipelineResources() noexcept;
 

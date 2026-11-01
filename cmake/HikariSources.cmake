@@ -411,6 +411,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Lighting/HIKARI_EnvironmentLightingCache.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Lighting/HIKARI_DynamicDiffuseGi.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Lighting/HIKARI_DynamicGiPlacement.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Lighting/HIKARI_DynamicGiProbeDump.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Lighting/HIKARI_LightingProviderViewSelection.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Lighting/HIKARI_LocalLightList.cpp"

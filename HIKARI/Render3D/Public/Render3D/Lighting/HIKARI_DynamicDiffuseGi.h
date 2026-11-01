@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <filesystem>
 #include <memory>
 #include <span>
 #include "Gfx/HIKARI_GfxContext.h"
@@ -55,6 +56,8 @@ public:
                   MATH::Vec3 viewTarget, DynamicGiQuality quality, uint64_t frameSerial);
     void Reset(const GFX::Context& graphics);
     const Stats& GetStats() const;
+    // 次の更新で probe の図集を読み戻し、数フレーム後に path へ JSON で書く（調査用）。
+    void RequestProbeDump(std::filesystem::path path);
 
 private:
     struct State;

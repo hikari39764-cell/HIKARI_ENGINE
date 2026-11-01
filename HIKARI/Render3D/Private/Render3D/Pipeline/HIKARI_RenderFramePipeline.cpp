@@ -671,6 +671,9 @@ void ShutdownRenderFramePipelineResources() noexcept {
 const RAYTRACING::RuntimeRayTracingStats& GetRuntimeRayTracingStats() noexcept { return gRuntimeRayScene.GetStats(); }
 
 const DYNAMICGI::Stats& GetDynamicDiffuseGiStats() noexcept { return gDynamicDiffuseGi.GetStats(); }
+void RequestDynamicDiffuseGiProbeDump(std::filesystem::path path) {
+    gDynamicDiffuseGi.RequestProbeDump(std::move(path));
+}
 uint64_t GetPrimaryFrameFailureCount() noexcept { return gPrimaryFrameFailureCount; }
 
 } // namespace HIKARI::RENDER3D::PIPELINE
