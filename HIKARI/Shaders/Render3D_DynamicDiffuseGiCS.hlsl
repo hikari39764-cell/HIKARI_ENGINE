@@ -35,6 +35,8 @@ static const uint kFixedRays = 64u, kRadianceRays = 128u, kRayCount = kFixedRays
 groupshared float3 sDirection[kRayCount];
 groupshared float3 sRadiance[kRayCount];
 groupshared float sDistance[kRayCount]; // 命中までの距離 [m]。未命中は 1e30。
+// bit 0 は裏面に当たった。固定 ray（lane i が ray i を受け持つ）の bit 1 は、裏面を抜けた先が閉じた空間
+// （probe が入る広さがあり、その先に表の面がある）。
 groupshared uint sBackFace[kRayCount];
 groupshared float sSky[kRayCount];
 groupshared float3 sIrradianceTexel[64];
@@ -114,7 +116,8 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         focus.TMax = 500.0f;
         HikariRaySurface focusHit = (HikariRaySurface)0;
         const bool found = gRayLighting.scene.w == 0u && HikariTraceRuntimeScene(focus, gRayLighting.scene.x,
-            gRayLighting.scene.y, gRayLighting.time, gMaterialWrap, HIKARI_RAY_REPORT_BACKFACES, focusHit);
+            gRayLighting.scene.y, gRayLighting.time, gMaterialWrap,
+            HIKARI_RAY_REPORT_BACKFACES | HIKARI_RAY_GEOMETRY_ONLY, focusHit);
         gFocusHeights[lane] = found ? focus.Origin.y + focus.Direction.y * focusHit.distance : 1.0e30f;
         gFocusHeights[lane + 6u] = found ? length(focus.Direction.xz) * focusHit.distance : 0.0f;
     }
@@ -183,21 +186,38 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
     bool history = false;
     [unroll] for (uint volume = 0u; volume < HIKARI_DYNAMIC_GI_VOLUME_COUNT; ++volume)
         history = history || HikariHasIrradianceVolumeData(gPreviousVolumes[volume]);
-    for (uint rayIndex = lane; rayIndex < kRayCount; rayIndex += 64u)
+    // 最後の一巡（rayIndex >= kRayCount）は lane 自身の固定 ray の続き：裏面に当たった（probe が形状の中にある）時だけ
+    // その面を抜けた先へ同じ向きに撃ち、抜けた先が閉じた空間か（probe が入る広さの先に表の面があるか）を出口の選択に使う。
+    // 同じ追跡の呼び出しを使い回す（この shader に追跡の呼び出しを別に足すと、実行しない分岐でも GPU が応答しなく
+    // なった。device hung）。
+    for (uint rayIndex = lane; rayIndex < kRayCount + kFixedRays; rayIndex += 64u)
     {
+        const bool continuation = rayIndex >= kRayCount;
+        const uint fixedIndex = continuation ? rayIndex - kRayCount : 0u;
         const bool fixedRay = rayIndex < kFixedRays;
-        const float3 direction = ProbeRayDirection(rayIndex, rayRotation);
+        const float3 direction = continuation ? sDirection[fixedIndex] : ProbeRayDirection(rayIndex, rayRotation);
         // Visibility atlas の正規化距離は ray の打切り距離ではない。
         // 大空間の壁/屋根を打ち切って miss=sky と扱うと室内へ漏光する。
         RayDesc ray; ray.Origin = probePosition; ray.Direction = direction; ray.TMin = 0.001f; ray.TMax = 1e7f;
+        const bool traced =
+            !continuation || ((sBackFace[fixedIndex] & 1u) != 0u && sDistance[fixedIndex] < 1.0e29f);
+        if (continuation) ray.Origin += direction * (min(sDistance[fixedIndex], maximumDistance) + 0.01f);
         HikariRaySurface hit = (HikariRaySurface)0;
         bool found = false;
-        const float coneSpread = fixedRay ? 0.0f : 2.0f * sqrt(1.0f - coneCosine * coneCosine) / coneCosine;
-        if (gRayLighting.scene.w == 0u) found = HikariTraceRuntimeScene(ray, gRayLighting.scene.x, gRayLighting.scene.y,
-            gRayLighting.time, gMaterialWrap, HIKARI_RAY_REPORT_BACKFACES, hit, float2(0.0f, coneSpread));
+        const float coneSpread =
+            fixedRay || continuation ? 0.0f : 2.0f * sqrt(1.0f - coneCosine * coneCosine) / coneCosine;
+        if (traced && gRayLighting.scene.w == 0u) found = HikariTraceRuntimeScene(ray, gRayLighting.scene.x,
+            gRayLighting.scene.y, gRayLighting.time, gMaterialWrap, HIKARI_RAY_REPORT_BACKFACES, hit,
+            float2(0.0f, coneSpread));
+        if (continuation)
+        {
+            // 固定 ray の記録は同じ lane が一巡目に書いたもの（他の lane は次の barrier まで読まない）。
+            if (found && hit.backFace == 0u && hit.distance >= 2.0f * gRelocate.x) sBackFace[fixedIndex] |= 2u;
+            continue;
+        }
         sDirection[rayIndex] = direction;
         sDistance[rayIndex] = found ? hit.distance : 1.0e30f;
-        sBackFace[rayIndex] = found ? hit.backFace : 0u;
+        sBackFace[rayIndex] = found && hit.backFace != 0u ? 1u : 0u;
         sSky[rayIndex] = found ? 0.0f : 1.0f;
         const float2 randomUv = frac(float2(rayIndex + 1u, gWork.x + sampleSeed + 1u) *
             float2(0.754877666f, 0.569840296f) + float2(gWork.x, rayIndex) * 0.618033989f);
@@ -210,9 +230,17 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
     }
     GroupMemoryBarrierWithGroupSync();
     // 再配置と分類（RTXGI の probe relocation / classification）。固定 ray の多くが裏面に当たる probe は形状の中：
-    // 最も近い裏面を抜けた先へ移す。面に近すぎる probe は最も遠い面の向きへ離す。十分離れていれば格子点へ戻る。
+    // 裏面を抜けた先へ移す。最も近い裏面の向きで出口を二つの側（薄い壁や屋根の表と裏）に分け、抜けた先が閉じている
+    // 出口の割合が 0.1 以上高い側の、移動の上限内で届く最も近い出口へ出す（差が小さければ最も近い裏面）。開けた側は
+    // 遠い probe でも光が滑らかに変わるが、閉じた側は近い probe が無いと面の受光を遠くから引いて大きく外れる
+    // （厚さ 0.3m の屋根の中の格子点を空の側へ出すと、部屋の中が 2 層だけになり、天花板の受光を 1.25m 下の probe から
+    // 引いて実際の 6 割になった）。一本ずつ「先に表の面があるか」だけで選ぶと、外の側でも下向きの出口は地面に当たって
+    // 閉じていると数えた。壁を挟む両側がどちらも部屋なら近い方。
+    // 面に近すぎる probe は最も遠い面の向きへ離す。十分離れていれば格子点へ戻る。
     if (lane == 0u)
     {
+        const float minimumFront = gRelocate.x;
+        const float3 limit = gRelocate.z * gSpacing.xyz;
         uint backfaces = 0u;
         float closestBack = 1.0e30f, closestFront = 1.0e30f, farthestFront = 0.0f;
         float3 closestBackDirection = 0.0f.xxx, closestFrontDirection = 0.0f.xxx, farthestFrontDirection = 0.0f.xxx;
@@ -221,7 +249,7 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         {
             level += HikariLuminance(sRadiance[i]) / float(kFixedRays);
             if (sDistance[i] >= 1.0e29f) continue;
-            if (sBackFace[i] != 0u)
+            if ((sBackFace[i] & 1u) != 0u)
             {
                 ++backfaces;
                 if (sDistance[i] < closestBack) { closestBack = sDistance[i]; closestBackDirection = sDirection[i]; }
@@ -233,10 +261,38 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
             }
         }
         const float backRatio = float(backfaces) / float(kFixedRays);
-        const float minimumFront = gRelocate.x;
+        float exitDistance = closestBack;
+        float3 exitDirection = closestBackDirection;
+        if (backRatio > gRelocate.y)
+        {
+            // 側ごとの閉じた出口の割合（x は最も近い裏面の側、y は反対側）。
+            float2 exits = 0.0f.xx, enclosed = 0.0f.xx;
+            for (uint i = 0u; i < kFixedRays; ++i)
+            {
+                if ((sBackFace[i] & 1u) == 0u || sDistance[i] >= 1.0e29f) continue;
+                const float2 side = dot(sDirection[i], closestBackDirection) >= 0.0f ? float2(1, 0) : float2(0, 1);
+                exits += side;
+                enclosed += (sBackFace[i] & 2u) != 0u ? side : 0.0f.xx;
+            }
+            const float2 share = enclosed / max(exits, 1.0f.xx);
+            if (share.y > share.x + 0.1f)
+            {
+                float farDistance = 1.0e30f;
+                float3 farDirection = closestBackDirection;
+                for (uint i = 0u; i < kFixedRays; ++i)
+                {
+                    if ((sBackFace[i] & 1u) == 0u || sDistance[i] >= farDistance ||
+                        dot(sDirection[i], closestBackDirection) >= 0.0f ||
+                        any(abs(offset + sDirection[i] * (sDistance[i] + minimumFront * 0.5f)) > limit)) continue;
+                    farDistance = sDistance[i];
+                    farDirection = sDirection[i];
+                }
+                if (farDistance < 1.0e29f) { exitDistance = farDistance; exitDirection = farDirection; }
+            }
+        }
         float3 next = offset;
         if (backRatio > gRelocate.y)
-            next = offset + closestBackDirection * (closestBack + minimumFront * 0.5f);
+            next = offset + exitDirection * (exitDistance + minimumFront * 0.5f);
         else if (closestFront < minimumFront)
         {
             if (dot(farthestFrontDirection, closestFrontDirection) <= 0.0f)
@@ -244,7 +300,6 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         }
         else if (closestFront > minimumFront && dot(offset, offset) > 1.0e-8f)
             next = offset - normalize(offset) * min(closestFront - minimumFront, length(offset));
-        const float3 limit = gRelocate.z * gSpacing.xyz;
         sOffset = clamp(next, -limit, limit);
         sValidity = backRatio <= gRelocate.y && closestFront < gRelocate.w ? 1.0f : 0.0f;
         sBackRatio = backRatio;
@@ -320,7 +375,8 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         for (uint i = 0u; i < kRayCount; ++i)
         {
             const float weight = pow(saturate(dot(axis, sDirection[i])), 50.0f);
-            const float distance = min(sDistance[i] * (sBackFace[i] != 0u ? 0.2f : 1.0f), maximumDistance) / maximumDistance;
+            const float distance =
+                min(sDistance[i] * ((sBackFace[i] & 1u) != 0u ? 0.2f : 1.0f), maximumDistance) / maximumDistance;
             moments += float2(distance, distance * distance) * weight;
             weightSum += weight;
         }
