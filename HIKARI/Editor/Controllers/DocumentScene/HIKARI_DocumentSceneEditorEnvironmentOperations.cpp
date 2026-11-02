@@ -6,9 +6,10 @@
 
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/RenderStyle/HIKARI_RenderStyleAssetStore.h"
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
-#include "Editor/History/HIKARI_EnvironmentHistoryCommand.h"
+#include "Editor/History/HIKARI_SceneSettingsHistoryCommand.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -224,6 +225,49 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
         }};
     clear.permission = EDITOR::EditorOperationPermission::ModifyProjectFiles;
     operationRegistry_.Register(std::move(clear), EditorOperationKind::Mutation, false);
+
+    operationRegistry_.Register(
+        {"lighting.bake.settings.edit",
+         "Merge a partial JSON object into the scene's lighting bake quality (sampleCount: path-traced samples per "
+         "lightmap texel and per probe direction, 16-4096, default 256; bounceCount: 1-8, default 4). Lightmaps and "
+         "baked probe volumes share it; changing it marks them for rebake. One undo step; reports normalized values.",
+         "scene",
+         {{"patch", EditorOperationParameterType::Json, true, "Partial settings, for example {\"sampleCount\":64}"}},
+         [this](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
+             if (!aiOperationScene_)
+                 return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
+             const nlohmann::json& patch = parameters.at("patch");
+             if (!patch.is_object() || patch.empty())
+                 return EDITOR::OperationFailure("INVALID_PATCH", "patch must be a non-empty object.");
+             DocumentSceneBase& scene = *aiOperationScene_;
+             const SceneLightingBakeSettings before = scene.GetSceneDocument().lightingBake;
+             nlohmann::json current = nlohmann::json::object();
+             JSONFIELDS::Write(current, before, kSceneLightingBakeFields);
+             if (const std::string unknown = EDITOR::FindUnknownPatchKey(patch, current); !unknown.empty())
+                 return EDITOR::OperationFailure("UNKNOWN_FIELD", "Unknown lighting bake field: " + unknown);
+             nlohmann::json merged = current;
+             merged.merge_patch(patch);
+             SceneLightingBakeSettings edited = before;
+             JSONFIELDS::ReadLenient(merged, edited, kSceneLightingBakeFields);
+             edited = JSONFIELDS::Sanitize(edited, kSceneLightingBakeFields);
+             nlohmann::json stored = nlohmann::json::object();
+             JSONFIELDS::Write(stored, edited, kSceneLightingBakeFields);
+             const bool changed = edited != before;
+             if (changed) {
+                 const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
+                 scene.GetSceneDocument().lightingBake = edited;
+                 CommitAppliedDocumentCommand(
+                     scene,
+                     EDITOR::MakeLightingBakeSettingsHistoryCommand("Edit Lighting Bake Quality", before, edited), 0u,
+                     externalDirtyBefore, EDITOR::EditorDocumentImpact::None);
+             }
+             return EDITOR::OperationOk(changed ? "Lighting bake quality updated." : "Lighting bake quality unchanged.",
+                                        {{"appliedPatch", EDITOR::ProjectAppliedPatch(patch, stored)},
+                                         {"adjusted", EDITOR::CollectAdjustedPatchValues(patch, stored)},
+                                         {"settings", stored},
+                                         {"documentChanged", changed}});
+         }},
+        EditorOperationKind::Mutation);
 
     operationRegistry_.Register({"lighting.bake.status",
                                  "Report the lighting bake job, every bake item's state (objects with surfaces "

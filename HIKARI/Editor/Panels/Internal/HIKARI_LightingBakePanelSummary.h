@@ -1,5 +1,9 @@
 #pragma once
 
+namespace HIKARI {
+struct SceneLightingBakeSettings;
+}
+
 namespace HIKARI::EDITOR {
 struct EditorThemePalette;
 }
@@ -10,6 +14,7 @@ struct LightingBakeStatus;
 
 namespace HIKARI::EDITOR::LIGHTING_BAKE_PANEL {
 
-void DrawWorkflowSummary(const TOOLS::BAKING::LightingBakeStatus& status, const EditorThemePalette& palette);
+void DrawWorkflowSummary(const TOOLS::BAKING::LightingBakeStatus& status, const SceneLightingBakeSettings& quality,
+                         const EditorThemePalette& palette);
 
 } // namespace HIKARI::EDITOR::LIGHTING_BAKE_PANEL

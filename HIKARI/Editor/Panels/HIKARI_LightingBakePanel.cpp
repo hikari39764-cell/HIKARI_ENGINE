@@ -117,7 +117,9 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
         actionMessage_.clear();
         lastOpenFolderMessage_.clear();
     }
-    const bool cacheRevisionChanged = cachedSceneRevision_ != sceneRevision || cachedAssetRevision_ != assetRevision;
+    const SceneLightingBakeSettings& quality = scene.GetSceneDocument().lightingBake;
+    const bool cacheRevisionChanged = cachedSceneRevision_ != sceneRevision || cachedAssetRevision_ != assetRevision ||
+                                      cachedBakeSettings_ != quality;
     const bool bakeCompleted = wasBakeBusy_ && !bakeBusy;
     const bool needsStatusRefresh = !hasCachedStatus_ || cacheIdentityChanged || statusRefreshRequested_ ||
                                     bakeCompleted || (!bakeBusy && cacheRevisionChanged);
@@ -126,6 +128,7 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
         cachedSceneGuid_ = request.sceneGuid;
         cachedSceneRevision_ = sceneRevision;
         cachedAssetRevision_ = assetRevision;
+        cachedBakeSettings_ = quality;
         hasCachedStatus_ = true;
         statusRefreshRequested_ = false;
     }
@@ -165,7 +168,53 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
     }
 
     ImGui::Spacing();
-    EDITOR::LIGHTING_BAKE_PANEL::DrawWorkflowSummary(status, palette);
+    EDITOR::LIGHTING_BAKE_PANEL::DrawWorkflowSummary(status, quality, palette);
+
+    // 焼き込みの質：段階を選ぶか、標本数と反射回数を直接決める。光照贴图と焼き込み探針が共用する。
+    ImGui::Spacing();
+    ImGui::SeparatorText(TEXT::Localize("ui.lightingBake.quality").c_str());
+    struct QualityPreset {
+        const char* key;
+        uint32_t samples;
+        uint32_t bounces;
+    };
+    static constexpr QualityPreset kQualityPresets[] = {{"ui.lightingBake.qualityPreview", 64u, 2u},
+                                                        {"ui.lightingBake.qualityStandard", 256u, 4u},
+                                                        {"ui.lightingBake.qualityHigh", 1024u, 6u}};
+    const auto editQuality = [&](const SceneLightingBakeSettings& value) {
+        execute("lighting.bake.settings.edit",
+                {{"patch", {{"sampleCount", value.sampleCount}, {"bounceCount", value.bounceCount}}}});
+    };
+    ImGui::BeginDisabled(bakeBusy);
+    for (const QualityPreset& preset : kQualityPresets) {
+        const bool selected = quality.sampleCount == preset.samples && quality.bounceCount == preset.bounces;
+        if (EDITOR::ToggleButton(TEXT::Localize(preset.key).c_str(), preset.key, selected, ImVec2(110.0f, 0.0f)) &&
+            !selected)
+            editQuality({preset.samples, preset.bounces});
+        ImGui::SameLine();
+    }
+    if (!qualityDraftActive_)
+        qualityDraft_ = quality;
+    bool draftActive = false;
+    bool draftCommitted = false;
+    const auto drawCount = [&](const char* key, const char* id, uint32_t& value) {
+        ImGui::TextDisabled("%s", TEXT::Localize(key).c_str());
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(90.0f);
+        ImGui::InputScalar(id, ImGuiDataType_U32, &value);
+        draftActive |= ImGui::IsItemActive();
+        draftCommitted |= ImGui::IsItemDeactivatedAfterEdit();
+    };
+    drawCount("ui.lightingBake.samples", "##BakeSamples", qualityDraft_.sampleCount);
+    ImGui::SameLine();
+    drawCount("ui.lightingBake.bounces", "##BakeBounces", qualityDraft_.bounceCount);
+    qualityDraftActive_ = draftActive;
+    if (draftCommitted && qualityDraft_ != quality)
+        editQuality(qualityDraft_);
+    ImGui::EndDisabled();
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.qualityHelp").c_str());
+    ImGui::PopTextWrapPos();
 
     ImGui::Spacing();
     ImGui::TextWrapped("%s", TEXT::Localize("ui.lightingBake.workflowHelp").c_str());

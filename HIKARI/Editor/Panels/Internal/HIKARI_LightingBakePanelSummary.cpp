@@ -3,7 +3,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 
-#include "RenderContracts/Lighting/HIKARI_LightingBakePolicy.h"
+#include "Scene/HIKARI_SceneDocument.h"
 #include "Editor/Style/HIKARI_EditorTheme.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Gfx/HIKARI_GfxContext.h"
@@ -24,7 +24,8 @@ uint32_t CountEnabledItems(const TOOLS::BAKING::LightingBakeStatus& status, TOOL
 
 } // namespace
 
-void DrawWorkflowSummary(const TOOLS::BAKING::LightingBakeStatus& status, const EditorThemePalette& palette) {
+void DrawWorkflowSummary(const TOOLS::BAKING::LightingBakeStatus& status, const SceneLightingBakeSettings& quality,
+                         const EditorThemePalette& palette) {
     const uint32_t reflectionCount = CountEnabledItems(status, TOOLS::BAKING::LightingBakeItemKind::ReflectionProbe);
     const uint32_t irradianceCount = CountEnabledItems(status, TOOLS::BAKING::LightingBakeItemKind::IrradianceVolume);
     const uint32_t lightmapCount = CountEnabledItems(status, TOOLS::BAKING::LightingBakeItemKind::LightmapObject);
@@ -45,10 +46,8 @@ void DrawWorkflowSummary(const TOOLS::BAKING::LightingBakeStatus& status, const 
                     lightmapCount == 1u ? "" : "s");
         ImGui::TextDisabled(dxr.SupportsInlineRayQuery() ? TEXT::Localize("ui.lightingBake.dxrReady").c_str()
                                                          : TEXT::Localize("ui.lightingBake.dxrUnavailable").c_str());
-        ImGui::TextDisabled(TEXT::Localize("ui.lightingBake.lightmapBudgetFormat").c_str(),
-                            ASSETS::LIGHTING::kSurfaceLightmapDefaultResolution,
-                            ASSETS::LIGHTING::kSurfaceLightmapDefaultSampleCount,
-                            ASSETS::LIGHTING::kSurfaceLightmapDefaultBounceCount);
+        ImGui::TextDisabled(TEXT::Localize("ui.lightingBake.lightmapBudgetFormat").c_str(), quality.sampleCount,
+                            quality.bounceCount);
 
         ImGui::TableNextColumn();
         ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.specular").c_str());
@@ -83,7 +82,9 @@ void DrawWorkflowSummary(const TOOLS::BAKING::LightingBakeStatus& status, const 
                            status.uncoveredCount);
         ImGui::PopStyleColor();
     }
+    ImGui::PushTextWrapPos(0.0f);
     ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.surfaceLightmapHint").c_str());
+    ImGui::PopTextWrapPos();
 }
 
 } // namespace HIKARI::EDITOR::LIGHTING_BAKE_PANEL

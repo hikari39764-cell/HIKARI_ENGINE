@@ -226,6 +226,8 @@ bool DocumentSceneBakeCoordinator::RequestLightProbeBake(DocumentSceneBase& scen
     job->request.volumeId = "irradiance_volume_" + std::to_string(volume->objectId.value);
     job->request.volumeName = volume->name;
     job->request.settings = settings;
+    job->request.sampleCount = scene.state_->identity.document.lightingBake.sampleCount;
+    job->request.bounceCount = scene.state_->identity.document.lightingBake.bounceCount;
     job->request.priority = volume->priority;
     job->request.forceRebake = batchForce_;
     const auto objectHash = hashes.recordAuthoringHashes.find(job->request.volumeId);

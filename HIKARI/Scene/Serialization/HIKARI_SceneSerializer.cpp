@@ -8,6 +8,7 @@
 
 #include <json.hpp>
 
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/HIKARI_Logger.h"
 #include "Scene/HIKARI_SceneDocument.h"
@@ -102,6 +103,9 @@ bool SceneSerializer::LoadFromFile(const std::string& path, SceneDocument& outDo
                                                  decoded.environment);
         DeserializeCamera(root.value("camera", nlohmann::json::object()), decoded.camera);
         DeserializeSceneCinematicsJson(root.value("cinematics", nlohmann::json::object()), decoded.cinematics);
+        JSONFIELDS::Read(root.value("lightingBake", nlohmann::json::object()), decoded.lightingBake,
+                         kSceneLightingBakeFields);
+        decoded.lightingBake = JSONFIELDS::Sanitize(decoded.lightingBake, kSceneLightingBakeFields);
         SceneJson::DeserializeSceneSystemsJson(root.value("systems", nlohmann::json{}), decoded.systems);
 
         if (root.contains("objects") && root["objects"].is_array()) {
@@ -142,6 +146,7 @@ bool SceneSerializer::SaveToFile(const std::string& path, const SceneDocument& d
     root["environment"] = ENVIRONMENT::WriteSceneEnvironmentBinding(persisted.environment);
     SerializeCamera(persisted.camera, root["camera"]);
     SerializeSceneCinematicsJson(persisted.cinematics, root["cinematics"]);
+    JSONFIELDS::Write(root["lightingBake"], persisted.lightingBake, kSceneLightingBakeFields);
     SceneJson::SerializeSceneSystemsJson(persisted.systems, root["systems"]);
 
     root["objects"] = nlohmann::json::array();

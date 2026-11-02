@@ -175,8 +175,8 @@ bool DocumentSceneBakeCoordinator::RequestLightmapBake(DocumentSceneBase& scene,
     job->projectRoot = projectRoot;
     job->sceneGuid = scene.state_->identity.currentSceneAssetGuid.value;
     const auto& resolvedTarget = job->transportScene.targets[job->targetIndex];
-    job->settings.sampleCount = ASSETS::LIGHTING::kSurfaceLightmapDefaultSampleCount;
-    job->settings.bounceCount = ASSETS::LIGHTING::kSurfaceLightmapDefaultBounceCount;
+    job->settings.sampleCount = scene.state_->identity.document.lightingBake.sampleCount;
+    job->settings.bounceCount = scene.state_->identity.document.lightingBake.bounceCount;
     job->settings.outputResolution = resolvedTarget.pages.front().outputResolution;
     job->outputDirectory =
         LightmapOutputDirectory(projectRoot, job->sceneGuid) / (record.id + "_" + GenerateAssetGuid().value);

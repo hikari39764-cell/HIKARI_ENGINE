@@ -137,7 +137,8 @@ nlohmann::json BuildReflectionProbeCaptureNode(const LIGHTING_AUTHORING::Reflect
             {"scenario", probe.scenario}};
 }
 
-nlohmann::json BuildIrradianceVolumeCaptureNode(const LIGHTING_AUTHORING::IrradianceVolumeAuthoring& volume) {
+nlohmann::json BuildIrradianceVolumeCaptureNode(const LIGHTING_AUTHORING::IrradianceVolumeAuthoring& volume,
+                                                const SceneLightingBakeSettings& bake) {
     return {{"kind", "IrradianceVolume"},
             {"bakePolicyVersion", kIrradianceVolumeBakePolicyVersion},
             {"origin", JsonMath::ToJsonArray(volume.settings.origin)},
@@ -146,11 +147,14 @@ nlohmann::json BuildIrradianceVolumeCaptureNode(const LIGHTING_AUTHORING::Irradi
             {"countY", volume.settings.countY},
             {"countZ", volume.settings.countZ},
             {"shOrder", volume.settings.shOrder},
+            {"sampleCount", bake.sampleCount},
+            {"bounceCount", bake.bounceCount},
             {"bakeSet", volume.bakeSet},
             {"scenario", volume.scenario}};
 }
 
-nlohmann::json BuildSurfaceLightmapCaptureNode(const SceneObjectData& object, const SceneComponentData& model) {
+nlohmann::json BuildSurfaceLightmapCaptureNode(const SceneObjectData& object, const SceneComponentData& model,
+                                               const SceneLightingBakeSettings& bake) {
     return {{"kind", "SurfaceLightmap"},
             {"bakePolicyVersion", kSurfaceLightmapBakePolicyVersion},
             {"objectId", object.id.value},
@@ -161,8 +165,8 @@ nlohmann::json BuildSurfaceLightmapCaptureNode(const SceneObjectData& object, co
             {"atlasGuardTexels", kSurfaceLightmapAtlasGuardTexels},
             {"chartPaddingTexels", kSurfaceLightmapMinimumChartPaddingTexels},
             {"safeMipCount", kSurfaceLightmapSafeMipCount},
-            {"sampleCount", kSurfaceLightmapDefaultSampleCount},
-            {"bounceCount", kSurfaceLightmapDefaultBounceCount},
+            {"sampleCount", bake.sampleCount},
+            {"bounceCount", bake.bounceCount},
             {"renderStatic", model.properties.value("renderStatic", false)},
             {"includeInLightingBake", model.properties.value("includeInLightingBake", true)}};
 }
@@ -318,7 +322,7 @@ std::unordered_map<std::string, std::string> BuildLightingBakeRecordAuthoringHas
     for (const LIGHTING_AUTHORING::IrradianceVolumeAuthoring& volume :
          LIGHTING_AUTHORING::CollectBakedIrradianceVolumes(document)) {
         hashes.emplace("irradiance_volume_" + std::to_string(volume.objectId.value),
-                       HashJson(BuildIrradianceVolumeCaptureNode(volume)));
+                       HashJson(BuildIrradianceVolumeCaptureNode(volume, document.lightingBake)));
     }
     for (const SceneObjectData& object : document.objects) {
         const SceneComponentData* model = object.FindComponent("ModelComponent");
@@ -327,7 +331,7 @@ std::unordered_map<std::string, std::string> BuildLightingBakeRecordAuthoringHas
             continue;
         }
         hashes.emplace("lightmap_object_" + std::to_string(object.id.value),
-                       HashJson(BuildSurfaceLightmapCaptureNode(object, *model)));
+                       HashJson(BuildSurfaceLightmapCaptureNode(object, *model, document.lightingBake)));
     }
     return hashes;
 }

@@ -2,7 +2,7 @@
 #include "Editor/Shell/HIKARI_EditorDockLayout.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
 #include "Editor/History/HIKARI_SceneComponentPropertiesHistoryCommand.h"
-#include "Editor/History/HIKARI_EnvironmentHistoryCommand.h"
+#include "Editor/History/HIKARI_SceneSettingsHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneSystemsHistoryCommand.h"
 #include "Editor/Widgets/HIKARI_EditorTexturePreview.h"
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"

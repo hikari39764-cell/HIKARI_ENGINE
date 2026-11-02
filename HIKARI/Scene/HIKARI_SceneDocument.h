@@ -9,7 +9,9 @@
 #include <json.hpp>
 
 #include "Core/Math/HIKARI_Math3D.h"
+#include "Core/Serialization/Json/HIKARI_JsonFieldOptions.h"
 #include "Core/Text/HIKARI_EnumNames.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakePolicy.h"
 #include "Scene/Environment/HIKARI_SceneEnvironmentBinding.h"
 #include "Scene/HIKARI_CinematicSequence.h"
 #include "Scene/HIKARI_SceneComponentId.h"
@@ -98,6 +100,21 @@ struct LightProbeVolumeSettings {
     uint32_t shOrder = 3;
 };
 
+// 場面の光照の焼き込みの質。光照贴图と焼き込み探針の DXR 経路追跡が共用し、変えると焼き込み済みの結果は待ちになる。
+struct SceneLightingBakeSettings {
+    uint32_t sampleCount = ASSETS::LIGHTING::kSurfaceLightmapDefaultSampleCount;
+    uint32_t bounceCount = ASSETS::LIGHTING::kSurfaceLightmapDefaultBounceCount;
+    bool operator==(const SceneLightingBakeSettings&) const = default;
+};
+
+inline constexpr auto kSceneLightingBakeFields = [](auto&& field) {
+    using S = SceneLightingBakeSettings;
+    using namespace JSONFIELDS;
+    field("sampleCount", &S::sampleCount, Range{16.0, 4096.0}, Label{"Samples"});
+    field("bounceCount", &S::bounceCount,
+          Range{1.0, static_cast<double>(ASSETS::LIGHTING::kSurfaceLightmapMaximumBounceCount)}, Label{"Bounces"});
+};
+
 struct SceneCameraSettings {
     std::optional<SceneObjectId> defaultCameraObjectId{};
 };
@@ -153,6 +170,7 @@ struct SceneDocument {
     ENVIRONMENT::SceneEnvironmentBinding environment{};
     SceneCameraSettings camera{};
     SceneCinematicsSettings cinematics{};
+    SceneLightingBakeSettings lightingBake{};
     std::vector<SceneObjectData> objects{};
     std::vector<SceneSystemData> systems{};
     std::vector<std::string> editorFolders{};

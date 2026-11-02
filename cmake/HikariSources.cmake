@@ -962,7 +962,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_EditorDocumentHistory.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_SceneObjectTransformHistorySession.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_CinematicsHistoryCommand.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_EnvironmentHistoryCommand.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_SceneSettingsHistoryCommand.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_SceneComponentPropertiesHistoryCommand.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_TerrainSurfaceEditDelta.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_SceneObjectsHistoryCommand.cpp"

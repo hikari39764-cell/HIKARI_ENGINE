@@ -12,7 +12,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Authoring/HIKARI_EditorObjectFactory.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
-#include "Editor/History/HIKARI_EnvironmentHistoryCommand.h"
+#include "Editor/History/HIKARI_SceneSettingsHistoryCommand.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Views/HIKARI_EditorViewportGeometry.h"
