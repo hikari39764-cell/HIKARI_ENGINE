@@ -40,6 +40,12 @@ LightmapRuntimeState& State() {
     return state;
 }
 
+// Reset で状態を作り直しても戻らないよう、状態の外に置く。
+uint64_t& Version() {
+    static uint64_t version = 0u;
+    return version;
+}
+
 void RebuildIndex(LightmapRuntimeState& state) {
     state.indexBySurface.clear();
     for (size_t i = 0; i < state.bindings.size(); ++i) {
@@ -51,7 +57,10 @@ void RebuildIndex(LightmapRuntimeState& state) {
 
 } // namespace
 
-void Reset() { State() = {}; }
+void Reset() {
+    State() = {};
+    ++Version();
+}
 
 bool Register(LightmapRuntimeBinding binding) {
     if (binding.objectId == 0u || !binding.surface.IsValid() || !binding.texture ||
@@ -63,6 +72,7 @@ bool Register(LightmapRuntimeBinding binding) {
     LightmapRuntimeState& state = State();
     const auto found = state.indexBySurface.find(
         {binding.objectId, binding.surface.nodeIndex, binding.surface.meshIndex, binding.surface.primitiveIndex});
+    ++Version();
     if (found != state.indexBySurface.end()) {
         state.bindings[found->second] = std::move(binding);
         RebuildIndex(state);
@@ -81,5 +91,7 @@ const LightmapRuntimeBinding* Find(uint64_t objectId, uint32_t nodeIndex, uint32
 }
 
 const std::vector<LightmapRuntimeBinding>& GetBindings() { return State().bindings; }
+
+uint64_t GetVersion() { return Version(); }
 
 } // namespace HIKARI::RENDER3D::LIGHTMAP

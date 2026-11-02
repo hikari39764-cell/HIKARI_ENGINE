@@ -681,8 +681,6 @@ float4 main(PSInput input) : SV_TARGET
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
     reflectionSupported = reflectionSupported && !hasStaticMaterialFx;
 #endif
-    // 既存の非単位 alpha 合成は複数面を含むため、単一表面の置換対象にしない。
-    reflectionSupported = reflectionSupported && albedo.a == 1.0f;
     HikariAttenuateReflectionContribution(fallbackSpecular, specularResponse,
         1.0f - HikariForwardFogFactor(input.worldPosWS), reflectionSupported);
     // 散乱は霧の手前で起きる。合成が霧の後なので、霧で減った分だけ差分も減らす。半透明の面は散らさない。

@@ -22,7 +22,8 @@ bool FilterLightmapIrradiance(std::span<MATH::Vec4> pixels, std::span<float> var
         return false;
     // à-trous（5x5 の B-spline 核を 1, 2, 4 texel 間隔で三回）。同じ allocation の有効な texel だけを、法線と接平面が
     // 揃う近傍から混ぜる。輝度の差は中心の雑音の大きさ（平均の標準偏差の 4 倍）と比べ、雑音より大きい差（影や照度の
-    // 境界）は混ぜない。分散も同じ重みで伝え、回を重ねるほど狭く混ぜる。作業領域は一 allocation 分。
+    // 境界）は混ぜない。分散も同じ重みで伝え、回を重ねるほど狭く混ぜる。作業領域は一 allocation 分。alpha（空の見える
+    // 割合）も同じ重みで混ぜる（一 texel の標本で数えた割合は雑音が大きく、そのままだと鏡面の遮蔽が斑になる）。
     constexpr float kKernel[3]{3.0f / 8.0f, 1.0f / 4.0f, 1.0f / 16.0f};
     const auto luminance = [](const MATH::Vec4& c) { return 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z; };
     std::vector<MATH::Vec4> color, nextColor;
@@ -62,7 +63,7 @@ bool FilterLightmapIrradiance(std::span<MATH::Vec4> pixels, std::span<float> var
                     const float centerLuminance = luminance(color[local]);
                     // 雑音が無い（収束した、または一様な）texel は自分だけを使う。
                     const float sigma = 4.0f * std::sqrt((std::max)(noise[local], 0.0f)) + 1.0e-4f * centerLuminance;
-                    MATH::Vec3 sum{};
+                    MATH::Vec4 sum{0, 0, 0, 0};
                     float total = 0, noiseSum = 0;
                     for (int dy = -2; dy <= 2; ++dy)
                         for (int dx = -2; dx <= 2; ++dx) {
@@ -90,12 +91,14 @@ bool FilterLightmapIrradiance(std::span<MATH::Vec4> pixels, std::span<float> var
                             const float similarity =
                                 sigma > 0 ? std::exp(-difference / sigma) : float(dx == 0 && dy == 0);
                             const float weight = kKernel[std::abs(dx)] * kKernel[std::abs(dy)] * similarity;
-                            sum = sum + MATH::Vec3{color[tapLocal].x, color[tapLocal].y, color[tapLocal].z} * weight;
+                            const MATH::Vec4& tapColor = color[tapLocal];
+                            sum = {sum.x + tapColor.x * weight, sum.y + tapColor.y * weight,
+                                   sum.z + tapColor.z * weight, sum.w + tapColor.w * weight};
                             total += weight;
                             noiseSum += weight * weight * noise[tapLocal];
                         }
                     if (total > 0) {
-                        nextColor[local] = {sum.x / total, sum.y / total, sum.z / total, color[local].w};
+                        nextColor[local] = {sum.x / total, sum.y / total, sum.z / total, sum.w / total};
                         nextNoise[local] = noiseSum / (total * total);
                     }
                 }

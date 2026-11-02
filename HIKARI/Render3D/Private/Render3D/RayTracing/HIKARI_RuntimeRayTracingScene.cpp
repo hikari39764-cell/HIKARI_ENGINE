@@ -21,6 +21,7 @@
 #include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneSurfaceRecord.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
+#include "Render3D/Lighting/HIKARI_LightmapRuntime.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingDeformation.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingChanges.h"
@@ -98,6 +99,13 @@ void WriteTransform(D3D12_RAYTRACING_INSTANCE_DESC& instance, const MATH::Mat4& 
             instance.Transform[row][col] = world.m[col][row];
 }
 bool SameMatrix(const MATH::Mat4& a, const MATH::Mat4& b) { return std::memcmp(&a, &b, sizeof(a)) == 0; }
+// [0, 1] の二値を unorm16 二つに詰める（HLSL の HikariRayHitLightmapUv が戻す）。
+uint32_t PackUnorm16x2(float low, float high) {
+    const auto unorm = [](float value) {
+        return static_cast<uint32_t>(std::lround(std::clamp(value, 0.0f, 1.0f) * 65535.0f));
+    };
+    return unorm(low) | (unorm(high) << 16u);
+}
 
 // まだ場面へ入れられない面（未解決・組み途中）。残っている間は毎フレーム組み直す。
 inline constexpr uint32_t kUnsettledExclusions = RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Missing) |
@@ -155,6 +163,7 @@ struct RuntimeRayTracingScene::State {
     RuntimeRayTracingStats stats;
     // 最後に組んだ時の入れなかった面（大量配置は毎フレーム足す）。加速構造を使い回すフレームも同じ値を出す。
     RuntimeRayTracingExclusions lastExcluded{};
+    uint64_t lightmapVersion = 0; // hit 記録に書いた光照贴图の登録の版
     // この場面が一度欠けなく揃ったか（失敗と場面の入れ替えで戻る）。揃った後に足した面だけを Pending として遅らせる
     // （初めの読み込み中は揃うまで待つ。欠けた場面で GI を始めると光線が抜けて空の光を拾う）。
     bool complete = false;
@@ -340,8 +349,8 @@ struct RuntimeRayTracingScene::State {
     bool SameStructure(const GPUDRIVEN::GpuDrivenSceneSource& source, const RuntimeRayTracingBudget& budget,
                        RuntimeRayTracingMaterialVersion materials) {
         if (!topLevel || source.sourceVersion == 0 || materials.data == 0 || materials.bindings == 0 ||
-            sourceIdentity != source.surfaceRecords || layoutVersion != source.layoutVersion ||
-            (lastExcluded.mask & kUnsettledExclusions) != 0u)
+            lightmapVersion != LIGHTMAP::GetVersion() || sourceIdentity != source.surfaceRecords ||
+            layoutVersion != source.layoutVersion || (lastExcluded.mask & kUnsettledExclusions) != 0u)
             return false;
         for (const auto& [key, asset] : assets) {
             const ClusterGeometryResourceHandle handle{uint32_t(key), uint32_t(key >> 32)};
@@ -854,8 +863,17 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
             instances.push_back(instance);
             for (const auto& range : chunk.ranges) {
                 const auto [material, flags] = group.surfaces[range.surfaceIndex];
-                hits.push_back({asset.geometryDescriptor, asset.metadataDescriptor, material, flags,
-                                range.firstPrimitive, range.firstCluster, range.clusterCount, range.primitiveCount});
+                RuntimeRayTracingHitRecord hit{
+                    asset.geometryDescriptor, asset.metadataDescriptor, material,           flags,
+                    range.firstPrimitive,     range.firstCluster,       range.clusterCount, range.primitiveCount};
+                const auto& surface = asset.source->surfaceRanges[range.surfaceIndex];
+                if (const auto* lightmap = LIGHTMAP::Find(std::get<0>(key), surface.nodeIndex, surface.meshIndex,
+                                                          surface.primitiveIndex)) {
+                    hit.lightmapDescriptor = lightmap->textureDescriptorIndex;
+                    hit.deformedVertexBase = PackUnorm16x2(lightmap->uvScaleBias.x, lightmap->uvScaleBias.y);
+                    hit.deformedVertexCount = PackUnorm16x2(lightmap->uvScaleBias.z, lightmap->uvScaleBias.w);
+                }
+                hits.push_back(hit);
             }
         }
         groupUses.back().instanceCount = static_cast<uint32_t>(instances.size()) - groupUses.back().firstInstance;
@@ -929,6 +947,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
     }
     state.sourceIdentity = source.surfaceRecords;
     state.sourceVersion = source.sourceVersion;
+    state.lightmapVersion = LIGHTMAP::GetVersion();
     state.layoutVersion = source.layoutVersion;
     state.materialVersion = materialVersion;
     state.sourceSurfaceCount = state.stats.sourceSurfaces;

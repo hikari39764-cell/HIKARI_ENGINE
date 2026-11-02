@@ -1,3 +1,4 @@
+#define HIKARI_RAY_SURFACE_HIT_RECORD 1
 #include "Include/Lighting/HIKARI_RuntimeRayLighting.hlsli"
 #include "Include/Lighting/HIKARI_IrradianceSh9.hlsli"
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
@@ -108,6 +109,17 @@ float3 HitIncidentLight(HikariRaySurface hit, float3 rayDirection, float3 direct
     return sample.value + HikariRayEnvironmentRadiance(gRayLighting, direction, gLinearClamp, skyMip) * (1.0f - sample.coverage);
 }
 
+// 当たった面に光照贴图があれば、画面に映るその面と同じ焼き込んだ間接拡散（E/pi）で照らす。動的 GI の探針は焼き込みの
+// 場面と明るさが合わず、影の中の面（椅子や机の裏）がほぼ黒になって床の映り込みが斑になる。
+float3 HitDiffuseIncidentLight(HikariRaySurface hit, float3 rayDirection)
+{
+    const HikariRayTracingHitRecord record = gRuntimeRayHits[hit.hitRecord];
+    if (record.lightmapDescriptor < HIKARI_MATERIAL_TEXTURE_POOL_COUNT)
+        return gMaterialTexturePool[NonUniformResourceIndex(record.lightmapDescriptor)].SampleLevel(gLinearClamp,
+            HikariRayHitLightmapUv(record, hit.uv1), 0.0f).rgb;
+    return HitIncidentLight(hit, rayDirection, hit.normal, 4.0f);
+}
+
 [numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
@@ -165,7 +177,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     {
         const float3 hitView = -direction;
         radiance = HikariPreExpose(HikariRayHitRadiance(gRayLighting, hit, hitView, ReflectionRandom(pixel, frame, 1u),
-            HitIncidentLight(hit, direction, hit.normal, 4.0f),
+            HitDiffuseIncidentLight(hit, direction),
             HitIncidentLight(hit, direction, reflect(direction, hit.normal), hit.pbr.roughness * 6.0f), true,
             gMaterialWrap), gViewExposure);
     }

@@ -22,9 +22,12 @@ struct HikariRayTracingHitRecord
     uint firstCluster;
     uint clusterCount;
     uint primitiveCount;
-    uint deformedVertexBase;  // 変形した頂点の pool 内の byte 位置（flags bit2 の時）
+    // 変形した面（flags bit2）は変形した頂点の pool 内の byte 位置と頂点数。変形しない面で光照贴图がある時は
+    // その UV の縮尺と偏り（unorm16 × 2 ずつ。HikariRayHitLightmapUv）。
+    uint deformedVertexBase;
     uint deformedVertexCount;
-    uint2 padding;
+    uint lightmapDescriptor;  // 面の光照贴图（無ければ 0xffffffff）
+    uint reserved;
 };
 RaytracingAccelerationStructure gRuntimeRayScene : register(t0, space8);
 StructuredBuffer<HikariRayTracingHitRecord> gRuntimeRayHits : register(t1, space8);
@@ -33,6 +36,14 @@ ByteAddressBuffer gRuntimeRayDeformed : register(t2, space8);
 static const uint HIKARI_RAY_HIT_DEFORMED = 4u;
 // 透過する面（ガラスなど半透明）。光線を止めず、影の光線だけ透過率を掛けて先へ進む。
 static const uint HIKARI_RAY_HIT_TRANSMISSIVE = 8u;
+
+// 変形しない面の光照贴图の UV（当たった点の uv1 を光照贴图の頁の中へ写す）。lightmapDescriptor がある記録だけ有効。
+float2 HikariRayHitLightmapUv(HikariRayTracingHitRecord record, float2 uv1)
+{
+    const float4 scaleBias = float4(record.deformedVertexBase & 0xffffu, record.deformedVertexBase >> 16u,
+        record.deformedVertexCount & 0xffffu, record.deformedVertexCount >> 16u) / 65535.0f;
+    return saturate(uv1 * scaleBias.xy + scaleBias.zw);
+}
 
 void HikariLoadDeformedRayVertex(HikariRayTracingHitRecord record, uint vertex, inout HikariClusterVertex value)
 {
@@ -61,6 +72,11 @@ struct HikariRaySurface
     float3 emissive;
     uint backFace;
     HikariMaterialTextureFootprint footprint;
+#ifdef HIKARI_RAY_SURFACE_HIT_RECORD
+    // gRuntimeRayHits の番号。読む shader だけが定義する（動的 GI の更新 shader は資源の臨界にあり、使わない値でも
+    // 足すと遅くなる）。
+    uint hitRecord;
+#endif
 };
 
 // xy = 原点での直径 / 2*tan(開口全角/2)。world 単位で距離に沿って広がる。
@@ -102,6 +118,9 @@ bool HikariDecodeRayCandidate(inout RayQuery<RAY_FLAG_NONE> query,
     const uint geometryIndex = query.CandidateGeometryIndex();
     if (instance >= hitRecordCount || geometryIndex >= hitRecordCount-instance) return false;
     const HikariRayTracingHitRecord record = gRuntimeRayHits[instance+geometryIndex];
+#ifdef HIKARI_RAY_SURFACE_HIT_RECORD
+    surface.hitRecord = instance + geometryIndex;
+#endif
     const uint geometry = record.geometryDescriptor-HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_BEGIN;
     const uint metadata = record.metadataDescriptor-HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_BEGIN;
     if (record.materialIndex == 0xffffffffu || geometry >= HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_COUNT ||

@@ -133,10 +133,14 @@ struct RuntimeRayTracingHitRecord {
     uint32_t firstCluster = 0;
     uint32_t clusterCount = 0;
     uint32_t primitiveCount = 0;
-    // 変形した頂点の pool 内の byte 位置と頂点数（[位置 × N][法線 × N][接線 × N]）。
+    // 変形した面（bit2）: 変形した頂点の pool 内の byte 位置と頂点数（[位置 × N][法線 × N][接線 × N]）。
+    // 変形しない面で光照贴图がある時は、その UV の縮尺 (x, y) と偏り (x, y) を unorm16 二つずつ（光照贴图は静的な面だけ
+    // なので重ならない。記録を 48 byte に保つのは動的 GI の更新 shader が資源の臨界にあるため）。
     uint32_t deformedVertexBase = 0;
     uint32_t deformedVertexCount = 0;
-    uint32_t padding[2]{};
+    // 面の光照贴图（描画と同じ LIGHTMAP の登録）。光線が当たった画面外の面を焼き込みの間接光で照らすのに使う。
+    uint32_t lightmapDescriptor = 0xffffffffu;
+    uint32_t reserved = 0;
 };
 static_assert(sizeof(RuntimeRayTracingHitRecord) == 48);
 
