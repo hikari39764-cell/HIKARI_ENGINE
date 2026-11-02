@@ -23,7 +23,8 @@ using Json = nlohmann::json;
 
 // HIKARI_DynamicGiProbeAtlas.hlsli の tile と同じ並び。
 constexpr uint32_t kTileWidth = 28, kTileHeight = 18, kOctahedralSide = 8;
-constexpr uint32_t kStateX = 0, kStateY = 10, kStatisticsX = 0, kStatisticsY = 11;
+constexpr uint32_t kStateX = 0, kStateY = 10, kStatisticsX = 0, kStatisticsY = 11, kConnectivityX = 1,
+                   kConnectivityY = 10;
 constexpr float kIrradianceGamma = 5.0f;
 
 // HikariEncodeOctahedralDirection と同じ。
@@ -80,6 +81,12 @@ Json DescribeField(const LIGHTPROBE::LightProbeVolumeRuntimeData& data, size_t f
                 const uint32_t tileX = (x + y * data.countX) * kTileWidth, tileY = z * kTileHeight;
                 const auto state = texels.Read(tileX + kStateX, tileY + kStateY);
                 const auto statistics = texels.Read(tileX + kStatisticsX, tileY + kStatisticsY);
+                // 隣 26 probe との連通（HikariDynamicGiNeighborDelta の並び、bit が立てば間を形状が遮らない）。
+                const auto connectivity = texels.Read(tileX + kConnectivityX, tileY + kConnectivityY);
+                const Json connected = connectivity[3] < 0.5f ? Json(nullptr)
+                                                              : Json(uint32_t(connectivity[0] + 0.5f) |
+                                                                     (uint32_t(connectivity[1] + 0.5f) << 11u) |
+                                                                     (uint32_t(connectivity[2] + 0.5f) << 22u));
                 Json irradiance = Json::object(), sky = Json::object();
                 for (const auto& [name, axis] : kAxes) {
                     const auto value =
@@ -99,6 +106,7 @@ Json DescribeField(const LIGHTPROBE::LightProbeVolumeRuntimeData& data, size_t f
                                   {"variation", Round(statistics[1])},
                                   {"backRatio", Round(statistics[2])},
                                   {"fixedLevel", Round(statistics[3])},
+                                  {"connectivity", connected},
                                   {"irradiance", std::move(irradiance)},
                                   {"skyVisibility", std::move(sky)}});
             }

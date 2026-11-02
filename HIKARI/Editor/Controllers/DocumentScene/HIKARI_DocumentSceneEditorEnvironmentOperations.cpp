@@ -254,8 +254,9 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
         "lighting.gi.probes.dump",
         "Read back the dynamic GI probes once and write them to Library/Diagnostics/<name>.json a few frames later: "
         "for every field (region, near, far) the grid origin, spacing and counts, and for every probe its world "
-        "position (grid point plus relocation), active flag, update count, backface ratio, fixed-ray brightness and "
-        "the irradiance E/pi and sky visibility toward +x,-x,+y,-y,+z,-z. Use it to check probe placement and values "
+        "position (grid point plus relocation), active flag, update count, backface ratio, fixed-ray brightness, the "
+        "26-neighbor connectivity mask (bit set = no geometry between) and the irradiance E/pi and sky visibility "
+        "toward +x,-x,+y,-y,+z,-z. Use it to check probe placement and values "
         "against a reference; the file appears only while dynamic GI is running.",
         "general",
         {{"name", EditorOperationParameterType::String, false,

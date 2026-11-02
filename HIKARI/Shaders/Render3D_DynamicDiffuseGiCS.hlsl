@@ -186,22 +186,50 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
     bool history = false;
     [unroll] for (uint volume = 0u; volume < HIKARI_DYNAMIC_GI_VOLUME_COUNT; ++volume)
         history = history || HikariHasIrradianceVolumeData(gPreviousVolumes[volume]);
-    // 最後の一巡（rayIndex >= kRayCount）は lane 自身の固定 ray の続き：裏面に当たった（probe が形状の中にある）時だけ
-    // その面を抜けた先へ同じ向きに撃ち、抜けた先が閉じた空間か（probe が入る広さの先に表の面があるか）を出口の選択に使う。
-    // 同じ追跡の呼び出しを使い回す（この shader に追跡の呼び出しを別に足すと、実行しない分岐でも GPU が応答しなく
-    // なった。device hung）。
-    for (uint rayIndex = lane; rayIndex < kRayCount + kFixedRays; rayIndex += 64u)
+    // 四巡目（[kRayCount, kRayCount + kFixedRays)）は lane 自身の固定 ray の続き：裏面に当たった（probe が形状の中に
+    // ある）時だけその面を抜けた先へ同じ向きに撃ち、抜けた先が閉じた空間か（probe が入る広さの先に表の面があるか）を
+    // 出口の選択に使う。五巡目（lane 0..25）は隣の 26 probe への線分を撃ち、間を形状が遮らないか（連通）を測る。
+    // どれも同じ追跡の呼び出しを使い回す（この shader に追跡の呼び出しを別に足すと、実行しない分岐でも GPU が応答
+    // しなくなった。device hung）。結果は lane が受け持つ固定 ray の sBackFace に bit 1（閉じた出口）、bit 2（連通）で置く。
+    for (uint rayIndex = lane; rayIndex < kRayCount + kFixedRays + HIKARI_DYNAMIC_GI_NEIGHBOR_COUNT; rayIndex += 64u)
     {
         const bool continuation = rayIndex >= kRayCount;
-        const uint fixedIndex = continuation ? rayIndex - kRayCount : 0u;
+        const uint extraIndex = continuation ? rayIndex - kRayCount : 0u;
+        const bool neighborRay = extraIndex >= kFixedRays;
+        const uint fixedIndex = neighborRay ? extraIndex - kFixedRays : extraIndex;
         const bool fixedRay = rayIndex < kFixedRays;
-        const float3 direction = continuation ? sDirection[fixedIndex] : ProbeRayDirection(rayIndex, rayRotation);
+        float3 direction = 0.0f.xxx;
         // Visibility atlas の正規化距離は ray の打切り距離ではない。
         // 大空間の壁/屋根を打ち切って miss=sky と扱うと室内へ漏光する。
-        RayDesc ray; ray.Origin = probePosition; ray.Direction = direction; ray.TMin = 0.001f; ray.TMax = 1e7f;
-        const bool traced =
-            !continuation || ((sBackFace[fixedIndex] & 1u) != 0u && sDistance[fixedIndex] < 1.0e29f);
-        if (continuation) ray.Origin += direction * (min(sDistance[fixedIndex], maximumDistance) + 0.01f);
+        RayDesc ray; ray.Origin = probePosition; ray.TMin = 0.001f; ray.TMax = 1e7f;
+        bool traced = true;
+        if (neighborRay)
+        {
+            // 隣の位置は前の図集の移動込み。格子の外の隣は補間に出てこないので測らない（連通とする）。
+            const int3 delta = HikariDynamicGiNeighborDelta(fixedIndex);
+            const int3 neighborPrevious = previousCoordinate + delta;
+            float3 neighborOffset = 0.0f.xxx;
+            if (gWork.w != 0u && all(neighborPrevious >= 0) && all(neighborPrevious < int3(previousCounts)))
+                neighborOffset = gMaterialTexturePool[NonUniformResourceIndex(previousAtlasIndex)].Load(int3(
+                    int2(uint2(neighborPrevious.x + neighborPrevious.y * previousCounts.x, neighborPrevious.z) *
+                        tileSize) + HIKARI_DYNAMIC_GI_STATE_TEXEL, 0)).rgb;
+            const float3 toNeighbor = nominalPosition + float3(delta) * gSpacing.xyz + neighborOffset - probePosition;
+            const float distance = length(toNeighbor);
+            const int3 neighborCoordinate = int3(coordinate) + delta;
+            traced = distance > 1.0e-3f && all(neighborCoordinate >= 0) &&
+                all(neighborCoordinate < int3(gCounts.xyz));
+            direction = toNeighbor / max(distance, 1.0e-3f);
+            ray.TMax = max(distance * 0.98f, ray.TMin);
+        }
+        else if (continuation)
+        {
+            direction = sDirection[fixedIndex];
+            traced = (sBackFace[fixedIndex] & 1u) != 0u && sDistance[fixedIndex] < 1.0e29f;
+            ray.Origin += direction * (min(sDistance[fixedIndex], maximumDistance) + 0.01f);
+        }
+        else
+            direction = ProbeRayDirection(rayIndex, rayRotation);
+        ray.Direction = direction;
         HikariRaySurface hit = (HikariRaySurface)0;
         bool found = false;
         const float coneSpread =
@@ -212,7 +240,8 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         if (continuation)
         {
             // 固定 ray の記録は同じ lane が一巡目に書いたもの（他の lane は次の barrier まで読まない）。
-            if (found && hit.backFace == 0u && hit.distance >= 2.0f * gRelocate.x) sBackFace[fixedIndex] |= 2u;
+            if (neighborRay ? !found : found && hit.backFace == 0u && hit.distance >= 2.0f * gRelocate.x)
+                sBackFace[fixedIndex] |= neighborRay ? 4u : 2u;
             continue;
         }
         sDirection[rayIndex] = direction;
@@ -399,5 +428,12 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         const float nextVariation = continuing ? lerp(variation, change, 0.3f) : 1.0f;
         gOutputAtlas[tile + uint2(HIKARI_DYNAMIC_GI_STATISTICS_TEXEL)] =
             float4(min(updates + 1.0f, 255.0f), nextVariation, sBackRatio, sFixedLevel);
+    }
+    else if (lane == 2u)
+    {
+        uint connectivity = 0u;
+        for (uint i = 0u; i < HIKARI_DYNAMIC_GI_NEIGHBOR_COUNT; ++i)
+            connectivity |= (sBackFace[i] & 4u) != 0u ? 1u << i : 0u;
+        gOutputAtlas[tile + uint2(HIKARI_DYNAMIC_GI_CONNECTIVITY_TEXEL)] = HikariPackDynamicGiConnectivity(connectivity);
     }
 }

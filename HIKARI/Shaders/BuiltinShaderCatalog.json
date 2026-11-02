@@ -1781,8 +1781,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.DynamicDiffuseGi",
-        "engineInterfaceVersion": 11,
-        "engineInterfaceHash": "4aa3e34cdce2840d0769ce8ed13c457081ad604b3b1caa318cd8a724fd64db7d",
+        "engineInterfaceVersion": 12,
+        "engineInterfaceHash": "c9c73596f0ba969956872f9f2eac3adbab6e0aba4dcc4d05637f41f1fcb844a8",
         "rootLayoutId": "HIKARI.DynamicDiffuseGi.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "e2eecba0a55d7f7c361aebac8386f0f2ab27505e17003c76da261cf289167a77",

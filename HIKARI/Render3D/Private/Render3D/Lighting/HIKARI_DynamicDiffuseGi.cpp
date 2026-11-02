@@ -327,11 +327,11 @@ struct DynamicDiffuseGi::State {
         namespace SHADER = ASSETS::SHADER;
         SHADER::ShaderAssetContractExpectation contract{};
         contract.engineInterfaceId = "HIKARI.DynamicDiffuseGi";
-        contract.engineInterfaceVersion = 11;
+        contract.engineInterfaceVersion = 12;
         contract.rootLayoutId = "HIKARI.DynamicDiffuseGi.Root";
         contract.rootLayoutVersion = 3;
         if (!HASH::ComputeSha256(
-                "DynamicDiffuseGiCB:576;previous volumes[3],field index;origin,axis spacing,focus origin/direction,priority origin/budget,size/start,blend hysteresis/light change/variability,relocate min front/backface/limit/reach;atlas RGBA16F tile28x18 irradiance^(1/5)+sky oct8 cosine accumulated,moments+active oct16 backface x0.2,state(0,10) offset+active,(0,11) updates/variation/backface/fixed level;focus hit heights+horizontal distances u1 x12;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
+                "DynamicDiffuseGiCB:576;previous volumes[3],field index;origin,axis spacing,focus origin/direction,priority origin/budget,size/start,blend hysteresis/light change/variability,relocate min front/backface/limit/reach;atlas RGBA16F tile28x18 irradiance^(1/5)+sky oct8 cosine accumulated,moments+active oct16 backface x0.2,state(0,10) offset+active,(0,11) updates/variation/backface/fixed level,(1,10) 26-neighbor connectivity 11/11/4 bits+valid;focus hit heights+horizontal distances u1 x12;shared HCMESH/material query;CloudSolar:64 signed intervals and cumulative T",
                 contract.engineInterfaceHash) ||
             !HASH::ComputeSha256(
                 "CBV(b0);AS(t0,s8);Hits(t1,s8);Materials(t16);Programs(t0,t1,s6);Lights(t1,t2,s7);Geometry(t0,s1,1024);Textures(t20);Deformed(t2,s8);ProbeAtlas(u0);Sky(t0,s7);Focus(u1);Sampler(s0,clamp);Sampler(s1,wrap)",

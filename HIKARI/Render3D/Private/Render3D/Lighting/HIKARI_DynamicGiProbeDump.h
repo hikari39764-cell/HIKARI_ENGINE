@@ -15,7 +15,7 @@ namespace HIKARI::RENDER3D::DYNAMICGI {
 
 // 動的 GI の probe を一度だけ読み戻して JSON に書く（調査用。編集器の操作 lighting.gi.probes.dump）。
 // 更新した図集を読み戻し用の buffer へ写し、GPU がそのフレームを終えた後で解いて書く。各 probe の世界位置
-// （格子点 + 再配置）、活性、更新回数、裏面率、6 軸方向の E/pi と空の見える割合を出す。
+// （格子点 + 再配置）、活性、更新回数、裏面率、隣 26 probe との連通、6 軸方向の E/pi と空の見える割合を出す。
 class ProbeDump final {
 public:
     void Request(std::filesystem::path path);

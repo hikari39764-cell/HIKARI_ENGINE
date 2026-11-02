@@ -75,6 +75,15 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
     const float3 directions[4] = {float3(1,1,1), float3(1,-1,-1), float3(-1,1,-1), float3(-1,-1,1)};
     float3 irradiance[4] = {0.0f.xxx,0.0f.xxx,0.0f.xxx,0.0f.xxx};
     float skyVisibility = 0.0f;
+    // 連通：最も重い probe（その点から確かに見えている）と間を形状が遮る probe は壁の向こうにいる。外の probe は壁の縁で
+    // 可視性を抜けることがあり、外が桁違いに明るいと約 1% の重みでも壁の交線に probe 間隔の斑が出たので、そういう probe
+    // は重みが最も重いものの 1 割未満なら外す（5 割までなめらかに戻す）。両方とも重い時（細い柱を挟んだ室内）は外さない。
+    // 重みを先に全部出して最も重い probe を決め、放射照度はその後で読む。面の問い合わせだけ（媒質は全部連通）。
+    // 前向きは約 0.45 ms 重くなる（最も近い probe を基準に一巡で外す形や、外す分を別に足して後で引く形も試したが、
+    // 前向きの着色器が資源の境目にあり、どの形でも 0.4–1.0 ms 増えた。最も近い基準は壁際に斑が残った）。
+    float weights[8];
+    uint anchor = 0u;
+    float anchorWeight = 0.0f;
     [unroll] for (uint corner = 0u; corner < 8u; ++corner)
     {
         const uint3 offset = uint3(corner & 1u, (corner >> 1u) & 1u, (corner >> 2u) & 1u);
@@ -98,12 +107,28 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
         const float facing = 0.5f + 0.5f * dot(toProbe, query.surfaceNormal) * rsqrt(max(dot(toProbe, toProbe), 1e-8f));
         const float surfaceWeight = query.medium ? 1.0f : facing * facing + 0.2f;
         const float weight = trilinear * active * HikariDynamicGiWeight(visibility, surfaceWeight);
+        weights[corner] = weight; // 展開した定数の添字だけで読み書きする
+        anchor = weight > anchorWeight ? corner : anchor;
+        anchorWeight = max(anchorWeight, weight);
         activeWeight += trilinear * active;
         supported += trilinear * active * visibility;
+    }
+    const uint3 anchorCoordinate =
+        min(base + uint3(anchor & 1u, (anchor >> 1u) & 1u, (anchor >> 2u) & 1u), counts - 1u);
+    const uint connectivity = query.medium ? HIKARI_DYNAMIC_GI_ALL_CONNECTED
+        : HikariDynamicGiProbeConnectivity(descriptorIndex, HikariDynamicGiProbeTile(anchorCoordinate, counts));
+    [unroll] for (uint corner = 0u; corner < 8u; ++corner)
+    {
+        const uint3 coordinate = min(base + uint3(corner & 1u, (corner >> 1u) & 1u, (corner >> 2u) & 1u), counts - 1u);
+        const float2 tile = HikariDynamicGiProbeTile(coordinate, counts);
+        const int3 delta = int3(coordinate) - int3(anchorCoordinate);
+        const bool separated = any(delta != 0) && ((connectivity >> HikariDynamicGiNeighborIndex(delta)) & 1u) == 0u;
+        const float weight = separated
+            ? weights[corner] * saturate((weights[corner] / max(anchorWeight, 1.0e-30f) - 0.1f) / 0.4f)
+            : weights[corner];
         totalWeight += weight;
-        // 放射照度は重みの結果を待たずに読む（読み出しが重みの計算と重なる）。重み 0 の probe（まだ更新されていない tile は
-        // 0 初期化のまま）も読み、NaN は max で 0 へ落としてから重みを掛ける。重みで条件を付けると読み出しが分岐の中へ移って
-        // 重みを待つ形に戻り、clamp で Inf まで抑えても前向きが 0.1–0.4 ms 遅くなったので、どちらも入れない。
+        // 重み 0 の probe（まだ更新されていない tile は 0 初期化のまま）も読み、NaN は max で 0 へ落としてから重みを掛ける。
+        // 重みで条件を付けると読み出しが分岐の中へ移って重みを待つ形に戻り、前向きが遅くなる。
         [unroll] for (uint direction = 0u; direction < (query.medium ? 4u : 1u); ++direction)
         {
             const float2 uv = HikariEncodeOctahedralDirection(query.medium ? directions[direction] : query.direction);

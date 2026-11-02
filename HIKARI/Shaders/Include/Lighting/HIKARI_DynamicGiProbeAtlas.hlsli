@@ -16,8 +16,11 @@
 //   (0,10)              probe の状態。rgb = 格子点からの移動 [m]（RTXGI の probe relocation）、a = 活性
 //                       （1 活性、0 は未初期化か非活性で、描画側は支持に数えない）。
 //   (0,11)              r = 更新回数、g = 変動の移動平均、b = 固定 ray の裏面率、a = 固定 ray の明るさ（光照の変化の検出）。
-// 遮蔽は深度 moment の Chebyshev 可視性だけで判定する（RTXGI と同じ）。固定 ray の三角形に内接する円盤で補った版は、
+//   (1,10)              隣の 26 probe との連通（間を形状が遮らない）。26 bit を 11/11/4 bit の整数に分けて rgb、a = 1 で有効。
+// 遮蔽は深度 moment の Chebyshev 可視性で判定する（RTXGI と同じ）。固定 ray の三角形に内接する円盤で補った版は、
 // 円盤を最も近い角度の texel から選ぶため面に円や多角形の斑が出て、前向きの着色も 3 割重くなったので外した。
+// 薄い壁の外の probe は、壁の縁（輪郭）の向きで深度 moment が近い壁と遠い背景の混合になって「見える」と判定される
+// ことがあり、外が中より桁違いに明るいと壁の交線に probe 間隔の斑が出る。補間では連通を使ってそれを抑える。
 static const uint HIKARI_DYNAMIC_GI_TILE_WIDTH = 28u;
 static const uint HIKARI_DYNAMIC_GI_TILE_HEIGHT = 18u;
 static const float HIKARI_DYNAMIC_GI_OCTAHEDRAL_SIDE = 8.0f;
@@ -25,6 +28,28 @@ static const float HIKARI_DYNAMIC_GI_DEPTH_SIDE = 16.0f;
 static const int2 HIKARI_DYNAMIC_GI_DEPTH_ORIGIN = int2(10, 0);
 static const int2 HIKARI_DYNAMIC_GI_STATE_TEXEL = int2(0, 10);
 static const int2 HIKARI_DYNAMIC_GI_STATISTICS_TEXEL = int2(0, 11);
+static const int2 HIKARI_DYNAMIC_GI_CONNECTIVITY_TEXEL = int2(1, 10);
+static const uint HIKARI_DYNAMIC_GI_NEIGHBOR_COUNT = 26u;
+static const uint HIKARI_DYNAMIC_GI_ALL_CONNECTED = 0x3ffffffu;
+
+// 隣の probe の番号（0..25）と格子の差 {-1,0,1}^3 の対応：中心（13）を飛ばした 3 進の並び。
+int3 HikariDynamicGiNeighborDelta(uint neighbor)
+{
+    const uint code = neighbor < 13u ? neighbor : neighbor + 1u;
+    return int3(code % 3u, (code / 3u) % 3u, code / 9u) - 1;
+}
+
+uint HikariDynamicGiNeighborIndex(int3 delta)
+{
+    const uint code = uint(delta.x + 1) + 3u * uint(delta.y + 1) + 9u * uint(delta.z + 1);
+    return code < 13u ? code : code - 1u;
+}
+
+// 半精度は 2048 まで整数が正確なので、26 bit を 11/11/4 bit に分けて置く。
+float4 HikariPackDynamicGiConnectivity(uint mask)
+{
+    return float4(float(mask & 2047u), float((mask >> 11u) & 2047u), float(mask >> 22u), 1.0f);
+}
 // 放射照度は E/pi の 1/5 乗で保存する（暗い所の精度を保つ）。補間は RTXGI の DDGIGetVolumeIrradiance と同じく 1/2 乗の
 // 空間で行い、最後に二乗して戻す。1/5 乗のまま混ぜると暗い probe へ強く引かれ、明暗の境の補間が線形の平均よりずっと
 // 暗くなる（半々なら線形 0.525、1/2 乗 0.374、1/5 乗 0.278）。
@@ -136,6 +161,16 @@ float2 HikariDynamicGiProbeTile(uint3 coordinate, uint3 counts)
 float4 HikariDynamicGiProbeState(uint descriptorIndex, float2 tile)
 {
     return gMaterialTexturePool[descriptorIndex].Load(int3(int2(tile) + HIKARI_DYNAMIC_GI_STATE_TEXEL, 0));
+}
+
+// probe の連通の 26 bit（まだ測っていない probe は全部連通とみなす）。
+uint HikariDynamicGiProbeConnectivity(uint descriptorIndex, float2 tile)
+{
+    const float4 packed =
+        gMaterialTexturePool[descriptorIndex].Load(int3(int2(tile) + HIKARI_DYNAMIC_GI_CONNECTIVITY_TEXEL, 0));
+    if (packed.a < 0.5f) return HIKARI_DYNAMIC_GI_ALL_CONNECTED;
+    const uint3 parts = uint3(max(packed.rgb, 0.0f.xxx) + 0.5f);
+    return parts.x | (parts.y << 11u) | (parts.z << 22u);
 }
 
 // probe から toSample の向きの深度 moment（xy）、probe の活性（z）、visibility scale で正規化した距離（w）。
