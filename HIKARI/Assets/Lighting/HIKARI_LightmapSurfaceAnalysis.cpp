@@ -29,6 +29,7 @@ bool IsDegenerateUvTriangle(const MATH::Vec2& uv0, const MATH::Vec2& uv1, const 
 }
 
 using UvTriangle = std::array<MATH::Vec2, 3>;
+using WorldTriangle = std::array<MATH::Vec3, 3>;
 
 bool HasSeparatingUvEdge(const UvTriangle& axes, const UvTriangle& other) {
     for (size_t edge = 0u; edge < 3u; ++edge) {
@@ -56,7 +57,80 @@ bool HasSeparatingUvEdge(const UvTriangle& axes, const UvTriangle& other) {
     return false;
 }
 
-bool HasOverlappingUvTriangles(const std::vector<UvTriangle>& triangles) {
+// p の重心座標（UV 三角形の上で）。面積が無ければ偽。
+bool UvBarycentric(const UvTriangle& uv, const MATH::Vec2& p, double (&weights)[3]) {
+    const auto edge = [](const MATH::Vec2& a, const MATH::Vec2& b, const MATH::Vec2& q) {
+        return (static_cast<double>(b.x) - a.x) * (static_cast<double>(q.y) - a.y) -
+               (static_cast<double>(b.y) - a.y) * (static_cast<double>(q.x) - a.x);
+    };
+    const double area = edge(uv[0], uv[1], uv[2]);
+    if (area == 0.0)
+        return false;
+    weights[0] = edge(uv[1], uv[2], p) / area;
+    weights[1] = edge(uv[2], uv[0], p) / area;
+    weights[2] = edge(uv[0], uv[1], p) / area;
+    return true;
+}
+
+MATH::Vec3 WorldAt(const WorldTriangle& world, const double (&weights)[3]) {
+    return world[0] * static_cast<float>(weights[0]) + world[1] * static_cast<float>(weights[1]) +
+           world[2] * static_cast<float>(weights[2]);
+}
+
+// UV で重なる二つの三角形が世界空間でも同じ所にあるか（同じ面の重複、対角線の違う二重の四角形など）。そうなら texel を
+// 共有しても照明は正しい。重なる領域の頂点（相手の内側にある頂点と辺どうしの交点）を両方の三角形で世界座標へ戻して
+// 比べる。UV から世界への写像は三角形ごとに一次なので、領域の頂点で一致すれば領域全体で一致する。向きの違う面
+// （裏表の重複）は別の面として重なりに数える。
+bool IsCoincidentOverlap(const UvTriangle& uvA, const WorldTriangle& worldA, const UvTriangle& uvB,
+                         const WorldTriangle& worldB) {
+    const MATH::Vec3 normalA = MATH::Cross(worldA[1] - worldA[0], worldA[2] - worldA[0]);
+    const MATH::Vec3 normalB = MATH::Cross(worldB[1] - worldB[0], worldB[2] - worldB[0]);
+    if (MATH::Dot(normalA, normalB) <= 0.5f * std::sqrt(MATH::Dot(normalA, normalA) * MATH::Dot(normalB, normalB)))
+        return false;
+    float longestEdge = 0.0f;
+    for (const WorldTriangle* world : {&worldA, &worldB})
+        for (size_t corner = 0u; corner < 3u; ++corner) {
+            const MATH::Vec3 edge = (*world)[(corner + 1u) % 3u] - (*world)[corner];
+            longestEdge = (std::max)(longestEdge, std::sqrt(MATH::Dot(edge, edge)));
+        }
+    const float tolerance = 0.02f * longestEdge;
+
+    std::vector<MATH::Vec2> points;
+    const auto inside = [](const UvTriangle& uv, const MATH::Vec2& p) {
+        double weights[3];
+        return UvBarycentric(uv, p, weights) && weights[0] >= -1.0e-6 && weights[1] >= -1.0e-6 && weights[2] >= -1.0e-6;
+    };
+    for (size_t corner = 0u; corner < 3u; ++corner) {
+        if (inside(uvB, uvA[corner]))
+            points.push_back(uvA[corner]);
+        if (inside(uvA, uvB[corner]))
+            points.push_back(uvB[corner]);
+    }
+    for (size_t i = 0u; i < 3u; ++i)
+        for (size_t j = 0u; j < 3u; ++j) {
+            const MATH::Vec2 p = uvA[i], r = uvA[(i + 1u) % 3u] - uvA[i];
+            const MATH::Vec2 q = uvB[j], s = uvB[(j + 1u) % 3u] - uvB[j];
+            const double denominator = static_cast<double>(r.x) * s.y - static_cast<double>(r.y) * s.x;
+            if (denominator == 0.0)
+                continue;
+            const MATH::Vec2 qp = q - p;
+            const double u = (static_cast<double>(qp.x) * s.y - static_cast<double>(qp.y) * s.x) / denominator;
+            const double v = (static_cast<double>(qp.x) * r.y - static_cast<double>(qp.y) * r.x) / denominator;
+            if (u >= 0.0 && u <= 1.0 && v >= 0.0 && v <= 1.0)
+                points.push_back({p.x + static_cast<float>(u) * r.x, p.y + static_cast<float>(u) * r.y});
+        }
+    for (const MATH::Vec2& point : points) {
+        double weightsA[3], weightsB[3];
+        if (!UvBarycentric(uvA, point, weightsA) || !UvBarycentric(uvB, point, weightsB))
+            return false;
+        const MATH::Vec3 offset = WorldAt(worldA, weightsA) - WorldAt(worldB, weightsB);
+        if (MATH::Dot(offset, offset) > tolerance * tolerance)
+            return false;
+    }
+    return true;
+}
+
+bool HasOverlappingUvTriangles(const std::vector<UvTriangle>& triangles, const std::vector<WorldTriangle>& world) {
     // Grid は候補の絞り込み専用。小島でも交差判定そのものは幾何学的に行う。
     constexpr int kGridSize = 32;
     std::array<std::vector<size_t>, kGridSize * kGridSize> cells{};
@@ -89,7 +163,8 @@ bool HasOverlappingUvTriangles(const std::vector<UvTriangle>& triangles) {
                         previous.maxY <= box.minY)
                         continue;
                     if (!HasSeparatingUvEdge(triangle, triangles[candidate]) &&
-                        !HasSeparatingUvEdge(triangles[candidate], triangle))
+                        !HasSeparatingUvEdge(triangles[candidate], triangle) &&
+                        !IsCoincidentOverlap(triangle, world[index], triangles[candidate], world[candidate]))
                         return true;
                 }
                 cell.push_back(index);
@@ -152,7 +227,9 @@ LightmapSurfaceAnalysis AnalyzeLightmapSurface(const MeshPrimitive& primitive, A
             primitive.indices[index + 2u] < primitive.staticVertices.size())
             worldArea += triangleWorldArea(index);
     std::vector<UvTriangle> uvTriangles;
+    std::vector<WorldTriangle> worldTriangles;
     uvTriangles.reserve(primitive.indices.size() / 3u);
+    worldTriangles.reserve(primitive.indices.size() / 3u);
     for (size_t index = 0u; index + 2u < primitive.indices.size(); index += 3u) {
         const uint32_t indices[3]{primitive.indices[index], primitive.indices[index + 1u],
                                   primitive.indices[index + 2u]};
@@ -178,10 +255,13 @@ LightmapSurfaceAnalysis AnalyzeLightmapSurface(const MeshPrimitive& primitive, A
                 AddIssue(analysis, LightmapSurfaceIssue::UvDegenerate);
         } else if (finite && !analysis.HasIssue(LightmapSurfaceIssue::UvOutsideUnitRange)) {
             uvTriangles.push_back({uv[0], uv[1], uv[2]});
+            worldTriangles.push_back({primitive.staticVertices[indices[0]].position,
+                                      primitive.staticVertices[indices[1]].position,
+                                      primitive.staticVertices[indices[2]].position});
         }
         ++analysis.triangleCount;
     }
-    if (HasOverlappingUvTriangles(uvTriangles)) {
+    if (HasOverlappingUvTriangles(uvTriangles, worldTriangles)) {
         AddIssue(analysis, LightmapSurfaceIssue::UvOverlap);
     }
     return analysis;

@@ -65,8 +65,9 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         AssetImporterKind::Model,
         AssetType::Model,
         "ModelImporter",
-        // 45: Lightmap UV の自動展開が参照解像度に収まらない形状でも一枚の atlas に収まるまで解像度を上げる。
-        45u,
+        // 46: Lightmap UV の自動展開で chart の中が折り返したら chart を細かく分け直す。世界で重なる面（対角線の違う
+        // 二重の四角形など）の UV の重なりは失敗にしない。
+        46u,
         ".gltf, .obj, .fbx",
     },
     {

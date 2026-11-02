@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <iterator>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -111,77 +112,89 @@ PrimitiveGenerationResult GeneratePrimitiveLightmapUv(MeshPrimitive& primitive,
         return PrimitiveGenerationResult::Failed;
     }
 
-    xatlas::ChartOptions chartOptions{};
-    chartOptions.fixWinding = true;
-
     xatlas::PackOptions packOptions{};
     packOptions.padding = std::clamp(settings.padding, 1u, 64u);
     packOptions.bilinear = true;
     packOptions.blockAlign = true;
     packOptions.bruteForce = false;
     packOptions.createImage = false;
-    // 参照解像度に chart が収まらないと xatlas は atlas を複数に分ける。一つに収まるまで解像度を倍にする
-    // （64 texel では暖房器のように chart の多い形状が収まらず、自動展開に失敗して焼き込みから外れていた）。
-    xatlas::ComputeCharts(atlas, chartOptions);
-    for (uint32_t resolution = std::clamp(settings.resolution, 64u, 8192u);; resolution *= 2u) {
-        packOptions.resolution = resolution;
-        xatlas::PackCharts(atlas, packOptions);
-        if (atlas->atlasCount <= 1u || resolution >= 8192u || IsCancellationRequested(callbacks))
-            break;
-    }
-    if (IsCancellationRequested(callbacks)) {
-        outMessage = "lightmap UV generation canceled";
-        xatlas::Destroy(atlas);
-        return PrimitiveGenerationResult::Canceled;
-    }
 
-    if (atlas->meshCount != 1u || atlas->meshes == nullptr || atlas->width == 0u || atlas->height == 0u ||
-        atlas->atlasCount > 1u) {
-        outMessage = "xatlas produced an unsupported atlas layout";
-        xatlas::Destroy(atlas);
-        return PrimitiveGenerationResult::Failed;
-    }
+    // 既定の分け方で chart の中が折り返す（UV で重なる）形状がある（Pavilion の曲線から作った枠）。重なりだけで失敗した時は
+    // chart を小さく平らに分け直して試す。chart が増えるほど継ぎ目と余白が増えるので、既定から順に厳しくする。
+    xatlas::ChartOptions chartOptions[3]{};
+    chartOptions[1].maxCost = 0.5f;
+    chartOptions[1].maxIterations = 2u;
+    chartOptions[2].maxCost = 0.1f;
+    chartOptions[2].maxIterations = 4u;
+    chartOptions[2].normalSeamWeight = 1001.0f;
+    MeshPrimitive candidate{};
+    for (size_t attempt = 0u;; ++attempt) {
+        chartOptions[attempt].fixWinding = true;
+        xatlas::ComputeCharts(atlas, chartOptions[attempt]);
+        // 参照解像度に chart が収まらないと xatlas は atlas を複数に分ける。一つに収まるまで解像度を倍にする
+        // （64 texel では暖房器のように chart の多い形状が収まらず、自動展開に失敗して焼き込みから外れていた）。
+        for (uint32_t resolution = std::clamp(settings.resolution, 64u, 8192u);; resolution *= 2u) {
+            packOptions.resolution = resolution;
+            xatlas::PackCharts(atlas, packOptions);
+            if (atlas->atlasCount <= 1u || resolution >= 8192u || IsCancellationRequested(callbacks))
+                break;
+        }
+        if (IsCancellationRequested(callbacks)) {
+            outMessage = "lightmap UV generation canceled";
+            xatlas::Destroy(atlas);
+            return PrimitiveGenerationResult::Canceled;
+        }
 
-    const xatlas::Mesh& generated = atlas->meshes[0];
-    if (!ValidateGeneratedTopology(generated, input, outMessage)) {
-        xatlas::Destroy(atlas);
-        return PrimitiveGenerationResult::Failed;
-    }
-    std::vector<Vertex3D> vertices{};
-    vertices.reserve(generated.vertexCount);
-    // xatlas は細い単一 chart の外周を切り詰める。参照解像度に padding の
-    // 両側分を確保し、UV だけを中央へ移す（UV0 と描画形状は変更しない）。
-    const uint32_t minimumExtent = packOptions.padding * 2u + 1u;
-    const uint32_t width = (std::max)(atlas->width, minimumExtent);
-    const uint32_t height = (std::max)(atlas->height, minimumExtent);
-    const float offsetX = static_cast<float>(width - atlas->width) * 0.5f;
-    const float offsetY = static_cast<float>(height - atlas->height) * 0.5f;
-    const float invWidth = 1.0f / static_cast<float>(width);
-    const float invHeight = 1.0f / static_cast<float>(height);
-    for (uint32_t index = 0u; index < generated.vertexCount; ++index) {
-        const xatlas::Vertex& generatedVertex = generated.vertexArray[index];
-        if (generatedVertex.xref >= primitive.staticVertices.size() || generatedVertex.atlasIndex != 0) {
-            outMessage = "xatlas produced an invalid vertex mapping";
+        if (atlas->meshCount != 1u || atlas->meshes == nullptr || atlas->width == 0u || atlas->height == 0u ||
+            atlas->atlasCount > 1u) {
+            outMessage = "xatlas produced an unsupported atlas layout";
             xatlas::Destroy(atlas);
             return PrimitiveGenerationResult::Failed;
         }
-        Vertex3D vertex = primitive.staticVertices[generatedVertex.xref];
-        vertex.uv1 = {(generatedVertex.uv[0] + offsetX) * invWidth, (generatedVertex.uv[1] + offsetY) * invHeight};
-        vertices.push_back(vertex);
-    }
 
-    std::vector<uint32_t> indices(generated.indexArray, generated.indexArray + generated.indexCount);
-    MeshPrimitive candidate = primitive;
-    candidate.staticVertices = std::move(vertices);
-    candidate.indices = std::move(indices);
-    candidate.hasLightmapUv = true;
-    candidate.lightmapUvLayout = {width, height, packOptions.padding};
+        const xatlas::Mesh& generated = atlas->meshes[0];
+        if (!ValidateGeneratedTopology(generated, input, outMessage)) {
+            xatlas::Destroy(atlas);
+            return PrimitiveGenerationResult::Failed;
+        }
+        std::vector<Vertex3D> vertices{};
+        vertices.reserve(generated.vertexCount);
+        // xatlas は細い単一 chart の外周を切り詰める。参照解像度に padding の
+        // 両側分を確保し、UV だけを中央へ移す（UV0 と描画形状は変更しない）。
+        const uint32_t minimumExtent = packOptions.padding * 2u + 1u;
+        const uint32_t width = (std::max)(atlas->width, minimumExtent);
+        const uint32_t height = (std::max)(atlas->height, minimumExtent);
+        const float offsetX = static_cast<float>(width - atlas->width) * 0.5f;
+        const float offsetY = static_cast<float>(height - atlas->height) * 0.5f;
+        const float invWidth = 1.0f / static_cast<float>(width);
+        const float invHeight = 1.0f / static_cast<float>(height);
+        for (uint32_t index = 0u; index < generated.vertexCount; ++index) {
+            const xatlas::Vertex& generatedVertex = generated.vertexArray[index];
+            if (generatedVertex.xref >= primitive.staticVertices.size() || generatedVertex.atlasIndex != 0) {
+                outMessage = "xatlas produced an invalid vertex mapping";
+                xatlas::Destroy(atlas);
+                return PrimitiveGenerationResult::Failed;
+            }
+            Vertex3D vertex = primitive.staticVertices[generatedVertex.xref];
+            vertex.uv1 = {(generatedVertex.uv[0] + offsetX) * invWidth, (generatedVertex.uv[1] + offsetY) * invHeight};
+            vertices.push_back(vertex);
+        }
 
-    const LightmapSurfaceAnalysis validation = AnalyzeLightmapSurface(candidate, AlphaMode::Opaque);
-    if (!validation.IsEligible()) {
-        outMessage = "generated UV validation failed: " + DescribeLightmapSurfaceAnalysis(validation);
-        xatlas::Destroy(atlas);
-        return PrimitiveGenerationResult::Failed;
+        candidate = primitive;
+        candidate.staticVertices = std::move(vertices);
+        candidate.indices.assign(generated.indexArray, generated.indexArray + generated.indexCount);
+        candidate.hasLightmapUv = true;
+        candidate.lightmapUvLayout = {width, height, packOptions.padding};
+
+        const LightmapSurfaceAnalysis validation = AnalyzeLightmapSurface(candidate, AlphaMode::Opaque);
+        if (validation.IsEligible())
+            break;
+        if (validation.issueMask != static_cast<uint32_t>(LightmapSurfaceIssue::UvOverlap) ||
+            attempt + 1u == std::size(chartOptions)) {
+            outMessage = "generated UV validation failed: " + DescribeLightmapSurfaceAnalysis(validation);
+            xatlas::Destroy(atlas);
+            return PrimitiveGenerationResult::Failed;
+        }
     }
 
     primitive.staticVertices = std::move(candidate.staticVertices);

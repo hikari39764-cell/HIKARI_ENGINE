@@ -157,6 +157,19 @@ DxrLightmapUvRasterization RasterizeLightmapTarget(
         result.texels[texelIndex].position = {position.x, position.y, position.z, footprint};
         result.texels[texelIndex].normal = {normalizedNormal.x, normalizedNormal.y, normalizedNormal.z, 1.0f};
     };
+    // 同じ allocation の texel を二つの三角形が取り合っても、その texel で世界の位置（四分の一 texel 以内）と向きが同じなら
+    // 同じ面の重複（対角線の違う二重の四角形など）で照明も同じなので、先の三角形のまま共有する。違う所なら UV の重なり。
+    const auto sameSurfaceAtTexel = [&](size_t texelIndex, uint32_t triangleIndex, const float(&weights)[3],
+                                        const MATH::Vec3& normal, float footprint) {
+        const auto& triangle = scene.triangles[triangleIndex];
+        const auto& stored = result.texels[texelIndex];
+        MATH::Vec3 offset{stored.position.x, stored.position.y, stored.position.z};
+        for (uint32_t corner = 0u; corner < 3u; ++corner)
+            offset = offset - triangle.position[corner] * weights[corner];
+        const float tolerance = 0.25f * (std::max)(stored.position.w, footprint);
+        return MATH::Dot(offset, offset) <= tolerance * tolerance &&
+               MATH::Dot(MATH::Vec3{stored.normal.x, stored.normal.y, stored.normal.z}, normal) > 0.5f;
+    };
 
     for (const uint32_t triangleIndex : target.triangleIndices) {
         if (triangleIndex >= scene.triangles.size()) {
@@ -223,7 +236,9 @@ DxrLightmapUvRasterization RasterizeLightmapTarget(
                                               sample.y / static_cast<float>(height)};
                     const bool interiorsOverlap = IsUvTriangleInterior(triangle.lightmapUv, uvSample) &&
                                                   IsUvTriangleInterior(previous.lightmapUv, uvSample);
-                    if (previous.lightmapAllocationIndex != triangle.lightmapAllocationIndex || interiorsOverlap) {
+                    if (previous.lightmapAllocationIndex != triangle.lightmapAllocationIndex ||
+                        (interiorsOverlap &&
+                         !sameSurfaceAtTexel(texelIndex, triangleIndex, weights, geometricNormal, footprint))) {
                         ++result.overlapTexelCount;
                     }
                     continue;
@@ -252,14 +267,16 @@ DxrLightmapUvRasterization RasterizeLightmapTarget(
         if (MATH::Dot(normal, triangle.normal[0] + triangle.normal[1] + triangle.normal[2]) < 0)
             normal = normal * -1.0f;
         const size_t texelIndex = size_t(uv.y * height) * width + size_t(uv.x * width);
+        constexpr float barycentric[3]{1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f};
         if (result.validTexels[texelIndex]) {
             const auto& previous = scene.triangles[triangleOwners[texelIndex]];
             if (previous.lightmapAllocationIndex != triangle.lightmapAllocationIndex ||
-                (IsUvTriangleInterior(triangle.lightmapUv, uv) && IsUvTriangleInterior(previous.lightmapUv, uv)))
+                (IsUvTriangleInterior(triangle.lightmapUv, uv) && IsUvTriangleInterior(previous.lightmapUv, uv) &&
+                 !sameSurfaceAtTexel(texelIndex, triangleIndex, barycentric, normal,
+                                     WorldTexelFootprint(triangle, width, height))))
                 ++result.overlapTexelCount;
             continue;
         }
-        constexpr float barycentric[3]{1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f};
         storeTexel(triangleIndex, texelIndex, barycentric, normal, WorldTexelFootprint(triangle, width, height));
     }
     result.ownerIndices = std::move(triangleOwners);

@@ -182,24 +182,18 @@ void AccumulateSurfaceAnalysis(TRANSPORT::LightingTransportSurfaceTarget& target
         ++target.eligibleSurfaceCount;
         return;
     }
-    if (analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::AlphaMaskedSurface)) {
+    // 一つの面は一つの理由で数える。剪裁・半透明・未対応の面は自動展開もしないので UV1 が無いのは当然で、UV の問題には
+    // 数えない。
+    using enum ASSETS::LIGHTING::LightmapSurfaceIssue;
+    if (analysis.HasIssue(AlphaMaskedSurface)) {
         ++target.alphaMaskedSurfaceCount;
-    }
-    if (analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::BlendedSurface)) {
+    } else if (analysis.HasIssue(BlendedSurface)) {
         ++target.blendedSurfaceCount;
-    }
-    if (analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::UvNonFinite) ||
-        analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::UvOutsideUnitRange) ||
-        analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::UvDegenerate) ||
-        analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::UvOverlap) ||
-        analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::MissingLightmapUv) ||
-        analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::IndexOutOfRange)) {
-        ++target.invalidUvSurfaceCount;
-    }
-    if (analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::UnsupportedVertexLayout) ||
-        analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::MorphTargetsUnsupported) ||
-        analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::MissingGeometry)) {
+    } else if (analysis.HasIssue(UnsupportedVertexLayout) || analysis.HasIssue(MorphTargetsUnsupported) ||
+               analysis.HasIssue(MissingGeometry)) {
         ++target.unsupportedSurfaceCount;
+    } else {
+        ++target.invalidUvSurfaceCount;
     }
 }
 
