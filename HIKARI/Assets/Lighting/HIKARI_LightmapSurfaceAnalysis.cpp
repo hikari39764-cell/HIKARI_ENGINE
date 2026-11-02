@@ -135,6 +135,22 @@ LightmapSurfaceAnalysis AnalyzeLightmapSurface(const MeshPrimitive& primitive, A
         return analysis;
     }
 
+    // UV で潰れた三角形が問題になるのは、形状の中で見える大きさを持つ時だけ。面取りの細い三角形のように world でも
+    // ごく小さい三角形は自動展開で UV が潰れても一点の texel を使うだけで、焼き込みから外す理由にならない
+    // （以前は一つでもあると形状ごと外れ、暖房器などが烘焙されなかった）。
+    double worldArea = 0.0;
+    const auto triangleWorldArea = [&](size_t index) {
+        const MATH::Vec3& a = primitive.staticVertices[primitive.indices[index]].position;
+        const MATH::Vec3 ab = primitive.staticVertices[primitive.indices[index + 1u]].position - a;
+        const MATH::Vec3 ac = primitive.staticVertices[primitive.indices[index + 2u]].position - a;
+        const MATH::Vec3 cross = MATH::Cross(ab, ac);
+        return 0.5 * std::sqrt(static_cast<double>(MATH::Dot(cross, cross)));
+    };
+    for (size_t index = 0u; index + 2u < primitive.indices.size(); index += 3u)
+        if (primitive.indices[index] < primitive.staticVertices.size() &&
+            primitive.indices[index + 1u] < primitive.staticVertices.size() &&
+            primitive.indices[index + 2u] < primitive.staticVertices.size())
+            worldArea += triangleWorldArea(index);
     std::vector<UvTriangle> uvTriangles;
     uvTriangles.reserve(primitive.indices.size() / 3u);
     for (size_t index = 0u; index + 2u < primitive.indices.size(); index += 3u) {
@@ -158,7 +174,8 @@ LightmapSurfaceAnalysis AnalyzeLightmapSurface(const MeshPrimitive& primitive, A
             }
         }
         if (finite && IsDegenerateUvTriangle(uv[0], uv[1], uv[2])) {
-            AddIssue(analysis, LightmapSurfaceIssue::UvDegenerate);
+            if (triangleWorldArea(index) > 1.0e-4 * worldArea)
+                AddIssue(analysis, LightmapSurfaceIssue::UvDegenerate);
         } else if (finite && !analysis.HasIssue(LightmapSurfaceIssue::UvOutsideUnitRange)) {
             uvTriangles.push_back({uv[0], uv[1], uv[2]});
         }

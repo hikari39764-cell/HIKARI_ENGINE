@@ -69,7 +69,16 @@ StructuredBuffer<TransportTriangle> gTriangles : register(t1);
 StructuredBuffer<TransportTexel> gTexels : register(t2);
 StructuredBuffer<TransportLight> gLights : register(t3);
 TextureCube gEnvironmentCube : register(t4);
-RWStructuredBuffer<float4> gOutput : register(u0);
+// texel ごとの積算。radiance.rgb は裏面に当たらなかった標本の放射輝度の和、w は全標本数。statistics.x は最初の光線が
+// 裏面に当たった標本数（多い texel は形状に埋まっているので CPU が無効にして周りから埋める）、y は表の標本の輝度の二乗和
+// （降噪が texel ごとの雑音の大きさに使う）、z は最初の光線が空へ抜けた標本数（余弦で重みづけた空の見える割合。
+// 実行時の鏡面の遮蔽に使う）。
+struct LightmapAccumulation
+{
+    float4 radiance;
+    float4 statistics;
+};
+RWStructuredBuffer<LightmapAccumulation> gOutput : register(u0);
 SamplerState gMaterialSampler : register(s0);
 SamplerState gEnvironmentSampler : register(s1);
 
@@ -333,7 +342,8 @@ bool TraceSurface(
     out float3 geometricNormal,
     out float3 diffuse,
     out float3 emissive,
-    out bool surfaceValid)
+    out bool surfaceValid,
+    out bool backFace)
 {
     position = 0.0f.xxx;
     normal = 0.0f.xxx;
@@ -341,6 +351,7 @@ bool TraceSurface(
     diffuse = 0.0f.xxx;
     emissive = 0.0f.xxx;
     surfaceValid = true;
+    backFace = false;
 
     RayDesc ray;
     ray.Origin = origin;
@@ -386,6 +397,9 @@ bool TraceSurface(
         surfaceValid = false;
         return false;
     }
+    // 面の表は頂点法線の側（巻き順が逆の形状もある）。光線が表から入っていなければ裏面に当たった。
+    const float3 vertexNormalSum = surfaceTriangle.normal0.xyz + surfaceTriangle.normal1.xyz + surfaceTriangle.normal2.xyz;
+    backFace = dot(geometricNormal, direction) * (dot(geometricNormal, vertexNormalSum) < 0.0f ? -1.0f : 1.0f) > 0.0f;
     if (dot(geometricNormal, direction) > 0.0f) geometricNormal = -geometricNormal;
     if (!TryNormalizeVector(
             interpolatedNormal,
@@ -453,6 +467,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float3 radiance = 0.0f.xxx;
     float3 throughput = 1.0f.xxx;
     bool sampleValid = true;
+    bool backFaceSample = false;
+    bool skySample = false;
     float3 geometricNormal = normal;
 
     [loop]
@@ -476,6 +492,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         float3 hitDiffuse;
         float3 hitEmissive;
         bool surfaceValid;
+        bool hitBackFace;
         const bool hit = TraceSurface(
                 position + geometricNormal * 0.002f,
                 direction,
@@ -484,14 +501,24 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
                 hitGeometricNormal,
                 hitDiffuse,
                 hitEmissive,
-                surfaceValid);
+                surfaceValid,
+                hitBackFace);
         if (!surfaceValid)
         {
             sampleValid = false;
             break;
         }
+        // 裏面に当たった光線は形状の中を通った（texel が壁や床に埋まっている、交差の隙間から外へ抜けた）。裏面を表として
+        // 照らすと壁の向こうの日光と空が室内の texel へ漏れる。最初の光線ならこの標本を裏面として数えて光を足さず、
+        // 二度目以降は遮られたとみなす。
+        if (hit && hitBackFace)
+        {
+            backFaceSample = bounce == 0u;
+            break;
+        }
         if (!hit)
         {
+            skySample = bounce == 0u;
             const float3 skyRadiance =
                 EvaluateSky(direction);
             if (!IsValidRadiance(skyRadiance))
@@ -546,19 +573,19 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    const float4 accumulation =
-        gOutput[texelIndex];
-    const float3 nextRadiance =
-        accumulation.rgb + radiance;
-    if (!IsValidRadiance(accumulation.rgb) ||
-        !IsFiniteFloat(accumulation.w) ||
-        accumulation.w < 0.0f ||
+    LightmapAccumulation accumulation = gOutput[texelIndex];
+    const float3 nextRadiance = accumulation.radiance.rgb + radiance;
+    if (!IsValidRadiance(accumulation.radiance.rgb) ||
+        !IsFiniteFloat(accumulation.radiance.w) ||
+        accumulation.radiance.w < 0.0f ||
         !IsValidRadiance(nextRadiance))
     {
         return;
     }
-    gOutput[texelIndex] =
-        float4(
-            nextRadiance,
-            accumulation.w + 1.0f);
+    const float luminance = dot(radiance, float3(0.2126f, 0.7152f, 0.0722f));
+    accumulation.radiance = float4(nextRadiance, accumulation.radiance.w + 1.0f);
+    accumulation.statistics.x += backFaceSample ? 1.0f : 0.0f;
+    accumulation.statistics.y += backFaceSample ? 0.0f : luminance * luminance;
+    accumulation.statistics.z += skySample ? 1.0f : 0.0f;
+    gOutput[texelIndex] = accumulation;
 }

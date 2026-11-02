@@ -280,7 +280,7 @@ float4 HikariShadeTerrainSurface(
     // 空の拡散光と動的 GI の照り返し（他の面と同じ経路）。
     float skyVisibility;
     const float3 skyAmbient = max(HikariResolveSurfaceDiffuseIrradiance(worldPos, normalize(input.normalWS),
-        shadingNormal, viewDir, 0.0f.xxx, 0.0f, skyVisibility), 0.0f.xxx);
+        shadingNormal, viewDir, 0.0f.xxxx, 0.0f, skyVisibility), 0.0f.xxx);
     const float3 sunLit = sunRadiance * shadowFactor;
     float3 color = albedo.rgb * (blendedDark * skyAmbient + blendedLight * sunLit * ramp);
 

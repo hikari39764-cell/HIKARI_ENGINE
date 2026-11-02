@@ -115,13 +115,20 @@ PrimitiveGenerationResult GeneratePrimitiveLightmapUv(MeshPrimitive& primitive,
     chartOptions.fixWinding = true;
 
     xatlas::PackOptions packOptions{};
-    packOptions.resolution = std::clamp(settings.resolution, 64u, 8192u);
     packOptions.padding = std::clamp(settings.padding, 1u, 64u);
     packOptions.bilinear = true;
     packOptions.blockAlign = true;
     packOptions.bruteForce = false;
     packOptions.createImage = false;
-    xatlas::Generate(atlas, chartOptions, packOptions);
+    // 参照解像度に chart が収まらないと xatlas は atlas を複数に分ける。一つに収まるまで解像度を倍にする
+    // （64 texel では暖房器のように chart の多い形状が収まらず、自動展開に失敗して焼き込みから外れていた）。
+    xatlas::ComputeCharts(atlas, chartOptions);
+    for (uint32_t resolution = std::clamp(settings.resolution, 64u, 8192u);; resolution *= 2u) {
+        packOptions.resolution = resolution;
+        xatlas::PackCharts(atlas, packOptions);
+        if (atlas->atlasCount <= 1u || resolution >= 8192u || IsCancellationRequested(callbacks))
+            break;
+    }
     if (IsCancellationRequested(callbacks)) {
         outMessage = "lightmap UV generation canceled";
         xatlas::Destroy(atlas);
@@ -245,6 +252,7 @@ bool PrepareModelLightmapUvs(ModelAsset& model, const LightmapUvGenerationSettin
 
 #if defined(HIKARI_WITH_EDITOR)
             std::string message{};
+            const std::string label = mesh.name + "/" + primitive.name;
             // UV1 を材質が参照する場合、Lightmap 用の展開で著者の座標を上書きしない。
             if (primitive.materialIndex < model.materials.size() &&
                 MATERIAL_POLICY::UsesTextureCoordinateSet(model.materials[primitive.materialIndex],
@@ -252,7 +260,7 @@ bool PrepareModelLightmapUvs(ModelAsset& model, const LightmapUvGenerationSettin
                 ++outReport.skippedUnsupportedCount;
                 if (outReport.messages.size() < 16u) {
                     outReport.messages.push_back(
-                        primitive.name +
+                        label +
                         ": lightmap UV generation skipped because a material texture uses TEXCOORD_1. "
                         "Preserve the authored UV1; provide non-overlapping UV1 or move material textures to UV0.");
                 }
@@ -263,16 +271,16 @@ bool PrepareModelLightmapUvs(ModelAsset& model, const LightmapUvGenerationSettin
             if (generationResult == PrimitiveGenerationResult::Succeeded) {
                 ++outReport.generatedCount;
                 if (!message.empty() && outReport.messages.size() < 16u) {
-                    outReport.messages.push_back(primitive.name + ": " + message);
+                    outReport.messages.push_back(label + ": " + message);
                 }
             } else if (generationResult == PrimitiveGenerationResult::Canceled) {
                 outReport.canceled = true;
                 return false;
             } else {
+                // 失敗は修復の報告より先に並べ、件数の上限で落とさない（どの形状が焼き込みから外れたかが分かるように）。
                 ++outReport.generationFailedCount;
-                if (outReport.messages.size() < 16u) {
-                    outReport.messages.push_back(primitive.name + ": " + message);
-                }
+                outReport.messages.insert(outReport.messages.begin() + (outReport.generationFailedCount - 1u),
+                                          label + ": FAILED " + message);
             }
 #else
             ++outReport.generationFailedCount;

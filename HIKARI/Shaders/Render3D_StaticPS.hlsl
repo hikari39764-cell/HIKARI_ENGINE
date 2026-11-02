@@ -513,17 +513,17 @@ float4 main(PSInput input) : SV_TARGET
                 pbrInputs.clearCoatRoughness);
         // 光マップと環境光（探針・空・反射）は標準 PBR と風格化のどちらも使う。分岐ごとに評価すると pixel shader に
         // 二重に展開される。
-        float3 surfaceLightmapIrradiance = 0.0f.xxx;
-        float surfaceLightmapWeight = 0.0f;
+        float4 surfaceLightmap;
+        float surfaceLightmapWeight;
         ResolveSurfaceLightmap(
             input.surfaceGpuSceneIndex,
             input.uv1,
-            surfaceLightmapIrradiance,
+            surfaceLightmap,
             surfaceLightmapWeight);
         if (gDebugView == 28)
         {
             return surfaceLightmapWeight > 0.0f
-                ? HikariPreExposeView(float4(surfaceLightmapIrradiance, albedo.a))
+                ? HikariPreExposeView(float4(surfaceLightmap.rgb, albedo.a))
                 : float4(1.0f, 0.0f, 1.0f, albedo.a);
         }
 
@@ -533,7 +533,7 @@ float4 main(PSInput input) : SV_TARGET
             screenAo,
             input.worldPosWS,
             geometricNormal,
-            surfaceLightmapIrradiance,
+            surfaceLightmap,
             surfaceLightmapWeight,
             !costNoLightProbes,
             !costNoEnvReflection);

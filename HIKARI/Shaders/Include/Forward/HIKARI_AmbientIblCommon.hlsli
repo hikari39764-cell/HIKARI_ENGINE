@@ -19,25 +19,32 @@ HikariPbrShadingContext HikariBuildForwardPbrShadingContext(
     return context;
 }
 
-// skyVisibility は空の見える割合（動的 GI だけが知る。他は 1）。sampleProbes を偽にすると動的 GI と焼き込み probe を
-// 読まず、固定の環境光と空の拡散光だけにする（前向きの診断モードが probe の読み出し費用を測る）。
+// skyVisibility は空の見える割合（動的 GI と光照贴图が知る。他は 1）。surfaceLightmap.rgb は焼き込んだ E/pi、
+// a は焼き込んだ空の見える割合。sampleProbes を偽にすると動的 GI と焼き込み probe を読まず、固定の環境光と空の拡散光
+// だけにする（前向きの診断モードが probe の読み出し費用を測る）。
 float3 HikariResolveSurfaceDiffuseIrradiance(float3 worldPos, float3 geometricNormal, float3 n, float3 v,
-    float3 surfaceLightmapIrradiance, float surfaceLightmapWeight, out float skyVisibility, bool sampleProbes = true)
+    float4 surfaceLightmap, float surfaceLightmapWeight, out float skyVisibility, bool sampleProbes = true)
 {
     skyVisibility = 1.0f;
     const float weight = saturate(surfaceLightmapWeight);
-    // Lightmap の全面 coverage は下位 provider を置換する。有効な黒も維持する。
+    // Lightmap の全面 coverage は下位 provider を置換する。有効な黒も維持する。光照贴图の面も空の反射を遮る
+    // （以前は 1 のままで、室内の床や壁に空が映り、Cycles より 2–5 割明るく青かった）。
     [branch]
-    if (weight >= 1.0f) return surfaceLightmapIrradiance;
+    if (weight >= 1.0f)
+    {
+        skyVisibility = saturate(surfaceLightmap.a);
+        return surfaceLightmap.rgb;
+    }
     float4 probes = 0.0f.xxxx;
     [branch] if (sampleProbes)
         probes = HikariResolveLightProbeDiffuse(worldPos, geometricNormal, n, v, skyVisibility);
+    skyVisibility = lerp(skyVisibility, saturate(surfaceLightmap.a), weight);
     [branch] if (probes.a >= 1.0f)
-        return lerp(probes.rgb, surfaceLightmapIrradiance, weight);
+        return lerp(probes.rgb, surfaceLightmap.rgb, weight);
     // 固定の環境光（中立の確認表示だけが使う）と空の拡散光。
     float3 diffuse = gAmbientColor.rgb * gAmbientIntensity + HikariEvaluateSkyDiffuseIrradiance(n);
     diffuse = probes.rgb + diffuse * (1.0f - probes.a);
-    return lerp(diffuse, surfaceLightmapIrradiance, weight);
+    return lerp(diffuse, surfaceLightmap.rgb, weight);
 }
 
 // sampleProbes / sampleReflection を偽にすると、probe の読み出し（上の関数）と環境の鏡面反射を省く。前向きの診断モードが
@@ -48,7 +55,7 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
     float screenAo,
     float3 worldPos,
     float3 geometricNormal,
-    float3 surfaceLightmapIrradiance,
+    float4 surfaceLightmap,
     float surfaceLightmapWeight,
     bool sampleProbes = true,
     bool sampleReflection = true)
@@ -61,7 +68,7 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
 
     float skyVisibility;
     const float3 diffuseIbl = HikariResolveSurfaceDiffuseIrradiance(
-        worldPos, geometricNormal, n, v, surfaceLightmapIrradiance, surfaceLightmapWeight, skyVisibility, sampleProbes);
+        worldPos, geometricNormal, n, v, surfaceLightmap, surfaceLightmapWeight, skyVisibility, sampleProbes);
     float3 diffuse =
         kD * baseColor * diffuseIbl;
 
@@ -110,11 +117,11 @@ float3 HikariEvaluateAmbientIbl(
     float screenAo,
     float3 worldPos,
     float3 geometricNormal,
-    float3 surfaceLightmapIrradiance,
+    float4 surfaceLightmap,
     float surfaceLightmapWeight)
 {
     const HikariAmbientIblLobes lobes = HikariEvaluateAmbientIblLobes(
-        context, occlusion, screenAo, worldPos, geometricNormal, surfaceLightmapIrradiance, surfaceLightmapWeight);
+        context, occlusion, screenAo, worldPos, geometricNormal, surfaceLightmap, surfaceLightmapWeight);
     return lobes.diffuse + lobes.specular;
 }
 

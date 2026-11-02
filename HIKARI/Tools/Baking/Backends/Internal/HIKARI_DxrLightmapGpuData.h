@@ -65,6 +65,7 @@ struct DxrProgressiveLightmapBaker::DispatchConstants {
 static_assert(sizeof(DxrProgressiveLightmapBaker::GpuTriangle) == 208u);
 static_assert(offsetof(DxrProgressiveLightmapBaker::GpuTriangle, materialIndex) == 192u);
 static_assert(sizeof(INTERNAL::DxrLightmapSurfaceTexel) == 32u);
+static_assert(sizeof(INTERNAL::DxrLightmapAccumulation) == 32u);
 static_assert(sizeof(DxrProgressiveLightmapBaker::GpuLight) == 64u);
 static_assert(sizeof(DxrProgressiveLightmapBaker::DispatchConstants) == 80u);
 

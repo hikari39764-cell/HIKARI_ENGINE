@@ -65,8 +65,8 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         AssetImporterKind::Model,
         AssetType::Model,
         "ModelImporter",
-        // 44: 線形補間の動作から冗長な鍵を除く（取り込み直しで HMODEL が小さくなる）。
-        44u,
+        // 45: Lightmap UV の自動展開が参照解像度に収まらない形状でも一枚の atlas に収まるまで解像度を上げる。
+        45u,
         ".gltf, .obj, .fbx",
     },
     {

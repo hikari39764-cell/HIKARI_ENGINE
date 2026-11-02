@@ -71,6 +71,7 @@ private:
     bool CreateTargetResources(ID3D12Device* device, const void* texelData, size_t texelByteSize,
                                std::string* outMessage);
     bool SaveReadbackDds(const std::filesystem::path& outputPath, std::string* outMessage);
+    UINT64 AccumulationBytes() const noexcept;
 
     GFX::RAYTRACING::DxrTriangleAccelerationStructure accelerationStructure_{};
     RENDER3D::MATERIAL::GpuMaterialSnapshot materialSnapshot_{};

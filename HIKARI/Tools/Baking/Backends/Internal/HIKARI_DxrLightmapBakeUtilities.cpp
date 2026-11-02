@@ -84,8 +84,9 @@ bool DilateLightmapAllocations(std::vector<MATH::Vec4>& pixels, std::vector<uint
                 }
             }
         }
+        // 全部が形状に埋まった面（見えない面）は黒のまま残す。
         if (frontier.empty()) {
-            return false;
+            continue;
         }
 
         for (size_t read = 0u; read < frontier.size(); ++read) {
@@ -101,11 +102,12 @@ bool DilateLightmapAllocations(std::vector<MATH::Vec4>& pixels, std::vector<uint
                     continue;
                 }
                 const size_t destinationIndex = static_cast<size_t>(y) * width + static_cast<size_t>(x);
-                if (ownerIndices[destinationIndex] != kInvalidOwner) {
+                // 余白と、この allocation の中で形状に埋まって無効にした texel を埋める。
+                if (valid[destinationIndex] != 0u || (ownerIndices[destinationIndex] != kInvalidOwner &&
+                                                      ownerIndices[destinationIndex] != allocationIndex)) {
                     continue;
                 }
                 pixels[destinationIndex] = pixels[sourceIndex];
-                pixels[destinationIndex].w = 1.0f;
                 valid[destinationIndex] = 1u;
                 ownerIndices[destinationIndex] = allocationIndex;
                 frontier.push_back(destinationIndex);
@@ -271,94 +273,8 @@ DxrLightmapUvRasterization RasterizeLightmapTarget(
     return result;
 }
 
-bool FilterLightmapIrradiance(std::span<MATH::Vec4> pixels, std::span<const DxrLightmapSurfaceTexel> surfaces,
-                              std::span<const uint8_t> validTexels, std::span<const uint32_t> ownerIndices,
-                              std::span<const ASSETS::LIGHTING::LightmapAtlasAllocation> allocations, uint32_t width,
-                              uint32_t height) {
-    const size_t count = static_cast<size_t>(width) * height;
-    if (width == 0 || height == 0 || pixels.size() != count || surfaces.size() != count ||
-        validTexels.size() != count || ownerIndices.size() != count)
-        return false;
-    // 作業領域は一 allocation 分。UPLOAD heap を tap ごとに CPU read しない。
-    std::vector<MATH::Vec4> filtered;
-    std::vector<DxrLightmapSurfaceTexel> guides;
-    for (uint32_t owner = 0; owner < allocations.size(); ++owner) {
-        const auto& rect = allocations[owner].outerRect;
-        if (!rect.width || !rect.height || uint64_t(rect.x) + rect.width > width ||
-            uint64_t(rect.y) + rect.height > height)
-            return false;
-        const size_t tileCount = static_cast<size_t>(rect.width) * rect.height;
-        filtered.resize(tileCount);
-        guides.resize(tileCount);
-        for (uint32_t y = 0; y < rect.height; ++y)
-            std::memcpy(guides.data() + size_t(y) * rect.width, surfaces.data() + size_t(y + rect.y) * width + rect.x,
-                        size_t(rect.width) * sizeof(guides[0]));
-        const auto globalIndex = [&](uint32_t x, uint32_t y) { return size_t(y + rect.y) * width + x + rect.x; };
-        const auto admitted = [&](uint32_t x, uint32_t y) {
-            const auto i = globalIndex(x, y);
-            return validTexels[i] != 0 && ownerIndices[i] == owner;
-        };
-        for (const int step : {1, 2}) {
-            for (uint32_t y = 0; y < rect.height; ++y)
-                for (uint32_t x = 0; x < rect.width; ++x) {
-                    if (!admitted(x, y))
-                        continue;
-                    const size_t local = size_t(y) * rect.width + x, global = globalIndex(x, y);
-                    const auto& center = guides[local];
-                    const MATH::Vec3 n{center.normal.x, center.normal.y, center.normal.z};
-                    const auto color = pixels[global];
-                    if (!MATH::IsFinite(center.position) || !MATH::IsFinite(n) || center.position.w <= 0)
-                        return false;
-                    MATH::Vec3 sum{};
-                    float total = 0;
-                    for (int dy = -1; dy <= 1; ++dy)
-                        for (int dx = -1; dx <= 1; ++dx) {
-                            const int tx = int(x) + dx * step, ty = int(y) + dy * step;
-                            if (tx < 0 || ty < 0 || tx >= int(rect.width) || ty >= int(rect.height) ||
-                                !admitted(tx, ty))
-                                continue;
-                            // 穴や chart の余白を飛び越えて近傍の面を混ぜない。
-                            if (step == 2 && !admitted(uint32_t(int(x) + dx), uint32_t(int(y) + dy)))
-                                continue;
-                            const auto& tap = guides[size_t(ty) * rect.width + tx];
-                            const MATH::Vec3 tn{tap.normal.x, tap.normal.y, tap.normal.z};
-                            const MATH::Vec3 delta{tap.position.x - center.position.x,
-                                                   tap.position.y - center.position.y,
-                                                   tap.position.z - center.position.z};
-                            const float size = (std::min)(center.position.w, tap.position.w);
-                            if (MATH::Dot(n, tn) < 0.95f || size <= 0 ||
-                                MATH::Dot(delta, delta) > 4.0f * step * step * size * size ||
-                                (std::max)(std::abs(MATH::Dot(delta, n)), std::abs(MATH::Dot(delta, tn))) >
-                                    0.25f * step * size)
-                                continue;
-                            const auto value = pixels[globalIndex(tx, ty)];
-                            const float difference =
-                                (std::max)({std::abs(value.x - color.x), std::abs(value.y - color.y),
-                                            std::abs(value.z - color.z)});
-                            const float scale = (std::max)(1.0e-6f, (std::max)({value.x, value.y, value.z}) +
-                                                                        (std::max)({color.x, color.y, color.z}));
-                            const float ratio = difference / scale;
-                            // 強い照度境界には重みの裾を残さず、暗い面への光漏れを防ぐ。
-                            const float rangeWeight = (std::max)(0.0f, 1.0f - 4.0f * ratio * ratio);
-                            const float weight =
-                                float((dx == 0 ? 2 : 1) * (dy == 0 ? 2 : 1)) * rangeWeight * rangeWeight;
-                            sum = sum + MATH::Vec3{value.x, value.y, value.z} * weight;
-                            total += weight;
-                        }
-                    filtered[local] =
-                        total > 0 ? MATH::Vec4{sum.x / total, sum.y / total, sum.z / total, color.w} : color;
-                }
-            for (uint32_t y = 0; y < rect.height; ++y)
-                for (uint32_t x = 0; x < rect.width; ++x)
-                    if (admitted(x, y))
-                        pixels[globalIndex(x, y)] = filtered[size_t(y) * rect.width + x];
-        }
-    }
-    return true;
-}
-
 bool WriteProgressiveLightmapDds(const std::filesystem::path& outputPath, uint32_t width, uint32_t height,
-                                 uint32_t expectedSampleCount, const MATH::Vec4* accumulation,
+                                 uint32_t expectedSampleCount, const DxrLightmapAccumulation* accumulation,
                                  std::vector<uint8_t> validTexels, std::vector<uint32_t> ownerIndices,
                                  const std::vector<ASSETS::LIGHTING::LightmapAtlasAllocation>& allocations,
                                  std::string* outMessage, std::span<const DxrLightmapSurfaceTexel> surfaces) {
@@ -371,6 +287,8 @@ bool WriteProgressiveLightmapDds(const std::filesystem::path& outputPath, uint32
 
     const size_t pixelCount = static_cast<size_t>(width) * height;
     std::vector<MATH::Vec4> pixels(pixelCount);
+    std::vector<float> variance(pixelCount, 0.0f);
+    uint32_t buriedTexelCount = 0u;
     uint32_t incompleteSampleTexelCount = 0u;
     size_t firstIncompleteTexel = pixelCount;
     uint32_t nonFiniteTexelCount = 0u;
@@ -382,8 +300,9 @@ bool WriteProgressiveLightmapDds(const std::filesystem::path& outputPath, uint32
             continue;
         }
 
-        const MATH::Vec4& accumulated = accumulation[i];
-        if (!MATH::IsFinite(accumulated)) {
+        const MATH::Vec4& accumulated = accumulation[i].radiance;
+        const MATH::Vec4& statistics = accumulation[i].statistics;
+        if (!MATH::IsFinite(accumulated) || !MATH::IsFinite(statistics)) {
             ++nonFiniteTexelCount;
             continue;
         }
@@ -394,9 +313,19 @@ bool WriteProgressiveLightmapDds(const std::filesystem::path& outputPath, uint32
                 firstIncompleteTexel = i;
             continue;
         }
-
-        pixels[i] = {accumulated.x / expectedSamples, accumulated.y / expectedSamples, accumulated.z / expectedSamples,
-                     1.0f};
+        // 形状に埋まった texel は無効にし、下の扩边で同じ allocation の周りから埋める。残る texel も裏面の標本は
+        // 光を足していないので、表の標本だけで平均する。
+        const float frontSamples = expectedSamples - statistics.x;
+        if (statistics.x > kLightmapBackfaceTolerance * expectedSamples || frontSamples < 1.0f) {
+            validTexels[i] = 0u;
+            ++buriedTexelCount;
+            continue;
+        }
+        // alpha は余弦で重みづけた空の見える割合（実行時の鏡面の遮蔽）。
+        pixels[i] = {accumulated.x / frontSamples, accumulated.y / frontSamples, accumulated.z / frontSamples,
+                     (std::min)(1.0f, statistics.z / frontSamples)};
+        const float meanLuminance = 0.2126f * pixels[i].x + 0.7152f * pixels[i].y + 0.0722f * pixels[i].z;
+        variance[i] = (std::max)(0.0f, statistics.y / frontSamples - meanLuminance * meanLuminance) / frontSamples;
         const MATH::Vec4& pixel = pixels[i];
         if (!MATH::IsFinite(pixel)) {
             ++nonFiniteTexelCount;
@@ -410,7 +339,7 @@ bool WriteProgressiveLightmapDds(const std::filesystem::path& outputPath, uint32
             ++halfFloatOverflowTexelCount;
             continue;
         }
-        pixels[i] = {(std::max)(0.0f, pixel.x), (std::max)(0.0f, pixel.y), (std::max)(0.0f, pixel.z), 1.0f};
+        pixels[i] = {(std::max)(0.0f, pixel.x), (std::max)(0.0f, pixel.y), (std::max)(0.0f, pixel.z), pixel.w};
         maximumRadiance = (std::max)(maximumRadiance, (std::max)(pixels[i].x, (std::max)(pixels[i].y, pixels[i].z)));
     }
 
@@ -421,7 +350,7 @@ bool WriteProgressiveLightmapDds(const std::filesystem::path& outputPath, uint32
                << " incomplete-sample texels=" << incompleteSampleTexelCount;
         if (firstIncompleteTexel != pixelCount) {
             stream << " (first pixel=" << firstIncompleteTexel % width << ',' << firstIncompleteTexel / width
-                   << ", samples=" << accumulation[firstIncompleteTexel].w << '/' << expectedSampleCount;
+                   << ", samples=" << accumulation[firstIncompleteTexel].radiance.w << '/' << expectedSampleCount;
             const auto owner = ownerIndices[firstIncompleteTexel];
             if (owner < allocations.size()) {
                 const auto& surface = allocations[owner].surface;
@@ -436,7 +365,7 @@ bool WriteProgressiveLightmapDds(const std::filesystem::path& outputPath, uint32
         return false;
     }
     if (!surfaces.empty() &&
-        !FilterLightmapIrradiance(pixels, surfaces, validTexels, ownerIndices, allocations, width, height)) {
+        !FilterLightmapIrradiance(pixels, variance, surfaces, validTexels, ownerIndices, allocations, width, height)) {
         SetMessage(outMessage, "Lightmap surface-guided filtering failed; no artifact was written.");
         return false;
     }
@@ -490,7 +419,8 @@ bool WriteProgressiveLightmapDds(const std::filesystem::path& outputPath, uint32
         return false;
     }
     SetMessage(outMessage, "DXR indirect lightmap saved: " + outputPath.generic_string() +
-                               " (maximum radiance=" + std::to_string(maximumRadiance) + ").");
+                               " (maximum radiance=" + std::to_string(maximumRadiance) +
+                               ", texels buried in geometry=" + std::to_string(buriedTexelCount) + ").");
     return true;
 }
 

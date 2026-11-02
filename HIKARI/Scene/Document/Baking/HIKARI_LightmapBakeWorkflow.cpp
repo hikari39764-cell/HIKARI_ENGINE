@@ -162,7 +162,7 @@ bool DocumentSceneBakeCoordinator::ProcessLightmapBakeJob(DocumentSceneBase& sce
         record.name = job.objectName;
         record.objectId = job.objectId.value;
         record.pages = job.completedPages;
-        record.encoding = "RGB16F_DiffuseIrradiance";
+        record.encoding = "RGBA16F_DiffuseIrradiance_SkyVisibility";
         record.authoringHash = job.authoringHash;
         record.captureSceneHash = job.sceneHash;
         record.dependencyHash = job.dependencyHash;

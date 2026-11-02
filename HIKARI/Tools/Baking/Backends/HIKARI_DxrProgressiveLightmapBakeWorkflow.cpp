@@ -39,7 +39,7 @@ bool DxrProgressiveLightmapBaker::BeginTarget(const GFX::Context& graphics,
 
     width_ = target.outputResolution;
     height_ = width_;
-    bounceCount_ = std::clamp(settings.bounceCount, 1u, 4u);
+    bounceCount_ = std::clamp(settings.bounceCount, 1u, ASSETS::LIGHTING::kSurfaceLightmapMaximumBounceCount);
     status_.requestedSamples = std::clamp(settings.sampleCount, 1u, 4096u);
     INTERNAL::DxrLightmapUvRasterization rasterization =
         INTERNAL::RasterizeLightmapTarget(scene, target, width_, height_);
@@ -65,7 +65,7 @@ bool DxrProgressiveLightmapBaker::BeginTarget(const GFX::Context& graphics,
     }
 
     graphics.cmdList->CopyBufferRegion(outputBuffer_.Get(), 0u, outputInitializationBuffer_.Get(), 0u,
-                                       static_cast<UINT64>(width_) * height_ * sizeof(MATH::Vec4));
+                                       AccumulationBytes());
     D3D12_RESOURCE_BARRIER barrier{};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Transition.pResource = outputBuffer_.Get();
@@ -154,8 +154,7 @@ bool DxrProgressiveLightmapBaker::QueueReadback(const GFX::Context& graphics, st
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     graphics.cmdList->ResourceBarrier(1u, &barrier);
-    graphics.cmdList->CopyBufferRegion(readbackBuffer_.Get(), 0u, outputBuffer_.Get(), 0u,
-                                       static_cast<UINT64>(width_) * height_ * sizeof(MATH::Vec4));
+    graphics.cmdList->CopyBufferRegion(readbackBuffer_.Get(), 0u, outputBuffer_.Get(), 0u, AccumulationBytes());
     readbackFenceValue_ = graphics.currentFrameRetireFenceValue;
     status_.state = ProgressiveLightmapBakeState::ReadbackPending;
     status_.message = "DXR lightmap readback queued.";

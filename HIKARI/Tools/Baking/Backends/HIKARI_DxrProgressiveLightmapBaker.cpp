@@ -85,7 +85,8 @@ TRANSPORT::LightingTransportBackendCapabilities DxrProgressiveLightmapBaker::Get
     capabilities.supportsSurfaceLightmaps = capabilities.available;
     capabilities.supportsProgressiveSampling = capabilities.available;
     capabilities.supportsMultipleBounces = capabilities.available;
-    capabilities.maximumBounceCount = capabilities.available ? 4u : 0u;
+    capabilities.maximumBounceCount =
+        capabilities.available ? ASSETS::LIGHTING::kSurfaceLightmapMaximumBounceCount : 0u;
     return capabilities;
 #endif
 }
@@ -316,7 +317,7 @@ bool DxrProgressiveLightmapBaker::CreateTargetResources(ID3D12Device* device, co
     std::memcpy(texelMapped, texelData, texelByteSize);
     texelBuffer_->Unmap(0u, nullptr);
 
-    const UINT64 byteSize = static_cast<UINT64>(width_) * height_ * sizeof(MATH::Vec4);
+    const UINT64 byteSize = AccumulationBytes();
     if (!CreateBuffer(device, byteSize, D3D12_HEAP_TYPE_DEFAULT, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                       D3D12_RESOURCE_STATE_COPY_DEST, outputBuffer_.GetAddressOf()) ||
         !CreateBuffer(device, byteSize, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
@@ -336,6 +337,10 @@ bool DxrProgressiveLightmapBaker::CreateTargetResources(ID3D12Device* device, co
     return true;
 }
 
+UINT64 DxrProgressiveLightmapBaker::AccumulationBytes() const noexcept {
+    return static_cast<UINT64>(width_) * height_ * sizeof(INTERNAL::DxrLightmapAccumulation);
+}
+
 bool DxrProgressiveLightmapBaker::SaveReadbackDds(const std::filesystem::path& outputPath, std::string* outMessage) {
     void* mapped = nullptr;
     if (FAILED(readbackBuffer_->Map(0u, nullptr, &mapped)) || mapped == nullptr) {
@@ -343,7 +348,7 @@ bool DxrProgressiveLightmapBaker::SaveReadbackDds(const std::filesystem::path& o
         return false;
     }
 
-    const MATH::Vec4* accumulation = static_cast<const MATH::Vec4*>(mapped);
+    const auto* accumulation = static_cast<const INTERNAL::DxrLightmapAccumulation*>(mapped);
     void* surfaceMapped = nullptr;
     if (FAILED(texelBuffer_->Map(0u, nullptr, &surfaceMapped)) || surfaceMapped == nullptr) {
         readbackBuffer_->Unmap(0u, nullptr);

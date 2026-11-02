@@ -1,13 +1,14 @@
 #ifndef HIKARI_FORWARD_MATERIAL_INPUTS_INCLUDED
 #define HIKARI_FORWARD_MATERIAL_INPUTS_INCLUDED
 
+// irradiance.rgb は焼き込んだ間接拡散の E/pi、a は余弦で重みづけた空の見える割合（鏡面の遮蔽に使う）。
 void ResolveSurfaceLightmap(
     uint surfaceGpuSceneIndex,
     float2 uv1,
-    out float3 irradiance,
+    out float4 irradiance,
     out float weight)
 {
-    irradiance = 0.0f.xxx;
+    irradiance = float4(0.0f, 0.0f, 0.0f, 1.0f);
     weight = 0.0f;
 #if HIKARI_SURFACE_GPU_SCENE_CONSUME
     if (!HikariCanConsumeSurfaceGpuSceneForPixel() ||
@@ -29,7 +30,7 @@ void ResolveSurfaceLightmap(
     irradiance = gMaterialTexturePool[
         NonUniformResourceIndex(descriptorIndex)].Sample(
             gLinearClamp,
-            saturate(lightmapUv)).rgb;
+            saturate(lightmapUv));
     weight = 1.0f;
 #endif
 }

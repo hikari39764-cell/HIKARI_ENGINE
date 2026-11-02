@@ -821,6 +821,7 @@ set(HIKARI_LIGHTING_BAKE_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/Backends/HIKARI_DxrProgressiveLightmapBakeWorkflow.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/Backends/HIKARI_DxrProgressiveLightmapBaker.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/Backends/Internal/HIKARI_DxrLightmapBakeUtilities.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/Backends/Internal/HIKARI_DxrLightmapFilter.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/HIKARI_LightProbeBaker.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/HIKARI_ProbeCubemapCaptureTarget.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/HIKARI_ReflectionProbeCaptureValidator.cpp"

@@ -568,7 +568,7 @@ float4 HikariShadeWaterSurface(
             1.0f,
             input.worldPosWS,
             geometricNormal,
-            0.0f.xxx,
+            0.0f.xxxx,
             0.0f),
         0.0f.xxx);
     const float fresnel = HikariWaterResolveFresnel(
