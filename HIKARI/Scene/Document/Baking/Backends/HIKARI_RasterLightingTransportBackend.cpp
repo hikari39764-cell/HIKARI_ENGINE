@@ -6,9 +6,6 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
-#include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
-#include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
-#include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
@@ -21,8 +18,6 @@
 #include "Tools/Baking/HIKARI_ProbeCubemapCaptureTarget.h"
 
 namespace HIKARI::DOCUMENT_SCENE_BAKING {
-
-namespace TRANSPORT = RENDER3D::LIGHTING::TRANSPORT;
 
 namespace {
 
@@ -44,35 +39,18 @@ private:
 
 } // namespace
 
-TRANSPORT::LightingTransportBackendCapabilities RasterLightingTransportBackend::GetCapabilities() const noexcept {
-    TRANSPORT::LightingTransportBackendCapabilities capabilities{};
-    capabilities.backend = TRANSPORT::LightingTransportBackendKind::RasterCapture;
-    capabilities.available = true;
-    capabilities.supportsSpecularReflection = true;
-    capabilities.supportsDiffuseIrradiance = true;
-    return capabilities;
-}
-
 bool RasterLightingTransportBackend::RenderProbeFace(DocumentSceneBase& scene,
                                                      TOOLS::BAKING::ProbeCubemapCaptureTarget& captureTarget,
                                                      const Camera3D& faceCamera,
-                                                     const SceneEnvironment& captureEnvironment, uint32_t faceIndex,
-                                                     TRANSPORT::LightingTransportProductKind product) const {
-    const bool isLightProbe = product == TRANSPORT::LightingTransportProductKind::DiffuseIrradiance;
-    if (!isLightProbe && product != TRANSPORT::LightingTransportProductKind::SpecularReflection) {
-        return false;
-    }
-
-    ScopedRenderSubmissionPurpose submissionPurpose{isLightProbe ? RENDER3D::RenderViewPurpose::LightProbeCapture
-                                                                 : RENDER3D::RenderViewPurpose::ReflectionProbeCapture};
-    const std::string eventName =
-        std::string(isLightProbe ? "LightProbe.CaptureFace" : "ReflectionProbe.CaptureFace") + ProbeFaceName(faceIndex);
+                                                     const SceneEnvironment& captureEnvironment,
+                                                     uint32_t faceIndex) const {
+    ScopedRenderSubmissionPurpose submissionPurpose{RENDER3D::RenderViewPurpose::ReflectionProbeCapture};
+    const std::string eventName = std::string("ReflectionProbe.CaptureFace") + ProbeFaceName(faceIndex);
     GFX::PIX::ScopedGpuEvent pixFace(GFX::GetCurrentContext().cmdList, GFX::PIX::kColorRender, eventName.c_str());
 
     bool faceBegun = false;
     const RENDER3D::LIGHTING::SceneLightingSet lighting =
         LIGHTING_AUTHORING::BuildRuntimeSceneLightingSet(scene.GetSceneDocument(), scene.GetWorld());
-    const SceneEnvironment& resolvedCaptureEnvironment = captureEnvironment;
 
     const auto renderFace = [&]() {
         RENDERER3D::DEBUG::Reset();
@@ -86,29 +64,21 @@ bool RasterLightingTransportBackend::RenderProbeFace(DocumentSceneBase& scene,
         scene.state_->runtime.systemScheduler.PreRender(scene.state_->runtime.world, frame);
 
         const GFX::Context graphics = GFX::GetCurrentContext();
-        SHADOW::BeginFrame(graphics, resolvedCaptureEnvironment, faceCamera);
+        SHADOW::BeginFrame(graphics, captureEnvironment, faceCamera);
         SHADOW::RenderDirectionalShadowMap(graphics);
         if (!captureTarget.BeginFace(faceIndex, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f)) {
             return false;
         }
         faceBegun = true;
-        SKYRENDERER::Render(graphics, faceCamera, resolvedCaptureEnvironment, scene.state_->lighting.sky);
-        MODELRENDERER::RenderOpaqueForReflectionProbeCapture(
-            graphics, faceCamera, resolvedCaptureEnvironment, lighting, captureTarget.GetResolution(),
-            captureTarget.GetResolution(),
-            isLightProbe ? MODELRENDERER::ModelRendererFrameKind::LightProbeCapture
-                         : MODELRENDERER::ModelRendererFrameKind::ReflectionProbeCapture);
+        SKYRENDERER::Render(graphics, faceCamera, captureEnvironment, scene.state_->lighting.sky);
+        MODELRENDERER::RenderOpaqueForReflectionProbeCapture(graphics, faceCamera, captureEnvironment, lighting,
+                                                             captureTarget.GetResolution(),
+                                                             captureTarget.GetResolution());
         return true;
     };
 
-    bool rendered = false;
     REFLECTION::ScopedReflectionProbeSamplingSuppress reflectionSuppress{};
-    if (isLightProbe) {
-        RENDER3D::LIGHTPROBE::ScopedLightProbeVolumeSamplingSuppress lightProbeSuppress{};
-        rendered = renderFace();
-    } else {
-        rendered = renderFace();
-    }
+    const bool rendered = renderFace();
 
     if (faceBegun) {
         captureTarget.EndFace(faceIndex);

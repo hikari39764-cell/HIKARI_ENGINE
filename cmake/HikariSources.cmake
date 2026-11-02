@@ -505,7 +505,6 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightmapSurfaceAnalysis.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightmapUvGeneration.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightmapUvGenerationInput.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Lighting/Transport/HIKARI_LightingTransportContract.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Formats/HIKARI_HmatFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Formats/HIKARI_HmodelFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/RenderContracts/Private/RenderContracts/Texture/HIKARI_HtexFormat.cpp"

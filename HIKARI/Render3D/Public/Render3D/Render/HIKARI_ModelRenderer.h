@@ -31,7 +31,6 @@ enum class ModelRendererFrameKind {
     None,
     MainView,
     ReflectionProbeCapture,
-    LightProbeCapture,
     SecondarySceneCapture,
 };
 
@@ -83,10 +82,10 @@ MESHRENDERER::MeshRendererFrameResult RenderAll(const GFX::Context& graphics, co
                                                 const SceneEnvironment& environment,
                                                 const RENDER3D::LIGHTING::SceneLightingSet& lighting,
                                                 RenderDebugView debugView = RenderDebugView::None);
-void RenderOpaqueForReflectionProbeCapture(
-    const GFX::Context& graphics, const Camera3D& camera, const SceneEnvironment& environment,
-    const RENDER3D::LIGHTING::SceneLightingSet& lighting, uint32_t width, uint32_t height,
-    ModelRendererFrameKind kind = ModelRendererFrameKind::ReflectionProbeCapture);
+void RenderOpaqueForReflectionProbeCapture(const GFX::Context& graphics, const Camera3D& camera,
+                                           const SceneEnvironment& environment,
+                                           const RENDER3D::LIGHTING::SceneLightingSet& lighting, uint32_t width,
+                                           uint32_t height);
 bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::RenderViewContext& view,
                                  const SceneEnvironment& environment,
                                  const RENDER3D::LIGHTING::SceneLightingSet& lighting, uint32_t captureSlot,

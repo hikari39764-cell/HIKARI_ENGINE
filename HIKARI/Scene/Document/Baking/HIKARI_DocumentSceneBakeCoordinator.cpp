@@ -11,7 +11,9 @@
 #include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Assets/Lighting/HIKARI_LightingBakeDependencyHash.h"
 #include "Core/HIKARI_Logger.h"
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
+#include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 #include "Tools/Baking/HIKARI_LightingBakeService.h"
 
 namespace HIKARI {
@@ -197,6 +199,12 @@ bool DocumentSceneBakeCoordinator::RequestLightProbeBake(DocumentSceneBase& scen
         AddBakeError(report, "Light probe volume is disabled in the current scene.");
     }
 
+    auto job = std::make_unique<LightProbeJob>();
+    report.dxrBackendAvailable = TOOLS::BAKING::DxrProgressiveLightmapBaker::IsAvailable(GFX::GetCurrentContext());
+    if (!report.dxrBackendAvailable) {
+        AddBakeError(report, "DXR 1.1 and Shader Model 6.5 are required for light probe baking.");
+    }
+
     const uint32_t probeCount = GetLightProbeVolumeProbeCount(settings);
     report.bakeRoot =
         ASSETS::LIGHTING::BuildLightingBakeRoot(projectRoot, scene.state_->identity.currentSceneAssetGuid.value);
@@ -205,9 +213,8 @@ bool DocumentSceneBakeCoordinator::RequestLightProbeBake(DocumentSceneBase& scen
     report.lightProbeVolumePath = ASSETS::LIGHTING::BuildLightProbeVolumeOutputPath(
         projectRoot, scene.state_->identity.currentSceneAssetGuid.value);
     report.lightProbeProbeCount = probeCount;
-    report.lightProbeCaptureResolution = settings.captureResolution;
     report.lightProbeMessages.push_back("Light probe volume requested: probes=" + std::to_string(probeCount) +
-                                        " faces=" + std::to_string(GetLightProbeCaptureFaceCount(settings)));
+                                        " directions=" + std::to_string(TOOLS::BAKING::kDxrProbeDirectionCount));
 
     if (!report.errors.empty()) {
         SetBakeJobState(report, TOOLS::BAKING::LightingBakeJobState::Failed);
@@ -217,7 +224,6 @@ bool DocumentSceneBakeCoordinator::RequestLightProbeBake(DocumentSceneBase& scen
         return false;
     }
 
-    auto job = std::make_unique<LightProbeJob>();
     const ASSETS::LIGHTING::LightingBakeHashSnapshot hashes = ASSETS::LIGHTING::BuildLightingBakeHashSnapshot(
         scene.state_->identity.document, scene.state_->assets.Database());
     job->state = TOOLS::BAKING::LightingBakeJobState::Requested;
@@ -235,7 +241,15 @@ bool DocumentSceneBakeCoordinator::RequestLightProbeBake(DocumentSceneBase& scen
     job->request.dependencyHash = hashes.dependencyHash;
     job->request.bakeSet = volume->bakeSet;
     job->request.scenario = volume->scenario;
-    job->probeCapturePaths.reserve(probeCount);
+    job->transportScene = BuildTransportScene(
+        scene, projectRoot,
+        LIGHTING_AUTHORING::BuildRuntimeSceneLightingSet(scene.state_->identity.document, scene.state_->runtime.world));
+    job->positions.reserve(probeCount);
+    for (uint32_t probe = 0; probe < probeCount; ++probe)
+        job->positions.push_back(GetLightProbePositionByIndex(settings, probe));
+    job->visibilityDistance = GetLightProbeVisibilityDistance(settings);
+    report.lightingTransportBackend = "DxrPathTracing";
+    report.transportRequestedSamples = job->request.sampleCount;
     job->report = report;
     if (batchItemCount_ == 0u) {
         batchItemCount_ = 1u;
@@ -250,12 +264,12 @@ bool DocumentSceneBakeCoordinator::RequestLightProbeBake(DocumentSceneBase& scen
     job->report.completedItemCount = batchCompletedItemCount_;
     job->report.reusedItemCount = batchReusedItemCount_;
     job->report.currentItemName = volume->name;
-    job->report.messages.push_back("Light probe volume scene capture requested.");
+    job->report.messages.push_back("Light probe volume path tracing requested.");
 
     lightProbeJob_ = std::move(job);
     lastReport_ = lightProbeJob_->report;
     hasLastReport_ = true;
-    HIKARI_LOG_INFO("[LightingBake] light probe volume scene capture requested scene=" +
+    HIKARI_LOG_INFO("[LightingBake] light probe volume path tracing requested scene=" +
                     scene.state_->identity.currentSceneAssetGuid.value + " probes=" + std::to_string(probeCount));
     return true;
 }

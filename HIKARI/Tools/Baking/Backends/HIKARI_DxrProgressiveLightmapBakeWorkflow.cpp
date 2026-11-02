@@ -5,6 +5,7 @@
 #include <cmath>
 #include <utility>
 
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Tools/Baking/Backends/Internal/HIKARI_DxrLightmapBakeUtilities.h"
 #include "Tools/Baking/Backends/Internal/HIKARI_DxrLightmapGpuData.h"
@@ -58,26 +59,35 @@ bool DxrProgressiveLightmapBaker::BeginTarget(const GFX::Context& graphics,
         SetMessage(outMessage, status_.message);
         return false;
     }
-    if (!CreateTargetResources(graphics.device, rasterization.texels.data(),
-                               rasterization.texels.size() * sizeof(INTERNAL::DxrLightmapSurfaceTexel), outMessage)) {
+    return StartSampling(graphics, rasterization.texels.data(),
+                         rasterization.texels.size() * sizeof(INTERNAL::DxrLightmapSurfaceTexel), outMessage);
+}
+
+bool DxrProgressiveLightmapBaker::BeginProbeTarget(const GFX::Context& graphics, std::span<const MATH::Vec3> positions,
+                                                   float maximumDistance,
+                                                   const TRANSPORT::LightingTransportBakeSettings& settings,
+                                                   std::string* outMessage) {
+    ResetTarget();
+    // 一回の dispatch の高さ（探針の数）は 65535 group × 8 まで。
+    if (!scenePrepared_ || positions.empty() || positions.size() > 65535u * 8u || !std::isfinite(maximumDistance) ||
+        maximumDistance <= 0.0f ||
+        !std::all_of(positions.begin(), positions.end(), [](const MATH::Vec3& p) { return MATH::IsFinite(p); })) {
         status_.state = ProgressiveLightmapBakeState::Failed;
+        status_.message = "Probe positions or visibility distance are invalid.";
+        SetMessage(outMessage, status_.message);
         return false;
     }
-
-    graphics.cmdList->CopyBufferRegion(outputBuffer_.Get(), 0u, outputInitializationBuffer_.Get(), 0u,
-                                       AccumulationBytes());
-    D3D12_RESOURCE_BARRIER barrier{};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = outputBuffer_.Get();
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    graphics.cmdList->ResourceBarrier(1u, &barrier);
-
-    status_.state = ProgressiveLightmapBakeState::Sampling;
-    status_.message = "Progressive DXR sampling started.";
-    SetMessage(outMessage, status_.message);
-    return true;
+    width_ = kDxrProbeDirectionCount;
+    height_ = static_cast<uint32_t>(positions.size());
+    bounceCount_ = std::clamp(settings.bounceCount, 1u, ASSETS::LIGHTING::kSurfaceLightmapMaximumBounceCount);
+    status_.requestedSamples = std::clamp(settings.sampleCount, 1u, 4096u);
+    probeMaximumDistance_ = maximumDistance;
+    std::vector<INTERNAL::DxrLightmapSurfaceTexel> texels(static_cast<size_t>(width_) * height_);
+    for (size_t probe = 0; probe < positions.size(); ++probe)
+        for (uint32_t direction = 0; direction < width_; ++direction)
+            texels[probe * width_ + direction] = {ToPosition4(positions[probe]), {0.0f, 0.0f, 1.0f, 1.0f}};
+    status_.coveredTexelCount = static_cast<uint32_t>(texels.size());
+    return StartSampling(graphics, texels.data(), texels.size() * sizeof(texels[0]), outMessage);
 }
 
 bool DxrProgressiveLightmapBaker::RecordSamples(const GFX::Context& graphics, uint32_t maximumSamplesThisFrame) {
@@ -119,12 +129,13 @@ bool DxrProgressiveLightmapBaker::RecordSamples(const GFX::Context& graphics, ui
         constants.bounceCount = bounceCount_;
         constants.triangleCount = triangleCount_;
         constants.opaqueTriangleCount = opaqueTriangleCount_;
+        constants.probeTarget = probeMaximumDistance_ > 0.0f ? 1u : 0u;
         constants.lightCount = lightCount_;
         constants.skyMode = static_cast<uint32_t>(environment_.skyMode);
         constants.skyTextureIndex = skyDescriptorIndex_;
         constants.sampleGridWidth = sampleGridWidth;
         constants.sampleGridHeight = status_.requestedSamples / sampleGridWidth;
-        constants.skyParams = {environment_.skyStrength, environment_.skyYaw, 0.0f, 0.0f};
+        constants.skyParams = {environment_.skyStrength, environment_.skyYaw, probeMaximumDistance_, 0.0f};
         constants.skyTintExposure = environment_.skyTintExposure;
         graphics.cmdList->SetComputeRoot32BitConstants(kRootConstants, sizeof(constants) / sizeof(uint32_t), &constants,
                                                        0u);
@@ -163,12 +174,35 @@ bool DxrProgressiveLightmapBaker::QueueReadback(const GFX::Context& graphics, st
     return true;
 }
 
+bool DxrProgressiveLightmapBaker::ReadbackReady(const GFX::Context& graphics) const noexcept {
+    return status_.state == ProgressiveLightmapBakeState::ReadbackPending && graphics.frameFence != nullptr &&
+           graphics.frameFence->GetCompletedValue() >= readbackFenceValue_;
+}
+
+bool DxrProgressiveLightmapBaker::TryReadProbes(const GFX::Context& graphics,
+                                                std::vector<DxrTransportAccumulation>& outCells) {
+    if (probeMaximumDistance_ <= 0.0f || !ReadbackReady(graphics))
+        return false;
+    void* mapped = nullptr;
+    if (FAILED(readbackBuffer_->Map(0u, nullptr, &mapped)) || mapped == nullptr) {
+        status_.state = ProgressiveLightmapBakeState::Failed;
+        status_.message = "Failed to map DXR probe readback.";
+        return false;
+    }
+    const auto* cells = static_cast<const DxrTransportAccumulation*>(mapped);
+    outCells.assign(cells, cells + static_cast<size_t>(width_) * height_);
+    readbackBuffer_->Unmap(0u, nullptr);
+    status_.state = ProgressiveLightmapBakeState::Completed;
+    status_.message = "Progressive DXR probes read back.";
+    return true;
+}
+
 bool DxrProgressiveLightmapBaker::TrySave(const GFX::Context& graphics, const std::filesystem::path& outputPath,
                                           std::string* outMessage) {
     if (status_.state != ProgressiveLightmapBakeState::ReadbackPending) {
         return status_.state == ProgressiveLightmapBakeState::Completed;
     }
-    if (graphics.frameFence == nullptr || graphics.frameFence->GetCompletedValue() < readbackFenceValue_) {
+    if (!ReadbackReady(graphics)) {
         return false;
     }
     if (!SaveReadbackDds(outputPath, outMessage)) {

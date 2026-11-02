@@ -80,16 +80,9 @@ float ResolveProgress(const TOOLS::BAKING::LightingBakeReport& report) {
     float current = 0.0f;
     if (report.reflectionProbeCapturedFaceCount > 0u) {
         current = std::clamp(static_cast<float>(report.reflectionProbeCapturedFaceCount) / 6.0f, 0.0f, 1.0f);
-    } else if (report.lightProbeProbeCount > 0u) {
-        const uint32_t totalFaces = report.lightProbeProbeCount * 6u;
-        current =
-            totalFaces > 0u
-                ? std::clamp(static_cast<float>(report.lightProbeCapturedFaceCount) / static_cast<float>(totalFaces),
-                             0.0f, 1.0f)
-                : 0.0f;
-    } else if (report.lightmapRequestedSamples > 0u) {
-        current = std::clamp(static_cast<float>(report.lightmapCompletedSamples) /
-                                 static_cast<float>(report.lightmapRequestedSamples),
+    } else if (report.transportRequestedSamples > 0u) {
+        current = std::clamp(static_cast<float>(report.transportCompletedSamples) /
+                                 static_cast<float>(report.transportRequestedSamples),
                              0.0f, 1.0f);
     }
     return std::clamp((static_cast<float>(report.completedItemCount) + current) /

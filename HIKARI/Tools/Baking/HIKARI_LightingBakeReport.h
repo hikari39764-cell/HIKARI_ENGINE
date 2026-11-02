@@ -93,14 +93,11 @@ struct LightingBakeReport {
     uint32_t lightProbeRecordCount = 0;
     uint32_t lightmapRecordCount = 0;
     uint32_t lightProbeProbeCount = 0;
-    uint32_t lightProbeCaptureResolution = 0;
-    uint32_t lightProbeCapturedFaceCount = 0;
-    uint32_t lightProbeQueuedReadbackFaceCount = 0;
-    uint32_t lightProbeCurrentProbeIndex = 0;
-    uint32_t lightProbeCurrentFaceIndex = 0;
+    uint32_t lightProbeBuriedCount = 0; // 形状に埋まって無効にした探針
     uint32_t lightmapResolution = 0;
-    uint32_t lightmapCompletedSamples = 0;
-    uint32_t lightmapRequestedSamples = 0;
+    // 光照贴图と探針の DXR の標本（今の項目の進み具合）。
+    uint32_t transportCompletedSamples = 0;
+    uint32_t transportRequestedSamples = 0;
     uint32_t lightmapCoveredTexelCount = 0;
     uint32_t lightmapOverlapTexelCount = 0;
     uint32_t bakeItemCount = 0;

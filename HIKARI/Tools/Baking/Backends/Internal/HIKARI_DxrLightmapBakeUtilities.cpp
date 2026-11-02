@@ -274,7 +274,7 @@ DxrLightmapUvRasterization RasterizeLightmapTarget(
 }
 
 bool WriteProgressiveLightmapDds(const std::filesystem::path& outputPath, uint32_t width, uint32_t height,
-                                 uint32_t expectedSampleCount, const DxrLightmapAccumulation* accumulation,
+                                 uint32_t expectedSampleCount, const DxrTransportAccumulation* accumulation,
                                  std::vector<uint8_t> validTexels, std::vector<uint32_t> ownerIndices,
                                  const std::vector<ASSETS::LIGHTING::LightmapAtlasAllocation>& allocations,
                                  std::string* outMessage, std::span<const DxrLightmapSurfaceTexel> surfaces) {

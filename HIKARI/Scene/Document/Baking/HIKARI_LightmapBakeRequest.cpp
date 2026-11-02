@@ -22,6 +22,17 @@
 namespace HIKARI {
 using namespace DOCUMENT_SCENE_BAKING;
 
+RENDER3D::LIGHTING::TRANSPORT::LightingTransportScene DocumentSceneBakeCoordinator::BuildTransportScene(
+    DocumentSceneBase& scene, const std::filesystem::path& projectRoot,
+    const RENDER3D::LIGHTING::SceneLightingSet& lighting) {
+    RenderSubmissionSystem::SetRenderViewPurpose(RENDER3D::RenderViewPurpose::Game);
+    RenderSubmissionSystem::SetAssetContext(&scene.state_->assets.Registry(), projectRoot,
+                                            &scene.state_->assets.Models());
+    scene.state_->runtime.systemScheduler.PreRender(scene.state_->runtime.world, HIKARI::TIME::GetFrameContext());
+    return BuildLightingTransportScene(scene.state_->identity.document, scene.state_->lighting.environment, lighting,
+                                       RenderSubmissionSystem::GetSceneRenderCache(), &scene.GetSkyManager());
+}
+
 bool DocumentSceneBakeCoordinator::RequestLightmapBake(DocumentSceneBase& scene, SceneObjectId targetObjectId) {
     if (TOOLS::BAKING::IsLightingBakeJobRunning(GetJobState())) {
         lastReport_.warnings.push_back("A lighting bake job is already running.");
@@ -51,13 +62,8 @@ bool DocumentSceneBakeCoordinator::RequestLightmapBake(DocumentSceneBase& scene,
 
     const RENDER3D::LIGHTING::SceneLightingSet lighting =
         LIGHTING_AUTHORING::BuildRuntimeSceneLightingSet(scene.state_->identity.document, scene.state_->runtime.world);
-    RenderSubmissionSystem::SetRenderViewPurpose(RENDER3D::RenderViewPurpose::Game);
-    RenderSubmissionSystem::SetAssetContext(&scene.state_->assets.Registry(), projectRoot,
-                                            &scene.state_->assets.Models());
-    scene.state_->runtime.systemScheduler.PreRender(scene.state_->runtime.world, HIKARI::TIME::GetFrameContext());
     RENDER3D::LIGHTING::TRANSPORT::LightingTransportScene transportScene =
-        BuildLightingTransportScene(scene.state_->identity.document, scene.state_->lighting.environment, lighting,
-                                    RenderSubmissionSystem::GetSceneRenderCache(), &scene.GetSkyManager());
+        BuildTransportScene(scene, projectRoot, lighting);
     const auto target =
         std::find_if(transportScene.targets.begin(), transportScene.targets.end(),
                      [targetObjectId](const auto& candidate) { return candidate.objectId == targetObjectId.value; });
@@ -68,7 +74,7 @@ bool DocumentSceneBakeCoordinator::RequestLightmapBake(DocumentSceneBase& scene,
     }
 
     auto job = std::make_unique<LightmapJob>();
-    report.dxrBackendAvailable = job->baker.GetCapabilities(GFX::GetCurrentContext()).available;
+    report.dxrBackendAvailable = TOOLS::BAKING::DxrProgressiveLightmapBaker::IsAvailable(GFX::GetCurrentContext());
     if (!report.dxrBackendAvailable) {
         AddBakeError(
             report,
@@ -112,7 +118,7 @@ bool DocumentSceneBakeCoordinator::RequestLightmapBake(DocumentSceneBase& scene,
     job->report.manifestPath = ASSETS::LIGHTING::BuildLightingBakeManifestPath(projectRoot, job->sceneGuid);
     job->report.lightmapPath = job->outputPath;
     job->report.lightmapResolution = job->settings.outputResolution;
-    job->report.lightmapRequestedSamples =
+    job->report.transportRequestedSamples =
         job->settings.sampleCount * static_cast<uint32_t>(resolvedTarget.pages.size());
     if (batchItemCount_ == 0u) {
         batchItemCount_ = 1u;

@@ -3194,6 +3194,8 @@
     {"ui.inspector.text.Projection", "投影"},
     {"ui.inspector.text.Bake Routing", "烘焙分组"},
     {"ui.inspector.text.Volume", "体积"},
+    {"ui.inspector.text.Extent of the probe grid. Baked volumes also cover half a probe spacing beyond it, so keep the outer probes inside the room.", "探针格子的范围。烘焙体积会在格子外再覆盖半个探针间距，所以外圈探针放在房间里面即可。"},
+    {"ui.inspector.text.Baked: fade-out distance beyond the covered box. Realtime: fade distance inside the box.", "烘焙：覆盖范围之外的淡出距离。实时：在体积内部的淡出距离。"},
     {"ui.inspector.text.Realtime volumes are updated by ray-traced dynamic GI and need no bake.", "实时体积由光线追踪动态 GI 更新，无需烘焙。"},
     {"ui.inspector.text.Normal bias samples GI slightly away from walls to reduce leaks.", "法线偏移让 GI 在离墙稍远处采样，以减少漏光。"},
     {"ui.inspector.text.Probe Grid", "探针网格"},

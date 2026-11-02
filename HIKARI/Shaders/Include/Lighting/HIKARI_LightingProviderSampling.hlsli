@@ -133,16 +133,25 @@ float4 HikariEvaluateLightProbeVolumeDiffuse(
     return float4(max(result, 0.0f.xxx), 1.0f);
 }
 
+// 焼き込み volume の影響。探針の格子の外へ半間隔までは端の探針で全面を覆い（採样は格子の端へ寄せる）、そこから
+// blendDistance で外へ消える。壁や床の上の面を覆うのに探針を部屋の外へ置かなくてよい（外の探針は屋外を見て、
+// 可視性の判定をすり抜けて室内へ光を漏らす）。
+float HikariEvaluateBakedVolumeInfluence(HikariIrradianceVolumeData volume, float3 worldPos)
+{
+    if (!HikariHasIrradianceVolumeData(volume)) return 0.0f;
+    const float3 margin = 0.5f * max(volume.spacingIntensity.xyz, 0.0f.xxx);
+    const float3 boxMin = volume.originSampling.xyz - margin;
+    const float3 boxMax = volume.originSampling.xyz + max(volume.sizeBlendDistance.xyz, 0.001f.xxx) + margin;
+    const float outside = length(max(boxMin - worldPos, 0.0f.xxx) + max(worldPos - boxMax, 0.0f.xxx));
+    return 1.0f - HikariSmoothLightingProviderWeight(outside / max(volume.sizeBlendDistance.w, 0.001f));
+}
+
 float2 HikariEvaluateIrradianceProviderWeights(
     float3 worldPos)
 {
     float2 weights;
-    weights.x = HikariEvaluateIrradianceVolumeInfluence(
-        gIrradianceVolumes[0],
-        worldPos);
-    weights.y = HikariEvaluateIrradianceVolumeInfluence(
-        gIrradianceVolumes[1],
-        worldPos);
+    weights.x = HikariEvaluateBakedVolumeInfluence(gIrradianceVolumes[0], worldPos);
+    weights.y = HikariEvaluateBakedVolumeInfluence(gIrradianceVolumes[1], worldPos);
     return saturate(weights);
 }
 
@@ -168,7 +177,7 @@ float4 HikariResolveBakedLightProbeDiffuse(float3 worldPos, float3 n, float3 v)
     {
         const uint slot = firstSlot ^ order;
         const HikariIrradianceVolumeData volume = gIrradianceVolumes[slot];
-        const float influence = HikariEvaluateIrradianceVolumeInfluence(volume, worldPos);
+        const float influence = HikariEvaluateBakedVolumeInfluence(volume, worldPos);
         // rgb は強度適用済みの E/pi、a は influence と sample validity の重み。
         float4 weighted = 0.0f.xxxx;
         [branch] if (influence > 0.0001f)

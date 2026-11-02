@@ -51,8 +51,6 @@ public:
     bool AllowsUnorderedAccess() const { return allowUnorderedAccess_; }
     bool IsInitialized() const { return initialized_; }
     void TransitionColor(D3D12_RESOURCE_STATES nextState);
-    // Depth の状態所有権を維持したままコピーし、元の状態へ戻す。
-    bool CopyDepthToReadback(ID3D12Resource* destination, const D3D12_PLACED_SUBRESOURCE_FOOTPRINT& footprint);
 
     ID3D12Resource* GetResource() const { return colorTex_.Get(); }
     ID3D12Resource* GetDepthResource() const { return depthTex_.Get(); }

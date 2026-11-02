@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
-#include <iomanip>
 #include <numbers>
 #include <sstream>
 #include <utility>
@@ -35,23 +34,6 @@ void AddBakeError(TOOLS::BAKING::LightingBakeReport& report, std::string message
 std::filesystem::path ReflectionProbeOutputDirectory(const std::filesystem::path& projectRoot,
                                                      const std::string& sceneGuid) {
     return (ASSETS::LIGHTING::BuildLightingBakeRoot(projectRoot, sceneGuid) / "reflection_probes").lexically_normal();
-}
-
-std::filesystem::path LightProbeOutputDirectory(const std::filesystem::path& projectRoot,
-                                                const std::string& sceneGuid) {
-    return (ASSETS::LIGHTING::BuildLightingBakeRoot(projectRoot, sceneGuid) / "light_probes").lexically_normal();
-}
-
-std::filesystem::path LightProbeCaptureDirectory(const std::filesystem::path& projectRoot,
-                                                 const std::string& sceneGuid) {
-    return (LightProbeOutputDirectory(projectRoot, sceneGuid) / "captures").lexically_normal();
-}
-
-std::filesystem::path LightProbeCapturePath(const std::filesystem::path& projectRoot, const std::string& sceneGuid,
-                                            uint32_t probeIndex) {
-    std::ostringstream filename{};
-    filename << "probe_" << std::setfill('0') << std::setw(3) << probeIndex << "_capture.dds";
-    return (LightProbeCaptureDirectory(projectRoot, sceneGuid) / filename.str()).lexically_normal();
 }
 
 std::filesystem::path LightmapOutputDirectory(const std::filesystem::path& projectRoot, const std::string& sceneGuid) {
@@ -137,10 +119,6 @@ void ReplaceLightmapRecord(ASSETS::LIGHTING::LightingBakeManifest& manifest,
                         const ASSETS::LIGHTING::LightmapBakeRecord& rhs) { return lhs.objectId < rhs.objectId; });
 }
 
-uint32_t GetLightProbeCaptureFaceCount(const LightProbeVolumeSettings& settings) {
-    return GetLightProbeVolumeProbeCount(settings) * 6u;
-}
-
 MATH::Vec3 GetLightProbePositionByIndex(const LightProbeVolumeSettings& settings, uint32_t probeIndex) {
     const uint32_t xyCount = settings.countX * settings.countY;
     const uint32_t z = xyCount > 0u ? probeIndex / xyCount : 0u;
@@ -150,7 +128,7 @@ MATH::Vec3 GetLightProbePositionByIndex(const LightProbeVolumeSettings& settings
     return GetLightProbeVolumeProbePosition(settings, x, y, z);
 }
 
-float GetLightProbeCaptureFarPlane(const LightProbeVolumeSettings& settings) {
+float GetLightProbeVisibilityDistance(const LightProbeVolumeSettings& settings) {
     const float xyMax = (std::max)(settings.size.x * 1.5f, settings.size.y * 1.5f);
     return (std::max)((std::max)(4.0f, xyMax), settings.size.z * 1.5f);
 }

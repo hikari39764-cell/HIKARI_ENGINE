@@ -28,9 +28,14 @@ inline constexpr auto kIrradianceVolumeFields = [](auto&& field) {
     field("enabled", &B::enabled, Label{"Enabled"}, Common{});
     field("mode", &B::mode, kLightProbeVolumeModeNames, Label{"Mode"},
           Help{"Realtime volumes are updated by ray-traced dynamic GI and need no bake."}, Common{});
-    field("size", &B::size, Range{0.1, 100000.0}, Label{"Size"}, Common{});
+    field(
+        "size", &B::size, Range{0.1, 100000.0}, Label{"Size"},
+        Help{
+            "Extent of the probe grid. Baked volumes also cover half a probe spacing beyond it, so keep the outer probes inside the room."},
+        Common{});
     field("intensity", &B::intensity, Range{0.0, kMaximumLightProbeVolumeIntensity}, Label{"Intensity"}, Common{});
-    field("blendDistance", &B::blendDistance, Range{0.0, 100000.0}, Label{"Blend Distance"}, Common{});
+    field("blendDistance", &B::blendDistance, Range{0.0, 100000.0}, Label{"Blend Distance"},
+          Help{"Baked: fade-out distance beyond the covered box. Realtime: fade distance inside the box."}, Common{});
     field("normalBias", &B::normalBias, Range{0.0, kMaximumLightProbeVolumeNormalBias}, Label{"Surface Normal Bias"},
           Help{"Normal bias samples GI slightly away from walls to reduce leaks."});
     field("priority", &S::priority, Label{"Priority"});
@@ -39,11 +44,6 @@ inline constexpr auto kIrradianceVolumeFields = [](auto&& field) {
     field("countX", &B::countX, Label{"Count X"}, Group{kGrid});
     field("countY", &B::countY, Label{"Count Y"}, Group{kGrid});
     field("countZ", &B::countZ, Label{"Count Z"}, Group{kGrid});
-    field("captureResolution", &B::captureResolution, Label{"Capture Quality"},
-          Draw{FIELD_DRAW::NumberChoice3{{16u, 32u, 64u},
-                                         {AuthoringChoice{"16", "16 - Preview"}, AuthoringChoice{"32", "32 - Standard"},
-                                          AuthoringChoice{"64", "64 - High"}}}},
-          Group{kGrid});
     // 球面調和の次数は常に 3（ClampLightProbeVolumeSettings）。保存だけする。
     field("shOrder", &B::shOrder, Label{"SH Order"}, Hidden{});
 
@@ -74,7 +74,6 @@ public:
     uint32_t GetCountZ() const noexcept { return settings_.countZ; }
     float GetIntensity() const noexcept { return settings_.intensity; }
     float GetBlendDistance() const noexcept { return settings_.blendDistance; }
-    uint32_t GetCaptureResolution() const noexcept { return settings_.captureResolution; }
     int GetPriority() const noexcept { return settings_.priority; }
     const std::string& GetBakeSet() const noexcept { return settings_.bakeSet; }
     const std::string& GetScenario() const noexcept { return settings_.scenario; }

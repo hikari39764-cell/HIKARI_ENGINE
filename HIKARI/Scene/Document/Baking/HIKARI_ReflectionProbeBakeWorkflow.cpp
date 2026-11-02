@@ -68,9 +68,8 @@ bool DocumentSceneBakeCoordinator::ProcessReflectionProbeBakeJob(DocumentSceneBa
         const Camera3D faceCamera =
             MakeProbeFaceCamera(job.request.position, face, (std::max)(4.0f, job.request.radius));
         const DOCUMENT_SCENE_BAKING::RasterLightingTransportBackend transportBackend{};
-        bool captureOk = transportBackend.RenderProbeFace(
-            scene, job.captureTarget, faceCamera, captureEnvironment, face,
-            RENDER3D::LIGHTING::TRANSPORT::LightingTransportProductKind::SpecularReflection);
+        bool captureOk =
+            transportBackend.RenderProbeFace(scene, job.captureTarget, faceCamera, captureEnvironment, face);
 
         std::string readbackMessage{};
         if (captureOk) {

@@ -8,6 +8,7 @@
 
 #include "RenderContracts/Lighting/HIKARI_LightmapAtlasLayout.h"
 #include "Render3D/Lighting/Transport/HIKARI_LightingTransportScene.h"
+#include "Tools/Baking/Backends/HIKARI_DxrProgressiveLightmapBaker.h"
 
 namespace HIKARI::TOOLS::BAKING::INTERNAL {
 
@@ -15,14 +16,6 @@ struct DxrLightmapSurfaceTexel {
     // w は atlas 一 texel の world-space footprint。ゼロは未被覆。
     MATH::Vec4 position{};
     MATH::Vec4 normal{};
-};
-
-// GPU の texel ごとの積算（HIKARI_DxrLightmapCS.hlsl の LightmapAccumulation と同じ並び）。radiance.rgb は裏面に
-// 当たらなかった標本の放射輝度の和、w は全標本数。statistics.x は最初の光線が裏面に当たった標本数、y は表の標本の
-// 輝度の二乗和、z は最初の光線が空へ抜けた標本数。
-struct DxrLightmapAccumulation {
-    MATH::Vec4 radiance{};
-    MATH::Vec4 statistics{};
 };
 
 // 最初の光線が裏面に当たった標本がこの割合を超える texel は形状に埋まっている（壁や床の中、交差の隙間）とみなし、
@@ -51,7 +44,7 @@ bool FilterLightmapIrradiance(std::span<MATH::Vec4> pixels, std::span<float> var
                               uint32_t height);
 
 bool WriteProgressiveLightmapDds(const std::filesystem::path& outputPath, uint32_t width, uint32_t height,
-                                 uint32_t expectedSampleCount, const DxrLightmapAccumulation* accumulation,
+                                 uint32_t expectedSampleCount, const DxrTransportAccumulation* accumulation,
                                  std::vector<uint8_t> validTexels, std::vector<uint32_t> ownerIndices,
                                  const std::vector<ASSETS::LIGHTING::LightmapAtlasAllocation>& allocations,
                                  std::string* outMessage, std::span<const DxrLightmapSurfaceTexel> surfaces = {});

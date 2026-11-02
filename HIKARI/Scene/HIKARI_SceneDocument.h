@@ -95,7 +95,6 @@ struct LightProbeVolumeSettings {
     float intensity = 1.0f;
     float blendDistance = 1.0f;
     float normalBias = 0.2f;
-    uint32_t captureResolution = 32;
     uint32_t shOrder = 3;
 };
 
@@ -103,26 +102,16 @@ struct SceneCameraSettings {
     std::optional<SceneObjectId> defaultCameraObjectId{};
 };
 
-inline uint32_t NormalizeLightProbeCaptureResolution(uint32_t resolution) {
-    if (resolution <= 16u) {
-        return 16u;
-    }
-    if (resolution <= 32u) {
-        return 32u;
-    }
-    return 64u;
-}
-
 inline constexpr float kMaximumLightProbeVolumeIntensity = 4.0f;
 inline constexpr float kMaximumLightProbeVolumeNormalBias = 0.5f;
 
 inline void ClampLightProbeVolumeSettings(LightProbeVolumeSettings& settings) {
-    // 実時間の区域は更新を数フレームに分けるので、焼き込みより細かい格子を取れる。
+    // 実時間の区域は更新を数フレームに分けるので、焼き込みより細かい格子を取れる。焼き込みは DXR の経路で探針ごとに
+    // 256 方向を積むので 16x8x16（2048 個）まで。
     const bool realtime = settings.mode == LightProbeVolumeMode::Realtime;
-    settings.countX = std::clamp(settings.countX, 2u, realtime ? 32u : 8u);
-    settings.countY = std::clamp(settings.countY, realtime ? 2u : 1u, realtime ? 16u : 4u);
-    settings.countZ = std::clamp(settings.countZ, 2u, realtime ? 32u : 8u);
-    settings.captureResolution = NormalizeLightProbeCaptureResolution(settings.captureResolution);
+    settings.countX = std::clamp(settings.countX, 2u, realtime ? 32u : 16u);
+    settings.countY = std::clamp(settings.countY, realtime ? 2u : 1u, realtime ? 16u : 8u);
+    settings.countZ = std::clamp(settings.countZ, 2u, realtime ? 32u : 16u);
     settings.shOrder = 3u;
     settings.intensity = std::clamp(settings.intensity, 0.0f, kMaximumLightProbeVolumeIntensity);
     settings.normalBias = std::clamp(settings.normalBias, 0.0f, kMaximumLightProbeVolumeNormalBias);

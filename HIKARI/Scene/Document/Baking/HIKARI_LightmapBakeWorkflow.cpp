@@ -79,9 +79,9 @@ bool DocumentSceneBakeCoordinator::ProcessLightmapBakeJob(DocumentSceneBase& sce
                 return false;
             }
             const TOOLS::BAKING::ProgressiveLightmapBakeStatus& status = job.baker.GetStatus();
-            job.report.lightmapCompletedSamples =
+            job.report.transportCompletedSamples =
                 static_cast<uint32_t>(job.pageIndex) * status.requestedSamples + status.completedSamples;
-            job.report.lightmapRequestedSamples = static_cast<uint32_t>(target.pages.size()) * status.requestedSamples;
+            job.report.transportRequestedSamples = static_cast<uint32_t>(target.pages.size()) * status.requestedSamples;
             job.report.lightmapCoveredTexelCount = status.coveredTexelCount;
             job.report.lightmapOverlapTexelCount = status.overlapTexelCount;
             lastReport_ = job.report;

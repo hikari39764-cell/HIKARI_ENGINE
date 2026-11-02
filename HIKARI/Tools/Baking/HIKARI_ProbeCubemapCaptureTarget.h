@@ -15,11 +15,10 @@ namespace HIKARI::TOOLS::BAKING {
 
 inline constexpr float kProbeCaptureNearPlane = 0.05f;
 
+// 反射探針の cubemap 撮影（拡散の探針は DXR の経路で焼く）。
 class ProbeCubemapCaptureTarget {
 public:
-    // near/far が有効な場合、HDR capture の alpha に正規化した放射距離を保存する。
-    bool Initialize(uint32_t resolution, DXGI_FORMAT format = DXGI_FORMAT_R16G16B16A16_FLOAT, float nearPlane = 0.0f,
-                    float farPlane = 0.0f);
+    bool Initialize(uint32_t resolution, DXGI_FORMAT format = DXGI_FORMAT_R16G16B16A16_FLOAT);
     void Release();
 
     bool BeginFace(uint32_t faceIndex, float r, float g, float b, float a, float depth);
@@ -31,7 +30,6 @@ public:
     uint32_t GetResolution() const { return resolution_; }
     DXGI_FORMAT GetFormat() const { return format_; }
     bool IsInitialized() const { return initialized_; }
-    float GetVisibilityDistanceScale() const;
 
 private:
     struct FaceReadback {
@@ -43,16 +41,12 @@ private:
     };
 
     bool CreateReadback(ID3D12Resource* resource, FaceReadback& readback, std::string* outMessage);
-    bool StoreDepthInCaptureAlpha(uint32_t faceIndex, uint8_t* pixels, size_t rowPitch, std::string* outMessage) const;
 
 private:
     std::array<RenderTarget2D, 6> faces_{};
     std::array<FaceReadback, 6> readbacks_{};
-    std::array<FaceReadback, 6> depthReadbacks_{};
     uint32_t resolution_ = 0;
     DXGI_FORMAT format_ = DXGI_FORMAT_UNKNOWN;
-    float nearPlane_ = 0.0f;
-    float farPlane_ = 0.0f;
     bool initialized_ = false;
 };
 

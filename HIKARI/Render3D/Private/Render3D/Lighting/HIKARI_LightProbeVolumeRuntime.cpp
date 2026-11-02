@@ -503,9 +503,13 @@ void PrepareView(const MATH::Vec3& cameraPosition, const MATH::Vec3& viewFocusPo
         const MATH::Vec3 center{resident.data.origin.x + resident.data.size.x * 0.5f,
                                 resident.data.origin.y + resident.data.size.y * 0.5f,
                                 resident.data.origin.z + resident.data.size.z * 0.5f};
+        // 影響は格子の外へ半間隔、そこから blendDistance で消える（HikariEvaluateBakedVolumeInfluence）。
+        const float reach = 2.0f * (std::max)(resident.data.blendDistance, 0.0f);
+        const MATH::Vec3 influenceSize{resident.data.size.x + resident.data.spacing.x + reach,
+                                       resident.data.size.y + resident.data.spacing.y + reach,
+                                       resident.data.size.z + resident.data.spacing.z + reach};
         candidates.push_back(Candidate{
-            index,
-            LIGHTING::EvaluateBoxInfluenceAlongView(view, center, resident.data.size, resident.data.blendDistance),
+            index, LIGHTING::EvaluateBoxInfluenceAlongView(view, center, influenceSize, resident.data.blendDistance),
             LIGHTING::DistanceSquaredToViewSegment(view, center)});
     }
     std::stable_sort(candidates.begin(), candidates.end(), [](const Candidate& lhs, const Candidate& rhs) {

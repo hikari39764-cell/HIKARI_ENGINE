@@ -72,23 +72,12 @@ MATH::Vec4 ToDirection4(const MATH::Vec3& value) { return {value.x, value.y, val
 
 } // namespace
 
-TRANSPORT::LightingTransportBackendCapabilities DxrProgressiveLightmapBaker::GetCapabilities(
-    const GFX::Context& graphics) const noexcept {
-    TRANSPORT::LightingTransportBackendCapabilities capabilities{};
-    capabilities.backend = TRANSPORT::LightingTransportBackendKind::DxrPathTracing;
+bool DxrProgressiveLightmapBaker::IsAvailable(const GFX::Context& graphics) noexcept {
 #if !defined(HIKARI_WITH_EDITOR)
     (void)graphics;
-    return capabilities;
+    return false;
 #else
-    const GFX::RAYTRACING::DxrCapabilities dxr = GFX::RAYTRACING::QueryDxrCapabilities(graphics.device);
-    capabilities.available = dxr.SupportsInlineRayQuery();
-    capabilities.supportsDiffuseIrradiance = capabilities.available;
-    capabilities.supportsSurfaceLightmaps = capabilities.available;
-    capabilities.supportsProgressiveSampling = capabilities.available;
-    capabilities.supportsMultipleBounces = capabilities.available;
-    capabilities.maximumBounceCount =
-        capabilities.available ? ASSETS::LIGHTING::kSurfaceLightmapMaximumBounceCount : 0u;
-    return capabilities;
+    return GFX::RAYTRACING::QueryDxrCapabilities(graphics.device).SupportsInlineRayQuery();
 #endif
 }
 
@@ -108,7 +97,7 @@ bool DxrProgressiveLightmapBaker::PrepareScene(const GFX::Context& graphics,
         SetMessage(outMessage, "DXR sky texture is missing or has the wrong dimension.");
         return false;
     }
-    if (!GetCapabilities(graphics).available || scene.triangles.empty()) {
+    if (!IsAvailable(graphics) || scene.triangles.empty()) {
         SetMessage(outMessage, "DXR lightmap backend is unavailable or the transport scene is empty.");
         return false;
     }
@@ -238,6 +227,7 @@ void DxrProgressiveLightmapBaker::ResetTarget() {
     width_ = 0u;
     height_ = 0u;
     bounceCount_ = 0u;
+    probeMaximumDistance_ = 0.0f;
     readbackFenceValue_ = 0u;
 }
 
@@ -318,8 +308,10 @@ bool DxrProgressiveLightmapBaker::CreatePipeline(ID3D12Device* device, std::stri
     return true;
 }
 
-bool DxrProgressiveLightmapBaker::CreateTargetResources(ID3D12Device* device, const void* texelData,
-                                                        size_t texelByteSize, std::string* outMessage) {
+bool DxrProgressiveLightmapBaker::StartSampling(const GFX::Context& graphics, const void* texelData,
+                                                size_t texelByteSize, std::string* outMessage) {
+    ID3D12Device* device = graphics.device;
+    status_.state = ProgressiveLightmapBakeState::Failed;
     if (texelData == nullptr || texelByteSize == 0u ||
         !CreateBuffer(device, texelByteSize, D3D12_HEAP_TYPE_UPLOAD, D3D12_RESOURCE_FLAG_NONE,
                       D3D12_RESOURCE_STATE_GENERIC_READ, texelBuffer_.GetAddressOf())) {
@@ -352,11 +344,24 @@ bool DxrProgressiveLightmapBaker::CreateTargetResources(ID3D12Device* device, co
     }
     std::memset(mapped, 0, static_cast<size_t>(byteSize));
     outputInitializationBuffer_->Unmap(0u, nullptr);
+
+    graphics.cmdList->CopyBufferRegion(outputBuffer_.Get(), 0u, outputInitializationBuffer_.Get(), 0u, byteSize);
+    D3D12_RESOURCE_BARRIER barrier{};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = outputBuffer_.Get();
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    graphics.cmdList->ResourceBarrier(1u, &barrier);
+
+    status_.state = ProgressiveLightmapBakeState::Sampling;
+    status_.message = "Progressive DXR sampling started.";
+    SetMessage(outMessage, status_.message);
     return true;
 }
 
 UINT64 DxrProgressiveLightmapBaker::AccumulationBytes() const noexcept {
-    return static_cast<UINT64>(width_) * height_ * sizeof(INTERNAL::DxrLightmapAccumulation);
+    return static_cast<UINT64>(width_) * height_ * sizeof(DxrTransportAccumulation);
 }
 
 bool DxrProgressiveLightmapBaker::SaveReadbackDds(const std::filesystem::path& outputPath, std::string* outMessage) {
@@ -366,7 +371,7 @@ bool DxrProgressiveLightmapBaker::SaveReadbackDds(const std::filesystem::path& o
         return false;
     }
 
-    const auto* accumulation = static_cast<const INTERNAL::DxrLightmapAccumulation*>(mapped);
+    const auto* accumulation = static_cast<const DxrTransportAccumulation*>(mapped);
     void* surfaceMapped = nullptr;
     if (FAILED(texelBuffer_->Map(0u, nullptr, &surfaceMapped)) || surfaceMapped == nullptr) {
         readbackBuffer_->Unmap(0u, nullptr);

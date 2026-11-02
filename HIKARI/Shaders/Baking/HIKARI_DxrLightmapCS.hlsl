@@ -2,6 +2,7 @@
 #include "../Include/Lighting/HIKARI_LightingTransportMaterial.hlsli"
 #include "../Include/Sky/HIKARI_SkyRadiance.hlsli"
 #include "../Include/Sky/HIKARI_EquirectangularSampling.hlsli"
+#include "../Include/HIKARI_DirectionEncoding.hlsli"
 
 struct TransportTriangle
 {
@@ -49,8 +50,9 @@ cbuffer BakeConstants : register(b0)
     uint gSampleGridHeight;
     // 加速構造の geometry 0 が不透明、geometry 1 が切り抜き。三角形はこの順に並ぶ。
     uint gOpaqueTriangleCount;
-    uint gConstantsPadding;
-    float4 gSkyParams; // x 天空光の倍率、y 空の回転
+    // 0: 光照贴图の texel。1: 探針（gWidth は探針一つの 16x16 の八面体の方向、gHeight は探針の数。texel の位置が探針）。
+    uint gProbeTarget;
+    float4 gSkyParams; // x 天空光の倍率、y 空の回転、z 探針の距離の上限
     float4 gSkyTintExposure;
 };
 
@@ -75,7 +77,7 @@ TextureCube gEnvironmentCube : register(t4);
 // texel ごとの積算。radiance.rgb は裏面に当たらなかった標本の放射輝度の和、w は全標本数。statistics.x は最初の光線が
 // 裏面に当たった標本数（多い texel は形状に埋まっているので CPU が無効にして周りから埋める）、y は表の標本の輝度の二乗和
 // （降噪が texel ごとの雑音の大きさに使う）、z は最初の光線が空へ抜けた標本数（余弦で重みづけた空の見える割合。
-// 実行時の鏡面の遮蔽に使う）。
+// 実行時の鏡面の遮蔽に使う）。探針では y と w が表の標本の最初に当たるまでの距離の和と二乗和（遮蔽の判定に使う）。
 struct LightmapAccumulation
 {
     float4 radiance;
@@ -510,6 +512,9 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     // Surface Lightmaps store indirect diffuse transport only. Direct
     // lighting remains live so moving lights and shadow maps are not counted
     // twice at runtime.
+    // 探針は最初の光線を自分の八面体の方向の中で一様に選び、その向きから届く放射輝度を積む（光照贴图と同じ反弹と直射）。
+    const bool probe = gProbeTarget != 0u;
+    float firstDistance = gSkyParams.z;
     float3 radiance = 0.0f.xxx;
     float3 throughput = 1.0f.xxx;
     bool sampleValid = true;
@@ -521,7 +526,14 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     for (uint bounce = 0u; bounce < gBounceCount; ++bounce)
     {
         float3 direction;
-        if (!SampleCosineHemisphere(
+        const bool probeRay = probe && bounce == 0u;
+        if (probeRay)
+        {
+            const float2 jitter = float2(Random01(randomState), Random01(randomState));
+            direction = HikariDecodeOctahedralDirection(
+                (float2(dispatchThreadId.x % 16u, dispatchThreadId.x / 16u) + jitter) / 16.0f);
+        }
+        else if (!SampleCosineHemisphere(
                 normal,
                 randomState,
                 texelIndex,
@@ -534,13 +546,14 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         float3 hitPosition;
         float3 hitNormal;
         float3 hitGeometricNormal;
-        if (dot(direction, geometricNormal) <= 0.0f) break;
+        if (!probeRay && dot(direction, geometricNormal) <= 0.0f) break;
         float3 hitDiffuse;
         float3 hitEmissive;
         bool surfaceValid;
         bool hitBackFace;
+        const float3 origin = probeRay ? position : position + geometricNormal * 0.002f;
         const bool hit = TraceSurface(
-                position + geometricNormal * 0.002f,
+                origin,
                 direction,
                 hitPosition,
                 hitNormal,
@@ -553,6 +566,10 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         {
             sampleValid = false;
             break;
+        }
+        if (probeRay && hit)
+        {
+            firstDistance = min(length(hitPosition - origin), gSkyParams.z);
         }
         // 裏面に当たった光線は形状の中を通った（texel が壁や床に埋まっている、交差の隙間から外へ抜けた）。裏面を表として
         // 照らすと壁の向こうの日光と空が室内の texel へ漏れる。最初の光線ならこの標本を裏面として数えて光を足さず、
@@ -631,7 +648,8 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     const float luminance = dot(radiance, float3(0.2126f, 0.7152f, 0.0722f));
     accumulation.radiance = float4(nextRadiance, accumulation.radiance.w + 1.0f);
     accumulation.statistics.x += backFaceSample ? 1.0f : 0.0f;
-    accumulation.statistics.y += backFaceSample ? 0.0f : luminance * luminance;
+    accumulation.statistics.y += backFaceSample ? 0.0f : probe ? firstDistance : luminance * luminance;
     accumulation.statistics.z += skySample ? 1.0f : 0.0f;
+    accumulation.statistics.w += backFaceSample || !probe ? 0.0f : firstDistance * firstDistance;
     gOutput[texelIndex] = accumulation;
 }

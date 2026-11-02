@@ -136,7 +136,6 @@ const char* ToString(ModelRendererFrameKind kind) {
     switch (kind) {
     case ModelRendererFrameKind::MainView: return "MainView";
     case ModelRendererFrameKind::ReflectionProbeCapture: return "ReflectionProbeCapture";
-    case ModelRendererFrameKind::LightProbeCapture: return "LightProbeCapture";
     case ModelRendererFrameKind::SecondarySceneCapture: return "SecondarySceneCapture";
     case ModelRendererFrameKind::None:
     default: return "None";
@@ -189,8 +188,8 @@ MESHRENDERER::MeshRendererFrameResult RenderAll(const GFX::Context& graphics, co
 void RenderOpaqueForReflectionProbeCapture(const GFX::Context& graphics, const Camera3D& camera,
                                            const SceneEnvironment& environment,
                                            const RENDER3D::LIGHTING::SceneLightingSet& lighting, uint32_t width,
-                                           uint32_t height, ModelRendererFrameKind kind) {
-    BeginModelRendererFrame(kind);
+                                           uint32_t height) {
+    BeginModelRendererFrame(ModelRendererFrameKind::ReflectionProbeCapture);
     (void)RENDER3D::PIPELINE::RenderMeshCaptureOpaqueFrame(graphics, camera, environment, lighting, width, height);
 }
 

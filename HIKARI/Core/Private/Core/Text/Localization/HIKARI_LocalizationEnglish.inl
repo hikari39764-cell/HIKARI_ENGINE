@@ -3578,6 +3578,8 @@
     {"ui.inspector.text.Projection", "Projection"},
     {"ui.inspector.text.Bake Routing", "Bake Routing"},
     {"ui.inspector.text.Volume", "Volume"},
+    {"ui.inspector.text.Extent of the probe grid. Baked volumes also cover half a probe spacing beyond it, so keep the outer probes inside the room.", "Extent of the probe grid. Baked volumes also cover half a probe spacing beyond it, so keep the outer probes inside the room."},
+    {"ui.inspector.text.Baked: fade-out distance beyond the covered box. Realtime: fade distance inside the box.", "Baked: fade-out distance beyond the covered box. Realtime: fade distance inside the box."},
     {"ui.inspector.text.Realtime volumes are updated by ray-traced dynamic GI and need no bake.", "Realtime volumes are updated by ray-traced dynamic GI and need no bake."},
     {"ui.inspector.text.Normal bias samples GI slightly away from walls to reduce leaks.", "Normal bias samples GI slightly away from walls to reduce leaks."},
     {"ui.inspector.text.Probe Grid", "Probe Grid"},

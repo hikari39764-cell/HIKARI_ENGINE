@@ -20,11 +20,6 @@ const char* ProbeFaceName(uint32_t faceIndex);
 void AddBakeError(TOOLS::BAKING::LightingBakeReport& report, std::string message);
 std::filesystem::path ReflectionProbeOutputDirectory(const std::filesystem::path& projectRoot,
                                                      const std::string& sceneGuid);
-std::filesystem::path LightProbeOutputDirectory(const std::filesystem::path& projectRoot, const std::string& sceneGuid);
-std::filesystem::path LightProbeCaptureDirectory(const std::filesystem::path& projectRoot,
-                                                 const std::string& sceneGuid);
-std::filesystem::path LightProbeCapturePath(const std::filesystem::path& projectRoot, const std::string& sceneGuid,
-                                            uint32_t probeIndex);
 std::filesystem::path LightmapOutputDirectory(const std::filesystem::path& projectRoot, const std::string& sceneGuid);
 
 ASSETS::LIGHTING::LightingBakeManifest LoadOrCreateLightingBakeManifest(const std::filesystem::path& manifestPath,
@@ -38,9 +33,9 @@ void ReplaceLightProbeVolumeRecord(ASSETS::LIGHTING::LightingBakeManifest& manif
 void ReplaceLightmapRecord(ASSETS::LIGHTING::LightingBakeManifest& manifest,
                            const ASSETS::LIGHTING::LightmapBakeRecord& record);
 
-uint32_t GetLightProbeCaptureFaceCount(const LightProbeVolumeSettings& settings);
 MATH::Vec3 GetLightProbePositionByIndex(const LightProbeVolumeSettings& settings, uint32_t probeIndex);
-float GetLightProbeCaptureFarPlane(const LightProbeVolumeSettings& settings);
+// 探針から当たらなかった方向の距離（可視性の距離の正規化の上限）。体積の大きさの 1.5 倍、4 m 以上。
+float GetLightProbeVisibilityDistance(const LightProbeVolumeSettings& settings);
 void SetBakeJobState(TOOLS::BAKING::LightingBakeReport& report, TOOLS::BAKING::LightingBakeJobState state);
 Camera3D MakeProbeFaceCamera(const MATH::Vec3& position, uint32_t faceIndex, float farPlane);
 SceneEnvironment MakeProbeCaptureEnvironment(const SceneEnvironment& source);

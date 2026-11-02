@@ -145,7 +145,6 @@ nlohmann::json BuildIrradianceVolumeCaptureNode(const LIGHTING_AUTHORING::Irradi
             {"countX", volume.settings.countX},
             {"countY", volume.settings.countY},
             {"countZ", volume.settings.countZ},
-            {"captureResolution", volume.settings.captureResolution},
             {"shOrder", volume.settings.shOrder},
             {"bakeSet", volume.bakeSet},
             {"scenario", volume.scenario}};

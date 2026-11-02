@@ -61,15 +61,15 @@ struct DxrProgressiveLightmapBaker::DispatchConstants {
     // 加速構造の geometry 0 が不透明、geometry 1 が切り抜き（alpha test）。三角形はこの順に並び、geometry 1 の
     // primitive は opaqueTriangleCount から数える。
     uint32_t opaqueTriangleCount = 0u;
-    uint32_t padding = 0u;
-    MATH::Vec4 skyParams{}; // x 天空光の倍率、y 空の回転
+    uint32_t probeTarget = 0u; // 1 は探針（HIKARI_DxrLightmapCS.hlsl の gProbeTarget）
+    MATH::Vec4 skyParams{};    // x 天空光の倍率、y 空の回転、z 探針の距離の上限
     MATH::Vec4 skyTintExposure{};
 };
 
 static_assert(sizeof(DxrProgressiveLightmapBaker::GpuTriangle) == 208u);
 static_assert(offsetof(DxrProgressiveLightmapBaker::GpuTriangle, materialIndex) == 192u);
 static_assert(sizeof(INTERNAL::DxrLightmapSurfaceTexel) == 32u);
-static_assert(sizeof(INTERNAL::DxrLightmapAccumulation) == 32u);
+static_assert(sizeof(DxrTransportAccumulation) == 32u);
 static_assert(sizeof(DxrProgressiveLightmapBaker::GpuLight) == 64u);
 static_assert(sizeof(DxrProgressiveLightmapBaker::DispatchConstants) == 80u);
 

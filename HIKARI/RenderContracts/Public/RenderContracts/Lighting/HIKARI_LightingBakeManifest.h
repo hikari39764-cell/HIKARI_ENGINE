@@ -15,7 +15,8 @@ namespace HIKARI::ASSETS::LIGHTING {
 
 constexpr uint32_t kLightingBakeManifestVersion = 7;
 constexpr uint32_t kReflectionProbeBakePolicyVersion = 28;
-constexpr uint32_t kIrradianceVolumeBakePolicyVersion = 14;
+// 15: 探針を光照贴图と同じ DXR の経路で焼く（光栅の cubemap 撮影をやめた）。
+constexpr uint32_t kIrradianceVolumeBakePolicyVersion = 15;
 
 struct ReflectionProbeBakeRecord {
     std::string id{};

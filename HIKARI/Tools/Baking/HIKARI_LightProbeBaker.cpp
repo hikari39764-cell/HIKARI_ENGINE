@@ -1,14 +1,11 @@
 #include "HIKARI_LightProbeBaker.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numbers>
-#include <span>
-#include <sstream>
 #include <utility>
 
-#include <DirectXPackedVector.h>
-#include <DirectXTex.h>
 #include <json.hpp>
 
 #include "Core/HIKARI_Logger.h"
@@ -19,23 +16,18 @@ namespace HIKARI::TOOLS::BAKING {
 
 namespace {
 
+// 最初の光線が裏面に当たった標本がこの割合を超える探針は形状に埋まっている（壁や床の中）とみなし、無効にする
+// （RTXGI の探針の分類と同じ考え方）。光照贴图の texel より緩いのは、探針は部屋の角の近くでも表を多く見るため。
+constexpr float kProbeBackfaceTolerance = 0.25f;
+
 void AddError(LightProbeBakeResult& result, std::string message) {
     result.errors.push_back(std::move(message));
     result.success = false;
 }
 
-MATH::Vec3 Add(const MATH::Vec3& lhs, const MATH::Vec3& rhs) { return {lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z}; }
-
-MATH::Vec3 Mul(const MATH::Vec3& value, float scale) { return {value.x * scale, value.y * scale, value.z * scale}; }
-
 std::filesystem::path LightProbeOutputDirectory(const std::filesystem::path& projectRoot,
                                                 const std::string& sceneGuid) {
     return (ASSETS::LIGHTING::BuildLightingBakeRoot(projectRoot, sceneGuid) / "light_probes").lexically_normal();
-}
-
-float SolidAngleWeight(float u, float v, uint32_t resolution) {
-    const float denom = 1.0f + u * u + v * v;
-    return 4.0f / (static_cast<float>(resolution) * static_cast<float>(resolution) * denom * std::sqrt(denom));
 }
 
 void EvaluateSh9Basis(const MATH::Vec3& dir, float outBasis[9]) {
@@ -53,134 +45,69 @@ void EvaluateSh9Basis(const MATH::Vec3& dir, float outBasis[9]) {
     outBasis[8] = 0.546274f * (x * x - y * y);
 }
 
-MATH::Vec4 ReadPixel(const DirectX::Image& image, uint32_t x, uint32_t y) {
-    const uint8_t* pixel =
-        image.pixels + static_cast<size_t>(image.rowPitch) * y + x * DirectX::BitsPerPixel(image.format) / 8u;
-
-    if (image.format == DXGI_FORMAT_R16G16B16A16_FLOAT) {
-        const uint16_t* h = reinterpret_cast<const uint16_t*>(pixel);
-        return {DirectX::PackedVector::XMConvertHalfToFloat(h[0]), DirectX::PackedVector::XMConvertHalfToFloat(h[1]),
-                DirectX::PackedVector::XMConvertHalfToFloat(h[2]), DirectX::PackedVector::XMConvertHalfToFloat(h[3])};
-    }
-    if (image.format == DXGI_FORMAT_R32G32B32A32_FLOAT) {
-        const float* f = reinterpret_cast<const float*>(pixel);
-        return {f[0], f[1], f[2], f[3]};
-    }
-
-    return {};
+// 球面三角形の立体角（Van Oosterom & Strackee）。
+double TriangleSolidAngle(const MATH::Vec3& a, const MATH::Vec3& b, const MATH::Vec3& c) {
+    const double triple = MATH::Dot(a, MATH::Cross(b, c));
+    const double denominator = 1.0 + MATH::Dot(a, b) + MATH::Dot(b, c) + MATH::Dot(c, a);
+    return 2.0 * std::atan2(std::abs(triple), denominator);
 }
 
-bool ProjectCubemapToSh9(const std::filesystem::path& capturePath, ASSETS::LIGHTING::LightProbeSh9& outSh,
-                         std::span<MATH::Vec2> visibility, std::string* outMessage) {
-    DirectX::TexMetadata metadata{};
-    DirectX::ScratchImage image{};
-    const HRESULT hr =
-        DirectX::LoadFromDDSFile(capturePath.wstring().c_str(), DirectX::DDS_FLAGS_NONE, &metadata, image);
-    if (FAILED(hr)) {
-        if (outMessage) {
-            *outMessage = "failed to load light probe capture DDS: " + capturePath.generic_string();
-        }
-        return false;
-    }
-
-    if (!metadata.IsCubemap() || metadata.arraySize < 6 || metadata.width == 0 || metadata.width != metadata.height ||
-        (metadata.format != DXGI_FORMAT_R16G16B16A16_FLOAT && metadata.format != DXGI_FORMAT_R32G32B32A32_FLOAT) ||
-        visibility.size() != ASSETS::LIGHTING::kLightProbeVisibilityTexelCount) {
-        if (outMessage) {
-            *outMessage = "light probe capture requires a linear HDR cubemap with visibility depth: " +
-                          capturePath.generic_string();
-        }
-        return false;
-    }
-
-    const uint32_t resolution = static_cast<uint32_t>(metadata.width);
-    float totalWeight = 0.0f;
-    for (uint32_t face = 0; face < 6u; ++face) {
-        const DirectX::Image* faceImage = image.GetImage(0, face, 0);
-        if (faceImage == nullptr || faceImage->pixels == nullptr) {
-            if (outMessage) {
-                *outMessage = "light probe cubemap face is missing: " + capturePath.generic_string();
-            }
-            return false;
-        }
-
-        for (uint32_t y = 0; y < resolution; ++y) {
-            for (uint32_t x = 0; x < resolution; ++x) {
-                const float u = ((static_cast<float>(x) + 0.5f) / static_cast<float>(resolution)) * 2.0f - 1.0f;
-                const float v = ((static_cast<float>(y) + 0.5f) / static_cast<float>(resolution)) * 2.0f - 1.0f;
-                const float weight = SolidAngleWeight(u, v, resolution);
-                const MATH::Vec3 dir = MATH::CubeFaceDirection(face, u * 0.5f + 0.5f, v * 0.5f + 0.5f);
-                const auto pixel = ReadPixel(*faceImage, x, y);
-                if (!std::isfinite(pixel.x) || !std::isfinite(pixel.y) || !std::isfinite(pixel.z) ||
-                    !std::isfinite(pixel.w) || pixel.x < 0 || pixel.y < 0 || pixel.z < 0 || pixel.w < 0 ||
-                    pixel.w > 1) {
-                    if (outMessage)
-                        *outMessage = "light probe capture contains invalid radiance or depth.";
-                    return false;
+// 八面体の方向（16x16）ごとの、立体角で重みづけた SH9 の基底の積分。方向の格子を 8x8 に細分し、小さな四角を二つの
+// 球面三角形として数える。方向ごとの放射輝度（DXR が格子の中で一様に選んだ光線の平均）にこれを掛けて足すと投影になる。
+using DirectionBasis =
+    std::array<std::array<float, ASSETS::LIGHTING::kLightProbeShCoeffCount>, kDxrProbeDirectionCount>;
+const DirectionBasis& GetDirectionBasis() {
+    static const DirectionBasis basis = [] {
+        constexpr uint32_t side = ASSETS::LIGHTING::kLightProbeVisibilityResolution;
+        constexpr uint32_t subdivisions = 8u;
+        static_assert(side * side == kDxrProbeDirectionCount);
+        std::array<std::array<double, ASSETS::LIGHTING::kLightProbeShCoeffCount>, kDxrProbeDirectionCount> sums{};
+        double total = 0.0;
+        const auto direction = [](double u, double v) {
+            return MATH::DecodeOctahedralDirection({static_cast<float>(u), static_cast<float>(v)});
+        };
+        for (uint32_t cell = 0; cell < kDxrProbeDirectionCount; ++cell) {
+            const double cx = cell % side, cy = cell / side;
+            for (uint32_t sy = 0; sy < subdivisions; ++sy)
+                for (uint32_t sx = 0; sx < subdivisions; ++sx) {
+                    const double u0 = (cx + double(sx) / subdivisions) / side,
+                                 u1 = (cx + double(sx + 1u) / subdivisions) / side;
+                    const double v0 = (cy + double(sy) / subdivisions) / side,
+                                 v1 = (cy + double(sy + 1u) / subdivisions) / side;
+                    const MATH::Vec3 d00 = direction(u0, v0), d10 = direction(u1, v0), d01 = direction(u0, v1),
+                                     d11 = direction(u1, v1);
+                    const double solidAngle = TriangleSolidAngle(d00, d10, d11) + TriangleSolidAngle(d00, d11, d01);
+                    float values[ASSETS::LIGHTING::kLightProbeShCoeffCount]{};
+                    EvaluateSh9Basis(direction(0.5 * (u0 + u1), 0.5 * (v0 + v1)), values);
+                    for (uint32_t k = 0; k < ASSETS::LIGHTING::kLightProbeShCoeffCount; ++k)
+                        sums[cell][k] += values[k] * solidAngle;
+                    total += solidAngle;
                 }
-                const MATH::Vec3 radiance{pixel.x, pixel.y, pixel.z};
-
-                float basis[9]{};
-                EvaluateSh9Basis(dir, basis);
-                for (uint32_t coeff = 0; coeff < ASSETS::LIGHTING::kLightProbeShCoeffCount; ++coeff) {
-                    outSh.coeffs[coeff] = Add(outSh.coeffs[coeff], Mul(radiance, basis[coeff] * weight));
-                }
-                totalWeight += weight;
-            }
         }
-    }
-
-    if (totalWeight <= 0.0f) {
-        if (outMessage) {
-            *outMessage = "light probe capture solid angle is invalid.";
-        }
-        return false;
-    }
-
-    // 距離と距離二乗を同じ方向フィルターへ通す。RGB の SH 投影とは混ぜない。
-    constexpr uint32_t side = ASSETS::LIGHTING::kLightProbeVisibilityResolution;
-    for (uint32_t y = 0; y < side; ++y) {
-        for (uint32_t x = 0; x < side; ++x) {
-            double mean = 0.0, secondMoment = 0.0;
-            for (uint32_t sy = 0; sy < 3; ++sy) {
-                for (uint32_t sx = 0; sx < 3; ++sx) {
-                    const auto direction = MATH::DecodeOctahedralDirection(
-                        {(x + (sx + 0.5f) / 3.0f) / side, (y + (sy + 0.5f) / 3.0f) / side});
-                    uint32_t face = 0;
-                    float u = 0, v = 0;
-                    MATH::DirectionToCubeFaceUv(direction, face, u, v);
-                    const uint32_t px = (std::min)(static_cast<uint32_t>(u * resolution), resolution - 1u);
-                    const uint32_t py = (std::min)(static_cast<uint32_t>(v * resolution), resolution - 1u);
-                    const double distance = ReadPixel(*image.GetImage(0, face, 0), px, py).w;
-                    mean += distance;
-                    secondMoment += distance * distance;
-                }
-            }
-            visibility[y * side + x] = {static_cast<float>(mean / 9.0), static_cast<float>(secondMoment / 9.0)};
-        }
-    }
-
-    if (outMessage) {
-        *outMessage = "Projected cubemap to SH9: " + capturePath.generic_string();
-    }
-    return true;
+        // 細分の誤差を全球の 4π へ合わせる。
+        const double scale = total > 0.0 ? 4.0 * std::numbers::pi / total : 0.0;
+        DirectionBasis result{};
+        for (uint32_t cell = 0; cell < kDxrProbeDirectionCount; ++cell)
+            for (uint32_t k = 0; k < ASSETS::LIGHTING::kLightProbeShCoeffCount; ++k)
+                result[cell][k] = static_cast<float>(sums[cell][k] * scale);
+        return result;
+    }();
+    return basis;
 }
 
 bool SaveDebugJson(const std::filesystem::path& path, const LightProbeBakeRequest& request,
-                   const std::vector<std::filesystem::path>& capturePaths, std::string* outMessage) {
+                   const LightProbeBakeResult& result, std::string* outMessage) {
     LightProbeVolumeSettings settings = request.settings;
     ClampLightProbeVolumeSettings(settings);
-    nlohmann::json serializedCapturePaths = nlohmann::json::array();
-    for (const std::filesystem::path& capturePath : capturePaths) {
-        serializedCapturePaths.push_back(PROJECT_PATHS::MakeProjectRelativeString(request.projectRoot, capturePath));
-    }
-
     const nlohmann::json root{
         {"type", "VolumeGrid"},
+        {"transport", "DxrPathTracing"},
         {"probeCount", GetLightProbeVolumeProbeCount(settings)},
-        {"captureResolution", settings.captureResolution},
+        {"directionCount", kDxrProbeDirectionCount},
+        {"samplesPerDirection", request.sampleCount},
+        {"bounceCount", request.bounceCount},
+        {"buriedProbeCount", result.buriedProbeCount},
         {"shOrder", settings.shOrder},
-        {"capturePaths", std::move(serializedCapturePaths)},
     };
     if (!SERIALIZATION::JSON::WriteJsonFile(path, root, outMessage)) {
         return false;
@@ -193,9 +120,9 @@ bool SaveDebugJson(const std::filesystem::path& path, const LightProbeBakeReques
 
 } // namespace
 
-LightProbeBakeResult LightProbeBaker::FinalizeCapturedVolume(
-    const LightProbeBakeRequest& request, const std::vector<std::filesystem::path>& probeCapturePaths,
-    float visibilityDistanceScale) const {
+LightProbeBakeResult LightProbeBaker::BuildVolume(const LightProbeBakeRequest& request,
+                                                  std::span<const DxrTransportAccumulation> cells,
+                                                  float visibilityDistanceScale) const {
     LightProbeBakeResult result{};
     result.success = false;
 
@@ -215,8 +142,9 @@ LightProbeBakeResult LightProbeBaker::FinalizeCapturedVolume(
         AddError(result, "Light probe volume is disabled.");
         return result;
     }
-    if (probeCapturePaths.size() != probeCount) {
-        AddError(result, "Light probe capture count does not match volume grid.");
+    if (cells.size() != static_cast<size_t>(probeCount) * kDxrProbeDirectionCount ||
+        !(visibilityDistanceScale > 0.0f)) {
+        AddError(result, "Light probe transport results do not match the volume grid.");
         return result;
     }
 
@@ -234,19 +162,45 @@ LightProbeBakeResult LightProbeBaker::FinalizeCapturedVolume(
     volume.visibilityMoments.resize(static_cast<size_t>(probeCount) *
                                     ASSETS::LIGHTING::kLightProbeVisibilityTexelCount);
 
-    // Cubemap radiance を SH9 に投影し、diffuse indirect 用に保存する。
+    // 方向ごとに、裏面に当たらなかった標本の放射輝度の平均を SH9 へ投影し、最初に当たるまでの距離の平均と二乗平均を
+    // 可視性の moment にする（距離は visibilityDistanceScale で正規化）。埋まった探針は寄与も可視性も零にして、
+    // 実行時の可視性の判定で補間から外す。
+    const DirectionBasis& basis = GetDirectionBasis();
+    const float inverseScale = 1.0f / visibilityDistanceScale;
     for (uint32_t probe = 0; probe < probeCount; ++probe) {
-        std::string message{};
-        if (!ProjectCubemapToSh9(
-                probeCapturePaths[probe], volume.probes[probe],
-                std::span(volume.visibilityMoments)
-                    .subspan(static_cast<size_t>(probe) * ASSETS::LIGHTING::kLightProbeVisibilityTexelCount,
-                             ASSETS::LIGHTING::kLightProbeVisibilityTexelCount),
-                &message)) {
-            AddError(result, message);
+        const auto probeCells =
+            cells.subspan(static_cast<size_t>(probe) * kDxrProbeDirectionCount, kDxrProbeDirectionCount);
+        double samples = 0.0, backfaces = 0.0;
+        for (const DxrTransportAccumulation& cell : probeCells) {
+            samples += cell.radiance.w;
+            backfaces += cell.statistics.x;
+        }
+        if (!(samples > 0.0)) {
+            AddError(result, "Light probe " + std::to_string(probe) + " received no samples.");
             return result;
         }
-        result.messages.push_back(message);
+        auto moments = std::span(volume.visibilityMoments)
+                           .subspan(static_cast<size_t>(probe) * ASSETS::LIGHTING::kLightProbeVisibilityTexelCount,
+                                    ASSETS::LIGHTING::kLightProbeVisibilityTexelCount);
+        ASSETS::LIGHTING::LightProbeSh9& sh = volume.probes[probe];
+        if (backfaces > kProbeBackfaceTolerance * samples) {
+            ++result.buriedProbeCount;
+            std::fill(moments.begin(), moments.end(), MATH::Vec2{0.0f, 0.0f});
+            continue;
+        }
+        for (uint32_t direction = 0; direction < kDxrProbeDirectionCount; ++direction) {
+            const DxrTransportAccumulation& cell = probeCells[direction];
+            const float front = cell.radiance.w - cell.statistics.x;
+            if (!(front > 0.0f)) {
+                moments[direction] = {0.0f, 0.0f};
+                continue;
+            }
+            const MATH::Vec3 radiance{cell.radiance.x / front, cell.radiance.y / front, cell.radiance.z / front};
+            for (uint32_t k = 0; k < ASSETS::LIGHTING::kLightProbeShCoeffCount; ++k)
+                sh.coeffs[k] = sh.coeffs[k] + radiance * basis[direction][k];
+            moments[direction] = {std::clamp(cell.statistics.y / front * inverseScale, 0.0f, 1.0f),
+                                  std::clamp(cell.statistics.w / front * inverseScale * inverseScale, 0.0f, 1.0f)};
+        }
     }
 
     result.volumePath =
@@ -259,10 +213,13 @@ LightProbeBakeResult LightProbeBaker::FinalizeCapturedVolume(
     }
     result.volumeWritten = true;
     result.messages.push_back(saveMessage);
+    if (result.buriedProbeCount > 0u)
+        result.messages.push_back(std::to_string(result.buriedProbeCount) + " of " + std::to_string(probeCount) +
+                                  " probes are inside geometry and were disabled.");
 
     result.debugJsonPath =
         LightProbeOutputDirectory(request.projectRoot, request.sceneGuid) / (request.volumeId + "_debug.json");
-    if (SaveDebugJson(result.debugJsonPath, request, probeCapturePaths, &saveMessage)) {
+    if (SaveDebugJson(result.debugJsonPath, request, result, &saveMessage)) {
         result.debugJsonWritten = true;
         result.messages.push_back(saveMessage);
     } else if (!saveMessage.empty()) {
@@ -290,10 +247,10 @@ LightProbeBakeResult LightProbeBaker::FinalizeCapturedVolume(
     result.record.scenario = request.scenario;
 
     result.probeCount = probeCount;
-    result.captureResolution = settings.captureResolution;
     result.success = true;
     HIKARI_LOG_INFO("[LightProbeBaker] baked volume scene=" + request.sceneGuid +
-                    " probes=" + std::to_string(probeCount) + " path=" + result.volumePath.generic_string());
+                    " probes=" + std::to_string(probeCount) + " buried=" + std::to_string(result.buriedProbeCount) +
+                    " path=" + result.volumePath.generic_string());
     return result;
 }
 

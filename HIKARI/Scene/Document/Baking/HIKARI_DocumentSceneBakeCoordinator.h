@@ -12,6 +12,7 @@
 #include "Tools/Baking/HIKARI_ProbeCubemapCaptureTarget.h"
 #include "Tools/Baking/HIKARI_ReflectionProbeBaker.h"
 #include "Tools/Baking/Backends/HIKARI_DxrProgressiveLightmapBaker.h"
+#include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Lighting/Transport/HIKARI_LightingTransportScene.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 
@@ -51,15 +52,16 @@ private:
         uint32_t nextFaceIndex = 0;
     };
 
+    // 探針は光照贴图と同じ DXR の経路で、探針ごとに 16x16 の八面体の方向へ積む。
     struct LightProbeJob {
         TOOLS::BAKING::LightingBakeJobState state = TOOLS::BAKING::LightingBakeJobState::Idle;
         TOOLS::BAKING::LightProbeBakeRequest request{};
         TOOLS::BAKING::LightingBakeReport report{};
-        TOOLS::BAKING::ProbeCubemapCaptureTarget captureTarget{};
-        uint64_t fenceValue = 0;
-        uint32_t nextProbeIndex = 0;
-        uint32_t nextFaceIndex = 0;
-        std::vector<std::filesystem::path> probeCapturePaths{};
+        RENDER3D::LIGHTING::TRANSPORT::LightingTransportScene transportScene{};
+        TOOLS::BAKING::DxrProgressiveLightmapBaker baker{};
+        std::vector<MATH::Vec3> positions{};
+        std::vector<TOOLS::BAKING::DxrTransportAccumulation> cells{};
+        float visibilityDistance = 0.0f;
     };
 
     struct LightmapJob {
@@ -90,6 +92,10 @@ private:
     };
 
     bool StartNextQueuedBake(DocumentSceneBase& scene);
+    // 光照贴图と探針の DXR の焼き込みが使う場面（参加する静的な模型の三角形、材質、光源、空）。
+    RENDER3D::LIGHTING::TRANSPORT::LightingTransportScene BuildTransportScene(
+        DocumentSceneBase& scene, const std::filesystem::path& projectRoot,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting);
 
     std::unique_ptr<ReflectionProbeJob> reflectionProbeJob_{};
     std::unique_ptr<LightProbeJob> lightProbeJob_{};

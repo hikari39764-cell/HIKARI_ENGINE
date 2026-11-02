@@ -3594,6 +3594,8 @@
     {"ui.inspector.text.Projection", "投影"},
     {"ui.inspector.text.Bake Routing", "ベイクの振り分け"},
     {"ui.inspector.text.Volume", "ボリューム"},
+    {"ui.inspector.text.Extent of the probe grid. Baked volumes also cover half a probe spacing beyond it, so keep the outer probes inside the room.", "プローブ格子の範囲。焼き込みのボリュームは格子の外へ半間隔まで覆うので、外周のプローブは部屋の中に置けばよい。"},
+    {"ui.inspector.text.Baked: fade-out distance beyond the covered box. Realtime: fade distance inside the box.", "焼き込み：覆う範囲の外で消えるまでの距離。リアルタイム：ボリュームの内側で消える距離。"},
     {"ui.inspector.text.Realtime volumes are updated by ray-traced dynamic GI and need no bake.", "リアルタイムのボリュームはレイトレースの動的 GI で更新され、ベイク不要。"},
     {"ui.inspector.text.Normal bias samples GI slightly away from walls to reduce leaks.", "法線バイアスは壁から少し離れた位置で GI を取り、光漏れを減らす。"},
     {"ui.inspector.text.Probe Grid", "プローブグリッド"},

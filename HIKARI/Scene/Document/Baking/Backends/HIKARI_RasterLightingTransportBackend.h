@@ -2,7 +2,6 @@
 
 #include <cstdint>
 
-#include "Render3D/Lighting/Transport/HIKARI_LightingTransportContract.h"
 
 namespace HIKARI {
 
@@ -18,11 +17,10 @@ namespace DOCUMENT_SCENE_BAKING {
 
 class RasterLightingTransportBackend final {
 public:
-    RENDER3D::LIGHTING::TRANSPORT::LightingTransportBackendCapabilities GetCapabilities() const noexcept;
-
+    // 反射探針の cubemap の一面（拡散の探針は DXR の経路で焼く）。
     bool RenderProbeFace(DocumentSceneBase& scene, TOOLS::BAKING::ProbeCubemapCaptureTarget& captureTarget,
-                         const Camera3D& faceCamera, const SceneEnvironment& captureEnvironment, uint32_t faceIndex,
-                         RENDER3D::LIGHTING::TRANSPORT::LightingTransportProductKind product) const;
+                         const Camera3D& faceCamera, const SceneEnvironment& captureEnvironment,
+                         uint32_t faceIndex) const;
 };
 
 } // namespace DOCUMENT_SCENE_BAKING
