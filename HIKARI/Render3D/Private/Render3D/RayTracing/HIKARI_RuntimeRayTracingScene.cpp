@@ -2,8 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <bit>
-#include <cmath>
 #include <cstring>
 #include <map>
 #include <optional>
@@ -11,7 +9,6 @@
 #include <vector>
 #include <d3dx12.h>
 
-#include "Core/Math/HIKARI_MathValidation.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
 #include "Gfx/HIKARI_FencedUploadBuffers.h"
@@ -27,6 +24,7 @@
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingDeformation.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingChanges.h"
+#include "Render3D/RayTracing/HIKARI_RuntimeRayTracingInputs.h"
 #include "RenderCore/Resources/HIKARI_RenderResourceSystem.h"
 
 namespace HIKARI::RENDER3D::RAYTRACING {
@@ -90,30 +88,6 @@ struct Deformed {
         return bytes;
     }
 };
-// 頂点が GPU で変形する面などは今は入れられない。入れられる面は nullopt（半透明は透過する面として入れる）。
-std::optional<RuntimeRayTracingExclusion> ClassifyExclusion(const GPUDRIVEN::GpuSceneSurfaceRecord& record) {
-    using enum RuntimeRayTracingExclusion;
-    if (record.waterSurface)
-        return Water;
-    if (record.skinned)
-        return Skinned;
-    if (record.foliageWind)
-        return FoliageWind;
-    if (record.terrainSurface)
-        return Terrain;
-    if (record.key.customVertexShader)
-        return CustomVertex;
-    if (record.key.materialFx)
-        return MaterialEffect;
-    return std::nullopt;
-}
-bool ValidTransform(const MATH::Mat4& world) {
-    if (!MATH::IsFinite(world) || world.m[0][3] != 0 || world.m[1][3] != 0 || world.m[2][3] != 0 || world.m[3][3] != 1)
-        return false;
-    const auto matrix = std::bit_cast<DirectX::XMFLOAT4X4>(world);
-    const float determinant = DirectX::XMVectorGetX(DirectX::XMMatrixDeterminant(DirectX::XMLoadFloat4x4(&matrix)));
-    return std::isfinite(determinant) && determinant != 0;
-}
 template <class T>
 bool SameBytes(const std::vector<T>& a, const std::vector<T>& b) {
     return a.size() == b.size() && (a.empty() || std::memcmp(a.data(), b.data(), a.size() * sizeof(T)) == 0);
@@ -125,53 +99,15 @@ void WriteTransform(D3D12_RAYTRACING_INSTANCE_DESC& instance, const MATH::Mat4& 
 }
 bool SameMatrix(const MATH::Mat4& a, const MATH::Mat4& b) { return std::memcmp(&a, &b, sizeof(a)) == 0; }
 
-// 表面を加速構造へどう入れるかを決める入力（world 行列と材質を除く）。前回と全部同じなら、変わったのは配置か
-// 材質だけ。材質はプログラム（画面や微分を使うと外す）だけが入れ方を変え、slot は hit 記録の番号を直せば足りる。
-struct RecordInputs {
-    uint64_t object = 0, lifetime = 0;
-    uint32_t geometryIndex = 0, geometryGeneration = 0;
-    uint32_t node = 0, mesh = 0, primitive = 0;
-    uint32_t materialProgram = 0;
-    uint32_t terrainIndex = 0;
-    uint32_t bits = 0;
-    friend bool operator==(const RecordInputs&, const RecordInputs&) = default;
-};
-RecordInputs ReadInputs(const GPUDRIVEN::GpuSceneSurfaceRecord& record, size_t index,
-                        std::span<const uint32_t> materialSlots, std::span<const MATERIAL::GpuMaterialData> materials) {
-    const bool flags[] = {record.visible,
-                          record.valid,
-                          record.skinned,
-                          record.foliageWind,
-                          record.waterSurface,
-                          record.terrainSurface,
-                          record.key.customVertexShader,
-                          record.key.materialFx,
-                          record.jointPaletteMatrixCount != 0,
-                          record.key.doubleSided,
-                          record.castShadow,
-                          record.key.transparent};
-    uint32_t bits = 0;
-    for (size_t b = 0; b < std::size(flags); ++b)
-        bits |= flags[b] ? 1u << b : 0u;
-    const auto handle = record.key.resources.clusterGeometry;
-    const uint32_t slot = index < materialSlots.size() ? materialSlots[index] : 0xffffffffu;
-    return {record.objectId.value,
-            record.objectLifetimeGeneration,
-            handle.index,
-            handle.generation,
-            record.nodeIndex,
-            record.meshIndex,
-            record.primitiveIndex,
-            slot < materials.size() ? materials[slot].materialProgramIndex : 0xffffffffu,
-            record.terrainSurfaceGpuDataIndex,
-            bits};
-}
+// まだ場面へ入れられない面（未解決・組み途中）。残っている間は毎フレーム組み直す。
+inline constexpr uint32_t kUnsettledExclusions = RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Missing) |
+                                                 RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Pending);
 // 表面の前回の入れ方。group は静的な群の番号。変形する面は kDeformedGroup、入れなかった面は kNoGroup。
 inline constexpr uint32_t kNoGroup = 0xffffffffu;
 inline constexpr uint32_t kDeformedGroup = 0xfffffffeu;
 // materialSlot は hit 記録に書いた材質の slot、surfaceIndex は群の中の面の番号（静的な群の面だけ）。
 struct RecordUse {
-    RecordInputs inputs{};
+    RayRecordInputs inputs{};
     uint32_t group = kNoGroup;
     uint32_t materialSlot = 0xffffffffu;
     uint32_t surfaceIndex = 0;
@@ -219,6 +155,9 @@ struct RuntimeRayTracingScene::State {
     RuntimeRayTracingStats stats;
     // 最後に組んだ時の入れなかった面（大量配置は毎フレーム足す）。加速構造を使い回すフレームも同じ値を出す。
     RuntimeRayTracingExclusions lastExcluded{};
+    // この場面が一度欠けなく揃ったか（失敗と場面の入れ替えで戻る）。揃った後に足した面だけを Pending として遅らせる
+    // （初めの読み込み中は揃うまで待つ。欠けた場面で GI を始めると光線が抜けて空の光を拾う）。
+    bool complete = false;
     std::map<DeformedKey, Deformed> deformed;
     bool deformedRefreshed = false; // 直前の DeformAndRefit が頂点を書き直した（TLAS の refit が要る）
     RuntimeRayTracingDeformation deformation;
@@ -346,6 +285,7 @@ struct RuntimeRayTracingScene::State {
     }
     RuntimeRayTracingFrame Fail(const GFX::Context& graphics, const RuntimeRayTracingBudget& budget,
                                 RuntimeRayTracingStatus status) {
+        complete = false;
         RetireTop(graphics);
         Available(budget);
         stats.status = status;
@@ -401,8 +341,8 @@ struct RuntimeRayTracingScene::State {
                        RuntimeRayTracingMaterialVersion materials) {
         if (!topLevel || source.sourceVersion == 0 || materials.data == 0 || materials.bindings == 0 ||
             sourceIdentity != source.surfaceRecords || layoutVersion != source.layoutVersion ||
-            (lastExcluded.mask & RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Missing)) != 0u)
-            return false; // 未解決の面（読み込み中の形状など）があれば揃うまで毎フレーム組み直す。
+            (lastExcluded.mask & kUnsettledExclusions) != 0u)
+            return false;
         for (const auto& [key, asset] : assets) {
             const ClusterGeometryResourceHandle handle{uint32_t(key), uint32_t(key >> 32)};
             const auto* current = GetClusterGeometryResource(handle);
@@ -440,13 +380,13 @@ struct RuntimeRayTracingScene::State {
         for (size_t i = 0; i < records.size(); ++i) {
             const auto& record = records[i];
             auto& use = recordUses[i];
-            if (!(ReadInputs(record, i, materialSlots, materials) == use.inputs))
+            if (!(ReadRayRecordInputs(record, i, materialSlots, materials) == use.inputs))
                 return std::nullopt;
             const MATH::Mat4& world = record.clusterWorldMatrix;
             const uint32_t slot = i < materialSlots.size() ? materialSlots[i] : 0xffffffffu;
             if (use.group == kDeformedGroup) {
                 // 変形する面は DeformAndRefit が毎回行列を読む。不正な行列と材質替えは全体の組み直しで扱う。
-                if (slot != use.materialSlot || !ValidTransform(world))
+                if (slot != use.materialSlot || !IsValidRayTransform(world))
                     return std::nullopt;
                 continue;
             }
@@ -461,7 +401,7 @@ struct RuntimeRayTracingScene::State {
             uint8_t& state = groupStates[use.group];
             if (state == 0) {
                 const bool same = SameMatrix(world, groupUses[use.group].world);
-                if (!same && !ValidTransform(world))
+                if (!same && !IsValidRayTransform(world))
                     return std::nullopt;
                 state = same ? 1 : 2;
                 movedWorlds[use.group] = world;
@@ -627,8 +567,10 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
     if (state.workFence != graphics.currentFrameRetireFenceValue) {
         state.workFence = graphics.currentFrameRetireFenceValue;
         state.frameBuilds = state.frameUploads = 0;
-        if (state.sourceIdentity != source.surfaceRecords)
+        if (state.sourceIdentity != source.surfaceRecords) {
             state.changes.Reset();
+            state.complete = false;
+        }
         state.changes.Update(*source.surfaceRecords);
     }
     std::erase_if(state.retiring, [](const auto& entry) { return entry.fence->GetCompletedValue() >= entry.value; });
@@ -669,14 +611,14 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
     std::vector<Group*> groupOf(records.size(), nullptr);
     for (size_t i = 0; i < records.size(); ++i) {
         const auto& record = records[i];
-        recordUses[i].inputs = ReadInputs(record, i, materialSlots, materials);
+        recordUses[i].inputs = ReadRayRecordInputs(record, i, materialSlots, materials);
         recordUses[i].materialSlot = i < materialSlots.size() ? materialSlots[i] : 0xffffffffu;
         if (!record.visible)
             continue;
         ++state.stats.sourceSurfaces;
         // 骨格の蒙皮は描画と同じ骨格の行列で、地形は高さ場で頂点を変形して入れる（変形の pass が使えない時は外す）。
         // 風に揺れる植生・自定义頂点・材質特効は静止した形で入れる（拡散 GI と反射には足りる。影は揺れを追わない）。
-        const auto exclusion = ClassifyExclusion(record);
+        const auto exclusion = ClassifyRayExclusion(record);
         const bool deformSkin = exclusion == Skinned && record.jointPaletteMatrixCount != 0 && !state.deformationBroken;
         const bool deformTerrain = exclusion == Terrain && record.terrainSurfaceGpuDataIndex != 0 &&
                                    surfaces.terrainRecords != 0 && surfaces.surfaceFloats != 0 &&
@@ -688,7 +630,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
         }
         if (approximate)
             excluded.Approximate(*exclusion);
-        if (!record.valid || !ValidTransform(record.clusterWorldMatrix) || i >= materialSlots.size() ||
+        if (!record.valid || !IsValidRayTransform(record.clusterWorldMatrix) || i >= materialSlots.size() ||
             materialSlots[i] >= materials.size()) {
             excluded.Add(Missing, record.castShadow);
             continue;
@@ -705,15 +647,19 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
     state.stats.sharedAssets = static_cast<uint32_t>(state.assets.size());
     ++state.serial;
     std::map<GroupKey, Group> groups;
+    std::vector<size_t> loading; // 形状の資源がまだ読み込み中の面
     for (size_t i = 0; i < records.size(); ++i) {
         const auto& record = records[i];
         if (!included[i])
             continue;
         const auto handle = record.key.resources.clusterGeometry;
         Asset* asset = state.ResolveAsset(graphics, budget, handle);
+        if (!asset) {
+            loading.push_back(i);
+            continue;
+        }
         const auto* range =
-            asset ? FindClusterGeometrySurfaceRange(handle, record.nodeIndex, record.meshIndex, record.primitiveIndex)
-                  : nullptr;
+            FindClusterGeometrySurfaceRange(handle, record.nodeIndex, record.meshIndex, record.primitiveIndex);
         if (!range || range->surfaceIndex >= asset->source->surfaceRanges.size()) {
             excluded.Add(Missing, record.castShadow);
             continue;
@@ -772,8 +718,23 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
         it = state.assets.erase(it);
     }
     state.stats.sharedAssets = static_cast<uint32_t>(state.assets.size());
+    // 完成した場面へ少数の面を足した時（新しく置いた物、後から流れてきた形状）は、まだ使えない面を Pending として
+    // 外し、残りで場面を出す（光追の影や GI の履歴を場面ごと止めない）。読み込み直後や場面の入れ替えのように
+    // 未完成が多い時は、空に近い場面で GI が空の光を拾わないよう揃うまで待つ（読み込み中は Missing）。
+    size_t placedRecords = loading.size();
+    for (size_t i = 0; i < records.size(); ++i)
+        placedRecords += groupOf[i] ? 1u : 0u;
+    for (const auto& [key, entry] : state.deformed)
+        placedRecords += entry.records.size();
+    const bool completeBefore = state.complete;
+    const auto deferrable = [&](size_t pendingCount) { return completeBefore && pendingCount * 4u <= placedRecords; };
+    const bool loadingPending = deferrable(loading.size());
+    for (const size_t i : loading)
+        excluded.Add(loadingPending ? Pending : Missing, records[i].castShadow);
     state.lastExcluded = excluded;
     state.ExcludeMassInstances(source);
+    if ((state.lastExcluded.mask & kUnsettledExclusions) == 0u)
+        state.complete = true;
     if (groups.empty() && state.deformed.empty()) {
         state.RetireTop(graphics);
         state.Available(budget);
@@ -816,8 +777,34 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(const GFX::Context& graph
         if (staticUse)
             state.stats.pendingChunks += static_cast<uint32_t>(asset->chunks.size() - asset->bottomLevels.size());
     }
-    if (state.stats.pendingChunks)
-        return state.Fail(graphics, budget, RuntimeRayTracingStatus::Building);
+    if (state.stats.pendingChunks) {
+        // 形状の BLAS を数フレームかけて組む間も、上と同じ決まりで組み終わった形状だけの場面を出す。
+        const auto built = [](const Asset& asset) { return asset.bottomLevels.size() == asset.chunks.size(); };
+        std::vector<size_t> pendingRecords;
+        for (size_t i = 0; i < records.size(); ++i)
+            if (groupOf[i] && !built(*groupOf[i]->asset))
+                pendingRecords.push_back(i);
+        for (const auto& [key, entry] : state.deformed)
+            if (!entry.asset->geometry.indices)
+                pendingRecords.insert(pendingRecords.end(), entry.records.begin(), entry.records.end());
+        if (!deferrable(pendingRecords.size() + (loadingPending ? loading.size() : 0u)))
+            return state.Fail(graphics, budget, RuntimeRayTracingStatus::Building);
+        for (const size_t i : pendingRecords) {
+            state.lastExcluded.Add(Pending, records[i].castShadow);
+            groupOf[i] = nullptr;
+            recordUses[i].group = kNoGroup;
+        }
+        std::erase_if(groups, [&built](const auto& entry) { return !built(*entry.second.asset); });
+        for (auto it = state.deformed.begin(); it != state.deformed.end();) {
+            if (it->second.asset->geometry.indices) {
+                ++it;
+                continue;
+            }
+            state.RetireDeformed(graphics, it->second);
+            it = state.deformed.erase(it);
+        }
+        state.ExcludeMassInstances(source);
+    }
     // 変形する面の頂点を pool に並べ（面ごとに [位置][法線][接線]）、変形して BLAS を組む。
     uint64_t deformedBytes = 0;
     for (auto& [key, entry] : state.deformed) {

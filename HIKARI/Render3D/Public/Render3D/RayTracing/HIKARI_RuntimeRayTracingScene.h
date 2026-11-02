@@ -37,6 +37,8 @@ enum class RuntimeRayTracingExclusion : uint8_t {
     MaterialEffect,
     ScreenMaterial,
     MassInstances,
+    // 完成した場面へ後から足した少数の面で、形状の BLAS をまだ組んでいる途中（数フレームで入る）。
+    Pending,
     Missing,
     Count
 };
@@ -50,6 +52,7 @@ inline constexpr TEXT::EnumName<RuntimeRayTracingExclusion> kRuntimeRayTracingEx
     {RuntimeRayTracingExclusion::MaterialEffect, "MaterialEffect"},
     {RuntimeRayTracingExclusion::ScreenMaterial, "ScreenMaterial"},
     {RuntimeRayTracingExclusion::MassInstances, "MassInstances"},
+    {RuntimeRayTracingExclusion::Pending, "Pending"},
     {RuntimeRayTracingExclusion::Missing, "Missing"},
 };
 
@@ -80,14 +83,19 @@ struct RuntimeRayTracingExclusions {
 };
 
 // GI は未解決の面（読み込み中の形状など）が抜けると光線が面を抜けて空を拾い、場面へ光が漏れるので、揃うまで待つ。
+// 組み途中（Pending）は完成した場面に足した少数の面だけなので、数フレーム遅れて入るのを許して履歴を捨てない。
+inline constexpr uint32_t kRuntimeRayTracingDiffuseBlockingExclusions =
+    RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Missing);
 constexpr bool CanTraceDiffuse(uint32_t excluded) noexcept {
-    return (excluded & RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Missing)) == 0u;
+    return (excluded & kRuntimeRayTracingDiffuseBlockingExclusions) == 0u;
 }
 // 光追の影は不透明面のカスケード影と接触影を置き換えるので、影を落とす面が抜けると影が消える。
-// 水面は抜けても影の形が崩れないので許す。
+// 水面は抜けても影の形が崩れない。組み途中の面は数フレーム遅れて影が入る（場面全体をカスケードへ戻すより目立たない）。
+inline constexpr uint32_t kRuntimeRayTracingShadowToleratedExclusions =
+    RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Water) |
+    RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Pending);
 constexpr bool CanTraceShadows(uint32_t excludedShadowCasters) noexcept {
-    constexpr uint32_t tolerated = RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Water);
-    return (excludedShadowCasters & ~tolerated) == 0u;
+    return (excludedShadowCasters & ~kRuntimeRayTracingShadowToleratedExclusions) == 0u;
 }
 
 // 地形の高さ場（HIKARI_TerrainSurfaceParams.hlsli の記録と float pool）。地形の面を世界空間へ変形して入れるのに使う。

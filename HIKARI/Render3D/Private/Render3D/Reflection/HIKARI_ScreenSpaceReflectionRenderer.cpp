@@ -500,10 +500,13 @@ bool ScreenSpaceReflectionRenderer::Render(const GFX::Context& graphics,
     bind(trace.srv.gpu);
     // 光線追跡が使える時は SSR の trace の代わりに全 texel を光線追跡の反射で書く。SSR と光線追跡で向きと当たる形状が
     // 食い違うと、両者の境目と確信度の段差が床に縞や輪として出る。加速構造に入っていない面は映らないだけなので使う。
+    // 反射自身の調試表示（確信度・命中）は光線追跡のまま見せる。他の調試表示は画面の色を置き換えるので SSR に戻す。
+    const bool reflectionDebug = debugView == RenderDebugView::SsrConfidence || debugView == RenderDebugView::SsrHit;
     const bool rayCapable =
         rayLighting && materials && *materials && rayLighting->status == RAYTRACING::RuntimeRayLightingStatus::Ready &&
         rayLighting->scene.ready && !rayLighting->scene.empty && rayLighting->scene.accelerationStructure != 0 &&
-        debugView == RenderDebugView::None && trace.uav.IsValid() && state.EnsureRayPipeline(graphics);
+        (debugView == RenderDebugView::None || reflectionDebug) && trace.uav.IsValid() &&
+        state.EnsureRayPipeline(graphics);
     const auto raySlice = rayCapable ? upload.Allocate(sizeof(RayConstants)) : DX::UploadAllocation{};
     if (raySlice) {
         RayConstants rayConstants{};

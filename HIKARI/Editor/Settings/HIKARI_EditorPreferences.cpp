@@ -1,5 +1,6 @@
 #include "Editor/Settings/HIKARI_EditorPreferences.h"
 #include "Core/HIKARI_Logger.h"
+#include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include <Windows.h>
 #include <ShlObj.h>
 #include <algorithm>
@@ -21,7 +22,10 @@ void Apply(const EditorPreferences& value) {
     CORE::SetLogHistoryCapacity(static_cast<size_t>(value.logCapacity));
 }
 EditorPreferencesStore& Store() {
-    static EditorPreferencesStore store(EditorUserSettingsDirectory());
+    // 無頭の描画（自動の截图・計測）は利用者の設定を読まず書かない（imgui.ini と同じ）。読むと横栏の幅や頁が
+    // 利用者の最後の操作で変わり、同じ指定でも画面がずれる。
+    static EditorPreferencesStore store(
+        HasRuntimeCommandLineFlag(L"--headless-render") ? std::filesystem::path{} : EditorUserSettingsDirectory());
     static const bool applied = [&] {
         Apply(store.Get());
         return true;
@@ -80,10 +84,14 @@ bool SaveEditorPreferences(const EditorPreferences& preferences) {
 
 bool EditorPreferencesStore::Save(const EditorPreferences& preferences) {
     const auto candidate = Normalize(preferences);
+    if (directory_.empty()) {
+        // 保存先が無い（無頭の描画）時はこの起動の間だけ持つ。
+        value_ = candidate;
+        error_.clear();
+        return true;
+    }
     std::filesystem::path temporary;
     try {
-        if (directory_.empty())
-            throw std::runtime_error("User settings directory unavailable");
         std::filesystem::create_directories(directory_);
         auto data = source_;
         data["version"] = 1;

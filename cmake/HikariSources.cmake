@@ -351,6 +351,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/RayTracing/HIKARI_RuntimeRayTracingScene.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/RayTracing/HIKARI_RuntimeRayTracingChanges.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/RayTracing/HIKARI_RuntimeRayTracingDeformation.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/RayTracing/HIKARI_RuntimeRayTracingInputs.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/RayTracing/HIKARI_RuntimeRayQueryBindings.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/RayTracing/HIKARI_RuntimeRayTracingLighting.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/RenderContracts/Private/RenderContracts/Geometry/HIKARI_ClusterGeometryPacked.cpp"

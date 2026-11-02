@@ -9,6 +9,7 @@
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
 #include "Render3D/Lighting/HIKARI_DynamicDiffuseGi.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Lighting/HIKARI_SceneLightingRuntimeData.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingScene.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -111,15 +112,31 @@ void DrawRenderFeatureStatus(const SceneEnvironment& environment) {
                     quality.lightProbeVolumeSampling != RENDER3D::LightProbeVolumeSamplingMode::Off;
     FeatureState giState = Localized("ui.renderStatus.offInQuality", EditorStatusTone::Normal);
     if (gi) {
-        // GI を妨げるのは未解決の面だけ（地形は高さ場で変形して入る）。
-        constexpr uint32_t blocking = RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Missing);
-        giState = RayFeature(rayScene, CanTraceDiffuse(rayScene.excluded.mask), rayScene.excluded.mask & blocking);
+        giState = RayFeature(rayScene, CanTraceDiffuse(rayScene.excluded.mask),
+                             rayScene.excluded.mask & kRuntimeRayTracingDiffuseBlockingExclusions);
         if (giState.tone == EditorStatusTone::Ready &&
             RENDER3D::PIPELINE::GetDynamicDiffuseGiStats().status != RENDER3D::DYNAMICGI::Status::Ready) {
             giState = Localized("ui.renderStatus.building", EditorStatusTone::Normal);
         }
     }
     Row("ui.renderStatus.gi", giState);
+
+    // この場面が読み込んだ焼き付け結果。光照贴图のある静的な面は動的 GI の代わりにそれを使う。
+    const RENDER3D::LIGHTING::SceneLightingRuntimeData& baked = RENDER3D::LIGHTING::GetLastLightingRuntimeData();
+    FeatureState bakedState = Localized("ui.renderStatus.bakedNone", EditorStatusTone::Normal);
+    if (baked.loadedLightmapCount + baked.loadedIrradianceVolumeCount + baked.loadedReflectionProbeCount != 0u) {
+        char buffer[160]{};
+        std::snprintf(buffer, sizeof(buffer), TEXT::Localize("ui.renderStatus.bakedFormat").c_str(),
+                      baked.loadedLightmapCount, baked.loadedIrradianceVolumeCount, baked.loadedReflectionProbeCount);
+        bakedState = {buffer, EditorStatusTone::Ready};
+        if (baked.loadedLightmapCount != 0u && gi)
+            bakedState.detail = TEXT::Localize("ui.renderStatus.bakedReplacesGi");
+    }
+    if (baked.bakeManifestStale) {
+        bakedState.tone = EditorStatusTone::Warning;
+        bakedState.detail = TEXT::Localize("ui.renderStatus.bakedStale");
+    }
+    Row("ui.renderStatus.baked", bakedState);
 
     // 光追の反射は画面配置の反射の節（強さ・粗さの上限）で動くので、その節が有効である必要がある。
     const ScreenSpaceReflectionSettings& ssr = environment.screenSpaceReflections;
@@ -134,9 +151,9 @@ void DrawRenderFeatureStatus(const SceneEnvironment& environment) {
     const bool rayShadows = quality.directionalShadow.rayTraced && environment.shadows.enabled;
     FeatureState rayShadowState = Localized("ui.renderStatus.offInQuality", EditorStatusTone::Normal);
     if (rayShadows) {
-        constexpr uint32_t tolerated = RuntimeRayTracingExclusionBit(RuntimeRayTracingExclusion::Water);
         const uint32_t casters = rayScene.excluded.shadowCasterMask;
-        rayShadowState = RayFeature(rayScene, CanTraceShadows(casters), casters & ~tolerated);
+        rayShadowState =
+            RayFeature(rayScene, CanTraceShadows(casters), casters & ~kRuntimeRayTracingShadowToleratedExclusions);
     }
     Row("ui.renderStatus.rayShadows", rayShadowState);
 
