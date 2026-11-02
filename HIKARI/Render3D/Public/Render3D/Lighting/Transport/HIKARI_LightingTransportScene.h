@@ -28,6 +28,8 @@ struct LightingTransportTriangle {
     uint32_t materialIndex = MATERIAL::kInvalidGpuMaterialIndex;
     uint64_t objectId = 0u;
     uint32_t lightmapAllocationIndex = ASSETS::LIGHTING::kInvalidLightmapSurfaceIndex;
+    // 実行時の描画と同じ両面判定。両面の面は裏から当たっても埋まった texel の証拠にしない。
+    bool doubleSided = false;
 };
 
 struct LightingTransportLightmapPage {
@@ -51,6 +53,7 @@ struct LightingTransportSurfaceTarget {
     uint32_t eligibleSurfaceCount = 0u;
     uint32_t unsupportedSurfaceCount = 0u;
     uint32_t invalidUvSurfaceCount = 0u;
+    // 切り抜きの面は遮蔽と反射だけに参加し、光照贴图は持たない（照明は焼き付け探針から）。
     uint32_t alphaMaskedSurfaceCount = 0u;
     uint32_t blendedSurfaceCount = 0u;
 };

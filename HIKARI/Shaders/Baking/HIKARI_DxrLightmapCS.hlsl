@@ -14,7 +14,8 @@ struct TransportTriangle
     float4 tangent[3];
     float4 materialUv[3];
     uint materialIndex;
-    uint3 padding;
+    uint flags; // bit0 両面
+    uint2 padding;
 };
 
 struct TransportTexel
@@ -46,7 +47,9 @@ cbuffer BakeConstants : register(b0)
     uint gSkyTextureIndex;
     uint gSampleGridWidth;
     uint gSampleGridHeight;
-    uint2 gSamplePadding;
+    // 加速構造の geometry 0 が不透明、geometry 1 が切り抜き。三角形はこの順に並ぶ。
+    uint gOpaqueTriangleCount;
+    uint gConstantsPadding;
     float4 gSkyParams; // x 天空光の倍率、y 空の回転
     float4 gSkyTintExposure;
 };
@@ -203,6 +206,37 @@ bool SampleCosineHemisphere(
         direction);
 }
 
+uint TransportTriangleIndex(uint geometryIndex, uint primitiveIndex)
+{
+    return primitiveIndex + (geometryIndex != 0u ? gOpaqueTriangleCount : 0u);
+}
+
+// 切り抜きの三角形（geometry 1 だけが any-hit の候補になる）を交差位置で alpha test する。
+bool CandidateCovers(uint geometryIndex, uint primitiveIndex, float2 barycentrics)
+{
+    const uint triangleIndex = TransportTriangleIndex(geometryIndex, primitiveIndex);
+    if (triangleIndex >= gTriangleCount)
+    {
+        return false;
+    }
+    const TransportTriangle candidate = gTriangles[triangleIndex];
+    const float3 weights = float3(1.0f - barycentrics.x - barycentrics.y, barycentrics.x, barycentrics.y);
+    const float4 uv = candidate.materialUv[0] * weights.x + candidate.materialUv[1] * weights.y +
+        candidate.materialUv[2] * weights.z;
+    const float4 tangent = candidate.tangent[0] * weights.x + candidate.tangent[1] * weights.y +
+        candidate.tangent[2] * weights.z;
+    const float3 position = candidate.position0.xyz * weights.x + candidate.position1.xyz * weights.y +
+        candidate.position2.xyz * weights.z;
+    float3 normal;
+    if (!TryNormalizeVector(candidate.normal0.xyz * weights.x + candidate.normal1.xyz * weights.y +
+            candidate.normal2.xyz * weights.z, normal))
+    {
+        normal = float3(0.0f, 1.0f, 0.0f);
+    }
+    return HikariLightingTransportCovers(candidate.materialIndex, uv.xy, uv.zw, position, normal, tangent,
+        gMaterialSampler);
+}
+
 bool TraceAny(float3 origin, float3 direction, float maximumDistance)
 {
     RayDesc ray;
@@ -216,6 +250,11 @@ bool TraceAny(float3 origin, float3 direction, float maximumDistance)
     query.TraceRayInline(gScene, RAY_FLAG_NONE, 0xffu, ray);
     while (query.Proceed())
     {
+        if (CandidateCovers(query.CandidateGeometryIndex(), query.CandidatePrimitiveIndex(),
+                query.CandidateTriangleBarycentrics()))
+        {
+            query.CommitNonOpaqueTriangleHit();
+        }
     }
     return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
 }
@@ -366,12 +405,17 @@ bool TraceSurface(
         ray);
     while (query.Proceed())
     {
+        if (CandidateCovers(query.CandidateGeometryIndex(), query.CandidatePrimitiveIndex(),
+                query.CandidateTriangleBarycentrics()))
+        {
+            query.CommitNonOpaqueTriangleHit();
+        }
     }
     if (query.CommittedStatus() != COMMITTED_TRIANGLE_HIT)
     {
         return false;
     }
-    uint primitiveIndex = query.CommittedPrimitiveIndex();
+    uint primitiveIndex = TransportTriangleIndex(query.CommittedGeometryIndex(), query.CommittedPrimitiveIndex());
     if (primitiveIndex >= gTriangleCount)
     {
         surfaceValid = false;
@@ -397,9 +441,11 @@ bool TraceSurface(
         surfaceValid = false;
         return false;
     }
-    // 面の表は頂点法線の側（巻き順が逆の形状もある）。光線が表から入っていなければ裏面に当たった。
+    // 面の表は頂点法線の側（巻き順が逆の形状もある）。光線が表から入っていなければ裏面に当たった。両面の面
+    // （一枚板の壁、葉）には裏がない。
     const float3 vertexNormalSum = surfaceTriangle.normal0.xyz + surfaceTriangle.normal1.xyz + surfaceTriangle.normal2.xyz;
-    backFace = dot(geometricNormal, direction) * (dot(geometricNormal, vertexNormalSum) < 0.0f ? -1.0f : 1.0f) > 0.0f;
+    backFace = (surfaceTriangle.flags & 1u) == 0u &&
+        dot(geometricNormal, direction) * (dot(geometricNormal, vertexNormalSum) < 0.0f ? -1.0f : 1.0f) > 0.0f;
     if (dot(geometricNormal, direction) > 0.0f) geometricNormal = -geometricNormal;
     if (!TryNormalizeVector(
             interpolatedNormal,

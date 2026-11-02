@@ -18,6 +18,7 @@ bool IsSurfaceObjectDataPixelShader(std::string_view shaderId, std::string_view 
 
 SurfaceDrawShaderRoute ResolveSurfaceDrawShaderRoute(const Material* materialOverride,
                                                      const MaterialAsset* materialAsset,
+                                                     const MeshPrimitive* primitiveAsset,
                                                      std::string_view materialFxProfileId) {
     SurfaceDrawShaderRoute route{};
     if (materialOverride != nullptr) {
@@ -32,7 +33,9 @@ SurfaceDrawShaderRoute ResolveSurfaceDrawShaderRoute(const Material* materialOve
         route.shaderProfileId = materialAsset->shaderProfileId.empty() ? "PBR" : materialAsset->shaderProfileId;
         route.featureBits = materialAsset->featureBits;
         route.alphaMode = MATERIAL::ResolveMaterialAlphaMode(materialAsset, nullptr);
-        route.doubleSided = MATERIAL_POLICY::ShouldRenderDoubleSided(*materialAsset);
+        route.doubleSided = primitiveAsset != nullptr
+                                ? SURFACE_POLICY::ShouldRenderDoubleSided(*materialAsset, *primitiveAsset)
+                                : MATERIAL_POLICY::ShouldRenderDoubleSided(*materialAsset);
     }
 
     if (!materialFxProfileId.empty()) {
@@ -48,7 +51,6 @@ SurfaceDrawShaderRoute ResolveSurfaceDrawShaderRoute(const Material* materialOve
                 route.pixelShaderId = profile.pixelShaderId;
             }
             route.featureBits = profile.featureBits;
-            route.profileDoubleSided = profile.doubleSided;
             route.doubleSided = route.doubleSided || profile.doubleSided;
             route.depthAware = profile.renderPhase == MaterialFxRenderPhase::DepthAware;
             if (materialAsset != nullptr && (materialAsset->featureBits & MATERIAL_FEATURES::AlphaMask) != 0) {

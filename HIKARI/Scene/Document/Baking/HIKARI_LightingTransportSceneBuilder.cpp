@@ -22,6 +22,7 @@
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_SkyManager.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
+#include "Render3D/Runtime/HIKARI_SurfaceDrawRoute.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
 namespace HIKARI::DOCUMENT_SCENE_BAKING {
@@ -113,13 +114,16 @@ ASSETS::LIGHTING::LightmapSurfaceAnalysis AppendSurfaceTriangles(const RENDER3D:
     const AlphaMode alphaMode = RENDER3D::MATERIAL::ResolveMaterialAlphaMode(material, surface.materialOverride);
     const ASSETS::LIGHTING::LightmapSurfaceAnalysis analysis =
         ASSETS::LIGHTING::AnalyzeLightmapSurface(primitive, alphaMode);
+    // 切り抜き（葉、柵）は alpha test 付きで光線を遮り反射する。半透明（ガラス）は光を通すので入れない。
     if (analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::UnsupportedVertexLayout) ||
         analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::MorphTargetsUnsupported) ||
         analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::MissingGeometry) ||
-        analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::AlphaMaskedSurface) ||
         analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::BlendedSurface)) {
         return analysis;
     }
+    const bool doubleSided = RENDER3D::RUNTIME::ResolveSurfaceDrawShaderRoute(surface.materialOverride, material,
+                                                                              &primitive, surface.materialFxProfileId)
+                                 .doubleSided;
 
     const MATH::Mat4 normalMatrix = MATH::BuildNormalMatrixFromWorld(surface.drawWorldMatrix);
     auto& overrides = materialIndices[material];
@@ -139,6 +143,7 @@ ASSETS::LIGHTING::LightmapSurfaceAnalysis AppendSurfaceTriangles(const RENDER3D:
         TRANSPORT::LightingTransportTriangle triangle{};
         triangle.objectId = surface.objectId.value;
         triangle.materialIndex = binding->second;
+        triangle.doubleSided = doubleSided;
         for (uint32_t corner = 0u; corner < 3u; ++corner) {
             const Vertex3D& vertex = primitive.staticVertices[indices[corner]];
             triangle.position[corner] = MATH::TransformPoint(surface.drawWorldMatrix, vertex.position);
@@ -292,7 +297,7 @@ void FinalizeSurfaceAtlas(TRANSPORT::LightingTransportScene& scene, TRANSPORT::L
                                                       : target.eligibilityMessage);
     }
     if (target.alphaMaskedSurfaceCount > 0u) {
-        message << " Mask skipped=" << target.alphaMaskedSurfaceCount << " (DXR any-hit not implemented).";
+        message << " Mask occluder only=" << target.alphaMaskedSurfaceCount << " (no lightmap).";
     }
     if (target.blendedSurfaceCount > 0u) {
         message << " Blend skipped=" << target.blendedSurfaceCount << ".";

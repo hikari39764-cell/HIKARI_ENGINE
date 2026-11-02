@@ -75,8 +75,9 @@ struct DxrPosition {
 class DxrTriangleAccelerationStructure final {
 public:
     ~DxrTriangleAccelerationStructure();
+    // indices の先頭 opaqueIndexCount 個が不透明の geometry 0、残りが any-hit を通す geometry 1（alpha test 用）。
     bool Build(const Context& graphics, const std::vector<DxrPosition>& positions, const std::vector<uint32_t>& indices,
-               std::string* outMessage = nullptr);
+               size_t opaqueIndexCount, std::string* outMessage = nullptr);
     void Reset();
 
     bool IsReady() const noexcept;

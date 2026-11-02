@@ -14,6 +14,7 @@
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Gfx/RayTracing/HIKARI_DxrCapabilities.h"
 #include "Gfx/HIKARI_VideoMemory.h"
+#include "RenderContracts/Model/Policies/HIKARI_ModelMaterialPolicy.h"
 #include "Tools/Baking/Backends/Internal/HIKARI_DxrLightmapBakeUtilities.h"
 #include "Tools/Baking/Backends/Internal/HIKARI_DxrLightmapGpuData.h"
 
@@ -140,7 +141,22 @@ bool DxrProgressiveLightmapBaker::PrepareScene(const GFX::Context& graphics,
     positions.reserve(scene.triangles.size() * 3u);
     indices.reserve(scene.triangles.size() * 3u);
     triangles.reserve(scene.triangles.size());
-    for (const TRANSPORT::LightingTransportTriangle& source : scene.triangles) {
+    // 不透明を先に、切り抜きを後に並べる（加速構造の二つの geometry に分ける）。
+    std::vector<const TRANSPORT::LightingTransportTriangle*> ordered{};
+    ordered.reserve(scene.triangles.size());
+    for (const bool alphaMasked : {false, true}) {
+        for (const TRANSPORT::LightingTransportTriangle& source : scene.triangles) {
+            const bool masked =
+                source.materialIndex < scene.materials.size() &&
+                (scene.materials[source.materialIndex].projection.materialFlags & MATERIAL_FEATURES::AlphaMask) != 0u;
+            if (masked == alphaMasked)
+                ordered.push_back(&source);
+        }
+        if (!alphaMasked)
+            opaqueTriangleCount_ = static_cast<uint32_t>(ordered.size());
+    }
+    for (const TRANSPORT::LightingTransportTriangle* sourceTriangle : ordered) {
+        const TRANSPORT::LightingTransportTriangle& source = *sourceTriangle;
         GpuTriangle triangle{};
         triangle.position0 = ToPosition4(source.position[0]);
         triangle.position1 = ToPosition4(source.position[1]);
@@ -154,6 +170,7 @@ bool DxrProgressiveLightmapBaker::PrepareScene(const GFX::Context& graphics,
             return false;
         }
         triangle.materialIndex = source.materialIndex;
+        triangle.flags = source.doubleSided ? 1u : 0u;
         for (uint32_t corner = 0u; corner < 3u; ++corner) {
             triangle.tangent[corner] = source.tangent[corner];
             triangle.materialUv[corner] = {source.materialUv0[corner].x, source.materialUv0[corner].y,
@@ -165,7 +182,7 @@ bool DxrProgressiveLightmapBaker::PrepareScene(const GFX::Context& graphics,
     }
 
     std::string accelerationMessage{};
-    if (!accelerationStructure_.Build(graphics, positions, indices, &accelerationMessage) ||
+    if (!accelerationStructure_.Build(graphics, positions, indices, opaqueTriangleCount_ * 3u, &accelerationMessage) ||
         !CreateUploadBuffer(graphics.device, triangles, triangleBuffer_)) {
         SetMessage(outMessage,
                    accelerationMessage.empty() ? "Failed to prepare DXR transport geometry." : accelerationMessage);
@@ -236,6 +253,7 @@ void DxrProgressiveLightmapBaker::Reset() {
     accelerationStructure_.Reset();
     environment_ = {};
     triangleCount_ = 0u;
+    opaqueTriangleCount_ = 0u;
     lightCount_ = 0u;
     skyDescriptorIndex_ = UINT32_MAX;
     scenePrepared_ = false;

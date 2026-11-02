@@ -118,6 +118,7 @@ bool DxrProgressiveLightmapBaker::RecordSamples(const GFX::Context& graphics, ui
         constants.sampleIndex = status_.completedSamples;
         constants.bounceCount = bounceCount_;
         constants.triangleCount = triangleCount_;
+        constants.opaqueTriangleCount = opaqueTriangleCount_;
         constants.lightCount = lightCount_;
         constants.skyMode = static_cast<uint32_t>(environment_.skyMode);
         constants.skyTextureIndex = skyDescriptorIndex_;

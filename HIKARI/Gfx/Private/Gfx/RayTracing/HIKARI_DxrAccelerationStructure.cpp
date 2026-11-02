@@ -289,10 +289,12 @@ D3D12_GPU_VIRTUAL_ADDRESS DxrAccelerationStructure::GetGpuAddress() const noexce
 }
 
 bool DxrTriangleAccelerationStructure::Build(const Context& graphics, const std::vector<DxrPosition>& positions,
-                                             const std::vector<uint32_t>& indices, std::string* outMessage) {
+                                             const std::vector<uint32_t>& indices, size_t opaqueIndexCount,
+                                             std::string* outMessage) {
     Reset();
     if (graphics.device == nullptr || graphics.cmdList == nullptr || positions.empty() || indices.empty() ||
         positions.size() > UINT32_MAX || indices.size() > UINT32_MAX || indices.size() % 3 != 0 ||
+        opaqueIndexCount > indices.size() || opaqueIndexCount % 3 != 0 ||
         !std::all_of(positions.begin(), positions.end(),
                      [](const auto& p) { return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z); }) ||
         !std::all_of(indices.begin(), indices.end(), [&](uint32_t i) { return i < positions.size(); })) {
@@ -309,16 +311,25 @@ bool DxrTriangleAccelerationStructure::Build(const Context& graphics, const std:
         Reset();
         return false;
     }
-    D3D12_RAYTRACING_GEOMETRY_DESC geometry{};
-    geometry.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-    geometry.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
-    geometry.Triangles.VertexBuffer = {vertexBuffer_->GetGPUVirtualAddress(), sizeof(DxrPosition)};
-    geometry.Triangles.VertexCount = static_cast<UINT>(positions.size());
-    geometry.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
-    geometry.Triangles.IndexBuffer = indexBuffer_->GetGPUVirtualAddress();
-    geometry.Triangles.IndexCount = static_cast<UINT>(indices.size());
-    geometry.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
-    if (!bottomLevel_.BuildBottomLevel(graphics, {&geometry, 1}, UINT64_MAX, outMessage)) {
+    // 空の範囲は geometry を作らない。不透明が空なら切り抜きが geometry 0 になるが、その時は不透明の数が 0 なので
+    // shader の「geometry 1 の primitive は不透明の数から数える」と食い違わない。
+    D3D12_RAYTRACING_GEOMETRY_DESC geometries[2]{};
+    uint32_t geometryCount = 0u;
+    const size_t ranges[2][2]{{0u, opaqueIndexCount}, {opaqueIndexCount, indices.size()}};
+    for (uint32_t i = 0u; i < 2u; ++i) {
+        if (ranges[i][1] == ranges[i][0])
+            continue;
+        D3D12_RAYTRACING_GEOMETRY_DESC& geometry = geometries[geometryCount++];
+        geometry.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+        geometry.Flags = i == 0u ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE : D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
+        geometry.Triangles.VertexBuffer = {vertexBuffer_->GetGPUVirtualAddress(), sizeof(DxrPosition)};
+        geometry.Triangles.VertexCount = static_cast<UINT>(positions.size());
+        geometry.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
+        geometry.Triangles.IndexBuffer = indexBuffer_->GetGPUVirtualAddress() + ranges[i][0] * sizeof(uint32_t);
+        geometry.Triangles.IndexCount = static_cast<UINT>(ranges[i][1] - ranges[i][0]);
+        geometry.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
+    }
+    if (!bottomLevel_.BuildBottomLevel(graphics, {geometries, geometryCount}, UINT64_MAX, outMessage)) {
         Reset();
         return false;
     }

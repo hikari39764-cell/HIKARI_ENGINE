@@ -269,15 +269,11 @@ GpuSceneResourceKey BuildResourceKey(const GpuSceneSurfaceRecord& record) {
     const MeshPrimitive* primitiveAsset = ResolveMeshPrimitiveAsset(record);
     const uint64_t modelKey = BuildModelKey(record);
 
-    const RUNTIME::SurfaceDrawShaderRoute shaderRoute =
-        RUNTIME::ResolveSurfaceDrawShaderRoute(record.materialOverride, materialAsset, record.materialFxProfileId);
+    const RUNTIME::SurfaceDrawShaderRoute shaderRoute = RUNTIME::ResolveSurfaceDrawShaderRoute(
+        record.materialOverride, materialAsset, primitiveAsset, record.materialFxProfileId);
     const std::string& shaderProfile = shaderRoute.shaderProfileId;
     const uint32_t featureBits = shaderRoute.featureBits;
-    bool doubleSided = shaderRoute.doubleSided;
-    if (record.materialOverride == nullptr && materialAsset != nullptr && primitiveAsset != nullptr) {
-        doubleSided =
-            SURFACE_POLICY::ShouldRenderDoubleSided(*materialAsset, *primitiveAsset) || shaderRoute.profileDoubleSided;
-    }
+    const bool doubleSided = shaderRoute.doubleSided;
 
     const AlphaMode alphaMode = shaderRoute.alphaMode;
     const std::string& pixelShaderId = !shaderRoute.pixelShaderId.empty() ? shaderRoute.pixelShaderId : shaderProfile;

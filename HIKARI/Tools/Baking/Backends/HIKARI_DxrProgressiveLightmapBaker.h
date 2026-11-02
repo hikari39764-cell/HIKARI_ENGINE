@@ -95,6 +95,7 @@ private:
     uint32_t height_ = 0u;
     uint32_t bounceCount_ = 0u;
     uint32_t triangleCount_ = 0u;
+    uint32_t opaqueTriangleCount_ = 0u;
     uint32_t lightCount_ = 0u;
     uint32_t skyDescriptorIndex_ = UINT32_MAX;
     uint64_t readbackFenceValue_ = 0u;

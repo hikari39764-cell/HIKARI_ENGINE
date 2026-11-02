@@ -33,7 +33,8 @@ struct DxrProgressiveLightmapBaker::GpuTriangle {
     MATH::Vec4 tangent[3]{};
     MATH::Vec4 materialUv[3]{};
     uint32_t materialIndex = 0;
-    uint32_t padding[3]{};
+    uint32_t flags = 0u; // bit0 両面
+    uint32_t padding[2]{};
 };
 
 struct DxrProgressiveLightmapBaker::GpuLight {
@@ -57,7 +58,10 @@ struct DxrProgressiveLightmapBaker::DispatchConstants {
     uint32_t skyTextureIndex = UINT32_MAX;
     uint32_t sampleGridWidth = 1u;
     uint32_t sampleGridHeight = 1u;
-    uint32_t padding[2]{};
+    // 加速構造の geometry 0 が不透明、geometry 1 が切り抜き（alpha test）。三角形はこの順に並び、geometry 1 の
+    // primitive は opaqueTriangleCount から数える。
+    uint32_t opaqueTriangleCount = 0u;
+    uint32_t padding = 0u;
     MATH::Vec4 skyParams{}; // x 天空光の倍率、y 空の回転
     MATH::Vec4 skyTintExposure{};
 };
