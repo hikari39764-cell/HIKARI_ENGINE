@@ -226,7 +226,9 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
     operationRegistry_.Register(std::move(clear), EditorOperationKind::Mutation, false);
 
     operationRegistry_.Register({"lighting.bake.status",
-                                 "Report the lighting bake state and the latest bake report.",
+                                 "Report the lighting bake job, every bake item's state (objects with surfaces "
+                                 "that have no lightmap carry the reason and the baked probe volume covering those "
+                                 "surfaces, empty when none does) and the latest bake report.",
                                  "scene",
                                  {},
                                  [this](const nlohmann::json&) -> EDITOR::EditorOperationResult {
@@ -236,6 +238,26 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
                                      nlohmann::json data{{"state", TOOLS::BAKING::ToString(state)},
                                                          {"running", TOOLS::BAKING::IsLightingBakeJobRunning(state)},
                                                          {"pending", TOOLS::BAKING::IsLightingBakeJobRunning(state)}};
+                                     const TOOLS::BAKING::LightingBakeStatus status =
+                                         TOOLS::BAKING::LightingBakeService{}.AnalyzeLightingBakeStatus(
+                                             TOOLS::BAKING::LightingBakeService::BuildRequest(*aiOperationScene_));
+                                     nlohmann::json items = nlohmann::json::array();
+                                     for (const auto& item : status.items) {
+                                         nlohmann::json entry{{"objectId", item.objectId},
+                                                              {"name", item.name},
+                                                              {"kind", TOOLS::BAKING::ToString(item.kind)},
+                                                              {"state", TOOLS::BAKING::ToString(item.state)}};
+                                         if (!item.noLightmapReason.empty()) {
+                                             entry["noLightmapReason"] = item.noLightmapReason;
+                                             entry["coveringVolume"] = item.coveringVolume;
+                                         }
+                                         items.push_back(std::move(entry));
+                                     }
+                                     data["items"] = std::move(items);
+                                     data["dirty"] = status.dirtyCount;
+                                     data["noLightmap"] = status.noLightmapCount;
+                                     data["uncovered"] = status.uncoveredCount;
+                                     data["warnings"] = status.warnings;
                                      if (aiOperationScene_->HasLastLightingBakeReport()) {
                                          const auto& report = aiOperationScene_->GetLastLightingBakeReport();
                                          data["report"] = {{"success", report.success},

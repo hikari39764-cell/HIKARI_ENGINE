@@ -45,6 +45,29 @@ void FillBakePaths(const LightingBakeRequest& request, LightingBakeReport& repor
     }
 }
 
+// 光照贴图の無い面の範囲を丸ごと覆う焼き込み探針の体積。全面を覆う箱（格子の外へ半間隔）から、探針の重みが九割以上
+// 残る所まで（HikariEvaluateBakedVolumeInfluence の smoothstep が 0.1 になる blendDistance の 0.19 倍）を覆うと見なす。
+const LIGHTING_AUTHORING::IrradianceVolumeAuthoring* FindCoveringVolume(
+    const std::vector<LIGHTING_AUTHORING::IrradianceVolumeAuthoring>& volumes,
+    const ASSETS::LIGHTING::LightmapBakeRecord& record) {
+    for (const LIGHTING_AUTHORING::IrradianceVolumeAuthoring& volume : volumes) {
+        if (!volume.settings.enabled)
+            continue;
+        const MATH::Vec3 center = volume.settings.origin + volume.settings.size * 0.5f;
+        const float fade = 0.19f * volume.settings.blendDistance;
+        const MATH::Vec3 half =
+            GetBakedLightProbeVolumeCoveredSize(volume.settings) * 0.5f + MATH::Vec3{fade, fade, fade};
+        const MATH::Vec3 boxMin = center - half;
+        const MATH::Vec3 boxMax = center + half;
+        const MATH::Vec3& lo = record.noLightmapBoundsMin;
+        const MATH::Vec3& hi = record.noLightmapBoundsMax;
+        if (lo.x >= boxMin.x && lo.y >= boxMin.y && lo.z >= boxMin.z && hi.x <= boxMax.x && hi.y <= boxMax.y &&
+            hi.z <= boxMax.z)
+            return &volume;
+    }
+    return nullptr;
+}
+
 bool ProjectRelativeOutputExists(const std::filesystem::path& projectRoot, const std::string& path) {
     if (path.empty()) {
         return false;
@@ -54,6 +77,18 @@ bool ProjectRelativeOutputExists(const std::filesystem::path& projectRoot, const
 }
 
 } // namespace
+
+LightingBakeRequest LightingBakeService::BuildRequest(DocumentSceneBase& scene) {
+    LightingBakeRequest request{};
+    request.projectRoot = scene.GetAssetDatabase().GetProjectRoot();
+    request.sceneGuid = scene.GetCurrentSceneAssetGuid().value;
+    request.sceneName = scene.GetCurrentSceneDisplayName();
+    request.scenePath = scene.GetScenePath();
+    request.sceneDocument = &scene.GetSceneDocument();
+    request.assetDatabase = &scene.GetAssetDatabase();
+    request.target = LightingBakeTarget::All;
+    return request;
+}
 
 std::string LightingBakeService::GetBlockReason(const DocumentSceneBase& scene) const {
     if (scene.IsRuntimePlayActive())
@@ -96,28 +131,28 @@ LightingBakeStatus LightingBakeService::AnalyzeLightingBakeStatus(const Lighting
     const auto classify = [&](LightingBakeItemStatus& item, const std::string& recordAuthoringHash,
                               const std::string& recordCaptureSceneHash, const std::string& recordDependencyHash,
                               bool outputExists) {
+        using enum LightingBakeItemState;
         if (!item.enabled) {
-            item.dirty = false;
-            item.dirtyReason = "Disabled";
+            item.state = Disabled;
         } else if (!hasManifest) {
-            item.dirtyReason = "No bake manifest";
+            item.state = NoManifest;
         } else if (recordAuthoringHash.empty()) {
-            item.dirtyReason = "No baked record";
+            item.state = NoRecord;
         } else if (recordAuthoringHash != item.authoringHash) {
-            item.dirtyReason = "Capture settings changed";
+            item.state = SettingsChanged;
         } else if (recordCaptureSceneHash != hashes.sceneHash) {
-            item.dirtyReason = "Lighting capture scene changed";
+            item.state = SceneChanged;
         } else if (!hashes.unreadableAssets.empty()) {
             // 中身を読めない資産の先の依存は確かめられないので、焼き込み済みの結果を最新とは見なさない。
-            item.dirtyReason = "Lighting dependency could not be read";
+            item.state = DependencyUnreadable;
         } else if (recordDependencyHash != hashes.dependencyHash) {
-            item.dirtyReason = "Lighting capture asset changed";
+            item.state = DependencyChanged;
         } else if (!outputExists) {
-            item.dirtyReason = "Baked output missing";
+            item.state = OutputMissing;
         } else {
-            item.dirty = false;
-            item.dirtyReason = "Ready";
+            item.state = Ready;
         }
+        item.dirty = item.state != Ready && item.state != Disabled;
         ++status.totalCount;
         if (item.dirty) {
             ++status.dirtyCount;
@@ -150,8 +185,9 @@ LightingBakeStatus LightingBakeService::AnalyzeLightingBakeStatus(const Lighting
         status.items.push_back(std::move(item));
     }
 
-    for (const LIGHTING_AUTHORING::IrradianceVolumeAuthoring& volume :
-         LIGHTING_AUTHORING::CollectBakedIrradianceVolumes(*request.sceneDocument)) {
+    const std::vector<LIGHTING_AUTHORING::IrradianceVolumeAuthoring> bakedVolumes =
+        LIGHTING_AUTHORING::CollectBakedIrradianceVolumes(*request.sceneDocument);
+    for (const LIGHTING_AUTHORING::IrradianceVolumeAuthoring& volume : bakedVolumes) {
         LightingBakeItemStatus item{};
         item.kind = LightingBakeItemKind::IrradianceVolume;
         item.objectId = volume.objectId.value;
@@ -201,16 +237,26 @@ LightingBakeStatus LightingBakeService::AnalyzeLightingBakeStatus(const Lighting
         if (!authoredLightmapTarget && record == manifest.lightmaps.end()) {
             continue;
         }
-        classify(item, record == manifest.lightmaps.end() ? std::string{} : record->authoringHash,
-                 record == manifest.lightmaps.end() ? std::string{} : record->captureSceneHash,
-                 record == manifest.lightmaps.end() ? std::string{} : record->dependencyHash,
-                 record != manifest.lightmaps.end() && !record->pages.empty() &&
-                     std::all_of(record->pages.begin(), record->pages.end(), [&](const auto& page) {
-                         return !page.surfaceBindings.empty() &&
-                                ProjectRelativeOutputExists(request.projectRoot, page.texturePath);
-                     }));
-        if (!item.enabled) {
-            item.dirtyReason = "Surface target disabled or no longer Static";
+        const bool hasRecord = record != manifest.lightmaps.end();
+        // 物体全体に光照贴图が無い記録は出力が無くて正しい。
+        const bool wholeObjectFailed = hasRecord && record->pages.empty() && !record->noLightmapReason.empty();
+        classify(item, hasRecord ? record->authoringHash : std::string{},
+                 hasRecord ? record->captureSceneHash : std::string{},
+                 hasRecord ? record->dependencyHash : std::string{},
+                 wholeObjectFailed || (hasRecord && !record->pages.empty() &&
+                                       std::all_of(record->pages.begin(), record->pages.end(), [&](const auto& page) {
+                                           return !page.surfaceBindings.empty() &&
+                                                  ProjectRelativeOutputExists(request.projectRoot, page.texturePath);
+                                       })));
+        // 光照贴图の無い面は今の入力では焼き直しても同じなので、待ち（dirty）にも完了にも数えず、別に知らせる。
+        if (item.state == LightingBakeItemState::Ready && !record->noLightmapReason.empty()) {
+            item.state = wholeObjectFailed ? LightingBakeItemState::NoLightmap : LightingBakeItemState::PartialLightmap;
+            item.noLightmapReason = record->noLightmapReason;
+            const auto* covering = FindCoveringVolume(bakedVolumes, *record);
+            item.coveringVolume = covering != nullptr ? covering->name : std::string{};
+            --status.readyCount;
+            ++status.noLightmapCount;
+            status.uncoveredCount += covering == nullptr ? 1u : 0u;
         }
         status.items.push_back(std::move(item));
     }

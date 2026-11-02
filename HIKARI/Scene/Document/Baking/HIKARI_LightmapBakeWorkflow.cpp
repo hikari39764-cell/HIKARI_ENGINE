@@ -24,9 +24,71 @@ DocumentSceneBakeCoordinator::LightmapJob::~LightmapJob() {
     if (ec)
         return;
     const auto owned = std::filesystem::weakly_canonical(outputDirectory, ec);
-    if (!ec && owned.parent_path() == root && owned.filename().string().starts_with(recordId + "_")) {
+    if (!ec && owned.parent_path() == root && owned.filename().string().starts_with(record.id + "_")) {
         std::filesystem::remove_all(owned, ec);
     }
+}
+
+bool DocumentSceneBakeCoordinator::CommitLightmapRecord(DocumentSceneBase& scene,
+                                                        const std::filesystem::path& projectRoot,
+                                                        const std::string& sceneGuid,
+                                                        const ASSETS::LIGHTING::LightmapBakeRecord& record,
+                                                        TOOLS::BAKING::LightingBakeReport& report,
+                                                        std::string& outMessage) {
+    report.bakeRoot = ASSETS::LIGHTING::BuildLightingBakeRoot(projectRoot, sceneGuid);
+    report.manifestPath = ASSETS::LIGHTING::BuildLightingBakeManifestPath(projectRoot, sceneGuid);
+    ASSETS::LIGHTING::LightingBakeManifest manifest =
+        LoadOrCreateLightingBakeManifest(report.manifestPath, projectRoot, sceneGuid, report.warnings);
+    std::vector<ASSETS::LIGHTING::LightmapBakeRecord> previousRecords;
+    for (const auto& previous : manifest.lightmaps)
+        if (previous.id == record.id || previous.objectId == record.objectId)
+            previousRecords.push_back(previous);
+    ReplaceLightmapRecord(manifest, record);
+    manifest.sceneHash = record.captureSceneHash;
+    manifest.dependencyHash = record.dependencyHash;
+    manifest.activeScenario = record.scenario;
+    if (!ASSETS::LIGHTING::SaveLightingBakeManifest(report.manifestPath, manifest, &outMessage))
+        return false;
+
+    report.manifestWritten = true;
+    report.lightmapRecordWritten = true;
+    report.reflectionProbeRecordCount = static_cast<uint32_t>(manifest.reflectionProbes.size());
+    report.lightProbeRecordCount = static_cast<uint32_t>(manifest.lightProbes.size());
+    report.lightmapRecordCount = static_cast<uint32_t>(manifest.lightmaps.size());
+    report.messages.push_back(outMessage);
+
+    // Manifest commit 後に旧 page の cache だけを無効化する。Descriptor の解放は既存 fence owner に委譲する。
+    for (const auto& previous : previousRecords) {
+        for (size_t i = 0; i < previous.pages.size(); ++i) {
+            const auto path = PROJECT_PATHS::ResolveProjectPath(projectRoot, previous.pages[i].texturePath);
+            RENDER3D::EvictImportedTextureResourceWithColorSpace(
+                ASSETS::LIGHTING::BuildLightmapPageResourceKey(previous.id, i), path.generic_string(),
+                RENDER3D::TextureResourceColorSpace::Linear);
+            // 自分の generated root 内の旧 DDS のみ削除する。共有 page は保持する。
+            bool referenced = false;
+            for (const auto& live : manifest.lightmaps)
+                for (const auto& livePage : live.pages)
+                    referenced |= livePage.texturePath == previous.pages[i].texturePath;
+            std::error_code ec;
+            const auto root = std::filesystem::weakly_canonical(LightmapOutputDirectory(projectRoot, sceneGuid), ec);
+            if (ec)
+                continue;
+            const auto oldPath = std::filesystem::weakly_canonical(path, ec);
+            if (!ec && !referenced && oldPath.extension() == ".dds" &&
+                (oldPath.parent_path() == root ||
+                 (oldPath.parent_path().parent_path() == root &&
+                  oldPath.parent_path().filename().string().starts_with(previous.id + "_")))) {
+                std::filesystem::remove(oldPath, ec);
+                if (oldPath.parent_path() != root)
+                    std::filesystem::remove(oldPath.parent_path(), ec);
+            }
+        }
+    }
+    scene.RefreshLightingRuntime();
+    // Lightmap Descriptor は Surface Record のみに影響する。
+    // Model / MaterialFx / Procedural / Shadow Cache は破棄しない。
+    RenderSubmissionSystem::InvalidateSurfaceResourceBindings();
+    return true;
 }
 
 bool DocumentSceneBakeCoordinator::ProcessLightmapBakeJob(DocumentSceneBase& scene) {
@@ -117,13 +179,13 @@ bool DocumentSceneBakeCoordinator::ProcessLightmapBakeJob(DocumentSceneBase& sce
             savedPage.width = savedPage.height = job.settings.outputResolution;
             savedPage.uvSet = page.uvSet;
             savedPage.surfaceBindings = page.surfaceBindings;
-            job.completedPages.push_back(std::move(savedPage));
+            job.record.pages.push_back(std::move(savedPage));
             if (++job.pageIndex < target.pages.size()) {
                 job.settings.outputResolution = target.pages[job.pageIndex].outputResolution;
                 job.outputPath = job.outputDirectory / ("page_" + std::to_string(job.pageIndex) + ".dds");
                 job.report.lightmapPath = job.outputPath;
                 job.report.lightmapResolution = job.settings.outputResolution;
-                job.report.currentItemName = job.objectName + " (" + std::to_string(job.pageIndex + 1) + "/" +
+                job.report.currentItemName = job.record.name + " (" + std::to_string(job.pageIndex + 1) + "/" +
                                              std::to_string(target.pages.size()) + ")";
                 job.state = TOOLS::BAKING::LightingBakeJobState::Requested;
                 SetBakeJobState(job.report, job.state);
@@ -155,83 +217,22 @@ bool DocumentSceneBakeCoordinator::ProcessLightmapBakeJob(DocumentSceneBase& sce
         if (graphics.deferredReleaseQueue != nullptr)
             graphics.deferredReleaseQueue->Collect(completedFence);
 
-        ASSETS::LIGHTING::LightingBakeManifest manifest = LoadOrCreateLightingBakeManifest(
-            job.report.manifestPath, job.projectRoot, job.sceneGuid, job.report.warnings);
-        ASSETS::LIGHTING::LightmapBakeRecord record{};
-        record.id = job.recordId;
-        record.name = job.objectName;
-        record.objectId = job.objectId.value;
-        record.pages = job.completedPages;
-        record.encoding = "RGBA16F_DiffuseIrradiance_SkyVisibility";
-        record.authoringHash = job.authoringHash;
-        record.captureSceneHash = job.sceneHash;
-        record.dependencyHash = job.dependencyHash;
-        record.bakeSet = job.bakeSet;
-        record.scenario = job.scenario;
-        std::vector<ASSETS::LIGHTING::LightmapBakeRecord> previousRecords;
-        for (const auto& previous : manifest.lightmaps)
-            if (previous.id == record.id || previous.objectId == record.objectId)
-                previousRecords.push_back(previous);
-        ReplaceLightmapRecord(manifest, record);
-        manifest.sceneHash = job.sceneHash;
-        manifest.dependencyHash = job.dependencyHash;
-        manifest.activeScenario = job.scenario;
-
+        job.record.encoding = "RGBA16F_DiffuseIrradiance_SkyVisibility";
         std::string manifestMessage{};
-        if (!ASSETS::LIGHTING::SaveLightingBakeManifest(job.report.manifestPath, manifest, &manifestMessage)) {
+        if (!CommitLightmapRecord(scene, job.projectRoot, job.sceneGuid, job.record, job.report, manifestMessage)) {
             failJob(manifestMessage);
             return false;
         }
-
         job.outputsCommitted = true;
         job.report.lightmapBaked = true;
-        job.report.manifestWritten = true;
-        job.report.lightmapRecordWritten = true;
-        job.report.reflectionProbeRecordCount = static_cast<uint32_t>(manifest.reflectionProbes.size());
-        job.report.lightProbeRecordCount = static_cast<uint32_t>(manifest.lightProbes.size());
-        job.report.lightmapRecordCount = static_cast<uint32_t>(manifest.lightmaps.size());
-        job.report.messages.push_back(manifestMessage);
-
-        // Manifest commit 後に旧 page の cache だけを無効化する。Descriptor の解放は既存 fence owner に委譲する。
-        for (const auto& previous : previousRecords) {
-            for (size_t i = 0; i < previous.pages.size(); ++i) {
-                const auto path = PROJECT_PATHS::ResolveProjectPath(job.projectRoot, previous.pages[i].texturePath);
-                RENDER3D::EvictImportedTextureResourceWithColorSpace(
-                    ASSETS::LIGHTING::BuildLightmapPageResourceKey(previous.id, i), path.generic_string(),
-                    RENDER3D::TextureResourceColorSpace::Linear);
-                // 自分の generated root 内の旧 DDS のみ削除する。共有 page は保持する。
-                bool referenced = false;
-                for (const auto& live : manifest.lightmaps)
-                    for (const auto& livePage : live.pages)
-                        referenced |= livePage.texturePath == previous.pages[i].texturePath;
-                std::error_code ec;
-                const auto root =
-                    std::filesystem::weakly_canonical(LightmapOutputDirectory(job.projectRoot, job.sceneGuid), ec);
-                if (ec)
-                    continue;
-                const auto oldPath = std::filesystem::weakly_canonical(path, ec);
-                if (!ec && !referenced && oldPath.extension() == ".dds" &&
-                    (oldPath.parent_path() == root ||
-                     (oldPath.parent_path().parent_path() == root &&
-                      oldPath.parent_path().filename().string().starts_with(previous.id + "_")))) {
-                    std::filesystem::remove(oldPath, ec);
-                    if (oldPath.parent_path() != root)
-                        std::filesystem::remove(oldPath.parent_path(), ec);
-                }
-            }
-        }
-        scene.RefreshLightingRuntime();
         job.report.lightmapRuntimeLoaded = true;
-        for (const auto& saved : record.pages)
+        for (const auto& saved : job.record.pages)
             for (const auto& binding : saved.surfaceBindings) {
                 const auto& identity = binding.surface;
                 job.report.lightmapRuntimeLoaded &=
                     RENDER3D::LIGHTMAP::Find(job.objectId.value, identity.nodeIndex, identity.meshIndex,
                                              identity.primitiveIndex) != nullptr;
             }
-        // Lightmap Descriptor は Surface Record のみに影響する。
-        // Model / MaterialFx / Procedural / Shadow Cache は破棄しない。
-        RenderSubmissionSystem::InvalidateSurfaceResourceBindings();
 
         job.state = TOOLS::BAKING::LightingBakeJobState::Completed;
         SetBakeJobState(job.report, job.state);

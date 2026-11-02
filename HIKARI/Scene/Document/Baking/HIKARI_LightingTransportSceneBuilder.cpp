@@ -192,6 +192,7 @@ void AccumulateSurfaceAnalysis(TRANSPORT::LightingTransportSurfaceTarget& target
         analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::UvOutsideUnitRange) ||
         analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::UvDegenerate) ||
         analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::UvOverlap) ||
+        analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::MissingLightmapUv) ||
         analysis.HasIssue(ASSETS::LIGHTING::LightmapSurfaceIssue::IndexOutOfRange)) {
         ++target.invalidUvSurfaceCount;
     }
@@ -303,7 +304,7 @@ void FinalizeSurfaceAtlas(TRANSPORT::LightingTransportScene& scene, TRANSPORT::L
         message << " Blend skipped=" << target.blendedSurfaceCount << ".";
     }
     if (target.invalidUvSurfaceCount > 0u) {
-        message << " Invalid UV1 skipped=" << target.invalidUvSurfaceCount << ".";
+        message << " Invalid or missing UV1 skipped=" << target.invalidUvSurfaceCount << ".";
     }
     if (target.unsupportedSurfaceCount > 0u) {
         message << " Unsupported skipped=" << target.unsupportedSurfaceCount << ".";

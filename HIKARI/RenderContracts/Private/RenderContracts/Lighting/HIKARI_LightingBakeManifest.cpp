@@ -123,13 +123,11 @@ LightmapBakeRecord ReadLightmap(const nlohmann::json& node) {
     record.id = node.value("id", std::string{});
     record.name = node.value("name", std::string{});
     record.objectId = node.value("objectId", uint64_t{0u});
-    if (node.contains("pages")) {
-        for (const auto& page : node.at("pages"))
-            record.pages.push_back(ReadLightmapPage(page));
-    } else {
-        // Version 6 の単一 atlas は境界で一度だけ正規化する。
-        record.pages.push_back(ReadLightmapPage(node));
-    }
+    for (const nlohmann::json& page : node.value("pages", nlohmann::json::array()))
+        record.pages.push_back(ReadLightmapPage(page));
+    record.noLightmapReason = node.value("noLightmapReason", std::string{});
+    record.noLightmapBoundsMin = JSONREAD::Vec3Or(node.value("noLightmapBoundsMin", nlohmann::json::array()), {});
+    record.noLightmapBoundsMax = JSONREAD::Vec3Or(node.value("noLightmapBoundsMax", nlohmann::json::array()), {});
     record.encoding = node.value("encoding", std::string{"RGB16F_Irradiance"});
     record.authoringHash = node.value("authoringHash", std::string{});
     record.captureSceneHash = node.value("captureSceneHash", std::string{});
@@ -214,6 +212,9 @@ nlohmann::json ToJson(const LightmapBakeRecord& record) {
         {"name", record.name},
         {"objectId", record.objectId},
         {"pages", pages},
+        {"noLightmapReason", record.noLightmapReason},
+        {"noLightmapBoundsMin", JsonMath::ToJsonArray(record.noLightmapBoundsMin)},
+        {"noLightmapBoundsMax", JsonMath::ToJsonArray(record.noLightmapBoundsMax)},
         {"encoding", record.encoding},
         {"authoringHash", record.authoringHash},
         {"captureSceneHash", record.captureSceneHash},
@@ -240,13 +241,12 @@ bool LoadLightingBakeManifest(const std::filesystem::path& path, LightingBakeMan
 
     LightingBakeManifest manifest{};
     manifest.version = root.value("version", kLightingBakeManifestVersion);
-    if (manifest.version != 6u && manifest.version != kLightingBakeManifestVersion) {
+    if (manifest.version != kLightingBakeManifestVersion) {
         SetMessage(outMessage, "manifest version " + std::to_string(manifest.version) +
                                    " is unsupported; rebake lighting for version " +
                                    std::to_string(kLightingBakeManifestVersion));
         return false;
     }
-    manifest.version = kLightingBakeManifestVersion;
     manifest.sceneGuid = root.value("sceneGuid", std::string{});
     manifest.bakeGuid = root.value("bakeGuid", std::string{});
     manifest.bakeVersion = root.value("bakeVersion", 1u);

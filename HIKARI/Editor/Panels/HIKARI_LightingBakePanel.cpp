@@ -29,18 +29,6 @@ namespace HIKARI {
 
 namespace {
 
-TOOLS::BAKING::LightingBakeRequest BuildRequest(DocumentSceneBase& scene) {
-    TOOLS::BAKING::LightingBakeRequest request{};
-    request.projectRoot = scene.GetAssetDatabase().GetProjectRoot();
-    request.sceneGuid = scene.GetCurrentSceneAssetGuid().value;
-    request.sceneName = scene.GetCurrentSceneDisplayName();
-    request.scenePath = scene.GetScenePath();
-    request.sceneDocument = &scene.GetSceneDocument();
-    request.assetDatabase = &scene.GetAssetDatabase();
-    request.target = TOOLS::BAKING::LightingBakeTarget::All;
-    return request;
-}
-
 bool OpenFolder(const std::filesystem::path& folder, std::string& outMessage) {
     std::error_code ec{};
     if (!std::filesystem::exists(folder, ec)) {
@@ -114,7 +102,7 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
     }
 
     TOOLS::BAKING::LightingBakeService service{};
-    const TOOLS::BAKING::LightingBakeRequest request = BuildRequest(scene);
+    const TOOLS::BAKING::LightingBakeRequest request = TOOLS::BAKING::LightingBakeService::BuildRequest(scene);
     const bool bakeBusy = TOOLS::BAKING::IsLightingBakeJobRunning(scene.GetLightingBakeJobState());
     const std::string blockReason = service.GetBlockReason(scene);
     const auto execute = [&](const char* action, nlohmann::json parameters = nlohmann::json::object()) {
@@ -238,10 +226,11 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
 
     ImGui::Spacing();
     ImGui::SeparatorText(TEXT::Localize("ui.lightingBake.lightingObjectsSection").c_str());
+    // 検索欄は残りの幅を全部取るので、チェックボックスを先に置く（後ろに置くと窓の外へ押し出される）。
+    ImGui::Checkbox(TEXT::Localize("ui.lightingBake.onlyDirty").c_str(), &onlyDirty_);
+    ImGui::SameLine();
     EDITOR::SearchField("bakeObjects", TEXT::Localize("ui.lightingBake.filter").c_str(), objectFilter_,
                         sizeof(objectFilter_));
-    ImGui::SameLine();
-    ImGui::Checkbox(TEXT::Localize("ui.lightingBake.onlyDirty").c_str(), &onlyDirty_);
     if (status.items.empty()) {
         EDITOR::EmptyState(TEXT::Localize("ui.lightingBake.emptyTitle").c_str(),
                            TEXT::Localize("ui.lightingBake.emptyHint").c_str());
@@ -256,7 +245,8 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
         ImGui::TableSetupColumn(TEXT::Localize("ui.lightingBake.tableReason").c_str());
         ImGui::TableHeadersRow();
         for (const TOOLS::BAKING::LightingBakeItemStatus& item : status.items) {
-            if ((onlyDirty_ && (!item.enabled || !item.dirty)) ||
+            const bool noLightmap = !item.noLightmapReason.empty();
+            if ((onlyDirty_ && !item.dirty && !noLightmap) ||
                 (objectFilter_[0] && item.name.find(objectFilter_) == std::string::npos))
                 continue;
             ImGui::PushID(static_cast<int>(item.objectId));
@@ -272,6 +262,9 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
             if (!item.enabled) {
                 EDITOR::StatusBadge(TEXT::Localize("ui.lightingBake.disabled").c_str(),
                                     EDITOR::EditorStatusTone::Normal);
+            } else if (noLightmap) {
+                EDITOR::StatusBadge(TEXT::Localize("ui.lightingBake.noLightmapBadge").c_str(),
+                                    EDITOR::EditorStatusTone::Warning);
             } else if (item.dirty) {
                 EDITOR::StatusBadge(TEXT::Localize("ui.lightingBake.dirtyBadge").c_str(),
                                     EDITOR::EditorStatusTone::Warning);
@@ -280,7 +273,21 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
                                     EDITOR::EditorStatusTone::Ready);
             }
             ImGui::TableNextColumn();
-            ImGui::TextWrapped("%s", item.dirtyReason.c_str());
+            ImGui::TextWrapped(
+                "%s",
+                TEXT::Localize(std::string("ui.lightingBake.state.") + TOOLS::BAKING::ToString(item.state)).c_str());
+            if (noLightmap) {
+                ImGui::PushStyleColor(ImGuiCol_Text, palette.textMuted);
+                ImGui::TextWrapped("%s", item.noLightmapReason.c_str());
+                ImGui::PopStyleColor();
+                if (item.coveringVolume.empty())
+                    ImGui::TextColored(palette.warning, "%s",
+                                       TEXT::Localize("ui.lightingBake.noLightmapUncovered").c_str());
+                else
+                    ImGui::TextColored(palette.success,
+                                       TEXT::Localize("ui.lightingBake.noLightmapCoveredFormat").c_str(),
+                                       item.coveringVolume.c_str());
+            }
             if (ImGui::SmallButton(TEXT::Localize("ui.lightingBake.locate").c_str()))
                 execute("scene.object.focus", {{"objectId", item.objectId}});
             ImGui::PopID();

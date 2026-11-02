@@ -18,14 +18,7 @@ bool DocumentSceneBakeCoordinator::RequestLightingBake(DocumentSceneBase& scene,
         scene.state_->assets.Database().Initialize({});
     }
 
-    TOOLS::BAKING::LightingBakeRequest request{};
-    request.projectRoot = scene.state_->assets.Database().GetProjectRoot();
-    request.sceneGuid = scene.state_->identity.currentSceneAssetGuid.value;
-    request.sceneName = scene.GetCurrentSceneDisplayName();
-    request.scenePath = scene.GetScenePath();
-    request.sceneDocument = &scene.state_->identity.document;
-    request.assetDatabase = &scene.state_->assets.Database();
-    request.target = TOOLS::BAKING::LightingBakeTarget::All;
+    TOOLS::BAKING::LightingBakeRequest request = TOOLS::BAKING::LightingBakeService::BuildRequest(scene);
     request.force = force;
 
     TOOLS::BAKING::LightingBakeService service{};
@@ -45,6 +38,7 @@ bool DocumentSceneBakeCoordinator::RequestLightingBake(DocumentSceneBase& scene,
     }
 
     queuedBakeItems_.clear();
+    batchWarnings_.clear();
     batchItemCount_ = 0u;
     batchCompletedItemCount_ = 0u;
     batchReusedItemCount_ = 0u;
@@ -67,7 +61,7 @@ bool DocumentSceneBakeCoordinator::RequestLightingBake(DocumentSceneBase& scene,
         }
         queuedBakeItems_.push_back(QueuedBakeItem{kind, SceneObjectId{item.objectId}});
         if (item.dirty) {
-            report.dirtyReasons.push_back(item.name + ": " + item.dirtyReason);
+            report.dirtyReasons.push_back(item.name + ": " + TOOLS::BAKING::ToString(item.state));
         }
     }
 
@@ -119,6 +113,8 @@ bool DocumentSceneBakeCoordinator::StartNextQueuedBake(DocumentSceneBase& scene)
     if (queuedBakeItems_.empty()) {
         lastReport_.jobState = TOOLS::BAKING::LightingBakeJobState::Completed;
         lastReport_.completedItemCount = batchCompletedItemCount_ + batchReusedItemCount_;
+        lastReport_.warnings.insert(lastReport_.warnings.end(), batchWarnings_.begin(), batchWarnings_.end());
+        batchWarnings_.clear();
         lastReport_.messages.push_back("Lighting bake batch completed.");
         hasLastReport_ = true;
         batchItemCount_ = 0u;

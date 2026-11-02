@@ -13,7 +13,7 @@
 
 namespace HIKARI::ASSETS::LIGHTING {
 
-constexpr uint32_t kLightingBakeManifestVersion = 7;
+constexpr uint32_t kLightingBakeManifestVersion = 8;
 constexpr uint32_t kReflectionProbeBakePolicyVersion = 28;
 // 15: 探針を光照贴图と同じ DXR の経路で焼く（光栅の cubemap 撮影をやめた）。
 constexpr uint32_t kIrradianceVolumeBakePolicyVersion = 15;
@@ -78,6 +78,12 @@ struct LightmapBakeRecord {
     std::string name{};
     uint64_t objectId = 0u;
     std::vector<LightmapBakePage> pages{};
+    // 光照贴图の無い面（UV 生成の失敗、剪裁・半透明、未対応の頂点形式）の理由。物体全体なら pages は空。
+    // 入力が変わるまで同じ結果なので焼き直さない。
+    std::string noLightmapReason{};
+    // 光照贴图の無い面の世界空間の範囲。焼き込み探針の体積がそこを覆うかを編集器が判定する。
+    MATH::Vec3 noLightmapBoundsMin{};
+    MATH::Vec3 noLightmapBoundsMax{};
     std::string encoding{"RGB16F_Irradiance"};
     std::string authoringHash{};
     std::string captureSceneHash{};

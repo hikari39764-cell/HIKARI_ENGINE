@@ -30,9 +30,6 @@ public:
     DocumentSceneBakeCoordinator(const DocumentSceneBakeCoordinator&) = delete;
     DocumentSceneBakeCoordinator& operator=(const DocumentSceneBakeCoordinator&) = delete;
 
-    bool RequestReflectionProbeBake(DocumentSceneBase& scene, SceneObjectId targetObjectId = {});
-    bool RequestLightProbeBake(DocumentSceneBase& scene, SceneObjectId targetObjectId = {});
-    bool RequestLightmapBake(DocumentSceneBase& scene, SceneObjectId targetObjectId = {});
     bool RequestLightingBake(DocumentSceneBase& scene, bool force, SceneObjectId selectedObjectId);
     bool ClearLightingBake(DocumentSceneBase& scene);
     TOOLS::BAKING::LightingBakeJobState GetJobState() const;
@@ -78,20 +75,22 @@ private:
         bool scenePrepared = false;
         bool outputsCommitted = false;
         std::filesystem::path outputDirectory{};
-        std::vector<ASSETS::LIGHTING::LightmapBakePage> completedPages{};
         std::filesystem::path projectRoot{};
         std::filesystem::path outputPath{};
         std::string sceneGuid{};
-        std::string sceneHash{};
-        std::string authoringHash{};
-        std::string dependencyHash{};
-        std::string recordId{};
-        std::string objectName{};
-        std::string bakeSet{"Default"};
-        std::string scenario{"Default"};
+        // 焼き上がった page を足して清单に書く記録（id、名前、hash、範囲は要求時に決まる）。
+        ASSETS::LIGHTING::LightmapBakeRecord record{};
     };
 
+    // 一括の焼き込みの一項目ずつ（StartNextQueuedBake だけが呼ぶ）。
+    bool RequestReflectionProbeBake(DocumentSceneBase& scene, SceneObjectId targetObjectId);
+    bool RequestLightProbeBake(DocumentSceneBase& scene, SceneObjectId targetObjectId);
+    bool RequestLightmapBake(DocumentSceneBase& scene, SceneObjectId targetObjectId);
     bool StartNextQueuedBake(DocumentSceneBase& scene);
+    // 光照贴图の記録を清单に書き、置き換えた古い page を退役させて実行時の光照を読み直す。
+    bool CommitLightmapRecord(DocumentSceneBase& scene, const std::filesystem::path& projectRoot,
+                              const std::string& sceneGuid, const ASSETS::LIGHTING::LightmapBakeRecord& record,
+                              TOOLS::BAKING::LightingBakeReport& report, std::string& outMessage);
     // 光照贴图と探針の DXR の焼き込みが使う場面（参加する静的な模型の三角形、材質、光源、空）。
     RENDER3D::LIGHTING::TRANSPORT::LightingTransportScene BuildTransportScene(
         DocumentSceneBase& scene, const std::filesystem::path& projectRoot,
@@ -114,6 +113,8 @@ private:
     uint32_t batchCompletedItemCount_ = 0;
     uint32_t batchReusedItemCount_ = 0;
     bool batchForce_ = false;
+    // 一括の焼き込みの途中で光照贴图を作れなかった物体。各項目の報告は上書きされるので、最後の報告にまとめて残す。
+    std::vector<std::string> batchWarnings_{};
     TOOLS::BAKING::LightingBakeReport lastReport_{};
     bool hasLastReport_ = false;
 };

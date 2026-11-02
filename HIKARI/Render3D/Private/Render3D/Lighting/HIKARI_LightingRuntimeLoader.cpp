@@ -158,7 +158,10 @@ bool LightingRuntimeLoader::TryLoadBakeManifest(const LightingRuntimeLoadRequest
     runtimeData.activeScenario = manifest.activeScenario.empty() ? "Default" : manifest.activeScenario;
     runtimeData.bakedReflectionProbeCount = static_cast<uint32_t>(manifest.reflectionProbes.size());
     runtimeData.bakedLightProbeCount = static_cast<uint32_t>(manifest.lightProbes.size());
-    runtimeData.bakedLightmapCount = static_cast<uint32_t>(manifest.lightmaps.size());
+    // 光照贴图を作れなかった物体の記録（pages が空）は数えない。
+    runtimeData.bakedLightmapCount = static_cast<uint32_t>(
+        std::count_if(manifest.lightmaps.begin(), manifest.lightmaps.end(),
+                      [](const ASSETS::LIGHTING::LightmapBakeRecord& record) { return !record.pages.empty(); }));
 
     for (const ASSETS::LIGHTING::LightmapBakeRecord& record : manifest.lightmaps) {
         if (record.objectId == 0u || record.pages.empty() ||

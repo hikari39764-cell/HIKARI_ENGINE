@@ -22,6 +22,47 @@
 namespace HIKARI {
 using namespace DOCUMENT_SCENE_BAKING;
 
+namespace {
+
+// 光照贴图の無い面（atlas に割り当てられなかった三角形）の理由と世界空間の範囲を記録に書く。物体全体が作れなかった
+// 時も、遮蔽物として三角形は場面に入っている。
+void DescribeSurfacesWithoutLightmap(const RENDER3D::LIGHTING::TRANSPORT::LightingTransportScene& scene,
+                                     const RENDER3D::LIGHTING::TRANSPORT::LightingTransportSurfaceTarget& target,
+                                     ASSETS::LIGHTING::LightmapBakeRecord& record) {
+    bool found = false;
+    for (const auto& triangle : scene.triangles) {
+        if (triangle.objectId != target.objectId ||
+            (target.eligible && triangle.lightmapAllocationIndex != ASSETS::LIGHTING::kInvalidLightmapSurfaceIndex))
+            continue;
+        for (const MATH::Vec3& p : triangle.position) {
+            MATH::Vec3& lo = record.noLightmapBoundsMin;
+            MATH::Vec3& hi = record.noLightmapBoundsMax;
+            lo = found ? MATH::Vec3{(std::min)(lo.x, p.x), (std::min)(lo.y, p.y), (std::min)(lo.z, p.z)} : p;
+            hi = found ? MATH::Vec3{(std::max)(hi.x, p.x), (std::max)(hi.y, p.y), (std::max)(hi.z, p.z)} : p;
+            found = true;
+        }
+    }
+    if (!target.eligible) {
+        record.noLightmapReason = target.eligibilityMessage;
+        return;
+    }
+    if (!found)
+        return;
+    const std::pair<uint32_t, const char*> reasons[] = {
+        {target.invalidUvSurfaceCount, "invalid or missing UV1"},
+        {target.alphaMaskedSurfaceCount, "alpha-masked (occluder only)"},
+        {target.blendedSurfaceCount, "blended"},
+        {target.unsupportedSurfaceCount, "unsupported vertex layout"},
+    };
+    record.noLightmapReason = "Surfaces without lightmap:";
+    for (const auto& [count, reason] : reasons)
+        if (count > 0u)
+            record.noLightmapReason += " " + std::string(reason) + " " + std::to_string(count) + ",";
+    record.noLightmapReason.back() = '.';
+}
+
+} // namespace
+
 RENDER3D::LIGHTING::TRANSPORT::LightingTransportScene DocumentSceneBakeCoordinator::BuildTransportScene(
     DocumentSceneBase& scene, const std::filesystem::path& projectRoot,
     const RENDER3D::LIGHTING::SceneLightingSet& lighting) {
@@ -69,11 +110,8 @@ bool DocumentSceneBakeCoordinator::RequestLightmapBake(DocumentSceneBase& scene,
                      [targetObjectId](const auto& candidate) { return candidate.objectId == targetObjectId.value; });
     if (target == transportScene.targets.end()) {
         AddBakeError(report, "Target is not a visible Static model included in lighting bake.");
-    } else if (!target->eligible) {
-        AddBakeError(report, target->name + ": " + target->eligibilityMessage);
     }
 
-    auto job = std::make_unique<LightmapJob>();
     report.dxrBackendAvailable = TOOLS::BAKING::DxrProgressiveLightmapBaker::IsAvailable(GFX::GetCurrentContext());
     if (!report.dxrBackendAvailable) {
         AddBakeError(
@@ -89,30 +127,61 @@ bool DocumentSceneBakeCoordinator::RequestLightmapBake(DocumentSceneBase& scene,
 
     const ASSETS::LIGHTING::LightingBakeHashSnapshot hashes = ASSETS::LIGHTING::BuildLightingBakeHashSnapshot(
         scene.state_->identity.document, scene.state_->assets.Database());
+    const std::string recordId = "lightmap_object_" + std::to_string(targetObjectId.value);
+    const auto authoringHash = hashes.recordAuthoringHashes.find(recordId);
+    ASSETS::LIGHTING::LightmapBakeRecord record{};
+    record.id = recordId;
+    record.name = target->name;
+    record.objectId = targetObjectId.value;
+    record.authoringHash = authoringHash != hashes.recordAuthoringHashes.end() ? authoringHash->second : std::string{};
+    record.captureSceneHash = hashes.sceneHash;
+    record.dependencyHash = hashes.dependencyHash;
+    record.scenario = lighting.activeScenario.empty() ? "Default" : lighting.activeScenario;
+    DescribeSurfacesWithoutLightmap(transportScene, *target, record);
+
+    report.dirtyReasons = lastReport_.dirtyReasons;
+    report.bakeItemCount = batchItemCount_;
+    report.dirtyItemCount = static_cast<uint32_t>(queuedBakeItems_.size()) + 1u;
+    report.completedItemCount = batchCompletedItemCount_;
+    report.reusedItemCount = batchReusedItemCount_;
+    report.currentItemName = record.name;
+
+    // 光照贴图を作れない物体（UV 生成の失敗など）は失敗を記録して次へ進む。入力が変わるまで同じ失敗を焼き直さず、
+    // 一つの失敗で一括の焼き込み全体を止めない。この物体は焼き込み探針・動的 GI・空の光の順で照らされる。
+    if (!target->eligible) {
+        std::string message{};
+        if (!CommitLightmapRecord(scene, projectRoot, scene.state_->identity.currentSceneAssetGuid.value, record,
+                                  report, message)) {
+            AddBakeError(report, message);
+            SetBakeJobState(report, TOOLS::BAKING::LightingBakeJobState::Failed);
+            lastReport_ = std::move(report);
+            hasLastReport_ = true;
+            return false;
+        }
+        batchWarnings_.push_back(record.name + ": no lightmap, " + record.noLightmapReason);
+        report.completedItemCount = ++batchCompletedItemCount_ + batchReusedItemCount_;
+        SetBakeJobState(report, TOOLS::BAKING::LightingBakeJobState::Completed);
+        lastReport_ = std::move(report);
+        hasLastReport_ = true;
+        return StartNextQueuedBake(scene);
+    }
+
+    auto job = std::make_unique<LightmapJob>();
     job->state = TOOLS::BAKING::LightingBakeJobState::Requested;
     job->report = report;
+    job->targetIndex = static_cast<size_t>(std::distance(transportScene.targets.begin(), target));
     job->transportScene = std::move(transportScene);
-    job->targetIndex = static_cast<size_t>(std::distance(
-        job->transportScene.targets.begin(),
-        std::find_if(job->transportScene.targets.begin(), job->transportScene.targets.end(),
-                     [targetObjectId](const auto& candidate) { return candidate.objectId == targetObjectId.value; })));
     job->objectId = targetObjectId;
     job->projectRoot = projectRoot;
     job->sceneGuid = scene.state_->identity.currentSceneAssetGuid.value;
-    job->sceneHash = hashes.sceneHash;
-    job->dependencyHash = hashes.dependencyHash;
-    job->recordId = "lightmap_object_" + std::to_string(targetObjectId.value);
-    const auto authoringHash = hashes.recordAuthoringHashes.find(job->recordId);
-    job->authoringHash = authoringHash != hashes.recordAuthoringHashes.end() ? authoringHash->second : std::string{};
     const auto& resolvedTarget = job->transportScene.targets[job->targetIndex];
-    job->objectName = resolvedTarget.name;
-    job->scenario = lighting.activeScenario.empty() ? "Default" : lighting.activeScenario;
     job->settings.sampleCount = ASSETS::LIGHTING::kSurfaceLightmapDefaultSampleCount;
     job->settings.bounceCount = ASSETS::LIGHTING::kSurfaceLightmapDefaultBounceCount;
     job->settings.outputResolution = resolvedTarget.pages.front().outputResolution;
     job->outputDirectory =
-        LightmapOutputDirectory(projectRoot, job->sceneGuid) / (job->recordId + "_" + GenerateAssetGuid().value);
+        LightmapOutputDirectory(projectRoot, job->sceneGuid) / (record.id + "_" + GenerateAssetGuid().value);
     job->outputPath = job->outputDirectory / "page_0.dds";
+    job->record = std::move(record);
 
     job->report.bakeRoot = ASSETS::LIGHTING::BuildLightingBakeRoot(projectRoot, job->sceneGuid);
     job->report.manifestPath = ASSETS::LIGHTING::BuildLightingBakeManifestPath(projectRoot, job->sceneGuid);
@@ -120,16 +189,6 @@ bool DocumentSceneBakeCoordinator::RequestLightmapBake(DocumentSceneBase& scene,
     job->report.lightmapResolution = job->settings.outputResolution;
     job->report.transportRequestedSamples =
         job->settings.sampleCount * static_cast<uint32_t>(resolvedTarget.pages.size());
-    if (batchItemCount_ == 0u) {
-        batchItemCount_ = 1u;
-        batchCompletedItemCount_ = 0u;
-        batchReusedItemCount_ = 0u;
-    }
-    job->report.bakeItemCount = batchItemCount_;
-    job->report.dirtyItemCount = static_cast<uint32_t>(queuedBakeItems_.size()) + 1u;
-    job->report.completedItemCount = batchCompletedItemCount_;
-    job->report.reusedItemCount = batchReusedItemCount_;
-    job->report.currentItemName = job->objectName;
     job->report.messages.push_back(
         "Surface lightmap uses UV1, static opaque geometry, RGB16F diffuse irradiance, and per-record runtime fallback.");
     job->report.messages.push_back(resolvedTarget.eligibilityMessage);

@@ -123,14 +123,7 @@ bool DocumentSceneBakeCoordinator::RequestReflectionProbeBake(DocumentSceneBase&
     job->request.bakeSet = probe->bakeSet;
     job->request.scenario = probe->scenario;
     job->report = report;
-    if (batchItemCount_ == 0u) {
-        batchItemCount_ = 1u;
-        batchCompletedItemCount_ = 0u;
-        batchReusedItemCount_ = 0u;
-        job->report.dirtyReasons.clear();
-    } else {
-        job->report.dirtyReasons = lastReport_.dirtyReasons;
-    }
+    job->report.dirtyReasons = lastReport_.dirtyReasons;
     job->report.bakeItemCount = batchItemCount_;
     job->report.dirtyItemCount = static_cast<uint32_t>(queuedBakeItems_.size()) + 1u;
     job->report.completedItemCount = batchCompletedItemCount_;
@@ -251,14 +244,7 @@ bool DocumentSceneBakeCoordinator::RequestLightProbeBake(DocumentSceneBase& scen
     report.lightingTransportBackend = "DxrPathTracing";
     report.transportRequestedSamples = job->request.sampleCount;
     job->report = report;
-    if (batchItemCount_ == 0u) {
-        batchItemCount_ = 1u;
-        batchCompletedItemCount_ = 0u;
-        batchReusedItemCount_ = 0u;
-        job->report.dirtyReasons.clear();
-    } else {
-        job->report.dirtyReasons = lastReport_.dirtyReasons;
-    }
+    job->report.dirtyReasons = lastReport_.dirtyReasons;
     job->report.bakeItemCount = batchItemCount_;
     job->report.dirtyItemCount = static_cast<uint32_t>(queuedBakeItems_.size()) + 1u;
     job->report.completedItemCount = batchCompletedItemCount_;

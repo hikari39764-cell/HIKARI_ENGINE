@@ -77,6 +77,12 @@ void DrawWorkflowSummary(const TOOLS::BAKING::LightingBakeStatus& status, const 
     } else if (status.totalCount > 0u) {
         ImGui::TextColored(palette.success, "%s", TEXT::Localize("ui.lightingBake.readyNote").c_str());
     }
+    if (status.noLightmapCount > 0u) {
+        ImGui::PushStyleColor(ImGuiCol_Text, palette.warning);
+        ImGui::TextWrapped(TEXT::Localize("ui.lightingBake.noLightmapSummaryFormat").c_str(), status.noLightmapCount,
+                           status.uncoveredCount);
+        ImGui::PopStyleColor();
+    }
     ImGui::TextDisabled("%s", TEXT::Localize("ui.lightingBake.surfaceLightmapHint").c_str());
 }
 

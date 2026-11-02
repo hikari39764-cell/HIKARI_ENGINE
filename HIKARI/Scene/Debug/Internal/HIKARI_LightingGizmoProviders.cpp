@@ -256,13 +256,12 @@ void DrawIrradianceVolume(const GameObject& object, const ComponentGizmoDrawCont
     if (volume->GetMode() == LightProbeVolumeMode::Baked) {
         // 焼き込みは探針の格子（上の箱）の外へ半間隔まで全面を覆い、そこから blendDistance で消える
         // （HikariEvaluateBakedVolumeInfluence）。壁際の探針を部屋の中に置いても壁の面が覆われるかをここで見る。
-        const auto spacing = [](float size, uint32_t count) {
-            return count > 1u ? size / static_cast<float>(count - 1u) : 0.0f;
-        };
-        const MATH::Vec3 size = volume->GetSize();
-        const MATH::Vec3 covered{size.x + spacing(size.x, volume->GetCountX()),
-                                 size.y + spacing(size.y, volume->GetCountY()),
-                                 size.z + spacing(size.z, volume->GetCountZ())};
+        LightProbeVolumeSettings grid{};
+        grid.size = volume->GetSize();
+        grid.countX = volume->GetCountX();
+        grid.countY = volume->GetCountY();
+        grid.countZ = volume->GetCountZ();
+        const MATH::Vec3 covered = GetBakedLightProbeVolumeCoveredSize(grid);
         DRAW::SubmitStyledBox(world, {}, covered, kIrradianceBlendCoreColor, false);
         const float blend = 2.0f * volume->GetBlendDistance();
         if (blend > 0.001f)

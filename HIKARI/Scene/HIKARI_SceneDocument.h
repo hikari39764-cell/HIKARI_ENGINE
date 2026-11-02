@@ -133,6 +133,12 @@ inline MATH::Vec3 GetLightProbeVolumeSpacing(const LightProbeVolumeSettings& set
             settings.countZ > 1u ? settings.size.z / static_cast<float>(settings.countZ - 1u) : 1.0f};
 }
 
+// 焼き込み volume が全面を覆う箱の大きさ（中心は格子と同じ）。格子の外へ半間隔ずつ広い
+// （HikariEvaluateBakedVolumeInfluence、そこから blendDistance で消える）。
+inline MATH::Vec3 GetBakedLightProbeVolumeCoveredSize(const LightProbeVolumeSettings& settings) {
+    return settings.size + GetLightProbeVolumeSpacing(settings);
+}
+
 inline MATH::Vec3 GetLightProbeVolumeProbePosition(const LightProbeVolumeSettings& settings, uint32_t x, uint32_t y,
                                                    uint32_t z) {
     const MATH::Vec3 spacing = GetLightProbeVolumeSpacing(settings);
