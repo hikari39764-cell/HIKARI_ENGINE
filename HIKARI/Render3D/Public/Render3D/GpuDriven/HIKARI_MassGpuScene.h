@@ -48,9 +48,19 @@ struct MassGpuSceneVersionDelta {
     std::vector<RUNTIME::MassRenderDirtyRange> dirtyRanges{};
 };
 
+// 種類ごとの形（materialSources と同じ並び）。光追は種類ごとに形の BLAS と hit 記録を一つ持ち、個体はそれを共有する。
+struct MassGpuSceneShape {
+    ClusterGeometryResourceHandle clusterGeometry{};
+    uint32_t nodeIndex = RUNTIME::kInvalidRenderSurfaceIndex;
+    uint32_t meshIndex = RUNTIME::kInvalidRenderSurfaceIndex;
+    uint32_t primitiveIndex = RUNTIME::kInvalidRenderSurfaceIndex;
+    bool doubleSided = false;
+};
+
 struct MassGpuSceneSource {
     std::vector<RUNTIME::MassRenderProxyGpuRecord> instances{};
     std::vector<RUNTIME::SurfaceGpuSceneMaterialSource> materialSources{};
+    std::vector<MassGpuSceneShape> shapes{};
     std::vector<MassGpuSceneVersionDelta> dirtyHistory{};
     uint64_t worldIdentity = 0u;
     uint64_t layoutVersion = 0u;

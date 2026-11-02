@@ -36,6 +36,8 @@ enum class RuntimeRayTracingExclusion : uint8_t {
     CustomVertex,
     MaterialEffect,
     ScreenMaterial,
+    // 形が解決できない、または予算に収まらない大量配置。カスケードの影も大量配置を描かないので、外しても光追の影は
+    // カスケードへ戻らない（影を落とす面として数えない）。
     MassInstances,
     // 完成した場面へ後から足した少数の面で、形状の BLAS をまだ組んでいる途中（数フレームで入る）。
     Pending,
@@ -113,7 +115,7 @@ struct RuntimeRayTracingBudget {
     uint32_t chunksPerAsset = 1024;
     uint32_t buildsPerFrame = 2;
     uint32_t geometryUploadsPerFrame = 1;
-    uint32_t maximumInstances = 32768;
+    uint32_t maximumInstances = 262144; // 大量配置（最大 131072 個体）を含む
     uint32_t maximumHitRecords = 262144;
 };
 
@@ -202,8 +204,9 @@ public:
     ~RuntimeRayTracingScene();
     RuntimeRayTracingScene(const RuntimeRayTracingScene&) = delete;
     RuntimeRayTracingScene& operator=(const RuntimeRayTracingScene&) = delete;
+    // massMaterialSlots は大量配置の種類ごとの材質 slot（MassGpuSceneSource::materialSources の並び）。
     RuntimeRayTracingFrame Prepare(const GFX::Context& graphics, const GPUDRIVEN::GpuDrivenSceneSource& source,
-                                   std::span<const uint32_t> materialSlots,
+                                   std::span<const uint32_t> materialSlots, std::span<const uint32_t> massMaterialSlots,
                                    std::span<const MATERIAL::GpuMaterialData> materials,
                                    const RuntimeRayTracingBudget& budget,
                                    RuntimeRayTracingMaterialVersion materialVersion = {},

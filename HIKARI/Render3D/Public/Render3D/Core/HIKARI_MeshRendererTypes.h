@@ -34,6 +34,8 @@ namespace HIKARI::MESHRENDERER {
 // Material registry と同じ slot/buffer を RT/GI consumer へ渡す。
 struct MeshMaterialGpuFrameView {
     std::span<const uint32_t> materialSlots;
+    // 大量配置の種類ごとの材質 slot（MassGpuSceneSource::materialSources の並び）。
+    std::span<const uint32_t> massMaterialSlots;
     std::span<const RENDER3D::MATERIAL::GpuMaterialData> materialData;
     D3D12_GPU_VIRTUAL_ADDRESS materials = 0;
     D3D12_GPU_VIRTUAL_ADDRESS programParameters = 0;

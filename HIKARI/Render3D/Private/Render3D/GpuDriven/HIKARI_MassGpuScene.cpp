@@ -180,6 +180,7 @@ RUNTIME::MassRenderProxyGpuRecord BuildMassRecord(const RUNTIME::MassRenderTrans
 void MassGpuSceneSource::Reset() {
     instances.clear();
     materialSources.clear();
+    shapes.clear();
     dirtyHistory.clear();
     worldIdentity = 0u;
     layoutVersion = 0u;
@@ -456,6 +457,7 @@ bool MassGpuSceneRegistry::EndSync(RUNTIME::RenderModelCache& renderModelCache) 
         if (layoutChanged) {
             impl_->source.instances.resize(totalCount);
             impl_->source.materialSources.resize(impl_->pending.size());
+            impl_->source.shapes.resize(impl_->pending.size());
             impl_->layouts.clear();
             impl_->layouts.reserve(impl_->pending.size());
             uint32_t cursor = 0u;
@@ -470,6 +472,9 @@ bool MassGpuSceneRegistry::EndSync(RUNTIME::RenderModelCache& renderModelCache) 
                 material.sourceRecordIndex = storeIndex;
                 material.localGpuSceneInstanceIndex = cursor;
                 impl_->source.materialSources[storeIndex] = material;
+                const GpuSceneSurfaceRecord& shape = store.renderTemplate->records.front();
+                impl_->source.shapes[storeIndex] = {shape.key.resources.clusterGeometry, shape.nodeIndex,
+                                                    shape.meshIndex, shape.primitiveIndex, shape.key.doubleSided};
                 impl_->layouts.push_back(Impl::StoreLayout{store.input.proxy.typeId, store.templateKey,
                                                            store.input.layoutVersion, store.input.sourceVersion, cursor,
                                                            SaturateToUint32(store.input.transforms.size())});

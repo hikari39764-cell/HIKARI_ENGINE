@@ -239,7 +239,9 @@ MeshMaterialGpuFrameView GetMaterialGpuFrameView(const GFX::Context& graphics) {
         return {};
     const uintptr_t identity = reinterpret_cast<uintptr_t>(gMeshRendererState.gpuDrivenSceneSourceIdentity);
     const auto& registry = gMeshRendererState.gpuMaterialRegistry;
+    const auto* mass = gMeshRendererState.gpuDrivenSceneSource.mass;
     return {registry.GetSourceBindings(identity),
+            mass ? registry.GetSourceBindings(reinterpret_cast<uintptr_t>(mass)) : std::span<const uint32_t>{},
             frame.materialDataStaging,
             frame.materialDataBuffer->GetGPUVirtualAddress(),
             frame.materialProgramParameterBuffer->GetGPUVirtualAddress(),

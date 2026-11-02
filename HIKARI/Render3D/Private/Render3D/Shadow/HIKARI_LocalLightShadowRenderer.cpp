@@ -77,8 +77,6 @@ bool SameLight(const CachedLight& cached, uint32_t sourceIndex, const SceneLight
 }
 bool HasRelevantDynamicCasters(const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source,
                                const SceneLightProvider& light) {
-    if (source.HasMassInstances())
-        return true;
     const auto& pass = source.GetPass(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow);
     const auto relevant = [&](const auto* instances, uint32_t count) {
         if (!instances || instances->size() < count)

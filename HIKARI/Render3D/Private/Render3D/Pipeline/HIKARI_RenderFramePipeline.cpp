@@ -388,9 +388,10 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
             GFX::GPU_PROFILE::ScopedGpuTimer rayTimer(frame.graphics.cmdList,
                                                       GFX::GPU_PROFILE::Pass::RuntimeRayScenePreparation);
             const MESHRENDERER::TerrainSurfaceGpuBindings terrain = MESHRENDERER::GetTerrainSurfaceGpuBindings();
-            rayScene = gRuntimeRayScene.Prepare(frame.graphics, source, materials.materialSlots, materials.materialData,
-                                                {}, {materials.dataVersion, materials.bindingVersion},
-                                                {terrain.records, terrain.floats, terrain.floatVersion});
+            rayScene =
+                gRuntimeRayScene.Prepare(frame.graphics, source, materials.materialSlots, materials.massMaterialSlots,
+                                         materials.materialData, {}, {materials.dataVersion, materials.bindingVersion},
+                                         {terrain.records, terrain.floats, terrain.floatVersion});
         } else {
             gRuntimeRayScene.Reset(frame.graphics);
             gRuntimeRayLighting.Reset(frame.graphics);
