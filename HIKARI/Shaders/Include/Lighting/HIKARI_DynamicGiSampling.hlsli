@@ -83,7 +83,7 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
     // 前向きの着色器が資源の境目にあり、どの形でも 0.4–1.0 ms 増えた。最も近い基準は壁際に斑が残った）。
     float weights[8];
     uint anchor = 0u;
-    float anchorWeight = 0.0f;
+    float anchorWeight = 0.0f, anchorVisibility = 0.0f;
     [unroll] for (uint corner = 0u; corner < 8u; ++corner)
     {
         const uint3 offset = uint3(corner & 1u, (corner >> 1u) & 1u, (corner >> 2u) & 1u);
@@ -93,8 +93,8 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
         const float trilinear = axes.x * axes.y * axes.z;
         const float4 state = HikariDynamicGiProbeState(descriptorIndex, tile);
         const float active = state.a > 0.0f ? 1.0f : 0.0f;
-        // 非活性の probe（形状の中）も欠けとして下位の層へ渡す。重みを 0 にして残りで正規化すると、壁と箱に挟まれた
-        // 所で残った 1 つの壁の外の probe（可視性で潰しても）が全重みを持ち、外の光の多角形の破片が出た。
+        // 非活性の probe（形状の中）は重み 0 で欠けとして数える。欠けを下位の層へ渡す割合は末尾で決める（無条件に残りで
+        // 正規化すると、壁と箱に挟まれた所で残った 1 つの壁の外の probe が全重みを持ち、外の光の多角形の破片が出た）。
         missing += trilinear * (1.0f - active);
         // probe は格子点から動いている（形状の中や面のすぐ近くから離してある）。
         const float3 probePosition = volume.originSampling.xyz + coordinate * volume.spacingIntensity.xyz + state.rgb;
@@ -109,6 +109,7 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
         const float weight = trilinear * active * HikariDynamicGiWeight(visibility, surfaceWeight);
         weights[corner] = weight; // 展開した定数の添字だけで読み書きする
         anchor = weight > anchorWeight ? corner : anchor;
+        anchorVisibility = weight > anchorWeight ? visibility : anchorVisibility;
         anchorWeight = max(anchorWeight, weight);
         activeWeight += trilinear * active;
         supported += trilinear * active * visibility;
@@ -138,9 +139,13 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
         }
     }
     // 可視性は統計なので下限（HikariDynamicGiWeight）を持ち、支持を切らない。重みが完全に消えるのは非活性の probe
-    // だけで、その点はこの層の支持なしとして下位の層か空へ渡す。
-    result.coverage = totalWeight > 0.0f ? saturate(1.0f - missing) : 0.0f;
+    // だけ。その欠けを下位の層か空へ渡す割合は、最も重い probe がその点を見ているか（可視性）で決める：見えていれば
+    // 活性な probe どうしの正規化を信じて欠けを渡さず、見えていなければ（壁と箱に挟まれて壁の外の probe しか残らない
+    // 所）これまでどおり渡す。欠けを全部渡していた時は、厚い壁に埋まった格子点の分を 6 m 間隔の遠景か空が埋め、外が
+    // 明るい箱の中が 2–5 割明るくなった（探針の命中点も同じで、探針自体も 4 割明るくなった）。活性な probe 全体の
+    // 見えている割合で決めると、壁の外で縁の可視性を抜けた probe に引かれて壁際に斑が残った。
     result.support = activeWeight > 0.0f ? saturate(supported / activeWeight) : 0.0f;
+    result.coverage = totalWeight > 0.0f ? saturate(1.0f - missing * (1.0f - anchorVisibility)) : 0.0f;
     if (totalWeight <= 0.0f) return result;
 
     [unroll] for (uint direction = 0u; direction < (query.medium ? 4u : 1u); ++direction)
