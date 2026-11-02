@@ -42,7 +42,7 @@ static_assert(sizeof(HlpvHeader) == 76u);
 constexpr uint32_t kMaximumGridDimension = 2048u;
 constexpr uint64_t kMaximumProbeCount = 4096u;
 constexpr uint64_t kProbePayloadBytes =
-    (kLightProbeShCoeffCount * 3u + kLightProbeVisibilityTexelCount * 2u) * sizeof(float);
+    (kLightProbeShCoeffCount * 4u + kLightProbeVisibilityTexelCount * 2u) * sizeof(float);
 
 bool IsGridCountValid(uint32_t x, uint32_t y, uint32_t z, uint64_t count) {
     return x >= 2u && y >= 1u && z >= 2u && x <= kMaximumGridDimension && y <= kMaximumGridDimension &&
@@ -110,6 +110,13 @@ bool ValidateLightProbeVolumeData(const LightProbeVolumeFileData& data, std::str
                 return false;
             }
         }
+        // 0..1 の関数の SH9 なので、各係数は 2√π（全方向が見える時の第 0 係数）を超えない。
+        for (const float coeff : probe.skyVisibility) {
+            if (!std::isfinite(coeff) || std::abs(coeff) > 4.0f) {
+                SetMessage(outMessage, "Light probe sky visibility is non-finite or out of range.");
+                return false;
+            }
+        }
     }
     SetMessage(outMessage, "Light probe volume data validated.");
     return true;
@@ -173,6 +180,10 @@ bool LoadLightProbeVolumeFile(const std::filesystem::path& path, LightProbeVolum
             }
             coeff = ReadVec3(raw);
         }
+        if (!ReadTrivialArray(ifs, probe.skyVisibility, std::size(probe.skyVisibility))) {
+            SetMessage(outMessage, "HLPV sky visibility payload is truncated: " + path.generic_string());
+            return false;
+        }
     }
     data.visibilityMoments.resize(data.probes.size() * kLightProbeVisibilityTexelCount);
     for (auto& moments : data.visibilityMoments) {
@@ -229,6 +240,7 @@ bool SaveLightProbeVolumeFile(const std::filesystem::path& path, const LightProb
             const float raw[3] = {coeff.x, coeff.y, coeff.z};
             writeSucceeded = writeSucceeded && WriteTrivialArray(ofs, raw, std::size(raw));
         }
+        writeSucceeded = writeSucceeded && WriteTrivialArray(ofs, probe.skyVisibility, std::size(probe.skyVisibility));
     }
     for (const auto& moments : data.visibilityMoments) {
         const float raw[2] = {moments.x, moments.y};

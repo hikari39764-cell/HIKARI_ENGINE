@@ -176,9 +176,11 @@ bool WriteVolumeSrvs(ResidentVolume& resident, size_t residentIndex) {
     return resident.srvReady;
 }
 
-HalfTexel ToHalfTexel(const MATH::Vec3& value) {
+// RGB は放射輝度の SH 係数、A は同じ番号の空の見える割合の SH 係数（一回の読み出しで両方を補間する）。
+HalfTexel ToHalfTexel(const MATH::Vec3& value, float skyVisibility) {
     using DirectX::PackedVector::XMConvertFloatToHalf;
-    return HalfTexel{XMConvertFloatToHalf(value.x), XMConvertFloatToHalf(value.y), XMConvertFloatToHalf(value.z), 0u};
+    return HalfTexel{XMConvertFloatToHalf(value.x), XMConvertFloatToHalf(value.y), XMConvertFloatToHalf(value.z),
+                     XMConvertFloatToHalf(skyVisibility)};
 }
 
 bool UploadVolumes(ResidentVolume& resident, size_t residentIndex,
@@ -251,7 +253,8 @@ bool UploadVolumes(ResidentVolume& resident, size_t residentIndex,
                                                              footprint.Footprint.RowPitch);
                 for (uint32_t x = 0; x < countX; ++x) {
                     const size_t probeIndex = (static_cast<size_t>(z) * countY + y) * countX + x;
-                    row[x] = ToHalfTexel(fileData.probes[probeIndex].coeffs[coeff]);
+                    row[x] = ToHalfTexel(fileData.probes[probeIndex].coeffs[coeff],
+                                         fileData.probes[probeIndex].skyVisibility[coeff]);
                 }
             }
         }

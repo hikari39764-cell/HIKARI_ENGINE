@@ -3,7 +3,8 @@
 
 #include "HIKARI_DynamicGiSampling.hlsli"
 
-float3 HikariSampleLightProbeCoefficient(
+// RGB は放射輝度の SH 係数、A は空の見える割合の SH 係数。
+float4 HikariSampleLightProbeCoefficient(
     uint providerSlot,
     uint coefficientIndex,
     float3 uvw)
@@ -12,11 +13,11 @@ float3 HikariSampleLightProbeCoefficient(
         ? gLightProbeShVolume0[coefficientIndex].SampleLevel(
             gLinearWrap,
             uvw,
-            0.0f).rgb
+            0.0f)
         : gLightProbeShVolume1[coefficientIndex].SampleLevel(
             gLinearWrap,
             uvw,
-            0.0f).rgb;
+            0.0f);
 }
 
 // 焼き込み volume の可視性は probe から受光点への方向距離。atlas は probe ごとに 16x16 の八面体。
@@ -37,11 +38,11 @@ float HikariLightProbeVisibility(HikariIrradianceVolumeData volume, uint3 probeC
     return HikariProbeChebyshevVisibility(moments, distance / volume.selectionParams.w);
 }
 
-float3 HikariLoadLightProbeCoefficient(uint providerSlot, uint coefficientIndex, uint3 coordinate)
+float4 HikariLoadLightProbeCoefficient(uint providerSlot, uint coefficientIndex, uint3 coordinate)
 {
     return providerSlot == 0u
-        ? gLightProbeShVolume0[coefficientIndex].Load(int4(coordinate, 0)).rgb
-        : gLightProbeShVolume1[coefficientIndex].Load(int4(coordinate, 0)).rgb;
+        ? gLightProbeShVolume0[coefficientIndex].Load(int4(coordinate, 0))
+        : gLightProbeShVolume1[coefficientIndex].Load(int4(coordinate, 0));
 }
 
 // 焼き込み volume：面上の点は深度 moment の誤差で自分の面に遮られたと判定される。視線を主に法線を少し混ぜた向き（面の表）へ
@@ -53,10 +54,12 @@ float3 HikariProbeSamplePosition(HikariIrradianceVolumeData volume, float3 world
     return worldPos + (n * 0.2f + v * 0.8f) * (0.75f * minimumSpacing * clamp(volume.selectionParams.z, 0.0f, 0.5f));
 }
 
-// 焼き込み volume（SH9）。RGB は E/pi、A は sample validity。空間 coverage は influence が所有する。
+// 焼き込み volume（SH9）。RGB は E/pi、A は sample validity。空間 coverage は influence が所有する。skyVisibility は
+// 法線のまわりで余弦加重した空の見える割合（係数の A を同じ重みで畳む）。
 float4 HikariEvaluateLightProbeVolumeDiffuse(
-    uint providerSlot, HikariIrradianceVolumeData volume, float3 worldPos, float3 n, float3 v)
+    uint providerSlot, HikariIrradianceVolumeData volume, float3 worldPos, float3 n, float3 v, out float skyVisibility)
 {
+    skyVisibility = 1.0f;
     if (!HikariHasIrradianceVolumeData(volume)) return 0.0f.xxxx;
     // 強度ゼロは有効な黒。下位の空へ切り替えると調整結果が逆転する。
     if (volume.spacingIntensity.w == 0.0f) return float4(0,0,0,1);
@@ -82,7 +85,7 @@ float4 HikariEvaluateLightProbeVolumeDiffuse(
         totalWeight += weights[corner];
         allVisible = allVisible && visibility >= 0.9999f;
     }
-    float3 result = 0.0f.xxx;
+    float4 result = 0.0f.xxxx;
     [branch] if (allVisible)
     {
         const float3 uvw = (grid + 0.5f) / (float3)counts;
@@ -104,7 +107,7 @@ float4 HikariEvaluateLightProbeVolumeDiffuse(
                 const float3 coordinate = lerp((float3)coordinates[corner],
                     (float3)coordinates[corner + 1u], fractionX);
                 const float3 uvw = (coordinate + 0.5f) / (float3)counts;
-                float3 irradiance = 0.0f.xxx;
+                float4 irradiance = 0.0f.xxxx;
                 [unroll] for (uint coefficient = 0u; coefficient < 9u; ++coefficient)
                     irradiance += HikariSampleLightProbeCoefficient(providerSlot, coefficient, uvw) *
                         HikariSh9DiffuseWeight(n, coefficient);
@@ -121,7 +124,7 @@ float4 HikariEvaluateLightProbeVolumeDiffuse(
         {
             [branch] if (weights[corner] > 0.0f)
             {
-                float3 irradiance = 0.0f.xxx;
+                float4 irradiance = 0.0f.xxxx;
                 [unroll] for (uint coefficient = 0u; coefficient < 9u; ++coefficient)
                     irradiance += HikariLoadLightProbeCoefficient(providerSlot, coefficient, coordinates[corner]) *
                         HikariSh9DiffuseWeight(n, coefficient);
@@ -130,7 +133,8 @@ float4 HikariEvaluateLightProbeVolumeDiffuse(
         }
         result /= totalWeight;
     }
-    return float4(max(result, 0.0f.xxx), 1.0f);
+    skyVisibility = saturate(result.a);
+    return float4(max(result.rgb, 0.0f.xxx), 1.0f);
 }
 
 // 焼き込み volume の影響。探針の格子の外へ半間隔までは端の探針で全面を覆い（採样は格子の端へ寄せる）、そこから
@@ -162,13 +166,17 @@ float HikariEvaluateProviderFallbackWeight(float2 weights)
         (1.0f - weights.y));
 }
 
-// 焼き込み provider。RGB は coverage 適用済みの E/pi、A は coverage。
+// 焼き込み provider。RGB は coverage 適用済みの E/pi、A は coverage。skyVisibility は coverage で重み付けした
+// 空の見える割合（coverage が零なら 1）。
 // 二つの provider は同じ評価を回す。展開すると slot が実行時の値のまま評価が二重に複製され、forward の
 // pixel shader が数万命令に膨らんで PSO の初回生成に数秒かかる。
-float4 HikariResolveBakedLightProbeDiffuse(float3 worldPos, float3 n, float3 v)
+float4 HikariResolveBakedLightProbeDiffuse(float3 worldPos, float3 n, float3 v, out float skyVisibility)
 {
     float4 first = 0.0f.xxxx;
     float4 second = 0.0f.xxxx;
+    float firstSky = 1.0f;
+    float secondSky = 1.0f;
+    skyVisibility = 1.0f;
     const float priority0 = gIrradianceVolumes[0].selectionParams.x;
     const float priority1 = gIrradianceVolumes[1].selectionParams.x;
     const bool ordered = priority0 != priority1;
@@ -180,41 +188,56 @@ float4 HikariResolveBakedLightProbeDiffuse(float3 worldPos, float3 n, float3 v)
         const float influence = HikariEvaluateBakedVolumeInfluence(volume, worldPos);
         // rgb は強度適用済みの E/pi、a は influence と sample validity の重み。
         float4 weighted = 0.0f.xxxx;
+        float sky = 1.0f;
         [branch] if (influence > 0.0001f)
         {
-            const float4 sample = HikariEvaluateLightProbeVolumeDiffuse(slot, volume, worldPos, n, v);
+            const float4 sample = HikariEvaluateLightProbeVolumeDiffuse(slot, volume, worldPos, n, v, sky);
             weighted = float4(sample.rgb * max(0.0f, volume.spacingIntensity.w), influence * sample.a);
         }
         if (order == 0u)
         {
             first = weighted;
+            firstSky = sky;
             // 優先 provider が全面を覆うなら、隠れた下位 provider の SH を読まない。
             [branch] if (ordered && first.a >= 1.0f)
+            {
+                skyVisibility = firstSky;
                 return float4(first.rgb, 1.0f);
+            }
         }
         else
         {
             second = weighted;
+            secondSky = sky;
         }
     }
     if (first.a <= 0.0001f && second.a <= 0.0001f) return 0.0f.xxxx;
     const float coverage = saturate(1.0f - (1.0f - first.a) * (1.0f - second.a));
     if (ordered)
-        return float4(second.rgb * (second.a * (1.0f - first.a)) + first.rgb * first.a, coverage);
-    const float3 localDiffuse = (first.rgb * first.a + second.rgb * second.a) / max(first.a + second.a, 0.0001f);
+    {
+        const float secondShare = second.a * (1.0f - first.a);
+        skyVisibility = (firstSky * first.a + secondSky * secondShare) / max(first.a + secondShare, 0.0001f);
+        return float4(second.rgb * secondShare + first.rgb * first.a, coverage);
+    }
+    const float total = max(first.a + second.a, 0.0001f);
+    skyVisibility = (firstSky * first.a + secondSky * second.a) / total;
+    const float3 localDiffuse = (first.rgb * first.a + second.rgb * second.a) / total;
     return float4(localDiffuse * coverage, coverage);
 }
 
 // RGB は coverage 適用済みの E/pi、A は下位（空）を置換する coverage。呼び出し側は A<1 の場合にだけ空の光を評価する。
 // 動的 GI の volume（手置きの区域、近景、遠景の優先順に CPU が並べる）を先に重ね、残りを焼き込み provider が埋める。
-// skyVisibility は空の見える割合。動的 GI が覆わない部分は 1（遮蔽を知らない）。
+// skyVisibility は空の見える割合。動的 GI と焼き込み探針のどちらも覆わない部分は 1（遮蔽を知らない）。
 float4 HikariResolveLightProbeDiffuse(float3 worldPos, float3 geometricNormal, float3 n, float3 v, out float skyVisibility)
 {
     const HikariDynamicGiSample dynamic = HikariQueryDynamicGi(gDynamicGiVolumes,
         HikariSurfaceGiQuery(worldPos, geometricNormal, n, v));
     skyVisibility = saturate(dynamic.skyVisibility + 1.0f - dynamic.coverage);
     if (dynamic.coverage >= 1.0f) return float4(dynamic.value, 1.0f);
-    const float4 baked = HikariResolveBakedLightProbeDiffuse(worldPos, n, v);
+    float bakedSky;
+    const float4 baked = HikariResolveBakedLightProbeDiffuse(worldPos, n, v, bakedSky);
+    skyVisibility = saturate(dynamic.skyVisibility +
+        (1.0f - dynamic.coverage) * lerp(1.0f, bakedSky, saturate(baked.a)));
     return float4(dynamic.value + baked.rgb * (1.0f - dynamic.coverage),
         saturate(dynamic.coverage + baked.a * (1.0f - dynamic.coverage)));
 }

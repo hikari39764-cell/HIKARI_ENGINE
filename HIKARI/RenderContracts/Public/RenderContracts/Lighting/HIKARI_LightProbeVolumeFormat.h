@@ -9,7 +9,7 @@
 
 namespace HIKARI::ASSETS::LIGHTING {
 
-constexpr uint32_t kLightProbeVolumeVersion = 2;
+constexpr uint32_t kLightProbeVolumeVersion = 3;
 constexpr uint32_t kLightProbeShOrder = 3;
 constexpr uint32_t kLightProbeShCoeffCount = 9;
 constexpr uint32_t kLightProbeVisibilityResolution = 16;
@@ -17,6 +17,9 @@ constexpr uint32_t kLightProbeVisibilityTexelCount = kLightProbeVisibilityResolu
 
 struct LightProbeSh9 {
     MATH::Vec3 coeffs[kLightProbeShCoeffCount]{};
+    // 探針から空が見える割合（最初の光線が何にも当たらなかった方向）の SH9。実行時は面の法線のまわりで余弦加重して、
+    // 光照贴图の無い面の空の反射を遮る（光照贴图の alpha と同じ役目）。
+    float skyVisibility[kLightProbeShCoeffCount]{};
 };
 
 struct LightProbeVolumeFileData {

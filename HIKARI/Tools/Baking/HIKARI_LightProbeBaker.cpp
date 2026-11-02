@@ -162,8 +162,8 @@ LightProbeBakeResult LightProbeBaker::BuildVolume(const LightProbeBakeRequest& r
     volume.visibilityMoments.resize(static_cast<size_t>(probeCount) *
                                     ASSETS::LIGHTING::kLightProbeVisibilityTexelCount);
 
-    // 方向ごとに、裏面に当たらなかった標本の放射輝度の平均を SH9 へ投影し、最初に当たるまでの距離の平均と二乗平均を
-    // 可視性の moment にする（距離は visibilityDistanceScale で正規化）。埋まった探針は寄与も可視性も零にして、
+    // 方向ごとに、裏面に当たらなかった標本の放射輝度の平均と空が見えた割合を SH9 へ投影し、最初に当たるまでの距離の
+    // 平均と二乗平均を可視性の moment にする（距離は visibilityDistanceScale で正規化）。埋まった探針は寄与も可視性も零にして、
     // 実行時の可視性の判定で補間から外す。
     const DirectionBasis& basis = GetDirectionBasis();
     const float inverseScale = 1.0f / visibilityDistanceScale;
@@ -196,8 +196,11 @@ LightProbeBakeResult LightProbeBaker::BuildVolume(const LightProbeBakeRequest& r
                 continue;
             }
             const MATH::Vec3 radiance{cell.radiance.x / front, cell.radiance.y / front, cell.radiance.z / front};
-            for (uint32_t k = 0; k < ASSETS::LIGHTING::kLightProbeShCoeffCount; ++k)
+            const float sky = std::clamp(cell.statistics.z / front, 0.0f, 1.0f);
+            for (uint32_t k = 0; k < ASSETS::LIGHTING::kLightProbeShCoeffCount; ++k) {
                 sh.coeffs[k] = sh.coeffs[k] + radiance * basis[direction][k];
+                sh.skyVisibility[k] += sky * basis[direction][k];
+            }
             moments[direction] = {std::clamp(cell.statistics.y / front * inverseScale, 0.0f, 1.0f),
                                   std::clamp(cell.statistics.w / front * inverseScale * inverseScale, 0.0f, 1.0f)};
         }
