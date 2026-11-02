@@ -102,6 +102,8 @@ struct MeshletRenderExecutionContext {
     GFX::GPU_PROFILE::Pass profilePass = GFX::GPU_PROFILE::Pass::Count;
     bool reflectionCapture = false;
     bool subsurfaceCapture = false;
+    // GeometryAux が当該フレームの不透明面の深度を全部書いた（MeshPassResources::opaqueDepthComplete）。
+    bool opaqueDepthComplete = false;
     ForwardShadingCostMode forwardCostMode = ForwardShadingCostMode::Full;
     // Forward/GeometryAux は一般面と地形を別 PSO で描く。地形が無ければ地形 dispatch を省く。
     bool terrainSurfacesPresent = false;
@@ -162,21 +164,35 @@ private:
     bool PrepareTerrainDiagnosticPipelines();
     bool AreReflectionPipelinesReady(bool captureSubsurface) const;
 
-    // Forward capture の PSO。captureSubsurface ごとに標準 PBR の面・材質 program の面・地形を別 PSO で描く
-    // （通常の Forward と同じ分割。4 番目 = 次表面散乱の拡散光、持たない時は UNKNOWN）。
-    static constexpr size_t kCaptureVariantCount = 2u;
-    static size_t CaptureVariantIndex(bool captureSubsurface) noexcept { return captureSubsurface ? 1u : 0u; }
+    // Forward capture の PSO。captureSubsurface と深度の扱い（書く／読むだけ）ごとに標準 PBR の面・材質 program の面・地形を
+    // 別 PSO で描く（通常の Forward と同じ分割。4 番目 = 次表面散乱の拡散光、持たない時は UNKNOWN）。
+    static constexpr size_t kCaptureVariantCount = 4u;
+    static size_t CaptureVariantIndex(bool captureSubsurface, bool readDepth) noexcept {
+        return (captureSubsurface ? 1u : 0u) + (readDepth ? 2u : 0u);
+    }
     struct ReflectionCapturePipelines {
         std::array<PipelineBucketArray, kCaptureVariantCount> standard{};
         std::array<PipelineBucketArray, kCaptureVariantCount> program{};
         std::array<PipelineBucketArray, kCaptureVariantCount> terrain{};
     };
 
+    // GeometryAux が当該フレームの不透明面の深度を全部書いた後の Forward（Full）の PSO。深度を書かず LESS_EQUAL で読むだけに
+    // して、discard を持つ PS でも隠れた面を着色の前に捨てる（深度を書くと提前深度が効かず、隠れた面まで GI を引いていた）。
+    // 別スレッドで作り、揃うまでは深度を書く通常の PSO で描く（結果は同じで、隠れた面を省けないだけ）。
+    struct ReadDepthForwardPipelines {
+        PipelineBucketArray standard{};
+        PipelineBucketArray program{};
+        PipelineBucketArray terrain{};
+    };
+    void CollectReadDepthPipelines();
+
     MeshletVisibility visibility_{};
     Microsoft::WRL::ComPtr<ID3D12Device> device_{};
     Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature_{};
     ReflectionCapturePipelines reflectionPipelines_{};
     std::future<ReflectionCapturePipelines> reflectionCaptureTask_{};
+    ReadDepthForwardPipelines readDepthPipelines_{};
+    std::future<ReadDepthForwardPipelines> readDepthTask_{};
     // [0] は標準 PBR の面だけを描く通常 PSO。診断 variant は一般面すべてを描く。
     ForwardPipelineVariantArray forwardPipelineStates_{};
     PipelineBucketArray programForwardPipelineStates_{};

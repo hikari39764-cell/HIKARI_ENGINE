@@ -713,15 +713,16 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                                         const ASSETS::SHADER::ShaderAssetEntryLease& ps,
                                         std::array<PipelineBucketArray, kCaptureVariantCount>& out) {
                     for (size_t variant = 0; variant < out.size(); ++variant) {
-                        const bool captureSubsurface = variant != 0u;
+                        const bool captureSubsurface = (variant & 1u) != 0u;
+                        const bool readDepth = variant >= 2u;
                         for (size_t i = 0; i < GPUDRIVEN::kGpuDrivenCommandBucketCount; ++i) {
                             if (!CreateMeshletPipelineState(
                                     device.Get(), rootSignature.Get(), ShaderBytecode(as), ShaderBytecode(ms),
                                     ShaderBytecode(ps), DXGI_FORMAT_R16G16B16A16_FLOAT,
-                                    CullModeForBucket(static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i)), false, true,
-                                    true, L"Meshlet.ForwardReflectionCapture", out[variant][i].GetAddressOf(),
-                                    DXGI_FORMAT_R16G16B16A16_FLOAT, D3D12_COMPARISON_FUNC_LESS_EQUAL,
-                                    DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                    CullModeForBucket(static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i)), false,
+                                    !readDepth, true, L"Meshlet.ForwardReflectionCapture",
+                                    out[variant][i].GetAddressOf(), DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                    D3D12_COMPARISON_FUNC_LESS_EQUAL, DXGI_FORMAT_R16G16B16A16_FLOAT,
                                     captureSubsurface ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_UNKNOWN)) {
                                 out[variant] = {};
                                 break;
@@ -732,6 +733,35 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                 create(standardAs, standardPs, pipelines.standard);
                 create(programAs, programPs, pipelines.program);
                 create(terrainAs, terrainPs, pipelines.terrain);
+                return pipelines;
+            });
+    }
+    if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque) && forwardPixelShader &&
+        programForwardPixelShader && terrainForwardPixelShader) {
+        readDepthTask_ = std::async(
+            std::launch::async,
+            [device = device_, rootSignature = rootSignature_, standardAs = standardAmplificationShader,
+             programAs = programAmplificationShader, terrainAs = terrainAmplificationShader, ms = forwardMeshShader,
+             standardPs = forwardPixelShader, programPs = programForwardPixelShader,
+             terrainPs = terrainForwardPixelShader]() {
+                ReadDepthForwardPipelines pipelines{};
+                const auto create = [&](const ASSETS::SHADER::ShaderAssetEntryLease& as,
+                                        const ASSETS::SHADER::ShaderAssetEntryLease& ps, const wchar_t* name,
+                                        PipelineBucketArray& out) {
+                    for (size_t i = 0; i < out.size(); ++i) {
+                        if (!CreateMeshletPipelineState(
+                                device.Get(), rootSignature.Get(), ShaderBytecode(as), ShaderBytecode(ms),
+                                ShaderBytecode(ps), DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                CullModeForBucket(static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i)), false, false,
+                                true, name, out[i].GetAddressOf())) {
+                            out = {};
+                            return;
+                        }
+                    }
+                };
+                create(standardAs, standardPs, L"Meshlet Forward ReadDepth PSO", pipelines.standard);
+                create(programAs, programPs, L"Meshlet Forward MaterialProgram ReadDepth PSO", pipelines.program);
+                create(terrainAs, terrainPs, L"Meshlet Forward Terrain ReadDepth PSO", pipelines.terrain);
                 return pipelines;
             });
     }
@@ -931,10 +961,15 @@ bool MeshletRenderBackend::PrepareReflectionCapture(bool captureSubsurface) {
 }
 
 bool MeshletRenderBackend::AreReflectionPipelinesReady(bool captureSubsurface) const {
-    const size_t variant = CaptureVariantIndex(captureSubsurface);
+    const size_t variant = CaptureVariantIndex(captureSubsurface, false);
     return ArePipelinesReady(reflectionPipelines_.standard[variant]) &&
            ArePipelinesReady(reflectionPipelines_.program[variant]) &&
            ArePipelinesReady(reflectionPipelines_.terrain[variant]);
+}
+
+void MeshletRenderBackend::CollectReadDepthPipelines() {
+    if (readDepthTask_.valid() && readDepthTask_.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        readDepthPipelines_ = readDepthTask_.get();
 }
 
 bool MeshletRenderBackend::PrepareForwardVariant(ForwardShadingCostMode mode) {
@@ -1055,6 +1090,12 @@ void MeshletRenderBackend::Reset() {
         for (auto& capture : *captures)
             for (auto& pipeline : capture)
                 GFX::RetireD3D12ObjectForCurrentFrame(pipeline, "Meshlet.ReflectionCapturePSO");
+    if (readDepthTask_.valid())
+        (void)readDepthTask_.get();
+    for (PipelineBucketArray* pipelines :
+         {&readDepthPipelines_.standard, &readDepthPipelines_.program, &readDepthPipelines_.terrain})
+        for (auto& pipeline : *pipelines)
+            GFX::RetireD3D12ObjectForCurrentFrame(pipeline, "Meshlet.ForwardReadDepthPSO");
     device_.Reset();
     rootSignature_.Reset();
     forwardVariantAttempted_.fill(false);
@@ -1170,7 +1211,6 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
     if (ctx.reflectionCapture &&
         (ctx.pipelineKind != MeshletPipelineKind::ForwardOpaque || !AreReflectionPipelinesReady(ctx.subsurfaceCapture)))
         return false;
-    const size_t captureVariant = CaptureVariantIndex(ctx.subsurfaceCapture);
     if (ctx.visibility == nullptr || ctx.drawCommandRange == nullptr) {
         return false;
     }
@@ -1268,6 +1308,16 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
     // 診断モードと debug view の PSO は一般面すべてを描くので、種類で分けない。
     const bool timeByPipelineClass = ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque && !forwardDebug &&
                                      effectiveForwardCostMode == ForwardShadingCostMode::Full;
+    // 深度が揃ったフレームの Forward（Full）は深度を書かない PSO で描く。まだ作れていない PSO は深度を書く方で描く。
+    const bool readDepth = ctx.opaqueDepthComplete && ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque &&
+                           !forwardDebug && effectiveForwardCostMode == ForwardShadingCostMode::Full;
+    if (readDepth)
+        CollectReadDepthPipelines();
+    const auto pick = [](ID3D12PipelineState* preferred, ID3D12PipelineState* fallback) {
+        return preferred != nullptr ? preferred : fallback;
+    };
+    const size_t captureVariant = CaptureVariantIndex(ctx.subsurfaceCapture, false);
+    const size_t captureReadVariant = CaptureVariantIndex(ctx.subsurfaceCapture, true);
     const GFX::GPU_PROFILE::Pass profilePass = ctx.profilePass != GFX::GPU_PROFILE::Pass::Count
                                                    ? ctx.profilePass
                                                    : ProfilePassForPipelineKind(ctx.pipelineKind);
@@ -1280,30 +1330,37 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
             continue;
         }
 
+        const auto captureOf = [&](const std::array<PipelineBucketArray, kCaptureVariantCount>& captures) {
+            return pick(readDepth ? captures[captureReadVariant][bucketIndex].Get() : nullptr,
+                        captures[captureVariant][bucketIndex].Get());
+        };
         ID3D12PipelineState* selectedPipeline =
-            ctx.reflectionCapture ? reflectionPipelines_.standard[captureVariant][bucketIndex].Get()
+            ctx.reflectionCapture ? captureOf(reflectionPipelines_.standard)
             : forwardDebug        ? forwardDebugPipelineStates_[bucketIndex].Get()
-                                  : GetPipelineState(ctx.pipelineKind, bucket, effectiveForwardCostMode);
+                                  : pick(readDepth ? readDepthPipelines_.standard[bucketIndex].Get() : nullptr,
+                                  GetPipelineState(ctx.pipelineKind, bucket, effectiveForwardCostMode));
         if (selectedPipeline == nullptr) {
             continue;
         }
         // 一般 PSO の AS は地形を除外する。同じ可視範囲を地形 PSO（診断モードでは地形の診断 PSO）で描き足す。
         ID3D12PipelineState* terrainPipeline = nullptr;
         if (!forwardDebug && ctx.terrainSurfacesPresent) {
-            terrainPipeline = ctx.reflectionCapture ? reflectionPipelines_.terrain[captureVariant][bucketIndex].Get()
+            terrainPipeline = ctx.reflectionCapture ? captureOf(reflectionPipelines_.terrain)
                               : ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque &&
                                       effectiveForwardCostMode != ForwardShadingCostMode::Full
                                   ? terrainDiagnosticPipelineStates_[bucketIndex].Get()
-                                  : GetTerrainPipelineState(ctx.pipelineKind, bucket);
+                                  : pick(readDepth ? readDepthPipelines_.terrain[bucketIndex].Get() : nullptr,
+                                         GetTerrainPipelineState(ctx.pipelineKind, bucket));
         }
         // 通常の Forward と SSR capture の PSO は標準 PBR の面だけを描く。材質 program の面を別 PSO で描き足す。
         // 診断 variant と debug view の PSO は一般面すべてを描く。
         ID3D12PipelineState* programPipeline = nullptr;
         if (ctx.pipelineKind == MeshletPipelineKind::ForwardOpaque && ctx.materialProgramSurfacesPresent &&
             !forwardDebug) {
-            programPipeline = ctx.reflectionCapture ? reflectionPipelines_.program[captureVariant][bucketIndex].Get()
+            programPipeline = ctx.reflectionCapture ? captureOf(reflectionPipelines_.program)
                               : effectiveForwardCostMode == ForwardShadingCostMode::Full
-                                  ? programForwardPipelineStates_[bucketIndex].Get()
+                                  ? pick(readDepth ? readDepthPipelines_.program[bucketIndex].Get() : nullptr,
+                                         programForwardPipelineStates_[bucketIndex].Get())
                                   : nullptr;
         }
 

@@ -76,6 +76,7 @@ bool ExecuteMeshletDrawFrame(const GFX::Context& graphics, const MeshPassResourc
     ctx.pipelineKind = pipelineKind;
     ctx.reflectionCapture = passResources.reflectionCapture;
     ctx.subsurfaceCapture = passResources.subsurfaceCapture;
+    ctx.opaqueDepthComplete = passResources.opaqueDepthComplete;
     ctx.forwardCostMode = RENDER3D::GetRenderQualitySettings().forwardCostMode;
     // record 0 は sentinel。地形 record があるフレームだけ地形 PSO を dispatch する。
     const auto* terrainRecords = gMeshRendererState.gpuDrivenSceneSource.terrainSurfaceGpuData;

@@ -583,6 +583,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         sceneTextures, GRAPH::RenderGraphSemanticPhase::PreOpaque, screenResult.fallbackAoTextureHandle);
     opaqueResources.visibilityDepthPyramid = screenResult.visibilityDepthPyramid;
     opaqueResources.rayTracedShadow = screenResult.rayTracedShadow;
+    opaqueResources.opaqueDepthComplete = screenResult.geometryAuxDepthComplete;
     MESHRENDERER::MeshPassResources postOpaqueResources = opaqueResources;
     // 可視率は不透明面の画素のもの。半透明はカスケード影を読む。
     postOpaqueResources.rayTracedShadow = {};

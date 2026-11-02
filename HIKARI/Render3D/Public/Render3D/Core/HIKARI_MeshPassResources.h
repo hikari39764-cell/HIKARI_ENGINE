@@ -28,6 +28,8 @@ struct MeshPassResources {
     // 歪み層の粒子だけを戦闘の画面歪み遮罩へ描く経路
     bool particleDistortionMask = false;
     bool reflectionCapture = false;
+    // 当該フレームの不透明面の深度を GeometryAux が全部書いた。Forward は深度を書かず読むだけにし、隠れた面を着色しない。
+    bool opaqueDepthComplete = false;
     // Forward capture の 4 番目の出力（次表面散乱の拡散光）。reflectionCapture が前提。
     bool subsurfaceCapture = false;
 };
