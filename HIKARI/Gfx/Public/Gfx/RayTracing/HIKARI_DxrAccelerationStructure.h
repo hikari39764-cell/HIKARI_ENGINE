@@ -39,6 +39,9 @@ public:
     // refit と違い BVH の質は落ちないので、遠くへ動いた instance があっても光線の走査は重くならない。
     // instance の upload は GPU が読み終えたものを使い回す。収まらない・形が違う時は false（呼び出し側が build する）。
     bool RebuildTopLevelInPlace(const Context& graphics, std::span<const D3D12_RAYTRACING_INSTANCE_DESC> instances);
+    // 呼び出し側が GPU 上に書いた instance 記述（count 個、NON_PIXEL_SHADER_RESOURCE）から同じようにその場で組み直す。
+    // 記述は呼び出し側が持ち続け、以後の refit もそれを読む（CPU の記述を書き直すまで）。
+    bool RebuildTopLevelInPlace(const Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS instanceDescs, uint32_t count);
     void Reset(const Context* retireContext = nullptr);
 
     bool IsReady() const noexcept { return result_ != nullptr; }
@@ -51,11 +54,16 @@ private:
     bool Build(const Context& graphics, D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs,
                std::span<const D3D12_RAYTRACING_INSTANCE_DESC> instances, uint64_t maximumAllocationBytes,
                const DxrAccelerationStructure* updateSource, std::string* outMessage);
+    // 組み直しの共通部分。結果と scratch に収まらなければ false（instanceDescs は書く前に確かめてから渡す）。
+    bool CanRebuildTopLevelInPlace(const Context& graphics, uint32_t count) const;
+    bool RecordTopLevelRebuild(const Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS instanceDescs);
 
     Microsoft::WRL::ComPtr<ID3D12Resource> result_{};
     Microsoft::WRL::ComPtr<ID3D12Resource> scratch_{};
     // TLAS の instance 記述。その場の組み直しは GPU が読み終えた予備へ書く。
     FencedUploadBuffers instances_{UPLOAD_TRAFFIC::Owner::RayTracingInstances};
+    // 最後の組み立てが呼び出し側の GPU 記述を読んだ時はその番地（refit も読む）。0 なら instances_。
+    D3D12_GPU_VIRTUAL_ADDRESS externalInstances_ = 0;
     ID3D12Device* device_ = nullptr;
     uint64_t deviceGeneration_ = 0;
     uint64_t allocationBytes_ = 0; // result + scratch

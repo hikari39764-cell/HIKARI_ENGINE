@@ -1,8 +1,12 @@
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingSceneState.h"
 
 #include <algorithm>
+#include <d3dx12.h>
 
+#include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
+#include "Render3D/GpuDriven/HIKARI_MassGpuScene.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneSurfaceRecord.h"
 #include "Render3D/Lighting/HIKARI_LightmapRuntime.h"
@@ -165,8 +169,13 @@ std::optional<RuntimeRayTracingFrame> RuntimeRayTracingScene::State::UpdateInPla
             if (SameMatrix(movedWorlds[n], movedWorlds[g]))
                 return std::nullopt;
     }
-    // 大量配置の動いた個体の変換を書き直す（並びが合わなければ全体を組み直す）。
-    const std::optional<bool> massMoved = mass.Update(source.mass, lastInstances);
+    // 大量配置の動いた個体：compute が使えれば GPU で記述を書き（CPU は変換を書かない）、使えなければ CPU で書き直す
+    // （並びが合わなければ全体を組み直す）。
+    const bool massOnGpu = mass.Included() && surfaces.massRecords != 0 && mass.CanDispatch(graphics);
+    if (!massOnGpu && massDescsOnGpu && mass.Moved(source.mass))
+        return std::nullopt;
+    const std::optional<bool> massMoved =
+        massOnGpu ? std::optional<bool>(mass.Moved(source.mass)) : mass.Update(source.mass, lastInstances);
     if (!massMoved)
         return std::nullopt;
     // 変形する面を先に refit する（TLAS はそれを含めて組み直すか refit する）。
@@ -183,8 +192,11 @@ std::optional<RuntimeRayTracingFrame> RuntimeRayTracingScene::State::UpdateInPla
             for (uint32_t k = 0; k < group.instanceCount; ++k)
                 WriteTransform(lastInstances[group.firstInstance + k], group.world);
         }
-        if (!topLevel->RebuildTopLevelInPlace(graphics, lastInstances)) {
+        const bool rebuilt = massOnGpu ? RebuildFromGpuInstances(graphics, source, surfaces.massRecords, moved)
+                                       : topLevel->RebuildTopLevelInPlace(graphics, lastInstances);
+        if (!rebuilt) {
             lastInstances.clear(); // 書き換えた記述を、組まれた TLAS と取り違えないようにする
+            gpuPrefixValid = false;
             return std::nullopt;
         }
     } else if (deformedRefreshed && !topLevel->RefitInPlace(graphics)) {
@@ -221,5 +233,54 @@ std::optional<RuntimeRayTracingFrame> RuntimeRayTracingScene::State::UpdateInPla
     stats.sourceSurfaces = sourceSurfaceCount;
     stats.excluded = lastExcluded;
     return Publish(graphics, budget);
+}
+bool RuntimeRayTracingScene::State::RebuildFromGpuInstances(const GFX::Context& graphics,
+                                                            const GPUDRIVEN::GpuDrivenSceneSource& source,
+                                                            D3D12_GPU_VIRTUAL_ADDRESS massRecords, bool prefixChanged) {
+    auto* commands = graphics.cmdList;
+    const uint64_t bytes = lastInstances.size() * sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
+    if (!source.mass || commands == nullptr || bytes == 0)
+        return false;
+    if (gpuInstanceBytes < bytes) {
+        TrackRetirement(graphics, gpuInstanceBytes);
+        GFX::RetireD3D12ObjectForFrame(gpuInstances, graphics, "RT.Scene.GpuInstances");
+        gpuInstanceBytes = 0;
+        const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
+        const auto desc = CD3DX12_RESOURCE_DESC::Buffer(bytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        if (FAILED(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                graphics.device, &heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr,
+                GFX::VIDEO_MEMORY::Owner::Geometry, IID_PPV_ARGS(gpuInstances.GetAddressOf()))))
+            return false;
+        gpuInstanceBytes = bytes;
+        gpuInstanceState = D3D12_RESOURCE_STATE_COMMON;
+        gpuPrefixValid = false;
+    }
+    const auto transition = [&](D3D12_RESOURCE_STATES next) {
+        if (gpuInstanceState == next)
+            return;
+        const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(gpuInstances.Get(), gpuInstanceState, next);
+        commands->ResourceBarrier(1, &barrier);
+        gpuInstanceState = next;
+    };
+    const uint64_t prefixBytes = uint64_t(mass.FirstInstance()) * sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
+    if (prefixBytes != 0 && (!gpuPrefixValid || prefixChanged)) {
+        if (!gpuPrefixUploads.Write(graphics, lastInstances.data(), prefixBytes, "RT.Scene.GpuInstancePrefix"))
+            return false;
+        transition(D3D12_RESOURCE_STATE_COPY_DEST);
+        commands->CopyBufferRegion(gpuInstances.Get(), 0, gpuPrefixUploads.Current(), 0, prefixBytes);
+    }
+    gpuPrefixUploads.MarkRead(graphics);
+    gpuPrefixValid = true;
+    transition(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    if (!mass.Dispatch(graphics, *source.mass, massRecords, gpuInstances->GetGPUVirtualAddress()))
+        return false;
+    const auto written = CD3DX12_RESOURCE_BARRIER::UAV(gpuInstances.Get());
+    commands->ResourceBarrier(1, &written);
+    transition(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    if (!topLevel->RebuildTopLevelInPlace(graphics, gpuInstances->GetGPUVirtualAddress(),
+                                          static_cast<uint32_t>(lastInstances.size())))
+        return false;
+    massDescsOnGpu = true;
+    return true;
 }
 } // namespace HIKARI::RENDER3D::RAYTRACING

@@ -311,6 +311,12 @@ const RENDER3D::MATERIAL::GpuMaterialRegistryStats& GetGpuMaterialRegistryStats(
     return gMeshRendererState.gpuMaterialRegistry.GetStats();
 }
 
+D3D12_GPU_VIRTUAL_ADDRESS GetResidentMassGpuSceneRecords() {
+    return gMeshRendererState.debugStats.gpuSceneUpload.massSceneResident
+               ? gMeshRendererState.massGpuSceneBuffer.GetGpuVirtualAddress()
+               : 0;
+}
+
 const RENDER3D::GPUDRIVEN::MassGpuSceneFrameBufferStats& GetMassGpuSceneFrameBufferStats() {
     return gMeshRendererState.massGpuSceneBuffer.GetStats();
 }

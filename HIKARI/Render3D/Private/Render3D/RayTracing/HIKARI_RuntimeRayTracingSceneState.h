@@ -147,6 +147,15 @@ struct RuntimeRayTracingScene::State {
     RuntimeRayTracingDeformation deformation;
     RuntimeRayTracingChanges changes;
     RuntimeRayTracingMass mass;
+    // 最上位の instance 記述の GPU 側の写し。大量配置が入った場面の配置替えは、他の面の記述（先頭）を CPU から写し、
+    // 大量配置の記述を compute が書いて、ここから TLAS を組み直す（大量配置の記述は upload しない）。
+    Microsoft::WRL::ComPtr<ID3D12Resource> gpuInstances;
+    uint64_t gpuInstanceBytes = 0;
+    D3D12_RESOURCE_STATES gpuInstanceState = D3D12_RESOURCE_STATE_COMMON;
+    bool gpuPrefixValid = false; // 先頭（大量配置の前）が lastInstances と同じか
+    // 大量配置の記述を GPU で書いた（lastInstances の大量配置の分は古い。CPU で書き直すなら全体を組み直す）。
+    bool massDescsOnGpu = false;
+    GFX::FencedUploadBuffers gpuPrefixUploads{GFX::UPLOAD_TRAFFIC::Owner::RayTracingInstances};
     // 変形の compute が使えない（shader の失敗など）時は蒙皮を外す面に戻す。
     bool deformationBroken = false;
     // 前回の全体の組み立てで決めた表面と群の入れ方。配置だけが動いたフレームはこれで instance の変換だけを直す。
@@ -185,6 +194,9 @@ struct RuntimeRayTracingScene::State {
                                                         RuntimeRayTracingMaterialVersion currentMaterials,
                                                         const RuntimeRayTracingBudget& budget,
                                                         const RuntimeRayTracingSurfaceBindings& surfaces);
+    // 大量配置が入った場面の配置替え：先頭を（変わっていれば）写し、大量配置の記述を compute で書いて TLAS を組み直す。
+    bool RebuildFromGpuInstances(const GFX::Context& graphics, const GPUDRIVEN::GpuDrivenSceneSource& source,
+                                 D3D12_GPU_VIRTUAL_ADDRESS massRecords, bool prefixChanged);
     RuntimeRayTracingFrame WithCoverage(RuntimeRayTracingFrame frame) const;
     RuntimeRayTracingFrame Publish(const GFX::Context& graphics, const RuntimeRayTracingBudget& budget);
 };

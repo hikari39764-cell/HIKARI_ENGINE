@@ -204,6 +204,8 @@ RENDER3D::WORLD_SPRITES::WorldSpritePass* PrepareWorldSpritesForView(const GFX::
                                                                      const RENDER3D::RenderViewContext& view);
 const RENDER3D::MATERIAL::GpuMaterialRegistryStats& GetGpuMaterialRegistryStats();
 const RENDER3D::GPUDRIVEN::MassGpuSceneFrameBufferStats& GetMassGpuSceneFrameBufferStats();
+// このフレームの大量配置の記録が常駐 buffer に揃っていればその GPU 番地（光追が動いた個体の記述を GPU で書くのに使う）。
+D3D12_GPU_VIRTUAL_ADDRESS GetResidentMassGpuSceneRecords();
 const RENDER3D::PARTICLES::ParticleGpuDrivenPassStats& GetParticleGpuDrivenPassStats();
 const RENDER3D::WORLD_SPRITES::WorldSpritePassStats& GetWorldSpritePassStats();
 

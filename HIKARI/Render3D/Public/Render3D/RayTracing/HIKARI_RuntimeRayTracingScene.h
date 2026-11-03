@@ -106,6 +106,9 @@ struct RuntimeRayTracingSurfaceBindings {
     D3D12_GPU_VIRTUAL_ADDRESS terrainRecords = 0;
     D3D12_GPU_VIRTUAL_ADDRESS surfaceFloats = 0;
     uint64_t floatVersion = 0;
+    // 大量配置の描画の常駐記録（このフレームの MassGpuSceneSource と同じ中身。無ければ 0）。動いた個体の instance 記述を
+    // GPU で書くのに使う。
+    D3D12_GPU_VIRTUAL_ADDRESS massRecords = 0;
 };
 
 struct RuntimeRayTracingBudget {

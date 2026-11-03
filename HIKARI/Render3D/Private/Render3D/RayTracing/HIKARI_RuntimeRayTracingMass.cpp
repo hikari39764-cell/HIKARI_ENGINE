@@ -1,14 +1,25 @@
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingMass.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 
+#include <d3dx12.h>
+
 #include "Core/Math/HIKARI_MathValidation.h"
+#include "Diagnostics/HIKARI_DebugLogBuffer.h"
+#include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
+#include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_PixProfiler.h"
+#include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Render3D/GpuDriven/HIKARI_MassGpuScene.h"
 
 namespace HIKARI::RENDER3D::RAYTRACING {
 namespace {
+constexpr const wchar_t* kShaderPath = L"HIKARI/Shaders/Render3D_RayTracingMassInstancesCS.hlsl";
+constexpr uint32_t kThreadsPerGroup = 64u;
+
 // 描画（HikariBuildMassMatrices）と同じ式で、位置・四元数・拡縮を instance の 3×4 へ書く。値が有限でなければ隠す。
 void WriteTransform(D3D12_RAYTRACING_INSTANCE_DESC& instance, const RUNTIME::MassRenderProxyGpuRecord& record) {
     RUNTIME::MassRenderFloat4 q = record.rotation;
@@ -48,25 +59,34 @@ void RuntimeRayTracingMass::Begin(const GPUDRIVEN::MassGpuSceneSource* mass, std
     layoutVersion_ = mass ? mass->layoutVersion : 0;
     sourceVersion_ = mass ? mass->sourceVersion : 0;
     materialSlots_.assign(materialSlots.begin(), materialSlots.end());
+    Drop();
+}
+
+void RuntimeRayTracingMass::Drop() {
     stores_.clear();
+    chunks_.clear();
+    firstInstance_ = 0;
+    tableDirty_ = true;
 }
 
 bool RuntimeRayTracingMass::Append(const GPUDRIVEN::MassGpuSceneSource& mass, std::span<const Shape> shapes,
                                    uint32_t maximumInstances, std::vector<D3D12_RAYTRACING_INSTANCE_DESC>& instances) {
+    Drop();
     stores_.assign(shapes.size(), {});
     uint64_t total = instances.size();
     for (size_t index = 0; index < mass.instances.size(); ++index) {
         const uint32_t store = mass.instances[index].sourceRecordIndex;
         if (store >= shapes.size()) {
-            stores_.clear();
+            Drop();
             return false;
         }
         total += shapes[store].size();
     }
     if (total > maximumInstances) {
-        stores_.clear();
+        Drop();
         return false;
     }
+    firstInstance_ = static_cast<uint32_t>(instances.size());
     // 個体は種類ごとに続いて並ぶ（MassGpuSceneRegistry の並び）。
     for (size_t index = 0; index < mass.instances.size(); ++index) {
         const auto& record = mass.instances[index];
@@ -76,8 +96,11 @@ bool RuntimeRayTracingMass::Append(const GPUDRIVEN::MassGpuSceneSource& mass, st
             store.firstRecord = static_cast<uint32_t>(index);
             store.firstInstance = static_cast<uint32_t>(instances.size());
             store.chunks = static_cast<uint32_t>(shape.size());
+            store.firstChunk = static_cast<uint32_t>(chunks_.size());
+            for (const auto& [bottomLevel, firstHit] : shape)
+                chunks_.push_back({bottomLevel, firstHit});
         } else if (store.firstRecord + store.recordCount != index) {
-            stores_.clear();
+            Drop();
             return false;
         }
         ++store.recordCount;
@@ -138,12 +161,87 @@ std::optional<bool> RuntimeRayTracingMass::Update(const GPUDRIVEN::MassGpuSceneS
     return true;
 }
 
-void RuntimeRayTracingMass::Reset() {
+RuntimeRayTracingMass::~RuntimeRayTracingMass() { Reset(GFX::GetCurrentContext()); }
+
+bool RuntimeRayTracingMass::EnsurePipeline(const GFX::Context& graphics) {
+    if (deviceGeneration_ != graphics.deviceGeneration) {
+        root_.Reset();
+        pipeline_.Reset();
+        pipelineFailed_ = false;
+        deviceGeneration_ = graphics.deviceGeneration;
+    }
+    if (pipeline_)
+        return true;
+    if (pipelineFailed_ || !GFX::SupportsShaderModel6(graphics.device))
+        return false;
+    pipelineFailed_ = true;
+    std::array<CD3DX12_ROOT_PARAMETER, 5> parameters;
+    parameters[0].InitAsConstants(4, 0);
+    parameters[1].InitAsShaderResourceView(0, 8); // 描画の常駐記録（gMassRenderProxyBuffer）
+    parameters[2].InitAsShaderResourceView(1);
+    parameters[3].InitAsShaderResourceView(2);
+    parameters[4].InitAsUnorderedAccessView(0);
+    const CD3DX12_ROOT_SIGNATURE_DESC rootDesc(UINT(parameters.size()), parameters.data());
+    if (!HIKARI_DX_CHECK(GFX::CreateRootSignature(graphics.device, rootDesc, root_.GetAddressOf()),
+                         "RayTracingMassInstances root signature"))
+        return false;
+    Microsoft::WRL::ComPtr<ID3DBlob> shader;
+    if (!GFX::CompileShaderFileSm6(kShaderPath, "CSMain", L"cs_6_5", shader.GetAddressOf())) {
+        DEBUGLOG::PushRenderError(
+            "[RT][Mass] compute shader compile failed; moving mass instances are written on CPU.");
+        return false;
+    }
+    D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
+    desc.pRootSignature = root_.Get();
+    desc.CS = {shader->GetBufferPointer(), shader->GetBufferSize()};
+    if (!HIKARI_DX_CHECK(graphics.device->CreateComputePipelineState(&desc, IID_PPV_ARGS(pipeline_.GetAddressOf())),
+                         "RayTracingMassInstances pipeline"))
+        return false;
+    pipelineFailed_ = false;
+    return true;
+}
+
+bool RuntimeRayTracingMass::CanDispatch(const GFX::Context& graphics) { return EnsurePipeline(graphics); }
+
+bool RuntimeRayTracingMass::Dispatch(const GFX::Context& graphics, const GPUDRIVEN::MassGpuSceneSource& mass,
+                                     D3D12_GPU_VIRTUAL_ADDRESS records, D3D12_GPU_VIRTUAL_ADDRESS instances) {
+    if (stores_.empty() || chunks_.empty() || records == 0 || instances == 0 || graphics.cmdList == nullptr ||
+        &mass != source_ || mass.layoutVersion != layoutVersion_ || !EnsurePipeline(graphics))
+        return false;
+    if (tableDirty_ || !table_.Current()) {
+        chunkOffset_ = stores_.size() * sizeof(Store);
+        std::vector<std::byte> bytes(chunkOffset_ + chunks_.size() * sizeof(Chunk));
+        std::memcpy(bytes.data(), stores_.data(), chunkOffset_);
+        std::memcpy(bytes.data() + chunkOffset_, chunks_.data(), chunks_.size() * sizeof(Chunk));
+        if (!table_.Write(graphics, bytes.data(), bytes.size(), "RT.Mass.Table"))
+            return false;
+        tableDirty_ = false;
+    }
+    table_.MarkRead(graphics);
+    auto* commands = graphics.cmdList;
+    GFX::PIX::ScopedGpuEvent event(commands, GFX::PIX::kColorRender, "RayTracing.MassInstances");
+    const uint32_t constants[4]{static_cast<uint32_t>(mass.instances.size()), static_cast<uint32_t>(stores_.size()), 0u,
+                                0u};
+    const D3D12_GPU_VIRTUAL_ADDRESS table = table_.Current()->GetGPUVirtualAddress();
+    commands->SetComputeRootSignature(root_.Get());
+    commands->SetPipelineState(pipeline_.Get());
+    commands->SetComputeRoot32BitConstants(0, 4, constants, 0);
+    commands->SetComputeRootShaderResourceView(1, records);
+    commands->SetComputeRootShaderResourceView(2, table);
+    commands->SetComputeRootShaderResourceView(3, table + chunkOffset_);
+    commands->SetComputeRootUnorderedAccessView(4, instances);
+    commands->Dispatch((constants[0] + kThreadsPerGroup - 1) / kThreadsPerGroup, 1, 1);
+    sourceVersion_ = mass.sourceVersion;
+    return true;
+}
+
+void RuntimeRayTracingMass::Reset(const GFX::Context& graphics) {
     source_ = nullptr;
     present_ = false;
     worldIdentity_ = layoutVersion_ = sourceVersion_ = 0;
     materialSlots_.clear();
-    stores_.clear();
+    Drop();
     dirty_.clear();
+    table_.Reset(graphics, "RT.Mass.Table");
 }
 } // namespace HIKARI::RENDER3D::RAYTRACING

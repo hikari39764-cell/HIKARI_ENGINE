@@ -77,10 +77,12 @@ void RuntimeRayTracingScene::State::RetireTop(const GFX::Context& graphics, bool
         lastHits.clear();
     }
     lastInstances.clear();
+    gpuPrefixValid = false;
+    massDescsOnGpu = false;
 }
 uint64_t RuntimeRayTracingScene::State::Available(const RuntimeRayTracingBudget& budget) {
-    stats.residentBytes =
-        hitUploads.AllocationBytes() + (topLevel ? topLevel->GetAllocationBytes() : 0) + deformation.PoolBytes();
+    stats.residentBytes = hitUploads.AllocationBytes() + (topLevel ? topLevel->GetAllocationBytes() : 0) +
+                          deformation.PoolBytes() + gpuInstanceBytes + gpuPrefixUploads.AllocationBytes();
     for (const auto& [key, asset] : assets)
         stats.residentBytes += asset->Bytes();
     for (const auto& [key, entry] : deformed)
@@ -186,7 +188,12 @@ void RuntimeRayTracingScene::Reset(const GFX::Context& graphics) {
     state.deformed.clear();
     state.deformation.Reset(graphics);
     state.changes.Reset();
-    state.mass.Reset();
+    state.mass.Reset(graphics);
+    state.TrackRetirement(graphics, state.gpuInstanceBytes + state.gpuPrefixUploads.AllocationBytes());
+    GFX::RetireD3D12ObjectForFrame(state.gpuInstances, graphics, "RT.Scene.GpuInstances");
+    state.gpuInstanceBytes = 0;
+    state.gpuInstanceState = D3D12_RESOURCE_STATE_COMMON;
+    state.gpuPrefixUploads.Reset(graphics, "RT.Scene.GpuInstancePrefix");
     state.workFence = 0;
     state.deformationBroken = false;
     state.converter.Reset(graphics);

@@ -391,7 +391,8 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
             rayScene =
                 gRuntimeRayScene.Prepare(frame.graphics, source, materials.materialSlots, materials.massMaterialSlots,
                                          materials.materialData, {}, {materials.dataVersion, materials.bindingVersion},
-                                         {terrain.records, terrain.floats, terrain.floatVersion});
+                                         {terrain.records, terrain.floats, terrain.floatVersion,
+                                          MESHRENDERER::GetResidentMassGpuSceneRecords()});
         } else {
             gRuntimeRayScene.Reset(frame.graphics);
             gRuntimeRayLighting.Reset(frame.graphics);
