@@ -53,7 +53,9 @@ bool RayTracedShadowRenderer::Render(const GFX::Context& graphics, const RayTrac
     auto* commands = graphics.cmdList;
     if (commands == nullptr || graphics.device == nullptr || graphics.srvHeap == nullptr || inputs.camera == nullptr ||
         inputs.rayLighting == nullptr || inputs.materials == nullptr || !*inputs.materials ||
-        !inputs.sceneDepth.IsSampleable() ||
+        !inputs.sceneDepth.IsSampleable() || !inputs.packedSurface.IsSampleable() ||
+        inputs.packedSurface.width != inputs.sceneDepth.width ||
+        inputs.packedSurface.height != inputs.sceneDepth.height ||
         inputs.rayLighting->status != RAYTRACING::RuntimeRayLightingStatus::Ready || !inputs.rayLighting->scene.ready ||
         !RAYTRACING::CanTraceShadows(inputs.rayLighting->scene.excludedShadowCasters) ||
         inputs.rayLighting->scene.accelerationStructure == 0) {
@@ -72,8 +74,6 @@ bool RayTracedShadowRenderer::Render(const GFX::Context& graphics, const RayTrac
     if (!slice) {
         return false;
     }
-    const bool surfaceValid = inputs.packedSurface.IsSampleable() && inputs.packedSurface.width == width_ &&
-                              inputs.packedSurface.height == height_;
     RayTracedShadowCB constants{};
     constants.invViewProj = inputs.camera->invViewProj;
     constants.cameraPosition = inputs.camera->cameraPos;
@@ -87,7 +87,7 @@ bool RayTracedShadowRenderer::Render(const GFX::Context& graphics, const RayTrac
     const auto* temporal = inputs.temporal;
     const bool historyValid = temporal && temporal->camera.previousValid && !temporal->resetHistory &&
                               historyView_.Matches(temporal->view) && historyFrame_ + 1 == temporal->frameIndex;
-    constants.inputFlags = {surfaceValid ? 1.0f : 0.0f, historyValid ? 1.0f : 0.0f, 0.0f, 0.0f};
+    constants.inputFlags = {historyValid ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f};
     if (temporal) {
         constants.previousViewProj = temporal->camera.prevViewProj;
         constants.previousCamera = temporal->camera.prevCameraPos;
@@ -103,8 +103,7 @@ bool RayTracedShadowRenderer::Render(const GFX::Context& graphics, const RayTrac
     commands->SetComputeRootConstantBufferView(0, slice.gpuAddress);
     RAYTRACING::BindRuntimeRayQueryRoots(commands, graphics, *inputs.rayLighting, *inputs.materials, kSkyParameter);
     commands->SetComputeRootDescriptorTable(kDepthParameter, inputs.sceneDepth.srv);
-    commands->SetComputeRootDescriptorTable(kSurfaceParameter,
-                                            surfaceValid ? inputs.packedSurface.srv : inputs.sceneDepth.srv);
+    commands->SetComputeRootDescriptorTable(kSurfaceParameter, inputs.packedSurface.srv);
     const UINT groupsX = (width_ + 7u) / 8u;
     const UINT groupsY = (height_ + 7u) / 8u;
     // 1) 影光線を飛ばして生の可視率を書く。

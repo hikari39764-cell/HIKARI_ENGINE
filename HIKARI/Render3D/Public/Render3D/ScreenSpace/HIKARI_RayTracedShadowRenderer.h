@@ -22,7 +22,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
 
 struct RayTracedShadowInputs {
     RenderTextureView sceneDepth{};
-    // 面の記述（法線）。無ければ深度の差分で法線を作る。
+    // GeometryAux の面の記述（着色の法線）。無いフレームは影を作らず、Forward はカスケード影を読む。
     RenderTextureView packedSurface{};
     const MESHRENDERER::CameraCB* camera = nullptr;
     const RAYTRACING::RuntimeRayLightingFrame* rayLighting = nullptr;

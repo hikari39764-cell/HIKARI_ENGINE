@@ -13,7 +13,7 @@ cbuffer RayTracedShadowCB : register(b0)
     float4 gScreenParams;   // xy 大きさ, zw 1/大きさ
     float4 gSunCone;        // xyz 太陽へ向かう単位ベクトル, w 円錐の半角 [rad]
     float4 gRayParams;      // x 最大距離 [m], y 標本数, z フレーム番号, w 法線方向の始点のずらし [m]
-    float4 gInputFlags;     // x 面の記述（法線）が束ねてあれば 1
+    float4 gInputFlags;     // x 前フレームの可視率の履歴が使えれば 1
     HikariRayLightingData gRayLighting;
     float4x4 gPreviousViewProj;
     float4 gPreviousCamera;
@@ -29,17 +29,15 @@ SamplerState gLinearClamp : register(s0);
 SamplerState gMaterialWrap : register(s1);
 SamplerState gPointClamp : register(s2);
 
-// 面の記述が束ねてあればその法線（頂点法線を補間した滑らかな法線）。無ければ 0。
-float3 SmoothSurfaceNormal(float2 uv)
+// GeometryAux の面の記述にある着色の法線（法線地図・デカール込み）。不透明面の画素は必ず書かれている。
+// 深度の差分の法線は細い物や輪郭で奥の面を拾って向きを誤り、影の中に光が漏れたので使わない。
+float3 SurfaceNormal(uint2 pixel)
 {
-    float3 normal = 0.0f.xxx;
-    if (gInputFlags.x > 0.5f)
-    {
-        float roughness;
-        float metallic;
-        HikariUnpackSceneSurface(gSceneSurface.SampleLevel(gPointClamp, uv, 0.0f), normal, roughness, metallic);
-    }
-    return dot(normal, normal) < 0.5f ? 0.0f.xxx : normal;
+    float3 normal;
+    float roughness;
+    float metallic;
+    HikariUnpackSceneSurface(gSceneSurface.Load(int3(pixel, 0)), normal, roughness, metallic);
+    return normal;
 }
 
 [numthreads(8, 8, 1)]
@@ -61,17 +59,13 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         gVisibility[pixel] = 1.0f;
         return;
     }
-    const float3 smoothNormal = SmoothSurfaceNormal(uv);
-    const bool hasSmoothNormal = dot(smoothNormal, smoothNormal) > 0.5f;
-    const float3 normal = hasSmoothNormal ? smoothNormal : HikariNormalFromSceneDepth(gSceneDepth, gPointClamp, uv, position,
-        gScreenParams.zw, gInvViewProj, gCameraPosition.xyz);
+    const float3 normal = SurfaceNormal(pixel);
     const float3 toSun = gSunCone.xyz;
     const float cosine = dot(normal, toSun);
-    // 光に背く面は影。ただし深度の差分の法線は多角形の面ごとに平らなので、それで切ると球の明暗の境が面の形の
-    // 階段になる。その時は自分の形による遮りを数えず、Forward の N・L（滑らかな法線）に任せる。
+    // 光に背く面は影（Forward の N・L も同じ法線で 0 になる）。
     if (cosine <= 0.0f || gRayLighting.scene.w != 0u)
     {
-        gVisibility[pixel] = cosine <= 0.0f && hasSmoothNormal ? 0.0f : 1.0f;
+        gVisibility[pixel] = cosine <= 0.0f ? 0.0f : 1.0f;
         return;
     }
     // 光をかすめる面ほど自分の面に当たりやすいので、始点を法線方向へ多めにずらす。
@@ -129,10 +123,7 @@ void CSFilter(uint3 id : SV_DispatchThreadID)
     {
         return;
     }
-    const float3 smoothNormal = SmoothSurfaceNormal(uv);
-    const float3 normal = dot(smoothNormal, smoothNormal) > 0.5f ? smoothNormal
-        : HikariNormalFromSceneDepth(gSceneDepth, gPointClamp, uv, position, gScreenParams.zw, gInvViewProj,
-            gCameraPosition.xyz);
+    const float3 normal = SurfaceNormal(pixel);
     const float distanceToCamera = length(position - gCameraPosition.xyz);
     if (distanceToCamera >= 65000.0f) return;
     const float2 encodedNormal = HikariEncodeOctahedralDirection(normal);
@@ -164,7 +155,7 @@ void CSFilter(uint3 id : SV_DispatchThreadID)
     float visibility = weight > 0.0f ? sum / weight : raw;
     float2 previousUv;
     float previousDepth, previousViewDepth;
-    if (gInputFlags.y > 0.5f && HikariProjectWorldPosition(position, gPreviousViewProj,
+    if (gInputFlags.x > 0.5f && HikariProjectWorldPosition(position, gPreviousViewProj,
         previousUv, previousDepth, previousViewDepth) && all(previousUv > 0) && all(previousUv < 1))
     {
         const float4 history = gHistory.SampleLevel(gPointClamp, previousUv, 0);

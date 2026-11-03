@@ -212,9 +212,7 @@ bool WantsContactShadows(const RENDER3D::RenderQualitySettings& settings, const 
 }
 
 bool ShouldRunSceneDepthPrepass(const RENDER3D::RenderQualitySettings& settings, const SceneEnvironment& environment) {
-    // 光線追跡の影は現フレームの深度から可視率を作るので prepass を伴う。
-    if (!settings.sceneDepthPrepass && !settings.directionalShadow.rayTraced &&
-        !WantsContactShadows(settings, environment)) {
+    if (!settings.sceneDepthPrepass && !WantsContactShadows(settings, environment)) {
         return false;
     }
     return settings.forwardCostMode != RENDER3D::ForwardShadingCostMode::AlbedoOnly;
@@ -451,8 +449,10 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     const bool actionPostMaskRequired =
         !debugRoute.active && stylizedFeatureMaskBackendReady && POST::PostSystem::RequiresActionSurfaceFeatureMask();
     RENDER3D::SCREENSPACE::ScreenSpaceSurfaceRequirements screenSurfaceRequirements{};
-    screenSurfaceRequirements.requirePackedSurface =
-        stylizedScreenMaskRequired || globalPostMaskRequired || actionPostMaskRequired || hasSsrWork;
+    // 光線追跡の太陽の影は GeometryAux の深度と面の記述（法線）から可視率を作る。
+    const bool rayTracedSunShadow = renderQuality.directionalShadow.rayTraced && environment.shadows.enabled;
+    screenSurfaceRequirements.requirePackedSurface = stylizedScreenMaskRequired || globalPostMaskRequired ||
+                                                     actionPostMaskRequired || hasSsrWork || rayTracedSunShadow;
     screenSurfaceRequirements.requireFeatureMask =
         stylizedScreenMaskRequired || globalPostMaskRequired || actionPostMaskRequired;
     screenSurfaceRequirements.requireCurrentFrameAo = camera.IsOrthographic();
@@ -494,8 +494,6 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         orthographicAoNeedsDepth || ShouldRunSceneDepthPrepass(RENDER3D::GetRenderQualitySettings(), environment);
     const bool sceneDsvReady = screenSpaceContext.sceneDsv.ptr != 0;
     const bool depthPrepassWorkReady = MESHRENDERER::HasDepthPrepassWork();
-    // 当該フレームの場面深度が Forward より前に揃ったか（scene prepass か GeometryAux）。
-    bool sceneDepthCurrent = screenResult.geometryAuxDepthComplete;
     if (scenePrepassEnabled && !screenResult.geometryAuxWritten && sceneDsvReady && depthPrepassWorkReady) {
         bool prepassExecuted = false;
         {
@@ -528,8 +526,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
             (void)RENDER3D::SCREENSPACE::BuildCurrentFrameDepthPyramid(
                 RENDER3D::SCREENSPACE::GetScreenSpaceRuntimeState(), screenSpaceContext, *cameraCb, screenResult);
         }
-        sceneDepthCurrent = sceneDepthCurrent || prepassExecuted;
-    } else if (scenePrepassEnabled) {
+    } else if (scenePrepassEnabled && !screenResult.geometryAuxWritten) {
         static bool sWarnedScenePrepassSkip = false;
         if (!sWarnedScenePrepassSkip) {
             sWarnedScenePrepassSkip = true;
@@ -539,9 +536,8 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         }
     }
 
-    // 光線追跡の太陽の影：当該フレームの深度（prepass か GeometryAux）から可視率を作り、Forward がカスケードの代わりに読む。
-    if (renderQuality.directionalShadow.rayTraced && environment.shadows.enabled && sceneDepthCurrent &&
-        cameraCb != nullptr) {
+    // 光線追跡の太陽の影：GeometryAux の深度と面の記述から可視率を作り、Forward がカスケードの代わりに読む。
+    if (rayTracedSunShadow && screenResult.geometryAuxDepthComplete && cameraCb != nullptr) {
         RENDER3D::SCREENSPACE::RayTracedShadowInputs shadowInputs{};
         shadowInputs.packedSurface = screenResult.packedSurface;
         shadowInputs.camera = cameraCb;
