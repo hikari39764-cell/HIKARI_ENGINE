@@ -541,6 +541,13 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
     ASSETS::SHADER::ShaderAssetEntryLease reflectionPixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease programReflectionPixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease terrainReflectionPixelShader{};
+    // 深度を読む Forward を光照贴图の有無で分ける AS と、光照贴图の面の PS（揃わなければ分けない）。
+    struct LightingSplitShaders {
+        ASSETS::SHADER::ShaderAssetEntryLease standardProbeAs{}, standardLightmapAs{}, programProbeAs{},
+            programLightmapAs{};
+        ASSETS::SHADER::ShaderAssetEntryLease standardLightmapPs{}, programLightmapPs{}, standardLightmapReflectionPs{},
+            programLightmapReflectionPs{};
+    } lightingShaders{};
     ASSETS::SHADER::ShaderAssetEntryLease shadowPixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease waterVisibilityPixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease geometryPixelShader{};
@@ -696,6 +703,40 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
         reflectionPixelShader = {};
         DEBUGLOG::PushRenderError("[MeshletBackend][SSR] Capture shaders unavailable; environment fallback retained.");
     }
+    if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque)) {
+        using ASSETS::SHADER::ShaderStage;
+        const struct {
+            const char* id;
+            ShaderStage stage;
+            const char* profile;
+            ASSETS::SHADER::ShaderAssetEntryLease* out;
+        } lightingPrograms[]{
+            {"HIKARI.EngineShader.Render3D_MeshletStandardProbeAS", ShaderStage::Amplification, "as_6_5",
+             &lightingShaders.standardProbeAs},
+            {"HIKARI.EngineShader.Render3D_MeshletStandardLightmapAS", ShaderStage::Amplification, "as_6_5",
+             &lightingShaders.standardLightmapAs},
+            {"HIKARI.EngineShader.Render3D_MeshletProgramProbeAS", ShaderStage::Amplification, "as_6_5",
+             &lightingShaders.programProbeAs},
+            {"HIKARI.EngineShader.Render3D_MeshletProgramLightmapAS", ShaderStage::Amplification, "as_6_5",
+             &lightingShaders.programLightmapAs},
+            {"HIKARI.EngineShader.Render3D_GpuDrivenOpaqueStandardLightmapPS", ShaderStage::Pixel, "ps_6_0",
+             &lightingShaders.standardLightmapPs},
+            {"HIKARI.EngineShader.Render3D_GpuDrivenOpaqueLightmapPS", ShaderStage::Pixel, "ps_6_0",
+             &lightingShaders.programLightmapPs},
+            {"HIKARI.EngineShader.Render3D_GpuDrivenOpaqueStandardReflectionLightmapPS", ShaderStage::Pixel, "ps_6_0",
+             &lightingShaders.standardLightmapReflectionPs},
+            {"HIKARI.EngineShader.Render3D_GpuDrivenOpaqueReflectionLightmapPS", ShaderStage::Pixel, "ps_6_0",
+             &lightingShaders.programLightmapReflectionPs},
+        };
+        for (const auto& program : lightingPrograms) {
+            if (!resolveShader(program.id, program.stage, program.profile, *program.out)) {
+                lightingShaders = {};
+                DEBUGLOG::PushRenderError("[MeshletBackend][WARN] Lightmapped-surface Forward shaders unavailable; "
+                                          "Forward keeps one PSO per material class.");
+                break;
+            }
+        }
+    }
     stats_.shaderCompileReady = true;
 
     // 全経路の表面（depth-aware/transparent）の pixel shader は大きく、shader 更新後の初回起動では driver の compile に
@@ -707,7 +748,7 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
             [device = device_, rootSignature = rootSignature_, standardAs = standardAmplificationShader,
              programAs = programAmplificationShader, terrainAs = terrainAmplificationShader, ms = forwardMeshShader,
              standardPs = reflectionPixelShader, programPs = programReflectionPixelShader,
-             terrainPs = terrainReflectionPixelShader]() {
+             terrainPs = terrainReflectionPixelShader, lighting = lightingShaders]() {
                 ReflectionCapturePipelines pipelines{};
                 const auto create = [&](const ASSETS::SHADER::ShaderAssetEntryLease& as,
                                         const ASSETS::SHADER::ShaderAssetEntryLease& ps,
@@ -733,6 +774,35 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                 create(standardAs, standardPs, pipelines.standard);
                 create(programAs, programPs, pipelines.program);
                 create(terrainAs, terrainPs, pipelines.terrain);
+                // 深度を読む capture の光照贴图での分割（探針の面は分けない PS を使う）。
+                const auto createRead = [&](const ASSETS::SHADER::ShaderAssetEntryLease& as,
+                                            const ASSETS::SHADER::ShaderAssetEntryLease& ps, bool captureSubsurface,
+                                            PipelineBucketArray& out) {
+                    for (size_t i = 0; i < out.size(); ++i) {
+                        if (!CreateMeshletPipelineState(
+                                device.Get(), rootSignature.Get(), ShaderBytecode(as), ShaderBytecode(ms),
+                                ShaderBytecode(ps), DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                CullModeForBucket(static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i)), false, false,
+                                true, L"Meshlet.ForwardReflectionCapture", out[i].GetAddressOf(),
+                                DXGI_FORMAT_R16G16B16A16_FLOAT, D3D12_COMPARISON_FUNC_LESS_EQUAL,
+                                DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                captureSubsurface ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_UNKNOWN)) {
+                            out = {};
+                            return;
+                        }
+                    }
+                };
+                if (lighting.standardLightmapReflectionPs) {
+                    for (size_t subsurface = 0; subsurface < pipelines.lightingRead.size(); ++subsurface) {
+                        LightingSplitPipelines& split = pipelines.lightingRead[subsurface];
+                        createRead(lighting.standardProbeAs, standardPs, subsurface != 0u, split.standardProbe);
+                        createRead(lighting.standardLightmapAs, lighting.standardLightmapReflectionPs, subsurface != 0u,
+                                   split.standardLightmap);
+                        createRead(lighting.programProbeAs, programPs, subsurface != 0u, split.programProbe);
+                        createRead(lighting.programLightmapAs, lighting.programLightmapReflectionPs, subsurface != 0u,
+                                   split.programLightmap);
+                    }
+                }
                 return pipelines;
             });
     }
@@ -743,7 +813,7 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
             [device = device_, rootSignature = rootSignature_, standardAs = standardAmplificationShader,
              programAs = programAmplificationShader, terrainAs = terrainAmplificationShader, ms = forwardMeshShader,
              standardPs = forwardPixelShader, programPs = programForwardPixelShader,
-             terrainPs = terrainForwardPixelShader]() {
+             terrainPs = terrainForwardPixelShader, lighting = lightingShaders]() {
                 ReadDepthForwardPipelines pipelines{};
                 const auto create = [&](const ASSETS::SHADER::ShaderAssetEntryLease& as,
                                         const ASSETS::SHADER::ShaderAssetEntryLease& ps, const wchar_t* name,
@@ -762,6 +832,17 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                 create(standardAs, standardPs, L"Meshlet Forward ReadDepth PSO", pipelines.standard);
                 create(programAs, programPs, L"Meshlet Forward MaterialProgram ReadDepth PSO", pipelines.program);
                 create(terrainAs, terrainPs, L"Meshlet Forward Terrain ReadDepth PSO", pipelines.terrain);
+                if (lighting.standardLightmapPs) {
+                    LightingSplitPipelines& split = pipelines.lighting;
+                    create(lighting.standardProbeAs, standardPs, L"Meshlet Forward Probe ReadDepth PSO",
+                           split.standardProbe);
+                    create(lighting.standardLightmapAs, lighting.standardLightmapPs,
+                           L"Meshlet Forward Lightmap ReadDepth PSO", split.standardLightmap);
+                    create(lighting.programProbeAs, programPs, L"Meshlet Forward MaterialProgram Probe ReadDepth PSO",
+                           split.programProbe);
+                    create(lighting.programLightmapAs, lighting.programLightmapPs,
+                           L"Meshlet Forward MaterialProgram Lightmap ReadDepth PSO", split.programLightmap);
+                }
                 return pipelines;
             });
     }
@@ -1090,6 +1171,15 @@ void MeshletRenderBackend::Reset() {
         for (auto& capture : *captures)
             for (auto& pipeline : capture)
                 GFX::RetireD3D12ObjectForCurrentFrame(pipeline, "Meshlet.ReflectionCapturePSO");
+    const auto retireSplit = [](LightingSplitPipelines& split, const char* name) {
+        for (PipelineBucketArray* pipelines :
+             {&split.standardProbe, &split.standardLightmap, &split.programProbe, &split.programLightmap})
+            for (auto& pipeline : *pipelines)
+                GFX::RetireD3D12ObjectForCurrentFrame(pipeline, name);
+    };
+    for (auto& split : reflectionPipelines_.lightingRead)
+        retireSplit(split, "Meshlet.ReflectionCapturePSO");
+    retireSplit(readDepthPipelines_.lighting, "Meshlet.ForwardReadDepthPSO");
     if (readDepthTask_.valid())
         (void)readDepthTask_.get();
     for (PipelineBucketArray* pipelines :
@@ -1364,6 +1454,12 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
                                   : nullptr;
         }
 
+        // 深度を読む Forward は、光照贴图の面と探針の面を分けた PSO が揃っていればそれで描く。
+        const LightingSplitPipelines& lighting =
+            ctx.reflectionCapture ? reflectionPipelines_.lightingRead[ctx.subsurfaceCapture ? 1u : 0u]
+                                  : readDepthPipelines_.lighting;
+        const bool lightingSplit = readDepth && lighting.IsReady(bucketIndex);
+
         ++stats_.submitCallCount;
         if (bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided) {
             ++stats_.doubleSidedSubmitCallCount;
@@ -1382,10 +1478,21 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
                                              DispatchArgumentOffsetForBucket(layout, bucket), countBuffer,
                                              CounterOffsetForBucket(layout, bucket));
         };
-        submit(selectedPipeline, GFX::GPU_PROFILE::Pass::MeshletForwardStandard);
+        if (lightingSplit) {
+            submit(lighting.standardProbe[bucketIndex].Get(), GFX::GPU_PROFILE::Pass::MeshletForwardStandard);
+            submit(lighting.standardLightmap[bucketIndex].Get(), GFX::GPU_PROFILE::Pass::MeshletForwardStandard);
+        } else {
+            submit(selectedPipeline, GFX::GPU_PROFILE::Pass::MeshletForwardStandard);
+        }
         if (programPipeline != nullptr) {
             ++stats_.submitCallCount;
-            submit(programPipeline, GFX::GPU_PROFILE::Pass::MeshletForwardMaterialProgram);
+            if (lightingSplit) {
+                submit(lighting.programProbe[bucketIndex].Get(), GFX::GPU_PROFILE::Pass::MeshletForwardMaterialProgram);
+                submit(lighting.programLightmap[bucketIndex].Get(),
+                       GFX::GPU_PROFILE::Pass::MeshletForwardMaterialProgram);
+            } else {
+                submit(programPipeline, GFX::GPU_PROFILE::Pass::MeshletForwardMaterialProgram);
+            }
         }
         if (terrainPipeline != nullptr) {
             ++stats_.submitCallCount;

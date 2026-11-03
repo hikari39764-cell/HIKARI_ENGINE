@@ -194,6 +194,12 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     if (programRange != (HIKARI_MATERIAL_CLASS == HIKARI_MATERIAL_CLASS_PROGRAM))
         visible = (HikariMeshletVisibleRange)0;
 #endif
+#if HIKARI_SURFACE_LIGHTING != HIKARI_SURFACE_LIGHTING_ANY
+    // 光照贴图の面と探針の面も同じ可視範囲を別 PSO で dispatch する。
+    const bool lightmappedRange = (visible.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_LIGHTMAPPED) != 0u;
+    if (lightmappedRange != (HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_LIGHTMAP))
+        visible = (HikariMeshletVisibleRange)0;
+#endif
     const uint sourceClusterCount = visible.clusterCount;
     const bool candidateLane = groupIndex < min(sourceClusterCount, HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD);
     bool frustumCulled = false, coneTested = false, coneCulled = false;

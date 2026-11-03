@@ -164,6 +164,19 @@ private:
     bool PrepareTerrainDiagnosticPipelines();
     bool AreReflectionPipelinesReady(bool captureSubsurface) const;
 
+    // 深度を読む Forward を光照贴图の有無で分けた PSO。AS が面の flag で可視範囲を振り分け、光照贴图の面の PS は探針を
+    // 読む命令を持たない（読まない分岐でも命令があるだけで register を占め、光照贴图だけの教室で前向きが 4 割遅かった）。
+    // 探針の面の PS は分けない PS と同じ。4 組が揃った bucket だけ分けて描く。
+    struct LightingSplitPipelines {
+        PipelineBucketArray standardProbe{};
+        PipelineBucketArray standardLightmap{};
+        PipelineBucketArray programProbe{};
+        PipelineBucketArray programLightmap{};
+        bool IsReady(size_t bucket) const noexcept {
+            return standardProbe[bucket] && standardLightmap[bucket] && programProbe[bucket] && programLightmap[bucket];
+        }
+    };
+
     // Forward capture の PSO。captureSubsurface と深度の扱い（書く／読むだけ）ごとに標準 PBR の面・材質 program の面・地形を
     // 別 PSO で描く（通常の Forward と同じ分割。4 番目 = 次表面散乱の拡散光、持たない時は UNKNOWN）。
     static constexpr size_t kCaptureVariantCount = 4u;
@@ -174,6 +187,8 @@ private:
         std::array<PipelineBucketArray, kCaptureVariantCount> standard{};
         std::array<PipelineBucketArray, kCaptureVariantCount> program{};
         std::array<PipelineBucketArray, kCaptureVariantCount> terrain{};
+        // 深度を読む capture の光照贴图での分割（[次表面散乱の拡散光を持つか]）。
+        std::array<LightingSplitPipelines, 2> lightingRead{};
     };
 
     // GeometryAux が当該フレームの不透明面の深度を全部書いた後の Forward（Full）の PSO。深度を書かず LESS_EQUAL で読むだけに
@@ -183,6 +198,7 @@ private:
         PipelineBucketArray standard{};
         PipelineBucketArray program{};
         PipelineBucketArray terrain{};
+        LightingSplitPipelines lighting{};
     };
     void CollectReadDepthPipelines();
 

@@ -10,6 +10,7 @@
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
+#include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
@@ -552,6 +553,10 @@ RUNTIME::SurfaceGpuSceneInstance BuildGpuSceneInstance(const GpuSceneSurfaceReco
     instance.sourceMaterialIndex = record.materialIndex;
     instance.nodeIndex = record.nodeIndex;
     instance.flags = BuildInstanceFlags(record);
+    // PS が光照贴图の重みを 1 にする条件と同じ（テクスチャ表の範囲内の記述子）。
+    if (instance.lightmapTextureDescriptorIndex < GFX::DESCRIPTOR::kUserSrvCount) {
+        instance.flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::Lightmapped);
+    }
     instance.geometryBackend = static_cast<uint32_t>(record.key.geometryBackend);
     if (record.materialOverride != nullptr) {
         instance.materialProgramFlags = record.materialOverride->GetMaterialProgramInstanceFlags();

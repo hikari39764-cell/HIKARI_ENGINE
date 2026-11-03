@@ -27,4 +27,18 @@
 #define HIKARI_MATERIAL_CLASS HIKARI_MATERIAL_CLASS_ANY
 #endif
 
+// 間接拡散光の出どころによる compile-time 分割。光照贴图の面（実例に光照贴图があれば全面が光照贴图）は探針を読む
+// 命令を持たない PS で描く（読まない分岐でも命令があるだけで register を占め、前向きが 4 割遅かった）。
+// AS は面の flag（HIKARI_SURFACE_GPU_SCENE_FLAG_LIGHTMAPPED）で振り分ける。
+//   ANY      : 分割しない。
+//   PROBES   : 光照贴图の無い面だけ（PS は ANY と同じ）。
+//   LIGHTMAP : 光照贴图の面だけ。
+#define HIKARI_SURFACE_LIGHTING_ANY 0
+#define HIKARI_SURFACE_LIGHTING_PROBES 1
+#define HIKARI_SURFACE_LIGHTING_LIGHTMAP 2
+
+#ifndef HIKARI_SURFACE_LIGHTING
+#define HIKARI_SURFACE_LIGHTING HIKARI_SURFACE_LIGHTING_ANY
+#endif
+
 #endif

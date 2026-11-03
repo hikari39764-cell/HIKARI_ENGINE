@@ -81,6 +81,8 @@ static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE = 1u << 17;
 static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_CAMERA_CENTERED_OCEAN = 1u << 18;
 static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_FOLIAGE_WIND = 1u << 19;
 static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_MATERIAL_PROGRAM = 1u << 20;
+// 実例に光照贴图がある（拡散の間接光は全面が光照贴图。探針を読まない）。
+static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_LIGHTMAPPED = 1u << 22;
 
 // cook 時の静的 bounds/cone は頂点変形後の形状を保証しない。
 bool HikariSurfaceUsesVertexDeformation(uint flags)

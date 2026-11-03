@@ -41,6 +41,8 @@ enum class SurfaceGpuSceneInstanceFlags : uint32_t {
     // 描画上の静的物体（ワールド変換が変わらない）。StaticGeometry（形が変わらない）と両方立てば、時域の物体運動を
     // 描かずカメラの運動ベクトルで足りる。
     StaticTransform = 1u << 21,
+    // 実例に光照贴图がある（拡散の間接光は全面が光照贴图）。Forward は探針の命令を持たない PSO で描く。
+    Lightmapped = 1u << 22,
 };
 
 enum class SurfaceGpuSceneResourceFlags : uint32_t {

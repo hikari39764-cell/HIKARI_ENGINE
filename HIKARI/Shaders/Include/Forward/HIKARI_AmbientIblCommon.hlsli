@@ -1,6 +1,8 @@
 #ifndef HIKARI_AMBIENT_IBL_COMMON_HLSLI
 #define HIKARI_AMBIENT_IBL_COMMON_HLSLI
 
+#include "Include/Surface/HIKARI_SurfacePartition.hlsli"
+
 struct HikariAmbientIblLobes
 {
     float3 diffuse;
@@ -25,6 +27,11 @@ HikariPbrShadingContext HikariBuildForwardPbrShadingContext(
 float3 HikariResolveSurfaceDiffuseIrradiance(float3 worldPos, float3 geometricNormal, float3 n, float3 v,
     float4 surfaceLightmap, float surfaceLightmapWeight, out float skyVisibility, bool sampleProbes = true)
 {
+#if HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_LIGHTMAP
+    // 光照贴图の面だけを描く PSO。重みは必ず 1 で、探針の命令を持たない。
+    skyVisibility = saturate(surfaceLightmap.a);
+    return surfaceLightmap.rgb;
+#else
     skyVisibility = 1.0f;
     const float weight = saturate(surfaceLightmapWeight);
     // Lightmap の全面 coverage は下位 provider を置換する。有効な黒も維持する。光照贴图の面も空の反射を遮る
@@ -45,6 +52,7 @@ float3 HikariResolveSurfaceDiffuseIrradiance(float3 worldPos, float3 geometricNo
     float3 diffuse = gAmbientColor.rgb * gAmbientIntensity + HikariEvaluateSkyDiffuseIrradiance(n);
     diffuse = probes.rgb + diffuse * (1.0f - probes.a);
     return lerp(diffuse, surfaceLightmap.rgb, weight);
+#endif
 }
 
 // sampleProbes / sampleReflection を偽にすると、probe の読み出し（上の関数）と環境の鏡面反射を省く。前向きの診断モードが
