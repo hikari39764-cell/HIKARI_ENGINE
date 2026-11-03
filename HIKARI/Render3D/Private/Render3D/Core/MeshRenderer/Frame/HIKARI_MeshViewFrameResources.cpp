@@ -3,7 +3,10 @@
 #include <array>
 #include <cstring>
 #include <utility>
+#include <d3dx12.h>
 #include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
+#include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 
 namespace HIKARI::MESHRENDERER {
 
@@ -23,6 +26,11 @@ MeshViewFrameResources& MeshViewFrameResources::operator=(MeshViewFrameResources
         localLightBuildSignature_ = other.localLightBuildSignature_;
         localLightBuildCached_ = std::exchange(other.localLightBuildCached_, false);
         uploads_ = std::move(other.uploads_);
+        localLightBuffer_ = std::move(other.localLightBuffer_);
+        localLightCapacity_ = std::exchange(other.localLightCapacity_, 0u);
+        localLightState_ = other.localLightState_;
+        localLightVersion_ = other.localLightVersion_;
+        residentLocalLightVersion_ = std::exchange(other.residentLocalLightVersion_, 0u);
         records_ = std::move(other.records_);
         headers_ = std::move(other.headers_);
         indices_ = std::move(other.indices_);
@@ -49,6 +57,11 @@ bool MeshViewFrameResources::Initialize(ID3D12Device* device) {
 
 void MeshViewFrameResources::Finalize() {
     uploads_.Finalize(&GFX::GetCurrentContext());
+    if (localLightBuffer_)
+        GFX::RetireD3D12ObjectForFrame(localLightBuffer_, GFX::GetCurrentContext(), "MeshView.LocalLights");
+    localLightCapacity_ = 0;
+    localLightState_ = D3D12_RESOURCE_STATE_COMMON;
+    residentLocalLightVersion_ = 0;
     records_.clear();
     headers_.clear();
     indices_.clear();
@@ -71,6 +84,7 @@ void MeshViewFrameResources::BuildLocalLights(const RENDER3D::LIGHTING::SceneLig
                                                              shadows);
     localLightBuildSignature_ = signature;
     localLightBuildCached_ = true;
+    ++localLightVersion_;
 }
 
 bool MeshViewFrameResources::Publish(const GFX::Context& graphics, const CameraCB* cullingOverride) {
@@ -84,12 +98,8 @@ bool MeshViewFrameResources::Publish(const GFX::Context& graphics, const CameraC
     const LocalLightGpuData emptyLight{};
     const LocalLightClusterHeader emptyHeader{};
     const uint32_t emptyIndex = 0u;
-    struct Block {
-        const void* data;
-        size_t bytes;
-    };
-    // 全 CBV/SRV を揃えてから公開する。失敗時に異なる view の値を混在させない。定数（先頭 5 つ）と局所光の記録・
-    // 分簇（後ろ 3 つ）は別の所有者として記帳する（局所光は場面の内容）。
+    // 全 CBV/SRV を揃えてから公開する。失敗時に異なる view の値を混在させない。定数は先頭 5 つ、局所光の記録・
+    // 分簇は後ろ 3 つ（常駐 buffer）。
     constexpr size_t kConstantBlocks = 5u;
     const std::array<Block, 8> blocks{
         {{&camera, sizeof(camera)},
@@ -102,29 +112,69 @@ bool MeshViewFrameResources::Publish(const GFX::Context& graphics, const CameraC
           sizeof(emptyHeader) * (localLightList.clusterCount ? localLightList.clusterCount : 1u)},
          {localLightList.clusterIndexCount ? indices_.data() : &emptyIndex,
           sizeof(emptyIndex) * (localLightList.clusterIndexCount ? localLightList.clusterIndexCount : 1u)}}};
+    std::array<size_t, blocks.size()> offsets{};
+    size_t constantBytes = 0u, lightBytes = 0u;
+    for (size_t index = 0u; index < blocks.size(); ++index) {
+        size_t& bytes = index < kConstantBlocks ? constantBytes : lightBytes;
+        offsets[index] = bytes;
+        bytes += GFX::AlignD3D12ConstantBufferByteSize(static_cast<UINT>(blocks[index].bytes));
+    }
     uploads_.ResetForFrame(graphics.currentFrameRetireFenceValue);
-    std::array<D3D12_GPU_VIRTUAL_ADDRESS, blocks.size()> addresses{};
-    const auto publish = [&](size_t first, size_t last, GFX::UPLOAD_TRAFFIC::Owner owner) {
-        size_t bytes = 0u;
-        for (size_t index = first; index < last; ++index)
-            bytes += GFX::AlignD3D12ConstantBufferByteSize(static_cast<UINT>(blocks[index].bytes));
-        const DX::UploadAllocation allocation = uploads_.Allocate(bytes, owner);
-        if (!allocation)
-            return false;
-        size_t offset = 0u;
-        for (size_t index = first; index < last; ++index) {
-            std::memcpy(static_cast<std::byte*>(allocation.cpuAddress) + offset, blocks[index].data,
-                        blocks[index].bytes);
-            addresses[index] = allocation.gpuAddress + offset;
-            offset += GFX::AlignD3D12ConstantBufferByteSize(static_cast<UINT>(blocks[index].bytes));
-        }
-        return true;
-    };
-    if (!publish(0u, kConstantBlocks, GFX::UPLOAD_TRAFFIC::Owner::ViewConstants) ||
-        !publish(kConstantBlocks, blocks.size(), GFX::UPLOAD_TRAFFIC::Owner::LocalLights))
+    const DX::UploadAllocation constants = uploads_.Allocate(constantBytes, GFX::UPLOAD_TRAFFIC::Owner::ViewConstants);
+    if (!constants)
         return false;
+    std::array<D3D12_GPU_VIRTUAL_ADDRESS, blocks.size()> addresses{};
+    for (size_t index = 0u; index < kConstantBlocks; ++index) {
+        std::memcpy(static_cast<std::byte*>(constants.cpuAddress) + offsets[index], blocks[index].data,
+                    blocks[index].bytes);
+        addresses[index] = constants.gpuAddress + offsets[index];
+    }
+    const std::span<const Block> lightBlocks(blocks.data() + kConstantBlocks, blocks.size() - kConstantBlocks);
+    const std::span<const size_t> lightOffsets(offsets.data() + kConstantBlocks, lightBlocks.size());
+    if ((residentLocalLightVersion_ != localLightVersion_ || localLightCapacity_ < lightBytes) &&
+        !WriteLocalLights(graphics, lightBlocks, lightOffsets, lightBytes))
+        return false;
+    for (size_t index = kConstantBlocks; index < blocks.size(); ++index)
+        addresses[index] = localLightBuffer_->GetGPUVirtualAddress() + offsets[index];
     bindings_ = {addresses[0], addresses[1], addresses[2],
                  addresses[3], addresses[4], {addresses[5], addresses[6], addresses[7], localLightList}};
+    return true;
+}
+
+bool MeshViewFrameResources::WriteLocalLights(const GFX::Context& graphics, std::span<const Block> blocks,
+                                              std::span<const size_t> offsets, size_t bytes) {
+    if (graphics.cmdList == nullptr)
+        return false;
+    if (localLightCapacity_ < bytes) {
+        if (localLightBuffer_)
+            GFX::RetireD3D12ObjectForFrame(localLightBuffer_, graphics, "MeshView.LocalLights");
+        constexpr size_t kGranularity = 64u * 1024u;
+        const size_t capacity = (bytes + kGranularity - 1u) / kGranularity * kGranularity;
+        localLightCapacity_ = 0;
+        localLightState_ = D3D12_RESOURCE_STATE_COMMON;
+        if (!GFX::D3D12_BUFFER::CreateDefaultBuffer(graphics.device, capacity, GFX::VIDEO_MEMORY::Owner::Lighting,
+                                                    localLightBuffer_))
+            return false;
+        localLightCapacity_ = capacity;
+    }
+    const DX::UploadAllocation staging = uploads_.Allocate(bytes, GFX::UPLOAD_TRAFFIC::Owner::LocalLights);
+    if (!staging)
+        return false;
+    for (size_t index = 0u; index < blocks.size(); ++index)
+        std::memcpy(static_cast<std::byte*>(staging.cpuAddress) + offsets[index], blocks[index].data,
+                    blocks[index].bytes);
+    // 同じフレームの先の描画が読み終えてから書く（遷移の barrier が待つ）。先に積んだ描画は前の中身を読む。
+    if (localLightState_ != D3D12_RESOURCE_STATE_COPY_DEST) {
+        const auto toCopy = CD3DX12_RESOURCE_BARRIER::Transition(localLightBuffer_.Get(), localLightState_,
+                                                                 D3D12_RESOURCE_STATE_COPY_DEST);
+        graphics.cmdList->ResourceBarrier(1, &toCopy);
+    }
+    graphics.cmdList->CopyBufferRegion(localLightBuffer_.Get(), 0, staging.resource, staging.offset, bytes);
+    const auto toRead = CD3DX12_RESOURCE_BARRIER::Transition(localLightBuffer_.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
+                                                             D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
+    graphics.cmdList->ResourceBarrier(1, &toRead);
+    localLightState_ = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
+    residentLocalLightVersion_ = localLightVersion_;
     return true;
 }
 

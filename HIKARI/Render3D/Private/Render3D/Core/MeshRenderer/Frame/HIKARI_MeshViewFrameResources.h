@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <wrl/client.h>
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
@@ -18,7 +19,8 @@ struct MeshViewGpuBindings {
 };
 
 // 主画面・プレビュー・capture が共有する view 単位の CPU staging と GPU 提出。
-// 材質、object、joint はそれぞれの所有者に残す。
+// 材質、object、joint はそれぞれの所有者に残す。定数は毎フレーム upload から出し、局所光の記録・分簇は view 専用の
+// 常駐 buffer に置いて、組み直した時だけ書き直す（止まった場面では upload せず、shader は VRAM から読む）。
 class MeshViewFrameResources final {
 public:
     MeshViewFrameResources() = default;
@@ -35,6 +37,8 @@ public:
                           uint32_t width, uint32_t height,
                           std::span<const RENDER3D::LIGHTING::LocalLightShadowAssignment> shadows = {});
     void ClearLocalLights() {
+        if (localLightBuildCached_ || localLightList.clusterCount != 0u)
+            ++localLightVersion_;
         localLightList = {};
         localLightBuildCached_ = false;
     }
@@ -54,7 +58,19 @@ public:
 private:
     bool PublishConstant(const GFX::Context& graphics, const void* data, size_t bytes,
                          D3D12_GPU_VIRTUAL_ADDRESS& binding);
+    struct Block {
+        const void* data;
+        size_t bytes;
+    };
+    // 局所光の記録・分簇の表頭・索引を常駐 buffer へ書く（upload を経て複写）。offsets は各塊の位置。
+    bool WriteLocalLights(const GFX::Context& graphics, std::span<const Block> blocks, std::span<const size_t> offsets,
+                          size_t bytes);
     DX::DynamicUploadBuffer uploads_{};
+    Microsoft::WRL::ComPtr<ID3D12Resource> localLightBuffer_{};
+    size_t localLightCapacity_ = 0;
+    D3D12_RESOURCE_STATES localLightState_ = D3D12_RESOURCE_STATE_COMMON;
+    // 局所光の中身の版（組み直すか空にした時に進む）と、常駐 buffer に入っている版。
+    uint64_t localLightVersion_ = 1, residentLocalLightVersion_ = 0;
     // 局所光の記録の後ろにデカールの記録が続く。
     std::vector<RENDER3D::LIGHTING::LocalLightGpuData> records_{};
     std::vector<RENDER3D::LIGHTING::LocalLightClusterHeader> headers_{};

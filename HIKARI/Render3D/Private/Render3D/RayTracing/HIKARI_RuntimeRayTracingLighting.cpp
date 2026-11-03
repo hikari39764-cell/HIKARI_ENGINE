@@ -2,7 +2,8 @@
 #include <algorithm>
 #include <cstring>
 #include "Core/Hashing/HIKARI_FnvHash.h"
-#include "Gfx/HIKARI_DynamicUploadBuffer.h"
+#include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
+#include "Gfx/HIKARI_FencedUploadBuffers.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
@@ -11,23 +12,18 @@
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
 namespace HIKARI::RENDER3D::RAYTRACING {
-namespace {
-constexpr size_t kUploadPageBytes = 256 * 1024;
-static_assert(LIGHTING::kLightingProviderViewSlotCount *
-                  (LIGHTING::kMaximumLocalLightCount * (sizeof(LIGHTING::LocalLightGpuData) + sizeof(MATH::Vec2)) +
-                   512) <=
-              kUploadPageBytes);
-} // namespace
 struct RuntimeRayTracingLighting::State {
     GFX::Context context{};
-    std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads;
+    // 光源表の後ろに CDF。中身（光源の hash）が変わった時だけ書き、変わらない間は同じ buffer を読ませる。
+    GFX::FencedUploadBuffers table{GFX::UPLOAD_TRAFFIC::Owner::RayTracingLights};
+    uint64_t tableHash = 0;
+    uint64_t cdfOffset = 0;
     RenderResourceView nullCube{};
     std::vector<LIGHTING::LocalLightGpuData> lights;
     std::vector<MATH::Vec2> cdf;
     std::vector<double> weights;
+    std::vector<std::byte> staging;
     RuntimeRayLightingFrame published{};
-    uint64_t workFence = 0;
-    uint32_t publications = 0;
 };
 
 bool RuntimeRayLightingFrame::Matches(const GFX::Context& graphics, const RuntimeRayTracingFrame& rayScene,
@@ -109,19 +105,12 @@ RuntimeRayLightingFrame RuntimeRayTracingLighting::Prepare(const GFX::Context& g
     frame.contentHash = HASH::Fnv1aBytes(HASH::kFnv1a64OffsetBasis, &data, sizeof(data));
     frame.contentHash =
         HASH::Fnv1aBytes(frame.contentHash, state.lights.data(), state.lights.size() * sizeof(state.lights[0]));
-    if (state.workFence != graphics.currentFrameRetireFenceValue) {
-        state.workFence = graphics.currentFrameRetireFenceValue;
-        state.publications = 0;
-    }
     const auto& previous = state.published;
     if (previous.Matches(graphics, scene, {materials.dataVersion, materials.bindingVersion}) &&
         previous.contentHash == frame.contentHash && previous.droppedLights == frame.droppedLights &&
         previous.sky.ptr == (ibl.hasPrefiltered ? ibl.prefilteredSrv.ptr : state.nullCube.gpu.ptr))
         return previous;
     frame.status = RuntimeRayLightingStatus::ResourceFailure;
-    // 2 view 分の immutable publication。無制限に upload page を増やさない。
-    if (state.publications >= LIGHTING::kLightingProviderViewSlotCount)
-        return frame;
     if (!state.nullCube.IsValid()) {
         state.nullCube = AllocateRenderResourceDescriptor();
         if (!state.nullCube.IsValid())
@@ -138,33 +127,33 @@ RuntimeRayLightingFrame RuntimeRayTracingLighting::Prepare(const GFX::Context& g
         state.lights.emplace_back();
         state.cdf.push_back({1, 1});
     }
-    auto& upload = state.uploads[graphics.frameIndex];
-    if (!upload.IsInitialized() &&
-        !upload.Init(graphics.device, kUploadPageBytes, GFX::UPLOAD_TRAFFIC::Owner::RayTracingLights))
-        return frame;
-    upload.ResetForFrame(graphics.currentFrameRetireFenceValue);
-    const auto lights = upload.Allocate(state.lights.size() * sizeof(state.lights[0]));
-    const auto cdf = upload.Allocate(state.cdf.size() * sizeof(state.cdf[0]));
-    if (!lights || !cdf)
-        return frame;
-    std::memcpy(lights.cpuAddress, state.lights.data(), state.lights.size() * sizeof(state.lights[0]));
-    std::memcpy(cdf.cpuAddress, state.cdf.data(), state.cdf.size() * sizeof(state.cdf[0]));
-    frame.localLights = lights.gpuAddress;
-    frame.lightCdf = cdf.gpuAddress;
+    const size_t lightBytes = state.lights.size() * sizeof(state.lights[0]);
+    const size_t cdfBytes = state.cdf.size() * sizeof(state.cdf[0]);
+    uint64_t tableHash = HASH::Fnv1aBytes(HASH::kFnv1a64OffsetBasis, state.lights.data(), lightBytes);
+    tableHash = HASH::Fnv1aBytes(tableHash, state.cdf.data(), cdfBytes);
+    if (!state.table.Current() || tableHash != state.tableHash) {
+        state.cdfOffset = GFX::AlignD3D12ConstantBufferByteSize(static_cast<UINT>(lightBytes));
+        state.staging.resize(state.cdfOffset + cdfBytes);
+        std::memcpy(state.staging.data(), state.lights.data(), lightBytes);
+        std::memcpy(state.staging.data() + state.cdfOffset, state.cdf.data(), cdfBytes);
+        if (!state.table.Write(graphics, state.staging.data(), state.staging.size(), "RuntimeRayLighting.Table"))
+            return frame;
+        state.tableHash = tableHash;
+    }
+    state.table.MarkRead(graphics);
+    frame.localLights = state.table.Current()->GetGPUVirtualAddress();
+    frame.lightCdf = frame.localLights + state.cdfOffset;
     frame.status = RuntimeRayLightingStatus::Ready;
-    ++state.publications;
     state.published = frame;
     return frame;
 }
 
 void RuntimeRayTracingLighting::Reset(const GFX::Context& graphics) {
     auto& state = *state_;
-    for (auto& upload : state.uploads)
-        upload.Finalize(&graphics);
+    state.table.Reset(graphics, "RuntimeRayLighting.Table");
+    state.tableHash = 0;
     RetireRenderResourceDescriptor(state.nullCube, graphics, "RuntimeRayLighting.NullCube");
     state.published = {};
-    state.workFence = 0;
-    state.publications = 0;
     state.context = {};
     state.lights.clear();
     state.cdf.clear();
