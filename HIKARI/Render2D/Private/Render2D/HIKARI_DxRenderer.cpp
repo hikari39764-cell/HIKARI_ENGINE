@@ -138,8 +138,10 @@ bool DxRenderer::Init(const GFX::Context& ctx) {
 
     bool uploadBuffersReady = true;
     for (uint32_t frameIndex = 0; frameIndex < GFX::kFrameResourceCount; ++frameIndex) {
-        uploadBuffersReady &= g_uploadCB[frameIndex].Init(device, static_cast<size_t>(1024 * 1024) * 8);
-        uploadBuffersReady &= g_uploadVB[frameIndex].Init(device, static_cast<size_t>(1024 * 1024) * 16);
+        uploadBuffersReady &=
+            g_uploadCB[frameIndex].Init(device, static_cast<size_t>(1024 * 1024) * 8, GFX::UPLOAD_TRAFFIC::Owner::Ui2D);
+        uploadBuffersReady &= g_uploadVB[frameIndex].Init(device, static_cast<size_t>(1024 * 1024) * 16,
+                                                          GFX::UPLOAD_TRAFFIC::Owner::Ui2D);
     }
     if (!uploadBuffersReady) {
         HIKARI_LOG_ERROR("[DxRenderer] dynamic upload page initialization failed");

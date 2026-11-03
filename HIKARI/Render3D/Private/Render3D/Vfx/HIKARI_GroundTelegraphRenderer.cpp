@@ -1,4 +1,5 @@
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 #include "Render3D/Vfx/HIKARI_GroundTelegraphRenderer.h"
 
 #include <algorithm>
@@ -126,6 +127,8 @@ bool GroundTelegraphRenderer::Render(const GFX::Context& graphics, const PIPELIN
     std::memcpy(frame.constantMapped, &constants, sizeof(constants));
     std::memcpy(frame.vertexMapped, source.groundTelegraphVertices,
                 sizeof(GroundTelegraphVertex) * source.groundTelegraphVertexCount);
+    GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::TransientGeometry,
+                                sizeof(GroundTelegraphVertex) * source.groundTelegraphVertexCount);
 
     if (!targetAccess.BeginDepthRead()) {
         return true;

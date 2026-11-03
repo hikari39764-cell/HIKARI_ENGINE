@@ -563,7 +563,8 @@ bool ClusterGpuCullingPass::EnsureCapacity(ID3D12Device* device, size_t pageTask
     const auto readbackHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
 
     for (auto& upload : constantUploads_) {
-        if (!upload.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
+        if (!upload.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+                         GFX::UPLOAD_TRAFFIC::Owner::PassConstants)) {
             return false;
         }
     }

@@ -1,4 +1,5 @@
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 
 #include <algorithm>
 #include <array>
@@ -290,6 +291,7 @@ bool UploadVolumes(ResidentVolume& resident, size_t residentIndex,
         }
     }
     uploadBuffer->Unmap(0, nullptr);
+    GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::LightProbes, uploadBytes);
 
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator{};
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> commandList{};

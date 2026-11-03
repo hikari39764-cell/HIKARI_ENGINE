@@ -1,4 +1,5 @@
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Render3D/Ui/HIKARI_GameUiEffectRenderer.h"
 
@@ -274,6 +275,7 @@ void FillQuad(UiVertex* destination, const GameProjectUiSpriteRequest& request, 
             {0, height, u0, v1}, {width, 0, u1, v0}, {width, height, u1, v1},
         };
         std::memcpy(destination, vertices, sizeof(vertices));
+        GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::TransientGeometry, sizeof(vertices));
         return;
     }
     GameProjectUiCanvasFit fit{};
@@ -306,6 +308,7 @@ void FillQuad(UiVertex* destination, const GameProjectUiSpriteRequest& request, 
         {lb[0], lb[1], u0, v1}, {rt[0], rt[1], u1, v0}, {rb[0], rb[1], u1, v1},
     };
     std::memcpy(destination, vertices, sizeof(vertices));
+    GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::TransientGeometry, sizeof(vertices));
 }
 
 void CopyColor(float* destination, const GameProjectUiColor& color) {

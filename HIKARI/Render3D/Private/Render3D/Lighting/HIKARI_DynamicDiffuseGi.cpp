@@ -545,7 +545,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         field.active = true;
     }
     auto& upload = state.uploads[graphics.frameIndex];
-    if (!upload.IsInitialized() && !upload.Init(graphics.device, 4096))
+    if (!upload.IsInitialized() && !upload.Init(graphics.device, 4096, GFX::UPLOAD_TRAFFIC::Owner::PassConstants))
         return {};
     upload.ResetForFrame(graphics.currentFrameRetireFenceValue);
     std::array<DX::UploadAllocation, kFieldCount> constantBuffers;

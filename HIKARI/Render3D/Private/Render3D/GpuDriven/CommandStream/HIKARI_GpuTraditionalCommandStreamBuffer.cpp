@@ -347,7 +347,8 @@ bool GpuTraditionalCommandStreamBuffer::Initialize(ID3D12Device* device, ID3D12R
     };
 
     for (auto& upload : frameUploads_) {
-        if (!upload.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
+        if (!upload.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+                         GFX::UPLOAD_TRAFFIC::Owner::PassConstants)) {
             resetGpuBuffers();
             return false;
         }
@@ -679,13 +680,15 @@ bool GpuTraditionalCommandStreamBuffer::BuildGpuCompactedCommands(ID3D12Graphics
     if (inputUploadPending_) {
         DX::UploadAllocation seedUpload{}, payloadUpload{};
         if (seedBytes != 0u) {
-            seedUpload = frameUploads_[activeFrameResourceIndex_].Allocate(static_cast<size_t>(seedBytes));
+            seedUpload = frameUploads_[activeFrameResourceIndex_].Allocate(static_cast<size_t>(seedBytes),
+                                                                           GFX::UPLOAD_TRAFFIC::Owner::DrawCommands);
             if (!seedUpload)
                 return false;
             std::memcpy(seedUpload.cpuAddress, seedStagingData_, static_cast<size_t>(seedBytes));
         }
         if (payloadBytes != 0u) {
-            payloadUpload = frameUploads_[activeFrameResourceIndex_].Allocate(static_cast<size_t>(payloadBytes));
+            payloadUpload = frameUploads_[activeFrameResourceIndex_].Allocate(static_cast<size_t>(payloadBytes),
+                                                                              GFX::UPLOAD_TRAFFIC::Owner::DrawCommands);
             if (!payloadUpload)
                 return false;
             std::memcpy(payloadUpload.cpuAddress, payloadStagingData_, static_cast<size_t>(payloadBytes));

@@ -1,4 +1,5 @@
 #include "Render3D/Vfx/Internal/HIKARI_GpuParticleStorage.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 
 #include <array>
 #include <utility>
@@ -216,6 +217,7 @@ bool GpuParticleStorage::WriteEmitterParameters(ID3D12Device* device, uint32_t f
         return false;
     }
     mappedEmitterPages_[frameSlot][address.pageIndex][address.elementIndex] = parameters;
+    GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::Particles, sizeof(parameters));
     return true;
 }
 

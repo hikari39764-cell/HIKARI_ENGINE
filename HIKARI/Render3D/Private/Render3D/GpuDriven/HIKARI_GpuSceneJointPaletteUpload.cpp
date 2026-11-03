@@ -6,7 +6,9 @@
 #include <memory>
 #include <vector>
 
+#include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 namespace {
@@ -30,16 +32,13 @@ struct FrameUploadSlot {
 
 struct UploadOwner {
     std::array<FrameUploadSlot, GFX::kFrameResourceCount> frames{};
+    // 蒙皮が無い時に束縛する単位行列。デバイスごとに一度だけ書く（毎フレーム upload しない）。
+    Microsoft::WRL::ComPtr<ID3D12Resource> identity{};
     ID3D12Device* ownerDevice = nullptr;
     uint64_t ownerDeviceGeneration = 0u;
 };
 
 UploadOwner gOwner{};
-
-GpuSceneJointPaletteSnapshotPtr EmptySnapshot() {
-    static const GpuSceneJointPaletteSnapshotPtr snapshot = std::make_shared<const GpuSceneJointPaletteSnapshot>();
-    return snapshot;
-}
 
 void FinalizeOwner(const GFX::Context* graphics) {
     const bool explicitContextMatchesOwner = graphics != nullptr && graphics->device == gOwner.ownerDevice &&
@@ -53,6 +52,10 @@ void FinalizeOwner(const GFX::Context* graphics) {
             retireContext = &frame.lastContext;
         }
         frame.uploads.Finalize(retireContext);
+        if (retireContext != nullptr && gOwner.identity) {
+            GFX::RetireD3D12ObjectForFrame(gOwner.identity, *retireContext, "JointPalette.Identity");
+            gOwner.identity.Reset();
+        }
         frame.cachedSnapshots.clear();
         frame.stats = {};
         frame.lastContext = {};
@@ -60,6 +63,7 @@ void FinalizeOwner(const GFX::Context* graphics) {
         frame.retireFenceValue = 0u;
         frame.active = false;
     }
+    gOwner.identity.Reset();
     gOwner.ownerDevice = nullptr;
     gOwner.ownerDeviceGeneration = 0u;
 }
@@ -80,8 +84,8 @@ bool ActivateFrameSlot(FrameUploadSlot& frame, const GFX::Context& graphics) {
             frame.cachedSnapshots.clear();
             frame.stats = {};
         }
-        if (!frame.uploads.IsInitialized() &&
-            !frame.uploads.Init(graphics.device, kDefaultJointPaletteUploadPageSize)) {
+        if (!frame.uploads.IsInitialized() && !frame.uploads.Init(graphics.device, kDefaultJointPaletteUploadPageSize,
+                                                                  GFX::UPLOAD_TRAFFIC::Owner::JointPalettes)) {
             return false;
         }
         frame.uploads.ResetForFrame(frameSerial);
@@ -96,7 +100,7 @@ bool ActivateFrameSlot(FrameUploadSlot& frame, const GFX::Context& graphics) {
 } // namespace
 
 D3D12_GPU_VIRTUAL_ADDRESS UploadGpuSceneJointPaletteSnapshot(const GFX::Context& graphics,
-                                                             const GpuSceneJointPaletteSnapshotPtr& sourceSnapshot) {
+                                                             const GpuSceneJointPaletteSnapshotPtr& snapshot) {
     if (graphics.device == nullptr) {
         return 0u;
     }
@@ -106,7 +110,18 @@ D3D12_GPU_VIRTUAL_ADDRESS UploadGpuSceneJointPaletteSnapshot(const GFX::Context&
         gOwner.ownerDeviceGeneration = graphics.deviceGeneration;
     }
 
-    const GpuSceneJointPaletteSnapshotPtr snapshot = sourceSnapshot != nullptr ? sourceSnapshot : EmptySnapshot();
+    if (snapshot == nullptr || snapshot->matrices.empty()) {
+        if (!gOwner.identity) {
+            void* mapped = nullptr;
+            if (!GFX::D3D12_BUFFER::CreateMappedUploadBuffer(graphics.device, sizeof(MATH::Mat4), gOwner.identity,
+                                                             &mapped))
+                return 0u;
+            *static_cast<MATH::Mat4*>(mapped) = MATH::Mat4::Identity();
+            gOwner.identity->Unmap(0, nullptr);
+            GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::JointPalettes, sizeof(MATH::Mat4));
+        }
+        return gOwner.identity->GetGPUVirtualAddress();
+    }
     if (snapshot->matrices.size() > kMaxGpuSceneJointPaletteMatrixCount) {
         return 0u;
     }
@@ -123,19 +138,12 @@ D3D12_GPU_VIRTUAL_ADDRESS UploadGpuSceneJointPaletteSnapshot(const GFX::Context&
         return cached->gpuAddress;
     }
 
-    const size_t matrixCount = (std::max)(size_t(1u), snapshot->matrices.size());
-    const DX::UploadAllocation allocation = frame.uploads.Allocate(matrixCount * sizeof(MATH::Mat4));
+    const DX::UploadAllocation allocation = frame.uploads.Allocate(snapshot->matrices.size() * sizeof(MATH::Mat4));
     if (!allocation) {
         return 0u;
     }
-    auto* destination = static_cast<MATH::Mat4*>(allocation.cpuAddress);
-    if (snapshot->matrices.empty()) {
-        *destination = MATH::Mat4::Identity();
-        ++frame.stats.emptyBindingUploadCount;
-    } else {
-        std::copy(snapshot->matrices.begin(), snapshot->matrices.end(), destination);
-        frame.stats.matrixPayloadBytes += static_cast<uint64_t>(snapshot->matrices.size() * sizeof(MATH::Mat4));
-    }
+    std::copy(snapshot->matrices.begin(), snapshot->matrices.end(), static_cast<MATH::Mat4*>(allocation.cpuAddress));
+    frame.stats.matrixPayloadBytes += static_cast<uint64_t>(snapshot->matrices.size() * sizeof(MATH::Mat4));
     try {
         frame.cachedSnapshots.push_back({snapshot, allocation.gpuAddress});
     } catch (...) {

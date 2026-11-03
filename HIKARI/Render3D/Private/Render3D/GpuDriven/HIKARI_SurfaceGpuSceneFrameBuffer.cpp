@@ -86,7 +86,8 @@ bool SurfaceGpuSceneFrameBuffer::Initialize(
                 allSlotsReady = false;
                 break;
             }
-            if (!slot.uploads.Init(device, (std::min)(size_t(bufferBytes), size_t(65536)))) {
+            if (!slot.uploads.Init(device, (std::min)(size_t(bufferBytes), size_t(65536)),
+                                   GFX::UPLOAD_TRAFFIC::Owner::GpuScene)) {
                 allSlotsReady = false;
                 break;
             }

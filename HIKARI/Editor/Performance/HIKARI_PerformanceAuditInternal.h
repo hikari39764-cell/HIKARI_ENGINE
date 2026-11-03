@@ -113,6 +113,8 @@ void DrawRenderPathTable(const RuntimePerformanceSnapshot& s);
 
 void DrawGpuMaterialTable(const RuntimePerformanceSnapshot& s);
 
+void DrawUploadTrafficTable(const RuntimePerformanceSnapshot& s);
+
 void DrawMeshShaderPipelineStatsTable(const RuntimePerformanceSnapshot& s);
 
 void DrawGeometryPipelineTable(const RuntimePerformanceSnapshot& s);

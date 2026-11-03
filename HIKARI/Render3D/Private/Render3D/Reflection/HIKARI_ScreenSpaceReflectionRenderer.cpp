@@ -450,7 +450,7 @@ bool ScreenSpaceReflectionRenderer::Render(const GFX::Context& graphics,
     // 失敗した frame の履歴は公開しない。CB は view ごとに immutable な upload slice を持つ。
     view->valid = false;
     auto& upload = state.uploads[graphics.frameIndex];
-    if (!upload.IsInitialized() && !upload.Init(graphics.device, 4096))
+    if (!upload.IsInitialized() && !upload.Init(graphics.device, 4096, GFX::UPLOAD_TRAFFIC::Owner::PassConstants))
         return false;
     upload.ResetForFrame(graphics.currentFrameRetireFenceValue);
     const auto slice = upload.Allocate(sizeof(Constants));

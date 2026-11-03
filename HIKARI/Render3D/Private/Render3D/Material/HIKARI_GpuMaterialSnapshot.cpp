@@ -73,7 +73,7 @@ bool GpuMaterialSnapshot::Initialize(ID3D12Device* device, std::span<const Mater
         resources.push_back(kInvalidTextureDescriptorIndex);
     const size_t totalBytes = table.size() * sizeof(GpuMaterialData) + parameters.size() * sizeof(MATH::Vec4) +
                               resources.size() * sizeof(uint32_t) + 3u * 256u;
-    if (!upload_.Init(device, totalBytes))
+    if (!upload_.Init(device, totalBytes, GFX::UPLOAD_TRAFFIC::Owner::Materials))
         return fail("Failed to allocate material snapshot upload.");
     const auto upload = [&](const auto& values, D3D12_GPU_VIRTUAL_ADDRESS& address) {
         const size_t bytes = values.size() * sizeof(values[0]);

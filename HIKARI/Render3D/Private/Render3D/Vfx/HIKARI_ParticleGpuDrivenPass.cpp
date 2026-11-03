@@ -1,4 +1,5 @@
 #include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 #include "Core/Numeric/HIKARI_NonZero.h"
 #include "Render3D/Vfx/HIKARI_ParticleCapacity.h"
 #include "Render3D/Vfx/HIKARI_ParticleGeometryLayout.h"
@@ -772,6 +773,8 @@ struct ParticleGpuDrivenPass::Impl {
                                    uint64_t{shapeUploadCursor} * sizeof(GpuParticleShapeState);
             for (const auto& item : drawItems)
                 shapes[shapeUploadCursor + item.drawIndex] = BuildShapeState(item.render);
+            GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::Particles,
+                                        uint64_t{shapeCount} * sizeof(GpuParticleShapeState));
             shapeUploadCursor += shapeCount;
         }
         RefreshAllocationStats();

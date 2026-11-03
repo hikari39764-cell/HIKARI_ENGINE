@@ -12,6 +12,7 @@
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 
 namespace HIKARI::GFX {
 
@@ -20,6 +21,9 @@ namespace HIKARI::GFX {
 // 使い回し、まだ読まれ得る buffer には書かない。毎回 committed resource を作り直すと CPU が引っかかるのを避ける。
 class FencedUploadBuffers {
 public:
+    // owner は書いた量を記帳する所有者（HIKARI_UploadTraffic.h）。
+    explicit FencedUploadBuffers(UPLOAD_TRAFFIC::Owner owner) noexcept : owner_(owner) {}
+
     // data を書いた buffer を今の buffer にし、前の今の buffer は予備へ回す。失敗なら false（今の buffer は変えない）。
     bool Write(const Context& graphics, const void* data, uint64_t bytes, const char* name) {
         if (graphics.device == nullptr || graphics.frameFence == nullptr || data == nullptr || bytes == 0)
@@ -50,12 +54,14 @@ public:
         }
         std::memcpy(mapped, data, static_cast<size_t>(bytes));
         next.buffer->Unmap(0, nullptr);
+        UPLOAD_TRAFFIC::Record(owner_, bytes);
         Promote(graphics, std::move(next), name);
         return true;
     }
-    // 外で作って書いた buffer を今の buffer として預かる（このフレームから読まれる）。
+    // 外で作って capacity だけ書いた buffer を今の buffer として預かる（このフレームから読まれる）。
     void Adopt(const Context& graphics, Microsoft::WRL::ComPtr<ID3D12Resource> buffer, uint64_t capacity,
                uint64_t allocationBytes, const char* name) {
+        UPLOAD_TRAFFIC::Record(owner_, capacity);
         Promote(graphics, Entry{std::move(buffer), capacity, allocationBytes, 0}, name);
     }
     // 今の buffer をこのフレームでも読む（その間は予備にしても書き換えない）。
@@ -99,6 +105,7 @@ private:
 
     Entry current_{};
     std::vector<Entry> spares_{};
+    UPLOAD_TRAFFIC::Owner owner_;
 };
 
 } // namespace HIKARI::GFX

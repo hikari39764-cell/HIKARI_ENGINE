@@ -152,7 +152,7 @@ bool WorldSpriteMaterials::UploadParameters(std::span<const MATH::Vec4> values, 
             capacity *= 2u;
         if (!GFX::D3D12_BUFFER::CreateDefaultBuffer(data.context.device, capacity, GFX::VIDEO_MEMORY::Owner::Vfx,
                                                     frame.buffer) ||
-            !frame.staging.Init(data.context.device, 64u * 1024u)) {
+            !frame.staging.Init(data.context.device, 64u * 1024u, GFX::UPLOAD_TRAFFIC::Owner::Materials)) {
             data.Release(frame);
             return false;
         }

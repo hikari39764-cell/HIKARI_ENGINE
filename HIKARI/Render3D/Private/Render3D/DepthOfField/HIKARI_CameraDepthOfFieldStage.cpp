@@ -602,7 +602,7 @@ bool PrepareCameraDepthOfFieldFrame(const GFX::Context& context, uint64_t frameI
         state.capture.renderTargets[index] = state.layers[index].rtv;
     }
     DX::DynamicUploadBuffer& upload = state.uploads[context.frameIndex % GFX::kFrameResourceCount];
-    if (!upload.IsInitialized() && !upload.Init(context.device, 4096u)) {
+    if (!upload.IsInitialized() && !upload.Init(context.device, 4096u, GFX::UPLOAD_TRAFFIC::Owner::PassConstants)) {
         ReleaseLayerTargets(state);
         state.capturePrepared = false;
         return false;

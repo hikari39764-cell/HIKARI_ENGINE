@@ -1,4 +1,5 @@
 #include "RenderCore/Texture/HIKARI_DxTextureInternal.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include <algorithm>
@@ -174,6 +175,7 @@ int UploadTextureImage(const GFX::Context& context, GFX::UploadSubmissionQueue& 
         uploads.Cancel();
         return fail("Subresource upload failed");
     }
+    GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::Textures, bytes);
     const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
                                                               D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
     commands->ResourceBarrier(1, &barrier);

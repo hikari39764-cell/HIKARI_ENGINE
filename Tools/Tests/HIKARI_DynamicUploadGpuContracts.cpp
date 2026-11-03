@@ -269,7 +269,8 @@ void VerifyJointPaletteUpload(HIKARI::TESTS::INTERNAL::GpuContractDevice& gpu) {
            emptyAddress != addressB);
     const auto stats = GetGpuSceneJointPaletteUploadStats(context);
     assert(stats.matrixPayloadBytes == 3u * sizeof(MATH::Mat4));
-    assert(stats.snapshotUploadCount == 3u && stats.snapshotReuseCount == 2u && stats.emptyBindingUploadCount == 1u);
+    // 蒙皮の無い束縛は常駐の単位行列を返し、upload も統計も増やさない。
+    assert(stats.snapshotUploadCount == 2u && stats.snapshotReuseCount == 1u);
 
     gpu.ResetCommands();
     gpu.commands->SetComputeRootSignature(root.Get());
@@ -634,7 +635,7 @@ int main() {
                                                          IID_PPV_ARGS(&readback))));
 
     HIKARI::DX::DynamicUploadBuffer upload;
-    assert(upload.Init(gpu.device.Get(), 512u));
+    assert(upload.Init(gpu.device.Get(), 512u, HIKARI::GFX::UPLOAD_TRAFFIC::Owner::PassConstants));
     HIKARI::GFX::GpuDeferredReleaseQueue retirement;
     HIKARI::GFX::Context context{};
     context.deferredReleaseQueue = &retirement;

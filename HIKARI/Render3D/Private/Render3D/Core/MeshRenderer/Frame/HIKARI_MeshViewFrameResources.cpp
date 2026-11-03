@@ -44,7 +44,7 @@ bool MeshViewFrameResources::Initialize(ID3D12Device* device) {
         Finalize();
         return false;
     }
-    return uploads_.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
+    return uploads_.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, GFX::UPLOAD_TRAFFIC::Owner::ViewConstants);
 }
 
 void MeshViewFrameResources::Finalize() {
@@ -88,7 +88,9 @@ bool MeshViewFrameResources::Publish(const GFX::Context& graphics, const CameraC
         const void* data;
         size_t bytes;
     };
-    // 一回の割当で全 CBV/SRV を公開する。失敗時に異なる view の値を混在させない。
+    // 全 CBV/SRV を揃えてから公開する。失敗時に異なる view の値を混在させない。定数（先頭 5 つ）と局所光の記録・
+    // 分簇（後ろ 3 つ）は別の所有者として記帳する（局所光は場面の内容）。
+    constexpr size_t kConstantBlocks = 5u;
     const std::array<Block, 8> blocks{
         {{&camera, sizeof(camera)},
          {cullingOverride != nullptr ? cullingOverride : &camera, sizeof(camera)},
@@ -100,20 +102,27 @@ bool MeshViewFrameResources::Publish(const GFX::Context& graphics, const CameraC
           sizeof(emptyHeader) * (localLightList.clusterCount ? localLightList.clusterCount : 1u)},
          {localLightList.clusterIndexCount ? indices_.data() : &emptyIndex,
           sizeof(emptyIndex) * (localLightList.clusterIndexCount ? localLightList.clusterIndexCount : 1u)}}};
-    size_t bytes = 0u;
-    for (const Block& block : blocks)
-        bytes += GFX::AlignD3D12ConstantBufferByteSize(static_cast<UINT>(block.bytes));
     uploads_.ResetForFrame(graphics.currentFrameRetireFenceValue);
-    const DX::UploadAllocation allocation = uploads_.Allocate(bytes);
-    if (!allocation)
-        return false;
     std::array<D3D12_GPU_VIRTUAL_ADDRESS, blocks.size()> addresses{};
-    size_t offset = 0u;
-    for (size_t index = 0u; index < blocks.size(); ++index) {
-        std::memcpy(static_cast<std::byte*>(allocation.cpuAddress) + offset, blocks[index].data, blocks[index].bytes);
-        addresses[index] = allocation.gpuAddress + offset;
-        offset += GFX::AlignD3D12ConstantBufferByteSize(static_cast<UINT>(blocks[index].bytes));
-    }
+    const auto publish = [&](size_t first, size_t last, GFX::UPLOAD_TRAFFIC::Owner owner) {
+        size_t bytes = 0u;
+        for (size_t index = first; index < last; ++index)
+            bytes += GFX::AlignD3D12ConstantBufferByteSize(static_cast<UINT>(blocks[index].bytes));
+        const DX::UploadAllocation allocation = uploads_.Allocate(bytes, owner);
+        if (!allocation)
+            return false;
+        size_t offset = 0u;
+        for (size_t index = first; index < last; ++index) {
+            std::memcpy(static_cast<std::byte*>(allocation.cpuAddress) + offset, blocks[index].data,
+                        blocks[index].bytes);
+            addresses[index] = allocation.gpuAddress + offset;
+            offset += GFX::AlignD3D12ConstantBufferByteSize(static_cast<UINT>(blocks[index].bytes));
+        }
+        return true;
+    };
+    if (!publish(0u, kConstantBlocks, GFX::UPLOAD_TRAFFIC::Owner::ViewConstants) ||
+        !publish(kConstantBlocks, blocks.size(), GFX::UPLOAD_TRAFFIC::Owner::LocalLights))
+        return false;
     bindings_ = {addresses[0], addresses[1], addresses[2],
                  addresses[3], addresses[4], {addresses[5], addresses[6], addresses[7], localLightList}};
     return true;

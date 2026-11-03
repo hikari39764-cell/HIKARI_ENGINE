@@ -139,7 +139,8 @@ RuntimeRayLightingFrame RuntimeRayTracingLighting::Prepare(const GFX::Context& g
         state.cdf.push_back({1, 1});
     }
     auto& upload = state.uploads[graphics.frameIndex];
-    if (!upload.IsInitialized() && !upload.Init(graphics.device, kUploadPageBytes))
+    if (!upload.IsInitialized() &&
+        !upload.Init(graphics.device, kUploadPageBytes, GFX::UPLOAD_TRAFFIC::Owner::RayTracingLights))
         return frame;
     upload.ResetForFrame(graphics.currentFrameRetireFenceValue);
     const auto lights = upload.Allocate(state.lights.size() * sizeof(state.lights[0]));

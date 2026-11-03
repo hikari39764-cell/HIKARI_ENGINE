@@ -318,7 +318,8 @@ bool EnvironmentLightingCache::Update(const GFX::Context& graphics, SkyMode mode
             return state.PublishStatus(identity, epoch, frameIndex, EnvironmentLightingCacheFailure::Allocation);
         }
         auto& uploads = state.uploads[graphics.frameIndex % GFX::kFrameResourceCount];
-        if (!uploads.IsInitialized() && !uploads.Init(graphics.device, 4096)) {
+        if (!uploads.IsInitialized() &&
+            !uploads.Init(graphics.device, 4096, GFX::UPLOAD_TRAFFIC::Owner::PassConstants)) {
             return state.PublishStatus(identity, epoch, frameIndex, EnvironmentLightingCacheFailure::Upload);
         }
         uploads.ResetForFrame(graphics.currentFrameRetireFenceValue);

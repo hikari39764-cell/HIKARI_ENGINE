@@ -1947,6 +1947,7 @@
     {"editor.ui.gpu.driven.skinned.commands.zu.27b660", "GPU 駆動スキニングコマンド：%zu"},
     {"editor.ui.gpu.driven.skinned.source.records.zu.c63bfd", "GPU 駆動スキニング元レコード：%zu"},
     {"editor.ui.gpu.materials.d283d8", "GPU マテリアル"}, {"editor.ui.gpu.resources.ffa5ea", "GPU リソース"},
+    {"editor.performance.uploadPerFrame", "フレームごとのアップロード"},
     {"editor.ui.gpu.scene.s.73d1c0", "GPU シーン：%s"}, {"editor.ui.gpu.timing.10adc4", "GPU 処理時間"},
     {"editor.ui.gpu.scene.s.920adb", "GPU シーン %s"},
     {"editor.ui.geometry.pipeline.9eac28", "ジオメトリパイプライン"},

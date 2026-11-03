@@ -1689,6 +1689,7 @@
     {"editor.ui.gpu.driven.skinned.commands.zu.27b660", "GPU 驱动蒙皮命令：%zu"},
     {"editor.ui.gpu.driven.skinned.source.records.zu.c63bfd", "GPU 驱动蒙皮源记录：%zu"},
     {"editor.ui.gpu.materials.d283d8", "GPU 材质"}, {"editor.ui.gpu.resources.ffa5ea", "GPU 资源"},
+    {"editor.performance.uploadPerFrame", "每帧上传"},
     {"editor.ui.gpu.scene.s.73d1c0", "GPU 场景：%s"}, {"editor.ui.gpu.timing.10adc4", "GPU 耗时"},
     {"editor.ui.gpu.scene.s.920adb", "GPU 场景 %s"},
     {"editor.ui.geometry.pipeline.9eac28", "几何体管线"},

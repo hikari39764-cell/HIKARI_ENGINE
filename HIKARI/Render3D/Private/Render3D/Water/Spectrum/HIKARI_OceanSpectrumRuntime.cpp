@@ -1,4 +1,5 @@
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 #include "Render3D/Water/Spectrum/HIKARI_OceanSpectrumRuntime.h"
 
 #include <algorithm>
@@ -444,6 +445,7 @@ bool CreateStructuredUploadBuffer(const GFX::Context& context, const std::vector
     }
     std::memcpy(mapped, values.data(), static_cast<size_t>(byteSize));
     output.resource->Unmap(0u, nullptr);
+    GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::Water, byteSize);
     output.elementCount = static_cast<uint32_t>(values.size());
     output.byteSize = byteSize;
     output.state = D3D12_RESOURCE_STATE_GENERIC_READ;

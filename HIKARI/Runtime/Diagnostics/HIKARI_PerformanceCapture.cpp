@@ -16,11 +16,11 @@
 #include "Diagnostics/HIKARI_TraceRecorder.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GfxDebugConfig.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 #include "Gfx/HIKARI_VideoMemory.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
-#include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
@@ -99,8 +99,8 @@ struct Session {
     uint64_t previousRenderFailures = 0, rejectedRenderSamples = 0;
     uint64_t peakObjects = 0, peakAuthorVisibleObjects = 0, peakMassInstances = 0;
     uint64_t peakWorkingSet = 0, peakPrivateBytes = 0, peakVram = 0;
-    uint64_t jointPaletteMatrixPayloadBytes = 0, jointPaletteSnapshotUploads = 0;
-    uint64_t jointPaletteSnapshotReuses = 0, jointPaletteEmptyBindingUploads = 0;
+    // 標本フレームの upload 量の所有者別の合計・最大と、書いたフレームの数。
+    GFX::UPLOAD_TRAFFIC::FrameBytes uploadTotal{}, uploadMaximum{}, uploadFrames{};
     uint64_t minimumVramBudget = UINT64_MAX;
     uint64_t lastFrameId = 0;
     uint32_t processMemorySamples = 0, videoMemorySamples = 0;
@@ -261,12 +261,12 @@ struct Session {
             if (renderRejected)
                 ++rejectedRenderSamples;
             CaptureContext(scene);
-            const auto& jointPaletteUpload =
-                RENDER3D::GPUDRIVEN::GetGpuSceneJointPaletteUploadStats(GFX::GetCurrentContext());
-            jointPaletteMatrixPayloadBytes += jointPaletteUpload.matrixPayloadBytes;
-            jointPaletteSnapshotUploads += jointPaletteUpload.snapshotUploadCount;
-            jointPaletteSnapshotReuses += jointPaletteUpload.snapshotReuseCount;
-            jointPaletteEmptyBindingUploads += jointPaletteUpload.emptyBindingUploadCount;
+            const auto& uploads = GFX::UPLOAD_TRAFFIC::LastFrame();
+            for (size_t index = 0; index < uploads.size(); ++index) {
+                uploadTotal[index] += uploads[index];
+                uploadMaximum[index] = (std::max)(uploadMaximum[index], uploads[index]);
+                uploadFrames[index] += uploads[index] != 0 ? 1u : 0u;
+            }
             const auto& sceneStats = RenderSubmissionSystem::GetSceneRenderCacheStats();
             peakObjects = (std::max)(peakObjects, static_cast<uint64_t>(sceneStats.renderObjectCount));
             peakAuthorVisibleObjects =
@@ -282,6 +282,28 @@ struct Session {
         // GPU の末尾回読は追加フレームで回収し、計測用の同期待機は行わない。
         if (run.CaptureComplete() && (run.GpuCoverageComplete() || ++drainFrames >= 8))
             Finish();
+    }
+
+    // 所有者別の upload 量。場面の内容を標本の半分以上のフレームで書いた所有者は steadySceneUploads に挙げて警告する
+    // （止まった場面では常駐させて変わった所だけ書くはず）。
+    void DescribeUploads() {
+        namespace UPLOAD = GFX::UPLOAD_TRAFFIC;
+        const uint64_t samples = (std::max)(uint64_t{1}, static_cast<uint64_t>(run.SampleCount()));
+        Json owners = Json::object(), steady = Json::array();
+        for (size_t index = 0; index < UPLOAD::kOwnerCount; ++index) {
+            const auto owner = static_cast<UPLOAD::Owner>(index);
+            const bool sceneData = UPLOAD::KindOf(owner) == UPLOAD::Kind::SceneData;
+            owners[UPLOAD::Name(owner)] = {{"kind", sceneData ? "sceneData" : "perFrame"},
+                                           {"meanBytesPerFrame", static_cast<double>(uploadTotal[index]) / samples},
+                                           {"maximumBytes", uploadMaximum[index]},
+                                           {"framesWithUpload", uploadFrames[index]}};
+            if (sceneData && uploadFrames[index] * 2 >= samples)
+                steady.push_back(UPLOAD::Name(owner));
+        }
+        report["uploads"] = {{"sampleFrames", run.SampleCount()}, {"owners", std::move(owners)}};
+        report["steadySceneUploads"] = steady;
+        if (!steady.empty())
+            HIKARI_LOG_WARN("[Benchmark] scene data uploaded on most sampled frames: " + steady.dump());
     }
 
     // 時間線を書き、書いた結果（件数・溢れ・GPU の時計が合っているか）を返す。書けなければ message に理由を残す。
@@ -322,11 +344,7 @@ struct Session {
             report["scenePeaks"] = {{"objects", peakObjects},
                                     {"authorVisibleObjects", peakAuthorVisibleObjects},
                                     {"massRenderInstances", peakMassInstances}};
-            report["jointPaletteUploads"] = {{"sampleFrames", run.SampleCount()},
-                                             {"matrixPayloadBytes", jointPaletteMatrixPayloadBytes},
-                                             {"snapshotUploads", jointPaletteSnapshotUploads},
-                                             {"snapshotReuses", jointPaletteSnapshotReuses},
-                                             {"emptyBindingUploads", jointPaletteEmptyBindingUploads}};
+            DescribeUploads();
             report["memory"] = {
                 {"samplingIntervalFrames", 60},
                 {"processSamples", processMemorySamples},

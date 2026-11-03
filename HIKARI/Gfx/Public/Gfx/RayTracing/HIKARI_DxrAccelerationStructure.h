@@ -55,7 +55,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> result_{};
     Microsoft::WRL::ComPtr<ID3D12Resource> scratch_{};
     // TLAS の instance 記述。その場の組み直しは GPU が読み終えた予備へ書く。
-    FencedUploadBuffers instances_{};
+    FencedUploadBuffers instances_{UPLOAD_TRAFFIC::Owner::RayTracingInstances};
     ID3D12Device* device_ = nullptr;
     uint64_t deviceGeneration_ = 0;
     uint64_t allocationBytes_ = 0; // result + scratch

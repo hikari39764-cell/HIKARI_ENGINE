@@ -3,6 +3,7 @@
 
 #include "Core/HIKARI_TimeService.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
@@ -58,11 +59,10 @@ void DrawRenderPathTable(const RuntimePerformanceSnapshot& s) {
                   static_cast<size_t>(s.mesh.gpuSceneUpload.uploadedFullScene),
                   static_cast<size_t>(s.mesh.gpuSceneUpload.patchedDirtyRanges),
                   static_cast<size_t>(s.mesh.gpuSceneUpload.reusedResidentFrame));
-        MetricRow("Joint Palette Matrix KB / Uploads / Reuse / Empty", "%.2f / %llu / %llu / %llu",
+        MetricRow("Joint Palette Matrix KB / Uploads / Reuse", "%.2f / %llu / %llu",
                   static_cast<double>(s.jointPaletteUpload.matrixPayloadBytes) / 1024.0,
                   static_cast<unsigned long long>(s.jointPaletteUpload.snapshotUploadCount),
-                  static_cast<unsigned long long>(s.jointPaletteUpload.snapshotReuseCount),
-                  static_cast<unsigned long long>(s.jointPaletteUpload.emptyBindingUploadCount));
+                  static_cast<unsigned long long>(s.jointPaletteUpload.snapshotReuseCount));
         MetricRow("Mass Stores / Instances / Dirty Ranges", "%u / %u / %u", s.submission.massRenderStoreCount,
                   s.submission.massRenderInstanceCount, s.submission.massRenderDirtyRangeCount);
         MetricRow("Mass Templates Missing / Unsupported", "%u / %u", s.submission.massRenderMissingTemplateCount,
@@ -131,6 +131,28 @@ void DrawGpuMaterialTable(const RuntimePerformanceSnapshot& s) {
                   materials.incrementalSourceSyncCount, materials.retrySourceSyncCount);
         ImGui::EndTable();
     }
+}
+
+// 前のフレームに upload 堆へ書いた量（所有者別）。場面の内容は止まった場面では 0 であるべき。
+void DrawUploadTrafficTable(const RuntimePerformanceSnapshot& s) {
+    namespace UPLOAD = GFX::UPLOAD_TRAFFIC;
+    ImGui::SeparatorText(TEXT::Localize("editor.performance.uploadPerFrame").c_str());
+    if (!BeginMetricTable("UploadTrafficMetrics", 250.0f))
+        return;
+    const auto kilobytes = [&](const std::string& id) {
+        const METRIC::MetricReading* reading = METRIC::FindReading(s.metrics, id);
+        return IsFresh(reading) ? reading->value / 1024.0 : 0.0;
+    };
+    MetricRow("Scene Data / Total KB", "%.2f / %.2f", kilobytes("upload.sceneData.bytes"),
+              kilobytes("upload.total.bytes"));
+    for (size_t index = 0; index < UPLOAD::kOwnerCount; ++index) {
+        const auto owner = static_cast<UPLOAD::Owner>(index);
+        const double value = kilobytes(std::string("upload.") + UPLOAD::Name(owner) + ".bytes");
+        if (value > 0.0)
+            MetricRow(UPLOAD::Name(owner), "%.2f KB%s", value,
+                      UPLOAD::KindOf(owner) == UPLOAD::Kind::SceneData ? " (scene data)" : "");
+    }
+    ImGui::EndTable();
 }
 
 void DrawMeshShaderPipelineStatsTable(const RuntimePerformanceSnapshot& s) {

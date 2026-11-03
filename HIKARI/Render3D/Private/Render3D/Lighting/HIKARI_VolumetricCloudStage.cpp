@@ -635,7 +635,7 @@ bool PrepareFrameUploads(StageState& state) {
     if (state.context.frameIndex >= GFX::kFrameResourceCount || state.context.currentFrameRetireFenceValue == 0)
         return false;
     auto& uploads = state.uploads[state.context.frameIndex];
-    if (!uploads.IsInitialized() && !uploads.Init(state.device, 8192))
+    if (!uploads.IsInitialized() && !uploads.Init(state.device, 8192, GFX::UPLOAD_TRAFFIC::Owner::PassConstants))
         return false;
     uploads.ResetForFrame(state.context.currentFrameRetireFenceValue);
     return true;

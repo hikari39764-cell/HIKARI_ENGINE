@@ -26,18 +26,20 @@ DynamicUploadBuffer& DynamicUploadBuffer::operator=(DynamicUploadBuffer&& other)
         pageRanges_ = std::move(other.pageRanges_);
         defaultPageSize_ = std::exchange(other.defaultPageSize_, 0u);
         activePageIndex_ = std::exchange(other.activePageIndex_, 0u);
+        owner_ = other.owner_;
         frameSerial_ = other.frameSerial_;
         hasFrameSerial_ = std::exchange(other.hasFrameSerial_, false);
     }
     return *this;
 }
 
-bool DynamicUploadBuffer::Init(ID3D12Device* device, size_t bufferSize) {
+bool DynamicUploadBuffer::Init(ID3D12Device* device, size_t bufferSize, HIKARI::GFX::UPLOAD_TRAFFIC::Owner owner) {
     Finalize();
     if (device == nullptr || !HIKARI::GFX::TryAlignUploadSize(bufferSize, kUploadAlignment, defaultPageSize_)) {
         return false;
     }
     device_ = device;
+    owner_ = owner;
     if (!CreatePage(defaultPageSize_)) {
         Finalize();
         return false;
@@ -85,7 +87,9 @@ void* DynamicUploadBuffer::Allocate(size_t size, D3D12_GPU_VIRTUAL_ADDRESS& gpuA
     return allocation.cpuAddress;
 }
 
-UploadAllocation DynamicUploadBuffer::Allocate(size_t size) {
+UploadAllocation DynamicUploadBuffer::Allocate(size_t size) { return Allocate(size, owner_); }
+
+UploadAllocation DynamicUploadBuffer::Allocate(size_t size, HIKARI::GFX::UPLOAD_TRAFFIC::Owner owner) {
     HIKARI::GFX::UploadPageReservation reservation{};
     if (!HIKARI::GFX::TryReserveUploadPageRange(pageRanges_, activePageIndex_, size, kUploadAlignment, reservation)) {
         size_t alignedSize = 0u;
@@ -103,6 +107,7 @@ UploadAllocation DynamicUploadBuffer::Allocate(size_t size) {
         return {};
     }
     Page& page = pages_[reservation.pageIndex];
+    HIKARI::GFX::UPLOAD_TRAFFIC::Record(owner, size);
     return {page.cpuBase + reservation.offset, page.resource.Get(), page.gpuBase + reservation.offset,
             reservation.offset};
 }

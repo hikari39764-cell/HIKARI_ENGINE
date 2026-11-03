@@ -632,7 +632,8 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     state.fogFarDistance = constants.fogDistances.y;
     state.preparedView = frame.view;
     auto& uploads = state.uploads[context.frameIndex % GFX::kFrameResourceCount];
-    if (!uploads.IsInitialized() && !uploads.Init(context.device, sizeof(VolumetricConstants)))
+    if (!uploads.IsInitialized() &&
+        !uploads.Init(context.device, sizeof(VolumetricConstants), GFX::UPLOAD_TRAFFIC::Owner::PassConstants))
         return false;
     uploads.ResetForFrame(context.currentFrameRetireFenceValue);
     const auto constantUpload = uploads.Allocate(sizeof(constants));

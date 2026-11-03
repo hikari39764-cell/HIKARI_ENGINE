@@ -1,4 +1,5 @@
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 
 #include <algorithm>
 #include <atomic>
@@ -134,6 +135,7 @@ bool CreateClusterGeometryUploadBuffer(ClusterGeometryResourceSystemState& state
     }
     std::memcpy(mapped, bytes.data(), bytes.size());
     out.upload->Unmap(0, nullptr);
+    GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::Geometry, bytes.size());
     return true;
 }
 

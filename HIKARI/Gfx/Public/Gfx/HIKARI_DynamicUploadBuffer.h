@@ -7,6 +7,7 @@
 #include <wrl.h>
 
 #include "Gfx/HIKARI_UploadPageLayout.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 
 namespace HIKARI {
 namespace GFX {
@@ -33,9 +34,12 @@ public:
     DynamicUploadBuffer(DynamicUploadBuffer&&) noexcept = default;
     DynamicUploadBuffer& operator=(DynamicUploadBuffer&& other) noexcept;
 
-    bool Init(ID3D12Device* device, size_t bufferSize);
+    // owner は書いた量を記帳する所有者（HIKARI_UploadTraffic.h）。Allocate した大きさを書いた量として数える。
+    bool Init(ID3D12Device* device, size_t bufferSize, GFX::UPLOAD_TRAFFIC::Owner owner);
 
     UploadAllocation Allocate(size_t size);
+    // 1 つの buffer から別の所有者の分を割り当てる時（定数と場面の内容を同じ buffer で出す view など）。
+    UploadAllocation Allocate(size_t size, GFX::UPLOAD_TRAFFIC::Owner owner);
     void* Allocate(size_t size, D3D12_GPU_VIRTUAL_ADDRESS& gpuAddress);
 
     // 記録済みコマンドが参照するページは、指定フレームの Fence まで保持する。
@@ -61,6 +65,7 @@ private:
     std::vector<GFX::UploadPageRange> pageRanges_{};
     size_t defaultPageSize_ = 0u;
     size_t activePageIndex_ = 0u;
+    GFX::UPLOAD_TRAFFIC::Owner owner_ = GFX::UPLOAD_TRAFFIC::Owner::PassConstants;
     uint64_t frameSerial_ = 0u;
     bool hasFrameSerial_ = false;
 };

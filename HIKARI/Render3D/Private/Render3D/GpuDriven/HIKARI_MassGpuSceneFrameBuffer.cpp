@@ -111,7 +111,8 @@ bool MassGpuSceneFrameBuffer::CreateSlot(size_t capacity, FrameSlot& slot) {
     const auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     const auto bufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bytes);
 
-    if (!slot.uploads.Init(device_, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
+    if (!slot.uploads.Init(device_, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+                           GFX::UPLOAD_TRAFFIC::Owner::MassScene)) {
         return false;
     }
     const HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(

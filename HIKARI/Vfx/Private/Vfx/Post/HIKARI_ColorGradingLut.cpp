@@ -1,4 +1,5 @@
 #include "Vfx/Post/HIKARI_ColorGradingLut.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 
 #include <cstring>
 #include <utility>
@@ -101,6 +102,7 @@ bool ColorGradingLut::Upload(const GFX::Context& context) {
         }
     }
     upload->Unmap(0u, nullptr);
+    GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::ColorGrading, totalBytes);
 
     if (state != D3D12_RESOURCE_STATE_COPY_DEST) {
         const auto toCopy = CD3DX12_RESOURCE_BARRIER::Transition(texture_.Get(), state, D3D12_RESOURCE_STATE_COPY_DEST);

@@ -1,4 +1,5 @@
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 #include "Render3D/Debug/Internal/HIKARI_DebugPrimitiveRendererBackend.h"
 #include <algorithm>
 #include <array>
@@ -344,6 +345,8 @@ void RenderPrimitiveBatches(const Camera3D& camera, float screenWidth, float scr
     cursor += WriteStrokes(frame.strokeMapped, cursor, xrayStrokes);
     const size_t depthStart = cursor;
     cursor += WriteStrokes(frame.strokeMapped, cursor, depthStrokes);
+    GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::TransientGeometry,
+                                solidVertices.size() * sizeof(SolidVertex3D) + cursor * sizeof(StrokeVertex3D));
     DrawSolids(frame, solidVertices.size());
     DrawStrokes(frame, xrayStart, xrayVertexCount, g_backend.strokeXRayPso.Get());
     DrawStrokes(frame, depthStart, depthVertexCount, g_backend.strokeDepthPso.Get());

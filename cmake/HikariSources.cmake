@@ -32,6 +32,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/Private/Gfx/HIKARI_GpuFrameProfiler.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/Private/Gfx/HIKARI_GpuPipelineStatsProfiler.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/Private/Gfx/HIKARI_PixProfiler.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/Private/Gfx/HIKARI_UploadTraffic.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/Private/Gfx/HIKARI_VideoMemory.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/Private/Gfx/HIKARI_ResourceStateTracker.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/Private/Gfx/HIKARI_ShaderCompiler.cpp"

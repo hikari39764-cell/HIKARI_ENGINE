@@ -20,6 +20,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 #include "Gfx/HIKARI_VideoMemory.h"
 #include "Core/HIKARI_Logger.h"
 
@@ -477,6 +478,7 @@ bool Dx12Core::BeginFrame(float clearR, float clearG, float clearB, float clearA
     GPU_PROFILE::BeginFrame(device_.Get(), queue_.Get(), cmdList_.Get(), logicalFrameId, completedFence, fenceValue_);
     GPU_PIPELINE_STATS::BeginFrame(device_.Get(), cmdList_.Get(), logicalFrameId, completedFence, fenceValue_);
     VIDEO_MEMORY::Publish(device_.Get(), logicalFrameId);
+    UPLOAD_TRAFFIC::Publish(logicalFrameId);
     PIX::BeginGpuEvent(cmdList_.Get(), PIX::kColorFrame, "Frame");
 
     resourceStates_.Transition(cmdList_.Get(), CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET);

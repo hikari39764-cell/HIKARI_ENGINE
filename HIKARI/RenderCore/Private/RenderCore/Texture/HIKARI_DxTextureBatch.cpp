@@ -1,4 +1,5 @@
 #include "RenderCore/Texture/HIKARI_DxTextureInternal.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 #include <algorithm>
 #include <iterator>
 #include <sstream>
@@ -318,6 +319,7 @@ std::vector<TextureLoadResult> DxTextureManager::LoadTextureBatch(const std::vec
             load.readyForUpload = false;
             continue;
         }
+        GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::Textures, copiedBytes);
 
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(load.textureResource.Get(), D3D12_RESOURCE_STATE_COPY_DEST,
                                                             D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);

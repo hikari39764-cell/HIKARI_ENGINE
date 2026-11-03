@@ -69,7 +69,7 @@ public:
                                                         GFX::VIDEO_MEMORY::Owner::Geometry, slot.recordBuffer) ||
                 !GFX::D3D12_BUFFER::CreateDefaultBuffer(device, sizeof(float) * floatCapacity,
                                                         GFX::VIDEO_MEMORY::Owner::Geometry, slot.floatBuffer) ||
-                !slot.uploads.Init(device, 64u * 1024u)) {
+                !slot.uploads.Init(device, 64u * 1024u, GFX::UPLOAD_TRAFFIC::Owner::SurfaceFeatures)) {
                 Finalize();
                 return false;
             }

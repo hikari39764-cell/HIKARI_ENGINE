@@ -1,4 +1,5 @@
 #include "Render3D/HIKARI_Mesh.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 #include <cstring>
 #include <d3dx12.h>
 #include "Gfx/HIKARI_VideoMemory.h"
@@ -50,6 +51,7 @@ bool CreateMeshBuffers(ID3D12Device* device, const std::vector<TVertex>& vertice
     }
     std::memcpy(ibMapped, indices.data(), indexBufferBytes);
     indexBuffer->Unmap(0, nullptr);
+    GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::Geometry, vertexBufferBytes + indexBufferBytes);
 
     vbView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
     vbView.StrideInBytes = sizeof(TVertex);

@@ -1,4 +1,5 @@
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
+#include "Gfx/HIKARI_UploadTraffic.h"
 #include "Render3D/WorldText/HIKARI_WorldTextPass.h"
 
 #include <algorithm>
@@ -438,6 +439,8 @@ struct WorldTextPass::Impl {
             batches.push_back({baseIndex, count});
             baseIndex += count;
         }
+        GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::TransientGeometry,
+                                    uint64_t{baseIndex} * sizeof(GpuWorldTextGlyphInstance));
         stats.submittedTextCount = static_cast<uint32_t>(batches.size());
         stats.submittedGlyphCount = baseIndex;
         stats.droppedTextCount = stats.requestedTextCount - stats.submittedTextCount;

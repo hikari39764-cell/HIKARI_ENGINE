@@ -63,7 +63,8 @@ bool RayTracedShadowRenderer::Render(const GFX::Context& graphics, const RayTrac
         return false;
     }
     auto& upload = uploads_[graphics.frameIndex % GFX::kFrameResourceCount];
-    if (!upload.IsInitialized() && !upload.Init(graphics.device, kUploadBytes)) {
+    if (!upload.IsInitialized() &&
+        !upload.Init(graphics.device, kUploadBytes, GFX::UPLOAD_TRAFFIC::Owner::PassConstants)) {
         return false;
     }
     upload.ResetForFrame(graphics.currentFrameRetireFenceValue);

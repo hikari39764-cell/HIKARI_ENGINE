@@ -152,7 +152,8 @@ MeshletVisibilityBinding MeshletVisibility::Begin(const GFX::Context& graphics, 
     if (!AllocateViews(entry.views) || (sampled && !EnsureFrame(graphics, frame)))
         return disabled;
     if (!frame.queries.IsInitialized() &&
-        !frame.queries.Init(graphics.device, kMaxViewsPerFrame * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT))
+        !frame.queries.Init(graphics.device, kMaxViewsPerFrame * D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT,
+                            GFX::UPLOAD_TRAFFIC::Owner::PassConstants))
         return disabled;
     const auto allocation = frame.queries.Allocate(sizeof(MeshletOcclusionGpuData));
     if (!allocation)

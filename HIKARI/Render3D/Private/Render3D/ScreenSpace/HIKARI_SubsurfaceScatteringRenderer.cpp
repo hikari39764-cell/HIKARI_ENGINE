@@ -54,7 +54,8 @@ bool SubsurfaceScatteringRenderer::Render(const GFX::Context& graphics,
         return false;
     }
     auto& upload = uploads_[graphics.frameIndex % GFX::kFrameResourceCount];
-    if (!upload.IsInitialized() && !upload.Init(graphics.device, kUploadBytes)) {
+    if (!upload.IsInitialized() &&
+        !upload.Init(graphics.device, kUploadBytes, GFX::UPLOAD_TRAFFIC::Owner::PassConstants)) {
         return false;
     }
     upload.ResetForFrame(graphics.currentFrameRetireFenceValue);

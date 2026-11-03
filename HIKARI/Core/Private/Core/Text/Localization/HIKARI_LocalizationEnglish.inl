@@ -1924,6 +1924,7 @@
     {"editor.ui.gpu.driven.skinned.commands.zu.27b660", "GPU Driven Skinned Commands: %zu"},
     {"editor.ui.gpu.driven.skinned.source.records.zu.c63bfd", "GPU Driven Skinned Source Records: %zu"},
     {"editor.ui.gpu.materials.d283d8", "GPU Materials"}, {"editor.ui.gpu.resources.ffa5ea", "GPU Resources"},
+    {"editor.performance.uploadPerFrame", "Uploads Per Frame"},
     {"editor.ui.gpu.scene.s.73d1c0", "GPU Scene: %s"}, {"editor.ui.gpu.timing.10adc4", "GPU Timing"},
     {"editor.ui.gpu.scene.s.920adb", "GPU scene %s"},
     {"editor.ui.geometry.pipeline.9eac28", "Geometry Pipeline"},

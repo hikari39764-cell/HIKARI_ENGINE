@@ -39,15 +39,17 @@ bool CommitShadowMaterialDataFrame(ShadowRendererState& state, const GFX::Contex
         return false;
     const size_t byteCount = sizeof(MESHRENDERER::MaterialGpuData) * materialCount;
     frame.frameUploads.ResetForFrame(graphics.currentFrameRetireFenceValue);
-    const DX::UploadAllocation upload = frame.frameUploads.Allocate(byteCount);
+    const DX::UploadAllocation upload = frame.frameUploads.Allocate(byteCount, GFX::UPLOAD_TRAFFIC::Owner::Materials);
     if (!upload)
         return false;
     std::memcpy(upload.cpuAddress, frame.materialDataStaging.data(), byteCount);
     const auto snapshot = [&](const void* data, size_t bytes, D3D12_GPU_VIRTUAL_ADDRESS& address) {
-        void* destination = frame.frameUploads.Allocate(bytes, address);
-        if (destination == nullptr)
+        const DX::UploadAllocation allocation =
+            frame.frameUploads.Allocate(bytes, GFX::UPLOAD_TRAFFIC::Owner::Materials);
+        address = allocation.gpuAddress;
+        if (!allocation)
             return false;
-        std::memcpy(destination, data, bytes);
+        std::memcpy(allocation.cpuAddress, data, bytes);
         return true;
     };
     const MATH::Vec4 emptyParameter{};
@@ -134,7 +136,7 @@ bool CreateShadowFrameResources(ShadowRendererState& state, const GFX::Context& 
         } catch (...) {
             return fail();
         }
-        if (!frame.frameUploads.Init(device, 65536u) ||
+        if (!frame.frameUploads.Init(device, 65536u, GFX::UPLOAD_TRAFFIC::Owner::PassConstants) ||
             !GFX::D3D12_BUFFER::CreateDefaultBuffer(device, materialDataBytes, GFX::VIDEO_MEMORY::Owner::Shadow,
                                                     frame.materialDataBuffer))
             return fail();

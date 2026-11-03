@@ -12,7 +12,6 @@ struct GpuSceneJointPaletteUploadStats {
     uint64_t matrixPayloadBytes = 0u;
     uint64_t snapshotUploadCount = 0u;
     uint64_t snapshotReuseCount = 0u;
-    uint64_t emptyBindingUploadCount = 0u;
 };
 
 D3D12_GPU_VIRTUAL_ADDRESS UploadGpuSceneJointPaletteSnapshot(const GFX::Context& graphics,

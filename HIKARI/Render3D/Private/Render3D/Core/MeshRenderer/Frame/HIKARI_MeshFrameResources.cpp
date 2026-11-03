@@ -120,8 +120,10 @@ bool MeshFrameResourceStore::Initialize(ID3D12Device* device, ID3D12DescriptorHe
             return false;
         }
         if (!frame.view.Initialize(device) ||
-            !frame.materialUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT) ||
-            !frame.traditionalJointPaletteUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) {
+            !frame.materialUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+                                        GFX::UPLOAD_TRAFFIC::Owner::Materials) ||
+            !frame.traditionalJointPaletteUploads.Init(device, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+                                                       GFX::UPLOAD_TRAFFIC::Owner::JointPalettes)) {
             return false;
         }
         frame.materialUploadNeedsRetry = false;

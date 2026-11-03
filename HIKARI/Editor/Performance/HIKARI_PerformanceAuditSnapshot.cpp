@@ -353,9 +353,14 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
         << s.mesh.gpuSceneUpload.patchedDirtyRanges << '/' << s.mesh.gpuSceneUpload.reusedResidentFrame << '\n';
     out << "GPU scene upload committed instances/bytes: " << s.mesh.gpuSceneUpload.bufferStats.committedInstanceCount
         << '/' << s.mesh.gpuSceneUpload.bufferStats.committedBytes << '\n';
-    out << "Joint palette matrix payload bytes / uploads / reuse / empty bindings: "
-        << s.jointPaletteUpload.matrixPayloadBytes << '/' << s.jointPaletteUpload.snapshotUploadCount << '/'
-        << s.jointPaletteUpload.snapshotReuseCount << '/' << s.jointPaletteUpload.emptyBindingUploadCount << '\n';
+    out << "Joint palette matrix payload bytes / uploads / reuse: " << s.jointPaletteUpload.matrixPayloadBytes << '/'
+        << s.jointPaletteUpload.snapshotUploadCount << '/' << s.jointPaletteUpload.snapshotReuseCount << '\n';
+    // 前のフレームの upload 量（0 でない所有者だけ）。
+    out << "Upload bytes last frame:";
+    for (const METRIC::MetricReading& reading : s.metrics)
+        if (reading.descriptor->id.starts_with("upload.") && reading.value > 0.0)
+            out << ' ' << reading.descriptor->id << '=' << reading.value;
+    out << '\n';
     return out.str();
 }
 

@@ -87,6 +87,7 @@ void PerformanceAuditPanel::DrawContents() const {
     DrawMeshShaderPipelineStatsTable(snapshot);
     DrawRenderPathTable(snapshot);
     DrawGpuMaterialTable(snapshot);
+    DrawUploadTrafficTable(snapshot);
     DrawGeometryPipelineTable(snapshot);
     DrawTemporalTable(snapshot);
     DrawEffectsTable(snapshot);

@@ -131,7 +131,7 @@ struct RuntimeRayTracingScene::State {
     CLUSTER::ClusterRayTracingGeometryBuilder converter;
     std::unique_ptr<AccelerationStructure> topLevel;
     // hit 記録。材質の slot だけが替わった時は GPU が読み終えた予備へ書き直す。
-    GFX::FencedUploadBuffers hitUploads;
+    GFX::FencedUploadBuffers hitUploads{GFX::UPLOAD_TRAFFIC::Owner::RayTracingHitRecords};
     std::vector<D3D12_RAYTRACING_INSTANCE_DESC> lastInstances;
     std::vector<RuntimeRayTracingHitRecord> lastHits;
     std::vector<RetiringBytes> retiring;
