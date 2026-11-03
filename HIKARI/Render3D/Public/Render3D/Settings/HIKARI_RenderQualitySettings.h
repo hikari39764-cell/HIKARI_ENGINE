@@ -287,8 +287,9 @@ struct DirectionalShadowQualitySettings {
     float penumbraScale = 2.0f;
     // 光線追跡の影：場面の深度 prepass の後に画素ごとの太陽の可視率を求め、不透明面のカスケード影と接触影を置き換える
     // （半透明・地形はカスケードのまま）。対応 GPU と実行時の加速構造が要り、無ければ静かにカスケードへ戻る。
-    // 有効時は場面の深度 prepass も走る。標本数は画素あたりの光線数（TAA が均す）。
-    bool rayTraced = false;
+    // 有効時は場面の深度 prepass も走る。標本数は画素あたりの光線数（TAA が均す）。光追対応の GPU だけを対象にするので
+    // 既定で有効（大量配置もここでだけ影を落とす。カスケードの影の pass は描かない）。
+    bool rayTraced = true;
     uint32_t rayTracedSamples = 2;
     bool stabilize = true;
 
