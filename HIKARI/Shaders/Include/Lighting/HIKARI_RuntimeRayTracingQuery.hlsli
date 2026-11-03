@@ -209,6 +209,23 @@ bool HikariTraceRuntimeSceneCore(RayDesc ray, uint hitRecordCount, uint material
     while (query.Proceed())
     {
         if (query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE) continue;
+        // 影の光線は、alpha test も透過もしない遮蔽物なら面を復元せず命中記録だけで止める（面の復元は簇の 2 分探索と
+        // 頂点 3 つの読み出しで重い）。
+        if (shadowRay)
+        {
+            const uint instance = query.CandidateInstanceID();
+            const uint geometryIndex = query.CandidateGeometryIndex();
+            if (instance >= hitRecordCount || geometryIndex >= hitRecordCount - instance) continue;
+            const HikariRayTracingHitRecord record = gRuntimeRayHits[instance + geometryIndex];
+            if (record.materialIndex >= materialCount || (record.flags & 2u) == 0u ||
+                query.CandidatePrimitiveIndex() >= record.primitiveCount) continue;
+            if ((record.flags & HIKARI_RAY_HIT_TRANSMISSIVE) == 0u &&
+                (HikariGetMeshMaterialData(record.materialIndex).materialFlags & HIKARI_MATERIAL_FLAG_ALPHA_MASK) == 0u)
+            {
+                query.CommitNonOpaqueTriangleHit();
+                continue;
+            }
+        }
         HikariRaySurface candidate;
         uint flags;
         if (!HikariDecodeRayCandidate(query, hitRecordCount, shadowRay ? 0.0f.xx : rayCone, candidate, flags) ||

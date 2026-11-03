@@ -94,29 +94,48 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
 // 可視率の空間フィルター。画素ごと 2 本程度の二値標本は TAA だけでは半影に 2 画素周期の模様が残るので、
 // 同じ面（中心の接平面からの距離が許容内）の 7x7 近傍を平均してから Forward へ渡す。
+// 近傍の可視率と深度は群（8x8 と周り 3 画素）で一度だけ読んで共有する（画素ごとに 49 回読むと 4K で約 0.6 ms）。
+// 同じ面の判定は近傍の位置を戻さず、中心の接平面を投影の逆行列で同次座標へ移して比べる（近傍ごとの行列積と除算が要らない）。
+#define HIKARI_SHADOW_FILTER_RADIUS 3
+#define HIKARI_SHADOW_FILTER_TILE (8 + 2 * HIKARI_SHADOW_FILTER_RADIUS)
+groupshared float gFilterVisibility[HIKARI_SHADOW_FILTER_TILE * HIKARI_SHADOW_FILTER_TILE];
+groupshared float gFilterDepth[HIKARI_SHADOW_FILTER_TILE * HIKARI_SHADOW_FILTER_TILE];
+
 [numthreads(8, 8, 1)]
-void CSFilter(uint3 id : SV_DispatchThreadID)
+void CSFilter(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint threadIndex : SV_GroupIndex)
 {
+    const int2 last = int2(gScreenParams.xy) - 1;
+    const int2 tileOrigin = int2(group.xy) * 8 - HIKARI_SHADOW_FILTER_RADIUS;
+    for (uint entry = threadIndex; entry < HIKARI_SHADOW_FILTER_TILE * HIKARI_SHADOW_FILTER_TILE; entry += 64u)
+    {
+        const int2 tap = clamp(
+            tileOrigin + int2(entry % HIKARI_SHADOW_FILTER_TILE, entry / HIKARI_SHADOW_FILTER_TILE), int2(0, 0), last);
+        gFilterVisibility[entry] = gVisibilityIn[tap];
+        gFilterDepth[entry] = gSceneDepth.Load(int3(tap, 0));
+    }
+    GroupMemoryBarrierWithGroupSync();
+
     const uint2 pixel = id.xy;
     if (any(pixel >= uint2(gScreenParams.xy)))
         return;
-    const float raw = gVisibilityIn[pixel];
+    const int2 local = int2(pixel) - int2(group.xy) * 8 + HIKARI_SHADOW_FILTER_RADIUS;
+    const int center = local.y * HIKARI_SHADOW_FILTER_TILE + local.x;
+    const float raw = gFilterVisibility[center];
     gFiltered[pixel] = float4(raw, 0, 0, 0);
-    const int2 last = int2(gScreenParams.xy) - 1;
     // 近傍が全部照らされている／全部影なら平均する必要がない（画面の大半はここで終わる）。
     float lowest = raw;
     float highest = raw;
-    [unroll] for (int sy = -3; sy <= 3; ++sy)
+    [unroll] for (int sy = -HIKARI_SHADOW_FILTER_RADIUS; sy <= HIKARI_SHADOW_FILTER_RADIUS; ++sy)
     {
-        [unroll] for (int sx = -3; sx <= 3; ++sx)
+        [unroll] for (int sx = -HIKARI_SHADOW_FILTER_RADIUS; sx <= HIKARI_SHADOW_FILTER_RADIUS; ++sx)
         {
-            const float value = gVisibilityIn[clamp(int2(pixel) + int2(sx, sy), int2(0, 0), last)];
+            const float value = gFilterVisibility[center + sy * HIKARI_SHADOW_FILTER_TILE + sx];
             lowest = min(lowest, value);
             highest = max(highest, value);
         }
     }
     const float2 uv = (float2(pixel) + 0.5f) * gScreenParams.zw;
-    const float depth = gSceneDepth.SampleLevel(gPointClamp, uv, 0.0f);
+    const float depth = gSceneDepth.Load(int3(pixel, 0));
     float3 position;
     if (!HikariIsValidSceneDepth(depth) ||
         !HikariReconstructWorldPosition(uv, depth, gInvViewProj, position))
@@ -133,22 +152,25 @@ void CSFilter(uint3 id : SV_DispatchThreadID)
         return;
     }
     // 接平面からの許容距離：距離の 1.5% + 1cm（床をかすめて見る画素でも同じ面は通し、段差や輪郭は止める）。
-    const float tolerance = 0.015f * length(position - gCameraPosition.xyz) + 0.01f;
+    // 近傍の同次座標 h = (ndc, 深度, 1) の世界位置は (M h).xyz / (M h).w（M は投影の逆行列）なので、
+    // dot(法線, 位置 - 中心) = dot(plane, M h) / (M h).w = dot(plane M, h) / dot(M[3], h)。
+    const float tolerance = 0.015f * distanceToCamera + 0.01f;
+    const float4 plane = mul(float4(normal, -dot(normal, position)), gInvViewProj);
     float sum = 0.0f;
     float weight = 0.0f;
-    [unroll] for (int dy = -3; dy <= 3; ++dy)
+    [unroll] for (int dy = -HIKARI_SHADOW_FILTER_RADIUS; dy <= HIKARI_SHADOW_FILTER_RADIUS; ++dy)
     {
-        [unroll] for (int dx = -3; dx <= 3; ++dx)
+        [unroll] for (int dx = -HIKARI_SHADOW_FILTER_RADIUS; dx <= HIKARI_SHADOW_FILTER_RADIUS; ++dx)
         {
             const int2 tap = clamp(int2(pixel) + int2(dx, dy), int2(0, 0), last);
-            const float2 tapUv = (float2(tap) + 0.5f) * gScreenParams.zw;
-            const float tapDepth = gSceneDepth.Load(int3(tap, 0));
-            float3 tapPosition;
-            if (!HikariIsValidSceneDepth(tapDepth) ||
-                !HikariReconstructWorldPosition(tapUv, tapDepth, gInvViewProj, tapPosition) ||
-                abs(dot(normal, tapPosition - position)) > tolerance)
+            const float tapDepth = gFilterDepth[center + dy * HIKARI_SHADOW_FILTER_TILE + dx];
+            if (!HikariIsValidSceneDepth(tapDepth))
                 continue;
-            sum += gVisibilityIn[tap];
+            const float2 ndc = ((float2(tap) + 0.5f) * gScreenParams.zw * 2.0f - 1.0f) * float2(1.0f, -1.0f);
+            const float4 h = float4(ndc, tapDepth, 1.0f);
+            if (abs(dot(plane, h)) > tolerance * abs(dot(gInvViewProj[3], h)))
+                continue;
+            sum += gFilterVisibility[center + dy * HIKARI_SHADOW_FILTER_TILE + dx];
             weight += 1.0f;
         }
     }
