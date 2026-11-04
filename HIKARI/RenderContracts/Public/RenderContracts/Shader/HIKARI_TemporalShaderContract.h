@@ -66,8 +66,9 @@ inline bool ValidateTemporalShaderArtifact(const ShaderCookedArtifact& artifact,
     }
     const auto pass = static_cast<TemporalShaderPass>(index);
     const auto expected = MakeTemporalShaderContract(pass, {60u, 10u, 0u});
-    if (!MatchesShaderContract(artifact, expected) ||
-        artifact.entries.size() != (pass == TemporalShaderPass::Geometry ? 3u : 2u)) {
+    // 幾何は静的と蒙皮の頂点 2 つ、TAA は通常と診断表示の画素 2 つを持つ。
+    const bool threeEntries = pass == TemporalShaderPass::Geometry || pass == TemporalShaderPass::TaaResolve;
+    if (!MatchesShaderContract(artifact, expected) || artifact.entries.size() != (threeEntries ? 3u : 2u)) {
         diagnostic = "Temporal shader identity or root contract mismatch";
         return false;
     }
@@ -77,10 +78,11 @@ inline bool ValidateTemporalShaderArtifact(const ShaderCookedArtifact& artifact,
     }
     uint32_t entryMask = 0u;
     for (const auto& entry : artifact.entries) {
-        const bool pixel = entry.entry.id == "PSMain";
+        const bool resolvePixel = pass == TemporalShaderPass::TaaResolve && entry.entry.id == "PSResolve";
+        const bool pixel = entry.entry.id == "PSMain" || resolvePixel;
         const bool skinned = pass == TemporalShaderPass::Geometry && entry.entry.id == "VSSkinned";
         const bool vertex = entry.entry.id == (pass == TemporalShaderPass::Geometry ? "VSStatic" : "VSMain");
-        const uint32_t bit = pixel ? 1u : (skinned ? 2u : 4u);
+        const uint32_t bit = resolvePixel ? 8u : (pixel ? 1u : (skinned ? 2u : 4u));
         if ((!pixel && !skinned && !vertex) || (entryMask & bit) != 0u ||
             !MatchesEntryPoint(entry, entry.entry.id, entry.entry.id, pixel ? ShaderStage::Pixel : ShaderStage::Vertex,
                                pixel ? "ps_6_0" : "vs_6_0")) {

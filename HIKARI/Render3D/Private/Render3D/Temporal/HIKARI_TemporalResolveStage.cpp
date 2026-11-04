@@ -41,8 +41,8 @@ TaaResolveSettings BuildTaaSettings(const RenderQualitySettings& quality) {
 TemporalResolveStageResult ExecuteTemporalResolveStage(
     TemporalViewLease view, RenderFrameToken publication, TemporalResourceFrame resources, const GFX::Context& graphics,
     RenderTarget2D& sceneColorTarget, RenderTarget2D& sceneDepthTarget, const RenderQualitySettings& quality,
-    const COLOR::ExposureFrameState& exposureState, const ScreenReadabilityFrame& sceneCaptureSurfaces,
-    RenderTarget2D* maskSceneColor) {
+    const COLOR::ExposureFrameState& exposureState, bool stableDepthRequired,
+    const ScreenReadabilityFrame& sceneCaptureSurfaces, RenderTarget2D* maskSceneColor) {
     TemporalResolveStageResult result{};
     result.output = &sceneColorTarget;
 
@@ -122,9 +122,11 @@ TemporalResolveStageResult ExecuteTemporalResolveStage(
         return result;
     }
     const TaaResolveSettings taaSettings = BuildTaaSettings(quality);
-    // 解決の前に作る（解決の後はこのフレームの資源の組が閉じられる）。
+    // 解決の前に作る（解決の後はこのフレームの資源の組が閉じられる）。読む物（画面の貼り直し、深度を読む後処理の層）が
+    // 無いフレームは作らない（履歴は続かなかったフレームとして次に作る時に組み直す）。
     D3D12_GPU_DESCRIPTOR_HANDLE stableDepthSrv{};
-    RenderTarget2D* const stableDepth = ExecuteTemporalStableDepthPass(graphics, inputs, &stableDepthSrv);
+    RenderTarget2D* const stableDepth =
+        stableDepthRequired ? ExecuteTemporalStableDepthPass(graphics, inputs, &stableDepthSrv) : nullptr;
 
     RenderTarget2D* resolvedTarget = nullptr;
     if (streamlineRequested && masksWritten) {

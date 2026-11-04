@@ -10,6 +10,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_GfxDebugConfig.h"
+#include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Render3D/Color/HIKARI_ColorGradingBake.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -217,6 +218,14 @@ RenderTarget2D* PostProcessingStage::ExecuteGlobalLayers(PostEffectPhase phase, 
 bool PostProcessingStage::RequiresSurfaceFeatureMask() const noexcept {
     return std::any_of(activeGlobalLayers_.begin(), activeGlobalLayers_.end(),
                        [](const ActiveGlobalLayer& layer) { return layer.effect->requiresSurfaceFeatureMask; });
+}
+
+bool PostProcessingStage::RequiresStableSceneDepth() const noexcept {
+    return std::any_of(activeGlobalLayers_.begin(), activeGlobalLayers_.end(), [](const ActiveGlobalLayer& layer) {
+        return layer.effect->requiresSceneDepth &&
+               std::any_of(layer.effect->passes.begin(), layer.effect->passes.end(),
+                           [](const PostEffectPass& pass) { return pass.phase != PostEffectPhase::PreTemporal; });
+    });
 }
 
 bool PostProcessingStage::SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
@@ -892,6 +901,7 @@ RenderTarget2D* PostProcessingStage::ResolveHdr(RenderTarget2D& source, QuadDraw
         actionDebug.requested = actionScreenImpulseProvider_.IsCurrent(absoluteFrame);
         actionDebug.bypassed = actionDebug.requested;
     }
+    GFX::GPU_PROFILE::ScopedGpuTimer bloomTimer(context_.cmdList, GFX::GPU_PROFILE::Pass::PostBloom);
     RenderTarget2D* bloom = debugOutput ? nullptr : ApplyBloom(*output, quad);
     if (bloom && bloom->GetResource()) {
         output->Rebind();

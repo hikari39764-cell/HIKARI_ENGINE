@@ -613,13 +613,17 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
     }
     // 幾何の線は色の履歴と同時に解決する。表示段階の画素格子や網点はここへ移さない。
     RenderTarget2D* const maskSceneColor = volumetric;
-    if (!RENDER3D::GetRenderDebugOutputRoute().bypassPostProcessing)
+    if (!RENDER3D::GetRenderDebugOutputRoute().bypassPostProcessing) {
+        GFX::GPU_PROFILE::ScopedGpuTimer preTemporalTimer(context_.cmdList, GFX::GPU_PROFILE::Pass::PostPreTemporal);
         volumetric =
             processingStage_.ResolvePreTemporal(*volumetric, quad_, *captured, featureMask,
                                                 {capturedTemporal.camera.jitter.x, capturedTemporal.camera.jitter.y});
+    }
+    // 時間方向に均した深度は画面の貼り直しと、深度を読む後処理の層だけが読む。
+    const bool stableDepthRequired = screenComposites_.count != 0u || processingStage_.RequiresStableSceneDepth();
     auto temporal = RENDER3D::TEMPORAL::ExecuteTemporalResolveStage(
         handoffView, handoffFrame, handoffResources, context_, *volumetric, *captured, quality,
-        processingStage_.GetExposureState(), sceneCaptureSurfaces_, maskSceneColor);
+        processingStage_.GetExposureState(), stableDepthRequired, sceneCaptureSurfaces_, maskSceneColor);
     RENDER3D::TEMPORAL::TemporalInputs presentationInputs{};
     bool retainHandoff = false;
     if (handoffResources.IsValid() &&
@@ -690,6 +694,7 @@ RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
         HIKARI_LOG_ERROR("[PreservedVfx] Current layer could not resolve to the presentation raster.");
         return nullptr;
     }
+    GFX::GPU_PROFILE::ScopedGpuTimer hdrTimer(context_.cmdList, GFX::GPU_PROFILE::Pass::PostHdr);
     return processingStage_.ResolveHdr(*output, quad_, RENDER3D::GetRenderDebugOutputRoute().bypassPostProcessing,
                                        RENDER3D::TEMPORAL::ToString(temporal.backend),
                                        captureStage_.IsLightingEnabled(), captured, featureMask, preserved,

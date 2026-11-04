@@ -46,8 +46,8 @@ struct TemporalResolveStageResult {
 TemporalResolveStageResult ExecuteTemporalResolveStage(
     TemporalViewLease view, RenderFrameToken frame, TemporalResourceFrame resources, const GFX::Context& graphics,
     RenderTarget2D& sceneColorTarget, RenderTarget2D& sceneDepthTarget, const RenderQualitySettings& quality,
-    const COLOR::ExposureFrameState& exposureState, const ScreenReadabilityFrame& sceneCaptureSurfaces = {},
-    RenderTarget2D* maskSceneColor = nullptr);
+    const COLOR::ExposureFrameState& exposureState, bool stableDepthRequired,
+    const ScreenReadabilityFrame& sceneCaptureSurfaces = {}, RenderTarget2D* maskSceneColor = nullptr);
 
 const char* ToString(TemporalResolveBackend backend);
 

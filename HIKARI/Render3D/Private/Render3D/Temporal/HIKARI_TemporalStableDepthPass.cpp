@@ -10,6 +10,7 @@
 
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
@@ -175,6 +176,7 @@ RenderTarget2D* ExecuteTemporalStableDepthPass(const GFX::Context& graphics, con
          kStableDepthHistoryWeight}};
 
     GFX::PIX::ScopedGpuEvent pix(cmd, GFX::PIX::kColorPost, "Temporal.StableDepth");
+    GFX::GPU_PROFILE::ScopedGpuTimer gpuTimer(cmd, GFX::GPU_PROFILE::Pass::TemporalStableDepth);
     previous.target.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     output.target.TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
     const D3D12_CPU_DESCRIPTOR_HANDLE rtv = output.target.GetRtvHandle();

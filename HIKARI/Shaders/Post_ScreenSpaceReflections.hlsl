@@ -303,8 +303,11 @@ ReflectionHistoryOutput PSHistory(FullscreenVertex input)
     // 空間の幅（trace の texel の標準偏差）は粗さで決める。粗さ 0.05 以下は鏡の向きだけなので中心だけ、0.4 以上で 2 texel。
     const float blur = saturate((packed.z - 0.05f) / 0.35f);
     const float falloff = 0.5f / max(4.0f * blur * blur, 0.1f);
-    // 同じ面とみなす接平面からの距離（距離の 1.5% + 1cm）。
+    // 同じ面とみなす接平面からの距離（距離の 1.5% + 1cm）。近傍の位置は戻さず、中心の接平面を投影の逆行列で同次座標
+    // h = (ndc, 深度, 1) へ移して比べる：dot(法線, 位置 - 中心) = dot(plane, h) / dot(M[3], h)（近傍ごとの行列積と除算が
+    // 要らない）。
     const float planeTolerance = distanceToCamera * 0.015f + 0.01f;
+    const float4 plane = mul(float4(normal, -dot(normal, world)), gInvViewProj);
     float support = 0.0f;
     float hitDistanceSum = 0.0f, hitDistanceSquare = 0.0f, hitDistanceWeight = 0.0f, hitMotion = 0.0f;
     float confidenceSum = 0.0f;
@@ -328,10 +331,11 @@ ReflectionHistoryOutput PSHistory(FullscreenVertex input)
             const float sampleDepth = gSceneDepth.SampleLevel(gPointClamp, uv, 0);
             const float4 sampleSurface = gSceneSurface.SampleLevel(gPointClamp, uv, 0);
             const float4 sample = gSsrTrace.Load(int3(neighbor, 0));
+            const float4 h = float4((uv * 2.0f - 1.0f) * float2(1.0f, -1.0f), sampleDepth, 1.0f);
             if (HikariIsValidSceneDepth(sampleDepth) && IsValidReflectionSample(sample) &&
                 dot(normal, HikariDecodeOctahedralDirection(sampleSurface.xy)) >= 0.9f &&
                 abs(sampleSurface.z - packed.z) <= 0.1f &&
-                abs(dot(normal, ReconstructWorldPosition(uv, sampleDepth) - world)) <= planeTolerance)
+                abs(dot(plane, h)) <= planeTolerance * abs(dot(gInvViewProj[3], h)))
             {
                 const float colorWeight = spatial >= 0.01f ? spatial : 0.0f;
                 const float hit = sample.a * colorWeight;

@@ -5123,6 +5123,12 @@
           "profile": "ps_6_0"
         },
         {
+          "id": "PSResolve",
+          "stage": "Pixel",
+          "entry": "PSResolve",
+          "profile": "ps_6_0"
+        },
+        {
           "id": "VSMain",
           "stage": "Vertex",
           "entry": "VSMain",

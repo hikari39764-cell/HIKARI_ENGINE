@@ -55,6 +55,8 @@ public:
     // 全体後処理の層を並びの順に重ねる。同じ効果の層は前のフレームの pass を引き継ぐ。
     bool SetGlobalEffects(std::span<const ResolvedPostLayer> layers, const AssetRegistry* registry = nullptr);
     bool RequiresSurfaceFeatureMask() const noexcept;
+    // 時間方向に均した深度を読む層（深度を要り、解決の後の段に pass を持つ）があるか。
+    bool RequiresStableSceneDepth() const noexcept;
     bool SubmitEffectParameter(std::string_view effectId, uint32_t index, uint32_t channelMask,
                                const DirectX::XMFLOAT4& value, int32_t priority, uint64_t sourceId);
     void ClearGlobalEffects();

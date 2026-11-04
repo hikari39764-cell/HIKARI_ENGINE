@@ -13,6 +13,7 @@
 
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Temporal/Internal/HIKARI_TemporalShader.h"
 #include "RenderCore/Targets/HIKARI_RenderTarget2D.h"
@@ -160,17 +161,21 @@ bool ExecuteTemporalMaskPass(const GFX::Context& graphics, const TemporalInputs&
     const D3D12_CPU_DESCRIPTOR_HANDLE rtvs[4] = {reactive->GetRtvHandle(), transparency->GetRtvHandle(),
                                                  invalidDepthMotion->GetRtvHandle(), biasCurrentColor->GetRtvHandle()};
     cmd->OMSetRenderTargets(4, rtvs, FALSE, nullptr);
-    const float clear[4] = {};
-    for (const auto& rtv : rtvs)
-        cmd->ClearRenderTargetView(rtv, clear, 0, nullptr);
 
     // 合成前の色が無い時は合成後の色を両方に渡す（合成の差は 0 になり、場景キャプチャの面だけが残る）。
     const D3D12_GPU_DESCRIPTOR_HANDLE compositionBase = GetTemporalCompositionBase(inputs.resourceFrame);
     const bool canGenerate = srvHeap != nullptr && inputs.sceneColor.valid && EnsurePipeline(graphics);
+    // 描ける時は全画面の三角形が 4 枚とも全画素を書くので、消去は描けない時だけ。
+    if (!canGenerate) {
+        const float clear[4] = {};
+        for (const auto& rtv : rtvs)
+            cmd->ClearRenderTargetView(rtv, clear, 0, nullptr);
+    }
     // 深度が無ければ面の手前の物を確かめられないので、面の印は付けない。
     ScreenReadabilityFrame surfaces = inputs.sceneDepth.valid ? sceneCaptureSurfaces : ScreenReadabilityFrame{};
     if (canGenerate) {
         GFX::PIX::ScopedGpuEvent pix(cmd, GFX::PIX::kColorPost, "Temporal.Masks");
+        GFX::GPU_PROFILE::ScopedGpuTimer gpuTimer(cmd, GFX::GPU_PROFILE::Pass::TemporalMasks);
         const D3D12_VIEWPORT viewport{0.0f,
                                       0.0f,
                                       static_cast<float>((std::max)(1, reactive->GetWidth())),

@@ -39,7 +39,9 @@ static_assert(sizeof(TaaResolveConstants) == 80u);
 
 struct TaaResolvePassState {
     ComPtr<ID3D12RootSignature> rootSignature{};
+    // 通常は出力・履歴・履歴の深度の 3 枚だけを書く。TAA の診断表示の時だけ 4 枚目（診断の色）も書く PSO を使う。
     ComPtr<ID3D12PipelineState> pipelineState{};
+    ComPtr<ID3D12PipelineState> debugPipelineState{};
     uint64_t ownerDeviceGeneration = 0u;
     ID3D12Device* ownerDevice = nullptr;
     bool ready = false;
@@ -58,7 +60,7 @@ bool EnsurePipeline(const GFX::Context& graphics) {
     }
     if (state.ready) {
         return state.ownerDeviceGeneration == graphics.deviceGeneration && state.ownerDevice == device &&
-               state.rootSignature != nullptr && state.pipelineState != nullptr;
+               state.rootSignature != nullptr && state.pipelineState != nullptr && state.debugPipelineState != nullptr;
     }
     if (state.ownerDeviceGeneration != 0u &&
         (state.ownerDeviceGeneration != graphics.deviceGeneration || state.ownerDevice != device)) {
@@ -67,6 +69,7 @@ bool EnsurePipeline(const GFX::Context& graphics) {
 
     ComPtr<ID3D12RootSignature> rootSignature{};
     ComPtr<ID3D12PipelineState> pipelineState{};
+    ComPtr<ID3D12PipelineState> debugPipelineState{};
 
     D3D12_DESCRIPTOR_RANGE ranges[10]{};
     for (uint32_t i = 0; i < static_cast<uint32_t>(std::size(ranges)); ++i) {
@@ -120,9 +123,11 @@ bool EnsurePipeline(const GFX::Context& graphics) {
 
     const auto vs = INTERNAL::LoadTemporalShader(ASSETS::SHADER::TemporalShaderPass::TaaResolve, "VSMain",
                                                  ASSETS::SHADER::ShaderStage::Vertex);
-    const auto ps = INTERNAL::LoadTemporalShader(ASSETS::SHADER::TemporalShaderPass::TaaResolve, "PSMain",
+    const auto ps = INTERNAL::LoadTemporalShader(ASSETS::SHADER::TemporalShaderPass::TaaResolve, "PSResolve",
                                                  ASSETS::SHADER::ShaderStage::Pixel);
-    if (!vs || !ps) {
+    const auto debugPs = INTERNAL::LoadTemporalShader(ASSETS::SHADER::TemporalShaderPass::TaaResolve, "PSMain",
+                                                      ASSETS::SHADER::ShaderStage::Pixel);
+    if (!vs || !ps || !debugPs) {
         return false;
     }
 
@@ -139,11 +144,10 @@ bool EnsurePipeline(const GFX::Context& graphics) {
     psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
     psoDesc.InputLayout = {};
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    psoDesc.NumRenderTargets = 4;
+    psoDesc.NumRenderTargets = 3;
     psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
     psoDesc.RTVFormats[1] = DXGI_FORMAT_R16G16B16A16_FLOAT;
     psoDesc.RTVFormats[2] = DXGI_FORMAT_R32_FLOAT;
-    psoDesc.RTVFormats[3] = DXGI_FORMAT_R16G16B16A16_FLOAT;
     psoDesc.SampleDesc.Count = 1;
 
     hr = device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf()));
@@ -151,9 +155,18 @@ bool EnsurePipeline(const GFX::Context& graphics) {
         return false;
     }
     pipelineState->SetName(L"HIKARI.Temporal.TaaResolvePSO");
+    psoDesc.PS = INTERNAL::TemporalShaderBytecode(debugPs);
+    psoDesc.NumRenderTargets = 4;
+    psoDesc.RTVFormats[3] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    hr = device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(debugPipelineState.GetAddressOf()));
+    if (!HIKARI_DX_CHECK(hr, "TaaResolvePass::CreateDebugPSO")) {
+        return false;
+    }
+    debugPipelineState->SetName(L"HIKARI.Temporal.TaaResolveDebugPSO");
 
     state.rootSignature = std::move(rootSignature);
     state.pipelineState = std::move(pipelineState);
+    state.debugPipelineState = std::move(debugPipelineState);
     state.ownerDeviceGeneration = graphics.deviceGeneration;
     state.ownerDevice = device;
     state.ready = true;
@@ -203,9 +216,12 @@ RenderTarget2D* ExecuteTaaResolvePass(const GFX::Context& graphics, const Tempor
                               inputs.frame.camera.prevJitter.x, inputs.frame.camera.prevJitter.y};
     constants.taaParams = {historyValid ? 1.0f : 0.0f, std::clamp(settings.historyWeight, 0.0f, 0.97f),
                            inputs.exposure.valid ? 1.0f : 0.0f, (std::max)(0.0f, settings.varianceClipGamma)};
-    constants.rejectionParams = {
-        std::clamp(settings.depthRejection, 0.0001f, 0.05f), std::clamp(settings.luminanceRejection, 0.05f, 4.0f),
-        std::clamp(settings.sharpness, 0.0f, 1.0f), static_cast<float>(GetTemporalDebugView(inputs.resourceFrame))};
+    // TAA の診断表示（時間方向の診断ビュー）の時だけ、診断の色を 4 枚目へ書く。
+    const RenderDebugView debugView = GetTemporalDebugView(inputs.resourceFrame);
+    const bool writeDebug = debugView != RenderDebugView::None;
+    constants.rejectionParams = {std::clamp(settings.depthRejection, 0.0001f, 0.05f),
+                                 std::clamp(settings.luminanceRejection, 0.05f, 4.0f),
+                                 std::clamp(settings.sharpness, 0.0f, 1.0f), static_cast<float>(debugView)};
     const float preExposure =
         inputs.exposure.valid && inputs.exposureState.preExposure > 0.0f ? inputs.exposureState.preExposure : 1.0f;
     constants.exposureParams = {1.0f / preExposure, COLOR::PreExposureRatio(inputs.exposureState), 0.0f, 0.0f};
@@ -220,11 +236,14 @@ RenderTarget2D* ExecuteTaaResolvePass(const GFX::Context& graphics, const Tempor
     historyTarget->TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
     historyDepthTarget->TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
     outputTarget->TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
-    debugTarget->TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
+    if (writeDebug) {
+        debugTarget->TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
+    }
 
+    // 全画面の三角形が全画素を書く（PS は捨てない）ので、目標を先に消去しない。
     D3D12_CPU_DESCRIPTOR_HANDLE rtvs[4] = {outputTarget->GetRtvHandle(), historyTarget->GetRtvHandle(),
                                            historyDepthTarget->GetRtvHandle(), debugTarget->GetRtvHandle()};
-    cmd->OMSetRenderTargets(4, rtvs, FALSE, nullptr);
+    cmd->OMSetRenderTargets(writeDebug ? 4u : 3u, rtvs, FALSE, nullptr);
     const uint32_t viewportWidth = static_cast<uint32_t>((std::max)(1, historyTarget->GetWidth()));
     const uint32_t viewportHeight = static_cast<uint32_t>((std::max)(1, historyTarget->GetHeight()));
     const D3D12_VIEWPORT viewport{0.0f, 0.0f, static_cast<float>(viewportWidth), static_cast<float>(viewportHeight),
@@ -232,16 +251,10 @@ RenderTarget2D* ExecuteTaaResolvePass(const GFX::Context& graphics, const Tempor
     const D3D12_RECT scissor{0, 0, static_cast<LONG>(viewportWidth), static_cast<LONG>(viewportHeight)};
     cmd->RSSetViewports(1, &viewport);
     cmd->RSSetScissorRects(1, &scissor);
-    const float colorClear[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-    const float depthClear[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-    cmd->ClearRenderTargetView(rtvs[0], colorClear, 0, nullptr);
-    cmd->ClearRenderTargetView(rtvs[1], colorClear, 0, nullptr);
-    cmd->ClearRenderTargetView(rtvs[2], depthClear, 0, nullptr);
-    cmd->ClearRenderTargetView(rtvs[3], colorClear, 0, nullptr);
 
     cmd->SetDescriptorHeaps(1, &srvHeap);
     cmd->SetGraphicsRootSignature(state.rootSignature.Get());
-    cmd->SetPipelineState(state.pipelineState.Get());
+    cmd->SetPipelineState(writeDebug ? state.debugPipelineState.Get() : state.pipelineState.Get());
     cmd->SetGraphicsRootConstantBufferView(0, constantUpload.gpuAddress);
     cmd->SetGraphicsRootDescriptorTable(1, inputs.sceneColor.srv);
     cmd->SetGraphicsRootDescriptorTable(2, historySrv);
@@ -259,7 +272,9 @@ RenderTarget2D* ExecuteTaaResolvePass(const GFX::Context& graphics, const Tempor
     historyTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     historyDepthTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     outputTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    debugTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    if (writeDebug) {
+        debugTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    }
 
     if (!MarkTemporalHistoryOutputWritten(inputs.resourceFrame, true, true)) {
         return nullptr;
