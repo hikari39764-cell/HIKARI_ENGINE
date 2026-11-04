@@ -7,11 +7,17 @@
 #include "../Material/HIKARI_MaterialBaseColorInputs.hlsli"
 #include "../Material/HIKARI_MaterialExpressionSurface.hlsli"
 
+// 烘焙の路径が当たった面で使う材質。反射は実行時と同じ PBR の文脈で拡散と鏡面の両方を運ぶ（unlit は自発光だけ）。
 struct HikariLightingTransportMaterial
 {
-    float3 diffuse;
+    float3 baseColor;
+    float metallic;
+    float roughness;
+    float3 specularColor;
+    float specularFactor;
     float3 emissive;
     float3 normal;
+    bool unlit;
 };
 
 // 静的な表面入力のみ使用。time / view / screen / derivative は CPU が事前に拒否する。
@@ -55,12 +61,14 @@ HikariLightingTransportMaterial HikariEvaluateLightingTransportMaterial(
     HikariApplyMaterialExpressionPbr(expression, pbr);
     result.normal = HikariResolveMaterialExpressionNormal(expression, material.normalScale, geometricNormal, tangent, result.normal);
     if ((expression.outputMask & HIKARI_EXPRESSION_OUTPUT_EMISSIVE) != 0u) result.emissive = expression.emissive;
-    result.diffuse = saturate(baseColor.rgb) * (1.0f - pbr.metallic);
-    if ((material.materialFlags & HIKARI_MATERIAL_FLAG_UNLIT) != 0u)
-    {
-        result.diffuse = 0.0f.xxx;
+    result.baseColor = saturate(baseColor.rgb);
+    result.metallic = pbr.metallic;
+    result.roughness = pbr.roughness;
+    result.specularColor = pbr.specularColor;
+    result.specularFactor = pbr.specularFactor;
+    result.unlit = (material.materialFlags & HIKARI_MATERIAL_FLAG_UNLIT) != 0u;
+    if (result.unlit)
         result.emissive += max(0.0f.xxx, baseColor.rgb);
-    }
     return result;
 }
 

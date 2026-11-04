@@ -3,7 +3,7 @@
 #include "../Include/Sky/HIKARI_SkyRadiance.hlsli"
 #include "../Include/Sky/HIKARI_EquirectangularSampling.hlsli"
 #include "../Include/HIKARI_DirectionEncoding.hlsli"
-#include "../Include/Lighting/HIKARI_RaySampling.hlsli"
+#include "../Include/Lighting/HIKARI_PathBsdf.hlsli"
 
 struct TransportTriangle
 {
@@ -88,8 +88,8 @@ RWStructuredBuffer<LightmapAccumulation> gOutput : register(u0);
 SamplerState gMaterialSampler : register(s0);
 SamplerState gEnvironmentSampler : register(s1);
 
-static const float HIKARI_PI = 3.14159265359f;
 static const float HIKARI_FLOAT_MAX = 3.402823e+38f;
+static const float kBakeGlossyRoughness = 0.4f;
 
 bool IsFiniteFloat(float value)
 {
@@ -216,13 +216,15 @@ bool TraceAny(float3 origin, float3 direction, float maximumDistance)
     return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
 }
 
+// 当たった面が路径の手前へ返す直接光（拡散と鏡面の両ローブ、実行時と同じ PBR）。
 bool EvaluateDirect(
     float3 position,
-    float3 normal,
+    HikariPbrShadingContext pbr,
     float3 geometricNormal,
     inout uint randomState,
     out float3 result)
 {
+    const float3 normal = pbr.normal;
     result = 0.0f.xxx;
     if (!IsFiniteFloat3(position) ||
         !IsFiniteFloat3(normal))
@@ -317,11 +319,9 @@ bool EvaluateDirect(
         {
             continue;
         }
-        result +=
-            light.radianceInnerCone.rgb *
-            attenuation *
-            ndotl /
-            HIKARI_PI;
+        const HikariDirectPbrLobes lobes =
+            HikariEvaluateDirectPbrLobes(pbr, directionToLight, light.radianceInnerCone.rgb * attenuation);
+        result += lobes.diffuse + lobes.specular;
         if (!IsValidRadiance(result))
         {
             return false;
@@ -336,16 +336,14 @@ bool TraceSurface(
     out float3 position,
     out float3 normal,
     out float3 geometricNormal,
-    out float3 diffuse,
-    out float3 emissive,
+    out HikariLightingTransportMaterial material,
     out bool surfaceValid,
     out bool backFace)
 {
     position = 0.0f.xxx;
     normal = 0.0f.xxx;
     geometricNormal = 0.0f.xxx;
-    diffuse = 0.0f.xxx;
-    emissive = 0.0f.xxx;
+    material = (HikariLightingTransportMaterial)0;
     surfaceValid = true;
     backFace = false;
 
@@ -418,18 +416,16 @@ bool TraceSurface(
         surfaceTriangle.materialUv[1] * barycentricWeights.y + surfaceTriangle.materialUv[2] * barycentricWeights.z;
     const float4 tangent = surfaceTriangle.tangent[0] * barycentricWeights.x +
         surfaceTriangle.tangent[1] * barycentricWeights.y + surfaceTriangle.tangent[2] * barycentricWeights.z;
-    const HikariLightingTransportMaterial material = HikariEvaluateLightingTransportMaterial(
+    material = HikariEvaluateLightingTransportMaterial(
         surfaceTriangle.materialIndex, uv.xy, uv.zw, position, normal, tangent, gMaterialSampler);
     if (!IsFiniteFloat3(position) ||
-        !IsValidRadiance(material.diffuse) ||
+        !IsValidRadiance(material.baseColor) ||
         !IsValidRadiance(material.emissive) ||
         !TryNormalizeVector(material.normal, normal))
     {
         surfaceValid = false;
         return false;
     }
-    diffuse = material.diffuse;
-    emissive = material.emissive;
     return true;
 }
 
@@ -476,11 +472,13 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     bool backFaceSample = false;
     bool skySample = false;
     float3 geometricNormal = normal;
+    // 2 回目からの向きは前の面の BSDF の標本（拡散か鏡面）。
+    float3 nextDirection = 0.0f.xxx;
 
     [loop]
     for (uint bounce = 0u; bounce < gBounceCount; ++bounce)
     {
-        float3 direction;
+        float3 direction = nextDirection;
         const bool probeRay = probe && bounce == 0u;
         if (probeRay)
         {
@@ -488,7 +486,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
             direction = HikariDecodeOctahedralDirection(
                 (float2(dispatchThreadId.x % 16u, dispatchThreadId.x / 16u) + jitter) / 16.0f);
         }
-        else if (!SampleCosineHemisphere(
+        else if (bounce == 0u && !SampleCosineHemisphere(
                 normal,
                 randomState,
                 texelIndex,
@@ -502,8 +500,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         float3 hitNormal;
         float3 hitGeometricNormal;
         if (!probeRay && dot(direction, geometricNormal) <= 0.0f) break;
-        float3 hitDiffuse;
-        float3 hitEmissive;
+        HikariLightingTransportMaterial hitMaterial;
         bool surfaceValid;
         bool hitBackFace;
         const float3 origin = probeRay ? position : position + geometricNormal * 0.002f;
@@ -513,8 +510,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
                 hitPosition,
                 hitNormal,
                 hitGeometricNormal,
-                hitDiffuse,
-                hitEmissive,
+                hitMaterial,
                 surfaceValid,
                 hitBackFace);
         if (!surfaceValid)
@@ -548,14 +544,19 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
             break;
         }
 
-        radiance += throughput * hitEmissive;
-        throughput *= hitDiffuse;
+        radiance += throughput * hitMaterial.emissive;
+        if (hitMaterial.unlit)
+            break;
+        // 鏡面は粗さ kBakeGlossyRoughness 以上で運ぶ（路径の正則化）。太陽が鏡に近い面で反射する焦線は少ない標本で
+        // 一点へ集まり、texel が FP16 を超えるほど光る。ローブを広げるだけでエネルギーは保つ。
+        const HikariPbrShadingContext hitPbr = HikariBuildPbrShadingContextWithFootprint(hitMaterial.baseColor,
+            hitMaterial.metallic, max(hitMaterial.roughness, kBakeGlossyRoughness), hitMaterial.specularColor,
+            hitMaterial.specularFactor, hitNormal, -direction, 0.0f.xxx, 0.0f.xxx);
         float3 directRadiance;
-        if (!IsValidRadiance(throughput) ||
-            !IsValidRadiance(radiance) ||
+        if (!IsValidRadiance(radiance) ||
             !EvaluateDirect(
                 hitPosition,
-                hitNormal,
+                hitPbr,
                 hitGeometricNormal,
                 randomState,
                 directRadiance))
@@ -564,6 +565,18 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
             break;
         }
         radiance += throughput * directRadiance;
+        // 次の向きと重み（拡散と鏡面の反射率の比で選ぶ。路径追跡の参照と同じ）。
+        float3 bsdfWeight;
+        const float lobe = HikariRandom01(randomState);
+        const float2 bsdfXi = float2(HikariRandom01(randomState), HikariRandom01(randomState));
+        if (!HikariSamplePathBsdf(hitPbr, hitGeometricNormal, false, lobe, bsdfXi, nextDirection, bsdfWeight))
+            break;
+        throughput *= bsdfWeight;
+        if (!IsValidRadiance(throughput))
+        {
+            sampleValid = false;
+            break;
+        }
         position = hitPosition;
         normal = hitNormal;
         geometricNormal = hitGeometricNormal;

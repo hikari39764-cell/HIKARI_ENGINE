@@ -1,5 +1,5 @@
 #include "Include/Lighting/HIKARI_RuntimeRayLighting.hlsli"
-#include "Include/Lighting/HIKARI_RaySampling.hlsli"
+#include "Include/Lighting/HIKARI_PathBsdf.hlsli"
 #include "Include/Surface/HIKARI_ScreenSpaceGeometry.hlsli"
 #include "Include/Color/HIKARI_ViewExposure.hlsli"
 
@@ -22,8 +22,6 @@ RWTexture2D<float4> gAccumulation : register(u0, space9);
 Texture2D<float4> gAccumulationRead : register(t0, space9);
 SamplerState gLinearClamp : register(s0);
 SamplerState gMaterialWrap : register(s1);
-
-float HikariPathLuminance(float3 value) { return dot(value, float3(0.2126f, 0.7152f, 0.0722f)); }
 
 float2 HikariPathRandom2(inout uint state)
 {
@@ -88,35 +86,13 @@ void CSMain(uint3 id : SV_DispatchThreadID)
             const HikariPbrShadingContext pbr = HikariBuildPbrShadingContextWithFootprint(hit.baseColor.rgb,
                 hit.pbr.metallic, hit.pbr.roughness, hit.pbr.specularColor, hit.pbr.specularFactor, hit.normal, view,
                 0.0f.xxx, 0.0f.xxx);
-            const float3 diffuseAlbedo = pbr.baseColor * pbr.diffuseEnergyWeight;
-            const float diffuseWeight = HikariPathLuminance(diffuseAlbedo);
-            const float specularWeight = skipDirect ? 0.0f : HikariPathLuminance(pbr.environmentSpecularResponse);
-            if (diffuseWeight + specularWeight <= 1.0e-6f || pbr.ndotView <= 0.0f)
-                break;
-            const float specularProbability = specularWeight / (diffuseWeight + specularWeight);
             const float lobe = HikariRandom01(seed);
-            const float2 xi = HikariPathRandom2(seed);
             float3 direction;
-            if (lobe < specularProbability)
-            {
-                // 見える法線の標本の重みは F・G2/G1（Smith の高さ相関）。
-                direction = HikariSampleGgxReflection(pbr.normal, view, pbr.roughness, xi);
-                const float ndotl = dot(pbr.normal, direction);
-                if (ndotl <= 0.0f)
-                    break;
-                const float3 halfVector = normalize(view + direction);
-                const float3 fresnel = HikariFresnelSchlick(dot(view, halfVector), pbr.specularF0, pbr.specularF90);
-                const float shadowing =
-                    2.0f * ndotl * (pbr.ndotView + pbr.visibilityViewRoot) * HikariVisibilitySmithGGX(pbr, ndotl);
-                throughput *= fresnel * pbr.specularEnergyCompensation * shadowing / specularProbability;
-            }
-            else
-            {
-                direction = HikariSampleCosineHemisphere(pbr.normal, xi);
-                throughput *= diffuseAlbedo / (1.0f - specularProbability);
-            }
-            if (dot(direction, hit.geometricNormal) <= 0.0f)
+            float3 weight;
+            if (!HikariSamplePathBsdf(pbr, hit.geometricNormal, skipDirect, lobe, HikariPathRandom2(seed), direction,
+                    weight))
                 break;
+            throughput *= weight;
             if (bounce >= 2u)
             {
                 const float survival = clamp(max(throughput.r, max(throughput.g, throughput.b)), 0.05f, 0.95f);
