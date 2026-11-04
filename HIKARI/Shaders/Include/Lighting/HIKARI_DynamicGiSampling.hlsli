@@ -68,6 +68,8 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
     const float3 fraction = frac(grid);
     const uint descriptorIndex = (uint)(volume.selectionParams.y + 0.5f) - 1u;
     const float2 atlasSize = HikariDynamicGiAtlasSize(counts);
+    const float invHalfSpacing =
+        2.0f / max(min(volume.spacingIntensity.x, min(volume.spacingIntensity.y, volume.spacingIntensity.z)), 1e-3f);
     float totalWeight = 0.0f;
     float missing = 0.0f; // 非活性（初期化前）の probe の補間重み。全部活性なら 0 で coverage は正確に 1。
     float activeWeight = 0.0f, supported = 0.0f;
@@ -104,8 +106,13 @@ HikariDynamicGiSample HikariEvaluateDynamicGiVolume(HikariIrradianceVolumeData v
         const float3 toProbe = probePosition - query.position;
         // 面の向きによる重み（RTXGI の wrap shading）。裏側の probe も 0 にはしない：0 にすると球の下面のように周りの
         // probe がほぼ裏側になる点で支持が消え、下の層や空の光へ落ちて明るい欠けが出る。壁の向こうの光は可視性で止める。
-        const float facing = 0.5f + 0.5f * dot(toProbe, query.surfaceNormal) * rsqrt(max(dot(toProbe, toProbe), 1e-8f));
-        const float surfaceWeight = query.medium ? 1.0f : facing * facing + 0.2f;
+        const float along = dot(toProbe, query.surfaceNormal);
+        const float facing = 0.5f + 0.5f * along * rsqrt(max(dot(toProbe, toProbe), 1e-8f));
+        // 面の平面より後ろの probe がその向きに見る半球には、面と probe の間（面からは見えない側）の物が入る。窓の開口の
+        // probe は数 cm 先の日の当たる百叶や窓枠を見ていて、室内向きの暖気片や窓下の壁が路径追跡の 6 倍になった（G2）。
+        // 後ろへ離れるほど弱め、半間隔で 0.02 にする。全部が後ろの点（球の下面）は正規化で比が戻るので支持は消えない。
+        const float behind = along >= 0.0f ? 1.0f : max(0.02f, saturate(1.0f + along * invHalfSpacing));
+        const float surfaceWeight = query.medium ? 1.0f : (facing * facing + 0.2f) * behind;
         const float weight = trilinear * active * HikariDynamicGiWeight(visibility, surfaceWeight);
         weights[corner] = weight; // 展開した定数の添字だけで読み書きする
         anchor = weight > anchorWeight ? corner : anchor;

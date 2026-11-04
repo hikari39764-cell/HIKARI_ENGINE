@@ -325,6 +325,11 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
         float3 next = offset;
         if (backRatio > gRelocate.y)
             next = offset + exitDirection * (exitDistance + minimumFront * 0.5f);
+        // 裏面が近すぎる（形状の中ではない）probe は片面の薄い物の裏に張り付いている：その面の表の側へ抜ける。抜けた
+        // 後は下の「表が近すぎる」と「格子点へ戻る」で面から最小距離に落ち着く。Classroom では手前の椅子の背（路径追跡の
+        // 約 3 倍だった）が下がり、Lit の路径追跡比の p90 が 2.97 → 2.48 になった。
+        else if (closestBack < minimumFront)
+            next = offset + closestBackDirection * (closestBack + minimumFront * 0.5f);
         else if (closestFront < minimumFront)
         {
             if (dot(farthestFrontDirection, closestFrontDirection) <= 0.0f)
