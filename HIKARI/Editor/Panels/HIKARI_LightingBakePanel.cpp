@@ -8,6 +8,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakePolicy.h"
 #include "Core/HIKARI_Logger.h"
 #include "Editor/Panels/Internal/HIKARI_LightingBakePanelSummary.h"
 #include "Editor/Platform/HIKARI_EditorShellActions.h"
@@ -178,9 +179,11 @@ void LightingBakePanel::Draw(EDITOR::EditorToolContext& tool, bool& open) {
         uint32_t samples;
         uint32_t bounces;
     };
-    static constexpr QualityPreset kQualityPresets[] = {{"ui.lightingBake.qualityPreview", 64u, 2u},
-                                                        {"ui.lightingBake.qualityStandard", 256u, 4u},
-                                                        {"ui.lightingBake.qualityHigh", 1024u, 6u}};
+    static constexpr QualityPreset kQualityPresets[] = {
+        {"ui.lightingBake.qualityPreview", 64u, 4u},
+        {"ui.lightingBake.qualityStandard", ASSETS::LIGHTING::kSurfaceLightmapDefaultSampleCount,
+         ASSETS::LIGHTING::kSurfaceLightmapDefaultBounceCount},
+        {"ui.lightingBake.qualityHigh", 1024u, ASSETS::LIGHTING::kSurfaceLightmapMaximumBounceCount}};
     const auto editQuality = [&](const SceneLightingBakeSettings& value) {
         execute("lighting.bake.settings.edit",
                 {{"patch", {{"sampleCount", value.sampleCount}, {"bounceCount", value.bounceCount}}}});

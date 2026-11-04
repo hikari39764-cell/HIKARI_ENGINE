@@ -229,7 +229,7 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
     operationRegistry_.Register(
         {"lighting.bake.settings.edit",
          "Merge a partial JSON object into the scene's lighting bake quality (sampleCount: path-traced samples per "
-         "lightmap texel and per probe direction, 16-4096, default 256; bounceCount: 1-8, default 4). Lightmaps and "
+         "lightmap texel and per probe direction, 16-4096, default 256; bounceCount: 1-12, default 8). Lightmaps and "
          "baked probe volumes share it; changing it marks them for rebake. One undo step; reports normalized values.",
          "scene",
          {{"patch", EditorOperationParameterType::Json, true, "Partial settings, for example {\"sampleCount\":64}"}},
