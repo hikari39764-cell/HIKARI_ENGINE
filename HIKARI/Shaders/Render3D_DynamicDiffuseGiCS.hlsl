@@ -92,7 +92,10 @@ float3 HitRadiance(HikariRaySurface hit, float3 view, float2 randomUv, bool hist
         HikariSurfaceGiQuery(hit.position, hit.geometricNormal, hit.normal, view));
     const float3 incident = previous.value + (history ? HikariRayEnvironmentRadiance(gRayLighting, hit.normal,
         gLinearClamp, 4.0f) * (1.0f - previous.coverage) : 0.0f.xxx);
-    return HikariRayHitRadiance(gRayLighting, hit, view, randomUv, incident, 0.0f.xxx, false, gMaterialWrap);
+    // 当たった面が probe へ返す光は鏡面も含める（太陽と局所光の鏡面ローブ、周囲の光の鏡面反射）。拡散だけだと反射の
+    // たびに鏡面の分（電介質でも掠める角では大きい、金属は全部）を失う（Classroom の路径追跡の参照で、鏡面を運ばない
+    // 路径は間接拡散を中央値で 3 割暗くする）。周囲の鏡面反射は法線まわりの入射光で近似する（追跡を増やさない）。
+    return HikariRayHitRadiance(gRayLighting, hit, view, randomUv, incident, incident, true, gMaterialWrap);
 }
 
 [numthreads(64,1,1)]
@@ -341,7 +344,7 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
     const float lightChange = smoothstep(gBlend.y, gBlend.z,
         abs(sFixedLevel - previousLevel) / max(max(sFixedLevel, previousLevel), 1.0e-4f));
     const float hysteresis = continuing ? min(lerp(gBlend.x, 0.5f, lightChange), updates / (updates + 1.0f)) : 0.0f;
-    // 放射照度：lane ごとに八面体の 1 texel。余弦の重みで放射標本を積み、E/pi を 1/5 乗で保存して履歴と混ぜる。
+    // 放射照度：lane ごとに八面体の 1 texel。余弦の重みで放射標本を積み、E/pi を線形で履歴と混ぜて 1/5 乗で保存する。
     {
         const uint2 pixel = uint2(lane % 8u, lane / 8u);
         const float3 axis = HikariDecodeOctahedralDirection((float2(pixel) + 0.5f) / 8.0f);
@@ -354,9 +357,9 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
             sky += sSky[i] * weight;
             weightSum += weight;
         }
-        const float3 encoded = pow(clamp(sum / max(weightSum, 1.0e-6f), 0.0f, 65000.0f), 1.0f / kIrradianceGamma);
+        const float3 mean = clamp(sum / max(weightSum, 1.0e-6f), 0.0f, 65000.0f);
         const float skyVisibility = sky / max(weightSum, 1.0e-6f);
-        float4 previous = float4(encoded, skyVisibility);
+        float4 previous = float4(pow(mean, 1.0f / kIrradianceGamma), skyVisibility);
         float blend = hysteresis;
         if (continuing)
         {
@@ -376,7 +379,11 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
                 blend = 0.5f;
             }
         }
-        const float3 blended = lerp(encoded, previous.rgb, blend);
+        // 履歴とは E/pi の線形で混ぜる（保存だけ 1/5 乗）。1/5 乗の空間で混ぜると平均が 1/5 乗の平均になり、標本の
+        // 揺れが大きい所（窓から遠い室内で日向の床がわずかな ray にしか映らない、光沢面の照り返し）ほど下へ偏る
+        // （Classroom の動的 GI だけの間接拡散は路径追跡の中央値 0.59、窓から遠い所は線形にすると 2〜2.8 倍）。
+        const float3 blended =
+            pow(lerp(mean, pow(previous.rgb, kIrradianceGamma), blend), 1.0f / kIrradianceGamma);
         sIrradianceTexel[lane] = blended;
         sSkyTexel[lane] = lerp(skyVisibility, previous.a, blend);
         sVariation[lane] = continuing ? abs(HikariLuminance(blended) - HikariLuminance(previous.rgb)) /
