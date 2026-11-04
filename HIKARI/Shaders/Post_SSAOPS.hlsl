@@ -199,7 +199,7 @@ float4 NearFieldGi(float2 uv, float depth, float3 n, bool sampleNormals)
                 {
                     // 新しく塞いだ扇形の測度（区間の測度を bit の割合で配る）。遠い物ほど弱く塞ぐ：半径に近い物は探針の
                     // 間接光がすでに含んでいて、そこを均一な光として引くと、光が偏って届く所（上から照らされた壁の足元
-                    // など）を二重に暗くする（GIReference の小屋で路径追踪と対照して決めた）。
+                    // など）を二重に暗くする（GIReference の小屋で路径追跡と対照して決めた）。
                     const float a = clamp(min(frontAngle, backAngle), lower, lower + kPi);
                     const float b = clamp(max(frontAngle, backAngle), lower, lower + kPi);
                     const float span = SliceMeasure(b, sinGamma, cosGamma, gamma) -

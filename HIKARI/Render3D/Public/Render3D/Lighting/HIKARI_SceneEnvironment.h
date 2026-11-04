@@ -208,7 +208,9 @@ inline uint32_t ResolveScreenSpaceReflectionMaxSteps(ScreenSpaceReflectionQualit
 struct ScreenSpaceReflectionSettings {
     bool enabled = true;
     ScreenSpaceReflectionQuality quality = ScreenSpaceReflectionQuality::Medium;
-    float intensity = 0.75f;
+    // 当たった反射が環境の反射を置き換える割合（× 確信度）。1 で当たった所は環境の反射を残さない（光線追跡の反射も同じ
+    // 合成を通る。以前の 0.75 は当たっても空や探針の反射を 25% 残していた）。
+    float intensity = 1.0f;
     float maxDistance = 24.0f;
     float thickness = 0.0025f;
     float maxRoughness = 0.72f;
