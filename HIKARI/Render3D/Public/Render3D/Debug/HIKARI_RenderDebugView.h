@@ -49,6 +49,10 @@ enum class RenderDebugView : uint32_t {
     LocalSpecular = 40,
     IndirectDiffuse = 41,
     IndirectSpecular = 42,
+    // 実行時の加速構造で路径追跡した参照（静止中はフレームをまたいで累積）。PathTraced は Lit と同じ後処理を通し、
+    // PathTracedIndirectDiffuse は IndirectDiffuse と同じく後処理を通さない。
+    PathTraced = 43,
+    PathTracedIndirectDiffuse = 44,
 };
 
 // 操作・コンソールが使う安定した名前。視口の選択肢の表示名は ui.debugView.<この名前>（ToString は調試窗口の英語名）。
@@ -94,6 +98,8 @@ inline constexpr TEXT::EnumName<RenderDebugView> kRenderDebugViewNames[] = {
     {RenderDebugView::LocalSpecular, "localSpecular"},
     {RenderDebugView::IndirectDiffuse, "indirectDiffuse"},
     {RenderDebugView::IndirectSpecular, "indirectSpecular"},
+    {RenderDebugView::PathTraced, "pathTraced"},
+    {RenderDebugView::PathTracedIndirectDiffuse, "pathTracedIndirectDiffuse"},
 };
 
 inline const char* ToString(RenderDebugView view) {
@@ -138,6 +144,8 @@ inline const char* ToString(RenderDebugView view) {
     case RenderDebugView::LocalSpecular: return "PBR Point / Spot Specular";
     case RenderDebugView::IndirectDiffuse: return "PBR Indirect Diffuse";
     case RenderDebugView::IndirectSpecular: return "PBR Indirect Specular";
+    case RenderDebugView::PathTraced: return "Path Traced Reference";
+    case RenderDebugView::PathTracedIndirectDiffuse: return "Path Traced Indirect Diffuse";
     case RenderDebugView::None:
     default: return "Lit";
     }
@@ -164,6 +172,10 @@ inline bool IsTemporalRenderDebugView(RenderDebugView view) {
            view == RenderDebugView::TemporalDepthRejection || view == RenderDebugView::TemporalReactiveMask ||
            view == RenderDebugView::TemporalTransparencyMask || view == RenderDebugView::TemporalDisocclusion ||
            view == RenderDebugView::TemporalInvalidDepthMotion;
+}
+
+inline bool IsPathTracedRenderDebugView(RenderDebugView view) {
+    return view == RenderDebugView::PathTraced || view == RenderDebugView::PathTracedIndirectDiffuse;
 }
 
 inline bool IsVolumetricRenderDebugView(RenderDebugView view) {

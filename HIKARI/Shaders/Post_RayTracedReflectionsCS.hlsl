@@ -1,5 +1,6 @@
 #define HIKARI_RAY_SURFACE_HIT_RECORD 1
 #include "Include/Lighting/HIKARI_RuntimeRayLighting.hlsli"
+#include "Include/Lighting/HIKARI_RaySampling.hlsli"
 #include "Include/Lighting/HIKARI_IrradianceSh9.hlsli"
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
 #include "Include/Surface/HIKARI_ScreenSpaceGeometry.hlsli"
@@ -39,37 +40,13 @@ SamplerState gPointClamp : register(s2);
 // これより滑らかな面は鏡の向きだけを使う（乱数の揺れが無い）。
 static const float kMirrorRoughness = 0.05f;
 
-uint ReflectionHash(uint value)
-{
-    value = value * 747796405u + 2891336453u;
-    value = ((value >> ((value >> 28u) + 4u)) ^ value) * 277803737u;
-    return (value >> 22u) ^ value;
-}
-
 // 画素ごとの一様な乱数回転に R2 列（フレームごと）を足した 2 次元の乱数。画面に規則的な模様（斜めの縞）を作らず、
 // 一つの画素では時間方向に低食い違いで並ぶ。
 float2 ReflectionRandom(uint2 pixel, uint frame, uint stream)
 {
-    const uint hash = ReflectionHash(pixel.x * 73856093u ^ pixel.y * 19349663u ^ stream * 83492791u);
+    const uint hash = HikariPcgHash(pixel.x * 73856093u ^ pixel.y * 19349663u ^ stream * 83492791u);
     const float2 rotation = float2(hash & 0xffffu, hash >> 16u) / 65536.0f;
     return frac(rotation + float2(0.7548776662f, 0.5698402910f) * float(frame));
-}
-
-// GGX の見える法線を球冠で標本化し（Dupuy & Benyoub 2023）、その法線での反射の向きを返す。
-float3 SampleGgxReflection(float3 normal, float3 view, float roughness, float2 xi)
-{
-    const float alpha = max(roughness * roughness, 1.0e-3f);
-    const float3 up = abs(normal.z) < 0.999f ? float3(0.0f, 0.0f, 1.0f) : float3(1.0f, 0.0f, 0.0f);
-    const float3 tangent = normalize(cross(up, normal));
-    const float3 bitangent = cross(normal, tangent);
-    const float3 localView = float3(dot(view, tangent), dot(view, bitangent), dot(view, normal));
-    const float3 stretched = normalize(float3(localView.xy * alpha, localView.z));
-    const float phi = 6.28318530718f * xi.x;
-    const float z = (1.0f - xi.y) * (1.0f + stretched.z) - stretched.z;
-    const float sinTheta = sqrt(saturate(1.0f - z * z));
-    const float3 cap = float3(sinTheta * cos(phi), sinTheta * sin(phi), z) + stretched;
-    const float3 localHalf = normalize(float3(cap.xy * alpha, max(cap.z, 0.0f)));
-    return reflect(-view, tangent * localHalf.x + bitangent * localHalf.y + normal * localHalf.z);
 }
 
 // 当たった点が画面に見えていれば（深度が一致し、面の向きも近い）、その画素の照明済みの色。
@@ -149,7 +126,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     const uint frame = uint(gRayParams.z);
     float3 direction = roughness < kMirrorRoughness
         ? reflect(-view, normal)
-        : SampleGgxReflection(normal, view, roughness, ReflectionRandom(pixel, frame, 0u));
+        : HikariSampleGgxReflection(normal, view, roughness, ReflectionRandom(pixel, frame, 0u));
     if (dot(direction, normal) <= 0.01f)
         direction = reflect(-view, normal);
 

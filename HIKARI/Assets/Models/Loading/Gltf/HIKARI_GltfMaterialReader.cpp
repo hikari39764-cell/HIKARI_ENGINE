@@ -222,10 +222,11 @@ uint32_t ReadMaterials(const std::filesystem::path& gltfPath, const nlohmann::js
     if (!asset.materials.empty() && primitivesWithoutMaterial == 0u) {
         return 0u; // 既定材質を使う primitive は無い。
     }
-    // 材質の割り当て忘れを示す既定材質。glTF 仕様の既定材質は metallic 1 だが、Blender の未割り当て表示と同じ
-    // 非金属にする（MaterialAsset の既定値）。
+    // 材質の割り当て忘れを示す既定材質。glTF 仕様の既定材質は白の metallic 1 だが、Blender（Cycles）が材質の無い物に
+    // 使う 0.8 の灰色の非金属にそろえる（同じ glTF を Cycles で描いた参照と比べられる）。
     MaterialAsset fallback{};
     fallback.name = "DefaultGltfMaterial";
+    fallback.baseColorFactor = {0.8f, 0.8f, 0.8f, 1.0f};
     fallback.slotId = slotIds.Next(fallback.name);
     asset.materials.push_back(std::move(fallback));
     if (primitivesWithoutMaterial > 0u) {

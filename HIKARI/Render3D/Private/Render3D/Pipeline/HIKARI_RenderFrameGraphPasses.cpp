@@ -11,6 +11,7 @@
 #include "Render3D/Pipeline/HIKARI_ProjectFullscreenShaderRuntime.h"
 #include "Render3D/Reflection/HIKARI_ScreenSpaceReflectionRenderer.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.h"
+#include "Render3D/ScreenSpace/HIKARI_PathTracedReferenceRenderer.h"
 #include "Render3D/ScreenSpace/HIKARI_SubsurfaceScatteringRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
@@ -23,6 +24,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
 namespace {
 REFLECTION::ScreenSpaceReflectionRenderer gSsrRenderer{};
 SCREENSPACE::SubsurfaceScatteringRenderer gSubsurfaceRenderer{};
+SCREENSPACE::PathTracedReferenceRenderer gPathTracedRenderer{};
 
 bool ReplaceTexturePublication(
     SURFACE::SceneSurfaceSet& surfaces, GRAPH::RenderGraphSurfaceKey key, const RenderTextureView& texture,
@@ -133,6 +135,16 @@ bool ExecuteForwardOpaque(const GRAPH::RenderGraphPassContext& graphPass, void* 
                 buffer.GetSubsurfaceView().IsSampleable())
                 (void)ReplaceTexturePublication(context.sceneSurfaces, subsurfaceKey, buffer.GetSubsurfaceView(),
                                                 SURFACE::SceneSurfaceProducer::ForwardOpaque);
+        }
+        // 路径追跡の参照は Forward が描いた不透明面の色を置き換える（空と、後で重ねる半透明はそのまま）。
+        if (state.result.opaqueSucceeded && IsPathTracedRenderDebugView(context.debugView)) {
+            const SCREENSPACE::PathTracedReferenceInputs pathInputs{
+                &context.temporalFrame, context.rayLighting,
+                context.materials,      frame.renderWidth,
+                frame.renderHeight,     context.debugView == RenderDebugView::PathTracedIndirectDiffuse};
+            if (!gPathTracedRenderer.Render(frame.graphics, frame.targetAccess, pathInputs) &&
+                !frame.targetAccess.Rebind())
+                return false;
         }
         return state.result.opaqueSucceeded;
     } catch (...) {
@@ -428,6 +440,7 @@ void ReleaseRenderFrameGraphPassResources() noexcept {
     try {
         gSsrRenderer.Release();
         gSubsurfaceRenderer.Release();
+        gPathTracedRenderer.Release();
     } catch (...) {
     }
 }

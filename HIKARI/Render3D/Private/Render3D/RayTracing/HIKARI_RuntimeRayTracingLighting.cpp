@@ -141,6 +141,7 @@ RuntimeRayLightingFrame RuntimeRayTracingLighting::Prepare(const GFX::Context& g
         state.tableHash = tableHash;
     }
     state.table.MarkRead(graphics);
+    frame.lightTableHash = tableHash;
     frame.localLights = state.table.Current()->GetGPUVirtualAddress();
     frame.lightCdf = frame.localLights + state.cdfOffset;
     frame.status = RuntimeRayLightingStatus::Ready;

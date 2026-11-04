@@ -53,6 +53,8 @@ constexpr RenderDebugView kRenderDebugViewOptions[] = {
     RenderDebugView::LocalSpecular,
     RenderDebugView::IndirectDiffuse,
     RenderDebugView::IndirectSpecular,
+    RenderDebugView::PathTraced,
+    RenderDebugView::PathTracedIndirectDiffuse,
     RenderDebugView::SceneDepth,
     RenderDebugView::SceneColor,
     RenderDebugView::MotionVectors,

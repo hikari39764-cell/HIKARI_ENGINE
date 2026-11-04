@@ -65,8 +65,8 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         AssetImporterKind::Model,
         AssetType::Model,
         "ModelImporter",
-        // 47: glTF の material の無い primitive は既定材質（以前は 0 番の材質）を使う。metallicFactor の省略は 1。
-        47u,
+        // 48: glTF の material の無い primitive は既定材質（0.8 の灰色、以前は 0 番の材質）を使う。metallicFactor の省略は 1。
+        48u,
         ".gltf, .obj, .fbx",
     },
     {

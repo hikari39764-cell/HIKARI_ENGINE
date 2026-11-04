@@ -365,6 +365,7 @@
     {"ui.debugView.directDiffuse", "PBR 直接漫反射"}, {"ui.debugView.directionalSpecular", "PBR 方向光高光"},
     {"ui.debugView.localSpecular", "PBR 点光 / 聚光高光"}, {"ui.debugView.indirectDiffuse", "PBR 间接漫反射"},
     {"ui.debugView.indirectSpecular", "PBR 间接反射"}, {"ui.debugView.freezeCullingCamera", "冻结剔除相机"},
+    {"ui.debugView.pathTraced", "路径追踪参考"}, {"ui.debugView.pathTracedIndirectDiffuse", "路径追踪间接漫反射"},
     {"ui.debugView.globalView", "全局视图"}, {"ui.debugView.invalidDepthMotion", "无效深度/运动"},
     {"ui.debugView.irradianceProviderWeight", "辐照提供者权重"},
     {"ui.debugView.lightingFallbackWeight", "光照回退权重"}, {"ui.debugView.lightingProviders", "光照提供者"},

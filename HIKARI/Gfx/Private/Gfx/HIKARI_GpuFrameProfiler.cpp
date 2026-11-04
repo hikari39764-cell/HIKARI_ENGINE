@@ -324,6 +324,7 @@ constexpr PassInfo kPassInfo[] = {
     {Pass::ScreenSpaceReflections, "Screen Space Reflections", "Render3D"},
     {Pass::SubsurfaceScattering, "Subsurface Scattering", "Render3D"},
     {Pass::RayTracedShadow, "Ray Traced Shadow", "Render3D"},
+    {Pass::PathTracedReference, "Path Traced Reference", "Render3D"},
     {Pass::TemporalMotionVectors, "Temporal MotionVectors", "Render3D"},
     {Pass::TemporalMasks, "Temporal Masks", "Render3D"},
     {Pass::TemporalStableDepth, "Temporal Stable Depth", "Render3D"},

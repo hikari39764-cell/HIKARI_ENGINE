@@ -39,6 +39,7 @@ enum class Pass : uint32_t {
     ScreenSpaceReflections,
     SubsurfaceScattering,
     RayTracedShadow,
+    PathTracedReference,
     TemporalMotionVectors,
     TemporalMasks,
     TemporalStableDepth,

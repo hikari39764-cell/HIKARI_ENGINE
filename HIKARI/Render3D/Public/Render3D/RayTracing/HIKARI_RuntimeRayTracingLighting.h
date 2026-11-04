@@ -31,6 +31,8 @@ struct RuntimeRayLightingFrame {
     D3D12_GPU_VIRTUAL_ADDRESS localLights = 0, lightCdf = 0;
     D3D12_GPU_DESCRIPTOR_HANDLE sky{};
     uint64_t contentHash = 0;
+    // 局所光の表（光源と CDF）の内容だけのハッシュ。contentHash は時刻を含み毎フレーム変わる。
+    uint64_t lightTableHash = 0;
     uint32_t droppedLights = 0;
     bool Matches(const GFX::Context& graphics, const RuntimeRayTracingFrame& rayScene,
                  RuntimeRayTracingMaterialVersion materials) const noexcept;

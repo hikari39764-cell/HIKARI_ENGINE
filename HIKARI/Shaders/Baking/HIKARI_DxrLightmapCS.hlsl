@@ -3,6 +3,7 @@
 #include "../Include/Sky/HIKARI_SkyRadiance.hlsli"
 #include "../Include/Sky/HIKARI_EquirectangularSampling.hlsli"
 #include "../Include/HIKARI_DirectionEncoding.hlsli"
+#include "../Include/Lighting/HIKARI_RaySampling.hlsli"
 
 struct TransportTriangle
 {
@@ -126,20 +127,6 @@ bool TryNormalizeVector(
     return IsFiniteFloat3(normalizedValue);
 }
 
-uint HashPcg(uint value)
-{
-    uint state = value * 747796405u + 2891336453u;
-    uint word = ((state >> ((state >> 28u) + 4u)) ^ state) *
-        277803737u;
-    return (word >> 22u) ^ word;
-}
-
-float Random01(inout uint state)
-{
-    state = HashPcg(state);
-    return (float)(state & 0x00ffffffu) / 16777216.0f;
-}
-
 float3 EvaluateSky(float3 direction)
 {
     const float3 skyDirection = HikariRotateSkyYaw(direction, gSkyParams.y);
@@ -154,26 +141,6 @@ float3 EvaluateSky(float3 direction)
     return HikariApplySkyRadianceScale(sky, gSkyTintExposure.rgb, gSkyTintExposure.w) * max(gSkyParams.x, 0.0f);
 }
 
-bool BuildBasis(
-    float3 normal,
-    out float3 tangent,
-    out float3 bitangent)
-{
-    float3 helper =
-        abs(normal.z) < 0.999f
-        ? float3(0.0f, 0.0f, 1.0f)
-        : float3(1.0f, 0.0f, 0.0f);
-    if (!TryNormalizeVector(
-            cross(helper, normal),
-            tangent))
-    {
-        bitangent = 0.0f.xxx;
-        return false;
-    }
-    bitangent = cross(normal, tangent);
-    return IsFiniteFloat3(bitangent);
-}
-
 bool SampleCosineHemisphere(
     float3 normal,
     inout uint randomState,
@@ -181,31 +148,19 @@ bool SampleCosineHemisphere(
     uint bounce,
     out float3 direction)
 {
-    float r0 = Random01(randomState);
-    float r1 = Random01(randomState);
+    float r0 = HikariRandom01(randomState);
+    float r1 = HikariRandom01(randomState);
     if (bounce == 0u)
     {
         // 主半球を等面積の領域に分け、全 sample で各領域を一度ずつ訪れる。
         // 画素ごとの巡回順と領域内 jitter は固定の格子模様を避ける。
         const uint sampleCount = gSampleGridWidth * gSampleGridHeight;
-        const uint stratum = (gSampleIndex + HashPcg(texelIndex) % sampleCount) % sampleCount;
+        const uint stratum = (gSampleIndex + HikariPcgHash(texelIndex) % sampleCount) % sampleCount;
         r0 = (float(stratum % gSampleGridWidth) + r0) / float(gSampleGridWidth);
         r1 = (float(stratum / gSampleGridWidth) + r1) / float(gSampleGridHeight);
     }
-    float radius = sqrt(r0);
-    float angle = 2.0f * HIKARI_PI * r1;
-    float3 tangent;
-    float3 bitangent;
-    if (!BuildBasis(normal, tangent, bitangent))
-    {
-        direction = 0.0f.xxx;
-        return false;
-    }
-    return TryNormalizeVector(
-        tangent * (radius * cos(angle)) +
-            bitangent * (radius * sin(angle)) +
-            normal * sqrt(max(0.0f, 1.0f - r0)),
-        direction);
+    direction = HikariSampleCosineHemisphere(normal, float2(r0, r1));
+    return IsFiniteFloat3(direction);
 }
 
 uint TransportTriangleIndex(uint geometryIndex, uint primitiveIndex)
@@ -320,7 +275,7 @@ bool EvaluateDirect(
                 const float halfAngleSineSquared = HikariLocalLightSourceHalfAngleSineSquared(
                     distanceToLight, light.sourceRadius);
                 const float coneCos = 1.0f - 2.0f * halfAngleSineSquared;
-                const float2 emitterSample = float2(Random01(randomState), Random01(randomState));
+                const float2 emitterSample = float2(HikariRandom01(randomState), HikariRandom01(randomState));
                 const float sampleCos = 1.0f - 2.0f * halfAngleSineSquared * emitterSample.x;
                 directionToLight = HikariSampleEmitterCone(directionToLight,halfAngleSineSquared,emitterSample);
                 attenuation *= 2.0f / (1.0f + coneCos);
@@ -496,7 +451,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         return;
     }
 
-    uint randomState = HashPcg(
+    uint randomState = HikariPcgHash(
         texelIndex ^
         ((gSampleIndex + 1u) * 0x9e3779b9u));
     float3 position = texel.position.xyz;
@@ -529,7 +484,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         const bool probeRay = probe && bounce == 0u;
         if (probeRay)
         {
-            const float2 jitter = float2(Random01(randomState), Random01(randomState));
+            const float2 jitter = float2(HikariRandom01(randomState), HikariRandom01(randomState));
             direction = HikariDecodeOctahedralDirection(
                 (float2(dispatchThreadId.x % 16u, dispatchThreadId.x / 16u) + jitter) / 16.0f);
         }
@@ -622,7 +577,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
                         max(throughput.y, throughput.z)),
                     0.1f,
                     0.95f);
-            if (Random01(randomState) > continuation)
+            if (HikariRandom01(randomState) > continuation)
             {
                 break;
             }

@@ -48,11 +48,23 @@ void DocumentSceneEditorController::DrawDebugViewWindow(DocumentSceneBase& scene
     ImGui::SeparatorText(TEXT::Localize("ui.debugView.shading").c_str());
     if (ImGui::BeginTable("DebugViewShadingModes", 3, ImGuiTableFlags_SizingStretchSame)) {
         const RenderDebugView shadingModes[] = {
-            RenderDebugView::BaseColor,     RenderDebugView::Normal,          RenderDebugView::Tangent,
-            RenderDebugView::LightingOnly,  RenderDebugView::Roughness,       RenderDebugView::Metallic,
-            RenderDebugView::Occlusion,     RenderDebugView::Shadow,          RenderDebugView::NdotL,
-            RenderDebugView::Emissive,      RenderDebugView::DirectDiffuse,   RenderDebugView::DirectionalSpecular,
-            RenderDebugView::LocalSpecular, RenderDebugView::IndirectDiffuse, RenderDebugView::IndirectSpecular,
+            RenderDebugView::BaseColor,
+            RenderDebugView::Normal,
+            RenderDebugView::Tangent,
+            RenderDebugView::LightingOnly,
+            RenderDebugView::Roughness,
+            RenderDebugView::Metallic,
+            RenderDebugView::Occlusion,
+            RenderDebugView::Shadow,
+            RenderDebugView::NdotL,
+            RenderDebugView::Emissive,
+            RenderDebugView::DirectDiffuse,
+            RenderDebugView::DirectionalSpecular,
+            RenderDebugView::LocalSpecular,
+            RenderDebugView::IndirectDiffuse,
+            RenderDebugView::IndirectSpecular,
+            RenderDebugView::PathTraced,
+            RenderDebugView::PathTracedIndirectDiffuse,
             RenderDebugView::SceneDepth,
         };
         for (RenderDebugView mode : shadingModes) {

@@ -407,6 +407,8 @@
     {"ui.debugView.localSpecular", "PBR Point / Spot Specular"},
     {"ui.debugView.indirectDiffuse", "PBR Indirect Diffuse"},
     {"ui.debugView.indirectSpecular", "PBR Indirect Specular"},
+    {"ui.debugView.pathTraced", "Path Traced Reference"},
+    {"ui.debugView.pathTracedIndirectDiffuse", "Path Traced Indirect Diffuse"},
     {"ui.debugView.freezeCullingCamera", "Freeze Culling Camera"}, {"ui.debugView.globalView", "Global View"},
     {"ui.debugView.invalidDepthMotion", "Invalid Depth / Motion"},
     {"ui.debugView.irradianceProviderWeight", "Irradiance Provider Weight"},

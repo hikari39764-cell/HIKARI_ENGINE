@@ -419,6 +419,7 @@
     {"ui.debugView.directionalSpecular", "PBR 平行光ハイライト"},
     {"ui.debugView.localSpecular", "PBR 点光源 / Spot ハイライト"},
     {"ui.debugView.indirectDiffuse", "PBR 間接拡散反射"}, {"ui.debugView.indirectSpecular", "PBR 間接鏡面反射"},
+    {"ui.debugView.pathTraced", "パストレース参照"}, {"ui.debugView.pathTracedIndirectDiffuse", "パストレース間接拡散"},
     {"ui.debugView.freezeCullingCamera", "カリングカメラを固定"}, {"ui.debugView.globalView", "グローバルビュー"},
     {"ui.debugView.invalidDepthMotion", "無効な深度/モーション"},
     {"ui.debugView.irradianceProviderWeight", "放射照度プロバイダーウェイト"},

@@ -354,10 +354,11 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     static const auto beginTimer = CPU_PROFILE::RegisterDynamicPass("Main.BeginFrame");
     std::optional<CPU_PROFILE::ScopedDynamicCpuTimer> beginScope;
     beginScope.emplace(beginTimer);
-    if (!MESHRENDERER::BeginFrame(frame.graphics, camera, environment, lighting, screenSpaceContext.width,
-                                  screenSpaceContext.height,
-                                  (temporalDebugView || volumetricDebugView) ? RenderDebugView::None : debugView,
-                                  temporalFrame.camera.valid ? &cameraOverrides : nullptr)) {
+    if (!MESHRENDERER::BeginFrame(
+            frame.graphics, camera, environment, lighting, screenSpaceContext.width, screenSpaceContext.height,
+            (temporalDebugView || volumetricDebugView || IsPathTracedRenderDebugView(debugView)) ? RenderDebugView::None
+                                                                                                 : debugView,
+            temporalFrame.camera.valid ? &cameraOverrides : nullptr)) {
         MESHRENDERER::EndFrame();
         return false;
     }
@@ -382,7 +383,9 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         const bool rayShadows = renderQuality.directionalShadow.rayTraced && environment.shadows.enabled;
         materials = MESHRENDERER::GetMaterialGpuFrameView(frame.graphics);
         RAYTRACING::RuntimeRayTracingFrame rayScene;
-        if ((giQuality != DynamicGiQuality::Off || rayReflections || rayShadows) && materials) {
+        if ((giQuality != DynamicGiQuality::Off || rayReflections || rayShadows ||
+             IsPathTracedRenderDebugView(debugView)) &&
+            materials) {
             GFX::GPU_PROFILE::ScopedGpuTimer rayTimer(frame.graphics.cmdList,
                                                       GFX::GPU_PROFILE::Pass::RuntimeRayScenePreparation);
             const MESHRENDERER::TerrainSurfaceGpuBindings terrain = MESHRENDERER::GetTerrainSurfaceGpuBindings();
