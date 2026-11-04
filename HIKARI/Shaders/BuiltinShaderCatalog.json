@@ -3130,6 +3130,92 @@
       }
     },
     {
+      "assetGuid": "885c550d3aa64da799fc3e810299925a",
+      "programId": "HIKARI.EngineShader.Render3D_MeshletGeneralClipAS",
+      "source": "Render3D_MeshletAS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "2",
+          "name": "HIKARI_SURFACE_COVERAGE"
+        },
+        {
+          "value": "1",
+          "name": "HIKARI_SURFACE_PARTITION"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Amplification",
+          "entry": "main",
+          "profile": "as_6_5"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 8,
+        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
+        "requiredCaps": {
+          "minimumShaderModel": 65,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 2
+        }
+      }
+    },
+    {
+      "assetGuid": "6b11c8ca59ab4cd98e19d52491ff7213",
+      "programId": "HIKARI.EngineShader.Render3D_MeshletGeneralOpaqueAS",
+      "source": "Render3D_MeshletAS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "1",
+          "name": "HIKARI_SURFACE_COVERAGE"
+        },
+        {
+          "value": "1",
+          "name": "HIKARI_SURFACE_PARTITION"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Amplification",
+          "entry": "main",
+          "profile": "as_6_5"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 8,
+        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
+        "requiredCaps": {
+          "minimumShaderModel": 65,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 2
+        }
+      }
+    },
+    {
       "assetGuid": "358a0ee075fb49ffe8f9773ed39c4a02",
       "programId": "HIKARI.EngineShader.Render3D_MeshletGeometryAuxFeaturePS",
       "source": "Render3D_MeshletGeometryAuxFeaturePS.hlsl",
@@ -3233,6 +3319,45 @@
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
           "requiredFeatureMask": 2
+        }
+      }
+    },
+    {
+      "assetGuid": "b55bb3771174405a9f02f45bd3436156",
+      "programId": "HIKARI.EngineShader.Render3D_MeshletGeometryAuxOpaquePS",
+      "source": "Render3D_MeshletGeometryAuxPS.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.GpuDriven",
+      "group": "",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "1",
+          "name": "HIKARI_GEOMETRY_AUX_OPAQUE"
+        }
+      ],
+      "entries": [
+        {
+          "id": "Main",
+          "stage": "Pixel",
+          "entry": "main",
+          "profile": "ps_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
+        "rootLayoutVersion": 8,
+        "rootLayoutHash": "3af4fa606c409010d72d7ff96b1ce51043f95b16fb3cd4a27c4a0b71682367d3",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
         }
       }
     },

@@ -194,6 +194,13 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     if (programRange != (HIKARI_MATERIAL_CLASS == HIKARI_MATERIAL_CLASS_PROGRAM))
         visible = (HikariMeshletVisibleRange)0;
 #endif
+#if HIKARI_SURFACE_COVERAGE != HIKARI_SURFACE_COVERAGE_ANY
+    // 捨てない面と捨てうる面も同じ可視範囲を別 PSO で dispatch する（殻は alpha test の材質だけが持つ）。
+    const bool clipRange = (visible.flags & (HIKARI_SURFACE_GPU_SCENE_FLAG_ALPHA_MASKED |
+        HIKARI_SURFACE_GPU_SCENE_FLAG_MATERIAL_FX | HIKARI_SURFACE_GPU_SCENE_FLAG_MATERIAL_PROGRAM)) != 0u;
+    if (clipRange != (HIKARI_SURFACE_COVERAGE == HIKARI_SURFACE_COVERAGE_CLIP))
+        visible = (HikariMeshletVisibleRange)0;
+#endif
 #if HIKARI_SURFACE_LIGHTING != HIKARI_SURFACE_LIGHTING_ANY
     // 光照贴图の面と探針の面も同じ可視範囲を別 PSO で dispatch する。
     const bool lightmappedRange = (visible.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_LIGHTMAPPED) != 0u;

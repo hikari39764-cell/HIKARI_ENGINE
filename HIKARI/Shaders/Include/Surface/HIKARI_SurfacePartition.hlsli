@@ -41,4 +41,18 @@
 #define HIKARI_SURFACE_LIGHTING HIKARI_SURFACE_LIGHTING_ANY
 #endif
 
+// 深度を書く pass（GeometryAux）の被覆による compile-time 分割。PS が画素を捨てうると提前深度が効かず、隠れた面まで
+// 着色する。alpha test・材質の特効・材質 program（式の被覆、殻）を持たない面は捨てない PS で先に描き、捨てうる面は後で
+// 描いて先の深度で隠れた画素を着色の前に落とす。AS は面の flag で振り分ける。
+//   ANY    : 分割しない。
+//   OPAQUE : 捨てない面だけ。
+//   CLIP   : 捨てうる面だけ。
+#define HIKARI_SURFACE_COVERAGE_ANY 0
+#define HIKARI_SURFACE_COVERAGE_OPAQUE 1
+#define HIKARI_SURFACE_COVERAGE_CLIP 2
+
+#ifndef HIKARI_SURFACE_COVERAGE
+#define HIKARI_SURFACE_COVERAGE HIKARI_SURFACE_COVERAGE_ANY
+#endif
+
 #endif

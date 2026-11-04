@@ -217,6 +217,10 @@ private:
     PipelineBucketArray transparentPipelineStates_{};
     PipelineBucketArray shadowPipelineStates_{};
     PipelineBucketArray geometryAuxPipelineStates_{};
+    // GeometryAux を被覆で分けた PSO：捨てない面（捨てる命令の無い PS、先に描く）と捨てうる面（後で描く）。両方揃った
+    // bucket だけ分けて描く。
+    PipelineBucketArray geometryAuxOpaquePipelineStates_{};
+    PipelineBucketArray geometryAuxClipPipelineStates_{};
     PipelineBucketArray geometryFeatureMaskPipelineStates_{};
     PipelineBucketArray geometryOutlinePipelineStates_{};
     PipelineBucketArray visibilityOverlayPipelineStates_{};

@@ -524,6 +524,9 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
 
     ASSETS::SHADER::ShaderAssetEntryLease amplificationShader{};
     ASSETS::SHADER::ShaderAssetEntryLease generalAmplificationShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease generalOpaqueAmplificationShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease generalClipAmplificationShader{};
+    ASSETS::SHADER::ShaderAssetEntryLease geometryOpaquePixelShader{};
     ASSETS::SHADER::ShaderAssetEntryLease terrainAmplificationShader{};
     ASSETS::SHADER::ShaderAssetEntryLease standardAmplificationShader{};
     ASSETS::SHADER::ShaderAssetEntryLease programAmplificationShader{};
@@ -659,6 +662,17 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
         DEBUGLOG::PushRenderError("[MeshletBackend][WARN] Optional cooked water visibility "
                                   "pixel shader is unavailable; opaque SceneDepth fallback "
                                   "remains active.");
+    }
+    if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
+        (!resolveShader("HIKARI.EngineShader.Render3D_MeshletGeneralOpaqueAS",
+                        ASSETS::SHADER::ShaderStage::Amplification, "as_6_5", generalOpaqueAmplificationShader) ||
+         !resolveShader("HIKARI.EngineShader.Render3D_MeshletGeneralClipAS", ASSETS::SHADER::ShaderStage::Amplification,
+                        "as_6_5", generalClipAmplificationShader) ||
+         !resolveShader("HIKARI.EngineShader.Render3D_MeshletGeometryAuxOpaquePS", ASSETS::SHADER::ShaderStage::Pixel,
+                        "ps_6_0", geometryOpaquePixelShader))) {
+        generalOpaqueAmplificationShader = generalClipAmplificationShader = geometryOpaquePixelShader = {};
+        DEBUGLOG::PushRenderError("[MeshletBackend][WARN] GeometryAux coverage-split shaders unavailable; "
+                                  "GeometryAux keeps one PSO for every surface.");
     }
     if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
         (!resolveShader("HIKARI.EngineShader.Render3D_MeshletGeometryAuxPS", ASSETS::SHADER::ShaderStage::Pixel,
@@ -930,6 +944,18 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                                            L"Meshlet GeometryAux Terrain PSO",
                                            terrainGeometryAuxPipelineStates_[bucketIndex].GetAddressOf())) {
                 ++stats_.pipelineCreateReadyCount;
+            }
+            if (geometryOpaquePixelShader) {
+                (void)CreateMeshletPipelineState(
+                    device, rootSignature, ShaderBytecode(generalOpaqueAmplificationShader),
+                    ShaderBytecode(geometryMeshShader), ShaderBytecode(geometryOpaquePixelShader),
+                    DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(bucket), false, true, true,
+                    L"Meshlet GeometryAux Opaque PSO", geometryAuxOpaquePipelineStates_[bucketIndex].GetAddressOf());
+                (void)CreateMeshletPipelineState(
+                    device, rootSignature, ShaderBytecode(generalClipAmplificationShader),
+                    ShaderBytecode(geometryMeshShader), ShaderBytecode(geometryPixelShader),
+                    DXGI_FORMAT_R16G16B16A16_FLOAT, CullModeForBucket(bucket), false, true, true,
+                    L"Meshlet GeometryAux Clip PSO", geometryAuxClipPipelineStates_[bucketIndex].GetAddressOf());
             }
         }
 
@@ -1203,8 +1229,11 @@ void MeshletRenderBackend::Reset() {
     for (auto& pipeline : shadowPipelineStates_) {
         pipeline.Reset();
     }
-    for (auto& pipeline : geometryAuxPipelineStates_) {
-        pipeline.Reset();
+    for (PipelineBucketArray* pipelines :
+         {&geometryAuxPipelineStates_, &geometryAuxOpaquePipelineStates_, &geometryAuxClipPipelineStates_}) {
+        for (auto& pipeline : *pipelines) {
+            pipeline.Reset();
+        }
     }
     for (auto& pipeline : geometryFeatureMaskPipelineStates_) {
         pipeline.Reset();
@@ -1478,7 +1507,14 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
                                              DispatchArgumentOffsetForBucket(layout, bucket), countBuffer,
                                              CounterOffsetForBucket(layout, bucket));
         };
-        if (lightingSplit) {
+        // GeometryAux は捨てない面を先に描き、捨てうる面はその深度で隠れた画素を着色の前に落とす。
+        const bool coverageSplit = ctx.pipelineKind == MeshletPipelineKind::GeometryAux &&
+                                   geometryAuxOpaquePipelineStates_[bucketIndex] &&
+                                   geometryAuxClipPipelineStates_[bucketIndex];
+        if (coverageSplit) {
+            submit(geometryAuxOpaquePipelineStates_[bucketIndex].Get(), GFX::GPU_PROFILE::Pass::Count);
+            submit(geometryAuxClipPipelineStates_[bucketIndex].Get(), GFX::GPU_PROFILE::Pass::Count);
+        } else if (lightingSplit) {
             submit(lighting.standardProbe[bucketIndex].Get(), GFX::GPU_PROFILE::Pass::MeshletForwardStandard);
             submit(lighting.standardLightmap[bucketIndex].Get(), GFX::GPU_PROFILE::Pass::MeshletForwardStandard);
         } else {

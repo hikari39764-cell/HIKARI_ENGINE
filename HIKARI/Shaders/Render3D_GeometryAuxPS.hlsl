@@ -48,6 +48,12 @@ struct PSInput
 typedef HikariForwardPixelInput PSInput;
 #endif
 
+// 捨てない面だけを描く PSO（AS が alpha test・材質の特効・材質 program の面を除く）。画素を捨てる命令を持たない。
+#ifndef HIKARI_GEOMETRY_AUX_OPAQUE
+#define HIKARI_GEOMETRY_AUX_OPAQUE 0
+#endif
+static const bool kGeometryAuxOpaque = HIKARI_GEOMETRY_AUX_OPAQUE != 0;
+
 #if defined(HIKARI_GEOMETRY_AUX_WRITE_FEATURE_MASK)
 struct PSOutput
 {
@@ -64,7 +70,9 @@ float4 main(PSInput input) : SV_TARGET
 #endif
 {
     HikariMeshMaterialData materialData = HikariGetMeshMaterialData(input.materialDataIndex);
+#if !HIKARI_GEOMETRY_AUX_OPAQUE
     HikariApplyShellFade(input.shellLayer, input.position.xy);
+#endif
     const float3 geometricNormal =
         (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_DOUBLE_SIDED) != 0u && !input.isFrontFace
             ? -normalize(input.normalWS) : normalize(input.normalWS);
@@ -75,7 +83,7 @@ float4 main(PSInput input) : SV_TARGET
     static const bool terrainSurface = HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_TERRAIN;
 #endif
     // 筆触の殻：forward と同じ関数と入力で殻の被覆を確定する（地形は殻を持たない）。
-    const bool painterly = !terrainSurface && HikariIsPainterlyShellMaterial(materialData);
+    const bool painterly = !kGeometryAuxOpaque && !terrainSurface && HikariIsPainterlyShellMaterial(materialData);
     HikariPainterlyStroke stroke = (HikariPainterlyStroke)0;
     if (painterly)
     {
@@ -85,7 +93,7 @@ float4 main(PSInput input) : SV_TARGET
     }
     HikariMaterialExpressionResult materialExpression = (HikariMaterialExpressionResult)0;
 #if HIKARI_SURFACE_PARTITION != HIKARI_SURFACE_PARTITION_TERRAIN
-    if (!terrainSurface && !painterly &&
+    if (!kGeometryAuxOpaque && !terrainSurface && !painterly &&
         materialData.materialProgramIndex != HIKARI_STANDARD_PBR_MATERIAL_PROGRAM)
     {
         HikariMaterialExpressionContext expressionContext =
@@ -98,14 +106,14 @@ float4 main(PSInput input) : SV_TARGET
             materialData, expressionContext, gLinearWrap);
     }
 #endif
-    if ((materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0)
+    if (!kGeometryAuxOpaque && (materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0)
     {
         float4 albedo = HikariResolveMaterialBaseColor(materialData, input.uv, input.uv1, gLinearWrap);
         float alphaClipThreshold = materialData.pbrParams.w;
         HikariApplyMaterialExpressionCoverage(materialExpression, albedo, alphaClipThreshold);
         if (albedo.a < alphaClipThreshold) discard;
     }
-    if (HikariSurfaceHasMaterialFx(input.surfaceFeatureFlags))
+    if (!kGeometryAuxOpaque && HikariSurfaceHasMaterialFx(input.surfaceFeatureFlags))
     {
         const HikariSurfaceGpuSceneInstance instance =
             HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
