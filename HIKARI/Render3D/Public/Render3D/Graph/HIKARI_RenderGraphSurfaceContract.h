@@ -299,8 +299,9 @@ inline constexpr std::array<SceneSurfaceSemanticDesc, static_cast<size_t>(GRAPH:
                     SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
         SurfaceDesc(Semantic::StylizedOutlineStyle, Kind::Texture2D, Format::R8G8B8A8Unorm, Lifetime::FrameLocal,
                     Fallback::SkipProvider, SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
-        SurfaceDesc(Semantic::AmbientOcclusion, Kind::Texture2D, Format::R8Unorm, Lifetime::FrameLocal,
-                    Fallback::NeutralWhite, SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
+        // 近場の GI：rgb 照り返し（前露出済み）、a 可視性。無い時の中立値 (0,0,0,1) は白でも黒でもないので代替を出さない。
+        SurfaceDesc(Semantic::AmbientOcclusion, Kind::Texture2D, Format::R16G16B16A16Float, Lifetime::FrameLocal,
+                    Fallback::SkipProvider, SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
         SurfaceDesc(Semantic::ReactiveMask, Kind::Texture2D, Format::R8Unorm, Lifetime::FrameLocal,
                     Fallback::NeutralBlack, SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
         SurfaceDesc(Semantic::TransparencyMask, Kind::Texture2D, Format::R8Unorm, Lifetime::FrameLocal,

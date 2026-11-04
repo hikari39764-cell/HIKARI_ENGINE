@@ -257,7 +257,8 @@ bool IsLightingControlField(std::string_view section, std::string_view key) {
         return key == "contactShadows" || key == "contactShadowLength" || key == "contactShadowStrength";
     }
     if (section == "ambientOcclusion") {
-        return key == "enabled" || key == "mode" || key == "radius" || key == "strength" || key == "power";
+        return key == "enabled" || key == "mode" || key == "radius" || key == "thickness" || key == "strength" ||
+               key == "power";
     }
     if (section == "screenSpaceReflections") {
         // 光線追跡の反射（画質設定）もこの節の強さと粗さの上限に従う。

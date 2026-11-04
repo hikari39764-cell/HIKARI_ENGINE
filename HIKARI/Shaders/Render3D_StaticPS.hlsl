@@ -444,10 +444,12 @@ float4 main(PSInput input) : SV_TARGET
         return float4(occlusion.xxx, albedo.a);
     }
 
-    float screenAo = 1.0f;
+    // 近場の GI（照り返しは前露出を外して E/pi に戻す）。無い時は照り返し 0・可視性 1。
+    float4 nearField = float4(0.0f, 0.0f, 0.0f, 1.0f);
     if (!costNoSsao && gSsaoEnabled > 0.5f)
     {
-        screenAo = gSsaoTex.Load(int3(int2(input.position.xy), 0)).r;
+        nearField = gSsaoTex.Load(int3(int2(input.position.xy), 0));
+        nearField.rgb = HikariRemovePreExposure(max(nearField.rgb, 0.0f.xxx), gViewExposure);
     }
     float shadowVisibility = 1.0f;
     // 標準 PBR の太陽の直射は n·l <= 0 で 0（HikariEvaluateDirectPbrLobes）で、Cel の段も影に依らないので、太陽に
@@ -530,7 +532,7 @@ float4 main(PSInput input) : SV_TARGET
         const HikariAmbientIblLobes ambient = HikariEvaluateAmbientIblLobes(
             pbrContext,
             occlusion,
-            screenAo,
+            nearField,
             input.worldPosWS,
             geometricNormal,
             surfaceLightmap,

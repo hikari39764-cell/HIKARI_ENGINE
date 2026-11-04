@@ -41,6 +41,8 @@ public:
 
     RENDER3D::RenderTextureView CaptureSceneColorSnapshot(SceneColorSnapshotKind kind);
     RENDER3D::RenderTextureView GetSceneColorSnapshotView(SceneColorSnapshotKind kind) const;
+    // 前フレームに複製した不透明の場面色（今の場面と同じ大きさの時だけ。近場の GI が照り返しに読む）。
+    RENDER3D::RenderTextureView GetPreviousOpaqueSceneColorView();
 
     void SetAmbientColor(float r, float g, float b);
     void BeginLightCapture();
@@ -70,6 +72,7 @@ private:
     float lightClearColor_[3] = {1.0f, 1.0f, 1.0f};
     bool active_ = false;
     std::array<bool, kSnapshotKindCount> sceneColorReady_{};
+    bool previousOpaqueReady_ = false;
     bool lightingEnabled_ = false;
 };
 

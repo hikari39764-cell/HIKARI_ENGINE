@@ -57,10 +57,12 @@ float3 HikariResolveSurfaceDiffuseIrradiance(float3 worldPos, float3 geometricNo
 
 // sampleProbes / sampleReflection を偽にすると、probe の読み出し（上の関数）と環境の鏡面反射を省く。前向きの診断モードが
 // それぞれの費用を測るための引数で、通常の描画は既定の真のまま。
+// nearField は近場の GI（rgb 照り返し E/pi、a 可視性）。探針の間接光は近場で塞がれなかった分だけ届き、塞いだ物の
+// 照り返しがそれに代わる。光照贴图の面は焼き込みが近くの遮蔽と照り返しを含むので近場を重ねない。
 HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
     HikariPbrShadingContext context,
     float occlusion,
-    float screenAo,
+    float4 nearField,
     float3 worldPos,
     float3 geometricNormal,
     float4 surfaceLightmap,
@@ -77,8 +79,14 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
     float skyVisibility;
     const float3 diffuseIbl = HikariResolveSurfaceDiffuseIrradiance(
         worldPos, geometricNormal, n, v, surfaceLightmap, surfaceLightmapWeight, skyVisibility, sampleProbes);
+#if HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_LIGHTMAP
+    const float nearWeight = 0.0f;
+#else
+    const float nearWeight = saturate(gSsaoDiffuseStrength) * (1.0f - saturate(surfaceLightmapWeight));
+#endif
+    const float visibility = lerp(1.0f, saturate(nearField.a), nearWeight);
     float3 diffuse =
-        kD * baseColor * diffuseIbl;
+        kD * baseColor * (diffuseIbl * visibility + nearField.rgb * nearWeight);
 
     // 空が遮られた所では空の反射の代わりに周囲の照り返し（拡散の E/pi）を映す（Lagarde の鏡面遮蔽）。
     const float skyOcclusion = saturate(pow(context.ndotView + skyVisibility, exp2(-16.0f * roughness - 1.0f)) -
@@ -99,21 +107,14 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
         specularResponse += coatResponse.xxx;
     }
 
-    float materialAo = saturate(occlusion);
-    float ssao = saturate(screenAo);
-    float diffuseAo =
-        materialAo *
-        lerp(
-            1.0f,
-            ssao,
-            saturate(gSsaoDiffuseStrength));
-    float specularAo = lerp(
+    const float materialAo = saturate(occlusion);
+    const float specularAo = lerp(
         1.0f,
-        materialAo * ssao,
+        materialAo * visibility,
         saturate(roughness * roughness) *
             saturate(gSsaoSpecularStrength));
     HikariAmbientIblLobes result;
-    result.diffuse = diffuse * diffuseAo;
+    result.diffuse = diffuse * materialAo;
     result.specular = specular * specularAo;
     result.specularResponse = specularResponse * specularAo;
     return result;
@@ -122,14 +123,14 @@ HikariAmbientIblLobes HikariEvaluateAmbientIblLobes(
 float3 HikariEvaluateAmbientIbl(
     HikariPbrShadingContext context,
     float occlusion,
-    float screenAo,
+    float4 nearField,
     float3 worldPos,
     float3 geometricNormal,
     float4 surfaceLightmap,
     float surfaceLightmapWeight)
 {
     const HikariAmbientIblLobes lobes = HikariEvaluateAmbientIblLobes(
-        context, occlusion, screenAo, worldPos, geometricNormal, surfaceLightmap, surfaceLightmapWeight);
+        context, occlusion, nearField, worldPos, geometricNormal, surfaceLightmap, surfaceLightmapWeight);
     return lobes.diffuse + lobes.specular;
 }
 

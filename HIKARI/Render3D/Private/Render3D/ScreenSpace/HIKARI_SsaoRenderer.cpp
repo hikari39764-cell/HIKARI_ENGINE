@@ -19,6 +19,7 @@
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Gfx/HIKARI_VideoMemory.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 
 namespace HIKARI::RENDER3D::SCREENSPACE {
@@ -33,7 +34,11 @@ struct SsaoPassCB {
     MATH::Vec4 aoParams1{};
     MATH::Vec4 blurParams{};
     MATH::Vec4 depthScreenParams{};
+    MATH::Mat4 previousViewProj{};
+    MATH::Vec4 nearFieldParams{}; // x 厚さ, y 前フレームの場面色あり, z 前露出の換算（P / P_prev）
 };
+
+constexpr DXGI_FORMAT kNearFieldFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
 constexpr uint32_t kSsaoConstantSliceCount = 8;
 
@@ -191,26 +196,29 @@ void RecordSsaoCompositeDebug(float cpuMs) { gDebugState.compositeCpuMs = cpuMs;
 
 bool SsaoRenderer::Render(const GFX::Context& graphics, ID3D12GraphicsCommandList* cmd,
                           const SURFACE::SceneSurfaceBuffer& surfaceBuffer, D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv,
-                          const MESHRENDERER::CameraCB& camera, const AmbientOcclusionSettings& settings) {
+                          const MESHRENDERER::CameraCB& camera, const AmbientOcclusionSettings& settings,
+                          const SsaoNearFieldInputs& nearField) {
     if (!surfaceBuffer.IsValid()) {
         valid_ = false;
         lastAoSrv_ = {};
         return false;
     }
     return RenderInternal(graphics, cmd, surfaceBuffer.GetWidth(), surfaceBuffer.GetHeight(), sceneDepthSrv,
-                          surfaceBuffer.GetPackedSurfaceSrv(), camera, settings, false);
+                          surfaceBuffer.GetPackedSurfaceSrv(), camera, settings, nearField, false);
 }
 
 bool SsaoRenderer::RenderDepthOnly(const GFX::Context& graphics, ID3D12GraphicsCommandList* cmd, uint32_t width,
                                    uint32_t height, D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv,
-                                   const MESHRENDERER::CameraCB& camera, const AmbientOcclusionSettings& settings) {
-    return RenderInternal(graphics, cmd, width, height, sceneDepthSrv, {}, camera, settings, true);
+                                   const MESHRENDERER::CameraCB& camera, const AmbientOcclusionSettings& settings,
+                                   const SsaoNearFieldInputs& nearField) {
+    return RenderInternal(graphics, cmd, width, height, sceneDepthSrv, {}, camera, settings, nearField, true);
 }
 
 bool SsaoRenderer::RenderInternal(const GFX::Context& graphics, ID3D12GraphicsCommandList* cmd, uint32_t width,
                                   uint32_t height, D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv,
                                   D3D12_GPU_DESCRIPTOR_HANDLE normalRoughnessSrv, const MESHRENDERER::CameraCB& camera,
-                                  const AmbientOcclusionSettings& settings, bool depthOnlyNormals) {
+                                  const AmbientOcclusionSettings& settings, const SsaoNearFieldInputs& nearField,
+                                  bool depthOnlyNormals) {
     const CpuClock::time_point totalStart = CpuClock::now();
     const SsaoResolvedMode modeParams = ResolveModeParameters(settings);
     FillDebugStateBase(width, height, settings);
@@ -248,6 +256,14 @@ bool SsaoRenderer::RenderInternal(const GFX::Context& graphics, ID3D12GraphicsCo
     // Temporal 蓄積を持たないため per-frame jitter は正味のちらつきにしかならない。乱数は画素位置だけで決める。
     cb.aoParams1 = {static_cast<float>(modeParams.sliceCount), static_cast<float>(modeParams.stepCount),
                     static_cast<float>(static_cast<int>(modeParams.mode)), depthOnlyNormals ? 1.0f : 0.0f};
+    // 照り返しは前フレームの場面色が今の画面と同じ大きさで残っている時だけ（再投影は前フレームの投影で）。
+    const RenderTextureView& previousColor = nearField.previousSceneColor;
+    const bool bounce =
+        previousColor.IsSampleable() && previousColor.width == screenWidth_ && previousColor.height == screenHeight_;
+    cb.previousViewProj = nearField.previousViewProj;
+    cb.nearFieldParams = {std::max(0.01f, settings.thickness), bounce ? 1.0f : 0.0f,
+                          RENDER3D::COLOR::GetActiveViewExposure().w, 0.0f};
+    const D3D12_GPU_DESCRIPTOR_HANDLE previousColorSrv = bounce ? previousColor.srv : sceneDepthSrv;
 
     uint32_t constantSliceIndex = 0;
     const UINT constantStride = GFX::AlignD3D12ConstantBufferByteSize(sizeof(SsaoPassCB));
@@ -280,8 +296,8 @@ bool SsaoRenderer::RenderInternal(const GFX::Context& graphics, ID3D12GraphicsCo
     ID3D12DescriptorHeap* heaps[] = {graphics.srvHeap};
     cmd->SetDescriptorHeaps(1, heaps);
 
-    // R8 AO target の optimized clear と完全一致させる。
-    const float white[] = {1.0f, 0.0f, 0.0f, 0.0f};
+    // 照り返し 0・可視性 1（optimized clear と完全一致させる）。
+    const float white[] = {0.0f, 0.0f, 0.0f, 1.0f};
 
     setViewport(width_, height_);
 
@@ -298,12 +314,12 @@ bool SsaoRenderer::RenderInternal(const GFX::Context& graphics, ID3D12GraphicsCo
         if (cbAddress == 0) {
             return false;
         }
-        cmd->SetGraphicsRootSignature(depthOnlyNormals ? depthOnlyGenerateRootSig_.Get() : generateRootSig_.Get());
+        cmd->SetGraphicsRootSignature(generateRootSig_.Get());
         cmd->SetGraphicsRootConstantBufferView(0, cbAddress);
         cmd->SetGraphicsRootDescriptorTable(1, sceneDepthSrv);
-        if (!depthOnlyNormals) {
-            cmd->SetGraphicsRootDescriptorTable(2, normalRoughnessSrv);
-        }
+        // 深度から法線を作る経路は t1 を読まない（深度を代わりに束ねる）。
+        cmd->SetGraphicsRootDescriptorTable(2, depthOnlyNormals ? sceneDepthSrv : normalRoughnessSrv);
+        cmd->SetGraphicsRootDescriptorTable(3, previousColorSrv);
         cmd->SetPipelineState(pso);
         DrawFullscreen(cmd);
         Transition(cmd, rawAo_.Get(), rawState_, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
@@ -517,8 +533,8 @@ RenderTextureView SsaoRenderer::GetAoView() const {
         resource = rawAo_.Get();
         resourceState = rawState_;
     }
-    return {resource,      lastAoSrv_, DXGI_FORMAT_R8_UNORM, screenWidth_,
-            screenHeight_, 1,          resourceState,        valid_ && resource != nullptr && lastAoSrv_.ptr != 0};
+    return {resource,      lastAoSrv_, kNearFieldFormat, screenWidth_,
+            screenHeight_, 1,          resourceState,    valid_ && resource != nullptr && lastAoSrv_.ptr != 0};
 }
 
 bool SsaoRenderer::RefreshAoDescriptorsForCurrentFrame(const GFX::Context& graphics) {
@@ -546,7 +562,7 @@ bool SsaoRenderer::RefreshAoDescriptorsForCurrentFrame(const GFX::Context& graph
         }
 
         D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
-        srv.Format = DXGI_FORMAT_R8_UNORM;
+        srv.Format = kNearFieldFormat;
         srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         srv.Texture2D.MipLevels = 1;
@@ -574,9 +590,9 @@ bool SsaoRenderer::CreateAoResource(const GFX::Context& graphics, uint32_t width
         return false;
     }
 
-    const D3D12_CLEAR_VALUE clearValue{DXGI_FORMAT_R8_UNORM, {1.0f, 0.0f, 0.0f, 0.0f}};
+    const D3D12_CLEAR_VALUE clearValue{kNearFieldFormat, {0.0f, 0.0f, 0.0f, 1.0f}};
     const auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    const auto desc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8_UNORM, width, height, 1, 1, 1, 0,
+    const auto desc = CD3DX12_RESOURCE_DESC::Tex2D(kNearFieldFormat, width, height, 1, 1, 1, 0,
                                                    D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 
     HRESULT hr = GFX::VIDEO_MEMORY::CreateCommittedResource(
@@ -647,8 +663,8 @@ bool SsaoRenderer::EnsurePipeline(const GFX::Context& graphics) {
         return SUCCEEDED(GFX::CreateRootSignature(device, rsDesc, outRootSig));
     };
 
-    if (!createRootSignature(2, generateRootSig_.GetAddressOf()) ||
-        !createRootSignature(1, depthOnlyGenerateRootSig_.GetAddressOf()) ||
+    // 生成（法線を読む経路も深度から作る経路も同じ）：深度・法線・前フレームの場面色。
+    if (!createRootSignature(3, generateRootSig_.GetAddressOf()) ||
         !createRootSignature(3, blurRootSig_.GetAddressOf()) ||
         !createRootSignature(2, depthOnlyBlurRootSig_.GetAddressOf())) {
         return false;
@@ -692,13 +708,13 @@ bool SsaoRenderer::EnsurePipeline(const GFX::Context& graphics) {
         desc.InputLayout = {nullptr, 0};
         desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
         desc.NumRenderTargets = 1;
-        desc.RTVFormats[0] = DXGI_FORMAT_R8_UNORM;
+        desc.RTVFormats[0] = kNearFieldFormat;
         desc.SampleDesc.Count = 1;
         return SUCCEEDED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(outPso)));
     };
 
     return makePso(generateRootSig_.Get(), generateVs.Get(), generatePs.Get(), generatePso_.GetAddressOf()) &&
-           makePso(depthOnlyGenerateRootSig_.Get(), generateVs.Get(), depthOnlyGeneratePs.Get(),
+           makePso(generateRootSig_.Get(), generateVs.Get(), depthOnlyGeneratePs.Get(),
                    depthOnlyGeneratePso_.GetAddressOf()) &&
            makePso(blurRootSig_.Get(), blurVs.Get(), blurPs.Get(), blurPso_.GetAddressOf()) &&
            makePso(blurRootSig_.Get(), blurVs.Get(), upsamplePs.Get(), upsamplePso_.GetAddressOf()) &&
@@ -741,7 +757,6 @@ void SsaoRenderer::Release() {
     GFX::RetireD3D12ObjectForCurrentFrame(resolvedAo_, "SSAO.ResolvedAO");
     GFX::RetireD3D12ObjectForCurrentFrame(rtvHeap_, "SSAO.RTVHeap");
     generateRootSig_.Reset();
-    depthOnlyGenerateRootSig_.Reset();
     generatePso_.Reset();
     depthOnlyGeneratePso_.Reset();
     blurRootSig_.Reset();

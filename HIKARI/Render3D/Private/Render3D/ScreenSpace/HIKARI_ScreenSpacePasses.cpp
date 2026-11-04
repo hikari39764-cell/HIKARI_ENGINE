@@ -415,7 +415,8 @@ ScreenSpaceFrameResult ExecuteScreenSpacePreLightingPasses(ScreenSpaceRuntimeSta
     bool ssaoOk = false;
     if (context.renderTargetAccess.BeginDepthRead()) {
         ssaoOk = state.ssaoRenderer.Render(*context.graphics, context.cmd, state.surfaceBuffer, context.sceneDepth.srv,
-                                           renderCameraCb, environment.ambientOcclusion);
+                                           renderCameraCb, environment.ambientOcclusion,
+                                           {context.previousSceneColor, context.previousViewProj});
         context.renderTargetAccess.EndDepthRead();
         // SSAO は内部 AO RT を複数回 bind するので、lighting pass の前に scene RT へ戻す。
         context.renderTargetAccess.Rebind();
@@ -496,9 +497,9 @@ bool ExecuteScreenSpacePostOpaquePasses(ScreenSpaceRuntimeState& state,
         }
 
         if (refreshBalancedSsao) {
-            const bool ssaoOk =
-                state.ssaoRenderer.RenderDepthOnly(*context.graphics, context.cmd, context.width, context.height,
-                                                   context.sceneDepth.srv, cameraCb, environment.ambientOcclusion);
+            const bool ssaoOk = state.ssaoRenderer.RenderDepthOnly(
+                *context.graphics, context.cmd, context.width, context.height, context.sceneDepth.srv, cameraCb,
+                environment.ambientOcclusion, {context.previousSceneColor, context.previousViewProj});
             state.ssaoValid = ssaoOk;
             if (ssaoOk && state.ssaoRenderer.GetAoSrv().ptr != 0) {
                 result.ssaoRendered = true;
@@ -571,9 +572,9 @@ bool ExecuteBalancedSsaoFromSceneDepth(ScreenSpaceRuntimeState& state,
     }
 
     GFX::PIX::ScopedGpuEvent pixSsao(context.cmd, GFX::PIX::kColorPost, "SSAO.BalancedFromCurrentDepth");
-    const bool ssaoOk =
-        state.ssaoRenderer.RenderDepthOnly(*context.graphics, context.cmd, context.width, context.height,
-                                           context.sceneDepth.srv, renderCameraCb, environment.ambientOcclusion);
+    const bool ssaoOk = state.ssaoRenderer.RenderDepthOnly(
+        *context.graphics, context.cmd, context.width, context.height, context.sceneDepth.srv, renderCameraCb,
+        environment.ambientOcclusion, {context.previousSceneColor, context.previousViewProj});
     context.renderTargetAccess.EndDepthRead();
     if (!context.renderTargetAccess.Rebind()) {
         return false;

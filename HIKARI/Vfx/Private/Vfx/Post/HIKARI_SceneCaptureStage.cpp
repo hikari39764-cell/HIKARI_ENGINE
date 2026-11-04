@@ -90,6 +90,7 @@ bool SceneCaptureStage::EnsureSceneTargets(int width, int height) {
 }
 
 bool SceneCaptureStage::Begin(int width, int height) {
+    previousOpaqueReady_ = sceneColorReady_[SnapshotIndex(SceneColorSnapshotKind::Opaque)];
     sceneColorReady_.fill(false);
     lightingEnabled_ = false;
     currentTarget_ = nullptr;
@@ -318,6 +319,28 @@ RENDER3D::RenderTextureView SceneCaptureStage::GetSceneColorSnapshotView(SceneCo
             snapshot.GetColorState(),
             sceneColorReady_[snapshotIndex] && snapshot.GetResource() != nullptr &&
                 sceneColorSrvGpu_[snapshotIndex][frameSlot].ptr != 0};
+}
+
+RENDER3D::RenderTextureView SceneCaptureStage::GetPreviousOpaqueSceneColorView() {
+    constexpr SceneColorSnapshotKind kind = SceneColorSnapshotKind::Opaque;
+    const size_t snapshotIndex = SnapshotIndex(kind);
+    const RenderTarget2D& snapshot = sceneColorSnapshots_[snapshotIndex];
+    if (!previousOpaqueReady_ || !snapshot.GetResource() || snapshot.GetWidth() != sceneTarget_.GetWidth() ||
+        snapshot.GetHeight() != sceneTarget_.GetHeight()) {
+        return {};
+    }
+    // 中身は前フレームのまま。SRV は今フレームの帧槽に作り直す（その槽を前に使った GPU の仕事は終わっている）。
+    RefreshSceneColorSrv(kind);
+    const D3D12_GPU_DESCRIPTOR_HANDLE srv =
+        sceneColorSrvGpu_[snapshotIndex][context_.frameIndex % GFX::kFrameResourceCount];
+    return {snapshot.GetResource(),
+            srv,
+            snapshot.GetFormat(),
+            static_cast<uint32_t>(snapshot.GetWidth()),
+            static_cast<uint32_t>(snapshot.GetHeight()),
+            1,
+            snapshot.GetColorState(),
+            srv.ptr != 0};
 }
 
 void SceneCaptureStage::SetAmbientColor(float r, float g, float b) {

@@ -2927,6 +2927,7 @@
     {"ui.environment.ambientOcclusion.Off", "关闭"}, {"ui.environment.ambientOcclusion.Reference", "参考质量"},
     {"ui.environment.ambientOcclusion.OptimizedHigh", "高质量（优化）"},
     {"ui.environment.ambientOcclusion.Balanced", "平衡"}, {"ui.environment.ambientOcclusion.radius", "半径 (m)"},
+    {"ui.environment.ambientOcclusion.thickness", "物体厚度 (m)"},
     {"ui.environment.ambientOcclusion.bias", "表面偏移"}, {"ui.environment.ambientOcclusion.power", "对比（指数）"},
     {"ui.environment.ambientOcclusion.diffuseStrength", "压暗环境漫反射"},
     {"ui.environment.ambientOcclusion.specularStrength", "压暗环境高光"},

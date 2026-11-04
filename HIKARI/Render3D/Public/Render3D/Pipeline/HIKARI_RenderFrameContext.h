@@ -5,6 +5,7 @@
 
 #include <d3d12.h>
 
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_RenderFrameToken.h"
 #include "Render3D/Surface/HIKARI_RenderFrameSurfaceRegistry.h"
@@ -107,6 +108,9 @@ struct ScreenSpacePassContext {
     D3D12_CPU_DESCRIPTOR_HANDLE readOnlySceneDsv{};
     RenderTextureView sceneDepth{};
     RenderTargetAccess renderTargetAccess{};
+    // 近場の GI が照り返しに使う、前フレームの不透明の場面色とそれを描いた投影（無いフレームは無効）。
+    RenderTextureView previousSceneColor{};
+    MATH::Mat4 previousViewProj{};
 };
 
 } // namespace HIKARI::RENDER3D::PIPELINE

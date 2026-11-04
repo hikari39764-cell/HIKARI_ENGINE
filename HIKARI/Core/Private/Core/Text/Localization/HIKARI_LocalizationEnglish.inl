@@ -3300,6 +3300,7 @@
     {"ui.environment.ambientOcclusion.Off", "Off"}, {"ui.environment.ambientOcclusion.Reference", "Reference"},
     {"ui.environment.ambientOcclusion.OptimizedHigh", "High (Optimized)"},
     {"ui.environment.ambientOcclusion.Balanced", "Balanced"}, {"ui.environment.ambientOcclusion.radius", "Radius (m)"},
+    {"ui.environment.ambientOcclusion.thickness", "Object Thickness (m)"},
     {"ui.environment.ambientOcclusion.bias", "Surface Bias"},
     {"ui.environment.ambientOcclusion.power", "Contrast (Power)"},
     {"ui.environment.ambientOcclusion.diffuseStrength", "On Ambient Diffuse"},

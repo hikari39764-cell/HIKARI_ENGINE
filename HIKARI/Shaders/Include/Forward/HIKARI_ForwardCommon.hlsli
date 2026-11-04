@@ -67,7 +67,8 @@ static const uint HIKARI_FORWARD_COST_SKELETON = 14u;
 Texture2D<float> gShadowMap : register(t2);
 Texture2D<float> gSceneDepthTex : register(t7);
 Texture2D gSceneColorTex : register(t8);
-Texture2D gSsaoTex : register(t13);
+// 近場の GI：rgb 照り返し E/pi（前露出済み）、a 可視性（Post_SSAOPS）。
+Texture2D<float4> gSsaoTex : register(t13);
 // t1 space7 は地形/水面の共有 float pool が使うため、screen-space は t2/t3 へ移動。
 Texture2D<float> gScreenSpaceDepthPyramid : register(t2, space7);
 Texture2D<float4> gScreenSpacePackedSurface : register(t3, space7);

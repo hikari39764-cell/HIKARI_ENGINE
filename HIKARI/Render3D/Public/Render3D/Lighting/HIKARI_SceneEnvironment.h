@@ -172,13 +172,16 @@ enum class SsaoMode {
     Balanced,
 };
 
+// 近場の GI（画面空間、可視性ビットマスク）。半径の中の遮蔽と照り返しを探針の間接光に重ねる（以前の SSAO の代わり）。
+// thickness は画面に見えている面から奥へ続くとみなす物の厚さ（光はその裏へ回り込む）。
 struct AmbientOcclusionSettings {
     bool enabled = false;
     SsaoMode mode = SsaoMode::OptimizedHigh;
-    float radius = 0.6f;
+    float radius = 1.0f;
+    float thickness = 0.5f;
     float bias = 0.025f;
     float strength = 1.0f;
-    float power = 1.5f;
+    float power = 1.0f;
     float diffuseStrength = 1.0f;
     float specularStrength = 0.5f;
     uint32_t sampleCount = 16;

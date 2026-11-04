@@ -438,6 +438,9 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
                             environment.screenSpaceReflections.quality != ScreenSpaceReflectionQuality::Off;
     const bool hasSubsurfaceWork =
         environment.subsurfaceScattering.enabled && environment.subsurfaceScattering.strength > 0.0f;
+    // 近場の GI の照り返しは次のフレームでこのフレームの不透明の場面色を読む（調試視図の間は使わない）。
+    const bool nearFieldBounceWork = !debugRoute.active && RENDER3D::SCREENSPACE::ResolveEffectiveSsaoMode(
+                                                               environment.ambientOcclusion) != SsaoMode::Off;
     const bool stylizedFeatureMaskBackendReady = MESHRENDERER::HasStylizedFeatureMaskBackend();
     const bool geometryOutlineBackendReady = MESHRENDERER::HasGeometryOutlineFeatureBackend();
     const bool visibilityOverlayBackendReady = MESHRENDERER::HasVisibilityOverlayFeatureBackend();
@@ -470,6 +473,11 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     }
 
     screenSpaceContext.jitteredViewProj = temporalFrame.camera.jittered;
+    // 近場の GI の照り返し：前フレームの不透明の場面色とそれを描いた投影。調試視図の間は場面色が調試の色なので使わない。
+    if (!debugRoute.active) {
+        screenSpaceContext.previousSceneColor = POST::PostSystem::GetPreviousOpaqueSceneColorView();
+        screenSpaceContext.previousViewProj = temporalFrame.camera.prevViewProj;
+    }
     const MESHRENDERER::CameraCB* cameraCb = MESHRENDERER::GetCameraConstants();
     const MESHRENDERER::CameraCB* cullingCameraCb = MESHRENDERER::GetGpuDrivenCullingCameraConstants();
 
@@ -611,7 +619,8 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         hasTransparentWork,
         hasSsrWork,
         hasSubsurfaceWork,
-        hasDepthAwareWork || hasTransparentWork || hasSsrWork || stylizedScreenMaskRequired || globalPostMaskRequired,
+        hasDepthAwareWork || hasTransparentWork || hasSsrWork || nearFieldBounceWork || stylizedScreenMaskRequired ||
+            globalPostMaskRequired,
         &rayLighting,
         &materials});
     if (!graphStage.prefixCompleted || !graphStage.pausedForPresentation || !graphStage.session.IsValid()) {

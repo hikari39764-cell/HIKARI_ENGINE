@@ -173,6 +173,7 @@ constexpr auto kAmbientOcclusionFields = [](auto&& field) {
     field("enabled", &S::enabled);
     field("mode", &S::mode, kSsaoModeNames);
     field("radius", &S::radius, Range{0.01, 8.0});
+    field("thickness", &S::thickness, Range{0.01, 4.0});
     field("bias", &S::bias, Range{0.0, 1.0});
     field("strength", &S::strength, Slider(0.0, 4.0));
     field("power", &S::power, Range{0.1, 8.0});

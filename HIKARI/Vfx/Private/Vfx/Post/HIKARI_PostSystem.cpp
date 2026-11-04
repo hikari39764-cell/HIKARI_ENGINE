@@ -567,6 +567,9 @@ RENDER3D::RenderTextureView PostSystem::CaptureSceneColorSnapshot(SceneColorSnap
 RENDER3D::RenderTextureView PostSystem::GetSceneColorSnapshotView(SceneColorSnapshotKind kind) {
     return captureStage_.GetSceneColorSnapshotView(kind);
 }
+RENDER3D::RenderTextureView PostSystem::GetPreviousOpaqueSceneColorView() {
+    return captureStage_.GetPreviousOpaqueSceneColorView();
+}
 
 bool PostSystem::IsEditorViewportReady() {
     return presentationStage_.IsEditorOutputReady(requestedOutputWidth_, requestedOutputHeight_);

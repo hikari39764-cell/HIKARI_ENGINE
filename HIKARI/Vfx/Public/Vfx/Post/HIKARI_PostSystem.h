@@ -185,6 +185,7 @@ public:
 
     static RENDER3D::RenderTextureView CaptureSceneColorSnapshot(SceneColorSnapshotKind kind);
     static RENDER3D::RenderTextureView GetSceneColorSnapshotView(SceneColorSnapshotKind kind);
+    static RENDER3D::RenderTextureView GetPreviousOpaqueSceneColorView();
 
     static void SetAmbientColor(float r, float g, float b);
     static void BeginLightCapture();

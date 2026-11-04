@@ -43,14 +43,23 @@ struct SsaoDebugState {
     float totalCpuMs = 0.0f;
 };
 
+// 近場の照り返しの入力：前フレームの不透明の場面色と、それを描いた投影。場面色が無効なら可視性だけを作る。
+struct SsaoNearFieldInputs {
+    RenderTextureView previousSceneColor{};
+    MATH::Mat4 previousViewProj{};
+};
+
+// 近場の GI（可視性ビットマスク）。近場の照り返し（rgb）と可視性（a）を作り（Mode によっては半解像度）、両側フィルタで
+// 均して全解像度の RGBA16F に戻す。Forward は探針の間接光に可視性を掛け、照り返しを足す（SSAO の代わり）。
 class SsaoRenderer {
 public:
     bool Render(const GFX::Context& graphics, ID3D12GraphicsCommandList* cmd,
                 const SURFACE::SceneSurfaceBuffer& surfaceBuffer, D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv,
-                const MESHRENDERER::CameraCB& camera, const AmbientOcclusionSettings& settings);
+                const MESHRENDERER::CameraCB& camera, const AmbientOcclusionSettings& settings,
+                const SsaoNearFieldInputs& nearField);
     bool RenderDepthOnly(const GFX::Context& graphics, ID3D12GraphicsCommandList* cmd, uint32_t width, uint32_t height,
                          D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv, const MESHRENDERER::CameraCB& camera,
-                         const AmbientOcclusionSettings& settings);
+                         const AmbientOcclusionSettings& settings, const SsaoNearFieldInputs& nearField);
 
     void Release();
     void RecordSkipped(uint32_t width, uint32_t height, const AmbientOcclusionSettings& settings);
@@ -73,10 +82,9 @@ private:
     bool RenderInternal(const GFX::Context& graphics, ID3D12GraphicsCommandList* cmd, uint32_t width, uint32_t height,
                         D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv, D3D12_GPU_DESCRIPTOR_HANDLE normalRoughnessSrv,
                         const MESHRENDERER::CameraCB& camera, const AmbientOcclusionSettings& settings,
-                        bool depthOnlyNormals);
+                        const SsaoNearFieldInputs& nearField, bool depthOnlyNormals);
 
     Microsoft::WRL::ComPtr<ID3D12RootSignature> generateRootSig_{};
-    Microsoft::WRL::ComPtr<ID3D12RootSignature> depthOnlyGenerateRootSig_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> generatePso_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> depthOnlyGeneratePso_{};
     Microsoft::WRL::ComPtr<ID3D12RootSignature> blurRootSig_{};

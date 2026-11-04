@@ -3321,6 +3321,7 @@
     {"ui.environment.ambientOcclusion.Off", "オフ"}, {"ui.environment.ambientOcclusion.Reference", "リファレンス"},
     {"ui.environment.ambientOcclusion.OptimizedHigh", "高品質（最適化）"},
     {"ui.environment.ambientOcclusion.Balanced", "バランス"}, {"ui.environment.ambientOcclusion.radius", "半径 (m)"},
+    {"ui.environment.ambientOcclusion.thickness", "物の厚さ (m)"},
     {"ui.environment.ambientOcclusion.bias", "面のずらし"},
     {"ui.environment.ambientOcclusion.power", "コントラスト（指数）"},
     {"ui.environment.ambientOcclusion.diffuseStrength", "環境の拡散を暗く"},
