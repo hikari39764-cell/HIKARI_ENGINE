@@ -15,7 +15,43 @@ namespace HIKARI::ASSETS::MODELS::GLTF {
 
 using nlohmann::json;
 
-void ReadMaterials(const std::filesystem::path& gltfPath, const nlohmann::json& root, ModelAsset& asset) {
+namespace {
+
+constexpr uint32_t kNoSourceMaterial = UINT32_MAX;
+
+size_t CountTrianglePrimitivesWithoutMaterial(const json& root) {
+    size_t count = 0u;
+    if (!root.contains("meshes") || !root["meshes"].is_array()) {
+        return count;
+    }
+    for (const json& mesh : root["meshes"]) {
+        if (!mesh.contains("primitives") || !mesh["primitives"].is_array()) {
+            continue;
+        }
+        for (const json& primitive : mesh["primitives"]) {
+            if (primitive.value("mode", 4) == 4 &&
+                PrimitiveMaterialIndex(root, primitive, kNoSourceMaterial) == kNoSourceMaterial) {
+                ++count;
+            }
+        }
+    }
+    return count;
+}
+
+} // namespace
+
+uint32_t PrimitiveMaterialIndex(const json& root, const json& primitive, uint32_t defaultMaterialIndex) {
+    if (!primitive.contains("material") || !primitive["material"].is_number_integer()) {
+        return defaultMaterialIndex;
+    }
+    const int64_t index = primitive["material"].get<int64_t>();
+    const size_t materialCount =
+        root.contains("materials") && root["materials"].is_array() ? root["materials"].size() : 0u;
+    return index >= 0 && static_cast<uint64_t>(index) < materialCount ? static_cast<uint32_t>(index)
+                                                                      : defaultMaterialIndex;
+}
+
+uint32_t ReadMaterials(const std::filesystem::path& gltfPath, const nlohmann::json& root, ModelAsset& asset) {
     MaterialSlotIdBuilder slotIds(MaterialSlotImporterSemantic::Gltf);
     size_t unnamedMaterialCount = 0u;
 
@@ -68,6 +104,8 @@ void ReadMaterials(const std::filesystem::path& gltfPath, const nlohmann::json& 
                 ++unnamedMaterialCount;
             }
             mat.slotId = slotIds.Next(mat.name);
+            // glTF の metallicFactor の既定値は 1（Blender の書き出しは 1 のとき省く）。
+            mat.metallicFactor = 1.0f;
             if (matNode.contains("pbrMetallicRoughness")) {
                 const json& pbr = matNode["pbrMetallicRoughness"];
                 if (pbr.contains("baseColorFactor") && pbr["baseColorFactor"].is_array() &&
@@ -175,15 +213,27 @@ void ReadMaterials(const std::filesystem::path& gltfPath, const nlohmann::json& 
             asset.materials.push_back(std::move(mat));
         }
     }
-    if (asset.materials.empty()) {
-        MaterialAsset fallback{};
-        fallback.slotId = slotIds.Next("DefaultGltfMaterial");
-        asset.materials.push_back(std::move(fallback));
-    } else if (unnamedMaterialCount > 0u) {
+    if (unnamedMaterialCount > 0u) {
         asset.importDiagnostics.messages.push_back(
             "[MaterialSlot] glTF materials without source names use the unnamed-material duplicate ordinal. count=" +
             std::to_string(unnamedMaterialCount));
     }
+    const size_t primitivesWithoutMaterial = CountTrianglePrimitivesWithoutMaterial(root);
+    if (!asset.materials.empty() && primitivesWithoutMaterial == 0u) {
+        return 0u; // 既定材質を使う primitive は無い。
+    }
+    // 材質の割り当て忘れを示す既定材質。glTF 仕様の既定材質は metallic 1 だが、Blender の未割り当て表示と同じ
+    // 非金属にする（MaterialAsset の既定値）。
+    MaterialAsset fallback{};
+    fallback.name = "DefaultGltfMaterial";
+    fallback.slotId = slotIds.Next(fallback.name);
+    asset.materials.push_back(std::move(fallback));
+    if (primitivesWithoutMaterial > 0u) {
+        asset.importDiagnostics.messages.push_back("[glTF] primitives without a material use DefaultGltfMaterial. "
+                                                   "count=" +
+                                                   std::to_string(primitivesWithoutMaterial));
+    }
+    return static_cast<uint32_t>(asset.materials.size() - 1u);
 }
 
 } // namespace HIKARI::ASSETS::MODELS::GLTF

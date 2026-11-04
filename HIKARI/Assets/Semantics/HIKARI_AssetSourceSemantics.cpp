@@ -65,9 +65,8 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         AssetImporterKind::Model,
         AssetType::Model,
         "ModelImporter",
-        // 46: Lightmap UV の自動展開で chart の中が折り返したら chart を細かく分け直す。世界で重なる面（対角線の違う
-        // 二重の四角形など）の UV の重なりは失敗にしない。
-        46u,
+        // 47: glTF の material の無い primitive は既定材質（以前は 0 番の材質）を使う。metallicFactor の省略は 1。
+        47u,
         ".gltf, .obj, .fbx",
     },
     {

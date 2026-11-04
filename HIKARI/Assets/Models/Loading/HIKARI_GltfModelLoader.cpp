@@ -137,7 +137,7 @@ bool LoadGltfModelSource(ModelAsset& asset, std::vector<AssetImportInputFile>* s
         }
     }
 
-    GLTF::ReadMaterials(gltfPath, root, asset);
+    const uint32_t defaultMaterialIndex = GLTF::ReadMaterials(gltfPath, root, asset);
 
     GLTF::ReadSceneHierarchyAndSkins(root, accessors, bufferViews, loadedBuffers, asset);
 
@@ -234,11 +234,7 @@ bool LoadGltfModelSource(ModelAsset& asset, std::vector<AssetImportInputFile>* s
             MeshPrimitive primitiveAsset{};
             primitiveAsset.name = "Primitive" + std::to_string(primitiveIndex);
             primitiveAsset.layout = VertexLayoutKind::StaticPNTT;
-            const int materialIndex = primitive.value("material", 0);
-            primitiveAsset.materialIndex =
-                materialIndex >= 0 && materialIndex < static_cast<int>(asset.materials.size())
-                    ? static_cast<uint32_t>(materialIndex)
-                    : 0u;
+            primitiveAsset.materialIndex = GLTF::PrimitiveMaterialIndex(root, primitive, defaultMaterialIndex);
             primitiveAsset.indices = indices;
             primitiveAsset.hasMorphTargets =
                 primitive.contains("targets") && primitive["targets"].is_array() && !primitive["targets"].empty();
