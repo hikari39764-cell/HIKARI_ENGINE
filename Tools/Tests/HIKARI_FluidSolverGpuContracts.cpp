@@ -132,6 +132,72 @@ struct SliceReadback {
     }
 };
 
+// half float の切片の 1 texel を float へ。
+float HalfToFloat(uint16_t half) {
+    const uint32_t sign = (half >> 15u) & 1u, exponent = (half >> 10u) & 31u, mantissa = half & 1023u;
+    if (exponent == 0u)
+        return (sign ? -1.0f : 1.0f) * std::ldexp(static_cast<float>(mantissa), -24);
+    if (exponent == 31u)
+        return mantissa != 0u ? NAN : (sign ? -INFINITY : INFINITY);
+    return (sign ? -1.0f : 1.0f) * std::ldexp(static_cast<float>(mantissa + 1024u), static_cast<int>(exponent) - 25);
+}
+
+// 開いた境界の烟柱（Smoke_Puff と同じ設定：4 m の域、源は下寄りの球、浮力で上がる）。2 秒注入し続けて、投影後の
+// 散度が残らず、速度が浮力と注入の速さの程度に収まり、烟が域に柱として残る。多重网格が 3 段以上になる分辨率で、
+// 開いた境界（面の上で圧力 0）の粗い段の修正が発散しないことを見る。
+void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution, float minimumDensity) {
+    FluidVolumePass pass;
+    RENDER3D::PARTICLES::ParticleRenderInput input{};
+    FluidDomainSubmission domain{};
+    domain.key = {playbackNamespace, 1u, 1u, 0u};
+    domain.resetSimulation = true;
+    domain.worldPosition = {0.0f, 2.0f, 4.0f};
+    domain.settings.domainSize = {4.0f, 4.0f, 4.0f};
+    domain.settings.resolution = resolution;
+    domain.settings.boundary = FluidBoundary::Open;
+    domain.settings.vorticity = 0.3f;
+    domain.settings.buoyancy = 1.5f;
+    domain.settings.densityDissipation = 0.1f;
+    domain.settings.temperatureDissipation = 0.5f;
+    FluidSourceSubmission source{};
+    source.worldPosition = {0.0f, 0.7f, 4.0f};
+    source.shape = FluidSourceShape::Sphere;
+    source.radius = 0.35f;
+    source.ratePerSecond = 6.0f;
+    source.settings.temperature = 1.0f;
+    source.settings.velocity = {0.0f, 0.8f, 0.0f};
+    source.field.turbulence = 0.6f;
+    source.field.frequency = 2.0f;
+    source.field.evolution = 0.5f;
+    domain.sources.push_back(source);
+    input.fluids.push_back(domain);
+    FluidFrameSettings settings{};
+    settings.diagnostics = true;
+    pass.RequestDebugSlice({domain.key, FluidDebugField::Velocity, 0u, 0.5f});
+    SliceReadback readback;
+    float maxDivergence = 0.0f;
+    for (uint32_t frame = 0u; frame < 120u; ++frame) {
+        input.fluids[0].deltaSeconds = 1.0f / 60.0f;
+        fluid.Frame(pass, input, settings, [&] {
+            if (frame + 1u == 120u)
+                readback.Record(fluid, pass);
+        });
+        input.fluids[0].resetSimulation = false;
+        maxDivergence = (std::max)(maxDivergence, DomainStats(pass).maxDivergence);
+    }
+    float maxSpeed = 0.0f;
+    const std::vector<uint16_t> texels = readback.Read();
+    for (size_t index = 3u; index < texels.size(); index += 4u)
+        maxSpeed = (std::max)(maxSpeed, HalfToFloat(texels[index]));
+    const FluidDomainStats& stats = DomainStats(pass);
+    std::fprintf(stderr, "fluid open plume %u: density %.3f maxDivergence %.4f maxSpeed %.3f bricks %u/%u\n",
+                 resolution, stats.densityTotal, maxDivergence, maxSpeed, stats.activeBricks, stats.totalBricks);
+    // 子步ごとの V 循環 2 回で残る散度は 64 格で速度 / 格の約 0.5%（0.13 / s）。発散すると 1e6 を超える。
+    assert(stats.diagnosticsValid && maxDivergence < 0.25f && maxSpeed < 8.0f);
+    assert(stats.densityTotal > minimumDensity && stats.activeBricks > 1u);
+    pass.Shutdown();
+}
+
 // 決まったゲーム時間を frame の長さで刻んで解き、最後の密度の切片を返す。
 std::vector<uint16_t> SolveAtFrameRate(FluidGpu& fluid, uint64_t playbackNamespace, double frameSeconds,
                                        uint32_t frames, uint64_t& outSteps) {
@@ -169,8 +235,13 @@ void CheckFluidSolver() {
     FluidStepClock capped{};
     assert(capped.Advance(0.5, 1.0 / 60.0, 3u) == 3u && capped.pendingSeconds == 0.0);
     assert(capped.Advance(0.0, 1.0 / 60.0, 3u) == 0u);
-    const FluidGridLayout layout = ResolveFluidGridLayout({144.0f, 48.0f, 144.0f}, 144u);
-    assert(layout.cells[0] % 32u == 0u && (layout.cells[0] >> (layout.levels - 1u)) <= 8u);
+    // 格子：切り上げた後でも最も粗い段は各辺 8 以下で、各辺は砖块と段の倍率で割り切れる（半端な分辨率も）。
+    for (const uint32_t resolution : {16u, 17u, 64u, 65u, 66u, 71u, 136u, 143u, 144u, 256u}) {
+        const FluidGridLayout layout = ResolveFluidGridLayout({144.0f, 48.0f, 100.0f}, resolution);
+        const uint32_t unit = (std::max)(8u, 1u << (layout.levels - 1u));
+        for (const uint32_t cells : layout.cells)
+            assert(cells % unit == 0u && (cells >> (layout.levels - 1u)) <= 8u);
+    }
 
     FluidGpu fluid;
     // 閉じた箱：注入して止め、消散なしで 1 秒回した時の密度の総量と、投影後の散度。静止した烟は量が変わらない。
@@ -230,6 +301,9 @@ void CheckFluidSolver() {
         assert(DomainStats(pass).completedSteps == frozen && DomainStats(pass).stepsThisFrame == 0u);
         pass.Shutdown();
     };
+    // 密度の総量は格の値の和（格の数に比例）。実測 32 格 1091、64 格 8194 の半分を下限にする。
+    OpenPlume(fluid, 40u, 32u, 500.0f);
+    OpenPlume(fluid, 41u, 64u, 4000.0f);
     closedBox(0, 1.0e-4f);
     closedBox(1, 0.06f);
     closedBox(2, 0.12f);

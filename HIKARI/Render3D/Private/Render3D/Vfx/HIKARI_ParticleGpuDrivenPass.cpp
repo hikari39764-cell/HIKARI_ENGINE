@@ -874,6 +874,11 @@ struct ParticleGpuDrivenPass::Impl {
                                                                                          : texturePool);
             context.cmdList->SetGraphicsRootDescriptorTable(19u, bindings.prefiltered.ptr ? bindings.prefiltered
                                                                                           : texturePool);
+            // 流体の無い視図は params.w = 0 で shader が体積を読まない（表は貼図の池で埋める）。
+            const bool fluid = bindings.fluidCameraVolume.ptr != 0u;
+            const MATH::Vec4 fluidParams = fluid ? bindings.fluidCameraVolumeParams : MATH::Vec4{};
+            context.cmdList->SetGraphicsRootDescriptorTable(21u, fluid ? bindings.fluidCameraVolume : texturePool);
+            context.cmdList->SetGraphicsRoot32BitConstants(22u, 4u, &fluidParams, 0u);
         };
         drawOrder.clear();
         drawOrder.reserve(drawItems.size());
@@ -945,7 +950,8 @@ struct ParticleGpuDrivenPass::Impl {
             constants.materialFlags =
                 (IsLitParticleMaterial(item.render.materialMode) && bindings.IsValid() ? 1u : 0u) |
                 (item.render.effectMaterialIncludesParticleColor ? 2u : 0u) |
-                (item.render.blendMode == ParticleBlendMode::Distortion ? 4u : 0u);
+                (item.render.blendMode == ParticleBlendMode::Distortion ? 4u : 0u) |
+                (item.render.blendMode == ParticleBlendMode::Additive ? 8u : 0u);
             // z/w は形状の幅テーパー。ルートシグネチャを増やさずに運ぶ。
             constants.depthParams = MakeGpuParticleFloat4(item.render.softIntersectionDistance, item.render.depthBias,
                                                           item.render.taperStart, item.render.taperEnd);

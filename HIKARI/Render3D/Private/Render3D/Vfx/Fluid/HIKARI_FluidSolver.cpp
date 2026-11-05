@@ -1,6 +1,7 @@
 #include "Render3D/Vfx/Fluid/HIKARI_FluidSolver.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <utility>
 
@@ -78,7 +79,7 @@ bool CreateRoot(ID3D12Device* device, ID3D12RootSignature** output) {
 
 // slice が偽なら 3D の体積、真なら調試の切片（2D、depth は 1）。
 bool CreateVolume(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
-                  FluidVolume& volume, bool slice = false) {
+                  FluidVolume& volume, bool slice) {
     D3D12_RESOURCE_DESC description{};
     description.Dimension = slice ? D3D12_RESOURCE_DIMENSION_TEXTURE2D : D3D12_RESOURCE_DIMENSION_TEXTURE3D;
     description.Width = width;
@@ -118,6 +119,66 @@ bool CreateBuffer(ID3D12Device* device, D3D12_HEAP_TYPE heapType, uint32_t bytes
 }
 
 } // namespace
+
+// 回転と倍率の逆で、域の局所の点を源の局所へ、源の局所の向きを域の局所へ移す行と、形・注入・力場を詰める。
+FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::Vec3& domainPosition,
+                               const MATH::Quat& domainRotation, float cellSize, float burstDensity) {
+    FluidSourceGpu gpu{};
+    const MATH::Vec3 inverseScale{1.0f / (std::max)(std::abs(source.worldScale.x), 1.0e-4f),
+                                  1.0f / (std::max)(std::abs(source.worldScale.y), 1.0e-4f),
+                                  1.0f / (std::max)(std::abs(source.worldScale.z), 1.0e-4f)};
+    const auto scaled = [&](const MATH::Vec3& v) {
+        return MATH::Vec3{v.x * inverseScale.x, v.y * inverseScale.y, v.z * inverseScale.z};
+    };
+    const MATH::Vec3 basis[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    MATH::Vec3 columns[3];
+    MATH::Vec3 back[3];
+    for (int axis = 0; axis < 3; ++axis) {
+        columns[axis] =
+            scaled(RotateToFluidLocal(source.worldRotation, MATH::RotateVector(domainRotation, basis[axis])));
+        back[axis] = RotateToFluidLocal(domainRotation, MATH::RotateVector(source.worldRotation, basis[axis]));
+    }
+    const MATH::Vec3 translation =
+        scaled(RotateToFluidLocal(source.worldRotation, domainPosition - source.worldPosition));
+    const float* t = &translation.x;
+    for (int row = 0; row < 3; ++row) {
+        gpu.rows[row][0] = (&columns[0].x)[row];
+        gpu.rows[row][1] = (&columns[1].x)[row];
+        gpu.rows[row][2] = (&columns[2].x)[row];
+        gpu.rows[row][3] = t[row];
+        gpu.rows[3 + row][0] = (&back[0].x)[row];
+        gpu.rows[3 + row][1] = (&back[1].x)[row];
+        gpu.rows[3 + row][2] = (&back[2].x)[row];
+    }
+    const float averageScale = (inverseScale.x + inverseScale.y + inverseScale.z) / 3.0f;
+    const float softEdge = 1.5f * cellSize * averageScale;
+    const auto set = [&](int row, float x, float y, float z, float w) {
+        gpu.rows[row][0] = x;
+        gpu.rows[row][1] = y;
+        gpu.rows[row][2] = z;
+        gpu.rows[row][3] = w;
+    };
+    set(6, static_cast<float>(source.shape), source.radius, source.innerRadius, source.height);
+    set(7, source.boxHalfExtents.x, source.boxHalfExtents.y, source.boxHalfExtents.z, source.coneAngleRadians);
+    set(8, (std::max)(source.ratePerSecond, 0.0f), burstDensity, source.settings.temperature,
+        source.settings.absorption);
+    set(9, source.settings.velocity.x, source.settings.velocity.y, source.settings.velocity.z,
+        source.settings.radialSpeed);
+    const auto& field = source.field;
+    set(10, field.center.x, field.center.y, field.center.z, field.radius);
+    set(11, field.axis.x, field.axis.y, field.axis.z, field.vortex);
+    set(12, field.turbulence, field.frequency, field.evolution, field.attraction);
+    const MATH::Vec3 wind = RotateToFluidLocal(domainRotation, source.wind);
+    set(13, wind.x, wind.y, wind.z, (std::max)(source.drag, 0.0f));
+    set(14, source.settings.guideStrength, source.settings.guideThickness,
+        source.settings.forceMode == FluidForceMode::TargetVelocity ? 1.0f : 0.0f, softEdge);
+    return gpu;
+}
+
+bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
+                              FluidVolume& volume) {
+    return CreateVolume(device, format, width, height, depth, volume, false);
+}
 
 bool CreateFluidSliceTexture(ID3D12Device* device, uint32_t width, uint32_t height, FluidVolume& volume) {
     return CreateVolume(device, DXGI_FORMAT_R16G16B16A16_FLOAT, width, height, 1u, volume, true);
@@ -178,17 +239,19 @@ bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& lay
     const uint32_t* n = layout.cells;
     bool created = true;
     for (FluidVolume& volume : resources.velocity)
-        created = created && CreateVolume(device, kVelocityFormat, n[0] + 1u, n[1] + 1u, n[2] + 1u, volume);
+        created = created && CreateVolume(device, kVelocityFormat, n[0] + 1u, n[1] + 1u, n[2] + 1u, volume, false);
     for (FluidVolume& volume : resources.density)
-        created = created && CreateVolume(device, kDensityFormat, n[0], n[1], n[2], volume);
+        created = created && CreateVolume(device, kDensityFormat, n[0], n[1], n[2], volume, false);
     resources.pressure.resize(layout.levels);
     resources.rhs.resize(layout.levels);
     for (uint32_t level = 0u; level < layout.levels; ++level) {
         const uint32_t w = (std::max)(n[0] >> level, 1u), h = (std::max)(n[1] >> level, 1u),
                        d = (std::max)(n[2] >> level, 1u);
-        created = created && CreateVolume(device, kPressureFormat, w, h, d, resources.pressure[level]) &&
-                  CreateVolume(device, kPressureFormat, w, h, d, resources.rhs[level]);
+        created = created && CreateVolume(device, kPressureFormat, w, h, d, resources.pressure[level], false) &&
+                  CreateVolume(device, kPressureFormat, w, h, d, resources.rhs[level], false);
     }
+    created = created && CreateVolume(device, DXGI_FORMAT_R16G16_FLOAT, (n[0] + 1u) / 2u, (n[1] + 1u) / 2u,
+                                      (n[2] + 1u) / 2u, resources.light, false);
     resources.bricks = ((n[0] + 7u) / 8u) * ((n[1] + 7u) / 8u) * ((n[2] + 7u) / 8u);
     resources.statsBytes = (resources.bricks * 12u + 255u) & ~255u;
     created = created && CreateBuffer(device, D3D12_HEAP_TYPE_DEFAULT, resources.statsBytes,
@@ -210,6 +273,7 @@ void RetireFluidDomainResources(const GFX::Context& context, FluidDomainResource
         RetireVolume(context, volume);
     for (FluidVolume& volume : resources.rhs)
         RetireVolume(context, volume);
+    RetireVolume(context, resources.light);
     if (resources.stats)
         GFX::RetireD3D12ObjectForFrame(resources.stats, context, "FluidSolver.Stats");
     for (auto& readback : resources.readback)

@@ -323,6 +323,11 @@ void VfxWorkspaceController::RegenerateEmitterIds(VFX::VfxEmitterData& emitter) 
     emitter.color.id = AllocateStableId("module.color");
     emitter.renderCommon.id = AllocateStableId("module.render_common");
     emitter.renderShape.id = AllocateStableId("module.render_shape");
+    // 流体の模块は流体の層だけが持つ（他の層では空のまま）。
+    emitter.fluidDomain.id =
+        emitter.kind == VFX::VfxLayerKind::Fluid ? AllocateStableId("module.fluid_domain") : std::string{};
+    emitter.fluidSource.id =
+        emitter.kind == VFX::VfxLayerKind::FluidSource ? AllocateStableId("module.fluid_source") : std::string{};
     for (auto& effect : emitter.effects) {
         const auto previous = effect.id;
         effect.id = AllocateStableId("effect");

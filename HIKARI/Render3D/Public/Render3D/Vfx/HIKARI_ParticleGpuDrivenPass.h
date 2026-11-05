@@ -61,6 +61,9 @@ struct ParticleGpuDrivenDrawBindings : SurfaceLightingBindings {
     std::optional<VFX::VfxPostProcessMode> postProcessMode;
     // 歪み層だけを戦闘の画面歪み遮罩へ描く経路。色の経路は歪み層を描かない
     bool distortionMask = false;
+    // この視図の流体の煙の相機体積（HIKARI_FluidCameraVolume.hlsli）。無い視図は空で、params.w = 0。
+    D3D12_GPU_DESCRIPTOR_HANDLE fluidCameraVolume{};
+    MATH::Vec4 fluidCameraVolumeParams{};
 };
 
 // Owned by one MeshRenderer view-resource set. This object has no

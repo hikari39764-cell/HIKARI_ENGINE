@@ -37,6 +37,9 @@ namespace PARTICLES {
 struct ParticleGpuDrivenPassStats;
 struct ParticleRenderFrameSource;
 } // namespace PARTICLES
+namespace FLUID {
+struct FluidRenderView;
+}
 namespace WORLD_SPRITES {
 struct WorldSpriteFrameSource;
 struct WorldSpritePassStats;
@@ -130,6 +133,11 @@ bool HasDepthAwarePassWork();
 bool HasForwardTransparentPassWork();
 bool HasPreservedVfxWork();
 bool RenderPreservedVfxPass(const GFX::Context& graphics, const MeshPassResources& passResources);
+// この視図で解いた流体の煙の域があるか（帧图の FluidVolumes pass を組む）。
+bool HasFluidVolumes();
+// 流体の煙をこの視図へ描く。場面の深度は読める状態で呼ぶ。失敗したフレームは煙だけを飛ばして警告する。
+bool RenderFluidVolumes(const GFX::Context& graphics, const RENDER3D::FLUID::FluidRenderView& view,
+                        const RENDER3D::PIPELINE::RenderTargetAccess& targetAccess);
 // 歪み層の粒子を戦闘の画面歪み遮罩へ描き、その貼図を返す（合成は PostSystem が行う）
 bool HasVfxDistortionWork();
 bool RenderVfxDistortionMaskPass(const GFX::Context& graphics, const MeshPassResources& passResources,

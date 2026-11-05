@@ -347,7 +347,8 @@ void DivergenceCS(uint3 id : SV_DispatchThreadID)
         gOut0[id] = Divergence(gIn0, id) * gCell.x * gCell.x;
 }
 
-// 近傍の圧力の和と、数える近傍の数（閉じた壁の外は数えない、開いた境界の外は 0 として数える）。
+// 近傍の圧力の和と、数える近傍の数。閉じた壁の外は数えない（勾配 0）。開いた境界は面の上で圧力 0：外の幽霊の格を
+// 内の格の符号反転とみなし、対角に 2 を足す（どの段でも零点が同じ面に来て、粗い段の修正が細かい段と食い違わない）。
 void Neighbors(Texture3D<float4> pressure, RWTexture3D<float4> pressureRw, bool useRw, int3 cell, int3 size,
                out float sum, out float count)
 {
@@ -360,7 +361,7 @@ void Neighbors(Texture3D<float4> pressure, RWTexture3D<float4> pressureRw, bool 
         const int3 neighbor = cell + offset;
         if (any(neighbor < 0) || any(neighbor >= size))
         {
-            count += Closed() ? 0.0f : 1.0f;
+            count += Closed() ? 0.0f : 2.0f;
             continue;
         }
         sum += useRw ? pressureRw[neighbor].x : pressure.Load(int4(neighbor, 0)).x;
@@ -434,7 +435,7 @@ void CoarsestSolveCS(uint3 id : SV_GroupThreadID)
                 neighbor[n >> 1u] += (n & 1u) != 0u ? 1 : -1;
                 if (any(neighbor < 0) || any(neighbor >= size))
                 {
-                    count += Closed() ? 0.0f : 1.0f;
+                    count += Closed() ? 0.0f : 2.0f;
                     continue;
                 }
                 sum += gCoarse[neighbor.x + 8 * (neighbor.y + 8 * neighbor.z)];
@@ -449,7 +450,8 @@ void CoarsestSolveCS(uint3 id : SV_GroupThreadID)
         gOut0[id] = gCoarse[index];
 }
 
-// 投影：t0 圧力（段 0）→ u0 速度（その場で書く）。閉じた境界の壁の面は 0。
+// 投影：t0 圧力（段 0）→ u0 速度（その場で書く）。閉じた境界の壁の面は 0、開いた境界の面は外の幽霊の格を
+// 内の符号反転として勾配を取る（面の上で圧力 0。Neighbors と同じ約束）。
 [numthreads(4, 4, 4)]
 void ProjectCS(uint3 id : SV_DispatchThreadID)
 {
@@ -471,8 +473,12 @@ void ProjectCS(uint3 id : SV_DispatchThreadID)
             velocity[axis] = 0.0f;
             continue;
         }
-        const float here = int(id[axis]) < size[axis] ? gIn0.Load(int4(id, 0)).x : 0.0f;
-        const float there = below[axis] >= 0 ? gIn0.Load(int4(below, 0)).x : 0.0f;
+        const bool hereInside = int(id[axis]) < size[axis];
+        const bool thereInside = below[axis] >= 0;
+        const float hereValue = hereInside ? gIn0.Load(int4(id, 0)).x : 0.0f;
+        const float thereValue = thereInside ? gIn0.Load(int4(below, 0)).x : 0.0f;
+        const float here = hereInside ? hereValue : -thereValue;
+        const float there = thereInside ? thereValue : -hereValue;
         velocity[axis] -= (here - there) * gCell.y;
     }
     gOut0[id] = velocity;

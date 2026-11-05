@@ -60,6 +60,17 @@ bool BuildRenderFrameGraphTailPlan(const RenderFrameGraphPlanOptions& options, v
         }
         tailDependency = complete;
     }
+    // 流体の煙は水（DepthAware）の後、透明物体の前に重ねる。粒子は相機体積で手前の煙を受ける。
+    if (options.includeFluidVolumes) {
+        const std::array fluidReads{ResourceUse{tailDependency, GRAPH::RenderGraphAccess::ReadDependency},
+                                    ResourceUse{resources.sceneDepth, GRAPH::RenderGraphAccess::ReadDepth}};
+        GRAPH::RenderGraphResourceId complete{};
+        if (!AddCompletionPass(graph, "FluidVolumes", "FluidVolumes.Complete", fluidReads, callbacks.fluidVolumes,
+                               userData, complete)) {
+            return false;
+        }
+        tailDependency = complete;
+    }
     if (options.includeTransparent) {
         GRAPH::RenderGraphResourceId complete{};
         if (!AddCompletionPass(graph, "ForwardTransparent", "ForwardTransparent.Complete",

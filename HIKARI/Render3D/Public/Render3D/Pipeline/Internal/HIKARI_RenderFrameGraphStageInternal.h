@@ -50,6 +50,7 @@ struct RenderFrameGraphPlanOptions {
     bool includeSubsurface = false;
     bool includeDepthAware = false;
     bool includeTransparent = false;
+    bool includeFluidVolumes = false;
     bool includeCameraDepthOfField = false;
     const RenderFrameProjectExtensionSink* projectExtensions = nullptr;
     GameProjectRenderViewPurpose projectPurpose = GameProjectRenderViewPurpose::Game;
@@ -70,6 +71,7 @@ struct RenderFrameGraphPassCallbacks {
     GRAPH::RenderGraphExecuteFn ssr = nullptr;
     GRAPH::RenderGraphExecuteFn subsurfaceScattering = nullptr;
     GRAPH::RenderGraphExecuteFn depthAware = nullptr;
+    GRAPH::RenderGraphExecuteFn fluidVolumes = nullptr;
     GRAPH::RenderGraphExecuteFn transparent = nullptr;
     GRAPH::RenderGraphExecuteFn featurePlan = nullptr;
     GRAPH::RenderGraphExecuteFn geometryFeatures = nullptr;
@@ -115,6 +117,7 @@ bool ExecuteMotionVectors(const GRAPH::RenderGraphPassContext& context, void* us
 bool ExecuteSceneColorOpaqueCapture(const GRAPH::RenderGraphPassContext& context, void* userData) noexcept;
 bool ExecuteSsr(const GRAPH::RenderGraphPassContext& context, void* userData) noexcept;
 bool ExecuteDepthAware(const GRAPH::RenderGraphPassContext& context, void* userData) noexcept;
+bool ExecuteFluidVolumes(const GRAPH::RenderGraphPassContext& context, void* userData) noexcept;
 bool ExecuteForwardTransparent(const GRAPH::RenderGraphPassContext& context, void* userData) noexcept;
 bool ExecuteRenderFeaturePlan(const GRAPH::RenderGraphPassContext& context, void* userData) noexcept;
 bool ExecuteGeometryFeatures(const GRAPH::RenderGraphPassContext& context, void* userData) noexcept;

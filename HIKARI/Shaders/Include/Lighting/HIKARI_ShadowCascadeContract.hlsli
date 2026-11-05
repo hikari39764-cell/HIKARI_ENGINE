@@ -37,4 +37,19 @@ float HikariShadowCascadeBlendWeight(
     return saturate((viewDepth - (farDepth - width)) / width);
 }
 
+// 体積（霧・流体）が使う級联 1 枚の比較標本（PCF なし）。図集の範囲外は 1 で valid = false。
+float HikariSampleVolumeShadowCascade(Texture2D<float> shadowMap, SamplerComparisonState shadowSampler,
+    float4x4 lightViewProj, float3 worldPosition, uint cascadeIndex, float2 tileScale, float2 atlasTexelSize,
+    float depthBias, out bool valid)
+{
+    const float4 clip = mul(lightViewProj, float4(worldPosition, 1.0f));
+    const float3 ndc = clip.xyz / max(abs(clip.w), 1e-6f);
+    const float2 uv = float2(ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f);
+    valid = all(uv >= 0.0f) && all(uv <= 1.0f) && ndc.z >= 0.0f && ndc.z <= 1.0f;
+    if (!valid) return 1.0f;
+    const float2 atlasUv = uv * tileScale + HikariShadowAtlasTileOrigin(cascadeIndex);
+    return shadowMap.SampleCmpLevelZero(shadowSampler,
+        HikariClampShadowAtlasTileUv(atlasUv, cascadeIndex, tileScale, atlasTexelSize), ndc.z - depthBias);
+}
+
 #endif

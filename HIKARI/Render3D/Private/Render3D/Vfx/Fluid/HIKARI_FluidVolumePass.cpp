@@ -12,6 +12,7 @@
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
+#include "Render3D/Vfx/Fluid/HIKARI_FluidRender.h"
 #include "Render3D/Vfx/Fluid/HIKARI_FluidSolver.h"
 
 namespace HIKARI::RENDER3D::FLUID {
@@ -37,69 +38,6 @@ struct alignas(16) DomainConstants {
 };
 static_assert(sizeof(DomainConstants) == 96u);
 
-// HIKARI_FluidGrid.hlsli の HikariFluidSource と同じ並び。
-struct FluidSourceGpu {
-    float rows[15][4];
-};
-static_assert(sizeof(FluidSourceGpu) == 240u);
-
-MATH::Quat Conjugate(const MATH::Quat& q) noexcept { return {-q.x, -q.y, -q.z, q.w}; }
-
-// 回転と倍率の逆で、域の局所の点を源の局所へ、源の局所の向きを域の局所へ移す行と、形・注入・力場を詰める。
-FluidSourceGpu PackSource(const FluidSourceSubmission& source, const MATH::Vec3& domainPosition,
-                          const MATH::Quat& domainRotation, float cellSize, float burstDensity) {
-    FluidSourceGpu gpu{};
-    const MATH::Quat toSource = Conjugate(source.worldRotation);
-    const MATH::Vec3 inverseScale{1.0f / (std::max)(std::abs(source.worldScale.x), 1.0e-4f),
-                                  1.0f / (std::max)(std::abs(source.worldScale.y), 1.0e-4f),
-                                  1.0f / (std::max)(std::abs(source.worldScale.z), 1.0e-4f)};
-    const auto scaled = [&](const MATH::Vec3& v) {
-        return MATH::Vec3{v.x * inverseScale.x, v.y * inverseScale.y, v.z * inverseScale.z};
-    };
-    const MATH::Vec3 basis[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
-    MATH::Vec3 columns[3];
-    MATH::Vec3 back[3];
-    for (int axis = 0; axis < 3; ++axis) {
-        columns[axis] = scaled(MATH::RotateVector(toSource, MATH::RotateVector(domainRotation, basis[axis])));
-        back[axis] =
-            MATH::RotateVector(Conjugate(domainRotation), MATH::RotateVector(source.worldRotation, basis[axis]));
-    }
-    const MATH::Vec3 translation = scaled(MATH::RotateVector(toSource, domainPosition - source.worldPosition));
-    const float* t = &translation.x;
-    for (int row = 0; row < 3; ++row) {
-        gpu.rows[row][0] = (&columns[0].x)[row];
-        gpu.rows[row][1] = (&columns[1].x)[row];
-        gpu.rows[row][2] = (&columns[2].x)[row];
-        gpu.rows[row][3] = t[row];
-        gpu.rows[3 + row][0] = (&back[0].x)[row];
-        gpu.rows[3 + row][1] = (&back[1].x)[row];
-        gpu.rows[3 + row][2] = (&back[2].x)[row];
-    }
-    const float averageScale = (inverseScale.x + inverseScale.y + inverseScale.z) / 3.0f;
-    const float softEdge = 1.5f * cellSize * averageScale;
-    const auto set = [&](int row, float x, float y, float z, float w) {
-        gpu.rows[row][0] = x;
-        gpu.rows[row][1] = y;
-        gpu.rows[row][2] = z;
-        gpu.rows[row][3] = w;
-    };
-    set(6, static_cast<float>(source.shape), source.radius, source.innerRadius, source.height);
-    set(7, source.boxHalfExtents.x, source.boxHalfExtents.y, source.boxHalfExtents.z, source.coneAngleRadians);
-    set(8, (std::max)(source.ratePerSecond, 0.0f), burstDensity, source.settings.temperature,
-        source.settings.absorption);
-    set(9, source.settings.velocity.x, source.settings.velocity.y, source.settings.velocity.z,
-        source.settings.radialSpeed);
-    const auto& field = source.field;
-    set(10, field.center.x, field.center.y, field.center.z, field.radius);
-    set(11, field.axis.x, field.axis.y, field.axis.z, field.vortex);
-    set(12, field.turbulence, field.frequency, field.evolution, field.attraction);
-    const MATH::Vec3 wind = MATH::RotateVector(Conjugate(domainRotation), source.wind);
-    set(13, wind.x, wind.y, wind.z, (std::max)(source.drag, 0.0f));
-    set(14, source.settings.guideStrength, source.settings.guideThickness,
-        source.settings.forceMode == FluidForceMode::TargetVelocity ? 1.0f : 0.0f, softEdge);
-    return gpu;
-}
-
 struct DomainState {
     ParticleEmitterInstanceKey key{};
     FluidDomainResources resources{};
@@ -118,6 +56,8 @@ struct DomainState {
     MATH::Vec3 previousPosition{};
     MATH::Vec3 previousVelocity{};
     uint32_t motionSamples = 0u;
+    // 解いたゲーム時間（細部のノイズを流れに沿って運ぶ時計。float の精度のため周期で折る）。
+    float simulationSeconds = 0.0f;
     std::array<float, kMaximumFluidSourcesPerDomain> pendingBurst{};
     std::array<uint64_t, GFX::kFrameResourceCount> readbackFence{};
     std::array<uint64_t, GFX::kFrameResourceCount> readbackSteps{};
@@ -131,63 +71,6 @@ bool IsFenceComplete(const GFX::Context& context, uint64_t fence) noexcept {
 }
 } // namespace
 
-FluidQualityPolicy ResolveFluidQualityPolicy(FluidSmokeQuality quality) noexcept {
-    switch (quality) {
-    case FluidSmokeQuality::Low: return {0.75f, 1u, 48u, 2u, 2u};
-    case FluidSmokeQuality::High: return {1.0f, 3u, 96u, 2u, 4u};
-    case FluidSmokeQuality::Balanced:
-    default: return {1.0f, 2u, 64u, 2u, 4u};
-    }
-}
-
-FluidGridLayout ResolveFluidGridLayout(const MATH::Vec3& domainSize, uint32_t resolution) noexcept {
-    FluidGridLayout layout{};
-    const float size[3] = {(std::max)(domainSize.x, 0.01f), (std::max)(domainSize.y, 0.01f),
-                           (std::max)(domainSize.z, 0.01f)};
-    const float longest = (std::max)(size[0], (std::max)(size[1], size[2]));
-    const uint32_t cellsOnLongest = std::clamp(resolution, kFluidResolutionMin, kFluidResolutionMax);
-    layout.cellSize = longest / static_cast<float>(cellsOnLongest);
-    uint32_t longestCells = 0u;
-    for (int axis = 0; axis < 3; ++axis) {
-        layout.cells[axis] =
-            (std::max)(kFluidBrickCells, static_cast<uint32_t>(std::ceil(size[axis] / layout.cellSize - 1.0e-3f)));
-        longestCells = (std::max)(longestCells, layout.cells[axis]);
-    }
-    // 最も粗い段の各辺を 8 以下にする段の数と、それで割り切れる格数（砖块の 8 の倍数でもある）。
-    layout.levels = 1u;
-    while ((longestCells >> (layout.levels - 1u)) > 8u)
-        ++layout.levels;
-    const uint32_t unit = (std::max)(kFluidBrickCells, 1u << (layout.levels - 1u));
-    for (uint32_t& cells : layout.cells)
-        cells = (cells + unit - 1u) / unit * unit;
-    return layout;
-}
-
-uint64_t EstimateFluidDomainBytes(const FluidGridLayout& layout) noexcept {
-    const uint64_t nx = layout.cells[0], ny = layout.cells[1], nz = layout.cells[2];
-    uint64_t bytes = 3u * 8u * (nx + 1u) * (ny + 1u) * (nz + 1u) + 3u * 2u * nx * ny * nz;
-    for (uint32_t level = 0u; level < layout.levels; ++level)
-        bytes += 2u * 4u * (std::max<uint64_t>(nx >> level, 1u)) * (std::max<uint64_t>(ny >> level, 1u)) *
-                 (std::max<uint64_t>(nz >> level, 1u));
-    return bytes;
-}
-
-uint32_t FluidStepClock::Advance(double deltaSeconds, double stepSeconds, uint32_t maximumSteps) noexcept {
-    if (!(stepSeconds > 0.0))
-        return 0u;
-    if (std::isfinite(deltaSeconds) && deltaSeconds > 0.0)
-        pendingSeconds += deltaSeconds;
-    // 同じゲーム時間で同じ子步の列になるよう、境目の丸めの誤差だけ許す。
-    uint32_t steps = static_cast<uint32_t>(std::floor((pendingSeconds + 1.0e-7) / stepSeconds));
-    pendingSeconds = (std::max)(0.0, pendingSeconds - steps * stepSeconds);
-    if (steps > maximumSteps) {
-        steps = maximumSteps;
-        pendingSeconds = 0.0;
-    }
-    completedSteps += steps;
-    return steps;
-}
-
 struct FluidVolumePass::Impl {
     INTERNAL::FluidSolverPipeline pipeline{};
     std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads{};
@@ -198,6 +81,9 @@ struct FluidVolumePass::Impl {
     std::optional<FluidDebugSliceRequest> sliceRequest{};
     INTERNAL::FluidVolume slice{};
     FluidDebugSliceView sliceView{};
+    INTERNAL::FluidRenderer renderer{};
+    // 最後の PrepareFrame で解いた、描く域（預熱の済んだもの）。続く RenderVolumes がその視図へ描く。
+    std::vector<INTERNAL::FluidRenderDomain> renderList{};
 
     DomainState* Find(const ParticleEmitterInstanceKey& key) noexcept {
         for (auto& domain : domains)
@@ -220,10 +106,12 @@ struct FluidVolumePass::Impl {
 // 回読の輪で GPU が終えた分を読む：砖块ごとの最大密度（占有）と、診断を記録した時は散度・密度の総量。
 void FluidVolumePass::Impl::ReadCompleted(DomainState& domain) {
     for (uint32_t slot = 0u; slot < GFX::kFrameResourceCount; ++slot) {
-        if (!domain.readbackPending[slot] || !IsFenceComplete(context, domain.readbackFence[slot]) ||
-            domain.readbackSteps[slot] < domain.stats.readbackSteps)
+        if (!domain.readbackPending[slot] || !IsFenceComplete(context, domain.readbackFence[slot]))
             continue;
+        // 届いた槽は必ず空ける（次のフレームの回読に使う）。読んだものより古い回読は捨てる。
         domain.readbackPending[slot] = false;
+        if (domain.readbackSteps[slot] < domain.stats.readbackSteps)
+            continue;
         ID3D12Resource* readback = domain.resources.readback[slot].Get();
         const D3D12_RANGE range{0, domain.resources.statsBytes};
         void* mapped = nullptr;
@@ -288,6 +176,8 @@ bool FluidVolumePass::Impl::PrepareDomain(DomainState& domain, const FluidDomain
         domain.motionSamples = 0u;
         domain.pendingBurst = {};
         domain.stats = {};
+        // 再起動の前に記録した回読（大きな子步数）が新しい統計を上書きしないよう、輪ごと捨てる。
+        domain.readbackPending = {};
     }
     return true;
 }
@@ -310,7 +200,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
             const float magnitude = MATH::Length(acceleration);
             if (magnitude > kMaximumFrameAcceleration)
                 acceleration = acceleration * (kMaximumFrameAcceleration / magnitude);
-            inertia = MATH::RotateVector(Conjugate(domain.frameRotation), acceleration) * -authored.inertia;
+            inertia = INTERNAL::RotateToFluidLocal(domain.frameRotation, acceleration) * -authored.inertia;
             if (domain.motionSamples >= 1u)
                 domain.previousVelocity = velocity;
             domain.motionSamples = (std::min)(domain.motionSamples + 1u, 2u);
@@ -338,10 +228,12 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
     domain.stats.completedSteps = domain.clock.completedSteps;
     domain.stats.stepsThisFrame = steps;
     domain.stats.prewarmRemainingSeconds = static_cast<float>(domain.prewarmRemaining);
+    domain.simulationSeconds =
+        static_cast<float>(std::fmod(static_cast<double>(domain.clock.completedSteps) * step, 4096.0));
 
     auto& upload = uploads[context.frameIndex % GFX::kFrameResourceCount];
     ID3D12GraphicsCommandList* commands = context.cmdList;
-    const MATH::Vec3 up = MATH::RotateVector(Conjugate(domain.frameRotation), MATH::Vec3{0.0f, 1.0f, 0.0f});
+    const MATH::Vec3 up = INTERNAL::RotateToFluidLocal(domain.frameRotation, MATH::Vec3{0.0f, 1.0f, 0.0f});
     const auto uploadConstants = [&](uint64_t stepIndex) -> D3D12_GPU_VIRTUAL_ADDRESS {
         DomainConstants constants{};
         constants.size[0] = layout.cells[0];
@@ -374,14 +266,15 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
     const auto uploadSources = [&](bool firstStep) -> D3D12_GPU_VIRTUAL_ADDRESS {
         const size_t count = (std::max<size_t>)(1u, (std::min)(submission.sources.size(),
                                                                static_cast<size_t>(kMaximumFluidSourcesPerDomain)));
-        const auto allocation = upload.Allocate(count * sizeof(FluidSourceGpu));
+        const auto allocation = upload.Allocate(count * sizeof(INTERNAL::FluidSourceGpu));
         if (!allocation)
             return 0u;
-        auto* table = static_cast<FluidSourceGpu*>(allocation.cpuAddress);
-        std::memset(table, 0, count * sizeof(FluidSourceGpu));
+        auto* table = static_cast<INTERNAL::FluidSourceGpu*>(allocation.cpuAddress);
+        std::memset(table, 0, count * sizeof(INTERNAL::FluidSourceGpu));
         for (size_t index = 0; index < submission.sources.size() && index < count; ++index) {
-            table[index] = PackSource(submission.sources[index], domain.framePosition, domain.frameRotation,
-                                      layout.cellSize, firstStep ? domain.pendingBurst[index] : 0.0f);
+            table[index] =
+                INTERNAL::PackFluidSource(submission.sources[index], domain.framePosition, domain.frameRotation,
+                                          layout.cellSize, firstStep ? domain.pendingBurst[index] : 0.0f);
         }
         return allocation.gpuAddress;
     };
@@ -460,15 +353,22 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         impl.stats.domains = 0u;
         impl.stats.skippedDomains = 0u;
         impl.stats.stepsThisFrame = 0u;
+        impl.stats.renderedDomains = 0u;
         impl.sliceView.valid = false;
     }
     impl.stats.perDomain.clear();
-    if (input == nullptr || context.device == nullptr || context.cmdList == nullptr)
+    impl.renderList.clear();
+    if (context.device == nullptr || context.cmdList == nullptr)
         return true;
     if (impl.context.device != nullptr && impl.context.device != context.device) {
         Shutdown();
     }
     impl.context = context;
+    // 透明物体の描画は流体の無いフレームでも相機体積を束ねる。
+    if (!impl.renderer.BeginFrame(context))
+        ++impl.stats.resourceFailures;
+    if (input == nullptr)
+        return true;
     for (const auto& key : input->retiredEmitters)
         for (size_t index = impl.domains.size(); index-- > 0u;)
             if (impl.domains[index]->key == key)
@@ -512,6 +412,18 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         domain->lastSimulatedFrame = input->frameIndex;
         impl.Solve(*domain, submission, policy, settings, advance);
         ++solved;
+        if (domain->prewarmRemaining > 0.0 || impl.renderList.size() >= INTERNAL::kMaximumRenderedFluidDomains)
+            continue;
+        INTERNAL::FluidRenderDomain& render = impl.renderList.emplace_back();
+        render.density = &domain->resources.density[domain->densityIndex];
+        render.velocity = &domain->resources.velocity[domain->velocityIndex];
+        render.light = &domain->resources.light;
+        render.layout = domain->resources.layout;
+        render.position = domain->framePosition;
+        render.rotation = domain->frameRotation;
+        render.settings = submission.settings;
+        render.colorMultiplier = submission.colorMultiplier;
+        render.simulationSeconds = domain->simulationSeconds;
     }
     impl.stats.domains += solved;
     impl.stats.bytes = 0u;
@@ -522,7 +434,25 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
     return true;
 }
 
+bool FluidVolumePass::RenderVolumes(const GFX::Context& context, const FluidRenderView& view,
+                                    const std::function<bool()>& bindSceneTarget) {
+    Impl& impl = *impl_;
+    if (impl.renderList.empty())
+        return true;
+    if (!impl.renderer.Render(context, view, impl.renderList, ResolveFluidQualityPolicy(view.quality).marchSteps,
+                              bindSceneTarget)) {
+        ++impl.stats.resourceFailures;
+        return false;
+    }
+    impl.stats.renderedDomains = (std::max)(impl.stats.renderedDomains, static_cast<uint32_t>(impl.renderList.size()));
+    return true;
+}
+
+bool FluidVolumePass::HasRenderableDomains() const noexcept { return !impl_->renderList.empty(); }
+FluidCameraVolumeView FluidVolumePass::GetCameraVolume() const noexcept { return impl_->renderer.GetCameraVolume(); }
+
 void FluidVolumePass::ReleaseNamespace(uint64_t playbackNamespace) {
+    impl_->renderList.clear();
     for (size_t index = impl_->domains.size(); index-- > 0u;)
         if (impl_->domains[index]->key.playbackNamespace == playbackNamespace)
             impl_->Retire(index);
@@ -530,6 +460,8 @@ void FluidVolumePass::ReleaseNamespace(uint64_t playbackNamespace) {
 
 void FluidVolumePass::Shutdown() {
     Impl& impl = *impl_;
+    impl.renderList.clear();
+    impl.renderer.Shutdown(impl.context);
     while (!impl.domains.empty())
         impl.Retire(impl.domains.size() - 1u);
     INTERNAL::RetireVolume(impl.context, impl.slice);

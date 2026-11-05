@@ -339,6 +339,7 @@ constexpr PassInfo kPassInfo[] = {
     {Pass::ParticleSimulation, "Particle Simulation", "Vfx"},
     {Pass::ParticleDraw, "Particle Draw", "Vfx"},
     {Pass::FluidSimulation, "Fluid Simulation", "Vfx"},
+    {Pass::FluidRender, "Fluid Render", "Vfx"},
     {Pass::VolumetricLighting, "Volumetric Lighting", "Render3D"},
     {Pass::StylizedGeometryOutline, "Stylized Geometry Outline", "Render3D"},
     {Pass::StylizedVisibilityOverlay, "Stylized Visibility Overlay", "Render3D"},

@@ -182,6 +182,18 @@ void INTERNAL::PrepareFluidFrame(const GFX::Context& graphics,
     PublishFluidMetrics(gMeshRendererState.fluidPass.GetStats(), TIME::GetFrameContext().frameIndex);
 }
 
+bool HasFluidVolumes() { return gMeshRendererState.fluidPass.HasRenderableDomains(); }
+
+bool RenderFluidVolumes(const GFX::Context& graphics, const RENDER3D::FLUID::FluidRenderView& view,
+                        const RENDER3D::PIPELINE::RenderTargetAccess& targetAccess) {
+    // 合成の前に場面の色と読み取り専用の深度を描画先へ戻す。
+    if (gMeshRendererState.fluidPass.RenderVolumes(graphics, view, [&] { return targetAccess.BeginDepthRead(); }))
+        return true;
+    DEBUGLOG::PushRenderError("[MeshRenderer][WARN] Fluid smoke rendering is unavailable this frame; "
+                              "the scene continues without smoke.");
+    return false;
+}
+
 void ShutdownParticleGpuDrivenPass() {
     gMeshRendererState.particlePass.Shutdown();
     gMeshRendererState.fluidPass.Shutdown();

@@ -214,7 +214,12 @@ bool ParticleGpuDrivenPipelineState::CreateDrawPipelines(ID3D12Device* device) {
     sceneDepthRange.NumDescriptors = 1u;
     sceneDepthRange.BaseShaderRegister = 3u;
 
-    std::array<D3D12_ROOT_PARAMETER, 21u> parameters{};
+    D3D12_DESCRIPTOR_RANGE fluidVolumeRange{};
+    fluidVolumeRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    fluidVolumeRange.NumDescriptors = 1u;
+    fluidVolumeRange.BaseShaderRegister = 11u;
+
+    std::array<D3D12_ROOT_PARAMETER, 23u> parameters{};
     parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     parameters[0].Descriptor.ShaderRegister = 0u;
     for (uint32_t index = 1u; index <= 5u; ++index) {
@@ -272,10 +277,19 @@ bool ParticleGpuDrivenPipelineState::CreateDrawPipelines(ID3D12Device* device) {
         parameter.DescriptorTable.pDescriptorRanges = &range;
         parameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     }
-    // 52 DWORDs: geometry/depth constants plus shared material and lighting resources.
+    // 57 DWORDs: geometry/depth constants plus shared material, lighting and fluid camera-volume resources.
     // 形状パラメータは per-draw バッファ (t5) から引く。
     parameters[20].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
     parameters[20].Descriptor.ShaderRegister = 5u;
+    // 流体の煙の相機体積（t11）とその引数（b8）。粒子の色に手前の煙を掛ける。
+    parameters[21].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    parameters[21].DescriptorTable.NumDescriptorRanges = 1u;
+    parameters[21].DescriptorTable.pDescriptorRanges = &fluidVolumeRange;
+    parameters[21].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    parameters[22].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+    parameters[22].Constants.ShaderRegister = 8u;
+    parameters[22].Constants.Num32BitValues = 4u;
+    parameters[22].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
     std::array<D3D12_STATIC_SAMPLER_DESC, 3u> samplers{};
     // VFX の帯は画面上で「長く細い」足跡になるため、等方な三線形だけだと
     // mip が過剰に選ばれて貼図がぼける。材質用スロット (s0) だけ

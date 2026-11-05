@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -10,16 +11,16 @@
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 
-// 体積流体（VFX の流体層）の GPU 解算。MeshRenderer の視図資源が粒子 pass と並べて持ち、粒子と同じ描画入力
-// （ParticleRenderInput.fluids）を受けて、域ごとに固定子步で解く。描画（步进）は第 4 步でここへ加わる。
+// 体積流体（VFX の流体層）の GPU 解算と描画。MeshRenderer の視図資源が粒子 pass と並べて持ち、粒子と同じ描画入力
+// （ParticleRenderInput.fluids）を受けて域ごとに固定子步で解き、帧图の FluidVolumes pass で視図へ描く。
 namespace HIKARI::RENDER3D::FLUID {
 
-// 画質の档位（表はここだけ）。解算の分辨率の倍率、子步ごとの V 循環の数、步进の步数と分辨率、同時に解く域の数。
+// 画質の档位（表は HIKARI_FluidLayout.cpp だけ）。解算の分辨率の倍率、子步ごとの V 循環の数、半分辨率の步进の步数、
+// 同時に解く域の数。
 struct FluidQualityPolicy {
     float resolutionScale = 1.0f;
     uint32_t vCycles = 2u;
     uint32_t marchSteps = 64u;
-    uint32_t marchDivisor = 2u;
     uint32_t maxDomains = 4u;
 };
 FluidQualityPolicy ResolveFluidQualityPolicy(FluidSmokeQuality quality) noexcept;
@@ -84,7 +85,36 @@ struct FluidVolumePassStats {
     uint32_t stepsThisFrame = 0u;
     uint64_t bytes = 0u;
     uint32_t resourceFailures = 0u;
+    uint32_t renderedDomains = 0u;
     std::vector<FluidDomainStats> perDomain{};
+};
+
+// 描く視図（主視図と編集器の視図）。行列は場面の深度と同じ（抖动込みの）描画格子。光は絶対量で、前露光は preExposure。
+struct FluidRenderView {
+    uint64_t viewKey = 0u;
+    MATH::Mat4 invViewProj{};
+    MATH::Mat4 prevViewProj{};
+    MATH::Vec3 cameraPosition{};
+    MATH::Vec3 cameraForward{0.0f, 0.0f, 1.0f};
+    bool historyValid = false;
+    uint32_t renderWidth = 0u;
+    uint32_t renderHeight = 0u;
+    D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv{};
+    DXGI_FORMAT sceneColorFormat = DXGI_FORMAT_UNKNOWN;
+    // 太陽へ向かう単位方向、太陽の法線照度（rgb）、空の環境光の輝度（rgb）。
+    MATH::Vec3 sunDirection{0.0f, 1.0f, 0.0f};
+    MATH::Vec3 sunIlluminance{};
+    MATH::Vec3 ambientRadiance{};
+    float preExposure = 1.0f;
+    float exposureRatio = 1.0f;
+    bool sceneShadows = false;
+    FluidSmokeQuality quality = FluidSmokeQuality::Balanced;
+};
+
+// 透明物体が読む相機体積（HIKARI_FluidCameraVolume.hlsli）。params：x near、y log(far/near)、z 層の数、w 1 で有効。
+struct FluidCameraVolumeView {
+    D3D12_GPU_DESCRIPTOR_HANDLE srv{};
+    MATH::Vec4 params{};
 };
 
 struct FluidFrameSettings {
@@ -105,6 +135,14 @@ public:
                       const FluidFrameSettings& settings);
     void ReleaseNamespace(uint64_t playbackNamespace);
     void Shutdown();
+
+    // 解いた域を視図へ描く：光照体積、相機体積、半分辨率の步进、時間の再構成、場面への合成。場面の深度は読める状態で
+    // 呼ぶ（BeginDepthRead の後）。bindSceneTarget は合成の前に場面の色と読み取り専用の深度を描画先へ戻す。
+    bool RenderVolumes(const GFX::Context& context, const FluidRenderView& view,
+                       const std::function<bool()>& bindSceneTarget);
+    bool HasRenderableDomains() const noexcept;
+    // このフレームで最後に描いた視図の相機体積（粒子など透明物体の描画が読む）。
+    FluidCameraVolumeView GetCameraVolume() const noexcept;
 
     void RequestDebugSlice(const FluidDebugSliceRequest& request);
     void ClearDebugSlice();

@@ -48,9 +48,9 @@ bool VfxWorkspaceController::AddEmitter(std::string_view parentEmitterId, std::s
     }
 
     VFX::VfxEmitterData emitter = VFX::MakeDefaultVfxAssetData().emitters.front();
+    emitter.kind = kind;
     RegenerateEmitterIds(emitter);
     emitter.id = id;
-    emitter.kind = kind;
     if (kind != VFX::VfxLayerKind::Particles) {
         emitter.renderShape.billboardMode = VFX::VfxBillboardMode::Fixed;
         emitter.spawn.ratePerSecond = 0;

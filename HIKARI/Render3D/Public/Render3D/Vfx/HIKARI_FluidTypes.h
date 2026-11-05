@@ -55,10 +55,10 @@ struct FluidDomainSettings {
     float densityDissipation = 0.1f;
     float temperatureDissipation = 0.5f;
     // 外観。消光は密度 1 の時 [1/m]。
-    MATH::Vec3 scatteringColor{0.82f, 0.82f, 0.85f};
+    MATH::Vec3 scatteringColor{0.92f, 0.92f, 0.94f};
     float extinction = 4.0f;
     float anisotropy = 0.2f;
-    float multipleScattering = 0.5f;
+    float multipleScattering = 0.8f;
     float ambientStrength = 1.0f;
     MATH::Vec3 emissionColor{1.0f, 0.45f, 0.12f};
     float emissionIntensity = 0.0f;

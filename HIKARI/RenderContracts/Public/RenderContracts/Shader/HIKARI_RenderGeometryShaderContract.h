@@ -99,11 +99,11 @@ inline constexpr std::string_view kParticleCompactionRootLayoutCanonical =
     "4:Constants(b1,space0,count5,All)|Pipeline(Compute)|Flags(None)";
 
 inline constexpr std::string_view kParticleDrawRootLayoutId = "HIKARI.RenderGeometry.ParticleDraw.Root";
-inline constexpr uint32_t kParticleDrawRootLayoutVersion = 5u;
+inline constexpr uint32_t kParticleDrawRootLayoutVersion = 6u;
 inline constexpr std::string_view kParticleDrawRootLayoutHash =
-    "4b67f7dd418e45869c1a14ee014ae01bb356d20dd9d05043a80ea4c1c0e3a134";
+    "8f7c7143b75f14d13098cf0be479a864a9eecea82d9a60a9b6e1c307ff70992f";
 inline constexpr std::string_view kParticleDrawRootLayoutCanonical =
-    "HIKARI.RenderGeometry.ParticleDraw.Root.v5|"
+    "HIKARI.RenderGeometry.ParticleDraw.Root.v6|"
     "0:CBV(b0,space0,All)|"
     "1:SRV(t1,space0,All)|"
     "2:SRV(t2,space0,All)|"
@@ -125,6 +125,8 @@ inline constexpr std::string_view kParticleDrawRootLayoutCanonical =
     "18:Table(SRV(t9,space0,count1),Pixel)|"
     "19:Table(SRV(t10,space0,count1),Pixel)|"
     "20:SRV(t5,space0,All)|"
+    "21:Table(SRV(t11,space0,count1),Pixel)|"
+    "22:Constants(b8,space0,count4,Pixel)|"
     "StaticSampler(s0,Anisotropic8Clamp,Pixel)|"
     "StaticSampler(s1,PointClamp,Pixel)|"
     "StaticSampler(s2,ComparisonLinearClampLessEqual,Pixel)|"
@@ -469,11 +471,11 @@ inline bool IsRenderGeometryBindingAllowed(RenderGeometryRootLayout layout,
     case RenderGeometryRootLayout::ParticleDraw:
         return (binding.kind == Kind::ConstantBuffer && binding.registerSpace == 0u &&
                 (binding.registerIndex <= 2u || binding.registerIndex == 4u || binding.registerIndex == 5u ||
-                 binding.registerIndex == 7u) &&
+                 binding.registerIndex == 7u || binding.registerIndex == 8u) &&
                 binding.count == 1u) ||
                (binding.kind == Kind::ShaderResource && binding.registerSpace == 0u &&
                 (((binding.registerIndex >= 1u && binding.registerIndex <= 5u) || binding.registerIndex == 9u ||
-                  binding.registerIndex == 10u || binding.registerIndex == 16u) &&
+                  binding.registerIndex == 10u || binding.registerIndex == 11u || binding.registerIndex == 16u) &&
                      binding.count == 1u ||
                  (binding.registerIndex == 20u && binding.count == 3968u))) ||
                (binding.kind == Kind::ShaderResource && binding.registerSpace == 5u && binding.registerIndex <= 2u &&

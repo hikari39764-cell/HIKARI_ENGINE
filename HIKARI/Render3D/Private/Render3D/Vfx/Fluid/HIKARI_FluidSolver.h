@@ -65,6 +65,8 @@ struct FluidDomainResources {
     std::array<FluidVolume, 3> density{};
     std::vector<FluidVolume> pressure{};
     std::vector<FluidVolume> rhs{};
+    // 描画の光照体積（格子の半分の分辨率、RG16F：x 太陽への透過率、y 空への透過率）。描く視図が毎フレーム書く。
+    FluidVolume light{};
     Microsoft::WRL::ComPtr<ID3D12Resource> stats{};
     D3D12_RESOURCE_STATES statsState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, GFX::kFrameResourceCount> readback{};
@@ -76,7 +78,24 @@ struct FluidDomainResources {
     uint32_t DiagnosticsOffset() const noexcept { return bricks * 4u; }
 };
 
+// 世界（または親）の向き v を、回転 rotation の局所の向きへ移す。
+inline MATH::Vec3 RotateToFluidLocal(const MATH::Quat& rotation, const MATH::Vec3& v) noexcept {
+    return MATH::RotateVector({-rotation.x, -rotation.y, -rotation.z, rotation.w}, v);
+}
+
+// HIKARI_FluidGrid.hlsli の HikariFluidSource と同じ並び（源の表 t6 の 1 行）。
+struct FluidSourceGpu {
+    float rows[15][4];
+};
+static_assert(sizeof(FluidSourceGpu) == 240u);
+
+// 回転と倍率の逆で、域の局所の点を源の局所へ、源の局所の向きを域の局所へ移す行と、形・注入・力場を詰める。
+FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::Vec3& domainPosition,
+                               const MATH::Quat& domainRotation, float cellSize, float burstDensity);
+
 bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& layout, FluidDomainResources& resources);
+bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
+                              FluidVolume& volume);
 bool CreateFluidSliceTexture(ID3D12Device* device, uint32_t width, uint32_t height, FluidVolume& volume);
 void RetireVolume(const GFX::Context& context, FluidVolume& volume);
 void RetireFluidDomainResources(const GFX::Context& context, FluidDomainResources& resources);

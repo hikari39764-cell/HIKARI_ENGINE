@@ -71,4 +71,67 @@ inline ShaderAssetResolveResult ResolveFluidSimulationShaderEntry(
     return resolved;
 }
 
+// 体積流体の描画（Render3D_FluidVolume.hlsl）：計算（ノイズ・光照体積・相機体積）と全画面（步进・時間の再構成・合成）が
+// 同じ根を使う。
+inline constexpr std::string_view kFluidVolumeShaderProgram = "HIKARI.EngineShader.Render3D_FluidVolume";
+inline constexpr std::string_view kFluidVolumeShaderRootCanonical =
+    "HIKARI.FluidVolume.Root.v1|0:CBV(b0,All)|1:RootConstants(b1,space0,4,All)|2..19:SRVTable(t0..t17,count1,All)|"
+    "20:UAVTable(u0,count1,All)|StaticSampler(s0,LinearClamp)|StaticSampler(s1,LinearBorderTransparentBlack)|"
+    "StaticSampler(s2,LinearWrap)|StaticSampler(s3,PointClamp)|StaticSampler(s4,ComparisonLinearBorderWhite)|"
+    "Flags(None)";
+inline constexpr std::string_view kFluidVolumeShaderInterfaceCanonical =
+    "FluidRenderCB:1152;mat4 inverseViewProj,previousViewProj;float4 camera,forward,size(half,"
+    "render),sun(direction,shadowed),sunRadiance,ambient(rgb,exposureRatio),frame(jitter,historyWeight,steps,"
+    "domains);cameraVolume(near,logRange,slices,samples);mat4 lightViewProj[4];float4 splits,shadowParams,"
+    "shadowSampling,shadowBias;FluidDomain[4]:144 toGrid[3],cells,look,emission,optics,detail,sun;"
+    "t0..t3 density,t4..t7 velocity,t8..t11 light RG16F half,t12 scene depth,t13/t14 march color RGBA16F/depth "
+    "RG32F,t15 history,t16 noise R8 64^3,t17 shadow atlas;premultiplied pre-exposed scattering and "
+    "transmittance;composite ONE/INV_SRC_ALPHA;camera volume log slices";
+
+inline ShaderAssetContractExpectation MakeFluidVolumeShaderContract(
+    ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
+    ShaderAssetContractExpectation contract{};
+    contract.engineInterfaceId = "HIKARI.FluidVolume";
+    contract.engineInterfaceVersion = 1u;
+    contract.rootLayoutId = "HIKARI.FluidVolume.Root";
+    contract.rootLayoutVersion = 1u;
+    contract.availableDeviceCaps = availableCaps;
+    if (!HASH::ComputeSha256(kFluidVolumeShaderInterfaceCanonical, contract.engineInterfaceHash) ||
+        !HASH::ComputeSha256(kFluidVolumeShaderRootCanonical, contract.rootLayoutHash)) {
+        return {};
+    }
+    return contract;
+}
+
+inline bool IsFluidVolumeBindingAllowed(const ShaderResourceBinding& binding) noexcept {
+    using Kind = ShaderResourceBindingKind;
+    if (binding.count != 1u || binding.registerSpace != 0u) {
+        return false;
+    }
+    switch (binding.kind) {
+    case Kind::ConstantBuffer: return binding.registerIndex <= 1u;
+    case Kind::ShaderResource: return binding.registerIndex <= 17u;
+    case Kind::UnorderedAccess: return binding.registerIndex == 0u;
+    case Kind::Sampler: return binding.registerIndex <= 4u;
+    }
+    return false;
+}
+
+inline ShaderAssetResolveResult ResolveFluidVolumeShaderEntry(std::string entry, ShaderStage stage,
+                                                              ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
+    const char* profile = stage == ShaderStage::Compute ? "cs_6_0" : stage == ShaderStage::Vertex ? "vs_6_0" : "ps_6_0";
+    auto resolved = ResolveBuiltinShaderEntry(kFluidVolumeShaderProgram, {std::move(entry), stage, profile},
+                                              MakeFluidVolumeShaderContract(availableCaps));
+    if (resolved) {
+        for (const ShaderResourceBinding& binding : resolved.lease.GetEntry()->bindings) {
+            if (!IsFluidVolumeBindingAllowed(binding)) {
+                return {ShaderAssetResolveCode::ArtifactInvalid,
+                        {},
+                        "fluid volume shader binding exceeds its root contract"};
+            }
+        }
+    }
+    return resolved;
+}
+
 } // namespace HIKARI::ASSETS::SHADER
