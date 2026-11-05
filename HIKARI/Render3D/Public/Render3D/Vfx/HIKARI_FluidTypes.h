@@ -81,7 +81,7 @@ struct FluidSourceSettings {
     // 体積の湧き出し：形の表面から外へこの速さ [m/s] で流れ出る量を形の中で一様に湧かせる（負で吸い込む。漏斗の底の
     // 汇、吹き出し口）。開いた境界の域だけ（閉じた箱では非圧縮の流体に逃げ場が無い）。Domain の形では効かない。
     float outflow = 0.0f;
-    // 形状引导：形の表面から guideThickness [m] の帯の中の烟を表面へ引き戻す強さ [1/s]。烟（密度）だけを運び、流れは変えない。
+    // 形状引导：形の外へ guideThickness [m] 以内まで出た烟を形の中へ引き戻す強さ [1/s]。烟（密度）だけを運び、流れは変えない。
     float guideStrength = 0.0f;
     float guideThickness = 0.25f;
     FluidForceMode forceMode = FluidForceMode::Acceleration;

@@ -151,7 +151,8 @@ void ClearCS(uint3 id : SV_DispatchThreadID)
 }
 
 // ---------------------------------------------------------------- 平流
-// 形状引导の速度 [m/s]（域の局所の点 p）：源の形の表面から帯の厚さの中の烟を表面へ引き戻す。烟（密度）の平流だけに足し、
+// 形状引导の速度 [m/s]（域の局所の点 p）：源の形の外へ帯の厚さの中まで出た烟を形の中へ引き戻す（形の中の烟は動かさない。
+// 中の烟まで表面へ寄せると、厚い帯が表面の 2 枚の薄い膜になり、寄せ合う所で半ラグランジュ平流が量を失う）。烟（密度）の平流だけに足し、
 // 流れ（速度）には入れない。表面へ向かう流れは勾配の場で、速度へ入れると投影に打ち消され、圧力の残差だけが残って流れを
 // 乱す（128 格では烟が消える）。強さ guide.x [1/s] × 表面までの距離で寄せ、帯の端で 0 になる。
 float3 GuideVelocity(float3 p)
@@ -165,7 +166,7 @@ float3 GuideVelocity(float3 p)
         const float3 local = HikariFluidToSource(source, p);
         const float distance = HikariFluidSourceDistance(source, local);
         const float thickness = max(source.guide.y, 1.0e-3f);
-        if (abs(distance) >= thickness)
+        if (distance <= 0.0f || distance >= thickness)
             continue;
         const float e = 0.25f * thickness;
         const float3 gradient = float3(
@@ -173,7 +174,7 @@ float3 GuideVelocity(float3 p)
             HikariFluidSourceDistance(source, local + float3(0, e, 0)) - HikariFluidSourceDistance(source, local - float3(0, e, 0)),
             HikariFluidSourceDistance(source, local + float3(0, 0, e)) - HikariFluidSourceDistance(source, local - float3(0, 0, e)));
         const float3 normal = HikariFluidToDomain(source, gradient / max(length(gradient), 1.0e-6f));
-        guide -= normal * (distance * source.guide.x * (1.0f - abs(distance) / thickness));
+        guide -= normal * (distance * source.guide.x * (1.0f - distance / thickness));
     }
     return guide;
 }
@@ -309,6 +310,43 @@ void CurlCS(uint3 id : SV_DispatchThreadID)
     gOut0[id] = float4(curl, length(curl));
 }
 
+// 格子点 c の 0〜1 の値（整数の hash）。
+float LatticeValue(int3 c)
+{
+    uint h = (uint)c.x * 73856093u ^ (uint)c.y * 19349663u ^ (uint)c.z * 83492791u;
+    h = (h ^ (h >> 13u)) * 1274126177u;
+    return (float)((h ^ (h >> 16u)) & 0xffffu) / 65535.0f;
+}
+
+// 3D の値ノイズ（-1〜1、格子点の間を smoothstep で補間）。
+float ValueNoise(float3 x)
+{
+    const int3 i = (int3)floor(x);
+    const float3 f = x - floor(x);
+    const float3 u = f * f * (3.0f - 2.0f * f);
+    const float x00 = lerp(LatticeValue(i), LatticeValue(i + int3(1, 0, 0)), u.x);
+    const float x10 = lerp(LatticeValue(i + int3(0, 1, 0)), LatticeValue(i + int3(1, 1, 0)), u.x);
+    const float x01 = lerp(LatticeValue(i + int3(0, 0, 1)), LatticeValue(i + int3(1, 0, 1)), u.x);
+    const float x11 = lerp(LatticeValue(i + int3(0, 1, 1)), LatticeValue(i + int3(1, 1, 1)), u.x);
+    return lerp(lerp(x00, x10, u.y), lerp(x01, x11, u.y), u.z) * 2.0f - 1.0f;
+}
+
+// 烟を注入する形の重み：形の表面を格 4 つほどの塊で ±1.5 格ずらし、力の重み（HikariFluidSourceMask）の 2 倍の幅で
+// ぼかす。表面がそのまま格に沿った面で入ると、注入したての烟の縁が格子の階段（马赛克）に見える。形の奥（表面から
+// 3 格より内側）の量は変わらない。p は域の局所 [m]。
+float EmissionMask(HikariFluidSource source, float3 local, float3 p)
+{
+    const float soft = max(source.guide.w, 1.0e-4f);
+    const float distance = HikariFluidSourceDistance(source, local);
+    if (distance >= 2.5f * soft)
+        return 0.0f;
+    if (distance <= -2.5f * soft)
+        return 1.0f;
+    const float3 lump = p * (0.25f * gCell.y) + float3(0.0f, 0.07f, 0.0f) * gCell.w;
+    const float offset = ValueNoise(lump) * 0.7f + ValueNoise(lump * 2.03f + 17.3f) * 0.3f;
+    return saturate(0.5f - (distance + offset * soft) / (2.0f * soft));
+}
+
 // 源 1 つの加速度と注入（格の中心、域の局所 p）。velocity は今の速度。
 void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout float3 acceleration,
                  inout float density, inout float temperature)
@@ -333,18 +371,21 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
     else
         acceleration += field;
     acceleration += source.wind.xyz * falloff - velocity * (source.wind.w * falloff);
+    if (source.emission.x > 0.0f || source.emission.y > 0.0f)
+    {
+        const float emit = EmissionMask(source, local, p);
+        if (emit > 0.0f)
+        {
+            temperature += (source.emission.z - temperature) * saturate(emit * 8.0f * gCell.z + emit * saturate(source.emission.y));
+            density += emit * (source.emission.x * gCell.z + source.emission.y);
+        }
+    }
     if (mask <= 0.0f)
         return;
     // 注入する速度（源の局所の速度と放射方向）へ寄せる。
     const float3 injected = HikariFluidToDomain(source, source.velocity.xyz + source.velocity.w * normalize(local + 1.0e-6f));
     if (any(source.velocity != 0.0f))
         acceleration += (injected - velocity) * (8.0f * mask);
-    const float added = mask * (source.emission.x * gCell.z + source.emission.y);
-    if (added > 0.0f)
-    {
-        temperature += (source.emission.z - temperature) * saturate(mask * 8.0f * gCell.z + mask * saturate(source.emission.y));
-        density += added;
-    }
     density *= exp(-source.emission.w * mask * gCell.z);
 }
 
@@ -704,10 +745,11 @@ void ActivityCS(uint3 id : SV_DispatchThreadID)
                            any(source.velocity != 0.0f);
         if (!feeds || (uint)(source.shape.x + 0.5f) == 7u)
             continue;
-        // 源の局所の長さは域の長さ × 拡縮の逆（縁の柔らかさ guide.w = 1.5 格 × 拡縮の逆）。
+        // 源の局所の長さは域の長さ × 拡縮の逆（縁の柔らかさ guide.w = 1.5 格 × 拡縮の逆）。注入は表面の外 2 guide.w
+        // まで届く（EmissionMask）。
         const float toSource = source.guide.w / (1.5f * gCell.x);
         active = HikariFluidSourceDistance(source, HikariFluidToSource(source, center)) <
-                 reach * toSource + source.guide.w;
+                 reach * toSource + 2.0f * source.guide.w;
     }
     gStats.Store(gInteractionCount.y + BrickIndex(id) * 4u, active ? 1u : 0u);
 }

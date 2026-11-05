@@ -107,15 +107,19 @@ float SceneSunVisibility(float3 world)
         gShadowParams.zw, gShadowSampling.yz, gShadowSampling.x * gShadowBias[cascade], valid);
 }
 
-// 細部の密度の倍率。pixelSize はこの点での画素の大きさ [m]（負なら細部なし）。ノイズの 1 texel が画素より細かいと
-// 模様が欠けて揺らぎ、読む位置も散ってキャッシュが外れるので、画素が 1〜2 texel になる距離で消して読まない。
-float SampleDetail(HikariFluidDomain domain, float3 flow, float3 grid, float pixelSize)
+// 細部を足した密度：平均を変えずに模様で揺らす。薄い所（縁）ほど大きく揺らして綿の塊のように崩し（強さ 0.8 で模様の谷が
+// 抜ける）、濃い芯は 3 割ほど揺らすだけにする。薄いの目安は「細部の模様 1 つの大きさで光学的な厚さが 1 に届かない密度」
+// 1 / (消光 × detailScale)。体積雲のように引いて削ると、薄い烟の平均の光学的な厚さが半分ほどに落ち、厚い球壳でも
+// 向こうの物が透けて見えた（流体の密度は雲の 0〜1 と違い、大きな場地の烟はほとんど「薄い」側にある）。
+// pixelSize はこの点での画素の大きさ [m]（負なら細部なし）。ノイズの 1 texel が画素より細かいと模様が欠けて揺らぎ、
+// 読む位置も散ってキャッシュが外れるので、画素が 1〜2 texel になる距離で消して読まない。
+float DetailedDensity(HikariFluidDomain domain, float rho, float3 flow, float3 grid, float pixelSize)
 {
     if (pixelSize < 0.0f)
-        return 1.0f;
+        return rho;
     const float strength = domain.optics.w * saturate(2.0f - pixelSize * domain.detail.x * 64.0f);
     if (strength <= 0.0f)
-        return 1.0f;
+        return rho;
     // 細部の模様を流れに沿って運ぶ（位相を半周期ずらした 2 枚を交互に溶かす）。周期が長いと流れの剪断で模様が
     // 筋に引き伸ばされるので 1 秒にとどめる。流れは格の速度の近似（温度と同じ 1 回の標本）で足りる。
     const float3 local = grid * domain.cells.w;
@@ -131,11 +135,14 @@ float SampleDetail(HikariFluidDomain domain, float3 flow, float3 grid, float pix
     const float n0 = gNoise.SampleLevel(gLinearWrap, (local - carried * phase0) * domain.detail.x, 0);
     const float n1 = gNoise.SampleLevel(gLinearWrap, (local - carried * phase1) * domain.detail.x + 0.37f, 0);
     const float noise = lerp(n0, n1, weight);
-    return saturate(1.0f + strength * (noise * 2.0f - 1.0f));
+    const float thin = 4.0f * domain.detail.x / max(domain.look.w, 1.0e-4f);
+    const float edge = saturate(1.0f - rho / thin);
+    const float wobble = smoothstep(0.15f, 0.85f, noise) * 2.0f - 1.0f;
+    return rho * max(1.0f + strength * wobble * lerp(0.3f, 1.25f, edge), 0.0f);
 }
 
 // 世界の点 world での消光 sigma と、そこから視線へ出る光（sigma を掛けた散乱 + 発光）を足す。pixelSize は細部の
-// 距離による消え方（SampleDetail）。
+// 距離による消え方（DetailedDensity）。
 void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Texture3D<float4> velocity,
     Texture3D<float4> light, float3 world, float3 viewDirection, float pixelSize, inout float sigma,
     inout float3 emitted)
@@ -147,13 +154,16 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
     const float3 uvw = grid / domain.cells.xyz;
     // 格の中心の標本：w は温度、xyz は下側の面の速度（細部を運ぶ流れの近似）。
     const float4 cell = velocity.SampleLevel(gLinearClamp, grid / (domain.cells.xyz + 1.0f), 0);
-    rho *= SampleDetail(domain, cell.xyz, grid, pixelSize);
+    rho = DetailedDensity(domain, rho, cell.xyz, grid, pixelSize);
+    if (rho <= 0.0f)
+        return;
     const float extinction = rho * domain.look.w;
     const float2 transmittance = light.SampleLevel(gLinearClamp, uvw, 0).xy;
     const float cosTheta = dot(viewDirection, normalize(gSun.xyz));
     const float3 sun = gSunRadiance.rgb *
         HikariFluidSunScattering(cosTheta, domain.optics.x, domain.optics.y, transmittance.x * SceneSunVisibility(world));
-    const float3 ambient = gAmbient.rgb * (domain.optics.z * HikariFluidSkyVisibility(transmittance.y, domain.optics.y));
+    const float3 ambient =
+        gAmbient.rgb * (domain.optics.z * HikariFluidSkyVisibility(transmittance.y, domain.optics.y, domain.optics.x));
     const float temperature = cell.w;
     sigma += extinction;
     emitted += extinction * domain.look.rgb * (sun + ambient) + rho * HikariFluidEmission(domain, temperature);
@@ -192,33 +202,43 @@ float2 DomainsInterval(float3 origin, float3 direction)
     return float2(max(result.x, 0.0f), result.y);
 }
 
-// 区間 [start, end] を steps 歩で積分する（区間内で一定の消光として解析的に）。footprint は距離 t での画素の大きさ
-// footprint.x + footprint.y * t [m]（x が負なら細部なし）。
-float4 Integrate(float3 origin, float3 direction, float start, float end, uint steps, float jitter, float2 footprint,
-    out float meanDistance)
+// 区間 [start, end] を stepLength [m] ごとに積分する（1 歩の中で一定の消光として解析的に。最後の 1 歩は end で切る）。
+// footprint は距離 t での画素の大きさ footprint.x + footprint.y * t [m]（x が負なら細部なし）。
+float4 Integrate(float3 origin, float3 direction, float start, float end, float stepLength, float jitter,
+    float2 footprint, out float meanDistance)
 {
     float3 scattered = 0.0f.xxx;
     float transmittance = 1.0f;
     float weightedDistance = 0.0f;
     float absorbed = 0.0f;
-    const float stepLength = (end - start) / max((float)steps, 1.0f);
+    const uint steps = min((uint)ceil(max(end - start, 0.0f) / max(stepLength, 1.0e-4f)), 256u);
     [loop] for (uint index = 0u; index < steps; ++index)
     {
-        const float t = start + ((float)index + jitter) * stepLength;
+        const float stepStart = start + (float)index * stepLength;
+        const float span = min(stepLength, end - stepStart);
+        const float t = stepStart + jitter * span;
         float sigma;
         float3 emitted;
         Medium(origin + direction * t, direction, footprint.x < 0.0f ? -1.0f : footprint.x + footprint.y * t, sigma,
             emitted);
         if (sigma <= 0.0f)
             continue;
-        const float segment = exp(-sigma * stepLength);
+        const float segment = exp(-sigma * span);
         const float lost = transmittance * (1.0f - segment);
         scattered += emitted / sigma * lost;
         weightedDistance += t * lost;
         absorbed += lost;
         transmittance *= segment;
+        // 打ち切る時は、残りの透過率を「この先も同じ明るさの烟が続く」として散乱に回して 0 にする。1% を残すと、
+        // 烟が厚く暗い時（大きな球壳の内側）に露出が上がって向こうの空と雲が透けて見える。
         if (transmittance < 0.01f)
+        {
+            scattered += emitted / sigma * transmittance;
+            weightedDistance += t * transmittance;
+            absorbed += transmittance;
+            transmittance = 0.0f;
             break;
+        }
     }
     meanDistance = absorbed > 1.0e-4f ? weightedDistance / absorbed : 1.0e7f;
     return float4(scattered, transmittance);
@@ -251,14 +271,33 @@ void LightCS(uint3 id : SV_DispatchThreadID)
     // 光照体積の texel と同じ幅（格 2 つ）で進む。optical は格を単位にした密度の積分。
     const float stride = cells.x / (float)width;
     float2 optical = 0.0f.xx;
-    [unroll] for (uint direction = 0u; direction < 2u; ++direction)
+    // 太陽（点の光源）は 1 本の光線。
     {
-        const float3 step = (direction == 0u ? domain.sun.xyz : up) * stride;
+        const float3 step = domain.sun.xyz * stride;
         float3 p = start + step * 0.5f;
         [loop] for (uint index = 0u; index < 256u && HikariFluidInside(p, cells); ++index)
         {
-            optical[direction] += gDensity0.SampleLevel(gLinearBorder, p / cells, 0).x * stride;
+            optical.x += gDensity0.SampleLevel(gLinearBorder, p / cells, 0).x * stride;
             p += step;
+        }
+    }
+    // 空の光は上の半球から来るので、上へ進むほど広がる円錐（半角約 35°）の 4 点の平均で積分する。1 本の光線だと上の濃い
+    // 塊が真下へ柱のような影を落とし、烟に縦の筋が出る。域の外は 0（gLinearBorder）。
+    {
+        const float3 side0 = normalize(cross(up, abs(up.x) < 0.9f ? float3(1.0f, 0.0f, 0.0f) : float3(0.0f, 0.0f, 1.0f)));
+        const float3 side1 = cross(up, side0);
+        [loop] for (uint index = 0u; index < 256u; ++index)
+        {
+            const float travelled = ((float)index + 0.5f) * stride;
+            const float3 p = start + up * travelled;
+            if (!HikariFluidInside(p, cells))
+                break;
+            const float spread = 0.7f * travelled;
+            const float sum = gDensity0.SampleLevel(gLinearBorder, (p + side0 * spread) / cells, 0).x +
+                              gDensity0.SampleLevel(gLinearBorder, (p - side0 * spread) / cells, 0).x +
+                              gDensity0.SampleLevel(gLinearBorder, (p + side1 * spread) / cells, 0).x +
+                              gDensity0.SampleLevel(gLinearBorder, (p - side1 * spread) / cells, 0).x;
+            optical.y += 0.25f * sum * stride;
         }
     }
     const float2 transmittance = exp(-optical * domain.look.w * domain.cells.w);
@@ -345,7 +384,8 @@ void CameraVolumeCS(uint3 id : SV_DispatchThreadID)
         if (end > start)
         {
             float mean;
-            const float4 part = Integrate(origin, direction, start, end, samples, 0.5f, float2(-1.0f, 0.0f), mean);
+            const float4 part =
+                Integrate(origin, direction, start, end, (end - start) / (float)samples, 0.5f, float2(-1.0f, 0.0f), mean);
             scattered += transmittance * part.rgb;
             transmittance *= part.a;
         }
@@ -400,8 +440,10 @@ MarchOutput MarchPS(FullscreenOutput input)
     ViewRay(uv + float2(0.0f, 1.0f / gSize.y), nextOrigin, nextDirection);
     const float2 footprint = float2(length(nextOrigin - origin), length(nextDirection - direction));
     float mean;
-    output.color = Integrate(origin, direction, interval.x, end, (uint)(gFrame.z + 0.5f), frac(noise + gFrame.x),
-        footprint, mean);
+    // 1 歩の長さは域の箱を通る区間全体から決め、不透明面ではそこで止めるだけにする。止める所までの区間で割ると、手前に物が
+    // ある画素だけ歩が細かくなり、厚い烟の明るい表層の積もり方が変わって、烟の上に物の輪郭が浮き出る。
+    const float stepLength = (interval.y - interval.x) / max(gFrame.z, 1.0f);
+    output.color = Integrate(origin, direction, interval.x, end, stepLength, frac(noise + gFrame.x), footprint, mean);
     output.depth.x = mean;
     return output;
 }

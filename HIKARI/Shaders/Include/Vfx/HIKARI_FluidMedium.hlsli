@@ -46,8 +46,19 @@ float HikariFluidEdgeFade(HikariFluidDomain domain, float3 grid)
     return smoothstep(0.0f, domain.detail.z, min(edge.x, min(edge.y, edge.z)));
 }
 
+// 何度も散乱して届く光の割合（拡散近似）：光学的な厚さ τ の烟を、まっすぐ来る光は exp(-τ) しか通らないが、散乱を
+// 繰り返す光はおよそ 1 / (1 + 0.75 (1 - g) τ) 通る（厚い雲の下の曇り空が真っ暗にならない理由）。散乱する烟の無い所
+// （透過率 1）では 0 にし、薄い烟の明るさは変えない。
+float HikariFluidDiffuseLight(float transmittance, float anisotropy)
+{
+    const float clamped = clamp(transmittance, 1.0e-30f, 1.0f);
+    return (1.0f - clamped) / (1.0f + 0.75f * (1.0f - anisotropy) * -log(clamped));
+}
+
 // 多重散乱の近似（Wrenninge 2013 の 3 段）：段ごとに寄与・消光・各向異性を半分にして足し、足りない分を (1 + multiple)
-// 倍で補う。multiple が 1 で体積雲（HikariCloudLightScattering）と同じ形、0 で単一散乱。
+// 倍で補う。multiple が 1 で体積雲（HikariCloudLightScattering）と同じ形、0 で単一散乱。3 段でも厚い烟の奥（太陽への
+// 光学的な厚さが 10 を超える所）は黒く沈むので、拡散近似の等方な光（multiple 倍）を下限にする（大きな烟の影の側と、
+// 球壳の内側が真っ黒にならない）。足すと中くらいの影まで明るくなり、小さな烟の陰影が浅くなる。
 float HikariFluidSunScattering(float cosTheta, float anisotropy, float multiple, float sunTransmittance)
 {
     float result = 0.0f;
@@ -60,13 +71,15 @@ float HikariFluidSunScattering(float cosTheta, float anisotropy, float multiple,
         b *= 0.5f;
         c *= 0.5f;
     }
-    return result * (1.0f + multiple);
+    return max(result * (1.0f + multiple), multiple * 0.0795775f * HikariFluidDiffuseLight(sunTransmittance, anisotropy));
 }
 
-// 空の環境光が届く割合：上への透過率を、多重散乱の分だけ深くまで届かせる（multiple 1 で平方根）。
-float HikariFluidSkyVisibility(float skyTransmittance, float multiple)
+// 空の環境光が届く割合：上への透過率を、多重散乱の分だけ深くまで届かせる（multiple 1 で平方根）。厚い烟の奥は拡散近似
+// の分を下限にする。
+float HikariFluidSkyVisibility(float skyTransmittance, float multiple, float anisotropy)
 {
-    return pow(max(skyTransmittance, 1.0e-6f), 1.0f - 0.5f * saturate(multiple));
+    return max(pow(max(skyTransmittance, 1.0e-6f), 1.0f - 0.5f * saturate(multiple)),
+               multiple * HikariFluidDiffuseLight(skyTransmittance, anisotropy));
 }
 
 // 温度から発光（起亮温度で 0、そこから 1 だけ上で全強度）。
