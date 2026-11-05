@@ -122,7 +122,7 @@ public:
     void Occupancy(uint32_t densityIndex);
     void Diagnostics(uint32_t velocityIndex, uint32_t densityIndex);
     void Slice(uint32_t velocityIndex, uint32_t densityIndex, FluidVolume& output, FluidDebugField field, uint32_t axis,
-               uint32_t index);
+               uint32_t index, bool visualize);
     void CopyStats(ID3D12Resource* readback);
 
 private:

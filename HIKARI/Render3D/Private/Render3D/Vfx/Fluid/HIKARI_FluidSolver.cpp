@@ -422,12 +422,12 @@ void FluidRecorder::Diagnostics(uint32_t velocityIndex, uint32_t densityIndex) {
 }
 
 void FluidRecorder::Slice(uint32_t velocityIndex, uint32_t densityIndex, FluidVolume& output, FluidDebugField field,
-                          uint32_t axis, uint32_t index) {
+                          uint32_t axis, uint32_t index, bool visualize) {
     FluidPassBindings bindings{{&domain_.velocity[velocityIndex], &domain_.density[densityIndex], &domain_.pressure[0]},
                                {}};
     bindings.slice = &output;
     const uint32_t size[3] = {output.size[0], output.size[1], 1u};
-    Dispatch(FluidEntry::Slice, bindings, size, {0u, static_cast<uint32_t>(field), axis, index},
+    Dispatch(FluidEntry::Slice, bindings, size, {visualize ? 1u : 0u, static_cast<uint32_t>(field), axis, index},
              {Groups(size[0], 8u), Groups(size[1], 8u), 1u});
 }
 

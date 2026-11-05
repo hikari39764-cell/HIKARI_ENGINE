@@ -330,7 +330,8 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
             const uint32_t index =
                 (std::min)(static_cast<uint32_t>(std::clamp(sliceRequest->position, 0.0f, 1.0f) * layout.cells[axis]),
                            layout.cells[axis] - 1u);
-            statsRecorder.Slice(domain.velocityIndex, domain.densityIndex, slice, sliceRequest->field, axis, index);
+            statsRecorder.Slice(domain.velocityIndex, domain.densityIndex, slice, sliceRequest->field, axis, index,
+                                sliceRequest->visualize);
             const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(slice.resource.Get(), slice.state,
                                                                       D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
                                                                           D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
@@ -367,8 +368,12 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
     // 透明物体の描画は流体の無いフレームでも相機体積を束ねる。
     if (!impl.renderer.BeginFrame(context))
         ++impl.stats.resourceFailures;
-    if (input == nullptr)
+    if (input == nullptr) {
+        // 入力の無い視図でも、他の視図の域の統計は見せ続ける（編集器が読む）。
+        for (const auto& domain : impl.domains)
+            impl.stats.perDomain.push_back(domain->stats);
         return true;
+    }
     for (const auto& key : input->retiredEmitters)
         for (size_t index = impl.domains.size(); index-- > 0u;)
             if (impl.domains[index]->key == key)

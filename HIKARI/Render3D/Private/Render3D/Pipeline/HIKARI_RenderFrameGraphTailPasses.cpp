@@ -9,12 +9,8 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Features/HIKARI_RenderFeaturePlanner.h"
 #include "Render3D/Features/HIKARI_StylizedScreenFeatureRenderer.h"
-#include "Render3D/Color/HIKARI_ViewExposure.h"
-#include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
-#include "Render3D/Lighting/HIKARI_SkyRenderer.h"
-#include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Vfx/HIKARI_FluidVolumePass.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
@@ -81,30 +77,16 @@ bool ExecuteFluidVolumes(const GRAPH::RenderGraphPassContext& graphPass, void* u
         return true;
     }
     try {
-        // 場面の深度と同じ（抖动込みの）描画格子で步进し、光は大気を通った地表の太陽と空の環境光。
-        FLUID::FluidRenderView view{};
-        view.viewKey = frame.viewId.value;
-        view.invViewProj = camera.invViewProj;
-        view.prevViewProj = camera.prevViewProj;
-        view.cameraPosition = {camera.cameraPos.x, camera.cameraPos.y, camera.cameraPos.z};
-        const MATH::Vec3 nearCenter = MATH::TransformPoint(camera.invViewProj, {0.0f, 0.0f, 0.0f});
-        const MATH::Vec3 farCenter = MATH::TransformPoint(camera.invViewProj, {0.0f, 0.0f, 1.0f});
-        view.cameraForward = MATH::Normalize(farCenter - nearCenter);
+        // 場面の深度と同じ（抖动込みの）描画格子で步进する。
+        FLUID::FluidRenderView view =
+            FLUID::MakeFluidRenderView(context.environment, frame.viewId.value, camera.viewProj, camera.invViewProj,
+                                       {camera.cameraPos.x, camera.cameraPos.y, camera.cameraPos.z});
         view.historyValid = context.temporalFrame.historyValid && !context.temporalFrame.resetHistory &&
                             camera.previousValid && !frame.cameraCut;
         view.renderWidth = frame.renderWidth;
         view.renderHeight = frame.renderHeight;
         view.sceneDepthSrv = frame.scene.depth.srv;
         view.sceneColorFormat = frame.scene.color.format;
-        const ATMOSPHERE::AtmosphereSolarState solar = ATMOSPHERE::BuildAtmosphereSolarState(context.environment);
-        view.sunDirection = solar.sunDirection;
-        view.sunIlluminance = solar.sunColor * solar.sunRadiance;
-        view.ambientRadiance = SKYRENDERER::EstimateSkyAmbientRadiance(context.environment);
-        const MATH::Vec4& exposure = RENDER3D::COLOR::GetActiveViewExposure();
-        view.preExposure = exposure.x;
-        view.exposureRatio = exposure.w;
-        view.sceneShadows = true;
-        view.quality = context.renderQuality.fluidSmokeQuality;
         if (view.sceneColorFormat == DXGI_FORMAT_UNKNOWN || !frame.targetAccess.BeginDepthRead()) {
             return true;
         }

@@ -162,14 +162,26 @@ void VfxWorkspaceController::DrawHierarchyWindow(AssetDatabase& database) {
             const Kind kinds[] = {{VFX::VfxLayerKind::Shape, "ui.vfx.layer.newShape"},
                                   {VFX::VfxLayerKind::Particles, "ui.vfx.layer.newParticles"},
                                   {VFX::VfxLayerKind::Group, "ui.vfx.layer.newGroup"},
-                                  {VFX::VfxLayerKind::Adjustment, "ui.vfx.layer.newAdjustment"}};
+                                  {VFX::VfxLayerKind::Adjustment, "ui.vfx.layer.newAdjustment"},
+                                  {VFX::VfxLayerKind::Fluid, "ui.vfx.layer.newFluid"},
+                                  {VFX::VfxLayerKind::FluidSource, "ui.vfx.layer.newFluidSource"}};
+            const auto* selected = FindEmitter(selection_.emitterId);
             for (const auto& entry : kinds) {
-                if (!ImGui::MenuItem(TEXT::Localize(entry.label).c_str()))
+                // 流体源は流体域の中にだけ置ける（域か、域の中の源を選んでいる時）。
+                const bool fluidSource = entry.kind == VFX::VfxLayerKind::FluidSource;
+                const VFX::VfxEmitterData* domain = selected == nullptr                          ? nullptr
+                                                    : selected->kind == VFX::VfxLayerKind::Fluid ? selected
+                                                    : selected->kind == VFX::VfxLayerKind::FluidSource
+                                                        ? FindEmitter(selected->parentEmitterId)
+                                                        : nullptr;
+                if (!ImGui::MenuItem(TEXT::Localize(entry.label).c_str(), nullptr, false,
+                                     !fluidSource || domain != nullptr))
                     continue;
-                const auto* selected = FindEmitter(selection_.emitterId);
+                // 組の中なら組の子、流体源は域の子、他は選んだ層と同じ親。
                 const std::string parent =
-                    selected ? (selected->kind == VFX::VfxLayerKind::Group ? selected->id : selected->parentEmitterId)
-                             : "";
+                    fluidSource ? domain->id
+                    : selected ? (selected->kind == VFX::VfxLayerKind::Group ? selected->id : selected->parentEmitterId)
+                               : "";
                 std::string id;
                 (void)AddEmitter(parent, TEXT::Localize(entry.label), {}, id, statusMessage_, entry.kind);
             }

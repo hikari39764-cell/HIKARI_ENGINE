@@ -6,6 +6,10 @@
 
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
+#include "Render3D/Color/HIKARI_ViewExposure.h"
+#include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
+#include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 
 // 1 視図の流体の描画の記録：定数を詰め、光照体積・相機体積・步进・再構成・合成を順に記録する。
@@ -118,8 +122,9 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     upload.ResetForFrame(context.currentFrameRetireFenceValue);
 
     RenderConstants constants{};
+    const bool useHistory = view.historyValid && state.historyValid && state.lastFrame != UINT64_MAX;
     constants.invViewProj = view.invViewProj;
-    constants.prevViewProj = view.prevViewProj;
+    constants.prevViewProj = useHistory ? state.previousViewProj : view.viewProj;
     Set4(constants.camera, view.cameraPosition.x, view.cameraPosition.y, view.cameraPosition.z, 0.0f);
     Set4(constants.forward, view.cameraForward.x, view.cameraForward.y, view.cameraForward.z, 0.0f);
     const uint32_t halfWidth = (view.renderWidth + 1u) / 2u, halfHeight = (view.renderHeight + 1u) / 2u;
@@ -132,7 +137,6 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
          view.sunIlluminance.z * view.preExposure, 0.0f);
     Set4(constants.ambient, view.ambientRadiance.x * view.preExposure, view.ambientRadiance.y * view.preExposure,
          view.ambientRadiance.z * view.preExposure, view.exposureRatio);
-    const bool useHistory = view.historyValid && state.historyValid && state.lastFrame != UINT64_MAX;
     const double phase = std::fmod(static_cast<double>(context.currentFrameRetireFenceValue) * 0.6180339887, 1.0);
     Set4(constants.frame, static_cast<float>(phase), useHistory ? kHistoryWeight : 0.0f, static_cast<float>(marchSteps),
          static_cast<float>(count));
@@ -268,6 +272,7 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
 
     state.historyRead = write;
     state.historyValid = true;
+    state.previousViewProj = view.viewProj;
     state.lastFrame = context.currentFrameRetireFenceValue;
     cameraVolumeView_ = {
         state.cameraVolume.srv.gpu,
@@ -276,3 +281,30 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
 }
 
 } // namespace HIKARI::RENDER3D::FLUID::INTERNAL
+
+namespace HIKARI::RENDER3D::FLUID {
+
+FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey, const MATH::Mat4& viewProj,
+                                    const MATH::Mat4& invViewProj, const MATH::Vec3& cameraPosition) {
+    FluidRenderView view{};
+    view.viewKey = viewKey;
+    view.viewProj = viewProj;
+    view.invViewProj = invViewProj;
+    view.cameraPosition = cameraPosition;
+    // 前方は近い面と遠い面の画面中心の差（透視と直交のどちらでも同じ式）。
+    const MATH::Vec3 nearCenter = MATH::TransformPoint(invViewProj, {0.0f, 0.0f, 0.0f});
+    const MATH::Vec3 farCenter = MATH::TransformPoint(invViewProj, {0.0f, 0.0f, 1.0f});
+    view.cameraForward = MATH::Normalize(farCenter - nearCenter);
+    const ATMOSPHERE::AtmosphereSolarState solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
+    view.sunDirection = solar.sunDirection;
+    view.sunIlluminance = solar.sunColor * solar.sunRadiance;
+    view.ambientRadiance = SKYRENDERER::EstimateSkyAmbientRadiance(environment);
+    const MATH::Vec4& exposure = COLOR::GetActiveViewExposure();
+    view.preExposure = exposure.x;
+    view.exposureRatio = exposure.w;
+    view.sceneShadows = true;
+    view.quality = GetRenderQualitySettings().fluidSmokeQuality;
+    return view;
+}
+
+} // namespace HIKARI::RENDER3D::FLUID

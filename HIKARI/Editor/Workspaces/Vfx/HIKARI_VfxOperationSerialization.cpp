@@ -32,6 +32,11 @@ nlohmann::json EmitterSummary(const VFX::VfxEmitterData& emitter) {
         const auto kind = static_cast<VFX::VfxModuleKind>(value);
         modules[std::string(VFX::ToString(kind))] = GetVfxModuleId(emitter, kind);
     }
+    // 流体の模块は流体の層だけが持つ（値は vfx.target.describe / vfx.property.set で読み書きする）。
+    if (emitter.kind == VFX::VfxLayerKind::Fluid)
+        modules["FluidDomain"] = emitter.fluidDomain.id;
+    if (emitter.kind == VFX::VfxLayerKind::FluidSource)
+        modules["FluidSource"] = emitter.fluidSource.id;
     nlohmann::json bursts = nlohmann::json::array();
     for (const VFX::VfxBurstKeyData& key : emitter.spawn.burstTimeline) {
         bursts.push_back({

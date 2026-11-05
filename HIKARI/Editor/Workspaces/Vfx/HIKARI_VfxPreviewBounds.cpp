@@ -479,6 +479,20 @@ VfxPreviewBounds EstimateVfxPreviewBounds(const VFX::VfxAssetData& asset, std::s
         if (!emitter.basic.enabled || !ResolveTransform(index, asset, emitterIndices, transforms)) {
             continue;
         }
+        // 流体の層は域の箱（大きさは domainSize だけで決まり、層の倍率は掛からない）。源は属する域の箱。
+        if (emitter.kind == VFX::VfxLayerKind::Fluid || emitter.kind == VFX::VfxLayerKind::FluidSource) {
+            const auto domain =
+                emitterIndices.find(emitter.kind == VFX::VfxLayerKind::Fluid ? emitter.id : emitter.parentEmitterId);
+            if (domain == emitterIndices.end() || !ResolveTransform(domain->second, asset, emitterIndices, transforms))
+                continue;
+            const ResolvedEmitterTransform& frame = transforms[domain->second];
+            const MATH::Vec3 half = asset.emitters[domain->second].fluidDomain.domainSize * 0.5f;
+            Expand(combined,
+                   TransformInterval(MATH::Mat4::TRS(frame.position, frame.rotation, {1.0f, 1.0f, 1.0f}),
+                                     {half * -1.0f, half}, false),
+                   combinedInitialized);
+            continue;
+        }
 
         const ScalarInterval lifetimeRange = DistributionInterval(emitter.basic.lifetime);
         const bool particles = emitter.kind == VFX::VfxLayerKind::Particles;

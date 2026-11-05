@@ -1035,6 +1035,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxDiagnosticsPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxEditorValue.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxEmitterInspector.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxFluidInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxLayerAnimation.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxViewportEditing.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxViewportHandles.cpp"

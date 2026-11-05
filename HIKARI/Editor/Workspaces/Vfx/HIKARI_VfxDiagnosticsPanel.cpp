@@ -27,7 +27,13 @@ nlohmann::json VfxWorkspaceController::DescribeDocumentState() const {
     for (const VFX::VfxEmitterData& layer : asset->emitters) {
         status += "\n  [" + layer.id + "] " + layer.name + " ";
         status += VFX::ToString(layer.kind);
-        if (layer.kind != VFX::VfxLayerKind::Group && layer.kind != VFX::VfxLayerKind::Adjustment) {
+        if (layer.kind == VFX::VfxLayerKind::Fluid) {
+            const MATH::Vec3& size = layer.fluidDomain.domainSize;
+            status += " domain " + std::to_string(size.x) + "x" + std::to_string(size.y) + "x" +
+                      std::to_string(size.z) + "m resolution " + std::to_string(layer.fluidDomain.resolution);
+        } else if (layer.kind == VFX::VfxLayerKind::FluidSource) {
+            status += " rate " + std::to_string(layer.spawn.ratePerSecond) + "/s";
+        } else if (layer.kind != VFX::VfxLayerKind::Group && layer.kind != VFX::VfxLayerKind::Adjustment) {
             status += " ";
             status += std::string(VFX::ToString(layer.renderShape.type));
             status +=

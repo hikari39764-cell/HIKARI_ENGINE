@@ -267,6 +267,22 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
         }
         settings.targetAccess.EndDepthRead();
     }
+    // 流体の煙：水の後、透明物体の前に重ねる（粒子は相機体積で手前の煙を受ける）。描けないフレームは煙だけを飛ばす。
+    if (gMeshRendererState.fluidPass.HasRenderableDomains() && passResources.sceneDepth.IsSampleable() &&
+        settings.sceneColorFormat != DXGI_FORMAT_UNKNOWN && settings.targetAccess.BeginDepthRead()) {
+        RENDER3D::FLUID::FluidRenderView fluidView = RENDER3D::FLUID::MakeFluidRenderView(
+            environment, view.viewId.value, viewProj, MATH::Inverse(viewProj), cameraPosition);
+        fluidView.historyValid = true;
+        fluidView.renderWidth = screenWidth;
+        fluidView.renderHeight = screenHeight;
+        fluidView.sceneDepthSrv = passResources.sceneDepth.srv;
+        fluidView.sceneColorFormat = settings.sceneColorFormat;
+        (void)RenderFluidVolumes(graphics, fluidView, settings.targetAccess);
+        settings.targetAccess.EndDepthRead();
+        if (!settings.targetAccess.Rebind()) {
+            return EditorInteractiveMeshRenderResult::ForwardPassFailed;
+        }
+    }
     GeometryBackendExecutionResult transparentResult{};
     bool particleResult = true;
     bool worldSpriteTransparentResult = true;

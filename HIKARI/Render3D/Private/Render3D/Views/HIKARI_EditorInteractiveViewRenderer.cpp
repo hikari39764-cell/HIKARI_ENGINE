@@ -638,6 +638,7 @@ MESHRENDERER::EditorInteractiveRenderSettings ResolveRenderSettings(
     settings.captureSceneColor = &CaptureInteractiveSceneColor;
     settings.sceneSourceOverride = request.sceneSourceOverride;
     settings.suppressSpatialLightingProviders = request.suppressSpatialLightingProviders;
+    settings.sceneColorFormat = kInteractiveViewFormat;
     return settings;
 }
 

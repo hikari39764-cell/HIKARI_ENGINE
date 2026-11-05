@@ -37,8 +37,13 @@ bool VfxWorkspaceController::AddEmitter(std::string_view parentEmitterId, std::s
         outMessage = "No VFX document is open";
         return false;
     }
-    if (!parentEmitterId.empty() && FindEmitter(parentEmitterId) == nullptr) {
+    const VFX::VfxEmitterData* parent = parentEmitterId.empty() ? nullptr : FindEmitter(parentEmitterId);
+    if (!parentEmitterId.empty() && parent == nullptr) {
         outMessage = "Parent emitter was not found";
+        return false;
+    }
+    if (kind == VFX::VfxLayerKind::FluidSource && (parent == nullptr || parent->kind != VFX::VfxLayerKind::Fluid)) {
+        outMessage = "Place fluid sources under a fluid domain layer";
         return false;
     }
     const std::string id = requestedId.empty() ? AllocateStableId("emitter") : std::string(requestedId);
@@ -56,6 +61,29 @@ bool VfxWorkspaceController::AddEmitter(std::string_view parentEmitterId, std::s
         emitter.spawn.ratePerSecond = 0;
         emitter.spawn.burstTimeline.clear();
         emitter.renderCommon.colorTextureAssetGuid = {};
+    }
+    if (kind == VFX::VfxLayerKind::Fluid || kind == VFX::VfxLayerKind::FluidSource) {
+        // 流体の層は効果・模型出力・特殊出力・履歴・遮罩を持たない。
+        emitter.effects.clear();
+        emitter.specialOutputs.clear();
+        emitter.meshOutput.enabled = false;
+        emitter.history.mode = VFX::VfxHistoryMode::None;
+        emitter.matte = {};
+        // 層の色は烟の色と消光の倍率になるので、既定の層の寿命の色（淡くなる曲線）を使わず白の一定にする。
+        emitter.color.value.mode = VFX::VfxAnimatedColorMode::Fixed;
+        emitter.color.value.fixed = {
+            VFX::VfxDistributionMode::Constant, {1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f}, 0u};
+    }
+    if (kind == VFX::VfxLayerKind::FluidSource) {
+        // 新しい源は域の下寄りの球から上へ吹き、卷曲湍流で崩れる（そのまま翻卷して昇る烟になる値）。
+        emitter.spawn.ratePerSecond = 6.0f;
+        emitter.shape.type = VFX::VfxShapeType::Sphere;
+        emitter.shape.radius = {VFX::VfxDistributionMode::Constant, 0.35f, 0.35f, 0u};
+        emitter.emitterTransform.transform.position = {0.0f, -0.325f * parent->fluidDomain.domainSize.y, 0.0f};
+        emitter.fluidSource.velocity = {0.0f, 0.8f, 0.0f};
+        emitter.forces.field.turbulence = 0.6f;
+        emitter.forces.field.frequency = 2.0f;
+        emitter.forces.field.evolution = 0.5f;
     }
     emitter.parentEmitterId = parentEmitterId;
     emitter.name = displayName.empty() ? "New Layer" : std::string(displayName);

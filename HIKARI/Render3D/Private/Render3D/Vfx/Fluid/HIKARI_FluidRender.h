@@ -87,6 +87,8 @@ private:
         uint32_t height = 0u;
         uint32_t historyRead = 0u;
         uint64_t lastFrame = UINT64_MAX;
+        // 前のフレームにこの視図を描いた行列（履歴の再投影）。
+        MATH::Mat4 previousViewProj{};
         bool historyValid = false;
     };
 

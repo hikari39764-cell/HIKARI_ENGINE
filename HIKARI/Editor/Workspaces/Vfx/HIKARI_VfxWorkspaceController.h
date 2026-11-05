@@ -48,6 +48,10 @@ namespace HIKARI::RENDER3D::LIGHTING {
 struct SceneLightingSet;
 }
 
+namespace HIKARI::RENDER3D::FLUID {
+struct FluidDomainStats;
+}
+
 namespace HIKARI::EDITOR {
 
 class EditorCommandRouter;
@@ -212,6 +216,11 @@ public:
     // 表示中の文書があるか。DescribeDocumentState の open と同じ判定。
     bool IsDocumentOpen() const noexcept;
     nlohmann::json DescribeDocumentState() const;
+    // プレビューで解いている流体域の統計（vfx.fluid.stats）。診断の値は要求の 1〜3 フレーム後に届く。
+    nlohmann::json DescribePreviewFluidStats() const;
+    // 流体域を選び、検査器の調試切片を出す・消す（vfx.fluid.debug_slice）。量は FluidDebugField の並び。
+    bool ShowFluidDebugSlice(std::string_view layerId, bool shown, uint32_t field, uint32_t axis, float position,
+                             std::string& outMessage);
     bool WasLastAssetRefreshAttempted() const noexcept;
     bool DidLastAssetRefreshSucceed() const noexcept;
     const std::string& GetLastAssetRefreshMessage() const noexcept;
@@ -283,6 +292,13 @@ private:
     void DrawEmitterTiming(AssetDatabase&, const VFX::VfxEmitterData&);
     void DrawEmitterSpawnPage(AssetDatabase&, const VFX::VfxEmitterData&);
     void DrawEmitterMotionPage(AssetDatabase&, const VFX::VfxEmitterData&);
+    void DrawInitialBurst(const VFX::VfxEmitterData&);
+    void DrawEmissionVolume(AssetDatabase&, const VFX::VfxEmitterData&);
+    void DrawForceFields(AssetDatabase&, const VFX::VfxEmitterData&);
+    // 流体の層（HIKARI_VfxFluidInspector.cpp）：域と源の検査器、域の解算の統計と調試切片。
+    void DrawFluidLayerInspector(AssetDatabase&, const VFX::VfxEmitterData&);
+    void DrawFluidSimulation(const VFX::VfxEmitterData& domain);
+    const RENDER3D::FLUID::FluidDomainStats* FindPreviewFluidStats(std::string_view layerId) const;
     void DrawTemplateLibrary();
     void DrawContentLibrary(AssetDatabase&);
     void DrawEmitterBindingsInspector(const VFX::VfxEmitterData& emitter);
@@ -342,6 +358,13 @@ private:
     std::string curveEditorChannel_{"x"};
     VfxEmitterInspectorPage emitterInspectorPage_ = VfxEmitterInspectorPage::Common;
     std::string emitterInspectorEmitterId_{};
+    // 流体域の調試切片の表示（量は FluidDebugField の並び、軸は 0 X / 1 Y / 2 Z）。
+    struct FluidSliceView {
+        bool shown = false;
+        uint32_t field = 0u;
+        uint32_t axis = 2u;
+        float position = 0.5f;
+    } fluidSlice_{};
     bool requestDeleteEmitter_ = false;
     bool requestDeleteInput_ = false;
 };

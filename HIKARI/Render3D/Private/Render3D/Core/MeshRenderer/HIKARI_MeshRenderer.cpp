@@ -1,5 +1,7 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 
+#include <optional>
+
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Diagnostics/HIKARI_MetricRegistry.h"
@@ -172,10 +174,43 @@ void ReleaseParticleNamespace(uint64_t playbackNamespace) {
         RENDER3D::PARTICLES::MakeParticleMaterialSourceIdentity(playbackNamespace, nullptr));
 }
 
+namespace {
+// 編集器の診断と切片の要求（要求したフレーム番号）。kFluidEditorRequestFrames を過ぎたら外す。
+constexpr uint64_t kFluidEditorRequestFrames = 2u;
+uint64_t gFluidDiagnosticsFrame = 0u;
+std::optional<RENDER3D::FLUID::FluidDebugSliceRequest> gFluidSliceRequest{};
+uint64_t gFluidSliceFrame = 0u;
+
+bool IsFluidRequestFresh(uint64_t requested, uint64_t frame) noexcept {
+    return requested != 0u && frame >= requested && frame - requested <= kFluidEditorRequestFrames;
+}
+} // namespace
+
+const RENDER3D::FLUID::FluidVolumePassStats& GetFluidVolumePassStats() {
+    return gMeshRendererState.fluidPass.GetStats();
+}
+
+void RequestFluidDiagnostics() { gFluidDiagnosticsFrame = TIME::GetFrameContext().frameIndex; }
+
+void RequestFluidDebugSlice(const RENDER3D::FLUID::FluidDebugSliceRequest& request) {
+    gFluidSliceRequest = request;
+    gFluidSliceFrame = TIME::GetFrameContext().frameIndex;
+}
+
+RENDER3D::FLUID::FluidDebugSliceView GetFluidDebugSlice() { return gMeshRendererState.fluidPass.GetDebugSlice(); }
+
 void INTERNAL::PrepareFluidFrame(const GFX::Context& graphics,
                                  const RENDER3D::PARTICLES::ParticleRenderFrameSource* source) {
+    const uint64_t frame = TIME::GetFrameContext().frameIndex;
     RENDER3D::FLUID::FluidFrameSettings settings{};
     settings.quality = RENDER3D::GetRenderQualitySettings().fluidSmokeQuality;
+    settings.diagnostics = IsFluidRequestFresh(gFluidDiagnosticsFrame, frame);
+    if (gFluidSliceRequest && IsFluidRequestFresh(gFluidSliceFrame, frame)) {
+        gMeshRendererState.fluidPass.RequestDebugSlice(*gFluidSliceRequest);
+    } else if (gFluidSliceRequest) {
+        gMeshRendererState.fluidPass.ClearDebugSlice();
+        gFluidSliceRequest.reset();
+    }
     if (!gMeshRendererState.fluidPass.PrepareFrame(graphics, source != nullptr ? source->input : nullptr, settings))
         DEBUGLOG::PushRenderError("[MeshRenderer][WARN] Fluid smoke simulation is unavailable this frame; "
                                   "rendering continues without fluid layers.");

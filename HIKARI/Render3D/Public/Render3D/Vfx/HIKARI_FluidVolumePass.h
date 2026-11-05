@@ -11,6 +11,10 @@
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 
+namespace HIKARI {
+struct SceneEnvironment;
+}
+
 // 体積流体（VFX の流体層）の GPU 解算と描画。MeshRenderer の視図資源が粒子 pass と並べて持ち、粒子と同じ描画入力
 // （ParticleRenderInput.fluids）を受けて域ごとに固定子步で解き、帧图の FluidVolumes pass で視図へ描く。
 namespace HIKARI::RENDER3D::FLUID {
@@ -45,15 +49,18 @@ struct FluidStepClock {
 
 enum class FluidDebugField : uint8_t { Density, Velocity, Divergence, Pressure };
 
-// 調試の切片の要求：域（実例键）、量、軸（0 X、1 Y、2 Z）と軸方向の位置 [0, 1]。
+// 調試の切片の要求：域（実例键）、量、軸（0 X、1 Y、2 Z）と軸方向の位置 [0, 1]。visualize は画面に出す色
+// （rgb に見やすい色、a = 1）、偽なら値そのまま（試験・智能体が読む）。
 struct FluidDebugSliceRequest {
     PARTICLES::ParticleEmitterInstanceKey key{};
     FluidDebugField field = FluidDebugField::Density;
     uint32_t axis = 2u;
     float position = 0.5f;
+    bool visualize = false;
 };
 
-// 直前のフレームで書いた切片（RGBA16F。密度は rgb、速度は xyz と大きさ、散度・圧力は r）。
+// 直前のフレームで書いた切片（RGBA16F）。値そのままなら密度は rgb、速度は xyz と大きさ、散度・圧力は r。
+// 色なら密度は 1 - exp(-密度) の灰、速度は ±4 m/s を 0..1 へ、散度と圧力は正を赤・負を青。
 struct FluidDebugSliceView {
     ID3D12Resource* resource = nullptr;
     D3D12_GPU_DESCRIPTOR_HANDLE srv{};
@@ -90,10 +97,11 @@ struct FluidVolumePassStats {
 };
 
 // 描く視図（主視図と編集器の視図）。行列は場面の深度と同じ（抖动込みの）描画格子。光は絶対量で、前露光は preExposure。
+// 前のフレームの行列は描画側が視図ごとに覚える（historyValid が偽なら履歴を使わない）。
 struct FluidRenderView {
     uint64_t viewKey = 0u;
+    MATH::Mat4 viewProj{};
     MATH::Mat4 invViewProj{};
-    MATH::Mat4 prevViewProj{};
     MATH::Vec3 cameraPosition{};
     MATH::Vec3 cameraForward{0.0f, 0.0f, 1.0f};
     bool historyValid = false;
@@ -116,6 +124,11 @@ struct FluidCameraVolumeView {
     D3D12_GPU_DESCRIPTOR_HANDLE srv{};
     MATH::Vec4 params{};
 };
+
+// 視図の行列・相機の位置と場面の環境から、相機と光（大気を通った地表の太陽、空の環境光、今の露出）と画質を埋める。
+// 帧图の主視図と編集器の視図が共用し、描画の大きさ・深度・色の形式・履歴の有無は呼ぶ側が足す。
+FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey, const MATH::Mat4& viewProj,
+                                    const MATH::Mat4& invViewProj, const MATH::Vec3& cameraPosition);
 
 struct FluidFrameSettings {
     FluidSmokeQuality quality = FluidSmokeQuality::Balanced;

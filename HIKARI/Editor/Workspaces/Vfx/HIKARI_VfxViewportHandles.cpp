@@ -75,10 +75,15 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect& rect, bo
             world = frame;
         if (std::abs(world.scale.x * world.scale.y * world.scale.z) < 0.000001f)
             continue;
-        const auto matrix = MATH::Mat4::TRS(world.position, world.rotation, world.scale);
+        // 流体域の大きさは domainSize だけで決まる（層の倍率は掛からない）。
+        const bool fluidDomain = layer.kind == VFX::VfxLayerKind::Fluid;
+        const auto matrix =
+            MATH::Mat4::TRS(world.position, world.rotation, fluidDomain ? MATH::Vec3{1.0f, 1.0f, 1.0f} : world.scale);
         const auto inverse = MATH::Inverse(matrix);
         const bool selected = selection_.emitterId == layer.id;
         const bool particles = layer.kind == VFX::VfxLayerKind::Particles;
+        // 粒子と流体源は発生の形の大きさで選ぶ。
+        const bool emissionShaped = particles || layer.kind == VFX::VfxLayerKind::FluidSource;
         const float span = layer.activeDuration > 0 ? layer.activeDuration : asset.durationSeconds - layer.startDelay;
         auto compiled =
             std::find_if(preview_.previewProgram_->emitters.begin(), preview_.previewProgram_->emitters.end(),
@@ -88,11 +93,13 @@ bool VfxWorkspaceController::DrawLayerHandles(const EditorViewportRect& rect, bo
         auto render = compiled->render;
         VFX::EvaluateVfxLayerRenderParameters(
             *compiled, span > 0 ? (preview_.previewElapsedSeconds_ - layer.startDelay) / span : 0, render, span);
-        const bool ring = layer.renderShape.type == VFX::VfxRenderShapeType::Ring && !particles;
+        const bool ring = layer.renderShape.type == VFX::VfxRenderShapeType::Ring && !emissionShaped && !fluidDomain;
         MATH::Vec3 half{0.5f, 0.5f, 0.5f};
-        if (ring)
+        if (fluidDomain)
+            half = layer.fluidDomain.domainSize * 0.5f;
+        else if (ring)
             half = {render.ringOuterRadius, render.ringOuterRadius, 0.03f};
-        else if (particles) {
+        else if (emissionShaped) {
             const float radius = (std::max)(0.15f, layer.shape.radius.mode == VFX::VfxDistributionMode::Constant
                                                        ? layer.shape.radius.minimum
                                                        : layer.shape.radius.maximum);

@@ -539,16 +539,23 @@ void SliceCS(uint3 id : SV_DispatchThreadID)
                                                                           : uint3(id.x, id.y, gPassParams.w);
     cell = min(cell, gSize.xyz - 1u);
     float4 value = 0.0f.xxxx;
+    const bool visualize = gPassParams.x != 0u;
     if (gPassParams.y == 0u)
-        value = float4(gIn1.Load(int4(cell, 0)).xxx, 1.0f);
+    {
+        const float density = gIn1.Load(int4(cell, 0)).x;
+        value = visualize ? float4((1.0f - exp(-density)).xxx, 1.0f) : float4(density.xxx, 1.0f);
+    }
     else if (gPassParams.y == 1u)
     {
         const float3 velocity = CellVelocity(gIn0, cell);
-        value = float4(velocity, length(velocity));
+        value = visualize ? float4(saturate(0.5f + velocity * 0.125f), 1.0f) : float4(velocity, length(velocity));
     }
-    else if (gPassParams.y == 2u)
-        value = float4(Divergence(gIn0, cell), 0.0f, 0.0f, 1.0f);
     else
-        value = float4(gIn2.Load(int4(cell, 0)).x, 0.0f, 0.0f, 1.0f);
+    {
+        // 散度 [1/s] は ±2 で、圧力（格の大きさ² × 散度の単位）は ±0.05 で振り切る。
+        const float raw = gPassParams.y == 2u ? Divergence(gIn0, cell) : gIn2.Load(int4(cell, 0)).x;
+        const float scaled = raw * (gPassParams.y == 2u ? 0.5f : 20.0f);
+        value = visualize ? float4(saturate(scaled), 0.08f, saturate(-scaled), 1.0f) : float4(raw, 0.0f, 0.0f, 1.0f);
+    }
     gSlice[id.xy] = value;
 }

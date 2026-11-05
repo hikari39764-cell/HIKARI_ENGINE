@@ -39,7 +39,10 @@ struct ParticleRenderFrameSource;
 } // namespace PARTICLES
 namespace FLUID {
 struct FluidRenderView;
-}
+struct FluidVolumePassStats;
+struct FluidDebugSliceRequest;
+struct FluidDebugSliceView;
+} // namespace FLUID
 namespace WORLD_SPRITES {
 struct WorldSpriteFrameSource;
 struct WorldSpritePassStats;
@@ -138,6 +141,12 @@ bool HasFluidVolumes();
 // 流体の煙をこの視図へ描く。場面の深度は読める状態で呼ぶ。失敗したフレームは煙だけを飛ばして警告する。
 bool RenderFluidVolumes(const GFX::Context& graphics, const RENDER3D::FLUID::FluidRenderView& view,
                         const RENDER3D::PIPELINE::RenderTargetAccess& targetAccess);
+// 編集器が読む流体の統計と調試。診断（投影後の散度・密度の総量の回読）と切片は、要求した後の数フレームだけ有効
+// （見ている間は毎フレーム要求する）。統計は主視図と編集器の視図の全ての域。
+const RENDER3D::FLUID::FluidVolumePassStats& GetFluidVolumePassStats();
+void RequestFluidDiagnostics();
+void RequestFluidDebugSlice(const RENDER3D::FLUID::FluidDebugSliceRequest& request);
+RENDER3D::FLUID::FluidDebugSliceView GetFluidDebugSlice();
 // 歪み層の粒子を戦闘の画面歪み遮罩へ描き、その貼図を返す（合成は PostSystem が行う）
 bool HasVfxDistortionWork();
 bool RenderVfxDistortionMaskPass(const GFX::Context& graphics, const MeshPassResources& passResources,
@@ -178,6 +187,8 @@ struct EditorInteractiveRenderSettings {
     const RENDER3D::PARTICLES::ParticleRenderFrameSource* particleFrameSource = nullptr;
     const IBL::IblEnvironmentSource* iblEnvironmentOverride = nullptr;
     bool suppressSpatialLightingProviders = false;
+    // 場面の色の形式（流体の煙の合成 PSO）。
+    DXGI_FORMAT sceneColorFormat = DXGI_FORMAT_UNKNOWN;
 };
 
 enum class EditorInteractiveMeshRenderResult : uint8_t {
