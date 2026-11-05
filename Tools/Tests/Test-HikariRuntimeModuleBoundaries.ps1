@@ -82,7 +82,7 @@ if ($closure.Groups['body'].Value -match 'HIKARI::(Assimp|RecastNavigation|ImGui
     throw 'Editor/importer or private navigation dependencies leaked into public Runtime linkage.'
 }
 # Compile units are counted per module, because the module is one library once it is moved. Vfx counts as Render3D
-# (Render3D 226 = 206 + Vfx 20). Render3D, Scene and Assets are bigger than the default ceiling and are frozen at
+# (Render3D 232 = 212 + Vfx 20). Render3D, Scene and Assets are bigger than the default ceiling and are frozen at
 # their current size in moduleCompileUnitCeilings; the numbers only go down.
 $budget = Get-Content -LiteralPath (Join-Path $repoRoot 'Tools/Build/HIKARI_EngineeringBudgets.json') -Raw | ConvertFrom-Json
 $defaultLimit = [int]$budget.source.runtimeModuleCompileUnitCeiling

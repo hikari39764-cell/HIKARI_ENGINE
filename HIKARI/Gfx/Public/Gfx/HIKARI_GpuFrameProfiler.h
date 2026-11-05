@@ -53,6 +53,7 @@ enum class Pass : uint32_t {
     MotionBlur,
     ParticleSimulation,
     ParticleDraw,
+    FluidSimulation,
     VolumetricLighting,
     StylizedGeometryOutline,
     StylizedVisibilityOverlay,

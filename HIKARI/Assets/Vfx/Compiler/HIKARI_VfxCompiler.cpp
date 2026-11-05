@@ -415,7 +415,18 @@ VfxCompileResult CompileVfxAsset(const VfxAssetData& asset) {
         emitter.simulation.restitution = source.forces.restitution;
         emitter.simulation.friction = source.forces.friction;
         emitter.simulation.color = CompileAnimatedColor(source.color.value);
-        if (source.kind != VfxLayerKind::Particles) {
+        emitter.fluidDomain = source.fluidDomain;
+        emitter.fluidSource = source.fluidSource;
+        if (source.kind == VfxLayerKind::FluidSource) {
+            const VfxEmitterData* domain = FindVfxFluidDomainLayer(source, [&](const std::string& id) {
+                const auto found = emitterIndices.find(id);
+                return found == emitterIndices.end() ? nullptr : &emitters[found->second];
+            });
+            if (domain != nullptr)
+                emitter.fluidDomainIndex = emitterIndices.at(domain->id);
+        }
+        // 流体源の注入量は spawn の率と burst（密度）をそのまま使う。
+        if (source.kind != VfxLayerKind::Particles && source.kind != VfxLayerKind::FluidSource) {
             emitter.spawnRatePerSecond = 0.0f;
             emitter.burstTimeline.clear();
             emitter.simulation.capacity = source.history.mode == VfxHistoryMode::None ? 1u : source.history.samples;

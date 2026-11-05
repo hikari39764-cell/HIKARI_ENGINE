@@ -767,6 +767,7 @@
     {"ui.quality.transitionSwitching", "シーン切替"}, {"ui.quality.transitionUnknown", "不明"},
     {"ui.quality.varianceClip", "バリアンスクリップ"}, {"ui.quality.viewportScale", "ビューポートスケール"},
     {"ui.quality.volumetricLighting", "ボリュームライティング"}, {"ui.quality.volumetricClouds", "ボリュームクラウド"},
+    {"ui.quality.fluidSmoke", "流体スモーク"},
     {"ui.quality.dynamicGi", "動的拡散 GI"}, {"ui.quality.localShadows", "ローカルライトの影"},
     {"ui.quality.vsync", "VSync"}, {"ui.resource.artifactsFormat", "アーティファクト: %d"},
     {"ui.resource.assetUnavailable", "選択したアセットは利用できなくなりました"},

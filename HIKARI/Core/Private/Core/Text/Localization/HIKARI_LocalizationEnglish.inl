@@ -743,6 +743,7 @@
     {"ui.quality.transitionSwitching", "SwitchingScene"}, {"ui.quality.transitionUnknown", "Unknown"},
     {"ui.quality.varianceClip", "Variance Clip"}, {"ui.quality.viewportScale", "Viewport Scale"},
     {"ui.quality.volumetricLighting", "Volumetric Lighting"}, {"ui.quality.volumetricClouds", "Volumetric Clouds"},
+    {"ui.quality.fluidSmoke", "Fluid Smoke"},
     {"ui.quality.dynamicGi", "Dynamic Diffuse GI"}, {"ui.quality.localShadows", "Local Shadows"},
     {"ui.quality.vsync", "VSync"}, {"ui.resource.artifactsFormat", "Artifacts: %d"},
     {"ui.resource.assetUnavailable", "Selected asset is no longer available"},

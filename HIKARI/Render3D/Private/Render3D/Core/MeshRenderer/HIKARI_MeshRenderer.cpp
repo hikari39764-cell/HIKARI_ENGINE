@@ -1,11 +1,13 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 
 #include "Core/HIKARI_TimeService.h"
+#include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Diagnostics/HIKARI_MetricRegistry.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
+#include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Vfx/MaterialFx/HIKARI_MaterialFxProfile.h"
 
 namespace HIKARI::MESHRENDERER {
@@ -43,6 +45,37 @@ FrameCounterMetric gFrameCounterMetrics[] = {
     {"render.psoCacheMisses", "Variant pipeline states created because they were not cached.",
      &MeshRendererFrameCounters::psoCacheMissCount},
 };
+
+// 流体 pass の統計を fluid.* 指標として出す（基準の出力と性能審計が読む）。
+struct FluidMetric {
+    const char* id;
+    const char* unit;
+    METRIC::MetricCategory category;
+    const char* help;
+    METRIC::MetricHandle handle = METRIC::kInvalidMetric;
+};
+
+FluidMetric gFluidMetrics[] = {
+    {"fluid.domains", "count", METRIC::MetricCategory::Count, "Fluid smoke domains solved in the frame."},
+    {"fluid.substeps", "count", METRIC::MetricCategory::Count, "Fluid solver substeps recorded in the frame."},
+    {"fluid.completedSteps", "count", METRIC::MetricCategory::Count,
+     "Substeps the first fluid domain has completed since it was rebuilt."},
+    {"fluid.bytes", "bytes", METRIC::MetricCategory::Memory, "GPU memory of all fluid domains."},
+};
+
+void PublishFluidMetrics(const RENDER3D::FLUID::FluidVolumePassStats& stats, uint64_t frameIndex) {
+    const double values[] = {static_cast<double>(stats.domains), static_cast<double>(stats.stepsThisFrame),
+                             stats.perDomain.empty() ? 0.0
+                                                     : static_cast<double>(stats.perDomain.front().completedSteps),
+                             static_cast<double>(stats.bytes)};
+    for (size_t index = 0; index < std::size(gFluidMetrics); ++index) {
+        FluidMetric& metric = gFluidMetrics[index];
+        if (metric.handle == METRIC::kInvalidMetric)
+            metric.handle = METRIC::Register(
+                {metric.id, "Render3D.FluidVolumePass", "Vfx", metric.unit, metric.category, metric.help});
+        METRIC::Publish(metric.handle, values[index], frameIndex);
+    }
+}
 
 // 計数を 0 に戻した論理フレーム。同じフレームの 2 つ目以降のビューでは戻さず、フレーム全体の合計にする。
 uint64_t gCounterFrameIndex = UINT64_MAX;
@@ -134,12 +167,24 @@ void ReleaseParticleNamespace(uint64_t playbackNamespace) {
     if (playbackNamespace == 0u)
         return;
     gMeshRendererState.particlePass.ReleaseNamespace(playbackNamespace);
+    gMeshRendererState.fluidPass.ReleaseNamespace(playbackNamespace);
     gMeshRendererState.gpuMaterialRegistry.ReleaseSourceBindings(
         RENDER3D::PARTICLES::MakeParticleMaterialSourceIdentity(playbackNamespace, nullptr));
 }
 
+void INTERNAL::PrepareFluidFrame(const GFX::Context& graphics,
+                                 const RENDER3D::PARTICLES::ParticleRenderFrameSource* source) {
+    RENDER3D::FLUID::FluidFrameSettings settings{};
+    settings.quality = RENDER3D::GetRenderQualitySettings().fluidSmokeQuality;
+    if (!gMeshRendererState.fluidPass.PrepareFrame(graphics, source != nullptr ? source->input : nullptr, settings))
+        DEBUGLOG::PushRenderError("[MeshRenderer][WARN] Fluid smoke simulation is unavailable this frame; "
+                                  "rendering continues without fluid layers.");
+    PublishFluidMetrics(gMeshRendererState.fluidPass.GetStats(), TIME::GetFrameContext().frameIndex);
+}
+
 void ShutdownParticleGpuDrivenPass() {
     gMeshRendererState.particlePass.Shutdown();
+    gMeshRendererState.fluidPass.Shutdown();
     gMeshRendererState.particleFrameSource = nullptr;
 }
 

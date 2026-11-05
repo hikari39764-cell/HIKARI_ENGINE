@@ -46,6 +46,8 @@ bool BeginFrameInternal(const GFX::Context& graphics, const Camera3D& camera, co
 bool CommitActiveMaterialDataFrame(ID3D12GraphicsCommandList* commandList);
 bool ExecutePreparedParticleForwardTransparent(const GFX::Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
                                                const MeshPassResources& passResources);
+// 描画入力の流体域を解く（粒子の準備の前、同じ描画入力で）。失敗したフレームは流体だけを飛ばす。
+void PrepareFluidFrame(const GFX::Context& graphics, const RENDER3D::PARTICLES::ParticleRenderFrameSource* source);
 bool ExecuteParticleForwardTransparent(RENDER3D::PARTICLES::ParticleGpuDrivenPass& particlePass,
                                        const GFX::Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
                                        const MATH::Vec3& cameraPosition, const MeshPassResources& passResources);

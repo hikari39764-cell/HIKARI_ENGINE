@@ -24,6 +24,7 @@ constexpr OwnerInfo kOwners[] = {
     {"ui2D", Kind::PerFrame, "2D renderer constants and vertices."},
     {"transientGeometry", Kind::PerFrame, "Vertices built each frame: debug primitives, telegraphs, UI effects, text."},
     {"particles", Kind::PerFrame, "GPU particle emitter and spawn data."},
+    {"fluids", Kind::PerFrame, "Fluid domain substep constants and source tables."},
     {"gpuScene", Kind::SceneData, "GPU scene instance records (full or dirty-range patches)."},
     {"massScene", Kind::SceneData, "Mass render proxy records (full or dirty-range patches)."},
     {"surfaceFeatures", Kind::SceneData, "Terrain and water surface records and their float pools."},

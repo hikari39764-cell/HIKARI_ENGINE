@@ -44,7 +44,7 @@ nlohmann::json HeadlessRuntimeSettings(bool light) {
         runtime["renderQuality"] = {{"sceneResolution", "720p"},       {"dynamicGiQuality", "Low"},
                                     {"localShadowQuality", "Low"},     {"volumetricLightingQuality", "Low"},
                                     {"volumetricCloudQuality", "Low"}, {"depthOfFieldQuality", "Low"},
-                                    {"motionBlurQuality", "Off"}};
+                                    {"motionBlurQuality", "Off"},      {"fluidSmokeQuality", "Low"}};
     return runtime;
 }
 

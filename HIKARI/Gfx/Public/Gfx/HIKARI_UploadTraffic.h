@@ -23,6 +23,7 @@ enum class Owner : uint8_t {
     Ui2D,
     TransientGeometry,
     Particles,
+    Fluids,
     GpuScene,
     MassScene,
     SurfaceFeatures,

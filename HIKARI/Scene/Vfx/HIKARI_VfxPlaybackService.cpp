@@ -364,6 +364,7 @@ VfxSeekResult VfxPlaybackService::SeekInternal(VfxPlaybackHandle handle, uint64_
         renderInput_.frameIndex = frameIndex;
         renderInput_.emitters.clear();
         renderInput_.compositions.clear();
+        renderInput_.fluids.clear();
         if (!preserveStagedRetirements) {
             renderInput_.retiredEmitters.clear();
         }
@@ -463,6 +464,7 @@ void VfxPlaybackService::Update(uint64_t frameIndex, float deltaSeconds) {
     renderInput_.frameIndex = frameIndex;
     renderInput_.emitters.clear();
     renderInput_.compositions.clear();
+    renderInput_.fluids.clear();
     renderInput_.retiredEmitters.clear();
     renderInput_.retiredEmitters.swap(pendingRetiredEmitters_);
 
@@ -736,6 +738,7 @@ void VfxPlaybackService::Reset() {
     admissionStats_ = {};
     renderInput_.emitters.clear();
     renderInput_.compositions.clear();
+    renderInput_.fluids.clear();
     renderInput_.retiredEmitters.clear();
     renderInput_.deliverySequence = 0u;
     pendingRenderDeliverySequence_ = 0u;
@@ -745,7 +748,7 @@ void VfxPlaybackService::Reset() {
 }
 
 void VfxPlaybackService::PublishRenderInputDelivery() noexcept {
-    if (renderInput_.emitters.empty() && renderInput_.retiredEmitters.empty()) {
+    if (renderInput_.emitters.empty() && renderInput_.retiredEmitters.empty() && renderInput_.fluids.empty()) {
         renderInput_.deliverySequence = 0u;
         return;
     }
@@ -759,10 +762,12 @@ void VfxPlaybackService::PublishRenderInputDelivery() noexcept {
 bool VfxPlaybackService::PublishFrozenRenderInput() noexcept {
     if (reliableRenderDeliveryEnabled_ && pendingRenderDeliverySequence_ != 0u)
         return false;
-    if (renderInput_.emitters.empty() && renderInput_.retiredEmitters.empty()) {
+    if (renderInput_.emitters.empty() && renderInput_.retiredEmitters.empty() && renderInput_.fluids.empty()) {
         return false;
     }
-    bool needsFreeze = false;
+    bool needsFreeze = std::any_of(renderInput_.fluids.begin(), renderInput_.fluids.end(), [](const auto& domain) {
+        return domain.deltaSeconds > 0.0f || domain.resetSimulation;
+    });
     for (const auto& submission : renderInput_.emitters) {
         if (submission.deltaSeconds > 0.0f || submission.spawnCount != 0u || submission.resetSimulation) {
             needsFreeze = true;
@@ -784,6 +789,12 @@ bool VfxPlaybackService::PublishFrozenRenderInput() noexcept {
         submission.spawnCount = 0u;
         submission.resetSimulation = false;
         submission.drawAfterSimulation = true;
+    }
+    for (auto& domain : renderInput_.fluids) {
+        domain.deltaSeconds = 0.0f;
+        domain.resetSimulation = false;
+        for (auto& source : domain.sources)
+            source.burstDensity = 0.0f;
     }
     PublishRenderInputDelivery();
     return true;
@@ -969,8 +980,14 @@ size_t VfxPlaybackService::AppendInstanceStep(Instance& instance, float deltaSec
     const size_t firstSubmission = renderInput_.emitters.size();
     for (uint32_t emitterIndex = 0u; emitterIndex < program.emitters.size(); ++emitterIndex) {
         const VfxProgramEmitter& emitter = program.emitters[emitterIndex];
-        if (emitter.kind == VfxLayerKind::Group || emitter.kind == VfxLayerKind::Adjustment)
+        if (emitter.kind == VfxLayerKind::Group || emitter.kind == VfxLayerKind::Adjustment ||
+            emitter.kind == VfxLayerKind::FluidSource)
             continue;
+        // 流体域は粒子 pass へは出さず、下の流体源をまとめた域の提交にする（源は域の中で処理する）。
+        if (emitter.kind == VfxLayerKind::Fluid) {
+            AppendFluidDomain(instance, emitterIndex, deltaSeconds, spawnDelta, drawAfterSimulation, wrapLoop);
+            continue;
+        }
         // Mesh 出力レイヤーはモデル描画側が担当する。粒子 pass へは
         // 一切渡さない（形状は手続きプリミティブではないため）。
         if (!emitter.render.meshAssetGuid.empty())
@@ -982,9 +999,9 @@ size_t VfxPlaybackService::AppendInstanceStep(Instance& instance, float deltaSec
 
         uint32_t spawnCount = 0u;
         if (overrides.enabled != 0u && emitter.kind == VfxLayerKind::Particles) {
-            spawnCount =
-                PLAYBACK::ComputeEmitterSpawnCount(state, program, emitter, instance.elapsedSeconds, spawnDelta,
-                                                   overrides.spawnRateMultiplier, instance.loop, wrapLoop);
+            spawnCount = PLAYBACK::ComputeEmitterSpawnCount(state, program, emitter, instance.elapsedSeconds,
+                                                            spawnDelta, overrides.spawnRateMultiplier, instance.loop,
+                                                            wrapLoop, emitter.simulation.capacity);
         }
 
         ParticleEmitterSubmission submission{};
@@ -1068,10 +1085,12 @@ size_t VfxPlaybackService::AppendInstanceStep(Instance& instance, float deltaSec
         // a non-zero remainder must keep its burst cursor/accumulator.
         if (wrapped <= 1.0e-6f || program.durationSeconds - wrapped <= 1.0e-6f) {
             instance.elapsedSeconds = 0.0f;
-            for (EmitterState& state : instance.emitterStates) {
+            for (size_t index = 0u; index < instance.emitterStates.size(); ++index) {
+                EmitterState& state = instance.emitterStates[index];
                 state.burstPending = true;
                 state.nextBurstIndex = 0u;
-                state.resetSimulation = true;
+                // 流体域は輪の継ぎ目で作り直さない（烟が続いたまま次の周回へ流れる）。
+                state.resetSimulation = state.resetSimulation || program.emitters[index].kind != VfxLayerKind::Fluid;
             }
         }
     }

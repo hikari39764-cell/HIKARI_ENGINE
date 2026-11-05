@@ -23,6 +23,8 @@
 #include "Render3D/Vfx/Internal/HIKARI_GpuParticleShaderInterop.h"
 #include "Internal/HIKARI_GpuContractDevice.h"
 
+void CheckFluidSolver();
+
 namespace {
 void CheckParticleAssetPrewarm() {
     using namespace HIKARI;
@@ -238,6 +240,7 @@ int main() {
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
     CheckParticleAssetPrewarm();
     CheckRuntimeRingBounds();
+    CheckFluidSolver();
     using namespace HIKARI;
     using namespace RENDER3D::PARTICLES::INTERNAL;
     using Microsoft::WRL::ComPtr;

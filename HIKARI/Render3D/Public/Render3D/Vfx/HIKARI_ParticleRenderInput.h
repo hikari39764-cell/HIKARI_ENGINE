@@ -1,4 +1,6 @@
 #pragma once
+#include "Render3D/Vfx/HIKARI_FluidTypes.h"
+#include "Render3D/Vfx/HIKARI_ParticleEmitterInstanceKey.h"
 #include "Render3D/Vfx/HIKARI_ParticleForceField.h"
 #include "Vfx/HIKARI_VfxPostProcessMode.h"
 #include "Render3D/Vfx/HIKARI_ParticleSpatialEffect.h"
@@ -40,15 +42,6 @@ inline uintptr_t MakeParticleMaterialSourceIdentity(uint64_t sourceIdentity, con
         sourceIdentity != 0u ? static_cast<uintptr_t>(sourceIdentity) : reinterpret_cast<uintptr_t>(fallbackIdentity);
     return (untagged << 1u) | uintptr_t{1u};
 }
-
-struct ParticleEmitterInstanceKey {
-    uint64_t playbackNamespace = 0u;
-    uint32_t playbackSlot = 0u;
-    uint32_t playbackGeneration = 0u;
-    uint32_t emitterIndex = 0u;
-
-    bool operator==(const ParticleEmitterInstanceKey&) const noexcept = default;
-};
 
 enum class ParticleCompositionLayerKind : uint8_t { Content, Group, Adjustment };
 struct ParticleCompositionLayer {
@@ -413,6 +406,8 @@ struct ParticleRenderInput {
     std::vector<ParticleEmitterInstanceKey> retiredEmitters{};
     std::vector<ParticleEmitterSubmission> emitters{};
     std::vector<ParticleComposition> compositions{};
+    // 流体層の域。退役は retiredEmitters の同じ実例键で伝える。
+    std::vector<FLUID::FluidDomainSubmission> fluids{};
 
     ParticleRenderDeliveryToken GetDeliveryToken() const noexcept { return {sourceIdentity, deliverySequence}; }
 };
@@ -428,7 +423,8 @@ struct ParticleRenderFrameSource {
     bool HasDrawWork() const noexcept { return input != nullptr && !input->emitters.empty(); }
 
     bool HasFrameWork() const noexcept {
-        return input != nullptr && (!input->emitters.empty() || !input->retiredEmitters.empty());
+        return input != nullptr &&
+               (!input->emitters.empty() || !input->retiredEmitters.empty() || !input->fluids.empty());
     }
 };
 

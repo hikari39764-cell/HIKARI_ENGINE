@@ -651,6 +651,7 @@
     {"ui.quality.transitionSwitching", "切换场景"}, {"ui.quality.transitionUnknown", "未知"},
     {"ui.quality.varianceClip", "方差裁剪"}, {"ui.quality.viewportScale", "视口缩放"},
     {"ui.quality.volumetricLighting", "体积光照"}, {"ui.quality.volumetricClouds", "体积云"},
+    {"ui.quality.fluidSmoke", "流体烟雾"},
     {"ui.quality.dynamicGi", "动态漫反射 GI"}, {"ui.quality.localShadows", "局部光阴影"},
     {"ui.quality.vsync", "垂直同步"}, {"ui.resource.artifactsFormat", "产物：%d"},
     {"ui.resource.assetUnavailable", "所选资源不再可用"}, {"ui.resource.assetsUsedFormat", "%d 个资源 | %d 个已使用"},

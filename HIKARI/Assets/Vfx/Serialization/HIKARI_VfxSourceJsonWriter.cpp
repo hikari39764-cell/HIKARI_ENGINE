@@ -304,7 +304,7 @@ Json WriteEmitter(const VfxEmitterData& emitter) {
                                    {"targetId", track.targetId},
                                    {"propertyId", track.propertyId},
                                    {"curve", WriteCurve(track.curve)}});
-    return {
+    Json layer{
         {"parameterTracks", std::move(parameterTracks)},
         {"id", emitter.id},
         {"name", emitter.name},
@@ -484,6 +484,13 @@ Json WriteEmitter(const VfxEmitterData& emitter) {
         {"effects", std::move(effects)},
         {"inputLinks", std::move(links)},
     };
+    // 流体の模块はその種類の層にだけ書く（字段表が唯一の宣言）。
+    Json& modules = layer["modules"];
+    if (emitter.kind == VfxLayerKind::Fluid)
+        JSONFIELDS::Write(modules["fluidDomain"], emitter.fluidDomain, kVfxFluidDomainModuleFields);
+    if (emitter.kind == VfxLayerKind::FluidSource)
+        JSONFIELDS::Write(modules["fluidSource"], emitter.fluidSource, kVfxFluidSourceModuleFields);
+    return layer;
 }
 } // namespace
 

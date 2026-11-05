@@ -691,6 +691,55 @@ void ValidateHierarchyCycles(const VfxAssetData& asset,
     }
 }
 
+// 流体層：域は他の域の中に置かない、源は域の下（群は挟んでよい）、数は GPU の表の上限まで、値は字段表の範囲。
+// 流体層は効果・メッシュ出力・特殊出力・履歴・マットを使わない（描画は体積の步进が受け持つ）。
+void ValidateFluidLayers(const VfxAssetData& asset,
+                         const std::unordered_map<std::string, const VfxEmitterData*>& emitters,
+                         std::unordered_set<std::string>& ids, std::vector<VfxDiagnostic>& diagnostics) {
+    namespace FLUID = RENDER3D::FLUID;
+    const auto find = [&emitters](const std::string& id) -> const VfxEmitterData* {
+        const auto found = emitters.find(id);
+        return found == emitters.end() ? nullptr : found->second;
+    };
+    std::unordered_map<const VfxEmitterData*, uint32_t> sourcesPerDomain{};
+    uint32_t domains = 0u;
+    for (const VfxEmitterData& emitter : asset.emitters) {
+        if (emitter.kind != VfxLayerKind::Fluid && emitter.kind != VfxLayerKind::FluidSource)
+            continue;
+        if (!emitter.effects.empty() || emitter.meshOutput.enabled || !emitter.specialOutputs.empty() ||
+            emitter.history.mode != VfxHistoryMode::None || !emitter.matte.sourceLayerId.empty() ||
+            emitter.matte.sourceOnly)
+            AddError(diagnostics, "Vfx.FluidLayerFeature",
+                     "Fluid layers take no effects, mesh output, special outputs, history or track mattes", emitter.id);
+        const VfxEmitterData* domain = FindVfxFluidDomainLayer(emitter, find);
+        if (emitter.kind == VfxLayerKind::Fluid) {
+            ++domains;
+            (void)RegisterId(emitter.fluidDomain.id, "fluid domain module", ids, diagnostics);
+            const FLUID::FluidDomainSettings& settings = emitter.fluidDomain;
+            if (JSONFIELDS::Sanitize(settings, FLUID::kFluidDomainSettingsFields) != settings)
+                AddError(diagnostics, "Vfx.FluidDomainRange", "Fluid domain values are outside their ranges",
+                         emitter.fluidDomain.id);
+            if (domain != nullptr)
+                AddError(diagnostics, "Vfx.NestedFluidDomain", "A fluid domain cannot be placed inside another",
+                         emitter.id);
+            continue;
+        }
+        (void)RegisterId(emitter.fluidSource.id, "fluid source module", ids, diagnostics);
+        const FLUID::FluidSourceSettings& settings = emitter.fluidSource;
+        if (JSONFIELDS::Sanitize(settings, FLUID::kFluidSourceSettingsFields) != settings)
+            AddError(diagnostics, "Vfx.FluidSourceRange", "Fluid source values are outside their ranges",
+                     emitter.fluidSource.id);
+        if (domain == nullptr)
+            AddError(diagnostics, "Vfx.FluidSourceWithoutDomain", "Place fluid sources under a fluid domain layer",
+                     emitter.id);
+        // 域自身の力場が表の一つを使う。
+        else if (++sourcesPerDomain[domain] >= FLUID::kMaximumFluidSourcesPerDomain)
+            AddError(diagnostics, "Vfx.FluidSourceBudget", "Fluid domain has too many sources", emitter.id);
+    }
+    if (domains > FLUID::kMaximumFluidDomainsPerAsset)
+        AddError(diagnostics, "Vfx.FluidDomainBudget", "VFX asset has too many fluid domains");
+}
+
 } // namespace
 
 std::vector<VfxDiagnostic> ValidateVfxAsset(const VfxAssetData& asset) {
@@ -754,6 +803,7 @@ std::vector<VfxDiagnostic> ValidateVfxAsset(const VfxAssetData& asset) {
 
     ValidateComposition(asset, emitters, diagnostics);
     ValidateHierarchyCycles(asset, emitters, diagnostics);
+    ValidateFluidLayers(asset, emitters, ids, diagnostics);
     return diagnostics;
 }
 

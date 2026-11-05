@@ -115,6 +115,8 @@ bool DrawRenderSettings() {
                                      RENDER3D::kMotionBlurQualityNames);
             changed |= DrawEnumCombo(TEXT::Localize("ui.quality.volumetricClouds").c_str(),
                                      settings.volumetricCloudQuality, RENDER3D::kVolumetricCloudQualityNames);
+            changed |= DrawEnumCombo(TEXT::Localize("ui.quality.fluidSmoke").c_str(), settings.fluidSmokeQuality,
+                                     RENDER3D::kFluidSmokeQualityNames);
             changed |= DrawEnumCombo(TEXT::Localize("ui.quality.localShadows").c_str(), settings.localShadowQuality,
                                      RENDER3D::kLocalShadowQualityNames);
             changed |=

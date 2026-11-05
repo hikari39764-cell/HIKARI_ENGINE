@@ -125,6 +125,7 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
     }
     const uintptr_t sourceIdentity = reinterpret_cast<uintptr_t>(&sceneSource);
     SyncGpuDrivenSceneMaterialSources(graphics, sourceIdentity, sceneSource);
+    PrepareFluidFrame(graphics, settings.particleFrameSource);
     if (!gMeshRendererState.particlePass.PrepareFrame(graphics, settings.particleFrameSource,
                                                       gMeshRendererState.gpuMaterialRegistry)) {
         return EditorInteractiveMeshRenderResult::MaterialFrameUnavailable;

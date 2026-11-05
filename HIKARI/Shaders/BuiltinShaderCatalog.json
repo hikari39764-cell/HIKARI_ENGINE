@@ -1828,6 +1828,124 @@
       }
     },
     {
+      "assetGuid": "1411e422a20f479fab031b9a2e17d608",
+      "programId": "HIKARI.EngineShader.Render3D_FluidSimulation",
+      "source": "Render3D_FluidSimulation.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.Vfx",
+      "group": "NativeVfx",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "AdvectCorrectCS",
+          "stage": "Compute",
+          "entry": "AdvectCorrectCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "AdvectForwardCS",
+          "stage": "Compute",
+          "entry": "AdvectForwardCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ApplyForcesCS",
+          "stage": "Compute",
+          "entry": "ApplyForcesCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ClearCS",
+          "stage": "Compute",
+          "entry": "ClearCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "CoarsestSolveCS",
+          "stage": "Compute",
+          "entry": "CoarsestSolveCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "CurlCS",
+          "stage": "Compute",
+          "entry": "CurlCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "DiagnosticsCS",
+          "stage": "Compute",
+          "entry": "DiagnosticsCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "DivergenceCS",
+          "stage": "Compute",
+          "entry": "DivergenceCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ForceFieldCS",
+          "stage": "Compute",
+          "entry": "ForceFieldCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "OccupancyCS",
+          "stage": "Compute",
+          "entry": "OccupancyCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ProjectCS",
+          "stage": "Compute",
+          "entry": "ProjectCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ProlongCS",
+          "stage": "Compute",
+          "entry": "ProlongCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ResidualRestrictCS",
+          "stage": "Compute",
+          "entry": "ResidualRestrictCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "SliceCS",
+          "stage": "Compute",
+          "entry": "SliceCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "SmoothCS",
+          "stage": "Compute",
+          "entry": "SmoothCS",
+          "profile": "cs_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.FluidSimulation",
+        "engineInterfaceVersion": 1,
+        "engineInterfaceHash": "5624bd25e69a3946c67da0540b839aed566ecb71e32d0c96e48b6ef3225d1b4f",
+        "rootLayoutId": "HIKARI.FluidSimulation.Root",
+        "rootLayoutVersion": 1,
+        "rootLayoutHash": "fc47a09f15ef532adc8c11830305d985ffd5c8ae862faf90b0d07da5ce6f7845",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
       "assetGuid": "79c062d3b4ec1f644530dc86dcf48862",
       "programId": "HIKARI.EngineShader.Render3D_GeometryAuxFeaturePS",
       "source": "Render3D_GeometryAuxFeaturePS.hlsl",

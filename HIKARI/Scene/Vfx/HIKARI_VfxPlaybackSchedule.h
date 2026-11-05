@@ -232,13 +232,14 @@ inline bool HasUniqueSpecialOutputIds(const VfxProgram& program) noexcept {
     return true;
 }
 
+// capacity は数の上限（粒子は GPU の容量、流体源の burst 密度は上限なし）。
 inline uint32_t ComputeEmitterSpawnCount(EmitterScheduleState& state, const VfxProgram& program,
                                          const VfxProgramEmitter& emitter, float elapsedSeconds, float deltaSeconds,
-                                         float spawnRateMultiplier, bool loop, bool wrapLoop) noexcept {
+                                         float spawnRateMultiplier, bool loop, bool wrapLoop,
+                                         uint32_t capacity) noexcept {
     const float programDuration = (std::max)(0.0f, program.durationSeconds);
     const float activeStart = EmitterStartDelay(program, emitter);
     const float activeEnd = EmitterActiveEnd(program, emitter);
-    const uint32_t capacity = emitter.simulation.capacity;
     constexpr float epsilon = 1.0e-6f;
     uint32_t spawnCount = 0u;
 

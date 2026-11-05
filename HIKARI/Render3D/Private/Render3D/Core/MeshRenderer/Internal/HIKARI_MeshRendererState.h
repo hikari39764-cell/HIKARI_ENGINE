@@ -26,6 +26,7 @@
 #include "RenderCore/Resources/HIKARI_RenderResourceHandle.h"
 #include "RenderCore/Resources/HIKARI_RenderResourcePool.h"
 #include "Render3D/Terrain/HIKARI_TerrainSurfaceGpuFrameBuffer.h"
+#include "Render3D/Vfx/HIKARI_FluidVolumePass.h"
 #include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuFrameBuffer.h"
 #include "Render3D/Water/Spectrum/HIKARI_OceanSpectrumRuntime.h"
@@ -124,6 +125,8 @@ struct MeshRendererState {
     RENDER3D::GPUDRIVEN::ClusterGpuDrivenProducerAdapter clusterGpuDrivenProducer{};
     RENDER3D::MESHLET::MeshletRenderBackend meshletRenderBackend{};
     RENDER3D::PARTICLES::ParticleGpuDrivenPass particlePass{};
+    // 粒子と同じ描画入力の流体域を解く（主視図と編集器の交互視図が共用し、実例键で分ける）。
+    RENDER3D::FLUID::FluidVolumePass fluidPass{};
     const RENDER3D::PARTICLES::ParticleRenderFrameSource* particleFrameSource = nullptr;
     RENDER3D::WORLD_SPRITES::WorldSpritePass worldSpritePass{};
     const RENDER3D::WORLD_SPRITES::WorldSpriteFrameSource* worldSpriteFrameSource = nullptr;

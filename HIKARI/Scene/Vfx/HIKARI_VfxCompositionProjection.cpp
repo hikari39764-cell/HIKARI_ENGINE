@@ -20,6 +20,9 @@ void VfxPlaybackService::ProjectComposition(const Instance& instance, float subm
     ParticleComposition composition;
     composition.instance = identity;
     for (const auto& emitter : program.emitters) {
+        // 流体層は体積の步进で描き、粒子の合成（マット・調整層）には入らない。
+        if (emitter.kind == VfxLayerKind::Fluid || emitter.kind == VfxLayerKind::FluidSource)
+            continue;
         ParticleCompositionLayer layer;
         layer.emitterIndex = emitter.emitterIndex;
         layer.parentEmitterIndex = emitter.parentEmitterIndex;

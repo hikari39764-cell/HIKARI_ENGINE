@@ -294,6 +294,7 @@ bool BeginFrameInternal(const GFX::Context& graphics, const Camera3D& camera, co
 
     gMeshRendererState.frameObjectIndex = 0;
     SyncSurfaceGpuSceneMaterialFrame(graphics);
+    PrepareFluidFrame(graphics, gMeshRendererState.particleFrameSource);
     if (!gMeshRendererState.particlePass.PrepareFrame(graphics, gMeshRendererState.particleFrameSource,
                                                       gMeshRendererState.gpuMaterialRegistry)) {
         return false;

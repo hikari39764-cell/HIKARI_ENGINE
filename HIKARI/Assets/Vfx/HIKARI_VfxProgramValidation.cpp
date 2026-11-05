@@ -360,12 +360,25 @@ bool ValidateLayerCurves(const VfxProgram& program, uint32_t index, const VfxPro
     return true;
 }
 
+// 流体層の設定は字段表の範囲の中にあり、流体源は流体域の層を指す。
+bool IsValidFluidLayer(const VfxProgram& program, const VfxProgramEmitter& emitter) noexcept {
+    namespace FLUID = RENDER3D::FLUID;
+    if (emitter.kind == VfxLayerKind::Fluid)
+        return emitter.fluidDomainIndex == kInvalidVfxProgramIndex &&
+               JSONFIELDS::Sanitize(emitter.fluidDomain, FLUID::kFluidDomainSettingsFields) == emitter.fluidDomain;
+    if (emitter.kind == VfxLayerKind::FluidSource)
+        return emitter.fluidDomainIndex < program.emitters.size() &&
+               program.emitters[emitter.fluidDomainIndex].kind == VfxLayerKind::Fluid &&
+               JSONFIELDS::Sanitize(emitter.fluidSource, FLUID::kFluidSourceSettingsFields) == emitter.fluidSource;
+    return emitter.fluidDomainIndex == kInvalidVfxProgramIndex;
+}
+
 bool IsValidEmitterIdentity(const VfxProgram& program, uint32_t index, const VfxProgramEmitter& emitter) noexcept {
     return emitter.emitterIndex == index && IsValidVfxHistory(emitter.history) &&
            (emitter.history.mode == VfxHistoryMode::None ||
             (emitter.kind == VfxLayerKind::Shape && emitter.simulation.capacity == emitter.history.samples)) &&
-           static_cast<uint8_t>(emitter.kind) <= static_cast<uint8_t>(VfxLayerKind::Adjustment) &&
-           IsValidProgramString(emitter.sourceEmitterId) &&
+           static_cast<uint8_t>(emitter.kind) <= static_cast<uint8_t>(VfxLayerKind::FluidSource) &&
+           IsValidFluidLayer(program, emitter) && IsValidProgramString(emitter.sourceEmitterId) &&
            (emitter.parentEmitterIndex == kInvalidVfxProgramIndex ||
             emitter.parentEmitterIndex < program.emitters.size()) &&
            emitter.parentEmitterIndex != index && IsFinite(emitter.transform.position) &&
@@ -631,7 +644,8 @@ bool ValidateVfxProgram(const VfxProgram& program, std::string& outError) {
             return false;
         }
         const VfxProgramEmitter& emitter = program.emitters[index];
-        if (emitter.kind != VfxLayerKind::Group && emitter.kind != VfxLayerKind::Adjustment) {
+        if (emitter.kind != VfxLayerKind::Group && emitter.kind != VfxLayerKind::Adjustment &&
+            emitter.kind != VfxLayerKind::Fluid && emitter.kind != VfxLayerKind::FluidSource) {
             totalCapacity += AlignParticleCapacity(emitter.simulation.capacity);
         }
     }
