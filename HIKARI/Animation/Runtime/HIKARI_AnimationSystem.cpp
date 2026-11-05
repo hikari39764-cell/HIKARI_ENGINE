@@ -256,12 +256,11 @@ void AnimationSystem::Update(World& world, const FrameContext& frame) {
                 }
             }
 
-            if (snapshot.valid) {
+            if (snapshot.valid)
                 ApplyMaskedPoseLayer(*modelAsset, animator, snapshot.localPose);
-                if (nodeOverrideService_ != nullptr) {
-                    (void)nodeOverrideService_->Apply(*modelAsset, object.GetRuntimeHandle(), snapshot.localPose);
-                }
-            }
+            // 節点の偏移は片段の無い Animator（バインド姿勢）にも重ねる。項目コードが骨を直接動かす経路。
+            if (nodeOverrideService_ != nullptr)
+                (void)nodeOverrideService_->Apply(*modelAsset, object.GetRuntimeHandle(), snapshot.localPose);
             const bool poseChanged = poseService_->Publish(object.GetRuntimeHandle(), std::move(snapshot));
             currentObjectKeys.insert(object.GetRuntimeHandle().ToValue());
             currentObjects.push_back(object.GetRuntimeHandle());
