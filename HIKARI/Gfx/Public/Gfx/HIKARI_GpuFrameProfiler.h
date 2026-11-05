@@ -81,6 +81,14 @@ enum class Pass : uint32_t {
     MeshletForwardMaterialProgram,
     MeshletForwardTerrain,
     GameUi,
+    // 流体の解算（Fluid Simulation）と描画（Fluid Render）の中を工程で分けた入れ子の区間。解算は子步ごとに計る。
+    FluidSolveActivity,
+    FluidSolveAdvect,
+    FluidSolveForces,
+    FluidSolvePressure,
+    FluidRenderLight,
+    FluidRenderCameraVolume,
+    FluidRenderMarch,
     Count
 };
 

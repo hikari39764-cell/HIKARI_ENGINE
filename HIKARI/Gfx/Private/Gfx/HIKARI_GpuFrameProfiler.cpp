@@ -365,6 +365,13 @@ constexpr PassInfo kPassInfo[] = {
     {Pass::MeshletForwardMaterialProgram, "Meshlet Forward Material Program", "Render3D"},
     {Pass::MeshletForwardTerrain, "Meshlet Forward Terrain", "Render3D"},
     {Pass::GameUi, "Game UI", "Render3D"},
+    {Pass::FluidSolveActivity, "Fluid Solve Activity", "Vfx"},
+    {Pass::FluidSolveAdvect, "Fluid Solve Advect", "Vfx"},
+    {Pass::FluidSolveForces, "Fluid Solve Forces", "Vfx"},
+    {Pass::FluidSolvePressure, "Fluid Solve Pressure", "Vfx"},
+    {Pass::FluidRenderLight, "Fluid Render Light", "Vfx"},
+    {Pass::FluidRenderCameraVolume, "Fluid Render Camera Volume", "Vfx"},
+    {Pass::FluidRenderMarch, "Fluid Render March", "Vfx"},
 };
 constexpr bool PassInfoFollowsEnum() {
     for (size_t index = 0; index < std::size(kPassInfo); ++index) {

@@ -12,6 +12,7 @@
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Gfx/HIKARI_VideoMemory.h"
 
@@ -300,8 +301,9 @@ void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D
     const uint32_t a = velocityIndex, b = (a + 1u) % 3u, c = (a + 2u) % 3u;
     // 疎な解算：今の密度で砖块の占有を数え直し、烟のある砖块の周りと源の形に触れる砖块を動かす（1 子步で烟が 1 砖块
     // より遠くへ動くことは無い）。
-    Occupancy(densityIndex);
     {
+        GFX::GPU_PROFILE::ScopedGpuTimer timer(commands_, GFX::GPU_PROFILE::Pass::FluidSolveActivity);
+        Occupancy(densityIndex);
         FluidPassBindings activity{};
         activity.sources = sources;
         const uint32_t bricks[3] = {Groups(domain_.layout.cells[0], 8u), Groups(domain_.layout.cells[1], 8u),
@@ -318,25 +320,34 @@ void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D
     const uint32_t none[4] = {};
 
     // 平流は源の表も読む（形状引导の速度で密度だけを運ぶ）。
-    FluidPassBindings forward{{&v[a], &d[e]}, {&v[b], &d[f]}};
-    forward.sources = sources;
-    Dispatch(FluidEntry::AdvectForward, forward, faces, none, faceGroups);
-    FluidPassBindings correct{{&v[a], &d[e], &v[b], &d[f]}, {&v[c], &d[g]}};
-    correct.sources = sources;
-    Dispatch(FluidEntry::AdvectCorrect, correct, faces, none, faceGroups);
-    Dispatch(FluidEntry::Curl, {{&v[c]}, {&v[b]}}, cells, none, cellGroups);
-    FluidPassBindings forces{{&v[c], &v[b]}, {&v[a], &d[g]}};
-    forces.sources = sources;
-    forces.interactions = interactions;
-    Dispatch(FluidEntry::ForceField, forces, cells, none, cellGroups);
-    Dispatch(FluidEntry::ApplyForces, {{&v[c], &v[a]}, {&v[b]}}, faces, none, faceGroups);
-    FluidPassBindings divergence{{&v[b]}, {&domain_.rhs[0]}};
-    divergence.sources = sources;
-    divergence.interactions = interactions;
-    Dispatch(FluidEntry::Divergence, divergence, cells, none, cellGroups);
-    for (uint32_t cycle = 0u; cycle < vCycles; ++cycle)
-        VCycle();
-    Dispatch(FluidEntry::Project, {{&domain_.pressure[0]}, {&v[b]}}, faces, none, faceGroups);
+    {
+        GFX::GPU_PROFILE::ScopedGpuTimer timer(commands_, GFX::GPU_PROFILE::Pass::FluidSolveAdvect);
+        FluidPassBindings forward{{&v[a], &d[e]}, {&v[b], &d[f]}};
+        forward.sources = sources;
+        Dispatch(FluidEntry::AdvectForward, forward, faces, none, faceGroups);
+        FluidPassBindings correct{{&v[a], &d[e], &v[b], &d[f]}, {&v[c], &d[g]}};
+        correct.sources = sources;
+        Dispatch(FluidEntry::AdvectCorrect, correct, faces, none, faceGroups);
+    }
+    {
+        GFX::GPU_PROFILE::ScopedGpuTimer timer(commands_, GFX::GPU_PROFILE::Pass::FluidSolveForces);
+        Dispatch(FluidEntry::Curl, {{&v[c]}, {&v[b]}}, cells, none, cellGroups);
+        FluidPassBindings forces{{&v[c], &v[b]}, {&v[a], &d[g]}};
+        forces.sources = sources;
+        forces.interactions = interactions;
+        Dispatch(FluidEntry::ForceField, forces, cells, none, cellGroups);
+        Dispatch(FluidEntry::ApplyForces, {{&v[c], &v[a]}, {&v[b]}}, faces, none, faceGroups);
+    }
+    {
+        GFX::GPU_PROFILE::ScopedGpuTimer timer(commands_, GFX::GPU_PROFILE::Pass::FluidSolvePressure);
+        FluidPassBindings divergence{{&v[b]}, {&domain_.rhs[0]}};
+        divergence.sources = sources;
+        divergence.interactions = interactions;
+        Dispatch(FluidEntry::Divergence, divergence, cells, none, cellGroups);
+        for (uint32_t cycle = 0u; cycle < vCycles; ++cycle)
+            VCycle();
+        Dispatch(FluidEntry::Project, {{&domain_.pressure[0]}, {&v[b]}}, faces, none, faceGroups);
+    }
     velocityIndex = b;
     densityIndex = g;
 }

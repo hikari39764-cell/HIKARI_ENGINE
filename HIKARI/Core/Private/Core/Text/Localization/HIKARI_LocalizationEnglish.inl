@@ -4213,6 +4213,8 @@
     {"ui.inspector.text.Absorption (1/s)", "Absorption (1/s)"},
     {"ui.inspector.text.Guide Strength (1/s)", "Guide Strength (1/s)"},
     {"ui.inspector.text.Guide Thickness (m)", "Guide Thickness (m)"},
+    {"ui.inspector.text.Emission Noise", "Emission Noise"},
+    {"ui.inspector.text.Emission Noise Scale (m)", "Emission Noise Scale (m)"},
     {"ui.inspector.text.Force Mode", "Force Mode"},
     {"ui.inspector.text.Domain", "Domain"},
     {"ui.inspector.text.Motion", "Motion"},

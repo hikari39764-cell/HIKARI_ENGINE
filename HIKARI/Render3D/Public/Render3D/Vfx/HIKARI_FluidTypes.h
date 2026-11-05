@@ -84,6 +84,10 @@ struct FluidSourceSettings {
     // 形状引导：形の外へ guideThickness [m] 以内まで出た烟を形の中へ引き戻す強さ [1/s]。烟（密度）だけを運び、流れは変えない。
     float guideStrength = 0.0f;
     float guideThickness = 0.25f;
+    // 注入の揺らぎ：注入する量を emissionNoiseScale [m] ほどの塊の 3D ノイズで場所ごとに揺らす強さ（0 で一様、1 で塊の間が
+    // 所々抜け、濃い塊は 2〜3 倍）。塊はゆっくり形を変える。大きな源（球壳・霧の帯）を一様な膜でなく濃淡のある烟にする。
+    float emissionNoise = 0.0f;
+    float emissionNoiseScale = 8.0f;
     FluidForceMode forceMode = FluidForceMode::Acceleration;
 
     bool operator==(const FluidSourceSettings&) const = default;
@@ -127,6 +131,8 @@ inline constexpr auto kFluidSourceSettingsFields = [](auto&& field) {
     field("outflow", &S::outflow, Range{-100.0, 100.0}, Unit{"m/s"});
     field("guideStrength", &S::guideStrength, Range{0.0, 100.0}, Unit{"1/s"}, Group{"Shape Guide"});
     field("guideThickness", &S::guideThickness, Range{0.01, 500.0}, Unit{"m"}, Group{"Shape Guide"});
+    field("emissionNoise", &S::emissionNoise, Slider(0.0, 1.0), Group{"Emission Noise"});
+    field("emissionNoiseScale", &S::emissionNoiseScale, Range{0.05, 500.0}, Unit{"m"}, Group{"Emission Noise"});
     field("forceMode", &S::forceMode, kFluidForceModeNames);
 };
 

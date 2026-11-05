@@ -1,7 +1,6 @@
 // 体積流体（VFX の流体層）の描画。重なった域は 1 本の視線で一緒に積分する。
-// 計算：NoiseCS（細部の 3D ノイズを一度だけ作る）、LightCS（域ごとの光照体積：太陽へ向かう自己影、空への透過率。場面の
-// 級联阴影は步进の標本ごと）、
-// CameraVolumeCS（透明物体のための低分辨率の相機体積）、SolarVisibilityCS（場面へ落とす烟の影の表。雲の影の表と同じ並び）。
+// 計算：NoiseCS（細部の 3D ノイズ）、LightCS（域ごとの光照体積：太陽と空への光学的な厚さ）、CameraVolumeCS（透明物体の
+// 相機体積）、SolarVisibilityCS（場面へ落とす烟の影の表。雲の影の表と同じ並び）。
 // 全画面：MarchPS（半分辨率で步进、場面の深度で止める）→ ReconstructPS（相機の動きで履歴を再投影して時間方向に混ぜる）
 // → CompositePS（深度を見て全解像度へ広げ、ONE / INV_SRC_ALPHA で場面へ重ねる：C·T + S）。
 #include "Include/Lighting/HIKARI_CloudSolarVisibility.hlsli"
@@ -107,12 +106,10 @@ float SceneSunVisibility(float3 world)
         gShadowParams.zw, gShadowSampling.yz, gShadowSampling.x * gShadowBias[cascade], valid);
 }
 
-// 細部を足した密度：平均を変えずに模様で揺らす。薄い所（縁）ほど大きく揺らして綿の塊のように崩し（強さ 0.8 で模様の谷が
-// 抜ける）、濃い芯は 3 割ほど揺らすだけにする。薄いの目安は「細部の模様 1 つの大きさで光学的な厚さが 1 に届かない密度」
-// 1 / (消光 × detailScale)。体積雲のように引いて削ると、薄い烟の平均の光学的な厚さが半分ほどに落ち、厚い球壳でも
-// 向こうの物が透けて見えた（流体の密度は雲の 0〜1 と違い、大きな場地の烟はほとんど「薄い」側にある）。
-// pixelSize はこの点での画素の大きさ [m]（負なら細部なし）。ノイズの 1 texel が画素より細かいと模様が欠けて揺らぎ、
-// 読む位置も散ってキャッシュが外れるので、画素が 1〜2 texel になる距離で消して読まない。
+// 細部を足した密度：平均を変えずに模様で揺らす。薄い所（細部の模様 1 つで光学的な厚さが 1 に届かない密度
+// 1 / (消光 × detailScale) より下）ほど大きく揺らして綿のように崩し、濃い芯は 3 割だけ揺らす。体積雲のように引いて削ると
+// 大きな場地の烟（ほとんど「薄い」側）の光学的な厚さが半分になり、厚い球壳の向こうが透けた。pixelSize は画素の大きさ [m]
+// （負なら細部なし）。ノイズの 1 texel が画素より細かいと模様が揺らぎキャッシュも外れるので、その距離で読まない。
 float DetailedDensity(HikariFluidDomain domain, float rho, float3 flow, float3 grid, float pixelSize)
 {
     if (pixelSize < 0.0f)
@@ -141,8 +138,7 @@ float DetailedDensity(HikariFluidDomain domain, float rho, float3 flow, float3 g
     return rho * max(1.0f + strength * wobble * lerp(0.3f, 1.25f, edge), 0.0f);
 }
 
-// 世界の点 world での消光 sigma と、そこから視線へ出る光（sigma を掛けた散乱 + 発光）を足す。pixelSize は細部の
-// 距離による消え方（DetailedDensity）。
+// 世界の点 world の消光 sigma と視線へ出る光（sigma × 散乱 + 発光）を足す。pixelSize は DetailedDensity へ。
 void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Texture3D<float4> velocity,
     Texture3D<float4> light, float3 world, float3 viewDirection, float pixelSize, inout float sigma,
     inout float3 emitted)
@@ -158,7 +154,8 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
     if (rho <= 0.0f)
         return;
     const float extinction = rho * domain.look.w;
-    const float2 transmittance = light.SampleLevel(gLinearClamp, uvw, 0).xy;
+    // 光照体積は光学的な厚さ（透過率で補間すると厚い烟で隣と桁が違い、折れ目が格子の塊として陰影に出る）。
+    const float2 transmittance = exp(-light.SampleLevel(gLinearClamp, uvw, 0).xy);
     const float cosTheta = dot(viewDirection, normalize(gSun.xyz));
     const float3 sun = gSunRadiance.rgb *
         HikariFluidSunScattering(cosTheta, domain.optics.x, domain.optics.y, transmittance.x * SceneSunVisibility(world));
@@ -202,8 +199,7 @@ float2 DomainsInterval(float3 origin, float3 direction)
     return float2(max(result.x, 0.0f), result.y);
 }
 
-// 区間 [start, end] を stepLength [m] ごとに積分する（1 歩の中で一定の消光として解析的に。最後の 1 歩は end で切る）。
-// footprint は距離 t での画素の大きさ footprint.x + footprint.y * t [m]（x が負なら細部なし）。
+// [start, end] を stepLength [m] ごとに解析的に積分する（最後の歩は end で切る）。footprint は距離 t の画素の大きさ x + y t（x < 0 で細部なし）。
 float4 Integrate(float3 origin, float3 direction, float start, float end, float stepLength, float jitter,
     float2 footprint, out float meanDistance)
 {
@@ -229,8 +225,7 @@ float4 Integrate(float3 origin, float3 direction, float start, float end, float 
         weightedDistance += t * lost;
         absorbed += lost;
         transmittance *= segment;
-        // 打ち切る時は、残りの透過率を「この先も同じ明るさの烟が続く」として散乱に回して 0 にする。1% を残すと、
-        // 烟が厚く暗い時（大きな球壳の内側）に露出が上がって向こうの空と雲が透けて見える。
+        // 打ち切る時は残りを「先も同じ明るさの烟」として散乱に回し 0 にする（1% 残すと暗い球壳の内で空が透ける）。
         if (transmittance < 0.01f)
         {
             scattered += emitted / sigma * transmittance;
@@ -255,7 +250,7 @@ void NoiseCS(uint3 id : SV_DispatchThreadID)
     gOutput[id] = saturate(perlin * 0.55f + worley * 0.45f).xxxx;
 }
 
-// 域 gPass.x の光照体積（格子の半分の分辨率）：x 太陽への透過率（自己影）、y 空（上）への透過率。
+// 域 gPass.x の光照体積（格子の半分の分辨率）：x 太陽への光学的な厚さ（自己影）、y 空（上）への光学的な厚さ。
 [numthreads(4, 4, 4)]
 void LightCS(uint3 id : SV_DispatchThreadID)
 {
@@ -281,8 +276,7 @@ void LightCS(uint3 id : SV_DispatchThreadID)
             p += step;
         }
     }
-    // 空の光は上の半球から来るので、上へ進むほど広がる円錐（半角約 35°）の 4 点の平均で積分する。1 本の光線だと上の濃い
-    // 塊が真下へ柱のような影を落とし、烟に縦の筋が出る。域の外は 0（gLinearBorder）。
+    // 空の光は上へ広がる円錐（半角約 35°）の 4 点で積分する（1 本だと濃い塊が真下へ柱の影を落とし縦の筋が出る）。
     {
         const float3 side0 = normalize(cross(up, abs(up.x) < 0.9f ? float3(1.0f, 0.0f, 0.0f) : float3(0.0f, 0.0f, 1.0f)));
         const float3 side1 = cross(up, side0);
@@ -300,8 +294,7 @@ void LightCS(uint3 id : SV_DispatchThreadID)
             optical.y += 0.25f * sum * stride;
         }
     }
-    const float2 transmittance = exp(-optical * domain.look.w * domain.cells.w);
-    gOutput[id] = float4(transmittance, 0.0f, 0.0f);
+    gOutput[id] = float4(optical * (domain.look.w * domain.cells.w), 0.0f, 0.0f);
 }
 
 // ---------------------------------------------------------------- 場面へ落とす烟の影
@@ -321,9 +314,8 @@ float DomainsExtinction(float3 world)
     return sigma;
 }
 
-// 烟の影の表（雲の影の表と同じ並びで HikariSampleCloudSolarVisibility が読む）。列 (x, y) は太陽に垂直な面の格子で、
-// tile0 は列が域の箱を通る区間（太陽の向きの符号付き距離 near, far。通らない列は 0, 0 で読む側が 1 を返す）、
-// tile1..steps は far（太陽側）から near へ等分した深さまでの累積透過率。1 段を 4 標本で積分する。
+// 烟の影の表（雲の影の表と同じ並び）。列 (x, y) は太陽に垂直な面の格子、tile0 は列が箱を通る区間（太陽向きの距離
+// near, far。通らない列は 0, 0）、tile1..steps は太陽側から等分した深さまでの累積透過率（1 段 4 標本）。
 [numthreads(8, 8, 1)]
 void SolarVisibilityCS(uint3 id : SV_DispatchThreadID)
 {
@@ -440,8 +432,7 @@ MarchOutput MarchPS(FullscreenOutput input)
     ViewRay(uv + float2(0.0f, 1.0f / gSize.y), nextOrigin, nextDirection);
     const float2 footprint = float2(length(nextOrigin - origin), length(nextDirection - direction));
     float mean;
-    // 1 歩の長さは域の箱を通る区間全体から決め、不透明面ではそこで止めるだけにする。止める所までの区間で割ると、手前に物が
-    // ある画素だけ歩が細かくなり、厚い烟の明るい表層の積もり方が変わって、烟の上に物の輪郭が浮き出る。
+    // 歩の長さは箱の区間全体で決め、物の手前では止めるだけ（止める所で割ると物の輪郭が烟に浮き出る）。
     const float stepLength = (interval.y - interval.x) / max(gFrame.z, 1.0f);
     output.color = Integrate(origin, direction, interval.x, end, stepLength, frac(noise + gFrame.x), footprint, mean);
     output.depth.x = mean;

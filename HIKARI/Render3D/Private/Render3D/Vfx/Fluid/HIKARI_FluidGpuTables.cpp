@@ -89,7 +89,8 @@ FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::
     set(14, source.settings.guideStrength, source.settings.guideThickness,
         source.settings.forceMode == FluidForceMode::TargetVelocity ? 1.0f : 0.0f, softEdge);
     // 形の大きさは源の局所（拡縮を外した値）なので、世界の表面積 / 体積は拡縮の逆の平均を掛けて近似する。
-    set(15, source.settings.outflow * SourceAreaPerVolume(source, softEdge) * averageScale, 0.0f, 0.0f, 0.0f);
+    set(15, source.settings.outflow * SourceAreaPerVolume(source, softEdge) * averageScale,
+        source.settings.emissionNoise, 1.0f / (std::max)(source.settings.emissionNoiseScale, 0.05f), 0.0f);
     return gpu;
 }
 

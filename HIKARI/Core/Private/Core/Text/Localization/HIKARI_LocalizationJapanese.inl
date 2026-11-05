@@ -4228,6 +4228,8 @@
     {"ui.inspector.text.Absorption (1/s)", "吸収（1/秒）"},
     {"ui.inspector.text.Guide Strength (1/s)", "形状ガイドの強さ（1/秒）"},
     {"ui.inspector.text.Guide Thickness (m)", "形状ガイドの厚さ（m）"},
+    {"ui.inspector.text.Emission Noise", "注入のゆらぎ"},
+    {"ui.inspector.text.Emission Noise Scale (m)", "注入のゆらぎの塊の大きさ（m）"},
     {"ui.inspector.text.Force Mode", "力場の効き方"},
     {"ui.inspector.text.Domain", "ドメイン"},
     {"ui.inspector.text.Motion", "動き"},

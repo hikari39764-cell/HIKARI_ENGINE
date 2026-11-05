@@ -347,6 +347,17 @@ float EmissionMask(HikariFluidSource source, float3 local, float3 p)
     return saturate(0.5f - (distance + offset * soft) / (2.0f * soft));
 }
 
+// 注入の揺らぎ（FluidSourceSettings::emissionNoise）の倍率：域の局所 p [m] で塊の大きさ 1 / flow.z の値ノイズ 2 段により
+// 注入量を揺らす（揺らぎ 1 で塊の間が所々 0、濃い塊は 2〜3 倍。平均はおよそ 1）。塊は 1 つ分を約 8 秒で流して形を変える。
+float EmissionNoise(HikariFluidSource source, float3 p)
+{
+    if (source.flow.y <= 0.0f)
+        return 1.0f;
+    const float3 x = p * source.flow.z + float3(0.11f, 0.07f, 0.09f) * gCell.w;
+    const float n = ValueNoise(x) * 0.65f + ValueNoise(x * 2.07f + 31.7f) * 0.35f;
+    return max(1.0f + 2.5f * source.flow.y * n, 0.0f);
+}
+
 // 源 1 つの加速度と注入（格の中心、域の局所 p）。velocity は今の速度。
 void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout float3 acceleration,
                  inout float density, inout float temperature)
@@ -373,7 +384,7 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
     acceleration += source.wind.xyz * falloff - velocity * (source.wind.w * falloff);
     if (source.emission.x > 0.0f || source.emission.y > 0.0f)
     {
-        const float emit = EmissionMask(source, local, p);
+        const float emit = EmissionMask(source, local, p) * EmissionNoise(source, p);
         if (emit > 0.0f)
         {
             temperature += (source.emission.z - temperature) * saturate(emit * 8.0f * gCell.z + emit * saturate(source.emission.y));

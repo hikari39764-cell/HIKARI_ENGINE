@@ -3828,6 +3828,8 @@
     {"ui.inspector.text.Absorption (1/s)", "吸收（1/秒）"},
     {"ui.inspector.text.Guide Strength (1/s)", "形状引导强度（1/秒）"},
     {"ui.inspector.text.Guide Thickness (m)", "形状引导厚度（米）"},
+    {"ui.inspector.text.Emission Noise", "注入噪声"},
+    {"ui.inspector.text.Emission Noise Scale (m)", "注入噪声块大小（米）"},
     {"ui.inspector.text.Force Mode", "力场作用方式"},
     {"ui.inspector.text.Domain", "域"},
     {"ui.inspector.text.Motion", "运动"},

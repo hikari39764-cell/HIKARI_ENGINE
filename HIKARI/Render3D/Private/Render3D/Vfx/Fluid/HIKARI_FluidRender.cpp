@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <optional>
 
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
@@ -216,6 +217,8 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     commands->SetComputeRootConstantBufferView(kConstants, address);
     bindInputs(setCompute);
     commands->SetPipelineState(light_.Get());
+    std::optional<GFX::GPU_PROFILE::ScopedGpuTimer> lightTimer{std::in_place, commands,
+                                                               GFX::GPU_PROFILE::Pass::FluidRenderLight};
     for (size_t index = 0u; index < count; ++index) {
         FluidVolume& light = *domains[index].light;
         TransitionVolume(commands, light, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -226,15 +229,20 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
         commands->Dispatch((light.size[0] + 3u) / 4u, (light.size[1] + 3u) / 4u, (light.size[2] + 3u) / 4u);
         TransitionVolume(commands, light, kRead);
     }
+    lightTimer.reset();
     // 透明物体のための相機体積。
+    std::optional<GFX::GPU_PROFILE::ScopedGpuTimer> cameraVolumeTimer{std::in_place, commands,
+                                                                      GFX::GPU_PROFILE::Pass::FluidRenderCameraVolume};
     commands->SetPipelineState(cameraVolume_.Get());
     commands->SetComputeRootDescriptorTable(kFirstInput + kDensity, volumeAt(0u, &FluidRenderDomain::density));
     TransitionVolume(commands, state.cameraVolume, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     commands->SetComputeRootDescriptorTable(kOutput, state.cameraVolume.uav.gpu);
     commands->Dispatch((state.cameraVolume.size[0] + 7u) / 8u, (state.cameraVolume.size[1] + 7u) / 8u, 1u);
     TransitionVolume(commands, state.cameraVolume, kRead);
+    cameraVolumeTimer.reset();
 
-    // 半分辨率の步进と時間の再構成。
+    // 半分辨率の步进と時間の再構成（合成まで同じ区間で計る）。
+    GFX::GPU_PROFILE::ScopedGpuTimer marchTimer(commands, GFX::GPU_PROFILE::Pass::FluidRenderMarch);
     const uint32_t write = state.historyRead ^ 1u;
     const auto setGraphics = [&](UINT index, D3D12_GPU_DESCRIPTOR_HANDLE handle) {
         commands->SetGraphicsRootDescriptorTable(index, handle);

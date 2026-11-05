@@ -298,6 +298,20 @@ void PushedPlumes(FluidGpu& fluid) {
     guide.settings.guideStrength = 3.0f;
     guide.settings.guideThickness = 0.5f;
     const PlumeSlices guided = PushedPlume(fluid, 55u, {}, FluidDebugField::Density, std::span(&guide, 1u));
+    // 注入の揺らぎ（第 7 步）：同じ球の源で注入し、揺らぎ 1 は塊ごとに濃淡を付けるが切片の烟の総量はおよそ変えない。
+    FluidSourceSubmission emitter = guide;
+    emitter.settings.guideStrength = 0.0f;
+    emitter.ratePerSecond = 2.0f;
+    const PlumeSlices even = PushedPlume(fluid, 56u, {}, FluidDebugField::Density, std::span(&emitter, 1u));
+    emitter.settings.emissionNoise = 1.0f;
+    emitter.settings.emissionNoiseScale = 0.3f;
+    const PlumeSlices lumpy = PushedPlume(fluid, 57u, {}, FluidDebugField::Density, std::span(&emitter, 1u));
+    float evenTotal = 0.0f, lumpyTotal = 0.0f, lumpChange = 0.0f;
+    for (size_t index = 0u; index < even.second.size(); index += 4u) {
+        evenTotal += HalfToFloat(even.second[index]);
+        lumpyTotal += HalfToFloat(lumpy.second[index]);
+        lumpChange += std::abs(HalfToFloat(lumpy.second[index]) - HalfToFloat(even.second[index]));
+    }
     float velocityChange = 0.0f, densityChange = 0.0f;
     for (size_t index = 0u; index < plain.velocity.size(); ++index)
         velocityChange = (std::max)(velocityChange,
@@ -321,15 +335,16 @@ void PushedPlumes(FluidGpu& fluid) {
                  "fluid pushes: core y %.3f rise plain %.3f blocked speed %.3f density plain %.3f blocked %.3f "
                  "expansion %.2f "
                  "(expected %.2f) sink %.2f (expected -5.00) side plain %.3f blown %.3f guide velocity change %.5f "
-                 "density change %.2f\n",
+                 "density change %.2f emission noise total %.1f -> %.1f change %.1f\n",
                  core.y, plainRise, blockedSpeed, plainDensity, blockedDensity, divergence, expected, sinkDivergence,
-                 plainSide, blownSide, velocityChange, densityChange);
+                 plainSide, blownSide, velocityChange, densityChange, evenTotal, lumpyTotal, lumpChange);
     assert(plainRise > 0.3f && blockedSpeed < 0.15f * plainRise);
     assert(plainDensity > 0.05f && blockedDensity < 0.3f * plainDensity);
     assert(std::abs(divergence - expected) < 0.3f * expected);
     // 疎な解算では烟が動くと解く砖块も変わり流れがわずかに違う（0.02 m/s 程度。引導を加速度で入れた時は 0.5 m/s 超）。
     assert(std::abs(sinkDivergence + 5.0f) < 1.5f && velocityChange < 0.05f && densityChange > 1.0f);
     assert(blownSide > 0.5f && blownSide - plainSide > 0.4f);
+    assert(std::abs(lumpyTotal - evenTotal) < 0.35f * evenTotal && lumpChange > 0.1f * evenTotal);
 }
 
 // 局所空間の域：挂点が止まった後に急に +x へ 2 m/s で動き出すと、域の中の流れは逆向きに約 2 m/s を受け（慣性）、
