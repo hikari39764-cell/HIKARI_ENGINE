@@ -31,6 +31,8 @@ struct FluidRenderDomain {
     FluidDomainSettings settings{};
     MATH::Vec4 colorMultiplier{1.0f, 1.0f, 1.0f, 1.0f};
     float simulationSeconds = 0.0f;
+    // 局部空間の域が世界で動く速さ（世界空間の域は 0）。速度体積は域に対する流れなので、粒子が乗る時に足す。
+    MATH::Vec3 frameVelocity{};
     // 域を作り直した回数（描く域の組と合わせて履歴の有効性を決める）。
     uint32_t generation = 0u;
 };

@@ -111,8 +111,22 @@ constexpr Step kForwardSteps[] = {
     {"depthPrepass", "Scene depth prepass on", Role::System, "full", {{"sceneDepthPrepass", "true"}}},
 };
 
+// 流体烟雾の画質の段（項目の Balanced = 項目の既定との差）。工程ごとの内訳（平流・力・圧力・光照体積・步进）は GPU 計時の
+// 入れ子の区間（Fluid Solve *、Fluid Render *）に出る。
+constexpr Step kFluidSteps[] = {
+    {"balanced",
+     "Fluid smoke Balanced (project default)",
+     Role::Reference,
+     nullptr,
+     {{"fluidSmokeQuality", "Balanced"}}},
+    {"low", "Fluid smoke Low", Role::System, "balanced", {{"fluidSmokeQuality", "Low"}}},
+    {"high", "Fluid smoke High", Role::System, "balanced", {{"fluidSmokeQuality", "High"}}},
+};
+
 constexpr Preset kPresets[] = {
     {"forward", "Meshlet Draw Forward", "generalFull", "full", kForwardSteps},
+    {"fluidSimulation", "Fluid Simulation", "balanced", "balanced", kFluidSteps},
+    {"fluidRender", "Fluid Render", "balanced", "balanced", kFluidSteps},
 };
 
 const Preset* FindPreset(std::string_view name) {

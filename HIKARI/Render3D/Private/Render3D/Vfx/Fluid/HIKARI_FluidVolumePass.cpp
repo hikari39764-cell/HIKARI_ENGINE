@@ -518,6 +518,7 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         render.colorMultiplier = submission.colorMultiplier;
         render.simulationSeconds = domain->simulationSeconds;
         render.generation = domain->generation;
+        render.frameVelocity = submission.localSpace ? domain->smoothedVelocity : MATH::Vec3{};
     }
     impl.flowView = impl.renderer.PrepareFlow(context, impl.renderList);
     impl.stats.domains += solved;

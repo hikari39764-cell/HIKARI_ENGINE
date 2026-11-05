@@ -59,12 +59,13 @@ void Set4(float (&out)[4], float x, float y, float z, float w) {
 }
 
 // 世界から格子（格、角が原点）への行と、外観の値を詰める。
-// 粒子が乗る流体の域 1 つ（Render3D_ParticleSimulation.hlsl の FluidFlowDomain と同じ並び）。
+// 粒子が乗る流体の域 1 つ（Render3D_ParticleSimulation.hlsl の FluidFlowDomain と同じ並び）。motion は域が世界で動く速さ。
 struct alignas(16) FlowDomainGpu {
     float toGrid[3][4];
     float cells[4];
+    float motion[4];
 };
-static_assert(sizeof(FlowDomainGpu) == 64u);
+static_assert(sizeof(FlowDomainGpu) == 80u);
 
 // 世界から格子（格、角が原点）への行と、格の数・大きさ。
 void PackToGrid(const FluidRenderDomain& domain, float (&toGrid)[3][4], float (&cells)[4]) {
@@ -327,6 +328,8 @@ FluidFlowView FluidRenderer::PrepareFlow(const GFX::Context& context, std::span<
     FluidFlowView view{};
     for (size_t index = 0u; index < count; ++index) {
         PackToGrid(domains[index], table[index].toGrid, table[index].cells);
+        const MATH::Vec3& motion = domains[index].frameVelocity;
+        Set4(table[index].motion, motion.x, motion.y, motion.z, 0.0f);
         TransitionVolume(context.cmdList, *domains[index].velocity, kRead);
         view.velocity[index] = domains[index].velocity->srv.gpu;
     }

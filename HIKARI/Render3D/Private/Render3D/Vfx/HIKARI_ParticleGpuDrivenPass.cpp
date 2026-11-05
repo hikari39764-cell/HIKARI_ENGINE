@@ -30,6 +30,7 @@
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/Vfx/HIKARI_GpuParticleParameterPacking.h"
 #include "Render3D/Vfx/Internal/HIKARI_GpuParticleShaderInterop.h"
@@ -157,8 +158,10 @@ GpuParticleShapeState BuildShapeState(const ParticleEmitterRenderParameters& ren
 
 struct ParticleGpuDrivenPass::Impl {
     GFX::Context context{};
-    // このフレームに粒子が乗る流体（Render3D_ParticleSimulation.hlsl の t1..t4 と b1）。
+    // このフレームに粒子が乗る流体（Render3D_ParticleSimulation.hlsl の t1..t4 と b1）。流体の無い枠を埋める空の
+    // Texture3D 記述子（資源なし、読むと 0）。
     FLUID::FluidFlowView fluidFlow{};
+    RenderResourceView fluidFlowFallback{};
     INTERNAL::GpuParticleStorage storage{};
     INTERNAL::ParticleGpuDrivenPipelineState pipelines{};
     INTERNAL::ParticleMaterialResolver materialResolver{};
@@ -429,13 +432,14 @@ struct ParticleGpuDrivenPass::Impl {
         context.cmdList->SetComputeRootDescriptorTable(0u, storage.GetParticleUavGpuHandle());
         context.cmdList->SetComputeRootShaderResourceView(1u, emitterAddress);
         context.cmdList->SetComputeRoot32BitConstants(2u, sizeof(constants) / sizeof(uint32_t), &constants, 0u);
-        // 流体の域の数は constants.flags に入れてあり、0 なら shader は流体を読まない（表を束ねない）。
-        if (fluidFlow.count > 0u) {
-            for (uint32_t slot = 0u; slot < FLUID::kMaximumFluidFlowDomains; ++slot)
-                context.cmdList->SetComputeRootDescriptorTable(3u + slot,
-                                                               fluidFlow.velocity[slot < fluidFlow.count ? slot : 0u]);
-            context.cmdList->SetComputeRootConstantBufferView(7u, fluidFlow.domains);
-        }
+        // 根の 3..7 は流体が無い時も有効な値で埋める（D3D12 は根の引数を全て設定してから派発する）。域の数は
+        // constants.flags にあり、その先の枠と域の表は shader が読まない：空いた枠は空の記述子、域が無ければ域の表の
+        // 位置にこの派発の発射器の上传を置く。
+        for (uint32_t slot = 0u; slot < FLUID::kMaximumFluidFlowDomains; ++slot)
+            context.cmdList->SetComputeRootDescriptorTable(3u + slot, slot < fluidFlow.count ? fluidFlow.velocity[slot]
+                                                                                             : fluidFlowFallback.gpu);
+        context.cmdList->SetComputeRootConstantBufferView(7u,
+                                                          fluidFlow.count > 0u ? fluidFlow.domains : emitterAddress);
         context.cmdList->Dispatch(DispatchGroupCount(threadCount), 1u, 1u);
     }
 
@@ -1044,6 +1048,9 @@ struct ParticleGpuDrivenPass::Impl {
     }
 
     void Shutdown() {
+        if (fluidFlowFallback.IsValid())
+            (void)ReleaseRenderResourceDescriptor(fluidFlowFallback);
+        fluidFlowFallback = {};
         storage.Shutdown(context);
         pipelines.Shutdown();
         compositionRenderer.Release();
@@ -1100,6 +1107,18 @@ bool ParticleGpuDrivenPass::Initialize(const GFX::Context& context, uint32_t par
         impl_->Shutdown();
         return false;
     }
+    impl_->fluidFlowFallback = AllocateRenderResourceDescriptor();
+    if (!impl_->fluidFlowFallback.IsValid()) {
+        HIKARI_LOG_ERROR("[ParticleGpuDrivenPass][Initialize] fluid flow fallback descriptor failed.");
+        impl_->Shutdown();
+        return false;
+    }
+    D3D12_SHADER_RESOURCE_VIEW_DESC nullVolume{};
+    nullVolume.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    nullVolume.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+    nullVolume.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    nullVolume.Texture3D.MipLevels = 1u;
+    context.device->CreateShaderResourceView(nullptr, &nullVolume, impl_->fluidFlowFallback.cpu);
     impl_->freeRanges.push_back({0u, impl_->stats.particleCapacity});
     impl_->initialized = true;
     impl_->stats.ready = true;

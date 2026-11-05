@@ -128,9 +128,9 @@ struct FluidCameraVolumeView {
     MATH::Vec4 params{};
 };
 
-// 粒子が乗る流体（PrepareFrame がこのフレームに解いた域、最多 4）。domains は域ごとの世界→格子の行と格の数・大きさ
-// （64 byte ずつ。Render3D_ParticleSimulation.hlsl の FluidFlowDomain）、velocity は各域の速度体積（計算 shader が読める
-// 状態）。count が 0 なら粒子は流体に乗らない。
+// 粒子が乗る流体（PrepareFrame がこのフレームに解いた域、最多 4）。domains は域ごとの世界→格子の行、格の数・大きさと
+// 域が世界で動く速さ（80 byte ずつ。Render3D_ParticleSimulation.hlsl の FluidFlowDomain）、velocity は各域の速度体積
+// （計算 shader が読める状態）。count が 0 なら粒子は流体に乗らない。
 inline constexpr uint32_t kMaximumFluidFlowDomains = 4u;
 struct FluidFlowView {
     uint32_t count = 0u;

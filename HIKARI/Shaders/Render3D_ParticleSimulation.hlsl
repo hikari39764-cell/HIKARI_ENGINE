@@ -6,6 +6,7 @@
 
 #include "Include/Vfx/HIKARI_ParticleData.hlsli"
 #include "Include/Vfx/HIKARI_ParticleForceMath.hlsli"
+#include "Include/Vfx/HIKARI_FluidGrid.hlsli"
 #include "Include/Math/HIKARI_BillboardMath.hlsli"
 
 #define HIKARI_PARTICLE_LAYOUT(name, value) static const uint name = value;
@@ -41,13 +42,15 @@ cbuffer SimulationConstants : register(b0)
     uint gSimulationFlags;  // bit 0 直接の形、bit 8..10 粒子が乗る流体の域の数（kGpuParticleFluidFlowShift）
 };
 
-// 粒子が乗る流体の域（C++ の FluidRenderer::PrepareFlow と同じ並び）：世界→格子（格、角が原点）の行と、格の数・大きさ h。
+// 粒子が乗る流体の域（C++ の FluidRenderer::PrepareFlow と同じ並び）：世界→格子（格、角が原点）の行、格の数・大きさ h、
+// 域が世界で動く速さ（局部空間の域。世界空間の域は 0）。
 struct FluidFlowDomain
 {
     float4 toGrid0;
     float4 toGrid1;
     float4 toGrid2;
     float4 cells;
+    float4 motion;
 };
 cbuffer FluidFlowConstants : register(b1)
 {
@@ -59,8 +62,8 @@ Texture3D<float4> gFluidVelocity2 : register(t3);
 Texture3D<float4> gFluidVelocity3 : register(t4);
 SamplerState gFluidSampler : register(s0);
 
-// 域 1 つの世界の点 world での流体の速度（世界、m/s）。速度体積の xyz は域の軸に沿った格の下側の面の速度（格の大きさ
-// + 1 の体積）で、描画と同じく 1 回の線形の標本で近似する。箱の外なら inside = 0。
+// 域 1 つの世界の点 world での流体の速度（世界、m/s）。速度体積の xyz は域の軸に沿った格の下側の面の速度（格の数 + 1 の
+// 体積、交错格子）を成分ごとに半格ずらして読み、域が動く速さを足す。箱の外なら inside = 0。
 float3 FluidFlowAt(FluidFlowDomain domain, Texture3D<float4> velocity, float3 world, inout float inside)
 {
     const float3 grid = float3(dot(domain.toGrid0, float4(world, 1.0f)), dot(domain.toGrid1, float4(world, 1.0f)),
@@ -68,9 +71,10 @@ float3 FluidFlowAt(FluidFlowDomain domain, Texture3D<float4> velocity, float3 wo
     if (inside > 0.0f || any(grid < 0.0f) || any(grid > domain.cells.xyz))
         return 0.0f.xxx;
     inside = 1.0f;
-    const float3 v = velocity.SampleLevel(gFluidSampler, grid / (domain.cells.xyz + 1.0f), 0).xyz;
+    const float3 v = HikariFluidVelocityAt(velocity, gFluidSampler, grid, domain.cells.xyz + 1.0f);
     // 行は域の軸 / h なので、h を掛けると域の軸に戻る。
-    return (domain.toGrid0.xyz * v.x + domain.toGrid1.xyz * v.y + domain.toGrid2.xyz * v.z) * domain.cells.w;
+    return (domain.toGrid0.xyz * v.x + domain.toGrid1.xyz * v.y + domain.toGrid2.xyz * v.z) * domain.cells.w +
+           domain.motion.xyz;
 }
 
 // 世界の点 world の流体の速度（入っている最初の域）。どの域にも入っていなければ inside = 0。
