@@ -44,7 +44,7 @@ FluidGridLayout ResolveFluidGridLayout(const MATH::Vec3& domainSize, uint32_t re
 uint64_t EstimateFluidDomainBytes(const FluidGridLayout& layout) noexcept {
     const uint64_t nx = layout.cells[0], ny = layout.cells[1], nz = layout.cells[2];
     uint64_t bytes = 3u * 8u * (nx + 1u) * (ny + 1u) * (nz + 1u) + 3u * 2u * nx * ny * nz +
-                     4u * ((nx + 1u) / 2u) * ((ny + 1u) / 2u) * ((nz + 1u) / 2u);
+                     8u * ((nx + 1u) / 2u) * ((ny + 1u) / 2u) * ((nz + 1u) / 2u);
     for (uint32_t level = 0u; level < layout.levels; ++level)
         bytes += 2u * 4u * (std::max<uint64_t>(nx >> level, 1u)) * (std::max<uint64_t>(ny >> level, 1u)) *
                  (std::max<uint64_t>(nz >> level, 1u));

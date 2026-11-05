@@ -58,8 +58,9 @@ float HikariFluidDiffuseLight(float transmittance, float anisotropy)
 // 多重散乱の近似（Wrenninge 2013 の 3 段）：段ごとに寄与・消光・各向異性を半分にして足し、足りない分を (1 + multiple)
 // 倍で補う。multiple が 1 で体積雲（HikariCloudLightScattering）と同じ形、0 で単一散乱。3 段でも厚い烟の奥（太陽への
 // 光学的な厚さが 10 を超える所）は黒く沈むので、拡散近似の等方な光（multiple 倍）を下限にする（大きな烟の影の側と、
-// 球壳の内側が真っ黒にならない）。足すと中くらいの影まで明るくなり、小さな烟の陰影が浅くなる。
-float HikariFluidSunScattering(float cosTheta, float anisotropy, float multiple, float sunTransmittance)
+// 球壳の内側が真っ黒にならない）。足すと中くらいの影まで明るくなり、小さな烟の陰影が浅くなる。openness は周りへの
+// 開き具合（近くの遮り）で、下限の光にだけ掛ける。
+float HikariFluidSunScattering(float cosTheta, float anisotropy, float multiple, float sunTransmittance, float openness)
 {
     float result = 0.0f;
     float b = 1.0f;
@@ -71,15 +72,16 @@ float HikariFluidSunScattering(float cosTheta, float anisotropy, float multiple,
         b *= 0.5f;
         c *= 0.5f;
     }
-    return max(result * (1.0f + multiple), multiple * 0.0795775f * HikariFluidDiffuseLight(sunTransmittance, anisotropy));
+    return max(result * (1.0f + multiple),
+               multiple * 0.0795775f * openness * HikariFluidDiffuseLight(sunTransmittance, anisotropy));
 }
 
 // 空の環境光が届く割合：上への透過率を、多重散乱の分だけ深くまで届かせる（multiple 1 で平方根）。厚い烟の奥は拡散近似
-// の分を下限にする。
-float HikariFluidSkyVisibility(float skyTransmittance, float multiple, float anisotropy)
+// の分（周りへの開き具合 openness を掛ける）を下限にする。
+float HikariFluidSkyVisibility(float skyTransmittance, float multiple, float anisotropy, float openness)
 {
     return max(pow(max(skyTransmittance, 1.0e-6f), 1.0f - 0.5f * saturate(multiple)),
-               multiple * HikariFluidDiffuseLight(skyTransmittance, anisotropy));
+               multiple * openness * HikariFluidDiffuseLight(skyTransmittance, anisotropy));
 }
 
 // 温度から発光（起亮温度で 0、そこから 1 だけ上で全強度）。

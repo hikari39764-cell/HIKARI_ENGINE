@@ -200,7 +200,7 @@ bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& lay
         created = created && CreateVolume(device, kPressureFormat, w, h, d, resources.pressure[level], false) &&
                   CreateVolume(device, kPressureFormat, w, h, d, resources.rhs[level], false);
     }
-    created = created && CreateVolume(device, DXGI_FORMAT_R16G16_FLOAT, (n[0] + 1u) / 2u, (n[1] + 1u) / 2u,
+    created = created && CreateVolume(device, DXGI_FORMAT_R16G16B16A16_FLOAT, (n[0] + 1u) / 2u, (n[1] + 1u) / 2u,
                                       (n[2] + 1u) / 2u, resources.light, false);
     resources.bricks = ((n[0] + 7u) / 8u) * ((n[1] + 7u) / 8u) * ((n[2] + 7u) / 8u);
     resources.statsBytes = (resources.bricks * 16u + 255u) & ~255u;

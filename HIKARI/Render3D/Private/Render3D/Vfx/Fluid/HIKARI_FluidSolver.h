@@ -66,7 +66,8 @@ struct FluidDomainResources {
     std::array<FluidVolume, 3> density{};
     std::vector<FluidVolume> pressure{};
     std::vector<FluidVolume> rhs{};
-    // 描画の光照体積（格子の半分の分辨率、RG16F：x 太陽への透過率、y 空への透過率）。描く視図が毎フレーム書く。
+    // 描画の光照体積（格子の半分の分辨率、RGBA16F：x 太陽への光学的な厚さ、y 空への光学的な厚さ、z 近くの遮り）。
+    // 描く視図が毎フレーム書く。
     FluidVolume light{};
     Microsoft::WRL::ComPtr<ID3D12Resource> stats{};
     D3D12_RESOURCE_STATES statsState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
