@@ -30,6 +30,16 @@ bool VfxWorkspaceController::ApplyGeometryPreset(std::string_view layerId, std::
     return true;
 }
 
+const VFX::VfxEmitterData* VfxWorkspaceController::FindFluidDomainUnder(
+    std::string_view parentEmitterId) const noexcept {
+    const VFX::VfxEmitterData* parent = parentEmitterId.empty() ? nullptr : FindEmitter(parentEmitterId);
+    if (parent == nullptr || parent->kind == VFX::VfxLayerKind::Fluid)
+        return parent;
+    if (parent->kind != VFX::VfxLayerKind::Group)
+        return nullptr;
+    return VFX::FindVfxFluidDomainLayer(*parent, [&](const std::string& id) { return FindEmitter(id); });
+}
+
 bool VfxWorkspaceController::AddEmitter(std::string_view parentEmitterId, std::string_view displayName,
                                         std::string_view requestedId, std::string& outId, std::string& outMessage,
                                         VFX::VfxLayerKind kind) {
@@ -42,8 +52,13 @@ bool VfxWorkspaceController::AddEmitter(std::string_view parentEmitterId, std::s
         outMessage = "Parent emitter was not found";
         return false;
     }
-    if (kind == VFX::VfxLayerKind::FluidSource && (parent == nullptr || parent->kind != VFX::VfxLayerKind::Fluid)) {
+    const VFX::VfxEmitterData* domain = FindFluidDomainUnder(parentEmitterId);
+    if (kind == VFX::VfxLayerKind::FluidSource && domain == nullptr) {
         outMessage = "Place fluid sources under a fluid domain layer";
+        return false;
+    }
+    if (kind == VFX::VfxLayerKind::Fluid && domain != nullptr) {
+        outMessage = "A fluid domain cannot be placed inside another fluid domain";
         return false;
     }
     const std::string id = requestedId.empty() ? AllocateStableId("emitter") : std::string(requestedId);
@@ -79,7 +94,7 @@ bool VfxWorkspaceController::AddEmitter(std::string_view parentEmitterId, std::s
         emitter.spawn.ratePerSecond = 6.0f;
         emitter.shape.type = VFX::VfxShapeType::Sphere;
         emitter.shape.radius = {VFX::VfxDistributionMode::Constant, 0.35f, 0.35f, 0u};
-        emitter.emitterTransform.transform.position = {0.0f, -0.325f * parent->fluidDomain.domainSize.y, 0.0f};
+        emitter.emitterTransform.transform.position = {0.0f, -0.325f * domain->fluidDomain.domainSize.y, 0.0f};
         emitter.fluidSource.velocity = {0.0f, 0.8f, 0.0f};
         emitter.forces.field.turbulence = 0.6f;
         emitter.forces.field.frequency = 2.0f;

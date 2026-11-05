@@ -10,6 +10,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "HIKARI/Project/FluidView.h"
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/LightTypes.h"
 #include "HIKARI/Project/LocalFogView.h"
@@ -189,6 +190,8 @@ public:
     HIKARI_GAME_PROJECT_SDK_API NavigationView GetNavigation() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API TerrainView GetTerrain() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API LocalFogView GetLocalFog() const noexcept;
+    // VFX の流体烟雾を押す障碍物・冲量・力（毎フレーム提出）。
+    HIKARI_GAME_PROJECT_SDK_API FluidView GetFluid() const noexcept;
     // シーンの時刻・天気（実行時だけの変更）。
     HIKARI_GAME_PROJECT_SDK_API EnvironmentView GetEnvironment() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API CameraView GetCamera() const noexcept;

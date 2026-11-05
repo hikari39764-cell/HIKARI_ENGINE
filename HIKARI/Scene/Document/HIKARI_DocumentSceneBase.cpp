@@ -270,6 +270,7 @@ void DocumentSceneBase::OnExit() {
     state_->runtime.systemScheduler.Clear();
     state_->runtime.presentationModelService.Clear();
     state_->runtime.localFogService.Clear();
+    state_->runtime.fluidInteractionService.Clear();
     state_->runtime.sceneCaptureService.Reset();
     MODELRENDERER::ResetSecondarySceneCaptureTarget();
     // RenderSubmissionSystem borrows the document-owned Registry and
@@ -548,6 +549,8 @@ void DocumentSceneBase::Render() {
     lightingScope.emplace(lightingTimer);
     const auto localFogVolumes = state_->runtime.localFogService.PrepareFrame(
         state_->runtime.world, frame.frameIndex, &state_->identity.document, state_->identity.documentRevision);
+    const auto fluidInteractions =
+        state_->runtime.fluidInteractionService.PrepareFrame(state_->runtime.world, frame.frameIndex, frame.gameDt);
     SceneEnvironment activeEnvironment = state_->lighting.environment;
     RENDER3D::LIGHTING::SceneLightingSet sceneLighting =
         LIGHTING_AUTHORING::BuildRuntimeSceneLightingSet(state_->identity.document, state_->runtime.world);
@@ -680,7 +683,7 @@ void DocumentSceneBase::Render() {
         RENDER3D::PARTICLES::ParticleRenderFrameSource particleFrameSource{};
         if (playback != nullptr) {
             particleFrameSource = {&playback->GetRenderInput(), &state_->assets.Registry(),
-                                   state_->runtime.materialExternalValueSnapshot.get()};
+                                   state_->runtime.materialExternalValueSnapshot.get(), fluidInteractions};
             primaryView.particleFrameSource = &particleFrameSource;
         }
         if (auto* combat = state_->runtime.world.Services().Find<VFX::CombatPresentationService>()) {

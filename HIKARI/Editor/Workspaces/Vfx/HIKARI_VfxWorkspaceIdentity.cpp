@@ -291,6 +291,8 @@ bool VfxWorkspaceController::ContainsStableId(std::string_view id) const noexcep
         for (const auto& effect : emitter.effects)
             if (effect.id == id)
                 return true;
+        if (emitter.fluidDomain.id == id || emitter.fluidSource.id == id)
+            return true;
         for (uint8_t value = 0u; value <= static_cast<uint8_t>(VFX::VfxModuleKind::RenderShape); ++value) {
             if (GetVfxModuleId(emitter, static_cast<VFX::VfxModuleKind>(value)) == id) {
                 return true;

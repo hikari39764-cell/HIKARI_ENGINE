@@ -205,6 +205,9 @@ void INTERNAL::PrepareFluidFrame(const GFX::Context& graphics,
     RENDER3D::FLUID::FluidFrameSettings settings{};
     settings.quality = RENDER3D::GetRenderQualitySettings().fluidSmokeQuality;
     settings.diagnostics = IsFluidRequestFresh(gFluidDiagnosticsFrame, frame);
+    if (source != nullptr)
+        settings.interactions = source->fluidInteractions;
+    settings.interactionFrame = frame;
     if (gFluidSliceRequest && IsFluidRequestFresh(gFluidSliceFrame, frame)) {
         gMeshRendererState.fluidPass.RequestDebugSlice(*gFluidSliceRequest);
     } else if (gFluidSliceRequest) {

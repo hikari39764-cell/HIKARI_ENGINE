@@ -2,15 +2,18 @@
 
 #include <cmath>
 #include <string>
+#include <vector>
 
 #include "Physics/HIKARI_PhysicsRuntimeStatusService.h"
 #include "Physics/HIKARI_PhysicsSceneBridge.h"
 #include "Scene/Components/HIKARI_ColliderComponent.h"
+#include "Scene/Components/Rendering/Vfx/HIKARI_FluidObstacleComponent.h"
 #include "Scene/Debug/HIKARI_ComponentGizmoRegistry.h"
 #include "Scene/Debug/HIKARI_PhysicsShapeDebugDraw.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_World.h"
+#include "Scene/Vfx/HIKARI_FluidObstacleSystem.h"
 
 namespace HIKARI {
 namespace {
@@ -85,11 +88,61 @@ void DrawCollider(const GameObject& object, const ComponentGizmoDrawContext& con
         }
     });
 }
+
+using RENDER3D::FLUID::FluidInteraction;
+using RENDER3D::FLUID::FluidInteractionShape;
+
+constexpr unsigned int kObstacleColor = 0xB48CFFFF;
+constexpr unsigned int kSelectedObstacleColor = 0xE2D0FFFF;
+
+// 障碍物の形（中心と向きは世界、大きさは FluidInteraction の extents）を線の形にする。
+PHYSICS::PhysicsShapeDesc ToDebugShape(const FluidInteraction& interaction) {
+    PHYSICS::PhysicsShapeDesc shape{};
+    const MATH::Vec3& extents = interaction.extents;
+    switch (interaction.shape) {
+    case FluidInteractionShape::Sphere:
+        shape.type = PHYSICS::PhysicsShapeType::Sphere;
+        shape.radius = extents.x;
+        break;
+    case FluidInteractionShape::Capsule:
+        shape.type = PHYSICS::PhysicsShapeType::Capsule;
+        shape.radius = extents.x;
+        shape.height = 2.0f * (extents.y + extents.x);
+        break;
+    case FluidInteractionShape::Box:
+        shape.type = PHYSICS::PhysicsShapeType::Box;
+        shape.halfExtents = extents;
+        break;
+    }
+    return shape;
+}
+
+void DrawFluidObstacles(const GameObject& object, const ComponentGizmoDrawContext& context) {
+    const FluidObstacleComponent* component = object.GetComponent<FluidObstacleComponent>();
+    if (component == nullptr || context.world == nullptr)
+        return;
+    std::vector<FluidObstacleInstance> obstacles;
+    ResolveFluidObstacles(*context.world, object, *component, obstacles);
+    const bool selected = object.GetDocumentId() == context.selectedObjectId;
+    // 選んだ物体は奥まで透かして描く（体の中の骨の形を見て合わせる）。
+    const DEBUG::PhysicsShapeDebugStyle style{selected ? kSelectedObstacleColor : kObstacleColor, 0u,
+                                              selected ? 2.2f : 1.2f, selected};
+    for (const FluidObstacleInstance& obstacle : obstacles) {
+        const FluidInteraction& interaction = obstacle.interaction;
+        DEBUG::DrawPhysicsShape(
+            MATH::Mat4::TRS(interaction.worldPosition, interaction.worldRotation, {1.0f, 1.0f, 1.0f}),
+            ToDebugShape(interaction), style);
+    }
+}
 } // namespace
 
 void RegisterColliderGizmoProvider(ComponentGizmoRegistry& registry) {
     (void)registry.Register(
         ComponentGizmoProvider{std::string(kColliderGizmoProviderId), "Colliders", true, DrawCollider});
+}
+
+void RegisterFluidObstacleGizmoProvider(ComponentGizmoRegistry& registry) {
+    (void)registry.Register(ComponentGizmoProvider{"FluidObstacles", "Fluid Obstacles", true, DrawFluidObstacles});
 }
 
 } // namespace HIKARI

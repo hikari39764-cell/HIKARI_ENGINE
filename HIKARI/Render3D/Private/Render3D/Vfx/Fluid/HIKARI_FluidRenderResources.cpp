@@ -244,6 +244,17 @@ bool FluidRenderer::BeginFrame(const GFX::Context& context) {
         TransitionVolume(context.cmdList, fallbackVolume_, kRead);
     }
     cameraVolumeView_ = {fallbackVolume_.srv.gpu, {}};
+    // 長く描かれていない視図（閉じた編集器の視口など）の目標と相機体積は捨てる（描かれれば作り直す）。
+    constexpr uint64_t kStaleViewFrames = 120u;
+    for (auto it = views_.begin(); it != views_.end();) {
+        const uint64_t last = it->second.lastFrame;
+        if (last != UINT64_MAX && last + kStaleViewFrames >= context.currentFrameRetireFenceValue) {
+            ++it;
+            continue;
+        }
+        RetireView(context, it->second);
+        it = views_.erase(it);
+    }
     return true;
 }
 

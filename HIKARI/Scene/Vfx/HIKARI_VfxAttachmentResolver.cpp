@@ -11,12 +11,12 @@
 
 namespace HIKARI::VFX {
 
-bool ResolveVfxAnimationAttachment(World& world, RuntimeObjectHandle owner, std::string_view socketName,
+bool ResolveVfxAnimationAttachment(const World& world, RuntimeObjectHandle owner, std::string_view socketName,
                                    VfxWorldTransform& outTransform) {
     if (!owner.IsValid()) {
         return false;
     }
-    GameObject* object = world.FindObject(owner);
+    const GameObject* object = world.FindObject(owner);
     if (object == nullptr) {
         return false;
     }

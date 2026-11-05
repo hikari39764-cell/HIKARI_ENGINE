@@ -1933,11 +1933,11 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.FluidSimulation",
-        "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "5624bd25e69a3946c67da0540b839aed566ecb71e32d0c96e48b6ef3225d1b4f",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "5b3d607245102e16c1b8d40a3e0ecee5013b854ce623240d4166ce3e606f3425",
         "rootLayoutId": "HIKARI.FluidSimulation.Root",
-        "rootLayoutVersion": 1,
-        "rootLayoutHash": "fc47a09f15ef532adc8c11830305d985ffd5c8ae862faf90b0d07da5ce6f7845",
+        "rootLayoutVersion": 2,
+        "rootLayoutHash": "ce8e821375e14f195f1e8a6a9b96e12daa81213369470973d366d7d038a663cf",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

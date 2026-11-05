@@ -1,8 +1,10 @@
 #include "HIKARI/Project/EnvironmentView.h"
+#include "HIKARI/Project/FluidView.h"
 #include "HIKARI/Project/LocalFogView.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Scene/Environment/HIKARI_EnvironmentRuntime.h"
 #include "Scene/Lighting/HIKARI_LocalFogService.h"
+#include "Scene/Vfx/HIKARI_FluidInteractionService.h"
 #include "Core/HIKARI_TimeService.h"
 #include <cmath>
 #include <array>
@@ -2086,6 +2088,40 @@ int main() {
         fogWorld.DestroyObject(owner);
         assert(fog.PrepareFrame(fogWorld, frameIndex).empty());
         assert(fogView.Submit(ownerHandle, 1, volume).code == HIKARI::GameProjectWorldResultCode::InvalidObject);
+    }
+    // 流体を押すものも毎フレームの提出。障碍物の速度は同じ組の前のフレームの位置とゲーム時間から決まる。
+    {
+        using Code = HIKARI::GameProjectWorldResultCode;
+        HIKARI::FluidInteractionService fluid;
+        HIKARI::World fluidWorld;
+        assert(fluidWorld.Services().Register(fluid));
+        auto* owner = fluidWorld.CreateObject("FluidOwner");
+        const auto ownerHandle = HIKARI::GameProjectSdkAccess::MakeObjectView(*owner).GetHandle();
+        const auto fluidView = HIKARI::GameProjectSdkAccess::MakeWorldView(fluidWorld).GetFluid();
+        HIKARI::GameProjectFluidInteraction obstacle{};
+        obstacle.shape = HIKARI::GameProjectFluidShape::Capsule;
+        obstacle.position = {1, 2, 3};
+        obstacle.extents = {0.2f, 0.4f, 0.2f};
+        const uint64_t frameIndex = HIKARI::TIME::GetFrameContext().frameIndex;
+        assert(fluidView.Submit(ownerHandle, 1, obstacle).Succeeded());
+        const auto first = fluid.PrepareFrame(fluidWorld, frameIndex, 0.5f);
+        assert(first.size() == 1 && first[0].shape == HIKARI::RENDER3D::FLUID::FluidInteractionShape::Capsule &&
+               first[0].velocity.x == 0.0f);
+        HIKARI::RENDER3D::FLUID::FluidInteraction moved = first[0];
+        moved.worldPosition = {2, 2, 3};
+        assert(fluid.Submit(ownerHandle.value, 1, moved, frameIndex + 1) == Code::Success);
+        const auto next = fluid.PrepareFrame(fluidWorld, frameIndex + 1, 0.5f);
+        assert(next.size() == 1 && std::abs(next[0].velocity.x - 2.0f) < 1e-5f && next[0].velocity.y == 0.0f);
+        obstacle.reserved[0] = 1u;
+        assert(fluidView.Submit(ownerHandle, 2, obstacle).code == Code::InvalidRequest);
+        obstacle.reserved[0] = 0u;
+        obstacle.extents.x = 0.0f;
+        assert(fluidView.Submit(ownerHandle, 2, obstacle).code == Code::InvalidRequest);
+        obstacle.extents.x = 0.2f;
+        assert(fluidView.Submit(ownerHandle, 0, obstacle).code == Code::InvalidRequest);
+        assert(fluid.PrepareFrame(fluidWorld, frameIndex + 2, 0.5f).empty());
+        fluidWorld.DestroyObject(owner);
+        assert(fluidView.Submit(ownerHandle, 1, obstacle).code == Code::InvalidObject);
     }
     // 環境の時刻・天気・描画の様式は実行中の World だけを変える。不正な日付と版の違う存档は拒否する。
     {

@@ -12,7 +12,7 @@ namespace HIKARI::VFX {
 
 class VfxPlaybackService;
 
-bool ResolveVfxAnimationAttachment(World& world, RuntimeObjectHandle owner, std::string_view socketName,
+bool ResolveVfxAnimationAttachment(const World& world, RuntimeObjectHandle owner, std::string_view socketName,
                                    VfxWorldTransform& outTransform);
 
 // Install the resolver at the World composition root. Playback no longer

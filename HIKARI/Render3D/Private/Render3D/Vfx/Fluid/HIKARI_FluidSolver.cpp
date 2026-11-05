@@ -37,6 +37,7 @@ enum Root : UINT {
     kOutput1,
     kSliceOutput,
     kStats,
+    kInteractions,
     kRootCount
 };
 
@@ -66,6 +67,7 @@ bool CreateRoot(ID3D12Device* device, ID3D12RootSignature** output) {
     parameters[kOutput1].InitAsDescriptorTable(1, &ranges[5]);
     parameters[kSliceOutput].InitAsDescriptorTable(1, &ranges[6]);
     parameters[kStats].InitAsUnorderedAccessView(5);
+    parameters[kInteractions].InitAsShaderResourceView(7);
     std::array<CD3DX12_STATIC_SAMPLER_DESC, 2> samplers{};
     samplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
                      D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
@@ -172,6 +174,38 @@ FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::
     set(13, wind.x, wind.y, wind.z, (std::max)(source.drag, 0.0f));
     set(14, source.settings.guideStrength, source.settings.guideThickness,
         source.settings.forceMode == FluidForceMode::TargetVelocity ? 1.0f : 0.0f, softEdge);
+    return gpu;
+}
+
+FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, const MATH::Vec3& domainPosition,
+                                         const MATH::Quat& domainRotation, const MATH::Vec3& domainVelocity) {
+    FluidInteractionGpu gpu{};
+    const MATH::Vec3 basis[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+    MATH::Vec3 columns[3];
+    for (int axis = 0; axis < 3; ++axis)
+        columns[axis] = RotateToFluidLocal(interaction.worldRotation, MATH::RotateVector(domainRotation, basis[axis]));
+    const MATH::Vec3 translation =
+        RotateToFluidLocal(interaction.worldRotation, domainPosition - interaction.worldPosition);
+    for (int row = 0; row < 3; ++row) {
+        gpu.rows[row][0] = (&columns[0].x)[row];
+        gpu.rows[row][1] = (&columns[1].x)[row];
+        gpu.rows[row][2] = (&columns[2].x)[row];
+        gpu.rows[row][3] = (&translation.x)[row];
+    }
+    const auto set = [&](int row, const MATH::Vec3& v, float w) {
+        gpu.rows[row][0] = v.x;
+        gpu.rows[row][1] = v.y;
+        gpu.rows[row][2] = v.z;
+        gpu.rows[row][3] = w;
+    };
+    const bool obstacle = interaction.kind == FluidInteractionKind::Obstacle;
+    const float directionLength = MATH::Length(interaction.direction);
+    const MATH::Vec3 motion = obstacle                 ? interaction.velocity - domainVelocity
+                              : directionLength > 0.0f ? interaction.direction * (1.0f / directionLength)
+                                                       : MATH::Vec3{};
+    set(3, interaction.extents, static_cast<float>(interaction.kind));
+    set(4, RotateToFluidLocal(domainRotation, motion), static_cast<float>(interaction.shape));
+    set(5, RotateToFluidLocal(domainRotation, interaction.worldPosition - domainPosition), interaction.strength);
     return gpu;
 }
 
@@ -322,6 +356,8 @@ void FluidRecorder::Dispatch(FluidEntry entry, const FluidPassBindings& bindings
             commands_->SetComputeRootDescriptorTable(kInput0 + index, bindings.inputs[index]->srv.gpu);
     if (bindings.sources != 0u)
         commands_->SetComputeRootShaderResourceView(kSources, bindings.sources);
+    if (bindings.interactions != 0u)
+        commands_->SetComputeRootShaderResourceView(kInteractions, bindings.interactions);
     if (bindings.outputs[0] != nullptr)
         commands_->SetComputeRootDescriptorTable(kOutput0, bindings.outputs[0]->uav.gpu);
     if (bindings.outputs[1] != nullptr)
@@ -344,7 +380,7 @@ void FluidRecorder::Clear(FluidVolume& volume) {
 }
 
 void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D12_GPU_VIRTUAL_ADDRESS sources,
-                            uint32_t vCycles) {
+                            D3D12_GPU_VIRTUAL_ADDRESS interactions, uint32_t vCycles) {
     auto& v = domain_.velocity;
     auto& d = domain_.density;
     const uint32_t a = velocityIndex, b = (a + 1u) % 3u, c = (a + 2u) % 3u;
@@ -361,9 +397,12 @@ void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D
     Dispatch(FluidEntry::Curl, {{&v[c]}, {&v[b]}}, cells, none, cellGroups);
     FluidPassBindings forces{{&v[c], &v[b]}, {&v[a], &d[g]}};
     forces.sources = sources;
+    forces.interactions = interactions;
     Dispatch(FluidEntry::ForceField, forces, cells, none, cellGroups);
     Dispatch(FluidEntry::ApplyForces, {{&v[c], &v[a]}, {&v[b]}}, faces, none, faceGroups);
-    Dispatch(FluidEntry::Divergence, {{&v[b]}, {&domain_.rhs[0]}}, cells, none, cellGroups);
+    FluidPassBindings divergence{{&v[b]}, {&domain_.rhs[0]}};
+    divergence.interactions = interactions;
+    Dispatch(FluidEntry::Divergence, divergence, cells, none, cellGroups);
     for (uint32_t cycle = 0u; cycle < vCycles; ++cycle)
         VCycle();
     Dispatch(FluidEntry::Project, {{&domain_.pressure[0]}, {&v[b]}}, faces, none, faceGroups);

@@ -8,6 +8,7 @@
 #include <array>
 #include <memory>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -419,6 +420,8 @@ struct ParticleRenderFrameSource {
     const ParticleRenderInput* input = nullptr;
     const AssetRegistry* assetRegistry = nullptr;
     const MATERIAL::MaterialExternalValueSnapshot* externalValues = nullptr;
+    // 場面の流体を押すもの（このフレームの障碍物・冲量・力）。呼び出し側が描画の間持つ。
+    std::span<const FLUID::FluidInteraction> fluidInteractions{};
 
     bool HasDrawWork() const noexcept { return input != nullptr && !input->emitters.empty(); }
 

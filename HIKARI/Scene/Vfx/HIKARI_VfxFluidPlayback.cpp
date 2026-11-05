@@ -59,9 +59,11 @@ void VfxPlaybackService::AppendFluidDomain(Instance& instance, uint32_t domainIn
 
     FLUID::FluidDomainSubmission domain{};
     domain.key = {playbackNamespace_, instance.handle.slot, instance.handle.generation, domainIndex};
-    domain.resetSimulation = domainState.resetSimulation;
-    domainState.resetSimulation = false;
     domain.visible = instance.layerVisible[domainIndex] != 0u;
+    // 見えない域は解算側で飛ばされるので、作り直しの要求は見えるようになって最初に渡すまで持ち越す。
+    domain.resetSimulation = domainState.resetSimulation;
+    if (domain.visible)
+        domainState.resetSimulation = false;
     domain.localSpace = domainLayer.simulation.localSimulation != 0u;
     domain.deltaSeconds = deltaSeconds;
     const VfxWorldTransform& world = instance.emitterTransforms[domainIndex];

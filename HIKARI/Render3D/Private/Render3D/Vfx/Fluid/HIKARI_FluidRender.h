@@ -29,6 +29,8 @@ struct FluidRenderDomain {
     FluidDomainSettings settings{};
     MATH::Vec4 colorMultiplier{1.0f, 1.0f, 1.0f, 1.0f};
     float simulationSeconds = 0.0f;
+    // 域を作り直した回数（描く域の組と合わせて履歴の有効性を決める）。
+    uint32_t generation = 0u;
 };
 
 class FluidRenderer final {
@@ -87,8 +89,9 @@ private:
         uint32_t height = 0u;
         uint32_t historyRead = 0u;
         uint64_t lastFrame = UINT64_MAX;
-        // 前のフレームにこの視図を描いた行列（履歴の再投影）。
+        // 前のフレームにこの視図を描いた行列（履歴の再投影）と、描いた域の組（域ごとに変わらない光照体積と作り直しの回数）。
         MATH::Mat4 previousViewProj{};
+        uint64_t domainSignature = 0u;
         bool historyValid = false;
     };
 

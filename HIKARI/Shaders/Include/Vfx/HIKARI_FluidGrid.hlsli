@@ -40,6 +40,37 @@ struct HikariFluidSource
     float4 guide;    // x 形状引导の強さ、y 帯の厚さ、z 力場の効き方（0 加速度、1 目標速度）、w 縁の柔らかさ（源の局所）
 };
 
+// 流体を押すもの 1 つ。C++ の FluidInteractionGpu と同じ並び。座標は域の局所空間 [m]。
+struct HikariFluidInteraction
+{
+    float4 toLocal0;  // 域の局所 → 形の局所（回転と平行移動）の 3x4 の行
+    float4 toLocal1;
+    float4 toLocal2;
+    float4 extents;   // xyz 形の大きさ（FluidInteraction.extents）、w 種類（0 障碍物、1 冲量、2 力）
+    float4 velocity;  // xyz 障碍物の域に対する速度か冲量・力の向き（域の局所、0 で外向き）、w 形（0 球、1 カプセル、2 箱）
+    float4 push;      // xyz 中心（域の局所）、w 冲量の速さ [m/s] か力の加速度 [m/s²]
+};
+
+uint HikariFluidInteractionKind(HikariFluidInteraction interaction)
+{
+    return (uint)(interaction.extents.w + 0.5f);
+}
+
+// 障碍物の形の符号付き距離（形の局所、内側が負）。
+float HikariFluidInteractionDistance(HikariFluidInteraction interaction, float3 p)
+{
+    const uint shape = (uint)(interaction.velocity.w + 0.5f);
+    if (shape == 0u)
+        return length(p) - interaction.extents.x;
+    if (shape == 1u)
+    {
+        p.y -= clamp(p.y, -interaction.extents.y, interaction.extents.y);
+        return length(p) - interaction.extents.x;
+    }
+    const float3 q = abs(p) - interaction.extents.xyz;
+    return length(max(q, 0.0f)) + min(max(q.x, max(q.y, q.z)), 0.0f);
+}
+
 float3 HikariFluidToSource(HikariFluidSource source, float3 p)
 {
     const float4 h = float4(p, 1.0f);

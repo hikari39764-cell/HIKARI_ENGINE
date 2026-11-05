@@ -166,22 +166,20 @@ void VfxWorkspaceController::DrawHierarchyWindow(AssetDatabase& database) {
                                   {VFX::VfxLayerKind::Fluid, "ui.vfx.layer.newFluid"},
                                   {VFX::VfxLayerKind::FluidSource, "ui.vfx.layer.newFluidSource"}};
             const auto* selected = FindEmitter(selection_.emitterId);
+            // 新しい層の親：組を選んでいれば組、他は選んだ層と同じ親。流体源は選んだ域の下か、親の属する域の中にだけ
+            // 置け、流体域は域の中に置けない。
+            const std::string sibling = selected == nullptr                          ? std::string{}
+                                        : selected->kind == VFX::VfxLayerKind::Group ? selected->id
+                                                                                     : selected->parentEmitterId;
+            const bool selectedDomain = selected != nullptr && selected->kind == VFX::VfxLayerKind::Fluid;
+            const bool insideDomain = FindFluidDomainUnder(sibling) != nullptr;
             for (const auto& entry : kinds) {
-                // 流体源は流体域の中にだけ置ける（域か、域の中の源を選んでいる時）。
                 const bool fluidSource = entry.kind == VFX::VfxLayerKind::FluidSource;
-                const VFX::VfxEmitterData* domain = selected == nullptr                          ? nullptr
-                                                    : selected->kind == VFX::VfxLayerKind::Fluid ? selected
-                                                    : selected->kind == VFX::VfxLayerKind::FluidSource
-                                                        ? FindEmitter(selected->parentEmitterId)
-                                                        : nullptr;
-                if (!ImGui::MenuItem(TEXT::Localize(entry.label).c_str(), nullptr, false,
-                                     !fluidSource || domain != nullptr))
+                const bool enabled = fluidSource ? selectedDomain || insideDomain
+                                                 : entry.kind != VFX::VfxLayerKind::Fluid || !insideDomain;
+                if (!ImGui::MenuItem(TEXT::Localize(entry.label).c_str(), nullptr, false, enabled))
                     continue;
-                // 組の中なら組の子、流体源は域の子、他は選んだ層と同じ親。
-                const std::string parent =
-                    fluidSource ? domain->id
-                    : selected ? (selected->kind == VFX::VfxLayerKind::Group ? selected->id : selected->parentEmitterId)
-                               : "";
+                const std::string parent = fluidSource && selectedDomain ? selected->id : sibling;
                 std::string id;
                 (void)AddEmitter(parent, TEXT::Localize(entry.label), {}, id, statusMessage_, entry.kind);
             }

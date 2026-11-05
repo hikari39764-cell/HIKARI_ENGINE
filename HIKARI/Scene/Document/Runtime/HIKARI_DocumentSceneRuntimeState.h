@@ -40,6 +40,7 @@
 #include "Scene/Terrain/HIKARI_TerrainSurfaceQueryService.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 #include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
+#include "Scene/Vfx/HIKARI_FluidInteractionService.h"
 #include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
 #include "Scene/Vfx/HIKARI_CombatPresentationService.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
@@ -83,6 +84,7 @@ struct DocumentSceneRuntimeState {
     TERRAIN::TerrainSurfaceQueryService terrainSurfaceQueryService{};
     PresentationModelService presentationModelService{};
     LocalFogService localFogService{};
+    FluidInteractionService fluidInteractionService{};
     // 時刻・天気・環境プロファイルの実行時の所有者。シーン文書へは書き戻さない。
     ENVIRONMENT::EnvironmentRuntime environment{};
     // 編集中の時刻の流れ（実時間 1 秒あたりの秒数、0 で止める）。環境パネルの試し再生が設定する。

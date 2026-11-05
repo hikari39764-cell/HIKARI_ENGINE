@@ -21,10 +21,6 @@ namespace HIKARI::PHYSICS {
 namespace {
 constexpr float kDegreesToRadians = MATH::kDegreesToRadians;
 
-MATH::Vec3 Multiply(const MATH::Vec3& left, const MATH::Vec3& right) noexcept {
-    return {left.x * right.x, left.y * right.y, left.z * right.z};
-}
-
 MATH::Vec3 Absolute(const MATH::Vec3& value) noexcept {
     return {std::abs(value.x), std::abs(value.y), std::abs(value.z)};
 }
@@ -123,22 +119,19 @@ namespace {
 
 PhysicsShapeDesc BuildResolvedShapeDesc(const ColliderComponent& collider, const ResolvedColliderShape& resolved,
                                         const MATH::Vec3& worldScale, uint32_t componentOrdinal) {
-    const MATH::Vec3 absoluteScale = Absolute(worldScale);
+    const ResolvedColliderShape scaled = ScaleColliderShape(resolved, worldScale);
     PhysicsShapeDesc shape{};
     shape.key.componentOrdinal = componentOrdinal;
-    shape.type = resolved.type;
-    shape.localCenter = Multiply(resolved.center, absoluteScale);
-    const MATH::Vec3 rotationDegrees = resolved.rotationEulerDegrees;
+    shape.type = scaled.type;
+    shape.localCenter = scaled.center;
+    const MATH::Vec3 rotationDegrees = scaled.rotationEulerDegrees;
     shape.localRotation = MATH::NormalizeQ(MATH::Quat::FromEulerXYZ(rotationDegrees.x * kDegreesToRadians,
                                                                     rotationDegrees.y * kDegreesToRadians,
                                                                     rotationDegrees.z * kDegreesToRadians));
-    shape.halfExtents = Multiply(resolved.size, absoluteScale) * 0.5f;
-    const float radialScale = resolved.type == PhysicsShapeType::Sphere
-                                  ? (std::max)({absoluteScale.x, absoluteScale.y, absoluteScale.z})
-                                  : (std::max)(absoluteScale.x, absoluteScale.z);
-    shape.radius = resolved.radius * radialScale;
-    shape.height = resolved.height * absoluteScale.y;
-    shape.localScale = absoluteScale;
+    shape.halfExtents = scaled.size * 0.5f;
+    shape.radius = scaled.radius;
+    shape.height = scaled.height;
+    shape.localScale = Absolute(worldScale);
     shape.isTrigger = collider.IsTrigger();
     shape.material = PhysicsMaterialDesc{collider.GetFriction(), collider.GetRestitution(), collider.GetDensity()};
     shape.filter = PhysicsCollisionFilter{collider.GetCollisionLayer(), collider.GetCollisionMask()};

@@ -12,15 +12,17 @@ namespace HIKARI::ASSETS::SHADER {
 
 inline constexpr std::string_view kFluidSimulationShaderProgram = "HIKARI.EngineShader.Render3D_FluidSimulation";
 inline constexpr std::string_view kFluidSimulationShaderRootCanonical =
-    "HIKARI.FluidSimulation.Root.v1|0:CBV(b0,Compute)|1:RootConstants(b1,space0,8,Compute)|"
+    "HIKARI.FluidSimulation.Root.v2|0:CBV(b0,Compute)|1:RootConstants(b1,space0,8,Compute)|"
     "2..5:SRVTable(t0..t3,count1,Compute)|6:SRV(t6,Compute)|7:UAVTable(u0,count1,Compute)|"
-    "8:UAVTable(u1,count1,Compute)|9:UAVTable(u4,count1,Compute)|10:UAV(u5,Compute)|"
+    "8:UAVTable(u1,count1,Compute)|9:UAVTable(u4,count1,Compute)|10:UAV(u5,Compute)|11:SRV(t7,Compute)|"
     "StaticSampler(s0,LinearClamp,Compute)|StaticSampler(s1,LinearBorderTransparentBlack,Compute)|Flags(None)";
 inline constexpr std::string_view kFluidSimulationShaderInterfaceCanonical =
-    "FluidDomainCB:96;uint4 size(cells,sourceCount),float4 cell(h,invH,dt,time),motion(boundary,vorticity,"
-    "buoyancy,weight),dissipation(density,temperature),up,inertia;FluidPassCB:32;uint4 passSize,"
+    "FluidDomainCB:112;uint4 size(cells,sourceCount),float4 cell(h,invH,dt,time),motion(boundary,vorticity,"
+    "buoyancy,weight),dissipation(density,temperature),up,inertia,uint4 interactionCount;FluidPassCB:32;uint4 passSize,"
     "passParams(color,sliceField,sliceAxis,sliceIndex|statsOffset);FluidSource:240 rows toSource[3],toDomain[3],"
-    "shape,shape2,emission,velocity,field0,field1,field2,wind,guide;MAC velocity RGBA16F (n+1)^3 xyz lower face "
+    "shape,shape2,emission,velocity,field0,field1,field2,wind,guide;FluidInteraction:96 toLocal[3],extents(kind),"
+    "velocity(shape),push(center,strength) obstacle Brinkman after forces,directed push accel falloff^2,"
+    "radial push open-boundary expansion 30S/R falloff^2 in rhs;MAC velocity RGBA16F (n+1)^3 xyz lower face "
     "w cell temperature;density R16F n^3;pressure/rhs R32F multigrid A P=sum-kP=D h^2 coarse rhs 4*mean residual;"
     "stats raw: brick max density f32 then (maxAbsDivergence,densitySum) f32x2 per 8^3 brick";
 
@@ -28,9 +30,9 @@ inline ShaderAssetContractExpectation MakeFluidSimulationShaderContract(
     ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = "HIKARI.FluidSimulation";
-    contract.engineInterfaceVersion = 1u;
+    contract.engineInterfaceVersion = 2u;
     contract.rootLayoutId = "HIKARI.FluidSimulation.Root";
-    contract.rootLayoutVersion = 1u;
+    contract.rootLayoutVersion = 2u;
     contract.availableDeviceCaps = availableCaps;
     if (!HASH::ComputeSha256(kFluidSimulationShaderInterfaceCanonical, contract.engineInterfaceHash) ||
         !HASH::ComputeSha256(kFluidSimulationShaderRootCanonical, contract.rootLayoutHash)) {
@@ -46,7 +48,8 @@ inline bool IsFluidSimulationBindingAllowed(const ShaderResourceBinding& binding
     }
     switch (binding.kind) {
     case Kind::ConstantBuffer: return binding.registerIndex <= 1u;
-    case Kind::ShaderResource: return binding.registerIndex <= 3u || binding.registerIndex == 6u;
+    case Kind::ShaderResource:
+        return binding.registerIndex <= 3u || binding.registerIndex == 6u || binding.registerIndex == 7u;
     case Kind::UnorderedAccess:
         return binding.registerIndex <= 1u || binding.registerIndex == 4u || binding.registerIndex == 5u;
     case Kind::Sampler: return binding.registerIndex <= 1u;

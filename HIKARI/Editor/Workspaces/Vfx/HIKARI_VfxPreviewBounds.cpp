@@ -481,8 +481,14 @@ VfxPreviewBounds EstimateVfxPreviewBounds(const VFX::VfxAssetData& asset, std::s
         }
         // 流体の層は域の箱（大きさは domainSize だけで決まり、層の倍率は掛からない）。源は属する域の箱。
         if (emitter.kind == VFX::VfxLayerKind::Fluid || emitter.kind == VFX::VfxLayerKind::FluidSource) {
-            const auto domain =
-                emitterIndices.find(emitter.kind == VFX::VfxLayerKind::Fluid ? emitter.id : emitter.parentEmitterId);
+            const VFX::VfxEmitterData* owner =
+                emitter.kind == VFX::VfxLayerKind::Fluid
+                    ? &emitter
+                    : VFX::FindVfxFluidDomainLayer(emitter, [&](const std::string& id) -> const VFX::VfxEmitterData* {
+                          const auto found = emitterIndices.find(id);
+                          return found == emitterIndices.end() ? nullptr : &asset.emitters[found->second];
+                      });
+            const auto domain = owner != nullptr ? emitterIndices.find(owner->id) : emitterIndices.end();
             if (domain == emitterIndices.end() || !ResolveTransform(domain->second, asset, emitterIndices, transforms))
                 continue;
             const ResolvedEmitterTransform& frame = transforms[domain->second];

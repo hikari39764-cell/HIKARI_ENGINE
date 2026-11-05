@@ -126,6 +126,34 @@ inline constexpr auto kFluidSourceSettingsFields = [](auto&& field) {
     field("forceMode", &S::forceMode, kFluidForceModeNames);
 };
 
+// 流体を押すもの（場面の障碍物とゲームの押し）。障碍物は形の中の速度を自分の速度へ寄せ（Brinkman の罰則、投影の前）、
+// 烟は止まった障碍物を回り込み、動く障碍物に押し出され引きずられる（回転の速度は持たない）。冲量・力は extents.x を
+// 半径とする球の範囲で中心ほど強い。向きがあれば加速（冲量は一子步で速さを足す）、向きが 0 なら体積の湧き出しで、
+// 半径の球面を外へ strength [m/s] で流れ出す（負で吸い込む。冲量は kFluidRadialImpulseSeconds の間、開いた境界の域だけ）。
+enum class FluidInteractionKind : uint32_t { Obstacle, Impulse, Force };
+enum class FluidInteractionShape : uint32_t { Sphere, Capsule, Box };
+
+struct FluidInteraction {
+    FluidInteractionKind kind = FluidInteractionKind::Obstacle;
+    FluidInteractionShape shape = FluidInteractionShape::Sphere;
+    MATH::Vec3 worldPosition{};
+    MATH::Quat worldRotation = MATH::Quat::Identity();
+    // Sphere：x 半径。Capsule：x 半径、y 局所 Y 軸の線分の半分。Box：半分の大きさ [m]。冲量・力は x 半径。
+    MATH::Vec3 extents{0.5f, 0.5f, 0.5f};
+    // 障碍物の速度（世界 [m/s]）。
+    MATH::Vec3 velocity{};
+    // 冲量・力の向き（世界、0 なら中心から外向き）。
+    MATH::Vec3 direction{};
+    // 向きのある冲量は足す速さ [m/s]、力は加速度 [m/s²]。向きの無い冲量・力は半径での外向きの流れの速さ [m/s]。
+    float strength = 0.0f;
+};
+
+// 向きの無い冲量が湧き出し続けるゲーム時間 [s]（半径での押し出しの距離は約 strength × この時間）。
+inline constexpr double kFluidRadialImpulseSeconds = 0.1;
+
+inline constexpr uint32_t kMaximumFluidInteractionsPerFrame = 64u;
+inline constexpr uint32_t kMaximumFluidInteractionsPerDomain = 32u;
+
 // 源の形（VFX の emission shape と同じ種類）。値は ParticleShape と同じ並び。
 enum class FluidSourceShape : uint32_t { Point, Sphere, Cone, Box, Cylinder, Circle, Edge, Domain };
 

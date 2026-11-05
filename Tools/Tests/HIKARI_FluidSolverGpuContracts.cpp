@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <span>
 #include <vector>
 
 #include <d3dx12.h>
@@ -142,12 +143,8 @@ float HalfToFloat(uint16_t half) {
     return (sign ? -1.0f : 1.0f) * std::ldexp(static_cast<float>(mantissa + 1024u), static_cast<int>(exponent) - 25);
 }
 
-// 開いた境界の烟柱（Smoke_Puff と同じ設定：4 m の域、源は下寄りの球、浮力で上がる）。2 秒注入し続けて、投影後の
-// 散度が残らず、速度が浮力と注入の速さの程度に収まり、烟が域に柱として残る。多重网格が 3 段以上になる分辨率で、
-// 開いた境界（面の上で圧力 0）の粗い段の修正が発散しないことを見る。
-void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution, float minimumDensity) {
-    FluidVolumePass pass;
-    RENDER3D::PARTICLES::ParticleRenderInput input{};
+// 開いた境界の烟柱（Smoke_Puff と同じ設定：4 m の域を (0, 2, 4) に置き、源は下寄りの球、浮力で上がる）。
+FluidDomainSubmission MakePlume(uint64_t playbackNamespace, uint32_t resolution) {
     FluidDomainSubmission domain{};
     domain.key = {playbackNamespace, 1u, 1u, 0u};
     domain.resetSimulation = true;
@@ -170,7 +167,16 @@ void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution,
     source.field.frequency = 2.0f;
     source.field.evolution = 0.5f;
     domain.sources.push_back(source);
-    input.fluids.push_back(domain);
+    return domain;
+}
+
+// 烟柱を 2 秒注入し続けて、投影後の散度が残らず、速度が浮力と注入の速さの程度に収まり、烟が域に柱として残る。
+// 多重网格が 3 段以上になる分辨率で、開いた境界（面の上で圧力 0）の粗い段の修正が発散しないことを見る。
+void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution, float minimumDensity) {
+    FluidVolumePass pass;
+    RENDER3D::PARTICLES::ParticleRenderInput input{};
+    input.fluids.push_back(MakePlume(playbackNamespace, resolution));
+    const FluidDomainSubmission& domain = input.fluids[0];
     FluidFrameSettings settings{};
     settings.diagnostics = true;
     pass.RequestDebugSlice({domain.key, FluidDebugField::Velocity, 0u, 0.5f});
@@ -195,6 +201,151 @@ void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution,
     // 子步ごとの V 循環 2 回で残る散度は 64 格で速度 / 格の約 0.5%（0.13 / s）。発散すると 1e6 を超える。
     assert(stats.diagnosticsValid && maxDivergence < 0.25f && maxSpeed < 8.0f);
     assert(stats.densityTotal > minimumDensity && stats.activeBricks > 1u);
+    pass.Shutdown();
+}
+
+// 32 格の烟柱に押すものを置いて 2 秒解き、x の中央の切片（速度と、second の量）を返す。
+struct PlumeSlices {
+    std::vector<uint16_t> velocity;
+    std::vector<uint16_t> second;
+};
+
+PlumeSlices PushedPlume(FluidGpu& fluid, uint64_t playbackNamespace, std::span<const FluidInteraction> interactions,
+                        FluidDebugField second) {
+    FluidVolumePass pass;
+    RENDER3D::PARTICLES::ParticleRenderInput input{};
+    input.fluids.push_back(MakePlume(playbackNamespace, 32u));
+    const auto key = input.fluids[0].key;
+    FluidFrameSettings settings{};
+    settings.interactions = interactions;
+    pass.RequestDebugSlice({key, FluidDebugField::Velocity, 0u, 0.5f});
+    SliceReadback velocity, other;
+    for (uint32_t frame = 0u; frame <= 120u; ++frame) {
+        if (frame == 120u)
+            pass.RequestDebugSlice({key, second, 0u, 0.5f});
+        settings.interactionFrame = frame;
+        input.fluids[0].deltaSeconds = 1.0f / 60.0f;
+        fluid.Frame(pass, input, settings, [&] {
+            if (frame == 119u)
+                velocity.Record(fluid, pass);
+            if (frame == 120u)
+                other.Record(fluid, pass);
+        });
+        input.fluids[0].resetSimulation = false;
+    }
+    pass.Shutdown();
+    return {velocity.Read(), other.Read()};
+}
+
+// 切片（x = 16 の yz 面、32 × 32）の中で、域の局所の点 center から radius の内にある格の channel の平均。
+float SliceMean(const std::vector<uint16_t>& texels, MATH::Vec3 center, float radius, uint32_t channel) {
+    assert(texels.size() == 32u * 32u * 4u);
+    float sum = 0.0f;
+    uint32_t count = 0u;
+    for (uint32_t z = 0u; z < 32u; ++z) {
+        for (uint32_t y = 0u; y < 32u; ++y) {
+            const MATH::Vec3 p{0.0625f, (static_cast<float>(y) + 0.5f - 16.0f) * 0.125f,
+                               (static_cast<float>(z) + 0.5f - 16.0f) * 0.125f};
+            if (MATH::Length(p - center) >= radius)
+                continue;
+            sum += HalfToFloat(texels[(z * 32u + y) * 4u + channel]);
+            ++count;
+        }
+    }
+    assert(count > 0u);
+    return sum / static_cast<float>(count);
+}
+
+// 押すもの（流体烟雾第 6 步）：烟柱の上に止まった球の障碍物を置くと、球の中は上昇が止まって烟が入らない。向きの無い
+// 力は投影後の散度（湧き出し）になり、向きのある力は投影の後も流れを残す。
+void PushedPlumes(FluidGpu& fluid) {
+    const PlumeSlices plain = PushedPlume(fluid, 50u, {}, FluidDebugField::Density);
+    // 障碍物を置く高さ：素の烟柱の中心の列で、源（局所 y -1.3）より 0.6 m 以上上の、上昇の最も速い格。
+    uint32_t best = 11u;
+    for (uint32_t y = 11u; y < 28u; ++y)
+        if (HalfToFloat(plain.velocity[(16u * 32u + y) * 4u + 1u]) >
+            HalfToFloat(plain.velocity[(16u * 32u + best) * 4u + 1u]))
+            best = y;
+    const MATH::Vec3 core{0.0f, (static_cast<float>(best) + 0.5f - 16.0f) * 0.125f, 0.0f};
+    FluidInteraction obstacle{};
+    obstacle.worldPosition = {0.0f, 2.0f + core.y, 4.0f};
+    obstacle.extents = {0.4f, 0.4f, 0.4f};
+    const PlumeSlices blocked = PushedPlume(fluid, 51u, std::span(&obstacle, 1u), FluidDebugField::Density);
+    FluidInteraction expansion{};
+    expansion.kind = FluidInteractionKind::Force;
+    expansion.worldPosition = {0.0f, 2.2f, 4.0f};
+    expansion.extents = {0.6f, 0.6f, 0.6f};
+    expansion.strength = 1.0f;
+    const PlumeSlices expanded = PushedPlume(fluid, 52u, std::span(&expansion, 1u), FluidDebugField::Divergence);
+    FluidInteraction wind = expansion;
+    wind.direction = {1.0f, 0.0f, 0.0f};
+    wind.strength = 4.0f;
+    const PlumeSlices blown = PushedPlume(fluid, 53u, std::span(&wind, 1u), FluidDebugField::Density);
+    const float plainRise = SliceMean(plain.velocity, core, 0.25f, 1u);
+    const float blockedSpeed = SliceMean(blocked.velocity, core, 0.25f, 3u);
+    const float plainDensity = SliceMean(plain.second, core, 0.25f, 0u);
+    const float blockedDensity = SliceMean(blocked.second, core, 0.25f, 0u);
+    // 力（湧き出しと風）の中心は局所 (0, 0.2, 0)。それに最も近い格（局所 (0.0625, 0.1875, 0.0625)）の湧き出し率は
+    // 30 S / R (1 - r / R)²。
+    const MATH::Vec3 pushCenter{0.0f, 0.2f, 0.0f};
+    const float r = MATH::Length(MATH::Vec3{0.0625f, 0.1875f, 0.0625f} - pushCenter);
+    const float expected = 30.0f * 1.0f / 0.6f * (1.0f - r / 0.6f) * (1.0f - r / 0.6f);
+    const float divergence = HalfToFloat(expanded.second[(16u * 32u + 17u) * 4u]);
+    const float plainSide = SliceMean(plain.velocity, pushCenter, 0.25f, 0u);
+    const float blownSide = SliceMean(blown.velocity, pushCenter, 0.25f, 0u);
+    std::fprintf(stderr,
+                 "fluid pushes: core y %.3f rise plain %.3f blocked speed %.3f density plain %.3f blocked %.3f "
+                 "expansion %.2f "
+                 "(expected %.2f) side plain %.3f blown %.3f\n",
+                 core.y, plainRise, blockedSpeed, plainDensity, blockedDensity, divergence, expected, plainSide,
+                 blownSide);
+    assert(plainRise > 0.3f && blockedSpeed < 0.15f * plainRise);
+    assert(plainDensity > 0.05f && blockedDensity < 0.3f * plainDensity);
+    assert(std::abs(divergence - expected) < 0.3f * expected);
+    assert(blownSide > 0.5f && blownSide - plainSide > 0.4f);
+}
+
+// 局所空間の域：挂点が止まった後に急に +x へ 2 m/s で動き出すと、域の中の流れは逆向きに約 2 m/s を受け（慣性）、
+// 開いた境界の域では一様な向かい風として残る。後半はフレームの長さが 1/120 s と 1/40 s で交互に揺れ、挂点の位置は
+// 1 フレーム前の長さで進む（VFX が LateUpdate の前に読む物体と同じ）。それでも向かい風は 2 m/s のまま育たない。
+void LocalSpaceInertia(FluidGpu& fluid) {
+    FluidVolumePass pass;
+    RENDER3D::PARTICLES::ParticleRenderInput input{};
+    input.fluids.push_back(MakeDomain(70u, FluidBoundary::Open, 0.1f));
+    FluidDomainSubmission& domain = input.fluids[0];
+    domain.localSpace = true;
+    domain.settings.inertia = 1.0f;
+    domain.settings.buoyancy = 0.0f;
+    domain.settings.vorticity = 0.0f;
+    domain.sources[0].settings.velocity = {};
+    domain.sources[0].field = {};
+    pass.RequestDebugSlice({domain.key, FluidDebugField::Velocity, 0u, 0.5f});
+    SliceReadback readback;
+    const MATH::Vec3 sourceOffset = domain.sources[0].worldPosition;
+    float x = 0.0f;
+    float previousDt = 1.0f / 60.0f;
+    constexpr uint32_t kFrames = 90u;
+    for (uint32_t frame = 0u; frame < kFrames; ++frame) {
+        const float dt = frame < 50u ? 1.0f / 60.0f : (frame % 2u == 0u ? 1.0f / 120.0f : 1.0f / 40.0f);
+        if (frame >= 10u)
+            x += 2.0f * previousDt;
+        previousDt = dt;
+        input.fluids[0].worldPosition = {x, 0.0f, 0.0f};
+        input.fluids[0].sources[0].worldPosition = sourceOffset + MATH::Vec3{x, 0.0f, 0.0f};
+        input.fluids[0].deltaSeconds = dt;
+        fluid.Frame(pass, input, {}, [&] {
+            if (frame + 1u == kFrames)
+                readback.Record(fluid, pass);
+        });
+        input.fluids[0].resetSimulation = false;
+    }
+    const std::vector<uint16_t> texels = readback.Read();
+    float sum = 0.0f;
+    for (size_t index = 0u; index < texels.size(); index += 4u)
+        sum += HalfToFloat(texels[index]);
+    const float meanX = sum / static_cast<float>(texels.size() / 4u);
+    std::fprintf(stderr, "fluid local inertia: mean x velocity %.3f (expected about -2)\n", meanX);
+    assert(meanX < -1.6f && meanX > -2.4f);
     pass.Shutdown();
 }
 
@@ -304,6 +455,8 @@ void CheckFluidSolver() {
     // 密度の総量は格の値の和（格の数に比例）。実測 32 格 1091、64 格 8194 の半分を下限にする。
     OpenPlume(fluid, 40u, 32u, 500.0f);
     OpenPlume(fluid, 41u, 64u, 4000.0f);
+    PushedPlumes(fluid);
+    LocalSpaceInertia(fluid);
     closedBox(0, 1.0e-4f);
     closedBox(1, 0.06f);
     closedBox(2, 0.12f);

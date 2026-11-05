@@ -387,6 +387,11 @@ VfxSeekResult VfxPlaybackService::SeekInternal(VfxPlaybackHandle handle, uint64_
             return layer.kind == VfxLayerKind::Particles || layer.history.mode != VfxHistoryMode::None;
         });
     if (!hasParticles) {
+        // 流体は時間を飛ばせない：時刻が変わったら域を作り直して預熱からやり直す（巻き戻しは上で作り直し済み）。
+        if (std::abs(targetSeconds - instance->elapsedSeconds) > kSeekEpsilon)
+            for (size_t index = 0u; index < instance->program->emitters.size(); ++index)
+                if (instance->program->emitters[index].kind == VfxLayerKind::Fluid)
+                    instance->emitterStates[index].resetSimulation = true;
         instance->elapsedSeconds = targetSeconds;
         (void)AppendInstanceStep(*instance, 0.0f, nextSeekSimulationOrdinal_++, true, false);
         result.executedSteps = 1;

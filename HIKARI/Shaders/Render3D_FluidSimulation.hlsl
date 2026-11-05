@@ -13,6 +13,7 @@ cbuffer FluidDomainCB : register(b0)
     float4 gDissipation;  // x 密度の消散 [1/s]、y 温度の消散 [1/s]
     float4 gUp;           // xyz 域の局所の上向き
     float4 gInertia;      // xyz 挂点の加速度の逆向き（域の局所 [m/s²]）
+    uint4 gInteractionCount; // x 押すもの（障碍物・冲量・力）の数
 };
 
 cbuffer FluidPassCB : register(b1)
@@ -26,6 +27,7 @@ Texture3D<float4> gIn1 : register(t1);
 Texture3D<float4> gIn2 : register(t2);
 Texture3D<float4> gIn3 : register(t3);
 StructuredBuffer<HikariFluidSource> gSources : register(t6);
+StructuredBuffer<HikariFluidInteraction> gInteractions : register(t7);
 RWTexture3D<float4> gOut0 : register(u0);
 RWTexture3D<float4> gOut1 : register(u1);
 RWTexture2D<float4> gSlice : register(u4);
@@ -270,6 +272,53 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
     density *= exp(-source.emission.w * mask * gCell.z);
 }
 
+// 押す強さの重み：半径の中で中心から二乗で弱まる。
+float HikariFluidPushFalloff(HikariFluidInteraction interaction, float3 p)
+{
+    const float falloff = saturate(1.0f - length(p - interaction.push.xyz) / max(interaction.extents.x, 1.0e-4f));
+    return falloff * falloff;
+}
+
+bool HikariFluidPushDirected(HikariFluidInteraction interaction)
+{
+    return dot(interaction.velocity.xyz, interaction.velocity.xyz) > 0.0f;
+}
+
+// 向きのある冲量・力：その向きへ加速する（冲量は一子步で strength の速さを足す）。投影の後に回転の成分が残り、
+// 烟の塊や渦の輪になる。向きの無い押しは Expansion（体積の湧き出し）で扱う。
+void ApplyPush(HikariFluidInteraction interaction, float3 p, inout float3 acceleration)
+{
+    const float amount = interaction.push.w * HikariFluidPushFalloff(interaction, p);
+    acceleration += interaction.velocity.xyz * (HikariFluidInteractionKind(interaction) == 1u ? amount / gCell.z : amount);
+}
+
+// 向きの無い冲量・力の湧き出し率 [1/s]（開いた境界の域だけ。閉じた箱では非圧縮の流体は逃げ場が無い）。中心から二乗で
+// 弱まり、半径の球面を外へ strength [m/s] で流れ出る量にする（4πR²S = ∫e dV、∫(1-r/R)² dV = 2πR³/15）。負で吸い込む。
+float Expansion(float3 p)
+{
+    float expansion = 0.0f;
+    for (uint index = 0u; index < gInteractionCount.x; ++index)
+    {
+        const HikariFluidInteraction interaction = gInteractions[index];
+        if (HikariFluidInteractionKind(interaction) == 0u || HikariFluidPushDirected(interaction))
+            continue;
+        expansion += 30.0f * interaction.push.w / max(interaction.extents.x, 1.0e-4f) *
+                     HikariFluidPushFalloff(interaction, p);
+    }
+    return expansion;
+}
+
+// 障碍物：形の中（縁は格 1.5 個ぶん柔らかく）の加速度を、この子步で速度が障碍物の速度になる値へ置き換える。
+// 他の力をすべて足した後に掛け、続く投影が回り込む流れを作る。
+void ApplyObstacle(HikariFluidInteraction interaction, float3 p, float3 velocity, inout float3 acceleration)
+{
+    const float4 h = float4(p, 1.0f);
+    const float3 local = float3(dot(interaction.toLocal0, h), dot(interaction.toLocal1, h), dot(interaction.toLocal2, h));
+    const float mask = saturate(0.5f - HikariFluidInteractionDistance(interaction, local) / (1.5f * gCell.x));
+    if (mask > 0.0f)
+        acceleration = lerp(acceleration, (interaction.velocity.xyz - velocity) / gCell.z, mask);
+}
+
 // 力：t0 平流後の速度、t1 旋度 → u0（xyz 格の中心の加速度、w 温度）。u1 の平流後の密度へ注入・吸収をその場で書く。
 [numthreads(4, 4, 4)]
 void ForceFieldCS(uint3 id : SV_DispatchThreadID)
@@ -298,6 +347,12 @@ void ForceFieldCS(uint3 id : SV_DispatchThreadID)
         if (magnitude > 1.0e-6f)
             acceleration += gMotion.y * gCell.x * cross(gradient / magnitude, gIn1.Load(int4(id, 0)).xyz);
     }
+    for (uint push = 0u; push < gInteractionCount.x; ++push)
+        if (HikariFluidInteractionKind(gInteractions[push]) != 0u && HikariFluidPushDirected(gInteractions[push]))
+            ApplyPush(gInteractions[push], p, acceleration);
+    for (uint obstacle = 0u; obstacle < gInteractionCount.x; ++obstacle)
+        if (HikariFluidInteractionKind(gInteractions[obstacle]) == 0u)
+            ApplyObstacle(gInteractions[obstacle], p, velocity, acceleration);
     gOut0[id] = float4(acceleration, temperature);
     gOut1[id] = float4(max(density, 0.0f), 0.0f, 0.0f, 0.0f);
 }
@@ -339,12 +394,14 @@ float Divergence(Texture3D<float4> velocity, uint3 cell)
             FaceVelocity(velocity, cell + uint3(0, 0, 1), 2u) - FaceVelocity(velocity, cell, 2u)) * gCell.y;
 }
 
-// 右辺 D h²：t0 速度 → u0（段 0 の右辺）。
+// 右辺 (D - e) h²：t0 速度 → u0（段 0 の右辺）。e は向きの無い押しの湧き出し率で、投影後の散度がそれになる。
 [numthreads(4, 4, 4)]
 void DivergenceCS(uint3 id : SV_DispatchThreadID)
 {
-    if (InsideCells(id))
-        gOut0[id] = Divergence(gIn0, id) * gCell.x * gCell.x;
+    if (!InsideCells(id))
+        return;
+    const float expansion = Closed() ? 0.0f : Expansion(DomainPosition(float3(id) + 0.5f));
+    gOut0[id] = (Divergence(gIn0, id) - expansion) * gCell.x * gCell.x;
 }
 
 // 近傍の圧力の和と、数える近傍の数。閉じた壁の外は数えない（勾配 0）。開いた境界は面の上で圧力 0：外の幽霊の格を

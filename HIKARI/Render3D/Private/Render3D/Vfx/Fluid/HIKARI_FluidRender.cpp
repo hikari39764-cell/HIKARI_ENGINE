@@ -122,7 +122,17 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     upload.ResetForFrame(context.currentFrameRetireFenceValue);
 
     RenderConstants constants{};
-    const bool useHistory = view.historyValid && state.historyValid && state.lastFrame != UINT64_MAX;
+    // 履歴は直前のフレームに同じ域の組を描いた時だけ使う（停めていた間や作り直した後の烟を混ぜない）。
+    uint64_t signature = 1469598103934665603ull;
+    for (size_t index = 0u; index < count; ++index) {
+        const uint64_t parts[2] = {reinterpret_cast<uintptr_t>(domains[index].light->resource.Get()),
+                                   domains[index].generation};
+        for (const uint64_t part : parts)
+            signature = (signature ^ part) * 1099511628211ull;
+    }
+    const bool useHistory = view.historyValid && state.historyValid && state.domainSignature == signature &&
+                            state.lastFrame != UINT64_MAX &&
+                            state.lastFrame + 1u == context.currentFrameRetireFenceValue;
     constants.invViewProj = view.invViewProj;
     constants.prevViewProj = useHistory ? state.previousViewProj : view.viewProj;
     Set4(constants.camera, view.cameraPosition.x, view.cameraPosition.y, view.cameraPosition.z, 0.0f);
@@ -273,6 +283,7 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     state.historyRead = write;
     state.historyValid = true;
     state.previousViewProj = view.viewProj;
+    state.domainSignature = signature;
     state.lastFrame = context.currentFrameRetireFenceValue;
     cameraVolumeView_ = {
         state.cameraVolume.srv.gpu,

@@ -1541,6 +1541,35 @@ int main() {
     assert(seekServiceA.GetRenderInput().emitters.front().resetSimulation);
     assert(seekServiceA.GetRenderInput().emitters.front().deltaSeconds == 0.0f);
 
+    // 流体層だけの資産を先へ拖ると、域を作り直して預熱からやり直す（流体は時間を飛ばせない）。
+    {
+        auto fluidSource = VFX::MakeDefaultVfxAssetData();
+        fluidSource.durationSeconds = 8.0f;
+        auto& domainLayer = fluidSource.emitters.front();
+        domainLayer.kind = VFX::VfxLayerKind::Fluid;
+        domainLayer.fluidDomain.id = "fluid.domain.seek";
+        domainLayer.effects.clear();
+        domainLayer.specialOutputs.clear();
+        domainLayer.meshOutput.enabled = false;
+        domainLayer.history.mode = VFX::VfxHistoryMode::None;
+        domainLayer.matte = {};
+        const auto fluidCompiled = VFX::CompileVfxAsset(fluidSource);
+        assert(fluidCompiled.success);
+        VFX::VfxPlaybackService fluidService{};
+        VFX::VfxPlayRequest fluidRequest{};
+        fluidRequest.program = std::make_shared<const VFX::VfxProgram>(fluidCompiled.program);
+        const VFX::VfxPlayResult fluidPlay = fluidService.PlayDetailed(fluidRequest);
+        assert(fluidPlay.IsAccepted());
+        const auto& fluidInput = fluidService.GetRenderInput();
+        fluidService.Update(1u, 1.0f / 60.0f);
+        assert(fluidInput.fluids.size() == 1u && fluidInput.fluids[0].resetSimulation);
+        fluidService.Update(2u, 1.0f / 60.0f);
+        assert(fluidInput.fluids.size() == 1u && !fluidInput.fluids[0].resetSimulation);
+        const VFX::VfxSeekResult fluidSeek = fluidService.Seek(fluidPlay.handle, 3u, 5.0f);
+        assert(fluidSeek.accepted && fluidSeek.complete);
+        assert(fluidInput.fluids.size() == 1u && fluidInput.fluids[0].resetSimulation);
+    }
+
     VFX::VfxPlaybackService restartService{};
     RENDER3D::PARTICLES::ParticleCpuSimulation restartSimulation{};
     VFX::VfxPlayResult restartPlay = restartService.PlayDetailed(play);

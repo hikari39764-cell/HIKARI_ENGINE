@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <span>
 #include <vector>
 
 #include <d3d12.h>
@@ -134,6 +135,9 @@ struct FluidFrameSettings {
     FluidSmokeQuality quality = FluidSmokeQuality::Balanced;
     // 投影後の散度と密度の総量を回読する（編集器の診断・試験・基準が読む）。
     bool diagnostics = false;
+    // 場面の押すもの（障碍物・冲量・力）と、それを出したフレーム。冲量はフレームが変わった時に一度だけ受け取る。
+    std::span<const FluidInteraction> interactions{};
+    uint64_t interactionFrame = 0u;
 };
 
 class FluidVolumePass final {

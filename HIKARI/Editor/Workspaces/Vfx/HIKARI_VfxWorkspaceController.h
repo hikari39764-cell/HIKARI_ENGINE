@@ -226,6 +226,8 @@ public:
     const std::string& GetLastAssetRefreshMessage() const noexcept;
 
     const VFX::VfxEmitterData* FindEmitter(std::string_view emitterId) const noexcept;
+    // 層 parentEmitterId の下に置く層が属する流体域（親が域ならその域、域の中の組ならその域、それ以外は nullptr）。
+    const VFX::VfxEmitterData* FindFluidDomainUnder(std::string_view parentEmitterId) const noexcept;
     const VFX::VfxExposedInputData* FindInput(std::string_view inputId) const noexcept;
     const VFX::VfxInputLinkData* FindInputLink(std::string_view linkId,
                                                const VFX::VfxEmitterData** outEmitter = nullptr) const noexcept;

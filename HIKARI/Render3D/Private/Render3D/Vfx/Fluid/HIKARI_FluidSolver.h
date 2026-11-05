@@ -93,6 +93,16 @@ static_assert(sizeof(FluidSourceGpu) == 240u);
 FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::Vec3& domainPosition,
                                const MATH::Quat& domainRotation, float cellSize, float burstDensity);
 
+// HIKARI_FluidGrid.hlsli の HikariFluidInteraction と同じ並び（押すものの表 t7 の 1 行）。
+struct FluidInteractionGpu {
+    float rows[6][4];
+};
+static_assert(sizeof(FluidInteractionGpu) == 96u);
+
+// 押すもの 1 つを域の局所空間へ移して詰める。domainVelocity は域の動く速さ（障碍物の速度を域に対する速度にする）。
+FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, const MATH::Vec3& domainPosition,
+                                         const MATH::Quat& domainRotation, const MATH::Vec3& domainVelocity);
+
 bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& layout, FluidDomainResources& resources);
 bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
                               FluidVolume& volume);
@@ -105,6 +115,7 @@ struct FluidPassBindings {
     std::array<FluidVolume*, 4> inputs{};
     std::array<FluidVolume*, 2> outputs{};
     D3D12_GPU_VIRTUAL_ADDRESS sources = 0u;
+    D3D12_GPU_VIRTUAL_ADDRESS interactions = 0u;
     FluidVolume* slice = nullptr;
     bool stats = false;
 };
@@ -117,8 +128,10 @@ public:
     void Dispatch(FluidEntry entry, const FluidPassBindings& bindings, const uint32_t (&passSize)[3],
                   const uint32_t (&passParams)[4], const uint32_t (&groups)[3]);
     void Clear(FluidVolume& volume);
-    // 1 子步。velocityIndex / densityIndex は今の速度・密度の体積で、終わると新しい方へ進む。
-    void Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D12_GPU_VIRTUAL_ADDRESS sources, uint32_t vCycles);
+    // 1 子步。velocityIndex / densityIndex は今の速度・密度の体積で、終わると新しい方へ進む。sources と interactions は
+    // 源と押すものの表（数は域の定数）。
+    void Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D12_GPU_VIRTUAL_ADDRESS sources,
+                 D3D12_GPU_VIRTUAL_ADDRESS interactions, uint32_t vCycles);
     void Occupancy(uint32_t densityIndex);
     void Diagnostics(uint32_t velocityIndex, uint32_t densityIndex);
     void Slice(uint32_t velocityIndex, uint32_t densityIndex, FluidVolume& output, FluidDebugField field, uint32_t axis,
