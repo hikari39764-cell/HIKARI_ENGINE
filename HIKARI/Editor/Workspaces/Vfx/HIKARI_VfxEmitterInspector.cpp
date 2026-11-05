@@ -524,6 +524,9 @@ void VfxWorkspaceController::DrawForceFields(AssetDatabase& database, const VFX:
     VfxInspectorPropertyEditor forcesEditor(*this, database, emitter.forces.id, statusMessage_);
     forcesEditor.Vec3(VfxUiText("Gravity").c_str(), "gravity", emitter.forces.gravity);
     forcesEditor.Float(VfxUiText("Drag").c_str(), "drag", emitter.forces.drag, 0.01f, 0.0f, 1000.0f);
+    if (emitter.kind == VFX::VfxLayerKind::Particles)
+        forcesEditor.Float(VfxUiText("Follow fluid (1/s)").c_str(), "fluidFollow", emitter.forces.fluidFollow, 0.05f,
+                           0.0f, RENDER3D::PARTICLES::kMaxParticleFluidFollow);
     if (ImGui::TreeNode(VfxUiText("Flow fields").c_str())) {
         const auto& field = emitter.forces.field;
         forcesEditor.Float(VfxUiText("Curl turbulence").c_str(), "field.turbulence", field.turbulence, 0.05f, 0, 10000);

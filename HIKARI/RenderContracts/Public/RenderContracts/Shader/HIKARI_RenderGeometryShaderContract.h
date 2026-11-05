@@ -80,13 +80,15 @@ inline constexpr std::string_view kClusterCullingRootLayoutCanonical =
     "10:SRV(t0,space8,All)|MeshletDispatchSlots(PassBucket)|Pipeline(Compute)|Flags(None)";
 
 inline constexpr std::string_view kParticleSimulationRootLayoutId = "HIKARI.RenderGeometry.ParticleSimulation.Root";
-inline constexpr uint32_t kParticleSimulationRootLayoutVersion = 1u;
+inline constexpr uint32_t kParticleSimulationRootLayoutVersion = 2u;
 inline constexpr std::string_view kParticleSimulationRootLayoutHash =
-    "13007e949f7390c3d7e4b2266249d437402af2ef980dfa560923f16d9fafe838";
+    "c0b78ddd26e3ce4c1d9cbe1454369c5229019bca5b9325f9e07c8232c85cd4df";
 inline constexpr std::string_view kParticleSimulationRootLayoutCanonical =
-    "HIKARI.RenderGeometry.ParticleSimulation.Root.v1|"
+    "HIKARI.RenderGeometry.ParticleSimulation.Root.v2|"
     "0:Table(UAV(u0,space0,count1),All)|1:SRV(t0,space0,All)|"
-    "2:Constants(b0,space0,count8,All)|Pipeline(Compute)|Flags(None)";
+    "2:Constants(b0,space0,count8,All)|3:Table(SRV(t1,space0,count1),All)|4:Table(SRV(t2,space0,count1),All)|"
+    "5:Table(SRV(t3,space0,count1),All)|6:Table(SRV(t4,space0,count1),All)|7:CBV(b1,space0,All)|"
+    "StaticSampler(s0,LinearClamp,All)|Pipeline(Compute)|Flags(None)";
 
 inline constexpr std::string_view kParticleCompactionRootLayoutId = "HIKARI.RenderGeometry.ParticleCompaction.Root";
 inline constexpr uint32_t kParticleCompactionRootLayoutVersion = 2u;
@@ -461,8 +463,11 @@ inline bool IsRenderGeometryBindingAllowed(RenderGeometryRootLayout layout,
                 (binding.registerIndex <= 1u || (binding.registerIndex >= 3u && binding.registerIndex <= 7u)) &&
                 binding.count == 1u);
     case RenderGeometryRootLayout::ParticleSimulation:
-        return MatchesRenderGeometryBinding(binding, Kind::ConstantBuffer, 0u, 0u) ||
-               MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 0u, 0u) ||
+        return (binding.kind == Kind::ConstantBuffer && binding.registerSpace == 0u && binding.registerIndex <= 1u &&
+                binding.count == 1u) ||
+               (binding.kind == Kind::ShaderResource && binding.registerSpace == 0u && binding.registerIndex <= 4u &&
+                binding.count == 1u) ||
+               MatchesRenderGeometryBinding(binding, Kind::Sampler, 0u, 0u) ||
                MatchesRenderGeometryBinding(binding, Kind::UnorderedAccess, 0u, 0u);
     case RenderGeometryRootLayout::ParticleCompaction:
         return MatchesRenderGeometryBinding(binding, Kind::ConstantBuffer, 0u, 1u) ||

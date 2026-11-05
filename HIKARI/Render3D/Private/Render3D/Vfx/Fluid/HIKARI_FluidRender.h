@@ -45,6 +45,8 @@ public:
     LIGHTING::CloudSolarVisibilityGpuData RenderSolarVisibility(const GFX::Context& context,
                                                                 std::span<const FluidRenderDomain> domains,
                                                                 const MATH::Vec3& toSun);
+    // 粒子が乗る流体：domains（このフレームに解いた域）の世界→格子の行の表を上げ、速度体積を計算 shader が読める状態にする。
+    FluidFlowView PrepareFlow(const GFX::Context& context, std::span<FluidRenderDomain> domains);
     // BeginFrame の後に最後に描いた視図の相機体積（無ければ 1 texel の空の体積で、params.w = 0）。
     FluidCameraVolumeView GetCameraVolume() const noexcept;
     // 視図ごとに解算の前に呼ぶ（空の相機体積を用意し、前の視図の相機体積を外す）。

@@ -10,6 +10,10 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 
+namespace HIKARI::RENDER3D::FLUID {
+struct FluidFlowView;
+}
+
 namespace HIKARI::RENDER3D::MATERIAL {
 class GpuMaterialRegistry;
 }
@@ -80,8 +84,9 @@ public:
     bool Initialize(const GFX::Context& context, uint32_t particleCapacity = kGpuParticlePoolCapacity,
                     uint32_t emitterPageCapacity = kDefaultParticleEmitterUploadPageCapacity);
     void Shutdown();
+    // fluidFlow はこのフレームに解いた流体の流れ（fluidFollow の粒子が乗る。無ければ乗らない）。
     bool PrepareFrame(const GFX::Context& context, const ParticleRenderFrameSource* source,
-                      MATERIAL::GpuMaterialRegistry& materialRegistry);
+                      MATERIAL::GpuMaterialRegistry& materialRegistry, const FLUID::FluidFlowView* fluidFlow = nullptr);
     // 直前の PrepareFrame が失敗した理由（成功時は空文字列）。
     const char* GetLastPrepareFailure() const noexcept;
     bool ExecuteForwardTransparent(const GFX::Context& context, const ParticleGpuDrivenDrawBindings& bindings);

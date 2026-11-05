@@ -128,7 +128,9 @@ bool ParticleGpuDrivenPipelineState::CreateSimulationPipelines(ID3D12Device* dev
     particleUav.NumDescriptors = 1u;
     particleUav.BaseShaderRegister = 0u;
 
-    std::array<D3D12_ROOT_PARAMETER, 3u> parameters{};
+    // 3..6：粒子が乗る流体の速度体積（t1..t4、1 つずつの表）、7：その域の表（b1）、s0：線形の clamp。
+    std::array<D3D12_DESCRIPTOR_RANGE, 4u> fluidVelocity{};
+    std::array<D3D12_ROOT_PARAMETER, 8u> parameters{};
     parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     parameters[0].DescriptorTable.NumDescriptorRanges = 1u;
     parameters[0].DescriptorTable.pDescriptorRanges = &particleUav;
@@ -137,10 +139,28 @@ bool ParticleGpuDrivenPipelineState::CreateSimulationPipelines(ID3D12Device* dev
     parameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
     parameters[2].Constants.ShaderRegister = 0u;
     parameters[2].Constants.Num32BitValues = sizeof(GpuParticleSimulationConstants) / sizeof(uint32_t);
+    for (uint32_t slot = 0u; slot < fluidVelocity.size(); ++slot) {
+        fluidVelocity[slot].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        fluidVelocity[slot].NumDescriptors = 1u;
+        fluidVelocity[slot].BaseShaderRegister = 1u + slot;
+        parameters[3u + slot].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[3u + slot].DescriptorTable.NumDescriptorRanges = 1u;
+        parameters[3u + slot].DescriptorTable.pDescriptorRanges = &fluidVelocity[slot];
+    }
+    parameters[7].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    parameters[7].Descriptor.ShaderRegister = 1u;
+    D3D12_STATIC_SAMPLER_DESC fluidSampler{};
+    fluidSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    fluidSampler.AddressU = fluidSampler.AddressV = fluidSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    fluidSampler.MaxLOD = D3D12_FLOAT32_MAX;
+    fluidSampler.ShaderRegister = 0u;
+    fluidSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
     D3D12_ROOT_SIGNATURE_DESC description{};
     description.NumParameters = static_cast<UINT>(parameters.size());
     description.pParameters = parameters.data();
+    description.NumStaticSamplers = 1u;
+    description.pStaticSamplers = &fluidSampler;
     if (!CreateRootSignature(device, description, "ParticleGpuDrivenPass::CreateSimulationRootSignature",
                              simulationRootSignature_.GetAddressOf())) {
         return false;

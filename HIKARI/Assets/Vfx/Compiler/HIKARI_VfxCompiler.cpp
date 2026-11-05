@@ -409,6 +409,7 @@ VfxCompileResult CompileVfxAsset(const VfxAssetData& asset) {
         emitter.simulation.gravity = source.forces.gravity;
         emitter.simulation.drag = source.forces.drag;
         emitter.simulation.field = source.forces.field;
+        emitter.simulation.fluidFollow = source.forces.fluidFollow;
         emitter.simulation.localSimulation = source.basic.localSimulation ? 1u : 0u;
         emitter.simulation.collisionPlaneEnabled = source.forces.collisionPlaneEnabled ? 1u : 0u;
         emitter.simulation.collisionPlaneHeight = source.forces.collisionPlaneHeight;

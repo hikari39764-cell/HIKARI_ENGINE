@@ -421,6 +421,7 @@ Json WriteEmitter(const VfxEmitterData& emitter) {
                   {"collisionPlaneHeight", emitter.forces.collisionPlaneHeight},
                   {"restitution", emitter.forces.restitution},
                   {"friction", emitter.forces.friction},
+                  {"fluidFollow", emitter.forces.fluidFollow},
               }},
              {"color",
               {

@@ -524,6 +524,9 @@ struct VfxForcesModuleData {
     float restitution = 0.35f;
     float friction = 0.2f;
     HIKARI::RENDER3D::PARTICLES::ParticleForceField field{};
+    // 流体に乗る（粒子だけ）：粒子の速度を毎秒この割合 [1/s] でその場の流体の速度へ寄せる（0 で乗らない）。世界空間の粒子が
+    // 同じフレームに解いた流体域の中にいる時だけ効く。
+    float fluidFollow = 0.0f;
 };
 
 struct VfxColorModuleData {

@@ -288,7 +288,8 @@ bool ReadForces(const Json& node, VfxForcesModuleData& forces) {
     if (!RequiredVec3(node, "gravity", forces.gravity) || !RequiredFloat(node, "drag", forces.drag) ||
         !OptionalBool(node, "collisionPlaneEnabled", forces.collisionPlaneEnabled) ||
         !OptionalFloat(node, "collisionPlaneHeight", forces.collisionPlaneHeight) ||
-        !OptionalFloat(node, "restitution", forces.restitution) || !OptionalFloat(node, "friction", forces.friction)) {
+        !OptionalFloat(node, "restitution", forces.restitution) || !OptionalFloat(node, "friction", forces.friction) ||
+        !OptionalFloat(node, "fluidFollow", forces.fluidFollow)) {
         return false;
     }
     const auto field = node.find("field");

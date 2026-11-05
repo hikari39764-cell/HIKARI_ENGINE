@@ -102,6 +102,7 @@ struct FluidVolumePass::Impl {
     std::optional<FluidDebugSliceRequest> sliceRequest{};
     INTERNAL::FluidVolume slice{};
     FluidDebugSliceView sliceView{};
+    FluidFlowView flowView{};
     INTERNAL::FluidRenderer renderer{};
     // 最後の PrepareFrame で解いた、描く域（預熱の済んだもの）。続く RenderVolumes がその視図へ描く。
     std::vector<INTERNAL::FluidRenderDomain> renderList{};
@@ -445,6 +446,7 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
     }
     impl.stats.perDomain.clear();
     impl.renderList.clear();
+    impl.flowView = {};
     if (context.device == nullptr || context.cmdList == nullptr)
         return true;
     if (impl.context.device != nullptr && impl.context.device != context.device) {
@@ -517,6 +519,7 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         render.simulationSeconds = domain->simulationSeconds;
         render.generation = domain->generation;
     }
+    impl.flowView = impl.renderer.PrepareFlow(context, impl.renderList);
     impl.stats.domains += solved;
     impl.stats.bytes = 0u;
     for (const auto& domain : impl.domains) {
@@ -558,6 +561,7 @@ LIGHTING::CloudSolarVisibilityGpuData FluidVolumePass::PrepareSolarVisibility(co
     return impl.renderer.RenderSolarVisibility(context, {casters.data(), count}, solar.sunDirection);
 }
 FluidCameraVolumeView FluidVolumePass::GetCameraVolume() const noexcept { return impl_->renderer.GetCameraVolume(); }
+FluidFlowView FluidVolumePass::GetFlowView() const noexcept { return impl_->flowView; }
 
 void FluidVolumePass::ReleaseNamespace(uint64_t playbackNamespace) {
     impl_->renderList.clear();

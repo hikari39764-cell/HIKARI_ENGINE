@@ -412,14 +412,15 @@ bool IsValidEmitterSimulation(const VfxProgram& program, const VfxProgramEmitter
            IsValidAnimated(simulation.position) && IsValidAnimated(simulation.rotationRadians) &&
            IsValidAnimated(simulation.scale) && RENDER3D::PARTICLES::IsValidParticleForceField(simulation.field) &&
            IsFinite(simulation.gravity) && IsFinite(simulation.drag) && simulation.drag >= 0.0f &&
-           simulation.localSimulation <= 1u && simulation.collisionPlaneEnabled <= 1u &&
-           IsFinite(simulation.collisionPlaneHeight) && IsFinite(simulation.restitution) &&
-           simulation.restitution >= 0.0f && simulation.restitution <= 1.0f && IsFinite(simulation.friction) &&
-           simulation.friction >= 0.0f && simulation.friction <= 1.0f && IsValidAnimated(simulation.color) &&
-           IsFinite(emitter.spawnRatePerSecond) && emitter.spawnRatePerSecond >= 0.0f && overrides.enabled <= 1u &&
-           IsFinite(overrides.spawnRateMultiplier) && IsFinite(overrides.radialSpeedMultiplier) &&
-           IsFinite(overrides.scaleMultiplier) && IsFinite(overrides.gravityMultiplier) &&
-           IsFinite(overrides.colorMultiplier);
+           IsFinite(simulation.fluidFollow) && simulation.fluidFollow >= 0.0f &&
+           simulation.fluidFollow <= RENDER3D::PARTICLES::kMaxParticleFluidFollow && simulation.localSimulation <= 1u &&
+           simulation.collisionPlaneEnabled <= 1u && IsFinite(simulation.collisionPlaneHeight) &&
+           IsFinite(simulation.restitution) && simulation.restitution >= 0.0f && simulation.restitution <= 1.0f &&
+           IsFinite(simulation.friction) && simulation.friction >= 0.0f && simulation.friction <= 1.0f &&
+           IsValidAnimated(simulation.color) && IsFinite(emitter.spawnRatePerSecond) &&
+           emitter.spawnRatePerSecond >= 0.0f && overrides.enabled <= 1u && IsFinite(overrides.spawnRateMultiplier) &&
+           IsFinite(overrides.radialSpeedMultiplier) && IsFinite(overrides.scaleMultiplier) &&
+           IsFinite(overrides.gravityMultiplier) && IsFinite(overrides.colorMultiplier);
 }
 
 bool IsValidOptionalAssetReference(const std::string& guid, bool allowBuiltinTexture) {

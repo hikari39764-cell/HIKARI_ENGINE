@@ -1333,7 +1333,7 @@
     {"ui.vfx.effect.param.blueWeight", "Blue weight"}, {"ui.vfx.effect.param.distance", "Distance (px)"},
     {"ui.vfx.effect.param.balance", "Balance"}, {"ui.vfx.effect.param.preserveLight", "Preserve light"},
     {"ui.vfx.effect.param.roundness", "Roundness"}, {"ui.vfx.effect.param.crossBlur", "Cross blur"},
-    {"ui.vfx.text.Flow fields", "Flow fields"}, {"ui.vfx.text.Curl turbulence", "Curl turbulence"},
+    {"ui.vfx.text.Flow fields", "Flow fields"}, {"ui.vfx.text.Curl turbulence", "Curl turbulence"}, {"ui.vfx.text.Follow fluid (1/s)", "Follow fluid (1/s)"},
     {"ui.vfx.text.Field frequency", "Field frequency"}, {"ui.vfx.text.Field evolution", "Field evolution"},
     {"ui.vfx.text.Vortex strength", "Vortex strength"},
     {"ui.vfx.text.Attraction / repulsion", "Attraction / repulsion"}, {"ui.vfx.text.Field center", "Field center"},

@@ -252,6 +252,8 @@ struct ParticleEmitterSimulationParameters {
     HIKARI::RENDER3D::PARTICLES::ParticleForceField field{};
     MATH::Vec3 gravity{0.0f, 0.0f, 0.0f};
     float drag = 0.0f;
+    // 流体に乗る割合 [1/s]（VfxForcesModuleData::fluidFollow）。
+    float fluidFollow = 0.0f;
     ParticleAnimatedColor color{};
 };
 

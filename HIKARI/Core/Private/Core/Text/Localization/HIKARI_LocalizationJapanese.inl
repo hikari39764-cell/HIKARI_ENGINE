@@ -1356,7 +1356,7 @@
     {"ui.vfx.effect.param.blueWeight", "青の重み"}, {"ui.vfx.effect.param.distance", "距離 (px)"},
     {"ui.vfx.effect.param.balance", "バランス"}, {"ui.vfx.effect.param.preserveLight", "明るさ保持"},
     {"ui.vfx.effect.param.roundness", "丸み"}, {"ui.vfx.effect.param.crossBlur", "十字ぼかし"},
-    {"ui.vfx.text.Flow fields", "流れ場"}, {"ui.vfx.text.Curl turbulence", "カール乱流"},
+    {"ui.vfx.text.Flow fields", "流れ場"}, {"ui.vfx.text.Curl turbulence", "カール乱流"}, {"ui.vfx.text.Follow fluid (1/s)", "流体に乗る（1/秒）"},
     {"ui.vfx.text.Field frequency", "場の周波数"}, {"ui.vfx.text.Field evolution", "場の展開速度"},
     {"ui.vfx.text.Vortex strength", "渦の強さ"}, {"ui.vfx.text.Attraction / repulsion", "吸引・反発の強さ"},
     {"ui.vfx.text.Field center", "場の中心"}, {"ui.vfx.text.Field axis", "場の軸"},

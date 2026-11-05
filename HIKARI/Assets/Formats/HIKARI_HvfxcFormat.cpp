@@ -611,6 +611,7 @@ void WriteProgram(BinaryWriter& writer, const VfxProgram& program) {
         WriteAnimated(writer, simulation.scale);
         WriteVec3(writer, simulation.gravity);
         writer.Write(simulation.drag);
+        writer.Write(simulation.fluidFollow);
         writer.Write(simulation.localSimulation);
         writer.Write(simulation.collisionPlaneEnabled);
         writer.Write(simulation.collisionPlaneHeight);
@@ -803,15 +804,15 @@ bool ReadProgram(BinaryReader& reader, VfxProgram& program) {
             !reader.Read(simulation.shapeEdgeLength) || !ReadDistribution(reader, simulation.radialSpeed) ||
             !ReadAnimated(reader, simulation.position) || !ReadAnimated(reader, simulation.rotationRadians) ||
             !ReadAnimated(reader, simulation.scale) || !ReadVec3(reader, simulation.gravity) ||
-            !reader.Read(simulation.drag) || !reader.Read(simulation.localSimulation) ||
-            !reader.Read(simulation.collisionPlaneEnabled) || !reader.Read(simulation.collisionPlaneHeight) ||
-            !reader.Read(simulation.restitution) || !reader.Read(simulation.friction) ||
-            !ReadVec3(reader, simulation.field.center) || !reader.Read(simulation.field.radius) ||
-            !ReadVec3(reader, simulation.field.axis) || !reader.Read(simulation.field.vortex) ||
-            !reader.Read(simulation.field.turbulence) || !reader.Read(simulation.field.frequency) ||
-            !reader.Read(simulation.field.evolution) || !reader.Read(simulation.field.attraction) ||
-            !ReadAnimated(reader, simulation.color) || !reader.ReadEnum(emitter.render.materialMode) ||
-            !reader.ReadString(emitter.render.colorTextureAssetGuid) ||
+            !reader.Read(simulation.drag) || !reader.Read(simulation.fluidFollow) ||
+            !reader.Read(simulation.localSimulation) || !reader.Read(simulation.collisionPlaneEnabled) ||
+            !reader.Read(simulation.collisionPlaneHeight) || !reader.Read(simulation.restitution) ||
+            !reader.Read(simulation.friction) || !ReadVec3(reader, simulation.field.center) ||
+            !reader.Read(simulation.field.radius) || !ReadVec3(reader, simulation.field.axis) ||
+            !reader.Read(simulation.field.vortex) || !reader.Read(simulation.field.turbulence) ||
+            !reader.Read(simulation.field.frequency) || !reader.Read(simulation.field.evolution) ||
+            !reader.Read(simulation.field.attraction) || !ReadAnimated(reader, simulation.color) ||
+            !reader.ReadEnum(emitter.render.materialMode) || !reader.ReadString(emitter.render.colorTextureAssetGuid) ||
             !reader.ReadString(emitter.render.maskTextureAssetGuid) ||
             !reader.ReadString(emitter.render.noiseTextureAssetGuid) ||
             !reader.ReadString(emitter.render.materialAssetGuid) || !reader.ReadEnum(emitter.render.blendMode) ||

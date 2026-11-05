@@ -4381,8 +4381,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.ParticleSimulation.Root",
-        "rootLayoutVersion": 1,
-        "rootLayoutHash": "13007e949f7390c3d7e4b2266249d437402af2ef980dfa560923f16d9fafe838",
+        "rootLayoutVersion": 2,
+        "rootLayoutHash": "c0b78ddd26e3ce4c1d9cbe1454369c5229019bca5b9325f9e07c8232c85cd4df",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

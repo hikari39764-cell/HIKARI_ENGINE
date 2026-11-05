@@ -59,20 +59,33 @@ void Set4(float (&out)[4], float x, float y, float z, float w) {
 }
 
 // 世界から格子（格、角が原点）への行と、外観の値を詰める。
-RenderDomainGpu PackDomain(const FluidRenderDomain& domain, const FluidRenderView& view) {
-    RenderDomainGpu gpu{};
-    const FluidDomainSettings& look = domain.settings;
+// 粒子が乗る流体の域 1 つ（Render3D_ParticleSimulation.hlsl の FluidFlowDomain と同じ並び）。
+struct alignas(16) FlowDomainGpu {
+    float toGrid[3][4];
+    float cells[4];
+};
+static_assert(sizeof(FlowDomainGpu) == 64u);
+
+// 世界から格子（格、角が原点）への行と、格の数・大きさ。
+void PackToGrid(const FluidRenderDomain& domain, float (&toGrid)[3][4], float (&cells)[4]) {
     const float h = domain.layout.cellSize;
     const float n[3] = {static_cast<float>(domain.layout.cells[0]), static_cast<float>(domain.layout.cells[1]),
                         static_cast<float>(domain.layout.cells[2])};
+    for (int row = 0; row < 3; ++row) {
+        const MATH::Vec3 axis = MATH::RotateVector(
+            domain.rotation, {row == 0 ? 1.0f : 0.0f, row == 1 ? 1.0f : 0.0f, row == 2 ? 1.0f : 0.0f});
+        Set4(toGrid[row], axis.x / h, axis.y / h, axis.z / h, -MATH::Dot(axis, domain.position) / h + 0.5f * n[row]);
+    }
+    Set4(cells, n[0], n[1], n[2], h);
+}
+
+RenderDomainGpu PackDomain(const FluidRenderDomain& domain, const FluidRenderView& view) {
+    RenderDomainGpu gpu{};
+    const FluidDomainSettings& look = domain.settings;
+    PackToGrid(domain, gpu.toGrid, gpu.cells);
     const MATH::Vec3 axes[3] = {MATH::RotateVector(domain.rotation, {1, 0, 0}),
                                 MATH::RotateVector(domain.rotation, {0, 1, 0}),
                                 MATH::RotateVector(domain.rotation, {0, 0, 1})};
-    for (int row = 0; row < 3; ++row) {
-        Set4(gpu.toGrid[row], axes[row].x / h, axes[row].y / h, axes[row].z / h,
-             -MATH::Dot(axes[row], domain.position) / h + 0.5f * n[row]);
-    }
-    Set4(gpu.cells, n[0], n[1], n[2], h);
     const MATH::Vec4& tint = domain.colorMultiplier;
     Set4(gpu.look, look.scatteringColor.x * tint.x, look.scatteringColor.y * tint.y, look.scatteringColor.z * tint.z,
          look.extinction * (std::max)(tint.w, 0.0f));
@@ -300,6 +313,30 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
         state.cameraVolume.srv.gpu,
         {kCameraVolumeNear, std::log(farthest / kCameraVolumeNear), static_cast<float>(kCameraVolumeSlices), 1.0f}};
     return true;
+}
+
+FluidFlowView FluidRenderer::PrepareFlow(const GFX::Context& context, std::span<FluidRenderDomain> domains) {
+    const size_t count = (std::min)(domains.size(), static_cast<size_t>(kMaximumFluidFlowDomains));
+    if (count == 0u || context.device == nullptr || context.cmdList == nullptr)
+        return {};
+    auto& upload = uploads_[context.frameIndex % GFX::kFrameResourceCount];
+    if (!upload.IsInitialized() && !upload.Init(context.device, 16u * 1024u, GFX::UPLOAD_TRAFFIC::Owner::Fluids))
+        return {};
+    upload.ResetForFrame(context.currentFrameRetireFenceValue);
+    std::array<FlowDomainGpu, kMaximumFluidFlowDomains> table{};
+    FluidFlowView view{};
+    for (size_t index = 0u; index < count; ++index) {
+        PackToGrid(domains[index], table[index].toGrid, table[index].cells);
+        TransitionVolume(context.cmdList, *domains[index].velocity, kRead);
+        view.velocity[index] = domains[index].velocity->srv.gpu;
+    }
+    const auto allocation = upload.Allocate(sizeof(table));
+    if (!allocation)
+        return {};
+    std::memcpy(allocation.cpuAddress, table.data(), sizeof(table));
+    view.count = static_cast<uint32_t>(count);
+    view.domains = allocation.gpuAddress;
+    return view;
 }
 
 LIGHTING::CloudSolarVisibilityGpuData FluidRenderer::RenderSolarVisibility(const GFX::Context& context,

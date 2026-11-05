@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -127,6 +128,16 @@ struct FluidCameraVolumeView {
     MATH::Vec4 params{};
 };
 
+// 粒子が乗る流体（PrepareFrame がこのフレームに解いた域、最多 4）。domains は域ごとの世界→格子の行と格の数・大きさ
+// （64 byte ずつ。Render3D_ParticleSimulation.hlsl の FluidFlowDomain）、velocity は各域の速度体積（計算 shader が読める
+// 状態）。count が 0 なら粒子は流体に乗らない。
+inline constexpr uint32_t kMaximumFluidFlowDomains = 4u;
+struct FluidFlowView {
+    uint32_t count = 0u;
+    D3D12_GPU_VIRTUAL_ADDRESS domains = 0u;
+    std::array<D3D12_GPU_DESCRIPTOR_HANDLE, kMaximumFluidFlowDomains> velocity{};
+};
+
 // 視図の行列・相機の位置と場面の環境から、相機と光（大気を通った地表の太陽、空の環境光、今の露出）と画質を埋める。
 // 帧图の主視図と編集器の視図が共用し、描画の大きさ・深度・色の形式・履歴の有無は呼ぶ側が足す。
 FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey, const MATH::Mat4& viewProj,
@@ -161,6 +172,8 @@ public:
     bool HasRenderableDomains() const noexcept;
     // このフレームで最後に描いた視図の相機体積（粒子など透明物体の描画が読む）。
     FluidCameraVolumeView GetCameraVolume() const noexcept;
+    // 直前の PrepareFrame が解いた域の流れ（粒子の流体に乗る力。粒子の準備の前に読む）。
+    FluidFlowView GetFlowView() const noexcept;
     // 解いた域のうち castShadows のものが場面へ落とす烟の影の表（雲の影と同じ並び）を作る。PrepareFrame の後、前向きの前に
     // 呼ぶ。太陽が出ていない時や域が無い時は空の表。
     LIGHTING::CloudSolarVisibilityGpuData PrepareSolarVisibility(const GFX::Context& context,

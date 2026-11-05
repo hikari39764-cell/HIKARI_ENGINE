@@ -126,8 +126,9 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
     const uintptr_t sourceIdentity = reinterpret_cast<uintptr_t>(&sceneSource);
     SyncGpuDrivenSceneMaterialSources(graphics, sourceIdentity, sceneSource);
     PrepareFluidFrame(graphics, settings.particleFrameSource);
+    const RENDER3D::FLUID::FluidFlowView fluidFlow = gMeshRendererState.fluidPass.GetFlowView();
     if (!gMeshRendererState.particlePass.PrepareFrame(graphics, settings.particleFrameSource,
-                                                      gMeshRendererState.gpuMaterialRegistry)) {
+                                                      gMeshRendererState.gpuMaterialRegistry, &fluidFlow)) {
         return EditorInteractiveMeshRenderResult::MaterialFrameUnavailable;
     }
     if (!gMeshRendererState.editorInteractive.worldSpritePass.PrepareFrame(graphics, view.worldSpriteFrameSource,

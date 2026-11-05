@@ -4,6 +4,7 @@
 #include "Render3D/Vfx/HIKARI_ParticleCapacity.h"
 #include "Render3D/Vfx/HIKARI_ParticleGeometryLayout.h"
 #include "Render3D/Vfx/HIKARI_ParticleCompositionRenderer.h"
+#include "Render3D/Vfx/HIKARI_FluidVolumePass.h"
 
 #include <algorithm>
 #include <array>
@@ -156,6 +157,8 @@ GpuParticleShapeState BuildShapeState(const ParticleEmitterRenderParameters& ren
 
 struct ParticleGpuDrivenPass::Impl {
     GFX::Context context{};
+    // このフレームに粒子が乗る流体（Render3D_ParticleSimulation.hlsl の t1..t4 と b1）。
+    FLUID::FluidFlowView fluidFlow{};
     INTERNAL::GpuParticleStorage storage{};
     INTERNAL::ParticleGpuDrivenPipelineState pipelines{};
     INTERNAL::ParticleMaterialResolver materialResolver{};
@@ -426,6 +429,13 @@ struct ParticleGpuDrivenPass::Impl {
         context.cmdList->SetComputeRootDescriptorTable(0u, storage.GetParticleUavGpuHandle());
         context.cmdList->SetComputeRootShaderResourceView(1u, emitterAddress);
         context.cmdList->SetComputeRoot32BitConstants(2u, sizeof(constants) / sizeof(uint32_t), &constants, 0u);
+        // 流体の域の数は constants.flags に入れてあり、0 なら shader は流体を読まない（表を束ねない）。
+        if (fluidFlow.count > 0u) {
+            for (uint32_t slot = 0u; slot < FLUID::kMaximumFluidFlowDomains; ++slot)
+                context.cmdList->SetComputeRootDescriptorTable(3u + slot,
+                                                               fluidFlow.velocity[slot < fluidFlow.count ? slot : 0u]);
+            context.cmdList->SetComputeRootConstantBufferView(7u, fluidFlow.domains);
+        }
         context.cmdList->Dispatch(DispatchGroupCount(threadCount), 1u, 1u);
     }
 
@@ -448,8 +458,9 @@ struct ParticleGpuDrivenPass::Impl {
         constants.spawnCount = (std::min)(submission.spawnCount, allocation.activeCapacity);
         constants.randomSeed = submission.randomSeed;
         constants.deltaSeconds = (std::max)(submission.deltaSeconds, 0.0f);
+        constants.flags = fluidFlow.count << INTERNAL::kGpuParticleFluidFlowShift;
         if (submission.directShape) {
-            constants.flags = 1u;
+            constants.flags |= 1u;
             DispatchSimulation(0u, constants, allocation.activeCapacity, emitterAddress);
             storage.InsertUavBarrier(context);
             ++stats.simulatedEmitters;
@@ -1101,7 +1112,8 @@ void ParticleGpuDrivenPass::Shutdown() {
 }
 
 bool ParticleGpuDrivenPass::PrepareFrame(const GFX::Context& context, const ParticleRenderFrameSource* source,
-                                         MATERIAL::GpuMaterialRegistry& materialRegistry) {
+                                         MATERIAL::GpuMaterialRegistry& materialRegistry,
+                                         const FLUID::FluidFlowView* fluidFlow) {
     if (impl_ && context.device && context.srvHeap && source && source->input && source->assetRegistry) {
         const AssetRegistry& assets = *source->assetRegistry;
         if (impl_->prewarmedRegistryId != assets.GetInstanceId() ||
@@ -1151,6 +1163,7 @@ bool ParticleGpuDrivenPass::PrepareFrame(const GFX::Context& context, const Part
     if (impl_ == nullptr)
         return false;
     impl_->lastPrepareFailure = "";
+    impl_->fluidFlow = fluidFlow != nullptr ? *fluidFlow : FLUID::FluidFlowView{};
     return impl_->PrepareFrame(context, source, materialRegistry);
 }
 

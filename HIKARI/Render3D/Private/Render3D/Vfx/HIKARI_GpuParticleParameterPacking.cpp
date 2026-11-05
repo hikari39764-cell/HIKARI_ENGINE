@@ -158,7 +158,8 @@ GpuParticleEmitterParameters BuildGpuParticleEmitterParameters(const ParticleEmi
         MakeGpuParticleFloat4(field.axis.x, field.axis.y, field.axis.z, field.vortex);
     result.values[HIKARI_PARTICLE_FIELD_FLOW] =
         MakeGpuParticleFloat4(field.turbulence, field.frequency, field.evolution, field.attraction);
-    result.values[HIKARI_PARTICLE_FIELD_TIME] = MakeGpuParticleFloat4(submission.emitterAgeSeconds, 0, 0, 0);
+    result.values[HIKARI_PARTICLE_FIELD_TIME] =
+        MakeGpuParticleFloat4(submission.emitterAgeSeconds, simulation.fluidFollow, 0, 0);
 
     StoreAnimatedFloat3(result, kPositionValues, simulation.position);
     StoreAnimatedFloat3(result, kRotationValues, simulation.rotationRadians);

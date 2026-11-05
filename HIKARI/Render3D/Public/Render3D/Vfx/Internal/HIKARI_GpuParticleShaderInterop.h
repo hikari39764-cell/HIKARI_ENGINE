@@ -28,6 +28,9 @@ struct GpuParticleSimulationConstants {
     uint32_t flags = 0u;
 };
 
+// GpuParticleSimulationConstants::flags：bit 0 は直接の形、bit 8..10 は粒子が乗る流体の域の数（Render3D_ParticleSimulation.hlsl）。
+inline constexpr uint32_t kGpuParticleFluidFlowShift = 8u;
+
 inline constexpr uint32_t kGpuParticleFlipbookDimensionMask = 0xffu;
 inline constexpr uint32_t kGpuParticleFlipbookRowShift = 8u;
 inline constexpr uint32_t kGpuParticleFlipbookFrameMask = 0xffffu;
