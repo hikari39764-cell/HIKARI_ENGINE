@@ -257,7 +257,8 @@ void BakeSkinnedMeshNodes(ModelAsset& asset) {
         ModelNode& node = asset.nodes[index];
         if (node.meshIndex < 0 || node.skinIndex < 0 || pinned[index] || IsNearIdentity(globals[index]))
             continue;
-        // 節点の網格（自身と /MeshN の子）が全て蒙皮で、どれも一度だけ使われる時だけ焼く。
+        // 節点の網格（自身と子）が全て蒙皮で、どれも一度だけ使われる時だけ焼く。子は /MeshN の分片か、FBX の蒙皮網格の
+        // 子節点（自分の局所の変換を持つ）。どれも自分の global で焼き、焼いた後の global が単位になるよう局所を直す。
         std::vector<size_t> carriers{index};
         bool bakeable = true;
         for (const int child : node.children) {
@@ -268,32 +269,37 @@ void BakeSkinnedMeshNodes(ModelAsset& asset) {
         }
         for (const size_t carrier : carriers) {
             const ModelNode& carried = asset.nodes[carrier];
+            Transform3D global{};
             bakeable = bakeable && carried.meshIndex < static_cast<int>(meshUses.size()) &&
                        meshUses[static_cast<size_t>(carried.meshIndex)] == 1u &&
-                       carried.skinIndex < static_cast<int>(asset.skins.size());
+                       carried.skinIndex < static_cast<int>(asset.skins.size()) &&
+                       DecomposeUniform(globals[carrier], global);
         }
-        Transform3D global{};
         Transform3D local{};
         const MATH::Mat4 parentGlobal =
             node.parent >= 0 ? globals[static_cast<size_t>(node.parent)] : MATH::Mat4::Identity();
         const MATH::Mat4 localMatrix = MATH::Inverse(parentGlobal);
-        if (!bakeable || !DecomposeUniform(globals[index], global) || !DecomposeUniform(localMatrix, local))
+        if (!bakeable || !DecomposeUniform(localMatrix, local))
             continue;
-        const MATH::Mat4 inverseGlobal = MATH::Inverse(globals[index]);
         for (const size_t carrier : carriers) {
-            const ModelNode& carried = asset.nodes[carrier];
+            ModelNode& carried = asset.nodes[carrier];
+            const MATH::Mat4 carrierGlobal = globals[carrier];
+            const MATH::Mat4 inverseGlobal = MATH::Inverse(carrierGlobal);
             MeshAsset& mesh = asset.meshes[static_cast<size_t>(carried.meshIndex)];
             for (MeshPrimitive& primitive : mesh.primitives) {
-                BakeVertices(primitive.staticVertices, globals[index]);
-                BakeVertices(primitive.skinnedVertices, globals[index]);
+                BakeVertices(primitive.staticVertices, carrierGlobal);
+                BakeVertices(primitive.skinnedVertices, carrierGlobal);
                 primitive.bounds = BOUNDS::ComputePrimitiveBounds(primitive);
             }
             mesh.bounds = BOUNDS::ComputeMeshBounds(mesh);
             for (SkeletonJoint& joint : asset.skins[static_cast<size_t>(carried.skinIndex)].joints)
                 joint.inverseBindMatrix = joint.inverseBindMatrix * inverseGlobal;
-        }
-        for (const size_t carrier : carriers)
+            if (carrier != index) {
+                carried.localMatrix = MATH::Mat4::Identity();
+                carried.localTransform = Transform3D{};
+            }
             globals[carrier] = MATH::Mat4::Identity();
+        }
         node.localMatrix = localMatrix;
         node.localTransform = local;
         ++baked;

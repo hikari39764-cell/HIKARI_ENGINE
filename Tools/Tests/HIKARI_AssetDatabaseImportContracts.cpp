@@ -133,6 +133,158 @@ void CheckFbxUnitScale(HIKARI::AssetDatabase& database, const fs::path& root) {
     assert(longest > 0.99f && longest < 1.01f);
 }
 
+void CheckFbxSkinnedMeshNodes(HIKARI::AssetDatabase& database, const fs::path& root) {
+    // 網格の節点が原点に無い蒙皮（Body は 1 m 上、その子の Eyes はさらに 0.5 m 上。どちらも Root の骨に重み 1）も、描画と
+    // 同じ式（表面の節点の global × 関節の global × 逆バインド）で bind 姿勢の位置に戻る。
+    std::ofstream(root / "Assets/skinned_nodes.fbx") << R"FBX(; FBX 7.4.0 project file
+FBXHeaderExtension:  {
+  FBXHeaderVersion: 1003
+  FBXVersion: 7400
+}
+GlobalSettings:  {
+  Version: 1000
+  Properties70:  {
+    P: "UpAxis", "int", "Integer", "",1
+    P: "UpAxisSign", "int", "Integer", "",1
+    P: "FrontAxis", "int", "Integer", "",2
+    P: "FrontAxisSign", "int", "Integer", "",1
+    P: "CoordAxis", "int", "Integer", "",0
+    P: "CoordAxisSign", "int", "Integer", "",1
+    P: "UnitScaleFactor", "double", "Number", "",1
+  }
+}
+Objects:  {
+  Geometry: 1001, "Geometry::Body", "Mesh" {
+    Vertices: *9 {
+      a: 0,0,0,10,0,0,0,10,0
+    }
+    PolygonVertexIndex: *3 {
+      a: 0,1,-3
+    }
+    GeometryVersion: 124
+  }
+  Geometry: 1002, "Geometry::Eyes", "Mesh" {
+    Vertices: *9 {
+      a: 0,0,0,10,0,0,0,10,0
+    }
+    PolygonVertexIndex: *3 {
+      a: 0,1,-3
+    }
+    GeometryVersion: 124
+  }
+  Model: 2001, "Model::Body", "Mesh" {
+    Version: 232
+    Properties70:  {
+      P: "Lcl Translation", "Lcl Translation", "", "A",0,100,0
+    }
+  }
+  Model: 2002, "Model::Eyes", "Mesh" {
+    Version: 232
+    Properties70:  {
+      P: "Lcl Translation", "Lcl Translation", "", "A",0,50,0
+    }
+  }
+  NodeAttribute: 3001, "NodeAttribute::Root", "LimbNode" {
+    TypeFlags: "Skeleton"
+  }
+  Model: 3002, "Model::Root", "LimbNode" {
+    Version: 232
+  }
+  Deformer: 4001, "Deformer::SkinBody", "Skin" {
+    Version: 101
+  }
+  Deformer: 4002, "SubDeformer::ClusterBody", "Cluster" {
+    Version: 100
+    Indexes: *3 {
+      a: 0,1,2
+    }
+    Weights: *3 {
+      a: 1,1,1
+    }
+    Transform: *16 {
+      a: 1,0,0,0,0,1,0,0,0,0,1,0,0,100,0,1
+    }
+    TransformLink: *16 {
+      a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1
+    }
+  }
+  Deformer: 4003, "Deformer::SkinEyes", "Skin" {
+    Version: 101
+  }
+  Deformer: 4004, "SubDeformer::ClusterEyes", "Cluster" {
+    Version: 100
+    Indexes: *3 {
+      a: 0,1,2
+    }
+    Weights: *3 {
+      a: 1,1,1
+    }
+    Transform: *16 {
+      a: 1,0,0,0,0,1,0,0,0,0,1,0,0,150,0,1
+    }
+    TransformLink: *16 {
+      a: 1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1
+    }
+  }
+}
+Connections:  {
+  C: "OO",2001,0
+  C: "OO",2002,2001
+  C: "OO",3002,0
+  C: "OO",3001,3002
+  C: "OO",1001,2001
+  C: "OO",1002,2002
+  C: "OO",4001,1001
+  C: "OO",4002,4001
+  C: "OO",3002,4002
+  C: "OO",4003,1002
+  C: "OO",4004,4003
+  C: "OO",3002,4004
+}
+)FBX";
+    assert(database.ScanAssets(true));
+    const auto guid = database.FindByPath("Assets/skinned_nodes.fbx")->guid;
+    assert(database.ImportAsset(guid));
+    HIKARI::ModelAsset model;
+    std::string error;
+    assert(HIKARI::ReadHmodelFile(database.GetImportedDirectory(guid) / "model.hmodel", model, error));
+    std::vector<HIKARI::MATH::Mat4> globals(model.nodes.size());
+    for (size_t index = 0; index < model.nodes.size(); ++index) {
+        const HIKARI::ModelNode& node = model.nodes[index];
+        assert(node.parent < static_cast<int>(index));
+        const HIKARI::MATH::Mat4 local = node.hasLocalMatrix ? node.localMatrix : node.localTransform.GetLocalMatrix();
+        globals[index] = node.parent >= 0 ? globals[static_cast<size_t>(node.parent)] * local : local;
+    }
+    float lowest = 1.0e9f;
+    float highest = -1.0e9f;
+    size_t vertices = 0;
+    for (size_t index = 0; index < model.nodes.size(); ++index) {
+        const HIKARI::ModelNode& node = model.nodes[index];
+        if (node.meshIndex < 0 || node.skinIndex < 0)
+            continue;
+        const HIKARI::SkeletonAsset& skin = model.skins.at(static_cast<size_t>(node.skinIndex));
+        for (const auto& primitive : model.meshes.at(static_cast<size_t>(node.meshIndex)).primitives)
+            for (const auto& vertex : primitive.skinnedVertices) {
+                HIKARI::MATH::Vec3 skinned{};
+                for (int influence = 0; influence < 4; ++influence) {
+                    if (vertex.weights[influence] <= 0.0f)
+                        continue;
+                    const HIKARI::SkeletonJoint& joint = skin.joints.at(vertex.joints[influence]);
+                    assert(joint.nodeIndex >= 0);
+                    skinned = skinned + HIKARI::MATH::TransformPoint(globals[static_cast<size_t>(joint.nodeIndex)] *
+                                                                         joint.inverseBindMatrix,
+                                                                     vertex.position) *
+                                            vertex.weights[influence];
+                }
+                const float height = HIKARI::MATH::TransformPoint(globals[index], skinned).y;
+                lowest = (std::min)(lowest, height);
+                highest = (std::max)(highest, height);
+                ++vertices;
+            }
+    }
+    assert(vertices == 6u && lowest > 0.99f && lowest < 1.01f && highest > 1.59f && highest < 1.61f);
+}
+
 void CheckImportedSpecular(HIKARI::AssetDatabase& database, const fs::path& root) {
     // 実際の glTF ローダー、正規化、HTEX/HMODEL 出力を一度に通す。
     WriteTga(root / "Assets/specular.tga", {0, 189, 0});
@@ -925,6 +1077,7 @@ int main(int argc, char** argv) {
 #if defined(HIKARI_WITH_EDITOR)
     CheckThinModelImport(database, root);
     CheckFbxUnitScale(database, root);
+    CheckFbxSkinnedMeshNodes(database, root);
     CheckImportedSpecular(database, root);
     CheckObjDependencies(database, root);
 #endif
