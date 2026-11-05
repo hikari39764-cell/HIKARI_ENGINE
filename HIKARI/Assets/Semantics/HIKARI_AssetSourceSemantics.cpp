@@ -65,8 +65,9 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         AssetImporterKind::Model,
         AssetType::Model,
         "ModelImporter",
-        // 48: glTF の material の無い primitive は既定材質（0.8 の灰色、以前は 0 番の材質）を使う。metallicFactor の省略は 1。
-        48u,
+        // 49: FBX などの Assimp 取り込みはファイルの単位を米へ直す（cm 単位の FBX が 100 倍の大きさになっていた）。蒙皮網格の
+        // 節点の変換を頂点と逆バインドへ焼く（網格の節点が原点に無い人物が二重に動いて浮いていた）。
+        49u,
         ".gltf, .obj, .fbx",
     },
     {

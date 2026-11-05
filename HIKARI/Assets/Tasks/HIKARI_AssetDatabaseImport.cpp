@@ -180,7 +180,9 @@ AssetImportResult AssetDatabase::PrepareImportResult(IAssetImporter& importer, c
     AssetImportResult result;
     try {
         auto before = CaptureAssetImportInputs(*context.assetDatabase, source, source.artifactManifest.dependencies);
-        std::erase_if(before.files, [](const auto& file) { return file.digest.empty(); });
+        // 取り込み前から無い・読めない入力は、取り込み中に変わったかを確かめる対象にしない。
+        std::erase_if(before.files,
+                      [](const auto& file) { return file.digest.empty() || file.digest == kMissingAssetInputDigest; });
         context.publication =
             std::make_shared<AssetImportPublication>(context.projectRoot, context.libraryRoot, context.sourceMetaRoot);
         result = importer.Import(source, context);

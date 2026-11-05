@@ -104,6 +104,35 @@ void CheckThinModelImport(HIKARI::AssetDatabase& database, const fs::path& root)
     }
 }
 
+void CheckFbxUnitScale(HIKARI::AssetDatabase& database, const fs::path& root) {
+    // cm 単位（UnitScaleFactor 1）の FBX の 100 cm の三角形は 1 m で取り込む。
+    {
+        std::ofstream stream(root / "Assets/centimeters.fbx");
+        stream
+            << "; FBX 7.4.0 project file\nFBXHeaderExtension:  {\n\tFBXHeaderVersion: 1003\n\tFBXVersion: 7400\n}\n"
+               "GlobalSettings:  {\n\tVersion: 1000\n\tProperties70:  {\n"
+               "\t\tP: \"UpAxis\", \"int\", \"Integer\", \"\",1\n\t\tP: \"UpAxisSign\", \"int\", \"Integer\", \"\",1\n"
+               "\t\tP: \"FrontAxis\", \"int\", \"Integer\", \"\",2\n"
+               "\t\tP: \"FrontAxisSign\", \"int\", \"Integer\", \"\",1\n"
+               "\t\tP: \"CoordAxis\", \"int\", \"Integer\", \"\",0\n\t\tP: \"CoordAxisSign\", \"int\", \"Integer\", \"\",1\n"
+               "\t\tP: \"UnitScaleFactor\", \"double\", \"Number\", \"\",1\n\t}\n}\n"
+               "Objects:  {\n\tGeometry: 1000, \"Geometry::Tri\", \"Mesh\" {\n"
+               "\t\tVertices: *9 {\n\t\t\ta: 0,0,0,100,0,0,0,100,0\n\t\t}\n"
+               "\t\tPolygonVertexIndex: *3 {\n\t\t\ta: 0,1,-3\n\t\t}\n\t\tGeometryVersion: 124\n\t}\n"
+               "\tModel: 2000, \"Model::Tri\", \"Mesh\" {\n\t\tVersion: 232\n\t}\n}\n"
+               "Connections:  {\n\tC: \"OO\",1000,2000\n\tC: \"OO\",2000,0\n}\n";
+    }
+    assert(database.ScanAssets(true));
+    const auto guid = database.FindByPath("Assets/centimeters.fbx")->guid;
+    assert(database.ImportAsset(guid));
+    HIKARI::ModelAsset model;
+    std::string error;
+    assert(HIKARI::ReadHmodelFile(database.GetImportedDirectory(guid) / "model.hmodel", model, error));
+    const auto extent = model.bounds.max - model.bounds.min;
+    const float longest = (std::max)({extent.x, extent.y, extent.z});
+    assert(longest > 0.99f && longest < 1.01f);
+}
+
 void CheckImportedSpecular(HIKARI::AssetDatabase& database, const fs::path& root) {
     // 実際の glTF ローダー、正規化、HTEX/HMODEL 出力を一度に通す。
     WriteTga(root / "Assets/specular.tga", {0, 189, 0});
@@ -245,6 +274,17 @@ void CheckObjDependencies(HIKARI::AssetDatabase& database, const fs::path& root)
     fs::last_write_time(texturePath, textureTime);
     assert(database.ScanAssets(true) && database.FindByGuid(guid)->importOutdated);
     assert(database.ImportAsset(textureGuid) && database.ImportAsset(guid));
+    assert(!database.FindByGuid(guid)->importOutdated);
+    // 欠けたテクスチャは代替で取り込み、そのまま最新。ファイルが現れたら取り込みが古くなる。
+    {
+        std::ofstream stream(materialPath);
+        stream << "newmtl paint\nKd 0 1 0\nmap_Kd albedo.tga\nmap_Pr roughness.tga\n";
+    }
+    assert(database.ScanAssets(true) && database.ImportAsset(guid));
+    assert(database.ScanAssets(true) && !database.FindByGuid(guid)->importOutdated);
+    WriteTga(root / "Assets/albedo.tga", {200, 100, 50});
+    assert(database.ScanAssets(true) && database.FindByGuid(guid)->importOutdated);
+    assert(database.ImportAsset(database.FindByPath("Assets/albedo.tga")->guid) && database.ImportAsset(guid));
     assert(!database.FindByGuid(guid)->importOutdated);
 }
 
@@ -884,6 +924,7 @@ int main(int argc, char** argv) {
     assert(Read(artifact) == acceptedArtifact && Read(meta) == acceptedMeta && Read(manifest) == acceptedManifest);
 #if defined(HIKARI_WITH_EDITOR)
     CheckThinModelImport(database, root);
+    CheckFbxUnitScale(database, root);
     CheckImportedSpecular(database, root);
     CheckObjDependencies(database, root);
 #endif
