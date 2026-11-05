@@ -11,7 +11,8 @@ inline constexpr uint32_t kGameProjectFluidMaximumInteractions = 64u;
 // What a submission does to the VFX fluid smoke layers it reaches.
 enum class GameProjectFluidInteractionKind : uint32_t {
     // A solid shape. Smoke flows around it and is pushed and dragged by its motion. Its velocity comes from the
-    // previous frame's submission of the same (owner, instanceId), in game time (no rotation velocity).
+    // previous frame's submission of the same (owner, instanceId), in game time (no rotation velocity); a move
+    // faster than 60 m/s within one frame counts as a teleport and gives zero velocity.
     Obstacle = 0u,
     // A one-shot push, submitted once per event (while the game is paused it waits for the next substep).
     // With a direction it adds about `strength` m/s along it once. Without one it is a burst of expansion: smoke

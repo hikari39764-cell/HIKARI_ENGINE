@@ -10,10 +10,12 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
+#include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Vfx/Fluid/HIKARI_FluidSolver.h"
+#include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
 // 体積流体の描画（Render3D_FluidVolume.hlsl）：域ごとの光照体積、透明物体のための相機体積、半分辨率の步进、時間方向の
-// 再構成、場面への合成。解いた域の体積は FluidVolumePass から借りる。
+// 再構成、場面への合成、場面へ落とす烟の影の表。解いた域の体積は FluidVolumePass から借りる。
 namespace HIKARI::RENDER3D::FLUID::INTERNAL {
 
 inline constexpr uint32_t kMaximumRenderedFluidDomains = 4u;
@@ -38,6 +40,11 @@ public:
     // bindSceneTarget は場面の色と読み取り専用の深度を描画先へ戻す（合成の前に呼ぶ）。
     bool Render(const GFX::Context& context, const FluidRenderView& view, std::span<FluidRenderDomain> domains,
                 uint32_t marchSteps, const std::function<bool()>& bindSceneTarget);
+    // 場面へ落とす烟の影の表（雲の影の表と同じ並び。前向き・地形・水面・粒子の面が雲の影と掛ける）を作る。domains は影を
+    // 落とす域、toSun は太陽への向き。域が無ければ空の表（descriptor 0）。
+    LIGHTING::CloudSolarVisibilityGpuData RenderSolarVisibility(const GFX::Context& context,
+                                                                std::span<const FluidRenderDomain> domains,
+                                                                const MATH::Vec3& toSun);
     // BeginFrame の後に最後に描いた視図の相機体積（無ければ 1 texel の空の体積で、params.w = 0）。
     FluidCameraVolumeView GetCameraVolume() const noexcept;
     // 視図ごとに解算の前に呼ぶ（空の相機体積を用意し、前の視図の相機体積を外す）。
@@ -45,7 +52,8 @@ public:
     void Shutdown(const GFX::Context& context);
 
 private:
-    // Render3D_FluidVolume.hlsl の根の並び：b0、b1、入力 t0..t17（1 つずつの表、kFirstInput + 入力の番号）、出力 u0。
+    // Render3D_FluidVolume.hlsl の根の並び：b0、b1、入力 t0..t17（1 つずつの表、kFirstInput + 入力の番号）、出力 u0（体積）
+    // と u1（烟の影の表）。
     static constexpr UINT kConstants = 0u;
     static constexpr UINT kPassConstants = 1u;
     static constexpr UINT kFirstInput = 2u;
@@ -60,7 +68,8 @@ private:
     static constexpr UINT kShadow = 17u;
     static constexpr UINT kInputCount = 18u;
     static constexpr UINT kOutput = kFirstInput + kInputCount;
-    static constexpr UINT kRootCount = kOutput + 1u;
+    static constexpr UINT kSolarOutput = kOutput + 1u;
+    static constexpr UINT kRootCount = kSolarOutput + 1u;
     static constexpr D3D12_RESOURCE_STATES kRead =
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     static constexpr DXGI_FORMAT kColorFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
@@ -72,6 +81,9 @@ private:
     static constexpr float kCameraVolumeSamples = 2.0f;
     static constexpr float kCameraVolumeNear = 0.1f;
     static constexpr float kHistoryWeight = 0.85f;
+    // 烟の影の表：太陽に垂直な面の列の数（一辺）と、列の中の深さの段数。図集は 8 枚の横並び × 段数 / 8 行（雲と同じ）。
+    static constexpr uint32_t kSolarResolution = 128u;
+    static constexpr uint32_t kSolarSteps = 16u;
 
     struct Target {
         Microsoft::WRL::ComPtr<ID3D12Resource> resource{};
@@ -95,6 +107,7 @@ private:
         bool historyValid = false;
     };
 
+    // sceneColorFormat が UNKNOWN なら根と計算の PSO だけ（烟の影の表）。
     bool EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColorFormat);
     bool EnsureView(const GFX::Context& context, ViewState& state, uint32_t width, uint32_t height);
     bool EnsureNoise(const GFX::Context& context, D3D12_GPU_VIRTUAL_ADDRESS constants);
@@ -107,6 +120,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> noise_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> light_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> cameraVolume_{};
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> solar_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> march_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> reconstruct_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> composite_{};
@@ -115,6 +129,9 @@ private:
     FluidVolume noiseVolume_{};
     bool noiseReady_ = false;
     FluidVolume fallbackVolume_{};
+    // 烟の影の表（RG32F の 2D 図集）と、前向きが読む無絆定の貼図。
+    FluidVolume solarAtlas_{};
+    TextureResourceHandle solarTexture_{};
     std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads_{};
     std::unordered_map<uint64_t, ViewState> views_{};
     FluidCameraVolumeView cameraVolumeView_{};

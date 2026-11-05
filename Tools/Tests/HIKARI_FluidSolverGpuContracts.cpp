@@ -171,11 +171,14 @@ FluidDomainSubmission MakePlume(uint64_t playbackNamespace, uint32_t resolution)
 }
 
 // 烟柱を 2 秒注入し続けて、投影後の散度が残らず、速度が浮力と注入の速さの程度に収まり、烟が域に柱として残る。
-// 多重网格が 3 段以上になる分辨率で、開いた境界（面の上で圧力 0）の粗い段の修正が発散しないことを見る。
-void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution, float minimumDensity) {
+// 多重网格が 3 段以上になる分辨率で、開いた境界（面の上で圧力 0）の粗い段の修正が発散しないことを見る。細長い域
+// （1 × 4 × 1 m、128 格 → 32 × 128 × 32）は少ない格で 5 段になる（浮游岛の 128³ と同じ段数）。
+void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution, float minimumDensity,
+               MATH::Vec3 domainSize = {4.0f, 4.0f, 4.0f}) {
     FluidVolumePass pass;
     RENDER3D::PARTICLES::ParticleRenderInput input{};
     input.fluids.push_back(MakePlume(playbackNamespace, resolution));
+    input.fluids[0].settings.domainSize = domainSize;
     const FluidDomainSubmission& domain = input.fluids[0];
     FluidFrameSettings settings{};
     settings.diagnostics = true;
@@ -204,17 +207,18 @@ void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution,
     pass.Shutdown();
 }
 
-// 32 格の烟柱に押すものを置いて 2 秒解き、x の中央の切片（速度と、second の量）を返す。
+// 32 格の烟柱に押すもの（と足す源）を置いて 2 秒解き、x の中央の切片（速度と、second の量）を返す。
 struct PlumeSlices {
     std::vector<uint16_t> velocity;
     std::vector<uint16_t> second;
 };
 
 PlumeSlices PushedPlume(FluidGpu& fluid, uint64_t playbackNamespace, std::span<const FluidInteraction> interactions,
-                        FluidDebugField second) {
+                        FluidDebugField second, std::span<const FluidSourceSubmission> sources = {}) {
     FluidVolumePass pass;
     RENDER3D::PARTICLES::ParticleRenderInput input{};
     input.fluids.push_back(MakePlume(playbackNamespace, 32u));
+    input.fluids[0].sources.insert(input.fluids[0].sources.end(), sources.begin(), sources.end());
     const auto key = input.fluids[0].key;
     FluidFrameSettings settings{};
     settings.interactions = interactions;
@@ -257,7 +261,9 @@ float SliceMean(const std::vector<uint16_t>& texels, MATH::Vec3 center, float ra
 }
 
 // 押すもの（流体烟雾第 6 步）：烟柱の上に止まった球の障碍物を置くと、球の中は上昇が止まって烟が入らない。向きの無い
-// 力は投影後の散度（湧き出し）になり、向きのある力は投影の後も流れを残す。
+// 力は投影後の散度（湧き出し）になり、向きのある力は投影の後も流れを残す。源の outflow（第 7 步、漏斗の底の汇）は形の中で
+// 一様な散度 outflow × 表面積 / 体積（球は 3 S / R）になる。形状引导（第 7 步）は烟（密度）だけを表面へ寄せ、流れは
+// 引導の無い烟柱と同じまま（速度へ入れると投影に打ち消され、残差で流れが乱れる）。
 void PushedPlumes(FluidGpu& fluid) {
     const PlumeSlices plain = PushedPlume(fluid, 50u, {}, FluidDebugField::Density);
     // 障碍物を置く高さ：素の烟柱の中心の列で、源（局所 y -1.3）より 0.6 m 以上上の、上昇の最も速い格。
@@ -281,6 +287,23 @@ void PushedPlumes(FluidGpu& fluid) {
     wind.direction = {1.0f, 0.0f, 0.0f};
     wind.strength = 4.0f;
     const PlumeSlices blown = PushedPlume(fluid, 53u, std::span(&wind, 1u), FluidDebugField::Density);
+    FluidSourceSubmission sink{};
+    sink.worldPosition = expansion.worldPosition;
+    sink.shape = FluidSourceShape::Sphere;
+    sink.radius = 0.6f;
+    sink.settings.outflow = -1.0f;
+    const PlumeSlices sunk = PushedPlume(fluid, 54u, {}, FluidDebugField::Divergence, std::span(&sink, 1u));
+    FluidSourceSubmission guide = sink;
+    guide.settings.outflow = 0.0f;
+    guide.settings.guideStrength = 3.0f;
+    guide.settings.guideThickness = 0.5f;
+    const PlumeSlices guided = PushedPlume(fluid, 55u, {}, FluidDebugField::Density, std::span(&guide, 1u));
+    float velocityChange = 0.0f, densityChange = 0.0f;
+    for (size_t index = 0u; index < plain.velocity.size(); ++index)
+        velocityChange = (std::max)(velocityChange,
+                                    std::abs(HalfToFloat(guided.velocity[index]) - HalfToFloat(plain.velocity[index])));
+    for (size_t index = 0u; index < plain.second.size(); index += 4u)
+        densityChange += std::abs(HalfToFloat(guided.second[index]) - HalfToFloat(plain.second[index]));
     const float plainRise = SliceMean(plain.velocity, core, 0.25f, 1u);
     const float blockedSpeed = SliceMean(blocked.velocity, core, 0.25f, 3u);
     const float plainDensity = SliceMean(plain.second, core, 0.25f, 0u);
@@ -291,17 +314,21 @@ void PushedPlumes(FluidGpu& fluid) {
     const float r = MATH::Length(MATH::Vec3{0.0625f, 0.1875f, 0.0625f} - pushCenter);
     const float expected = 30.0f * 1.0f / 0.6f * (1.0f - r / 0.6f) * (1.0f - r / 0.6f);
     const float divergence = HalfToFloat(expanded.second[(16u * 32u + 17u) * 4u]);
+    const float sinkDivergence = HalfToFloat(sunk.second[(16u * 32u + 17u) * 4u]);
     const float plainSide = SliceMean(plain.velocity, pushCenter, 0.25f, 0u);
     const float blownSide = SliceMean(blown.velocity, pushCenter, 0.25f, 0u);
     std::fprintf(stderr,
                  "fluid pushes: core y %.3f rise plain %.3f blocked speed %.3f density plain %.3f blocked %.3f "
                  "expansion %.2f "
-                 "(expected %.2f) side plain %.3f blown %.3f\n",
-                 core.y, plainRise, blockedSpeed, plainDensity, blockedDensity, divergence, expected, plainSide,
-                 blownSide);
+                 "(expected %.2f) sink %.2f (expected -5.00) side plain %.3f blown %.3f guide velocity change %.5f "
+                 "density change %.2f\n",
+                 core.y, plainRise, blockedSpeed, plainDensity, blockedDensity, divergence, expected, sinkDivergence,
+                 plainSide, blownSide, velocityChange, densityChange);
     assert(plainRise > 0.3f && blockedSpeed < 0.15f * plainRise);
     assert(plainDensity > 0.05f && blockedDensity < 0.3f * plainDensity);
     assert(std::abs(divergence - expected) < 0.3f * expected);
+    // 疎な解算では烟が動くと解く砖块も変わり流れがわずかに違う（0.02 m/s 程度。引導を加速度で入れた時は 0.5 m/s 超）。
+    assert(std::abs(sinkDivergence + 5.0f) < 1.5f && velocityChange < 0.05f && densityChange > 1.0f);
     assert(blownSide > 0.5f && blownSide - plainSide > 0.4f);
 }
 
@@ -455,6 +482,7 @@ void CheckFluidSolver() {
     // 密度の総量は格の値の和（格の数に比例）。実測 32 格 1091、64 格 8194 の半分を下限にする。
     OpenPlume(fluid, 40u, 32u, 500.0f);
     OpenPlume(fluid, 41u, 64u, 4000.0f);
+    OpenPlume(fluid, 42u, 128u, 20000.0f, {1.0f, 4.0f, 1.0f});
     PushedPlumes(fluid);
     LocalSpaceInertia(fluid);
     closedBox(0, 1.0e-4f);

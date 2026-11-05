@@ -38,6 +38,7 @@ struct HikariFluidSource
     float4 field2;   // x 乱流、y 周波数、z 演化、w 吸引
     float4 wind;     // xyz 一様な加速度（域の局所）、w 速度の減衰 [1/s]
     float4 guide;    // x 形状引导の強さ、y 帯の厚さ、z 力場の効き方（0 加速度、1 目標速度）、w 縁の柔らかさ（源の局所）
+    float4 flow;     // x 体積の湧き出し率 [1/s]（形の中で一様、開いた境界の域だけ）、yzw 未使用
 };
 
 // 流体を押すもの 1 つ。C++ の FluidInteractionGpu と同じ並び。座標は域の局所空間 [m]。
@@ -88,7 +89,11 @@ float HikariFluidSourceDistance(HikariFluidSource source, float3 p)
     const uint shape = (uint)(source.shape.x + 0.5f);
     const float radius = source.shape.y;
     if (shape == 1u)
-        return length(p) - radius;
+    {
+        // 内径があれば球殻（内径〜半径の帯）。
+        const float r = length(p);
+        return source.shape.z > 0.0f ? max(r - radius, source.shape.z - r) : r - radius;
+    }
     if (shape == 2u)
     {
         // 円錐：頂点が原点、+Y 方向へ長さ radius、半角 shape2.w。

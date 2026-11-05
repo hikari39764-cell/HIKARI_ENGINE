@@ -78,7 +78,10 @@ struct FluidSourceSettings {
     float radialSpeed = 0.0f;
     // 汇：形の中の密度を毎秒この割合で消す。
     float absorption = 0.0f;
-    // 形状引导：形の表面から guideThickness [m] の帯の中の烟を表面へ引き戻す強さ [1/s]。
+    // 体積の湧き出し：形の表面から外へこの速さ [m/s] で流れ出る量を形の中で一様に湧かせる（負で吸い込む。漏斗の底の
+    // 汇、吹き出し口）。開いた境界の域だけ（閉じた箱では非圧縮の流体に逃げ場が無い）。Domain の形では効かない。
+    float outflow = 0.0f;
+    // 形状引导：形の表面から guideThickness [m] の帯の中の烟を表面へ引き戻す強さ [1/s]。烟（密度）だけを運び、流れは変えない。
     float guideStrength = 0.0f;
     float guideThickness = 0.25f;
     FluidForceMode forceMode = FluidForceMode::Acceleration;
@@ -121,6 +124,7 @@ inline constexpr auto kFluidSourceSettingsFields = [](auto&& field) {
     field("velocity", &S::velocity, Range{-500.0, 500.0}, Unit{"m/s"}, Common{});
     field("radialSpeed", &S::radialSpeed, Range{-500.0, 500.0}, Unit{"m/s"});
     field("absorption", &S::absorption, Range{0.0, 100.0}, Unit{"1/s"});
+    field("outflow", &S::outflow, Range{-100.0, 100.0}, Unit{"m/s"});
     field("guideStrength", &S::guideStrength, Range{0.0, 100.0}, Unit{"1/s"}, Group{"Shape Guide"});
     field("guideThickness", &S::guideThickness, Range{0.01, 500.0}, Unit{"m"}, Group{"Shape Guide"});
     field("forceMode", &S::forceMode, kFluidForceModeNames);
@@ -150,6 +154,10 @@ struct FluidInteraction {
 
 // 向きの無い冲量が湧き出し続けるゲーム時間 [s]（半径での押し出しの距離は約 strength × この時間）。
 inline constexpr double kFluidRadialImpulseSeconds = 0.1;
+
+// 1 フレームの移動がこの速さ [m/s] を超えたら瞬間移動とみなし、そのフレームは烟を押さない（障碍物の速度は 0、局所空間の
+// 域は慣性を入れない）。
+inline constexpr float kFluidTeleportSpeed = 60.0f;
 
 inline constexpr uint32_t kMaximumFluidInteractionsPerFrame = 64u;
 inline constexpr uint32_t kMaximumFluidInteractionsPerDomain = 32u;

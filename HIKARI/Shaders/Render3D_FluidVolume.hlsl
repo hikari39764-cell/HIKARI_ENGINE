@@ -1,9 +1,10 @@
 // 体積流体（VFX の流体層）の描画。重なった域は 1 本の視線で一緒に積分する。
 // 計算：NoiseCS（細部の 3D ノイズを一度だけ作る）、LightCS（域ごとの光照体積：太陽へ向かう自己影、空への透過率。場面の
 // 級联阴影は步进の標本ごと）、
-// CameraVolumeCS（透明物体のための低分辨率の相機体積）。
+// CameraVolumeCS（透明物体のための低分辨率の相機体積）、SolarVisibilityCS（場面へ落とす烟の影の表。雲の影の表と同じ並び）。
 // 全画面：MarchPS（半分辨率で步进、場面の深度で止める）→ ReconstructPS（相機の動きで履歴を再投影して時間方向に混ぜる）
 // → CompositePS（深度を見て全解像度へ広げ、ONE / INV_SRC_ALPHA で場面へ重ねる：C·T + S）。
+#include "Include/Lighting/HIKARI_CloudSolarVisibility.hlsli"
 #include "Include/Lighting/HIKARI_ShadowCascadeContract.hlsli"
 #include "Include/Lighting/HIKARI_VolumetricCamera.hlsli"
 #include "Include/Sky/HIKARI_VolumetricCloudNoise.hlsli"
@@ -29,6 +30,7 @@ cbuffer FluidRenderCB : register(b0)
     float4 gShadowParams;    // x 級联数、y 混合、zw 図集の大きさの割合
     float4 gShadowSampling;  // x 深度の偏り、yz 図集の texel
     float4 gShadowBias;
+    HikariCloudSolarVisibilityData gSolarTable; // SolarVisibilityCS が書く烟の影の表の列と深さ（他の pass は読まない）
     HikariFluidDomain gDomains[HIKARI_FLUID_MAX_DOMAINS];
 };
 
@@ -56,6 +58,7 @@ Texture2D<float4> gHistoryColor : register(t15);
 Texture3D<float> gNoise : register(t16);
 Texture2D<float> gShadowMap : register(t17);
 RWTexture3D<float4> gOutput : register(u0);
+RWTexture2D<float4> gSolarAtlas : register(u1);
 SamplerState gLinearClamp : register(s0);
 SamplerState gLinearBorder : register(s1);
 SamplerState gLinearWrap : register(s2);
@@ -63,6 +66,14 @@ SamplerState gPointClamp : register(s3);
 SamplerComparisonState gShadowSampler : register(s4);
 
 uint DomainCount() { return (uint)(gFrame.w + 0.5f); }
+
+// 域の格子座標 grid での密度（開いた境界の縁で消える分を含む。箱の外は 0）。
+float DomainRho(HikariFluidDomain domain, Texture3D<float4> density, float3 grid)
+{
+    if (!HikariFluidInside(grid, domain.cells.xyz))
+        return 0.0f;
+    return density.SampleLevel(gLinearBorder, grid / domain.cells.xyz, 0).x * HikariFluidEdgeFade(domain, grid);
+}
 
 // ---------------------------------------------------------------- 視線（体積雾と同じ再構成）
 void ViewRay(float2 uv, out float3 origin, out float3 direction)
@@ -112,8 +123,13 @@ float SampleDetail(HikariFluidDomain domain, float3 flow, float3 grid, float pix
     const float phase0 = frac(domain.detail.y / period);
     const float phase1 = frac(domain.detail.y / period + 0.5f);
     const float weight = abs(phase0 * 2.0f - 1.0f);
-    const float n0 = gNoise.SampleLevel(gLinearWrap, (local - flow * phase0 * period) * domain.detail.x, 0);
-    const float n1 = gNoise.SampleLevel(gLinearWrap, (local - flow * phase1 * period) * domain.detail.x + 0.37f, 0);
+    // 1 周期のずれは細部の模様の大きさ（detailScale = 1 / (4 detail.x)）までに抑える。速い流れ（大きな場地の環流で
+    // 5〜10 m/s）でずれが模様より長いと、模様が流れの向きに筋として伸びる。
+    const float3 drift = flow * period;
+    const float driftLength = length(drift);
+    const float3 carried = drift * min(1.0f, 0.25f / max(domain.detail.x * driftLength, 1.0e-6f));
+    const float n0 = gNoise.SampleLevel(gLinearWrap, (local - carried * phase0) * domain.detail.x, 0);
+    const float n1 = gNoise.SampleLevel(gLinearWrap, (local - carried * phase1) * domain.detail.x + 0.37f, 0);
     const float noise = lerp(n0, n1, weight);
     return saturate(1.0f + strength * (noise * 2.0f - 1.0f));
 }
@@ -125,12 +141,10 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
     inout float3 emitted)
 {
     const float3 grid = HikariFluidToGrid(domain, world);
-    if (!HikariFluidInside(grid, domain.cells.xyz))
-        return;
-    const float3 uvw = grid / domain.cells.xyz;
-    float rho = density.SampleLevel(gLinearBorder, uvw, 0).x * HikariFluidEdgeFade(domain, grid);
+    float rho = DomainRho(domain, density, grid);
     if (rho <= 1.0e-4f)
         return;
+    const float3 uvw = grid / domain.cells.xyz;
     // 格の中心の標本：w は温度、xyz は下側の面の速度（細部を運ぶ流れの近似）。
     const float4 cell = velocity.SampleLevel(gLinearClamp, grid / (domain.cells.xyz + 1.0f), 0);
     rho *= SampleDetail(domain, cell.xyz, grid, pixelSize);
@@ -249,6 +263,62 @@ void LightCS(uint3 id : SV_DispatchThreadID)
     }
     const float2 transmittance = exp(-optical * domain.look.w * domain.cells.w);
     gOutput[id] = float4(transmittance, 0.0f, 0.0f);
+}
+
+// ---------------------------------------------------------------- 場面へ落とす烟の影
+// 全ての域の消光 [1/m]（細部の模様なし）。gDomains には影を落とす域だけが詰めてある。
+float DomainsExtinction(float3 world)
+{
+    const uint count = DomainCount();
+    float sigma = 0.0f;
+    if (count > 0u)
+        sigma += DomainRho(gDomains[0], gDensity0, HikariFluidToGrid(gDomains[0], world)) * gDomains[0].look.w;
+    if (count > 1u)
+        sigma += DomainRho(gDomains[1], gDensity1, HikariFluidToGrid(gDomains[1], world)) * gDomains[1].look.w;
+    if (count > 2u)
+        sigma += DomainRho(gDomains[2], gDensity2, HikariFluidToGrid(gDomains[2], world)) * gDomains[2].look.w;
+    if (count > 3u)
+        sigma += DomainRho(gDomains[3], gDensity3, HikariFluidToGrid(gDomains[3], world)) * gDomains[3].look.w;
+    return sigma;
+}
+
+// 烟の影の表（雲の影の表と同じ並びで HikariSampleCloudSolarVisibility が読む）。列 (x, y) は太陽に垂直な面の格子で、
+// tile0 は列が域の箱を通る区間（太陽の向きの符号付き距離 near, far。通らない列は 0, 0 で読む側が 1 を返す）、
+// tile1..steps は far（太陽側）から near へ等分した深さまでの累積透過率。1 段を 4 標本で積分する。
+[numthreads(8, 8, 1)]
+void SolarVisibilityCS(uint3 id : SV_DispatchThreadID)
+{
+    const uint resolution = (uint)(gSolarTable.upResolution.w + 0.5f);
+    const uint steps = (uint)(gSolarTable.directionSteps.w + 0.5f);
+    if (any(id.xy >= resolution.xx))
+        return;
+    const float2 planar = ((float2(id.xy) + 0.5f) / (float)resolution - 0.5f) * (2.0f * gSolarTable.rightExtent.w);
+    const float3 base = gSolarTable.originDescriptor.xyz + gSolarTable.rightExtent.xyz * planar.x +
+        gSolarTable.upResolution.xyz * planar.y;
+    const float3 toSun = gSolarTable.directionSteps.xyz;
+    float2 interval = float2(1.0e30f, -1.0e30f);
+    [unroll] for (uint index = 0u; index < HIKARI_FLUID_MAX_DOMAINS; ++index)
+    {
+        if (index >= DomainCount())
+            break;
+        const float3 o = HikariFluidToGrid(gDomains[index], base);
+        const float2 hit =
+            HikariFluidBoxInterval(o, HikariFluidToGrid(gDomains[index], base + toSun) - o, gDomains[index].cells.xyz);
+        if (hit.x <= hit.y)
+            interval = float2(min(interval.x, hit.x), max(interval.y, hit.y));
+    }
+    const bool crossed = interval.x < interval.y;
+    gSolarAtlas[HikariCloudSolarAtlasPixel(id.xy, 0u, resolution)] = float4(crossed ? interval : 0.0f.xx, 0.0f, 0.0f);
+    if (!crossed)
+        return;
+    const float slice = (interval.y - interval.x) / (float)steps;
+    float optical = 0.0f;
+    [loop] for (uint depth = 1u; depth <= steps; ++depth)
+    {
+        [unroll] for (uint sample = 0u; sample < 4u; ++sample)
+            optical += DomainsExtinction(base + toSun * (interval.y - ((float)(depth - 1u) + ((float)sample + 0.5f) * 0.25f) * slice));
+        gSolarAtlas[HikariCloudSolarAtlasPixel(id.xy, depth, resolution)] = float4(exp(-optical * 0.25f * slice), 0.0f, 0.0f, 0.0f);
+    }
 }
 
 // 透明物体のための相機体積：画面の (x, y) ごとに near から奥へ層を進み、相機からその層までの累積（rgb 散乱、a 透過率）。

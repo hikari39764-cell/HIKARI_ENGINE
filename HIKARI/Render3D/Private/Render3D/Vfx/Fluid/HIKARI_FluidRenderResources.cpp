@@ -24,6 +24,7 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
         noise_.Reset();
         light_.Reset();
         cameraVolume_.Reset();
+        solar_.Reset();
         march_.Reset();
         reconstruct_.Reset();
         composite_.Reset();
@@ -45,7 +46,7 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
     };
     if (!root_) {
         failed_ = true;
-        std::array<CD3DX12_DESCRIPTOR_RANGE, kInputCount + 1u> ranges{};
+        std::array<CD3DX12_DESCRIPTOR_RANGE, kInputCount + 2u> ranges{};
         std::array<CD3DX12_ROOT_PARAMETER, kRootCount> parameters{};
         parameters[kConstants].InitAsConstantBufferView(0);
         parameters[kPassConstants].InitAsConstants(4, 1);
@@ -55,6 +56,8 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
         }
         ranges[kInputCount].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
         parameters[kOutput].InitAsDescriptorTable(1, &ranges[kInputCount]);
+        ranges[kInputCount + 1u].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);
+        parameters[kSolarOutput].InitAsDescriptorTable(1, &ranges[kInputCount + 1u]);
         std::array<CD3DX12_STATIC_SAMPLER_DESC, 5> samplers{};
         samplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
                          D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
@@ -73,10 +76,11 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
         if (!HIKARI_DX_CHECK(GFX::CreateRootSignature(device, description, root_.ReleaseAndGetAddressOf()),
                              "FluidRenderer::CreateRoot"))
             return false;
-        const std::array<std::pair<const char*, ComPtr<ID3D12PipelineState>*>, 3> computes{
+        const std::array<std::pair<const char*, ComPtr<ID3D12PipelineState>*>, 4> computes{
             {{"NoiseCS", std::addressof(noise_)},
              {"LightCS", std::addressof(light_)},
-             {"CameraVolumeCS", std::addressof(cameraVolume_)}}};
+             {"CameraVolumeCS", std::addressof(cameraVolume_)},
+             {"SolarVisibilityCS", std::addressof(solar_)}}};
         for (const auto& [entry, pipeline] : computes) {
             ASSETS::SHADER::ShaderAssetResolveResult shader{};
             if (!resolve(entry, ShaderStage::Compute, shader))
@@ -90,7 +94,7 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
         }
         failed_ = false;
     }
-    if (march_ && composite_ && compositeFormat_ == sceneColorFormat)
+    if (sceneColorFormat == DXGI_FORMAT_UNKNOWN || (march_ && composite_ && compositeFormat_ == sceneColorFormat))
         return true;
     failed_ = true;
     ASSETS::SHADER::ShaderAssetResolveResult vertex{}, marchShader{}, reconstructShader{}, compositeShader{};
@@ -266,10 +270,14 @@ void FluidRenderer::Shutdown(const GFX::Context& context) {
     views_.clear();
     RetireVolume(context, noiseVolume_);
     RetireVolume(context, fallbackVolume_);
+    if (solarTexture_)
+        ReleaseTextureResource(solarTexture_);
+    solarTexture_ = {};
+    RetireVolume(context, solarAtlas_);
     noiseReady_ = false;
     for (ComPtr<ID3D12PipelineState>* pipeline :
-         {std::addressof(noise_), std::addressof(light_), std::addressof(cameraVolume_), std::addressof(march_),
-          std::addressof(reconstruct_), std::addressof(composite_)})
+         {std::addressof(noise_), std::addressof(light_), std::addressof(cameraVolume_), std::addressof(solar_),
+          std::addressof(march_), std::addressof(reconstruct_), std::addressof(composite_)})
         if (*pipeline)
             GFX::RetireD3D12ObjectForFrame(*pipeline, context, "FluidRenderer.Pipeline");
     if (root_)

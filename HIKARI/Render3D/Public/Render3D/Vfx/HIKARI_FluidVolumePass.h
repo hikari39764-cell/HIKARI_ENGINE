@@ -9,6 +9,7 @@
 #include <d3d12.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 
@@ -160,6 +161,10 @@ public:
     bool HasRenderableDomains() const noexcept;
     // このフレームで最後に描いた視図の相機体積（粒子など透明物体の描画が読む）。
     FluidCameraVolumeView GetCameraVolume() const noexcept;
+    // 解いた域のうち castShadows のものが場面へ落とす烟の影の表（雲の影と同じ並び）を作る。PrepareFrame の後、前向きの前に
+    // 呼ぶ。太陽が出ていない時や域が無い時は空の表。
+    LIGHTING::CloudSolarVisibilityGpuData PrepareSolarVisibility(const GFX::Context& context,
+                                                                 const SceneEnvironment& environment);
 
     void RequestDebugSlice(const FluidDebugSliceRequest& request);
     void ClearDebugSlice();

@@ -2,6 +2,7 @@
 #include "Scene/Vfx/HIKARI_VfxPlaybackSchedule.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 
+#include <algorithm>
 #include <limits>
 
 // 流体域の提交。域の層の世界変換と、下にある流体源の層（形・注入量・burst・力場・風）を 1 つにまとめる。
@@ -26,7 +27,13 @@ FLUID::FluidSourceSubmission MakeSource(const VfxWorldTransform& world,
     source.worldScale = world.scale;
     source.shape = static_cast<FLUID::FluidSourceShape>(simulation.shape);
     source.radius = DistributionExtent(simulation.shapeRadius);
-    source.innerRadius = simulation.shapeCircleInnerRadius;
+    // 球は半径の範囲（最小〜最大、粒子の放出と同じ）が球殻。最小と最大が同じなら中まで詰まった球。円は円環の内径。
+    const ParticleDistributionFloat& radius = simulation.shapeRadius;
+    source.innerRadius = simulation.shape != RENDER3D::PARTICLES::ParticleShape::Sphere
+                             ? simulation.shapeCircleInnerRadius
+                         : radius.mode == ParticleDistributionMode::RandomRange && radius.minimum < radius.maximum
+                             ? (std::max)(radius.minimum, 0.0f)
+                             : 0.0f;
     source.coneAngleRadians = simulation.coneAngleRadians;
     source.boxHalfExtents = simulation.shapeBoxHalfExtents;
     // 線（Edge）の長さも height で渡す（円柱の高さと同じ軸の長さ）。

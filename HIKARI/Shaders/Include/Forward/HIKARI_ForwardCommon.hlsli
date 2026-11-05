@@ -93,11 +93,14 @@ SamplerState gSkyPanoramaSampler : register(s4);
 #include "Include/HIKARI_PbrCommon.hlsli"
 #include "Include/HIKARI_SkyEnvironmentCommon.hlsli"
 
+// 面が受ける太陽の見え方：雲の影 × 流体の烟の影。
 float HikariForwardCloudSolarVisibility(float3 worldPosition)
 {
-    if(gCloudSolarVisibility.originDescriptor.w<0.5f || gDirectionalIntensity<=0) return 1.0f;
-    const uint descriptor=uint(gCloudSolarVisibility.originDescriptor.w)-1u;
-    return HikariSampleCloudSolarVisibility(gMaterialTexturePool[descriptor],gCloudSolarVisibility,worldPosition);
+    if(gDirectionalIntensity<=0) return 1.0f;
+    return HikariSampleCloudSolarVisibility(gMaterialTexturePool[HikariSolarVisibilityDescriptor(gCloudSolarVisibility)],
+               gCloudSolarVisibility,worldPosition)*
+           HikariSampleCloudSolarVisibility(gMaterialTexturePool[HikariSolarVisibilityDescriptor(gFluidSolarVisibility)],
+               gFluidSolarVisibility,worldPosition);
 }
 #include "Include/HIKARI_DebugViewCommon.hlsli"
 #include "Include/Forward/HIKARI_ForwardVertexMeta.hlsli"

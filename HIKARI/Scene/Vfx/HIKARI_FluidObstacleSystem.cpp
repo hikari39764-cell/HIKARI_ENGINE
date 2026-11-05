@@ -94,7 +94,8 @@ void FluidObstacleSystem::PreRender(World& world, const FrameContext& frame) {
         ResolveFluidObstacles(world, object, component, obstacles_);
         const uint64_t owner = object.GetRuntimeHandle().ToValue();
         for (const FluidObstacleInstance& obstacle : obstacles_)
-            (void)service->Submit(owner, obstacle.instance, obstacle.interaction, frame.frameIndex);
+            (void)service->Submit(FluidInteractionSource::Component, owner, obstacle.instance, obstacle.interaction,
+                                  frame.frameIndex);
     });
 }
 

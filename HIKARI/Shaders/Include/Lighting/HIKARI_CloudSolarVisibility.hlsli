@@ -26,6 +26,13 @@ float HikariCloudSolarColumn(Texture2D<float4> atlas, uint2 column, uint resolut
     return saturate(lerp(first,second,frac(depth)));
 }
 
+// 表の無絆定の貼図の番号（originDescriptor.w は番号 + 1、0 で表なし。表なしでも 0 番を返し、読む関数が 1 を返す）。
+// 雲の影と流体の烟の影（HikariFluidSolarVisibility）が同じ並びで、面の太陽は二つを掛ける。
+uint HikariSolarVisibilityDescriptor(HikariCloudSolarVisibilityData field)
+{
+    return uint(max(field.originDescriptor.w, 1.0f)) - 1u;
+}
+
 float HikariSampleCloudSolarVisibility(Texture2D<float4> atlas, HikariCloudSolarVisibilityData field, float3 worldPosition)
 {
     if(field.originDescriptor.w<0.5f || field.rightExtent.w<=0 || field.upResolution.w<2 || field.directionSteps.w<1)

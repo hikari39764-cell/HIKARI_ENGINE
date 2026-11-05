@@ -347,10 +347,13 @@ MeshMaterialGpuFrameView GetMaterialGpuFrameView(const GFX::Context& graphics) {
 }
 
 bool RefreshLightingProviders(const GFX::Context& graphics,
-                              const RENDER3D::LIGHTING::CloudSolarVisibilityGpuData& clouds) {
+                              const RENDER3D::LIGHTING::CloudSolarVisibilityGpuData& clouds,
+                              const SceneEnvironment& environment) {
     auto& view = GetActiveMeshFrameResources().view;
     FillSelectedIrradianceVolumes(view.skyEnvironment);
     view.skyEnvironment.cloudSolarVisibility = clouds;
+    view.skyEnvironment.fluidSolarVisibility =
+        gMeshRendererState.fluidPass.PrepareSolarVisibility(graphics, environment);
     return view.PublishSkyEnvironment(graphics);
 }
 

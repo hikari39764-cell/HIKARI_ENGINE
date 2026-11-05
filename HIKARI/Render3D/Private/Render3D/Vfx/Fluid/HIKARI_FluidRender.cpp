@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "Core/Math/HIKARI_MathValidation.h"
+#include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
@@ -43,9 +45,10 @@ struct alignas(16) RenderConstants {
     float shadowParams[4];
     float shadowSampling[4];
     float shadowBias[4];
+    LIGHTING::CloudSolarVisibilityGpuData solarTable{};
     RenderDomainGpu domains[kMaximumRenderedFluidDomains];
 };
-static_assert(sizeof(RenderConstants) == 1152u);
+static_assert(sizeof(RenderConstants) == 1216u);
 
 void Set4(float (&out)[4], float x, float y, float z, float w) {
     out[0] = x;
@@ -289,6 +292,103 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
         state.cameraVolume.srv.gpu,
         {kCameraVolumeNear, std::log(farthest / kCameraVolumeNear), static_cast<float>(kCameraVolumeSlices), 1.0f}};
     return true;
+}
+
+LIGHTING::CloudSolarVisibilityGpuData FluidRenderer::RenderSolarVisibility(const GFX::Context& context,
+                                                                           std::span<const FluidRenderDomain> domains,
+                                                                           const MATH::Vec3& toSun) {
+    const size_t count = (std::min)(domains.size(), static_cast<size_t>(kMaximumRenderedFluidDomains));
+    if (count == 0u || context.device == nullptr || context.cmdList == nullptr || !MATH::IsFinite(toSun) ||
+        MATH::Length(toSun) < 0.5f || !EnsurePipelines(context.device, DXGI_FORMAT_UNKNOWN))
+        return {};
+    if (!solarAtlas_.resource) {
+        if (!CreateFluidSliceTexture(context.device, DXGI_FORMAT_R32G32_FLOAT, kSolarResolution * 8u,
+                                     ((kSolarSteps + 8u) / 8u) * kSolarResolution, solarAtlas_))
+            return {};
+        solarTexture_ = RegisterTextureResourceFromNative(solarAtlas_.resource.Get(), DXGI_FORMAT_R32G32_FLOAT);
+        if (!IsTextureResourceValid(solarTexture_) ||
+            GetTextureResourceSrvDescriptorIndex(solarTexture_) >= GFX::DESCRIPTOR::kUserSrvCount) {
+            if (solarTexture_)
+                ReleaseTextureResource(solarTexture_);
+            solarTexture_ = {};
+            RetireVolume(context, solarAtlas_);
+            return {};
+        }
+    }
+    auto& upload = uploads_[context.frameIndex % GFX::kFrameResourceCount];
+    if (!upload.IsInitialized() && !upload.Init(context.device, 16u * 1024u, GFX::UPLOAD_TRAFFIC::Owner::Fluids))
+        return {};
+    upload.ResetForFrame(context.currentFrameRetireFenceValue);
+
+    // 太陽に垂直な面の格子：域の箱の角をこの面へ写した範囲を覆う正方形（1 列ぶんの余白、中心は列の幅に吸着）。
+    const MATH::Vec3 direction = MATH::Normalize(toSun);
+    const MATH::Vec3 right = MATH::Normalize(
+        MATH::Cross(std::abs(direction.y) < 0.99f ? MATH::Vec3{0, 1, 0} : MATH::Vec3{0, 0, 1}, direction));
+    const MATH::Vec3 up = MATH::Cross(direction, right);
+    float low[2] = {1.0e30f, 1.0e30f}, high[2] = {-1.0e30f, -1.0e30f};
+    for (size_t index = 0u; index < count; ++index) {
+        const FluidRenderDomain& domain = domains[index];
+        for (uint32_t corner = 0u; corner < 8u; ++corner) {
+            MATH::Vec3 local{};
+            for (int axis = 0; axis < 3; ++axis)
+                (&local.x)[axis] = ((corner >> axis) & 1u ? 0.5f : -0.5f) *
+                                   static_cast<float>(domain.layout.cells[axis]) * domain.layout.cellSize;
+            const MATH::Vec3 world = domain.position + MATH::RotateVector(domain.rotation, local);
+            const float planar[2] = {MATH::Dot(world, right), MATH::Dot(world, up)};
+            for (int axis = 0; axis < 2; ++axis) {
+                low[axis] = (std::min)(low[axis], planar[axis]);
+                high[axis] = (std::max)(high[axis], planar[axis]);
+            }
+        }
+    }
+    const float span = (std::max)(high[0] - low[0], high[1] - low[1]);
+    const float extent = 0.5f * span * static_cast<float>(kSolarResolution) / static_cast<float>(kSolarResolution - 2u);
+    const float column = 2.0f * extent / static_cast<float>(kSolarResolution);
+    const float center[2] = {std::round(0.5f * (low[0] + high[0]) / column) * column,
+                             std::round(0.5f * (low[1] + high[1]) / column) * column};
+    const MATH::Vec3 origin = right * center[0] + up * center[1];
+
+    LIGHTING::CloudSolarVisibilityGpuData table{};
+    table.originDescriptor = {origin.x, origin.y, origin.z,
+                              static_cast<float>(GetTextureResourceSrvDescriptorIndex(solarTexture_) + 1u)};
+    table.rightExtent = {right.x, right.y, right.z, extent};
+    table.upResolution = {up.x, up.y, up.z, static_cast<float>(kSolarResolution)};
+    table.directionSteps = {direction.x, direction.y, direction.z, static_cast<float>(kSolarSteps)};
+
+    RenderConstants constants{};
+    FluidRenderView view{};
+    view.sunDirection = direction;
+    view.preExposure = 1.0f;
+    Set4(constants.frame, 0.0f, 0.0f, 0.0f, static_cast<float>(count));
+    constants.solarTable = table;
+    for (size_t index = 0u; index < count; ++index)
+        constants.domains[index] = PackDomain(domains[index], view);
+    const auto allocation = upload.Allocate(sizeof(constants));
+    if (!allocation)
+        return {};
+    std::memcpy(allocation.cpuAddress, &constants, sizeof(constants));
+
+    ID3D12GraphicsCommandList* commands = context.cmdList;
+    GFX::PIX::ScopedGpuEvent event(commands, GFX::PIX::kColorPost, "FluidSmoke.SolarVisibility");
+    ID3D12DescriptorHeap* heaps[] = {context.srvHeap};
+    commands->SetDescriptorHeaps(1, heaps);
+    commands->SetComputeRootSignature(root_.Get());
+    commands->SetComputeRootConstantBufferView(kConstants, allocation.gpuAddress);
+    // 根の入力はすべて束ねる（使わない枠は空の体積）。
+    for (UINT input = 0u; input < kInputCount; ++input)
+        commands->SetComputeRootDescriptorTable(kFirstInput + input, fallbackVolume_.srv.gpu);
+    for (size_t index = 0u; index < count; ++index) {
+        TransitionVolume(commands, *domains[index].density, kRead);
+        commands->SetComputeRootDescriptorTable(kFirstInput + kDensity + static_cast<UINT>(index),
+                                                domains[index].density->srv.gpu);
+    }
+    commands->SetComputeRootDescriptorTable(kOutput, fallbackVolume_.uav.gpu);
+    TransitionVolume(commands, solarAtlas_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    commands->SetComputeRootDescriptorTable(kSolarOutput, solarAtlas_.uav.gpu);
+    commands->SetPipelineState(solar_.Get());
+    commands->Dispatch((kSolarResolution + 7u) / 8u, (kSolarResolution + 7u) / 8u, 1u);
+    TransitionVolume(commands, solarAtlas_, kRead);
+    return table;
 }
 
 } // namespace HIKARI::RENDER3D::FLUID::INTERNAL

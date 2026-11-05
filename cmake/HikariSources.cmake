@@ -808,6 +808,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Material/Program/HIKARI_MaterialParameterState.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Vfx/HIKARI_GpuParticleParameterPacking.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Vfx/Fluid/HIKARI_FluidGpuTables.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Vfx/Fluid/HIKARI_FluidLayout.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Vfx/Fluid/HIKARI_FluidRender.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Vfx/Fluid/HIKARI_FluidRenderResources.cpp"

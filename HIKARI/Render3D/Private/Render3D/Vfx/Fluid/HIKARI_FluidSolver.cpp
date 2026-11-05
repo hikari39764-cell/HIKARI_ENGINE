@@ -47,6 +47,7 @@ constexpr const char* kEntryNames[] = {
     "DivergenceCS", "SmoothCS",        "ResidualRestrictCS",
     "ProlongCS",    "CoarsestSolveCS", "ProjectCS",
     "OccupancyCS",  "DiagnosticsCS",   "SliceCS",
+    "ActivityCS",
 };
 static_assert(std::size(kEntryNames) == static_cast<size_t>(FluidEntry::Count));
 
@@ -122,100 +123,14 @@ bool CreateBuffer(ID3D12Device* device, D3D12_HEAP_TYPE heapType, uint32_t bytes
 
 } // namespace
 
-// 回転と倍率の逆で、域の局所の点を源の局所へ、源の局所の向きを域の局所へ移す行と、形・注入・力場を詰める。
-FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::Vec3& domainPosition,
-                               const MATH::Quat& domainRotation, float cellSize, float burstDensity) {
-    FluidSourceGpu gpu{};
-    const MATH::Vec3 inverseScale{1.0f / (std::max)(std::abs(source.worldScale.x), 1.0e-4f),
-                                  1.0f / (std::max)(std::abs(source.worldScale.y), 1.0e-4f),
-                                  1.0f / (std::max)(std::abs(source.worldScale.z), 1.0e-4f)};
-    const auto scaled = [&](const MATH::Vec3& v) {
-        return MATH::Vec3{v.x * inverseScale.x, v.y * inverseScale.y, v.z * inverseScale.z};
-    };
-    const MATH::Vec3 basis[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
-    MATH::Vec3 columns[3];
-    MATH::Vec3 back[3];
-    for (int axis = 0; axis < 3; ++axis) {
-        columns[axis] =
-            scaled(RotateToFluidLocal(source.worldRotation, MATH::RotateVector(domainRotation, basis[axis])));
-        back[axis] = RotateToFluidLocal(domainRotation, MATH::RotateVector(source.worldRotation, basis[axis]));
-    }
-    const MATH::Vec3 translation =
-        scaled(RotateToFluidLocal(source.worldRotation, domainPosition - source.worldPosition));
-    const float* t = &translation.x;
-    for (int row = 0; row < 3; ++row) {
-        gpu.rows[row][0] = (&columns[0].x)[row];
-        gpu.rows[row][1] = (&columns[1].x)[row];
-        gpu.rows[row][2] = (&columns[2].x)[row];
-        gpu.rows[row][3] = t[row];
-        gpu.rows[3 + row][0] = (&back[0].x)[row];
-        gpu.rows[3 + row][1] = (&back[1].x)[row];
-        gpu.rows[3 + row][2] = (&back[2].x)[row];
-    }
-    const float averageScale = (inverseScale.x + inverseScale.y + inverseScale.z) / 3.0f;
-    const float softEdge = 1.5f * cellSize * averageScale;
-    const auto set = [&](int row, float x, float y, float z, float w) {
-        gpu.rows[row][0] = x;
-        gpu.rows[row][1] = y;
-        gpu.rows[row][2] = z;
-        gpu.rows[row][3] = w;
-    };
-    set(6, static_cast<float>(source.shape), source.radius, source.innerRadius, source.height);
-    set(7, source.boxHalfExtents.x, source.boxHalfExtents.y, source.boxHalfExtents.z, source.coneAngleRadians);
-    set(8, (std::max)(source.ratePerSecond, 0.0f), burstDensity, source.settings.temperature,
-        source.settings.absorption);
-    set(9, source.settings.velocity.x, source.settings.velocity.y, source.settings.velocity.z,
-        source.settings.radialSpeed);
-    const auto& field = source.field;
-    set(10, field.center.x, field.center.y, field.center.z, field.radius);
-    set(11, field.axis.x, field.axis.y, field.axis.z, field.vortex);
-    set(12, field.turbulence, field.frequency, field.evolution, field.attraction);
-    const MATH::Vec3 wind = RotateToFluidLocal(domainRotation, source.wind);
-    set(13, wind.x, wind.y, wind.z, (std::max)(source.drag, 0.0f));
-    set(14, source.settings.guideStrength, source.settings.guideThickness,
-        source.settings.forceMode == FluidForceMode::TargetVelocity ? 1.0f : 0.0f, softEdge);
-    return gpu;
-}
-
-FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, const MATH::Vec3& domainPosition,
-                                         const MATH::Quat& domainRotation, const MATH::Vec3& domainVelocity) {
-    FluidInteractionGpu gpu{};
-    const MATH::Vec3 basis[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
-    MATH::Vec3 columns[3];
-    for (int axis = 0; axis < 3; ++axis)
-        columns[axis] = RotateToFluidLocal(interaction.worldRotation, MATH::RotateVector(domainRotation, basis[axis]));
-    const MATH::Vec3 translation =
-        RotateToFluidLocal(interaction.worldRotation, domainPosition - interaction.worldPosition);
-    for (int row = 0; row < 3; ++row) {
-        gpu.rows[row][0] = (&columns[0].x)[row];
-        gpu.rows[row][1] = (&columns[1].x)[row];
-        gpu.rows[row][2] = (&columns[2].x)[row];
-        gpu.rows[row][3] = (&translation.x)[row];
-    }
-    const auto set = [&](int row, const MATH::Vec3& v, float w) {
-        gpu.rows[row][0] = v.x;
-        gpu.rows[row][1] = v.y;
-        gpu.rows[row][2] = v.z;
-        gpu.rows[row][3] = w;
-    };
-    const bool obstacle = interaction.kind == FluidInteractionKind::Obstacle;
-    const float directionLength = MATH::Length(interaction.direction);
-    const MATH::Vec3 motion = obstacle                 ? interaction.velocity - domainVelocity
-                              : directionLength > 0.0f ? interaction.direction * (1.0f / directionLength)
-                                                       : MATH::Vec3{};
-    set(3, interaction.extents, static_cast<float>(interaction.kind));
-    set(4, RotateToFluidLocal(domainRotation, motion), static_cast<float>(interaction.shape));
-    set(5, RotateToFluidLocal(domainRotation, interaction.worldPosition - domainPosition), interaction.strength);
-    return gpu;
-}
-
 bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
                               FluidVolume& volume) {
     return CreateVolume(device, format, width, height, depth, volume, false);
 }
 
-bool CreateFluidSliceTexture(ID3D12Device* device, uint32_t width, uint32_t height, FluidVolume& volume) {
-    return CreateVolume(device, DXGI_FORMAT_R16G16B16A16_FLOAT, width, height, 1u, volume, true);
+bool CreateFluidSliceTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height,
+                             FluidVolume& volume) {
+    return CreateVolume(device, format, width, height, 1u, volume, true);
 }
 
 void RetireVolume(const GFX::Context& context, FluidVolume& volume) {
@@ -287,7 +202,7 @@ bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& lay
     created = created && CreateVolume(device, DXGI_FORMAT_R16G16_FLOAT, (n[0] + 1u) / 2u, (n[1] + 1u) / 2u,
                                       (n[2] + 1u) / 2u, resources.light, false);
     resources.bricks = ((n[0] + 7u) / 8u) * ((n[1] + 7u) / 8u) * ((n[2] + 7u) / 8u);
-    resources.statsBytes = (resources.bricks * 12u + 255u) & ~255u;
+    resources.statsBytes = (resources.bricks * 16u + 255u) & ~255u;
     created = created && CreateBuffer(device, D3D12_HEAP_TYPE_DEFAULT, resources.statsBytes,
                                       D3D12_RESOURCE_STATE_UNORDERED_ACCESS, resources.stats);
     for (auto& readback : resources.readback)
@@ -340,7 +255,7 @@ void FluidRecorder::Dispatch(FluidEntry entry, const FluidPassBindings& bindings
             Transition(*output, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     if (bindings.slice != nullptr)
         Transition(*bindings.slice, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    if (bindings.stats && domain_.statsState != D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
+    if (domain_.statsState != D3D12_RESOURCE_STATE_UNORDERED_ACCESS) {
         const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(domain_.stats.Get(), domain_.statsState,
                                                                   D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         commands_->ResourceBarrier(1, &barrier);
@@ -364,8 +279,7 @@ void FluidRecorder::Dispatch(FluidEntry entry, const FluidPassBindings& bindings
         commands_->SetComputeRootDescriptorTable(kOutput1, bindings.outputs[1]->uav.gpu);
     if (bindings.slice != nullptr)
         commands_->SetComputeRootDescriptorTable(kSliceOutput, bindings.slice->uav.gpu);
-    if (bindings.stats)
-        commands_->SetComputeRootUnorderedAccessView(kStats, domain_.stats->GetGPUVirtualAddress());
+    commands_->SetComputeRootUnorderedAccessView(kStats, domain_.stats->GetGPUVirtualAddress());
     commands_->Dispatch((std::max)(groups[0], 1u), (std::max)(groups[1], 1u), (std::max)(groups[2], 1u));
     const auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
     commands_->ResourceBarrier(1, &uavBarrier);
@@ -384,6 +298,17 @@ void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D
     auto& v = domain_.velocity;
     auto& d = domain_.density;
     const uint32_t a = velocityIndex, b = (a + 1u) % 3u, c = (a + 2u) % 3u;
+    // 疎な解算：今の密度で砖块の占有を数え直し、烟のある砖块の周りと源の形に触れる砖块を動かす（1 子步で烟が 1 砖块
+    // より遠くへ動くことは無い）。
+    Occupancy(densityIndex);
+    {
+        FluidPassBindings activity{};
+        activity.sources = sources;
+        const uint32_t bricks[3] = {Groups(domain_.layout.cells[0], 8u), Groups(domain_.layout.cells[1], 8u),
+                                    Groups(domain_.layout.cells[2], 8u)};
+        Dispatch(FluidEntry::Activity, activity, bricks, {0u, 0u, 0u, 0u},
+                 {Groups(bricks[0], 4u), Groups(bricks[1], 4u), Groups(bricks[2], 4u)});
+    }
     const uint32_t e = densityIndex, f = (e + 1u) % 3u, g = (e + 2u) % 3u;
     const uint32_t* n = domain_.layout.cells;
     const uint32_t cells[3] = {n[0], n[1], n[2]};
@@ -392,8 +317,13 @@ void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D
     const uint32_t faceGroups[3] = {Groups(faces[0], 4u), Groups(faces[1], 4u), Groups(faces[2], 4u)};
     const uint32_t none[4] = {};
 
-    Dispatch(FluidEntry::AdvectForward, {{&v[a], &d[e]}, {&v[b], &d[f]}}, faces, none, faceGroups);
-    Dispatch(FluidEntry::AdvectCorrect, {{&v[a], &d[e], &v[b], &d[f]}, {&v[c], &d[g]}}, faces, none, faceGroups);
+    // 平流は源の表も読む（形状引导の速度で密度だけを運ぶ）。
+    FluidPassBindings forward{{&v[a], &d[e]}, {&v[b], &d[f]}};
+    forward.sources = sources;
+    Dispatch(FluidEntry::AdvectForward, forward, faces, none, faceGroups);
+    FluidPassBindings correct{{&v[a], &d[e], &v[b], &d[f]}, {&v[c], &d[g]}};
+    correct.sources = sources;
+    Dispatch(FluidEntry::AdvectCorrect, correct, faces, none, faceGroups);
     Dispatch(FluidEntry::Curl, {{&v[c]}, {&v[b]}}, cells, none, cellGroups);
     FluidPassBindings forces{{&v[c], &v[b]}, {&v[a], &d[g]}};
     forces.sources = sources;
@@ -401,6 +331,7 @@ void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D
     Dispatch(FluidEntry::ForceField, forces, cells, none, cellGroups);
     Dispatch(FluidEntry::ApplyForces, {{&v[c], &v[a]}, {&v[b]}}, faces, none, faceGroups);
     FluidPassBindings divergence{{&v[b]}, {&domain_.rhs[0]}};
+    divergence.sources = sources;
     divergence.interactions = interactions;
     Dispatch(FluidEntry::Divergence, divergence, cells, none, cellGroups);
     for (uint32_t cycle = 0u; cycle < vCycles; ++cycle)
@@ -444,7 +375,6 @@ void FluidRecorder::VCycle() {
 
 void FluidRecorder::Occupancy(uint32_t densityIndex) {
     FluidPassBindings bindings{{&domain_.density[densityIndex]}, {}};
-    bindings.stats = true;
     const uint32_t* n = domain_.layout.cells;
     const uint32_t size[3] = {n[0], n[1], n[2]};
     Dispatch(FluidEntry::Occupancy, bindings, size, {0u, 0u, 0u, 0u},
@@ -453,7 +383,6 @@ void FluidRecorder::Occupancy(uint32_t densityIndex) {
 
 void FluidRecorder::Diagnostics(uint32_t velocityIndex, uint32_t densityIndex) {
     FluidPassBindings bindings{{&domain_.velocity[velocityIndex], &domain_.density[densityIndex]}, {}};
-    bindings.stats = true;
     const uint32_t* n = domain_.layout.cells;
     const uint32_t size[3] = {n[0], n[1], n[2]};
     Dispatch(FluidEntry::Diagnostics, bindings, size, {0u, 0u, 0u, domain_.DiagnosticsOffset()},

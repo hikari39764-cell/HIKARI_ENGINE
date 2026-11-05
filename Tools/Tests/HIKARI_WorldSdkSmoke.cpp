@@ -2089,9 +2089,11 @@ int main() {
         assert(fog.PrepareFrame(fogWorld, frameIndex).empty());
         assert(fogView.Submit(ownerHandle, 1, volume).code == HIKARI::GameProjectWorldResultCode::InvalidObject);
     }
-    // 流体を押すものも毎フレームの提出。障碍物の速度は同じ組の前のフレームの位置とゲーム時間から決まる。
+    // 流体を押すものも毎フレームの提出。障碍物の速度は同じ組の前のフレームの位置とゲーム時間から決まり、瞬間移動は 0。
+    // 障碍物組件の形はゲームの提出と同じ owner・instance でも別の組。
     {
         using Code = HIKARI::GameProjectWorldResultCode;
+        using HIKARI::FluidInteractionSource;
         HIKARI::FluidInteractionService fluid;
         HIKARI::World fluidWorld;
         assert(fluidWorld.Services().Register(fluid));
@@ -2109,9 +2111,13 @@ int main() {
                first[0].velocity.x == 0.0f);
         HIKARI::RENDER3D::FLUID::FluidInteraction moved = first[0];
         moved.worldPosition = {2, 2, 3};
-        assert(fluid.Submit(ownerHandle.value, 1, moved, frameIndex + 1) == Code::Success);
+        assert(fluid.Submit(FluidInteractionSource::Project, ownerHandle.value, 1, moved, frameIndex + 1) ==
+               Code::Success);
+        assert(fluid.Submit(FluidInteractionSource::Component, ownerHandle.value, 1, first[0], frameIndex + 1) ==
+               Code::Success);
         const auto next = fluid.PrepareFrame(fluidWorld, frameIndex + 1, 0.5f);
-        assert(next.size() == 1 && std::abs(next[0].velocity.x - 2.0f) < 1e-5f && next[0].velocity.y == 0.0f);
+        assert(next.size() == 2 && std::abs(next[0].velocity.x - 2.0f) < 1e-5f && next[0].velocity.y == 0.0f &&
+               next[1].velocity.x == 0.0f);
         obstacle.reserved[0] = 1u;
         assert(fluidView.Submit(ownerHandle, 2, obstacle).code == Code::InvalidRequest);
         obstacle.reserved[0] = 0u;
@@ -2119,7 +2125,12 @@ int main() {
         assert(fluidView.Submit(ownerHandle, 2, obstacle).code == Code::InvalidRequest);
         obstacle.extents.x = 0.2f;
         assert(fluidView.Submit(ownerHandle, 0, obstacle).code == Code::InvalidRequest);
-        assert(fluid.PrepareFrame(fluidWorld, frameIndex + 2, 0.5f).empty());
+        moved.worldPosition = {100, 2, 3};
+        assert(fluid.Submit(FluidInteractionSource::Project, ownerHandle.value, 1, moved, frameIndex + 2) ==
+               Code::Success);
+        const auto teleported = fluid.PrepareFrame(fluidWorld, frameIndex + 2, 0.5f);
+        assert(teleported.size() == 1 && teleported[0].velocity.x == 0.0f);
+        assert(fluid.PrepareFrame(fluidWorld, frameIndex + 3, 0.5f).empty());
         fluidWorld.DestroyObject(owner);
         assert(fluidView.Submit(ownerHandle, 1, obstacle).code == Code::InvalidObject);
     }

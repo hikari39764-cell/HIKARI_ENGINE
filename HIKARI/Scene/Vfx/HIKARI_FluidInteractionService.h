@@ -13,12 +13,15 @@ class World;
 // 場面の流体を押すもの（障碍物・冲量・力）。文書の実行時が持ち、World へ借りた service として見せる。
 // (owner, instance) ごとにこのフレームだけ有効で、次のフレームに出さなければ消える（LocalFogService と同じ規矩）。
 // 障碍物の速度は同じ組の前のフレームの位置からゲーム時間で決める。
+// 出どころ（障碍物組件 / プロジェクトの FluidView）ごとに組は別で、同じ owner と instance でも互いを置き換えない。
+enum class FluidInteractionSource : uint8_t { Component, Project };
+
 class FluidInteractionService final {
 public:
-    GameProjectWorldResultCode Submit(uint64_t owner, uint64_t instance,
+    GameProjectWorldResultCode Submit(FluidInteractionSource source, uint64_t owner, uint64_t instance,
                                       const RENDER3D::FLUID::FluidInteraction& interaction,
                                       uint64_t frameIndex) noexcept;
-    void Remove(uint64_t owner, uint64_t instance) noexcept;
+    void Remove(FluidInteractionSource source, uint64_t owner, uint64_t instance) noexcept;
     void Clear() noexcept;
     // このフレームの表（持ち主の消えたもの・隠れたものを除く）。deltaSeconds はゲーム時間（一時停止で 0）。
     std::span<const RENDER3D::FLUID::FluidInteraction> PrepareFrame(const World& world, uint64_t frameIndex,
@@ -26,9 +29,14 @@ public:
 
 private:
     struct Entry {
+        FluidInteractionSource source = FluidInteractionSource::Component;
         uint64_t owner = 0u;
         uint64_t instance = 0u;
         RENDER3D::FLUID::FluidInteraction interaction{};
+
+        bool Same(const Entry& other) const noexcept {
+            return source == other.source && owner == other.owner && instance == other.instance;
+        }
     };
     static constexpr uint32_t kCapacity = RENDER3D::FLUID::kMaximumFluidInteractionsPerFrame;
     std::array<Entry, kCapacity> entries_{};

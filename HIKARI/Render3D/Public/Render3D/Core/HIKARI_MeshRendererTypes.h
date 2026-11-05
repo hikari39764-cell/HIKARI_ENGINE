@@ -224,12 +224,15 @@ struct SkyEnvironmentCB {
     RENDER3D::LIGHTING::CloudSolarVisibilityGpuData cloudSolarVisibility{};
     // 動的 GI（手置きの区域、近景、遠景の優先順）。焼き込みの irradianceVolumes より先に重ねる。
     IrradianceVolumeGpuData dynamicGiVolumes[RENDER3D::LIGHTPROBE::kDynamicGiVolumeCount]{};
+    // 流体の烟が場面へ落とす影（雲の影と同じ並び。面の太陽に雲の影と掛ける）。
+    RENDER3D::LIGHTING::CloudSolarVisibilityGpuData fluidSolarVisibility{};
 };
 
 static_assert(offsetof(SkyEnvironmentCB, atmospherePlanetParams) == 496u);
 static_assert(offsetof(SkyEnvironmentCB, cloudSolarVisibility) == 608u);
 static_assert(offsetof(SkyEnvironmentCB, dynamicGiVolumes) == 672u);
-static_assert(sizeof(SkyEnvironmentCB) == 912u);
+static_assert(offsetof(SkyEnvironmentCB, fluidSolarVisibility) == 912u);
+static_assert(sizeof(SkyEnvironmentCB) == 976u);
 
 struct ShadowCB {
     MATH::Mat4 lightViewProj[SHADOW::kMaxDirectionalShadowCascades]{};

@@ -12,6 +12,7 @@
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
+#include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Vfx/Fluid/HIKARI_FluidRender.h"
 #include "Render3D/Vfx/Fluid/HIKARI_FluidSolver.h"
 
@@ -25,11 +26,10 @@ using PARTICLES::ParticleEmitterInstanceKey;
 constexpr uint32_t kPrewarmStepsPerFrame = 48u;
 // 局所空間の慣性：挂点の速度はフレームの長さで重みを付けて均す（時定数 [s]）。挂点の位置は 1 フレーム遅れることがあり
 // （VFX は LateUpdate で動く物体を前のフレームの位置で読む）、フレームの長さが揺れると移動量 / 時間が大きく跳ねるため。
-// 1 フレームの速度の変化の上限 [m/s]（顿帧の後で烟が吹き飛ばないように）と、瞬間移動とみなす速さ [m/s]（それを超えた
-// フレームは見積もりをやり直し、烟を押さない）。
+// 1 フレームの速度の変化の上限 [m/s]（顿帧の後で烟が吹き飛ばないように）。kFluidTeleportSpeed を超えたフレームは
+// 見積もりを止め、烟を押さない。
 constexpr float kMotionSmoothingSeconds = 0.1f;
 constexpr float kMaximumFrameVelocityChange = 12.0f;
-constexpr float kTeleportSpeed = 60.0f;
 // 占有：この密度を超える砖块を「烟がある」とみなす。
 constexpr float kOccupiedDensity = 1.0e-3f;
 
@@ -222,7 +222,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
             const float dt = submission.deltaSeconds;
             const MATH::Vec3 velocity = (submission.worldPosition - domain.previousPosition) * (1.0f / dt);
             // 作り直した最初のフレームは前の位置が無い。瞬間移動のフレームは見積もりを止め、烟を押さない。
-            if (domain.motionInitialized && MATH::Length(velocity) <= kTeleportSpeed) {
+            if (domain.motionInitialized && MATH::Length(velocity) <= kFluidTeleportSpeed) {
                 const float weight = 1.0f - std::exp(-dt / kMotionSmoothingSeconds);
                 MATH::Vec3 change = (velocity - domain.smoothedVelocity) * weight;
                 const float magnitude = MATH::Length(change);
@@ -310,6 +310,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         constants.inertia[1] = inertia.y;
         constants.inertia[2] = inertia.z;
         constants.interactions[0] = interactionCount;
+        constants.interactions[1] = domain.resources.ActivityOffset();
         const auto allocation = upload.Allocate(sizeof(constants));
         if (!allocation)
             return 0u;
@@ -331,10 +332,11 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         }
         return allocation.gpuAddress;
     };
+    // 冲量を先に置く（一度きりのゲームの事件なので落とさない。溜める数は表の大きさまで）。障碍物と力は残りの席に入る。
     const auto uploadInteractions = [&](uint32_t& outCount) -> D3D12_GPU_VIRTUAL_ADDRESS {
-        const size_t impulses =
-            (std::min)(domain.impulses.size(), kMaximumFluidInteractionsPerDomain - steadyInteractions.size());
-        const size_t count = steadyInteractions.size() + impulses;
+        const size_t impulses = domain.impulses.size();
+        const size_t count =
+            impulses + (std::min)(steadyInteractions.size(), kMaximumFluidInteractionsPerDomain - impulses);
         outCount = static_cast<uint32_t>(count);
         const auto allocation = upload.Allocate((std::max<size_t>)(count, 1u) * sizeof(INTERNAL::FluidInteractionGpu));
         if (!allocation)
@@ -342,9 +344,8 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         auto* table = static_cast<INTERNAL::FluidInteractionGpu*>(allocation.cpuAddress);
         std::memset(table, 0, sizeof(INTERNAL::FluidInteractionGpu));
         for (size_t index = 0; index < count; ++index) {
-            const FluidInteraction& interaction = index < steadyInteractions.size()
-                                                      ? steadyInteractions[index]
-                                                      : domain.impulses[index - steadyInteractions.size()].interaction;
+            const FluidInteraction& interaction =
+                index < impulses ? domain.impulses[index].interaction : steadyInteractions[index - impulses];
             table[index] =
                 INTERNAL::PackFluidInteraction(interaction, domain.framePosition, domain.frameRotation, domainVelocity);
         }
@@ -407,7 +408,8 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         const uint32_t width = layout.cells[u], height = layout.cells[v];
         if (slice.size[0] != width || slice.size[1] != height) {
             INTERNAL::RetireVolume(context, slice);
-            if (!INTERNAL::CreateFluidSliceTexture(context.device, width, height, slice))
+            if (!INTERNAL::CreateFluidSliceTexture(context.device, DXGI_FORMAT_R16G16B16A16_FLOAT, width, height,
+                                                   slice))
                 INTERNAL::RetireVolume(context, slice);
         }
         if (slice.resource) {
@@ -539,6 +541,22 @@ bool FluidVolumePass::RenderVolumes(const GFX::Context& context, const FluidRend
 }
 
 bool FluidVolumePass::HasRenderableDomains() const noexcept { return !impl_->renderList.empty(); }
+
+LIGHTING::CloudSolarVisibilityGpuData FluidVolumePass::PrepareSolarVisibility(const GFX::Context& context,
+                                                                              const SceneEnvironment& environment) {
+    Impl& impl = *impl_;
+    std::array<INTERNAL::FluidRenderDomain, INTERNAL::kMaximumRenderedFluidDomains> casters{};
+    size_t count = 0u;
+    for (const INTERNAL::FluidRenderDomain& domain : impl.renderList)
+        if (domain.settings.castShadows && count < casters.size())
+            casters[count++] = domain;
+    if (count == 0u)
+        return {};
+    const ATMOSPHERE::AtmosphereSolarState solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
+    if (solar.sunRadiance <= 0.0f)
+        return {};
+    return impl.renderer.RenderSolarVisibility(context, {casters.data(), count}, solar.sunDirection);
+}
 FluidCameraVolumeView FluidVolumePass::GetCameraVolume() const noexcept { return impl_->renderer.GetCameraVolume(); }
 
 void FluidVolumePass::ReleaseNamespace(uint64_t playbackNamespace) {

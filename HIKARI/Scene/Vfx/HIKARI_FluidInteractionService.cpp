@@ -12,9 +12,6 @@ using RENDER3D::FLUID::FluidInteraction;
 using RENDER3D::FLUID::FluidInteractionKind;
 using RENDER3D::FLUID::FluidInteractionShape;
 
-// 一フレームの移動から決める障碍物の速さの上限 [m/s]（瞬間移動で烟が吹き飛ばないように）。
-constexpr float kMaximumObstacleSpeed = 60.0f;
-
 bool InRange(float value, float low, float high) noexcept {
     return MATH::IsFinite(value) && value >= low && value <= high;
 }
@@ -41,8 +38,8 @@ bool IsHidden(const World& world, const GameObject* owner) noexcept {
 }
 } // namespace
 
-GameProjectWorldResultCode FluidInteractionService::Submit(uint64_t owner, uint64_t instance,
-                                                           const FluidInteraction& interaction,
+GameProjectWorldResultCode FluidInteractionService::Submit(FluidInteractionSource source, uint64_t owner,
+                                                           uint64_t instance, const FluidInteraction& interaction,
                                                            uint64_t frameIndex) noexcept {
     if (owner == 0u || instance == 0u || !IsValid(interaction))
         return GameProjectWorldResultCode::InvalidRequest;
@@ -50,24 +47,25 @@ GameProjectWorldResultCode FluidInteractionService::Submit(uint64_t owner, uint6
         count_ = 0u;
         frameIndex_ = frameIndex;
     }
-    FluidInteraction stored = interaction;
-    stored.worldRotation = MATH::NormalizeQ(stored.worldRotation);
-    stored.velocity = {};
+    Entry entry{source, owner, instance, interaction};
+    entry.interaction.worldRotation = MATH::NormalizeQ(entry.interaction.worldRotation);
+    entry.interaction.velocity = {};
     for (uint32_t index = 0u; index < count_; ++index) {
-        if (entries_[index].owner == owner && entries_[index].instance == instance) {
-            entries_[index].interaction = stored;
+        if (entries_[index].Same(entry)) {
+            entries_[index] = entry;
             return GameProjectWorldResultCode::Success;
         }
     }
     if (count_ == entries_.size())
         return GameProjectWorldResultCode::MutationRejected;
-    entries_[count_++] = {owner, instance, stored};
+    entries_[count_++] = entry;
     return GameProjectWorldResultCode::Success;
 }
 
-void FluidInteractionService::Remove(uint64_t owner, uint64_t instance) noexcept {
+void FluidInteractionService::Remove(FluidInteractionSource source, uint64_t owner, uint64_t instance) noexcept {
+    const Entry key{source, owner, instance, {}};
     for (uint32_t index = 0u; index < count_; ++index) {
-        if (entries_[index].owner == owner && entries_[index].instance == instance) {
+        if (entries_[index].Same(key)) {
             std::move(entries_.begin() + index + 1u, entries_.begin() + count_, entries_.begin() + index);
             --count_;
             return;
@@ -96,14 +94,13 @@ std::span<const FluidInteraction> FluidInteractionService::PrepareFrame(const Wo
         FluidInteraction& interaction = entry.interaction;
         if (interaction.kind == FluidInteractionKind::Obstacle && consecutive) {
             for (uint32_t previous = 0u; previous < previousCount_; ++previous) {
-                if (previous_[previous].owner != entry.owner || previous_[previous].instance != entry.instance)
+                if (!previous_[previous].Same(entry))
                     continue;
-                MATH::Vec3 velocity =
+                // 瞬間移動（生まれ直し、編集中のドラッグ、形の並びの入れ替え）は速度 0：烟を押さない。
+                const MATH::Vec3 velocity =
                     (interaction.worldPosition - previous_[previous].interaction.worldPosition) * (1.0f / deltaSeconds);
-                const float speed = MATH::Length(velocity);
-                if (speed > kMaximumObstacleSpeed)
-                    velocity = velocity * (kMaximumObstacleSpeed / speed);
-                interaction.velocity = velocity;
+                interaction.velocity =
+                    MATH::Length(velocity) <= RENDER3D::FLUID::kFluidTeleportSpeed ? velocity : MATH::Vec3{};
                 break;
             }
         }

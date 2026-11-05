@@ -54,7 +54,8 @@ GameProjectWorldResult FluidView::Submit(GameProjectObjectHandle owner, uint64_t
         return result;
     RENDER3D::FLUID::FluidInteraction converted{};
     result.code = Convert(interaction, converted)
-                      ? service->Submit(owner.value, instanceId, converted, TIME::GetFrameContext().frameIndex)
+                      ? service->Submit(FluidInteractionSource::Project, owner.value, instanceId, converted,
+                                        TIME::GetFrameContext().frameIndex)
                       : GameProjectWorldResultCode::InvalidRequest;
     return result;
 }
@@ -63,7 +64,7 @@ GameProjectWorldResult FluidView::Remove(GameProjectObjectHandle owner, uint64_t
     FluidInteractionService* service = nullptr;
     auto result = Resolve(world_, owner, instanceId, service);
     if (result.Succeeded())
-        service->Remove(owner.value, instanceId);
+        service->Remove(FluidInteractionSource::Project, owner.value, instanceId);
     return result;
 }
 

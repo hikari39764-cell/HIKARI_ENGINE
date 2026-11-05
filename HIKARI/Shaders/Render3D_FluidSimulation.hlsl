@@ -13,7 +13,7 @@ cbuffer FluidDomainCB : register(b0)
     float4 gDissipation;  // x 密度の消散 [1/s]、y 温度の消散 [1/s]
     float4 gUp;           // xyz 域の局所の上向き
     float4 gInertia;      // xyz 挂点の加速度の逆向き（域の局所 [m/s²]）
-    uint4 gInteractionCount; // x 押すもの（障碍物・冲量・力）の数
+    uint4 gInteractionCount; // x 押すもの（障碍物・冲量・力）の数、y gStats の中の砖块の活動状態の位置 [byte]
 };
 
 cbuffer FluidPassCB : register(b1)
@@ -49,6 +49,38 @@ float3 Cells() { return float3(gSize.xyz); }
 float3 VelocityTexels() { return float3(gSize.xyz + 1u); }
 bool InsideCells(uint3 cell) { return all(cell < gSize.xyz); }
 bool InsideFaces(uint3 face) { return all(face <= gSize.xyz); }
+
+// ---------------------------------------------------------------- 疎な解算
+// 砖块（8³ 格）ごとの活動状態（ActivityCS が子步ごとに書く、1 で動いている）。動いていない砖块では重い処理（MacCormack の
+// 平流、旋度、源と力）を飛ばし、速度は前のまま写し、密度は 0 にする。散度・圧力・投影は域全体で解くので、烟の無い所の
+// 空気も圧力で押されて非圧縮のまま動く（自分の流れでは運ばれず、力も受けない）。
+static const uint kWorkPassive = 0u;
+static const uint kWorkCompute = 1u;
+
+uint3 BrickGrid() { return (gSize.xyz + 7u) / 8u; }
+uint BrickIndex(uint3 brick) { return brick.x + BrickGrid().x * (brick.y + BrickGrid().y * brick.z); }
+
+uint CellWork(uint3 cell)
+{
+    return (gStats.Load(gInteractionCount.y + BrickIndex(cell >> 3u) * 4u) & 1u) != 0u ? kWorkCompute : kWorkPassive;
+}
+
+uint StrongerWork(uint a, uint b) { return max(a, b); }
+
+// 面の格子 face（格 face の下側の 3 面）の処理：その面を共有する格（face と、各軸で 1 つ下の格）のどれかが動いていれば解く。
+uint FaceWork(uint3 face)
+{
+    uint work = InsideCells(face) ? CellWork(face) : kWorkPassive;
+    [unroll] for (uint axis = 0u; axis < 3u; ++axis)
+    {
+        int3 below = int3(face);
+        below[axis] -= 1;
+        if (below[axis] >= 0 && all(below < int3(gSize.xyz)))
+            work = StrongerWork(work, CellWork(uint3(below)));
+    }
+    return work;
+}
+
 
 // 格子座標 p の速度（格の中心は cell + 0.5）。
 float3 VelocityAt(Texture3D<float4> velocity, float3 p)
@@ -119,12 +151,46 @@ void ClearCS(uint3 id : SV_DispatchThreadID)
 }
 
 // ---------------------------------------------------------------- 平流
-// 前進：速度 t0（面 + 温度）と密度 t1 を速度で後ろへたどって読み、u0 / u1 へ書く。
+// 形状引导の速度 [m/s]（域の局所の点 p）：源の形の表面から帯の厚さの中の烟を表面へ引き戻す。烟（密度）の平流だけに足し、
+// 流れ（速度）には入れない。表面へ向かう流れは勾配の場で、速度へ入れると投影に打ち消され、圧力の残差だけが残って流れを
+// 乱す（128 格では烟が消える）。強さ guide.x [1/s] × 表面までの距離で寄せ、帯の端で 0 になる。
+float3 GuideVelocity(float3 p)
+{
+    float3 guide = 0.0f.xxx;
+    for (uint index = 0u; index < gSize.w; ++index)
+    {
+        const HikariFluidSource source = gSources[index];
+        if (source.guide.x <= 0.0f)
+            continue;
+        const float3 local = HikariFluidToSource(source, p);
+        const float distance = HikariFluidSourceDistance(source, local);
+        const float thickness = max(source.guide.y, 1.0e-3f);
+        if (abs(distance) >= thickness)
+            continue;
+        const float e = 0.25f * thickness;
+        const float3 gradient = float3(
+            HikariFluidSourceDistance(source, local + float3(e, 0, 0)) - HikariFluidSourceDistance(source, local - float3(e, 0, 0)),
+            HikariFluidSourceDistance(source, local + float3(0, e, 0)) - HikariFluidSourceDistance(source, local - float3(0, e, 0)),
+            HikariFluidSourceDistance(source, local + float3(0, 0, e)) - HikariFluidSourceDistance(source, local - float3(0, 0, e)));
+        const float3 normal = HikariFluidToDomain(source, gradient / max(length(gradient), 1.0e-6f));
+        guide -= normal * (distance * source.guide.x * (1.0f - abs(distance) / thickness));
+    }
+    return guide;
+}
+
+// 前進：速度 t0（面 + 温度）と密度 t1 を速度で後ろへたどって読み、u0 / u1 へ書く（密度は形状引导の速度も足す）。
 [numthreads(4, 4, 4)]
 void AdvectForwardCS(uint3 id : SV_DispatchThreadID)
 {
     if (!InsideFaces(id))
         return;
+    if (FaceWork(id) != kWorkCompute)
+    {
+        gOut0[id] = gIn0.Load(int4(id, 0));
+        if (InsideCells(id))
+            gOut1[id] = 0.0f.xxxx;
+        return;
+    }
     const float step = gCell.z * gCell.y;
     float4 velocity = 0.0f.xxxx;
     [unroll] for (uint axis = 0u; axis < 3u; ++axis)
@@ -139,23 +205,37 @@ void AdvectForwardCS(uint3 id : SV_DispatchThreadID)
         t[axis] += 0.5f;
         velocity[axis] = gIn0.SampleLevel(gLinearClamp, t / VelocityTexels(), 0)[axis];
     }
-    if (InsideCells(id))
+    if (InsideCells(id) && CellWork(id) == kWorkCompute)
     {
         const float3 p = float3(id) + 0.5f;
-        const float3 back = p - step * VelocityAt(gIn0, p);
+        const float3 u = VelocityAt(gIn0, p);
+        const float3 back = p - step * u;
         velocity.w = gIn0.SampleLevel(gLinearClamp, back / VelocityTexels(), 0).w;
-        gOut1[id] = float4(DensityAt(gIn1, back), 0.0f, 0.0f, 0.0f);
+        gOut1[id] = float4(DensityAt(gIn1, p - step * (u + GuideVelocity(DomainPosition(p)))), 0.0f, 0.0f, 0.0f);
+    }
+    else if (InsideCells(id))
+    {
+        velocity.w = gIn0.Load(int4(id, 0)).w;
+        gOut1[id] = 0.0f.xxxx;
     }
     gOut0[id] = velocity;
 }
 
 // 修正：t0 元の速度、t1 元の密度、t2 前進の速度、t3 前進の密度。前進の結果を進む向きにたどり直した値との差の半分で
-// 誤差を打ち消し、後ろへたどった位置の元の 8 標本の範囲を外れたら前進の結果へ戻す。消散もここで掛ける。
+// 誤差を打ち消し、後ろへたどった位置の元の 8 標本の範囲を外れたら前進の結果へ戻す。消散もここで掛ける。密度は形状引导の
+// 速度を足した流れでたどる。
 [numthreads(4, 4, 4)]
 void AdvectCorrectCS(uint3 id : SV_DispatchThreadID)
 {
     if (!InsideFaces(id))
         return;
+    if (FaceWork(id) != kWorkCompute)
+    {
+        gOut0[id] = gIn0.Load(int4(id, 0));
+        if (InsideCells(id))
+            gOut1[id] = 0.0f.xxxx;
+        return;
+    }
     const float step = gCell.z * gCell.y;
     float4 velocity = 0.0f.xxxx;
     [unroll] for (uint axis = 0u; axis < 3u; ++axis)
@@ -175,7 +255,12 @@ void AdvectCorrectCS(uint3 id : SV_DispatchThreadID)
         FaceRange(gIn0, axis, p - step * u, low, high);
         velocity[axis] = corrected < low || corrected > high ? forward : corrected;
     }
-    if (InsideCells(id))
+    if (InsideCells(id) && CellWork(id) != kWorkCompute)
+    {
+        velocity.w = gIn0.Load(int4(id, 0)).w;
+        gOut1[id] = 0.0f.xxxx;
+    }
+    else if (InsideCells(id))
     {
         const float3 p = float3(id) + 0.5f;
         const float3 u = VelocityAt(gIn0, p);
@@ -188,9 +273,11 @@ void AdvectCorrectCS(uint3 id : SV_DispatchThreadID)
         CellRange(gIn0, 3u, back, int3(gSize.xyz) - 1, low, high);
         temperature = temperature < low || temperature > high ? temperatureForward : temperature;
         velocity.w = temperature * exp(-gDissipation.y * gCell.z);
+        // 密度は前進と同じ「流れ + 形状引导」の速度でたどり直す。
+        const float3 carried = u + GuideVelocity(DomainPosition(p));
         const float densityForward = gIn3.Load(int4(id, 0)).x;
-        float density = densityForward + 0.5f * (gIn1.Load(int4(id, 0)).x - DensityAt(gIn3, ahead));
-        CellRange(gIn1, 0u, back, int3(gSize.xyz) - 1, low, high);
+        float density = densityForward + 0.5f * (gIn1.Load(int4(id, 0)).x - DensityAt(gIn3, p + step * carried));
+        CellRange(gIn1, 0u, p - step * carried, int3(gSize.xyz) - 1, low, high);
         density = density < low || density > high ? densityForward : density;
         gOut1[id] = float4(max(density, 0.0f) * exp(-gDissipation.x * gCell.z), 0.0f, 0.0f, 0.0f);
     }
@@ -204,6 +291,11 @@ void CurlCS(uint3 id : SV_DispatchThreadID)
 {
     if (!InsideCells(id))
         return;
+    if (CellWork(id) != kWorkCompute)
+    {
+        gOut0[id] = 0.0f.xxxx;
+        return;
+    }
     const int3 limit = int3(gSize.xyz) - 1;
     const float3 xp = CellVelocity(gIn0, uint3(min(int3(id) + int3(1, 0, 0), limit)));
     const float3 xn = CellVelocity(gIn0, uint3(max(int3(id) - int3(1, 0, 0), 0)));
@@ -241,22 +333,6 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
     else
         acceleration += field;
     acceleration += source.wind.xyz * falloff - velocity * (source.wind.w * falloff);
-    // 形状引导：形の表面から帯の厚さの中の烟を表面へ引き戻す。
-    if (source.guide.x > 0.0f)
-    {
-        const float distance = HikariFluidSourceDistance(source, local);
-        const float thickness = max(source.guide.y, 1.0e-3f);
-        if (abs(distance) < thickness)
-        {
-            const float e = 0.25f * thickness;
-            const float3 gradient = float3(
-                HikariFluidSourceDistance(source, local + float3(e, 0, 0)) - HikariFluidSourceDistance(source, local - float3(e, 0, 0)),
-                HikariFluidSourceDistance(source, local + float3(0, e, 0)) - HikariFluidSourceDistance(source, local - float3(0, e, 0)),
-                HikariFluidSourceDistance(source, local + float3(0, 0, e)) - HikariFluidSourceDistance(source, local - float3(0, 0, e)));
-            const float3 normal = HikariFluidToDomain(source, gradient / max(length(gradient), 1.0e-6f));
-            acceleration -= normal * (distance * source.guide.x * (1.0f - abs(distance) / thickness));
-        }
-    }
     if (mask <= 0.0f)
         return;
     // 注入する速度（源の局所の速度と放射方向）へ寄せる。
@@ -292,11 +368,18 @@ void ApplyPush(HikariFluidInteraction interaction, float3 p, inout float3 accele
     acceleration += interaction.velocity.xyz * (HikariFluidInteractionKind(interaction) == 1u ? amount / gCell.z : amount);
 }
 
-// 向きの無い冲量・力の湧き出し率 [1/s]（開いた境界の域だけ。閉じた箱では非圧縮の流体は逃げ場が無い）。中心から二乗で
-// 弱まり、半径の球面を外へ strength [m/s] で流れ出る量にする（4πR²S = ∫e dV、∫(1-r/R)² dV = 2πR³/15）。負で吸い込む。
+// 体積の湧き出し率 [1/s]（開いた境界の域だけ。閉じた箱では非圧縮の流体は逃げ場が無い）。負で吸い込む。
+// 源の outflow は形の中で一様（率は C++ で表面積 / 体積を掛けてある）。向きの無い冲量・力は中心から二乗で弱まり、
+// 半径の球面を外へ strength [m/s] で流れ出る量にする（4πR²S = ∫e dV、∫(1-r/R)² dV = 2πR³/15）。
 float Expansion(float3 p)
 {
     float expansion = 0.0f;
+    for (uint source = 0u; source < gSize.w; ++source)
+    {
+        if (gSources[source].flow.x != 0.0f)
+            expansion += gSources[source].flow.x *
+                         HikariFluidSourceMask(gSources[source], HikariFluidToSource(gSources[source], p));
+    }
     for (uint index = 0u; index < gInteractionCount.x; ++index)
     {
         const HikariFluidInteraction interaction = gInteractions[index];
@@ -325,6 +408,11 @@ void ForceFieldCS(uint3 id : SV_DispatchThreadID)
 {
     if (!InsideCells(id))
         return;
+    if (CellWork(id) != kWorkCompute)
+    {
+        gOut0[id] = float4(0.0f, 0.0f, 0.0f, gIn0.Load(int4(id, 0)).w);
+        return;
+    }
     const float3 grid = float3(id) + 0.5f;
     const float3 p = DomainPosition(grid);
     const float3 velocity = CellVelocity(gIn0, id);
@@ -459,13 +547,41 @@ void ResidualRestrictCS(uint3 id : SV_DispatchThreadID)
     gOut1[id] = 0.0f.xxxx;
 }
 
-// 粗い段の誤差を細かい段へ足す：t0 粗い段の圧力 → u0 細かい段の圧力。
+// 粗い段の格 c の誤差。外は Neighbors と同じ約束：開いた境界は面の上で 0（外の幽霊の格は内の格の符号反転）、閉じた壁は
+// 勾配 0（内の格のまま）。
+float CoarseCorrection(int3 c, int3 size)
+{
+    float sign = 1.0f;
+    [unroll] for (uint axis = 0u; axis < 3u; ++axis)
+    {
+        if (c[axis] < 0 || c[axis] >= size[axis])
+        {
+            c[axis] = clamp(c[axis], 0, size[axis] - 1);
+            sign = Closed() ? sign : -sign;
+        }
+    }
+    return sign * gIn0.Load(int4(c, 0)).x;
+}
+
+// 粗い段の誤差を細かい段へ足す：t0 粗い段の圧力 → u0 細かい段の圧力。格の中心どうしの三線形補間（重み 3/4・1/4）。
+// 開いた境界の面に接する格は幽灵の格（符号反転）と補間し、面の上で修正が 0 になる。標本器の端の延長（clamp）だと
+// 修正が段ごとに 2 倍になり、5 段（128³）で発散した。
 [numthreads(4, 4, 4)]
 void ProlongCS(uint3 id : SV_DispatchThreadID)
 {
     if (any(id >= gPassSize.xyz))
         return;
-    const float correction = gIn0.SampleLevel(gLinearClamp, (float3(id) + 0.5f) / float3(gPassSize.xyz), 0).x;
+    const int3 coarse = int3(gPassSize.xyz) / 2;
+    const float3 p = (float3(id) + 0.5f) * 0.5f - 0.5f;
+    const int3 base = int3(floor(p));
+    const float3 f = p - float3(base);
+    float correction = 0.0f;
+    [unroll] for (uint corner = 0u; corner < 8u; ++corner)
+    {
+        const int3 offset = int3(corner & 1u, (corner >> 1u) & 1u, corner >> 2u);
+        const float3 w = lerp(1.0f - f, f, float3(offset));
+        correction += w.x * w.y * w.z * CoarseCorrection(base + offset, coarse);
+    }
     gOut0[id] = gOut0[id].x + correction;
 }
 
@@ -560,6 +676,40 @@ void OccupancyCS(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint 
         const uint3 bricks = (gSize.xyz + 7u) / 8u;
         gStats.Store((group.x + bricks.x * (group.y + bricks.y * group.z)) * 4u, asuint(gBrickMax[0]));
     }
+}
+
+// 砖块ごとの活動状態（子步の頭）：OccupancyCS の最大密度が烟のある砖块と、その 26 近傍を動かす。注入・吸い込み・流れを
+// 入れる源（域全体の形は除く）の形に触れる砖块も動かす。
+[numthreads(4, 4, 4)]
+void ActivityCS(uint3 id : SV_DispatchThreadID)
+{
+    const uint3 bricks = BrickGrid();
+    if (any(id >= bricks))
+        return;
+    bool active = false;
+    [loop] for (int z = -1; z <= 1 && !active; ++z)
+        [loop] for (int y = -1; y <= 1 && !active; ++y)
+            [loop] for (int x = -1; x <= 1 && !active; ++x)
+            {
+                const int3 neighbor = int3(id) + int3(x, y, z);
+                if (all(neighbor >= 0) && all(neighbor < int3(bricks)))
+                    active = asfloat(gStats.Load(BrickIndex(uint3(neighbor)) * 4u)) > 1.0e-3f;
+            }
+    const float3 center = DomainPosition(float3(id) * 8.0f + 4.0f);
+    const float reach = 0.5f * sqrt(3.0f) * 8.0f * gCell.x;
+    for (uint index = 0u; index < gSize.w && !active; ++index)
+    {
+        const HikariFluidSource source = gSources[index];
+        const bool feeds = source.emission.x > 0.0f || source.emission.y > 0.0f || source.flow.x != 0.0f ||
+                           any(source.velocity != 0.0f);
+        if (!feeds || (uint)(source.shape.x + 0.5f) == 7u)
+            continue;
+        // 源の局所の長さは域の長さ × 拡縮の逆（縁の柔らかさ guide.w = 1.5 格 × 拡縮の逆）。
+        const float toSource = source.guide.w / (1.5f * gCell.x);
+        active = HikariFluidSourceDistance(source, HikariFluidToSource(source, center)) <
+                 reach * toSource + source.guide.w;
+    }
+    gStats.Store(gInteractionCount.y + BrickIndex(id) * 4u, active ? 1u : 0u);
 }
 
 // 投影後の散度の最大と密度の総量を砖块ごとに書く（gPassParams.w からの位置、8 byte ずつ）。t0 速度、t1 密度。

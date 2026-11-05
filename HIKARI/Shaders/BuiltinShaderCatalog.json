@@ -1841,6 +1841,12 @@
       "defines": [],
       "entries": [
         {
+          "id": "ActivityCS",
+          "stage": "Compute",
+          "entry": "ActivityCS",
+          "profile": "cs_6_0"
+        },
+        {
           "id": "AdvectCorrectCS",
           "stage": "Compute",
           "entry": "AdvectCorrectCS",
@@ -1933,8 +1939,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.FluidSimulation",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "5b3d607245102e16c1b8d40a3e0ecee5013b854ce623240d4166ce3e606f3425",
+        "engineInterfaceVersion": 9,
+        "engineInterfaceHash": "f6f72a6a07d9dc135408570fde869b04eba503d4fdd91f3f2090aa390ddb0256",
         "rootLayoutId": "HIKARI.FluidSimulation.Root",
         "rootLayoutVersion": 2,
         "rootLayoutHash": "ce8e821375e14f195f1e8a6a9b96e12daa81213369470973d366d7d038a663cf",
@@ -1999,15 +2005,21 @@
           "stage": "Pixel",
           "entry": "ReconstructPS",
           "profile": "ps_6_0"
+        },
+        {
+          "id": "SolarVisibilityCS",
+          "stage": "Compute",
+          "entry": "SolarVisibilityCS",
+          "profile": "cs_6_0"
         }
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.FluidVolume",
-        "engineInterfaceVersion": 1,
-        "engineInterfaceHash": "8ad211ebd2066b3368c5e186a8b977270e3f4fccc3537a357f59aedfc764865c",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "43a812372d6a74061f5574cb2dff75ff1fcd33ceaadcec6e1115f45caa9c2d29",
         "rootLayoutId": "HIKARI.FluidVolume.Root",
-        "rootLayoutVersion": 1,
-        "rootLayoutHash": "d04e26a758b93b22cdbb22ff52bb9c67e40e8daa644096028c0369ed1b1bf73b",
+        "rootLayoutVersion": 2,
+        "rootLayoutHash": "772075a1fb87629a725d4fde905b18b2d8509e1ecd3c28c54d862eab4f2c7f45",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

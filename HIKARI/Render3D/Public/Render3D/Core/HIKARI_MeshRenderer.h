@@ -103,8 +103,11 @@ bool IsGpuDrivenCullingCameraFrozen();
 const CameraCB* GetCameraConstants();
 const CameraCB* GetGpuDrivenCullingCameraConstants();
 MeshMaterialGpuFrameView GetMaterialGpuFrameView(const GFX::Context& graphics);
+// 照明の提供者（照度体積の選択、雲の影の表、流体の烟の影の表）を天空の定数へ入れて公開する。流体の解算（BeginFrame）の後、
+// 前向きの前に呼ぶ。
 bool RefreshLightingProviders(const GFX::Context& graphics,
-                              const RENDER3D::LIGHTING::CloudSolarVisibilityGpuData& clouds);
+                              const RENDER3D::LIGHTING::CloudSolarVisibilityGpuData& clouds,
+                              const SceneEnvironment& environment);
 RENDER3D::LIGHTING::LocalLightListGpuBindings GetLocalLightListGpuBindings();
 // 今フレームの地形の記録と高さ場の float pool（描画と同じ番地）。光線追跡の場面が地形を変形して入れるのに使う。
 struct TerrainSurfaceGpuBindings {
