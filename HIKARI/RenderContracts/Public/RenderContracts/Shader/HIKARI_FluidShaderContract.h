@@ -75,21 +75,21 @@ inline ShaderAssetResolveResult ResolveFluidSimulationShaderEntry(
     return resolved;
 }
 
-// 体積流体の描画（Render3D_FluidVolume.hlsl）：計算（ノイズ・光照体積・相機体積・烟の影の表）と全画面（步进・時間の再構成・
-// 合成）が同じ根を使う。
+// 体積流体の描画（Render3D_FluidVolume.hlsl）：計算（ノイズ・光照体積・相機体積・烟の影の表）と全画面（步进・合成）が
+// 同じ根を使う。
 inline constexpr std::string_view kFluidVolumeShaderProgram = "HIKARI.EngineShader.Render3D_FluidVolume";
 inline constexpr std::string_view kFluidVolumeShaderRootCanonical =
-    "HIKARI.FluidVolume.Root.v2|0:CBV(b0,All)|1:RootConstants(b1,space0,4,All)|2..19:SRVTable(t0..t17,count1,All)|"
-    "20:UAVTable(u0,count1,All)|21:UAVTable(u1,count1,All)|StaticSampler(s0,LinearClamp)|StaticSampler(s1,LinearBorderTransparentBlack)|"
+    "HIKARI.FluidVolume.Root.v3|0:CBV(b0,All)|1:RootConstants(b1,space0,4,All)|2..18:SRVTable(t0..t16,count1,All)|"
+    "19:UAVTable(u0,count1,All)|20:UAVTable(u1,count1,All)|StaticSampler(s0,LinearClamp)|StaticSampler(s1,LinearBorderTransparentBlack)|"
     "StaticSampler(s2,LinearWrap)|StaticSampler(s3,PointClamp)|StaticSampler(s4,ComparisonLinearBorderWhite)|"
     "Flags(None)";
 inline constexpr std::string_view kFluidVolumeShaderInterfaceCanonical =
-    "FluidRenderCB:1216;mat4 inverseViewProj,previousViewProj;float4 camera,forward,size(half,"
-    "render),sun(direction,shadowed),sunRadiance,ambient(rgb,exposureRatio),frame(jitter,historyWeight,steps,"
+    "FluidRenderCB:1152;mat4 inverseViewProj;float4 camera,forward,size(half,"
+    "render),sun(direction,shadowed),sunRadiance,ambient(rgb,unused),frame(unused,unused,steps,"
     "domains);cameraVolume(near,logRange,slices,samples);mat4 lightViewProj[4];float4 splits,shadowParams,"
     "shadowSampling,shadowBias;solarTable(origin,right extent,up resolution,toSun steps);FluidDomain[4]:144 toGrid[3],cells,look,emission,optics,detail,sun;"
-    "t0..t3 density,t4..t7 velocity,t8..t11 light RG16F half,t12 scene depth,t13/t14 march color RGBA16F/depth "
-    "RG32F,t15 history,t16 noise R8 64^3,t17 shadow atlas;premultiplied pre-exposed scattering and "
+    "t0..t3 density,t4..t7 velocity,t8..t11 light RG16F half,t12 scene depth,t13/t14 march color RGBA16F/stopped "
+    "depth R32F,t15 noise R8 64^3,t16 shadow atlas;premultiplied pre-exposed scattering and "
     "transmittance;composite ONE/INV_SRC_ALPHA;camera volume log slices;u1 solar atlas RG32F cloud-solar layout "
     "tile0 near/far,tiles 1..steps far->near transmittance";
 
@@ -97,9 +97,9 @@ inline ShaderAssetContractExpectation MakeFluidVolumeShaderContract(
     ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = "HIKARI.FluidVolume";
-    contract.engineInterfaceVersion = 2u;
+    contract.engineInterfaceVersion = 3u;
     contract.rootLayoutId = "HIKARI.FluidVolume.Root";
-    contract.rootLayoutVersion = 2u;
+    contract.rootLayoutVersion = 3u;
     contract.availableDeviceCaps = availableCaps;
     if (!HASH::ComputeSha256(kFluidVolumeShaderInterfaceCanonical, contract.engineInterfaceHash) ||
         !HASH::ComputeSha256(kFluidVolumeShaderRootCanonical, contract.rootLayoutHash)) {

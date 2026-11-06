@@ -15,7 +15,7 @@
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 
-// 1 視図の流体の描画の記録：定数を詰め、光照体積・相機体積・步进・再構成・合成を順に記録する。
+// 1 視図の流体の描画の記録：定数を詰め、光照体積・相機体積・步进・合成を順に記録する。
 
 namespace HIKARI::RENDER3D::FLUID::INTERNAL {
 namespace {
@@ -32,7 +32,6 @@ static_assert(sizeof(RenderDomainGpu) == 144u);
 
 struct alignas(16) RenderConstants {
     MATH::Mat4 invViewProj{};
-    MATH::Mat4 prevViewProj{};
     float camera[4];
     float forward[4];
     float size[4];
@@ -49,7 +48,7 @@ struct alignas(16) RenderConstants {
     LIGHTING::CloudSolarVisibilityGpuData solarTable{};
     RenderDomainGpu domains[kMaximumRenderedFluidDomains];
 };
-static_assert(sizeof(RenderConstants) == 1216u);
+static_assert(sizeof(RenderConstants) == 1152u);
 
 void Set4(float (&out)[4], float x, float y, float z, float w) {
     out[0] = x;
@@ -140,19 +139,7 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     upload.ResetForFrame(context.currentFrameRetireFenceValue);
 
     RenderConstants constants{};
-    // 履歴は直前のフレームに同じ域の組を描いた時だけ使う（停めていた間や作り直した後の烟を混ぜない）。
-    uint64_t signature = 1469598103934665603ull;
-    for (size_t index = 0u; index < count; ++index) {
-        const uint64_t parts[2] = {reinterpret_cast<uintptr_t>(domains[index].light->resource.Get()),
-                                   domains[index].generation};
-        for (const uint64_t part : parts)
-            signature = (signature ^ part) * 1099511628211ull;
-    }
-    const bool useHistory = view.historyValid && state.historyValid && state.domainSignature == signature &&
-                            state.lastFrame != UINT64_MAX &&
-                            state.lastFrame + 1u == context.currentFrameRetireFenceValue;
     constants.invViewProj = view.invViewProj;
-    constants.prevViewProj = useHistory ? state.previousViewProj : view.viewProj;
     Set4(constants.camera, view.cameraPosition.x, view.cameraPosition.y, view.cameraPosition.z, 0.0f);
     Set4(constants.forward, view.cameraForward.x, view.cameraForward.y, view.cameraForward.z, 0.0f);
     const uint32_t halfWidth = (view.renderWidth + 1u) / 2u, halfHeight = (view.renderHeight + 1u) / 2u;
@@ -164,10 +151,8 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     Set4(constants.sunRadiance, view.sunIlluminance.x * view.preExposure, view.sunIlluminance.y * view.preExposure,
          view.sunIlluminance.z * view.preExposure, 0.0f);
     Set4(constants.ambient, view.ambientRadiance.x * view.preExposure, view.ambientRadiance.y * view.preExposure,
-         view.ambientRadiance.z * view.preExposure, view.exposureRatio);
-    const double phase = std::fmod(static_cast<double>(context.currentFrameRetireFenceValue) * 0.6180339887, 1.0);
-    Set4(constants.frame, static_cast<float>(phase), useHistory ? kHistoryWeight : 0.0f, static_cast<float>(marchSteps),
-         static_cast<float>(count));
+         view.ambientRadiance.z * view.preExposure, 0.0f);
+    Set4(constants.frame, 0.0f, 0.0f, static_cast<float>(marchSteps), static_cast<float>(count));
     const float farthest = FarthestCorner(domains.first(count), view.cameraPosition, kCameraVolumeNear);
     Set4(constants.cameraVolume, kCameraVolumeNear, std::log(farthest / kCameraVolumeNear),
          static_cast<float>(kCameraVolumeSlices), kCameraVolumeSamples);
@@ -205,11 +190,10 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     const auto volumeAt = [&](size_t index, FluidVolume* FluidRenderDomain::* member) {
         return index < count ? (domains[index].*member)->srv.gpu : fallbackVolume_.srv.gpu;
     };
-    // 影を使わない時の t17 は場面の深度（読める状態の 2D）で埋める。
+    // 影を使わない時の t16 は場面の深度（読める状態の 2D）で埋める。
     const D3D12_GPU_DESCRIPTOR_HANDLE shadowSrv = shadowed ? SHADOW::GetDirectionalShadowSrv() : view.sceneDepthSrv;
-    // 全ての入力を束ねる（計算と全画面で同じ並び）。13〜16 はこのフレームに描画先にならない前の履歴で埋め、pass ごとに
-    // 必要なものを上書きする。
-    const D3D12_GPU_DESCRIPTOR_HANDLE previous = state.history[state.historyRead].srv.gpu;
+    // 全ての入力を束ねる（計算と全画面で同じ並び）。步进の結果（13、14）はまだ無いので場面の深度で埋め（読まない）、
+    // 合成の前に上書きする。
     const auto bindInputs = [&](auto setTable) {
         for (size_t slot = 0u; slot < kMaximumRenderedFluidDomains; ++slot) {
             setTable(kFirstInput + kDensity + static_cast<UINT>(slot), volumeAt(slot, &FluidRenderDomain::density));
@@ -217,8 +201,8 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
             setTable(kFirstInput + kLight + static_cast<UINT>(slot), volumeAt(slot, &FluidRenderDomain::light));
         }
         setTable(kFirstInput + kSceneDepth, view.sceneDepthSrv);
-        for (UINT input : {kInputColor, kInputDepth, kHistoryColor})
-            setTable(kFirstInput + input, previous);
+        for (UINT input : {kInputColor, kInputDepth})
+            setTable(kFirstInput + input, view.sceneDepthSrv);
         setTable(kFirstInput + kNoise, noiseVolume_.srv.gpu);
         setTable(kFirstInput + kShadow, shadowSrv);
     };
@@ -263,9 +247,8 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     TransitionVolume(commands, state.cameraVolume, kRead);
     cameraVolumeTimer.reset();
 
-    // 半分辨率の步进と時間の再構成（合成まで同じ区間で計る）。
+    // 半分辨率の步进（合成まで同じ区間で計る）。
     GFX::GPU_PROFILE::ScopedGpuTimer marchTimer(commands, GFX::GPU_PROFILE::Pass::FluidRenderMarch);
-    const uint32_t write = state.historyRead ^ 1u;
     const auto setGraphics = [&](UINT index, D3D12_GPU_DESCRIPTOR_HANDLE handle) {
         commands->SetGraphicsRootDescriptorTable(index, handle);
     };
@@ -292,31 +275,18 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     TransitionTarget(commands, state.marchColor, kRead);
     TransitionTarget(commands, state.marchDepth, kRead);
 
-    TransitionTarget(commands, state.history[write], D3D12_RESOURCE_STATE_RENDER_TARGET);
-    commands->OMSetRenderTargets(1, &state.history[write].rtv, FALSE, nullptr);
-    commands->SetGraphicsRootDescriptorTable(kFirstInput + kInputColor, state.marchColor.srv.gpu);
-    commands->SetGraphicsRootDescriptorTable(kFirstInput + kInputDepth, state.marchDepth.srv.gpu);
-    commands->SetGraphicsRootDescriptorTable(kFirstInput + kHistoryColor, state.history[state.historyRead].srv.gpu);
-    commands->SetPipelineState(reconstruct_.Get());
-    draw();
-    TransitionTarget(commands, state.history[write], kRead);
-
     // 場面へ重ねる。
     if (!bindSceneTarget())
         return false;
     commands->SetGraphicsRootSignature(root_.Get());
     commands->SetGraphicsRootConstantBufferView(kConstants, address);
     bindInputs(setGraphics);
-    commands->SetGraphicsRootDescriptorTable(kFirstInput + kInputColor, state.history[write].srv.gpu);
+    commands->SetGraphicsRootDescriptorTable(kFirstInput + kInputColor, state.marchColor.srv.gpu);
     commands->SetGraphicsRootDescriptorTable(kFirstInput + kInputDepth, state.marchDepth.srv.gpu);
     viewport(view.renderWidth, view.renderHeight);
     commands->SetPipelineState(composite_.Get());
     draw();
 
-    state.historyRead = write;
-    state.historyValid = true;
-    state.previousViewProj = view.viewProj;
-    state.domainSignature = signature;
     state.lastFrame = context.currentFrameRetireFenceValue;
     cameraVolumeView_ = {
         state.cameraVolume.srv.gpu,
@@ -451,11 +421,10 @@ LIGHTING::CloudSolarVisibilityGpuData FluidRenderer::RenderSolarVisibility(const
 
 namespace HIKARI::RENDER3D::FLUID {
 
-FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey, const MATH::Mat4& viewProj,
+FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey,
                                     const MATH::Mat4& invViewProj, const MATH::Vec3& cameraPosition) {
     FluidRenderView view{};
     view.viewKey = viewKey;
-    view.viewProj = viewProj;
     view.invViewProj = invViewProj;
     view.cameraPosition = cameraPosition;
     // 前方は近い面と遠い面の画面中心の差（透視と直交のどちらでも同じ式）。
@@ -468,7 +437,6 @@ FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_
     view.ambientRadiance = SKYRENDERER::EstimateSkyAmbientRadiance(environment);
     const MATH::Vec4& exposure = COLOR::GetActiveViewExposure();
     view.preExposure = exposure.x;
-    view.exposureRatio = exposure.w;
     view.sceneShadows = true;
     view.quality = GetRenderQualitySettings().fluidSmokeQuality;
     return view;

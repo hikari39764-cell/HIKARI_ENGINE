@@ -73,16 +73,14 @@ bool ExecuteFluidVolumes(const GRAPH::RenderGraphPassContext& graphPass, void* u
     const RenderFrameContext& frame = context.frame;
     const TEMPORAL::TemporalCameraData& camera = context.temporalFrame.camera;
     if (!frame.scene.depth.IsSampleable() || frame.scene.readOnlyDsv.ptr == 0u || !camera.valid ||
-        !MATH::IsFinite(camera.invViewProj) || !MATH::IsFinite(camera.prevViewProj)) {
+        !MATH::IsFinite(camera.invViewProj)) {
         return true;
     }
     try {
         // 場面の深度と同じ（抖动込みの）描画格子で步进する。
         FLUID::FluidRenderView view =
-            FLUID::MakeFluidRenderView(context.environment, frame.viewId.value, camera.viewProj, camera.invViewProj,
+            FLUID::MakeFluidRenderView(context.environment, frame.viewId.value, camera.invViewProj,
                                        {camera.cameraPos.x, camera.cameraPos.y, camera.cameraPos.z});
-        view.historyValid = context.temporalFrame.historyValid && !context.temporalFrame.resetHistory &&
-                            camera.previousValid && !frame.cameraCut;
         view.renderWidth = frame.renderWidth;
         view.renderHeight = frame.renderHeight;
         view.sceneDepthSrv = frame.scene.depth.srv;

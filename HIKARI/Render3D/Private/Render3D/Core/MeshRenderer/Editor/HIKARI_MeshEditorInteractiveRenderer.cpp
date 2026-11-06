@@ -272,8 +272,7 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
     if (gMeshRendererState.fluidPass.HasRenderableDomains() && passResources.sceneDepth.IsSampleable() &&
         settings.sceneColorFormat != DXGI_FORMAT_UNKNOWN && settings.targetAccess.BeginDepthRead()) {
         RENDER3D::FLUID::FluidRenderView fluidView = RENDER3D::FLUID::MakeFluidRenderView(
-            environment, view.viewId.value, viewProj, MATH::Inverse(viewProj), cameraPosition);
-        fluidView.historyValid = true;
+            environment, view.viewId.value, MATH::Inverse(viewProj), cameraPosition);
         fluidView.renderWidth = screenWidth;
         fluidView.renderHeight = screenHeight;
         fluidView.sceneDepthSrv = passResources.sceneDepth.srv;

@@ -100,14 +100,12 @@ struct FluidVolumePassStats {
 };
 
 // 描く視図（主視図と編集器の視図）。行列は場面の深度と同じ（抖动込みの）描画格子。光は絶対量で、前露光は preExposure。
-// 前のフレームの行列は描画側が視図ごとに覚える（historyValid が偽なら履歴を使わない）。
+// 時間方向の履歴は持たないので、前のフレームの行列は要らない。
 struct FluidRenderView {
     uint64_t viewKey = 0u;
-    MATH::Mat4 viewProj{};
     MATH::Mat4 invViewProj{};
     MATH::Vec3 cameraPosition{};
     MATH::Vec3 cameraForward{0.0f, 0.0f, 1.0f};
-    bool historyValid = false;
     uint32_t renderWidth = 0u;
     uint32_t renderHeight = 0u;
     D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv{};
@@ -117,7 +115,6 @@ struct FluidRenderView {
     MATH::Vec3 sunIlluminance{};
     MATH::Vec3 ambientRadiance{};
     float preExposure = 1.0f;
-    float exposureRatio = 1.0f;
     bool sceneShadows = false;
     FluidSmokeQuality quality = FluidSmokeQuality::Balanced;
 };
@@ -139,8 +136,8 @@ struct FluidFlowView {
 };
 
 // 視図の行列・相機の位置と場面の環境から、相機と光（大気を通った地表の太陽、空の環境光、今の露出）と画質を埋める。
-// 帧图の主視図と編集器の視図が共用し、描画の大きさ・深度・色の形式・履歴の有無は呼ぶ側が足す。
-FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey, const MATH::Mat4& viewProj,
+// 帧图の主視図と編集器の視図が共用し、描画の大きさ・深度・色の形式は呼ぶ側が足す。
+FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey,
                                     const MATH::Mat4& invViewProj, const MATH::Vec3& cameraPosition);
 
 struct FluidFrameSettings {

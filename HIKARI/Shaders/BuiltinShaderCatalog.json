@@ -2001,12 +2001,6 @@
           "profile": "cs_6_0"
         },
         {
-          "id": "ReconstructPS",
-          "stage": "Pixel",
-          "entry": "ReconstructPS",
-          "profile": "ps_6_0"
-        },
-        {
           "id": "SolarVisibilityCS",
           "stage": "Compute",
           "entry": "SolarVisibilityCS",
@@ -2015,11 +2009,11 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.FluidVolume",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "43a812372d6a74061f5574cb2dff75ff1fcd33ceaadcec6e1115f45caa9c2d29",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "1a980879da8869ac15a2316c89a17ba0f5fa5f8c77c97df04d0318dd80e929a8",
         "rootLayoutId": "HIKARI.FluidVolume.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "772075a1fb87629a725d4fde905b18b2d8509e1ecd3c28c54d862eab4f2c7f45",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "9e33caf84516f5ba701bd659e314eb307770ab453211664ea5cea63956c7366d",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

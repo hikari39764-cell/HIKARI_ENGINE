@@ -26,7 +26,6 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
         cameraVolume_.Reset();
         solar_.Reset();
         march_.Reset();
-        reconstruct_.Reset();
         composite_.Reset();
         compositeFormat_ = DXGI_FORMAT_UNKNOWN;
         failed_ = false;
@@ -97,9 +96,8 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
     if (sceneColorFormat == DXGI_FORMAT_UNKNOWN || (march_ && composite_ && compositeFormat_ == sceneColorFormat))
         return true;
     failed_ = true;
-    ASSETS::SHADER::ShaderAssetResolveResult vertex{}, marchShader{}, reconstructShader{}, compositeShader{};
+    ASSETS::SHADER::ShaderAssetResolveResult vertex{}, marchShader{}, compositeShader{};
     if (!resolve("FullscreenVS", ShaderStage::Vertex, vertex) || !resolve("MarchPS", ShaderStage::Pixel, marchShader) ||
-        !resolve("ReconstructPS", ShaderStage::Pixel, reconstructShader) ||
         !resolve("CompositePS", ShaderStage::Pixel, compositeShader))
         return false;
     D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
@@ -120,15 +118,10 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
     if (!HIKARI_DX_CHECK(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(march_.ReleaseAndGetAddressOf())),
                          "FluidRenderer::CreateMarchPipeline"))
         return false;
-    desc.PS = {reconstructShader.lease.GetDxil().data(), reconstructShader.lease.GetDxil().size()};
-    desc.NumRenderTargets = 1u;
-    desc.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
-    if (!HIKARI_DX_CHECK(
-            device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(reconstruct_.ReleaseAndGetAddressOf())),
-            "FluidRenderer::CreateReconstructPipeline"))
-        return false;
     // 合成は乗算済みの流体を場面の上へ重ねる（ONE / INV_SRC_ALPHA）。深度は読み取り専用で束ねたまま。
     desc.PS = {compositeShader.lease.GetDxil().data(), compositeShader.lease.GetDxil().size()};
+    desc.NumRenderTargets = 1u;
+    desc.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
     desc.RTVFormats[0] = sceneColorFormat;
     desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     D3D12_RENDER_TARGET_BLEND_DESC& blend = desc.BlendState.RenderTarget[0];
@@ -155,7 +148,7 @@ bool FluidRenderer::EnsureView(const GFX::Context& context, ViewState& state, ui
     ID3D12Device* device = context.device;
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    heapDesc.NumDescriptors = 4u;
+    heapDesc.NumDescriptors = 2u;
     if (!HIKARI_DX_CHECK(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(state.rtvHeap.GetAddressOf())),
                          "FluidRenderer::CreateRtvHeap"))
         return false;
@@ -177,7 +170,6 @@ bool FluidRenderer::EnsureView(const GFX::Context& context, ViewState& state, ui
     };
     const bool created =
         create(state.marchColor, kColorFormat, 0u) && create(state.marchDepth, kDepthFormat, 1u) &&
-        create(state.history[0], kColorFormat, 2u) && create(state.history[1], kColorFormat, 3u) &&
         CreateFluidVolumeTexture(device, kColorFormat, (width + kCameraVolumeTile - 1u) / kCameraVolumeTile,
                                  (height + kCameraVolumeTile - 1u) / kCameraVolumeTile, kCameraVolumeSlices,
                                  state.cameraVolume);
@@ -187,12 +179,11 @@ bool FluidRenderer::EnsureView(const GFX::Context& context, ViewState& state, ui
     }
     state.width = width;
     state.height = height;
-    state.historyValid = false;
     return true;
 }
 
 void FluidRenderer::RetireView(const GFX::Context& context, ViewState& state) {
-    for (Target* target : {&state.marchColor, &state.marchDepth, &state.history[0], &state.history[1]}) {
+    for (Target* target : {&state.marchColor, &state.marchDepth}) {
         RetireRenderResourceDescriptor(target->srv, context, "FluidRenderer.TargetSrv");
         if (target->resource)
             GFX::RetireD3D12ObjectForFrame(target->resource, context, "FluidRenderer.Target");
@@ -202,7 +193,6 @@ void FluidRenderer::RetireView(const GFX::Context& context, ViewState& state) {
         GFX::RetireD3D12ObjectForFrame(state.rtvHeap, context, "FluidRenderer.RtvHeap");
     RetireVolume(context, state.cameraVolume);
     state.width = state.height = 0u;
-    state.historyValid = false;
 }
 
 void FluidRenderer::TransitionTarget(ID3D12GraphicsCommandList* commands, Target& target, D3D12_RESOURCE_STATES state) {
@@ -277,7 +267,7 @@ void FluidRenderer::Shutdown(const GFX::Context& context) {
     noiseReady_ = false;
     for (ComPtr<ID3D12PipelineState>* pipeline :
          {std::addressof(noise_), std::addressof(light_), std::addressof(cameraVolume_), std::addressof(solar_),
-          std::addressof(march_), std::addressof(reconstruct_), std::addressof(composite_)})
+          std::addressof(march_), std::addressof(composite_)})
         if (*pipeline)
             GFX::RetireD3D12ObjectForFrame(*pipeline, context, "FluidRenderer.Pipeline");
     if (root_)
