@@ -30,7 +30,7 @@ GameProjectWorldResult Resolve(GameProjectWorldHandle identity, GameProjectObjec
 bool Convert(const GameProjectFluidInteraction& source, RENDER3D::FLUID::FluidInteraction& out) noexcept {
     if (source.structSize != sizeof(source) || source.apiVersion != kGameProjectFluidApiVersion ||
         source.reserved[0] != 0u || source.reserved[1] != 0u ||
-        static_cast<uint32_t>(source.kind) > static_cast<uint32_t>(GameProjectFluidInteractionKind::Force) ||
+        static_cast<uint32_t>(source.kind) > static_cast<uint32_t>(GameProjectFluidInteractionKind::Emit) ||
         static_cast<uint32_t>(source.shape) > static_cast<uint32_t>(GameProjectFluidShape::Box))
         return false;
     out.kind = static_cast<RENDER3D::FLUID::FluidInteractionKind>(source.kind);
@@ -65,6 +65,16 @@ GameProjectWorldResult FluidView::Remove(GameProjectObjectHandle owner, uint64_t
     auto result = Resolve(world_, owner, instanceId, service);
     if (result.Succeeded())
         service->Remove(FluidInteractionSource::Project, owner.value, instanceId);
+    return result;
+}
+
+GameProjectWorldResult FluidView::GetRemovedSmoke(GameProjectObjectHandle owner, uint64_t instanceId,
+                                                  double& outRemoved) const noexcept {
+    outRemoved = 0.0;
+    FluidInteractionService* service = nullptr;
+    auto result = Resolve(world_, owner, instanceId, service);
+    if (result.Succeeded())
+        (void)service->GetRemovedSmoke(owner.value, instanceId, outRemoved);
     return result;
 }
 

@@ -13,7 +13,9 @@ cbuffer FluidDomainCB : register(b0)
     float4 gDissipation;  // x 密度の消散 [1/s]、y 温度の消散 [1/s]
     float4 gUp;           // xyz 域の局所の上向き
     float4 gInertia;      // xyz 挂点の加速度の逆向き（域の局所 [m/s²]）
-    uint4 gInteractionCount; // x 押すもの（障碍物・冲量・力）の数、y gStats の中の砖块の活動状態の位置 [byte]
+    // x 押すもの（障碍物・冲量・力・注入）の数、y gStats の中の砖块の活動状態の位置 [byte]、z 汇の吸い込み量の位置
+    // [byte]（表の行ごとに float）、w 1 でこの子步の頭に吸い込み量を 0 に戻す、2 でこの子步の吸い込みを数える（預熱は数えない）
+    uint4 gInteractionCount;
 };
 
 cbuffer FluidPassCB : register(b1)
@@ -412,6 +414,66 @@ bool HikariFluidPushDirected(HikariFluidInteraction interaction)
     return dot(interaction.velocity.xyz, interaction.velocity.xyz) > 0.0f;
 }
 
+// 冲量（1）と力（2）だけが押す（障碍物 0 と注入 3 は別の扱い）。
+bool HikariFluidIsPush(HikariFluidInteraction interaction)
+{
+    const uint kind = HikariFluidInteractionKind(interaction);
+    return kind == 1u || kind == 2u;
+}
+
+// 向きの無い負の力（汇）の格 p での吸い込み率 [1/s]（Expansion の負の項）。汇でなければ 0。
+float HikariFluidSinkRate(HikariFluidInteraction interaction, float3 p)
+{
+    if (HikariFluidInteractionKind(interaction) != 2u || HikariFluidPushDirected(interaction) || interaction.push.w >= 0.0f)
+        return 0.0f;
+    return -30.0f * interaction.push.w / max(interaction.extents.x, 1.0e-4f) * HikariFluidPushFalloff(interaction, p);
+}
+
+// gStats の float へ足す（比較交換の繰り返し）。
+void AtomicAddFloat(uint address, float value)
+{
+    uint expected = gStats.Load(address);
+    [loop] for (uint attempt = 0u; attempt < 64u; ++attempt)
+    {
+        uint original;
+        gStats.InterlockedCompareExchange(address, expected, asuint(asfloat(expected) + value), original);
+        if (original == expected)
+            return;
+        expected = original;
+    }
+}
+
+// 汇が吸い込んだ烟の量 [密度 × m³] を表の行ごとに足す。半拉格朗日の平流は集まる流れで濃さを変えないので、汇の中で
+// 消える量は 密度 × 格の体積 ×（1 - exp(-吸い込み率 × 子步の時間)）（率が小さければ 率 × 時間、強い汇でも在る量を
+// 超えない）。波の中で足してから 1 回だけ書く。
+void CountSinks(float3 p, float density)
+{
+    if ((gInteractionCount.w & 2u) == 0u)
+        return;
+    const float mass = density * gCell.x * gCell.x * gCell.x;
+    for (uint index = 0u; index < gInteractionCount.x; ++index)
+    {
+        const float fraction = 1.0f - exp(-HikariFluidSinkRate(gInteractions[index], p) * gCell.z);
+        const float removed = WaveActiveSum(mass * fraction);
+        if (WaveIsFirstLane() && removed > 0.0f)
+            AtomicAddFloat(gInteractionCount.z + index * 4u, removed);
+    }
+}
+
+// 注入（3）：球の中（中心から二乗で弱まる）へ毎秒 strength の密度を足し、温度を extents.y へ寄せ、向きがあれば注入する
+// 烟をその速さ（velocity.xyz、域の局所 [m/s]）へ寄せる（源の注入と同じ寄せ方）。
+void ApplyEmit(HikariFluidInteraction interaction, float3 p, float3 velocity, inout float3 acceleration,
+               inout float density, inout float temperature)
+{
+    const float weight = HikariFluidPushFalloff(interaction, p);
+    if (weight <= 0.0f)
+        return;
+    density += max(interaction.push.w, 0.0f) * weight * gCell.z;
+    temperature += (interaction.extents.y - temperature) * saturate(weight * 8.0f * gCell.z);
+    if (HikariFluidPushDirected(interaction))
+        acceleration += (interaction.velocity.xyz - velocity) * (8.0f * weight);
+}
+
 // 向きのある冲量・力：その向きへ加速する（冲量は一子步で strength の速さを足す）。投影の後に回転の成分が残り、
 // 烟の塊や渦の輪になる。向きの無い押しは Expansion（体積の湧き出し）で扱う。
 void ApplyPush(HikariFluidInteraction interaction, float3 p, inout float3 acceleration)
@@ -435,7 +497,7 @@ float Expansion(float3 p)
     for (uint index = 0u; index < gInteractionCount.x; ++index)
     {
         const HikariFluidInteraction interaction = gInteractions[index];
-        if (HikariFluidInteractionKind(interaction) == 0u || HikariFluidPushDirected(interaction))
+        if (!HikariFluidIsPush(interaction) || HikariFluidPushDirected(interaction))
             continue;
         expansion += 30.0f * interaction.push.w / max(interaction.extents.x, 1.0e-4f) *
                      HikariFluidPushFalloff(interaction, p);
@@ -473,6 +535,9 @@ void ForceFieldCS(uint3 id : SV_DispatchThreadID)
     float3 acceleration = gInertia.xyz;
     for (uint index = 0u; index < gSize.w; ++index)
         ApplySource(gSources[index], p, velocity, acceleration, density, temperature);
+    for (uint emit = 0u; emit < gInteractionCount.x; ++emit)
+        if (HikariFluidInteractionKind(gInteractions[emit]) == 3u)
+            ApplyEmit(gInteractions[emit], p, velocity, acceleration, density, temperature);
     // 浮力（温度で上へ、密度で下へ）。
     acceleration += gUp.xyz * (gMotion.z * temperature - gMotion.w * density);
     // 涡度约束：旋度の大きさが増える向き N と旋度の外積で、小さな渦を保つ。
@@ -488,13 +553,15 @@ void ForceFieldCS(uint3 id : SV_DispatchThreadID)
             acceleration += gMotion.y * gCell.x * cross(gradient / magnitude, gIn1.Load(int4(id, 0)).xyz);
     }
     for (uint push = 0u; push < gInteractionCount.x; ++push)
-        if (HikariFluidInteractionKind(gInteractions[push]) != 0u && HikariFluidPushDirected(gInteractions[push]))
+        if (HikariFluidIsPush(gInteractions[push]) && HikariFluidPushDirected(gInteractions[push]))
             ApplyPush(gInteractions[push], p, acceleration);
     for (uint obstacle = 0u; obstacle < gInteractionCount.x; ++obstacle)
         if (HikariFluidInteractionKind(gInteractions[obstacle]) == 0u)
             ApplyObstacle(gInteractions[obstacle], p, velocity, acceleration);
+    density = max(density, 0.0f);
+    CountSinks(p, density);
     gOut0[id] = float4(acceleration, temperature);
-    gOut1[id] = float4(max(density, 0.0f), 0.0f, 0.0f, 0.0f);
+    gOut1[id] = float4(density, 0.0f, 0.0f, 0.0f);
 }
 
 // 加速度を面へ配って速度を進める：t0 平流後の速度、t1 格の中心の加速度（w 新しい温度）→ u0。
@@ -731,11 +798,14 @@ void OccupancyCS(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint 
 }
 
 // 砖块ごとの活動状態（子步の頭）：OccupancyCS の最大密度が烟のある砖块と、その 26 近傍を動かす。注入・吸い込み・流れを
-// 入れる源（域全体の形は除く）の形に触れる砖块も動かす。
+// 入れる源（域全体の形は除く）の形と、注入（Emit）の球に触れる砖块も動かす。フレームの最初の子步では汇の吸い込み量を 0 に戻す。
 [numthreads(4, 4, 4)]
 void ActivityCS(uint3 id : SV_DispatchThreadID)
 {
     const uint3 bricks = BrickGrid();
+    if (all(id == 0u) && (gInteractionCount.w & 1u) != 0u)
+        for (uint row = 0u; row < 32u; ++row)
+            gStats.Store(gInteractionCount.z + row * 4u, 0u);
     if (any(id >= bricks))
         return;
     bool active = false;
@@ -762,6 +832,9 @@ void ActivityCS(uint3 id : SV_DispatchThreadID)
         active = HikariFluidSourceDistance(source, HikariFluidToSource(source, center)) <
                  reach * toSource + 2.0f * source.guide.w;
     }
+    for (uint index = 0u; index < gInteractionCount.x && !active; ++index)
+        if (HikariFluidInteractionKind(gInteractions[index]) == 3u)
+            active = length(center - gInteractions[index].push.xyz) < reach + gInteractions[index].extents.x;
     gStats.Store(gInteractionCount.y + BrickIndex(id) * 4u, active ? 1u : 0u);
 }
 

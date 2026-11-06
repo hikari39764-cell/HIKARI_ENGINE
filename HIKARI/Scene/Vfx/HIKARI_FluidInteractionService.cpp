@@ -21,12 +21,28 @@ bool IsValid(const FluidInteraction& interaction) noexcept {
     const float lengthSquared = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
     const auto& p = interaction.worldPosition;
     const auto& e = interaction.extents;
-    return static_cast<uint32_t>(interaction.kind) <= static_cast<uint32_t>(FluidInteractionKind::Force) &&
+    return static_cast<uint32_t>(interaction.kind) <= static_cast<uint32_t>(FluidInteractionKind::Emit) &&
            static_cast<uint32_t>(interaction.shape) <= static_cast<uint32_t>(FluidInteractionShape::Box) &&
            MATH::IsFinite(q) && InRange(lengthSquared, 1.0e-12f, 1.0e12f) && InRange(p.x, -1.0e6f, 1.0e6f) &&
            InRange(p.y, -1.0e6f, 1.0e6f) && InRange(p.z, -1.0e6f, 1.0e6f) && InRange(e.x, 0.001f, 1000.0f) &&
            InRange(e.y, 0.0f, 1000.0f) && InRange(e.z, 0.0f, 1000.0f) && MATH::IsFinite(interaction.direction) &&
-           MATH::Length(interaction.direction) <= 1.0e6f && InRange(interaction.strength, -10000.0f, 10000.0f);
+           MATH::Length(interaction.direction) <= 1.0e6f && InRange(interaction.strength, -10000.0f, 10000.0f) &&
+           (interaction.kind != FluidInteractionKind::Emit || interaction.strength >= 0.0f);
+}
+
+// 汇（向きの無い負の力）：吸い込んだ烟の量を回読する。
+bool IsSink(const FluidInteraction& interaction) noexcept {
+    return interaction.kind == FluidInteractionKind::Force && interaction.strength < 0.0f &&
+           interaction.direction.x == 0.0f && interaction.direction.y == 0.0f && interaction.direction.z == 0.0f;
+}
+
+// (owner, instance) から回読の鍵（0 にはしない）。
+uint64_t SinkKey(uint64_t owner, uint64_t instance) noexcept {
+    uint64_t h = owner * 0x9e3779b97f4a7c15ull ^ (instance + 0x632be59bd9b4e019ull);
+    h = (h ^ (h >> 30u)) * 0xbf58476d1ce4e5b9ull;
+    h = (h ^ (h >> 27u)) * 0x94d049bb133111ebull;
+    h ^= h >> 31u;
+    return h != 0u ? h : 1u;
 }
 
 bool IsHidden(const World& world, const GameObject* owner) noexcept {
@@ -78,6 +94,33 @@ void FluidInteractionService::Clear() noexcept {
     frameIndex_ = ~uint64_t{0};
     previousCount_ = 0u;
     previousFrame_ = ~uint64_t{0};
+    sinkCount_ = 0u;
+}
+
+FluidInteractionService::Sink* FluidInteractionService::FindSink(uint64_t owner, uint64_t instance) noexcept {
+    for (uint32_t index = 0u; index < sinkCount_; ++index)
+        if (sinks_[index].owner == owner && sinks_[index].instance == instance)
+            return &sinks_[index];
+    return nullptr;
+}
+
+void FluidInteractionService::ReceiveSinkReports(std::span<const RENDER3D::FLUID::FluidSinkReport> reports) noexcept {
+    for (const RENDER3D::FLUID::FluidSinkReport& report : reports)
+        for (uint32_t index = 0u; index < sinkCount_; ++index)
+            if (sinks_[index].reportKey == report.reportKey) {
+                sinks_[index].removed += report.removed;
+                break;
+            }
+}
+
+bool FluidInteractionService::GetRemovedSmoke(uint64_t owner, uint64_t instance, double& outRemoved) const noexcept {
+    outRemoved = 0.0;
+    for (uint32_t index = 0u; index < sinkCount_; ++index)
+        if (sinks_[index].owner == owner && sinks_[index].instance == instance) {
+            outRemoved = sinks_[index].removed;
+            return true;
+        }
+    return false;
 }
 
 std::span<const FluidInteraction> FluidInteractionService::PrepareFrame(const World& world, uint64_t frameIndex,
@@ -104,8 +147,25 @@ std::span<const FluidInteraction> FluidInteractionService::PrepareFrame(const Wo
                 break;
             }
         }
-        prepared_[preparedCount++] = interaction;
+        FluidInteraction& prepared = prepared_[preparedCount++];
+        prepared = interaction;
+        // プロジェクトの汇は回読の鍵を付ける（累計の表が一杯なら数えない）。
+        if (entry.source == FluidInteractionSource::Project && IsSink(interaction)) {
+            Sink* sink = FindSink(entry.owner, entry.instance);
+            if (sink == nullptr && sinkCount_ < sinks_.size()) {
+                sink = &sinks_[sinkCount_++];
+                *sink = {entry.owner, entry.instance, SinkKey(entry.owner, entry.instance), 0.0, frameIndex};
+            }
+            if (sink != nullptr) {
+                sink->lastFrame = frameIndex;
+                prepared.reportKey = sink->reportKey;
+            }
+        }
     }
+    // 出さなくなって十分たった汇の累計を捨てる。
+    for (uint32_t index = sinkCount_; index-- > 0u;)
+        if (sinks_[index].lastFrame + kSinkHoldFrames < frameIndex)
+            sinks_[index] = sinks_[--sinkCount_];
     // 一時停止中のフレームは位置が変わらないので、次に動いた時の速度は止まる前の位置から決める。
     if (deltaSeconds > 0.0f || previousFrame_ == ~uint64_t{0}) {
         std::copy(entries_.begin(), entries_.begin() + count_, previous_.begin());

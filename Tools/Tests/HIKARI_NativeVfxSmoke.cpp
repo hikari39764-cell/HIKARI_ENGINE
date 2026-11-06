@@ -1541,12 +1541,14 @@ int main() {
     assert(seekServiceA.GetRenderInput().emitters.front().resetSimulation);
     assert(seekServiceA.GetRenderInput().emitters.front().deltaSeconds == 0.0f);
 
-    // 流体層だけの資産を先へ拖ると、域を作り直して預熱からやり直す（流体は時間を飛ばせない）。
+    // 流体層だけの資産を先へ拖ると、域を作り直して預熱からやり直す（流体は時間を飛ばせない）。域の層の位置（発射器の
+    // 変換）は VFX の原点からの偏移として域の中心を動かす。
     {
         auto fluidSource = VFX::MakeDefaultVfxAssetData();
         fluidSource.durationSeconds = 8.0f;
         auto& domainLayer = fluidSource.emitters.front();
         domainLayer.kind = VFX::VfxLayerKind::Fluid;
+        domainLayer.emitterTransform.transform.position = {0.0f, -30.0f, 2.0f};
         domainLayer.fluidDomain.id = "fluid.domain.seek";
         domainLayer.effects.clear();
         domainLayer.specialOutputs.clear();
@@ -1558,11 +1560,13 @@ int main() {
         VFX::VfxPlaybackService fluidService{};
         VFX::VfxPlayRequest fluidRequest{};
         fluidRequest.program = std::make_shared<const VFX::VfxProgram>(fluidCompiled.program);
+        fluidRequest.transform.position = {5.0f, 1.0f, 0.0f};
         const VFX::VfxPlayResult fluidPlay = fluidService.PlayDetailed(fluidRequest);
         assert(fluidPlay.IsAccepted());
         const auto& fluidInput = fluidService.GetRenderInput();
         fluidService.Update(1u, 1.0f / 60.0f);
         assert(fluidInput.fluids.size() == 1u && fluidInput.fluids[0].resetSimulation);
+        assert(MATH::Length(fluidInput.fluids[0].worldPosition - MATH::Vec3{5.0f, -29.0f, 2.0f}) < 1.0e-4f);
         fluidService.Update(2u, 1.0f / 60.0f);
         assert(fluidInput.fluids.size() == 1u && !fluidInput.fluids[0].resetSimulation);
         const VFX::VfxSeekResult fluidSeek = fluidService.Seek(fluidPlay.handle, 3u, 5.0f);

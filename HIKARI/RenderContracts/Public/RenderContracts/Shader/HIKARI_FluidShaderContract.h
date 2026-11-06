@@ -18,20 +18,20 @@ inline constexpr std::string_view kFluidSimulationShaderRootCanonical =
     "StaticSampler(s0,LinearClamp,Compute)|StaticSampler(s1,LinearBorderTransparentBlack,Compute)|Flags(None)";
 inline constexpr std::string_view kFluidSimulationShaderInterfaceCanonical =
     "FluidDomainCB:112;uint4 size(cells,sourceCount),float4 cell(h,invH,dt,time),motion(boundary,vorticity,"
-    "buoyancy,weight),dissipation(density,temperature),up,inertia,uint4 interactionCount(count,activityOffset);FluidPassCB:32;uint4 passSize,"
+    "buoyancy,weight),dissipation(density,temperature),up,inertia,uint4 interactionCount(count,activityOffset,sinkOffset,flags clear1 count2);FluidPassCB:32;uint4 passSize,"
     "passParams(color,sliceField,sliceAxis,sliceIndex|statsOffset);FluidSource:256 rows toSource[3],toDomain[3],"
-    "shape,shape2,emission,velocity,field0,field1,field2,wind,guide,flow(expansion) sphere inner radius shell,shape guide advects density only (not projected);FluidInteraction:96 toLocal[3],extents(kind),"
+    "shape,shape2,emission,velocity,field0,field1,field2,wind,guide,flow(expansion) sphere inner radius shell,shape guide advects density only (not projected);FluidInteraction:96 toLocal[3],extents(kind 0 obstacle 1 impulse 2 force 3 emit; emit y temperature),"
     "velocity(shape),push(center,strength) obstacle Brinkman after forces,directed push accel falloff^2,"
     "radial push open-boundary expansion 30S/R falloff^2 and source outflow*area/volume*mask in rhs;MAC velocity RGBA16F (n+1)^3 xyz lower face "
     "w cell temperature;density R16F n^3;pressure/rhs R32F multigrid A P=sum-kP=D h^2 coarse rhs 4*mean residual,prolong trilinear with open-boundary sign-flipped ghosts;"
     "stats raw: brick max density f32 then (maxAbsDivergence,densitySum) f32x2 per 8^3 brick then activity u32 "
-    "(1 active);inactive bricks skip advection,curl and forces (velocity copied,density 0),pressure solved densely";
+    "(1 active) then sink removed f32 per interaction row (32);emit adds strength*falloff^2 density/s and activates bricks;inactive bricks skip advection,curl and forces (velocity copied,density 0),pressure solved densely";
 
 inline ShaderAssetContractExpectation MakeFluidSimulationShaderContract(
     ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = "HIKARI.FluidSimulation";
-    contract.engineInterfaceVersion = 9u;
+    contract.engineInterfaceVersion = 10u;
     contract.rootLayoutId = "HIKARI.FluidSimulation.Root";
     contract.rootLayoutVersion = 2u;
     contract.availableDeviceCaps = availableCaps;

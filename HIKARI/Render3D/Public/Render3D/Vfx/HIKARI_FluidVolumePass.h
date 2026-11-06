@@ -183,6 +183,8 @@ public:
     void ClearDebugSlice();
     FluidDebugSliceView GetDebugSlice() const noexcept;
     const FluidVolumePassStats& GetStats() const noexcept;
+    // 回読が届いた汇の量を out の後ろへ移す（受け取った分は pass から消える。受け取る側が無い間は溜めておく）。
+    void TakeSinkReports(std::vector<FluidSinkReport>& out);
 
 private:
     struct Impl;

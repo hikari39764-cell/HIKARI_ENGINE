@@ -226,7 +226,8 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
         commands->SetComputeRootDescriptorTable(index, handle);
     };
 
-    // 光照体積（域ごと、t0 に自分の密度）。
+    // 光照体積（域ごと、t0 に自分の密度）。密度・太陽の域の局所での向き・消光・格の大きさが前に書いた時と同じなら
+    // 書き直さない（子步の無いフレームや、同じフレームの 2 つ目の視図）。
     commands->SetComputeRootSignature(root_.Get());
     commands->SetComputeRootConstantBufferView(kConstants, address);
     bindInputs(setCompute);
@@ -234,6 +235,13 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     std::optional<GFX::GPU_PROFILE::ScopedGpuTimer> lightTimer{std::in_place, commands,
                                                                GFX::GPU_PROFILE::Pass::FluidRenderLight};
     for (size_t index = 0u; index < count; ++index) {
+        const RenderDomainGpu& gpu = constants.domains[index];
+        const FluidLightKey key{
+            domains[index].densityVersion, {gpu.sun[0], gpu.sun[1], gpu.sun[2]}, gpu.look[3], gpu.cells[3]};
+        if (domains[index].lightKey != nullptr && *domains[index].lightKey == key)
+            continue;
+        if (domains[index].lightKey != nullptr)
+            *domains[index].lightKey = key;
         FluidVolume& light = *domains[index].light;
         TransitionVolume(commands, light, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         const uint32_t pass[4] = {static_cast<uint32_t>(index), 0u, 0u, 0u};

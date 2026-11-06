@@ -25,6 +25,9 @@ struct FluidRenderDomain {
     FluidVolume* density = nullptr;
     FluidVolume* velocity = nullptr;
     FluidVolume* light = nullptr;
+    // 光照体積を最後に書いた時の入力（null なら毎回書く）と、今の密度の版。
+    FluidLightKey* lightKey = nullptr;
+    uint64_t densityVersion = 0u;
     FluidGridLayout layout{};
     MATH::Vec3 position{};
     MATH::Quat rotation = MATH::Quat::Identity();

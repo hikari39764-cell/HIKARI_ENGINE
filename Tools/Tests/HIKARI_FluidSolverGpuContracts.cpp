@@ -391,6 +391,89 @@ void LocalSpaceInertia(FluidGpu& fluid) {
     pass.Shutdown();
 }
 
+// 長い預熱（TD2_2Test の地面雾 60 Hz × 6 秒、烟壳 30 Hz × 10 秒）は子步の数で数えて必ず終わり、終わったフレームから
+// 描く。秒から子步の長さを引く数え方だと丸めの残りで預熱が終わらず、域が黙って描かれなかった。16³ は 1 フレーム 48 子步。
+void LongPrewarm(FluidGpu& fluid, uint64_t playbackNamespace, float substepRate, float prewarmSeconds,
+                 uint32_t expectedSteps) {
+    FluidVolumePass pass;
+    RENDER3D::PARTICLES::ParticleRenderInput input{};
+    input.fluids.push_back(MakeDomain(playbackNamespace, FluidBoundary::Open, 0.1f));
+    input.fluids[0].settings.substepRate = substepRate;
+    input.fluids[0].settings.prewarmSeconds = prewarmSeconds;
+    const uint32_t frames = (expectedSteps + 47u) / 48u;
+    for (uint32_t frame = 0u; frame < frames; ++frame) {
+        assert(!pass.HasRenderableDomains());
+        input.fluids[0].deltaSeconds = 1.0f / 60.0f;
+        fluid.Frame(pass, input, {});
+        input.fluids[0].resetSimulation = false;
+        assert(DomainStats(pass).stepsThisFrame >= (std::min)(48u, expectedSteps - frame * 48u));
+    }
+    const FluidDomainStats& stats = DomainStats(pass);
+    std::fprintf(stderr, "fluid prewarm %.0f Hz %.1f s: %u frames, steps %llu, remaining %.4f s\n", substepRate,
+                 prewarmSeconds, frames, static_cast<unsigned long long>(stats.completedSteps),
+                 stats.prewarmRemainingSeconds);
+    assert(pass.HasRenderableDomains() && stats.prewarmRemainingSeconds == 0.0f);
+    assert(stats.completedSteps >= expectedSteps && stats.completedSteps <= expectedSteps + 1u);
+    pass.Shutdown();
+}
+
+// 注入（Emit）は球の中へ中心で毎秒 strength の密度を足す（総量は strength × 2πR³/15 × 時間）。汇（向きの無い負の力）が
+// 回読で報告する吸い込み量は、汇がある間に域から消えた烟の量（Σ 密度 × 格の体積）とおおよそ一致する。静かな開いた箱
+// （浮力・渦なし、消散 0）で、注入 30 フレーム → 汇 30 フレーム。最後の回読は次のフレーム（子步なし）に届く。
+void SinkAndEmit(FluidGpu& fluid) {
+    FluidVolumePass pass;
+    RENDER3D::PARTICLES::ParticleRenderInput input{};
+    input.fluids.push_back(MakeDomain(90u, FluidBoundary::Open, 0.0f));
+    FluidDomainSubmission& domain = input.fluids[0];
+    domain.sources.clear();
+    domain.settings.buoyancy = 0.0f;
+    domain.settings.weight = 0.0f;
+    domain.settings.vorticity = 0.0f;
+    const float cellVolume =
+        std::pow(domain.settings.domainSize.x / static_cast<float>(domain.settings.resolution), 3.0f);
+    FluidInteraction emit{};
+    emit.kind = FluidInteractionKind::Emit;
+    emit.extents = {0.6f, 0.0f, 0.0f};
+    emit.strength = 2.0f;
+    FluidInteraction sink{};
+    sink.kind = FluidInteractionKind::Force;
+    sink.extents = {0.6f, 0.0f, 0.0f};
+    sink.strength = -0.1f;
+    sink.reportKey = 42u;
+    FluidFrameSettings settings{};
+    settings.diagnostics = true;
+    std::vector<FluidSinkReport> reports;
+    uint32_t frame = 0u;
+    const auto run = [&](const FluidInteraction* push, uint32_t frames) {
+        settings.interactions =
+            push != nullptr ? std::span<const FluidInteraction>(push, 1u) : std::span<const FluidInteraction>{};
+        for (uint32_t index = 0u; index <= frames; ++index) {
+            // 最後の 1 フレームは時間を進めず、前のフレームの回読だけを受け取る。
+            settings.interactionFrame = frame++;
+            input.fluids[0].deltaSeconds = index < frames ? 1.0f / 60.0f : 0.0f;
+            fluid.Frame(pass, input, settings);
+            input.fluids[0].resetSimulation = false;
+            pass.TakeSinkReports(reports);
+        }
+        return DomainStats(pass).densityTotal * cellVolume;
+    };
+    const float emitted = run(&emit, 30u);
+    const float expected = emit.strength * 2.0f * 3.14159265f * std::pow(emit.extents.x, 3.0f) / 15.0f * 0.5f;
+    assert(reports.empty());
+    const float left = run(&sink, 30u);
+    double reported = 0.0;
+    for (const FluidSinkReport& report : reports) {
+        assert(report.reportKey == sink.reportKey);
+        reported += report.removed;
+    }
+    const float lost = emitted - left;
+    std::fprintf(stderr, "fluid emit %.4f (expected %.4f), sink lost %.4f reported %.4f\n", emitted, expected, lost,
+                 reported);
+    assert(emitted > 0.7f * expected && emitted < 1.3f * expected);
+    assert(lost > 0.05f * emitted && std::abs(reported - lost) < 0.3 * lost);
+    pass.Shutdown();
+}
+
 // 決まったゲーム時間を frame の長さで刻んで解き、最後の密度の切片を返す。
 std::vector<uint16_t> SolveAtFrameRate(FluidGpu& fluid, uint64_t playbackNamespace, double frameSeconds,
                                        uint32_t frames, uint64_t& outSteps) {
@@ -500,6 +583,9 @@ void CheckFluidSolver() {
     OpenPlume(fluid, 42u, 128u, 20000.0f, {1.0f, 4.0f, 1.0f});
     PushedPlumes(fluid);
     LocalSpaceInertia(fluid);
+    LongPrewarm(fluid, 80u, 60.0f, 6.0f, 360u);
+    LongPrewarm(fluid, 81u, 30.0f, 10.0f, 300u);
+    SinkAndEmit(fluid);
     closedBox(0, 1.0e-4f);
     closedBox(1, 0.06f);
     closedBox(2, 0.12f);

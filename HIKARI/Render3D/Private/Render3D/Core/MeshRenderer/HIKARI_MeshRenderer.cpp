@@ -217,6 +217,9 @@ void INTERNAL::PrepareFluidFrame(const GFX::Context& graphics,
     if (!gMeshRendererState.fluidPass.PrepareFrame(graphics, source != nullptr ? source->input : nullptr, settings))
         DEBUGLOG::PushRenderError("[MeshRenderer][WARN] Fluid smoke simulation is unavailable this frame; "
                                   "rendering continues without fluid layers.");
+    // 回読が届いた汇の吸い込み量は、受け取る場面の視図へ渡す（場面が次のフレームに押すものの service へ返す）。
+    if (source != nullptr && source->fluidSinkReports != nullptr)
+        gMeshRendererState.fluidPass.TakeSinkReports(*source->fluidSinkReports);
     PublishFluidMetrics(gMeshRendererState.fluidPass.GetStats(), TIME::GetFrameContext().frameIndex);
 }
 

@@ -140,7 +140,9 @@ inline constexpr auto kFluidSourceSettingsFields = [](auto&& field) {
 // 烟は止まった障碍物を回り込み、動く障碍物に押し出され引きずられる（回転の速度は持たない）。冲量・力は extents.x を
 // 半径とする球の範囲で中心ほど強い。向きがあれば加速（冲量は一子步で速さを足す）、向きが 0 なら体積の湧き出しで、
 // 半径の球面を外へ strength [m/s] で流れ出す（負で吸い込む。冲量は kFluidRadialImpulseSeconds の間、開いた境界の域だけ）。
-enum class FluidInteractionKind : uint32_t { Obstacle, Impulse, Force };
+// Emit は提交している間、球の中へ烟を注入する（中心ほど濃く、strength は中心での毎秒の密度、direction は注入する
+// 烟の初速 [m/s]、extents.y は温度。源の数の上限とは別枠で、位置は毎フレーム自由）。
+enum class FluidInteractionKind : uint32_t { Obstacle, Impulse, Force, Emit };
 enum class FluidInteractionShape : uint32_t { Sphere, Capsule, Box };
 
 struct FluidInteraction {
@@ -156,6 +158,14 @@ struct FluidInteraction {
     MATH::Vec3 direction{};
     // 向きのある冲量は足す速さ [m/s]、力は加速度 [m/s²]。向きの無い冲量・力は半径での外向きの流れの速さ [m/s]。
     float strength = 0.0f;
+    // 0 でなければ、向きの無い負の力（汇）が吸い込んだ烟の量を回読してこの値で返す（FluidSinkReport）。出した側が決める。
+    uint64_t reportKey = 0u;
+};
+
+// 汇が吸い込んだ烟の量（1 フレームの子步ぶん、域を合わせて）。単位は密度 × m³。GPU の回読なので 1〜3 フレーム遅れる。
+struct FluidSinkReport {
+    uint64_t reportKey = 0u;
+    double removed = 0.0;
 };
 
 // 向きの無い冲量が湧き出し続けるゲーム時間 [s]（半径での押し出しの距離は約 strength × この時間）。

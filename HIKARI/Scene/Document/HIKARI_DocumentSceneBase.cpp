@@ -552,6 +552,8 @@ void DocumentSceneBase::Render() {
     lightingScope.emplace(lightingTimer);
     const auto localFogVolumes = state_->runtime.localFogService.PrepareFrame(
         state_->runtime.world, frame.frameIndex, &state_->identity.document, state_->identity.documentRevision);
+    state_->runtime.fluidInteractionService.ReceiveSinkReports(state_->runtime.fluidSinkReports);
+    state_->runtime.fluidSinkReports.clear();
     const auto fluidInteractions =
         state_->runtime.fluidInteractionService.PrepareFrame(state_->runtime.world, frame.frameIndex, frame.gameDt);
     SceneEnvironment activeEnvironment = state_->lighting.environment;
@@ -686,7 +688,8 @@ void DocumentSceneBase::Render() {
         RENDER3D::PARTICLES::ParticleRenderFrameSource particleFrameSource{};
         if (playback != nullptr) {
             particleFrameSource = {&playback->GetRenderInput(), &state_->assets.Registry(),
-                                   state_->runtime.materialExternalValueSnapshot.get(), fluidInteractions};
+                                   state_->runtime.materialExternalValueSnapshot.get(), fluidInteractions,
+                                   &state_->runtime.fluidSinkReports};
             primaryView.particleFrameSource = &particleFrameSource;
         }
         if (auto* combat = state_->runtime.world.Services().Find<VFX::CombatPresentationService>()) {

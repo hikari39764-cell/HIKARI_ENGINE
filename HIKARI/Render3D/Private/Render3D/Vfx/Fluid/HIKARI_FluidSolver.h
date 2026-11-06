@@ -58,8 +58,19 @@ struct FluidVolume {
     uint32_t size[3]{};
 };
 
+// 光照体積を最後に書いた時の入力。同じなら書き直さない（密度・太陽の域の局所での向き・消光・格の大きさで決まる）。
+struct FluidLightKey {
+    uint64_t densityVersion = UINT64_MAX;
+    float sun[3]{};
+    float extinction = 0.0f;
+    float cellSize = 0.0f;
+
+    bool operator==(const FluidLightKey&) const noexcept = default;
+};
+
 // 1 つの域の体積。速度と密度は 3 枚ずつを子步ごとに役を回して使い（MacCormack の前進・修正・力の一時置き）、
-// 圧力と右辺は多重网格の段ごとに 1 枚。統計の buffer は砖块ごとの最大密度、診断（散度・密度の総量）、疎な解算の活動状態。
+// 圧力と右辺は多重网格の段ごとに 1 枚。統計の buffer は砖块ごとの最大密度、診断（散度・密度の総量）、疎な解算の活動状態、
+// 最後に押すものの表の行ごとの汇の吸い込み量（float、kMaximumFluidInteractionsPerDomain 個）。
 struct FluidDomainResources {
     FluidGridLayout layout{};
     std::array<FluidVolume, 3> velocity{};
@@ -67,8 +78,9 @@ struct FluidDomainResources {
     std::vector<FluidVolume> pressure{};
     std::vector<FluidVolume> rhs{};
     // 描画の光照体積（格子の半分の分辨率、RGBA16F：x 太陽への光学的な厚さ、y 空への光学的な厚さ、z 近くの遮り）。
-    // 描く視図が毎フレーム書く。
+    // 入力（lightKey）が変わった時だけ描く視図が書き直す。
     FluidVolume light{};
+    FluidLightKey lightKey{};
     Microsoft::WRL::ComPtr<ID3D12Resource> stats{};
     D3D12_RESOURCE_STATES statsState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, GFX::kFrameResourceCount> readback{};
@@ -79,6 +91,7 @@ struct FluidDomainResources {
     uint32_t BrickCount() const noexcept { return bricks; }
     uint32_t DiagnosticsOffset() const noexcept { return bricks * 4u; }
     uint32_t ActivityOffset() const noexcept { return bricks * 12u; }
+    uint32_t SinkOffset() const noexcept { return bricks * 16u; }
 };
 
 // 世界（または親）の向き v を、回転 rotation の局所の向きへ移す。

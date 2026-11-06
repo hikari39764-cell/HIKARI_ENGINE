@@ -203,7 +203,7 @@ bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& lay
     created = created && CreateVolume(device, DXGI_FORMAT_R16G16B16A16_FLOAT, (n[0] + 1u) / 2u, (n[1] + 1u) / 2u,
                                       (n[2] + 1u) / 2u, resources.light, false);
     resources.bricks = ((n[0] + 7u) / 8u) * ((n[1] + 7u) / 8u) * ((n[2] + 7u) / 8u);
-    resources.statsBytes = (resources.bricks * 16u + 255u) & ~255u;
+    resources.statsBytes = (resources.SinkOffset() + kMaximumFluidInteractionsPerDomain * 4u + 255u) & ~255u;
     created = created && CreateBuffer(device, D3D12_HEAP_TYPE_DEFAULT, resources.statsBytes,
                                       D3D12_RESOURCE_STATE_UNORDERED_ACCESS, resources.stats);
     for (auto& readback : resources.readback)
@@ -299,13 +299,14 @@ void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D
     auto& v = domain_.velocity;
     auto& d = domain_.density;
     const uint32_t a = velocityIndex, b = (a + 1u) % 3u, c = (a + 2u) % 3u;
-    // 疎な解算：今の密度で砖块の占有を数え直し、烟のある砖块の周りと源の形に触れる砖块を動かす（1 子步で烟が 1 砖块
-    // より遠くへ動くことは無い）。
+    // 疎な解算：今の密度で砖块の占有を数え直し、烟のある砖块の周りと源の形・注入の球に触れる砖块を動かす（1 子步で烟が
+    // 1 砖块より遠くへ動くことは無い）。
     {
         GFX::GPU_PROFILE::ScopedGpuTimer timer(commands_, GFX::GPU_PROFILE::Pass::FluidSolveActivity);
         Occupancy(densityIndex);
         FluidPassBindings activity{};
         activity.sources = sources;
+        activity.interactions = interactions;
         const uint32_t bricks[3] = {Groups(domain_.layout.cells[0], 8u), Groups(domain_.layout.cells[1], 8u),
                                     Groups(domain_.layout.cells[2], 8u)};
         Dispatch(FluidEntry::Activity, activity, bricks, {0u, 0u, 0u, 0u},

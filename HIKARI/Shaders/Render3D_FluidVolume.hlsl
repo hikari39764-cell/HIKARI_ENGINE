@@ -183,10 +183,22 @@ void Medium(float3 world, float3 viewDirection, float pixelSize, out float sigma
         AccumulateDomain(gDomains[3], gDensity3, gVelocity3, gLight3, world, viewDirection, pixelSize, sigma, emitted);
 }
 
-// 全ての域の箱を視線が通る区間（距離）。どれも通らなければ x > y。
-float2 DomainsInterval(float3 origin, float3 direction)
+// 視線が各域の箱を通る区間（距離、相機の後ろは 0 から）と、その域だけを描く時の歩の長さ（箱の区間 / 步数）。
+// 成分が域の番号。通らない域と空いた枠は enter = 1e30、leave = -1e30。
+struct DomainSpans
 {
-    float2 result = float2(1.0e30f, -1.0e30f);
+    float4 enter;
+    float4 leave;
+    float4 step;
+};
+
+DomainSpans TraceDomains(float3 origin, float3 direction)
+{
+    DomainSpans spans;
+    spans.enter = 1.0e30f.xxxx;
+    spans.leave = -1.0e30f.xxxx;
+    spans.step = 1.0e30f.xxxx;
+    const float steps = max(gFrame.z, 1.0f);
     [unroll] for (uint index = 0u; index < HIKARI_FLUID_MAX_DOMAINS; ++index)
     {
         if (index >= DomainCount())
@@ -195,20 +207,54 @@ float2 DomainsInterval(float3 origin, float3 direction)
         const float3 o = HikariFluidToGrid(domain, origin);
         const float3 d = HikariFluidToGrid(domain, origin + direction) - o;
         const float2 interval = HikariFluidBoxInterval(o, d, domain.cells.xyz);
-        if (interval.x <= interval.y)
-            result = float2(min(result.x, interval.x), max(result.y, interval.y));
+        const float enter = max(interval.x, 0.0f);
+        if (enter < interval.y)
+        {
+            spans.enter[index] = enter;
+            spans.leave[index] = interval.y;
+            spans.step[index] = (interval.y - enter) / steps;
+        }
     }
-    return float2(max(result.x, 0.0f), result.y);
+    return spans;
 }
 
-// [start, end] を stepLength [m] ごとに解析的に積分する（最後の歩は end で切る）。footprint は距離 t の画素の大きさ x + y t（x < 0 で細部なし）。
-float4 Integrate(float3 origin, float3 direction, float start, float end, float stepLength, float jitter,
-    float2 footprint, out float meanDistance)
+// どれかの域を通る最初と最後の距離（どれも通らなければ x > y）。
+float2 SpansBounds(DomainSpans spans)
 {
-    float3 scattered = 0.0f.xxx;
-    float transmittance = 1.0f;
-    float weightedDistance = 0.0f;
-    float absorbed = 0.0f;
+    return float2(min(min(spans.enter.x, spans.enter.y), min(spans.enter.z, spans.enter.w)),
+                  max(max(spans.leave.x, spans.leave.y), max(spans.leave.z, spans.leave.w)));
+}
+
+// 步进の累積：散乱（前露光済み）、透過率、代表距離の重み付きの和と重みの和（失った光の割合）。
+struct MarchState
+{
+    float3 scattered;
+    float transmittance;
+    float weightedDistance;
+    float absorbed;
+};
+
+MarchState BeginMarch()
+{
+    MarchState march;
+    march.scattered = 0.0f.xxx;
+    march.transmittance = 1.0f;
+    march.weightedDistance = 0.0f;
+    march.absorbed = 0.0f;
+    return march;
+}
+
+// 流体の代表距離（失った光で重みを付けた平均。烟が無ければ遠く）。
+float MeanDistance(MarchState march)
+{
+    return march.absorbed > 1.0e-4f ? march.weightedDistance / march.absorbed : 1.0e7f;
+}
+
+// [start, end] を stepLength [m] ごとに解析的に積分して march へ続ける（最後の歩は end で切る）。footprint は距離 t の
+// 画素の大きさ x + y t（x < 0 で細部なし）。
+void Integrate(float3 origin, float3 direction, float start, float end, float stepLength, float jitter,
+    float2 footprint, inout MarchState march)
+{
     const uint steps = min((uint)ceil(max(end - start, 0.0f) / max(stepLength, 1.0e-4f)), 256u);
     [loop] for (uint index = 0u; index < steps; ++index)
     {
@@ -222,23 +268,52 @@ float4 Integrate(float3 origin, float3 direction, float start, float end, float 
         if (sigma <= 0.0f)
             continue;
         const float segment = exp(-sigma * span);
-        const float lost = transmittance * (1.0f - segment);
-        scattered += emitted / sigma * lost;
-        weightedDistance += t * lost;
-        absorbed += lost;
-        transmittance *= segment;
+        const float lost = march.transmittance * (1.0f - segment);
+        march.scattered += emitted / sigma * lost;
+        march.weightedDistance += t * lost;
+        march.absorbed += lost;
+        march.transmittance *= segment;
         // 打ち切る時は残りを「先も同じ明るさの烟」として散乱に回し 0 にする（1% 残すと暗い球壳の内で空が透ける）。
-        if (transmittance < 0.01f)
+        if (march.transmittance < 0.01f)
         {
-            scattered += emitted / sigma * transmittance;
-            weightedDistance += t * transmittance;
-            absorbed += transmittance;
-            transmittance = 0.0f;
+            march.scattered += emitted / sigma * march.transmittance;
+            march.weightedDistance += t * march.transmittance;
+            march.absorbed += march.transmittance;
+            march.transmittance = 0.0f;
             break;
         }
     }
-    meanDistance = absorbed > 1.0e-4f ? weightedDistance / absorbed : 1.0e7f;
-    return float4(scattered, transmittance);
+}
+
+// [start, end] を域の箱の境目で区切り、区切りごとに中にある域の最も短い歩（minimumStep より短くはしない）で積分する
+// （どの域も無い間は飛ばす）。小さな域は大きな域と同じ視線に乗っても自分だけの時と同じ歩で標本を取り、大きな域の歩に
+// 引き伸ばされない。区切りの歩数はそこを通る域の歩数の和を超えないので、1 本の標本は域の数 × 步数まで。境目は域の数 × 2 まで。
+void MarchDomains(float3 origin, float3 direction, DomainSpans spans, float start, float end, float minimumStep,
+    float jitter, float2 footprint, inout MarchState march)
+{
+    float t = start;
+    [loop] for (uint piece = 0u; piece < 2u * HIKARI_FLUID_MAX_DOMAINS; ++piece)
+    {
+        if (t >= end || march.transmittance <= 0.0f)
+            break;
+        float next = 1.0e30f;
+        float stepLength = 1.0e30f;
+        [unroll] for (uint index = 0u; index < HIKARI_FLUID_MAX_DOMAINS; ++index)
+        {
+            if (spans.enter[index] > t)
+                next = min(next, spans.enter[index]);
+            else if (spans.leave[index] > t)
+            {
+                next = min(next, spans.leave[index]);
+                stepLength = min(stepLength, spans.step[index]);
+            }
+        }
+        if (next >= 1.0e30f)
+            break;
+        if (stepLength < 1.0e30f)
+            Integrate(origin, direction, t, min(next, end), max(stepLength, minimumStep), jitter, footprint, march);
+        t = next;
+    }
 }
 
 // ---------------------------------------------------------------- 計算
@@ -315,6 +390,8 @@ void LightCS(uint3 id : SV_DispatchThreadID)
 #include "Include/Vfx/HIKARI_FluidSolarVisibility.hlsli"
 
 // 透明物体のための相機体積：画面の (x, y) ごとに near から奥へ層を進み、相機からその層までの累積（rgb 散乱、a 透過率）。
+// 層の中の域がある所だけを、層の域の範囲にかかる長さ / 各層の標本数より細かくない歩で積分する（粗い体積なので步进ほど
+// 細かく取らない）。
 [numthreads(8, 8, 1)]
 void CameraVolumeCS(uint3 id : SV_DispatchThreadID)
 {
@@ -325,25 +402,19 @@ void CameraVolumeCS(uint3 id : SV_DispatchThreadID)
     const float2 uv = (float2(id.xy) + 0.5f) / float2(width, height);
     float3 origin, direction;
     ViewRay(uv, origin, direction);
-    const float2 interval = DomainsInterval(origin, direction);
-    float3 scattered = 0.0f.xxx;
-    float transmittance = 1.0f;
+    const DomainSpans spans = TraceDomains(origin, direction);
+    const float2 bounds = SpansBounds(spans);
+    MarchState march = BeginMarch();
     float previous = gCameraVolume.x;
-    const uint samples = max((uint)(gCameraVolume.w + 0.5f), 1u);
+    const float samples = max(gCameraVolume.w, 1.0f);
     for (uint slice = 0u; slice < slices; ++slice)
     {
         const float distance = gCameraVolume.x * exp(((float)slice + 0.5f) / (float)slices * gCameraVolume.y);
-        const float start = max(previous, interval.x);
-        const float end = min(distance, interval.y);
-        if (end > start)
-        {
-            float mean;
-            const float4 part =
-                Integrate(origin, direction, start, end, (end - start) / (float)samples, 0.5f, float2(-1.0f, 0.0f), mean);
-            scattered += transmittance * part.rgb;
-            transmittance *= part.a;
-        }
-        gOutput[uint3(id.xy, slice)] = float4(scattered, transmittance);
+        const float covered = min(distance, bounds.y) - max(previous, bounds.x);
+        if (covered > 0.0f)
+            MarchDomains(origin, direction, spans, previous, distance, covered / samples, 0.5f, float2(-1.0f, 0.0f),
+                march);
+        gOutput[uint3(id.xy, slice)] = float4(march.scattered, march.transmittance);
         previous = distance;
     }
 }
@@ -381,11 +452,11 @@ MarchOutput MarchPS(FullscreenOutput input)
     const float depth = min(min(gSceneDepth.Load(int3(full, 0)), gSceneDepth.Load(int3(full + uint2(1, 0), 0))),
                             min(gSceneDepth.Load(int3(full + uint2(0, 1), 0)), gSceneDepth.Load(int3(full + uint2(1, 1), 0))));
     const float opaque = SceneDistance(uv, depth, origin, direction);
-    const float2 interval = DomainsInterval(origin, direction);
-    const float end = min(interval.y, opaque);
+    const DomainSpans spans = TraceDomains(origin, direction);
+    const float2 bounds = SpansBounds(spans);
     output.depth = float2(1.0e7f, opaque);
     output.color = float4(0.0f, 0.0f, 0.0f, 1.0f);
-    if (end <= interval.x)
+    if (min(bounds.y, opaque) <= bounds.x)
         return output;
     // 画素ごとに散らした抖动（交错勾配ノイズ）をフレームの位相で回す。
     const float noise = frac(52.9829189f * frac(dot(float2(halfPixel), float2(0.06711056f, 0.00583715f))));
@@ -393,11 +464,11 @@ MarchOutput MarchPS(FullscreenOutput input)
     float3 nextOrigin, nextDirection;
     ViewRay(uv + float2(0.0f, 1.0f / gSize.y), nextOrigin, nextDirection);
     const float2 footprint = float2(length(nextOrigin - origin), length(nextDirection - direction));
-    float mean;
-    // 歩の長さは箱の区間全体で決め、物の手前では止めるだけ（止める所で割ると物の輪郭が烟に浮き出る）。
-    const float stepLength = (interval.y - interval.x) / max(gFrame.z, 1.0f);
-    output.color = Integrate(origin, direction, interval.x, end, stepLength, frac(noise + gFrame.x), footprint, mean);
-    output.depth.x = mean;
+    // 歩の長さは域ごとの箱の区間全体で決め、物の手前では止めるだけ（止める所で割ると物の輪郭が烟に浮き出る）。
+    MarchState march = BeginMarch();
+    MarchDomains(origin, direction, spans, bounds.x, opaque, 0.0f, frac(noise + gFrame.x), footprint, march);
+    output.color = float4(march.scattered, march.transmittance);
+    output.depth.x = MeanDistance(march);
     return output;
 }
 

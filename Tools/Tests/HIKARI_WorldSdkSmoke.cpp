@@ -2131,6 +2131,37 @@ int main() {
         const auto teleported = fluid.PrepareFrame(fluidWorld, frameIndex + 2, 0.5f);
         assert(teleported.size() == 1 && teleported[0].velocity.x == 0.0f);
         assert(fluid.PrepareFrame(fluidWorld, frameIndex + 3, 0.5f).empty());
+        // 向きの無い負の力（汇）には回読の鍵が付き、届いた吸い込み量を累計して GetRemovedSmoke で返す。出さなくなっても
+        // kSinkHoldFrames の間は読め、その後は 0 から。注入（Emit）は温度を extents.y で持ち、負の強さは拒む。
+        HIKARI::GameProjectFluidInteraction sink{};
+        sink.kind = HIKARI::GameProjectFluidInteractionKind::Force;
+        sink.extents = {0.5f, 0.0f, 0.0f};
+        sink.strength = -2.0f;
+        HIKARI::GameProjectFluidInteraction emit = sink;
+        emit.kind = HIKARI::GameProjectFluidInteractionKind::Emit;
+        emit.extents.y = 1.5f;
+        emit.direction = {0.0f, 3.0f, 0.0f};
+        emit.strength = 4.0f;
+        assert(fluidView.Submit(ownerHandle, 7, sink).Succeeded());
+        assert(fluidView.Submit(ownerHandle, 8, emit).Succeeded());
+        const auto pushes = fluid.PrepareFrame(fluidWorld, frameIndex, 0.5f);
+        assert(pushes.size() == 2 && pushes[0].reportKey != 0u && pushes[1].reportKey == 0u &&
+               pushes[1].kind == HIKARI::RENDER3D::FLUID::FluidInteractionKind::Emit && pushes[1].extents.y == 1.5f &&
+               pushes[1].direction.y == 3.0f);
+        double removed = -1.0;
+        assert(fluidView.GetRemovedSmoke(ownerHandle, 7, removed).Succeeded() && removed == 0.0);
+        const HIKARI::RENDER3D::FLUID::FluidSinkReport reports[] = {
+            {pushes[0].reportKey, 1.5}, {pushes[0].reportKey, 0.25}, {pushes[0].reportKey + 1u, 9.0}};
+        fluid.ReceiveSinkReports(reports);
+        assert(fluidView.GetRemovedSmoke(ownerHandle, 7, removed).Succeeded() && std::abs(removed - 1.75) < 1e-9);
+        assert(fluidView.GetRemovedSmoke(ownerHandle, 8, removed).Succeeded() && removed == 0.0);
+        emit.strength = -1.0f;
+        assert(fluidView.Submit(ownerHandle, 9, emit).code == Code::InvalidRequest);
+        constexpr uint64_t hold = HIKARI::FluidInteractionService::kSinkHoldFrames;
+        (void)fluid.PrepareFrame(fluidWorld, frameIndex + hold, 0.5f);
+        assert(fluidView.GetRemovedSmoke(ownerHandle, 7, removed).Succeeded() && std::abs(removed - 1.75) < 1e-9);
+        (void)fluid.PrepareFrame(fluidWorld, frameIndex + hold + 1u, 0.5f);
+        assert(fluidView.GetRemovedSmoke(ownerHandle, 7, removed).Succeeded() && removed == 0.0);
         fluidWorld.DestroyObject(owner);
         assert(fluidView.Submit(ownerHandle, 1, obstacle).code == Code::InvalidObject);
     }

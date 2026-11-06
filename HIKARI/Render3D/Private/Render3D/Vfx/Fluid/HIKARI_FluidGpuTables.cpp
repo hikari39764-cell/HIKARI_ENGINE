@@ -115,9 +115,11 @@ FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, co
         gpu.rows[row][2] = v.z;
         gpu.rows[row][3] = w;
     };
+    // 障碍物は域に対する速度、注入は注入する烟の速さ（そのまま）、冲量・力は向き（正規化）。
     const bool obstacle = interaction.kind == FluidInteractionKind::Obstacle;
     const float directionLength = MATH::Length(interaction.direction);
-    const MATH::Vec3 motion = obstacle                 ? interaction.velocity - domainVelocity
+    const MATH::Vec3 motion = obstacle                                         ? interaction.velocity - domainVelocity
+                              : interaction.kind == FluidInteractionKind::Emit ? interaction.direction
                               : directionLength > 0.0f ? interaction.direction * (1.0f / directionLength)
                                                        : MATH::Vec3{};
     set(3, interaction.extents, static_cast<float>(interaction.kind));

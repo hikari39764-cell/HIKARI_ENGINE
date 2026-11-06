@@ -422,8 +422,10 @@ struct ParticleRenderFrameSource {
     const ParticleRenderInput* input = nullptr;
     const AssetRegistry* assetRegistry = nullptr;
     const MATERIAL::MaterialExternalValueSnapshot* externalValues = nullptr;
-    // 場面の流体を押すもの（このフレームの障碍物・冲量・力）。呼び出し側が描画の間持つ。
+    // 場面の流体を押すもの（このフレームの障碍物・冲量・力・注入）。呼び出し側が描画の間持つ。
     std::span<const FLUID::FluidInteraction> fluidInteractions{};
+    // 回読が届いた汇の量を受け取る先（場面が次のフレームに FluidInteractionService へ渡す）。null なら pass に溜める。
+    std::vector<FLUID::FluidSinkReport>* fluidSinkReports = nullptr;
 
     bool HasDrawWork() const noexcept { return input != nullptr && !input->emitters.empty(); }
 
