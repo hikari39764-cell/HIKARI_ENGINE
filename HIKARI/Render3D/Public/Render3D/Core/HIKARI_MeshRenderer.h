@@ -37,6 +37,12 @@ namespace PARTICLES {
 struct ParticleGpuDrivenPassStats;
 struct ParticleRenderFrameSource;
 } // namespace PARTICLES
+namespace FLUID {
+struct FluidRenderView;
+struct FluidVolumePassStats;
+struct FluidDebugSliceRequest;
+struct FluidDebugSliceView;
+} // namespace FLUID
 namespace WORLD_SPRITES {
 struct WorldSpriteFrameSource;
 struct WorldSpritePassStats;
@@ -97,8 +103,11 @@ bool IsGpuDrivenCullingCameraFrozen();
 const CameraCB* GetCameraConstants();
 const CameraCB* GetGpuDrivenCullingCameraConstants();
 MeshMaterialGpuFrameView GetMaterialGpuFrameView(const GFX::Context& graphics);
+// 照明の提供者（照度体積の選択、雲の影の表、流体の烟の影の表）を天空の定数へ入れて公開する。流体の解算（BeginFrame）の後、
+// 前向きの前に呼ぶ。
 bool RefreshLightingProviders(const GFX::Context& graphics,
-                              const RENDER3D::LIGHTING::CloudSolarVisibilityGpuData& clouds);
+                              const RENDER3D::LIGHTING::CloudSolarVisibilityGpuData& clouds,
+                              const SceneEnvironment& environment);
 RENDER3D::LIGHTING::LocalLightListGpuBindings GetLocalLightListGpuBindings();
 // 今フレームの地形の記録と高さ場の float pool（描画と同じ番地）。光線追跡の場面が地形を変形して入れるのに使う。
 struct TerrainSurfaceGpuBindings {
@@ -130,6 +139,17 @@ bool HasDepthAwarePassWork();
 bool HasForwardTransparentPassWork();
 bool HasPreservedVfxWork();
 bool RenderPreservedVfxPass(const GFX::Context& graphics, const MeshPassResources& passResources);
+// この視図で解いた流体の煙の域があるか（帧图の FluidVolumes pass を組む）。
+bool HasFluidVolumes();
+// 流体の煙をこの視図へ描く。場面の深度は読める状態で呼ぶ。失敗したフレームは煙だけを飛ばして警告する。
+bool RenderFluidVolumes(const GFX::Context& graphics, const RENDER3D::FLUID::FluidRenderView& view,
+                        const RENDER3D::PIPELINE::RenderTargetAccess& targetAccess);
+// 編集器が読む流体の統計と調試。診断（投影後の散度・密度の総量の回読）と切片は、要求した後の数フレームだけ有効
+// （見ている間は毎フレーム要求する）。統計は主視図と編集器の視図の全ての域。
+const RENDER3D::FLUID::FluidVolumePassStats& GetFluidVolumePassStats();
+void RequestFluidDiagnostics();
+void RequestFluidDebugSlice(const RENDER3D::FLUID::FluidDebugSliceRequest& request);
+RENDER3D::FLUID::FluidDebugSliceView GetFluidDebugSlice();
 // 歪み層の粒子を戦闘の画面歪み遮罩へ描き、その貼図を返す（合成は PostSystem が行う）
 bool HasVfxDistortionWork();
 bool RenderVfxDistortionMaskPass(const GFX::Context& graphics, const MeshPassResources& passResources,
@@ -170,6 +190,8 @@ struct EditorInteractiveRenderSettings {
     const RENDER3D::PARTICLES::ParticleRenderFrameSource* particleFrameSource = nullptr;
     const IBL::IblEnvironmentSource* iblEnvironmentOverride = nullptr;
     bool suppressSpatialLightingProviders = false;
+    // 場面の色の形式（流体の煙の合成 PSO）。
+    DXGI_FORMAT sceneColorFormat = DXGI_FORMAT_UNKNOWN;
 };
 
 enum class EditorInteractiveMeshRenderResult : uint8_t {

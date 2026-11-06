@@ -24,6 +24,8 @@ struct EditorToolContext {
     EditorOperationRegistry& operations;
     // A pending open request asks the tool to focus/uncollapse this frame.
     const EditorToolOpenRequest* openRequest = nullptr;
+    // 新窗口 Play のゲームの窓に重ねて描く（編集器の画面は無いので、ドッキングせず窓の中に置く）。
+    bool playWindowOverlay = false;
 };
 
 class IEditorTool {

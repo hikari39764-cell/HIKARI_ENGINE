@@ -68,6 +68,7 @@ auto& gGamePresentationController = INTERNAL::GetRuntimeServiceState().gamePrese
 auto& gComInitialized = INTERNAL::GetRuntimeServiceState().comInitialized;
 auto& gRuntimeHostMode = INTERNAL::GetRuntimeServiceState().runtimeHostMode;
 auto& gEnableImGui = INTERNAL::GetRuntimeServiceState().enableImGui;
+auto& gPlayWindowOverlayRequested = INTERNAL::GetRuntimeServiceState().playWindowOverlayRequested;
 auto& gEnableEditorUI = INTERNAL::GetRuntimeServiceState().enableEditorUI;
 auto& gStreamlineEnabled = INTERNAL::GetRuntimeServiceState().streamlineEnabled;
 auto& gRuntimeSessionEndRequested = INTERNAL::GetRuntimeServiceState().runtimeSessionEndRequested;
@@ -101,6 +102,13 @@ bool IsEditorUIEnabled() { return gEnableImGui && gEnableEditorUI; }
 
 bool ShouldProduceEditorUiFrame() {
     return IsEditorHost() && IsEditorUIEnabled() && !IsInProcessGamePresentationActive();
+}
+
+void SetPlayWindowOverlayRequested(bool requested) { gPlayWindowOverlayRequested = requested; }
+
+bool ShouldProduceHostUiFrame() {
+    return ShouldProduceEditorUiFrame() || (IsEditorHost() && IsEditorUIEnabled() &&
+                                            IsInProcessGamePresentationActive() && gPlayWindowOverlayRequested);
 }
 
 int GetLogicalScreenWidth() { return gLogicalScreenWidth; }

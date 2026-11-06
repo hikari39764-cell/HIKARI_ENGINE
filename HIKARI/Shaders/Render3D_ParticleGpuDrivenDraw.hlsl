@@ -43,6 +43,14 @@ static const uint HIKARI_FORWARD_COST_NO_SHADOW = 3u;
 #include "Include/Forward/HIKARI_ShadowSampling.hlsli"
 #include "Include/Lighting/HIKARI_SurfaceDirectLighting.hlsli"
 #include "Include/Material/HIKARI_MaterialExpressionSurface.hlsli"
+#include "Include/Vfx/HIKARI_FluidCameraVolume.hlsli"
+
+// 流体の煙の相機体積（不透明面には步进の層が合成済み。粒子には相機から粒子までの煙を掛ける）。
+Texture3D<float4> gFluidCameraVolume : register(t11);
+cbuffer FluidCameraVolumeCB : register(b8)
+{
+    float4 gFluidCameraVolumeParams;
+};
 
 cbuffer ParticleDrawConstants : register(b1)
 {
@@ -457,5 +465,9 @@ float4 ParticlePS(ParticleVertex input, bool frontFace : SV_IsFrontFace) : SV_TA
         pbrInputs.roughness,pbrInputs.specularColor,pbrInputs.specularFactor,pbrInputs.occlusion,
         shadingNormal,geometricNormal,input.worldPosition,input.position.xy)
         : HikariDisplayReferredToRadiance(baseColor, gViewExposure)) + emissive;
-    return float4(HikariPreExpose(straightColor, gViewExposure) * alpha, alpha);
+    // 手前の煙：透明合成は src * T + S * alpha（覆った分の背景の煙を戻す）、加算は src * T。
+    const float4 fluid = HikariFluidCameraVolumeAt(gFluidCameraVolume, gParticleSampler,
+        input.position.xy * gScreenParams.zw, length(input.worldPosition - gCameraPos.xyz), gFluidCameraVolumeParams);
+    const float3 premultiplied = HikariPreExpose(straightColor, gViewExposure) * alpha * fluid.a;
+    return float4(premultiplied + ((gParticleMaterialFlags & 8u) != 0u ? 0.0f.xxx : fluid.rgb * alpha), alpha);
 }

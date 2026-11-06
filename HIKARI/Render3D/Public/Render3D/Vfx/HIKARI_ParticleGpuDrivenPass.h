@@ -10,6 +10,10 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 
+namespace HIKARI::RENDER3D::FLUID {
+struct FluidFlowView;
+}
+
 namespace HIKARI::RENDER3D::MATERIAL {
 class GpuMaterialRegistry;
 }
@@ -61,6 +65,9 @@ struct ParticleGpuDrivenDrawBindings : SurfaceLightingBindings {
     std::optional<VFX::VfxPostProcessMode> postProcessMode;
     // 歪み層だけを戦闘の画面歪み遮罩へ描く経路。色の経路は歪み層を描かない
     bool distortionMask = false;
+    // この視図の流体の煙の相機体積（HIKARI_FluidCameraVolume.hlsli）。無い視図は空で、params.w = 0。
+    D3D12_GPU_DESCRIPTOR_HANDLE fluidCameraVolume{};
+    MATH::Vec4 fluidCameraVolumeParams{};
 };
 
 // Owned by one MeshRenderer view-resource set. This object has no
@@ -77,8 +84,9 @@ public:
     bool Initialize(const GFX::Context& context, uint32_t particleCapacity = kGpuParticlePoolCapacity,
                     uint32_t emitterPageCapacity = kDefaultParticleEmitterUploadPageCapacity);
     void Shutdown();
+    // fluidFlow はこのフレームに解いた流体の流れ（fluidFollow の粒子が乗る。無ければ乗らない）。
     bool PrepareFrame(const GFX::Context& context, const ParticleRenderFrameSource* source,
-                      MATERIAL::GpuMaterialRegistry& materialRegistry);
+                      MATERIAL::GpuMaterialRegistry& materialRegistry, const FLUID::FluidFlowView* fluidFlow = nullptr);
     // 直前の PrepareFrame が失敗した理由（成功時は空文字列）。
     const char* GetLastPrepareFailure() const noexcept;
     bool ExecuteForwardTransparent(const GFX::Context& context, const ParticleGpuDrivenDrawBindings& bindings);

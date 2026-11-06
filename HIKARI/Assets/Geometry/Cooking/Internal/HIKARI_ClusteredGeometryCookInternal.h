@@ -83,6 +83,8 @@ bool BuildSurfaceCookInput(const ModelAsset& model, const MeshPrimitive& primiti
                            int nodeSkinIndex, uint32_t meshIndex, uint32_t primitiveIndex, const MATH::Mat4& matrix,
                            const ClusteredGeometryCookSettings& settings, SurfaceCookInput& outWork);
 void AppendMaterialSlots(const ModelAsset& model, ClusteredGeometryAsset& asset);
+// 表面を蒙皮として扱うか：図元の顶点布局が蒙皮か、節点に皮が付いている（蒙皮顶点が無ければ Unsupported になる）。
+bool IsSkinnedSurface(const MeshPrimitive& primitive, int nodeSkinIndex);
 
 bool ShouldUsePermissiveOpaqueLods(uint32_t flags);
 uint32_t TriangleNormalBucket(const SourceTriangle& triangle);

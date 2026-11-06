@@ -173,9 +173,10 @@ void DrawTemporalTable(const RuntimePerformanceSnapshot& s) {
                   RENDER3D::LightProbeVolumeSamplingModeLabel(renderQuality.lightProbeVolumeSampling),
                   RENDER3D::DynamicGiQualityLabel(renderQuality.dynamicGiQuality),
                   RENDER3D::LocalShadowQualityLabel(renderQuality.localShadowQuality));
-        MetricRow("Volumetric / Stylized Cloud Quality", "%s / %s",
+        MetricRow("Volumetric / Stylized Cloud / Fluid Smoke Quality", "%s / %s / %s",
                   RENDER3D::VolumetricLightingQualityLabel(renderQuality.volumetricLightingQuality),
-                  RENDER3D::VolumetricCloudQualityLabel(renderQuality.volumetricCloudQuality));
+                  RENDER3D::VolumetricCloudQualityLabel(renderQuality.volumetricCloudQuality),
+                  RENDER3D::FluidSmokeQualityLabel(renderQuality.fluidSmokeQuality));
         MetricRow("TAA History / Variance / Depth / Luma / Sharpness", "%.3f / %.3f / %.4f / %.3f / %.3f",
                   renderQuality.taaHistoryWeight, renderQuality.taaVarianceClipGamma, renderQuality.taaDepthRejection,
                   renderQuality.taaLuminanceRejection, renderQuality.taaSharpness);

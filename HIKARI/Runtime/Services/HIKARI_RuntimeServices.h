@@ -20,6 +20,10 @@ bool IsEditorHost();
 bool IsStandaloneGameHost();
 bool IsEditorUIEnabled();
 bool ShouldProduceEditorUiFrame();
+// 新窗口 Play の間、編集器がゲームの窓に開発用の画面（コンソール・帧率）を重ねたいか。フレームの始めの前に決める。
+void SetPlayWindowOverlayRequested(bool requested);
+// このフレームに ImGui の画面を作るか。編集器の画面か、新窗口 Play の窓への重ね描き。
+bool ShouldProduceHostUiFrame();
 int GetLogicalScreenWidth();
 int GetLogicalScreenHeight();
 

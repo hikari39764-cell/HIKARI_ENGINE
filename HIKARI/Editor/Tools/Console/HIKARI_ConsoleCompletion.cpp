@@ -47,7 +47,7 @@ void ConsoleCompletion::RefreshOperationNames(const EditorOperationRegistry& ope
     }
 }
 
-// 最初の語の候補は、編集器の操作と実行時コマンドと clear を名前順に並べたもの（同じ名前は操作を優先する）。
+// 最初の語の候補は、help・clear と編集器の操作と実行時コマンドを名前順に並べたもの（同じ名前はこの順に優先する）。
 // 名前が決まった後は、最後の語が当たる引数の値の候補。
 void ConsoleCompletion::Update(const ConsoleSources& sources, std::string_view text) {
     if (text == candidateQuery_ || (!appliedText_.empty() && text == appliedText_))
@@ -69,13 +69,15 @@ void ConsoleCompletion::Update(const ConsoleSources& sources, std::string_view t
         if (StartsWithIgnoreCase(name, text))
             candidates_.push_back({std::string(name), std::string(summary)});
     };
+    // コンソール自身のコマンドを先に入れる（同じ名前の実行時コマンドより優先する）。
+    add(kConsoleHelpCommand, TEXT::Localize("ui.console.helpSummary"));
+    add(kConsoleClearCommand, TEXT::Localize("ui.console.clearSummary"));
     for (const Candidate& operation : operationNames_)
         add(operation.name, operation.summary);
     if (sources.service != nullptr) {
         for (const RUNTIME::DebugCommand& command : sources.service->Commands())
-            add(command.name, command.usage);
+            add(command.name, command.summary);
     }
-    add(kConsoleClearCommand, TEXT::Localize("ui.console.clearSummary"));
     std::stable_sort(candidates_.begin(), candidates_.end(),
                      [](const Candidate& a, const Candidate& b) { return a.name < b.name; });
     candidates_.erase(std::unique(candidates_.begin(), candidates_.end(),
@@ -186,7 +188,7 @@ std::vector<ConsoleCompletion::HintRow> ConsoleCompletion::BuildHintRows(const C
     } else if (sources.service != nullptr) {
         for (const RUNTIME::DebugCommand& command : sources.service->Commands()) {
             if (command.name == name)
-                rows.push_back({command.usage, {}, {}, {}, true, false});
+                rows.push_back({command.usage, {}, {}, command.summary, true, false});
         }
     }
     return rows;

@@ -42,6 +42,9 @@ namespace HIKARI {
 
 class DocumentSceneAssetBindings;
 struct DocumentSceneState;
+namespace INPUT {
+class InputService;
+}
 namespace RENDERSTYLE {
 class RenderStyleAssetStore;
 }
@@ -205,6 +208,10 @@ private:
     // contentPath を渡すと、資産の文件の代わりにその文件の内容で開く（身元は sceneGuid の資産のまま）。
     bool OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGuid, const std::filesystem::path& contentPath = {});
     bool OpenStartupSceneAssetWithCurrentAssets();
+    // 場面が持つ開発コマンド（freecam・teleport・reload）を実行時コマンド表へ登録する。
+    void RegisterSceneDebugCommands(INPUT::InputService& input);
+    // 自由視点が有効なら、解決したゲームの相机の位置と向きをその視点にする。editorViewport は編集器の視口に描く時。
+    void ApplyDebugFreeCamera(float unscaledDt, const INPUT::InputService& input, bool editorViewport);
     std::unique_ptr<DocumentSceneState> state_;
 };
 

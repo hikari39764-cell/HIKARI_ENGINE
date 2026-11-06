@@ -112,12 +112,25 @@ bool CheckTextInputFrameLifetime(HIKARI::INPUT::InputService& service, FakeInput
     service.SetExternalTextInputEvents({{TextInputEventKind::CompositionUpdated, "old field"}});
     service.Update(1.0f / 60.0f);
     const uint32_t resetCountBeforeCapture = backend.textInputResetCount;
-    service.SetDeveloperInputCaptured(true);
+    service.SetDeveloperInputCaptured(DeveloperInputOwner::Console, true);
     if (!service.GetSnapshot().GetTextInputEvents().empty() || backend.textInputResetCount <= resetCountBeforeCapture) {
         std::cerr << "developer input capture did not reset text composition state\n";
         return false;
     }
-    service.SetDeveloperInputCaptured(false);
+    // コンソールと自由視点は別々に持つ。片方を離しても、もう片方が持っている間は捕まえたまま。
+    service.SetDeveloperInputCaptured(DeveloperInputOwner::FreeCamera, true);
+    service.SetDeveloperInputCaptured(DeveloperInputOwner::Console, false);
+    if (!service.IsDeveloperInputCaptured() || service.IsDeveloperInputCapturedBy(DeveloperInputOwner::Console) ||
+        !service.IsDeveloperInputCapturedBy(DeveloperInputOwner::FreeCamera)) {
+        std::cerr << "releasing the console dropped the free camera's developer input capture\n";
+        return false;
+    }
+    service.SetDeveloperInputCaptured(DeveloperInputOwner::Console, true);
+    service.ReleaseDeveloperInput();
+    if (service.IsDeveloperInputCaptured()) {
+        std::cerr << "releasing developer input kept an owner\n";
+        return false;
+    }
 
     const ImeCaretAnchor anchor{17, 29, true};
     service.SetImeCaretAnchor(anchor);
@@ -251,6 +264,7 @@ bool CheckVibrationLifecycle(HIKARI::INPUT::InputService& service, FakeInputBack
 
 bool CheckPointerRelease(HIKARI::INPUT::InputService& service, FakeInputBackend& fake) {
     using namespace HIKARI;
+    using INPUT::DeveloperInputOwner;
     using INPUT::MouseCaptureMode;
     bool passed = true;
     const auto check = [&](bool condition, const char* message) {
@@ -302,12 +316,12 @@ bool CheckPointerRelease(HIKARI::INPUT::InputService& service, FakeInputBackend&
           "closing menu during gameplay must restore bounded relative capture");
 
     openMenu();
-    service.SetDeveloperInputCaptured(true);
+    service.SetDeveloperInputCaptured(DeveloperInputOwner::Console, true);
     service.SetMouseCaptureMode(MouseCaptureMode::Free);
     ui.PreUpdate(world, frame);
     check(service.GetMouseCaptureMode() == MouseCaptureMode::Free,
           "UI release stole pointer back from developer input");
-    service.SetDeveloperInputCaptured(false);
+    service.SetDeveloperInputCaptured(DeveloperInputOwner::Console, false);
 
     openMenu();
     active = false;

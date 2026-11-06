@@ -4,6 +4,7 @@
 #include "Render3D/Vfx/HIKARI_ParticleCapacity.h"
 #include "Render3D/Vfx/HIKARI_ParticleGeometryLayout.h"
 #include "Render3D/Vfx/HIKARI_ParticleCompositionRenderer.h"
+#include "Render3D/Vfx/HIKARI_FluidVolumePass.h"
 
 #include <algorithm>
 #include <array>
@@ -29,6 +30,7 @@
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/Vfx/HIKARI_GpuParticleParameterPacking.h"
 #include "Render3D/Vfx/Internal/HIKARI_GpuParticleShaderInterop.h"
@@ -156,6 +158,10 @@ GpuParticleShapeState BuildShapeState(const ParticleEmitterRenderParameters& ren
 
 struct ParticleGpuDrivenPass::Impl {
     GFX::Context context{};
+    // このフレームに粒子が乗る流体（Render3D_ParticleSimulation.hlsl の t1..t4 と b1）。流体の無い枠を埋める空の
+    // Texture3D 記述子（資源なし、読むと 0）。
+    FLUID::FluidFlowView fluidFlow{};
+    RenderResourceView fluidFlowFallback{};
     INTERNAL::GpuParticleStorage storage{};
     INTERNAL::ParticleGpuDrivenPipelineState pipelines{};
     INTERNAL::ParticleMaterialResolver materialResolver{};
@@ -426,6 +432,14 @@ struct ParticleGpuDrivenPass::Impl {
         context.cmdList->SetComputeRootDescriptorTable(0u, storage.GetParticleUavGpuHandle());
         context.cmdList->SetComputeRootShaderResourceView(1u, emitterAddress);
         context.cmdList->SetComputeRoot32BitConstants(2u, sizeof(constants) / sizeof(uint32_t), &constants, 0u);
+        // 根の 3..7 は流体が無い時も有効な値で埋める（D3D12 は根の引数を全て設定してから派発する）。域の数は
+        // constants.flags にあり、その先の枠と域の表は shader が読まない：空いた枠は空の記述子、域が無ければ域の表の
+        // 位置にこの派発の発射器の上传を置く。
+        for (uint32_t slot = 0u; slot < FLUID::kMaximumFluidFlowDomains; ++slot)
+            context.cmdList->SetComputeRootDescriptorTable(3u + slot, slot < fluidFlow.count ? fluidFlow.velocity[slot]
+                                                                                             : fluidFlowFallback.gpu);
+        context.cmdList->SetComputeRootConstantBufferView(7u,
+                                                          fluidFlow.count > 0u ? fluidFlow.domains : emitterAddress);
         context.cmdList->Dispatch(DispatchGroupCount(threadCount), 1u, 1u);
     }
 
@@ -448,8 +462,9 @@ struct ParticleGpuDrivenPass::Impl {
         constants.spawnCount = (std::min)(submission.spawnCount, allocation.activeCapacity);
         constants.randomSeed = submission.randomSeed;
         constants.deltaSeconds = (std::max)(submission.deltaSeconds, 0.0f);
+        constants.flags = fluidFlow.count << INTERNAL::kGpuParticleFluidFlowShift;
         if (submission.directShape) {
-            constants.flags = 1u;
+            constants.flags |= 1u;
             DispatchSimulation(0u, constants, allocation.activeCapacity, emitterAddress);
             storage.InsertUavBarrier(context);
             ++stats.simulatedEmitters;
@@ -874,6 +889,11 @@ struct ParticleGpuDrivenPass::Impl {
                                                                                          : texturePool);
             context.cmdList->SetGraphicsRootDescriptorTable(19u, bindings.prefiltered.ptr ? bindings.prefiltered
                                                                                           : texturePool);
+            // 流体の無い視図は params.w = 0 で shader が体積を読まない（表は貼図の池で埋める）。
+            const bool fluid = bindings.fluidCameraVolume.ptr != 0u;
+            const MATH::Vec4 fluidParams = fluid ? bindings.fluidCameraVolumeParams : MATH::Vec4{};
+            context.cmdList->SetGraphicsRootDescriptorTable(21u, fluid ? bindings.fluidCameraVolume : texturePool);
+            context.cmdList->SetGraphicsRoot32BitConstants(22u, 4u, &fluidParams, 0u);
         };
         drawOrder.clear();
         drawOrder.reserve(drawItems.size());
@@ -945,7 +965,8 @@ struct ParticleGpuDrivenPass::Impl {
             constants.materialFlags =
                 (IsLitParticleMaterial(item.render.materialMode) && bindings.IsValid() ? 1u : 0u) |
                 (item.render.effectMaterialIncludesParticleColor ? 2u : 0u) |
-                (item.render.blendMode == ParticleBlendMode::Distortion ? 4u : 0u);
+                (item.render.blendMode == ParticleBlendMode::Distortion ? 4u : 0u) |
+                (item.render.blendMode == ParticleBlendMode::Additive ? 8u : 0u);
             // z/w は形状の幅テーパー。ルートシグネチャを増やさずに運ぶ。
             constants.depthParams = MakeGpuParticleFloat4(item.render.softIntersectionDistance, item.render.depthBias,
                                                           item.render.taperStart, item.render.taperEnd);
@@ -1027,6 +1048,9 @@ struct ParticleGpuDrivenPass::Impl {
     }
 
     void Shutdown() {
+        if (fluidFlowFallback.IsValid())
+            (void)ReleaseRenderResourceDescriptor(fluidFlowFallback);
+        fluidFlowFallback = {};
         storage.Shutdown(context);
         pipelines.Shutdown();
         compositionRenderer.Release();
@@ -1083,6 +1107,18 @@ bool ParticleGpuDrivenPass::Initialize(const GFX::Context& context, uint32_t par
         impl_->Shutdown();
         return false;
     }
+    impl_->fluidFlowFallback = AllocateRenderResourceDescriptor();
+    if (!impl_->fluidFlowFallback.IsValid()) {
+        HIKARI_LOG_ERROR("[ParticleGpuDrivenPass][Initialize] fluid flow fallback descriptor failed.");
+        impl_->Shutdown();
+        return false;
+    }
+    D3D12_SHADER_RESOURCE_VIEW_DESC nullVolume{};
+    nullVolume.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    nullVolume.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+    nullVolume.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    nullVolume.Texture3D.MipLevels = 1u;
+    context.device->CreateShaderResourceView(nullptr, &nullVolume, impl_->fluidFlowFallback.cpu);
     impl_->freeRanges.push_back({0u, impl_->stats.particleCapacity});
     impl_->initialized = true;
     impl_->stats.ready = true;
@@ -1095,7 +1131,8 @@ void ParticleGpuDrivenPass::Shutdown() {
 }
 
 bool ParticleGpuDrivenPass::PrepareFrame(const GFX::Context& context, const ParticleRenderFrameSource* source,
-                                         MATERIAL::GpuMaterialRegistry& materialRegistry) {
+                                         MATERIAL::GpuMaterialRegistry& materialRegistry,
+                                         const FLUID::FluidFlowView* fluidFlow) {
     if (impl_ && context.device && context.srvHeap && source && source->input && source->assetRegistry) {
         const AssetRegistry& assets = *source->assetRegistry;
         if (impl_->prewarmedRegistryId != assets.GetInstanceId() ||
@@ -1145,6 +1182,7 @@ bool ParticleGpuDrivenPass::PrepareFrame(const GFX::Context& context, const Part
     if (impl_ == nullptr)
         return false;
     impl_->lastPrepareFailure = "";
+    impl_->fluidFlow = fluidFlow != nullptr ? *fluidFlow : FLUID::FluidFlowView{};
     return impl_->PrepareFrame(context, source, materialRegistry);
 }
 

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Core/HIKARI_MeshPassResources.h"
@@ -10,6 +11,7 @@
 #include "Render3D/Features/HIKARI_StylizedScreenFeatureRenderer.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Vfx/HIKARI_FluidVolumePass.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
@@ -58,6 +60,40 @@ bool ExecuteDepthAware(const GRAPH::RenderGraphPassContext& graphPass, void* use
         if (depthReadActive) {
             context.screenSpace.renderTargetAccess.EndDepthRead();
         }
+        return false;
+    }
+}
+
+bool ExecuteFluidVolumes(const GRAPH::RenderGraphPassContext& graphPass, void* userData) noexcept {
+    auto& state = *static_cast<StageExecutionState*>(userData);
+    if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
+        return false;
+    }
+    const RenderFrameGraphStageContext& context = *state.context;
+    const RenderFrameContext& frame = context.frame;
+    const TEMPORAL::TemporalCameraData& camera = context.temporalFrame.camera;
+    if (!frame.scene.depth.IsSampleable() || frame.scene.readOnlyDsv.ptr == 0u || !camera.valid ||
+        !MATH::IsFinite(camera.invViewProj) || !MATH::IsFinite(camera.prevViewProj)) {
+        return true;
+    }
+    try {
+        // 場面の深度と同じ（抖动込みの）描画格子で步进する。
+        FLUID::FluidRenderView view =
+            FLUID::MakeFluidRenderView(context.environment, frame.viewId.value, camera.viewProj, camera.invViewProj,
+                                       {camera.cameraPos.x, camera.cameraPos.y, camera.cameraPos.z});
+        view.historyValid = context.temporalFrame.historyValid && !context.temporalFrame.resetHistory &&
+                            camera.previousValid && !frame.cameraCut;
+        view.renderWidth = frame.renderWidth;
+        view.renderHeight = frame.renderHeight;
+        view.sceneDepthSrv = frame.scene.depth.srv;
+        view.sceneColorFormat = frame.scene.color.format;
+        if (view.sceneColorFormat == DXGI_FORMAT_UNKNOWN || !frame.targetAccess.BeginDepthRead()) {
+            return true;
+        }
+        (void)MESHRENDERER::RenderFluidVolumes(frame.graphics, view, frame.targetAccess);
+        frame.targetAccess.EndDepthRead();
+        return frame.targetAccess.Rebind();
+    } catch (...) {
         return false;
     }
 }

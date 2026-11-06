@@ -1828,6 +1828,206 @@
       }
     },
     {
+      "assetGuid": "1411e422a20f479fab031b9a2e17d608",
+      "programId": "HIKARI.EngineShader.Render3D_FluidSimulation",
+      "source": "Render3D_FluidSimulation.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.Vfx",
+      "group": "NativeVfx",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "ActivityCS",
+          "stage": "Compute",
+          "entry": "ActivityCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "AdvectCorrectCS",
+          "stage": "Compute",
+          "entry": "AdvectCorrectCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "AdvectForwardCS",
+          "stage": "Compute",
+          "entry": "AdvectForwardCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ApplyForcesCS",
+          "stage": "Compute",
+          "entry": "ApplyForcesCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ClearCS",
+          "stage": "Compute",
+          "entry": "ClearCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "CoarsestSolveCS",
+          "stage": "Compute",
+          "entry": "CoarsestSolveCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "CurlCS",
+          "stage": "Compute",
+          "entry": "CurlCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "DiagnosticsCS",
+          "stage": "Compute",
+          "entry": "DiagnosticsCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "DivergenceCS",
+          "stage": "Compute",
+          "entry": "DivergenceCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ForceFieldCS",
+          "stage": "Compute",
+          "entry": "ForceFieldCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "OccupancyCS",
+          "stage": "Compute",
+          "entry": "OccupancyCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ProjectCS",
+          "stage": "Compute",
+          "entry": "ProjectCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ProlongCS",
+          "stage": "Compute",
+          "entry": "ProlongCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ResidualRestrictCS",
+          "stage": "Compute",
+          "entry": "ResidualRestrictCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "SliceCS",
+          "stage": "Compute",
+          "entry": "SliceCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "SmoothCS",
+          "stage": "Compute",
+          "entry": "SmoothCS",
+          "profile": "cs_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.FluidSimulation",
+        "engineInterfaceVersion": 10,
+        "engineInterfaceHash": "8c666b33a2e93e7e77fa0622741cc9f14752cda13ed38da9b8d68010675f42db",
+        "rootLayoutId": "HIKARI.FluidSimulation.Root",
+        "rootLayoutVersion": 2,
+        "rootLayoutHash": "ce8e821375e14f195f1e8a6a9b96e12daa81213369470973d366d7d038a663cf",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
+      "assetGuid": "31725cf48065478cbf497c531c65fe0b",
+      "programId": "HIKARI.EngineShader.Render3D_FluidVolume",
+      "source": "Render3D_FluidVolume.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Render3D.Vfx",
+      "group": "NativeVfx",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [],
+      "entries": [
+        {
+          "id": "CameraVolumeCS",
+          "stage": "Compute",
+          "entry": "CameraVolumeCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "CompositePS",
+          "stage": "Pixel",
+          "entry": "CompositePS",
+          "profile": "ps_6_0"
+        },
+        {
+          "id": "FullscreenVS",
+          "stage": "Vertex",
+          "entry": "FullscreenVS",
+          "profile": "vs_6_0"
+        },
+        {
+          "id": "LightCS",
+          "stage": "Compute",
+          "entry": "LightCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "MarchPS",
+          "stage": "Pixel",
+          "entry": "MarchPS",
+          "profile": "ps_6_0"
+        },
+        {
+          "id": "NoiseCS",
+          "stage": "Compute",
+          "entry": "NoiseCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "ReconstructPS",
+          "stage": "Pixel",
+          "entry": "ReconstructPS",
+          "profile": "ps_6_0"
+        },
+        {
+          "id": "SolarVisibilityCS",
+          "stage": "Compute",
+          "entry": "SolarVisibilityCS",
+          "profile": "cs_6_0"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.FluidVolume",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "43a812372d6a74061f5574cb2dff75ff1fcd33ceaadcec6e1115f45caa9c2d29",
+        "rootLayoutId": "HIKARI.FluidVolume.Root",
+        "rootLayoutVersion": 2,
+        "rootLayoutHash": "772075a1fb87629a725d4fde905b18b2d8509e1ecd3c28c54d862eab4f2c7f45",
+        "requiredCaps": {
+          "minimumShaderModel": 60,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 0
+        }
+      }
+    },
+    {
       "assetGuid": "79c062d3b4ec1f644530dc86dcf48862",
       "programId": "HIKARI.EngineShader.Render3D_GeometryAuxFeaturePS",
       "source": "Render3D_GeometryAuxFeaturePS.hlsl",
@@ -4095,8 +4295,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.ParticleDraw.Root",
-        "rootLayoutVersion": 5,
-        "rootLayoutHash": "4b67f7dd418e45869c1a14ee014ae01bb356d20dd9d05043a80ea4c1c0e3a134",
+        "rootLayoutVersion": 6,
+        "rootLayoutHash": "8f7c7143b75f14d13098cf0be479a864a9eecea82d9a60a9b6e1c307ff70992f",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -4135,8 +4335,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.ParticleDraw.Root",
-        "rootLayoutVersion": 5,
-        "rootLayoutHash": "4b67f7dd418e45869c1a14ee014ae01bb356d20dd9d05043a80ea4c1c0e3a134",
+        "rootLayoutVersion": 6,
+        "rootLayoutHash": "8f7c7143b75f14d13098cf0be479a864a9eecea82d9a60a9b6e1c307ff70992f",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -4181,8 +4381,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.ParticleSimulation.Root",
-        "rootLayoutVersion": 1,
-        "rootLayoutHash": "13007e949f7390c3d7e4b2266249d437402af2ef980dfa560923f16d9fafe838",
+        "rootLayoutVersion": 2,
+        "rootLayoutHash": "c0b78ddd26e3ce4c1d9cbe1454369c5229019bca5b9325f9e07c8232c85cd4df",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

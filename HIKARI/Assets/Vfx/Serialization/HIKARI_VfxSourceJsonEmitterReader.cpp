@@ -2,6 +2,7 @@
 #include "Assets/Vfx/Serialization/HIKARI_VfxSourceJsonInternal.h"
 
 #include <algorithm>
+#include <exception>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -287,7 +288,8 @@ bool ReadForces(const Json& node, VfxForcesModuleData& forces) {
     if (!RequiredVec3(node, "gravity", forces.gravity) || !RequiredFloat(node, "drag", forces.drag) ||
         !OptionalBool(node, "collisionPlaneEnabled", forces.collisionPlaneEnabled) ||
         !OptionalFloat(node, "collisionPlaneHeight", forces.collisionPlaneHeight) ||
-        !OptionalFloat(node, "restitution", forces.restitution) || !OptionalFloat(node, "friction", forces.friction)) {
+        !OptionalFloat(node, "restitution", forces.restitution) || !OptionalFloat(node, "friction", forces.friction) ||
+        !OptionalFloat(node, "fluidFollow", forces.fluidFollow)) {
         return false;
     }
     const auto field = node.find("field");
@@ -403,6 +405,29 @@ bool ReadParameterTrack(const Json& node, VfxParameterTrackData& track) {
            node.contains("curve") && ReadCurve(node["curve"], track.curve);
 }
 
+// 流体層の模块は、その種類の層では必須、他の層には書かない。値は字段表で厳密に読む（型違い・未知の名前は失敗）。
+template <class Module, class Fields>
+bool ReadFluidModule(const Json& modules, const char* key, bool required, Module& module, const Fields& fields) {
+    const auto found = modules.find(key);
+    if (found == modules.end())
+        return !required;
+    if (!required || !found->is_object() || !RequiredString(*found, "id", module.id))
+        return false;
+    try {
+        JSONFIELDS::Read(*found, module, fields);
+    } catch (const std::exception&) {
+        return false;
+    }
+    return true;
+}
+
+bool ReadFluidModules(const Json& modules, VfxEmitterData& emitter) {
+    return ReadFluidModule(modules, "fluidDomain", emitter.kind == VfxLayerKind::Fluid, emitter.fluidDomain,
+                           kVfxFluidDomainModuleFields) &&
+           ReadFluidModule(modules, "fluidSource", emitter.kind == VfxLayerKind::FluidSource, emitter.fluidSource,
+                           kVfxFluidSourceModuleFields);
+}
+
 bool ReadModules(const Json& modules, VfxEmitterData& emitter) {
     constexpr const char* kModuleNames[] = {
         "basic", "emitterTransform", "attachment", "spawn",        "shape",       "position", "rotation",
@@ -446,7 +471,7 @@ bool ReadModules(const Json& modules, VfxEmitterData& emitter) {
            ReadAnimatedVec3(scale["value"], emitter.scale.value) && ReadForces(modules["forces"], emitter.forces) &&
            color.contains("value") && ReadAnimatedColor(color["value"], emitter.color.value) &&
            ReadRenderCommon(modules["renderCommon"], emitter.renderCommon) &&
-           ReadRenderShape(modules["renderShape"], emitter.renderShape);
+           ReadRenderShape(modules["renderShape"], emitter.renderShape) && ReadFluidModules(modules, emitter);
 }
 
 bool ReadAnimationTiming(const Json& node, VfxAnimationTiming& timing) {

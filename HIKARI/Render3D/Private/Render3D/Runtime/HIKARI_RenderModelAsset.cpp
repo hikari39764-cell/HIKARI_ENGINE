@@ -9,13 +9,7 @@
 
 namespace HIKARI::RENDER3D::RUNTIME {
 namespace {
-MATH::Mat4 GetNodeLocalMatrix(const ModelNode& node) {
-    return node.hasLocalMatrix ? node.localMatrix : node.localTransform.GetLocalMatrix();
-}
-
-bool IsPrimitiveSkinned(const MeshPrimitive& primitive) {
-    return primitive.layout == VertexLayoutKind::SkinnedPNTTJW || !primitive.skinnedVertices.empty();
-}
+bool IsPrimitiveSkinned(const MeshPrimitive& primitive) { return primitive.layout == VertexLayoutKind::SkinnedPNTTJW; }
 
 Bounds ResolvePrimitiveBounds(const MeshPrimitive& primitive) {
     return BOUNDS::IsUsable(primitive.bounds) ? primitive.bounds : BOUNDS::ComputePrimitiveBounds(primitive);
@@ -65,7 +59,7 @@ void BuildNodeRecords(const ModelAsset& source, RenderModelAsset& out) {
         RenderModelNodeRecord nodeRecord{};
         nodeRecord.nodeIndex = static_cast<uint32_t>(nodeIndex);
         nodeRecord.parentIndex = sourceNode.parent;
-        nodeRecord.localMatrix = GetNodeLocalMatrix(sourceNode);
+        nodeRecord.localMatrix = BOUNDS::GetNodeLocalMatrix(sourceNode);
         nodeRecord.meshIndex = sourceNode.meshIndex;
         nodeRecord.skinIndex = sourceNode.skinIndex;
 

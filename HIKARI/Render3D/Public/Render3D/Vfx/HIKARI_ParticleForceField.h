@@ -13,6 +13,8 @@ struct ParticleForceField {
     float evolution = 0.3f;
     float attraction = 0;
 };
+// 粒子が流体に乗る割合 [1/s] の上限（GPU の 1/60 秒の分割で安定に積分できる範囲）。
+inline constexpr float kMaxParticleFluidFollow = 30.0f;
 inline bool IsParticleForceFieldActive(const ParticleForceField& field) noexcept {
     return field.turbulence != 0 || field.vortex != 0 || field.attraction != 0;
 }

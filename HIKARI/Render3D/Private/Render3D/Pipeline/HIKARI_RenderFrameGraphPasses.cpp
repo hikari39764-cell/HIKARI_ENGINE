@@ -419,6 +419,7 @@ const RenderFrameGraphPassCallbacks& GetRenderFrameGraphPassCallbacks() noexcept
                                                          &ExecuteSsr,
                                                          &ExecuteSubsurfaceScattering,
                                                          &ExecuteDepthAware,
+                                                         &ExecuteFluidVolumes,
                                                          &ExecuteForwardTransparent,
                                                          &ExecuteRenderFeaturePlan,
                                                          &ExecuteGeometryFeatures,

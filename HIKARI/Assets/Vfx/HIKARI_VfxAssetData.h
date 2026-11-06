@@ -1,5 +1,6 @@
 #pragma once
 #include "Render3D/Vfx/HIKARI_ParticleForceField.h"
+#include "Assets/Vfx/HIKARI_VfxFluidModules.h"
 #include "Vfx/HIKARI_VfxPostProcessMode.h"
 
 #include <cstdint>
@@ -19,7 +20,8 @@ namespace HIKARI::VFX {
 inline constexpr uint32_t kVfxSourceVersion = 15u;
 
 // 形状はレイヤー時間、粒子は個々の寿命で同じアニメーションを評価する。
-enum class VfxLayerKind : uint8_t { Particles, Shape, Group, Adjustment };
+// Fluid は体積流体の域（GPU の三次元格子）、FluidSource はその下に置く流体の源・汇・力場。
+enum class VfxLayerKind : uint8_t { Particles, Shape, Group, Adjustment, Fluid, FluidSource };
 
 enum class VfxValueType : uint8_t {
     Bool,
@@ -522,6 +524,9 @@ struct VfxForcesModuleData {
     float restitution = 0.35f;
     float friction = 0.2f;
     HIKARI::RENDER3D::PARTICLES::ParticleForceField field{};
+    // 流体に乗る（粒子だけ）：粒子の速度を毎秒この割合 [1/s] でその場の流体の速度へ寄せる（0 で乗らない）。世界空間の粒子が
+    // 同じフレームに解いた流体域の中にいる時だけ効く。
+    float fluidFollow = 0.0f;
 };
 
 struct VfxColorModuleData {
@@ -690,11 +695,29 @@ struct VfxEmitterData {
     VfxColorModuleData color{};
     VfxRenderCommonModuleData renderCommon{};
     VfxRenderShapeModuleData renderShape{};
+    // 流体層だけが持つ模块（Fluid は fluidDomain、FluidSource は fluidSource）。他の層では使わない。
+    VfxFluidDomainModuleData fluidDomain{};
+    VfxFluidSourceModuleData fluidSource{};
     std::vector<VfxParameterTrackData> parameterTracks{};
     std::vector<MaterialEffectStep> effects{};
     std::vector<VfxSpecialOutputData> specialOutputs{};
     std::vector<VfxInputLinkData> inputLinks{};
 };
+
+// 流体源が属する域：親をたどり、群（Group）を飛ばして最初に会う層が流体域なら、その層。
+// find は層 ID から層（無ければ nullptr）を返す。循環は深さで打ち切る。
+template <class Find>
+const VfxEmitterData* FindVfxFluidDomainLayer(const VfxEmitterData& source, Find&& find) {
+    const VfxEmitterData* current = &source;
+    for (int depth = 0; depth < 16 && !current->parentEmitterId.empty(); ++depth) {
+        current = find(current->parentEmitterId);
+        if (current == nullptr || current->kind == VfxLayerKind::Fluid)
+            return current;
+        if (current->kind != VfxLayerKind::Group)
+            return nullptr;
+    }
+    return nullptr;
+}
 
 struct VfxAssetData {
     uint32_t version = kVfxSourceVersion;

@@ -29,6 +29,8 @@
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingReferenceIndex.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
+#include "Editor/Performance/HIKARI_FrameStatsOverlay.h"
+#include "Runtime/Presentation/HIKARI_GamePresentationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
@@ -516,8 +518,8 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
     }
     // 試遊中にコンソールが開いている間は、ゲームの入力を止める（打鍵でゲームが動かないように）。
     // 編集中は止めない（編集カメラの操作を残す）。
-    SERVICES::GetInputService().SetDeveloperInputCaptured(scene.IsRuntimePlayActive() &&
-                                                          toolHost_.IsOpen(EDITOR::kConsoleToolId));
+    SERVICES::GetInputService().SetDeveloperInputCaptured(
+        INPUT::DeveloperInputOwner::Console, scene.IsRuntimePlayActive() && toolHost_.IsOpen(EDITOR::kConsoleToolId));
 
     documentToolbarController_.SyncDocumentMeta(scene, context_, selectionSync_);
     scene.SetUnsavedSceneChanges(context_.sceneDirty);
@@ -649,6 +651,56 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
         CommitSceneObjectAuthoringHistory(scene, std::move(*history));
     EDITOR::EditorToolContext toolContext{scene, context_, operationRegistry_};
     toolHost_.Draw(toolContext);
+    if (context_.windows.runtime.showFrameStats) {
+        // 主菜单の行の右端（空いている所）に出し、窓の見出しやボタンを隠さない。
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        const float margin = ImGui::GetStyle().WindowPadding.x;
+        EDITOR::DrawFrameStatsOverlay({viewport->Pos.x + viewport->Size.x - margin, viewport->Pos.y}, {1.0f, 0.0f});
+    }
+}
+
+void DocumentSceneEditorController::UpdatePlayWindowOverlay(const EDITOR::EditorPlaySession& playSession) {
+    INPUT::InputService& input = SERVICES::GetInputService();
+    if (!playSession.IsWindowedRunning() || !SERVICES::IsInProcessGamePresentationActive()) {
+        if (playWindowOverlayActive_) {
+            playWindowOverlayActive_ = false;
+            playWindowConsoleOpen_ = false;
+            SERVICES::SetPlayWindowOverlayRequested(false);
+            input.SetDeveloperInputCaptured(INPUT::DeveloperInputOwner::Console, false);
+        }
+        playWindowConsoleKeyDown_ = false;
+        return;
+    }
+    playWindowOverlayActive_ = true;
+    // ゲームの窓への打鍵は ImGui の窓処理を通らないので、~ の押し下げは生のキー（VK_OEM_3）で見る。
+    constexpr size_t kConsoleKey = 0xC0;
+    const bool keyDown = input.GetSnapshot().GetDevices().keyboard[kConsoleKey] != 0u;
+    if (keyDown && !playWindowConsoleKeyDown_) {
+        playWindowConsoleOpen_ = !playWindowConsoleOpen_;
+        playWindowConsoleOpened_ = playWindowConsoleOpen_;
+    }
+    playWindowConsoleKeyDown_ = keyDown;
+    // 開いている間はゲームの入力を止め、Esc も入力欄のものにする（Play を止めない）。
+    input.SetDeveloperInputCaptured(INPUT::DeveloperInputOwner::Console, playWindowConsoleOpen_);
+    SERVICES::SetPlayWindowOverlayRequested(playWindowConsoleOpen_ || context_.windows.runtime.showFrameStats);
+}
+
+void DocumentSceneEditorController::DrawPlayWindowOverlay(DocumentSceneBase& scene) {
+    // 編集器の窓は隠れていて dock space を描かないので、通常のフレームと同じく node だけ生かしておく。
+    KeepWorkspaceDockSpacesAlive();
+    // 操作で変えた表示（view.debug）は通常のフレームと同じく場面へ渡す。
+    scene.SetViewportDebugViewState(context_.viewportDebug);
+    EDITOR::EditorToolContext toolContext{scene, context_, operationRegistry_};
+    toolContext.playWindowOverlay = true;
+    toolHost_.DrawDetached(EDITOR::kConsoleToolId, toolContext, playWindowConsoleOpen_,
+                           std::exchange(playWindowConsoleOpened_, false));
+    if (context_.windows.runtime.showFrameStats) {
+        // コンソールが上側を使うので、帧率は右下に出す。
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        const float margin = ImGui::GetStyle().WindowPadding.x;
+        EDITOR::DrawFrameStatsOverlay(
+            {viewport->Pos.x + viewport->Size.x - margin, viewport->Pos.y + viewport->Size.y - margin}, {1.0f, 1.0f});
+    }
 }
 
 } // namespace HIKARI

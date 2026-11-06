@@ -7,6 +7,7 @@
 #include "Core/HIKARI_TimeService.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/HIKARI_ProjectContext.h"
+#include "Runtime/Presentation/HIKARI_GamePresentationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -69,7 +70,11 @@ void EditorEngineApp::RenderHostUi() {
     }
 
     if (auto* documentScene = dynamic_cast<DocumentSceneBase*>(runtimeApp_.GetCurrentScene())) {
-        documentSceneEditorController_.Draw(*documentScene, editorPlaySession_, projectSession_);
+        // 新窗口 Play の間は編集器の窓が隠れていて、ゲームの窓に重ねる開発用の画面だけを描く。
+        if (SERVICES::IsInProcessGamePresentationActive())
+            documentSceneEditorController_.DrawPlayWindowOverlay(*documentScene);
+        else
+            documentSceneEditorController_.Draw(*documentScene, editorPlaySession_, projectSession_);
     }
 }
 
@@ -80,6 +85,7 @@ void EditorEngineApp::UpdateHostSessions() {
         }
         editorPlaySession_.Update(*documentScene);
     }
+    documentSceneEditorController_.UpdatePlayWindowOverlay(editorPlaySession_);
 }
 
 void EditorEngineApp::RequestHostStop() { editorPlaySession_.RequestStop(PlayStopReason::Escape); }

@@ -397,6 +397,12 @@ void VfxWorkspaceController::DrawEmitterTiming(AssetDatabase& database, const VF
         ImGui::TextWrapped(
             VfxUiText("Off: particles retain their spawn transform. Forces use the simulation space.").c_str());
         basicEditor.FloatDistribution("Lifetime", "lifetime", emitter.basic.lifetime, 0.01f, 0.001f, 3600.0f);
+    } else if (emitter.kind == VFX::VfxLayerKind::Fluid) {
+        basicEditor.Bool(VfxUiText("Follow Emitter (Local Space)").c_str(), "localSimulation",
+                         emitter.basic.localSimulation);
+        ImGui::TextWrapped("%s", VfxUiText("On: the domain moves with the layer and its acceleration pushes the smoke "
+                                           "back (inertia). Off: the domain stays where it was rebuilt.")
+                                     .c_str());
     }
     ImGui::SeparatorText(TEXT::Localize("ui.vfx.layer.offset").c_str());
     VfxInspectorPropertyEditor transformEditor(*this, database, emitter.emitterTransform.id, statusMessage_);
@@ -410,9 +416,8 @@ void VfxWorkspaceController::DrawEmitterTiming(AssetDatabase& database, const VF
         DrawLayerAnimation(database, emitter);
 }
 
-void VfxWorkspaceController::DrawEmitterSpawnPage(AssetDatabase& database, const VFX::VfxEmitterData& emitter) {
-    VfxInspectorPropertyEditor editor(*this, database, emitter.spawn.id, statusMessage_);
-    editor.Float("Rate / second", "ratePerSecond", emitter.spawn.ratePerSecond, 0.1f, 0.0f, 1000000.0f);
+// 時刻 0 の burst（粒子なら数、流体源なら一度に注入する密度）。
+void VfxWorkspaceController::DrawInitialBurst(const VFX::VfxEmitterData& emitter) {
     const auto initial = std::find_if(emitter.spawn.burstTimeline.begin(), emitter.spawn.burstTimeline.end(),
                                       [](const auto& key) { return key.time == 0; });
     int initialCount = initial == emitter.spawn.burstTimeline.end() ? 0 : int(initial->count);
@@ -431,6 +436,12 @@ void VfxWorkspaceController::DrawEmitterSpawnPage(AssetDatabase& database, const
     }
     if (ImGui::IsItemDeactivatedAfterEdit())
         SealPropertyEdit();
+}
+
+void VfxWorkspaceController::DrawEmitterSpawnPage(AssetDatabase& database, const VFX::VfxEmitterData& emitter) {
+    VfxInspectorPropertyEditor editor(*this, database, emitter.spawn.id, statusMessage_);
+    editor.Float("Rate / second", "ratePerSecond", emitter.spawn.ratePerSecond, 0.1f, 0.0f, 1000000.0f);
+    DrawInitialBurst(emitter);
     editor.Choice("Capacity Mode", "capacityMode", VFX::ToString(emitter.spawn.capacityMode),
                   VFX::kVfxParticleCapacityModeChoices.data(), VFX::kVfxParticleCapacityModeChoices.size());
     editor.Unsigned(emitter.spawn.capacityMode == VFX::VfxParticleCapacityMode::Automatic ? "Capacity Ceiling"
@@ -441,6 +452,11 @@ void VfxWorkspaceController::DrawEmitterSpawnPage(AssetDatabase& database, const
         ImGui::TextDisabled(VfxUiText("GPU capacity is derived from spawn rate and maximum lifetime.").c_str());
     }
     ImGui::SeparatorText(VfxUiText("Emission volume").c_str());
+    DrawEmissionVolume(database, emitter);
+}
+
+// 発生の形（粒子の発生位置、流体源の注入の形）。
+void VfxWorkspaceController::DrawEmissionVolume(AssetDatabase& database, const VFX::VfxEmitterData& emitter) {
     VfxInspectorPropertyEditor shapeEditor(*this, database, emitter.shape.id, statusMessage_);
     shapeEditor.Choice(VfxUiText("Type").c_str(), "type", VFX::ToString(emitter.shape.type),
                        VFX::kVfxShapeTypeChoices.data(), VFX::kVfxShapeTypeChoices.size());
@@ -480,25 +496,8 @@ void VfxWorkspaceController::DrawEmitterMotionPage(AssetDatabase& database, cons
     positionEditor.AnimatedVec3(VfxUiText("Position over Life").c_str(), "value", emitter.position.value);
 
     ImGui::SeparatorText(VfxUiText("Forces").c_str());
+    DrawForceFields(database, emitter);
     VfxInspectorPropertyEditor forcesEditor(*this, database, emitter.forces.id, statusMessage_);
-    forcesEditor.Vec3(VfxUiText("Gravity").c_str(), "gravity", emitter.forces.gravity);
-    forcesEditor.Float(VfxUiText("Drag").c_str(), "drag", emitter.forces.drag, 0.01f, 0.0f, 1000.0f);
-    if (ImGui::TreeNode(VfxUiText("Flow fields").c_str())) {
-        const auto& field = emitter.forces.field;
-        forcesEditor.Float(VfxUiText("Curl turbulence").c_str(), "field.turbulence", field.turbulence, 0.05f, 0, 10000);
-        forcesEditor.Float(VfxUiText("Field frequency").c_str(), "field.frequency", field.frequency, 0.01f, 0.001f,
-                           1000);
-        forcesEditor.Float(VfxUiText("Field evolution").c_str(), "field.evolution", field.evolution, 0.01f, -1000,
-                           1000);
-        forcesEditor.Float(VfxUiText("Vortex strength").c_str(), "field.vortex", field.vortex, 0.05f, -10000, 10000);
-        forcesEditor.Float(VfxUiText("Attraction / repulsion").c_str(), "field.attraction", field.attraction, 0.05f,
-                           -10000, 10000);
-        forcesEditor.Vec3(VfxUiText("Field center").c_str(), "field.center", field.center);
-        forcesEditor.Vec3(VfxUiText("Field axis").c_str(), "field.axis", field.axis);
-        forcesEditor.Float(VfxUiText("Field radius (0 = global)").c_str(), "field.radius", field.radius, 0.05f, 0,
-                           100000);
-        ImGui::TreePop();
-    }
     forcesEditor.Bool(VfxUiText("Plane Collision").c_str(), "collisionPlaneEnabled",
                       emitter.forces.collisionPlaneEnabled);
     if (emitter.forces.collisionPlaneEnabled) {
@@ -520,6 +519,32 @@ void VfxWorkspaceController::DrawEmitterMotionPage(AssetDatabase& database, cons
     }
 }
 
+// 重力（流体では一様な風）・減衰・流れの場（粒子と流体源が同じ値を使う）。
+void VfxWorkspaceController::DrawForceFields(AssetDatabase& database, const VFX::VfxEmitterData& emitter) {
+    VfxInspectorPropertyEditor forcesEditor(*this, database, emitter.forces.id, statusMessage_);
+    forcesEditor.Vec3(VfxUiText("Gravity").c_str(), "gravity", emitter.forces.gravity);
+    forcesEditor.Float(VfxUiText("Drag").c_str(), "drag", emitter.forces.drag, 0.01f, 0.0f, 1000.0f);
+    if (emitter.kind == VFX::VfxLayerKind::Particles)
+        forcesEditor.Float(VfxUiText("Follow fluid (1/s)").c_str(), "fluidFollow", emitter.forces.fluidFollow, 0.05f,
+                           0.0f, RENDER3D::PARTICLES::kMaxParticleFluidFollow);
+    if (ImGui::TreeNode(VfxUiText("Flow fields").c_str())) {
+        const auto& field = emitter.forces.field;
+        forcesEditor.Float(VfxUiText("Curl turbulence").c_str(), "field.turbulence", field.turbulence, 0.05f, 0, 10000);
+        forcesEditor.Float(VfxUiText("Field frequency").c_str(), "field.frequency", field.frequency, 0.01f, 0.001f,
+                           1000);
+        forcesEditor.Float(VfxUiText("Field evolution").c_str(), "field.evolution", field.evolution, 0.01f, -1000,
+                           1000);
+        forcesEditor.Float(VfxUiText("Vortex strength").c_str(), "field.vortex", field.vortex, 0.05f, -10000, 10000);
+        forcesEditor.Float(VfxUiText("Attraction / repulsion").c_str(), "field.attraction", field.attraction, 0.05f,
+                           -10000, 10000);
+        forcesEditor.Vec3(VfxUiText("Field center").c_str(), "field.center", field.center);
+        forcesEditor.Vec3(VfxUiText("Field axis").c_str(), "field.axis", field.axis);
+        forcesEditor.Float(VfxUiText("Field radius (0 = global)").c_str(), "field.radius", field.radius, 0.05f, 0,
+                           100000);
+        ImGui::TreePop();
+    }
+}
+
 void VfxWorkspaceController::DrawEmitterInspector(AssetDatabase& database, const VFX::VfxEmitterData& source) {
     const VFX::VfxEmitterData emitter = source;
     if (emitterInspectorEmitterId_ != emitter.id) {
@@ -532,6 +557,10 @@ void VfxWorkspaceController::DrawEmitterInspector(AssetDatabase& database, const
         emitterInspectorPage_ = VfxEmitterInspectorPage::Advanced;
     if (emitter.kind == VFX::VfxLayerKind::Adjustment) {
         DrawAdjustmentLayerInspector(database, emitter);
+        return;
+    }
+    if (emitter.kind == VFX::VfxLayerKind::Fluid || emitter.kind == VFX::VfxLayerKind::FluidSource) {
+        DrawFluidLayerInspector(database, emitter);
         return;
     }
     ImGui::TextWrapped("%s", emitter.name.c_str());

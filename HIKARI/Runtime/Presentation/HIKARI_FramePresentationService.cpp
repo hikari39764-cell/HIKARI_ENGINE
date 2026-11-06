@@ -568,7 +568,7 @@ bool BeginFrame(const RUNTIME::HostBootstrapConfig& cfg) {
     if (RUNTIME::IEditorUiServices* editorUiServices = RUNTIME::GetEditorUiServices()) {
         static const auto editorUiPass = CPU_PROFILE::RegisterDynamicPass("Frame.EditorUiBegin");
         CPU_PROFILE::ScopedDynamicCpuTimer editorUiTimer(editorUiPass);
-        editorUiServices->BeginFrame(gWindow, GFX::GetCurrentContext(), frame.unscaledDt, ShouldProduceEditorUiFrame());
+        editorUiServices->BeginFrame(gWindow, GFX::GetCurrentContext(), frame.unscaledDt, ShouldProduceHostUiFrame());
     }
     HIKARI::CAMERA::Update(frame.gameDt, &gInputService.GetSnapshot());
     return true;
@@ -690,7 +690,7 @@ bool EndFrame() {
         HIKARI::RENDERER::ClearSubmittedCommands();
     }
     if (RUNTIME::IEditorUiServices* editorUiServices = RUNTIME::GetEditorUiServices()) {
-        editorUiServices->RenderFrame(GFX::GetCurrentContext(), ShouldProduceEditorUiFrame());
+        editorUiServices->RenderFrame(GFX::GetCurrentContext(), ShouldProduceHostUiFrame());
     }
 
     gGraphicsCore.SetVSyncEnabled(RENDER3D::GetRenderQualitySettings().vSync);

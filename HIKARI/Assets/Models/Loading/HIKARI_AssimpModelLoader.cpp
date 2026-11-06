@@ -14,6 +14,7 @@
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpMaterialReader.h"
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpMeshReader.h"
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpSceneReader.h"
+#include "Assets/Models/Processing/HIKARI_ModelGeometryPostprocess.h"
 #include "RenderContracts/Model/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::MODELS {
@@ -75,10 +76,13 @@ bool LoadAssimpModelSource(ModelAsset& asset) {
     Assimp::Importer importer{};
     importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
 
-    constexpr unsigned int kPostProcessFlags =
-        aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace |
-        aiProcess_JoinIdenticalVertices | aiProcess_LimitBoneWeights | aiProcess_ImproveCacheLocality |
-        aiProcess_FlipUVs | aiProcess_SortByPType | aiProcess_FindInvalidData | aiProcess_ValidateDataStructure;
+    // aiProcess_GlobalScale はファイルの単位を米へ直す（FBX の UnitScaleFactor：UE・Maya・Mixamo の cm 単位は 0.01 倍、
+    // Blender の m 単位は 1 倍）。頂点・節点・骨の逆バインド・動画のキーを同じ倍率で縮め、骨の世界の拡縮は 1 のまま。
+    constexpr unsigned int kPostProcessFlags = aiProcess_Triangulate | aiProcess_GenSmoothNormals |
+                                               aiProcess_CalcTangentSpace | aiProcess_JoinIdenticalVertices |
+                                               aiProcess_LimitBoneWeights | aiProcess_ImproveCacheLocality |
+                                               aiProcess_FlipUVs | aiProcess_SortByPType | aiProcess_FindInvalidData |
+                                               aiProcess_ValidateDataStructure | aiProcess_GlobalScale;
 
     const aiScene* scene = importer.ReadFile(sourcePath.string(), kPostProcessFlags);
     if (scene == nullptr || scene->mRootNode == nullptr || scene->mNumMeshes == 0u) {
@@ -112,6 +116,7 @@ bool LoadAssimpModelSource(ModelAsset& asset) {
 
     ASSIMP::FinalizeSceneMeshBindings(meshToSkin, assimpMeshToModelMesh, asset);
     ASSIMP::ReadAnimations(*scene, nodeNameToIndex, asset);
+    BakeSkinnedMeshNodes(asset);
     AppendFbxCapabilityDiagnostics(*scene, asset);
 
     BOUNDS::EnsureModelBounds(asset);

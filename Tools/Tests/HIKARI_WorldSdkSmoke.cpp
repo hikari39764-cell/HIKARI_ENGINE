@@ -1,8 +1,10 @@
 #include "HIKARI/Project/EnvironmentView.h"
+#include "HIKARI/Project/FluidView.h"
 #include "HIKARI/Project/LocalFogView.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Scene/Environment/HIKARI_EnvironmentRuntime.h"
 #include "Scene/Lighting/HIKARI_LocalFogService.h"
+#include "Scene/Vfx/HIKARI_FluidInteractionService.h"
 #include "Core/HIKARI_TimeService.h"
 #include <cmath>
 #include <array>
@@ -2086,6 +2088,82 @@ int main() {
         fogWorld.DestroyObject(owner);
         assert(fog.PrepareFrame(fogWorld, frameIndex).empty());
         assert(fogView.Submit(ownerHandle, 1, volume).code == HIKARI::GameProjectWorldResultCode::InvalidObject);
+    }
+    // 流体を押すものも毎フレームの提出。障碍物の速度は同じ組の前のフレームの位置とゲーム時間から決まり、瞬間移動は 0。
+    // 障碍物組件の形はゲームの提出と同じ owner・instance でも別の組。
+    {
+        using Code = HIKARI::GameProjectWorldResultCode;
+        using HIKARI::FluidInteractionSource;
+        HIKARI::FluidInteractionService fluid;
+        HIKARI::World fluidWorld;
+        assert(fluidWorld.Services().Register(fluid));
+        auto* owner = fluidWorld.CreateObject("FluidOwner");
+        const auto ownerHandle = HIKARI::GameProjectSdkAccess::MakeObjectView(*owner).GetHandle();
+        const auto fluidView = HIKARI::GameProjectSdkAccess::MakeWorldView(fluidWorld).GetFluid();
+        HIKARI::GameProjectFluidInteraction obstacle{};
+        obstacle.shape = HIKARI::GameProjectFluidShape::Capsule;
+        obstacle.position = {1, 2, 3};
+        obstacle.extents = {0.2f, 0.4f, 0.2f};
+        const uint64_t frameIndex = HIKARI::TIME::GetFrameContext().frameIndex;
+        assert(fluidView.Submit(ownerHandle, 1, obstacle).Succeeded());
+        const auto first = fluid.PrepareFrame(fluidWorld, frameIndex, 0.5f);
+        assert(first.size() == 1 && first[0].shape == HIKARI::RENDER3D::FLUID::FluidInteractionShape::Capsule &&
+               first[0].velocity.x == 0.0f);
+        HIKARI::RENDER3D::FLUID::FluidInteraction moved = first[0];
+        moved.worldPosition = {2, 2, 3};
+        assert(fluid.Submit(FluidInteractionSource::Project, ownerHandle.value, 1, moved, frameIndex + 1) ==
+               Code::Success);
+        assert(fluid.Submit(FluidInteractionSource::Component, ownerHandle.value, 1, first[0], frameIndex + 1) ==
+               Code::Success);
+        const auto next = fluid.PrepareFrame(fluidWorld, frameIndex + 1, 0.5f);
+        assert(next.size() == 2 && std::abs(next[0].velocity.x - 2.0f) < 1e-5f && next[0].velocity.y == 0.0f &&
+               next[1].velocity.x == 0.0f);
+        obstacle.reserved[0] = 1u;
+        assert(fluidView.Submit(ownerHandle, 2, obstacle).code == Code::InvalidRequest);
+        obstacle.reserved[0] = 0u;
+        obstacle.extents.x = 0.0f;
+        assert(fluidView.Submit(ownerHandle, 2, obstacle).code == Code::InvalidRequest);
+        obstacle.extents.x = 0.2f;
+        assert(fluidView.Submit(ownerHandle, 0, obstacle).code == Code::InvalidRequest);
+        moved.worldPosition = {100, 2, 3};
+        assert(fluid.Submit(FluidInteractionSource::Project, ownerHandle.value, 1, moved, frameIndex + 2) ==
+               Code::Success);
+        const auto teleported = fluid.PrepareFrame(fluidWorld, frameIndex + 2, 0.5f);
+        assert(teleported.size() == 1 && teleported[0].velocity.x == 0.0f);
+        assert(fluid.PrepareFrame(fluidWorld, frameIndex + 3, 0.5f).empty());
+        // 向きの無い負の力（汇）には回読の鍵が付き、届いた吸い込み量を累計して GetRemovedSmoke で返す。出さなくなっても
+        // kSinkHoldFrames の間は読め、その後は 0 から。注入（Emit）は温度を extents.y で持ち、負の強さは拒む。
+        HIKARI::GameProjectFluidInteraction sink{};
+        sink.kind = HIKARI::GameProjectFluidInteractionKind::Force;
+        sink.extents = {0.5f, 0.0f, 0.0f};
+        sink.strength = -2.0f;
+        HIKARI::GameProjectFluidInteraction emit = sink;
+        emit.kind = HIKARI::GameProjectFluidInteractionKind::Emit;
+        emit.extents.y = 1.5f;
+        emit.direction = {0.0f, 3.0f, 0.0f};
+        emit.strength = 4.0f;
+        assert(fluidView.Submit(ownerHandle, 7, sink).Succeeded());
+        assert(fluidView.Submit(ownerHandle, 8, emit).Succeeded());
+        const auto pushes = fluid.PrepareFrame(fluidWorld, frameIndex, 0.5f);
+        assert(pushes.size() == 2 && pushes[0].reportKey != 0u && pushes[1].reportKey == 0u &&
+               pushes[1].kind == HIKARI::RENDER3D::FLUID::FluidInteractionKind::Emit && pushes[1].extents.y == 1.5f &&
+               pushes[1].direction.y == 3.0f);
+        double removed = -1.0;
+        assert(fluidView.GetRemovedSmoke(ownerHandle, 7, removed).Succeeded() && removed == 0.0);
+        const HIKARI::RENDER3D::FLUID::FluidSinkReport reports[] = {
+            {pushes[0].reportKey, 1.5}, {pushes[0].reportKey, 0.25}, {pushes[0].reportKey + 1u, 9.0}};
+        fluid.ReceiveSinkReports(reports);
+        assert(fluidView.GetRemovedSmoke(ownerHandle, 7, removed).Succeeded() && std::abs(removed - 1.75) < 1e-9);
+        assert(fluidView.GetRemovedSmoke(ownerHandle, 8, removed).Succeeded() && removed == 0.0);
+        emit.strength = -1.0f;
+        assert(fluidView.Submit(ownerHandle, 9, emit).code == Code::InvalidRequest);
+        constexpr uint64_t hold = HIKARI::FluidInteractionService::kSinkHoldFrames;
+        (void)fluid.PrepareFrame(fluidWorld, frameIndex + hold, 0.5f);
+        assert(fluidView.GetRemovedSmoke(ownerHandle, 7, removed).Succeeded() && std::abs(removed - 1.75) < 1e-9);
+        (void)fluid.PrepareFrame(fluidWorld, frameIndex + hold + 1u, 0.5f);
+        assert(fluidView.GetRemovedSmoke(ownerHandle, 7, removed).Succeeded() && removed == 0.0);
+        fluidWorld.DestroyObject(owner);
+        assert(fluidView.Submit(ownerHandle, 1, obstacle).code == Code::InvalidObject);
     }
     // 環境の時刻・天気・描画の様式は実行中の World だけを変える。不正な日付と版の違う存档は拒否する。
     {

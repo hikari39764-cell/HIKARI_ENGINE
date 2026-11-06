@@ -187,7 +187,7 @@ bool InputService::InitializeTransient() {
 
 void InputService::ResetRuntimeState() {
     StopGamepadVibration();
-    developerInputCaptured_ = false;
+    developerInputOwners_ = 0u;
     pointerCursorHiddenRequested_ = false;
     uiInteractionActive_ = false;
     snapshot_ = {};
@@ -201,7 +201,7 @@ void InputService::ResetRuntimeState() {
 }
 
 void InputService::Shutdown() {
-    developerInputCaptured_ = false;
+    developerInputOwners_ = 0u;
     pointerCursorHiddenRequested_ = false;
     uiInteractionActive_ = false;
     StopGamepadVibration();
@@ -245,11 +245,22 @@ void InputService::SetUiInteractionActive(bool active) noexcept {
     ResetTextInput();
 }
 
-void InputService::SetDeveloperInputCaptured(bool active) noexcept {
-    if (developerInputCaptured_ == active) {
+void InputService::SetDeveloperInputCaptured(DeveloperInputOwner owner, bool active) noexcept {
+    const uint8_t bit = static_cast<uint8_t>(owner);
+    const uint8_t next =
+        active ? static_cast<uint8_t>(developerInputOwners_ | bit) : static_cast<uint8_t>(developerInputOwners_ & ~bit);
+    if (next == developerInputOwners_) {
         return;
     }
-    developerInputCaptured_ = active;
+    developerInputOwners_ = next;
+    ResetTextInput();
+}
+
+void InputService::ReleaseDeveloperInput() noexcept {
+    if (developerInputOwners_ == 0u) {
+        return;
+    }
+    developerInputOwners_ = 0u;
     ResetTextInput();
 }
 
@@ -541,7 +552,7 @@ void InputService::EvaluateActions(float dt) {
 
     std::unordered_set<std::string> consumedControls;
     for (const InputContextDefinition* context : activeContexts) {
-        if (developerInputCaptured_ && context->contextId != "Global")
+        if (IsDeveloperInputCaptured() && context->contextId != "Global")
             continue;
         for (const InputBinding& binding : context->bindings) {
             const std::string controlKey = PhysicalControlKey(binding);

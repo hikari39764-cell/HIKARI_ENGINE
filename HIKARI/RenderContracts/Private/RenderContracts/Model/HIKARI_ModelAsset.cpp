@@ -19,7 +19,7 @@ void ModelAsset::SetState(State stateValue) { state = stateValue; }
 bool ModelAsset::HasSkinnedMesh() const {
     for (const MeshAsset& mesh : meshes) {
         for (const MeshPrimitive& primitive : mesh.primitives) {
-            if (primitive.layout == VertexLayoutKind::SkinnedPNTTJW || !primitive.skinnedVertices.empty()) {
+            if (primitive.layout == VertexLayoutKind::SkinnedPNTTJW) {
                 return true;
             }
         }

@@ -14,9 +14,11 @@ float3 HikariShadeSimpleSurface(float3 baseColor, float metallic, float roughnes
     float3 direct = HikariEvaluateDirectionalPbr(pbr,HikariSimpleSurfaceNormalize(-gDirectionalDir.xyz,float3(0,1,0)),
         gDirectionalColor.rgb,gDirectionalIntensity,gDirectionalDir.w) *
         SampleDirectionalVisibility(worldPosition,geometricNormal,receiveShadow);
-    if (gCloudSolarVisibility.originDescriptor.w > 0.5f)
-        direct *= HikariSampleCloudSolarVisibility(gMaterialTexturePool[NonUniformResourceIndex(
-            uint(gCloudSolarVisibility.originDescriptor.w)-1u)],gCloudSolarVisibility,worldPosition);
+    // 雲の影 × 流体の烟の影。
+    direct *= HikariSampleCloudSolarVisibility(gMaterialTexturePool[NonUniformResourceIndex(
+                  HikariSolarVisibilityDescriptor(gCloudSolarVisibility))],gCloudSolarVisibility,worldPosition) *
+              HikariSampleCloudSolarVisibility(gMaterialTexturePool[NonUniformResourceIndex(
+                  HikariSolarVisibilityDescriptor(gFluidSolarVisibility))],gFluidSolarVisibility,worldPosition);
     direct += AccumulateLocalLightsPbr(pbr,worldPosition,pixelPosition,geometricNormal,receiveShadow);
     const float3 irradiance = gAmbientColor.rgb*gAmbientIntensity + HikariEvaluateSkyDiffuseIrradiance(normal);
     const float3 reflection = reflect(-view,normal);

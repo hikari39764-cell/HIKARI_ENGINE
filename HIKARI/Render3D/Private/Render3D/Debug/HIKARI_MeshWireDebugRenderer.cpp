@@ -9,6 +9,7 @@
 
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
 
 namespace HIKARI::MESHWIREDEBUG {
@@ -28,10 +29,6 @@ std::unordered_map<const MeshPrimitive*, CachedPrimitiveWire> gCache;
 MeshWireDebugStats gStats{};
 bool gSkinnedWarningEmitted = false;
 
-MATH::Mat4 GetNodeLocalMatrix(const ModelNode& node) {
-    return node.hasLocalMatrix ? node.localMatrix : node.localTransform.GetLocalMatrix();
-}
-
 void EvaluateNodeMatrixRecursive(const ModelAsset& asset, int nodeIndex, const MATH::Mat4& parentWorld,
                                  std::vector<MATH::Mat4>& outGlobals, std::vector<uint8_t>& visited) {
     if (nodeIndex < 0 || nodeIndex >= static_cast<int>(asset.nodes.size())) {
@@ -43,7 +40,7 @@ void EvaluateNodeMatrixRecursive(const ModelAsset& asset, int nodeIndex, const M
     }
 
     const ModelNode& node = asset.nodes[index];
-    outGlobals[index] = parentWorld * GetNodeLocalMatrix(node);
+    outGlobals[index] = parentWorld * BOUNDS::GetNodeLocalMatrix(node);
     visited[index] = 1;
 
     for (int childIndex : node.children) {
@@ -164,7 +161,7 @@ void SubmitBoundsLines(const Bounds& bounds, const MATH::Mat4& world, uint32_t c
 
 bool SubmitPrimitiveWire(const MeshPrimitive& primitive, size_t primitiveIndex, const MATH::Mat4& worldMatrix,
                          uint32_t color, bool perPrimitiveColor, uint32_t& remaining) {
-    if (!primitive.skinnedVertices.empty() && !gSkinnedWarningEmitted) {
+    if (primitive.layout == VertexLayoutKind::SkinnedPNTTJW && !gSkinnedWarningEmitted) {
         DEBUGLOG::PushRenderError("[MeshWireDebug] Skinned mesh wire uses bind-pose geometry.");
         gSkinnedWarningEmitted = true;
     }

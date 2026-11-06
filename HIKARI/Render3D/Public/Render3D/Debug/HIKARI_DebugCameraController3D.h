@@ -1,4 +1,6 @@
 #pragma once
+#include <array>
+
 #include "Render3D/Core/HIKARI_Camera3D.h"
 
 namespace HIKARI {
@@ -32,8 +34,28 @@ struct DebugCamera3DSettings {
     float altitudeSpeedHeight = 50.0f;
 };
 
+// 飛行の一フレーム分の操作。動作の割り当て（Editor.Camera*）か生のキーとマウスから作る。
+struct DebugCameraControls {
+    std::array<float, 2> move{};
+    float vertical = 0.0f;
+    std::array<float, 2> look{};
+    float wheel = 0.0f;
+    // 視点を回す（look が効く）。ホイールはこの間だけ速度を変え、それ以外は前後に動かす。
+    bool looking = false;
+    // move と vertical が効く。
+    bool moving = false;
+    bool fast = false;
+    bool reset = false;
+};
+
 class DebugCameraController3D {
 public:
+    // 動作の割り当て（右クリック中だけ飛ぶ Editor.Camera*）から読む。
+    static DebugCameraControls ReadActionControls(const INPUT::InputSnapshot& input,
+                                                  CameraControlInputContext inputContext);
+    // 生のキーとマウスから読む: WASD と QE、Shift で加速。lookWithoutButton なら右クリック無しでマウスが視点を回す。
+    static DebugCameraControls ReadDeviceControls(const INPUT::InputSnapshot& input, bool lookWithoutButton);
+
     void SetEnabled(bool enabled);
     bool IsEnabled() const;
 
@@ -41,6 +63,8 @@ public:
     void ResetFromCamera(const Camera3D& camera);
     void Update(float dt, Camera3D& camera, const INPUT::InputSnapshot& input,
                 CameraControlInputContext inputContext = CameraControlInputContext::EditorViewport);
+    // 編集器の視口では、ImGui がマウスやキーを使っている間の分を捨ててから動かす。
+    void Fly(float dt, Camera3D& camera, DebugCameraControls controls, CameraControlInputContext inputContext);
 
     const MATH::Vec3& GetPosition() const;
     float GetYaw() const;

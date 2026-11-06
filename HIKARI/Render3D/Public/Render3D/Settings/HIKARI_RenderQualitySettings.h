@@ -235,6 +235,19 @@ inline constexpr TEXT::EnumName<VolumetricCloudQuality> kVolumetricCloudQualityN
     {VolumetricCloudQuality::High, "High"},
 };
 
+// 体積流体（VFX の流体層）の解算と步进の画質。档位の中身は Render3D の ResolveFluidQualityPolicy の表。
+enum class FluidSmokeQuality : uint8_t {
+    Low = 0,
+    Balanced,
+    High,
+};
+
+inline constexpr TEXT::EnumName<FluidSmokeQuality> kFluidSmokeQualityNames[] = {
+    {FluidSmokeQuality::Low, "Low"},
+    {FluidSmokeQuality::Balanced, "Balanced"},
+    {FluidSmokeQuality::High, "High"},
+};
+
 enum class DepthOfFieldQuality : uint8_t {
     Off = 0,
     Low,
@@ -315,6 +328,7 @@ struct RenderQualitySettings {
     DepthOfFieldQuality depthOfFieldQuality = DepthOfFieldQuality::Medium;
     MotionBlurQuality motionBlurQuality = MotionBlurQuality::Medium;
     VolumetricCloudQuality volumetricCloudQuality = VolumetricCloudQuality::Balanced;
+    FluidSmokeQuality fluidSmokeQuality = FluidSmokeQuality::Balanced;
     // 光追（inline ray query）が無い GPU では動的 GI が Unsupported になり、空の光へ戻る。
     DynamicGiQuality dynamicGiQuality = DynamicGiQuality::Balanced;
     LocalShadowQuality localShadowQuality = LocalShadowQuality::Balanced;
@@ -369,6 +383,7 @@ const char* DlssQualityModeLabel(DlssQualityMode mode);
 const char* RenderFrameGenerationModeLabel(RenderFrameGenerationMode mode);
 const char* VolumetricLightingQualityLabel(VolumetricLightingQuality quality);
 const char* VolumetricCloudQualityLabel(VolumetricCloudQuality quality);
+const char* FluidSmokeQualityLabel(FluidSmokeQuality quality);
 const char* DynamicGiQualityLabel(DynamicGiQuality quality);
 const char* LocalShadowQualityLabel(LocalShadowQuality quality);
 

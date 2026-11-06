@@ -80,13 +80,15 @@ inline constexpr std::string_view kClusterCullingRootLayoutCanonical =
     "10:SRV(t0,space8,All)|MeshletDispatchSlots(PassBucket)|Pipeline(Compute)|Flags(None)";
 
 inline constexpr std::string_view kParticleSimulationRootLayoutId = "HIKARI.RenderGeometry.ParticleSimulation.Root";
-inline constexpr uint32_t kParticleSimulationRootLayoutVersion = 1u;
+inline constexpr uint32_t kParticleSimulationRootLayoutVersion = 2u;
 inline constexpr std::string_view kParticleSimulationRootLayoutHash =
-    "13007e949f7390c3d7e4b2266249d437402af2ef980dfa560923f16d9fafe838";
+    "c0b78ddd26e3ce4c1d9cbe1454369c5229019bca5b9325f9e07c8232c85cd4df";
 inline constexpr std::string_view kParticleSimulationRootLayoutCanonical =
-    "HIKARI.RenderGeometry.ParticleSimulation.Root.v1|"
+    "HIKARI.RenderGeometry.ParticleSimulation.Root.v2|"
     "0:Table(UAV(u0,space0,count1),All)|1:SRV(t0,space0,All)|"
-    "2:Constants(b0,space0,count8,All)|Pipeline(Compute)|Flags(None)";
+    "2:Constants(b0,space0,count8,All)|3:Table(SRV(t1,space0,count1),All)|4:Table(SRV(t2,space0,count1),All)|"
+    "5:Table(SRV(t3,space0,count1),All)|6:Table(SRV(t4,space0,count1),All)|7:CBV(b1,space0,All)|"
+    "StaticSampler(s0,LinearClamp,All)|Pipeline(Compute)|Flags(None)";
 
 inline constexpr std::string_view kParticleCompactionRootLayoutId = "HIKARI.RenderGeometry.ParticleCompaction.Root";
 inline constexpr uint32_t kParticleCompactionRootLayoutVersion = 2u;
@@ -99,11 +101,11 @@ inline constexpr std::string_view kParticleCompactionRootLayoutCanonical =
     "4:Constants(b1,space0,count5,All)|Pipeline(Compute)|Flags(None)";
 
 inline constexpr std::string_view kParticleDrawRootLayoutId = "HIKARI.RenderGeometry.ParticleDraw.Root";
-inline constexpr uint32_t kParticleDrawRootLayoutVersion = 5u;
+inline constexpr uint32_t kParticleDrawRootLayoutVersion = 6u;
 inline constexpr std::string_view kParticleDrawRootLayoutHash =
-    "4b67f7dd418e45869c1a14ee014ae01bb356d20dd9d05043a80ea4c1c0e3a134";
+    "8f7c7143b75f14d13098cf0be479a864a9eecea82d9a60a9b6e1c307ff70992f";
 inline constexpr std::string_view kParticleDrawRootLayoutCanonical =
-    "HIKARI.RenderGeometry.ParticleDraw.Root.v5|"
+    "HIKARI.RenderGeometry.ParticleDraw.Root.v6|"
     "0:CBV(b0,space0,All)|"
     "1:SRV(t1,space0,All)|"
     "2:SRV(t2,space0,All)|"
@@ -125,6 +127,8 @@ inline constexpr std::string_view kParticleDrawRootLayoutCanonical =
     "18:Table(SRV(t9,space0,count1),Pixel)|"
     "19:Table(SRV(t10,space0,count1),Pixel)|"
     "20:SRV(t5,space0,All)|"
+    "21:Table(SRV(t11,space0,count1),Pixel)|"
+    "22:Constants(b8,space0,count4,Pixel)|"
     "StaticSampler(s0,Anisotropic8Clamp,Pixel)|"
     "StaticSampler(s1,PointClamp,Pixel)|"
     "StaticSampler(s2,ComparisonLinearClampLessEqual,Pixel)|"
@@ -459,8 +463,11 @@ inline bool IsRenderGeometryBindingAllowed(RenderGeometryRootLayout layout,
                 (binding.registerIndex <= 1u || (binding.registerIndex >= 3u && binding.registerIndex <= 7u)) &&
                 binding.count == 1u);
     case RenderGeometryRootLayout::ParticleSimulation:
-        return MatchesRenderGeometryBinding(binding, Kind::ConstantBuffer, 0u, 0u) ||
-               MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 0u, 0u) ||
+        return (binding.kind == Kind::ConstantBuffer && binding.registerSpace == 0u && binding.registerIndex <= 1u &&
+                binding.count == 1u) ||
+               (binding.kind == Kind::ShaderResource && binding.registerSpace == 0u && binding.registerIndex <= 4u &&
+                binding.count == 1u) ||
+               MatchesRenderGeometryBinding(binding, Kind::Sampler, 0u, 0u) ||
                MatchesRenderGeometryBinding(binding, Kind::UnorderedAccess, 0u, 0u);
     case RenderGeometryRootLayout::ParticleCompaction:
         return MatchesRenderGeometryBinding(binding, Kind::ConstantBuffer, 0u, 1u) ||
@@ -469,11 +476,11 @@ inline bool IsRenderGeometryBindingAllowed(RenderGeometryRootLayout layout,
     case RenderGeometryRootLayout::ParticleDraw:
         return (binding.kind == Kind::ConstantBuffer && binding.registerSpace == 0u &&
                 (binding.registerIndex <= 2u || binding.registerIndex == 4u || binding.registerIndex == 5u ||
-                 binding.registerIndex == 7u) &&
+                 binding.registerIndex == 7u || binding.registerIndex == 8u) &&
                 binding.count == 1u) ||
                (binding.kind == Kind::ShaderResource && binding.registerSpace == 0u &&
                 (((binding.registerIndex >= 1u && binding.registerIndex <= 5u) || binding.registerIndex == 9u ||
-                  binding.registerIndex == 10u || binding.registerIndex == 16u) &&
+                  binding.registerIndex == 10u || binding.registerIndex == 11u || binding.registerIndex == 16u) &&
                      binding.count == 1u ||
                  (binding.registerIndex == 20u && binding.count == 3968u))) ||
                (binding.kind == Kind::ShaderResource && binding.registerSpace == 5u && binding.registerIndex <= 2u &&

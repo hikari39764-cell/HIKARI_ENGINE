@@ -14,6 +14,7 @@ ComponentGizmoRenderer::ComponentGizmoRenderer() {
     RegisterLightingGizmoProviders(registry_);
     RegisterDecalGizmoProvider(registry_);
     RegisterColliderGizmoProvider(registry_);
+    RegisterFluidObstacleGizmoProvider(registry_);
 }
 
 ComponentGizmoRegistry& ComponentGizmoRenderer::Registry() noexcept { return registry_; }

@@ -1,11 +1,15 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 
+#include <optional>
+
 #include "Core/HIKARI_TimeService.h"
+#include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Diagnostics/HIKARI_MetricRegistry.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
+#include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Vfx/MaterialFx/HIKARI_MaterialFxProfile.h"
 
 namespace HIKARI::MESHRENDERER {
@@ -43,6 +47,37 @@ FrameCounterMetric gFrameCounterMetrics[] = {
     {"render.psoCacheMisses", "Variant pipeline states created because they were not cached.",
      &MeshRendererFrameCounters::psoCacheMissCount},
 };
+
+// 流体 pass の統計を fluid.* 指標として出す（基準の出力と性能審計が読む）。
+struct FluidMetric {
+    const char* id;
+    const char* unit;
+    METRIC::MetricCategory category;
+    const char* help;
+    METRIC::MetricHandle handle = METRIC::kInvalidMetric;
+};
+
+FluidMetric gFluidMetrics[] = {
+    {"fluid.domains", "count", METRIC::MetricCategory::Count, "Fluid smoke domains solved in the frame."},
+    {"fluid.substeps", "count", METRIC::MetricCategory::Count, "Fluid solver substeps recorded in the frame."},
+    {"fluid.completedSteps", "count", METRIC::MetricCategory::Count,
+     "Substeps the first fluid domain has completed since it was rebuilt."},
+    {"fluid.bytes", "bytes", METRIC::MetricCategory::Memory, "GPU memory of all fluid domains."},
+};
+
+void PublishFluidMetrics(const RENDER3D::FLUID::FluidVolumePassStats& stats, uint64_t frameIndex) {
+    const double values[] = {static_cast<double>(stats.domains), static_cast<double>(stats.stepsThisFrame),
+                             stats.perDomain.empty() ? 0.0
+                                                     : static_cast<double>(stats.perDomain.front().completedSteps),
+                             static_cast<double>(stats.bytes)};
+    for (size_t index = 0; index < std::size(gFluidMetrics); ++index) {
+        FluidMetric& metric = gFluidMetrics[index];
+        if (metric.handle == METRIC::kInvalidMetric)
+            metric.handle = METRIC::Register(
+                {metric.id, "Render3D.FluidVolumePass", "Vfx", metric.unit, metric.category, metric.help});
+        METRIC::Publish(metric.handle, values[index], frameIndex);
+    }
+}
 
 // 計数を 0 に戻した論理フレーム。同じフレームの 2 つ目以降のビューでは戻さず、フレーム全体の合計にする。
 uint64_t gCounterFrameIndex = UINT64_MAX;
@@ -134,12 +169,75 @@ void ReleaseParticleNamespace(uint64_t playbackNamespace) {
     if (playbackNamespace == 0u)
         return;
     gMeshRendererState.particlePass.ReleaseNamespace(playbackNamespace);
+    gMeshRendererState.fluidPass.ReleaseNamespace(playbackNamespace);
     gMeshRendererState.gpuMaterialRegistry.ReleaseSourceBindings(
         RENDER3D::PARTICLES::MakeParticleMaterialSourceIdentity(playbackNamespace, nullptr));
 }
 
+namespace {
+// 編集器の診断と切片の要求（要求したフレーム番号）。kFluidEditorRequestFrames を過ぎたら外す。
+constexpr uint64_t kFluidEditorRequestFrames = 2u;
+uint64_t gFluidDiagnosticsFrame = 0u;
+std::optional<RENDER3D::FLUID::FluidDebugSliceRequest> gFluidSliceRequest{};
+uint64_t gFluidSliceFrame = 0u;
+
+bool IsFluidRequestFresh(uint64_t requested, uint64_t frame) noexcept {
+    return requested != 0u && frame >= requested && frame - requested <= kFluidEditorRequestFrames;
+}
+} // namespace
+
+const RENDER3D::FLUID::FluidVolumePassStats& GetFluidVolumePassStats() {
+    return gMeshRendererState.fluidPass.GetStats();
+}
+
+void RequestFluidDiagnostics() { gFluidDiagnosticsFrame = TIME::GetFrameContext().frameIndex; }
+
+void RequestFluidDebugSlice(const RENDER3D::FLUID::FluidDebugSliceRequest& request) {
+    gFluidSliceRequest = request;
+    gFluidSliceFrame = TIME::GetFrameContext().frameIndex;
+}
+
+RENDER3D::FLUID::FluidDebugSliceView GetFluidDebugSlice() { return gMeshRendererState.fluidPass.GetDebugSlice(); }
+
+void INTERNAL::PrepareFluidFrame(const GFX::Context& graphics,
+                                 const RENDER3D::PARTICLES::ParticleRenderFrameSource* source) {
+    const uint64_t frame = TIME::GetFrameContext().frameIndex;
+    RENDER3D::FLUID::FluidFrameSettings settings{};
+    settings.quality = RENDER3D::GetRenderQualitySettings().fluidSmokeQuality;
+    settings.diagnostics = IsFluidRequestFresh(gFluidDiagnosticsFrame, frame);
+    if (source != nullptr)
+        settings.interactions = source->fluidInteractions;
+    settings.interactionFrame = frame;
+    if (gFluidSliceRequest && IsFluidRequestFresh(gFluidSliceFrame, frame)) {
+        gMeshRendererState.fluidPass.RequestDebugSlice(*gFluidSliceRequest);
+    } else if (gFluidSliceRequest) {
+        gMeshRendererState.fluidPass.ClearDebugSlice();
+        gFluidSliceRequest.reset();
+    }
+    if (!gMeshRendererState.fluidPass.PrepareFrame(graphics, source != nullptr ? source->input : nullptr, settings))
+        DEBUGLOG::PushRenderError("[MeshRenderer][WARN] Fluid smoke simulation is unavailable this frame; "
+                                  "rendering continues without fluid layers.");
+    // 回読が届いた汇の吸い込み量は、受け取る場面の視図へ渡す（場面が次のフレームに押すものの service へ返す）。
+    if (source != nullptr && source->fluidSinkReports != nullptr)
+        gMeshRendererState.fluidPass.TakeSinkReports(*source->fluidSinkReports);
+    PublishFluidMetrics(gMeshRendererState.fluidPass.GetStats(), TIME::GetFrameContext().frameIndex);
+}
+
+bool HasFluidVolumes() { return gMeshRendererState.fluidPass.HasRenderableDomains(); }
+
+bool RenderFluidVolumes(const GFX::Context& graphics, const RENDER3D::FLUID::FluidRenderView& view,
+                        const RENDER3D::PIPELINE::RenderTargetAccess& targetAccess) {
+    // 合成の前に場面の色と読み取り専用の深度を描画先へ戻す。
+    if (gMeshRendererState.fluidPass.RenderVolumes(graphics, view, [&] { return targetAccess.BeginDepthRead(); }))
+        return true;
+    DEBUGLOG::PushRenderError("[MeshRenderer][WARN] Fluid smoke rendering is unavailable this frame; "
+                              "the scene continues without smoke.");
+    return false;
+}
+
 void ShutdownParticleGpuDrivenPass() {
     gMeshRendererState.particlePass.Shutdown();
+    gMeshRendererState.fluidPass.Shutdown();
     gMeshRendererState.particleFrameSource = nullptr;
 }
 
@@ -252,10 +350,13 @@ MeshMaterialGpuFrameView GetMaterialGpuFrameView(const GFX::Context& graphics) {
 }
 
 bool RefreshLightingProviders(const GFX::Context& graphics,
-                              const RENDER3D::LIGHTING::CloudSolarVisibilityGpuData& clouds) {
+                              const RENDER3D::LIGHTING::CloudSolarVisibilityGpuData& clouds,
+                              const SceneEnvironment& environment) {
     auto& view = GetActiveMeshFrameResources().view;
     FillSelectedIrradianceVolumes(view.skyEnvironment);
     view.skyEnvironment.cloudSolarVisibility = clouds;
+    view.skyEnvironment.fluidSolarVisibility =
+        gMeshRendererState.fluidPass.PrepareSolarVisibility(graphics, environment);
     return view.PublishSkyEnvironment(graphics);
 }
 

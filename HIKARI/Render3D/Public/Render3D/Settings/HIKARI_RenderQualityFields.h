@@ -50,6 +50,7 @@ inline constexpr auto kRenderQualitySettingsFields = [](auto&& field) {
     field("depthOfFieldQuality", &S::depthOfFieldQuality, kDepthOfFieldQualityNames);
     field("motionBlurQuality", &S::motionBlurQuality, kMotionBlurQualityNames);
     field("volumetricCloudQuality", &S::volumetricCloudQuality, kVolumetricCloudQualityNames);
+    field("fluidSmokeQuality", &S::fluidSmokeQuality, kFluidSmokeQualityNames);
     field("dynamicGiQuality", &S::dynamicGiQuality, kDynamicGiQualityNames);
     field("localShadowQuality", &S::localShadowQuality, kLocalShadowQualityNames);
     field("directionalShadow", &S::directionalShadow, Nested{kDirectionalShadowFields});

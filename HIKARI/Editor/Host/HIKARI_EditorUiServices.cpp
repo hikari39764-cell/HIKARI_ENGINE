@@ -1,6 +1,7 @@
 #include "Editor/Host/HIKARI_EditorUiServices.h"
 
 #include <algorithm>
+#include <cfloat>
 #include <filesystem>
 #include <limits>
 #include <string>
@@ -21,6 +22,8 @@
 #include "Platform/HIKARI_Win32Window.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Runtime/Host/HIKARI_IEditorUiServices.h"
+#include "Runtime/Presentation/HIKARI_GamePresentationService.h"
+#include "Runtime/Services/HIKARI_RuntimeServices.h"
 
 #include "imgui.h"
 #include "imgui_impl_dx12.h"
@@ -45,6 +48,49 @@ std::string ResolveEditorImGuiIniPath() {
     std::filesystem::create_directories(path, ec);
     path /= "imgui.ini";
     return path.generic_string();
+}
+
+// 新窗口 Play の重ね描き（コンソール）へ打鍵を渡す。打鍵は隠れた編集器の窓ではなくゲームの窓に来て、ImGui の窓処理を
+// 通らないので、入力サービスが読んだ生のキーと確定した文字を渡す。マウスはゲームが持つので ImGui には渡さない。
+void FeedPlayWindowKeyboard(ImGuiIO& io) {
+    struct KeyBinding {
+        size_t virtualKey;
+        ImGuiKey key;
+    };
+    // 入力欄の編集と、Ctrl との組み合わせ（全選択・コピー・貼り付け・切り取り・やり直し・取り消し）に使うキー。
+    static constexpr KeyBinding kKeys[] = {
+        {VK_TAB, ImGuiKey_Tab},
+        {VK_LEFT, ImGuiKey_LeftArrow},
+        {VK_RIGHT, ImGuiKey_RightArrow},
+        {VK_UP, ImGuiKey_UpArrow},
+        {VK_DOWN, ImGuiKey_DownArrow},
+        {VK_PRIOR, ImGuiKey_PageUp},
+        {VK_NEXT, ImGuiKey_PageDown},
+        {VK_HOME, ImGuiKey_Home},
+        {VK_END, ImGuiKey_End},
+        {VK_DELETE, ImGuiKey_Delete},
+        {VK_BACK, ImGuiKey_Backspace},
+        {VK_RETURN, ImGuiKey_Enter},
+        {VK_ESCAPE, ImGuiKey_Escape},
+        {'A', ImGuiKey_A},
+        {'C', ImGuiKey_C},
+        {'V', ImGuiKey_V},
+        {'X', ImGuiKey_X},
+        {'Y', ImGuiKey_Y},
+        {'Z', ImGuiKey_Z},
+    };
+    const INPUT::InputSnapshot& input = SERVICES::GetInputSnapshot();
+    const auto& keyboard = input.GetDevices().keyboard;
+    io.AddKeyEvent(ImGuiMod_Ctrl, keyboard[VK_CONTROL] != 0u);
+    io.AddKeyEvent(ImGuiMod_Shift, keyboard[VK_SHIFT] != 0u);
+    io.AddKeyEvent(ImGuiMod_Alt, keyboard[VK_MENU] != 0u);
+    for (const KeyBinding& binding : kKeys)
+        io.AddKeyEvent(binding.key, keyboard[binding.virtualKey] != 0u);
+    for (const INPUT::TextInputEvent& event : input.GetTextInputEvents()) {
+        if (event.kind == INPUT::TextInputEventKind::Committed)
+            io.AddInputCharactersUTF8(event.utf8.c_str());
+    }
+    io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
 }
 
 class EditorUiServices final : public RUNTIME::IEditorUiServices {
@@ -190,7 +236,14 @@ void EditorUiServices::BeginFrame(PLATFORM::Win32Window& window, const GFX::Cont
     ImGui_ImplWin32_NewFrame();
 
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(static_cast<float>(window.Width()), static_cast<float>(window.Height()));
+    if (SERVICES::IsInProcessGamePresentationActive()) {
+        // 新窗口 Play の重ね描きは、ゲームの窓の画像（今の back buffer）の大きさで描く。
+        io.DisplaySize =
+            ImVec2(static_cast<float>(graphics.backBufferWidth), static_cast<float>(graphics.backBufferHeight));
+        FeedPlayWindowKeyboard(io);
+    } else {
+        io.DisplaySize = ImVec2(static_cast<float>(window.Width()), static_cast<float>(window.Height()));
+    }
     io.DeltaTime = unscaledDeltaTime > 0.0f ? unscaledDeltaTime : (1.0f / 60.0f);
     if (io.Fonts != nullptr && io.Fonts->Fonts.empty()) {
         (void)EnsureEditorFonts();

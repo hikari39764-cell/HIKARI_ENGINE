@@ -8,10 +8,9 @@
 namespace HIKARI::VFX {
 
 inline constexpr TEXT::EnumName<VfxLayerKind> kVfxLayerKindNames[]{
-    {VfxLayerKind::Shape, "Shape"},
-    {VfxLayerKind::Particles, "Particles"},
-    {VfxLayerKind::Group, "Group"},
-    {VfxLayerKind::Adjustment, "Adjustment"},
+    {VfxLayerKind::Shape, "Shape"}, {VfxLayerKind::Particles, "Particles"},
+    {VfxLayerKind::Group, "Group"}, {VfxLayerKind::Adjustment, "Adjustment"},
+    {VfxLayerKind::Fluid, "Fluid"}, {VfxLayerKind::FluidSource, "FluidSource"},
 };
 inline constexpr auto kVfxLayerKindChoices = TEXT::EnumNameList(kVfxLayerKindNames);
 

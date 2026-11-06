@@ -196,7 +196,7 @@ void CheckPostSurfaceDraw(HIKARI::TESTS::INTERNAL::GpuContractDevice& gpu,
         assert(quad.Init(context));
         RenderTarget2D source;
         source.UpdateContext(context);
-        assert(source.Init(4, 1, DXGI_FORMAT_R16G16B16A16_FLOAT, false));
+        assert(source.Init(GFX::VIDEO_MEMORY::Owner::Post, 4, 1, DXGI_FORMAT_R16G16B16A16_FLOAT, false));
         source.BeginCapture(0, 0, 0, 0);
         source.EndCapture();
         POST::PostChain chain;
@@ -315,7 +315,8 @@ void CheckPostSurfaceDraw(HIKARI::TESTS::INTERNAL::GpuContractDevice& gpu,
             POST::PostEffect::UpdateContext(context);
             RenderTarget2D depthSource;
             depthSource.UpdateContext(context);
-            assert(depthSource.Init(4, renderHeight, DXGI_FORMAT_R16G16B16A16_FLOAT, true));
+            assert(depthSource.Init(GFX::VIDEO_MEMORY::Owner::Post, 4, renderHeight, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                    true));
             depthSource.BeginCapture(2, 2, 2, .5f);
             const D3D12_RECT nearRect{0, 0, 2, renderHeight}, farRect{2, 0, 4, renderHeight};
             gpu.commands->ClearDepthStencilView(depthSource.GetDsvHandle(), D3D12_CLEAR_FLAG_DEPTH, .2f, 0, 1,

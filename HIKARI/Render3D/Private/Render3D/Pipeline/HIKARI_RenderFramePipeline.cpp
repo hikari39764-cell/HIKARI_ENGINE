@@ -420,7 +420,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         }
         if (dynamicGi.count != 0)
             dynamicGiScope.emplace(dynamicGi.Volumes());
-        if (!MESHRENDERER::RefreshLightingProviders(frame.graphics, cloudSolarVisibility.data)) {
+        if (!MESHRENDERER::RefreshLightingProviders(frame.graphics, cloudSolarVisibility.data, environment)) {
             MESHRENDERER::EndFrame();
             return false;
         }

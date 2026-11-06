@@ -1,6 +1,8 @@
 #include "Editor/Preview/HIKARI_EditorPreviewCapture.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxOperationSections.h"
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -14,6 +16,7 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxEditorValue.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxOperationSupport.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
+#include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 
 namespace HIKARI::EDITOR {
@@ -174,6 +177,51 @@ void RegisterVfxPreviewOperations(EditorOperationRegistry& registry, VfxWorkspac
             },
         },
         EditorOperationKind::Session, true, HIKARI::EDITOR::EditorOperationSessionDispatch::Preview);
+
+    registry.Register(
+        {
+            "vfx.fluid.stats",
+            "Read the fluid smoke simulation of the VFX preview: grid, GPU memory, substeps, occupied bricks, "
+            "divergence and density total (diagnostics arrive 1-3 frames after the first read) and GPU time",
+            "vfx",
+            {},
+            [&controller](const nlohmann::json&) {
+                MESHRENDERER::RequestFluidDiagnostics();
+                return OperationOk("VFX fluid simulation statistics", controller.DescribePreviewFluidStats());
+            },
+        },
+        EditorOperationKind::Query);
+
+    registry.Register(
+        {
+            "vfx.fluid.debug_slice",
+            "Select a fluid domain layer and show or hide its debug slice in the VFX inspector",
+            "vfx",
+            {
+                {"layerId", EditorOperationParameterType::String, true, "Stable fluid domain layer ID"},
+                {"show", EditorOperationParameterType::Bool, false, "Show the slice (default true)"},
+                {"field", EditorOperationParameterType::String, false, "Density, Velocity, Divergence or Pressure"},
+                {"axis", EditorOperationParameterType::Int, false, "0 X, 1 Y, 2 Z (default 2)"},
+                {"position", EditorOperationParameterType::Float, false, "Slice position along the axis, 0..1"},
+            },
+            [&controller](const nlohmann::json& parameters) {
+                constexpr std::array<std::string_view, 4> kFields{"Density", "Velocity", "Divergence", "Pressure"};
+                const std::string field = parameters.value("field", "Density");
+                const auto found = std::find(kFields.begin(), kFields.end(), field);
+                if (found == kFields.end())
+                    return OperationFailure("VFX_INVALID_FLUID_FIELD",
+                                            "Expected Density, Velocity, Divergence or Pressure");
+                std::string message{};
+                if (!controller.ShowFluidDebugSlice(parameters.at("layerId").get<std::string>(),
+                                                    parameters.value("show", true),
+                                                    static_cast<uint32_t>(found - kFields.begin()),
+                                                    static_cast<uint32_t>(parameters.value("axis", 2)),
+                                                    parameters.value("position", 0.5f), message))
+                    return OperationFailure("VFX_FLUID_SLICE_FAILED", message);
+                return OperationOk(message, ContextData(controller));
+            },
+        },
+        EditorOperationKind::Session);
 
     registry.Register(
         {

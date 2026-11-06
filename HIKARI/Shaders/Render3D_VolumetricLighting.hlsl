@@ -102,15 +102,9 @@ float FractionDistance(float fraction)
 
 float SampleVolumeShadowCascade(float3 worldPosition, uint cascadeIndex, out bool valid)
 {
-    const float4 clip = mul(gLightViewProj[cascadeIndex], float4(worldPosition, 1.0f));
-    const float3 ndc = clip.xyz / max(abs(clip.w), 1e-6f);
-    const float2 uv = float2(ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f);
-    valid = all(uv >= 0.0f) && all(uv <= 1.0f) && ndc.z >= 0.0f && ndc.z <= 1.0f;
-    if (!valid) return 1.0f;
-    const float2 atlasUv = uv * gShadowCascadeParams.zw + HikariShadowAtlasTileOrigin(cascadeIndex);
-    return gShadowMap.SampleCmpLevelZero(gShadowSampler,
-        HikariClampShadowAtlasTileUv(atlasUv, cascadeIndex, gShadowCascadeParams.zw, gShadowSampling.yz),
-        ndc.z - gShadowSampling.x * gShadowCascadeDepthBiasScales[cascadeIndex]);
+    return HikariSampleVolumeShadowCascade(gShadowMap, gShadowSampler, gLightViewProj[cascadeIndex], worldPosition,
+        cascadeIndex, gShadowCascadeParams.zw, gShadowSampling.yz,
+        gShadowSampling.x * gShadowCascadeDepthBiasScales[cascadeIndex], valid);
 }
 
 float ShadowVisibility(float3 worldPosition, float3 cameraForward)

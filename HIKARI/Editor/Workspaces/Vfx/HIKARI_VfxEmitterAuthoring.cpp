@@ -30,6 +30,16 @@ bool VfxWorkspaceController::ApplyGeometryPreset(std::string_view layerId, std::
     return true;
 }
 
+const VFX::VfxEmitterData* VfxWorkspaceController::FindFluidDomainUnder(
+    std::string_view parentEmitterId) const noexcept {
+    const VFX::VfxEmitterData* parent = parentEmitterId.empty() ? nullptr : FindEmitter(parentEmitterId);
+    if (parent == nullptr || parent->kind == VFX::VfxLayerKind::Fluid)
+        return parent;
+    if (parent->kind != VFX::VfxLayerKind::Group)
+        return nullptr;
+    return VFX::FindVfxFluidDomainLayer(*parent, [&](const std::string& id) { return FindEmitter(id); });
+}
+
 bool VfxWorkspaceController::AddEmitter(std::string_view parentEmitterId, std::string_view displayName,
                                         std::string_view requestedId, std::string& outId, std::string& outMessage,
                                         VFX::VfxLayerKind kind) {
@@ -37,8 +47,18 @@ bool VfxWorkspaceController::AddEmitter(std::string_view parentEmitterId, std::s
         outMessage = "No VFX document is open";
         return false;
     }
-    if (!parentEmitterId.empty() && FindEmitter(parentEmitterId) == nullptr) {
+    const VFX::VfxEmitterData* parent = parentEmitterId.empty() ? nullptr : FindEmitter(parentEmitterId);
+    if (!parentEmitterId.empty() && parent == nullptr) {
         outMessage = "Parent emitter was not found";
+        return false;
+    }
+    const VFX::VfxEmitterData* domain = FindFluidDomainUnder(parentEmitterId);
+    if (kind == VFX::VfxLayerKind::FluidSource && domain == nullptr) {
+        outMessage = "Place fluid sources under a fluid domain layer";
+        return false;
+    }
+    if (kind == VFX::VfxLayerKind::Fluid && domain != nullptr) {
+        outMessage = "A fluid domain cannot be placed inside another fluid domain";
         return false;
     }
     const std::string id = requestedId.empty() ? AllocateStableId("emitter") : std::string(requestedId);
@@ -48,14 +68,37 @@ bool VfxWorkspaceController::AddEmitter(std::string_view parentEmitterId, std::s
     }
 
     VFX::VfxEmitterData emitter = VFX::MakeDefaultVfxAssetData().emitters.front();
+    emitter.kind = kind;
     RegenerateEmitterIds(emitter);
     emitter.id = id;
-    emitter.kind = kind;
     if (kind != VFX::VfxLayerKind::Particles) {
         emitter.renderShape.billboardMode = VFX::VfxBillboardMode::Fixed;
         emitter.spawn.ratePerSecond = 0;
         emitter.spawn.burstTimeline.clear();
         emitter.renderCommon.colorTextureAssetGuid = {};
+    }
+    if (kind == VFX::VfxLayerKind::Fluid || kind == VFX::VfxLayerKind::FluidSource) {
+        // 流体の層は効果・模型出力・特殊出力・履歴・遮罩を持たない。
+        emitter.effects.clear();
+        emitter.specialOutputs.clear();
+        emitter.meshOutput.enabled = false;
+        emitter.history.mode = VFX::VfxHistoryMode::None;
+        emitter.matte = {};
+        // 層の色は烟の色と消光の倍率になるので、既定の層の寿命の色（淡くなる曲線）を使わず白の一定にする。
+        emitter.color.value.mode = VFX::VfxAnimatedColorMode::Fixed;
+        emitter.color.value.fixed = {
+            VFX::VfxDistributionMode::Constant, {1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f}, 0u};
+    }
+    if (kind == VFX::VfxLayerKind::FluidSource) {
+        // 新しい源は域の下寄りの球から上へ吹き、卷曲湍流で崩れる（そのまま翻卷して昇る烟になる値）。
+        emitter.spawn.ratePerSecond = 6.0f;
+        emitter.shape.type = VFX::VfxShapeType::Sphere;
+        emitter.shape.radius = {VFX::VfxDistributionMode::Constant, 0.35f, 0.35f, 0u};
+        emitter.emitterTransform.transform.position = {0.0f, -0.325f * domain->fluidDomain.domainSize.y, 0.0f};
+        emitter.fluidSource.velocity = {0.0f, 0.8f, 0.0f};
+        emitter.forces.field.turbulence = 0.6f;
+        emitter.forces.field.frequency = 2.0f;
+        emitter.forces.field.evolution = 0.5f;
     }
     emitter.parentEmitterId = parentEmitterId;
     emitter.name = displayName.empty() ? "New Layer" : std::string(displayName);

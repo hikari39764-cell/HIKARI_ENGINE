@@ -13,6 +13,18 @@
 
 namespace HIKARI {
 
+ResolvedColliderShape ScaleColliderShape(const ResolvedColliderShape& shape, const MATH::Vec3& worldScale) noexcept {
+    const MATH::Vec3 scale{std::abs(worldScale.x), std::abs(worldScale.y), std::abs(worldScale.z)};
+    ResolvedColliderShape scaled = shape;
+    scaled.center = {shape.center.x * scale.x, shape.center.y * scale.y, shape.center.z * scale.z};
+    scaled.size = {shape.size.x * scale.x, shape.size.y * scale.y, shape.size.z * scale.z};
+    const float radialScale = shape.type == PHYSICS::PhysicsShapeType::Sphere ? (std::max)({scale.x, scale.y, scale.z})
+                                                                              : (std::max)(scale.x, scale.z);
+    scaled.radius = shape.radius * radialScale;
+    scaled.height = shape.height * scale.y;
+    return scaled;
+}
+
 ColliderSettings NormalizeColliderSettings(ColliderSettings settings) {
     settings = JSONFIELDS::Sanitize(std::move(settings), kColliderFields);
     settings.height = (std::max)(settings.height, settings.radius * 2.0f);

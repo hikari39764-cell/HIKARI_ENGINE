@@ -456,7 +456,7 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
         transparentOk = transparentOk &&
                         (!resources.particlesPrepared ||
                          ExecuteParticleForwardTransparent(resources.particlePass, graphics, overrides.cameraAddress,
-                                                           camera.GetPosition(), passResources));
+                                                           camera.GetPosition(), passResources, {}));
         transparentOk =
             transparentOk && resources.worldTextPass.ExecuteForwardTransparent(graphics, overrides.cameraAddress);
     }

@@ -198,31 +198,34 @@ DebugReply EmitCommand(World& world, std::string_view argument) {
 } // namespace
 
 RuntimeDebugService::RuntimeDebugService() {
-    RegisterCommand("help", "help", [this](World&, std::string_view) {
-        Json usages = Json::array();
+    RegisterCommand("help", "help", "List every runtime command with its usage.", [this](World&, std::string_view) {
+        Json rows = Json::array();
         for (const DebugCommand& command : commands_)
-            usages.push_back(command.usage);
-        return OkReply(usages);
+            rows.push_back({{"usage", command.usage}, {"summary", command.summary}});
+        return OkReply(rows);
     });
-    RegisterCommand("world", "world [offset]", WorldCommand);
-    RegisterCommand("object", "object <authored-id>", ObjectCommand);
-    RegisterCommand("systems", "systems", SystemsCommand);
-    RegisterCommand("perf", "perf", [](World&, std::string_view) { return OkReply(Performance()); });
-    RegisterCommand("audio", "audio", AudioCommand);
-    RegisterCommand("vfx", "vfx", VfxCommand);
-    RegisterCommand("errors", "errors", ErrorsCommand);
-    RegisterCommand("events", "events", EventsCommand);
-    RegisterCommand("trace", "trace <event-id|off>",
+    RegisterCommand("world", "world [offset]", "List up to 16 scene objects from offset.", WorldCommand);
+    RegisterCommand("object", "object <authored-id>", "Describe one object: name, position and components.",
+                    ObjectCommand);
+    RegisterCommand("systems", "systems", "Show the system execution order.", SystemsCommand);
+    RegisterCommand("perf", "perf", "CPU/GPU frame timings and the slowest passes.",
+                    [](World&, std::string_view) { return OkReply(Performance()); });
+    RegisterCommand("audio", "audio", "Audio voice and memory counters.", AudioCommand);
+    RegisterCommand("vfx", "vfx", "VFX instance counts and budget rejections.", VfxCommand);
+    RegisterCommand("errors", "errors", "World command failures of the current frame.", ErrorsCommand);
+    RegisterCommand("events", "events", "List declared runtime events.", EventsCommand);
+    RegisterCommand("trace", "trace <event-id|off>", "Print each delivery of one event (Play only).",
                     [this](World& world, std::string_view argument) { return Trace(world, argument); });
-    RegisterCommand("emit", "emit <declared-event-id>", EmitCommand);
-    RegisterCommand("time", "time <0..2|reset>",
+    RegisterCommand("emit", "emit <declared-event-id>", "Emit an event without payload (Play only).", EmitCommand);
+    RegisterCommand("time", "time <0..2|reset>", "Scale game time; 0 freezes, reset restores (Play only).",
                     [this](World& world, std::string_view argument) { return Time(world, argument); });
 }
-bool RuntimeDebugService::RegisterCommand(std::string name, std::string usage, DebugCommandHandler handler) {
+bool RuntimeDebugService::RegisterCommand(std::string name, std::string usage, std::string summary,
+                                          DebugCommandHandler handler) {
     const auto same = [&](const DebugCommand& item) { return item.name == name; };
     if (name.empty() || !handler || std::any_of(commands_.begin(), commands_.end(), same))
         return false;
-    commands_.push_back({std::move(name), std::move(usage), std::move(handler)});
+    commands_.push_back({std::move(name), std::move(usage), std::move(summary), std::move(handler)});
     return true;
 }
 void RuntimeDebugService::AppendTraceLine(std::string text) {

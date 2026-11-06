@@ -109,6 +109,7 @@ RenderFrameGraphStageResult ExecuteRenderFrameGraphStage(const RenderFrameGraphS
                                                         context.hasSubsurfaceWork,
                                                         context.hasDepthAwareWork,
                                                         context.hasTransparentWork,
+                                                        MESHRENDERER::HasFluidVolumes(),
                                                         state->cameraDepthOfFieldPrepared,
                                                         &context.frame.projectRenderExtensions,
                                                         INTERNAL::MapProjectRenderPurpose(context.frame.purpose)};

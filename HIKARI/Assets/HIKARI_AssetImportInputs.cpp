@@ -70,7 +70,10 @@ std::string FileDigest(const std::filesystem::path& path, const AssetImportPubli
     HASH::Sha256Digest digest;
     std::string error;
     const auto readable = publication ? publication->ReadPreparedFile(path) : path;
-    return HASH::ComputeFileSha256(readable, digest, error) ? HASH::ToHex(digest) : std::string{};
+    if (HASH::ComputeFileSha256(readable, digest, error))
+        return HASH::ToHex(digest);
+    std::error_code ec{};
+    return !std::filesystem::exists(readable, ec) && !ec ? std::string(kMissingAssetInputDigest) : std::string{};
 }
 } // namespace
 
@@ -218,11 +221,11 @@ bool CheckAssetImportInputs(const std::filesystem::path& projectRoot, const Asse
         const auto path = PROJECT_PATHS::ResolveProjectPath(projectRoot, TEXT::PathFromUtf8(file.path));
         const std::string digest = digests ? digests->Digest(file.path, path) : FileDigest(path, publication);
         if (digest.empty()) {
-            reason = "Input is missing or unreadable: " + file.path;
+            reason = "Input is unreadable: " + file.path;
             return false;
         }
         if (digest != file.digest) {
-            reason = "Input changed: " + file.path;
+            reason = (digest == kMissingAssetInputDigest ? "Input is missing: " : "Input changed: ") + file.path;
             return false;
         }
     }

@@ -6,6 +6,7 @@
 
 #include "Include/Vfx/HIKARI_ParticleData.hlsli"
 #include "Include/Vfx/HIKARI_ParticleForceMath.hlsli"
+#include "Include/Vfx/HIKARI_FluidGrid.hlsli"
 #include "Include/Math/HIKARI_BillboardMath.hlsli"
 
 #define HIKARI_PARTICLE_LAYOUT(name, value) static const uint name = value;
@@ -38,8 +39,59 @@ cbuffer SimulationConstants : register(b0)
     uint gSpawnCount;
     uint gRandomSeed;
     float gDeltaSeconds;
-    uint gSimulationFlags;
+    uint gSimulationFlags;  // bit 0 直接の形、bit 8..10 粒子が乗る流体の域の数（kGpuParticleFluidFlowShift）
 };
+
+// 粒子が乗る流体の域（C++ の FluidRenderer::PrepareFlow と同じ並び）：世界→格子（格、角が原点）の行、格の数・大きさ h、
+// 域が世界で動く速さ（局部空間の域。世界空間の域は 0）。
+struct FluidFlowDomain
+{
+    float4 toGrid0;
+    float4 toGrid1;
+    float4 toGrid2;
+    float4 cells;
+    float4 motion;
+};
+cbuffer FluidFlowConstants : register(b1)
+{
+    FluidFlowDomain gFluidFlow[4];
+};
+Texture3D<float4> gFluidVelocity0 : register(t1);
+Texture3D<float4> gFluidVelocity1 : register(t2);
+Texture3D<float4> gFluidVelocity2 : register(t3);
+Texture3D<float4> gFluidVelocity3 : register(t4);
+SamplerState gFluidSampler : register(s0);
+
+// 域 1 つの世界の点 world での流体の速度（世界、m/s）。速度体積の xyz は域の軸に沿った格の下側の面の速度（格の数 + 1 の
+// 体積、交错格子）を成分ごとに半格ずらして読み、域が動く速さを足す。箱の外なら inside = 0。
+float3 FluidFlowAt(FluidFlowDomain domain, Texture3D<float4> velocity, float3 world, inout float inside)
+{
+    const float3 grid = float3(dot(domain.toGrid0, float4(world, 1.0f)), dot(domain.toGrid1, float4(world, 1.0f)),
+                               dot(domain.toGrid2, float4(world, 1.0f)));
+    if (inside > 0.0f || any(grid < 0.0f) || any(grid > domain.cells.xyz))
+        return 0.0f.xxx;
+    inside = 1.0f;
+    const float3 v = HikariFluidVelocityAt(velocity, gFluidSampler, grid, domain.cells.xyz + 1.0f);
+    // 行は域の軸 / h なので、h を掛けると域の軸に戻る。
+    return (domain.toGrid0.xyz * v.x + domain.toGrid1.xyz * v.y + domain.toGrid2.xyz * v.z) * domain.cells.w +
+           domain.motion.xyz;
+}
+
+// 世界の点 world の流体の速度（入っている最初の域）。どの域にも入っていなければ inside = 0。
+float3 FluidFlowVelocity(float3 world, uint count, out float inside)
+{
+    inside = 0.0f;
+    float3 flow = 0.0f.xxx;
+    if (count > 0u)
+        flow += FluidFlowAt(gFluidFlow[0], gFluidVelocity0, world, inside);
+    if (count > 1u)
+        flow += FluidFlowAt(gFluidFlow[1], gFluidVelocity1, world, inside);
+    if (count > 2u)
+        flow += FluidFlowAt(gFluidFlow[2], gFluidVelocity2, world, inside);
+    if (count > 3u)
+        flow += FluidFlowAt(gFluidFlow[3], gFluidVelocity3, world, inside);
+    return flow;
+}
 
 uint Hash(uint value)
 {
@@ -581,7 +633,11 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     const float4 fieldFlow=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_FLOW);
     const float fieldSeconds=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_TIME).x;
     const bool fieldActive=fieldAxis.w!=0 || fieldFlow.x!=0 || fieldFlow.w!=0;
-    const uint steps = fieldActive ? (uint)clamp(ceil(dt*60.0f),1.0f,120.0f)
+    // 流体に乗る（世界空間の粒子だけ）：毎秒 follow の割合で速度をその場の流体の速度へ寄せる。
+    const float follow = LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_FIELD_TIME).y;
+    const uint flowCount = (gSimulationFlags >> 8u) & 7u;
+    const bool followFluid = follow > 0.0f && flowCount > 0u && (asuint(collision.w) & 1u) == 0u;
+    const uint steps = fieldActive || followFluid ? (uint)clamp(ceil(dt*60.0f),1.0f,120.0f)
         : collide ? (uint)clamp(ceil(dt * 30.0f), 1.0f, 8.0f) : 1u;
     const float step = dt / steps;
     const float x = drag * step;
@@ -596,6 +652,12 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         if (fieldActive) acceleration+=ParticleForceAcceleration(particle.physicsPositionSeed.xyz,
             fieldSeconds-dt+(index+0.5f)*step,fieldCenter.xyz,fieldCenter.w,fieldAxis.xyz,fieldAxis.w,
             fieldFlow.x,fieldFlow.y,fieldFlow.z,fieldFlow.w);
+        if (followFluid)
+        {
+            float inside;
+            const float3 flow = FluidFlowVelocity(particle.physicsPositionSeed.xyz, flowCount, inside);
+            acceleration += (flow - particle.velocityLifetime.xyz) * (follow * inside);
+        }
         particle.physicsPositionSeed.xyz += particle.velocityLifetime.xyz * velocityIntegral + acceleration * accelerationIntegral;
         particle.velocityLifetime.xyz = particle.velocityLifetime.xyz * damping + acceleration * velocityIntegral;
         if (collide && particle.physicsPositionSeed.y < collision.x)

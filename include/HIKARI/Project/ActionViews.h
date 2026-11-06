@@ -83,6 +83,8 @@ public:
     // Applies an additive node-local offset after animation evaluation.
     // The engine owns storage and applies the same offset to rendered poses
     // and explicit gameplay socket samples until cleared or the object dies.
+    // An Animator without a playable clip applies it to the bind pose, so
+    // project code can drive bones directly.
     HIKARI_GAME_PROJECT_SDK_API bool SetNodeLocalTransformOffset(uint64_t objectHandle, std::string_view nodeName,
                                                                  const GameProjectTransform& offset) const noexcept;
     // Applies an additive transform in the node parent's local space.

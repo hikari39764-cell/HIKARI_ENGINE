@@ -43,20 +43,25 @@ void EditorPlaySession::RequestStop(PlayStopReason reason) {
 }
 
 void EditorPlaySession::TogglePause() {
-    if (!IsEmbeddedRunning()) {
+    if (!IsRunning()) {
         return;
     }
+    // 新窗口 Play もコンソールの play.pause で止められる（窓の入力はゲームの窓が持ったまま）。
+    const bool embedded = mode_ == EditorPlayMode::Embedded;
     if (state_ == EditorPlayState::Paused) {
         TIME::SetPaused(false);
         TIME::ResetFrameClock();
         state_ = EditorPlayState::Running;
-        statusMessage_ = "Embedded Play resumed. Click the Game View to control.";
+        statusMessage_ =
+            embedded ? "Embedded Play resumed. Click the Game View to control." : "Play in New Window resumed.";
         return;
     }
-    ReleaseEmbeddedInput();
+    if (embedded) {
+        ReleaseEmbeddedInput();
+    }
     TIME::SetPaused(true);
     state_ = EditorPlayState::Paused;
-    statusMessage_ = "Embedded Play paused.";
+    statusMessage_ = embedded ? "Embedded Play paused." : "Play in New Window paused.";
 }
 
 void EditorPlaySession::CaptureEmbeddedInput(const INPUT::MouseCaptureRegion& region) {

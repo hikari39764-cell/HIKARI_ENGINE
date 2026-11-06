@@ -23,7 +23,8 @@ public:
     void Remove(RuntimeObjectHandle object) noexcept;
     void Clear() noexcept;
 
-    bool Apply(const ModelAsset& model, RuntimeObjectHandle object, AnimationLocalPose& inOutPose) const;
+    // 姿勢へ偏移を重ね、重ねた節点の数を返す（名前が解決できない偏移は数えない）。
+    uint32_t Apply(const ModelAsset& model, RuntimeObjectHandle object, AnimationLocalPose& inOutPose) const;
 
 private:
     enum class OffsetSpace : uint8_t {

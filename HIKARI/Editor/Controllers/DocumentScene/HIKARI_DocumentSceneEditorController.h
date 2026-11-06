@@ -100,6 +100,10 @@ public:
 
     void Draw(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession,
               EDITOR::EditorProjectSessionController& projectSession);
+    // 新窗口 Play の間の開発用の重ね描き（コンソールと帧率）。Update は毎フレーム ImGui のフレームより前に呼び、~ での
+    // 開閉と、重ね描きの ImGui フレームを作るかを決める。Draw はそのフレームがある時だけ、Draw の代わりに呼ぶ。
+    void UpdatePlayWindowOverlay(const EDITOR::EditorPlaySession& playSession);
+    void DrawPlayWindowOverlay(DocumentSceneBase& scene);
 
 private:
     void RegisterEditorOperations();
@@ -179,6 +183,11 @@ private:
     EnvironmentPanel environmentPanel_{};
     QualityPanel qualityPanel_{};
     EDITOR::EditorToolHost toolHost_{};
+    // 新窗口 Play の重ね描き。コンソールの実体は toolHost_ と共有し、開閉だけ編集器の画面と別に持つ（Play ごとに閉じて始まる）。
+    bool playWindowOverlayActive_ = false;
+    bool playWindowConsoleOpen_ = false;
+    bool playWindowConsoleOpened_ = false;
+    bool playWindowConsoleKeyDown_ = false;
     EDITOR::SystemAuthoringRegistry systemAuthoringRegistry_{};
     EDITOR::EditorWorkspaceHost workspaceHost_{};
     EDITOR::GameProjectEditorWorkspaceHost* projectWorkspaceHost_ = nullptr;

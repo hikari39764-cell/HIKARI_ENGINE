@@ -43,6 +43,8 @@ cbuffer SkyEnvironmentCB : register(b5, HIKARI_ENVIRONMENT_REGISTER_SPACE)
     float4 gAtmosphereSunColorRadiance;
     HikariCloudSolarVisibilityData gCloudSolarVisibility;
     HikariIrradianceVolumeData gDynamicGiVolumes[HIKARI_DYNAMIC_GI_VOLUME_COUNT];
+    // 流体の烟が場面へ落とす影（雲の影と同じ並び、面の太陽に掛ける）。
+    HikariCloudSolarVisibilityData gFluidSolarVisibility;
 };
 
 // 空の画素値を輝度 [nits] へ写す倍率（大気は 1）、反射と天空光の倍率。

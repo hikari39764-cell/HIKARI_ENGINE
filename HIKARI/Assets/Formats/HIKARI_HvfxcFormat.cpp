@@ -493,6 +493,45 @@ bool ReadAnimated(BinaryReader& reader, ParticleAnimatedColor& value) {
     return true;
 }
 
+// 流体層の設定は字段表（唯一の宣言）で JSON にして文字列で持つ。種類の違う層には書かない。
+template <class Settings, class Fields>
+void WriteFieldTable(BinaryWriter& writer, const Settings& settings, const Fields& fields) {
+    nlohmann::json json;
+    JSONFIELDS::Write(json, settings, fields);
+    writer.WriteString(json.dump());
+}
+
+template <class Settings, class Fields>
+bool ReadFieldTable(BinaryReader& reader, Settings& settings, const Fields& fields) {
+    std::string text;
+    if (!reader.ReadString(text))
+        return false;
+    try {
+        JSONFIELDS::Read(nlohmann::json::parse(text), settings, fields);
+    } catch (const std::exception&) {
+        return false;
+    }
+    return true;
+}
+
+void WriteFluidSettings(BinaryWriter& writer, const VfxProgramEmitter& emitter) {
+    if (emitter.kind == VfxLayerKind::Fluid)
+        WriteFieldTable(writer, emitter.fluidDomain, RENDER3D::FLUID::kFluidDomainSettingsFields);
+    if (emitter.kind == VfxLayerKind::FluidSource) {
+        WriteFieldTable(writer, emitter.fluidSource, RENDER3D::FLUID::kFluidSourceSettingsFields);
+        writer.Write(emitter.fluidDomainIndex);
+    }
+}
+
+bool ReadFluidSettings(BinaryReader& reader, VfxProgramEmitter& emitter) {
+    if (emitter.kind == VfxLayerKind::Fluid)
+        return ReadFieldTable(reader, emitter.fluidDomain, RENDER3D::FLUID::kFluidDomainSettingsFields);
+    if (emitter.kind == VfxLayerKind::FluidSource)
+        return ReadFieldTable(reader, emitter.fluidSource, RENDER3D::FLUID::kFluidSourceSettingsFields) &&
+               reader.Read(emitter.fluidDomainIndex);
+    return true;
+}
+
 void WriteProgram(BinaryWriter& writer, const VfxProgram& program) {
     writer.Write(kVfxProgramPayloadMagic);
     writer.Write(program.version);
@@ -572,6 +611,7 @@ void WriteProgram(BinaryWriter& writer, const VfxProgram& program) {
         WriteAnimated(writer, simulation.scale);
         WriteVec3(writer, simulation.gravity);
         writer.Write(simulation.drag);
+        writer.Write(simulation.fluidFollow);
         writer.Write(simulation.localSimulation);
         writer.Write(simulation.collisionPlaneEnabled);
         writer.Write(simulation.collisionPlaneHeight);
@@ -674,6 +714,7 @@ void WriteProgram(BinaryWriter& writer, const VfxProgram& program) {
             writer.Write(link.scale);
             writer.Write(link.bias);
         }
+        WriteFluidSettings(writer, emitter);
     }
 
     writer.Write(static_cast<uint32_t>(program.dependencyGuids.size()));
@@ -763,15 +804,15 @@ bool ReadProgram(BinaryReader& reader, VfxProgram& program) {
             !reader.Read(simulation.shapeEdgeLength) || !ReadDistribution(reader, simulation.radialSpeed) ||
             !ReadAnimated(reader, simulation.position) || !ReadAnimated(reader, simulation.rotationRadians) ||
             !ReadAnimated(reader, simulation.scale) || !ReadVec3(reader, simulation.gravity) ||
-            !reader.Read(simulation.drag) || !reader.Read(simulation.localSimulation) ||
-            !reader.Read(simulation.collisionPlaneEnabled) || !reader.Read(simulation.collisionPlaneHeight) ||
-            !reader.Read(simulation.restitution) || !reader.Read(simulation.friction) ||
-            !ReadVec3(reader, simulation.field.center) || !reader.Read(simulation.field.radius) ||
-            !ReadVec3(reader, simulation.field.axis) || !reader.Read(simulation.field.vortex) ||
-            !reader.Read(simulation.field.turbulence) || !reader.Read(simulation.field.frequency) ||
-            !reader.Read(simulation.field.evolution) || !reader.Read(simulation.field.attraction) ||
-            !ReadAnimated(reader, simulation.color) || !reader.ReadEnum(emitter.render.materialMode) ||
-            !reader.ReadString(emitter.render.colorTextureAssetGuid) ||
+            !reader.Read(simulation.drag) || !reader.Read(simulation.fluidFollow) ||
+            !reader.Read(simulation.localSimulation) || !reader.Read(simulation.collisionPlaneEnabled) ||
+            !reader.Read(simulation.collisionPlaneHeight) || !reader.Read(simulation.restitution) ||
+            !reader.Read(simulation.friction) || !ReadVec3(reader, simulation.field.center) ||
+            !reader.Read(simulation.field.radius) || !ReadVec3(reader, simulation.field.axis) ||
+            !reader.Read(simulation.field.vortex) || !reader.Read(simulation.field.turbulence) ||
+            !reader.Read(simulation.field.frequency) || !reader.Read(simulation.field.evolution) ||
+            !reader.Read(simulation.field.attraction) || !ReadAnimated(reader, simulation.color) ||
+            !reader.ReadEnum(emitter.render.materialMode) || !reader.ReadString(emitter.render.colorTextureAssetGuid) ||
             !reader.ReadString(emitter.render.maskTextureAssetGuid) ||
             !reader.ReadString(emitter.render.noiseTextureAssetGuid) ||
             !reader.ReadString(emitter.render.materialAssetGuid) || !reader.ReadEnum(emitter.render.blendMode) ||
@@ -856,6 +897,9 @@ bool ReadProgram(BinaryReader& reader, VfxProgram& program) {
                 return false;
             }
             emitter.inputLinks.push_back(link);
+        }
+        if (!ReadFluidSettings(reader, emitter)) {
+            return false;
         }
         program.emitters.push_back(std::move(emitter));
     }

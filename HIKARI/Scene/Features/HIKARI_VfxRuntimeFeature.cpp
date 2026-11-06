@@ -5,6 +5,7 @@
 #include <string>
 
 #include "Scene/Features/HIKARI_RuntimeFeatureContextAccess.h"
+#include "Scene/Components/Rendering/Vfx/HIKARI_FluidObstacleComponent.h"
 #include "Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponent.h"
 #include "Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponentAuthoring.h"
 #include "HIKARI/Project/RuntimeFeature.h"
@@ -12,6 +13,7 @@
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
+#include "Scene/Vfx/HIKARI_FluidObstacleSystem.h"
 #include "Scene/Vfx/HIKARI_VfxPlayerSystem.h"
 
 namespace HIKARI {
@@ -58,6 +60,28 @@ public:
                   success;
         success = componentSystemPolicy.Register(ComponentSystemRule{"VfxPlayerComponent", "VfxPlayerSystem", 180}) &&
                   success;
+
+        ComponentTypeInfo obstacle{};
+        obstacle.typeName = "FluidObstacleComponent";
+        obstacle.factory = []() -> std::unique_ptr<IComponent> { return IComponent::Create<FluidObstacleComponent>(); };
+        obstacle.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
+            FluidObstacleComponent{}.Serialize(properties);
+        };
+        obstacle.fields = JSONFIELDS::Describe<FluidObstacleSettings>(kFluidObstacleFields);
+        obstacle.presentation = ComponentTypePresentation{
+            "Fluid Obstacle", "Rendering/VFX",
+            "Pushes fluid smoke aside with spheres, capsules or boxes that follow the object or its bones.",
+            std::string(RuntimeFeatureIds::Vfx)};
+        success = componentRegistry.Register(std::move(obstacle)) && success;
+        success = systemRegistry.Register(SystemTypeInfo{"FluidObstacleSystem",
+                                                         [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
+                                                             return std::make_unique<FluidObstacleSystem>();
+                                                         },
+                                                         "Fluid Obstacles", std::string(RuntimeFeatureIds::Vfx)}) &&
+                  success;
+        success =
+            componentSystemPolicy.Register(ComponentSystemRule{"FluidObstacleComponent", "FluidObstacleSystem", 185}) &&
+            success;
         return success;
     }
 };

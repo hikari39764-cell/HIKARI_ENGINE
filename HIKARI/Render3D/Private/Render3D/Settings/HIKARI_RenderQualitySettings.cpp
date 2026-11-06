@@ -48,6 +48,7 @@ RenderQualitySettings NormalizeRenderQualitySettings(RenderQualitySettings setti
     named(settings.dynamicGiQuality, kDynamicGiQualityNames, DynamicGiQuality::Off);
     named(settings.localShadowQuality, kLocalShadowQualityNames, LocalShadowQuality::Balanced);
     named(settings.volumetricCloudQuality, kVolumetricCloudQualityNames, VolumetricCloudQuality::Balanced);
+    named(settings.fluidSmokeQuality, kFluidSmokeQualityNames, FluidSmokeQuality::Balanced);
     named(settings.forwardCostMode, kForwardShadingCostModeNames, ForwardShadingCostMode::Full);
     named(settings.lightProbeVolumeSampling, kLightProbeVolumeSamplingModeNames,
           LightProbeVolumeSamplingMode::FastSmooth);
@@ -131,6 +132,9 @@ const char* LocalShadowQualityLabel(LocalShadowQuality quality) {
 
 const char* VolumetricCloudQualityLabel(VolumetricCloudQuality quality) {
     return TEXT::EnumToName(kVolumetricCloudQualityNames, quality, "Unknown");
+}
+const char* FluidSmokeQualityLabel(FluidSmokeQuality quality) {
+    return TEXT::EnumToName(kFluidSmokeQualityNames, quality, "Unknown");
 }
 
 bool IsTemporalAntiAliasingMode(RenderAntiAliasingMode mode) { return mode == RenderAntiAliasingMode::TAA; }

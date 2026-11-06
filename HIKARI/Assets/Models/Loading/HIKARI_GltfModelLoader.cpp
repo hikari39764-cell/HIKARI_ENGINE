@@ -300,6 +300,8 @@ bool LoadGltfModelSource(ModelAsset& asset, std::vector<AssetImportInputFile>* s
                                                                  bufferViews, loadedBuffers, weights);
                 if (hasJoints && hasWeights && joints.size() == static_cast<size_t>(vertexCount) &&
                     weights.size() == static_cast<size_t>(vertexCount)) {
+                    // 蒙皮かどうかは顶点布局だけで判断される（光照贴图 UV の生成なども静的布局の图元だけを書き換える）。
+                    primitiveAsset.layout = VertexLayoutKind::SkinnedPNTTJW;
                     primitiveAsset.skinnedVertices.resize(static_cast<size_t>(vertexCount));
                     for (int i = 0; i < vertexCount; ++i) {
                         const Vertex3D& staticVertex = primitiveAsset.staticVertices[static_cast<size_t>(i)];
@@ -316,6 +318,11 @@ bool LoadGltfModelSource(ModelAsset& asset, std::vector<AssetImportInputFile>* s
                         }
                         primitiveAsset.skinnedVertices[static_cast<size_t>(i)] = skinned;
                     }
+                } else {
+                    ++asset.importDiagnostics.unsupportedFeatureCount;
+                    asset.importDiagnostics.messages.push_back(
+                        "[glTF] JOINTS_0/WEIGHTS_0 unreadable or count mismatch, imported as static: mesh=" +
+                        std::to_string(meshIndex) + " primitive=" + std::to_string(primitiveIndex));
                 }
             }
 
@@ -331,6 +338,8 @@ bool LoadGltfModelSource(ModelAsset& asset, std::vector<AssetImportInputFile>* s
     }
 
     GLTF::ReadAnimations(root, accessors, bufferViews, loadedBuffers, asset);
+    // glTF は蒙皮網格の節点の変換を無視する（関節 × 逆バインドで模型空間）。描画は表面の節点も掛けるので焼いて単位にする。
+    BakeSkinnedMeshNodes(asset);
     BOUNDS::EnsureModelBounds(asset);
     return !asset.meshes.empty();
 }

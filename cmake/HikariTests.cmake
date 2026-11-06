@@ -101,6 +101,8 @@ foreach(name IN ITEMS RenderMathContracts DynamicUploadGpuContracts ClusterVerte
     hikari_add_contract(${name} gpu Runtime)
 endforeach()
 
+target_sources(HIKARI_ParticleCompactionGpuContracts PRIVATE
+    "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_FluidSolverGpuContracts.cpp")
 target_sources(HIKARI_VfxStyleGpuContracts PRIVATE
     "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_SceneCaptureStyleContracts.cpp"
     "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_PreservedVfxContracts.cpp")

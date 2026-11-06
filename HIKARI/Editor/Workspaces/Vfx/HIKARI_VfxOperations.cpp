@@ -528,7 +528,8 @@ void RegisterEmitterOperations(EditorOperationRegistry& registry, VfxWorkspaceCo
                 std::string message{};
                 VFX::VfxLayerKind kind = VFX::VfxLayerKind::Shape;
                 if (!TEXT::TryParseEnum(VFX::kVfxLayerKindNames, parameters.value("kind", "Shape"), kind))
-                    return OperationFailure("VFX_INVALID_LAYER_KIND", "Expected Shape, Particles, Group or Adjustment");
+                    return OperationFailure("VFX_INVALID_LAYER_KIND",
+                                            "Expected Shape, Particles, Group, Adjustment, Fluid or FluidSource");
                 if (!controller.AddEmitter(parameters.value("parentEmitterId", ""), parameters.value("name", ""),
                                            parameters.value("requestedId", ""), id, message, kind)) {
                     return OperationFailure("VFX_EMITTER_ADD_FAILED", message);

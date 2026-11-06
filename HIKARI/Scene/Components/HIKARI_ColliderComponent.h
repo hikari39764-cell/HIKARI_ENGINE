@@ -42,6 +42,10 @@ struct ResolvedColliderShape {
     bool fittedFromGeometry = false;
 };
 
+// 碰撞器の形へ物体の拡縮を掛ける（中心と箱は軸ごと、球の半径は最大の軸、カプセルの半径は XZ・高さは Y）。物理の形と
+// 流体の障碍物が同じ規則で置く。回転は変えない。
+ResolvedColliderShape ScaleColliderShape(const ResolvedColliderShape& shape, const MATH::Vec3& worldScale) noexcept;
+
 // 作者値（シーン文書の properties と同じ形）。項目表（kColliderFields）が保存・読み取り・検査器・説明を決める。
 // material と filter は物理側の値（PhysicsMaterialDesc / PhysicsCollisionFilter）がそのまま入れ子の項目になる。
 struct ColliderSettings {

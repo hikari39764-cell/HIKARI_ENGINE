@@ -14,7 +14,7 @@
 
 namespace HIKARI::VFX {
 
-inline constexpr uint32_t kVfxProgramVersion = 18u;
+inline constexpr uint32_t kVfxProgramVersion = 19u;
 inline constexpr uint32_t kMaximumVfxProgramTableItems = 1u << 20u;
 inline constexpr uint32_t kMaximumVfxProgramEmitters = 1024u;
 inline constexpr uint32_t kMaximumVfxProgramInputs = 4096u;
@@ -124,6 +124,10 @@ struct VfxProgramEmitter {
     RENDER3D::PARTICLES::ParticleEmitterRenderParameters render{};
     std::vector<VfxSpecialOutputData> specialOutputs{};
     std::vector<VfxProgramInputLink> inputLinks{};
+    // 流体層（Fluid は域の設定、FluidSource は源の設定と属する域の層番号）。
+    RENDER3D::FLUID::FluidDomainSettings fluidDomain{};
+    RENDER3D::FLUID::FluidSourceSettings fluidSource{};
+    uint32_t fluidDomainIndex = kInvalidVfxProgramIndex;
 };
 
 struct VfxProgram {
