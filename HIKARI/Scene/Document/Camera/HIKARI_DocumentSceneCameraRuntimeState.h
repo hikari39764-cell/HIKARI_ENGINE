@@ -21,6 +21,8 @@ struct DocumentSceneCameraRuntimeState {
     RENDER3D::ResolvedCameraFrame resolvedFrame{};
     DebugCameraController3D debugCamera{};
     DebugCameraController3D runtimePreviewCamera{};
+    // 開発コマンド freecam の自由視点。有効な間、解決したゲームの相机の位置と向きを置き換える（Play の間だけ）。
+    DebugCameraController3D freeCamera{};
     Camera3D editorCameraSnapshot{};
     Camera3D editorCameraPreviewSnapshot{};
     DebugCameraController3D editorDebugCameraSnapshot{};
@@ -34,6 +36,7 @@ struct DocumentSceneCameraRuntimeState {
     bool editorCameraCutPending = false;
     bool runtimePreviewCameraActive = false;
     bool runtimeSceneCameraActive = false;
+    bool freeCameraActive = false;
 };
 
 } // namespace HIKARI

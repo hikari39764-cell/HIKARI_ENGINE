@@ -161,6 +161,19 @@ void DocumentSceneEditorController::RegisterLookDevOperations() {
         }};
     debugView.permission = EDITOR::EditorOperationPermission::ModifyEditorState;
     operationRegistry_.Register(std::move(debugView), EDITOR::EditorOperationKind::Session, false);
+    EDITOR::EditorOperationDefinition stats{
+        "view.stats",
+        "Show or hide the frame rate and CPU/GPU frame time in a corner of the editor window and of the Play window. "
+        "Editor view state: not saved.",
+        "scene",
+        {{"show", EditorOperationParameterType::Bool, false, "true shows, false hides; omit to toggle"}},
+        [this](const nlohmann::json& p) {
+            bool& show = context_.windows.runtime.showFrameStats;
+            show = p.contains("show") ? p.at("show").get<bool>() : !show;
+            return EDITOR::OperationOk(show ? "Frame stats are shown." : "Frame stats are hidden.", {{"show", show}});
+        }};
+    stats.permission = EDITOR::EditorOperationPermission::ModifyEditorState;
+    operationRegistry_.Register(std::move(stats), EDITOR::EditorOperationKind::Session, false);
 }
 
 } // namespace HIKARI

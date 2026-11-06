@@ -198,10 +198,11 @@ DocumentSceneBase::DocumentSceneBase(std::string sceneId) : state_(std::make_uni
         state_->camera.director, state_->runtime.world, state_->camera.editorCamera, &state_->camera.presentation));
     (void)state_->camera.sequencePlayback.RegisterDriver(
         std::make_unique<SEQUENCER::PresentationCueDriver>(state_->runtime.world, state_->runtime.vfxPlaybackService));
+    RegisterSceneDebugCommands(SERVICES::GetInputService());
 }
 
 DocumentSceneBase::~DocumentSceneBase() {
-    SERVICES::GetInputService().SetDeveloperInputCaptured(false);
+    SERVICES::GetInputService().ReleaseDeveloperInput();
     state_->runtime.debugService.Reset(state_->runtime.world);
 }
 
@@ -390,6 +391,8 @@ void DocumentSceneBase::Update(float dt) {
         }
         state_->camera.resolvedFrame = state_->camera.director.Resolve(
             state_->runtime.world, state_->camera.gameplayCamera, state_->camera.editorCamera.GetAspect(), dt);
+        // 自由視点は一時停止中も実時間で飛ぶ。ゲームが操作する相机（gameplayCamera）はそのまま進む。
+        ApplyDebugFreeCamera(frame.unscaledDt, SERVICES::GetInputService(), SERVICES::ShouldProduceEditorUiFrame());
         state_->camera.editorCamera = state_->camera.resolvedFrame.camera;
         state_->camera.gameplayCamera = state_->camera.director.GetControlCamera();
         const auto& camera = state_->camera.resolvedFrame.camera;

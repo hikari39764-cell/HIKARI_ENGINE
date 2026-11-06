@@ -32,6 +32,10 @@ namespace {
 
 constexpr size_t kMaximumOutputLines = 400;
 constexpr size_t kMaximumDataBytes = 300;
+// help の一行に出す操作の要約の長さ（最初の文まで、長ければ切る）。
+constexpr size_t kMaximumHelpSummaryBytes = 120;
+// 新窗口 Play の窓に重ねる時の高さ（窓の高さに対する割合）。
+constexpr float kPlayWindowConsoleHeight = 0.42f;
 
 enum class LineKind : uint8_t { Command, Success, Failure, Plain, Muted };
 
@@ -66,6 +70,20 @@ ImVec4 LineColor(const EditorThemePalette& palette, LineKind kind) {
     return palette.text;
 }
 
+// 操作の要約の最初の文。help の一覧を一行ずつに収める。
+std::string FirstSentence(std::string_view summary) {
+    const size_t end = summary.find(". ");
+    std::string text(summary.substr(0, end == std::string_view::npos ? summary.size() : end + 1));
+    const size_t keep = TEXT::Utf8PrefixByteCount(text, kMaximumHelpSummaryBytes);
+    if (keep < text.size())
+        text = text.substr(0, keep) + "...";
+    return text;
+}
+
+bool StartsWith(std::string_view text, std::string_view prefix) {
+    return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
+}
+
 void ReplaceText(ImGuiInputTextCallbackData& data, std::string_view text) {
     data.DeleteChars(0, data.BufTextLen);
     data.InsertChars(0, text.data(), text.data() + text.size());
@@ -91,6 +109,8 @@ private:
     void DrawInput(EditorToolContext& context);
 
     void Submit(EditorToolContext& context);
+    // help [前置き]: 前置き無しはコンソールと実行時のコマンド全部と操作の組、前置き有りはその名前で始まる操作とコマンド。
+    void AppendHelp(EditorToolContext& context, std::string_view prefix);
     void RunOperation(EditorToolContext& context, const EditorOperationDefinition& operation, const std::string& line);
     void RunRuntimeCommand(EditorToolContext& context, const std::string& line);
     void AppendResult(const EditorOperationResult& result);
@@ -105,13 +125,29 @@ private:
 };
 
 void ConsoleTool::Draw(EditorToolContext& context, bool& open) {
-    const std::string windowName = TEXT::LocalizeWindow("ui.window.console", "Console");
-    if (context.openRequest != nullptr) {
-        RevealEditorWindow(windowName.c_str());
-        focusInput_ = true;
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+    const std::string windowName =
+        TEXT::LocalizeWindow("ui.window.console", context.playWindowOverlay ? "PlayWindowConsole" : "Console");
+    if (context.playWindowOverlay) {
+        // 新窗口 Play: 編集器の画面は無いので、ゲームの窓の上側に固定して重ねる。マウスはゲームが持つので打鍵だけで使う。
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        const float margin = ImGui::GetStyle().WindowPadding.x;
+        ImGui::SetNextWindowViewport(viewport->ID);
+        ImGui::SetNextWindowPos({viewport->Pos.x + margin, viewport->Pos.y + margin});
+        ImGui::SetNextWindowSize({viewport->Size.x - margin * 2.0f, viewport->Size.y * kPlayWindowConsoleHeight});
+        ImGui::SetNextWindowBgAlpha(0.9f);
+        flags |= ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings;
+        if (context.openRequest != nullptr)
+            focusInput_ = true;
+    } else {
+        if (context.openRequest != nullptr) {
+            RevealEditorWindow(windowName.c_str());
+            focusInput_ = true;
+        }
+        ImGui::SetNextWindowSize({720.0f, 360.0f}, ImGuiCond_FirstUseEver);
     }
-    ImGui::SetNextWindowSize({720.0f, 360.0f}, ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin(windowName.c_str(), &open, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+    if (!ImGui::Begin(windowName.c_str(), &open, flags)) {
         ImGui::End();
         return;
     }
@@ -227,10 +263,69 @@ void ConsoleTool::Submit(EditorToolContext& context) {
     Append(LineKind::Command, "> " + line);
     // 先頭の語が人に見える操作なら操作として、そうでなければ実行時コマンドとして実行する。
     const std::string_view name = std::string_view(line).substr(0, line.find_first_of(" \t"));
+    if (name == kConsoleHelpCommand) {
+        AppendHelp(context, TEXT::TrimCopy(line.substr(name.size())));
+        return;
+    }
     if (const EditorOperationDefinition* operation = FindConsoleOperation(context.operations, name))
         RunOperation(context, *operation, line);
     else
         RunRuntimeCommand(context, line);
+}
+
+void ConsoleTool::AppendHelp(EditorToolContext& context, std::string_view prefix) {
+    const RUNTIME::RuntimeDebugService* service = FindDebugService(context.scene);
+    std::vector<const EditorOperationDefinition*> operations;
+    for (const std::string& id : context.operations.RegisteredIds()) {
+        if (const EditorOperationDefinition* operation = FindConsoleOperation(context.operations, id))
+            operations.push_back(operation);
+    }
+    if (!prefix.empty()) {
+        // 出力欄は上限で古い行から捨てるので、行数の差ではなく出した数で数える。
+        size_t shown = 0;
+        if (service != nullptr) {
+            for (const RUNTIME::DebugCommand& command : service->Commands()) {
+                if (!StartsWith(command.name, prefix))
+                    continue;
+                Append(LineKind::Plain, command.usage + "  - " + command.summary);
+                ++shown;
+            }
+        }
+        for (const EditorOperationDefinition* operation : operations) {
+            if (!StartsWith(operation->id, prefix))
+                continue;
+            Append(LineKind::Plain, operation->id + "  - " + FirstSentence(operation->summary));
+            ++shown;
+        }
+        if (shown == 0)
+            Append(LineKind::Failure, "No command starts with " + std::string(prefix) + ".");
+        return;
+    }
+    Append(LineKind::Success, "Console");
+    Append(LineKind::Plain,
+           std::string(kConsoleHelpCommand) + " [prefix]  - " + TEXT::Localize("ui.console.helpSummary"));
+    Append(LineKind::Plain, std::string(kConsoleClearCommand) + "  - " + TEXT::Localize("ui.console.clearSummary"));
+    if (service != nullptr) {
+        Append(LineKind::Success, "Runtime commands");
+        for (const RUNTIME::DebugCommand& command : service->Commands()) {
+            if (command.name != kConsoleHelpCommand)
+                Append(LineKind::Plain, command.usage + "  - " + command.summary);
+        }
+    }
+    // 操作は数が多いので、名前の最初の語（play・view など）ごとの数だけ出す。
+    std::vector<std::pair<std::string, size_t>> groups;
+    for (const EditorOperationDefinition* operation : operations) {
+        const std::string group = operation->id.substr(0, operation->id.find('.'));
+        if (groups.empty() || groups.back().first != group)
+            groups.push_back({group, 0});
+        ++groups.back().second;
+    }
+    std::string summary;
+    for (const auto& [group, count] : groups)
+        summary += (summary.empty() ? "" : ", ") + group + " " + std::to_string(count);
+    Append(LineKind::Success, "Editor operations (" + std::to_string(operations.size()) + ")");
+    Append(LineKind::Plain, summary);
+    Append(LineKind::Muted, "help <prefix> lists them, e.g. help play. Tab completes names and choices.");
 }
 
 void ConsoleTool::RunOperation(EditorToolContext& context, const EditorOperationDefinition& operation,

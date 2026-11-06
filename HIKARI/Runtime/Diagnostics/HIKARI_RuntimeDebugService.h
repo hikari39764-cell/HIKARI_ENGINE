@@ -20,6 +20,8 @@ using DebugCommandHandler = std::function<DebugReply(World& world, std::string_v
 struct DebugCommand {
     std::string name;
     std::string usage;
+    // help に出す一文の説明。
+    std::string summary;
     DebugCommandHandler handler;
 };
 
@@ -34,7 +36,7 @@ public:
     RuntimeDebugService(const RuntimeDebugService&) = delete;
     RuntimeDebugService& operator=(const RuntimeDebugService&) = delete;
     // 名前が空か登録済みなら false。登録したコマンドは Reset でも消えない。
-    bool RegisterCommand(std::string name, std::string usage, DebugCommandHandler handler);
+    bool RegisterCommand(std::string name, std::string usage, std::string summary, DebugCommandHandler handler);
     const std::vector<DebugCommand>& Commands() const noexcept { return commands_; }
     void SetEnabled(World& world, bool enabled);
     DebugReply Execute(World& world, std::string_view command);

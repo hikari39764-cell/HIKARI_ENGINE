@@ -274,6 +274,7 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
         }
         const FrameContext& frame = TIME::GetFrameContext();
 
+        bool renderEditorUi = false;
         bool renderHostUi = false;
         bool renderingApplication = false;
         if (openingAnimationActive && !openingAnimation.IsAnimationFinished("op")) {
@@ -315,12 +316,14 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
                 CORE::StartupTimer firstRenderTimer("Application.first_render", !applicationPresented);
                 application.Render();
             }
-            renderHostUi = SERVICES::ShouldProduceEditorUiFrame();
+            renderEditorUi = SERVICES::ShouldProduceEditorUiFrame();
+            // 新窗口 Play の重ね描き（コンソールなど）はゲームの画像の上に描くので、画像は窓へそのまま出す。
+            renderHostUi = SERVICES::ShouldProduceHostUiFrame();
         }
 
         const SERVICES::FramePresentationDestination presentation =
-            renderHostUi ? SERVICES::FramePresentationDestination::EditorViewport
-                         : SERVICES::FramePresentationDestination::BackBuffer;
+            renderEditorUi ? SERVICES::FramePresentationDestination::EditorViewport
+                           : SERVICES::FramePresentationDestination::BackBuffer;
         (void)SERVICES::PrepareFramePresentation(presentation);
         if (renderHostUi) {
             CPU_PROFILE::ScopedCpuTimer cpuImGui(CPU_PROFILE::Pass::AppImGui);
@@ -373,7 +376,10 @@ int RunEngineHost(IHostApplication& application, const EngineHostRunOptions& opt
         if (exitFrame && presentedFrames >= *exitFrame)
             break;
 
-        if (application.IsWindowedHostSessionRunning() && input.IsPressed(INPUT::ActionIds::StopPlay)) {
+        // コンソールに打っている間の Esc は入力欄のもので、Play を止めない。
+        if (application.IsWindowedHostSessionRunning() &&
+            !SERVICES::GetInputService().IsDeveloperInputCapturedBy(INPUT::DeveloperInputOwner::Console) &&
+            input.IsPressed(INPUT::ActionIds::StopPlay)) {
             application.RequestHostStop();
         }
         if (input.IsPressed(INPUT::ActionIds::CloseProgram)) {

@@ -18,6 +18,14 @@ namespace HIKARI::INPUT {
 
 class IInputBackend;
 
+// 開発者の道具がキーボードとマウスを持つ理由。どれかが持っている間は Global 以外の動作を評価しない（生の入力は読める）。
+enum class DeveloperInputOwner : uint8_t {
+    // 開発コンソールが開いている（打鍵は入力欄のもの）。
+    Console = 1u << 0u,
+    // 自由視点がゲームの相機を借りている（キーとマウスは飛行に使う）。
+    FreeCamera = 1u << 1u,
+};
+
 class InputService {
 public:
     InputService();
@@ -36,9 +44,13 @@ public:
     void ClearMouseCaptureRegion();
     MouseCaptureMode GetMouseCaptureMode() const noexcept;
     void SetUiInteractionActive(bool active) noexcept;
-    bool IsUiInteractionActive() const noexcept { return uiInteractionActive_ || developerInputCaptured_; }
-    void SetDeveloperInputCaptured(bool active) noexcept;
-    bool IsDeveloperInputCaptured() const noexcept { return developerInputCaptured_; }
+    bool IsUiInteractionActive() const noexcept { return uiInteractionActive_ || IsDeveloperInputCaptured(); }
+    void SetDeveloperInputCaptured(DeveloperInputOwner owner, bool active) noexcept;
+    void ReleaseDeveloperInput() noexcept;
+    bool IsDeveloperInputCaptured() const noexcept { return developerInputOwners_ != 0u; }
+    bool IsDeveloperInputCapturedBy(DeveloperInputOwner owner) const noexcept {
+        return (developerInputOwners_ & static_cast<uint8_t>(owner)) != 0u;
+    }
     void SetPointerCursorVisible(bool visible) noexcept { pointerCursorHiddenRequested_ = !visible; }
     void ApplyPointerCursorVisibility(bool pointerOwned);
     void SetExternalMouseWheel(float delta);
@@ -108,7 +120,7 @@ private:
     float rebindReleaseThreshold_ = 0.25f;
     bool suppressActionsUntilNeutral_ = false;
     bool uiInteractionActive_ = false;
-    bool developerInputCaptured_ = false;
+    uint8_t developerInputOwners_ = 0u;
     bool pointerCursorHiddenRequested_ = false;
     std::string lastError_{};
     float vibrationRemaining_ = 0.0f;

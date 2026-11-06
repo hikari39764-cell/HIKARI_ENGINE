@@ -121,6 +121,8 @@ struct ResourceWindowState {
 struct RuntimeDebugWindowState {
     bool showDebugView = false;
     bool showPerformanceAudit = false;
+    // 帧率と CPU / GPU のフレーム時間を画面の右上に出す（view.stats、新窗口 Play の窓にも出す）。
+    bool showFrameStats = false;
     bool showAiAssistant = false;
     bool showEditorSettings = false;
 };

@@ -87,27 +87,41 @@ void EditorToolHost::DrawMenuContents() {
     }
 }
 
+bool EditorToolHost::EnsureInstance(ToolEntry& entry) {
+    if (entry.instance) {
+        return true;
+    }
+    entry.instance = entry.factory();
+    if (entry.instance) {
+        return true;
+    }
+    entry.open = false;
+    entry.pendingOpenRequest.reset();
+    HIKARI_LOG_ERROR("[EditorTool] factory failed: " + entry.toolId);
+    return false;
+}
+
 void EditorToolHost::Draw(EditorToolContext& context) {
     for (ToolEntry& entry : tools_) {
-        if (!entry.open) {
+        if (!entry.open || !EnsureInstance(entry)) {
             continue;
         }
-
-        if (!entry.instance) {
-            entry.instance = entry.factory();
-            if (!entry.instance) {
-                entry.open = false;
-                entry.pendingOpenRequest.reset();
-                HIKARI_LOG_ERROR("[EditorTool] factory failed: " + entry.toolId);
-                continue;
-            }
-        }
-
         EditorToolContext toolContext{context.scene, context.editorContext, context.operations,
                                       entry.pendingOpenRequest ? &*entry.pendingOpenRequest : nullptr};
         entry.instance->Draw(toolContext, entry.open);
         entry.pendingOpenRequest.reset();
     }
+}
+
+void EditorToolHost::DrawDetached(std::string_view toolId, EditorToolContext& context, bool& open, bool opened) {
+    ToolEntry* entry = Find(toolId);
+    if (entry == nullptr || !open || !EnsureInstance(*entry)) {
+        return;
+    }
+    const EditorToolOpenRequest request{entry->toolId};
+    EditorToolContext toolContext{context.scene, context.editorContext, context.operations, opened ? &request : nullptr,
+                                  context.playWindowOverlay};
+    entry->instance->Draw(toolContext, open);
 }
 
 EditorToolHost::ToolEntry* EditorToolHost::Find(std::string_view toolId) {

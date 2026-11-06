@@ -233,8 +233,11 @@ bool DocumentSceneBase::EndRuntimePlay() {
     }
     if (UiSceneSystem* uiSystem = state_->runtime.world.Services().Find<UiSceneSystem>())
         uiSystem->ReleaseInputOwnership();
-    SERVICES::GetInputService().SetDeveloperInputCaptured(false);
+    SERVICES::GetInputService().ReleaseDeveloperInput();
     state_->runtime.debugService.Reset(state_->runtime.world);
+    // 自由視点は Play の間だけ。速度も含めて次の Play へ持ち越さない。
+    state_->camera.freeCameraActive = false;
+    state_->camera.freeCamera = {};
     AUDIO::StopOwner(state_->runtime.world.GetRuntimeIdentity());
     state_->runtime.fixedStepClock.Reset();
     if (state_->runtime.inputContextSnapshotValid) {
@@ -358,8 +361,9 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     // first so every failure path is fail-closed instead of retaining
     // services owned by the previous feature selection.
     WorldServiceRegistry& services = state_->runtime.world.Services();
-    SERVICES::GetInputService().SetDeveloperInputCaptured(false);
+    SERVICES::GetInputService().ReleaseDeveloperInput();
     state_->runtime.debugService.Reset(state_->runtime.world);
+    state_->camera.freeCameraActive = false;
     state_->runtime.developerDiagnosticsAllowed =
         IsEditorHostMode(SERVICES::GetRuntimeHostMode()) || HasRuntimeCommandLineFlag(L"--developer-console");
     services.Clear();

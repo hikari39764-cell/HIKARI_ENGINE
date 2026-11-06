@@ -26,6 +26,7 @@ struct RuntimeServiceState {
     RuntimeHostMode runtimeHostMode = RuntimeHostMode::Game;
     bool enableImGui = false;
     bool enableEditorUI = false;
+    bool playWindowOverlayRequested = false;
     bool streamlineEnabled = false;
     bool runtimeSessionEndRequested = false;
     std::string runtimeStartupSceneGuid{};

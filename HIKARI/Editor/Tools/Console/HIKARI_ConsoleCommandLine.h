@@ -13,6 +13,8 @@ namespace HIKARI::EDITOR {
 
 // コンソール自身のコマンド。出力欄を消す。実行時コマンドの表には無い。
 inline constexpr std::string_view kConsoleClearCommand = "clear";
+// コンソール自身のコマンド。コンソール・実行時・編集器の操作をまとめて一覧にする（実行時の help より広い）。
+inline constexpr std::string_view kConsoleHelpCommand = "help";
 
 // 先頭の語が人に見える編集器の操作ならその定義。無ければ nullptr（実行時コマンドとして扱う）。
 const EditorOperationDefinition* FindConsoleOperation(const EditorOperationRegistry& operations, std::string_view name);
