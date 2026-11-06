@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Animation/Runtime/HIKARI_AnimationClipSampler.h"
+#include "Animation/Runtime/HIKARI_AnimationNodeOverrideService.h"
 #include "Animation/Runtime/HIKARI_AnimationPoseEvaluation.h"
 #include "Animation/Runtime/HIKARI_AnimationRootMotionService.h"
 #include "Core/HIKARI_FixedStepClock.h"
@@ -584,6 +585,35 @@ void TestAnimationMaskedPoseSubtree() {
           "non-finite masked poses must fail transactionally");
 }
 
+// 片段の無い Animator はバインド姿勢に節点の偏移を重ねる。重ねた数で姿勢を有効にするので、数え方を固定する。
+void TestAnimationNodeOverrideOnBindPose() {
+    using namespace HIKARI;
+
+    ModelAsset model{};
+    model.nodes.resize(2u);
+    model.nodes[0].name = "root";
+    model.nodes[0].parent = -1;
+    model.nodes[1].name = "head";
+    model.nodes[1].parent = 0;
+    model.nodes[1].localTransform.position = {0.0f, 1.0f, 0.0f};
+
+    ANIMATION::AnimationLocalPose pose{};
+    ANIMATION::BuildBindPose(model, pose);
+    const RuntimeObjectHandle object = RuntimeObjectHandle::FromValue((uint64_t{1u} << 32u) | 1u);
+    ANIMATION::AnimationNodeOverrideService overrides;
+    Check(overrides.Apply(model, object, pose) == 0u && !pose.nodes[1].useExplicitMatrix,
+          "an object without node offsets must leave the bind pose untouched");
+
+    Transform3D offset{};
+    offset.position = {0.5f, 0.0f, 0.0f};
+    Check(overrides.SetLocalOffset(object, "head", offset) && overrides.SetLocalOffset(object, "missing", offset),
+          "node offsets must be accepted before the model is known");
+    Check(overrides.Apply(model, object, pose) == 1u, "only offsets whose node resolves may count as applied");
+    const MATH::Vec3 head = MATH::TransformPoint(pose.nodes[1].explicitMatrix, MATH::Vec3{0.0f, 0.0f, 0.0f});
+    Check(pose.nodes[1].useExplicitMatrix && Near(head.x, 0.5f) && Near(head.y, 1.0f) && Near(head.z, 0.0f),
+          "a node offset must compose onto the bind pose");
+}
+
 void TestAnimatorMaskedPoseLifecycle() {
     using HIKARI::AnimatorComponent;
 
@@ -784,6 +814,7 @@ int main(int argc, char** argv) {
     TestAnimationRootMotion();
     TestAnimationRootMotionBindSpace();
     TestAnimationMaskedPoseSubtree();
+    TestAnimationNodeOverrideOnBindPose();
     TestAnimatorMaskedPoseLifecycle();
     TestKinematicMotionDelta();
     TestKinematicMoveCollisionOptions();

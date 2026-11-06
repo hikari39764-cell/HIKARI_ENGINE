@@ -74,21 +74,20 @@ void AnimationNodeOverrideService::Remove(RuntimeObjectHandle object) noexcept {
 
 void AnimationNodeOverrideService::Clear() noexcept { entries_.clear(); }
 
-bool AnimationNodeOverrideService::Apply(const ModelAsset& model, RuntimeObjectHandle object,
-                                         AnimationLocalPose& inOutPose) const {
+uint32_t AnimationNodeOverrideService::Apply(const ModelAsset& model, RuntimeObjectHandle object,
+                                             AnimationLocalPose& inOutPose) const {
     if (!object.IsValid() || !inOutPose.IsValidFor(model.nodes.size())) {
-        return false;
+        return 0u;
     }
     const auto bucket = entries_.find(object.ToValue());
     if (bucket == entries_.end()) {
-        return true;
+        return 0u;
     }
-    bool valid = true;
+    uint32_t applied = 0u;
     for (const Entry& entry : bucket->second) {
         int nodeIndex = -1;
         if (!POSE_EVALUATION::ResolveNodeByExactName(model, entry.nodeName, nodeIndex) || nodeIndex < 0 ||
             static_cast<size_t>(nodeIndex) >= inOutPose.nodes.size()) {
-            valid = false;
             continue;
         }
         Transform3D& node = inOutPose.nodes[static_cast<size_t>(nodeIndex)];
@@ -102,8 +101,9 @@ bool AnimationNodeOverrideService::Apply(const ModelAsset& model, RuntimeObjectH
         node = {};
         node.useExplicitMatrix = true;
         node.explicitMatrix = composed;
+        ++applied;
     }
-    return valid;
+    return applied;
 }
 
 } // namespace HIKARI::ANIMATION
