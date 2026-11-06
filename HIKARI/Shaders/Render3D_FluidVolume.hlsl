@@ -212,7 +212,10 @@ DomainSpans TraceDomains(float3 origin, float3 direction)
         {
             spans.enter[index] = enter;
             spans.leave[index] = interval.y;
-            spans.step[index] = (interval.y - enter) / steps;
+            // 歩は「箱の区間 / 步数」と「格の大きさの 0.8 倍」の短い方（区間で割るだけだと 60 m の場地の烟で 1 m 近い歩になり、
+            // 1〜2 m の厚さの地面の霧を 1〜2 標本しか取れず、抖动の粒がそのまま見えた）。1 回の積分は 240 歩まで。
+            const float span = interval.y - enter;
+            spans.step[index] = max(min(span / steps, domain.cells.w * 0.8f), span / 240.0f);
         }
     }
     return spans;
