@@ -466,7 +466,9 @@ MarchOutput MarchPS(FullscreenOutput input)
     const float2 footprint = float2(length(nextOrigin - origin), length(nextDirection - direction));
     // 歩の長さは域ごとの箱の区間全体で決め、物の手前では止めるだけ（止める所で割ると物の輪郭が烟に浮き出る）。
     MarchState march = BeginMarch();
-    MarchDomains(origin, direction, spans, bounds.x, opaque, 0.0f, frac(noise + gFrame.x), footprint, march);
+    // 抖动は画素に固定する（フレームごとに回すと、履歴で均しきれない粒が毎フレーム入れ替わり、烟全体がざらついて揺れた。
+    // 步数が十分なので固定の交错勾配ノイズの模様は目立たない）。
+    MarchDomains(origin, direction, spans, bounds.x, opaque, 0.0f, noise, footprint, march);
     output.color = float4(march.scattered, march.transmittance);
     output.depth.x = MeanDistance(march);
     return output;
