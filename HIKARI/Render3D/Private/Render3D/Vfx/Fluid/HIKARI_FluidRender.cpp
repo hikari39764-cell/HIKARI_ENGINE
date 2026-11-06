@@ -97,7 +97,7 @@ RenderDomainGpu PackDomain(const FluidRenderDomain& domain, const FluidRenderVie
     // 開いた境界は面から 4 格で密度を消す（閉じた箱の壁は本当の境界なので消さない）。
     // detailScale は細部の模様の大きさ。ノイズの 1 周期は基本の模様 4 つ分。
     Set4(gpu.detail, 1.0f / (4.0f * (std::max)(look.detailScale, 0.01f)), domain.simulationSeconds,
-         look.boundary == FluidBoundary::Open ? 4.0f : 0.0f, 0.0f);
+         look.boundary == FluidBoundary::Open ? 4.0f : 0.0f, domain.pendingSeconds);
     MATH::Vec3 sun{MATH::Dot(axes[0], view.sunDirection), MATH::Dot(axes[1], view.sunDirection),
                    MATH::Dot(axes[2], view.sunDirection)};
     const float length = MATH::Length(sun);

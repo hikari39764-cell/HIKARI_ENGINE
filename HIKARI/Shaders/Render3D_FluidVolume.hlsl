@@ -118,11 +118,13 @@ float DetailedDensity(HikariFluidDomain domain, float rho, float3 flow, float3 g
     if (strength <= 0.0f)
         return rho;
     // 細部の模様を流れに沿って運ぶ（位相を半周期ずらした 2 枚を交互に溶かす）。周期が長いと流れの剪断で模様が
-    // 筋に引き伸ばされるので 1 秒にとどめる。流れは格の速度の近似（温度と同じ 1 回の標本）で足りる。
+    // 筋に引き伸ばされるので 1 秒にとどめる。流れは格の速度の近似（温度と同じ 1 回の標本）で足りる。時間は最後の子步からの
+    // 端数（detail.w）も足して、子步の無いフレームでも模様が止まらないようにする。
     const float3 local = grid * domain.cells.w;
     const float period = 1.0f;
-    const float phase0 = frac(domain.detail.y / period);
-    const float phase1 = frac(domain.detail.y / period + 0.5f);
+    const float time = domain.detail.y + domain.detail.w;
+    const float phase0 = frac(time / period);
+    const float phase1 = frac(time / period + 0.5f);
     const float weight = abs(phase0 * 2.0f - 1.0f);
     // 1 周期のずれは細部の模様の大きさ（detailScale = 1 / (4 detail.x)）までに抑える。速い流れ（大きな場地の環流で
     // 5〜10 m/s）でずれが模様より長いと、模様が流れの向きに筋として伸びる。
@@ -143,13 +145,22 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
     Texture3D<float4> light, float3 world, float3 viewDirection, float pixelSize, inout float sigma,
     inout float3 emitted)
 {
-    const float3 grid = HikariFluidToGrid(domain, world);
+    float3 grid = HikariFluidToGrid(domain, world);
     float rho = DomainRho(domain, density, grid);
     if (rho <= 1.0e-4f)
         return;
-    const float3 uvw = grid / domain.cells.xyz;
-    // 格の中心の標本：w は温度、xyz は下側の面の速度（細部を運ぶ流れの近似）。
+    // 格の中心の標本：w は温度、xyz は下側の面の速度 [m/s]（細部を運ぶ流れの近似）。
     const float4 cell = velocity.SampleLevel(gLinearClamp, grid / (domain.cells.xyz + 1.0f), 0);
+    // 解算は固定の子步で進む。最後の子步から貯まった時間 detail.w の分だけ流れに沿って遡って読み、子步の無いフレームで
+    // 烟が止まり次のフレームで跳ぶ（フレームの速さが子步の速さと違う時の、地面の霧が抖動して見える主な原因）のを無くす。
+    if (domain.detail.w > 0.0f)
+    {
+        grid -= cell.xyz * (domain.detail.w / domain.cells.w);
+        rho = DomainRho(domain, density, grid);
+        if (rho <= 1.0e-4f)
+            return;
+    }
+    const float3 uvw = grid / domain.cells.xyz;
     rho = DetailedDensity(domain, rho, cell.xyz, grid, pixelSize);
     if (rho <= 0.0f)
         return;
@@ -482,7 +493,9 @@ float4 ReconstructPS(FullscreenOutput input) : SV_TARGET0
 {
     const int2 pixel = int2(input.position.xy);
     const float4 current = gInputColor.Load(int3(pixel, 0));
-    if (gFrame.y <= 0.0f)
+    // 履歴は使わない：再投影は相機の動きだけで烟自身の流れを知らないので、流れる烟（地面の霧）が履歴に引きずられて遅れ、
+    // 近傍の範囲の制限で一度に引き戻される「一顿一顿」の動きになった。步进の抖动は画素に固定したので粒を均す必要も無い。
+    if (true)
         return current;
     float4 low = current;
     float4 high = current;

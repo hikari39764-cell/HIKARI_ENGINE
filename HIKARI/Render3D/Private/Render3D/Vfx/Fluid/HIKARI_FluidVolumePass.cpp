@@ -602,6 +602,8 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         render.settings = submission.settings;
         render.colorMultiplier = submission.colorMultiplier;
         render.simulationSeconds = domain->simulationSeconds;
+        render.pendingSeconds = static_cast<float>(
+            (std::min)(domain->clock.pendingSeconds, SubstepSeconds(submission.settings)));
         render.generation = domain->generation;
         render.frameVelocity = submission.localSpace ? domain->smoothedVelocity : MATH::Vec3{};
     }
