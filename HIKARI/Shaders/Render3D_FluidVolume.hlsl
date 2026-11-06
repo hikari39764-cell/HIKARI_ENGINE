@@ -493,9 +493,10 @@ float4 ReconstructPS(FullscreenOutput input) : SV_TARGET0
 {
     const int2 pixel = int2(input.position.xy);
     const float4 current = gInputColor.Load(int3(pixel, 0));
-    // 履歴は使わない：再投影は相機の動きだけで烟自身の流れを知らないので、流れる烟（地面の霧）が履歴に引きずられて遅れ、
-    // 近傍の範囲の制限で一度に引き戻される「一顿一顿」の動きになった。步进の抖动は画素に固定したので粒を均す必要も無い。
-    if (true)
+    // 履歴で均す：步进の抖动は画素に固定してあるので相機が止まっていれば粒は出ないが、相機が動くと世界の点ごとの抖动が
+    // フレームごとに変わり、履歴なしでは烟全体が細かく揺れた（地面の霧も球壳も）。「一顿一顿」の原因は子步の無いフレームで、
+    // 描く時の流れに沿った外挿（detail.w）で直したので、履歴は戻す。
+    if (gFrame.y <= 0.0f)
         return current;
     float4 low = current;
     float4 high = current;
