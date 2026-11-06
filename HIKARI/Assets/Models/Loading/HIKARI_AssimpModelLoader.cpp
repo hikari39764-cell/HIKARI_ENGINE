@@ -14,6 +14,7 @@
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpMaterialReader.h"
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpMeshReader.h"
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpSceneReader.h"
+#include "Assets/Models/Processing/HIKARI_ModelGeometryPostprocess.h"
 #include "RenderContracts/Model/HIKARI_ModelBounds.h"
 
 namespace HIKARI::ASSETS::MODELS {
@@ -115,7 +116,7 @@ bool LoadAssimpModelSource(ModelAsset& asset) {
 
     ASSIMP::FinalizeSceneMeshBindings(meshToSkin, assimpMeshToModelMesh, asset);
     ASSIMP::ReadAnimations(*scene, nodeNameToIndex, asset);
-    ASSIMP::BakeSkinnedMeshNodes(asset);
+    BakeSkinnedMeshNodes(asset);
     AppendFbxCapabilityDiagnostics(*scene, asset);
 
     BOUNDS::EnsureModelBounds(asset);

@@ -67,7 +67,9 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         "ModelImporter",
         // 49: FBX などの Assimp 取り込みはファイルの単位を米へ直す（cm 単位の FBX が 100 倍の大きさになっていた）。蒙皮網格の
         // 節点の変換を頂点と逆バインドへ焼く（網格の節点が原点に無い人物が二重に動いて浮いていた）。
-        49u,
+        // 50: glTF の蒙皮図元を蒙皮の顶点布局で読む（静的と見なされて光照贴图 UV の展開で顶点と索引が書き換わり、蒙皮顶点と
+        // 合わなくなって簇几何の LOD が範囲外へ書き、描画も崩れていた）。glTF も蒙皮網格の節点の変換を焼く。
+        50u,
         ".gltf, .obj, .fbx",
     },
     {

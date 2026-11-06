@@ -21,8 +21,7 @@ void CookPrimitive(const ModelAsset& model, const MeshPrimitive& primitive, uint
                                work)) {
         if (primitive.hasMorphTargets) {
             ++report.skippedMorphPrimitiveCount;
-        } else if (primitive.layout == VertexLayoutKind::SkinnedPNTTJW || !primitive.skinnedVertices.empty() ||
-                   nodeSkinIndex >= 0) {
+        } else if (IsSkinnedSurface(primitive, nodeSkinIndex)) {
             ++report.skippedSkinnedPrimitiveCount;
         } else {
             ++report.skippedInvalidPrimitiveCount;

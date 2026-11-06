@@ -21,6 +21,7 @@
 #include "Assets/Lighting/HIKARI_LightmapUvGeneration.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Assets/Models/Loading/HIKARI_ModelSourceLoader.h"
+#include "Assets/Models/Processing/HIKARI_ModelGeometryPostprocess.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Assets/Tasks/HIKARI_AssetTaskService.h"
@@ -217,6 +218,13 @@ AssetImportResult ModelImporter::Import(const AssetRecord& record, const AssetIm
         " failed=" + std::to_string(lightmapUvReport.generationFailedCount));
     for (const std::string& message : lightmapUvReport.messages) {
         model.importDiagnostics.messages.push_back("[LightmapUV] " + message);
+    }
+    std::string streamMessage{};
+    if (!ASSETS::MODELS::ValidateModelPrimitiveStreams(model, streamMessage)) {
+        result.message = "[AssetImporter] model geometry streams are inconsistent, " + streamMessage +
+                         " source=" + record.sourcePath.generic_string();
+        HIKARI_LOG_ERROR(result.message);
+        return result;
     }
 
     const std::filesystem::path finalPath = context.importedDirectory / "model.hmodel";

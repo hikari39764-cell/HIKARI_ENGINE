@@ -211,6 +211,10 @@ void GenerateTangents(std::vector<ClusterVertex>& vertices, const std::vector<ui
     }
 }
 
+bool IsSkinnedSurface(const MeshPrimitive& primitive, int nodeSkinIndex) {
+    return primitive.layout == VertexLayoutKind::SkinnedPNTTJW || nodeSkinIndex >= 0;
+}
+
 uint32_t BuildSurfaceFlags(const ModelAsset& model, const MeshPrimitive& primitive, int nodeSkinIndex) {
     uint32_t flags = 0;
     const MaterialAsset* material =
@@ -227,12 +231,10 @@ uint32_t BuildSurfaceFlags(const ModelAsset& model, const MeshPrimitive& primiti
     if (material != nullptr && SURFACE_POLICY::ShouldRenderDoubleSided(*material, primitive)) {
         RENDER3D::CLUSTER::AddFlag(flags, ClusterSurfaceFlags::DoubleSided);
     }
-    if (primitive.layout == VertexLayoutKind::SkinnedPNTTJW || !primitive.skinnedVertices.empty() ||
-        nodeSkinIndex >= 0) {
+    const bool skinned = IsSkinnedSurface(primitive, nodeSkinIndex);
+    if (skinned) {
         RENDER3D::CLUSTER::AddFlag(flags, ClusterSurfaceFlags::Skinned);
     }
-    const bool skinned =
-        primitive.layout == VertexLayoutKind::SkinnedPNTTJW || !primitive.skinnedVertices.empty() || nodeSkinIndex >= 0;
     if (primitive.indices.size() < 3u ||
         (skinned ? primitive.skinnedVertices.empty() : primitive.staticVertices.empty())) {
         RENDER3D::CLUSTER::AddFlag(flags, ClusterSurfaceFlags::Unsupported);
@@ -252,8 +254,7 @@ void AccumulateSourcePrimitiveCounts(const ModelAsset& model, const MeshPrimitiv
     }
 
     counts.staticTriangleCount += static_cast<uint32_t>(primitive.indices.size() / 3u);
-    const bool skinned =
-        primitive.layout == VertexLayoutKind::SkinnedPNTTJW || !primitive.skinnedVertices.empty() || nodeSkinIndex >= 0;
+    const bool skinned = IsSkinnedSurface(primitive, nodeSkinIndex);
     counts.staticVertexCount +=
         static_cast<uint32_t>(skinned ? primitive.skinnedVertices.size() : primitive.staticVertices.size());
 }

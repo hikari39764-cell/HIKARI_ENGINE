@@ -1,6 +1,5 @@
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpSceneReader.h"
 
-#include <cmath>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -9,7 +8,6 @@
 #include <assimp/scene.h>
 
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
-#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpTypeConversion.h"
 
 namespace HIKARI::ASSETS::MODELS::ASSIMP {
@@ -61,36 +59,6 @@ int ReadAssimpNodeRecursive(const aiNode& source, int parent, ModelAsset& asset,
         }
     }
     return nodeIndex;
-}
-
-bool IsNearIdentity(const MATH::Mat4& value) {
-    const MATH::Mat4 identity = MATH::Mat4::Identity();
-    for (int column = 0; column < 4; ++column)
-        for (int row = 0; row < 4; ++row)
-            if (std::abs(value.m[column][row] - identity.m[column][row]) > 1.0e-5f)
-                return false;
-    return true;
-}
-
-// 一様で正の拡縮を持つ TRS に分解できるか（法線を同じ行列で回せる）。
-bool DecomposeUniform(const MATH::Mat4& value, Transform3D& outTransform) {
-    MATH::Vec3 scale{};
-    if (!MATH::DecomposeTRS(value, outTransform.position, outTransform.rotation, scale) || scale.x <= 0.0f)
-        return false;
-    outTransform.scale = scale;
-    const float tolerance = 1.0e-4f * scale.x;
-    return std::abs(scale.y - scale.x) <= tolerance && std::abs(scale.z - scale.x) <= tolerance;
-}
-
-template <typename Vertex>
-void BakeVertices(std::vector<Vertex>& vertices, const MATH::Mat4& transform) {
-    for (Vertex& vertex : vertices) {
-        vertex.position = MATH::TransformPoint(transform, vertex.position);
-        vertex.normal = MATH::Normalize(MATH::TransformVector(transform, vertex.normal));
-        const MATH::Vec3 tangent =
-            MATH::Normalize(MATH::TransformVector(transform, {vertex.tangent.x, vertex.tangent.y, vertex.tangent.z}));
-        vertex.tangent = {tangent.x, tangent.y, tangent.z, vertex.tangent.w};
-    }
 }
 
 void AssignSkinsToMeshNodes(const std::vector<int>& meshToSkin, ModelAsset& asset) {
@@ -225,88 +193,6 @@ void FinalizeSceneMeshBindings(const std::vector<int>& meshToSkin, const std::ve
 void ReadAnimations(const aiScene& scene, const std::unordered_map<std::string, int>& nodeNameToIndex,
                     ModelAsset& asset) {
     ReadAssimpAnimations(scene, nodeNameToIndex, asset);
-}
-
-void BakeSkinnedMeshNodes(ModelAsset& asset) {
-    const size_t count = asset.nodes.size();
-    std::vector<MATH::Mat4> globals(count, MATH::Mat4::Identity());
-    std::vector<bool> pinned(count, false);
-    std::vector<uint32_t> meshUses(asset.meshes.size(), 0u);
-    for (size_t index = 0; index < count; ++index) {
-        const ModelNode& node = asset.nodes[index];
-        // 節点は親より後に並ぶ（ReadAssimpNodeRecursive の深さ優先）。崩れていれば何もしない。
-        if (node.parent >= static_cast<int>(index))
-            return;
-        globals[index] =
-            node.parent >= 0 ? globals[static_cast<size_t>(node.parent)] * node.localMatrix : node.localMatrix;
-        if (node.meshIndex >= 0 && node.meshIndex < static_cast<int>(meshUses.size()))
-            ++meshUses[static_cast<size_t>(node.meshIndex)];
-    }
-    // 関節と動画の対象の節点は動くので焼かない。
-    for (const SkeletonAsset& skin : asset.skins)
-        for (const SkeletonJoint& joint : skin.joints)
-            if (joint.nodeIndex >= 0 && joint.nodeIndex < static_cast<int>(count))
-                pinned[static_cast<size_t>(joint.nodeIndex)] = true;
-    for (const AnimationClip& clip : asset.animations)
-        for (const NodeAnimationChannel& channel : clip.channels)
-            if (channel.targetNode >= 0 && channel.targetNode < static_cast<int>(count))
-                pinned[static_cast<size_t>(channel.targetNode)] = true;
-
-    uint32_t baked = 0u;
-    for (size_t index = 0; index < count; ++index) {
-        ModelNode& node = asset.nodes[index];
-        if (node.meshIndex < 0 || node.skinIndex < 0 || pinned[index] || IsNearIdentity(globals[index]))
-            continue;
-        // 節点の網格（自身と子）が全て蒙皮で、どれも一度だけ使われる時だけ焼く。子は /MeshN の分片か、FBX の蒙皮網格の
-        // 子節点（自分の局所の変換を持つ）。どれも自分の global で焼き、焼いた後の global が単位になるよう局所を直す。
-        std::vector<size_t> carriers{index};
-        bool bakeable = true;
-        for (const int child : node.children) {
-            const ModelNode& slot = asset.nodes[static_cast<size_t>(child)];
-            bakeable = bakeable && slot.meshIndex >= 0 && slot.skinIndex >= 0 && slot.children.empty() &&
-                       !pinned[static_cast<size_t>(child)];
-            carriers.push_back(static_cast<size_t>(child));
-        }
-        for (const size_t carrier : carriers) {
-            const ModelNode& carried = asset.nodes[carrier];
-            Transform3D global{};
-            bakeable = bakeable && carried.meshIndex < static_cast<int>(meshUses.size()) &&
-                       meshUses[static_cast<size_t>(carried.meshIndex)] == 1u &&
-                       carried.skinIndex < static_cast<int>(asset.skins.size()) &&
-                       DecomposeUniform(globals[carrier], global);
-        }
-        Transform3D local{};
-        const MATH::Mat4 parentGlobal =
-            node.parent >= 0 ? globals[static_cast<size_t>(node.parent)] : MATH::Mat4::Identity();
-        const MATH::Mat4 localMatrix = MATH::Inverse(parentGlobal);
-        if (!bakeable || !DecomposeUniform(localMatrix, local))
-            continue;
-        for (const size_t carrier : carriers) {
-            ModelNode& carried = asset.nodes[carrier];
-            const MATH::Mat4 carrierGlobal = globals[carrier];
-            const MATH::Mat4 inverseGlobal = MATH::Inverse(carrierGlobal);
-            MeshAsset& mesh = asset.meshes[static_cast<size_t>(carried.meshIndex)];
-            for (MeshPrimitive& primitive : mesh.primitives) {
-                BakeVertices(primitive.staticVertices, carrierGlobal);
-                BakeVertices(primitive.skinnedVertices, carrierGlobal);
-                primitive.bounds = BOUNDS::ComputePrimitiveBounds(primitive);
-            }
-            mesh.bounds = BOUNDS::ComputeMeshBounds(mesh);
-            for (SkeletonJoint& joint : asset.skins[static_cast<size_t>(carried.skinIndex)].joints)
-                joint.inverseBindMatrix = joint.inverseBindMatrix * inverseGlobal;
-            if (carrier != index) {
-                carried.localMatrix = MATH::Mat4::Identity();
-                carried.localTransform = Transform3D{};
-            }
-            globals[carrier] = MATH::Mat4::Identity();
-        }
-        node.localMatrix = localMatrix;
-        node.localTransform = local;
-        ++baked;
-    }
-    if (baked > 0u)
-        asset.importDiagnostics.messages.push_back("[Assimp] skinned mesh node transforms baked into vertices nodes=" +
-                                                   std::to_string(baked));
 }
 
 } // namespace HIKARI::ASSETS::MODELS::ASSIMP
