@@ -21,7 +21,7 @@ cbuffer FluidDomainCB : register(b0)
     float4 gCombustion0;
     float4 gCombustion1;
     uint4 gInjectionCells;  // xyz 粒子からの注入の緩衝（u6）の半分の分辨率の格の数（0 で無し）
-    float4 gFrameWind;      // xyz 相対風：平流に足す一様な流れ（域の局所 [m/s]、静止した空気が動く域から見て流れる分）
+    float4 gFrameWind;      // xyz 相対風：平流に足す一様な流れ（域の局所 [m/s]、静止した空気が動く域から見て流れる分）、w 砖块を烟があるとみなす最大密度（砖块を横切る光学的な厚さ 0.002）
 };
 
 cbuffer FluidPassCB : register(b1)

@@ -43,7 +43,7 @@ void ActivityCS(uint3 id : SV_DispatchThreadID)
             {
                 const int3 neighbor = int3(id) + int3(x, y, z);
                 if (all(neighbor >= 0) && all(neighbor < int3(bricks)))
-                    active = asfloat(gStats.Load(BrickIndex(uint3(neighbor)) * 4u)) > 1.0e-3f;
+                    active = asfloat(gStats.Load(BrickIndex(uint3(neighbor)) * 4u)) > gFrameWind.w;
             }
     const float3 center = DomainPosition(float3(id) * 8.0f + 4.0f);
     const float reach = 0.5f * sqrt(3.0f) * 8.0f * gCell.x;

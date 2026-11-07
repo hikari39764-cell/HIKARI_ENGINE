@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <vector>
@@ -127,10 +128,17 @@ struct alignas(16) FluidDomainConstantsGpu {
     float combustion1[4];
     // 粒子からの注入の緩衝の半分の分辨率の格の数（無ければ 0）。受け取る子步は interactions[3] の 4。
     uint32_t injection[4];
-    // 相対風：xyz 平流に足す一様な流れ（域の局所 [m/s]、-relativeWind × 域の速さ）。
+    // 相対風：xyz 平流に足す一様な流れ（域の局所 [m/s]、-relativeWind × 域の速さ）。w 砖块を烟があるとみなす最大密度
+    // （FluidOccupiedDensity）。
     float frameWind[4];
 };
 static_assert(sizeof(FluidDomainConstantsGpu) == 176u);
+// 砖块を「烟がある」とみなす最大密度：砖块を横切る光学的な厚さが 0.002 になる密度。固定の 1e-3 だと大きな域の薄い霞
+// （160 m・192 格の烟壳で 1e-3 でも 100 m の視線では光学的な厚さ 0.6）が不活動として消え、描画でも飛ばされて砖块の
+// 四角い縁が見えた。解算の活動・描画の飛ばし・占有の回読が同じ値を使う。
+inline float FluidOccupiedDensity(float extinction, float cellSize) noexcept {
+    return 0.002f / (std::max)(extinction * static_cast<float>(kFluidBrickCells) * cellSize, 1.0e-6f);
+}
 // 子步 stepIndex の域の定数：格子、子步の時間、閉じた面・涡度・浮力・重さ、消散、上向き、挂点の慣性（域の局所）、押すものの
 // 数と統計の位置、flags（1 汇の吸い込み量を 0 に、2 吸い込みを数える、4 粒子からの注入を受け取る）、燃焼、注入の緩衝の形。
 FluidDomainConstantsGpu PackFluidDomainConstants(const FluidDomainSettings& authored,

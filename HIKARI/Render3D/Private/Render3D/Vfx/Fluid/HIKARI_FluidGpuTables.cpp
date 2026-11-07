@@ -317,6 +317,7 @@ FluidDomainConstantsGpu PackFluidDomainConstants(const FluidDomainSettings& auth
     constants.frameWind[0] = frameWind.x;
     constants.frameWind[1] = frameWind.y;
     constants.frameWind[2] = frameWind.z;
+    constants.frameWind[3] = FluidOccupiedDensity(authored.extinction, resources.layout.cellSize);
     return constants;
 }
 

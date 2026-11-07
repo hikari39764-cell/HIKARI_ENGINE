@@ -38,8 +38,6 @@ constexpr uint32_t kUnfinishedRestartWarning = 4u;
 // 見積もりを止め、烟を押さない。
 constexpr float kMotionSmoothingSeconds = 0.1f;
 constexpr float kMaximumFrameVelocityChange = 12.0f;
-// 占有：この密度を超える砖块を「烟がある」とみなす。
-constexpr float kOccupiedDensity = 1.0e-3f;
 
 // 受け取ったフレームの後の子步へ渡し続ける一度きりの事件：冲量（向きのあるものは最初の子步だけ、向きの無いもの（湧き出し）
 // は残りの時間がある間）と注入（提交したフレームの時間ぶんを、子步ごとに最大 1 子步ずつ入れる）。子步の無いフレームの分は
@@ -96,6 +94,8 @@ struct DomainState {
     // 解算の LOD（ResolveFluidSimulationLod）と、それで決めた子步の長さ [s]（描く側の外推が読む）。
     uint32_t lod = 0u;
     double stepSeconds = 0.0;
+    // 砖块を烟があるとみなす最大密度（INTERNAL::FluidOccupiedDensity。占有の回読が数える）。
+    float occupiedDensity = 0.0f;
     // 解く空間（世界空間の域は作り直した時の変換に固定、局所空間の域は毎フレームの変換）。
     MATH::Vec3 framePosition{};
     MATH::Quat frameRotation = MATH::Quat::Identity();
@@ -264,7 +264,7 @@ void FluidVolumePass::Impl::ReadCompleted(DomainState& domain) {
         const uint32_t bricks = domain.resources.BrickCount();
         uint32_t active = 0u;
         for (uint32_t brick = 0u; brick < bricks; ++brick)
-            active += words[brick] > kOccupiedDensity ? 1u : 0u;
+            active += words[brick] > domain.occupiedDensity ? 1u : 0u;
         domain.stats.activeBricks = active;
         domain.stats.totalBricks = bricks;
         domain.stats.readbackSteps = domain.readbackSteps[slot];
@@ -456,6 +456,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
     const double step = FluidSubstepSeconds(authored, lod);
     const uint32_t vCycles = lod == 0u ? policy.vCycles : (std::max)(policy.vCycles, 2u) - 1u;
     domain.stepSeconds = step;
+    domain.occupiedDensity = INTERNAL::FluidOccupiedDensity(authored.extinction, layout.cellSize);
     domain.stats.lod = lod;
     domain.stats.substepSeconds = static_cast<float>(step);
     // 局所空間の域は毎フレーム層の変換へ付いていき、挂点の速度の変化を逆向きに烟へ入れる（冲刺の拖尾、急停の回卷）。

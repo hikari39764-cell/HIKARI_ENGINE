@@ -19,7 +19,7 @@ inline constexpr std::string_view kFluidSimulationShaderRootCanonical =
     "StaticSampler(s0,LinearClamp,Compute)|StaticSampler(s1,LinearBorderTransparentBlack,Compute)|Flags(None)";
 inline constexpr std::string_view kFluidSimulationShaderInterfaceCanonical =
     "FluidDomainCB:176;uint4 size(cells,sourceCount),float4 cell(h,invH,dt,time),motion(boundary,vorticity,"
-    "buoyancy,weight),dissipation(density,temperature),up,inertia,uint4 interactionCount(count,activityOffset,sinkOffset,flags clear1 count2 injection4),combustion0(ignition,burnRate,fuelPerBurn,heatPerBurn),combustion1(smokePerBurn,expansionPerBurn,enabled),uint4 injectionCells(half-res xyz,0 none),float4 frameWind(relative wind m/s added to advection and source injected velocity);FluidPassCB:32;uint4 passSize,"
+    "buoyancy,weight),dissipation(density,temperature),up,inertia,uint4 interactionCount(count,activityOffset,sinkOffset,flags clear1 count2 injection4),combustion0(ignition,burnRate,fuelPerBurn,heatPerBurn),combustion1(smokePerBurn,expansionPerBurn,enabled),uint4 injectionCells(half-res xyz,0 none),float4 frameWind(relative wind m/s added to advection and source injected velocity,w occupied brick max density for optical depth 0.002 across a brick);FluidPassCB:32;uint4 passSize,"
     "passParams(color|glowCellColor,sliceField|glowIgnition,sliceAxis|glowHot,sliceIndex|statsOffset);FluidSource:304 rows toSource[3],toDomain[3],"
     "shape,shape2,emission,velocity,field0,field1,field2,wind,guide,flow(expansion),sweep(back,exposure),"
     "bounds(center,radius 0 all),color(rgb,fuelFraction) sphere inner radius shell,shape guide advects density only (not projected),"
@@ -40,7 +40,7 @@ inline ShaderAssetContractExpectation MakeFluidSimulationShaderContract(
     ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = "HIKARI.FluidSimulation";
-    contract.engineInterfaceVersion = 17u;
+    contract.engineInterfaceVersion = 18u;
     contract.rootLayoutId = "HIKARI.FluidSimulation.Root";
     contract.rootLayoutVersion = 4u;
     contract.availableDeviceCaps = availableCaps;
