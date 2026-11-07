@@ -72,6 +72,19 @@ float DomainRho(HikariFluidDomain domain, Texture3D<float4> density, float3 grid
     return density.SampleLevel(gLinearBorder, grid / domain.cells.xyz, 0).x * HikariFluidEdgeFade(domain, grid);
 }
 
+// 解算は固定の子步で進む。最後の子步から貯まった時間 detail.w の分だけ流れに沿って遡って密度を読み、子步の無いフレームで
+// 烟が止まり次のフレームで跳ぶ（フレームの速さが子步の速さと違う時の一顿一顿）のを無くす。速度は空いた所にもあるので、
+// 遡った後で空かどうかを決める（先に元の位置で空と決めると、空いた所へ進む烟の前縁が外推されない）。描画の步进と
+// 烟の影の表が同じこの関数で読む。grid は遡った後の格子座標になり、cell は元の位置の格の中心の標本（w 温度、xyz 下側の
+// 面の速度 [m/s]）。
+float ExtrapolatedRho(HikariFluidDomain domain, Texture3D<float4> density, Texture3D<float4> velocity,
+    inout float3 grid, out float4 cell)
+{
+    cell = velocity.SampleLevel(gLinearClamp, grid / (domain.cells.xyz + 1.0f), 0);
+    grid -= cell.xyz * (domain.detail.w / domain.cells.w);
+    return DomainRho(domain, density, grid);
+}
+
 // ---------------------------------------------------------------- 視線（体積雾と同じ再構成）
 // 相機を原点にして組み立ててから相機の位置を足す（世界の逆行列を float で使うと、浮島の高さ y≈3400 m では向きが
 // 相機の位置につれて数画素ずつ跳び、歩くと烟だけが場面に対して一顿一顿と揺れた）。
@@ -147,20 +160,11 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
     inout float3 emitted)
 {
     float3 grid = HikariFluidToGrid(domain, world);
-    float rho = DomainRho(domain, density, grid);
+    // cell の xyz は細部を運ぶ流れの近似、w は発光の温度にも使う。
+    float4 cell;
+    float rho = ExtrapolatedRho(domain, density, velocity, grid, cell);
     if (rho <= 1.0e-4f)
         return;
-    // 格の中心の標本：w は温度、xyz は下側の面の速度 [m/s]（細部を運ぶ流れの近似）。
-    const float4 cell = velocity.SampleLevel(gLinearClamp, grid / (domain.cells.xyz + 1.0f), 0);
-    // 解算は固定の子步で進む。最後の子步から貯まった時間 detail.w の分だけ流れに沿って遡って読み、子步の無いフレームで
-    // 烟が止まり次のフレームで跳ぶ（フレームの速さが子步の速さと違う時の、地面の霧が抖動して見える主な原因）のを無くす。
-    if (domain.detail.w > 0.0f)
-    {
-        grid -= cell.xyz * (domain.detail.w / domain.cells.w);
-        rho = DomainRho(domain, density, grid);
-        if (rho <= 1.0e-4f)
-            return;
-    }
     const float3 uvw = grid / domain.cells.xyz;
     rho = DetailedDensity(domain, rho, cell.xyz, grid, pixelSize);
     if (rho <= 0.0f)

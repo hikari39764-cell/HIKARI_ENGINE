@@ -94,7 +94,8 @@ RenderDomainGpu PackDomain(const FluidRenderDomain& domain, const FluidRenderVie
          look.emissionColor.z * emission, look.emissionTemperature);
     Set4(gpu.optics, look.anisotropy, look.multipleScattering, look.ambientStrength, look.detailStrength);
     // 開いた境界は面から 4 格で密度を消す（閉じた箱の壁は本当の境界なので消さない）。
-    // detailScale は細部の模様の大きさ。ノイズの 1 周期は基本の模様 4 つ分。
+    // detailScale は細部の模様の大きさ。ノイズの 1 周期は基本の模様 4 つ分。w は最後の子步の後に貯まった時間 [s]
+    // （子步 1 つ以下）：步进と烟の影の表がこの分だけ流れに沿って遡って密度を読む（ExtrapolatedRho）。
     Set4(gpu.detail, 1.0f / (4.0f * (std::max)(look.detailScale, 0.01f)), domain.simulationSeconds,
          look.boundary == FluidBoundary::Open ? 4.0f : 0.0f, domain.pendingSeconds);
     MATH::Vec3 sun{MATH::Dot(axes[0], view.sunDirection), MATH::Dot(axes[1], view.sunDirection),
@@ -403,10 +404,14 @@ LIGHTING::CloudSolarVisibilityGpuData FluidRenderer::RenderSolarVisibility(const
     // 根の入力はすべて束ねる（使わない枠は空の体積）。
     for (UINT input = 0u; input < kInputCount; ++input)
         commands->SetComputeRootDescriptorTable(kFirstInput + input, fallbackVolume_.srv.gpu);
+    // 密度と、外推に使う速度（步进と同じ ExtrapolatedRho で読む）。
     for (size_t index = 0u; index < count; ++index) {
         TransitionVolume(commands, *domains[index].density, kRead);
+        TransitionVolume(commands, *domains[index].velocity, kRead);
         commands->SetComputeRootDescriptorTable(kFirstInput + kDensity + static_cast<UINT>(index),
                                                 domains[index].density->srv.gpu);
+        commands->SetComputeRootDescriptorTable(kFirstInput + kVelocity + static_cast<UINT>(index),
+                                                domains[index].velocity->srv.gpu);
     }
     commands->SetComputeRootDescriptorTable(kOutput, fallbackVolume_.uav.gpu);
     TransitionVolume(commands, solarAtlas_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);

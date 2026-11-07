@@ -2,21 +2,30 @@
 #define HIKARI_FLUID_SOLAR_VISIBILITY_INCLUDED
 
 // 流体の烟を場面へ落とす影の表（Render3D_FluidVolume.hlsl の SolarVisibilityCS）。域の表 gDomains・密度 gDensity0〜3・
-// gSolarTable・gSolarAtlas と DomainRho は読み込む側の宣言を使う。
+// 速度 gVelocity0〜3・gSolarTable・gSolarAtlas と ExtrapolatedRho は読み込む側の宣言を使う。
 
-// 全ての域の消光 [1/m]（細部の模様なし）。gDomains には影を落とす域だけが詰めてある。
+// 域 1 つの消光 [1/m]（細部の模様なし）。描画の步进と同じく子步の後の時間だけ流れに沿って外推した密度を読む（影が烟から
+// 子步ぶん遅れて一顿一顿と跳ばない）。
+float DomainExtinction(HikariFluidDomain domain, Texture3D<float4> density, Texture3D<float4> velocity, float3 world)
+{
+    float3 grid = HikariFluidToGrid(domain, world);
+    float4 cell;
+    return ExtrapolatedRho(domain, density, velocity, grid, cell) * domain.look.w;
+}
+
+// 全ての域の消光 [1/m]。gDomains には影を落とす域だけが詰めてある。
 float DomainsExtinction(float3 world)
 {
     const uint count = DomainCount();
     float sigma = 0.0f;
     if (count > 0u)
-        sigma += DomainRho(gDomains[0], gDensity0, HikariFluidToGrid(gDomains[0], world)) * gDomains[0].look.w;
+        sigma += DomainExtinction(gDomains[0], gDensity0, gVelocity0, world);
     if (count > 1u)
-        sigma += DomainRho(gDomains[1], gDensity1, HikariFluidToGrid(gDomains[1], world)) * gDomains[1].look.w;
+        sigma += DomainExtinction(gDomains[1], gDensity1, gVelocity1, world);
     if (count > 2u)
-        sigma += DomainRho(gDomains[2], gDensity2, HikariFluidToGrid(gDomains[2], world)) * gDomains[2].look.w;
+        sigma += DomainExtinction(gDomains[2], gDensity2, gVelocity2, world);
     if (count > 3u)
-        sigma += DomainRho(gDomains[3], gDensity3, HikariFluidToGrid(gDomains[3], world)) * gDomains[3].look.w;
+        sigma += DomainExtinction(gDomains[3], gDensity3, gVelocity3, world);
     return sigma;
 }
 
