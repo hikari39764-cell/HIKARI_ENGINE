@@ -5038,8 +5038,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.VolumetricFog",
-        "engineInterfaceVersion": 7,
-        "engineInterfaceHash": "e22530956bd5e7a750bcdc4920ed84149b054c6a49ca0fba0aaf4f14eb2e44cb",
+        "engineInterfaceVersion": 8,
+        "engineInterfaceHash": "801fa5cd8a7a5cd9ad9ef5a0f6858444215fb328598478b480da6ccf3760c012",
         "rootLayoutId": "HIKARI.VolumetricFog.Root",
         "rootLayoutVersion": 5,
         "rootLayoutHash": "85933a4420beddc99afbcc259ce6e68a81e1209556037805f79be183cc1848cc",

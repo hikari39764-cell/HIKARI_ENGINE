@@ -1,6 +1,7 @@
 #include "Include/Contracts/HIKARI_ShaderResourceBindings.hlsli"
 #include "Include/Lighting/HIKARI_LocalLightContract.hlsli"
 #include "Include/Lighting/HIKARI_ShadowCascadeContract.hlsli"
+#include "Include/Lighting/HIKARI_CloudSolarVisibility.hlsli"
 #include "Include/Lighting/HIKARI_VolumetricCamera.hlsli"
 #include "Include/Lighting/HIKARI_VolumetricScattering.hlsli"
 #include "Include/Lighting/HIKARI_LocalFogDensity.hlsli"
@@ -49,6 +50,8 @@ cbuffer VolumetricCB : register(b0)
     float gLocalLightFarDistance;
     HikariLocalShadowData gLocalShadow;
     HikariLocalFogVolume gLocalFogVolumes[32];
+    // 流体の烟の影の表（雲の影と同じ並び）。霧の太陽光に掛ける。雲の影は霧へ入れない（空と雲の取り向き）。
+    HikariCloudSolarVisibilityData gSmokeSolarVisibility;
 };
 
 #include "Include/Lighting/HIKARI_LocalLightList.hlsli"
@@ -153,9 +156,12 @@ float3 EvaluateLighting(
     float3 ambientRadiance)
 {
     float3 lighting = ambientRadiance * max(gVolumetricOptics.z, 0.0f);
+    // 太陽は影と、流体の烟が太陽を遮る分（烟の影の表）を掛ける。烟の向こうの霧が暗くなり、烟の切れ目から光柱が出る。
     lighting += directionalRadiance *
         max(gVolumetricOptics.w, 0.0f) *
-        ShadowVisibility(lightingPosition, cameraForward);
+        ShadowVisibility(lightingPosition, cameraForward) *
+        HikariSampleCloudSolarVisibility(gMaterialTexturePool[HikariSolarVisibilityDescriptor(gSmokeSolarVisibility)],
+            gSmokeSolarVisibility, lightingPosition);
 
     const uint2 localLightCluster =
         HikariResolveLocalLightClusterFromDepthSlice(

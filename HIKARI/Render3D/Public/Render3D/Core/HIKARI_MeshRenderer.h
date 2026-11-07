@@ -98,6 +98,8 @@ bool BeginFrame(const GFX::Context& graphics, const Camera3D& camera, const Scen
 bool FinalizeVolumetricFog(const GFX::Context& graphics, bool volumetricFogReady);
 // 主ビューの前向きの解析霧の定数（体積霧で消した時は無効の印）。画面の貼り直しが材質と同じ霧を掛けるのに使う。
 void GetMainViewFogConstants(MATH::Vec4& fogParams, MATH::Vec4& fogColorDensity);
+// RefreshLightingProviders がこのフレームに作った流体の烟の影の表（雲の影と同じ並び。体積霧の太陽光が掛ける）。
+RENDER3D::LIGHTING::CloudSolarVisibilityGpuData GetFluidSolarVisibility();
 void SetGpuDrivenCullingCameraFreezeEnabled(bool enabled);
 bool IsGpuDrivenCullingCameraFrozen();
 const CameraCB* GetCameraConstants();

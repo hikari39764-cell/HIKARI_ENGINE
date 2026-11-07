@@ -465,7 +465,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     const bool volumetricFogReady = RENDER3D::VOLUMETRIC::PrepareVolumetricLightingFrame(
         frame.graphics, temporalFrame, frame.scene.color, frame.scene.depth, environment,
         MESHRENDERER::GetLocalLightListGpuBindings(), renderQuality.volumetricLightingQuality,
-        volumetricDebugView ? debugView : RenderDebugView::None,
+        volumetricDebugView ? debugView : RenderDebugView::None, MESHRENDERER::GetFluidSolarVisibility(),
         SHADOW::GetLocalLightShadowFrame(frame.graphics, lighting, camera), view.localFogVolumes);
     if (!MESHRENDERER::FinalizeVolumetricFog(frame.graphics, volumetricFogReady)) {
         MESHRENDERER::EndFrame();

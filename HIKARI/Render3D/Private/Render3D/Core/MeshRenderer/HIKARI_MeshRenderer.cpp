@@ -364,6 +364,10 @@ bool RefreshLightingProviders(const GFX::Context& graphics,
     return view.PublishSkyEnvironment(graphics);
 }
 
+RENDER3D::LIGHTING::CloudSolarVisibilityGpuData GetFluidSolarVisibility() {
+    return GetActiveMeshFrameResources().view.skyEnvironment.fluidSolarVisibility;
+}
+
 RENDER3D::LIGHTING::LocalLightListGpuBindings GetLocalLightListGpuBindings() {
     const MeshFrameResources& frame = GetActiveMeshFrameResources();
     return frame.view.Bindings().localLights;
