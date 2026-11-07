@@ -18,8 +18,8 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
 struct GpuParticleCollisionView {
     MATH::Mat4 viewProj{};
     MATH::Mat4 invViewProj{};
-    MATH::Vec4 size{};   // xy 碰撞深度の texel 数、zw その逆数
-    MATH::Vec4 camera{}; // xyz 視点、w 有効（1）
+    MATH::Vec4 size{0.0f, 0.0f, 0.0f, 0.0f};   // xy 碰撞深度の texel 数、zw その逆数
+    MATH::Vec4 camera{0.0f, 0.0f, 0.0f, 0.0f}; // xyz 視点、w 有効（1。既定の Vec4 は w = 1 なので 0 を明示）
 };
 
 class GpuParticleStorage final {

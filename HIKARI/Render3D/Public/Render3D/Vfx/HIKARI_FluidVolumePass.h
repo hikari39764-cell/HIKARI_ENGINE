@@ -128,7 +128,8 @@ struct FluidRenderView {
 // 透明物体が読む相機体積（HIKARI_FluidCameraVolume.hlsli）。params：x near、y log(far/near)、z 層の数、w 1 で有効。
 struct FluidCameraVolumeView {
     D3D12_GPU_DESCRIPTOR_HANDLE srv{};
-    MATH::Vec4 params{};
+    // MATH::Vec4 の既定は w = 1（有効）なので、無効は 0 を明示する。
+    MATH::Vec4 params{0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 // 粒子が乗る流体（PrepareFrame がこのフレームに解いた域、最多 4）。domains は域ごとの世界→格子の行、格の数・大きさと

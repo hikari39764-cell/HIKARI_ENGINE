@@ -942,7 +942,8 @@ struct ParticleGpuDrivenPass::Impl {
             // 流体の無い視図は params.w = 0 で shader が体積を読まない。表は空の Texture3D で埋める（貼図の池は Texture2D で、
             // 次元の違う記述子は読まなくても未定義）。
             const bool fluid = bindings.fluidCameraVolume.ptr != 0u;
-            const MATH::Vec4 fluidParams = fluid ? bindings.fluidCameraVolumeParams : MATH::Vec4{};
+            const MATH::Vec4 fluidParams =
+                fluid ? bindings.fluidCameraVolumeParams : MATH::Vec4{0.0f, 0.0f, 0.0f, 0.0f};
             context.cmdList->SetGraphicsRootDescriptorTable(21u,
                                                             fluid ? bindings.fluidCameraVolume : fluidFlowFallback.gpu);
             context.cmdList->SetGraphicsRoot32BitConstants(22u, 4u, &fluidParams, 0u);

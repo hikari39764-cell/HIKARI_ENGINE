@@ -251,7 +251,9 @@ bool FluidRenderer::BeginFrame(const GFX::Context& context) {
             return false;
         TransitionVolume(context.cmdList, fallbackVolume_, kRead);
     }
-    cameraVolumeView_ = {fallbackVolume_.srv.gpu, {}};
+    // 空の体積を束ね、params.w = 0（読まない）。MATH::Vec4{} は w = 1 なので 0 を明示する（w = 1 だと空の体積の透過率 0 を
+    // 読んで、流体の無い場面の粒子が全部消えていた）。
+    cameraVolumeView_ = {fallbackVolume_.srv.gpu, {0.0f, 0.0f, 0.0f, 0.0f}};
     // 長く描かれていない視図（閉じた編集器の視口など）の目標と相機体積は捨てる（描かれれば作り直す）。
     constexpr uint64_t kStaleViewFrames = 120u;
     for (auto it = views_.begin(); it != views_.end();) {
