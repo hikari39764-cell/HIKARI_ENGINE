@@ -59,7 +59,8 @@ void VfxWorkspaceController::DrawEmitterBindingsInspector(const VFX::VfxEmitterD
             continue;
         bool hasCompatibleTarget = false;
         for (const VFX::VfxPropertySchema& schema : VFX::GetVfxPropertySchemas()) {
-            if (!schema.bindable || !schema.runtimeMutable || !VFX::IsVfxInputTypeCompatible(input.type, schema)) {
+            if (!schema.bindable || !schema.runtimeMutable || !VFX::IsVfxInputTypeCompatible(input.type, schema) ||
+                !VFX::IsVfxPropertyApplicable(emitter, schema)) {
                 continue;
             }
             const std::string_view moduleId = GetVfxModuleId(emitter, schema.moduleKind);
@@ -113,7 +114,8 @@ void VfxWorkspaceController::DrawLinkInspector(AssetDatabase& database, const VF
         if (selectedInput != nullptr) {
             for (const VFX::VfxPropertySchema& schema : VFX::GetVfxPropertySchemas()) {
                 if (!schema.bindable || !schema.runtimeMutable ||
-                    !VFX::IsVfxInputTypeCompatible(selectedInput->type, schema)) {
+                    !VFX::IsVfxInputTypeCompatible(selectedInput->type, schema) ||
+                    !VFX::IsVfxPropertyApplicable(emitter, schema)) {
                     continue;
                 }
                 const std::string_view moduleId = GetVfxModuleId(emitter, schema.moduleKind);

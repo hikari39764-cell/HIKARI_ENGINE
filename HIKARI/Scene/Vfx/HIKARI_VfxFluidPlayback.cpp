@@ -75,6 +75,7 @@ bool VfxPlaybackService::MakeFluidSource(Instance& instance, uint32_t layerIndex
     const auto& multiplier = overrides.colorMultiplier;
     out.color = {tint.x * multiplier.x, tint.y * multiplier.y, tint.z * multiplier.z};
     out.settings = layer.fluidSource;
+    out.settings.temperature *= overrides.fluidTemperatureMultiplier;
     out.wind = out.wind * overrides.gravityMultiplier;
     return true;
 }

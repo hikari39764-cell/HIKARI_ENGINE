@@ -71,6 +71,9 @@ std::string_view GetVfxModuleId(const VFX::VfxEmitterData& emitter, VFX::VfxModu
     case VFX::VfxModuleKind::Color: return emitter.color.id;
     case VFX::VfxModuleKind::RenderCommon: return emitter.renderCommon.id;
     case VFX::VfxModuleKind::RenderShape: return emitter.renderShape.id;
+    case VFX::VfxModuleKind::FluidSource:
+        return emitter.kind == VFX::VfxLayerKind::FluidSource ? std::string_view(emitter.fluidSource.id)
+                                                              : std::string_view{};
     }
     return {};
 }
