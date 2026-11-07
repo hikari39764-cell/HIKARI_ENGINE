@@ -23,6 +23,7 @@ using Microsoft::WRL::ComPtr;
 constexpr DXGI_FORMAT kVelocityFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 constexpr DXGI_FORMAT kDensityFormat = DXGI_FORMAT_R16_FLOAT;
 constexpr DXGI_FORMAT kColoredDensityFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+constexpr DXGI_FORMAT kFuelFormat = DXGI_FORMAT_R16G16_FLOAT;
 constexpr DXGI_FORMAT kPressureFormat = DXGI_FORMAT_R32_FLOAT;
 constexpr D3D12_RESOURCE_STATES kShaderRead = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 
@@ -40,6 +41,7 @@ enum Root : UINT {
     kSliceOutput,
     kStats,
     kInteractions,
+    kOutput2,
     kRootCount
 };
 
@@ -54,7 +56,7 @@ constexpr const char* kEntryNames[] = {
 static_assert(std::size(kEntryNames) == static_cast<size_t>(FluidEntry::Count));
 
 bool CreateRoot(ID3D12Device* device, ID3D12RootSignature** output) {
-    std::array<CD3DX12_DESCRIPTOR_RANGE, 7> ranges{};
+    std::array<CD3DX12_DESCRIPTOR_RANGE, 8> ranges{};
     std::array<CD3DX12_ROOT_PARAMETER, kRootCount> parameters{};
     parameters[kDomainConstants].InitAsConstantBufferView(0);
     parameters[kPassConstants].InitAsConstants(8, 1);
@@ -71,6 +73,8 @@ bool CreateRoot(ID3D12Device* device, ID3D12RootSignature** output) {
     parameters[kSliceOutput].InitAsDescriptorTable(1, &ranges[6]);
     parameters[kStats].InitAsUnorderedAccessView(5);
     parameters[kInteractions].InitAsShaderResourceView(7);
+    ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);
+    parameters[kOutput2].InitAsDescriptorTable(1, &ranges[7]);
     std::array<CD3DX12_STATIC_SAMPLER_DESC, 2> samplers{};
     samplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
                      D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
@@ -195,6 +199,11 @@ bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& lay
     const DXGI_FORMAT densityFormat = layout.cellColor ? kColoredDensityFormat : kDensityFormat;
     for (FluidVolume& volume : resources.density)
         created = created && CreateVolume(device, densityFormat, n[0], n[1], n[2], volume, false);
+    // 燃料（x 燃料、y 燃える速さ）。燃焼の無い域も平流・力・散度・占有の pass が根の表を引くので 1 格の置き場を持つ。
+    const uint32_t fuel[3] = {layout.combustion ? n[0] : 1u, layout.combustion ? n[1] : 1u,
+                              layout.combustion ? n[2] : 1u};
+    for (FluidVolume& volume : resources.fuel)
+        created = created && CreateVolume(device, kFuelFormat, fuel[0], fuel[1], fuel[2], volume, false);
     resources.pressure.resize(layout.levels);
     resources.rhs.resize(layout.levels);
     for (uint32_t level = 0u; level < layout.levels; ++level) {
@@ -221,6 +230,8 @@ void RetireFluidDomainResources(const GFX::Context& context, FluidDomainResource
     for (FluidVolume& volume : resources.velocity)
         RetireVolume(context, volume);
     for (FluidVolume& volume : resources.density)
+        RetireVolume(context, volume);
+    for (FluidVolume& volume : resources.fuel)
         RetireVolume(context, volume);
     for (FluidVolume& volume : resources.pressure)
         RetireVolume(context, volume);
@@ -281,6 +292,8 @@ void FluidRecorder::Dispatch(FluidEntry entry, const FluidPassBindings& bindings
         commands_->SetComputeRootDescriptorTable(kOutput0, bindings.outputs[0]->uav.gpu);
     if (bindings.outputs[1] != nullptr)
         commands_->SetComputeRootDescriptorTable(kOutput1, bindings.outputs[1]->uav.gpu);
+    if (bindings.outputs[2] != nullptr)
+        commands_->SetComputeRootDescriptorTable(kOutput2, bindings.outputs[2]->uav.gpu);
     if (bindings.slice != nullptr)
         commands_->SetComputeRootDescriptorTable(kSliceOutput, bindings.slice->uav.gpu);
     commands_->SetComputeRootUnorderedAccessView(kStats, domain_.stats->GetGPUVirtualAddress());
@@ -301,6 +314,7 @@ void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D
                             D3D12_GPU_VIRTUAL_ADDRESS interactions, uint32_t vCycles) {
     auto& v = domain_.velocity;
     auto& d = domain_.density;
+    auto& fuel = domain_.fuel;
     const uint32_t a = velocityIndex, b = (a + 1u) % 3u, c = (a + 2u) % 3u;
     // 疎な解算：今の密度で砖块の占有を数え直し、烟のある砖块の周りと源の形・注入の球に触れる砖块を動かす（1 子步で烟が
     // 1 砖块より遠くへ動くことは無い）。
@@ -326,7 +340,8 @@ void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D
     // 平流は源の表も読む（形状引导の速度で密度だけを運ぶ）。
     {
         GFX::GPU_PROFILE::ScopedGpuTimer timer(commands_, GFX::GPU_PROFILE::Pass::FluidSolveAdvect);
-        FluidPassBindings forward{{&v[a], &d[e]}, {&v[b], &d[f]}};
+        // 燃料は前進だけで運ぶ（fuel[0] → fuel[1]）。力の pass が注入と燃焼の後を fuel[0] へ戻す。
+        FluidPassBindings forward{{&v[a], &d[e], &fuel[0]}, {&v[b], &d[f], &fuel[1]}};
         forward.sources = sources;
         Dispatch(FluidEntry::AdvectForward, forward, faces, none, faceGroups);
         FluidPassBindings correct{{&v[a], &d[e], &v[b], &d[f]}, {&v[c], &d[g]}};
@@ -336,7 +351,7 @@ void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D
     {
         GFX::GPU_PROFILE::ScopedGpuTimer timer(commands_, GFX::GPU_PROFILE::Pass::FluidSolveForces);
         Dispatch(FluidEntry::Curl, {{&v[c]}, {&v[b]}}, cells, none, cellGroups);
-        FluidPassBindings forces{{&v[c], &v[b]}, {&v[a], &d[g]}};
+        FluidPassBindings forces{{&v[c], &v[b], &fuel[1]}, {&v[a], &d[g], &fuel[0]}};
         forces.sources = sources;
         forces.interactions = interactions;
         Dispatch(FluidEntry::ForceField, forces, cells, none, cellGroups);
@@ -344,7 +359,7 @@ void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D
     }
     {
         GFX::GPU_PROFILE::ScopedGpuTimer timer(commands_, GFX::GPU_PROFILE::Pass::FluidSolvePressure);
-        FluidPassBindings divergence{{&v[b]}, {&domain_.rhs[0]}};
+        FluidPassBindings divergence{{&v[b], &fuel[0]}, {&domain_.rhs[0]}};
         divergence.sources = sources;
         divergence.interactions = interactions;
         Dispatch(FluidEntry::Divergence, divergence, cells, none, cellGroups);
@@ -389,7 +404,7 @@ void FluidRecorder::VCycle() {
 }
 
 void FluidRecorder::Occupancy(uint32_t densityIndex) {
-    FluidPassBindings bindings{{&domain_.density[densityIndex]}, {}};
+    FluidPassBindings bindings{{&domain_.density[densityIndex], &domain_.fuel[0]}, {}};
     const uint32_t* n = domain_.layout.cells;
     const uint32_t size[3] = {n[0], n[1], n[2]};
     Dispatch(FluidEntry::Occupancy, bindings, size, {0u, 0u, 0u, 0u},

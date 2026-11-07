@@ -16,6 +16,10 @@ cbuffer FluidDomainCB : register(b0)
     // x 押すもの（障碍物・冲量・力・注入）の数、y gStats の中の砖块の活動状態の位置 [byte]、z 汇の吸い込み量の位置
     // [byte]（表の行ごとに float）、w 1 でこの子步の頭に吸い込み量を 0 に戻す、2 でこの子步の吸い込みを数える（預熱は数えない）
     uint4 gInteractionCount;
+    // 燃焼（NVIDIA Flow の燃焼模型）：x 点火温度、y 燃える速さ [1/s]（温度が点火温度を 1 超えた時）、z 燃焼 1 あたりの燃料、
+    // w 燃焼 1 あたりの温度の上がり / x 燃焼 1 あたりの煤（密度）、y 燃える速さ 1 あたりの体積の膨張、z 1 で燃焼する域。
+    float4 gCombustion0;
+    float4 gCombustion1;
 };
 
 cbuffer FluidPassCB : register(b1)
@@ -32,12 +36,15 @@ StructuredBuffer<HikariFluidSource> gSources : register(t6);
 StructuredBuffer<HikariFluidInteraction> gInteractions : register(t7);
 RWTexture3D<float4> gOut0 : register(u0);
 RWTexture3D<float4> gOut1 : register(u1);
+// 燃料（RG16F：x 燃料、y この子步の燃える速さ [1/s]）。燃焼の無い域では 1 格の置き場で、読み書きしない。
+RWTexture3D<float2> gOut2 : register(u2);
 RWTexture2D<float4> gSlice : register(u4);
 RWByteAddressBuffer gStats : register(u5);
 SamplerState gLinearClamp : register(s0);
 SamplerState gLinearBorder : register(s1);
 
 bool Closed() { return gMotion.x > 0.5f; }
+bool Combusting() { return gCombustion1.z > 0.5f; }
 
 // 格の中心の烟を格子座標 p で読む（x 密度、yzw 密度 × 色。格ごとの色を持たない域は R16 なので yzw は 0）。閉じた箱は
 // 壁の外を壁の値で延ばし（量を失わない）、開いた境界は外を 0 にする（外から戻ってくる烟は無い）。
@@ -192,7 +199,11 @@ void AdvectForwardCS(uint3 id : SV_DispatchThreadID)
     {
         gOut0[id] = gIn0.Load(int4(id, 0));
         if (InsideCells(id))
+        {
             gOut1[id] = 0.0f.xxxx;
+            if (Combusting())
+                gOut2[id] = 0.0f.xx;
+        }
         return;
     }
     const float step = gCell.z * gCell.y;
@@ -216,11 +227,15 @@ void AdvectForwardCS(uint3 id : SV_DispatchThreadID)
         const float3 back = p - step * u;
         velocity.w = gIn0.SampleLevel(gLinearClamp, back / VelocityTexels(), 0).w;
         gOut1[id] = SmokeAt(gIn1, p - step * (u + GuideVelocity(DomainPosition(p))));
+        if (Combusting())
+            gOut2[id] = float2(SmokeAt(gIn2, back).x, 0.0f);
     }
     else if (InsideCells(id))
     {
         velocity.w = gIn0.Load(int4(id, 0)).w;
         gOut1[id] = 0.0f.xxxx;
+        if (Combusting())
+            gOut2[id] = 0.0f.xx;
     }
     gOut0[id] = velocity;
 }
@@ -284,9 +299,12 @@ void AdvectCorrectCS(uint3 id : SV_DispatchThreadID)
         float density = densityForward + 0.5f * (gIn1.Load(int4(id, 0)).x - DensityAt(gIn3, p + step * carried));
         CellRange(gIn1, 0u, p - step * carried, int3(gSize.xyz) - 1, low, high);
         density = max(density < low || density > high ? densityForward : density, 0.0f);
-        // 色（密度 × 色）は前進の値を、密度の修正と同じ比で直す（格の色の比を変えない）。
-        const float ratio = densityForward > 1.0e-6f ? min(density / densityForward, 4.0f) : 1.0f;
-        gOut1[id] = float4(density, max(smokeForward.yzw * ratio, 0.0f)) * exp(-gDissipation.x * gCell.z);
+        // 色（密度 × 色）は格の色の比（色 / 密度）を保ったまま修正後の密度に掛ける。前進の密度が無い格（烟が空へ進む
+        // 前沿）はこの格の前の値の比、それも無ければ白（比を固定の倍率で截断すると前沿の色が暗くなる）。
+        const float4 previous = gIn1.Load(int4(id, 0));
+        const float4 tinted = densityForward > 1.0e-6f ? smokeForward : previous;
+        const float3 tint = tinted.x > 1.0e-6f ? tinted.yzw / tinted.x : 1.0f.xxx;
+        gOut1[id] = float4(density, max(tint * density, 0.0f)) * exp(-gDissipation.x * gCell.z);
     }
     gOut0[id] = velocity;
 }
@@ -366,7 +384,7 @@ float EmissionNoise(HikariFluidSource source, float3 p)
 
 // 源 1 つの加速度と注入（格の中心、域の局所 p）。velocity は今の速度、smoke は烟（x 密度、yzw 密度 × 色）。
 void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout float3 acceleration,
-                 inout float4 smoke, inout float temperature)
+                 inout float4 smoke, inout float fuel, inout float temperature)
 {
     if (!HikariFluidSourceReaches(source, p))
         return;
@@ -397,7 +415,10 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
         {
             temperature += (source.emission.z - temperature) * saturate(emit * 8.0f * gCell.z + emit * saturate(source.emission.y));
             const float added = emit * (source.emission.x * gCell.z + source.emission.y);
-            smoke += float4(added, added * source.color.rgb);
+            // 燃焼の域では注入量のうち color.w の割合が燃料（燃えて煤と熱になる）、残りが烟。
+            const float burnable = Combusting() ? added * saturate(source.color.w) : 0.0f;
+            fuel += burnable;
+            smoke += (added - burnable) * float4(1.0f, source.color.rgb);
         }
     }
     if (mask <= 0.0f)
@@ -406,7 +427,24 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
     const float3 injected = HikariFluidToDomain(source, source.velocity.xyz + source.velocity.w * normalize(local + 1.0e-6f));
     if (any(source.velocity != 0.0f))
         acceleration += (injected - velocity) * (8.0f * mask);
-    smoke *= exp(-source.emission.w * mask * gCell.z);
+    const float absorbed = exp(-source.emission.w * mask * gCell.z);
+    smoke *= absorbed;
+    fuel *= absorbed;
+}
+
+// 燃焼 1 子步（NVIDIA Flow の combustSimulate と同じ形）：温度が点火温度を超えた格の燃料が、超えた分（1 まで）に比例した
+// 速さで燃え（燃料で頭打ち）、燃えた量に比例して燃料が減り、温度が上がり、煤（白）が出る。戻り値は燃える速さ [1/s]
+// （散度で体積を膨らませる）。
+float Burn(inout float4 smoke, inout float fuel, inout float temperature)
+{
+    if (!Combusting() || fuel <= 0.0f || temperature <= gCombustion0.x)
+        return 0.0f;
+    float burn = gCombustion0.y * min(temperature - gCombustion0.x, 1.0f) * gCell.z;
+    burn = min(burn, fuel / gCombustion0.z);
+    fuel -= gCombustion0.z * burn;
+    temperature += gCombustion0.w * burn;
+    smoke += (gCombustion1.x * burn).xxxx;
+    return burn / gCell.z;
 }
 
 // 押す強さの重み：半径の中で中心から二乗で弱まる。
@@ -540,6 +578,8 @@ void ForceFieldCS(uint3 id : SV_DispatchThreadID)
     if (CellWork(id) != kWorkCompute)
     {
         gOut0[id] = float4(0.0f, 0.0f, 0.0f, gIn0.Load(int4(id, 0)).w);
+        if (Combusting())
+            gOut2[id] = float2(gIn2.Load(int4(id, 0)).x, 0.0f);
         return;
     }
     const float3 grid = float3(id) + 0.5f;
@@ -547,12 +587,15 @@ void ForceFieldCS(uint3 id : SV_DispatchThreadID)
     const float3 velocity = CellVelocity(gIn0, id);
     float temperature = gIn0.Load(int4(id, 0)).w;
     float4 smoke = gOut1[id];
+    float fuel = Combusting() ? gIn2.Load(int4(id, 0)).x : 0.0f;
     float3 acceleration = gInertia.xyz;
     for (uint index = 0u; index < gSize.w; ++index)
-        ApplySource(gSources[index], p, velocity, acceleration, smoke, temperature);
+        ApplySource(gSources[index], p, velocity, acceleration, smoke, fuel, temperature);
     for (uint emit = 0u; emit < gInteractionCount.x; ++emit)
         if (HikariFluidInteractionKind(gInteractions[emit]) == 3u)
             ApplyEmit(gInteractions[emit], p, velocity, acceleration, smoke, temperature);
+    // 燃焼は注入の後、浮力の前（燃えて上がった温度がこの子步で浮く）。
+    const float burning = Burn(smoke, fuel, temperature);
     // 浮力（温度で上へ、密度で下へ）。
     acceleration += gUp.xyz * (gMotion.z * temperature - gMotion.w * smoke.x);
     // 涡度约束：旋度の大きさが増える向き N と旋度の外積で、小さな渦を保つ。
@@ -577,6 +620,8 @@ void ForceFieldCS(uint3 id : SV_DispatchThreadID)
     CountSinks(p, smoke.x);
     gOut0[id] = float4(acceleration, temperature);
     gOut1[id] = smoke;
+    if (Combusting())
+        gOut2[id] = float2(max(fuel, 0.0f), burning);
 }
 
 // 加速度を面へ配って速度を進める：t0 平流後の速度、t1 格の中心の加速度（w 新しい温度）→ u0。
@@ -622,7 +667,9 @@ void DivergenceCS(uint3 id : SV_DispatchThreadID)
 {
     if (!InsideCells(id))
         return;
-    const float expansion = Closed() ? 0.0f : Expansion(DomainPosition(float3(id) + 0.5f));
+    float expansion = Closed() ? 0.0f : Expansion(DomainPosition(float3(id) + 0.5f));
+    if (!Closed() && Combusting())
+        expansion += gCombustion1.y * gIn1.Load(int4(id, 0)).y;
     gOut0[id] = (Divergence(gIn0, id) - expansion) * gCell.x * gCell.x;
 }
 
@@ -797,7 +844,8 @@ groupshared float gBrickMax[512];
 [numthreads(8, 8, 8)]
 void OccupancyCS(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint flat : SV_GroupIndex)
 {
-    gBrickMax[flat] = InsideCells(id) ? gIn0.Load(int4(id, 0)).x : 0.0f;
+    gBrickMax[flat] = InsideCells(id) ? max(gIn0.Load(int4(id, 0)).x, Combusting() ? gIn1.Load(int4(id, 0)).x : 0.0f)
+                                      : 0.0f;
     GroupMemoryBarrierWithGroupSync();
     [unroll] for (uint stride = 256u; stride > 0u; stride >>= 1u)
     {

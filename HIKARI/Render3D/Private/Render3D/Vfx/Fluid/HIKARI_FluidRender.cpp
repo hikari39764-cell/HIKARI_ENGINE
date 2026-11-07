@@ -15,6 +15,7 @@
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
+#include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 
 // 1 視図の流体の描画の記録：定数を詰め、光照体積・相機体積・步进・合成を順に記録する。
 
@@ -443,13 +444,7 @@ MATH::Mat4 MakeCameraRelativeViewProj(const MATH::Mat4& view, const MATH::Mat4& 
     rotation.m[3][0] = 0.0f;
     rotation.m[3][1] = 0.0f;
     rotation.m[3][2] = 0.0f;
-    MATH::Mat4 relative = projection * rotation;
-    // 抖动は clip の x、y に w を掛けて足す（TemporalFrameState の ApplyClipSpaceJitter と同じ）。
-    for (int column = 0; column < 4; ++column) {
-        relative.m[column][0] += clipJitterX * relative.m[column][3];
-        relative.m[column][1] += clipJitterY * relative.m[column][3];
-    }
-    return relative;
+    return TEMPORAL::ApplyClipSpaceJitter(projection * rotation, clipJitterX, clipJitterY);
 }
 
 FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey,

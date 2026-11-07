@@ -39,6 +39,8 @@ struct FluidGridLayout {
     uint32_t levels = 1u;
     // 密度の体積に格ごとの色（密度 × 色、FluidDomainSettings::cellColor）も持つ（R16 → RGBA16F）。
     bool cellColor = false;
+    // 燃料の体積（x 燃料、y この子步の燃える速さ。RG16F を 2 枚）を持つ（FluidDomainSettings::combustion）。
+    bool combustion = false;
 };
 FluidGridLayout ResolveFluidGridLayout(const MATH::Vec3& domainSize, uint32_t resolution) noexcept;
 uint64_t EstimateFluidDomainBytes(const FluidGridLayout& layout) noexcept;

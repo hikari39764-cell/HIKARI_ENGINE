@@ -49,8 +49,12 @@ struct alignas(16) DomainConstants {
     float up[4];
     float inertia[4];
     uint32_t interactions[4];
+    // 燃焼：x 点火温度、y 燃える速さ、z 燃焼 1 あたりの燃料、w 燃焼 1 あたりの熱 / x 燃焼 1 あたりの煤、y 燃焼 1 あたりの
+    // 膨張、z 1 なら燃焼する域。
+    float combustion0[4];
+    float combustion1[4];
 };
-static_assert(sizeof(DomainConstants) == 112u);
+static_assert(sizeof(DomainConstants) == 144u);
 
 // 受け取ったフレームの後の子步へ渡し続ける一度きりの事件：冲量（向きのあるものは最初の子步だけ、向きの無いもの（湧き出し）
 // は残りの時間がある間）と注入（提交したフレームの時間ぶんを、子步ごとに最大 1 子步ずつ入れる）。子步の無いフレームの分は
@@ -265,14 +269,17 @@ bool FluidVolumePass::Impl::PrepareDomain(DomainState& domain, const FluidDomain
         static_cast<uint32_t>(std::lround(static_cast<float>(submission.settings.resolution) * policy.resolutionScale)),
         kFluidResolutionMin, kFluidResolutionMax);
     const bool cellColor = submission.settings.cellColor;
+    const bool combustion = submission.settings.combustion;
     const bool relayout =
         !domain.resources.stats || domain.layoutResolution != resolution ||
-        domain.resources.layout.cellColor != cellColor || std::abs(domain.layoutSize.x - size.x) > 1.0e-4f ||
-        std::abs(domain.layoutSize.y - size.y) > 1.0e-4f || std::abs(domain.layoutSize.z - size.z) > 1.0e-4f;
+        domain.resources.layout.cellColor != cellColor || domain.resources.layout.combustion != combustion ||
+        std::abs(domain.layoutSize.x - size.x) > 1.0e-4f || std::abs(domain.layoutSize.y - size.y) > 1.0e-4f ||
+        std::abs(domain.layoutSize.z - size.z) > 1.0e-4f;
     if (relayout) {
         INTERNAL::RetireFluidDomainResources(context, domain.resources);
         FluidGridLayout layout = ResolveFluidGridLayout(size, resolution);
         layout.cellColor = cellColor;
+        layout.combustion = combustion;
         if (!INTERNAL::CreateFluidDomainResources(context.device, layout, domain.resources)) {
             INTERNAL::RetireFluidDomainResources(context, domain.resources);
             ++stats.resourceFailures;
@@ -426,9 +433,23 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
                 domain.carried.push_back({interaction, radial ? kFluidRadialImpulseSeconds : 0.0});
             }
         } else if (emit) {
-            if (newInteractions && advance && submission.deltaSeconds > 0.0f &&
-                domain.carried.size() < kMaximumFluidInteractionsPerDomain)
-                domain.carried.push_back({interaction, submission.deltaSeconds, submission.deltaSeconds});
+            if (newInteractions && advance && submission.deltaSeconds > 0.0f) {
+                // 同じ注入（鍵）がまだ子步に入り切っていなければ同じ行へまとめる（子步の無いフレームが続いても 1 行）：
+                // 残りの時間と動いた量を足し、位置と強さは今のフレームのもの。
+                const auto same = std::find_if(domain.carried.begin(), domain.carried.end(), [&](const auto& event) {
+                    return interaction.key != 0u && event.interaction.kind == FluidInteractionKind::Emit &&
+                           event.interaction.key == interaction.key;
+                });
+                if (same != domain.carried.end()) {
+                    const MATH::Vec3 moved = same->interaction.displacement + interaction.displacement;
+                    same->interaction = interaction;
+                    same->interaction.displacement = moved;
+                    same->remainingSeconds += submission.deltaSeconds;
+                    same->frameSeconds += submission.deltaSeconds;
+                } else if (domain.carried.size() < kMaximumFluidInteractionsPerDomain) {
+                    domain.carried.push_back({interaction, submission.deltaSeconds, submission.deltaSeconds});
+                }
+            }
         } else if (steadyInteractions.size() < kMaximumFluidInteractionsPerDomain) {
             steadyInteractions.push_back(interaction);
         }
@@ -485,6 +506,14 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         constants.interactions[1] = domain.resources.ActivityOffset();
         constants.interactions[2] = domain.resources.SinkOffset();
         constants.interactions[3] = flags;
+        constants.combustion0[0] = authored.ignitionTemperature;
+        constants.combustion0[1] = authored.burnRate;
+        constants.combustion0[2] = (std::max)(authored.fuelPerBurn, 1.0e-3f);
+        constants.combustion0[3] = authored.heatPerBurn;
+        constants.combustion1[0] = authored.smokePerBurn;
+        constants.combustion1[1] = authored.expansionPerBurn;
+        constants.combustion1[2] = layout.combustion ? 1.0f : 0.0f;
+        constants.combustion1[3] = 0.0f;
         const auto allocation = upload.Allocate(sizeof(constants));
         if (!allocation)
             return 0u;
@@ -563,6 +592,8 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         for (auto& volume : domain.resources.velocity)
             recorder.Clear(volume);
         for (auto& volume : domain.resources.density)
+            recorder.Clear(volume);
+        for (auto& volume : domain.resources.fuel)
             recorder.Clear(volume);
         for (auto& volume : domain.resources.pressure)
             recorder.Clear(volume);

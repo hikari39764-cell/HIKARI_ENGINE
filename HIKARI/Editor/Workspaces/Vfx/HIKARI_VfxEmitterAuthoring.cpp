@@ -68,29 +68,7 @@ bool VfxWorkspaceController::AddEmitter(std::string_view parentEmitterId, std::s
     emitter.kind = kind;
     RegenerateEmitterIds(emitter);
     emitter.id = id;
-    if (kind != VFX::VfxLayerKind::Particles) {
-        emitter.renderShape.billboardMode = VFX::VfxBillboardMode::Fixed;
-        emitter.spawn.ratePerSecond = 0;
-        emitter.spawn.burstTimeline.clear();
-        emitter.renderCommon.colorTextureAssetGuid = {};
-    }
-    if (kind == VFX::VfxLayerKind::Fluid || kind == VFX::VfxLayerKind::FluidSource) {
-        // 流体の層は効果・模型出力・特殊出力・履歴・遮罩を持たない。
-        emitter.effects.clear();
-        emitter.specialOutputs.clear();
-        emitter.meshOutput.enabled = false;
-        emitter.history.mode = VFX::VfxHistoryMode::None;
-        emitter.matte = {};
-        // 層の色は烟の色と消光の倍率になるので、既定の層の寿命の色（淡くなる曲線）を使わず白の一定にする。
-        emitter.color.value.mode = VFX::VfxAnimatedColorMode::Fixed;
-        emitter.color.value.fixed = {
-            VFX::VfxDistributionMode::Constant, {1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f}, 0u};
-    }
-    if (kind == VFX::VfxLayerKind::FluidSource) {
-        emitter.spawn.ratePerSecond = 6.0f;
-        emitter.shape.type = VFX::VfxShapeType::Sphere;
-        emitter.shape.radius = {VFX::VfxDistributionMode::Constant, 0.35f, 0.35f, 0u};
-    }
+    VFX::PRESETS::ApplyLayerKindDefaults(emitter, kind);
     if (kind == VFX::VfxLayerKind::FluidSource && domain != nullptr) {
         // 新しい源は域の下寄りの球から上へ吹き、卷曲湍流で崩れる（そのまま翻卷して昇る烟になる値）。流体注入层は特效の
         // 位置で烟だけを入れる（力場を持たせると半径 0 の力場が場面の域全体を押すので付けない）。

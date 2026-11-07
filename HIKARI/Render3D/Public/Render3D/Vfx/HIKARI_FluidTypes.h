@@ -70,6 +70,17 @@ struct FluidDomainSettings {
     // 格ごとの色：流体源の層の色で注入した烟の色を流れと一緒に運び、散乱色と発光に掛ける（同じ域で色の違う烟が混ざらずに
     // 並ぶ）。密度の体積が 1 格 2 → 8 バイトになる。
     bool cellColor = false;
+    // 燃焼（NVIDIA Flow の燃焼模型に合わせる）：燃料は温度が ignitionTemperature を超えると毎秒
+    // burnRate × min(温度 - 点火温度, 1) の割合で燃え（燃料が尽きるまで）、燃えた量 1 あたり燃料を fuelPerBurn 使い、
+    // 温度を heatPerBurn 上げ、煤（烟の密度）を smokePerBurn 出し、毎秒 expansionPerBurn × 燃える速さだけ体積を
+    // 膨らませる（開いた境界の域だけ）。熱い煤は温度の色帯で光り（炎）、冷めると暗い烟になる。燃料の体積が 1 格 4 バイト増える。
+    bool combustion = false;
+    float ignitionTemperature = 0.5f;
+    float burnRate = 4.0f;
+    float fuelPerBurn = 1.0f;
+    float heatPerBurn = 3.0f;
+    float smokePerBurn = 0.6f;
+    float expansionPerBurn = 0.5f;
     float detailStrength = 0.5f;
     float detailScale = 0.25f;
     bool castShadows = true;
@@ -96,6 +107,8 @@ struct FluidSourceSettings {
     float emissionNoise = 0.0f;
     float emissionNoiseScale = 8.0f;
     FluidForceMode forceMode = FluidForceMode::Acceleration;
+    // 注入量のうち燃料になる割合（残りは烟）。燃焼の域だけ：1 で燃料だけを入れ、煤は燃えて生まれる（火の元）。
+    float fuelFraction = 0.0f;
 
     bool operator==(const FluidSourceSettings&) const = default;
 };
@@ -126,6 +139,13 @@ inline constexpr auto kFluidDomainSettingsFields = [](auto&& field) {
     field("emissionHotColor", &S::emissionHotColor, Color{}, Range{0.0, 1.0}, Group{"Look"});
     field("emissionHotTemperature", &S::emissionHotTemperature, Range{0.0, 10.0}, Group{"Look"});
     field("cellColor", &S::cellColor, Group{"Look"});
+    field("combustion", &S::combustion, Group{"Combustion"});
+    field("ignitionTemperature", &S::ignitionTemperature, Range{0.0, 10.0}, Group{"Combustion"});
+    field("burnRate", &S::burnRate, Range{0.0, 100.0}, Unit{"1/s"}, Group{"Combustion"});
+    field("fuelPerBurn", &S::fuelPerBurn, Range{0.01, 10.0}, Group{"Combustion"});
+    field("heatPerBurn", &S::heatPerBurn, Range{0.0, 50.0}, Group{"Combustion"});
+    field("smokePerBurn", &S::smokePerBurn, Range{0.0, 10.0}, Group{"Combustion"});
+    field("expansionPerBurn", &S::expansionPerBurn, Range{0.0, 10.0}, Group{"Combustion"});
     field("detailStrength", &S::detailStrength, Slider(0.0, 1.0), Group{"Look"});
     field("detailScale", &S::detailScale, Range{0.01, 100.0}, Unit{"m"}, Group{"Look"});
     field("castShadows", &S::castShadows, Group{"Look"});
@@ -146,6 +166,7 @@ inline constexpr auto kFluidSourceSettingsFields = [](auto&& field) {
     field("emissionNoise", &S::emissionNoise, Slider(0.0, 1.0), Group{"Emission Noise"});
     field("emissionNoiseScale", &S::emissionNoiseScale, Range{0.05, 500.0}, Unit{"m"}, Group{"Emission Noise"});
     field("forceMode", &S::forceMode, kFluidForceModeNames);
+    field("fuelFraction", &S::fuelFraction, Slider(0.0, 1.0), Group{"Combustion"});
 };
 
 // 流体を押すもの（場面の障碍物とゲームの押し）。障碍物は形の中の速度を自分の速度へ寄せ（Brinkman の罰則、投影の前）、
@@ -176,6 +197,9 @@ struct FluidInteraction {
     float strength = 0.0f;
     // 0 でなければ、向きの無い負の力（汇）が吸い込んだ烟の量を回読してこの値で返す（FluidSinkReport）。出した側が決める。
     uint64_t reportKey = 0u;
+    // 出した物と実例の鍵（FluidInteractionService が決める。0 は鍵なし）。子步の無いフレームを跨いで持ち越す注入は同じ鍵の
+    // 行へまとめ、1 つの注入が表の行を何行も取らない。
+    uint64_t key = 0u;
 };
 
 // 汇が吸い込んだ烟の量（1 フレームの子步ぶん、域を合わせて）。単位は密度 × m³。GPU の回読なので 1〜3 フレーム遅れる。

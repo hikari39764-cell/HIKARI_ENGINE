@@ -26,8 +26,43 @@ const std::vector<VfxPresetDescriptor>& GetVfxPresetCatalog() {
         {"style_comic", "Comic Print", "Styles", "Outline, limited tones and halftone dots"},
         {"style_hologram", "Hologram", "Styles", "Two-tone color, scanlines and chromatic separation"},
         {"style_heat", "Heat Haze", "Styles", "Evolving displacement and subtle chromatic separation"},
-        {"style_glow", "Soft Glow", "Styles", "Soft bright extraction and streaks"}};
+        {"style_glow", "Soft Glow", "Styles", "Soft bright extraction and streaks"},
+        {"fluid_fire", "Fire", "Fluid", "Burning fuel: glowing soot rises and cools into dark smoke"},
+        {"fluid_fire_wall", "Fire Wall", "Fluid", "Long strip of burning fuel"},
+        {"fluid_fireball", "Fireball", "Fluid",
+         "Self-contained burning ball that follows the effect (fly it with velocity)"},
+        {"fluid_ground_explosion", "Ground Explosion", "Fluid",
+         "Fuel burst on the ground: expanding fireball, dust and a rising smoke column"},
+        {"fluid_air_explosion", "Air Explosion", "Fluid",
+         "Fuel burst in the air: fireball that burns out into a rising mushroom of smoke"}};
     return presets;
+}
+
+void ApplyLayerKindDefaults(VfxEmitterData& emitter, VfxLayerKind kind) {
+    emitter.kind = kind;
+    if (kind != VfxLayerKind::Particles) {
+        emitter.renderShape.billboardMode = VfxBillboardMode::Fixed;
+        emitter.spawn.ratePerSecond = 0;
+        emitter.spawn.burstTimeline.clear();
+        emitter.renderCommon.colorTextureAssetGuid = {};
+    }
+    if (kind == VfxLayerKind::Fluid || kind == VfxLayerKind::FluidSource) {
+        // 流体の層は効果・模型出力・特殊出力・履歴・遮罩を持たない。
+        emitter.effects.clear();
+        emitter.specialOutputs.clear();
+        emitter.meshOutput.enabled = false;
+        emitter.history.mode = VfxHistoryMode::None;
+        emitter.matte = {};
+        // 層の色は烟の色と消光の倍率になるので、既定の層の寿命の色（淡くなる曲線）を使わず白の一定にする。
+        emitter.color.value.mode = VfxAnimatedColorMode::Fixed;
+        emitter.color.value.fixed = {
+            VfxDistributionMode::Constant, {1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f}, 0u};
+    }
+    if (kind == VfxLayerKind::FluidSource) {
+        emitter.spawn.ratePerSecond = 6.0f;
+        emitter.shape.type = VfxShapeType::Sphere;
+        emitter.shape.radius = {VfxDistributionMode::Constant, 0.35f, 0.35f, 0u};
+    }
 }
 
 const VfxPresetDescriptor* FindVfxPreset(std::string_view id) noexcept {
@@ -49,6 +84,8 @@ VfxAssetData MakeVfxPresetAsset(std::string_view id) {
         return INTERNAL::Beam();
     if (id == "fire_tornado")
         return INTERNAL::FireTornado();
+    if (preset->category == "Fluid")
+        return INTERNAL::FluidPreset(id);
     if (preset->category == "Compositions")
         return INTERNAL::SupportingComposition(id);
     return INTERNAL::ParticlePreset(id);

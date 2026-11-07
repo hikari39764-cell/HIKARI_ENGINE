@@ -12,20 +12,21 @@ namespace HIKARI::ASSETS::SHADER {
 
 inline constexpr std::string_view kFluidSimulationShaderProgram = "HIKARI.EngineShader.Render3D_FluidSimulation";
 inline constexpr std::string_view kFluidSimulationShaderRootCanonical =
-    "HIKARI.FluidSimulation.Root.v2|0:CBV(b0,Compute)|1:RootConstants(b1,space0,8,Compute)|"
+    "HIKARI.FluidSimulation.Root.v3|0:CBV(b0,Compute)|1:RootConstants(b1,space0,8,Compute)|"
     "2..5:SRVTable(t0..t3,count1,Compute)|6:SRV(t6,Compute)|7:UAVTable(u0,count1,Compute)|"
     "8:UAVTable(u1,count1,Compute)|9:UAVTable(u4,count1,Compute)|10:UAV(u5,Compute)|11:SRV(t7,Compute)|"
+    "12:UAVTable(u2,count1,Compute)|"
     "StaticSampler(s0,LinearClamp,Compute)|StaticSampler(s1,LinearBorderTransparentBlack,Compute)|Flags(None)";
 inline constexpr std::string_view kFluidSimulationShaderInterfaceCanonical =
-    "FluidDomainCB:112;uint4 size(cells,sourceCount),float4 cell(h,invH,dt,time),motion(boundary,vorticity,"
-    "buoyancy,weight),dissipation(density,temperature),up,inertia,uint4 interactionCount(count,activityOffset,sinkOffset,flags clear1 count2);FluidPassCB:32;uint4 passSize,"
+    "FluidDomainCB:144;uint4 size(cells,sourceCount),float4 cell(h,invH,dt,time),motion(boundary,vorticity,"
+    "buoyancy,weight),dissipation(density,temperature),up,inertia,uint4 interactionCount(count,activityOffset,sinkOffset,flags clear1 count2),combustion0(ignition,burnRate,fuelPerBurn,heatPerBurn),combustion1(smokePerBurn,expansionPerBurn,enabled);FluidPassCB:32;uint4 passSize,"
     "passParams(color,sliceField,sliceAxis,sliceIndex|statsOffset);FluidSource:304 rows toSource[3],toDomain[3],"
     "shape,shape2,emission,velocity,field0,field1,field2,wind,guide,flow(expansion),sweep(back,exposure),"
-    "bounds(center,radius 0 all),color(rgb) sphere inner radius shell,shape guide advects density only (not projected),"
+    "bounds(center,radius 0 all),color(rgb,fuelFraction) sphere inner radius shell,shape guide advects density only (not projected),"
     "mask/emission/activity use the substep-swept shape times exposure, sources skip cells outside bounds;FluidInteraction:112 toLocal[3],extents(kind 0 obstacle 1 impulse 2 force 3 emit; emit y temperature),"
     "velocity(shape),push(center,strength),sweep(emit segment,exposure) obstacle Brinkman after forces,directed push accel falloff^2,"
     "radial push open-boundary expansion 30S/R falloff^2 and source outflow*area/volume*mask in rhs;MAC velocity RGBA16F (n+1)^3 xyz lower face "
-    "w cell temperature;density R16F n^3 or RGBA16F n^3 (x density,yzw density*color advected with density, source adds rate*color, emit white);pressure/rhs R32F multigrid A P=sum-kP=D h^2 coarse rhs 4*mean residual,prolong trilinear with open-boundary sign-flipped ghosts;"
+    "w cell temperature;density R16F n^3 or RGBA16F n^3 (x density,yzw density*color advected with density, source adds rate*color, emit white);fuel RG16F n^3 x2 or 1^3 placeholder (x fuel advected forward only,y burn rate 1/s): burn=min(burnRate*min(T-ignition,1)*dt,fuel/fuelPerBurn),fuel-=fuelPerBurn*burn,T+=heat*burn,soot+=smoke*burn,rhs expansion+=expansionPerBurn*burnRate (open boundary),occupancy max(density,fuel);pressure/rhs R32F multigrid A P=sum-kP=D h^2 coarse rhs 4*mean residual,prolong trilinear with open-boundary sign-flipped ghosts;"
     "stats raw: brick max density f32 then (maxAbsDivergence,densitySum) f32x2 per 8^3 brick then activity u32 "
     "(1 active) then sink removed f32 per interaction row (32);emit adds strength*falloff^2 around its swept segment times exposure density/s and activates bricks;inactive bricks skip advection,curl and forces (velocity copied,density 0),pressure solved densely";
 
@@ -33,9 +34,9 @@ inline ShaderAssetContractExpectation MakeFluidSimulationShaderContract(
     ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = "HIKARI.FluidSimulation";
-    contract.engineInterfaceVersion = 12u;
+    contract.engineInterfaceVersion = 13u;
     contract.rootLayoutId = "HIKARI.FluidSimulation.Root";
-    contract.rootLayoutVersion = 2u;
+    contract.rootLayoutVersion = 3u;
     contract.availableDeviceCaps = availableCaps;
     if (!HASH::ComputeSha256(kFluidSimulationShaderInterfaceCanonical, contract.engineInterfaceHash) ||
         !HASH::ComputeSha256(kFluidSimulationShaderRootCanonical, contract.rootLayoutHash)) {
@@ -54,7 +55,7 @@ inline bool IsFluidSimulationBindingAllowed(const ShaderResourceBinding& binding
     case Kind::ShaderResource:
         return binding.registerIndex <= 3u || binding.registerIndex == 6u || binding.registerIndex == 7u;
     case Kind::UnorderedAccess:
-        return binding.registerIndex <= 1u || binding.registerIndex == 4u || binding.registerIndex == 5u;
+        return binding.registerIndex <= 2u || binding.registerIndex == 4u || binding.registerIndex == 5u;
     case Kind::Sampler: return binding.registerIndex <= 1u;
     }
     return false;

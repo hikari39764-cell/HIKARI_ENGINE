@@ -36,8 +36,8 @@ bool IsSink(const FluidInteraction& interaction) noexcept {
            interaction.direction.x == 0.0f && interaction.direction.y == 0.0f && interaction.direction.z == 0.0f;
 }
 
-// (owner, instance) から回読の鍵（0 にはしない）。
-uint64_t SinkKey(uint64_t owner, uint64_t instance) noexcept {
+// (owner, instance) から押すものの鍵（汇の回読と、持ち越す注入をまとめる鍵。0 にはしない）。
+uint64_t InteractionKey(uint64_t owner, uint64_t instance) noexcept {
     uint64_t h = owner * 0x9e3779b97f4a7c15ull ^ (instance + 0x632be59bd9b4e019ull);
     h = (h ^ (h >> 30u)) * 0xbf58476d1ce4e5b9ull;
     h = (h ^ (h >> 27u)) * 0x94d049bb133111ebull;
@@ -154,12 +154,15 @@ std::span<const FluidInteraction> FluidInteractionService::PrepareFrame(const Wo
         }
         FluidInteraction& prepared = prepared_[preparedCount++];
         prepared = interaction;
+        // 組件の形と項目の押しは別の鍵（同じ物・同じ実例番号でも混ぜない）。
+        prepared.key = InteractionKey(entry.owner, entry.instance * 2u +
+                                                       (entry.source == FluidInteractionSource::Project ? 1u : 0u));
         // プロジェクトの汇は回読の鍵を付ける（累計の表が一杯なら数えない）。
         if (entry.source == FluidInteractionSource::Project && IsSink(interaction)) {
             Sink* sink = FindSink(entry.owner, entry.instance);
             if (sink == nullptr && sinkCount_ < sinks_.size()) {
                 sink = &sinks_[sinkCount_++];
-                *sink = {entry.owner, entry.instance, SinkKey(entry.owner, entry.instance), 0.0, frameIndex};
+                *sink = {entry.owner, entry.instance, InteractionKey(entry.owner, entry.instance), 0.0, frameIndex};
             }
             if (sink != nullptr) {
                 sink->lastFrame = frameIndex;

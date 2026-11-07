@@ -75,6 +75,8 @@ struct FluidDomainResources {
     FluidGridLayout layout{};
     std::array<FluidVolume, 3> velocity{};
     std::array<FluidVolume, 3> density{};
+    // 燃料（RG16F：x 燃料、y この子步の燃える速さ [1/s]）。子步の頭は fuel[0]（燃焼の無い域は 1 格の置き場）。
+    std::array<FluidVolume, 2> fuel{};
     std::vector<FluidVolume> pressure{};
     std::vector<FluidVolume> rhs{};
     // 描画の光照体積（格子の半分の分辨率、RGBA16F：x 太陽への光学的な厚さ、y 空への光学的な厚さ、z 近くの遮り）。
@@ -137,7 +139,7 @@ void RetireFluidDomainResources(const GFX::Context& context, FluidDomainResource
 // 解算の活動状態）はいつも束ねる。
 struct FluidPassBindings {
     std::array<FluidVolume*, 4> inputs{};
-    std::array<FluidVolume*, 2> outputs{};
+    std::array<FluidVolume*, 3> outputs{};
     D3D12_GPU_VIRTUAL_ADDRESS sources = 0u;
     D3D12_GPU_VIRTUAL_ADDRESS interactions = 0u;
     FluidVolume* slice = nullptr;

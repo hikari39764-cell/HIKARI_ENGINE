@@ -219,8 +219,9 @@ FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::
     const float reach = FluidSourceReach(source, cellSize);
     const MATH::Vec3 center = RotateToFluidLocal(domainRotation, source.worldPosition - domainPosition);
     set(17, center.x, center.y, center.z, std::isfinite(reach) ? reach + MATH::Length(sweep) : 0.0f);
-    // 注入する烟の色（cellColor の域では密度 × 色を足す。R16 の域では捨てられる）。
-    set(18, (std::max)(source.color.x, 0.0f), (std::max)(source.color.y, 0.0f), (std::max)(source.color.z, 0.0f), 0.0f);
+    // 注入する烟の色（cellColor の域では密度 × 色を足す。R16 の域では捨てられる）と、注入量のうち燃料になる割合。
+    set(18, (std::max)(source.color.x, 0.0f), (std::max)(source.color.y, 0.0f), (std::max)(source.color.z, 0.0f),
+        std::clamp(source.settings.fuelFraction, 0.0f, 1.0f));
     return gpu;
 }
 
