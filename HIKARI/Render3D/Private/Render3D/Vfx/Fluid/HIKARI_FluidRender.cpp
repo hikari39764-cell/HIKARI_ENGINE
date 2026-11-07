@@ -31,7 +31,7 @@ struct alignas(16) RenderDomainGpu {
 static_assert(sizeof(RenderDomainGpu) == 144u);
 
 struct alignas(16) RenderConstants {
-    MATH::Mat4 invViewProj{};
+    MATH::Mat4 invRelativeViewProj{};
     float camera[4];
     float forward[4];
     float size[4];
@@ -139,7 +139,7 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     upload.ResetForFrame(context.currentFrameRetireFenceValue);
 
     RenderConstants constants{};
-    constants.invViewProj = view.invViewProj;
+    constants.invRelativeViewProj = view.invRelativeViewProj;
     Set4(constants.camera, view.cameraPosition.x, view.cameraPosition.y, view.cameraPosition.z, 0.0f);
     Set4(constants.forward, view.cameraForward.x, view.cameraForward.y, view.cameraForward.z, 0.0f);
     const uint32_t halfWidth = (view.renderWidth + 1u) / 2u, halfHeight = (view.renderHeight + 1u) / 2u;
@@ -421,15 +421,30 @@ LIGHTING::CloudSolarVisibilityGpuData FluidRenderer::RenderSolarVisibility(const
 
 namespace HIKARI::RENDER3D::FLUID {
 
+MATH::Mat4 MakeCameraRelativeViewProj(const MATH::Mat4& view, const MATH::Mat4& projection, float clipJitterX,
+                                      float clipJitterY) noexcept {
+    MATH::Mat4 rotation = view;
+    rotation.m[3][0] = 0.0f;
+    rotation.m[3][1] = 0.0f;
+    rotation.m[3][2] = 0.0f;
+    MATH::Mat4 relative = projection * rotation;
+    // 抖动は clip の x、y に w を掛けて足す（TemporalFrameState の ApplyClipSpaceJitter と同じ）。
+    for (int column = 0; column < 4; ++column) {
+        relative.m[column][0] += clipJitterX * relative.m[column][3];
+        relative.m[column][1] += clipJitterY * relative.m[column][3];
+    }
+    return relative;
+}
+
 FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey,
-                                    const MATH::Mat4& invViewProj, const MATH::Vec3& cameraPosition) {
+                                    const MATH::Mat4& relativeViewProj, const MATH::Vec3& cameraPosition) {
     FluidRenderView view{};
     view.viewKey = viewKey;
-    view.invViewProj = invViewProj;
+    view.invRelativeViewProj = MATH::Inverse(relativeViewProj);
     view.cameraPosition = cameraPosition;
     // 前方は近い面と遠い面の画面中心の差（透視と直交のどちらでも同じ式）。
-    const MATH::Vec3 nearCenter = MATH::TransformPoint(invViewProj, {0.0f, 0.0f, 0.0f});
-    const MATH::Vec3 farCenter = MATH::TransformPoint(invViewProj, {0.0f, 0.0f, 1.0f});
+    const MATH::Vec3 nearCenter = MATH::TransformPoint(view.invRelativeViewProj, {0.0f, 0.0f, 0.0f});
+    const MATH::Vec3 farCenter = MATH::TransformPoint(view.invRelativeViewProj, {0.0f, 0.0f, 1.0f});
     view.cameraForward = MATH::Normalize(farCenter - nearCenter);
     const ATMOSPHERE::AtmosphereSolarState solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
     view.sunDirection = solar.sunDirection;

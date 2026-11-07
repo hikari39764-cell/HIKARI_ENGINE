@@ -14,7 +14,7 @@
 
 cbuffer FluidRenderCB : register(b0)
 {
-    float4x4 gInvViewProj;
+    float4x4 gInvRelativeViewProj; // 相機を原点に置いた逆 view-projection（clip → 相機からの相対位置）
     float4 gCamera;          // xyz 相機の位置
     float4 gForward;         // xyz 相機の前、w 未使用
     float4 gSize;            // xy 半分辨率の大きさ、zw 描画の大きさ
@@ -73,10 +73,13 @@ float DomainRho(HikariFluidDomain domain, Texture3D<float4> density, float3 grid
 }
 
 // ---------------------------------------------------------------- 視線（体積雾と同じ再構成）
+// 相機を原点にして組み立ててから相機の位置を足す（世界の逆行列を float で使うと、浮島の高さ y≈3400 m では向きが
+// 相機の位置につれて数画素ずつ跳び、歩くと烟だけが場面に対して一顿一顿と揺れた）。
 void ViewRay(float2 uv, out float3 origin, out float3 direction)
 {
     bool orthographic;
-    HikariReconstructVolumeRay(uv, gInvViewProj, gCamera.xyz, origin, direction, orthographic);
+    HikariReconstructVolumeRay(uv, gInvRelativeViewProj, 0.0f.xxx, origin, direction, orthographic);
+    origin += gCamera.xyz;
 }
 
 // 場面の深度（device）を視線の距離へ。空は大きな値。
@@ -84,7 +87,7 @@ float SceneDistance(float2 uv, float depth, float3 origin, float3 direction)
 {
     if (depth >= 0.999999f)
         return 1.0e7f;
-    return dot(HikariUnprojectVolumePosition(uv, depth, gInvViewProj) - origin, direction);
+    return dot(HikariUnprojectVolumePosition(uv, depth, gInvRelativeViewProj) - (origin - gCamera.xyz), direction);
 }
 
 // ---------------------------------------------------------------- 介質

@@ -101,9 +101,11 @@ struct FluidVolumePassStats {
 
 // 描く視図（主視図と編集器の視図）。行列は場面の深度と同じ（抖动込みの）描画格子。光は絶対量で、前露光は preExposure。
 // 時間方向の履歴は持たないので、前のフレームの行列は要らない。
+// 行列は相機を原点に置いた逆 view-projection（clip → 相機からの相対位置）。世界の view-projection を float で逆にすると、
+// 座標の大きい所（浮島は y≈3400 m）で視線の向きが相機の位置につれて数画素ずつ跳び、場面に対して烟が一顿一顿と揺れた。
 struct FluidRenderView {
     uint64_t viewKey = 0u;
-    MATH::Mat4 invViewProj{};
+    MATH::Mat4 invRelativeViewProj{};
     MATH::Vec3 cameraPosition{};
     MATH::Vec3 cameraForward{0.0f, 0.0f, 1.0f};
     uint32_t renderWidth = 0u;
@@ -135,10 +137,15 @@ struct FluidFlowView {
     std::array<D3D12_GPU_DESCRIPTOR_HANDLE, kMaximumFluidFlowDomains> velocity{};
 };
 
-// 視図の行列・相機の位置と場面の環境から、相機と光（大気を通った地表の太陽、空の環境光、今の露出）と画質を埋める。
-// 帧图の主視図と編集器の視図が共用し、描画の大きさ・深度・色の形式は呼ぶ側が足す。
+// 相機を原点に置いた view-projection：view の平行移動を除いた回転と投影だけ（大きな座標を含まない）。clipJitter は
+// 場面の描画と同じ clip の抖动（TemporalCameraData::jitter の zw、抖动なしは 0）。
+MATH::Mat4 MakeCameraRelativeViewProj(const MATH::Mat4& view, const MATH::Mat4& projection, float clipJitterX = 0.0f,
+                                      float clipJitterY = 0.0f) noexcept;
+
+// 相機を原点に置いた view-projection・相機の位置と場面の環境から、相機と光（大気を通った地表の太陽、空の環境光、今の
+// 露出）と画質を埋める。帧图の主視図と編集器の視図が共用し、描画の大きさ・深度・色の形式は呼ぶ側が足す。
 FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey,
-                                    const MATH::Mat4& invViewProj, const MATH::Vec3& cameraPosition);
+                                    const MATH::Mat4& relativeViewProj, const MATH::Vec3& cameraPosition);
 
 struct FluidFrameSettings {
     FluidSmokeQuality quality = FluidSmokeQuality::Balanced;
