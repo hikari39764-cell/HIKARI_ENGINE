@@ -13,9 +13,10 @@ struct HikariFluidDomain
     float4 cells;     // xyz 格の数、w 格の大きさ [m]
     float4 look;      // xyz 散乱の色（色の倍率込み）、w 密度 1 の消光 [1/m]
     float4 emission;  // xyz 発光の色 × 強さ、w 起亮温度
+    float4 emissionHot; // xyz 熱い端の色 × 強さ、w 熱い端の温度（起亮温度以下なら一色）
     float4 optics;    // x 各向異性、y 多重散乱、z 環境光の強さ、w 細部の強さ
-    float4 detail;    // x 細部の模様の繰り返し [1/m]（1 周期に 4 つの模様）、y 細部の流れの時間 [s]、z 開いた境界で密度を消す縁の幅 [格]（0 で消さない）、w 未使用
-    float4 sun;       // xyz 太陽の向き（格子座標、正規化）、w 未使用
+    float4 detail;    // x 細部の模様の繰り返し [1/m]（1 周期に 4 つの模様）、y 細部の流れの時間 [s]、z 開いた境界で密度を消す縁の幅 [格]（0 で消さない）、w 最後の子步の後に貯まった時間 [s]（子步 1 つ以下。流れに沿って外推する分）
+    float4 sun;       // xyz 太陽の向き（格子座標、正規化）、w 1 なら格ごとの色（密度の yzw が密度 × 色）
 };
 
 float3 HikariFluidToGrid(HikariFluidDomain domain, float3 world)
@@ -37,13 +38,22 @@ float2 HikariFluidBoxInterval(float3 origin, float3 direction, float3 cells)
 
 bool HikariFluidInside(float3 grid, float3 cells) { return all(grid >= 0.0f) && all(grid <= cells); }
 
-// 開いた境界の域は外へ出ていく烟が域の面で切れて箱の形が見えないよう、面に近い格で密度を 0 へ寄せる。
+// 開いた面から外へ出ていく烟が面で切れて箱の形が見えないよう、開いた面に近い 4 格で密度を 0 へ寄せる。detail.z は
+// 開いた面の印（bit 0 −x、1 +x、2 −y、3 +y、4 −z、5 +z）。閉じた面（床・壁）の近くは消さない。
 float HikariFluidEdgeFade(HikariFluidDomain domain, float3 grid)
 {
-    if (domain.detail.z <= 0.0f)
+    const uint open = (uint)(domain.detail.z + 0.5f);
+    if (open == 0u)
         return 1.0f;
-    const float3 edge = min(grid, domain.cells.xyz - grid);
-    return smoothstep(0.0f, domain.detail.z, min(edge.x, min(edge.y, edge.z)));
+    float edge = 4.0f;
+    [unroll] for (uint axis = 0u; axis < 3u; ++axis)
+    {
+        if (((open >> (axis * 2u)) & 1u) != 0u)
+            edge = min(edge, grid[axis]);
+        if (((open >> (axis * 2u + 1u)) & 1u) != 0u)
+            edge = min(edge, domain.cells[axis] - grid[axis]);
+    }
+    return smoothstep(0.0f, 4.0f, edge);
 }
 
 // 何度も散乱して届く光の割合（拡散近似）：光学的な厚さ τ の烟を、まっすぐ来る光は exp(-τ) しか通らないが、散乱を
@@ -84,10 +94,14 @@ float HikariFluidSkyVisibility(float skyTransmittance, float multiple, float ani
                multiple * openness * HikariFluidDiffuseLight(skyTransmittance, anisotropy));
 }
 
-// 温度から発光（起亮温度で 0、そこから 1 だけ上で全強度）。
+// 温度から発光（起亮温度で 0、そこから 1 だけ上で全強度）。色は起亮温度の emission から熱い端の温度の emissionHot へ
+// 線形に変わる（火の赤 → 橙 → 白黄の芯）。
 float3 HikariFluidEmission(HikariFluidDomain domain, float temperature)
 {
-    return domain.emission.xyz * saturate(temperature - domain.emission.w);
+    const float ignition = domain.emission.w;
+    const float span = domain.emissionHot.w - ignition;
+    const float t = span > 1.0e-4f ? saturate((temperature - ignition) / span) : 0.0f;
+    return lerp(domain.emission.xyz, domain.emissionHot.xyz, t) * saturate(temperature - ignition);
 }
 
 #endif

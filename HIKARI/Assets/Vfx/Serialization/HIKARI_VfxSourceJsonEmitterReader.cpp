@@ -205,7 +205,9 @@ bool ReadSpecialOutput(const Json& node, VfxSpecialOutputData& output) {
             !OptionalFloat(*profile, "flickerFrequency", value.flickerFrequency) ||
             !OptionalFloat(*profile, "flickerAmplitude", value.flickerAmplitude) ||
             !OptionalUint32(*profile, "priority", value.priority) ||
-            !OptionalBool(*profile, "castsShadows", value.castsShadows)) {
+            !OptionalBool(*profile, "castsShadows", value.castsShadows) ||
+            !OptionalBool(*profile, "followFluidGlow", value.followFluidGlow) ||
+            !OptionalFloat(*profile, "glowShare", value.glowShare)) {
             return false;
         }
     }
@@ -246,7 +248,12 @@ bool ReadHistory(const Json& node, VfxHistoryData& history) {
 bool ReadSpawn(const Json& node, VfxSpawnModuleData& spawn) {
     if (!RequiredFloat(node, "ratePerSecond", spawn.ratePerSecond) ||
         !RequiredEnum(node, "capacityMode", kVfxParticleCapacityModeNames, spawn.capacityMode) ||
-        !RequiredUint32(node, "maximumParticles", spawn.maximumParticles)) {
+        !RequiredUint32(node, "maximumParticles", spawn.maximumParticles) ||
+        !OptionalString(node, "eventSourceLayerId", spawn.eventSourceLayerId) ||
+        !OptionalEnum(node, "eventKind", kVfxParticleEventKindNames, spawn.eventKind) ||
+        !OptionalUint32(node, "particlesPerEvent", spawn.particlesPerEvent) ||
+        !OptionalFloat(node, "inheritVelocity", spawn.inheritVelocity) ||
+        !OptionalFloat(node, "minimumImpactSpeed", spawn.minimumImpactSpeed)) {
         return false;
     }
     const auto timeline = node.find("burstTimeline");
@@ -288,6 +295,8 @@ bool ReadForces(const Json& node, VfxForcesModuleData& forces) {
     if (!RequiredVec3(node, "gravity", forces.gravity) || !RequiredFloat(node, "drag", forces.drag) ||
         !OptionalBool(node, "collisionPlaneEnabled", forces.collisionPlaneEnabled) ||
         !OptionalFloat(node, "collisionPlaneHeight", forces.collisionPlaneHeight) ||
+        !OptionalBool(node, "sceneDepthCollision", forces.sceneDepthCollision) ||
+        !OptionalFloat(node, "collisionThickness", forces.collisionThickness) ||
         !OptionalFloat(node, "restitution", forces.restitution) || !OptionalFloat(node, "friction", forces.friction) ||
         !OptionalFloat(node, "fluidFollow", forces.fluidFollow)) {
         return false;

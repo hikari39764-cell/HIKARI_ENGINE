@@ -58,8 +58,11 @@ public:
                                                          },
                                                          "VFX Player", std::string(RuntimeFeatureIds::Vfx)}) &&
                   success;
-        success = componentSystemPolicy.Register(ComponentSystemRule{"VfxPlayerComponent", "VfxPlayerSystem", 180}) &&
-                  success;
+        // 98: PreRender before ModelRenderSystem (100), which advances
+        // VfxPlaybackService, so slot plays and follow transforms land in the
+        // same frame after every LateUpdate.
+        success =
+            componentSystemPolicy.Register(ComponentSystemRule{"VfxPlayerComponent", "VfxPlayerSystem", 98}) && success;
 
         ComponentTypeInfo obstacle{};
         obstacle.typeName = "FluidObstacleComponent";

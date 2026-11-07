@@ -50,7 +50,12 @@ void VfxPlayerSystem::OnWorldDetached(World&) {
     runtimePlayState_ = nullptr;
 }
 
-void VfxPlayerSystem::Update(World& world, const FrameContext& frame) {
+void VfxPlayerSystem::PreRender(World& world, const FrameContext& frame) {
+    // A frame may render more than once (bake passes); slot commands and
+    // event triggers are consumed on the first pass only.
+    if (lastFrameIndex_ == frame.frameIndex)
+        return;
+    lastFrameIndex_ = frame.frameIndex;
     if (playbackService_ == nullptr || bindingStore_ == nullptr || runtimePlayState_ == nullptr ||
         !runtimePlayState_->IsActive()) {
         for (auto& [key, state] : states_) {
@@ -58,11 +63,6 @@ void VfxPlayerSystem::Update(World& world, const FrameContext& frame) {
             StopState(state);
         }
         states_.clear();
-        // RenderSubmissionSystem owns the world-service tick even when
-        // the component-driven slot system is inactive. Do not publish
-        // a zero-delta update here: it would consume this frame's
-        // de-duplication token and make the later presentation tick drop
-        // the actual game delta for public VfxView playback.
         return;
     }
 
@@ -125,7 +125,6 @@ void VfxPlayerSystem::Update(World& world, const FrameContext& frame) {
             ++found;
         }
     }
-    playbackService_->Update(frame.frameIndex, frame.gameDt);
 }
 
 const VfxPlayerSystemAdmissionStats& VfxPlayerSystem::GetAdmissionStats() const noexcept { return admissionStats_; }

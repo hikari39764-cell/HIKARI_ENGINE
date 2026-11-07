@@ -80,15 +80,16 @@ inline constexpr std::string_view kClusterCullingRootLayoutCanonical =
     "10:SRV(t0,space8,All)|MeshletDispatchSlots(PassBucket)|Pipeline(Compute)|Flags(None)";
 
 inline constexpr std::string_view kParticleSimulationRootLayoutId = "HIKARI.RenderGeometry.ParticleSimulation.Root";
-inline constexpr uint32_t kParticleSimulationRootLayoutVersion = 2u;
+inline constexpr uint32_t kParticleSimulationRootLayoutVersion = 4u;
 inline constexpr std::string_view kParticleSimulationRootLayoutHash =
-    "c0b78ddd26e3ce4c1d9cbe1454369c5229019bca5b9325f9e07c8232c85cd4df";
+    "64e7c7b7cf7c5a5f9d860955cddec6c029d96434920ac4728cda800350d47be5";
 inline constexpr std::string_view kParticleSimulationRootLayoutCanonical =
-    "HIKARI.RenderGeometry.ParticleSimulation.Root.v2|"
+    "HIKARI.RenderGeometry.ParticleSimulation.Root.v4|"
     "0:Table(UAV(u0,space0,count1),All)|1:SRV(t0,space0,All)|"
     "2:Constants(b0,space0,count8,All)|3:Table(SRV(t1,space0,count1),All)|4:Table(SRV(t2,space0,count1),All)|"
     "5:Table(SRV(t3,space0,count1),All)|6:Table(SRV(t4,space0,count1),All)|7:CBV(b1,space0,All)|"
-    "StaticSampler(s0,LinearClamp,All)|Pipeline(Compute)|Flags(None)";
+    "8:Table(SRV(t5,space0,count1),All)|9:CBV(b2,space0,All)|10:Table(UAV(u1,space0,count1),All)|"
+    "11:UAV(u2,space0,All)|StaticSampler(s0,LinearClamp,All)|Pipeline(Compute)|Flags(None)";
 
 inline constexpr std::string_view kParticleCompactionRootLayoutId = "HIKARI.RenderGeometry.ParticleCompaction.Root";
 inline constexpr uint32_t kParticleCompactionRootLayoutVersion = 2u;
@@ -368,7 +369,9 @@ inline bool IsRenderGeometryEntryIdentityValid(std::string_view programId, Rende
         }
         return false;
     case RenderGeometryRootLayout::ParticleSimulation:
-        return (id == "ResetCS" || id == "SpawnCS" || id == "UpdateCS") && entry.entry.entry == id;
+        return (id == "ResetCS" || id == "SpawnCS" || id == "UpdateCS" || id == "CollisionDepthCS" ||
+                id == "EventClearCS" || id == "EventSpawnCS") &&
+               entry.entry.entry == id;
     case RenderGeometryRootLayout::ParticleCompaction:
         return (id == "BuildDrawArgsCS" || id == "CompactDrawCS" || id == "ResetDrawCS") && entry.entry.entry == id;
     case RenderGeometryRootLayout::ParticleDraw:
@@ -463,12 +466,13 @@ inline bool IsRenderGeometryBindingAllowed(RenderGeometryRootLayout layout,
                 (binding.registerIndex <= 1u || (binding.registerIndex >= 3u && binding.registerIndex <= 7u)) &&
                 binding.count == 1u);
     case RenderGeometryRootLayout::ParticleSimulation:
-        return (binding.kind == Kind::ConstantBuffer && binding.registerSpace == 0u && binding.registerIndex <= 1u &&
+        return (binding.kind == Kind::ConstantBuffer && binding.registerSpace == 0u && binding.registerIndex <= 2u &&
                 binding.count == 1u) ||
-               (binding.kind == Kind::ShaderResource && binding.registerSpace == 0u && binding.registerIndex <= 4u &&
+               (binding.kind == Kind::ShaderResource && binding.registerSpace == 0u && binding.registerIndex <= 5u &&
                 binding.count == 1u) ||
                MatchesRenderGeometryBinding(binding, Kind::Sampler, 0u, 0u) ||
-               MatchesRenderGeometryBinding(binding, Kind::UnorderedAccess, 0u, 0u);
+               (binding.kind == Kind::UnorderedAccess && binding.registerSpace == 0u && binding.registerIndex <= 2u &&
+                binding.count == 1u);
     case RenderGeometryRootLayout::ParticleCompaction:
         return MatchesRenderGeometryBinding(binding, Kind::ConstantBuffer, 0u, 1u) ||
                (binding.kind == Kind::UnorderedAccess && binding.registerSpace == 0u && binding.registerIndex <= 3u &&
@@ -525,12 +529,12 @@ inline bool ValidateRenderGeometryShaderArtifact(const ShaderCookedArtifact& art
     const size_t expectedEntryCount =
         rootLayout == RenderGeometryRootLayout::ParticleDraw
             ? (artifact.programId == "HIKARI.EngineShader.Render3D_ParticleGpuDrivenRaster" ? 2u : 4u)
-        : rootLayout == RenderGeometryRootLayout::ParticleSimulation ||
-                rootLayout == RenderGeometryRootLayout::ParticleCompaction
-            ? 3u
-        : rootLayout == RenderGeometryRootLayout::WorldSpriteDraw ? 6u
-        : rootLayout == RenderGeometryRootLayout::WorldTextDraw   ? 2u
-                                                                  : 1u;
+        : rootLayout == RenderGeometryRootLayout::ParticleSimulation
+            ? 6u // Reset、Update、Spawn、CollisionDepth、Event*
+        : rootLayout == RenderGeometryRootLayout::ParticleCompaction ? 3u
+        : rootLayout == RenderGeometryRootLayout::WorldSpriteDraw    ? 6u
+        : rootLayout == RenderGeometryRootLayout::WorldTextDraw      ? 2u
+                                                                     : 1u;
     if (artifact.entries.size() != expectedEntryCount) {
         outDiagnostic = "RenderGeometry artifact entry count is invalid";
         return false;

@@ -34,10 +34,11 @@ struct FluidRenderDomain {
     FluidDomainSettings settings{};
     MATH::Vec4 colorMultiplier{1.0f, 1.0f, 1.0f, 1.0f};
     float simulationSeconds = 0.0f;
+    // 最後の子步からこのフレームまでに貯まったゲーム時間 [s]（子步 1 つより短い）。描く時に流れに沿ってこの分だけ密度を
+    // 進め、子步の無いフレームで烟が止まって次のフレームで跳ぶのを無くす（解算は固定の子步のまま）。
+    float pendingSeconds = 0.0f;
     // 局部空間の域が世界で動く速さ（世界空間の域は 0）。速度体積は域に対する流れなので、粒子が乗る時に足す。
     MATH::Vec3 frameVelocity{};
-    // 域を作り直した回数（描く域の組と合わせて履歴の有効性を決める）。
-    uint32_t generation = 0u;
 };
 
 class FluidRenderer final {
@@ -59,7 +60,7 @@ public:
     void Shutdown(const GFX::Context& context);
 
 private:
-    // Render3D_FluidVolume.hlsl の根の並び：b0、b1、入力 t0..t17（1 つずつの表、kFirstInput + 入力の番号）、出力 u0（体積）
+    // Render3D_FluidVolume.hlsl の根の並び：b0、b1、入力 t0..t16（1 つずつの表、kFirstInput + 入力の番号）、出力 u0（体積）
     // と u1（烟の影の表）。
     static constexpr UINT kConstants = 0u;
     static constexpr UINT kPassConstants = 1u;
@@ -70,24 +71,25 @@ private:
     static constexpr UINT kSceneDepth = 12u;
     static constexpr UINT kInputColor = 13u;
     static constexpr UINT kInputDepth = 14u;
-    static constexpr UINT kHistoryColor = 15u;
-    static constexpr UINT kNoise = 16u;
-    static constexpr UINT kShadow = 17u;
-    static constexpr UINT kInputCount = 18u;
+    static constexpr UINT kNoise = 15u;
+    static constexpr UINT kShadow = 16u;
+    static constexpr UINT kInputCount = 17u;
     static constexpr UINT kOutput = kFirstInput + kInputCount;
     static constexpr UINT kSolarOutput = kOutput + 1u;
     static constexpr UINT kRootCount = kSolarOutput + 1u;
     static constexpr D3D12_RESOURCE_STATES kRead =
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     static constexpr DXGI_FORMAT kColorFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    // 步进の 2 枚目：x 止めた不透明面の距離、y 烟の平均距離。
     static constexpr DXGI_FORMAT kDepthFormat = DXGI_FORMAT_R32G32_FLOAT;
+    // 体積霧の合成へ渡す烟の覆い（全解像度）：x 烟の平均距離 [m]、y 不透明度。
+    static constexpr DXGI_FORMAT kCoverageFormat = DXGI_FORMAT_R16G16_FLOAT;
     static constexpr uint32_t kNoiseSize = 64u;
     // 透明物体の相機体積：画面 16 px ごと、奥行き 32 層（near から対数）、各層 2 標本。
     static constexpr uint32_t kCameraVolumeTile = 16u;
     static constexpr uint32_t kCameraVolumeSlices = 32u;
     static constexpr float kCameraVolumeSamples = 2.0f;
     static constexpr float kCameraVolumeNear = 0.1f;
-    static constexpr float kHistoryWeight = 0.85f;
     // 烟の影の表：太陽に垂直な面の列の数（一辺）と、列の中の深さの段数。図集は 8 枚の横並び × 段数 / 8 行（雲と同じ）。
     static constexpr uint32_t kSolarResolution = 128u;
     static constexpr uint32_t kSolarSteps = 16u;
@@ -102,16 +104,12 @@ private:
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtvHeap{};
         Target marchColor{};
         Target marchDepth{};
-        std::array<Target, 2> history{};
+        Target coverage{};
         FluidVolume cameraVolume{};
         uint32_t width = 0u;
         uint32_t height = 0u;
-        uint32_t historyRead = 0u;
+        // 最後に描いたフレーム（しばらく描かない視図の資源を捨てる）。
         uint64_t lastFrame = UINT64_MAX;
-        // 前のフレームにこの視図を描いた行列（履歴の再投影）と、描いた域の組（域ごとに変わらない光照体積と作り直しの回数）。
-        MATH::Mat4 previousViewProj{};
-        uint64_t domainSignature = 0u;
-        bool historyValid = false;
     };
 
     // sceneColorFormat が UNKNOWN なら根と計算の PSO だけ（烟の影の表）。
@@ -129,8 +127,8 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> cameraVolume_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> solar_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> march_{};
-    Microsoft::WRL::ComPtr<ID3D12PipelineState> reconstruct_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> composite_{};
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> coverage_{};
     DXGI_FORMAT compositeFormat_ = DXGI_FORMAT_UNKNOWN;
     bool failed_ = false;
     FluidVolume noiseVolume_{};

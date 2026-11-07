@@ -78,6 +78,8 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
     CameraCB& cameraData = editorFrame.view.camera;
     const MATH::Vec3 cameraPosition = camera.GetPosition();
     const MATH::Mat4 viewProj = camera.GetViewProj();
+    // 流体の煙と粒子の場景深度碰撞が使う相機相対の viewProj（抖動なし）。
+    const MATH::Mat4 relativeViewProj = RENDER3D::FLUID::MakeCameraRelativeViewProj(camera.GetView(), camera.GetProj());
     FillCameraCB(viewProj, MATH::Inverse(viewProj), cameraPosition, screenWidth, screenHeight, cameraData);
     if (!settings.neutralLighting) {
         editorFrame.view.BuildLocalLights(lighting, camera, screenWidth, screenHeight);
@@ -125,7 +127,7 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
     }
     const uintptr_t sourceIdentity = reinterpret_cast<uintptr_t>(&sceneSource);
     SyncGpuDrivenSceneMaterialSources(graphics, sourceIdentity, sceneSource);
-    PrepareFluidFrame(graphics, settings.particleFrameSource);
+    PrepareFluidFrame(graphics, settings.particleFrameSource, cameraPosition);
     const RENDER3D::FLUID::FluidFlowView fluidFlow = gMeshRendererState.fluidPass.GetFlowView();
     if (!gMeshRendererState.particlePass.PrepareFrame(graphics, settings.particleFrameSource,
                                                       gMeshRendererState.gpuMaterialRegistry, &fluidFlow)) {
@@ -271,9 +273,8 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
     // 流体の煙：水の後、透明物体の前に重ねる（粒子は相機体積で手前の煙を受ける）。描けないフレームは煙だけを飛ばす。
     if (gMeshRendererState.fluidPass.HasRenderableDomains() && passResources.sceneDepth.IsSampleable() &&
         settings.sceneColorFormat != DXGI_FORMAT_UNKNOWN && settings.targetAccess.BeginDepthRead()) {
-        RENDER3D::FLUID::FluidRenderView fluidView = RENDER3D::FLUID::MakeFluidRenderView(
-            environment, view.viewId.value, viewProj, MATH::Inverse(viewProj), cameraPosition);
-        fluidView.historyValid = true;
+        RENDER3D::FLUID::FluidRenderView fluidView =
+            RENDER3D::FLUID::MakeFluidRenderView(environment, view.viewId.value, relativeViewProj, cameraPosition);
         fluidView.renderWidth = screenWidth;
         fluidView.renderHeight = screenHeight;
         fluidView.sceneDepthSrv = passResources.sceneDepth.srv;
@@ -301,7 +302,11 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
             MeshDrawPassKind::Forward, RENDER3D::MESHLET::MeshletPipelineKind::ForwardTransparent, layer, overrides);
         worldSpriteTransparentResult = gMeshRendererState.editorInteractive.worldSpritePass.ExecuteForwardTransparent(
             graphics, overrides.cameraAddress);
-        particleResult = ExecutePreparedParticleForwardTransparent(graphics, overrides.cameraAddress, passResources);
+        // 編集器の対話視図は自分の相機で描き、その深度も粒子の場景深度碰撞へ撮る（主視图より先に撮ったフレームは、
+        // この視図の深度で碰撞する）。
+        particleResult = ExecuteParticleForwardTransparent(
+            gMeshRendererState.particlePass, graphics, overrides.cameraAddress, cameraPosition, passResources,
+            gMeshRendererState.fluidPass.GetCameraVolume(), &relativeViewProj);
         worldTextTransparentResult = gMeshRendererState.editorInteractive.worldTextPass.ExecuteForwardTransparent(
             graphics, overrides.cameraAddress);
         settings.targetAccess.EndDepthRead();

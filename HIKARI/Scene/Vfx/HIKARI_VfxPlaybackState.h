@@ -26,6 +26,8 @@ struct VfxPlaybackService::Instance {
     uint32_t randomSeed = 0u;
     float elapsedSeconds = 0.0f;
     float timeScale = 1.0f;
+    // World velocity of the root (SetVelocity); Update moves transform.position by it.
+    MATH::Vec3 velocity{};
     std::optional<float> queuedSeek;
     std::vector<VfxValue> inputValues{};
     std::vector<EmitterState> emitterStates{};

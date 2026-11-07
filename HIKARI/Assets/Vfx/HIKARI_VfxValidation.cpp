@@ -371,10 +371,11 @@ void ValidateMotionModules(const VfxEmitterData& emitter, std::unordered_set<std
                                                                  : kMaxVfxLayerCurveKeys);
     if (!RENDER3D::PARTICLES::IsValidParticleForceField(emitter.forces.field) || !IsFinite(emitter.forces.gravity) ||
         !IsFinite(emitter.forces.drag) || emitter.forces.drag < 0.0f || emitter.forces.drag > 1000.0f ||
-        !IsFinite(emitter.forces.collisionPlaneHeight) || !IsFinite(emitter.forces.restitution) ||
-        emitter.forces.restitution < 0.0f || emitter.forces.restitution > 1.0f || !IsFinite(emitter.forces.friction) ||
-        emitter.forces.friction < 0.0f || emitter.forces.friction > 1.0f || !IsFinite(emitter.forces.fluidFollow) ||
-        emitter.forces.fluidFollow < 0.0f ||
+        !IsFinite(emitter.forces.collisionPlaneHeight) || !IsFinite(emitter.forces.collisionThickness) ||
+        emitter.forces.collisionThickness < 0.01f || emitter.forces.collisionThickness > 10.0f ||
+        !IsFinite(emitter.forces.restitution) || emitter.forces.restitution < 0.0f ||
+        emitter.forces.restitution > 1.0f || !IsFinite(emitter.forces.friction) || emitter.forces.friction < 0.0f ||
+        emitter.forces.friction > 1.0f || !IsFinite(emitter.forces.fluidFollow) || emitter.forces.fluidFollow < 0.0f ||
         emitter.forces.fluidFollow > RENDER3D::PARTICLES::kMaxParticleFluidFollow) {
         AddError(diagnostics, "Vfx.InvalidForcesModule", "particle gravity or drag is invalid", emitter.forces.id);
     }
@@ -535,6 +536,29 @@ void ValidateConnectAndMeshOutput(const VfxAssetData& asset, const VfxEmitterDat
     }
 }
 
+// 事件で生成する層：元は別の粒子層、自分は世界空間の粒子層、数と割合は範囲の中。
+void ValidateParticleEvents(const VfxEmitterData& emitter,
+                            const std::unordered_map<std::string, const VfxEmitterData*>& emitters,
+                            std::vector<VfxDiagnostic>& diagnostics) {
+    const VfxSpawnModuleData& spawn = emitter.spawn;
+    if (spawn.eventSourceLayerId.empty())
+        return;
+    const auto source = emitters.find(spawn.eventSourceLayerId);
+    if (source == emitters.end() || source->second->kind != VfxLayerKind::Particles ||
+        spawn.eventSourceLayerId == emitter.id)
+        AddError(diagnostics, "Vfx.InvalidEventSource", "particle events must come from another particle layer",
+                 emitter.id);
+    if (emitter.kind != VfxLayerKind::Particles || emitter.basic.localSimulation)
+        AddError(diagnostics, "Vfx.InvalidEventLayer",
+                 "a layer spawned from particle events must be world-space particles", emitter.id);
+    if (!TEXT::IsNamedEnum(kVfxParticleEventKindNames, spawn.eventKind) || spawn.particlesPerEvent == 0u ||
+        spawn.particlesPerEvent > kVfxParticlesPerEventMax || !std::isfinite(spawn.inheritVelocity) ||
+        spawn.inheritVelocity < 0.0f || spawn.inheritVelocity > 2.0f || !std::isfinite(spawn.minimumImpactSpeed) ||
+        spawn.minimumImpactSpeed < 0.0f || spawn.minimumImpactSpeed > 100.0f)
+        AddError(diagnostics, "Vfx.InvalidEventSpawn", "particle event spawn values are outside their ranges",
+                 emitter.id);
+}
+
 void ValidateSpecialOutputs(const VfxEmitterData& emitter, std::unordered_set<std::string>& ids,
                             std::vector<VfxDiagnostic>& diagnostics) {
     if (emitter.specialOutputs.size() > kMaximumVfxProgramSpecialOutputs) {
@@ -549,6 +573,11 @@ void ValidateSpecialOutputs(const VfxEmitterData& emitter, std::unordered_set<st
         }
         if (!TEXT::IsNamedEnum(kVfxSpecialOutputTypeNames, output.type)) {
             AddError(diagnostics, "Vfx.InvalidSpecialOutputType", "special output type is invalid", output.id);
+        }
+        if (output.type == VfxSpecialOutputType::Light && output.light.followFluidGlow &&
+            emitter.kind != VfxLayerKind::Fluid) {
+            AddError(diagnostics, "Vfx.FluidGlowLightOutsideDomain",
+                     "a light that follows the fluid glow must be on a fluid domain layer", output.id);
         }
         if (!IsValidVfxSpecialOutputProfile(output)) {
             const bool light = output.type == VfxSpecialOutputType::Light;
@@ -708,11 +737,18 @@ void ValidateFluidLayers(const VfxAssetData& asset,
     for (const VfxEmitterData& emitter : asset.emitters) {
         if (emitter.kind != VfxLayerKind::Fluid && emitter.kind != VfxLayerKind::FluidSource)
             continue;
-        if (!emitter.effects.empty() || emitter.meshOutput.enabled || !emitter.specialOutputs.empty() ||
-            emitter.history.mode != VfxHistoryMode::None || !emitter.matte.sourceLayerId.empty() ||
-            emitter.matte.sourceOnly)
+        // 流体域の層は Light 出力だけを持てる（火が自分の発光で周りを照らす）。流体源の層は特殊出力を持てない。
+        const bool lightsOnly =
+            emitter.kind == VfxLayerKind::Fluid &&
+            std::all_of(emitter.specialOutputs.begin(), emitter.specialOutputs.end(),
+                        [](const VfxSpecialOutputData& output) { return output.type == VfxSpecialOutputType::Light; });
+        if (!emitter.effects.empty() || emitter.meshOutput.enabled ||
+            (!emitter.specialOutputs.empty() && !lightsOnly) || emitter.history.mode != VfxHistoryMode::None ||
+            !emitter.matte.sourceLayerId.empty() || emitter.matte.sourceOnly)
             AddError(diagnostics, "Vfx.FluidLayerFeature",
-                     "Fluid layers take no effects, mesh output, special outputs, history or track mattes", emitter.id);
+                     "Fluid layers take no effects, mesh output, history or track mattes; only fluid domains take "
+                     "special outputs, and only light outputs",
+                     emitter.id);
         const VfxEmitterData* domain = FindVfxFluidDomainLayer(emitter, find);
         if (emitter.kind == VfxLayerKind::Fluid) {
             ++domains;
@@ -731,11 +767,8 @@ void ValidateFluidLayers(const VfxAssetData& asset,
         if (JSONFIELDS::Sanitize(settings, FLUID::kFluidSourceSettingsFields) != settings)
             AddError(diagnostics, "Vfx.FluidSourceRange", "Fluid source values are outside their ranges",
                      emitter.fluidSource.id);
-        if (domain == nullptr)
-            AddError(diagnostics, "Vfx.FluidSourceWithoutDomain", "Place fluid sources under a fluid domain layer",
-                     emitter.id);
-        // 域自身の力場が表の一つを使う。
-        else if (++sourcesPerDomain[domain] >= FLUID::kMaximumFluidSourcesPerDomain)
+        // 域の外の流体源（流体注入层）は場面の域へ注入するので数えない。域自身の力場が表の一つを使う。
+        if (domain != nullptr && ++sourcesPerDomain[domain] >= FLUID::kMaximumFluidSourcesPerDomain)
             AddError(diagnostics, "Vfx.FluidSourceBudget", "Fluid domain has too many sources", emitter.id);
     }
     if (domains > FLUID::kMaximumFluidDomainsPerAsset)
@@ -797,6 +830,7 @@ std::vector<VfxDiagnostic> ValidateVfxAsset(const VfxAssetData& asset) {
         ValidateConnectAndMeshOutput(asset, emitter, diagnostics);
         ValidateSpecialOutputs(emitter, ids, diagnostics);
         ValidateInputLinks(emitter, inputTypes, ids, diagnostics);
+        ValidateParticleEvents(emitter, emitters, diagnostics);
     }
 
     // maximumParticles は自動割当ての上限であり予約量ではない。

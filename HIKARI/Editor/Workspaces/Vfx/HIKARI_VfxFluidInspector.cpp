@@ -74,6 +74,8 @@ nlohmann::json DescribeStats(const FLUID::FluidDomainStats& stats) {
         {"diagnosticsValid", stats.diagnosticsValid},
         {"maxDivergence", stats.maxDivergence},
         {"densityTotal", stats.densityTotal},
+        {"priority", stats.priority},
+        {"skippedByLimit", stats.skippedByLimit},
     };
 }
 } // namespace
@@ -217,8 +219,14 @@ void VfxWorkspaceController::DrawFluidSimulation(const VFX::VfxEmitterData& doma
 
 void VfxWorkspaceController::DrawFluidLayerInspector(AssetDatabase& database, const VFX::VfxEmitterData& emitter) {
     const bool domain = emitter.kind == VFX::VfxLayerKind::Fluid;
+    const bool injection = !domain && FindFluidDomainUnder(emitter.parentEmitterId) == nullptr;
     ImGui::TextWrapped("%s", emitter.name.c_str());
-    ImGui::TextDisabled("%s", TEXT::Localize(domain ? "ui.vfx.layer.newFluid" : "ui.vfx.layer.newFluidSource").c_str());
+    ImGui::TextDisabled("%s", TEXT::Localize(domain      ? "ui.vfx.layer.newFluid"
+                                             : injection ? "ui.vfx.layer.newFluidInjection"
+                                                         : "ui.vfx.layer.newFluidSource")
+                                  .c_str());
+    if (injection)
+        ImGui::TextWrapped("%s", TEXT::Localize("ui.vfx.fluid.injectionHint").c_str());
     ImGui::Separator();
     DrawEmitterTiming(database, emitter);
     if (domain) {
@@ -240,6 +248,9 @@ void VfxWorkspaceController::DrawFluidLayerInspector(AssetDatabase& database, co
         DrawFluidFields(*this, database, emitter.fluidSource.id,
                         static_cast<const FLUID::FluidSourceSettings&>(emitter.fluidSource),
                         FLUID::kFluidSourceSettingsFields, statusMessage_);
+        // 注入する烟の色は層の色（粒子の層と同じ色の模块、層の時間で変えられる）。域の「格ごとの色」を開くと効く。
+        VfxInspectorPropertyEditor color(*this, database, emitter.color.id, statusMessage_);
+        color.AnimatedColor(VfxUiText("Smoke color").c_str(), "value", emitter.color.value);
     }
     if (ImGui::CollapsingHeader(VfxUiText("Emission volume").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
         DrawEmissionVolume(database, emitter);

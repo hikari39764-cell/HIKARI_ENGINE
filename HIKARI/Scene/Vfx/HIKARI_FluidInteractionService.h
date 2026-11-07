@@ -12,9 +12,10 @@ class World;
 
 // 場面の流体を押すもの（障碍物・冲量・力・注入）。文書の実行時が持ち、World へ借りた service として見せる。
 // (owner, instance) ごとにこのフレームだけ有効で、次のフレームに出さなければ消える（LocalFogService と同じ規矩）。
-// 障碍物の速度は同じ組の前のフレームの位置からゲーム時間で決める。
+// 障碍物と注入の動く速さは同じ組の前のフレームの位置からゲーム時間で決める。
 // 出どころ（障碍物組件 / プロジェクトの FluidView）ごとに組は別で、同じ owner と instance でも互いを置き換えない。
-// プロジェクトが出した汇（向きの無い負の力）は吸い込んだ烟の量を GPU から回読して累計する（GetRemovedSmoke）。
+// プロジェクトが出した烟を消す力（汇＝向きの無い負の力か、吸収のある力）は消した烟の量を GPU から回読して累計する
+// （GetRemovedSmoke）。
 enum class FluidInteractionSource : uint8_t { Component, Project };
 
 class FluidInteractionService final {
@@ -59,7 +60,7 @@ private:
     std::array<Entry, kCapacity> entries_{};
     uint32_t count_ = 0u;
     uint64_t frameIndex_ = ~uint64_t{0};
-    // 前の PrepareFrame の障碍物（速度を決める）。
+    // 前の PrepareFrame の表（障碍物と注入の速度を決める）。
     std::array<Entry, kCapacity> previous_{};
     uint32_t previousCount_ = 0u;
     uint64_t previousFrame_ = ~uint64_t{0};

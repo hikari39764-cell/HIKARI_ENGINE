@@ -27,17 +27,22 @@ bool IsValid(const FluidInteraction& interaction) noexcept {
            InRange(p.y, -1.0e6f, 1.0e6f) && InRange(p.z, -1.0e6f, 1.0e6f) && InRange(e.x, 0.001f, 1000.0f) &&
            InRange(e.y, 0.0f, 1000.0f) && InRange(e.z, 0.0f, 1000.0f) && MATH::IsFinite(interaction.direction) &&
            MATH::Length(interaction.direction) <= 1.0e6f && InRange(interaction.strength, -10000.0f, 10000.0f) &&
-           (interaction.kind != FluidInteractionKind::Emit || interaction.strength >= 0.0f);
+           (interaction.kind != FluidInteractionKind::Emit || interaction.strength >= 0.0f) &&
+           InRange(interaction.absorption, 0.0f, 1000.0f) &&
+           (interaction.kind == FluidInteractionKind::Force || interaction.absorption == 0.0f);
 }
 
-// 汇（向きの無い負の力）：吸い込んだ烟の量を回読する。
+// 烟を消す力（汇＝向きの無い負の力か、吸収のある力）：消した烟の量を回読する。
 bool IsSink(const FluidInteraction& interaction) noexcept {
-    return interaction.kind == FluidInteractionKind::Force && interaction.strength < 0.0f &&
-           interaction.direction.x == 0.0f && interaction.direction.y == 0.0f && interaction.direction.z == 0.0f;
+    if (interaction.kind != FluidInteractionKind::Force)
+        return false;
+    const bool undirected =
+        interaction.direction.x == 0.0f && interaction.direction.y == 0.0f && interaction.direction.z == 0.0f;
+    return interaction.absorption > 0.0f || (interaction.strength < 0.0f && undirected);
 }
 
-// (owner, instance) から回読の鍵（0 にはしない）。
-uint64_t SinkKey(uint64_t owner, uint64_t instance) noexcept {
+// (owner, instance) から押すものの鍵（汇の回読と、持ち越す注入をまとめる鍵。0 にはしない）。
+uint64_t InteractionKey(uint64_t owner, uint64_t instance) noexcept {
     uint64_t h = owner * 0x9e3779b97f4a7c15ull ^ (instance + 0x632be59bd9b4e019ull);
     h = (h ^ (h >> 30u)) * 0xbf58476d1ce4e5b9ull;
     h = (h ^ (h >> 27u)) * 0x94d049bb133111ebull;
@@ -66,6 +71,7 @@ GameProjectWorldResultCode FluidInteractionService::Submit(FluidInteractionSourc
     Entry entry{source, owner, instance, interaction};
     entry.interaction.worldRotation = MATH::NormalizeQ(entry.interaction.worldRotation);
     entry.interaction.velocity = {};
+    entry.interaction.displacement = {};
     for (uint32_t index = 0u; index < count_; ++index) {
         if (entries_[index].Same(entry)) {
             entries_[index] = entry;
@@ -135,26 +141,33 @@ std::span<const FluidInteraction> FluidInteractionService::PrepareFrame(const Wo
         if (owner == nullptr || IsHidden(world, owner))
             continue;
         FluidInteraction& interaction = entry.interaction;
-        if (interaction.kind == FluidInteractionKind::Obstacle && consecutive) {
+        // 障碍物と注入は前のフレームの位置から動く速さを決める（障碍物は烟を押し、注入は動いた線分を掃く）。
+        const bool moving =
+            interaction.kind == FluidInteractionKind::Obstacle || interaction.kind == FluidInteractionKind::Emit;
+        if (moving && consecutive) {
             for (uint32_t previous = 0u; previous < previousCount_; ++previous) {
                 if (!previous_[previous].Same(entry))
                     continue;
-                // 瞬間移動（生まれ直し、編集中のドラッグ、形の並びの入れ替え）は速度 0：烟を押さない。
-                const MATH::Vec3 velocity =
-                    (interaction.worldPosition - previous_[previous].interaction.worldPosition) * (1.0f / deltaSeconds);
-                interaction.velocity =
-                    MATH::Length(velocity) <= RENDER3D::FLUID::kFluidTeleportSpeed ? velocity : MATH::Vec3{};
+                // 瞬間移動（生まれ直し、編集中のドラッグ、形の並びの入れ替え）は速度と移動 0：烟を押さず、掃かない。
+                const MATH::Vec3 moved = interaction.worldPosition - previous_[previous].interaction.worldPosition;
+                const MATH::Vec3 velocity = moved * (1.0f / deltaSeconds);
+                const bool teleport = MATH::Length(velocity) > RENDER3D::FLUID::kFluidTeleportSpeed;
+                interaction.velocity = teleport ? MATH::Vec3{} : velocity;
+                interaction.displacement = teleport ? MATH::Vec3{} : moved;
                 break;
             }
         }
         FluidInteraction& prepared = prepared_[preparedCount++];
         prepared = interaction;
+        // 組件の形と項目の押しは別の鍵（同じ物・同じ実例番号でも混ぜない）。
+        prepared.key = InteractionKey(entry.owner, entry.instance * 2u +
+                                                       (entry.source == FluidInteractionSource::Project ? 1u : 0u));
         // プロジェクトの汇は回読の鍵を付ける（累計の表が一杯なら数えない）。
         if (entry.source == FluidInteractionSource::Project && IsSink(interaction)) {
             Sink* sink = FindSink(entry.owner, entry.instance);
             if (sink == nullptr && sinkCount_ < sinks_.size()) {
                 sink = &sinks_[sinkCount_++];
-                *sink = {entry.owner, entry.instance, SinkKey(entry.owner, entry.instance), 0.0, frameIndex};
+                *sink = {entry.owner, entry.instance, InteractionKey(entry.owner, entry.instance), 0.0, frameIndex};
             }
             if (sink != nullptr) {
                 sink->lastFrame = frameIndex;

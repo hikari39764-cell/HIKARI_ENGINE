@@ -18,6 +18,8 @@ namespace HIKARI::MESHRENDERER {
 
 struct MeshFrameResources {
     MeshViewFrameResources view;
+    // 主視图の相機相対の viewProj（抖動なし）。粒子の場景深度碰撞が深度を撮る時に使う。
+    MATH::Mat4 cameraRelativeViewProj{};
     Microsoft::WRL::ComPtr<ID3D12Resource> objectCB;
     Microsoft::WRL::ComPtr<ID3D12Resource> objectDataUploadBuffer;
     Microsoft::WRL::ComPtr<ID3D12Resource> objectDataBuffer;

@@ -1,8 +1,9 @@
 // 体積流体（VFX の流体層）の描画。重なった域は 1 本の視線で一緒に積分する。
 // 計算：NoiseCS（細部の 3D ノイズ）、LightCS（域ごとの光照体積：太陽と空への光学的な厚さ）、CameraVolumeCS（透明物体の
 // 相機体積）、SolarVisibilityCS（場面へ落とす烟の影の表。雲の影の表と同じ並び）。
-// 全画面：MarchPS（半分辨率で步进、場面の深度で止める）→ ReconstructPS（相機の動きで履歴を再投影して時間方向に混ぜる）
-// → CompositePS（深度を見て全解像度へ広げ、ONE / INV_SRC_ALPHA で場面へ重ねる：C·T + S）。
+// 全画面：MarchPS（半分辨率で步进、場面の深度で止める）→ CompositePS（深度を見て全解像度へ広げ、ONE / INV_SRC_ALPHA で
+// 場面へ重ねる：C·T + S）→ CoveragePS（烟の平均距離と不透明度を全解像度で書き、体積霧の合成へ渡す）。時間方向の履歴は
+// 持たない（抖动は画素に固定してあり、静止した相機では毎フレーム同じ絵になる）。
 #include "Include/Lighting/HIKARI_CloudSolarVisibility.hlsli"
 #include "Include/Lighting/HIKARI_ShadowCascadeContract.hlsli"
 #include "Include/Lighting/HIKARI_VolumetricCamera.hlsli"
@@ -14,15 +15,13 @@
 
 cbuffer FluidRenderCB : register(b0)
 {
-    float4x4 gInvViewProj;
-    float4x4 gPrevViewProj;
+    float4x4 gInvRelativeViewProj; // 相機を原点に置いた逆 view-projection（clip → 相機からの相対位置）
     float4 gCamera;          // xyz 相機の位置
-    float4 gForward;         // xyz 相機の前、w 未使用
+    float4 gForward;         // xyz 相機の前、w 步进の步数
     float4 gSize;            // xy 半分辨率の大きさ、zw 描画の大きさ
     float4 gSun;             // xyz 太陽の向き（世界）、w 1 なら級联阴影を使う
     float4 gSunRadiance;     // rgb 太陽の照度（前露光済み）
-    float4 gAmbient;         // rgb 環境光の輝度（前露光済み）、w 前フレームからの露出の比
-    float4 gFrame;           // x 抖动の位相 [0,1)、y 履歴の重み（0 で履歴なし）、z 步进の步数、w 域の数
+    float4 gAmbient;         // rgb 環境光の輝度（前露光済み）、w 域の数
     float4 gCameraVolume;    // x near [m]、y log(far/near)、z 層の数、w 各層の標本数
     float4x4 gLightViewProj[4];
     float4 gShadowSplits;
@@ -53,9 +52,8 @@ Texture3D<float4> gLight3 : register(t11);
 Texture2D<float> gSceneDepth : register(t12);
 Texture2D<float4> gInputColor : register(t13);
 Texture2D<float2> gInputDepth : register(t14);
-Texture2D<float4> gHistoryColor : register(t15);
-Texture3D<float> gNoise : register(t16);
-Texture2D<float> gShadowMap : register(t17);
+Texture3D<float> gNoise : register(t15);
+Texture2D<float> gShadowMap : register(t16);
 RWTexture3D<float4> gOutput : register(u0);
 RWTexture2D<float4> gSolarAtlas : register(u1);
 SamplerState gLinearClamp : register(s0);
@@ -64,21 +62,43 @@ SamplerState gLinearWrap : register(s2);
 SamplerState gPointClamp : register(s3);
 SamplerComparisonState gShadowSampler : register(s4);
 
-uint DomainCount() { return (uint)(gFrame.w + 0.5f); }
+uint DomainCount() { return (uint)(gAmbient.w + 0.5f); }
 
-// 域の格子座標 grid での密度（開いた境界の縁で消える分を含む。箱の外は 0）。
-float DomainRho(HikariFluidDomain domain, Texture3D<float4> density, float3 grid)
+// 域の格子座標 grid での烟（x 密度、yzw 密度 × 色。開いた境界の縁で消える分を含む。箱の外は 0）。
+float4 DomainSmoke(HikariFluidDomain domain, Texture3D<float4> density, float3 grid)
 {
     if (!HikariFluidInside(grid, domain.cells.xyz))
-        return 0.0f;
-    return density.SampleLevel(gLinearBorder, grid / domain.cells.xyz, 0).x * HikariFluidEdgeFade(domain, grid);
+        return 0.0f.xxxx;
+    return density.SampleLevel(gLinearBorder, grid / domain.cells.xyz, 0) * HikariFluidEdgeFade(domain, grid);
+}
+
+// 烟の色（格ごとの色の域は 密度 × 色 / 密度、それ以外は白）。
+float3 SmokeTint(HikariFluidDomain domain, float4 smoke)
+{
+    return domain.sun.w > 0.5f ? saturate(smoke.yzw / max(smoke.x, 1.0e-4f)) : 1.0f.xxx;
+}
+
+// 解算は固定の子步で進む。最後の子步から貯まった時間 detail.w の分だけ流れに沿って遡って密度を読み、子步の無いフレームで
+// 烟が止まり次のフレームで跳ぶ（フレームの速さが子步の速さと違う時の一顿一顿）のを無くす。速度は空いた所にもあるので、
+// 遡った後で空かどうかを決める（先に元の位置で空と決めると、空いた所へ進む烟の前縁が外推されない）。描画の步进と
+// 烟の影の表が同じこの関数で読む。grid は遡った後の格子座標になり、cell は元の位置の格の中心の標本（w 温度、xyz 下側の
+// 面の速度 [m/s]）。
+float4 ExtrapolatedSmoke(HikariFluidDomain domain, Texture3D<float4> density, Texture3D<float4> velocity,
+    inout float3 grid, out float4 cell)
+{
+    cell = velocity.SampleLevel(gLinearClamp, grid / (domain.cells.xyz + 1.0f), 0);
+    grid -= cell.xyz * (domain.detail.w / domain.cells.w);
+    return DomainSmoke(domain, density, grid);
 }
 
 // ---------------------------------------------------------------- 視線（体積雾と同じ再構成）
+// 相機を原点にして組み立ててから相機の位置を足す（世界の逆行列を float で使うと、浮島の高さ y≈3400 m では向きが
+// 相機の位置につれて数画素ずつ跳び、歩くと烟だけが場面に対して一顿一顿と揺れた）。
 void ViewRay(float2 uv, out float3 origin, out float3 direction)
 {
     bool orthographic;
-    HikariReconstructVolumeRay(uv, gInvViewProj, gCamera.xyz, origin, direction, orthographic);
+    HikariReconstructVolumeRay(uv, gInvRelativeViewProj, 0.0f.xxx, origin, direction, orthographic);
+    origin += gCamera.xyz;
 }
 
 // 場面の深度（device）を視線の距離へ。空は大きな値。
@@ -86,12 +106,12 @@ float SceneDistance(float2 uv, float depth, float3 origin, float3 direction)
 {
     if (depth >= 0.999999f)
         return 1.0e7f;
-    return dot(HikariUnprojectVolumePosition(uv, depth, gInvViewProj) - origin, direction);
+    return dot(HikariUnprojectVolumePosition(uv, depth, gInvRelativeViewProj) - (origin - gCamera.xyz), direction);
 }
 
 // ---------------------------------------------------------------- 介質
 // 場面の物が太陽を遮る割合（級联阴影の届く範囲だけ。外は遮らない）。步进の標本ごとに読み、光筋・影筋の縁を
-// 光照体積の格の大きさに縛らない（抖动と時間の再構成で滑らかになる）。
+// 光照体積の格の大きさに縛らない（標本ごとの抖动で縁がぼける）。
 float SceneSunVisibility(float3 world)
 {
     if (gSun.w < 0.5f)
@@ -118,11 +138,13 @@ float DetailedDensity(HikariFluidDomain domain, float rho, float3 flow, float3 g
     if (strength <= 0.0f)
         return rho;
     // 細部の模様を流れに沿って運ぶ（位相を半周期ずらした 2 枚を交互に溶かす）。周期が長いと流れの剪断で模様が
-    // 筋に引き伸ばされるので 1 秒にとどめる。流れは格の速度の近似（温度と同じ 1 回の標本）で足りる。
+    // 筋に引き伸ばされるので 1 秒にとどめる。流れは格の速度の近似（温度と同じ 1 回の標本）で足りる。時間は最後の子步からの
+    // 端数（detail.w）も足して、子步の無いフレームでも模様が止まらないようにする。
     const float3 local = grid * domain.cells.w;
     const float period = 1.0f;
-    const float phase0 = frac(domain.detail.y / period);
-    const float phase1 = frac(domain.detail.y / period + 0.5f);
+    const float time = domain.detail.y + domain.detail.w;
+    const float phase0 = frac(time / period);
+    const float phase1 = frac(time / period + 0.5f);
     const float weight = abs(phase0 * 2.0f - 1.0f);
     // 1 周期のずれは細部の模様の大きさ（detailScale = 1 / (4 detail.x)）までに抑える。速い流れ（大きな場地の環流で
     // 5〜10 m/s）でずれが模様より長いと、模様が流れの向きに筋として伸びる。
@@ -143,13 +165,14 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
     Texture3D<float4> light, float3 world, float3 viewDirection, float pixelSize, inout float sigma,
     inout float3 emitted)
 {
-    const float3 grid = HikariFluidToGrid(domain, world);
-    float rho = DomainRho(domain, density, grid);
+    float3 grid = HikariFluidToGrid(domain, world);
+    // cell の xyz は細部を運ぶ流れの近似、w は発光の温度にも使う。
+    float4 cell;
+    const float4 smoke = ExtrapolatedSmoke(domain, density, velocity, grid, cell);
+    float rho = smoke.x;
     if (rho <= 1.0e-4f)
         return;
     const float3 uvw = grid / domain.cells.xyz;
-    // 格の中心の標本：w は温度、xyz は下側の面の速度（細部を運ぶ流れの近似）。
-    const float4 cell = velocity.SampleLevel(gLinearClamp, grid / (domain.cells.xyz + 1.0f), 0);
     rho = DetailedDensity(domain, rho, cell.xyz, grid, pixelSize);
     if (rho <= 0.0f)
         return;
@@ -164,8 +187,10 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
     const float3 ambient = gAmbient.rgb * (domain.optics.z * HikariFluidSkyVisibility(transmittance.y, domain.optics.y,
                                                                                        domain.optics.x, openness));
     const float temperature = cell.w;
+    // 格ごとの色は散乱色と発光の両方に掛ける（同じ域で赤と青の発光する烟が混ざらずに並ぶ）。
+    const float3 tint = SmokeTint(domain, smoke);
     sigma += extinction;
-    emitted += extinction * domain.look.rgb * (sun + ambient) + rho * HikariFluidEmission(domain, temperature);
+    emitted += tint * (extinction * domain.look.rgb * (sun + ambient) + rho * HikariFluidEmission(domain, temperature));
 }
 
 void Medium(float3 world, float3 viewDirection, float pixelSize, out float sigma, out float3 emitted)
@@ -198,7 +223,7 @@ DomainSpans TraceDomains(float3 origin, float3 direction)
     spans.enter = 1.0e30f.xxxx;
     spans.leave = -1.0e30f.xxxx;
     spans.step = 1.0e30f.xxxx;
-    const float steps = max(gFrame.z, 1.0f);
+    const float steps = max(gForward.w, 1.0f);
     [unroll] for (uint index = 0u; index < HIKARI_FLUID_MAX_DOMAINS; ++index)
     {
         if (index >= DomainCount())
@@ -228,13 +253,13 @@ float2 SpansBounds(DomainSpans spans)
                   max(max(spans.leave.x, spans.leave.y), max(spans.leave.z, spans.leave.w)));
 }
 
-// 步进の累積：散乱（前露光済み）、透過率、代表距離の重み付きの和と重みの和（失った光の割合）。
+// 步进の累積：散乱（前露光済み）と透過率、烟の距離を失った光の割合で重み付けした和と重み（体積霧の合成で烟の位置に使う）。
 struct MarchState
 {
     float3 scattered;
     float transmittance;
-    float weightedDistance;
-    float absorbed;
+    float smokeDistance;
+    float smokeWeight;
 };
 
 MarchState BeginMarch()
@@ -242,15 +267,9 @@ MarchState BeginMarch()
     MarchState march;
     march.scattered = 0.0f.xxx;
     march.transmittance = 1.0f;
-    march.weightedDistance = 0.0f;
-    march.absorbed = 0.0f;
+    march.smokeDistance = 0.0f;
+    march.smokeWeight = 0.0f;
     return march;
-}
-
-// 流体の代表距離（失った光で重みを付けた平均。烟が無ければ遠く）。
-float MeanDistance(MarchState march)
-{
-    return march.absorbed > 1.0e-4f ? march.weightedDistance / march.absorbed : 1.0e7f;
 }
 
 // [start, end] を stepLength [m] ごとに解析的に積分して march へ続ける（最後の歩は end で切る）。footprint は距離 t の
@@ -273,15 +292,15 @@ void Integrate(float3 origin, float3 direction, float start, float end, float st
         const float segment = exp(-sigma * span);
         const float lost = march.transmittance * (1.0f - segment);
         march.scattered += emitted / sigma * lost;
-        march.weightedDistance += t * lost;
-        march.absorbed += lost;
+        march.smokeDistance += lost * t;
+        march.smokeWeight += lost;
         march.transmittance *= segment;
         // 打ち切る時は残りを「先も同じ明るさの烟」として散乱に回し 0 にする（1% 残すと暗い球壳の内で空が透ける）。
         if (march.transmittance < 0.01f)
         {
             march.scattered += emitted / sigma * march.transmittance;
-            march.weightedDistance += t * march.transmittance;
-            march.absorbed += march.transmittance;
+            march.smokeDistance += march.transmittance * t;
+            march.smokeWeight += march.transmittance;
             march.transmittance = 0.0f;
             break;
         }
@@ -440,7 +459,7 @@ FullscreenOutput FullscreenVS(uint vertex : SV_VertexID)
 struct MarchOutput
 {
     float4 color : SV_TARGET0;  // rgb 散乱（前露光済み）、a 透過率
-    float2 depth : SV_TARGET1;  // x 流体の代表距離、y 止めた不透明面の距離
+    float2 depth : SV_TARGET1;  // x 止めた不透明面の距離（合成で全解像度の深度と比べる）、y 烟の平均距離（烟が無ければ x）
 };
 
 // 半分辨率の画素ごとに、全解像度の 2x2 の最も近い不透明面まで步进する。
@@ -457,11 +476,11 @@ MarchOutput MarchPS(FullscreenOutput input)
     const float opaque = SceneDistance(uv, depth, origin, direction);
     const DomainSpans spans = TraceDomains(origin, direction);
     const float2 bounds = SpansBounds(spans);
-    output.depth = float2(1.0e7f, opaque);
+    output.depth = opaque.xx;
     output.color = float4(0.0f, 0.0f, 0.0f, 1.0f);
     if (min(bounds.y, opaque) <= bounds.x)
         return output;
-    // 画素ごとに散らした抖动（交错勾配ノイズ）をフレームの位相で回す。
+    // 画素ごとに散らした抖动（交错勾配ノイズ）。
     const float noise = frac(52.9829189f * frac(dot(float2(halfPixel), float2(0.06711056f, 0.00583715f))));
     // 隣の画素の視線との差で画素の大きさ（直交投影は起点の差、透視は向きの差 × 距離）。
     float3 nextOrigin, nextDirection;
@@ -469,56 +488,28 @@ MarchOutput MarchPS(FullscreenOutput input)
     const float2 footprint = float2(length(nextOrigin - origin), length(nextDirection - direction));
     // 歩の長さは域ごとの箱の区間全体で決め、物の手前では止めるだけ（止める所で割ると物の輪郭が烟に浮き出る）。
     MarchState march = BeginMarch();
-    // 抖动は画素に固定する（フレームごとに回すと、履歴で均しきれない粒が毎フレーム入れ替わり、烟全体がざらついて揺れた。
-    // 步数が十分なので固定の交错勾配ノイズの模様は目立たない）。
+    // 抖动は画素に固定する（フレームごとに回すと粒が毎フレーム入れ替わり、烟全体がざらついて揺れた。時間方向の履歴で
+    // 均すと、相機が動く間に輪郭へ残像が出て烟全体が跳ねた。步数が十分なので固定の交错勾配ノイズの模様は目立たない）。
     MarchDomains(origin, direction, spans, bounds.x, opaque, 0.0f, noise, footprint, march);
     output.color = float4(march.scattered, march.transmittance);
-    output.depth.x = MeanDistance(march);
+    output.depth.y = march.smokeWeight > 1.0e-4f ? march.smokeDistance / march.smokeWeight : opaque;
     return output;
 }
 
-// 前フレームの履歴を流体の代表距離で再投影し、今の 3x3 の範囲に収めて混ぜる。
-float4 ReconstructPS(FullscreenOutput input) : SV_TARGET0
+// 深度を見て半分辨率の步进を全解像度の画素 position へ広げる（rgb 散乱、a 透過率）。smoke は烟の平均距離 [m]：隣の不透明度で
+// 重みを付け、烟の無い隣（距離は背景面、空なら 1e7）を混ぜない。烟が無ければ不透明面の距離。覆いの RG16F に収まるよう
+// 6e4 m で抑える（霧の合成は烟の距離が不透明面より手前の時だけ使う）。
+float4 UpsampleMarch(float2 uv, float2 position, out float smoke)
 {
-    const int2 pixel = int2(input.position.xy);
-    const float4 current = gInputColor.Load(int3(pixel, 0));
-    if (gFrame.y <= 0.0f)
-        return current;
-    float4 low = current;
-    float4 high = current;
-    [unroll] for (int y = -1; y <= 1; ++y)
-        [unroll] for (int x = -1; x <= 1; ++x)
-        {
-            const float4 neighbor = gInputColor.Load(int3(clamp(pixel + int2(x, y), 0, int2(gSize.xy) - 1), 0));
-            low = min(low, neighbor);
-            high = max(high, neighbor);
-        }
-    const float2 uv = (float2(pixel) + 0.5f) / gSize.xy;
     float3 origin, direction;
     ViewRay(uv, origin, direction);
-    const float distance = gInputDepth.Load(int3(pixel, 0)).x;
-    const float3 world = origin + direction * min(distance, 1.0e5f);
-    const float4 previous = mul(gPrevViewProj, float4(world, 1.0f));
-    const float2 previousUv = float2(previous.x / previous.w * 0.5f + 0.5f, 0.5f - previous.y / previous.w * 0.5f);
-    if (previous.w <= 0.0f || any(previousUv < 0.0f) || any(previousUv > 1.0f))
-        return current;
-    float4 history = gHistoryColor.SampleLevel(gLinearClamp, previousUv, 0);
-    history.rgb *= gAmbient.w;
-    history = clamp(history, low, high);
-    return lerp(current, history, gFrame.y);
-}
-
-// 深度を見て半分辨率から全解像度へ広げ、乗算済みで場面へ重ねる（混合 ONE / INV_SRC_ALPHA で C·T + S）。
-float4 CompositePS(FullscreenOutput input) : SV_TARGET0
-{
-    const float2 uv = input.uv;
-    float3 origin, direction;
-    ViewRay(uv, origin, direction);
-    const float opaque = SceneDistance(uv, gSceneDepth.Load(int3(int2(input.position.xy), 0)), origin, direction);
+    const float opaque = SceneDistance(uv, gSceneDepth.Load(int3(int2(position), 0)), origin, direction);
     const float2 halfCoordinate = uv * gSize.xy - 0.5f;
     const int2 base = int2(floor(halfCoordinate));
     const float2 fraction = halfCoordinate - float2(base);
     float4 sum = 0.0f.xxxx;
+    float smokeSum = 0.0f;
+    float smokeWeight = 0.0f;
     float weightSum = 0.0f;
     [unroll] for (uint corner = 0u; corner < 4u; ++corner)
     {
@@ -526,12 +517,33 @@ float4 CompositePS(FullscreenOutput input) : SV_TARGET0
         const int2 texel = clamp(base + offset, 0, int2(gSize.xy) - 1);
         const float bilinear = (offset.x != 0 ? fraction.x : 1.0f - fraction.x) *
                                (offset.y != 0 ? fraction.y : 1.0f - fraction.y);
-        const float stopped = gInputDepth.Load(int3(texel, 0)).y;
-        const float relative = abs(stopped - opaque) / max(min(stopped, opaque), 0.1f);
+        const float2 distances = gInputDepth.Load(int3(texel, 0));
+        const float relative = abs(distances.x - opaque) / max(min(distances.x, opaque), 0.1f);
         const float weight = bilinear * exp(-relative * 16.0f) + 1.0e-5f;
-        sum += gInputColor.Load(int3(texel, 0)) * weight;
+        const float4 color = gInputColor.Load(int3(texel, 0));
+        sum += color * weight;
+        const float covered = weight * (1.0f - color.a);
+        smokeSum += distances.y * covered;
+        smokeWeight += covered;
         weightSum += weight;
     }
-    const float4 fluid = sum / weightSum;
+    smoke = min(smokeWeight > 1.0e-6f ? smokeSum / smokeWeight : opaque, 6.0e4f);
+    return sum / weightSum;
+}
+
+// 乗算済みで場面へ重ねる（混合 ONE / INV_SRC_ALPHA で C·T + S）。
+float4 CompositePS(FullscreenOutput input) : SV_TARGET0
+{
+    float smoke;
+    const float4 fluid = UpsampleMarch(input.uv, input.position.xy, smoke);
     return float4(fluid.rgb, 1.0f - fluid.a);
+}
+
+// 体積霧の合成へ渡す烟の覆い（全解像度）：x 烟の平均距離 [m]、y 不透明度。霧は合成の時にこの距離までの霧と不透明面までの
+// 霧を不透明度で混ぜる（烟に隠れた物の輪郭が霧で浮き出ない。Render3D_VolumetricLighting.hlsl の CompositeCS）。
+float2 CoveragePS(FullscreenOutput input) : SV_TARGET0
+{
+    float smoke;
+    const float4 fluid = UpsampleMarch(input.uv, input.position.xy, smoke);
+    return float2(smoke, 1.0f - fluid.a);
 }

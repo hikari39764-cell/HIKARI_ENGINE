@@ -12,10 +12,12 @@
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
+#include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 
-// 1 視図の流体の描画の記録：定数を詰め、光照体積・相機体積・步进・再構成・合成を順に記録する。
+// 1 視図の流体の描画の記録：定数を詰め、光照体積・相機体積・步进・合成を順に記録する。
 
 namespace HIKARI::RENDER3D::FLUID::INTERNAL {
 namespace {
@@ -24,22 +26,21 @@ struct alignas(16) RenderDomainGpu {
     float cells[4];
     float look[4];
     float emission[4];
+    float emissionHot[4];
     float optics[4];
     float detail[4];
     float sun[4];
 };
-static_assert(sizeof(RenderDomainGpu) == 144u);
+static_assert(sizeof(RenderDomainGpu) == 160u);
 
 struct alignas(16) RenderConstants {
-    MATH::Mat4 invViewProj{};
-    MATH::Mat4 prevViewProj{};
+    MATH::Mat4 invRelativeViewProj{};
     float camera[4];
     float forward[4];
     float size[4];
     float sun[4];
     float sunRadiance[4];
     float ambient[4];
-    float frame[4];
     float cameraVolume[4];
     MATH::Mat4 lightViewProj[4]{};
     float shadowSplits[4];
@@ -49,7 +50,7 @@ struct alignas(16) RenderConstants {
     LIGHTING::CloudSolarVisibilityGpuData solarTable{};
     RenderDomainGpu domains[kMaximumRenderedFluidDomains];
 };
-static_assert(sizeof(RenderConstants) == 1216u);
+static_assert(sizeof(RenderConstants) == 1200u);
 
 void Set4(float (&out)[4], float x, float y, float z, float w) {
     out[0] = x;
@@ -93,16 +94,19 @@ RenderDomainGpu PackDomain(const FluidRenderDomain& domain, const FluidRenderVie
     const float emission = look.emissionIntensity * view.preExposure;
     Set4(gpu.emission, look.emissionColor.x * emission, look.emissionColor.y * emission,
          look.emissionColor.z * emission, look.emissionTemperature);
+    Set4(gpu.emissionHot, look.emissionHotColor.x * emission, look.emissionHotColor.y * emission,
+         look.emissionHotColor.z * emission, look.emissionHotTemperature);
     Set4(gpu.optics, look.anisotropy, look.multipleScattering, look.ambientStrength, look.detailStrength);
-    // 開いた境界は面から 4 格で密度を消す（閉じた箱の壁は本当の境界なので消さない）。
-    // detailScale は細部の模様の大きさ。ノイズの 1 周期は基本の模様 4 つ分。
+    // 開いた面だけ面から 4 格で密度を消す（閉じた面は本当の壁なので消さない）。z は開いた面の印。
+    // detailScale は細部の模様の大きさ。ノイズの 1 周期は基本の模様 4 つ分。w は最後の子步の後に貯まった時間 [s]
+    // （子步 1 つ以下）：步进と烟の影の表がこの分だけ流れに沿って遡って密度を読む（ExtrapolatedSmoke）。
     Set4(gpu.detail, 1.0f / (4.0f * (std::max)(look.detailScale, 0.01f)), domain.simulationSeconds,
-         look.boundary == FluidBoundary::Open ? 4.0f : 0.0f, 0.0f);
+         static_cast<float>(kFluidAllFaces & ~FluidClosedFaces(look.boundary)), domain.pendingSeconds);
     MATH::Vec3 sun{MATH::Dot(axes[0], view.sunDirection), MATH::Dot(axes[1], view.sunDirection),
                    MATH::Dot(axes[2], view.sunDirection)};
     const float length = MATH::Length(sun);
     sun = length > 1.0e-6f ? sun * (1.0f / length) : MATH::Vec3{0.0f, 1.0f, 0.0f};
-    Set4(gpu.sun, sun.x, sun.y, sun.z, 0.0f);
+    Set4(gpu.sun, sun.x, sun.y, sun.z, domain.layout.cellColor ? 1.0f : 0.0f);
     return gpu;
 }
 
@@ -140,21 +144,10 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     upload.ResetForFrame(context.currentFrameRetireFenceValue);
 
     RenderConstants constants{};
-    // 履歴は直前のフレームに同じ域の組を描いた時だけ使う（停めていた間や作り直した後の烟を混ぜない）。
-    uint64_t signature = 1469598103934665603ull;
-    for (size_t index = 0u; index < count; ++index) {
-        const uint64_t parts[2] = {reinterpret_cast<uintptr_t>(domains[index].light->resource.Get()),
-                                   domains[index].generation};
-        for (const uint64_t part : parts)
-            signature = (signature ^ part) * 1099511628211ull;
-    }
-    const bool useHistory = view.historyValid && state.historyValid && state.domainSignature == signature &&
-                            state.lastFrame != UINT64_MAX &&
-                            state.lastFrame + 1u == context.currentFrameRetireFenceValue;
-    constants.invViewProj = view.invViewProj;
-    constants.prevViewProj = useHistory ? state.previousViewProj : view.viewProj;
+    constants.invRelativeViewProj = view.invRelativeViewProj;
     Set4(constants.camera, view.cameraPosition.x, view.cameraPosition.y, view.cameraPosition.z, 0.0f);
-    Set4(constants.forward, view.cameraForward.x, view.cameraForward.y, view.cameraForward.z, 0.0f);
+    Set4(constants.forward, view.cameraForward.x, view.cameraForward.y, view.cameraForward.z,
+         static_cast<float>(marchSteps));
     const uint32_t halfWidth = (view.renderWidth + 1u) / 2u, halfHeight = (view.renderHeight + 1u) / 2u;
     Set4(constants.size, static_cast<float>(halfWidth), static_cast<float>(halfHeight),
          static_cast<float>(view.renderWidth), static_cast<float>(view.renderHeight));
@@ -164,10 +157,7 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     Set4(constants.sunRadiance, view.sunIlluminance.x * view.preExposure, view.sunIlluminance.y * view.preExposure,
          view.sunIlluminance.z * view.preExposure, 0.0f);
     Set4(constants.ambient, view.ambientRadiance.x * view.preExposure, view.ambientRadiance.y * view.preExposure,
-         view.ambientRadiance.z * view.preExposure, view.exposureRatio);
-    const double phase = std::fmod(static_cast<double>(context.currentFrameRetireFenceValue) * 0.6180339887, 1.0);
-    Set4(constants.frame, static_cast<float>(phase), useHistory ? kHistoryWeight : 0.0f, static_cast<float>(marchSteps),
-         static_cast<float>(count));
+         view.ambientRadiance.z * view.preExposure, static_cast<float>(count));
     const float farthest = FarthestCorner(domains.first(count), view.cameraPosition, kCameraVolumeNear);
     Set4(constants.cameraVolume, kCameraVolumeNear, std::log(farthest / kCameraVolumeNear),
          static_cast<float>(kCameraVolumeSlices), kCameraVolumeSamples);
@@ -205,11 +195,10 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     const auto volumeAt = [&](size_t index, FluidVolume* FluidRenderDomain::* member) {
         return index < count ? (domains[index].*member)->srv.gpu : fallbackVolume_.srv.gpu;
     };
-    // 影を使わない時の t17 は場面の深度（読める状態の 2D）で埋める。
+    // 影を使わない時の t16 は場面の深度（読める状態の 2D）で埋める。
     const D3D12_GPU_DESCRIPTOR_HANDLE shadowSrv = shadowed ? SHADOW::GetDirectionalShadowSrv() : view.sceneDepthSrv;
-    // 全ての入力を束ねる（計算と全画面で同じ並び）。13〜16 はこのフレームに描画先にならない前の履歴で埋め、pass ごとに
-    // 必要なものを上書きする。
-    const D3D12_GPU_DESCRIPTOR_HANDLE previous = state.history[state.historyRead].srv.gpu;
+    // 全ての入力を束ねる（計算と全画面で同じ並び）。步进の結果（13、14）はまだ無いので場面の深度で埋め（読まない）、
+    // 合成の前に上書きする。
     const auto bindInputs = [&](auto setTable) {
         for (size_t slot = 0u; slot < kMaximumRenderedFluidDomains; ++slot) {
             setTable(kFirstInput + kDensity + static_cast<UINT>(slot), volumeAt(slot, &FluidRenderDomain::density));
@@ -217,8 +206,8 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
             setTable(kFirstInput + kLight + static_cast<UINT>(slot), volumeAt(slot, &FluidRenderDomain::light));
         }
         setTable(kFirstInput + kSceneDepth, view.sceneDepthSrv);
-        for (UINT input : {kInputColor, kInputDepth, kHistoryColor})
-            setTable(kFirstInput + input, previous);
+        for (UINT input : {kInputColor, kInputDepth})
+            setTable(kFirstInput + input, view.sceneDepthSrv);
         setTable(kFirstInput + kNoise, noiseVolume_.srv.gpu);
         setTable(kFirstInput + kShadow, shadowSrv);
     };
@@ -263,9 +252,8 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     TransitionVolume(commands, state.cameraVolume, kRead);
     cameraVolumeTimer.reset();
 
-    // 半分辨率の步进と時間の再構成（合成まで同じ区間で計る）。
+    // 半分辨率の步进（合成まで同じ区間で計る）。
     GFX::GPU_PROFILE::ScopedGpuTimer marchTimer(commands, GFX::GPU_PROFILE::Pass::FluidRenderMarch);
-    const uint32_t write = state.historyRead ^ 1u;
     const auto setGraphics = [&](UINT index, D3D12_GPU_DESCRIPTOR_HANDLE handle) {
         commands->SetGraphicsRootDescriptorTable(index, handle);
     };
@@ -292,31 +280,26 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     TransitionTarget(commands, state.marchColor, kRead);
     TransitionTarget(commands, state.marchDepth, kRead);
 
-    TransitionTarget(commands, state.history[write], D3D12_RESOURCE_STATE_RENDER_TARGET);
-    commands->OMSetRenderTargets(1, &state.history[write].rtv, FALSE, nullptr);
-    commands->SetGraphicsRootDescriptorTable(kFirstInput + kInputColor, state.marchColor.srv.gpu);
-    commands->SetGraphicsRootDescriptorTable(kFirstInput + kInputDepth, state.marchDepth.srv.gpu);
-    commands->SetGraphicsRootDescriptorTable(kFirstInput + kHistoryColor, state.history[state.historyRead].srv.gpu);
-    commands->SetPipelineState(reconstruct_.Get());
-    draw();
-    TransitionTarget(commands, state.history[write], kRead);
-
     // 場面へ重ねる。
     if (!bindSceneTarget())
         return false;
     commands->SetGraphicsRootSignature(root_.Get());
     commands->SetGraphicsRootConstantBufferView(kConstants, address);
     bindInputs(setGraphics);
-    commands->SetGraphicsRootDescriptorTable(kFirstInput + kInputColor, state.history[write].srv.gpu);
+    commands->SetGraphicsRootDescriptorTable(kFirstInput + kInputColor, state.marchColor.srv.gpu);
     commands->SetGraphicsRootDescriptorTable(kFirstInput + kInputDepth, state.marchDepth.srv.gpu);
     viewport(view.renderWidth, view.renderHeight);
     commands->SetPipelineState(composite_.Get());
     draw();
 
-    state.historyRead = write;
-    state.historyValid = true;
-    state.previousViewProj = view.viewProj;
-    state.domainSignature = signature;
+    // 烟の覆い（烟の平均距離と不透明度）を全解像度で書き、体積霧の合成へ渡す（場面の描画先は呼び出し側が戻す）。
+    TransitionTarget(commands, state.coverage, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    commands->OMSetRenderTargets(1, &state.coverage.rtv, FALSE, nullptr);
+    commands->SetPipelineState(coverage_.Get());
+    draw();
+    TransitionTarget(commands, state.coverage, kRead);
+    VOLUMETRIC::SetVolumetricFluidCoverage(state.coverage.srv.gpu, view.renderWidth, view.renderHeight);
+
     state.lastFrame = context.currentFrameRetireFenceValue;
     cameraVolumeView_ = {
         state.cameraVolume.srv.gpu,
@@ -415,7 +398,7 @@ LIGHTING::CloudSolarVisibilityGpuData FluidRenderer::RenderSolarVisibility(const
     FluidRenderView view{};
     view.sunDirection = direction;
     view.preExposure = 1.0f;
-    Set4(constants.frame, 0.0f, 0.0f, 0.0f, static_cast<float>(count));
+    constants.ambient[3] = static_cast<float>(count);
     constants.solarTable = table;
     for (size_t index = 0u; index < count; ++index)
         constants.domains[index] = PackDomain(domains[index], view);
@@ -433,10 +416,14 @@ LIGHTING::CloudSolarVisibilityGpuData FluidRenderer::RenderSolarVisibility(const
     // 根の入力はすべて束ねる（使わない枠は空の体積）。
     for (UINT input = 0u; input < kInputCount; ++input)
         commands->SetComputeRootDescriptorTable(kFirstInput + input, fallbackVolume_.srv.gpu);
+    // 密度と、外推に使う速度（步进と同じ ExtrapolatedRho で読む）。
     for (size_t index = 0u; index < count; ++index) {
         TransitionVolume(commands, *domains[index].density, kRead);
+        TransitionVolume(commands, *domains[index].velocity, kRead);
         commands->SetComputeRootDescriptorTable(kFirstInput + kDensity + static_cast<UINT>(index),
                                                 domains[index].density->srv.gpu);
+        commands->SetComputeRootDescriptorTable(kFirstInput + kVelocity + static_cast<UINT>(index),
+                                                domains[index].velocity->srv.gpu);
     }
     commands->SetComputeRootDescriptorTable(kOutput, fallbackVolume_.uav.gpu);
     TransitionVolume(commands, solarAtlas_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -451,16 +438,24 @@ LIGHTING::CloudSolarVisibilityGpuData FluidRenderer::RenderSolarVisibility(const
 
 namespace HIKARI::RENDER3D::FLUID {
 
-FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey, const MATH::Mat4& viewProj,
-                                    const MATH::Mat4& invViewProj, const MATH::Vec3& cameraPosition) {
+MATH::Mat4 MakeCameraRelativeViewProj(const MATH::Mat4& view, const MATH::Mat4& projection, float clipJitterX,
+                                      float clipJitterY) noexcept {
+    MATH::Mat4 rotation = view;
+    rotation.m[3][0] = 0.0f;
+    rotation.m[3][1] = 0.0f;
+    rotation.m[3][2] = 0.0f;
+    return TEMPORAL::ApplyClipSpaceJitter(projection * rotation, clipJitterX, clipJitterY);
+}
+
+FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey,
+                                    const MATH::Mat4& relativeViewProj, const MATH::Vec3& cameraPosition) {
     FluidRenderView view{};
     view.viewKey = viewKey;
-    view.viewProj = viewProj;
-    view.invViewProj = invViewProj;
+    view.invRelativeViewProj = MATH::Inverse(relativeViewProj);
     view.cameraPosition = cameraPosition;
     // 前方は近い面と遠い面の画面中心の差（透視と直交のどちらでも同じ式）。
-    const MATH::Vec3 nearCenter = MATH::TransformPoint(invViewProj, {0.0f, 0.0f, 0.0f});
-    const MATH::Vec3 farCenter = MATH::TransformPoint(invViewProj, {0.0f, 0.0f, 1.0f});
+    const MATH::Vec3 nearCenter = MATH::TransformPoint(view.invRelativeViewProj, {0.0f, 0.0f, 0.0f});
+    const MATH::Vec3 farCenter = MATH::TransformPoint(view.invRelativeViewProj, {0.0f, 0.0f, 1.0f});
     view.cameraForward = MATH::Normalize(farCenter - nearCenter);
     const ATMOSPHERE::AtmosphereSolarState solar = ATMOSPHERE::BuildAtmosphereSolarState(environment);
     view.sunDirection = solar.sunDirection;
@@ -468,7 +463,6 @@ FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_
     view.ambientRadiance = SKYRENDERER::EstimateSkyAmbientRadiance(environment);
     const MATH::Vec4& exposure = COLOR::GetActiveViewExposure();
     view.preExposure = exposure.x;
-    view.exposureRatio = exposure.w;
     view.sceneShadows = true;
     view.quality = GetRenderQualitySettings().fluidSmokeQuality;
     return view;

@@ -29,7 +29,7 @@ GameProjectWorldResult Resolve(GameProjectWorldHandle identity, GameProjectObjec
 // 公開の形を描画側の形へ移す。版・大きさ・予約の値を確かめ、範囲は service が確かめる。
 bool Convert(const GameProjectFluidInteraction& source, RENDER3D::FLUID::FluidInteraction& out) noexcept {
     if (source.structSize != sizeof(source) || source.apiVersion != kGameProjectFluidApiVersion ||
-        source.reserved[0] != 0u || source.reserved[1] != 0u ||
+        source.reserved != 0u ||
         static_cast<uint32_t>(source.kind) > static_cast<uint32_t>(GameProjectFluidInteractionKind::Emit) ||
         static_cast<uint32_t>(source.shape) > static_cast<uint32_t>(GameProjectFluidShape::Box))
         return false;
@@ -40,6 +40,7 @@ bool Convert(const GameProjectFluidInteraction& source, RENDER3D::FLUID::FluidIn
     out.extents = {source.extents.x, source.extents.y, source.extents.z};
     out.direction = {source.direction.x, source.direction.y, source.direction.z};
     out.strength = source.strength;
+    out.absorption = source.absorption;
     return true;
 }
 } // namespace

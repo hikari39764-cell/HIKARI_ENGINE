@@ -406,6 +406,23 @@ int main() {
     assert(VFX::IsVfxInputTypeCompatible(VFX::VfxValueType::Int, *spawnRateSchema));
     assert(VFX::IsVfxInputTypeCompatible(VFX::VfxValueType::Float4, VFX::VfxValueType::Color));
     assert(!VFX::IsVfxInputTypeCompatible(VFX::VfxValueType::Bool, *spawnRateSchema));
+    // 流体源の温度の倍率は流体源の層だけに繋がる。流体源の層は 有効・注入の速さ・風・色・温度に繋がり、大きさには繋がらない。
+    assert(VFX::ResolveVfxPropertySchema(emitter, {emitter.id, emitter.fluidSource.id, "temperatureMultiplier"}) ==
+           nullptr);
+    VFX::VfxEmitterData fluidSourceLayer = emitter;
+    fluidSourceLayer.kind = VFX::VfxLayerKind::FluidSource;
+    fluidSourceLayer.fluidSource.id = "module.fluid_source.smoke";
+    const VFX::VfxPropertySchema* temperatureSchema = VFX::ResolveVfxPropertySchema(
+        fluidSourceLayer, {fluidSourceLayer.id, fluidSourceLayer.fluidSource.id, "temperatureMultiplier"});
+    assert(temperatureSchema != nullptr &&
+           temperatureSchema->runtimeSemantic == VFX::VfxRuntimeBindingSemantic::FluidTemperatureMultiplier);
+    assert(VFX::ResolveVfxPropertySchema(
+               fluidSourceLayer, {fluidSourceLayer.id, fluidSourceLayer.spawn.id, "rateMultiplier"}) != nullptr);
+    assert(VFX::ResolveVfxPropertySchema(
+               fluidSourceLayer, {fluidSourceLayer.id, fluidSourceLayer.scale.id, "valueMultiplier"}) == nullptr);
+    assert(
+        VFX::ResolveVfxRuntimePropertyLayout(VFX::VfxRuntimeBindingSemantic::FluidTemperatureMultiplier).byteOffset ==
+        offsetof(RENDER3D::PARTICLES::ParticleEmitterRuntimeOverrides, fluidTemperatureMultiplier));
 
     std::string sourceJsonA{};
     std::string sourceJsonB{};

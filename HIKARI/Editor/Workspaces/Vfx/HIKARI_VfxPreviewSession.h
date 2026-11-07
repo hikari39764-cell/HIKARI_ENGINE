@@ -129,6 +129,9 @@ private:
     std::unique_ptr<RENDER3D::GPUDRIVEN::GpuDrivenSceneSource> emptySceneSource_{};
     std::unique_ptr<SceneEnvironment> previewEnvironment_{};
     std::unique_ptr<RENDER3D::LIGHTING::SceneLightingSet> previewLighting_{};
+    // 预览の流体域の発光の回読（描画が足し、次に描く前に再生側へ渡す。流体の発光に付いて行く灯が読む）。
+    std::shared_ptr<std::vector<RENDER3D::FLUID::FluidGlowReport>> previewGlowReports_ =
+        std::make_shared<std::vector<RENDER3D::FLUID::FluidGlowReport>>();
     PreviewNamespaceRetireCallback previewNamespaceRetireCallback_{};
     float previewLightYaw_ = -35.0f;
     // 1 で表示の白に当たる照度の倍率。

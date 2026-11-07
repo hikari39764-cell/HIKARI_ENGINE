@@ -58,7 +58,8 @@ bool IsValidVfxSpecialOutputProfile(const VfxSpecialOutputData& output) noexcept
         return finiteColor(light.color) && std::isfinite(light.luminousFlux) && light.luminousFlux >= 0 &&
                std::isfinite(light.range) && light.range > 0 && std::isfinite(light.sourceRadius) &&
                light.sourceRadius >= 0 && std::isfinite(light.flickerFrequency) &&
-               std::isfinite(light.flickerAmplitude);
+               std::isfinite(light.flickerAmplitude) && std::isfinite(light.glowShare) &&
+               light.glowShare >= kVfxLightGlowShareMin && light.glowShare <= kVfxLightGlowShareMax;
     }
     default: return false;
     }

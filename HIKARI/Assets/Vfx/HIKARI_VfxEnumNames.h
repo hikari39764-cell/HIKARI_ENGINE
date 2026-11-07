@@ -78,6 +78,12 @@ inline constexpr TEXT::EnumName<VfxParticleCapacityMode> kVfxParticleCapacityMod
 };
 inline constexpr auto kVfxParticleCapacityModeChoices = TEXT::EnumNameList(kVfxParticleCapacityModeNames);
 
+inline constexpr TEXT::EnumName<VfxParticleEventKind> kVfxParticleEventKindNames[]{
+    {VfxParticleEventKind::Collision, "Collision"},
+    {VfxParticleEventKind::Death, "Death"},
+};
+inline constexpr auto kVfxParticleEventKindChoices = TEXT::EnumNameList(kVfxParticleEventKindNames);
+
 inline constexpr TEXT::EnumName<VfxBillboardMode> kVfxBillboardModeNames[]{
     {VfxBillboardMode::RotatedBillboard, "RotatedBillboard"},
     {VfxBillboardMode::FixedYAxis, "FixedYAxis"},

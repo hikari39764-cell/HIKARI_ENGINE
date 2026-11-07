@@ -1,4 +1,5 @@
 #include "Scene/Vfx/HIKARI_VfxPlaybackState.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Numeric/HIKARI_NonZero.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include "Render3D/Vfx/HIKARI_ParticleCpuSimulation.h"
@@ -277,6 +278,14 @@ bool VfxPlaybackService::SetTransform(VfxPlaybackHandle handle, const VfxWorldTr
     return true;
 }
 
+bool VfxPlaybackService::SetVelocity(VfxPlaybackHandle handle, const MATH::Vec3& velocity) {
+    Instance* instance = Find(handle);
+    if (instance == nullptr || !MATH::IsFinite(velocity))
+        return false;
+    instance->velocity = velocity;
+    return true;
+}
+
 bool VfxPlaybackService::SetParameters(VfxPlaybackHandle handle, const std::vector<VfxParameterOverride>& parameters,
                                        std::vector<VfxPlaybackDiagnostic>* outDiagnostics) {
     Instance* instance = Find(handle);
@@ -365,6 +374,7 @@ VfxSeekResult VfxPlaybackService::SeekInternal(VfxPlaybackHandle handle, uint64_
         renderInput_.emitters.clear();
         renderInput_.compositions.clear();
         renderInput_.fluids.clear();
+        renderInput_.fluidSources.clear();
         if (!preserveStagedRetirements) {
             renderInput_.retiredEmitters.clear();
         }
@@ -470,6 +480,7 @@ void VfxPlaybackService::Update(uint64_t frameIndex, float deltaSeconds) {
     renderInput_.emitters.clear();
     renderInput_.compositions.clear();
     renderInput_.fluids.clear();
+    renderInput_.fluidSources.clear();
     renderInput_.retiredEmitters.clear();
     renderInput_.retiredEmitters.swap(pendingRetiredEmitters_);
 
@@ -517,7 +528,9 @@ void VfxPlaybackService::Update(uint64_t frameIndex, float deltaSeconds) {
                 continue;
             }
         }
-        (void)AppendInstanceStep(instance, deltaSeconds * instance.timeScale, 0u, true, true);
+        const float instanceSeconds = deltaSeconds * instance.timeScale;
+        instance.transform.position = instance.transform.position + instance.velocity * instanceSeconds;
+        (void)AppendInstanceStep(instance, instanceSeconds, 0u, true, true);
     }
     PublishRenderInputDelivery();
 }
@@ -634,6 +647,17 @@ size_t VfxPlaybackService::CollectLightOutputs(std::vector<VfxLayerLightSample>&
                 const auto& profile = output.light;
                 if (!(profile.luminousFlux > 0.0f) || !(profile.range > 0.0f))
                     continue;
+                // 流体の発光に付いて行く光源：まだ回読が届いていない・光っていない域は出さない。
+                const RENDER3D::FLUID::FluidGlowReport* glow = nullptr;
+                float glowLuminance = 0.0f;
+                if (profile.followFluidGlow) {
+                    glow = FindFluidGlow(instance.handle, static_cast<uint32_t>(emitterIndex));
+                    if (glow != nullptr)
+                        glowLuminance =
+                            0.2126f * glow->intensity.x + 0.7152f * glow->intensity.y + 0.0722f * glow->intensity.z;
+                    if (!(glowLuminance > 0.0f) || !(profile.glowShare > 0.0f))
+                        continue;
+                }
                 // レイヤー色をそのまま落とす。エフェクトの色と光源色が
                 // 食い違うと、加法発光と照明が別物に見えてしまう。
                 MATH::Vec4 tint{1.0f, 1.0f, 1.0f, 1.0f};
@@ -671,6 +695,22 @@ size_t VfxPlaybackService::CollectLightOutputs(std::vector<VfxLayerLightSample>&
                 sample.ageSeconds = instance.elapsedSeconds - start;
                 sample.priority = profile.priority;
                 sample.castsShadows = profile.castsShadows;
+                // 発光の重心に置き、光束は 4π × 発光の光度 × 届く割合（luminousFlux が上限）、色は灯の色 × 発光の色。流体域の
+                // 層の色は描画で散乱色と消光にだけ掛かり発光には掛からないので、ここでも掛けない。局所空間の域の重心は今の
+                // 域の変換で移す（回読の遅れの間に動いた火球に光が遅れない）。
+                if (glow != nullptr) {
+                    const float peak = (std::max)({glow->intensity.x, glow->intensity.y, glow->intensity.z});
+                    const VfxWorldTransform& domain = instance.emitterTransforms[emitterIndex];
+                    sample.position = glow->localSpace
+                                          ? domain.position + MATH::RotateVector(domain.rotation, glow->localPosition)
+                                          : glow->worldPosition;
+                    sample.color = profile.color;
+                    sample.luminousFlux =
+                        (std::min)(profile.luminousFlux, 12.5663706f * glowLuminance * profile.glowShare);
+                    sample.color = {sample.color.x * glow->intensity.x / peak,
+                                    sample.color.y * glow->intensity.y / peak,
+                                    sample.color.z * glow->intensity.z / peak, sample.color.w};
+                }
                 outSamples.push_back(sample);
             }
         }
@@ -744,6 +784,7 @@ void VfxPlaybackService::Reset() {
     renderInput_.emitters.clear();
     renderInput_.compositions.clear();
     renderInput_.fluids.clear();
+    renderInput_.fluidSources.clear();
     renderInput_.retiredEmitters.clear();
     renderInput_.deliverySequence = 0u;
     pendingRenderDeliverySequence_ = 0u;
@@ -801,6 +842,8 @@ bool VfxPlaybackService::PublishFrozenRenderInput() noexcept {
         for (auto& source : domain.sources)
             source.burstDensity = 0.0f;
     }
+    for (auto& source : renderInput_.fluidSources)
+        source.burstDensity = 0.0f;
     PublishRenderInputDelivery();
     return true;
 }
@@ -985,9 +1028,14 @@ size_t VfxPlaybackService::AppendInstanceStep(Instance& instance, float deltaSec
     const size_t firstSubmission = renderInput_.emitters.size();
     for (uint32_t emitterIndex = 0u; emitterIndex < program.emitters.size(); ++emitterIndex) {
         const VfxProgramEmitter& emitter = program.emitters[emitterIndex];
-        if (emitter.kind == VfxLayerKind::Group || emitter.kind == VfxLayerKind::Adjustment ||
-            emitter.kind == VfxLayerKind::FluidSource)
+        if (emitter.kind == VfxLayerKind::Group || emitter.kind == VfxLayerKind::Adjustment)
             continue;
+        // 流体源は域の提交の中で扱う。域の下に無いものは場面の域へ注入する源として渡す。
+        if (emitter.kind == VfxLayerKind::FluidSource) {
+            if (emitter.fluidDomainIndex == kInvalidVfxProgramIndex)
+                AppendFluidSceneSource(instance, emitterIndex, spawnDelta, drawAfterSimulation, wrapLoop);
+            continue;
+        }
         // 流体域は粒子 pass へは出さず、下の流体源をまとめた域の提交にする（源は域の中で処理する）。
         if (emitter.kind == VfxLayerKind::Fluid) {
             AppendFluidDomain(instance, emitterIndex, deltaSeconds, spawnDelta, drawAfterSimulation, wrapLoop);

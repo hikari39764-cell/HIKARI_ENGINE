@@ -135,6 +135,8 @@ bool PrepareMeshFrame(const GFX::Context& graphics, const Camera3D& camera, cons
                                  ? overrideScreenHeight
                                  : static_cast<uint32_t>(std::max(1, graphics.backBufferHeight));
     FillCameraCB(viewProj, inverseViewProj, cameraPos, screenW, screenH, frameResources.view.camera);
+    frameResources.cameraRelativeViewProj =
+        RENDER3D::FLUID::MakeCameraRelativeViewProj(camera.GetView(), camera.GetProj());
     CameraCB cullingCamera = frameResources.view.camera;
     if (cameraOverrides != nullptr && cameraOverrides->HasCullingMatrices()) {
         cullingCamera.viewProj = *cameraOverrides->cullingViewProj;
@@ -294,7 +296,9 @@ bool BeginFrameInternal(const GFX::Context& graphics, const Camera3D& camera, co
 
     gMeshRendererState.frameObjectIndex = 0;
     SyncSurfaceGpuSceneMaterialFrame(graphics);
-    PrepareFluidFrame(graphics, gMeshRendererState.particleFrameSource);
+    const auto& cameraPosition = gMeshRendererState.frameResources.Active().view.camera.cameraPos;
+    PrepareFluidFrame(graphics, gMeshRendererState.particleFrameSource,
+                      {cameraPosition.x, cameraPosition.y, cameraPosition.z});
     const RENDER3D::FLUID::FluidFlowView fluidFlow = gMeshRendererState.fluidPass.GetFlowView();
     if (!gMeshRendererState.particlePass.PrepareFrame(graphics, gMeshRendererState.particleFrameSource,
                                                       gMeshRendererState.gpuMaterialRegistry, &fluidFlow)) {

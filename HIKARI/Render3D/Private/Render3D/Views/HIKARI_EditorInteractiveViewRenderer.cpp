@@ -906,9 +906,8 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
         view.worldTextFrameSource = worldTextFrameSource;
     }
     const PARTICLES::ParticleRenderFrameSource particleFrameSource{
-        selected->request.particleInputOverride.get(),
-        assetRegistry,
-        materialExternalValues,
+        selected->request.particleInputOverride.get(), assetRegistry, materialExternalValues, {}, nullptr,
+        selected->request.fluidGlowReports.get(),
     };
     view.particleFrameSource = selected->request.particleInputOverride != nullptr ? &particleFrameSource : nullptr;
     const LIGHTING::SceneLightingSet& effectiveLighting =

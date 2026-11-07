@@ -200,9 +200,11 @@ void RequestFluidDebugSlice(const RENDER3D::FLUID::FluidDebugSliceRequest& reque
 RENDER3D::FLUID::FluidDebugSliceView GetFluidDebugSlice() { return gMeshRendererState.fluidPass.GetDebugSlice(); }
 
 void INTERNAL::PrepareFluidFrame(const GFX::Context& graphics,
-                                 const RENDER3D::PARTICLES::ParticleRenderFrameSource* source) {
+                                 const RENDER3D::PARTICLES::ParticleRenderFrameSource* source,
+                                 const MATH::Vec3& viewerPosition) {
     const uint64_t frame = TIME::GetFrameContext().frameIndex;
     RENDER3D::FLUID::FluidFrameSettings settings{};
+    settings.viewerPosition = viewerPosition;
     settings.quality = RENDER3D::GetRenderQualitySettings().fluidSmokeQuality;
     settings.diagnostics = IsFluidRequestFresh(gFluidDiagnosticsFrame, frame);
     if (source != nullptr)
@@ -220,6 +222,8 @@ void INTERNAL::PrepareFluidFrame(const GFX::Context& graphics,
     // 回読が届いた汇の吸い込み量は、受け取る場面の視図へ渡す（場面が次のフレームに押すものの service へ返す）。
     if (source != nullptr && source->fluidSinkReports != nullptr)
         gMeshRendererState.fluidPass.TakeSinkReports(*source->fluidSinkReports);
+    if (source != nullptr && source->fluidGlowReports != nullptr)
+        gMeshRendererState.fluidPass.TakeGlowReports(source->input, *source->fluidGlowReports);
     PublishFluidMetrics(gMeshRendererState.fluidPass.GetStats(), TIME::GetFrameContext().frameIndex);
 }
 

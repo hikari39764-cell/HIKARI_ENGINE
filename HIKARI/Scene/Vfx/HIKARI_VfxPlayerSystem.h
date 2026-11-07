@@ -34,7 +34,11 @@ public:
 
     void OnWorldAttached(World& world) override;
     void OnWorldDetached(World& world) override;
-    void Update(World& world, const FrameContext& frame) override;
+    // Slots resolve owner and target transforms after every LateUpdate so a
+    // following effect uses this frame's pose. It is registered ahead of
+    // ModelRenderSystem (HIKARI_VfxRuntimeFeature.cpp), whose PreRender
+    // advances VfxPlaybackService once per frame.
+    void PreRender(World& world, const FrameContext& frame) override;
     const VfxPlayerSystemAdmissionStats& GetAdmissionStats() const noexcept;
 
 private:
@@ -71,6 +75,7 @@ private:
     const RuntimePlayStateService* runtimePlayState_ = nullptr;
     std::unordered_map<SlotKey, SlotRuntimeState, SlotKeyHash> states_{};
     VfxPlayerSystemAdmissionStats admissionStats_{};
+    uint64_t lastFrameIndex_ = UINT64_MAX;
 };
 
 } // namespace HIKARI

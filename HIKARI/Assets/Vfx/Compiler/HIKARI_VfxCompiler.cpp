@@ -235,7 +235,8 @@ ParticleDepthMode ConvertDepthMode(VfxParticleDepthMode mode) noexcept {
 }
 
 uint32_t CompileParticleCapacity(const VfxAssetData& asset, const VfxEmitterData& emitter) noexcept {
-    if (emitter.spawn.capacityMode == VfxParticleCapacityMode::Fixed) {
+    // 事件で生成する層は数を前もって知れないので、上限をそのまま確保する。
+    if (emitter.spawn.capacityMode == VfxParticleCapacityMode::Fixed || !emitter.spawn.eventSourceLayerId.empty()) {
         return emitter.spawn.maximumParticles;
     }
 
@@ -413,8 +414,17 @@ VfxCompileResult CompileVfxAsset(const VfxAssetData& asset) {
         emitter.simulation.localSimulation = source.basic.localSimulation ? 1u : 0u;
         emitter.simulation.collisionPlaneEnabled = source.forces.collisionPlaneEnabled ? 1u : 0u;
         emitter.simulation.collisionPlaneHeight = source.forces.collisionPlaneHeight;
+        emitter.simulation.sceneDepthCollision = source.forces.sceneDepthCollision ? 1u : 0u;
+        emitter.simulation.collisionThickness = source.forces.collisionThickness;
         emitter.simulation.restitution = source.forces.restitution;
         emitter.simulation.friction = source.forces.friction;
+        if (const auto events = emitterIndices.find(source.spawn.eventSourceLayerId); events != emitterIndices.end()) {
+            emitter.simulation.eventSourceEmitter = events->second;
+            emitter.simulation.eventKind = static_cast<uint32_t>(source.spawn.eventKind);
+            emitter.simulation.particlesPerEvent = source.spawn.particlesPerEvent;
+            emitter.simulation.inheritVelocity = source.spawn.inheritVelocity;
+            emitter.simulation.minimumImpactSpeed = source.spawn.minimumImpactSpeed;
+        }
         emitter.simulation.color = CompileAnimatedColor(source.color.value);
         emitter.fluidDomain = source.fluidDomain;
         emitter.fluidSource = source.fluidSource;
@@ -640,6 +650,19 @@ VfxCompileResult CompileVfxAsset(const VfxAssetData& asset) {
             program.dependencyGuids.push_back(*extra);
         }
         program.emitters.push_back(std::move(emitter));
+    }
+    // 事件を出す層：この層を生成元にする層がある種類だけ出し、碰撞はそれから生成する層の最小の速さの最も小さい値より
+    // 遅いものを書かない。
+    for (const VfxProgramEmitter& emitter : program.emitters) {
+        if (emitter.simulation.eventSourceEmitter >= program.emitters.size())
+            continue;
+        auto& source = program.emitters[emitter.simulation.eventSourceEmitter].simulation;
+        if (emitter.simulation.eventKind == static_cast<uint32_t>(VfxParticleEventKind::Collision))
+            source.eventImpactThreshold =
+                (source.eventKinds & 1u) == 0u
+                    ? emitter.simulation.minimumImpactSpeed
+                    : (std::min)(source.eventImpactThreshold, emitter.simulation.minimumImpactSpeed);
+        source.eventKinds |= 1u << emitter.simulation.eventKind;
     }
 
     std::sort(program.dependencyGuids.begin(), program.dependencyGuids.end(),

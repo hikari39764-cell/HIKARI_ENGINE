@@ -76,6 +76,8 @@ inline VfxRuntimePropertyLayout ResolveVfxRuntimePropertyLayout(VfxRuntimeBindin
         return {static_cast<uint32_t>(offsetof(Render, ringStartAngleRadians)), Storage::Float, true};
     case VfxRuntimeBindingSemantic::RingEndAngleDegrees:
         return {static_cast<uint32_t>(offsetof(Render, ringEndAngleRadians)), Storage::Float, true};
+    case VfxRuntimeBindingSemantic::FluidTemperatureMultiplier:
+        return {static_cast<uint32_t>(offsetof(Overrides, fluidTemperatureMultiplier)), Storage::Float};
     default: return {};
     }
 }

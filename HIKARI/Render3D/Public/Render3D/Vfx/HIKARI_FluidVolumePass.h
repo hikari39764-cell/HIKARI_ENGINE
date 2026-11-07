@@ -37,6 +37,10 @@ struct FluidGridLayout {
     uint32_t cells[3]{8u, 8u, 8u};
     float cellSize = 0.5f;
     uint32_t levels = 1u;
+    // 密度の体積に格ごとの色（密度 × 色、FluidDomainSettings::cellColor）も持つ（R16 → RGBA16F）。
+    bool cellColor = false;
+    // 燃料の体積（x 燃料、y この子步の燃える速さ。RG16F を 2 枚）を持つ（FluidDomainSettings::combustion）。
+    bool combustion = false;
 };
 FluidGridLayout ResolveFluidGridLayout(const MATH::Vec3& domainSize, uint32_t resolution) noexcept;
 uint64_t EstimateFluidDomainBytes(const FluidGridLayout& layout) noexcept;
@@ -87,6 +91,9 @@ struct FluidDomainStats {
     bool diagnosticsValid = false;
     float maxDivergence = 0.0f;
     float densityTotal = 0.0f;
+    // このフレームに上限（画質の maxDomains）で解かれなかった（優先度と距離で後ろになった）か、と作者の優先度。
+    bool skippedByLimit = false;
+    uint32_t priority = 0u;
 };
 
 struct FluidVolumePassStats {
@@ -100,14 +107,14 @@ struct FluidVolumePassStats {
 };
 
 // 描く視図（主視図と編集器の視図）。行列は場面の深度と同じ（抖动込みの）描画格子。光は絶対量で、前露光は preExposure。
-// 前のフレームの行列は描画側が視図ごとに覚える（historyValid が偽なら履歴を使わない）。
+// 時間方向の履歴は持たないので、前のフレームの行列は要らない。
+// 行列は相機を原点に置いた逆 view-projection（clip → 相機からの相対位置）。世界の view-projection を float で逆にすると、
+// 座標の大きい所（浮島は y≈3400 m）で視線の向きが相機の位置につれて数画素ずつ跳び、場面に対して烟が一顿一顿と揺れた。
 struct FluidRenderView {
     uint64_t viewKey = 0u;
-    MATH::Mat4 viewProj{};
-    MATH::Mat4 invViewProj{};
+    MATH::Mat4 invRelativeViewProj{};
     MATH::Vec3 cameraPosition{};
     MATH::Vec3 cameraForward{0.0f, 0.0f, 1.0f};
-    bool historyValid = false;
     uint32_t renderWidth = 0u;
     uint32_t renderHeight = 0u;
     D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv{};
@@ -117,7 +124,6 @@ struct FluidRenderView {
     MATH::Vec3 sunIlluminance{};
     MATH::Vec3 ambientRadiance{};
     float preExposure = 1.0f;
-    float exposureRatio = 1.0f;
     bool sceneShadows = false;
     FluidSmokeQuality quality = FluidSmokeQuality::Balanced;
 };
@@ -125,7 +131,8 @@ struct FluidRenderView {
 // 透明物体が読む相機体積（HIKARI_FluidCameraVolume.hlsli）。params：x near、y log(far/near)、z 層の数、w 1 で有効。
 struct FluidCameraVolumeView {
     D3D12_GPU_DESCRIPTOR_HANDLE srv{};
-    MATH::Vec4 params{};
+    // MATH::Vec4 の既定は w = 1（有効）なので、無効は 0 を明示する。
+    MATH::Vec4 params{0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 // 粒子が乗る流体（PrepareFrame がこのフレームに解いた域、最多 4）。domains は域ごとの世界→格子の行、格の数・大きさと
@@ -138,10 +145,15 @@ struct FluidFlowView {
     std::array<D3D12_GPU_DESCRIPTOR_HANDLE, kMaximumFluidFlowDomains> velocity{};
 };
 
-// 視図の行列・相機の位置と場面の環境から、相機と光（大気を通った地表の太陽、空の環境光、今の露出）と画質を埋める。
-// 帧图の主視図と編集器の視図が共用し、描画の大きさ・深度・色の形式・履歴の有無は呼ぶ側が足す。
-FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey, const MATH::Mat4& viewProj,
-                                    const MATH::Mat4& invViewProj, const MATH::Vec3& cameraPosition);
+// 相機を原点に置いた view-projection：view の平行移動を除いた回転と投影だけ（大きな座標を含まない）。clipJitter は
+// 場面の描画と同じ clip の抖动（TemporalCameraData::jitter の zw、抖动なしは 0）。
+MATH::Mat4 MakeCameraRelativeViewProj(const MATH::Mat4& view, const MATH::Mat4& projection, float clipJitterX = 0.0f,
+                                      float clipJitterY = 0.0f) noexcept;
+
+// 相機を原点に置いた view-projection・相機の位置と場面の環境から、相機と光（大気を通った地表の太陽、空の環境光、今の
+// 露出）と画質を埋める。帧图の主視図と編集器の視図が共用し、描画の大きさ・深度・色の形式は呼ぶ側が足す。
+FluidRenderView MakeFluidRenderView(const SceneEnvironment& environment, uint64_t viewKey,
+                                    const MATH::Mat4& relativeViewProj, const MATH::Vec3& cameraPosition);
 
 struct FluidFrameSettings {
     FluidSmokeQuality quality = FluidSmokeQuality::Balanced;
@@ -150,6 +162,8 @@ struct FluidFrameSettings {
     // 場面の押すもの（障碍物・冲量・力）と、それを出したフレーム。冲量はフレームが変わった時に一度だけ受け取る。
     std::span<const FluidInteraction> interactions{};
     uint64_t interactionFrame = 0u;
+    // 域の数が上限を超えた時、同じ優先度の域を近い順に選ぶ基準（このフレームの視図の相機）。
+    MATH::Vec3 viewerPosition{};
 };
 
 class FluidVolumePass final {
@@ -185,6 +199,9 @@ public:
     const FluidVolumePassStats& GetStats() const noexcept;
     // 回読が届いた汇の量を out の後ろへ移す（受け取った分は pass から消える。受け取る側が無い間は溜めておく）。
     void TakeSinkReports(std::vector<FluidSinkReport>& out);
+    // 回読が届いた域の発光（reportGlow の域）のうち、input の域の分を out へ移す（同じフレームに描く別の視図の域の分は
+    // その視図が受け取る）。もう無い域の分は捨てる。
+    void TakeGlowReports(const PARTICLES::ParticleRenderInput* input, std::vector<FluidGlowReport>& out);
 
 private:
     struct Impl;

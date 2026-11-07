@@ -24,6 +24,7 @@ enum class VfxModuleKind : uint8_t {
     Color,
     RenderCommon,
     RenderShape,
+    FluidSource,
 };
 
 enum class VfxRuntimeBindingSemantic : uint8_t {
@@ -37,6 +38,7 @@ enum class VfxRuntimeBindingSemantic : uint8_t {
     RingOuterRadius,
     RingStartAngleDegrees,
     RingEndAngleDegrees,
+    FluidTemperatureMultiplier,
 };
 
 inline constexpr TEXT::EnumName<VfxRuntimeBindingSemantic> kVfxRuntimeBindingNames[]{
@@ -50,6 +52,7 @@ inline constexpr TEXT::EnumName<VfxRuntimeBindingSemantic> kVfxRuntimeBindingNam
     {VfxRuntimeBindingSemantic::RingOuterRadius, "RingOuterRadius"},
     {VfxRuntimeBindingSemantic::RingStartAngleDegrees, "RingStartAngleDegrees"},
     {VfxRuntimeBindingSemantic::RingEndAngleDegrees, "RingEndAngleDegrees"},
+    {VfxRuntimeBindingSemantic::FluidTemperatureMultiplier, "FluidTemperatureMultiplier"},
 };
 
 struct VfxPropertyRange {
@@ -88,7 +91,7 @@ inline bool IsVfxInputTypeCompatible(VfxValueType inputType, const VfxPropertySc
     return IsVfxInputTypeCompatible(inputType, property.valueType);
 }
 
-inline constexpr std::array<VfxPropertySchema, 10u> kVfxPropertySchemas{
+inline constexpr std::array<VfxPropertySchema, 11u> kVfxPropertySchemas{
     VfxPropertySchema{
         VfxModuleKind::Basic,
         "enabled",
@@ -191,6 +194,15 @@ inline constexpr std::array<VfxPropertySchema, 10u> kVfxPropertySchemas{
                       VfxRuntimeBindingSemantic::RingEndAngleDegrees,
                       {},
                       "degrees"},
+    VfxPropertySchema{VfxModuleKind::FluidSource,
+                      "temperatureMultiplier",
+                      "vfx.property.fluid_temperature_multiplier",
+                      VfxValueType::Float,
+                      true,
+                      true,
+                      VfxRuntimeBindingSemantic::FluidTemperatureMultiplier,
+                      {true, true, 0.0f, 64.0f},
+                      "multiplier"},
 };
 
 inline std::string_view ToString(VfxModuleKind value) noexcept {
@@ -206,6 +218,7 @@ inline std::string_view ToString(VfxModuleKind value) noexcept {
     case VfxModuleKind::Color: return "Color";
     case VfxModuleKind::RenderCommon: return "RenderCommon";
     case VfxModuleKind::RenderShape: return "RenderShape";
+    case VfxModuleKind::FluidSource: return "FluidSource";
     case VfxModuleKind::Basic:
     default: return "Basic";
     }
@@ -219,7 +232,7 @@ inline std::span<const VfxPropertySchema> GetVfxPropertySchemas() noexcept { ret
 
 inline bool TryResolveVfxModuleKind(const VfxEmitterData& emitter, std::string_view moduleId,
                                     VfxModuleKind& outKind) noexcept {
-    const std::array<std::pair<std::string_view, VfxModuleKind>, 12u> modules{
+    const std::array<std::pair<std::string_view, VfxModuleKind>, 13u> modules{
         std::pair{std::string_view(emitter.basic.id), VfxModuleKind::Basic},
         std::pair{std::string_view(emitter.emitterTransform.id), VfxModuleKind::EmitterTransform},
         std::pair{std::string_view(emitter.attachment.id), VfxModuleKind::Attachment},
@@ -232,6 +245,9 @@ inline bool TryResolveVfxModuleKind(const VfxEmitterData& emitter, std::string_v
         std::pair{std::string_view(emitter.color.id), VfxModuleKind::Color},
         std::pair{std::string_view(emitter.renderCommon.id), VfxModuleKind::RenderCommon},
         std::pair{std::string_view(emitter.renderShape.id), VfxModuleKind::RenderShape},
+        std::pair{
+            std::string_view(emitter.kind == VfxLayerKind::FluidSource ? emitter.fluidSource.id : std::string_view{}),
+            VfxModuleKind::FluidSource},
     };
     for (const auto& [candidate, kind] : modules) {
         if (!candidate.empty() && candidate == moduleId) {
@@ -251,13 +267,33 @@ inline const VfxPropertySchema* FindVfxPropertySchema(VfxModuleKind moduleKind, 
     return nullptr;
 }
 
+// 層の種類ごとに意味のある値だけを繋げる。流体源は 有効・注入の速さ・風（重力の倍率）・色・温度、流体域は 有効・風、
+// 他の層は流体源の温度を除く全部。
+inline bool IsVfxPropertyApplicable(const VfxEmitterData& emitter, const VfxPropertySchema& schema) noexcept {
+    using Semantic = VfxRuntimeBindingSemantic;
+    switch (emitter.kind) {
+    case VfxLayerKind::FluidSource:
+        return schema.runtimeSemantic == Semantic::EmitterEnabled ||
+               schema.runtimeSemantic == Semantic::SpawnRateMultiplier ||
+               schema.runtimeSemantic == Semantic::GravityMultiplier ||
+               schema.runtimeSemantic == Semantic::ColorMultiplier ||
+               schema.runtimeSemantic == Semantic::FluidTemperatureMultiplier;
+    case VfxLayerKind::Fluid:
+        return schema.runtimeSemantic == Semantic::EmitterEnabled ||
+               schema.runtimeSemantic == Semantic::GravityMultiplier;
+    default: return schema.runtimeSemantic != Semantic::FluidTemperatureMultiplier;
+    }
+}
+
 inline const VfxPropertySchema* ResolveVfxPropertySchema(const VfxEmitterData& emitter,
                                                          const VfxPropertyAddress& address) noexcept {
     if (address.emitterId != emitter.id)
         return nullptr;
     VfxModuleKind kind{};
-    return TryResolveVfxModuleKind(emitter, address.moduleId, kind) ? FindVfxPropertySchema(kind, address.propertyId)
-                                                                    : nullptr;
+    if (!TryResolveVfxModuleKind(emitter, address.moduleId, kind))
+        return nullptr;
+    const VfxPropertySchema* schema = FindVfxPropertySchema(kind, address.propertyId);
+    return schema != nullptr && IsVfxPropertyApplicable(emitter, *schema) ? schema : nullptr;
 }
 
 } // namespace HIKARI::VFX

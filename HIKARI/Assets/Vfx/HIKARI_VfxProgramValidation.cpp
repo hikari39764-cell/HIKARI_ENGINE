@@ -360,15 +360,16 @@ bool ValidateLayerCurves(const VfxProgram& program, uint32_t index, const VfxPro
     return true;
 }
 
-// 流体層の設定は字段表の範囲の中にあり、流体源は流体域の層を指す。
+// 流体層の設定は字段表の範囲の中にあり、流体源は流体域の層を指すか、どの域も指さない（流体注入层、場面の域へ注入する）。
 bool IsValidFluidLayer(const VfxProgram& program, const VfxProgramEmitter& emitter) noexcept {
     namespace FLUID = RENDER3D::FLUID;
     if (emitter.kind == VfxLayerKind::Fluid)
         return emitter.fluidDomainIndex == kInvalidVfxProgramIndex &&
                JSONFIELDS::Sanitize(emitter.fluidDomain, FLUID::kFluidDomainSettingsFields) == emitter.fluidDomain;
     if (emitter.kind == VfxLayerKind::FluidSource)
-        return emitter.fluidDomainIndex < program.emitters.size() &&
-               program.emitters[emitter.fluidDomainIndex].kind == VfxLayerKind::Fluid &&
+        return (emitter.fluidDomainIndex == kInvalidVfxProgramIndex ||
+                (emitter.fluidDomainIndex < program.emitters.size() &&
+                 program.emitters[emitter.fluidDomainIndex].kind == VfxLayerKind::Fluid)) &&
                JSONFIELDS::Sanitize(emitter.fluidSource, FLUID::kFluidSourceSettingsFields) == emitter.fluidSource;
     return emitter.fluidDomainIndex == kInvalidVfxProgramIndex;
 }
@@ -415,8 +416,18 @@ bool IsValidEmitterSimulation(const VfxProgram& program, const VfxProgramEmitter
            IsFinite(simulation.fluidFollow) && simulation.fluidFollow >= 0.0f &&
            simulation.fluidFollow <= RENDER3D::PARTICLES::kMaxParticleFluidFollow && simulation.localSimulation <= 1u &&
            simulation.collisionPlaneEnabled <= 1u && IsFinite(simulation.collisionPlaneHeight) &&
+           simulation.sceneDepthCollision <= 1u && IsFinite(simulation.collisionThickness) &&
+           simulation.collisionThickness >= 0.01f && simulation.collisionThickness <= 10.0f &&
            IsFinite(simulation.restitution) && simulation.restitution >= 0.0f && simulation.restitution <= 1.0f &&
            IsFinite(simulation.friction) && simulation.friction >= 0.0f && simulation.friction <= 1.0f &&
+           simulation.eventKinds <= 3u && IsFinite(simulation.eventImpactThreshold) &&
+           simulation.eventImpactThreshold >= 0.0f &&
+           (simulation.eventSourceEmitter == UINT32_MAX ||
+            (simulation.eventSourceEmitter < program.emitters.size() && simulation.eventKind <= 1u &&
+             simulation.particlesPerEvent >= 1u && simulation.particlesPerEvent <= 16u &&
+             IsFinite(simulation.inheritVelocity) && simulation.inheritVelocity >= 0.0f &&
+             simulation.inheritVelocity <= 2.0f && IsFinite(simulation.minimumImpactSpeed) &&
+             simulation.minimumImpactSpeed >= 0.0f)) &&
            IsValidAnimated(simulation.color) && IsFinite(emitter.spawnRatePerSecond) &&
            emitter.spawnRatePerSecond >= 0.0f && overrides.enabled <= 1u && IsFinite(overrides.spawnRateMultiplier) &&
            IsFinite(overrides.radialSpeedMultiplier) && IsFinite(overrides.scaleMultiplier) &&

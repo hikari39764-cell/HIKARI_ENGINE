@@ -20,5 +20,8 @@ struct VfxPresetDescriptor {
 const std::vector<VfxPresetDescriptor>& GetVfxPresetCatalog();
 const VfxPresetDescriptor* FindVfxPreset(std::string_view id) noexcept;
 VfxAssetData MakeVfxPresetAsset(std::string_view id);
+// 種類 kind の新しい層の既定を既定の層（MakeDefaultVfxAssetData の層）へ当てる。編集器の「層を足す」と预设が共有する。
+// id と親は呼ぶ側が決める。
+void ApplyLayerKindDefaults(VfxEmitterData& emitter, VfxLayerKind kind);
 
 } // namespace HIKARI::VFX::PRESETS

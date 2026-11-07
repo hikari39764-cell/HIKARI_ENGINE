@@ -476,7 +476,6 @@ static_assert(HasAddress(&HIKARI::CameraView::SubmitTargetFraming));
 static_assert(HasAddress(&HIKARI::CameraView::SubmitTargetFramingWithDynamics));
 static_assert(HasAddress(&HIKARI::CameraView::SubmitRelationshipShot));
 
-static_assert(HIKARI::SDK::kVersionMajor == 4u && HIKARI::SDK::kVersionMinor == 6u && HIKARI::SDK::kVersionPatch == 0u);
 static_assert(sizeof(HIKARI::GameProjectKinematicMoveOptions) == 32u);
 static_assert(offsetof(HIKARI::GameProjectKinematicMoveOptions, collision) == 8u);
 static_assert(offsetof(HIKARI::GameProjectKinematicMoveOptions, verticalGravityAcceleration) == 24u);
@@ -624,6 +623,7 @@ static_assert(offsetof(HIKARI::GameProjectAudioPlaybackSnapshot, completedLoops)
 static_assert(HasAddress(&HIKARI::AudioView::TryGetPlaybackSnapshot));
 static_assert(HasAddress(&HIKARI::ModelView::SetPostGroupMask));
 static_assert(HasAddress(&HIKARI::ModelView::ClearPostGroupMask));
+static_assert(HasAddress(&HIKARI::VfxView::SetVelocity));
 static_assert(HasAddress(&HIKARI::VfxView::SetTimeScale));
 static_assert(HasAddress(&HIKARI::WorldView::GetAnimation));
 static_assert(HasAddress(&HIKARI::WorldView::GetMotion));

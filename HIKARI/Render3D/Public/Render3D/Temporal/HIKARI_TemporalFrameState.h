@@ -181,6 +181,9 @@ struct TemporalInputs {
 };
 
 const char* ToString(TemporalHistoryResetReason reason);
+// 抖動（NDC の x、y）を clip の x、y に w を掛けて足す。時間抗鋸歯の viewProj と、相機相対で組む流体の viewProj が同じ
+// 約束で揺れる（ずれると烟が場景の深度に対して跳ねる）。
+MATH::Mat4 ApplyClipSpaceJitter(const MATH::Mat4& viewProj, float clipJitterX, float clipJitterY);
 
 bool AcquireTemporalView(RenderViewId viewId, TemporalViewLease& outLease);
 // CPU-state primitive used by the Temporal resource-domain coordinator.

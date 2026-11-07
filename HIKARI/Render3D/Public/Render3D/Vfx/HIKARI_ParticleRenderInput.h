@@ -247,8 +247,23 @@ struct ParticleEmitterSimulationParameters {
     uint32_t localSimulation = 0u;
     uint32_t collisionPlaneEnabled = 0u;
     float collisionPlaneHeight = 0.0f;
+    // 場景の深度との碰撞（VfxForcesModuleData::sceneDepthCollision、collisionThickness）。
+    uint32_t sceneDepthCollision = 0u;
+    float collisionThickness = 0.5f;
     float restitution = 0.35f;
     float friction = 0.2f;
+    // 粒子の事件（VfxSpawnModuleData::eventSourceLayerId）。eventKinds はこの層が出す事件（bit 0 碰撞、bit 1 寿命切れ。
+    // この層を元にする層がある種類だけ）、eventImpactThreshold はこれより遅い碰撞を書かない（この層の碰撞から生成する層の
+    // 最小の速さの最も小さい値。止まった粒子が毎フレーム床に触れて区を埋めない）。eventSourceEmitter は同じ特效の中で
+    // この層を生成する元の層の添字（無ければ UINT32_MAX）、eventKind は 0 碰撞・1 寿命切れ、1 事件あたり
+    // particlesPerEvent 個、速度の受け継ぎ、碰撞の最小の速さ。
+    uint32_t eventKinds = 0u;
+    float eventImpactThreshold = 0.0f;
+    uint32_t eventSourceEmitter = UINT32_MAX;
+    uint32_t eventKind = 0u;
+    uint32_t particlesPerEvent = 0u;
+    float inheritVelocity = 0.0f;
+    float minimumImpactSpeed = 0.0f;
     HIKARI::RENDER3D::PARTICLES::ParticleForceField field{};
     MATH::Vec3 gravity{0.0f, 0.0f, 0.0f};
     float drag = 0.0f;
@@ -264,6 +279,8 @@ struct ParticleEmitterRuntimeOverrides {
     float scaleMultiplier = 1.0f;
     float gravityMultiplier = 1.0f;
     MATH::Vec4 colorMultiplier{1.0f, 1.0f, 1.0f, 1.0f};
+    // 流体源の層だけ：注入する烟の温度の倍率。
+    float fluidTemperatureMultiplier = 1.0f;
 };
 
 struct ParticleMaterialParameterValue {
@@ -411,6 +428,8 @@ struct ParticleRenderInput {
     std::vector<ParticleComposition> compositions{};
     // 流体層の域。退役は retiredEmitters の同じ実例键で伝える。
     std::vector<FLUID::FluidDomainSubmission> fluids{};
+    // 流体域の下に無い流体源の層（流体注入层）。同じ入力の域のうち、形が届く域すべてへ注入する（剑气の尾迹、烟弾）。
+    std::vector<FLUID::FluidSourceSubmission> fluidSources{};
 
     ParticleRenderDeliveryToken GetDeliveryToken() const noexcept { return {sourceIdentity, deliverySequence}; }
 };
@@ -426,6 +445,8 @@ struct ParticleRenderFrameSource {
     std::span<const FLUID::FluidInteraction> fluidInteractions{};
     // 回読が届いた汇の量を受け取る先（場面が次のフレームに FluidInteractionService へ渡す）。null なら pass に溜める。
     std::vector<FLUID::FluidSinkReport>* fluidSinkReports = nullptr;
+    // 回読が届いた域の発光（火の光源）。描画がここへ足し、場面が次のフレームに再生側へ返す。
+    std::vector<FLUID::FluidGlowReport>* fluidGlowReports = nullptr;
 
     bool HasDrawWork() const noexcept { return input != nullptr && !input->emitters.empty(); }
 

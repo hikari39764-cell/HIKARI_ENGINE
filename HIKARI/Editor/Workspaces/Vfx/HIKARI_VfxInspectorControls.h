@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -36,6 +37,9 @@ public:
     void TypedValue(const char* label, std::string_view propertyId, const VFX::VfxValue& value);
     void Choice(const char* label, std::string_view propertyId, std::string_view current,
                 const std::string_view* choices, size_t choiceCount);
+    // 表示する名前と書く値が違う選択（層を名前で選んで id を書く等）。values[0] を空にすれば「なし」。
+    void LabeledChoice(const char* label, std::string_view propertyId, std::string_view current,
+                       std::span<const std::string> values, std::span<const std::string> labels);
 
     void FloatDistribution(const char* label, std::string_view propertyPrefix,
                            const VFX::VfxFloatDistributionData& value, float speed = 0.01f, float minimum = 0.0f,

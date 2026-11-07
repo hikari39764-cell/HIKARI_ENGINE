@@ -117,8 +117,21 @@ void VfxWorkspaceController::DrawEmitterAdvanced(AssetDatabase& database, const 
             break;
         case VFX::VfxSpecialOutputType::Light:
             outputEditor.Color("Color", "light.color", output.light.color);
-            outputEditor.Float(VfxUiText("Luminous Flux (lm)").c_str(), "light.luminousFlux", output.light.luminousFlux,
-                               100.0f, VFX::kVfxLightFluxMin, VFX::kVfxLightFluxMax);
+            if (emitter.kind == VFX::VfxLayerKind::Fluid || output.light.followFluidGlow) {
+                outputEditor.Bool(VfxUiText("Follow Fluid Glow").c_str(), "light.followFluidGlow",
+                                  output.light.followFluidGlow);
+                if (output.light.followFluidGlow) {
+                    ImGui::TextDisabled("%s",
+                                        VfxUiText("The light sits at the fluid's glow centre; its flux grows with "
+                                                  "the glowing smoke and takes the glow colour.")
+                                            .c_str());
+                    outputEditor.Float(VfxUiText("Glow Light Share").c_str(), "light.glowShare", output.light.glowShare,
+                                       0.01f, VFX::kVfxLightGlowShareMin, VFX::kVfxLightGlowShareMax);
+                }
+            }
+            outputEditor.Float(
+                VfxUiText(output.light.followFluidGlow ? "Maximum Flux (lm)" : "Luminous Flux (lm)").c_str(),
+                "light.luminousFlux", output.light.luminousFlux, 100.0f, VFX::kVfxLightFluxMin, VFX::kVfxLightFluxMax);
             outputEditor.Float(VfxUiText("Range").c_str(), "light.range", output.light.range, 0.05f,
                                VFX::kVfxLightRangeMin, VFX::kVfxLightRangeMax);
             outputEditor.Float(VfxUiText("Source Radius").c_str(), "light.sourceRadius", output.light.sourceRadius,
@@ -171,18 +184,22 @@ void VfxWorkspaceController::DrawEmitterAdvanced(AssetDatabase& database, const 
             statusMessage_ = message;
         }
     };
-    if (ImGui::Button(VfxUiText("Add WeaponPathDistortion Output").c_str())) {
-        addOutput(VFX::VfxSpecialOutputType::WeaponPathDistortion);
+    // 流体域の層は Light 出力だけ、流体源の層は何も持てない（Vfx.FluidLayerFeature）。
+    const bool fluidDomain = emitter.kind == VFX::VfxLayerKind::Fluid;
+    if (!fluidDomain && emitter.kind != VFX::VfxLayerKind::FluidSource) {
+        if (ImGui::Button(VfxUiText("Add WeaponPathDistortion Output").c_str())) {
+            addOutput(VFX::VfxSpecialOutputType::WeaponPathDistortion);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(VfxUiText("Add ScreenImpulse Output").c_str())) {
+            addOutput(VFX::VfxSpecialOutputType::ScreenImpulse);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(VfxUiText("Add SkinnedAfterimage Output").c_str())) {
+            addOutput(VFX::VfxSpecialOutputType::SkinnedAfterimage);
+        }
     }
-    ImGui::SameLine();
-    if (ImGui::Button(VfxUiText("Add ScreenImpulse Output").c_str())) {
-        addOutput(VFX::VfxSpecialOutputType::ScreenImpulse);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button(VfxUiText("Add SkinnedAfterimage Output").c_str())) {
-        addOutput(VFX::VfxSpecialOutputType::SkinnedAfterimage);
-    }
-    if (ImGui::Button(VfxUiText("Add Light Output").c_str())) {
+    if (emitter.kind != VFX::VfxLayerKind::FluidSource && ImGui::Button(VfxUiText("Add Light Output").c_str())) {
         addOutput(VFX::VfxSpecialOutputType::Light);
     }
     if (removeOutput) {

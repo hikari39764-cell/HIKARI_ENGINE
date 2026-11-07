@@ -220,8 +220,8 @@ void FillCaptureFrame(SecondaryMeshViewFrameResources& frame, const Camera3D& ca
         ++views;
         empty += frame.view.localLightList.lightCount == 0u && frame.view.localLightList.decalCount == 0u ? 1u : 0u;
         if (views % 600u == 0u) {
-            std::fprintf(stderr, "[MeshCapture] views=%u emptyLight=%u clusters=%u lights=%u sources=%u\n", views, empty,
-                         frame.view.localLightList.clusterCount, frame.view.localLightList.lightCount,
+            std::fprintf(stderr, "[MeshCapture] views=%u emptyLight=%u clusters=%u lights=%u sources=%u\n", views,
+                         empty, frame.view.localLightList.clusterCount, frame.view.localLightList.lightCount,
                          frame.view.localLightList.sourceCount);
         }
     }
@@ -361,7 +361,8 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
                                                       meshletStats.transparentPipelineReady;
         availability.meshShaderGeometryAuxPipelineReady = meshletStats.geometryAuxPipelineReady;
         availability.traditionalIndirectPipelineReady =
-            resources.traditionalCommandStreamReady && AreTraditionalMeshPipelineInputsReady(gMeshRendererState.pipelines);
+            resources.traditionalCommandStreamReady &&
+            AreTraditionalMeshPipelineInputsReady(gMeshRendererState.pipelines);
         layer.SetBackendAvailability(availability);
     }
 
@@ -428,13 +429,20 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
         const bool full = commandStats.requestedCommandCount * 10u > commandStats.capacity * 9u ||
                           sceneStats.requestedInstanceCount * 10u > sceneStats.capacity * 9u;
         if (!reported[captureSlot] || (full && !nearFull[captureSlot]) || overflow > peakOverflow[captureSlot]) {
-            reported[captureSlot] = true; nearFull[captureSlot] = nearFull[captureSlot] || full;
+            reported[captureSlot] = true;
+            nearFull[captureSlot] = nearFull[captureSlot] || full;
             peakOverflow[captureSlot] = (std::max)(peakOverflow[captureSlot], overflow);
-            const std::string line = "[MeshCapture] slot=" + std::to_string(captureSlot) + " commands=" +
-                std::to_string(commandStats.requestedCommandCount) + "/" + std::to_string(commandStats.capacity) + " instances=" +
-                std::to_string(sceneStats.requestedInstanceCount) + "/" + std::to_string(sceneStats.capacity) + " overflow=" +
-                std::to_string(commandStats.overflowCommandCount) + "+" + std::to_string(sceneStats.overflowInstanceCount);
-            if (overflow > 0u || full) HIKARI_LOG_WARN(line); else HIKARI_LOG_INFO(line);
+            const std::string line = "[MeshCapture] slot=" + std::to_string(captureSlot) +
+                                     " commands=" + std::to_string(commandStats.requestedCommandCount) + "/" +
+                                     std::to_string(commandStats.capacity) +
+                                     " instances=" + std::to_string(sceneStats.requestedInstanceCount) + "/" +
+                                     std::to_string(sceneStats.capacity) +
+                                     " overflow=" + std::to_string(commandStats.overflowCommandCount) + "+" +
+                                     std::to_string(sceneStats.overflowInstanceCount);
+            if (overflow > 0u || full)
+                HIKARI_LOG_WARN(line);
+            else
+                HIKARI_LOG_INFO(line);
         }
     }
     const bool worldSpriteOpaqueOk = resources.worldSpritePass.ExecuteForwardOpaque(graphics, overrides.cameraAddress);
@@ -453,10 +461,14 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
         }
         transparentOk =
             transparentOk && resources.worldSpritePass.ExecuteForwardTransparent(graphics, overrides.cameraAddress);
+        // 二次截取（特效の预览など）は自分の粒子を自分の深度で碰撞させる（並べた視点は撮らない）。
+        const MATH::Mat4 collisionViewProj =
+            RENDER3D::FLUID::MakeCameraRelativeViewProj(camera.GetView(), camera.GetProj());
         transparentOk = transparentOk &&
                         (!resources.particlesPrepared ||
-                         ExecuteParticleForwardTransparent(resources.particlePass, graphics, overrides.cameraAddress,
-                                                           camera.GetPosition(), passResources, {}));
+                         ExecuteParticleForwardTransparent(
+                             resources.particlePass, graphics, overrides.cameraAddress, camera.GetPosition(),
+                             passResources, {}, passResources.particleCollisionCapture ? &collisionViewProj : nullptr));
         transparentOk =
             transparentOk && resources.worldTextPass.ExecuteForwardTransparent(graphics, overrides.cameraAddress);
     }

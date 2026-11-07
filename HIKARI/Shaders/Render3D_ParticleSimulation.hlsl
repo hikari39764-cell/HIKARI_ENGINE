@@ -29,6 +29,9 @@ static const uint HIKARI_PARTICLE_FIXED = 3u;
 
 ByteAddressBuffer gEmitterData : register(t0);
 RWStructuredBuffer<Particle> gParticles : register(u0);
+// 粒子の事件（HIKARI_ParticleEmitterLayout.hlsli の EVENT_* の並び）：UpdateCS が碰撞・寿命切れを区へ書き、全ての層を
+// 進めた後に EventSpawnCS がそれを読んで生成する（Niagara の GPU 事件、Unity VFX Graph の GPU Event と同じ流れ）。
+RWByteAddressBuffer gEvents : register(u2);
 
 cbuffer SimulationConstants : register(b0)
 {
@@ -93,481 +96,133 @@ float3 FluidFlowVelocity(float3 world, uint count, out float inside)
     return flow;
 }
 
-uint Hash(uint value)
+// ---------------------------------------------------------------- 場景深度との碰撞
+// Unity VFX Graph の Collide with Depth Buffer、Niagara の Scene Depth 碰撞と同じ考え方：粒子の模拟は描画より先に走るので、
+// 上一帧の主視图の深度（半解像度、2×2 の最も近い面。CollisionDepthCS が作る）と、その視图の行列を使う。
+Texture2D<float> gCollisionDepth : register(t5);  // CollisionDepthCS では場景の深度（全解像度）
+RWTexture2D<float> gCollisionDepthOut : register(u1);
+cbuffer CollisionViewConstants : register(b2)
 {
-    value ^= value >> 16;
-    value *= 0x7feb352du;
-    value ^= value >> 15;
-    value *= 0x846ca68bu;
-    value ^= value >> 16;
-    return value;
+    float4x4 gCollisionViewProj;
+    float4x4 gCollisionInvViewProj;
+    float4 gCollisionSize;    // xy 碰撞深度の大きさ（texel）、zw その逆数
+    float4 gCollisionCamera;  // xyz 視点、w 有効（1）
+};
+
+// 主視图の深度を半解像度へ：2×2 の最も近い面（深度は 0 が近い）。
+[numthreads(8, 8, 1)]
+void CollisionDepthCS(uint3 id : SV_DispatchThreadID)
+{
+    uint width, height, sourceWidth, sourceHeight;
+    gCollisionDepthOut.GetDimensions(width, height);
+    gCollisionDepth.GetDimensions(sourceWidth, sourceHeight);
+    if (id.x >= width || id.y >= height)
+        return;
+    const int2 limit = int2(sourceWidth, sourceHeight) - 1;
+    float nearest = 1.0f;
+    [unroll] for (uint corner = 0u; corner < 4u; ++corner)
+        nearest = min(nearest, gCollisionDepth.Load(int3(min(int2(id.xy) * 2 + int2(corner & 1u, corner >> 1u), limit), 0)));
+    gCollisionDepthOut[id.xy] = nearest;
 }
 
-float4 LoadEmitterValue(uint emitterIndex, uint valueIndex)
+// 碰撞深度の texel の面の位置（相機を原点にした座標）。空（深度 1）なら valid = false。
+float3 CollisionSurface(int2 texel, out bool valid)
 {
-    const uint byteOffset =
-        (emitterIndex * HIKARI_PARTICLE_EMITTER_VALUE_COUNT + valueIndex) *
-        16u;
-    return asfloat(gEmitterData.Load4(byteOffset));
+    const int2 clamped = clamp(texel, int2(0, 0), int2(gCollisionSize.xy) - 1);
+    const float depth = gCollisionDepth.Load(int3(clamped, 0));
+    valid = depth > 0.0f && depth < 0.99999f;
+    const float2 uv = (float2(clamped) + 0.5f) * gCollisionSize.zw;
+    const float4 world = mul(gCollisionInvViewProj, float4(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f, depth, 1.0f));
+    return world.xyz / world.w;
 }
 
-float4 MultiplyQuaternion(float4 left, float4 right)
+// 粒子を上一帧の視图へ投影し、面より奥で thickness 以内なら面の上へ戻して面の法線で跳ね返す。法線は隣の texel の世界位置
+// （左右・上下のうち深度の差が小さい側。物体の縁で奥の面を拾わない）の外積。戻り値は碰撞したか、impactSpeed は面へ
+// 向かっていた速さ。
+bool CollideSceneDepth(inout float3 position, inout float3 velocity, float thickness, float restitution, float friction,
+                       out float impactSpeed)
 {
-    return float4(
-        left.w * right.xyz + right.w * left.xyz +
-            cross(left.xyz, right.xyz),
-        left.w * right.w - dot(left.xyz, right.xyz));
+    impactSpeed = 0.0f;
+    if (gCollisionCamera.w <= 0.0f)
+        return false;
+    // 相機を原点にして投影・還元する（大きな座標の場面でも面の位置と法線が揺れない。流体の視線と同じ）。
+    float3 relative = position - gCollisionCamera.xyz;
+    const float4 clip = mul(gCollisionViewProj, float4(relative, 1.0f));
+    if (clip.w <= 1.0e-4f)
+        return false;
+    const float3 ndc = clip.xyz / clip.w;
+    if (any(abs(ndc.xy) >= 1.0f) || ndc.z <= 0.0f || ndc.z >= 1.0f)
+        return false;
+    const int2 texel = int2(float2(ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f) * gCollisionSize.xy);
+    bool valid;
+    const float3 surface = CollisionSurface(texel, valid);
+    if (!valid)
+        return false;
+    const float behind = length(relative) - length(surface);
+    if (behind <= 0.0f || behind > thickness)
+        return false;
+    bool left, right, up, down;
+    const float3 xMinus = CollisionSurface(texel - int2(1, 0), left);
+    const float3 xPlus = CollisionSurface(texel + int2(1, 0), right);
+    const float3 yMinus = CollisionSurface(texel - int2(0, 1), up);
+    const float3 yPlus = CollisionSurface(texel + int2(0, 1), down);
+    const float3 dx = right && (!left || distance(xPlus, surface) < distance(xMinus, surface)) ? xPlus - surface
+                                                                                              : surface - xMinus;
+    const float3 dy = down && (!up || distance(yPlus, surface) < distance(yMinus, surface)) ? yPlus - surface
+                                                                                           : surface - yMinus;
+    float3 normal = cross(dy, dx);
+    if (dot(normal, normal) <= 1.0e-12f)
+        return false;
+    normal = normalize(normal);
+    if (dot(normal, -surface) < 0.0f)
+        normal = -normal;
+    // 面の平面の上（法線側へ 1 cm）へ戻し、面へ向かう速さを restitution で反転、面に沿う速さを friction で減らす。視線では
+    // 奥でも面の平面の表側にいる（面をかすめる角度）なら碰撞しない。
+    const float signedDistance = dot(relative - surface, normal);
+    if (signedDistance >= 0.0f)
+        return false;
+    relative -= normal * (signedDistance - 0.01f);
+    position = gCollisionCamera.xyz + relative;
+    const float into = dot(velocity, normal);
+    impactSpeed = max(-into, 0.0f);
+    const float3 along = velocity - normal * into;
+    velocity = along * (1.0f - saturate(friction)) + normal * (into < 0.0f ? -into * saturate(restitution) : into);
+    return true;
 }
 
-float4 QuaternionFromEulerXYZ(float3 rotation)
+#include "Include/Vfx/HIKARI_ParticleEmitterEvaluation.hlsli"
+
+// 局部模拟の粒子の速度を世界へ（事件は世界の位置と速度で書く）。
+float3 ParticleWorldVelocity(uint emitterIndex, float3 velocity)
 {
-    float3 halfRotation = rotation * 0.5f;
-    float3 cosine = cos(halfRotation);
-    float3 sine = sin(halfRotation);
-    return NormalizeQuaternion(float4(
-        sine.x * cosine.y * cosine.z -
-            cosine.x * sine.y * sine.z,
-        cosine.x * sine.y * cosine.z +
-            sine.x * cosine.y * sine.z,
-        cosine.x * cosine.y * sine.z -
-            sine.x * sine.y * cosine.z,
-        cosine.x * cosine.y * cosine.z +
-            sine.x * sine.y * sine.z));
+    if ((asuint(LoadEmitterValue(emitterIndex, 14u).w) & 1u) == 0u)
+        return velocity;
+    return RotateByQuaternion(velocity * LoadEmitterValue(emitterIndex, 2u).xyz, LoadEmitterValue(emitterIndex, 1u));
 }
 
-float RandomForProperty(
-    uint seed,
-    uint randomGroup,
-    uint propertySalt)
+// この層が書く区へ事件を足す（区が満ちたら捨てる）。kind 0 碰撞（impactSpeed は面へ向かっていた速さ）、1 寿命切れ。
+void AppendParticleEvent(uint kind, float3 position, float3 velocity, float impactSpeed)
 {
-    uint stream = randomGroup != 0u ? randomGroup : propertySalt;
-    uint state = Hash(seed ^ ((stream + 1u) * 2246822519u));
-    return (float)(state & 0x00ffffffu) / 16777216.0f;
+    const float4 events = LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_EVENTS);
+    const uint region = asuint(events.x);
+    if (region == 0u || (asuint(events.y) & (1u << kind)) == 0u || (kind == 0u && impactSpeed < events.z))
+        return;
+    const uint regionBase = (region - 1u) * HIKARI_PARTICLE_EVENT_REGION_BYTES;
+    uint index;
+    gEvents.InterlockedAdd(regionBase, 1u, index);
+    if (index >= HIKARI_PARTICLE_EVENTS_PER_REGION)
+        return;
+    const uint at = regionBase + 16u + index * 32u;
+    gEvents.Store4(at, uint4(asuint(position), kind));
+    gEvents.Store4(at + 16u, uint4(asuint(velocity), asuint(impactSpeed)));
 }
 
-float3 EvaluateFloat3Distribution(
-    uint emitterIndex,
-    uint valueIndex,
-    uint seed,
-    uint propertySalt)
+// フレームの初めに全ての区の数を 0 にする（どの層も進める前に一度）。
+[numthreads(64, 1, 1)]
+void EventClearCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
-    float4 minimum = LoadEmitterValue(emitterIndex, valueIndex);
-    float4 maximum = LoadEmitterValue(emitterIndex, valueIndex + 1u);
-    float amount = asuint(minimum.w) == 1u
-        ? RandomForProperty(
-            seed, asuint(maximum.w), propertySalt)
-        : 0.0f;
-    return lerp(minimum.xyz, maximum.xyz, amount);
-}
-
-float4 EvaluateFloat4Distribution(
-    uint emitterIndex,
-    uint valueIndex,
-    uint seed,
-    uint propertySalt)
-{
-    float4 minimum = LoadEmitterValue(emitterIndex, valueIndex);
-    float4 maximum = LoadEmitterValue(emitterIndex, valueIndex + 1u);
-    float4 metadata = LoadEmitterValue(emitterIndex, valueIndex + 2u);
-    float amount = asuint(metadata.x) == 1u
-        ? RandomForProperty(
-            seed, asuint(metadata.y), propertySalt)
-        : 0.0f;
-    return lerp(minimum, maximum, amount);
-}
-
-float EvaluateCurve(
-    uint emitterIndex,
-    uint valueIndex,
-    float normalizedAge,
-    uint seed,
-    uint propertySalt)
-{
-    float4 metadata = LoadEmitterValue(emitterIndex, valueIndex);
-    uint keyCount = min(asuint(metadata.y), 8u);
-    float4 offsetRange = LoadEmitterValue(emitterIndex, valueIndex + 1u);
-    float randomOffset = asuint(metadata.z) == 1u
-        ? lerp(
-            offsetRange.x,
-            offsetRange.y,
-            RandomForProperty(
-                seed, asuint(metadata.w), propertySalt))
-        : offsetRange.x;
-    if (keyCount == 0u)
-    {
-        return randomOffset;
-    }
-    float4 first = LoadEmitterValue(emitterIndex, valueIndex + 2u);
-    if (keyCount == 1u || normalizedAge <= first.x)
-    {
-        return first.y + randomOffset;
-    }
-
-    uint interpolation = asuint(metadata.x);
-    [unroll]
-    for (uint keyIndex = 1u; keyIndex < 8u; ++keyIndex)
-    {
-        if (keyIndex >= keyCount)
-        {
-            break;
-        }
-        float4 previous = LoadEmitterValue(
-            emitterIndex, valueIndex + 2u + keyIndex - 1u);
-        float4 next = LoadEmitterValue(
-            emitterIndex, valueIndex + 2u + keyIndex);
-        if (normalizedAge <= next.x)
-        {
-            float duration = max(next.x - previous.x, 0.00001f);
-            float amount = saturate((normalizedAge - previous.x) / duration);
-            if (interpolation == 2u)
-            {
-                amount = 0.0f;
-            }
-            else if (interpolation == 1u)
-            {
-                float amount2 = amount * amount;
-                float amount3 = amount2 * amount;
-                float value =
-                    (2.0f * amount3 - 3.0f * amount2 + 1.0f) *
-                        previous.y +
-                    (amount3 - 2.0f * amount2 + amount) *
-                        previous.w * duration +
-                    (-2.0f * amount3 + 3.0f * amount2) * next.y +
-                    (amount3 - amount2) * next.z * duration;
-                return value + randomOffset;
-            }
-            return lerp(previous.y, next.y, amount) + randomOffset;
-        }
-    }
-    return LoadEmitterValue(
-        emitterIndex,
-        valueIndex + 2u + keyCount - 1u).y + randomOffset;
-}
-
-float ApplyEasing(float amount, uint easingFunction)
-{
-    amount = saturate(amount);
-    if (easingFunction == 1u)
-    {
-        return amount * amount;
-    }
-    if (easingFunction == 2u)
-    {
-        float inverse = 1.0f - amount;
-        return 1.0f - inverse * inverse;
-    }
-    if (easingFunction == 3u)
-    {
-        return amount < 0.5f
-            ? 2.0f * amount * amount
-            : 1.0f - pow(-2.0f * amount + 2.0f, 2.0f) * 0.5f;
-    }
-    return amount;
-}
-
-float3 EvaluateEasingFloat3(
-    uint emitterIndex,
-    uint valueIndex,
-    float normalizedAge,
-    uint seed,
-    uint propertySalt,
-    uint easingFunction,
-    uint hasMiddle)
-{
-    float3 start = EvaluateFloat3Distribution(
-        emitterIndex, valueIndex, seed, propertySalt + 3u);
-    float3 middle = EvaluateFloat3Distribution(
-        emitterIndex, valueIndex + 2u, seed, propertySalt + 4u);
-    float3 end = EvaluateFloat3Distribution(
-        emitterIndex, valueIndex + 4u, seed, propertySalt + 5u);
-    if (hasMiddle == 0u)
-    {
-        return lerp(
-            start,
-            end,
-            ApplyEasing(normalizedAge, easingFunction));
-    }
-    if (normalizedAge < 0.5f)
-    {
-        return lerp(
-            start,
-            middle,
-            ApplyEasing(normalizedAge * 2.0f, easingFunction));
-    }
-    return lerp(
-        middle,
-        end,
-        ApplyEasing(
-            (normalizedAge - 0.5f) * 2.0f,
-            easingFunction));
-}
-
-float3 EvaluateAnimatedFloat3(
-    uint emitterIndex,
-    uint valueIndex,
-    uint mode,
-    float age,
-    float normalizedAge,
-    uint seed,
-    uint propertySalt,
-    uint easingFunction,
-    uint hasMiddle)
-{
-    if (mode == 1u)
-    {
-        float3 initial = EvaluateFloat3Distribution(
-            emitterIndex, valueIndex, seed, propertySalt + 0u);
-        float3 velocity = EvaluateFloat3Distribution(
-            emitterIndex, valueIndex + 2u, seed, propertySalt + 1u);
-        float3 acceleration = EvaluateFloat3Distribution(
-            emitterIndex, valueIndex + 4u, seed, propertySalt + 2u);
-        return initial + velocity * age + acceleration * age * age * 0.5f;
-    }
-    if (mode == 2u)
-    {
-        return EvaluateEasingFloat3(
-            emitterIndex,
-            valueIndex + 6u,
-            normalizedAge,
-            seed,
-            propertySalt,
-            easingFunction,
-            hasMiddle);
-    }
-    if (mode == 3u)
-    {
-        uint curveIndex = valueIndex + 12u;
-        return float3(
-            EvaluateCurve(
-                emitterIndex,
-                curveIndex,
-                normalizedAge,
-                seed,
-                propertySalt + 6u),
-            EvaluateCurve(
-                emitterIndex,
-                curveIndex + HIKARI_PARTICLE_CURVE_VALUES,
-                normalizedAge,
-                seed,
-                propertySalt + 7u),
-            EvaluateCurve(
-                emitterIndex,
-                curveIndex + HIKARI_PARTICLE_CURVE_VALUES * 2u,
-                normalizedAge,
-                seed,
-                propertySalt + 8u));
-    }
-    return EvaluateFloat3Distribution(
-        emitterIndex, valueIndex, seed, propertySalt + 0u);
-}
-
-float4 EvaluateGradient(
-    uint emitterIndex,
-    float normalizedAge)
-{
-    uint stopCount = min(asuint(LoadEmitterValue(
-        emitterIndex, HIKARI_PARTICLE_COLOR_GRADIENT).x), 8u);
-    if (stopCount == 0u)
-    {
-        return float4(1.0f, 1.0f, 1.0f, 1.0f);
-    }
-    float firstTime = LoadEmitterValue(
-        emitterIndex, HIKARI_PARTICLE_COLOR_GRADIENT + 1u).x;
-    float4 firstColor = LoadEmitterValue(
-        emitterIndex, HIKARI_PARTICLE_COLOR_GRADIENT + 2u);
-    if (stopCount == 1u || normalizedAge <= firstTime)
-    {
-        return firstColor;
-    }
-
-    [unroll]
-    for (uint stopIndex = 1u; stopIndex < 8u; ++stopIndex)
-    {
-        if (stopIndex >= stopCount)
-        {
-            break;
-        }
-        float previousTime = LoadEmitterValue(
-            emitterIndex,
-            HIKARI_PARTICLE_COLOR_GRADIENT + 1u +
-                (stopIndex - 1u) * 2u).x;
-        float4 previousColor = LoadEmitterValue(
-            emitterIndex,
-            HIKARI_PARTICLE_COLOR_GRADIENT + 2u +
-                (stopIndex - 1u) * 2u);
-        float nextTime = LoadEmitterValue(
-            emitterIndex,
-            HIKARI_PARTICLE_COLOR_GRADIENT + 1u +
-                stopIndex * 2u).x;
-        float4 nextColor = LoadEmitterValue(
-            emitterIndex,
-            HIKARI_PARTICLE_COLOR_GRADIENT + 2u +
-                stopIndex * 2u);
-        if (normalizedAge <= nextTime)
-        {
-            float amount = saturate(
-                (normalizedAge - previousTime) /
-                max(nextTime - previousTime, 0.00001f));
-            return lerp(previousColor, nextColor, amount);
-        }
-    }
-    return LoadEmitterValue(
-        emitterIndex,
-        HIKARI_PARTICLE_COLOR_GRADIENT + 2u +
-            (stopCount - 1u) * 2u);
-}
-
-float4 EvaluateAnimatedColor(
-    uint emitterIndex,
-    uint mode,
-    float normalizedAge,
-    uint seed,
-    uint propertySalt,
-    uint easingFunction,
-    uint hasMiddle)
-{
-    if (mode == 2u)
-    {
-        float4 start = EvaluateFloat4Distribution(
-            emitterIndex,
-            HIKARI_PARTICLE_COLOR_DISTRIBUTIONS + 3u,
-            seed,
-            propertySalt + 1u);
-        float4 middle = EvaluateFloat4Distribution(
-            emitterIndex,
-            HIKARI_PARTICLE_COLOR_DISTRIBUTIONS + 6u,
-            seed,
-            propertySalt + 2u);
-        float4 end = EvaluateFloat4Distribution(
-            emitterIndex,
-            HIKARI_PARTICLE_COLOR_DISTRIBUTIONS + 9u,
-            seed,
-            propertySalt + 3u);
-        if (hasMiddle == 0u)
-        {
-            return lerp(
-                start,
-                end,
-                ApplyEasing(normalizedAge, easingFunction));
-        }
-        if (normalizedAge < 0.5f)
-        {
-            return lerp(
-                start,
-                middle,
-                ApplyEasing(normalizedAge * 2.0f, easingFunction));
-        }
-        return lerp(
-            middle,
-            end,
-            ApplyEasing(
-                (normalizedAge - 0.5f) * 2.0f,
-                easingFunction));
-    }
-    if (mode == 3u)
-    {
-        return float4(
-            EvaluateCurve(
-                emitterIndex,
-                HIKARI_PARTICLE_COLOR_CURVES,
-                normalizedAge,
-                seed,
-                propertySalt + 4u),
-            EvaluateCurve(
-                emitterIndex,
-                HIKARI_PARTICLE_COLOR_CURVES +
-                    HIKARI_PARTICLE_CURVE_VALUES,
-                normalizedAge,
-                seed,
-                propertySalt + 5u),
-            EvaluateCurve(
-                emitterIndex,
-                HIKARI_PARTICLE_COLOR_CURVES +
-                    HIKARI_PARTICLE_CURVE_VALUES * 2u,
-                normalizedAge,
-                seed,
-                propertySalt + 6u),
-            EvaluateCurve(
-                emitterIndex,
-                HIKARI_PARTICLE_COLOR_CURVES +
-                    HIKARI_PARTICLE_CURVE_VALUES * 3u,
-                normalizedAge,
-                seed,
-                propertySalt + 7u));
-    }
-    if (mode == 4u)
-    {
-        return EvaluateGradient(emitterIndex, normalizedAge);
-    }
-    return EvaluateFloat4Distribution(
-        emitterIndex,
-        HIKARI_PARTICLE_COLOR_DISTRIBUTIONS,
-        seed,
-        propertySalt + 0u);
-}
-
-void EvaluateParticlePresentation(
-    uint emitterIndex,
-    inout Particle particle)
-{
-    float normalizedAge = saturate(
-        particle.positionAge.w / max(particle.velocityLifetime.w, 0.0001f));
-    uint seed = asuint(particle.physicsPositionSeed.w);
-    float4 animationModes = LoadEmitterValue(emitterIndex, 7u);
-    float4 easingA = LoadEmitterValue(emitterIndex, 8u);
-    float4 easingB = LoadEmitterValue(emitterIndex, 9u);
-    float3 localPosition = EvaluateAnimatedFloat3(
-        emitterIndex,
-        HIKARI_PARTICLE_POSITION_VALUES,
-        asuint(animationModes.x),
-        particle.positionAge.w,
-        normalizedAge,
-        seed,
-        HIKARI_PARTICLE_RANDOM_POSITION,
-        asuint(easingA.x),
-        asuint(easingA.y));
-    float3 localRotation = EvaluateAnimatedFloat3(
-        emitterIndex,
-        HIKARI_PARTICLE_ROTATION_VALUES,
-        asuint(animationModes.y),
-        particle.positionAge.w,
-        normalizedAge,
-        seed,
-        HIKARI_PARTICLE_RANDOM_ROTATION,
-        asuint(easingA.z),
-        asuint(easingA.w));
-    float3 localScale = EvaluateAnimatedFloat3(
-        emitterIndex,
-        HIKARI_PARTICLE_SCALE_VALUES,
-        asuint(animationModes.z),
-        particle.positionAge.w,
-        normalizedAge,
-        seed,
-        HIKARI_PARTICLE_RANDOM_SCALE,
-        asuint(easingB.x),
-        asuint(easingB.y));
-    const bool localSimulation = (asuint(LoadEmitterValue(emitterIndex,14u).w)&1u)!=0u;
-    float4 worldScale = localSimulation ? LoadEmitterValue(emitterIndex,2u) : particle.birthScale;
-    float4 worldRotation = localSimulation ? LoadEmitterValue(emitterIndex,1u) : particle.birthRotation;
-    particle.positionAge.xyz = localSimulation ? LoadEmitterValue(emitterIndex,0u).xyz +
-        RotateByQuaternion((particle.physicsPositionSeed.xyz+localPosition)*worldScale.xyz,worldRotation) :
-        particle.physicsPositionSeed.xyz + RotateByQuaternion(localPosition*worldScale.xyz,worldRotation);
-    particle.scaleRotation = float4(
-        abs(localScale.xy * worldScale.xy) *
-            max(LoadEmitterValue(emitterIndex, 10u).y, 0.0f),
-        localRotation.z,
-        abs(localScale.z * worldScale.z) * max(LoadEmitterValue(emitterIndex, 10u).y, 0.0f));
-    particle.orientation = NormalizeQuaternion(MultiplyQuaternion(
-        NormalizeQuaternion(worldRotation),
-        QuaternionFromEulerXYZ(localRotation)));
-    particle.color = EvaluateAnimatedColor(
-        emitterIndex,
-        asuint(animationModes.w),
-        normalizedAge,
-        seed,
-        HIKARI_PARTICLE_RANDOM_COLOR,
-        asuint(easingB.z),
-        asuint(easingB.w)) * LoadEmitterValue(emitterIndex, 6u);
+    if (dispatchThreadId.x < HIKARI_PARTICLE_EVENT_REGIONS)
+        gEvents.Store(dispatchThreadId.x * HIKARI_PARTICLE_EVENT_REGION_BYTES, 0u);
 }
 
 [numthreads(64, 1, 1)]
@@ -615,6 +270,8 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     particle.positionAge.w += dt;
     if (particle.positionAge.w >= particle.velocityLifetime.w)
     {
+        AppendParticleEvent(1u, particle.positionAge.xyz, ParticleWorldVelocity(gEmitterIndex,
+                            particle.velocityLifetime.xyz), 0.0f);
         particle.velocityLifetime.w = 0.0f;
         particle.color.a = 0.0f;
         gParticles[particleIndex] = particle;
@@ -627,18 +284,20 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     float drag = max(forces.w, 0.0f);
     const float4 collision = LoadEmitterValue(gEmitterIndex,14u);
     const bool collide = (asuint(collision.w)&2u)!=0u;
+    const bool depthCollide = (asuint(collision.w) & 4u) != 0u;
     // CPU 参照と同じ解析積分。衝突時のみ分割し、GPU 提出数には影響しない。
     const float4 fieldCenter=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_CENTER);
     const float4 fieldAxis=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_AXIS);
     const float4 fieldFlow=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_FLOW);
-    const float fieldSeconds=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_TIME).x;
+    const float4 fieldTime = LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_FIELD_TIME);
+    const float fieldSeconds = fieldTime.x;
     const bool fieldActive=fieldAxis.w!=0 || fieldFlow.x!=0 || fieldFlow.w!=0;
     // 流体に乗る（世界空間の粒子だけ）：毎秒 follow の割合で速度をその場の流体の速度へ寄せる。
-    const float follow = LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_FIELD_TIME).y;
+    const float follow = fieldTime.y;
     const uint flowCount = (gSimulationFlags >> 8u) & 7u;
     const bool followFluid = follow > 0.0f && flowCount > 0u && (asuint(collision.w) & 1u) == 0u;
     const uint steps = fieldActive || followFluid ? (uint)clamp(ceil(dt*60.0f),1.0f,120.0f)
-        : collide ? (uint)clamp(ceil(dt * 30.0f), 1.0f, 8.0f) : 1u;
+        : collide || depthCollide ? (uint)clamp(ceil(dt * 30.0f), 1.0f, 8.0f) : 1u;
     const float step = dt / steps;
     const float x = drag * step;
     const float damping = exp(-x);
@@ -646,6 +305,9 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         ? step * (1.0f - x * 0.5f + x*x / 6.0f) : (1.0f - damping) / drag;
     const float accelerationIntegral = x < 1.0e-3f
         ? step*step * (0.5f - x / 6.0f + x*x / 24.0f) : (step - velocityIntegral) / drag;
+    // このフレームで一番強く当たった碰撞（面へ向かっていた速さ）と、その直後の速度。
+    float impact = -1.0f;
+    float3 impactVelocity = 0.0f;
     for (uint index=0u; index<steps; ++index)
     {
         float3 acceleration=gravity;
@@ -662,32 +324,43 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         particle.velocityLifetime.xyz = particle.velocityLifetime.xyz * damping + acceleration * velocityIntegral;
         if (collide && particle.physicsPositionSeed.y < collision.x)
         {
+            const float into = max(-particle.velocityLifetime.y, 0.0f);
             particle.physicsPositionSeed.y = collision.x;
             if (particle.velocityLifetime.y < 0.0f)
                 particle.velocityLifetime.y *= -saturate(collision.y);
             particle.velocityLifetime.xz *= 1.0f-saturate(collision.z);
+            if (into > impact)
+            {
+                impact = into;
+                impactVelocity = particle.velocityLifetime.xyz;
+            }
+        }
+        if (depthCollide)
+        {
+            float3 velocity = particle.velocityLifetime.xyz;
+            float into;
+            if (CollideSceneDepth(particle.physicsPositionSeed.xyz, velocity, fieldTime.z, collision.y, collision.z,
+                                  into))
+            {
+                particle.velocityLifetime.xyz = velocity;
+                if (into > impact)
+                {
+                    impact = into;
+                    impactVelocity = velocity;
+                }
+            }
         }
     }
     EvaluateParticlePresentation(gEmitterIndex, particle);
+    if (impact >= 0.0f)
+        AppendParticleEvent(0u, particle.positionAge.xyz, ParticleWorldVelocity(gEmitterIndex, impactVelocity), impact);
     gParticles[particleIndex] = particle;
 }
 
-[numthreads(64, 1, 1)]
-void SpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+// 発射器の形と分布から粒子を一つ作る。fromEvent の時は形の中心を事件の位置に置き、事件の速度を EVENT_SPAWN.x の割合で
+// 受け継ぐ（局部模拟の層は発射器の変換を戻した位置と速度で持つ）。
+Particle MakeSpawnedParticle(uint particleSeed, bool fromEvent, float3 eventPosition, float3 eventVelocity)
 {
-    if (dispatchThreadId.x >= gSpawnCount || gParticleCapacity == 0u)
-    {
-        return;
-    }
-
-    if (asuint(LoadEmitterValue(gEmitterIndex, 10u).w) == 0u)
-    {
-        return;
-    }
-    uint particleSlot =
-        (gSpawnCursor + dispatchThreadId.x) % gParticleCapacity;
-    uint particleSeed = Hash(
-        gRandomSeed ^ (particleSlot * 747796405u));
     float3 localPosition = 0.0f;
     float3 localDirection = float3(0.0f, 1.0f, 0.0f);
     float4 shapeParameters = LoadEmitterValue(gEmitterIndex, 4u);
@@ -837,10 +510,14 @@ void SpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     }
 
     float4 rotation = LoadEmitterValue(gEmitterIndex, 1u);
-    const float3 simulationPosition = localPosition;
+    float3 simulationPosition = localPosition;
     localPosition *= emitterScale.xyz;
-    float3 worldPosition = emitterOrigin.xyz +
+    float3 worldPosition = (fromEvent ? eventPosition : emitterOrigin.xyz) +
         RotateByQuaternion(localPosition, rotation);
+    const float4 inverseRotation = float4(-rotation.xyz, rotation.w);
+    const float3 safeScale = lerp(1.0f, emitterScale.xyz, (float3)(abs(emitterScale.xyz) > 1.0e-6f));
+    if (fromEvent)
+        simulationPosition = RotateByQuaternion(worldPosition - emitterOrigin.xyz, inverseRotation) / safeScale;
     float3 worldDirection = normalize(
         RotateByQuaternion(localDirection, rotation));
     float4 lifetimeAndSpeed = LoadEmitterValue(gEmitterIndex, 3u);
@@ -866,13 +543,58 @@ void SpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     Particle particle = (Particle)0;
     const bool localSimulation = (asuint(LoadEmitterValue(gEmitterIndex,14u).w)&1u)!=0u;
+    float3 velocity = (localSimulation ? localDirection : worldDirection) * speed;
+    if (fromEvent)
+    {
+        const float3 inherited = eventVelocity * LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_EVENT_SPAWN).x;
+        velocity += localSimulation ? RotateByQuaternion(inherited, inverseRotation) / safeScale : inherited;
+    }
     particle.positionAge = float4(worldPosition,0.0f);
-    particle.velocityLifetime = float4((localSimulation ? localDirection : worldDirection)*speed,max(lifetime,0.0001f));
+    particle.velocityLifetime = float4(velocity,max(lifetime,0.0001f));
     particle.physicsPositionSeed = float4(localSimulation ? simulationPosition : worldPosition,asfloat(particleSeed));
     particle.birthRotation = rotation;
     particle.birthScale = emitterScale;
     EvaluateParticlePresentation(gEmitterIndex, particle);
-    uint particleIndex = gParticleOffset +
-        particleSlot;
-    gParticles[particleIndex] = particle;
+    return particle;
+}
+
+[numthreads(64, 1, 1)]
+void SpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    if (dispatchThreadId.x >= gSpawnCount || gParticleCapacity == 0u ||
+        asuint(LoadEmitterValue(gEmitterIndex, 10u).w) == 0u)
+        return;
+    const uint particleSlot = (gSpawnCursor + dispatchThreadId.x) % gParticleCapacity;
+    const uint particleSeed = Hash(gRandomSeed ^ (particleSlot * 747796405u));
+    gParticles[gParticleOffset + particleSlot] = MakeSpawnedParticle(particleSeed, false, 0.0f, 0.0f);
+}
+
+// 元の層の区の事件を読み、一つの事件あたり EVENT_SPAWN.z >> 8 個を生成する（線程は 事件 × 個数）。槽はこの層の GPU の
+// 游標を原子的に進めて取る（同じフレームの事件の数は CPU に分からないため）。
+[numthreads(64, 1, 1)]
+void EventSpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    if (gParticleCapacity == 0u || asuint(LoadEmitterValue(gEmitterIndex, 10u).w) == 0u)
+        return;
+    const uint region = asuint(LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_EVENTS).w);
+    const float4 spawn = LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_EVENT_SPAWN);
+    const uint kind = asuint(spawn.z) & 255u;
+    const uint perEvent = max(asuint(spawn.z) >> 8u, 1u);
+    const uint eventIndex = dispatchThreadId.x / perEvent;
+    if (region == 0u || eventIndex >= HIKARI_PARTICLE_EVENTS_PER_REGION)
+        return;
+    const uint regionBase = (region - 1u) * HIKARI_PARTICLE_EVENT_REGION_BYTES;
+    if (eventIndex >= min(gEvents.Load(regionBase), HIKARI_PARTICLE_EVENTS_PER_REGION))
+        return;
+    const uint at = regionBase + 16u + eventIndex * 32u;
+    const uint4 positionKind = gEvents.Load4(at);
+    const float4 velocityImpact = asfloat(gEvents.Load4(at + 16u));
+    if (positionKind.w != kind || (kind == 0u && velocityImpact.w < spawn.y))
+        return;
+    uint cursor;
+    gEvents.InterlockedAdd(HIKARI_PARTICLE_EVENT_CURSOR_OFFSET + asuint(spawn.w) * 4u, 1u, cursor);
+    const uint particleSlot = cursor % gParticleCapacity;
+    const uint particleSeed = Hash(gRandomSeed ^ (particleSlot * 747796405u) ^ (dispatchThreadId.x * 2891336453u));
+    gParticles[gParticleOffset + particleSlot] =
+        MakeSpawnedParticle(particleSeed, true, asfloat(positionKind.xyz), velocityImpact.xyz);
 }

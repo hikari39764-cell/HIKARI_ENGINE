@@ -149,7 +149,8 @@ GpuParticleEmitterParameters BuildGpuParticleEmitterParameters(const ParticleEmi
                                               simulation.shapeCircleArcDegrees);
     result.values[14] = MakeGpuParticleFloat4(
         simulation.collisionPlaneHeight, simulation.restitution, simulation.friction,
-        EncodeUint((simulation.localSimulation ? 1u : 0u) | (simulation.collisionPlaneEnabled ? 2u : 0u)));
+        EncodeUint((simulation.localSimulation ? 1u : 0u) | (simulation.collisionPlaneEnabled ? 2u : 0u) |
+                   (simulation.sceneDepthCollision != 0u && !simulation.localSimulation ? 4u : 0u)));
 
     const auto& field = simulation.field;
     result.values[HIKARI_PARTICLE_FIELD_CENTER] =
@@ -158,8 +159,13 @@ GpuParticleEmitterParameters BuildGpuParticleEmitterParameters(const ParticleEmi
         MakeGpuParticleFloat4(field.axis.x, field.axis.y, field.axis.z, field.vortex);
     result.values[HIKARI_PARTICLE_FIELD_FLOW] =
         MakeGpuParticleFloat4(field.turbulence, field.frequency, field.evolution, field.attraction);
+    result.values[HIKARI_PARTICLE_EVENTS] =
+        MakeGpuParticleFloat4(0.0f, EncodeUint(simulation.eventKinds), simulation.eventImpactThreshold, 0.0f);
+    result.values[HIKARI_PARTICLE_EVENT_SPAWN] =
+        MakeGpuParticleFloat4(simulation.inheritVelocity, simulation.minimumImpactSpeed,
+                              EncodeUint(simulation.eventKind | (simulation.particlesPerEvent << 8u)), 0.0f);
     result.values[HIKARI_PARTICLE_FIELD_TIME] =
-        MakeGpuParticleFloat4(submission.emitterAgeSeconds, simulation.fluidFollow, 0, 0);
+        MakeGpuParticleFloat4(submission.emitterAgeSeconds, simulation.fluidFollow, simulation.collisionThickness, 0);
 
     StoreAnimatedFloat3(result, kPositionValues, simulation.position);
     StoreAnimatedFloat3(result, kRotationValues, simulation.rotationRadians);
@@ -183,6 +189,14 @@ GpuParticleEmitterParameters BuildGpuParticleEmitterParameters(const ParticleEmi
             MakeGpuParticleFloat4(stop.color.x, stop.color.y, stop.color.z, stop.color.w);
     }
     return result;
+}
+
+void SetGpuParticleEventRegions(GpuParticleEmitterParameters& parameters, uint32_t producerRegion,
+                                uint32_t consumerRegion, uint32_t cursor) noexcept {
+    GpuParticleFloat4& events = parameters.values[HIKARI_PARTICLE_EVENTS];
+    events.x = EncodeUint(producerRegion == UINT32_MAX ? 0u : producerRegion + 1u);
+    events.w = EncodeUint(consumerRegion == UINT32_MAX ? 0u : consumerRegion + 1u);
+    parameters.values[HIKARI_PARTICLE_EVENT_SPAWN].w = EncodeUint(cursor == UINT32_MAX ? 0u : cursor);
 }
 
 } // namespace HIKARI::RENDER3D::PARTICLES::INTERNAL

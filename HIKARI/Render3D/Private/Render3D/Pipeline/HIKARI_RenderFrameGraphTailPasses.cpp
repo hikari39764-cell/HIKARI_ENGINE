@@ -73,16 +73,16 @@ bool ExecuteFluidVolumes(const GRAPH::RenderGraphPassContext& graphPass, void* u
     const RenderFrameContext& frame = context.frame;
     const TEMPORAL::TemporalCameraData& camera = context.temporalFrame.camera;
     if (!frame.scene.depth.IsSampleable() || frame.scene.readOnlyDsv.ptr == 0u || !camera.valid ||
-        !MATH::IsFinite(camera.invViewProj) || !MATH::IsFinite(camera.prevViewProj)) {
+        !MATH::IsFinite(camera.invViewProj)) {
         return true;
     }
     try {
-        // 場面の深度と同じ（抖动込みの）描画格子で步进する。
-        FLUID::FluidRenderView view =
-            FLUID::MakeFluidRenderView(context.environment, frame.viewId.value, camera.viewProj, camera.invViewProj,
-                                       {camera.cameraPos.x, camera.cameraPos.y, camera.cameraPos.z});
-        view.historyValid = context.temporalFrame.historyValid && !context.temporalFrame.resetHistory &&
-                            camera.previousValid && !frame.cameraCut;
+        // 場面の深度と同じ（抖动込みの）描画格子で步进する。行列は相機を原点に置いたもの（世界の逆行列は大きな座標で
+        // 精度が足りない）。
+        FLUID::FluidRenderView view = FLUID::MakeFluidRenderView(
+            context.environment, frame.viewId.value,
+            FLUID::MakeCameraRelativeViewProj(camera.view, camera.proj, camera.jitter.z, camera.jitter.w),
+            {camera.cameraPos.x, camera.cameraPos.y, camera.cameraPos.z});
         view.renderWidth = frame.renderWidth;
         view.renderHeight = frame.renderHeight;
         view.sceneDepthSrv = frame.scene.depth.srv;

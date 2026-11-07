@@ -598,6 +598,11 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     postOpaqueResources.rayTracedShadow = {};
     FEATURES::RenderFeaturePlan renderFeaturePlan{};
 
+    // 合成の前の場面色：時間方向の遮罩は合成の前後の差から透明物・水・流体の烟を reactive にする（流体だけの場景で烟が
+    // 遮罩から漏れないよう、流体も数える）。
+    const bool requiresSceneColorOpaque = hasDepthAwareWork || hasTransparentWork || hasSsrWork ||
+                                          nearFieldBounceWork || stylizedScreenMaskRequired || globalPostMaskRequired ||
+                                          MESHRENDERER::HasFluidVolumes();
     static const auto graphTimer = CPU_PROFILE::RegisterDynamicPass("Main.Graph");
     const CPU_PROFILE::ScopedDynamicCpuTimer graphScope(graphTimer);
     const RenderFrameGraphStageResult graphStage = ExecuteRenderFrameGraphStage(RenderFrameGraphStageContext{
@@ -619,8 +624,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         hasTransparentWork,
         hasSsrWork,
         hasSubsurfaceWork,
-        hasDepthAwareWork || hasTransparentWork || hasSsrWork || nearFieldBounceWork || stylizedScreenMaskRequired ||
-            globalPostMaskRequired,
+        requiresSceneColorOpaque,
         &rayLighting,
         &materials});
     if (!graphStage.prefixCompleted || !graphStage.pausedForPresentation || !graphStage.session.IsValid()) {

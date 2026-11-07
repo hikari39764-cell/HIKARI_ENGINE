@@ -33,6 +33,7 @@ enum class FluidEntry : uint32_t {
     Diagnostics,
     Slice,
     Activity,
+    Glow,
     Count
 };
 
@@ -75,6 +76,8 @@ struct FluidDomainResources {
     FluidGridLayout layout{};
     std::array<FluidVolume, 3> velocity{};
     std::array<FluidVolume, 3> density{};
+    // 燃料（RG16F：x 燃料、y この子步の燃える速さ [1/s]）。子步の頭は fuel[0]（燃焼の無い域は 1 格の置き場）。
+    std::array<FluidVolume, 2> fuel{};
     std::vector<FluidVolume> pressure{};
     std::vector<FluidVolume> rhs{};
     // 描画の光照体積（格子の半分の分辨率、RGBA16F：x 太陽への光学的な厚さ、y 空への光学的な厚さ、z 近くの遮り）。
@@ -92,6 +95,8 @@ struct FluidDomainResources {
     uint32_t DiagnosticsOffset() const noexcept { return bricks * 4u; }
     uint32_t ActivityOffset() const noexcept { return bricks * 12u; }
     uint32_t SinkOffset() const noexcept { return bricks * 16u; }
+    // 砖块ごとの発光（Σ 起亮の色の分 × 格の色 rgb と Σ 発光量、Σ 熱い端の分 × 格の色 rgb、Σ 発光量 × 格子座標）、48 byte ずつ。
+    uint32_t GlowOffset() const noexcept { return SinkOffset() + kMaximumFluidInteractionsPerDomain * 4u; }
 };
 
 // 世界（または親）の向き v を、回転 rotation の局所の向きへ移す。
@@ -101,23 +106,29 @@ inline MATH::Vec3 RotateToFluidLocal(const MATH::Quat& rotation, const MATH::Vec
 
 // HIKARI_FluidGrid.hlsli の HikariFluidSource と同じ並び（源の表 t6 の 1 行）。
 struct FluidSourceGpu {
-    float rows[16][4];
+    float rows[19][4];
 };
-static_assert(sizeof(FluidSourceGpu) == 256u);
+static_assert(sizeof(FluidSourceGpu) == 304u);
 
-// 回転と倍率の逆で、域の局所の点を源の局所へ、源の局所の向きを域の局所へ移す行と、形・注入・力場を詰める。
+// 回転と倍率の逆で、域の局所の点を源の局所へ、源の局所の向きを域の局所へ移す行と、形・注入・力場を詰める。source の
+// 変換はこの子步の終わりの位置、sweep はこの子步の間に源が動いた量（世界 [m]）で、子步はその線分を掃いた形へ注入する。
 FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::Vec3& domainPosition,
-                               const MATH::Quat& domainRotation, float cellSize, float burstDensity);
+                               const MATH::Quat& domainRotation, float cellSize, float burstDensity,
+                               const MATH::Vec3& sweep);
+// 源が届く範囲の半径（世界 [m]、源の位置から。形・縁・形状引导の帯・力場と風の半径）。域全体に届く源は無限大。
+float FluidSourceReach(const FluidSourceSubmission& source, float cellSize) noexcept;
 
 // HIKARI_FluidGrid.hlsli の HikariFluidInteraction と同じ並び（押すものの表 t7 の 1 行）。
 struct FluidInteractionGpu {
-    float rows[6][4];
+    float rows[7][4];
 };
-static_assert(sizeof(FluidInteractionGpu) == 96u);
+static_assert(sizeof(FluidInteractionGpu) == 112u);
 
-// 押すもの 1 つを域の局所空間へ移して詰める。domainVelocity は域の動く速さ（障碍物の速度を域に対する速度にする）。
+// 押すもの 1 つを域の局所空間へ移して詰める。domainVelocity は域の動く速さ（障碍物と注入の速度を域に対する速度にする）。
+// 注入は frameSeconds（そのフレームの時間）に動いた線分を掃き、strength に strengthScale を掛ける（この子步が入れる割合）。
 FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, const MATH::Vec3& domainPosition,
-                                         const MATH::Quat& domainRotation, const MATH::Vec3& domainVelocity);
+                                         const MATH::Quat& domainRotation, const MATH::Vec3& domainVelocity,
+                                         float frameSeconds, float strengthScale);
 
 bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& layout, FluidDomainResources& resources);
 bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
@@ -131,7 +142,7 @@ void RetireFluidDomainResources(const GFX::Context& context, FluidDomainResource
 // 解算の活動状態）はいつも束ねる。
 struct FluidPassBindings {
     std::array<FluidVolume*, 4> inputs{};
-    std::array<FluidVolume*, 2> outputs{};
+    std::array<FluidVolume*, 3> outputs{};
     D3D12_GPU_VIRTUAL_ADDRESS sources = 0u;
     D3D12_GPU_VIRTUAL_ADDRESS interactions = 0u;
     FluidVolume* slice = nullptr;
@@ -151,6 +162,8 @@ public:
                  D3D12_GPU_VIRTUAL_ADDRESS interactions, uint32_t vCycles);
     void Occupancy(uint32_t densityIndex);
     void Diagnostics(uint32_t velocityIndex, uint32_t densityIndex);
+    // 発光を砖块ごとに数える（火の光源の回読）。起亮温度と熱い端の温度は描画の色帯と同じ値。
+    void Glow(uint32_t velocityIndex, uint32_t densityIndex, float emissionTemperature, float hotTemperature);
     void Slice(uint32_t velocityIndex, uint32_t densityIndex, FluidVolume& output, FluidDebugField field, uint32_t axis,
                uint32_t index, bool visualize);
     void CopyStats(ID3D12Resource* readback);

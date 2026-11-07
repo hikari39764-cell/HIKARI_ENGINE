@@ -117,6 +117,12 @@ enum class VfxParticleCapacityMode : uint8_t {
     Fixed,
 };
 
+// 粒子の事件：碰撞（平面か場景の深度で跳ね返った時）と寿命切れ。
+enum class VfxParticleEventKind : uint8_t {
+    Collision,
+    Death,
+};
+
 // Numeric values intentionally mirror the cooked HVFXC contract. Values
 // 0 and 1 retain the former CameraFacing and Vertical meanings.
 enum class VfxBillboardMode : uint8_t {
@@ -225,6 +231,10 @@ inline constexpr float kVfxLightFlickerAmplitudeMin = 0.0f;
 inline constexpr float kVfxLightFlickerAmplitudeMax = 1.0f;
 inline constexpr uint32_t kVfxLightPriorityMin = 0u;
 inline constexpr uint32_t kVfxLightPriorityMax = 32u;
+// 1 事件あたりに生成する粒子の上限（GPU の事件の生成は 1 区 256 事件 × この数の線程）。
+inline constexpr uint32_t kVfxParticlesPerEventMax = 16u;
+inline constexpr float kVfxLightGlowShareMin = 0.0f;
+inline constexpr float kVfxLightGlowShareMax = 4.0f;
 inline constexpr float kVfxWeaponDistortionMax = 8.0f;
 inline constexpr float kVfxWeaponBlurMin = 0.0f;
 inline constexpr float kVfxWeaponBlurMax = 8.0f;
@@ -347,6 +357,11 @@ struct VfxLightOutputProfile {
     // 同時に複数の VFX 光源が競合したときの優先度。大きいほど残る。
     uint32_t priority = 0u;
     bool castsShadows = false;
+    // 流体域の層だけ：光源を流体の発光の重心に置き、明るさと色を流体の発光から決める（火が大きくなれば明るく、揺れれば
+    // 揺れ、消えれば消える）。光束は 4π × 発光の光度 × glowShare（烟が自分の光を遮って周りへ届く割合、厚い火で 0.3 前後）
+    // で、luminousFlux はその上限になる。GPU の回読なので 1〜3 フレーム遅れる。
+    bool followFluidGlow = false;
+    float glowShare = 0.3f;
 };
 
 struct VfxSpecialOutputData {
@@ -481,6 +496,15 @@ struct VfxSpawnModuleData {
     // In Automatic mode this remains the authored safety ceiling. The
     // compiler derives the smaller live allocation from spawn and TTL.
     uint32_t maximumParticles = 1024u;
+    // 別の粒子層（eventSourceLayerId）の事件でこの層を生成する（Niagara の Generate Collision / Death Event と
+    // Event Handler）。1 事件あたり particlesPerEvent 個を事件の位置に出し、親の速度（碰撞は跳ね返った後）を
+    // inheritVelocity の割合で受け継ぐ。碰撞の事件は当たった速さが minimumImpactSpeed [m/s] 以上の時だけ。空なら事件で
+    // 生成しない（速さ・burst の生成はそのまま使える）。事件で生成する層は世界空間（basic.localSimulation 偽）。
+    std::string eventSourceLayerId{};
+    VfxParticleEventKind eventKind = VfxParticleEventKind::Collision;
+    uint32_t particlesPerEvent = 4u;
+    float inheritVelocity = 0.3f;
+    float minimumImpactSpeed = 1.0f;
 };
 
 struct VfxShapeModuleData {
@@ -521,6 +545,10 @@ struct VfxForcesModuleData {
     float drag = 0.0f;
     bool collisionPlaneEnabled = false;
     float collisionPlaneHeight = 0.0f;
+    // 場景の深度と碰撞する（世界空間の粒子だけ）：上一帧の主視图の深度へ投影し、面の後ろ collisionThickness [m] 以内に
+    // 入った粒子を面へ戻して跳ね返す（restitution、friction は平面と共通）。画面の外と、厚さより奥へ抜けた粒子は碰撞しない。
+    bool sceneDepthCollision = false;
+    float collisionThickness = 0.5f;
     float restitution = 0.35f;
     float friction = 0.2f;
     HIKARI::RENDER3D::PARTICLES::ParticleForceField field{};

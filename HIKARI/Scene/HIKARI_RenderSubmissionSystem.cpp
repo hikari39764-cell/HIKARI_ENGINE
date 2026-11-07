@@ -82,11 +82,10 @@ std::filesystem::path NormalizeProjectRoot(std::filesystem::path projectRoot) {
 void TickPresentationServices(World& world, const FrameContext& frame) noexcept {
     try {
         // Playback is a world-owned service, not a component-owned
-        // slot system. Tick it here so public VfxView users still
-        // advance/render Owner or World effects without a
-        // VfxPlayerComponent. VfxPlayerSystem may also call Update
-        // earlier in this frame; the service de-duplicates the frame
-        // token and preserves one deterministic step.
+        // slot system. This PreRender tick is its only per-frame advance:
+        // it runs after every LateUpdate and after VfxPlayerSystem's
+        // PreRender, so owner/socket attachments and transforms set by
+        // game code this frame are rendered this frame.
         if (auto* playback = world.Services().Find<VFX::VfxPlaybackService>()) {
             playback->Update(frame.frameIndex, frame.gameDt);
         }

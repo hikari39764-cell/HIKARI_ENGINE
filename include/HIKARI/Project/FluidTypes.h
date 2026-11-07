@@ -21,13 +21,18 @@ enum class GameProjectFluidInteractionKind : uint32_t {
     // A continuous push while submitted. With a direction it accelerates smoke at `strength` m/s² along it.
     // Without one it is a steady source (positive) or sink (negative): smoke flows out through (or in through) the
     // radius at `strength` m/s (open-boundary domains only; an incompressible closed box cannot expand). A sink
-    // removes the smoke it draws in; FluidView::GetRemovedSmoke reports how much.
+    // removes smoke only as fast as it draws volume in, and smoke flowing in keeps its density, so a sink inside thick
+    // smoke never thins it; `absorption` fades the smoke inside the radius directly. FluidView::GetRemovedSmoke
+    // reports how much a sink or absorbing Force removed.
     Force = 2u,
     // Adds smoke while submitted: `strength` density per second of game time at the centre (0–10000, squared
     // falloff to zero at the radius extents.x), so one frame adds strength × that frame's game time. `direction` is
     // the velocity the new smoke is pushed towards in m/s (zero leaves the flow alone) and extents.y its temperature
     // (heat makes it rise and glow, as for authored fluid sources; 0 for cold smoke). Independent of the per-domain
-    // limit on authored fluid sources, so bullets, trails and impact puffs can emit anywhere each frame.
+    // limit on authored fluid sources, so bullets, trails and impact puffs can emit anywhere each frame. Each frame's
+    // amount is kept even when the simulation runs no substep in that frame (it goes into the next substeps), and a moving
+    // Emit (the same (owner, instanceId) as the previous frame) is spread along the segment it moved since then, so a fast
+    // trail stays continuous; a move faster than 60 m/s within one frame counts as a teleport and is not spread.
     Emit = 3u,
 };
 
@@ -48,7 +53,10 @@ struct GameProjectFluidInteraction {
     // Impulse / Force: world direction; zero expands from position (see the kinds). Emit: world velocity in m/s.
     GameProjectFloat3 direction{};
     float strength = 0.0f; // see the kinds; within ±10000
-    uint32_t reserved[2] = {};
+    // Force only (0 for the other kinds): smoke, heat and fuel inside the radius fade at this rate per second
+    // (0–1000 1/s, strongest at the centre, squared falloff), with or without a direction. 0 leaves smoke alone.
+    float absorption = 0.0f;
+    uint32_t reserved = 0u;
 };
 
 static_assert(sizeof(GameProjectFluidInteraction) == 80u);

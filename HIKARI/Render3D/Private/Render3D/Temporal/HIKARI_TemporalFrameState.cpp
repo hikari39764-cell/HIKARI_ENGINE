@@ -118,15 +118,6 @@ MATH::Vec4 MakeJitterParams(uint32_t phase, uint32_t renderWidth, uint32_t rende
             (-2.0f * pixelY) / static_cast<float>((std::max)(1u, renderHeight))};
 }
 
-MATH::Mat4 ApplyClipSpaceJitter(const MATH::Mat4& viewProj, const MATH::Vec4& jitter) {
-    MATH::Mat4 result = viewProj;
-    for (int column = 0; column < 4; ++column) {
-        result.m[column][0] += jitter.z * viewProj.m[column][3];
-        result.m[column][1] += jitter.w * viewProj.m[column][3];
-    }
-    return result;
-}
-
 TemporalCameraData BuildCameraData(const Camera3D& camera, const TemporalCameraData* previousCamera, bool previousValid,
                                    uint32_t renderWidth, uint32_t renderHeight, uint32_t outputWidth,
                                    uint32_t outputHeight, const MATH::Vec4& jitter) {
@@ -137,7 +128,8 @@ TemporalCameraData BuildCameraData(const Camera3D& camera, const TemporalCameraD
     data.invUnjitteredViewProj = MATH::Inverse(data.unjitteredViewProj);
     data.jitter = jitter;
     data.jittered = std::abs(jitter.z) > 0.0f || std::abs(jitter.w) > 0.0f;
-    data.viewProj = data.jittered ? ApplyClipSpaceJitter(data.unjitteredViewProj, jitter) : data.unjitteredViewProj;
+    data.viewProj =
+        data.jittered ? ApplyClipSpaceJitter(data.unjitteredViewProj, jitter.z, jitter.w) : data.unjitteredViewProj;
     data.invViewProj = MATH::Inverse(data.viewProj);
 
     const MATH::Vec3 cameraPos = camera.GetPosition();
@@ -232,6 +224,15 @@ TemporalFrameState BuildRejectedFrame(const TemporalFrameDesc& desc, TemporalHis
     return rejected;
 }
 } // namespace
+
+MATH::Mat4 ApplyClipSpaceJitter(const MATH::Mat4& viewProj, float clipJitterX, float clipJitterY) {
+    MATH::Mat4 result = viewProj;
+    for (int column = 0; column < 4; ++column) {
+        result.m[column][0] += clipJitterX * viewProj.m[column][3];
+        result.m[column][1] += clipJitterY * viewProj.m[column][3];
+    }
+    return result;
+}
 
 const char* ToString(TemporalHistoryResetReason reason) {
     switch (reason) {
@@ -352,9 +353,8 @@ TemporalFrameState BeginTemporalFrame(const TemporalFrameDesc& desc) {
                                   next.resetReason != TemporalHistoryResetReason::InvalidInput;
     next.jitterEnabled = desc.jitterEnabled && next.temporalResolveAllowed;
     next.jitterPhase = static_cast<uint32_t>(desc.frame.frameIndex & 0xffffu);
-    const MATH::Vec4 jitter =
-        MakeJitterParams(next.jitterPhase, next.renderWidth, next.renderHeight, next.outputWidth, next.outputHeight,
-                         next.jitterEnabled);
+    const MATH::Vec4 jitter = MakeJitterParams(next.jitterPhase, next.renderWidth, next.renderHeight, next.outputWidth,
+                                               next.outputHeight, next.jitterEnabled);
 
     const bool previousCameraValid = !next.resetHistory && store.hasCommittedCamera && store.committedCamera.valid;
     if (desc.camera != nullptr) {

@@ -26,8 +26,8 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
         cameraVolume_.Reset();
         solar_.Reset();
         march_.Reset();
-        reconstruct_.Reset();
         composite_.Reset();
+        coverage_.Reset();
         compositeFormat_ = DXGI_FORMAT_UNKNOWN;
         failed_ = false;
         device_ = device;
@@ -94,13 +94,14 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
         }
         failed_ = false;
     }
-    if (sceneColorFormat == DXGI_FORMAT_UNKNOWN || (march_ && composite_ && compositeFormat_ == sceneColorFormat))
+    if (sceneColorFormat == DXGI_FORMAT_UNKNOWN ||
+        (march_ && composite_ && coverage_ && compositeFormat_ == sceneColorFormat))
         return true;
     failed_ = true;
-    ASSETS::SHADER::ShaderAssetResolveResult vertex{}, marchShader{}, reconstructShader{}, compositeShader{};
+    ASSETS::SHADER::ShaderAssetResolveResult vertex{}, marchShader{}, compositeShader{}, coverageShader{};
     if (!resolve("FullscreenVS", ShaderStage::Vertex, vertex) || !resolve("MarchPS", ShaderStage::Pixel, marchShader) ||
-        !resolve("ReconstructPS", ShaderStage::Pixel, reconstructShader) ||
-        !resolve("CompositePS", ShaderStage::Pixel, compositeShader))
+        !resolve("CompositePS", ShaderStage::Pixel, compositeShader) ||
+        !resolve("CoveragePS", ShaderStage::Pixel, coverageShader))
         return false;
     D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
     desc.pRootSignature = root_.Get();
@@ -120,15 +121,10 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
     if (!HIKARI_DX_CHECK(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(march_.ReleaseAndGetAddressOf())),
                          "FluidRenderer::CreateMarchPipeline"))
         return false;
-    desc.PS = {reconstructShader.lease.GetDxil().data(), reconstructShader.lease.GetDxil().size()};
-    desc.NumRenderTargets = 1u;
-    desc.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
-    if (!HIKARI_DX_CHECK(
-            device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(reconstruct_.ReleaseAndGetAddressOf())),
-            "FluidRenderer::CreateReconstructPipeline"))
-        return false;
     // 合成は乗算済みの流体を場面の上へ重ねる（ONE / INV_SRC_ALPHA）。深度は読み取り専用で束ねたまま。
     desc.PS = {compositeShader.lease.GetDxil().data(), compositeShader.lease.GetDxil().size()};
+    desc.NumRenderTargets = 1u;
+    desc.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
     desc.RTVFormats[0] = sceneColorFormat;
     desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     D3D12_RENDER_TARGET_BLEND_DESC& blend = desc.BlendState.RenderTarget[0];
@@ -141,6 +137,14 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
     blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
     if (!HIKARI_DX_CHECK(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(composite_.ReleaseAndGetAddressOf())),
                          "FluidRenderer::CreateCompositePipeline"))
+        return false;
+    // 烟の覆い（体積霧の合成が読む）は混ぜずに書く。深度は束ねない。
+    desc.PS = {coverageShader.lease.GetDxil().data(), coverageShader.lease.GetDxil().size()};
+    desc.RTVFormats[0] = kCoverageFormat;
+    desc.DSVFormat = DXGI_FORMAT_UNKNOWN;
+    blend = CD3DX12_BLEND_DESC(D3D12_DEFAULT).RenderTarget[0];
+    if (!HIKARI_DX_CHECK(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(coverage_.ReleaseAndGetAddressOf())),
+                         "FluidRenderer::CreateCoveragePipeline"))
         return false;
     compositeFormat_ = sceneColorFormat;
     failed_ = false;
@@ -155,14 +159,15 @@ bool FluidRenderer::EnsureView(const GFX::Context& context, ViewState& state, ui
     ID3D12Device* device = context.device;
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    heapDesc.NumDescriptors = 4u;
+    heapDesc.NumDescriptors = 3u;
     if (!HIKARI_DX_CHECK(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(state.rtvHeap.GetAddressOf())),
                          "FluidRenderer::CreateRtvHeap"))
         return false;
     const UINT stride = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    const auto create = [&](Target& target, DXGI_FORMAT format, uint32_t index) {
+    const auto create = [&](Target& target, DXGI_FORMAT format, uint32_t index, uint32_t targetWidth,
+                            uint32_t targetHeight) {
         const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-        const auto desc = CD3DX12_RESOURCE_DESC::Tex2D(format, halfWidth, halfHeight, 1u, 1u, 1u, 0u,
+        const auto desc = CD3DX12_RESOURCE_DESC::Tex2D(format, targetWidth, targetHeight, 1u, 1u, 1u, 0u,
                                                        D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
         if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(device, &heap, D3D12_HEAP_FLAG_NONE, &desc,
                                                                         kRead, nullptr, GFX::VIDEO_MEMORY::Owner::Vfx,
@@ -176,8 +181,9 @@ bool FluidRenderer::EnsureView(const GFX::Context& context, ViewState& state, ui
         return target.srv.IsValid();
     };
     const bool created =
-        create(state.marchColor, kColorFormat, 0u) && create(state.marchDepth, kDepthFormat, 1u) &&
-        create(state.history[0], kColorFormat, 2u) && create(state.history[1], kColorFormat, 3u) &&
+        create(state.marchColor, kColorFormat, 0u, halfWidth, halfHeight) &&
+        create(state.marchDepth, kDepthFormat, 1u, halfWidth, halfHeight) &&
+        create(state.coverage, kCoverageFormat, 2u, width, height) &&
         CreateFluidVolumeTexture(device, kColorFormat, (width + kCameraVolumeTile - 1u) / kCameraVolumeTile,
                                  (height + kCameraVolumeTile - 1u) / kCameraVolumeTile, kCameraVolumeSlices,
                                  state.cameraVolume);
@@ -187,12 +193,11 @@ bool FluidRenderer::EnsureView(const GFX::Context& context, ViewState& state, ui
     }
     state.width = width;
     state.height = height;
-    state.historyValid = false;
     return true;
 }
 
 void FluidRenderer::RetireView(const GFX::Context& context, ViewState& state) {
-    for (Target* target : {&state.marchColor, &state.marchDepth, &state.history[0], &state.history[1]}) {
+    for (Target* target : {&state.marchColor, &state.marchDepth, &state.coverage}) {
         RetireRenderResourceDescriptor(target->srv, context, "FluidRenderer.TargetSrv");
         if (target->resource)
             GFX::RetireD3D12ObjectForFrame(target->resource, context, "FluidRenderer.Target");
@@ -202,7 +207,6 @@ void FluidRenderer::RetireView(const GFX::Context& context, ViewState& state) {
         GFX::RetireD3D12ObjectForFrame(state.rtvHeap, context, "FluidRenderer.RtvHeap");
     RetireVolume(context, state.cameraVolume);
     state.width = state.height = 0u;
-    state.historyValid = false;
 }
 
 void FluidRenderer::TransitionTarget(ID3D12GraphicsCommandList* commands, Target& target, D3D12_RESOURCE_STATES state) {
@@ -247,7 +251,9 @@ bool FluidRenderer::BeginFrame(const GFX::Context& context) {
             return false;
         TransitionVolume(context.cmdList, fallbackVolume_, kRead);
     }
-    cameraVolumeView_ = {fallbackVolume_.srv.gpu, {}};
+    // 空の体積を束ね、params.w = 0（読まない）。MATH::Vec4{} は w = 1 なので 0 を明示する（w = 1 だと空の体積の透過率 0 を
+    // 読んで、流体の無い場面の粒子が全部消えていた）。
+    cameraVolumeView_ = {fallbackVolume_.srv.gpu, {0.0f, 0.0f, 0.0f, 0.0f}};
     // 長く描かれていない視図（閉じた編集器の視口など）の目標と相機体積は捨てる（描かれれば作り直す）。
     constexpr uint64_t kStaleViewFrames = 120u;
     for (auto it = views_.begin(); it != views_.end();) {
@@ -277,7 +283,7 @@ void FluidRenderer::Shutdown(const GFX::Context& context) {
     noiseReady_ = false;
     for (ComPtr<ID3D12PipelineState>* pipeline :
          {std::addressof(noise_), std::addressof(light_), std::addressof(cameraVolume_), std::addressof(solar_),
-          std::addressof(march_), std::addressof(reconstruct_), std::addressof(composite_)})
+          std::addressof(march_), std::addressof(composite_), std::addressof(coverage_)})
         if (*pipeline)
             GFX::RetireD3D12ObjectForFrame(*pipeline, context, "FluidRenderer.Pipeline");
     if (root_)

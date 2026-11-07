@@ -171,7 +171,8 @@ RENDER3D::SurfaceLightingBindings ResolveSurfaceLightingBindings() {
 bool ExecuteParticleForwardTransparent(RENDER3D::PARTICLES::ParticleGpuDrivenPass& particlePass,
                                        const GFX::Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
                                        const MATH::Vec3& cameraPosition, const MeshPassResources& passResources,
-                                       const RENDER3D::FLUID::FluidCameraVolumeView& fluidVolume) {
+                                       const RENDER3D::FLUID::FluidCameraVolumeView& fluidVolume,
+                                       const MATH::Mat4* collisionViewProj) {
     if (!particlePass.HasDrawWork(passResources.particlePostProcessMode, passResources.particleDistortionMask)) {
         return true;
     }
@@ -199,6 +200,10 @@ bool ExecuteParticleForwardTransparent(RENDER3D::PARTICLES::ParticleGpuDrivenPas
     bindings.height = passResources.sceneDepth.height;
     bindings.fluidCameraVolume = fluidVolume.srv;
     bindings.fluidCameraVolumeParams = fluidVolume.params;
+    if (collisionViewProj != nullptr) {
+        bindings.captureCollisionDepth = true;
+        bindings.collisionViewProj = *collisionViewProj;
+    }
     return particlePass.ExecuteForwardTransparent(graphics, bindings);
 }
 
@@ -214,7 +219,8 @@ bool ExecutePreparedParticleForwardTransparent(const GFX::Context& graphics, D3D
         };
     }
     return ExecuteParticleForwardTransparent(gMeshRendererState.particlePass, graphics, cameraAddress, cameraPosition,
-                                             passResources, gMeshRendererState.fluidPass.GetCameraVolume());
+                                             passResources, gMeshRendererState.fluidPass.GetCameraVolume(),
+                                             frame.view.IsInitialized() ? &frame.cameraRelativeViewProj : nullptr);
 }
 
 bool ExecutePreparedWorldSpriteForwardOpaque(const GFX::Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS cameraAddress) {

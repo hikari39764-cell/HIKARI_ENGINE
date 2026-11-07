@@ -158,25 +158,29 @@ void VfxWorkspaceController::DrawHierarchyWindow(AssetDatabase& database) {
             struct Kind {
                 VFX::VfxLayerKind kind;
                 const char* label;
+                // 域の外に置く流体源（流体注入层）。
+                bool injection = false;
             };
             const Kind kinds[] = {{VFX::VfxLayerKind::Shape, "ui.vfx.layer.newShape"},
                                   {VFX::VfxLayerKind::Particles, "ui.vfx.layer.newParticles"},
                                   {VFX::VfxLayerKind::Group, "ui.vfx.layer.newGroup"},
                                   {VFX::VfxLayerKind::Adjustment, "ui.vfx.layer.newAdjustment"},
                                   {VFX::VfxLayerKind::Fluid, "ui.vfx.layer.newFluid"},
-                                  {VFX::VfxLayerKind::FluidSource, "ui.vfx.layer.newFluidSource"}};
+                                  {VFX::VfxLayerKind::FluidSource, "ui.vfx.layer.newFluidSource"},
+                                  {VFX::VfxLayerKind::FluidSource, "ui.vfx.layer.newFluidInjection", true}};
             const auto* selected = FindEmitter(selection_.emitterId);
-            // 新しい層の親：組を選んでいれば組、他は選んだ層と同じ親。流体源は選んだ域の下か、親の属する域の中にだけ
-            // 置け、流体域は域の中に置けない。
+            // 新しい層の親：組を選んでいれば組、他は選んだ層と同じ親。流体源は選んだ域の下か、親の属する域の中に置き、
+            // 流体注入层（場面の域へ注入する流体源）は域の外に置く。流体域は域の中に置けない。
             const std::string sibling = selected == nullptr                          ? std::string{}
                                         : selected->kind == VFX::VfxLayerKind::Group ? selected->id
                                                                                      : selected->parentEmitterId;
             const bool selectedDomain = selected != nullptr && selected->kind == VFX::VfxLayerKind::Fluid;
             const bool insideDomain = FindFluidDomainUnder(sibling) != nullptr;
             for (const auto& entry : kinds) {
-                const bool fluidSource = entry.kind == VFX::VfxLayerKind::FluidSource;
-                const bool enabled = fluidSource ? selectedDomain || insideDomain
-                                                 : entry.kind != VFX::VfxLayerKind::Fluid || !insideDomain;
+                const bool fluidSource = entry.kind == VFX::VfxLayerKind::FluidSource && !entry.injection;
+                const bool enabled = entry.injection ? !selectedDomain && !insideDomain
+                                     : fluidSource   ? selectedDomain || insideDomain
+                                                     : entry.kind != VFX::VfxLayerKind::Fluid || !insideDomain;
                 if (!ImGui::MenuItem(TEXT::Localize(entry.label).c_str(), nullptr, false, enabled))
                     continue;
                 const std::string parent = fluidSource && selectedDomain ? selected->id : sibling;

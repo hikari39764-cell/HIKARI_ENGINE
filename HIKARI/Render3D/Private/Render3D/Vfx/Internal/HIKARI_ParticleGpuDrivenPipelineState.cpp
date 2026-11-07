@@ -129,8 +129,9 @@ bool ParticleGpuDrivenPipelineState::CreateSimulationPipelines(ID3D12Device* dev
     particleUav.BaseShaderRegister = 0u;
 
     // 3..6：粒子が乗る流体の速度体積（t1..t4、1 つずつの表）、7：その域の表（b1）、s0：線形の clamp。
+    // 8：碰撞深度（t5。CollisionDepthCS では場景の深度）、9：碰撞の視图（b2）、10：碰撞深度の書き込み（u1）。
     std::array<D3D12_DESCRIPTOR_RANGE, 4u> fluidVelocity{};
-    std::array<D3D12_ROOT_PARAMETER, 8u> parameters{};
+    std::array<D3D12_ROOT_PARAMETER, 12u> parameters{};
     parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     parameters[0].DescriptorTable.NumDescriptorRanges = 1u;
     parameters[0].DescriptorTable.pDescriptorRanges = &particleUav;
@@ -149,6 +150,24 @@ bool ParticleGpuDrivenPipelineState::CreateSimulationPipelines(ID3D12Device* dev
     }
     parameters[7].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
     parameters[7].Descriptor.ShaderRegister = 1u;
+    D3D12_DESCRIPTOR_RANGE collisionDepth{};
+    collisionDepth.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    collisionDepth.NumDescriptors = 1u;
+    collisionDepth.BaseShaderRegister = 5u;
+    parameters[8].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    parameters[8].DescriptorTable.NumDescriptorRanges = 1u;
+    parameters[8].DescriptorTable.pDescriptorRanges = &collisionDepth;
+    parameters[9].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+    parameters[9].Descriptor.ShaderRegister = 2u;
+    D3D12_DESCRIPTOR_RANGE collisionDepthOut{};
+    collisionDepthOut.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+    collisionDepthOut.NumDescriptors = 1u;
+    collisionDepthOut.BaseShaderRegister = 1u;
+    parameters[10].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    parameters[10].DescriptorTable.NumDescriptorRanges = 1u;
+    parameters[10].DescriptorTable.pDescriptorRanges = &collisionDepthOut;
+    parameters[11].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
+    parameters[11].Descriptor.ShaderRegister = 2u;
     D3D12_STATIC_SAMPLER_DESC fluidSampler{};
     fluidSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     fluidSampler.AddressU = fluidSampler.AddressV = fluidSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -170,7 +189,7 @@ bool ParticleGpuDrivenPipelineState::CreateSimulationPipelines(ID3D12Device* dev
         ASSETS::SHADER::MakeRenderGeometryShaderContract(
             ASSETS::SHADER::RenderGeometryRootLayout::ParticleSimulation,
             {capabilities.shaderModel, capabilities.rootSignatureVersion, capabilities.featureMask});
-    constexpr std::array entries{"ResetCS", "UpdateCS", "SpawnCS"};
+    constexpr std::array entries{"ResetCS", "UpdateCS", "SpawnCS", "CollisionDepthCS", "EventClearCS", "EventSpawnCS"};
     for (size_t index = 0u; index < entries.size(); ++index) {
         if (!CreateComputePipeline(device, simulationRootSignature_.Get(), shaderContract,
                                    "HIKARI.EngineShader.Render3D_ParticleSimulation", entries[index],

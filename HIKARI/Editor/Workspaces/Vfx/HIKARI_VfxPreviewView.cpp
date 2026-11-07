@@ -187,10 +187,13 @@ void VfxPreviewSession::SubmitPreviewRequest(EditorViewInstance& previewView, bo
     std::vector<uint8_t> visibleLayers;
     for (const auto& layer : source_->emitters)
         visibleLayers.push_back(IsEmitterPreviewVisible(layer.id) ? 1u : 0u);
+    playbackService_.ReceiveFluidGlow(*previewGlowReports_);
+    previewGlowReports_->clear();
     if (previewPlaying_)
         VFX::AppendVfxLightProviders(playbackService_, previewLighting_->lights, visibleLayers);
     request.lightingOverride = previewLighting_.get();
     request.particleInputOverride = previewRenderMailbox_.GetCurrent();
+    request.fluidGlowReports = previewGlowReports_;
     request.guideOverlay.showGroundGrid = showPreviewGrid_ && !previewCleanView_;
     request.guideOverlay.showWorldAxes = showPreviewAxes_ && !previewCleanView_;
     request.guideOverlay.gridHalfCount = 12;
