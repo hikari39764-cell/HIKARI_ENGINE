@@ -163,7 +163,35 @@ float DetailedDensity(HikariFluidDomain domain, float rho, float3 flow, float3 g
     const float thin = 4.0f * domain.detail.x / max(domain.look.w, 1.0e-4f);
     const float edge = saturate(1.0f - rho / thin);
     const float wobble = smoothstep(0.15f, 0.85f, noise) * 2.0f - 1.0f;
-    return rho * max(1.0f + strength * wobble * lerp(0.3f, 1.25f, edge), 0.0f);
+    // 4 倍細かい模様は薄い縁だけを削る：格の大きさの塊（三線形補間の折れ目）が輪郭に出るのを崩し、外から見た縁を締める。
+    // ずれはその模様の大きさまで、画素より細かくなる距離では読まない（粗い模様と同じ約束）。
+    const float fineFrequency = domain.detail.x * 4.0f;
+    const float fineStrength = saturate(2.0f - pixelSize * fineFrequency * 64.0f) * edge;
+    float fine = 0.0f;
+    if (fineStrength > 0.0f)
+    {
+        const float3 fineCarried = drift * min(1.0f, 0.25f / max(fineFrequency * driftLength, 1.0e-6f));
+        const float f0 = gNoise.SampleLevel(gLinearWrap, (local - fineCarried * phase0) * fineFrequency + 0.21f, 0);
+        const float f1 = gNoise.SampleLevel(gLinearWrap, (local - fineCarried * phase1) * fineFrequency + 0.58f, 0);
+        fine = fineStrength * (smoothstep(0.2f, 0.8f, lerp(f0, f1, weight)) * 2.0f - 1.0f);
+    }
+    return rho * max(1.0f + strength * (wobble * lerp(0.3f, 1.25f, edge) + 0.6f * fine), 0.0f);
+}
+
+// 太陽への光学的な厚さ：手前 kNearSunCells 格は格の解像度の密度で積み、その先は光照体積（格 2 つの texel、そこから
+// 太陽までの厚さ）を読む。光照体積だけだと烟の表面の明暗が texel の塊になり、大きな域を外から見ると階段状に見えた。
+static const uint kNearSunCells = 3u;
+float SunOpticalDepth(HikariFluidDomain domain, Texture3D<float4> density, Texture3D<float4> light, float3 grid)
+{
+    float nearDensity = 0.0f;
+    [unroll] for (uint index = 0u; index < kNearSunCells; ++index)
+        nearDensity += density.SampleLevel(gLinearBorder, (grid + domain.sun.xyz * ((float)index + 0.5f)) /
+                                                              domain.cells.xyz, 0).x;
+    const float3 ahead = grid + domain.sun.xyz * (float)kNearSunCells;
+    const float far = HikariFluidInside(ahead, domain.cells.xyz)
+                          ? light.SampleLevel(gLinearClamp, ahead / domain.cells.xyz, 0).x
+                          : 0.0f;
+    return nearDensity * domain.look.w * domain.cells.w + far;
 }
 
 // 世界の点 world の消光 sigma と視線へ出る光（sigma × 散乱 + 発光）を足す。pixelSize は DetailedDensity へ。
@@ -183,9 +211,10 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
     if (rho <= 0.0f)
         return;
     const float extinction = rho * domain.look.w;
-    // 光照体積は光学的な厚さ（透過率で補間すると厚い烟で隣と桁が違い、折れ目が格子の塊として陰影に出る）。z は近くの遮り。
+    // 光照体積は光学的な厚さ（透過率で補間すると厚い烟で隣と桁が違い、折れ目が格子の塊として陰影に出る）。y は空、z は
+    // 近くの遮り。太陽は手前を格の解像度で積む（SunOpticalDepth）。
     const float3 tau = light.SampleLevel(gLinearClamp, uvw, 0).xyz;
-    const float2 transmittance = exp(-tau.xy);
+    const float2 transmittance = exp(-float2(SunOpticalDepth(domain, density, light, grid), tau.y));
     const float openness = exp(-0.5f * tau.z);
     const float cosTheta = dot(viewDirection, normalize(gSun.xyz));
     const float3 sun = gSunRadiance.rgb * HikariFluidSunScattering(cosTheta, domain.optics.x, domain.optics.y,
@@ -402,8 +431,9 @@ void NoiseCS(uint3 id : SV_DispatchThreadID)
     gOutput[id] = saturate(perlin * 0.55f + worley * 0.45f).xxxx;
 }
 
-// 域 gPass.x の光照体積（格子の半分の分辨率）：x 太陽への光学的な厚さ（自己影）、y 空（上）への光学的な厚さ、z 近くの遮り
-// （6 方向へ約 8 格の光学的な厚さの平均）。
+// 域 gPass.x の光照体積（格子の半分の分辨率）：x 太陽への光学的な厚さ（自己影）、y 空への光学的な厚さ（上の円錐と水平
+// 4 方向の透過率の平均を厚さへ戻したもの）、z 近くの遮り（6 方向へ約 8 格の光学的な厚さの平均）。
+static const uint kSkyRingTexels = 48u;
 [numthreads(4, 4, 4)]
 void LightCS(uint3 id : SV_DispatchThreadID)
 {
@@ -447,6 +477,29 @@ void LightCS(uint3 id : SV_DispatchThreadID)
             optical.y += 0.25f * sum * stride;
         }
     }
+    // 空の光は上だけでなく地平の周りからも来る：大きな烟の塊の横腹（上は厚い烟でも横へ開いている）が上の円錐だけでは
+    // 真っ黒になった。水平 4 方向へ 1 本ずつ kSkyRingTexels まで積み（遠くの烟は環境光をほとんど遮らない）、上の円錐の
+    // 透過率と半々で平均する。
+    const float scale = domain.look.w * domain.cells.w;
+    float ring = 0.0f;
+    {
+        const float3 side0 = normalize(cross(up, abs(up.x) < 0.9f ? float3(1.0f, 0.0f, 0.0f) : float3(0.0f, 0.0f, 1.0f)));
+        const float3 side1 = cross(up, side0);
+        [unroll] for (uint side = 0u; side < 4u; ++side)
+        {
+            const float3 direction = ((side & 1u) != 0u ? -1.0f : 1.0f) * (side < 2u ? side0 : side1);
+            float along = 0.0f;
+            [loop] for (uint index = 0u; index < kSkyRingTexels; ++index)
+            {
+                const float3 p = start + direction * (((float)index + 0.5f) * stride);
+                if (!HikariFluidInside(p, cells))
+                    break;
+                along += gDensity0.SampleLevel(gLinearBorder, p / cells, 0).x * stride;
+            }
+            ring += exp(-along * scale);
+        }
+    }
+    const float sky = -log(max(0.5f * exp(-optical.y * scale) + 0.125f * ring, 1.0e-6f));
     // 近くの遮り：多重散乱の光は周りから来るので、塊の外へ開いた所（凸）は明るく、奥や褶の中は暗い。大きな烟の影の側と
     // 球壳の内側（太陽への厚さがどこも同じくらいで、それだけだと一様な灰色）に陰影の起伏を付ける。
     float local = 0.0f;
@@ -457,8 +510,7 @@ void LightCS(uint3 id : SV_DispatchThreadID)
         [unroll] for (uint index = 1u; index <= 4u; ++index)
             local += gDensity0.SampleLevel(gLinearBorder, (start + direction * (stride * (float)index)) / cells, 0).x;
     }
-    const float scale = domain.look.w * domain.cells.w;
-    gOutput[id] = float4(optical * scale, local * (stride / 6.0f) * scale, 0.0f);
+    gOutput[id] = float4(optical.x * scale, sky, local * (stride / 6.0f) * scale, 0.0f);
 }
 
 // ---------------------------------------------------------------- 場面へ落とす烟の影

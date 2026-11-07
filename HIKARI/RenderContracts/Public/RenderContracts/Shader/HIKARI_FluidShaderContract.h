@@ -96,7 +96,9 @@ inline constexpr std::string_view kFluidVolumeShaderInterfaceCanonical =
     "FluidRenderCB:1200;mat4 inverseViewProj camera-relative(camera at origin);float4 camera,forward(xyz,steps),size(half,"
     "render),sun(direction,shadowed),sunRadiance,ambient(rgb,domains);cameraVolume(near,logRange,slices,samples);mat4 lightViewProj[4];float4 splits,shadowParams,"
     "shadowSampling,shadowBias;solarTable(origin,right extent,up resolution,toSun steps);FluidDomain[4]:160 toGrid[3],cells,look,emission(ignition),emissionHot(hot temperature),optics,detail,sun(w cell color);"
-    "t0..t3 density(x,yzw density*color),t4..t7 velocity,t8..t11 light RG16F half,t12 scene depth,t13/t14 march color RGBA16F/march "
+    "t0..t3 density(x,yzw density*color),t4..t7 velocity,t8..t11 light RGBA16F half(x sun optical depth,y sky "
+    "optical depth from up cone and horizontal ring transmittance,z local occlusion),sun optical depth near 3 cells "
+    "from density then light,t12 scene depth,t13/t14 march color RGBA16F/march "
     "distances RG32F (stopped opaque, opacity-weighted smoke mean),t15 noise R8 64^3,t16 shadow atlas;"
     "premultiplied pre-exposed scattering and "
     "transmittance;composite ONE/INV_SRC_ALPHA;camera volume log slices;u1 solar atlas RG32F cloud-solar layout "
@@ -109,7 +111,7 @@ inline ShaderAssetContractExpectation MakeFluidVolumeShaderContract(
     ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = "HIKARI.FluidVolume";
-    contract.engineInterfaceVersion = 8u;
+    contract.engineInterfaceVersion = 9u;
     contract.rootLayoutId = "HIKARI.FluidVolume.Root";
     contract.rootLayoutVersion = 4u;
     contract.availableDeviceCaps = availableCaps;
