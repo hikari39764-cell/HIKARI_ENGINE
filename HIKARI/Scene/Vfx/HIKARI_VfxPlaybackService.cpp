@@ -695,10 +695,16 @@ size_t VfxPlaybackService::CollectLightOutputs(std::vector<VfxLayerLightSample>&
                 sample.ageSeconds = instance.elapsedSeconds - start;
                 sample.priority = profile.priority;
                 sample.castsShadows = profile.castsShadows;
-                // 発光の重心に置き、光束は 4π × 発光の光度 × 届く割合（luminousFlux が上限）、色に発光の色を掛ける。
+                // 発光の重心に置き、光束は 4π × 発光の光度 × 届く割合（luminousFlux が上限）、色は灯の色 × 発光の色。流体域の
+                // 層の色は描画で散乱色と消光にだけ掛かり発光には掛からないので、ここでも掛けない。局所空間の域の重心は今の
+                // 域の変換で移す（回読の遅れの間に動いた火球に光が遅れない）。
                 if (glow != nullptr) {
                     const float peak = (std::max)({glow->intensity.x, glow->intensity.y, glow->intensity.z});
-                    sample.position = glow->worldPosition;
+                    const VfxWorldTransform& domain = instance.emitterTransforms[emitterIndex];
+                    sample.position = glow->localSpace
+                                          ? domain.position + MATH::RotateVector(domain.rotation, glow->localPosition)
+                                          : glow->worldPosition;
+                    sample.color = profile.color;
                     sample.luminousFlux =
                         (std::min)(profile.luminousFlux, 12.5663706f * glowLuminance * profile.glowShare);
                     sample.color = {sample.color.x * glow->intensity.x / peak,

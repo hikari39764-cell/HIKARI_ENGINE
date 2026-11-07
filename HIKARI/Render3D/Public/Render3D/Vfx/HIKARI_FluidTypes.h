@@ -233,11 +233,15 @@ struct FluidSinkReport {
 };
 
 // 域の発光（火の光源が読む。FluidDomainSubmission::reportGlow の域だけ）。intensity は描画と同じ発光（密度 × 温度の色帯
-// × emissionIntensity）を域で積んだ光度 [cd]（rgb、薄い烟として：烟が自分の光を遮る分は含まない）、worldPosition はその
-// 重心（世界）。光っていなければ intensity 0。GPU の回読なので 1〜3 フレーム遅れ、子步を進めたフレームだけ届く。
+// × emissionIntensity × 格の色）を域で積んだ光度 [cd]（rgb、薄い烟として：烟が自分の光を遮る分は含まない）。重心は
+// localPosition（域の局所、域の中心から）と、回読した時の域の変換で移した worldPosition。局所空間の域（localSpace）は
+// 使う側が今の域の変換で移す（回読の遅れの間に動いた火球に光が遅れない）。光っていなければ intensity 0（上限や
+// 見えないことで解かれなくなった域にも一度 0 を送る）。GPU の回読なので 1〜3 フレーム遅れ、子步を進めたフレームだけ届く。
 struct FluidGlowReport {
     PARTICLES::ParticleEmitterInstanceKey key{};
     MATH::Vec3 worldPosition{};
+    MATH::Vec3 localPosition{};
+    bool localSpace = false;
     MATH::Vec3 intensity{};
 };
 

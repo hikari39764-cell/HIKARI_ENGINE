@@ -165,6 +165,9 @@ struct ParticleGpuDrivenPass::Impl {
     // 場景深度碰撞：主視图の透明の段で撮った深度の視图（次のフレームの模拟が b2 で読む）と、撮ったフレーム。
     INTERNAL::GpuParticleCollisionView collisionView{};
     uint64_t collisionCaptureFrame = (std::numeric_limits<uint64_t>::max)();
+    // 碰撞の視図の定数を書いたフレーム。同じフレームの二つ目の視図は書かない（常駐の定数は GPU が最後の値を読むので、
+    // 先の視図が撮った後に書くと先の視図の模拟まで「碰撞しない」になる）。
+    uint64_t collisionViewFrame = (std::numeric_limits<uint64_t>::max)();
     INTERNAL::GpuParticleStorage storage{};
     INTERNAL::ParticleGpuDrivenPipelineState pipelines{};
     INTERNAL::ParticleMaterialResolver materialResolver{};
@@ -686,7 +689,8 @@ struct ParticleGpuDrivenPass::Impl {
         ID3D12DescriptorHeap* heaps[] = {context.srvHeap};
         context.cmdList->SetDescriptorHeaps(1u, heaps);
         const uint32_t frameResourceIndex = context.frameIndex % GFX::kFrameResourceCount;
-        if (!input.emitters.empty()) {
+        if (!input.emitters.empty() && collisionViewFrame != frameSerial) {
+            collisionViewFrame = frameSerial;
             // 撮ったのが前のフレームでなければ（主視图が描かれていない間、相機は動いているかもしれない）碰撞しない。
             INTERNAL::GpuParticleCollisionView view = collisionView;
             if (collisionCaptureFrame + 1u != frameSerial)

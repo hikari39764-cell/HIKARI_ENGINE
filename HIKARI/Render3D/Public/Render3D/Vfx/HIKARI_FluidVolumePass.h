@@ -199,8 +199,9 @@ public:
     const FluidVolumePassStats& GetStats() const noexcept;
     // 回読が届いた汇の量を out の後ろへ移す（受け取った分は pass から消える。受け取る側が無い間は溜めておく）。
     void TakeSinkReports(std::vector<FluidSinkReport>& out);
-    // 回読が届いた域の発光（reportGlow の域）を out へ足して空にする。
-    void TakeGlowReports(std::vector<FluidGlowReport>& out);
+    // 回読が届いた域の発光（reportGlow の域）のうち、input の域の分を out へ移す（同じフレームに描く別の視図の域の分は
+    // その視図が受け取る）。もう無い域の分は捨てる。
+    void TakeGlowReports(const PARTICLES::ParticleRenderInput* input, std::vector<FluidGlowReport>& out);
 
 private:
     struct Impl;

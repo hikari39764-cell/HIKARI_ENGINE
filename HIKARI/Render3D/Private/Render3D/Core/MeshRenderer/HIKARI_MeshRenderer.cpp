@@ -223,7 +223,7 @@ void INTERNAL::PrepareFluidFrame(const GFX::Context& graphics,
     if (source != nullptr && source->fluidSinkReports != nullptr)
         gMeshRendererState.fluidPass.TakeSinkReports(*source->fluidSinkReports);
     if (source != nullptr && source->fluidGlowReports != nullptr)
-        gMeshRendererState.fluidPass.TakeGlowReports(*source->fluidGlowReports);
+        gMeshRendererState.fluidPass.TakeGlowReports(source->input, *source->fluidGlowReports);
     PublishFluidMetrics(gMeshRendererState.fluidPass.GetStats(), TIME::GetFrameContext().frameIndex);
 }
 

@@ -247,7 +247,7 @@ void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution,
         maxSpeed = (std::max)(maxSpeed, HalfToFloat(texels[index]));
     const FluidDomainStats& stats = DomainStats(pass);
     std::vector<FluidGlowReport> glow;
-    pass.TakeGlowReports(glow);
+    pass.TakeGlowReports(&input, glow);
     assert(!glow.empty());
     const FluidGlowReport& lit = glow.back();
     std::fprintf(stderr,

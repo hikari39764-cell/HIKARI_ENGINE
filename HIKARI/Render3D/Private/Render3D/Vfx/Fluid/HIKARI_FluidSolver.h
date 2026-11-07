@@ -95,7 +95,7 @@ struct FluidDomainResources {
     uint32_t DiagnosticsOffset() const noexcept { return bricks * 4u; }
     uint32_t ActivityOffset() const noexcept { return bricks * 12u; }
     uint32_t SinkOffset() const noexcept { return bricks * 16u; }
-    // 砖块ごとの発光（Σ 発光量、Σ 発光量 × 熱い端への割合、Σ 発光量 × 格子座標）、32 byte ずつ。
+    // 砖块ごとの発光（Σ 起亮の色の分 × 格の色 rgb と Σ 発光量、Σ 熱い端の分 × 格の色 rgb、Σ 発光量 × 格子座標）、48 byte ずつ。
     uint32_t GlowOffset() const noexcept { return SinkOffset() + kMaximumFluidInteractionsPerDomain * 4u; }
 };
 

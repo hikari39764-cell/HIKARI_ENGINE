@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <memory>
 #include <string_view>
+#include <vector>
 
 #include <d3d12.h>
 
@@ -20,6 +21,10 @@ class SkyManager;
 
 namespace HIKARI::RENDER3D::PARTICLES {
 struct ParticleRenderInput;
+}
+
+namespace HIKARI::RENDER3D::FLUID {
+struct FluidGlowReport;
 }
 
 namespace HIKARI::RENDER3D::MATERIAL {
@@ -105,6 +110,8 @@ struct EditorInteractiveViewRequest {
     const SceneEnvironment* environmentOverride = nullptr;
     const LIGHTING::SceneLightingSet* lightingOverride = nullptr;
     std::shared_ptr<const PARTICLES::ParticleRenderInput> particleInputOverride{};
+    // particleInputOverride の流体域の発光の回読を受け取る先（特效の预览が自分の再生側へ返す。火の光源が読む）。
+    std::shared_ptr<std::vector<FLUID::FluidGlowReport>> fluidGlowReports{};
     EditorInteractiveViewGuideOverlay guideOverlay{};
     bool suppressSpatialLightingProviders = false;
     bool useDefaultSkyIbl = false;
