@@ -39,7 +39,6 @@ struct alignas(16) RenderConstants {
     float sun[4];
     float sunRadiance[4];
     float ambient[4];
-    float frame[4];
     float cameraVolume[4];
     MATH::Mat4 lightViewProj[4]{};
     float shadowSplits[4];
@@ -49,7 +48,7 @@ struct alignas(16) RenderConstants {
     LIGHTING::CloudSolarVisibilityGpuData solarTable{};
     RenderDomainGpu domains[kMaximumRenderedFluidDomains];
 };
-static_assert(sizeof(RenderConstants) == 1152u);
+static_assert(sizeof(RenderConstants) == 1136u);
 
 void Set4(float (&out)[4], float x, float y, float z, float w) {
     out[0] = x;
@@ -143,7 +142,8 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     RenderConstants constants{};
     constants.invRelativeViewProj = view.invRelativeViewProj;
     Set4(constants.camera, view.cameraPosition.x, view.cameraPosition.y, view.cameraPosition.z, 0.0f);
-    Set4(constants.forward, view.cameraForward.x, view.cameraForward.y, view.cameraForward.z, 0.0f);
+    Set4(constants.forward, view.cameraForward.x, view.cameraForward.y, view.cameraForward.z,
+         static_cast<float>(marchSteps));
     const uint32_t halfWidth = (view.renderWidth + 1u) / 2u, halfHeight = (view.renderHeight + 1u) / 2u;
     Set4(constants.size, static_cast<float>(halfWidth), static_cast<float>(halfHeight),
          static_cast<float>(view.renderWidth), static_cast<float>(view.renderHeight));
@@ -153,8 +153,7 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     Set4(constants.sunRadiance, view.sunIlluminance.x * view.preExposure, view.sunIlluminance.y * view.preExposure,
          view.sunIlluminance.z * view.preExposure, 0.0f);
     Set4(constants.ambient, view.ambientRadiance.x * view.preExposure, view.ambientRadiance.y * view.preExposure,
-         view.ambientRadiance.z * view.preExposure, 0.0f);
-    Set4(constants.frame, 0.0f, 0.0f, static_cast<float>(marchSteps), static_cast<float>(count));
+         view.ambientRadiance.z * view.preExposure, static_cast<float>(count));
     const float farthest = FarthestCorner(domains.first(count), view.cameraPosition, kCameraVolumeNear);
     Set4(constants.cameraVolume, kCameraVolumeNear, std::log(farthest / kCameraVolumeNear),
          static_cast<float>(kCameraVolumeSlices), kCameraVolumeSamples);
@@ -395,7 +394,7 @@ LIGHTING::CloudSolarVisibilityGpuData FluidRenderer::RenderSolarVisibility(const
     FluidRenderView view{};
     view.sunDirection = direction;
     view.preExposure = 1.0f;
-    Set4(constants.frame, 0.0f, 0.0f, 0.0f, static_cast<float>(count));
+    constants.ambient[3] = static_cast<float>(count);
     constants.solarTable = table;
     for (size_t index = 0u; index < count; ++index)
         constants.domains[index] = PackDomain(domains[index], view);

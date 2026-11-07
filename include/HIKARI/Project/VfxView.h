@@ -23,6 +23,14 @@ public:
     // while retaining the current geometry; parameter updates still apply.
     // One resumes at normal speed. This does not seek or supply a music clock.
     HIKARI_GAME_PROJECT_SDK_API bool SetTimeScale(GameProjectVfxPlaybackHandle handle, float scale) const noexcept;
+    // Owner-thread world velocity [m/s] of the effect root: every frame the
+    // root moves by velocity x instance time (the time scale applies),
+    // starting from the transform given to Play or Update. A projectile
+    // effect only needs Play + SetVelocity; its fluid injection sweeps the
+    // path. Zero stops. Layers attached to the owner object keep following
+    // the owner.
+    HIKARI_GAME_PROJECT_SDK_API bool SetVelocity(GameProjectVfxPlaybackHandle handle,
+                                                 const GameProjectFloat3& velocity) const noexcept;
 
 private:
     friend struct GameProjectSdkAccess;

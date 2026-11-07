@@ -58,6 +58,9 @@ public:
     VfxPlayResult PlayDetailed(const VfxPlayRequest& request);
     bool Stop(VfxPlaybackHandle handle);
     bool SetTimeScale(VfxPlaybackHandle handle, float scale);
+    // World velocity [m/s] of the instance root; Update moves the root by
+    // velocity x instance time before stepping. Finite values only.
+    bool SetVelocity(VfxPlaybackHandle handle, const MATH::Vec3& velocity);
     // Runtime cues queue bounded preroll until the previous GPU delivery is acknowledged.
     bool QueueSeek(VfxPlaybackHandle handle, float seconds);
     bool SetTransform(VfxPlaybackHandle handle, const VfxWorldTransform& transform);

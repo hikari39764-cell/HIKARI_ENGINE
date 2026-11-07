@@ -624,6 +624,7 @@ static_assert(offsetof(HIKARI::GameProjectAudioPlaybackSnapshot, completedLoops)
 static_assert(HasAddress(&HIKARI::AudioView::TryGetPlaybackSnapshot));
 static_assert(HasAddress(&HIKARI::ModelView::SetPostGroupMask));
 static_assert(HasAddress(&HIKARI::ModelView::ClearPostGroupMask));
+static_assert(HasAddress(&HIKARI::VfxView::SetVelocity));
 static_assert(HasAddress(&HIKARI::VfxView::SetTimeScale));
 static_assert(HasAddress(&HIKARI::WorldView::GetAnimation));
 static_assert(HasAddress(&HIKARI::WorldView::GetMotion));

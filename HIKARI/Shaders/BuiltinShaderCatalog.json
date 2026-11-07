@@ -2015,8 +2015,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.FluidVolume",
-        "engineInterfaceVersion": 5,
-        "engineInterfaceHash": "557309e8f1220b9fd1c012f161bc1d5e4327d1e0437d7cebfafcad1c5817190c",
+        "engineInterfaceVersion": 6,
+        "engineInterfaceHash": "ac737bdf96425d1841885e8a9be413e94b02f9a603c58fb8d29e4ee9dc8029fd",
         "rootLayoutId": "HIKARI.FluidVolume.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "9e33caf84516f5ba701bd659e314eb307770ab453211664ea5cea63956c7366d",

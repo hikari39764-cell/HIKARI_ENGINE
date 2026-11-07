@@ -571,6 +571,20 @@ bool VfxView::SetTimeScale(GameProjectVfxPlaybackHandle handle, float scale) con
     }
 }
 
+bool VfxView::SetVelocity(GameProjectVfxPlaybackHandle handle, const GameProjectFloat3& velocity) const noexcept {
+    try {
+        auto* world = static_cast<World*>(world_);
+        if (!world || !world->IsOwnerThread() || GameProjectSdkAccess::IsWorldClosing(*world))
+            return false;
+        auto* service = FindVfxPlaybackService(world);
+        VFX::VfxPlaybackHandle runtimeHandle{};
+        return service && ToRuntimeVfxHandle(handle, service->GetPlaybackNamespace(), runtimeHandle) &&
+               service->SetVelocity(runtimeHandle, ToRuntime(velocity));
+    } catch (...) {
+        return false;
+    }
+}
+
 bool VfxView::IsActive(GameProjectVfxPlaybackHandle handle) const noexcept {
     try {
         VFX::VfxPlaybackService* service = FindVfxPlaybackService(static_cast<World*>(world_));

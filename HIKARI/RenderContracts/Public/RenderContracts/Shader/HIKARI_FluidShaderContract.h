@@ -86,9 +86,8 @@ inline constexpr std::string_view kFluidVolumeShaderRootCanonical =
     "StaticSampler(s2,LinearWrap)|StaticSampler(s3,PointClamp)|StaticSampler(s4,ComparisonLinearBorderWhite)|"
     "Flags(None)";
 inline constexpr std::string_view kFluidVolumeShaderInterfaceCanonical =
-    "FluidRenderCB:1152;mat4 inverseViewProj camera-relative(camera at origin);float4 camera,forward,size(half,"
-    "render),sun(direction,shadowed),sunRadiance,ambient(rgb,unused),frame(unused,unused,steps,"
-    "domains);cameraVolume(near,logRange,slices,samples);mat4 lightViewProj[4];float4 splits,shadowParams,"
+    "FluidRenderCB:1136;mat4 inverseViewProj camera-relative(camera at origin);float4 camera,forward(xyz,steps),size(half,"
+    "render),sun(direction,shadowed),sunRadiance,ambient(rgb,domains);cameraVolume(near,logRange,slices,samples);mat4 lightViewProj[4];float4 splits,shadowParams,"
     "shadowSampling,shadowBias;solarTable(origin,right extent,up resolution,toSun steps);FluidDomain[4]:144 toGrid[3],cells,look,emission,optics,detail,sun;"
     "t0..t3 density,t4..t7 velocity,t8..t11 light RG16F half,t12 scene depth,t13/t14 march color RGBA16F/march "
     "distances RG32F (stopped opaque, opacity-weighted smoke mean),t15 noise R8 64^3,t16 shadow atlas;"
@@ -101,7 +100,7 @@ inline ShaderAssetContractExpectation MakeFluidVolumeShaderContract(
     ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = "HIKARI.FluidVolume";
-    contract.engineInterfaceVersion = 5u;
+    contract.engineInterfaceVersion = 6u;
     contract.rootLayoutId = "HIKARI.FluidVolume.Root";
     contract.rootLayoutVersion = 3u;
     contract.availableDeviceCaps = availableCaps;

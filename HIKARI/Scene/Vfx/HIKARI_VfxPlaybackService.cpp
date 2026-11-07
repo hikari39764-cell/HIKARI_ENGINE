@@ -1,4 +1,5 @@
 #include "Scene/Vfx/HIKARI_VfxPlaybackState.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Numeric/HIKARI_NonZero.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include "Render3D/Vfx/HIKARI_ParticleCpuSimulation.h"
@@ -277,6 +278,14 @@ bool VfxPlaybackService::SetTransform(VfxPlaybackHandle handle, const VfxWorldTr
     return true;
 }
 
+bool VfxPlaybackService::SetVelocity(VfxPlaybackHandle handle, const MATH::Vec3& velocity) {
+    Instance* instance = Find(handle);
+    if (instance == nullptr || !MATH::IsFinite(velocity))
+        return false;
+    instance->velocity = velocity;
+    return true;
+}
+
 bool VfxPlaybackService::SetParameters(VfxPlaybackHandle handle, const std::vector<VfxParameterOverride>& parameters,
                                        std::vector<VfxPlaybackDiagnostic>* outDiagnostics) {
     Instance* instance = Find(handle);
@@ -519,7 +528,9 @@ void VfxPlaybackService::Update(uint64_t frameIndex, float deltaSeconds) {
                 continue;
             }
         }
-        (void)AppendInstanceStep(instance, deltaSeconds * instance.timeScale, 0u, true, true);
+        const float instanceSeconds = deltaSeconds * instance.timeScale;
+        instance.transform.position = instance.transform.position + instance.velocity * instanceSeconds;
+        (void)AppendInstanceStep(instance, instanceSeconds, 0u, true, true);
     }
     PublishRenderInputDelivery();
 }
