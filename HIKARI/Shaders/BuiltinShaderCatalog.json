@@ -4358,6 +4358,12 @@
       "defines": [],
       "entries": [
         {
+          "id": "CollisionDepthCS",
+          "stage": "Compute",
+          "entry": "CollisionDepthCS",
+          "profile": "cs_6_0"
+        },
+        {
           "id": "ResetCS",
           "stage": "Compute",
           "entry": "ResetCS",
@@ -4381,8 +4387,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.ParticleSimulation.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "c0b78ddd26e3ce4c1d9cbe1454369c5229019bca5b9325f9e07c8232c85cd4df",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "cf97c6308bf227b3c8ea3975289e21d9fb384eaa720aaf6ae8cc6c8f2546e956",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

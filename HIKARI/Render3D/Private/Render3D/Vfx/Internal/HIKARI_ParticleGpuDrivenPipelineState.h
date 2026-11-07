@@ -8,6 +8,9 @@
 
 namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
 
+// 模拟の派発の並び（ResetCS 0、UpdateCS 1、SpawnCS 2）の後の、場景深度碰撞の深度を撮る CollisionDepthCS。
+inline constexpr uint32_t kParticleCollisionDepthPipeline = 3u;
+
 class ParticleGpuDrivenPipelineState final {
 public:
     bool Initialize(ID3D12Device* device);
@@ -29,7 +32,8 @@ private:
     bool CreateDrawPipelines(ID3D12Device* device);
 
     Microsoft::WRL::ComPtr<ID3D12RootSignature> simulationRootSignature_{};
-    std::array<Microsoft::WRL::ComPtr<ID3D12PipelineState>, 3u> simulationPipelines_{};
+    std::array<Microsoft::WRL::ComPtr<ID3D12PipelineState>, kParticleCollisionDepthPipeline + 1u>
+        simulationPipelines_{};
     Microsoft::WRL::ComPtr<ID3D12RootSignature> compactionRootSignature_{};
     std::array<Microsoft::WRL::ComPtr<ID3D12PipelineState>, 3u> compactionPipelines_{};
     Microsoft::WRL::ComPtr<ID3D12RootSignature> drawRootSignature_{};

@@ -371,10 +371,11 @@ void ValidateMotionModules(const VfxEmitterData& emitter, std::unordered_set<std
                                                                  : kMaxVfxLayerCurveKeys);
     if (!RENDER3D::PARTICLES::IsValidParticleForceField(emitter.forces.field) || !IsFinite(emitter.forces.gravity) ||
         !IsFinite(emitter.forces.drag) || emitter.forces.drag < 0.0f || emitter.forces.drag > 1000.0f ||
-        !IsFinite(emitter.forces.collisionPlaneHeight) || !IsFinite(emitter.forces.restitution) ||
-        emitter.forces.restitution < 0.0f || emitter.forces.restitution > 1.0f || !IsFinite(emitter.forces.friction) ||
-        emitter.forces.friction < 0.0f || emitter.forces.friction > 1.0f || !IsFinite(emitter.forces.fluidFollow) ||
-        emitter.forces.fluidFollow < 0.0f ||
+        !IsFinite(emitter.forces.collisionPlaneHeight) || !IsFinite(emitter.forces.collisionThickness) ||
+        emitter.forces.collisionThickness < 0.01f || emitter.forces.collisionThickness > 10.0f ||
+        !IsFinite(emitter.forces.restitution) || emitter.forces.restitution < 0.0f ||
+        emitter.forces.restitution > 1.0f || !IsFinite(emitter.forces.friction) || emitter.forces.friction < 0.0f ||
+        emitter.forces.friction > 1.0f || !IsFinite(emitter.forces.fluidFollow) || emitter.forces.fluidFollow < 0.0f ||
         emitter.forces.fluidFollow > RENDER3D::PARTICLES::kMaxParticleFluidFollow) {
         AddError(diagnostics, "Vfx.InvalidForcesModule", "particle gravity or drag is invalid", emitter.forces.id);
     }

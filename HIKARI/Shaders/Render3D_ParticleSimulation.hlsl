@@ -93,6 +93,93 @@ float3 FluidFlowVelocity(float3 world, uint count, out float inside)
     return flow;
 }
 
+// ---------------------------------------------------------------- 場景深度との碰撞
+// Unity VFX Graph の Collide with Depth Buffer、Niagara の Scene Depth 碰撞と同じ考え方：粒子の模拟は描画より先に走るので、
+// 上一帧の主視图の深度（半解像度、2×2 の最も近い面。CollisionDepthCS が作る）と、その視图の行列を使う。
+Texture2D<float> gCollisionDepth : register(t5);  // CollisionDepthCS では場景の深度（全解像度）
+RWTexture2D<float> gCollisionDepthOut : register(u1);
+cbuffer CollisionViewConstants : register(b2)
+{
+    float4x4 gCollisionViewProj;
+    float4x4 gCollisionInvViewProj;
+    float4 gCollisionSize;    // xy 碰撞深度の大きさ（texel）、zw その逆数
+    float4 gCollisionCamera;  // xyz 視点、w 有効（1）
+};
+
+// 主視图の深度を半解像度へ：2×2 の最も近い面（深度は 0 が近い）。
+[numthreads(8, 8, 1)]
+void CollisionDepthCS(uint3 id : SV_DispatchThreadID)
+{
+    uint width, height, sourceWidth, sourceHeight;
+    gCollisionDepthOut.GetDimensions(width, height);
+    gCollisionDepth.GetDimensions(sourceWidth, sourceHeight);
+    if (id.x >= width || id.y >= height)
+        return;
+    const int2 limit = int2(sourceWidth, sourceHeight) - 1;
+    float nearest = 1.0f;
+    [unroll] for (uint corner = 0u; corner < 4u; ++corner)
+        nearest = min(nearest, gCollisionDepth.Load(int3(min(int2(id.xy) * 2 + int2(corner & 1u, corner >> 1u), limit), 0)));
+    gCollisionDepthOut[id.xy] = nearest;
+}
+
+// 碰撞深度の texel の面の世界位置。空（深度 1）なら valid = false。
+float3 CollisionSurface(int2 texel, out bool valid)
+{
+    const int2 clamped = clamp(texel, int2(0, 0), int2(gCollisionSize.xy) - 1);
+    const float depth = gCollisionDepth.Load(int3(clamped, 0));
+    valid = depth > 0.0f && depth < 0.99999f;
+    const float2 uv = (float2(clamped) + 0.5f) * gCollisionSize.zw;
+    const float4 world = mul(gCollisionInvViewProj, float4(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f, depth, 1.0f));
+    return world.xyz / world.w;
+}
+
+// 粒子を上一帧の視图へ投影し、面より奥で thickness 以内なら面の上へ戻して面の法線で跳ね返す。法線は隣の texel の世界位置
+// （左右・上下のうち深度の差が小さい側。物体の縁で奥の面を拾わない）の外積。戻り値は碰撞したか。
+bool CollideSceneDepth(inout float3 position, inout float3 velocity, float thickness, float restitution, float friction)
+{
+    if (gCollisionCamera.w <= 0.0f)
+        return false;
+    const float4 clip = mul(gCollisionViewProj, float4(position, 1.0f));
+    if (clip.w <= 1.0e-4f)
+        return false;
+    const float3 ndc = clip.xyz / clip.w;
+    if (any(abs(ndc.xy) >= 1.0f) || ndc.z <= 0.0f || ndc.z >= 1.0f)
+        return false;
+    const int2 texel = int2(float2(ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f) * gCollisionSize.xy);
+    bool valid;
+    const float3 surface = CollisionSurface(texel, valid);
+    if (!valid)
+        return false;
+    const float behind = distance(position, gCollisionCamera.xyz) - distance(surface, gCollisionCamera.xyz);
+    if (behind <= 0.0f || behind > thickness)
+        return false;
+    bool left, right, up, down;
+    const float3 xMinus = CollisionSurface(texel - int2(1, 0), left);
+    const float3 xPlus = CollisionSurface(texel + int2(1, 0), right);
+    const float3 yMinus = CollisionSurface(texel - int2(0, 1), up);
+    const float3 yPlus = CollisionSurface(texel + int2(0, 1), down);
+    const float3 dx = right && (!left || distance(xPlus, surface) < distance(xMinus, surface)) ? xPlus - surface
+                                                                                              : surface - xMinus;
+    const float3 dy = down && (!up || distance(yPlus, surface) < distance(yMinus, surface)) ? yPlus - surface
+                                                                                           : surface - yMinus;
+    float3 normal = cross(dy, dx);
+    if (dot(normal, normal) <= 1.0e-12f)
+        return false;
+    normal = normalize(normal);
+    if (dot(normal, gCollisionCamera.xyz - surface) < 0.0f)
+        normal = -normal;
+    // 面の平面の上（法線側へ 1 cm）へ戻し、面へ向かう速さを restitution で反転、面に沿う速さを friction で減らす。視線では
+    // 奥でも面の平面の表側にいる（面をかすめる角度）なら碰撞しない。
+    const float signedDistance = dot(position - surface, normal);
+    if (signedDistance >= 0.0f)
+        return false;
+    position -= normal * (signedDistance - 0.01f);
+    const float into = dot(velocity, normal);
+    const float3 along = velocity - normal * into;
+    velocity = along * (1.0f - saturate(friction)) + normal * (into < 0.0f ? -into * saturate(restitution) : into);
+    return true;
+}
+
 uint Hash(uint value)
 {
     value ^= value >> 16;
@@ -627,18 +714,20 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     float drag = max(forces.w, 0.0f);
     const float4 collision = LoadEmitterValue(gEmitterIndex,14u);
     const bool collide = (asuint(collision.w)&2u)!=0u;
+    const bool depthCollide = (asuint(collision.w) & 4u) != 0u;
     // CPU 参照と同じ解析積分。衝突時のみ分割し、GPU 提出数には影響しない。
     const float4 fieldCenter=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_CENTER);
     const float4 fieldAxis=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_AXIS);
     const float4 fieldFlow=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_FLOW);
-    const float fieldSeconds=LoadEmitterValue(gEmitterIndex,HIKARI_PARTICLE_FIELD_TIME).x;
+    const float4 fieldTime = LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_FIELD_TIME);
+    const float fieldSeconds = fieldTime.x;
     const bool fieldActive=fieldAxis.w!=0 || fieldFlow.x!=0 || fieldFlow.w!=0;
     // 流体に乗る（世界空間の粒子だけ）：毎秒 follow の割合で速度をその場の流体の速度へ寄せる。
-    const float follow = LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_FIELD_TIME).y;
+    const float follow = fieldTime.y;
     const uint flowCount = (gSimulationFlags >> 8u) & 7u;
     const bool followFluid = follow > 0.0f && flowCount > 0u && (asuint(collision.w) & 1u) == 0u;
     const uint steps = fieldActive || followFluid ? (uint)clamp(ceil(dt*60.0f),1.0f,120.0f)
-        : collide ? (uint)clamp(ceil(dt * 30.0f), 1.0f, 8.0f) : 1u;
+        : collide || depthCollide ? (uint)clamp(ceil(dt * 30.0f), 1.0f, 8.0f) : 1u;
     const float step = dt / steps;
     const float x = drag * step;
     const float damping = exp(-x);
@@ -666,6 +755,12 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
             if (particle.velocityLifetime.y < 0.0f)
                 particle.velocityLifetime.y *= -saturate(collision.y);
             particle.velocityLifetime.xz *= 1.0f-saturate(collision.z);
+        }
+        if (depthCollide)
+        {
+            float3 velocity = particle.velocityLifetime.xyz;
+            if (CollideSceneDepth(particle.physicsPositionSeed.xyz, velocity, fieldTime.z, collision.y, collision.z))
+                particle.velocityLifetime.xyz = velocity;
         }
     }
     EvaluateParticlePresentation(gEmitterIndex, particle);

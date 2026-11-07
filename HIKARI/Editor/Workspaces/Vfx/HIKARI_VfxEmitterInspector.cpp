@@ -500,9 +500,20 @@ void VfxWorkspaceController::DrawEmitterMotionPage(AssetDatabase& database, cons
     VfxInspectorPropertyEditor forcesEditor(*this, database, emitter.forces.id, statusMessage_);
     forcesEditor.Bool(VfxUiText("Plane Collision").c_str(), "collisionPlaneEnabled",
                       emitter.forces.collisionPlaneEnabled);
-    if (emitter.forces.collisionPlaneEnabled) {
+    if (emitter.forces.collisionPlaneEnabled)
         forcesEditor.Float(VfxUiText("Plane Y (simulation space)").c_str(), "collisionPlaneHeight",
                            emitter.forces.collisionPlaneHeight, 0.01f, -100000.0f, 100000.0f);
+    forcesEditor.Bool(VfxUiText("Scene Depth Collision").c_str(), "sceneDepthCollision",
+                      emitter.forces.sceneDepthCollision);
+    if (emitter.forces.sceneDepthCollision) {
+        forcesEditor.Float(VfxUiText("Collision Thickness (m)").c_str(), "collisionThickness",
+                           emitter.forces.collisionThickness, 0.01f, 0.01f, 10.0f);
+        ImGui::TextDisabled(
+            VfxUiText("World-space particles bounce off what the main camera saw last frame; off-screen particles "
+                      "do not collide.")
+                .c_str());
+    }
+    if (emitter.forces.collisionPlaneEnabled || emitter.forces.sceneDepthCollision) {
         forcesEditor.Float(VfxUiText("Bounce").c_str(), "restitution", emitter.forces.restitution, 0.01f, 0.0f, 1.0f);
         forcesEditor.Float(VfxUiText("Friction").c_str(), "friction", emitter.forces.friction, 0.01f, 0.0f, 1.0f);
         ImGui::TextDisabled(VfxUiText("Visual particle centers only; this is not gameplay collision.").c_str());

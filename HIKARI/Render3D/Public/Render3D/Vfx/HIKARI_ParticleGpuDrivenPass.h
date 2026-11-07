@@ -68,6 +68,11 @@ struct ParticleGpuDrivenDrawBindings : SurfaceLightingBindings {
     // この視図の流体の煙の相機体積（HIKARI_FluidCameraVolume.hlsli）。無い視図は空で、params.w = 0。
     D3D12_GPU_DESCRIPTOR_HANDLE fluidCameraVolume{};
     MATH::Vec4 fluidCameraVolumeParams{};
+    // 主視图だけ真：この視図の深度（sceneDepth）と行列を、粒子の場景深度碰撞へ撮る（次のフレームの模拟が上一帧の深度として
+    // 使う）。1 フレームに 1 度だけ撮る。
+    bool captureCollisionDepth = false;
+    MATH::Mat4 viewProj{};
+    MATH::Mat4 invViewProj{};
 };
 
 // Owned by one MeshRenderer view-resource set. This object has no

@@ -521,6 +521,10 @@ struct VfxForcesModuleData {
     float drag = 0.0f;
     bool collisionPlaneEnabled = false;
     float collisionPlaneHeight = 0.0f;
+    // 場景の深度と碰撞する（世界空間の粒子だけ）：上一帧の主視图の深度へ投影し、面の後ろ collisionThickness [m] 以内に
+    // 入った粒子を面へ戻して跳ね返す（restitution、friction は平面と共通）。画面の外と、厚さより奥へ抜けた粒子は碰撞しない。
+    bool sceneDepthCollision = false;
+    float collisionThickness = 0.5f;
     float restitution = 0.35f;
     float friction = 0.2f;
     HIKARI::RENDER3D::PARTICLES::ParticleForceField field{};

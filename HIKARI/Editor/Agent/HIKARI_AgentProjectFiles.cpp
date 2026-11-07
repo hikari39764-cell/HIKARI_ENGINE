@@ -129,11 +129,12 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
   场地的烟雾域；它的力场、风和阻力只作用在形状附近））→ `vfx.query` 拿各层的模块 id → `vfx.property.set`（`targetId` 是模块 id，`property` 是模块里的字段路径，
   如 `domainSize`、`extinction`、`emissionNoise`、`radius.maximum`）→ `vfx.save`。范围（最小～最大）先设会把范围放宽的
   那一端，否则会被拒绝。解算看 `vfx.fluid.stats` 和 `vfx.fluid.debug_slice`；碎屑、火星跟着烟走，给粒子层的力模块设
-  `fluidFollow`。火的颜色：流体域的 `emissionColor`/`emissionTemperature` 是起亮的颜色和温度，`emissionHotColor`/
+  `fluidFollow`；火星、碎石落到地上弹开：力模块开 `sceneDepthCollision`（按主相机上一帧的深度，画面外不碰），
+  `collisionThickness` 是表面后面多深仍算撞到，弹性与摩擦用 `restitution`、`friction`。火的颜色：流体域的 `emissionColor`/`emissionTemperature` 是起亮的颜色和温度，`emissionHotColor`/
   `emissionHotTemperature` 是高温端（白黄的芯）。同一个域里要有不同颜色的烟：流体域开 `cellColor`，各流体源层的颜色模块
   决定注入的烟色（发光和散射都乘这个颜色）。火与爆炸：流体域开 `combustion`（`ignitionTemperature`、`burnRate`、
   `fuelPerBurn`、`heatPerBurn`、`smokePerBurn`、`expansionPerBurn`），流体源的 `fuelFraction` 设为 1 注入燃料、
-  `temperature` 高于点燃温度；燃料燃烧放热、生出会发光的高温烟灰并膨胀，燃料烧完火自己熄灭。爆炸用 burst 一次注入大量燃料。
+  `temperature` 高于点燃温度；燃料燃烧放热、生出会发光的高温烟灰并膨胀，燃料烧完火自己熄灭。爆炸用 burst 一次注入燃料（burst 的数量就是每格注入的量，3～4；膨胀 0.3 左右）。
 - 对话：`dialogue.new_asset` → `dialogue.edit`（传整份定义，`dialogue.query` 返回当前定义）→ `dialogue.save`。
 - 界面文字（HUD 等）：`ui.create`。`scene.capture_views` 只画 3D 场景，界面要在 `play.background` 的截图里看。引擎不自带字体，项目里没有字体资产时文字不显示（结果里有 `warning`），
   先用 `asset.import` 导入 .ttf/.otf，或请用户提供字体。

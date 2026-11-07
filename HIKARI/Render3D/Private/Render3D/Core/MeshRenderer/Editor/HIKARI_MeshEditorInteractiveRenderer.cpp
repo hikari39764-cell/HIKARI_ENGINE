@@ -301,7 +301,9 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
             MeshDrawPassKind::Forward, RENDER3D::MESHLET::MeshletPipelineKind::ForwardTransparent, layer, overrides);
         worldSpriteTransparentResult = gMeshRendererState.editorInteractive.worldSpritePass.ExecuteForwardTransparent(
             graphics, overrides.cameraAddress);
-        particleResult = ExecutePreparedParticleForwardTransparent(graphics, overrides.cameraAddress, passResources);
+        // 編集器の対話視図は相機が frame.view と別なので、碰撞深度は撮らない（主視图の深度だけを使う）。
+        particleResult =
+            ExecutePreparedParticleForwardTransparent(graphics, overrides.cameraAddress, passResources, false);
         worldTextTransparentResult = gMeshRendererState.editorInteractive.worldTextPass.ExecuteForwardTransparent(
             graphics, overrides.cameraAddress);
         settings.targetAccess.EndDepthRead();

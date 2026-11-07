@@ -162,6 +162,9 @@ struct ParticleGpuDrivenPass::Impl {
     // Texture3D 記述子（資源なし、読むと 0）。
     FLUID::FluidFlowView fluidFlow{};
     RenderResourceView fluidFlowFallback{};
+    // 場景深度碰撞：主視图の透明の段で撮った深度の視图（次のフレームの模拟が b2 で読む）と、撮ったフレーム。
+    INTERNAL::GpuParticleCollisionView collisionView{};
+    uint64_t collisionCaptureFrame = (std::numeric_limits<uint64_t>::max)();
     INTERNAL::GpuParticleStorage storage{};
     INTERNAL::ParticleGpuDrivenPipelineState pipelines{};
     INTERNAL::ParticleMaterialResolver materialResolver{};
@@ -440,7 +443,50 @@ struct ParticleGpuDrivenPass::Impl {
                                                                                              : fluidFlowFallback.gpu);
         context.cmdList->SetComputeRootConstantBufferView(7u,
                                                           fluidFlow.count > 0u ? fluidFlow.domains : emitterAddress);
+        const D3D12_GPU_VIRTUAL_ADDRESS collisionViewAddress =
+            storage.GetCollisionViewGpuAddress(context.frameIndex % GFX::kFrameResourceCount);
+        context.cmdList->SetComputeRootDescriptorTable(8u, storage.GetCollisionDepthSrv());
+        context.cmdList->SetComputeRootConstantBufferView(9u, collisionViewAddress != 0u ? collisionViewAddress
+                                                                                         : emitterAddress);
+        context.cmdList->SetComputeRootDescriptorTable(10u, storage.GetNullCollisionDepthUav());
         context.cmdList->Dispatch(DispatchGroupCount(threadCount), 1u, 1u);
+    }
+
+    // 主視图の深度を半解像度の碰撞深度へ撮り、その視图を次のフレームの模拟へ残す（1 フレームに 1 度）。深度は透明の段で
+    // 読み取りの状態（NON_PIXEL_SHADER_RESOURCE を含む）。
+    void CaptureCollisionDepth(const ParticleGpuDrivenDrawBindings& bindings) {
+        const uint64_t frame = TIME::GetFrameContext().frameIndex;
+        ID3D12PipelineState* pipeline = pipelines.GetSimulationPipeline(INTERNAL::kParticleCollisionDepthPipeline);
+        const uint32_t width = (bindings.width + 1u) / 2u;
+        const uint32_t height = (bindings.height + 1u) / 2u;
+        if (collisionCaptureFrame == frame || pipeline == nullptr || bindings.sceneDepth.ptr == 0u ||
+            !storage.EnsureCollisionDepth(context, width, height))
+            return;
+        collisionCaptureFrame = frame;
+        storage.TransitionCollisionDepth(context, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        ID3D12DescriptorHeap* heaps[] = {context.srvHeap};
+        context.cmdList->SetDescriptorHeaps(1u, heaps);
+        context.cmdList->SetComputeRootSignature(pipelines.GetSimulationRootSignature());
+        context.cmdList->SetPipelineState(pipeline);
+        // CollisionDepthCS が読むのは 8（場景の深度）と 10（書き先）だけ。他の根も有効な値で埋める。
+        const GpuParticleSimulationConstants unused{};
+        const D3D12_GPU_VIRTUAL_ADDRESS anyBuffer = storage.GetParticleGpuAddress();
+        context.cmdList->SetComputeRootDescriptorTable(0u, storage.GetParticleUavGpuHandle());
+        context.cmdList->SetComputeRootShaderResourceView(1u, anyBuffer);
+        context.cmdList->SetComputeRoot32BitConstants(2u, sizeof(unused) / sizeof(uint32_t), &unused, 0u);
+        for (uint32_t slot = 0u; slot < FLUID::kMaximumFluidFlowDomains; ++slot)
+            context.cmdList->SetComputeRootDescriptorTable(3u + slot, fluidFlowFallback.gpu);
+        context.cmdList->SetComputeRootConstantBufferView(7u, anyBuffer);
+        context.cmdList->SetComputeRootDescriptorTable(8u, bindings.sceneDepth);
+        context.cmdList->SetComputeRootConstantBufferView(9u, anyBuffer);
+        context.cmdList->SetComputeRootDescriptorTable(10u, storage.GetCollisionDepthUav());
+        context.cmdList->Dispatch((width + 7u) / 8u, (height + 7u) / 8u, 1u);
+        storage.TransitionCollisionDepth(context, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        collisionView.viewProj = bindings.viewProj;
+        collisionView.invViewProj = bindings.invViewProj;
+        collisionView.size = {static_cast<float>(width), static_cast<float>(height), 1.0f / static_cast<float>(width),
+                              1.0f / static_cast<float>(height)};
+        collisionView.camera = {bindings.cameraPosition.x, bindings.cameraPosition.y, bindings.cameraPosition.z, 1.0f};
     }
 
     bool SimulateEmitter(const ParticleEmitterSubmission& submission, EmitterAllocation& allocation, bool reset,
@@ -640,6 +686,8 @@ struct ParticleGpuDrivenPass::Impl {
         ID3D12DescriptorHeap* heaps[] = {context.srvHeap};
         context.cmdList->SetDescriptorHeaps(1u, heaps);
         const uint32_t frameResourceIndex = context.frameIndex % GFX::kFrameResourceCount;
+        if (!input.emitters.empty())
+            storage.WriteCollisionView(frameResourceIndex, collisionView);
         std::unordered_map<ParticleEmitterInstanceKey, size_t, ParticleEmitterInstanceKeyHasher> drawItemIndices{};
         uint64_t layoutVersion = 1469598103934665603ull;
         uint64_t materialVersion = 1099511628211ull;
@@ -831,6 +879,8 @@ struct ParticleGpuDrivenPass::Impl {
             bindings.materialParameters == 0u || bindings.materialResources == 0u) {
             return false;
         }
+        if (bindings.captureCollisionDepth && bindings.cameraPositionValid)
+            CaptureCollisionDepth(bindings);
         if (!preparedShapeAddress)
             return false;
         GFX::PIX::ScopedGpuEvent drawEvent(context.cmdList, GFX::PIX::kColorRender, "Particles.DrawIndirect");
@@ -889,10 +939,12 @@ struct ParticleGpuDrivenPass::Impl {
                                                                                          : texturePool);
             context.cmdList->SetGraphicsRootDescriptorTable(19u, bindings.prefiltered.ptr ? bindings.prefiltered
                                                                                           : texturePool);
-            // 流体の無い視図は params.w = 0 で shader が体積を読まない（表は貼図の池で埋める）。
+            // 流体の無い視図は params.w = 0 で shader が体積を読まない。表は空の Texture3D で埋める（貼図の池は Texture2D で、
+            // 次元の違う記述子は読まなくても未定義）。
             const bool fluid = bindings.fluidCameraVolume.ptr != 0u;
             const MATH::Vec4 fluidParams = fluid ? bindings.fluidCameraVolumeParams : MATH::Vec4{};
-            context.cmdList->SetGraphicsRootDescriptorTable(21u, fluid ? bindings.fluidCameraVolume : texturePool);
+            context.cmdList->SetGraphicsRootDescriptorTable(21u,
+                                                            fluid ? bindings.fluidCameraVolume : fluidFlowFallback.gpu);
             context.cmdList->SetGraphicsRoot32BitConstants(22u, 4u, &fluidParams, 0u);
         };
         drawOrder.clear();

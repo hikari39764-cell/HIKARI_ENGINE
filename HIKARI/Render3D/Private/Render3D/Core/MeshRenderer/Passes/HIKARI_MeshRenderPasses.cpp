@@ -171,7 +171,8 @@ RENDER3D::SurfaceLightingBindings ResolveSurfaceLightingBindings() {
 bool ExecuteParticleForwardTransparent(RENDER3D::PARTICLES::ParticleGpuDrivenPass& particlePass,
                                        const GFX::Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
                                        const MATH::Vec3& cameraPosition, const MeshPassResources& passResources,
-                                       const RENDER3D::FLUID::FluidCameraVolumeView& fluidVolume) {
+                                       const RENDER3D::FLUID::FluidCameraVolumeView& fluidVolume,
+                                       const CameraCB* collisionCamera) {
     if (!particlePass.HasDrawWork(passResources.particlePostProcessMode, passResources.particleDistortionMask)) {
         return true;
     }
@@ -199,11 +200,16 @@ bool ExecuteParticleForwardTransparent(RENDER3D::PARTICLES::ParticleGpuDrivenPas
     bindings.height = passResources.sceneDepth.height;
     bindings.fluidCameraVolume = fluidVolume.srv;
     bindings.fluidCameraVolumeParams = fluidVolume.params;
+    if (collisionCamera != nullptr) {
+        bindings.captureCollisionDepth = true;
+        bindings.viewProj = collisionCamera->viewProj;
+        bindings.invViewProj = collisionCamera->invViewProj;
+    }
     return particlePass.ExecuteForwardTransparent(graphics, bindings);
 }
 
 bool ExecutePreparedParticleForwardTransparent(const GFX::Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
-                                               const MeshPassResources& passResources) {
+                                               const MeshPassResources& passResources, bool captureCollisionDepth) {
     MATH::Vec3 cameraPosition{};
     const MeshFrameResources& frame = GetActiveMeshFrameResources();
     if (frame.view.IsInitialized()) {
@@ -214,7 +220,9 @@ bool ExecutePreparedParticleForwardTransparent(const GFX::Context& graphics, D3D
         };
     }
     return ExecuteParticleForwardTransparent(gMeshRendererState.particlePass, graphics, cameraAddress, cameraPosition,
-                                             passResources, gMeshRendererState.fluidPass.GetCameraVolume());
+                                             passResources, gMeshRendererState.fluidPass.GetCameraVolume(),
+                                             captureCollisionDepth && frame.view.IsInitialized() ? &frame.view.camera
+                                                                                                 : nullptr);
 }
 
 bool ExecutePreparedWorldSpriteForwardOpaque(const GFX::Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS cameraAddress) {
@@ -399,7 +407,7 @@ bool RenderForwardTransparentPass(const GFX::Context& graphics, const MeshPassRe
     const bool spritesExecuted =
         ExecutePreparedWorldSpriteForwardTransparent(graphics, frame.view.Bindings().camera, passResources);
     const bool particlesExecuted =
-        ExecutePreparedParticleForwardTransparent(graphics, frame.view.Bindings().camera, passResources);
+        ExecutePreparedParticleForwardTransparent(graphics, frame.view.Bindings().camera, passResources, true);
     const bool textExecuted = ExecutePreparedWorldTextForwardTransparent(graphics, frame.view.Bindings().camera);
     return surfaceExecuted && spritesExecuted && particlesExecuted && textExecuted;
 }
@@ -412,7 +420,7 @@ bool RenderPreservedVfxPass(const GFX::Context& graphics, const MeshPassResource
     auto resources = passResources;
     resources.particlePostProcessMode = VFX::VfxPostProcessMode::PreserveColor;
     return ExecutePreparedParticleForwardTransparent(graphics, GetActiveMeshFrameResources().view.Bindings().camera,
-                                                     resources);
+                                                     resources, true);
 }
 
 bool HasVfxDistortionWork() { return gMeshRendererState.particlePass.HasDrawWork(std::nullopt, true); }
@@ -422,7 +430,7 @@ bool RenderVfxDistortionMaskPass(const GFX::Context& graphics, const MeshPassRes
     auto resources = passResources;
     resources.particleDistortionMask = true;
     return ExecutePreparedParticleForwardTransparent(graphics, GetActiveMeshFrameResources().view.Bindings().camera,
-                                                     resources) &&
+                                                     resources, true) &&
            gMeshRendererState.particlePass.GetDistortionMask(outMask, outMaskSrvCpu);
 }
 

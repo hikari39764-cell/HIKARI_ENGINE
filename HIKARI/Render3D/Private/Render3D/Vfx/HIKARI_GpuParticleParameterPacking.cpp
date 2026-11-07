@@ -149,7 +149,8 @@ GpuParticleEmitterParameters BuildGpuParticleEmitterParameters(const ParticleEmi
                                               simulation.shapeCircleArcDegrees);
     result.values[14] = MakeGpuParticleFloat4(
         simulation.collisionPlaneHeight, simulation.restitution, simulation.friction,
-        EncodeUint((simulation.localSimulation ? 1u : 0u) | (simulation.collisionPlaneEnabled ? 2u : 0u)));
+        EncodeUint((simulation.localSimulation ? 1u : 0u) | (simulation.collisionPlaneEnabled ? 2u : 0u) |
+                   (simulation.sceneDepthCollision != 0u && !simulation.localSimulation ? 4u : 0u)));
 
     const auto& field = simulation.field;
     result.values[HIKARI_PARTICLE_FIELD_CENTER] =
@@ -159,7 +160,7 @@ GpuParticleEmitterParameters BuildGpuParticleEmitterParameters(const ParticleEmi
     result.values[HIKARI_PARTICLE_FIELD_FLOW] =
         MakeGpuParticleFloat4(field.turbulence, field.frequency, field.evolution, field.attraction);
     result.values[HIKARI_PARTICLE_FIELD_TIME] =
-        MakeGpuParticleFloat4(submission.emitterAgeSeconds, simulation.fluidFollow, 0, 0);
+        MakeGpuParticleFloat4(submission.emitterAgeSeconds, simulation.fluidFollow, simulation.collisionThickness, 0);
 
     StoreAnimatedFloat3(result, kPositionValues, simulation.position);
     StoreAnimatedFloat3(result, kRotationValues, simulation.rotationRadians);

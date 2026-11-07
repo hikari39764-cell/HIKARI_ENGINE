@@ -416,6 +416,8 @@ bool IsValidEmitterSimulation(const VfxProgram& program, const VfxProgramEmitter
            IsFinite(simulation.fluidFollow) && simulation.fluidFollow >= 0.0f &&
            simulation.fluidFollow <= RENDER3D::PARTICLES::kMaxParticleFluidFollow && simulation.localSimulation <= 1u &&
            simulation.collisionPlaneEnabled <= 1u && IsFinite(simulation.collisionPlaneHeight) &&
+           simulation.sceneDepthCollision <= 1u && IsFinite(simulation.collisionThickness) &&
+           simulation.collisionThickness >= 0.01f && simulation.collisionThickness <= 10.0f &&
            IsFinite(simulation.restitution) && simulation.restitution >= 0.0f && simulation.restitution <= 1.0f &&
            IsFinite(simulation.friction) && simulation.friction >= 0.0f && simulation.friction <= 1.0f &&
            IsValidAnimated(simulation.color) && IsFinite(emitter.spawnRatePerSecond) &&

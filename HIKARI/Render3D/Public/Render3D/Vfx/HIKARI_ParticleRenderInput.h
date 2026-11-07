@@ -247,6 +247,9 @@ struct ParticleEmitterSimulationParameters {
     uint32_t localSimulation = 0u;
     uint32_t collisionPlaneEnabled = 0u;
     float collisionPlaneHeight = 0.0f;
+    // 場景の深度との碰撞（VfxForcesModuleData::sceneDepthCollision、collisionThickness）。
+    uint32_t sceneDepthCollision = 0u;
+    float collisionThickness = 0.5f;
     float restitution = 0.35f;
     float friction = 0.2f;
     HIKARI::RENDER3D::PARTICLES::ParticleForceField field{};

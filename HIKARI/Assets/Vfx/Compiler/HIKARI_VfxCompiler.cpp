@@ -413,6 +413,8 @@ VfxCompileResult CompileVfxAsset(const VfxAssetData& asset) {
         emitter.simulation.localSimulation = source.basic.localSimulation ? 1u : 0u;
         emitter.simulation.collisionPlaneEnabled = source.forces.collisionPlaneEnabled ? 1u : 0u;
         emitter.simulation.collisionPlaneHeight = source.forces.collisionPlaneHeight;
+        emitter.simulation.sceneDepthCollision = source.forces.sceneDepthCollision ? 1u : 0u;
+        emitter.simulation.collisionThickness = source.forces.collisionThickness;
         emitter.simulation.restitution = source.forces.restitution;
         emitter.simulation.friction = source.forces.friction;
         emitter.simulation.color = CompileAnimatedColor(source.color.value);
