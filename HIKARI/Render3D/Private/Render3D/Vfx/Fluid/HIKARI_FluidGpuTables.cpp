@@ -278,8 +278,8 @@ FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, co
 FluidDomainConstantsGpu PackFluidDomainConstants(const FluidDomainSettings& authored,
                                                  const FluidDomainResources& resources, uint32_t sourceCount,
                                                  double step, uint64_t stepIndex, const MATH::Vec3& up,
-                                                 const MATH::Vec3& inertia, uint32_t interactionCount,
-                                                 uint32_t flags) noexcept {
+                                                 const MATH::Vec3& inertia, const MATH::Vec3& frameWind,
+                                                 uint32_t interactionCount, uint32_t flags) noexcept {
     FluidDomainConstantsGpu constants{};
     constants.size[0] = resources.layout.cells[0];
     constants.size[1] = resources.layout.cells[1];
@@ -314,6 +314,9 @@ FluidDomainConstantsGpu PackFluidDomainConstants(const FluidDomainSettings& auth
     constants.combustion1[2] = resources.layout.combustion ? 1.0f : 0.0f;
     constants.combustion1[3] = 0.0f;
     std::copy(std::begin(resources.injectionCells), std::end(resources.injectionCells), constants.injection);
+    constants.frameWind[0] = frameWind.x;
+    constants.frameWind[1] = frameWind.y;
+    constants.frameWind[2] = frameWind.z;
     return constants;
 }
 

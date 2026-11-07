@@ -127,15 +127,17 @@ struct alignas(16) FluidDomainConstantsGpu {
     float combustion1[4];
     // 粒子からの注入の緩衝の半分の分辨率の格の数（無ければ 0）。受け取る子步は interactions[3] の 4。
     uint32_t injection[4];
+    // 相対風：xyz 平流に足す一様な流れ（域の局所 [m/s]、-relativeWind × 域の速さ）。
+    float frameWind[4];
 };
-static_assert(sizeof(FluidDomainConstantsGpu) == 160u);
+static_assert(sizeof(FluidDomainConstantsGpu) == 176u);
 // 子步 stepIndex の域の定数：格子、子步の時間、閉じた面・涡度・浮力・重さ、消散、上向き、挂点の慣性（域の局所）、押すものの
 // 数と統計の位置、flags（1 汇の吸い込み量を 0 に、2 吸い込みを数える、4 粒子からの注入を受け取る）、燃焼、注入の緩衝の形。
 FluidDomainConstantsGpu PackFluidDomainConstants(const FluidDomainSettings& authored,
                                                  const FluidDomainResources& resources, uint32_t sourceCount,
                                                  double step, uint64_t stepIndex, const MATH::Vec3& up,
-                                                 const MATH::Vec3& inertia, uint32_t interactionCount,
-                                                 uint32_t flags) noexcept;
+                                                 const MATH::Vec3& inertia, const MATH::Vec3& frameWind,
+                                                 uint32_t interactionCount, uint32_t flags) noexcept;
 // HIKARI_FluidGrid.hlsli の HikariFluidSource と同じ並び（源の表 t6 の 1 行）。
 struct FluidSourceGpu {
     float rows[19][4];

@@ -21,6 +21,7 @@ cbuffer FluidDomainCB : register(b0)
     float4 gCombustion0;
     float4 gCombustion1;
     uint4 gInjectionCells;  // xyz 粒子からの注入の緩衝（u6）の半分の分辨率の格の数（0 で無し）
+    float4 gFrameWind;      // xyz 相対風：平流に足す一様な流れ（域の局所 [m/s]、静止した空気が動く域から見て流れる分）
 };
 
 cbuffer FluidPassCB : register(b1)
@@ -230,7 +231,7 @@ void AdvectForwardCS(uint3 id : SV_DispatchThreadID)
         if (any(float3(id) >= extent))
             continue;
         const float3 p = FacePosition(id, axis);
-        const float3 back = p - step * VelocityAt(gIn0, p);
+        const float3 back = p - step * (VelocityAt(gIn0, p) + gFrameWind.xyz);
         float3 t = back;
         t[axis] += 0.5f;
         velocity[axis] = gIn0.SampleLevel(gLinearClamp, t / VelocityTexels(), 0)[axis];
@@ -238,7 +239,7 @@ void AdvectForwardCS(uint3 id : SV_DispatchThreadID)
     if (InsideCells(id) && CellWork(id) == kWorkCompute)
     {
         const float3 p = float3(id) + 0.5f;
-        const float3 u = VelocityAt(gIn0, p);
+        const float3 u = VelocityAt(gIn0, p) + gFrameWind.xyz;
         const float3 back = p - step * u;
         velocity.w = gIn0.SampleLevel(gLinearClamp, back / VelocityTexels(), 0).w;
         gOut1[id] = SmokeAt(gIn1, p - step * (u + GuideVelocity(DomainPosition(p))));
@@ -280,7 +281,7 @@ void AdvectCorrectCS(uint3 id : SV_DispatchThreadID)
         if (any(float3(id) >= extent))
             continue;
         const float3 p = FacePosition(id, axis);
-        const float3 u = VelocityAt(gIn0, p);
+        const float3 u = VelocityAt(gIn0, p) + gFrameWind.xyz;
         float3 ahead = p + step * u;
         ahead[axis] += 0.5f;
         const float forward = gIn2.Load(int4(id, 0))[axis];
@@ -298,7 +299,7 @@ void AdvectCorrectCS(uint3 id : SV_DispatchThreadID)
     else if (InsideCells(id))
     {
         const float3 p = float3(id) + 0.5f;
-        const float3 u = VelocityAt(gIn0, p);
+        const float3 u = VelocityAt(gIn0, p) + gFrameWind.xyz;
         const float3 back = p - step * u;
         const float3 ahead = p + step * u;
         float low, high;
@@ -442,7 +443,7 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
     // 注入する速度（源の局所の速度と放射方向）へ寄せる。
     const float3 injected = HikariFluidToDomain(source, source.velocity.xyz + source.velocity.w * normalize(local + 1.0e-6f));
     if (any(source.velocity != 0.0f))
-        acceleration += (injected - velocity) * (8.0f * mask);
+        acceleration += (injected - gFrameWind.xyz - velocity) * (8.0f * mask);
     const float absorbed = exp(-source.emission.w * mask * gCell.z);
     smoke *= absorbed;
     fuel *= absorbed;

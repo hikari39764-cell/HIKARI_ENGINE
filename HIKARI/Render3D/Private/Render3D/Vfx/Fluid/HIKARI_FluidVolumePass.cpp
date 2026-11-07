@@ -477,7 +477,11 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
     GatherSources(domain, submission, sceneSources, step, advance);
     // 押すもの：域の外接球に届くものだけ。障碍物と力はこのフレームの子步すべてへ、冲量と注入は新しいフレームの分を溜めて
     // 次の子步から渡す（注入はこのフレームの時間ぶん）。局所空間の域は障碍物と注入の速度を域に対する速度にする。
-    const MATH::Vec3 domainVelocity = submission.localSpace ? domain.smoothedVelocity : MATH::Vec3{};
+    // 相対風の割合：速度場はその分だけ空気の世界での速さを持つので、押すものの速さ（域に対する）・挂点の加速度の押し・
+    // 粒子が読む域の速さは (1 - wind) 倍、平流には -wind × 域の速さを足す。
+    const float wind = submission.localSpace ? std::clamp(authored.relativeWind, 0.0f, 1.0f) : 0.0f;
+    const MATH::Vec3 domainVelocity = submission.localSpace ? domain.smoothedVelocity * (1.0f - wind) : MATH::Vec3{};
+    const MATH::Vec3 frameWind = INTERNAL::RotateToFluidLocal(domain.frameRotation, domain.smoothedVelocity) * -wind;
     const float domainRadius = 0.5f * MATH::Length(domain.layoutSize);
     const bool newInteractions = settings.interactionFrame != domain.lastInteractionFrame;
     domain.lastInteractionFrame = settings.interactionFrame;
@@ -549,7 +553,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
                                      uint32_t flags) -> D3D12_GPU_VIRTUAL_ADDRESS {
         const INTERNAL::FluidDomainConstantsGpu constants =
             INTERNAL::PackFluidDomainConstants(authored, domain.resources, static_cast<uint32_t>(frameSources.size()),
-                                               step, stepIndex, up, inertia, interactionCount, flags);
+                                               step, stepIndex, up, inertia, frameWind, interactionCount, flags);
         const auto allocation = upload.Allocate(sizeof(constants));
         if (!allocation)
             return 0u;
@@ -650,7 +654,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         // 挂点の速度の変化は最初の子步で一度に入れる（その子步の加速度 = -Δv / 子步の時間）。
         const MATH::Vec3 inertia = index == 0u
                                        ? INTERNAL::RotateToFluidLocal(domain.frameRotation, domain.pendingInertia) *
-                                             static_cast<float>(-authored.inertia / step)
+                                             static_cast<float>(-authored.inertia * (1.0f - wind) / step)
                                        : MATH::Vec3{};
         // 4：粒子がこれまでに書いた注入をこの子步で受け取る（預熱でない最初の子步。子步の無いフレームは貯めたまま）。
         const uint32_t flags = (index == 0u ? 1u : 0u) | (index >= prewarmSteps ? 2u : 0u) |
@@ -878,7 +882,10 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         render.simulationSeconds = domain->simulationSeconds;
         render.pendingSeconds =
             static_cast<float>((std::min)(domain->clock.pendingSeconds, SubstepSeconds(submission.settings)));
-        render.frameVelocity = submission.localSpace ? domain->smoothedVelocity : MATH::Vec3{};
+        render.frameVelocity =
+            submission.localSpace
+                ? domain->smoothedVelocity * (1.0f - std::clamp(submission.settings.relativeWind, 0.0f, 1.0f))
+                : MATH::Vec3{};
         render.stats = domain->resources.stats.Get();
         render.statsState = &domain->resources.statsState;
         if (domain->resources.injection) {
