@@ -509,7 +509,7 @@ void VfxWorkspaceController::DrawEmitterMotionPage(AssetDatabase& database, cons
         forcesEditor.Float(VfxUiText("Collision Thickness (m)").c_str(), "collisionThickness",
                            emitter.forces.collisionThickness, 0.01f, 0.01f, 10.0f);
         ImGui::TextDisabled(
-            VfxUiText("World-space particles bounce off what the main camera saw last frame; off-screen particles "
+            VfxUiText("World-space particles bounce off the surfaces the view saw last frame; off-screen particles "
                       "do not collide.")
                 .c_str());
     }

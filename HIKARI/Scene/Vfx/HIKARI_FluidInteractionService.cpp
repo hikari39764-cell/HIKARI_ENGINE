@@ -27,13 +27,18 @@ bool IsValid(const FluidInteraction& interaction) noexcept {
            InRange(p.y, -1.0e6f, 1.0e6f) && InRange(p.z, -1.0e6f, 1.0e6f) && InRange(e.x, 0.001f, 1000.0f) &&
            InRange(e.y, 0.0f, 1000.0f) && InRange(e.z, 0.0f, 1000.0f) && MATH::IsFinite(interaction.direction) &&
            MATH::Length(interaction.direction) <= 1.0e6f && InRange(interaction.strength, -10000.0f, 10000.0f) &&
-           (interaction.kind != FluidInteractionKind::Emit || interaction.strength >= 0.0f);
+           (interaction.kind != FluidInteractionKind::Emit || interaction.strength >= 0.0f) &&
+           InRange(interaction.absorption, 0.0f, 1000.0f) &&
+           (interaction.kind == FluidInteractionKind::Force || interaction.absorption == 0.0f);
 }
 
-// 汇（向きの無い負の力）：吸い込んだ烟の量を回読する。
+// 烟を消す力（汇＝向きの無い負の力か、吸収のある力）：消した烟の量を回読する。
 bool IsSink(const FluidInteraction& interaction) noexcept {
-    return interaction.kind == FluidInteractionKind::Force && interaction.strength < 0.0f &&
-           interaction.direction.x == 0.0f && interaction.direction.y == 0.0f && interaction.direction.z == 0.0f;
+    if (interaction.kind != FluidInteractionKind::Force)
+        return false;
+    const bool undirected =
+        interaction.direction.x == 0.0f && interaction.direction.y == 0.0f && interaction.direction.z == 0.0f;
+    return interaction.absorption > 0.0f || (interaction.strength < 0.0f && undirected);
 }
 
 // (owner, instance) から押すものの鍵（汇の回読と、持ち越す注入をまとめる鍵。0 にはしない）。

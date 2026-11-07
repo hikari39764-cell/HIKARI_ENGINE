@@ -53,7 +53,7 @@ struct HikariFluidInteraction
     float4 extents;   // xyz 形の大きさ（FluidInteraction.extents）、w 種類（0 障碍物、1 冲量、2 力）
     float4 velocity;  // xyz 障碍物の域に対する速度か冲量・力の向き（域の局所、0 で外向き）、w 形（0 球、1 カプセル、2 箱）
     float4 push;      // xyz 中心（域の局所）、w 冲量の速さ [m/s] か力の加速度 [m/s²]（注入はこの子步の割合を掛けた毎秒の密度）
-    float4 sweep;     // 注入：xyz このフレームに動いた線分（中心から始めの位置へ、域の局所）、w 掃いた形へ入れる割合
+    float4 sweep;     // 注入：xyz このフレームに動いた線分（中心から始めの位置へ、域の局所）、w 掃いた形へ入れる割合。力：x 吸収率 [1/s]
 };
 
 uint HikariFluidInteractionKind(HikariFluidInteraction interaction)

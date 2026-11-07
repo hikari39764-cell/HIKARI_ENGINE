@@ -460,8 +460,10 @@ void LongPrewarm(FluidGpu& fluid, uint64_t playbackNamespace, float substepRate,
 }
 
 // 注入（Emit）は球の中へ中心で毎秒 strength の密度を足す（総量は strength × 2πR³/15 × 時間）。汇（向きの無い負の力）が
-// 回読で報告する吸い込み量は、汇がある間に域から消えた烟の量（Σ 密度 × 格の体積）とおおよそ一致する。静かな開いた箱
-// （浮力・渦なし、消散 0）で、注入 30 フレーム → 汇 30 フレーム。最後の回読は次のフレーム（子步なし）に届く。
+// 回読で報告する吸い込み量は、汇がある間に域から消えた烟の量（Σ 密度 × 格の体積）とおおよそ一致する。吸収を付けた汇は
+// 引き寄せた烟も消すので、同じ時間で消える割合が吸い込みだけの時より大きく、報告もその量と合う。静かな開いた箱
+// （浮力・渦なし、消散 0）で、注入 30 フレーム → 汇 30 フレーム → 吸収付きの汇 30 フレーム。最後の回読は次のフレーム
+// （子步なし）に届く。
 void SinkAndEmit(FluidGpu& fluid) {
     FluidVolumePass pass;
     RENDER3D::PARTICLES::ParticleRenderInput input{};
@@ -509,10 +511,20 @@ void SinkAndEmit(FluidGpu& fluid) {
         reported += report.removed;
     }
     const float lost = emitted - left;
-    std::fprintf(stderr, "fluid emit %.4f (expected %.4f), sink lost %.4f reported %.4f\n", emitted, expected, lost,
-                 reported);
+    reports.clear();
+    sink.absorption = 4.0f;
+    const float absorbedLeft = run(&sink, 30u);
+    double absorbedReported = 0.0;
+    for (const FluidSinkReport& report : reports)
+        absorbedReported += report.removed;
+    const float absorbed = left - absorbedLeft;
+    std::fprintf(stderr,
+                 "fluid emit %.4f (expected %.4f), sink lost %.4f reported %.4f, absorbing sink lost %.4f of %.4f "
+                 "reported %.4f\n",
+                 emitted, expected, lost, reported, absorbed, left, absorbedReported);
     assert(emitted > 0.7f * expected && emitted < 1.3f * expected);
     assert(lost > 0.05f * emitted && std::abs(reported - lost) < 0.3 * lost);
+    assert(absorbed / left > 1.3f * lost / emitted && std::abs(absorbedReported - absorbed) < 0.3 * absorbed);
     pass.Shutdown();
 }
 

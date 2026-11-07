@@ -1033,7 +1033,7 @@
     {"ui.vfx.text.Plane Collision", "地面碰撞"}, {"ui.vfx.text.Plane Y (simulation space)", "地面高度"},
     {"ui.vfx.text.Scene Depth Collision", "场景深度碰撞"},
     {"ui.vfx.text.Collision Thickness (m)", "碰撞厚度（米）"},
-    {"ui.vfx.text.World-space particles bounce off what the main camera saw last frame; off-screen particles do not collide.", "世界空间的粒子按主相机上一帧看到的表面弹开；画面外的粒子不碰撞。"},
+    {"ui.vfx.text.World-space particles bounce off the surfaces the view saw last frame; off-screen particles do not collide.", "世界空间的粒子按视图上一帧看到的表面弹开（游戏画面与编辑器视口都生效）；画面外的粒子不碰撞。"},
     {"ui.vfx.text.Play", "播放"}, {"ui.vfx.text.Playback", "播放"}, {"ui.vfx.text.Position", "位置"},
     {"ui.vfx.text.Position over Life", "随时间位移"},
     {"ui.vfx.text.Preview lighting (not saved in the effect)", "预览光照（不保存到特效中）"},

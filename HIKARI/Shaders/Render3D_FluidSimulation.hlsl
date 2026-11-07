@@ -477,12 +477,18 @@ bool HikariFluidIsPush(HikariFluidInteraction interaction)
     return kind == 1u || kind == 2u;
 }
 
-// 向きの無い負の力（汇）の格 p での吸い込み率 [1/s]（Expansion の負の項）。汇でなければ 0。
-float HikariFluidSinkRate(HikariFluidInteraction interaction, float3 p)
+// 力（2）が格 p の烟を消す率 [1/s]（中心から二乗で弱まる）。x 吸い込み：向きの無い負の力（汇）の Expansion の負の項
+// （全部の面が閉じた箱では湧き出しを入れないので 0）。半拉格朗日の平流は集まる流れで濃さを変えないので、吸い込んだ体積
+// ぶんの烟は消えるが、流れ込む烟は濃さを保ち、濃い烟の中の汇は烟を薄くしない。y 吸収（absorption）：半径の中の烟・
+// 温度・燃料をこの率で直接減らす（NVIDIA Flow の目標 0 への結合、Blender の Outflow と同じ役）。
+float2 HikariFluidRemovalRates(HikariFluidInteraction interaction, float3 p)
 {
-    if (HikariFluidInteractionKind(interaction) != 2u || HikariFluidPushDirected(interaction) || interaction.push.w >= 0.0f)
+    if (HikariFluidInteractionKind(interaction) != 2u)
         return 0.0f;
-    return -30.0f * interaction.push.w / max(interaction.extents.x, 1.0e-4f) * HikariFluidPushFalloff(interaction, p);
+    const float sink = HikariFluidPushDirected(interaction) || AllClosed()
+                           ? 0.0f
+                           : max(-interaction.push.w, 0.0f) * 30.0f / max(interaction.extents.x, 1.0e-4f);
+    return float2(sink, interaction.sweep.x) * HikariFluidPushFalloff(interaction, p);
 }
 
 // gStats の float へ足す（比較交換の繰り返し）。
@@ -499,21 +505,29 @@ void AtomicAddFloat(uint address, float value)
     }
 }
 
-// 汇が吸い込んだ烟の量 [密度 × m³] を表の行ごとに足す。半拉格朗日の平流は集まる流れで濃さを変えないので、汇の中で
-// 消える量は 密度 × 格の体積 ×（1 - exp(-吸い込み率 × 子步の時間)）（率が小さければ 率 × 時間、強い汇でも在る量を
-// 超えない）。波の中で足してから 1 回だけ書く。
-void CountSinks(float3 p, float density)
+// 力が烟を消す：吸収で烟・温度・燃料を減らし、回読があれば（gInteractionCount.w の bit 1）消えた量 [密度 × m³] を表の
+// 行ごとに足す。消える量は 密度 × 格の体積 ×（1 - exp(-(吸い込み + 吸収) × 子步の時間)）（率が小さければ 率 × 時間、
+// 強くても在る量を超えない）。波の中で足してから 1 回だけ書く。
+void ApplySinks(float3 p, inout float4 smoke, inout float fuel, inout float temperature)
 {
-    if ((gInteractionCount.w & 2u) == 0u)
-        return;
-    const float mass = density * gCell.x * gCell.x * gCell.x;
+    const bool count = (gInteractionCount.w & 2u) != 0u;
+    const float mass = smoke.x * gCell.x * gCell.x * gCell.x;
+    float absorption = 0.0f;
     for (uint index = 0u; index < gInteractionCount.x; ++index)
     {
-        const float fraction = 1.0f - exp(-HikariFluidSinkRate(gInteractions[index], p) * gCell.z);
-        const float removed = WaveActiveSum(mass * fraction);
-        if (WaveIsFirstLane() && removed > 0.0f)
-            AtomicAddFloat(gInteractionCount.z + index * 4u, removed);
+        const float2 rates = HikariFluidRemovalRates(gInteractions[index], p);
+        absorption += rates.y;
+        if (count)
+        {
+            const float removed = WaveActiveSum(mass * (1.0f - exp(-(rates.x + rates.y) * gCell.z)));
+            if (WaveIsFirstLane() && removed > 0.0f)
+                AtomicAddFloat(gInteractionCount.z + index * 4u, removed);
+        }
     }
+    const float kept = exp(-absorption * gCell.z);
+    smoke *= kept;
+    fuel *= kept;
+    temperature *= kept;
 }
 
 // 注入の重み：このフレームに動いた線分（中心から sweep.xyz）からの距離で、半径の中で二乗に弱め、掃いた形へ入れる割合を掛ける。
@@ -628,7 +642,7 @@ void ForceFieldCS(uint3 id : SV_DispatchThreadID)
         if (HikariFluidInteractionKind(gInteractions[obstacle]) == 0u)
             ApplyObstacle(gInteractions[obstacle], p, velocity, acceleration);
     smoke = max(smoke, 0.0f);
-    CountSinks(p, smoke.x);
+    ApplySinks(p, smoke, fuel, temperature);
     gOut0[id] = float4(acceleration, temperature);
     gOut1[id] = smoke;
     if (Combusting())

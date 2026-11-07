@@ -2118,9 +2118,9 @@ int main() {
         const auto next = fluid.PrepareFrame(fluidWorld, frameIndex + 1, 0.5f);
         assert(next.size() == 2 && std::abs(next[0].velocity.x - 2.0f) < 1e-5f && next[0].velocity.y == 0.0f &&
                next[1].velocity.x == 0.0f);
-        obstacle.reserved[0] = 1u;
+        obstacle.reserved = 1u;
         assert(fluidView.Submit(ownerHandle, 2, obstacle).code == Code::InvalidRequest);
-        obstacle.reserved[0] = 0u;
+        obstacle.reserved = 0u;
         obstacle.extents.x = 0.0f;
         assert(fluidView.Submit(ownerHandle, 2, obstacle).code == Code::InvalidRequest);
         obstacle.extents.x = 0.2f;
@@ -2157,6 +2157,20 @@ int main() {
         assert(fluidView.GetRemovedSmoke(ownerHandle, 8, removed).Succeeded() && removed == 0.0);
         emit.strength = -1.0f;
         assert(fluidView.Submit(ownerHandle, 9, emit).code == Code::InvalidRequest);
+        // 吸収は力だけ（0–1000 1/s）。向きのある力も吸収があれば消した烟の量を回読する。
+        emit.strength = 4.0f;
+        emit.absorption = 2.0f;
+        assert(fluidView.Submit(ownerHandle, 9, emit).code == Code::InvalidRequest);
+        HIKARI::GameProjectFluidInteraction absorber = sink;
+        absorber.direction = {0.0f, 1.0f, 0.0f};
+        absorber.strength = 3.0f;
+        absorber.absorption = 1001.0f;
+        assert(fluidView.Submit(ownerHandle, 10, absorber).code == Code::InvalidRequest);
+        absorber.absorption = 2.0f;
+        assert(fluidView.Submit(ownerHandle, 10, absorber).Succeeded());
+        const auto absorbing = fluid.PrepareFrame(fluidWorld, frameIndex, 0.5f);
+        assert(absorbing.size() == 3 && absorbing[2].absorption == 2.0f && absorbing[2].reportKey != 0u &&
+               absorbing[2].reportKey != absorbing[0].reportKey);
         constexpr uint64_t hold = HIKARI::FluidInteractionService::kSinkHoldFrames;
         (void)fluid.PrepareFrame(fluidWorld, frameIndex + hold, 0.5f);
         assert(fluidView.GetRemovedSmoke(ownerHandle, 7, removed).Succeeded() && std::abs(removed - 1.75) < 1e-9);

@@ -452,7 +452,7 @@ struct ParticleGpuDrivenPass::Impl {
         context.cmdList->Dispatch(DispatchGroupCount(threadCount), 1u, 1u);
     }
 
-    // 主視图の深度を半解像度の碰撞深度へ撮り、その視图を次のフレームの模拟へ残す（1 フレームに 1 度）。深度は透明の段で
+    // 視図の深度を半解像度の碰撞深度へ撮り、その視图を次のフレームの模拟へ残す（1 フレームに最初の 1 度）。深度は透明の段で
     // 読み取りの状態（NON_PIXEL_SHADER_RESOURCE を含む）。
     void CaptureCollisionDepth(const ParticleGpuDrivenDrawBindings& bindings) {
         const uint64_t frame = TIME::GetFrameContext().frameIndex;

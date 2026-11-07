@@ -14,7 +14,8 @@ class World;
 // (owner, instance) ごとにこのフレームだけ有効で、次のフレームに出さなければ消える（LocalFogService と同じ規矩）。
 // 障碍物と注入の動く速さは同じ組の前のフレームの位置からゲーム時間で決める。
 // 出どころ（障碍物組件 / プロジェクトの FluidView）ごとに組は別で、同じ owner と instance でも互いを置き換えない。
-// プロジェクトが出した汇（向きの無い負の力）は吸い込んだ烟の量を GPU から回読して累計する（GetRemovedSmoke）。
+// プロジェクトが出した烟を消す力（汇＝向きの無い負の力か、吸収のある力）は消した烟の量を GPU から回読して累計する
+// （GetRemovedSmoke）。
 enum class FluidInteractionSource : uint8_t { Component, Project };
 
 class FluidInteractionService final {

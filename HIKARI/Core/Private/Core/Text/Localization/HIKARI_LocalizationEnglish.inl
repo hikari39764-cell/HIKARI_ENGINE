@@ -1171,7 +1171,7 @@
     {"ui.vfx.text.Perspective", "Perspective"}, {"ui.vfx.text.Plane Collision", "Plane Collision"},
     {"ui.vfx.text.Scene Depth Collision", "Scene Depth Collision"},
     {"ui.vfx.text.Collision Thickness (m)", "Collision Thickness (m)"},
-    {"ui.vfx.text.World-space particles bounce off what the main camera saw last frame; off-screen particles do not collide.", "World-space particles bounce off what the main camera saw last frame; off-screen particles do not collide."},
+    {"ui.vfx.text.World-space particles bounce off the surfaces the view saw last frame; off-screen particles do not collide.", "World-space particles bounce off the surfaces the view saw last frame; off-screen particles do not collide."},
     {"ui.vfx.text.Plane Y (simulation space)", "Plane Y (simulation space)"}, {"ui.vfx.text.Play", "Play"},
     {"ui.vfx.text.Playback", "Playback"}, {"ui.vfx.text.Position", "Position"},
     {"ui.vfx.text.Position over Life", "Position over Life"},

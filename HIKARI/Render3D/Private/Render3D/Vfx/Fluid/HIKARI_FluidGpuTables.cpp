@@ -261,12 +261,15 @@ FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, co
     // 注入の掃き：そのフレームに動いた線分（中心から始めの位置へ、域の局所）と、掃いた形へ入れる割合。動いた量は服务が
     // 記した実際の移動（域の時間倍率に左右されない）から、局所空間の域自身の動き（域の時間）を引く。二乗の減衰の重みの
     // 積分は球で 2πR³/15、線分 L の分で πR²L/6 増えるので、割合 1 / (1 + 5L / 4R) で総量を止まった時と同じにする。
+    // 力の行 6 は x に吸収率 [1/s]。
     MATH::Vec3 toStart{};
     float exposure = 1.0f;
     if (interaction.kind == FluidInteractionKind::Emit) {
         toStart =
             RotateToFluidLocal(domainRotation, (interaction.displacement - domainVelocity * frameSeconds) * -1.0f);
         exposure = 1.0f / (1.0f + 1.25f * MATH::Length(toStart) / (std::max)(interaction.extents.x, 1.0e-4f));
+    } else if (interaction.kind == FluidInteractionKind::Force) {
+        toStart.x = interaction.absorption;
     }
     set(6, toStart, exposure);
     return gpu;

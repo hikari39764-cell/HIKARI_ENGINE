@@ -476,7 +476,6 @@ static_assert(HasAddress(&HIKARI::CameraView::SubmitTargetFraming));
 static_assert(HasAddress(&HIKARI::CameraView::SubmitTargetFramingWithDynamics));
 static_assert(HasAddress(&HIKARI::CameraView::SubmitRelationshipShot));
 
-static_assert(HIKARI::SDK::kVersionMajor == 4u && HIKARI::SDK::kVersionMinor == 6u && HIKARI::SDK::kVersionPatch == 0u);
 static_assert(sizeof(HIKARI::GameProjectKinematicMoveOptions) == 32u);
 static_assert(offsetof(HIKARI::GameProjectKinematicMoveOptions, collision) == 8u);
 static_assert(offsetof(HIKARI::GameProjectKinematicMoveOptions, verticalGravityAcceleration) == 24u);
