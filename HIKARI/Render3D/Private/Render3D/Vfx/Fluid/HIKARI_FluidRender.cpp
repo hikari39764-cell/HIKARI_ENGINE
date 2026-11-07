@@ -25,11 +25,12 @@ struct alignas(16) RenderDomainGpu {
     float cells[4];
     float look[4];
     float emission[4];
+    float emissionHot[4];
     float optics[4];
     float detail[4];
     float sun[4];
 };
-static_assert(sizeof(RenderDomainGpu) == 144u);
+static_assert(sizeof(RenderDomainGpu) == 160u);
 
 struct alignas(16) RenderConstants {
     MATH::Mat4 invRelativeViewProj{};
@@ -48,7 +49,7 @@ struct alignas(16) RenderConstants {
     LIGHTING::CloudSolarVisibilityGpuData solarTable{};
     RenderDomainGpu domains[kMaximumRenderedFluidDomains];
 };
-static_assert(sizeof(RenderConstants) == 1136u);
+static_assert(sizeof(RenderConstants) == 1200u);
 
 void Set4(float (&out)[4], float x, float y, float z, float w) {
     out[0] = x;
@@ -92,17 +93,19 @@ RenderDomainGpu PackDomain(const FluidRenderDomain& domain, const FluidRenderVie
     const float emission = look.emissionIntensity * view.preExposure;
     Set4(gpu.emission, look.emissionColor.x * emission, look.emissionColor.y * emission,
          look.emissionColor.z * emission, look.emissionTemperature);
+    Set4(gpu.emissionHot, look.emissionHotColor.x * emission, look.emissionHotColor.y * emission,
+         look.emissionHotColor.z * emission, look.emissionHotTemperature);
     Set4(gpu.optics, look.anisotropy, look.multipleScattering, look.ambientStrength, look.detailStrength);
     // 開いた境界は面から 4 格で密度を消す（閉じた箱の壁は本当の境界なので消さない）。
     // detailScale は細部の模様の大きさ。ノイズの 1 周期は基本の模様 4 つ分。w は最後の子步の後に貯まった時間 [s]
-    // （子步 1 つ以下）：步进と烟の影の表がこの分だけ流れに沿って遡って密度を読む（ExtrapolatedRho）。
+    // （子步 1 つ以下）：步进と烟の影の表がこの分だけ流れに沿って遡って密度を読む（ExtrapolatedSmoke）。
     Set4(gpu.detail, 1.0f / (4.0f * (std::max)(look.detailScale, 0.01f)), domain.simulationSeconds,
          look.boundary == FluidBoundary::Open ? 4.0f : 0.0f, domain.pendingSeconds);
     MATH::Vec3 sun{MATH::Dot(axes[0], view.sunDirection), MATH::Dot(axes[1], view.sunDirection),
                    MATH::Dot(axes[2], view.sunDirection)};
     const float length = MATH::Length(sun);
     sun = length > 1.0e-6f ? sun * (1.0f / length) : MATH::Vec3{0.0f, 1.0f, 0.0f};
-    Set4(gpu.sun, sun.x, sun.y, sun.z, 0.0f);
+    Set4(gpu.sun, sun.x, sun.y, sun.z, domain.layout.cellColor ? 1.0f : 0.0f);
     return gpu;
 }
 

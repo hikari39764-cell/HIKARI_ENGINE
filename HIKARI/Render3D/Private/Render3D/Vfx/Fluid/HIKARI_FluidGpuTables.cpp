@@ -135,11 +135,13 @@ float FluidSourceReach(const FluidSourceSubmission& source, float cellSize) noex
     // 注入は表面の外 2.5 縁まで（EmissionMask）、形状引导は帯の厚さまで届く。
     float reach = shape + 2.5f * softEdge +
                   (source.settings.guideStrength > 0.0f ? (std::max)(source.settings.guideThickness, 0.0f) : 0.0f);
-    // 力場・風・減衰は力場の半径の中（半径 0 は域全体）。
+    // 力場・風・減衰は力場の半径の中（半径 0 は域全体）。流体注入層は場面の域を共有するので、半径 0 でも形の届く範囲に
+    // とどめる（特効一つが場地の烟全体を翻搅しない）。
     if (PARTICLES::IsParticleForceFieldActive(source.field) || source.drag > 0.0f || MATH::Length(source.wind) > 0.0f) {
-        if (source.field.radius <= 0.0f)
+        if (source.field.radius > 0.0f)
+            reach = (std::max)(reach, MATH::Length(source.field.center) + source.field.radius);
+        else if (!source.sceneInjection)
             return kUnbounded;
-        reach = (std::max)(reach, MATH::Length(source.field.center) + source.field.radius);
     }
     const float scale = (std::max)(
         {std::abs(source.worldScale.x), std::abs(source.worldScale.y), std::abs(source.worldScale.z), 1.0e-4f});
@@ -217,6 +219,8 @@ FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::
     const float reach = FluidSourceReach(source, cellSize);
     const MATH::Vec3 center = RotateToFluidLocal(domainRotation, source.worldPosition - domainPosition);
     set(17, center.x, center.y, center.z, std::isfinite(reach) ? reach + MATH::Length(sweep) : 0.0f);
+    // 注入する烟の色（cellColor の域では密度 × 色を足す。R16 の域では捨てられる）。
+    set(18, (std::max)(source.color.x, 0.0f), (std::max)(source.color.y, 0.0f), (std::max)(source.color.z, 0.0f), 0.0f);
     return gpu;
 }
 
@@ -253,12 +257,14 @@ FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, co
     set(4, RotateToFluidLocal(domainRotation, motion), static_cast<float>(interaction.shape));
     set(5, RotateToFluidLocal(domainRotation, interaction.worldPosition - domainPosition),
         interaction.strength * strengthScale);
-    // 注入の掃き：そのフレームに動いた線分（中心から始めの位置へ、域の局所）と、掃いた形へ入れる割合。二乗の減衰の重みの
+    // 注入の掃き：そのフレームに動いた線分（中心から始めの位置へ、域の局所）と、掃いた形へ入れる割合。動いた量は服务が
+    // 記した実際の移動（域の時間倍率に左右されない）から、局所空間の域自身の動き（域の時間）を引く。二乗の減衰の重みの
     // 積分は球で 2πR³/15、線分 L の分で πR²L/6 増えるので、割合 1 / (1 + 5L / 4R) で総量を止まった時と同じにする。
     MATH::Vec3 toStart{};
     float exposure = 1.0f;
     if (interaction.kind == FluidInteractionKind::Emit) {
-        toStart = RotateToFluidLocal(domainRotation, (interaction.velocity - domainVelocity) * -frameSeconds);
+        toStart =
+            RotateToFluidLocal(domainRotation, (interaction.displacement - domainVelocity * frameSeconds) * -1.0f);
         exposure = 1.0f / (1.0f + 1.25f * MATH::Length(toStart) / (std::max)(interaction.extents.x, 1.0e-4f));
     }
     set(6, toStart, exposure);

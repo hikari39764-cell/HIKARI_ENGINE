@@ -70,6 +70,10 @@ bool VfxPlaybackService::MakeFluidSource(Instance& instance, uint32_t layerIndex
     out.id = FLUID::FluidSourceId({playbackNamespace_, instance.handle.slot, instance.handle.generation, layerIndex});
     out.ratePerSecond = layer.spawnRatePerSecond * overrides.spawnRateMultiplier;
     out.burstDensity = static_cast<float>(burst);
+    // 注入する烟の色は層の色（色の模块を層の時間で読んだ値 × 再生の色の倍率）。格ごとの色の域だけが使う。
+    const auto& tint = instance.layerSamples[layerIndex].color;
+    const auto& multiplier = overrides.colorMultiplier;
+    out.color = {tint.x * multiplier.x, tint.y * multiplier.y, tint.z * multiplier.z};
     out.settings = layer.fluidSource;
     out.wind = out.wind * overrides.gravityMultiplier;
     return true;
@@ -81,8 +85,10 @@ void VfxPlaybackService::AppendFluidSceneSource(Instance& instance, uint32_t lay
     if (!drawAfterSimulation)
         return;
     FLUID::FluidSourceSubmission source{};
-    if (MakeFluidSource(instance, layerIndex, spawnDelta, wrapLoop, source))
+    if (MakeFluidSource(instance, layerIndex, spawnDelta, wrapLoop, source)) {
+        source.sceneInjection = true;
         renderInput_.fluidSources.push_back(source);
+    }
 }
 
 void VfxPlaybackService::AppendFluidDomain(Instance& instance, uint32_t domainIndex, float deltaSeconds,

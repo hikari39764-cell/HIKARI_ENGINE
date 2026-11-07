@@ -19,13 +19,13 @@ inline constexpr std::string_view kFluidSimulationShaderRootCanonical =
 inline constexpr std::string_view kFluidSimulationShaderInterfaceCanonical =
     "FluidDomainCB:112;uint4 size(cells,sourceCount),float4 cell(h,invH,dt,time),motion(boundary,vorticity,"
     "buoyancy,weight),dissipation(density,temperature),up,inertia,uint4 interactionCount(count,activityOffset,sinkOffset,flags clear1 count2);FluidPassCB:32;uint4 passSize,"
-    "passParams(color,sliceField,sliceAxis,sliceIndex|statsOffset);FluidSource:288 rows toSource[3],toDomain[3],"
+    "passParams(color,sliceField,sliceAxis,sliceIndex|statsOffset);FluidSource:304 rows toSource[3],toDomain[3],"
     "shape,shape2,emission,velocity,field0,field1,field2,wind,guide,flow(expansion),sweep(back,exposure),"
-    "bounds(center,radius 0 all) sphere inner radius shell,shape guide advects density only (not projected),"
+    "bounds(center,radius 0 all),color(rgb) sphere inner radius shell,shape guide advects density only (not projected),"
     "mask/emission/activity use the substep-swept shape times exposure, sources skip cells outside bounds;FluidInteraction:112 toLocal[3],extents(kind 0 obstacle 1 impulse 2 force 3 emit; emit y temperature),"
     "velocity(shape),push(center,strength),sweep(emit segment,exposure) obstacle Brinkman after forces,directed push accel falloff^2,"
     "radial push open-boundary expansion 30S/R falloff^2 and source outflow*area/volume*mask in rhs;MAC velocity RGBA16F (n+1)^3 xyz lower face "
-    "w cell temperature;density R16F n^3;pressure/rhs R32F multigrid A P=sum-kP=D h^2 coarse rhs 4*mean residual,prolong trilinear with open-boundary sign-flipped ghosts;"
+    "w cell temperature;density R16F n^3 or RGBA16F n^3 (x density,yzw density*color advected with density, source adds rate*color, emit white);pressure/rhs R32F multigrid A P=sum-kP=D h^2 coarse rhs 4*mean residual,prolong trilinear with open-boundary sign-flipped ghosts;"
     "stats raw: brick max density f32 then (maxAbsDivergence,densitySum) f32x2 per 8^3 brick then activity u32 "
     "(1 active) then sink removed f32 per interaction row (32);emit adds strength*falloff^2 around its swept segment times exposure density/s and activates bricks;inactive bricks skip advection,curl and forces (velocity copied,density 0),pressure solved densely";
 
@@ -33,7 +33,7 @@ inline ShaderAssetContractExpectation MakeFluidSimulationShaderContract(
     ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = "HIKARI.FluidSimulation";
-    contract.engineInterfaceVersion = 11u;
+    contract.engineInterfaceVersion = 12u;
     contract.rootLayoutId = "HIKARI.FluidSimulation.Root";
     contract.rootLayoutVersion = 2u;
     contract.availableDeviceCaps = availableCaps;
@@ -86,10 +86,10 @@ inline constexpr std::string_view kFluidVolumeShaderRootCanonical =
     "StaticSampler(s2,LinearWrap)|StaticSampler(s3,PointClamp)|StaticSampler(s4,ComparisonLinearBorderWhite)|"
     "Flags(None)";
 inline constexpr std::string_view kFluidVolumeShaderInterfaceCanonical =
-    "FluidRenderCB:1136;mat4 inverseViewProj camera-relative(camera at origin);float4 camera,forward(xyz,steps),size(half,"
+    "FluidRenderCB:1200;mat4 inverseViewProj camera-relative(camera at origin);float4 camera,forward(xyz,steps),size(half,"
     "render),sun(direction,shadowed),sunRadiance,ambient(rgb,domains);cameraVolume(near,logRange,slices,samples);mat4 lightViewProj[4];float4 splits,shadowParams,"
-    "shadowSampling,shadowBias;solarTable(origin,right extent,up resolution,toSun steps);FluidDomain[4]:144 toGrid[3],cells,look,emission,optics,detail,sun;"
-    "t0..t3 density,t4..t7 velocity,t8..t11 light RG16F half,t12 scene depth,t13/t14 march color RGBA16F/march "
+    "shadowSampling,shadowBias;solarTable(origin,right extent,up resolution,toSun steps);FluidDomain[4]:160 toGrid[3],cells,look,emission(ignition),emissionHot(hot temperature),optics,detail,sun(w cell color);"
+    "t0..t3 density(x,yzw density*color),t4..t7 velocity,t8..t11 light RG16F half,t12 scene depth,t13/t14 march color RGBA16F/march "
     "distances RG32F (stopped opaque, opacity-weighted smoke mean),t15 noise R8 64^3,t16 shadow atlas;"
     "premultiplied pre-exposed scattering and "
     "transmittance;composite ONE/INV_SRC_ALPHA;camera volume log slices;u1 solar atlas RG32F cloud-solar layout "
@@ -100,7 +100,7 @@ inline ShaderAssetContractExpectation MakeFluidVolumeShaderContract(
     ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = "HIKARI.FluidVolume";
-    contract.engineInterfaceVersion = 6u;
+    contract.engineInterfaceVersion = 7u;
     contract.rootLayoutId = "HIKARI.FluidVolume.Root";
     contract.rootLayoutVersion = 3u;
     contract.availableDeviceCaps = availableCaps;

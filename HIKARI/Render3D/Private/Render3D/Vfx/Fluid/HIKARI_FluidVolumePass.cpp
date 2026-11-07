@@ -264,14 +264,16 @@ bool FluidVolumePass::Impl::PrepareDomain(DomainState& domain, const FluidDomain
     const uint32_t resolution = std::clamp(
         static_cast<uint32_t>(std::lround(static_cast<float>(submission.settings.resolution) * policy.resolutionScale)),
         kFluidResolutionMin, kFluidResolutionMax);
-    const bool relayout = !domain.resources.stats || domain.layoutResolution != resolution ||
-                          std::abs(domain.layoutSize.x - size.x) > 1.0e-4f ||
-                          std::abs(domain.layoutSize.y - size.y) > 1.0e-4f ||
-                          std::abs(domain.layoutSize.z - size.z) > 1.0e-4f;
+    const bool cellColor = submission.settings.cellColor;
+    const bool relayout =
+        !domain.resources.stats || domain.layoutResolution != resolution ||
+        domain.resources.layout.cellColor != cellColor || std::abs(domain.layoutSize.x - size.x) > 1.0e-4f ||
+        std::abs(domain.layoutSize.y - size.y) > 1.0e-4f || std::abs(domain.layoutSize.z - size.z) > 1.0e-4f;
     if (relayout) {
         INTERNAL::RetireFluidDomainResources(context, domain.resources);
-        if (!INTERNAL::CreateFluidDomainResources(context.device, ResolveFluidGridLayout(size, resolution),
-                                                  domain.resources)) {
+        FluidGridLayout layout = ResolveFluidGridLayout(size, resolution);
+        layout.cellColor = cellColor;
+        if (!INTERNAL::CreateFluidDomainResources(context.device, layout, domain.resources)) {
             INTERNAL::RetireFluidDomainResources(context, domain.resources);
             ++stats.resourceFailures;
             return false;
@@ -415,7 +417,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
                                                                                             : extents.x;
         const bool emit = interaction.kind == FluidInteractionKind::Emit;
         // 注入はこのフレームに動いた線分のどこかが届けば入れる。
-        const float swept = emit ? MATH::Length(interaction.velocity) * submission.deltaSeconds : 0.0f;
+        const float swept = emit ? MATH::Length(interaction.displacement) : 0.0f;
         if (MATH::Length(interaction.worldPosition - domain.framePosition) > domainRadius + reach + swept)
             continue;
         if (interaction.kind == FluidInteractionKind::Impulse) {

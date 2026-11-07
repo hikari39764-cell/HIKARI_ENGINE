@@ -66,6 +66,7 @@ GameProjectWorldResultCode FluidInteractionService::Submit(FluidInteractionSourc
     Entry entry{source, owner, instance, interaction};
     entry.interaction.worldRotation = MATH::NormalizeQ(entry.interaction.worldRotation);
     entry.interaction.velocity = {};
+    entry.interaction.displacement = {};
     for (uint32_t index = 0u; index < count_; ++index) {
         if (entries_[index].Same(entry)) {
             entries_[index] = entry;
@@ -142,11 +143,12 @@ std::span<const FluidInteraction> FluidInteractionService::PrepareFrame(const Wo
             for (uint32_t previous = 0u; previous < previousCount_; ++previous) {
                 if (!previous_[previous].Same(entry))
                     continue;
-                // 瞬間移動（生まれ直し、編集中のドラッグ、形の並びの入れ替え）は速度 0：烟を押さない。
-                const MATH::Vec3 velocity =
-                    (interaction.worldPosition - previous_[previous].interaction.worldPosition) * (1.0f / deltaSeconds);
-                interaction.velocity =
-                    MATH::Length(velocity) <= RENDER3D::FLUID::kFluidTeleportSpeed ? velocity : MATH::Vec3{};
+                // 瞬間移動（生まれ直し、編集中のドラッグ、形の並びの入れ替え）は速度と移動 0：烟を押さず、掃かない。
+                const MATH::Vec3 moved = interaction.worldPosition - previous_[previous].interaction.worldPosition;
+                const MATH::Vec3 velocity = moved * (1.0f / deltaSeconds);
+                const bool teleport = MATH::Length(velocity) > RENDER3D::FLUID::kFluidTeleportSpeed;
+                interaction.velocity = teleport ? MATH::Vec3{} : velocity;
+                interaction.displacement = teleport ? MATH::Vec3{} : moved;
                 break;
             }
         }

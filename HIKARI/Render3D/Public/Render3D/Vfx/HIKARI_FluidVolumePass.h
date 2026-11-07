@@ -37,6 +37,8 @@ struct FluidGridLayout {
     uint32_t cells[3]{8u, 8u, 8u};
     float cellSize = 0.5f;
     uint32_t levels = 1u;
+    // 密度の体積に格ごとの色（密度 × 色、FluidDomainSettings::cellColor）も持つ（R16 → RGBA16F）。
+    bool cellColor = false;
 };
 FluidGridLayout ResolveFluidGridLayout(const MATH::Vec3& domainSize, uint32_t resolution) noexcept;
 uint64_t EstimateFluidDomainBytes(const FluidGridLayout& layout) noexcept;

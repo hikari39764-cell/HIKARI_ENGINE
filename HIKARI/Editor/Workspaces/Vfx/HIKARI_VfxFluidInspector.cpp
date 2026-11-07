@@ -246,6 +246,9 @@ void VfxWorkspaceController::DrawFluidLayerInspector(AssetDatabase& database, co
         DrawFluidFields(*this, database, emitter.fluidSource.id,
                         static_cast<const FLUID::FluidSourceSettings&>(emitter.fluidSource),
                         FLUID::kFluidSourceSettingsFields, statusMessage_);
+        // 注入する烟の色は層の色（粒子の層と同じ色の模块、層の時間で変えられる）。域の「格ごとの色」を開くと効く。
+        VfxInspectorPropertyEditor color(*this, database, emitter.color.id, statusMessage_);
+        color.AnimatedColor(VfxUiText("Smoke color").c_str(), "value", emitter.color.value);
     }
     if (ImGui::CollapsingHeader(VfxUiText("Emission volume").c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
         DrawEmissionVolume(database, emitter);

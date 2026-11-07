@@ -22,6 +22,7 @@ using Microsoft::WRL::ComPtr;
 
 constexpr DXGI_FORMAT kVelocityFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 constexpr DXGI_FORMAT kDensityFormat = DXGI_FORMAT_R16_FLOAT;
+constexpr DXGI_FORMAT kColoredDensityFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 constexpr DXGI_FORMAT kPressureFormat = DXGI_FORMAT_R32_FLOAT;
 constexpr D3D12_RESOURCE_STATES kShaderRead = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 
@@ -190,8 +191,10 @@ bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& lay
     bool created = true;
     for (FluidVolume& volume : resources.velocity)
         created = created && CreateVolume(device, kVelocityFormat, n[0] + 1u, n[1] + 1u, n[2] + 1u, volume, false);
+    // 格ごとの色を持つ域は yzw に密度 × 色（解算と描画は常に float4 で読み書きし、R16 の域では yzw が捨てられる）。
+    const DXGI_FORMAT densityFormat = layout.cellColor ? kColoredDensityFormat : kDensityFormat;
     for (FluidVolume& volume : resources.density)
-        created = created && CreateVolume(device, kDensityFormat, n[0], n[1], n[2], volume, false);
+        created = created && CreateVolume(device, densityFormat, n[0], n[1], n[2], volume, false);
     resources.pressure.resize(layout.levels);
     resources.rhs.resize(layout.levels);
     for (uint32_t level = 0u; level < layout.levels; ++level) {

@@ -101,9 +101,9 @@ inline MATH::Vec3 RotateToFluidLocal(const MATH::Quat& rotation, const MATH::Vec
 
 // HIKARI_FluidGrid.hlsli の HikariFluidSource と同じ並び（源の表 t6 の 1 行）。
 struct FluidSourceGpu {
-    float rows[18][4];
+    float rows[19][4];
 };
-static_assert(sizeof(FluidSourceGpu) == 288u);
+static_assert(sizeof(FluidSourceGpu) == 304u);
 
 // 回転と倍率の逆で、域の局所の点を源の局所へ、源の局所の向きを域の局所へ移す行と、形・注入・力場を詰める。source の
 // 変換はこの子步の終わりの位置、sweep はこの子步の間に源が動いた量（世界 [m]）で、子步はその線分を掃いた形へ注入する。

@@ -39,14 +39,15 @@ SamplerState gLinearBorder : register(s1);
 
 bool Closed() { return gMotion.x > 0.5f; }
 
-// 格の中心の密度を格子座標 p で読む。閉じた箱は壁の外を壁の値で延ばし（量を失わない）、開いた境界は外を 0 にする
-// （外から戻ってくる烟は無い）。
-float DensityAt(Texture3D<float4> density, float3 p)
+// 格の中心の烟を格子座標 p で読む（x 密度、yzw 密度 × 色。格ごとの色を持たない域は R16 なので yzw は 0）。閉じた箱は
+// 壁の外を壁の値で延ばし（量を失わない）、開いた境界は外を 0 にする（外から戻ってくる烟は無い）。
+float4 SmokeAt(Texture3D<float4> density, float3 p)
 {
     if (Closed())
-        return HikariFluidCellAt(density, gLinearClamp, p, float3(gSize.xyz)).x;
-    return HikariFluidCellAt(density, gLinearBorder, p, float3(gSize.xyz)).x;
+        return HikariFluidCellAt(density, gLinearClamp, p, float3(gSize.xyz));
+    return HikariFluidCellAt(density, gLinearBorder, p, float3(gSize.xyz));
 }
+float DensityAt(Texture3D<float4> density, float3 p) { return SmokeAt(density, p).x; }
 float3 Cells() { return float3(gSize.xyz); }
 float3 VelocityTexels() { return float3(gSize.xyz + 1u); }
 bool InsideCells(uint3 cell) { return all(cell < gSize.xyz); }
@@ -214,7 +215,7 @@ void AdvectForwardCS(uint3 id : SV_DispatchThreadID)
         const float3 u = VelocityAt(gIn0, p);
         const float3 back = p - step * u;
         velocity.w = gIn0.SampleLevel(gLinearClamp, back / VelocityTexels(), 0).w;
-        gOut1[id] = float4(DensityAt(gIn1, p - step * (u + GuideVelocity(DomainPosition(p)))), 0.0f, 0.0f, 0.0f);
+        gOut1[id] = SmokeAt(gIn1, p - step * (u + GuideVelocity(DomainPosition(p))));
     }
     else if (InsideCells(id))
     {
@@ -278,11 +279,14 @@ void AdvectCorrectCS(uint3 id : SV_DispatchThreadID)
         velocity.w = temperature * exp(-gDissipation.y * gCell.z);
         // 密度は前進と同じ「流れ + 形状引导」の速度でたどり直す。
         const float3 carried = u + GuideVelocity(DomainPosition(p));
-        const float densityForward = gIn3.Load(int4(id, 0)).x;
+        const float4 smokeForward = gIn3.Load(int4(id, 0));
+        const float densityForward = smokeForward.x;
         float density = densityForward + 0.5f * (gIn1.Load(int4(id, 0)).x - DensityAt(gIn3, p + step * carried));
         CellRange(gIn1, 0u, p - step * carried, int3(gSize.xyz) - 1, low, high);
-        density = density < low || density > high ? densityForward : density;
-        gOut1[id] = float4(max(density, 0.0f) * exp(-gDissipation.x * gCell.z), 0.0f, 0.0f, 0.0f);
+        density = max(density < low || density > high ? densityForward : density, 0.0f);
+        // 色（密度 × 色）は前進の値を、密度の修正と同じ比で直す（格の色の比を変えない）。
+        const float ratio = densityForward > 1.0e-6f ? min(density / densityForward, 4.0f) : 1.0f;
+        gOut1[id] = float4(density, max(smokeForward.yzw * ratio, 0.0f)) * exp(-gDissipation.x * gCell.z);
     }
     gOut0[id] = velocity;
 }
@@ -360,9 +364,9 @@ float EmissionNoise(HikariFluidSource source, float3 p)
     return max(1.0f + 2.5f * source.flow.y * n, 0.0f);
 }
 
-// 源 1 つの加速度と注入（格の中心、域の局所 p）。velocity は今の速度。
+// 源 1 つの加速度と注入（格の中心、域の局所 p）。velocity は今の速度、smoke は烟（x 密度、yzw 密度 × 色）。
 void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout float3 acceleration,
-                 inout float density, inout float temperature)
+                 inout float4 smoke, inout float temperature)
 {
     if (!HikariFluidSourceReaches(source, p))
         return;
@@ -392,7 +396,8 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
         if (emit > 0.0f)
         {
             temperature += (source.emission.z - temperature) * saturate(emit * 8.0f * gCell.z + emit * saturate(source.emission.y));
-            density += emit * (source.emission.x * gCell.z + source.emission.y);
+            const float added = emit * (source.emission.x * gCell.z + source.emission.y);
+            smoke += float4(added, added * source.color.rgb);
         }
     }
     if (mask <= 0.0f)
@@ -401,7 +406,7 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
     const float3 injected = HikariFluidToDomain(source, source.velocity.xyz + source.velocity.w * normalize(local + 1.0e-6f));
     if (any(source.velocity != 0.0f))
         acceleration += (injected - velocity) * (8.0f * mask);
-    density *= exp(-source.emission.w * mask * gCell.z);
+    smoke *= exp(-source.emission.w * mask * gCell.z);
 }
 
 // 押す強さの重み：半径の中で中心から二乗で弱まる。
@@ -470,15 +475,15 @@ float HikariFluidEmitFalloff(HikariFluidInteraction interaction, float3 p)
     return falloff * falloff * interaction.sweep.w;
 }
 
-// 注入（3）：動いた線分を掃いた球の中（二乗で弱まる）へ毎秒 strength の密度を足し、温度を extents.y へ寄せ、向きがあれば
-// 注入する烟をその速さ（velocity.xyz、域の局所 [m/s]）へ寄せる（源の注入と同じ寄せ方）。
+// 注入（3）：動いた線分を掃いた球の中（二乗で弱まる）へ毎秒 strength の密度を足し（色は白）、温度を extents.y へ寄せ、
+// 向きがあれば注入する烟をその速さ（velocity.xyz、域の局所 [m/s]）へ寄せる（源の注入と同じ寄せ方）。
 void ApplyEmit(HikariFluidInteraction interaction, float3 p, float3 velocity, inout float3 acceleration,
-               inout float density, inout float temperature)
+               inout float4 smoke, inout float temperature)
 {
     const float weight = HikariFluidEmitFalloff(interaction, p);
     if (weight <= 0.0f)
         return;
-    density += max(interaction.push.w, 0.0f) * weight * gCell.z;
+    smoke += (max(interaction.push.w, 0.0f) * weight * gCell.z).xxxx;
     temperature += (interaction.extents.y - temperature) * saturate(weight * 8.0f * gCell.z);
     if (HikariFluidPushDirected(interaction))
         acceleration += (interaction.velocity.xyz - velocity) * (8.0f * weight);
@@ -541,15 +546,15 @@ void ForceFieldCS(uint3 id : SV_DispatchThreadID)
     const float3 p = DomainPosition(grid);
     const float3 velocity = CellVelocity(gIn0, id);
     float temperature = gIn0.Load(int4(id, 0)).w;
-    float density = gOut1[id].x;
+    float4 smoke = gOut1[id];
     float3 acceleration = gInertia.xyz;
     for (uint index = 0u; index < gSize.w; ++index)
-        ApplySource(gSources[index], p, velocity, acceleration, density, temperature);
+        ApplySource(gSources[index], p, velocity, acceleration, smoke, temperature);
     for (uint emit = 0u; emit < gInteractionCount.x; ++emit)
         if (HikariFluidInteractionKind(gInteractions[emit]) == 3u)
-            ApplyEmit(gInteractions[emit], p, velocity, acceleration, density, temperature);
+            ApplyEmit(gInteractions[emit], p, velocity, acceleration, smoke, temperature);
     // 浮力（温度で上へ、密度で下へ）。
-    acceleration += gUp.xyz * (gMotion.z * temperature - gMotion.w * density);
+    acceleration += gUp.xyz * (gMotion.z * temperature - gMotion.w * smoke.x);
     // 涡度约束：旋度の大きさが増える向き N と旋度の外積で、小さな渦を保つ。
     if (gMotion.y > 0.0f)
     {
@@ -568,10 +573,10 @@ void ForceFieldCS(uint3 id : SV_DispatchThreadID)
     for (uint obstacle = 0u; obstacle < gInteractionCount.x; ++obstacle)
         if (HikariFluidInteractionKind(gInteractions[obstacle]) == 0u)
             ApplyObstacle(gInteractions[obstacle], p, velocity, acceleration);
-    density = max(density, 0.0f);
-    CountSinks(p, density);
+    smoke = max(smoke, 0.0f);
+    CountSinks(p, smoke.x);
     gOut0[id] = float4(acceleration, temperature);
-    gOut1[id] = float4(density, 0.0f, 0.0f, 0.0f);
+    gOut1[id] = smoke;
 }
 
 // 加速度を面へ配って速度を進める：t0 平流後の速度、t1 格の中心の加速度（w 新しい温度）→ u0。

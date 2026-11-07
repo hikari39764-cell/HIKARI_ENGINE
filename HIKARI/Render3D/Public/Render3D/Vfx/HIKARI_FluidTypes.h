@@ -60,9 +60,16 @@ struct FluidDomainSettings {
     float anisotropy = 0.2f;
     float multipleScattering = 0.8f;
     float ambientStrength = 1.0f;
+    // 温度の色帯：emissionTemperature で emissionColor から光り始め（強さは 1 度上で全強度）、色は emissionHotTemperature
+    // へ向かって emissionHotColor へ変わる（火の赤 → 橙 → 白黄の芯）。emissionHotTemperature が起亮温度以下なら一色。
     MATH::Vec3 emissionColor{1.0f, 0.45f, 0.12f};
     float emissionIntensity = 0.0f;
     float emissionTemperature = 0.6f;
+    MATH::Vec3 emissionHotColor{1.0f, 0.85f, 0.55f};
+    float emissionHotTemperature = 0.0f;
+    // 格ごとの色：流体源の層の色で注入した烟の色を流れと一緒に運び、散乱色と発光に掛ける（同じ域で色の違う烟が混ざらずに
+    // 並ぶ）。密度の体積が 1 格 2 → 8 バイトになる。
+    bool cellColor = false;
     float detailStrength = 0.5f;
     float detailScale = 0.25f;
     bool castShadows = true;
@@ -112,8 +119,13 @@ inline constexpr auto kFluidDomainSettingsFields = [](auto&& field) {
     field("multipleScattering", &S::multipleScattering, Slider(0.0, 1.0), Group{"Look"});
     field("ambientStrength", &S::ambientStrength, Range{0.0, 8.0}, Group{"Look"});
     field("emissionColor", &S::emissionColor, Color{}, Range{0.0, 1.0}, Group{"Look"});
-    field("emissionIntensity", &S::emissionIntensity, Range{0.0, 1000.0}, Group{"Look"});
+    // 発光は太陽に照らされた烟と同じ尺度（前露光を掛ける）。昼の自動露出では前露光が約 1e-4 なので、昼に見える火は
+    // 1e4〜1e5（実際の炎の輝度の桁）が要る。夜は同じ値で白く飛ぶのが自然で、露出が受け持つ。
+    field("emissionIntensity", &S::emissionIntensity, Range{0.0, 1000000.0}, Group{"Look"});
     field("emissionTemperature", &S::emissionTemperature, Range{0.0, 10.0}, Group{"Look"});
+    field("emissionHotColor", &S::emissionHotColor, Color{}, Range{0.0, 1.0}, Group{"Look"});
+    field("emissionHotTemperature", &S::emissionHotTemperature, Range{0.0, 10.0}, Group{"Look"});
+    field("cellColor", &S::cellColor, Group{"Look"});
     field("detailStrength", &S::detailStrength, Slider(0.0, 1.0), Group{"Look"});
     field("detailScale", &S::detailScale, Range{0.01, 100.0}, Unit{"m"}, Group{"Look"});
     field("castShadows", &S::castShadows, Group{"Look"});
@@ -154,9 +166,10 @@ struct FluidInteraction {
     MATH::Quat worldRotation = MATH::Quat::Identity();
     // Sphere：x 半径。Capsule：x 半径、y 局所 Y 軸の線分の半分。Box：半分の大きさ [m]。冲量・力は x 半径。
     MATH::Vec3 extents{0.5f, 0.5f, 0.5f};
-    // 障碍物と注入の動く速さ（世界 [m/s]。FluidInteractionService が前のフレームの位置から決める）。障碍物は烟を押し、
-    // 注入はそのフレームに動いた線分を掃く。
+    // 障碍物と注入の動く速さ（世界 [m/s]）と、そのフレームに動いた量（世界 [m]）。FluidInteractionService が前のフレームの
+    // 位置から決める（瞬間移動は 0）。障碍物は速さで烟を押し、注入は動いた量の線分を掃く（域の時間倍率に左右されない）。
     MATH::Vec3 velocity{};
+    MATH::Vec3 displacement{};
     // 冲量・力の向き（世界、0 なら中心から外向き）。
     MATH::Vec3 direction{};
     // 向きのある冲量は足す速さ [m/s]、力は加速度 [m/s²]。向きの無い冲量・力は半径での外向きの流れの速さ [m/s]。
@@ -202,6 +215,10 @@ struct FluidSourceSubmission {
     // 毎秒の注入密度（倍率と可視を掛けた後）と、このフレームで一度に注入する密度（burst）。
     float ratePerSecond = 0.0f;
     float burstDensity = 0.0f;
+    // 注入する烟の色（層の色。cellColor の域だけが使う）。
+    MATH::Vec3 color{1.0f, 1.0f, 1.0f};
+    // 流体注入層（域の下に無い源、場面の域へ注入する）。力場・風・減衰は半径 0 でも域全体へは効かせず、形の届く範囲だけ。
+    bool sceneInjection = false;
     FluidSourceSettings settings{};
     PARTICLES::ParticleForceField field{};
     // 世界空間の一様な加速度（風）と、場の中の速度の減衰 [1/s]。場の半径 0 は域全体。

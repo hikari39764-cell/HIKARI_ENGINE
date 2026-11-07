@@ -41,6 +41,7 @@ struct HikariFluidSource
     float4 flow;     // x 体積の湧き出し率 [1/s]（形の中で一様、開いた境界の域だけ）、y 注入の揺らぎ、z 1 / 揺らぎの塊 [1/m]、w 未使用
     float4 sweep;    // xyz この子步の間に動いた分（源の局所、終わりの形から始めの位置へ）、w 掃いた形へ入れる注入の割合
     float4 bounds;   // xyz 届く範囲の中心（域の局所）、w 半径（0 で域全体）
+    float4 color;    // rgb 注入する烟の色（格ごとの色の域は密度 × 色を足す）、w 未使用
 };
 
 // 流体を押すもの 1 つ。C++ の FluidInteractionGpu と同じ並び。座標は域の局所空間 [m]。

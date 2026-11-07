@@ -64,12 +64,18 @@ SamplerComparisonState gShadowSampler : register(s4);
 
 uint DomainCount() { return (uint)(gAmbient.w + 0.5f); }
 
-// 域の格子座標 grid での密度（開いた境界の縁で消える分を含む。箱の外は 0）。
-float DomainRho(HikariFluidDomain domain, Texture3D<float4> density, float3 grid)
+// 域の格子座標 grid での烟（x 密度、yzw 密度 × 色。開いた境界の縁で消える分を含む。箱の外は 0）。
+float4 DomainSmoke(HikariFluidDomain domain, Texture3D<float4> density, float3 grid)
 {
     if (!HikariFluidInside(grid, domain.cells.xyz))
-        return 0.0f;
-    return density.SampleLevel(gLinearBorder, grid / domain.cells.xyz, 0).x * HikariFluidEdgeFade(domain, grid);
+        return 0.0f.xxxx;
+    return density.SampleLevel(gLinearBorder, grid / domain.cells.xyz, 0) * HikariFluidEdgeFade(domain, grid);
+}
+
+// 烟の色（格ごとの色の域は 密度 × 色 / 密度、それ以外は白）。
+float3 SmokeTint(HikariFluidDomain domain, float4 smoke)
+{
+    return domain.sun.w > 0.5f ? saturate(smoke.yzw / max(smoke.x, 1.0e-4f)) : 1.0f.xxx;
 }
 
 // 解算は固定の子步で進む。最後の子步から貯まった時間 detail.w の分だけ流れに沿って遡って密度を読み、子步の無いフレームで
@@ -77,12 +83,12 @@ float DomainRho(HikariFluidDomain domain, Texture3D<float4> density, float3 grid
 // 遡った後で空かどうかを決める（先に元の位置で空と決めると、空いた所へ進む烟の前縁が外推されない）。描画の步进と
 // 烟の影の表が同じこの関数で読む。grid は遡った後の格子座標になり、cell は元の位置の格の中心の標本（w 温度、xyz 下側の
 // 面の速度 [m/s]）。
-float ExtrapolatedRho(HikariFluidDomain domain, Texture3D<float4> density, Texture3D<float4> velocity,
+float4 ExtrapolatedSmoke(HikariFluidDomain domain, Texture3D<float4> density, Texture3D<float4> velocity,
     inout float3 grid, out float4 cell)
 {
     cell = velocity.SampleLevel(gLinearClamp, grid / (domain.cells.xyz + 1.0f), 0);
     grid -= cell.xyz * (domain.detail.w / domain.cells.w);
-    return DomainRho(domain, density, grid);
+    return DomainSmoke(domain, density, grid);
 }
 
 // ---------------------------------------------------------------- 視線（体積雾と同じ再構成）
@@ -162,7 +168,8 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
     float3 grid = HikariFluidToGrid(domain, world);
     // cell の xyz は細部を運ぶ流れの近似、w は発光の温度にも使う。
     float4 cell;
-    float rho = ExtrapolatedRho(domain, density, velocity, grid, cell);
+    const float4 smoke = ExtrapolatedSmoke(domain, density, velocity, grid, cell);
+    float rho = smoke.x;
     if (rho <= 1.0e-4f)
         return;
     const float3 uvw = grid / domain.cells.xyz;
@@ -180,8 +187,10 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
     const float3 ambient = gAmbient.rgb * (domain.optics.z * HikariFluidSkyVisibility(transmittance.y, domain.optics.y,
                                                                                        domain.optics.x, openness));
     const float temperature = cell.w;
+    // 格ごとの色は散乱色と発光の両方に掛ける（同じ域で赤と青の発光する烟が混ざらずに並ぶ）。
+    const float3 tint = SmokeTint(domain, smoke);
     sigma += extinction;
-    emitted += extinction * domain.look.rgb * (sun + ambient) + rho * HikariFluidEmission(domain, temperature);
+    emitted += tint * (extinction * domain.look.rgb * (sun + ambient) + rho * HikariFluidEmission(domain, temperature));
 }
 
 void Medium(float3 world, float3 viewDirection, float pixelSize, out float sigma, out float3 emitted)
