@@ -122,11 +122,13 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
 - 移动、删除、复制：`scene.set_transform`、`scene.delete_object`、`scene.duplicate_object`（传 `objectId`，不会改用户的选中）。
   位置、旋转（度）、缩放和颜色在所有操作里都写成 `[x, y, z]`。
 - 游戏镜头区域：`camera_zone.edit`。
-- 特效与流体烟雾：`vfx.new_asset` / `vfx.open_asset` → `vfx.emitter.add`（`kind` 为 `Particles`、`Fluid`（流体域）或
-  `FluidSource`（流体源，`parentEmitterId` 给流体域的 id））→ `vfx.query` 拿各层的模块 id → `vfx.property.set`
-  （`targetId` 是模块 id，`property` 是模块里的字段路径，如 `domainSize`、`extinction`、`emissionNoise`、`radius.maximum`）
-  → `vfx.save`。范围（最小～最大）先设会把范围放宽的那一端，否则会被拒绝。解算看 `vfx.fluid.stats` 和
-  `vfx.fluid.debug_slice`；碎屑、火星跟着烟走，给粒子层的力模块设 `fluidFollow`。
+- 特效与流体烟雾：改已有的特效一律 `vfx.open_asset` → `vfx.property.set` → `vfx.save`，在原资产上改。不要用脚本整份
+  重新生成或覆盖 `.hvfx` 文件，那样会冲掉用户在编辑器里调过的值；`vfx.new_asset` 只用于项目里还没有的特效。
+  加层：`vfx.emitter.add`（`kind` 为 `Particles`、`Fluid`（流体域）或 `FluidSource`（流体源，`parentEmitterId` 给流体域
+  的 id））→ `vfx.query` 拿各层的模块 id → `vfx.property.set`（`targetId` 是模块 id，`property` 是模块里的字段路径，
+  如 `domainSize`、`extinction`、`emissionNoise`、`radius.maximum`）→ `vfx.save`。范围（最小～最大）先设会把范围放宽的
+  那一端，否则会被拒绝。解算看 `vfx.fluid.stats` 和 `vfx.fluid.debug_slice`；碎屑、火星跟着烟走，给粒子层的力模块设
+  `fluidFollow`。
 - 对话：`dialogue.new_asset` → `dialogue.edit`（传整份定义，`dialogue.query` 返回当前定义）→ `dialogue.save`。
 - 界面文字（HUD 等）：`ui.create`。`scene.capture_views` 只画 3D 场景，界面要在 `play.background` 的截图里看。引擎不自带字体，项目里没有字体资产时文字不显示（结果里有 `warning`），
   先用 `asset.import` 导入 .ttf/.otf，或请用户提供字体。
