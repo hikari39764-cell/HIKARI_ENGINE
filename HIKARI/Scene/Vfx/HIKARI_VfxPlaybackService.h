@@ -112,9 +112,15 @@ private:
     void ResetInstanceSimulation(Instance& instance) noexcept;
     size_t AppendInstanceStep(Instance& instance, float deltaSeconds, uint32_t simulationOrdinal,
                               bool drawAfterSimulation, bool wrapLoop);
-    // 流体域 1 つの提交（下の流体源の形・注入量・力場を含む）を描画入力へ足す。HIKARI_VfxFluidPlayback.cpp。
+    // 流体域 1 つの提交（下の流体源の形・注入量・力場を含む）と、域の下に無い流体源（流体注入层、届く場面の域へ注入する）
+    // を描画入力へ足す。HIKARI_VfxFluidPlayback.cpp。
     void AppendFluidDomain(Instance& instance, uint32_t domainIndex, float deltaSeconds, float spawnDelta,
                            bool drawAfterSimulation, bool wrapLoop);
+    void AppendFluidSceneSource(Instance& instance, uint32_t layerIndex, float spawnDelta, bool drawAfterSimulation,
+                                bool wrapLoop);
+    // 流体源の層 1 つ。burst は見えない間も数えて捨てる。見えない層は false。
+    bool MakeFluidSource(Instance& instance, uint32_t layerIndex, float spawnDelta, bool wrapLoop,
+                         RENDER3D::FLUID::FluidSourceSubmission& out);
     bool ApplyParameters(Instance& instance, const std::vector<VfxParameterOverride>& parameters,
                          std::vector<VfxPlaybackDiagnostic>* outDiagnostics);
     void PublishRenderInputDelivery() noexcept;

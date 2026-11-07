@@ -479,7 +479,8 @@ VfxPreviewBounds EstimateVfxPreviewBounds(const VFX::VfxAssetData& asset, std::s
         if (!emitter.basic.enabled || !ResolveTransform(index, asset, emitterIndices, transforms)) {
             continue;
         }
-        // 流体の層は域の箱（大きさは domainSize だけで決まり、層の倍率は掛からない）。源は属する域の箱。
+        // 流体の層は域の箱（大きさは domainSize だけで決まり、層の倍率は掛からない）。源は属する域の箱（域の外の流体注入层は
+        // 自分では何も描かないので数えない）。
         if (emitter.kind == VFX::VfxLayerKind::Fluid || emitter.kind == VFX::VfxLayerKind::FluidSource) {
             const VFX::VfxEmitterData* owner =
                 emitter.kind == VFX::VfxLayerKind::Fluid

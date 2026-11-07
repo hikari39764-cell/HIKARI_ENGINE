@@ -217,8 +217,14 @@ void VfxWorkspaceController::DrawFluidSimulation(const VFX::VfxEmitterData& doma
 
 void VfxWorkspaceController::DrawFluidLayerInspector(AssetDatabase& database, const VFX::VfxEmitterData& emitter) {
     const bool domain = emitter.kind == VFX::VfxLayerKind::Fluid;
+    const bool injection = !domain && FindFluidDomainUnder(emitter.parentEmitterId) == nullptr;
     ImGui::TextWrapped("%s", emitter.name.c_str());
-    ImGui::TextDisabled("%s", TEXT::Localize(domain ? "ui.vfx.layer.newFluid" : "ui.vfx.layer.newFluidSource").c_str());
+    ImGui::TextDisabled("%s", TEXT::Localize(domain      ? "ui.vfx.layer.newFluid"
+                                             : injection ? "ui.vfx.layer.newFluidInjection"
+                                                         : "ui.vfx.layer.newFluidSource")
+                                  .c_str());
+    if (injection)
+        ImGui::TextWrapped("%s", TEXT::Localize("ui.vfx.fluid.injectionHint").c_str());
     ImGui::Separator();
     DrawEmitterTiming(database, emitter);
     if (domain) {

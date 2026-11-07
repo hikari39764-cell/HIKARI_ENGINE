@@ -101,23 +101,29 @@ inline MATH::Vec3 RotateToFluidLocal(const MATH::Quat& rotation, const MATH::Vec
 
 // HIKARI_FluidGrid.hlsli の HikariFluidSource と同じ並び（源の表 t6 の 1 行）。
 struct FluidSourceGpu {
-    float rows[16][4];
+    float rows[18][4];
 };
-static_assert(sizeof(FluidSourceGpu) == 256u);
+static_assert(sizeof(FluidSourceGpu) == 288u);
 
-// 回転と倍率の逆で、域の局所の点を源の局所へ、源の局所の向きを域の局所へ移す行と、形・注入・力場を詰める。
+// 回転と倍率の逆で、域の局所の点を源の局所へ、源の局所の向きを域の局所へ移す行と、形・注入・力場を詰める。source の
+// 変換はこの子步の終わりの位置、sweep はこの子步の間に源が動いた量（世界 [m]）で、子步はその線分を掃いた形へ注入する。
 FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::Vec3& domainPosition,
-                               const MATH::Quat& domainRotation, float cellSize, float burstDensity);
+                               const MATH::Quat& domainRotation, float cellSize, float burstDensity,
+                               const MATH::Vec3& sweep);
+// 源が届く範囲の半径（世界 [m]、源の位置から。形・縁・形状引导の帯・力場と風の半径）。域全体に届く源は無限大。
+float FluidSourceReach(const FluidSourceSubmission& source, float cellSize) noexcept;
 
 // HIKARI_FluidGrid.hlsli の HikariFluidInteraction と同じ並び（押すものの表 t7 の 1 行）。
 struct FluidInteractionGpu {
-    float rows[6][4];
+    float rows[7][4];
 };
-static_assert(sizeof(FluidInteractionGpu) == 96u);
+static_assert(sizeof(FluidInteractionGpu) == 112u);
 
-// 押すもの 1 つを域の局所空間へ移して詰める。domainVelocity は域の動く速さ（障碍物の速度を域に対する速度にする）。
+// 押すもの 1 つを域の局所空間へ移して詰める。domainVelocity は域の動く速さ（障碍物と注入の速度を域に対する速度にする）。
+// 注入は frameSeconds（そのフレームの時間）に動いた線分を掃き、strength に strengthScale を掛ける（この子步が入れる割合）。
 FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, const MATH::Vec3& domainPosition,
-                                         const MATH::Quat& domainRotation, const MATH::Vec3& domainVelocity);
+                                         const MATH::Quat& domainRotation, const MATH::Vec3& domainVelocity,
+                                         float frameSeconds, float strengthScale);
 
 bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& layout, FluidDomainResources& resources);
 bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,

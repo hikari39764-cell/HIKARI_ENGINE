@@ -731,11 +731,8 @@ void ValidateFluidLayers(const VfxAssetData& asset,
         if (JSONFIELDS::Sanitize(settings, FLUID::kFluidSourceSettingsFields) != settings)
             AddError(diagnostics, "Vfx.FluidSourceRange", "Fluid source values are outside their ranges",
                      emitter.fluidSource.id);
-        if (domain == nullptr)
-            AddError(diagnostics, "Vfx.FluidSourceWithoutDomain", "Place fluid sources under a fluid domain layer",
-                     emitter.id);
-        // 域自身の力場が表の一つを使う。
-        else if (++sourcesPerDomain[domain] >= FLUID::kMaximumFluidSourcesPerDomain)
+        // 域の外の流体源（流体注入层）は場面の域へ注入するので数えない。域自身の力場が表の一つを使う。
+        if (domain != nullptr && ++sourcesPerDomain[domain] >= FLUID::kMaximumFluidSourcesPerDomain)
             AddError(diagnostics, "Vfx.FluidSourceBudget", "Fluid domain has too many sources", emitter.id);
     }
     if (domains > FLUID::kMaximumFluidDomainsPerAsset)

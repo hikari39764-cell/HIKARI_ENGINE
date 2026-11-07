@@ -52,11 +52,8 @@ bool VfxWorkspaceController::AddEmitter(std::string_view parentEmitterId, std::s
         outMessage = "Parent emitter was not found";
         return false;
     }
+    // 流体域の下の流体源はその域へ、域の外の流体源（流体注入层）は届く場面の流体域へ注入する。
     const VFX::VfxEmitterData* domain = FindFluidDomainUnder(parentEmitterId);
-    if (kind == VFX::VfxLayerKind::FluidSource && domain == nullptr) {
-        outMessage = "Place fluid sources under a fluid domain layer";
-        return false;
-    }
     if (kind == VFX::VfxLayerKind::Fluid && domain != nullptr) {
         outMessage = "A fluid domain cannot be placed inside another fluid domain";
         return false;
@@ -90,10 +87,13 @@ bool VfxWorkspaceController::AddEmitter(std::string_view parentEmitterId, std::s
             VFX::VfxDistributionMode::Constant, {1.0f, 1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f, 1.0f}, 0u};
     }
     if (kind == VFX::VfxLayerKind::FluidSource) {
-        // 新しい源は域の下寄りの球から上へ吹き、卷曲湍流で崩れる（そのまま翻卷して昇る烟になる値）。
         emitter.spawn.ratePerSecond = 6.0f;
         emitter.shape.type = VFX::VfxShapeType::Sphere;
         emitter.shape.radius = {VFX::VfxDistributionMode::Constant, 0.35f, 0.35f, 0u};
+    }
+    if (kind == VFX::VfxLayerKind::FluidSource && domain != nullptr) {
+        // 新しい源は域の下寄りの球から上へ吹き、卷曲湍流で崩れる（そのまま翻卷して昇る烟になる値）。流体注入层は特效の
+        // 位置で烟だけを入れる（力場を持たせると半径 0 の力場が場面の域全体を押すので付けない）。
         emitter.emitterTransform.transform.position = {0.0f, -0.325f * domain->fluidDomain.domainSize.y, 0.0f};
         emitter.fluidSource.velocity = {0.0f, 0.8f, 0.0f};
         emitter.forces.field.turbulence = 0.6f;

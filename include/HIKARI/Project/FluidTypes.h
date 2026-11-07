@@ -27,7 +27,10 @@ enum class GameProjectFluidInteractionKind : uint32_t {
     // falloff to zero at the radius extents.x), so one frame adds strength × that frame's game time. `direction` is
     // the velocity the new smoke is pushed towards in m/s (zero leaves the flow alone) and extents.y its temperature
     // (heat makes it rise and glow, as for authored fluid sources; 0 for cold smoke). Independent of the per-domain
-    // limit on authored fluid sources, so bullets, trails and impact puffs can emit anywhere each frame.
+    // limit on authored fluid sources, so bullets, trails and impact puffs can emit anywhere each frame. Each frame's
+    // amount is kept even when the simulation runs no substep in that frame (it goes into the next substeps), and a moving
+    // Emit (the same (owner, instanceId) as the previous frame) is spread along the segment it moved since then, so a fast
+    // trail stays continuous; a move faster than 60 m/s within one frame counts as a teleport and is not spread.
     Emit = 3u,
 };
 

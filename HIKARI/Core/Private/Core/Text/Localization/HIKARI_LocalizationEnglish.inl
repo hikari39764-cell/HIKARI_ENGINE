@@ -4186,6 +4186,8 @@
     {"ui.inspector.text.World: fixed world axes. Camera: relative to the active camera. Object: relative to the object's own orientation.", "World: fixed world axes. Camera: relative to the active camera. Object: relative to the object's own orientation."},
     {"ui.vfx.layer.newFluid", "Fluid Domain"},
     {"ui.vfx.layer.newFluidSource", "Fluid Source"},
+    {"ui.vfx.layer.newFluidInjection", "Fluid Injection"},
+    {"ui.vfx.fluid.injectionHint", "Injects into the scene fluid domains its shape reaches (such as an arena smoke domain), follows the effect and injects continuously along its path while moving. Not visible in a preview without a fluid domain."},
     {"ui.inspector.text.Domain Size (m)", "Domain Size (m)"},
     {"ui.inspector.text.Resolution", "Resolution"},
     {"ui.inspector.text.Boundary", "Boundary"},

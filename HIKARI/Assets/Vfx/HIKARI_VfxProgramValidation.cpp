@@ -360,15 +360,16 @@ bool ValidateLayerCurves(const VfxProgram& program, uint32_t index, const VfxPro
     return true;
 }
 
-// 流体層の設定は字段表の範囲の中にあり、流体源は流体域の層を指す。
+// 流体層の設定は字段表の範囲の中にあり、流体源は流体域の層を指すか、どの域も指さない（流体注入层、場面の域へ注入する）。
 bool IsValidFluidLayer(const VfxProgram& program, const VfxProgramEmitter& emitter) noexcept {
     namespace FLUID = RENDER3D::FLUID;
     if (emitter.kind == VfxLayerKind::Fluid)
         return emitter.fluidDomainIndex == kInvalidVfxProgramIndex &&
                JSONFIELDS::Sanitize(emitter.fluidDomain, FLUID::kFluidDomainSettingsFields) == emitter.fluidDomain;
     if (emitter.kind == VfxLayerKind::FluidSource)
-        return emitter.fluidDomainIndex < program.emitters.size() &&
-               program.emitters[emitter.fluidDomainIndex].kind == VfxLayerKind::Fluid &&
+        return (emitter.fluidDomainIndex == kInvalidVfxProgramIndex ||
+                (emitter.fluidDomainIndex < program.emitters.size() &&
+                 program.emitters[emitter.fluidDomainIndex].kind == VfxLayerKind::Fluid)) &&
                JSONFIELDS::Sanitize(emitter.fluidSource, FLUID::kFluidSourceSettingsFields) == emitter.fluidSource;
     return emitter.fluidDomainIndex == kInvalidVfxProgramIndex;
 }

@@ -7,6 +7,7 @@
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <span>
 
 #include <d3dx12.h>
 
@@ -51,10 +52,33 @@ struct alignas(16) DomainConstants {
 };
 static_assert(sizeof(DomainConstants) == 112u);
 
-// 子步へ渡し続ける冲量。向きのあるものは最初の子步だけ、向きの無いもの（湧き出し）は残りの時間がある間。
-struct ActiveImpulse {
+// 受け取ったフレームの後の子步へ渡し続ける一度きりの事件：冲量（向きのあるものは最初の子步だけ、向きの無いもの（湧き出し）
+// は残りの時間がある間）と注入（提交したフレームの時間ぶんを、子步ごとに最大 1 子步ずつ入れる）。子步の無いフレームの分は
+// 次のフレームの子步へ持ち越すので、注入はフレームと子步の刻みがずれても落ちず、重ならない。
+struct CarriedInteraction {
     FluidInteraction interaction{};
     double remainingSeconds = 0.0;
+    // 注入：提交したフレームの時間（動いた線分の長さを決める）。
+    float frameSeconds = 0.0f;
+};
+
+// 源ごと（FluidSourceSubmission::id）の、まだ子步に渡していない動きの始点（最後に走った子步の終わり。域の局所の位置と
+// 向き、世界の拡縮）と、子步の無かったフレームから溜めた burst。次に走る子步たちが始点から今の位置までを等分して掃く。
+struct SourceTrack {
+    uint64_t id = 0u;
+    MATH::Vec3 position{};
+    MATH::Quat rotation = MATH::Quat::Identity();
+    MATH::Vec3 scale{1.0f, 1.0f, 1.0f};
+    float elapsedSeconds = 0.0f;
+    float pendingBurst = 0.0f;
+    bool seen = false;
+};
+
+// このフレームの源 1 つの今の位置（域の局所）と、追っている始点の番号（追わない源は -1）。
+struct SourceMotion {
+    int track = -1;
+    MATH::Vec3 position{};
+    MATH::Quat rotation = MATH::Quat::Identity();
 };
 
 struct DomainState {
@@ -88,9 +112,9 @@ struct DomainState {
     MATH::Vec3 pendingInertia{};
     // 解いたゲーム時間（細部のノイズを流れに沿って運ぶ時計。float の精度のため周期で折る）。
     float simulationSeconds = 0.0f;
-    std::array<float, kMaximumFluidSourcesPerDomain> pendingBurst{};
-    // 子步へ渡す冲量（子步の無いフレームの分は次へ持ち越す）と、最後に押すものを受け取ったフレーム。
-    std::vector<ActiveImpulse> impulses{};
+    std::vector<SourceTrack> tracks{};
+    // 子步へ渡す冲量と注入（子步の無いフレームの分は次へ持ち越す）と、最後に押すものを受け取ったフレーム。
+    std::vector<CarriedInteraction> carried{};
     uint64_t lastInteractionFrame = UINT64_MAX;
     std::array<uint64_t, GFX::kFrameResourceCount> readbackFence{};
     std::array<uint64_t, GFX::kFrameResourceCount> readbackSteps{};
@@ -153,6 +177,9 @@ struct FluidVolumePass::Impl {
     std::vector<INTERNAL::FluidRenderDomain> renderList{};
     // 域ごとに選んだ、このフレームの子步すべてへ渡す障碍物と力（作業用）。
     std::vector<FluidInteraction> steadyInteractions{};
+    // 域ごとに選んだ、このフレームの源（域自身の源と、届く場面の源）とその動き（作業用）。
+    std::vector<FluidSourceSubmission> frameSources{};
+    std::vector<SourceMotion> frameMotion{};
     // 回読が届いた汇の吸い込み量（TakeSinkReports で場面へ渡す）。
     std::vector<FluidSinkReport> sinkReports{};
 
@@ -170,7 +197,10 @@ struct FluidVolumePass::Impl {
 
     void ReadCompleted(DomainState& domain);
     bool PrepareDomain(DomainState& domain, const FluidDomainSubmission& submission, const FluidQualityPolicy& policy);
-    void Solve(DomainState& domain, const FluidDomainSubmission& submission, const FluidQualityPolicy& policy,
+    void GatherSources(DomainState& domain, const FluidDomainSubmission& submission,
+                       std::span<const FluidSourceSubmission> sceneSources, double step, bool advance);
+    void Solve(DomainState& domain, const FluidDomainSubmission& submission,
+               std::span<const FluidSourceSubmission> sceneSources, const FluidQualityPolicy& policy,
                const FluidFrameSettings& settings, bool advance);
 };
 
@@ -267,8 +297,8 @@ bool FluidVolumePass::Impl::PrepareDomain(DomainState& domain, const FluidDomain
         domain.motionInitialized = false;
         domain.smoothedVelocity = {};
         domain.pendingInertia = {};
-        domain.pendingBurst = {};
-        domain.impulses.clear();
+        domain.tracks.clear();
+        domain.carried.clear();
         domain.stats = {};
         // 再起動の前に記録した回読（大きな子步数）が新しい統計を上書きしないよう、輪ごと捨てる。
         domain.readbackPending = {};
@@ -276,8 +306,75 @@ bool FluidVolumePass::Impl::PrepareDomain(DomainState& domain, const FluidDomain
     return true;
 }
 
+// このフレームの源を選び（域自身の源、続いて形の届く場面の源。表の上限まで）、追っている源の始点を進める：新しい源は
+// 今の位置から、瞬間移動（生まれ直し・大きく飛んだ）は掃かずに今の位置から始め、出てこなくなった源は忘れる。
+void FluidVolumePass::Impl::GatherSources(DomainState& domain, const FluidDomainSubmission& submission,
+                                          std::span<const FluidSourceSubmission> sceneSources, double step,
+                                          bool advance) {
+    const auto toLocal = [&](const MATH::Vec3& world) {
+        return INTERNAL::RotateToFluidLocal(domain.frameRotation, world - domain.framePosition);
+    };
+    const auto find = [&](uint64_t id) -> int {
+        for (size_t index = 0u; index < domain.tracks.size(); ++index)
+            if (domain.tracks[index].id == id)
+                return static_cast<int>(index);
+        return -1;
+    };
+    frameSources.clear();
+    for (const FluidSourceSubmission& source : submission.sources)
+        if (frameSources.size() < kMaximumFluidSourcesPerDomain)
+            frameSources.push_back(source);
+    const float domainRadius = 0.5f * MATH::Length(domain.layoutSize);
+    for (const FluidSourceSubmission& source : sceneSources) {
+        if (frameSources.size() >= kMaximumFluidSourcesPerDomain)
+            break;
+        // 今の位置か、まだ掃いていない始点から届けば入れる（域を横切って出ていく速い源の尾迹も残す）。
+        const float reach = domainRadius + INTERNAL::FluidSourceReach(source, domain.resources.layout.cellSize);
+        const int track = find(source.id);
+        if (MATH::Length(toLocal(source.worldPosition)) <= reach ||
+            (track >= 0 && MATH::Length(domain.tracks[static_cast<size_t>(track)].position) <= reach))
+            frameSources.push_back(source);
+    }
+    const MATH::Quat inverseFrame{-domain.frameRotation.x, -domain.frameRotation.y, -domain.frameRotation.z,
+                                  domain.frameRotation.w};
+    frameMotion.assign(frameSources.size(), {});
+    for (size_t index = 0u; index < frameSources.size(); ++index) {
+        frameMotion[index].position = toLocal(frameSources[index].worldPosition);
+        frameMotion[index].rotation = MATH::MultiplyQ(inverseFrame, frameSources[index].worldRotation);
+    }
+    if (advance) {
+        for (SourceTrack& track : domain.tracks)
+            track.seen = false;
+        for (size_t index = 0u; index < frameSources.size(); ++index) {
+            const FluidSourceSubmission& source = frameSources[index];
+            if (source.id == 0u)
+                continue;
+            const SourceMotion& motion = frameMotion[index];
+            int track = find(source.id);
+            if (track < 0) {
+                domain.tracks.push_back({source.id, motion.position, motion.rotation, source.worldScale});
+                track = static_cast<int>(domain.tracks.size() - 1u);
+            }
+            SourceTrack& tracked = domain.tracks[static_cast<size_t>(track)];
+            tracked.seen = true;
+            tracked.elapsedSeconds += submission.deltaSeconds;
+            tracked.pendingBurst += source.burstDensity;
+            const float limit = kFluidTeleportSpeed * (std::max)(tracked.elapsedSeconds, static_cast<float>(step));
+            if (MATH::Length(motion.position - tracked.position) > limit) {
+                tracked.position = motion.position;
+                tracked.rotation = motion.rotation;
+                tracked.scale = source.worldScale;
+            }
+        }
+        std::erase_if(domain.tracks, [](const SourceTrack& track) { return !track.seen; });
+    }
+    for (size_t index = 0u; index < frameSources.size(); ++index)
+        frameMotion[index].track = frameSources[index].id != 0u ? find(frameSources[index].id) : -1;
+}
+
 void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmission& submission,
-                                  const FluidQualityPolicy& policy, const FluidFrameSettings& settings, bool advance) {
+                                  std::span<const FluidSourceSubmission> sceneSources, const FluidQualityPolicy& policy,
+                                  const FluidFrameSettings& settings, bool advance) {
     const FluidDomainSettings& authored = submission.settings;
     const FluidGridLayout& layout = domain.resources.layout;
     const double step = SubstepSeconds(authored);
@@ -302,10 +399,9 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         }
         domain.previousPosition = submission.worldPosition;
     }
-    for (size_t index = 0; advance && index < submission.sources.size() && index < domain.pendingBurst.size(); ++index)
-        domain.pendingBurst[index] += submission.sources[index].burstDensity;
-    // 押すもの：域の外接球に届くものだけ。障碍物と力はこのフレームの子步すべてへ、冲量は新しいフレームの分を溜めて
-    // 次の子步から渡す。局所空間の域は障碍物の速度を域に対する速度にする。
+    GatherSources(domain, submission, sceneSources, step, advance);
+    // 押すもの：域の外接球に届くものだけ。障碍物と力はこのフレームの子步すべてへ、冲量と注入は新しいフレームの分を溜めて
+    // 次の子步から渡す（注入はこのフレームの時間ぶん）。局所空間の域は障碍物と注入の速度を域に対する速度にする。
     const MATH::Vec3 domainVelocity = submission.localSpace ? domain.smoothedVelocity : MATH::Vec3{};
     const float domainRadius = 0.5f * MATH::Length(domain.layoutSize);
     const bool newInteractions = settings.interactionFrame != domain.lastInteractionFrame;
@@ -317,14 +413,22 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         const float reach = obstacle && interaction.shape == FluidInteractionShape::Capsule ? extents.x + extents.y
                             : obstacle && interaction.shape == FluidInteractionShape::Box   ? MATH::Length(extents)
                                                                                             : extents.x;
-        if (MATH::Length(interaction.worldPosition - domain.framePosition) > domainRadius + reach)
+        const bool emit = interaction.kind == FluidInteractionKind::Emit;
+        // 注入はこのフレームに動いた線分のどこかが届けば入れる。
+        const float swept = emit ? MATH::Length(interaction.velocity) * submission.deltaSeconds : 0.0f;
+        if (MATH::Length(interaction.worldPosition - domain.framePosition) > domainRadius + reach + swept)
             continue;
-        if (interaction.kind != FluidInteractionKind::Impulse) {
-            if (steadyInteractions.size() < kMaximumFluidInteractionsPerDomain)
-                steadyInteractions.push_back(interaction);
-        } else if (newInteractions && domain.impulses.size() < kMaximumFluidInteractionsPerDomain) {
-            const bool radial = MATH::Length(interaction.direction) <= 0.0f;
-            domain.impulses.push_back({interaction, radial ? kFluidRadialImpulseSeconds : 0.0});
+        if (interaction.kind == FluidInteractionKind::Impulse) {
+            if (newInteractions && domain.carried.size() < kMaximumFluidInteractionsPerDomain) {
+                const bool radial = MATH::Length(interaction.direction) <= 0.0f;
+                domain.carried.push_back({interaction, radial ? kFluidRadialImpulseSeconds : 0.0});
+            }
+        } else if (emit) {
+            if (newInteractions && advance && submission.deltaSeconds > 0.0f &&
+                domain.carried.size() < kMaximumFluidInteractionsPerDomain)
+                domain.carried.push_back({interaction, submission.deltaSeconds, submission.deltaSeconds});
+        } else if (steadyInteractions.size() < kMaximumFluidInteractionsPerDomain) {
+            steadyInteractions.push_back(interaction);
         }
     }
 
@@ -358,8 +462,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         constants.size[0] = layout.cells[0];
         constants.size[1] = layout.cells[1];
         constants.size[2] = layout.cells[2];
-        constants.size[3] = static_cast<uint32_t>(
-            (std::min)(submission.sources.size(), static_cast<size_t>(kMaximumFluidSourcesPerDomain)));
+        constants.size[3] = static_cast<uint32_t>(frameSources.size());
         constants.cell[0] = layout.cellSize;
         constants.cell[1] = 1.0f / layout.cellSize;
         constants.cell[2] = static_cast<float>(step);
@@ -386,29 +489,48 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         std::memcpy(allocation.cpuAddress, &constants, sizeof(constants));
         return allocation.gpuAddress;
     };
-    const auto uploadSources = [&](bool firstStep) -> D3D12_GPU_VIRTUAL_ADDRESS {
-        const size_t count = (std::max<size_t>)(1u, (std::min)(submission.sources.size(),
-                                                               static_cast<size_t>(kMaximumFluidSourcesPerDomain)));
+    // 子步 stepIndex の源の表。追っている源は始点から今の位置までを、預熱でない子步の数で等分した区間の終わりに置き、
+    // その区間を掃かせる（預熱の子步は今の位置で掃かない）。burst は最初の子步だけ。
+    const auto uploadSources = [&](uint32_t stepIndex) -> D3D12_GPU_VIRTUAL_ADDRESS {
+        const size_t count = (std::max<size_t>)(1u, frameSources.size());
         const auto allocation = upload.Allocate(count * sizeof(INTERNAL::FluidSourceGpu));
         if (!allocation)
             return 0u;
         auto* table = static_cast<INTERNAL::FluidSourceGpu*>(allocation.cpuAddress);
         std::memset(table, 0, count * sizeof(INTERNAL::FluidSourceGpu));
-        for (size_t index = 0; index < submission.sources.size() && index < count; ++index) {
-            table[index] =
-                INTERNAL::PackFluidSource(submission.sources[index], domain.framePosition, domain.frameRotation,
-                                          layout.cellSize, firstStep ? domain.pendingBurst[index] : 0.0f);
+        const float moving = static_cast<float>(steps - prewarmSteps);
+        const float from = stepIndex < prewarmSteps ? 1.0f : static_cast<float>(stepIndex - prewarmSteps) / moving;
+        const float to = stepIndex < prewarmSteps ? 1.0f : static_cast<float>(stepIndex - prewarmSteps + 1u) / moving;
+        for (size_t index = 0; index < frameSources.size(); ++index) {
+            FluidSourceSubmission placed = frameSources[index];
+            const SourceMotion& motion = frameMotion[index];
+            float burst = placed.burstDensity;
+            MATH::Vec3 sweep{};
+            if (motion.track >= 0) {
+                const SourceTrack& track = domain.tracks[static_cast<size_t>(motion.track)];
+                burst = track.pendingBurst;
+                const MATH::Vec3 begin = MATH::Lerp(track.position, motion.position, from);
+                const MATH::Vec3 end = MATH::Lerp(track.position, motion.position, to);
+                placed.worldPosition = domain.framePosition + MATH::RotateVector(domain.frameRotation, end);
+                placed.worldRotation =
+                    MATH::MultiplyQ(domain.frameRotation, MATH::NlerpQ(track.rotation, motion.rotation, to));
+                placed.worldScale = MATH::Lerp(track.scale, placed.worldScale, to);
+                sweep = MATH::RotateVector(domain.frameRotation, end - begin);
+            }
+            table[index] = INTERNAL::PackFluidSource(placed, domain.framePosition, domain.frameRotation,
+                                                     layout.cellSize, stepIndex == 0u ? burst : 0.0f, sweep);
         }
         return allocation.gpuAddress;
     };
-    // 障碍物・力・注入を先に、冲量を後に置く（汇の吸い込み量は表の行ごとに数えるので、冲量が子步の途中で切れても
-    // 汇の行が動かないように）。冲量は一度きりのゲームの事件なので落とさず、障碍物・力・注入は冲量の残りの席に入る。
+    // 障碍物・力を先に、冲量と注入を後に置く（汇の吸い込み量は表の行ごとに数えるので、冲量と注入が子步の途中で切れても
+    // 汇の行が動かないように）。冲量と注入は一度きりの事件なので落とさず、障碍物・力はその残りの席に入る。注入は残りの
+    // 時間のうちこの子步の分（最大 1 子步）を入れる。
     const size_t steadyRows =
         (std::min)(steadyInteractions.size(), static_cast<size_t>(kMaximumFluidInteractionsPerDomain));
     const auto uploadInteractions = [&](uint32_t& outCount) -> D3D12_GPU_VIRTUAL_ADDRESS {
-        const size_t impulses = domain.impulses.size();
-        const size_t steady = (std::min)(steadyRows, kMaximumFluidInteractionsPerDomain - impulses);
-        const size_t count = steady + impulses;
+        const size_t carried = domain.carried.size();
+        const size_t steady = (std::min)(steadyRows, kMaximumFluidInteractionsPerDomain - carried);
+        const size_t count = steady + carried;
         outCount = static_cast<uint32_t>(count);
         const auto allocation = upload.Allocate((std::max<size_t>)(count, 1u) * sizeof(INTERNAL::FluidInteractionGpu));
         if (!allocation)
@@ -416,10 +538,17 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         auto* table = static_cast<INTERNAL::FluidInteractionGpu*>(allocation.cpuAddress);
         std::memset(table, 0, sizeof(INTERNAL::FluidInteractionGpu));
         for (size_t index = 0; index < count; ++index) {
-            const FluidInteraction& interaction =
-                index < steady ? steadyInteractions[index] : domain.impulses[index - steady].interaction;
-            table[index] =
-                INTERNAL::PackFluidInteraction(interaction, domain.framePosition, domain.frameRotation, domainVelocity);
+            if (index < steady) {
+                table[index] = INTERNAL::PackFluidInteraction(steadyInteractions[index], domain.framePosition,
+                                                              domain.frameRotation, domainVelocity, 0.0f, 1.0f);
+                continue;
+            }
+            const CarriedInteraction& event = domain.carried[index - steady];
+            const float share = event.interaction.kind == FluidInteractionKind::Emit
+                                    ? static_cast<float>((std::min)(event.remainingSeconds, step) / step)
+                                    : 1.0f;
+            table[index] = INTERNAL::PackFluidInteraction(event.interaction, domain.framePosition, domain.frameRotation,
+                                                          domainVelocity, event.frameSeconds, share);
         }
         return allocation.gpuAddress;
     };
@@ -450,22 +579,32 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         const uint32_t flags = (index == 0u ? 1u : 0u) | (index >= prewarmSteps ? 2u : 0u);
         const D3D12_GPU_VIRTUAL_ADDRESS constants =
             uploadConstants(firstStep + index, interactionCount, inertia, flags);
-        const D3D12_GPU_VIRTUAL_ADDRESS sources = uploadSources(index == 0u);
+        const D3D12_GPU_VIRTUAL_ADDRESS sources = uploadSources(index);
         if (constants == 0u || sources == 0u || interactions == 0u)
             break;
         FluidRecorder stepRecorder(commands, pipeline, domain.resources, constants);
         stepRecorder.Substep(domain.velocityIndex, domain.densityIndex, sources, interactions, policy.vCycles);
-        if (index == 0u) {
-            domain.pendingBurst = {};
+        if (index == 0u)
             domain.pendingInertia = {};
-        }
-        for (ActiveImpulse& impulse : domain.impulses)
-            impulse.remainingSeconds -= step;
-        std::erase_if(domain.impulses, [](const ActiveImpulse& impulse) { return impulse.remainingSeconds <= 1.0e-9; });
+        for (CarriedInteraction& event : domain.carried)
+            event.remainingSeconds -= step;
+        std::erase_if(domain.carried, [](const CarriedInteraction& event) { return event.remainingSeconds <= 1.0e-9; });
     }
     stats.stepsThisFrame += steps;
-    if (steps > 0u)
+    if (steps > 0u) {
         ++domain.densityVersion;
+        // 子步が今の位置まで掃いたので、始点を今の位置へ進める。
+        for (size_t index = 0u; index < frameSources.size(); ++index) {
+            if (frameMotion[index].track < 0)
+                continue;
+            SourceTrack& track = domain.tracks[static_cast<size_t>(frameMotion[index].track)];
+            track.position = frameMotion[index].position;
+            track.rotation = frameMotion[index].rotation;
+            track.scale = frameSources[index].worldScale;
+            track.elapsedSeconds = 0.0f;
+            track.pendingBurst = 0.0f;
+        }
+    }
 
     // 占有・診断・汇の吸い込み量の回読は、子步を進めたフレームだけ（止まっている間は密度が変わらない）。
     const uint32_t slot = context.frameIndex % GFX::kFrameResourceCount;
@@ -585,7 +724,7 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
             continue;
         const bool advance = domain->lastSimulatedFrame != input->frameIndex;
         domain->lastSimulatedFrame = input->frameIndex;
-        impl.Solve(*domain, submission, policy, settings, advance);
+        impl.Solve(*domain, submission, input->fluidSources, policy, settings, advance);
         ++solved;
         if (domain->prewarmSteps > 0u || impl.renderList.size() >= INTERNAL::kMaximumRenderedFluidDomains)
             continue;

@@ -4201,6 +4201,8 @@
     {"ui.inspector.text.World: fixed world axes. Camera: relative to the active camera. Object: relative to the object's own orientation.", "ワールド：ワールド軸に固定。カメラ：現在のカメラ基準。オブジェクト：オブジェクト自身の向き基準。"},
     {"ui.vfx.layer.newFluid", "流体ドメイン"},
     {"ui.vfx.layer.newFluidSource", "流体ソース"},
+    {"ui.vfx.layer.newFluidInjection", "流体注入"},
+    {"ui.vfx.fluid.injectionHint", "形が届くシーンの流体ドメイン（フィールドの煙ドメインなど）へ注入します。エフェクトに付いて動き、移動中は経路に沿って途切れずに注入します。流体ドメインの無いプレビューでは見えません。"},
     {"ui.inspector.text.Domain Size (m)", "ドメインのサイズ（m）"},
     {"ui.inspector.text.Resolution", "解像度"},
     {"ui.inspector.text.Boundary", "境界"},

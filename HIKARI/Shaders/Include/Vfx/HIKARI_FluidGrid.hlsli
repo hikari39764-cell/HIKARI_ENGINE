@@ -39,6 +39,8 @@ struct HikariFluidSource
     float4 wind;     // xyz 一様な加速度（域の局所）、w 速度の減衰 [1/s]
     float4 guide;    // x 形状引导の強さ、y 帯の厚さ、z 力場の効き方（0 加速度、1 目標速度）、w 縁の柔らかさ（源の局所）
     float4 flow;     // x 体積の湧き出し率 [1/s]（形の中で一様、開いた境界の域だけ）、y 注入の揺らぎ、z 1 / 揺らぎの塊 [1/m]、w 未使用
+    float4 sweep;    // xyz この子步の間に動いた分（源の局所、終わりの形から始めの位置へ）、w 掃いた形へ入れる注入の割合
+    float4 bounds;   // xyz 届く範囲の中心（域の局所）、w 半径（0 で域全体）
 };
 
 // 流体を押すもの 1 つ。C++ の FluidInteractionGpu と同じ並び。座標は域の局所空間 [m]。
@@ -49,7 +51,8 @@ struct HikariFluidInteraction
     float4 toLocal2;
     float4 extents;   // xyz 形の大きさ（FluidInteraction.extents）、w 種類（0 障碍物、1 冲量、2 力）
     float4 velocity;  // xyz 障碍物の域に対する速度か冲量・力の向き（域の局所、0 で外向き）、w 形（0 球、1 カプセル、2 箱）
-    float4 push;      // xyz 中心（域の局所）、w 冲量の速さ [m/s] か力の加速度 [m/s²]
+    float4 push;      // xyz 中心（域の局所）、w 冲量の速さ [m/s] か力の加速度 [m/s²]（注入はこの子步の割合を掛けた毎秒の密度）
+    float4 sweep;     // 注入：xyz このフレームに動いた線分（中心から始めの位置へ、域の局所）、w 掃いた形へ入れる割合
 };
 
 uint HikariFluidInteractionKind(HikariFluidInteraction interaction)
@@ -128,10 +131,29 @@ float HikariFluidSourceDistance(HikariFluidSource source, float3 p)
     return length(p) - max(radius, source.guide.w);
 }
 
-// 形の中の重み（内側 1、表面の外へ縁の柔らかさの幅で 0 へ）。
+// 掃いた線分（原点から d）の上で点 p に一番近い位置から p への差。動いた源・注入の形を、線分の一番近い位置に置いて測る。
+float3 HikariFluidFromSegment(float3 p, float3 d)
+{
+    const float lengthSquared = dot(d, d);
+    return p - (lengthSquared > 0.0f ? saturate(dot(p, d) / lengthSquared) : 0.0f) * d;
+}
+
+// 子步の間に掃いた形の符号付き距離（源の局所）：終わりの形から始めの位置へ戻る線分の上で、点に一番近い位置の形。
+float HikariFluidSweptDistance(HikariFluidSource source, float3 p)
+{
+    return HikariFluidSourceDistance(source, HikariFluidFromSegment(p, source.sweep.xyz));
+}
+
+// 掃いた形の中の重み（内側 1、表面の外へ縁の柔らかさの幅で 0 へ）に、掃いた形へ入れる割合を掛けたもの（止まった源は 1）。
 float HikariFluidSourceMask(HikariFluidSource source, float3 p)
 {
-    return saturate(0.5f - HikariFluidSourceDistance(source, p) / max(source.guide.w, 1.0e-4f));
+    return saturate(0.5f - HikariFluidSweptDistance(source, p) / max(source.guide.w, 1.0e-4f)) * source.sweep.w;
+}
+
+// 域の局所の点 p に源が届くか（届く範囲の外の格は源を読まない）。
+bool HikariFluidSourceReaches(HikariFluidSource source, float3 p)
+{
+    return source.bounds.w <= 0.0f || length(p - source.bounds.xyz) <= source.bounds.w;
 }
 
 #endif

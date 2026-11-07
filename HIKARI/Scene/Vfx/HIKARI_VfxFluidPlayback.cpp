@@ -8,6 +8,8 @@
 // 流体域の提交。域の層の世界変換と、下にある流体源の層（形・注入量・burst・力場・風）を 1 つにまとめる。
 // 域自身の forces（力場・風・減衰）は域全体に掛かる源として先頭に入れる。解算は GPU 側が固定子步で行い、
 // ここはゲーム時間（時間の倍率込み）とその間に起きた注入だけを渡す。
+// 域の下に無い流体源の層（流体注入层）は場面の源として渡し、描画側が届く域すべてへ入れる（剑气の尾迹・烟弾が場地の域へ
+// 注入する）。源は層ごとの鍵で見分け、描画側が子步の間の動きを掃いて注入する。
 namespace HIKARI::VFX {
 namespace {
 namespace FLUID = RENDER3D::FLUID;
@@ -51,6 +53,38 @@ bool HasDomainForces(const ParticleEmitterSimulationParameters& simulation) noex
 }
 } // namespace
 
+bool VfxPlaybackService::MakeFluidSource(Instance& instance, uint32_t layerIndex, float spawnDelta, bool wrapLoop,
+                                         FLUID::FluidSourceSubmission& out) {
+    const VfxProgram& program = *instance.program;
+    const VfxProgramEmitter& layer = program.emitters[layerIndex];
+    EmitterState& state = instance.emitterStates[layerIndex];
+    const auto& overrides = instance.layerOverrides[layerIndex];
+    // burst は 1 回で注入する密度（数をそのまま密度として使う）。連続の注入率は GPU が子步ごとに掛ける。
+    const uint32_t burst =
+        PLAYBACK::ComputeEmitterSpawnCount(state, program, layer, instance.elapsedSeconds, spawnDelta, 0.0f,
+                                           instance.loop, wrapLoop, (std::numeric_limits<uint32_t>::max)());
+    state.resetSimulation = false;
+    if (instance.layerVisible[layerIndex] == 0u)
+        return false;
+    out = MakeSource(instance.emitterTransforms[layerIndex], layer.simulation);
+    out.id = FLUID::FluidSourceId({playbackNamespace_, instance.handle.slot, instance.handle.generation, layerIndex});
+    out.ratePerSecond = layer.spawnRatePerSecond * overrides.spawnRateMultiplier;
+    out.burstDensity = static_cast<float>(burst);
+    out.settings = layer.fluidSource;
+    out.wind = out.wind * overrides.gravityMultiplier;
+    return true;
+}
+
+void VfxPlaybackService::AppendFluidSceneSource(Instance& instance, uint32_t layerIndex, float spawnDelta,
+                                                bool drawAfterSimulation, bool wrapLoop) {
+    // 拖时间の途中の段は注入しない（場面の域は時間を飛ばさない）。
+    if (!drawAfterSimulation)
+        return;
+    FLUID::FluidSourceSubmission source{};
+    if (MakeFluidSource(instance, layerIndex, spawnDelta, wrapLoop, source))
+        renderInput_.fluidSources.push_back(source);
+}
+
 void VfxPlaybackService::AppendFluidDomain(Instance& instance, uint32_t domainIndex, float deltaSeconds,
                                            float spawnDelta, bool drawAfterSimulation, bool wrapLoop) {
     const VfxProgram& program = *instance.program;
@@ -91,21 +125,10 @@ void VfxPlaybackService::AppendFluidDomain(Instance& instance, uint32_t domainIn
         const VfxProgramEmitter& layer = program.emitters[index];
         if (layer.kind != VfxLayerKind::FluidSource || layer.fluidDomainIndex != domainIndex)
             continue;
-        EmitterState& state = instance.emitterStates[index];
-        const auto& overrides = instance.layerOverrides[index];
-        // burst は 1 回で注入する密度（数をそのまま密度として使う）。連続の注入率は GPU が子步ごとに掛ける。
-        const uint32_t burst =
-            PLAYBACK::ComputeEmitterSpawnCount(state, program, layer, instance.elapsedSeconds, spawnDelta, 0.0f,
-                                               instance.loop, wrapLoop, (std::numeric_limits<uint32_t>::max)());
-        state.resetSimulation = false;
-        if (instance.layerVisible[index] == 0u || domain.sources.size() >= FLUID::kMaximumFluidSourcesPerDomain)
-            continue;
-        FLUID::FluidSourceSubmission source = MakeSource(instance.emitterTransforms[index], layer.simulation);
-        source.ratePerSecond = layer.spawnRatePerSecond * overrides.spawnRateMultiplier;
-        source.burstDensity = static_cast<float>(burst);
-        source.settings = layer.fluidSource;
-        source.wind = source.wind * overrides.gravityMultiplier;
-        domain.sources.push_back(source);
+        FLUID::FluidSourceSubmission source{};
+        if (MakeFluidSource(instance, index, spawnDelta, wrapLoop, source) &&
+            domain.sources.size() < FLUID::kMaximumFluidSourcesPerDomain)
+            domain.sources.push_back(source);
     }
     renderInput_.fluids.push_back(std::move(domain));
 }

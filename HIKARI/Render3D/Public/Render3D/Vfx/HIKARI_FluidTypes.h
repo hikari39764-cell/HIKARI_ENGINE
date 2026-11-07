@@ -141,7 +141,9 @@ inline constexpr auto kFluidSourceSettingsFields = [](auto&& field) {
 // 半径とする球の範囲で中心ほど強い。向きがあれば加速（冲量は一子步で速さを足す）、向きが 0 なら体積の湧き出しで、
 // 半径の球面を外へ strength [m/s] で流れ出す（負で吸い込む。冲量は kFluidRadialImpulseSeconds の間、開いた境界の域だけ）。
 // Emit は提交している間、球の中へ烟を注入する（中心ほど濃く、strength は中心での毎秒の密度、direction は注入する
-// 烟の初速 [m/s]、extents.y は温度。源の数の上限とは別枠で、位置は毎フレーム自由）。
+// 烟の初速 [m/s]、extents.y は温度。源の数の上限とは別枠で、位置は毎フレーム自由）。1 フレームの提交はそのフレームの
+// 時間ぶん（strength × 時間）で、次に走る子步たちが入れる（子步の無いフレームの分も落とさない）。動いている Emit は
+// 前のフレームの位置からの線分を掃いて入れる（velocity。流体源の扫掠注入と同じく総量は変わらない）。
 enum class FluidInteractionKind : uint32_t { Obstacle, Impulse, Force, Emit };
 enum class FluidInteractionShape : uint32_t { Sphere, Capsule, Box };
 
@@ -152,7 +154,8 @@ struct FluidInteraction {
     MATH::Quat worldRotation = MATH::Quat::Identity();
     // Sphere：x 半径。Capsule：x 半径、y 局所 Y 軸の線分の半分。Box：半分の大きさ [m]。冲量・力は x 半径。
     MATH::Vec3 extents{0.5f, 0.5f, 0.5f};
-    // 障碍物の速度（世界 [m/s]）。
+    // 障碍物と注入の動く速さ（世界 [m/s]。FluidInteractionService が前のフレームの位置から決める）。障碍物は烟を押し、
+    // 注入はそのフレームに動いた線分を掃く。
     MATH::Vec3 velocity{};
     // 冲量・力の向き（世界、0 なら中心から外向き）。
     MATH::Vec3 direction{};
@@ -181,8 +184,12 @@ inline constexpr uint32_t kMaximumFluidInteractionsPerDomain = 32u;
 // 源の形（VFX の emission shape と同じ種類）。値は ParticleShape と同じ並び。
 enum class FluidSourceShape : uint32_t { Point, Sphere, Cone, Box, Cylinder, Circle, Edge, Domain };
 
-// 1 子步ぶんの源。座標は源の局所空間（形と力場）で、GPU が域の格子から変換する。
+// 1 フレームぶんの源。座標は源の局所空間（形と力場）で、GPU が域の格子から変換する。
+// 域は源ごとに最後の子步の位置を覚え、次の子步たちをそこから今の位置までの線分に割り振り、各子步はその区間を掃いた
+// 形へ注入する（扫掠注入：速く動く源も点の列にならず、子步の無いフレームの動きも次の子步が拾う）。
 struct FluidSourceSubmission {
+    // 源を見分ける鍵（FluidSourceId。0 は動きを引き継がず、burst もそのフレームの子步だけ）。
+    uint64_t id = 0u;
     MATH::Vec3 worldPosition{};
     MATH::Quat worldRotation = MATH::Quat::Identity();
     MATH::Vec3 worldScale{1.0f, 1.0f, 1.0f};
@@ -201,6 +208,17 @@ struct FluidSourceSubmission {
     MATH::Vec3 wind{};
     float drag = 0.0f;
 };
+
+// 再生の実例の層から源の鍵を作る（0 にはしない）。
+inline uint64_t FluidSourceId(const PARTICLES::ParticleEmitterInstanceKey& key) noexcept {
+    uint64_t h = key.playbackNamespace * 0x9e3779b97f4a7c15ull ^
+                 ((uint64_t{key.playbackSlot} << 32u | key.playbackGeneration) + 0x632be59bd9b4e019ull) ^
+                 (uint64_t{key.emitterIndex} * 0xd6e8feb86659fd93ull);
+    h = (h ^ (h >> 30u)) * 0xbf58476d1ce4e5b9ull;
+    h = (h ^ (h >> 27u)) * 0x94d049bb133111ebull;
+    h ^= h >> 31u;
+    return h != 0u ? h : 1u;
+}
 
 // 1 フレームぶんの域。delta は時間の倍率を掛けたゲーム時間（一時停止・顿帧で 0）。域の大きさは settings.domainSize
 // で決まり、層の拡縮は掛けない（拡縮やその動画で格子を作り直さないため）。

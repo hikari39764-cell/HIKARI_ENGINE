@@ -124,8 +124,9 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
 - 游戏镜头区域：`camera_zone.edit`。
 - 特效与流体烟雾：改已有的特效一律 `vfx.open_asset` → `vfx.property.set` → `vfx.save`，在原资产上改。不要用脚本整份
   重新生成或覆盖 `.hvfx` 文件，那样会冲掉用户在编辑器里调过的值；`vfx.new_asset` 只用于项目里还没有的特效。
-  加层：`vfx.emitter.add`（`kind` 为 `Particles`、`Fluid`（流体域）或 `FluidSource`（流体源，`parentEmitterId` 给流体域
-  的 id））→ `vfx.query` 拿各层的模块 id → `vfx.property.set`（`targetId` 是模块 id，`property` 是模块里的字段路径，
+  加层：`vfx.emitter.add`（`kind` 为 `Particles`、`Fluid`（流体域）或 `FluidSource`（流体源：`parentEmitterId` 给流体域
+  的 id 就注入那个域；不放在流体域下就是“流体注入”，跟着特效走，注入到形状碰到的场景流体域，如剑气尾迹、烟弹打进
+  场地的烟雾域；它不要设力场或重力，半径 0 的力场会推动整个场景域））→ `vfx.query` 拿各层的模块 id → `vfx.property.set`（`targetId` 是模块 id，`property` 是模块里的字段路径，
   如 `domainSize`、`extinction`、`emissionNoise`、`radius.maximum`）→ `vfx.save`。范围（最小～最大）先设会把范围放宽的
   那一端，否则会被拒绝。解算看 `vfx.fluid.stats` 和 `vfx.fluid.debug_slice`；碎屑、火星跟着烟走，给粒子层的力模块设
   `fluidFollow`。

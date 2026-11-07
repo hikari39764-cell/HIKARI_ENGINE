@@ -3801,6 +3801,8 @@
     {"ui.inspector.text.World: fixed world axes. Camera: relative to the active camera. Object: relative to the object's own orientation.", "世界：固定的世界坐标轴。相机：相对当前相机。物体：相对物体自身的朝向。"},
     {"ui.vfx.layer.newFluid", "流体域"},
     {"ui.vfx.layer.newFluidSource", "流体源"},
+    {"ui.vfx.layer.newFluidInjection", "流体注入"},
+    {"ui.vfx.fluid.injectionHint", "注入到形状所及的场景流体域（如场地的烟雾域），随特效移动，移动时沿路径连续注入。预览里没有流体域时看不到。"},
     {"ui.inspector.text.Domain Size (m)", "域大小（米）"},
     {"ui.inspector.text.Resolution", "分辨率"},
     {"ui.inspector.text.Boundary", "边界"},

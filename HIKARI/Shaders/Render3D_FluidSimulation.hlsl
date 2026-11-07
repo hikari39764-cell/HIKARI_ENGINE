@@ -163,7 +163,7 @@ float3 GuideVelocity(float3 p)
     for (uint index = 0u; index < gSize.w; ++index)
     {
         const HikariFluidSource source = gSources[index];
-        if (source.guide.x <= 0.0f)
+        if (source.guide.x <= 0.0f || !HikariFluidSourceReaches(source, p))
             continue;
         const float3 local = HikariFluidToSource(source, p);
         const float distance = HikariFluidSourceDistance(source, local);
@@ -333,20 +333,20 @@ float ValueNoise(float3 x)
     return lerp(lerp(x00, x10, u.y), lerp(x01, x11, u.y), u.z) * 2.0f - 1.0f;
 }
 
-// 烟を注入する形の重み：形の表面を格 4 つほどの塊で ±1.5 格ずらし、力の重み（HikariFluidSourceMask）の 2 倍の幅で
-// ぼかす。表面がそのまま格に沿った面で入ると、注入したての烟の縁が格子の階段（马赛克）に見える。形の奥（表面から
-// 3 格より内側）の量は変わらない。p は域の局所 [m]。
+// 烟を注入する形の重み：子步の間に掃いた形の表面を格 4 つほどの塊で ±1.5 格ずらし、力の重み（HikariFluidSourceMask）の
+// 2 倍の幅でぼかし、掃いた形へ入れる割合を掛ける。表面がそのまま格に沿った面で入ると、注入したての烟の縁が格子の階段
+// （马赛克）に見える。形の奥（表面から 3 格より内側）の量は変わらない。p は域の局所 [m]。
 float EmissionMask(HikariFluidSource source, float3 local, float3 p)
 {
     const float soft = max(source.guide.w, 1.0e-4f);
-    const float distance = HikariFluidSourceDistance(source, local);
+    const float distance = HikariFluidSweptDistance(source, local);
     if (distance >= 2.5f * soft)
         return 0.0f;
     if (distance <= -2.5f * soft)
-        return 1.0f;
+        return source.sweep.w;
     const float3 lump = p * (0.25f * gCell.y) + float3(0.0f, 0.07f, 0.0f) * gCell.w;
     const float offset = ValueNoise(lump) * 0.7f + ValueNoise(lump * 2.03f + 17.3f) * 0.3f;
-    return saturate(0.5f - (distance + offset * soft) / (2.0f * soft));
+    return saturate(0.5f - (distance + offset * soft) / (2.0f * soft)) * source.sweep.w;
 }
 
 // 注入の揺らぎ（FluidSourceSettings::emissionNoise）の倍率：域の局所 p [m] で塊の大きさ 1 / flow.z の値ノイズ 2 段により
@@ -364,6 +364,8 @@ float EmissionNoise(HikariFluidSource source, float3 p)
 void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout float3 acceleration,
                  inout float density, inout float temperature)
 {
+    if (!HikariFluidSourceReaches(source, p))
+        return;
     const float3 local = HikariFluidToSource(source, p);
     const float mask = HikariFluidSourceMask(source, local);
     // 力場（旋涡・吸引・卷曲乱流）は粒子と同じ式。半径の減衰は式の中で掛かる。
@@ -460,12 +462,20 @@ void CountSinks(float3 p, float density)
     }
 }
 
-// 注入（3）：球の中（中心から二乗で弱まる）へ毎秒 strength の密度を足し、温度を extents.y へ寄せ、向きがあれば注入する
-// 烟をその速さ（velocity.xyz、域の局所 [m/s]）へ寄せる（源の注入と同じ寄せ方）。
+// 注入の重み：このフレームに動いた線分（中心から sweep.xyz）からの距離で、半径の中で二乗に弱め、掃いた形へ入れる割合を掛ける。
+float HikariFluidEmitFalloff(HikariFluidInteraction interaction, float3 p)
+{
+    const float distance = length(HikariFluidFromSegment(p - interaction.push.xyz, interaction.sweep.xyz));
+    const float falloff = saturate(1.0f - distance / max(interaction.extents.x, 1.0e-4f));
+    return falloff * falloff * interaction.sweep.w;
+}
+
+// 注入（3）：動いた線分を掃いた球の中（二乗で弱まる）へ毎秒 strength の密度を足し、温度を extents.y へ寄せ、向きがあれば
+// 注入する烟をその速さ（velocity.xyz、域の局所 [m/s]）へ寄せる（源の注入と同じ寄せ方）。
 void ApplyEmit(HikariFluidInteraction interaction, float3 p, float3 velocity, inout float3 acceleration,
                inout float density, inout float temperature)
 {
-    const float weight = HikariFluidPushFalloff(interaction, p);
+    const float weight = HikariFluidEmitFalloff(interaction, p);
     if (weight <= 0.0f)
         return;
     density += max(interaction.push.w, 0.0f) * weight * gCell.z;
@@ -490,7 +500,7 @@ float Expansion(float3 p)
     float expansion = 0.0f;
     for (uint source = 0u; source < gSize.w; ++source)
     {
-        if (gSources[source].flow.x != 0.0f)
+        if (gSources[source].flow.x != 0.0f && HikariFluidSourceReaches(gSources[source], p))
             expansion += gSources[source].flow.x *
                          HikariFluidSourceMask(gSources[source], HikariFluidToSource(gSources[source], p));
     }
@@ -798,7 +808,7 @@ void OccupancyCS(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint 
 }
 
 // 砖块ごとの活動状態（子步の頭）：OccupancyCS の最大密度が烟のある砖块と、その 26 近傍を動かす。注入・吸い込み・流れを
-// 入れる源（域全体の形は除く）の形と、注入（Emit）の球に触れる砖块も動かす。フレームの最初の子步では汇の吸い込み量を 0 に戻す。
+// 入れる源（域全体の形は除く）の子步の間に掃いた形と、注入（Emit）の掃いた球に触れる砖块も動かす。フレームの最初の子步では汇の吸い込み量を 0 に戻す。
 [numthreads(4, 4, 4)]
 void ActivityCS(uint3 id : SV_DispatchThreadID)
 {
@@ -829,12 +839,16 @@ void ActivityCS(uint3 id : SV_DispatchThreadID)
         // 源の局所の長さは域の長さ × 拡縮の逆（縁の柔らかさ guide.w = 1.5 格 × 拡縮の逆）。注入は表面の外 2 guide.w
         // まで届く（EmissionMask）。
         const float toSource = source.guide.w / (1.5f * gCell.x);
-        active = HikariFluidSourceDistance(source, HikariFluidToSource(source, center)) <
+        active = HikariFluidSweptDistance(source, HikariFluidToSource(source, center)) <
                  reach * toSource + 2.0f * source.guide.w;
     }
     for (uint index = 0u; index < gInteractionCount.x && !active; ++index)
-        if (HikariFluidInteractionKind(gInteractions[index]) == 3u)
-            active = length(center - gInteractions[index].push.xyz) < reach + gInteractions[index].extents.x;
+    {
+        const HikariFluidInteraction interaction = gInteractions[index];
+        active = HikariFluidInteractionKind(interaction) == 3u &&
+                 length(HikariFluidFromSegment(center - interaction.push.xyz, interaction.sweep.xyz)) <
+                     reach + interaction.extents.x;
+    }
     gStats.Store(gInteractionCount.y + BrickIndex(id) * 4u, active ? 1u : 0u);
 }
 

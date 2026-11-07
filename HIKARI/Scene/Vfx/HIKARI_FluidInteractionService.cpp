@@ -135,7 +135,10 @@ std::span<const FluidInteraction> FluidInteractionService::PrepareFrame(const Wo
         if (owner == nullptr || IsHidden(world, owner))
             continue;
         FluidInteraction& interaction = entry.interaction;
-        if (interaction.kind == FluidInteractionKind::Obstacle && consecutive) {
+        // 障碍物と注入は前のフレームの位置から動く速さを決める（障碍物は烟を押し、注入は動いた線分を掃く）。
+        const bool moving =
+            interaction.kind == FluidInteractionKind::Obstacle || interaction.kind == FluidInteractionKind::Emit;
+        if (moving && consecutive) {
             for (uint32_t previous = 0u; previous < previousCount_; ++previous) {
                 if (!previous_[previous].Same(entry))
                     continue;

@@ -411,6 +411,8 @@ struct ParticleRenderInput {
     std::vector<ParticleComposition> compositions{};
     // 流体層の域。退役は retiredEmitters の同じ実例键で伝える。
     std::vector<FLUID::FluidDomainSubmission> fluids{};
+    // 流体域の下に無い流体源の層（流体注入层）。同じ入力の域のうち、形が届く域すべてへ注入する（剑气の尾迹、烟弾）。
+    std::vector<FLUID::FluidSourceSubmission> fluidSources{};
 
     ParticleRenderDeliveryToken GetDeliveryToken() const noexcept { return {sourceIdentity, deliverySequence}; }
 };

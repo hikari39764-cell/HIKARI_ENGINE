@@ -365,6 +365,7 @@ VfxSeekResult VfxPlaybackService::SeekInternal(VfxPlaybackHandle handle, uint64_
         renderInput_.emitters.clear();
         renderInput_.compositions.clear();
         renderInput_.fluids.clear();
+        renderInput_.fluidSources.clear();
         if (!preserveStagedRetirements) {
             renderInput_.retiredEmitters.clear();
         }
@@ -470,6 +471,7 @@ void VfxPlaybackService::Update(uint64_t frameIndex, float deltaSeconds) {
     renderInput_.emitters.clear();
     renderInput_.compositions.clear();
     renderInput_.fluids.clear();
+    renderInput_.fluidSources.clear();
     renderInput_.retiredEmitters.clear();
     renderInput_.retiredEmitters.swap(pendingRetiredEmitters_);
 
@@ -744,6 +746,7 @@ void VfxPlaybackService::Reset() {
     renderInput_.emitters.clear();
     renderInput_.compositions.clear();
     renderInput_.fluids.clear();
+    renderInput_.fluidSources.clear();
     renderInput_.retiredEmitters.clear();
     renderInput_.deliverySequence = 0u;
     pendingRenderDeliverySequence_ = 0u;
@@ -801,6 +804,8 @@ bool VfxPlaybackService::PublishFrozenRenderInput() noexcept {
         for (auto& source : domain.sources)
             source.burstDensity = 0.0f;
     }
+    for (auto& source : renderInput_.fluidSources)
+        source.burstDensity = 0.0f;
     PublishRenderInputDelivery();
     return true;
 }
@@ -985,9 +990,14 @@ size_t VfxPlaybackService::AppendInstanceStep(Instance& instance, float deltaSec
     const size_t firstSubmission = renderInput_.emitters.size();
     for (uint32_t emitterIndex = 0u; emitterIndex < program.emitters.size(); ++emitterIndex) {
         const VfxProgramEmitter& emitter = program.emitters[emitterIndex];
-        if (emitter.kind == VfxLayerKind::Group || emitter.kind == VfxLayerKind::Adjustment ||
-            emitter.kind == VfxLayerKind::FluidSource)
+        if (emitter.kind == VfxLayerKind::Group || emitter.kind == VfxLayerKind::Adjustment)
             continue;
+        // 流体源は域の提交の中で扱う。域の下に無いものは場面の域へ注入する源として渡す。
+        if (emitter.kind == VfxLayerKind::FluidSource) {
+            if (emitter.fluidDomainIndex == kInvalidVfxProgramIndex)
+                AppendFluidSceneSource(instance, emitterIndex, spawnDelta, drawAfterSimulation, wrapLoop);
+            continue;
+        }
         // 流体域は粒子 pass へは出さず、下の流体源をまとめた域の提交にする（源は域の中で処理する）。
         if (emitter.kind == VfxLayerKind::Fluid) {
             AppendFluidDomain(instance, emitterIndex, deltaSeconds, spawnDelta, drawAfterSimulation, wrapLoop);
