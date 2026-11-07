@@ -173,6 +173,48 @@ FluidDomainSubmission MakePlume(uint64_t playbackNamespace, uint32_t resolution)
 // 烟柱を 2 秒注入し続けて、投影後の散度が残らず、速度が浮力と注入の速さの程度に収まり、烟が域に柱として残る。
 // 多重网格が 3 段以上になる分辨率で、開いた境界（面の上で圧力 0）の粗い段の修正が発散しないことを見る。細長い域
 // （1 × 4 × 1 m、128 格 → 32 × 128 × 32）は少ない格で 5 段になる（浮游岛の 128³ と同じ段数）。
+// 面ごとの境界：64 格（多重網格 4 段）で、上から吹き下ろす重い烟を 0.5 秒入れて 2 秒解く。開いた域では底から抜けて
+// 減り、底だけ閉じた域（ClosedFloor）と上だけ開いた域（OpenTop）では床に溜まって残る。どの組み合わせでも投影が収束する。
+// 返り値は止めた時点からの残量の割合。
+float FloorBoundary(FluidGpu& fluid, uint64_t playbackNamespace, FluidBoundary boundary) {
+    FluidVolumePass pass;
+    RENDER3D::PARTICLES::ParticleRenderInput input{};
+    input.fluids.push_back(MakeDomain(playbackNamespace, boundary, 0.0f));
+    FluidDomainSubmission& domain = input.fluids[0];
+    domain.settings.resolution = 64u;
+    domain.settings.buoyancy = 0.0f;
+    domain.settings.weight = 2.0f;
+    FluidSourceSubmission& source = domain.sources[0];
+    source.worldPosition = {0.0f, 0.5f, 0.0f};
+    source.settings.temperature = 0.0f;
+    source.settings.velocity = {0.0f, -1.5f, 0.0f};
+    source.field = {};
+    FluidFrameSettings settings{};
+    settings.diagnostics = true;
+    float maxDivergence = 0.0f;
+    const auto step = [&] {
+        domain.deltaSeconds = 1.0f / 60.0f;
+        fluid.Frame(pass, input, settings);
+        domain.resetSimulation = false;
+        maxDivergence = (std::max)(maxDivergence, DomainStats(pass).maxDivergence);
+    };
+    for (uint32_t frame = 0u; frame < 30u; ++frame)
+        step();
+    source.ratePerSecond = 0.0f;
+    step();
+    step();
+    const float injected = DomainStats(pass).densityTotal;
+    for (uint32_t frame = 0u; frame < 120u; ++frame)
+        step();
+    const FluidDomainStats& stats = DomainStats(pass);
+    const float kept = stats.densityTotal / (std::max)(injected, 1.0e-6f);
+    std::fprintf(stderr, "fluid boundary %s: injected %.3f kept %.3f maxDivergence %.4f\n",
+                 TEXT::EnumToName(kFluidBoundaryNames, boundary), injected, kept, maxDivergence);
+    assert(stats.diagnosticsValid && injected > 0.1f && maxDivergence < 0.25f);
+    pass.Shutdown();
+    return kept;
+}
+
 void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution, float minimumDensity,
                MATH::Vec3 domainSize = {4.0f, 4.0f, 4.0f}) {
     FluidVolumePass pass;
@@ -589,6 +631,11 @@ void CheckFluidSolver() {
     closedBox(0, 1.0e-4f);
     closedBox(1, 0.06f);
     closedBox(2, 0.12f);
+    const float keptOpen = FloorBoundary(fluid, 60u, FluidBoundary::Open);
+    const float keptFloor = FloorBoundary(fluid, 61u, FluidBoundary::ClosedFloor);
+    const float keptOpenTop = FloorBoundary(fluid, 62u, FluidBoundary::OpenTop);
+    (void)FloorBoundary(fluid, 63u, FluidBoundary::Closed);
+    assert(keptFloor > keptOpen + 0.2f && keptOpenTop > keptOpen + 0.2f);
     // 30 / 60 / 144 fps で同じ 1 秒を解くと、子步の数も密度の切片も同じ。
     uint64_t steps30 = 0u, steps60 = 0u, steps144 = 0u;
     const auto at30 = SolveAtFrameRate(fluid, 30u, 1.0 / 30.0, 30u, steps30);

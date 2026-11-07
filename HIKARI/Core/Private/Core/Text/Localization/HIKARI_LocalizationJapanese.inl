@@ -4265,6 +4265,8 @@
     {"ui.inspector.text.Fuel Fraction", "燃料の割合"},
     {"ui.inspector.text.Open", "開放"},
     {"ui.inspector.text.Closed", "閉鎖"},
+    {"ui.inspector.text.ClosedFloor", "底面を閉じる"},
+    {"ui.inspector.text.OpenTop", "上面だけ開く"},
     {"ui.inspector.text.Acceleration", "加速度"},
     {"ui.inspector.text.Target Velocity", "目標速度"},
     {"ui.vfx.text.Fluid domain", "流体ドメイン"},

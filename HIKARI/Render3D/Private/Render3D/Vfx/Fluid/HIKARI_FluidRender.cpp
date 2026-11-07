@@ -97,11 +97,11 @@ RenderDomainGpu PackDomain(const FluidRenderDomain& domain, const FluidRenderVie
     Set4(gpu.emissionHot, look.emissionHotColor.x * emission, look.emissionHotColor.y * emission,
          look.emissionHotColor.z * emission, look.emissionHotTemperature);
     Set4(gpu.optics, look.anisotropy, look.multipleScattering, look.ambientStrength, look.detailStrength);
-    // 開いた境界は面から 4 格で密度を消す（閉じた箱の壁は本当の境界なので消さない）。
+    // 開いた面だけ面から 4 格で密度を消す（閉じた面は本当の壁なので消さない）。z は開いた面の印。
     // detailScale は細部の模様の大きさ。ノイズの 1 周期は基本の模様 4 つ分。w は最後の子步の後に貯まった時間 [s]
     // （子步 1 つ以下）：步进と烟の影の表がこの分だけ流れに沿って遡って密度を読む（ExtrapolatedSmoke）。
     Set4(gpu.detail, 1.0f / (4.0f * (std::max)(look.detailScale, 0.01f)), domain.simulationSeconds,
-         look.boundary == FluidBoundary::Open ? 4.0f : 0.0f, domain.pendingSeconds);
+         static_cast<float>(kFluidAllFaces & ~FluidClosedFaces(look.boundary)), domain.pendingSeconds);
     MATH::Vec3 sun{MATH::Dot(axes[0], view.sunDirection), MATH::Dot(axes[1], view.sunDirection),
                    MATH::Dot(axes[2], view.sunDirection)};
     const float length = MATH::Length(sun);

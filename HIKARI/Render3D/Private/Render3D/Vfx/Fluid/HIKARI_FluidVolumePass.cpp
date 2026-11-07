@@ -490,7 +490,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         constants.cell[1] = 1.0f / layout.cellSize;
         constants.cell[2] = static_cast<float>(step);
         constants.cell[3] = static_cast<float>(std::fmod(static_cast<double>(stepIndex) * step, 65536.0));
-        constants.motion[0] = authored.boundary == FluidBoundary::Closed ? 1.0f : 0.0f;
+        constants.motion[0] = static_cast<float>(FluidClosedFaces(authored.boundary));
         constants.motion[1] = authored.vorticity;
         constants.motion[2] = authored.buoyancy;
         constants.motion[3] = authored.weight;

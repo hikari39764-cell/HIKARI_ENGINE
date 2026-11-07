@@ -23,12 +23,28 @@ inline constexpr uint32_t kMaximumFluidDomainSubmissionsPerFrame = 64u;
 // 解算と占有の砖块（第 7 步の疎な割り当ての単位）。格子の各辺はこの倍数に丸める。
 inline constexpr uint32_t kFluidBrickCells = 8u;
 
-// 域の境界。Open は外へ流れ出て外の圧力は 0、Closed は壁（法線方向の速度 0、圧力は勾配 0）。
-enum class FluidBoundary : uint8_t { Open, Closed };
+// 域の境界（面ごと。Blender Mantaflow の面ごとの開閉と同じ形）。開いた面は外へ流れ出て外の圧力は 0、閉じた面は壁
+// （法線方向の速度 0、圧力は勾配 0）。Open は全部開く、Closed は全部閉じる、ClosedFloor は底面（域の −y）だけ壁：
+// 下へ押された烟が床に溜まって横へ広がる（地面を這う霧）。OpenTop は上面だけ開く（部屋・器・煙突）。
+enum class FluidBoundary : uint8_t { Open, Closed, ClosedFloor, OpenTop };
 inline constexpr TEXT::EnumName<FluidBoundary> kFluidBoundaryNames[] = {
     {FluidBoundary::Open, "Open"},
     {FluidBoundary::Closed, "Closed"},
+    {FluidBoundary::ClosedFloor, "ClosedFloor"},
+    {FluidBoundary::OpenTop, "OpenTop"},
 };
+// 閉じた面の印（bit 0 −x、1 +x、2 −y、3 +y、4 −z、5 +z）。解算（Render3D_FluidSimulation.hlsl の ClosedFace）と描画の
+// 面の淡出（開いた面だけ）が同じ印を使う。
+inline constexpr uint32_t kFluidAllFaces = 63u;
+constexpr uint32_t FluidClosedFaces(FluidBoundary boundary) noexcept {
+    switch (boundary) {
+    case FluidBoundary::Closed: return kFluidAllFaces;
+    case FluidBoundary::ClosedFloor: return 1u << 2u;
+    case FluidBoundary::OpenTop: return kFluidAllFaces & ~(1u << 3u);
+    case FluidBoundary::Open:
+    default: return 0u;
+    }
+}
 
 // 源の力場の効き方。Acceleration は加速度として足し、TargetVelocity は力場が示す速度へ寄せる（目標速度場）。
 enum class FluidForceMode : uint8_t { Acceleration, TargetVelocity };

@@ -4250,6 +4250,8 @@
     {"ui.inspector.text.Fuel Fraction", "Fuel Fraction"},
     {"ui.inspector.text.Open", "Open"},
     {"ui.inspector.text.Closed", "Closed"},
+    {"ui.inspector.text.ClosedFloor", "Closed floor"},
+    {"ui.inspector.text.OpenTop", "Open top"},
     {"ui.inspector.text.Acceleration", "Acceleration"},
     {"ui.inspector.text.Target Velocity", "Target Velocity"},
     {"ui.vfx.text.Fluid domain", "Fluid domain"},

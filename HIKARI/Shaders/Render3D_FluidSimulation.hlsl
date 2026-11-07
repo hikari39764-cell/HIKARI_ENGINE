@@ -9,7 +9,7 @@ cbuffer FluidDomainCB : register(b0)
 {
     uint4 gSize;          // xyz 格の数、w 源の数
     float4 gCell;         // x 格の大きさ h [m]、y 1/h、z 子步の時間 [s]、w 作り直してからの解算時間 [s]
-    float4 gMotion;       // x 境界（0 開、1 閉）、y 涡度约束、z 浮力（温度 1 あたり）、w 重さ（密度 1 あたり）
+    float4 gMotion;       // x 閉じた面の印（FluidClosedFaces）、y 涡度约束、z 浮力（温度 1 あたり）、w 重さ（密度 1 あたり）
     float4 gDissipation;  // x 密度の消散 [1/s]、y 温度の消散 [1/s]
     float4 gUp;           // xyz 域の局所の上向き
     float4 gInertia;      // xyz 挂点の加速度の逆向き（域の局所 [m/s²]）
@@ -43,15 +43,25 @@ RWByteAddressBuffer gStats : register(u5);
 SamplerState gLinearClamp : register(s0);
 SamplerState gLinearBorder : register(s1);
 
-bool Closed() { return gMotion.x > 0.5f; }
+// 閉じた面（bit 0 −x、1 +x、2 −y、3 +y、4 −z、5 +z）。多重網格のどの段でも同じ印で境界を決める（段ごとに算子が違うと
+// 粗い段の修正が細かい段と食い違って発散する）。
+uint ClosedFaces() { return (uint)(gMotion.x + 0.5f); }
+bool ClosedFace(uint axis, bool upper) { return ((ClosedFaces() >> (axis * 2u + (upper ? 1u : 0u))) & 1u) != 0u; }
+bool AllClosed() { return ClosedFaces() == 63u; }
 bool Combusting() { return gCombustion1.z > 0.5f; }
 
-// 格の中心の烟を格子座標 p で読む（x 密度、yzw 密度 × 色。格ごとの色を持たない域は R16 なので yzw は 0）。閉じた箱は
-// 壁の外を壁の値で延ばし（量を失わない）、開いた境界は外を 0 にする（外から戻ってくる烟は無い）。
+// 格の中心の烟を格子座標 p で読む（x 密度、yzw 密度 × 色。格ごとの色を持たない域は R16 なので yzw は 0）。閉じた面は
+// 壁の外を壁の値で延ばし（量を失わない）、開いた面は外を 0 にする（外から戻ってくる烟は無い）：閉じた面の側だけ p を
+// 端の格の中心へ寄せ、外が 0 の標本器で読む。
 float4 SmokeAt(Texture3D<float4> density, float3 p)
 {
-    if (Closed())
-        return HikariFluidCellAt(density, gLinearClamp, p, float3(gSize.xyz));
+    [unroll] for (uint axis = 0u; axis < 3u; ++axis)
+    {
+        if (ClosedFace(axis, false))
+            p[axis] = max(p[axis], 0.5f);
+        if (ClosedFace(axis, true))
+            p[axis] = min(p[axis], float(gSize[axis]) - 0.5f);
+    }
     return HikariFluidCellAt(density, gLinearBorder, p, float3(gSize.xyz));
 }
 float DensityAt(Texture3D<float4> density, float3 p) { return SmokeAt(density, p).x; }
@@ -647,10 +657,10 @@ void ApplyForcesCS(uint3 id : SV_DispatchThreadID)
 }
 
 // ---------------------------------------------------------------- 圧力
-// 境界の面の速度：閉じた境界の壁は 0、開いた境界は解いた値のまま。
+// 境界の面の速度：閉じた面の壁は 0、開いた面は解いた値のまま。
 float FaceVelocity(Texture3D<float4> velocity, uint3 face, uint axis)
 {
-    if (Closed() && (face[axis] == 0u || face[axis] == gSize[axis]))
+    if ((face[axis] == 0u && ClosedFace(axis, false)) || (face[axis] == gSize[axis] && ClosedFace(axis, true)))
         return 0.0f;
     return velocity.Load(int4(face, 0))[axis];
 }
@@ -668,8 +678,9 @@ void DivergenceCS(uint3 id : SV_DispatchThreadID)
 {
     if (!InsideCells(id))
         return;
-    float expansion = Closed() ? 0.0f : Expansion(DomainPosition(float3(id) + 0.5f));
-    if (!Closed() && Combusting())
+    // 全部の面が閉じた箱は湧き出しを入れない（圧力が勾配 0 だけの境界では湧き出しの総和が 0 でないと解が無い）。
+    float expansion = AllClosed() ? 0.0f : Expansion(DomainPosition(float3(id) + 0.5f));
+    if (!AllClosed() && Combusting())
         expansion += gCombustion1.y * gIn1.Load(int4(id, 0)).y;
     gOut0[id] = (Divergence(gIn0, id) - expansion) * gCell.x * gCell.x;
 }
@@ -688,7 +699,7 @@ void Neighbors(Texture3D<float4> pressure, RWTexture3D<float4> pressureRw, bool 
         const int3 neighbor = cell + offset;
         if (any(neighbor < 0) || any(neighbor >= size))
         {
-            count += Closed() ? 0.0f : 2.0f;
+            count += ClosedFace(n >> 1u, (n & 1u) != 0u) ? 0.0f : 2.0f;
             continue;
         }
         sum += useRw ? pressureRw[neighbor].x : pressure.Load(int4(neighbor, 0)).x;
@@ -738,8 +749,9 @@ float CoarseCorrection(int3 c, int3 size)
     {
         if (c[axis] < 0 || c[axis] >= size[axis])
         {
+            const bool upper = c[axis] >= size[axis];
             c[axis] = clamp(c[axis], 0, size[axis] - 1);
-            sign = Closed() ? sign : -sign;
+            sign = ClosedFace(axis, upper) ? sign : -sign;
         }
     }
     return sign * gIn0.Load(int4(c, 0)).x;
@@ -790,7 +802,7 @@ void CoarsestSolveCS(uint3 id : SV_GroupThreadID)
                 neighbor[n >> 1u] += (n & 1u) != 0u ? 1 : -1;
                 if (any(neighbor < 0) || any(neighbor >= size))
                 {
-                    count += Closed() ? 0.0f : 2.0f;
+                    count += ClosedFace(n >> 1u, (n & 1u) != 0u) ? 0.0f : 2.0f;
                     continue;
                 }
                 sum += gCoarse[neighbor.x + 8 * (neighbor.y + 8 * neighbor.z)];
@@ -822,8 +834,7 @@ void ProjectCS(uint3 id : SV_DispatchThreadID)
         extent[axis] += 1;
         if (any(int3(id) >= extent))
             continue;
-        const bool wall = id[axis] == 0u || int(id[axis]) == size[axis];
-        if (Closed() && wall)
+        if ((id[axis] == 0u && ClosedFace(axis, false)) || (int(id[axis]) == size[axis] && ClosedFace(axis, true)))
         {
             velocity[axis] = 0.0f;
             continue;

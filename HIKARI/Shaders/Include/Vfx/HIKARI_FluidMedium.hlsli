@@ -38,13 +38,22 @@ float2 HikariFluidBoxInterval(float3 origin, float3 direction, float3 cells)
 
 bool HikariFluidInside(float3 grid, float3 cells) { return all(grid >= 0.0f) && all(grid <= cells); }
 
-// 開いた境界の域は外へ出ていく烟が域の面で切れて箱の形が見えないよう、面に近い格で密度を 0 へ寄せる。
+// 開いた面から外へ出ていく烟が面で切れて箱の形が見えないよう、開いた面に近い 4 格で密度を 0 へ寄せる。detail.z は
+// 開いた面の印（bit 0 −x、1 +x、2 −y、3 +y、4 −z、5 +z）。閉じた面（床・壁）の近くは消さない。
 float HikariFluidEdgeFade(HikariFluidDomain domain, float3 grid)
 {
-    if (domain.detail.z <= 0.0f)
+    const uint open = (uint)(domain.detail.z + 0.5f);
+    if (open == 0u)
         return 1.0f;
-    const float3 edge = min(grid, domain.cells.xyz - grid);
-    return smoothstep(0.0f, domain.detail.z, min(edge.x, min(edge.y, edge.z)));
+    float edge = 4.0f;
+    [unroll] for (uint axis = 0u; axis < 3u; ++axis)
+    {
+        if (((open >> (axis * 2u)) & 1u) != 0u)
+            edge = min(edge, grid[axis]);
+        if (((open >> (axis * 2u + 1u)) & 1u) != 0u)
+            edge = min(edge, domain.cells[axis] - grid[axis]);
+    }
+    return smoothstep(0.0f, 4.0f, edge);
 }
 
 // 何度も散乱して届く光の割合（拡散近似）：光学的な厚さ τ の烟を、まっすぐ来る光は exp(-τ) しか通らないが、散乱を

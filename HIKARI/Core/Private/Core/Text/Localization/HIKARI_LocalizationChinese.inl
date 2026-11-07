@@ -3865,6 +3865,8 @@
     {"ui.inspector.text.Fuel Fraction", "燃料比例"},
     {"ui.inspector.text.Open", "开放"},
     {"ui.inspector.text.Closed", "封闭"},
+    {"ui.inspector.text.ClosedFloor", "底面封闭"},
+    {"ui.inspector.text.OpenTop", "只开顶面"},
     {"ui.inspector.text.Acceleration", "加速度"},
     {"ui.inspector.text.Target Velocity", "目标速度"},
     {"ui.vfx.text.Fluid domain", "流体域"},
