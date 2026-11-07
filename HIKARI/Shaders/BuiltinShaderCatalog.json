@@ -4370,6 +4370,18 @@
           "profile": "cs_6_0"
         },
         {
+          "id": "EventClearCS",
+          "stage": "Compute",
+          "entry": "EventClearCS",
+          "profile": "cs_6_0"
+        },
+        {
+          "id": "EventSpawnCS",
+          "stage": "Compute",
+          "entry": "EventSpawnCS",
+          "profile": "cs_6_0"
+        },
+        {
           "id": "ResetCS",
           "stage": "Compute",
           "entry": "ResetCS",
@@ -4393,8 +4405,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.ParticleSimulation.Root",
-        "rootLayoutVersion": 3,
-        "rootLayoutHash": "cf97c6308bf227b3c8ea3975289e21d9fb384eaa720aaf6ae8cc6c8f2546e956",
+        "rootLayoutVersion": 4,
+        "rootLayoutHash": "64e7c7b7cf7c5a5f9d860955cddec6c029d96434920ac4728cda800350d47be5",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

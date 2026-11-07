@@ -420,6 +420,14 @@ bool IsValidEmitterSimulation(const VfxProgram& program, const VfxProgramEmitter
            simulation.collisionThickness >= 0.01f && simulation.collisionThickness <= 10.0f &&
            IsFinite(simulation.restitution) && simulation.restitution >= 0.0f && simulation.restitution <= 1.0f &&
            IsFinite(simulation.friction) && simulation.friction >= 0.0f && simulation.friction <= 1.0f &&
+           simulation.eventKinds <= 3u && IsFinite(simulation.eventImpactThreshold) &&
+           simulation.eventImpactThreshold >= 0.0f &&
+           (simulation.eventSourceEmitter == UINT32_MAX ||
+            (simulation.eventSourceEmitter < program.emitters.size() && simulation.eventKind <= 1u &&
+             simulation.particlesPerEvent >= 1u && simulation.particlesPerEvent <= 16u &&
+             IsFinite(simulation.inheritVelocity) && simulation.inheritVelocity >= 0.0f &&
+             simulation.inheritVelocity <= 2.0f && IsFinite(simulation.minimumImpactSpeed) &&
+             simulation.minimumImpactSpeed >= 0.0f)) &&
            IsValidAnimated(simulation.color) && IsFinite(emitter.spawnRatePerSecond) &&
            emitter.spawnRatePerSecond >= 0.0f && overrides.enabled <= 1u && IsFinite(overrides.spawnRateMultiplier) &&
            IsFinite(overrides.radialSpeedMultiplier) && IsFinite(overrides.scaleMultiplier) &&

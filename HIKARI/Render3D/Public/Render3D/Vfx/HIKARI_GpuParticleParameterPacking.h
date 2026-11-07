@@ -73,6 +73,10 @@ struct alignas(16) GpuParticleEmitterParameters {
 inline GpuParticleFloat4 MakeGpuParticleFloat4(float x, float y, float z, float w) noexcept { return {x, y, z, w}; }
 
 GpuParticleEmitterParameters BuildGpuParticleEmitterParameters(const ParticleEmitterSubmission& submission);
+// このフレームの事件の区（producer はこの層が書く区、consumer はこの層を生成する事件の区、無ければ UINT32_MAX）と、
+// 事件で生成する層の GPU の游標の番号を書き込む。
+void SetGpuParticleEventRegions(GpuParticleEmitterParameters& parameters, uint32_t producerRegion,
+                                uint32_t consumerRegion, uint32_t cursor) noexcept;
 
 static_assert(sizeof(GpuParticleSpatialEffect) == 112u);
 static_assert(sizeof(GpuParticleShapeState) == 96u + 112u * kMaximumParticleSpatialEffects);

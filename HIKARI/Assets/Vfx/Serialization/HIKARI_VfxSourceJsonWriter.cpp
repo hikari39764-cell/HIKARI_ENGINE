@@ -1,4 +1,5 @@
 #include "Assets/Vfx/Serialization/HIKARI_VfxSourceJsonInternal.h"
+#include "Assets/Vfx/HIKARI_VfxEnumNames.h"
 
 #include <algorithm>
 #include <utility>
@@ -374,6 +375,11 @@ Json WriteEmitter(const VfxEmitterData& emitter) {
                   {"burstTimeline", std::move(burstTimeline)},
                   {"capacityMode", ToString(emitter.spawn.capacityMode)},
                   {"maximumParticles", emitter.spawn.maximumParticles},
+                  {"eventSourceLayerId", emitter.spawn.eventSourceLayerId},
+                  {"eventKind", TEXT::EnumToName(kVfxParticleEventKindNames, emitter.spawn.eventKind)},
+                  {"particlesPerEvent", emitter.spawn.particlesPerEvent},
+                  {"inheritVelocity", emitter.spawn.inheritVelocity},
+                  {"minimumImpactSpeed", emitter.spawn.minimumImpactSpeed},
               }},
              {"shape",
               {

@@ -252,6 +252,18 @@ struct ParticleEmitterSimulationParameters {
     float collisionThickness = 0.5f;
     float restitution = 0.35f;
     float friction = 0.2f;
+    // 粒子の事件（VfxSpawnModuleData::eventSourceLayerId）。eventKinds はこの層が出す事件（bit 0 碰撞、bit 1 寿命切れ。
+    // この層を元にする層がある種類だけ）、eventImpactThreshold はこれより遅い碰撞を書かない（この層の碰撞から生成する層の
+    // 最小の速さの最も小さい値。止まった粒子が毎フレーム床に触れて区を埋めない）。eventSourceEmitter は同じ特效の中で
+    // この層を生成する元の層の添字（無ければ UINT32_MAX）、eventKind は 0 碰撞・1 寿命切れ、1 事件あたり
+    // particlesPerEvent 個、速度の受け継ぎ、碰撞の最小の速さ。
+    uint32_t eventKinds = 0u;
+    float eventImpactThreshold = 0.0f;
+    uint32_t eventSourceEmitter = UINT32_MAX;
+    uint32_t eventKind = 0u;
+    uint32_t particlesPerEvent = 0u;
+    float inheritVelocity = 0.0f;
+    float minimumImpactSpeed = 0.0f;
     HIKARI::RENDER3D::PARTICLES::ParticleForceField field{};
     MATH::Vec3 gravity{0.0f, 0.0f, 0.0f};
     float drag = 0.0f;

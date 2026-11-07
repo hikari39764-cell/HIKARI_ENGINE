@@ -122,4 +122,20 @@ void VfxInspectorPropertyEditor::Choice(const char* label, std::string_view prop
     ImGui::EndCombo();
 }
 
+void VfxInspectorPropertyEditor::LabeledChoice(const char* label, std::string_view propertyId, std::string_view current,
+                                               std::span<const std::string> values,
+                                               std::span<const std::string> labels) {
+    std::string currentLabel(current);
+    for (size_t index = 0u; index < values.size() && index < labels.size(); ++index)
+        if (values[index] == current)
+            currentLabel = labels[index];
+    if (!ImGui::BeginCombo(VfxUiText(label).c_str(), currentLabel.c_str()))
+        return;
+    for (size_t index = 0u; index < values.size() && index < labels.size(); ++index) {
+        if (ImGui::Selectable(labels[index].c_str(), values[index] == current))
+            Set(propertyId, values[index], false);
+    }
+    ImGui::EndCombo();
+}
+
 } // namespace HIKARI::EDITOR

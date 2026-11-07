@@ -29,6 +29,9 @@ static const uint HIKARI_PARTICLE_FIXED = 3u;
 
 ByteAddressBuffer gEmitterData : register(t0);
 RWStructuredBuffer<Particle> gParticles : register(u0);
+// 粒子の事件（HIKARI_ParticleEmitterLayout.hlsli の EVENT_* の並び）：UpdateCS が碰撞・寿命切れを区へ書き、全ての層を
+// 進めた後に EventSpawnCS がそれを読んで生成する（Niagara の GPU 事件、Unity VFX Graph の GPU Event と同じ流れ）。
+RWByteAddressBuffer gEvents : register(u2);
 
 cbuffer SimulationConstants : register(b0)
 {
@@ -134,9 +137,12 @@ float3 CollisionSurface(int2 texel, out bool valid)
 }
 
 // 粒子を上一帧の視图へ投影し、面より奥で thickness 以内なら面の上へ戻して面の法線で跳ね返す。法線は隣の texel の世界位置
-// （左右・上下のうち深度の差が小さい側。物体の縁で奥の面を拾わない）の外積。戻り値は碰撞したか。
-bool CollideSceneDepth(inout float3 position, inout float3 velocity, float thickness, float restitution, float friction)
+// （左右・上下のうち深度の差が小さい側。物体の縁で奥の面を拾わない）の外積。戻り値は碰撞したか、impactSpeed は面へ
+// 向かっていた速さ。
+bool CollideSceneDepth(inout float3 position, inout float3 velocity, float thickness, float restitution, float friction,
+                       out float impactSpeed)
 {
+    impactSpeed = 0.0f;
     if (gCollisionCamera.w <= 0.0f)
         return false;
     // 相機を原点にして投影・還元する（大きな座標の場面でも面の位置と法線が揺れない。流体の視線と同じ）。
@@ -178,6 +184,7 @@ bool CollideSceneDepth(inout float3 position, inout float3 velocity, float thick
     relative -= normal * (signedDistance - 0.01f);
     position = gCollisionCamera.xyz + relative;
     const float into = dot(velocity, normal);
+    impactSpeed = max(-into, 0.0f);
     const float3 along = velocity - normal * into;
     velocity = along * (1.0f - saturate(friction)) + normal * (into < 0.0f ? -into * saturate(restitution) : into);
     return true;
@@ -660,6 +667,39 @@ void EvaluateParticlePresentation(
         asuint(easingB.w)) * LoadEmitterValue(emitterIndex, 6u);
 }
 
+// 局部模拟の粒子の速度を世界へ（事件は世界の位置と速度で書く）。
+float3 ParticleWorldVelocity(uint emitterIndex, float3 velocity)
+{
+    if ((asuint(LoadEmitterValue(emitterIndex, 14u).w) & 1u) == 0u)
+        return velocity;
+    return RotateByQuaternion(velocity * LoadEmitterValue(emitterIndex, 2u).xyz, LoadEmitterValue(emitterIndex, 1u));
+}
+
+// この層が書く区へ事件を足す（区が満ちたら捨てる）。kind 0 碰撞（impactSpeed は面へ向かっていた速さ）、1 寿命切れ。
+void AppendParticleEvent(uint kind, float3 position, float3 velocity, float impactSpeed)
+{
+    const float4 events = LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_EVENTS);
+    const uint region = asuint(events.x);
+    if (region == 0u || (asuint(events.y) & (1u << kind)) == 0u || (kind == 0u && impactSpeed < events.z))
+        return;
+    const uint regionBase = (region - 1u) * HIKARI_PARTICLE_EVENT_REGION_BYTES;
+    uint index;
+    gEvents.InterlockedAdd(regionBase, 1u, index);
+    if (index >= HIKARI_PARTICLE_EVENTS_PER_REGION)
+        return;
+    const uint at = regionBase + 16u + index * 32u;
+    gEvents.Store4(at, uint4(asuint(position), kind));
+    gEvents.Store4(at + 16u, uint4(asuint(velocity), asuint(impactSpeed)));
+}
+
+// フレームの初めに全ての区の数を 0 にする（どの層も進める前に一度）。
+[numthreads(64, 1, 1)]
+void EventClearCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    if (dispatchThreadId.x < HIKARI_PARTICLE_EVENT_REGIONS)
+        gEvents.Store(dispatchThreadId.x * HIKARI_PARTICLE_EVENT_REGION_BYTES, 0u);
+}
+
 [numthreads(64, 1, 1)]
 void ResetCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
@@ -705,6 +745,8 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     particle.positionAge.w += dt;
     if (particle.positionAge.w >= particle.velocityLifetime.w)
     {
+        AppendParticleEvent(1u, particle.positionAge.xyz, ParticleWorldVelocity(gEmitterIndex,
+                            particle.velocityLifetime.xyz), 0.0f);
         particle.velocityLifetime.w = 0.0f;
         particle.color.a = 0.0f;
         gParticles[particleIndex] = particle;
@@ -738,6 +780,9 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         ? step * (1.0f - x * 0.5f + x*x / 6.0f) : (1.0f - damping) / drag;
     const float accelerationIntegral = x < 1.0e-3f
         ? step*step * (0.5f - x / 6.0f + x*x / 24.0f) : (step - velocityIntegral) / drag;
+    // このフレームで一番強く当たった碰撞（面へ向かっていた速さ）と、その直後の速度。
+    float impact = -1.0f;
+    float3 impactVelocity = 0.0f;
     for (uint index=0u; index<steps; ++index)
     {
         float3 acceleration=gravity;
@@ -754,38 +799,43 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         particle.velocityLifetime.xyz = particle.velocityLifetime.xyz * damping + acceleration * velocityIntegral;
         if (collide && particle.physicsPositionSeed.y < collision.x)
         {
+            const float into = max(-particle.velocityLifetime.y, 0.0f);
             particle.physicsPositionSeed.y = collision.x;
             if (particle.velocityLifetime.y < 0.0f)
                 particle.velocityLifetime.y *= -saturate(collision.y);
             particle.velocityLifetime.xz *= 1.0f-saturate(collision.z);
+            if (into > impact)
+            {
+                impact = into;
+                impactVelocity = particle.velocityLifetime.xyz;
+            }
         }
         if (depthCollide)
         {
             float3 velocity = particle.velocityLifetime.xyz;
-            if (CollideSceneDepth(particle.physicsPositionSeed.xyz, velocity, fieldTime.z, collision.y, collision.z))
+            float into;
+            if (CollideSceneDepth(particle.physicsPositionSeed.xyz, velocity, fieldTime.z, collision.y, collision.z,
+                                  into))
+            {
                 particle.velocityLifetime.xyz = velocity;
+                if (into > impact)
+                {
+                    impact = into;
+                    impactVelocity = velocity;
+                }
+            }
         }
     }
     EvaluateParticlePresentation(gEmitterIndex, particle);
+    if (impact >= 0.0f)
+        AppendParticleEvent(0u, particle.positionAge.xyz, ParticleWorldVelocity(gEmitterIndex, impactVelocity), impact);
     gParticles[particleIndex] = particle;
 }
 
-[numthreads(64, 1, 1)]
-void SpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+// 発射器の形と分布から粒子を一つ作る。fromEvent の時は形の中心を事件の位置に置き、事件の速度を EVENT_SPAWN.x の割合で
+// 受け継ぐ（局部模拟の層は発射器の変換を戻した位置と速度で持つ）。
+Particle MakeSpawnedParticle(uint particleSeed, bool fromEvent, float3 eventPosition, float3 eventVelocity)
 {
-    if (dispatchThreadId.x >= gSpawnCount || gParticleCapacity == 0u)
-    {
-        return;
-    }
-
-    if (asuint(LoadEmitterValue(gEmitterIndex, 10u).w) == 0u)
-    {
-        return;
-    }
-    uint particleSlot =
-        (gSpawnCursor + dispatchThreadId.x) % gParticleCapacity;
-    uint particleSeed = Hash(
-        gRandomSeed ^ (particleSlot * 747796405u));
     float3 localPosition = 0.0f;
     float3 localDirection = float3(0.0f, 1.0f, 0.0f);
     float4 shapeParameters = LoadEmitterValue(gEmitterIndex, 4u);
@@ -935,10 +985,14 @@ void SpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     }
 
     float4 rotation = LoadEmitterValue(gEmitterIndex, 1u);
-    const float3 simulationPosition = localPosition;
+    float3 simulationPosition = localPosition;
     localPosition *= emitterScale.xyz;
-    float3 worldPosition = emitterOrigin.xyz +
+    float3 worldPosition = (fromEvent ? eventPosition : emitterOrigin.xyz) +
         RotateByQuaternion(localPosition, rotation);
+    const float4 inverseRotation = float4(-rotation.xyz, rotation.w);
+    const float3 safeScale = lerp(1.0f, emitterScale.xyz, (float3)(abs(emitterScale.xyz) > 1.0e-6f));
+    if (fromEvent)
+        simulationPosition = RotateByQuaternion(worldPosition - emitterOrigin.xyz, inverseRotation) / safeScale;
     float3 worldDirection = normalize(
         RotateByQuaternion(localDirection, rotation));
     float4 lifetimeAndSpeed = LoadEmitterValue(gEmitterIndex, 3u);
@@ -964,13 +1018,58 @@ void SpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     Particle particle = (Particle)0;
     const bool localSimulation = (asuint(LoadEmitterValue(gEmitterIndex,14u).w)&1u)!=0u;
+    float3 velocity = (localSimulation ? localDirection : worldDirection) * speed;
+    if (fromEvent)
+    {
+        const float3 inherited = eventVelocity * LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_EVENT_SPAWN).x;
+        velocity += localSimulation ? RotateByQuaternion(inherited, inverseRotation) / safeScale : inherited;
+    }
     particle.positionAge = float4(worldPosition,0.0f);
-    particle.velocityLifetime = float4((localSimulation ? localDirection : worldDirection)*speed,max(lifetime,0.0001f));
+    particle.velocityLifetime = float4(velocity,max(lifetime,0.0001f));
     particle.physicsPositionSeed = float4(localSimulation ? simulationPosition : worldPosition,asfloat(particleSeed));
     particle.birthRotation = rotation;
     particle.birthScale = emitterScale;
     EvaluateParticlePresentation(gEmitterIndex, particle);
-    uint particleIndex = gParticleOffset +
-        particleSlot;
-    gParticles[particleIndex] = particle;
+    return particle;
+}
+
+[numthreads(64, 1, 1)]
+void SpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    if (dispatchThreadId.x >= gSpawnCount || gParticleCapacity == 0u ||
+        asuint(LoadEmitterValue(gEmitterIndex, 10u).w) == 0u)
+        return;
+    const uint particleSlot = (gSpawnCursor + dispatchThreadId.x) % gParticleCapacity;
+    const uint particleSeed = Hash(gRandomSeed ^ (particleSlot * 747796405u));
+    gParticles[gParticleOffset + particleSlot] = MakeSpawnedParticle(particleSeed, false, 0.0f, 0.0f);
+}
+
+// 元の層の区の事件を読み、一つの事件あたり EVENT_SPAWN.z >> 8 個を生成する（線程は 事件 × 個数）。槽はこの層の GPU の
+// 游標を原子的に進めて取る（同じフレームの事件の数は CPU に分からないため）。
+[numthreads(64, 1, 1)]
+void EventSpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    if (gParticleCapacity == 0u || asuint(LoadEmitterValue(gEmitterIndex, 10u).w) == 0u)
+        return;
+    const uint region = asuint(LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_EVENTS).w);
+    const float4 spawn = LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_EVENT_SPAWN);
+    const uint kind = asuint(spawn.z) & 255u;
+    const uint perEvent = max(asuint(spawn.z) >> 8u, 1u);
+    const uint eventIndex = dispatchThreadId.x / perEvent;
+    if (region == 0u || eventIndex >= HIKARI_PARTICLE_EVENTS_PER_REGION)
+        return;
+    const uint regionBase = (region - 1u) * HIKARI_PARTICLE_EVENT_REGION_BYTES;
+    if (eventIndex >= min(gEvents.Load(regionBase), HIKARI_PARTICLE_EVENTS_PER_REGION))
+        return;
+    const uint at = regionBase + 16u + eventIndex * 32u;
+    const uint4 positionKind = gEvents.Load4(at);
+    const float4 velocityImpact = asfloat(gEvents.Load4(at + 16u));
+    if (positionKind.w != kind || (kind == 0u && velocityImpact.w < spawn.y))
+        return;
+    uint cursor;
+    gEvents.InterlockedAdd(HIKARI_PARTICLE_EVENT_CURSOR_OFFSET + asuint(spawn.w) * 4u, 1u, cursor);
+    const uint particleSlot = cursor % gParticleCapacity;
+    const uint particleSeed = Hash(gRandomSeed ^ (particleSlot * 747796405u) ^ (dispatchThreadId.x * 2891336453u));
+    gParticles[gParticleOffset + particleSlot] =
+        MakeSpawnedParticle(particleSeed, true, asfloat(positionKind.xyz), velocityImpact.xyz);
 }

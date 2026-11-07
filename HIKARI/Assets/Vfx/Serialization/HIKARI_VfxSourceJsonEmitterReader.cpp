@@ -248,7 +248,12 @@ bool ReadHistory(const Json& node, VfxHistoryData& history) {
 bool ReadSpawn(const Json& node, VfxSpawnModuleData& spawn) {
     if (!RequiredFloat(node, "ratePerSecond", spawn.ratePerSecond) ||
         !RequiredEnum(node, "capacityMode", kVfxParticleCapacityModeNames, spawn.capacityMode) ||
-        !RequiredUint32(node, "maximumParticles", spawn.maximumParticles)) {
+        !RequiredUint32(node, "maximumParticles", spawn.maximumParticles) ||
+        !OptionalString(node, "eventSourceLayerId", spawn.eventSourceLayerId) ||
+        !OptionalEnum(node, "eventKind", kVfxParticleEventKindNames, spawn.eventKind) ||
+        !OptionalUint32(node, "particlesPerEvent", spawn.particlesPerEvent) ||
+        !OptionalFloat(node, "inheritVelocity", spawn.inheritVelocity) ||
+        !OptionalFloat(node, "minimumImpactSpeed", spawn.minimumImpactSpeed)) {
         return false;
     }
     const auto timeline = node.find("burstTimeline");

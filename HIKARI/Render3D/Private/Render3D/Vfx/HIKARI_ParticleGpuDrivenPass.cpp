@@ -79,6 +79,9 @@ struct EmitterAllocation {
     uint64_t lastSimulatedFrame = (std::numeric_limits<uint64_t>::max)();
     uint32_t highestSimulationOrdinal = 0u;
     bool simulatedThisFrame = false;
+    // 事件で生成する層の GPU の游標の番号（使う時に割り当て、割り当てを返す時に戻す）と、事件で生成したフレーム。
+    uint32_t eventCursor = UINT32_MAX;
+    uint64_t eventSpawnFrame = (std::numeric_limits<uint64_t>::max)();
 };
 
 struct DrawItem {
@@ -165,6 +168,18 @@ struct ParticleGpuDrivenPass::Impl {
     // 場景深度碰撞：主視图の透明の段で撮った深度の視图（次のフレームの模拟が b2 で読む）と、撮ったフレーム。
     INTERNAL::GpuParticleCollisionView collisionView{};
     uint64_t collisionCaptureFrame = (std::numeric_limits<uint64_t>::max)();
+    // 粒子の事件：このフレームに事件の区を振った層（区の番号は並びの位置）、区を清めたフレーム、事件で生成する層の游標の
+    // 空き番号と次に配る番号、全ての層を進めた後に派発する事件の生成。
+    std::vector<ParticleEmitterInstanceKey> eventRegions{};
+    uint64_t eventClearFrame = (std::numeric_limits<uint64_t>::max)();
+    std::vector<uint32_t> freeEventCursors{};
+    uint32_t nextEventCursor = 0u;
+    struct EventSpawn {
+        GpuParticleSimulationConstants constants{};
+        uint32_t threads = 0u;
+        D3D12_GPU_VIRTUAL_ADDRESS emitterAddress = 0u;
+    };
+    std::vector<EventSpawn> eventSpawns{};
     // 碰撞の視図の定数を書いたフレーム。同じフレームの二つ目の視図は書かない（常駐の定数は GPU が最後の値を読むので、
     // 先の視図が撮った後に書くと先の視図の模拟まで「碰撞しない」になる）。
     uint64_t collisionViewFrame = (std::numeric_limits<uint64_t>::max)();
@@ -345,10 +360,31 @@ struct ParticleGpuDrivenPass::Impl {
         freeRanges = std::move(merged);
     }
 
+    uint32_t RegionOf(const ParticleEmitterInstanceKey& key) const noexcept {
+        const auto found = std::find(eventRegions.begin(), eventRegions.end(), key);
+        return found == eventRegions.end() ? UINT32_MAX : static_cast<uint32_t>(found - eventRegions.begin());
+    }
+
+    uint32_t AcquireEventCursor() noexcept {
+        if (!freeEventCursors.empty()) {
+            const uint32_t cursor = freeEventCursors.back();
+            freeEventCursors.pop_back();
+            return cursor;
+        }
+        return nextEventCursor < INTERNAL::HIKARI_PARTICLE_EVENT_CURSORS ? nextEventCursor++ : UINT32_MAX;
+    }
+
+    void ReturnEventCursor(EmitterAllocation& allocation) {
+        if (allocation.eventCursor != UINT32_MAX)
+            freeEventCursors.push_back(allocation.eventCursor);
+        allocation.eventCursor = UINT32_MAX;
+    }
+
     void ReleaseAllocation(const ParticleEmitterInstanceKey& key) {
         const auto found = allocations.find(key);
         if (found == allocations.end())
             return;
+        ReturnEventCursor(found->second);
         freeRanges.push_back({found->second.offset, found->second.reservedCapacity});
         allocations.erase(found);
         drawBuffersValid = false;
@@ -363,6 +399,7 @@ struct ParticleGpuDrivenPass::Impl {
                 ++allocation;
                 continue;
             }
+            ReturnEventCursor(allocation->second);
             freeRanges.push_back({allocation->second.offset, allocation->second.reservedCapacity});
             allocation = allocations.erase(allocation);
         }
@@ -452,7 +489,13 @@ struct ParticleGpuDrivenPass::Impl {
         context.cmdList->SetComputeRootConstantBufferView(9u, collisionViewAddress != 0u ? collisionViewAddress
                                                                                          : emitterAddress);
         context.cmdList->SetComputeRootDescriptorTable(10u, storage.GetNullCollisionDepthUav());
+        context.cmdList->SetComputeRootUnorderedAccessView(11u, storage.GetEventGpuAddress());
         context.cmdList->Dispatch(DispatchGroupCount(threadCount), 1u, 1u);
+    }
+
+    void InsertGlobalUavBarrier() const {
+        const D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
+        context.cmdList->ResourceBarrier(1u, &barrier);
     }
 
     // 視図の深度を半解像度の碰撞深度へ撮り、その視图を次のフレームの模拟へ残す（1 フレームに最初の 1 度）。深度は透明の段で
@@ -483,6 +526,7 @@ struct ParticleGpuDrivenPass::Impl {
         context.cmdList->SetComputeRootDescriptorTable(8u, bindings.sceneDepth);
         context.cmdList->SetComputeRootConstantBufferView(9u, anyBuffer);
         context.cmdList->SetComputeRootDescriptorTable(10u, storage.GetCollisionDepthUav());
+        context.cmdList->SetComputeRootUnorderedAccessView(11u, storage.GetEventGpuAddress());
         context.cmdList->Dispatch((width + 7u) / 8u, (height + 7u) / 8u, 1u);
         storage.TransitionCollisionDepth(context, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         collisionView.viewProj = bindings.collisionViewProj;
@@ -697,6 +741,19 @@ struct ParticleGpuDrivenPass::Impl {
                 view.camera.w = 0.0f;
             storage.WriteCollisionView(frameResourceIndex, view);
         }
+        // 粒子の事件：事件を出す層へこのフレームの区を順に振る（事件で生成する層は元の層の区を読む）。区の数はフレームに一度
+        // だけ、どの層も進める前に清める（同じフレームの二つ目の視図は層を進めないので事件を出さない）。
+        eventRegions.clear();
+        eventSpawns.clear();
+        for (const ParticleEmitterSubmission& submission : input.emitters)
+            if (submission.simulation.eventKinds != 0u && eventRegions.size() < INTERNAL::HIKARI_PARTICLE_EVENT_REGIONS)
+                eventRegions.push_back(submission.key);
+        if (!eventRegions.empty() && eventClearFrame != frameSerial) {
+            eventClearFrame = frameSerial;
+            DispatchSimulation(INTERNAL::kParticleEventClearPipeline, {}, INTERNAL::HIKARI_PARTICLE_EVENT_REGIONS,
+                               storage.GetParticleGpuAddress());
+            InsertGlobalUavBarrier();
+        }
         std::unordered_map<ParticleEmitterInstanceKey, size_t, ParticleEmitterInstanceKeyHasher> drawItemIndices{};
         uint64_t layoutVersion = 1469598103934665603ull;
         uint64_t materialVersion = 1099511628211ull;
@@ -733,7 +790,17 @@ struct ParticleGpuDrivenPass::Impl {
                 storage.Transition(context, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
                 const INTERNAL::GpuParticleEmitterUploadAddress address =
                     INTERNAL::ResolveGpuParticleEmitterUploadAddress(emitterUploadIndex, emitterPageCapacity);
-                const GpuParticleEmitterParameters parameters = BuildGpuParticleEmitterParameters(submission);
+                GpuParticleEmitterParameters parameters = BuildGpuParticleEmitterParameters(submission);
+                const uint32_t producerRegion = RegionOf(submission.key);
+                const ParticleEmitterInstanceKey sourceKey{
+                    submission.key.playbackNamespace, submission.key.playbackSlot, submission.key.playbackGeneration,
+                    submission.simulation.eventSourceEmitter};
+                const uint32_t consumerRegion =
+                    submission.simulation.eventSourceEmitter != UINT32_MAX ? RegionOf(sourceKey) : UINT32_MAX;
+                if (consumerRegion != UINT32_MAX && allocation->eventCursor == UINT32_MAX)
+                    allocation->eventCursor = AcquireEventCursor();
+                INTERNAL::SetGpuParticleEventRegions(parameters, producerRegion, consumerRegion,
+                                                     allocation->eventCursor);
                 if (!storage.WriteEmitterParameters(context.device, frameResourceIndex, address, parameters) ||
                     !SimulateEmitter(submission, *allocation, reset || allocation->resetPending, emitterUploadIndex,
                                      frameResourceIndex)) {
@@ -745,6 +812,21 @@ struct ParticleGpuDrivenPass::Impl {
                 allocation->simulatedThisFrame = true;
                 allocation->highestSimulationOrdinal = submission.simulationOrdinal;
                 allocation->resetPending = false;
+                // 事件で生成する層：全ての層を進めて事件が揃ってから生成する（下で派発）。
+                if (consumerRegion != UINT32_MAX && allocation->eventCursor != UINT32_MAX &&
+                    allocation->eventSpawnFrame != frameSerial) {
+                    allocation->eventSpawnFrame = frameSerial;
+                    EventSpawn spawn{};
+                    spawn.constants.particleOffset = allocation->offset;
+                    spawn.constants.particleCapacity = allocation->activeCapacity;
+                    spawn.constants.emitterIndex = address.elementIndex;
+                    spawn.constants.randomSeed =
+                        submission.randomSeed ^ static_cast<uint32_t>(frameSerial * 2654435761ull);
+                    spawn.threads = INTERNAL::HIKARI_PARTICLE_EVENTS_PER_REGION *
+                                    (std::max)(submission.simulation.particlesPerEvent, 1u);
+                    spawn.emitterAddress = storage.GetEmitterUploadGpuAddress(frameResourceIndex, address.pageIndex);
+                    eventSpawns.push_back(spawn);
+                }
                 simulatedAny = true;
             } else if (!hasSimulationWork) {
                 ++stats.simulationSkippedEmitters;
@@ -768,6 +850,13 @@ struct ParticleGpuDrivenPass::Impl {
             } else {
                 drawItems[existing->second] = std::move(item);
             }
+        }
+        if (!eventSpawns.empty()) {
+            InsertGlobalUavBarrier();
+            for (const EventSpawn& spawn : eventSpawns)
+                DispatchSimulation(INTERNAL::kParticleEventSpawnPipeline, spawn.constants, spawn.threads,
+                                   spawn.emitterAddress);
+            InsertGlobalUavBarrier();
         }
         stats.simulationAccepted = simulationAccepted;
         if (simulationAccepted) {

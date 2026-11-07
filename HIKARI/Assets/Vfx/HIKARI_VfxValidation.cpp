@@ -536,6 +536,29 @@ void ValidateConnectAndMeshOutput(const VfxAssetData& asset, const VfxEmitterDat
     }
 }
 
+// 事件で生成する層：元は別の粒子層、自分は世界空間の粒子層、数と割合は範囲の中。
+void ValidateParticleEvents(const VfxEmitterData& emitter,
+                            const std::unordered_map<std::string, const VfxEmitterData*>& emitters,
+                            std::vector<VfxDiagnostic>& diagnostics) {
+    const VfxSpawnModuleData& spawn = emitter.spawn;
+    if (spawn.eventSourceLayerId.empty())
+        return;
+    const auto source = emitters.find(spawn.eventSourceLayerId);
+    if (source == emitters.end() || source->second->kind != VfxLayerKind::Particles ||
+        spawn.eventSourceLayerId == emitter.id)
+        AddError(diagnostics, "Vfx.InvalidEventSource", "particle events must come from another particle layer",
+                 emitter.id);
+    if (emitter.kind != VfxLayerKind::Particles || emitter.basic.localSimulation)
+        AddError(diagnostics, "Vfx.InvalidEventLayer",
+                 "a layer spawned from particle events must be world-space particles", emitter.id);
+    if (!TEXT::IsNamedEnum(kVfxParticleEventKindNames, spawn.eventKind) || spawn.particlesPerEvent == 0u ||
+        spawn.particlesPerEvent > kVfxParticlesPerEventMax || !std::isfinite(spawn.inheritVelocity) ||
+        spawn.inheritVelocity < 0.0f || spawn.inheritVelocity > 2.0f || !std::isfinite(spawn.minimumImpactSpeed) ||
+        spawn.minimumImpactSpeed < 0.0f || spawn.minimumImpactSpeed > 100.0f)
+        AddError(diagnostics, "Vfx.InvalidEventSpawn", "particle event spawn values are outside their ranges",
+                 emitter.id);
+}
+
 void ValidateSpecialOutputs(const VfxEmitterData& emitter, std::unordered_set<std::string>& ids,
                             std::vector<VfxDiagnostic>& diagnostics) {
     if (emitter.specialOutputs.size() > kMaximumVfxProgramSpecialOutputs) {
@@ -807,6 +830,7 @@ std::vector<VfxDiagnostic> ValidateVfxAsset(const VfxAssetData& asset) {
         ValidateConnectAndMeshOutput(asset, emitter, diagnostics);
         ValidateSpecialOutputs(emitter, ids, diagnostics);
         ValidateInputLinks(emitter, inputTypes, ids, diagnostics);
+        ValidateParticleEvents(emitter, emitters, diagnostics);
     }
 
     // maximumParticles は自動割当ての上限であり予約量ではない。

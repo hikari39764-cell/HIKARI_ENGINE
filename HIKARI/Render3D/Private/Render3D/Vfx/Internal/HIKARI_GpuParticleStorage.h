@@ -61,6 +61,8 @@ public:
     D3D12_GPU_DESCRIPTOR_HANDLE GetNullCollisionDepthUav() const noexcept { return nullCollisionDepthUav_.gpu; }
     void WriteCollisionView(uint32_t frameSlot, const GpuParticleCollisionView& view);
     D3D12_GPU_VIRTUAL_ADDRESS GetCollisionViewGpuAddress(uint32_t frameSlot) const noexcept;
+    // 粒子の事件の緩衝（u2、HIKARI_ParticleEmitterLayout.hlsli の EVENT_* の並び）。
+    D3D12_GPU_VIRTUAL_ADDRESS GetEventGpuAddress() const noexcept;
 
 private:
     bool EnsureEmitterUploadPage(ID3D12Device* device, uint32_t frameSlot, uint32_t pageIndex);
@@ -69,6 +71,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12Resource> aliveIndices_{};
     Microsoft::WRL::ComPtr<ID3D12Resource> drawCounters_{};
     Microsoft::WRL::ComPtr<ID3D12Resource> drawArguments_{};
+    Microsoft::WRL::ComPtr<ID3D12Resource> events_{};
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, GFX::kFrameResourceCount> shapeStates_{};
     std::array<GpuParticleShapeState*, GFX::kFrameResourceCount> mappedShapeStates_{};
     RenderResourceView particleSrv_{};

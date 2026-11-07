@@ -622,6 +622,13 @@ void WriteProgram(BinaryWriter& writer, const VfxProgram& program) {
         writer.Write(simulation.collisionThickness);
         writer.Write(simulation.restitution);
         writer.Write(simulation.friction);
+        writer.Write(simulation.eventKinds);
+        writer.Write(simulation.eventImpactThreshold);
+        writer.Write(simulation.eventSourceEmitter);
+        writer.Write(simulation.eventKind);
+        writer.Write(simulation.particlesPerEvent);
+        writer.Write(simulation.inheritVelocity);
+        writer.Write(simulation.minimumImpactSpeed);
         WriteVec3(writer, simulation.field.center);
         writer.Write(simulation.field.radius);
         WriteVec3(writer, simulation.field.axis);
@@ -813,12 +820,16 @@ bool ReadProgram(BinaryReader& reader, VfxProgram& program) {
             !reader.Read(simulation.localSimulation) || !reader.Read(simulation.collisionPlaneEnabled) ||
             !reader.Read(simulation.collisionPlaneHeight) || !reader.Read(simulation.sceneDepthCollision) ||
             !reader.Read(simulation.collisionThickness) || !reader.Read(simulation.restitution) ||
-            !reader.Read(simulation.friction) || !ReadVec3(reader, simulation.field.center) ||
-            !reader.Read(simulation.field.radius) || !ReadVec3(reader, simulation.field.axis) ||
-            !reader.Read(simulation.field.vortex) || !reader.Read(simulation.field.turbulence) ||
-            !reader.Read(simulation.field.frequency) || !reader.Read(simulation.field.evolution) ||
-            !reader.Read(simulation.field.attraction) || !ReadAnimated(reader, simulation.color) ||
-            !reader.ReadEnum(emitter.render.materialMode) || !reader.ReadString(emitter.render.colorTextureAssetGuid) ||
+            !reader.Read(simulation.friction) || !reader.Read(simulation.eventKinds) ||
+            !reader.Read(simulation.eventImpactThreshold) || !reader.Read(simulation.eventSourceEmitter) ||
+            !reader.Read(simulation.eventKind) || !reader.Read(simulation.particlesPerEvent) ||
+            !reader.Read(simulation.inheritVelocity) || !reader.Read(simulation.minimumImpactSpeed) ||
+            !ReadVec3(reader, simulation.field.center) || !reader.Read(simulation.field.radius) ||
+            !ReadVec3(reader, simulation.field.axis) || !reader.Read(simulation.field.vortex) ||
+            !reader.Read(simulation.field.turbulence) || !reader.Read(simulation.field.frequency) ||
+            !reader.Read(simulation.field.evolution) || !reader.Read(simulation.field.attraction) ||
+            !ReadAnimated(reader, simulation.color) || !reader.ReadEnum(emitter.render.materialMode) ||
+            !reader.ReadString(emitter.render.colorTextureAssetGuid) ||
             !reader.ReadString(emitter.render.maskTextureAssetGuid) ||
             !reader.ReadString(emitter.render.noiseTextureAssetGuid) ||
             !reader.ReadString(emitter.render.materialAssetGuid) || !reader.ReadEnum(emitter.render.blendMode) ||

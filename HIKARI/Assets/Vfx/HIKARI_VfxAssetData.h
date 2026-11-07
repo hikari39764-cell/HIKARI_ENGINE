@@ -117,6 +117,12 @@ enum class VfxParticleCapacityMode : uint8_t {
     Fixed,
 };
 
+// 粒子の事件：碰撞（平面か場景の深度で跳ね返った時）と寿命切れ。
+enum class VfxParticleEventKind : uint8_t {
+    Collision,
+    Death,
+};
+
 // Numeric values intentionally mirror the cooked HVFXC contract. Values
 // 0 and 1 retain the former CameraFacing and Vertical meanings.
 enum class VfxBillboardMode : uint8_t {
@@ -225,6 +231,8 @@ inline constexpr float kVfxLightFlickerAmplitudeMin = 0.0f;
 inline constexpr float kVfxLightFlickerAmplitudeMax = 1.0f;
 inline constexpr uint32_t kVfxLightPriorityMin = 0u;
 inline constexpr uint32_t kVfxLightPriorityMax = 32u;
+// 1 事件あたりに生成する粒子の上限（GPU の事件の生成は 1 区 256 事件 × この数の線程）。
+inline constexpr uint32_t kVfxParticlesPerEventMax = 16u;
 inline constexpr float kVfxLightGlowShareMin = 0.0f;
 inline constexpr float kVfxLightGlowShareMax = 4.0f;
 inline constexpr float kVfxWeaponDistortionMax = 8.0f;
@@ -488,6 +496,15 @@ struct VfxSpawnModuleData {
     // In Automatic mode this remains the authored safety ceiling. The
     // compiler derives the smaller live allocation from spawn and TTL.
     uint32_t maximumParticles = 1024u;
+    // 別の粒子層（eventSourceLayerId）の事件でこの層を生成する（Niagara の Generate Collision / Death Event と
+    // Event Handler）。1 事件あたり particlesPerEvent 個を事件の位置に出し、親の速度（碰撞は跳ね返った後）を
+    // inheritVelocity の割合で受け継ぐ。碰撞の事件は当たった速さが minimumImpactSpeed [m/s] 以上の時だけ。空なら事件で
+    // 生成しない（速さ・burst の生成はそのまま使える）。事件で生成する層は世界空間（basic.localSimulation 偽）。
+    std::string eventSourceLayerId{};
+    VfxParticleEventKind eventKind = VfxParticleEventKind::Collision;
+    uint32_t particlesPerEvent = 4u;
+    float inheritVelocity = 0.3f;
+    float minimumImpactSpeed = 1.0f;
 };
 
 struct VfxShapeModuleData {

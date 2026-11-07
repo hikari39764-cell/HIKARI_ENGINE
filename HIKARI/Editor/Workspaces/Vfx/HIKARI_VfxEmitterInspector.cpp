@@ -451,6 +451,34 @@ void VfxWorkspaceController::DrawEmitterSpawnPage(AssetDatabase& database, const
     if (emitter.spawn.capacityMode == VFX::VfxParticleCapacityMode::Automatic) {
         ImGui::TextDisabled(VfxUiText("GPU capacity is derived from spawn rate and maximum lifetime.").c_str());
     }
+    if (emitter.kind == VFX::VfxLayerKind::Particles) {
+        // 別の粒子層の碰撞・寿命切れの事件で生成する（火星が落ちて弾ける、碎石が地面で砂埃を上げる）。
+        ImGui::SeparatorText(VfxUiText("Spawn from particle events").c_str());
+        std::vector<std::string> values{""}, labels{VfxUiText("None")};
+        if (const VFX::VfxAssetData* asset = GetAsset())
+            for (const VFX::VfxEmitterData& layer : asset->emitters)
+                if (layer.kind == VFX::VfxLayerKind::Particles && layer.id != emitter.id) {
+                    values.push_back(layer.id);
+                    labels.push_back(layer.name);
+                }
+        editor.LabeledChoice("Event Source Layer", "eventSourceLayerId", emitter.spawn.eventSourceLayerId, values,
+                             labels);
+        if (!emitter.spawn.eventSourceLayerId.empty()) {
+            editor.Choice("Event", "eventKind",
+                          TEXT::EnumToName(VFX::kVfxParticleEventKindNames, emitter.spawn.eventKind),
+                          VFX::kVfxParticleEventKindChoices.data(), VFX::kVfxParticleEventKindChoices.size());
+            editor.Unsigned("Particles per Event", "particlesPerEvent", emitter.spawn.particlesPerEvent, 1u,
+                            VFX::kVfxParticlesPerEventMax);
+            editor.Float("Inherit Velocity", "inheritVelocity", emitter.spawn.inheritVelocity, 0.01f, 0.0f, 2.0f);
+            if (emitter.spawn.eventKind == VFX::VfxParticleEventKind::Collision)
+                editor.Float("Minimum Impact Speed (m/s)", "minimumImpactSpeed", emitter.spawn.minimumImpactSpeed,
+                             0.05f, 0.0f, 100.0f);
+            ImGui::TextDisabled("%s", VfxUiText("Particles appear where the source layer's particles hit something "
+                                                "or die. The source layer needs plane or scene depth collision for "
+                                                "collision events; this layer must simulate in world space.")
+                                          .c_str());
+        }
+    }
     ImGui::SeparatorText(VfxUiText("Emission volume").c_str());
     DrawEmissionVolume(database, emitter);
 }

@@ -92,7 +92,8 @@ bool GpuParticleStorage::Initialize(const GFX::Context& context, uint32_t partic
         !createGpuBuffer(static_cast<UINT64>(drawCapacity) * sizeof(uint32_t), L"HIKARI Particle Draw Counter Buffer",
                          drawCounters_) ||
         !createGpuBuffer(static_cast<UINT64>(drawCapacity) * kGpuParticleDrawArgumentStride,
-                         L"HIKARI Particle Draw Argument Buffer", drawArguments_)) {
+                         L"HIKARI Particle Draw Argument Buffer", drawArguments_) ||
+        !createGpuBuffer(HIKARI_PARTICLE_EVENT_BUFFER_BYTES, L"HIKARI Particle Event Buffer", events_)) {
         return false;
     }
     drawArgumentState_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -203,6 +204,9 @@ void GpuParticleStorage::Shutdown(const GFX::Context& context) noexcept {
         if (drawArguments_ != nullptr) {
             context.resourceStates->Forget(drawArguments_.Get());
         }
+        if (events_ != nullptr) {
+            context.resourceStates->Forget(events_.Get());
+        }
     }
     if (context.resourceStates != nullptr && collisionDepth_ != nullptr)
         context.resourceStates->Forget(collisionDepth_.Get());
@@ -250,6 +254,7 @@ void GpuParticleStorage::Shutdown(const GFX::Context& context) noexcept {
     aliveIndices_.Reset();
     drawCounters_.Reset();
     drawArguments_.Reset();
+    events_.Reset();
     emitterPageCapacity_ = 0u;
     particleState_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     drawArgumentState_ = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -356,6 +361,10 @@ GpuParticleStorage::GetAliveIndexGpuAddress() const noexcept {
 D3D12_GPU_VIRTUAL_ADDRESS
 GpuParticleStorage::GetDrawCounterGpuAddress() const noexcept {
     return drawCounters_ != nullptr ? drawCounters_->GetGPUVirtualAddress() : 0u;
+}
+
+D3D12_GPU_VIRTUAL_ADDRESS GpuParticleStorage::GetEventGpuAddress() const noexcept {
+    return events_ != nullptr ? events_->GetGPUVirtualAddress() : 0u;
 }
 
 D3D12_GPU_VIRTUAL_ADDRESS
