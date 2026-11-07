@@ -97,6 +97,8 @@ struct DomainState {
     uint32_t unfinishedRestarts = 0u;
     // 上限で解かれなかったことを日誌へ書いたか（域ごとに一度だけ）。
     bool limitWarned = false;
+    // 最後に解く域に選ばれた描画入力の帧号（前のフレームに選ばれた域は選び直しで少し有利にする）。
+    uint64_t admittedFrame = UINT64_MAX;
     uint32_t velocityIndex = 0u;
     uint32_t densityIndex = 0u;
     // 密度が変わるたびに増やす（子步を進めた・作り直した）。描く側は同じ版なら光照体積を書き直さない。
@@ -214,6 +216,10 @@ struct FluidVolumePass::Impl {
     std::vector<SourceMotion> frameMotion{};
     // 域を解く順（優先度の高い順、同じなら近い順。作業用）。
     std::vector<uint32_t> order{};
+    std::vector<float> rank{};
+    // このフレーム（GPU の退役 fence）に解く域に選んだ域。上限は視図をまたいで数え、後の視図は先の視図が選んだ域を
+    // そのまま解き、新しい域は残りの枠だけ選ぶ。
+    std::vector<ParticleEmitterInstanceKey> admitted{};
     // 回読が届いた汇の吸い込み量と域の発光（TakeSinkReports / TakeGlowReports で場面へ渡す）。
     std::vector<FluidSinkReport> sinkReports{};
     std::vector<FluidGlowReport> glowReports{};
@@ -775,6 +781,7 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         impl.stats.skippedDomains = 0u;
         impl.stats.stepsThisFrame = 0u;
         impl.stats.renderedDomains = 0u;
+        impl.admitted.clear();
         impl.sliceView.valid = false;
     }
     impl.stats.perDomain.clear();
@@ -820,16 +827,25 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
     if (context.srvHeap != nullptr)
         context.cmdList->SetDescriptorHeaps(1, heaps);
     // 上限（画質の maxDomains）を超える時は、優先度の高い域から、同じ優先度なら相機に近い域から解く（Niagara が重要度と
-    // 距離で残す実例を選ぶのと同じ）。
-    impl.order.resize(input->fluids.size());
-    for (uint32_t index = 0u; index < impl.order.size(); ++index)
+    // 距離で残す実例を選ぶのと同じ）。前のフレームに解いた域は距離を 0.8 倍で比べ、ほぼ同じ距離の二つが相機の小さな動きで
+    // フレームごとに入れ替わって烟が点滅しないようにする。
+    const size_t count = input->fluids.size();
+    impl.order.resize(count);
+    impl.rank.resize(count);
+    for (uint32_t index = 0u; index < count; ++index) {
+        const FluidDomainSubmission& submission = input->fluids[index];
+        const DomainState* previous = impl.Find(submission.key);
+        const bool kept = previous != nullptr && previous->admittedFrame != UINT64_MAX &&
+                          previous->admittedFrame + 1u >= input->frameIndex;
         impl.order[index] = index;
+        impl.rank[index] = DomainDistance(submission, settings.viewerPosition) * (kept ? 0.8f : 1.0f);
+    }
     std::stable_sort(impl.order.begin(), impl.order.end(), [&](uint32_t left, uint32_t right) {
         const FluidDomainSubmission& a = input->fluids[left];
         const FluidDomainSubmission& b = input->fluids[right];
         if (a.settings.priority != b.settings.priority)
             return a.settings.priority > b.settings.priority;
-        return DomainDistance(a, settings.viewerPosition) < DomainDistance(b, settings.viewerPosition);
+        return impl.rank[left] < impl.rank[right];
     });
     uint32_t solved = 0u;
     for (const uint32_t order : impl.order) {
@@ -846,14 +862,17 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         // 見えない（层の有効区間の外の）域と、上限を超えた域は解かない（状態はそのまま残る）。上限で外れた域は統計に印を
         // 付け、域ごとに一度だけ日誌へ書く。
         // 解かない域の光源は消す（光っていた域に一度だけ 0 を送る）。
-        const bool skip = !submission.visible || solved >= policy.maxDomains;
+        const bool admitted =
+            std::find(impl.admitted.begin(), impl.admitted.end(), submission.key) != impl.admitted.end();
+        const bool full = !admitted && impl.admitted.size() >= policy.maxDomains;
+        const bool skip = !submission.visible || full;
         if (skip && submission.reportGlow && domain->glowLit)
             impl.PushGlow(*domain, {submission.key, submission.worldPosition, {}, submission.localSpace, {}});
         if (!submission.visible) {
             ++impl.stats.skippedDomains;
             continue;
         }
-        if (solved >= policy.maxDomains) {
+        if (full) {
             ++impl.stats.skippedDomains;
             domain->stats.skippedByLimit = true;
             if (!domain->limitWarned) {
@@ -862,6 +881,9 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
             }
             continue;
         }
+        if (!admitted)
+            impl.admitted.push_back(submission.key);
+        domain->admittedFrame = input->frameIndex;
         if (!impl.PrepareDomain(*domain, submission, policy))
             continue;
         const bool advance = domain->lastSimulatedFrame != input->frameIndex;
