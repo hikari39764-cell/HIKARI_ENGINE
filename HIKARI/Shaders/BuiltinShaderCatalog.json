@@ -2027,11 +2027,11 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.FluidVolume",
-        "engineInterfaceVersion": 7,
-        "engineInterfaceHash": "108a380792970215fb1e437e74eb1e2d2bf33d62f2166c4adaa279eaa52236aa",
+        "engineInterfaceVersion": 8,
+        "engineInterfaceHash": "11b96ea5c2aa641a4bbe9b510e94237c5b28e1ec4558a339371d10dcf74a135c",
         "rootLayoutId": "HIKARI.FluidVolume.Root",
-        "rootLayoutVersion": 3,
-        "rootLayoutHash": "9e33caf84516f5ba701bd659e314eb307770ab453211664ea5cea63956c7366d",
+        "rootLayoutVersion": 4,
+        "rootLayoutHash": "3da567e56900572ffd10dd478d7ea0181a1c556e4ee9770889f7f0dadf0bd472",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

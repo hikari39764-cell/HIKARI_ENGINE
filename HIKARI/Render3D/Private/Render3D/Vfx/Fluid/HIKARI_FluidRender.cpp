@@ -5,6 +5,8 @@
 #include <cstring>
 #include <optional>
 
+#include <d3dx12.h>
+
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
@@ -216,12 +218,15 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     const auto setCompute = [&](UINT index, D3D12_GPU_DESCRIPTOR_HANDLE handle) {
         commands->SetComputeRootDescriptorTable(index, handle);
     };
+    const auto activity = PrepareActivity(commands, domains, count);
 
     // 光照体積（域ごと、t0 に自分の密度）。密度・太陽の域の局所での向き・消光・格の大きさが前に書いた時と同じなら
     // 書き直さない（子步の無いフレームや、同じフレームの 2 つ目の視図）。
     commands->SetComputeRootSignature(root_.Get());
     commands->SetComputeRootConstantBufferView(kConstants, address);
     bindInputs(setCompute);
+    for (UINT slot = 0u; slot < kMaximumRenderedFluidDomains; ++slot)
+        commands->SetComputeRootShaderResourceView(kActivity + slot, activity[slot]);
     commands->SetPipelineState(light_.Get());
     std::optional<GFX::GPU_PROFILE::ScopedGpuTimer> lightTimer{std::in_place, commands,
                                                                GFX::GPU_PROFILE::Pass::FluidRenderLight};
@@ -259,9 +264,14 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     const auto setGraphics = [&](UINT index, D3D12_GPU_DESCRIPTOR_HANDLE handle) {
         commands->SetGraphicsRootDescriptorTable(index, handle);
     };
+    const auto bindActivity = [&] {
+        for (UINT slot = 0u; slot < kMaximumRenderedFluidDomains; ++slot)
+            commands->SetGraphicsRootShaderResourceView(kActivity + slot, activity[slot]);
+    };
     commands->SetGraphicsRootSignature(root_.Get());
     commands->SetGraphicsRootConstantBufferView(kConstants, address);
     bindInputs(setGraphics);
+    bindActivity();
     const auto viewport = [&](uint32_t width, uint32_t height) {
         const D3D12_VIEWPORT box{0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, 1.0f};
         const D3D12_RECT scissor{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
@@ -288,6 +298,7 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     commands->SetGraphicsRootSignature(root_.Get());
     commands->SetGraphicsRootConstantBufferView(kConstants, address);
     bindInputs(setGraphics);
+    bindActivity();
     commands->SetGraphicsRootDescriptorTable(kFirstInput + kInputColor, state.marchColor.srv.gpu);
     commands->SetGraphicsRootDescriptorTable(kFirstInput + kInputDepth, state.marchDepth.srv.gpu);
     viewport(view.renderWidth, view.renderHeight);
@@ -424,6 +435,8 @@ LIGHTING::CloudSolarVisibilityGpuData FluidRenderer::RenderSolarVisibility(const
     // 根の入力はすべて束ねる（使わない枠は空の体積）。
     for (UINT input = 0u; input < kInputCount; ++input)
         commands->SetComputeRootDescriptorTable(kFirstInput + input, fallbackVolume_.srv.gpu);
+    for (UINT slot = 0u; slot < kMaximumRenderedFluidDomains; ++slot)
+        commands->SetComputeRootShaderResourceView(kActivity + slot, fallbackBuffer_->GetGPUVirtualAddress());
     // 密度と、外推に使う速度（步进と同じ ExtrapolatedRho で読む）。
     for (size_t index = 0u; index < count; ++index) {
         TransitionVolume(commands, *domains[index].density, kRead);

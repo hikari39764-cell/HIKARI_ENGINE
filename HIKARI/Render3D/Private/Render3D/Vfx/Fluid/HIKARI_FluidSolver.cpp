@@ -118,8 +118,10 @@ bool CreateVolume(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint
     return volume.srv.IsValid() && volume.uav.IsValid();
 }
 
-bool CreateBuffer(ID3D12Device* device, D3D12_HEAP_TYPE heapType, uint32_t bytes, D3D12_RESOURCE_STATES state,
-                  ComPtr<ID3D12Resource>& buffer) {
+} // namespace
+
+bool CreateFluidBuffer(ID3D12Device* device, D3D12_HEAP_TYPE heapType, uint32_t bytes, D3D12_RESOURCE_STATES state,
+                       ComPtr<ID3D12Resource>& buffer) {
     const CD3DX12_HEAP_PROPERTIES heap(heapType);
     const auto description = CD3DX12_RESOURCE_DESC::Buffer(bytes, heapType == D3D12_HEAP_TYPE_DEFAULT
                                                                       ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
@@ -129,8 +131,6 @@ bool CreateBuffer(ID3D12Device* device, D3D12_HEAP_TYPE heapType, uint32_t bytes
                                                                       IID_PPV_ARGS(buffer.ReleaseAndGetAddressOf())),
                            "FluidSolver::CreateBuffer");
 }
-
-} // namespace
 
 bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
                               FluidVolume& volume) {
@@ -219,11 +219,11 @@ bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& lay
                                       (n[2] + 1u) / 2u, resources.light, false);
     resources.bricks = ((n[0] + 7u) / 8u) * ((n[1] + 7u) / 8u) * ((n[2] + 7u) / 8u);
     resources.statsBytes = (resources.GlowOffset() + resources.bricks * 48u + 255u) & ~255u;
-    created = created && CreateBuffer(device, D3D12_HEAP_TYPE_DEFAULT, resources.statsBytes,
-                                      D3D12_RESOURCE_STATE_UNORDERED_ACCESS, resources.stats);
+    created = created && CreateFluidBuffer(device, D3D12_HEAP_TYPE_DEFAULT, resources.statsBytes,
+                                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS, resources.stats);
     for (auto& readback : resources.readback)
-        created = created && CreateBuffer(device, D3D12_HEAP_TYPE_READBACK, resources.statsBytes,
-                                          D3D12_RESOURCE_STATE_COPY_DEST, readback);
+        created = created && CreateFluidBuffer(device, D3D12_HEAP_TYPE_READBACK, resources.statsBytes,
+                                               D3D12_RESOURCE_STATE_COPY_DEST, readback);
     resources.statsState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     resources.bytes = EstimateFluidDomainBytes(layout) + resources.statsBytes;
     return created;
@@ -236,8 +236,8 @@ bool EnsureFluidInjection(ID3D12Device* device, FluidDomainResources& resources,
     for (int axis = 0; axis < 3; ++axis)
         resources.injectionCells[axis] = (resources.layout.cells[axis] + 1u) / 2u;
     const uint32_t bytes = resources.InjectionWords() * 4u;
-    if (device == nullptr || !CreateBuffer(device, D3D12_HEAP_TYPE_DEFAULT, bytes,
-                                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS, resources.injection)) {
+    if (device == nullptr || !CreateFluidBuffer(device, D3D12_HEAP_TYPE_DEFAULT, bytes,
+                                                D3D12_RESOURCE_STATE_UNORDERED_ACCESS, resources.injection)) {
         resources.injection.Reset();
         return false;
     }

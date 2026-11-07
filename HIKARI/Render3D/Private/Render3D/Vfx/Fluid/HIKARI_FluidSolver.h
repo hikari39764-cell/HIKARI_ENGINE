@@ -167,6 +167,9 @@ bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& lay
 bool EnsureFluidInjection(ID3D12Device* device, FluidDomainResources& resources, bool& created);
 bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
                               FluidVolume& volume);
+// 流体の緩衝（DEFAULT は UAV 可）。VIDEO_MEMORY の Vfx として数える。
+bool CreateFluidBuffer(ID3D12Device* device, D3D12_HEAP_TYPE heapType, uint32_t bytes, D3D12_RESOURCE_STATES state,
+                       Microsoft::WRL::ComPtr<ID3D12Resource>& buffer);
 bool CreateFluidSliceTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height,
                              FluidVolume& volume);
 void RetireVolume(const GFX::Context& context, FluidVolume& volume);

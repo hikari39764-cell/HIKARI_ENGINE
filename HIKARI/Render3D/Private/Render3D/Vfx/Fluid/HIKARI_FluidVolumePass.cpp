@@ -879,6 +879,8 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         render.pendingSeconds =
             static_cast<float>((std::min)(domain->clock.pendingSeconds, SubstepSeconds(submission.settings)));
         render.frameVelocity = submission.localSpace ? domain->smoothedVelocity : MATH::Vec3{};
+        render.stats = domain->resources.stats.Get();
+        render.statsState = &domain->resources.statsState;
         if (domain->resources.injection) {
             render.injection = domain->resources.injection->GetGPUVirtualAddress();
             std::copy(std::begin(domain->resources.injectionCells), std::end(domain->resources.injectionCells),

@@ -54,6 +54,12 @@ Texture2D<float4> gInputColor : register(t13);
 Texture2D<float2> gInputDepth : register(t14);
 Texture3D<float> gNoise : register(t15);
 Texture2D<float> gShadowMap : register(t16);
+// 域ごとの解算の統計の緩衝：砖块（8³ 格）の数 × 12 byte の位置から砖块ごとの活動状態（u32、1 で動いている。烟のある砖块
+// とその 26 近傍、注入の届く砖块。HIKARI_FluidSolver.h の FluidDomainResources::ActivityOffset）。
+ByteAddressBuffer gActivity0 : register(t17);
+ByteAddressBuffer gActivity1 : register(t18);
+ByteAddressBuffer gActivity2 : register(t19);
+ByteAddressBuffer gActivity3 : register(t20);
 RWTexture3D<float4> gOutput : register(u0);
 RWTexture2D<float4> gSolarAtlas : register(u1);
 SamplerState gLinearClamp : register(s0);
@@ -238,9 +244,10 @@ DomainSpans TraceDomains(float3 origin, float3 direction)
             spans.enter[index] = enter;
             spans.leave[index] = interval.y;
             // 歩は「箱の区間 / 步数」と「格の大きさの 0.8 倍」の短い方（区間で割るだけだと 60 m の場地の烟で 1 m 近い歩になり、
-            // 1〜2 m の厚さの地面の霧を 1〜2 標本しか取れず、抖动の粒がそのまま見えた）。1 回の積分は 240 歩まで。
+            // 1〜2 m の厚さの地面の霧を 1〜2 標本しか取れず、抖动の粒がそのまま見えた）。大きな域も格の大きさで歩き、
+            // 動いていない砖块は飛ばす（Integrate）。
             const float span = interval.y - enter;
-            spans.step[index] = max(min(span / steps, domain.cells.w * 0.8f), span / 240.0f);
+            spans.step[index] = min(span / steps, domain.cells.w * 0.8f);
         }
     }
     return spans;
@@ -272,17 +279,62 @@ MarchState BeginMarch()
     return march;
 }
 
-// [start, end] を stepLength [m] ごとに解析的に積分して march へ続ける（最後の歩は end で切る）。footprint は距離 t の
-// 画素の大きさ x + y t（x < 0 で細部なし）。
-void Integrate(float3 origin, float3 direction, float start, float end, float stepLength, float jitter,
-    float2 footprint, inout MarchState march)
+bool BrickActive(uint domainIndex, uint3 brick, uint3 bricks)
 {
-    const uint steps = min((uint)ceil(max(end - start, 0.0f) / max(stepLength, 1.0e-4f)), 256u);
-    [loop] for (uint index = 0u; index < steps; ++index)
+    const uint address = (bricks.x * bricks.y * bricks.z * 3u + brick.x + bricks.x * (brick.y + bricks.y * brick.z)) * 4u;
+    [branch] switch (domainIndex)
     {
-        const float stepStart = start + (float)index * stepLength;
+    case 0u: return (gActivity0.Load(address) & 1u) != 0u;
+    case 1u: return (gActivity1.Load(address) & 1u) != 0u;
+    case 2u: return (gActivity2.Load(address) & 1u) != 0u;
+    default: return (gActivity3.Load(address) & 1u) != 0u;
+    }
+}
+
+// 距離 t の点が、入っているどの域でも動いていない砖块の中なら、その砖块を全ての域で出る距離（end まで）を返す。どれかの域の
+// 動いている砖块の中なら t（そこは步进する）。动いていない砖块は烟も届く注入も無いので、标本を取らず飛ばしてよい。
+float SkipInactive(float3 origin, float3 direction, DomainSpans spans, float t, float end)
+{
+    float exit = end;
+    [unroll] for (uint index = 0u; index < HIKARI_FLUID_MAX_DOMAINS; ++index)
+    {
+        if (index >= DomainCount() || t < spans.enter[index] || t >= spans.leave[index])
+            continue;
+        const HikariFluidDomain domain = gDomains[index];
+        const float3 o = HikariFluidToGrid(domain, origin);
+        const float3 d = HikariFluidToGrid(domain, origin + direction) - o;
+        const float3 grid = o + d * t;
+        const uint3 bricks = ((uint3)domain.cells.xyz + 7u) / 8u;
+        const uint3 brick = min(uint3(max(grid, 0.0f) / 8.0f), bricks - 1u);
+        if (BrickActive(index, brick, bricks))
+            return t;
+        const float3 inverse = 1.0f / lerp(1.0e-7f.xxx, d, (float3)(abs(d) > 1.0e-7f));
+        const float3 low = (float3(brick) * 8.0f - grid) * inverse;
+        const float3 high = ((float3(brick) + 1.0f) * 8.0f - grid) * inverse;
+        const float3 leave = max(low, high);
+        exit = min(exit, t + max(min(min(leave.x, leave.y), leave.z), 0.0f) + 1.0e-3f);
+    }
+    return exit;
+}
+
+// [start, end] を stepLength [m] ごとに解析的に積分して march へ続ける（最後の歩は end で切る）。どの域でも動いていない
+// 砖块は飛ばす。footprint は距離 t の画素の大きさ x + y t（x < 0 で細部なし）。歩と飛ばしを合わせて 512 回まで。
+void Integrate(float3 origin, float3 direction, DomainSpans spans, float start, float end, float stepLength,
+    float jitter, float2 footprint, inout MarchState march)
+{
+    stepLength = max(stepLength, 1.0e-4f);
+    float stepStart = start;
+    [loop] for (uint iteration = 0u; iteration < 512u && stepStart < end; ++iteration)
+    {
+        const float skipped = SkipInactive(origin, direction, spans, stepStart, end);
+        if (skipped > stepStart)
+        {
+            stepStart = skipped;
+            continue;
+        }
         const float span = min(stepLength, end - stepStart);
-        const float t = stepStart + jitter * span;
+        stepStart += span;
+        const float t = stepStart - span + jitter * span;
         float sigma;
         float3 emitted;
         Medium(origin + direction * t, direction, footprint.x < 0.0f ? -1.0f : footprint.x + footprint.y * t, sigma,
@@ -333,7 +385,8 @@ void MarchDomains(float3 origin, float3 direction, DomainSpans spans, float star
         if (next >= 1.0e30f)
             break;
         if (stepLength < 1.0e30f)
-            Integrate(origin, direction, t, min(next, end), max(stepLength, minimumStep), jitter, footprint, march);
+            Integrate(origin, direction, spans, t, min(next, end), max(stepLength, minimumStep), jitter, footprint,
+                march);
         t = next;
     }
 }

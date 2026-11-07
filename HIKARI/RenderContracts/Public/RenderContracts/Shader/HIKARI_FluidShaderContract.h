@@ -88,8 +88,8 @@ inline ShaderAssetResolveResult ResolveFluidSimulationShaderEntry(
 // 同じ根を使う。
 inline constexpr std::string_view kFluidVolumeShaderProgram = "HIKARI.EngineShader.Render3D_FluidVolume";
 inline constexpr std::string_view kFluidVolumeShaderRootCanonical =
-    "HIKARI.FluidVolume.Root.v3|0:CBV(b0,All)|1:RootConstants(b1,space0,4,All)|2..18:SRVTable(t0..t16,count1,All)|"
-    "19:UAVTable(u0,count1,All)|20:UAVTable(u1,count1,All)|StaticSampler(s0,LinearClamp)|StaticSampler(s1,LinearBorderTransparentBlack)|"
+    "HIKARI.FluidVolume.Root.v4|0:CBV(b0,All)|1:RootConstants(b1,space0,4,All)|2..18:SRVTable(t0..t16,count1,All)|"
+    "19:UAVTable(u0,count1,All)|20:UAVTable(u1,count1,All)|21..24:SRV(t17..t20,All)|StaticSampler(s0,LinearClamp)|StaticSampler(s1,LinearBorderTransparentBlack)|"
     "StaticSampler(s2,LinearWrap)|StaticSampler(s3,PointClamp)|StaticSampler(s4,ComparisonLinearBorderWhite)|"
     "Flags(None)";
 inline constexpr std::string_view kFluidVolumeShaderInterfaceCanonical =
@@ -101,15 +101,17 @@ inline constexpr std::string_view kFluidVolumeShaderInterfaceCanonical =
     "premultiplied pre-exposed scattering and "
     "transmittance;composite ONE/INV_SRC_ALPHA;camera volume log slices;u1 solar atlas RG32F cloud-solar layout "
     "tile0 near/far,tiles 1..steps far->near transmittance;CoveragePS full-res RG16F smoke mean distance m and "
-    "opacity for the volumetric fog composite";
+    "opacity for the volumetric fog composite;t17..t20 solver stats per domain: u32 activity per 8^3 brick at "
+    "bricks*12 bytes, march and camera volume skip bricks inactive in every domain at t (DDA to the brick exit); "
+    "domain step min(span/steps,0.8 h), 512 steps+skips per piece";
 
 inline ShaderAssetContractExpectation MakeFluidVolumeShaderContract(
     ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = "HIKARI.FluidVolume";
-    contract.engineInterfaceVersion = 7u;
+    contract.engineInterfaceVersion = 8u;
     contract.rootLayoutId = "HIKARI.FluidVolume.Root";
-    contract.rootLayoutVersion = 3u;
+    contract.rootLayoutVersion = 4u;
     contract.availableDeviceCaps = availableCaps;
     if (!HASH::ComputeSha256(kFluidVolumeShaderInterfaceCanonical, contract.engineInterfaceHash) ||
         !HASH::ComputeSha256(kFluidVolumeShaderRootCanonical, contract.rootLayoutHash)) {
@@ -125,7 +127,7 @@ inline bool IsFluidVolumeBindingAllowed(const ShaderResourceBinding& binding) no
     }
     switch (binding.kind) {
     case Kind::ConstantBuffer: return binding.registerIndex <= 1u;
-    case Kind::ShaderResource: return binding.registerIndex <= 17u;
+    case Kind::ShaderResource: return binding.registerIndex <= 20u;
     case Kind::UnorderedAccess: return binding.registerIndex <= 1u;
     case Kind::Sampler: return binding.registerIndex <= 4u;
     }
