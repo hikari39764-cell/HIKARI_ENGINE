@@ -1977,6 +1977,12 @@
           "profile": "ps_6_0"
         },
         {
+          "id": "CoveragePS",
+          "stage": "Pixel",
+          "entry": "CoveragePS",
+          "profile": "ps_6_0"
+        },
+        {
           "id": "FullscreenVS",
           "stage": "Vertex",
           "entry": "FullscreenVS",
@@ -2009,8 +2015,8 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.FluidVolume",
-        "engineInterfaceVersion": 4,
-        "engineInterfaceHash": "ce05ca8fee7fe2761733a6ca906d419c62d2e2d351403945640a227d53582a38",
+        "engineInterfaceVersion": 5,
+        "engineInterfaceHash": "557309e8f1220b9fd1c012f161bc1d5e4327d1e0437d7cebfafcad1c5817190c",
         "rootLayoutId": "HIKARI.FluidVolume.Root",
         "rootLayoutVersion": 3,
         "rootLayoutHash": "9e33caf84516f5ba701bd659e314eb307770ab453211664ea5cea63956c7366d",
@@ -5002,11 +5008,11 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.VolumetricFog",
-        "engineInterfaceVersion": 6,
-        "engineInterfaceHash": "c0dfdb9ca143b1cbe1d0b6a60403019de21fc7eb6a2f02a053a1d9925806aef7",
+        "engineInterfaceVersion": 7,
+        "engineInterfaceHash": "e22530956bd5e7a750bcdc4920ed84149b054c6a49ca0fba0aaf4f14eb2e44cb",
         "rootLayoutId": "HIKARI.VolumetricFog.Root",
-        "rootLayoutVersion": 4,
-        "rootLayoutHash": "893a0da8a495f2b1d8720c716491e26999ed6e0d130a4ea55728cf70fe23b666",
+        "rootLayoutVersion": 5,
+        "rootLayoutHash": "85933a4420beddc99afbcc259ce6e68a81e1209556037805f79be183cc1848cc",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

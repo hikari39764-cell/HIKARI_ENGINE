@@ -43,9 +43,9 @@ inline constexpr std::array<VolumetricShaderDefinition, static_cast<size_t>(Volu
       "HIKARI.CloudPass.Root",
       "0:CBV(b0,Pixel);1..9:SRVTable(t0..8,1,Pixel);s0:linear-wrap;s1:linear-clamp;s2:point-clamp;Flags(IA)|Compute:0CBV(b0),1CBV(b1),2..4SRVTable(t0..2),5UAVTable(u0),6SRVTable(t8),s0linear-wrap,s1linear-clamp;All;Flags(None)"},
      {"HIKARI.EngineShader.Render3D_VolumetricLighting", "HIKARI.VolumetricFog",
-      "VolumetricCB:6624;mat4 inverseVP,previousVP,lightVP[4];float4 splits,cascadeParams,shadowSampling,biasScales,camera,previousCamera,fogColorDensity,distances,directionIntensity,directionalColorShadow,ambientColorIntensity,optics,volumeSize,frameParams,debugAndDepth,aerialPerspective,jitter,ambientVolumeSize,fogNoise,fogNoiseOffset;DynamicGiVolumes[3]:80;LocalLightGrid:32;LocalShadow:1040;LocalFogBoxes[32]:112,inverseBox,colorDensity,noiseEdgeScattering,noiseOffset;debugAndDepth.w:boxCount;slices log(1+d/2m);raw jittered pre-exposed scattering/extinction per slice interval;TemporalCS reprojects history at froxel centers and blends by frameParams.x;integrated scene-linear radiance/transmittance;ambient RGBA16F mean radiance;local light shadows 3x3 compare",
+      "VolumetricCB:6624;mat4 inverseVP,previousVP,lightVP[4];float4 splits,cascadeParams,shadowSampling,biasScales,camera,previousCamera,fogColorDensity,distances,directionIntensity,directionalColorShadow,ambientColorIntensity,optics,volumeSize,frameParams,debugAndDepth,aerialPerspective,jitter,ambientVolumeSize,fogNoise,fogNoiseOffset;DynamicGiVolumes[3]:80;LocalLightGrid:32;LocalShadow:1040;LocalFogBoxes[32]:112,inverseBox,colorDensity,noiseEdgeScattering,noiseOffset;debugAndDepth.w:boxCount;slices log(1+d/2m);raw jittered pre-exposed scattering/extinction per slice interval;TemporalCS reprojects history at froxel centers and blends by frameParams.x;integrated scene-linear radiance/transmittance;ambient RGBA16F mean radiance;local light shadows 3x3 compare;composite t8 fluid coverage RG16F (smoke mean distance m, opacity) lerps fog and aerial perspective from the surface to the smoke distance",
       "HIKARI.VolumetricFog.Root",
-      "Inject:0CBV(b0),1..3SRVTable(t0..2),4UAVTable(u0),5..7SRV(t0..2,space5),8SRVTable(t7),9SRVTable(t3),10SRVTable(t10),11SRVTable(t20,3968),s0linear-clamp,s1comparison-linear-border-white;Composite:0CBV(b0),1..3SRVTable(t4..6),4UAVTable(u1),5SRVTable(t9),s0linear-clamp;All;Flags(None)"},
+      "Inject:0CBV(b0),1..3SRVTable(t0..2),4UAVTable(u0),5..7SRV(t0..2,space5),8SRVTable(t7),9SRVTable(t3),10SRVTable(t10),11SRVTable(t20,3968),s0linear-clamp,s1comparison-linear-border-white;Composite:0CBV(b0),1..3SRVTable(t4..6),4UAVTable(u1),5SRVTable(t9),6SRVTable(t8),s0linear-clamp;All;Flags(None)"},
      {"HIKARI.EngineShader.Render3D_AtmosphereTransmittanceCS", "HIKARI.AtmosphereLut", kAtmosphereLutInterface,
       "HIKARI.AtmosphereLut.Root", kAtmosphereLutRoot},
      {"HIKARI.EngineShader.Render3D_AtmosphereMultiScatteringCS", "HIKARI.AtmosphereLut", kAtmosphereLutInterface,
@@ -63,12 +63,12 @@ inline ShaderAssetContractExpectation MakeVolumetricShaderContract(VolumetricSha
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = definition.interfaceId;
     // 大気（LUT と空気遠近）は視点定数 params.y に雲の陰の境の高度が加わって版 2。雲は定数に look・wind が加わって版 2。
-    contract.engineInterfaceVersion = program == VolumetricShaderProgram::Fog                       ? 6
+    contract.engineInterfaceVersion = program == VolumetricShaderProgram::Fog                       ? 7
                                       : program >= VolumetricShaderProgram::AtmosphereTransmittance ? 2
                                       : program == VolumetricShaderProgram::CloudPass               ? 2
                                                                                                     : 1;
     contract.rootLayoutId = definition.rootId;
-    contract.rootLayoutVersion = program == VolumetricShaderProgram::Fog ? 4 : 1;
+    contract.rootLayoutVersion = program == VolumetricShaderProgram::Fog ? 5 : 1;
     contract.availableDeviceCaps = caps;
     if (!HASH::ComputeSha256(definition.interfaceCanonical, contract.engineInterfaceHash) ||
         !HASH::ComputeSha256(definition.rootCanonical, contract.rootLayoutHash))
@@ -123,7 +123,8 @@ inline bool IsVolumetricBindingAllowed(VolumetricShaderProgram program, std::str
         return false;
     if (entry == "CompositeCS") {
         if (binding.kind == Kind::ShaderResource)
-            return (binding.registerIndex >= 4u && binding.registerIndex <= 6u) || binding.registerIndex == 9u;
+            return (binding.registerIndex >= 4u && binding.registerIndex <= 6u) || binding.registerIndex == 8u ||
+                   binding.registerIndex == 9u;
         if (binding.kind == Kind::UnorderedAccess)
             return binding.registerIndex == 1u;
         return binding.kind == Kind::Sampler && binding.registerIndex == 0u;

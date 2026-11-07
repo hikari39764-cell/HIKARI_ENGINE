@@ -12,6 +12,7 @@
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 
@@ -287,6 +288,14 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     viewport(view.renderWidth, view.renderHeight);
     commands->SetPipelineState(composite_.Get());
     draw();
+
+    // 烟の覆い（烟の平均距離と不透明度）を全解像度で書き、体積霧の合成へ渡す（場面の描画先は呼び出し側が戻す）。
+    TransitionTarget(commands, state.coverage, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    commands->OMSetRenderTargets(1, &state.coverage.rtv, FALSE, nullptr);
+    commands->SetPipelineState(coverage_.Get());
+    draw();
+    TransitionTarget(commands, state.coverage, kRead);
+    VOLUMETRIC::SetVolumetricFluidCoverage(state.coverage.srv.gpu, view.renderWidth, view.renderHeight);
 
     state.lastFrame = context.currentFrameRetireFenceValue;
     cameraVolumeView_ = {

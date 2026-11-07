@@ -117,6 +117,7 @@ enum CompositeRoot : UINT {
     kCompositeWaterDepth,
     kCompositeSceneColor,
     kCompositeAerialPerspective,
+    kCompositeFluidCoverage,
     kCompositeRootCount
 };
 // 環境光の格子は froxel の横 8x8 と奥行き 2 層ごとに一点（平衡で約 64 px）。probe 間隔より十分細かい。
@@ -156,6 +157,10 @@ struct StageState {
     D3D12_GPU_DESCRIPTOR_HANDLE waterDepthSrv{};
     D3D12_GPU_DESCRIPTOR_HANDLE localShadowSrv{};
     WATER::WaterVisibleDepthView waterDepthView{};
+    // 流体の烟の覆い（SetVolumetricFluidCoverage、このフレームの視図だけ）。
+    D3D12_GPU_DESCRIPTOR_HANDLE fluidCoverageSrv{};
+    uint32_t fluidCoverageWidth = 0u;
+    uint32_t fluidCoverageHeight = 0u;
     ID3D12Resource* sceneColorResource = nullptr;
     ID3D12Resource* sceneDepthResource = nullptr;
     VolumetricLightingStats stats{};
@@ -286,6 +291,7 @@ bool CreateRootSignature(ID3D12Device* device, bool injection, ID3D12RootSignatu
         table(kCompositeWaterDepth, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 6);
         table(kCompositeSceneColor, D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1);
         table(kCompositeAerialPerspective, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 9);
+        table(kCompositeFluidCoverage, D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 8);
         parameterCount = kCompositeRootCount;
     }
     std::array<CD3DX12_STATIC_SAMPLER_DESC, 2> samplers{};
@@ -468,6 +474,8 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     state.waterDepthSrv = {};
     state.stats.waterDepthValid = false;
     state.stats.waterDepthFallback = true;
+    state.fluidCoverageSrv = {};
+    state.fluidCoverageWidth = state.fluidCoverageHeight = 0u;
     if (!state.stats.requested || localFogVolumes.size() > kGameProjectLocalFogMaximumVolumes || !frame.camera.valid ||
         !frame.view.IsValid() || !context.deviceGeneration || !context.device || !context.cmdList || !context.srvHeap ||
         sceneColor.width != frame.renderWidth || sceneColor.height != frame.renderHeight) {
@@ -662,6 +670,13 @@ void SetVolumetricVisibleWaterDepth(const WATER::WaterVisibleDepthView& view) {
     state.waterDepthView = view;
 }
 
+void SetVolumetricFluidCoverage(D3D12_GPU_DESCRIPTOR_HANDLE srv, uint32_t width, uint32_t height) {
+    StageState& state = State();
+    state.fluidCoverageSrv = srv;
+    state.fluidCoverageWidth = width;
+    state.fluidCoverageHeight = height;
+}
+
 RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
     StageState& state = State();
     if (state.executedFrameIndex == state.preparedFrameIndex &&
@@ -777,6 +792,12 @@ RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
     cmd->SetComputeRootDescriptorTable(kCompositeAerialPerspective, state.aerialPerspectiveSrv.ptr != 0u
                                                                         ? state.aerialPerspectiveSrv
                                                                         : state.integrated.srv.gpu);
+    // 烟の覆いが無い・大きさが違う時は場面の深度（1 成分なので y = 不透明度が 0 と読める）。
+    const bool fluidCoverage = state.fluidCoverageSrv.ptr != 0u &&
+                               state.fluidCoverageWidth == state.stats.renderWidth &&
+                               state.fluidCoverageHeight == state.stats.renderHeight;
+    cmd->SetComputeRootDescriptorTable(kCompositeFluidCoverage,
+                                       fluidCoverage ? state.fluidCoverageSrv : state.sceneDepthSrv.gpu);
     cmd->Dispatch((state.stats.renderWidth + 7u) / 8u, (state.stats.renderHeight + 7u) / 8u, 1u);
     const auto sceneUavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(scene.GetResource());
     cmd->ResourceBarrier(1, &sceneUavBarrier);
@@ -839,6 +860,8 @@ void ShutdownVolumetricLightingStage() {
     state.sceneDepthResource = nullptr;
     state.waterDepthSrv = {};
     state.waterDepthView = {};
+    state.fluidCoverageSrv = {};
+    state.fluidCoverageWidth = state.fluidCoverageHeight = 0u;
     state.stats = {};
     state.writeIndex = 0;
     state.preparedFrameIndex = 0;

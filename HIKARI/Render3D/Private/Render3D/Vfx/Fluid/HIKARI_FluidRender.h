@@ -80,7 +80,10 @@ private:
     static constexpr D3D12_RESOURCE_STATES kRead =
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     static constexpr DXGI_FORMAT kColorFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
-    static constexpr DXGI_FORMAT kDepthFormat = DXGI_FORMAT_R32_FLOAT;
+    // 步进の 2 枚目：x 止めた不透明面の距離、y 烟の平均距離。
+    static constexpr DXGI_FORMAT kDepthFormat = DXGI_FORMAT_R32G32_FLOAT;
+    // 体積霧の合成へ渡す烟の覆い（全解像度）：x 烟の平均距離 [m]、y 不透明度。
+    static constexpr DXGI_FORMAT kCoverageFormat = DXGI_FORMAT_R16G16_FLOAT;
     static constexpr uint32_t kNoiseSize = 64u;
     // 透明物体の相機体積：画面 16 px ごと、奥行き 32 層（near から対数）、各層 2 標本。
     static constexpr uint32_t kCameraVolumeTile = 16u;
@@ -101,6 +104,7 @@ private:
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtvHeap{};
         Target marchColor{};
         Target marchDepth{};
+        Target coverage{};
         FluidVolume cameraVolume{};
         uint32_t width = 0u;
         uint32_t height = 0u;
@@ -124,6 +128,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> solar_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> march_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> composite_{};
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> coverage_{};
     DXGI_FORMAT compositeFormat_ = DXGI_FORMAT_UNKNOWN;
     bool failed_ = false;
     FluidVolume noiseVolume_{};

@@ -82,6 +82,10 @@ bool GetVolumetricFogSamplingView(uint64_t frameIndex, VolumetricFogSamplingView
 // Prepare clears this input every frame; Execute falls back to opaque
 // SceneDepth when the token, dimensions, or frame do not match.
 void SetVolumetricVisibleWaterDepth(const WATER::WaterVisibleDepthView& view);
+// 流体の烟の覆い（全解像度、x 烟の平均距離 [m]、y 不透明度）を借りる。合成は烟のある画素で、烟の距離までの霧と不透明面
+// までの霧を不透明度で混ぜる（烟に隠れた物の輪郭が霧で浮き出ない）。Prepare が毎フレーム外し、Execute は大きさが場面と
+// 合わない時は使わない。
+void SetVolumetricFluidCoverage(D3D12_GPU_DESCRIPTOR_HANDLE srv, uint32_t width, uint32_t height);
 bool IsVolumetricLightingActive();
 const VolumetricLightingStats& GetVolumetricLightingStats();
 void ShutdownVolumetricLightingStage();

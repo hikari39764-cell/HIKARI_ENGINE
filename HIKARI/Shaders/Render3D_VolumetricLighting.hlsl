@@ -437,7 +437,36 @@ Texture3D<float4> gIntegratedVolume : register(t5);
 Texture2D<float> gCompositeWaterDepth : register(t6);
 // 空気遠近の体積（Pre-Exposure 済みの内散乱光と平均透過率）。奥行きは d = max * w^2。
 Texture3D<float4> gAerialPerspectiveVolume : register(t9);
+// 流体の烟の覆い：x 烟の平均距離 [m]、y 不透明度（覆いが無い時は場面の深度が束ねられ、y は 0）。
+Texture2D<float2> gCompositeFluid : register(t8);
 RWTexture2D<float4> gSceneColorUav : register(u1);
+
+// 距離 distanceToCamera までの霧（積分した散乱と透過率）。
+float4 CompositeFog(float2 uv, float distanceToCamera)
+{
+    if (gAerialPerspective.z < 0.5f || distanceToCamera <= gFogDistances.x)
+        return float4(0.0f, 0.0f, 0.0f, 1.0f);
+    return gIntegratedVolume.SampleLevel(gLinearClamp, float3(uv, DistanceToSlice(distanceToCamera)), 0.0f);
+}
+
+// 距離 distanceToCamera の面に掛ける空気遠近（空には掛けない：空は大気の輝度そのもの）。
+float4 CompositeAerial(float2 uv, float distanceToCamera)
+{
+    if (gAerialPerspective.y <= 0.5f)
+        return float4(0.0f, 0.0f, 0.0f, 1.0f);
+    uint aerialWidth = 0u;
+    uint aerialHeight = 0u;
+    uint aerialSlices = 0u;
+    gAerialPerspectiveVolume.GetDimensions(aerialWidth, aerialHeight, aerialSlices);
+    const float w = sqrt(saturate(distanceToCamera / max(gAerialPerspective.x, 1.0f)));
+    const float slices = max((float)aerialSlices, 1.0f);
+    const float4 aerial = gAerialPerspectiveVolume.SampleLevel(
+        gLinearClamp, float3(uv, max(w - 0.5f / slices, 0.5f / slices)), 0.0f);
+    // 最初の層より手前はカメラ位置の恒等へ距離に比例して弱める（近距離の内散乱と減衰は距離に比例する）。層の座標 w は
+    // 距離の平方根なので w に比例させると近くを過大に見積もり、閉じた部屋の中まで昼の空の青い霞が数倍濃く乗った。
+    const float nearFraction = saturate(w * slices);
+    return lerp(float4(0.0f, 0.0f, 0.0f, 1.0f), aerial, nearFraction * nearFraction);
+}
 
 float ResolveNearestCompositeDepth(float opaqueDepth, float waterDepth)
 {
@@ -502,26 +531,9 @@ void CompositeCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         }
     }
     const float slice = DistanceToSlice(distanceToCamera);
-    const float4 fog = gAerialPerspective.z < 0.5f || distanceToCamera <= gFogDistances.x
-        ? float4(0.0f, 0.0f, 0.0f, 1.0f)
-        : gIntegratedVolume.SampleLevel(gLinearClamp, float3(uv, slice), 0.0f);
+    const float4 fog = CompositeFog(uv, distanceToCamera);
     // 空気遠近は空ではなく不透明面と水面にだけ掛ける（空は大気の輝度そのもの）。
-    float4 aerial = float4(0.0f, 0.0f, 0.0f, 1.0f);
-    if (gAerialPerspective.y > 0.5f && depth < 0.999999f)
-    {
-        uint aerialWidth = 0u;
-        uint aerialHeight = 0u;
-        uint aerialSlices = 0u;
-        gAerialPerspectiveVolume.GetDimensions(aerialWidth, aerialHeight, aerialSlices);
-        const float w = sqrt(saturate(distanceToCamera / max(gAerialPerspective.x, 1.0f)));
-        const float slices = max((float)aerialSlices, 1.0f);
-        aerial = gAerialPerspectiveVolume.SampleLevel(
-            gLinearClamp, float3(uv, max(w - 0.5f / slices, 0.5f / slices)), 0.0f);
-        // 最初の層より手前はカメラ位置の恒等へ距離に比例して弱める（近距離の内散乱と減衰は距離に比例する）。層の座標 w は
-        // 距離の平方根なので w に比例させると近くを過大に見積もり、閉じた部屋の中まで昼の空の青い霞が数倍濃く乗った。
-        const float nearFraction = saturate(w * slices);
-        aerial = lerp(float4(0.0f, 0.0f, 0.0f, 1.0f), aerial, nearFraction * nearFraction);
-    }
+    const float4 aerial = depth < 0.999999f ? CompositeAerial(uv, distanceToCamera) : float4(0.0f, 0.0f, 0.0f, 1.0f);
 
     const uint debugMode =
         (uint)(gVolumetricDebugMode + 0.5f);
@@ -546,6 +558,17 @@ void CompositeCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     {
         const float3 scene = gSceneColorUav[pixel].rgb;
         outputColor = (scene * aerial.a + aerial.rgb) * fog.a + fog.rgb;
+        // 流体の烟が覆う画素：烟の平均距離を面として霧と空気遠近を掛けた色と、不透明面までの色を不透明度で混ぜる。
+        // 烟は不透明面より先に場面へ重ねてあるので、不透明面の深度だけで霧を掛けると濃い烟の奥に隠れた物の輪郭が霧の濃淡で
+        // 浮き出る（浮游岛の球壳の奥の島）。
+        const float2 fluid = gCompositeFluid.Load(int3(pixel, 0));
+        if (fluid.y > 1.0f / 255.0f && fluid.x < distanceToCamera)
+        {
+            const float4 smokeFog = CompositeFog(uv, fluid.x);
+            const float4 smokeAerial = CompositeAerial(uv, fluid.x);
+            const float3 atSmoke = (scene * smokeAerial.a + smokeAerial.rgb) * smokeFog.a + smokeFog.rgb;
+            outputColor = lerp(outputColor, atSmoke, saturate(fluid.y));
+        }
     }
     gSceneColorUav[pixel] = float4(outputColor, 1.0f);
 }
