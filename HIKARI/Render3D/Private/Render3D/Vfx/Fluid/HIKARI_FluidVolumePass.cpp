@@ -93,6 +93,9 @@ struct DomainState {
     uint32_t generation = 0u;
     // 最後に時間を進めた描画入力の帧号。同じ入力を別の視図や交付待ちで再び受けても二度は進めない。
     uint64_t lastSimulatedFrame = UINT64_MAX;
+    // 解算の LOD（ResolveFluidSimulationLod）と、それで決めた子步の長さ [s]（描く側の外推が読む）。
+    uint32_t lod = 0u;
+    double stepSeconds = 0.0;
     // 解く空間（世界空間の域は作り直した時の変換に固定、局所空間の域は毎フレームの変換）。
     MATH::Vec3 framePosition{};
     MATH::Quat frameRotation = MATH::Quat::Identity();
@@ -137,11 +140,6 @@ bool IsFenceComplete(const GFX::Context& context, uint64_t fence) noexcept {
     return fence == 0u || (context.frameFence != nullptr && context.frameFence->GetCompletedValue() >= fence);
 }
 
-// 子步の長さ [s]（作者の substepRate を 15〜240 Hz に収める）。
-double SubstepSeconds(const FluidDomainSettings& settings) noexcept {
-    return 1.0 / static_cast<double>(std::clamp(settings.substepRate, 15.0f, 240.0f));
-}
-
 // 預熱の 1 フレームの子步の数：仕事の上限を域の格の数で割る（1〜kPrewarmStepsPerFrame）。
 uint32_t PrewarmStepsPerFrame(const FluidGridLayout& layout) noexcept {
     const uint64_t cells = uint64_t{layout.cells[0]} * layout.cells[1] * layout.cells[2];
@@ -158,7 +156,7 @@ void WarnUnfinishedPrewarm(const FluidDomainSubmission& submission, const FluidG
                   "at %.0f Hz) restarted %u times before its prewarm finished and is not drawn: %s.",
                   submission.key.emitterIndex, settings.domainSize.x, settings.domainSize.y, settings.domainSize.z,
                   layout.cells[0], layout.cells[1], layout.cells[2], settings.prewarmSeconds,
-                  1.0 / SubstepSeconds(settings), kUnfinishedRestartWarning,
+                  1.0 / FluidSubstepSeconds(settings, 0u), kUnfinishedRestartWarning,
                   relayout ? "the grid keeps changing (domain size, resolution or fluid quality)"
                            : "playback keeps restarting it (seek, time jump or replay every frame)");
     HIKARI_LOG_WARN(message);
@@ -178,6 +176,7 @@ float DomainDistance(const FluidDomainSubmission& submission, const MATH::Vec3& 
     return (std::max)(0.0f, MATH::Length(submission.worldPosition - viewer) -
                                 0.5f * MATH::Length(submission.settings.domainSize));
 }
+
 } // namespace
 
 struct FluidVolumePass::Impl {
@@ -364,8 +363,8 @@ bool FluidVolumePass::Impl::PrepareDomain(DomainState& domain, const FluidDomain
         ++domain.generation;
         domain.clock = {};
         const double prewarm = static_cast<double>((std::max)(0.0f, submission.settings.prewarmSeconds));
-        domain.prewarmSteps =
-            static_cast<uint64_t>((std::max)(0.0, std::ceil(prewarm / SubstepSeconds(submission.settings) - 1.0e-6)));
+        domain.prewarmSteps = static_cast<uint64_t>(
+            (std::max)(0.0, std::ceil(prewarm / FluidSubstepSeconds(submission.settings, 0u) - 1.0e-6)));
         domain.velocityIndex = domain.densityIndex = 0u;
         domain.framePosition = submission.worldPosition;
         domain.frameRotation = submission.worldRotation;
@@ -452,7 +451,13 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
                                   const FluidFrameSettings& settings, bool advance) {
     const FluidDomainSettings& authored = submission.settings;
     const FluidGridLayout& layout = domain.resources.layout;
-    const double step = SubstepSeconds(authored);
+    // 預熱は作者の子步のまま（預熱の子步の数はその長さで数えてある）。
+    const uint32_t lod = domain.prewarmSteps > 0u ? 0u : domain.lod;
+    const double step = FluidSubstepSeconds(authored, lod);
+    const uint32_t vCycles = lod == 0u ? policy.vCycles : (std::max)(policy.vCycles, 2u) - 1u;
+    domain.stepSeconds = step;
+    domain.stats.lod = lod;
+    domain.stats.substepSeconds = static_cast<float>(step);
     // 局所空間の域は毎フレーム層の変換へ付いていき、挂点の速度の変化を逆向きに烟へ入れる（冲刺の拖尾、急停の回卷）。
     if (submission.localSpace) {
         domain.framePosition = submission.worldPosition;
@@ -665,7 +670,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         if (constants == 0u || sources == 0u || interactions == 0u)
             break;
         FluidRecorder stepRecorder(commands, pipeline, domain.resources, constants);
-        stepRecorder.Substep(domain.velocityIndex, domain.densityIndex, sources, interactions, policy.vCycles);
+        stepRecorder.Substep(domain.velocityIndex, domain.densityIndex, sources, interactions, vCycles);
         if (index == 0u)
             domain.pendingInertia = {};
         for (CarriedInteraction& event : domain.carried)
@@ -750,6 +755,7 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
     if (context.currentFrameRetireFenceValue != impl.statsFrameFence || context.currentFrameRetireFenceValue == 0u) {
         impl.statsFrameFence = context.currentFrameRetireFenceValue;
         impl.stats.domains = 0u;
+        impl.stats.lodDomains = 0u;
         impl.stats.skippedDomains = 0u;
         impl.stats.stepsThisFrame = 0u;
         impl.stats.renderedDomains = 0u;
@@ -861,10 +867,14 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         domain->admittedFrame = input->frameIndex;
         if (!impl.PrepareDomain(*domain, submission, policy))
             continue;
+        domain->lod =
+            ResolveFluidSimulationLod(submission, domain->resources.layout.cellSize, settings, policy, domain->lod);
         const bool advance = domain->lastSimulatedFrame != input->frameIndex;
         domain->lastSimulatedFrame = input->frameIndex;
         impl.Solve(*domain, submission, input->fluidSources, policy, settings, advance);
         ++solved;
+        if (domain->stats.lod > 0u)
+            ++impl.stats.lodDomains;
         if (domain->prewarmSteps > 0u || impl.renderList.size() >= INTERNAL::kMaximumRenderedFluidDomains)
             continue;
         domain->unfinishedRestarts = 0u;
@@ -880,8 +890,7 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         render.settings = submission.settings;
         render.colorMultiplier = submission.colorMultiplier;
         render.simulationSeconds = domain->simulationSeconds;
-        render.pendingSeconds =
-            static_cast<float>((std::min)(domain->clock.pendingSeconds, SubstepSeconds(submission.settings)));
+        render.pendingSeconds = static_cast<float>((std::min)(domain->clock.pendingSeconds, domain->stepSeconds));
         render.frameVelocity =
             submission.localSpace
                 ? domain->smoothedVelocity * (1.0f - std::clamp(submission.settings.relativeWind, 0.0f, 1.0f))
