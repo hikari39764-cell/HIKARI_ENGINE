@@ -6,6 +6,7 @@
 
 #include <d3dx12.h>
 
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_ResourceStateTracker.h"
 #include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
@@ -129,13 +130,13 @@ bool GpuParticleStorage::EnsureCollisionDepth(const GFX::Context& context, uint3
         return false;
     if (collisionDepth_ != nullptr && collisionDepthWidth_ == width && collisionDepthHeight_ == height)
         return true;
+    // 前の大きさの資源と記述子は、このフレームと飛行中のフレームが使い終わってから解放する。
     if (context.resourceStates != nullptr && collisionDepth_ != nullptr)
         context.resourceStates->Forget(collisionDepth_.Get());
-    for (RenderResourceView* view : {&collisionDepthSrv_, &collisionDepthUav_}) {
-        if (view->IsValid())
-            (void)ReleaseRenderResourceDescriptor(*view);
-        *view = {};
-    }
+    RetireRenderResourceDescriptor(collisionDepthSrv_, context, "ParticleCollisionDepth.Srv");
+    RetireRenderResourceDescriptor(collisionDepthUav_, context, "ParticleCollisionDepth.Uav");
+    if (collisionDepth_ != nullptr)
+        GFX::RetireD3D12ObjectForFrame(collisionDepth_.Get(), context, "ParticleCollisionDepth");
     collisionDepth_.Reset();
     collisionDepthWidth_ = collisionDepthHeight_ = 0u;
     const auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);

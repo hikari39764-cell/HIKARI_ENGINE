@@ -49,13 +49,13 @@ bool ExecutePreparedParticleForwardTransparent(const GFX::Context& graphics, D3D
                                                const MeshPassResources& passResources, bool captureCollisionDepth);
 // 描画入力の流体域を解く（粒子の準備の前、同じ描画入力で）。失敗したフレームは流体だけを飛ばす。
 void PrepareFluidFrame(const GFX::Context& graphics, const RENDER3D::PARTICLES::ParticleRenderFrameSource* source);
-// fluidVolume はこの視図の流体の相機体積（流体を解かない視図は空）。collisionCamera はこの視図の深度を粒子の場景深度碰撞
-// へ撮る時だけ渡す相機の定数（主視图だけ）。
+// fluidVolume はこの視図の流体の相機体積（流体を解かない視図は空）。collisionViewProj はこの視図の深度を粒子の場景深度
+// 碰撞へ撮る時だけ渡す相機相対の viewProj（主視图だけ）。
 bool ExecuteParticleForwardTransparent(RENDER3D::PARTICLES::ParticleGpuDrivenPass& particlePass,
                                        const GFX::Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
                                        const MATH::Vec3& cameraPosition, const MeshPassResources& passResources,
                                        const RENDER3D::FLUID::FluidCameraVolumeView& fluidVolume,
-                                       const CameraCB* collisionCamera);
+                                       const MATH::Mat4* collisionViewProj);
 void SyncSurfaceGpuSceneMaterialFrame(const GFX::Context& graphics);
 void SyncGpuDrivenSceneMaterialSources(const GFX::Context& graphics, uintptr_t sourceIdentity,
                                        const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source);

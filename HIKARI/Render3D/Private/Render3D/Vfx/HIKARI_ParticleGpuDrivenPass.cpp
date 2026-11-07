@@ -482,8 +482,8 @@ struct ParticleGpuDrivenPass::Impl {
         context.cmdList->SetComputeRootDescriptorTable(10u, storage.GetCollisionDepthUav());
         context.cmdList->Dispatch((width + 7u) / 8u, (height + 7u) / 8u, 1u);
         storage.TransitionCollisionDepth(context, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        collisionView.viewProj = bindings.viewProj;
-        collisionView.invViewProj = bindings.invViewProj;
+        collisionView.viewProj = bindings.collisionViewProj;
+        collisionView.invViewProj = MATH::Inverse(bindings.collisionViewProj);
         collisionView.size = {static_cast<float>(width), static_cast<float>(height), 1.0f / static_cast<float>(width),
                               1.0f / static_cast<float>(height)};
         collisionView.camera = {bindings.cameraPosition.x, bindings.cameraPosition.y, bindings.cameraPosition.z, 1.0f};
@@ -686,8 +686,13 @@ struct ParticleGpuDrivenPass::Impl {
         ID3D12DescriptorHeap* heaps[] = {context.srvHeap};
         context.cmdList->SetDescriptorHeaps(1u, heaps);
         const uint32_t frameResourceIndex = context.frameIndex % GFX::kFrameResourceCount;
-        if (!input.emitters.empty())
-            storage.WriteCollisionView(frameResourceIndex, collisionView);
+        if (!input.emitters.empty()) {
+            // 撮ったのが前のフレームでなければ（主視图が描かれていない間、相機は動いているかもしれない）碰撞しない。
+            INTERNAL::GpuParticleCollisionView view = collisionView;
+            if (collisionCaptureFrame + 1u != frameSerial)
+                view.camera.w = 0.0f;
+            storage.WriteCollisionView(frameResourceIndex, view);
+        }
         std::unordered_map<ParticleEmitterInstanceKey, size_t, ParticleEmitterInstanceKeyHasher> drawItemIndices{};
         uint64_t layoutVersion = 1469598103934665603ull;
         uint64_t materialVersion = 1099511628211ull;

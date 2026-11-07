@@ -227,8 +227,9 @@ void AdvectForwardCS(uint3 id : SV_DispatchThreadID)
         const float3 back = p - step * u;
         velocity.w = gIn0.SampleLevel(gLinearClamp, back / VelocityTexels(), 0).w;
         gOut1[id] = SmokeAt(gIn1, p - step * (u + GuideVelocity(DomainPosition(p))));
+        // 燃料も烟と同じ率（densityDissipation）で薄れる（燃え残りが域に溜まり続けない。NVIDIA Flow の fuel damping）。
         if (Combusting())
-            gOut2[id] = float2(SmokeAt(gIn2, back).x, 0.0f);
+            gOut2[id] = float2(SmokeAt(gIn2, back).x * exp(-gDissipation.x * gCell.z), 0.0f);
     }
     else if (InsideCells(id))
     {

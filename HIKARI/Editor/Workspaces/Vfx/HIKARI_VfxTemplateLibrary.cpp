@@ -23,7 +23,8 @@ void VfxWorkspaceController::DrawTemplateLibrary() {
             ImGui::PushID(column);
             std::string previousCategory;
             for (const auto& preset : VFX::PRESETS::GetVfxPresetCatalog()) {
-                if (column == 0 && preset.category != "Compositions")
+                // 流体の预设（火・爆発）は循環と長さを資産が持つので、完整特效として新規に作れる左の欄にも出す。
+                if (column == 0 && preset.category != "Compositions" && preset.category != "Fluid")
                     continue;
                 if (column == 1 && preset.category == "Compositions" && preset.id != "ribbon_trail" &&
                     preset.id != "shockwave" && preset.id != "charge")

@@ -122,7 +122,7 @@ void CollisionDepthCS(uint3 id : SV_DispatchThreadID)
     gCollisionDepthOut[id.xy] = nearest;
 }
 
-// 碰撞深度の texel の面の世界位置。空（深度 1）なら valid = false。
+// 碰撞深度の texel の面の位置（相機を原点にした座標）。空（深度 1）なら valid = false。
 float3 CollisionSurface(int2 texel, out bool valid)
 {
     const int2 clamped = clamp(texel, int2(0, 0), int2(gCollisionSize.xy) - 1);
@@ -139,7 +139,9 @@ bool CollideSceneDepth(inout float3 position, inout float3 velocity, float thick
 {
     if (gCollisionCamera.w <= 0.0f)
         return false;
-    const float4 clip = mul(gCollisionViewProj, float4(position, 1.0f));
+    // 相機を原点にして投影・還元する（大きな座標の場面でも面の位置と法線が揺れない。流体の視線と同じ）。
+    float3 relative = position - gCollisionCamera.xyz;
+    const float4 clip = mul(gCollisionViewProj, float4(relative, 1.0f));
     if (clip.w <= 1.0e-4f)
         return false;
     const float3 ndc = clip.xyz / clip.w;
@@ -150,7 +152,7 @@ bool CollideSceneDepth(inout float3 position, inout float3 velocity, float thick
     const float3 surface = CollisionSurface(texel, valid);
     if (!valid)
         return false;
-    const float behind = distance(position, gCollisionCamera.xyz) - distance(surface, gCollisionCamera.xyz);
+    const float behind = length(relative) - length(surface);
     if (behind <= 0.0f || behind > thickness)
         return false;
     bool left, right, up, down;
@@ -166,14 +168,15 @@ bool CollideSceneDepth(inout float3 position, inout float3 velocity, float thick
     if (dot(normal, normal) <= 1.0e-12f)
         return false;
     normal = normalize(normal);
-    if (dot(normal, gCollisionCamera.xyz - surface) < 0.0f)
+    if (dot(normal, -surface) < 0.0f)
         normal = -normal;
     // 面の平面の上（法線側へ 1 cm）へ戻し、面へ向かう速さを restitution で反転、面に沿う速さを friction で減らす。視線では
     // 奥でも面の平面の表側にいる（面をかすめる角度）なら碰撞しない。
-    const float signedDistance = dot(position - surface, normal);
+    const float signedDistance = dot(relative - surface, normal);
     if (signedDistance >= 0.0f)
         return false;
-    position -= normal * (signedDistance - 0.01f);
+    relative -= normal * (signedDistance - 0.01f);
+    position = gCollisionCamera.xyz + relative;
     const float into = dot(velocity, normal);
     const float3 along = velocity - normal * into;
     velocity = along * (1.0f - saturate(friction)) + normal * (into < 0.0f ? -into * saturate(restitution) : into);

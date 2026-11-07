@@ -14,7 +14,8 @@
 
 namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
 
-// Render3D_ParticleSimulation.hlsl の CollisionViewConstants（b2）：碰撞深度を撮った視图。
+// Render3D_ParticleSimulation.hlsl の CollisionViewConstants（b2）：碰撞深度を撮った視图。行列は相機を原点にした座標
+// （大きな座標の場面でも還元した面の位置が揺れない）。
 struct GpuParticleCollisionView {
     MATH::Mat4 viewProj{};
     MATH::Mat4 invViewProj{};
