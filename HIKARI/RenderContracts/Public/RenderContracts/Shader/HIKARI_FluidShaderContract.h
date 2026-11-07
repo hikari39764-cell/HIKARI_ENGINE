@@ -20,21 +20,23 @@ inline constexpr std::string_view kFluidSimulationShaderRootCanonical =
 inline constexpr std::string_view kFluidSimulationShaderInterfaceCanonical =
     "FluidDomainCB:144;uint4 size(cells,sourceCount),float4 cell(h,invH,dt,time),motion(boundary,vorticity,"
     "buoyancy,weight),dissipation(density,temperature),up,inertia,uint4 interactionCount(count,activityOffset,sinkOffset,flags clear1 count2),combustion0(ignition,burnRate,fuelPerBurn,heatPerBurn),combustion1(smokePerBurn,expansionPerBurn,enabled);FluidPassCB:32;uint4 passSize,"
-    "passParams(color,sliceField,sliceAxis,sliceIndex|statsOffset);FluidSource:304 rows toSource[3],toDomain[3],"
+    "passParams(color,sliceField|glowIgnition,sliceAxis|glowHot,sliceIndex|statsOffset);FluidSource:304 rows toSource[3],toDomain[3],"
     "shape,shape2,emission,velocity,field0,field1,field2,wind,guide,flow(expansion),sweep(back,exposure),"
     "bounds(center,radius 0 all),color(rgb,fuelFraction) sphere inner radius shell,shape guide advects density only (not projected),"
     "mask/emission/activity use the substep-swept shape times exposure, sources skip cells outside bounds;FluidInteraction:112 toLocal[3],extents(kind 0 obstacle 1 impulse 2 force 3 emit; emit y temperature),"
-    "velocity(shape),push(center,strength),sweep(emit segment,exposure) obstacle Brinkman after forces,directed push accel falloff^2,"
+    "velocity(shape),push(center,strength),sweep(emit segment,exposure|force x absorption 1/s) obstacle Brinkman after forces,directed push accel falloff^2,"
+    "force absorption scales density,temperature,fuel by exp(-absorption*falloff^2*dt),sink rate 0 in all-closed domains,"
     "radial push open-boundary expansion 30S/R falloff^2 and source outflow*area/volume*mask in rhs;MAC velocity RGBA16F (n+1)^3 xyz lower face "
     "w cell temperature;density R16F n^3 or RGBA16F n^3 (x density,yzw density*color advected with density, source adds rate*color, emit white);fuel RG16F n^3 x2 or 1^3 placeholder (x fuel advected forward only,y burn rate 1/s): burn=min(burnRate*min(T-ignition,1)*dt,fuel/fuelPerBurn),fuel-=fuelPerBurn*burn,T+=heat*burn,soot+=smoke*burn,rhs expansion+=expansionPerBurn*burnRate (open boundary),occupancy max(density,fuel);pressure/rhs R32F multigrid A P=sum-kP=D h^2 coarse rhs 4*mean residual,prolong trilinear with open-boundary sign-flipped ghosts;"
     "stats raw: brick max density f32 then (maxAbsDivergence,densitySum) f32x2 per 8^3 brick then activity u32 "
-    "(1 active) then sink removed f32 per interaction row (32);emit adds strength*falloff^2 around its swept segment times exposure density/s and activates bricks;inactive bricks skip advection,curl and forces (velocity copied,density 0),pressure solved densely";
+    "(1 active) then removed (sink inflow+absorption) f32 per interaction row (32) then glow f32x8 per brick "
+    "(sum density*saturate(T-ignition),sum*hotShare,0,0,sum*grid xyz,0);emit adds strength*falloff^2 around its swept segment times exposure density/s and activates bricks;inactive bricks skip advection,curl and forces (velocity copied,density 0),pressure solved densely";
 
 inline ShaderAssetContractExpectation MakeFluidSimulationShaderContract(
     ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = "HIKARI.FluidSimulation";
-    contract.engineInterfaceVersion = 13u;
+    contract.engineInterfaceVersion = 14u;
     contract.rootLayoutId = "HIKARI.FluidSimulation.Root";
     contract.rootLayoutVersion = 3u;
     contract.availableDeviceCaps = availableCaps;

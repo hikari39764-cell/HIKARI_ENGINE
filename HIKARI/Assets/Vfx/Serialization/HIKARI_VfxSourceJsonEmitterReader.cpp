@@ -205,7 +205,9 @@ bool ReadSpecialOutput(const Json& node, VfxSpecialOutputData& output) {
             !OptionalFloat(*profile, "flickerFrequency", value.flickerFrequency) ||
             !OptionalFloat(*profile, "flickerAmplitude", value.flickerAmplitude) ||
             !OptionalUint32(*profile, "priority", value.priority) ||
-            !OptionalBool(*profile, "castsShadows", value.castsShadows)) {
+            !OptionalBool(*profile, "castsShadows", value.castsShadows) ||
+            !OptionalBool(*profile, "followFluidGlow", value.followFluidGlow) ||
+            !OptionalFloat(*profile, "glowShare", value.glowShare)) {
             return false;
         }
     }

@@ -8,7 +8,7 @@
 
 namespace HIKARI::VFX {
 
-inline constexpr uint32_t kHvfxcFormatVersion = 31u;
+inline constexpr uint32_t kHvfxcFormatVersion = 32u;
 inline constexpr uint32_t kMaximumHvfxcPayloadBytes = 64u * 1024u * 1024u;
 
 bool SerializeVfxProgram(const VfxProgram& program, std::string& outPayload, std::string& outError);

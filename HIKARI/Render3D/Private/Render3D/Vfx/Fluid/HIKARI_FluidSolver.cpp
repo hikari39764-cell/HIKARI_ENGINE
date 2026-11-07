@@ -1,6 +1,7 @@
 #include "Render3D/Vfx/Fluid/HIKARI_FluidSolver.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <string>
 #include <utility>
@@ -51,7 +52,7 @@ constexpr const char* kEntryNames[] = {
     "DivergenceCS", "SmoothCS",        "ResidualRestrictCS",
     "ProlongCS",    "CoarsestSolveCS", "ProjectCS",
     "OccupancyCS",  "DiagnosticsCS",   "SliceCS",
-    "ActivityCS",
+    "ActivityCS",   "GlowCS",
 };
 static_assert(std::size(kEntryNames) == static_cast<size_t>(FluidEntry::Count));
 
@@ -215,7 +216,7 @@ bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& lay
     created = created && CreateVolume(device, DXGI_FORMAT_R16G16B16A16_FLOAT, (n[0] + 1u) / 2u, (n[1] + 1u) / 2u,
                                       (n[2] + 1u) / 2u, resources.light, false);
     resources.bricks = ((n[0] + 7u) / 8u) * ((n[1] + 7u) / 8u) * ((n[2] + 7u) / 8u);
-    resources.statsBytes = (resources.SinkOffset() + kMaximumFluidInteractionsPerDomain * 4u + 255u) & ~255u;
+    resources.statsBytes = (resources.GlowOffset() + resources.bricks * 32u + 255u) & ~255u;
     created = created && CreateBuffer(device, D3D12_HEAP_TYPE_DEFAULT, resources.statsBytes,
                                       D3D12_RESOURCE_STATE_UNORDERED_ACCESS, resources.stats);
     for (auto& readback : resources.readback)
@@ -408,6 +409,17 @@ void FluidRecorder::Occupancy(uint32_t densityIndex) {
     const uint32_t* n = domain_.layout.cells;
     const uint32_t size[3] = {n[0], n[1], n[2]};
     Dispatch(FluidEntry::Occupancy, bindings, size, {0u, 0u, 0u, 0u},
+             {Groups(n[0], 8u), Groups(n[1], 8u), Groups(n[2], 8u)});
+}
+
+void FluidRecorder::Glow(uint32_t velocityIndex, uint32_t densityIndex, float emissionTemperature,
+                         float hotTemperature) {
+    FluidPassBindings bindings{{&domain_.velocity[velocityIndex], &domain_.density[densityIndex]}, {}};
+    const uint32_t* n = domain_.layout.cells;
+    const uint32_t size[3] = {n[0], n[1], n[2]};
+    Dispatch(FluidEntry::Glow, bindings, size,
+             {0u, std::bit_cast<uint32_t>(emissionTemperature), std::bit_cast<uint32_t>(hotTemperature),
+              domain_.GlowOffset()},
              {Groups(n[0], 8u), Groups(n[1], 8u), Groups(n[2], 8u)});
 }
 

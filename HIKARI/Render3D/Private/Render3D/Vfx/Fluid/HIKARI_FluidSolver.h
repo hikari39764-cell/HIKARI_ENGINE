@@ -33,6 +33,7 @@ enum class FluidEntry : uint32_t {
     Diagnostics,
     Slice,
     Activity,
+    Glow,
     Count
 };
 
@@ -94,6 +95,8 @@ struct FluidDomainResources {
     uint32_t DiagnosticsOffset() const noexcept { return bricks * 4u; }
     uint32_t ActivityOffset() const noexcept { return bricks * 12u; }
     uint32_t SinkOffset() const noexcept { return bricks * 16u; }
+    // 砖块ごとの発光（Σ 発光量、Σ 発光量 × 熱い端への割合、Σ 発光量 × 格子座標）、32 byte ずつ。
+    uint32_t GlowOffset() const noexcept { return SinkOffset() + kMaximumFluidInteractionsPerDomain * 4u; }
 };
 
 // 世界（または親）の向き v を、回転 rotation の局所の向きへ移す。
@@ -159,6 +162,8 @@ public:
                  D3D12_GPU_VIRTUAL_ADDRESS interactions, uint32_t vCycles);
     void Occupancy(uint32_t densityIndex);
     void Diagnostics(uint32_t velocityIndex, uint32_t densityIndex);
+    // 発光を砖块ごとに数える（火の光源の回読）。起亮温度と熱い端の温度は描画の色帯と同じ値。
+    void Glow(uint32_t velocityIndex, uint32_t densityIndex, float emissionTemperature, float hotTemperature);
     void Slice(uint32_t velocityIndex, uint32_t densityIndex, FluidVolume& output, FluidDebugField field, uint32_t axis,
                uint32_t index, bool visualize);
     void CopyStats(ID3D12Resource* readback);

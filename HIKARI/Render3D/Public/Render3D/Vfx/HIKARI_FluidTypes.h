@@ -229,6 +229,15 @@ struct FluidSinkReport {
     double removed = 0.0;
 };
 
+// 域の発光（火の光源が読む。FluidDomainSubmission::reportGlow の域だけ）。intensity は描画と同じ発光（密度 × 温度の色帯
+// × emissionIntensity）を域で積んだ光度 [cd]（rgb、薄い烟として：烟が自分の光を遮る分は含まない）、worldPosition はその
+// 重心（世界）。光っていなければ intensity 0。GPU の回読なので 1〜3 フレーム遅れ、子步を進めたフレームだけ届く。
+struct FluidGlowReport {
+    PARTICLES::ParticleEmitterInstanceKey key{};
+    MATH::Vec3 worldPosition{};
+    MATH::Vec3 intensity{};
+};
+
 // 向きの無い冲量が湧き出し続けるゲーム時間 [s]（半径での押し出しの距離は約 strength × この時間）。
 inline constexpr double kFluidRadialImpulseSeconds = 0.1;
 
@@ -294,6 +303,8 @@ struct FluidDomainSubmission {
     MATH::Vec3 worldPosition{};
     MATH::Quat worldRotation = MATH::Quat::Identity();
     MATH::Vec4 colorMultiplier{1.0f, 1.0f, 1.0f, 1.0f};
+    // 発光を回読して FluidGlowReport を出す（流体の発光に付いて行く光源がある域だけ）。
+    bool reportGlow = false;
     FluidDomainSettings settings{};
     std::vector<FluidSourceSubmission> sources{};
 };

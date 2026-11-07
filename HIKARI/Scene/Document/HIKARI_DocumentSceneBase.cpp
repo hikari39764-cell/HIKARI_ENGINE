@@ -563,7 +563,10 @@ void DocumentSceneBase::Render() {
     lightingScope.reset();
     // VFX の光源出力はそのフレーム限りの一時光源。照明セットを組んだ
     // 直後に足し、方向光の解決より前に確定させる。
-    if (const auto* vfxPlayback = state_->runtime.world.Services().Find<VFX::VfxPlaybackService>()) {
+    if (auto* vfxPlayback = state_->runtime.world.Services().Find<VFX::VfxPlaybackService>()) {
+        // 流体の発光に付いて行く光源は、前のフレームの描画が回読した発光で位置と光束を決める。
+        vfxPlayback->ReceiveFluidGlow(state_->runtime.fluidGlowReports);
+        state_->runtime.fluidGlowReports.clear();
         (void)VFX::AppendVfxLightProviders(*vfxPlayback, sceneLighting.lights);
         // 画面空間の歪みはゲームプレイ由来の画面波と同じ表へ入れる。
         if (auto* reactions = state_->runtime.world.Services().Find<VFX::ActionPostReactionService>()) {
@@ -687,9 +690,12 @@ void DocumentSceneBase::Render() {
         VFX::VfxPlaybackService* playback = state_->runtime.world.Services().Find<VFX::VfxPlaybackService>();
         RENDER3D::PARTICLES::ParticleRenderFrameSource particleFrameSource{};
         if (playback != nullptr) {
-            particleFrameSource = {&playback->GetRenderInput(), &state_->assets.Registry(),
-                                   state_->runtime.materialExternalValueSnapshot.get(), fluidInteractions,
-                                   &state_->runtime.fluidSinkReports};
+            particleFrameSource = {&playback->GetRenderInput(),
+                                   &state_->assets.Registry(),
+                                   state_->runtime.materialExternalValueSnapshot.get(),
+                                   fluidInteractions,
+                                   &state_->runtime.fluidSinkReports,
+                                   &state_->runtime.fluidGlowReports};
             primaryView.particleFrameSource = &particleFrameSource;
         }
         if (auto* combat = state_->runtime.world.Services().Find<VFX::CombatPresentationService>()) {

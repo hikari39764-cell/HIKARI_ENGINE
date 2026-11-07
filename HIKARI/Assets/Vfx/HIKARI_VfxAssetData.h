@@ -225,6 +225,8 @@ inline constexpr float kVfxLightFlickerAmplitudeMin = 0.0f;
 inline constexpr float kVfxLightFlickerAmplitudeMax = 1.0f;
 inline constexpr uint32_t kVfxLightPriorityMin = 0u;
 inline constexpr uint32_t kVfxLightPriorityMax = 32u;
+inline constexpr float kVfxLightGlowShareMin = 0.0f;
+inline constexpr float kVfxLightGlowShareMax = 4.0f;
 inline constexpr float kVfxWeaponDistortionMax = 8.0f;
 inline constexpr float kVfxWeaponBlurMin = 0.0f;
 inline constexpr float kVfxWeaponBlurMax = 8.0f;
@@ -347,6 +349,11 @@ struct VfxLightOutputProfile {
     // 同時に複数の VFX 光源が競合したときの優先度。大きいほど残る。
     uint32_t priority = 0u;
     bool castsShadows = false;
+    // 流体域の層だけ：光源を流体の発光の重心に置き、明るさと色を流体の発光から決める（火が大きくなれば明るく、揺れれば
+    // 揺れ、消えれば消える）。光束は 4π × 発光の光度 × glowShare（烟が自分の光を遮って周りへ届く割合、厚い火で 0.3 前後）
+    // で、luminousFlux はその上限になる。GPU の回読なので 1〜3 フレーム遅れる。
+    bool followFluidGlow = false;
+    float glowShare = 0.3f;
 };
 
 struct VfxSpecialOutputData {

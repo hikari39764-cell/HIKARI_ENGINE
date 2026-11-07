@@ -229,6 +229,8 @@ Json WriteSpecialOutput(const VfxSpecialOutputData& value) {
              {"flickerAmplitude", value.light.flickerAmplitude},
              {"priority", value.light.priority},
              {"castsShadows", value.light.castsShadows},
+             {"followFluidGlow", value.light.followFluidGlow},
+             {"glowShare", value.light.glowShare},
          }},
     };
 }

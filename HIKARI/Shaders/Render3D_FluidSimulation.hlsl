@@ -25,7 +25,7 @@ cbuffer FluidDomainCB : register(b0)
 cbuffer FluidPassCB : register(b1)
 {
     uint4 gPassSize;      // xyz この pass が回す格子（段の格の数、切片の画素数）
-    uint4 gPassParams;    // x 赤黒の色、y 切片の量、z 切片の軸、w 切片の位置（格）
+    uint4 gPassParams;    // x 赤黒の色、y 切片の量（発光：起亮温度）、z 切片の軸（発光：熱い端の温度）、w 切片の位置（格）か統計の位置
 };
 
 Texture3D<float4> gIn0 : register(t0);
@@ -950,6 +950,45 @@ void DiagnosticsCS(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uin
         const uint3 bricks = (gSize.xyz + 7u) / 8u;
         const uint brick = group.x + bricks.x * (group.y + bricks.y * group.z);
         gStats.Store2(gPassParams.w + brick * 8u, asuint(gBrickStats[0]));
+    }
+}
+
+// 発光の回読（火の光源）：砖块（8³ 格）ごとに 発光量 a = 密度 × saturate(温度 - 起亮温度)（描画の HikariFluidEmission の
+// 強さと同じ形）の和、a × 熱い端への割合の和、a × 格子座標の和を gPassParams.w から 32 byte ずつ書く。起亮温度と熱い端の
+// 温度は gPassParams.y / z（float のビット）。t0 速度（w 格の温度）、t1 密度。
+groupshared float2 gBrickGlow[512];
+groupshared float3 gBrickGlowCenter[512];
+[numthreads(8, 8, 8)]
+void GlowCS(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint flat : SV_GroupIndex)
+{
+    float amount = 0.0f;
+    float hot = 0.0f;
+    if (InsideCells(id))
+    {
+        const float ignition = asfloat(gPassParams.y);
+        const float span = asfloat(gPassParams.z) - ignition;
+        const float temperature = gIn0.Load(int4(id, 0)).w;
+        amount = max(gIn1.Load(int4(id, 0)).x, 0.0f) * saturate(temperature - ignition);
+        hot = amount * (span > 1.0e-4f ? saturate((temperature - ignition) / span) : 0.0f);
+    }
+    gBrickGlow[flat] = float2(amount, hot);
+    gBrickGlowCenter[flat] = amount * (float3(id) + 0.5f);
+    GroupMemoryBarrierWithGroupSync();
+    [unroll] for (uint stride = 256u; stride > 0u; stride >>= 1u)
+    {
+        if (flat < stride)
+        {
+            gBrickGlow[flat] += gBrickGlow[flat + stride];
+            gBrickGlowCenter[flat] += gBrickGlowCenter[flat + stride];
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+    if (flat == 0u)
+    {
+        const uint3 bricks = (gSize.xyz + 7u) / 8u;
+        const uint address = gPassParams.w + (group.x + bricks.x * (group.y + bricks.y * group.z)) * 32u;
+        gStats.Store4(address, asuint(float4(gBrickGlow[0], 0.0f, 0.0f)));
+        gStats.Store4(address + 16u, asuint(float4(gBrickGlowCenter[0], 0.0f)));
     }
 }
 

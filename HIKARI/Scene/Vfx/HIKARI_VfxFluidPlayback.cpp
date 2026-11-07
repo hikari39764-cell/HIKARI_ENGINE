@@ -120,6 +120,10 @@ void VfxPlaybackService::AppendFluidDomain(Instance& instance, uint32_t domainIn
     const auto& color = instance.layerOverrides[domainIndex].colorMultiplier;
     domain.colorMultiplier = {tint.x * color.x, tint.y * color.y, tint.z * color.z, tint.w * color.w};
     domain.settings = domainLayer.fluidDomain;
+    domain.reportGlow = std::any_of(
+        domainLayer.specialOutputs.begin(), domainLayer.specialOutputs.end(), [](const VfxSpecialOutputData& output) {
+            return output.enabled && output.type == VfxSpecialOutputType::Light && output.light.followFluidGlow;
+        });
 
     if (HasDomainForces(domainLayer.simulation)) {
         FLUID::FluidSourceSubmission forces = MakeSource(world, domainLayer.simulation);
@@ -137,6 +141,34 @@ void VfxPlaybackService::AppendFluidDomain(Instance& instance, uint32_t domainIn
             domain.sources.push_back(source);
     }
     renderInput_.fluids.push_back(std::move(domain));
+}
+
+void VfxPlaybackService::ReceiveFluidGlow(std::span<const FLUID::FluidGlowReport> reports) {
+    std::erase_if(fluidGlow_, [this](const FluidGlow& glow) { return !IsActive(glow.handle); });
+    for (const FLUID::FluidGlowReport& report : reports) {
+        if (report.key.playbackNamespace != playbackNamespace_)
+            continue;
+        const VfxPlaybackHandle handle{report.key.playbackSlot, report.key.playbackGeneration};
+        if (!IsActive(handle))
+            continue;
+        const auto found = std::find_if(fluidGlow_.begin(), fluidGlow_.end(), [&](const FluidGlow& glow) {
+            return glow.handle.slot == handle.slot && glow.handle.generation == handle.generation &&
+                   glow.emitterIndex == report.key.emitterIndex;
+        });
+        if (found != fluidGlow_.end())
+            found->report = report;
+        else
+            fluidGlow_.push_back({handle, report.key.emitterIndex, report});
+    }
+}
+
+const FLUID::FluidGlowReport* VfxPlaybackService::FindFluidGlow(VfxPlaybackHandle handle,
+                                                                uint32_t emitterIndex) const noexcept {
+    for (const FluidGlow& glow : fluidGlow_)
+        if (glow.handle.slot == handle.slot && glow.handle.generation == handle.generation &&
+            glow.emitterIndex == emitterIndex)
+            return &glow.report;
+    return nullptr;
 }
 
 } // namespace HIKARI::VFX

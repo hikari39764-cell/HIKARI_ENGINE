@@ -221,6 +221,11 @@ void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution,
     RENDER3D::PARTICLES::ParticleRenderInput input{};
     input.fluids.push_back(MakePlume(playbackNamespace, resolution));
     input.fluids[0].settings.domainSize = domainSize;
+    // 発光の回読（火の光源）：温度 1 の烟が起亮温度 0.3 を超えて光る。重心は源（高さ 0.7 m）より上で、域の x・z の中。
+    input.fluids[0].reportGlow = true;
+    input.fluids[0].settings.emissionIntensity = 1.0f;
+    input.fluids[0].settings.emissionTemperature = 0.3f;
+    input.fluids[0].settings.emissionHotTemperature = 0.9f;
     const FluidDomainSubmission& domain = input.fluids[0];
     FluidFrameSettings settings{};
     settings.diagnostics = true;
@@ -241,8 +246,18 @@ void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution,
     for (size_t index = 3u; index < texels.size(); index += 4u)
         maxSpeed = (std::max)(maxSpeed, HalfToFloat(texels[index]));
     const FluidDomainStats& stats = DomainStats(pass);
-    std::fprintf(stderr, "fluid open plume %u: density %.3f maxDivergence %.4f maxSpeed %.3f bricks %u/%u\n",
-                 resolution, stats.densityTotal, maxDivergence, maxSpeed, stats.activeBricks, stats.totalBricks);
+    std::vector<FluidGlowReport> glow;
+    pass.TakeGlowReports(glow);
+    assert(!glow.empty());
+    const FluidGlowReport& lit = glow.back();
+    std::fprintf(stderr,
+                 "fluid open plume %u: density %.3f maxDivergence %.4f maxSpeed %.3f bricks %u/%u glow %.3f cd at "
+                 "(%.2f %.2f %.2f)\n",
+                 resolution, stats.densityTotal, maxDivergence, maxSpeed, stats.activeBricks, stats.totalBricks,
+                 lit.intensity.x, lit.worldPosition.x, lit.worldPosition.y, lit.worldPosition.z);
+    assert(lit.key == domain.key && lit.intensity.x > 0.01f && lit.intensity.x > lit.intensity.z &&
+           std::abs(lit.worldPosition.x) < 0.5f && std::abs(lit.worldPosition.z - 4.0f) < 0.5f &&
+           lit.worldPosition.y > 0.7f && lit.worldPosition.y < 4.0f);
     // 子步ごとの V 循環 2 回で残る散度は 64 格で速度 / 格の約 0.5%（0.13 / s）。発散すると 1e6 を超える。
     assert(stats.diagnosticsValid && maxDivergence < 0.25f && maxSpeed < 8.0f);
     assert(stats.densityTotal > minimumDensity && stats.activeBricks > 1u);

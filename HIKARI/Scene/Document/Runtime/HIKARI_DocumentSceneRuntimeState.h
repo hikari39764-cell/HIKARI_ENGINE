@@ -87,6 +87,8 @@ struct DocumentSceneRuntimeState {
     FluidInteractionService fluidInteractionService{};
     // 描画が回読した汇の吸い込み量（このフレームの描画が書き、次のフレームに fluidInteractionService へ渡す）。
     std::vector<RENDER3D::FLUID::FluidSinkReport> fluidSinkReports{};
+    // 描画が回読した流体域の発光（このフレームの描画が書き、次のフレームに VFX の再生側へ渡す。火の光源が読む）。
+    std::vector<RENDER3D::FLUID::FluidGlowReport> fluidGlowReports{};
     // 時刻・天気・環境プロファイルの実行時の所有者。シーン文書へは書き戻さない。
     ENVIRONMENT::EnvironmentRuntime environment{};
     // 編集中の時刻の流れ（実時間 1 秒あたりの秒数、0 で止める）。環境パネルの試し再生が設定する。

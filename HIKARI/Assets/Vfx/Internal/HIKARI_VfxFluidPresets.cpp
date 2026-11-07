@@ -40,6 +40,9 @@ VfxEmitterData BurningDomain(const std::string& suffix, const MATH::Vec3& size, 
     fire.detailScale = 0.08f;
     fire.detailStrength = 0.6f;
     fire.prewarmSeconds = 2.0f;
+    // 火の光：流体の発光の重心に置き、明るさと色を発光から決める（光束の上限 30 万 lm、届く範囲 8 m）。
+    Light(domain, {1.0f, 1.0f, 1.0f, 1.0f}, 300000.0f, 8.0f);
+    domain.specialOutputs.back().light.followFluidGlow = true;
     return domain;
 }
 
@@ -59,6 +62,33 @@ VfxEmitterData FuelSource(const std::string& suffix, const VfxEmitterData& domai
     source.forces.field.frequency = 4.0f;
     source.forces.field.evolution = 2.0f;
     return source;
+}
+
+// 熱気の揺らぎ（画面歪みの粒子。Niagara・Unity の熱気の粒子と同じ作り）：火の根元の箱から出て流体の流れに乗って昇るので、
+// 揺らぎは熱い烟柱の形に付いて行く。層色 R が強さ（画面の 6% × 0.04 ≈ 3〜4 画素）、B 1 で底色貼図 distortion_noise の RG を
+// 歪みの場にして 2 回並べて流す。G（ぼかし）は 0：戦闘の歪みの合成はぼかしに比例して接線方向の筋と色ずれを足すので、
+// 熱気では炎の縁が段々に切れて緑の縁が出る。粒子は大きいほど画面を覆って描画が重い（近くの火で 1.2 m・毎秒 14 個は
+// 0.7 ms、0.8 m・毎秒 8 個で 0.2 ms）。全体後処理のある画面でだけ合成される。位置は資産の原点（域の中心）から。
+VfxEmitterData HeatHaze(const std::string& suffix, const MATH::Vec3& position, const MATH::Vec3& halfExtents,
+                        float ratePerSecond) {
+    VfxEmitterData haze = MakePresetEmitterBase(suffix, "Heat Haze");
+    haze.emitterTransform.transform.position = position;
+    haze.basic.localSimulation = false;
+    haze.basic.lifetime = {VfxDistributionMode::RandomRange, 1.0f, 1.6f, 0u};
+    haze.spawn.ratePerSecond = ratePerSecond;
+    haze.spawn.maximumParticles = 128u;
+    haze.shape.type = VfxShapeType::Box;
+    haze.shape.boxHalfExtents = halfExtents;
+    haze.position.radialSpeed = MakeVfxFloatConstant(0.0f);
+    haze.forces.gravity = {0.0f, 0.0f, 0.0f};
+    haze.forces.drag = 0.0f;
+    haze.forces.fluidFollow = 6.0f;
+    haze.renderCommon.blendMode = VfxBlendMode::Distortion;
+    Texture(haze, "distortion_noise");
+    Flow(haze, 0.0f, -0.4f, 2.0f, 2.0f);
+    VectorKeys(haze.scale.value, haze.id + ".size", {{0, {0.35f, 0.35f, 0.35f}}, {1, {0.8f, 0.8f, 0.8f}}});
+    AlphaKeys(haze, {0.04f, 0.0f, 1.0f}, {{0, 0}, {0.3f, 1}, {1, 0}});
+    return haze;
 }
 
 void Sphere(VfxEmitterData& source, float radius) {
@@ -121,7 +151,8 @@ VfxAssetData FluidPreset(std::string_view id) {
         // 開いた底面に近いと熱い烟が地を這うので、燃料は底から 0.7 m 上。
         VfxEmitterData fuel = FuelSource(suffix + ".fuel", domain, {0.0f, -1.3f, 0.0f});
         Sphere(fuel, 0.25f);
-        return MakePresetAssetFromEmitters(std::move(asset), {std::move(domain), std::move(fuel)});
+        VfxEmitterData haze = HeatHaze(suffix + ".haze", {0.0f, -1.0f, 0.0f}, {0.2f, 0.1f, 0.2f}, 8.0f);
+        return MakePresetAssetFromEmitters(std::move(asset), {std::move(domain), std::move(fuel), std::move(haze)});
     }
     if (id == "fluid_fire_wall") {
         asset.name = "Fire Wall";
@@ -130,7 +161,8 @@ VfxAssetData FluidPreset(std::string_view id) {
         fuel.shape.type = VfxShapeType::Box;
         fuel.shape.boxHalfExtents = {3.5f, 0.08f, 0.25f};
         fuel.spawn.ratePerSecond = 5.0f;
-        return MakePresetAssetFromEmitters(std::move(asset), {std::move(domain), std::move(fuel)});
+        VfxEmitterData haze = HeatHaze(suffix + ".haze", {0.0f, -0.6f, 0.0f}, {3.4f, 0.1f, 0.25f}, 24.0f);
+        return MakePresetAssetFromEmitters(std::move(asset), {std::move(domain), std::move(fuel), std::move(haze)});
     }
     if (id == "fluid_fireball") {
         // 特效に付いて動く局所空間の域の中で燃え続ける玉（VfxView::SetVelocity で飛ばす）。浮力を弱め、煤は速く消して玉の

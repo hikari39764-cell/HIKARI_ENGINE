@@ -127,11 +127,19 @@ struct DomainState {
     // 回読に汇の吸い込み量が入っているか（そのフレームに数えた子步があったか）と、押すものの表の行ごとの reportKey。
     std::array<bool, GFX::kFrameResourceCount> readbackSinks{};
     std::array<std::array<uint64_t, kMaximumFluidInteractionsPerDomain>, GFX::kFrameResourceCount> readbackSinkKeys{};
+    // 回読に発光が入っているか（reportGlow の域）と、その時の発光（起亮の色と熱い端の色 × emissionIntensity）。
+    struct GlowReadback {
+        bool requested = false;
+        MATH::Vec3 emission{};
+        MATH::Vec3 hotEmission{};
+    };
+    std::array<GlowReadback, GFX::kFrameResourceCount> readbackGlow{};
     FluidDomainStats stats{};
 };
 
-// 一度に溜めておく汇の報告の上限（受け取る場面が無い間に増え続けないように）。
+// 一度に溜めておく汇と発光の報告の上限（受け取る場面が無い間に増え続けないように）。
 constexpr size_t kMaximumPendingSinkReports = 4096u;
+constexpr size_t kMaximumPendingGlowReports = 256u;
 
 bool IsFenceComplete(const GFX::Context& context, uint64_t fence) noexcept {
     return fence == 0u || (context.frameFence != nullptr && context.frameFence->GetCompletedValue() >= fence);
@@ -184,8 +192,9 @@ struct FluidVolumePass::Impl {
     // 域ごとに選んだ、このフレームの源（域自身の源と、届く場面の源）とその動き（作業用）。
     std::vector<FluidSourceSubmission> frameSources{};
     std::vector<SourceMotion> frameMotion{};
-    // 回読が届いた汇の吸い込み量（TakeSinkReports で場面へ渡す）。
+    // 回読が届いた汇の吸い込み量と域の発光（TakeSinkReports / TakeGlowReports で場面へ渡す）。
     std::vector<FluidSinkReport> sinkReports{};
+    std::vector<FluidGlowReport> glowReports{};
 
     DomainState* Find(const ParticleEmitterInstanceKey& key) noexcept {
         for (auto& domain : domains)
@@ -200,6 +209,7 @@ struct FluidVolumePass::Impl {
     }
 
     void ReadCompleted(DomainState& domain);
+    void ReportGlow(const DomainState& domain, const float* words, const DomainState::GlowReadback& glow);
     bool PrepareDomain(DomainState& domain, const FluidDomainSubmission& submission, const FluidQualityPolicy& policy);
     void GatherSources(DomainState& domain, const FluidDomainSubmission& submission,
                        std::span<const FluidSourceSubmission> sceneSources, double step, bool advance);
@@ -255,9 +265,43 @@ void FluidVolumePass::Impl::ReadCompleted(DomainState& domain) {
             domain.stats.maxDivergence = maxDivergence;
             domain.stats.densityTotal = static_cast<float>(total);
         }
+        if (domain.readbackGlow[slot].requested)
+            ReportGlow(domain, words, domain.readbackGlow[slot]);
         const D3D12_RANGE written{0, 0};
         readback->Unmap(0, &written);
     }
+}
+
+// 砖块ごとの発光を足し、重心を今の域の変換で世界へ移す（回読の遅れの間に域が動いても光源は域に付いて行く）。
+void FluidVolumePass::Impl::ReportGlow(const DomainState& domain, const float* words,
+                                       const DomainState::GlowReadback& glow) {
+    const FluidGridLayout& layout = domain.resources.layout;
+    const float* bricks = words + domain.resources.GlowOffset() / 4u;
+    double amount = 0.0, hot = 0.0, x = 0.0, y = 0.0, z = 0.0;
+    for (uint32_t brick = 0u; brick < domain.resources.BrickCount(); ++brick) {
+        const float* sums = bricks + brick * 8u;
+        amount += sums[0];
+        hot += sums[1];
+        x += sums[4];
+        y += sums[5];
+        z += sums[6];
+    }
+    FluidGlowReport report{};
+    report.key = domain.key;
+    report.worldPosition = domain.framePosition;
+    if (amount > 1.0e-6) {
+        const float h = layout.cellSize;
+        const MATH::Vec3 local{(static_cast<float>(x / amount) - 0.5f * static_cast<float>(layout.cells[0])) * h,
+                               (static_cast<float>(y / amount) - 0.5f * static_cast<float>(layout.cells[1])) * h,
+                               (static_cast<float>(z / amount) - 0.5f * static_cast<float>(layout.cells[2])) * h};
+        report.worldPosition = domain.framePosition + MATH::RotateVector(domain.frameRotation, local);
+        // 格ごとの発光 a × lerp(起亮の色, 熱い端の色, t) を、起亮の色の分 Σa(1 - t) と熱い端の分 Σa t に分けて足す。
+        const float volume = h * h * h;
+        report.intensity = glow.emission * (static_cast<float>(amount - hot) * volume) +
+                           glow.hotEmission * (static_cast<float>(hot) * volume);
+    }
+    if (glowReports.size() < kMaximumPendingGlowReports)
+        glowReports.push_back(report);
 }
 
 // 作り直しの判断：初めて・再生側の作り直し・格子の大きさ（域の大きさ、分辨率、画質の倍率）が変わった時。
@@ -646,7 +690,13 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         statsRecorder.Occupancy(domain.densityIndex);
         if (settings.diagnostics)
             statsRecorder.Diagnostics(domain.velocityIndex, domain.densityIndex);
+        const bool glow = submission.reportGlow && authored.emissionIntensity > 0.0f;
+        if (glow)
+            statsRecorder.Glow(domain.velocityIndex, domain.densityIndex, authored.emissionTemperature,
+                               authored.emissionHotTemperature);
         statsRecorder.CopyStats(domain.resources.readback[slot].Get());
+        domain.readbackGlow[slot] = {glow, authored.emissionColor * authored.emissionIntensity,
+                                     authored.emissionHotColor * authored.emissionIntensity};
         domain.readbackPending[slot] = true;
         domain.readbackFence[slot] = context.currentFrameRetireFenceValue;
         domain.readbackSteps[slot] = domain.clock.completedSteps;
@@ -854,6 +904,11 @@ const FluidVolumePassStats& FluidVolumePass::GetStats() const noexcept { return 
 void FluidVolumePass::TakeSinkReports(std::vector<FluidSinkReport>& out) {
     out.insert(out.end(), impl_->sinkReports.begin(), impl_->sinkReports.end());
     impl_->sinkReports.clear();
+}
+
+void FluidVolumePass::TakeGlowReports(std::vector<FluidGlowReport>& out) {
+    out.insert(out.end(), impl_->glowReports.begin(), impl_->glowReports.end());
+    impl_->glowReports.clear();
 }
 
 } // namespace HIKARI::RENDER3D::FLUID

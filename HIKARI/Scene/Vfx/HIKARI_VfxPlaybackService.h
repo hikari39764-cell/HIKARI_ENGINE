@@ -5,6 +5,7 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -90,6 +91,10 @@ public:
     // 呼び出し側はそのフレームの照明セットへ渡すだけで、GPU 資源も
     // ライフタイムも持たない。
     size_t CollectLightOutputs(std::vector<VfxLayerLightSample>& outSamples) const;
+    // 描画が回読した流体域の発光（この再生の namespace の域だけ）を受け取り、域ごとに最後の値を持つ。流体の発光に付いて
+    // 行く Light 出力（VfxLightOutputProfile::followFluidGlow）が位置・光束・色に使う。終わった実例の分は捨てる。
+    // HIKARI_VfxFluidPlayback.cpp。
+    void ReceiveFluidGlow(std::span<const RENDER3D::FLUID::FluidGlowReport> reports);
     // 有効な ScreenImpulse 特殊出力を画面波バッチとして書き出す。
     size_t CollectScreenWaves(VfxScreenWaveBatch& outBatch) const;
     // 有効な Mesh 出力レイヤーを world サンプルとして書き出す。
@@ -121,6 +126,8 @@ private:
                            bool drawAfterSimulation, bool wrapLoop);
     void AppendFluidSceneSource(Instance& instance, uint32_t layerIndex, float spawnDelta, bool drawAfterSimulation,
                                 bool wrapLoop);
+    const RENDER3D::FLUID::FluidGlowReport* FindFluidGlow(VfxPlaybackHandle handle,
+                                                          uint32_t emitterIndex) const noexcept;
     // 流体源の層 1 つ。burst は見えない間も数えて捨てる。見えない層は false。
     bool MakeFluidSource(Instance& instance, uint32_t layerIndex, float spawnDelta, bool wrapLoop,
                          RENDER3D::FLUID::FluidSourceSubmission& out);
@@ -141,6 +148,13 @@ private:
     std::vector<Instance> instances_{};
     std::vector<RENDER3D::PARTICLES::ParticleEmitterInstanceKey> pendingRetiredEmitters_{};
     RENDER3D::PARTICLES::ParticleRenderInput renderInput_{};
+    // 流体域ごとの最後に届いた発光（ReceiveFluidGlow）。
+    struct FluidGlow {
+        VfxPlaybackHandle handle{};
+        uint32_t emitterIndex = 0u;
+        RENDER3D::FLUID::FluidGlowReport report{};
+    };
+    std::vector<FluidGlow> fluidGlow_{};
     bool reliableRenderDeliveryEnabled_ = false;
     uint64_t nextRenderDeliverySequence_ = 0u;
     uint64_t pendingRenderDeliverySequence_ = 0u;

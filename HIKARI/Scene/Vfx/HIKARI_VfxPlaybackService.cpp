@@ -647,6 +647,17 @@ size_t VfxPlaybackService::CollectLightOutputs(std::vector<VfxLayerLightSample>&
                 const auto& profile = output.light;
                 if (!(profile.luminousFlux > 0.0f) || !(profile.range > 0.0f))
                     continue;
+                // 流体の発光に付いて行く光源：まだ回読が届いていない・光っていない域は出さない。
+                const RENDER3D::FLUID::FluidGlowReport* glow = nullptr;
+                float glowLuminance = 0.0f;
+                if (profile.followFluidGlow) {
+                    glow = FindFluidGlow(instance.handle, static_cast<uint32_t>(emitterIndex));
+                    if (glow != nullptr)
+                        glowLuminance =
+                            0.2126f * glow->intensity.x + 0.7152f * glow->intensity.y + 0.0722f * glow->intensity.z;
+                    if (!(glowLuminance > 0.0f) || !(profile.glowShare > 0.0f))
+                        continue;
+                }
                 // レイヤー色をそのまま落とす。エフェクトの色と光源色が
                 // 食い違うと、加法発光と照明が別物に見えてしまう。
                 MATH::Vec4 tint{1.0f, 1.0f, 1.0f, 1.0f};
@@ -684,6 +695,16 @@ size_t VfxPlaybackService::CollectLightOutputs(std::vector<VfxLayerLightSample>&
                 sample.ageSeconds = instance.elapsedSeconds - start;
                 sample.priority = profile.priority;
                 sample.castsShadows = profile.castsShadows;
+                // 発光の重心に置き、光束は 4π × 発光の光度 × 届く割合（luminousFlux が上限）、色に発光の色を掛ける。
+                if (glow != nullptr) {
+                    const float peak = (std::max)({glow->intensity.x, glow->intensity.y, glow->intensity.z});
+                    sample.position = glow->worldPosition;
+                    sample.luminousFlux =
+                        (std::min)(profile.luminousFlux, 12.5663706f * glowLuminance * profile.glowShare);
+                    sample.color = {sample.color.x * glow->intensity.x / peak,
+                                    sample.color.y * glow->intensity.y / peak,
+                                    sample.color.z * glow->intensity.z / peak, sample.color.w};
+                }
                 outSamples.push_back(sample);
             }
         }

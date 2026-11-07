@@ -431,6 +431,8 @@ struct ParticleRenderFrameSource {
     std::span<const FLUID::FluidInteraction> fluidInteractions{};
     // 回読が届いた汇の量を受け取る先（場面が次のフレームに FluidInteractionService へ渡す）。null なら pass に溜める。
     std::vector<FLUID::FluidSinkReport>* fluidSinkReports = nullptr;
+    // 回読が届いた域の発光（火の光源）。描画がここへ足し、場面が次のフレームに再生側へ返す。
+    std::vector<FLUID::FluidGlowReport>* fluidGlowReports = nullptr;
 
     bool HasDrawWork() const noexcept { return input != nullptr && !input->emitters.empty(); }
 

@@ -551,6 +551,11 @@ void ValidateSpecialOutputs(const VfxEmitterData& emitter, std::unordered_set<st
         if (!TEXT::IsNamedEnum(kVfxSpecialOutputTypeNames, output.type)) {
             AddError(diagnostics, "Vfx.InvalidSpecialOutputType", "special output type is invalid", output.id);
         }
+        if (output.type == VfxSpecialOutputType::Light && output.light.followFluidGlow &&
+            emitter.kind != VfxLayerKind::Fluid) {
+            AddError(diagnostics, "Vfx.FluidGlowLightOutsideDomain",
+                     "a light that follows the fluid glow must be on a fluid domain layer", output.id);
+        }
         if (!IsValidVfxSpecialOutputProfile(output)) {
             const bool light = output.type == VfxSpecialOutputType::Light;
             AddError(diagnostics, light ? "Vfx.InvalidLightOutput" : "Vfx.InvalidSpecialOutputProfile",
@@ -709,11 +714,18 @@ void ValidateFluidLayers(const VfxAssetData& asset,
     for (const VfxEmitterData& emitter : asset.emitters) {
         if (emitter.kind != VfxLayerKind::Fluid && emitter.kind != VfxLayerKind::FluidSource)
             continue;
-        if (!emitter.effects.empty() || emitter.meshOutput.enabled || !emitter.specialOutputs.empty() ||
-            emitter.history.mode != VfxHistoryMode::None || !emitter.matte.sourceLayerId.empty() ||
-            emitter.matte.sourceOnly)
+        // 流体域の層は Light 出力だけを持てる（火が自分の発光で周りを照らす）。流体源の層は特殊出力を持てない。
+        const bool lightsOnly =
+            emitter.kind == VfxLayerKind::Fluid &&
+            std::all_of(emitter.specialOutputs.begin(), emitter.specialOutputs.end(),
+                        [](const VfxSpecialOutputData& output) { return output.type == VfxSpecialOutputType::Light; });
+        if (!emitter.effects.empty() || emitter.meshOutput.enabled ||
+            (!emitter.specialOutputs.empty() && !lightsOnly) || emitter.history.mode != VfxHistoryMode::None ||
+            !emitter.matte.sourceLayerId.empty() || emitter.matte.sourceOnly)
             AddError(diagnostics, "Vfx.FluidLayerFeature",
-                     "Fluid layers take no effects, mesh output, special outputs, history or track mattes", emitter.id);
+                     "Fluid layers take no effects, mesh output, history or track mattes; only fluid domains take "
+                     "special outputs, and only light outputs",
+                     emitter.id);
         const VfxEmitterData* domain = FindVfxFluidDomainLayer(emitter, find);
         if (emitter.kind == VfxLayerKind::Fluid) {
             ++domains;
