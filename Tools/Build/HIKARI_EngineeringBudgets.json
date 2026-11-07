@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "source": {
-    "authoredPhysicalLineCeiling": 499811,
+    "authoredPhysicalLineCeiling": 500204,
     "softLargeFileLineThreshold": 500,
     "hardLargeFileLineThreshold": 1000,
     "softLargeFileCountCeiling": 182,
-    "hardLargeFileCountCeiling": 25,
+    "hardLargeFileCountCeiling": 23,
     "runtimeModuleCompileUnitCeiling": 150,
     "moduleCompileUnitCeilings": {
       "Render3D": 235,
@@ -13,9 +13,9 @@
       "Assets": 144
     },
     "modulePhysicalLineCeilings": {
-      "Editor": 118599,
-      "Render3D": 89830,
-      "Assets": 47760,
+      "Editor": 118617,
+      "Render3D": 89957,
+      "Assets": 47807,
       "Scene": 67853
     }
   },

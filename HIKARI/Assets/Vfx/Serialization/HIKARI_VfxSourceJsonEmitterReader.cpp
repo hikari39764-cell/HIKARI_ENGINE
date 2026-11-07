@@ -298,7 +298,11 @@ bool ReadForces(const Json& node, VfxForcesModuleData& forces) {
         !OptionalBool(node, "sceneDepthCollision", forces.sceneDepthCollision) ||
         !OptionalFloat(node, "collisionThickness", forces.collisionThickness) ||
         !OptionalFloat(node, "restitution", forces.restitution) || !OptionalFloat(node, "friction", forces.friction) ||
-        !OptionalFloat(node, "fluidFollow", forces.fluidFollow)) {
+        !OptionalFloat(node, "fluidFollow", forces.fluidFollow) ||
+        !OptionalFloat(node, "fluidSmoke", forces.fluidSmoke) ||
+        !OptionalFloat(node, "fluidTemperature", forces.fluidTemperature) ||
+        !OptionalFloat(node, "fluidCoupling", forces.fluidCoupling) ||
+        !OptionalFloat(node, "fluidRadius", forces.fluidRadius)) {
         return false;
     }
     const auto field = node.find("field");

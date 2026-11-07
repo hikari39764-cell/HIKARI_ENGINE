@@ -54,6 +54,7 @@ struct FluidFlowDomain
     float4 toGrid2;
     float4 cells;
     float4 motion;
+    float4 injection;  // 注入の緩衝（u3 + 域の番号）：xyz 半分の分辨率の格の数（uint）、w 1 で受け取る
 };
 cbuffer FluidFlowConstants : register(b1)
 {
@@ -94,6 +95,118 @@ float3 FluidFlowVelocity(float3 world, uint count, out float inside)
     if (count > 3u)
         flow += FluidFlowAt(gFluidFlow[3], gFluidVelocity3, world, inside);
     return flow;
+}
+
+// ---------------------------------------------------------------- 流体への注入
+// 粒子が流体へ注入する（力模块の“注入流体”、NVIDIA Flow の点発射器と同じ考え方）。域ごとの緩衝（u3〜u6、流体の
+// FluidInjection と同じ並び）は格子の半分の分辨率で、格ごとに固定小数点（× kFluidInjectionScale）の int で
+// 0 密度、1 速度の重み W、2〜4 W × 粒子の速度（域の軸 [m/s]）、5 温度の重み、6 温度の重み × 温度 を足し、その後ろに
+// 砖块（8³ 格）ごとの印を置く。流体は次に子步を進めるフレームの最初の子步で受け取って 0 に戻す。
+RWByteAddressBuffer gFluidInjection0 : register(u3);
+RWByteAddressBuffer gFluidInjection1 : register(u4);
+RWByteAddressBuffer gFluidInjection2 : register(u5);
+RWByteAddressBuffer gFluidInjection3 : register(u6);
+static const float kFluidInjectionScale = 4096.0f;
+
+void FluidInjectionAdd(uint domainIndex, uint word, float value)
+{
+    const int amount = (int)round(clamp(value, -4.0e5f, 4.0e5f) * kFluidInjectionScale);
+    if (amount == 0)
+        return;
+    uint previous;
+    [branch] switch (domainIndex)
+    {
+    case 0u: gFluidInjection0.InterlockedAdd(word * 4u, asuint(amount), previous); break;
+    case 1u: gFluidInjection1.InterlockedAdd(word * 4u, asuint(amount), previous); break;
+    case 2u: gFluidInjection2.InterlockedAdd(word * 4u, asuint(amount), previous); break;
+    default: gFluidInjection3.InterlockedAdd(word * 4u, asuint(amount), previous); break;
+    }
+}
+
+void FluidInjectionMark(uint domainIndex, uint word)
+{
+    uint previous;
+    [branch] switch (domainIndex)
+    {
+    case 0u: gFluidInjection0.InterlockedOr(word * 4u, 1u, previous); break;
+    case 1u: gFluidInjection1.InterlockedOr(word * 4u, 1u, previous); break;
+    case 2u: gFluidInjection2.InterlockedOr(word * 4u, 1u, previous); break;
+    default: gFluidInjection3.InterlockedOr(word * 4u, 1u, previous); break;
+    }
+}
+
+float3 FluidGridOf(FluidFlowDomain domain, float3 world)
+{
+    return float3(dot(domain.toGrid0, float4(world, 1.0f)), dot(domain.toGrid1, float4(world, 1.0f)),
+                  dot(domain.toGrid2, float4(world, 1.0f)));
+}
+
+// 1 つの域へ、このフレームに from → to と動いた粒子 1 つを注入する。線分を半格の半径ほどの間隔で最多 3 点に分け、各点の
+// 周り（半分の分辨率の格で半径 0.75〜1.5）へ中心 1・縁 0 の二乗の重みで足す。inject は FLUID_INJECT の値。
+void InjectIntoFluidDomain(uint domainIndex, FluidFlowDomain domain, float3 from, float3 to, float3 velocity,
+                           float4 inject, float dt)
+{
+    if (asuint(domain.injection.w) == 0u)
+        return;
+    const uint3 half = asuint(domain.injection.xyz);
+    const float h = domain.cells.w;
+    const float radius = clamp(inject.w / (2.0f * h), 0.75f, 1.5f);
+    const float3 a = FluidGridOf(domain, from) * 0.5f - 0.5f;
+    const float3 b = FluidGridOf(domain, to) * 0.5f - 0.5f;
+    if (any(max(a, b) < -radius) || any(min(a, b) > float3(half) - 1.0f + radius))
+        return;
+    const float3 relative = velocity - domain.motion.xyz;
+    const float3 local = float3(dot(domain.toGrid0.xyz, relative), dot(domain.toGrid1.xyz, relative),
+                                dot(domain.toGrid2.xyz, relative)) * h;
+    const uint samples = clamp((uint)ceil(length(b - a) / radius), 1u, 3u);
+    const float smoke = inject.x * dt / samples;
+    const float pushWeight = saturate(inject.z * dt) / samples;
+    const float heatWeight = inject.y != 0.0f ? saturate(8.0f * dt) / samples : 0.0f;
+    const uint cells = half.x * half.y * half.z;
+    const uint3 bricks = ((uint3)domain.cells.xyz + 7u) / 8u;
+    for (uint sample = 0u; sample < samples; ++sample)
+    {
+        const float3 p = lerp(a, b, (sample + 0.5f) / samples);
+        const int3 low = max(int3(floor(p - radius)), 0);
+        const int3 high = min(int3(ceil(p + radius)), int3(half) - 1);
+        [loop] for (int z = low.z; z <= high.z; ++z)
+            [loop] for (int y = low.y; y <= high.y; ++y)
+                [loop] for (int x = low.x; x <= high.x; ++x)
+                {
+                    const float falloff = saturate(1.0f - length(float3(x, y, z) - p) / radius);
+                    const float weight = falloff * falloff;
+                    if (weight <= 0.0f)
+                        continue;
+                    const uint cell = (uint)x + half.x * ((uint)y + half.y * (uint)z);
+                    FluidInjectionAdd(domainIndex, cell, smoke * weight);
+                    if (pushWeight > 0.0f)
+                    {
+                        FluidInjectionAdd(domainIndex, cells + cell, pushWeight * weight);
+                        FluidInjectionAdd(domainIndex, 2u * cells + cell, pushWeight * weight * local.x);
+                        FluidInjectionAdd(domainIndex, 3u * cells + cell, pushWeight * weight * local.y);
+                        FluidInjectionAdd(domainIndex, 4u * cells + cell, pushWeight * weight * local.z);
+                    }
+                    if (heatWeight > 0.0f)
+                    {
+                        FluidInjectionAdd(domainIndex, 5u * cells + cell, heatWeight * weight);
+                        FluidInjectionAdd(domainIndex, 6u * cells + cell, heatWeight * weight * inject.y);
+                    }
+                }
+        const uint3 brick = min(uint3(clamp((p + 0.5f) * 2.0f, 0.0f, domain.cells.xyz - 1.0f)) / 8u, bricks - 1u);
+        FluidInjectionMark(domainIndex, 7u * cells + brick.x + bricks.x * (brick.y + bricks.y * brick.z));
+    }
+}
+
+void InjectIntoFluid(uint count, float3 from, float3 to, float3 velocity, float4 inject, float dt)
+{
+    if (count > 0u)
+        InjectIntoFluidDomain(0u, gFluidFlow[0], from, to, velocity, inject, dt);
+    if (count > 1u)
+        InjectIntoFluidDomain(1u, gFluidFlow[1], from, to, velocity, inject, dt);
+    if (count > 2u)
+        InjectIntoFluidDomain(2u, gFluidFlow[2], from, to, velocity, inject, dt);
+    if (count > 3u)
+        InjectIntoFluidDomain(3u, gFluidFlow[3], from, to, velocity, inject, dt);
 }
 
 // ---------------------------------------------------------------- 場景深度との碰撞
@@ -267,6 +380,7 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     }
 
     const float dt = isfinite(gDeltaSeconds) ? clamp(gDeltaSeconds, 0.0f, 2.0f) : 0.0f;
+    const float3 before = particle.positionAge.xyz;
     particle.positionAge.w += dt;
     if (particle.positionAge.w >= particle.velocityLifetime.w)
     {
@@ -352,6 +466,10 @@ void UpdateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         }
     }
     EvaluateParticlePresentation(gEmitterIndex, particle);
+    const float4 inject = LoadEmitterValue(gEmitterIndex, HIKARI_PARTICLE_FLUID_INJECT);
+    if (flowCount > 0u && dt > 0.0f && (inject.x > 0.0f || inject.y != 0.0f || inject.z > 0.0f))
+        InjectIntoFluid(flowCount, before, particle.positionAge.xyz,
+                        ParticleWorldVelocity(gEmitterIndex, particle.velocityLifetime.xyz), inject, dt);
     if (impact >= 0.0f)
         AppendParticleEvent(0u, particle.positionAge.xyz, ParticleWorldVelocity(gEmitterIndex, impactVelocity), impact);
     gParticles[particleIndex] = particle;

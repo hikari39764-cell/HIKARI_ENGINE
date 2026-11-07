@@ -39,6 +39,9 @@ struct FluidRenderDomain {
     float pendingSeconds = 0.0f;
     // 局部空間の域が世界で動く速さ（世界空間の域は 0）。速度体積は域に対する流れなので、粒子が乗る時に足す。
     MATH::Vec3 frameVelocity{};
+    // 粒子からの注入の緩衝（無ければ 0）と、その格子の半分の分辨率の格の数。
+    D3D12_GPU_VIRTUAL_ADDRESS injection = 0u;
+    uint32_t injectionCells[3]{};
 };
 
 class FluidRenderer final {

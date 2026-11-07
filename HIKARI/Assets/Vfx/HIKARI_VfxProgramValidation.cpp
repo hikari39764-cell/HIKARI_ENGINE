@@ -415,6 +415,14 @@ bool IsValidEmitterSimulation(const VfxProgram& program, const VfxProgramEmitter
            IsFinite(simulation.gravity) && IsFinite(simulation.drag) && simulation.drag >= 0.0f &&
            IsFinite(simulation.fluidFollow) && simulation.fluidFollow >= 0.0f &&
            simulation.fluidFollow <= RENDER3D::PARTICLES::kMaxParticleFluidFollow && simulation.localSimulation <= 1u &&
+           IsFinite(simulation.fluidSmoke) && simulation.fluidSmoke >= 0.0f &&
+           simulation.fluidSmoke <= RENDER3D::PARTICLES::kMaxParticleFluidSmoke &&
+           IsFinite(simulation.fluidTemperature) &&
+           std::abs(simulation.fluidTemperature) <= RENDER3D::PARTICLES::kMaxParticleFluidTemperature &&
+           IsFinite(simulation.fluidCoupling) && simulation.fluidCoupling >= 0.0f &&
+           simulation.fluidCoupling <= RENDER3D::PARTICLES::kMaxParticleFluidCoupling &&
+           IsFinite(simulation.fluidRadius) && simulation.fluidRadius >= RENDER3D::PARTICLES::kMinParticleFluidRadius &&
+           simulation.fluidRadius <= RENDER3D::PARTICLES::kMaxParticleFluidRadius &&
            simulation.collisionPlaneEnabled <= 1u && IsFinite(simulation.collisionPlaneHeight) &&
            simulation.sceneDepthCollision <= 1u && IsFinite(simulation.collisionThickness) &&
            simulation.collisionThickness >= 0.01f && simulation.collisionThickness <= 10.0f &&

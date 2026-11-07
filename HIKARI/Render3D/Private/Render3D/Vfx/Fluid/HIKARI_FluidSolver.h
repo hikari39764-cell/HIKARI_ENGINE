@@ -34,6 +34,7 @@ enum class FluidEntry : uint32_t {
     Slice,
     Activity,
     Glow,
+    InjectionClear,
     Count
 };
 
@@ -90,6 +91,13 @@ struct FluidDomainResources {
     uint32_t bricks = 0u;
     uint32_t statsBytes = 0u;
     uint64_t bytes = 0u;
+    // 粒子からの注入（Render3D_ParticleSimulation.hlsl の FluidInjection）：格子の半分の分辨率の格ごとに固定小数点の
+    // int 7 つと、砖块ごとの印。使う域だけ作る（EnsureFluidInjection）。
+    Microsoft::WRL::ComPtr<ID3D12Resource> injection{};
+    uint32_t injectionCells[3]{};
+    uint32_t InjectionWords() const noexcept {
+        return 7u * injectionCells[0] * injectionCells[1] * injectionCells[2] + bricks;
+    }
 
     uint32_t BrickCount() const noexcept { return bricks; }
     uint32_t DiagnosticsOffset() const noexcept { return bricks * 4u; }
@@ -104,6 +112,30 @@ inline MATH::Vec3 RotateToFluidLocal(const MATH::Quat& rotation, const MATH::Vec
     return MATH::RotateVector({-rotation.x, -rotation.y, -rotation.z, rotation.w}, v);
 }
 
+// Render3D_FluidSimulation.hlsl の FluidDomainCB と同じ並び（域の定数 b0）。
+struct alignas(16) FluidDomainConstantsGpu {
+    uint32_t size[4];
+    float cell[4];
+    float motion[4];
+    float dissipation[4];
+    float up[4];
+    float inertia[4];
+    uint32_t interactions[4];
+    // 燃焼：x 点火温度、y 燃える速さ、z 燃焼 1 あたりの燃料、w 燃焼 1 あたりの熱 / x 燃焼 1 あたりの煤、y 燃焼 1 あたりの
+    // 膨張、z 1 なら燃焼する域。
+    float combustion0[4];
+    float combustion1[4];
+    // 粒子からの注入の緩衝の半分の分辨率の格の数（無ければ 0）。受け取る子步は interactions[3] の 4。
+    uint32_t injection[4];
+};
+static_assert(sizeof(FluidDomainConstantsGpu) == 160u);
+// 子步 stepIndex の域の定数：格子、子步の時間、閉じた面・涡度・浮力・重さ、消散、上向き、挂点の慣性（域の局所）、押すものの
+// 数と統計の位置、flags（1 汇の吸い込み量を 0 に、2 吸い込みを数える、4 粒子からの注入を受け取る）、燃焼、注入の緩衝の形。
+FluidDomainConstantsGpu PackFluidDomainConstants(const FluidDomainSettings& authored,
+                                                 const FluidDomainResources& resources, uint32_t sourceCount,
+                                                 double step, uint64_t stepIndex, const MATH::Vec3& up,
+                                                 const MATH::Vec3& inertia, uint32_t interactionCount,
+                                                 uint32_t flags) noexcept;
 // HIKARI_FluidGrid.hlsli の HikariFluidSource と同じ並び（源の表 t6 の 1 行）。
 struct FluidSourceGpu {
     float rows[19][4];
@@ -131,6 +163,8 @@ FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, co
                                          float frameSeconds, float strengthScale);
 
 bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& layout, FluidDomainResources& resources);
+// 粒子からの注入の緩衝を作る（もう有れば何もしない）。created は作ったか（作った時は ClearInjection で 0 にする）。
+bool EnsureFluidInjection(ID3D12Device* device, FluidDomainResources& resources, bool& created);
 bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
                               FluidVolume& volume);
 bool CreateFluidSliceTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height,
@@ -167,6 +201,8 @@ public:
     void Slice(uint32_t velocityIndex, uint32_t densityIndex, FluidVolume& output, FluidDebugField field, uint32_t axis,
                uint32_t index, bool visualize);
     void CopyStats(ID3D12Resource* readback);
+    // 粒子からの注入の緩衝を 0 に戻す（作った時と、子步が受け取った後）。
+    void ClearInjection();
 
 private:
     void Transition(FluidVolume& volume, D3D12_RESOURCE_STATES state);

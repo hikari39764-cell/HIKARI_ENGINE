@@ -60,13 +60,15 @@ void Set4(float (&out)[4], float x, float y, float z, float w) {
 }
 
 // 世界から格子（格、角が原点）への行と、外観の値を詰める。
-// 粒子が乗る流体の域 1 つ（Render3D_ParticleSimulation.hlsl の FluidFlowDomain と同じ並び）。motion は域が世界で動く速さ。
+// 粒子が乗る流体の域 1 つ（Render3D_ParticleSimulation.hlsl の FluidFlowDomain と同じ並び）。motion は域が世界で動く速さ、
+// injection は注入の緩衝の半分の分辨率の格の数と、受け取るかの印。
 struct alignas(16) FlowDomainGpu {
     float toGrid[3][4];
     float cells[4];
     float motion[4];
+    uint32_t injection[4];
 };
-static_assert(sizeof(FlowDomainGpu) == 80u);
+static_assert(sizeof(FlowDomainGpu) == 96u);
 
 // 世界から格子（格、角が原点）への行と、格の数・大きさ。
 void PackToGrid(const FluidRenderDomain& domain, float (&toGrid)[3][4], float (&cells)[4]) {
@@ -323,6 +325,12 @@ FluidFlowView FluidRenderer::PrepareFlow(const GFX::Context& context, std::span<
         Set4(table[index].motion, motion.x, motion.y, motion.z, 0.0f);
         TransitionVolume(context.cmdList, *domains[index].velocity, kRead);
         view.velocity[index] = domains[index].velocity->srv.gpu;
+        if (domains[index].injection != 0u) {
+            std::copy(std::begin(domains[index].injectionCells), std::end(domains[index].injectionCells),
+                      table[index].injection);
+            table[index].injection[3] = 1u;
+            view.injection[index] = domains[index].injection;
+        }
     }
     const auto allocation = upload.Allocate(sizeof(table));
     if (!allocation)

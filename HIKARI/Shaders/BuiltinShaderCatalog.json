@@ -1907,6 +1907,12 @@
           "profile": "cs_6_0"
         },
         {
+          "id": "InjectionClearCS",
+          "stage": "Compute",
+          "entry": "InjectionClearCS",
+          "profile": "cs_6_0"
+        },
+        {
           "id": "OccupancyCS",
           "stage": "Compute",
           "entry": "OccupancyCS",
@@ -1945,11 +1951,11 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.FluidSimulation",
-        "engineInterfaceVersion": 15,
-        "engineInterfaceHash": "0b694cbd53457cdf65d17ec98137ad274144be01c8385c98b6b814cc85c38b91",
+        "engineInterfaceVersion": 16,
+        "engineInterfaceHash": "7979a0920733907190dd35225f0c04c4cb5055d630ae8ea78d9b716efbf92967",
         "rootLayoutId": "HIKARI.FluidSimulation.Root",
-        "rootLayoutVersion": 3,
-        "rootLayoutHash": "0a27862b7a5fd1efaa480740c41ff8f9550b6cca63bd4a23b4390af8b1047b41",
+        "rootLayoutVersion": 4,
+        "rootLayoutHash": "f8a5c139be30b0bcd522b63f2ba34d38db1f6f63c84891a8ab84db7815960b7d",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -4405,8 +4411,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.ParticleSimulation.Root",
-        "rootLayoutVersion": 4,
-        "rootLayoutHash": "64e7c7b7cf7c5a5f9d860955cddec6c029d96434920ac4728cda800350d47be5",
+        "rootLayoutVersion": 5,
+        "rootLayoutHash": "a18f3782d8771da18d57fa192f2f20e706681c714641496c92545084a08b56cd",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

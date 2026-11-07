@@ -615,6 +615,10 @@ void WriteProgram(BinaryWriter& writer, const VfxProgram& program) {
         WriteVec3(writer, simulation.gravity);
         writer.Write(simulation.drag);
         writer.Write(simulation.fluidFollow);
+        writer.Write(simulation.fluidSmoke);
+        writer.Write(simulation.fluidTemperature);
+        writer.Write(simulation.fluidCoupling);
+        writer.Write(simulation.fluidRadius);
         writer.Write(simulation.localSimulation);
         writer.Write(simulation.collisionPlaneEnabled);
         writer.Write(simulation.collisionPlaneHeight);
@@ -817,6 +821,8 @@ bool ReadProgram(BinaryReader& reader, VfxProgram& program) {
             !ReadAnimated(reader, simulation.position) || !ReadAnimated(reader, simulation.rotationRadians) ||
             !ReadAnimated(reader, simulation.scale) || !ReadVec3(reader, simulation.gravity) ||
             !reader.Read(simulation.drag) || !reader.Read(simulation.fluidFollow) ||
+            !reader.Read(simulation.fluidSmoke) || !reader.Read(simulation.fluidTemperature) ||
+            !reader.Read(simulation.fluidCoupling) || !reader.Read(simulation.fluidRadius) ||
             !reader.Read(simulation.localSimulation) || !reader.Read(simulation.collisionPlaneEnabled) ||
             !reader.Read(simulation.collisionPlaneHeight) || !reader.Read(simulation.sceneDepthCollision) ||
             !reader.Read(simulation.collisionThickness) || !reader.Read(simulation.restitution) ||

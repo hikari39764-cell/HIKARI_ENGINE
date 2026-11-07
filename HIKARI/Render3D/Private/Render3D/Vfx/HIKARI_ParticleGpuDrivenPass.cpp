@@ -490,7 +490,16 @@ struct ParticleGpuDrivenPass::Impl {
                                                                                          : emitterAddress);
         context.cmdList->SetComputeRootDescriptorTable(10u, storage.GetNullCollisionDepthUav());
         context.cmdList->SetComputeRootUnorderedAccessView(11u, storage.GetEventGpuAddress());
+        BindFluidInjection();
         context.cmdList->Dispatch(DispatchGroupCount(threadCount), 1u, 1u);
+    }
+
+    // 12〜15：流体への注入の緩衝（受け取らない域と空きの枠は事件の緩衝で埋める。shader は域の表の印で読み分ける）。
+    void BindFluidInjection() const {
+        for (uint32_t slot = 0u; slot < FLUID::kMaximumFluidFlowDomains; ++slot)
+            context.cmdList->SetComputeRootUnorderedAccessView(
+                12u + slot, slot < fluidFlow.count && fluidFlow.injection[slot] != 0u ? fluidFlow.injection[slot]
+                                                                                      : storage.GetEventGpuAddress());
     }
 
     void InsertGlobalUavBarrier() const {
@@ -527,6 +536,7 @@ struct ParticleGpuDrivenPass::Impl {
         context.cmdList->SetComputeRootConstantBufferView(9u, anyBuffer);
         context.cmdList->SetComputeRootDescriptorTable(10u, storage.GetCollisionDepthUav());
         context.cmdList->SetComputeRootUnorderedAccessView(11u, storage.GetEventGpuAddress());
+        BindFluidInjection();
         context.cmdList->Dispatch((width + 7u) / 8u, (height + 7u) / 8u, 1u);
         storage.TransitionCollisionDepth(context, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
         collisionView.viewProj = bindings.collisionViewProj;

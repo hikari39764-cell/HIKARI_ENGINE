@@ -432,6 +432,10 @@ Json WriteEmitter(const VfxEmitterData& emitter) {
                   {"restitution", emitter.forces.restitution},
                   {"friction", emitter.forces.friction},
                   {"fluidFollow", emitter.forces.fluidFollow},
+                  {"fluidSmoke", emitter.forces.fluidSmoke},
+                  {"fluidTemperature", emitter.forces.fluidTemperature},
+                  {"fluidCoupling", emitter.forces.fluidCoupling},
+                  {"fluidRadius", emitter.forces.fluidRadius},
               }},
              {"color",
               {

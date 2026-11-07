@@ -43,6 +43,7 @@ enum Root : UINT {
     kStats,
     kInteractions,
     kOutput2,
+    kInjection,
     kRootCount
 };
 
@@ -52,7 +53,7 @@ constexpr const char* kEntryNames[] = {
     "DivergenceCS", "SmoothCS",        "ResidualRestrictCS",
     "ProlongCS",    "CoarsestSolveCS", "ProjectCS",
     "OccupancyCS",  "DiagnosticsCS",   "SliceCS",
-    "ActivityCS",   "GlowCS",
+    "ActivityCS",   "GlowCS",          "InjectionClearCS",
 };
 static_assert(std::size(kEntryNames) == static_cast<size_t>(FluidEntry::Count));
 
@@ -73,6 +74,7 @@ bool CreateRoot(ID3D12Device* device, ID3D12RootSignature** output) {
     parameters[kOutput1].InitAsDescriptorTable(1, &ranges[5]);
     parameters[kSliceOutput].InitAsDescriptorTable(1, &ranges[6]);
     parameters[kStats].InitAsUnorderedAccessView(5);
+    parameters[kInjection].InitAsUnorderedAccessView(6);
     parameters[kInteractions].InitAsShaderResourceView(7);
     ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);
     parameters[kOutput2].InitAsDescriptorTable(1, &ranges[7]);
@@ -227,6 +229,23 @@ bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& lay
     return created;
 }
 
+bool EnsureFluidInjection(ID3D12Device* device, FluidDomainResources& resources, bool& created) {
+    created = false;
+    if (resources.injection)
+        return true;
+    for (int axis = 0; axis < 3; ++axis)
+        resources.injectionCells[axis] = (resources.layout.cells[axis] + 1u) / 2u;
+    const uint32_t bytes = resources.InjectionWords() * 4u;
+    if (device == nullptr || !CreateBuffer(device, D3D12_HEAP_TYPE_DEFAULT, bytes,
+                                           D3D12_RESOURCE_STATE_UNORDERED_ACCESS, resources.injection)) {
+        resources.injection.Reset();
+        return false;
+    }
+    resources.bytes += bytes;
+    created = true;
+    return true;
+}
+
 void RetireFluidDomainResources(const GFX::Context& context, FluidDomainResources& resources) {
     for (FluidVolume& volume : resources.velocity)
         RetireVolume(context, volume);
@@ -241,6 +260,8 @@ void RetireFluidDomainResources(const GFX::Context& context, FluidDomainResource
     RetireVolume(context, resources.light);
     if (resources.stats)
         GFX::RetireD3D12ObjectForFrame(resources.stats, context, "FluidSolver.Stats");
+    if (resources.injection)
+        GFX::RetireD3D12ObjectForFrame(resources.injection, context, "FluidSolver.Injection");
     for (auto& readback : resources.readback)
         if (readback)
             GFX::RetireD3D12ObjectForFrame(readback, context, "FluidSolver.Readback");
@@ -298,9 +319,19 @@ void FluidRecorder::Dispatch(FluidEntry entry, const FluidPassBindings& bindings
     if (bindings.slice != nullptr)
         commands_->SetComputeRootDescriptorTable(kSliceOutput, bindings.slice->uav.gpu);
     commands_->SetComputeRootUnorderedAccessView(kStats, domain_.stats->GetGPUVirtualAddress());
+    // 注入の緩衝の無い域は統計の緩衝で埋める（shader は gInjectionCells が 0 なら読まない）。
+    commands_->SetComputeRootUnorderedAccessView(
+        kInjection, (domain_.injection ? domain_.injection : domain_.stats)->GetGPUVirtualAddress());
     commands_->Dispatch((std::max)(groups[0], 1u), (std::max)(groups[1], 1u), (std::max)(groups[2], 1u));
     const auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(nullptr);
     commands_->ResourceBarrier(1, &uavBarrier);
+}
+
+void FluidRecorder::ClearInjection() {
+    if (!domain_.injection)
+        return;
+    const uint32_t words = domain_.InjectionWords();
+    Dispatch(FluidEntry::InjectionClear, {}, {words, 1u, 1u}, {0u, 0u, 0u, 0u}, {Groups(words, 64u), 1u, 1u});
 }
 
 void FluidRecorder::Clear(FluidVolume& volume) {

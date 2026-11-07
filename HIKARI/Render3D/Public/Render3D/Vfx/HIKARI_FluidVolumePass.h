@@ -135,14 +135,16 @@ struct FluidCameraVolumeView {
     MATH::Vec4 params{0.0f, 0.0f, 0.0f, 0.0f};
 };
 
-// 粒子が乗る流体（PrepareFrame がこのフレームに解いた域、最多 4）。domains は域ごとの世界→格子の行、格の数・大きさと
-// 域が世界で動く速さ（80 byte ずつ。Render3D_ParticleSimulation.hlsl の FluidFlowDomain）、velocity は各域の速度体積
-// （計算 shader が読める状態）。count が 0 なら粒子は流体に乗らない。
+// 粒子が乗る流体（PrepareFrame がこのフレームに解いた域、最多 4）。domains は域ごとの世界→格子の行、格の数・大きさ、
+// 域が世界で動く速さと注入の緩衝の形（96 byte ずつ。Render3D_ParticleSimulation.hlsl の FluidFlowDomain）、velocity は
+// 各域の速度体積（計算 shader が読める状態）、injection は粒子が注入を書く緩衝（無い域は 0、UAV の状態）。count が 0 なら
+// 粒子は流体に乗らない。
 inline constexpr uint32_t kMaximumFluidFlowDomains = 4u;
 struct FluidFlowView {
     uint32_t count = 0u;
     D3D12_GPU_VIRTUAL_ADDRESS domains = 0u;
     std::array<D3D12_GPU_DESCRIPTOR_HANDLE, kMaximumFluidFlowDomains> velocity{};
+    std::array<D3D12_GPU_VIRTUAL_ADDRESS, kMaximumFluidFlowDomains> injection{};
 };
 
 // 相機を原点に置いた view-projection：view の平行移動を除いた回転と投影だけ（大きな座標を含まない）。clipJitter は

@@ -275,4 +275,46 @@ FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, co
     return gpu;
 }
 
+FluidDomainConstantsGpu PackFluidDomainConstants(const FluidDomainSettings& authored,
+                                                 const FluidDomainResources& resources, uint32_t sourceCount,
+                                                 double step, uint64_t stepIndex, const MATH::Vec3& up,
+                                                 const MATH::Vec3& inertia, uint32_t interactionCount,
+                                                 uint32_t flags) noexcept {
+    FluidDomainConstantsGpu constants{};
+    constants.size[0] = resources.layout.cells[0];
+    constants.size[1] = resources.layout.cells[1];
+    constants.size[2] = resources.layout.cells[2];
+    constants.size[3] = sourceCount;
+    constants.cell[0] = resources.layout.cellSize;
+    constants.cell[1] = 1.0f / resources.layout.cellSize;
+    constants.cell[2] = static_cast<float>(step);
+    constants.cell[3] = static_cast<float>(std::fmod(static_cast<double>(stepIndex) * step, 65536.0));
+    constants.motion[0] = static_cast<float>(FluidClosedFaces(authored.boundary));
+    constants.motion[1] = authored.vorticity;
+    constants.motion[2] = authored.buoyancy;
+    constants.motion[3] = authored.weight;
+    constants.dissipation[0] = authored.densityDissipation;
+    constants.dissipation[1] = authored.temperatureDissipation;
+    constants.up[0] = up.x;
+    constants.up[1] = up.y;
+    constants.up[2] = up.z;
+    constants.inertia[0] = inertia.x;
+    constants.inertia[1] = inertia.y;
+    constants.inertia[2] = inertia.z;
+    constants.interactions[0] = interactionCount;
+    constants.interactions[1] = resources.ActivityOffset();
+    constants.interactions[2] = resources.SinkOffset();
+    constants.interactions[3] = flags;
+    constants.combustion0[0] = authored.ignitionTemperature;
+    constants.combustion0[1] = authored.burnRate;
+    constants.combustion0[2] = (std::max)(authored.fuelPerBurn, 1.0e-3f);
+    constants.combustion0[3] = authored.heatPerBurn;
+    constants.combustion1[0] = authored.smokePerBurn;
+    constants.combustion1[1] = authored.expansionPerBurn;
+    constants.combustion1[2] = resources.layout.combustion ? 1.0f : 0.0f;
+    constants.combustion1[3] = 0.0f;
+    std::copy(std::begin(resources.injectionCells), std::end(resources.injectionCells), constants.injection);
+    return constants;
+}
+
 } // namespace HIKARI::RENDER3D::FLUID::INTERNAL

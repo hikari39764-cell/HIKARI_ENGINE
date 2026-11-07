@@ -269,6 +269,12 @@ struct ParticleEmitterSimulationParameters {
     float drag = 0.0f;
     // 流体に乗る割合 [1/s]（VfxForcesModuleData::fluidFollow）。
     float fluidFollow = 0.0f;
+    // 流体へ注入する（VfxForcesModuleData::fluidSmoke など）：密度 / 秒、温度（0 で寄せない）、速度の寄せ [1/s]、半径 [m]。
+    float fluidSmoke = 0.0f;
+    float fluidTemperature = 0.0f;
+    float fluidCoupling = 0.0f;
+    float fluidRadius = 0.15f;
+    bool InjectsFluid() const noexcept { return fluidSmoke > 0.0f || fluidCoupling > 0.0f || fluidTemperature != 0.0f; }
     ParticleAnimatedColor color{};
 };
 

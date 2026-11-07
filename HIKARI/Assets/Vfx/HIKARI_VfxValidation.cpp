@@ -379,6 +379,18 @@ void ValidateMotionModules(const VfxEmitterData& emitter, std::unordered_set<std
         emitter.forces.fluidFollow > RENDER3D::PARTICLES::kMaxParticleFluidFollow) {
         AddError(diagnostics, "Vfx.InvalidForcesModule", "particle gravity or drag is invalid", emitter.forces.id);
     }
+    const auto inRange = [](float value, float low, float high) {
+        return IsFinite(value) && value >= low && value <= high;
+    };
+    if (!inRange(emitter.forces.fluidSmoke, 0.0f, RENDER3D::PARTICLES::kMaxParticleFluidSmoke) ||
+        !inRange(emitter.forces.fluidTemperature, -RENDER3D::PARTICLES::kMaxParticleFluidTemperature,
+                 RENDER3D::PARTICLES::kMaxParticleFluidTemperature) ||
+        !inRange(emitter.forces.fluidCoupling, 0.0f, RENDER3D::PARTICLES::kMaxParticleFluidCoupling) ||
+        !inRange(emitter.forces.fluidRadius, RENDER3D::PARTICLES::kMinParticleFluidRadius,
+                 RENDER3D::PARTICLES::kMaxParticleFluidRadius)) {
+        AddError(diagnostics, "Vfx.InvalidFluidInjection", "particle fluid injection values are out of range",
+                 emitter.forces.id);
+    }
     ValidateAnimatedColor(emitter.color.value, emitter.color.id, ids, diagnostics,
                           emitter.kind == VfxLayerKind::Particles ? RENDER3D::PARTICLES::kMaxParticleCurveKeys
                                                                   : kMaxVfxLayerCurveKeys);
