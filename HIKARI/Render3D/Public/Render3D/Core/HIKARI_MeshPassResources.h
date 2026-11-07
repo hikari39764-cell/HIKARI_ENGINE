@@ -27,6 +27,9 @@ struct MeshPassResources {
     std::optional<VFX::VfxPostProcessMode> particlePostProcessMode;
     // 歪み層の粒子だけを戦闘の画面歪み遮罩へ描く経路
     bool particleDistortionMask = false;
+    // この視図の深度を粒子の場景深度碰撞へ撮るか。像の一部の矩形にだけ描く視点（二次截取の並べた視点）は、深度が矩形の
+    // 外で別の視点のものなので撮らない。
+    bool particleCollisionCapture = true;
     bool reflectionCapture = false;
     // 当該フレームの不透明面の深度を GeometryAux が全部書いた。Forward は深度を書かず読むだけにし、隠れた面を着色しない。
     bool opaqueDepthComplete = false;

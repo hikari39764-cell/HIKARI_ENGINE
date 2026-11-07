@@ -106,6 +106,7 @@ void VfxPlaybackService::AppendFluidDomain(Instance& instance, uint32_t domainIn
 
     FLUID::FluidDomainSubmission domain{};
     domain.key = {playbackNamespace_, instance.handle.slot, instance.handle.generation, domainIndex};
+    domain.name = program.name + " / " + domainLayer.sourceEmitterId;
     domain.visible = instance.layerVisible[domainIndex] != 0u;
     // 見えない域は解算側で飛ばされるので、作り直しの要求は見えるようになって最初に渡すまで持ち越す。
     domain.resetSimulation = domainState.resetSimulation;

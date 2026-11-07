@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "source": {
-    "authoredPhysicalLineCeiling": 499133,
+    "authoredPhysicalLineCeiling": 499237,
     "softLargeFileLineThreshold": 500,
     "hardLargeFileLineThreshold": 1000,
     "softLargeFileCountCeiling": 182,
@@ -13,10 +13,10 @@
       "Assets": 144
     },
     "modulePhysicalLineCeilings": {
-      "Editor": 118538,
-      "Render3D": 89563,
+      "Editor": 118540,
+      "Render3D": 89634,
       "Assets": 47624,
-      "Scene": 67845
+      "Scene": 67846
     }
   },
   "build": {

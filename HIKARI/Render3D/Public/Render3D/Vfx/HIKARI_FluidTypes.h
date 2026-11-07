@@ -63,6 +63,8 @@ struct FluidDomainSettings {
     float substepRate = 60.0f;
     uint32_t maxSubsteps = 3u;
     float prewarmSeconds = 0.0f;
+    // 1 フレームに解ける域の数（画質の上限）を超えた時の優先度（0–100）。大きい域から解き、同じなら相機に近い域から。
+    uint32_t priority = 0u;
     FluidBoundary boundary = FluidBoundary::Open;
     float vorticity = 0.3f;
     // 温度 1 あたりの上向き加速度と、密度 1 あたりの下向き加速度 [m/s^2]。
@@ -137,6 +139,7 @@ inline constexpr auto kFluidDomainSettingsFields = [](auto&& field) {
     field("boundary", &S::boundary, kFluidBoundaryNames, Group{"Domain"});
     field("inertia", &S::inertia, Slider(0.0, 2.0), Group{"Domain"});
     field("prewarmSeconds", &S::prewarmSeconds, Range{0.0, 30.0}, Unit{"s"}, Group{"Domain"});
+    field("priority", &S::priority, Range{0.0, 100.0}, Group{"Domain"});
     field("vorticity", &S::vorticity, Range{0.0, 8.0}, Group{"Motion"}, Common{});
     field("buoyancy", &S::buoyancy, Range{-50.0, 50.0}, Unit{"m/s2"}, Group{"Motion"}, Common{});
     field("weight", &S::weight, Range{-50.0, 50.0}, Unit{"m/s2"}, Group{"Motion"});
@@ -295,6 +298,8 @@ inline uint64_t FluidSourceId(const PARTICLES::ParticleEmitterInstanceKey& key) 
 // で決まり、層の拡縮は掛けない（拡縮やその動画で格子を作り直さないため）。
 struct FluidDomainSubmission {
     PARTICLES::ParticleEmitterInstanceKey key{};
+    // 日誌に出す名前（資産名 / 層）。上限で解かれなかった時の警告が使う。
+    std::string name{};
     bool resetSimulation = false;
     bool visible = true;
     // 局所空間で解く（域が層の変換に付いて動く）。偽なら作り直した時の世界の位置に固定する。

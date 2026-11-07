@@ -90,7 +90,7 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
                                  const SceneEnvironment& environment,
                                  const RENDER3D::LIGHTING::SceneLightingSet& lighting, uint32_t captureSlot,
                                  uint32_t width, uint32_t height, bool renderTransparent,
-                                 RenderTarget2D* target = nullptr, bool prepareFrame = true);
+                                 RenderTarget2D* target = nullptr, bool prepareFrame = true, bool subView = false);
 bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDER3D::RenderViewContext& view,
                                        const SceneEnvironment& environment,
                                        const RENDER3D::LIGHTING::SceneLightingSet& lighting, SkyManager& skyManager,

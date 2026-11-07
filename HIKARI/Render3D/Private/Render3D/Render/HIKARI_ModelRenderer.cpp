@@ -82,27 +82,30 @@ RENDER3D::SceneCaptureUnstyledRegions BuildUnstyledRegions(const RENDER3D::Scree
         const bool orthographic = view.camera->IsOrthographic();
         const float nearZ = view.camera->GetNearZ(), farZ = view.camera->GetFarZ();
         for (uint32_t index = 0u; index < surfaceCount; ++index) {
-            std::array<MATH::Vec3, 4> corners{};   // texel の x, y と奥行きの値
+            std::array<MATH::Vec3, 4> corners{}; // texel の x, y と奥行きの値
             bool valid = true;
             for (uint32_t corner = 0u; corner < 4u && valid; ++corner) {
                 const auto& p = surfaces.regions[index][corner];
                 const auto clip = viewProjection.TransformPoint({p.x, p.y, p.z, 1.0f});
-                if (!std::isfinite(clip.x) || !std::isfinite(clip.y) || !std::isfinite(clip.z) || !std::isfinite(clip.w) ||
-                    clip.w <= .0001f) {
+                if (!std::isfinite(clip.x) || !std::isfinite(clip.y) || !std::isfinite(clip.z) ||
+                    !std::isfinite(clip.w) || clip.w <= .0001f) {
                     valid = false;
                     break;
                 }
                 const float ndcX = clip.x / clip.w, ndcY = clip.y / clip.w;
                 const float value = orthographic ? nearZ + clip.z / clip.w * (farZ - nearZ) : 1.0f / clip.w;
-                corners[corner] = {view.x + (ndcX * .5f + .5f) * view.width, view.y + (.5f - ndcY * .5f) * view.height, value};
+                corners[corner] = {view.x + (ndcX * .5f + .5f) * view.width, view.y + (.5f - ndcY * .5f) * view.height,
+                                   value};
             }
             if (!valid)
                 continue;
             RENDER3D::SceneCaptureUnstyledRegion region{};
             region.left = (std::max)(view.x, (std::min)({corners[0].x, corners[1].x, corners[2].x, corners[3].x}));
-            region.right = (std::min)(view.x + view.width, (std::max)({corners[0].x, corners[1].x, corners[2].x, corners[3].x}));
+            region.right =
+                (std::min)(view.x + view.width, (std::max)({corners[0].x, corners[1].x, corners[2].x, corners[3].x}));
             region.top = (std::max)(view.y, (std::min)({corners[0].y, corners[1].y, corners[2].y, corners[3].y}));
-            region.bottom = (std::min)(view.y + view.height, (std::max)({corners[0].y, corners[1].y, corners[2].y, corners[3].y}));
+            region.bottom =
+                (std::min)(view.y + view.height, (std::max)({corners[0].y, corners[1].y, corners[2].y, corners[3].y}));
             if (region.right - region.left < 1.0f || region.bottom - region.top < 1.0f)
                 continue;
             const float area = (region.right - region.left) * (region.bottom - region.top);
@@ -121,7 +124,8 @@ RENDER3D::SceneCaptureUnstyledRegions BuildUnstyledRegions(const RENDER3D::Scree
             candidates.push_back({region, area});
         }
     }
-    std::sort(candidates.begin(), candidates.end(), [](const Candidate& l, const Candidate& r) { return l.area > r.area; });
+    std::sort(candidates.begin(), candidates.end(),
+              [](const Candidate& l, const Candidate& r) { return l.area > r.area; });
     RENDER3D::SceneCaptureUnstyledRegions out{};
     for (const Candidate& candidate : candidates) {
         if (out.count == RENDER3D::kSceneCaptureUnstyledRegionCount)
@@ -197,9 +201,10 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
                                  const SceneEnvironment& environment,
                                  const RENDER3D::LIGHTING::SceneLightingSet& lighting, uint32_t captureSlot,
                                  uint32_t width, uint32_t height, bool renderTransparent, RenderTarget2D* target,
-                                 bool prepareFrame) {
+                                 bool prepareFrame, bool subView) {
     BeginModelRendererFrame(ModelRendererFrameKind::SecondarySceneCapture);
     MESHRENDERER::MeshPassResources captureResources;
+    captureResources.particleCollisionCapture = !subView;
     if (target) {
         captureResources.compositionDepth = target->GetReadOnlyDsvHandle();
         captureResources.compositionTarget.userData = target;
@@ -296,8 +301,9 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
                 (void)RENDER3D::PANORAMA_SKY::RenderPanoramaSkyLayer(graphics, sub.camera, environment.sky, skyManager);
                 target.Rebind();
             }
-            const bool viewRendered = RenderSecondarySceneCapture(graphics, subContext, environment, lighting, captureSlot,
-                                                                  width, height, renderTransparent, &target, prepareFrame);
+            const bool viewRendered =
+                RenderSecondarySceneCapture(graphics, subContext, environment, lighting, captureSlot, width, height,
+                                            renderTransparent, &target, prepareFrame, true);
             rendered = viewRendered && rendered;
             // 準備に失敗したフレームは次の視点で準備し直す。
             prepareFrame = prepareFrame && !viewRendered;
@@ -323,8 +329,8 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
                 continue;
             }
             const SecondarySceneCaptureSubView& sub = (*subViews)[index];
-            drawnRects.push_back({static_cast<LONG>(sub.x), static_cast<LONG>(sub.y), static_cast<LONG>(sub.x + sub.width),
-                                  static_cast<LONG>(sub.y + sub.height)});
+            drawnRects.push_back({static_cast<LONG>(sub.x), static_cast<LONG>(sub.y),
+                                  static_cast<LONG>(sub.x + sub.width), static_cast<LONG>(sub.y + sub.height)});
         }
     }
     static const auto styleTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures.Style");
@@ -335,7 +341,8 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
         if (unstyledSurfaces != nullptr && unstyledSurfaces->count > 0u) {
             std::vector<UnstyledView> views;
             if (subViews == nullptr) {
-                views.push_back({&view.cameraFrame->camera, 0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)});
+                views.push_back(
+                    {&view.cameraFrame->camera, 0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)});
             } else {
                 for (size_t index = 0; index < subViews->size(); ++index) {
                     if (keep[index]) {
@@ -381,8 +388,8 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
                 destination.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
                 D3D12_TEXTURE_COPY_LOCATION source = destination;
                 source.pResource = target.GetResource();
-                const D3D12_BOX box{static_cast<UINT>(rect.left), static_cast<UINT>(rect.top), 0u, static_cast<UINT>(rect.right),
-                                    static_cast<UINT>(rect.bottom), 1u};
+                const D3D12_BOX box{static_cast<UINT>(rect.left),  static_cast<UINT>(rect.top),    0u,
+                                    static_cast<UINT>(rect.right), static_cast<UINT>(rect.bottom), 1u};
                 graphics.cmdList->CopyTextureRegion(&destination, box.left, box.top, 0u, &source, &box);
             }
         }

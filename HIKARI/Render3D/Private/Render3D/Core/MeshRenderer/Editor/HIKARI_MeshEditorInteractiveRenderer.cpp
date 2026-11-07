@@ -127,7 +127,7 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
     }
     const uintptr_t sourceIdentity = reinterpret_cast<uintptr_t>(&sceneSource);
     SyncGpuDrivenSceneMaterialSources(graphics, sourceIdentity, sceneSource);
-    PrepareFluidFrame(graphics, settings.particleFrameSource);
+    PrepareFluidFrame(graphics, settings.particleFrameSource, cameraPosition);
     const RENDER3D::FLUID::FluidFlowView fluidFlow = gMeshRendererState.fluidPass.GetFlowView();
     if (!gMeshRendererState.particlePass.PrepareFrame(graphics, settings.particleFrameSource,
                                                       gMeshRendererState.gpuMaterialRegistry, &fluidFlow)) {

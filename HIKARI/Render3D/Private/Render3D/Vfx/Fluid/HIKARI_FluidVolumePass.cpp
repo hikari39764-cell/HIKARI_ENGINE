@@ -95,6 +95,8 @@ struct DomainState {
     uint64_t prewarmSteps = 0u;
     // 預熱を終える前に作り直された回数（描いた時に 0 へ戻す）。
     uint32_t unfinishedRestarts = 0u;
+    // 上限で解かれなかったことを日誌へ書いたか（域ごとに一度だけ）。
+    bool limitWarned = false;
     uint32_t velocityIndex = 0u;
     uint32_t densityIndex = 0u;
     // 密度が変わるたびに増やす（子步を進めた・作り直した）。描く側は同じ版なら光照体積を書き直さない。
@@ -171,6 +173,21 @@ void WarnUnfinishedPrewarm(const FluidDomainSubmission& submission, const FluidG
                            : "playback keeps restarting it (seek, time jump or replay every frame)");
     HIKARI_LOG_WARN(message);
 }
+
+void WarnDomainLimit(const FluidDomainSubmission& submission, uint32_t limit, float distance) {
+    char message[512];
+    std::snprintf(message, sizeof(message),
+                  "[FluidSmoke] Fluid domain '%s' is not simulated or drawn: more than %u domains this frame (fluid "
+                  "quality limit). It has priority %u and is %.1f m from the camera; raise its priority to keep it.",
+                  submission.name.c_str(), limit, submission.settings.priority, distance);
+    HIKARI_LOG_WARN(message);
+}
+
+// 相機から域の外接球までの距離（中なら 0）。
+float DomainDistance(const FluidDomainSubmission& submission, const MATH::Vec3& viewer) noexcept {
+    return (std::max)(0.0f, MATH::Length(submission.worldPosition - viewer) -
+                                0.5f * MATH::Length(submission.settings.domainSize));
+}
 } // namespace
 
 struct FluidVolumePass::Impl {
@@ -192,6 +209,8 @@ struct FluidVolumePass::Impl {
     // 域ごとに選んだ、このフレームの源（域自身の源と、届く場面の源）とその動き（作業用）。
     std::vector<FluidSourceSubmission> frameSources{};
     std::vector<SourceMotion> frameMotion{};
+    // 域を解く順（優先度の高い順、同じなら近い順。作業用）。
+    std::vector<uint32_t> order{};
     // 回読が届いた汇の吸い込み量と域の発光（TakeSinkReports / TakeGlowReports で場面へ渡す）。
     std::vector<FluidSinkReport> sinkReports{};
     std::vector<FluidGlowReport> glowReports{};
@@ -790,17 +809,43 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
     ID3D12DescriptorHeap* heaps[] = {context.srvHeap};
     if (context.srvHeap != nullptr)
         context.cmdList->SetDescriptorHeaps(1, heaps);
+    // 上限（画質の maxDomains）を超える時は、優先度の高い域から、同じ優先度なら相機に近い域から解く（Niagara が重要度と
+    // 距離で残す実例を選ぶのと同じ）。
+    impl.order.resize(input->fluids.size());
+    for (uint32_t index = 0u; index < impl.order.size(); ++index)
+        impl.order[index] = index;
+    std::stable_sort(impl.order.begin(), impl.order.end(), [&](uint32_t left, uint32_t right) {
+        const FluidDomainSubmission& a = input->fluids[left];
+        const FluidDomainSubmission& b = input->fluids[right];
+        if (a.settings.priority != b.settings.priority)
+            return a.settings.priority > b.settings.priority;
+        return DomainDistance(a, settings.viewerPosition) < DomainDistance(b, settings.viewerPosition);
+    });
     uint32_t solved = 0u;
-    for (const FluidDomainSubmission& submission : input->fluids) {
+    for (const uint32_t order : impl.order) {
+        const FluidDomainSubmission& submission = input->fluids[order];
         DomainState* domain = impl.Find(submission.key);
         if (domain == nullptr) {
             impl.domains.push_back(std::make_unique<DomainState>());
             domain = impl.domains.back().get();
             domain->key = submission.key;
         }
-        // 画質の上限を超えた域と、見えない（层の有効区間の外の）域は解かない（状態はそのまま残る）。
-        if (!submission.visible || solved >= policy.maxDomains) {
+        domain->stats.key = submission.key;
+        domain->stats.priority = submission.settings.priority;
+        domain->stats.skippedByLimit = false;
+        // 見えない（层の有効区間の外の）域と、上限を超えた域は解かない（状態はそのまま残る）。上限で外れた域は統計に印を
+        // 付け、域ごとに一度だけ日誌へ書く。
+        if (!submission.visible) {
             ++impl.stats.skippedDomains;
+            continue;
+        }
+        if (solved >= policy.maxDomains) {
+            ++impl.stats.skippedDomains;
+            domain->stats.skippedByLimit = true;
+            if (!domain->limitWarned) {
+                domain->limitWarned = true;
+                WarnDomainLimit(submission, policy.maxDomains, DomainDistance(submission, settings.viewerPosition));
+            }
             continue;
         }
         if (!impl.PrepareDomain(*domain, submission, policy))

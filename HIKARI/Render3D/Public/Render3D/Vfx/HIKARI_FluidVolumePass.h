@@ -91,6 +91,9 @@ struct FluidDomainStats {
     bool diagnosticsValid = false;
     float maxDivergence = 0.0f;
     float densityTotal = 0.0f;
+    // このフレームに上限（画質の maxDomains）で解かれなかった（優先度と距離で後ろになった）か、と作者の優先度。
+    bool skippedByLimit = false;
+    uint32_t priority = 0u;
 };
 
 struct FluidVolumePassStats {
@@ -159,6 +162,8 @@ struct FluidFrameSettings {
     // 場面の押すもの（障碍物・冲量・力）と、それを出したフレーム。冲量はフレームが変わった時に一度だけ受け取る。
     std::span<const FluidInteraction> interactions{};
     uint64_t interactionFrame = 0u;
+    // 域の数が上限を超えた時、同じ優先度の域を近い順に選ぶ基準（このフレームの視図の相機）。
+    MATH::Vec3 viewerPosition{};
 };
 
 class FluidVolumePass final {

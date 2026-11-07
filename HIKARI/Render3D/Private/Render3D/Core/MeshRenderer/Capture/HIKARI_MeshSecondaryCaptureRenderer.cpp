@@ -461,14 +461,14 @@ bool RenderSecondarySceneCapture(const GFX::Context& graphics, const RENDER3D::R
         }
         transparentOk =
             transparentOk && resources.worldSpritePass.ExecuteForwardTransparent(graphics, overrides.cameraAddress);
-        // 二次截取（特效の预览など）は自分の粒子を自分の深度で碰撞させる。
+        // 二次截取（特效の预览など）は自分の粒子を自分の深度で碰撞させる（並べた視点は撮らない）。
         const MATH::Mat4 collisionViewProj =
             RENDER3D::FLUID::MakeCameraRelativeViewProj(camera.GetView(), camera.GetProj());
-        transparentOk =
-            transparentOk &&
-            (!resources.particlesPrepared ||
-             ExecuteParticleForwardTransparent(resources.particlePass, graphics, overrides.cameraAddress,
-                                               camera.GetPosition(), passResources, {}, &collisionViewProj));
+        transparentOk = transparentOk &&
+                        (!resources.particlesPrepared ||
+                         ExecuteParticleForwardTransparent(
+                             resources.particlePass, graphics, overrides.cameraAddress, camera.GetPosition(),
+                             passResources, {}, passResources.particleCollisionCapture ? &collisionViewProj : nullptr));
         transparentOk =
             transparentOk && resources.worldTextPass.ExecuteForwardTransparent(graphics, overrides.cameraAddress);
     }

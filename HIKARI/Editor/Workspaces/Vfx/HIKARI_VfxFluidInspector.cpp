@@ -74,6 +74,8 @@ nlohmann::json DescribeStats(const FLUID::FluidDomainStats& stats) {
         {"diagnosticsValid", stats.diagnosticsValid},
         {"maxDivergence", stats.maxDivergence},
         {"densityTotal", stats.densityTotal},
+        {"priority", stats.priority},
+        {"skippedByLimit", stats.skippedByLimit},
     };
 }
 } // namespace

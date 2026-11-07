@@ -543,6 +543,35 @@ void SinkAndEmit(FluidGpu& fluid) {
     pass.Shutdown();
 }
 
+// 域の数の上限（Balanced で 4）：6 つの域のうち、遠くても優先度の高い域は必ず解き、同じ優先度では相機から遠い 2 つが
+// 外れて統計に印が付く。
+void DomainLimit(FluidGpu& fluid) {
+    FluidVolumePass pass;
+    RENDER3D::PARTICLES::ParticleRenderInput input{};
+    for (uint32_t index = 0u; index < 6u; ++index) {
+        FluidDomainSubmission domain = MakeDomain(100u + index, FluidBoundary::Open, 0.0f);
+        domain.worldPosition = {0.0f, 0.0f, 10.0f * static_cast<float>(index + 1u)};
+        domain.deltaSeconds = 1.0f / 60.0f;
+        input.fluids.push_back(domain);
+    }
+    input.fluids[5].settings.priority = 10u;
+    FluidFrameSettings settings{};
+    settings.viewerPosition = {};
+    fluid.Frame(pass, input, settings);
+    const auto skipped = [&](uint64_t playbackNamespace) {
+        for (const FluidDomainStats& stats : pass.GetStats().perDomain)
+            if (stats.key.playbackNamespace == playbackNamespace)
+                return stats.skippedByLimit;
+        assert(false);
+        return true;
+    };
+    std::fprintf(stderr, "fluid domain limit: skipped %u, far priority domain skipped %d\n",
+                 pass.GetStats().skippedDomains, skipped(105u) ? 1 : 0);
+    assert(pass.GetStats().skippedDomains == 2u && !skipped(105u) && !skipped(100u) && !skipped(101u) &&
+           !skipped(102u) && skipped(103u) && skipped(104u));
+    pass.Shutdown();
+}
+
 // 決まったゲーム時間を frame の長さで刻んで解き、最後の密度の切片を返す。
 std::vector<uint16_t> SolveAtFrameRate(FluidGpu& fluid, uint64_t playbackNamespace, double frameSeconds,
                                        uint32_t frames, uint64_t& outSteps) {
@@ -655,6 +684,7 @@ void CheckFluidSolver() {
     LongPrewarm(fluid, 80u, 60.0f, 6.0f, 360u);
     LongPrewarm(fluid, 81u, 30.0f, 10.0f, 300u);
     SinkAndEmit(fluid);
+    DomainLimit(fluid);
     closedBox(0, 1.0e-4f);
     closedBox(1, 0.06f);
     closedBox(2, 0.12f);
