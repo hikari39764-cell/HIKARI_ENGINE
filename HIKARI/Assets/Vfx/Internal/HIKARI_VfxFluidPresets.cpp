@@ -134,19 +134,21 @@ VfxAssetData FluidPreset(std::string_view id) {
     }
     if (id == "fluid_fireball") {
         // 特效に付いて動く局所空間の域の中で燃え続ける玉（VfxView::SetVelocity で飛ばす）。浮力を弱め、煤は速く消して玉の
-        // 形を保つ。
+        // 形を保つ。燃え続ける源に膨張を付けると域全体へ膨らみ続けるので 0、燃料は源の近くで燃え切るよう速く燃やす。
         asset.name = "Fireball";
         VfxEmitterData domain = BurningDomain(suffix + ".domain", {3.0f, 3.0f, 3.0f}, 64u);
         domain.basic.localSimulation = true;
         domain.fluidDomain.buoyancy = 0.5f;
-        domain.fluidDomain.expansionPerBurn = 0.6f;
-        domain.fluidDomain.densityDissipation = 2.5f;
+        domain.fluidDomain.burnRate = 8.0f;
+        domain.fluidDomain.smokePerBurn = 0.25f;
+        domain.fluidDomain.expansionPerBurn = 0.0f;
+        domain.fluidDomain.densityDissipation = 4.0f;
         domain.fluidDomain.prewarmSeconds = 1.0f;
         VfxEmitterData fuel = FuelSource(suffix + ".fuel", domain, {0.0f, 0.0f, 0.0f});
         Sphere(fuel, 0.45f);
         fuel.spawn.ratePerSecond = 8.0f;
         fuel.fluidSource.velocity = {};
-        fuel.fluidSource.radialSpeed = 1.5f;
+        fuel.fluidSource.radialSpeed = 0.5f;
         fuel.fluidSource.temperature = 1.5f;
         return MakePresetAssetFromEmitters(std::move(asset), {std::move(domain), std::move(fuel)});
     }
