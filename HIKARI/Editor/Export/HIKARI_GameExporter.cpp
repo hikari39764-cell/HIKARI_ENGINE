@@ -28,6 +28,7 @@
 #include "Editor/Export/HIKARI_NativeRuntimeDeployment.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
+#include "Project/HIKARI_ProjectModules.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
@@ -378,7 +379,8 @@ bool CopyInstalledEngineContent(const std::filesystem::path& runtimeRoot, const 
             const std::filesystem::path root = outputDirectory / "EngineContent" / domain;
             std::error_code ec{};
             bool empty = true;
-            for (std::filesystem::recursive_directory_iterator it(root, ec), last; !ec && it != last; it.increment(ec)) {
+            for (std::filesystem::recursive_directory_iterator it(root, ec), last; !ec && it != last;
+                 it.increment(ec)) {
                 if (it->is_regular_file(ec)) {
                     empty = false;
                     break;
@@ -456,6 +458,72 @@ bool LoadProjectCookManifest(const std::filesystem::path& projectRoot, ProjectCo
         outMessage = "Could not parse project game export manifest: " + std::string(error.what());
         return false;
     }
+}
+
+// 項目に入れたモジュールを書き出しへ配る。発布版の DLL・内容・清単を Modules/<id>/ へ置き、書き出した項目の
+// Project.hikari は id だけにする（ゲームは実行ファイルの隣の Modules から読む）。
+bool DeployProjectModules(const std::filesystem::path& projectRoot, const std::filesystem::path& engineDirectory,
+                          const std::filesystem::path& stagingDirectory, std::string& outMessage) {
+    ProjectDescriptor descriptor{};
+    if (!LoadProjectDescriptor(projectRoot / kProjectDescriptorFilename, descriptor, &outMessage)) {
+        return false;
+    }
+    if (descriptor.modules.empty()) {
+        return true;
+    }
+    std::vector<ModuleManifest> modules{};
+    if (!ResolveProjectModules(descriptor.modules, projectRoot, engineDirectory / "Modules", modules, &outMessage)) {
+        return false;
+    }
+    for (const ModuleManifest& module : modules) {
+        if (module.shippingRuntimeLibrary.empty()) {
+            outMessage = "Module " + module.id + " does not declare a shipping runtime library.";
+            return false;
+        }
+        const std::filesystem::path sourceLibrary = module.directory / module.shippingRuntimeLibrary;
+        const std::filesystem::path targetDirectory = stagingDirectory / "Modules" / TEXT::PathFromUtf8(module.id);
+        std::error_code ec{};
+        std::filesystem::create_directories(targetDirectory, ec);
+        if (ec || !CopyFileChecked(sourceLibrary, targetDirectory / sourceLibrary.filename(), outMessage)) {
+            if (ec) {
+                outMessage = "Could not create " + TEXT::PathToUtf8(targetDirectory);
+            }
+            return false;
+        }
+        ModuleManifest packaged = module;
+        packaged.runtimeLibrary = sourceLibrary.filename();
+        packaged.shippingRuntimeLibrary.clear();
+        packaged.editorLibrary.clear();
+        if (!module.contentDirectory.empty()) {
+            std::filesystem::copy(
+                module.directory / module.contentDirectory, targetDirectory / module.contentDirectory,
+                std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
+            if (ec) {
+                outMessage = "Could not copy the content of module " + module.id + ": " + ec.message();
+                return false;
+            }
+        }
+        if (!SaveModuleManifest(MakeBuiltinModuleManifestPath(stagingDirectory / "Modules", module.id), packaged,
+                                &outMessage)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool StripPackagedModuleManifestPaths(const std::filesystem::path& contentDirectory, std::string& outMessage) {
+    const std::filesystem::path descriptorPath = contentDirectory / kProjectDescriptorFilename;
+    ProjectDescriptor descriptor{};
+    if (!LoadProjectDescriptor(descriptorPath, descriptor, &outMessage)) {
+        return false;
+    }
+    if (descriptor.modules.empty()) {
+        return true;
+    }
+    for (ProjectModuleReference& module : descriptor.modules) {
+        module.manifest.clear();
+    }
+    return SaveProjectDescriptor(descriptorPath, descriptor, &outMessage);
 }
 
 std::filesystem::path ResolveInstalledProjectModule(const std::filesystem::path& projectRoot,
@@ -568,7 +636,8 @@ CodeAssetReferences CollectCodeReferencedAssets(const std::filesystem::path& pro
             std::error_code entry;
             const auto extension = TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(it->path().extension()));
             if (!it->is_regular_file(entry) || editorOnly(it->path()) ||
-                (extension != ".cpp" && extension != ".cc" && extension != ".h" && extension != ".hpp" && extension != ".inl"))
+                (extension != ".cpp" && extension != ".cc" && extension != ".h" && extension != ".hpp" &&
+                 extension != ".inl"))
                 continue;
             std::ifstream source(it->path(), std::ios::binary);
             const std::string text{std::istreambuf_iterator<char>(source), {}};
@@ -743,13 +812,14 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
     // 分かりにくい失敗になるので、先に深さを確かめて出力先の上限を伝える。発行の時は前の包を
     // 「作業フォルダ名 + .previous」へ退かすので、作業フォルダより 9 字長い名前にも収まる必要がある。
     const bool longPaths = LongPathsEnabled();
-    const long long engineDepth = static_cast<long long>(std::string_view("EngineContent/").size() +
-                                                         DeepestRelativePath(sourceExe.parent_path() / "EngineContent"));
+    const long long engineDepth = static_cast<long long>(
+        std::string_view("EngineContent/").size() + DeepestRelativePath(sourceExe.parent_path() / "EngineContent"));
     const long long stagingLength =
         static_cast<long long>(stagingDirectory.native().size() + std::wstring_view(L".previous").size());
     if (!longPaths && stagingLength + 1 + engineDepth > static_cast<long long>(kMaxWindowsPath)) {
         const long long outputLength = static_cast<long long>(outputDirectory.native().size());
-        const long long limit = static_cast<long long>(kMaxWindowsPath) - 1 - engineDepth - (stagingLength - outputLength);
+        const long long limit =
+            static_cast<long long>(kMaxWindowsPath) - 1 - engineDepth - (stagingLength - outputLength);
         result.message = "The output folder is too deep for Windows paths: the package needs " +
                          std::to_string(engineDepth) + " characters below it. Choose an output folder of at most " +
                          std::to_string((std::max)(0ll, limit)) + " characters (now " + std::to_string(outputLength) +
@@ -773,9 +843,10 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
         !CopyFileChecked(sourceProjectModule, outputProjectModule, errorMessage) ||
         !RENDER3D::UPSCALING::DeployStreamlineRuntime(sourceExe.parent_path(), stagingDirectory, streamlineDeployment,
                                                       errorMessage) ||
-        !WriteRuntimeConfig(stagingDirectory, effectiveOptions, renderQuality, cookManifest.allowTraditionalGeometryFallback,
-                            errorMessage) ||
-        !CopyInstalledEngineContent(sourceExe.parent_path(), stagingDirectory, includeTerrainContent, errorMessage)) {
+        !WriteRuntimeConfig(stagingDirectory, effectiveOptions, renderQuality,
+                            cookManifest.allowTraditionalGeometryFallback, errorMessage) ||
+        !CopyInstalledEngineContent(sourceExe.parent_path(), stagingDirectory, includeTerrainContent, errorMessage) ||
+        !DeployProjectModules(projectRoot, sourceExe.parent_path(), stagingDirectory, errorMessage)) {
         result.message = errorMessage;
         HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
         return result;
@@ -806,6 +877,11 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
     });
     if (!cookResult.success) {
         result.message = cookResult.message;
+        HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
+        return result;
+    }
+    if (!StripPackagedModuleManifestPaths(stagingDirectory / "Content", errorMessage)) {
+        result.message = errorMessage;
         HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
         return result;
     }
@@ -845,14 +921,15 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
     result.message = "Exported " + std::to_string(effectiveOptions.sceneGuids.size()) + " scene(s), " +
                      std::to_string(cookResult.assetCount) + " cooked asset(s), and " +
                      std::to_string(cookResult.fileCount) + " cooked file(s) to " + TEXT::PathToUtf8(outputDirectory) +
-                     ". Anti-aliasing: " + quality.value("antiAliasingMode", std::string{"?"}) + "; frame generation: " +
-                     (frameGeneration == "Off" ? std::string{"off"}
-                                               : frameGeneration + " x" +
-                                                     std::to_string(quality.value("frameGenerationMultiplier", 2))) +
+                     ". Anti-aliasing: " + quality.value("antiAliasingMode", std::string{"?"}) +
+                     "; frame generation: " +
+                     (frameGeneration == "Off"
+                          ? std::string{"off"}
+                          : frameGeneration + " x" + std::to_string(quality.value("frameGenerationMultiplier", 2))) +
                      " (ProjectSettings/render_quality.json).";
     if (!codeAssets.added.empty())
-        result.message += " Also cooked " + std::to_string(codeAssets.added.size()) +
-                          " asset(s) referenced only from project code.";
+        result.message +=
+            " Also cooked " + std::to_string(codeAssets.added.size()) + " asset(s) referenced only from project code.";
     if (!codeAssets.missing.empty())
         result.message += " Project code refers to " + std::to_string(codeAssets.missing.size()) +
                           " missing asset path(s), e.g. " + codeAssets.missing.front() + ".";

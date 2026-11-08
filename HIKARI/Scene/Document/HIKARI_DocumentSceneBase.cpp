@@ -789,6 +789,20 @@ bool DocumentSceneBase::AddBorrowedRuntimeExtension(IRuntimeExtension& extension
     }
     return state_->runtime.extensionHost.AddBorrowed(extension);
 }
+
+void DocumentSceneBase::SetInstalledModules(const std::vector<InstalledModuleStatus>* modules) noexcept {
+    state_->runtime.installedModules = modules;
+}
+
+std::span<const InstalledModuleStatus> DocumentSceneBase::GetInstalledModules() const noexcept {
+    return state_->runtime.installedModules != nullptr
+               ? std::span<const InstalledModuleStatus>(*state_->runtime.installedModules)
+               : std::span<const InstalledModuleStatus>{};
+}
+
+std::vector<std::string> DocumentSceneBase::GetRuntimeExtensionFeatures(std::string_view extensionId) const {
+    return state_->runtime.extensionHost.GetRegisteredFeatures(extensionId);
+}
 bool DocumentSceneBase::IsRuntimeFeatureActive(std::string_view featureId) const noexcept {
     return state_->runtime.featureCatalog.IsFeatureActive(featureId);
 }

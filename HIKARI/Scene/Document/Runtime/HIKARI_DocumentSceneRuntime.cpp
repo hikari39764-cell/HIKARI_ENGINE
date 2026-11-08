@@ -2,6 +2,7 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <memory>
@@ -326,8 +327,13 @@ bool DocumentSceneBase::RegisterRuntimeFeatures() {
     RuntimeFeatureContext context =
         RuntimeFeatureContextAccess::Create(state_->runtime.componentRegistry, state_->runtime.massSchemaRegistry,
                                             state_->runtime.systemTypeRegistry, state_->runtime.componentSystemPolicy);
-    state_->runtime.featureInstallReport =
-        state_->runtime.featureCatalog.RegisterEnabled(context, projectSettings.GetSettings().enabledRuntimeFeatures);
+    std::vector<std::string> enabledFeatures = projectSettings.GetSettings().enabledRuntimeFeatures;
+    for (const std::string& featureId : state_->runtime.extensionHost.GetEnabledByExtensions()) {
+        if (std::find(enabledFeatures.begin(), enabledFeatures.end(), featureId) == enabledFeatures.end()) {
+            enabledFeatures.push_back(featureId);
+        }
+    }
+    state_->runtime.featureInstallReport = state_->runtime.featureCatalog.RegisterEnabled(context, enabledFeatures);
     state_->runtime.featureInstallReport.success = state_->runtime.featureInstallReport.success && extensionsRegistered;
 
     for (const std::string& issue : state_->runtime.featureInstallReport.resolution.issues) {

@@ -31,6 +31,8 @@ public:
     // The Editor companion is optional. Absence of the explicit launch
     // argument succeeds without loading or probing a default DLL.
     bool LoadForLaunch(std::string& outMessage);
+    // 項目に入れた追加モジュールの編集器 DLL を読む。
+    bool Load(const std::filesystem::path& modulePath, std::string& outMessage);
     void Reset() noexcept;
 
     bool IsLoaded() const noexcept;
@@ -43,8 +45,6 @@ public:
     const std::filesystem::path& GetModulePath() const noexcept;
 
 private:
-    bool Load(const std::filesystem::path& modulePath, std::string& outMessage);
-
     void* libraryHandle_ = nullptr;
     const EDITOR_PROJECT::GameProjectEditorModuleApi* api_ = nullptr;
     void* instance_ = nullptr;

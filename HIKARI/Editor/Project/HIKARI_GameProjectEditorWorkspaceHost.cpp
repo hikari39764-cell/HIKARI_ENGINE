@@ -565,23 +565,28 @@ bool GameProjectEditorWorkspaceHost::RegisterModule(const GameProjectEditorModul
         outMessage.clear();
         return true;
     }
-    if (operationRegistry_ != nullptr || operationOwnerToken_ != 0u) {
-        outMessage = "A GameProject Editor companion is already registered with this host.";
-        return false;
-    }
-
     const EditorOperationOwnerToken operationOwnerToken = operationRegistry.CreateOwnerToken();
     if (operationOwnerToken == 0u) {
         outMessage = "Could not allocate an Editor operation owner token for the GameProject module.";
         return false;
     }
-    documents_ = std::make_unique<GameProjectEditorDocumentService>(TEXT::PathFromUtf8(projectRootUtf8) / "Data");
-    registry_.SetDocuments(documents_.get());
+    // 文書サービスは項目に一つ。二つ目以降のモジュールは最初の登録で作ったものを共有する。
+    const bool firstModule = documents_ == nullptr;
+    if (firstModule) {
+        documents_ = std::make_unique<GameProjectEditorDocumentService>(TEXT::PathFromUtf8(projectRootUtf8) / "Data");
+        registry_.SetDocuments(documents_.get());
+    }
+    const auto discardDocumentsOfFirstModule = [&]() {
+        if (firstModule) {
+            registry_.SetDocuments(nullptr);
+            documents_.reset();
+        }
+    };
     std::string operationMessage{};
-    if (!module.RegisterEditorOperations(operationRegistry, operationOwnerToken, documents_.get(), operationMessage, &registry_)) {
+    if (!module.RegisterEditorOperations(operationRegistry, operationOwnerToken, documents_.get(), operationMessage,
+                                         &registry_)) {
         (void)operationRegistry.UnregisterOwner(operationOwnerToken);
-        registry_.SetDocuments(nullptr);
-        documents_.reset();
+        discardDocumentsOfFirstModule();
         outMessage = "GameProject Editor operation registration failed: " + operationMessage;
         return false;
     }
@@ -596,12 +601,10 @@ bool GameProjectEditorWorkspaceHost::RegisterModule(const GameProjectEditorModul
         registry_.RegisterModule(module.GetModuleId(), workspaces.data(), workspaces.size(), outMessage);
     if (registered) {
         operationRegistry_ = &operationRegistry;
-        operationOwnerToken_ = operationOwnerToken;
-        moduleFailureMessage_.clear();
+        operationOwnerTokens_.push_back(operationOwnerToken);
     } else {
         (void)operationRegistry.UnregisterOwner(operationOwnerToken);
-        registry_.SetDocuments(nullptr);
-        documents_.reset();
+        discardDocumentsOfFirstModule();
     }
     return registered;
 }
@@ -672,8 +675,10 @@ void GameProjectEditorWorkspaceHost::Shutdown() noexcept {
         registry_.Shutdown(*ui_);
         ui_->EndFrame();
     }
-    if (operationRegistry_ != nullptr && operationOwnerToken_ != 0u) {
-        (void)operationRegistry_->UnregisterOwner(operationOwnerToken_);
+    if (operationRegistry_ != nullptr) {
+        for (const uint64_t token : operationOwnerTokens_) {
+            (void)operationRegistry_->UnregisterOwner(token);
+        }
     }
     registry_.SetDocuments(nullptr);
     if (documents_) {
@@ -681,7 +686,7 @@ void GameProjectEditorWorkspaceHost::Shutdown() noexcept {
         documents_.reset();
     }
     operationRegistry_ = nullptr;
-    operationOwnerToken_ = 0u;
+    operationOwnerTokens_.clear();
     moduleFailureMessage_.clear();
     closePromptWasPending_ = false;
 }

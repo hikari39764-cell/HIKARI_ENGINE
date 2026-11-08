@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "Assets/Models/HIKARI_ModelManager.h"
+#include "Project/HIKARI_ProjectModules.h"
 #include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -182,6 +183,65 @@ void AssertRegistryClean(const HIKARI::ComponentRegistry& components,
     assert(systems.Find(kObserverSystemId) == nullptr);
     assert(systems.Find(kRenderPassSystemId) == nullptr);
     assert(policy.GetRules().empty());
+}
+
+// 項目のモジュール一覧：依存が先に並ぶ、同梱のモジュールで依存を補う、欠落・循環・id の食い違いは断る。
+void ProjectModuleResolutionContracts(const std::filesystem::path& scratch) {
+    std::filesystem::remove_all(scratch);
+    const auto writeManifest = [&](const std::filesystem::path& directory, const std::string& id,
+                                   const std::vector<std::string>& dependencies) {
+        HIKARI::ModuleManifest manifest{};
+        manifest.id = id;
+        manifest.version = "1.0.0";
+        manifest.runtimeLibrary = "HIKARI_GameProject.dll";
+        manifest.dependencies = dependencies;
+        std::filesystem::create_directories(directory);
+        assert(HIKARI::SaveModuleManifest(directory / (id + HIKARI::kModuleManifestExtension), manifest));
+    };
+    const std::filesystem::path project = scratch / "Project";
+    const std::filesystem::path builtin = scratch / "Builtin";
+    writeManifest(scratch / "External", "Test.Kit", {"Test.Base"});
+    writeManifest(builtin / "Test.Base", "Test.Base", {});
+    writeManifest(builtin / "Test.CycleA", "Test.CycleA", {"Test.CycleB"});
+    writeManifest(builtin / "Test.CycleB", "Test.CycleB", {"Test.CycleA"});
+    writeManifest(builtin / "Test.Wrong", "Test.Other", {});
+    writeManifest(builtin / "Test.Missing", "Test.Missing", {"Test.Nothing"});
+
+    const HIKARI::ProjectModuleReference kit{"Test.Kit", "../External/Test.Kit.hmodule"};
+    std::vector<HIKARI::ModuleManifest> resolved{};
+    std::string message{};
+    assert(HIKARI::ResolveProjectModules({kit}, project, builtin, resolved, &message));
+    assert(resolved.size() == 2u && resolved[0].id == "Test.Base" && resolved[1].id == "Test.Kit");
+    assert(HIKARI::ResolveProjectModules({{"Test.Base", {}}, kit}, project, builtin, resolved) &&
+           resolved.size() == 2u);
+    assert(!HIKARI::ResolveProjectModules({{"Test.CycleA", {}}}, project, builtin, resolved, &message) &&
+           message.find("cycle") != std::string::npos);
+    assert(!HIKARI::ResolveProjectModules({{"Test.Missing", {}}}, project, builtin, resolved));
+    assert(!HIKARI::ResolveProjectModules({{"Test.Absent", {}}}, project, builtin, resolved));
+    const std::filesystem::path wrong = builtin / "Test.Wrong";
+    std::filesystem::rename(wrong / "Test.Other.hmodule", wrong / "Test.Wrong.hmodule");
+    assert(!HIKARI::ResolveProjectModules({{"Test.Wrong", {}}}, project, builtin, resolved, &message) &&
+           message.find("declares id") != std::string::npos);
+
+    // 一覧の無い Project.hikari に新しい項目は書かれない。あれば読み書きで保たれる。
+    std::filesystem::create_directories(project);
+    HIKARI::ProjectDescriptor descriptor{};
+    descriptor.name = "Modules";
+    const std::filesystem::path descriptorPath = project / HIKARI::kProjectDescriptorFilename;
+    assert(HIKARI::SaveProjectDescriptor(descriptorPath, descriptor));
+    {
+        std::ifstream file(descriptorPath, std::ios::binary);
+        const std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+        assert(text.find("modules") == std::string::npos);
+    }
+    descriptor.modules = {kit, {"Test.Base", {}}};
+    assert(HIKARI::SaveProjectDescriptor(descriptorPath, descriptor));
+    HIKARI::ProjectDescriptor reloaded{};
+    assert(HIKARI::LoadProjectDescriptor(descriptorPath, reloaded));
+    assert(reloaded.modules.size() == 2u && reloaded.modules[0].id == "Test.Kit" &&
+           reloaded.modules[0].manifest == kit.manifest && reloaded.modules[1].manifest.empty());
+    std::filesystem::remove_all(scratch);
+    std::cout << "project modules: dependency order, missing, cycle and id mismatch checked\n";
 }
 
 // 世界の物体ごとの名前・親・局所変換・型ごとの部品属性（同じ型の中の並びは保つ）。
@@ -440,6 +500,7 @@ void InPlaceEditsMatchRebuild(const HIKARI::ComponentRegistry& components, const
 } // namespace
 
 int main(int, char** argv) {
+    ProjectModuleResolutionContracts(std::filesystem::path(argv[0]).parent_path() / "runtime-feature-modules");
     {
         HIKARI::RuntimeFeatureCatalog builtIn = HIKARI::CreateBuiltInRuntimeFeatureCatalog();
         assert(builtIn.FindOwningFeatureForComponent("WaterSurfaceComponent") == HIKARI::RuntimeFeatureIds::Water);

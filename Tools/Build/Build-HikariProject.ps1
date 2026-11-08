@@ -353,6 +353,38 @@ if (-not (Test-Path -LiteralPath $descriptorPath -PathType Leaf)) {
 
 $descriptor = Get-Content -LiteralPath $descriptorPath -Encoding UTF8 -Raw |
     ConvertFrom-Json
+
+# Modules referenced by path with their own Project.hikari are built first. Engine-bundled modules ship with the host.
+if (-not $ConfigureOnly) {
+    $moduleList = $descriptor.PSObject.Properties['modules']
+    foreach ($module in @(if ($null -ne $moduleList) { $moduleList.Value })) {
+        $manifestProperty = $module.PSObject.Properties['manifest']
+        if ($null -eq $manifestProperty -or [string]::IsNullOrWhiteSpace([string]$manifestProperty.Value)) {
+            continue
+        }
+        $moduleManifest = if ([IO.Path]::IsPathRooted([string]$module.manifest)) {
+            [string]$module.manifest
+        } else {
+            [IO.Path]::GetFullPath((Join-Path $projectRoot ([string]$module.manifest)))
+        }
+        $moduleRoot = Split-Path -Parent $moduleManifest
+        if (-not (Test-Path -LiteralPath (Join-Path $moduleRoot 'Project.hikari') -PathType Leaf)) {
+            continue
+        }
+        $moduleArguments = @{
+            Project = $moduleRoot
+            Preset = $Preset
+            SdkRoot = $SdkRoot
+            PrepareGameExport = $PrepareGameExport
+            ForceBuild = $ForceBuild
+        }
+        if (-not [string]::IsNullOrWhiteSpace($InstallDirectory)) {
+            $moduleArguments.InstallDirectory = Join-Path $moduleRoot "out/install/$Preset"
+        }
+        & $PSCommandPath @moduleArguments
+    }
+}
+
 $manifestRelative = if (
     $null -ne $descriptor.gameProjectManifest -and
     -not [string]::IsNullOrWhiteSpace(

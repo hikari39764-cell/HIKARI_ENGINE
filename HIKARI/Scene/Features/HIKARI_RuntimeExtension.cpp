@@ -44,10 +44,31 @@ bool RuntimeExtensionHost::RegisterWorldServices(WorldServiceRegistry& services)
 
 bool RuntimeExtensionHost::RegisterRuntimeFeatures(RuntimeFeatureCatalog& catalog) {
     bool success = true;
-    for (const Entry& entry : extensions_) {
+    enabledByExtensions_.clear();
+    for (Entry& entry : extensions_) {
+        const std::vector<std::string> before = catalog.GetFeatureIds();
         success = entry.extension->RegisterRuntimeFeatures(catalog) && success;
+        entry.registeredFeatures.clear();
+        for (std::string& featureId : catalog.GetFeatureIds()) {
+            if (std::find(before.begin(), before.end(), featureId) == before.end()) {
+                entry.registeredFeatures.push_back(std::move(featureId));
+            }
+        }
+        if (entry.extension->EnablesRegisteredFeatures()) {
+            enabledByExtensions_.insert(enabledByExtensions_.end(), entry.registeredFeatures.begin(),
+                                        entry.registeredFeatures.end());
+        }
     }
     return success;
+}
+
+std::vector<std::string> RuntimeExtensionHost::GetRegisteredFeatures(std::string_view extensionId) const {
+    for (const Entry& entry : extensions_) {
+        if (entry.extension != nullptr && entry.extension->GetExtensionId() == extensionId) {
+            return entry.registeredFeatures;
+        }
+    }
+    return {};
 }
 
 size_t RuntimeExtensionHost::Size() const noexcept { return extensions_.size(); }

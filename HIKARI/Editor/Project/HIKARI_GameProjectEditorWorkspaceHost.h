@@ -50,7 +50,7 @@ private:
     GameProjectEditorWorkspaceRegistry registry_{};
     std::unique_ptr<GameProjectEditorDocumentService> documents_{};
     EditorOperationRegistry* operationRegistry_ = nullptr;
-    uint64_t operationOwnerToken_ = 0u;
+    std::vector<uint64_t> operationOwnerTokens_{};
     std::unique_ptr<GameProjectEditorWorkspaceUi> ui_{};
     std::string moduleFailureMessage_{};
     bool closePromptWasPending_ = false;

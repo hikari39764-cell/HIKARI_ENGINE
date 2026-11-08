@@ -1,4 +1,6 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
+#include "Core/Text/HIKARI_UtfPath.h"
+#include "Project/HIKARI_ProjectModules.h"
 
 #include <algorithm>
 #include <string>
@@ -33,9 +35,10 @@ nlohmann::json DescribeFeature(const RuntimeFeatureInfo& info, const std::vector
 void DocumentSceneEditorController::RegisterProjectOperations() {
     EDITOR::EditorOperationDefinition features{
         "project.features",
-        "List the project's runtime features (UI, Vfx, Cinematics, Physics, ...): whether each is enabled, what it "
-        "requires and which component types it provides. Components of a disabled feature cannot be added; enable "
-        "the feature with project.features.edit.",
+        "List the project's runtime features (Vfx, Cinematics, Physics, ...): whether each is enabled, what it "
+        "requires and which component types it provides, plus the modules installed in Project.hikari with their "
+        "version, load state and features. Components of a disabled feature cannot be added; enable the feature "
+        "with project.features.edit.",
         "general",
         {},
         [this](const nlohmann::json&) -> EDITOR::EditorOperationResult {
@@ -48,7 +51,19 @@ void DocumentSceneEditorController::RegisterProjectOperations() {
             nlohmann::json list = nlohmann::json::array();
             for (const RuntimeFeatureInfo& info : aiOperationScene_->GetRuntimeFeatureCatalog().GetFeatureInfos())
                 list.push_back(DescribeFeature(info, enabled));
-            return EDITOR::OperationOk("Runtime features.", {{"features", std::move(list)}});
+            nlohmann::json modules = nlohmann::json::array();
+            for (const InstalledModuleStatus& module : aiOperationScene_->GetInstalledModules()) {
+                modules.push_back({{"id", module.manifest.id},
+                                   {"name", module.manifest.name},
+                                   {"version", module.manifest.version},
+                                   {"directory", TEXT::PathToUtf8(module.manifest.directory)},
+                                   {"runtimeLoaded", module.runtimeLoaded},
+                                   {"editorLoaded", module.editorLoaded},
+                                   {"error", module.error},
+                                   {"features", aiOperationScene_->GetRuntimeExtensionFeatures(module.manifest.id)}});
+            }
+            return EDITOR::OperationOk("Runtime features.",
+                                       {{"features", std::move(list)}, {"modules", std::move(modules)}});
         }};
     features.permission = EDITOR::EditorOperationPermission::ReadEditorState;
     features.searchTerms = {"runtime feature", "enable UI", "enable vfx", "module", "运行时功能", "项目功能"};
