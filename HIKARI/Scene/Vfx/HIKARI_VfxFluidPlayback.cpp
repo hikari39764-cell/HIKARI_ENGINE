@@ -36,6 +36,11 @@ FLUID::FluidSourceSubmission MakeSource(const VfxWorldTransform& world,
                          : radius.mode == ParticleDistributionMode::RandomRange && radius.minimum < radius.maximum
                              ? (std::max)(radius.minimum, 0.0f)
                              : 0.0f;
+    // 円環の弧（粒子の圆形发射と同じ角度の範囲。360 以上か 0 以下は全周）。
+    source.arcRadians = simulation.shape == RENDER3D::PARTICLES::ParticleShape::Circle &&
+                                simulation.shapeCircleArcDegrees > 0.0f && simulation.shapeCircleArcDegrees < 360.0f
+                            ? simulation.shapeCircleArcDegrees * (3.14159265358979323846f / 180.0f)
+                            : 0.0f;
     source.coneAngleRadians = simulation.coneAngleRadians;
     source.boxHalfExtents = simulation.shapeBoxHalfExtents;
     // 線（Edge）の長さも height で渡す（円柱の高さと同じ軸の長さ）。

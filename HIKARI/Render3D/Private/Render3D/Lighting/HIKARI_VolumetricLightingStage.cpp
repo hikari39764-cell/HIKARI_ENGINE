@@ -82,9 +82,11 @@ struct alignas(16) VolumetricConstants {
     float localLightFarDistance = 100.0f;
     LIGHTING::LocalShadowGpuData localShadow{};
     LocalFogVolumeGpu localFogVolumes[kGameProjectLocalFogMaximumVolumes]{};
+    // 流体の烟の影の表（雲の影と同じ並び）。霧の太陽光に掛ける。雲の影は霧へ入れない（空と雲の取り向き）。
+    LIGHTING::CloudSolarVisibilityGpuData smokeSolarVisibility{};
 };
 
-static_assert(sizeof(VolumetricConstants) == 6624u);
+static_assert(sizeof(VolumetricConstants) == 6688u);
 
 struct VolumeResource {
     ComPtr<ID3D12Resource> texture{};
@@ -452,6 +454,7 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
                                     const SceneEnvironment& environment,
                                     const LIGHTING::LocalLightListGpuBindings& localLights,
                                     VolumetricLightingQuality quality, RenderDebugView debugView,
+                                    const LIGHTING::CloudSolarVisibilityGpuData& smokeSolarVisibility,
                                     const SHADOW::LocalLightShadowFrame* localShadows,
                                     std::span<const LocalFogVolumeGpu> localFogVolumes) {
     StageState& state = State();
@@ -506,6 +509,7 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
     }
 
     VolumetricConstants constants{};
+    constants.smokeSolarVisibility = smokeSolarVisibility;
     if (localShadows && localShadows->data.faceCount && IsTextureResourceValid(localShadows->atlas)) {
         state.localShadowSrv = GetTextureResourceSrvGpuHandle(localShadows->atlas);
         if (state.localShadowSrv.ptr)

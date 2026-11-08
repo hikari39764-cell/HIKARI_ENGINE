@@ -131,7 +131,7 @@ bool ParticleGpuDrivenPipelineState::CreateSimulationPipelines(ID3D12Device* dev
     // 3..6：粒子が乗る流体の速度体積（t1..t4、1 つずつの表）、7：その域の表（b1）、s0：線形の clamp。
     // 8：碰撞深度（t5。CollisionDepthCS では場景の深度）、9：碰撞の視图（b2）、10：碰撞深度の書き込み（u1）。
     std::array<D3D12_DESCRIPTOR_RANGE, 4u> fluidVelocity{};
-    std::array<D3D12_ROOT_PARAMETER, 12u> parameters{};
+    std::array<D3D12_ROOT_PARAMETER, 16u> parameters{};
     parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     parameters[0].DescriptorTable.NumDescriptorRanges = 1u;
     parameters[0].DescriptorTable.pDescriptorRanges = &particleUav;
@@ -166,8 +166,11 @@ bool ParticleGpuDrivenPipelineState::CreateSimulationPipelines(ID3D12Device* dev
     parameters[10].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
     parameters[10].DescriptorTable.NumDescriptorRanges = 1u;
     parameters[10].DescriptorTable.pDescriptorRanges = &collisionDepthOut;
-    parameters[11].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
-    parameters[11].Descriptor.ShaderRegister = 2u;
+    // 11：粒子の事件の緩衝（u2）、12〜15：流体への注入の緩衝（域ごと、u3〜u6）。
+    for (uint32_t slot = 0u; slot < 5u; ++slot) {
+        parameters[11u + slot].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
+        parameters[11u + slot].Descriptor.ShaderRegister = 2u + slot;
+    }
     D3D12_STATIC_SAMPLER_DESC fluidSampler{};
     fluidSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     fluidSampler.AddressU = fluidSampler.AddressV = fluidSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;

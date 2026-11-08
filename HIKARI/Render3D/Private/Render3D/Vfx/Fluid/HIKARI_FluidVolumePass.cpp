@@ -38,23 +38,6 @@ constexpr uint32_t kUnfinishedRestartWarning = 4u;
 // 見積もりを止め、烟を押さない。
 constexpr float kMotionSmoothingSeconds = 0.1f;
 constexpr float kMaximumFrameVelocityChange = 12.0f;
-// 占有：この密度を超える砖块を「烟がある」とみなす。
-constexpr float kOccupiedDensity = 1.0e-3f;
-
-struct alignas(16) DomainConstants {
-    uint32_t size[4];
-    float cell[4];
-    float motion[4];
-    float dissipation[4];
-    float up[4];
-    float inertia[4];
-    uint32_t interactions[4];
-    // 燃焼：x 点火温度、y 燃える速さ、z 燃焼 1 あたりの燃料、w 燃焼 1 あたりの熱 / x 燃焼 1 あたりの煤、y 燃焼 1 あたりの
-    // 膨張、z 1 なら燃焼する域。
-    float combustion0[4];
-    float combustion1[4];
-};
-static_assert(sizeof(DomainConstants) == 144u);
 
 // 受け取ったフレームの後の子步へ渡し続ける一度きりの事件：冲量（向きのあるものは最初の子步だけ、向きの無いもの（湧き出し）
 // は残りの時間がある間）と注入（提交したフレームの時間ぶんを、子步ごとに最大 1 子步ずつ入れる）。子步の無いフレームの分は
@@ -108,6 +91,11 @@ struct DomainState {
     uint32_t generation = 0u;
     // 最後に時間を進めた描画入力の帧号。同じ入力を別の視図や交付待ちで再び受けても二度は進めない。
     uint64_t lastSimulatedFrame = UINT64_MAX;
+    // 解算の LOD（ResolveFluidSimulationLod）と、それで決めた子步の長さ [s]（描く側の外推が読む）。
+    uint32_t lod = 0u;
+    double stepSeconds = 0.0;
+    // 砖块を烟があるとみなす最大密度（INTERNAL::FluidOccupiedDensity。占有の回読が数える）。
+    float occupiedDensity = 0.0f;
     // 解く空間（世界空間の域は作り直した時の変換に固定、局所空間の域は毎フレームの変換）。
     MATH::Vec3 framePosition{};
     MATH::Quat frameRotation = MATH::Quat::Identity();
@@ -152,11 +140,6 @@ bool IsFenceComplete(const GFX::Context& context, uint64_t fence) noexcept {
     return fence == 0u || (context.frameFence != nullptr && context.frameFence->GetCompletedValue() >= fence);
 }
 
-// 子步の長さ [s]（作者の substepRate を 15〜240 Hz に収める）。
-double SubstepSeconds(const FluidDomainSettings& settings) noexcept {
-    return 1.0 / static_cast<double>(std::clamp(settings.substepRate, 15.0f, 240.0f));
-}
-
 // 預熱の 1 フレームの子步の数：仕事の上限を域の格の数で割る（1〜kPrewarmStepsPerFrame）。
 uint32_t PrewarmStepsPerFrame(const FluidGridLayout& layout) noexcept {
     const uint64_t cells = uint64_t{layout.cells[0]} * layout.cells[1] * layout.cells[2];
@@ -173,7 +156,7 @@ void WarnUnfinishedPrewarm(const FluidDomainSubmission& submission, const FluidG
                   "at %.0f Hz) restarted %u times before its prewarm finished and is not drawn: %s.",
                   submission.key.emitterIndex, settings.domainSize.x, settings.domainSize.y, settings.domainSize.z,
                   layout.cells[0], layout.cells[1], layout.cells[2], settings.prewarmSeconds,
-                  1.0 / SubstepSeconds(settings), kUnfinishedRestartWarning,
+                  1.0 / FluidSubstepSeconds(settings, 0u), kUnfinishedRestartWarning,
                   relayout ? "the grid keeps changing (domain size, resolution or fluid quality)"
                            : "playback keeps restarting it (seek, time jump or replay every frame)");
     HIKARI_LOG_WARN(message);
@@ -193,6 +176,7 @@ float DomainDistance(const FluidDomainSubmission& submission, const MATH::Vec3& 
     return (std::max)(0.0f, MATH::Length(submission.worldPosition - viewer) -
                                 0.5f * MATH::Length(submission.settings.domainSize));
 }
+
 } // namespace
 
 struct FluidVolumePass::Impl {
@@ -220,6 +204,8 @@ struct FluidVolumePass::Impl {
     // このフレーム（GPU の退役 fence）に解く域に選んだ域。上限は視図をまたいで数え、後の視図は先の視図が選んだ域を
     // そのまま解き、新しい域は残りの枠だけ選ぶ。
     std::vector<ParticleEmitterInstanceKey> admitted{};
+    // このフレームに流体へ注入する粒子の層がある（解く域が注入の緩衝を持つ）。
+    bool injectionWanted = false;
     // 回読が届いた汇の吸い込み量と域の発光（TakeSinkReports / TakeGlowReports で場面へ渡す）。
     std::vector<FluidSinkReport> sinkReports{};
     std::vector<FluidGlowReport> glowReports{};
@@ -278,7 +264,7 @@ void FluidVolumePass::Impl::ReadCompleted(DomainState& domain) {
         const uint32_t bricks = domain.resources.BrickCount();
         uint32_t active = 0u;
         for (uint32_t brick = 0u; brick < bricks; ++brick)
-            active += words[brick] > kOccupiedDensity ? 1u : 0u;
+            active += words[brick] > domain.occupiedDensity ? 1u : 0u;
         domain.stats.activeBricks = active;
         domain.stats.totalBricks = bricks;
         domain.stats.readbackSteps = domain.readbackSteps[slot];
@@ -377,8 +363,8 @@ bool FluidVolumePass::Impl::PrepareDomain(DomainState& domain, const FluidDomain
         ++domain.generation;
         domain.clock = {};
         const double prewarm = static_cast<double>((std::max)(0.0f, submission.settings.prewarmSeconds));
-        domain.prewarmSteps =
-            static_cast<uint64_t>((std::max)(0.0, std::ceil(prewarm / SubstepSeconds(submission.settings) - 1.0e-6)));
+        domain.prewarmSteps = static_cast<uint64_t>(
+            (std::max)(0.0, std::ceil(prewarm / FluidSubstepSeconds(submission.settings, 0u) - 1.0e-6)));
         domain.velocityIndex = domain.densityIndex = 0u;
         domain.framePosition = submission.worldPosition;
         domain.frameRotation = submission.worldRotation;
@@ -465,7 +451,14 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
                                   const FluidFrameSettings& settings, bool advance) {
     const FluidDomainSettings& authored = submission.settings;
     const FluidGridLayout& layout = domain.resources.layout;
-    const double step = SubstepSeconds(authored);
+    // 預熱は作者の子步のまま（預熱の子步の数はその長さで数えてある）。
+    const uint32_t lod = domain.prewarmSteps > 0u ? 0u : domain.lod;
+    const double step = FluidSubstepSeconds(authored, lod);
+    const uint32_t vCycles = lod == 0u ? policy.vCycles : (std::max)(policy.vCycles, 2u) - 1u;
+    domain.stepSeconds = step;
+    domain.occupiedDensity = INTERNAL::FluidOccupiedDensity(authored.extinction, layout.cellSize);
+    domain.stats.lod = lod;
+    domain.stats.substepSeconds = static_cast<float>(step);
     // 局所空間の域は毎フレーム層の変換へ付いていき、挂点の速度の変化を逆向きに烟へ入れる（冲刺の拖尾、急停の回卷）。
     if (submission.localSpace) {
         domain.framePosition = submission.worldPosition;
@@ -490,7 +483,11 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
     GatherSources(domain, submission, sceneSources, step, advance);
     // 押すもの：域の外接球に届くものだけ。障碍物と力はこのフレームの子步すべてへ、冲量と注入は新しいフレームの分を溜めて
     // 次の子步から渡す（注入はこのフレームの時間ぶん）。局所空間の域は障碍物と注入の速度を域に対する速度にする。
-    const MATH::Vec3 domainVelocity = submission.localSpace ? domain.smoothedVelocity : MATH::Vec3{};
+    // 相対風の割合：速度場はその分だけ空気の世界での速さを持つので、押すものの速さ（域に対する）・挂点の加速度の押し・
+    // 粒子が読む域の速さは (1 - wind) 倍、平流には -wind × 域の速さを足す。
+    const float wind = submission.localSpace ? std::clamp(authored.relativeWind, 0.0f, 1.0f) : 0.0f;
+    const MATH::Vec3 domainVelocity = submission.localSpace ? domain.smoothedVelocity * (1.0f - wind) : MATH::Vec3{};
+    const MATH::Vec3 frameWind = INTERNAL::RotateToFluidLocal(domain.frameRotation, domain.smoothedVelocity) * -wind;
     const float domainRadius = 0.5f * MATH::Length(domain.layoutSize);
     const bool newInteractions = settings.interactionFrame != domain.lastInteractionFrame;
     domain.lastInteractionFrame = settings.interactionFrame;
@@ -560,39 +557,9 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
     // flags：1 でこの子步の頭に汇の吸い込み量を 0 に戻す（フレームの最初の子步）、2 でこの子步の吸い込みを数える（預熱は数えない）。
     const auto uploadConstants = [&](uint64_t stepIndex, uint32_t interactionCount, const MATH::Vec3& inertia,
                                      uint32_t flags) -> D3D12_GPU_VIRTUAL_ADDRESS {
-        DomainConstants constants{};
-        constants.size[0] = layout.cells[0];
-        constants.size[1] = layout.cells[1];
-        constants.size[2] = layout.cells[2];
-        constants.size[3] = static_cast<uint32_t>(frameSources.size());
-        constants.cell[0] = layout.cellSize;
-        constants.cell[1] = 1.0f / layout.cellSize;
-        constants.cell[2] = static_cast<float>(step);
-        constants.cell[3] = static_cast<float>(std::fmod(static_cast<double>(stepIndex) * step, 65536.0));
-        constants.motion[0] = static_cast<float>(FluidClosedFaces(authored.boundary));
-        constants.motion[1] = authored.vorticity;
-        constants.motion[2] = authored.buoyancy;
-        constants.motion[3] = authored.weight;
-        constants.dissipation[0] = authored.densityDissipation;
-        constants.dissipation[1] = authored.temperatureDissipation;
-        constants.up[0] = up.x;
-        constants.up[1] = up.y;
-        constants.up[2] = up.z;
-        constants.inertia[0] = inertia.x;
-        constants.inertia[1] = inertia.y;
-        constants.inertia[2] = inertia.z;
-        constants.interactions[0] = interactionCount;
-        constants.interactions[1] = domain.resources.ActivityOffset();
-        constants.interactions[2] = domain.resources.SinkOffset();
-        constants.interactions[3] = flags;
-        constants.combustion0[0] = authored.ignitionTemperature;
-        constants.combustion0[1] = authored.burnRate;
-        constants.combustion0[2] = (std::max)(authored.fuelPerBurn, 1.0e-3f);
-        constants.combustion0[3] = authored.heatPerBurn;
-        constants.combustion1[0] = authored.smokePerBurn;
-        constants.combustion1[1] = authored.expansionPerBurn;
-        constants.combustion1[2] = layout.combustion ? 1.0f : 0.0f;
-        constants.combustion1[3] = 0.0f;
+        const INTERNAL::FluidDomainConstantsGpu constants =
+            INTERNAL::PackFluidDomainConstants(authored, domain.resources, static_cast<uint32_t>(frameSources.size()),
+                                               step, stepIndex, up, inertia, frameWind, interactionCount, flags);
         const auto allocation = upload.Allocate(sizeof(constants));
         if (!allocation)
             return 0u;
@@ -663,10 +630,17 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         return allocation.gpuAddress;
     };
 
+    // 粒子から注入を受ける域（このフレームに注入する層がある時、一度作った域はその後も）は注入の緩衝を持つ。
+    bool injectionCreated = false;
+    if ((injectionWanted || domain.resources.injection) &&
+        !INTERNAL::EnsureFluidInjection(context.device, domain.resources, injectionCreated))
+        HIKARI_LOG_WARN("[Fluid] particle injection buffer unavailable for " + submission.name);
     const D3D12_GPU_VIRTUAL_ADDRESS baseConstants = uploadConstants(domain.clock.completedSteps, 0u, {}, 0u);
     if (baseConstants == 0u)
         return;
     FluidRecorder recorder(commands, pipeline, domain.resources, baseConstants);
+    if (injectionCreated)
+        recorder.ClearInjection();
     if (domain.needsClear) {
         for (auto& volume : domain.resources.velocity)
             recorder.Clear(volume);
@@ -686,16 +660,18 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         // 挂点の速度の変化は最初の子步で一度に入れる（その子步の加速度 = -Δv / 子步の時間）。
         const MATH::Vec3 inertia = index == 0u
                                        ? INTERNAL::RotateToFluidLocal(domain.frameRotation, domain.pendingInertia) *
-                                             static_cast<float>(-authored.inertia / step)
+                                             static_cast<float>(-authored.inertia * (1.0f - wind) / step)
                                        : MATH::Vec3{};
-        const uint32_t flags = (index == 0u ? 1u : 0u) | (index >= prewarmSteps ? 2u : 0u);
+        // 4：粒子がこれまでに書いた注入をこの子步で受け取る（預熱でない最初の子步。子步の無いフレームは貯めたまま）。
+        const uint32_t flags = (index == 0u ? 1u : 0u) | (index >= prewarmSteps ? 2u : 0u) |
+                               (index == prewarmSteps && domain.resources.injection ? 4u : 0u);
         const D3D12_GPU_VIRTUAL_ADDRESS constants =
             uploadConstants(firstStep + index, interactionCount, inertia, flags);
         const D3D12_GPU_VIRTUAL_ADDRESS sources = uploadSources(index);
         if (constants == 0u || sources == 0u || interactions == 0u)
             break;
         FluidRecorder stepRecorder(commands, pipeline, domain.resources, constants);
-        stepRecorder.Substep(domain.velocityIndex, domain.densityIndex, sources, interactions, policy.vCycles);
+        stepRecorder.Substep(domain.velocityIndex, domain.densityIndex, sources, interactions, vCycles);
         if (index == 0u)
             domain.pendingInertia = {};
         for (CarriedInteraction& event : domain.carried)
@@ -703,6 +679,8 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         std::erase_if(domain.carried, [](const CarriedInteraction& event) { return event.remainingSeconds <= 1.0e-9; });
     }
     stats.stepsThisFrame += steps;
+    if (steps > prewarmSteps && domain.resources.injection)
+        recorder.ClearInjection();
     if (steps > 0u) {
         ++domain.densityVersion;
         // 子步が今の位置まで掃いたので、始点を今の位置へ進める。
@@ -778,6 +756,7 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
     if (context.currentFrameRetireFenceValue != impl.statsFrameFence || context.currentFrameRetireFenceValue == 0u) {
         impl.statsFrameFence = context.currentFrameRetireFenceValue;
         impl.stats.domains = 0u;
+        impl.stats.lodDomains = 0u;
         impl.stats.skippedDomains = 0u;
         impl.stats.stepsThisFrame = 0u;
         impl.stats.renderedDomains = 0u;
@@ -819,6 +798,9 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
     if (!uploads.IsInitialized() && !uploads.Init(context.device, 64u * 1024u, GFX::UPLOAD_TRAFFIC::Owner::Fluids))
         return false;
     uploads.ResetForFrame(context.currentFrameRetireFenceValue);
+    impl.injectionWanted = std::any_of(
+        input->emitters.begin(), input->emitters.end(),
+        [](const PARTICLES::ParticleEmitterSubmission& emitter) { return emitter.simulation.InjectsFluid(); });
 
     const FluidQualityPolicy policy = ResolveFluidQualityPolicy(settings.quality);
     GFX::PIX::ScopedGpuEvent event(context.cmdList, GFX::PIX::kColorRender, "FluidSmoke.Simulate");
@@ -886,10 +868,14 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         domain->admittedFrame = input->frameIndex;
         if (!impl.PrepareDomain(*domain, submission, policy))
             continue;
+        domain->lod =
+            ResolveFluidSimulationLod(submission, domain->resources.layout.cellSize, settings, policy, domain->lod);
         const bool advance = domain->lastSimulatedFrame != input->frameIndex;
         domain->lastSimulatedFrame = input->frameIndex;
         impl.Solve(*domain, submission, input->fluidSources, policy, settings, advance);
         ++solved;
+        if (domain->stats.lod > 0u)
+            ++impl.stats.lodDomains;
         if (domain->prewarmSteps > 0u || impl.renderList.size() >= INTERNAL::kMaximumRenderedFluidDomains)
             continue;
         domain->unfinishedRestarts = 0u;
@@ -905,9 +891,18 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         render.settings = submission.settings;
         render.colorMultiplier = submission.colorMultiplier;
         render.simulationSeconds = domain->simulationSeconds;
-        render.pendingSeconds =
-            static_cast<float>((std::min)(domain->clock.pendingSeconds, SubstepSeconds(submission.settings)));
-        render.frameVelocity = submission.localSpace ? domain->smoothedVelocity : MATH::Vec3{};
+        render.pendingSeconds = static_cast<float>((std::min)(domain->clock.pendingSeconds, domain->stepSeconds));
+        render.frameVelocity =
+            submission.localSpace
+                ? domain->smoothedVelocity * (1.0f - std::clamp(submission.settings.relativeWind, 0.0f, 1.0f))
+                : MATH::Vec3{};
+        render.stats = domain->resources.stats.Get();
+        render.statsState = &domain->resources.statsState;
+        if (domain->resources.injection) {
+            render.injection = domain->resources.injection->GetGPUVirtualAddress();
+            std::copy(std::begin(domain->resources.injectionCells), std::end(domain->resources.injectionCells),
+                      render.injectionCells);
+        }
     }
     impl.flowView = impl.renderer.PrepareFlow(context, impl.renderList);
     impl.stats.domains += solved;

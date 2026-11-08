@@ -1193,6 +1193,8 @@
     {"ui.vfx.effect.param.preserveLight", "保留亮度"}, {"ui.vfx.effect.param.roundness", "圆度"},
     {"ui.vfx.effect.param.crossBlur", "十字模糊"}, {"ui.vfx.text.Flow fields", "流动力场"},
     {"ui.vfx.text.Curl turbulence", "旋度湍流"}, {"ui.vfx.text.Follow fluid (1/s)", "跟随流体（1/秒）"}, {"ui.vfx.text.Field frequency", "力场频率"},
+    {"ui.vfx.text.Inject into fluid", "注入流体"}, {"ui.vfx.text.Smoke per second", "每秒烟量"}, {"ui.vfx.text.Push fluid (1/s)", "推动流体（1/秒）"}, {"ui.vfx.text.Injection radius (m)", "注入半径 (m)"},
+    {"ui.vfx.text.Particles inside a fluid domain add smoke and heat around their path and push the fluid toward their velocity.", "在流体域里的粒子沿移动路径加入烟与热量，并把流体推向自己的速度。"},
     {"ui.vfx.text.Field evolution", "力场演化速度"}, {"ui.vfx.text.Vortex strength", "旋涡强度"},
     {"ui.vfx.text.Attraction / repulsion", "吸引／排斥强度"}, {"ui.vfx.text.Field center", "力场中心"},
     {"ui.vfx.text.Field axis", "力场轴向"}, {"ui.vfx.text.Field radius (0 = global)", "力场半径（0 为全局）"},

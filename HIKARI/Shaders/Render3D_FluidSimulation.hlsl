@@ -20,6 +20,8 @@ cbuffer FluidDomainCB : register(b0)
     // w 燃焼 1 あたりの温度の上がり / x 燃焼 1 あたりの煤（密度）、y 燃える速さ 1 あたりの体積の膨張、z 1 で燃焼する域。
     float4 gCombustion0;
     float4 gCombustion1;
+    uint4 gInjectionCells;  // xyz 粒子からの注入の緩衝（u6）の半分の分辨率の格の数（0 で無し）
+    float4 gFrameWind;      // xyz 相対風：平流に足す一様な流れ（域の局所 [m/s]、静止した空気が動く域から見て流れる分）、w 砖块を烟があるとみなす最大密度（砖块を横切る光学的な厚さ 0.002）
 };
 
 cbuffer FluidPassCB : register(b1)
@@ -40,6 +42,10 @@ RWTexture3D<float4> gOut1 : register(u1);
 RWTexture3D<float2> gOut2 : register(u2);
 RWTexture2D<float4> gSlice : register(u4);
 RWByteAddressBuffer gStats : register(u5);
+// 粒子からの注入（Render3D_ParticleSimulation.hlsl の InjectIntoFluidDomain が書く）：半分の分辨率の格ごとに固定小数点
+// （× 4096）の int で 0 密度、1 速度の重み W、2〜4 W × 速度（域の軸 [m/s]）、5 温度の重み、6 温度の重み × 温度、その後ろに
+// 砖块ごとの印。gInteractionCount.w の 4 の子步が受け取り、子步の後に InjectionClearCS が 0 に戻す。
+RWByteAddressBuffer gInjection : register(u6);
 SamplerState gLinearClamp : register(s0);
 SamplerState gLinearBorder : register(s1);
 
@@ -225,7 +231,7 @@ void AdvectForwardCS(uint3 id : SV_DispatchThreadID)
         if (any(float3(id) >= extent))
             continue;
         const float3 p = FacePosition(id, axis);
-        const float3 back = p - step * VelocityAt(gIn0, p);
+        const float3 back = p - step * (VelocityAt(gIn0, p) + gFrameWind.xyz);
         float3 t = back;
         t[axis] += 0.5f;
         velocity[axis] = gIn0.SampleLevel(gLinearClamp, t / VelocityTexels(), 0)[axis];
@@ -233,7 +239,7 @@ void AdvectForwardCS(uint3 id : SV_DispatchThreadID)
     if (InsideCells(id) && CellWork(id) == kWorkCompute)
     {
         const float3 p = float3(id) + 0.5f;
-        const float3 u = VelocityAt(gIn0, p);
+        const float3 u = VelocityAt(gIn0, p) + gFrameWind.xyz;
         const float3 back = p - step * u;
         velocity.w = gIn0.SampleLevel(gLinearClamp, back / VelocityTexels(), 0).w;
         gOut1[id] = SmokeAt(gIn1, p - step * (u + GuideVelocity(DomainPosition(p))));
@@ -275,7 +281,7 @@ void AdvectCorrectCS(uint3 id : SV_DispatchThreadID)
         if (any(float3(id) >= extent))
             continue;
         const float3 p = FacePosition(id, axis);
-        const float3 u = VelocityAt(gIn0, p);
+        const float3 u = VelocityAt(gIn0, p) + gFrameWind.xyz;
         float3 ahead = p + step * u;
         ahead[axis] += 0.5f;
         const float forward = gIn2.Load(int4(id, 0))[axis];
@@ -293,7 +299,7 @@ void AdvectCorrectCS(uint3 id : SV_DispatchThreadID)
     else if (InsideCells(id))
     {
         const float3 p = float3(id) + 0.5f;
-        const float3 u = VelocityAt(gIn0, p);
+        const float3 u = VelocityAt(gIn0, p) + gFrameWind.xyz;
         const float3 back = p - step * u;
         const float3 ahead = p + step * u;
         float low, high;
@@ -366,20 +372,43 @@ float ValueNoise(float3 x)
     return lerp(lerp(x00, x10, u.y), lerp(x01, x11, u.y), u.z) * 2.0f - 1.0f;
 }
 
-// 烟を注入する形の重み：子步の間に掃いた形の表面を格 4 つほどの塊で ±1.5 格ずらし、力の重み（HikariFluidSourceMask）の
-// 2 倍の幅でぼかし、掃いた形へ入れる割合を掛ける。表面がそのまま格に沿った面で入ると、注入したての烟の縁が格子の階段
-// （马赛克）に見える。形の奥（表面から 3 格より内側）の量は変わらない。p は域の局所 [m]。
+// 塊のノイズ（-1〜1）：値ノイズ 2 段（2 段目は 2.07 倍の細かさ）。各段の座標を格の軸に揃わない固定の回転で回す（値ノイズの
+// 格子点が流体の格と同じ軸に並ぶと、格の軸に沿った薄い烟の板の上で塊が規則的な点の列に見える）。
+static const float3x3 kLumpRotation = float3x3(0.00f, 0.80f, 0.60f, -0.80f, 0.36f, -0.48f, -0.60f, -0.48f, 0.64f);
+float LumpNoise(float3 x)
+{
+    const float3 first = mul(kLumpRotation, x);
+    return ValueNoise(first) * 0.65f + ValueNoise(mul(kLumpRotation, first) * 2.07f + 31.7f) * 0.35f;
+}
+
+// 烟を注入する形の重み：形の表面を格 4 つほどの塊で ±1.5 格ずらし、力の重み（HikariFluidSourceMask）の 2 倍の幅でぼかし、
+// 子步の間の時間で平均する（HikariFluidSweepSamples）。表面がそのまま格に沿った面で入ると、注入したての烟の縁が格子の
+// 階段（马赛克）に見える。形の奥（表面から 3 格より内側）の量は変わらない。p は域の局所 [m]。
 float EmissionMask(HikariFluidSource source, float3 local, float3 p)
 {
     const float soft = max(source.guide.w, 1.0e-4f);
-    const float distance = HikariFluidSweptDistance(source, local);
-    if (distance >= 2.5f * soft)
-        return 0.0f;
-    if (distance <= -2.5f * soft)
-        return source.sweep.w;
-    const float3 lump = p * (0.25f * gCell.y) + float3(0.0f, 0.07f, 0.0f) * gCell.w;
-    const float offset = ValueNoise(lump) * 0.7f + ValueNoise(lump * 2.03f + 17.3f) * 0.3f;
-    return saturate(0.5f - (distance + offset * soft) / (2.0f * soft)) * source.sweep.w;
+    const uint n = HikariFluidSweepSamples(source);
+    float sum = 0.0f;
+    float offset = 0.0f;
+    bool haveOffset = false;
+    for (uint i = 0u; i < n; ++i)
+    {
+        const float distance = HikariFluidSourceDistance(source, HikariFluidSweepSample(source, local, i, n));
+        if (distance >= 2.5f * soft)
+            continue;
+        if (distance <= -2.5f * soft)
+        {
+            sum += 1.0f;
+            continue;
+        }
+        if (!haveOffset)
+        {
+            offset = LumpNoise(p * (0.25f * gCell.y) + float3(0.0f, 0.07f, 0.0f) * gCell.w);
+            haveOffset = true;
+        }
+        sum += saturate(0.5f - (distance + offset * soft) / (2.0f * soft));
+    }
+    return sum / (float)n;
 }
 
 // 注入の揺らぎ（FluidSourceSettings::emissionNoise）の倍率：域の局所 p [m] で塊の大きさ 1 / flow.z の値ノイズ 2 段により
@@ -388,8 +417,7 @@ float EmissionNoise(HikariFluidSource source, float3 p)
 {
     if (source.flow.y <= 0.0f)
         return 1.0f;
-    const float3 x = p * source.flow.z + float3(0.11f, 0.07f, 0.09f) * gCell.w;
-    const float n = ValueNoise(x) * 0.65f + ValueNoise(x * 2.07f + 31.7f) * 0.35f;
+    const float n = LumpNoise(p * source.flow.z + float3(0.11f, 0.07f, 0.09f) * gCell.w);
     return max(1.0f + 2.5f * source.flow.y * n, 0.0f);
 }
 
@@ -399,21 +427,39 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
 {
     if (!HikariFluidSourceReaches(source, p))
         return;
+    // 子步の間、この格の空気は (velocity + 相対風) で流れながら源を通り過ぎる：時間平均の各時刻の形は、今 p にある空気が
+    // その時刻にいた位置で量る（掃いた線分に空気の流れた分を足す）。速い流れの中の止まった源（局部域の相対風、強い風）が
+    // 子步ごとの判子の列にならず、流れに沿って連続した烟になる。域全体の源（形 7）は形の縁が無く、滑らかな力場を標本の
+    // 数だけ量り直すだけなので足さない。
+    HikariFluidSource moving = source;
+    if ((uint)(source.shape.x + 0.5f) != 7u)
+        moving.sweep.xyz += HikariFluidVectorToSource(source, (velocity + gFrameWind.xyz) * gCell.z);
     const float3 local = HikariFluidToSource(source, p);
-    const float mask = HikariFluidSourceMask(source, local);
-    // 力場（旋涡・吸引・卷曲乱流）は粒子と同じ式。半径の減衰は式の中で掛かる。
-    float3 field = 0.0f.xxx;
-    if (source.field1.w != 0.0f || source.field2.x != 0.0f || source.field2.w != 0.0f)
-    {
-        // 旋涡と吸引は中心で向きが決まらない（粒子では問題にならない特異点）。流体では格子で表せない極小の渦核が
-        // 生まれて量が増減するので、中心から約 2 格の内側を線形に弱める（Rankine の渦核）。
-        const float core = saturate(length(local - source.field0.xyz) / max(1.5f * source.guide.w, 1.0e-4f));
-        field = HikariFluidToDomain(source, ParticleForceAcceleration(local, gCell.w, source.field0.xyz,
-            source.field0.w, source.field1.xyz, source.field1.w * core, source.field2.x, source.field2.y,
-            source.field2.z, source.field2.w * core));
-    }
+    const float mask = HikariFluidSourceMask(moving, local);
+    // 力場（旋涡・吸引・卷曲乱流）は粒子と同じ式で、注入と同じく子步の間の時間で平均する（動く源の力場が子步の終わりの
+    // 位置にだけ効くと、尾迹に子步の間隔の縞が出る）。半径の減衰は式の中で掛かる。
+    const bool fieldActive = source.field1.w != 0.0f || source.field2.x != 0.0f || source.field2.w != 0.0f;
     const float radius = source.field0.w;
-    const float falloff = radius > 0.0f ? pow(saturate(1.0f - length(local - source.field0.xyz) / radius), 2.0f) : 1.0f;
+    const uint samples = HikariFluidSweepSamples(moving);
+    float3 field = 0.0f.xxx;
+    float falloff = 0.0f;
+    for (uint sample = 0u; sample < samples; ++sample)
+    {
+        const float3 at = HikariFluidSweepSample(moving, local, sample, samples);
+        const float distance = length(at - source.field0.xyz);
+        if (fieldActive)
+        {
+            // 旋涡と吸引は中心で向きが決まらない（粒子では問題にならない特異点）。流体では格子で表せない極小の渦核が
+            // 生まれて量が増減するので、中心から約 2 格の内側を線形に弱める（Rankine の渦核）。
+            const float core = saturate(distance / max(1.5f * source.guide.w, 1.0e-4f));
+            field += ParticleForceAcceleration(at, gCell.w, source.field0.xyz, source.field0.w, source.field1.xyz,
+                                               source.field1.w * core, source.field2.x, source.field2.y,
+                                               source.field2.z, source.field2.w * core);
+        }
+        falloff += radius > 0.0f ? pow(saturate(1.0f - distance / radius), 2.0f) : 1.0f;
+    }
+    field = HikariFluidToDomain(source, field / (float)samples);
+    falloff /= (float)samples;
     if (source.guide.z > 0.5f)
         acceleration += (field - velocity * falloff) * 4.0f;
     else
@@ -421,7 +467,7 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
     acceleration += source.wind.xyz * falloff - velocity * (source.wind.w * falloff);
     if (source.emission.x > 0.0f || source.emission.y > 0.0f)
     {
-        const float emit = EmissionMask(source, local, p) * EmissionNoise(source, p);
+        const float emit = EmissionMask(moving, local, p) * EmissionNoise(source, p);
         if (emit > 0.0f)
         {
             temperature += (source.emission.z - temperature) * saturate(emit * 8.0f * gCell.z + emit * saturate(source.emission.y));
@@ -437,7 +483,7 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
     // 注入する速度（源の局所の速度と放射方向）へ寄せる。
     const float3 injected = HikariFluidToDomain(source, source.velocity.xyz + source.velocity.w * normalize(local + 1.0e-6f));
     if (any(source.velocity != 0.0f))
-        acceleration += (injected - velocity) * (8.0f * mask);
+        acceleration += (injected - gFrameWind.xyz - velocity) * (8.0f * mask);
     const float absorbed = exp(-source.emission.w * mask * gCell.z);
     smoke *= absorbed;
     fuel *= absorbed;
@@ -530,12 +576,20 @@ void ApplySinks(float3 p, inout float4 smoke, inout float fuel, inout float temp
     temperature *= kept;
 }
 
-// 注入の重み：このフレームに動いた線分（中心から sweep.xyz）からの距離で、半径の中で二乗に弱め、掃いた形へ入れる割合を掛ける。
+// 注入の重み：半径の中で中心から二乗に弱まる重みを、このフレームに動いた線分（中心から sweep.xyz）の上で時間平均する
+// （半径の半分以下の刻みで 1〜8 個。流体源の HikariFluidSweepSamples と同じ考え方で、続くフレームの注入が重ならない）。
 float HikariFluidEmitFalloff(HikariFluidInteraction interaction, float3 p)
 {
-    const float distance = length(HikariFluidFromSegment(p - interaction.push.xyz, interaction.sweep.xyz));
-    const float falloff = saturate(1.0f - distance / max(interaction.extents.x, 1.0e-4f));
-    return falloff * falloff * interaction.sweep.w;
+    const float radius = max(interaction.extents.x, 1.0e-4f);
+    const uint n = clamp((uint)ceil(2.0f * length(interaction.sweep.xyz) / radius), 1u, 8u);
+    float sum = 0.0f;
+    for (uint i = 0u; i < n; ++i)
+    {
+        const float3 center = interaction.push.xyz + interaction.sweep.xyz * (((float)i + 0.5f) / (float)n);
+        const float falloff = saturate(1.0f - length(p - center) / radius);
+        sum += falloff * falloff;
+    }
+    return sum / (float)n;
 }
 
 // 注入（3）：動いた線分を掃いた球の中（二乗で弱まる）へ毎秒 strength の密度を足し（色は白）、温度を extents.y へ寄せ、
@@ -594,6 +648,44 @@ void ApplyObstacle(HikariFluidInteraction interaction, float3 p, float3 velocity
         acceleration = lerp(acceleration, (interaction.velocity.xyz - velocity) / gCell.z, mask);
 }
 
+// ---------------------------------------------------------------- 粒子からの注入
+bool InjectionReceiving() { return (gInteractionCount.w & 4u) != 0u && gInjectionCells.x > 0u; }
+uint InjectionCellCount() { return gInjectionCells.x * gInjectionCells.y * gInjectionCells.z; }
+bool InjectionMarked(uint3 brick) { return gInjection.Load((7u * InjectionCellCount() + BrickIndex(brick)) * 4u) != 0u; }
+float InjectionValue(uint channel, uint3 cell)
+{
+    const uint index = cell.x + gInjectionCells.x * (cell.y + gInjectionCells.y * cell.z);
+    return (float)asint(gInjection.Load((channel * InjectionCellCount() + index) * 4u)) * (1.0f / 4096.0f);
+}
+
+// 注入を受け取る：半分の分辨率の 7 つを格の中心へ三線形で読み、密度（白）を足し、温度と速度を重みの分だけ粒子の値へ寄せる
+// （速度はこの子步の加速度にする）。印の無い砖块は読まない。
+void ApplyParticleInjection(uint3 id, float3 velocity, inout float3 acceleration, inout float4 smoke,
+                            inout float temperature)
+{
+    if (!InjectionReceiving() || !InjectionMarked(id >> 3u))
+        return;
+    const float3 q = (float3(id) + 0.5f) * 0.5f - 0.5f;
+    const int3 last = int3(gInjectionCells.xyz) - 1;
+    const int3 base = clamp(int3(floor(q)), 0, last);
+    const float3 f = saturate(q - float3(base));
+    float values[7] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    [unroll] for (uint corner = 0u; corner < 8u; ++corner)
+    {
+        const int3 offset = int3(corner & 1u, (corner >> 1u) & 1u, corner >> 2u);
+        const uint3 cell = uint3(min(base + offset, last));
+        const float3 w3 = lerp(1.0f - f, f, float3(offset));
+        const float weight = w3.x * w3.y * w3.z;
+        [unroll] for (uint channel = 0u; channel < 7u; ++channel)
+            values[channel] += weight * InjectionValue(channel, cell);
+    }
+    smoke += max(values[0], 0.0f).xxxx;
+    if (values[1] > 1.0e-5f)
+        acceleration += (float3(values[2], values[3], values[4]) / values[1] - velocity) * saturate(values[1]) / gCell.z;
+    if (values[5] > 1.0e-5f)
+        temperature += (values[6] / values[5] - temperature) * saturate(values[5]);
+}
+
 // 力：t0 平流後の速度、t1 旋度 → u0（xyz 格の中心の加速度、w 温度）。u1 の平流後の密度へ注入・吸収をその場で書く。
 [numthreads(4, 4, 4)]
 void ForceFieldCS(uint3 id : SV_DispatchThreadID)
@@ -619,6 +711,7 @@ void ForceFieldCS(uint3 id : SV_DispatchThreadID)
     for (uint emit = 0u; emit < gInteractionCount.x; ++emit)
         if (HikariFluidInteractionKind(gInteractions[emit]) == 3u)
             ApplyEmit(gInteractions[emit], p, velocity, acceleration, smoke, temperature);
+    ApplyParticleInjection(id, velocity, acceleration, smoke, temperature);
     // 燃焼は注入の後、浮力の前（燃えて上がった温度がこの子步で浮く）。
     const float burning = Burn(smoke, fuel, temperature);
     // 浮力（温度で上へ、密度で下へ）。
@@ -864,172 +957,4 @@ void ProjectCS(uint3 id : SV_DispatchThreadID)
     gOut0[id] = velocity;
 }
 
-// ---------------------------------------------------------------- 占有・診断・切片
-// 砖块（8³ 格）ごとの最大密度を gStats の先頭から 4 byte ずつ書く（第 7 步の疎な割り当てと描画の範囲が読む）。
-groupshared float gBrickMax[512];
-[numthreads(8, 8, 8)]
-void OccupancyCS(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint flat : SV_GroupIndex)
-{
-    gBrickMax[flat] = InsideCells(id) ? max(gIn0.Load(int4(id, 0)).x, Combusting() ? gIn1.Load(int4(id, 0)).x : 0.0f)
-                                      : 0.0f;
-    GroupMemoryBarrierWithGroupSync();
-    [unroll] for (uint stride = 256u; stride > 0u; stride >>= 1u)
-    {
-        if (flat < stride)
-            gBrickMax[flat] = max(gBrickMax[flat], gBrickMax[flat + stride]);
-        GroupMemoryBarrierWithGroupSync();
-    }
-    if (flat == 0u)
-    {
-        const uint3 bricks = (gSize.xyz + 7u) / 8u;
-        gStats.Store((group.x + bricks.x * (group.y + bricks.y * group.z)) * 4u, asuint(gBrickMax[0]));
-    }
-}
-
-// 砖块ごとの活動状態（子步の頭）：OccupancyCS の最大密度が烟のある砖块と、その 26 近傍を動かす。注入・吸い込み・流れを
-// 入れる源（域全体の形は除く）の子步の間に掃いた形と、注入（Emit）の掃いた球に触れる砖块も動かす。フレームの最初の子步では汇の吸い込み量を 0 に戻す。
-[numthreads(4, 4, 4)]
-void ActivityCS(uint3 id : SV_DispatchThreadID)
-{
-    const uint3 bricks = BrickGrid();
-    if (all(id == 0u) && (gInteractionCount.w & 1u) != 0u)
-        for (uint row = 0u; row < 32u; ++row)
-            gStats.Store(gInteractionCount.z + row * 4u, 0u);
-    if (any(id >= bricks))
-        return;
-    bool active = false;
-    [loop] for (int z = -1; z <= 1 && !active; ++z)
-        [loop] for (int y = -1; y <= 1 && !active; ++y)
-            [loop] for (int x = -1; x <= 1 && !active; ++x)
-            {
-                const int3 neighbor = int3(id) + int3(x, y, z);
-                if (all(neighbor >= 0) && all(neighbor < int3(bricks)))
-                    active = asfloat(gStats.Load(BrickIndex(uint3(neighbor)) * 4u)) > 1.0e-3f;
-            }
-    const float3 center = DomainPosition(float3(id) * 8.0f + 4.0f);
-    const float reach = 0.5f * sqrt(3.0f) * 8.0f * gCell.x;
-    for (uint index = 0u; index < gSize.w && !active; ++index)
-    {
-        const HikariFluidSource source = gSources[index];
-        const bool feeds = source.emission.x > 0.0f || source.emission.y > 0.0f || source.flow.x != 0.0f ||
-                           any(source.velocity != 0.0f);
-        if (!feeds || (uint)(source.shape.x + 0.5f) == 7u)
-            continue;
-        // 源の局所の長さは域の長さ × 拡縮の逆（縁の柔らかさ guide.w = 1.5 格 × 拡縮の逆）。注入は表面の外 2 guide.w
-        // まで届く（EmissionMask）。
-        const float toSource = source.guide.w / (1.5f * gCell.x);
-        active = HikariFluidSweptDistance(source, HikariFluidToSource(source, center)) <
-                 reach * toSource + 2.0f * source.guide.w;
-    }
-    for (uint index = 0u; index < gInteractionCount.x && !active; ++index)
-    {
-        const HikariFluidInteraction interaction = gInteractions[index];
-        active = HikariFluidInteractionKind(interaction) == 3u &&
-                 length(HikariFluidFromSegment(center - interaction.push.xyz, interaction.sweep.xyz)) <
-                     reach + interaction.extents.x;
-    }
-    gStats.Store(gInteractionCount.y + BrickIndex(id) * 4u, active ? 1u : 0u);
-}
-
-// 投影後の散度の最大と密度の総量を砖块ごとに書く（gPassParams.w からの位置、8 byte ずつ）。t0 速度、t1 密度。
-groupshared float2 gBrickStats[512];
-[numthreads(8, 8, 8)]
-void DiagnosticsCS(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint flat : SV_GroupIndex)
-{
-    gBrickStats[flat] = InsideCells(id) ? float2(abs(Divergence(gIn0, id)), gIn1.Load(int4(id, 0)).x) : 0.0f.xx;
-    GroupMemoryBarrierWithGroupSync();
-    [unroll] for (uint stride = 256u; stride > 0u; stride >>= 1u)
-    {
-        if (flat < stride)
-            gBrickStats[flat] = float2(max(gBrickStats[flat].x, gBrickStats[flat + stride].x),
-                                       gBrickStats[flat].y + gBrickStats[flat + stride].y);
-        GroupMemoryBarrierWithGroupSync();
-    }
-    if (flat == 0u)
-    {
-        const uint3 bricks = (gSize.xyz + 7u) / 8u;
-        const uint brick = group.x + bricks.x * (group.y + bricks.y * group.z);
-        gStats.Store2(gPassParams.w + brick * 8u, asuint(gBrickStats[0]));
-    }
-}
-
-// 発光の回読（火の光源）：砖块（8³ 格）ごとに、発光量 a = 密度 × saturate(温度 - 起亮温度)（描画の HikariFluidEmission の
-// 強さと同じ形）を起亮の色の分 a(1 - t) と熱い端の分 a t に分け、どちらも格の色（gPassParams.x が 1 の域だけ、描画の
-// SmokeTint と同じ）を掛けて rgb で足し、a の和と a × 格子座標の和を gPassParams.w から 48 byte ずつ書く。起亮温度と熱い端の
-// 温度は gPassParams.y / z（float のビット）。t0 速度（w 格の温度）、t1 密度。
-groupshared float4 gBrickGlowCold[512];
-groupshared float3 gBrickGlowHot[512];
-groupshared float3 gBrickGlowCenter[512];
-[numthreads(8, 8, 8)]
-void GlowCS(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint flat : SV_GroupIndex)
-{
-    float amount = 0.0f;
-    float share = 0.0f;
-    float3 tint = 1.0f.xxx;
-    if (InsideCells(id))
-    {
-        const float ignition = asfloat(gPassParams.y);
-        const float span = asfloat(gPassParams.z) - ignition;
-        const float temperature = gIn0.Load(int4(id, 0)).w;
-        const float4 smoke = gIn1.Load(int4(id, 0));
-        amount = max(smoke.x, 0.0f) * saturate(temperature - ignition);
-        share = span > 1.0e-4f ? saturate((temperature - ignition) / span) : 0.0f;
-        if (gPassParams.x != 0u)
-            tint = saturate(smoke.yzw / max(smoke.x, 1.0e-4f));
-    }
-    gBrickGlowCold[flat] = float4(amount * (1.0f - share) * tint, amount);
-    gBrickGlowHot[flat] = amount * share * tint;
-    gBrickGlowCenter[flat] = amount * (float3(id) + 0.5f);
-    GroupMemoryBarrierWithGroupSync();
-    [unroll] for (uint stride = 256u; stride > 0u; stride >>= 1u)
-    {
-        if (flat < stride)
-        {
-            gBrickGlowCold[flat] += gBrickGlowCold[flat + stride];
-            gBrickGlowHot[flat] += gBrickGlowHot[flat + stride];
-            gBrickGlowCenter[flat] += gBrickGlowCenter[flat + stride];
-        }
-        GroupMemoryBarrierWithGroupSync();
-    }
-    if (flat == 0u)
-    {
-        const uint3 bricks = (gSize.xyz + 7u) / 8u;
-        const uint address = gPassParams.w + (group.x + bricks.x * (group.y + bricks.y * group.z)) * 48u;
-        gStats.Store4(address, asuint(gBrickGlowCold[0]));
-        gStats.Store4(address + 16u, asuint(float4(gBrickGlowHot[0], 0.0f)));
-        gStats.Store4(address + 32u, asuint(float4(gBrickGlowCenter[0], 0.0f)));
-    }
-}
-
-// 調試の切片（2D）：軸 gPassParams.z に垂直な、格 gPassParams.w の面。量 gPassParams.y：0 密度、1 速度、2 散度、3 圧力。
-// t0 速度、t1 密度、t2 圧力（段 0）→ u4。
-[numthreads(8, 8, 1)]
-void SliceCS(uint3 id : SV_DispatchThreadID)
-{
-    if (any(id.xy >= gPassSize.xy))
-        return;
-    const uint axis = gPassParams.z;
-    uint3 cell = axis == 0u ? uint3(gPassParams.w, id.x, id.y) : axis == 1u ? uint3(id.x, gPassParams.w, id.y)
-                                                                          : uint3(id.x, id.y, gPassParams.w);
-    cell = min(cell, gSize.xyz - 1u);
-    float4 value = 0.0f.xxxx;
-    const bool visualize = gPassParams.x != 0u;
-    if (gPassParams.y == 0u)
-    {
-        const float density = gIn1.Load(int4(cell, 0)).x;
-        value = visualize ? float4((1.0f - exp(-density)).xxx, 1.0f) : float4(density.xxx, 1.0f);
-    }
-    else if (gPassParams.y == 1u)
-    {
-        const float3 velocity = CellVelocity(gIn0, cell);
-        value = visualize ? float4(saturate(0.5f + velocity * 0.125f), 1.0f) : float4(velocity, length(velocity));
-    }
-    else
-    {
-        // 散度 [1/s] は ±2 で、圧力（格の大きさ² × 散度の単位）は ±0.05 で振り切る。
-        const float raw = gPassParams.y == 2u ? Divergence(gIn0, cell) : gIn2.Load(int4(cell, 0)).x;
-        const float scaled = raw * (gPassParams.y == 2u ? 0.5f : 20.0f);
-        value = visualize ? float4(saturate(scaled), 0.08f, saturate(-scaled), 1.0f) : float4(raw, 0.0f, 0.0f, 1.0f);
-    }
-    gSlice[id.xy] = value;
-}
+#include "Include/Vfx/HIKARI_FluidSimulationStats.hlsli"

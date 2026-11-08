@@ -411,6 +411,12 @@ VfxCompileResult CompileVfxAsset(const VfxAssetData& asset) {
         emitter.simulation.drag = source.forces.drag;
         emitter.simulation.field = source.forces.field;
         emitter.simulation.fluidFollow = source.forces.fluidFollow;
+        if (source.kind == VfxLayerKind::Particles) {
+            emitter.simulation.fluidSmoke = source.forces.fluidSmoke;
+            emitter.simulation.fluidTemperature = source.forces.fluidTemperature;
+            emitter.simulation.fluidCoupling = source.forces.fluidCoupling;
+            emitter.simulation.fluidRadius = source.forces.fluidRadius;
+        }
         emitter.simulation.localSimulation = source.basic.localSimulation ? 1u : 0u;
         emitter.simulation.collisionPlaneEnabled = source.forces.collisionPlaneEnabled ? 1u : 0u;
         emitter.simulation.collisionPlaneHeight = source.forces.collisionPlaneHeight;

@@ -555,6 +555,13 @@ struct VfxForcesModuleData {
     // 流体に乗る（粒子だけ）：粒子の速度を毎秒この割合 [1/s] でその場の流体の速度へ寄せる（0 で乗らない）。世界空間の粒子が
     // 同じフレームに解いた流体域の中にいる時だけ効く。
     float fluidFollow = 0.0f;
+    // 流体へ注入する（粒子だけ、NVIDIA Flow の点発射器と同じ考え方）：同じフレームに解いた流体域の中の粒子が、このフレームに
+    // 動いた線分の周り fluidRadius [m] へ、毎秒 fluidSmoke の密度（中心での値）を入れ、温度を fluidTemperature へ寄せ（0 で
+    // 寄せない）、流体の速度を毎秒 fluidCoupling の割合で粒子の速度へ寄せる（粒子が流体を押す）。流体は次のフレームに受け取る。
+    float fluidSmoke = 0.0f;
+    float fluidTemperature = 0.0f;
+    float fluidCoupling = 0.0f;
+    float fluidRadius = 0.15f;
 };
 
 struct VfxColorModuleData {

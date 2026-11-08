@@ -54,6 +54,12 @@ Texture2D<float4> gInputColor : register(t13);
 Texture2D<float2> gInputDepth : register(t14);
 Texture3D<float> gNoise : register(t15);
 Texture2D<float> gShadowMap : register(t16);
+// 域ごとの解算の統計の緩衝：砖块（8³ 格）の数 × 12 byte の位置から砖块ごとの活動状態（u32、1 で動いている。烟のある砖块
+// とその 26 近傍、注入の届く砖块。HIKARI_FluidSolver.h の FluidDomainResources::ActivityOffset）。
+ByteAddressBuffer gActivity0 : register(t17);
+ByteAddressBuffer gActivity1 : register(t18);
+ByteAddressBuffer gActivity2 : register(t19);
+ByteAddressBuffer gActivity3 : register(t20);
 RWTexture3D<float4> gOutput : register(u0);
 RWTexture2D<float4> gSolarAtlas : register(u1);
 SamplerState gLinearClamp : register(s0);
@@ -157,7 +163,35 @@ float DetailedDensity(HikariFluidDomain domain, float rho, float3 flow, float3 g
     const float thin = 4.0f * domain.detail.x / max(domain.look.w, 1.0e-4f);
     const float edge = saturate(1.0f - rho / thin);
     const float wobble = smoothstep(0.15f, 0.85f, noise) * 2.0f - 1.0f;
-    return rho * max(1.0f + strength * wobble * lerp(0.3f, 1.25f, edge), 0.0f);
+    // 4 倍細かい模様は薄い縁だけを削る：格の大きさの塊（三線形補間の折れ目）が輪郭に出るのを崩し、外から見た縁を締める。
+    // ずれはその模様の大きさまで、画素より細かくなる距離では読まない（粗い模様と同じ約束）。
+    const float fineFrequency = domain.detail.x * 4.0f;
+    const float fineStrength = saturate(2.0f - pixelSize * fineFrequency * 64.0f) * edge;
+    float fine = 0.0f;
+    if (fineStrength > 0.0f)
+    {
+        const float3 fineCarried = drift * min(1.0f, 0.25f / max(fineFrequency * driftLength, 1.0e-6f));
+        const float f0 = gNoise.SampleLevel(gLinearWrap, (local - fineCarried * phase0) * fineFrequency + 0.21f, 0);
+        const float f1 = gNoise.SampleLevel(gLinearWrap, (local - fineCarried * phase1) * fineFrequency + 0.58f, 0);
+        fine = fineStrength * (smoothstep(0.2f, 0.8f, lerp(f0, f1, weight)) * 2.0f - 1.0f);
+    }
+    return rho * max(1.0f + strength * (wobble * lerp(0.3f, 1.25f, edge) + 0.6f * fine), 0.0f);
+}
+
+// 太陽への光学的な厚さ：手前 kNearSunCells 格は格の解像度の密度で積み、その先は光照体積（格 2 つの texel、そこから
+// 太陽までの厚さ）を読む。光照体積だけだと烟の表面の明暗が texel の塊になり、大きな域を外から見ると階段状に見えた。
+static const uint kNearSunCells = 3u;
+float SunOpticalDepth(HikariFluidDomain domain, Texture3D<float4> density, Texture3D<float4> light, float3 grid)
+{
+    float nearDensity = 0.0f;
+    [unroll] for (uint index = 0u; index < kNearSunCells; ++index)
+        nearDensity += density.SampleLevel(gLinearBorder, (grid + domain.sun.xyz * ((float)index + 0.5f)) /
+                                                              domain.cells.xyz, 0).x;
+    const float3 ahead = grid + domain.sun.xyz * (float)kNearSunCells;
+    const float far = HikariFluidInside(ahead, domain.cells.xyz)
+                          ? light.SampleLevel(gLinearClamp, ahead / domain.cells.xyz, 0).x
+                          : 0.0f;
+    return nearDensity * domain.look.w * domain.cells.w + far;
 }
 
 // 世界の点 world の消光 sigma と視線へ出る光（sigma × 散乱 + 発光）を足す。pixelSize は DetailedDensity へ。
@@ -177,9 +211,10 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
     if (rho <= 0.0f)
         return;
     const float extinction = rho * domain.look.w;
-    // 光照体積は光学的な厚さ（透過率で補間すると厚い烟で隣と桁が違い、折れ目が格子の塊として陰影に出る）。z は近くの遮り。
+    // 光照体積は光学的な厚さ（透過率で補間すると厚い烟で隣と桁が違い、折れ目が格子の塊として陰影に出る）。y は空、z は
+    // 近くの遮り。太陽は手前を格の解像度で積む（SunOpticalDepth）。
     const float3 tau = light.SampleLevel(gLinearClamp, uvw, 0).xyz;
-    const float2 transmittance = exp(-tau.xy);
+    const float2 transmittance = exp(-float2(SunOpticalDepth(domain, density, light, grid), tau.y));
     const float openness = exp(-0.5f * tau.z);
     const float cosTheta = dot(viewDirection, normalize(gSun.xyz));
     const float3 sun = gSunRadiance.rgb * HikariFluidSunScattering(cosTheta, domain.optics.x, domain.optics.y,
@@ -238,9 +273,10 @@ DomainSpans TraceDomains(float3 origin, float3 direction)
             spans.enter[index] = enter;
             spans.leave[index] = interval.y;
             // 歩は「箱の区間 / 步数」と「格の大きさの 0.8 倍」の短い方（区間で割るだけだと 60 m の場地の烟で 1 m 近い歩になり、
-            // 1〜2 m の厚さの地面の霧を 1〜2 標本しか取れず、抖动の粒がそのまま見えた）。1 回の積分は 240 歩まで。
+            // 1〜2 m の厚さの地面の霧を 1〜2 標本しか取れず、抖动の粒がそのまま見えた）。大きな域も格の大きさで歩き、
+            // 動いていない砖块は飛ばす（Integrate）。
             const float span = interval.y - enter;
-            spans.step[index] = max(min(span / steps, domain.cells.w * 0.8f), span / 240.0f);
+            spans.step[index] = min(span / steps, domain.cells.w * 0.8f);
         }
     }
     return spans;
@@ -272,17 +308,62 @@ MarchState BeginMarch()
     return march;
 }
 
-// [start, end] を stepLength [m] ごとに解析的に積分して march へ続ける（最後の歩は end で切る）。footprint は距離 t の
-// 画素の大きさ x + y t（x < 0 で細部なし）。
-void Integrate(float3 origin, float3 direction, float start, float end, float stepLength, float jitter,
-    float2 footprint, inout MarchState march)
+bool BrickActive(uint domainIndex, uint3 brick, uint3 bricks)
 {
-    const uint steps = min((uint)ceil(max(end - start, 0.0f) / max(stepLength, 1.0e-4f)), 256u);
-    [loop] for (uint index = 0u; index < steps; ++index)
+    const uint address = (bricks.x * bricks.y * bricks.z * 3u + brick.x + bricks.x * (brick.y + bricks.y * brick.z)) * 4u;
+    [branch] switch (domainIndex)
     {
-        const float stepStart = start + (float)index * stepLength;
+    case 0u: return (gActivity0.Load(address) & 1u) != 0u;
+    case 1u: return (gActivity1.Load(address) & 1u) != 0u;
+    case 2u: return (gActivity2.Load(address) & 1u) != 0u;
+    default: return (gActivity3.Load(address) & 1u) != 0u;
+    }
+}
+
+// 距離 t の点が、入っているどの域でも動いていない砖块の中なら、その砖块を全ての域で出る距離（end まで）を返す。どれかの域の
+// 動いている砖块の中なら t（そこは步进する）。动いていない砖块は烟も届く注入も無いので、标本を取らず飛ばしてよい。
+float SkipInactive(float3 origin, float3 direction, DomainSpans spans, float t, float end)
+{
+    float exit = end;
+    [unroll] for (uint index = 0u; index < HIKARI_FLUID_MAX_DOMAINS; ++index)
+    {
+        if (index >= DomainCount() || t < spans.enter[index] || t >= spans.leave[index])
+            continue;
+        const HikariFluidDomain domain = gDomains[index];
+        const float3 o = HikariFluidToGrid(domain, origin);
+        const float3 d = HikariFluidToGrid(domain, origin + direction) - o;
+        const float3 grid = o + d * t;
+        const uint3 bricks = ((uint3)domain.cells.xyz + 7u) / 8u;
+        const uint3 brick = min(uint3(max(grid, 0.0f) / 8.0f), bricks - 1u);
+        if (BrickActive(index, brick, bricks))
+            return t;
+        const float3 inverse = 1.0f / lerp(1.0e-7f.xxx, d, (float3)(abs(d) > 1.0e-7f));
+        const float3 low = (float3(brick) * 8.0f - grid) * inverse;
+        const float3 high = ((float3(brick) + 1.0f) * 8.0f - grid) * inverse;
+        const float3 leave = max(low, high);
+        exit = min(exit, t + max(min(min(leave.x, leave.y), leave.z), 0.0f) + 1.0e-3f);
+    }
+    return exit;
+}
+
+// [start, end] を stepLength [m] ごとに解析的に積分して march へ続ける（最後の歩は end で切る）。どの域でも動いていない
+// 砖块は飛ばす。footprint は距離 t の画素の大きさ x + y t（x < 0 で細部なし）。歩と飛ばしを合わせて 512 回まで。
+void Integrate(float3 origin, float3 direction, DomainSpans spans, float start, float end, float stepLength,
+    float jitter, float2 footprint, inout MarchState march)
+{
+    stepLength = max(stepLength, 1.0e-4f);
+    float stepStart = start;
+    [loop] for (uint iteration = 0u; iteration < 512u && stepStart < end; ++iteration)
+    {
+        const float skipped = SkipInactive(origin, direction, spans, stepStart, end);
+        if (skipped > stepStart)
+        {
+            stepStart = skipped;
+            continue;
+        }
         const float span = min(stepLength, end - stepStart);
-        const float t = stepStart + jitter * span;
+        stepStart += span;
+        const float t = stepStart - span + jitter * span;
         float sigma;
         float3 emitted;
         Medium(origin + direction * t, direction, footprint.x < 0.0f ? -1.0f : footprint.x + footprint.y * t, sigma,
@@ -333,7 +414,8 @@ void MarchDomains(float3 origin, float3 direction, DomainSpans spans, float star
         if (next >= 1.0e30f)
             break;
         if (stepLength < 1.0e30f)
-            Integrate(origin, direction, t, min(next, end), max(stepLength, minimumStep), jitter, footprint, march);
+            Integrate(origin, direction, spans, t, min(next, end), max(stepLength, minimumStep), jitter, footprint,
+                march);
         t = next;
     }
 }
@@ -349,8 +431,9 @@ void NoiseCS(uint3 id : SV_DispatchThreadID)
     gOutput[id] = saturate(perlin * 0.55f + worley * 0.45f).xxxx;
 }
 
-// 域 gPass.x の光照体積（格子の半分の分辨率）：x 太陽への光学的な厚さ（自己影）、y 空（上）への光学的な厚さ、z 近くの遮り
-// （6 方向へ約 8 格の光学的な厚さの平均）。
+// 域 gPass.x の光照体積（格子の半分の分辨率）：x 太陽への光学的な厚さ（自己影）、y 空への光学的な厚さ（上の円錐と水平
+// 4 方向の透過率の平均を厚さへ戻したもの）、z 近くの遮り（6 方向へ約 8 格の光学的な厚さの平均）。
+static const uint kSkyRingTexels = 48u;
 [numthreads(4, 4, 4)]
 void LightCS(uint3 id : SV_DispatchThreadID)
 {
@@ -394,6 +477,29 @@ void LightCS(uint3 id : SV_DispatchThreadID)
             optical.y += 0.25f * sum * stride;
         }
     }
+    // 空の光は上だけでなく地平の周りからも来る：大きな烟の塊の横腹（上は厚い烟でも横へ開いている）が上の円錐だけでは
+    // 真っ黒になった。水平 4 方向へ 1 本ずつ kSkyRingTexels まで積み（遠くの烟は環境光をほとんど遮らない）、上の円錐の
+    // 透過率と半々で平均する。
+    const float scale = domain.look.w * domain.cells.w;
+    float ring = 0.0f;
+    {
+        const float3 side0 = normalize(cross(up, abs(up.x) < 0.9f ? float3(1.0f, 0.0f, 0.0f) : float3(0.0f, 0.0f, 1.0f)));
+        const float3 side1 = cross(up, side0);
+        [unroll] for (uint side = 0u; side < 4u; ++side)
+        {
+            const float3 direction = ((side & 1u) != 0u ? -1.0f : 1.0f) * (side < 2u ? side0 : side1);
+            float along = 0.0f;
+            [loop] for (uint index = 0u; index < kSkyRingTexels; ++index)
+            {
+                const float3 p = start + direction * (((float)index + 0.5f) * stride);
+                if (!HikariFluidInside(p, cells))
+                    break;
+                along += gDensity0.SampleLevel(gLinearBorder, p / cells, 0).x * stride;
+            }
+            ring += exp(-along * scale);
+        }
+    }
+    const float sky = -log(max(0.5f * exp(-optical.y * scale) + 0.125f * ring, 1.0e-6f));
     // 近くの遮り：多重散乱の光は周りから来るので、塊の外へ開いた所（凸）は明るく、奥や褶の中は暗い。大きな烟の影の側と
     // 球壳の内側（太陽への厚さがどこも同じくらいで、それだけだと一様な灰色）に陰影の起伏を付ける。
     float local = 0.0f;
@@ -404,8 +510,7 @@ void LightCS(uint3 id : SV_DispatchThreadID)
         [unroll] for (uint index = 1u; index <= 4u; ++index)
             local += gDensity0.SampleLevel(gLinearBorder, (start + direction * (stride * (float)index)) / cells, 0).x;
     }
-    const float scale = domain.look.w * domain.cells.w;
-    gOutput[id] = float4(optical * scale, local * (stride / 6.0f) * scale, 0.0f);
+    gOutput[id] = float4(optical.x * scale, sky, local * (stride / 6.0f) * scale, 0.0f);
 }
 
 // ---------------------------------------------------------------- 場面へ落とす烟の影

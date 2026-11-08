@@ -296,9 +296,11 @@ bool BeginFrameInternal(const GFX::Context& graphics, const Camera3D& camera, co
 
     gMeshRendererState.frameObjectIndex = 0;
     SyncSurfaceGpuSceneMaterialFrame(graphics);
-    const auto& cameraPosition = gMeshRendererState.frameResources.Active().view.camera.cameraPos;
+    const MeshFrameResources& activeFrame = gMeshRendererState.frameResources.Active();
+    const auto& cameraPosition = activeFrame.view.camera.cameraPos;
     PrepareFluidFrame(graphics, gMeshRendererState.particleFrameSource,
-                      {cameraPosition.x, cameraPosition.y, cameraPosition.z});
+                      {cameraPosition.x, cameraPosition.y, cameraPosition.z}, activeFrame.cameraRelativeViewProj,
+                      activeFrame.view.camera.screenParams.y);
     const RENDER3D::FLUID::FluidFlowView fluidFlow = gMeshRendererState.fluidPass.GetFlowView();
     if (!gMeshRendererState.particlePass.PrepareFrame(graphics, gMeshRendererState.particleFrameSource,
                                                       gMeshRendererState.gpuMaterialRegistry, &fluidFlow)) {

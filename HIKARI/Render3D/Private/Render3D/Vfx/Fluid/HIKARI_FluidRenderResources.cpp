@@ -58,6 +58,8 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
         parameters[kOutput].InitAsDescriptorTable(1, &ranges[kInputCount]);
         ranges[kInputCount + 1u].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);
         parameters[kSolarOutput].InitAsDescriptorTable(1, &ranges[kInputCount + 1u]);
+        for (UINT index = 0; index < kMaximumRenderedFluidDomains; ++index)
+            parameters[kActivity + index].InitAsShaderResourceView(kInputCount + index);
         std::array<CD3DX12_STATIC_SAMPLER_DESC, 5> samplers{};
         samplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
                          D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
@@ -244,6 +246,24 @@ bool FluidRenderer::EnsureNoise(const GFX::Context& context, D3D12_GPU_VIRTUAL_A
     return true;
 }
 
+std::array<D3D12_GPU_VIRTUAL_ADDRESS, kMaximumRenderedFluidDomains> FluidRenderer::PrepareActivity(
+    ID3D12GraphicsCommandList* commands, std::span<FluidRenderDomain> domains, size_t count) {
+    std::array<D3D12_GPU_VIRTUAL_ADDRESS, kMaximumRenderedFluidDomains> activity{};
+    for (size_t slot = 0u; slot < kMaximumRenderedFluidDomains; ++slot) {
+        activity[slot] = fallbackBuffer_->GetGPUVirtualAddress();
+        if (slot >= count || domains[slot].stats == nullptr || domains[slot].statsState == nullptr)
+            continue;
+        if (*domains[slot].statsState != kRead) {
+            const auto barrier =
+                CD3DX12_RESOURCE_BARRIER::Transition(domains[slot].stats, *domains[slot].statsState, kRead);
+            commands->ResourceBarrier(1, &barrier);
+            *domains[slot].statsState = kRead;
+        }
+        activity[slot] = domains[slot].stats->GetGPUVirtualAddress();
+    }
+    return activity;
+}
+
 bool FluidRenderer::BeginFrame(const GFX::Context& context) {
     // 透明物体は流体の無いフレームでも相機体積を束ねるので、1 texel の空の体積を常に用意する。
     if (!fallbackVolume_.resource) {
@@ -251,6 +271,8 @@ bool FluidRenderer::BeginFrame(const GFX::Context& context) {
             return false;
         TransitionVolume(context.cmdList, fallbackVolume_, kRead);
     }
+    if (!fallbackBuffer_ && !CreateFluidBuffer(context.device, D3D12_HEAP_TYPE_DEFAULT, 256u, kRead, fallbackBuffer_))
+        return false;
     // 空の体積を束ね、params.w = 0（読まない）。MATH::Vec4{} は w = 1 なので 0 を明示する（w = 1 だと空の体積の透過率 0 を
     // 読んで、流体の無い場面の粒子が全部消えていた）。
     cameraVolumeView_ = {fallbackVolume_.srv.gpu, {0.0f, 0.0f, 0.0f, 0.0f}};
@@ -276,6 +298,8 @@ void FluidRenderer::Shutdown(const GFX::Context& context) {
     views_.clear();
     RetireVolume(context, noiseVolume_);
     RetireVolume(context, fallbackVolume_);
+    if (fallbackBuffer_)
+        GFX::RetireD3D12ObjectForFrame(fallbackBuffer_, context, "FluidRenderer.FallbackBuffer");
     if (solarTexture_)
         ReleaseTextureResource(solarTexture_);
     solarTexture_ = {};

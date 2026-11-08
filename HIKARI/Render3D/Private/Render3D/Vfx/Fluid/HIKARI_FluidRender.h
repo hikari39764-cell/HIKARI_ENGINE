@@ -39,6 +39,12 @@ struct FluidRenderDomain {
     float pendingSeconds = 0.0f;
     // 局部空間の域が世界で動く速さ（世界空間の域は 0）。速度体積は域に対する流れなので、粒子が乗る時に足す。
     MATH::Vec3 frameVelocity{};
+    // 解算の統計の緩衝（砖块の活動状態を步进が読む）と、その今の状態（読む前に読める状態へ移す）。
+    ID3D12Resource* stats = nullptr;
+    D3D12_RESOURCE_STATES* statsState = nullptr;
+    // 粒子からの注入の緩衝（無ければ 0）と、その格子の半分の分辨率の格の数。
+    D3D12_GPU_VIRTUAL_ADDRESS injection = 0u;
+    uint32_t injectionCells[3]{};
 };
 
 class FluidRenderer final {
@@ -76,7 +82,12 @@ private:
     static constexpr UINT kInputCount = 17u;
     static constexpr UINT kOutput = kFirstInput + kInputCount;
     static constexpr UINT kSolarOutput = kOutput + 1u;
-    static constexpr UINT kRootCount = kSolarOutput + 1u;
+    // t17〜t20：域ごとの解算の統計の緩衝（砖块の活動状態を步进が読み、動いていない砖块を飛ばす）。
+    static constexpr UINT kActivity = kSolarOutput + 1u;
+    static constexpr UINT kRootCount = kActivity + kMaximumRenderedFluidDomains;
+    // 砖块の活動状態（域ごとの解算の統計の緩衝）を読める状態へ移し、t17〜t20 に束ねる住所を返す（空いた枠は空の緩衝）。
+    std::array<D3D12_GPU_VIRTUAL_ADDRESS, kMaximumRenderedFluidDomains> PrepareActivity(
+        ID3D12GraphicsCommandList* commands, std::span<FluidRenderDomain> domains, size_t count);
     static constexpr D3D12_RESOURCE_STATES kRead =
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     static constexpr DXGI_FORMAT kColorFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
@@ -134,6 +145,8 @@ private:
     FluidVolume noiseVolume_{};
     bool noiseReady_ = false;
     FluidVolume fallbackVolume_{};
+    // 域の無い活動状態の枠と、步进を使わない pass（烟の影の表）の t17〜t20。
+    Microsoft::WRL::ComPtr<ID3D12Resource> fallbackBuffer_{};
     // 烟の影の表（RG32F の 2D 図集）と、前向きが読む無絆定の貼図。
     FluidVolume solarAtlas_{};
     TextureResourceHandle solarTexture_{};

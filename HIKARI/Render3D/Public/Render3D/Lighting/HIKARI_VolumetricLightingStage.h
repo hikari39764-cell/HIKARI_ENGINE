@@ -4,6 +4,7 @@
 #include <span>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_LocalFogVolume.h"
 #include "RenderCore/Resources/HIKARI_RenderTextureView.h"
@@ -73,6 +74,7 @@ bool PrepareVolumetricLightingFrame(const GFX::Context& context, const TEMPORAL:
                                     const SceneEnvironment& environment,
                                     const LIGHTING::LocalLightListGpuBindings& localLights,
                                     VolumetricLightingQuality quality, RenderDebugView debugView,
+                                    const LIGHTING::CloudSolarVisibilityGpuData& smokeSolarVisibility,
                                     const SHADOW::LocalLightShadowFrame* localShadows = nullptr,
                                     std::span<const LocalFogVolumeGpu> localFogVolumes = {});
 

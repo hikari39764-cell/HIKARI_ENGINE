@@ -36,73 +36,6 @@ float SourceAreaPerVolume(const FluidSourceSubmission& source, float softEdge) n
     }
 }
 
-// 形を単位の向き d（源の局所）へ動かした時の、体積 V と d に垂直な面への投影面積 A の比（d の向きの平均の厚さ、源の局所
-// [m]）。距離 L を掃いた形の体積はおよそ V + A L なので、注入を V / (V + A L) 倍すると掃いた形へ入る量は止まった形と同じ
-// になり、各格の量は形が通り過ぎる時間に比例する（速い源ほど薄い尾迹）。
-float SourceThickness(const FluidSourceSubmission& source, const MATH::Vec3& d, float softEdge) noexcept {
-    constexpr float pi = 3.14159265f;
-    const auto positive = [](float value) { return (std::max)(value, 1.0e-4f); };
-    const float along = std::abs(d.y);
-    const float across = std::sqrt((std::max)(1.0f - along * along, 0.0f));
-    float volume = 0.0f;
-    float area = 0.0f;
-    switch (source.shape) {
-    case FluidSourceShape::Sphere: {
-        const float outer = positive(source.radius);
-        const float inner = (std::clamp)(source.innerRadius, 0.0f, 0.99f * outer);
-        volume = 4.0f / 3.0f * pi * (outer * outer * outer - inner * inner * inner);
-        area = pi * outer * outer;
-        break;
-    }
-    case FluidSourceShape::Cone: {
-        const float length = positive(source.radius);
-        const float base = positive(length * std::tan((std::clamp)(source.coneAngleRadians, 0.0f, 1.55f)));
-        volume = pi * base * base * length / 3.0f;
-        area = along * pi * base * base + across * base * length;
-        break;
-    }
-    case FluidSourceShape::Box: {
-        const MATH::Vec3 h{positive(source.boxHalfExtents.x), positive(source.boxHalfExtents.y),
-                           positive(source.boxHalfExtents.z)};
-        volume = 8.0f * h.x * h.y * h.z;
-        area = 4.0f * (std::abs(d.x) * h.y * h.z + std::abs(d.y) * h.x * h.z + std::abs(d.z) * h.x * h.y);
-        break;
-    }
-    case FluidSourceShape::Cylinder: {
-        const float radius = positive(source.radius);
-        const float height = positive(source.height);
-        volume = pi * radius * radius * height;
-        area = along * pi * radius * radius + across * 2.0f * radius * height;
-        break;
-    }
-    case FluidSourceShape::Circle: {
-        // 円環の帯（XZ 平面、中心の半径 c、半幅 w、厚さ 2 × 縁の柔らかさ。HikariFluidSourceDistance と同じ形）。
-        const float center = 0.5f * (source.innerRadius + source.radius);
-        const float halfWidth = (std::max)(0.5f * (source.radius - source.innerRadius), softEdge);
-        const float outer = center + halfWidth;
-        const float inner = (std::max)(center - halfWidth, 0.0f);
-        volume = 2.0f * pi * positive(center) * 2.0f * halfWidth * 2.0f * softEdge;
-        area = along * pi * (outer * outer - inner * inner) + across * 2.0f * outer * 2.0f * softEdge;
-        break;
-    }
-    case FluidSourceShape::Edge: {
-        const float radius = positive((std::max)(source.radius, softEdge));
-        const float length = (std::max)(source.height, 0.0f);
-        const float sideways = std::sqrt((std::max)(1.0f - d.x * d.x, 0.0f));
-        volume = pi * radius * radius * length + 4.0f / 3.0f * pi * radius * radius * radius;
-        area = sideways * 2.0f * radius * length + pi * radius * radius;
-        break;
-    }
-    default: {
-        const float radius = positive((std::max)(source.radius, softEdge));
-        volume = 4.0f / 3.0f * pi * radius * radius * radius;
-        area = pi * radius * radius;
-        break;
-    }
-    }
-    return volume / (std::max)(area, 1.0e-8f);
-}
-
 // 拡縮の逆の平均（源の局所の長さ ≒ 世界の長さ × これ）。
 float AverageInverseScale(const FluidSourceSubmission& source) noexcept {
     const auto inverse = [](float value) { return 1.0f / (std::max)(std::abs(value), 1.0e-4f); };
@@ -201,20 +134,16 @@ FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::
     set(13, wind.x, wind.y, wind.z, (std::max)(source.drag, 0.0f));
     set(14, source.settings.guideStrength, source.settings.guideThickness,
         source.settings.forceMode == FluidForceMode::TargetVelocity ? 1.0f : 0.0f, softEdge);
-    // 形の大きさは源の局所（拡縮を外した値）なので、世界の表面積 / 体積は拡縮の逆の平均を掛けて近似する。
+    // 形の大きさは源の局所（拡縮を外した値）なので、世界の表面積 / 体積は拡縮の逆の平均を掛けて近似する。w は円環の弧の
+    // 角度（0 は全周）。弧にしても帯の面積と体積は同じ割合で減るので、面積 / 体積は全周のまま。
     set(15, source.settings.outflow * SourceAreaPerVolume(source, softEdge) * averageScale,
-        source.settings.emissionNoise, 1.0f / (std::max)(source.settings.emissionNoiseScale, 0.05f), 0.0f);
-    // 掃き：この子步の終わりの形から始めの位置へ戻る線分（源の局所）と、掃いた形へ入れる注入の割合。
-    MATH::Vec3 toStart = scaled(RotateToFluidLocal(source.worldRotation, sweep * -1.0f));
-    const float swept = MATH::Length(toStart);
-    float exposure = 1.0f;
-    if (source.shape == FluidSourceShape::Domain || swept <= 1.0e-6f) {
-        toStart = {};
-    } else {
-        const float thickness = SourceThickness(source, toStart * (1.0f / swept), softEdge);
-        exposure = thickness / (thickness + swept);
-    }
-    set(16, toStart.x, toStart.y, toStart.z, exposure);
+        source.settings.emissionNoise, 1.0f / (std::max)(source.settings.emissionNoiseScale, 0.05f),
+        source.shape == FluidSourceShape::Circle ? (std::max)(source.arcRadians, 0.0f) : 0.0f);
+    // 掃き：この子步の終わりの形から始めの位置へ戻る線分（源の局所）。GPU はこの線分の上で形を時間平均する。
+    const MATH::Vec3 toStart = source.shape == FluidSourceShape::Domain
+                                   ? MATH::Vec3{}
+                                   : scaled(RotateToFluidLocal(source.worldRotation, sweep * -1.0f));
+    set(16, toStart.x, toStart.y, toStart.z, 0.0f);
     // 届く範囲（域の局所の中心と半径、0 は域全体）：外の格は源を読まない。掃いた分だけ広げる。
     const float reach = FluidSourceReach(source, cellSize);
     const MATH::Vec3 center = RotateToFluidLocal(domainRotation, source.worldPosition - domainPosition);
@@ -258,21 +187,64 @@ FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, co
     set(4, RotateToFluidLocal(domainRotation, motion), static_cast<float>(interaction.shape));
     set(5, RotateToFluidLocal(domainRotation, interaction.worldPosition - domainPosition),
         interaction.strength * strengthScale);
-    // 注入の掃き：そのフレームに動いた線分（中心から始めの位置へ、域の局所）と、掃いた形へ入れる割合。動いた量は服务が
-    // 記した実際の移動（域の時間倍率に左右されない）から、局所空間の域自身の動き（域の時間）を引く。二乗の減衰の重みの
-    // 積分は球で 2πR³/15、線分 L の分で πR²L/6 増えるので、割合 1 / (1 + 5L / 4R) で総量を止まった時と同じにする。
+    // 注入の掃き：そのフレームに動いた線分（中心から始めの位置へ、域の局所。GPU はこの線分の上で重みを時間平均する）。
+    // 動いた量は服务が記した実際の移動（域の時間倍率に左右されない）から、局所空間の域自身の動き（域の時間）を引く。
     // 力の行 6 は x に吸収率 [1/s]。
     MATH::Vec3 toStart{};
-    float exposure = 1.0f;
     if (interaction.kind == FluidInteractionKind::Emit) {
         toStart =
             RotateToFluidLocal(domainRotation, (interaction.displacement - domainVelocity * frameSeconds) * -1.0f);
-        exposure = 1.0f / (1.0f + 1.25f * MATH::Length(toStart) / (std::max)(interaction.extents.x, 1.0e-4f));
     } else if (interaction.kind == FluidInteractionKind::Force) {
         toStart.x = interaction.absorption;
     }
-    set(6, toStart, exposure);
+    set(6, toStart, 0.0f);
     return gpu;
+}
+
+FluidDomainConstantsGpu PackFluidDomainConstants(const FluidDomainSettings& authored,
+                                                 const FluidDomainResources& resources, uint32_t sourceCount,
+                                                 double step, uint64_t stepIndex, const MATH::Vec3& up,
+                                                 const MATH::Vec3& inertia, const MATH::Vec3& frameWind,
+                                                 uint32_t interactionCount, uint32_t flags) noexcept {
+    FluidDomainConstantsGpu constants{};
+    constants.size[0] = resources.layout.cells[0];
+    constants.size[1] = resources.layout.cells[1];
+    constants.size[2] = resources.layout.cells[2];
+    constants.size[3] = sourceCount;
+    constants.cell[0] = resources.layout.cellSize;
+    constants.cell[1] = 1.0f / resources.layout.cellSize;
+    constants.cell[2] = static_cast<float>(step);
+    constants.cell[3] = static_cast<float>(std::fmod(static_cast<double>(stepIndex) * step, 65536.0));
+    constants.motion[0] = static_cast<float>(FluidClosedFaces(authored.boundary));
+    constants.motion[1] = authored.vorticity;
+    constants.motion[2] = authored.buoyancy;
+    constants.motion[3] = authored.weight;
+    constants.dissipation[0] = authored.densityDissipation;
+    constants.dissipation[1] = authored.temperatureDissipation;
+    constants.up[0] = up.x;
+    constants.up[1] = up.y;
+    constants.up[2] = up.z;
+    constants.inertia[0] = inertia.x;
+    constants.inertia[1] = inertia.y;
+    constants.inertia[2] = inertia.z;
+    constants.interactions[0] = interactionCount;
+    constants.interactions[1] = resources.ActivityOffset();
+    constants.interactions[2] = resources.SinkOffset();
+    constants.interactions[3] = flags;
+    constants.combustion0[0] = authored.ignitionTemperature;
+    constants.combustion0[1] = authored.burnRate;
+    constants.combustion0[2] = (std::max)(authored.fuelPerBurn, 1.0e-3f);
+    constants.combustion0[3] = authored.heatPerBurn;
+    constants.combustion1[0] = authored.smokePerBurn;
+    constants.combustion1[1] = authored.expansionPerBurn;
+    constants.combustion1[2] = resources.layout.combustion ? 1.0f : 0.0f;
+    constants.combustion1[3] = 0.0f;
+    std::copy(std::begin(resources.injectionCells), std::end(resources.injectionCells), constants.injection);
+    constants.frameWind[0] = frameWind.x;
+    constants.frameWind[1] = frameWind.y;
+    constants.frameWind[2] = frameWind.z;
+    constants.frameWind[3] = FluidOccupiedDensity(authored.extinction, resources.layout.cellSize);
+    return constants;
 }
 
 } // namespace HIKARI::RENDER3D::FLUID::INTERNAL

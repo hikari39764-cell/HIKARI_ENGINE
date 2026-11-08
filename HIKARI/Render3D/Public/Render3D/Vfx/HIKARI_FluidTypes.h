@@ -60,6 +60,10 @@ struct FluidDomainSettings {
     uint32_t resolution = 64u;
     // 局所空間で解く時、挂点の加速度を逆向きに入れる割合（1 で物理どおり、0 で入れない）。
     float inertia = 1.0f;
+    // 局所空間で解く時の相対風（0–1）：静止した空気が動く域から見て後ろへ流れる分を入れる割合。1 で物理どおり（速度場は
+    // 空気の世界での速さを持ち、域の速さを引いて平流する。歩くと烟が後ろへ流れ続ける）、0 で烟は域と一緒に動き、加速度
+    // の分だけ inertia で押される。間の値は両方を混ぜる（加速度の押しは inertia × (1 − relativeWind)）。
+    float relativeWind = 0.0f;
     float substepRate = 60.0f;
     uint32_t maxSubsteps = 3u;
     float prewarmSeconds = 0.0f;
@@ -138,6 +142,7 @@ inline constexpr auto kFluidDomainSettingsFields = [](auto&& field) {
     field("resolution", &S::resolution, Range{kFluidResolutionMin, kFluidResolutionMax}, Group{"Domain"}, Common{});
     field("boundary", &S::boundary, kFluidBoundaryNames, Group{"Domain"});
     field("inertia", &S::inertia, Slider(0.0, 2.0), Group{"Domain"});
+    field("relativeWind", &S::relativeWind, Slider(0.0, 1.0), Group{"Domain"});
     field("prewarmSeconds", &S::prewarmSeconds, Range{0.0, 30.0}, Unit{"s"}, Group{"Domain"});
     field("priority", &S::priority, Range{0.0, 100.0}, Group{"Domain"});
     field("vorticity", &S::vorticity, Range{0.0, 8.0}, Group{"Motion"}, Common{});
@@ -270,6 +275,8 @@ struct FluidSourceSubmission {
     FluidSourceShape shape = FluidSourceShape::Sphere;
     float radius = 0.5f;
     float innerRadius = 0.0f;
+    // 円環の弧の角度 [rad]（局所 +X から +Z へ、粒子の圆形发射と同じ約束）。0 か 2π 以上は全周。円環だけが使う。
+    float arcRadians = 0.0f;
     float coneAngleRadians = 0.0f;
     MATH::Vec3 boxHalfExtents{0.5f, 0.5f, 0.5f};
     float height = 1.0f;

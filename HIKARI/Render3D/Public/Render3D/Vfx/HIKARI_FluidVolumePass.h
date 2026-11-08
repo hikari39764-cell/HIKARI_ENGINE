@@ -23,12 +23,14 @@ struct SceneEnvironment;
 namespace HIKARI::RENDER3D::FLUID {
 
 // 画質の档位（表は HIKARI_FluidLayout.cpp だけ）。解算の分辨率の倍率、子步ごとの V 循環の数、半分辨率の步进の步数、
-// 同時に解く域の数。
+// 同時に解く域の数、解算の LOD で遠い域とみなす画面の格の大きさ [画素]（格がこれより小さく映る域は子步を 2 倍の長さで
+// 解く。0 で LOD なし）。
 struct FluidQualityPolicy {
     float resolutionScale = 1.0f;
     uint32_t vCycles = 2u;
     uint32_t marchSteps = 64u;
     uint32_t maxDomains = 4u;
+    float lodCellPixels = 1.0f;
 };
 FluidQualityPolicy ResolveFluidQualityPolicy(FluidSmokeQuality quality) noexcept;
 
@@ -53,6 +55,10 @@ struct FluidStepClock {
 
     uint32_t Advance(double deltaSeconds, double stepSeconds, uint32_t maximumSteps) noexcept;
 };
+
+// 子步の長さ [s]：作者の substepRate を 15〜240 Hz に収め、解算の LOD（ResolveFluidSimulationLod）が 1 以上なら 2^lod 倍
+// （0.1 s まで。作者の子步の方が長ければそれ）。
+double FluidSubstepSeconds(const FluidDomainSettings& settings, uint32_t lod) noexcept;
 
 enum class FluidDebugField : uint8_t { Density, Velocity, Divergence, Pressure };
 
@@ -94,10 +100,16 @@ struct FluidDomainStats {
     // このフレームに上限（画質の maxDomains）で解かれなかった（優先度と距離で後ろになった）か、と作者の優先度。
     bool skippedByLimit = false;
     uint32_t priority = 0u;
+    // 解算の LOD（0 そのまま、1 遠い：子步 2 倍、2 視図の外：子步 4 倍。HIKARI_FluidVolumePass.cpp の
+    // ResolveSimulationLod）と、このフレームの子步の長さ [s]。
+    uint32_t lod = 0u;
+    float substepSeconds = 0.0f;
 };
 
 struct FluidVolumePassStats {
     uint32_t domains = 0u;
+    // 解いた域のうち、解算の LOD が 1 以上（子步を長く）の域の数。
+    uint32_t lodDomains = 0u;
     uint32_t skippedDomains = 0u;
     uint32_t stepsThisFrame = 0u;
     uint64_t bytes = 0u;
@@ -135,14 +147,16 @@ struct FluidCameraVolumeView {
     MATH::Vec4 params{0.0f, 0.0f, 0.0f, 0.0f};
 };
 
-// 粒子が乗る流体（PrepareFrame がこのフレームに解いた域、最多 4）。domains は域ごとの世界→格子の行、格の数・大きさと
-// 域が世界で動く速さ（80 byte ずつ。Render3D_ParticleSimulation.hlsl の FluidFlowDomain）、velocity は各域の速度体積
-// （計算 shader が読める状態）。count が 0 なら粒子は流体に乗らない。
+// 粒子が乗る流体（PrepareFrame がこのフレームに解いた域、最多 4）。domains は域ごとの世界→格子の行、格の数・大きさ、
+// 域が世界で動く速さと注入の緩衝の形（96 byte ずつ。Render3D_ParticleSimulation.hlsl の FluidFlowDomain）、velocity は
+// 各域の速度体積（計算 shader が読める状態）、injection は粒子が注入を書く緩衝（無い域は 0、UAV の状態）。count が 0 なら
+// 粒子は流体に乗らない。
 inline constexpr uint32_t kMaximumFluidFlowDomains = 4u;
 struct FluidFlowView {
     uint32_t count = 0u;
     D3D12_GPU_VIRTUAL_ADDRESS domains = 0u;
     std::array<D3D12_GPU_DESCRIPTOR_HANDLE, kMaximumFluidFlowDomains> velocity{};
+    std::array<D3D12_GPU_VIRTUAL_ADDRESS, kMaximumFluidFlowDomains> injection{};
 };
 
 // 相機を原点に置いた view-projection：view の平行移動を除いた回転と投影だけ（大きな座標を含まない）。clipJitter は
@@ -164,7 +178,18 @@ struct FluidFrameSettings {
     uint64_t interactionFrame = 0u;
     // 域の数が上限を超えた時、同じ優先度の域を近い順に選ぶ基準（このフレームの視図の相機）。
     MATH::Vec3 viewerPosition{};
+    // 解算の LOD が読む視図：相機を原点に置いた viewProj（MakeCameraRelativeViewProj）と描画の高さ [画素]。
+    // 高さが 0 なら LOD なし（全部の域をそのまま解く）。
+    MATH::Mat4 relativeViewProj{};
+    float viewHeight = 0.0f;
 };
+
+// 解算の LOD：0 そのまま、1 遠い（画面の格が policy.lodCellPixels 画素より小さい）、2 視図の錐台の外。1 以上は子步を
+// 長く（FluidSubstepSeconds）、V 循環を 1 つ減らす。影を落とす域と光る域は画面の外でも画面へ届くので 1 まで。遠い側へ
+// 移るのは閾値、戻るのは閾値の 1.25 倍（境目の距離で子步の長さが行き来しない）。格の大きさは外接球の相機に近い端で量る。
+uint32_t ResolveFluidSimulationLod(const FluidDomainSubmission& submission, float cellSize,
+                                   const FluidFrameSettings& settings, const FluidQualityPolicy& policy,
+                                   uint32_t previous) noexcept;
 
 class FluidVolumePass final {
 public:

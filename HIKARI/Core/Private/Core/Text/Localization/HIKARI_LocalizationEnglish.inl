@@ -1349,6 +1349,8 @@
     {"ui.vfx.effect.param.balance", "Balance"}, {"ui.vfx.effect.param.preserveLight", "Preserve light"},
     {"ui.vfx.effect.param.roundness", "Roundness"}, {"ui.vfx.effect.param.crossBlur", "Cross blur"},
     {"ui.vfx.text.Flow fields", "Flow fields"}, {"ui.vfx.text.Curl turbulence", "Curl turbulence"}, {"ui.vfx.text.Follow fluid (1/s)", "Follow fluid (1/s)"},
+    {"ui.vfx.text.Inject into fluid", "Inject into fluid"}, {"ui.vfx.text.Smoke per second", "Smoke per second"}, {"ui.vfx.text.Push fluid (1/s)", "Push fluid (1/s)"}, {"ui.vfx.text.Injection radius (m)", "Injection radius (m)"},
+    {"ui.vfx.text.Particles inside a fluid domain add smoke and heat around their path and push the fluid toward their velocity.", "Particles inside a fluid domain add smoke and heat around their path and push the fluid toward their velocity."},
     {"ui.vfx.text.Field frequency", "Field frequency"}, {"ui.vfx.text.Field evolution", "Field evolution"},
     {"ui.vfx.text.Vortex strength", "Vortex strength"},
     {"ui.vfx.text.Attraction / repulsion", "Attraction / repulsion"}, {"ui.vfx.text.Field center", "Field center"},

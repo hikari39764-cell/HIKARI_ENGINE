@@ -63,13 +63,15 @@ FluidMetric gFluidMetrics[] = {
     {"fluid.completedSteps", "count", METRIC::MetricCategory::Count,
      "Substeps the first fluid domain has completed since it was rebuilt."},
     {"fluid.bytes", "bytes", METRIC::MetricCategory::Memory, "GPU memory of all fluid domains."},
+    {"fluid.lodDomains", "count", METRIC::MetricCategory::Count,
+     "Fluid smoke domains solved with longer substeps (simulation LOD: far or outside the view)."},
 };
 
 void PublishFluidMetrics(const RENDER3D::FLUID::FluidVolumePassStats& stats, uint64_t frameIndex) {
     const double values[] = {static_cast<double>(stats.domains), static_cast<double>(stats.stepsThisFrame),
                              stats.perDomain.empty() ? 0.0
                                                      : static_cast<double>(stats.perDomain.front().completedSteps),
-                             static_cast<double>(stats.bytes)};
+                             static_cast<double>(stats.bytes), static_cast<double>(stats.lodDomains)};
     for (size_t index = 0; index < std::size(gFluidMetrics); ++index) {
         FluidMetric& metric = gFluidMetrics[index];
         if (metric.handle == METRIC::kInvalidMetric)
@@ -201,10 +203,13 @@ RENDER3D::FLUID::FluidDebugSliceView GetFluidDebugSlice() { return gMeshRenderer
 
 void INTERNAL::PrepareFluidFrame(const GFX::Context& graphics,
                                  const RENDER3D::PARTICLES::ParticleRenderFrameSource* source,
-                                 const MATH::Vec3& viewerPosition) {
+                                 const MATH::Vec3& viewerPosition, const MATH::Mat4& relativeViewProj,
+                                 float viewHeight) {
     const uint64_t frame = TIME::GetFrameContext().frameIndex;
     RENDER3D::FLUID::FluidFrameSettings settings{};
     settings.viewerPosition = viewerPosition;
+    settings.relativeViewProj = relativeViewProj;
+    settings.viewHeight = viewHeight;
     settings.quality = RENDER3D::GetRenderQualitySettings().fluidSmokeQuality;
     settings.diagnostics = IsFluidRequestFresh(gFluidDiagnosticsFrame, frame);
     if (source != nullptr)
@@ -362,6 +367,10 @@ bool RefreshLightingProviders(const GFX::Context& graphics,
     view.skyEnvironment.fluidSolarVisibility =
         gMeshRendererState.fluidPass.PrepareSolarVisibility(graphics, environment);
     return view.PublishSkyEnvironment(graphics);
+}
+
+RENDER3D::LIGHTING::CloudSolarVisibilityGpuData GetFluidSolarVisibility() {
+    return GetActiveMeshFrameResources().view.skyEnvironment.fluidSolarVisibility;
 }
 
 RENDER3D::LIGHTING::LocalLightListGpuBindings GetLocalLightListGpuBindings() {

@@ -76,6 +76,8 @@ nlohmann::json DescribeStats(const FLUID::FluidDomainStats& stats) {
         {"densityTotal", stats.densityTotal},
         {"priority", stats.priority},
         {"skippedByLimit", stats.skippedByLimit},
+        {"lod", stats.lod},
+        {"substepSeconds", stats.substepSeconds},
     };
 }
 } // namespace
@@ -166,6 +168,7 @@ void VfxWorkspaceController::DrawFluidSimulation(const VFX::VfxEmitterData& doma
                         std::to_string(stats->cells[2]) + "  (" + std::to_string(stats->levels) + ")");
         row("GPU memory", number(static_cast<double>(stats->bytes) / (1024.0 * 1024.0), 1) + " MiB");
         row("Substeps", std::to_string(stats->stepsThisFrame) + " / " + std::to_string(stats->completedSteps));
+        row("Simulation LOD", std::to_string(stats->lod) + "  (" + number(stats->substepSeconds * 1000.0, 1) + " ms)");
         if (stats->prewarmRemainingSeconds > 0.0f) {
             row("Prewarm remaining", number(stats->prewarmRemainingSeconds, 2) + " s");
         }
