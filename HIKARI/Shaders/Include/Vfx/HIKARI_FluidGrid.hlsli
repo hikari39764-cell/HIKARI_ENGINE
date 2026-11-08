@@ -38,8 +38,8 @@ struct HikariFluidSource
     float4 field2;   // x 乱流、y 周波数、z 演化、w 吸引
     float4 wind;     // xyz 一様な加速度（域の局所）、w 速度の減衰 [1/s]
     float4 guide;    // x 形状引导の強さ、y 帯の厚さ、z 力場の効き方（0 加速度、1 目標速度）、w 縁の柔らかさ（源の局所）
-    float4 flow;     // x 体積の湧き出し率 [1/s]（形の中で一様、開いた境界の域だけ）、y 注入の揺らぎ、z 1 / 揺らぎの塊 [1/m]、w 未使用
-    float4 sweep;    // xyz この子步の間に動いた分（源の局所、終わりの形から始めの位置へ）、w 掃いた形へ入れる注入の割合
+    float4 flow;     // x 体積の湧き出し率 [1/s]（形の中で一様、開いた境界の域だけ）、y 注入の揺らぎ、z 1 / 揺らぎの塊 [1/m]、w 円環の弧 [rad]（0 は全周）
+    float4 sweep;    // xyz この子步の間に動いた分（源の局所、終わりの形から始めの位置へ）、w 未使用
     float4 bounds;   // xyz 届く範囲の中心（域の局所）、w 半径（0 で域全体）
     float4 color;    // rgb 注入する烟の色（格ごとの色の域は密度 × 色を足す）、w 注入量のうち燃料になる割合（燃焼の域）
 };
@@ -53,7 +53,7 @@ struct HikariFluidInteraction
     float4 extents;   // xyz 形の大きさ（FluidInteraction.extents）、w 種類（0 障碍物、1 冲量、2 力）
     float4 velocity;  // xyz 障碍物の域に対する速度か冲量・力の向き（域の局所、0 で外向き）、w 形（0 球、1 カプセル、2 箱）
     float4 push;      // xyz 中心（域の局所）、w 冲量の速さ [m/s] か力の加速度 [m/s²]（注入はこの子步の割合を掛けた毎秒の密度）
-    float4 sweep;     // 注入：xyz このフレームに動いた線分（中心から始めの位置へ、域の局所）、w 掃いた形へ入れる割合。力：x 吸収率 [1/s]
+    float4 sweep;     // 注入：xyz このフレームに動いた線分（中心から始めの位置へ、域の局所）。力：x 吸収率 [1/s]
 };
 
 uint HikariFluidInteractionKind(HikariFluidInteraction interaction)
@@ -80,6 +80,12 @@ float3 HikariFluidToSource(HikariFluidSource source, float3 p)
 {
     const float4 h = float4(p, 1.0f);
     return float3(dot(source.toSource0, h), dot(source.toSource1, h), dot(source.toSource2, h));
+}
+
+// 域の局所の向き v を源の局所へ（回転と倍率の逆だけ、平行移動なし）。
+float3 HikariFluidVectorToSource(HikariFluidSource source, float3 v)
+{
+    return float3(dot(source.toSource0.xyz, v), dot(source.toSource1.xyz, v), dot(source.toSource2.xyz, v));
 }
 
 float3 HikariFluidToDomain(HikariFluidSource source, float3 v)
@@ -116,10 +122,19 @@ float HikariFluidSourceDistance(HikariFluidSource source, float3 p)
     }
     if (shape == 5u)
     {
-        // 円環の帯（XZ 平面、内径〜半径）。厚さは縁の柔らかさの 2 倍。
+        // 円環の帯（XZ 平面、内径〜半径）。厚さは縁の柔らかさの 2 倍。弧（flow.w が 0〜2π の間）なら +X から +Z へその角度
+        // だけの扇形の帯（粒子の圆形发射と同じ約束）：弧の中心の向きへ回して折り、角度の外は端の断面（半径方向の線分）まで。
         const float center = 0.5f * (source.shape.z + radius);
         const float halfWidth = max(0.5f * (radius - source.shape.z), source.guide.w);
-        const float2 d = float2(abs(length(p.xz) - center) - halfWidth, abs(p.y) - source.guide.w);
+        float across = abs(length(p.xz) - center) - halfWidth;
+        if (source.flow.w > 0.0f && source.flow.w < 6.2831853f)
+        {
+            const float2 edge = float2(cos(0.5f * source.flow.w), sin(0.5f * source.flow.w));
+            const float2 q = float2(dot(p.xz, edge), abs(p.z * edge.x - p.x * edge.y));
+            if (q.x * edge.y < q.y * edge.x)
+                across = length(q - edge * clamp(dot(q, edge), center - halfWidth, center + halfWidth));
+        }
+        const float2 d = float2(across, abs(p.y) - source.guide.w);
         return length(max(d, 0.0f)) + min(max(d.x, d.y), 0.0f);
     }
     if (shape == 6u)
@@ -139,16 +154,40 @@ float3 HikariFluidFromSegment(float3 p, float3 d)
     return p - (lengthSquared > 0.0f ? saturate(dot(p, d) / lengthSquared) : 0.0f) * d;
 }
 
-// 子步の間に掃いた形の符号付き距離（源の局所）：終わりの形から始めの位置へ戻る線分の上で、点に一番近い位置の形。
-float HikariFluidSweptDistance(HikariFluidSource source, float3 p)
+// 動く源は子步の間の時間で平均する（注入・力場・推し・吸収・湧き出し）：始めから終わりまでの線分を縁の柔らかさ以下の刻みで
+// n 等分し（1〜8）、各区間の中ほどの時刻の形で量って平均する。各点の量は源が通り過ぎる時間に比例し（速い源ほど薄い
+// 尾迹）、続く子步は重ならない（掃いた形を丸ごと使うと両端の半球が次の子步と重なり、尾迹に珠の列が出る）。止まった源は 1。
+uint HikariFluidSweepSamples(HikariFluidSource source)
 {
-    return HikariFluidSourceDistance(source, HikariFluidFromSegment(p, source.sweep.xyz));
+    return clamp((uint)ceil(length(source.sweep.xyz) / max(source.guide.w, 1.0e-4f)), 1u, 8u);
 }
 
-// 掃いた形の中の重み（内側 1、表面の外へ縁の柔らかさの幅で 0 へ）に、掃いた形へ入れる割合を掛けたもの（止まった源は 1）。
+// 標本 i（n 個のうち）の時刻の形から見た点 p（源の局所）。sweep は終わりの形から始めの位置へ。
+float3 HikariFluidSweepSample(HikariFluidSource source, float3 p, uint i, uint n)
+{
+    return p - source.sweep.xyz * (((float)i + 0.5f) / (float)n);
+}
+
+// 子步の間に掃いた形の符号付き距離（源の局所）：始めから終わりまでの n + 1 か所の形のうち一番近いもの（刻みは縁の柔らかさ
+// 以下なので、掃いた形の表面との差は縁の柔らかさの半分まで）。動く格の印（活動）が使う。
+float HikariFluidSweptDistance(HikariFluidSource source, float3 p)
+{
+    const uint n = HikariFluidSweepSamples(source);
+    float nearest = HikariFluidSourceDistance(source, p);
+    for (uint i = 1u; i <= n; ++i)
+        nearest = min(nearest, HikariFluidSourceDistance(source, p - source.sweep.xyz * ((float)i / (float)n)));
+    return nearest;
+}
+
+// 形の中の重み（内側 1、表面の外へ縁の柔らかさの幅で 0 へ）の子步の間の時間平均。
 float HikariFluidSourceMask(HikariFluidSource source, float3 p)
 {
-    return saturate(0.5f - HikariFluidSweptDistance(source, p) / max(source.guide.w, 1.0e-4f)) * source.sweep.w;
+    const uint n = HikariFluidSweepSamples(source);
+    const float soft = max(source.guide.w, 1.0e-4f);
+    float sum = 0.0f;
+    for (uint i = 0u; i < n; ++i)
+        sum += saturate(0.5f - HikariFluidSourceDistance(source, HikariFluidSweepSample(source, p, i, n)) / soft);
+    return sum / (float)n;
 }
 
 // 域の局所の点 p に源が届くか（届く範囲の外の格は源を読まない）。

@@ -372,20 +372,43 @@ float ValueNoise(float3 x)
     return lerp(lerp(x00, x10, u.y), lerp(x01, x11, u.y), u.z) * 2.0f - 1.0f;
 }
 
-// 烟を注入する形の重み：子步の間に掃いた形の表面を格 4 つほどの塊で ±1.5 格ずらし、力の重み（HikariFluidSourceMask）の
-// 2 倍の幅でぼかし、掃いた形へ入れる割合を掛ける。表面がそのまま格に沿った面で入ると、注入したての烟の縁が格子の階段
-// （马赛克）に見える。形の奥（表面から 3 格より内側）の量は変わらない。p は域の局所 [m]。
+// 塊のノイズ（-1〜1）：値ノイズ 2 段（2 段目は 2.07 倍の細かさ）。各段の座標を格の軸に揃わない固定の回転で回す（値ノイズの
+// 格子点が流体の格と同じ軸に並ぶと、格の軸に沿った薄い烟の板の上で塊が規則的な点の列に見える）。
+static const float3x3 kLumpRotation = float3x3(0.00f, 0.80f, 0.60f, -0.80f, 0.36f, -0.48f, -0.60f, -0.48f, 0.64f);
+float LumpNoise(float3 x)
+{
+    const float3 first = mul(kLumpRotation, x);
+    return ValueNoise(first) * 0.65f + ValueNoise(mul(kLumpRotation, first) * 2.07f + 31.7f) * 0.35f;
+}
+
+// 烟を注入する形の重み：形の表面を格 4 つほどの塊で ±1.5 格ずらし、力の重み（HikariFluidSourceMask）の 2 倍の幅でぼかし、
+// 子步の間の時間で平均する（HikariFluidSweepSamples）。表面がそのまま格に沿った面で入ると、注入したての烟の縁が格子の
+// 階段（马赛克）に見える。形の奥（表面から 3 格より内側）の量は変わらない。p は域の局所 [m]。
 float EmissionMask(HikariFluidSource source, float3 local, float3 p)
 {
     const float soft = max(source.guide.w, 1.0e-4f);
-    const float distance = HikariFluidSweptDistance(source, local);
-    if (distance >= 2.5f * soft)
-        return 0.0f;
-    if (distance <= -2.5f * soft)
-        return source.sweep.w;
-    const float3 lump = p * (0.25f * gCell.y) + float3(0.0f, 0.07f, 0.0f) * gCell.w;
-    const float offset = ValueNoise(lump) * 0.7f + ValueNoise(lump * 2.03f + 17.3f) * 0.3f;
-    return saturate(0.5f - (distance + offset * soft) / (2.0f * soft)) * source.sweep.w;
+    const uint n = HikariFluidSweepSamples(source);
+    float sum = 0.0f;
+    float offset = 0.0f;
+    bool haveOffset = false;
+    for (uint i = 0u; i < n; ++i)
+    {
+        const float distance = HikariFluidSourceDistance(source, HikariFluidSweepSample(source, local, i, n));
+        if (distance >= 2.5f * soft)
+            continue;
+        if (distance <= -2.5f * soft)
+        {
+            sum += 1.0f;
+            continue;
+        }
+        if (!haveOffset)
+        {
+            offset = LumpNoise(p * (0.25f * gCell.y) + float3(0.0f, 0.07f, 0.0f) * gCell.w);
+            haveOffset = true;
+        }
+        sum += saturate(0.5f - (distance + offset * soft) / (2.0f * soft));
+    }
+    return sum / (float)n;
 }
 
 // 注入の揺らぎ（FluidSourceSettings::emissionNoise）の倍率：域の局所 p [m] で塊の大きさ 1 / flow.z の値ノイズ 2 段により
@@ -394,8 +417,7 @@ float EmissionNoise(HikariFluidSource source, float3 p)
 {
     if (source.flow.y <= 0.0f)
         return 1.0f;
-    const float3 x = p * source.flow.z + float3(0.11f, 0.07f, 0.09f) * gCell.w;
-    const float n = ValueNoise(x) * 0.65f + ValueNoise(x * 2.07f + 31.7f) * 0.35f;
+    const float n = LumpNoise(p * source.flow.z + float3(0.11f, 0.07f, 0.09f) * gCell.w);
     return max(1.0f + 2.5f * source.flow.y * n, 0.0f);
 }
 
@@ -405,21 +427,39 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
 {
     if (!HikariFluidSourceReaches(source, p))
         return;
+    // 子步の間、この格の空気は (velocity + 相対風) で流れながら源を通り過ぎる：時間平均の各時刻の形は、今 p にある空気が
+    // その時刻にいた位置で量る（掃いた線分に空気の流れた分を足す）。速い流れの中の止まった源（局部域の相対風、強い風）が
+    // 子步ごとの判子の列にならず、流れに沿って連続した烟になる。域全体の源（形 7）は形の縁が無く、滑らかな力場を標本の
+    // 数だけ量り直すだけなので足さない。
+    HikariFluidSource moving = source;
+    if ((uint)(source.shape.x + 0.5f) != 7u)
+        moving.sweep.xyz += HikariFluidVectorToSource(source, (velocity + gFrameWind.xyz) * gCell.z);
     const float3 local = HikariFluidToSource(source, p);
-    const float mask = HikariFluidSourceMask(source, local);
-    // 力場（旋涡・吸引・卷曲乱流）は粒子と同じ式。半径の減衰は式の中で掛かる。
-    float3 field = 0.0f.xxx;
-    if (source.field1.w != 0.0f || source.field2.x != 0.0f || source.field2.w != 0.0f)
-    {
-        // 旋涡と吸引は中心で向きが決まらない（粒子では問題にならない特異点）。流体では格子で表せない極小の渦核が
-        // 生まれて量が増減するので、中心から約 2 格の内側を線形に弱める（Rankine の渦核）。
-        const float core = saturate(length(local - source.field0.xyz) / max(1.5f * source.guide.w, 1.0e-4f));
-        field = HikariFluidToDomain(source, ParticleForceAcceleration(local, gCell.w, source.field0.xyz,
-            source.field0.w, source.field1.xyz, source.field1.w * core, source.field2.x, source.field2.y,
-            source.field2.z, source.field2.w * core));
-    }
+    const float mask = HikariFluidSourceMask(moving, local);
+    // 力場（旋涡・吸引・卷曲乱流）は粒子と同じ式で、注入と同じく子步の間の時間で平均する（動く源の力場が子步の終わりの
+    // 位置にだけ効くと、尾迹に子步の間隔の縞が出る）。半径の減衰は式の中で掛かる。
+    const bool fieldActive = source.field1.w != 0.0f || source.field2.x != 0.0f || source.field2.w != 0.0f;
     const float radius = source.field0.w;
-    const float falloff = radius > 0.0f ? pow(saturate(1.0f - length(local - source.field0.xyz) / radius), 2.0f) : 1.0f;
+    const uint samples = HikariFluidSweepSamples(moving);
+    float3 field = 0.0f.xxx;
+    float falloff = 0.0f;
+    for (uint sample = 0u; sample < samples; ++sample)
+    {
+        const float3 at = HikariFluidSweepSample(moving, local, sample, samples);
+        const float distance = length(at - source.field0.xyz);
+        if (fieldActive)
+        {
+            // 旋涡と吸引は中心で向きが決まらない（粒子では問題にならない特異点）。流体では格子で表せない極小の渦核が
+            // 生まれて量が増減するので、中心から約 2 格の内側を線形に弱める（Rankine の渦核）。
+            const float core = saturate(distance / max(1.5f * source.guide.w, 1.0e-4f));
+            field += ParticleForceAcceleration(at, gCell.w, source.field0.xyz, source.field0.w, source.field1.xyz,
+                                               source.field1.w * core, source.field2.x, source.field2.y,
+                                               source.field2.z, source.field2.w * core);
+        }
+        falloff += radius > 0.0f ? pow(saturate(1.0f - distance / radius), 2.0f) : 1.0f;
+    }
+    field = HikariFluidToDomain(source, field / (float)samples);
+    falloff /= (float)samples;
     if (source.guide.z > 0.5f)
         acceleration += (field - velocity * falloff) * 4.0f;
     else
@@ -427,7 +467,7 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
     acceleration += source.wind.xyz * falloff - velocity * (source.wind.w * falloff);
     if (source.emission.x > 0.0f || source.emission.y > 0.0f)
     {
-        const float emit = EmissionMask(source, local, p) * EmissionNoise(source, p);
+        const float emit = EmissionMask(moving, local, p) * EmissionNoise(source, p);
         if (emit > 0.0f)
         {
             temperature += (source.emission.z - temperature) * saturate(emit * 8.0f * gCell.z + emit * saturate(source.emission.y));
@@ -536,12 +576,20 @@ void ApplySinks(float3 p, inout float4 smoke, inout float fuel, inout float temp
     temperature *= kept;
 }
 
-// 注入の重み：このフレームに動いた線分（中心から sweep.xyz）からの距離で、半径の中で二乗に弱め、掃いた形へ入れる割合を掛ける。
+// 注入の重み：半径の中で中心から二乗に弱まる重みを、このフレームに動いた線分（中心から sweep.xyz）の上で時間平均する
+// （半径の半分以下の刻みで 1〜8 個。流体源の HikariFluidSweepSamples と同じ考え方で、続くフレームの注入が重ならない）。
 float HikariFluidEmitFalloff(HikariFluidInteraction interaction, float3 p)
 {
-    const float distance = length(HikariFluidFromSegment(p - interaction.push.xyz, interaction.sweep.xyz));
-    const float falloff = saturate(1.0f - distance / max(interaction.extents.x, 1.0e-4f));
-    return falloff * falloff * interaction.sweep.w;
+    const float radius = max(interaction.extents.x, 1.0e-4f);
+    const uint n = clamp((uint)ceil(2.0f * length(interaction.sweep.xyz) / radius), 1u, 8u);
+    float sum = 0.0f;
+    for (uint i = 0u; i < n; ++i)
+    {
+        const float3 center = interaction.push.xyz + interaction.sweep.xyz * (((float)i + 0.5f) / (float)n);
+        const float falloff = saturate(1.0f - length(p - center) / radius);
+        sum += falloff * falloff;
+    }
+    return sum / (float)n;
 }
 
 // 注入（3）：動いた線分を掃いた球の中（二乗で弱まる）へ毎秒 strength の密度を足し（色は白）、温度を extents.y へ寄せ、

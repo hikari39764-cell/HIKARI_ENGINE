@@ -507,7 +507,7 @@ void VfxWorkspaceController::DrawEmissionVolume(AssetDatabase& database, const V
                           emitter.shape.circleInnerRadius, 0.01f, 0.0f, 100000.0f);
         shapeEditor.Bool(VfxUiText("Emit On Edge Only").c_str(), "circleEmitOnEdge", emitter.shape.circleEmitOnEdge);
         // 放出角度範囲。360 で全周。リングの弧に沿って火花を出したい
-        // ときはここを絞り、エミッタ自体を回して狙いを付ける。
+        // ときはここを絞り、エミッタ自体を回して狙いを付ける。流体源の円環も同じ弧の帯へ注入する。
         shapeEditor.Float(VfxUiText("Circle Arc Degrees").c_str(), "circleArcDegrees", emitter.shape.circleArcDegrees,
                           1.0f, 1.0f, 360.0f);
     }

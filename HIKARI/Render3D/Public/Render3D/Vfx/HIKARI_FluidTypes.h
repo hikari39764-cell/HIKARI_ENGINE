@@ -275,6 +275,8 @@ struct FluidSourceSubmission {
     FluidSourceShape shape = FluidSourceShape::Sphere;
     float radius = 0.5f;
     float innerRadius = 0.0f;
+    // 円環の弧の角度 [rad]（局所 +X から +Z へ、粒子の圆形发射と同じ約束）。0 か 2π 以上は全周。円環だけが使う。
+    float arcRadians = 0.0f;
     float coneAngleRadians = 0.0f;
     MATH::Vec3 boxHalfExtents{0.5f, 0.5f, 0.5f};
     float height = 1.0f;
