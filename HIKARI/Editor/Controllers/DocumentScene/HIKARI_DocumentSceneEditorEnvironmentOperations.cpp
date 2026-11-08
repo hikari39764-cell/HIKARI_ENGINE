@@ -8,11 +8,13 @@
 #include "Assets/RenderStyle/HIKARI_RenderStyleAssetStore.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_UtfPath.h"
+#include "Editor/Authoring/HIKARI_EditorObjectState.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/History/HIKARI_SceneSettingsHistoryCommand.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Tools/Baking/HIKARI_LightingBakeReport.h"
 #include "Tools/Baking/HIKARI_LightingBakeService.h"
 
@@ -226,6 +228,43 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
     clear.permission = EDITOR::EditorOperationPermission::ModifyProjectFiles;
     operationRegistry_.Register(std::move(clear), EditorOperationKind::Mutation, false);
 
+    // 場景文書の字段表つき設定一つを部分 JSON で直す。一回が一つの撤销で、正規化した値を返す。
+    const auto editSettings = [this]<class Settings, class Fields, class Normalize, class MakeHistory>(
+                                  const nlohmann::json& parameters, Settings SceneDocument::* member,
+                                  const Fields& fields, Normalize normalize, MakeHistory makeHistory,
+                                  const std::string& subject) -> EDITOR::EditorOperationResult {
+        if (!aiOperationScene_)
+            return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
+        const nlohmann::json& patch = parameters.at("patch");
+        if (!patch.is_object() || patch.empty())
+            return EDITOR::OperationFailure("INVALID_PATCH", "patch must be a non-empty object.");
+        DocumentSceneBase& scene = *aiOperationScene_;
+        const Settings before = scene.GetSceneDocument().*member;
+        nlohmann::json current = nlohmann::json::object();
+        JSONFIELDS::Write(current, before, fields);
+        if (const std::string unknown = EDITOR::FindUnknownPatchKey(patch, current); !unknown.empty())
+            return EDITOR::OperationFailure("UNKNOWN_FIELD", "Unknown " + subject + " field: " + unknown);
+        nlohmann::json merged = current;
+        merged.merge_patch(patch);
+        Settings edited = before;
+        JSONFIELDS::ReadLenient(merged, edited, fields);
+        edited = normalize(JSONFIELDS::Sanitize(edited, fields));
+        nlohmann::json stored = nlohmann::json::object();
+        JSONFIELDS::Write(stored, edited, fields);
+        const bool changed = edited != before;
+        if (changed) {
+            const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
+            scene.GetSceneDocument().*member = edited;
+            CommitAppliedDocumentCommand(scene, makeHistory(before, edited), 0u, externalDirtyBefore,
+                                         EDITOR::EditorDocumentImpact::None);
+        }
+        return EDITOR::OperationOk(subject + (changed ? " updated." : " unchanged."),
+                                   {{"appliedPatch", EDITOR::ProjectAppliedPatch(patch, stored)},
+                                    {"adjusted", EDITOR::CollectAdjustedPatchValues(patch, stored)},
+                                    {"settings", stored},
+                                    {"documentChanged", changed}});
+    };
+
     operationRegistry_.Register(
         {"lighting.bake.settings.edit",
          "Merge a partial JSON object into the scene's lighting bake quality (sampleCount: path-traced samples per "
@@ -233,39 +272,77 @@ void DocumentSceneEditorController::RegisterEnvironmentOperations() {
          "baked probe volumes share it; changing it marks them for rebake. One undo step; reports normalized values.",
          "scene",
          {{"patch", EditorOperationParameterType::Json, true, "Partial settings, for example {\"sampleCount\":64}"}},
+         [editSettings](const nlohmann::json& parameters) {
+             return editSettings(
+                 parameters, &SceneDocument::lightingBake, kSceneLightingBakeFields,
+                 [](SceneLightingBakeSettings settings) { return settings; },
+                 [](const SceneLightingBakeSettings& before, const SceneLightingBakeSettings& after) {
+                     return EDITOR::MakeLightingBakeSettingsHistoryCommand("Edit Lighting Bake Quality", before, after);
+                 },
+                 "Lighting bake quality");
+         }},
+        EditorOperationKind::Mutation);
+
+    operationRegistry_.Register(
+        {"scene.partition.edit",
+         "Merge a partial JSON object into the scene's world partition (enabled: store root objects in one file per "
+         "XZ grid cell beside the scene file, so saving writes only changed cells; cellSize: 128, 256 or 512 m, "
+         "default 256, other values snap to the nearest). Objects marked alwaysLoaded stay in the main file. "
+         "One undo step; takes effect on the next save.",
+         "scene",
+         {{"patch", EditorOperationParameterType::Json, true, "Partial settings, for example {\"enabled\":true}"}},
+         [editSettings](const nlohmann::json& parameters) {
+             return editSettings(
+                 parameters, &SceneDocument::partition, kScenePartitionFields,
+                 [](ScenePartitionSettings settings) {
+                     settings.cellSizeMeters = SnapWorldCellSize(settings.cellSizeMeters);
+                     return settings;
+                 },
+                 [](const ScenePartitionSettings& before, const ScenePartitionSettings& after) {
+                     return EDITOR::MakePartitionSettingsHistoryCommand("Edit World Partition", before, after);
+                 },
+                 "World partition");
+         }},
+        EditorOperationKind::Mutation);
+
+    operationRegistry_.Register(
+        {"scene.partition.keep_loaded",
+         "Mark objects of a partitioned scene as always loaded (kept in the main scene file instead of their grid "
+         "cell) or release them back to their cells. Only root objects matter; children follow their root. One undo "
+         "step.",
+         "scene",
+         {{"objectIds", EditorOperationParameterType::Json, true, "Array of object ids"},
+          {"alwaysLoaded", EditorOperationParameterType::Bool, true, "true keeps them in the main file"}},
          [this](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
              if (!aiOperationScene_)
                  return EDITOR::OperationFailure("NO_SCENE", "No scene is open.");
-             const nlohmann::json& patch = parameters.at("patch");
-             if (!patch.is_object() || patch.empty())
-                 return EDITOR::OperationFailure("INVALID_PATCH", "patch must be a non-empty object.");
              DocumentSceneBase& scene = *aiOperationScene_;
-             const SceneLightingBakeSettings before = scene.GetSceneDocument().lightingBake;
-             nlohmann::json current = nlohmann::json::object();
-             JSONFIELDS::Write(current, before, kSceneLightingBakeFields);
-             if (const std::string unknown = EDITOR::FindUnknownPatchKey(patch, current); !unknown.empty())
-                 return EDITOR::OperationFailure("UNKNOWN_FIELD", "Unknown lighting bake field: " + unknown);
-             nlohmann::json merged = current;
-             merged.merge_patch(patch);
-             SceneLightingBakeSettings edited = before;
-             JSONFIELDS::ReadLenient(merged, edited, kSceneLightingBakeFields);
-             edited = JSONFIELDS::Sanitize(edited, kSceneLightingBakeFields);
-             nlohmann::json stored = nlohmann::json::object();
-             JSONFIELDS::Write(stored, edited, kSceneLightingBakeFields);
-             const bool changed = edited != before;
-             if (changed) {
-                 const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
-                 scene.GetSceneDocument().lightingBake = edited;
-                 CommitAppliedDocumentCommand(
-                     scene,
-                     EDITOR::MakeLightingBakeSettingsHistoryCommand("Edit Lighting Bake Quality", before, edited), 0u,
-                     externalDirtyBefore, EDITOR::EditorDocumentImpact::None);
+             if (!scene.GetSceneDocument().partition.enabled)
+                 return EDITOR::OperationFailure("NOT_PARTITIONED",
+                                                 "The scene is not partitioned; enable it with scene.partition.edit.");
+             const nlohmann::json& idsNode = parameters.at("objectIds");
+             std::vector<SceneObjectId> ids{};
+             for (const nlohmann::json& id : idsNode.is_array() ? idsNode : nlohmann::json::array()) {
+                 if (!id.is_number_unsigned() ||
+                     FindSceneObjectData(scene.GetSceneDocument(), {id.get<uint64_t>()}) == nullptr)
+                     return EDITOR::OperationFailure("OBJECT_NOT_FOUND", "Unknown object id: " + id.dump());
+                 ids.push_back({id.get<uint64_t>()});
              }
-             return EDITOR::OperationOk(changed ? "Lighting bake quality updated." : "Lighting bake quality unchanged.",
-                                        {{"appliedPatch", EDITOR::ProjectAppliedPatch(patch, stored)},
-                                         {"adjusted", EDITOR::CollectAdjustedPatchValues(patch, stored)},
-                                         {"settings", stored},
-                                         {"documentChanged", changed}});
+             if (ids.empty())
+                 return EDITOR::OperationFailure("INVALID_OBJECTS", "objectIds must be a non-empty array.");
+             const bool keep = parameters.at("alwaysLoaded").get<bool>();
+             const std::vector<SceneObjectData> before = scene.GetSceneDocument().objects;
+             const bool dirty = context_.sceneDirty || scene.HasUnsavedSceneChanges();
+             const size_t changed =
+                 EDITOR::SetObjectsFlag(scene.GetSceneDocument(), ids, &SceneObjectData::alwaysLoaded, keep);
+             if (changed != 0u) {
+                 CommitSceneObjectAuthoringHistory(scene,
+                                                   {keep ? "Keep Objects Loaded" : "Store Objects With Cells", before,
+                                                    scene.GetSceneDocument().objects, scene.GetSceneDocument().camera,
+                                                    scene.GetSceneDocument().camera, dirty, false, false});
+             }
+             return EDITOR::OperationOk(std::to_string(changed) + " object(s) changed.",
+                                        {{"changedCount", changed}, {"documentChanged", changed != 0u}});
          }},
         EditorOperationKind::Mutation);
 

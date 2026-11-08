@@ -35,7 +35,8 @@ namespace HIKARI {
 namespace {
 bool IsIgnoredDirectoryName(const std::string& name) {
     const std::string lower = TEXT::ToLowerAsciiCopy(name);
-    return lower == ".git" || lower == "library" || lower == "projectsettings" || lower == "tmp" || lower == "cache";
+    return lower == ".git" || lower == "library" || lower == "projectsettings" || lower == "tmp" || lower == "cache" ||
+           ASSETS::SEMANTICS::IsSceneCellDirectoryName(lower);
 }
 
 bool IsMetaPath(const std::filesystem::path& path) {

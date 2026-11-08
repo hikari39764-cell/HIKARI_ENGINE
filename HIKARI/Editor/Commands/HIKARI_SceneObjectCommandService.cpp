@@ -23,6 +23,8 @@ constexpr SceneObjectCommandPresentation kPresentations[] = {
     {"ui.common.delete", "Delete"},
     {"editor.scene.lock", ""},
     {"editor.scene.unlock", ""},
+    {"editor.scene.keepLoaded", ""},
+    {"editor.scene.streamWithCell", ""},
     {"editor.ui.save.as.prefab.5cb805", ""},
     {"editor.scene.instantiatePrefab", ""},
     {"editor.ui.add.component.08ba89", ""},
@@ -62,13 +64,19 @@ bool SceneObjectCommandService::CanExecute(SceneObjectCommandId command, const D
     switch (command) {
     case SceneObjectCommandId::InstantiatePrefab: return !argument.empty();
     case SceneObjectCommandId::Lock:
-        return HasSelectedObjectWithEditorLock(scene.GetSceneDocument(), selectedIds, false);
+        return HasSelectedObjectWithFlag(scene.GetSceneDocument(), selectedIds, &SceneObjectData::editorLocked, false);
     case SceneObjectCommandId::Unlock:
-        return HasSelectedObjectWithEditorLock(scene.GetSceneDocument(), selectedIds, true);
+        return HasSelectedObjectWithFlag(scene.GetSceneDocument(), selectedIds, &SceneObjectData::editorLocked, true);
+    case SceneObjectCommandId::KeepLoaded:
+    case SceneObjectCommandId::StoreWithCell:
+        // 常駐は分区場景だけが使う。
+        return scene.GetSceneDocument().partition.enabled &&
+               HasSelectedObjectWithFlag(scene.GetSceneDocument(), selectedIds, &SceneObjectData::alwaysLoaded,
+                                         command == SceneObjectCommandId::StoreWithCell);
     case SceneObjectCommandId::Duplicate:
     case SceneObjectCommandId::Delete:
         return context.selection.GetSelectedObjectCount() != 0u &&
-               !HasSelectedObjectWithEditorLock(scene.GetSceneDocument(), selectedIds, true);
+               !HasSelectedObjectWithFlag(scene.GetSceneDocument(), selectedIds, &SceneObjectData::editorLocked, true);
     case SceneObjectCommandId::Rename:
     case SceneObjectCommandId::SaveAsPrefab:
     case SceneObjectCommandId::AddComponent:
@@ -202,8 +210,8 @@ bool SceneObjectCommandService::Execute(SceneObjectCommandId command, DocumentSc
     case SceneObjectCommandId::Lock:
     case SceneObjectCommandId::Unlock: {
         const bool locked = command == SceneObjectCommandId::Lock;
-        const std::size_t changedCount =
-            SetObjectsEditorLocked(scene.GetSceneDocument(), context.selection.GetSelectedObjectIds(), locked);
+        const std::size_t changedCount = SetObjectsFlag(
+            scene.GetSceneDocument(), context.selection.GetSelectedObjectIds(), &SceneObjectData::editorLocked, locked);
         if (changedCount == 0u) {
             return false;
         }
@@ -212,6 +220,23 @@ bool SceneObjectCommandService::Execute(SceneObjectCommandId command, DocumentSc
                                       beforeCamera, dirtyBefore, scene, false);
         SetStatus(std::string(locked ? "Locked " : "Unlocked ") + std::to_string(changedCount) +
                       (changedCount == 1u ? " object." : " objects."),
+                  false);
+        return true;
+    }
+    case SceneObjectCommandId::KeepLoaded:
+    case SceneObjectCommandId::StoreWithCell: {
+        const bool keep = command == SceneObjectCommandId::KeepLoaded;
+        const std::size_t changedCount = SetObjectsFlag(
+            scene.GetSceneDocument(), context.selection.GetSelectedObjectIds(), &SceneObjectData::alwaysLoaded, keep);
+        if (changedCount == 0u) {
+            return false;
+        }
+        context.sceneDirty = true;
+        historyRequest_ = MakeHistory(keep ? "Keep Objects Loaded" : "Store Objects With Cells",
+                                      std::move(beforeObjects), beforeCamera, dirtyBefore, scene, false);
+        SetStatus(std::string(keep ? "Kept " : "Released ") + std::to_string(changedCount) +
+                      (changedCount == 1u ? " object" : " objects") +
+                      (keep ? " in the main scene file." : " to their cells."),
                   false);
         return true;
     }

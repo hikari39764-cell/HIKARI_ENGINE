@@ -77,6 +77,14 @@ void SceneInspectorPanel::DrawObjectContextMenu(DocumentSceneBase& scene, Editor
         commands.Execute(lockCommand, scene, context, selectionSync);
         return;
     }
+    if (scene.GetSceneDocument().partition.enabled) {
+        const SceneObjectCommandId loadCommand =
+            target->alwaysLoaded ? SceneObjectCommandId::StoreWithCell : SceneObjectCommandId::KeepLoaded;
+        if (commandItem(loadCommand)) {
+            commands.Execute(loadCommand, scene, context, selectionSync);
+            return;
+        }
+    }
     ImGui::Separator();
     if (commandItem(SceneObjectCommandId::Duplicate)) {
         deferCommand(SceneObjectCommandId::Duplicate);

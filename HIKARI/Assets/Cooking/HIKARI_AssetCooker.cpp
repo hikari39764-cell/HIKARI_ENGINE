@@ -292,6 +292,19 @@ AssetCookResult AssetCooker::Cook(const AssetCookOptions& options) const {
                                      options.contentRoot / cookedRecord.sourcePath, result.fileCount, result.message)) {
                 return result;
             }
+            // 分区場景の格子ファイル（取り込みが付属ファイルとして記録したもの）も場景の隣の同じ相対位置へ配る。
+            if (sourceRecord->type == AssetType::Scene) {
+                for (const AssetDependencyDesc& dependency : sourceRecord->artifactManifest.dependencies) {
+                    const std::filesystem::path companion = TEXT::PathFromUtf8(dependency.path);
+                    if (dependency.role == "SourceCompanion" && !dependency.guid.IsValid() &&
+                        PATHS::IsSafeRelativePath(companion) &&
+                        !CopyCookPayloadFile(options.projectRoot / companion,
+                                             options.contentRoot / MakeRuntimePayloadPath(companion), result.fileCount,
+                                             result.message)) {
+                        return result;
+                    }
+                }
+            }
         }
 
         for (const AssetArtifactDesc& artifact : cookedRecord.artifactManifest.artifacts) {

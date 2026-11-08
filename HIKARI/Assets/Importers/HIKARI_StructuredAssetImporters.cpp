@@ -11,9 +11,12 @@
 #include "Assets/RenderStyle/HIKARI_RenderStyleAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
+#include "Core/Text/HIKARI_UtfPath.h"
+#include "Project/Paths/HIKARI_ProjectPath.h"
 #include <array>
 #include <cstring>
 #include <fstream>
+#include <set>
 #include <unordered_set>
 
 namespace HIKARI {
@@ -37,7 +40,15 @@ public:
                               ? record.sourcePath
                               : (context.projectRoot / record.sourcePath).lexically_normal();
         try {
-            return import_(path, record.guid);
+            AssetImportResult result = import_(path, record.guid);
+            // 取り込み器は絶対パスで依存を返してよい。記録は project 相対にそろえる。
+            for (AssetDependencyDesc& dependency : result.dependencies) {
+                const std::filesystem::path dependencyPath = TEXT::PathFromUtf8(dependency.path);
+                if (dependencyPath.is_absolute())
+                    dependency.path =
+                        TEXT::PathToUtf8(PROJECT_PATHS::MakeProjectRelativePath(context.projectRoot, dependencyPath));
+            }
+            return result;
         } catch (const nlohmann::json::exception& error) {
             AssetImportResult result;
             result.message = std::string("Malformed asset: ") + error.what();
@@ -53,12 +64,27 @@ private:
 
 AssetImportResult ImportScene(const std::filesystem::path& path, const AssetGuid&) {
     SceneDocument document;
+    SceneCellFileState cells;
     AssetImportResult result;
-    result.success = SceneSerializer{}.LoadFromFile(path.string(), document);
-    result.message =
-        result.success ? "Scene asset validated" : "Scene asset validation failed: " + path.generic_string();
-    result.diagnosticsJson =
-        nlohmann::json{{"kind", "Scene"}, {"valid", result.success}, {"objectCount", document.objects.size()}}.dump();
+    const bool loaded = SceneSerializer{}.LoadFromFile(path.string(), document, &cells);
+    result.success = loaded && cells.unreadableCells.empty();
+    // 分区場景の格子ファイルも入力：一つの格子だけが書き直されても取り込みは古くなる。
+    std::set<WorldCellCoord> cellFiles = cells.unreadableCells;
+    for (const auto& [cell, checksum] : cells.cellChecksums)
+        cellFiles.insert(cell);
+    for (WorldCellCoord cell : cellFiles)
+        result.dependencies.push_back(
+            {AssetGuid{}, TEXT::PathToUtf8(MakeSceneCellObjectsPath(path, cell)), "SourceCompanion"});
+    result.message = result.success ? "Scene asset validated"
+                     : loaded       ? "Scene has " + std::to_string(cells.unreadableCells.size()) +
+                                    " unreadable cell file(s): " + path.generic_string()
+                              : "Scene asset validation failed: " + path.generic_string();
+    result.diagnosticsJson = nlohmann::json{
+        {"kind", "Scene"},
+        {"valid", result.success},
+        {"objectCount", document.objects.size()},
+        {"cellCount",
+         cellFiles.size()}}.dump();
     return result;
 }
 

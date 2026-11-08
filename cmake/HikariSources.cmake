@@ -673,6 +673,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_EditorUiServiceRegistry.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Geometry/HIKARI_MeshLodGenerator.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Serialization/HIKARI_SceneSerializer.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Serialization/HIKARI_SceneCellFiles.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Lighting/HIKARI_LightingAuthoringModel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Lighting/HIKARI_LightAuthoringModel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Lighting/HIKARI_SceneLightingSet.cpp"

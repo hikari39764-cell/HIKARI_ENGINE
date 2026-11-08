@@ -313,13 +313,30 @@ nlohmann::json ComponentAuthoringQueryService::SerializeObject(const SceneDocume
     for (const SceneComponentData& component : object.components) {
         components.push_back(SerializeComponent(component));
     }
-    return {
+    nlohmann::json described = {
         {"objectId", object.id.value},
         {"name", object.name},
         {"hierarchyPath", BuildHierarchyPath(document, object)},
         {"parentObjectId", object.parent.has_value() ? nlohmann::json(object.parent->value) : nlohmann::json(nullptr)},
         {"enabled", object.enabled},
         {"components", std::move(components)}};
+    if (document.partition.enabled) {
+        // 分区場景では保存先（主ファイルか格子）を示す。子は根に従う。
+        const SceneObjectData* root = &object;
+        for (size_t step = 0u; step < document.objects.size() && root->parent.has_value(); ++step) {
+            const SceneObjectData* parent = FindSceneObjectData(document, *root->parent);
+            if (parent == nullptr) {
+                break;
+            }
+            root = parent;
+        }
+        described["alwaysLoaded"] = object.alwaysLoaded;
+        described["storedIn"] =
+            root->alwaysLoaded ? std::string("main")
+                               : WorldCellFileStem(WorldCellAt(root->transform.position.x, root->transform.position.z,
+                                                               document.partition.cellSizeMeters));
+    }
+    return described;
 }
 
 } // namespace HIKARI::EDITOR

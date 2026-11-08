@@ -16,6 +16,7 @@
 #include "Scene/HIKARI_CinematicSequence.h"
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneObjectId.h"
+#include "Scene/Partition/HIKARI_ScenePartition.h"
 
 namespace HIKARI {
 
@@ -49,6 +50,8 @@ struct SceneObjectData {
     bool editorLocked = false;
     bool enabled = true;
     std::string editorFolder{};
+    // 分区場景でも格子へ分けず主ファイルに残し、常に読み込む（根の物体だけが意味を持つ。子は根に従う）。
+    bool alwaysLoaded = false;
 
     bool operator==(const SceneObjectData&) const = default;
 
@@ -171,6 +174,7 @@ struct SceneDocument {
     SceneCameraSettings camera{};
     SceneCinematicsSettings cinematics{};
     SceneLightingBakeSettings lightingBake{};
+    ScenePartitionSettings partition{};
     std::vector<SceneObjectData> objects{};
     std::vector<SceneSystemData> systems{};
     std::vector<std::string> editorFolders{};

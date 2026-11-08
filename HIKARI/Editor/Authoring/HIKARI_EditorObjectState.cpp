@@ -18,8 +18,8 @@ bool IsObjectEditorLocked(const SceneDocument& document, SceneObjectId objectId)
     return false;
 }
 
-bool HasSelectedObjectWithEditorLock(const SceneDocument& document, const std::vector<SceneObjectId>& objectIds,
-                                     bool locked) noexcept {
+bool HasSelectedObjectWithFlag(const SceneDocument& document, const std::vector<SceneObjectId>& objectIds,
+                               SceneObjectFlag flag, bool value) noexcept {
     std::unordered_set<uint64_t> selectedIds{};
     selectedIds.reserve(objectIds.size());
     for (SceneObjectId objectId : objectIds) {
@@ -28,14 +28,15 @@ bool HasSelectedObjectWithEditorLock(const SceneDocument& document, const std::v
         }
     }
     for (const SceneObjectData& object : document.objects) {
-        if (selectedIds.contains(object.id.value) && object.editorLocked == locked) {
+        if (selectedIds.contains(object.id.value) && object.*flag == value) {
             return true;
         }
     }
     return false;
 }
 
-std::size_t SetObjectsEditorLocked(SceneDocument& document, const std::vector<SceneObjectId>& objectIds, bool locked) {
+std::size_t SetObjectsFlag(SceneDocument& document, const std::vector<SceneObjectId>& objectIds, SceneObjectFlag flag,
+                           bool value) {
     std::unordered_set<uint64_t> selectedIds{};
     selectedIds.reserve(objectIds.size());
     for (SceneObjectId objectId : objectIds) {
@@ -46,10 +47,10 @@ std::size_t SetObjectsEditorLocked(SceneDocument& document, const std::vector<Sc
 
     std::size_t changedCount = 0u;
     for (SceneObjectData& object : document.objects) {
-        if (!selectedIds.contains(object.id.value) || object.editorLocked == locked) {
+        if (!selectedIds.contains(object.id.value) || object.*flag == value) {
             continue;
         }
-        object.editorLocked = locked;
+        object.*flag = value;
         ++changedCount;
     }
     return changedCount;

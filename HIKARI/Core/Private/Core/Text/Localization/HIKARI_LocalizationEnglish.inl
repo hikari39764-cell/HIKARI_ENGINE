@@ -2321,7 +2321,9 @@
     {"cine.closingPush", "Closing push"}, {"cine.unbound", "Unbound"},
 
     {"editor.scene.rename", "Rename"}, {"editor.scene.duplicate", "Duplicate"}, {"editor.scene.lock", "Lock selected"},
-    {"editor.scene.unlock", "Unlock selected"}, {"editor.scene.instantiatePrefab", "Instantiate prefab"},
+    {"editor.scene.unlock", "Unlock selected"},
+    {"editor.scene.keepLoaded", "Keep always loaded (stays in the main scene file)"},
+    {"editor.scene.streamWithCell", "Store with its cell"}, {"editor.scene.instantiatePrefab", "Instantiate prefab"},
 
     {"editor.ui.a.transient.typed.signal.emitted.by.runtime.logic.da0328",
      "A transient typed signal emitted by runtime logic"},

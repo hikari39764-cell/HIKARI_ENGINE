@@ -28,6 +28,21 @@ std::filesystem::path MakeArtifactManifestPath(const std::filesystem::path& libr
     return (libraryRoot / "AssetDatabase" / "Artifacts" / (guid + ".artifact.json")).lexically_normal();
 }
 
+std::filesystem::path MakeSceneCellDirectoryPath(const std::filesystem::path& scenePath) {
+    std::string stem = TEXT::PathToUtf8(scenePath.filename());
+    constexpr std::string_view kSceneJsonSuffix = ".scene.json";
+    if (TEXT::ToLowerAsciiCopy(stem).ends_with(kSceneJsonSuffix)) {
+        stem.resize(stem.size() - kSceneJsonSuffix.size());
+    } else {
+        stem = TEXT::PathToUtf8(scenePath.stem());
+    }
+    return scenePath.parent_path() / TEXT::PathFromUtf8(stem + std::string(kSceneCellDirectorySuffix));
+}
+
+bool IsSceneCellDirectoryName(std::string_view lowerName) noexcept {
+    return lowerName.size() > kSceneCellDirectorySuffix.size() && lowerName.ends_with(kSceneCellDirectorySuffix);
+}
+
 std::string MakeAssetFileStem(std::string value, std::string_view fallback) {
     // 英数字・-・_ と UTF-8 の多バイト文字（漢字・かな）は残し、文件名に使えない ASCII の記号と空白は _ にする。
     for (char& character : value) {

@@ -14,6 +14,12 @@ std::filesystem::path MakeSourceMetaPath(const std::filesystem::path& sourceMeta
                                          const std::filesystem::path& relativeSource);
 std::filesystem::path MakeArtifactManifestPath(const std::filesystem::path& libraryRoot, const std::string& guid);
 
+// 分区場景の格子ファイルを置く、場景ファイルの隣のフォルダ（Island.scene.json → Island.cells）。中身は場景という
+// 一つの資産に属し、資産として走査しない。
+inline constexpr std::string_view kSceneCellDirectorySuffix = ".cells";
+std::filesystem::path MakeSceneCellDirectoryPath(const std::filesystem::path& scenePath);
+bool IsSceneCellDirectoryName(std::string_view lowerName) noexcept;
+
 std::string MakeAssetFileStem(std::string value, std::string_view fallback);
 
 enum class AssetImporterKind : uint8_t {

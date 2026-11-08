@@ -2368,7 +2368,9 @@
     {"cine.unbound", "未バインド"},
 
     {"editor.scene.rename", "名前を変更"}, {"editor.scene.duplicate", "複製"}, {"editor.scene.lock", "選択をロック"},
-    {"editor.scene.unlock", "選択のロックを解除"}, {"editor.scene.instantiatePrefab", "プレハブを配置"},
+    {"editor.scene.unlock", "選択のロックを解除"},
+    {"editor.scene.keepLoaded", "常駐にする（分区場景でも主ファイルに残す）"},
+    {"editor.scene.streamWithCell", "常駐を解除（格子ごとに保存）"}, {"editor.scene.instantiatePrefab", "プレハブを配置"},
 
     {"editor.ui.a.transient.typed.signal.emitted.by.runtime.logic.da0328",
      "実行ロジックが発行する一時的な型付きシグナル"},
