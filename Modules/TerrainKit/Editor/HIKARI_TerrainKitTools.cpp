@@ -16,6 +16,7 @@ using namespace TERRAIN::DATA;
 constexpr EditorWorkspaceColor kBrushColor{1.0f, 0.82f, 0.25f, 1.0f};
 constexpr EditorWorkspaceColor kMaskColor{0.35f, 0.85f, 1.0f, 1.0f};
 constexpr EditorWorkspaceColor kStampColor{0.55f, 1.0f, 0.55f, 1.0f};
+constexpr EditorWorkspaceColor kPaintColor{1.0f, 0.55f, 0.85f, 1.0f};
 
 void DrawGroundCircle(IEditorViewportCanvas& canvas, const TerrainStore& store, const float center[3], float radius,
                       EditorWorkspaceColor color) {
@@ -206,6 +207,36 @@ protected:
     }
 };
 
+class PaintTool final : public StrokeTool {
+public:
+    using StrokeTool::StrokeTool;
+    const char* GetToolId() const noexcept override { return kPaintToolId; }
+    const char* GetDisplayName() const noexcept override { return "Terrain Paint"; }
+
+protected:
+    std::string_view Hint() const override {
+        return "Terrain Paint: drag to paint the selected surface, Shift hands it back to the rules, Ctrl + wheel sets "
+               "the radius";
+    }
+    EditorWorkspaceColor Color() const override { return kPaintColor; }
+    float& Radius() override { return shared_->paintBrush.radiusMeters; }
+    const char* UndoLabel() const override { return "Paint Terrain"; }
+
+    void ApplyPath(TerrainStore& store, std::span<const MATH::Vec2> path, const EditorViewportInput& input,
+                   TerrainEditRecorder& recorder) override {
+        ControlBrushSettings brush = shared_->paintBrush;
+        brush.strength *= std::clamp(input.pressure, 0.0f, 1.0f);
+        if (input.shift) {
+            brush.op = ControlBrushOp::Unlock;
+        }
+        BrushEditResult edit{};
+        std::string error{};
+        if (ApplyControlBrush(store.Data(), brush, path, &recorder, edit, error)) {
+            store.MarkControlChanged(edit.touched);
+        }
+    }
+};
+
 class StampTool final : public IEditorViewportTool {
 public:
     explicit StampTool(std::shared_ptr<EditorShared> shared) : shared_(std::move(shared)) {}
@@ -257,6 +288,10 @@ std::unique_ptr<IEditorViewportTool> MakeSculptTool(std::shared_ptr<EditorShared
 
 std::unique_ptr<IEditorViewportTool> MakeMaskTool(std::shared_ptr<EditorShared> shared) {
     return std::make_unique<MaskTool>(std::move(shared));
+}
+
+std::unique_ptr<IEditorViewportTool> MakePaintTool(std::shared_ptr<EditorShared> shared) {
+    return std::make_unique<PaintTool>(std::move(shared));
 }
 
 std::unique_ptr<IEditorViewportTool> MakeStampTool(std::shared_ptr<EditorShared> shared) {

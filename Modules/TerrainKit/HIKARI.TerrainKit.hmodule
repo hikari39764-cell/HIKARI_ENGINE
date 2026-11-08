@@ -6,5 +6,8 @@
   "runtimeLibrary": "HIKARI_TerrainKit.dll",
   "shippingRuntimeLibrary": "HIKARI_TerrainKit.dll",
   "editorLibrary": "HIKARI_TerrainKit.dll",
-  "dependencies": []
+  "dependencies": [],
+  "assetTypes": [
+    {"typeId": "terrainkit.surface", "extension": ".hterrainsurface", "displayName": "Terrain Surface"}
+  ]
 }

@@ -11,6 +11,8 @@
 
 #include <json.hpp>
 
+#include <windows.h>
+
 #include "TerrainKit/Data/HIKARI_TerrainDataFile.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataLayers.h"
 
@@ -21,6 +23,7 @@ using namespace TERRAIN::DATA;
 
 constexpr uint32_t kNormalMipCount = 5u;
 constexpr char kLayerFileName[] = "terrain.layers.json";
+constexpr char kSurfaceSlotFileName[] = "terrain.surfaces.json";
 
 // 法線の xz を 16 bit で持つ（y は着色器で復元する）。
 int16_t ToSnorm16(float value) noexcept {
@@ -141,6 +144,15 @@ bool ValidSettings(const TerrainSettings& settings, std::string* error) {
 
 } // namespace
 
+std::filesystem::path TerrainModuleDirectory() {
+    HMODULE module = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       reinterpret_cast<LPCWSTR>(&TerrainModuleDirectory), &module);
+    wchar_t path[MAX_PATH]{};
+    GetModuleFileNameW(module, path, MAX_PATH);
+    return std::filesystem::path(path).parent_path();
+}
+
 std::filesystem::path TerrainCellDirectory(const std::filesystem::path& scenePath) {
     // 引擎の格子の置き場と同じ規則（Main.scene.json -> Main.cells）。
     std::u8string stem = scenePath.filename().u8string();
@@ -196,6 +208,19 @@ bool TerrainStore::Open(const std::filesystem::path& scenePath, const TerrainSet
             return false;
         }
     }
+    // 枠の名前。無ければ内蔵の材質を順に割り当てる（枠 0 が地形全体の既定）。
+    std::vector<std::string> slots{};
+    nlohmann::json slotFile{};
+    std::string slotMessage{};
+    const std::filesystem::path slotPath = TerrainCellDirectory(scenePath) / kSurfaceSlotFileName;
+    std::error_code slotError{};
+    if (std::filesystem::exists(slotPath, slotError) && ReadJson(slotPath, slotFile, slotMessage)) {
+        slots = slotFile.value("slots", std::vector<std::string>{});
+    }
+    if (slots.empty()) {
+        slots = {"Grass", "Soil", "Rock", "Sand", "Snow"};
+    }
+    surfaces_.SetSlots(ProjectRoot(), std::move(slots));
     BuildTileList();
     return true;
 }
@@ -384,6 +409,39 @@ void TerrainStore::RebakeRect(const SampleRect& rect) {
         }
     });
     MarkSaveDirty(touched);
+}
+
+void TerrainStore::MarkControlChanged(const SampleRect& rect) {
+    std::vector<TileCoord> touched{};
+    ForEachTileHolding(settings_.grid, rect, [&](TileCoord tile) {
+        const auto found = tiles_.find(tile);
+        if (found == tiles_.end()) {
+            return;
+        }
+        touched.push_back(tile);
+        const SampleRect tileRect = TileSampleRect(settings_.grid, tile);
+        const SampleRect area = IntersectRects(tileRect, rect);
+        if (area.Empty()) {
+            return;
+        }
+        TileRuntime& runtime = found->second;
+        const auto x0 = static_cast<uint32_t>(area.x0 - tileRect.x0);
+        const auto z0 = static_cast<uint32_t>(area.z0 - tileRect.z0);
+        const uint32_t x1 = x0 + area.width - 1u;
+        const uint32_t z1 = z0 + area.height - 1u;
+        runtime.controlX0 = runtime.controlRectPending ? (std::min)(runtime.controlX0, x0) : x0;
+        runtime.controlZ0 = runtime.controlRectPending ? (std::min)(runtime.controlZ0, z0) : z0;
+        runtime.controlX1 = runtime.controlRectPending ? (std::max)(runtime.controlX1, x1) : x1;
+        runtime.controlZ1 = runtime.controlRectPending ? (std::max)(runtime.controlZ1, z1) : z1;
+        runtime.controlRectPending = true;
+        ++runtime.revision; // 光線追跡の代理の色も変わる
+    });
+    MarkSaveDirty(touched);
+}
+
+void TerrainStore::SetSurfaceSlots(std::vector<std::string> names) {
+    surfaceSlotsDirty_ = true;
+    surfaces_.SetSlots(ProjectRoot(), std::move(names));
 }
 
 void TerrainStore::RebakeAfterStackChange() {
@@ -600,6 +658,12 @@ bool TerrainStore::Save(const std::filesystem::path& scenePath, std::string& err
         error = "Could not write the terrain layers: " + message;
         return false;
     }
+    if ((!samePath || surfaceSlotsDirty_) &&
+        !WriteJson(directory / kSurfaceSlotFileName, nlohmann::json{{"slots", surfaces_.Slots()}}, message)) {
+        error = "Could not write the terrain surfaces: " + message;
+        return false;
+    }
+    surfaceSlotsDirty_ = false;
     const HeightStackEvaluator evaluator(*data_);
     std::vector<TileCoord> tiles = unsavedTiles_;
     if (!samePath) {

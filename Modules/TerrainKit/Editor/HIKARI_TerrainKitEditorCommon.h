@@ -21,6 +21,7 @@ namespace HIKARI::TERRAINKIT {
 inline constexpr char kSculptToolId[] = "terrainkit.sculpt";
 inline constexpr char kMaskToolId[] = "terrainkit.mask";
 inline constexpr char kStampToolId[] = "terrainkit.stamp";
+inline constexpr char kPaintToolId[] = "terrainkit.paint";
 
 // 編集器の所有スレッドだけで触る。
 struct EditorShared {
@@ -28,6 +29,7 @@ struct EditorShared {
     EDITOR_PROJECT::IEditorWorkspaceCommands* commands = nullptr;
     TERRAIN::DATA::HeightBrushSettings brush{};
     TERRAIN::DATA::MaskBrushSettings maskBrush{};
+    TERRAIN::DATA::ControlBrushSettings paintBrush{};
     TERRAIN::DATA::StampSettings stamp{};
     std::string stampName = "hill";
     TERRAIN::DATA::ErosionRequest erosion{};
@@ -87,6 +89,7 @@ bool ExportBakedHeight(const TerrainStore& store, std::filesystem::path& outExr,
 std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeSculptTool(std::shared_ptr<EditorShared> shared);
 std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeMaskTool(std::shared_ptr<EditorShared> shared);
 std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeStampTool(std::shared_ptr<EditorShared> shared);
+std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakePaintTool(std::shared_ptr<EditorShared> shared);
 std::unique_ptr<EDITOR_PROJECT::IEditorPanel> MakeTerrainPanel(std::shared_ptr<EditorShared> shared);
 
 // 操作の登録。handlers は登録の間生きている必要がある（呼び手が持つ）。

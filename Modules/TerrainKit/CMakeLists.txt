@@ -68,6 +68,8 @@ if(TARGET HIKARI_EditorHost)
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitModule.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitStore.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitStore.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitSurfaces.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitSurfaces.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitEditor.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitEditorCommon.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitExport.cpp"
@@ -87,7 +89,7 @@ if(TARGET HIKARI_EditorHost)
         PRIVATE
             HIKARI_GAME_PROJECT_SDK_IMPORTS=1
             HIKARI_GAME_PROJECT_EDITOR_SDK_IMPORTS=1)
-    target_link_libraries(HIKARI_TerrainKit PRIVATE HIKARI_EditorHost HIKARI::TerrainKitData)
+    target_link_libraries(HIKARI_TerrainKit PRIVATE HIKARI_EditorHost HIKARI::TerrainKitData HIKARI::DirectXTex)
     hikari_configure_engine_target(HIKARI_TerrainKit)
     set(_terrainkit_output "$<TARGET_FILE_DIR:HIKARI_EditorHost>/Modules/HIKARI.TerrainKit")
     foreach(configuration IN ITEMS Debug EditorRelease Shipping)
@@ -110,5 +112,8 @@ if(TARGET HIKARI_EditorHost)
         COMMAND "${CMAKE_COMMAND}" -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/Shaders"
             "${_terrainkit_output}/Shaders"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/Content"
+            "${_terrainkit_output}/Content"
         VERBATIM)
 endif()

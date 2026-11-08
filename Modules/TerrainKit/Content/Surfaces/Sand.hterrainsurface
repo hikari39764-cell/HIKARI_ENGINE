@@ -1,0 +1,16 @@
+{
+  "name": "Sand",
+  "color": "Ground101_1K-JPG_Color.jpg",
+  "normal": "Ground054_1K-JPG_NormalDX.jpg",
+  "tilingMeters": 4.0,
+  "heightContrast": 0.15,
+  "roughnessValue": 0.95,
+  "source": "https://ambientcg.com/view?id=Ground101 and https://ambientcg.com/view?id=Ground054",
+  "license": "CC0-1.0",
+  "author": "ambientCG (Lennart Demes)",
+  "baseColor": [
+    0.55,
+    0.52,
+    0.48
+  ]
+}

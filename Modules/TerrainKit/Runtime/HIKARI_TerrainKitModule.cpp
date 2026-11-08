@@ -16,6 +16,7 @@
 #include "HIKARI/Project/RuntimeFeature.h"
 #include "HIKARI/Project/RuntimeFeatureRegistration.h"
 #include "HIKARI_TerrainKitStore.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataControl.h"
 
 namespace HIKARI::TERRAINKIT {
 namespace {
@@ -53,6 +54,9 @@ struct TerrainNodeInstance {
 };
 static_assert(sizeof(TerrainNodeInstance) == 32u);
 
+// 着色器の材質の表（図 2 行）：0 行 = 繰り返しの長さ、高さ混合の幅、法線の強さ、予備。1 行 = 予備。
+inline constexpr uint32_t kSurfaceParamRows = 2u;
+
 struct TerrainDrawConstants {
     float heightMin = 0.0f;
     float heightRange = 1.0f;
@@ -60,7 +64,8 @@ struct TerrainDrawConstants {
     float tileCells = 256.0f;
     uint32_t gridCells = kGridCells;
     uint32_t debugFlags = 0u;
-    float reserved[2]{};
+    uint32_t surfaceCount = 0u; // 0 なら材質の図が揃うまで仮の色で描く
+    float reserved = 0.0f;
 };
 
 struct FrustumPlanes {
@@ -195,6 +200,7 @@ public:
         }
         EnsureResources(resources, store);
         UploadPendingTiles(resources, store);
+        UpdateSurfaces(resources, store);
         UpdateRayProxies(resources, store);
         store.Erosion().Update(resources);
     }
@@ -231,10 +237,18 @@ public:
         constants.heightRange = store.Settings().grid.heightRange;
         constants.tileSize = tileSize;
         constants.tileCells = static_cast<float>(store.Settings().grid.tileCells);
+        const auto& surfaces = store.Surfaces().Surfaces();
+        constants.surfaceCount = render.surfacesUploaded == surfaces.size() && render.surfaceParams != 0u
+                                     ? static_cast<uint32_t>(surfaces.size())
+                                     : 0u;
         RenderSurfaceDraw draw{};
         draw.programId = kSurfaceProgram;
         draw.textures[0] = render.heightTexture;
         draw.textures[1] = render.normalTexture;
+        draw.textures[2] = render.controlTexture;
+        draw.textures[3] = render.surfaceColor;
+        draw.textures[4] = render.surfaceDetail;
+        draw.textures[5] = render.surfaceParams;
         draw.indexBuffer = render.indexBuffer;
         draw.indexCount = render.indexCount;
         draw.instances = instances_.data();
@@ -346,6 +360,9 @@ private:
         if (render.normalTexture != 0u) {
             resources.Release(render.normalTexture);
         }
+        if (render.controlTexture != 0u) {
+            resources.Release(render.controlTexture);
+        }
         for (const auto& [tile, proxy] : render.rayProxies) {
             resources.Release(proxy.resource);
         }
@@ -356,6 +373,8 @@ private:
             resources.CreateTextureArray({samples, samples, layers, 1u, RenderSurfaceTextureFormat::R16Unorm});
         render.normalTexture =
             resources.CreateTextureArray({samples, samples, layers, 5u, RenderSurfaceTextureFormat::R16G16Snorm});
+        render.controlTexture =
+            resources.CreateTextureArray({samples, samples, layers, 1u, RenderSurfaceTextureFormat::R32Uint});
         render.layoutRevision = store.LayoutRevision();
         store.MarkAllForUpload();
     }
@@ -370,6 +389,10 @@ private:
         for (auto& [tile, runtime] : store.MutableTiles()) {
             if (!runtime.uploadPending && runtime.rectPending) {
                 UploadPendingRect(resources, render, runtime, samples);
+            }
+            if (!runtime.uploadPending && runtime.controlRectPending) {
+                UploadControl(resources, render, store, tile, runtime, samples, runtime.controlX0, runtime.controlZ0,
+                              runtime.controlX1, runtime.controlZ1);
             }
             if (!runtime.uploadPending || runtime.heights.empty()) {
                 continue;
@@ -395,11 +418,105 @@ private:
                 offset += static_cast<size_t>(size) * size * 2u;
                 size = (std::max)(size >> 1u, 1u);
             }
+            UploadControl(resources, render, store, tile, runtime, samples, 0u, 0u, samples - 1u, samples - 1u);
             runtime.uploadPending = false;
             runtime.rectPending = false;
             if (++uploaded >= kUploadTilesPerFrame) {
                 break;
             }
+        }
+    }
+
+    // 瓦片の制御図の矩形を送る。塗っていない瓦片は 0（材質 0）で埋める。
+    static void UploadControl(IRenderSurfaceResources& resources, const TerrainRenderResources& render,
+                              const TerrainStore& store, TileCoord tile, TileRuntime& runtime, uint32_t samples,
+                              uint32_t x0, uint32_t z0, uint32_t x1, uint32_t z1) {
+        runtime.controlRectPending = false;
+        if (render.controlTexture == 0u) {
+            return;
+        }
+        static const std::vector<uint32_t> empty(static_cast<size_t>(513u) * 513u, 0u);
+        const auto* raster = store.Data().Control().Find(tile);
+        const uint32_t* source = raster != nullptr ? raster->values.data() : empty.data();
+        RenderSurfaceTextureUpload upload{};
+        upload.layer = runtime.layer;
+        upload.x = x0;
+        upload.y = z0;
+        upload.width = x1 - x0 + 1u;
+        upload.height = z1 - z0 + 1u;
+        upload.rowPitchBytes = (raster != nullptr ? samples : 513u) * sizeof(uint32_t);
+        upload.pixels = raster != nullptr ? source + static_cast<size_t>(z0) * samples + x0 : source;
+        (void)resources.UploadTexture(render.controlTexture, upload);
+    }
+
+    // 材質の図が揃ったら配列へ送る。一フレームに数枠ずつ（1 枠で約 2.7 MB）。
+    static void UpdateSurfaces(IRenderSurfaceResources& resources, TerrainStore& store) {
+        TerrainSurfaceLibrary& library = store.Surfaces();
+        (void)library.Poll();
+        TerrainRenderResources& render = store.Render();
+        const auto& surfaces = library.Surfaces();
+        if (render.surfaceRevision != library.Revision()) {
+            for (uint32_t* texture : {&render.surfaceColor, &render.surfaceDetail, &render.surfaceParams}) {
+                if (*texture != 0u) {
+                    resources.Release(*texture);
+                    *texture = 0u;
+                }
+            }
+            render.surfacesUploaded = 0u;
+            render.surfaceRevision = library.Revision();
+            const auto layers = static_cast<uint32_t>(surfaces.size());
+            if (layers == 0u) {
+                return;
+            }
+            render.surfaceColor =
+                resources.CreateTextureArray({kSurfaceTextureSize, kSurfaceTextureSize, layers, kSurfaceTextureMips,
+                                              RenderSurfaceTextureFormat::Bc7UnormSrgb});
+            render.surfaceDetail =
+                resources.CreateTextureArray({kSurfaceTextureSize, kSurfaceTextureSize, layers, kSurfaceTextureMips,
+                                              RenderSurfaceTextureFormat::Bc7Unorm});
+            render.surfaceParams = resources.CreateTextureArray(
+                {layers, kSurfaceParamRows, 1u, 1u, RenderSurfaceTextureFormat::R32G32B32A32Float});
+            std::vector<float> params(static_cast<size_t>(layers) * kSurfaceParamRows * 4u, 0.0f);
+            for (uint32_t index = 0u; index < layers; ++index) {
+                const TerrainSurfaceAsset& asset = surfaces[index].asset;
+                float* row = params.data() + static_cast<size_t>(index) * 4u;
+                row[0] = asset.tilingMeters;
+                row[1] = asset.heightContrast;
+                row[2] = asset.normalStrength;
+                row[3] = surfaces[index].colorHeight.empty() ? 0.0f : 1.0f;
+            }
+            RenderSurfaceTextureUpload upload{};
+            upload.width = layers;
+            upload.height = kSurfaceParamRows;
+            upload.rowPitchBytes = layers * 4u * sizeof(float);
+            upload.pixels = params.data();
+            (void)resources.UploadTexture(render.surfaceParams, upload);
+        }
+        constexpr uint32_t kSurfacesPerFrame = 2u;
+        for (uint32_t count = 0u; count < kSurfacesPerFrame && render.surfacesUploaded < surfaces.size(); ++count) {
+            const CookedSurface& surface = surfaces[render.surfacesUploaded];
+            const auto uploadMips = [&](uint32_t texture, const std::vector<uint8_t>& bytes) {
+                if (bytes.empty()) {
+                    return; // 焼けなかった材質は黒ではなく表の値で描く（着色器が見る）
+                }
+                size_t offset = 0u;
+                for (uint32_t mip = 0u; mip < kSurfaceTextureMips; ++mip) {
+                    const uint32_t size = (std::max)(kSurfaceTextureSize >> mip, 1u);
+                    const uint32_t blocks = (size + 3u) / 4u;
+                    RenderSurfaceTextureUpload upload{};
+                    upload.layer = render.surfacesUploaded;
+                    upload.mip = mip;
+                    upload.width = size;
+                    upload.height = size;
+                    upload.rowPitchBytes = blocks * 16u;
+                    upload.pixels = bytes.data() + offset;
+                    (void)resources.UploadTexture(texture, upload);
+                    offset += static_cast<size_t>(blocks) * blocks * 16u;
+                }
+            };
+            uploadMips(render.surfaceColor, surface.colorHeight);
+            uploadMips(render.surfaceDetail, surface.detail);
+            ++render.surfacesUploaded;
         }
     }
 
@@ -470,6 +587,37 @@ private:
         }
     }
 
+    // 材質の図が揃っていれば、区画の色を制御図の材質の平均色で置き換える（数点の平均）。
+    static void AddSurfaceColor(const TerrainStore& store, TileCoord tile, uint32_t x, uint32_t z, uint32_t size,
+                                float albedo[3]) {
+        const auto& surfaces = store.Surfaces().Surfaces();
+        if (surfaces.empty()) {
+            return;
+        }
+        const auto* raster = store.Data().Control().Find(tile);
+        const uint32_t samples = TERRAIN::DATA::TileSamples(store.Settings().grid);
+        float sum[3]{};
+        constexpr uint32_t kTaps = 4u;
+        for (uint32_t tapZ = 0u; tapZ < kTaps; ++tapZ) {
+            for (uint32_t tapX = 0u; tapX < kTaps; ++tapX) {
+                const uint32_t sx = (std::min)(x + size * tapX / kTaps + size / (2u * kTaps), samples - 1u);
+                const uint32_t sz = (std::min)(z + size * tapZ / kTaps + size / (2u * kTaps), samples - 1u);
+                const uint32_t value = raster != nullptr ? raster->values[static_cast<size_t>(sz) * samples + sx] : 0u;
+                const auto texel = TERRAIN::DATA::UnpackControlTexel(value);
+                const float blend = static_cast<float>(texel.blend) / 255.0f;
+                const auto base = (std::min)(static_cast<size_t>(texel.baseMaterial), surfaces.size() - 1u);
+                const auto overlay = (std::min)(static_cast<size_t>(texel.overlayMaterial), surfaces.size() - 1u);
+                for (int channel = 0; channel < 3; ++channel) {
+                    sum[channel] += surfaces[base].averageColor[channel] * (1.0f - blend) +
+                                    surfaces[overlay].averageColor[channel] * blend;
+                }
+            }
+        }
+        for (int channel = 0; channel < 3; ++channel) {
+            albedo[channel] = sum[channel] / static_cast<float>(kTaps * kTaps);
+        }
+    }
+
     uint32_t CreateRayProxy(IRenderSurfaceResources& resources, const TerrainStore& store, TileCoord tile,
                             const TileRuntime& runtime) const {
         const auto& grid = store.Settings().grid;
@@ -534,6 +682,8 @@ private:
                 region.normal[1] = inverseLength;
                 region.normal[2] = normalZ * inverseLength;
                 PlaceholderAlbedo(height / static_cast<float>(count), region.normal[1], region.albedo);
+                AddSurfaceColor(store, tile, regionX * step, regionZ * step, kRayProxyRegionCells * step,
+                                region.albedo);
                 regions.push_back(region);
             }
         }
@@ -617,6 +767,7 @@ public:
 
 class TerrainKitModule final : public RUNTIME::IGameProjectModule {
 public:
+    ~TerrainKitModule() override { TerrainStore::Get().Surfaces().Shutdown(); }
     std::string_view GetModuleId() const noexcept override { return "HIKARI.TerrainKit"; }
     bool RegisterRuntimeFeatures(RuntimeFeatureCatalog& catalog) override {
         return RegisterRuntimeFeature<TerrainFeature>(catalog);

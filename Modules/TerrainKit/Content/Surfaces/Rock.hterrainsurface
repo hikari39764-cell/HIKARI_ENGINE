@@ -1,0 +1,16 @@
+{
+  "name": "Rock",
+  "color": "Rock030_1K-JPG_Color.jpg",
+  "normal": "Rock030_1K-JPG_NormalDX.jpg",
+  "tilingMeters": 6.0,
+  "heightContrast": 0.08,
+  "roughnessValue": 0.8,
+  "source": "https://ambientcg.com/view?id=Rock030",
+  "license": "CC0-1.0",
+  "author": "ambientCG (Lennart Demes)",
+  "baseColor": [
+    2.2,
+    2.2,
+    2.2
+  ]
+}

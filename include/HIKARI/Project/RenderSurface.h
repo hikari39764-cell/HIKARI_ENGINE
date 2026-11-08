@@ -12,7 +12,7 @@ namespace HIKARI {
 // 資源の実体、PSO、root の束縛は引擎が持ち、モジュールは番号と内容だけを渡す。
 
 using RenderSurfaceResourceId = uint32_t;
-inline constexpr uint32_t kRenderSurfaceTextureSlotCount = 4u;
+inline constexpr uint32_t kRenderSurfaceTextureSlotCount = 8u;
 inline constexpr uint32_t kRenderSurfaceMaximumConstantBytes = 128u;
 
 enum class RenderSurfaceTextureFormat : uint32_t {
@@ -20,6 +20,9 @@ enum class RenderSurfaceTextureFormat : uint32_t {
     R16G16Snorm,
     R32Uint,
     R8G8B8A8Unorm,
+    Bc7Unorm,
+    Bc7UnormSrgb,
+    R32G32B32A32Float,
 };
 
 struct RenderSurfaceTextureArrayDesc {
@@ -30,6 +33,7 @@ struct RenderSurfaceTextureArrayDesc {
     RenderSurfaceTextureFormat format = RenderSurfaceTextureFormat::R16Unorm;
 };
 
+// BC 形式の width / height は画素数のまま、rowPitchBytes は 4 画素の行あたりのバイト数。
 struct RenderSurfaceTextureUpload {
     uint32_t layer = 0u;
     uint32_t mip = 0u;

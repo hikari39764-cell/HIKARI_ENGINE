@@ -1,0 +1,16 @@
+{
+  "name": "Snow",
+  "normal": "Ground054_1K-JPG_NormalDX.jpg",
+  "tilingMeters": 8.0,
+  "heightContrast": 0.25,
+  "normalStrength": 0.35,
+  "roughnessValue": 0.65,
+  "baseColor": [
+    0.86,
+    0.88,
+    0.92
+  ],
+  "source": "Base color value; normal from https://ambientcg.com/view?id=Ground054",
+  "license": "CC0-1.0",
+  "author": "ambientCG (Lennart Demes)"
+}

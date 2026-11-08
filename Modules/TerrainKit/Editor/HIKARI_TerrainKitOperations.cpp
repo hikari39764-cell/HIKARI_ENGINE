@@ -9,6 +9,7 @@
 #include <json.hpp>
 
 #include "HIKARI_TerrainKitEditorCommon.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataControl.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataImage.h"
 
 namespace HIKARI::TERRAINKIT {
@@ -405,6 +406,83 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                      Ok(result, "Stroke applied.",
                         {{"dabs", edit.dabs}, {"changedTiles", changedTiles}, {"milliseconds", milliseconds}});
                  });
+    add.Query("terrainkit.surface.list", "List the terrain surface slots and every surface that can go into them.", {},
+              [](const Json&, Sink& result) {
+                  if (!RequireTerrain(result)) {
+                      return;
+                  }
+                  TerrainStore& store = TerrainStore::Get();
+                  TerrainSurfaceLibrary& library = store.Surfaces();
+                  Json slots = Json::array();
+                  for (const CookedSurface& surface : library.Surfaces()) {
+                      Json entry{};
+                      JSONFIELDS::Write(entry, surface.asset, kTerrainSurfaceAssetFields);
+                      entry["averageColor"] = surface.averageColor;
+                      entry["ready"] = !surface.colorHeight.empty();
+                      slots.push_back(std::move(entry));
+                  }
+                  Json available = Json::array();
+                  for (const SurfaceCatalogEntry& entry : ListTerrainSurfaces(store.ProjectRoot())) {
+                      available.push_back({{"name", entry.name}, {"builtin", entry.builtin}});
+                  }
+                  Ok(result, "Terrain surfaces.",
+                     {{"names", library.Slots()},
+                      {"busy", library.Busy()},
+                      {"progress", library.Progress()},
+                      {"error", library.LastError()},
+                      {"slots", std::move(slots)},
+                      {"available", std::move(available)}});
+              });
+    add.Mutation("terrainkit.surface.set_slots",
+                 "Choose the surfaces in slots 0..31 by name. Slot 0 is the default everywhere. Saved with the scene.",
+                 {{"names", Type::Json, "Surface names in slot order."}}, [](const Json& parameters, Sink& result) {
+                     if (!RequireTerrain(result)) {
+                         return;
+                     }
+                     auto names = parameters.at("names").get<std::vector<std::string>>();
+                     if (names.empty() || names.size() > kTerrainControlMaterialCount) {
+                         Fail(result, "INVALID_SLOTS", "Give 1 to 32 surface names.");
+                         return;
+                     }
+                     TerrainStore::Get().SetSurfaceSlots(std::move(names));
+                     Ok(result, "Surface slots updated; they load in the background.", Json::object());
+                 });
+    add.Mutation(
+        "terrainkit.paint.stroke",
+        "Paint a surface slot along a world-space path, the same way the Paint tool does. One undo step.",
+        {{"material", Type::Integer, "Surface slot."},
+         {"op", Type::String, "paint, hole, fill or unlock."},
+         {"radiusMeters", Type::Number, "Brush radius."},
+         {"strength", Type::Number, "0..1 per dab."},
+         {"hardness", Type::Number, "Fraction of the radius at full weight."},
+         {"spacing", Type::Number, "Dab spacing as a fraction of the radius."},
+         {"points", Type::Json, "World-space path [[x,z],...]."}},
+        [shared](const Json& parameters, Sink& result) {
+            if (!RequireTerrain(result)) {
+                return;
+            }
+            TerrainStore& store = TerrainStore::Get();
+            ControlBrushSettings brush = shared->paintBrush;
+            Json merged{};
+            JSONFIELDS::Write(merged, brush, kControlBrushFields);
+            merged.merge_patch(parameters);
+            merged.erase("points");
+            JSONFIELDS::Read(merged, brush, kControlBrushFields);
+            const auto started = std::chrono::steady_clock::now();
+            TerrainEditRecorder recorder(store.Data());
+            BrushEditResult edit{};
+            std::string error{};
+            if (!ApplyControlBrush(store.Data(), brush, ReadPath(parameters.at("points")), &recorder, edit, error)) {
+                Fail(result, "PAINT_FAILED", error);
+                return;
+            }
+            store.MarkControlChanged(edit.touched);
+            RecordTerrainEdit(*shared, recorder.Finish("Paint Terrain"));
+            Ok(result, "Painted.",
+               {{"dabs", edit.dabs},
+                {"milliseconds",
+                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count()}});
+        });
     add.Mutation(
         "terrainkit.mask.stroke", "Paint a layer's mask along a world-space path. One undo step.",
         {{"id", Type::Integer, "Layer id."},

@@ -38,6 +38,8 @@ public:
         ui.Separator();
         DrawBrush(ui);
         ui.Separator();
+        DrawSurfaces(ui, store);
+        ui.Separator();
         DrawStamp(ui);
         ui.Separator();
         DrawErosion(ui, store);
@@ -211,6 +213,30 @@ private:
         ui.InputFloat("maxSlope", "Only Below Slope (deg)", &brush.limitMaxSlopeDegrees);
         ui.InputFloat("minHeight", "Only Above Height (m)", &brush.limitMinHeightMeters);
         ui.InputFloat("maxHeight", "Only Below Height (m)", &brush.limitMaxHeightMeters);
+    }
+
+    void DrawSurfaces(IEditorWorkspaceUi& ui, TerrainStore& store) {
+        if (ui.Button("paintTool", "Paint Tool") && shared_->services != nullptr) {
+            shared_->services->ActivateViewportTool(kPaintToolId);
+        }
+        TerrainSurfaceLibrary& library = store.Surfaces();
+        if (library.Busy()) {
+            ui.Text("Preparing surfaces: " + std::to_string(static_cast<int>(library.Progress() * 100.0f)) + "%");
+        }
+        if (!library.LastError().empty()) {
+            ui.Text(library.LastError());
+        }
+        ControlBrushSettings& brush = shared_->paintBrush;
+        const auto& slots = library.Slots();
+        for (uint32_t slot = 0u; slot < slots.size(); ++slot) {
+            if (ui.Selectable("surface" + std::to_string(slot), std::to_string(slot) + ": " + slots[slot],
+                              brush.material == slot)) {
+                brush.material = slot;
+            }
+        }
+        ui.InputFloat("paintRadius", "Paint Radius (m)", &brush.radiusMeters);
+        ui.InputFloat("paintStrength", "Paint Strength", &brush.strength);
+        ui.InputFloat("paintHardness", "Paint Hardness", &brush.hardness);
     }
 
     void DrawStamp(IEditorWorkspaceUi& ui) {

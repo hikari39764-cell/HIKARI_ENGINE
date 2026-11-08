@@ -87,12 +87,27 @@ DXGI_FORMAT ToDxgi(RenderSurfaceTextureFormat format) noexcept {
     case RenderSurfaceTextureFormat::R16G16Snorm: return DXGI_FORMAT_R16G16_SNORM;
     case RenderSurfaceTextureFormat::R32Uint: return DXGI_FORMAT_R32_UINT;
     case RenderSurfaceTextureFormat::R8G8B8A8Unorm: return DXGI_FORMAT_R8G8B8A8_UNORM;
+    case RenderSurfaceTextureFormat::Bc7Unorm: return DXGI_FORMAT_BC7_UNORM;
+    case RenderSurfaceTextureFormat::Bc7UnormSrgb: return DXGI_FORMAT_BC7_UNORM_SRGB;
+    case RenderSurfaceTextureFormat::R32G32B32A32Float: return DXGI_FORMAT_R32G32B32A32_FLOAT;
     }
     return DXGI_FORMAT_UNKNOWN;
 }
 
-uint32_t BytesPerTexel(RenderSurfaceTextureFormat format) noexcept {
-    return format == RenderSurfaceTextureFormat::R16Unorm ? 2u : 4u;
+// 圧縮は 4 画素四方で 1 塊。
+uint32_t BlockSize(RenderSurfaceTextureFormat format) noexcept {
+    return format == RenderSurfaceTextureFormat::Bc7Unorm || format == RenderSurfaceTextureFormat::Bc7UnormSrgb ? 4u
+                                                                                                                : 1u;
+}
+
+uint32_t BytesPerBlock(RenderSurfaceTextureFormat format) noexcept {
+    switch (format) {
+    case RenderSurfaceTextureFormat::R16Unorm: return 2u;
+    case RenderSurfaceTextureFormat::Bc7Unorm:
+    case RenderSurfaceTextureFormat::Bc7UnormSrgb:
+    case RenderSurfaceTextureFormat::R32G32B32A32Float: return 16u;
+    default: return 4u;
+    }
 }
 
 struct RuntimeState {
@@ -223,17 +238,19 @@ public:
         const RenderSurfaceTextureArrayDesc& desc = resource.texture;
         const uint32_t mipWidth = (std::max)(desc.width >> upload.mip, 1u);
         const uint32_t mipHeight = (std::max)(desc.height >> upload.mip, 1u);
-        const uint32_t texelBytes = BytesPerTexel(desc.format);
+        const uint32_t block = BlockSize(desc.format);
+        const uint32_t blockColumns = (upload.width + block - 1u) / block;
+        const uint32_t blockRows = (upload.height + block - 1u) / block;
+        const uint32_t rowBytes = blockColumns * BytesPerBlock(desc.format);
         if (upload.mip >= desc.mipCount || upload.layer >= desc.layerCount || upload.width == 0u ||
             upload.height == 0u || upload.x + upload.width > mipWidth || upload.y + upload.height > mipHeight ||
-            upload.rowPitchBytes < upload.width * texelBytes) {
+            upload.rowPitchBytes < rowBytes) {
             return false;
         }
         TransitionTo(resource, D3D12_RESOURCE_STATE_COPY_DEST);
-        const uint32_t rowBytes = upload.width * texelBytes;
         const uint32_t pitch =
             (rowBytes + (D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u)) & ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u);
-        const size_t bytes = static_cast<size_t>(pitch) * upload.height + D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT;
+        const size_t bytes = static_cast<size_t>(pitch) * blockRows + D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT;
         const DX::UploadAllocation allocation = state_.uploads[state_.slot].Allocate(bytes);
         if (!allocation) {
             return false;
@@ -242,7 +259,7 @@ public:
                                ~static_cast<size_t>(D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT - 1u);
         uint8_t* target = static_cast<uint8_t*>(allocation.cpuAddress) + (aligned - allocation.offset);
         const uint8_t* source = static_cast<const uint8_t*>(upload.pixels);
-        for (uint32_t row = 0u; row < upload.height; ++row) {
+        for (uint32_t row = 0u; row < blockRows; ++row) {
             std::memcpy(target + static_cast<size_t>(row) * pitch,
                         source + static_cast<size_t>(row) * upload.rowPitchBytes, rowBytes);
         }
@@ -255,7 +272,8 @@ public:
         sourceLocation.pResource = allocation.resource;
         sourceLocation.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
         sourceLocation.PlacedFootprint.Offset = aligned;
-        sourceLocation.PlacedFootprint.Footprint = {ToDxgi(desc.format), upload.width, upload.height, 1u, pitch};
+        sourceLocation.PlacedFootprint.Footprint = {ToDxgi(desc.format), blockColumns * block, blockRows * block, 1u,
+                                                    pitch};
         state_.graphics.cmdList->CopyTextureRegion(&destination, upload.x, upload.y, 0u, &sourceLocation, nullptr);
         resource.copyPending = true;
         return true;

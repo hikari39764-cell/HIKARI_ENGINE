@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "HIKARI_TerrainKitGpuErosion.h"
+#include "HIKARI_TerrainKitSurfaces.h"
 #include "TerrainKit/Data/HIKARI_TerrainData.h"
 
 namespace HIKARI::TERRAINKIT {
@@ -42,6 +43,12 @@ struct TileRuntime {
     uint32_t pendingX1 = 0u;
     uint32_t pendingZ1 = 0u;
     bool rectPending = false;
+    // 制御図の一部だけ送る範囲（筆で塗った所）。
+    uint32_t controlX0 = 0u;
+    uint32_t controlZ0 = 0u;
+    uint32_t controlX1 = 0u;
+    uint32_t controlZ1 = 0u;
+    bool controlRectPending = false;
 };
 
 // 瓦片の光線追跡の代理（実体は引擎）。
@@ -57,6 +64,12 @@ struct TerrainRenderResources {
     uint32_t normalTexture = 0u;
     uint32_t indexBuffer = 0u;
     uint32_t indexCount = 0u;
+    uint32_t controlTexture = 0u;
+    uint32_t surfaceColor = 0u;
+    uint32_t surfaceDetail = 0u;
+    uint32_t surfaceParams = 0u;
+    uint64_t surfaceRevision = 0u;
+    uint32_t surfacesUploaded = 0u; // 送り終えた枠の数。全部終わるまで着色器へ渡さない。
     uint64_t layoutRevision = 0u;
     std::map<TERRAIN::DATA::TileCoord, TerrainRayProxy> rayProxies{};
     uint64_t frame = 0u;
@@ -95,6 +108,13 @@ public:
     void RebakeTiles(std::span<const TERRAIN::DATA::TileCoord> tiles);
     // 筆刷の一度分：矩形とその周り 1 標本だけを焼き直し、その範囲だけを描画へ送る。
     void RebakeRect(const TERRAIN::DATA::SampleRect& rect);
+    // 制御図を塗った範囲を描画へ送り、保存の対象にする（高さは焼き直さない）。
+    void MarkControlChanged(const TERRAIN::DATA::SampleRect& rect);
+
+    // 地表材質の枠。枠の名前は場面の .cells に保存する。
+    TerrainSurfaceLibrary& Surfaces() noexcept { return surfaces_; }
+    const TerrainSurfaceLibrary& Surfaces() const noexcept { return surfaces_; }
+    void SetSurfaceSlots(std::vector<std::string> names);
     // 変わった瓦片とその周り（法線が縁の標本を見る）を焼き直し、保存の対象にする。
     void RebakeChanged(std::span<const TERRAIN::DATA::TileCoord> tiles);
     void MarkSaveDirty(std::span<const TERRAIN::DATA::TileCoord> tiles);
@@ -133,9 +153,13 @@ private:
     uint64_t layoutRevision_ = 1u;
     TerrainRenderResources render_{};
     GpuErosionJob erosion_{};
+    TerrainSurfaceLibrary surfaces_{};
+    bool surfaceSlotsDirty_ = false;
     std::map<uint32_t, std::string> loadedImageKeys_{};
 };
 
 std::filesystem::path TerrainCellDirectory(const std::filesystem::path& scenePath);
+// モジュールの DLL のある場所（Content と Shaders の親）。
+std::filesystem::path TerrainModuleDirectory();
 
 } // namespace HIKARI::TERRAINKIT

@@ -35,11 +35,11 @@ enum class RenderGeometryRootLayout : uint8_t {
 inline constexpr std::string_view kModuleSurfaceDrawRootLayoutId = "HIKARI.RenderGeometry.ModuleSurfaceDraw.Root";
 inline constexpr uint32_t kModuleSurfaceDrawRootLayoutVersion = 1u;
 inline constexpr std::string_view kModuleSurfaceDrawRootLayoutHash =
-    "48c72838cb3b50e8727ad0c61579c6731b5d95906d278e4d1cb0f89a3a03b7db";
+    "c82525eaebf93f007d61159917664027d5b7a0b57d0e321657fe6bb9b4635472";
 inline constexpr std::string_view kModuleSurfaceDrawRootLayoutCanonical =
     "HIKARI.RenderGeometry.ModuleSurfaceDraw.Root.v1|MeshGraphicsSlots|"
     "JointPalette(SRV(t0,space10))|MeshletVisibleRanges(CBV(b3))|"
-    "ClusterGeometryPool(Table(t1,space10,count4))|Pipeline(Graphics)|Flags(AllowInputAssembler)";
+    "ClusterGeometryPool(Table(t1,space10,count8))|Pipeline(Graphics)|Flags(AllowInputAssembler)";
 
 inline constexpr std::string_view kClusterRayTracingRootLayoutId = "HIKARI.RenderGeometry.ClusterRayTracing.Root";
 inline constexpr uint32_t kClusterRayTracingRootLayoutVersion = 1u;
@@ -424,7 +424,7 @@ inline bool IsRenderGeometryBindingAllowed(RenderGeometryRootLayout layout,
     using Kind = ShaderResourceBindingKind;
     switch (layout) {
     case RenderGeometryRootLayout::ModuleSurfaceDraw:
-        return (binding.kind == Kind::ShaderResource && binding.registerSpace == 10u && binding.registerIndex <= 4u &&
+        return (binding.kind == Kind::ShaderResource && binding.registerSpace == 10u && binding.registerIndex <= 8u &&
                 binding.count == 1u) ||
                IsRenderGeometryBindingAllowed(RenderGeometryRootLayout::MeshGraphics, binding);
     case RenderGeometryRootLayout::ClusterRayTracing:

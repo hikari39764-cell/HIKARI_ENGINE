@@ -7,7 +7,7 @@
 #include <iterator>
 #include <sstream>
 
-#include <windows.h>
+#include "HIKARI_TerrainKitStore.h"
 
 namespace HIKARI::TERRAINKIT {
 namespace {
@@ -47,17 +47,8 @@ struct ErosionConstants {
     float reserved1 = 0.0f;
 };
 
-std::filesystem::path ModuleDirectory() {
-    HMODULE module = nullptr;
-    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                       reinterpret_cast<LPCWSTR>(&ModuleDirectory), &module);
-    wchar_t path[MAX_PATH]{};
-    GetModuleFileNameW(module, path, MAX_PATH);
-    return std::filesystem::path(path).parent_path();
-}
-
 std::string ReadShaderSource() {
-    std::ifstream file(ModuleDirectory() / kShaderFile, std::ios::binary);
+    std::ifstream file(TerrainModuleDirectory() / kShaderFile, std::ios::binary);
     return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
 }
 
