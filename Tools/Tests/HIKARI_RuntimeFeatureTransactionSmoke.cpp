@@ -1,4 +1,5 @@
 #include <array>
+#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -232,6 +233,49 @@ int main() {
         assert((animationResolution.resolvedFeatures ==
                 std::vector<std::string>{std::string(HIKARI::RuntimeFeatureIds::Rendering),
                                          std::string(HIKARI::RuntimeFeatureIds::Animation)}));
+        // 全ての組み込み部品：既定値を書いて読み直して書くと同じ JSON。空の object を読むと既定値になる
+        // （保存で既定値の項目を省けることの前提）。
+        {
+            HIKARI::ComponentRegistry allComponents{};
+            HIKARI::WorldMassSchemaRegistry allMassSchemas{};
+            HIKARI::SystemTypeRegistry allSystems{};
+            HIKARI::ComponentSystemPolicy allPolicy{};
+            HIKARI::RuntimeFeatureContext allContext =
+                HIKARI::RuntimeFeatureContextAccess::Create(allComponents, allMassSchemas, allSystems, allPolicy);
+            HIKARI::RuntimeFeatureCatalog everything = HIKARI::CreateBuiltInRuntimeFeatureCatalog();
+            assert(everything.RegisterEnabled(allContext, everything.GetFeatureIds()).success);
+            size_t checked = 0u;
+            size_t failures = 0u;
+            for (const HIKARI::ComponentTypeInfo* info : allComponents.GetTypeInfos()) {
+                std::unique_ptr<HIKARI::IComponent> original = info->factory();
+                nlohmann::json written{};
+                original->Serialize(written);
+                std::unique_ptr<HIKARI::IComponent> reread = info->factory();
+                std::string diagnostic{};
+                const bool readBack = reread->TryDeserialize(written, diagnostic);
+                nlohmann::json rewritten{};
+                reread->Serialize(rewritten);
+                std::unique_ptr<HIKARI::IComponent> empty = info->factory();
+                const bool readEmpty = empty->TryDeserialize(nlohmann::json::object(), diagnostic);
+                nlohmann::json emptyWritten{};
+                empty->Serialize(emptyWritten);
+                const char* failure = !readBack                 ? "read back"
+                                      : rewritten != written    ? "rewrite differs"
+                                      : !readEmpty              ? "empty object rejected"
+                                      : emptyWritten != written ? "empty object is not the default"
+                                                                : nullptr;
+                if (failure != nullptr) {
+                    std::cerr << "component round trip failed: " << info->typeName << " (" << failure << ") "
+                              << diagnostic << "\n  default: " << written.dump()
+                              << "\n  reread:  " << (rewritten != written ? rewritten : emptyWritten).dump() << '\n';
+                    ++failures;
+                }
+                ++checked;
+            }
+            std::cout << "component round trip: " << checked << " built-in component types, " << failures
+                      << " failed\n";
+            assert(checked > 20u && failures == 0u);
+        }
         // 旧 UI の物体層は削除済み。"UI" はもう組み込みの機能ではない。
         assert(!builtIn.ResolveEnabledFeatures({"UI"}).success);
         // 直接描画の HUD は参照解像度へ letterbox で合わせる。

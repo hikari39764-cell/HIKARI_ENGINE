@@ -38,7 +38,17 @@ void Material::SetShellSettings(const MaterialShellSettings& settings) {
     TouchRevision();
 }
 
-void Material::TouchRevision() noexcept { revision_ = NextMaterialRevision(); }
+void Material::TouchRevision() noexcept {
+    revision_ = NextMaterialRevision();
+    if (revisionNotifier_.listener != nullptr) {
+        revisionNotifier_.listener(revisionNotifier_.owner);
+    }
+}
+
+void Material::SetRevisionListener(RevisionListener listener, void* owner) noexcept {
+    revisionNotifier_.listener = owner != nullptr ? listener : nullptr;
+    revisionNotifier_.owner = listener != nullptr ? owner : nullptr;
+}
 
 int RuntimeTextureSlot::ResolveBackendHandle() const {
     if (resource) {
