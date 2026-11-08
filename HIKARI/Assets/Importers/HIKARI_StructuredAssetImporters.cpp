@@ -11,6 +11,7 @@
 #include "Assets/RenderStyle/HIKARI_RenderStyleAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
+#include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 #include <array>
@@ -85,6 +86,40 @@ AssetImportResult ImportScene(const std::filesystem::path& path, const AssetGuid
         {"objectCount", document.objects.size()},
         {"cellCount",
          cellFiles.size()}}.dump();
+    return result;
+}
+
+// モジュールの資産：JSON として読めることを確かめ、値の中の GUID を依存として集める。
+void CollectJsonGuids(const nlohmann::json& node, std::unordered_set<std::string>& outGuids) {
+    if (node.is_string()) {
+        if (const std::string& text = node.get_ref<const std::string&>(); IsValidAssetGuid(text)) {
+            outGuids.insert(text);
+        }
+    } else if (node.is_structured()) {
+        for (const nlohmann::json& child : node) {
+            CollectJsonGuids(child, outGuids);
+        }
+    }
+}
+
+AssetImportResult ImportModuleAsset(const std::filesystem::path& path, const AssetGuid& guid) {
+    AssetImportResult result;
+    nlohmann::json document;
+    std::string error;
+    result.success = SERIALIZATION::JSON::ReadJsonFile(path, document, &error);
+    result.message = result.success ? "Module asset validated" : "Module asset is not readable JSON: " + error;
+    if (!result.success) {
+        return result;
+    }
+    std::unordered_set<std::string> guids;
+    CollectJsonGuids(document, guids);
+    guids.erase(guid.value);
+    for (const std::string& reference : guids) {
+        result.dependencies.push_back({AssetGuid{reference}, {}, "ModuleAsset.Reference"});
+    }
+    const auto* type = ASSETS::SEMANTICS::FindModuleAssetTypeForPath(path);
+    result.diagnosticsJson =
+        nlohmann::json{{"kind", "ModuleAsset"}, {"typeId", type != nullptr ? type->typeId : std::string{}}}.dump();
     return result;
 }
 
@@ -340,5 +375,6 @@ void RegisterStructuredAssetImporters(AssetImporterRegistry& registry) {
     add(ImporterKind::ColorLut, nullptr, ImportColorLut);
     add(ImporterKind::LightProfile, nullptr, ImportLightProfile);
     add(ImporterKind::Audio, nullptr, ImportAudio);
+    add(ImporterKind::ModuleAsset, nullptr, ImportModuleAsset);
 }
 } // namespace HIKARI

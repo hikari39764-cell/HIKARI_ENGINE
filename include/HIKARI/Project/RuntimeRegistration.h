@@ -200,6 +200,10 @@ public:
     // Registers one schema-level render binding. This is independent of
     // entity count and never creates per-entity model/component records.
     HIKARI_GAME_PROJECT_SDK_API bool RegisterMassRenderProxy(const GameProjectWorldMassRenderProxyDesc& descriptor);
+    // モジュールの資産の種類。JSON のファイルが資産として走査・取り込み・書き出しされ、値の中の GUID が依存になる。
+    // typeId は "モジュール.名前"、extension は ".hscatter" の形。
+    HIKARI_GAME_PROJECT_SDK_API bool RegisterAssetType(std::string_view typeId, std::string_view extension,
+                                                       std::string_view displayName);
 
     HIKARI_GAME_PROJECT_SDK_API bool BindComponentSystem(ComponentSystemBinding binding);
 

@@ -1192,6 +1192,40 @@ void CheckPartitionedScene(const fs::path& root) {
         world.objects.size(), firstSaveMs, openMs, oneObjectSaveMs);
 }
 
+// モジュールが登記した資産の種類：走査で資産になり、取り込みが値の中の GUID を依存にし、書き出しに含まれる。
+void CheckModuleAssetTypes(const fs::path& root) {
+    using namespace HIKARI;
+    std::string error;
+    assert(ASSETS::SEMANTICS::RegisterModuleAssetType({"Test.Rule", ".htestrule", "Test Rule"}, error));
+    assert(ASSETS::SEMANTICS::RegisterModuleAssetType({"Test.Rule", ".htestrule", "Test Rule"}, error));
+    assert(!ASSETS::SEMANTICS::RegisterModuleAssetType({"Test.Other", ".htestrule", "Other"}, error));
+    assert(!ASSETS::SEMANTICS::RegisterModuleAssetType({"Test.Hvfx", ".hvfx", "Engine extension"}, error));
+    assert(!ASSETS::SEMANTICS::RegisterModuleAssetType({"Test.NoDot", "htestrule2", "No dot"}, error));
+
+    const auto project = root / "ModuleAssets";
+    fs::create_directories(project / "Assets");
+    fs::copy_file(fs::path(HIKARI_CONTRACT_SOURCE_ROOT) / "Tests/Fixtures/Projects/EmptyProject/Project.hikari",
+                  project / "Project.hikari");
+    WriteTga(project / "Assets/used.tga", {1, 2, 3});
+    AssetDatabase database;
+    assert(database.Initialize(project) && database.ScanAssets(true));
+    const AssetGuid textureGuid = database.FindByPath("Assets/used.tga")->guid;
+    assert(SERIALIZATION::JSON::WriteJsonFile(project / "Assets/rule.htestrule",
+                                              {{"nested", {{"texture", textureGuid.value}}}, {"density", 3}}));
+    assert(database.ScanAssets(true));
+    const auto* rule = database.FindByPath("Assets/rule.htestrule");
+    assert(rule != nullptr && rule->type == AssetType::ModuleAsset);
+    const AssetGuid ruleGuid = rule->guid;
+    assert(database.ImportAsset(ruleGuid));
+    const auto& dependencies = database.FindByGuid(ruleGuid)->artifactManifest.dependencies;
+    assert(dependencies.size() == 1u && dependencies.front().guid == textureGuid);
+    {
+        std::ofstream broken(project / "Assets/rule.htestrule", std::ios::trunc);
+        broken << "{ not json";
+    }
+    assert(database.ScanAssets(true) && !database.ImportAsset(ruleGuid));
+}
+
 void CheckProjectPostContracts(const std::filesystem::path& testRoot);
 
 int main(int argc, char** argv) {
@@ -1382,6 +1416,7 @@ int main(int argc, char** argv) {
     CheckProjectPostContracts(root);
     CheckPainterlyEngineDependencies(root);
     CheckPartitionedScene(root);
+    CheckModuleAssetTypes(root);
     for (int index = 1; index < argc; ++index) {
         CheckSpriteAssetIntegration(fs::absolute(TEXT::PathFromUtf8(argv[index])),
                                     root / ("SpriteContract-" + std::to_string(index)));

@@ -2028,6 +2028,7 @@
 
     {"editor.scene.rename", "重命名"}, {"editor.scene.duplicate", "复制"}, {"editor.scene.lock", "锁定选中项"},
     {"editor.scene.unlock", "解锁选中项"},
+    {"editor.asset.moduleAsset", "模块资产"},
     {"editor.scene.keepLoaded", "设为常驻（分区场景里留在主文件）"},
     {"editor.scene.streamWithCell", "取消常驻（随所在格子存取）"}, {"editor.scene.instantiatePrefab", "实例化预制体"},
 

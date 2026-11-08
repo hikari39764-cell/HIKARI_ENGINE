@@ -221,6 +221,7 @@ const char* ToCompactTypeBadge(AssetType type) {
     case AssetType::ColorLut: return "LUT";
     case AssetType::LightProfile: return "IES";
     case AssetType::Audio: return "SND";
+    case AssetType::ModuleAsset: return "MOD";
     case AssetType::Unknown:
     default: return "UNK";
     }

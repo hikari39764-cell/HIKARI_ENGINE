@@ -31,7 +31,9 @@ enum class AssetType {
     ColorLut,
     LightProfile,
     Audio,
-    Unknown
+    // モジュールが登記した資産。具体の種類は拡張子から ASSETS::SEMANTICS の登記表で引く。
+    ModuleAsset,
+    Unknown,
 };
 
 } // namespace HIKARI

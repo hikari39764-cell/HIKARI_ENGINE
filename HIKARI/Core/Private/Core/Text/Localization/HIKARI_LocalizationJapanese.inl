@@ -2373,6 +2373,7 @@
 
     {"editor.scene.rename", "名前を変更"}, {"editor.scene.duplicate", "複製"}, {"editor.scene.lock", "選択をロック"},
     {"editor.scene.unlock", "選択のロックを解除"},
+    {"editor.asset.moduleAsset", "モジュール資産"},
     {"editor.scene.keepLoaded", "常駐にする（分区場景でも主ファイルに残す）"},
     {"editor.scene.streamWithCell", "常駐を解除（格子ごとに保存）"}, {"editor.scene.instantiatePrefab", "プレハブを配置"},
 

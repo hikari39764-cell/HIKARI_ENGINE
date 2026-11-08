@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cctype>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
@@ -156,6 +158,8 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
     {AssetImporterKind::ColorLut, AssetType::ColorLut, "ColorLutAssetImporter", 1u, ".cube"},
     {AssetImporterKind::LightProfile, AssetType::LightProfile, "LightProfileAssetImporter", 1u, ".ies"},
     {AssetImporterKind::Audio, AssetType::Audio, "AudioAssetImporter", 1u, ".wav, .mp3, .ogg, .flac"},
+    {AssetImporterKind::ModuleAsset, AssetType::ModuleAsset, "ModuleAssetImporter", 1u,
+     "extensions registered by a module"},
 }};
 
 static_assert(
@@ -232,6 +236,7 @@ constexpr TEXT::EnumName<AssetType> kAssetTypeNames[] = {
     {AssetType::ModelMaterialBinding, "ModelMaterialBinding"},
     {AssetType::Shader, "Shader"},
     {AssetType::Audio, "Audio"},
+    {AssetType::ModuleAsset, "ModuleAsset"},
     {AssetType::Unknown, "Unknown"},
 };
 std::string_view ToString(AssetType type) noexcept { return TEXT::EnumToName(kAssetTypeNames, type, "Unknown"); }
@@ -313,9 +318,55 @@ const AssetImporterSemantics* ResolveAssetSourceSemantics(const std::filesystem:
         kind = AssetImporterKind::VfxEffect;
     } else if (extension == ".hshader" && IsShaderSourcePath(genericPath)) {
         kind = AssetImporterKind::Shader;
+    } else if (FindModuleAssetTypeForPath(sourcePath) != nullptr) {
+        kind = AssetImporterKind::ModuleAsset;
     }
 
     return kind == AssetImporterKind::Count ? nullptr : &GetAssetImporterSemantics(kind);
+}
+
+namespace {
+std::vector<ModuleAssetTypeDesc>& ModuleAssetTypes() {
+    static std::vector<ModuleAssetTypeDesc> types{};
+    return types;
+}
+} // namespace
+
+bool RegisterModuleAssetType(ModuleAssetTypeDesc desc, std::string& outError) {
+    desc.extension = TEXT::ToLowerAsciiCopy(desc.extension);
+    if (desc.typeId.empty() || desc.extension.size() < 2u || desc.extension.front() != '.') {
+        outError = "A module asset type needs a type id and an extension such as .hscatter.";
+        return false;
+    }
+    for (const ModuleAssetTypeDesc& existing : ModuleAssetTypes()) {
+        if (existing.extension != desc.extension && existing.typeId != desc.typeId) {
+            continue;
+        }
+        if (existing.extension == desc.extension && existing.typeId == desc.typeId) {
+            return true;
+        }
+        outError = "Module asset type " + desc.typeId + " conflicts with " + existing.typeId + " (" +
+                   existing.extension + ").";
+        return false;
+    }
+    // 引擎の資産の判定は登記表より先に走るので、重なる拡張子は黙って無視される前に断る。
+    const std::filesystem::path probe = std::filesystem::path("probe" + desc.extension);
+    if (ResolveAssetSourceSemantics(probe) != nullptr) {
+        outError = "Extension " + desc.extension + " already belongs to an engine asset type.";
+        return false;
+    }
+    ModuleAssetTypes().push_back(std::move(desc));
+    return true;
+}
+
+const ModuleAssetTypeDesc* FindModuleAssetTypeForPath(const std::filesystem::path& sourcePath) {
+    const std::string extension = TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(sourcePath.extension()));
+    for (const ModuleAssetTypeDesc& type : ModuleAssetTypes()) {
+        if (type.extension == extension) {
+            return &type;
+        }
+    }
+    return nullptr;
 }
 
 AssetType ClassifyAssetTypeFromPath(const std::filesystem::path& path) {

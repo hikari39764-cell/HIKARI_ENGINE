@@ -48,6 +48,7 @@ enum class AssetImporterKind : uint8_t {
     ColorLut,
     LightProfile,
     Audio,
+    ModuleAsset,
     Count,
 };
 
@@ -71,6 +72,19 @@ bool IsAssetSourceForImporter(const std::filesystem::path& sourcePath, AssetImpo
 
 AssetMeta MakeBaseAssetMeta(const std::filesystem::path& sourcePath, const AssetGuid& guid,
                             AssetImporterKind importerKind);
+
+// モジュールが登記する資産の種類。JSON の原文のまま配り、参照は値の中の GUID から集める。
+struct ModuleAssetTypeDesc {
+    std::string typeId{};
+    // 小文字、先頭の点を含む（".hscatter"）。
+    std::string extension{};
+    std::string displayName{};
+};
+
+// 登記表はプロセスで一つ。Feature の登録は何度も走るので、同じ内容の再登記は成功。別の種類が同じ拡張子を使う時と、
+// 引擎の資産と重なる拡張子は false と理由。
+bool RegisterModuleAssetType(ModuleAssetTypeDesc desc, std::string& outError);
+const ModuleAssetTypeDesc* FindModuleAssetTypeForPath(const std::filesystem::path& sourcePath);
 
 bool IsAssetCompanionSource(const std::filesystem::path& path);
 bool IsSourceOnlyAssetDependencyRole(std::string_view role) noexcept;

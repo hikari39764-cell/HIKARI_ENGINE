@@ -12,6 +12,7 @@
 
 #include <json.hpp>
 
+#include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Core/HIKARI_Logger.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
@@ -524,6 +525,17 @@ bool RuntimeFeatureContext::RegisterMassDataRaw(const GameProjectMassDataTypeDes
 bool RuntimeFeatureContext::RegisterMassRenderProxy(const GameProjectWorldMassRenderProxyDesc& descriptor) {
     return massSchemaRegistry_ != nullptr &&
            RuntimeFeatureContextAccess::MassSchemas(*this).RegisterRenderProxy(descriptor);
+}
+
+bool RuntimeFeatureContext::RegisterAssetType(std::string_view typeId, std::string_view extension,
+                                              std::string_view displayName) {
+    std::string error{};
+    if (ASSETS::SEMANTICS::RegisterModuleAssetType(
+            {std::string(typeId), std::string(extension), std::string(displayName)}, error)) {
+        return true;
+    }
+    HIKARI_LOG_ERROR("[RuntimeFeature] " + error);
+    return false;
 }
 
 bool RuntimeFeatureContext::BindComponentSystem(ComponentSystemBinding binding) {

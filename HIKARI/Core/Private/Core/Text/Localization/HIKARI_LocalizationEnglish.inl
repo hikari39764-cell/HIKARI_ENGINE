@@ -2326,6 +2326,7 @@
 
     {"editor.scene.rename", "Rename"}, {"editor.scene.duplicate", "Duplicate"}, {"editor.scene.lock", "Lock selected"},
     {"editor.scene.unlock", "Unlock selected"},
+    {"editor.asset.moduleAsset", "Module asset"},
     {"editor.scene.keepLoaded", "Keep always loaded (stays in the main scene file)"},
     {"editor.scene.streamWithCell", "Store with its cell"}, {"editor.scene.instantiatePrefab", "Instantiate prefab"},
 
