@@ -1,0 +1,114 @@
+#pragma once
+
+#include <cstdint>
+#include <span>
+#include <string>
+#include <vector>
+
+#include "Core/Math/HIKARI_Math3D.h"
+#include "Core/Serialization/Json/HIKARI_JsonFields.h"
+#include "Core/Text/HIKARI_EnumNames.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataEdit.h"
+
+// 筆刷の核：世界 XZ の折れ線に沿って一定間隔で dab を置き、手彫り層（高さ）か制御図（材質・穴）を書き換える。
+// 筆刷の入力は世界座標の折れ線と設定だけなので、人の操作と智能体の操作が同じ結果になる（同じ入力 → 同じ値）。
+namespace HIKARI::TERRAIN::DATA {
+
+enum class HeightBrushOp : uint8_t {
+    Raise = 0,   // 強さ（m）× 重みだけ上げる
+    Lower = 1,   // 下げる
+    Smooth = 2,  // 合成後の高さを 3×3 の平均へ寄せる（強さは 0..1 の割合）
+    Flatten = 3, // 合成後の高さを targetHeight へ寄せる（強さは 0..1 の割合）
+    Noise = 4,   // 決定的な値噪声（noiseScaleMeters）を強さ（m）で足す
+};
+
+inline constexpr TEXT::EnumName<HeightBrushOp> kHeightBrushOpNames[] = {
+    {HeightBrushOp::Raise, "raise"},     {HeightBrushOp::Lower, "lower"}, {HeightBrushOp::Smooth, "smooth"},
+    {HeightBrushOp::Flatten, "flatten"}, {HeightBrushOp::Noise, "noise"},
+};
+
+struct HeightBrushSettings {
+    HeightBrushOp op = HeightBrushOp::Raise;
+    float radiusMeters = 16.0f;
+    float strength = 0.5f;
+    float hardness = 0.5f;
+    float spacing = 0.25f; // dab の間隔（半径に対する割合）
+    float targetHeightMeters = 0.0f;
+    float noiseScaleMeters = 8.0f;
+    uint32_t noiseSeed = 1u;
+    bool operator==(const HeightBrushSettings&) const = default;
+};
+
+inline constexpr auto kHeightBrushFields = [](auto&& field) {
+    using S = HeightBrushSettings;
+    using namespace JSONFIELDS;
+    field("op", &S::op, kHeightBrushOpNames, Label{"Operation"});
+    field("radiusMeters", &S::radiusMeters, Range{0.25, 4096.0}, Label{"Radius"}, Unit{"m"});
+    field("strength", &S::strength, Range{0.0, 1000.0}, Label{"Strength"},
+          Help{"Meters per dab for raise, lower and noise; fraction per dab (0..1) for smooth and flatten."});
+    field("hardness", &S::hardness, Slider(0.0, 1.0), Label{"Hardness"},
+          Help{"Fraction of the radius at full weight before the smooth falloff."});
+    field("spacing", &S::spacing, Range{0.02, 4.0}, Label{"Spacing"}, Help{"Dab spacing as a fraction of the radius."});
+    field("targetHeightMeters", &S::targetHeightMeters, Range{-100000.0, 100000.0}, Label{"Target Height"}, Unit{"m"},
+          Show{[](const S& s) { return s.op == HeightBrushOp::Flatten; }});
+    field("noiseScaleMeters", &S::noiseScaleMeters, Range{0.25, 4096.0}, Label{"Noise Scale"}, Unit{"m"},
+          Show{[](const S& s) { return s.op == HeightBrushOp::Noise; }});
+    field("noiseSeed", &S::noiseSeed, Label{"Noise Seed"},
+          Show{[](const S& s) { return s.op == HeightBrushOp::Noise; }});
+};
+
+enum class ControlBrushOp : uint8_t {
+    Paint = 0,  // 材質を塗る（PaintControlMaterial）
+    Hole = 1,   // 穴を開ける
+    Fill = 2,   // 穴を塞ぐ
+    Unlock = 3, // 手塗りの印を外し、自動材質規則に返す
+};
+
+inline constexpr TEXT::EnumName<ControlBrushOp> kControlBrushOpNames[] = {
+    {ControlBrushOp::Paint, "paint"},
+    {ControlBrushOp::Hole, "hole"},
+    {ControlBrushOp::Fill, "fill"},
+    {ControlBrushOp::Unlock, "unlock"},
+};
+
+struct ControlBrushSettings {
+    ControlBrushOp op = ControlBrushOp::Paint;
+    uint32_t material = 0u;
+    float radiusMeters = 8.0f;
+    float strength = 0.5f;
+    float hardness = 0.5f;
+    float spacing = 0.25f;
+    bool operator==(const ControlBrushSettings&) const = default;
+};
+
+inline constexpr auto kControlBrushFields = [](auto&& field) {
+    using S = ControlBrushSettings;
+    using namespace JSONFIELDS;
+    field("op", &S::op, kControlBrushOpNames, Label{"Operation"});
+    field("material", &S::material, Range{0.0, 31.0}, Label{"Material"},
+          Show{[](const S& s) { return s.op == ControlBrushOp::Paint; }});
+    field("radiusMeters", &S::radiusMeters, Range{0.25, 4096.0}, Label{"Radius"}, Unit{"m"});
+    field("strength", &S::strength, Slider(0.0, 1.0), Label{"Strength"});
+    field("hardness", &S::hardness, Slider(0.0, 1.0), Label{"Hardness"});
+    field("spacing", &S::spacing, Range{0.02, 4.0}, Label{"Spacing"});
+};
+
+struct BrushEditResult {
+    uint32_t dabs = 0u;
+    SampleRect touched{}; // 書き換えた標本を全て含む矩形
+};
+
+// 中心からの距離 / 半径 → 重み（hardness までは 1、そこから端へ滑らかに 0）。
+float BrushFalloff(float normalizedDistance, float hardness) noexcept;
+// 折れ線上の dab の中心（最初の点を必ず含む）。
+std::vector<MATH::Vec2> PlaceBrushDabs(std::span<const MATH::Vec2> path, float radiusMeters, float spacing);
+
+// 手彫り層へ高さの筆刷をかける。recorder があれば変更前のタイルを記録する。
+bool ApplyHeightBrush(TerrainData& data, uint32_t layerId, const HeightBrushSettings& settings,
+                      std::span<const MATH::Vec2> path, TerrainEditRecorder* recorder, BrushEditResult& result,
+                      std::string& error);
+// 制御図へ材質・穴の筆刷をかける。
+bool ApplyControlBrush(TerrainData& data, const ControlBrushSettings& settings, std::span<const MATH::Vec2> path,
+                       TerrainEditRecorder* recorder, BrushEditResult& result, std::string& error);
+
+} // namespace HIKARI::TERRAIN::DATA

@@ -1,0 +1,294 @@
+#include "TerrainKit/Data/HIKARI_TerrainDataBrush.h"
+
+#include <algorithm>
+#include <cmath>
+#include <memory>
+
+#include "TerrainKit/Data/HIKARI_TerrainDataControl.h"
+
+namespace HIKARI::TERRAIN::DATA {
+namespace {
+
+// 一本の筆跡が置ける dab の上限（暴走した入力で止まらなくならないように）。
+constexpr std::size_t kMaximumBrushDabs = 100000u;
+// 加算の層で合成後の高さを目標へ寄せる時、層の不透明度で割る下限。
+constexpr float kMinimumLayerAlpha = 0.05f;
+
+bool FinitePath(std::span<const MATH::Vec2> path) noexcept {
+    return std::all_of(path.begin(), path.end(),
+                       [](const MATH::Vec2& p) { return std::isfinite(p.x) && std::isfinite(p.y); });
+}
+
+SampleRect UnionRects(const SampleRect& a, const SampleRect& b) noexcept {
+    if (a.Empty()) {
+        return b;
+    }
+    if (b.Empty()) {
+        return a;
+    }
+    const int64_t x0 = (std::min)(a.x0, b.x0);
+    const int64_t z0 = (std::min)(a.z0, b.z0);
+    const int64_t x1 = (std::max)(a.X1(), b.X1());
+    const int64_t z1 = (std::max)(a.Z1(), b.Z1());
+    return SampleRect{x0, z0, static_cast<uint32_t>(x1 - x0 + 1), static_cast<uint32_t>(z1 - z0 + 1)};
+}
+
+uint32_t HashLattice(int64_t x, int64_t z, uint32_t seed) noexcept {
+    uint32_t h = seed * 0x9E3779B9u;
+    h ^= static_cast<uint32_t>(x) * 0x85EBCA6Bu;
+    h = (h ^ (h >> 13u)) * 0xC2B2AE35u;
+    h ^= static_cast<uint32_t>(z) * 0x27D4EB2Fu;
+    h = (h ^ (h >> 15u)) * 0x165667B1u;
+    return h ^ (h >> 16u);
+}
+
+// 格子の値を滑らかに補間する値噪声（-1..1）。決定的なので人と智能体の同じ筆跡は同じ結果になる。
+float ValueNoise(double x, double z, uint32_t seed) noexcept {
+    const double fx = std::floor(x);
+    const double fz = std::floor(z);
+    const auto ix = static_cast<int64_t>(fx);
+    const auto iz = static_cast<int64_t>(fz);
+    const auto lattice = [&](int64_t dx, int64_t dz) {
+        return static_cast<float>(HashLattice(ix + dx, iz + dz, seed) & 0xFFFFu) / 32767.5f - 1.0f;
+    };
+    const auto fade = [](double t) { return static_cast<float>(t * t * (3.0 - 2.0 * t)); };
+    const float u = fade(x - fx);
+    const float v = fade(z - fz);
+    const float top = lattice(0, 0) + (lattice(1, 0) - lattice(0, 0)) * u;
+    const float bottom = lattice(0, 1) + (lattice(1, 1) - lattice(0, 1)) * u;
+    return top + (bottom - top) * v;
+}
+
+// dab 1 つの重み（矩形の標本ごと）。全て 0 なら false。
+bool DabWeights(const TerrainGrid& grid, const SampleRect& rect, MATH::Vec2 center, float radius, float hardness,
+                std::vector<float>& weights) {
+    const double spacing = SampleSpacing(grid);
+    weights.assign(rect.Count(), 0.0f);
+    bool any = false;
+    for (uint32_t z = 0u; z < rect.height; ++z) {
+        const double dz = static_cast<double>(rect.z0 + z) * spacing - center.y;
+        for (uint32_t x = 0u; x < rect.width; ++x) {
+            const double dx = static_cast<double>(rect.x0 + x) * spacing - center.x;
+            const float distance = static_cast<float>(std::sqrt(dx * dx + dz * dz)) / radius;
+            const float weight = BrushFalloff(distance, hardness);
+            weights[static_cast<std::size_t>(z) * rect.width + x] = weight;
+            any = any || weight > 0.0f;
+        }
+    }
+    return any;
+}
+
+// 矩形内の 3×3 加重平均（1 2 1）。矩形の端は内側の標本だけで平均する。
+float Blur3(const std::vector<float>& values, const SampleRect& rect, uint32_t x, uint32_t z) noexcept {
+    float sum = 0.0f;
+    float weight = 0.0f;
+    for (int dz = -1; dz <= 1; ++dz) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            const int64_t sx = static_cast<int64_t>(x) + dx;
+            const int64_t sz = static_cast<int64_t>(z) + dz;
+            if (sx < 0 || sz < 0 || sx >= rect.width || sz >= rect.height) {
+                continue;
+            }
+            const float w = static_cast<float>((dx == 0 ? 2 : 1) * (dz == 0 ? 2 : 1));
+            sum += values[static_cast<std::size_t>(sz) * rect.width + static_cast<std::size_t>(sx)] * w;
+            weight += w;
+        }
+    }
+    return sum / weight;
+}
+
+std::vector<uint8_t> KeepMask(const std::vector<float>& weights) {
+    std::vector<uint8_t> keep(weights.size());
+    for (std::size_t i = 0u; i < weights.size(); ++i) {
+        keep[i] = weights[i] > 0.0f ? 1u : 0u;
+    }
+    return keep;
+}
+
+} // namespace
+
+float BrushFalloff(float normalizedDistance, float hardness) noexcept {
+    if (!(normalizedDistance < 1.0f)) {
+        return 0.0f;
+    }
+    const float inner = std::clamp(hardness, 0.0f, 0.999f);
+    if (normalizedDistance <= inner) {
+        return 1.0f;
+    }
+    const float t = (normalizedDistance - inner) / (1.0f - inner);
+    return 1.0f - t * t * (3.0f - 2.0f * t);
+}
+
+std::vector<MATH::Vec2> PlaceBrushDabs(std::span<const MATH::Vec2> path, float radiusMeters, float spacing) {
+    std::vector<MATH::Vec2> dabs;
+    if (path.empty()) {
+        return dabs;
+    }
+    const float step = (std::max)(radiusMeters * spacing, 0.01f);
+    dabs.push_back(path.front());
+    float remaining = step;
+    for (std::size_t i = 1u; i < path.size() && dabs.size() < kMaximumBrushDabs; ++i) {
+        const MATH::Vec2 a = path[i - 1u];
+        const MATH::Vec2 segment = path[i] - a;
+        const float length = std::sqrt(segment.x * segment.x + segment.y * segment.y);
+        if (!(length > 0.0f)) {
+            continue;
+        }
+        float travelled = 0.0f;
+        while (length - travelled >= remaining && dabs.size() < kMaximumBrushDabs) {
+            travelled += remaining;
+            dabs.push_back(a + segment * (travelled / length));
+            remaining = step;
+        }
+        remaining -= length - travelled;
+    }
+    return dabs;
+}
+
+bool ApplyHeightBrush(TerrainData& data, uint32_t layerId, const HeightBrushSettings& requested,
+                      std::span<const MATH::Vec2> path, TerrainEditRecorder* recorder, BrushEditResult& result,
+                      std::string& error) {
+    result = {};
+    const HeightLayer* layer = data.FindLayer(layerId);
+    TiledRaster<float>* values = data.LayerValues(layerId);
+    if (layer == nullptr || values == nullptr) {
+        error = "height brush needs an existing sculpt layer";
+        return false;
+    }
+    if (path.empty() || !FinitePath(path)) {
+        error = "height brush path is empty or not finite";
+        return false;
+    }
+    const HeightBrushSettings settings = JSONFIELDS::Sanitize(requested, kHeightBrushFields);
+    const TerrainGrid& grid = data.Grid();
+    const bool additive = layer->blend == HeightBlendMode::Add || layer->blend == HeightBlendMode::Subtract;
+    // 減算の層は値の向きが逆なので、全ての操作で符号を合わせる（合成後の高さが筆刷の向きに動く）。
+    const float sign = layer->blend == HeightBlendMode::Subtract ? -1.0f : 1.0f;
+    const bool needsComposite =
+        additive && (settings.op == HeightBrushOp::Smooth || settings.op == HeightBrushOp::Flatten);
+    const float fraction = std::clamp(settings.strength, 0.0f, 1.0f);
+    const double spacing = SampleSpacing(grid);
+    const std::vector<MATH::Vec2> dabs = PlaceBrushDabs(path, settings.radiusMeters, settings.spacing);
+    // 評価器は層の画素を参照で読むので、dab ごとの書き込みが次の dab の合成に入る。
+    std::unique_ptr<HeightStackEvaluator> evaluator;
+    if (needsComposite) {
+        evaluator = std::make_unique<HeightStackEvaluator>(data);
+        if (!evaluator->Valid()) {
+            error = evaluator->Error();
+            return false;
+        }
+    }
+    std::vector<float> weights, current, composite, layerValues, alpha;
+    for (const MATH::Vec2& dab : dabs) {
+        const SampleRect rect = SampleRectAround(grid, dab.x, dab.y, settings.radiusMeters);
+        if (rect.Count() > kTerrainMaximumRectSamples) {
+            error = "height brush radius covers too many samples";
+            return false;
+        }
+        if (!DabWeights(grid, rect, dab, settings.radiusMeters, settings.hardness, weights)) {
+            continue;
+        }
+        if (recorder != nullptr) {
+            recorder->TouchRect(TerrainChannel::LayerValues, layerId, rect);
+        }
+        values->ReadRect(grid, rect, current);
+        if (needsComposite && (!evaluator->EvaluateRect(rect, composite, &error, layerId) ||
+                               !evaluator->EvaluateLayerValues(layerId, rect, layerValues, alpha, &error))) {
+            return false;
+        }
+        std::vector<float> next = current;
+        for (uint32_t z = 0u; z < rect.height; ++z) {
+            for (uint32_t x = 0u; x < rect.width; ++x) {
+                const std::size_t i = static_cast<std::size_t>(z) * rect.width + x;
+                const float w = weights[i];
+                if (w <= 0.0f) {
+                    continue;
+                }
+                switch (settings.op) {
+                case HeightBrushOp::Raise: next[i] += sign * settings.strength * w; break;
+                case HeightBrushOp::Lower: next[i] -= sign * settings.strength * w; break;
+                case HeightBrushOp::Noise: {
+                    const double sx = static_cast<double>(rect.x0 + x) * spacing / settings.noiseScaleMeters;
+                    const double sz = static_cast<double>(rect.z0 + z) * spacing / settings.noiseScaleMeters;
+                    next[i] += sign * settings.strength * w * ValueNoise(sx, sz, settings.noiseSeed);
+                    break;
+                }
+                case HeightBrushOp::Flatten:
+                    if (additive) {
+                        next[i] += sign * fraction * w * (settings.targetHeightMeters - composite[i]) /
+                                   (std::max)(alpha[i], kMinimumLayerAlpha);
+                    } else {
+                        next[i] += fraction * w * (settings.targetHeightMeters - current[i]);
+                    }
+                    break;
+                case HeightBrushOp::Smooth:
+                    if (additive) {
+                        next[i] += sign * fraction * w * (Blur3(composite, rect, x, z) - composite[i]) /
+                                   (std::max)(alpha[i], kMinimumLayerAlpha);
+                    } else {
+                        next[i] += fraction * w * (Blur3(current, rect, x, z) - current[i]);
+                    }
+                    break;
+                }
+            }
+        }
+        const std::vector<uint8_t> keep = KeepMask(weights);
+        values->WriteRect(grid, rect, next, &keep);
+        result.touched = UnionRects(result.touched, rect);
+        ++result.dabs;
+    }
+    data.MarkChanged();
+    return true;
+}
+
+bool ApplyControlBrush(TerrainData& data, const ControlBrushSettings& requested, std::span<const MATH::Vec2> path,
+                       TerrainEditRecorder* recorder, BrushEditResult& result, std::string& error) {
+    result = {};
+    if (path.empty() || !FinitePath(path)) {
+        error = "control brush path is empty or not finite";
+        return false;
+    }
+    const ControlBrushSettings settings = JSONFIELDS::Sanitize(requested, kControlBrushFields);
+    const TerrainGrid& grid = data.Grid();
+    TiledRaster<uint32_t>& control = data.Control();
+    std::vector<float> weights;
+    std::vector<uint32_t> texels;
+    for (const MATH::Vec2& dab : PlaceBrushDabs(path, settings.radiusMeters, settings.spacing)) {
+        const SampleRect rect = SampleRectAround(grid, dab.x, dab.y, settings.radiusMeters);
+        if (rect.Count() > kTerrainMaximumRectSamples) {
+            error = "control brush radius covers too many samples";
+            return false;
+        }
+        if (!DabWeights(grid, rect, dab, settings.radiusMeters, settings.hardness, weights)) {
+            continue;
+        }
+        if (recorder != nullptr) {
+            recorder->TouchRect(TerrainChannel::Control, 0u, rect);
+        }
+        control.ReadRect(grid, rect, texels);
+        for (std::size_t i = 0u; i < texels.size(); ++i) {
+            const float w = weights[i] * settings.strength;
+            if (weights[i] <= 0.0f) {
+                continue;
+            }
+            ControlTexel texel = UnpackControlTexel(texels[i]);
+            switch (settings.op) {
+            case ControlBrushOp::Paint:
+                texel = PaintControlMaterial(texel, static_cast<uint8_t>(settings.material), w);
+                break;
+            case ControlBrushOp::Hole: texel.hole = texel.hole || w >= 0.5f; break;
+            case ControlBrushOp::Fill: texel.hole = texel.hole && w < 0.5f; break;
+            case ControlBrushOp::Unlock: texel.handPainted = texel.handPainted && w < 0.5f; break;
+            }
+            PackControlTexel(texel, texels[i]);
+        }
+        const std::vector<uint8_t> keep = KeepMask(weights);
+        control.WriteRect(grid, rect, texels, &keep);
+        result.touched = UnionRects(result.touched, rect);
+        ++result.dabs;
+    }
+    data.MarkChanged();
+    return true;
+}
+
+} // namespace HIKARI::TERRAIN::DATA
