@@ -76,6 +76,15 @@ AssetImportResult ImportScene(const std::filesystem::path& path, const AssetGuid
     for (WorldCellCoord cell : cellFiles)
         result.dependencies.push_back(
             {AssetGuid{}, TEXT::PathToUtf8(MakeSceneCellObjectsPath(path, cell)), "SourceCompanion"});
+    // モジュールが場面に添えた内容（地形の瓦片など）。物体の格子ファイル以外は全部入力にする。
+    std::error_code cellError{};
+    for (const auto& entry :
+         std::filesystem::directory_iterator(ASSETS::SEMANTICS::MakeSceneCellDirectoryPath(path), cellError)) {
+        const std::string name = TEXT::PathToUtf8(entry.path().filename());
+        if (entry.is_regular_file(cellError) && !name.ends_with(kSceneCellObjectsSuffix)) {
+            result.dependencies.push_back({AssetGuid{}, TEXT::PathToUtf8(entry.path()), "SourceCompanion"});
+        }
+    }
     result.message = result.success ? "Scene asset validated"
                      : loaded       ? "Scene has " + std::to_string(cells.unreadableCells.size()) +
                                     " unreadable cell file(s): " + path.generic_string()

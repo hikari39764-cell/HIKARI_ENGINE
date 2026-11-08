@@ -1,4 +1,7 @@
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
+#include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
+#include "HIKARI/Project/EditorModuleUi.h"
+#include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Core/Text/HIKARI_Localization.h"
@@ -206,6 +209,43 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteSaveAll() {
     return EDITOR::OperationOk("Saved.", {{"saved", std::move(saved)}});
 }
 
+namespace {
+
+// モジュールの撤销の一件を場面の履歴へ載せる。場面の文書は変えない。
+class ModuleUndoCommand final : public EDITOR::IEditorDocumentCommand {
+public:
+    ModuleUndoCommand(std::string label, std::unique_ptr<EDITOR_PROJECT::IEditorUndoEntry> entry)
+        : label_(std::move(label)), entry_(std::move(entry)) {}
+    const std::string& GetLabel() const noexcept override { return label_; }
+    EDITOR::EditorDocumentImpact GetImpact() const noexcept override { return EDITOR::EditorDocumentImpact::None; }
+    void Undo(SceneDocument&) const override { entry_->Undo(); }
+    void Redo(SceneDocument&) const override { entry_->Redo(); }
+    bool TryMergeApplied(const EDITOR::IEditorDocumentCommand&) override { return false; }
+
+private:
+    std::string label_;
+    std::unique_ptr<EDITOR_PROJECT::IEditorUndoEntry> entry_;
+};
+
+} // namespace
+
+void DocumentSceneEditorController::SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host) {
+    projectWorkspaceHost_ = host;
+    if (host == nullptr) {
+        return;
+    }
+    host->Extensions().SetUndoRecorder(
+        [this](std::string label, std::unique_ptr<EDITOR_PROJECT::IEditorUndoEntry> entry) {
+            documentHistory_.RecordApplied(std::make_unique<ModuleUndoCommand>(std::move(label), std::move(entry)));
+            context_.sceneDirty = true;
+            if (aiOperationScene_ != nullptr) {
+                aiOperationScene_->SetUnsavedSceneChanges(true);
+            }
+        });
+}
+
+void DocumentSceneEditorController::DiscardModuleUndoEntries() { documentHistory_ = EDITOR::EditorDocumentHistory{}; }
+
 bool DocumentSceneEditorController::SaveSceneDocument(DocumentSceneBase& scene) {
     if (scene.SaveCurrentSceneDocument()) {
         documentHistory_.MarkSaved();
@@ -213,6 +253,9 @@ bool DocumentSceneEditorController::SaveSceneDocument(DocumentSceneBase& scene) 
         context_.sceneDirty = false;
         scene.SetUnsavedSceneChanges(false);
         viewportDropMessage_ = "Scene saved";
+        if (projectWorkspaceHost_ != nullptr) {
+            projectWorkspaceHost_->Extensions().NotifySceneSaved(RuntimeSceneContext::GetCurrentSceneFilePath());
+        }
         return true;
     } else {
         viewportDropMessage_ = "Save failed; save the scene as an asset first";

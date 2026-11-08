@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include "HIKARI/Project/NavigationSource.h"
 #include "Physics/HIKARI_TerrainCollisionProjection.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
@@ -50,6 +51,22 @@ NavigationSourceStamp GatherNavigationSourceStamp(World& world) {
         result.objectSignatures[objectValue] = ComputeTerrainObjectSignature(terrain);
         result.collisionRevisions[objectValue] = terrain.GetCollisionRevision();
     });
+    for (const INavigationGeometrySource* source : world.GetNavigationGeometrySources()) {
+        result.hasTerrain = true;
+        const uint64_t sourceValue = reinterpret_cast<uintptr_t>(source);
+        const uint32_t chunkCount = source->GetNavigationChunkCount();
+        uint64_t revisions = kHashOffset;
+        for (uint32_t index = 0u; index < chunkCount; ++index) {
+            int32_t x = 0;
+            int32_t z = 0;
+            uint64_t revision = 0u;
+            if (source->GetNavigationChunk(index, x, z, revision)) {
+                revisions = HashValue(revisions, revision);
+            }
+        }
+        result.objectSignatures[sourceValue] = chunkCount;
+        result.collisionRevisions[sourceValue] = revisions;
+    }
 
     uint64_t hash = kHashOffset;
     for (const auto& [object, signature] : result.objectSignatures) {
@@ -71,9 +88,22 @@ CurrentNavigationSources GatherCurrentSources(World& world, const NavigationSour
             (void)chunk;
             const NavigationChunkKey navigationKey{objectValue, key.x, key.z};
             result.chunks.emplace(navigationKey,
-                                  NavigationChunkSource{handle, &terrain, key, terrain.GetChunkRevision(key)});
+                                  NavigationChunkSource{handle, &terrain, nullptr, key, terrain.GetChunkRevision(key)});
         }
     });
+    for (const INavigationGeometrySource* source : world.GetNavigationGeometrySources()) {
+        const uint64_t sourceValue = reinterpret_cast<uintptr_t>(source);
+        const uint32_t chunkCount = source->GetNavigationChunkCount();
+        for (uint32_t index = 0u; index < chunkCount; ++index) {
+            int32_t x = 0;
+            int32_t z = 0;
+            uint64_t revision = 0u;
+            if (source->GetNavigationChunk(index, x, z, revision)) {
+                result.chunks.emplace(NavigationChunkKey{sourceValue, x, z},
+                                      NavigationChunkSource{{}, nullptr, source, {x, z}, revision});
+            }
+        }
+    }
 
     uint64_t hash = stamp.revision;
     for (const auto& [key, source] : result.chunks) {
@@ -175,7 +205,37 @@ bool AppendNavigationGeometry(const NavigationGeometry& source, NavigationGeomet
     return true;
 }
 
+namespace {
+
+class ModuleGeometrySink final : public INavigationGeometrySink {
+public:
+    explicit ModuleGeometrySink(NavigationGeometry& out) : out_(out) {}
+    void Append(std::span<const float> xyz, std::span<const int32_t> triangles) override {
+        const int baseVertex = static_cast<int>(out_.vertices.size() / 3u);
+        out_.vertices.insert(out_.vertices.end(), xyz.begin(), xyz.end());
+        for (const int32_t index : triangles) {
+            out_.triangles.push_back(baseVertex + index);
+        }
+        for (size_t offset = 0u; offset + 2u < xyz.size(); offset += 3u) {
+            for (size_t axis = 0u; axis < 3u; ++axis) {
+                out_.boundsMin[axis] = (std::min)(out_.boundsMin[axis], xyz[offset + axis]);
+                out_.boundsMax[axis] = (std::max)(out_.boundsMax[axis], xyz[offset + axis]);
+            }
+        }
+    }
+
+private:
+    NavigationGeometry& out_;
+};
+
+} // namespace
+
 bool BuildChunkGeometry(const NavigationChunkSource& source, NavigationGeometry& out, std::string& outDiagnostic) {
+    if (source.moduleSource != nullptr) {
+        ModuleGeometrySink sink(out);
+        source.moduleSource->AppendNavigationChunk(source.key.x, source.key.z, sink);
+        return true;
+    }
     if (source.terrain == nullptr) {
         outDiagnostic = "navigation chunk lost its terrain owner";
         return false;

@@ -36,7 +36,7 @@ bool BuildSolverShapes(const std::vector<PhysicsShapeDesc>& source, std::vector<
         if (shape.isTrigger) {
             continue;
         }
-        if (shape.type == PhysicsShapeType::TriangleMesh) {
+        if (shape.type == PhysicsShapeType::TriangleMesh || shape.type == PhysicsShapeType::HeightField) {
             outError = "kinematic motion does not support moving triangle meshes";
             return false;
         }

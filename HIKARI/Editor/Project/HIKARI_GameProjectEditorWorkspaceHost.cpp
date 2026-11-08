@@ -599,8 +599,8 @@ bool GameProjectEditorWorkspaceHost::RegisterModule(const GameProjectEditorModul
         }
     };
     std::string operationMessage{};
-    if (!module.RegisterEditorOperations(operationRegistry, operationOwnerToken, documents_.get(), operationMessage,
-                                         &registry_)) {
+    if (!module.RegisterEditorOperations(operationRegistry, operationOwnerToken, documents_.get(), &extensions_,
+                                         operationMessage, &registry_)) {
         (void)operationRegistry.UnregisterOwner(operationOwnerToken);
         discardDocumentsOfFirstModule();
         outMessage = "GameProject Editor operation registration failed: " + operationMessage;

@@ -93,9 +93,9 @@ public:
     // （二度目は何もしない）。
     void Shutdown();
     EDITOR::EditorOperationRegistry& Operations() noexcept { return operationRegistry_; }
-    void SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host) noexcept {
-        projectWorkspaceHost_ = host;
-    }
+    void SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host);
+    // モジュールの DLL を外す前に呼ぶ。撤销の記録にはモジュールの中のオブジェクトが残っている。
+    void DiscardModuleUndoEntries();
 
     void Draw(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession,
               EDITOR::EditorProjectSessionController& projectSession);

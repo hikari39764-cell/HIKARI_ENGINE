@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <string_view>
 
 #include "HIKARI/Project/EditorWorkspace.h"
@@ -56,6 +57,30 @@ public:
     virtual const char* GetPanelId() const noexcept = 0;
     virtual const char* GetDisplayName() const noexcept = 0;
     virtual void Draw(IEditorWorkspaceUi& ui) = 0;
+};
+
+// 場面の撤销に載せる一件（内容は適用済み）。Undo / Redo は編集器の所有スレッドで呼ばれる。
+class IEditorUndoEntry {
+public:
+    virtual ~IEditorUndoEntry() = default;
+    virtual void Undo() = 0;
+    virtual void Redo() = 0;
+};
+
+// 場面の主ファイルの保存が成功した後に呼ばれる。モジュールは場面に添えた内容をここで書く。
+class IEditorSceneListener {
+public:
+    virtual ~IEditorSceneListener() = default;
+    virtual void OnSceneSaved(std::string_view scenePathUtf8) = 0;
+};
+
+// モジュールが登録されている間有効。IEditorOperationRegistrar::SceneServices から受け取る。
+class IEditorSceneServices {
+public:
+    virtual ~IEditorSceneServices() = default;
+    virtual void RecordUndo(std::string_view label, std::unique_ptr<IEditorUndoEntry> entry) = 0;
+    virtual void SetSceneListener(IEditorSceneListener* listener) = 0;
+    virtual bool ActivateViewportTool(std::string_view toolId) = 0;
 };
 
 } // namespace HIKARI::EDITOR_PROJECT

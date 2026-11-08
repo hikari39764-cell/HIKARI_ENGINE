@@ -11,6 +11,7 @@
 #include "HIKARI/Project/GameComponent.h"
 #include "HIKARI/Project/GameFlowViews.h"
 #include "HIKARI/Project/GameProjectModule.h"
+#include "HIKARI/Project/NavigationSource.h"
 #include "HIKARI/Project/RenderSurface.h"
 #include "HIKARI/Project/RuntimeFeature.h"
 #include "HIKARI/Project/RuntimeFeatureRegistration.h"
@@ -88,13 +89,50 @@ struct FrustumPlanes {
 };
 
 // 地形の部品。設定を場面に保存し、自分をその世界のモジュールの面として登録する。
-class TerrainComponent final : public IGameComponent, public IRenderSurfaceExtension {
+class TerrainComponent final : public IGameComponent, public IRenderSurfaceExtension, public INavigationGeometrySource {
 public:
     void OnAttach(GameComponentContext& context) override {
         world_ = context.GetWorld();
+        owner_ = context.GetObject().GetHandle();
         (void)world_.AddRenderSurfaceExtension(*this);
+        (void)world_.AddNavigationGeometrySource(*this);
     }
-    void OnDetach(GameComponentContext&) override { world_.RemoveRenderSurfaceExtension(*this); }
+
+    // 物理は Play の世界でだけ動く。瓦片が読めたら当たりを作る。
+    void Update(GameComponentContext&, float) override {
+        TerrainStore& store = TerrainStore::Get();
+        const std::filesystem::path scenePath = CurrentScenePath();
+        if (scenePath.empty() || !store.Open(scenePath, settings_) || !heightFields_.empty()) {
+            return;
+        }
+        const auto& grid = store.Settings().grid;
+        const uint32_t samples = TERRAIN::DATA::TileSamples(grid);
+        std::vector<float> heights{};
+        for (const auto& [tile, runtime] : store.Tiles()) {
+            if (runtime.heights.empty()) {
+                continue;
+            }
+            heights.resize(runtime.heights.size());
+            std::transform(runtime.heights.begin(), runtime.heights.end(), heights.begin(),
+                           [&](uint16_t value) { return TERRAIN::DATA::DequantizeHeight(grid, value); });
+            const uint64_t body =
+                world_.AddStaticHeightField(owner_, static_cast<float>(tile.x) * grid.tileSizeMeters,
+                                            static_cast<float>(tile.z) * grid.tileSizeMeters,
+                                            static_cast<float>(TERRAIN::DATA::SampleSpacing(grid)), samples, heights);
+            if (body == 0u) {
+                break; // 物理の無い世界（編集中）。
+            }
+            heightFields_.push_back(body);
+        }
+    }
+    void OnDetach(GameComponentContext&) override {
+        world_.RemoveRenderSurfaceExtension(*this);
+        world_.RemoveNavigationGeometrySource(*this);
+        for (const uint64_t body : heightFields_) {
+            world_.RemoveStaticHeightField(body);
+        }
+        heightFields_.clear();
+    }
 
     void DescribeProperties(PropertyFields& fields) override {
         fields.Float("tileSizeMeters", "Tile Size", settings_.grid.tileSizeMeters, 16.0f, 4096.0f);
@@ -175,6 +213,60 @@ public:
     }
 
     void OnRenderResourcesLost() override { TerrainStore::Get().Render() = {}; }
+
+    uint32_t GetNavigationChunkCount() const override {
+        return static_cast<uint32_t>(TerrainStore::Get().Tiles().size());
+    }
+
+    bool GetNavigationChunk(uint32_t index, int32_t& outX, int32_t& outZ, uint64_t& outRevision) const override {
+        const auto& tiles = TerrainStore::Get().Tiles();
+        if (index >= tiles.size()) {
+            return false;
+        }
+        const auto entry = std::next(tiles.begin(), index);
+        outX = entry->first.x;
+        outZ = entry->first.z;
+        outRevision = entry->second.revision;
+        return true;
+    }
+
+    // 道案内には 4 標本おきの粗い格子を渡す（Recast の入力を抑える）。
+    void AppendNavigationChunk(int32_t x, int32_t z, INavigationGeometrySink& sink) const override {
+        const TerrainStore& store = TerrainStore::Get();
+        const auto found = store.Tiles().find(TileCoord{x, z});
+        if (found == store.Tiles().end() || found->second.heights.empty()) {
+            return;
+        }
+        const auto& grid = store.Settings().grid;
+        const uint32_t samples = TERRAIN::DATA::TileSamples(grid);
+        constexpr uint32_t kStep = 4u;
+        const uint32_t columns = (samples - 1u) / kStep + 1u;
+        const float spacing = static_cast<float>(TERRAIN::DATA::SampleSpacing(grid)) * kStep;
+        const float originX = static_cast<float>(x) * grid.tileSizeMeters;
+        const float originZ = static_cast<float>(z) * grid.tileSizeMeters;
+        std::vector<float> vertices{};
+        vertices.reserve(static_cast<size_t>(columns) * columns * 3u);
+        for (uint32_t row = 0u; row < columns; ++row) {
+            for (uint32_t column = 0u; column < columns; ++column) {
+                vertices.push_back(originX + static_cast<float>(column) * spacing);
+                vertices.push_back(TERRAIN::DATA::DequantizeHeight(
+                    grid, found->second.heights[static_cast<size_t>(row * kStep) * samples + column * kStep]));
+                vertices.push_back(originZ + static_cast<float>(row) * spacing);
+            }
+        }
+        std::vector<int32_t> triangles{};
+        triangles.reserve(static_cast<size_t>(columns - 1u) * (columns - 1u) * 6u);
+        for (uint32_t row = 0u; row + 1u < columns; ++row) {
+            for (uint32_t column = 0u; column + 1u < columns; ++column) {
+                const int32_t a = static_cast<int32_t>(row * columns + column);
+                const int32_t b = a + 1;
+                const int32_t c = a + static_cast<int32_t>(columns);
+                const int32_t d = c + 1;
+                triangles.insert(triangles.end(), {a, c, b, b, c, d});
+            }
+        }
+        sink.Append(vertices, triangles);
+    }
 
 private:
     std::filesystem::path CurrentScenePath() const {
@@ -320,6 +412,8 @@ private:
     }
 
     WorldView world_{};
+    GameProjectObjectHandle owner_{};
+    std::vector<uint64_t> heightFields_{};
     TerrainSettings settings_{};
     std::vector<TerrainNodeInstance> instances_{};
     std::string lastError_{};

@@ -526,6 +526,17 @@ void World::AddRenderSurfaceExtension(IRenderSurfaceExtension& extension) {
     }
 }
 
+void World::AddNavigationGeometrySource(INavigationGeometrySource& source) {
+    if (std::find(navigationGeometrySources_.begin(), navigationGeometrySources_.end(), &source) ==
+        navigationGeometrySources_.end()) {
+        navigationGeometrySources_.push_back(&source);
+    }
+}
+
+void World::RemoveNavigationGeometrySource(INavigationGeometrySource& source) noexcept {
+    std::erase(navigationGeometrySources_, &source);
+}
+
 void World::RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) noexcept {
     std::erase(renderSurfaceExtensions_, &extension);
 }

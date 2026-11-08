@@ -84,7 +84,8 @@ PhysicsBodyValidationResult ValidatePhysicsBodyCreateInfo(const PhysicsBodyCreat
                 PhysicsErrorCode::UnsupportedScale,
                 "a locally rotated collider under non-uniform world scale would introduce shear; bake the scale or remove the collider rotation");
         }
-        if (shape.type == PhysicsShapeType::TriangleMesh && createInfo.body.motionType != PhysicsMotionType::Static) {
+        if ((shape.type == PhysicsShapeType::TriangleMesh || shape.type == PhysicsShapeType::HeightField) &&
+            createInfo.body.motionType != PhysicsMotionType::Static) {
             return Failure(PhysicsErrorCode::UnsupportedMotionShape,
                            "triangle mesh collision is static-only; use convex shapes for moving bodies");
         }

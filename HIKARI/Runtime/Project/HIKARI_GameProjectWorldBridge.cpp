@@ -88,6 +88,25 @@ bool WorldView::AddRenderSurfaceExtension(IRenderSurfaceExtension& extension) co
     }
 }
 
+bool WorldView::AddNavigationGeometrySource(INavigationGeometrySource& source) const noexcept {
+    try {
+        World* world = const_cast<World*>(GameProjectSdkAccess::GetWorld(*this));
+        if (world == nullptr) {
+            return false;
+        }
+        world->AddNavigationGeometrySource(source);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+void WorldView::RemoveNavigationGeometrySource(INavigationGeometrySource& source) const noexcept {
+    if (World* world = const_cast<World*>(GameProjectSdkAccess::GetWorld(*this))) {
+        world->RemoveNavigationGeometrySource(source);
+    }
+}
+
 void WorldView::RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) const noexcept {
     if (World* world = const_cast<World*>(GameProjectSdkAccess::GetWorld(*this))) {
         world->RemoveRenderSurfaceExtension(extension);

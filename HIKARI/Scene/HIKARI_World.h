@@ -30,6 +30,7 @@ struct GameProjectSdkAccess;
 
 enum class RuntimeWorldAccessResult : uint8_t { Success, InvalidWorld, WrongThread };
 
+class INavigationGeometrySource;
 class IRenderSurfaceExtension;
 
 class World {
@@ -167,6 +168,11 @@ public:
         return renderSurfaceExtensions_;
     }
     void AddRenderSurfaceExtension(IRenderSurfaceExtension& extension);
+    std::span<INavigationGeometrySource* const> GetNavigationGeometrySources() const noexcept {
+        return navigationGeometrySources_;
+    }
+    void AddNavigationGeometrySource(INavigationGeometrySource& source);
+    void RemoveNavigationGeometrySource(INavigationGeometrySource& source) noexcept;
     void RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) noexcept;
     bool IsOwnerThread() const noexcept { return std::this_thread::get_id() == ownerThread_; }
     static World* ResolveRuntimeWorld(uint64_t identity, RuntimeWorldAccessResult* outAccess = nullptr) noexcept;
@@ -451,6 +457,7 @@ private:
     std::thread::id ownerThread_{};
     uint64_t runtimeIdentity_ = 0u;
     std::vector<IRenderSurfaceExtension*> renderSurfaceExtensions_{};
+    std::vector<INavigationGeometrySource*> navigationGeometrySources_{};
     uint64_t nextPrefabRequestId_ = 1u;
     uint64_t nextPrefabInstanceId_ = 1u;
     uint64_t nextDynamicSceneObjectId_ = 1u;

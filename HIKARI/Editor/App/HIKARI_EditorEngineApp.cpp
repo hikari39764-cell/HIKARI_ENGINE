@@ -111,6 +111,7 @@ bool EditorEngineApp::ShouldExitHost() const {
 }
 
 void EditorEngineApp::Shutdown() {
+    documentSceneEditorController_.DiscardModuleUndoEntries();
     gameProjectWorkspaceHost_.Shutdown();
     while (!installedEditorModules_.empty()) {
         installedEditorModules_.pop_back();

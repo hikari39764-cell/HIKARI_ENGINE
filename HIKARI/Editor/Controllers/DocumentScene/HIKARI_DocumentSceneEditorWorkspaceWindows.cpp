@@ -1,4 +1,5 @@
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
+#include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Editor/Shell/HIKARI_EditorDockLayout.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
 #include "Editor/History/HIKARI_SceneComponentPropertiesHistoryCommand.h"
@@ -399,6 +400,9 @@ void DocumentSceneEditorController::HandleResourceWorkspaceRequests(DocumentScen
             context_.sceneDirty = false;
             scene.SetUnsavedSceneChanges(false);
             viewportDropMessage_ = "Scene saved to selected asset";
+            if (projectWorkspaceHost_ != nullptr) {
+                projectWorkspaceHost_->Extensions().NotifySceneSaved(RuntimeSceneContext::GetCurrentSceneFilePath());
+            }
             HIKARI_LOG_INFO("[SceneAsset] save scene: " + saveSceneAsGuid);
         } else {
             viewportDropMessage_ = "Scene save target failed";

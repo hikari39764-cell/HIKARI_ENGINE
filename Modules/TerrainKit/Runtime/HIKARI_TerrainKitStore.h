@@ -29,6 +29,7 @@ inline constexpr uint32_t kTileLeafDivisions = 8u; // 瓦片一枚の葉の節�
 struct TileRuntime {
     uint32_t layer = 0u;
     bool uploadPending = true;
+    uint64_t revision = 0u; // 焼くたびに増える（道案内の塊の版）
     float minHeight = 0.0f;
     float maxHeight = 0.0f;
     std::vector<uint16_t> heights{};
@@ -57,8 +58,11 @@ public:
     const std::filesystem::path& ScenePath() const noexcept { return scenePath_; }
     const TerrainSettings& Settings() const noexcept { return settings_; }
 
-    // 新しい地形（噪声の層と彫る層）を作り直す。
-    bool Generate(const TerrainSettings& settings, const TERRAIN::DATA::NoiseLayerSettings& noise, std::string& error);
+    // 今の格子で、噪声の層と彫る層だけの新しい編集データを作る。
+    std::unique_ptr<TERRAIN::DATA::TerrainData> MakeGeneratedData(const TERRAIN::DATA::NoiseLayerSettings& noise,
+                                                                  std::string& error) const;
+    // 編集データを丸ごと入れ替えて焼き直し、前のものを返す（撤销で戻すため）。
+    std::unique_ptr<TERRAIN::DATA::TerrainData> ReplaceData(std::unique_ptr<TERRAIN::DATA::TerrainData> data);
 
     TERRAIN::DATA::TerrainData& Data() noexcept { return *data_; }
     const TERRAIN::DATA::TerrainData& Data() const noexcept { return *data_; }
@@ -67,6 +71,8 @@ public:
     // 変わった瓦片を焼き直す。keys が空なら全部。
     void RebakeTiles(std::span<const TERRAIN::DATA::TileCoord> tiles);
     void RebakeRect(const TERRAIN::DATA::SampleRect& rect);
+    // 変わった瓦片とその周り（法線が縁の標本を見る）を焼き直し、保存の対象にする。
+    void RebakeChanged(std::span<const TERRAIN::DATA::TileCoord> tiles);
     void MarkSaveDirty(std::span<const TERRAIN::DATA::TileCoord> tiles);
     bool HasUnsavedTiles() const noexcept { return !unsavedTiles_.empty() || stackDirty_; }
 

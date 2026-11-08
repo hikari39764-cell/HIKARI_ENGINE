@@ -119,9 +119,30 @@ void ModuleEditorExtensions::Add(const GameProjectEditorModuleLibrary& module) {
     }
 }
 
+void ModuleEditorExtensions::RecordUndo(std::string_view label,
+                                        std::unique_ptr<EDITOR_PROJECT::IEditorUndoEntry> entry) {
+    if (undoRecorder_ && entry != nullptr) {
+        undoRecorder_(std::string(label), std::move(entry));
+    }
+}
+
+void ModuleEditorExtensions::SetSceneListener(EDITOR_PROJECT::IEditorSceneListener* listener) {
+    if (listener != nullptr &&
+        std::find(sceneListeners_.begin(), sceneListeners_.end(), listener) == sceneListeners_.end()) {
+        sceneListeners_.push_back(listener);
+    }
+}
+
+void ModuleEditorExtensions::NotifySceneSaved(std::string_view scenePathUtf8) {
+    for (EDITOR_PROJECT::IEditorSceneListener* listener : sceneListeners_) {
+        (void)CallModule("scene", "OnSceneSaved", [&] { listener->OnSceneSaved(scenePathUtf8); });
+    }
+}
+
 void ModuleEditorExtensions::Clear() noexcept {
     tools_.clear();
     panels_.clear();
+    sceneListeners_.clear();
     activeTool_ = static_cast<size_t>(-1);
 }
 

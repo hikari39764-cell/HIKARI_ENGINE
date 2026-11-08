@@ -11,6 +11,7 @@ namespace HIKARI::EDITOR_PROJECT {
 
 class IEditorDocumentService;
 class IEditorWorkspaceCommands;
+class IEditorSceneServices;
 
 inline constexpr uint32_t kEditorOperationsApiVersion = 1u;
 
@@ -122,6 +123,8 @@ public:
     // module's handlers is running (or inside a workspace callback). Handlers reuse the
     // same Scene operations, transactions and undo as the module's workspaces.
     virtual IEditorWorkspaceCommands* Commands() noexcept { return nullptr; }
+    // 場面の撤销と保存の通知。モジュールが登録されている間有効。
+    virtual IEditorSceneServices* SceneServices() noexcept { return nullptr; }
 };
 
 static_assert(std::is_standard_layout_v<EditorOperationParameterDescriptor>);

@@ -17,6 +17,7 @@
 namespace HIKARI {
 class World;
 class TerrainSurfaceComponent;
+class INavigationGeometrySource;
 } // namespace HIKARI
 namespace HIKARI::NAVIGATION::BUILD {
 template <auto Free>
@@ -51,6 +52,8 @@ struct NavigationChunkKey {
 struct NavigationChunkSource {
     RuntimeObjectHandle object{};
     TerrainSurfaceComponent* terrain = nullptr;
+    // モジュールの塊。terrain の代わりに使う。
+    const INavigationGeometrySource* moduleSource = nullptr;
     TERRAIN::TerrainChunkKey key{};
     uint64_t revision = 0u;
 };

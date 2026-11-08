@@ -180,7 +180,8 @@ PhysicsCharacterCreateResult JoltPhysicsBackend::CreateCharacter(const PhysicsCh
     std::string shapeError{};
     const bool hasUnsupportedShape = std::any_of(
         createInfo.character.shapes.begin(), createInfo.character.shapes.end(), [](const PhysicsShapeDesc& candidate) {
-            return candidate.isTrigger || candidate.type == PhysicsShapeType::TriangleMesh;
+            return candidate.isTrigger || candidate.type == PhysicsShapeType::TriangleMesh ||
+                   candidate.type == PhysicsShapeType::HeightField;
         });
     if (hasUnsupportedShape) {
         result.error = PhysicsErrorCode::UnsupportedMotionShape;

@@ -11,6 +11,7 @@
 namespace HIKARI::EDITOR_PROJECT {
 
 class IEditorDocumentService;
+class IEditorSceneServices;
 class IEditorWorkspace;
 
 } // namespace HIKARI::EDITOR_PROJECT
@@ -44,7 +45,8 @@ public:
     size_t GetPanelCount() const noexcept;
     EDITOR_PROJECT::IEditorPanel* GetPanel(size_t index) const noexcept;
     bool RegisterEditorOperations(EditorOperationRegistry& registry, uint64_t ownerToken,
-                                  EDITOR_PROJECT::IEditorDocumentService* documents, std::string& outMessage,
+                                  EDITOR_PROJECT::IEditorDocumentService* documents,
+                                  EDITOR_PROJECT::IEditorSceneServices* sceneServices, std::string& outMessage,
                                   GameProjectEditorWorkspaceRegistry* commands = nullptr) const;
     const std::filesystem::path& GetModulePath() const noexcept;
 

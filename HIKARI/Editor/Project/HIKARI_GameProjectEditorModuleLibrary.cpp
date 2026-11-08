@@ -153,6 +153,7 @@ EDITOR_PROJECT::IEditorWorkspace* GameProjectEditorModuleLibrary::GetWorkspace(s
 
 bool GameProjectEditorModuleLibrary::RegisterEditorOperations(EditorOperationRegistry& registry, uint64_t ownerToken,
                                                               EDITOR_PROJECT::IEditorDocumentService* documents,
+                                                              EDITOR_PROJECT::IEditorSceneServices* sceneServices,
                                                               std::string& outMessage,
                                                               GameProjectEditorWorkspaceRegistry* commands) const {
     outMessage.clear();
@@ -160,7 +161,7 @@ bool GameProjectEditorModuleLibrary::RegisterEditorOperations(EditorOperationReg
         outMessage = "GameProject Editor operation registration requires a loaded module and owner token.";
         return false;
     }
-    GameProjectEditorOperationRegistration registrar{registry, ownerToken, documents, commands};
+    GameProjectEditorOperationRegistration registrar{registry, ownerToken, documents, commands, sceneServices};
     if (!api_->registerEditorOperations(instance_, &registrar)) {
         outMessage = "GameProject Editor operation registration callback failed.";
         return false;

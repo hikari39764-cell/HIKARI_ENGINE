@@ -247,29 +247,29 @@ bool TerrainStore::LoadFromDisk(const std::filesystem::path& scenePath, std::str
     return true;
 }
 
-bool TerrainStore::Generate(const TerrainSettings& settings, const NoiseLayerSettings& noise, std::string& error) {
-    if (!ValidSettings(settings, &error)) {
-        return false;
-    }
-    if (scenePath_.empty()) {
-        error = "No scene is open for terrain data.";
-        return false;
-    }
-    const std::filesystem::path scenePath = scenePath_;
-    Close();
-    scenePath_ = scenePath;
-    settings_ = settings;
-    data_ = std::make_unique<TerrainData>(settings.grid);
-    if (!MakeInitialStack(*data_, noise, sculptLayer_)) {
+std::unique_ptr<TerrainData> TerrainStore::MakeGeneratedData(const NoiseLayerSettings& noise,
+                                                             std::string& error) const {
+    auto data = std::make_unique<TerrainData>(settings_.grid);
+    uint32_t sculptLayer = 0u;
+    if (!MakeInitialStack(*data, noise, sculptLayer)) {
         error = "Could not create the terrain layers.";
-        return false;
+        return nullptr;
     }
-    BuildTileList();
+    return data;
+}
+
+std::unique_ptr<TerrainData> TerrainStore::ReplaceData(std::unique_ptr<TerrainData> data) {
+    std::unique_ptr<TerrainData> previous = std::move(data_);
+    data_ = std::move(data);
+    sculptLayer_ = FindSculptLayer(*data_);
     stackDirty_ = true;
+    std::vector<TileCoord> all{};
     for (const auto& [tile, runtime] : tiles_) {
-        unsavedTiles_.push_back(tile);
+        all.push_back(tile);
     }
-    return true;
+    RebakeTiles(all);
+    MarkSaveDirty(all);
+    return previous;
 }
 
 void TerrainStore::BuildTileList() {
@@ -341,6 +341,7 @@ void TerrainStore::BakeTile(TileCoord tile, const HeightStackEvaluator& evaluato
     }
     BuildNormalMips(bordered, samples, SampleSpacing(grid), runtime.normalMips);
     runtime.uploadPending = true;
+    ++runtime.revision;
 }
 
 void TerrainStore::RebakeTiles(std::span<const TileCoord> tiles) {
@@ -368,6 +369,22 @@ void TerrainStore::RebakeRect(const SampleRect& rect) {
             touched.push_back(tile);
         }
     });
+    RebakeTiles(touched);
+    MarkSaveDirty(touched);
+}
+
+void TerrainStore::RebakeChanged(std::span<const TileCoord> tiles) {
+    std::vector<TileCoord> touched{};
+    for (const TileCoord tile : tiles) {
+        for (int32_t dz = -1; dz <= 1; ++dz) {
+            for (int32_t dx = -1; dx <= 1; ++dx) {
+                const TileCoord neighbor{tile.x + dx, tile.z + dz};
+                if (tiles_.contains(neighbor) && std::find(touched.begin(), touched.end(), neighbor) == touched.end()) {
+                    touched.push_back(neighbor);
+                }
+            }
+        }
+    }
     RebakeTiles(touched);
     MarkSaveDirty(touched);
 }

@@ -12,6 +12,7 @@
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
+#include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
 namespace HIKARI {
@@ -240,6 +241,7 @@ bool DocumentSceneBase::SaveCurrentSceneDocumentAs(const AssetGuid& sceneGuid) {
     LogPartitionedSave(state_->identity.document, report);
 
     state_->identity.scenePath = absolutePath.generic_string();
+    RuntimeSceneContext::SetCurrentSceneFilePath(state_->identity.scenePath);
     state_->identity.sceneId = sceneGuid.value;
     state_->identity.currentSceneAssetGuid = sceneGuid;
     state_->identity.documentDirty = false;
