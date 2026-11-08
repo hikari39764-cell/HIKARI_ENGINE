@@ -601,102 +601,56 @@ bool DocumentSceneBase::ReloadSceneDocument() {
     }
     return OpenStartupSceneAsset();
 }
-bool DocumentSceneBase::ApplyRuntimeObjectChanges(const SceneObjectChanges& changes) {
+bool DocumentSceneBase::ApplyRuntimeObjectChanges(const SceneObjectChanges& requested) {
     DocumentSceneRuntimeState& runtime = state_->runtime;
     const SceneDocument& document = state_->identity.document;
     if (!runtime.worldBuilt || runtime.playActive) {
         return RebuildRuntimeWorld();
     }
-
-    // 変更分は部品の並びが同じならその場で更新する（句柄と変わらない部品を保つ）。並びが変わった物体と追加分は
-    // document から生成する（変更分は先に壊してから作り直す）。
-    std::vector<const SceneObjectData*> builtObjects{};
-    builtObjects.reserve(changes.added.size() + changes.changed.size());
-    std::vector<const SceneObjectData*> updatedInPlace{};
-    std::vector<SceneObjectId> recreated{};
+    const SceneObjectChanges changes = runtime.builder.ClassifyObjectChanges(document, requested, runtime.world);
     SceneDependencySet dependencies{};
     bool lightingChanged = false;
-    const auto admit = [&](SceneObjectId id, bool mustBeNew) {
-        const SceneObjectData* object = FindSceneObjectData(document, id);
-        const GameObject* existing = runtime.world.FindObject(id);
-        if (object == nullptr || (mustBeNew && existing != nullptr)) {
-            return false;
-        }
-        for (const SceneComponentData& component : object->components) {
-            if (runtime.componentSystemPolicy.NeedsSystemInstall(component.type, document, runtime.systemScheduler)) {
-                return false;
-            }
-            lightingChanged = lightingChanged || LIGHTING_AUTHORING::IsLightingComponentType(component.type);
-        }
-        runtime.builder.CollectObjectDependencies(*object, &runtime.componentRegistry, dependencies);
-        if (!mustBeNew && existing != nullptr &&
-            runtime.builder.CanUpdateObjectInPlace(*object, *existing, runtime.componentRegistry)) {
-            updatedInPlace.push_back(object);
-        } else {
-            builtObjects.push_back(object);
-            if (!mustBeNew) {
-                recreated.push_back(id);
+    const auto noteWorldLighting = [&](SceneObjectId id) {
+        if (const GameObject* object = runtime.world.FindObject(id)) {
+            for (const auto& component : object->GetComponents()) {
+                lightingChanged = lightingChanged ||
+                                  (component && LIGHTING_AUTHORING::IsLightingComponentType(component->GetTypeName()));
             }
         }
-        return true;
     };
-    for (SceneObjectId id : changes.added) {
-        if (!admit(id, true)) {
-            return RebuildRuntimeWorld();
-        }
-    }
-    for (SceneObjectId id : changes.changed) {
-        if (!admit(id, false)) {
-            return RebuildRuntimeWorld();
+    for (const std::vector<SceneObjectId>* ids : {&changes.added, &changes.changed}) {
+        for (SceneObjectId id : *ids) {
+            const SceneObjectData* object = FindSceneObjectData(document, id);
+            if (object == nullptr) {
+                return RebuildRuntimeWorld();
+            }
+            for (const SceneComponentData& component : object->components) {
+                if (runtime.componentSystemPolicy.NeedsSystemInstall(component.type, document,
+                                                                     runtime.systemScheduler)) {
+                    return RebuildRuntimeWorld();
+                }
+                lightingChanged = lightingChanged || LIGHTING_AUTHORING::IsLightingComponentType(component.type);
+            }
+            noteWorldLighting(id);
+            runtime.builder.CollectObjectDependencies(*object, &runtime.componentRegistry, dependencies);
         }
     }
     if (state_->assets.NeedsRuntimeDependencyRegistryRefresh(dependencies)) {
         return RebuildRuntimeWorld();
     }
-
-    const auto destroy = [&](SceneObjectId id) {
-        GameObject* object = runtime.world.FindObject(id);
-        if (object == nullptr) {
-            return true;
-        }
-        for (const auto& component : object->GetComponents()) {
-            lightingChanged =
-                lightingChanged || (component && LIGHTING_AUTHORING::IsLightingComponentType(component->GetTypeName()));
-        }
-        return runtime.world.DestroyObject(object) == WorldMutationResult::Success;
-    };
     for (SceneObjectId id : changes.removed) {
-        if (!destroy(id)) {
-            return RebuildRuntimeWorld();
-        }
+        noteWorldLighting(id);
     }
-    for (SceneObjectId id : recreated) {
-        if (!destroy(id)) {
-            return RebuildRuntimeWorld();
-        }
-    }
-
-    if (!builtObjects.empty() || !updatedInPlace.empty()) {
+    if (!changes.added.empty() || !changes.changed.empty()) {
         // 照明は下の RefreshLightingRuntime がまとめて読み直すので、ここでは資産だけを先読みする。
         (void)runtime.builder.PreloadDependencies(dependencies, state_->assets.Registry(), state_->assets.Models(),
                                                   state_->lighting.sky, state_->assets.Database().GetProjectRoot(),
                                                   state_->identity.currentSceneAssetGuid.value, false,
                                                   &state_->assets.SpriteAssets());
-        if (!builtObjects.empty() &&
-            !runtime.builder.AddObjectsFromDocument(builtObjects, runtime.world, state_->assets.Registry(),
-                                                    runtime.componentRegistry, state_->assets.Models())) {
-            return RebuildRuntimeWorld();
-        }
-        runtime.builder.ReattachChildrenFromDocument(document, recreated, runtime.world);
-        // 親が作り直された・追加された場合も解決できるよう、その場の更新は生成の後に行う。
-        for (const SceneObjectData* object : updatedInPlace) {
-            GameObject* existing = runtime.world.FindObject(object->id);
-            if (existing == nullptr ||
-                !runtime.builder.UpdateObjectFromDocument(*object, *existing, runtime.world, state_->assets.Registry(),
-                                                          runtime.componentRegistry, state_->assets.Models())) {
-                return RebuildRuntimeWorld();
-            }
-        }
+    }
+    if (!runtime.builder.ApplyObjectChanges(document, changes, runtime.world, state_->assets.Registry(),
+                                            runtime.componentRegistry, state_->assets.Models())) {
+        return RebuildRuntimeWorld();
     }
     if (lightingChanged) {
         (void)RefreshLightingRuntime();

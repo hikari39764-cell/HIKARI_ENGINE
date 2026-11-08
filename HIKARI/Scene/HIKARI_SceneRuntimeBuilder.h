@@ -27,6 +27,7 @@ class World;
 class WorldMassSchemaRegistry;
 struct SceneDocument;
 struct SceneObjectData;
+struct SceneObjectChanges;
 namespace SPRITE {
 class SpriteAssetStore;
 }
@@ -82,17 +83,23 @@ public:
     bool AddObjectsFromDocument(std::span<const SceneObjectData* const> objects, World& world,
                                 const AssetRegistry& assetRegistry, const ComponentRegistry& componentRegistry,
                                 ModelManager& modelManager) const;
-    // 作り直した親の下に残る既存オブジェクトを document の親子と局所変換へ戻す。
-    void ReattachChildrenFromDocument(const SceneDocument& document, std::span<const SceneObjectId> parents,
-                                      World& world) const;
     bool InitializeRuntimeComponentAssets(GameObject& object, IComponent& component, const AssetRegistry& assetRegistry,
                                           ModelManager& modelManager, std::string& outDiagnostic) const;
     void FinalizeRuntimeObjectAssets(GameObject& object, const AssetRegistry& assetRegistry) const;
-    // 既存の物体が document の物体と同じ部品の並び（登録済みの型だけで比べる）を持つか。持つ時だけその場で更新できる。
-    bool CanUpdateObjectInPlace(const SceneObjectData& object, const GameObject& existing,
-                                const ComponentRegistry& componentRegistry) const;
-    // 物体を壊さずに document の内容へ合わせる（句柄と変わらない部品を保つ）。名前・局所変換・親を直し、属性が変わった
-    // 部品だけ読み直して資産を初期化し直す。CanUpdateObjectInPlace が真の時だけ呼ぶ。部品の読み込みに失敗したら false。
+    // 依頼された差分を document と世界の今の状態で分け直す（取り消しの組などでは同じ物体が追加・変更・削除のどれにも
+    // 現れうる）。両方にあれば changed、document だけなら added、世界だけなら removed。重複は一つにまとめる。
+    SceneObjectChanges ClassifyObjectChanges(const SceneDocument& document, const SceneObjectChanges& requested,
+                                             const World& world) const;
+    // 世界の物体を document に合わせる。removed を壊し、added を document から作り、changed はその場で更新する
+    // （親が追加された場合も解決できるよう更新は生成の後）。changes は ClassifyObjectChanges の結果。失敗したら false で、
+    // 呼び手は世界を作り直す。
+    bool ApplyObjectChanges(const SceneDocument& document, const SceneObjectChanges& changes, World& world,
+                            const AssetRegistry& assetRegistry, const ComponentRegistry& componentRegistry,
+                            ModelManager& modelManager) const;
+
+private:
+    // 物体を壊さずに document の内容へ合わせる（句柄と変わらない部品を保つ）。名前・局所変換・親を直し、document に無い
+    // 部品を外し、足りない部品を足し、属性が変わった部品だけ読み直して資産を初期化し直す。部品の生成・読み込みに失敗したら false。
     bool UpdateObjectFromDocument(const SceneObjectData& object, GameObject& existing, World& world,
                                   const AssetRegistry& assetRegistry, const ComponentRegistry& componentRegistry,
                                   ModelManager& modelManager) const;

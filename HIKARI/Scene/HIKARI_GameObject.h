@@ -92,6 +92,8 @@ public:
     void Update(float dt);
     void Render();
     IComponent* AddComponentInstance(std::unique_ptr<IComponent> component, ComponentTypeId declaredTypeId = {});
+    // 部品を一つ外して破棄する（OnDetach、世界の部品索引と描画の登録も外す）。持っていない部品なら false。
+    bool RemoveComponent(IComponent& component);
 
     const std::vector<std::unique_ptr<IComponent>>& GetComponents() const;
 

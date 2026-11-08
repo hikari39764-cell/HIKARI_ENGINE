@@ -42,6 +42,7 @@
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_SceneDocument.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/HIKARI_World.h"
 #include "Assets/Vfx/HIKARI_VfxProgram.h"
 
@@ -751,32 +752,6 @@ bool SceneRuntimeBuilder::BuildWorldFromDocument(const SceneDocument& document, 
     return false;
 }
 
-void SceneRuntimeBuilder::ReattachChildrenFromDocument(const SceneDocument& document,
-                                                       std::span<const SceneObjectId> parents, World& world) const {
-    if (parents.empty()) {
-        return;
-    }
-    std::unordered_set<uint64_t> parentIds{};
-    for (SceneObjectId parent : parents) {
-        parentIds.insert(parent.value);
-    }
-    for (const SceneObjectData& objectData : document.objects) {
-        if (!objectData.parent.has_value() || !parentIds.contains(objectData.parent->value)) {
-            continue;
-        }
-        GameObject* child = world.FindObject(objectData.id);
-        GameObject* parent = world.FindObject(*objectData.parent);
-        if (child == nullptr || parent == nullptr || child->GetParent() == parent) {
-            continue;
-        }
-        if (!child->SetParent(parent)) {
-            HIKARI_LOG_WARN("[SceneRuntime] child reattachment failed: child=" + std::to_string(objectData.id.value));
-            continue;
-        }
-        (void)child->SetLocalTransform(ToLocalTransform(objectData.transform));
-    }
-}
-
 bool SceneRuntimeBuilder::AddObjectsFromDocument(std::span<const SceneObjectData* const> objects, World& world,
                                                  const AssetRegistry& assetRegistry,
                                                  const ComponentRegistry& componentRegistry,
@@ -869,23 +844,6 @@ bool SceneRuntimeBuilder::AddObjectsFromDocument(std::span<const SceneObjectData
     }
 }
 
-bool SceneRuntimeBuilder::CanUpdateObjectInPlace(const SceneObjectData& object, const GameObject& existing,
-                                                 const ComponentRegistry& componentRegistry) const {
-    const auto& components = existing.GetComponents();
-    size_t index = 0u;
-    for (const SceneComponentData& component : object.components) {
-        if (componentRegistry.Find(component.type) == nullptr) {
-            continue; // 未登録の部品は作られないので並びの比較から外す
-        }
-        if (index >= components.size() || components[index] == nullptr ||
-            components[index]->GetTypeName() != component.type) {
-            return false;
-        }
-        ++index;
-    }
-    return index == components.size();
-}
-
 bool SceneRuntimeBuilder::UpdateObjectFromDocument(const SceneObjectData& object, GameObject& existing, World& world,
                                                    const AssetRegistry& assetRegistry,
                                                    const ComponentRegistry& componentRegistry,
@@ -898,27 +856,71 @@ bool SceneRuntimeBuilder::UpdateObjectFromDocument(const SceneObjectData& object
     if (existing.GetParent() != parent && !existing.SetParent(parent)) {
         HIKARI_LOG_WARN("[SceneRuntime] invalid object hierarchy skipped: child=" + std::to_string(object.id.value));
     }
-    const auto& components = existing.GetComponents();
-    size_t index = 0u;
-    bool componentsChanged = false;
+
+    // document の部品（登録済みの型だけ。未登録の部品は作られない）と今の部品を型で順に対応させる。
+    std::vector<const SceneComponentData*> wanted{};
     for (const SceneComponentData& data : object.components) {
-        if (componentRegistry.Find(data.type) == nullptr) {
-            continue;
+        if (componentRegistry.Find(data.type) != nullptr) {
+            wanted.push_back(&data);
         }
-        IComponent& component = *components[index++];
-        nlohmann::json current{};
-        component.Serialize(current);
-        if (current == data.properties) {
-            continue;
+    }
+    const auto& owned = existing.GetComponents();
+    std::vector<IComponent*> matched(wanted.size(), nullptr);
+    std::vector<bool> used(owned.size(), false);
+    for (size_t want = 0u; want < wanted.size(); ++want) {
+        for (size_t index = 0u; index < owned.size(); ++index) {
+            if (!used[index] && owned[index] != nullptr && owned[index]->GetTypeName() == wanted[want]->type) {
+                used[index] = true;
+                matched[want] = owned[index].get();
+                break;
+            }
         }
-        std::string diagnostic{};
-        if (!component.TryDeserialize(data.properties, diagnostic)) {
-            HIKARI_LOG_ERROR("[SceneRuntime] component deserialize failed: " + data.type +
-                             " objectId=" + std::to_string(object.id.value) + " diagnostic=" + diagnostic);
+    }
+    std::vector<IComponent*> stale{};
+    for (size_t index = 0u; index < owned.size(); ++index) {
+        if (!used[index] && owned[index] != nullptr) {
+            stale.push_back(owned[index].get());
+        }
+    }
+    bool componentsChanged = !stale.empty();
+    for (IComponent* component : stale) {
+        if (!existing.RemoveComponent(*component)) {
+            HIKARI_LOG_ERROR("[SceneRuntime] component removal failed: objectId=" + std::to_string(object.id.value));
             return false;
         }
+    }
+
+    for (size_t want = 0u; want < wanted.size(); ++want) {
+        const SceneComponentData& data = *wanted[want];
+        IComponent* component = matched[want];
+        std::string diagnostic{};
+        if (component == nullptr) {
+            const ComponentTypeInfo* info = componentRegistry.Find(data.type);
+            std::unique_ptr<IComponent> created = info->factory();
+            if (created == nullptr || !created->TryDeserialize(data.properties, diagnostic)) {
+                HIKARI_LOG_ERROR("[SceneRuntime] component creation failed: " + data.type +
+                                 " objectId=" + std::to_string(object.id.value) + " diagnostic=" + diagnostic);
+                return false;
+            }
+            component = existing.AddComponentInstance(std::move(created), info->typeId);
+            if (component == nullptr) {
+                HIKARI_LOG_ERROR("[SceneRuntime] component attachment failed: " + data.type);
+                return false;
+            }
+        } else {
+            nlohmann::json current{};
+            component->Serialize(current);
+            if (current == data.properties) {
+                continue;
+            }
+            if (!component->TryDeserialize(data.properties, diagnostic)) {
+                HIKARI_LOG_ERROR("[SceneRuntime] component deserialize failed: " + data.type +
+                                 " objectId=" + std::to_string(object.id.value) + " diagnostic=" + diagnostic);
+                return false;
+            }
+        }
         std::string runtimeDiagnostic{};
-        if (!InitializeRuntimeComponentAssets(existing, component, assetRegistry, modelManager, runtimeDiagnostic)) {
+        if (!InitializeRuntimeComponentAssets(existing, *component, assetRegistry, modelManager, runtimeDiagnostic)) {
             HIKARI_LOG_WARN("[SceneRuntime] " + runtimeDiagnostic);
         }
         componentsChanged = true;
@@ -926,6 +928,63 @@ bool SceneRuntimeBuilder::UpdateObjectFromDocument(const SceneObjectData& object
     if (componentsChanged) {
         FinalizeRuntimeObjectAssets(existing, assetRegistry);
         existing.MarkRenderStateDirty();
+    }
+    return true;
+}
+
+SceneObjectChanges SceneRuntimeBuilder::ClassifyObjectChanges(const SceneDocument& document,
+                                                              const SceneObjectChanges& requested,
+                                                              const World& world) const {
+    SceneObjectChanges changes{};
+    std::unordered_set<uint64_t> seen{};
+    for (const std::vector<SceneObjectId>* ids : {&requested.added, &requested.changed, &requested.removed}) {
+        for (SceneObjectId id : *ids) {
+            if (!seen.insert(id.value).second) {
+                continue;
+            }
+            const bool inDocument = FindSceneObjectData(document, id) != nullptr;
+            const bool inWorld = world.FindObject(id) != nullptr;
+            if (inDocument && inWorld) {
+                changes.changed.push_back(id);
+            } else if (inDocument) {
+                changes.added.push_back(id);
+            } else if (inWorld) {
+                changes.removed.push_back(id);
+            }
+        }
+    }
+    return changes;
+}
+
+bool SceneRuntimeBuilder::ApplyObjectChanges(const SceneDocument& document, const SceneObjectChanges& changes,
+                                             World& world, const AssetRegistry& assetRegistry,
+                                             const ComponentRegistry& componentRegistry,
+                                             ModelManager& modelManager) const {
+    for (SceneObjectId id : changes.removed) {
+        GameObject* object = world.FindObject(id);
+        if (object != nullptr && world.DestroyObject(object) != WorldMutationResult::Success) {
+            return false;
+        }
+    }
+    std::vector<const SceneObjectData*> added{};
+    added.reserve(changes.added.size());
+    for (SceneObjectId id : changes.added) {
+        const SceneObjectData* object = FindSceneObjectData(document, id);
+        if (object == nullptr || world.FindObject(id) != nullptr) {
+            return false;
+        }
+        added.push_back(object);
+    }
+    if (!added.empty() && !AddObjectsFromDocument(added, world, assetRegistry, componentRegistry, modelManager)) {
+        return false;
+    }
+    for (SceneObjectId id : changes.changed) {
+        const SceneObjectData* object = FindSceneObjectData(document, id);
+        GameObject* existing = world.FindObject(id);
+        if (object == nullptr || existing == nullptr ||
+            !UpdateObjectFromDocument(*object, *existing, world, assetRegistry, componentRegistry, modelManager)) {
+            return false;
+        }
     }
     return true;
 }
