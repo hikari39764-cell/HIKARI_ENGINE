@@ -123,7 +123,7 @@ struct RuntimeRayTracingScene::State {
     uint32_t frameBuilds = 0;
     uint32_t frameUploads = 0;
     const void* sourceIdentity = nullptr;
-    uint64_t sourceVersion = 0, layoutVersion = 0;
+    uint64_t sourceVersion = 0, layoutVersion = 0, proxyVersion = 0;
     uint32_t sourceSurfaceCount = 0;
     size_t sourceRecordCount = 0, materialSlotCount = 0, materialCount = 0;
     RuntimeRayTracingMaterialVersion materialVersion{};

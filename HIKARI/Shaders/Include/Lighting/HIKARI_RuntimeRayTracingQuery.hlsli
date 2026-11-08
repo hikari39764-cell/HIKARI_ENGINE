@@ -36,6 +36,8 @@ ByteAddressBuffer gRuntimeRayDeformed : register(t2, space8);
 static const uint HIKARI_RAY_HIT_DEFORMED = 4u;
 // 透過する面（ガラスなど半透明）。光線を止めず、影の光線だけ透過率を掛けて先へ進む。
 static const uint HIKARI_RAY_HIT_TRANSMISSIVE = 8u;
+// モジュールの不透明な粗い代理（地形など）。頂点を読まず、面の値は reserved から作る。
+static const uint HIKARI_RAY_HIT_PROXY = 16u;
 
 // 変形しない面の光照贴图の UV（当たった点の uv1 を光照贴图の頁の中へ写す）。lightmapDescriptor がある記録だけ有効。
 float2 HikariRayHitLightmapUv(HikariRayTracingHitRecord record, float2 uv1)
@@ -205,7 +207,9 @@ bool HikariTraceRuntimeSceneCore(RayDesc ray, uint hitRecordCount, uint material
     hit = (HikariRaySurface)0;
     const bool shadowRay = (queryFlags & HIKARI_RAY_SHADOW) != 0u;
     RayQuery<RAY_FLAG_NONE> query;
-    query.TraceRayInline(gRuntimeRayScene, shadowRay ? RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH : RAY_FLAG_NONE, 0xff, ray);
+    // 裏面を切るのは代理だけに効く（他の instance は TRIANGLE_CULL_DISABLE）。粗い代理の下から出る光線を止めない。
+    const uint backFaces = (queryFlags & HIKARI_RAY_REPORT_BACKFACES) != 0u ? RAY_FLAG_NONE : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
+    query.TraceRayInline(gRuntimeRayScene, backFaces | (shadowRay ? RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH : RAY_FLAG_NONE), 0xff, ray);
     while (query.Proceed())
     {
         if (query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE) continue;
@@ -262,6 +266,37 @@ bool HikariTraceRuntimeSceneCore(RayDesc ray, uint hitRecordCount, uint material
         hit = candidate;
     }
     const bool found = query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+    if (found && !shadowRay)
+    {
+        // 不透明な代理は候補の輪を通らずに確定する。
+        const uint committedRecord = query.CommittedInstanceID() + query.CommittedGeometryIndex();
+        const uint committedFlags = gRuntimeRayHits[committedRecord].flags;
+        if ((committedFlags & HIKARI_RAY_HIT_PROXY) != 0u)
+        {
+            const uint packed = gRuntimeRayHits[committedRecord].reserved;
+            const float2 normalXZ = float2(int(packed << 8u) >> 24, int(packed) >> 24) / 127.0f;
+            const float3 color = float3(packed & 31u, (packed >> 5u) & 63u, (packed >> 11u) & 31u) / float3(31.0f, 63.0f, 31.0f);
+            const bool frontFace = query.CommittedTriangleFrontFace();
+            const float3 normal = float3(normalXZ.x, sqrt(saturate(1.0f - dot(normalXZ, normalXZ))), normalXZ.y) * (frontFace ? 1.0f : -1.0f);
+            hit = (HikariRaySurface)0;
+            hit.distance = query.CommittedRayT();
+            hit.position = ray.Origin + ray.Direction * hit.distance;
+            hit.geometricNormal = normal;
+            hit.normal = normal;
+            hit.tangent = float4(1.0f, 0.0f, 0.0f, 1.0f);
+            hit.baseColor = float4(color * color, 1.0f);
+            hit.pbr.roughness = 0.9f;
+            hit.pbr.occlusion = 1.0f;
+            hit.pbr.specularColor = 1.0f.xxx;
+            hit.pbr.specularFactor = 1.0f;
+            hit.pbr.ior = 1.5f;
+            hit.backFace = frontFace ? 0u : 1u;
+#ifdef HIKARI_RAY_SURFACE_HIT_RECORD
+            hit.hitRecord = committedRecord;
+#endif
+            return true;
+        }
+    }
     if (found && !shadowRay && (queryFlags & HIKARI_RAY_GEOMETRY_ONLY) == 0u)
     {
         const HikariMeshMaterialData material = HikariGetMeshMaterialData(hit.materialIndex);
@@ -290,6 +325,15 @@ bool HikariTraceRuntimeScene(RayDesc ray, uint hitRecordCount, uint materialCoun
     float transmittance = 1.0f;
     return HikariTraceRuntimeSceneCore(ray, hitRecordCount, materialCount, time, materialSampler, queryFlags, hit,
         rayCone, transmittance);
+}
+
+// 不透明な代理（地形など）だけを見る影の光線。場面の物の影の距離より先まで山の影を届かせる。
+bool HikariTraceRuntimeProxyOccluded(RayDesc ray)
+{
+    RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_CULL_BACK_FACING_TRIANGLES> query;
+    query.TraceRayInline(gRuntimeRayScene, RAY_FLAG_NONE, 0x01u, ray);
+    query.Proceed();
+    return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
 }
 
 // 太陽などへの影の光線の通る割合（不透明に当たれば 0、半透明は透過率の積）。

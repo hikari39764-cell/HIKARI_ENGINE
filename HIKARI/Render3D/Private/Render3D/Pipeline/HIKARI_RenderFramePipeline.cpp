@@ -396,7 +396,9 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
                 gRuntimeRayScene.Prepare(frame.graphics, source, materials.materialSlots, materials.massMaterialSlots,
                                          materials.materialData, {}, {materials.dataVersion, materials.bindingVersion},
                                          {terrain.records, terrain.floats, terrain.floatVersion,
-                                          MESHRENDERER::GetResidentMassGpuSceneRecords()});
+                                          MESHRENDERER::GetResidentMassGpuSceneRecords(),
+                                          SURFACE_EXTENSIONS::GetRayProxies(),
+                                          SURFACE_EXTENSIONS::GetRayProxyVersion()});
         } else {
             gRuntimeRayScene.Reset(frame.graphics);
             gRuntimeRayLighting.Reset(frame.graphics);
@@ -564,6 +566,8 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         shadowInputs.coneHalfAngle = std::clamp(rayLighting.data.sunColorRange.w, 0.0f, 0.5f) *
                                      std::max(renderQuality.directionalShadow.penumbraScale, 0.0f);
         shadowInputs.maxDistance = environment.shadows.distance;
+        shadowInputs.proxyReach =
+            SURFACE_EXTENSIONS::GetRayProxies().empty() ? 0.0f : RAYTRACING::kRuntimeRayTracingProxyShadowReach;
         shadowInputs.sampleCount = renderQuality.directionalShadow.rayTracedSamples;
         shadowInputs.frameIndex = static_cast<uint32_t>(frame.frameIndex);
         (void)RENDER3D::SCREENSPACE::ExecuteRayTracedShadowFromSceneDepth(

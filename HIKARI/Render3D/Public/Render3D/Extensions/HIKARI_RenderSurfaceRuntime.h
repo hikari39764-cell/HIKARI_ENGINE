@@ -8,12 +8,17 @@
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "HIKARI/Project/RenderSurface.h"
+#include "Render3D/RayTracing/HIKARI_RuntimeRayTracingScene.h"
 
 namespace HIKARI::RENDER3D::SURFACE_EXTENSIONS {
 
 // 視点の描画の先頭で一度。モジュールに資源の準備をさせる。
 void BeginFrame(const GFX::Context& graphics, std::span<IRenderSurfaceExtension* const> extensions);
 bool HasWork() noexcept;
+
+// 組み終わった光線追跡の代理（モジュールが居なければ空）。版は中身が変わると進む。
+std::span<const RAYTRACING::RuntimeRayTracingProxy> GetRayProxies() noexcept;
+uint64_t GetRayProxyVersion() noexcept;
 
 struct RecordInput {
     RenderSurfacePass pass = RenderSurfacePass::Forward;

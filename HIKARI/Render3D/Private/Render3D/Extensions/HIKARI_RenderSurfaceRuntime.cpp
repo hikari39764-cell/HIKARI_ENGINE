@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <exception>
 #include <map>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -19,6 +21,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Gfx/HIKARI_VideoMemory.h"
+#include "Gfx/RayTracing/HIKARI_DxrAccelerationStructure.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
 #include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "RenderContracts/Shader/HIKARI_RenderGeometryShaderContract.h"
@@ -33,6 +36,8 @@ using Microsoft::WRL::ComPtr;
 namespace SHADER = ASSETS::SHADER;
 
 constexpr size_t kUploadPageBytes = 4u * 1024u * 1024u;
+constexpr uint32_t kRayProxyBuildsPerFrame = 8u;
+constexpr uint64_t kRayProxyMaximumBytes = 256ull * 1024ull * 1024ull;
 constexpr DXGI_FORMAT kSceneColorFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 constexpr D3D12_RESOURCE_STATES kShaderReadState =
     D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
@@ -53,6 +58,16 @@ struct SurfaceResource {
     D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
     bool copyPending = false;
     uint64_t revision = 0u;
+};
+
+// 光線追跡の代理。頂点は組み終えるまで手元に持つ。
+struct RayProxy {
+    std::vector<float> positions{};
+    std::vector<uint16_t> indices{};
+    std::vector<RenderSurfaceRayProxyRegion> regions{};
+    std::vector<uint32_t> surfaces{};
+    std::unique_ptr<GFX::RAYTRACING::DxrAccelerationStructure> bottomLevel{};
+    bool failed = false;
 };
 
 struct DescriptorTable {
@@ -79,6 +94,11 @@ struct RuntimeState {
     uint64_t deviceGeneration = 0u;
     std::vector<IRenderSurfaceExtension*> extensions{};
     std::map<RenderSurfaceResourceId, SurfaceResource> resources{};
+    std::map<RenderSurfaceResourceId, RayProxy> rayProxies{};
+    std::vector<RAYTRACING::RuntimeRayTracingProxy> publishedRayProxies{};
+    uint64_t rayProxyVersion = 1u;
+    bool rayProxiesChanged = false;
+    bool rayProxiesActive = false;
     RenderSurfaceResourceId nextResource = 1u;
     std::map<std::string, ComPtr<ID3D12PipelineState>> pipelines{};
     std::map<std::string, bool> failedPrograms{};
@@ -113,6 +133,14 @@ void ReleaseAll(RuntimeState& state, const GFX::Context* graphics) noexcept {
             }
         }
         state.resources.clear();
+        for (auto& [id, proxy] : state.rayProxies) {
+            if (proxy.bottomLevel) {
+                proxy.bottomLevel->Reset(graphics);
+            }
+        }
+        state.rayProxies.clear();
+        state.publishedRayProxies.clear();
+        state.rayProxiesChanged = true;
         for (auto& [key, table] : state.tables) {
             ReleaseTable(table);
         }
@@ -121,6 +149,17 @@ void ReleaseAll(RuntimeState& state, const GFX::Context* graphics) noexcept {
         state.failedPrograms.clear();
     } catch (...) {
     }
+}
+
+uint32_t PackRayProxySurface(const RenderSurfaceRayProxyRegion& region) noexcept {
+    const auto color = [](float value, uint32_t maximum) {
+        return static_cast<uint32_t>(std::sqrt(std::clamp(value, 0.0f, 1.0f)) * static_cast<float>(maximum) + 0.5f);
+    };
+    const auto normal = [](float value) {
+        return static_cast<uint32_t>(std::lround(std::clamp(value, -1.0f, 1.0f) * 127.0f)) & 0xffu;
+    };
+    return color(region.albedo[0], 31u) | (color(region.albedo[1], 63u) << 5u) | (color(region.albedo[2], 31u) << 11u) |
+           (normal(region.normal[0]) << 16u) | (normal(region.normal[2]) << 24u);
 }
 
 template <class Call>
@@ -242,7 +281,42 @@ public:
         return id;
     }
 
+    RenderSurfaceResourceId CreateRayTracingProxy(const RenderSurfaceRayProxy& proxy) override {
+        if (proxy.positions.empty() || proxy.positions.size() % 3u != 0u || proxy.indices.empty() ||
+            proxy.regions.empty()) {
+            return 0u;
+        }
+        const size_t vertexCount = proxy.positions.size() / 3u;
+        if (std::any_of(proxy.indices.begin(), proxy.indices.end(),
+                        [&](uint16_t index) { return index >= vertexCount; }) ||
+            std::any_of(proxy.regions.begin(), proxy.regions.end(), [&](const RenderSurfaceRayProxyRegion& region) {
+                return region.indexCount == 0u || region.indexCount % 3u != 0u ||
+                       static_cast<size_t>(region.firstIndex) + region.indexCount > proxy.indices.size();
+            })) {
+            return 0u;
+        }
+        RayProxy entry{};
+        entry.positions.assign(proxy.positions.begin(), proxy.positions.end());
+        entry.indices.assign(proxy.indices.begin(), proxy.indices.end());
+        entry.regions.assign(proxy.regions.begin(), proxy.regions.end());
+        entry.surfaces.reserve(proxy.regions.size());
+        for (const RenderSurfaceRayProxyRegion& region : proxy.regions) {
+            entry.surfaces.push_back(PackRayProxySurface(region));
+        }
+        const RenderSurfaceResourceId id = state_.nextResource++;
+        state_.rayProxies.emplace(id, std::move(entry));
+        return id;
+    }
+
     void Release(RenderSurfaceResourceId id) override {
+        if (const auto proxy = state_.rayProxies.find(id); proxy != state_.rayProxies.end()) {
+            if (proxy->second.bottomLevel) {
+                proxy->second.bottomLevel->Reset(&state_.graphics);
+                state_.rayProxiesChanged = true;
+            }
+            state_.rayProxies.erase(proxy);
+            return;
+        }
         const auto found = state_.resources.find(id);
         if (found == state_.resources.end()) {
             return;
@@ -280,6 +354,78 @@ private:
 
     RuntimeState& state_;
 };
+
+void BuildPendingRayProxies(RuntimeState& state) {
+    uint64_t usedBytes = 0u;
+    for (const auto& [id, proxy] : state.rayProxies) {
+        usedBytes += proxy.bottomLevel ? proxy.bottomLevel->GetAllocationBytes() : 0u;
+    }
+    DX::DynamicUploadBuffer& upload = state.uploads[state.slot];
+    uint32_t builds = 0u;
+    for (auto& [id, proxy] : state.rayProxies) {
+        if (proxy.bottomLevel || proxy.failed) {
+            continue;
+        }
+        if (builds >= kRayProxyBuildsPerFrame) {
+            break;
+        }
+        const size_t vertexBytes = proxy.positions.size() * sizeof(float);
+        const size_t indexBytes = proxy.indices.size() * sizeof(uint16_t);
+        const DX::UploadAllocation vertices = upload.Allocate(vertexBytes);
+        const DX::UploadAllocation indices = upload.Allocate(indexBytes);
+        if (!vertices || !indices) {
+            break;
+        }
+        std::memcpy(vertices.cpuAddress, proxy.positions.data(), vertexBytes);
+        std::memcpy(indices.cpuAddress, proxy.indices.data(), indexBytes);
+        std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometry(proxy.regions.size());
+        for (size_t region = 0u; region < geometry.size(); ++region) {
+            D3D12_RAYTRACING_GEOMETRY_DESC& description = geometry[region];
+            description.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+            description.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+            description.Triangles.VertexBuffer = {vertices.gpuAddress, 3u * sizeof(float)};
+            description.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
+            description.Triangles.VertexCount = static_cast<UINT>(proxy.positions.size() / 3u);
+            description.Triangles.IndexFormat = DXGI_FORMAT_R16_UINT;
+            description.Triangles.IndexCount = proxy.regions[region].indexCount;
+            description.Triangles.IndexBuffer =
+                indices.gpuAddress + proxy.regions[region].firstIndex * sizeof(uint16_t);
+        }
+        auto bottomLevel = std::make_unique<GFX::RAYTRACING::DxrAccelerationStructure>();
+        std::string message{};
+        if (usedBytes >= kRayProxyMaximumBytes ||
+            !bottomLevel->BuildBottomLevel(state.graphics, geometry, kRayProxyMaximumBytes - usedBytes, &message)) {
+            HIKARI_LOG_ERROR("[RenderSurface] Ray tracing proxy was not built: " + message);
+            proxy.failed = true;
+            continue;
+        }
+        usedBytes += bottomLevel->GetAllocationBytes();
+        proxy.bottomLevel = std::move(bottomLevel);
+        proxy.positions = {};
+        proxy.indices = {};
+        proxy.regions = {};
+        state.rayProxiesChanged = true;
+        ++builds;
+    }
+}
+
+void PublishRayProxies(RuntimeState& state) {
+    const bool active = !state.extensions.empty();
+    if (!state.rayProxiesChanged && active == state.rayProxiesActive) {
+        return;
+    }
+    state.rayProxiesChanged = false;
+    state.rayProxiesActive = active;
+    state.publishedRayProxies.clear();
+    if (active) {
+        for (const auto& [id, proxy] : state.rayProxies) {
+            if (proxy.bottomLevel) {
+                state.publishedRayProxies.push_back({proxy.bottomLevel->GetGpuAddress(), proxy.surfaces});
+            }
+        }
+    }
+    ++state.rayProxyVersion;
+}
 
 // RenderGeometryShaderContract の合同で内蔵着色器を解決する。
 bool ResolveEntry(RuntimeState& state, const char* programId, const char* entry, SHADER::ShaderStage stage,
@@ -459,6 +605,7 @@ void BeginFrame(const GFX::Context& graphics, std::span<IRenderSurfaceExtension*
     state.extensions.assign(extensions.begin(), extensions.end());
     if (state.extensions.empty() || graphics.device == nullptr || graphics.cmdList == nullptr) {
         state.extensions.clear();
+        PublishRayProxies(state);
         return;
     }
     if (state.deviceGeneration != graphics.deviceGeneration) {
@@ -479,6 +626,7 @@ void BeginFrame(const GFX::Context& graphics, std::span<IRenderSurfaceExtension*
     if (!upload.IsInitialized() &&
         !upload.Init(graphics.device, kUploadPageBytes, GFX::UPLOAD_TRAFFIC::Owner::SurfaceExtensions)) {
         state.extensions.clear();
+        PublishRayProxies(state);
         return;
     }
     // graphics.frameIndex は枠の番号なので、巻き戻しの判定には通しのフレーム番号を使う。
@@ -492,9 +640,15 @@ void BeginFrame(const GFX::Context& graphics, std::span<IRenderSurfaceExtension*
         CallModule("PrepareFrame", [&] { extension->PrepareFrame(resources); });
     }
     resources.FinishCopies();
+    BuildPendingRayProxies(state);
+    PublishRayProxies(state);
 }
 
 bool HasWork() noexcept { return !State().extensions.empty(); }
+
+std::span<const RAYTRACING::RuntimeRayTracingProxy> GetRayProxies() noexcept { return State().publishedRayProxies; }
+
+uint64_t GetRayProxyVersion() noexcept { return State().rayProxyVersion; }
 
 void SetFrameCameraPosition(const MATH::Vec3& position) noexcept { State().cameraPosition = position; }
 

@@ -239,7 +239,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
     if (!state.supportsQueries)
         return state.Fail(graphics, budget, RuntimeRayTracingStatus::UnsupportedDevice);
     if (materialSlots.size() == state.materialSlotCount && materials.size() == state.materialCount &&
-        source.surfaceRecords->size() == state.sourceRecordCount &&
+        source.surfaceRecords->size() == state.sourceRecordCount && surfaces.proxyVersion == state.proxyVersion &&
         state.SameStructure(source, massMaterialSlots, budget, materialVersion)) {
         // 配置か材質の値が変わっただけなら、群をまとめ直さず instance の変換と材質の版だけを直す
         // （できなければ下で全体を組み直す）。
@@ -438,7 +438,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
                                    graphics.frameFence, graphics.deviceGeneration, source.surfaceRecords,
                                    source.layoutVersion, materialVersion});
     };
-    if (groups.empty() && state.deformed.empty() && !massPresent)
+    if (groups.empty() && state.deformed.empty() && !massPresent && surfaces.proxies.empty())
         return publishEmpty();
     // 静的な BLAS は静的に置かれた形状の分だけ組む（蒙皮だけに使う形状は変形の BLAS が担う）。
     std::vector<const Asset*> staticAssets;
@@ -555,7 +555,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             D3D12_RAYTRACING_INSTANCE_DESC instance{};
             WriteTransform(instance, group.world);
             instance.InstanceID = static_cast<uint32_t>(hits.size());
-            instance.InstanceMask = 0xff;
+            instance.InstanceMask = kRuntimeRayTracingSceneMask;
             instance.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE;
             instance.AccelerationStructure = asset.bottomLevels[c]->GetGpuAddress();
             instances.push_back(instance);
@@ -595,7 +595,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             const bool used = std::any_of(chunk.ranges.begin(), chunk.ranges.end(), [&](const auto& range) {
                 return entry.surfaces[range.surfaceIndex].first != 0xffffffffu;
             });
-            instance.InstanceMask = used ? 0xff : 0x00;
+            instance.InstanceMask = used ? kRuntimeRayTracingSceneMask : 0x00;
             instance.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE;
             instance.AccelerationStructure = entry.bottomLevels[c]->GetGpuAddress();
             instances.push_back(instance);
@@ -613,6 +613,25 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
                 hit.deformedVertexCount = entry.job.vertexCount;
                 hits.push_back(hit);
             }
+        }
+    }
+    // モジュールの代理。不透明で裏面を切る（TRIANGLE_CULL_DISABLE を付けない）。
+    for (const RuntimeRayTracingProxy& proxy : surfaces.proxies) {
+        if (instances.size() >= budget.maximumInstances ||
+            proxy.surfaces.size() > budget.maximumHitRecords - hits.size())
+            return state.Fail(graphics, budget, RuntimeRayTracingStatus::BudgetExceeded);
+        D3D12_RAYTRACING_INSTANCE_DESC instance{};
+        instance.Transform[0][0] = instance.Transform[1][1] = instance.Transform[2][2] = 1.0f;
+        instance.InstanceID = static_cast<uint32_t>(hits.size());
+        instance.InstanceMask = kRuntimeRayTracingProxyMask;
+        instance.AccelerationStructure = proxy.bottomLevel;
+        instances.push_back(instance);
+        for (const uint32_t surface : proxy.surfaces) {
+            RuntimeRayTracingHitRecord hit{};
+            hit.materialIndex = 0u; // 既定の材質（面の値は reserved から作るが、受け手が材質の旗を読む）
+            hit.flags = 2u | kRuntimeRayTracingHitProxy;
+            hit.reserved = surface;
+            hits.push_back(hit);
         }
     }
     // 大量配置は最後に並べる。種類ごとの hit 記録を個体が共有する。予算に収まらなければ大量配置だけを外す。
@@ -701,6 +720,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
     state.sourceVersion = source.sourceVersion;
     state.lightmapVersion = LIGHTMAP::GetVersion();
     state.layoutVersion = source.layoutVersion;
+    state.proxyVersion = surfaces.proxyVersion;
     state.materialVersion = materialVersion;
     state.sourceSurfaceCount = state.stats.sourceSurfaces;
     state.sourceRecordCount = source.surfaceRecords->size();

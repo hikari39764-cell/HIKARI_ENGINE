@@ -37,6 +37,13 @@ struct TileRuntime {
     std::vector<float> leafMinMax{};   // kTileLeafDivisions² × 2
 };
 
+// 瓦片の光線追跡の代理（実体は引擎）。
+struct TerrainRayProxy {
+    uint32_t resource = 0u;
+    uint64_t revision = 0u;
+    uint64_t builtFrame = 0u;
+};
+
 // 描画の資源の番号（実体は引擎）。文書の世界と Play の世界で同じものを使う。
 struct TerrainRenderResources {
     uint32_t heightTexture = 0u;
@@ -44,6 +51,8 @@ struct TerrainRenderResources {
     uint32_t indexBuffer = 0u;
     uint32_t indexCount = 0u;
     uint64_t layoutRevision = 0u;
+    std::map<TERRAIN::DATA::TileCoord, TerrainRayProxy> rayProxies{};
+    uint64_t frame = 0u;
 };
 
 // 一つの場面の地形の編集データと焼いた結果。文書の世界と Play の世界で共有する（プロセスに一つ）。

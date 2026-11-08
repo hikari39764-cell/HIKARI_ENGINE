@@ -54,7 +54,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     const bool finite = all(isfinite(world[0])) && all(isfinite(world[1])) && all(isfinite(world[2]));
     if (!finite)
         world = (float4x4)0;
-    const uint mask = finite ? 0xffu : 0u;
+    // kRuntimeRayTracingSceneMask（代理だけの光線には当たらない）。
+    const uint mask = finite ? 0xfeu : 0u;
     for (uint chunk = 0u; chunk < store.chunkCount; ++chunk)
     {
         const MassInstanceChunk shape = gMassInstanceChunks[store.firstChunk + chunk];

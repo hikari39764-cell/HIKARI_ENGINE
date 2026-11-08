@@ -155,8 +155,8 @@ float4 SurfaceForwardPS(TerrainVertex input) : SV_TARGET
     {
         if ((gScreenSpaceTraceFlags & HIKARI_SCREEN_SPACE_RAY_SHADOW_VALID) != 0u && gShadowEnabled != 0u)
         {
-            shadowVisibility = lerp(gRayTracedShadow.Load(int3(int2(input.position.xy), 0)), 1.0f,
-                HikariDirectionalShadowDistanceFade(HikariCameraViewDepth(worldPosition)));
+            // 光線は距離の先も地形の代理を見ているので、影の距離で薄くしない。
+            shadowVisibility = gRayTracedShadow.Load(int3(int2(input.position.xy), 0));
         }
         else
         {
@@ -176,6 +176,16 @@ float4 SurfaceForwardPS(TerrainVertex input) : SV_TARGET
     directional.specular *= shadowVisibility;
     const HikariDirectPbrLobes local =
         AccumulateLocalLightPbrLobes(pbr, worldPosition, input.position.xy, normal, 1u);
+    if (gDebugView == HIKARI_DEBUG_VIEW_DIRECT_DIFFUSE)
+        return HikariPreExposeView(float4(directional.diffuse + local.diffuse, 1.0f));
+    if (gDebugView == HIKARI_DEBUG_VIEW_DIRECTIONAL_SPECULAR)
+        return HikariPreExposeView(float4(directional.specular, 1.0f));
+    if (gDebugView == HIKARI_DEBUG_VIEW_LOCAL_SPECULAR)
+        return HikariPreExposeView(float4(local.specular, 1.0f));
+    if (gDebugView == HIKARI_DEBUG_VIEW_INDIRECT_DIFFUSE)
+        return HikariPreExposeView(float4(ambient.diffuse, 1.0f));
+    if (gDebugView == HIKARI_DEBUG_VIEW_INDIRECT_SPECULAR)
+        return HikariPreExposeView(float4(ambient.specular, 1.0f));
     const float3 color = directional.diffuse + directional.specular + local.diffuse + local.specular +
         ambient.diffuse + ambient.specular;
     return HikariPreExposeView(float4(ApplyFog(color, worldPosition), 1.0f));

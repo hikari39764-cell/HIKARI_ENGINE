@@ -40,6 +40,21 @@ struct RenderSurfaceTextureUpload {
     const void* pixels = nullptr;
 };
 
+// 光線追跡の場面でこの幾何の代わりになる不透明の粗い網（太陽の影・GI・反射の光線が当たる）。座標は世界座標で、
+// 三角形は上から見て法線が +Y を向く順（裏から来た影の光線は通す）。区画ごとに色と上向きの法線を一つ持つ。
+struct RenderSurfaceRayProxyRegion {
+    uint32_t firstIndex = 0u;
+    uint32_t indexCount = 0u;
+    float albedo[3]{}; // 線形
+    float normal[3]{0.0f, 1.0f, 0.0f};
+};
+
+struct RenderSurfaceRayProxy {
+    std::span<const float> positions{}; // xyz
+    std::span<const uint16_t> indices{};
+    std::span<const RenderSurfaceRayProxyRegion> regions{};
+};
+
 // PrepareFrame の間だけ有効。番号は Release か OnRenderResourcesLost まで使える。
 class IRenderSurfaceResources {
 public:
@@ -48,6 +63,8 @@ public:
     virtual RenderSurfaceResourceId CreateTextureArray(const RenderSurfaceTextureArrayDesc& desc) = 0;
     virtual bool UploadTexture(RenderSurfaceResourceId texture, const RenderSurfaceTextureUpload& upload) = 0;
     virtual RenderSurfaceResourceId CreateIndexBuffer(std::span<const uint16_t> indices) = 0;
+    // 内容は写される。変える時は作り直して古い番号を Release する。
+    virtual RenderSurfaceResourceId CreateRayTracingProxy(const RenderSurfaceRayProxy& proxy) = 0;
     virtual void Release(RenderSurfaceResourceId resource) = 0;
 };
 

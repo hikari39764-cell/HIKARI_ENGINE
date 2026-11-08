@@ -13,7 +13,7 @@ cbuffer RayTracedShadowCB : register(b0)
     float4 gScreenParams;   // xy 大きさ, zw 1/大きさ
     float4 gSunCone;        // xyz 太陽へ向かう単位ベクトル, w 円錐の半角 [rad]
     float4 gRayParams;      // x 最大距離 [m], y 標本数, z フレーム番号, w 法線方向の始点のずらし [m]
-    float4 gInputFlags;     // x 前フレームの可視率の履歴が使えれば 1
+    float4 gInputFlags;     // x 前フレームの可視率の履歴が使えれば 1, y 代理だけを見る光線の長さ [m]（無ければ 0）
     HikariRayLightingData gRayLighting;
     float4x4 gPreviousViewProj;
     float4 gPreviousCamera;
@@ -86,8 +86,17 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         ray.TMin = 0.001f;
         ray.TMax = max(gRayParams.x, 0.1f);
         // 半透明（ガラスなど）は透過率の分だけ光を通す。
-        lit += HikariTraceRuntimeShadowTransmittance(ray, gRayLighting.scene.x, gRayLighting.scene.y,
+        float through = HikariTraceRuntimeShadowTransmittance(ray, gRayLighting.scene.x, gRayLighting.scene.y,
             gRayLighting.time, gMaterialWrap);
+        // 影の距離より先は代理（地形）だけを見る。低い太陽の山の影は距離の設定に関わらず届く。
+        if (through > 0.0f && gInputFlags.y > ray.TMax)
+        {
+            ray.TMin = ray.TMax;
+            ray.TMax = gInputFlags.y;
+            if (HikariTraceRuntimeProxyOccluded(ray))
+                through = 0.0f;
+        }
+        lit += through;
     }
     gVisibility[pixel] = lit / float(sampleCount);
 }

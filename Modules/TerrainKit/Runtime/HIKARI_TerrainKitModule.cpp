@@ -32,6 +32,12 @@ constexpr uint32_t kLodLevels = 4u;
 constexpr float kFirstRangeInLeaves = 6.0f;
 constexpr float kMorphStartFraction = 0.78f;
 constexpr uint32_t kUploadTilesPerFrame = 32u;
+// 光線追跡の代理：瓦片一枚をこの程度の格子にする（256 m なら 4 m 間隔）。色と法線は区画ごとに一つ。
+constexpr uint32_t kRayProxyCells = 64u;
+constexpr uint32_t kRayProxyRegionCells = 8u;
+constexpr uint32_t kRayProxiesPerFrame = 8u;
+// 筆で塗っている間の作り直しの間隔。
+constexpr uint64_t kRayProxyRebuildFrames = 30u;
 
 struct TerrainNodeInstance {
     float originX = 0.0f;
@@ -87,6 +93,29 @@ struct FrustumPlanes {
         return true;
     }
 };
+
+float Smoothstep(float edge0, float edge1, float value) noexcept {
+    const float t = std::clamp((value - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
+
+// 着色器の TerrainPlaceholderSurface と同じ分け方（材質の段階で置き換える）。
+void PlaceholderAlbedo(float height, float normalY, float outAlbedo[3]) noexcept {
+    constexpr float kGrass[3]{0.19f, 0.27f, 0.10f};
+    constexpr float kSoil[3]{0.27f, 0.21f, 0.15f};
+    constexpr float kRock[3]{0.32f, 0.30f, 0.28f};
+    constexpr float kSnow[3]{0.82f, 0.84f, 0.88f};
+    const float slope = 1.0f - normalY;
+    const float soil = Smoothstep(0.03f, 0.12f, slope);
+    const float rock = Smoothstep(0.14f, 0.32f, slope);
+    const float snow = Smoothstep(170.0f, 210.0f, height) * (1.0f - Smoothstep(0.2f, 0.45f, slope));
+    for (int channel = 0; channel < 3; ++channel) {
+        float value = kGrass[channel] + (kSoil[channel] - kGrass[channel]) * soil;
+        value += (kRock[channel] - value) * rock;
+        value += (kSnow[channel] - value) * snow;
+        outAlbedo[channel] = value;
+    }
+}
 
 // 地形の部品。設定を場面に保存し、自分をその世界のモジュールの面として登録する。
 class TerrainComponent final : public IGameComponent, public IRenderSurfaceExtension, public INavigationGeometrySource {
@@ -164,6 +193,7 @@ public:
         }
         EnsureResources(resources, store);
         UploadPendingTiles(resources, store);
+        UpdateRayProxies(resources, store);
     }
 
     void Record(const RenderSurfaceView& view, IRenderSurfaceCommands& commands) override {
@@ -310,6 +340,10 @@ private:
         if (render.normalTexture != 0u) {
             resources.Release(render.normalTexture);
         }
+        for (const auto& [tile, proxy] : render.rayProxies) {
+            resources.Release(proxy.resource);
+        }
+        render.rayProxies.clear();
         const uint32_t samples = TERRAIN::DATA::TileSamples(store.Settings().grid);
         const uint32_t layers = (std::max)(static_cast<uint32_t>(store.Tiles().size()), 1u);
         render.heightTexture =
@@ -357,6 +391,103 @@ private:
                 break;
             }
         }
+    }
+
+    void UpdateRayProxies(IRenderSurfaceResources& resources, TerrainStore& store) {
+        TerrainRenderResources& render = store.Render();
+        ++render.frame;
+        uint32_t created = 0u;
+        for (const auto& [tile, runtime] : store.Tiles()) {
+            if (runtime.heights.empty()) {
+                continue;
+            }
+            TerrainRayProxy& proxy = render.rayProxies[tile];
+            if (proxy.resource != 0u &&
+                (proxy.revision == runtime.revision || render.frame - proxy.builtFrame < kRayProxyRebuildFrames)) {
+                continue;
+            }
+            const uint32_t resource = CreateRayProxy(resources, store, tile, runtime);
+            if (resource == 0u) {
+                continue;
+            }
+            if (proxy.resource != 0u) {
+                resources.Release(proxy.resource);
+            }
+            proxy = {resource, runtime.revision, render.frame};
+            if (++created >= kRayProxiesPerFrame) {
+                break;
+            }
+        }
+    }
+
+    uint32_t CreateRayProxy(IRenderSurfaceResources& resources, const TerrainStore& store, TileCoord tile,
+                            const TileRuntime& runtime) const {
+        const auto& grid = store.Settings().grid;
+        const uint32_t samples = TERRAIN::DATA::TileSamples(grid);
+        uint32_t step = (std::max)((samples - 1u) / kRayProxyCells, 1u);
+        while ((samples - 1u) % step != 0u) {
+            ++step;
+        }
+        const uint32_t cells = (samples - 1u) / step;
+        const uint32_t columns = cells + 1u;
+        const float spacing = static_cast<float>(TERRAIN::DATA::SampleSpacing(grid)) * static_cast<float>(step);
+        const float originX = static_cast<float>(tile.x) * grid.tileSizeMeters;
+        const float originZ = static_cast<float>(tile.z) * grid.tileSizeMeters;
+        const auto heightAt = [&](uint32_t column, uint32_t row) {
+            return TERRAIN::DATA::DequantizeHeight(
+                grid, runtime.heights[static_cast<size_t>(row * step) * samples + column * step]);
+        };
+        std::vector<float> positions{};
+        positions.reserve(static_cast<size_t>(columns) * columns * 3u);
+        for (uint32_t row = 0u; row < columns; ++row) {
+            for (uint32_t column = 0u; column < columns; ++column) {
+                positions.push_back(originX + static_cast<float>(column) * spacing);
+                positions.push_back(heightAt(column, row));
+                positions.push_back(originZ + static_cast<float>(row) * spacing);
+            }
+        }
+        std::vector<uint16_t> indices{};
+        indices.reserve(static_cast<size_t>(cells) * cells * 6u);
+        std::vector<RenderSurfaceRayProxyRegion> regions{};
+        for (uint32_t regionZ = 0u; regionZ < cells; regionZ += kRayProxyRegionCells) {
+            for (uint32_t regionX = 0u; regionX < cells; regionX += kRayProxyRegionCells) {
+                RenderSurfaceRayProxyRegion region{};
+                region.firstIndex = static_cast<uint32_t>(indices.size());
+                float slopeX = 0.0f;
+                float slopeZ = 0.0f;
+                float height = 0.0f;
+                uint32_t count = 0u;
+                for (uint32_t z = regionZ; z < (std::min)(regionZ + kRayProxyRegionCells, cells); ++z) {
+                    for (uint32_t x = regionX; x < (std::min)(regionX + kRayProxyRegionCells, cells); ++x) {
+                        const uint16_t a = static_cast<uint16_t>(z * columns + x);
+                        const uint16_t b = static_cast<uint16_t>(a + 1u);
+                        const uint16_t c = static_cast<uint16_t>(a + columns);
+                        const uint16_t d = static_cast<uint16_t>(c + 1u);
+                        if (((x ^ z) & 1u) == 0u) {
+                            indices.insert(indices.end(), {a, c, b, b, c, d});
+                        } else {
+                            indices.insert(indices.end(), {a, c, d, a, d, b});
+                        }
+                        const float base = heightAt(x, z);
+                        slopeX += heightAt(x + 1u, z) - base;
+                        slopeZ += heightAt(x, z + 1u) - base;
+                        height += base;
+                        ++count;
+                    }
+                }
+                region.indexCount = static_cast<uint32_t>(indices.size()) - region.firstIndex;
+                const float scale = 1.0f / (static_cast<float>(count) * spacing);
+                const float normalX = -slopeX * scale;
+                const float normalZ = -slopeZ * scale;
+                const float inverseLength = 1.0f / std::sqrt(normalX * normalX + normalZ * normalZ + 1.0f);
+                region.normal[0] = normalX * inverseLength;
+                region.normal[1] = inverseLength;
+                region.normal[2] = normalZ * inverseLength;
+                PlaceholderAlbedo(height / static_cast<float>(count), region.normal[1], region.albedo);
+                regions.push_back(region);
+            }
+        }
+        return resources.CreateRayTracingProxy({positions, indices, regions});
     }
 
     void SelectNode(const FrustumPlanes& frustum, const float camera[3], const std::array<float, kLodLevels>& ranges,

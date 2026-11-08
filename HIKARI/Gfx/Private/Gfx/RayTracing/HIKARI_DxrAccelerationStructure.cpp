@@ -145,7 +145,7 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
     const auto scratchDesc = CD3DX12_RESOURCE_DESC::Buffer((scratchBytes + kAlignment - 1) & ~(kAlignment - 1),
                                                            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     const auto instanceDesc = CD3DX12_RESOURCE_DESC::Buffer((std::max)(size_t{1}, instances.size_bytes()));
-    uint64_t allocationBytes = 0, instanceBytes = 0;
+    uint64_t allocationBytes = 0, instanceBytes = 0, scratchAllocationBytes = 0;
     for (const auto* desc : {&resultDesc, &scratchDesc, &instanceDesc}) {
         if (desc == &instanceDesc && instances.empty())
             continue;
@@ -155,6 +155,8 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
         allocationBytes += bytes;
         if (desc == &instanceDesc)
             instanceBytes = bytes;
+        else if (desc == &scratchDesc)
+            scratchAllocationBytes = bytes;
     }
 
     // 再 build/refit でも旧結果を上書きしない。記録済み View と GPU 読み取りを保護する。
@@ -184,13 +186,17 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
     commands->ResourceBarrier(1, &barrier);
     Reset(&graphics);
     result_ = std::move(result);
-    scratch_ = std::move(scratch);
+    // 更新しない構造の scratch は組み立てが終われば要らない（BLAS の常駐量がほぼ半分になる）。
+    if (updatable)
+        scratch_ = std::move(scratch);
+    else
+        RetireD3D12ObjectForFrame(scratch, graphics, "DXR.Scratch");
     if (instanceBuffer)
         instances_.Adopt(graphics, std::move(instanceBuffer), instances.size_bytes(), instanceBytes, "DXR.Instances");
     externalInstances_ = 0;
     device_ = graphics.device;
     deviceGeneration_ = graphics.deviceGeneration;
-    allocationBytes_ = allocationBytes - instanceBytes;
+    allocationBytes_ = allocationBytes - instanceBytes - (updatable ? 0 : scratchAllocationBytes);
     resultBytes_ = resultDesc.Width;
     scratchBytes_ = scratchDesc.Width;
     descriptorCount_ = inputs.NumDescs;
