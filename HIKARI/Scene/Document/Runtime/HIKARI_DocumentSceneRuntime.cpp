@@ -608,14 +608,18 @@ bool DocumentSceneBase::ApplyRuntimeObjectChanges(const SceneObjectChanges& chan
         return RebuildRuntimeWorld();
     }
 
-    // 追加分と変更分は同じ経路で document から生成する（変更分は先に壊してから作り直す）。
+    // 変更分は部品の並びが同じならその場で更新する（句柄と変わらない部品を保つ）。並びが変わった物体と追加分は
+    // document から生成する（変更分は先に壊してから作り直す）。
     std::vector<const SceneObjectData*> builtObjects{};
     builtObjects.reserve(changes.added.size() + changes.changed.size());
+    std::vector<const SceneObjectData*> updatedInPlace{};
+    std::vector<SceneObjectId> recreated{};
     SceneDependencySet dependencies{};
     bool lightingChanged = false;
     const auto admit = [&](SceneObjectId id, bool mustBeNew) {
         const SceneObjectData* object = FindSceneObjectData(document, id);
-        if (object == nullptr || (mustBeNew && runtime.world.FindObject(id) != nullptr)) {
+        const GameObject* existing = runtime.world.FindObject(id);
+        if (object == nullptr || (mustBeNew && existing != nullptr)) {
             return false;
         }
         for (const SceneComponentData& component : object->components) {
@@ -625,7 +629,15 @@ bool DocumentSceneBase::ApplyRuntimeObjectChanges(const SceneObjectChanges& chan
             lightingChanged = lightingChanged || LIGHTING_AUTHORING::IsLightingComponentType(component.type);
         }
         runtime.builder.CollectObjectDependencies(*object, &runtime.componentRegistry, dependencies);
-        builtObjects.push_back(object);
+        if (!mustBeNew && existing != nullptr &&
+            runtime.builder.CanUpdateObjectInPlace(*object, *existing, runtime.componentRegistry)) {
+            updatedInPlace.push_back(object);
+        } else {
+            builtObjects.push_back(object);
+            if (!mustBeNew) {
+                recreated.push_back(id);
+            }
+        }
         return true;
     };
     for (SceneObjectId id : changes.added) {
@@ -658,23 +670,33 @@ bool DocumentSceneBase::ApplyRuntimeObjectChanges(const SceneObjectChanges& chan
             return RebuildRuntimeWorld();
         }
     }
-    for (SceneObjectId id : changes.changed) {
+    for (SceneObjectId id : recreated) {
         if (!destroy(id)) {
             return RebuildRuntimeWorld();
         }
     }
 
-    if (!builtObjects.empty()) {
+    if (!builtObjects.empty() || !updatedInPlace.empty()) {
         // 照明は下の RefreshLightingRuntime がまとめて読み直すので、ここでは資産だけを先読みする。
         (void)runtime.builder.PreloadDependencies(dependencies, state_->assets.Registry(), state_->assets.Models(),
                                                   state_->lighting.sky, state_->assets.Database().GetProjectRoot(),
                                                   state_->identity.currentSceneAssetGuid.value, false,
                                                   &state_->assets.SpriteAssets());
-        if (!runtime.builder.AddObjectsFromDocument(builtObjects, runtime.world, state_->assets.Registry(),
+        if (!builtObjects.empty() &&
+            !runtime.builder.AddObjectsFromDocument(builtObjects, runtime.world, state_->assets.Registry(),
                                                     runtime.componentRegistry, state_->assets.Models())) {
             return RebuildRuntimeWorld();
         }
-        runtime.builder.ReattachChildrenFromDocument(document, changes.changed, runtime.world);
+        runtime.builder.ReattachChildrenFromDocument(document, recreated, runtime.world);
+        // 親が作り直された・追加された場合も解決できるよう、その場の更新は生成の後に行う。
+        for (const SceneObjectData* object : updatedInPlace) {
+            GameObject* existing = runtime.world.FindObject(object->id);
+            if (existing == nullptr ||
+                !runtime.builder.UpdateObjectFromDocument(*object, *existing, runtime.world, state_->assets.Registry(),
+                                                          runtime.componentRegistry, state_->assets.Models())) {
+                return RebuildRuntimeWorld();
+            }
+        }
     }
     if (lightingChanged) {
         (void)RefreshLightingRuntime();

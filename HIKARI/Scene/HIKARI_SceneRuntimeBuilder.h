@@ -88,6 +88,14 @@ public:
     bool InitializeRuntimeComponentAssets(GameObject& object, IComponent& component, const AssetRegistry& assetRegistry,
                                           ModelManager& modelManager, std::string& outDiagnostic) const;
     void FinalizeRuntimeObjectAssets(GameObject& object, const AssetRegistry& assetRegistry) const;
+    // 既存の物体が document の物体と同じ部品の並び（登録済みの型だけで比べる）を持つか。持つ時だけその場で更新できる。
+    bool CanUpdateObjectInPlace(const SceneObjectData& object, const GameObject& existing,
+                                const ComponentRegistry& componentRegistry) const;
+    // 物体を壊さずに document の内容へ合わせる（句柄と変わらない部品を保つ）。名前・局所変換・親を直し、属性が変わった
+    // 部品だけ読み直して資産を初期化し直す。CanUpdateObjectInPlace が真の時だけ呼ぶ。部品の読み込みに失敗したら false。
+    bool UpdateObjectFromDocument(const SceneObjectData& object, GameObject& existing, World& world,
+                                  const AssetRegistry& assetRegistry, const ComponentRegistry& componentRegistry,
+                                  ModelManager& modelManager) const;
 };
 
 } // namespace HIKARI

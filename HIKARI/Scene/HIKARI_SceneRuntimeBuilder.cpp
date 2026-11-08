@@ -869,4 +869,65 @@ bool SceneRuntimeBuilder::AddObjectsFromDocument(std::span<const SceneObjectData
     }
 }
 
+bool SceneRuntimeBuilder::CanUpdateObjectInPlace(const SceneObjectData& object, const GameObject& existing,
+                                                 const ComponentRegistry& componentRegistry) const {
+    const auto& components = existing.GetComponents();
+    size_t index = 0u;
+    for (const SceneComponentData& component : object.components) {
+        if (componentRegistry.Find(component.type) == nullptr) {
+            continue; // 未登録の部品は作られないので並びの比較から外す
+        }
+        if (index >= components.size() || components[index] == nullptr ||
+            components[index]->GetTypeName() != component.type) {
+            return false;
+        }
+        ++index;
+    }
+    return index == components.size();
+}
+
+bool SceneRuntimeBuilder::UpdateObjectFromDocument(const SceneObjectData& object, GameObject& existing, World& world,
+                                                   const AssetRegistry& assetRegistry,
+                                                   const ComponentRegistry& componentRegistry,
+                                                   ModelManager& modelManager) const {
+    if (existing.GetName() != object.name) {
+        existing.SetName(object.name);
+    }
+    (void)existing.SetLocalTransform(ToLocalTransform(object.transform));
+    GameObject* parent = object.parent.has_value() ? world.FindObject(*object.parent) : nullptr;
+    if (existing.GetParent() != parent && !existing.SetParent(parent)) {
+        HIKARI_LOG_WARN("[SceneRuntime] invalid object hierarchy skipped: child=" + std::to_string(object.id.value));
+    }
+    const auto& components = existing.GetComponents();
+    size_t index = 0u;
+    bool componentsChanged = false;
+    for (const SceneComponentData& data : object.components) {
+        if (componentRegistry.Find(data.type) == nullptr) {
+            continue;
+        }
+        IComponent& component = *components[index++];
+        nlohmann::json current{};
+        component.Serialize(current);
+        if (current == data.properties) {
+            continue;
+        }
+        std::string diagnostic{};
+        if (!component.TryDeserialize(data.properties, diagnostic)) {
+            HIKARI_LOG_ERROR("[SceneRuntime] component deserialize failed: " + data.type +
+                             " objectId=" + std::to_string(object.id.value) + " diagnostic=" + diagnostic);
+            return false;
+        }
+        std::string runtimeDiagnostic{};
+        if (!InitializeRuntimeComponentAssets(existing, component, assetRegistry, modelManager, runtimeDiagnostic)) {
+            HIKARI_LOG_WARN("[SceneRuntime] " + runtimeDiagnostic);
+        }
+        componentsChanged = true;
+    }
+    if (componentsChanged) {
+        FinalizeRuntimeObjectAssets(existing, assetRegistry);
+        existing.MarkRenderStateDirty();
+    }
+    return true;
+}
+
 } // namespace HIKARI
