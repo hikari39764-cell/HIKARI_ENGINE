@@ -224,6 +224,7 @@ bool TerrainStore::LoadFromDisk(const std::filesystem::path& scenePath, std::str
     }
     settings_.grid = stack.grid;
     sculptLayer_ = FindSculptLayer(*data_);
+    LoadLayerImages();
     for (const auto& entry : std::filesystem::directory_iterator(directory, ec)) {
         const std::string name = entry.path().filename().string();
         constexpr std::string_view suffix = ".terrain.bin";
@@ -357,8 +358,11 @@ void TerrainStore::RebakeTiles(std::span<const TileCoord> tiles) {
 }
 
 void TerrainStore::RebakeRect(const SampleRect& rect) {
+    if (data_ == nullptr || rect.Empty()) {
+        return;
+    }
     std::vector<TileCoord> touched{};
-    // 法線は周囲 1 標本を見るので、1 標本広げた範囲の瓦片を焼く。
+    // 法線は周囲 1 標本を見るので、1 標本広げた範囲を焼く。
     SampleRect wider = rect;
     wider.x0 -= 1;
     wider.z0 -= 1;
@@ -369,8 +373,187 @@ void TerrainStore::RebakeRect(const SampleRect& rect) {
             touched.push_back(tile);
         }
     });
-    RebakeTiles(touched);
+    const HeightStackEvaluator evaluator(*data_);
+    if (!evaluator.Valid()) {
+        return;
+    }
+    std::for_each(std::execution::par, touched.begin(), touched.end(), [&](const TileCoord& tile) {
+        const SampleRect area = IntersectRects(TileSampleRect(settings_.grid, tile), wider);
+        if (!area.Empty()) {
+            BakeTileRect(tile, area, evaluator);
+        }
+    });
     MarkSaveDirty(touched);
+}
+
+void TerrainStore::RebakeAfterStackChange() {
+    if (data_ == nullptr) {
+        return;
+    }
+    LoadLayerImages();
+    sculptLayer_ = FindSculptLayer(*data_);
+    stackDirty_ = true;
+    std::vector<TileCoord> all{};
+    for (const auto& [tile, runtime] : tiles_) {
+        all.push_back(tile);
+    }
+    RebakeTiles(all);
+    MarkSaveDirty(all);
+}
+
+std::filesystem::path TerrainStore::ProjectRoot() const {
+    // 場面は <root>/Assets/... にある。
+    std::filesystem::path current = scenePath_.parent_path();
+    while (!current.empty() && current.filename() != "Assets" && current != current.root_path()) {
+        current = current.parent_path();
+    }
+    return current.filename() == "Assets" ? current.parent_path() : scenePath_.parent_path();
+}
+
+void TerrainStore::LoadLayerImages(std::string* error) {
+    if (data_ == nullptr) {
+        return;
+    }
+    const std::filesystem::path root = ProjectRoot();
+    for (const HeightLayer& layer : data_->Stack().layers) {
+        if (layer.kind != HeightLayerKind::Image || layer.image.source.empty()) {
+            continue;
+        }
+        // 撤销や底図の差し替えで参照先が変わったら読み直す。
+        const std::string loadedKey = layer.image.source + "|" + std::to_string(layer.image.rawWidth);
+        std::string& loaded = loadedImageKeys_[layer.id];
+        if (loaded == loadedKey && data_->LayerImage(layer.id) != nullptr) {
+            continue;
+        }
+        loaded = loadedKey;
+        const std::filesystem::path source(
+            std::u8string_view(reinterpret_cast<const char8_t*>(layer.image.source.data()), layer.image.source.size()));
+        auto image = std::make_shared<HeightImage>();
+        std::string message{};
+        if (LoadHeightImage(root / source, layer.image.rawWidth, *image, message)) {
+            data_->SetLayerImage(layer.id, std::move(image));
+        } else if (error != nullptr) {
+            *error = layer.name + ": " + message;
+        }
+    }
+}
+
+void TerrainStore::BakeTileRect(TileCoord tile, const SampleRect& area, const HeightStackEvaluator& evaluator) {
+    const auto found = tiles_.find(tile);
+    if (found == tiles_.end()) {
+        return;
+    }
+    TileRuntime& runtime = found->second;
+    if (runtime.heights.empty() || runtime.normalMips.empty() || runtime.uploadPending) {
+        BakeTile(tile, evaluator);
+        return;
+    }
+    const TerrainGrid& grid = settings_.grid;
+    const uint32_t samples = TileSamples(grid);
+    const SampleRect tileRect = TileSampleRect(grid, tile);
+    SampleRect bordered = area;
+    bordered.x0 -= 1;
+    bordered.z0 -= 1;
+    bordered.width += 2u;
+    bordered.height += 2u;
+    std::vector<float> values{};
+    if (!evaluator.EvaluateRect(bordered, values)) {
+        return;
+    }
+    const uint32_t x0 = static_cast<uint32_t>(area.x0 - tileRect.x0);
+    const uint32_t z0 = static_cast<uint32_t>(area.z0 - tileRect.z0);
+    const uint32_t x1 = x0 + area.width - 1u;
+    const uint32_t z1 = z0 + area.height - 1u;
+    const uint32_t stride = bordered.width;
+    const float scale = 0.5f / static_cast<float>(SampleSpacing(grid));
+    for (uint32_t z = 0u; z < area.height; ++z) {
+        for (uint32_t x = 0u; x < area.width; ++x) {
+            const size_t center = static_cast<size_t>(z + 1u) * stride + x + 1u;
+            const size_t index = static_cast<size_t>(z0 + z) * samples + x0 + x;
+            runtime.heights[index] = QuantizeHeight(grid, values[center]);
+            const float dx = (values[center + 1u] - values[center - 1u]) * scale;
+            const float dz = (values[center + stride] - values[center - stride]) * scale;
+            const float inverseLength = 1.0f / std::sqrt(dx * dx + dz * dz + 1.0f);
+            runtime.normalMips[index * 2u] = ToSnorm16(-dx * inverseLength);
+            runtime.normalMips[index * 2u + 1u] = ToSnorm16(-dz * inverseLength);
+        }
+    }
+    // 粗い段は変わった範囲だけ 4 標本の平均で作り直す。
+    size_t offset = 0u;
+    uint32_t size = samples;
+    uint32_t ax = x0;
+    uint32_t az = z0;
+    uint32_t bx = x1;
+    uint32_t bz = z1;
+    for (uint32_t mip = 1u; mip < kNormalMipCount; ++mip) {
+        const size_t nextOffset = offset + static_cast<size_t>(size) * size * 2u;
+        const uint32_t next = (std::max)(size >> 1u, 1u);
+        ax >>= 1u;
+        az >>= 1u;
+        bx = (std::min)(bx >> 1u, next - 1u);
+        bz = (std::min)(bz >> 1u, next - 1u);
+        for (uint32_t z = az; z <= bz; ++z) {
+            for (uint32_t x = ax; x <= bx; ++x) {
+                for (uint32_t c = 0u; c < 2u; ++c) {
+                    const auto at = [&](uint32_t sx, uint32_t sz) {
+                        return static_cast<int32_t>(
+                            runtime.normalMips[offset + (static_cast<size_t>(sz) * size + sx) * 2u + c]);
+                    };
+                    runtime.normalMips[nextOffset + (static_cast<size_t>(z) * next + x) * 2u + c] =
+                        static_cast<int16_t>((at(x * 2u, z * 2u) + at(x * 2u + 1u, z * 2u) + at(x * 2u, z * 2u + 1u) +
+                                              at(x * 2u + 1u, z * 2u + 1u)) /
+                                             4);
+                }
+            }
+        }
+        offset = nextOffset;
+        size = next;
+    }
+    // 触った葉の高さの範囲を標本から数え直す（遠近分級の境界）。
+    const uint32_t cells = grid.tileCells;
+    const auto leafOf = [&](uint32_t sample) {
+        return (std::min)(sample * kTileLeafDivisions / cells, kTileLeafDivisions - 1u);
+    };
+    const uint32_t leafX0 = leafOf(x0 == 0u ? 0u : x0 - 1u);
+    const uint32_t leafX1 = leafOf(x1);
+    const uint32_t leafZ0 = leafOf(z0 == 0u ? 0u : z0 - 1u);
+    const uint32_t leafZ1 = leafOf(z1);
+    for (uint32_t leafZ = leafZ0; leafZ <= leafZ1; ++leafZ) {
+        for (uint32_t leafX = leafX0; leafX <= leafX1; ++leafX) {
+            uint16_t low = 0xFFFFu;
+            uint16_t high = 0u;
+            for (uint32_t z = leafZ * cells / kTileLeafDivisions; z <= (leafZ + 1u) * cells / kTileLeafDivisions; ++z) {
+                for (uint32_t x = leafX * cells / kTileLeafDivisions; x <= (leafX + 1u) * cells / kTileLeafDivisions;
+                     ++x) {
+                    const uint16_t value = runtime.heights[static_cast<size_t>(z) * samples + x];
+                    low = (std::min)(low, value);
+                    high = (std::max)(high, value);
+                }
+            }
+            const size_t index = (static_cast<size_t>(leafZ) * kTileLeafDivisions + leafX) * 2u;
+            runtime.leafMinMax[index] = DequantizeHeight(grid, low);
+            runtime.leafMinMax[index + 1u] = DequantizeHeight(grid, high);
+        }
+    }
+    runtime.minHeight = std::numeric_limits<float>::max();
+    runtime.maxHeight = std::numeric_limits<float>::lowest();
+    for (size_t leaf = 0u; leaf < static_cast<size_t>(kTileLeafDivisions) * kTileLeafDivisions; ++leaf) {
+        runtime.minHeight = (std::min)(runtime.minHeight, runtime.leafMinMax[leaf * 2u]);
+        runtime.maxHeight = (std::max)(runtime.maxHeight, runtime.leafMinMax[leaf * 2u + 1u]);
+    }
+    if (runtime.rectPending) {
+        runtime.pendingX0 = (std::min)(runtime.pendingX0, x0);
+        runtime.pendingZ0 = (std::min)(runtime.pendingZ0, z0);
+        runtime.pendingX1 = (std::max)(runtime.pendingX1, x1);
+        runtime.pendingZ1 = (std::max)(runtime.pendingZ1, z1);
+    } else {
+        runtime.pendingX0 = x0;
+        runtime.pendingZ0 = z0;
+        runtime.pendingX1 = x1;
+        runtime.pendingZ1 = z1;
+        runtime.rectPending = true;
+    }
+    ++runtime.revision;
 }
 
 void TerrainStore::RebakeChanged(std::span<const TileCoord> tiles) {

@@ -16,7 +16,8 @@ target_sources(
         "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataFile.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataGrid.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataImage.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataLayers.cpp")
+        "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataLayers.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataStamp.cpp")
 target_include_directories(
     hikari_terrainkit_data
     PUBLIC
@@ -66,6 +67,12 @@ if(TARGET HIKARI_EditorHost)
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitStore.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitStore.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitEditor.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitEditorCommon.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitExport.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitLayerActions.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitOperations.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitPanel.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitTools.cpp"
             "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectModuleAdapter.cpp"
             "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectEditorModuleAdapter.cpp")
     target_include_directories(

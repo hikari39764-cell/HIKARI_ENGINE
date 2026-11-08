@@ -24,6 +24,8 @@ struct EditorViewportInput {
     bool alt = false;
     float wheel = 0.0f;
     float deltaSeconds = 0.0f;
+    // ペンの筆圧（0..1）。マウスは常に 1。
+    float pressure = 1.0f;
 };
 
 // 視口工具が今のフレームに描く線と文字（筆の光標など）。座標は世界空間。

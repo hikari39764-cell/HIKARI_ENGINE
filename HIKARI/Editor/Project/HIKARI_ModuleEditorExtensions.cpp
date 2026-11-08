@@ -9,6 +9,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Project/HIKARI_GameProjectEditorModuleLibrary.h"
 #include "Editor/Views/HIKARI_EditorViewportGeometry.h"
+#include "Platform/HIKARI_Win32Window.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "imgui.h"
 
@@ -192,6 +193,7 @@ bool ModuleEditorExtensions::UpdateViewport(const Camera3D& camera, const SceneV
     input.alt = io.KeyAlt;
     input.wheel = hovered ? io.MouseWheel : 0.0f;
     input.deltaSeconds = deltaSeconds;
+    input.pressure = PLATFORM::CurrentPenPressure();
     const float normalizedX = (io.MousePos.x - viewport.x) / (std::max)(viewport.width, 1.0f);
     const float normalizedY = (io.MousePos.y - viewport.y) / (std::max)(viewport.height, 1.0f);
     EditorPointerRay ray{};

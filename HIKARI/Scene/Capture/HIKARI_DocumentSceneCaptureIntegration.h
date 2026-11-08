@@ -417,6 +417,7 @@ inline void RenderSecondaryCapture(DocumentSceneState& state, const GFX::Context
         view.assetRegistry = &state.assets.Registry();
         view.worldSpriteFrameSource = worldSpriteFrameSource;
         view.worldTextFrameSource = worldTextFrameSource;
+        view.surfaceExtensions = state.runtime.world.GetRenderSurfaceExtensions();
         const uint32_t renderVfxFlag = GameProjectSceneCaptureFlags(GameProjectSceneCaptureFlag::RenderVfx);
         if ((request.flags & renderVfxFlag) != 0u) {
             view.particleFrameSource = particleFrameSource;

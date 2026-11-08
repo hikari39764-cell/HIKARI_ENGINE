@@ -169,7 +169,8 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
                    uint64_t currentSceneRevision, SkyManager& skyManager, const AssetRegistry* assetRegistry = nullptr,
                    const MATERIAL::MaterialExternalValueSnapshot* materialExternalValues = nullptr,
                    const WORLD_SPRITES::WorldSpriteFrameSource* worldSpriteFrameSource = nullptr,
-                   const WORLD_TEXT::WorldTextFrameSource* worldTextFrameSource = nullptr);
+                   const WORLD_TEXT::WorldTextFrameSource* worldTextFrameSource = nullptr,
+                   std::span<IRenderSurfaceExtension* const> surfaceExtensions = {});
 EditorInteractiveViewOutput GetOutput(RenderViewId viewId);
 std::string_view GetEditorInteractiveViewFailureMessage(EditorInteractiveViewFailure failure) noexcept;
 EditorInteractiveSchedulerStats GetSchedulerStats();

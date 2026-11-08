@@ -20,11 +20,14 @@ enum class HeightBrushOp : uint8_t {
     Smooth = 2,  // 合成後の高さを 3×3 の平均へ寄せる（強さは 0..1 の割合）
     Flatten = 3, // 合成後の高さを targetHeight へ寄せる（強さは 0..1 の割合）
     Noise = 4,   // 決定的な値噪声（noiseScaleMeters）を強さ（m）で足す
+    Ramp = 5,    // 折れ線の始点から終点へ一定の坂へ寄せる（強さは 0..1 の割合）
+    Terrace = 6, // 合成後の高さを terraceStepMeters の段へ寄せる（強さは 0..1 の割合）
 };
 
 inline constexpr TEXT::EnumName<HeightBrushOp> kHeightBrushOpNames[] = {
     {HeightBrushOp::Raise, "raise"},     {HeightBrushOp::Lower, "lower"}, {HeightBrushOp::Smooth, "smooth"},
-    {HeightBrushOp::Flatten, "flatten"}, {HeightBrushOp::Noise, "noise"},
+    {HeightBrushOp::Flatten, "flatten"}, {HeightBrushOp::Noise, "noise"}, {HeightBrushOp::Ramp, "ramp"},
+    {HeightBrushOp::Terrace, "terrace"},
 };
 
 struct HeightBrushSettings {
@@ -36,6 +39,14 @@ struct HeightBrushSettings {
     float targetHeightMeters = 0.0f;
     float noiseScaleMeters = 8.0f;
     uint32_t noiseSeed = 1u;
+    float terraceStepMeters = 8.0f;
+    // 0 より大きければ坂の傾きを固定する（始点の高さから終点の向きへ上る）。0 なら終点の地面の高さへ繋ぐ。
+    float rampSlopeDegrees = 0.0f;
+    // この範囲の傾き・高さの所だけ筆が効く（縁は緩やかに切れる）。
+    float limitMinSlopeDegrees = 0.0f;
+    float limitMaxSlopeDegrees = 90.0f;
+    float limitMinHeightMeters = -100000.0f;
+    float limitMaxHeightMeters = 100000.0f;
     bool operator==(const HeightBrushSettings&) const = default;
 };
 
@@ -55,6 +66,15 @@ inline constexpr auto kHeightBrushFields = [](auto&& field) {
           Show{[](const S& s) { return s.op == HeightBrushOp::Noise; }});
     field("noiseSeed", &S::noiseSeed, Label{"Noise Seed"},
           Show{[](const S& s) { return s.op == HeightBrushOp::Noise; }});
+    field("terraceStepMeters", &S::terraceStepMeters, Range{0.1, 4096.0}, Label{"Terrace Step"}, Unit{"m"},
+          Show{[](const S& s) { return s.op == HeightBrushOp::Terrace; }});
+    field("rampSlopeDegrees", &S::rampSlopeDegrees, Range{-89.0, 89.0}, Label{"Ramp Slope"}, Unit{"deg"},
+          Help{"Fixed slope from the start of the path; 0 joins the ground height at the end of the path."},
+          Show{[](const S& s) { return s.op == HeightBrushOp::Ramp; }});
+    field("limitMinSlopeDegrees", &S::limitMinSlopeDegrees, Range{0.0, 90.0}, Label{"Min Slope"}, Unit{"deg"});
+    field("limitMaxSlopeDegrees", &S::limitMaxSlopeDegrees, Range{0.0, 90.0}, Label{"Max Slope"}, Unit{"deg"});
+    field("limitMinHeightMeters", &S::limitMinHeightMeters, Range{-100000.0, 100000.0}, Label{"Min Height"}, Unit{"m"});
+    field("limitMaxHeightMeters", &S::limitMaxHeightMeters, Range{-100000.0, 100000.0}, Label{"Max Height"}, Unit{"m"});
 };
 
 enum class ControlBrushOp : uint8_t {

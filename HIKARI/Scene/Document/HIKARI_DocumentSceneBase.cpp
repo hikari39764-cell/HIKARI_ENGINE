@@ -728,7 +728,8 @@ void DocumentSceneBase::Render() {
     (void)RENDER3D::EDITORVIEW::RenderPending(
         activeEnvironment, sceneLighting, state_->identity.documentRevision, state_->lighting.sky,
         &state_->assets.Registry(), state_->runtime.materialExternalValueSnapshot.get(),
-        &RenderSubmissionSystem::GetWorldSpriteFrameSource(), &RenderSubmissionSystem::GetWorldTextFrameSource());
+        &RenderSubmissionSystem::GetWorldSpriteFrameSource(), &RenderSubmissionSystem::GetWorldTextFrameSource(),
+        state_->runtime.world.GetRenderSurfaceExtensions());
 #endif
 }
 const std::string& DocumentSceneBase::GetSceneId() const { return state_->identity.sceneId; }

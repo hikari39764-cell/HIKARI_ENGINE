@@ -36,6 +36,8 @@ constexpr uint32_t kUploadTilesPerFrame = 32u;
 constexpr uint32_t kRayProxyCells = 64u;
 constexpr uint32_t kRayProxyRegionCells = 8u;
 constexpr uint32_t kRayProxiesPerFrame = 8u;
+// 筆で塗っている間に作り直す数（組み直しは一フレームに集めると引っかかる）。
+constexpr uint32_t kRayProxyRebuildsPerFrame = 2u;
 // 筆で塗っている間の作り直しの間隔。
 constexpr uint64_t kRayProxyRebuildFrames = 30u;
 
@@ -362,6 +364,9 @@ private:
         const uint32_t samples = TERRAIN::DATA::TileSamples(store.Settings().grid);
         uint32_t uploaded = 0u;
         for (auto& [tile, runtime] : store.MutableTiles()) {
+            if (!runtime.uploadPending && runtime.rectPending) {
+                UploadPendingRect(resources, render, runtime, samples);
+            }
             if (!runtime.uploadPending || runtime.heights.empty()) {
                 continue;
             }
@@ -387,10 +392,50 @@ private:
                 size = (std::max)(size >> 1u, 1u);
             }
             runtime.uploadPending = false;
+            runtime.rectPending = false;
             if (++uploaded >= kUploadTilesPerFrame) {
                 break;
             }
         }
+    }
+
+    // 筆刷の一度分：変わった矩形だけを高さと法線の全段へ送る。
+    static void UploadPendingRect(IRenderSurfaceResources& resources, const TerrainRenderResources& render,
+                                  TileRuntime& runtime, uint32_t samples) {
+        RenderSurfaceTextureUpload height{};
+        height.layer = runtime.layer;
+        height.x = runtime.pendingX0;
+        height.y = runtime.pendingZ0;
+        height.width = runtime.pendingX1 - runtime.pendingX0 + 1u;
+        height.height = runtime.pendingZ1 - runtime.pendingZ0 + 1u;
+        height.rowPitchBytes = samples * sizeof(uint16_t);
+        height.pixels = runtime.heights.data() + static_cast<size_t>(height.y) * samples + height.x;
+        (void)resources.UploadTexture(render.heightTexture, height);
+        size_t offset = 0u;
+        uint32_t size = samples;
+        uint32_t x0 = runtime.pendingX0;
+        uint32_t z0 = runtime.pendingZ0;
+        uint32_t x1 = runtime.pendingX1;
+        uint32_t z1 = runtime.pendingZ1;
+        for (uint32_t mip = 0u; mip < 5u; ++mip) {
+            RenderSurfaceTextureUpload normal{};
+            normal.layer = runtime.layer;
+            normal.mip = mip;
+            normal.x = x0;
+            normal.y = z0;
+            normal.width = x1 - x0 + 1u;
+            normal.height = z1 - z0 + 1u;
+            normal.rowPitchBytes = size * 2u * sizeof(int16_t);
+            normal.pixels = runtime.normalMips.data() + offset + (static_cast<size_t>(z0) * size + x0) * 2u;
+            (void)resources.UploadTexture(render.normalTexture, normal);
+            offset += static_cast<size_t>(size) * size * 2u;
+            size = (std::max)(size >> 1u, 1u);
+            x0 >>= 1u;
+            z0 >>= 1u;
+            x1 = (std::min)(x1 >> 1u, size - 1u);
+            z1 = (std::min)(z1 >> 1u, size - 1u);
+        }
+        runtime.rectPending = false;
     }
 
     void UpdateRayProxies(IRenderSurfaceResources& resources, TerrainStore& store) {
@@ -406,6 +451,9 @@ private:
                 (proxy.revision == runtime.revision || render.frame - proxy.builtFrame < kRayProxyRebuildFrames)) {
                 continue;
             }
+            if (created >= (proxy.resource != 0u ? kRayProxyRebuildsPerFrame : kRayProxiesPerFrame)) {
+                continue;
+            }
             const uint32_t resource = CreateRayProxy(resources, store, tile, runtime);
             if (resource == 0u) {
                 continue;
@@ -414,9 +462,7 @@ private:
                 resources.Release(proxy.resource);
             }
             proxy = {resource, runtime.revision, render.frame};
-            if (++created >= kRayProxiesPerFrame) {
-                break;
-            }
+            ++created;
         }
     }
 

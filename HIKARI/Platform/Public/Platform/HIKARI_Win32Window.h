@@ -21,6 +21,9 @@ enum class WindowMode {
     Fullscreen,
 };
 
+// 今のペンの筆圧（0..1）。ペンが触れていない時やマウスは 1。
+float CurrentPenPressure() noexcept;
+
 class Win32Window {
 public:
     using ResizeCallback = std::function<void(int, int)>;

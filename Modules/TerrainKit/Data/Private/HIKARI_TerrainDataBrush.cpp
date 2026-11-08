@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <execution>
 #include <memory>
+#include <numeric>
 
 #include "TerrainKit/Data/HIKARI_TerrainDataControl.h"
 
@@ -59,23 +61,29 @@ float ValueNoise(double x, double z, uint32_t seed) noexcept {
     return top + (bottom - top) * v;
 }
 
+// 行を並列に処理する（半径の大きい筆でも一フレームに収める）。行どうしは同じ標本へ書かない。
+template <class RowFunction>
+void ForEachRow(uint32_t rows, RowFunction function) {
+    static thread_local std::vector<uint32_t> indices{};
+    indices.resize(rows);
+    std::iota(indices.begin(), indices.end(), 0u);
+    std::for_each(std::execution::par, indices.begin(), indices.end(), function);
+}
+
 // dab 1 つの重み（矩形の標本ごと）。全て 0 なら false。
 bool DabWeights(const TerrainGrid& grid, const SampleRect& rect, MATH::Vec2 center, float radius, float hardness,
                 std::vector<float>& weights) {
     const double spacing = SampleSpacing(grid);
     weights.assign(rect.Count(), 0.0f);
-    bool any = false;
-    for (uint32_t z = 0u; z < rect.height; ++z) {
+    ForEachRow(rect.height, [&](uint32_t z) {
         const double dz = static_cast<double>(rect.z0 + z) * spacing - center.y;
         for (uint32_t x = 0u; x < rect.width; ++x) {
             const double dx = static_cast<double>(rect.x0 + x) * spacing - center.x;
             const float distance = static_cast<float>(std::sqrt(dx * dx + dz * dz)) / radius;
-            const float weight = BrushFalloff(distance, hardness);
-            weights[static_cast<std::size_t>(z) * rect.width + x] = weight;
-            any = any || weight > 0.0f;
+            weights[static_cast<std::size_t>(z) * rect.width + x] = BrushFalloff(distance, hardness);
         }
-    }
-    return any;
+    });
+    return std::any_of(weights.begin(), weights.end(), [](float weight) { return weight > 0.0f; });
 }
 
 // 矩形内の 3×3 加重平均（1 2 1）。矩形の端は内側の標本だけで平均する。
@@ -95,6 +103,30 @@ float Blur3(const std::vector<float>& values, const SampleRect& rect, uint32_t x
         }
     }
     return sum / weight;
+}
+
+// 傾き（度）と高さの範囲の重み。範囲の縁から少し外まで緩やかに 0 へ落とす。
+constexpr float kLimitSlopeFadeDegrees = 4.0f;
+constexpr float kLimitHeightFadeMeters = 4.0f;
+
+float RangeWeight(float value, float minimum, float maximum, float fade) noexcept {
+    const float below = std::clamp((value - (minimum - fade)) / fade, 0.0f, 1.0f);
+    const float above = std::clamp(((maximum + fade) - value) / fade, 0.0f, 1.0f);
+    return below * above;
+}
+
+float SlopeDegrees(const std::vector<float>& heights, const SampleRect& rect, uint32_t x, uint32_t z,
+                   double spacing) noexcept {
+    const uint32_t xa = x > 0u ? x - 1u : x;
+    const uint32_t xb = x + 1u < rect.width ? x + 1u : x;
+    const uint32_t za = z > 0u ? z - 1u : z;
+    const uint32_t zb = z + 1u < rect.height ? z + 1u : z;
+    const std::size_t stride = rect.width;
+    const float dx = (heights[z * stride + xb] - heights[z * stride + xa]) /
+                     (static_cast<float>(xb - xa) * static_cast<float>(spacing) + 1e-6f);
+    const float dz = (heights[zb * stride + x] - heights[za * stride + x]) /
+                     (static_cast<float>(zb - za) * static_cast<float>(spacing) + 1e-6f);
+    return std::atan(std::sqrt(dx * dx + dz * dz)) * 57.29578f;
 }
 
 std::vector<uint8_t> KeepMask(const std::vector<float>& weights) {
@@ -164,8 +196,11 @@ bool ApplyHeightBrush(TerrainData& data, uint32_t layerId, const HeightBrushSett
     const bool additive = layer->blend == HeightBlendMode::Add || layer->blend == HeightBlendMode::Subtract;
     // 減算の層は値の向きが逆なので、全ての操作で符号を合わせる（合成後の高さが筆刷の向きに動く）。
     const float sign = layer->blend == HeightBlendMode::Subtract ? -1.0f : 1.0f;
-    const bool needsComposite =
-        additive && (settings.op == HeightBrushOp::Smooth || settings.op == HeightBrushOp::Flatten);
+    const bool limited = settings.limitMinSlopeDegrees > 0.0f || settings.limitMaxSlopeDegrees < 90.0f ||
+                         settings.limitMinHeightMeters > -100000.0f || settings.limitMaxHeightMeters < 100000.0f;
+    const bool towardTarget = settings.op == HeightBrushOp::Smooth || settings.op == HeightBrushOp::Flatten ||
+                              settings.op == HeightBrushOp::Ramp || settings.op == HeightBrushOp::Terrace;
+    const bool needsComposite = limited || (additive && towardTarget);
     const float fraction = std::clamp(settings.strength, 0.0f, 1.0f);
     const double spacing = SampleSpacing(grid);
     const std::vector<MATH::Vec2> dabs = PlaceBrushDabs(path, settings.radiusMeters, settings.spacing);
@@ -179,6 +214,34 @@ bool ApplyHeightBrush(TerrainData& data, uint32_t layerId, const HeightBrushSett
         }
     }
     std::vector<float> weights, current, composite, layerValues, alpha;
+    // 坂の始点と終点の高さ。一本の筆跡の間は動かさない。
+    const MATH::Vec2 rampStart = path.front();
+    const MATH::Vec2 rampAxis = path.back() - path.front();
+    const float rampLength = std::sqrt(rampAxis.x * rampAxis.x + rampAxis.y * rampAxis.y);
+    float rampStartHeight = 0.0f;
+    float rampEndHeight = 0.0f;
+    if (settings.op == HeightBrushOp::Ramp) {
+        const auto groundAt = [&](MATH::Vec2 point, float& out) {
+            const SampleRect one = SampleRectAround(grid, point.x, point.y, 0.0f);
+            const SampleRect sample{one.x0, one.z0, 1u, 1u};
+            std::vector<float> height{};
+            if (additive) {
+                if (!evaluator->EvaluateRect(sample, height, &error, layerId)) {
+                    return false;
+                }
+            } else {
+                values->ReadRect(grid, sample, height);
+            }
+            out = height.empty() ? 0.0f : height.front();
+            return true;
+        };
+        if (!groundAt(rampStart, rampStartHeight) || !groundAt(path.back(), rampEndHeight)) {
+            return false;
+        }
+        if (settings.rampSlopeDegrees != 0.0f) {
+            rampEndHeight = rampStartHeight + rampLength * std::tan(settings.rampSlopeDegrees * 0.0174533f);
+        }
+    }
     for (const MATH::Vec2& dab : dabs) {
         const SampleRect rect = SampleRectAround(grid, dab.x, dab.y, settings.radiusMeters);
         if (rect.Count() > kTerrainMaximumRectSamples) {
@@ -197,13 +260,31 @@ bool ApplyHeightBrush(TerrainData& data, uint32_t layerId, const HeightBrushSett
             return false;
         }
         std::vector<float> next = current;
-        for (uint32_t z = 0u; z < rect.height; ++z) {
+        ForEachRow(rect.height, [&](uint32_t z) {
             for (uint32_t x = 0u; x < rect.width; ++x) {
                 const std::size_t i = static_cast<std::size_t>(z) * rect.width + x;
-                const float w = weights[i];
+                float w = weights[i];
                 if (w <= 0.0f) {
                     continue;
                 }
+                if (limited) {
+                    w *= RangeWeight(SlopeDegrees(composite, rect, x, z, spacing), settings.limitMinSlopeDegrees,
+                                     settings.limitMaxSlopeDegrees, kLimitSlopeFadeDegrees) *
+                         RangeWeight(composite[i], settings.limitMinHeightMeters, settings.limitMaxHeightMeters,
+                                     kLimitHeightFadeMeters);
+                    if (w <= 0.0f) {
+                        continue;
+                    }
+                }
+                // 合成後の高さ（加算の層）か層の値を target へ寄せる。
+                const auto moveToward = [&](float compositeTarget, float layerTarget) {
+                    if (additive) {
+                        next[i] += sign * fraction * w * (compositeTarget - composite[i]) /
+                                   (std::max)(alpha[i], kMinimumLayerAlpha);
+                    } else {
+                        next[i] += fraction * w * (layerTarget - current[i]);
+                    }
+                };
                 switch (settings.op) {
                 case HeightBrushOp::Raise: next[i] += sign * settings.strength * w; break;
                 case HeightBrushOp::Lower: next[i] -= sign * settings.strength * w; break;
@@ -214,24 +295,35 @@ bool ApplyHeightBrush(TerrainData& data, uint32_t layerId, const HeightBrushSett
                     break;
                 }
                 case HeightBrushOp::Flatten:
-                    if (additive) {
-                        next[i] += sign * fraction * w * (settings.targetHeightMeters - composite[i]) /
-                                   (std::max)(alpha[i], kMinimumLayerAlpha);
-                    } else {
-                        next[i] += fraction * w * (settings.targetHeightMeters - current[i]);
-                    }
+                    moveToward(settings.targetHeightMeters, settings.targetHeightMeters);
                     break;
                 case HeightBrushOp::Smooth:
+                    moveToward(additive ? Blur3(composite, rect, x, z) : 0.0f,
+                               additive ? 0.0f : Blur3(current, rect, x, z));
+                    break;
+                case HeightBrushOp::Ramp: {
+                    const float px = static_cast<float>(static_cast<double>(rect.x0 + x) * spacing) - rampStart.x;
+                    const float pz = static_cast<float>(static_cast<double>(rect.z0 + z) * spacing) - rampStart.y;
+                    const float t =
+                        rampLength > 0.0f
+                            ? std::clamp((px * rampAxis.x + pz * rampAxis.y) / (rampLength * rampLength), 0.0f, 1.0f)
+                            : 0.0f;
+                    const float height = rampStartHeight + (rampEndHeight - rampStartHeight) * t;
+                    moveToward(height, height);
+                    break;
+                }
+                case HeightBrushOp::Terrace: {
+                    const float step = settings.terraceStepMeters;
                     if (additive) {
-                        next[i] += sign * fraction * w * (Blur3(composite, rect, x, z) - composite[i]) /
-                                   (std::max)(alpha[i], kMinimumLayerAlpha);
+                        moveToward(std::round(composite[i] / step) * step, 0.0f);
                     } else {
-                        next[i] += fraction * w * (Blur3(current, rect, x, z) - current[i]);
+                        moveToward(0.0f, std::round(current[i] / step) * step);
                     }
                     break;
                 }
+                }
             }
-        }
+        });
         const std::vector<uint8_t> keep = KeepMask(weights);
         values->WriteRect(grid, rect, next, &keep);
         result.touched = UnionRects(result.touched, rect);

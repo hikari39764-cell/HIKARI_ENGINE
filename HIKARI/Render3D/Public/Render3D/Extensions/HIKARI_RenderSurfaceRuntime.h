@@ -16,7 +16,8 @@ namespace HIKARI::RENDER3D::SURFACE_EXTENSIONS {
 void BeginFrame(const GFX::Context& graphics, std::span<IRenderSurfaceExtension* const> extensions);
 bool HasWork() noexcept;
 
-// 組み終わった光線追跡の代理（モジュールが居なければ空）。版は中身が変わると進む。
+// 組み終わった光線追跡の代理。モジュールが Release するまで持ち続け、版は中身が変わった時だけ進む。
+// 使うかどうかは視点が決める（モジュールの面を持たない視点は渡さない）。
 std::span<const RAYTRACING::RuntimeRayTracingProxy> GetRayProxies() noexcept;
 uint64_t GetRayProxyVersion() noexcept;
 

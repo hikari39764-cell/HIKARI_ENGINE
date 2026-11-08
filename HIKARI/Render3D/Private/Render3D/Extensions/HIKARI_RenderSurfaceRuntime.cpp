@@ -98,7 +98,6 @@ struct RuntimeState {
     std::vector<RAYTRACING::RuntimeRayTracingProxy> publishedRayProxies{};
     uint64_t rayProxyVersion = 1u;
     bool rayProxiesChanged = false;
-    bool rayProxiesActive = false;
     RenderSurfaceResourceId nextResource = 1u;
     std::map<std::string, ComPtr<ID3D12PipelineState>> pipelines{};
     std::map<std::string, bool> failedPrograms{};
@@ -315,6 +314,10 @@ public:
                 state_.rayProxiesChanged = true;
             }
             state_.rayProxies.erase(proxy);
+            // 予算が空いたので、組めなかった代理をもう一度試す。
+            for (auto& [otherId, other] : state_.rayProxies) {
+                other.failed = false;
+            }
             return;
         }
         const auto found = state_.resources.find(id);
@@ -410,18 +413,14 @@ void BuildPendingRayProxies(RuntimeState& state) {
 }
 
 void PublishRayProxies(RuntimeState& state) {
-    const bool active = !state.extensions.empty();
-    if (!state.rayProxiesChanged && active == state.rayProxiesActive) {
+    if (!state.rayProxiesChanged) {
         return;
     }
     state.rayProxiesChanged = false;
-    state.rayProxiesActive = active;
     state.publishedRayProxies.clear();
-    if (active) {
-        for (const auto& [id, proxy] : state.rayProxies) {
-            if (proxy.bottomLevel) {
-                state.publishedRayProxies.push_back({proxy.bottomLevel->GetGpuAddress(), proxy.surfaces});
-            }
+    for (const auto& [id, proxy] : state.rayProxies) {
+        if (proxy.bottomLevel) {
+            state.publishedRayProxies.push_back({proxy.bottomLevel->GetGpuAddress(), proxy.surfaces});
         }
     }
     ++state.rayProxyVersion;
@@ -605,7 +604,6 @@ void BeginFrame(const GFX::Context& graphics, std::span<IRenderSurfaceExtension*
     state.extensions.assign(extensions.begin(), extensions.end());
     if (state.extensions.empty() || graphics.device == nullptr || graphics.cmdList == nullptr) {
         state.extensions.clear();
-        PublishRayProxies(state);
         return;
     }
     if (state.deviceGeneration != graphics.deviceGeneration) {
@@ -626,7 +624,6 @@ void BeginFrame(const GFX::Context& graphics, std::span<IRenderSurfaceExtension*
     if (!upload.IsInitialized() &&
         !upload.Init(graphics.device, kUploadPageBytes, GFX::UPLOAD_TRAFFIC::Owner::SurfaceExtensions)) {
         state.extensions.clear();
-        PublishRayProxies(state);
         return;
     }
     // graphics.frameIndex は枠の番号なので、巻き戻しの判定には通しのフレーム番号を使う。

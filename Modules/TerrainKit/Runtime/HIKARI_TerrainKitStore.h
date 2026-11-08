@@ -35,6 +35,12 @@ struct TileRuntime {
     std::vector<uint16_t> heights{};
     std::vector<int16_t> normalMips{}; // 全段を続けて持つ（xz の 2 成分）
     std::vector<float> leafMinMax{};   // kTileLeafDivisions² × 2
+    // 一部だけ焼き直した範囲（瓦片の中の標本番号、0 段）。uploadPending が立っていれば全部送るので要らない。
+    uint32_t pendingX0 = 0u;
+    uint32_t pendingZ0 = 0u;
+    uint32_t pendingX1 = 0u;
+    uint32_t pendingZ1 = 0u;
+    bool rectPending = false;
 };
 
 // 瓦片の光線追跡の代理（実体は引擎）。
@@ -77,8 +83,16 @@ public:
     const TERRAIN::DATA::TerrainData& Data() const noexcept { return *data_; }
     uint32_t SculptLayerId() const noexcept { return sculptLayer_; }
 
+    // 層の記述が変わった時：足りない画像を読み、全部を焼き直して保存の対象にする。
+    void RebakeAfterStackChange();
+    // 層の画像がまだ読まれていなければ読む。読めない画像は理由を返す（他の層は続ける）。
+    void LoadLayerImages(std::string* error = nullptr);
+    // 場面の属するプロジェクトの根（画像の相対パスの起点、書き出し先の親）。
+    std::filesystem::path ProjectRoot() const;
+
     // 変わった瓦片を焼き直す。keys が空なら全部。
     void RebakeTiles(std::span<const TERRAIN::DATA::TileCoord> tiles);
+    // 筆刷の一度分：矩形とその周り 1 標本だけを焼き直し、その範囲だけを描画へ送る。
     void RebakeRect(const TERRAIN::DATA::SampleRect& rect);
     // 変わった瓦片とその周り（法線が縁の標本を見る）を焼き直し、保存の対象にする。
     void RebakeChanged(std::span<const TERRAIN::DATA::TileCoord> tiles);
@@ -103,6 +117,8 @@ public:
 private:
     void BuildTileList();
     void BakeTile(TERRAIN::DATA::TileCoord tile, const TERRAIN::DATA::HeightStackEvaluator& evaluator);
+    void BakeTileRect(TERRAIN::DATA::TileCoord tile, const TERRAIN::DATA::SampleRect& area,
+                      const TERRAIN::DATA::HeightStackEvaluator& evaluator);
     bool LoadFromDisk(const std::filesystem::path& scenePath, std::string* error);
 
     std::filesystem::path scenePath_{};
@@ -114,6 +130,7 @@ private:
     bool stackDirty_ = false;
     uint64_t layoutRevision_ = 1u;
     TerrainRenderResources render_{};
+    std::map<uint32_t, std::string> loadedImageKeys_{};
 };
 
 std::filesystem::path TerrainCellDirectory(const std::filesystem::path& scenePath);
