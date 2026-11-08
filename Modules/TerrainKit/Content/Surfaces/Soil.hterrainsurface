@@ -7,5 +7,10 @@
   "roughnessValue": 0.9,
   "source": "https://ambientcg.com/view?id=Ground048",
   "license": "CC0-1.0",
-  "author": "ambientCG (Lennart Demes)"
+  "author": "ambientCG (Lennart Demes)",
+  "baseColor": [
+    0.95,
+    1.15,
+    1.3
+  ]
 }

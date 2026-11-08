@@ -13,6 +13,7 @@
 
 #include <windows.h>
 
+#include "TerrainKit/Data/HIKARI_TerrainDataControl.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataFile.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataLayers.h"
 
@@ -214,8 +215,18 @@ bool TerrainStore::Open(const std::filesystem::path& scenePath, const TerrainSet
     std::string slotMessage{};
     const std::filesystem::path slotPath = TerrainCellDirectory(scenePath) / kSurfaceSlotFileName;
     std::error_code slotError{};
+    surfaceRules_ = DefaultSurfaceRules();
+    weather_ = {};
     if (std::filesystem::exists(slotPath, slotError) && ReadJson(slotPath, slotFile, slotMessage)) {
         slots = slotFile.value("slots", std::vector<std::string>{});
+        if (slotFile.contains("rules")) {
+            SurfaceRuleSet rules{};
+            JSONFIELDS::Read(slotFile, rules, kSurfaceRuleSetFields);
+            surfaceRules_ = std::move(rules);
+        }
+        weather_.snowLineMeters = slotFile.value("snowLineMeters", weather_.snowLineMeters);
+        weather_.snowAmount = slotFile.value("snowAmount", weather_.snowAmount);
+        weather_.wetness = slotFile.value("wetness", weather_.wetness);
     }
     if (slots.empty()) {
         slots = {"Grass", "Soil", "Rock", "Sand", "Snow"};
@@ -380,6 +391,9 @@ void TerrainStore::RebakeTiles(std::span<const TileCoord> tiles) {
     }
     std::for_each(std::execution::par, tiles.begin(), tiles.end(),
                   [&](const TileCoord& tile) { BakeTile(tile, evaluator); });
+    for (const TileCoord tile : tiles) {
+        ruleBaker_.MarkDirty(tile);
+    }
 }
 
 void TerrainStore::RebakeRect(const SampleRect& rect) {
@@ -409,6 +423,9 @@ void TerrainStore::RebakeRect(const SampleRect& rect) {
         }
     });
     MarkSaveDirty(touched);
+    for (const TileCoord tile : touched) {
+        ruleBaker_.MarkDirty(tile);
+    }
 }
 
 void TerrainStore::MarkControlChanged(const SampleRect& rect) {
@@ -437,6 +454,63 @@ void TerrainStore::MarkControlChanged(const SampleRect& rect) {
         ++runtime.revision; // 光線追跡の代理の色も変わる
     });
     MarkSaveDirty(touched);
+    // 手塗りを外した標本は規則へ戻り、遠景の色も変わる。
+    for (const TileCoord tile : touched) {
+        ruleBaker_.MarkDirty(tile);
+    }
+}
+
+void TerrainStore::SetSurfaceRules(SurfaceRuleSet rules) {
+    surfaceRules_ = std::move(rules);
+    surfaceSlotsDirty_ = true;
+    ruleBaker_.MarkAllDirty(*this);
+}
+
+void TerrainStore::SetWeather(const TerrainWeather& weather) {
+    weather_ = weather;
+    surfaceSlotsDirty_ = true;
+}
+
+void TerrainStore::ShutdownWorkers() {
+    surfaces_.Shutdown();
+    ruleBaker_.Shutdown();
+}
+
+void TerrainStore::ApplyRuleResult(TileCoord tile, bool hasControl, std::vector<uint32_t> control,
+                                   std::vector<uint8_t> farColor) {
+    const auto found = tiles_.find(tile);
+    if (found == tiles_.end() || data_ == nullptr) {
+        return;
+    }
+    TileRuntime& runtime = found->second;
+    const uint32_t samples = TileSamples(settings_.grid);
+    if (hasControl && control.size() == static_cast<size_t>(samples) * samples) {
+        // 計算の間に手で塗られた標本は今の値を残す。
+        TiledRaster<uint32_t>& raster = data_->Control();
+        const TileRaster<uint32_t>* current = raster.Find(tile);
+        if (current != nullptr) {
+            for (size_t index = 0u; index < control.size(); ++index) {
+                if (UnpackControlTexel(current->values[index]).handPainted) {
+                    control[index] = current->values[index];
+                }
+            }
+        }
+        if (current == nullptr || current->values != control) {
+            TileRaster<uint32_t> next(samples, 0u);
+            next.values = std::move(control);
+            raster.Assign(tile, std::move(next));
+            data_->MarkChanged();
+            MarkSaveDirty(std::span(&tile, 1u));
+            runtime.controlX0 = 0u;
+            runtime.controlZ0 = 0u;
+            runtime.controlX1 = samples - 1u;
+            runtime.controlZ1 = samples - 1u;
+            runtime.controlRectPending = true;
+            ++runtime.revision; // 光線追跡の代理の色も変わる
+        }
+    }
+    runtime.farColor = std::move(farColor);
+    runtime.farPending = true;
 }
 
 void TerrainStore::SetSurfaceSlots(std::vector<std::string> names) {
@@ -641,6 +715,7 @@ void TerrainStore::MarkSaveDirty(std::span<const TileCoord> tiles) {
 void TerrainStore::MarkAllForUpload() noexcept {
     for (auto& [tile, runtime] : tiles_) {
         runtime.uploadPending = true;
+        runtime.farUploaded = false;
     }
 }
 
@@ -658,8 +733,12 @@ bool TerrainStore::Save(const std::filesystem::path& scenePath, std::string& err
         error = "Could not write the terrain layers: " + message;
         return false;
     }
-    if ((!samePath || surfaceSlotsDirty_) &&
-        !WriteJson(directory / kSurfaceSlotFileName, nlohmann::json{{"slots", surfaces_.Slots()}}, message)) {
+    nlohmann::json surfaceFile{{"slots", surfaces_.Slots()},
+                               {"snowLineMeters", weather_.snowLineMeters},
+                               {"snowAmount", weather_.snowAmount},
+                               {"wetness", weather_.wetness}};
+    JSONFIELDS::Write(surfaceFile, surfaceRules_, kSurfaceRuleSetFields);
+    if ((!samePath || surfaceSlotsDirty_) && !WriteJson(directory / kSurfaceSlotFileName, surfaceFile, message)) {
         error = "Could not write the terrain surfaces: " + message;
         return false;
     }

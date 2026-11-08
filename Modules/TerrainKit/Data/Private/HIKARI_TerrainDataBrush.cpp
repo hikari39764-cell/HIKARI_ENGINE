@@ -6,6 +6,7 @@
 #include <memory>
 #include <numeric>
 
+#include "HIKARI_TerrainDataNoise.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataControl.h"
 
 namespace HIKARI::TERRAIN::DATA {
@@ -33,32 +34,6 @@ SampleRect UnionRects(const SampleRect& a, const SampleRect& b) noexcept {
     const int64_t x1 = (std::max)(a.X1(), b.X1());
     const int64_t z1 = (std::max)(a.Z1(), b.Z1());
     return SampleRect{x0, z0, static_cast<uint32_t>(x1 - x0 + 1), static_cast<uint32_t>(z1 - z0 + 1)};
-}
-
-uint32_t HashLattice(int64_t x, int64_t z, uint32_t seed) noexcept {
-    uint32_t h = seed * 0x9E3779B9u;
-    h ^= static_cast<uint32_t>(x) * 0x85EBCA6Bu;
-    h = (h ^ (h >> 13u)) * 0xC2B2AE35u;
-    h ^= static_cast<uint32_t>(z) * 0x27D4EB2Fu;
-    h = (h ^ (h >> 15u)) * 0x165667B1u;
-    return h ^ (h >> 16u);
-}
-
-// 格子の値を滑らかに補間する値噪声（-1..1）。決定的なので人と智能体の同じ筆跡は同じ結果になる。
-float ValueNoise(double x, double z, uint32_t seed) noexcept {
-    const double fx = std::floor(x);
-    const double fz = std::floor(z);
-    const auto ix = static_cast<int64_t>(fx);
-    const auto iz = static_cast<int64_t>(fz);
-    const auto lattice = [&](int64_t dx, int64_t dz) {
-        return static_cast<float>(HashLattice(ix + dx, iz + dz, seed) & 0xFFFFu) / 32767.5f - 1.0f;
-    };
-    const auto fade = [](double t) { return static_cast<float>(t * t * (3.0 - 2.0 * t)); };
-    const float u = fade(x - fx);
-    const float v = fade(z - fz);
-    const float top = lattice(0, 0) + (lattice(1, 0) - lattice(0, 0)) * u;
-    const float bottom = lattice(0, 1) + (lattice(1, 1) - lattice(0, 1)) * u;
-    return top + (bottom - top) * v;
 }
 
 // 行を並列に処理する（半径の大きい筆でも一フレームに収める）。行どうしは同じ標本へ書かない。
@@ -291,7 +266,7 @@ bool ApplyHeightBrush(TerrainData& data, uint32_t layerId, const HeightBrushSett
                 case HeightBrushOp::Noise: {
                     const double sx = static_cast<double>(rect.x0 + x) * spacing / settings.noiseScaleMeters;
                     const double sz = static_cast<double>(rect.z0 + z) * spacing / settings.noiseScaleMeters;
-                    next[i] += sign * settings.strength * w * ValueNoise(sx, sz, settings.noiseSeed);
+                    next[i] += sign * settings.strength * w * LatticeValueNoise(sx, sz, settings.noiseSeed);
                     break;
                 }
                 case HeightBrushOp::Flatten:

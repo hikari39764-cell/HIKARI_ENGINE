@@ -57,6 +57,18 @@ private:
     std::unique_ptr<TerrainData> other_;
 };
 
+// 材質規則の前後を持つ撤销。
+class RulesUndo final : public IEditorUndoEntry {
+public:
+    RulesUndo(SurfaceRuleSet before, SurfaceRuleSet after) : before_(std::move(before)), after_(std::move(after)) {}
+    void Undo() override { TerrainStore::Get().SetSurfaceRules(before_); }
+    void Redo() override { TerrainStore::Get().SetSurfaceRules(after_); }
+
+private:
+    SurfaceRuleSet before_;
+    SurfaceRuleSet after_;
+};
+
 // 層の記述を変える手続きの共通部分：撤销を取り、焼き直す。
 template <class Change>
 bool ChangeStack(EditorShared& shared, const char* label, Change change, std::string& error) {
@@ -191,6 +203,19 @@ std::vector<std::string> ListStampNames() {
         }
     }
     return names;
+}
+
+void ChangeSurfaceRules(EditorShared& shared, SurfaceRuleSet rules) {
+    TerrainStore& store = TerrainStore::Get();
+    SurfaceRuleSet before = store.SurfaceRules();
+    if (before == rules) {
+        return;
+    }
+    store.SetSurfaceRules(rules);
+    if (shared.services != nullptr) {
+        shared.services->RecordUndo("Edit Terrain Rules",
+                                    std::make_unique<RulesUndo>(std::move(before), std::move(rules)));
+    }
 }
 
 bool RunStamp(EditorShared& shared, std::string_view stampName, const StampSettings& settings, std::string& error) {

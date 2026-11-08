@@ -7,5 +7,10 @@
   "roughnessValue": 0.92,
   "source": "https://ambientcg.com/view?id=Grass004",
   "license": "CC0-1.0",
-  "author": "ambientCG (Lennart Demes)"
+  "author": "ambientCG (Lennart Demes)",
+  "baseColor": [
+    0.72,
+    0.72,
+    1.05
+  ]
 }

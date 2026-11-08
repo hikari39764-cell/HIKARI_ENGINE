@@ -447,6 +447,46 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                      TerrainStore::Get().SetSurfaceSlots(std::move(names));
                      Ok(result, "Surface slots updated; they load in the background.", Json::object());
                  });
+    add.Query("terrainkit.rules.list", "List the automatic surface rules and how many tiles are still being updated.",
+              {}, [](const Json&, Sink& result) {
+                  if (!RequireTerrain(result)) {
+                      return;
+                  }
+                  TerrainStore& store = TerrainStore::Get();
+                  Json out{};
+                  JSONFIELDS::Write(out, store.SurfaceRules(), kSurfaceRuleSetFields);
+                  out["pendingTiles"] = store.RuleBaker().PendingTiles();
+                  Ok(result, "Surface rules.", out);
+              });
+    add.Mutation(
+        "terrainkit.rules.set",
+        "Replace the automatic surface rules. Every tile updates in the background and hand painting stays. One "
+        "undo step.",
+        {{"rules", Type::Json, "Rules as in terrainkit.rules.list."}}, [shared](const Json& parameters, Sink& result) {
+            if (!RequireTerrain(result)) {
+                return;
+            }
+            SurfaceRuleSet rules{};
+            JSONFIELDS::Read(Json{{"rules", parameters.at("rules")}}, rules, kSurfaceRuleSetFields);
+            ChangeSurfaceRules(*shared, std::move(rules));
+            Ok(result, "Surface rules updated.", {{"pendingTiles", TerrainStore::Get().RuleBaker().PendingTiles()}});
+        });
+    add.Mutation("terrainkit.weather.set", "Set the snow line, the snow amount and the wetness of the terrain surface.",
+                 {{"snowLineMeters", Type::Number, "Height where snow starts."},
+                  {"snowAmount", Type::Number, "0..1."},
+                  {"wetness", Type::Number, "0..1."}},
+                 [](const Json& parameters, Sink& result) {
+                     if (!RequireTerrain(result)) {
+                         return;
+                     }
+                     TerrainStore& store = TerrainStore::Get();
+                     TerrainWeather weather = store.Weather();
+                     weather.snowLineMeters = parameters.value("snowLineMeters", weather.snowLineMeters);
+                     weather.snowAmount = std::clamp(parameters.value("snowAmount", weather.snowAmount), 0.0f, 1.0f);
+                     weather.wetness = std::clamp(parameters.value("wetness", weather.wetness), 0.0f, 1.0f);
+                     store.SetWeather(weather);
+                     Ok(result, "Weather updated.", Json::object());
+                 });
     add.Mutation(
         "terrainkit.paint.stroke",
         "Paint a surface slot along a world-space path, the same way the Paint tool does. One undo step.",

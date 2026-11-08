@@ -40,6 +40,8 @@ public:
         ui.Separator();
         DrawSurfaces(ui, store);
         ui.Separator();
+        DrawRules(ui, store);
+        ui.Separator();
         DrawStamp(ui);
         ui.Separator();
         DrawErosion(ui, store);
@@ -237,6 +239,46 @@ private:
         ui.InputFloat("paintRadius", "Paint Radius (m)", &brush.radiusMeters);
         ui.InputFloat("paintStrength", "Paint Strength", &brush.strength);
         ui.InputFloat("paintHardness", "Paint Hardness", &brush.hardness);
+    }
+
+    void DrawRules(IEditorWorkspaceUi& ui, TerrainStore& store) {
+        const size_t pending = store.RuleBaker().PendingTiles();
+        ui.Text(pending != 0u ? "Surface rules (updating " + std::to_string(pending) + " tiles)" : "Surface rules");
+        SurfaceRuleSet rules = store.SurfaceRules();
+        bool changed = false;
+        for (size_t index = 0u; index < rules.rules.size(); ++index) {
+            SurfaceRule& rule = rules.rules[index];
+            const std::string id = std::to_string(index);
+            changed |= ui.Checkbox("ruleEnabled" + id, rule.name.empty() ? "Rule " + id : rule.name, &rule.enabled);
+            int32_t slot = static_cast<int32_t>(rule.surface);
+            if (ui.InputInt("ruleSurface" + id, "Surface Slot##" + id, &slot)) {
+                rule.surface = static_cast<uint32_t>(std::clamp(slot, 0, 31));
+                changed = true;
+            }
+            changed |= ui.InputFloat("ruleMinSlope" + id, "Min Slope (deg)##" + id, &rule.minSlopeDegrees);
+            changed |= ui.InputFloat("ruleMaxSlope" + id, "Max Slope (deg)##" + id, &rule.maxSlopeDegrees);
+            changed |= ui.InputFloat("ruleMinHeight" + id, "Min Height (m)##" + id, &rule.minHeightMeters);
+            changed |= ui.InputFloat("ruleMaxHeight" + id, "Max Height (m)##" + id, &rule.maxHeightMeters);
+        }
+        if (ui.Button("ruleAdd", "Add Rule")) {
+            rules.rules.push_back({});
+            changed = true;
+        }
+        ui.SameLine();
+        if (ui.Button("ruleRemove", "Remove Last") && !rules.rules.empty()) {
+            rules.rules.pop_back();
+            changed = true;
+        }
+        if (changed) {
+            ChangeSurfaceRules(*shared_, std::move(rules));
+        }
+        TerrainWeather weather = store.Weather();
+        bool weatherChanged = ui.InputFloat("snowLine", "Snow Line (m)", &weather.snowLineMeters);
+        weatherChanged |= ui.InputFloat("snowAmount", "Snow Amount", &weather.snowAmount);
+        weatherChanged |= ui.InputFloat("wetness", "Wetness", &weather.wetness);
+        if (weatherChanged) {
+            store.SetWeather(weather);
+        }
     }
 
     void DrawStamp(IEditorWorkspaceUi& ui) {

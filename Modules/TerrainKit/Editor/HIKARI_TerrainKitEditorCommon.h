@@ -59,6 +59,9 @@ bool RemoveTerrainLayer(EditorShared& shared, uint32_t id, std::string& error);
 bool MoveTerrainLayer(EditorShared& shared, uint32_t id, std::size_t index, std::string& error);
 bool UpdateTerrainLayer(EditorShared& shared, const TERRAIN::DATA::HeightLayer& layer, std::string& error);
 
+// 自動の材質規則を差し替える（撤销一件、全世界を背景で計算し直す）。
+void ChangeSurfaceRules(EditorShared& shared, TERRAIN::DATA::SurfaceRuleSet rules);
+
 // 印章の名前（内蔵 + プロジェクトの Assets/TerrainStamps の画像）。
 std::vector<std::string> ListStampNames();
 bool RunStamp(EditorShared& shared, std::string_view stampName, const TERRAIN::DATA::StampSettings& settings,

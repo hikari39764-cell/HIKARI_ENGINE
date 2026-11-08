@@ -10,8 +10,10 @@
 #include <vector>
 
 #include "HIKARI_TerrainKitGpuErosion.h"
+#include "HIKARI_TerrainKitRuleBaker.h"
 #include "HIKARI_TerrainKitSurfaces.h"
 #include "TerrainKit/Data/HIKARI_TerrainData.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataRules.h"
 
 namespace HIKARI::TERRAINKIT {
 
@@ -49,6 +51,17 @@ struct TileRuntime {
     uint32_t controlX1 = 0u;
     uint32_t controlZ1 = 0u;
     bool controlRectPending = false;
+    std::vector<uint8_t> farColor{}; // 遠景の色（全段を続けて、RGBA8）
+    bool farPending = false;
+    bool farUploaded = false;
+};
+
+// 積雪と湿り（材質の名前によらず全面に掛かる）。
+struct TerrainWeather {
+    float snowLineMeters = 170.0f;
+    float snowAmount = 0.0f;
+    float wetness = 0.0f;
+    bool operator==(const TerrainWeather&) const = default;
 };
 
 // 瓦片の光線追跡の代理（実体は引擎）。
@@ -68,6 +81,8 @@ struct TerrainRenderResources {
     uint32_t surfaceColor = 0u;
     uint32_t surfaceDetail = 0u;
     uint32_t surfaceParams = 0u;
+    uint32_t farCache = 0u;
+    uint32_t farUploaded = 0u;
     uint64_t surfaceRevision = 0u;
     uint32_t surfacesUploaded = 0u; // 送り終えた枠の数。全部終わるまで着色器へ渡さない。
     uint64_t layoutRevision = 0u;
@@ -115,6 +130,17 @@ public:
     TerrainSurfaceLibrary& Surfaces() noexcept { return surfaces_; }
     const TerrainSurfaceLibrary& Surfaces() const noexcept { return surfaces_; }
     void SetSurfaceSlots(std::vector<std::string> names);
+    // 自動の材質規則。変えると全部の瓦片を背景で計算し直す。
+    const TERRAIN::DATA::SurfaceRuleSet& SurfaceRules() const noexcept { return surfaceRules_; }
+    void SetSurfaceRules(TERRAIN::DATA::SurfaceRuleSet rules);
+    TerrainRuleBaker& RuleBaker() noexcept { return ruleBaker_; }
+    // 背景の計算の結果を受け取る。手塗りの標本は今の値を残す。
+    void ApplyRuleResult(TERRAIN::DATA::TileCoord tile, bool hasControl, std::vector<uint32_t> control,
+                         std::vector<uint8_t> farColor);
+    const TerrainWeather& Weather() const noexcept { return weather_; }
+    void SetWeather(const TerrainWeather& weather);
+    // 背景の thread を全部止める。DLL を外す前に呼ぶ。
+    void ShutdownWorkers();
     // 変わった瓦片とその周り（法線が縁の標本を見る）を焼き直し、保存の対象にする。
     void RebakeChanged(std::span<const TERRAIN::DATA::TileCoord> tiles);
     void MarkSaveDirty(std::span<const TERRAIN::DATA::TileCoord> tiles);
@@ -155,6 +181,9 @@ private:
     GpuErosionJob erosion_{};
     TerrainSurfaceLibrary surfaces_{};
     bool surfaceSlotsDirty_ = false;
+    TERRAIN::DATA::SurfaceRuleSet surfaceRules_{};
+    TerrainRuleBaker ruleBaker_{};
+    TerrainWeather weather_{};
     std::map<uint32_t, std::string> loadedImageKeys_{};
 };
 

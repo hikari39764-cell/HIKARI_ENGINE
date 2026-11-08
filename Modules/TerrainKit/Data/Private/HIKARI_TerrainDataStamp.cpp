@@ -5,6 +5,8 @@
 #include <cmath>
 #include <numbers>
 
+#include "HIKARI_TerrainDataNoise.h"
+
 namespace HIKARI::TERRAIN::DATA {
 namespace {
 
@@ -15,36 +17,13 @@ float Smoothstep(float edge0, float edge1, float value) noexcept {
     return t * t * (3.0f - 2.0f * t);
 }
 
-uint32_t HashCell(int32_t x, int32_t y, uint32_t seed) noexcept {
-    uint32_t h = seed * 0x9E3779B9u ^ static_cast<uint32_t>(x) * 0x85EBCA6Bu;
-    h = (h ^ (h >> 13u)) * 0xC2B2AE35u;
-    h ^= static_cast<uint32_t>(y) * 0x27D4EB2Fu;
-    h = (h ^ (h >> 15u)) * 0x165667B1u;
-    return h ^ (h >> 16u);
-}
-
-float ValueNoise2D(float x, float y, uint32_t seed) noexcept {
-    const float fx = std::floor(x);
-    const float fy = std::floor(y);
-    const auto ix = static_cast<int32_t>(fx);
-    const auto iy = static_cast<int32_t>(fy);
-    const auto lattice = [&](int32_t dx, int32_t dy) {
-        return static_cast<float>(HashCell(ix + dx, iy + dy, seed) & 0xFFFFu) / 32767.5f - 1.0f;
-    };
-    const float u = Smoothstep(0.0f, 1.0f, x - fx);
-    const float v = Smoothstep(0.0f, 1.0f, y - fy);
-    const float top = lattice(0, 0) + (lattice(1, 0) - lattice(0, 0)) * u;
-    const float bottom = lattice(0, 1) + (lattice(1, 1) - lattice(0, 1)) * u;
-    return top + (bottom - top) * v;
-}
-
 // 値は -1..1 に収まる。
 float Fractal(float x, float y, uint32_t seed, int octaves = 5) noexcept {
     float sum = 0.0f;
     float amplitude = 0.5f;
     float total = 0.0f;
     for (int octave = 0; octave < octaves; ++octave) {
-        sum += ValueNoise2D(x, y, seed + static_cast<uint32_t>(octave)) * amplitude;
+        sum += LatticeValueNoise(x, y, seed + static_cast<uint32_t>(octave)) * amplitude;
         total += amplitude;
         amplitude *= 0.5f;
         x *= 2.03f;

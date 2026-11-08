@@ -18,6 +18,7 @@
 #include "TerrainKit/Data/HIKARI_TerrainDataErosion.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataFile.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataImage.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataRules.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataStamp.h"
 
 using namespace HIKARI::TERRAIN::DATA;
@@ -445,6 +446,53 @@ void TestBrushVariantsStampsAndMasks() {
     }
 }
 
+// 自動の材質規則：傾きと高さで選ばれ、手塗りは残り、穴の印も残る。
+void TestSurfaceRules() {
+    const uint32_t samples = 17u;
+    const uint32_t margin = kSurfaceRuleHeightMargin;
+    const uint32_t stride = samples + 2u * margin;
+    // x が大きいほど急な坂、高さは z で増やさない。
+    std::vector<float> heights(static_cast<size_t>(stride) * stride, 0.0f);
+    for (uint32_t z = 0u; z < stride; ++z) {
+        for (uint32_t x = 0u; x < stride; ++x) {
+            const float column = static_cast<float>(x) - static_cast<float>(margin);
+            heights[static_cast<size_t>(z) * stride + x] = column <= 8.0f ? 0.0f : (column - 8.0f) * 2.0f;
+        }
+    }
+    SurfaceRuleSet set{};
+    SurfaceRule rock{};
+    rock.surface = 2u;
+    rock.minSlopeDegrees = 45.0f;
+    rock.slopeFadeDegrees = 2.0f;
+    rock.noiseAmount = 0.0f;
+    set.rules.push_back(rock);
+    SurfaceRuleTile tile{};
+    tile.samples = samples;
+    tile.spacingMeters = 1.0f;
+    tile.heights = heights;
+    std::vector<uint32_t> control(static_cast<size_t>(samples) * samples, 0u);
+    ControlTexel painted{};
+    painted.baseMaterial = 7u;
+    painted.handPainted = true;
+    CHECK(PackControlTexel(painted, control[16u]));
+    ControlTexel holed{};
+    holed.hole = true;
+    CHECK(PackControlTexel(holed, control[static_cast<size_t>(8u) * samples + 14u]));
+    EvaluateSurfaceRules(set, tile, control);
+    CHECK(UnpackControlTexel(control[static_cast<size_t>(8u) * samples + 2u]).baseMaterial == 0u);
+    CHECK(UnpackControlTexel(control[static_cast<size_t>(8u) * samples + 13u]).baseMaterial == 2u);
+    CHECK(UnpackControlTexel(control[16u]).baseMaterial == 7u);
+    CHECK(UnpackControlTexel(control[static_cast<size_t>(8u) * samples + 14u]).hole);
+    CHECK(UnpackControlTexel(control[static_cast<size_t>(8u) * samples + 14u]).baseMaterial == 2u);
+    // 規則の記述は JSON で往復する。
+    nlohmann::json json{};
+    const SurfaceRuleSet defaults = DefaultSurfaceRules();
+    HIKARI::JSONFIELDS::Write(json, defaults, kSurfaceRuleSetFields);
+    SurfaceRuleSet read{};
+    HIKARI::JSONFIELDS::Read(json, read, kSurfaceRuleSetFields);
+    CHECK(read == defaults);
+}
+
 void TestUndo() {
     TerrainData data(SmallGrid());
     const uint32_t sculpt = data.AddLayer(SculptLayer());
@@ -769,6 +817,7 @@ int main(int argc, char** argv) {
     TestEvaluation();
     TestBrushes();
     TestBrushVariantsStampsAndMasks();
+    TestSurfaceRules();
     TestUndo();
     TestErosion();
     TestCellFile();
