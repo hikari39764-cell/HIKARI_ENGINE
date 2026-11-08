@@ -9,10 +9,10 @@ namespace HIKARI::RENDER3D::FLUID {
 
 FluidQualityPolicy ResolveFluidQualityPolicy(FluidSmokeQuality quality) noexcept {
     switch (quality) {
-    case FluidSmokeQuality::Low: return {0.75f, 1u, 48u, 2u, 2.0f};
-    case FluidSmokeQuality::High: return {1.0f, 3u, 96u, 4u, 0.5f};
+    case FluidSmokeQuality::Low: return {0.75f, 1u, 48u, 2u, 2.0f, 3.0f, 1.6f};
+    case FluidSmokeQuality::High: return {1.0f, 3u, 96u, 4u, 0.5f, 12.0f, 0.8f};
     case FluidSmokeQuality::Balanced:
-    default: return {1.0f, 2u, 64u, 4u, 1.0f};
+    default: return {1.0f, 2u, 64u, 4u, 1.0f, 6.0f, 1.2f};
     }
 }
 
@@ -42,12 +42,16 @@ FluidGridLayout ResolveFluidGridLayout(const MATH::Vec3& domainSize, uint32_t re
     return layout;
 }
 
-uint64_t EstimateFluidDomainBytes(const FluidGridLayout& layout) noexcept {
+uint64_t EstimateFluidStateBytes(const FluidGridLayout& layout) noexcept {
     const uint64_t nx = layout.cells[0], ny = layout.cells[1], nz = layout.cells[2];
     const uint64_t densityBytes = layout.cellColor ? 8u : 2u;
     const uint64_t fuelBytes = layout.combustion ? 2u * 4u : 0u;
-    uint64_t bytes = 3u * 8u * (nx + 1u) * (ny + 1u) * (nz + 1u) + (3u * densityBytes + fuelBytes) * nx * ny * nz +
-                     8u * ((nx + 1u) / 2u) * ((ny + 1u) / 2u) * ((nz + 1u) / 2u);
+    return 3u * 8u * (nx + 1u) * (ny + 1u) * (nz + 1u) + (3u * densityBytes + fuelBytes) * nx * ny * nz;
+}
+
+uint64_t EstimateFluidDomainBytes(const FluidGridLayout& layout) noexcept {
+    const uint64_t nx = layout.cells[0], ny = layout.cells[1], nz = layout.cells[2];
+    uint64_t bytes = EstimateFluidStateBytes(layout) + 8u * ((nx + 1u) / 2u) * ((ny + 1u) / 2u) * ((nz + 1u) / 2u);
     for (uint32_t level = 0u; level < layout.levels; ++level)
         bytes += 2u * 4u * (std::max<uint64_t>(nx >> level, 1u)) * (std::max<uint64_t>(ny >> level, 1u)) *
                  (std::max<uint64_t>(nz >> level, 1u));
@@ -80,6 +84,10 @@ double FluidSubstepSeconds(const FluidDomainSettings& settings, uint32_t lod) no
     if (lod == 0u)
         return authored;
     return (std::min)(authored * static_cast<double>(1u << lod), (std::max)(authored, kLodLongestSubstepSeconds));
+}
+
+uint32_t FluidVCycles(const FluidQualityPolicy& policy, uint32_t lod) noexcept {
+    return lod == 0u ? policy.vCycles : (std::max)(policy.vCycles, 2u) - 1u;
 }
 
 uint32_t ResolveFluidSimulationLod(const FluidDomainSubmission& submission, float cellSize,

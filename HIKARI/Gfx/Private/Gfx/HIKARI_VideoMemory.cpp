@@ -161,6 +161,15 @@ bool ResolveAdapter(ID3D12Device* device) {
     return true;
 }
 
+// object の private data に印を持たせて bytes を記帳する（object が壊れると引かれる）。
+void TrackObject(ID3D12Object* object, Owner owner, int64_t bytes) {
+    auto* tracker = new ResourceTracker(owner, bytes);
+    if (SUCCEEDED(object->SetPrivateDataInterface(kTrackerGuid, tracker))) {
+        tracker->MarkCounted();
+    }
+    tracker->Release();
+}
+
 void TrackResource(ID3D12Resource* resource, Owner owner, D3D12_HEAP_TYPE heapType) {
     if (resource == nullptr || static_cast<size_t>(owner) >= kOwnerCount) {
         return;
@@ -177,11 +186,7 @@ void TrackResource(ID3D12Resource* resource, Owner owner, D3D12_HEAP_TYPE heapTy
     if (info.SizeInBytes == UINT64_MAX) {
         return;
     }
-    auto* tracker = new ResourceTracker(owner, static_cast<int64_t>(info.SizeInBytes));
-    if (SUCCEEDED(resource->SetPrivateDataInterface(kTrackerGuid, tracker))) {
-        tracker->MarkCounted();
-    }
-    tracker->Release();
+    TrackObject(resource, owner, static_cast<int64_t>(info.SizeInBytes));
 }
 } // namespace
 
@@ -200,6 +205,23 @@ HRESULT CreateCommittedResource(ID3D12Device* device, const D3D12_HEAP_PROPERTIE
     }
     TrackResource(created.Get(), owner, heapProperties->Type);
     return resource != nullptr ? created->QueryInterface(riid, resource) : S_OK;
+}
+
+HRESULT CreateHeap(ID3D12Device* device, const D3D12_HEAP_DESC* desc, Owner owner, REFIID riid, void** heap) {
+    ComPtr<ID3D12Heap> created;
+    const HRESULT hr = device->CreateHeap(desc, IID_PPV_ARGS(&created));
+    if (FAILED(hr)) {
+        if (heap != nullptr) {
+            *heap = nullptr;
+        }
+        return hr;
+    }
+    const bool host =
+        desc->Properties.Type == D3D12_HEAP_TYPE_UPLOAD || desc->Properties.Type == D3D12_HEAP_TYPE_READBACK;
+    if (static_cast<size_t>(owner) < kOwnerCount) {
+        TrackObject(created.Get(), host ? Owner::Upload : owner, static_cast<int64_t>(desc->SizeInBytes));
+    }
+    return heap != nullptr ? created->QueryInterface(riid, heap) : S_OK;
 }
 
 void Track(ID3D12Resource* resource, Owner owner) {

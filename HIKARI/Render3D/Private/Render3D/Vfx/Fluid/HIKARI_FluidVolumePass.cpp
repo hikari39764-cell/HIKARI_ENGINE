@@ -12,16 +12,22 @@
 #include <d3dx12.h>
 
 #include "Core/HIKARI_Logger.h"
+#include "Core/HIKARI_TimeService.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
+#include "Render3D/Vfx/Fluid/HIKARI_FluidDomainState.h"
 #include "Render3D/Vfx/Fluid/HIKARI_FluidRender.h"
 #include "Render3D/Vfx/Fluid/HIKARI_FluidSolver.h"
 
 namespace HIKARI::RENDER3D::FLUID {
 namespace {
+using INTERNAL::CarriedInteraction;
 using INTERNAL::FluidDomainResources;
+using INTERNAL::SourceMotion;
+using INTERNAL::SourceTrack;
+using DomainState = INTERNAL::FluidDomainState;
 using INTERNAL::FluidRecorder;
 using PARTICLES::ParticleEmitterInstanceKey;
 
@@ -39,99 +45,9 @@ constexpr uint32_t kUnfinishedRestartWarning = 4u;
 constexpr float kMotionSmoothingSeconds = 0.1f;
 constexpr float kMaximumFrameVelocityChange = 12.0f;
 
-// 受け取ったフレームの後の子步へ渡し続ける一度きりの事件：冲量（向きのあるものは最初の子步だけ、向きの無いもの（湧き出し）
-// は残りの時間がある間）と注入（提交したフレームの時間ぶんを、子步ごとに最大 1 子步ずつ入れる）。子步の無いフレームの分は
-// 次のフレームの子步へ持ち越すので、注入はフレームと子步の刻みがずれても落ちず、重ならない。
-struct CarriedInteraction {
-    FluidInteraction interaction{};
-    double remainingSeconds = 0.0;
-    // 注入：提交したフレームの時間（動いた線分の長さを決める）。
-    float frameSeconds = 0.0f;
-};
-
-// 源ごと（FluidSourceSubmission::id）の、まだ子步に渡していない動きの始点（最後に走った子步の終わり。域の局所の位置と
-// 向き、世界の拡縮）と、子步の無かったフレームから溜めた burst。次に走る子步たちが始点から今の位置までを等分して掃く。
-struct SourceTrack {
-    uint64_t id = 0u;
-    MATH::Vec3 position{};
-    MATH::Quat rotation = MATH::Quat::Identity();
-    MATH::Vec3 scale{1.0f, 1.0f, 1.0f};
-    float elapsedSeconds = 0.0f;
-    float pendingBurst = 0.0f;
-    bool seen = false;
-};
-
-// このフレームの源 1 つの今の位置（域の局所）と、追っている始点の番号（追わない源は -1）。
-struct SourceMotion {
-    int track = -1;
-    MATH::Vec3 position{};
-    MATH::Quat rotation = MATH::Quat::Identity();
-};
-
-struct DomainState {
-    ParticleEmitterInstanceKey key{};
-    FluidDomainResources resources{};
-    MATH::Vec3 layoutSize{};
-    uint32_t layoutResolution = 0u;
-    FluidStepClock clock{};
-    // 残りの預熱の子步（秒から子步の長さを引いていくと丸めの残りが 0 にならず、預熱が終わらない組み合わせがあった）。
-    uint64_t prewarmSteps = 0u;
-    // 預熱を終える前に作り直された回数（描いた時に 0 へ戻す）。
-    uint32_t unfinishedRestarts = 0u;
-    // 上限で解かれなかったことを日誌へ書いたか（域ごとに一度だけ）。
-    bool limitWarned = false;
-    // 最後に解く域に選ばれた描画入力の帧号（前のフレームに選ばれた域は選び直しで少し有利にする）。
-    uint64_t admittedFrame = UINT64_MAX;
-    uint32_t velocityIndex = 0u;
-    uint32_t densityIndex = 0u;
-    // 密度が変わるたびに増やす（子步を進めた・作り直した）。描く側は同じ版なら光照体積を書き直さない。
-    uint64_t densityVersion = 0u;
-    bool needsClear = true;
-    // 作り直した回数（描画の履歴が古い烟を混ぜないよう、描く側へ渡す）。
-    uint32_t generation = 0u;
-    // 最後に時間を進めた描画入力の帧号。同じ入力を別の視図や交付待ちで再び受けても二度は進めない。
-    uint64_t lastSimulatedFrame = UINT64_MAX;
-    // 解算の LOD（ResolveFluidSimulationLod）と、それで決めた子步の長さ [s]（描く側の外推が読む）。
-    uint32_t lod = 0u;
-    double stepSeconds = 0.0;
-    // 砖块を烟があるとみなす最大密度（INTERNAL::FluidOccupiedDensity。占有の回読が数える）。
-    float occupiedDensity = 0.0f;
-    // 解く空間（世界空間の域は作り直した時の変換に固定、局所空間の域は毎フレームの変換）。
-    MATH::Vec3 framePosition{};
-    MATH::Quat frameRotation = MATH::Quat::Identity();
-    MATH::Vec3 previousPosition{};
-    // 均した挂点の速度（世界 [m/s]、作り直した時は静止。動いている物体に付けた烟は最初に後ろへ流れる）。
-    MATH::Vec3 smoothedVelocity{};
-    bool motionInitialized = false;
-    // まだ子步に渡していない挂点の速度の変化（世界 [m/s]）。次に走る子步が一度だけ逆向きに入れるので、子步の数が
-    // フレームごとに変わっても烟が受ける速さの合計は挂点の速度の変化と等しい。
-    MATH::Vec3 pendingInertia{};
-    // 解いたゲーム時間（細部のノイズを流れに沿って運ぶ時計。float の精度のため周期で折る）。
-    float simulationSeconds = 0.0f;
-    std::vector<SourceTrack> tracks{};
-    // 子步へ渡す冲量と注入（子步の無いフレームの分は次へ持ち越す）と、最後に押すものを受け取ったフレーム。
-    std::vector<CarriedInteraction> carried{};
-    uint64_t lastInteractionFrame = UINT64_MAX;
-    std::array<uint64_t, GFX::kFrameResourceCount> readbackFence{};
-    std::array<uint64_t, GFX::kFrameResourceCount> readbackSteps{};
-    std::array<bool, GFX::kFrameResourceCount> readbackDiagnostics{};
-    std::array<bool, GFX::kFrameResourceCount> readbackPending{};
-    // 回読に汇の吸い込み量が入っているか（そのフレームに数えた子步があったか）と、押すものの表の行ごとの reportKey。
-    std::array<bool, GFX::kFrameResourceCount> readbackSinks{};
-    std::array<std::array<uint64_t, kMaximumFluidInteractionsPerDomain>, GFX::kFrameResourceCount> readbackSinkKeys{};
-    // 回読に発光が入っているか（reportGlow の域）と、その時の発光（起亮の色と熱い端の色 × emissionIntensity）、局所空間か。
-    struct GlowReadback {
-        bool requested = false;
-        MATH::Vec3 emission{};
-        MATH::Vec3 hotEmission{};
-        bool localSpace = false;
-    };
-    // 最後に送った発光が 0 より大きいか（解かれなくなった時に一度だけ 0 を送る）。
-    bool glowLit = false;
-    std::array<GlowReadback, GFX::kFrameResourceCount> readbackGlow{};
-    FluidDomainStats stats{};
-};
-
+// 速度・密度・燃料の体積がこれ以上の域は、烟のある辺りの分块だけを住まわせる（Tiled Resources Tier 3 の装置）。
+// 128³ の域（約 64 MiB）から。小さな域は密なまま（分块の貸し借りの手間に見合わない）。
+constexpr uint64_t kSparseStateBytes = 32ull * 1024u * 1024u;
 // 一度に溜めておく汇と発光の報告の上限（受け取る場面が無い間に増え続けないように）。
 constexpr size_t kMaximumPendingSinkReports = 4096u;
 constexpr size_t kMaximumPendingGlowReports = 256u;
@@ -204,11 +120,19 @@ struct FluidVolumePass::Impl {
     // このフレーム（GPU の退役 fence）に解く域に選んだ域。上限は視図をまたいで数え、後の視図は先の視図が選んだ域を
     // そのまま解き、新しい域は残りの枠だけ選ぶ。
     std::vector<ParticleEmitterInstanceKey> admitted{};
+    // このフレームに解く（か止めて描く）域と描画入力の番号、その予算の割り振り（重要な順。作業用）。
+    std::vector<std::pair<DomainState*, uint32_t>> planned{};
+    std::vector<INTERNAL::FluidBudgetEntry> budget{};
+    INTERNAL::FluidBudgetCalibration calibration{};
     // このフレームに流体へ注入する粒子の層がある（解く域が注入の緩衝を持つ）。
     bool injectionWanted = false;
     // 回読が届いた汇の吸い込み量と域の発光（TakeSinkReports / TakeGlowReports で場面へ渡す）。
     std::vector<FluidSinkReport> sinkReports{};
     std::vector<FluidGlowReport> glowReports{};
+    // 大きな域へ貸す分块の貯めと、装置が予約資源の 3D の分块を使えるか。
+    INTERNAL::FluidTilePool tilePool{};
+    ID3D12Device* sparseDevice = nullptr;
+    bool sparseSupported = false;
 
     DomainState* Find(const ParticleEmitterInstanceKey& key) noexcept {
         for (auto& domain : domains)
@@ -218,6 +142,7 @@ struct FluidVolumePass::Impl {
     }
 
     void Retire(size_t index) {
+        INTERNAL::ReleaseFluidResidency(tilePool, domains[index]->resources);
         INTERNAL::RetireFluidDomainResources(context, domains[index]->resources);
         domains.erase(domains.begin() + static_cast<std::ptrdiff_t>(index));
     }
@@ -267,6 +192,10 @@ void FluidVolumePass::Impl::ReadCompleted(DomainState& domain) {
             active += words[brick] > domain.occupiedDensity ? 1u : 0u;
         domain.stats.activeBricks = active;
         domain.stats.totalBricks = bricks;
+        const auto* activity = static_cast<const uint32_t*>(mapped) + domain.resources.ActivityOffset() / 4u;
+        domain.activity.resize(bricks);
+        for (uint32_t brick = 0u; brick < bricks; ++brick)
+            domain.activity[brick] = (activity[brick] & 1u) != 0u || words[brick] > domain.occupiedDensity ? 1u : 0u;
         domain.stats.readbackSteps = domain.readbackSteps[slot];
         domain.stats.diagnosticsValid = domain.readbackDiagnostics[slot];
         if (domain.readbackDiagnostics[slot]) {
@@ -341,11 +270,14 @@ bool FluidVolumePass::Impl::PrepareDomain(DomainState& domain, const FluidDomain
         std::abs(domain.layoutSize.x - size.x) > 1.0e-4f || std::abs(domain.layoutSize.y - size.y) > 1.0e-4f ||
         std::abs(domain.layoutSize.z - size.z) > 1.0e-4f;
     if (relayout) {
+        INTERNAL::ReleaseFluidResidency(tilePool, domain.resources);
         INTERNAL::RetireFluidDomainResources(context, domain.resources);
         FluidGridLayout layout = ResolveFluidGridLayout(size, resolution);
         layout.cellColor = cellColor;
         layout.combustion = combustion;
-        if (!INTERNAL::CreateFluidDomainResources(context.device, layout, domain.resources)) {
+        const bool sparse = sparseSupported && EstimateFluidStateBytes(layout) >= kSparseStateBytes;
+        if (!INTERNAL::CreateFluidDomainResources(context.device, layout, domain.resources, sparse)) {
+            INTERNAL::ReleaseFluidResidency(tilePool, domain.resources);
             INTERNAL::RetireFluidDomainResources(context, domain.resources);
             ++stats.resourceFailures;
             return false;
@@ -374,6 +306,7 @@ bool FluidVolumePass::Impl::PrepareDomain(DomainState& domain, const FluidDomain
         domain.tracks.clear();
         domain.carried.clear();
         domain.stats = {};
+        domain.activity.assign(domain.resources.BrickCount(), 0u);
         // 再起動の前に記録した回読（大きな子步数）が新しい統計を上書きしないよう、輪ごと捨てる。
         domain.readbackPending = {};
     }
@@ -454,7 +387,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
     // 預熱は作者の子步のまま（預熱の子步の数はその長さで数えてある）。
     const uint32_t lod = domain.prewarmSteps > 0u ? 0u : domain.lod;
     const double step = FluidSubstepSeconds(authored, lod);
-    const uint32_t vCycles = lod == 0u ? policy.vCycles : (std::max)(policy.vCycles, 2u) - 1u;
+    const uint32_t vCycles = FluidVCycles(policy, lod);
     domain.stepSeconds = step;
     domain.occupiedDensity = INTERNAL::FluidOccupiedDensity(authored.extinction, layout.cellSize);
     domain.stats.lod = lod;
@@ -541,10 +474,14 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         prewarmSteps + (domain.prewarmSteps > 0u ? 0u
                                                  : domain.clock.Advance(advance ? submission.deltaSeconds : 0.0, step,
                                                                         (std::max)(authored.maxSubsteps, 1u)));
+    // 疎な域の住まい：子步の前に、この子步たちが烟を書く分块を貸す（預熱は 1 フレームに多くの子步を進めるので全部）。
+    if (steps > 0u)
+        INTERNAL::UpdateFluidDomainResidency(context, tilePool, domain, frameSources, frameMotion, prewarmSteps > 0u);
     domain.stats.key = submission.key;
     std::copy(std::begin(layout.cells), std::end(layout.cells), domain.stats.cells);
     domain.stats.levels = layout.levels;
     domain.stats.bytes = domain.resources.bytes;
+    domain.stats.sparse = domain.resources.residency.sparse;
     domain.stats.completedSteps = domain.clock.completedSteps;
     domain.stats.stepsThisFrame = steps;
     domain.stats.prewarmRemainingSeconds = static_cast<float>(static_cast<double>(domain.prewarmSteps) * step);
@@ -757,6 +694,7 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         impl.statsFrameFence = context.currentFrameRetireFenceValue;
         impl.stats.domains = 0u;
         impl.stats.lodDomains = 0u;
+        impl.stats.frozenDomains = 0u;
         impl.stats.skippedDomains = 0u;
         impl.stats.stepsThisFrame = 0u;
         impl.stats.renderedDomains = 0u;
@@ -772,6 +710,10 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         Shutdown();
     }
     impl.context = context;
+    if (impl.sparseDevice != context.device) {
+        impl.sparseDevice = context.device;
+        impl.sparseSupported = INTERNAL::QueryFluidSparseSupport(context.device);
+    }
     // 透明物体の描画は流体の無いフレームでも相機体積を束ねる。
     if (!impl.renderer.BeginFrame(context))
         ++impl.stats.resourceFailures;
@@ -829,7 +771,8 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
             return a.settings.priority > b.settings.priority;
         return impl.rank[left] < impl.rank[right];
     });
-    uint32_t solved = 0u;
+    // 1 周目：解く域を選び（見えない域と上限を超えた域を外す）、作り直し、視図の LOD を決める。
+    impl.planned.clear();
     for (const uint32_t order : impl.order) {
         const FluidDomainSubmission& submission = input->fluids[order];
         DomainState* domain = impl.Find(submission.key);
@@ -868,14 +811,56 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         domain->admittedFrame = input->frameIndex;
         if (!impl.PrepareDomain(*domain, submission, policy))
             continue;
-        domain->lod =
-            ResolveFluidSimulationLod(submission, domain->resources.layout.cellSize, settings, policy, domain->lod);
-        const bool advance = domain->lastSimulatedFrame != input->frameIndex;
-        domain->lastSimulatedFrame = input->frameIndex;
-        impl.Solve(*domain, submission, input->fluidSources, policy, settings, advance);
-        ++solved;
-        if (domain->stats.lod > 0u)
-            ++impl.stats.lodDomains;
+        domain->lod = ResolveFluidSimulationLod(submission, domain->resources.layout.cellSize, settings, policy,
+                                                (std::max)(domain->lod, domain->budgetLevel) - domain->budgetLevel);
+        impl.planned.emplace_back(domain, order);
+    }
+    // 2 周目：見積もり（活動する砖块の割合は回読の値、まだ無ければ全部）が予算を超えれば、重要でない域から子步を長くし、
+    // それでも超える域は止める。
+    impl.budget.resize(impl.planned.size());
+    for (size_t index = 0u; index < impl.planned.size(); ++index) {
+        const DomainState& domain = *impl.planned[index].first;
+        const FluidDomainSubmission& submission = input->fluids[impl.planned[index].second];
+        const float active = domain.stats.totalBricks > 0u ? static_cast<float>(domain.stats.activeBricks) /
+                                                                 static_cast<float>(domain.stats.totalBricks)
+                                                           : 1.0f;
+        INTERNAL::FluidBudgetEntry& entry = impl.budget[index];
+        entry.level = domain.budgetLevel;
+        entry.frozen = domain.frozen;
+        for (uint32_t level = 0u; level < 3u; ++level) {
+            const uint32_t lod = (std::min)(domain.lod + level, 2u);
+            entry.cost[level] = INTERNAL::EstimateFluidSolveCost(
+                domain.resources.layout, active, submission.deltaSeconds, FluidSubstepSeconds(submission.settings, lod),
+                submission.settings.maxSubsteps, FluidVCycles(policy, lod));
+        }
+    }
+    INTERNAL::AssignFluidBudget(impl.budget, impl.calibration.BudgetUnits(policy.solveBudgetMs));
+    // 3 周目：解いて描く。止めた域は時間を進めず前の烟を描く（一度も解いていない域と預熱中の域は止めない）。
+    uint32_t solved = 0u;
+    double solvedUnits = 0.0;
+    bool unmodeled = false;
+    for (size_t index = 0u; index < impl.planned.size(); ++index) {
+        DomainState* domain = impl.planned[index].first;
+        const FluidDomainSubmission& submission = input->fluids[impl.planned[index].second];
+        domain->budgetLevel = impl.budget[index].level;
+        domain->frozen =
+            impl.budget[index].frozen && domain->prewarmSteps == 0u && domain->lastSimulatedFrame != UINT64_MAX;
+        domain->lod = (std::min)(domain->lod + domain->budgetLevel, 2u);
+        domain->stats.budgetLevel = domain->budgetLevel;
+        domain->stats.frozen = domain->frozen;
+        if (domain->frozen) {
+            ++impl.stats.frozenDomains;
+        } else {
+            const bool advance = domain->lastSimulatedFrame != input->frameIndex;
+            domain->lastSimulatedFrame = input->frameIndex;
+            unmodeled = unmodeled || domain->prewarmSteps > 0u;
+            impl.Solve(*domain, submission, input->fluidSources, policy, settings, advance);
+            if (advance)
+                solvedUnits += impl.budget[index].cost[impl.budget[index].level];
+            ++solved;
+            if (domain->stats.lod > 0u)
+                ++impl.stats.lodDomains;
+        }
         if (domain->prewarmSteps > 0u || impl.renderList.size() >= INTERNAL::kMaximumRenderedFluidDomains)
             continue;
         domain->unfinishedRestarts = 0u;
@@ -891,7 +876,8 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         render.settings = submission.settings;
         render.colorMultiplier = submission.colorMultiplier;
         render.simulationSeconds = domain->simulationSeconds;
-        render.pendingSeconds = static_cast<float>((std::min)(domain->clock.pendingSeconds, domain->stepSeconds));
+        render.pendingSeconds =
+            domain->frozen ? 0.0f : static_cast<float>((std::min)(domain->clock.pendingSeconds, domain->stepSeconds));
         render.frameVelocity =
             submission.localSpace
                 ? domain->smoothedVelocity * (1.0f - std::clamp(submission.settings.relativeWind, 0.0f, 1.0f))
@@ -905,6 +891,11 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         }
     }
     impl.flowView = impl.renderer.PrepareFlow(context, impl.renderList);
+    impl.tilePool.Trim(context);
+    // 解算の計時はフレームごとなので、時間を進めた視図（同じ描画入力の後の視図は進めない）の分だけ数える。
+    if (solvedUnits > 0.0 || unmodeled)
+        impl.calibration.Record(TIME::GetFrameContext().frameIndex, solvedUnits, unmodeled);
+    impl.calibration.Update();
     impl.stats.domains += solved;
     impl.stats.bytes = 0u;
     for (const auto& domain : impl.domains) {
@@ -919,7 +910,7 @@ bool FluidVolumePass::RenderVolumes(const GFX::Context& context, const FluidRend
     Impl& impl = *impl_;
     if (impl.renderList.empty())
         return true;
-    if (!impl.renderer.Render(context, view, impl.renderList, ResolveFluidQualityPolicy(view.quality).marchSteps,
+    if (!impl.renderer.Render(context, view, impl.renderList, ResolveFluidQualityPolicy(view.quality),
                               bindSceneTarget)) {
         ++impl.stats.resourceFailures;
         return false;
@@ -962,6 +953,9 @@ void FluidVolumePass::Shutdown() {
     while (!impl.domains.empty())
         impl.Retire(impl.domains.size() - 1u);
     INTERNAL::RetireVolume(impl.context, impl.slice);
+    impl.tilePool.Reset(impl.context);
+    impl.sparseDevice = nullptr;
+    impl.sparseSupported = false;
     impl.pipeline.Retire(impl.context);
     for (auto& upload : impl.uploads)
         upload.Finalize(&impl.context);

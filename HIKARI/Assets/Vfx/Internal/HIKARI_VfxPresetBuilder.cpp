@@ -73,6 +73,34 @@ VfxEmitterData MakePresetEmitterBase(std::string idSuffix, std::string name) {
     return emitter;
 }
 
+void AddKnob(VfxAssetData& asset, std::string id, std::string name, VfxValueType type) {
+    VfxExposedInputData input{std::move(id), std::move(name), type, MakeDefaultVfxValue(type)};
+    if (type == VfxValueType::Float)
+        input.defaultValue.numeric.x = 1.0f;
+    asset.inputs.push_back(std::move(input));
+}
+
+namespace {
+void Link(VfxEmitterData& emitter, std::string_view inputId, const std::string& moduleId, std::string_view property) {
+    std::string id = std::string(inputId) + "." + emitter.id + "." + std::string(property);
+    emitter.inputLinks.push_back(
+        {std::move(id), std::string(inputId), {emitter.id, moduleId, std::string(property)}, 1.0f, 0.0f});
+}
+} // namespace
+
+void LinkSpawnRate(VfxEmitterData& emitter, std::string_view inputId) {
+    Link(emitter, inputId, emitter.spawn.id, "rateMultiplier");
+}
+void LinkTemperature(VfxEmitterData& emitter, std::string_view inputId) {
+    Link(emitter, inputId, emitter.fluidSource.id, "temperatureMultiplier");
+}
+void LinkTurbulence(VfxEmitterData& emitter, std::string_view inputId) {
+    Link(emitter, inputId, emitter.forces.id, "turbulenceMultiplier");
+}
+void LinkColor(VfxEmitterData& emitter, std::string_view inputId) {
+    Link(emitter, inputId, emitter.color.id, "valueMultiplier");
+}
+
 VfxAssetData MakePresetAssetFromEmitters(VfxAssetData asset, std::vector<VfxEmitterData> emitters) {
     if (!emitters.empty()) {
         asset.emitters = std::move(emitters);

@@ -101,6 +101,10 @@ void ClampRuntimeOverrides(ParticleEmitterRuntimeOverrides& overrides) noexcept 
     overrides.gravityMultiplier =
         ClampFinite(overrides.gravityMultiplier, -kMaximumMotionMultiplier, kMaximumMotionMultiplier, 1.0f);
     overrides.colorMultiplier = ClampColorMultiplier(overrides.colorMultiplier, 1.0f);
+    overrides.fluidTemperatureMultiplier =
+        ClampFinite(overrides.fluidTemperatureMultiplier, 0.0f, kMaximumMotionMultiplier, 1.0f);
+    overrides.fluidTurbulenceMultiplier =
+        ClampFinite(overrides.fluidTurbulenceMultiplier, 0.0f, kMaximumMotionMultiplier, 1.0f);
 }
 
 bool RequiresLiveOwnerAttachment(const VfxProgram& program) noexcept {

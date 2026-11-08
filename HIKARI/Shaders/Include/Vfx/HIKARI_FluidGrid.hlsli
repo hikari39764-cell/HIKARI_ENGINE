@@ -154,12 +154,28 @@ float3 HikariFluidFromSegment(float3 p, float3 d)
     return p - (lengthSquared > 0.0f ? saturate(dot(p, d) / lengthSquared) : 0.0f) * d;
 }
 
-// 動く源は子步の間の時間で平均する（注入・力場・推し・吸収・湧き出し）：始めから終わりまでの線分を縁の柔らかさ以下の刻みで
-// n 等分し（1〜8）、各区間の中ほどの時刻の形で量って平均する。各点の量は源が通り過ぎる時間に比例し（速い源ほど薄い
-// 尾迹）、続く子步は重ならない（掃いた形を丸ごと使うと両端の半球が次の子步と重なり、尾迹に珠の列が出る）。止まった源は 1。
+// 源の形の細い方の大きさ（源の局所 [m]）：球と円錐は半径（球殻は殻の厚さ）、箱は最も短い半辺、円柱は半径と高さの半分の
+// 短い方、円環は帯の半幅、線は太さ。
+float HikariFluidSourceFeature(HikariFluidSource source)
+{
+    const uint shape = (uint)(source.shape.x + 0.5f);
+    if (shape == 3u)
+        return min(source.shape2.x, min(source.shape2.y, source.shape2.z));
+    if (shape == 4u)
+        return min(source.shape.y, 0.5f * source.shape.w);
+    if (shape == 5u)
+        return 0.5f * (source.shape.y - source.shape.z);
+    return shape == 1u && source.shape.z > 0.0f ? source.shape.y - source.shape.z : source.shape.y;
+}
+
+// 動く源は子步の間の時間で平均する（注入・力場・推し・吸収・湧き出し）：始めから終わりまでの線分を n 等分し（1〜8）、
+// 各区間の中ほどの時刻の形で量って平均する。刻みは縁の柔らかさと形の細い方の 1/3 の大きい方（形の中の量は一様なので、
+// 形より十分短い刻みなら量の揺れは 2 割以下）。各点の量は源が通り過ぎる時間に比例し（速い源ほど薄い尾迹）、続く子步は
+// 重ならない（掃いた形を丸ごと使うと両端の半球が次の子步と重なり、尾迹に珠の列が出る）。止まった源は 1。
 uint HikariFluidSweepSamples(HikariFluidSource source)
 {
-    return clamp((uint)ceil(length(source.sweep.xyz) / max(source.guide.w, 1.0e-4f)), 1u, 8u);
+    const float spacing = max(max(source.guide.w, HikariFluidSourceFeature(source) / 3.0f), 1.0e-4f);
+    return clamp((uint)ceil(length(source.sweep.xyz) / spacing), 1u, 8u);
 }
 
 // 標本 i（n 個のうち）の時刻の形から見た点 p（源の局所）。sweep は終わりの形から始めの位置へ。

@@ -287,6 +287,8 @@ struct ParticleEmitterRuntimeOverrides {
     MATH::Vec4 colorMultiplier{1.0f, 1.0f, 1.0f, 1.0f};
     // 流体源の層だけ：注入する烟の温度の倍率。
     float fluidTemperatureMultiplier = 1.0f;
+    // 流体源と流体域の層だけ：力場の卷曲乱流の倍率。
+    float fluidTurbulenceMultiplier = 1.0f;
 };
 
 struct ParticleMaterialParameterValue {

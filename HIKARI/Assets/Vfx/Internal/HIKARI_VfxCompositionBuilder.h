@@ -21,8 +21,10 @@ VfxAssetData StyleModule(std::string_view id);
 VfxAssetData Slash();
 VfxAssetData Beam();
 VfxAssetData FireTornado();
-// 燃焼する流体の火と爆発（fluid_fire、fluid_fire_wall、fluid_fireball、fluid_ground_explosion、fluid_air_explosion）。
+// 流体の预设：燃焼する火と爆発（fluid_fire、fluid_fire_wall、fluid_fireball、fluid_ground_explosion、
+// fluid_air_explosion）、烟（fluid_smoke）、魔法の霧（fluid_magic_mist）、烟の剑气（fluid_sword_qi → SwordQi）。
 VfxAssetData FluidPreset(std::string_view id);
+VfxAssetData SwordQi();
 VfxAssetData SupportingComposition(std::string_view id);
 VfxAssetData ParticlePreset(std::string_view id);
 } // namespace HIKARI::VFX::PRESETS::INTERNAL

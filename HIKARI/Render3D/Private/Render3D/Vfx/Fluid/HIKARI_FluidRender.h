@@ -49,9 +49,9 @@ struct FluidRenderDomain {
 
 class FluidRenderer final {
 public:
-    // bindSceneTarget は場面の色と読み取り専用の深度を描画先へ戻す（合成の前に呼ぶ）。
+    // bindSceneTarget は場面の色と読み取り専用の深度を描画先へ戻す（合成の前に呼ぶ）。policy は步进の步数と歩の上限。
     bool Render(const GFX::Context& context, const FluidRenderView& view, std::span<FluidRenderDomain> domains,
-                uint32_t marchSteps, const std::function<bool()>& bindSceneTarget);
+                const FluidQualityPolicy& policy, const std::function<bool()>& bindSceneTarget);
     // 場面へ落とす烟の影の表（雲の影の表と同じ並び。前向き・地形・水面・粒子の面が雲の影と掛ける）を作る。domains は影を
     // 落とす域、toSun は太陽への向き。域が無ければ空の表（descriptor 0）。
     LIGHTING::CloudSolarVisibilityGpuData RenderSolarVisibility(const GFX::Context& context,

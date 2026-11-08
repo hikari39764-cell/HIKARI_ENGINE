@@ -41,11 +41,14 @@ float AverageInverseScale(const FluidSourceSubmission& source) noexcept {
     const auto inverse = [](float value) { return 1.0f / (std::max)(std::abs(value), 1.0e-4f); };
     return (inverse(source.worldScale.x) + inverse(source.worldScale.y) + inverse(source.worldScale.z)) / 3.0f;
 }
-} // namespace
 
-float FluidSourceReach(const FluidSourceSubmission& source, float cellSize) noexcept {
-    constexpr float kUnbounded = std::numeric_limits<float>::infinity();
-    const float softEdge = 1.5f * cellSize * AverageInverseScale(source);
+float WorldScale(const FluidSourceSubmission& source) noexcept {
+    return (std::max)(
+        {std::abs(source.worldScale.x), std::abs(source.worldScale.y), std::abs(source.worldScale.z), 1.0e-4f});
+}
+
+// 注入の形が届く範囲（源の局所 [m]、拡縮の前）：形の外接の半径と、表面の外 2.5 縁（EmissionMask）。Domain は無限大。
+float ShapeReach(const FluidSourceSubmission& source, float softEdge) noexcept {
     const auto positive = [](float value) { return (std::max)(value, 0.0f); };
     float shape = 0.0f;
     switch (source.shape) {
@@ -62,12 +65,24 @@ float FluidSourceReach(const FluidSourceSubmission& source, float cellSize) noex
         break;
     case FluidSourceShape::Circle: shape = positive(source.radius) + softEdge; break;
     case FluidSourceShape::Edge: shape = 0.5f * positive(source.height) + (std::max)(source.radius, softEdge); break;
-    case FluidSourceShape::Domain: return kUnbounded;
+    case FluidSourceShape::Domain: return std::numeric_limits<float>::infinity();
     default: shape = (std::max)(source.radius, softEdge); break;
     }
-    // 注入は表面の外 2.5 縁まで（EmissionMask）、形状引导は帯の厚さまで届く。
-    float reach = shape + 2.5f * softEdge +
-                  (source.settings.guideStrength > 0.0f ? (std::max)(source.settings.guideThickness, 0.0f) : 0.0f);
+    return shape + 2.5f * softEdge;
+}
+} // namespace
+
+float FluidSourceEmitReach(const FluidSourceSubmission& source, float cellSize) noexcept {
+    return ShapeReach(source, 1.5f * cellSize * AverageInverseScale(source)) * WorldScale(source);
+}
+
+float FluidSourceReach(const FluidSourceSubmission& source, float cellSize) noexcept {
+    constexpr float kUnbounded = std::numeric_limits<float>::infinity();
+    // 注入は形の範囲、形状引导は帯の厚さまで届く。
+    float reach = ShapeReach(source, 1.5f * cellSize * AverageInverseScale(source));
+    if (!std::isfinite(reach))
+        return reach;
+    reach += source.settings.guideStrength > 0.0f ? (std::max)(source.settings.guideThickness, 0.0f) : 0.0f;
     // 力場・風・減衰は力場の半径の中（半径 0 は域全体）。流体注入層は場面の域を共有するので、半径 0 でも形の届く範囲に
     // とどめる（特効一つが場地の烟全体を翻搅しない）。
     if (PARTICLES::IsParticleForceFieldActive(source.field) || source.drag > 0.0f || MATH::Length(source.wind) > 0.0f) {
@@ -76,9 +91,7 @@ float FluidSourceReach(const FluidSourceSubmission& source, float cellSize) noex
         else if (!source.sceneInjection)
             return kUnbounded;
     }
-    const float scale = (std::max)(
-        {std::abs(source.worldScale.x), std::abs(source.worldScale.y), std::abs(source.worldScale.z), 1.0e-4f});
-    return reach * scale;
+    return reach * WorldScale(source);
 }
 
 // 回転と倍率の逆で、域の局所の点を源の局所へ、源の局所の向きを域の局所へ移す行と、形・注入・力場を詰める。

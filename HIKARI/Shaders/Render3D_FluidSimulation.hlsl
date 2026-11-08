@@ -381,36 +381,6 @@ float LumpNoise(float3 x)
     return ValueNoise(first) * 0.65f + ValueNoise(mul(kLumpRotation, first) * 2.07f + 31.7f) * 0.35f;
 }
 
-// 烟を注入する形の重み：形の表面を格 4 つほどの塊で ±1.5 格ずらし、力の重み（HikariFluidSourceMask）の 2 倍の幅でぼかし、
-// 子步の間の時間で平均する（HikariFluidSweepSamples）。表面がそのまま格に沿った面で入ると、注入したての烟の縁が格子の
-// 階段（马赛克）に見える。形の奥（表面から 3 格より内側）の量は変わらない。p は域の局所 [m]。
-float EmissionMask(HikariFluidSource source, float3 local, float3 p)
-{
-    const float soft = max(source.guide.w, 1.0e-4f);
-    const uint n = HikariFluidSweepSamples(source);
-    float sum = 0.0f;
-    float offset = 0.0f;
-    bool haveOffset = false;
-    for (uint i = 0u; i < n; ++i)
-    {
-        const float distance = HikariFluidSourceDistance(source, HikariFluidSweepSample(source, local, i, n));
-        if (distance >= 2.5f * soft)
-            continue;
-        if (distance <= -2.5f * soft)
-        {
-            sum += 1.0f;
-            continue;
-        }
-        if (!haveOffset)
-        {
-            offset = LumpNoise(p * (0.25f * gCell.y) + float3(0.0f, 0.07f, 0.0f) * gCell.w);
-            haveOffset = true;
-        }
-        sum += saturate(0.5f - (distance + offset * soft) / (2.0f * soft));
-    }
-    return sum / (float)n;
-}
-
 // 注入の揺らぎ（FluidSourceSettings::emissionNoise）の倍率：域の局所 p [m] で塊の大きさ 1 / flow.z の値ノイズ 2 段により
 // 注入量を揺らす（揺らぎ 1 で塊の間が所々 0、濃い塊は 2〜3 倍。平均はおよそ 1）。塊は 1 つ分を約 8 秒で流して形を変える。
 float EmissionNoise(HikariFluidSource source, float3 p)
@@ -435,17 +405,38 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
     if ((uint)(source.shape.x + 0.5f) != 7u)
         moving.sweep.xyz += HikariFluidVectorToSource(source, (velocity + gFrameWind.xyz) * gCell.z);
     const float3 local = HikariFluidToSource(source, p);
-    const float mask = HikariFluidSourceMask(moving, local);
-    // 力場（旋涡・吸引・卷曲乱流）は粒子と同じ式で、注入と同じく子步の間の時間で平均する（動く源の力場が子步の終わりの
-    // 位置にだけ効くと、尾迹に子步の間隔の縞が出る）。半径の減衰は式の中で掛かる。
+    // 子步の間の時間で平均する標本ごとに、形までの距離を 1 回量って次の 3 つに使う。
+    // 力の重み（内側 1、表面の外へ縁の柔らかさの幅で 0）：推し・吸収。
+    // 注入の重み：表面を格 4 つほどの塊で ±1.5 格ずらし、力の重みの 2 倍の幅でぼかす（表面がそのまま格に沿った面で入ると
+    // 注入したての烟の縁が格子の階段に見える。表面から 3 格より内側の量は変わらない）。
+    // 力場（旋涡・吸引・卷曲乱流）は粒子と同じ式（動く源の力場が子步の終わりの位置にだけ効くと、尾迹に子步の間隔の縞が
+    // 出る）。半径の減衰は式の中で掛かる。
     const bool fieldActive = source.field1.w != 0.0f || source.field2.x != 0.0f || source.field2.w != 0.0f;
+    const bool emitting = source.emission.x > 0.0f || source.emission.y > 0.0f;
     const float radius = source.field0.w;
+    const float soft = max(source.guide.w, 1.0e-4f);
     const uint samples = HikariFluidSweepSamples(moving);
     float3 field = 0.0f.xxx;
     float falloff = 0.0f;
+    float mask = 0.0f;
+    float emitShape = 0.0f;
+    float lump = 0.0f;
+    bool haveLump = false;
     for (uint sample = 0u; sample < samples; ++sample)
     {
         const float3 at = HikariFluidSweepSample(moving, local, sample, samples);
+        const float shapeDistance = HikariFluidSourceDistance(source, at);
+        mask += saturate(0.5f - shapeDistance / soft);
+        if (emitting && shapeDistance < 2.5f * soft)
+        {
+            if (shapeDistance > -2.5f * soft && !haveLump)
+            {
+                lump = LumpNoise(p * (0.25f * gCell.y) + float3(0.0f, 0.07f, 0.0f) * gCell.w);
+                haveLump = true;
+            }
+            emitShape += shapeDistance <= -2.5f * soft ? 1.0f
+                                                       : saturate(0.5f - (shapeDistance + lump * soft) / (2.0f * soft));
+        }
         const float distance = length(at - source.field0.xyz);
         if (fieldActive)
         {
@@ -460,14 +451,15 @@ void ApplySource(HikariFluidSource source, float3 p, float3 velocity, inout floa
     }
     field = HikariFluidToDomain(source, field / (float)samples);
     falloff /= (float)samples;
+    mask /= (float)samples;
     if (source.guide.z > 0.5f)
         acceleration += (field - velocity * falloff) * 4.0f;
     else
         acceleration += field;
     acceleration += source.wind.xyz * falloff - velocity * (source.wind.w * falloff);
-    if (source.emission.x > 0.0f || source.emission.y > 0.0f)
+    if (emitting && emitShape > 0.0f)
     {
-        const float emit = EmissionMask(moving, local, p) * EmissionNoise(source, p);
+        const float emit = emitShape / (float)samples * EmissionNoise(source, p);
         if (emit > 0.0f)
         {
             temperature += (source.emission.z - temperature) * saturate(emit * 8.0f * gCell.z + emit * saturate(source.emission.y));

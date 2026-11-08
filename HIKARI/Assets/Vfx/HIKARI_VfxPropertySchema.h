@@ -39,6 +39,7 @@ enum class VfxRuntimeBindingSemantic : uint8_t {
     RingStartAngleDegrees,
     RingEndAngleDegrees,
     FluidTemperatureMultiplier,
+    FluidTurbulenceMultiplier,
 };
 
 inline constexpr TEXT::EnumName<VfxRuntimeBindingSemantic> kVfxRuntimeBindingNames[]{
@@ -53,6 +54,7 @@ inline constexpr TEXT::EnumName<VfxRuntimeBindingSemantic> kVfxRuntimeBindingNam
     {VfxRuntimeBindingSemantic::RingStartAngleDegrees, "RingStartAngleDegrees"},
     {VfxRuntimeBindingSemantic::RingEndAngleDegrees, "RingEndAngleDegrees"},
     {VfxRuntimeBindingSemantic::FluidTemperatureMultiplier, "FluidTemperatureMultiplier"},
+    {VfxRuntimeBindingSemantic::FluidTurbulenceMultiplier, "FluidTurbulenceMultiplier"},
 };
 
 struct VfxPropertyRange {
@@ -91,7 +93,7 @@ inline bool IsVfxInputTypeCompatible(VfxValueType inputType, const VfxPropertySc
     return IsVfxInputTypeCompatible(inputType, property.valueType);
 }
 
-inline constexpr std::array<VfxPropertySchema, 11u> kVfxPropertySchemas{
+inline constexpr std::array<VfxPropertySchema, 12u> kVfxPropertySchemas{
     VfxPropertySchema{
         VfxModuleKind::Basic,
         "enabled",
@@ -203,6 +205,15 @@ inline constexpr std::array<VfxPropertySchema, 11u> kVfxPropertySchemas{
                       VfxRuntimeBindingSemantic::FluidTemperatureMultiplier,
                       {true, true, 0.0f, 64.0f},
                       "multiplier"},
+    VfxPropertySchema{VfxModuleKind::Forces,
+                      "turbulenceMultiplier",
+                      "vfx.property.fluid_turbulence_multiplier",
+                      VfxValueType::Float,
+                      true,
+                      true,
+                      VfxRuntimeBindingSemantic::FluidTurbulenceMultiplier,
+                      {true, true, 0.0f, 64.0f},
+                      "multiplier"},
 };
 
 inline std::string_view ToString(VfxModuleKind value) noexcept {
@@ -267,8 +278,8 @@ inline const VfxPropertySchema* FindVfxPropertySchema(VfxModuleKind moduleKind, 
     return nullptr;
 }
 
-// 層の種類ごとに意味のある値だけを繋げる。流体源は 有効・注入の速さ・風（重力の倍率）・色・温度、流体域は 有効・風、
-// 他の層は流体源の温度を除く全部。
+// 層の種類ごとに意味のある値だけを繋げる。流体源は 有効・注入の速さ・風（重力の倍率）・色・温度・乱流、流体域は 有効・風・
+// 乱流（域全体の力場）、他の層は流体の温度と乱流を除く全部。
 inline bool IsVfxPropertyApplicable(const VfxEmitterData& emitter, const VfxPropertySchema& schema) noexcept {
     using Semantic = VfxRuntimeBindingSemantic;
     switch (emitter.kind) {
@@ -277,11 +288,15 @@ inline bool IsVfxPropertyApplicable(const VfxEmitterData& emitter, const VfxProp
                schema.runtimeSemantic == Semantic::SpawnRateMultiplier ||
                schema.runtimeSemantic == Semantic::GravityMultiplier ||
                schema.runtimeSemantic == Semantic::ColorMultiplier ||
-               schema.runtimeSemantic == Semantic::FluidTemperatureMultiplier;
+               schema.runtimeSemantic == Semantic::FluidTemperatureMultiplier ||
+               schema.runtimeSemantic == Semantic::FluidTurbulenceMultiplier;
     case VfxLayerKind::Fluid:
         return schema.runtimeSemantic == Semantic::EmitterEnabled ||
-               schema.runtimeSemantic == Semantic::GravityMultiplier;
-    default: return schema.runtimeSemantic != Semantic::FluidTemperatureMultiplier;
+               schema.runtimeSemantic == Semantic::GravityMultiplier ||
+               schema.runtimeSemantic == Semantic::FluidTurbulenceMultiplier;
+    default:
+        return schema.runtimeSemantic != Semantic::FluidTemperatureMultiplier &&
+               schema.runtimeSemantic != Semantic::FluidTurbulenceMultiplier;
     }
 }
 

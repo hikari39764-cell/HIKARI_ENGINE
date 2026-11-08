@@ -107,6 +107,14 @@ void ResetStatistics();
 bool BeginPass(ID3D12GraphicsCommandList* cmd, Pass pass);
 void EndPass(ID3D12GraphicsCommandList* cmd, Pass pass);
 
+// pass を計測した最後の読み戻し済みフレームの番号（BeginFrame の frameIndex。まだ無ければ 0）と、そのフレームの合計 [ms]。
+// 見積もりを実測で合わせる側（流体の解算の予算）が、同じフレームの見積もりと組にして読む。
+struct PassReading {
+    uint64_t frameIndex = 0u;
+    double ms = 0.0;
+};
+PassReading LastPassReading(Pass pass);
+
 class ScopedGpuTimer {
 public:
     ScopedGpuTimer(ID3D12GraphicsCommandList* cmd, Pass pass);
