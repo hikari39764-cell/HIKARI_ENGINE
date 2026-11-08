@@ -78,6 +78,9 @@ nlohmann::json DescribeStats(const FLUID::FluidDomainStats& stats) {
         {"skippedByLimit", stats.skippedByLimit},
         {"lod", stats.lod},
         {"substepSeconds", stats.substepSeconds},
+        {"budgetLevel", stats.budgetLevel},
+        {"frozen", stats.frozen},
+        {"sparse", stats.sparse},
     };
 }
 } // namespace
@@ -169,6 +172,8 @@ void VfxWorkspaceController::DrawFluidSimulation(const VFX::VfxEmitterData& doma
         row("GPU memory", number(static_cast<double>(stats->bytes) / (1024.0 * 1024.0), 1) + " MiB");
         row("Substeps", std::to_string(stats->stepsThisFrame) + " / " + std::to_string(stats->completedSteps));
         row("Simulation LOD", std::to_string(stats->lod) + "  (" + number(stats->substepSeconds * 1000.0, 1) + " ms)");
+        row("Solve budget",
+            stats->frozen ? VfxUiText("Frozen (drawing last smoke)") : "+" + std::to_string(stats->budgetLevel));
         if (stats->prewarmRemainingSeconds > 0.0f) {
             row("Prewarm remaining", number(stats->prewarmRemainingSeconds, 2) + " s");
         }

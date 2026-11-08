@@ -132,7 +132,7 @@ float FarthestCorner(std::span<const FluidRenderDomain> domains, const MATH::Vec
 } // namespace
 
 bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& view,
-                           std::span<FluidRenderDomain> domains, uint32_t marchSteps,
+                           std::span<FluidRenderDomain> domains, const FluidQualityPolicy& policy,
                            const std::function<bool()>& bindSceneTarget) {
     const size_t count = (std::min)(domains.size(), static_cast<size_t>(kMaximumRenderedFluidDomains));
     if (count == 0u || view.renderWidth == 0u || view.renderHeight == 0u || view.sceneDepthSrv.ptr == 0u)
@@ -149,9 +149,9 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
 
     RenderConstants constants{};
     constants.invRelativeViewProj = view.invRelativeViewProj;
-    Set4(constants.camera, view.cameraPosition.x, view.cameraPosition.y, view.cameraPosition.z, 0.0f);
+    Set4(constants.camera, view.cameraPosition.x, view.cameraPosition.y, view.cameraPosition.z, policy.marchStepCells);
     Set4(constants.forward, view.cameraForward.x, view.cameraForward.y, view.cameraForward.z,
-         static_cast<float>(marchSteps));
+         static_cast<float>(policy.marchSteps));
     const uint32_t halfWidth = (view.renderWidth + 1u) / 2u, halfHeight = (view.renderHeight + 1u) / 2u;
     Set4(constants.size, static_cast<float>(halfWidth), static_cast<float>(halfHeight),
          static_cast<float>(view.renderWidth), static_cast<float>(view.renderHeight));

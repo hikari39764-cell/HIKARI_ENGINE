@@ -10,6 +10,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "Render3D/Vfx/Fluid/HIKARI_FluidResidency.h"
 #include "Render3D/Vfx/HIKARI_FluidVolumePass.h"
 
 // 体積流体の解算の GPU 側：根と各 pass の PSO、域ごとの体積、1 子步と V 循環の記録。CPU の段取り（どの域を何子步
@@ -89,6 +90,10 @@ struct FluidDomainResources {
     Microsoft::WRL::ComPtr<ID3D12Resource> stats{};
     D3D12_RESOURCE_STATES statsState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, GFX::kFrameResourceCount> readback{};
+    // 速度・密度・燃料の体積を予約資源で作り、烟のある辺りの分块だけに記憶を貸すか（HIKARI_FluidResidency.h）と、その住まい。
+    // bytes は密な部分（圧力・光照体積・統計・注入）と住んでいる分块の合計。
+    FluidResidency residency{};
+    uint64_t denseBytes = 0u;
     uint32_t bricks = 0u;
     uint32_t statsBytes = 0u;
     uint64_t bytes = 0u;
@@ -159,6 +164,8 @@ FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::
                                const MATH::Vec3& sweep);
 // 源が届く範囲の半径（世界 [m]、源の位置から。形・縁・形状引导の帯・力場と風の半径）。域全体に届く源は無限大。
 float FluidSourceReach(const FluidSourceSubmission& source, float cellSize) noexcept;
+// そのうち烟を注入する形が届く範囲（形と縁だけ。Domain の形は無限大）。疎な域の住まいが使う。
+float FluidSourceEmitReach(const FluidSourceSubmission& source, float cellSize) noexcept;
 
 // HIKARI_FluidGrid.hlsli の HikariFluidInteraction と同じ並び（押すものの表 t7 の 1 行）。
 struct FluidInteractionGpu {
@@ -172,7 +179,9 @@ FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, co
                                          const MATH::Quat& domainRotation, const MATH::Vec3& domainVelocity,
                                          float frameSeconds, float strengthScale);
 
-bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& layout, FluidDomainResources& resources);
+// sparse なら速度・密度・燃料（燃焼する域）を予約資源で作る（住まいは空、UpdateFluidResidency が分块を貸す）。
+bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& layout, FluidDomainResources& resources,
+                                bool sparse);
 // 粒子からの注入の緩衝を作る（もう有れば何もしない）。created は作ったか（作った時は ClearInjection で 0 にする）。
 bool EnsureFluidInjection(ID3D12Device* device, FluidDomainResources& resources, bool& created);
 bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,

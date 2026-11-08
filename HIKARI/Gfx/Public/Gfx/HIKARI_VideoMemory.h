@@ -42,6 +42,10 @@ HRESULT CreateCommittedResource(ID3D12Device* device, const D3D12_HEAP_PROPERTIE
                                 D3D12_RESOURCE_STATES initialState, const D3D12_CLEAR_VALUE* clearValue, Owner owner,
                                 REFIID riid, void** resource);
 
+// ID3D12Device::CreateHeap と同じ引数に所有者を足したもの（予約資源へ分块を貸すヒープ）。成功したヒープの大きさを記帳する
+// （ヒープが壊れると自動で引かれる）。
+HRESULT CreateHeap(ID3D12Device* device, const D3D12_HEAP_DESC* desc, Owner owner, REFIID riid, void** heap);
+
 // 外部ライブラリ（DirectXTex の CreateTexture など）が作った資源だけをここで記帳に入れる。自前で作る資源は
 // CreateCommittedResource を使う。
 void Track(ID3D12Resource* resource, Owner owner);

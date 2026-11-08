@@ -89,9 +89,10 @@ bool CreateRoot(ID3D12Device* device, ID3D12RootSignature** output) {
     return HIKARI_DX_CHECK(GFX::CreateRootSignature(device, description, output), "FluidSolver::CreateRoot");
 }
 
-// slice が偽なら 3D の体積、真なら調試の切片（2D、depth は 1）。
+// slice が偽なら 3D の体積、真なら調試の切片（2D、depth は 1）。reserved なら記憶の無い予約資源（3D だけ。分块は
+// HIKARI_FluidResidency が貸し、貸していない所は読むと 0、書くと捨てられる）。
 bool CreateVolume(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
-                  FluidVolume& volume, bool slice) {
+                  FluidVolume& volume, bool slice, bool reserved) {
     D3D12_RESOURCE_DESC description{};
     description.Dimension = slice ? D3D12_RESOURCE_DIMENSION_TEXTURE2D : D3D12_RESOURCE_DIMENSION_TEXTURE3D;
     description.Width = width;
@@ -101,11 +102,15 @@ bool CreateVolume(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint
     description.Format = format;
     description.SampleDesc.Count = 1;
     description.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+    description.Layout = reserved ? D3D12_TEXTURE_LAYOUT_64KB_UNDEFINED_SWIZZLE : D3D12_TEXTURE_LAYOUT_UNKNOWN;
     const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
-    if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
-                             device, &heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                             nullptr, GFX::VIDEO_MEMORY::Owner::Vfx, IID_PPV_ARGS(volume.resource.GetAddressOf())),
-                         "FluidSolver::CreateVolume"))
+    const HRESULT result =
+        reserved ? device->CreateReservedResource(&description, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+                                                  IID_PPV_ARGS(volume.resource.GetAddressOf()))
+                 : GFX::VIDEO_MEMORY::CreateCommittedResource(
+                       device, &heap, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                       nullptr, GFX::VIDEO_MEMORY::Owner::Vfx, IID_PPV_ARGS(volume.resource.GetAddressOf()));
+    if (!HIKARI_DX_CHECK(result, "FluidSolver::CreateVolume"))
         return false;
     volume.srv = slice ? AllocateTexture2DSrvDescriptor(volume.resource.Get(), format)
                        : AllocateTexture3DSrvDescriptor(volume.resource.Get(), format);
@@ -134,12 +139,12 @@ bool CreateFluidBuffer(ID3D12Device* device, D3D12_HEAP_TYPE heapType, uint32_t 
 
 bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
                               FluidVolume& volume) {
-    return CreateVolume(device, format, width, height, depth, volume, false);
+    return CreateVolume(device, format, width, height, depth, volume, false, false);
 }
 
 bool CreateFluidSliceTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height,
                              FluidVolume& volume) {
-    return CreateVolume(device, format, width, height, 1u, volume, true);
+    return CreateVolume(device, format, width, height, 1u, volume, true, false);
 }
 
 void RetireVolume(const GFX::Context& context, FluidVolume& volume) {
@@ -191,32 +196,36 @@ void FluidSolverPipeline::Retire(const GFX::Context& context) {
     failed_ = false;
 }
 
-bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& layout, FluidDomainResources& resources) {
+bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& layout, FluidDomainResources& resources,
+                                bool sparse) {
     resources = {};
     resources.layout = layout;
+    resources.residency.sparse = sparse;
     const uint32_t* n = layout.cells;
     bool created = true;
     for (FluidVolume& volume : resources.velocity)
-        created = created && CreateVolume(device, kVelocityFormat, n[0] + 1u, n[1] + 1u, n[2] + 1u, volume, false);
+        created =
+            created && CreateVolume(device, kVelocityFormat, n[0] + 1u, n[1] + 1u, n[2] + 1u, volume, false, sparse);
     // 格ごとの色を持つ域は yzw に密度 × 色（解算と描画は常に float4 で読み書きし、R16 の域では yzw が捨てられる）。
     const DXGI_FORMAT densityFormat = layout.cellColor ? kColoredDensityFormat : kDensityFormat;
     for (FluidVolume& volume : resources.density)
-        created = created && CreateVolume(device, densityFormat, n[0], n[1], n[2], volume, false);
+        created = created && CreateVolume(device, densityFormat, n[0], n[1], n[2], volume, false, sparse);
     // 燃料（x 燃料、y 燃える速さ）。燃焼の無い域も平流・力・散度・占有の pass が根の表を引くので 1 格の置き場を持つ。
     const uint32_t fuel[3] = {layout.combustion ? n[0] : 1u, layout.combustion ? n[1] : 1u,
                               layout.combustion ? n[2] : 1u};
     for (FluidVolume& volume : resources.fuel)
-        created = created && CreateVolume(device, kFuelFormat, fuel[0], fuel[1], fuel[2], volume, false);
+        created = created && CreateVolume(device, kFuelFormat, fuel[0], fuel[1], fuel[2], volume, false,
+                                          sparse && layout.combustion);
     resources.pressure.resize(layout.levels);
     resources.rhs.resize(layout.levels);
     for (uint32_t level = 0u; level < layout.levels; ++level) {
         const uint32_t w = (std::max)(n[0] >> level, 1u), h = (std::max)(n[1] >> level, 1u),
                        d = (std::max)(n[2] >> level, 1u);
-        created = created && CreateVolume(device, kPressureFormat, w, h, d, resources.pressure[level], false) &&
-                  CreateVolume(device, kPressureFormat, w, h, d, resources.rhs[level], false);
+        created = created && CreateVolume(device, kPressureFormat, w, h, d, resources.pressure[level], false, false) &&
+                  CreateVolume(device, kPressureFormat, w, h, d, resources.rhs[level], false, false);
     }
     created = created && CreateVolume(device, DXGI_FORMAT_R16G16B16A16_FLOAT, (n[0] + 1u) / 2u, (n[1] + 1u) / 2u,
-                                      (n[2] + 1u) / 2u, resources.light, false);
+                                      (n[2] + 1u) / 2u, resources.light, false, false);
     resources.bricks = ((n[0] + 7u) / 8u) * ((n[1] + 7u) / 8u) * ((n[2] + 7u) / 8u);
     resources.statsBytes = (resources.GlowOffset() + resources.bricks * 48u + 255u) & ~255u;
     created = created && CreateFluidBuffer(device, D3D12_HEAP_TYPE_DEFAULT, resources.statsBytes,
@@ -225,7 +234,11 @@ bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& lay
         created = created && CreateFluidBuffer(device, D3D12_HEAP_TYPE_READBACK, resources.statsBytes,
                                                D3D12_RESOURCE_STATE_COPY_DEST, readback);
     resources.statsState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-    resources.bytes = EstimateFluidDomainBytes(layout) + resources.statsBytes;
+    resources.denseBytes =
+        EstimateFluidDomainBytes(layout) - (sparse ? EstimateFluidStateBytes(layout) : 0u) + resources.statsBytes;
+    resources.bytes = resources.denseBytes;
+    if (created && sparse)
+        InitializeFluidResidency(device, resources);
     return created;
 }
 
@@ -241,6 +254,7 @@ bool EnsureFluidInjection(ID3D12Device* device, FluidDomainResources& resources,
         resources.injection.Reset();
         return false;
     }
+    resources.denseBytes += bytes;
     resources.bytes += bytes;
     created = true;
     return true;

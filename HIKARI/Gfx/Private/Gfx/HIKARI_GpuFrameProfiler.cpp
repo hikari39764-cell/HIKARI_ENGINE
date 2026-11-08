@@ -59,6 +59,7 @@ struct ProfilerState {
     bool enabled = true;
     bool executionOverflowReported = false;
     const char* unavailableReason = "";
+    std::array<PassReading, kPassCount> lastReadings{};
 };
 
 ProfilerState gState{};
@@ -239,6 +240,7 @@ void CollectResolvedSlot(FrameSlot& slot) {
             continue;
         }
         const Pass pass = static_cast<Pass>(i);
+        gState.lastReadings[i] = {slot.frameIndex, total.ms};
         if (pass == Pass::CommandFrame) {
             METRIC::Publish(FrameMetric(), total.ms, slot.frameIndex);
             continue;
@@ -289,6 +291,10 @@ void ResetStatistics() {
 }
 
 bool IsEnabled() { return gState.enabled; }
+
+PassReading LastPassReading(Pass pass) {
+    return IsValidPass(pass) ? gState.lastReadings[PassIndex(pass)] : PassReading{};
+}
 
 namespace {
 // pass の表。名前と所属モジュールを 1 行にまとめる（登録表の id と時間線の cat になる）。列挙の順に並べる。

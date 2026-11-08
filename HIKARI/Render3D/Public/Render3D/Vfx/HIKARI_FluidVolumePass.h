@@ -24,13 +24,17 @@ namespace HIKARI::RENDER3D::FLUID {
 
 // 画質の档位（表は HIKARI_FluidLayout.cpp だけ）。解算の分辨率の倍率、子步ごとの V 循環の数、半分辨率の步进の步数、
 // 同時に解く域の数、解算の LOD で遠い域とみなす画面の格の大きさ [画素]（格がこれより小さく映る域は子步を 2 倍の長さで
-// 解く。0 で LOD なし）。
+// 解く。0 で LOD なし）、1 フレームの解算の GPU の予算 [ms]（超えると重要でない域から子步を長くし、それでも超える域は
+// 止めて前の烟を描く。0 で予算なし）、步进の歩の長さの上限 [格]（画素の大きさより短くはしない。近い細かな域ほど標本が
+// 増えるので画質で決める）。
 struct FluidQualityPolicy {
     float resolutionScale = 1.0f;
     uint32_t vCycles = 2u;
     uint32_t marchSteps = 64u;
     uint32_t maxDomains = 4u;
     float lodCellPixels = 1.0f;
+    float solveBudgetMs = 0.0f;
+    float marchStepCells = 1.0f;
 };
 FluidQualityPolicy ResolveFluidQualityPolicy(FluidSmokeQuality quality) noexcept;
 
@@ -45,7 +49,9 @@ struct FluidGridLayout {
     bool combustion = false;
 };
 FluidGridLayout ResolveFluidGridLayout(const MATH::Vec3& domainSize, uint32_t resolution) noexcept;
+// 域の体積の記憶：全部（密な時）と、そのうち速度・密度・燃料の体積（大きな域では烟のある分块だけが住む部分）。
 uint64_t EstimateFluidDomainBytes(const FluidGridLayout& layout) noexcept;
+uint64_t EstimateFluidStateBytes(const FluidGridLayout& layout) noexcept;
 
 // 固定子步の時計。ゲーム時間を貯めて子步の長さで割り、1 フレームの上限を超えた分は捨てる（遅いフレームで
 // 解算が積み上がらない）。フレームの長さが違っても同じゲーム時間なら同じ子步の列になる。
@@ -59,6 +65,8 @@ struct FluidStepClock {
 // 子步の長さ [s]：作者の substepRate を 15〜240 Hz に収め、解算の LOD（ResolveFluidSimulationLod）が 1 以上なら 2^lod 倍
 // （0.1 s まで。作者の子步の方が長ければそれ）。
 double FluidSubstepSeconds(const FluidDomainSettings& settings, uint32_t lod) noexcept;
+// 子步ごとの V 循環の数：解算の LOD が 1 以上なら画質の数より 1 つ少なく（1 は下回らない）。
+uint32_t FluidVCycles(const FluidQualityPolicy& policy, uint32_t lod) noexcept;
 
 enum class FluidDebugField : uint8_t { Density, Velocity, Divergence, Pressure };
 
@@ -100,16 +108,21 @@ struct FluidDomainStats {
     // このフレームに上限（画質の maxDomains）で解かれなかった（優先度と距離で後ろになった）か、と作者の優先度。
     bool skippedByLimit = false;
     uint32_t priority = 0u;
-    // 解算の LOD（0 そのまま、1 遠い：子步 2 倍、2 視図の外：子步 4 倍。HIKARI_FluidVolumePass.cpp の
-    // ResolveSimulationLod）と、このフレームの子步の長さ [s]。
+    // 解算の LOD（0 そのまま、1 遠い：子步 2 倍、2 視図の外：子步 4 倍。ResolveFluidSimulationLod に予算の段を足した
+    // もの）と、このフレームの子步の長さ [s]。予算の段（0〜2、AssignFluidBudget）と、予算を超えて止めた（前の烟を描くだけ）か。
     uint32_t lod = 0u;
     float substepSeconds = 0.0f;
+    uint32_t budgetLevel = 0u;
+    bool frozen = false;
+    // 速度・密度・燃料を烟のある辺りの分块だけに住まわせる域か（bytes はその時の量で、烟の範囲で変わる）。
+    bool sparse = false;
 };
 
 struct FluidVolumePassStats {
     uint32_t domains = 0u;
-    // 解いた域のうち、解算の LOD が 1 以上（子步を長く）の域の数。
+    // 解いた域のうち、解算の LOD が 1 以上（子步を長く）の域の数と、予算を超えて止めた（描くだけの）域の数。
     uint32_t lodDomains = 0u;
+    uint32_t frozenDomains = 0u;
     uint32_t skippedDomains = 0u;
     uint32_t stepsThisFrame = 0u;
     uint64_t bytes = 0u;

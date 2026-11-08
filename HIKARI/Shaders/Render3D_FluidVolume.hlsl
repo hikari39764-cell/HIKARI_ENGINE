@@ -16,7 +16,7 @@
 cbuffer FluidRenderCB : register(b0)
 {
     float4x4 gInvRelativeViewProj; // 相機を原点に置いた逆 view-projection（clip → 相機からの相対位置）
-    float4 gCamera;          // xyz 相機の位置
+    float4 gCamera;          // xyz 相機の位置、w 步进の歩の上限 [格]（画質）
     float4 gForward;         // xyz 相機の前、w 步进の步数
     float4 gSize;            // xy 半分辨率の大きさ、zw 描画の大きさ
     float4 gSun;             // xyz 太陽の向き（世界）、w 1 なら級联阴影を使う
@@ -212,9 +212,13 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
         return;
     const float extinction = rho * domain.look.w;
     // 光照体積は光学的な厚さ（透過率で補間すると厚い烟で隣と桁が違い、折れ目が格子の塊として陰影に出る）。y は空、z は
-    // 近くの遮り。太陽は手前を格の解像度で積む（SunOpticalDepth）。
+    // 近くの遮り。太陽は手前を格の解像度で積む（SunOpticalDepth）のは、光照体積の texel（格 2 つ）が画面で 2 画素以上ある
+    // 時（それより細かければ texel の塊は見えない）で、光照体積だけで太陽への厚さが 4 を越えない時（影の奥は手前を細かく
+    // 積んでも明るさが変わらない）だけ。近い烟（KnightBoss）の標本ごとに密度 3 回の読みが増え、描画が倍になった。
     const float3 tau = light.SampleLevel(gLinearClamp, uvw, 0).xyz;
-    const float2 transmittance = exp(-float2(SunOpticalDepth(domain, density, light, grid), tau.y));
+    const bool nearSun = pixelSize > 0.0f && 2.0f * domain.cells.w >= 2.0f * pixelSize && tau.x < 4.0f;
+    const float2 transmittance =
+        exp(-float2(nearSun ? SunOpticalDepth(domain, density, light, grid) : tau.x, tau.y));
     const float openness = exp(-0.5f * tau.z);
     const float cosTheta = dot(viewDirection, normalize(gSun.xyz));
     const float3 sun = gSunRadiance.rgb * HikariFluidSunScattering(cosTheta, domain.optics.x, domain.optics.y,
@@ -252,7 +256,7 @@ struct DomainSpans
     float4 step;
 };
 
-DomainSpans TraceDomains(float3 origin, float3 direction)
+DomainSpans TraceDomains(float3 origin, float3 direction, float2 footprint)
 {
     DomainSpans spans;
     spans.enter = 1.0e30f.xxxx;
@@ -272,11 +276,14 @@ DomainSpans TraceDomains(float3 origin, float3 direction)
         {
             spans.enter[index] = enter;
             spans.leave[index] = interval.y;
-            // 歩は「箱の区間 / 步数」と「格の大きさの 0.8 倍」の短い方（区間で割るだけだと 60 m の場地の烟で 1 m 近い歩になり、
-            // 1〜2 m の厚さの地面の霧を 1〜2 標本しか取れず、抖动の粒がそのまま見えた）。大きな域も格の大きさで歩き、
+            // 歩は「箱の区間 / 步数」と「格の大きさ × 画質の倍率（gCamera.w）」の短い方（区間で割るだけだと 60 m の場地の烟で
+            // 1 m 近い歩になり、1〜2 m の厚さの地面の霧を 1〜2 標本しか取れず、抖动の粒がそのまま見えた）。ただし入口の画素の
+            // 大きさより短くはしない（格が画素より細かく映る遠い域は画素ごとに 1 標本で足り、歩数を減らす）。近くの細かな
+            // 域（KnightBoss の 2 cm の格）を 0.8 格で歩くと区間 / 步数の 2.5 倍の標本になり、描画が倍以上になった。
             // 動いていない砖块は飛ばす（Integrate）。
             const float span = interval.y - enter;
-            spans.step[index] = min(span / steps, domain.cells.w * 0.8f);
+            const float pixel = footprint.x < 0.0f ? 0.0f : footprint.x + footprint.y * enter;
+            spans.step[index] = min(span / steps, max(domain.cells.w * gCamera.w, pixel));
         }
     }
     return spans;
@@ -529,7 +536,7 @@ void CameraVolumeCS(uint3 id : SV_DispatchThreadID)
     const float2 uv = (float2(id.xy) + 0.5f) / float2(width, height);
     float3 origin, direction;
     ViewRay(uv, origin, direction);
-    const DomainSpans spans = TraceDomains(origin, direction);
+    const DomainSpans spans = TraceDomains(origin, direction, float2(-1.0f, 0.0f));
     const float2 bounds = SpansBounds(spans);
     MarchState march = BeginMarch();
     float previous = gCameraVolume.x;
@@ -579,7 +586,11 @@ MarchOutput MarchPS(FullscreenOutput input)
     const float depth = min(min(gSceneDepth.Load(int3(full, 0)), gSceneDepth.Load(int3(full + uint2(1, 0), 0))),
                             min(gSceneDepth.Load(int3(full + uint2(0, 1), 0)), gSceneDepth.Load(int3(full + uint2(1, 1), 0))));
     const float opaque = SceneDistance(uv, depth, origin, direction);
-    const DomainSpans spans = TraceDomains(origin, direction);
+    // 隣の画素の視線との差で画素の大きさ（直交投影は起点の差、透視は向きの差 × 距離）。
+    float3 nextOrigin, nextDirection;
+    ViewRay(uv + float2(0.0f, 1.0f / gSize.y), nextOrigin, nextDirection);
+    const float2 footprint = float2(length(nextOrigin - origin), length(nextDirection - direction));
+    const DomainSpans spans = TraceDomains(origin, direction, footprint);
     const float2 bounds = SpansBounds(spans);
     output.depth = opaque.xx;
     output.color = float4(0.0f, 0.0f, 0.0f, 1.0f);
@@ -587,10 +598,6 @@ MarchOutput MarchPS(FullscreenOutput input)
         return output;
     // 画素ごとに散らした抖动（交错勾配ノイズ）。
     const float noise = frac(52.9829189f * frac(dot(float2(halfPixel), float2(0.06711056f, 0.00583715f))));
-    // 隣の画素の視線との差で画素の大きさ（直交投影は起点の差、透視は向きの差 × 距離）。
-    float3 nextOrigin, nextDirection;
-    ViewRay(uv + float2(0.0f, 1.0f / gSize.y), nextOrigin, nextDirection);
-    const float2 footprint = float2(length(nextOrigin - origin), length(nextDirection - direction));
     // 歩の長さは域ごとの箱の区間全体で決め、物の手前では止めるだけ（止める所で割ると物の輪郭が烟に浮き出る）。
     MarchState march = BeginMarch();
     // 抖动は画素に固定する（フレームごとに回すと粒が毎フレーム入れ替わり、烟全体がざらついて揺れた。時間方向の履歴で

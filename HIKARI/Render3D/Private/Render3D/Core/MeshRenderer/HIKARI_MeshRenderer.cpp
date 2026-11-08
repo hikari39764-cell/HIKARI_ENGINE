@@ -64,14 +64,19 @@ FluidMetric gFluidMetrics[] = {
      "Substeps the first fluid domain has completed since it was rebuilt."},
     {"fluid.bytes", "bytes", METRIC::MetricCategory::Memory, "GPU memory of all fluid domains."},
     {"fluid.lodDomains", "count", METRIC::MetricCategory::Count,
-     "Fluid smoke domains solved with longer substeps (simulation LOD: far or outside the view)."},
+     "Fluid smoke domains solved with longer substeps (simulation LOD: far, outside the view or over the budget)."},
+    {"fluid.frozenDomains", "count", METRIC::MetricCategory::Count,
+     "Fluid smoke domains not solved over the solve budget (drawn with their last smoke)."},
 };
 
 void PublishFluidMetrics(const RENDER3D::FLUID::FluidVolumePassStats& stats, uint64_t frameIndex) {
-    const double values[] = {static_cast<double>(stats.domains), static_cast<double>(stats.stepsThisFrame),
+    const double values[] = {static_cast<double>(stats.domains),
+                             static_cast<double>(stats.stepsThisFrame),
                              stats.perDomain.empty() ? 0.0
                                                      : static_cast<double>(stats.perDomain.front().completedSteps),
-                             static_cast<double>(stats.bytes), static_cast<double>(stats.lodDomains)};
+                             static_cast<double>(stats.bytes),
+                             static_cast<double>(stats.lodDomains),
+                             static_cast<double>(stats.frozenDomains)};
     for (size_t index = 0; index < std::size(gFluidMetrics); ++index) {
         FluidMetric& metric = gFluidMetrics[index];
         if (metric.handle == METRIC::kInvalidMetric)
