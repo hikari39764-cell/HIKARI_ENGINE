@@ -1,5 +1,6 @@
 #include "Render3D/GpuDriven/HIKARI_GpuSceneRegistry.h"
 #include "Render3D/GpuDriven/HIKARI_GpuScenePoseBuilder.h"
+#include "RenderCore/Resources/HIKARI_RenderResourceSystem.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuData.h"
 
@@ -15,6 +16,7 @@
 #include <cstdlib>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
@@ -518,10 +520,11 @@ void GpuSceneRegistry::SyncForwardFromSceneCache(const GpuSceneRegistrySyncInput
         // 診断（環境変数 HIKARI_GPUSCENE_TRACE）：作り直しの理由と、面の数・版の変わり方を記録する。
         static const bool trace = std::getenv("HIKARI_GPUSCENE_TRACE") != nullptr;
         if (trace)
-            std::fprintf(stderr, "[GpuScene] rebuild reason=%d surfaces=%u->%u layout=%llu->%llu routing=%llu->%llu\n",
-                         static_cast<int>(reason), sourceSurfaceCount_, surfaceCount,
-                         static_cast<unsigned long long>(layoutVersion_), static_cast<unsigned long long>(layoutVersion),
-                         static_cast<unsigned long long>(routingVersion_), static_cast<unsigned long long>(routingVersion));
+            std::fprintf(
+                stderr, "[GpuScene] rebuild reason=%d surfaces=%u->%u layout=%llu->%llu routing=%llu->%llu\n",
+                static_cast<int>(reason), sourceSurfaceCount_, surfaceCount,
+                static_cast<unsigned long long>(layoutVersion_), static_cast<unsigned long long>(layoutVersion),
+                static_cast<unsigned long long>(routingVersion_), static_cast<unsigned long long>(routingVersion));
         // 経路だけの変化（材質の差し替え・表示の切り替えなど）は面の並びが同じなので、変わっていない面の記録を使い回す
         // （全部の面の資源を解決し直すと面の数に比例して数十〜百 ms かかる）。
         RebuildForwardFromSceneCache(input, reason == GpuSceneSyncMode::RebuildRouting);
@@ -821,6 +824,25 @@ void GpuSceneRegistry::RebuildForwardFromSceneCache(const GpuSceneRegistrySyncIn
     sourceSurfaceCount_ = NUMERIC::SaturateToUint32(surfaces.size());
     SuppressCpuForwardViews(input);
     RebuildForwardSceneSource();
+    ReleaseUnusedOverrideMaterialResources();
+}
+
+void GpuSceneRegistry::ReleaseUnusedOverrideMaterialResources() {
+    std::unordered_set<uint64_t> live{};
+    std::vector<MaterialResourceHandle> current{};
+    for (const GpuSceneSurfaceRecord& record : surfaceRecords_) {
+        const MaterialResourceHandle material = record.key.resources.material;
+        if (record.materialOverride != nullptr && material &&
+            live.insert(PackResourceHandle(material.index, material.generation)).second) {
+            current.push_back(material);
+        }
+    }
+    for (const MaterialResourceHandle material : overrideMaterialResources_) {
+        if (!live.contains(PackResourceHandle(material.index, material.generation))) {
+            (void)GetRenderResourcePool().Release(material);
+        }
+    }
+    overrideMaterialResources_ = std::move(current);
 }
 
 void GpuSceneRegistry::SuppressCpuForwardViews(const GpuSceneRegistrySyncInput& input) {
@@ -830,7 +852,9 @@ void GpuSceneRegistry::SuppressCpuForwardViews(const GpuSceneRegistrySyncInput& 
 
 namespace {
 // 診断用：書き換わった面の数（モデルの元のパスごと）。
-struct DirtyCount { uint64_t surfaces = 0, staticShadow = 0; };
+struct DirtyCount {
+    uint64_t surfaces = 0, staticShadow = 0;
+};
 std::unordered_map<std::string, DirtyCount>& DirtyCounts() {
     static std::unordered_map<std::string, DirtyCount> counts;
     return counts;
@@ -873,11 +897,12 @@ bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistryS
         static uint64_t calls = 0;
         if (++calls % 240u == 0u) {
             std::vector<std::pair<std::string, DirtyCount>> sorted(DirtyCounts().begin(), DirtyCounts().end());
-            std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) { return a.second.surfaces > b.second.surfaces; });
+            std::sort(sorted.begin(), sorted.end(),
+                      [](const auto& a, const auto& b) { return a.second.surfaces > b.second.surfaces; });
             std::fprintf(stderr, "[GpuScene] dirty top (240 calls):");
             for (size_t i = 0; i < sorted.size() && i < 10u; ++i)
-                std::fprintf(stderr, " %s=%.1f(static %.1f)", sorted[i].first.c_str(), sorted[i].second.surfaces / 240.0,
-                             sorted[i].second.staticShadow / 240.0);
+                std::fprintf(stderr, " %s=%.1f(static %.1f)", sorted[i].first.c_str(),
+                             sorted[i].second.surfaces / 240.0, sorted[i].second.staticShadow / 240.0);
             std::fprintf(stderr, "\n");
             DirtyCounts().clear();
         }
@@ -968,7 +993,9 @@ bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistryS
         const bool oldShadow = IsGpuSceneStaticShadowCasterRecord(oldRecord);
         const bool newShadow = IsGpuSceneStaticShadowCasterRecord(newRecord);
         if (traceDirty) {
-            auto& count = DirtyCounts()[surfaces[surfaceIndex].model != nullptr ? surfaces[surfaceIndex].model->sourcePath : std::string("?")];
+            auto& count =
+                DirtyCounts()[surfaces[surfaceIndex].model != nullptr ? surfaces[surfaceIndex].model->sourcePath
+                                                                      : std::string("?")];
             ++count.surfaces;
             count.staticShadow += newShadow ? 1u : 0u;
         }

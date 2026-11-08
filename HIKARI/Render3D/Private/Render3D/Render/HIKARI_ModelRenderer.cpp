@@ -8,10 +8,10 @@
 #include <utility>
 
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
+#include "HIKARI/Project/SceneCaptureTypes.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "RenderCore/Targets/HIKARI_SurfaceTextureTargetRing.h"
 #include "Render3D/Render/HIKARI_SceneCaptureStylePass.h"
-#include "HIKARI/Project/UiCanvasTypes.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
@@ -250,7 +250,7 @@ bool RenderSecondarySceneCaptureTarget(const GFX::Context& graphics, const RENDE
     }
 
     // 公開用の一枚（描画先の環とは別の slot 番号で登録する）。前のフレームの絵を残せるかを決めるため、描く前に用意する。
-    constexpr uint32_t displaySlotBase = kGameProjectSceneCaptureMaximumActiveCount + kGameProjectUiCanvasMaximumCount;
+    constexpr uint32_t displaySlotBase = kGameProjectSceneCaptureMaximumActiveCount;
     if (!state.display.Ensure(graphics, worldIdentity, displaySlotBase + captureSlot, width, height,
                               kSecondaryCaptureFormat, false)) {
         return false;

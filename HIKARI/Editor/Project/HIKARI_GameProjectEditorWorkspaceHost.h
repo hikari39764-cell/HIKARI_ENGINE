@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 
+#include "Editor/Project/HIKARI_ModuleEditorExtensions.h"
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceRegistry.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 
@@ -40,6 +41,9 @@ public:
     void Shutdown() noexcept;
 
     bool IsAvailable() const noexcept;
+    ModuleEditorExtensions& Extensions() noexcept { return extensions_; }
+    // 場景の作業区でモジュールの窓を描く。
+    void DrawModulePanels(AssetDatabase&, AssetRegistry&);
     GameProjectEditorWorkspaceRegistry& Registry() noexcept;
     const GameProjectEditorWorkspaceRegistry& Registry() const noexcept;
 
@@ -50,7 +54,8 @@ private:
     GameProjectEditorWorkspaceRegistry registry_{};
     std::unique_ptr<GameProjectEditorDocumentService> documents_{};
     EditorOperationRegistry* operationRegistry_ = nullptr;
-    uint64_t operationOwnerToken_ = 0u;
+    std::vector<uint64_t> operationOwnerTokens_{};
+    ModuleEditorExtensions extensions_{};
     std::unique_ptr<GameProjectEditorWorkspaceUi> ui_{};
     std::string moduleFailureMessage_{};
     bool closePromptWasPending_ = false;

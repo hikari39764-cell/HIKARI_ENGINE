@@ -56,7 +56,6 @@ public:
 RuntimeFeatureCatalog CreateBuiltInRuntimeFeatureCatalog() {
     RuntimeFeatureCatalog catalog;
     (void)catalog.Add(CreateRenderingRuntimeFeature());
-    (void)catalog.Add(CreateUiRuntimeFeature());
     (void)catalog.Add(CreateLightingRuntimeFeature());
     (void)catalog.Add(CreateTerrainRuntimeFeature());
     (void)catalog.Add(CreateWaterRuntimeFeature());

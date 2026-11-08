@@ -12,6 +12,7 @@
 
 #include <json.hpp>
 
+#include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Core/HIKARI_Logger.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"

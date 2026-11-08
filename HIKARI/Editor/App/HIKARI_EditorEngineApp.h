@@ -1,5 +1,9 @@
 #pragma once
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
 #include "Editor/Project/HIKARI_GameProjectEditorModuleLibrary.h"
@@ -27,11 +31,15 @@ public:
     void Shutdown() override;
 
 private:
+    bool RegisterEditorModule(GameProjectEditorModuleLibrary& module, std::string& outMessage);
+
     RUNTIME::RuntimeEngineApp runtimeApp_;
     DocumentSceneEditorController documentSceneEditorController_{};
     EditorPlaySession editorPlaySession_{};
     EditorProjectSessionController projectSession_{};
     GameProjectEditorModuleLibrary gameProjectEditorModule_{};
+    // 項目に入れた追加モジュールの編集器 DLL。依存が先の順。
+    std::vector<std::unique_ptr<GameProjectEditorModuleLibrary>> installedEditorModules_{};
     GameProjectEditorWorkspaceHost gameProjectWorkspaceHost_{};
 };
 

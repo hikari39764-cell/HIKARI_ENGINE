@@ -19,6 +19,8 @@ public:
     virtual std::string_view GetExtensionId() const noexcept = 0;
     virtual bool RegisterWorldServices(WorldServiceRegistry&) { return true; }
     virtual bool RegisterRuntimeFeatures(RuntimeFeatureCatalog&) = 0;
+    // 項目に入れたモジュールは、入れたこと自体が有効化。項目設定の一覧に書かなくても登録した Feature を有効にする。
+    virtual bool EnablesRegisteredFeatures() const noexcept { return false; }
 };
 
 class RuntimeExtensionHost {
@@ -31,16 +33,22 @@ public:
     bool RegisterRuntimeFeatures(RuntimeFeatureCatalog& catalog);
 
     size_t Size() const noexcept;
+    // 直近の登録で、拡張が有効化する Feature の ID。
+    const std::vector<std::string>& GetEnabledByExtensions() const noexcept { return enabledByExtensions_; }
+    // 直近の登録で、その拡張が登録した Feature の ID。
+    std::vector<std::string> GetRegisteredFeatures(std::string_view extensionId) const;
 
 private:
     struct Entry {
         std::unique_ptr<IRuntimeExtension> owned{};
         IRuntimeExtension* extension = nullptr;
+        std::vector<std::string> registeredFeatures{};
     };
 
     bool Contains(std::string_view extensionId) const noexcept;
 
     std::vector<Entry> extensions_{};
+    std::vector<std::string> enabledByExtensions_{};
 };
 
 } // namespace HIKARI

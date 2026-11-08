@@ -10,7 +10,6 @@
 #include "Assets/Environment/HIKARI_EnvironmentAsset.h"
 #include "Assets/Post/HIKARI_PostAsset.h"
 #include "Assets/RenderStyle/HIKARI_RenderStyleAsset.h"
-#include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
 #include "Assets/Sequence/HIKARI_SequenceAsset.h"
 #include "RenderContracts/Model/HIKARI_ModelMaterialBindingAsset.h"
@@ -84,13 +83,6 @@ bool ResolveContainedFilePath(const std::filesystem::path& root, const std::file
 
 bool CollectSourceCookDependencies(const AssetRecord& record, const std::filesystem::path& projectRoot,
                                    AssetDatabase& assetDatabase, CookPlan& plan, std::string& outMessage) {
-    if (record.type == AssetType::UiAnimation) {
-        std::filesystem::path path;
-        if (!ResolveContainedFilePath(projectRoot, record.sourcePath, path, outMessage))
-            return false;
-        UiAnimationAsset animation;
-        return LoadUiAnimationAsset(path, animation, outMessage);
-    }
     if (record.type == AssetType::PostEffect) {
         std::filesystem::path path;
         if (!ResolveContainedFilePath(projectRoot, record.sourcePath, path, outMessage))

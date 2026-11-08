@@ -31,10 +31,6 @@ void DocumentSceneEditorController::SyncDocumentHistory(DocumentSceneBase& scene
 void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& scene) {
     using EDITOR::EditorCommandId;
     commandRouter_.BeginFrame();
-    if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Ui) && uiWorkspaceController_.Animation().HasFocus()) {
-        uiWorkspaceController_.Animation().BindCommands(commandRouter_);
-        return;
-    }
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Text)) {
         textWorkspaceController_.BindDocumentCommands(commandRouter_);
         return;
@@ -125,7 +121,6 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
 
     if (!workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Scene) &&
         !workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::LookDev) &&
-        !workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Ui) &&
         !workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Text)) {
         return;
     }

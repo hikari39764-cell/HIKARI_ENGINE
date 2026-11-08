@@ -31,32 +31,44 @@ bool EditorEngineApp::Initialize() {
         HIKARI_LOG_ERROR("[GameProjectEditor] " + moduleMessage);
         gameProjectWorkspaceHost_.ReportModuleFailure(std::move(moduleMessage));
         gameProjectEditorModule_.Reset();
-        return true;
-    }
-    if (!gameProjectEditorModule_.IsLoaded()) {
-        return true;
-    }
-
-    const std::string projectRootUtf8 = TEXT::PathToUtf8(GetProjectContext().GetRoot());
-    if (projectRootUtf8.empty()) {
-        moduleMessage = "Project root is unavailable for the requested Editor "
-                        "companion.";
+    } else if (gameProjectEditorModule_.IsLoaded() && !RegisterEditorModule(gameProjectEditorModule_, moduleMessage)) {
         HIKARI_LOG_ERROR("[GameProjectEditor] " + moduleMessage);
         gameProjectWorkspaceHost_.ReportModuleFailure(std::move(moduleMessage));
         gameProjectEditorModule_.Reset();
-        return true;
     }
-    if (!gameProjectWorkspaceHost_.RegisterModule(gameProjectEditorModule_, projectRootUtf8,
-                                                  documentSceneEditorController_.Operations(), moduleMessage)) {
-        HIKARI_LOG_ERROR("[GameProjectEditor] " + moduleMessage);
-        gameProjectWorkspaceHost_.ReportModuleFailure(std::move(moduleMessage));
-        gameProjectEditorModule_.Reset();
-        return true;
+    for (InstalledModuleStatus& status : runtimeApp_.GetInstalledModules()) {
+        if (!status.runtimeLoaded || status.manifest.editorLibrary.empty()) {
+            continue;
+        }
+        auto library = std::make_unique<GameProjectEditorModuleLibrary>();
+        std::string message{};
+        if (!library->Load(status.manifest.directory / status.manifest.editorLibrary, message) ||
+            !RegisterEditorModule(*library, message)) {
+            status.error = message;
+            HIKARI_LOG_ERROR("[ProjectModules] " + status.manifest.id + " editor: " + message);
+            gameProjectWorkspaceHost_.ReportModuleFailure(std::move(message));
+            continue;
+        }
+        status.editorLoaded = true;
+        installedEditorModules_.push_back(std::move(library));
     }
-    HIKARI_LOG_INFO("[GameProjectEditor] composed module=" + std::string(gameProjectEditorModule_.GetModuleId()) +
-                    " workspaces=" + std::to_string(gameProjectEditorModule_.GetWorkspaceCount()));
     if (const auto workspace = ReadRuntimeCommandLinePath(L"--open-workspace"))
         gameProjectWorkspaceHost_.RequestWorkspace(TEXT::PathToUtf8(*workspace));
+    return true;
+}
+
+bool EditorEngineApp::RegisterEditorModule(GameProjectEditorModuleLibrary& module, std::string& outMessage) {
+    const std::string projectRootUtf8 = TEXT::PathToUtf8(GetProjectContext().GetRoot());
+    if (projectRootUtf8.empty()) {
+        outMessage = "Project root is unavailable for the requested Editor companion.";
+        return false;
+    }
+    if (!gameProjectWorkspaceHost_.RegisterModule(module, projectRootUtf8, documentSceneEditorController_.Operations(),
+                                                  outMessage)) {
+        return false;
+    }
+    HIKARI_LOG_INFO("[GameProjectEditor] composed module=" + std::string(module.GetModuleId()) +
+                    " workspaces=" + std::to_string(module.GetWorkspaceCount()));
     return true;
 }
 
@@ -100,6 +112,9 @@ bool EditorEngineApp::ShouldExitHost() const {
 
 void EditorEngineApp::Shutdown() {
     gameProjectWorkspaceHost_.Shutdown();
+    while (!installedEditorModules_.empty()) {
+        installedEditorModules_.pop_back();
+    }
     gameProjectEditorModule_.Reset();
     editorPlaySession_.Shutdown(dynamic_cast<DocumentSceneBase*>(runtimeApp_.GetCurrentScene()));
     // 场景は runtimeApp_ が壊すので、その前に编辑器の文書の会話を閉じる（镜头演出の预览が场景を使う）。

@@ -13,33 +13,40 @@ bool ContainsObject(const std::vector<SceneObjectId>& ids, SceneObjectId id) {
     return std::find(ids.begin(), ids.end(), id) != ids.end();
 }
 
-// 同じ物が別の種類（追加と変更など）に現れたら順序で結果が変わるので、部分投影を諦めて false を返す。
-bool MergeObjectChanges(SceneObjectChanges& into, const SceneObjectChanges& next) {
-    const auto append = [](std::vector<SceneObjectId>& target, const std::vector<SceneObjectId>& source,
-                           const std::vector<SceneObjectId>& otherA, const std::vector<SceneObjectId>& otherB) {
+// 触った物体を種類ごとに足し合わせる。同じ物体が別の種類（追加と変更など）に現れても、世界へ反映する側
+// （SceneRuntimeBuilder::ClassifyObjectChanges）が document と世界の今の状態で分け直すので、ここでは並べるだけ。
+void MergeObjectChanges(SceneObjectChanges& into, const SceneObjectChanges& next) {
+    const auto append = [](std::vector<SceneObjectId>& target, const std::vector<SceneObjectId>& source) {
         for (SceneObjectId id : source) {
-            if (ContainsObject(otherA, id) || ContainsObject(otherB, id))
-                return false;
             if (!ContainsObject(target, id))
                 target.push_back(id);
         }
-        return true;
     };
-    return append(into.added, next.added, into.removed, into.changed) &&
-           append(into.removed, next.removed, into.added, into.changed) &&
-           append(into.changed, next.changed, into.added, into.removed);
+    append(into.added, next.added);
+    append(into.removed, next.removed);
+    append(into.changed, next.changed);
+}
+
+// 物体を変えない記録（RuntimeWorld の影響を持たない）は空の差分。物体を変えるのに差分を出さない記録だけが nullopt。
+std::optional<SceneObjectChanges> StepObjectChanges(const IEditorDocumentCommand& command, bool undo) {
+    std::optional<SceneObjectChanges> changes = command.GetObjectChanges(undo);
+    if (!changes && !HasEditorDocumentImpact(command.GetImpact(), EditorDocumentImpact::RuntimeWorld))
+        changes.emplace();
+    return changes;
 }
 
 // 一組の撤销・重做の結果を一歩ずつ合わせる。
 void AppendHistoryStep(EditorHistoryResult& total, const IEditorDocumentCommand& command, bool undo) {
-    std::optional<SceneObjectChanges> changes = command.GetObjectChanges(undo);
+    std::optional<SceneObjectChanges> changes = StepObjectChanges(command, undo);
     if (!total.changed) {
         total = {command.GetImpact(), command.GetLabel(), true, std::move(changes)};
         return;
     }
     total.impact = total.impact | command.GetImpact();
-    if (!total.objectChanges || !changes || !MergeObjectChanges(*total.objectChanges, *changes))
+    if (!total.objectChanges || !changes)
         total.objectChanges.reset();
+    else
+        MergeObjectChanges(*total.objectChanges, *changes);
 }
 } // namespace
 // 履歴をリセットする

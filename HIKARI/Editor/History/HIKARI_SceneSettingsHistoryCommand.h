@@ -19,4 +19,9 @@ std::unique_ptr<IEditorDocumentCommand> MakeLightingBakeSettingsHistoryCommand(s
                                                                                SceneLightingBakeSettings before,
                                                                                SceneLightingBakeSettings after);
 
+// シーン文書の世界分区（分けるか、格子の大きさ）の編集。世界には影響せず、保存の形だけが変わる。
+std::unique_ptr<IEditorDocumentCommand> MakePartitionSettingsHistoryCommand(std::string label,
+                                                                            ScenePartitionSettings before,
+                                                                            ScenePartitionSettings after);
+
 } // namespace HIKARI::EDITOR

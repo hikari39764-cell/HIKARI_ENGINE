@@ -14,7 +14,6 @@
 #include "Assets/Post/HIKARI_PostAssetStore.h"
 #include "Assets/RenderStyle/HIKARI_RenderStyleAssetStore.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
-#include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Assets/Sprite/HIKARI_SpriteAssetStore.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialStore.h"
 #include "Assets/Models/HIKARI_ModelManager.h"
@@ -44,7 +43,6 @@ public:
     ENVIRONMENT::EnvironmentAssetStore& EnvironmentAssets() noexcept { return environmentAssets_; }
     RENDERSTYLE::RenderStyleAssetStore& RenderStyleAssets() noexcept { return renderStyleAssets_; }
     TextAssetStore& TextAssets() noexcept { return textAssets_; }
-    UiAnimationAssetStore& UiAnimations() noexcept { return uiAnimations_; }
     SPRITE::SpriteAssetStore& SpriteAssets() noexcept { return spriteAssets_; }
     SPRITE::SpriteMaterialStore& SpriteMaterials() noexcept { return spriteMaterials_; }
     ModelManager& Models() noexcept { return models_; }
@@ -83,7 +81,6 @@ private:
     ENVIRONMENT::EnvironmentAssetStore environmentAssets_;
     RENDERSTYLE::RenderStyleAssetStore renderStyleAssets_;
     TextAssetStore textAssets_;
-    UiAnimationAssetStore uiAnimations_;
     SPRITE::SpriteAssetStore spriteAssets_{};
     SPRITE::SpriteMaterialStore spriteMaterials_{};
     ModelManager models_{};

@@ -15,6 +15,18 @@
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
 namespace HIKARI {
+namespace {
+// 分区場景は何を書いたかを一行残す（保存が変わった格子だけに留まっているかを後から確かめられるように）。
+void LogPartitionedSave(const SceneDocument& document, const SceneSaveReport& report) {
+    if (!document.partition.enabled) {
+        return;
+    }
+    HIKARI_LOG_INFO("[SceneAsset] saved partitioned scene: cells written=" +
+                    std::to_string(report.writtenCells.size()) + " removed=" + std::to_string(report.removedCellFiles) +
+                    " main=" + (report.mainWritten ? "written" : "unchanged"));
+}
+} // namespace
+
 bool DocumentSceneBase::OpenSceneAssetNow(const AssetGuid& sceneGuid) {
     if (!IsValidAssetGuid(sceneGuid.value)) {
         return false;
@@ -47,14 +59,16 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
 
     const std::filesystem::path scenePath = state_->assets.Database().ResolveSourcePath(*record);
     SceneDocument loaded{};
+    SceneCellFileState loadedCells{};
     const std::filesystem::path contentSource = contentPath.empty() ? scenePath : contentPath;
-    if (!state_->identity.serializer.LoadFromFile(contentSource.generic_string(), loaded)) {
+    if (!state_->identity.serializer.LoadFromFile(contentSource.generic_string(), loaded, &loadedCells)) {
         state_->identity.loadError = "Scene could not be read: " + contentSource.generic_string();
         HIKARI_LOG_ERROR(state_->identity.loadError);
         return false;
     }
 
     SceneDocument previousDocument = state_->identity.document;
+    SceneCellFileState previousCells = state_->identity.cells;
     const uint64_t previousDocumentRevision = state_->identity.documentRevision;
     std::string previousScenePath = state_->identity.scenePath;
     std::string previousSceneId = state_->identity.sceneId;
@@ -64,6 +78,7 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
         EndEditorCameraPreview();
     }
     state_->identity.document = std::move(loaded);
+    state_->identity.cells = std::move(loadedCells);
     ++state_->identity.documentRevision;
     state_->identity.scenePath = scenePath.generic_string();
     state_->identity.sceneId = sceneGuid.value;
@@ -84,6 +99,7 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
                                       : state_->identity.loadError;
 
     state_->identity.document = std::move(previousDocument);
+    state_->identity.cells = std::move(previousCells);
     state_->identity.documentRevision = previousDocumentRevision;
     state_->identity.scenePath = std::move(previousScenePath);
     state_->identity.sceneId = std::move(previousSceneId);
@@ -185,9 +201,12 @@ bool DocumentSceneBase::SaveCurrentSceneDocument() {
         return false;
     }
 
-    const bool saved = state_->identity.serializer.SaveToFile(state_->identity.scenePath, state_->identity.document);
+    SceneSaveReport report{};
+    const bool saved = state_->identity.serializer.SaveToFile(state_->identity.scenePath, state_->identity.document,
+                                                              &state_->identity.cells, &report);
     if (saved) {
         state_->identity.documentDirty = false;
+        LogPartitionedSave(state_->identity.document, report);
     }
     return saved;
 }
@@ -213,9 +232,12 @@ bool DocumentSceneBase::SaveCurrentSceneDocumentAs(const AssetGuid& sceneGuid) {
     }
 
     const std::filesystem::path absolutePath = state_->assets.Database().ResolveSourcePath(*record);
-    if (!state_->identity.serializer.SaveToFile(absolutePath.generic_string(), state_->identity.document)) {
+    SceneSaveReport report{};
+    if (!state_->identity.serializer.SaveToFile(absolutePath.generic_string(), state_->identity.document,
+                                                &state_->identity.cells, &report)) {
         return false;
     }
+    LogPartitionedSave(state_->identity.document, report);
 
     state_->identity.scenePath = absolutePath.generic_string();
     state_->identity.sceneId = sceneGuid.value;

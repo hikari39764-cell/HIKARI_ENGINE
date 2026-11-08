@@ -1,7 +1,10 @@
 #include "Editor/Panels/HIKARI_ProjectFeaturesPanel.h"
 
 #include "Core/Text/HIKARI_Localization.h"
+#include "Core/Text/HIKARI_UtfPath.h"
+#include "Project/HIKARI_ProjectModules.h"
 #include <algorithm>
+#include <span>
 #include <string_view>
 #include <utility>
 
@@ -243,6 +246,26 @@ void ProjectFeaturesPanel::Draw(DocumentSceneBase& scene) {
     if (!statusMessage_.empty()) {
         ImGui::TextColored(statusIsError_ ? ImVec4(1.0f, 0.4f, 0.35f, 1.0f) : ImVec4(0.45f, 0.9f, 0.55f, 1.0f), "%s",
                            statusMessage_.c_str());
+    }
+
+    if (const std::span<const InstalledModuleStatus> modules = scene.GetInstalledModules(); !modules.empty()) {
+        ImGui::SeparatorText(TEXT::Localize("ui.projectFeatures.modules").c_str());
+        for (const InstalledModuleStatus& module : modules) {
+            const char* state = TEXT::Localize(!module.runtimeLoaded ? "ui.projectFeatures.moduleFailed"
+                                               : module.editorLoaded ? "ui.projectFeatures.moduleLoadedWithEditor"
+                                                                     : "ui.projectFeatures.moduleLoaded")
+                                    .c_str();
+            ImGui::BulletText("%s %s - %s", module.manifest.id.c_str(), module.manifest.version.c_str(), state);
+            ImGui::Indent();
+            ImGui::TextDisabled("%s", TEXT::PathToUtf8(module.manifest.directory).c_str());
+            for (const std::string& feature : scene.GetRuntimeExtensionFeatures(module.manifest.id)) {
+                ImGui::TextDisabled("%s", feature.c_str());
+            }
+            if (!module.error.empty()) {
+                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.35f, 1.0f), "%s", module.error.c_str());
+            }
+            ImGui::Unindent();
+        }
     }
 }
 

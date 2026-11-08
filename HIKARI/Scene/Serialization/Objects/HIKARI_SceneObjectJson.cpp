@@ -98,6 +98,8 @@ void SerializeSceneObjectJson(const SceneObjectData& object, nlohmann::json& out
         out["editorLocked"] = object.editorLocked;
         if (!object.editorFolder.empty())
             out["editorFolder"] = object.editorFolder;
+        if (object.alwaysLoaded)
+            out["alwaysLoaded"] = true;
         out["parent"] = object.parent.has_value() ? nlohmann::json(object.parent->value) : nlohmann::json(nullptr);
     } else {
         out["parent"] = nullptr;
@@ -123,6 +125,7 @@ bool DeserializeSceneObjectJson(const nlohmann::json& node, SceneObjectData& out
     if (scope == SceneObjectJsonScope::SceneDocument) {
         outObject.editorLocked = node.value("editorLocked", false);
         outObject.editorFolder = node.value("editorFolder", std::string{});
+        outObject.alwaysLoaded = node.value("alwaysLoaded", false);
         if (node.contains("parent") && node["parent"].is_number_unsigned()) {
             outObject.parent = SceneObjectId{node["parent"].get<uint64_t>()};
         }

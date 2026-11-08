@@ -33,9 +33,10 @@ struct ReflectionProbeComponentSettings {
     ReflectionProbeInfluenceShape influenceShape = ReflectionProbeInfluenceShape::Sphere;
     MATH::Vec3 influenceBoxOffset{0.0f, 0.0f, 0.0f};
     MATH::Vec3 influenceBoxSize{8.0f, 4.0f, 8.0f};
-    ReflectionProbeProjectionShape projectionShape = ReflectionProbeProjectionShape::Infinite;
+    // 既定は影響範囲へ連動した投影（半径 8 の球 → 一辺 16 の箱）。NormalizeReflectionProbeSettings の結果と同じにしておく。
+    ReflectionProbeProjectionShape projectionShape = ReflectionProbeProjectionShape::Box;
     MATH::Vec3 projectionBoxOffset{0.0f, 0.0f, 0.0f};
-    MATH::Vec3 projectionBoxSize{8.0f, 4.0f, 8.0f};
+    MATH::Vec3 projectionBoxSize{16.0f, 16.0f, 16.0f};
     bool projectionFollowsInfluence = true;
     float blendDistance = 1.0f;
     int priority = 0;

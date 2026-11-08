@@ -2,7 +2,6 @@
 
 #include "HIKARI/Project/ComponentViews.h"
 #include "HIKARI/Project/PrefabView.h"
-#include "HIKARI/Project/UiCanvasView.h"
 
 #include <cstdint>
 #include <span>
@@ -95,7 +94,6 @@ private:
 
     GameProjectObjectHandle handle_{};
 };
-
 
 // WorldView はワールド全体の操作窓口を表す。
 // オブジェクトの生成・削除、変換、親子関係、変数・イベントの管理、
@@ -201,7 +199,6 @@ public:
     HIKARI_GAME_PROJECT_SDK_API VfxView GetVfx() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API UiView GetUi() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API DisplaySettingsView GetDisplaySettings() const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API UiCanvasView GetUiCanvases() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API SequenceView GetSequence() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API PrefabView GetPrefabs() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API SceneCaptureView GetSceneCapture() const noexcept;

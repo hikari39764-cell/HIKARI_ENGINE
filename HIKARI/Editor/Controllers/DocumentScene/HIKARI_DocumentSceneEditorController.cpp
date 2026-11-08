@@ -452,7 +452,7 @@ void DocumentSceneEditorController::RestoreSceneViewCameras(DocumentSceneBase& s
 }
 
 bool DocumentSceneEditorController::HasKnownUnsavedProjectChanges(const DocumentSceneBase& scene) const noexcept {
-    return authoringSessions_.HasUnsavedDocuments() || uiWorkspaceController_.Animation().Document().IsDirty() ||
+    return authoringSessions_.HasUnsavedDocuments() ||
            (projectWorkspaceHost_ != nullptr && projectWorkspaceHost_->HasUnsavedChanges()) ||
            textWorkspaceController_.Document().IsDirty() || gameplayCameraWorkspaceController_.Document().IsDirty() ||
            context_.sceneDirty || scene.HasUnsavedSceneChanges() ||
@@ -547,7 +547,8 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
                        scene.GetEnvironmentLightingEnabled(), resetDockingLayoutRequested, commandRouter_,
                        projectSession,
                        playSession.GetMode() == EDITOR::EditorPlayMode::None && !playSession.IsTransitioning(),
-                       HasKnownUnsavedProjectChanges(scene), exportJob_, operationRegistry_);
+                       HasKnownUnsavedProjectChanges(scene), exportJob_, operationRegistry_,
+                       projectWorkspaceHost_ ? &projectWorkspaceHost_->Extensions() : nullptr);
     projectSession.DrawConfirmationDialog();
 
     if (projectWorkspaceHost_) {
@@ -592,8 +593,7 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
         const auto isSceneOwnedWorkspace = [](EDITOR::EditorWorkspaceId id) {
             return id == EDITOR::EditorWorkspaceId::Scene || id == EDITOR::EditorWorkspaceId::LookDev ||
                    id == EDITOR::EditorWorkspaceId::Cinematics || id == EDITOR::EditorWorkspaceId::GameplayCamera ||
-                   id == EDITOR::EditorWorkspaceId::Ui || id == EDITOR::EditorWorkspaceId::Text ||
-                   id == EDITOR::EditorWorkspaceId::Count;
+                   id == EDITOR::EditorWorkspaceId::Text || id == EDITOR::EditorWorkspaceId::Count;
         };
         if (isSceneOwnedWorkspace(activation->previous) && !isSceneOwnedWorkspace(activation->current)) {
             SnapshotSceneViewCameras(scene);
@@ -605,8 +605,6 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
             VfxWorkspace().Deactivate(workspaceHost_.GetVfxPreviewView().renderViewId);
         }
         if (activation->previous != activation->current) {
-            if (activation->previous == EDITOR::EditorWorkspaceId::Ui)
-                uiWorkspaceController_.Deactivate(scene);
             if (activation->previous == EDITOR::EditorWorkspaceId::Text)
                 textWorkspaceController_.Deactivate();
             playSession.ReleaseEmbeddedInput();
@@ -614,8 +612,6 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
         }
         GameplayCameraWorkspace().ApplyActivation(scene, *activation, workspaceHost_);
         textWorkspaceController_.ApplyActivation(scene, *activation);
-        if (activation->current == EDITOR::EditorWorkspaceId::Ui && activation->uiAnimationAssetGuid)
-            uiWorkspaceController_.Animation().Open(scene.GetAssetDatabase(), *activation->uiAnimationAssetGuid);
         CinematicsWorkspace().ApplyWorkspaceActivation(scene, *activation, context_, workspaceHost_);
         ModelCollisionWorkspace().ApplyWorkspaceActivation(scene, *activation, workspaceHost_);
         ModelMaterialWorkspace().ApplyWorkspaceActivation(scene, *activation, workspaceHost_);
@@ -651,6 +647,9 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
         CommitSceneObjectAuthoringHistory(scene, std::move(*history));
     EDITOR::EditorToolContext toolContext{scene, context_, operationRegistry_};
     toolHost_.Draw(toolContext);
+    if (projectWorkspaceHost_ && workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Scene)) {
+        projectWorkspaceHost_->DrawModulePanels(scene.GetAssetDatabase(), scene.GetAssetRegistry());
+    }
     if (context_.windows.runtime.showFrameStats) {
         // 主菜单の行の右端（空いている所）に出し、窓の見出しやボタンを隠さない。
         const ImGuiViewport* viewport = ImGui::GetMainViewport();

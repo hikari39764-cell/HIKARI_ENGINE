@@ -24,6 +24,8 @@ public:
     GameProjectModuleLibrary& operator=(const GameProjectModuleLibrary&) = delete;
 
     bool LoadForLaunch(bool allowMissing, std::string& outMessage);
+    // 項目に入れた追加モジュールとして読む。ゲームセッションは持たず、登録した Feature は常に有効になる。
+    bool LoadInstalledModule(const std::filesystem::path& modulePath, std::string& outMessage);
 
     bool IsLoaded() const noexcept;
     std::string_view GetModuleId() const noexcept;
@@ -48,6 +50,7 @@ private:
     std::filesystem::path modulePath_{};
     std::string moduleId_{};
     std::unique_ptr<IRuntimeExtension> extension_{};
+    bool installedModule_ = false;
 };
 
 } // namespace HIKARI::RUNTIME

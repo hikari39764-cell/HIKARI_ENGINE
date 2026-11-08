@@ -2,8 +2,10 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorViewportPresentation.h"
 
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
+#include "Core/HIKARI_TimeService.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Gizmos/HIKARI_EditorTransformGizmoShortcuts.h"
+#include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
 #include "Editor/History/HIKARI_SceneComponentPropertiesHistoryCommand.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
@@ -399,6 +401,13 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
     // 布景の手柄（主光・灯の範囲や角度）は選択より先にマウスを取る。
     if (lookDevActive && !playSession.IsRunning() &&
         UpdateLookDevHandles(scene, sceneViewportRect, viewportImageHovered, gameViewFocused, gizmoCapture)) {
+        gizmoCapture = true;
+    }
+    // モジュールの視口工具が有効な間は、選択と変換の手柄より先にマウスを取る。
+    if (projectWorkspaceHost_ != nullptr && !playSession.IsRunning() &&
+        projectWorkspaceHost_->Extensions().UpdateViewport(scene.GetCamera(), sceneViewportRect, viewportImageHovered,
+                                                           TIME::GetFrameContext().unscaledDt,
+                                                           *ImGui::GetWindowDrawList())) {
         gizmoCapture = true;
     }
     const bool authoringInteractionEnabled = !playSession.IsRunning() && !lookDevPlacing;

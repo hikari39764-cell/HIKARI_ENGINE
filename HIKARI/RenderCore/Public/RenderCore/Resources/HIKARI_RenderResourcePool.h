@@ -149,12 +149,14 @@ private:
 
     void RemoveSourceIndex(const RenderResourceRecord& record);
     void IndexSourceKey(const RenderResourceRecord& record);
-    void RefreshStats();
+    void RefreshStats() const;
 
     std::vector<Slot> slots_{};
     std::vector<uint32_t> freeSlots_{};
     std::unordered_map<std::string, RenderResourceHandle> sourceIndex_{};
-    RenderResourcePoolStats stats_{};
+    // 読む時に数える。登録のたびに全槽を数えると、大量の登録が槽の数の二乗で遅くなる。
+    mutable RenderResourcePoolStats stats_{};
+    mutable bool statsDirty_ = false;
 };
 
 } // namespace HIKARI::RENDER3D

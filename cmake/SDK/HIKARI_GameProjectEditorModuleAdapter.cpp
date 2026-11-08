@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -40,7 +41,31 @@ struct GameProjectEditorModuleInstance {
     std::unique_ptr<IGameProjectEditorModule> module{};
     std::string moduleId{};
     std::vector<std::unique_ptr<IEditorWorkspace>> workspaces{};
+    std::vector<std::unique_ptr<IEditorViewportTool>> viewportTools{};
+    std::vector<std::unique_ptr<IEditorPanel>> panels{};
 };
+
+// 工具と窓の id と名前を確かめ、重なりを断る。
+template <class Items>
+bool AreEditorExtensionsValid(const Items& items) {
+    std::unordered_set<std::string> ids{};
+    for (const auto& item : items) {
+        if (!item) {
+            return false;
+        }
+        const char* id = nullptr;
+        if constexpr (std::is_same_v<typename Items::value_type, std::unique_ptr<IEditorPanel>>) {
+            id = item->GetPanelId();
+        } else {
+            id = item->GetToolId();
+        }
+        const char* name = item->GetDisplayName();
+        if (!IsValidIdentifier(id) || name == nullptr || name[0] == '\0' || !ids.emplace(id).second) {
+            return false;
+        }
+    }
+    return true;
+}
 
 void* CreateInstance() noexcept {
     try {
@@ -71,6 +96,11 @@ void* CreateInstance() noexcept {
                 return nullptr;
             }
         }
+        instance->viewportTools = instance->module->CreateViewportTools();
+        instance->panels = instance->module->CreateEditorPanels();
+        if (!AreEditorExtensionsValid(instance->viewportTools) || !AreEditorExtensionsValid(instance->panels)) {
+            return nullptr;
+        }
         return instance.release();
     } catch (...) {
         return nullptr;
@@ -97,6 +127,26 @@ IEditorWorkspace* GetWorkspace(void* instance, size_t index) noexcept {
     return module->workspaces[index].get();
 }
 
+size_t GetViewportToolCount(void* instance) noexcept {
+    const auto* module = static_cast<GameProjectEditorModuleInstance*>(instance);
+    return module != nullptr ? module->viewportTools.size() : 0u;
+}
+
+IEditorViewportTool* GetViewportTool(void* instance, size_t index) noexcept {
+    auto* module = static_cast<GameProjectEditorModuleInstance*>(instance);
+    return module != nullptr && index < module->viewportTools.size() ? module->viewportTools[index].get() : nullptr;
+}
+
+size_t GetPanelCount(void* instance) noexcept {
+    const auto* module = static_cast<GameProjectEditorModuleInstance*>(instance);
+    return module != nullptr ? module->panels.size() : 0u;
+}
+
+IEditorPanel* GetPanel(void* instance, size_t index) noexcept {
+    auto* module = static_cast<GameProjectEditorModuleInstance*>(instance);
+    return module != nullptr && index < module->panels.size() ? module->panels[index].get() : nullptr;
+}
+
 bool RegisterEditorOperations(void* instance, IEditorOperationRegistrar* registrar) noexcept {
     auto* module = static_cast<GameProjectEditorModuleInstance*>(instance);
     if (module == nullptr || !module->module || registrar == nullptr) {
@@ -119,6 +169,10 @@ const GameProjectEditorModuleApi kModuleApi{
     &GetWorkspaceCount,
     &GetWorkspace,
     &RegisterEditorOperations,
+    &GetViewportToolCount,
+    &GetViewportTool,
+    &GetPanelCount,
+    &GetPanel,
 };
 
 } // namespace

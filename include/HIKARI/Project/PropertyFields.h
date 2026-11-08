@@ -53,7 +53,6 @@ enum class GameProjectAssetKind : uint8_t {
     PostProfile,
     Font,
     TextStyle,
-    UiAnimation,
     Environment,
     Weather,
 };

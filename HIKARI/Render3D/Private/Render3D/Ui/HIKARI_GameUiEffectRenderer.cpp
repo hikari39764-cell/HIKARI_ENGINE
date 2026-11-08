@@ -23,9 +23,6 @@
 #include "Gfx/HIKARI_VideoMemory.h"
 #include "RenderCore/Texture/HIKARI_DxTexture.h"
 #include "Render3D/Ui/HIKARI_GameUiTextLayout.h"
-#include "RenderCore/Targets/HIKARI_SurfaceTextureTargetRing.h"
-#include "Vfx/Post/HIKARI_PostSystem.h"
-#include "Core/HIKARI_TimeService.h"
 
 namespace HIKARI::GAME_UI {
 namespace {
@@ -74,13 +71,6 @@ struct RendererState {
 RendererState g{};
 RendererState gPreview{};
 RendererState gWorkspacePreview{};
-struct CanvasRenderState {
-    RendererState renderer;
-    SurfaceTextureTargetRing target;
-    RENDER3D::TextureResourceHandle published{};
-    uint64_t revision{}, renderedFrame{}, renderedFence{};
-};
-std::array<CanvasRenderState, kGameProjectUiCanvasMaximumCount> gCanvases{};
 
 struct ResolvedDraw {
     int textureHandle = -1;
@@ -512,65 +502,6 @@ bool RenderGameUiPreviewFrame(const GameUiFrameSource& source, uint64_t frameInd
     return RenderGameUiSource(gPreview, &source, frameIndex, logicalWidth, logicalHeight, logicalWidth, logicalHeight);
 }
 
-bool RenderGameUiCanvasTarget(uint32_t slot, uint64_t worldIdentity, const GameUiFrameSource& source, uint64_t revision,
-                              uint32_t width, uint32_t height, GameProjectUiColor clearColor,
-                              RENDER3D::TextureResourceHandle& output, uint64_t& renderedRevision,
-                              uint64_t& renderedFrame) noexcept {
-    output = {};
-    renderedRevision = 0;
-    renderedFrame = 0;
-    try {
-        if (slot >= gCanvases.size() || !revision)
-            return false;
-        auto& state = gCanvases[slot];
-        const auto& graphics = GFX::GetCurrentContext();
-        if (state.target.worldIdentity != worldIdentity || state.target.deviceGeneration != graphics.deviceGeneration ||
-            state.target.width != width || state.target.height != height) {
-            state.published = {};
-            state.revision = 0;
-            state.renderedFrame = 0;
-            state.renderedFence = 0;
-        }
-        state.target.memoryOwner = GFX::VIDEO_MEMORY::Owner::Ui;
-        if (!state.target.Ensure(graphics, worldIdentity, slot + 4, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, false,
-                                 {clearColor.r, clearColor.g, clearColor.b, clearColor.a}))
-            return false;
-        if (state.revision != revision &&
-            (!state.published || state.renderedFence != graphics.currentFrameRetireFenceValue)) {
-            auto& target = *state.target.targets[state.target.writeIndex];
-            target.BeginCapture(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
-            const bool ok =
-                RenderGameUiSource(state.renderer, &source, source.frameIndex, width, height, width, height);
-            target.EndCapture();
-            (void)POST::PostSystem::RebindCurrentRenderTarget();
-            if (!ok)
-                return false;
-            state.published = state.target.textures[state.target.writeIndex];
-            state.target.writeIndex = (state.target.writeIndex + 1) % GFX::kFrameResourceCount;
-            state.revision = revision;
-            state.renderedFrame = TIME::GetFrameContext().frameIndex;
-            state.renderedFence = graphics.currentFrameRetireFenceValue;
-        }
-        output = state.published;
-        renderedRevision = state.revision;
-        renderedFrame = state.renderedFrame;
-        return static_cast<bool>(output);
-    } catch (...) {
-        return false;
-    }
-}
-
-void ResetGameUiCanvasTarget(uint32_t slot) noexcept {
-    if (slot >= gCanvases.size())
-        return;
-    auto& state = gCanvases[slot];
-    state.target.Reset();
-    state.published = {};
-    state.revision = 0;
-    state.renderedFrame = 0;
-    state.renderedFence = 0;
-}
-
 bool RenderGameUiWorkspacePreviewFrame(const GameUiFrameSource& source, int width, int height,
                                        uint32_t* failedTextRequests) noexcept {
     return RenderGameUiSource(gWorkspacePreview, &source, source.frameIndex, width, height, width, height,
@@ -593,10 +524,6 @@ void ShutdownGameUiRenderer() noexcept {
     ReleasePipeline(g);
     ReleasePipeline(gPreview);
     ReleasePipeline(gWorkspacePreview);
-    for (uint32_t i = 0; i < gCanvases.size(); ++i) {
-        ResetGameUiCanvasTarget(i);
-        ReleasePipeline(gCanvases[i].renderer);
-    }
 }
 
 } // namespace HIKARI::GAME_UI

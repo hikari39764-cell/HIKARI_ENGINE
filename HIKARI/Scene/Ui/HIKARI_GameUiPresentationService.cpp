@@ -11,7 +11,6 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/Text/HIKARI_UtfPath.h"
-#include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI::GAME_UI {
 namespace {
@@ -362,30 +361,6 @@ bool GameUiPresentationService::SubmitBackdrop(const GameProjectUiBackdropReques
     }
 }
 
-void GameUiPresentationService::BeginInteractionFrame(uint64_t frameIndex) noexcept {
-    if (frameIndex == 0u || interactionFrameIndex_ == frameIndex) {
-        return;
-    }
-    interactionFrameIndex_ = frameIndex;
-    activatedButtons_.clear();
-}
-
-bool GameUiPresentationService::PublishButtonActivation(RuntimeObjectHandle object, uint64_t frameIndex) noexcept {
-    if (!object.IsValid() || frameIndex == 0u || interactionFrameIndex_ != frameIndex) {
-        return false;
-    }
-    const uint64_t value = object.ToValue();
-    if (std::find(activatedButtons_.begin(), activatedButtons_.end(), value) == activatedButtons_.end()) {
-        activatedButtons_.push_back(value);
-    }
-    return true;
-}
-
-bool GameUiPresentationService::WasButtonActivated(RuntimeObjectHandle object, uint64_t frameIndex) const noexcept {
-    return object.IsValid() && frameIndex != 0u && interactionFrameIndex_ == frameIndex &&
-           std::find(activatedButtons_.begin(), activatedButtons_.end(), object.ToValue()) != activatedButtons_.end();
-}
-
 bool GameUiPresentationService::PendingMatchesFrame() const noexcept {
     if (!frameSource_.revision || !pendingBackdrops_.empty() || frameSource_.hasBackdrop ||
         pending_.size() != frameSource_.sprites.size() || pendingTexts_.size() != frameSource_.texts.size())
@@ -500,8 +475,6 @@ void GameUiPresentationService::Reset() noexcept {
     resolvedTexturePaths_.clear();
     resolvedDirectAssetPaths_.clear();
     frameSource_ = {};
-    activatedButtons_.clear();
-    interactionFrameIndex_ = 0u;
     nextSequence_ = 1u;
     ++revision_;
 }
