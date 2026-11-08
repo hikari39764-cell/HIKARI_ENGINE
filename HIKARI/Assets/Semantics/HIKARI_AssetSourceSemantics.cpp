@@ -332,7 +332,7 @@ std::vector<ModuleAssetTypeDesc>& ModuleAssetTypes() {
 }
 } // namespace
 
-bool RegisterModuleAssetType(ModuleAssetTypeDesc desc, std::string& outError) {
+static bool AddModuleAssetType(ModuleAssetTypeDesc desc, std::string& outError) {
     desc.extension = TEXT::ToLowerAsciiCopy(desc.extension);
     if (desc.typeId.empty() || desc.extension.size() < 2u || desc.extension.front() != '.') {
         outError = "A module asset type needs a type id and an extension such as .hscatter.";
@@ -357,6 +357,16 @@ bool RegisterModuleAssetType(ModuleAssetTypeDesc desc, std::string& outError) {
     }
     ModuleAssetTypes().push_back(std::move(desc));
     return true;
+}
+
+void ReplaceModuleAssetTypes(std::vector<ModuleAssetTypeDesc> types, std::vector<std::string>& outErrors) {
+    ModuleAssetTypes().clear();
+    for (ModuleAssetTypeDesc& type : types) {
+        std::string error{};
+        if (!AddModuleAssetType(std::move(type), error)) {
+            outErrors.push_back(std::move(error));
+        }
+    }
 }
 
 const ModuleAssetTypeDesc* FindModuleAssetTypeForPath(const std::filesystem::path& sourcePath) {

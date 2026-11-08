@@ -134,6 +134,22 @@ bool LoadModuleManifest(const std::filesystem::path& manifestPath, ModuleManifes
             manifest.dependencies.push_back(dependency.get<std::string>());
         }
     }
+    if (const auto assetTypes = root.find("assetTypes"); assetTypes != root.end()) {
+        if (!assetTypes->is_array()) {
+            SetMessage(outMessage, "root.assetTypes must be an array");
+            return false;
+        }
+        for (const nlohmann::json& entry : *assetTypes) {
+            ModuleManifestAssetType type{};
+            if (!entry.is_object() || !JSONSTRICT::ReadString(entry, "typeId", {}, type.typeId, error, "assetTypes") ||
+                !JSONSTRICT::ReadString(entry, "extension", {}, type.extension, error, "assetTypes") ||
+                !JSONSTRICT::ReadString(entry, "displayName", {}, type.displayName, error, "assetTypes")) {
+                SetMessage(outMessage, error.empty() ? "root.assetTypes entries must be objects" : error);
+                return false;
+            }
+            manifest.assetTypes.push_back(std::move(type));
+        }
+    }
     manifest.runtimeLibrary = ReadRelativePath(runtimeLibrary);
     manifest.shippingRuntimeLibrary = ReadRelativePath(shippingRuntimeLibrary);
     manifest.editorLibrary = ReadRelativePath(editorLibrary);
@@ -161,6 +177,14 @@ bool SaveModuleManifest(const std::filesystem::path& manifestPath, const ModuleM
     writeOptional("shippingRuntimeLibrary", manifest.shippingRuntimeLibrary);
     writeOptional("editorLibrary", manifest.editorLibrary);
     writeOptional("contentDirectory", manifest.contentDirectory);
+    if (!manifest.assetTypes.empty()) {
+        nlohmann::json assetTypes = nlohmann::json::array();
+        for (const ModuleManifestAssetType& type : manifest.assetTypes) {
+            assetTypes.push_back(
+                {{"typeId", type.typeId}, {"extension", type.extension}, {"displayName", type.displayName}});
+        }
+        root["assetTypes"] = std::move(assetTypes);
+    }
     return SERIALIZATION::JSON::WriteJsonFile(manifestPath, root, outMessage);
 }
 

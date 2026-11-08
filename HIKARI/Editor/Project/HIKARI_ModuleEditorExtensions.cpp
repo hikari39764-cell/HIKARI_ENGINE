@@ -88,14 +88,33 @@ private:
 
 void ModuleEditorExtensions::Add(const GameProjectEditorModuleLibrary& module) {
     const std::string moduleId(module.GetModuleId());
+    // id は操作と窓の見出しの鍵なので、項目全体で一意。後から来た同じ id は断る。
+    const auto reject = [&moduleId](const char* kind, const std::string& id, const std::string& owner) {
+        HIKARI_LOG_ERROR("[ProjectModules] " + moduleId + ": " + kind + " id " + id + " is already used by " + owner +
+                         "; it was not added.");
+    };
     for (size_t index = 0u; index < module.GetViewportToolCount(); ++index) {
         if (EDITOR_PROJECT::IEditorViewportTool* tool = module.GetViewportTool(index)) {
-            tools_.push_back({moduleId, tool->GetToolId(), tool->GetDisplayName(), tool});
+            const std::string id = tool->GetToolId();
+            const auto existing =
+                std::find_if(tools_.begin(), tools_.end(), [&](const Tool& entry) { return entry.id == id; });
+            if (existing != tools_.end()) {
+                reject("tool", id, existing->moduleId);
+                continue;
+            }
+            tools_.push_back({moduleId, id, tool->GetDisplayName(), tool});
         }
     }
     for (size_t index = 0u; index < module.GetPanelCount(); ++index) {
         if (EDITOR_PROJECT::IEditorPanel* panel = module.GetPanel(index)) {
-            panels_.push_back({moduleId, panel->GetPanelId(), panel->GetDisplayName(), panel});
+            const std::string id = panel->GetPanelId();
+            const auto existing =
+                std::find_if(panels_.begin(), panels_.end(), [&](const Panel& entry) { return entry.id == id; });
+            if (existing != panels_.end()) {
+                reject("window", id, existing->moduleId);
+                continue;
+            }
+            panels_.push_back({moduleId, id, panel->GetDisplayName(), panel});
         }
     }
 }

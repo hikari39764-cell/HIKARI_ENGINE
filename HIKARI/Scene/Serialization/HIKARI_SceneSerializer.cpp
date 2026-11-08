@@ -295,8 +295,13 @@ bool SceneSerializer::SaveToFile(const std::string& path, const SceneDocument& d
     SceneJson::SerializeSceneSystemsJson(persisted.systems, root["systems"]);
 
     const std::filesystem::path scenePath = std::filesystem::path(path).lexically_normal();
-    const SceneCellFileState none{};
-    const SceneCellFileState& previous = cells != nullptr && cells->scenePath == scenePath ? *cells : none;
+    // 別の路径へ保存する時は検査和を使わず全部書く。読めなかった格子だけは一覧と保護を引き継ぎ、ファイルを生のまま写す。
+    SceneCellFileState inherited{};
+    if (cells != nullptr && cells->scenePath != scenePath) {
+        inherited.cellSizeMeters = cells->cellSizeMeters;
+        inherited.unreadableCells = cells->unreadableCells;
+    }
+    const SceneCellFileState& previous = cells != nullptr && cells->scenePath == scenePath ? *cells : inherited;
     SceneSaveReport written{};
     if (!persisted.partition.enabled) {
         if (!previous.unreadableCells.empty()) {
@@ -337,6 +342,21 @@ bool SceneSerializer::SaveToFile(const std::string& path, const SceneDocument& d
             return false;
         }
         index.insert(cell);
+    }
+    if (cells != nullptr && cells->scenePath != scenePath) {
+        for (WorldCellCoord cell : inherited.unreadableCells) {
+            const std::filesystem::path source = MakeSceneCellObjectsPath(cells->scenePath, cell);
+            const std::filesystem::path destination = MakeSceneCellObjectsPath(scenePath, cell);
+            std::error_code ec{};
+            std::filesystem::create_directories(destination.parent_path(), ec);
+            if (std::filesystem::exists(source, ec) &&
+                !std::filesystem::copy_file(source, destination, std::filesystem::copy_options::overwrite_existing,
+                                            ec)) {
+                HIKARI_LOG_ERROR("[SceneAsset] could not copy the unreadable cell " + WorldCellFileStem(cell) +
+                                 " to the new location: " + path);
+                return false;
+            }
+        }
     }
     SceneCellFileState next{};
     next.scenePath = scenePath;

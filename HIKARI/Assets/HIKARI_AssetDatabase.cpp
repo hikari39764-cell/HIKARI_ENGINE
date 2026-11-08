@@ -1,5 +1,8 @@
 #include "HIKARI_AssetDatabase.h"
 #include "Core/Numeric/HIKARI_NonZero.h"
+#include "Core/Paths/HIKARI_ExecutablePath.h"
+#include "Project/HIKARI_ProjectDescriptor.h"
+#include "Project/HIKARI_ProjectModules.h"
 #include "Importers/HIKARI_StructuredAssetImporters.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
@@ -45,6 +48,33 @@ bool IsMetaPath(const std::filesystem::path& path) {
 
 } // namespace
 
+// 走査より先に、項目に入れたモジュールの資産の種類を清単から登記する。
+static void LoadProjectModuleAssetTypes(const std::filesystem::path& projectRoot) {
+    std::vector<ASSETS::SEMANTICS::ModuleAssetTypeDesc> types{};
+    std::vector<std::string> errors{};
+    ProjectDescriptor descriptor{};
+    std::error_code ec{};
+    if (const std::filesystem::path descriptorPath = projectRoot / "Project.hikari";
+        std::filesystem::exists(descriptorPath, ec) && LoadProjectDescriptor(descriptorPath, descriptor)) {
+        std::vector<ModuleManifest> modules{};
+        std::string message{};
+        if (ResolveProjectModules(descriptor.modules, projectRoot, PLATFORM::GetExecutableDirectory() / "Modules",
+                                  modules, &message)) {
+            for (const ModuleManifest& module : modules) {
+                for (const ModuleManifestAssetType& type : module.assetTypes) {
+                    types.push_back({type.typeId, type.extension, type.displayName});
+                }
+            }
+        } else {
+            errors.push_back(std::move(message));
+        }
+    }
+    ASSETS::SEMANTICS::ReplaceModuleAssetTypes(std::move(types), errors);
+    for (const std::string& error : errors) {
+        HIKARI_LOG_ERROR("[AssetDatabase] " + error);
+    }
+}
+
 bool AssetDatabase::Initialize(const std::filesystem::path& projectRoot) {
     if (assetTaskService_.HasActiveTasks()) {
         HIKARI_LOG_ERROR("[AssetDatabase] initialization rejected while imports are active.");
@@ -71,6 +101,7 @@ bool AssetDatabase::Initialize(const std::filesystem::path& projectRoot) {
         projectRoot_ = root.lexically_normal();
     }
 
+    LoadProjectModuleAssetTypes(projectRoot_);
     projectSettingsRoot_ = projectRoot_ / "ProjectSettings";
 
     nlohmann::json pipelineSettings{};

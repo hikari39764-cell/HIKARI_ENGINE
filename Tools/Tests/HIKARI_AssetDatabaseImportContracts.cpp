@@ -30,6 +30,8 @@
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Assets/Formats/HIKARI_HmodelFormat.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
+#include "Project/HIKARI_ProjectDescriptor.h"
+#include "Project/HIKARI_ProjectModules.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
@@ -1145,6 +1147,30 @@ void CheckPartitionedScene(const fs::path& root) {
     intruder.transform.position = intruderHome;
     partial.partition.enabled = false;
     assert(!serializer.SaveToFile(island, partial, &partialCells) && Read(damaged) == damagedBytes);
+    partial.partition.enabled = true;
+    partial.partition.cellSizeMeters = 256u;
+
+    // 別の路径へ保存：読めない格子のファイルは生のまま写り、一覧にも残る。保護も引き継ぐ。
+    const auto copyPath = project / "Assets/Scenes/IslandCopy.hscene";
+    const std::string copy = TEXT::PathToUtf8(copyPath);
+    {
+        SceneCellFileState copyCells = partialCells;
+        assert(serializer.SaveToFile(copy, partial, &copyCells));
+        assert(Read(MakeSceneCellObjectsPath(copyPath, {-5, 7})) == damagedBytes);
+        nlohmann::json copyMain{};
+        assert(SERIALIZATION::JSON::ReadJsonFile(copyPath, copyMain));
+        const auto& listed = copyMain["partition"]["cells"];
+        assert(std::find(listed.begin(), listed.end(), nlohmann::json::array({-5, 7})) != listed.end());
+        assert(copyCells.scenePath == copyPath.lexically_normal() &&
+               (copyCells.unreadableCells == std::set<WorldCellCoord>{{-5, 7}}));
+        SceneDocument offCopy = partial;
+        offCopy.partition.enabled = false;
+        SceneCellFileState offCells = partialCells;
+        assert(
+            !serializer.SaveToFile(TEXT::PathToUtf8(project / "Assets/Scenes/IslandOff.hscene"), offCopy, &offCells));
+        fs::remove_all(MakeSceneCellObjectsPath(copyPath, {0, 0}).parent_path());
+        fs::remove(copyPath);
+    }
 
     // 記録なしの保存は全部を書き直す（壊れた格子も直る）。
     assert(serializer.SaveToFile(island, opened, nullptr, &report) && report.writtenCells.size() == 1024u);
@@ -1195,17 +1221,33 @@ void CheckPartitionedScene(const fs::path& root) {
 // モジュールが登記した資産の種類：走査で資産になり、取り込みが値の中の GUID を依存にし、書き出しに含まれる。
 void CheckModuleAssetTypes(const fs::path& root) {
     using namespace HIKARI;
-    std::string error;
-    assert(ASSETS::SEMANTICS::RegisterModuleAssetType({"Test.Rule", ".htestrule", "Test Rule"}, error));
-    assert(ASSETS::SEMANTICS::RegisterModuleAssetType({"Test.Rule", ".htestrule", "Test Rule"}, error));
-    assert(!ASSETS::SEMANTICS::RegisterModuleAssetType({"Test.Other", ".htestrule", "Other"}, error));
-    assert(!ASSETS::SEMANTICS::RegisterModuleAssetType({"Test.Hvfx", ".hvfx", "Engine extension"}, error));
-    assert(!ASSETS::SEMANTICS::RegisterModuleAssetType({"Test.NoDot", "htestrule2", "No dot"}, error));
+    std::vector<std::string> errors{};
+    ASSETS::SEMANTICS::ReplaceModuleAssetTypes({{"Test.Rule", ".htestrule", "Test Rule"},
+                                                {"Test.Rule", ".htestrule", "Test Rule"},
+                                                {"Test.Other", ".htestrule", "Other"},
+                                                {"Test.Hvfx", ".hvfx", "Engine extension"},
+                                                {"Test.NoDot", "htestrule2", "No dot"}},
+                                               errors);
+    assert(errors.size() == 3u);
+    errors.clear();
+    ASSETS::SEMANTICS::ReplaceModuleAssetTypes({}, errors);
 
+    // 種類は項目の清単から：DLL を読まない工程でも、資産庫を開くだけで種類が分かる。
     const auto project = root / "ModuleAssets";
     fs::create_directories(project / "Assets");
     fs::copy_file(fs::path(HIKARI_CONTRACT_SOURCE_ROOT) / "Tests/Fixtures/Projects/EmptyProject/Project.hikari",
                   project / "Project.hikari");
+    ModuleManifest manifest{};
+    manifest.id = "Test.Module";
+    manifest.name = "Test";
+    manifest.version = "1.0.0";
+    manifest.runtimeLibrary = "Module.dll";
+    manifest.assetTypes.push_back({"Test.Rule", ".htestrule", "Test Rule"});
+    assert(SaveModuleManifest(project / "Test.Module.hmodule", manifest));
+    ProjectDescriptor descriptor{};
+    assert(LoadProjectDescriptor(project / "Project.hikari", descriptor));
+    descriptor.modules.push_back({"Test.Module", "Test.Module.hmodule"});
+    assert(SaveProjectDescriptor(project / "Project.hikari", descriptor));
     WriteTga(project / "Assets/used.tga", {1, 2, 3});
     AssetDatabase database;
     assert(database.Initialize(project) && database.ScanAssets(true));

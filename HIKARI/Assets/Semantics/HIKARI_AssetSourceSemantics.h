@@ -73,7 +73,7 @@ bool IsAssetSourceForImporter(const std::filesystem::path& sourcePath, AssetImpo
 AssetMeta MakeBaseAssetMeta(const std::filesystem::path& sourcePath, const AssetGuid& guid,
                             AssetImporterKind importerKind);
 
-// モジュールが登記する資産の種類。JSON の原文のまま配り、参照は値の中の GUID から集める。
+// モジュールの清単が宣言する資産の種類。JSON の原文のまま配り、参照は値の中の GUID から拾う。
 struct ModuleAssetTypeDesc {
     std::string typeId{};
     // 小文字、先頭の点を含む（".hscatter"）。
@@ -81,9 +81,9 @@ struct ModuleAssetTypeDesc {
     std::string displayName{};
 };
 
-// 登記表はプロセスで一つ。Feature の登録は何度も走るので、同じ内容の再登記は成功。別の種類が同じ拡張子を使う時と、
-// 引擎の資産と重なる拡張子は false と理由。
-bool RegisterModuleAssetType(ModuleAssetTypeDesc desc, std::string& outError);
+// 登記表はプロセスで一つ。資産庫の初期化が項目の清単から丸ごと作り直す（DLL を読まない工程も同じ表になる）。
+// 引擎の資産と重なる拡張子や、種類どうしの衝突は登記せず、理由を outErrors に足す。
+void ReplaceModuleAssetTypes(std::vector<ModuleAssetTypeDesc> types, std::vector<std::string>& outErrors);
 const ModuleAssetTypeDesc* FindModuleAssetTypeForPath(const std::filesystem::path& sourcePath);
 
 bool IsAssetCompanionSource(const std::filesystem::path& path);

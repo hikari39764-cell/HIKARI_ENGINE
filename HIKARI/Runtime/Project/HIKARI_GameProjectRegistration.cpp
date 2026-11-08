@@ -527,17 +527,6 @@ bool RuntimeFeatureContext::RegisterMassRenderProxy(const GameProjectWorldMassRe
            RuntimeFeatureContextAccess::MassSchemas(*this).RegisterRenderProxy(descriptor);
 }
 
-bool RuntimeFeatureContext::RegisterAssetType(std::string_view typeId, std::string_view extension,
-                                              std::string_view displayName) {
-    std::string error{};
-    if (ASSETS::SEMANTICS::RegisterModuleAssetType(
-            {std::string(typeId), std::string(extension), std::string(displayName)}, error)) {
-        return true;
-    }
-    HIKARI_LOG_ERROR("[RuntimeFeature] " + error);
-    return false;
-}
-
 bool RuntimeFeatureContext::BindComponentSystem(ComponentSystemBinding binding) {
     if (componentSystemPolicy_ == nullptr) {
         return false;

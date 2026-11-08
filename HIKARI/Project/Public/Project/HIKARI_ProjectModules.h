@@ -12,6 +12,14 @@ namespace HIKARI {
 inline constexpr char kModuleManifestExtension[] = ".hmodule";
 inline constexpr uint32_t kModuleManifestFormatVersion = 1u;
 
+// モジュールの資産の種類。JSON のファイルが資産として走査・取り込み・書き出しされる。
+struct ModuleManifestAssetType {
+    std::string typeId{};
+    // 小文字、先頭の点を含む（".hscatter"）。
+    std::string extension{};
+    std::string displayName{};
+};
+
 // 一つのモジュールの清単（<id>.hmodule）。各路径は清単のあるフォルダからの相対。
 struct ModuleManifest {
     std::string id{};
@@ -23,6 +31,8 @@ struct ModuleManifest {
     std::filesystem::path editorLibrary{};
     std::filesystem::path contentDirectory{};
     std::vector<std::string> dependencies{};
+    // DLL を読まない工程（書き出し、取り込みの命令）も同じ種類を知るよう、清単で宣言する。
+    std::vector<ModuleManifestAssetType> assetTypes{};
     // 清単のあるフォルダ（読み込み時に埋める絶対路径）。
     std::filesystem::path directory{};
 };
