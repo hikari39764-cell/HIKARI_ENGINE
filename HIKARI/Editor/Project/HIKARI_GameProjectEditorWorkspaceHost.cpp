@@ -196,6 +196,12 @@ public:
 
     void SetWorkspaceId(std::string_view workspaceId) { workspaceId_.assign(workspaceId); }
 
+    // 場景の作業区の窓はプロジェクト作業区のドックに入れない。
+    void ClearDockRegions() noexcept {
+        dockRegions_.fill(0u);
+        forceDock_ = false;
+    }
+
     void DrawDockSpace(bool reset) {
         const auto* viewport = ImGui::GetMainViewport();
         const std::string name = "HIKARI_ProjectWorkspace/" + workspaceId_;
@@ -602,11 +608,23 @@ bool GameProjectEditorWorkspaceHost::RegisterModule(const GameProjectEditorModul
     if (registered) {
         operationRegistry_ = &operationRegistry;
         operationOwnerTokens_.push_back(operationOwnerToken);
+        extensions_.Add(module);
     } else {
         (void)operationRegistry.UnregisterOwner(operationOwnerToken);
         discardDocumentsOfFirstModule();
     }
     return registered;
+}
+
+void GameProjectEditorWorkspaceHost::DrawModulePanels(AssetDatabase& database, AssetRegistry& assets) {
+    if (extensions_.GetPanels().empty()) {
+        return;
+    }
+    ui_->SetAssets(database, assets);
+    ui_->BeginFrame("scene");
+    ui_->ClearDockRegions();
+    extensions_.DrawPanels(*ui_);
+    ui_->EndFrame();
 }
 
 void GameProjectEditorWorkspaceHost::ReportModuleFailure(std::string message) {
@@ -687,6 +705,8 @@ void GameProjectEditorWorkspaceHost::Shutdown() noexcept {
     }
     operationRegistry_ = nullptr;
     operationOwnerTokens_.clear();
+    (void)extensions_.ActivateTool({});
+    extensions_.Clear();
     moduleFailureMessage_.clear();
     closePromptWasPending_ = false;
 }

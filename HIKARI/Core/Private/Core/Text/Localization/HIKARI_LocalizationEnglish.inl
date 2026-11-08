@@ -98,6 +98,7 @@
     {"menu.windows.debugView", "Debug View"}, {"menu.windows.environment", "Environment"},
     {"menu.windows.gameView", "Viewport"}, {"menu.windows.inputActions", "Input Actions..."},
     {"menu.windows.inspector", "Inspector"}, {"menu.windows.projectFeatures", "Project Features"},
+    {"menu.windows.modules", "Modules"},
     {"menu.windows.quality", "Quality"}, {"menu.windows.resetDockingLayout", "Reset Docking Layout"},
     {"menu.windows.resourcesEnvironment", "Resources & Environment"}, {"menu.windows.runtimeDebug", "Runtime & Debug"},
     {"menu.windows.sceneAuthoring", "Scene Authoring"}, {"menu.windows.sceneHierarchy", "Scene Hierarchy"},

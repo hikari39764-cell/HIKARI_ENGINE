@@ -99,6 +99,7 @@
     {"menu.windows.debugView", "デバッグビュー"}, {"menu.windows.environment", "環境"},
     {"menu.windows.gameView", "ビューポート"}, {"menu.windows.inputActions", "入力アクション..."},
     {"menu.windows.inspector", "インスペクタ"}, {"menu.windows.projectFeatures", "プロジェクト機能"},
+    {"menu.windows.modules", "モジュール"},
     {"menu.windows.quality", "品質"}, {"menu.windows.resetDockingLayout", "ドッキングレイアウトをリセット"},
     {"menu.windows.resourcesEnvironment", "リソースと環境"}, {"menu.windows.runtimeDebug", "ランタイムとデバッグ"},
     {"menu.windows.sceneAuthoring", "シーン編集"}, {"menu.windows.sceneHierarchy", "シーンヒエラルキー"},

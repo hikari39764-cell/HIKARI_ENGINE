@@ -10,6 +10,7 @@
 #include "Editor/Menus/HIKARI_EditorDocumentMenu.h"
 #include "Editor/Platform/HIKARI_EditorFileDialog.h"
 #include "Editor/Platform/HIKARI_EditorShellActions.h"
+#include "Editor/Project/HIKARI_ModuleEditorExtensions.h"
 #include "Editor/Projects/HIKARI_EditorProjectSession.h"
 #include "Editor/Tools/HIKARI_BuiltInEditorTools.h"
 #include "Editor/Tools/HIKARI_EditorToolHost.h"
@@ -395,7 +396,8 @@ void DebugMenuBar::Draw(DebugWindowState& windows, EDITOR::EditorToolHost& toolH
                         EDITOR::EditorCommandRouter& commandRouter,
                         EDITOR::EditorProjectSessionController& projectSession, bool projectTransitionAllowed,
                         bool hasUnsavedProjectChanges, EDITOR::GameExportJob& exportJob,
-                        EDITOR::EditorOperationRegistry& operations) const {
+                        EDITOR::EditorOperationRegistry& operations,
+                        EDITOR::ModuleEditorExtensions* moduleExtensions) const {
     if (!ImGui::BeginMainMenuBar()) {
         return;
     }
@@ -463,6 +465,9 @@ void DebugMenuBar::Draw(DebugWindowState& windows, EDITOR::EditorToolHost& toolH
                             nullptr, &windows.runtime.showPerformanceAudit);
             ImGui::MenuItem(TEXT::Localize("menu.aiAssistant").c_str(), nullptr, &windows.runtime.showAiAssistant);
             ImGui::EndMenu();
+        }
+        if (moduleExtensions != nullptr) {
+            moduleExtensions->DrawMenu();
         }
 
         ImGui::Separator();

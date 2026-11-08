@@ -547,7 +547,8 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
                        scene.GetEnvironmentLightingEnabled(), resetDockingLayoutRequested, commandRouter_,
                        projectSession,
                        playSession.GetMode() == EDITOR::EditorPlayMode::None && !playSession.IsTransitioning(),
-                       HasKnownUnsavedProjectChanges(scene), exportJob_, operationRegistry_);
+                       HasKnownUnsavedProjectChanges(scene), exportJob_, operationRegistry_,
+                       projectWorkspaceHost_ ? &projectWorkspaceHost_->Extensions() : nullptr);
     projectSession.DrawConfirmationDialog();
 
     if (projectWorkspaceHost_) {
@@ -646,6 +647,9 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
         CommitSceneObjectAuthoringHistory(scene, std::move(*history));
     EDITOR::EditorToolContext toolContext{scene, context_, operationRegistry_};
     toolHost_.Draw(toolContext);
+    if (projectWorkspaceHost_ && workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Scene)) {
+        projectWorkspaceHost_->DrawModulePanels(scene.GetAssetDatabase(), scene.GetAssetRegistry());
+    }
     if (context_.windows.runtime.showFrameStats) {
         // 主菜单の行の右端（空いている所）に出し、窓の見出しやボタンを隠さない。
         const ImGuiViewport* viewport = ImGui::GetMainViewport();

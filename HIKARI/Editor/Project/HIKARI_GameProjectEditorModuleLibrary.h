@@ -39,6 +39,10 @@ public:
     std::string_view GetModuleId() const noexcept;
     size_t GetWorkspaceCount() const noexcept;
     EDITOR_PROJECT::IEditorWorkspace* GetWorkspace(size_t index) const noexcept;
+    size_t GetViewportToolCount() const noexcept;
+    EDITOR_PROJECT::IEditorViewportTool* GetViewportTool(size_t index) const noexcept;
+    size_t GetPanelCount() const noexcept;
+    EDITOR_PROJECT::IEditorPanel* GetPanel(size_t index) const noexcept;
     bool RegisterEditorOperations(EditorOperationRegistry& registry, uint64_t ownerToken,
                                   EDITOR_PROJECT::IEditorDocumentService* documents, std::string& outMessage,
                                   GameProjectEditorWorkspaceRegistry* commands = nullptr) const;

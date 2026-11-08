@@ -902,6 +902,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Project/HIKARI_GameProjectEditorOperationRegistration.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Project/HIKARI_GameProjectEditorDocumentService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Project/HIKARI_GameProjectEditorWorkspaceRegistry.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Project/HIKARI_ModuleEditorExtensions.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Project/HIKARI_GameProjectEditorOperations.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_StructuredAssetAuthoringService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_SceneTransformAuthoring.cpp"
