@@ -2,6 +2,7 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <sstream>
@@ -36,6 +37,11 @@
 namespace HIKARI {
 
 namespace {
+std::string ElapsedMilliseconds(std::chrono::steady_clock::time_point started) {
+    return std::to_string(static_cast<int>(
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count() + 0.5));
+}
+
 class PhysicsWaterBathymetryProvider final : public WATER::IWaterBathymetryProvider {
 public:
     explicit PhysicsWaterBathymetryProvider(const PHYSICS::PhysicsWorldService& physics) noexcept
@@ -116,6 +122,7 @@ bool DocumentSceneBase::BeginRuntimePlay(std::string_view spawnPointId, uint64_t
         return false;
     }
 
+    const auto started = std::chrono::steady_clock::now();
     EndEditorCameraPreview();
     const bool preserveEditorState = SERVICES::IsEditorHost();
     if (preserveEditorState) {
@@ -218,7 +225,7 @@ bool DocumentSceneBase::BeginRuntimePlay(std::string_view spawnPointId, uint64_t
         (void)EndRuntimePlay();
         return false;
     }
-    HIKARI_LOG_INFO("Document scene entered runtime Play state.");
+    HIKARI_LOG_INFO("Document scene entered runtime Play state in " + ElapsedMilliseconds(started) + " ms.");
     return true;
 }
 bool DocumentSceneBase::EndRuntimePlay() {
@@ -226,6 +233,7 @@ bool DocumentSceneBase::EndRuntimePlay() {
         return true;
     }
 
+    const auto started = std::chrono::steady_clock::now();
     if (RUNTIME::GameProjectSessionRuntimeExtension* sessionOwner =
             state_->runtime.world.Services().Find<RUNTIME::GameProjectSessionRuntimeExtension>()) {
         sessionOwner->ExitScene(state_->runtime.world);
@@ -294,7 +302,7 @@ bool DocumentSceneBase::EndRuntimePlay() {
         HIKARI_LOG_ERROR("Editor scene restoration after runtime Play failed.");
         return false;
     }
-    HIKARI_LOG_INFO("Document scene restored after runtime Play.");
+    HIKARI_LOG_INFO("Document scene restored after runtime Play in " + ElapsedMilliseconds(started) + " ms.");
     return true;
 }
 bool DocumentSceneBase::RegisterRuntimeFeatures() {

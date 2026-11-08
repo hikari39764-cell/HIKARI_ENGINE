@@ -1,8 +1,12 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 
+#include <filesystem>
+#include <string>
+
 #include "Assets/Lighting/HIKARI_LightingBakeDependencyHash.h"
 #include "Core/HIKARI_Logger.h"
+#include "RenderContracts/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
@@ -13,6 +17,18 @@ namespace {
 bool IsSkyRuntimeResourceBindingChanged(const SkySettings& before, const SkySettings& after) {
     return before.source != after.source || before.asset != after.asset ||
            before.panoramaCloudAsset != after.panoramaCloudAsset;
+}
+
+// 焼き込み結果が今の場景と合うかの判定に使う hash。物体数に比例して重いので、焼き込みの無い場景では計算しない。
+void AddLightingBakeHashes(const SceneDocument& document, const std::filesystem::path& projectRoot,
+                           const std::string& sceneGuid, SceneDependencySet& dependencies) {
+    std::error_code ec{};
+    if (!std::filesystem::is_regular_file(ASSETS::LIGHTING::BuildLightingBakeManifestPath(projectRoot, sceneGuid),
+                                          ec)) {
+        return;
+    }
+    dependencies.lightingSceneHash = ASSETS::LIGHTING::BuildLightingSceneHash(document);
+    dependencies.lightingBakeAuthoringHashes = ASSETS::LIGHTING::BuildLightingBakeRecordAuthoringHashes(document);
 }
 } // namespace
 
@@ -46,6 +62,8 @@ SceneDependencySet DocumentSceneBase::CollectRuntimeDependencies() const {
     SceneDependencySet dependencies =
         state_->runtime.builder.CollectDependencies(state_->identity.document, &state_->runtime.componentRegistry);
     AddEnvironmentSkyDependencies(state_->runtime.environment.GetProfile().sky, dependencies);
+    AddLightingBakeHashes(state_->identity.document, state_->assets.Database().GetProjectRoot(),
+                          state_->identity.currentSceneAssetGuid.value, dependencies);
     return dependencies;
 }
 
@@ -89,9 +107,8 @@ bool DocumentSceneBase::RefreshEnvironmentProfile() {
 bool DocumentSceneBase::RefreshLightingRuntime() {
     SceneDependencySet deps{};
     AddEnvironmentSkyDependencies(state_->runtime.environment.GetProfile().sky, deps);
-    deps.lightingSceneHash = ASSETS::LIGHTING::BuildLightingSceneHash(state_->identity.document);
-    deps.lightingBakeAuthoringHashes =
-        ASSETS::LIGHTING::BuildLightingBakeRecordAuthoringHashes(state_->identity.document);
+    AddLightingBakeHashes(state_->identity.document, state_->assets.Database().GetProjectRoot(),
+                          state_->identity.currentSceneAssetGuid.value, deps);
     deps.lighting = LIGHTING_AUTHORING::BuildSceneLightingSet(state_->identity.document);
 
     const bool ok = state_->runtime.builder.PreloadDependencies(

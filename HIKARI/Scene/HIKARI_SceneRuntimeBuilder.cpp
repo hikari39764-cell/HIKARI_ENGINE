@@ -1,6 +1,7 @@
 #include "HIKARI_SceneRuntimeBuilder.h"
 
 #include <algorithm>
+#include <map>
 #include <cctype>
 #include <memory>
 #include <numbers>
@@ -10,7 +11,6 @@
 #include <vector>
 
 #include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
-#include "Assets/Lighting/HIKARI_LightingBakeDependencyHash.h"
 #include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "RenderContracts/Model/HIKARI_ModelAssetLookup.h"
@@ -234,17 +234,41 @@ ModelAsset* ResolveModelAssetNowInternal(ModelManager& modelManager, const Asset
     return modelManager.FindAsset(assetId);
 }
 
+// 一回の世界の構築の中で同じ材質を作り直さない。描述からの構築は重く（1 個数百マイクロ秒）、大量の物体が同じ材質を
+// 使う。物体ごとに書き換えられるので、実体は写しを渡す。
+class RuntimeMaterialBuildCache {
+public:
+    std::unique_ptr<Material> Make(const AssetRegistry& assetRegistry, const MaterialAssetDescriptor& descriptor,
+                                   bool inheritModelTextures) {
+        const auto key = std::make_pair(&descriptor, inheritModelTextures);
+        const auto found = built_.find(key);
+        if (found != built_.end()) {
+            return std::make_unique<Material>(*found->second);
+        }
+        std::unique_ptr<Material> material =
+            BuildRuntimeMaterialOverride(assetRegistry, descriptor, inheritModelTextures);
+        if (material != nullptr) {
+            built_.emplace(key, std::make_unique<Material>(*material));
+        }
+        return material;
+    }
+
+private:
+    std::map<std::pair<const MaterialAssetDescriptor*, bool>, std::unique_ptr<Material>> built_{};
+};
+
 void BuildModelMaterialOverrides(ModelComponent& modelComponent, const AssetRegistry& assetRegistry,
-                                 const ModelAsset* modelAsset, const std::string* proceduralMaterialSelection) {
+                                 const ModelAsset* modelAsset, const std::string* proceduralMaterialSelection,
+                                 RuntimeMaterialBuildCache& materials) {
     modelComponent.ClearRuntimeMaterialOverrides();
     if (modelAsset == nullptr) {
         return;
     }
 
-    const auto applyMaterial = [&modelComponent, &assetRegistry](uint32_t materialIndex,
-                                                                 const MaterialAssetDescriptor& descriptor,
-                                                                 bool inheritModelTextures) {
-        auto runtimeMaterial = BuildRuntimeMaterialOverride(assetRegistry, descriptor, inheritModelTextures);
+    const auto applyMaterial = [&modelComponent, &assetRegistry, &materials](uint32_t materialIndex,
+                                                                             const MaterialAssetDescriptor& descriptor,
+                                                                             bool inheritModelTextures) {
+        auto runtimeMaterial = materials.Make(assetRegistry, descriptor, inheritModelTextures);
         if (runtimeMaterial == nullptr) {
             return false;
         }
@@ -393,7 +417,9 @@ bool SceneRuntimeBuilder::InitializeRuntimeComponentAssets(GameObject& object, I
     return true;
 }
 
-void SceneRuntimeBuilder::FinalizeRuntimeObjectAssets(GameObject& object, const AssetRegistry& assetRegistry) const {
+namespace {
+void FinalizeObjectAssets(GameObject& object, const AssetRegistry& assetRegistry,
+                          RuntimeMaterialBuildCache& materials) {
     for (const std::unique_ptr<IComponent>& component : object.GetComponents()) {
         if (auto* modelComponent = dynamic_cast<ModelComponent*>(component.get())) {
             const std::string* proceduralSelection = nullptr;
@@ -401,12 +427,19 @@ void SceneRuntimeBuilder::FinalizeRuntimeObjectAssets(GameObject& object, const 
                 proceduralSelection = &procedural->GetMaterialSelection();
             }
             BuildModelMaterialOverrides(*modelComponent, assetRegistry,
-                                        ResolveRenderableModelAsset(object, *modelComponent), proceduralSelection);
+                                        ResolveRenderableModelAsset(object, *modelComponent), proceduralSelection,
+                                        materials);
             if (object.GetComponent<TerrainSurfaceComponent>() != nullptr) {
                 (void)TERRAIN::EnsureTerrainSurfaceMaterialOverride(*modelComponent, assetRegistry);
             }
         }
     }
+}
+} // namespace
+
+void SceneRuntimeBuilder::FinalizeRuntimeObjectAssets(GameObject& object, const AssetRegistry& assetRegistry) const {
+    RuntimeMaterialBuildCache materials{};
+    FinalizeObjectAssets(object, assetRegistry, materials);
 }
 
 void AddEnvironmentSkyDependencies(const SkySettings& sky, SceneDependencySet& dependencies) {
@@ -422,8 +455,6 @@ void AddEnvironmentSkyDependencies(const SkySettings& sky, SceneDependencySet& d
 SceneDependencySet SceneRuntimeBuilder::CollectDependencies(const SceneDocument& document,
                                                             const ComponentRegistry* enabledComponents) const {
     SceneDependencySet deps{};
-    deps.lightingSceneHash = ASSETS::LIGHTING::BuildLightingSceneHash(document);
-    deps.lightingBakeAuthoringHashes = ASSETS::LIGHTING::BuildLightingBakeRecordAuthoringHashes(document);
     deps.lighting = LIGHTING_AUTHORING::BuildSceneLightingSet(document);
 
     for (const SceneObjectData& object : document.objects) {
@@ -756,6 +787,7 @@ bool SceneRuntimeBuilder::AddObjectsFromDocument(std::span<const SceneObjectData
                                                  const AssetRegistry& assetRegistry,
                                                  const ComponentRegistry& componentRegistry,
                                                  ModelManager& modelManager) const {
+    RuntimeMaterialBuildCache materials{};
     std::vector<GameObject*> created{};
     created.reserve(objects.size());
     const auto fail = [&]() {
@@ -830,7 +862,7 @@ bool SceneRuntimeBuilder::AddObjectsFromDocument(std::span<const SceneObjectData
 
             // 全コンポーネント反映後、後続で追加された ProceduralMesh も含めて
             // レンダリング可能アセットとマテリアル上書きを確定する。
-            FinalizeRuntimeObjectAssets(*object, assetRegistry);
+            FinalizeObjectAssets(*object, assetRegistry, materials);
         }
         return true;
     } catch (...) {

@@ -140,6 +140,7 @@ private:
     void SuppressCpuForwardViews(const GpuSceneRegistrySyncInput& input);
     bool TryPatchForwardDataFromSceneCache(const GpuSceneRegistrySyncInput& input);
     void RebuildForwardSceneSource();
+    void ReleaseUnusedOverrideMaterialResources();
     void ClearFrameDirtyRanges();
 
     std::vector<GpuSceneSurfaceRecord> surfaceRecords_{};
@@ -158,6 +159,8 @@ private:
     std::vector<uint32_t> forwardTransparentStaticTraditionalRecordIndices_{};
     std::vector<uint32_t> shadowStaticTraditionalRecordIndices_{};
     std::vector<uint32_t> globalGpuSceneIndexByRecord_{};
+    // 上書き材質の仮想資源（材質の実体ごとに一つ）。全面の再構築で、もう使われないものを解放する。
+    std::vector<MaterialResourceHandle> overrideMaterialResources_{};
     std::vector<RUNTIME::SurfaceGpuSceneInstance> globalGpuSceneInstances_{};
     std::vector<RUNTIME::SurfaceGpuSceneMaterialSource> globalMaterialSources_{};
     TraditionalIndirectStream forwardOpaqueTraditionalStream_{};

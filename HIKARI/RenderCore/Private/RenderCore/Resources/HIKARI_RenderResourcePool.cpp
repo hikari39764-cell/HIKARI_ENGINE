@@ -93,6 +93,7 @@ void RenderResourcePool::Clear() {
     freeSlots_.clear();
     sourceIndex_.clear();
     stats_ = {};
+    statsDirty_ = false;
 }
 
 TextureResourceHandle RenderResourcePool::RegisterExternalTexture(ID3D12Resource* resource, RenderResourceDesc desc) {
@@ -157,7 +158,7 @@ bool RenderResourcePool::AttachOwnedResource(RenderResourceHandle handle,
     record.pendingRelease = false;
 
     IndexSourceKey(record);
-    RefreshStats();
+    statsDirty_ = true;
     return true;
 }
 
@@ -173,7 +174,7 @@ bool RenderResourcePool::Release(RenderResourceHandle handle) {
     slot->alive = false;
     slot->generation = NextGeneration(slot->generation);
     freeSlots_.push_back(handle.index - 1u);
-    RefreshStats();
+    statsDirty_ = true;
     return true;
 }
 
@@ -184,7 +185,7 @@ bool RenderResourcePool::MarkPendingRelease(RenderResourceHandle handle) {
     }
 
     slot->record.pendingRelease = true;
-    RefreshStats();
+    statsDirty_ = true;
     return true;
 }
 
@@ -242,7 +243,13 @@ RenderResourceHandle RenderResourcePool::FindBySourceKey(RenderResourceKind kind
     return found != sourceIndex_.end() && IsAlive(found->second) ? found->second : RenderResourceHandle{};
 }
 
-const RenderResourcePoolStats& RenderResourcePool::GetStats() const { return stats_; }
+const RenderResourcePoolStats& RenderResourcePool::GetStats() const {
+    if (statsDirty_) {
+        RefreshStats();
+        statsDirty_ = false;
+    }
+    return stats_;
+}
 
 uint32_t RenderResourcePool::AllocateSlot() {
     if (!freeSlots_.empty()) {
@@ -305,7 +312,7 @@ RenderResourceHandle RenderResourcePool::RegisterInternal(RenderResourceKind kin
 
     slot.record = std::move(record);
     IndexSourceKey(slot.record);
-    RefreshStats();
+    statsDirty_ = true;
     return handle;
 }
 
@@ -329,7 +336,7 @@ void RenderResourcePool::IndexSourceKey(const RenderResourceRecord& record) {
     sourceIndex_[BuildSourceIndexKey(record.handle.kind, record.desc.sourceKey)] = record.handle;
 }
 
-void RenderResourcePool::RefreshStats() {
+void RenderResourcePool::RefreshStats() const {
     stats_ = {};
     stats_.slotCount = static_cast<uint32_t>((std::min<size_t>)(slots_.size(), UINT32_MAX));
     stats_.freeSlotCount = static_cast<uint32_t>((std::min<size_t>)(freeSlots_.size(), UINT32_MAX));
