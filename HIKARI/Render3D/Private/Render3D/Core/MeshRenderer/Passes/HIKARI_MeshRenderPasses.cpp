@@ -9,8 +9,15 @@
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
+#include "Render3D/Extensions/HIKARI_RenderSurfaceRuntime.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDepthVisibilityLayer.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceBuffer.h"
+
+namespace HIKARI::MESHRENDERER {
+static bool RecordSurfaceExtensions(const GFX::Context& graphics, RenderSurfacePass pass,
+                                    const MeshPassResources& passResources, MeshDrawPassKind passKind,
+                                    bool featureMask);
+} // namespace HIKARI::MESHRENDERER
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
 namespace {
@@ -43,7 +50,7 @@ bool RenderGeometryAuxPassInternal(const GFX::Context& graphics, RENDER3D::SURFA
                                    D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask) {
     const bool hasMeshes = HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque);
     auto& sprites = gMeshRendererState.worldSpritePass;
-    if (!hasMeshes && !sprites.HasOpaqueWork()) {
+    if (!hasMeshes && !sprites.HasOpaqueWork() && !RENDER3D::SURFACE_EXTENSIONS::HasWork()) {
         return false;
     }
 
@@ -71,15 +78,18 @@ bool RenderGeometryAuxPassInternal(const GFX::Context& graphics, RENDER3D::SURFA
     const bool spritesWritten =
         !sprites.HasOpaqueWork() ||
         sprites.ExecuteSurface(graphics, GetActiveMeshFrameResources().view.Bindings().camera, writeFeatureMask);
+    const bool extensionsWritten = RecordSurfaceExtensions(
+        graphics, RenderSurfacePass::GeometrySurface, passResources,
+        writeFeatureMask ? MeshDrawPassKind::GeometryAuxFeatureMask : MeshDrawPassKind::GeometryAux, writeFeatureMask);
     surfaceBuffer.EndWrite(graphics.cmdList);
-    return meshesWritten && spritesWritten;
+    return meshesWritten && spritesWritten && extensionsWritten;
 }
 
 bool RenderDepthPrepassInternal(const GFX::Context& graphics, D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv,
                                 bool useCullingCamera) {
     const bool hasMeshes = HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass);
     auto& sprites = gMeshRendererState.worldSpritePass;
-    if (!hasMeshes && !sprites.HasOpaqueWork()) {
+    if (!hasMeshes && !sprites.HasOpaqueWork() && !RENDER3D::SURFACE_EXTENSIONS::HasWork()) {
         return false;
     }
 
@@ -116,7 +126,10 @@ bool RenderDepthPrepassInternal(const GFX::Context& graphics, D3D12_CPU_DESCRIPT
     const auto cameraAddress =
         useCullingCamera ? overrides.cameraAddress : GetActiveMeshFrameResources().view.Bindings().camera;
     const bool spritesWritten = !sprites.HasOpaqueWork() || sprites.ExecuteDepth(graphics, cameraAddress);
-    return meshesWritten && spritesWritten;
+    const bool extensionsWritten =
+        useCullingCamera || RecordSurfaceExtensions(graphics, RenderSurfacePass::Depth, passResources,
+                                                    MeshDrawPassKind::DepthPrepass, false);
+    return meshesWritten && spritesWritten && extensionsWritten;
 }
 
 bool RenderWaterVisibilityDepthInternal(const GFX::Context& graphics, D3D12_CPU_DESCRIPTOR_HANDLE waterDsv,
@@ -316,9 +329,47 @@ bool RenderVisibilityOverlayFeaturePass(const GFX::Context& graphics, const Mesh
                                               RENDER3D::MESHLET::MeshletPipelineKind::VisibilityOverlay);
 }
 
+// モジュールの面を今の描画先へ描く。場面の定数と光の束縛は通常の面と同じものを、モジュール用の root へ張る。
+static bool RecordSurfaceExtensions(const GFX::Context& graphics, RenderSurfacePass pass,
+                                    const MeshPassResources& passResources, MeshDrawPassKind passKind,
+                                    bool featureMask) {
+    if (!RENDER3D::SURFACE_EXTENSIONS::HasWork()) {
+        return true;
+    }
+    const CameraCB* camera = GetCameraConstants();
+    ID3D12RootSignature* rootSignature = gMeshRendererState.pipelines.surfaceExtensionRootSig.Get();
+    if (camera == nullptr || rootSignature == nullptr) {
+        return false;
+    }
+    MeshBindingStateCache bindingCache{};
+    MeshDrawContext drawCtx = BuildDrawContext(graphics, false, passKind, passResources, nullptr);
+    drawCtx.binding.cache = &bindingCache;
+    drawCtx.staticRootSig = rootSignature;
+    BindSurfaceRecordFrameResources(drawCtx);
+    RENDER3D::SURFACE_EXTENSIONS::RecordInput input{};
+    input.pass = pass;
+    input.geometryFeatureMask = featureMask;
+    input.viewProjection = camera->viewProj;
+    input.cameraPosition = RENDER3D::SURFACE_EXTENSIONS::GetFrameCameraPosition();
+    return RENDER3D::SURFACE_EXTENSIONS::Record(graphics, rootSignature, input);
+}
+
+bool RenderSurfaceExtensionsForward(const GFX::Context& graphics, const MeshPassResources& passResources) {
+    if (!RENDER3D::SURFACE_EXTENSIONS::HasWork()) {
+        return true;
+    }
+    GFX::GPU_PROFILE::ScopedGpuTimer timer(graphics.cmdList, GFX::GPU_PROFILE::Pass::ModuleSurfaces);
+    return RecordSurfaceExtensions(graphics, RenderSurfacePass::Forward, passResources, MeshDrawPassKind::Forward,
+                                   false);
+}
+
+ID3D12RootSignature* GetSurfaceExtensionRootSignature() {
+    return gMeshRendererState.pipelines.surfaceExtensionRootSig.Get();
+}
+
 bool HasDepthPrepassWork() {
     return HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass) ||
-           gMeshRendererState.worldSpritePass.HasOpaqueWork();
+           gMeshRendererState.worldSpritePass.HasOpaqueWork() || RENDER3D::SURFACE_EXTENSIONS::HasWork();
 }
 
 bool RenderDepthPrepass(const GFX::Context& graphics, D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool useCullingCamera) {

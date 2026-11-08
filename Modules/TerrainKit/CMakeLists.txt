@@ -54,3 +54,49 @@ endforeach()
 add_test(NAME HIKARI_TerrainDataContracts COMMAND "$<TARGET_FILE:HIKARI_TerrainDataContracts>")
 set_tests_properties(HIKARI_TerrainDataContracts PROPERTIES LABELS "terrain" TIMEOUT 120
     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
+
+# モジュール本体の DLL。実行と編集器の入口を一つの DLL に持つ（Shipping は編集器の分を除く）。
+# 公開の SDK ヘッダーと host の出力する符号だけを使い、引擎の内部ライブラリには繋がない。
+if(TARGET HIKARI_EditorHost)
+    add_library(HIKARI_TerrainKit MODULE)
+    target_sources(
+        HIKARI_TerrainKit
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitModule.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitStore.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitStore.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitEditor.cpp"
+            "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectModuleAdapter.cpp"
+            "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectEditorModuleAdapter.cpp")
+    target_include_directories(
+        HIKARI_TerrainKit
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/Runtime"
+            "${HIKARI_SOURCE_ROOT}/include")
+    target_compile_definitions(
+        HIKARI_TerrainKit
+        PRIVATE
+            HIKARI_GAME_PROJECT_SDK_IMPORTS=1
+            HIKARI_GAME_PROJECT_EDITOR_SDK_IMPORTS=1)
+    target_link_libraries(HIKARI_TerrainKit PRIVATE HIKARI_EditorHost HIKARI::TerrainKitData)
+    hikari_configure_engine_target(HIKARI_TerrainKit)
+    set(_terrainkit_output "$<TARGET_FILE_DIR:HIKARI_EditorHost>/Modules/HIKARI.TerrainKit")
+    foreach(configuration IN ITEMS Debug EditorRelease Shipping)
+        string(TOUPPER "${configuration}" config)
+        foreach(kind IN ITEMS LIBRARY RUNTIME PDB)
+            set_target_properties(HIKARI_TerrainKit PROPERTIES
+                "${kind}_OUTPUT_DIRECTORY_${config}" "${_terrainkit_output}")
+        endforeach()
+    endforeach()
+    set_target_properties(HIKARI_TerrainKit PROPERTIES
+        PREFIX ""
+        OUTPUT_NAME "HIKARI_TerrainKit"
+        FOLDER "Modules/TerrainKit")
+    add_custom_command(
+        TARGET HIKARI_TerrainKit
+        POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/HIKARI.TerrainKit.hmodule"
+            "${_terrainkit_output}/HIKARI.TerrainKit.hmodule"
+        VERBATIM)
+endif()

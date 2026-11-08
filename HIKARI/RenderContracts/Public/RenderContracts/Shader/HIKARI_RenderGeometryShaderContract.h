@@ -28,7 +28,18 @@ enum class RenderGeometryRootLayout : uint8_t {
     WorldTextDraw,
     ShadowGraphics,
     ClusterRayTracing,
+    ModuleSurfaceDraw,
 };
+
+// モジュールの面（HIKARI/Project/RenderSurface.h）。MeshGraphics と同じ番号で三つの型だけ違う。
+inline constexpr std::string_view kModuleSurfaceDrawRootLayoutId = "HIKARI.RenderGeometry.ModuleSurfaceDraw.Root";
+inline constexpr uint32_t kModuleSurfaceDrawRootLayoutVersion = 1u;
+inline constexpr std::string_view kModuleSurfaceDrawRootLayoutHash =
+    "48c72838cb3b50e8727ad0c61579c6731b5d95906d278e4d1cb0f89a3a03b7db";
+inline constexpr std::string_view kModuleSurfaceDrawRootLayoutCanonical =
+    "HIKARI.RenderGeometry.ModuleSurfaceDraw.Root.v1|MeshGraphicsSlots|"
+    "JointPalette(SRV(t0,space10))|MeshletVisibleRanges(CBV(b3))|"
+    "ClusterGeometryPool(Table(t1,space10,count4))|Pipeline(Graphics)|Flags(AllowInputAssembler)";
 
 inline constexpr std::string_view kClusterRayTracingRootLayoutId = "HIKARI.RenderGeometry.ClusterRayTracing.Root";
 inline constexpr uint32_t kClusterRayTracingRootLayoutVersion = 1u;
@@ -197,12 +208,13 @@ inline std::string_view RenderGeometryRootLayoutId(RenderGeometryRootLayout layo
     case RenderGeometryRootLayout::WorldTextDraw: return kWorldTextDrawRootLayoutId;
     case RenderGeometryRootLayout::ShadowGraphics: return kShadowGraphicsRootLayoutId;
     case RenderGeometryRootLayout::ClusterRayTracing: return kClusterRayTracingRootLayoutId;
+    case RenderGeometryRootLayout::ModuleSurfaceDraw: return kModuleSurfaceDrawRootLayoutId;
     }
     return {};
 }
 
 inline bool TryParseRenderGeometryRootLayout(std::string_view id, RenderGeometryRootLayout& outLayout) noexcept {
-    for (uint8_t raw = 0u; raw <= static_cast<uint8_t>(RenderGeometryRootLayout::ClusterRayTracing); ++raw) {
+    for (uint8_t raw = 0u; raw <= static_cast<uint8_t>(RenderGeometryRootLayout::ModuleSurfaceDraw); ++raw) {
         const auto layout = static_cast<RenderGeometryRootLayout>(raw);
         if (RenderGeometryRootLayoutId(layout) == id) {
             outLayout = layout;
@@ -230,6 +242,10 @@ inline bool TryResolveRenderGeometryProgramRootLayout(std::string_view programId
     if (programId == "HIKARI.EngineShader."
                      "Render3D_GpuTraditionalCommandCompactCS") {
         outLayout = RenderGeometryRootLayout::TraditionalCommand;
+        return true;
+    }
+    if (programId == "HIKARI.EngineShader.Render3D_TerrainKitSurface") {
+        outLayout = RenderGeometryRootLayout::ModuleSurfaceDraw;
         return true;
     }
     if (programId == "HIKARI.EngineShader.Render3D_ClusterRayTracingCS") {
@@ -281,6 +297,7 @@ inline std::string_view RenderGeometryRootLayoutHash(RenderGeometryRootLayout la
     case RenderGeometryRootLayout::WorldTextDraw: return kWorldTextDrawRootLayoutHash;
     case RenderGeometryRootLayout::ShadowGraphics: return kShadowGraphicsRootLayoutHash;
     case RenderGeometryRootLayout::ClusterRayTracing: return kClusterRayTracingRootLayoutHash;
+    case RenderGeometryRootLayout::ModuleSurfaceDraw: return kModuleSurfaceDrawRootLayoutHash;
     }
     return {};
 }
@@ -297,6 +314,7 @@ inline std::string_view RenderGeometryRootLayoutCanonical(RenderGeometryRootLayo
     case RenderGeometryRootLayout::WorldTextDraw: return kWorldTextDrawRootLayoutCanonical;
     case RenderGeometryRootLayout::ShadowGraphics: return kShadowGraphicsRootLayoutCanonical;
     case RenderGeometryRootLayout::ClusterRayTracing: return kClusterRayTracingRootLayoutCanonical;
+    case RenderGeometryRootLayout::ModuleSurfaceDraw: return kModuleSurfaceDrawRootLayoutCanonical;
     }
     return {};
 }
@@ -313,6 +331,7 @@ inline constexpr uint32_t RenderGeometryRootLayoutVersion(RenderGeometryRootLayo
     case RenderGeometryRootLayout::WorldTextDraw: return kWorldTextDrawRootLayoutVersion;
     case RenderGeometryRootLayout::ShadowGraphics: return kShadowGraphicsRootLayoutVersion;
     case RenderGeometryRootLayout::ClusterRayTracing: return kClusterRayTracingRootLayoutVersion;
+    case RenderGeometryRootLayout::ModuleSurfaceDraw: return kModuleSurfaceDrawRootLayoutVersion;
     }
     return 0u;
 }
@@ -386,6 +405,10 @@ inline bool IsRenderGeometryEntryIdentityValid(std::string_view programId, Rende
                entry.entry.entry == id;
     case RenderGeometryRootLayout::WorldTextDraw:
         return (id == "WorldTextMS" || id == "WorldTextPS") && entry.entry.entry == id;
+    case RenderGeometryRootLayout::ModuleSurfaceDraw:
+        return (id == "SurfaceVS" || id == "SurfaceGeometryPS" || id == "SurfaceGeometryFeaturePS" ||
+                id == "SurfaceForwardPS") &&
+               entry.entry.entry == id;
     }
     return false;
 }
@@ -400,6 +423,10 @@ inline bool IsRenderGeometryBindingAllowed(RenderGeometryRootLayout layout,
                                            const ShaderResourceBinding& binding) noexcept {
     using Kind = ShaderResourceBindingKind;
     switch (layout) {
+    case RenderGeometryRootLayout::ModuleSurfaceDraw:
+        return (binding.kind == Kind::ShaderResource && binding.registerSpace == 10u && binding.registerIndex <= 4u &&
+                binding.count == 1u) ||
+               IsRenderGeometryBindingAllowed(RenderGeometryRootLayout::MeshGraphics, binding);
     case RenderGeometryRootLayout::ClusterRayTracing:
         return MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 0u, 0u) ||
                MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 0u, 1u) ||
@@ -535,6 +562,7 @@ inline bool ValidateRenderGeometryShaderArtifact(const ShaderCookedArtifact& art
         : rootLayout == RenderGeometryRootLayout::ParticleCompaction ? 3u
         : rootLayout == RenderGeometryRootLayout::WorldSpriteDraw    ? 6u
         : rootLayout == RenderGeometryRootLayout::WorldTextDraw      ? 2u
+        : rootLayout == RenderGeometryRootLayout::ModuleSurfaceDraw  ? 4u
                                                                      : 1u;
     if (artifact.entries.size() != expectedEntryCount) {
         outDiagnostic = "RenderGeometry artifact entry count is invalid";

@@ -136,6 +136,9 @@ bool FinalizeGpuDrivenVisibilityFromDepth(const GFX::Context& graphics,
 bool PrepareForwardReflectionCapture(const GFX::Context& graphics, bool captureSubsurface = false);
 
 bool RenderForwardOpaquePass(const GFX::Context& graphics, const MeshPassResources& passResources);
+// モジュールの面の前向き不透明。反射の追加の描画先を付ける前に呼ぶ（反射の対象にしない面なので、値を残さない）。
+bool RenderSurfaceExtensionsForward(const GFX::Context& graphics, const MeshPassResources& passResources);
+ID3D12RootSignature* GetSurfaceExtensionRootSignature();
 bool RenderForwardTransparentPass(const GFX::Context& graphics, const MeshPassResources& passResources);
 bool HasDepthAwarePassWork();
 bool HasForwardTransparentPassWork();

@@ -12,6 +12,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Render3D/Core/HIKARI_MeshPassResources.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
+#include "Render3D/Extensions/HIKARI_RenderSurfaceRuntime.h"
 #include "Render3D/Debug/HIKARI_RenderDebugOutput.h"
 #include "Render3D/Features/HIKARI_RenderFeatureSceneAnalysis.h"
 #include "Render3D/Features/HIKARI_StylizedScreenFeatureRenderer.h"
@@ -252,9 +253,11 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         return false;
     }
     const bool projectPassWork = projectPassCount != 0u;
-    if (!MESHRENDERER::HasSubmittedItems() && !projectPassWork) {
+    if (!MESHRENDERER::HasSubmittedItems() && !projectPassWork && view.surfaceExtensions.empty()) {
         return true;
     }
+    SURFACE_EXTENSIONS::SetFrameCameraPosition(camera.GetPosition());
+    SURFACE_EXTENSIONS::BeginFrame(graphics, view.surfaceExtensions);
 
     const RenderFrameContext frame = BuildRenderFrameContext(graphics, view, environment);
     POST::PostSystem::SetScreenReadability(frame.screenReadability);

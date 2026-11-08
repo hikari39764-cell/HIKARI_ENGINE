@@ -30,6 +30,8 @@ struct GameProjectSdkAccess;
 
 enum class RuntimeWorldAccessResult : uint8_t { Success, InvalidWorld, WrongThread };
 
+class IRenderSurfaceExtension;
+
 class World {
 public:
     class StructureReadScope {
@@ -160,6 +162,12 @@ public:
     void BeginFrame(uint64_t frameIndex) noexcept;
     void BeginFixedStep(uint64_t fixedTickIndex) noexcept;
     uint64_t GetRuntimeIdentity() const noexcept { return runtimeIdentity_; }
+    // モジュールの面。世界は持ち主にならず、登録した側が外す。
+    std::span<IRenderSurfaceExtension* const> GetRenderSurfaceExtensions() const noexcept {
+        return renderSurfaceExtensions_;
+    }
+    void AddRenderSurfaceExtension(IRenderSurfaceExtension& extension);
+    void RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) noexcept;
     bool IsOwnerThread() const noexcept { return std::this_thread::get_id() == ownerThread_; }
     static World* ResolveRuntimeWorld(uint64_t identity, RuntimeWorldAccessResult* outAccess = nullptr) noexcept;
     bool CanMutateStructure() const noexcept {
@@ -442,6 +450,7 @@ private:
     std::vector<ReservedStateJournalEntry> reservationStateJournal_{};
     std::thread::id ownerThread_{};
     uint64_t runtimeIdentity_ = 0u;
+    std::vector<IRenderSurfaceExtension*> renderSurfaceExtensions_{};
     uint64_t nextPrefabRequestId_ = 1u;
     uint64_t nextPrefabInstanceId_ = 1u;
     uint64_t nextDynamicSceneObjectId_ = 1u;

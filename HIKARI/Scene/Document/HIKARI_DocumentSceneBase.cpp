@@ -684,6 +684,7 @@ void DocumentSceneBase::Render() {
                 return static_cast<SystemScheduler*>(context)->ExecuteRenderPass(stableId, pass, &outCallbackEntered);
             },
             state_->runtime.world.GetRuntimeIdentity()};
+        primaryView.surfaceExtensions = state_->runtime.world.GetRenderSurfaceExtensions();
         VFX::VfxPlaybackService* playback = state_->runtime.world.Services().Find<VFX::VfxPlaybackService>();
         RENDER3D::PARTICLES::ParticleRenderFrameSource particleFrameSource{};
         if (playback != nullptr) {

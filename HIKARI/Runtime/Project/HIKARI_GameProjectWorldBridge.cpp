@@ -75,6 +75,25 @@ ObjectView WorldView::FindSceneObject(uint64_t sceneObjectId) const noexcept {
     return object != nullptr ? GameProjectSdkAccess::MakeObjectView(*object) : ObjectView{};
 }
 
+bool WorldView::AddRenderSurfaceExtension(IRenderSurfaceExtension& extension) const noexcept {
+    try {
+        World* world = const_cast<World*>(GameProjectSdkAccess::GetWorld(*this));
+        if (world == nullptr) {
+            return false;
+        }
+        world->AddRenderSurfaceExtension(extension);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+void WorldView::RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) const noexcept {
+    if (World* world = const_cast<World*>(GameProjectSdkAccess::GetWorld(*this))) {
+        world->RemoveRenderSurfaceExtension(extension);
+    }
+}
+
 uint64_t WorldView::GetObjectCount() const noexcept {
     const World* world = GameProjectSdkAccess::GetWorld(*this);
     return world != nullptr ? static_cast<uint64_t>(world->GetTotalObjectCount()) : 0u;

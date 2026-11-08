@@ -15,6 +15,7 @@ uint64_t RuntimeSceneContext::pendingUserData_ = 0u;
 std::optional<ResolvedSceneEntry> RuntimeSceneContext::resolvedEntry_{};
 World* RuntimeSceneContext::currentWorld_ = nullptr;
 std::string RuntimeSceneContext::currentSceneId_{};
+std::string RuntimeSceneContext::currentSceneFilePath_{};
 bool RuntimeSceneContext::cameraReady_ = false;
 
 void RuntimeSceneContext::SetTransitionBus(SceneTransitionBus* bus) {
@@ -42,6 +43,10 @@ void RuntimeSceneContext::SetCurrentWorld(World* world, std::string sceneId) {
 World* RuntimeSceneContext::GetCurrentWorld() { return currentWorld_; }
 
 const std::string& RuntimeSceneContext::GetCurrentSceneId() { return currentSceneId_; }
+
+void RuntimeSceneContext::SetCurrentSceneFilePath(std::string path) { currentSceneFilePath_ = std::move(path); }
+
+const std::string& RuntimeSceneContext::GetCurrentSceneFilePath() { return currentSceneFilePath_; }
 
 void RuntimeSceneContext::MarkCameraReady(const World& world) noexcept {
     if (&world == currentWorld_) {

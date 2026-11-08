@@ -519,6 +519,17 @@ WorldEventStream& World::FixedEvents() noexcept { return fixedEvents_; }
 
 const WorldEventStream& World::FixedEvents() const noexcept { return fixedEvents_; }
 
+void World::AddRenderSurfaceExtension(IRenderSurfaceExtension& extension) {
+    if (std::find(renderSurfaceExtensions_.begin(), renderSurfaceExtensions_.end(), &extension) ==
+        renderSurfaceExtensions_.end()) {
+        renderSurfaceExtensions_.push_back(&extension);
+    }
+}
+
+void World::RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) noexcept {
+    std::erase(renderSurfaceExtensions_, &extension);
+}
+
 void World::BeginFrame(uint64_t frameIndex) noexcept {
     frameEvents_.BeginScope(frameIndex);
     commandFailures_.clear();

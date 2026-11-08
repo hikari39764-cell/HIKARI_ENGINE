@@ -6,6 +6,8 @@
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
+#include "Render3D/Core/HIKARI_MeshRenderer.h"
+#include "Render3D/Extensions/HIKARI_RenderSurfaceRuntime.h"
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
 #include "Render3D/Shadow/HIKARI_LocalLightShadowRenderer.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
@@ -50,7 +52,8 @@ void BeginFrame(const GFX::Context& graphics, const SceneEnvironment& environmen
         return;
     }
     gShadowRendererState.frameHasShadowWork =
-        BuildShadowGpuDrivenSceneSources(gShadowRendererState) || (sprites && sprites->HasShadowWork());
+        BuildShadowGpuDrivenSceneSources(gShadowRendererState) || (sprites && sprites->HasShadowWork()) ||
+        RENDER3D::SURFACE_EXTENSIONS::HasWork();
     if (!gShadowRendererState.frameHasShadowWork) {
         PublishShadowCacheStats(gShadowRendererState);
         return;
@@ -288,6 +291,28 @@ void RenderDirectionalShadowMap(const GFX::Context& graphics) {
                 InvalidateShadowCache(gShadowRendererState);
                 break;
             }
+        }
+    }
+    if (RENDER3D::SURFACE_EXTENSIONS::HasWork()) {
+        // モジュールの面は毎回重ねる。静的の保存とは混ぜない。
+        GFX::GPU_PROFILE::ScopedGpuTimer gpuSurfaces(cmd, GFX::GPU_PROFILE::Pass::ModuleSurfaceShadows);
+        gShadowRendererState.shadowCache.SetFinalMatchesStaticCache(false);
+        ID3D12RootSignature* rootSignature = MESHRENDERER::GetSurfaceExtensionRootSignature();
+        for (uint32_t i = 0; i < gShadowRendererState.cascadeCount; ++i) {
+            const LONG size = LONG(gShadowRendererState.resolution);
+            const LONG x = LONG(i % 2u) * size, y = LONG(i / 2u) * size;
+            if (!PrepareShadowMapDepthRegion(gShadowRendererState, cmd, {x, y, x + size, y + size}, false) ||
+                rootSignature == nullptr) {
+                InvalidateShadowCache(gShadowRendererState);
+                break;
+            }
+            cmd->SetGraphicsRootSignature(rootSignature);
+            RENDER3D::SURFACE_EXTENSIONS::RecordInput input{};
+            input.pass = RenderSurfacePass::Shadow;
+            input.shadowCascade = i;
+            input.viewProjection = gShadowRendererState.cascadeFrames[i].viewProj;
+            input.cameraPosition = RENDER3D::SURFACE_EXTENSIONS::GetFrameCameraPosition();
+            (void)RENDER3D::SURFACE_EXTENSIONS::Record(graphics, rootSignature, input);
         }
     }
     gShadowRendererState.debugStats.shadowStaticRendered = staticRendered;

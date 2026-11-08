@@ -17,6 +17,9 @@ public:
 
     HIKARI_GAME_PROJECT_SDK_API bool GetCurrentSceneAssetGuid(char* outUtf8, uint32_t capacity,
                                                               uint32_t& outLength) const noexcept;
+    // 今の場面の主ファイルの絶対路径（UTF-8）。モジュールは場面に添えた内容を <場面>.cells の中に置く。
+    HIKARI_GAME_PROJECT_SDK_API bool GetCurrentSceneFilePath(char* outUtf8, uint32_t capacity,
+                                                             uint32_t& outLength) const noexcept;
     // Returns true only when the idle transition gate accepts the
     // request. Scene loading completes later and may still fail.
     HIKARI_GAME_PROJECT_SDK_API bool RequestScene(std::string_view sceneAssetGuid, std::string_view spawnPointId,

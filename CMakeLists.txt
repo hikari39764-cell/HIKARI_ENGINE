@@ -445,4 +445,6 @@ add_custom_target(
 include(cmake/HikariTests.cmake OPTIONAL)
 
 # 地形と布景モジュール（外部モジュールの規則で書く。製品の目標はまだリンクしない）。
-add_subdirectory(Modules/TerrainKit)
+if(EXISTS "${HIKARI_SOURCE_ROOT}/Modules/TerrainKit/CMakeLists.txt")
+    add_subdirectory(Modules/TerrainKit)
+endif()

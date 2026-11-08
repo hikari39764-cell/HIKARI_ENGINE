@@ -1,0 +1,487 @@
+#include "HIKARI_TerrainKitStore.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <execution>
+#include <fstream>
+#include <iterator>
+#include <limits>
+#include <system_error>
+
+#include <json.hpp>
+
+#include "TerrainKit/Data/HIKARI_TerrainDataFile.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataLayers.h"
+
+namespace HIKARI::TERRAINKIT {
+namespace {
+
+using namespace TERRAIN::DATA;
+
+constexpr uint32_t kNormalMipCount = 5u;
+constexpr char kLayerFileName[] = "terrain.layers.json";
+
+// 法線の xz を 16 bit で持つ（y は着色器で復元する）。
+int16_t ToSnorm16(float value) noexcept {
+    return static_cast<int16_t>(std::lround(std::clamp(value, -1.0f, 1.0f) * 32767.0f));
+}
+
+void BuildNormalMips(const std::vector<float>& bordered, uint32_t samples, double spacing, std::vector<int16_t>& out) {
+    // bordered は周囲 1 標本を足した (samples + 2)²。
+    const uint32_t stride = samples + 2u;
+    size_t total = 0u;
+    for (uint32_t mip = 0u; mip < kNormalMipCount; ++mip) {
+        const uint32_t size = (std::max)(samples >> mip, 1u);
+        total += static_cast<size_t>(size) * size * 2u;
+    }
+    out.resize(total);
+    std::vector<float> level(static_cast<size_t>(samples) * samples * 2u);
+    const float scale = 0.5f / static_cast<float>(spacing);
+    for (uint32_t z = 0u; z < samples; ++z) {
+        for (uint32_t x = 0u; x < samples; ++x) {
+            const size_t center = static_cast<size_t>(z + 1u) * stride + x + 1u;
+            const float dx = (bordered[center + 1u] - bordered[center - 1u]) * scale;
+            const float dz = (bordered[center + stride] - bordered[center - stride]) * scale;
+            const float inverseLength = 1.0f / std::sqrt(dx * dx + dz * dz + 1.0f);
+            const size_t index = (static_cast<size_t>(z) * samples + x) * 2u;
+            level[index] = -dx * inverseLength;
+            level[index + 1u] = -dz * inverseLength;
+        }
+    }
+    size_t offset = 0u;
+    uint32_t size = samples;
+    for (uint32_t mip = 0u; mip < kNormalMipCount; ++mip) {
+        for (size_t index = 0u; index < static_cast<size_t>(size) * size * 2u; ++index) {
+            out[offset + index] = ToSnorm16(level[index]);
+        }
+        offset += static_cast<size_t>(size) * size * 2u;
+        if (mip + 1u == kNormalMipCount) {
+            break;
+        }
+        const uint32_t next = (std::max)(size >> 1u, 1u);
+        std::vector<float> reduced(static_cast<size_t>(next) * next * 2u);
+        for (uint32_t z = 0u; z < next; ++z) {
+            for (uint32_t x = 0u; x < next; ++x) {
+                for (uint32_t c = 0u; c < 2u; ++c) {
+                    const auto at = [&](uint32_t sx, uint32_t sz) {
+                        return level[(static_cast<size_t>(sz) * size + sx) * 2u + c];
+                    };
+                    reduced[(static_cast<size_t>(z) * next + x) * 2u + c] =
+                        0.25f * (at(x * 2u, z * 2u) + at(x * 2u + 1u, z * 2u) + at(x * 2u, z * 2u + 1u) +
+                                 at(x * 2u + 1u, z * 2u + 1u));
+                }
+            }
+        }
+        level = std::move(reduced);
+        size = next;
+    }
+}
+
+bool MakeInitialStack(TerrainData& data, const NoiseLayerSettings& noise, uint32_t& outSculptLayer) {
+    HeightLayer base{};
+    base.name = "Base Noise";
+    base.kind = HeightLayerKind::Noise;
+    base.noise = noise;
+    if (data.AddLayer(std::move(base)) == 0u) {
+        return false;
+    }
+    HeightLayer sculpt{};
+    sculpt.name = "Sculpt";
+    sculpt.kind = HeightLayerKind::Sculpt;
+    outSculptLayer = data.AddLayer(std::move(sculpt));
+    return outSculptLayer != 0u;
+}
+
+uint32_t FindSculptLayer(const TerrainData& data) noexcept {
+    for (auto layer = data.Stack().layers.rbegin(); layer != data.Stack().layers.rend(); ++layer) {
+        if (layer->kind == HeightLayerKind::Sculpt) {
+            return layer->id;
+        }
+    }
+    return 0u;
+}
+
+// 引擎の JSON 道具には繋がないので、ここで読み書きする。
+bool ReadJson(const std::filesystem::path& path, nlohmann::json& out, std::string& error) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        error = "Could not open " + path.generic_string();
+        return false;
+    }
+    out = nlohmann::json::parse(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), nullptr, false);
+    if (out.is_discarded()) {
+        error = "Invalid JSON in " + path.generic_string();
+        return false;
+    }
+    return true;
+}
+
+bool WriteJson(const std::filesystem::path& path, const nlohmann::json& document, std::string& error) {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!(file << document.dump(2))) {
+        error = "Could not write " + path.generic_string();
+        return false;
+    }
+    return true;
+}
+
+bool ValidSettings(const TerrainSettings& settings, std::string* error) {
+    if (!ValidateTerrainGrid(settings.grid, error)) {
+        return false;
+    }
+    if (settings.tilesX <= 0 || settings.tilesZ <= 0 || settings.tilesX > 256 || settings.tilesZ > 256) {
+        if (error != nullptr) {
+            *error = "Terrain tile counts must be between 1 and 256.";
+        }
+        return false;
+    }
+    return true;
+}
+
+} // namespace
+
+std::filesystem::path TerrainCellDirectory(const std::filesystem::path& scenePath) {
+    // 引擎の格子の置き場と同じ規則（Main.scene.json -> Main.cells）。
+    std::u8string stem = scenePath.filename().u8string();
+    constexpr std::u8string_view sceneJson = u8".scene.json";
+    if (stem.ends_with(sceneJson)) {
+        stem.resize(stem.size() - sceneJson.size());
+    } else {
+        stem = scenePath.stem().u8string();
+    }
+    return scenePath.parent_path() / std::filesystem::path(stem + u8".cells");
+}
+
+TerrainStore& TerrainStore::Get() {
+    static TerrainStore store{};
+    return store;
+}
+
+void TerrainStore::Close() {
+    scenePath_.clear();
+    data_.reset();
+    sculptLayer_ = 0u;
+    tiles_.clear();
+    unsavedTiles_.clear();
+    stackDirty_ = false;
+    ++layoutRevision_;
+}
+
+bool TerrainStore::Open(const std::filesystem::path& scenePath, const TerrainSettings& settings, std::string* error) {
+    if (data_ != nullptr && scenePath_ == scenePath && settings_ == settings) {
+        return true;
+    }
+    if (!ValidSettings(settings, error)) {
+        return false;
+    }
+    const bool sameScene = data_ != nullptr && scenePath_ == scenePath;
+    if (sameScene && settings_.grid == settings.grid) {
+        // 範囲だけの変更は編集データを残す。
+        settings_ = settings;
+        BuildTileList();
+        return true;
+    }
+    Close();
+    scenePath_ = scenePath;
+    settings_ = settings;
+    data_ = std::make_unique<TerrainData>(settings.grid);
+    if (!LoadFromDisk(scenePath, error)) {
+        return false;
+    }
+    if (data_->Stack().layers.empty()) {
+        NoiseLayerSettings flat{};
+        flat.amplitudeMeters = 0.0f;
+        if (!MakeInitialStack(*data_, flat, sculptLayer_)) {
+            return false;
+        }
+    }
+    BuildTileList();
+    return true;
+}
+
+bool TerrainStore::LoadFromDisk(const std::filesystem::path& scenePath, std::string* error) {
+    const std::filesystem::path directory = TerrainCellDirectory(scenePath);
+    const std::filesystem::path layerFile = directory / kLayerFileName;
+    std::error_code ec{};
+    if (!std::filesystem::exists(layerFile, ec)) {
+        return true;
+    }
+    nlohmann::json root{};
+    std::string message{};
+    if (!ReadJson(layerFile, root, message)) {
+        if (error != nullptr) {
+            *error = message;
+        }
+        return false;
+    }
+    HeightLayerStack stack{};
+    if (!ReadHeightLayerStackJson(root, stack, message) || !data_->ReplaceStack(stack, &message)) {
+        if (error != nullptr) {
+            *error = "Terrain layer file is invalid: " + message;
+        }
+        return false;
+    }
+    settings_.grid = stack.grid;
+    sculptLayer_ = FindSculptLayer(*data_);
+    for (const auto& entry : std::filesystem::directory_iterator(directory, ec)) {
+        const std::string name = entry.path().filename().string();
+        constexpr std::string_view suffix = ".terrain.bin";
+        if (name.size() <= suffix.size() || name.compare(name.size() - suffix.size(), suffix.size(), suffix) != 0) {
+            continue;
+        }
+        int tileX = 0;
+        int tileZ = 0;
+        if (std::sscanf(name.c_str(), "x%d_z%d", &tileX, &tileZ) != 2) {
+            continue;
+        }
+        std::vector<uint8_t> bytes{};
+        if (!LoadTerrainCellFile(entry.path(), bytes, message) ||
+            !ReadTerrainCell(*data_, TileCoord{tileX, tileZ}, bytes, message)) {
+            if (error != nullptr) {
+                *error = name + ": " + message;
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+bool TerrainStore::Generate(const TerrainSettings& settings, const NoiseLayerSettings& noise, std::string& error) {
+    if (!ValidSettings(settings, &error)) {
+        return false;
+    }
+    if (scenePath_.empty()) {
+        error = "No scene is open for terrain data.";
+        return false;
+    }
+    const std::filesystem::path scenePath = scenePath_;
+    Close();
+    scenePath_ = scenePath;
+    settings_ = settings;
+    data_ = std::make_unique<TerrainData>(settings.grid);
+    if (!MakeInitialStack(*data_, noise, sculptLayer_)) {
+        error = "Could not create the terrain layers.";
+        return false;
+    }
+    BuildTileList();
+    stackDirty_ = true;
+    for (const auto& [tile, runtime] : tiles_) {
+        unsavedTiles_.push_back(tile);
+    }
+    return true;
+}
+
+void TerrainStore::BuildTileList() {
+    std::map<TileCoord, TileRuntime> next{};
+    std::vector<TileCoord> missing{};
+    uint32_t layer = 0u;
+    for (int32_t z = 0; z < settings_.tilesZ; ++z) {
+        for (int32_t x = 0; x < settings_.tilesX; ++x) {
+            const TileCoord tile{settings_.firstTileX + x, settings_.firstTileZ + z};
+            TileRuntime runtime{};
+            runtime.layer = layer++;
+            next.emplace(tile, std::move(runtime));
+            missing.push_back(tile);
+        }
+    }
+    tiles_ = std::move(next);
+    ++layoutRevision_;
+    RebakeTiles(missing);
+}
+
+void TerrainStore::BakeTile(TileCoord tile, const HeightStackEvaluator& evaluator) {
+    const auto found = tiles_.find(tile);
+    if (found == tiles_.end()) {
+        return;
+    }
+    TileRuntime& runtime = found->second;
+    const TerrainGrid& grid = settings_.grid;
+    const uint32_t samples = TileSamples(grid);
+    SampleRect rect = TileSampleRect(grid, tile);
+    rect.x0 -= 1;
+    rect.z0 -= 1;
+    rect.width += 2u;
+    rect.height += 2u;
+    std::vector<float> bordered{};
+    if (!evaluator.EvaluateRect(rect, bordered)) {
+        bordered.assign(rect.Count(), 0.0f);
+    }
+    const uint32_t stride = samples + 2u;
+    runtime.heights.resize(static_cast<size_t>(samples) * samples);
+    runtime.minHeight = std::numeric_limits<float>::max();
+    runtime.maxHeight = std::numeric_limits<float>::lowest();
+    runtime.leafMinMax.assign(static_cast<size_t>(kTileLeafDivisions) * kTileLeafDivisions * 2u, 0.0f);
+    for (size_t leaf = 0u; leaf < static_cast<size_t>(kTileLeafDivisions) * kTileLeafDivisions; ++leaf) {
+        runtime.leafMinMax[leaf * 2u] = std::numeric_limits<float>::max();
+        runtime.leafMinMax[leaf * 2u + 1u] = std::numeric_limits<float>::lowest();
+    }
+    const uint32_t cells = grid.tileCells;
+    for (uint32_t z = 0u; z < samples; ++z) {
+        for (uint32_t x = 0u; x < samples; ++x) {
+            const float height = bordered[static_cast<size_t>(z + 1u) * stride + x + 1u];
+            runtime.heights[static_cast<size_t>(z) * samples + x] = QuantizeHeight(grid, height);
+            runtime.minHeight = (std::min)(runtime.minHeight, height);
+            runtime.maxHeight = (std::max)(runtime.maxHeight, height);
+            // 葉の境界の標本は両方の葉に数える。
+            const uint32_t leafX0 =
+                (std::min)((x == 0u ? 0u : x - 1u) * kTileLeafDivisions / cells, kTileLeafDivisions - 1u);
+            const uint32_t leafX1 = (std::min)(x * kTileLeafDivisions / cells, kTileLeafDivisions - 1u);
+            const uint32_t leafZ0 =
+                (std::min)((z == 0u ? 0u : z - 1u) * kTileLeafDivisions / cells, kTileLeafDivisions - 1u);
+            const uint32_t leafZ1 = (std::min)(z * kTileLeafDivisions / cells, kTileLeafDivisions - 1u);
+            for (uint32_t leafZ = leafZ0; leafZ <= leafZ1; ++leafZ) {
+                for (uint32_t leafX = leafX0; leafX <= leafX1; ++leafX) {
+                    const size_t index = (static_cast<size_t>(leafZ) * kTileLeafDivisions + leafX) * 2u;
+                    runtime.leafMinMax[index] = (std::min)(runtime.leafMinMax[index], height);
+                    runtime.leafMinMax[index + 1u] = (std::max)(runtime.leafMinMax[index + 1u], height);
+                }
+            }
+        }
+    }
+    BuildNormalMips(bordered, samples, SampleSpacing(grid), runtime.normalMips);
+    runtime.uploadPending = true;
+}
+
+void TerrainStore::RebakeTiles(std::span<const TileCoord> tiles) {
+    if (data_ == nullptr || tiles.empty()) {
+        return;
+    }
+    const HeightStackEvaluator evaluator(*data_);
+    if (!evaluator.Valid()) {
+        return;
+    }
+    std::for_each(std::execution::par, tiles.begin(), tiles.end(),
+                  [&](const TileCoord& tile) { BakeTile(tile, evaluator); });
+}
+
+void TerrainStore::RebakeRect(const SampleRect& rect) {
+    std::vector<TileCoord> touched{};
+    // 法線は周囲 1 標本を見るので、1 標本広げた範囲の瓦片を焼く。
+    SampleRect wider = rect;
+    wider.x0 -= 1;
+    wider.z0 -= 1;
+    wider.width += 2u;
+    wider.height += 2u;
+    ForEachTileHolding(settings_.grid, wider, [&](TileCoord tile) {
+        if (tiles_.contains(tile)) {
+            touched.push_back(tile);
+        }
+    });
+    RebakeTiles(touched);
+    MarkSaveDirty(touched);
+}
+
+void TerrainStore::MarkSaveDirty(std::span<const TileCoord> tiles) {
+    for (const TileCoord tile : tiles) {
+        if (std::find(unsavedTiles_.begin(), unsavedTiles_.end(), tile) == unsavedTiles_.end()) {
+            unsavedTiles_.push_back(tile);
+        }
+    }
+}
+
+void TerrainStore::MarkAllForUpload() noexcept {
+    for (auto& [tile, runtime] : tiles_) {
+        runtime.uploadPending = true;
+    }
+}
+
+bool TerrainStore::Save(const std::filesystem::path& scenePath, std::string& error) {
+    if (data_ == nullptr) {
+        return true;
+    }
+    const bool samePath = scenePath == scenePath_;
+    const std::filesystem::path directory = TerrainCellDirectory(scenePath);
+    std::error_code ec{};
+    std::filesystem::create_directories(directory, ec);
+    std::string message{};
+    if ((!samePath || stackDirty_) &&
+        !WriteJson(directory / kLayerFileName, WriteHeightLayerStackJson(data_->Stack()), message)) {
+        error = "Could not write the terrain layers: " + message;
+        return false;
+    }
+    const HeightStackEvaluator evaluator(*data_);
+    std::vector<TileCoord> tiles = unsavedTiles_;
+    if (!samePath) {
+        tiles.clear();
+        for (const auto& [tile, runtime] : tiles_) {
+            tiles.push_back(tile);
+        }
+    }
+    for (const TileCoord tile : tiles) {
+        std::vector<uint8_t> bytes{};
+        if (!WriteTerrainCell(*data_, tile, &evaluator, {}, bytes, message) ||
+            !SaveTerrainCellFile(directory / TerrainCellFileName(tile), bytes, message)) {
+            error = "Could not write terrain tile: " + message;
+            return false;
+        }
+    }
+    unsavedTiles_.clear();
+    stackDirty_ = false;
+    scenePath_ = scenePath;
+    return true;
+}
+
+std::optional<float> TerrainStore::HeightAt(float worldX, float worldZ) const {
+    if (data_ == nullptr) {
+        return std::nullopt;
+    }
+    const TerrainGrid& grid = settings_.grid;
+    const TileCoord tile = TileOfWorld(grid, worldX, worldZ);
+    const auto found = tiles_.find(tile);
+    if (found == tiles_.end() || found->second.heights.empty()) {
+        return std::nullopt;
+    }
+    const float spacing = static_cast<float>(SampleSpacing(grid));
+    const float localX = worldX / spacing - static_cast<float>(TileFirstSample(grid, tile.x));
+    const float localZ = worldZ / spacing - static_cast<float>(TileFirstSample(grid, tile.z));
+    const uint32_t samples = TileSamples(grid);
+    const uint32_t x0 = (std::min)(static_cast<uint32_t>((std::max)(localX, 0.0f)), samples - 2u);
+    const uint32_t z0 = (std::min)(static_cast<uint32_t>((std::max)(localZ, 0.0f)), samples - 2u);
+    const float fx = std::clamp(localX - static_cast<float>(x0), 0.0f, 1.0f);
+    const float fz = std::clamp(localZ - static_cast<float>(z0), 0.0f, 1.0f);
+    const auto at = [&](uint32_t x, uint32_t z) {
+        return DequantizeHeight(grid, found->second.heights[static_cast<size_t>(z) * samples + x]);
+    };
+    const float h0 = at(x0, z0) + (at(x0 + 1u, z0) - at(x0, z0)) * fx;
+    const float h1 = at(x0, z0 + 1u) + (at(x0 + 1u, z0 + 1u) - at(x0, z0 + 1u)) * fx;
+    return h0 + (h1 - h0) * fz;
+}
+
+bool TerrainStore::Raycast(const float origin[3], const float direction[3], float maxDistance, float outHit[3]) const {
+    const float step = (std::max)(static_cast<float>(SampleSpacing(settings_.grid)), 0.5f) * 2.0f;
+    float previous = 0.0f;
+    float distance = step;
+    float stride = step;
+    while (distance < maxDistance) {
+        const float x = origin[0] + direction[0] * distance;
+        const float y = origin[1] + direction[1] * distance;
+        const float z = origin[2] + direction[2] * distance;
+        const std::optional<float> ground = HeightAt(x, z);
+        if (ground.has_value() && y <= *ground) {
+            float low = previous;
+            float high = distance;
+            for (int iteration = 0; iteration < 12; ++iteration) {
+                const float middle = 0.5f * (low + high);
+                const std::optional<float> height =
+                    HeightAt(origin[0] + direction[0] * middle, origin[2] + direction[2] * middle);
+                if (height.has_value() && origin[1] + direction[1] * middle <= *height) {
+                    high = middle;
+                } else {
+                    low = middle;
+                }
+            }
+            outHit[0] = origin[0] + direction[0] * high;
+            outHit[1] = origin[1] + direction[1] * high;
+            outHit[2] = origin[2] + direction[2] * high;
+            return true;
+        }
+        previous = distance;
+        distance += stride;
+        // 遠くは粗く進める（遠景で細い山を飛び越すのは許容する）。
+        stride = (std::max)(step, distance * 0.01f);
+    }
+    return false;
+}
+
+} // namespace HIKARI::TERRAINKIT

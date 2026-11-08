@@ -40,6 +40,7 @@ enum class Owner : uint8_t {
     LightProbes,
     ColorGrading,
     Water,
+    SurfaceExtensions,
     Count
 };
 inline constexpr size_t kOwnerCount = static_cast<size_t>(Owner::Count);

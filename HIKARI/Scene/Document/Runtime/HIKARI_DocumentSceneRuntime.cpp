@@ -783,6 +783,7 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     }
 
     RuntimeSceneContext::SetCurrentWorld(&state_->runtime.world, state_->identity.sceneId);
+    RuntimeSceneContext::SetCurrentSceneFilePath(state_->identity.scenePath);
     RuntimeSceneContext::ResolvePendingSceneEntry(state_->runtime.world, state_->identity.sceneId);
     BuildSystemScheduleFromDocument();
     state_->runtime.systemScheduler.AttachWorld(state_->runtime.world);

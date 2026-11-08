@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "id": "HIKARI.TerrainKit",
+  "name": "Terrain Kit",
+  "version": "0.1.0",
+  "runtimeLibrary": "HIKARI_TerrainKit.dll",
+  "shippingRuntimeLibrary": "HIKARI_TerrainKit.dll",
+  "editorLibrary": "HIKARI_TerrainKit.dll",
+  "dependencies": []
+}

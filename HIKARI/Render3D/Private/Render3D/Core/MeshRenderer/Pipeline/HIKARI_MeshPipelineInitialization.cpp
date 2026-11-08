@@ -19,6 +19,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshInputLayouts.h"
+#include "HIKARI/Project/RenderSurface.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
 
 namespace HIKARI::MESHRENDERER {
@@ -229,6 +230,27 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
     D3D12_ROOT_SIGNATURE_DESC skinnedRsDesc = rsDesc;
     skinnedRsDesc.pParameters = skinnedParams;
     if (FAILED(GFX::CreateRootSignature(device, skinnedRsDesc, store.skinnedRootSig.GetAddressOf()))) {
+        return false;
+    }
+
+    CD3DX12_ROOT_PARAMETER surfaceExtensionParams[ROOT_PARAM::Count]{};
+    std::copy(std::begin(params), std::end(params), surfaceExtensionParams);
+    const CD3DX12_DESCRIPTOR_RANGE surfaceExtensionTextures(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+                                                            kRenderSurfaceTextureSlotCount, 1, 10);
+    surfaceExtensionParams[ROOT_PARAM::JointPalette].InitAsShaderResourceView(0, 10, kAll);
+    surfaceExtensionParams[ROOT_PARAM::MeshletVisibleRanges].InitAsConstantBufferView(3, 0, kAll);
+    surfaceExtensionParams[ROOT_PARAM::ClusterGeometryPool].InitAsDescriptorTable(1, &surfaceExtensionTextures, kAll);
+    D3D12_ROOT_SIGNATURE_DESC surfaceExtensionRsDesc = rsDesc;
+    surfaceExtensionRsDesc.pParameters = surfaceExtensionParams;
+    // 頂点着色器が高さ図を標本化する。通常の面の標本器は画素着色器だけに見せている。
+    D3D12_STATIC_SAMPLER_DESC surfaceExtensionSamplers[std::size(staticSamplers)]{};
+    std::copy(std::begin(staticSamplers), std::end(staticSamplers), surfaceExtensionSamplers);
+    for (D3D12_STATIC_SAMPLER_DESC& surfaceSampler : surfaceExtensionSamplers) {
+        surfaceSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    }
+    surfaceExtensionRsDesc.pStaticSamplers = surfaceExtensionSamplers;
+    if (FAILED(GFX::CreateRootSignature(device, surfaceExtensionRsDesc,
+                                        store.surfaceExtensionRootSig.GetAddressOf()))) {
         return false;
     }
 

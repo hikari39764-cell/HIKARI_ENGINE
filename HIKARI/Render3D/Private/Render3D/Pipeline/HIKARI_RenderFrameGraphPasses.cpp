@@ -95,6 +95,9 @@ bool ExecuteForwardOpaque(const GRAPH::RenderGraphPassContext& graphPass, void* 
         MESHRENDERER::MeshPassResources resources = context.opaqueResources;
         resources.reflectionCapture = false;
         resources.subsurfaceCapture = false;
+        if (!MESHRENDERER::RenderSurfaceExtensionsForward(frame.graphics, resources)) {
+            return false;
+        }
         // 任意の capture 準備に失敗しても、通常の Forward 描画は続ける。
         try {
             const bool captureSubsurface = context.hasSubsurfaceWork;

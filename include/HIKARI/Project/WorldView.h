@@ -32,6 +32,7 @@ class DebugView;
 class EnvironmentView;
 class DisplaySettingsView;
 class IGameComponent;
+class IRenderSurfaceExtension;
 class IGameProjectSession;
 class InputView;
 class MotionView;
@@ -107,6 +108,10 @@ public:
     // ワールドが有効なハンドルを保持しているかを確認する。
     HIKARI_GAME_PROJECT_SDK_API bool IsValid() const noexcept;
     GameProjectWorldHandle GetHandle() const noexcept { return world_; }
+
+    // モジュールの面を登録する。OnWorldDetached までに外すこと。
+    HIKARI_GAME_PROJECT_SDK_API bool AddRenderSurfaceExtension(IRenderSurfaceExtension& extension) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API void RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) const noexcept;
 
     HIKARI_GAME_PROJECT_SDK_API ObjectView FindObject(GameProjectObjectHandle handle) const noexcept;
 

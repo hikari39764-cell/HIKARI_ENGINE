@@ -801,6 +801,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Vfx/HIKARI_ParticleCompositionRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/DepthOfField/HIKARI_CameraDepthOfFieldStage.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/MotionBlur/HIKARI_CameraMotionBlurStage.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Extensions/HIKARI_RenderSurfaceRuntime.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/WorldSprite/HIKARI_WorldSpritePass.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/WorldSprite/HIKARI_WorldSpritePipelines.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/WorldSprite/HIKARI_WorldSpriteMaterials.cpp"
