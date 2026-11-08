@@ -73,14 +73,16 @@ bool VfxPlaybackService::MakeFluidSource(Instance& instance, uint32_t layerIndex
         return false;
     out = MakeSource(instance.emitterTransforms[layerIndex], layer.simulation);
     out.id = FLUID::FluidSourceId({playbackNamespace_, instance.handle.slot, instance.handle.generation, layerIndex});
+    // 注入量の倍率は連続の注入率と burst の密度の両方に掛ける（爆発の燃料の量も同じ旋钮で変わる）。
     out.ratePerSecond = layer.spawnRatePerSecond * overrides.spawnRateMultiplier;
-    out.burstDensity = static_cast<float>(burst);
+    out.burstDensity = static_cast<float>(burst) * overrides.spawnRateMultiplier;
     // 注入する烟の色は層の色（色の模块を層の時間で読んだ値 × 再生の色の倍率）。格ごとの色の域だけが使う。
     const auto& tint = instance.layerSamples[layerIndex].color;
     const auto& multiplier = overrides.colorMultiplier;
     out.color = {tint.x * multiplier.x, tint.y * multiplier.y, tint.z * multiplier.z};
     out.settings = layer.fluidSource;
     out.settings.temperature *= overrides.fluidTemperatureMultiplier;
+    out.field.turbulence *= overrides.fluidTurbulenceMultiplier;
     out.wind = out.wind * overrides.gravityMultiplier;
     return true;
 }
@@ -136,6 +138,7 @@ void VfxPlaybackService::AppendFluidDomain(Instance& instance, uint32_t domainIn
         FLUID::FluidSourceSubmission forces = MakeSource(world, domainLayer.simulation);
         forces.shape = FLUID::FluidSourceShape::Domain;
         forces.wind = forces.wind * instance.layerOverrides[domainIndex].gravityMultiplier;
+        forces.field.turbulence *= instance.layerOverrides[domainIndex].fluidTurbulenceMultiplier;
         domain.sources.push_back(forces);
     }
     for (uint32_t index = 0u; index < program.emitters.size(); ++index) {

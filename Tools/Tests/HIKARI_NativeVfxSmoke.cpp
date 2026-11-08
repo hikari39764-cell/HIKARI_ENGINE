@@ -423,6 +423,12 @@ int main() {
     assert(
         VFX::ResolveVfxRuntimePropertyLayout(VFX::VfxRuntimeBindingSemantic::FluidTemperatureMultiplier).byteOffset ==
         offsetof(RENDER3D::PARTICLES::ParticleEmitterRuntimeOverrides, fluidTemperatureMultiplier));
+    // 乱流の倍率は流体源と流体域（力場の模块）だけ。
+    const VFX::VfxPropertySchema* turbulenceSchema = VFX::ResolveVfxPropertySchema(
+        fluidSourceLayer, {fluidSourceLayer.id, fluidSourceLayer.forces.id, "turbulenceMultiplier"});
+    assert(turbulenceSchema != nullptr &&
+           turbulenceSchema->runtimeSemantic == VFX::VfxRuntimeBindingSemantic::FluidTurbulenceMultiplier);
+    assert(VFX::ResolveVfxPropertySchema(emitter, {emitter.id, emitter.forces.id, "turbulenceMultiplier"}) == nullptr);
 
     std::string sourceJsonA{};
     std::string sourceJsonB{};

@@ -96,6 +96,135 @@ void Sphere(VfxEmitterData& source, float radius) {
     source.shape.radius = MakeVfxFloatConstant(radius);
 }
 
+// 火と爆発の旋钮：燃料の量（連続の注入率と burst）、熱さ（燃料の温度）、炎の舌の乱れ（燃料の源の乱流）。
+void FireKnobs(VfxAssetData& asset, VfxEmitterData& fuel) {
+    AddKnob(asset, "fuel", "Fuel", VfxValueType::Float);
+    AddKnob(asset, "heat", "Heat", VfxValueType::Float);
+    AddKnob(asset, "turbulence", "Turbulence", VfxValueType::Float);
+    LinkSpawnRate(fuel, "fuel");
+    LinkTemperature(fuel, "heat");
+    LinkTurbulence(fuel, "turbulence");
+}
+
+// 立ち昇る烟：底の源から温かい烟が浮力で昇り、卷曲乱流でほどけて薄れる。効果の原点は地面（域は原点から上へ 6 m）。
+// 旋钮は 烟の量・熱さ（昇る速さ）・乱れ。
+VfxAssetData Smoke() {
+    const std::string suffix = "fluid_smoke";
+    VfxAssetData asset;
+    asset.name = "Smoke";
+    asset.durationSeconds = 30.0f;
+    asset.loop = true;
+    VfxEmitterData domain = MakePresetEmitterBase(suffix + ".domain", "Smoke Domain");
+    ApplyLayerKindDefaults(domain, VfxLayerKind::Fluid);
+    domain.fluidDomain.id = "module.fluid_domain." + suffix;
+    VfxFluidDomainModuleData& smoke = domain.fluidDomain;
+    smoke.domainSize = {3.0f, 6.0f, 3.0f};
+    smoke.resolution = 96u;
+    smoke.buoyancy = 1.2f;
+    smoke.vorticity = 2.0f;
+    smoke.densityDissipation = 0.25f;
+    smoke.temperatureDissipation = 0.6f;
+    smoke.extinction = 7.0f;
+    smoke.scatteringColor = {0.5f, 0.5f, 0.52f};
+    smoke.anisotropy = 0.3f;
+    smoke.detailStrength = 0.6f;
+    smoke.detailScale = 0.15f;
+    smoke.prewarmSeconds = 3.0f;
+    domain.emitterTransform.transform.position = {0.0f, 3.0f, 0.0f};
+    domain.forces.field.turbulence = 0.6f;
+    domain.forces.field.frequency = 1.5f;
+    domain.forces.field.evolution = 1.0f;
+    VfxEmitterData source = MakePresetEmitterBase(suffix + ".source", "Smoke Source");
+    ApplyLayerKindDefaults(source, VfxLayerKind::FluidSource);
+    source.fluidSource.id = "module.fluid_source." + suffix;
+    source.parentEmitterId = domain.id;
+    source.emitterTransform.transform.position = {0.0f, -2.6f, 0.0f};
+    Sphere(source, 0.45f);
+    source.spawn.ratePerSecond = 12.0f;
+    source.forces.gravity = {0.0f, 0.0f, 0.0f};
+    source.fluidSource.temperature = 1.2f;
+    source.fluidSource.velocity = {0.0f, 1.0f, 0.0f};
+    source.fluidSource.emissionNoise = 0.7f;
+    source.fluidSource.emissionNoiseScale = 0.5f;
+    source.forces.field.turbulence = 1.2f;
+    source.forces.field.frequency = 3.0f;
+    source.forces.field.evolution = 1.5f;
+    AddKnob(asset, "smoke", "Smoke", VfxValueType::Float);
+    AddKnob(asset, "heat", "Heat", VfxValueType::Float);
+    AddKnob(asset, "turbulence", "Turbulence", VfxValueType::Float);
+    LinkSpawnRate(source, "smoke");
+    LinkTemperature(source, "heat");
+    LinkTurbulence(source, "turbulence");
+    LinkTurbulence(domain, "turbulence");
+    return MakePresetAssetFromEmitters(std::move(asset), {std::move(domain), std::move(source)});
+}
+
+// 魔法の霧：地を這う淡く光る霧が床に広がり、ゆっくり渦を巻く。浮力は無く少し重い（温度は光るためだけ）ので床に溜まる。
+// 格ごとの色の域で、霧の色は源の層の色 × color の旋钮。効果の原点は地面（域は原点から上へ 2.5 m、底は閉じる）。
+// 旋钮は 量・光・乱れ・色。
+VfxAssetData MagicMist() {
+    const std::string suffix = "fluid_magic_mist";
+    VfxAssetData asset;
+    asset.name = "Magic Mist";
+    asset.durationSeconds = 30.0f;
+    asset.loop = true;
+    VfxEmitterData domain = MakePresetEmitterBase(suffix + ".domain", "Mist Domain");
+    ApplyLayerKindDefaults(domain, VfxLayerKind::Fluid);
+    domain.fluidDomain.id = "module.fluid_domain." + suffix;
+    VfxFluidDomainModuleData& mist = domain.fluidDomain;
+    mist.domainSize = {8.0f, 2.5f, 8.0f};
+    mist.resolution = 112u;
+    mist.boundary = RENDER3D::FLUID::FluidBoundary::ClosedFloor;
+    mist.cellColor = true;
+    mist.buoyancy = 0.0f;
+    mist.weight = 0.4f;
+    mist.vorticity = 1.5f;
+    mist.densityDissipation = 0.5f;
+    mist.temperatureDissipation = 0.8f;
+    mist.extinction = 2.5f;
+    mist.scatteringColor = {0.85f, 0.88f, 1.0f};
+    mist.anisotropy = 0.4f;
+    mist.multipleScattering = 0.9f;
+    mist.emissionColor = {0.3f, 0.55f, 1.0f};
+    mist.emissionTemperature = 0.3f;
+    mist.emissionHotColor = {0.7f, 0.85f, 1.0f};
+    mist.emissionHotTemperature = 1.5f;
+    mist.emissionIntensity = 60000.0f;
+    mist.detailStrength = 0.7f;
+    mist.detailScale = 0.3f;
+    mist.prewarmSeconds = 4.0f;
+    domain.emitterTransform.transform.position = {0.0f, 1.25f, 0.0f};
+    domain.forces.field.turbulence = 0.8f;
+    domain.forces.field.frequency = 0.6f;
+    domain.forces.field.evolution = 0.5f;
+    domain.forces.field.vortex = 0.3f;
+    VfxEmitterData source = MakePresetEmitterBase(suffix + ".source", "Mist Source");
+    ApplyLayerKindDefaults(source, VfxLayerKind::FluidSource);
+    source.fluidSource.id = "module.fluid_source." + suffix;
+    source.parentEmitterId = domain.id;
+    source.emitterTransform.transform.position = {0.0f, -1.0f, 0.0f};
+    source.shape.type = VfxShapeType::Cylinder;
+    source.shape.radius = MakeVfxFloatConstant(2.5f);
+    source.shape.cylinderHeight = 0.3f;
+    source.spawn.ratePerSecond = 1.8f;
+    source.forces.gravity = {0.0f, 0.0f, 0.0f};
+    source.color.value.fixed = MakeVfxColorConstant({0.55f, 0.75f, 1.0f, 1.0f});
+    source.fluidSource.temperature = 0.8f;
+    source.fluidSource.velocity = {0.0f, 0.0f, 0.0f};
+    source.fluidSource.radialSpeed = 0.8f;
+    source.fluidSource.emissionNoise = 0.9f;
+    source.fluidSource.emissionNoiseScale = 0.4f;
+    AddKnob(asset, "amount", "Amount", VfxValueType::Float);
+    AddKnob(asset, "glow", "Glow", VfxValueType::Float);
+    AddKnob(asset, "turbulence", "Turbulence", VfxValueType::Float);
+    AddKnob(asset, "color", "Color", VfxValueType::Color);
+    LinkSpawnRate(source, "amount");
+    LinkTemperature(source, "glow");
+    LinkTurbulence(domain, "turbulence");
+    LinkColor(source, "color");
+    return MakePresetAssetFromEmitters(std::move(asset), {std::move(domain), std::move(source)});
+}
+
 // 一度きりの燃料の塊が外へ吹き出しながら一気に燃え、火の玉が暗い烟の中の火の塊になり、燃え尽きた煤が浮力で菜花状に昇る。
 // burst の数はそのまま格の燃料の量（3〜4）。体積は exp(expansionPerBurn × 燃えた燃料) 倍に膨らむ：膨張 1（約 20 倍）は
 // 滑らかな大きな穹顶になり格ごとの横縞が出る、0 は小さくまとまる、0.3（約 3 倍）が菜花状に崩れて縞も出ない。
@@ -131,11 +260,18 @@ VfxAssetData Explosion(std::string name, const std::string& suffix, const MATH::
     charge.forces.field.turbulence = 0.8f;
     charge.forces.field.frequency = 1.0f;
     charge.forces.field.evolution = 1.0f;
+    FireKnobs(asset, charge);
     return MakePresetAssetFromEmitters(std::move(asset), {std::move(domain), std::move(charge)});
 }
 } // namespace
 
 VfxAssetData FluidPreset(std::string_view id) {
+    if (id == "fluid_sword_qi")
+        return SwordQi();
+    if (id == "fluid_smoke")
+        return Smoke();
+    if (id == "fluid_magic_mist")
+        return MagicMist();
     if (id == "fluid_ground_explosion")
         return Explosion("Ground Explosion", "fluid_ground_explosion", {10.0f, 8.0f, 10.0f}, -3.4f, 0.8f, 4u, 8.0f,
                          1.5f);
@@ -152,6 +288,7 @@ VfxAssetData FluidPreset(std::string_view id) {
         VfxEmitterData fuel = FuelSource(suffix + ".fuel", domain, {0.0f, -1.3f, 0.0f});
         Sphere(fuel, 0.25f);
         VfxEmitterData haze = HeatHaze(suffix + ".haze", {0.0f, -1.0f, 0.0f}, {0.2f, 0.1f, 0.2f}, 8.0f);
+        FireKnobs(asset, fuel);
         return MakePresetAssetFromEmitters(std::move(asset), {std::move(domain), std::move(fuel), std::move(haze)});
     }
     if (id == "fluid_fire_wall") {
@@ -162,6 +299,7 @@ VfxAssetData FluidPreset(std::string_view id) {
         fuel.shape.boxHalfExtents = {3.5f, 0.08f, 0.25f};
         fuel.spawn.ratePerSecond = 5.0f;
         VfxEmitterData haze = HeatHaze(suffix + ".haze", {0.0f, -0.6f, 0.0f}, {3.4f, 0.1f, 0.25f}, 24.0f);
+        FireKnobs(asset, fuel);
         return MakePresetAssetFromEmitters(std::move(asset), {std::move(domain), std::move(fuel), std::move(haze)});
     }
     if (id == "fluid_fireball") {
@@ -182,6 +320,7 @@ VfxAssetData FluidPreset(std::string_view id) {
         fuel.fluidSource.velocity = {};
         fuel.fluidSource.radialSpeed = 0.5f;
         fuel.fluidSource.temperature = 1.5f;
+        FireKnobs(asset, fuel);
         return MakePresetAssetFromEmitters(std::move(asset), {std::move(domain), std::move(fuel)});
     }
     throw std::invalid_argument("Unknown fluid preset: " + suffix);

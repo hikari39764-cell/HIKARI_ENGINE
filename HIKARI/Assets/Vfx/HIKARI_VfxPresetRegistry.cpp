@@ -35,7 +35,11 @@ const std::vector<VfxPresetDescriptor>& GetVfxPresetCatalog() {
         {"fluid_ground_explosion", "Ground Explosion", "Fluid",
          "Fuel burst on the ground: expanding fireball, dust and a rising smoke column"},
         {"fluid_air_explosion", "Air Explosion", "Fluid",
-         "Fuel burst in the air: fireball that burns out into a rising mushroom of smoke"}};
+         "Fuel burst in the air: fireball that burns out into a rising mushroom of smoke"},
+        {"fluid_smoke", "Smoke", "Fluid", "Warm smoke rising from a source and unravelling with turbulence"},
+        {"fluid_magic_mist", "Magic Mist", "Fluid", "Faintly glowing colored mist creeping over the floor"},
+        {"fluid_sword_qi", "Sword Qi", "Fluid",
+         "Crescent of smoke flying forward: dense edge, torn trailing smoke, tip vortices and an impact burst"}};
     return presets;
 }
 

@@ -597,6 +597,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Vfx/Internal/HIKARI_VfxSupportingPresets.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Vfx/Internal/HIKARI_VfxFireTornadoPreset.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Vfx/Internal/HIKARI_VfxFluidPresets.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Vfx/Internal/HIKARI_VfxSwordQiPreset.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Vfx/Internal/HIKARI_VfxStyleModules.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Vfx/HIKARI_VfxPresetRegistry.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Vfx/HIKARI_VfxGeometryPresetCatalog.cpp"
