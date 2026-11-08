@@ -200,6 +200,7 @@ public:
     void ClearDockRegions() noexcept {
         dockRegions_.fill(0u);
         forceDock_ = false;
+        floatingPanelCount_ = 0;
     }
 
     void DrawDockSpace(bool reset) {
@@ -254,6 +255,14 @@ public:
         const size_t slot = static_cast<size_t>(region);
         if (slot < dockRegions_.size() && dockRegions_[slot]) {
             ImGui::SetNextWindowDockID(dockRegions_[slot], forceDock_ ? ImGuiCond_Always : ImGuiCond_FirstUseEver);
+        } else {
+            // ドックに入らない窓は初回だけ、主窓の右寄りに少しずつずらして置く。
+            const ImGuiViewport* viewport = ImGui::GetMainViewport();
+            const float offset = 28.0f * static_cast<float>(floatingPanelCount_++);
+            ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.56f + offset,
+                                           viewport->WorkPos.y + viewport->WorkSize.y * 0.08f + offset),
+                                    ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(360.0f, 440.0f), ImGuiCond_FirstUseEver);
         }
         return ImGui::Begin(label.c_str(), open);
     }
@@ -553,6 +562,7 @@ private:
     bool canvasActive_ = false;
     std::array<ImGuiID, 5> dockRegions_{};
     bool forceDock_ = false;
+    int floatingPanelCount_ = 0;
     ImVec2 canvasMinimum_{};
     ImVec2 canvasSize_{};
     ImDrawList* canvasDrawList_ = nullptr;
