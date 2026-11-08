@@ -18,6 +18,7 @@
 #include "TerrainKit/Data/HIKARI_TerrainDataErosion.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataFile.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataImage.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataStamp.h"
 
 using namespace HIKARI::TERRAIN::DATA;
 using HIKARI::MATH::Vec2;
@@ -335,6 +336,113 @@ void TestBrushes() {
     CHECK(ApplyControlBrush(data, paint, std::span(&center, 1u), nullptr, result, error));
     CHECK(UnpackControlTexel(data.Control().Get(32, 32)).hole);
     CHECK(!UnpackControlTexel(data.Control().Get(32, 40)).hole);
+}
+
+// 坂・段丘・範囲の制限、印章、層のマスク。
+void TestBrushVariantsStampsAndMasks() {
+    std::string error;
+    BrushEditResult result{};
+    // 坂：始点の高さから終点の高さへ一定に上る（傾きの指定は始点からの高さを決める）。
+    {
+        TerrainData data(SmallGrid());
+        const uint32_t sculpt = data.AddLayer(SculptLayer());
+        HeightBrushSettings ramp{};
+        ramp.op = HeightBrushOp::Ramp;
+        ramp.radiusMeters = 6.0f;
+        ramp.strength = 1.0f;
+        ramp.hardness = 0.9f;
+        ramp.spacing = 0.1f;
+        ramp.rampSlopeDegrees = 45.0f;
+        const Vec2 path[] = {{10.0f, 32.0f}, {50.0f, 32.0f}};
+        CHECK(ApplyHeightBrush(data, sculpt, ramp, path, nullptr, result, error));
+        CHECK(std::fabs(Composite(data, 30, 32) - 20.0f) < 0.05f);
+        CHECK(std::fabs(Composite(data, 50, 32) - 40.0f) < 0.05f);
+    }
+    // 段丘：合成後の高さを段へ寄せる。
+    {
+        TerrainData data(SmallGrid());
+        const uint32_t sculpt = data.AddLayer(SculptLayer());
+        HeightBrushSettings raise{};
+        raise.op = HeightBrushOp::Raise;
+        raise.radiusMeters = 20.0f;
+        raise.strength = 13.0f;
+        raise.hardness = 1.0f;
+        const Vec2 center{32.0f, 32.0f};
+        CHECK(ApplyHeightBrush(data, sculpt, raise, std::span(&center, 1u), nullptr, result, error));
+        HeightBrushSettings terrace{};
+        terrace.op = HeightBrushOp::Terrace;
+        terrace.radiusMeters = 8.0f;
+        terrace.strength = 1.0f;
+        terrace.hardness = 1.0f;
+        terrace.terraceStepMeters = 10.0f;
+        CHECK(ApplyHeightBrush(data, sculpt, terrace, std::span(&center, 1u), nullptr, result, error));
+        CHECK(std::fabs(Composite(data, 32, 32) - 10.0f) < 0.01f);
+    }
+    // 高さの範囲の外では筆が効かない。
+    {
+        TerrainData data(SmallGrid());
+        const uint32_t sculpt = data.AddLayer(SculptLayer());
+        HeightBrushSettings raise{};
+        raise.op = HeightBrushOp::Raise;
+        raise.radiusMeters = 8.0f;
+        raise.strength = 5.0f;
+        raise.limitMinHeightMeters = 100.0f;
+        const Vec2 center{32.0f, 32.0f};
+        CHECK(ApplyHeightBrush(data, sculpt, raise, std::span(&center, 1u), nullptr, result, error));
+        CHECK(Composite(data, 32, 32) == 0.0f);
+    }
+    // 印章：縁は 0、撤销で戻る、回しても中心は同じ。
+    {
+        TerrainData data(SmallGrid());
+        const uint32_t sculpt = data.AddLayer(SculptLayer());
+        HeightImage image{};
+        CHECK(MakeBuiltinStamp("hill", 65u, image));
+        CHECK(!MakeBuiltinStamp("nothing", 65u, image));
+        CHECK(MakeBuiltinStamp("hill", 65u, image));
+        StampSettings stamp{};
+        stamp.center = Vec2{32.0f, 32.0f};
+        stamp.radiusMeters = 20.0f;
+        stamp.heightMeters = 10.0f;
+        stamp.rotationDegrees = 45.0f;
+        TerrainEditRecorder recorder(data);
+        CHECK(ApplyStamp(data, sculpt, image, stamp, &recorder, result, error));
+        CHECK(Composite(data, 32, 32) > 8.0f);
+        CHECK(Composite(data, 32, 52) == 0.0f);
+        const TerrainEdit edit = recorder.Finish("stamp");
+        CHECK(UndoTerrainEdit(data, edit, error));
+        CHECK(Composite(data, 32, 32) == 0.0f);
+    }
+    // 層のマスク：消すと下だけになり、書き出しと読み込みで同じ値へ戻る。
+    {
+        TerrainData data(SmallGrid());
+        const uint32_t sculpt = data.AddLayer(SculptLayer());
+        HeightBrushSettings raise{};
+        raise.op = HeightBrushOp::Raise;
+        raise.radiusMeters = 30.0f;
+        raise.strength = 4.0f;
+        raise.hardness = 1.0f;
+        const Vec2 center{32.0f, 32.0f};
+        CHECK(ApplyHeightBrush(data, sculpt, raise, std::span(&center, 1u), nullptr, result, error));
+        MaskBrushSettings erase{};
+        erase.op = MaskBrushOp::Erase;
+        erase.radiusMeters = 5.0f;
+        erase.strength = 1.0f;
+        erase.hardness = 1.0f;
+        CHECK(ApplyMaskBrush(data, sculpt, erase, std::span(&center, 1u), nullptr, result, error));
+        CHECK(data.FindLayer(sculpt)->masked);
+        CHECK(Composite(data, 32, 32) == 0.0f);
+        CHECK(std::fabs(Composite(data, 32, 45) - 4.0f) < 1.0e-4f);
+        HeightImage exported{};
+        const SampleRect rect{0, 0, 65u, 65u};
+        CHECK(ExportLayerMask(data, sculpt, rect, exported, error));
+        CHECK(exported.values[32u * 65u + 32u] == 0.0f);
+        HeightImage solid{};
+        solid.width = 2u;
+        solid.height = 2u;
+        solid.values.assign(4u, 1.0f);
+        CHECK(ImportLayerMask(data, sculpt, solid, Vec2{0.0f, 0.0f}, Vec2{64.0f, 64.0f}, nullptr, result, error));
+        CHECK(std::fabs(Composite(data, 32, 32) - 4.0f) < 1.0e-4f);
+    }
 }
 
 void TestUndo() {
@@ -660,6 +768,7 @@ int main(int argc, char** argv) {
     TestStackJson();
     TestEvaluation();
     TestBrushes();
+    TestBrushVariantsStampsAndMasks();
     TestUndo();
     TestErosion();
     TestCellFile();

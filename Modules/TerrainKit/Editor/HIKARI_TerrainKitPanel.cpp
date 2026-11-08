@@ -245,9 +245,11 @@ private:
         }
         ui.InputFloat("erosionRain", "Rain (m/s)", &erosion.hydraulicSettings.rainRate);
         ui.InputFloat("erosionTalus", "Talus Angle (deg)", &erosion.thermalSettings.talusAngleDegrees);
-        if (ui.Button("erode", "Erode Whole Terrain")) {
+        if (store.Erosion().Running()) {
+            ui.Text("Eroding: " + std::to_string(static_cast<int>(store.Erosion().Progress() * 100.0f)) + "%");
+        } else if (ui.Button("erode", "Erode Whole Terrain")) {
             std::string error{};
-            if (!RunErosion(*shared_, WholeTerrainRect(store), erosion, nullptr, error)) {
+            if (!StartGpuErosion(shared_, WholeTerrainRect(store), erosion, error)) {
                 Report(error);
             }
         }

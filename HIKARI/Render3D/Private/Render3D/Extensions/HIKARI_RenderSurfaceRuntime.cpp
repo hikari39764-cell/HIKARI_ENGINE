@@ -19,6 +19,8 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
+#include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Gfx/HIKARI_VideoMemory.h"
 #include "Gfx/RayTracing/HIKARI_DxrAccelerationStructure.h"
@@ -54,6 +56,10 @@ struct SurfaceResource {
     ComPtr<ID3D12Resource> resource{};
     RenderSurfaceTextureArrayDesc texture{};
     bool isTexture = false;
+    bool isComputeBuffer = false;
+    uint64_t computeBytes = 0u;
+    ComPtr<ID3D12Resource> readback{};
+    uint64_t readbackFence = 0u;
     D3D12_INDEX_BUFFER_VIEW indexView{};
     D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
     bool copyPending = false;
@@ -100,6 +106,8 @@ struct RuntimeState {
     bool rayProxiesChanged = false;
     RenderSurfaceResourceId nextResource = 1u;
     std::map<std::string, ComPtr<ID3D12PipelineState>> pipelines{};
+    std::map<RenderSurfaceResourceId, ComPtr<ID3D12PipelineState>> computePrograms{};
+    ComPtr<ID3D12RootSignature> computeRoot{};
     std::map<std::string, bool> failedPrograms{};
     std::map<std::array<RenderSurfaceResourceId, kRenderSurfaceTextureSlotCount>, DescriptorTable> tables{};
     std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads{};
@@ -129,9 +137,12 @@ void ReleaseAll(RuntimeState& state, const GFX::Context* graphics) noexcept {
         for (auto& [id, resource] : state.resources) {
             if (graphics != nullptr) {
                 Retire(*graphics, resource.resource);
+                Retire(*graphics, resource.readback);
             }
         }
         state.resources.clear();
+        state.computePrograms.clear();
+        state.computeRoot.Reset();
         for (auto& [id, proxy] : state.rayProxies) {
             if (proxy.bottomLevel) {
                 proxy.bottomLevel->Reset(graphics);
@@ -307,7 +318,142 @@ public:
         return id;
     }
 
+    RenderSurfaceResourceId CreateComputeProgram(std::string_view hlslSource, std::string_view entry) override {
+        if (hlslSource.empty() || entry.empty() || !EnsureComputeRoot()) {
+            return 0u;
+        }
+        const std::string entryName(entry);
+        ComPtr<ID3DBlob> shader{};
+        if (!GFX::CompileShaderSourceSm6(hlslSource.data(), hlslSource.size(), L"ModuleCompute", entryName.c_str(),
+                                         L"cs_6_5", shader.GetAddressOf())) {
+            HIKARI_LOG_ERROR("[RenderSurface] Module compute shader did not compile: " + entryName);
+            return 0u;
+        }
+        D3D12_COMPUTE_PIPELINE_STATE_DESC description{};
+        description.pRootSignature = state_.computeRoot.Get();
+        description.CS = {shader->GetBufferPointer(), shader->GetBufferSize()};
+        ComPtr<ID3D12PipelineState> pipeline{};
+        if (!HIKARI_DX_CHECK(
+                state_.graphics.device->CreateComputePipelineState(&description, IID_PPV_ARGS(pipeline.GetAddressOf())),
+                "RenderSurface::CreateComputeProgram")) {
+            return 0u;
+        }
+        const RenderSurfaceResourceId id = state_.nextResource++;
+        state_.computePrograms.emplace(id, std::move(pipeline));
+        return id;
+    }
+
+    RenderSurfaceResourceId CreateBuffer(uint64_t bytes, const void* initialData) override {
+        if (bytes == 0u) {
+            return 0u;
+        }
+        const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+        const auto description = CD3DX12_RESOURCE_DESC::Buffer(bytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        SurfaceResource resource{};
+        resource.isComputeBuffer = true;
+        resource.computeBytes = bytes;
+        resource.state =
+            initialData != nullptr ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                                 state_.graphics.device, &heap, D3D12_HEAP_FLAG_NONE, &description, resource.state,
+                                 nullptr, GFX::VIDEO_MEMORY::Owner::Geometry,
+                                 IID_PPV_ARGS(resource.resource.GetAddressOf())),
+                             "RenderSurface::CreateBuffer")) {
+            return 0u;
+        }
+        GFX::SetD3D12Name(resource.resource.Get(), L"HIKARI RenderSurface Compute Buffer");
+        if (initialData != nullptr && !CopyToBuffer(resource, initialData, bytes)) {
+            return 0u;
+        }
+        const RenderSurfaceResourceId id = state_.nextResource++;
+        state_.resources.emplace(id, std::move(resource));
+        return id;
+    }
+
+    bool Dispatch(const RenderSurfaceDispatch& dispatch) override {
+        const auto program = state_.computePrograms.find(dispatch.program);
+        if (program == state_.computePrograms.end() ||
+            dispatch.constantBytes > kRenderSurfaceMaximumComputeConstantBytes ||
+            (dispatch.constantBytes != 0u && dispatch.constants == nullptr)) {
+            return false;
+        }
+        ID3D12GraphicsCommandList* commands = state_.graphics.cmdList;
+        std::array<D3D12_RESOURCE_BARRIER, kRenderSurfaceComputeSlotCount> writes{};
+        UINT writeCount = 0u;
+        commands->SetComputeRootSignature(state_.computeRoot.Get());
+        commands->SetPipelineState(program->second.Get());
+        if (dispatch.constantBytes != 0u) {
+            const DX::UploadAllocation allocation = state_.uploads[state_.slot].Allocate(dispatch.constantBytes);
+            if (!allocation) {
+                return false;
+            }
+            std::memcpy(allocation.cpuAddress, dispatch.constants, dispatch.constantBytes);
+            commands->SetComputeRootConstantBufferView(0u, allocation.gpuAddress);
+        }
+        for (uint32_t slot = 0u; slot < kRenderSurfaceComputeSlotCount; ++slot) {
+            if (SurfaceResource* buffer = FindComputeBuffer(dispatch.readBuffers[slot])) {
+                TransitionTo(*buffer, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                commands->SetComputeRootShaderResourceView(1u + slot, buffer->resource->GetGPUVirtualAddress());
+            }
+            if (SurfaceResource* buffer = FindComputeBuffer(dispatch.writeBuffers[slot])) {
+                TransitionTo(*buffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+                commands->SetComputeRootUnorderedAccessView(1u + kRenderSurfaceComputeSlotCount + slot,
+                                                            buffer->resource->GetGPUVirtualAddress());
+                writes[writeCount++] = CD3DX12_RESOURCE_BARRIER::UAV(buffer->resource.Get());
+            }
+        }
+        commands->Dispatch(dispatch.groupsX, dispatch.groupsY, dispatch.groupsZ);
+        commands->ResourceBarrier(writeCount, writes.data());
+        return true;
+    }
+
+    bool RequestBufferRead(RenderSurfaceResourceId id) override {
+        SurfaceResource* buffer = FindComputeBuffer(id);
+        if (buffer == nullptr || buffer->readback != nullptr) {
+            return false;
+        }
+        const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_READBACK);
+        const auto description = CD3DX12_RESOURCE_DESC::Buffer(buffer->computeBytes);
+        if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                                 state_.graphics.device, &heap, D3D12_HEAP_FLAG_NONE, &description,
+                                 D3D12_RESOURCE_STATE_COPY_DEST, nullptr, GFX::VIDEO_MEMORY::Owner::Geometry,
+                                 IID_PPV_ARGS(buffer->readback.GetAddressOf())),
+                             "RenderSurface::RequestBufferRead")) {
+            return false;
+        }
+        TransitionTo(*buffer, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        state_.graphics.cmdList->CopyResource(buffer->readback.Get(), buffer->resource.Get());
+        buffer->readbackFence = state_.graphics.currentFrameRetireFenceValue;
+        return true;
+    }
+
+    bool IsBufferReadReady(RenderSurfaceResourceId id) override {
+        const SurfaceResource* buffer = FindComputeBuffer(id);
+        return buffer != nullptr && buffer->readback != nullptr && state_.graphics.frameFence != nullptr &&
+               state_.graphics.frameFence->GetCompletedValue() >= buffer->readbackFence;
+    }
+
+    bool ReadBuffer(RenderSurfaceResourceId id, void* out, uint64_t bytes) override {
+        SurfaceResource* buffer = FindComputeBuffer(id);
+        if (!IsBufferReadReady(id) || out == nullptr || bytes > buffer->computeBytes) {
+            return false;
+        }
+        void* mapped = nullptr;
+        const D3D12_RANGE range{0u, static_cast<SIZE_T>(bytes)};
+        if (FAILED(buffer->readback->Map(0u, &range, &mapped))) {
+            return false;
+        }
+        std::memcpy(out, mapped, static_cast<size_t>(bytes));
+        const D3D12_RANGE nothing{0u, 0u};
+        buffer->readback->Unmap(0u, &nothing);
+        Retire(state_.graphics, buffer->readback);
+        return true;
+    }
+
     void Release(RenderSurfaceResourceId id) override {
+        if (state_.computePrograms.erase(id) != 0u) {
+            return;
+        }
         if (const auto proxy = state_.rayProxies.find(id); proxy != state_.rayProxies.end()) {
             if (proxy->second.bottomLevel) {
                 proxy->second.bottomLevel->Reset(&state_.graphics);
@@ -325,6 +471,7 @@ public:
             return;
         }
         Retire(state_.graphics, found->second.resource);
+        Retire(state_.graphics, found->second.readback);
         state_.resources.erase(found);
         for (auto table = state_.tables.begin(); table != state_.tables.end();) {
             if (std::find(table->first.begin(), table->first.end(), id) != table->first.end()) {
@@ -346,6 +493,60 @@ public:
     }
 
 private:
+    SurfaceResource* FindComputeBuffer(RenderSurfaceResourceId id) {
+        const auto found = state_.resources.find(id);
+        return found != state_.resources.end() && found->second.isComputeBuffer ? &found->second : nullptr;
+    }
+
+    // b0、t0..t3、u0..u3 を根に直接置く。
+    bool EnsureComputeRoot() {
+        if (state_.computeRoot != nullptr) {
+            return true;
+        }
+        std::array<CD3DX12_ROOT_PARAMETER, 1u + 2u * kRenderSurfaceComputeSlotCount> parameters{};
+        parameters[0].InitAsConstantBufferView(0u);
+        for (uint32_t slot = 0u; slot < kRenderSurfaceComputeSlotCount; ++slot) {
+            parameters[1u + slot].InitAsShaderResourceView(slot);
+            parameters[1u + kRenderSurfaceComputeSlotCount + slot].InitAsUnorderedAccessView(slot);
+        }
+        const CD3DX12_ROOT_SIGNATURE_DESC description(static_cast<UINT>(parameters.size()), parameters.data());
+        return HIKARI_DX_CHECK(
+            GFX::CreateRootSignature(state_.graphics.device, description, state_.computeRoot.GetAddressOf()),
+            "RenderSurface compute root signature");
+    }
+
+    // 一度きりの大きな内容は専用の upload を作ってすぐ手放す（毎フレームの page を太らせない）。
+    bool CopyToBuffer(SurfaceResource& resource, const void* data, uint64_t bytes) {
+        ID3D12GraphicsCommandList* commands = state_.graphics.cmdList;
+        if (bytes <= kUploadPageBytes) {
+            const DX::UploadAllocation allocation = state_.uploads[state_.slot].Allocate(static_cast<size_t>(bytes));
+            if (!allocation) {
+                return false;
+            }
+            std::memcpy(allocation.cpuAddress, data, static_cast<size_t>(bytes));
+            commands->CopyBufferRegion(resource.resource.Get(), 0u, allocation.resource, allocation.offset, bytes);
+            return true;
+        }
+        const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+        const auto description = CD3DX12_RESOURCE_DESC::Buffer(bytes);
+        ComPtr<ID3D12Resource> upload{};
+        void* mapped = nullptr;
+        if (!HIKARI_DX_CHECK(GFX::VIDEO_MEMORY::CreateCommittedResource(
+                                 state_.graphics.device, &heap, D3D12_HEAP_FLAG_NONE, &description,
+                                 D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, GFX::VIDEO_MEMORY::Owner::Geometry,
+                                 IID_PPV_ARGS(upload.GetAddressOf())),
+                             "RenderSurface::CopyToBuffer") ||
+            FAILED(upload->Map(0u, nullptr, &mapped))) {
+            return false;
+        }
+        std::memcpy(mapped, data, static_cast<size_t>(bytes));
+        upload->Unmap(0u, nullptr);
+        GFX::UPLOAD_TRAFFIC::Record(GFX::UPLOAD_TRAFFIC::Owner::SurfaceExtensions, static_cast<size_t>(bytes));
+        commands->CopyBufferRegion(resource.resource.Get(), 0u, upload.Get(), 0u, bytes);
+        Retire(state_.graphics, upload);
+        return true;
+    }
+
     void TransitionTo(SurfaceResource& resource, D3D12_RESOURCE_STATES next) {
         if (resource.state == next) {
             return;

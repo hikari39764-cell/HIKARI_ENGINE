@@ -277,11 +277,10 @@ bool RunThermalErosion(ErosionField& field, const ThermalErosionSettings& reques
     return true;
 }
 
-bool ApplyErosionToLayer(TerrainData& data, uint32_t layerId, const SampleRect& rect, const ErosionRequest& requested,
-                         TerrainEditRecorder* recorder, ErosionMaps* maps, std::string& error) {
+bool PrepareErosionInput(const TerrainData& data, uint32_t layerId, const SampleRect& rect, ErosionInput& out,
+                         std::string& error) {
     const HeightLayer* layer = data.FindLayer(layerId);
-    TiledRaster<float>* values = data.LayerValues(layerId);
-    if (layer == nullptr || values == nullptr ||
+    if (layer == nullptr || data.LayerValues(layerId) == nullptr ||
         (layer->blend != HeightBlendMode::Add && layer->blend != HeightBlendMode::Subtract)) {
         error = "erosion writes into an existing sculpt layer with add or subtract blending";
         return false;
@@ -290,25 +289,27 @@ bool ApplyErosionToLayer(TerrainData& data, uint32_t layerId, const SampleRect& 
         error = "erosion rectangle must be 3..4096 samples per edge";
         return false;
     }
-    const ErosionRequest request = JSONFIELDS::Sanitize(requested, kErosionRequestFields);
-    const TerrainGrid& grid = data.Grid();
-    ErosionField field{};
-    field.width = rect.width;
-    field.height = rect.height;
-    field.spacingMeters = static_cast<float>(SampleSpacing(grid));
-    std::vector<float> layerValues, alpha;
-    {
-        HeightStackEvaluator evaluator(data);
-        if (!evaluator.Valid()) {
-            error = evaluator.Error();
-            return false;
-        }
-        if (!evaluator.EvaluateRect(rect, field.heights, &error, layerId) ||
-            !evaluator.EvaluateLayerValues(layerId, rect, layerValues, alpha, &error)) {
-            return false;
-        }
+    out.field.width = rect.width;
+    out.field.height = rect.height;
+    out.field.spacingMeters = static_cast<float>(SampleSpacing(data.Grid()));
+    HeightStackEvaluator evaluator(data);
+    if (!evaluator.Valid()) {
+        error = evaluator.Error();
+        return false;
     }
-    const std::vector<float> original = field.heights;
+    std::vector<float> layerValues{};
+    return evaluator.EvaluateRect(rect, out.field.heights, &error, layerId) &&
+           evaluator.EvaluateLayerValues(layerId, rect, layerValues, out.alpha, &error);
+}
+
+bool ApplyErosionToLayer(TerrainData& data, uint32_t layerId, const SampleRect& rect, const ErosionRequest& requested,
+                         TerrainEditRecorder* recorder, ErosionMaps* maps, std::string& error) {
+    ErosionInput input{};
+    if (!PrepareErosionInput(data, layerId, rect, input, error)) {
+        return false;
+    }
+    const ErosionRequest request = JSONFIELDS::Sanitize(requested, kErosionRequestFields);
+    ErosionField field = input.field;
     if (maps != nullptr) {
         *maps = {};
     }
@@ -319,6 +320,20 @@ bool ApplyErosionToLayer(TerrainData& data, uint32_t layerId, const SampleRect& 
     if (request.hydraulic && !RunHydraulicErosion(field, request.hydraulicSettings, maps, error)) {
         return false;
     }
+    return CommitErosionResult(data, layerId, rect, request, input, field.heights, recorder, error);
+}
+
+bool CommitErosionResult(TerrainData& data, uint32_t layerId, const SampleRect& rect, const ErosionRequest& request,
+                         const ErosionInput& input, const std::vector<float>& eroded, TerrainEditRecorder* recorder,
+                         std::string& error) {
+    const HeightLayer* layer = data.FindLayer(layerId);
+    TiledRaster<float>* values = data.LayerValues(layerId);
+    if (layer == nullptr || values == nullptr || eroded.size() != rect.Count() ||
+        input.field.heights.size() != rect.Count() || input.alpha.size() != rect.Count()) {
+        error = "the erosion result does not match its sculpt layer";
+        return false;
+    }
+    const TerrainGrid& grid = data.Grid();
     if (recorder != nullptr) {
         recorder->TouchRect(TerrainChannel::LayerValues, layerId, rect);
     }
@@ -332,7 +347,7 @@ bool ApplyErosionToLayer(TerrainData& data, uint32_t layerId, const SampleRect& 
             const std::size_t i = static_cast<std::size_t>(z) * rect.width + x;
             const float feather = FeatherWeight(x, z, rect.width, rect.height, request.featherSamples);
             const float delta =
-                sign * feather * (field.heights[i] - original[i]) / (std::max)(alpha[i], kMinimumLayerAlpha);
+                sign * feather * (eroded[i] - input.field.heights[i]) / (std::max)(input.alpha[i], kMinimumLayerAlpha);
             current[i] += delta;
             keep[i] = delta != 0.0f ? 1u : 0u;
         }

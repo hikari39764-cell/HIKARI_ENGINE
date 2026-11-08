@@ -97,6 +97,19 @@ inline constexpr auto kErosionRequestFields = [](auto&& field) {
     field("featherSamples", &S::featherSamples, Range{0.0, 4096.0}, Label{"Feather"});
 };
 
+// 侵蝕の入力：矩形の合成後の高さ（手彫り層 layerId まで）と、差分を層へ戻すための不透明度。
+struct ErosionInput {
+    ErosionField field{};
+    std::vector<float> alpha{};
+};
+
+bool PrepareErosionInput(const TerrainData& data, uint32_t layerId, const SampleRect& rect, ErosionInput& out,
+                         std::string& error);
+// eroded と input の差を手彫り層へ足す（CPU でも GPU でも結果の入れ方は同じ）。
+bool CommitErosionResult(TerrainData& data, uint32_t layerId, const SampleRect& rect, const ErosionRequest& request,
+                         const ErosionInput& input, const std::vector<float>& eroded, TerrainEditRecorder* recorder,
+                         std::string& error);
+
 // 矩形の合成後の高さ（手彫り層 layerId まで）を侵蝕し、変化量を手彫り層へ足す（加算の層だけ）。
 // 底図を替えても侵蝕の結果は差分として残る。maps があれば矩形の出力図を返す。
 bool ApplyErosionToLayer(TerrainData& data, uint32_t layerId, const SampleRect& rect, const ErosionRequest& request,

@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "HIKARI_TerrainKitGpuErosion.h"
 #include "TerrainKit/Data/HIKARI_TerrainData.h"
 
 namespace HIKARI::TERRAINKIT {
@@ -108,6 +109,7 @@ public:
     void MarkAllForUpload() noexcept;
     uint64_t LayoutRevision() const noexcept { return layoutRevision_; }
     TerrainRenderResources& Render() noexcept { return render_; }
+    GpuErosionJob& Erosion() noexcept { return erosion_; }
 
     // 世界 XZ の高さ（焼いた瓦片の双線形）。瓦片が無ければ空。
     std::optional<float> HeightAt(float worldX, float worldZ) const;
@@ -130,6 +132,7 @@ private:
     bool stackDirty_ = false;
     uint64_t layoutRevision_ = 1u;
     TerrainRenderResources render_{};
+    GpuErosionJob erosion_{};
     std::map<uint32_t, std::string> loadedImageKeys_{};
 };
 

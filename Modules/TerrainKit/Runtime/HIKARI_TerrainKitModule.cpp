@@ -196,6 +196,7 @@ public:
         EnsureResources(resources, store);
         UploadPendingTiles(resources, store);
         UpdateRayProxies(resources, store);
+        store.Erosion().Update(resources);
     }
 
     void Record(const RenderSurfaceView& view, IRenderSurfaceCommands& commands) override {
@@ -244,7 +245,10 @@ public:
         (void)commands.Draw(draw);
     }
 
-    void OnRenderResourcesLost() override { TerrainStore::Get().Render() = {}; }
+    void OnRenderResourcesLost() override {
+        TerrainStore::Get().Render() = {};
+        TerrainStore::Get().Erosion().OnRenderResourcesLost();
+    }
 
     uint32_t GetNavigationChunkCount() const override {
         return static_cast<uint32_t>(TerrainStore::Get().Tiles().size());

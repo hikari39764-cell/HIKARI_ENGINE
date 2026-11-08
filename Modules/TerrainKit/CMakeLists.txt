@@ -63,6 +63,8 @@ if(TARGET HIKARI_EditorHost)
     target_sources(
         HIKARI_TerrainKit
         PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitGpuErosion.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitGpuErosion.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitModule.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitStore.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitStore.h"
@@ -105,5 +107,8 @@ if(TARGET HIKARI_EditorHost)
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/HIKARI.TerrainKit.hmodule"
             "${_terrainkit_output}/HIKARI.TerrainKit.hmodule"
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/Shaders"
+            "${_terrainkit_output}/Shaders"
         VERBATIM)
 endif()

@@ -207,6 +207,15 @@ void WriteMap(const std::filesystem::path& directory, const char* name, const Sa
 
 } // namespace
 
+std::string WriteErosionMaps(const TerrainStore& store, const SampleRect& rect, const ErosionMaps& maps) {
+    Json outputs = Json::object();
+    const std::filesystem::path directory = TerrainOutputDirectory(store);
+    WriteMap(directory, "flow", rect, maps.flow, outputs);
+    WriteMap(directory, "deposition", rect, maps.deposition, outputs);
+    WriteMap(directory, "wear", rect, maps.wear, outputs);
+    return outputs.dump();
+}
+
 void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::shared_ptr<EditorShared>& shared,
                                std::vector<std::unique_ptr<IEditorOperationHandler>>& handlers) {
     Registration add(registrar, handlers);
@@ -542,8 +551,9 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
 
     add.Mutation(
         "terrainkit.erode",
-        "Run water and thermal erosion over the terrain or a circle, write the result to the selected sculpt "
-        "layer and export the flow, deposition and wear maps to Library/TerrainKit. One undo step.",
+        "Run water and thermal erosion over the terrain or a square around a point. The GPU path runs over a few "
+        "frames: read terrainkit.erode.status until it finishes. The result goes to the selected sculpt layer in one "
+        "undo step, and the flow, deposition and wear maps go to Library/TerrainKit.",
         {{"x", Type::Number, "World X of the center; omit x and z for the whole terrain."},
          {"z", Type::Number, "World Z of the center."},
          {"radiusMeters", Type::Number, "Half size of the square area around the center."},
@@ -552,7 +562,8 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
          {"iterations", Type::Integer, "Water iterations."},
          {"rainRate", Type::Number, "Rain per second."},
          {"talusAngleDegrees", Type::Number, "Thermal talus angle."},
-         {"featherSamples", Type::Integer, "Samples blended at the edge of the area."}},
+         {"featherSamples", Type::Integer, "Samples blended at the edge of the area."},
+         {"device", Type::String, "gpu (default) or cpu, the reference implementation."}},
         [shared](const Json& parameters, Sink& result) {
             if (!RequireTerrain(result)) {
                 return;
@@ -572,19 +583,23 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                                                              parameters.at("z").get<float>(),
                                                              parameters.value("radiusMeters", 256.0f)));
             }
-            ErosionMaps maps{};
             std::string error{};
+            if (parameters.value("device", std::string("gpu")) != "cpu") {
+                if (!StartGpuErosion(shared, rect, request, error)) {
+                    Fail(result, "EROSION_FAILED", error);
+                    return;
+                }
+                Ok(result, "Erosion started.", {{"started", true}, {"samples", rect.Count()}});
+                return;
+            }
+            ErosionMaps maps{};
             const auto started = std::chrono::steady_clock::now();
             if (!RunErosion(*shared, rect, request, &maps, error)) {
                 Fail(result, "EROSION_FAILED", error);
                 return;
             }
             const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-            Json outputs = Json::object();
-            const std::filesystem::path directory = TerrainOutputDirectory(store);
-            WriteMap(directory, "flow", rect, maps.flow, outputs);
-            WriteMap(directory, "deposition", rect, maps.deposition, outputs);
-            WriteMap(directory, "wear", rect, maps.wear, outputs);
+            Json outputs = Json::parse(WriteErosionMaps(store, rect, maps));
             Ok(result, "Erosion applied.",
                {{"seconds", seconds},
                 {"samples", rect.Count()},
@@ -593,6 +608,14 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                 {"maps", std::move(outputs)}});
         });
 
+    add.Query("terrainkit.erode.status", "Read the state of the GPU erosion: running, progress and the last result.",
+              {}, [shared](const Json&, Sink& result) {
+                  GpuErosionJob& job = TerrainStore::Get().Erosion();
+                  Ok(result, "Erosion status.",
+                     {{"running", job.Running()},
+                      {"progress", job.Progress()},
+                      {"last", shared->lastErosion.empty() ? Json{} : Json::parse(shared->lastErosion)}});
+              });
     add.Query("terrainkit.height_at", "Read the terrain height at x, z.",
               {{"x", Type::Number, "World X."}, {"z", Type::Number, "World Z."}},
               [](const Json& parameters, Sink& result) {

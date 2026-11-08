@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string_view>
 
 namespace HIKARI {
 
@@ -55,6 +56,23 @@ struct RenderSurfaceRayProxy {
     std::span<const RenderSurfaceRayProxyRegion> regions{};
 };
 
+inline constexpr uint32_t kRenderSurfaceComputeSlotCount = 4u;
+inline constexpr uint32_t kRenderSurfaceMaximumComputeConstantBytes = 256u;
+
+// モジュールの compute を一回走らせる。readBuffers は t0.. の StructuredBuffer、writeBuffers は u0.. の
+// RWStructuredBuffer、constants は b0。同じ緩衝を読みと書きの両方に指定しないこと。次の Dispatch の前に
+// 書いた緩衝には自動で UAV の barrier が入る。
+struct RenderSurfaceDispatch {
+    RenderSurfaceResourceId program = 0u;
+    RenderSurfaceResourceId readBuffers[kRenderSurfaceComputeSlotCount]{};
+    RenderSurfaceResourceId writeBuffers[kRenderSurfaceComputeSlotCount]{};
+    const void* constants = nullptr;
+    uint32_t constantBytes = 0u;
+    uint32_t groupsX = 1u;
+    uint32_t groupsY = 1u;
+    uint32_t groupsZ = 1u;
+};
+
 // PrepareFrame の間だけ有効。番号は Release か OnRenderResourcesLost まで使える。
 class IRenderSurfaceResources {
 public:
@@ -65,6 +83,16 @@ public:
     virtual RenderSurfaceResourceId CreateIndexBuffer(std::span<const uint16_t> indices) = 0;
     // 内容は写される。変える時は作り直して古い番号を Release する。
     virtual RenderSurfaceResourceId CreateRayTracingProxy(const RenderSurfaceRayProxy& proxy) = 0;
+    // compute。hlslSource は HLSL の本文（#include は使えない）、entry は入口の名前。失敗は 0。
+    virtual RenderSurfaceResourceId CreateComputeProgram(std::string_view hlslSource, std::string_view entry) = 0;
+    // GPU だけが持つ緩衝。initialData が無ければ中身は不定。
+    virtual RenderSurfaceResourceId CreateBuffer(uint64_t bytes, const void* initialData) = 0;
+    virtual bool Dispatch(const RenderSurfaceDispatch& dispatch) = 0;
+    // 今のフレームの末尾時点の緩衝の写しを取る依頼。GPU が終えると IsBufferReadReady が true になり、
+    // ReadBuffer で受け取れる（受け取ると写しは消える）。
+    virtual bool RequestBufferRead(RenderSurfaceResourceId buffer) = 0;
+    virtual bool IsBufferReadReady(RenderSurfaceResourceId buffer) = 0;
+    virtual bool ReadBuffer(RenderSurfaceResourceId buffer, void* out, uint64_t bytes) = 0;
     virtual void Release(RenderSurfaceResourceId resource) = 0;
 };
 

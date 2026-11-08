@@ -2,6 +2,8 @@
 #include <memory>
 #include <system_error>
 
+#include <json.hpp>
+
 #include "HIKARI_TerrainKitEditorCommon.h"
 
 namespace HIKARI::TERRAINKIT {
@@ -226,6 +228,52 @@ bool RunErosion(EditorShared& shared, const SampleRect& rect, const ErosionReque
     }
     store.RebakeRect(rect);
     RecordTerrainEdit(shared, recorder.Finish("Erode Terrain"));
+    return true;
+}
+
+bool StartGpuErosion(const std::shared_ptr<EditorShared>& shared, const SampleRect& rect, const ErosionRequest& request,
+                     std::string& error) {
+    TerrainStore& store = TerrainStore::Get();
+    const uint32_t layer = TargetSculptLayer(*shared);
+    if (!store.IsOpen() || layer == 0u) {
+        error = "No terrain with a sculpt layer is open.";
+        return false;
+    }
+    if (store.Erosion().Running()) {
+        error = "Erosion is already running.";
+        return false;
+    }
+    auto input = std::make_shared<ErosionInput>();
+    if (!PrepareErosionInput(store.Data(), layer, rect, *input, error)) {
+        return false;
+    }
+    shared->lastErosion.clear();
+    auto completion = [shared, rect, request, layer, input](GpuErosionResult result) {
+        TerrainStore& target = TerrainStore::Get();
+        nlohmann::json report{
+            {"ok", result.ok}, {"seconds", result.seconds}, {"samples", rect.Count()}, {"error", result.error}};
+        std::string message{};
+        if (result.ok && target.IsOpen()) {
+            TerrainEditRecorder recorder(target.Data());
+            if (CommitErosionResult(target.Data(), layer, rect, request, *input, result.heights, &recorder, message)) {
+                target.RebakeRect(rect);
+                RecordTerrainEdit(*shared, recorder.Finish("Erode Terrain"));
+                report["maps"] = nlohmann::json::parse(WriteErosionMaps(target, rect, result.maps));
+            } else {
+                report["ok"] = false;
+                report["error"] = message;
+            }
+        }
+        shared->lastErosion = report.dump();
+        if (shared->commands != nullptr && !report["ok"].get<bool>()) {
+            shared->commands->PublishStatus(EditorWorkspaceStatusSeverity::Error, report["error"].get<std::string>());
+        }
+    };
+    if (!store.Erosion().Start(rect.width, rect.height, input->field.spacingMeters, input->field.heights, request,
+                               std::move(completion))) {
+        error = "Erosion could not be started.";
+        return false;
+    }
     return true;
 }
 

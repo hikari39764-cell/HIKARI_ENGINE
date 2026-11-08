@@ -37,6 +37,8 @@ struct EditorShared {
     double brushFrameTotalMs = 0.0;
     double brushFrameMaxMs = 0.0;
     uint32_t brushFrames = 0u;
+    // 最後に終わった GPU 侵蝕の結果（JSON 文本）。
+    std::string lastErosion{};
 };
 
 // 筆や層の操作を書き込む先：選んでいる層が手彫り層ならそれ、でなければ一番上の手彫り層。
@@ -63,6 +65,12 @@ bool RunStamp(EditorShared& shared, std::string_view stampName, const TERRAIN::D
 // 矩形を侵蝕して手彫り層へ差分を足す。maps があれば流量・堆積・磨耗の図を返す。
 bool RunErosion(EditorShared& shared, const TERRAIN::DATA::SampleRect& rect,
                 const TERRAIN::DATA::ErosionRequest& request, TERRAIN::DATA::ErosionMaps* maps, std::string& error);
+// GPU で侵蝕を始める（数フレームかけて走り、終わると層へ書いて撤销に載せ、図を書き出す）。
+bool StartGpuErosion(const std::shared_ptr<EditorShared>& shared, const TERRAIN::DATA::SampleRect& rect,
+                     const TERRAIN::DATA::ErosionRequest& request, std::string& error);
+// 流量・堆積・磨耗の図を Library/TerrainKit へ書き、書いた先と値の範囲を JSON 文本で返す。
+std::string WriteErosionMaps(const TerrainStore& store, const TERRAIN::DATA::SampleRect& rect,
+                             const TERRAIN::DATA::ErosionMaps& maps);
 // 地形全体を覆う標本の矩形。
 TERRAIN::DATA::SampleRect WholeTerrainRect(const TerrainStore& store);
 
