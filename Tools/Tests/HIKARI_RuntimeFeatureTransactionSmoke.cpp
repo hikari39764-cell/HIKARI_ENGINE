@@ -18,7 +18,7 @@
 #include "Scene/HIKARI_SystemTypeRegistry.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/HIKARI_WorldMassStore.h"
-#include "Scene/Ui/HIKARI_UiSceneComponents.h"
+#include "HIKARI/Project/UiTypes.h"
 #include "Tools/Tests/Internal/HIKARI_ContractAssert.h"
 
 namespace {
@@ -184,9 +184,6 @@ int main() {
                HIKARI::RuntimeFeatureIds::SurfaceInteraction);
         assert(builtIn.FindOwningFeatureForSystem("TerrainSurfaceSystem") ==
                HIKARI::RuntimeFeatureIds::SurfaceInteraction);
-        assert(builtIn.FindOwningFeatureForComponent("UiCanvasComponent") == HIKARI::RuntimeFeatureIds::Ui);
-        assert(builtIn.FindOwningFeatureForComponent("UiButtonComponent") == HIKARI::RuntimeFeatureIds::Ui);
-        assert(builtIn.FindOwningFeatureForSystem("UiSceneSystem") == HIKARI::RuntimeFeatureIds::Ui);
         const auto resolution = builtIn.ResolveEnabledFeatures({std::string(HIKARI::RuntimeFeatureIds::Buoyancy)});
         assert(resolution.success);
         assert((resolution.resolvedFeatures ==
@@ -235,48 +232,13 @@ int main() {
         assert((animationResolution.resolvedFeatures ==
                 std::vector<std::string>{std::string(HIKARI::RuntimeFeatureIds::Rendering),
                                          std::string(HIKARI::RuntimeFeatureIds::Animation)}));
-        const auto uiResolution = builtIn.ResolveEnabledFeatures({std::string(HIKARI::RuntimeFeatureIds::Ui)});
-        assert(uiResolution.success);
-        assert((uiResolution.resolvedFeatures ==
-                std::vector<std::string>{std::string(HIKARI::RuntimeFeatureIds::Rendering),
-                                         std::string(HIKARI::RuntimeFeatureIds::Ui)}));
-        HIKARI::UiRectComponent rect{};
-        rect.Deserialize({{"anchorMinimum", {0.9f, 1.2f}},
-                          {"anchorMaximum", {0.1f, -0.2f}},
-                          {"pivot", {2.0f, -1.0f}},
-                          {"order", HIKARI::kUiElementOrderLimit + 1}});
-        assert(rect.GetAnchorMinimum().x == 0.1f);
-        assert(rect.GetAnchorMaximum().x == 0.9f);
-        assert(rect.GetAnchorMinimum().y == 0.0f);
-        assert(rect.GetAnchorMaximum().y == 1.0f);
-        assert(rect.GetPivot().x == 1.0f);
-        assert(rect.GetPivot().y == 0.0f);
-        assert(rect.GetOrder() == HIKARI::kUiElementOrderLimit);
+        // 旧 UI の物体層は削除済み。"UI" はもう組み込みの機能ではない。
+        assert(!builtIn.ResolveEnabledFeatures({"UI"}).success);
+        // 直接描画の HUD は参照解像度へ letterbox で合わせる。
         HIKARI::GameProjectUiCanvasFit fit{};
         assert(HIKARI::ResolveGameProjectUiCanvasFit(1920u, 1200u, 1920.0f, 1080.0f, fit));
         assert(fit.scale == 1.0f);
         assert(fit.offsetY == 60.0f);
-        HIKARI::ComponentRegistry uiComponents{};
-        HIKARI::WorldMassSchemaRegistry uiMassSchemas{};
-        HIKARI::SystemTypeRegistry uiSystems{};
-        HIKARI::ComponentSystemPolicy uiPolicy{};
-        HIKARI::RuntimeFeatureContext uiContext =
-            HIKARI::RuntimeFeatureContextAccess::Create(uiComponents, uiMassSchemas, uiSystems, uiPolicy);
-        const HIKARI::RuntimeFeatureInstallReport uiInstall =
-            builtIn.RegisterEnabled(uiContext, {std::string(HIKARI::RuntimeFeatureIds::Ui)});
-        assert(uiInstall.success);
-        assert(uiComponents.Find("UiCanvasComponent") != nullptr);
-        assert(uiComponents.Find("UiRectComponent") != nullptr);
-        assert(uiComponents.Find("UiImageComponent") != nullptr);
-        assert(uiComponents.Find("UiTextComponent") != nullptr);
-        assert(uiComponents.Find("UiButtonComponent") != nullptr);
-        assert(uiSystems.Find("UiSceneSystem") != nullptr);
-        const std::vector<HIKARI::SceneSystemData> uiDefaults = builtIn.CreateDefaultSceneSystems();
-        const auto uiDefault =
-            std::find_if(uiDefaults.begin(), uiDefaults.end(),
-                         [](const HIKARI::SceneSystemData& system) { return system.systemId == "UiSceneSystem"; });
-        assert(uiDefault != uiDefaults.end());
-        assert(uiDefault->executionOrder == 70);
     }
 
     {

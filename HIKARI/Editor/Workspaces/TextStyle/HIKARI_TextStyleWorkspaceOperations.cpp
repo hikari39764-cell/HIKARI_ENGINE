@@ -1,10 +1,22 @@
 #include "Editor/Workspaces/TextStyle/HIKARI_TextStyleWorkspaceController.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
-#include "Editor/Authoring/HIKARI_UiAuthoring.h"
+#include "Assets/HIKARI_AssetDatabase.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Core/Text/HIKARI_Localization.h"
+#include <algorithm>
 namespace HIKARI::EDITOR {
+namespace {
+// 新しい文字样式の既定フォント：読み込みに成功したフォント資産のうち表示名が最初のもの。
+std::string FindDefaultFont(const AssetDatabase& database) {
+    auto fonts = database.CollectByType(AssetType::Font);
+    std::erase_if(fonts, [](const auto* font) { return !font->lastImportSucceeded || !font->sourceExists; });
+    if (fonts.empty())
+        return {};
+    std::sort(fonts.begin(), fonts.end(), [](const auto* a, const auto* b) { return a->displayName < b->displayName; });
+    return fonts.front()->guid.value;
+}
+} // namespace
 void RegisterTextStyleOperations(EditorOperationRegistry& registry, TextStyleWorkspaceController& controller,
                                  EditorWorkspaceHost& host, std::function<DocumentSceneBase*()> scene) {
     using P = EditorOperationParameterType;
@@ -38,7 +50,7 @@ void RegisterTextStyleOperations(EditorOperationRegistry& registry, TextStyleWor
                                            p.value("discard", false));
                            if (ok) {
                                auto value = d.Profile();
-                               value.font.value = FindUiFont(owner->GetAssetDatabase());
+                               value.font.value = FindDefaultFont(owner->GetAssetDatabase());
                                ok = d.Apply(value, error);
                            }
                            return EditorOperationResult{ok, ok ? "OK" : "DRAFT_CONFLICT", error};
@@ -108,11 +120,10 @@ void RegisterTextStyleOperations(EditorOperationRegistry& registry, TextStyleWor
                            }},
                           EditorOperationKind::Mutation, false);
     registry.Register({"text.reveal",
-                       "Reveal the reusable text style workspace with optional scene UI text preview.",
+                       "Reveal the reusable text style workspace.",
                        "text",
-                       {{"objectId", P::Int, false, "UI text object to preview in its canvas."}},
-                       [&host, &controller](const nlohmann::json& p) {
-                           controller.SetPreviewObject({p.value("objectId", uint64_t{})});
+                       {},
+                       [&host](const nlohmann::json&) {
                            host.RequestOpen({EditorWorkspaceId::Text});
                            return EditorOperationResult{true, "OK", "Text style workspace requested."};
                        }},

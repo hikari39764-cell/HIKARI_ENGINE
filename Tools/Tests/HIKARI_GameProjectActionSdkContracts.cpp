@@ -518,7 +518,6 @@ static_assert(HasAddress(&HIKARI::VfxView::IsActive));
 static_assert(HasAddress(&HIKARI::UiView::SubmitSprite));
 static_assert(HasAddress(&HIKARI::UiView::SubmitText));
 static_assert(HasAddress(&HIKARI::UiView::SubmitBackdrop));
-static_assert(HasAddress(&HIKARI::UiView::WasActivated));
 static_assert(HasAddress(&HIKARI::SequenceView::Play));
 static_assert(HasAddress(&HIKARI::SequenceView::SetPlaybackRate));
 static_assert(HasAddress(&HIKARI::SequenceView::GetSnapshot));

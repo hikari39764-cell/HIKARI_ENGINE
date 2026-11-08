@@ -7,7 +7,6 @@
 #include "Assets/Lighting/HIKARI_IesProfileAsset.h"
 #include "Assets/Dialogue/HIKARI_DialogueAsset.h"
 #include "Assets/Sequence/HIKARI_SequenceAsset.h"
-#include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Assets/Post/HIKARI_PostAsset.h"
 #include "Assets/RenderStyle/HIKARI_RenderStyleAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
@@ -172,15 +171,6 @@ AssetImportResult ImportGameplayCamera(const std::filesystem::path& sourcePath, 
     return result;
 }
 
-AssetImportResult ImportUiAnimation(const std::filesystem::path& sourcePath, const AssetGuid&) {
-    AssetImportResult result;
-    UiAnimationAsset asset;
-    result.success = LoadUiAnimationAsset(sourcePath, asset, result.message);
-    if (result.success)
-        result.message = "UI animation validated";
-    return result;
-}
-
 AssetImportResult ImportPostEffect(const std::filesystem::path& sourcePath, const AssetGuid&) {
     AssetImportResult result;
     POST::PostEffectDefinition effect;
@@ -296,11 +286,13 @@ AssetImportResult ImportAudio(const std::filesystem::path& sourcePath, const Ass
     std::error_code error;
     const auto bytes = std::filesystem::file_size(sourcePath, error);
     result.success = !format.empty() && !error && bytes > 0;
-    result.message = result.success ? "Audio file validated"
-                                    : "Audio file is not a readable wav, mp3, ogg or flac: " + sourcePath.generic_string();
-    result.diagnosticsJson =
-        nlohmann::json{{"valid", result.success}, {"format", format}, {"bytes", error ? 0 : static_cast<uint64_t>(bytes)}}
-            .dump();
+    result.message = result.success
+                         ? "Audio file validated"
+                         : "Audio file is not a readable wav, mp3, ogg or flac: " + sourcePath.generic_string();
+    result.diagnosticsJson = nlohmann::json{{"valid", result.success},
+                                            {"format", format},
+                                            {"bytes", error ? 0 : static_cast<uint64_t>(bytes)}}
+                                 .dump();
     return result;
 }
 } // namespace
@@ -314,7 +306,6 @@ void RegisterStructuredAssetImporters(AssetImporterRegistry& registry) {
     add(ImporterKind::AnimationStateMachine, "AnimationStateMachineAssetStore", ImportAnimationStateMachine);
     add(ImporterKind::Dialogue, "DialogueAssetStore", ImportDialogue);
     add(ImporterKind::GameplayCamera, nullptr, ImportGameplayCamera);
-    add(ImporterKind::UiAnimation, nullptr, ImportUiAnimation);
     add(ImporterKind::PostEffect, nullptr, ImportPostEffect);
     add(ImporterKind::PostProfile, nullptr, ImportPostProfile);
     add(ImporterKind::Environment, nullptr, ImportEnvironment);

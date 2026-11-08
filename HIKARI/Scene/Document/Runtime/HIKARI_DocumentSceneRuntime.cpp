@@ -31,7 +31,6 @@
 #include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
 #include "Scene/Vfx/HIKARI_CombatPresentationService.h"
 #include "Scene/Vfx/HIKARI_VfxAttachmentResolver.h"
-#include "Scene/Ui/HIKARI_UiSceneSystem.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI {
@@ -231,8 +230,6 @@ bool DocumentSceneBase::EndRuntimePlay() {
             state_->runtime.world.Services().Find<RUNTIME::GameProjectSessionRuntimeExtension>()) {
         sessionOwner->ExitScene(state_->runtime.world);
     }
-    if (UiSceneSystem* uiSystem = state_->runtime.world.Services().Find<UiSceneSystem>())
-        uiSystem->ReleaseInputOwnership();
     SERVICES::GetInputService().ReleaseDeveloperInput();
     state_->runtime.debugService.Reset(state_->runtime.world);
     // 自由視点は Play の間だけ。速度も含めて次の Play へ持ち越さない。
@@ -431,8 +428,6 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
             });
         state_->runtime.vfxPlaybackService.SetReliableRenderDeliveryEnabled(true);
     }
-    state_->runtime.sceneCaptureService.SetCanvasAssets(state_->assets.Database().GetProjectRoot(),
-                                                        &state_->assets.Database());
     state_->runtime.gameUiPresentationService.SetProjectRoot(state_->assets.Database().GetProjectRoot());
     state_->runtime.gameUiPresentationService.SetAssetDatabase(&state_->assets.Database());
     if (actionPresentationEnabled && !state_->runtime.combatPresentationService.Prewarm()) {
@@ -500,8 +495,6 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     success = services.Register(state_->assets.GameplayCameras()) && success;
     state_->assets.TextAssets().Configure(&state_->assets.Database());
     success = services.Register(state_->assets.TextAssets()) && success;
-    state_->assets.UiAnimations().Configure(&state_->assets.Database());
-    success = services.Register(state_->assets.UiAnimations()) && success;
     state_->assets.SpriteAssets().Configure(&state_->assets.Database());
     success = services.Register(state_->assets.SpriteAssets()) && success;
     state_->assets.SpriteMaterials().Configure(&state_->assets.Database(), &state_->assets.Registry());
@@ -729,8 +722,6 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     if (state_->runtime.playActive && sessionOwner != nullptr) {
         sessionOwner->ExitScene(state_->runtime.world);
     }
-    if (UiSceneSystem* uiSystem = state_->runtime.world.Services().Find<UiSceneSystem>())
-        uiSystem->ReleaseInputOwnership();
     SERVICES::GetActionTimeDilationService().ReleaseOwner(&state_->runtime.world);
     state_->runtime.gameUiPresentationService.Reset();
     state_->runtime.sceneCaptureService.Reset();

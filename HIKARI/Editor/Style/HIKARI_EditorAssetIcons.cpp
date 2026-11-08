@@ -26,7 +26,6 @@ EditorGlyph AssetTypeGlyph(AssetType type) noexcept {
     case AssetType::LightProfile: return EditorGlyph::Light;
     case AssetType::Sequence: return EditorGlyph::Sequence;
     case AssetType::AnimationStateMachine: return EditorGlyph::StateMachine;
-    case AssetType::UiAnimation: return EditorGlyph::Keyframe;
     case AssetType::Font:
     case AssetType::TextStyle: return EditorGlyph::List;
     case AssetType::Dialogue: return EditorGlyph::File;

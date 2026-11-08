@@ -133,7 +133,6 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
     {AssetImporterKind::GameplayCamera, AssetType::GameplayCamera, "GameplayCameraAssetImporter", 1u, ".hcamera"},
     {AssetImporterKind::Font, AssetType::Font, "FontAssetImporter", 2u, ".ttf, .otf, .ttc"},
     {AssetImporterKind::TextStyle, AssetType::TextStyle, "TextStyleAssetImporter", 1u, ".htextstyle"},
-    {AssetImporterKind::UiAnimation, AssetType::UiAnimation, "UiAnimationAssetImporter", 1u, ".huianim"},
     {AssetImporterKind::PostEffect, AssetType::PostEffect, "PostEffectAssetImporter", 2u, ".hposteffect"},
     {AssetImporterKind::PostProfile, AssetType::PostProfile, "PostProfileAssetImporter", 2u, ".hpostprofile"},
     {AssetImporterKind::Environment, AssetType::Environment, "EnvironmentAssetImporter", 1u, ".henvironment"},
@@ -204,7 +203,6 @@ constexpr TEXT::EnumName<AssetType> kAssetTypeNames[] = {
     {AssetType::VfxEffect, "VfxEffect"},
     {AssetType::Font, "Font"},
     {AssetType::TextStyle, "TextStyle"},
-    {AssetType::UiAnimation, "UiAnimation"},
     {AssetType::PostEffect, "PostEffect"},
     {AssetType::PostProfile, "PostProfile"},
     {AssetType::Environment, "Environment"},
@@ -268,8 +266,6 @@ const AssetImporterSemantics* ResolveAssetSourceSemantics(const std::filesystem:
         kind = AssetImporterKind::Font;
     } else if (IsAudioExtension(extension)) {
         kind = AssetImporterKind::Audio;
-    } else if (extension == ".huianim") {
-        kind = AssetImporterKind::UiAnimation;
     } else if (extension == ".htextstyle") {
         kind = AssetImporterKind::TextStyle;
     } else if (extension == ".hcamera") {

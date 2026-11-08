@@ -22,7 +22,6 @@ enum class EditorWorkspaceId : uint8_t {
     TerrainSurface,
     Project,
     GameplayCamera,
-    Ui,
     Text,
     // 布景：程序化の方块と灯光で場面を組み、打光と構図を決める（美術向けの場面編集）。
     LookDev,
@@ -33,7 +32,6 @@ enum class EditorWorkspaceId : uint8_t {
 constexpr std::string_view EditorWorkspaceOperationId(EditorWorkspaceId id) noexcept {
     switch (id) {
     case EditorWorkspaceId::GameplayCamera: return "gameplay_camera";
-    case EditorWorkspaceId::Ui: return "ui";
     case EditorWorkspaceId::Text: return "text";
     case EditorWorkspaceId::Scene: return "scene";
     case EditorWorkspaceId::LookDev: return "look_dev";
@@ -57,7 +55,6 @@ struct EditorWorkspaceOpenRequest {
     std::optional<AssetGuid> sequenceAssetGuid{};
     std::optional<AssetGuid> cameraProfileAssetGuid{};
     std::optional<AssetGuid> textStyleAssetGuid{};
-    std::optional<AssetGuid> uiAnimationAssetGuid{};
     std::optional<AssetGuid> modelAssetGuid{};
     std::optional<AssetGuid> materialAssetGuid{};
     std::optional<AssetGuid> animationStateMachineAssetGuid{};
@@ -73,7 +70,6 @@ struct EditorWorkspaceActivation {
     std::optional<AssetGuid> sequenceAssetGuid{};
     std::optional<AssetGuid> cameraProfileAssetGuid{};
     std::optional<AssetGuid> textStyleAssetGuid{};
-    std::optional<AssetGuid> uiAnimationAssetGuid{};
     std::optional<AssetGuid> modelAssetGuid{};
     std::optional<AssetGuid> materialAssetGuid{};
     std::optional<AssetGuid> animationStateMachineAssetGuid{};

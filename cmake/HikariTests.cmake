@@ -65,9 +65,7 @@ if(HIKARI_WITH_EDITOR_BUILD)
     hikari_add_contract(AgentContracts editor Editor "${CMAKE_BINARY_DIR}/tests/agent-contracts")
     # 本地桥の実際の往復は hikari.exe と同じ客户端で確かめる。
     target_sources(HIKARI_AgentContracts PRIVATE "${HIKARI_SOURCE_ROOT}/Tools/Agent/HIKARI_AgentClient.cpp")
-    foreach(name IN ITEMS UiAuthoringContracts UiAnimationContracts DialogueContracts)
-        hikari_add_contract(${name} ui Editor)
-    endforeach()
+    hikari_add_contract(DialogueContracts ui Editor)
     hikari_add_contract(GameplayCameraContracts camera Editor)
     target_sources(HIKARI_GameplayCameraContracts PRIVATE
         "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_KinematicMotionContracts.cpp")

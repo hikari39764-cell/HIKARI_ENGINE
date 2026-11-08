@@ -2,7 +2,6 @@
 #include "Editor/Authoring/HIKARI_SequenceCameraEditing.h"
 #include "Editor/Widgets/HIKARI_ScalarCurveEditor.h"
 #include "Core/Serialization/Json/HIKARI_ScalarCurveJson.h"
-#include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Scene/Sequencer/Serialization/HIKARI_CinematicSequenceJson.h"
 #include <cmath>
 #include <iostream>
@@ -75,17 +74,10 @@ void CurveEvaluationContracts() {
           curve.keys.back().value == 2);
     Check(!edit.Delete(channels));
 
-    UiAnimationAsset ui;
-    ui.clips.push_back({});
-    ui.clips[0].duration = 4;
-    ui.clips[0].tracks.push_back({});
-    ui.clips[0].tracks[0].curve = curve;
+    // 曲線の键を JSON へ書いて読み直しても、重みを含む形が失われない。
     curve.keys[0].shape.outWeight = .6f;
-    ui.clips[0].tracks[0].curve = curve;
-    UiAnimationAsset loaded;
-    std::string error;
-    Check(ReadUiAnimationAsset(WriteUiAnimationAsset(ui), loaded, error));
-    Check(loaded.clips[0].tracks[0].curve == curve);
+    for (const auto& key : curve.keys)
+        Check(ReadScalarCurveKeyJson(WriteScalarCurveKeyJson(key)) == key);
 }
 void GroupEditingContracts() {
     auto x = Line(), y = Line();

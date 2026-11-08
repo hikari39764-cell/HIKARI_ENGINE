@@ -58,7 +58,6 @@ constexpr AssetTypeFilter kAssetTypeFilters[] = {
     {AssetType::ModelMaterialBinding, "ui.assetBrowser.filterMaterialSet"},
     {AssetType::Font, "textstyle.font"},
     {AssetType::TextStyle, "textstyle.asset"},
-    {AssetType::UiAnimation, "uianim.asset"},
     {AssetType::PostEffect, "post.effect.asset"},
     {AssetType::PostProfile, "post.profile.asset"},
     {AssetType::Environment, "environment.profile.asset"},
@@ -212,7 +211,6 @@ const char* ToCompactTypeBadge(AssetType type) {
     case AssetType::Sequence: return "SEQ";
     case AssetType::AnimationStateMachine: return "ASM";
     case AssetType::Dialogue: return "DLG";
-    case AssetType::UiAnimation: return "UIA";
     case AssetType::Font: return "FONT";
     case AssetType::TextStyle: return "TXT";
     case AssetType::PostEffect: return "PFX";

@@ -67,8 +67,6 @@ void SceneCreationPanel::DrawCreationMenu(DocumentSceneBase& scene, EditorContex
                      [&](const CreateObjectRequest& request) { return EDITOR::CreateDecalObject(scene, request); });
     }
 
-    DrawUiCreationMenu(scene, context, selectionSync, search);
-
     const struct PrimitiveEntry {
         std::string label;
         ProceduralMeshKind kind;

@@ -49,7 +49,7 @@ void HandleRecordActivated(const AssetRecord& record, std::string& lastOperation
         lastOperationMessage = TEXT::Localize("ui.assetBrowser.assetSelected") + record.displayName;
         return;
     }
-    if (record.type == AssetType::TextStyle || record.type == AssetType::UiAnimation) {
+    if (record.type == AssetType::TextStyle) {
         activatedAsset = AssetWorkspaceActivation{record.type, record.guid};
         return;
     }

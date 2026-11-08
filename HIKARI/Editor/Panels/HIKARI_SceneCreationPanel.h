@@ -34,10 +34,6 @@ public:
 
 private:
     static bool MatchesSearch(std::string_view label, std::string_view search);
-    void DrawUiCreationMenu(DocumentSceneBase& scene, EditorContext& context, const SelectionSyncService& selectionSync,
-                            std::string_view search);
-    void CreateUiObject(DocumentSceneBase& scene, EditorContext& context, const SelectionSyncService& selectionSync,
-                        bool button, bool addSceneFlow = false);
 
     PrimitiveCreationDialog primitiveCreationDialog_{};
     std::optional<SceneObjectAuthoringHistoryRequest> historyRequest_{};

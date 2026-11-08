@@ -23,7 +23,6 @@ enum class AssetType {
     GameplayCamera,
     Font,
     TextStyle,
-    UiAnimation,
     PostEffect,
     PostProfile,
     Environment,

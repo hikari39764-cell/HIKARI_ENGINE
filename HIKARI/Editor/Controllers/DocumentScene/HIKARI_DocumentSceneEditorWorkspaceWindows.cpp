@@ -185,21 +185,6 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
         DrawPendingSceneOpenModal(scene);
         return;
     }
-    if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Ui)) {
-        auto& workspace = uiWorkspaceController_;
-        workspace.DrawDockSpace(workspaceHost_.ConsumeReset(workspaceHost_.GetActive()));
-        auto result =
-            workspace.Draw(scene, context_, selectionSync_, sceneObjectCommands_, commandRouter_, operationRegistry_);
-        if (result.history)
-            CommitSceneObjectAuthoringHistory(scene, std::move(*result.history));
-        if (auto history = sceneObjectCommands_.ConsumeHistoryRequest())
-            CommitSceneObjectAuthoringHistory(scene, std::move(*history));
-        playSession.UpdateEmbeddedViewportInput(result.playViewport, result.playViewportClicked);
-        if (result.togglePlay)
-            ToggleGamePreview(scene, playSession);
-        DrawPendingSceneOpenModal(scene);
-        return;
-    }
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::GameplayCamera)) {
         GameplayCameraWorkspace().DrawDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::GameplayCamera));
         const auto result = GameplayCameraWorkspace().Draw(scene, workspaceHost_, operationRegistry_,

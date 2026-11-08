@@ -68,13 +68,6 @@ GameObject* CreateTerrainSurfaceObject(DocumentSceneBase& scene, const CreateObj
 
 GameObject* CreateDialogueTriggerObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
 
-GameObject* CreateUiCanvasObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
-
-// Reuses the first authored Canvas or creates one, then adds a visible
-// Button object as its child and rebuilds the runtime World once.
-GameObject* CreateUiButtonObject(DocumentSceneBase& scene, const CreateObjectRequest& request,
-                                 bool addSceneFlow = false);
-
 GameObject* CreateReflectionProbeObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
 
 GameObject* CreateIrradianceVolumeObject(DocumentSceneBase& scene, const CreateObjectRequest& request);

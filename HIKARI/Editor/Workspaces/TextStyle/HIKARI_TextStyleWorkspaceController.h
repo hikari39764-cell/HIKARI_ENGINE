@@ -5,7 +5,6 @@
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspace.h"
 #include <functional>
-#include "Scene/Ui/HIKARI_UiSceneSystem.h"
 namespace HIKARI {
 class DocumentSceneBase;
 }
@@ -21,7 +20,6 @@ public:
     // 表示中の文書があるか。DescribeDocumentState の open と同じ判定。
     bool IsDocumentOpen() const noexcept;
     nlohmann::json DescribeDocumentState() const;
-    void SetPreviewObject(SceneObjectId id) { previewObject_ = id; }
     void Draw(DocumentSceneBase&, EditorOperationRegistry&, EditorCommandRouter&);
     void DrawDockSpace(bool reset);
     void ApplyActivation(DocumentSceneBase&, const EditorWorkspaceActivation&);
@@ -34,11 +32,6 @@ public:
     const char* PreviewMessageKey() const { return previewMessageKey_; }
 
 private:
-    void DrawContextTools(DocumentSceneBase&, EditorOperationRegistry&);
-    const GAME_UI::GameUiFrameSource& BuildContextPreview(DocumentSceneBase&);
-    SceneObjectId previewObject_{};
-    bool contextPreview_ = true;
-    UiSceneSystem projector_;
     TextStyleEditorDocument document_;
     GameUiPreviewTarget target_;
     GAME_UI::GameUiPresentationService content_;

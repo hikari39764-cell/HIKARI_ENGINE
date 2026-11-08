@@ -11,11 +11,6 @@
 #include "Input/Platform/HIKARI_IInputBackend.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 #include "HIKARI/Project/FrameContext.h"
-#include "Scene/HIKARI_World.h"
-#include "Scene/HIKARI_RuntimeWorldServices.h"
-#include "Scene/Ui/HIKARI_UiSceneSystem.h"
-#include "Scene/Ui/HIKARI_UiSceneComponents.h"
-#include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 
 namespace {
 
@@ -282,61 +277,6 @@ bool CheckPointerRelease(HIKARI::INPUT::InputService& service, FakeInputBackend&
     check(service.GetMouseCaptureMode() == MouseCaptureMode::Free && !fake.hasCaptureRegion && fake.cursorVisible,
           "returning pointer to editor left relative capture active");
 
-    GAME_UI::GameUiPresentationService presentation;
-    bool active = true;
-    RuntimePlayStateService play{&active};
-    World world;
-    world.Services().Register(service);
-    world.Services().Register(presentation);
-    world.Services().Register(play);
-    auto* object = world.CreateObject("Cursor lifetime");
-    if (!object->SetDocumentId(SceneObjectId{1u}))
-        return false;
-    auto* canvas = object->AddComponent<UiCanvasComponent>();
-    canvas->Deserialize({{"inputMode", "Menu"}});
-    object->AddComponent<UiRectComponent>();
-    object->AddComponent<UiButtonComponent>();
-    UiSceneSystem ui;
-    ui.OnWorldAttached(world);
-    FrameContext frame{};
-    const auto openMenu = [&] {
-        active = true;
-        service.SetMouseCaptureMode(MouseCaptureMode::Relative);
-        service.SetMouseCaptureRegion({10, 20, 810, 620});
-        canvas->SetEnabled(true);
-        ++frame.frameIndex;
-        ui.PreUpdate(world, frame);
-    };
-    openMenu();
-    check(service.GetMouseCaptureMode() == MouseCaptureMode::Free && fake.hasCaptureRegion,
-          "menu must release relative movement without discarding viewport bounds");
-    canvas->SetEnabled(false);
-    ui.PreUpdate(world, frame);
-    check(service.GetMouseCaptureMode() == MouseCaptureMode::Relative && fake.hasCaptureRegion,
-          "closing menu during gameplay must restore bounded relative capture");
-
-    openMenu();
-    service.SetDeveloperInputCaptured(DeveloperInputOwner::Console, true);
-    service.SetMouseCaptureMode(MouseCaptureMode::Free);
-    ui.PreUpdate(world, frame);
-    check(service.GetMouseCaptureMode() == MouseCaptureMode::Free,
-          "UI release stole pointer back from developer input");
-    service.SetDeveloperInputCaptured(DeveloperInputOwner::Console, false);
-
-    openMenu();
-    active = false;
-    service.SetMouseCaptureMode(MouseCaptureMode::Free);
-    ui.PreUpdate(world, frame);
-    check(service.GetMouseCaptureMode() == MouseCaptureMode::Free,
-          "inactive UI restored gameplay capture in edit mode");
-
-    openMenu();
-    active = false;
-    service.SetMouseCaptureMode(MouseCaptureMode::Free);
-    service.ClearMouseCaptureRegion();
-    ui.OnWorldDetached(world);
-    check(service.GetMouseCaptureMode() == MouseCaptureMode::Free && !fake.hasCaptureRegion,
-          "runtime world teardown recaptured the editor cursor");
     return passed;
 }
 
@@ -519,48 +459,6 @@ int main() {
     if (service.GetSnapshot().FindAction("Gameplay.Move")->y < 0.9f ||
         service.GetSnapshot().FindAction("UI.Navigate")->y != 0)
         return 24;
-    // 同一フレームの component Update より前にボタンを公開し、閉じると入力を返す。
-    service.Contexts().SetActive("UI", false);
-    frame = {};
-    tick(frame);
-    {
-        using namespace HIKARI;
-        GAME_UI::GameUiPresentationService presentation;
-        bool active = true;
-        RuntimePlayStateService play{&active};
-        World world;
-        world.Services().Register(service);
-        world.Services().Register(presentation);
-        world.Services().Register(play);
-        auto* object = world.CreateObject("Button");
-        if (!object->SetDocumentId(SceneObjectId{1u}))
-            return 25;
-        auto* canvas = object->AddComponent<UiCanvasComponent>();
-        canvas->Deserialize({{"inputMode", "Menu"}});
-        object->AddComponent<UiRectComponent>();
-        object->AddComponent<UiButtonComponent>();
-        UiSceneSystem ui;
-        ui.OnWorldAttached(world);
-        FrameContext runtimeFrame{};
-        runtimeFrame.frameIndex = 1;
-        runtimeFrame.unscaledDt = kFrameSeconds;
-        static_cast<ISystem&>(ui).PreUpdate(world, runtimeFrame);
-        if (!service.Contexts().IsActive("UI"))
-            return 25;
-        frame.keyboard['E'] = 1;
-        tick(frame);
-        runtimeFrame.frameIndex = 2;
-        static_cast<ISystem&>(ui).PreUpdate(world, runtimeFrame);
-        if (!presentation.WasButtonActivated(object->GetRuntimeHandle(), 2))
-            return 26;
-        canvas->SetEnabled(false);
-        runtimeFrame.frameIndex = 3;
-        static_cast<ISystem&>(ui).PreUpdate(world, runtimeFrame);
-        if (service.Contexts().IsActive("UI") || service.IsUiInteractionActive() ||
-            presentation.WasButtonActivated(object->GetRuntimeHandle(), 3))
-            return 27;
-        ui.OnWorldDetached(world);
-    }
     if (!CheckPointerRelease(service, *fake))
         return 28;
     if (!CheckVibrationLifecycle(service, *fake))

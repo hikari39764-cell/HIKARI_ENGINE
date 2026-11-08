@@ -34,7 +34,6 @@ enum class AssetImporterKind : uint8_t {
     GameplayCamera,
     Font,
     TextStyle,
-    UiAnimation,
     PostEffect,
     PostProfile,
     Environment,

@@ -82,7 +82,10 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
          "Set one object's transform by stable objectId: position, rotation and scale are [x, y, z]; omitted ones "
          "keep their value. Exact name is a discovery fallback and must be unique.",
          "scene", EDITOR::SetSceneObjectTransform,
-         Concat({ObjectTargetParameters(), PositionParameters(), ScaleParameters(), RotationParameters(),
+         Concat({ObjectTargetParameters(),
+                 PositionParameters(),
+                 ScaleParameters(),
+                 RotationParameters(),
                  {{"mergeGroup", EditorOperationParameterType::Int, false,
                    "0 以外：同じ値で続けた変更を一つの取り消しにまとめる（機位の操縦など）"}}})},
         {"scene.create_object", "Create a model object in the scene by asset id or path fragment.", "scene",
@@ -162,7 +165,6 @@ Parameters ProceduralTerrainParameters() {
 } // namespace
 
 void DocumentSceneEditorController::RegisterEditorOperations() {
-    RegisterUiOperations();
     RegisterSceneFolderOperations();
     RegisterSceneLayoutOperations();
     RegisterLookDevOperations();

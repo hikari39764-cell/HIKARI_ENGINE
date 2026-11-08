@@ -54,7 +54,6 @@
 #include "Scene/Vfx/HIKARI_VfxLightOutput.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include "Scene/Vfx/HIKARI_VfxScreenOutput.h"
-#include "Scene/Ui/HIKARI_UiSceneSystem.h"
 #include "Scene/Capture/HIKARI_SceneCaptureReadability.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
@@ -258,8 +257,6 @@ void DocumentSceneBase::OnExit() {
     if (sessionOwner != nullptr) {
         sessionOwner->ExitScene(state_->runtime.world);
     }
-    if (UiSceneSystem* uiSystem = state_->runtime.world.Services().Find<UiSceneSystem>())
-        uiSystem->ReleaseInputOwnership();
     SERVICES::GetActionTimeDilationService().ReleaseOwner(&state_->runtime.world);
     state_->camera.sequencePlayback.Reset();
     state_->camera.currentCameraSequenceHandle = {};

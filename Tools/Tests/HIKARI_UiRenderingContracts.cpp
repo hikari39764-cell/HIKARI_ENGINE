@@ -21,9 +21,6 @@
 #include "Scene/HIKARI_WorldMassStore.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
-#include "Scene/Ui/HIKARI_UiSceneSystem.h"
-#include "Scene/Ui/HIKARI_UiAnimationComponents.h"
-#include "Scene/Ui/HIKARI_UiSceneComponents.h"
 #include "RenderCore/Texture/HIKARI_DxTexture.h"
 #include <d3d12sdklayers.h>
 #include <DirectXTex.h>
@@ -40,74 +37,6 @@
 using namespace HIKARI;
 using Microsoft::WRL::ComPtr;
 namespace {
-GAME_UI::GameUiFrameSource LoadCanvas(const std::filesystem::path& project, const std::filesystem::path& scenePath,
-                                      const std::filesystem::path& output) {
-    AssetDatabase database;
-    assert(database.Initialize(project) && database.ScanAssets(true));
-    for (auto type : {AssetType::Font, AssetType::TextStyle, AssetType::UiAnimation, AssetType::Scene})
-        for (const auto* record : database.CollectByType(type)) {
-            const auto guid = record->guid;
-            assert(database.ImportAsset(guid));
-        }
-    SceneDocument scene;
-    assert(SceneSerializer{}.LoadFromFile(TEXT::PathToUtf8(scenePath), scene));
-    ComponentRegistry registry;
-    WorldMassSchemaRegistry schemas;
-    SystemTypeRegistry systems;
-    ComponentSystemPolicy policy;
-    auto feature = RuntimeFeatureContextAccess::Create(registry, schemas, systems, policy);
-    assert(CreateUiRuntimeFeature()->Register(feature));
-    World world;
-    TextAssetStore texts;
-    texts.Configure(&database);
-    assert(world.Services().Register(texts));
-    std::unordered_map<uint64_t, GameObject*> objects;
-    for (const auto& data : scene.objects) {
-        auto* object = world.CreateObject(data.name);
-        assert(object && object->SetDocumentId(data.id));
-        objects.emplace(data.id.value, object);
-        for (const auto& component : data.components) {
-            const auto* info = registry.Find(component.type);
-            // この検証の対象は UI。カメラ等の非 UI コンポーネントは描画しない。
-            if (!info) {
-                continue;
-            }
-            auto instance = info->factory();
-            instance->Deserialize(component.properties);
-            assert(object->AddComponentInstance(std::move(instance)));
-        }
-    }
-    for (const auto& data : scene.objects)
-        if (data.parent)
-            assert(objects.at(data.id.value)->SetParent(objects.at(data.parent->value)));
-    GAME_UI::GameUiPresentationService presentation;
-    presentation.SetProjectRoot(project);
-    presentation.SetAssetDatabase(&database);
-    UiSceneSystem system;
-    FrameContext frame{};
-    frame.frameIndex = 1;
-    system.BuildPresentation(world, frame, presentation);
-    presentation.Tick(1);
-    auto result = presentation.GetFrameSource();
-    assert(result.HasDraws() && !result.texts.empty());
-    for (const auto& text : result.texts)
-        assert(text.fontRevision != 0);
-
-    ASSETS::COOKING::AssetCookOptions cook;
-    cook.projectRoot = project;
-    cook.contentRoot = output / "Cooked";
-    const auto* record = database.FindByPath(scenePath);
-    assert(record);
-    cook.startupSceneGuid = record->guid.value;
-    cook.sceneGuids = {record->guid.value};
-    const auto cooked = ASSETS::COOKING::AssetCooker{}.Cook(cook);
-    if (!cooked.success)
-        std::cerr << cooked.message << '\n';
-    assert(cooked.success);
-    std::cout << "UI scene: " << result.sprites.size() << " sprites, " << result.texts.size()
-              << " text requests; cooked " << cooked.assetCount << " assets\n";
-    return result;
-}
 void CheckAtlasReload(const std::filesystem::path& font, const std::filesystem::path& output) {
     namespace TR = TEXT_RENDERING;
     const auto copy = output / "font-reload.fixture";
@@ -195,7 +124,7 @@ void ClipInvalidatesCachedFrame(const std::filesystem::path& font, const std::fi
 }
 size_t Capture(TESTS::INTERNAL::GpuContractDevice& gpu, GFX::Context& graphics,
                const GAME_UI::GameUiFrameSource& source, const std::filesystem::path& file,
-               uint32_t expectedFailedTexts = 0, const UiResolvedLayout* expectedBounds = nullptr) {
+               uint32_t expectedFailedTexts = 0) {
     constexpr UINT width = 1280, height = 720;
     EDITOR::GameUiPreviewTarget target;
     gpu.ResetCommands();
@@ -234,11 +163,8 @@ size_t Capture(TESTS::INTERNAL::GpuContractDevice& gpu, GFX::Context& graphics,
     for (UINT y = 0; y < height; ++y)
         for (UINT x = 0; x < width; ++x) {
             const auto* p = pixels + footprint.Offset + y * footprint.Footprint.RowPitch + x * 4;
-            if (p[0] > 150 && p[1] > 150 && p[2] > 150) {
+            if (p[0] > 150 && p[1] > 150 && p[2] > 150)
                 ++bright;
-                if (expectedBounds)
-                    assert(ContainsUiPoint(*expectedBounds, x + .5f, y + .5f));
-            }
         }
     assert(bright > 200); // 実際に glyph が出力され、空のクリア画像ではない。
     DirectX::Image pixelsImage{width,
@@ -370,57 +296,6 @@ void RuntimeLogicalToPhysicalScissor(TESTS::INTERNAL::GpuContractDevice& gpu, GF
     GAME_UI::BeginGameUiFrame();
     std::cout << "Runtime UI logical-to-physical scissor contract passed.\n";
 }
-void AnimatedTextPreview(TESTS::INTERNAL::GpuContractDevice& gpu, GFX::Context& graphics,
-                         const std::filesystem::path& font, const std::filesystem::path& output) {
-    const auto project = output / "animated-canvas";
-    std::filesystem::create_directories(project / "Assets/Fonts");
-    std::filesystem::copy_file(font, project / "Assets/Fonts/Preview.otf",
-                               std::filesystem::copy_options::overwrite_existing);
-    World world;
-    auto* canvas = world.CreateObject("Canvas");
-    canvas->SetDocumentId({1});
-    canvas->AddComponent<UiCanvasComponent>()->Deserialize({{"referenceWidth", 1280}, {"referenceHeight", 720}});
-    auto* parent = world.CreateObject("Panel");
-    parent->SetDocumentId({2});
-    parent->SetParent(canvas);
-    parent->AddComponent<UiRectComponent>()->Deserialize({{"anchorMinimum", {0, 0}},
-                                                          {"anchorMaximum", {0, 0}},
-                                                          {"offsetMinimum", {300, 220}},
-                                                          {"offsetMaximum", {900, 500}},
-                                                          {"rotationDegrees", 25}});
-    auto* child = world.CreateObject("Caption");
-    child->SetDocumentId({3});
-    child->SetParent(parent);
-    child->AddComponent<UiRectComponent>()->Deserialize({{"anchorMinimum", {0, 0}},
-                                                         {"anchorMaximum", {0, 0}},
-                                                         {"offsetMinimum", {120, 80}},
-                                                         {"offsetMaximum", {480, 200}},
-                                                         {"rotationDegrees", -35}});
-    child->AddComponent<UiTextComponent>()->Deserialize({{"fontAssetPath", "Fonts/Preview.otf"},
-                                                         {"text", "Motion 012"},
-                                                         {"pixelHeight", 48},
-                                                         {"color", {1, 1, 1, 1}},
-                                                         {"outlineWidth", 0}});
-    UiSceneSystem system;
-    auto asset = std::make_shared<UiAnimationAsset>();
-    UiAnimationClip clip;
-    clip.name = "Stretch";
-    clip.duration = 1;
-    clip.tracks = {{1, "self", UiMotionProperty::ScaleX, {1, {{0, 1, 0, 0}, {1, 1.4f, 0, 0}}}},
-                   {2, "self", UiMotionProperty::ScaleY, {1, {{0, 1, 0, 0}, {1, .6f, 0, 0}}}}};
-    asset->clips.push_back(clip);
-    assert(system.Animations().Play(world, *parent, asset, "Stretch"));
-    assert(system.Animations().Seek(world, parent->GetRuntimeHandle(), .8f));
-    GAME_UI::GameUiPresentationService presentation;
-    presentation.SetProjectRoot(project);
-    FrameContext frame;
-    frame.frameIndex = 1;
-    system.BuildPresentation(world, frame, presentation);
-    presentation.Tick(1);
-    const auto bounds = system.ResolveLayout(world, *child);
-    assert(bounds.valid && presentation.GetFrameSource().texts.size() == 1);
-    Capture(gpu, graphics, presentation.GetFrameSource(), output / "animated-text-transform.png", 0, &bounds);
-}
 void WorkspaceTextPreview(TESTS::INTERNAL::GpuContractDevice& gpu, GFX::Context& graphics,
                           const std::filesystem::path& font, const std::filesystem::path& output) {
     const auto root = output / "workspace";
@@ -471,9 +346,9 @@ std::string ResolveTestFont() {
     return {};
 }
 } // namespace
-int main(int argc, char** argv) {
+int main(int, char** argv) {
     const std::string font = ResolveTestFont();
-    if (font.empty() && argc != 4)
+    if (font.empty())
         return 77;
     const auto output = TEXT::PathFromUtf8(argv[0]).parent_path() / "ui-rendering";
     std::filesystem::create_directories(output);
@@ -496,9 +371,7 @@ int main(int argc, char** argv) {
     GFX::PublishCurrentContext(graphics);
     assert(DXTEX::DxTextureManager::Init(graphics));
     GAME_UI::GameUiFrameSource source;
-    if (argc == 4)
-        source = LoadCanvas(TEXT::PathFromUtf8(argv[1]), TEXT::PathFromUtf8(argv[2]), output);
-    else {
+    {
         source.frameIndex = 1;
         GAME_UI::GameUiTextDraw text;
         text.absoluteFontAssetPath = font;
@@ -515,8 +388,8 @@ int main(int argc, char** argv) {
     const auto fontPath = TEXT::PathFromUtf8(source.texts.front().absoluteFontAssetPath);
     CheckAtlasReload(fontPath, output);
     ClipInvalidatesCachedFrame(fontPath, output);
-    Capture(gpu, graphics, source, argc == 4 ? TEXT::PathFromUtf8(argv[3]) : output / "ui.png");
-    if (argc != 4) {
+    Capture(gpu, graphics, source, output / "ui.png");
+    {
         auto& text = source.texts.front();
         text.editing.feedback = std::make_shared<GAME_UI::GameUiTextLayoutFeedback>();
         text.editing.feedback->expected = GAME_UI::MakeGameUiTextLayoutRequest(text);
@@ -528,7 +401,6 @@ int main(int argc, char** argv) {
         assert(text.editing.feedback->ready && !text.editing.feedback->stops.empty());
     }
     WorkspaceTextPreview(gpu, graphics, fontPath, output);
-    AnimatedTextPreview(gpu, graphics, fontPath, output);
     RuntimeLogicalToPhysicalScissor(gpu, graphics, output);
     if (diagnostics) {
         for (UINT64 i = 0; i < diagnostics->GetNumStoredMessages(); ++i) {

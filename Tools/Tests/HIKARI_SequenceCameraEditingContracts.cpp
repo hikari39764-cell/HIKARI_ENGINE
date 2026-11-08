@@ -1,4 +1,4 @@
-#include "Assets/Ui/HIKARI_UiAnimationAsset.h"
+#include "Core/Serialization/Json/HIKARI_ScalarCurveJson.h"
 #include "Assets/Sequence/HIKARI_SequenceAsset.h"
 #include <fstream>
 #include <iostream>
@@ -258,19 +258,13 @@ void SequenceCameraEditingContracts() {
         std::filesystem::remove(scenePath);
         Check(!threw && !loadedScene);
     }
-    // 同じ曲線ウィジェットを使う UI の保存でも保持・線形モードが失われない。
-    UiAnimationAsset ui;
-    ui.clips.push_back({});
-    ui.clips[0].duration = 1;
-    ui.clips[0].tracks.push_back({});
-    auto& uiCurve = ui.clips[0].tracks[0].curve;
-    uiCurve.keys = {
+    // 曲線の键の保存でも保持・線形モードが失われない。
+    ScalarCurve heldCurve;
+    heldCurve.keys = {
         {0, 1, 0, 0, ScalarCurveInterpolation::Hold}, {.5f, 2, 0, 0, ScalarCurveInterpolation::Linear}, {1, 4, 0, 0}};
-    UiAnimationAsset reread;
-    std::string uiError;
-    Check(ReadUiAnimationAsset(WriteUiAnimationAsset(ui), reread, uiError));
-    Check(reread.clips[0].tracks[0].curve == uiCurve);
-    Check(std::abs(uiCurve.Evaluate(.25f) - 1) < .0001f && std::abs(uiCurve.Evaluate(.75f) - 3) < .0001f);
+    for (const auto& key : heldCurve.keys)
+        Check(ReadScalarCurveKeyJson(WriteScalarCurveKeyJson(key)) == key);
+    Check(std::abs(heldCurve.Evaluate(.25f) - 1) < .0001f && std::abs(heldCurve.Evaluate(.75f) - 3) < .0001f);
     // 文書の Undo/Redo は曲線と分割を同じ原本として戻す。
     SequenceEditorDocument document;
     document.NewAsset("Unified camera");

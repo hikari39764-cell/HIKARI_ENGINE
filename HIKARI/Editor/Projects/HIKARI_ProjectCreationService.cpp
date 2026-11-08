@@ -136,8 +136,8 @@ bool CreateProject(const ProjectCreationRequest& request, ProjectCreationResult&
         !SERIALIZATION::JSON::WriteJsonFile(
             stagingRoot / "ProjectSettings" / "project_settings.json",
             nlohmann::json{
-                {"enabledRuntimeFeatures", nlohmann::json::array({"Rendering", "Lighting", "Camera", "UI",
-                                                                  "HIKARI.SceneFlow", identifier + ".Gameplay"})},
+                {"enabledRuntimeFeatures", nlohmann::json::array({"Rendering", "Lighting", "Camera", "HIKARI.SceneFlow",
+                                                                  identifier + ".Gameplay"})},
                 {"startupSceneGuid", ""},
                 {"version", 5}},
             &outMessage) ||

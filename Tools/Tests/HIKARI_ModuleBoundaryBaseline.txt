@@ -126,15 +126,6 @@ Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.cpp -> Physics/HIKARI_Physic
 Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.cpp -> Physics/HIKARI_PhysicsTypes.h
 Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.cpp -> Physics/HIKARI_PhysicsWorldService.h
 Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.cpp -> Physics/HIKARI_TerrainCollisionProjection.h
-Scene/Ui/HIKARI_UiDataBindingComponent.cpp -> Runtime/Binding/HIKARI_RuntimeBindingStore.h
-Scene/Ui/HIKARI_UiDisplaySettingsPanel.cpp -> Runtime/Presentation/HIKARI_DisplaySettingsService.h
-Scene/Ui/HIKARI_UiLayoutResolver.cpp -> Runtime/Binding/HIKARI_RuntimeBindingStore.h
-Scene/Ui/HIKARI_UiSceneComponents.cpp -> Runtime/Binding/HIKARI_RuntimeBindingTypes.h
-Scene/Ui/HIKARI_UiSceneInteraction.cpp -> Runtime/Binding/HIKARI_RuntimeBindingStore.h
-Scene/Ui/HIKARI_UiSceneInteraction.cpp -> Runtime/Presentation/HIKARI_GamePresentationService.h
-Scene/Ui/HIKARI_UiSceneLayout.cpp -> Runtime/Binding/HIKARI_RuntimeBindingStore.h
-Scene/Ui/HIKARI_UiTextFieldComponent.cpp -> Runtime/Binding/HIKARI_RuntimeBindingTypes.h
-Scene/Ui/HIKARI_UiUtilityComponents.cpp -> Runtime/Binding/HIKARI_RuntimeBindingStore.h
 Scene/Vfx/HIKARI_VfxAttachmentResolver.cpp -> Animation/Runtime/HIKARI_AnimationPoseService.h
 Scene/Vfx/HIKARI_VfxAttachmentResolver.cpp -> Animation/Runtime/HIKARI_AnimationSocketService.h
 Scene/Vfx/HIKARI_VfxBindingResolver.h -> Runtime/Binding/HIKARI_RuntimeBindingStore.h

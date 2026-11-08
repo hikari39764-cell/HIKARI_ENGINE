@@ -12,7 +12,6 @@ struct EditorWorkspacePresentation {
 inline constexpr std::array kEditorWorkspacePresentations{
     EditorWorkspacePresentation{EditorWorkspaceId::LookDev, "menu.workspace.lookDev", EditorGlyph::Light},
     EditorWorkspacePresentation{EditorWorkspaceId::Scene, "menu.workspace.scene", EditorGlyph::Scene},
-    EditorWorkspacePresentation{EditorWorkspaceId::Ui, "uix.workspace", EditorGlyph::Grid},
     EditorWorkspacePresentation{EditorWorkspaceId::Text, "uix.textWorkspace", EditorGlyph::List},
     EditorWorkspacePresentation{EditorWorkspaceId::GameplayCamera, "gc.workspace", EditorGlyph::Camera},
     EditorWorkspacePresentation{EditorWorkspaceId::Cinematics, "menu.workspace.cinematics", EditorGlyph::Sequence},

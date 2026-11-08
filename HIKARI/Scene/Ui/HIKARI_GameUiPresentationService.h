@@ -13,7 +13,6 @@
 
 namespace HIKARI {
 class AssetDatabase;
-struct RuntimeObjectHandle;
 } // namespace HIKARI
 
 namespace HIKARI::GAME_UI {
@@ -41,10 +40,6 @@ public:
     std::shared_ptr<const TextStyleAsset> FindTextStyle(const AssetGuid& style) const noexcept;
     bool SubmitBackdrop(const GameProjectUiBackdropRequest& request) noexcept;
 
-    void BeginInteractionFrame(uint64_t frameIndex) noexcept;
-    bool PublishButtonActivation(RuntimeObjectHandle object, uint64_t frameIndex) noexcept;
-    bool WasButtonActivated(RuntimeObjectHandle object, uint64_t frameIndex) const noexcept;
-
     void DiscardPending() noexcept;
     bool PendingMatchesFrame() const noexcept;
     void Tick(uint64_t frameIndex) noexcept;
@@ -69,8 +64,6 @@ private:
     std::vector<GameUiTextDraw> pendingTexts_{};
     std::vector<GameUiBackdropDraw> pendingBackdrops_{};
     GameUiFrameSource frameSource_{};
-    std::vector<uint64_t> activatedButtons_{};
-    uint64_t interactionFrameIndex_ = 0u;
     uint64_t nextSequence_ = 1u;
     uint64_t revision_ = 0u;
 };

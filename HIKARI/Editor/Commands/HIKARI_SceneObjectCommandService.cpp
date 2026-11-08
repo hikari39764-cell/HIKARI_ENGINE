@@ -1,5 +1,4 @@
 #include "Editor/Commands/HIKARI_SceneObjectCommandService.h"
-#include "Editor/Authoring/HIKARI_UiAuthoring.h"
 #include "Core/Text/HIKARI_Localization.h"
 
 #include <algorithm>
@@ -233,8 +232,6 @@ bool SceneObjectCommandService::Execute(SceneObjectCommandId command, DocumentSc
         return saved;
     }
     case SceneObjectCommandId::InstantiatePrefab: {
-        const auto selectedParent = context.selection.GetActiveObjectId();
-        const auto previousNextId = context.nextSceneObjectId;
         PrefabDocument prefab{};
         const AssetGuid prefabGuid{std::string(argument)};
         std::string prefabError;
@@ -245,13 +242,6 @@ bool SceneObjectCommandService::Execute(SceneObjectCommandId command, DocumentSc
         SceneObjectId instanceId;
         if (!InstantiatePrefabDocument(prefab, prefabGuid.value, scene.GetSceneDocument(), context.nextSceneObjectId,
                                        instanceId, prefabError)) {
-            SetStatus(prefabError, true);
-            return false;
-        }
-        if (!AttachUiPrefabToCanvas(scene.GetSceneDocument(), scene.GetComponentRegistry(), instanceId, selectedParent,
-                                    prefabError)) {
-            scene.GetSceneDocument().objects = beforeObjects;
-            context.nextSceneObjectId = previousNextId;
             SetStatus(prefabError, true);
             return false;
         }
