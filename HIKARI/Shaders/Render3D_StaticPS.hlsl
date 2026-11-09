@@ -247,6 +247,11 @@ float4 main(PSInput input) : SV_TARGET
         baseColorSample = HikariResolveMaterialSourceColor(materialData, baseColorSample);
         albedo *= baseColorSample;
     }
+    if ((input.surfaceFeatureFlags & (HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE | HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE)) == 0u)
+    {
+        // 実例集の個体ごとの揺らぎ：暖かく明るい側と、冷たく暗い側へ。
+        albedo.rgb *= 1.0f + input.surfaceFeatureData.z * float3(0.28f, 0.1f, -0.22f);
+    }
     if (painterly && !neutralClay)
     {
         albedo.rgb = HikariApplyPainterlyStrokeColor(materialData, albedo.rgb, stroke.mask);

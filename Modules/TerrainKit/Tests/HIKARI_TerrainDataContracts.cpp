@@ -6,12 +6,18 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <array>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <span>
+#include <system_error>
 #include <numeric>
 #include <string>
 #include <vector>
 
 #include "TerrainKit/Data/HIKARI_TerrainData.h"
+#include "Scene/Serialization/HIKARI_WorldInstanceFile.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataAnalysis.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataBrush.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataControl.h"
@@ -542,6 +548,61 @@ void TestSurfaceRules() {
 }
 
 // 地形の読み取りは谷筋を湿った谷底と見て、谷の彫り込みは水の流れる道を作る。
+// 実例集の個体の詰め方とファイルの往復。壊れたファイルは読まない。
+void TestWorldInstanceFile() {
+    using namespace HIKARI;
+    const GameProjectWorldInstance instance =
+        WORLDINSTANCE::Encode({12.5f, 3.0f, -7.25f}, {0.0f, 0.70710678f, 0.0f, 0.70710678f}, {1.5f, 0.75f, 2.0f}, 77u,
+                              GameProjectWorldInstanceFlags::HandPlaced);
+    CHECK(std::abs(WORLDINSTANCE::DecodeSnorm16(instance.rotation[1]) - 0.70710678f) < 1.0e-4f);
+    CHECK(WORLDINSTANCE::DecodeHalf(instance.scale[0]) == 1.5f);
+    CHECK(WORLDINSTANCE::DecodeHalf(instance.scale[1]) == 0.75f);
+    CHECK(WORLDINSTANCE::DecodeHalf(WORLDINSTANCE::EncodeHalf(0.0f)) == 0.0f);
+    CHECK(WORLDINSTANCE::DecodeHalf(WORLDINSTANCE::EncodeHalf(1.0e9f)) > 60000.0f);
+    CHECK(instance.seed == 77u);
+
+    const std::filesystem::path directory =
+        std::filesystem::path(HIKARI_CONTRACT_OUTPUT_ROOT) / "terrain_contracts_instances";
+    std::error_code ec{};
+    std::filesystem::create_directories(directory, ec);
+    const WorldCellCoord cell{-3, 5};
+    const std::filesystem::path path = MakeWorldInstanceCellPath(directory, cell);
+    WorldCellCoord parsed{};
+    CHECK(ParseWorldInstanceCellFileName(path.filename().string(), parsed));
+    CHECK(parsed == cell);
+    CHECK(!ParseWorldInstanceCellFileName("x+000_z+000.objects.json", parsed));
+    const std::vector<GameProjectWorldInstance> first(2000u, instance);
+    const std::vector<GameProjectWorldInstance> second(3u, instance);
+    const std::array<WorldInstanceCellPart, 2> parts{WorldInstanceCellPart{11u, first},
+                                                     WorldInstanceCellPart{22u, second}};
+    std::string error{};
+    CHECK(WriteWorldInstanceCellFile(path, cell, parts, error));
+    std::vector<WorldInstanceCellRead> read{};
+    CHECK(ReadWorldInstanceCellFile(path, cell, read, error));
+    CHECK(read.size() == 2u && read[0].setId == 11u && read[0].instances.size() == 2000u && read[1].setId == 22u &&
+          read[1].instances.size() == 3u);
+    CHECK(std::memcmp(read[1].instances.data(), second.data(), sizeof(GameProjectWorldInstance) * 3u) == 0);
+    CHECK(!ReadWorldInstanceCellFile(path, WorldCellCoord{0, 0}, read, error));
+    {
+        std::fstream file(path, std::ios::binary | std::ios::in | std::ios::out);
+        file.seekp(-1, std::ios::end);
+        const char broken = 0x7F;
+        file.write(&broken, 1);
+    }
+    CHECK(!ReadWorldInstanceCellFile(path, cell, read, error));
+
+    GameProjectWorldInstanceSetDesc set{};
+    std::strcpy(set.name, "Pines");
+    std::strcpy(set.modelAssetGuid, "abc");
+    set.tintVariation = 0.25f;
+    const std::filesystem::path setsPath = directory / kWorldInstanceSetsFileName;
+    CHECK(WriteWorldInstanceSetsFile(setsPath, std::span(&set, 1u), error));
+    std::vector<GameProjectWorldInstanceSetDesc> sets{};
+    CHECK(ReadWorldInstanceSetsFile(setsPath, sets, error));
+    CHECK(sets.size() == 1u && std::strcmp(sets[0].name, "Pines") == 0 && sets[0].tintVariation == 0.25f);
+    std::filesystem::remove_all(directory, ec);
+}
+
 void TestTerrainAnalysis() {
     TerrainAnalysis analysis{};
     analysis.width = 65u;
@@ -1017,6 +1078,7 @@ int main(int argc, char** argv) {
     TestBrushVariantsStampsAndMasks();
     TestSurfaceRules();
     TestTerrainAnalysis();
+    TestWorldInstanceFile();
     TestSplineLayers();
     TestUndo();
     TestErosion();

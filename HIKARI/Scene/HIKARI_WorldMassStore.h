@@ -146,7 +146,9 @@ private:
                       const GameProjectTransform& transform) noexcept;
     size_t GetCount(ComponentTypeId typeId) const noexcept;
     size_t GetTotalCount() const noexcept;
-    bool PublishRenderStores(uint64_t worldIdentity, uint64_t frameIndex, void* context,
+    // extraViews は Mass の行を持たない描画の種類（実例集）。確認と汚れの管理は持ち主の側でする。
+    bool PublishRenderStores(uint64_t worldIdentity, uint64_t frameIndex,
+                             std::span<const WorldMassRenderStoreView> extraViews, void* context,
                              RenderPublicationVisitorFn visitor,
                              WorldMassRenderPublicationReceipt& outReceipt) noexcept;
     // Primary-view v1 is latest-publication-wins. A successful newer

@@ -46,6 +46,11 @@ set_target_properties(HIKARI_TerrainDataContracts PROPERTIES
     HIKARI_KEEP_ASSERTIONS ON
     FOLDER "Tests/terrain"
     EXCLUDE_FROM_DEFAULT_BUILD TRUE)
+target_sources(HIKARI_TerrainDataContracts PRIVATE
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Serialization/HIKARI_WorldInstanceFile.cpp")
+target_include_directories(HIKARI_TerrainDataContracts PRIVATE
+    "${HIKARI_SOURCE_ROOT}/HIKARI"
+    "${HIKARI_SOURCE_ROOT}/include")
 target_link_libraries(HIKARI_TerrainDataContracts PRIVATE HIKARI::TerrainKitData HIKARI::TinyExr)
 hikari_configure_engine_target(HIKARI_TerrainDataContracts)
 target_compile_definitions(HIKARI_TerrainDataContracts PRIVATE
@@ -89,6 +94,7 @@ if(TARGET HIKARI_EditorHost)
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitOperations.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitPanel.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitSplines.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitInstances.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitTools.cpp"
             "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectModuleAdapter.cpp"
             "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectEditorModuleAdapter.cpp")

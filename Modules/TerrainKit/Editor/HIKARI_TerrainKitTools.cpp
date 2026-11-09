@@ -18,6 +18,8 @@ constexpr EditorWorkspaceColor kMaskColor{0.35f, 0.85f, 1.0f, 1.0f};
 constexpr EditorWorkspaceColor kStampColor{0.55f, 1.0f, 0.55f, 1.0f};
 constexpr EditorWorkspaceColor kPaintColor{1.0f, 0.55f, 0.85f, 1.0f};
 
+} // namespace
+
 void DrawGroundCircle(IEditorViewportCanvas& canvas, const TerrainStore& store, const float center[3], float radius,
                       EditorWorkspaceColor color) {
     constexpr int kSegments = 72;
@@ -40,11 +42,13 @@ bool RayToGround(const EditorViewportInput& input, const TerrainStore& store, fl
     return input.pointerInViewport && store.Raycast(origin, direction, 8000.0f, hit);
 }
 
-void AdjustRadius(const EditorViewportInput& input, float& radius) {
+void AdjustBrushRadius(const EditorViewportInput& input, float& radius) {
     if (input.control && input.wheel != 0.0f) {
         radius = std::clamp(radius * (input.wheel > 0.0f ? 1.15f : 0.87f), 1.0f, 2048.0f);
     }
 }
+
+namespace {
 
 // 押している間、毎フレーム適用する工具の共通部分。一筆で撤销一件。
 class StrokeTool : public IEditorViewportTool {
@@ -58,7 +62,7 @@ public:
         if (!store.IsOpen()) {
             return;
         }
-        AdjustRadius(input, Radius());
+        AdjustBrushRadius(input, Radius());
         float hit[3]{};
         const bool hasHit = RayToGround(input, store, hit);
         if (hasHit) {
@@ -251,7 +255,7 @@ public:
             return;
         }
         StampSettings& stamp = shared_->stamp;
-        AdjustRadius(input, stamp.radiusMeters);
+        AdjustBrushRadius(input, stamp.radiusMeters);
         if (input.alt && input.wheel != 0.0f) {
             stamp.rotationDegrees += input.wheel * 15.0f;
         }

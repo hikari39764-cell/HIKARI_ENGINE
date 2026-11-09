@@ -30,6 +30,7 @@ struct MassRenderProxyTemplateRequest {
     uint32_t primitiveIndex = 0u;
     uint32_t materialIndex = 0u;
     bool receiveShadow = true;
+    bool rayTraced = true;
     std::string clusteredGeometryPath{};
 };
 
@@ -55,6 +56,7 @@ struct MassGpuSceneShape {
     uint32_t meshIndex = RUNTIME::kInvalidRenderSurfaceIndex;
     uint32_t primitiveIndex = RUNTIME::kInvalidRenderSurfaceIndex;
     bool doubleSided = false;
+    bool rayTraced = true; // false の種類は光線追跡の場景へ入れない
 };
 
 struct MassGpuSceneSource {

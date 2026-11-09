@@ -738,6 +738,8 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldComponentTransactions.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldHierarchy.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldIdentity.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldInstanceStore.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Serialization/HIKARI_WorldInstanceFile.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldMassLifecycle.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldMassStore.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldMassScheduling.cpp"

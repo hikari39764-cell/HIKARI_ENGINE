@@ -723,6 +723,7 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     // Service-owned snapshots are cleared only after every old object
     // has released its borrowed service references.
     state_->runtime.world.Clear();
+    state_->runtime.world.BindInstanceStore(&state_->identity.instances);
     state_->runtime.worldBuilt = false;
     if (state_->runtime.stopGameProjectSessionAfterWorldDetach) {
         if (sessionOwner != nullptr) {

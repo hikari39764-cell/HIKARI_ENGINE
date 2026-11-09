@@ -24,6 +24,7 @@
 namespace HIKARI {
 
 class ComponentRegistry;
+class WorldInstanceStore;
 class PrefabView;
 class SystemScheduler;
 struct GameProjectSdkAccess;
@@ -153,6 +154,9 @@ public:
                                   WorldMassStore::RenderPublicationVisitorFn visitor,
                                   WorldMassRenderPublicationReceipt& outReceipt) noexcept;
     bool AcknowledgeMassRenderProxies(const WorldMassRenderPublicationReceipt& receipt) noexcept;
+    // 場景の実例集（場景の文書が持つ。世界より長生きする）。描画の発布に含め、SDK からも読み書きできる。
+    void BindInstanceStore(WorldInstanceStore* store) noexcept { instanceStore_ = store; }
+    WorldInstanceStore* GetInstanceStore() const noexcept { return instanceStore_; }
 
     WorldServiceRegistry& Services() noexcept;
     const WorldServiceRegistry& Services() const noexcept;
@@ -428,6 +432,8 @@ private:
 
     std::vector<std::unique_ptr<GameObject>> objects_;
     WorldMassStore massStore_{};
+    WorldInstanceStore* instanceStore_ = nullptr;
+    std::vector<WorldMassRenderStoreView> instanceRenderViews_{};
     std::vector<ObjectSlot> objectSlots_{};
     std::vector<uint32_t> freeObjectSlots_{};
     uint32_t firstLiveObjectSlot_ = kInvalidLiveObjectSlot;

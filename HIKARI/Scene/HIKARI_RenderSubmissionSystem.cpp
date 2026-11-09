@@ -488,6 +488,8 @@ bool SyncMassRenderStores(void* rawContext, const WorldMassRenderPublicationRece
                     {store.typeId.value, resolved.model, store.proxy->meshIndex, store.proxy->primitiveIndex,
                      store.proxy->materialIndex,
                      (store.proxy->flags & static_cast<uint32_t>(GameProjectWorldMassRenderFlags::ReceiveShadow)) != 0u,
+                     (store.proxy->flags & static_cast<uint32_t>(GameProjectWorldMassRenderFlags::SkipRayTracing)) ==
+                         0u,
                      resolved.clusteredGeometryPath},
                     store.instances,
                     store.dirtyRanges,

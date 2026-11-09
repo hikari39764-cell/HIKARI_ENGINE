@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <initializer_list>
 #include <limits>
@@ -763,6 +765,104 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
             Ok(result, "Stamp applied.", {{"milliseconds", milliseconds}});
         });
 
+    add.Query("terrainkit.instances.list", "List the instance sets of the scene with their instance counts.", {},
+              [](const Json&, Sink& result) {
+                  const WorldView& world = TerrainStore::Get().World();
+                  std::array<ComponentTypeId, 256> ids{};
+                  const uint32_t count = (std::min)(world.GetInstanceSetIds(ids), static_cast<uint32_t>(ids.size()));
+                  Json sets = Json::array();
+                  for (uint32_t index = 0u; index < count; ++index) {
+                      if (const GameProjectWorldInstanceSetDesc* set = world.FindInstanceSet(ids[index])) {
+                          sets.push_back({{"name", set->name},
+                                          {"modelAssetGuid", set->modelAssetGuid},
+                                          {"instances", world.GetInstanceCount(ids[index])}});
+                      }
+                  }
+                  Ok(result, "Instance sets listed.", {{"sets", std::move(sets)}});
+              });
+    add.Mutation("terrainkit.instances.add_set",
+                 "Add an instance set, or replace the definition of a set with the same name (its instances stay).",
+                 {{"name", Type::String, "Unique name of the set."},
+                  {"modelAssetGuid", Type::String, "Model asset GUID; omit for a box."},
+                  {"rayTraced", Type::Boolean, "Whether instances enter the ray traced scene. Leave off for grass."},
+                  {"tintVariation", Type::Number, "Per-instance color variation, 0..1."},
+                  {"windStrength", Type::Number, "How much instances sway in the wind, 0..1."}},
+                 [](const Json& parameters, Sink& result) {
+                     GameProjectWorldInstanceSetDesc desc{};
+                     const std::string name = parameters.at("name").get<std::string>();
+                     const std::string model = parameters.value("modelAssetGuid", std::string{});
+                     if (name.size() >= sizeof(desc.name) || model.size() >= sizeof(desc.modelAssetGuid)) {
+                         Fail(result, "NAME_TOO_LONG", "The set name or model GUID is too long.");
+                         return;
+                     }
+                     std::memcpy(desc.name, name.data(), name.size());
+                     std::memcpy(desc.modelAssetGuid, model.data(), model.size());
+                     desc.geometry = model.empty() ? GameProjectWorldMassRenderGeometry::BuiltInBox
+                                                   : GameProjectWorldMassRenderGeometry::ModelAsset;
+                     desc.flags = static_cast<uint32_t>(parameters.value("rayTraced", true)
+                                                            ? GameProjectWorldInstanceSetFlags::ReceiveShadow |
+                                                                  GameProjectWorldInstanceSetFlags::RayTraced
+                                                            : GameProjectWorldInstanceSetFlags::ReceiveShadow);
+                     desc.tintVariation = parameters.value("tintVariation", desc.tintVariation);
+                     desc.windStrength = parameters.value("windStrength", desc.windStrength);
+                     if (!TerrainStore::Get().World().AddInstanceSet(desc)) {
+                         Fail(result, "INVALID_SET", "The instance set is not valid.");
+                         return;
+                     }
+                     Ok(result, "Instance set added.", {{"name", name}});
+                 });
+    add.Mutation("terrainkit.instances.place",
+                 "Place instances of a set in a circle on the terrain. Spacing and slope limits apply. One undo step.",
+                 {{"set", Type::String, "Name of the instance set."},
+                  {"x", Type::Number, "World X of the center."},
+                  {"z", Type::Number, "World Z of the center."},
+                  {"radiusMeters", Type::Number, "Radius of the circle."},
+                  {"density", Type::Number, "Instances per 100 square meters."},
+                  {"spacingMeters", Type::Number, "Smallest distance between instances."},
+                  {"scaleMin", Type::Number, "Smallest uniform scale."},
+                  {"scaleMax", Type::Number, "Largest uniform scale."},
+                  {"alignToGround", Type::Number, "0 stands upright, 1 follows the ground."},
+                  {"maxSlopeDegrees", Type::Number, "Steeper ground is skipped."}},
+                 [shared](const Json& parameters, Sink& result) {
+                     if (!RequireTerrain(result)) {
+                         return;
+                     }
+                     InstanceBrushSettings brush = shared->instanceBrush;
+                     brush.radiusMeters = parameters.value("radiusMeters", brush.radiusMeters);
+                     brush.density = parameters.value("density", brush.density);
+                     brush.spacingMeters = parameters.value("spacingMeters", brush.spacingMeters);
+                     brush.scaleMin = parameters.value("scaleMin", brush.scaleMin);
+                     brush.scaleMax = parameters.value("scaleMax", brush.scaleMax);
+                     brush.alignToGround = parameters.value("alignToGround", brush.alignToGround);
+                     brush.maxSlopeDegrees = parameters.value("maxSlopeDegrees", brush.maxSlopeDegrees);
+                     uint32_t placed = 0u;
+                     if (!PlaceInstances(*shared, MakeComponentTypeId(parameters.at("set").get<std::string>()),
+                                         parameters.at("x").get<float>(), parameters.at("z").get<float>(), brush,
+                                         placed)) {
+                         Fail(result, "UNKNOWN_SET", "Add the instance set first.");
+                         return;
+                     }
+                     Ok(result, "Instances placed.", {{"placed", placed}});
+                 });
+    add.Mutation("terrainkit.instances.erase", "Erase instances of a set in a circle. One undo step.",
+                 {{"set", Type::String, "Name of the instance set."},
+                  {"x", Type::Number, "World X of the center."},
+                  {"z", Type::Number, "World Z of the center."},
+                  {"radiusMeters", Type::Number, "Radius of the circle."}},
+                 [shared](const Json& parameters, Sink& result) {
+                     if (!RequireTerrain(result)) {
+                         return;
+                     }
+                     uint32_t erased = 0u;
+                     if (!EraseInstances(*shared, MakeComponentTypeId(parameters.at("set").get<std::string>()),
+                                         parameters.at("x").get<float>(), parameters.at("z").get<float>(),
+                                         parameters.value("radiusMeters", shared->instanceBrush.radiusMeters),
+                                         erased)) {
+                         Fail(result, "UNKNOWN_SET", "Add the instance set first.");
+                         return;
+                     }
+                     Ok(result, "Instances erased.", {{"erased", erased}});
+                 });
     add.Mutation(
         "terrainkit.valleys",
         "Turn the large shape of the terrain, or of a square around a point, into an eroded mountain: branching "

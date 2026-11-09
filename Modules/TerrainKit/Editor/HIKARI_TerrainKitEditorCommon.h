@@ -10,6 +10,7 @@
 
 #include "HIKARI/Project/EditorModuleUi.h"
 #include "HIKARI/Project/EditorOperations.h"
+#include "HIKARI/Project/WorldInstanceTypes.h"
 #include "HIKARI_TerrainKitStore.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataBrush.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataEdit.h"
@@ -25,6 +26,18 @@ inline constexpr char kMaskToolId[] = "terrainkit.mask";
 inline constexpr char kStampToolId[] = "terrainkit.stamp";
 inline constexpr char kPaintToolId[] = "terrainkit.paint";
 inline constexpr char kSplineToolId[] = "terrainkit.spline";
+inline constexpr char kInstanceToolId[] = "terrainkit.instances";
+
+// 実例集の配置の筆。
+struct InstanceBrushSettings {
+    float radiusMeters = 16.0f;
+    float density = 2.0f;       // 100 m2 あたりの個体数
+    float spacingMeters = 2.0f; // 個体どうしの最小の間隔
+    float scaleMin = 0.8f;
+    float scaleMax = 1.25f;
+    float alignToGround = 0.25f; // 0 は真上、1 は地面の傾きのまま
+    float maxSlopeDegrees = 50.0f;
+};
 
 // 編集器の所有スレッドだけで触る。
 struct EditorShared {
@@ -37,6 +50,9 @@ struct EditorShared {
     std::string stampName = "hill";
     TERRAIN::DATA::ErosionRequest erosion{};
     TERRAIN::DATA::ValleySettings valleys{};
+    InstanceBrushSettings instanceBrush{};
+    uint64_t selectedInstanceSet = 0u;
+    uint64_t instanceRandom = 0x51D3A7u;
     uint32_t selectedLayer = 0u;
     uint32_t strokes = 0u;
     // 筆の一度分（筆刷の適用と焼き直し）の手間。describe で読む。
@@ -100,6 +116,17 @@ std::string WriteErosionMaps(const TerrainStore& store, const TERRAIN::DATA::Sam
 // 地形全体を覆う標本の矩形。
 TERRAIN::DATA::SampleRect WholeTerrainRect(const TerrainStore& store);
 
+// 円の中へ個体を置く・消す（撤销一件）。
+bool PlaceInstances(EditorShared& shared, ComponentTypeId setId, float x, float z, const InstanceBrushSettings& brush,
+                    uint32_t& outPlaced);
+bool EraseInstances(EditorShared& shared, ComponentTypeId setId, float x, float z, float radius, uint32_t& outErased);
+
+// 視口の工具で共有する部品。
+void DrawGroundCircle(EDITOR_PROJECT::IEditorViewportCanvas& canvas, const TerrainStore& store, const float center[3],
+                      float radius, EDITOR_PROJECT::EditorWorkspaceColor color);
+bool RayToGround(const EDITOR_PROJECT::EditorViewportInput& input, const TerrainStore& store, float hit[3]);
+void AdjustBrushRadius(const EDITOR_PROJECT::EditorViewportInput& input, float& radius);
+
 // 書き出し先（<root>/Library/TerrainKit）。
 std::filesystem::path TerrainOutputDirectory(const TerrainStore& store);
 bool WriteGrayPng(const std::filesystem::path& path, uint32_t width, uint32_t height, const std::vector<float>& values,
@@ -115,6 +142,7 @@ std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeMaskTool(std::shared_pt
 std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeStampTool(std::shared_ptr<EditorShared> shared);
 std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakePaintTool(std::shared_ptr<EditorShared> shared);
 std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeSplineTool(std::shared_ptr<EditorShared> shared);
+std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeInstanceTool(std::shared_ptr<EditorShared> shared);
 std::unique_ptr<EDITOR_PROJECT::IEditorPanel> MakeTerrainPanel(std::shared_ptr<EditorShared> shared);
 
 // 操作の登録。handlers は登録の間生きている必要がある（呼び手が持つ）。

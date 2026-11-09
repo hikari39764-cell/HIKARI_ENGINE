@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "HIKARI/Project/WorldView.h"
 #include "HIKARI_TerrainKitGpuErosion.h"
 #include "HIKARI_TerrainKitRivers.h"
 #include "HIKARI_TerrainKitRuleBaker.h"
@@ -101,6 +102,9 @@ public:
     void Close();
     bool IsOpen() const noexcept { return data_ != nullptr; }
     const std::filesystem::path& ScenePath() const noexcept { return scenePath_; }
+    // 地形の部品が載っている世界（実例集の読み書きに使う）。
+    void BindWorld(const WorldView& world) noexcept { world_ = world; }
+    const WorldView& World() const noexcept { return world_; }
     const TerrainSettings& Settings() const noexcept { return settings_; }
 
     // 今の格子で、噪声の層と彫る層だけの新しい編集データを作る。
@@ -166,6 +170,7 @@ public:
     bool Raycast(const float origin[3], const float direction[3], float maxDistance, float outHit[3]) const;
 
 private:
+    WorldView world_{};
     void BuildTileList();
     void BakeTile(TERRAIN::DATA::TileCoord tile, const TERRAIN::DATA::HeightStackEvaluator& evaluator);
     void BakeTileRect(TERRAIN::DATA::TileCoord tile, const TERRAIN::DATA::SampleRect& area,

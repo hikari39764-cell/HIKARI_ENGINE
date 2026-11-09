@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_World.h"
+#include "Scene/HIKARI_WorldInstanceStore.h"
 
 #include <algorithm>
 #include <array>
@@ -343,7 +344,16 @@ bool World::PublishMassRenderProxies(uint64_t frameIndex, void* context,
         return false;
     }
     const StructureReadScope structureRead = AcquireStructureReadScope();
-    return massStore_.PublishRenderStores(runtimeIdentity_, frameIndex, context, visitor, outReceipt);
+    instanceRenderViews_.clear();
+    if (instanceStore_ != nullptr) {
+        try {
+            instanceStore_->CollectRenderViews(instanceRenderViews_);
+        } catch (...) {
+            return false;
+        }
+    }
+    return massStore_.PublishRenderStores(runtimeIdentity_, frameIndex, instanceRenderViews_, context, visitor,
+                                          outReceipt);
 }
 
 bool World::AcknowledgeMassRenderProxies(const WorldMassRenderPublicationReceipt& receipt) noexcept {

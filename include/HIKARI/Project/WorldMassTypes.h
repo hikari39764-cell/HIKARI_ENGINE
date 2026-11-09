@@ -25,6 +25,8 @@ enum class GameProjectWorldMassRenderGeometry : uint32_t {
 enum class GameProjectWorldMassRenderFlags : uint32_t {
     None = 0u,
     ReceiveShadow = 1u << 0u,
+    // 光線追跡の場景へ入れない（草のように数が多く細かいもの）。
+    SkipRayTracing = 1u << 1u,
 };
 
 constexpr GameProjectWorldMassRenderFlags operator|(GameProjectWorldMassRenderFlags lhs,

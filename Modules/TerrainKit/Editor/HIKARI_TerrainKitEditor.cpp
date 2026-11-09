@@ -24,6 +24,7 @@ public:
         tools.push_back(MakeStampTool(shared_));
         tools.push_back(MakePaintTool(shared_));
         tools.push_back(MakeSplineTool(shared_));
+        tools.push_back(MakeInstanceTool(shared_));
         return tools;
     }
     std::vector<std::unique_ptr<IEditorPanel>> CreateEditorPanels() const override {

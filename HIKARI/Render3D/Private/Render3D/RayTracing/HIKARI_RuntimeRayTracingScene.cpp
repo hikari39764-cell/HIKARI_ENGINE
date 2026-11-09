@@ -374,6 +374,9 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
     std::vector<MassShape> massShapes(mass ? mass->shapes.size() : 0u);
     for (size_t s = 0; s < massShapes.size(); ++s) {
         const auto& shape = mass->shapes[s];
+        if (!shape.rayTraced) {
+            continue;
+        }
         const uint32_t slot = s < massMaterialSlots.size() ? massMaterialSlots[s] : 0xffffffffu;
         const auto* program =
             slot < materials.size()

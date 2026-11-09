@@ -473,8 +473,12 @@ bool MassGpuSceneRegistry::EndSync(RUNTIME::RenderModelCache& renderModelCache) 
                 material.localGpuSceneInstanceIndex = cursor;
                 impl_->source.materialSources[storeIndex] = material;
                 const GpuSceneSurfaceRecord& shape = store.renderTemplate->records.front();
-                impl_->source.shapes[storeIndex] = {shape.key.resources.clusterGeometry, shape.nodeIndex,
-                                                    shape.meshIndex, shape.primitiveIndex, shape.key.doubleSided};
+                impl_->source.shapes[storeIndex] = {shape.key.resources.clusterGeometry,
+                                                    shape.nodeIndex,
+                                                    shape.meshIndex,
+                                                    shape.primitiveIndex,
+                                                    shape.key.doubleSided,
+                                                    store.input.proxy.rayTraced};
                 impl_->layouts.push_back(Impl::StoreLayout{store.input.proxy.typeId, store.templateKey,
                                                            store.input.layoutVersion, store.input.sourceVersion, cursor,
                                                            SaturateToUint32(store.input.transforms.size())});

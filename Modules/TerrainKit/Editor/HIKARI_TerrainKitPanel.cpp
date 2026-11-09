@@ -42,6 +42,8 @@ public:
         ui.Separator();
         DrawRules(ui, store);
         ui.Separator();
+        DrawInstances(ui, store);
+        ui.Separator();
         DrawStamp(ui);
         ui.Separator();
         DrawErosion(ui, store);
@@ -354,6 +356,59 @@ private:
         }
     }
 
+    void DrawInstances(IEditorWorkspaceUi& ui, TerrainStore& store) {
+        ui.Text("Instance Sets");
+        const WorldView& world = store.World();
+        std::array<ComponentTypeId, 64> ids{};
+        const uint32_t setCount = (std::min)(world.GetInstanceSetIds(ids), static_cast<uint32_t>(ids.size()));
+        for (uint32_t index = 0u; index < setCount; ++index) {
+            const ComponentTypeId id = ids[index];
+            const GameProjectWorldInstanceSetDesc* set = world.FindInstanceSet(id);
+            if (set == nullptr) {
+                continue;
+            }
+            const std::string name = set->name;
+            if (ui.Selectable("instanceSet" + name, name + "  (" + std::to_string(world.GetInstanceCount(id)) + ")",
+                              shared_->selectedInstanceSet == id.value)) {
+                shared_->selectedInstanceSet = id.value;
+            }
+        }
+        ui.InputText("instanceName", "Set Name", instanceName_.data(), instanceName_.size());
+        ui.InputText("instanceModel", "Model Asset GUID (empty = box)", instanceModel_.data(), instanceModel_.size());
+        ui.InputFloat("instanceTint", "Color Variation", &instanceTint_);
+        ui.InputFloat("instanceWind", "Wind", &instanceWind_);
+        ui.Checkbox("instanceRay", "Ray Traced", &instanceRayTraced_);
+        if (ui.Button("instanceAdd", "Add Set")) {
+            GameProjectWorldInstanceSetDesc desc{};
+            std::memcpy(desc.name, instanceName_.data(), (std::min)(instanceName_.size(), sizeof(desc.name) - 1u));
+            std::memcpy(desc.modelAssetGuid, instanceModel_.data(),
+                        (std::min)(instanceModel_.size(), sizeof(desc.modelAssetGuid) - 1u));
+            desc.geometry = desc.modelAssetGuid[0] != '\0' ? GameProjectWorldMassRenderGeometry::ModelAsset
+                                                           : GameProjectWorldMassRenderGeometry::BuiltInBox;
+            desc.flags = static_cast<uint32_t>(instanceRayTraced_ ? GameProjectWorldInstanceSetFlags::ReceiveShadow |
+                                                                        GameProjectWorldInstanceSetFlags::RayTraced
+                                                                  : GameProjectWorldInstanceSetFlags::ReceiveShadow);
+            desc.tintVariation = instanceTint_;
+            desc.windStrength = instanceWind_;
+            if (world.AddInstanceSet(desc)) {
+                shared_->selectedInstanceSet = MakeComponentTypeId(desc.name).value;
+            } else {
+                Report("The instance set is not valid: it needs a name, and a model GUID or none for a box.");
+            }
+        }
+        InstanceBrushSettings& brush = shared_->instanceBrush;
+        ui.InputFloat("instanceRadius", "Brush Radius (m)", &brush.radiusMeters);
+        ui.InputFloat("instanceDensity", "Density (per 100 m2)", &brush.density);
+        ui.InputFloat("instanceSpacing", "Min Spacing (m)", &brush.spacingMeters);
+        ui.InputFloat("instanceScaleMin", "Scale Min", &brush.scaleMin);
+        ui.InputFloat("instanceScaleMax", "Scale Max", &brush.scaleMax);
+        ui.InputFloat("instanceAlign", "Align To Ground", &brush.alignToGround);
+        ui.InputFloat("instanceSlope", "Max Slope (deg)", &brush.maxSlopeDegrees);
+        if (ui.Button("instanceTool", "Place Instances Tool") && shared_->services != nullptr) {
+            shared_->services->ActivateViewportTool(kInstanceToolId);
+        }
+    }
+
     void DrawErosion(IEditorWorkspaceUi& ui, TerrainStore& store) {
         ValleySettings& valleys = shared_->valleys;
         ui.InputFloat("valleyErosion", "Valley Erosion", &valleys.erosion);
@@ -389,6 +444,11 @@ private:
 
     std::shared_ptr<EditorShared> shared_;
     NoiseLayerSettings noise_ = DefaultMountain();
+    std::array<char, 95> instanceName_{"Rocks"};
+    std::array<char, 95> instanceModel_{};
+    float instanceTint_ = 0.3f;
+    float instanceWind_ = 0.0f;
+    bool instanceRayTraced_ = true;
 };
 
 } // namespace

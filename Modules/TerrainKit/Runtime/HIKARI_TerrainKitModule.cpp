@@ -68,6 +68,7 @@ public:
         owner_ = context.GetObject().GetHandle();
         (void)world_.AddRenderSurfaceExtension(*this);
         (void)world_.AddNavigationGeometrySource(*this);
+        TerrainStore::Get().BindWorld(world_);
     }
 
     // 物理は Play の世界でだけ動く。瓦片が読めたら当たりを作る。

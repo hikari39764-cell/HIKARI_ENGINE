@@ -36,7 +36,10 @@ float4 HikariApplyFoliageWindWorldPosition(
     const float speed = clamp(instance.fxUser[0].y, 0.0f, 20.0f);
     const float spatialFrequency =
         clamp(instance.fxUser[0].z, 0.0f, 20.0f);
-    const float tip = saturate(uv.y);
+    // 実例集の個体は普通の模型で UV が重みではないので、根元からの高さで読む。
+    const float tip = (instance.objectIdHigh & 0x80000000u) != 0u
+        ? saturate((worldPosition.y - instance.world[1][3]) / max(instance.fxUser[0].w, 0.01f))
+        : saturate(uv.y);
     const float tipWeight = tip * tip * (3.0f - 2.0f * tip);
     const float objectPhase =
         (float)(instance.objectIdLow & 1023u) *

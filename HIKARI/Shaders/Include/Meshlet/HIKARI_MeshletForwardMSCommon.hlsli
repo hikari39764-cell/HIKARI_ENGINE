@@ -106,7 +106,9 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
     if ((instance.flags & (HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE |
                            HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE)) == 0u)
     {
-        output.surfaceFeatureData = float3(localPosition.xz, 0.0f);
+        // z は実例集の個体の色の揺らぎ（-1..1。他の面は 0）。
+        output.surfaceFeatureData = float3(localPosition.xz,
+            HikariIsMassGpuSceneIndex(surfaceGpuSceneIndex) ? instance.fxUser[1].x : 0.0f);
     }
     return output;
 }

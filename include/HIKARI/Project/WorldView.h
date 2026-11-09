@@ -18,6 +18,7 @@
 #include "HIKARI/Project/SpriteMaterialView.h"
 #include "HIKARI/Project/ValueTypes.h"
 #include "HIKARI/Project/WorldTypes.h"
+#include "HIKARI/Project/WorldInstanceTypes.h"
 #include "HIKARI/Project/WorldMassTypes.h"
 #include "HIKARI/Project/WorldSpriteTypes.h"
 #include "HIKARI/Project/WorldTextTypes.h"
@@ -149,6 +150,24 @@ public:
     QueryMassObjects(ComponentTypeId typeId, void* context, GameProjectWorldMassCallback callback) const noexcept;
     template <class Data, class Visitor>
     GameProjectWorldQueryResult ForEachMassObject(ComponentTypeId typeId, Visitor&& visitor) const;
+    // 実例集を足す（同じ名前があれば定義を置き換える）。ID は MakeComponentTypeId(desc.name)。
+    HIKARI_GAME_PROJECT_SDK_API bool AddInstanceSet(const GameProjectWorldInstanceSetDesc& desc) const noexcept;
+    // 実例集をその個体ごと消す。
+    HIKARI_GAME_PROJECT_SDK_API bool RemoveInstanceSet(ComponentTypeId setId) const noexcept;
+    // 実例集の ID を足した順に書き、全部の数を返す（outIds が短ければ書けた分だけ）。
+    HIKARI_GAME_PROJECT_SDK_API uint32_t GetInstanceSetIds(std::span<ComponentTypeId> outIds) const noexcept;
+    // 実例集の定義。無ければ nullptr。
+    HIKARI_GAME_PROJECT_SDK_API const GameProjectWorldInstanceSetDesc* FindInstanceSet(
+        ComponentTypeId setId) const noexcept;
+    // 一格の個体を丸ごと置き換える。格子は WorldCellAt(x, z, 256) で求める。
+    HIKARI_GAME_PROJECT_SDK_API bool ReplaceInstanceCell(
+        ComponentTypeId setId, int32_t cellX, int32_t cellZ,
+        std::span<const GameProjectWorldInstance> instances) const noexcept;
+    // 一格の個体。次にその実例集を変えるまで有効。
+    HIKARI_GAME_PROJECT_SDK_API std::span<const GameProjectWorldInstance> ReadInstanceCell(
+        ComponentTypeId setId, int32_t cellX, int32_t cellZ) const noexcept;
+    // 実例集の個体数。
+    HIKARI_GAME_PROJECT_SDK_API uint64_t GetInstanceCount(ComponentTypeId setId) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
     SpawnObject(const GameProjectSpawnObjectDesc& desc) const noexcept;
     // 複数のオブジェクトをまとめて生成する。
