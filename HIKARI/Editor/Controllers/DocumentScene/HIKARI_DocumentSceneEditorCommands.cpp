@@ -16,6 +16,7 @@
 #include "Editor/History/HIKARI_CinematicsHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 namespace HIKARI {
@@ -144,7 +145,38 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
         commandRouter_.BindOperation(EditorCommandId::DropSelectionToGround, TEXT::Localize("ui.command.dropToGround"),
                                      context_.selection.GetSelectedObjectCount() != 0u && !scene.IsRuntimePlayActive(),
                                      "scene.drop_to_ground");
+        commandRouter_.BindOperation(EditorCommandId::KeepPlayResults, TEXT::Localize("ui.command.keepPlayResults"),
+                                     context_.selection.GetSelectedObjectCount() != 0u && scene.IsRuntimePlayActive(),
+                                     "scene.keep_play_results");
     }
+}
+
+void DocumentSceneEditorController::ApplyKeptPlayResults(DocumentSceneBase& scene) {
+    const bool playing = scene.IsRuntimePlayActive();
+    const bool stopped = playWasActive_ && !playing;
+    if (playing && !playWasActive_) {
+        context_.keptPlayPoses.clear(); // 前の Play で残したまま止めなかった分は捨てる。
+    }
+    playWasActive_ = playing;
+    if (!stopped || context_.keptPlayPoses.empty()) {
+        return;
+    }
+    // Play を止めると文書は Play 前へ戻っている。そこへ残した姿勢を書き、一つの撤销にする。
+    SceneDocument& document = scene.GetSceneDocument();
+    std::vector<SceneObjectData> before = document.objects;
+    for (const KeptPlayPose& pose : std::exchange(context_.keptPlayPoses, {})) {
+        if (SceneObjectData* object = FindSceneObjectData(document, pose.id);
+            object != nullptr && !object->parent.has_value()) {
+            object->transform = {pose.position, pose.rotationEulerDeg, pose.scale};
+        }
+    }
+    if (before == document.objects) {
+        return;
+    }
+    CommitSceneObjectAuthoringHistory(
+        scene, SceneObjectAuthoringHistoryRequest{
+                   "Keep Play Results", std::move(before), document.objects, document.camera, document.camera,
+                   context_.sceneDirty || scene.HasUnsavedSceneChanges(), true, true, 0u});
 }
 
 std::vector<EDITOR::EditorAssetDocument*> DocumentSceneEditorController::UnsavedAssetDocuments() {

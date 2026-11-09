@@ -25,6 +25,7 @@ EditorOperationResult CreateSceneWorldText(SceneObjectOperationContext& operatio
 EditorOperationResult CreateScenePrimitive(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
 EditorOperationResult CreateSceneEmptyObject(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
 EditorOperationResult CreateSceneWaterObject(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
+EditorOperationResult KeepPlayResults(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
 EditorOperationResult DropSceneObjectsToGround(SceneObjectOperationContext& operation,
                                                const nlohmann::json& parameters);
 EditorOperationResult DeleteSceneObjects(SceneObjectOperationContext& operation, const nlohmann::json& parameters);

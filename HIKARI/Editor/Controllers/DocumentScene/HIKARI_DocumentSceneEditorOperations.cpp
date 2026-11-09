@@ -153,6 +153,12 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
           {"alignToGround", EditorOperationParameterType::Float, false, "0 keeps upright, 1 follows the slope"},
           {"maxTiltDegrees", EditorOperationParameterType::Float, false, "Largest tilt from upright in degrees"},
           {"sinkMeters", EditorOperationParameterType::Float, false, "Depth pushed into the ground in meters"}}},
+        {"scene.keep_play_results",
+         "During Play, remember the current pose of objects (for example rocks that fell with physics) and write "
+         "it into the scene when Play stops, as one undo step. Uses the selection when objectIds is omitted.",
+         "scene",
+         EDITOR::KeepPlayResults,
+         {{"objectIds", EditorOperationParameterType::Json, false, "Stable SceneObjectIds; default is the selection"}}},
         {"scene.create_water",
          "Create a water surface. camera_centered_ocean makes a sea that follows the camera at position y.", "scene",
          EDITOR::CreateSceneWaterObject,

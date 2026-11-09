@@ -457,6 +457,8 @@ private:
     bool SaveSceneDocument(DocumentSceneBase& scene);
     void ExecuteSceneDocumentHistory(DocumentSceneBase& scene, bool redo);
     void CommitSceneObjectAuthoringHistory(DocumentSceneBase& scene, SceneObjectAuthoringHistoryRequest history);
+    // Play を止めた直後に、Play 中に「Play の結果を残す」で記録した姿勢を文書へ書き戻す。
+    void ApplyKeptPlayResults(DocumentSceneBase& scene);
     void ApplyHistoryResult(DocumentSceneBase& scene, const EDITOR::EditorHistoryResult& result, bool redo);
     // objectChanges があれば runtime world は差分反映、無ければ作り直す。
     void ApplyDocumentImpact(DocumentSceneBase& scene, EDITOR::EditorDocumentImpact impact,
@@ -482,6 +484,7 @@ private:
     EDITOR::EditorCommandRouter commandRouter_{};
     EDITOR::SceneObjectTransformHistorySession viewportTransformHistory_{};
     EDITOR::GroundFollowService groundFollow_{};
+    bool playWasActive_ = false;
     bool sceneViewCameraSnapshotValid_ = false;
     Camera3D sceneViewEditorCameraSnapshot_{};
     DebugCameraController3D sceneViewDebugCameraSnapshot_{};

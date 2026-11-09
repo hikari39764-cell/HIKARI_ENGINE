@@ -1194,6 +1194,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_ComponentAuthoringOperations.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_SceneObjectTargetResolver.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_SceneObjectOperations.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_ScenePlacementOperations.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_GroundPlacement.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_GroundFollow.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Authoring/HIKARI_TerrainAuthoringOperations.cpp"

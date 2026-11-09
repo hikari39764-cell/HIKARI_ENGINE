@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "Editor/Selection/HIKARI_EditorSelection.h"
 #include "Core/Math/HIKARI_Math3D.h"
@@ -143,6 +144,14 @@ struct EditorAiIntegrationSettings {
     std::string localBridgeStatus{};
 };
 
+// Play 中に「Play の結果を残す」で記録した物の姿勢。Play を止めて文書を戻した後、一つの撤销として文書へ書き戻す。
+struct KeptPlayPose {
+    SceneObjectId id{};
+    MATH::Vec3 position{};
+    MATH::Vec3 rotationEulerDeg{};
+    MATH::Vec3 scale{1.0f, 1.0f, 1.0f};
+};
+
 struct EditorContext {
     DebugWindowState windows{};
     EditorAiIntegrationSettings aiIntegration{};
@@ -162,6 +171,7 @@ struct EditorContext {
     bool componentAddStatusIsError = false;
     uint64_t nextSceneObjectId = 1;
     bool sceneDirty = false;
+    std::vector<KeptPlayPose> keptPlayPoses{};
     RuntimeResourceRefreshReport lastRuntimeRefreshReport{};
 };
 

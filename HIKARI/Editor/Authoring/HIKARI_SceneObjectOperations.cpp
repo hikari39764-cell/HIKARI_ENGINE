@@ -2,7 +2,6 @@
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Authoring/HIKARI_SceneObjectOperations.h"
 #include "Editor/Authoring/HIKARI_EditorObjectFactory.h"
-#include "Editor/Authoring/HIKARI_GroundPlacement.h"
 #include "Editor/Authoring/HIKARI_SceneObjectTargetResolver.h"
 #include "Editor/Authoring/HIKARI_SceneTransformAuthoring.h"
 #include "Editor/Commands/HIKARI_SceneObjectCommandService.h"
@@ -390,73 +389,6 @@ EditorOperationResult CreateSceneWaterObject(SceneObjectOperationContext& operat
     result.ok = true;
     result.message = "Created water " + request.name;
     return result;
-}
-
-// 物体の模型の底を真下の地面へ置き、坂に合わせて傾ける（Unreal の End キーと同じ）。向きは保つ。
-// 置き方は物体の GroundAnchorComponent、無ければ既定。引数で個別に上書きできる（GroundAnchorComponent を持つ物は
-// 記録の時にその置き方で置き直される）。親を持つ物と固定した物は動かさない。
-EditorOperationResult DropSceneObjectsToGround(SceneObjectOperationContext& operation,
-                                               const nlohmann::json& parameters) {
-    DocumentSceneBase& scene = operation.scene;
-    if (scene.IsRuntimePlayActive()) {
-        return OperationFailure("PLAY_ACTIVE", "Stop Play before moving objects.");
-    }
-    std::vector<SceneObjectId> targets{};
-    if (const auto ids = parameters.find("objectIds"); ids != parameters.end()) {
-        if (!ids->is_array()) {
-            return OperationFailure("INVALID_ARGUMENT", "objectIds must be an array of SceneObjectIds.");
-        }
-        for (const auto& id : *ids) {
-            if (!id.is_number_unsigned()) {
-                return OperationFailure("INVALID_ARGUMENT", "objectIds must be an array of SceneObjectIds.");
-            }
-            targets.push_back(SceneObjectId{id.get<uint64_t>()});
-        }
-    } else {
-        for (const SceneObjectId id : operation.editor.selection.GetSelectedObjectIds()) {
-            targets.push_back(id);
-        }
-    }
-    if (targets.empty()) {
-        return OperationFailure("NO_TARGET", "Select objects, or pass objectIds.");
-    }
-    SceneDocument& document = scene.GetSceneDocument();
-    const bool dirty = operation.editor.sceneDirty || scene.HasUnsavedSceneChanges();
-    std::vector<SceneObjectData> before = document.objects;
-    nlohmann::json dropped = nlohmann::json::array();
-    nlohmann::json skipped = nlohmann::json::array();
-    const std::unordered_map<uint64_t, ModelFootprint> footprints = CollectModelFootprints();
-    for (const SceneObjectId id : targets) {
-        SceneObjectData* object = FindSceneObjectData(document, id);
-        if (object == nullptr || object->parent.has_value() || object->editorLocked) {
-            skipped.push_back(id.value);
-            continue;
-        }
-        GroundPlacementSettings settings = ResolveGroundPlacement(*object);
-        settings.alignToGround = parameters.value("alignToGround", settings.alignToGround);
-        settings.maxTiltDegrees = parameters.value("maxTiltDegrees", settings.maxTiltDegrees);
-        settings.sinkMeters = parameters.value("sinkMeters", settings.sinkMeters);
-        TransformData placed{};
-        const auto footprint = footprints.find(id.value);
-        if (!PlaceOnGround(scene.GetWorld(), object->transform,
-                           footprint != footprints.end() ? &footprint->second : nullptr, settings, placed)) {
-            skipped.push_back(id.value);
-            continue;
-        }
-        object->transform = placed;
-        dropped.push_back(id.value);
-    }
-    if (dropped.empty()) {
-        return OperationFailure("NO_GROUND",
-                                "No ground below the objects (objects with a parent or locked are not moved).");
-    }
-    if (before == document.objects) {
-        return OperationOk("Already on the ground.", {{"objectIds", dropped}, {"skipped", skipped}});
-    }
-    operation.history = SceneObjectAuthoringHistoryRequest{
-        "Drop To Ground", std::move(before), document.objects, document.camera, document.camera, dirty, true, true, 0u};
-    return OperationOk("Dropped " + std::to_string(dropped.size()) + " object(s) to the ground.",
-                       {{"objectIds", dropped}, {"skipped", skipped}});
 }
 
 EditorOperationResult DeleteSceneObjects(SceneObjectOperationContext& operation, const nlohmann::json& parameters) {

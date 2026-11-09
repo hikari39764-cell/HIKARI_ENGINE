@@ -709,6 +709,7 @@
     {"ui.command.duplicateSelection", "复制选中"}, {"ui.command.deleteSelection", "删除选中"},
     {"ui.command.dropToGround", "贴到地面"},
     {"ui.viewport.groundSnap", "移动时贴着地面"},
+    {"ui.command.keepPlayResults", "保留 Play 中的位置"},
     {"ui.inspector.worldSprite.size", "尺寸"}, {"ui.inspector.worldSprite.alphaOpaque", "不透明"},
     {"ui.inspector.worldSprite.alphaCutoff", "裁切阈值"}, {"ui.inspector.worldText.text", "文字"},
     {"ui.inspector.worldText.horizontalAlign", "水平对齐"}, {"ui.inspector.worldText.verticalAlign", "垂直对齐"},

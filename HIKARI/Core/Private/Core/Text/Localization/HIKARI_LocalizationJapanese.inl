@@ -866,6 +866,7 @@
     {"ui.command.duplicateSelection", "選択を複製"}, {"ui.command.deleteSelection", "選択を削除"},
     {"ui.command.dropToGround", "地面へ置く"},
     {"ui.viewport.groundSnap", "地面に沿って動かす"},
+    {"ui.command.keepPlayResults", "Play の結果を残す"},
     {"ui.inspector.worldSprite.size", "サイズ"}, {"ui.inspector.worldSprite.alphaOpaque", "不透明"},
     {"ui.inspector.worldSprite.alphaCutoff", "アルファしきい値"}, {"ui.inspector.worldText.text", "テキスト"},
     {"ui.inspector.worldText.horizontalAlign", "水平揃え"}, {"ui.inspector.worldText.verticalAlign", "垂直揃え"},

@@ -25,8 +25,9 @@ void DrawEditorDocumentMenu(EditorCommandRouter& commandRouter) {
     DrawCommandItem(commandRouter, EditorCommandId::Redo, "menu.edit.redo");
     // 選んだ物への命令は、今の工作区が持つ時だけ出す（キーだけでは見つけにくいので）。
     bool separated = false;
-    for (const EditorCommandId command : {EditorCommandId::DuplicateSelection, EditorCommandId::DeleteSelection,
-                                          EditorCommandId::FocusSelection, EditorCommandId::DropSelectionToGround}) {
+    for (const EditorCommandId command :
+         {EditorCommandId::DuplicateSelection, EditorCommandId::DeleteSelection, EditorCommandId::FocusSelection,
+          EditorCommandId::DropSelectionToGround, EditorCommandId::KeepPlayResults}) {
         if (const EditorCommandBinding* binding = commandRouter.Find(command); binding != nullptr) {
             if (!std::exchange(separated, true)) {
                 ImGui::Separator();

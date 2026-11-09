@@ -18,6 +18,7 @@ enum class EditorCommandId : uint8_t {
     DeleteSelection,
     FocusSelection,
     DropSelectionToGround,
+    KeepPlayResults,
     Count,
 };
 

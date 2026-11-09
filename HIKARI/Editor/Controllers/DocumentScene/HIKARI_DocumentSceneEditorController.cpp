@@ -498,6 +498,7 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
     if (inputScript_)
         inputScript_->Apply(TIME::GetFrameContext().frameIndex);
     agentHost_.PumpActions();
+    ApplyKeptPlayResults(scene);
     TickAgentPlayRun();
     TickAgentPanel();
     authoringSessions_.Tick(static_cast<uint64_t>(ImGui::GetFrameCount()), ImGui::GetIO().DeltaTime);
