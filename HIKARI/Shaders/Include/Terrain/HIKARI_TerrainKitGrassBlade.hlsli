@@ -257,7 +257,7 @@ GrassBlade GrassBuildBlade(GrassPatch patch, GrassBlock block, GrassLighting lig
     const float highEnd = gGrassFirstRange * (float)(1u << GRASS_LAST_HIGH_LEVEL);
     blade.morph = smoothstep(highEnd * 0.6f, highEnd, distanceToCamera);
     blade.phase = GrassUnit(clumpHash ^ hash) * 6.28318530718f;
-    blade.bobAmount = height * (0.03f + 0.09f * wind);
+    blade.bobAmount = height * (0.03f * saturate(gGrassWindStrength) + 0.09f * wind);
     blade.sideLight = dot(blade.side, lighting.light) * 0.3f;
     blade.fog = gFogParams.x < 0.5f ? 0.0f : HikariForwardFogFactor(blade.root);
 
