@@ -33,9 +33,12 @@
 //   ANY      : 分割しない。
 //   PROBES   : 光照贴图の無い面だけ（PS は ANY と同じ）。
 //   LIGHTMAP : 光照贴图の面だけ。
+//   MASS     : 標準材質の大量配置の面だけ。探針は mesh shader が meshlet ごとに読み、PS は読まない（森の視点で前向きの
+//              約 3 割が探針の読み出しだった）。標準材質の PROBES はこの面を描かない。
 #define HIKARI_SURFACE_LIGHTING_ANY 0
 #define HIKARI_SURFACE_LIGHTING_PROBES 1
 #define HIKARI_SURFACE_LIGHTING_LIGHTMAP 2
+#define HIKARI_SURFACE_LIGHTING_MASS 3
 
 #ifndef HIKARI_SURFACE_LIGHTING
 #define HIKARI_SURFACE_LIGHTING HIKARI_SURFACE_LIGHTING_ANY

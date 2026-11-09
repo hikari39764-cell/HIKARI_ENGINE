@@ -1,3 +1,7 @@
+#include "Include/Surface/HIKARI_SurfacePartition.hlsli"
+#if HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_MASS
+#define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
+#endif
 #include "Include/Meshlet/HIKARI_MeshletMSCommon.hlsli"
 #include "Include/Surface/HIKARI_SurfaceTangentFrame.hlsli"
 #include "Include/Surface/HIKARI_MaterialShell.hlsli"
@@ -14,6 +18,30 @@
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/Features/HIKARI_GeometryOutlineVertex.hlsli"
+#endif
+
+#if HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_MASS
+// 大量配置の面の探針は meshlet の中心で一度だけ読む（上向きと下向き）。探針の間隔は meshlet より十分大きいので
+// meshlet の境目は見えず、読み出しは画素ごとの数十分の一になる。
+#include "Include/HIKARI_MeshMaterialData.hlsli"
+SamplerState gLinearWrap : register(s0);
+SamplerState gLinearClamp : register(s2);
+SamplerState gSkyPanoramaSampler : register(s4);
+#define HIKARI_SKY_ENVIRONMENT_PROBES_ONLY 1
+#include "Include/HIKARI_SkyEnvironmentCommon.hlsli"
+groupshared float4 gMassProbeUp;
+groupshared float4 gMassProbeDown;
+groupshared float2 gMassProbeSky;
+
+void HikariReadMassProbes(float3 center)
+{
+    const float3 view = normalize(gCameraPos.xyz - center);
+    const float3 up = float3(0.0f, 1.0f, 0.0f);
+    float skyUp, skyDown;
+    gMassProbeUp = HikariResolveLightProbeDiffuse(center, up, up, view, skyUp);
+    gMassProbeDown = HikariResolveLightProbeDiffuse(center, -up, -up, view, skyDown);
+    gMassProbeSky = float2(skyUp, skyDown);
+}
 #endif
 
 typedef HikariForwardVertexOutput HikariMeshletVertexOut;
@@ -135,6 +163,26 @@ void main(
     HikariSurfaceGpuSceneInstance instance =
         HikariGetSurfaceGpuSceneInstanceAt(
             resolved.visible.gpuSceneInstanceIndex);
+#if HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_MASS
+    if (groupIndex == 0u)
+    {
+        // 代表点は最初、中ほど、最後の頂点の平均（meshlet の頂点は空間的にまとまっている）。
+        const uint samples[3] = {0u, resolved.vertexCount / 2u, resolved.vertexCount - 1u};
+        float3 center = 0.0f.xxx;
+        float count = 0.0f;
+        for (uint sampleIndex = 0u; sampleIndex < 3u; ++sampleIndex)
+        {
+            uint vertexIndex = 0u;
+            if (HikariResolveMeshletVertexIndex(resolved, samples[sampleIndex], vertexIndex))
+            {
+                center += HikariLoadClusterVertexShading(geometry, resolved.header, vertexIndex).position.xyz;
+                count += 1.0f;
+            }
+        }
+        HikariReadMassProbes(mul(instance.clusterWorld, float4(center / max(count, 1.0f), 1.0f)).xyz);
+    }
+    GroupMemoryBarrierWithGroupSync();
+#endif
 
     for (uint vertexSlot = groupIndex;
          vertexSlot < resolved.vertexCount;
@@ -165,6 +213,11 @@ void main(
                     localCharacterForward,
                     resolved.visible.gpuSceneInstanceIndex,
                     HikariShellLayer(groupId.y, payload.shellLayerCount, payload.shellLodAmount));
+#if HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_MASS
+            vertices[vertexSlot].massProbeUp = gMassProbeUp;
+            vertices[vertexSlot].massProbeDown = gMassProbeDown;
+            vertices[vertexSlot].massProbeSky = gMassProbeSky;
+#endif
         }
         else
         {

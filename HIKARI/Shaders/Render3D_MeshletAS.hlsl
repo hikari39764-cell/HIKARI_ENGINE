@@ -208,6 +208,12 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     const bool lightmappedRange = (visible.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_LIGHTMAPPED) != 0u;
     if (lightmappedRange != (HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_LIGHTMAP))
         visible = (HikariMeshletVisibleRange)0;
+#if HIKARI_MATERIAL_CLASS == HIKARI_MATERIAL_CLASS_STANDARD && HIKARI_SURFACE_LIGHTING != HIKARI_SURFACE_LIGHTING_LIGHTMAP
+    // 標準材質の大量配置は軽い GI の PSO が描く。材質 program の大量配置は PROBES のまま。
+    if (HikariIsMassGpuSceneIndex(visible.gpuSceneInstanceIndex) !=
+        (HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_MASS))
+        visible = (HikariMeshletVisibleRange)0;
+#endif
 #endif
     const uint sourceClusterCount = visible.clusterCount;
     const bool candidateLane = groupIndex < min(sourceClusterCount, HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD);

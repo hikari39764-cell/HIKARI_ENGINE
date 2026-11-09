@@ -21,6 +21,13 @@ HikariPbrShadingContext HikariBuildForwardPbrShadingContext(
     return context;
 }
 
+#if HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_MASS
+// 大量配置の面の探針の値（PS の入口で頂点の出力から写す）。
+static float4 gMassProbeUp;
+static float4 gMassProbeDown;
+static float2 gMassProbeSky;
+#endif
+
 // skyVisibility は空の見える割合（動的 GI と光照贴图が知る。他は 1）。surfaceLightmap.rgb は焼き込んだ E/pi、
 // a は焼き込んだ空の見える割合。sampleProbes を偽にすると動的 GI と焼き込み probe を読まず、固定の環境光と空の拡散光
 // だけにする（前向きの診断モードが probe の読み出し費用を測る）。
@@ -31,6 +38,15 @@ float3 HikariResolveSurfaceDiffuseIrradiance(float3 worldPos, float3 geometricNo
     // 光照贴图の面だけを描く PSO。重みは必ず 1 で、探針の命令を持たない。
     skyVisibility = saturate(surfaceLightmap.a);
     return surfaceLightmap.rgb;
+#elif HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_MASS
+    // mesh shader が meshlet ごとに読んだ上向きと下向きを法線で混ぜる。大量配置に光照贴图は無い。
+    const float upward = saturate(n.y * 0.5f + 0.5f);
+    const float4 massProbes = lerp(gMassProbeDown, gMassProbeUp, upward);
+    skyVisibility = lerp(gMassProbeSky.y, gMassProbeSky.x, upward);
+    [branch] if (massProbes.a >= 1.0f)
+        return massProbes.rgb;
+    return massProbes.rgb + (gAmbientColor.rgb * gAmbientIntensity + HikariEvaluateSkyDiffuseIrradiance(n)) *
+        (1.0f - massProbes.a);
 #else
     skyVisibility = 1.0f;
     const float weight = saturate(surfaceLightmapWeight);

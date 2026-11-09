@@ -171,10 +171,12 @@ private:
     struct LightingSplitPipelines {
         PipelineBucketArray standardProbe{};
         PipelineBucketArray standardLightmap{};
+        PipelineBucketArray standardMass{};
         PipelineBucketArray programProbe{};
         PipelineBucketArray programLightmap{};
         bool IsReady(size_t bucket) const noexcept {
-            return standardProbe[bucket] && standardLightmap[bucket] && programProbe[bucket] && programLightmap[bucket];
+            return standardProbe[bucket] && standardLightmap[bucket] && standardMass[bucket] && programProbe[bucket] &&
+                   programLightmap[bucket];
         }
     };
 

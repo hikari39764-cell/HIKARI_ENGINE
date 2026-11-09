@@ -54,6 +54,11 @@ float4 HikariShadeForwardWithReflections(PSInput input,
 float4 main(PSInput input) : SV_TARGET
 #endif
 {
+#if HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_MASS
+    gMassProbeUp = input.massProbeUp;
+    gMassProbeDown = input.massProbeDown;
+    gMassProbeSky = input.massProbeSky;
+#endif
 #if HIKARI_FORWARD_REFLECTION_CAPTURE
     // 未対応の早期 return も必ず無効値を書き、背後の面の反射を残さない。
     fallbackSpecular = 0.0f.xxxx;

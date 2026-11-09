@@ -144,7 +144,8 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
     params[ROOT_PARAM::Light].InitAsConstantBufferView(2, 0, kPixel);
     params[ROOT_PARAM::ShadowMap].InitAsDescriptorTable(1, &shadowTextureRange, kPixel);
     params[ROOT_PARAM::ShadowCB].InitAsConstantBufferView(4, 0, kPixel);
-    params[ROOT_PARAM::SkyEnvironment].InitAsConstantBufferView(5, 0, kPixel);
+    // 環境と探針は大量配置の mesh shader も読む（meshlet ごとの探針）。
+    params[ROOT_PARAM::SkyEnvironment].InitAsConstantBufferView(5, 0, kAll);
     params[ROOT_PARAM::SkyCube].InitAsDescriptorTable(1, &skyCubeTextureRange, kPixel);
     params[ROOT_PARAM::SceneDepth].InitAsDescriptorTable(1, &sceneDepthTextureRange, kPixel);
     params[ROOT_PARAM::SceneColor].InitAsDescriptorTable(1, &sceneColorTextureRange, kPixel);
@@ -153,15 +154,15 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
     params[ROOT_PARAM::IblBrdfLut].InitAsDescriptorTable(1, &iblBrdfLutRange, kPixel);
     params[ROOT_PARAM::ReflectionProbePrefiltered].InitAsDescriptorTable(1, &reflectionProbePrefilteredRange, kPixel);
     params[ROOT_PARAM::Ssao].InitAsDescriptorTable(1, &ssaoRange, kPixel);
-    params[ROOT_PARAM::LightProbeSh].InitAsDescriptorTable(1, &lightProbeShRange, kPixel);
+    params[ROOT_PARAM::LightProbeSh].InitAsDescriptorTable(1, &lightProbeShRange, kAll);
     params[ROOT_PARAM::ReflectionProbePrefilteredSecondary].InitAsDescriptorTable(
         1, &reflectionProbePrefilteredSecondaryRange, kPixel);
-    params[ROOT_PARAM::LightProbeShSecondary].InitAsDescriptorTable(1, &lightProbeShSecondaryRange, kPixel);
+    params[ROOT_PARAM::LightProbeShSecondary].InitAsDescriptorTable(1, &lightProbeShSecondaryRange, kAll);
     params[ROOT_PARAM::ObjectData].InitAsDescriptorTable(1, &objectDataRange, kAll);
     params[ROOT_PARAM::ObjectIndex].InitAsConstants(1, 6, 0, kAll);
     params[ROOT_PARAM::MaterialData].InitAsDescriptorTable(1, &materialDataRange, kAll);
     params[ROOT_PARAM::MaterialIndex].InitAsConstants(1, 7, 0, kAll);
-    params[ROOT_PARAM::TexturePool].InitAsDescriptorTable(1, &materialTexturePoolRange, kPixel);
+    params[ROOT_PARAM::TexturePool].InitAsDescriptorTable(1, &materialTexturePoolRange, kAll);
     params[ROOT_PARAM::JointPalette].InitAsShaderResourceView(0, 3, kAll);
     params[ROOT_PARAM::SurfaceGpuScene].InitAsDescriptorTable(static_cast<UINT>(std::size(surfaceGpuSceneRanges)),
                                                               surfaceGpuSceneRanges, kAll);
@@ -194,7 +195,7 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
         desc.AddressV = addressVW;
         desc.AddressW = addressVW;
         desc.ShaderRegister = shaderRegister;
-        desc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        desc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
         desc.MaxLOD = D3D12_FLOAT32_MAX;
         return desc;
     };
