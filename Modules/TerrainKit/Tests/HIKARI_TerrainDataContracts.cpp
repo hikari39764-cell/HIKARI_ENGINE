@@ -884,6 +884,100 @@ void TestTerrainAnalysis() {
 }
 
 // 道路は路盤を平らにして路面を塗り、河は掘って岸を湿らせ、水面は下流へ上がらない。
+void TestLakes() {
+    TerrainGrid grid{};
+    grid.tileCells = 64u;
+    grid.tileSizeMeters = 64.0f;
+    TerrainData data(grid);
+    HeightLayer base{};
+    base.kind = HeightLayerKind::Noise;
+    base.blend = HeightBlendMode::Replace;
+    base.noise.fractal = NoiseFractal::None;
+    base.noise.amplitudeMeters = 0.0f;
+    base.noise.offsetMeters = 50.0f;
+    CHECK(data.AddLayer(base) != 0u);
+    HeightLayer lake{};
+    lake.kind = HeightLayerKind::Spline;
+    lake.blend = HeightBlendMode::Replace;
+    lake.spline.kind = SplineKind::Lake;
+    lake.spline.depthMeters = 4.0f;
+    lake.spline.shelfMeters = 8.0f;
+    lake.spline.falloffMeters = 6.0f;
+    lake.spline.edgeMeters = 2.0f;
+    lake.spline.wetMeters = 4.0f;
+    lake.spline.shoreNoiseMeters = 0.0f;
+    lake.spline.surface = 3u;
+    lake.spline.edgeSurface = 1u;
+    // 四角に近い閉じた線。水面は最初の点の高さ。
+    lake.spline.points = {{HIKARI::MATH::Vec3{12.0f, 50.0f, 12.0f}, 1.0f},
+                          {HIKARI::MATH::Vec3{52.0f, 99.0f, 12.0f}, 1.0f},
+                          {HIKARI::MATH::Vec3{52.0f, 99.0f, 52.0f}, 1.0f},
+                          {HIKARI::MATH::Vec3{12.0f, 99.0f, 52.0f}, 1.0f}};
+    CHECK(data.AddLayer(lake) != 0u);
+    const PreparedSpline prepared = PrepareSpline(lake.spline);
+    CHECK(prepared.lake.Valid());
+    CHECK(prepared.lake.level == 50.0f);
+    for (const SplineSection& section : prepared.sections) {
+        CHECK(section.y == 50.0f);
+    }
+    CHECK(std::abs(prepared.sections.front().x - prepared.sections.back().x) < 0.01f); // 閉じている
+    CHECK(prepared.lake.DistanceAt(32.0, 32.0) > 15.0f);                               // 真ん中は内側
+    CHECK(prepared.lake.DistanceAt(32.0, 90.0) < 0.0f);                                // 外
+    const HeightStackEvaluator evaluator(data);
+    const SampleRect rect = TileSampleRect(grid, TileCoord{0, 0});
+    std::vector<float> heights{};
+    CHECK(evaluator.EvaluateRect(rect, heights));
+    const auto at = [&](uint32_t x, uint32_t z) { return heights[static_cast<size_t>(z) * rect.width + x]; };
+    CHECK(std::abs(at(32u, 32u) - 46.0f) < 0.1f); // 真ん中は深さの分だけ低い
+    CHECK(at(2u, 32u) >= 49.9f);                  // 岸の外は水面より上
+    std::vector<uint32_t> control(rect.Count(), 0u);
+    PaintSplineSurfaces(std::span(&prepared, 1u), grid, rect, control);
+    CHECK(UnpackControlTexel(control[static_cast<size_t>(32u) * rect.width + 32u]).baseMaterial == 3u);
+    CHECK(UnpackControlTexel(control[static_cast<size_t>(32u) * rect.width + 32u]).wetness > 0u);
+
+    // 深さ 0 は地形を変えない。
+    HeightLayer flat = lake;
+    flat.spline.depthMeters = 0.0f;
+    TerrainData untouched(grid);
+    CHECK(untouched.AddLayer(base) != 0u);
+    CHECK(untouched.AddLayer(flat) != 0u);
+    const HeightStackEvaluator flatEvaluator(untouched);
+    CHECK(flatEvaluator.EvaluateRect(rect, heights));
+    CHECK(std::abs(at(32u, 32u) - 50.0f) < 0.01f);
+
+    // 窪地へ水を張る：周りの峠の高さが水面になり、岸の線が閉じる。
+    constexpr uint32_t kSize = 101u;
+    constexpr float kCell = 4.0f;
+    std::vector<float> bowl(static_cast<size_t>(kSize) * kSize);
+    for (uint32_t z = 0u; z < kSize; ++z) {
+        for (uint32_t x = 0u; x < kSize; ++x) {
+            const float dx = (static_cast<float>(x) - 50.0f) * kCell;
+            const float dz = (static_cast<float>(z) - 50.0f) * kCell;
+            const float radius = std::hypot(dx, dz);
+            // 半径 80 m の縁まで上がる鉢。その外は下がる。
+            bowl[static_cast<size_t>(z) * kSize + x] =
+                radius < 80.0f ? 10.0f + radius * 0.25f : 30.0f - (radius - 80.0f) * 0.1f;
+        }
+    }
+    LakeFill fill{};
+    CHECK(FindLakeFill(bowl, kSize, kSize, 0.0, 0.0, kCell, 200.0, 200.0, 100.0f, fill));
+    CHECK(fill.level > 28.0f && fill.level < 30.1f);
+    CHECK(fill.areaSquareMeters > 15000.0f && fill.areaSquareMeters < 21000.0f); // 円の面積 約 20000
+    CHECK(fill.shore.size() >= 3u && fill.shore.size() <= 96u);
+    for (const HIKARI::MATH::Vec2& point : fill.shore) {
+        const float radius = std::hypot(point.x - 200.0f, point.y - 200.0f);
+        CHECK(radius > 60.0f && radius < 84.0f);
+    }
+    // 斜面（窪地なし）では張らない。
+    std::vector<float> slope(static_cast<size_t>(kSize) * kSize);
+    for (uint32_t z = 0u; z < kSize; ++z) {
+        for (uint32_t x = 0u; x < kSize; ++x) {
+            slope[static_cast<size_t>(z) * kSize + x] = static_cast<float>(x) * 2.0f;
+        }
+    }
+    CHECK(!FindLakeFill(slope, kSize, kSize, 0.0, 0.0, kCell, 200.0, 200.0, 100.0f, fill));
+}
+
 void TestSplineLayers() {
     TerrainGrid grid{};
     grid.tileCells = 64u;
@@ -1290,6 +1384,7 @@ int main(int argc, char** argv) {
     TestWorldInstanceFile();
     TestScatter();
     TestSplineLayers();
+    TestLakes();
     TestUndo();
     TestErosion();
     TestCellFile();

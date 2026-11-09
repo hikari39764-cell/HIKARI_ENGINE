@@ -6,7 +6,7 @@
 #include "HIKARI/Project/RenderSurface.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataSpline.h"
 
-// 河の水面：河の曲線の層から帯を作って描く。帯は層が変わった時だけ作り直す。
+// 河と湖の水面：曲線の層から帯を作って描く。湖は範囲を行ごとの帯に切る。帯は層が変わった時だけ作り直す。
 namespace HIKARI::TERRAINKIT {
 
 class TerrainStore;
@@ -42,9 +42,12 @@ private:
         MATH::Vec3 color{};
         float clarity = 1.0f;
         float flowSpeed = 0.0f;
+        bool worldAligned = false; // 波を世界座標で作る（湖。河は曲線の座標）
     };
 
-    void Rebuild(const std::vector<TERRAIN::DATA::SplineLayerSettings>& rivers);
+    void Rebuild(const std::vector<TERRAIN::DATA::SplineLayerSettings>& waters);
+    void AppendRiver(const TERRAIN::DATA::PreparedSpline& spline, Ribbon& ribbon) const;
+    void AppendLake(const TERRAIN::DATA::PreparedSpline& spline, Ribbon& ribbon) const;
 
     uint64_t revision_ = 0u;
     std::vector<TERRAIN::DATA::SplineLayerSettings> built_{};

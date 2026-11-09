@@ -47,6 +47,10 @@ public:
 
     void Update(const EditorViewportInput& input, IEditorViewportCanvas& canvas) override {
         TerrainStore& store = TerrainStore::Get();
+        if (shared_->lakeFillArmed) {
+            UpdateLakeFill(input, canvas, store);
+            return;
+        }
         const HeightLayer* layer = SelectedSpline(*shared_);
         if (layer == nullptr) {
             canvas.DrawHint("Road and River: select or add a road, river or ramp layer in the Terrain window.",
@@ -78,6 +82,22 @@ public:
     }
 
 private:
+    void UpdateLakeFill(const EditorViewportInput& input, IEditorViewportCanvas& canvas, const TerrainStore& store) {
+        canvas.DrawHint("Fill Lake: click inside a basin. Water rises to where it would spill over.", kSplineColor);
+        float hit[3]{};
+        if (!input.primaryPressed || !RayToGround(input, store, hit)) {
+            return;
+        }
+        shared_->lakeFillArmed = false;
+        uint32_t layer = 0u;
+        std::string error{};
+        if (FillLakeAt(*shared_, hit[0], hit[2], layer, error)) {
+            shared_->selectedLayer = layer;
+        } else {
+            Report(false, error);
+        }
+    }
+
     std::optional<size_t> NearestPoint(const HeightLayer& layer, const float hit[3],
                                        const EditorViewportInput& input) const {
         const float pick = (std::max)(
@@ -130,7 +150,9 @@ private:
             return;
         }
         SplinePoint point{};
-        point.position = MATH::Vec3{hit[0], hit[1], hit[2]};
+        // 湖の水面は最初の点の高さで決まる。
+        const bool joinLevel = layer.spline.kind == SplineKind::Lake && !layer.spline.points.empty();
+        point.position = MATH::Vec3{hit[0], joinLevel ? layer.spline.points.front().position.y : hit[1], hit[2]};
         point.widthMeters = layer.spline.points.empty() ? DefaultSplineWidth(layer.spline.kind)
                                                         : layer.spline.points.back().widthMeters;
         next.spline.points.push_back(point);
@@ -150,7 +172,8 @@ private:
         HeightLayer next = layer;
         const std::optional<float> from = HeightBelowLayer(layer.id, current.x, current.z);
         const std::optional<float> to = HeightBelowLayer(layer.id, hit[0], hit[2]);
-        const float lift = from.has_value() && to.has_value() ? *to - *from : 0.0f;
+        const float lift =
+            layer.spline.kind != SplineKind::Lake && from.has_value() && to.has_value() ? *to - *from : 0.0f;
         next.spline.points[*dragging_].position = MATH::Vec3{hit[0], current.y + lift, hit[2]};
         Report(ApplySplineLayer(next), "The terrain layer could not be changed.");
     }
@@ -161,7 +184,9 @@ private:
             return;
         }
         HeightLayer next = layer;
-        next.spline.points[*target].position.y += (input.wheel > 0.0f ? 0.5f : -0.5f) * (input.shift ? 5.0f : 1.0f);
+        // 湖はどの点を回しても水面（最初の点）が動く。
+        const size_t moved = layer.spline.kind == SplineKind::Lake ? 0u : *target;
+        next.spline.points[moved].position.y += (input.wheel > 0.0f ? 0.5f : -0.5f) * (input.shift ? 5.0f : 1.0f);
         std::string error{};
         if (dragging_.has_value()) {
             Report(ApplySplineLayer(next), "The terrain layer could not be changed.");
@@ -200,6 +225,7 @@ float DefaultSplineWidth(SplineKind kind) {
     case SplineKind::Road: return 8.0f;
     case SplineKind::River: return 18.0f;
     case SplineKind::Ramp: return 10.0f;
+    case SplineKind::Lake: return 1.0f; // 幅は使わない
     }
     return 8.0f;
 }
@@ -229,6 +255,17 @@ HeightLayer MakeSplineLayer(SplineKind kind) {
         layer.spline.edgeMeters = 0.0f;
         layer.spline.falloffMeters = 10.0f;
         layer.spline.paint = false;
+        break;
+    case SplineKind::Lake:
+        layer.name = "Lake";
+        layer.spline.falloffMeters = 24.0f;
+        layer.spline.edgeMeters = 6.0f;
+        layer.spline.depthMeters = 6.0f;
+        layer.spline.wetMeters = 10.0f;
+        layer.spline.flowSpeed = 0.12f;
+        layer.spline.clarityMeters = 2.5f;
+        layer.spline.surface = 8u;
+        layer.spline.edgeSurface = 3u;
         break;
     }
     return layer;
@@ -306,6 +343,29 @@ bool ChangeSplineLayer(EditorShared& shared, const HeightLayer& next, std::strin
                                     std::make_unique<SplineUndo>(std::move(before), *store.Data().FindLayer(next.id)));
     }
     return true;
+}
+
+bool FillLakeAt(EditorShared& shared, float worldX, float worldZ, uint32_t& outLayer, std::string& error) {
+    constexpr float kMinimumLakeArea = 300.0f;
+    const TerrainStore& store = TerrainStore::Get();
+    if (!store.IsOpen()) {
+        error = "The terrain is not open.";
+        return false;
+    }
+    const TerrainAnalysis coarse = CollectTerrainCoarseHeights(store);
+    LakeFill fill{};
+    if (!FindLakeFill(coarse.heights, coarse.width, coarse.height, coarse.originX, coarse.originZ, coarse.cellMeters,
+                      worldX, worldZ, kMinimumLakeArea, fill)) {
+        error = "There is no basin here: water would run off. Add a lake layer and draw it instead; it digs its own "
+                "basin.";
+        return false;
+    }
+    HeightLayer layer = MakeSplineLayer(SplineKind::Lake);
+    layer.spline.depthMeters = 0.0f; // 窪地はもうあるので掘らない
+    for (const MATH::Vec2& point : fill.shore) {
+        layer.spline.points.push_back(SplinePoint{MATH::Vec3{point.x, fill.level, point.y}, 1.0f});
+    }
+    return AddTerrainLayer(shared, std::move(layer), TerrainData::kAppend, outLayer, error);
 }
 
 std::unique_ptr<IEditorViewportTool> MakeSplineTool(std::shared_ptr<EditorShared> shared) {

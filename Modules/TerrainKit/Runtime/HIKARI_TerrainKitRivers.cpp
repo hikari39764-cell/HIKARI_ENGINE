@@ -18,24 +18,85 @@ constexpr char kRiverProgram[] = "HIKARI.EngineShader.Render3D_TerrainKitRiver";
 constexpr uint32_t kAcrossCells = 4u;
 // 帯の一区切りが曲線の何区切り分か（曲線の区切りは約 2 m）。
 constexpr size_t kSectionStride = 2u;
+// 湖を切る行の幅（m）と、岸の外へ水面を伸ばす幅（岸は地形が隠すので、線より少し広く描く）。
+constexpr float kLakeRowMeters = 8.0f;
+constexpr float kLakeShoreMargin = 6.0f;
 
 struct RiverDrawConstants {
     float color[3]{};
     float clarity = 1.0f;
     float flowSpeed = 0.0f;
     float acrossCells = static_cast<float>(kAcrossCells);
-    float reserved[2]{};
+    float worldAligned = 0.0f;
+    float reserved = 0.0f;
 };
 
 } // namespace
 
-void TerrainRivers::Rebuild(const std::vector<SplineLayerSettings>& rivers) {
+void TerrainRivers::Rebuild(const std::vector<SplineLayerSettings>& waters) {
     ribbons_.clear();
-    for (const SplineLayerSettings& settings : rivers) {
+    for (const SplineLayerSettings& settings : waters) {
         const PreparedSpline spline = PrepareSpline(settings);
         if (spline.sections.size() < 2u) {
             continue;
         }
+        Ribbon ribbon{};
+        ribbon.color = settings.waterColor;
+        ribbon.clarity = settings.clarityMeters;
+        ribbon.flowSpeed = settings.flowSpeed;
+        if (settings.kind == SplineKind::Lake) {
+            AppendLake(spline, ribbon);
+        } else {
+            AppendRiver(spline, ribbon);
+        }
+        if (!ribbon.sections.empty()) {
+            ribbons_.push_back(std::move(ribbon));
+        }
+    }
+}
+
+void TerrainRivers::AppendLake(const PreparedSpline& spline, Ribbon& ribbon) const {
+    const SplineLakeField& lake = spline.lake;
+    if (!lake.Valid()) {
+        return;
+    }
+    ribbon.worldAligned = true;
+    const double width = static_cast<double>(lake.width - 1u) * lake.cellMeters;
+    const double height = static_cast<double>(lake.height - 1u) * lake.cellMeters;
+    const auto wet = [&](double x, double z) {
+        return (std::max)(lake.DistanceAt(x, z), lake.DistanceAt(x, z + kLakeRowMeters)) > -kLakeShoreMargin;
+    };
+    for (double z = lake.originZ; z < lake.originZ + height; z += kLakeRowMeters) {
+        const double step = kLakeRowMeters * 0.5;
+        double runStart = 0.0;
+        bool inRun = false;
+        for (double x = lake.originX; x <= lake.originX + width + step; x += step) {
+            const bool inside = x <= lake.originX + width && wet(x, z);
+            if (inside && !inRun) {
+                runStart = x;
+                inRun = true;
+            } else if (!inside && inRun) {
+                inRun = false;
+                CrossSection a{};
+                a.x = static_cast<float>((runStart + x) * 0.5);
+                a.y = lake.level;
+                a.z = static_cast<float>(z);
+                a.left = static_cast<float>((x - runStart) * 0.5);
+                a.right = a.left;
+                a.tangentX = 0.0f;
+                a.tangentZ = 1.0f;
+                a.along = a.z;
+                CrossSection b = a;
+                b.z = static_cast<float>(z + kLakeRowMeters);
+                b.along = b.z;
+                ribbon.sections.push_back(Section{a, b});
+            }
+        }
+    }
+}
+
+void TerrainRivers::AppendRiver(const PreparedSpline& spline, Ribbon& ribbon) const {
+    {
         // 帯の断面の列。両端は半幅だけ先へ伸ばし、河の丸い端まで水面を届かせる（岸に当たって消える）。
         std::vector<CrossSection> crosses{};
         const auto append = [&](const SplineSection& section, float offset) {
@@ -77,17 +138,12 @@ void TerrainRivers::Rebuild(const std::vector<SplineLayerSettings>& rivers) {
                 extent = (std::min)(extent, radius);
             }
         }
-        Ribbon ribbon{};
-        ribbon.color = settings.waterColor;
-        ribbon.clarity = settings.clarityMeters;
-        ribbon.flowSpeed = settings.flowSpeed;
         ribbon.sections.reserve(limited.size());
         for (size_t index = 0u; index + 1u < limited.size(); ++index) {
             if (limited[index + 1u].along > limited[index].along) {
                 ribbon.sections.push_back(Section{limited[index], limited[index + 1u]});
             }
         }
-        ribbons_.push_back(std::move(ribbon));
     }
 }
 
@@ -115,15 +171,16 @@ void TerrainRivers::Prepare(IRenderSurfaceResources& resources, const TerrainSto
         return;
     }
     revision_ = data.Revision();
-    std::vector<SplineLayerSettings> rivers{};
+    std::vector<SplineLayerSettings> waters{};
     for (const HeightLayer& layer : data.Stack().layers) {
-        if (layer.kind == HeightLayerKind::Spline && layer.enabled && layer.spline.kind == SplineKind::River) {
-            rivers.push_back(layer.spline);
+        if (layer.kind == HeightLayerKind::Spline && layer.enabled &&
+            (layer.spline.kind == SplineKind::River || layer.spline.kind == SplineKind::Lake)) {
+            waters.push_back(layer.spline);
         }
     }
-    if (rivers != built_) {
-        Rebuild(rivers);
-        built_ = std::move(rivers);
+    if (waters != built_) {
+        Rebuild(waters);
+        built_ = std::move(waters);
     }
 }
 
@@ -156,6 +213,7 @@ void TerrainRivers::Record(const RenderSurfaceView& view, IRenderSurfaceCommands
         constants.color[2] = ribbon.color.z;
         constants.clarity = ribbon.clarity;
         constants.flowSpeed = ribbon.flowSpeed;
+        constants.worldAligned = ribbon.worldAligned ? 1.0f : 0.0f;
         RenderSurfaceDraw draw{};
         draw.programId = kRiverProgram;
         draw.indexBuffer = indexBuffer_;

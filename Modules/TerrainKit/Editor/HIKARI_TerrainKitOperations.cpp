@@ -383,9 +383,10 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
         });
     add.Mutation(
         "terrainkit.spline.add",
-        "Add a road, river or ramp layer. Roads flatten the ground and paint their surface, rivers carve a bed, paint "
-        "and wet the banks and get a water surface, ramps only shape the ground. One undo step.",
-        {{"kind", Type::String, "road, river or ramp."},
+        "Add a road, river, ramp or lake layer. Roads flatten the ground and paint their surface, rivers carve a bed, "
+        "paint and wet the banks and get a water surface, ramps only shape the ground, lakes are a closed line that "
+        "digs a basin and holds water at the height of the first point. One undo step.",
+        {{"kind", Type::String, "road, river, ramp or lake."},
          {"name", Type::String, "Layer name."},
          {"points", Type::Json,
           "Points as [x, z] (height from the ground below) or [x, y, z]. For a river y is the water level."},
@@ -398,7 +399,7 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
             const std::string kindName = parameters.value("kind", std::string("road"));
             const auto kind = TEXT::TryParseEnum(kSplineKindNames, kindName);
             if (!kind.has_value()) {
-                Fail(result, "UNKNOWN_KIND", "kind must be road, river or ramp.");
+                Fail(result, "UNKNOWN_KIND", "kind must be road, river, ramp or lake.");
                 return;
             }
             HeightLayer layer = MakeSplineLayer(*kind);
@@ -448,6 +449,25 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
             }
             Ok(result, "Spline updated.",
                {{"points", next.spline.points.size()}, {"rivers", TerrainStore::Get().Rivers().RibbonCount()}});
+        });
+    add.Mutation(
+        "terrainkit.lake.fill",
+        "Fill the basin around a point with water up to where it would spill over, without digging. One undo "
+        "step.",
+        {{"x", Type::Number, "World X inside the basin."}, {"z", Type::Number, "World Z inside the basin."}},
+        [shared](const Json& parameters, Sink& result) {
+            if (!RequireTerrain(result)) {
+                return;
+            }
+            uint32_t id = 0u;
+            std::string error{};
+            if (!FillLakeAt(*shared, parameters.at("x").get<float>(), parameters.at("z").get<float>(), id, error)) {
+                Fail(result, "NO_BASIN", error);
+                return;
+            }
+            shared->selectedLayer = id;
+            Ok(result, "Lake added.",
+               LayerToJson(TerrainStore::Get().Data(), *TerrainStore::Get().Data().FindLayer(id)));
         });
     add.Mutation("terrainkit.layer.select", "Select the layer brushes, stamps and erosion write to.",
                  {{"id", Type::Integer, "Layer id."}}, [shared](const Json& parameters, Sink& result) {

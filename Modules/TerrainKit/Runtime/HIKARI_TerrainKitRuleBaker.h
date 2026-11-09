@@ -16,6 +16,9 @@ namespace HIKARI::TERRAINKIT {
 
 class TerrainStore;
 
+// 世界全体の粗い高さ（4 m）を焼いた瓦片から集める（読み取りの入力。窪地の検索にも使う）。
+TERRAIN::DATA::TerrainAnalysis CollectTerrainCoarseHeights(const TerrainStore& store);
+
 inline constexpr uint32_t kColorMapSize = 257u;
 inline constexpr uint32_t kColorMapMips = 9u;
 

@@ -1,5 +1,6 @@
-// 地形モジュール（TerrainKit）の河の水面。曲線に沿う帯を不透明の後に場面色へ混ぜる（深度へは書かない）。
-// 波は曲線の座標（横の距離、流れの距離）で作るので、曲がっても流れの向きに進む（流れの図が要らない）。
+// 地形モジュール（TerrainKit）の河と湖の水面。帯を不透明の後に場面色へ混ぜる（深度へは書かない）。
+// 河の波は曲線の座標（横の距離、流れの距離）で作るので、曲がっても流れの向きに進む（流れの図が要らない）。
+// 湖は範囲を切った帯なので波は世界座標で作る。反射は引擎の水面と同じ光学の部品（フレネル、画面空間の追跡、空）を使う。
 // root は Render3D_TerrainKitSurface と同じ。
 #include "Include/Forward/HIKARI_ForwardCommon.hlsli"
 #include "Include/Render3D/HIKARI_RenderGeometryInterface.hlsli"
@@ -10,6 +11,10 @@
 #include "Include/Forward/HIKARI_ContactShadow.hlsli"
 #include "Include/Forward/HIKARI_ForwardMaterialInputs.hlsli"
 #include "Include/Surface/HIKARI_ScreenSpaceGeometry.hlsli"
+#include "Include/Surface/HIKARI_ScreenSpaceReflectionTrace.hlsli"
+#include "Include/Surface/HIKARI_SurfaceTransmission.hlsli"
+#include "Include/Surface/HIKARI_WaterSpectralSlope.hlsli"
+#include "Include/Water/HIKARI_WaterOptics.hlsli"
 
 struct RiverCrossSection
 {
@@ -37,7 +42,8 @@ cbuffer RenderSurfaceConstants : register(b3)
     float gRiverClarity;
     float gRiverFlowSpeed;
     float gRiverAcrossCells;
-    float2 gRiverReserved;
+    float gRiverWorldAligned;
+    float gRiverReserved;
 };
 
 struct RiverVertex
@@ -68,8 +74,8 @@ RiverVertex SurfaceVS(uint vertexId : SV_VertexID, uint instanceId : SV_Instance
     RiverVertex output;
     output.worldPosition = slice.center + float3(lateral.x, 0.0f, lateral.y) * offset;
     output.position = mul(gSurfaceViewProj, float4(output.worldPosition, 1.0f));
-    output.across = offset;
-    output.along = slice.along;
+    output.across = gRiverWorldAligned > 0.5f ? output.worldPosition.x : offset;
+    output.along = gRiverWorldAligned > 0.5f ? output.worldPosition.z : slice.along;
     output.tangent = slice.tangent;
     const float run = max(section.b.along - section.a.along, 0.01f);
     output.steepness = saturate((section.a.center.y - section.b.center.y) / run * 5.0f);
@@ -165,6 +171,37 @@ float4 SurfaceDepthAwarePS(RiverVertex input) : SV_TARGET
     directional.specular *= shadowVisibility;
     const float3 irradiance = directional.diffuse + ambient.diffuse;
 
+    // 反射：画面に映っていれば追跡の結果、外れたら環境（引擎の水面と同じ優先順）。
+    const float cosine = dot(normal, view);
+    const float fresnel = HikariWaterResolveFresnel(cosine, true);
+    const float3 reflectionDirection = HikariSafeNormalize(reflect(-view, normal), normal);
+    const float3 environment = HikariWaterResolveEnvironmentFallback(
+        ambient.specular, reflectionDirection, cosine, fresnel, 0.07f, 1.0f, gRiverColor);
+    HikariScreenSpaceReflectionTraceConfig trace;
+    trace.valid = (gScreenSpaceTraceFlags & HIKARI_SCREEN_SPACE_DEPTH_TRACE_VALID) != 0u &&
+        gScreenSpaceReflectionParams0.x > 0.0f ? 1u : 0u;
+    const float globalSteps = max(HikariFiniteOr(gScreenSpaceReflectionParams1.z, 0.0f), 0.0f);
+    trace.maxSteps = (uint)ceil(globalSteps * 0.5f);
+    trace.hzbMipCount = max(gScreenSpaceDepthPyramidMipCount, 1u);
+    trace.maxDistance = HikariFiniteOr(gScreenSpaceReflectionParams0.y, 0.0f);
+    trace.thickness = HikariFiniteOr(gScreenSpaceReflectionParams0.z, 0.0f);
+    trace.maxRoughness = HikariFiniteOr(gScreenSpaceReflectionParams0.w, 0.0f);
+    trace.stride = HikariFiniteOr(gScreenSpaceReflectionParams1.x, 1.0f) * (globalSteps / max((float)trace.maxSteps, 1.0f));
+    trace.edgeFade = HikariFiniteOr(gScreenSpaceReflectionParams1.y, 0.0f);
+    HikariScreenSpaceReflectionTraceResult traced = HikariTraceScreenSpaceReflectionFromSurface(
+        gSceneColorTex, gSceneDepthTex, gScreenSpaceDepthPyramid, gScreenSpacePackedSurface, gLinearClamp, gPointClamp,
+        worldPosition, normal, 0.07f, gCameraPos.xyz, gViewProj, gInvViewProj, trace);
+    if (traced.hit != 0u && HikariIsValidScreenSpaceReflectionRadiance(traced.radiance))
+    {
+        traced.radiance = HikariRemovePreExposure(traced.radiance, gViewExposure);
+    }
+    else
+    {
+        traced.hit = 0u;
+    }
+    const float3 reflection = HikariWaterResolveSsrReplacement(
+        environment, traced, fresnel, max(HikariFiniteOr(gScreenSpaceReflectionParams0.x, 0.0f), 0.0f));
+
     // 水の厚さで奥が見えなくなる。岸では厚さが 0 へ落ちて境目が消える。
     const float body = 1.0f - exp(-thickness / max(gRiverClarity, 0.01f));
     const float edge = saturate(verticalDepth / 0.05f);
@@ -174,6 +211,6 @@ float4 SurfaceDepthAwarePS(RiverVertex input) : SV_TARGET
     const float foam = saturate(shallowFoam * 0.6f + rapidFoam * 0.8f);
     const float alpha = saturate(max(body, foam)) * edge;
     const float3 color = irradiance * (gRiverColor * body + foam.xxx * 0.8f) * edge +
-        (directional.specular + ambient.specular) * edge;
+        (directional.specular + reflection) * edge;
     return HikariPreExposeView(float4(ApplyFog(color, worldPosition), alpha));
 }

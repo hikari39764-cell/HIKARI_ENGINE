@@ -113,6 +113,10 @@ private:
                 }
             }
         }
+        if (ui.Button("lakeFill", "Fill Basin With Water") && shared_->services != nullptr) {
+            shared_->lakeFillArmed = true;
+            shared_->services->ActivateViewportTool(kSplineToolId);
+        }
         const size_t position = store.Data().LayerIndex(shared_->selectedLayer);
         if (position != TerrainData::kAppend) {
             if (ui.Button("layerUp", "Move Up")) {
@@ -239,11 +243,18 @@ private:
             spline.edgeSurface = static_cast<uint32_t>(std::clamp(edge, 0, 31));
             changed = true;
         }
-        if (spline.kind == SplineKind::River) {
+        if (spline.kind == SplineKind::River || spline.kind == SplineKind::Lake) {
             changed |= ui.InputFloat("riverDepth", "Depth (m)", &spline.depthMeters);
             changed |= ui.InputFloat("riverWet", "Wet Bank (m)", &spline.wetMeters);
             changed |= ui.InputFloat("riverSpeed", "Flow Speed (m/s)", &spline.flowSpeed);
             changed |= ui.InputFloat("riverClarity", "Clarity (m)", &spline.clarityMeters);
+        }
+        if (spline.kind == SplineKind::Lake) {
+            if (!spline.points.empty()) {
+                changed |= ui.InputFloat("lakeLevel", "Water Level (m)", &spline.points.front().position.y);
+            }
+            changed |= ui.InputFloat("lakeShelf", "Shore Shelf (m)", &spline.shelfMeters);
+            changed |= ui.InputFloat("lakeNoise", "Shore Noise (m)", &spline.shoreNoiseMeters);
         }
         return changed;
     }

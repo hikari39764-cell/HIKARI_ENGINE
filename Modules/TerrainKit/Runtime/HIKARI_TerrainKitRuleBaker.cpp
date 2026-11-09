@@ -77,8 +77,9 @@ std::vector<float> CollectHeights(const TerrainStore& store, TileCoord tile) {
 // 読み取りの格子（m）。集水と尾根・谷を見るには十分で、大きな世界でも背景で一瞬で解ける細かさ。
 constexpr float kAnalysisCellMeters = 4.0f;
 
-// 世界全体の粗い高さを焼いた瓦片から集める。
-TerrainAnalysis CollectAnalysisHeights(const TerrainStore& store) {
+} // namespace
+
+TerrainAnalysis CollectTerrainCoarseHeights(const TerrainStore& store) {
     const TerrainSettings& settings = store.Settings();
     const TerrainGrid& grid = settings.grid;
     const uint32_t samples = TileSamples(grid);
@@ -106,6 +107,8 @@ TerrainAnalysis CollectAnalysisHeights(const TerrainStore& store) {
     }
     return analysis;
 }
+
+namespace {
 
 // 全段を作って詰める。RGB は線形の平方根で詰める（暗い色の段差を減らす）。
 std::vector<uint8_t> PackMipChain(std::vector<float> level) {
@@ -254,7 +257,7 @@ void TerrainRuleBaker::Update(TerrainStore& store) {
         }
     }
     // 高さが変わっていなければ前の読み取りをそのまま使う。
-    TerrainAnalysis fresh = CollectAnalysisHeights(store);
+    TerrainAnalysis fresh = CollectTerrainCoarseHeights(store);
     std::shared_ptr<const TerrainAnalysis> previous =
         analysis_ != nullptr && analysis_->heights == fresh.heights ? analysis_ : nullptr;
     activeTiles_ = inputs.size();

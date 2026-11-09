@@ -57,6 +57,7 @@ struct EditorShared {
     InstanceBrushSettings instanceBrush{};
     uint64_t selectedInstanceSet = 0u;
     uint64_t instanceRandom = 0x51D3A7u;
+    bool lakeFillArmed = false; // 次のクリックで窪地へ水を張る
     uint32_t selectedLayer = 0u;
     uint32_t strokes = 0u;
     // 筆の一度分（筆刷の適用と焼き直し）の手間。describe で読む。
@@ -102,6 +103,8 @@ std::optional<float> HeightBelowLayer(uint32_t layerId, float worldX, float worl
 bool ApplySplineLayer(const TERRAIN::DATA::HeightLayer& next);
 // 同じく、撤销一件で。
 bool ChangeSplineLayer(EditorShared& shared, const TERRAIN::DATA::HeightLayer& next, std::string& error);
+// 地点を含む窪地へ、あふれ出る高さまで水を張る（地形を掘らない湖の層を足す。撤销一件）。
+bool FillLakeAt(EditorShared& shared, float worldX, float worldZ, uint32_t& outLayer, std::string& error);
 
 // 印章の名前（内蔵 + プロジェクトの Assets/TerrainStamps の画像）。
 std::vector<std::string> ListStampNames();
