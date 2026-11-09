@@ -37,6 +37,9 @@ public:
     }
 
     const TERRAIN::DATA::ScatterRuleSet& Rules() const noexcept { return rules_; }
+    // 保存されている個体を作った入力（散布規則と地表規則）の指紋。開いた時に今の規則と比べる。
+    uint64_t BakedInputs() const noexcept { return bakedInputs_; }
+    void SetBakedInputs(uint64_t inputs) noexcept;
     const std::string& AssetPath() const noexcept { return assetPath_; }
     void SetRules(TERRAIN::DATA::ScatterRuleSet rules);
     // 手で消した規則の個体。規則を計算し直しても戻さない。
@@ -54,6 +57,7 @@ private:
     TERRAIN::DATA::ScatterRuleSet rules_{};
     std::string assetPath_{};               // プロジェクトの根からの相対
     std::vector<uint32_t> excludedSeeds_{}; // 昇順
+    uint64_t bakedInputs_ = 0u;
     bool rulesDirty_ = false;
     bool sceneDirty_ = false;
 };

@@ -48,6 +48,7 @@ void TerrainScatter::Clear() {
     rules_ = {};
     assetPath_.clear();
     excludedSeeds_.clear();
+    bakedInputs_ = 0u;
     rulesDirty_ = false;
     sceneDirty_ = false;
 }
@@ -63,6 +64,7 @@ void TerrainScatter::Load(const std::filesystem::path& cellDirectory, const std:
     }
     assetPath_ = scene.value("asset", std::string{});
     excludedSeeds_ = scene.value("excludedSeeds", std::vector<uint32_t>{});
+    bakedInputs_ = scene.value("bakedInputs", uint64_t{0});
     std::sort(excludedSeeds_.begin(), excludedSeeds_.end());
     nlohmann::json asset{};
     if (!assetPath_.empty() && ReadTerrainJson(projectRoot / Utf8Path(assetPath_), asset, message) &&
@@ -91,7 +93,8 @@ bool TerrainScatter::Save(const std::filesystem::path& cellDirectory, const std:
         rulesDirty_ = false;
     }
     if (sceneDirty_ || (force && (!assetPath_.empty() || !excludedSeeds_.empty()))) {
-        const nlohmann::json scene{{"asset", assetPath_}, {"excludedSeeds", excludedSeeds_}};
+        const nlohmann::json scene{
+            {"asset", assetPath_}, {"excludedSeeds", excludedSeeds_}, {"bakedInputs", bakedInputs_}};
         if (!WriteTerrainJson(cellDirectory / kSceneFileName, scene, message)) {
             error = "Could not write the scatter settings: " + message;
             return false;
@@ -99,6 +102,13 @@ bool TerrainScatter::Save(const std::filesystem::path& cellDirectory, const std:
         sceneDirty_ = false;
     }
     return true;
+}
+
+void TerrainScatter::SetBakedInputs(uint64_t inputs) noexcept {
+    if (inputs != bakedInputs_) {
+        bakedInputs_ = inputs;
+        sceneDirty_ = true;
+    }
 }
 
 void TerrainScatter::SetRules(ScatterRuleSet rules) {

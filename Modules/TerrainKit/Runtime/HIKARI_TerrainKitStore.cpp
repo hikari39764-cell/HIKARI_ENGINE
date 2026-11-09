@@ -23,6 +23,18 @@ namespace {
 using namespace TERRAIN::DATA;
 
 constexpr uint32_t kNormalMipCount = 5u;
+
+// 散布の結果を決める入力（散布規則と地表規則）の指紋。FNV-1a で十分（衝突しても散布し直さないだけ）。
+uint64_t ScatterInputsOf(const ScatterRuleSet& scatter, const SurfaceRuleSet& surfaces) {
+    nlohmann::json inputs{};
+    JSONFIELDS::Write(inputs["scatter"], scatter, kScatterRuleSetFields);
+    JSONFIELDS::Write(inputs["surfaces"], surfaces, kSurfaceRuleSetFields);
+    uint64_t hash = 14695981039346656037ull;
+    for (const char c : inputs.dump()) {
+        hash = (hash ^ static_cast<uint8_t>(c)) * 1099511628211ull;
+    }
+    return hash;
+}
 constexpr char kLayerFileName[] = "terrain.layers.json";
 constexpr char kSurfaceSlotFileName[] = "terrain.surfaces.json";
 
@@ -252,6 +264,10 @@ bool TerrainStore::Open(const std::filesystem::path& scenePath, const TerrainSet
     surfaces_.SetSlots(ProjectRoot(), std::move(slots));
     scatter_.Load(TerrainCellDirectory(scenePath), ProjectRoot());
     BuildTileList();
+    // 規則のファイルが保存された個体の後に書き換えられていたら（手元の道具や智能体が直接書いた時）、全部散布し直す。
+    if (scatter_.Active() && scatter_.BakedInputs() != ScatterInputsOf(scatter_.Rules(), surfaceRules_)) {
+        ruleBaker_.MarkAllScatterDirty(*this);
+    }
     return true;
 }
 
@@ -835,6 +851,10 @@ bool TerrainStore::Save(const std::filesystem::path& scenePath, std::string& err
         return false;
     }
     surfaceSlotsDirty_ = false;
+    // 計算待ちの瓦片が無い時だけ、今の個体が今の規則の結果だと記す（残っていれば次に開いた時にやり直す）。
+    if (ruleBaker_.PendingTiles() == 0u) {
+        scatter_.SetBakedInputs(ScatterInputsOf(scatter_.Rules(), surfaceRules_));
+    }
     if (!scatter_.Save(directory, ProjectRoot(), !samePath, error)) {
         return false;
     }
