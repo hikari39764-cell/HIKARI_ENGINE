@@ -5,13 +5,25 @@
 // ---- 地表材質 ----
 // 去重復：Mikkelsen 2022「Practical Real-Time Hex-Tiling」の六角タイル（3 標本を高さで鋭く混ぜる）。
 // 崖：Quilez の biplanar の考え方で、主な側面 2 つだけを読む。法線は whiteout（Golus）で組む。
-static const float kFarStartMeters = 240.0f;
-static const float kFarFadeMeters = 80.0f;
-static const float kFarCacheSize = 129.0f;
+// 色は色の図で決まるので、材質の図（濃淡・法線・粗さ）を読むのは近くだけでよい。
+static const float kFarStartMeters = 140.0f;
+static const float kFarFadeMeters = 60.0f;
+static const float kColorMapSize = 257.0f;
+static const float kFarRoughness = 0.85f;
+// 細部（一番小さい繰り返し）を読む距離。ここより遠くは中と大の尺度だけで描く。
+static const float kDetailStartMeters = 12.0f;
+static const float kDetailEndMeters = 40.0f;
+// 同じ図を大きな尺度でも読む（UE の距離ブレンドと Terrain3D のマクロ変化の考え方）。尺度の比を割り切れない値にして、
+// 回転もずらし、繰り返しが揃わないようにする。
+static const float kMidScale = 6.1f;
+static const float kLargeScale = 29.3f;
+static const float kMidNormalStrength = 0.9f;
+static const float2x2 kMidRotation = float2x2(0.7986355f, -0.6018150f, 0.6018150f, 0.7986355f);
+static const float2x2 kLargeRotation = float2x2(0.3255682f, -0.9455186f, 0.9455186f, 0.3255682f);
 
 struct TerrainSurfaceSample
 {
-    float3 albedo;
+    float3 albedo; // 材質の段階では色の図に掛ける濃淡（平均が 1）
     float height;
     float3 normal;
     float roughness;
@@ -22,16 +34,6 @@ float2 TerrainHash2(int2 cell)
 {
     const float2 p = float2(dot(float2(cell), float2(127.1f, 311.7f)), dot(float2(cell), float2(269.5f, 183.3f)));
     return frac(sin(p) * 43758.5453f);
-}
-
-float TerrainValueNoise(float2 position)
-{
-    const float2 base = floor(position);
-    const float2 f = position - base;
-    const float2 u = f * f * (3.0f - 2.0f * f);
-    const int2 cell = int2(base);
-    return lerp(lerp(TerrainHash2(cell).x, TerrainHash2(cell + int2(1, 0)).x, u.x),
-                lerp(TerrainHash2(cell + int2(0, 1)).x, TerrainHash2(cell + int2(1, 1)).x, u.x), u.y);
 }
 
 float3 TerrainWhiteoutTop(float2 tangent, float strength, float3 macroNormal)
@@ -79,69 +81,100 @@ void TerrainSamplePlanar(float layer, float2 uv, float2 duvdx, float2 duvdy, out
     detail = hexDetail[0] * weights.x + hexDetail[1] * weights.y + hexDetail[2] * weights.z;
 }
 
-TerrainSurfaceSample TerrainSampleSurface(uint surface, float3 worldPosition, float3 dpdx, float3 dpdy, float3 macroNormal, float cliff)
+// 一つの投影面の濃淡・高さ・法線。材質の図は平均色に対する濃淡として読み、色そのものは色の図に任せる。
+// 細部（一番小さい繰り返し）は近くでだけ読む。遠くの細部は平均に収束するので、読まなくても続く。
+struct TerrainPlaneSample
+{
+    float4 color;
+    float2 tangent;
+    float2 roughnessAo;
+};
+
+TerrainPlaneSample TerrainSamplePlane(float layer, float2 uv, float2 duvdx, float2 duvdy, float3 mean, float variation, float detailWeight)
+{
+    const float2 midUv = mul(kMidRotation, uv) / kMidScale;
+    const float2 midDx = mul(kMidRotation, duvdx) / kMidScale;
+    const float2 midDy = mul(kMidRotation, duvdy) / kMidScale;
+    const float2 largeUv = mul(kLargeRotation, uv) / kLargeScale;
+    const float2 largeDx = mul(kLargeRotation, duvdx) / kLargeScale;
+    const float2 largeDy = mul(kLargeRotation, duvdy) / kLargeScale;
+    const float4 mid = gTerrainSurfaceColor.SampleGrad(gLinearWrap, float3(midUv, layer), midDx, midDy);
+    const float3 large = gTerrainSurfaceColor.SampleGrad(gLinearWrap, float3(largeUv, layer), largeDx, largeDy).rgb;
+    const float4 midDetail = gTerrainSurfaceDetail.SampleGrad(gLinearWrap, float3(midUv, layer), midDx, midDy);
+    const float3 ratio = clamp(1.0f + (0.5f * (mid.rgb + large) / max(mean, 0.002f) - 1.0f) * variation, 0.4f, 1.8f);
+    TerrainPlaneSample result;
+    result.color = float4(ratio, mid.a);
+    result.tangent = mul(midDetail.xy * 2.0f - 1.0f, kMidRotation) * kMidNormalStrength;
+    result.roughnessAo = midDetail.zw;
+    if (detailWeight > 0.0f)
+    {
+        float4 color;
+        float4 detail;
+        TerrainSamplePlanar(layer, uv, duvdx, duvdy, color, detail);
+        result.color = lerp(result.color, float4(color.rgb / max(mean, 0.002f) * ratio, color.a), detailWeight);
+        result.tangent += (detail.xy * 2.0f - 1.0f) * detailWeight;
+        result.roughnessAo = lerp(result.roughnessAo, detail.zw, detailWeight);
+    }
+    return result;
+}
+
+TerrainSurfaceSample TerrainSampleSurface(uint surface, float3 worldPosition, float3 dpdx, float3 dpdy, float3 macroNormal, float cliff, float detailWeight)
 {
     const float4 params = gTerrainSurfaceParams.Load(int4(surface, 0, 0, 0));
+    const float4 tone = gTerrainSurfaceParams.Load(int4(surface, 1, 0, 0));
     const float tiling = max(params.x, 0.01f);
     const float layer = (float)surface;
     float4 color = 0.0f.xxxx;
     float3 normal = 0.0f.xxx;
-    float roughness = 0.0f;
-    float ao = 0.0f;
+    float2 roughnessAo = 0.0f.xx;
     if (cliff < 1.0f)
     {
-        float4 topColor;
-        float4 topDetail;
-        TerrainSamplePlanar(layer, worldPosition.xz / tiling, dpdx.xz / tiling, dpdy.xz / tiling, topColor, topDetail);
+        const TerrainPlaneSample top = TerrainSamplePlane(layer, worldPosition.xz / tiling, dpdx.xz / tiling, dpdy.xz / tiling, tone.rgb, tone.a, detailWeight);
         const float weight = 1.0f - cliff;
-        color += topColor * weight;
-        normal += TerrainWhiteoutTop(topDetail.xy * 2.0f - 1.0f, params.z, macroNormal) * weight;
-        roughness += topDetail.z * weight;
-        ao += topDetail.w * weight;
+        color += top.color * weight;
+        normal += TerrainWhiteoutTop(top.tangent, params.z, macroNormal) * weight;
+        roughnessAo += top.roughnessAo * weight;
     }
     if (cliff > 0.0f)
     {
         // 主な側面 2 つ（x 向きと z 向き）を面の向きで混ぜる。図の v は世界の下向き。
         float2 sideWeights = pow(abs(macroNormal.xz), 4.0f);
         sideWeights /= max(sideWeights.x + sideWeights.y, 1.0e-4f);
+        // 両方を読むのは境の狭い帯だけ（読む回数を減らす）。
+        sideWeights = saturate((sideWeights - 0.15f) / 0.7f);
         float3 sideNormal = 0.0f.xxx;
         float4 sideColor = 0.0f.xxxx;
-        float2 sideDetail = 0.0f.xx;
-        if (sideWeights.x > 0.02f)
+        float2 sideRoughnessAo = 0.0f.xx;
+        if (sideWeights.x > 0.0f)
         {
-            float4 planeColor;
-            float4 sampled;
-            TerrainSamplePlanar(layer, float2(worldPosition.z, -worldPosition.y) / tiling, float2(dpdx.z, -dpdx.y) / tiling,
-                                float2(dpdy.z, -dpdy.y) / tiling, planeColor, sampled);
-            const float2 tangent = (sampled.xy * 2.0f - 1.0f) * params.z;
+            const TerrainPlaneSample plane = TerrainSamplePlane(layer, float2(worldPosition.z, -worldPosition.y) / tiling, float2(dpdx.z, -dpdx.y) / tiling,
+                                                                float2(dpdy.z, -dpdy.y) / tiling, tone.rgb, tone.a, detailWeight);
+            const float2 tangent = plane.tangent * params.z;
             const float z = sqrt(saturate(1.0f - dot(tangent, tangent)));
             sideNormal += float3(z * macroNormal.x, macroNormal.y - tangent.y, macroNormal.z + tangent.x) * sideWeights.x;
-            sideColor += planeColor * sideWeights.x;
-            sideDetail += sampled.zw * sideWeights.x;
+            sideColor += plane.color * sideWeights.x;
+            sideRoughnessAo += plane.roughnessAo * sideWeights.x;
         }
-        if (sideWeights.y > 0.02f)
+        if (sideWeights.y > 0.0f)
         {
-            float4 planeColor;
-            float4 sampled;
-            TerrainSamplePlanar(layer, float2(worldPosition.x, -worldPosition.y) / tiling, float2(dpdx.x, -dpdx.y) / tiling,
-                                float2(dpdy.x, -dpdy.y) / tiling, planeColor, sampled);
-            const float2 tangent = (sampled.xy * 2.0f - 1.0f) * params.z;
+            const TerrainPlaneSample plane = TerrainSamplePlane(layer, float2(worldPosition.x, -worldPosition.y) / tiling, float2(dpdx.x, -dpdx.y) / tiling,
+                                                                float2(dpdy.x, -dpdy.y) / tiling, tone.rgb, tone.a, detailWeight);
+            const float2 tangent = plane.tangent * params.z;
             const float z = sqrt(saturate(1.0f - dot(tangent, tangent)));
             sideNormal += float3(macroNormal.x + tangent.x, macroNormal.y - tangent.y, z * macroNormal.z) * sideWeights.y;
-            sideColor += planeColor * sideWeights.y;
-            sideDetail += sampled.zw * sideWeights.y;
+            sideColor += plane.color * sideWeights.y;
+            sideRoughnessAo += plane.roughnessAo * sideWeights.y;
         }
         color += sideColor * cliff;
         normal += sideNormal * cliff;
-        roughness += sideDetail.x * cliff;
-        ao += sideDetail.y * cliff;
+        roughnessAo += sideRoughnessAo * cliff;
     }
     TerrainSurfaceSample result;
     result.albedo = color.rgb;
     result.height = color.a;
     result.normal = normal;
-    result.roughness = roughness;
-    result.ao = ao;
+    result.roughness = roughnessAo.x;
+    result.ao = roughnessAo.y;
     return result;
 }
 
@@ -205,8 +238,8 @@ void TerrainPickSurfaces(float2 tileUv, uint tileLayer, out uint first, out uint
     blend = secondWeight / max(firstWeight + secondWeight, 1.0e-4f);
 }
 
-// 画素の地表：2 材質を高さで混ぜ、広い明暗のむらを足す。
-TerrainSurfaceSample TerrainResolveSurface(TerrainVertex input, float3 macroNormal, out float wet)
+// 画素の地表：2 材質を高さで混ぜる。albedo は色の図に掛ける濃淡。
+TerrainSurfaceSample TerrainResolveSurface(TerrainVertex input, float3 macroNormal, float detailWeight, out float wet)
 {
     uint first;
     uint second;
@@ -215,14 +248,16 @@ TerrainSurfaceSample TerrainResolveSurface(TerrainVertex input, float3 macroNorm
     const uint limit = gTerrainSurfaceCount - 1u;
     first = min(first, limit);
     second = min(second, limit);
-    const float cliff = 1.0f - smoothstep(0.55f, 0.75f, macroNormal.y);
+    // 44 度までは真上からの投影だけで読む。53 度より急なら側面だけ。
+    const float cliff = 1.0f - smoothstep(0.6f, 0.72f, macroNormal.y);
     const float3 dpdx = ddx(input.worldPosition);
     const float3 dpdy = ddy(input.worldPosition);
-    TerrainSurfaceSample a = TerrainSampleSurface(first, input.worldPosition, dpdx, dpdy, macroNormal, cliff);
-    if (blend > 0.004f)
+    TerrainSurfaceSample a = TerrainSampleSurface(first, input.worldPosition, dpdx, dpdy, macroNormal, cliff, detailWeight);
+    if (blend > 0.02f)
     {
-        const TerrainSurfaceSample b = TerrainSampleSurface(second, input.worldPosition, dpdx, dpdy, macroNormal, cliff);
-        const float contrast = max(gTerrainSurfaceParams.Load(int4(first, 0, 0, 0)).y, 0.01f);
+        const TerrainSurfaceSample b = TerrainSampleSurface(second, input.worldPosition, dpdx, dpdy, macroNormal, cliff, detailWeight);
+        // 遠くは高さの図の起伏が小さいので、幅を広げて境界の線が立たないようにする。
+        const float contrast = max(gTerrainSurfaceParams.Load(int4(first, 0, 0, 0)).y, 0.01f) * lerp(4.0f, 1.0f, detailWeight);
         const float heightA = a.height + (1.0f - blend);
         const float heightB = b.height + blend;
         const float top = max(heightA, heightB) - contrast;
@@ -239,50 +274,47 @@ TerrainSurfaceSample TerrainResolveSurface(TerrainVertex input, float3 macroNorm
     return a;
 }
 
-// 遠景の色。瓦片の縁で標本が揃うよう、格子の角に合わせて読む。
-TerrainSurfaceSample TerrainFarSurface(TerrainVertex input, float3 macroNormal)
+// 色の図（線形の色と環境光の遮蔽）。瓦片の縁で標本が揃うよう、格子の角に合わせて読む。焼き上がるまでは中間の灰。
+float4 TerrainReadColorMap(TerrainVertex input)
 {
+    if (gTerrainColorMapReady == 0u)
+    {
+        return float4(0.18f, 0.18f, 0.18f, 1.0f);
+    }
     const float samples = gTerrainTileCells + 1.0f;
     const float2 unit = (input.tileUv * samples - 0.5f) / gTerrainTileCells;
-    const float2 uv = (unit * (kFarCacheSize - 1.0f) + 0.5f) / kFarCacheSize;
-    const float4 color = gTerrainFarCache.Sample(gLinearClamp, float3(uv, input.tileLayer));
-    TerrainSurfaceSample result;
-    result.albedo = color.rgb * color.rgb;
-    result.height = 0.5f;
-    result.normal = macroNormal;
-    result.roughness = color.a;
-    result.ao = 1.0f;
-    return result;
+    const float2 uv = (unit * (kColorMapSize - 1.0f) + 0.5f) / kColorMapSize;
+    const float4 map = gTerrainColorMap.Sample(gLinearClamp, float3(uv, input.tileLayer));
+    return float4(map.rgb * map.rgb, map.a);
 }
 
-// 近くは材質、遠くは遠景の色。全体に広い明暗のむらと積雪・湿りを掛ける。
+// 色は色の図で決まる。近くは材質の濃淡・法線・粗さを載せ、遠くは色の図だけ。全体に積雪・湿りを掛ける。
 TerrainSurfaceSample TerrainShadeSurface(TerrainVertex input, float3 macroNormal)
 {
     const float distanceToCamera = length(input.worldPosition - gSurfaceCameraPosition);
-    const float far = gTerrainFarReady != 0u ? saturate((distanceToCamera - kFarStartMeters) / kFarFadeMeters) : 0.0f;
+    const float far = saturate((distanceToCamera - kFarStartMeters) / kFarFadeMeters);
+    const float4 map = TerrainReadColorMap(input);
     TerrainSurfaceSample surface;
     float wet = gTerrainWetness;
     if (far >= 1.0f)
     {
-        surface = TerrainFarSurface(input, macroNormal);
+        surface.albedo = map.rgb;
+        surface.height = 0.5f;
+        surface.normal = macroNormal;
+        surface.roughness = kFarRoughness;
+        surface.ao = map.a;
     }
     else
     {
         float sampleWet;
-        surface = TerrainResolveSurface(input, macroNormal, sampleWet);
+        const float detailWeight = 1.0f - smoothstep(kDetailStartMeters, kDetailEndMeters, distanceToCamera);
+        surface = TerrainResolveSurface(input, macroNormal, detailWeight, sampleWet);
         wet = max(wet, sampleWet);
-        if (far > 0.0f)
-        {
-            const TerrainSurfaceSample distant = TerrainFarSurface(input, macroNormal);
-            surface.albedo = lerp(surface.albedo, distant.albedo, far);
-            surface.normal = normalize(lerp(surface.normal, distant.normal, far));
-            surface.roughness = lerp(surface.roughness, distant.roughness, far);
-            surface.ao = lerp(surface.ao, 1.0f, far);
-        }
+        surface.albedo = lerp(surface.albedo, 1.0f.xxx, far) * map.rgb;
+        surface.normal = normalize(lerp(surface.normal, macroNormal, far));
+        surface.roughness = lerp(surface.roughness, kFarRoughness, far);
+        surface.ao = lerp(surface.ao, 1.0f, far) * map.a;
     }
-    const float2 wide = input.worldPosition.xz;
-    const float macro = TerrainValueNoise(wide * 0.019f) * 0.6f + TerrainValueNoise(wide * 0.083f) * 0.4f;
-    surface.albedo *= lerp(0.82f, 1.14f, macro);
     if (gTerrainSnowAmount > 0.0f)
     {
         const float snow = gTerrainSnowAmount * smoothstep(gTerrainSnowLine, gTerrainSnowLine + 30.0f, input.worldPosition.y) *

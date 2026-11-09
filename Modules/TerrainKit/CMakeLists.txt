@@ -8,6 +8,8 @@ target_sources(
     hikari_terrainkit_data
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainData.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataAnalysis.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataValleys.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataBrush.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataCodec.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataEdit.cpp"

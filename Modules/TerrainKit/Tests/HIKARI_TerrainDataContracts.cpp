@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "TerrainKit/Data/HIKARI_TerrainData.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataAnalysis.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataBrush.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataControl.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataEdit.h"
@@ -19,6 +20,7 @@
 #include "TerrainKit/Data/HIKARI_TerrainDataFile.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataImage.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataRules.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataValleys.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataStamp.h"
 
 using namespace HIKARI::TERRAIN::DATA;
@@ -501,6 +503,35 @@ void TestSurfaceRules() {
     CHECK(UnpackControlTexel(control[16u]).baseMaterial == 7u);
     CHECK(UnpackControlTexel(control[static_cast<size_t>(8u) * samples + 14u]).hole);
     CHECK(UnpackControlTexel(control[static_cast<size_t>(8u) * samples + 14u]).baseMaterial == 2u);
+    // 島の割合：覆う割合に応じて面積が増え、0 なら何も塗らない。
+    SurfaceRuleSet patches{};
+    SurfaceRule island{};
+    island.surface = 5u;
+    island.noiseAmount = 0.0f;
+    island.coverage = 0.0f;
+    patches.rules.push_back(island);
+    std::vector<float> flat(heights.size(), 0.0f);
+    tile.heights = flat;
+    std::vector<uint32_t> patched(control.size(), 0u);
+    EvaluateSurfaceRules(patches, tile, patched);
+    CHECK(std::all_of(patched.begin(), patched.end(),
+                      [](uint32_t value) { return UnpackControlTexel(value).baseMaterial == 0u; }));
+    // 色の図は世界座標で決まるので、隣の瓦片と境で揃う。
+    SurfaceRuleTile left = tile;
+    SurfaceRuleTile right = tile;
+    right.firstSampleX = samples - 1u;
+    const SurfaceMapStyle style{{{{0.2f, 0.2f, 0.2f}, {0.3f, 0.2f, 0.1f}, {0.4f, 0.3f, 0.2f}}}, 12.0f, 0.5f};
+    const std::vector<SurfaceMapStyle> styles(1u, style);
+    const std::vector<uint32_t> plain(control.size(), 0u);
+    std::vector<float> colorLeft{};
+    std::vector<float> colorRight{};
+    BakeSurfaceColorMap(patches, left, plain, styles, 9u, colorLeft);
+    BakeSurfaceColorMap(patches, right, plain, styles, 9u, colorRight);
+    CHECK(colorLeft.size() == 324u);
+    for (uint32_t row = 0u; row < 9u; ++row) {
+        CHECK(std::abs(colorLeft[(row * 9u + 8u) * 4u] - colorRight[row * 9u * 4u]) < 1.0e-6f);
+    }
+    CHECK(std::all_of(colorLeft.begin(), colorLeft.end(), [](float value) { return std::isfinite(value); }));
     // 規則の記述は JSON で往復する。
     nlohmann::json json{};
     const SurfaceRuleSet defaults = DefaultSurfaceRules();
@@ -508,6 +539,78 @@ void TestSurfaceRules() {
     SurfaceRuleSet read{};
     HIKARI::JSONFIELDS::Read(json, read, kSurfaceRuleSetFields);
     CHECK(read == defaults);
+}
+
+// 地形の読み取りは谷筋を湿った谷底と見て、谷の彫り込みは水の流れる道を作る。
+void TestTerrainAnalysis() {
+    TerrainAnalysis analysis{};
+    analysis.width = 65u;
+    analysis.height = 65u;
+    analysis.cellMeters = 8.0f;
+    analysis.heights.resize(static_cast<size_t>(analysis.width) * analysis.height);
+    for (uint32_t z = 0u; z < analysis.height; ++z) {
+        for (uint32_t x = 0u; x < analysis.width; ++x) {
+            const float across = std::abs(static_cast<float>(x) - 32.0f) * 8.0f;
+            analysis.heights[static_cast<size_t>(z) * analysis.width + x] =
+                across * 0.3f + static_cast<float>(z) * 1.0f;
+        }
+    }
+    BuildTerrainAnalysis(analysis);
+    CHECK(analysis.Valid());
+    CHECK(std::all_of(analysis.debris.begin(), analysis.debris.end(),
+                      [](float value) { return std::isfinite(value) && value >= 0.0f && value <= 1.0f + 1.0e-3f; }));
+    const double middle = 32.0 * 8.0;
+    CHECK(analysis.WetnessAt(middle, middle) > analysis.WetnessAt(middle + 120.0, middle) + 0.2f);
+    CHECK(analysis.PositionAt(middle, middle) > 0.2f);
+    CHECK(analysis.PositionAt(middle + 200.0, middle) < analysis.PositionAt(middle, middle));
+
+    ErosionField field{};
+    field.width = 257u;
+    field.height = 257u;
+    field.spacingMeters = 1.0f;
+    field.heights.resize(static_cast<size_t>(field.width) * field.height);
+    for (uint32_t z = 0u; z < field.height; ++z) {
+        for (uint32_t x = 0u; x < field.width; ++x) {
+            const float fx = static_cast<float>(x) * 0.02f;
+            const float fz = static_cast<float>(z) * 0.02f;
+            field.heights[static_cast<size_t>(z) * field.width + x] = 60.0f + 20.0f * std::sin(fx) * std::cos(fz);
+        }
+    }
+    const auto [lowBefore, highBefore] = std::minmax_element(field.heights.begin(), field.heights.end());
+    const float lowest = *lowBefore;
+    const float highest = *highBefore;
+    std::string error{};
+    ErosionField carved = field;
+    CHECK(CarveValleys(carved, ValleySettings{}, error));
+    CHECK(carved.heights != field.heights);
+    const auto [low, high] = std::minmax_element(carved.heights.begin(), carved.heights.end());
+    CHECK(std::isfinite(*low) && std::isfinite(*high));
+    CHECK(*low > lowest - 60.0f && *high < highest + 60.0f);
+    // 山塊：中心が一番高く、外周へ下がる。
+    {
+        TerrainData massifData(TerrainGrid{});
+        HeightLayer mountain{};
+        mountain.kind = HeightLayerKind::Noise;
+        mountain.noise.amplitudeMeters = 600.0f;
+        mountain.noise.offsetMeters = 0.0f;
+        mountain.noise.octaves = 2u;
+        mountain.noise.massifRadiusMeters = 512.0f;
+        CHECK(massifData.AddLayer(std::move(mountain)) != 0u);
+        const HeightStackEvaluator massif(massifData);
+        const SampleRect center = SampleRect{-16, -16, 33u, 33u};
+        const SampleRect outside = SampleRect{2000, 2000, 33u, 33u};
+        std::vector<float> centerHeights{};
+        std::vector<float> outsideHeights{};
+        CHECK(massif.EvaluateRect(center, centerHeights));
+        CHECK(massif.EvaluateRect(outside, outsideHeights));
+        CHECK(*std::min_element(centerHeights.begin(), centerHeights.end()) >
+              *std::max_element(outsideHeights.begin(), outsideHeights.end()) + 100.0f);
+    }
+    ErosionField tooSmall{};
+    tooSmall.width = 16u;
+    tooSmall.height = 16u;
+    tooSmall.heights.assign(256u, 0.0f);
+    CHECK(!CarveValleys(tooSmall, ValleySettings{}, error));
 }
 
 // 道路は路盤を平らにして路面を塗り、河は掘って岸を湿らせ、水面は下流へ上がらない。
@@ -680,7 +783,10 @@ void TestErosion() {
     HydraulicErosionSettings hydraulicSettings{};
     hydraulicSettings.iterations = 120u;
     ErosionMaps hydraulicMaps{};
+    const double hydraulicBefore = Sum(hydraulic.heights);
     CHECK(RunHydraulicErosion(hydraulic, hydraulicSettings, &hydraulicMaps, error));
+    // 削った分と積もった分は釣り合う（堆積物の運搬で総量が増えない）。
+    CHECK(std::fabs(Sum(hydraulic.heights) - hydraulicBefore) < 1.0e-3 * hydraulic.heights.size());
     CHECK(RunHydraulicErosion(repeat, hydraulicSettings, nullptr, error));
     CHECK(hydraulic.heights == repeat.heights);
     CHECK(std::all_of(hydraulic.heights.begin(), hydraulic.heights.end(), [](float h) { return std::isfinite(h); }));
@@ -910,6 +1016,7 @@ int main(int argc, char** argv) {
     TestBrushes();
     TestBrushVariantsStampsAndMasks();
     TestSurfaceRules();
+    TestTerrainAnalysis();
     TestSplineLayers();
     TestUndo();
     TestErosion();

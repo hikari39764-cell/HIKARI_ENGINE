@@ -173,6 +173,7 @@ private:
                 changed = true;
             }
             changed |= ui.InputInt("noiseSeed", "Seed", &next.noise.seed);
+            changed |= ui.InputFloat("noiseMassif", "Mountain Radius (m)", &next.noise.massifRadiusMeters);
         } else if (next.kind == HeightLayerKind::Image) {
             std::array<char, 512> source{};
             std::strncpy(source.data(), next.image.source.c_str(), source.size() - 1u);
@@ -354,6 +355,18 @@ private:
     }
 
     void DrawErosion(IEditorWorkspaceUi& ui, TerrainStore& store) {
+        ValleySettings& valleys = shared_->valleys;
+        ui.InputFloat("valleyErosion", "Valley Erosion", &valleys.erosion);
+        ui.InputFloat("valleyDetail", "Valley Branching", &valleys.detail);
+        ui.InputFloat("valleyLedges", "Rock Ledges", &valleys.ledges);
+        ui.InputFloat("valleyRoughness", "Rock Roughness (m)", &valleys.roughness);
+        ui.InputFloat("valleyStrength", "Valley Strength", &valleys.strength);
+        if (ui.Button("valleys", "Carve Valleys")) {
+            std::string error{};
+            if (!RunValleys(*shared_, WholeTerrainRect(store), valleys, error)) {
+                Report(error);
+            }
+        }
         ErosionRequest& erosion = shared_->erosion;
         ui.Checkbox("hydraulic", "Hydraulic", &erosion.hydraulic);
         ui.SameLine();
@@ -375,7 +388,7 @@ private:
     }
 
     std::shared_ptr<EditorShared> shared_;
-    NoiseLayerSettings noise_ = DefaultNoise();
+    NoiseLayerSettings noise_ = DefaultMountain();
 };
 
 } // namespace

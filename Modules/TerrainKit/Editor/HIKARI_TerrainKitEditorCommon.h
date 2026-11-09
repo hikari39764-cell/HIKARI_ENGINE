@@ -15,6 +15,7 @@
 #include "TerrainKit/Data/HIKARI_TerrainDataEdit.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataErosion.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataStamp.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataValleys.h"
 
 // 地形編集器の工具・窓・操作で共有する状態と手続き。人の操作と智能体の操作は同じ手続きを通る。
 namespace HIKARI::TERRAINKIT {
@@ -35,6 +36,7 @@ struct EditorShared {
     TERRAIN::DATA::StampSettings stamp{};
     std::string stampName = "hill";
     TERRAIN::DATA::ErosionRequest erosion{};
+    TERRAIN::DATA::ValleySettings valleys{};
     uint32_t selectedLayer = 0u;
     uint32_t strokes = 0u;
     // 筆の一度分（筆刷の適用と焼き直し）の手間。describe で読む。
@@ -52,6 +54,7 @@ uint32_t TargetSculptLayer(const EditorShared& shared);
 void RecordTerrainEdit(EditorShared& shared, TERRAIN::DATA::TerrainEdit edit);
 
 TERRAIN::DATA::NoiseLayerSettings DefaultNoise();
+TERRAIN::DATA::NoiseLayerSettings DefaultMountain();
 bool RegenerateTerrain(EditorShared& shared, const TERRAIN::DATA::NoiseLayerSettings& noise, std::string& error);
 
 // 層の操作。どれも撤销一件で、終わると焼き直す。
@@ -82,6 +85,9 @@ std::vector<std::string> ListStampNames();
 bool RunStamp(EditorShared& shared, std::string_view stampName, const TERRAIN::DATA::StampSettings& settings,
               std::string& error);
 
+// 矩形に水系を彫り込んで手彫り層へ差分を足す（撤销一件）。
+bool RunValleys(EditorShared& shared, const TERRAIN::DATA::SampleRect& rect,
+                const TERRAIN::DATA::ValleySettings& settings, std::string& error);
 // 矩形を侵蝕して手彫り層へ差分を足す。maps があれば流量・堆積・磨耗の図を返す。
 bool RunErosion(EditorShared& shared, const TERRAIN::DATA::SampleRect& rect,
                 const TERRAIN::DATA::ErosionRequest& request, TERRAIN::DATA::ErosionMaps* maps, std::string& error);

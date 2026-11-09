@@ -1,9 +1,11 @@
 #include <algorithm>
+#include <cmath>
 #include <execution>
 #include <numeric>
 
 #include <FastNoise/FastNoise.h>
 
+#include "HIKARI_TerrainDataNoise.h"
 #include "TerrainKit/Data/HIKARI_TerrainData.h"
 
 namespace HIKARI::TERRAIN::DATA {
@@ -116,6 +118,42 @@ struct HeightStackEvaluator::Impl {
                 const uint32_t row0 = index * kParallelBandRows;
                 band(row0, (std::min)(kParallelBandRows, rect.height - row0));
             });
+        }
+        if (noise.massifRadiusMeters > 0.0f) {
+            // 山塊：大きく歪めた円錐。麓は緩く、頂上は急。尾根の噪声が峰を分け、周りには低い丘を残す。
+            const float radius = noise.massifRadiusMeters;
+            const auto seed = static_cast<uint32_t>(noise.seed);
+            const auto shape = [&](uint32_t row0, uint32_t rows) {
+                for (uint32_t row = row0; row < row0 + rows; ++row) {
+                    const double worldZ = static_cast<double>(rect.z0 + row) * spacing;
+                    for (uint32_t column = 0u; column < rect.width; ++column) {
+                        const double worldX = static_cast<double>(rect.x0 + column) * spacing;
+                        const double warpX = worldX / (0.65 * radius);
+                        const double warpZ = worldZ / (0.65 * radius);
+                        const float dx = static_cast<float>(worldX) - noise.massifCenterMeters.x +
+                                         0.34f * radius * FractalNoise(warpX, warpZ, 3, seed + 11u);
+                        const float dz = static_cast<float>(worldZ) - noise.massifCenterMeters.y +
+                                         0.34f * radius * FractalNoise(warpX + 9.0, warpZ, 3, seed + 21u);
+                        float& value = values[static_cast<std::size_t>(row) * rect.width + column];
+                        const float detail = std::clamp(value * layer.noiseScale, -1.0f, 1.0f);
+                        const float distance = std::sqrt(dx * dx + dz * dz) / radius;
+                        const float dome = std::pow(std::clamp(1.0f - distance, 0.0f, 1.0f), 1.7f);
+                        value = noise.offsetMeters +
+                                noise.amplitudeMeters * (0.8f * dome + 0.175f * (detail + 1.0f) * (0.35f + dome));
+                    }
+                }
+            };
+            if (rect.Count() < kParallelSampleThreshold) {
+                shape(0u, rect.height);
+            } else {
+                std::vector<uint32_t> bands((rect.height + kParallelBandRows - 1u) / kParallelBandRows);
+                std::iota(bands.begin(), bands.end(), 0u);
+                std::for_each(std::execution::par, bands.begin(), bands.end(), [&](uint32_t index) {
+                    const uint32_t row0 = index * kParallelBandRows;
+                    shape(row0, (std::min)(kParallelBandRows, rect.height - row0));
+                });
+            }
+            return;
         }
         const float scale = layer.noiseScale * noise.amplitudeMeters;
         for (float& value : values) {

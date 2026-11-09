@@ -25,7 +25,7 @@ namespace {
 
 constexpr char kSurfaceExtension[] = ".hterrainsurface";
 constexpr uint32_t kCookMagic = 0x43535448u; // "HTSC"
-constexpr uint32_t kCookVersion = 2u;
+constexpr uint32_t kCookVersion = 4u;
 
 struct CookHeader {
     uint32_t magic = kCookMagic;
@@ -201,15 +201,12 @@ bool CookSurface(const std::filesystem::path& file, const TerrainSurfaceAsset& a
     std::vector<uint8_t> colorHeight(pixels * 4u);
     std::vector<uint8_t> detail(pixels * 4u);
     std::array<double, 3> sum{};
-    const float tint[3]{asset.baseColor.x, asset.baseColor.y, asset.baseColor.z};
     for (size_t index = 0u; index < pixels; ++index) {
         uint8_t* outColor = colorHeight.data() + index * 4u;
         uint8_t* outDetail = detail.data() + index * 4u;
         for (int channel = 0; channel < 3; ++channel) {
-            const float source = color.empty() ? 1.0f : SrgbToLinear(color[index * 4u + channel] / 255.0f);
-            const float linear = source * tint[channel];
-            sum[channel] += linear;
-            outColor[channel] = ToByte(LinearToSrgb(linear));
+            sum[channel] += color.empty() ? 1.0f : SrgbToLinear(color[index * 4u + channel] / 255.0f);
+            outColor[channel] = color.empty() ? 255u : color[index * 4u + channel];
         }
         if (!height.empty()) {
             outColor[3] = height[index * 4u];
@@ -241,10 +238,10 @@ bool ReadCooked(const std::filesystem::path& path, CookedSurface& out) {
     out.colorHeight.resize(static_cast<size_t>(header.colorBytes));
     out.detail.resize(static_cast<size_t>(header.detailBytes));
     out.averageColor = {header.average[0], header.average[1], header.average[2]};
-    return static_cast<bool>(file.read(reinterpret_cast<char*>(out.colorHeight.data()),
-                                       static_cast<std::streamsize>(out.colorHeight.size()))) &&
-           static_cast<bool>(
-               file.read(reinterpret_cast<char*>(out.detail.data()), static_cast<std::streamsize>(out.detail.size())));
+    const auto read = [&](void* target, size_t bytes) {
+        return static_cast<bool>(file.read(static_cast<char*>(target), static_cast<std::streamsize>(bytes)));
+    };
+    return read(out.colorHeight.data(), out.colorHeight.size()) && read(out.detail.data(), out.detail.size());
 }
 
 void WriteCooked(const std::filesystem::path& path, const CookedSurface& surface) {
@@ -265,6 +262,22 @@ void WriteCooked(const std::filesystem::path& path, const CookedSurface& surface
 }
 
 } // namespace
+
+TERRAIN::DATA::SurfaceMapStyle MakeSurfaceMapStyle(const CookedSurface& surface) {
+    const TerrainSurfaceAsset& asset = surface.asset;
+    TERRAIN::DATA::SurfaceMapStyle style{};
+    style.bandMeters = asset.mapBandMeters;
+    style.bandAmount = asset.mapBandAmount;
+    const auto linear = [](const MATH::Vec3& color) {
+        return std::array<float, 3>{SrgbToLinear(color.x), SrgbToLinear(color.y), SrgbToLinear(color.z)};
+    };
+    const bool hasPalette = asset.mapColorA.x > 0.0f || asset.mapColorA.y > 0.0f || asset.mapColorA.z > 0.0f;
+    style.colors = hasPalette ? std::array<std::array<float, 3>, 3>{linear(asset.mapColorA), linear(asset.mapColorB),
+                                                                    linear(asset.mapColorC)}
+                              : std::array<std::array<float, 3>, 3>{surface.averageColor, surface.averageColor,
+                                                                    surface.averageColor};
+    return style;
+}
 
 bool ReadTerrainSurfaceAsset(const std::filesystem::path& file, TerrainSurfaceAsset& out, std::string& error) {
     std::ifstream stream(file, std::ios::binary);

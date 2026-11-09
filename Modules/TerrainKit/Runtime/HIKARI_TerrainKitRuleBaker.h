@@ -1,25 +1,21 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <future>
+#include <memory>
 #include <set>
 #include <vector>
 
+#include "TerrainKit/Data/HIKARI_TerrainDataAnalysis.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataGrid.h"
 
-// 自動材質規則と遠景の色を背景で瓦片ごとに計算する。編集を止めない：入力は写しで渡し、結果は描画の thread で受け取る。
+// 自動材質規則と色の図を背景で瓦片ごとに計算する。編集を止めない：入力は写しで渡し、結果は描画の thread で受け取る。
 namespace HIKARI::TERRAINKIT {
 
 class TerrainStore;
 
-inline constexpr uint32_t kFarCacheSize = 129u;
-inline constexpr uint32_t kFarCacheMips = 8u;
-
-// 制御図の標本の色：2 材質の平均色を混ぜる（colors は枠ごとの RGB + 粗さ）。遠景の色と光線追跡の代理が共有する。
-std::array<float, 4> ControlSampleColor(uint32_t control, const std::vector<std::array<float, 4>>& colors) noexcept;
-// 材質の表（枠ごとの RGB + 粗さ）。
-std::vector<std::array<float, 4>> SurfaceColorTable(const TerrainStore& store);
+inline constexpr uint32_t kColorMapSize = 257u;
+inline constexpr uint32_t kColorMapMips = 9u;
 
 class TerrainRuleBaker {
 public:
@@ -35,11 +31,17 @@ private:
     struct TileResult {
         TERRAIN::DATA::TileCoord tile{};
         std::vector<uint32_t> control{};
-        std::vector<uint8_t> farColor{};
+        std::vector<uint8_t> colorMap{};
+    };
+
+    struct JobResult {
+        std::vector<TileResult> tiles{};
+        std::shared_ptr<const TERRAIN::DATA::TerrainAnalysis> analysis{};
     };
 
     std::set<TERRAIN::DATA::TileCoord> dirty_{};
-    std::future<std::vector<TileResult>> job_{};
+    std::future<JobResult> job_{};
+    std::shared_ptr<const TERRAIN::DATA::TerrainAnalysis> analysis_{};
     size_t activeTiles_ = 0u;
     uint32_t quietFrames_ = 0u;
 };

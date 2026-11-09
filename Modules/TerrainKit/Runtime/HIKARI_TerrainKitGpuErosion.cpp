@@ -98,8 +98,8 @@ float GpuErosionJob::Progress() const noexcept {
     const uint32_t hydraulic = request_.hydraulic ? request_.hydraulicSettings.iterations : 0u;
     const float total = static_cast<float>((std::max)(thermal + hydraulic, 1u));
     switch (stage_) {
-    case Stage::Thermal: return static_cast<float>(iteration_) / total;
-    case Stage::Hydraulic: return static_cast<float>(thermal + iteration_) / total;
+    case Stage::Hydraulic: return static_cast<float>(iteration_) / total;
+    case Stage::Thermal: return static_cast<float>(hydraulic + iteration_) / total;
     case Stage::Finish:
     case Stage::Read: return 1.0f;
     default: return 0.0f;
@@ -170,7 +170,8 @@ void GpuErosionJob::Update(IRenderSurfaceResources& resources) {
         }
         heights_ = {};
         iteration_ = 0u;
-        stage_ = request_.thermal ? Stage::Thermal : Stage::Hydraulic;
+        // 水力の後に熱力：水が残した急な所を安息角まで崩して終わる。
+        stage_ = request_.hydraulic ? Stage::Hydraulic : Stage::Thermal;
         if (stage_ == Stage::Hydraulic) {
             RunPass(resources, ProgramClearLanes);
         }
@@ -184,11 +185,7 @@ void GpuErosionJob::Update(IRenderSurfaceResources& resources) {
             RunPass(resources, ProgramThermalApply);
         }
         if (iteration_ >= total) {
-            iteration_ = 0u;
-            stage_ = request_.hydraulic ? Stage::Hydraulic : Stage::Finish;
-            if (stage_ == Stage::Hydraulic) {
-                RunPass(resources, ProgramClearLanes);
-            }
+            stage_ = Stage::Finish;
         }
         return;
     }
@@ -202,7 +199,8 @@ void GpuErosionJob::Update(IRenderSurfaceResources& resources) {
         }
         if (iteration_ >= total) {
             RunPass(resources, ProgramSettle);
-            stage_ = Stage::Finish;
+            iteration_ = 0u;
+            stage_ = request_.thermal ? Stage::Thermal : Stage::Finish;
         }
         return;
     }

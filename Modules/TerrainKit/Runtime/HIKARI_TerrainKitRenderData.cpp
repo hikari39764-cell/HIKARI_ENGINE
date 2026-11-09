@@ -91,9 +91,9 @@ void EnsureResources(IRenderSurfaceResources& resources, TerrainStore& store) {
     if (render.controlTexture != 0u) {
         resources.Release(render.controlTexture);
     }
-    if (render.farCache != 0u) {
-        resources.Release(render.farCache);
-        render.farUploaded = 0u;
+    if (render.colorMap != 0u) {
+        resources.Release(render.colorMap);
+        render.colorMapsUploaded = 0u;
     }
     for (const auto& [tile, proxy] : render.rayProxies) {
         resources.Release(proxy.resource);
@@ -107,8 +107,8 @@ void EnsureResources(IRenderSurfaceResources& resources, TerrainStore& store) {
         resources.CreateTextureArray({samples, samples, layers, 5u, RenderSurfaceTextureFormat::R16G16Snorm});
     render.controlTexture =
         resources.CreateTextureArray({samples, samples, layers, 1u, RenderSurfaceTextureFormat::R32Uint});
-    render.farCache = resources.CreateTextureArray(
-        {kFarCacheSize, kFarCacheSize, layers, kFarCacheMips, RenderSurfaceTextureFormat::R8G8B8A8Unorm});
+    render.colorMap = resources.CreateTextureArray(
+        {kColorMapSize, kColorMapSize, layers, kColorMapMips, RenderSurfaceTextureFormat::R8G8B8A8Unorm});
     render.layoutRevision = store.LayoutRevision();
     store.MarkAllForUpload();
     store.RuleBaker().MarkAllDirty(store);
@@ -184,35 +184,35 @@ void UploadControl(IRenderSurfaceResources& resources, const TerrainRenderResour
     (void)resources.UploadTexture(render.controlTexture, upload);
 }
 
-// 背景で計算した遠景の色を送る。
-void UploadFarColors(IRenderSurfaceResources& resources, TerrainStore& store) {
+// 背景で計算した色の図を送る。
+void UploadColorMaps(IRenderSurfaceResources& resources, TerrainStore& store) {
     TerrainRenderResources& render = store.Render();
-    if (render.farCache == 0u) {
+    if (render.colorMap == 0u) {
         return;
     }
     for (auto& [tile, runtime] : store.MutableTiles()) {
-        if (!runtime.farPending || runtime.farColor.empty()) {
+        if (!runtime.colorMapPending || runtime.colorMap.empty()) {
             continue;
         }
         size_t offset = 0u;
-        uint32_t size = kFarCacheSize;
-        for (uint32_t mip = 0u; mip < kFarCacheMips; ++mip) {
+        uint32_t size = kColorMapSize;
+        for (uint32_t mip = 0u; mip < kColorMapMips; ++mip) {
             RenderSurfaceTextureUpload upload{};
             upload.layer = runtime.layer;
             upload.mip = mip;
             upload.width = size;
             upload.height = size;
             upload.rowPitchBytes = size * 4u;
-            upload.pixels = runtime.farColor.data() + offset;
-            (void)resources.UploadTexture(render.farCache, upload);
+            upload.pixels = runtime.colorMap.data() + offset;
+            (void)resources.UploadTexture(render.colorMap, upload);
             offset += static_cast<size_t>(size) * size * 4u;
             size = (std::max)(size >> 1u, 1u);
         }
-        if (!runtime.farUploaded) {
-            runtime.farUploaded = true;
-            ++render.farUploaded;
+        if (!runtime.colorMapUploaded) {
+            runtime.colorMapUploaded = true;
+            ++render.colorMapsUploaded;
         }
-        runtime.farPending = false;
+        runtime.colorMapPending = false;
     }
 }
 
@@ -231,7 +231,7 @@ void UpdateSurfaces(IRenderSurfaceResources& resources, TerrainStore& store) {
         }
         render.surfacesUploaded = 0u;
         render.surfaceRevision = library.Revision();
-        store.RuleBaker().MarkAllDirty(store); // 遠景の色は材質の平均色から作る
+        store.RuleBaker().MarkAllDirty(store); // 色の図は材質の配色から作る
         const auto layers = static_cast<uint32_t>(surfaces.size());
         if (layers == 0u) {
             return;
@@ -252,6 +252,11 @@ void UpdateSurfaces(IRenderSurfaceResources& resources, TerrainStore& store) {
             row[1] = asset.heightContrast;
             row[2] = asset.normalStrength;
             row[3] = surfaces[index].colorHeight.empty() ? 0.0f : 1.0f;
+            float* second = params.data() + static_cast<size_t>(layers + index) * 4u;
+            second[0] = surfaces[index].averageColor[0];
+            second[1] = surfaces[index].averageColor[1];
+            second[2] = surfaces[index].averageColor[2];
+            second[3] = asset.variationContrast;
         }
         RenderSurfaceTextureUpload upload{};
         upload.width = layers;
@@ -355,24 +360,25 @@ void UpdateRayProxies(IRenderSurfaceResources& resources, TerrainStore& store) {
     }
 }
 
-// 材質の図が揃っていれば、区画の色を制御図の材質の平均色で置き換える（数点の平均）。
-void AddSurfaceColor(const TerrainStore& store, const std::vector<std::array<float, 4>>& colors, TileCoord tile,
-                     uint32_t x, uint32_t z, uint32_t size, float albedo[3]) {
-    if (colors.empty()) {
+// 色の図が揃っていれば、区画の色をその平均で置き換える（数点の平均）。
+void AddSurfaceColor(const TileRuntime& runtime, uint32_t samples, uint32_t x, uint32_t z, uint32_t size,
+                     float albedo[3]) {
+    if (runtime.colorMap.empty()) {
         return;
     }
-    const auto* raster = store.Data().Control().Find(tile);
-    const uint32_t samples = TERRAIN::DATA::TileSamples(store.Settings().grid);
     float sum[3]{};
     constexpr uint32_t kTaps = 4u;
+    const uint32_t scale = samples - 1u;
     for (uint32_t tapZ = 0u; tapZ < kTaps; ++tapZ) {
         for (uint32_t tapX = 0u; tapX < kTaps; ++tapX) {
-            const uint32_t sx = (std::min)(x + size * tapX / kTaps + size / (2u * kTaps), samples - 1u);
-            const uint32_t sz = (std::min)(z + size * tapZ / kTaps + size / (2u * kTaps), samples - 1u);
-            const uint32_t value = raster != nullptr ? raster->values[static_cast<size_t>(sz) * samples + sx] : 0u;
-            const std::array<float, 4> color = ControlSampleColor(value, colors);
-            for (size_t channel = 0u; channel < 3u; ++channel) {
-                sum[channel] += color[channel];
+            const uint32_t sx = (std::min)(x + size * tapX / kTaps + size / (2u * kTaps), scale);
+            const uint32_t sz = (std::min)(z + size * tapZ / kTaps + size / (2u * kTaps), scale);
+            const uint32_t fx = sx * (kColorMapSize - 1u) / scale;
+            const uint32_t fz = sz * (kColorMapSize - 1u) / scale;
+            const uint8_t* texel = runtime.colorMap.data() + (static_cast<size_t>(fz) * kColorMapSize + fx) * 4u;
+            for (int channel = 0; channel < 3; ++channel) {
+                const float root = static_cast<float>(texel[channel]) / 255.0f;
+                sum[channel] += root * root;
             }
         }
     }
@@ -383,7 +389,6 @@ void AddSurfaceColor(const TerrainStore& store, const std::vector<std::array<flo
 
 uint32_t CreateRayProxy(IRenderSurfaceResources& resources, const TerrainStore& store, TileCoord tile,
                         const TileRuntime& runtime) {
-    const std::vector<std::array<float, 4>> colors = SurfaceColorTable(store);
     const auto& grid = store.Settings().grid;
     const uint32_t samples = TERRAIN::DATA::TileSamples(grid);
     uint32_t step = (std::max)((samples - 1u) / kRayProxyCells, 1u);
@@ -446,7 +451,7 @@ uint32_t CreateRayProxy(IRenderSurfaceResources& resources, const TerrainStore& 
             region.normal[1] = inverseLength;
             region.normal[2] = normalZ * inverseLength;
             PlaceholderAlbedo(height / static_cast<float>(count), region.normal[1], region.albedo);
-            AddSurfaceColor(store, colors, tile, regionX * step, regionZ * step, kRayProxyRegionCells * step,
+            AddSurfaceColor(runtime, samples, regionX * step, regionZ * step, kRayProxyRegionCells * step,
                             region.albedo);
             regions.push_back(region);
         }
@@ -461,7 +466,7 @@ void PrepareTerrainRenderData(IRenderSurfaceResources& resources, TerrainStore& 
     UploadPendingTiles(resources, store);
     UpdateSurfaces(resources, store);
     store.RuleBaker().Update(store);
-    UploadFarColors(resources, store);
+    UploadColorMaps(resources, store);
     UpdateRayProxies(resources, store);
     store.Erosion().Update(resources);
     store.Rivers().Prepare(resources, store);

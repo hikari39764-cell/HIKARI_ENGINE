@@ -30,8 +30,8 @@ Texture2DArray<float4> gTerrainSurfaceColor : register(t4, space10);
 Texture2DArray<float4> gTerrainSurfaceDetail : register(t5, space10);
 // 材質の表（列 = 枠の番号）：繰り返しの長さ、高さ混合の幅、法線の強さ、図があるか。
 Texture2DArray<float4> gTerrainSurfaceParams : register(t6, space10);
-// 遠景の色（瓦片ごと）：RGB は線形の平方根、A は粗さ。遠くの画素はこれだけを読む。
-Texture2DArray<float4> gTerrainFarCache : register(t7, space10);
+// 色の図（瓦片ごと）：RGB は線形の平方根、A は環境光の遮蔽。地表の色はどの距離でもこれで決まる。
+Texture2DArray<float4> gTerrainColorMap : register(t7, space10);
 
 cbuffer RenderSurfaceConstants : register(b3)
 {
@@ -45,7 +45,7 @@ cbuffer RenderSurfaceConstants : register(b3)
     uint gTerrainGridCells;
     uint gTerrainDebugFlags;
     uint gTerrainSurfaceCount;
-    uint gTerrainFarReady;
+    uint gTerrainColorMapReady;
     float gTerrainSnowLine;
     float gTerrainSnowAmount;
     float gTerrainWetness;

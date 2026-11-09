@@ -244,17 +244,24 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                   }
               });
     add.Mutation("terrainkit.generate",
-                 "Replace the terrain with a noise layer and an empty sculpt layer. One undo step.",
+                 "Replace the terrain with a mountain mass (or plain noise when massifRadiusMeters is 0) and an empty "
+                 "sculpt layer. One undo step.",
                  {{"amplitudeMeters", Type::Number, "Height of noise value 1."},
                   {"offsetMeters", Type::Number, "Height added to the noise."},
                   {"featureSizeMeters", Type::Number, "World size of the largest noise feature."},
                   {"octaves", Type::Integer, "Noise octaves."},
-                  {"seed", Type::Integer, "Noise seed."}},
+                  {"seed", Type::Integer, "Noise seed."},
+                  {"massifRadiusMeters", Type::Number, "Radius of the mountain mass; 0 means plain noise."},
+                  {"massifX", Type::Number, "World X of the mountain center."},
+                  {"massifZ", Type::Number, "World Z of the mountain center."}},
                  [shared](const Json& parameters, Sink& result) {
                      if (!RequireTerrain(result)) {
                          return;
                      }
-                     NoiseLayerSettings noise = DefaultNoise();
+                     NoiseLayerSettings noise = DefaultMountain();
+                     noise.massifRadiusMeters = parameters.value("massifRadiusMeters", noise.massifRadiusMeters);
+                     noise.massifCenterMeters.x = parameters.value("massifX", noise.massifCenterMeters.x);
+                     noise.massifCenterMeters.y = parameters.value("massifZ", noise.massifCenterMeters.y);
                      noise.amplitudeMeters = parameters.value("amplitudeMeters", noise.amplitudeMeters);
                      noise.offsetMeters = parameters.value("offsetMeters", noise.offsetMeters);
                      noise.featureSizeMeters = parameters.value("featureSizeMeters", noise.featureSizeMeters);
@@ -756,6 +763,50 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
             Ok(result, "Stamp applied.", {{"milliseconds", milliseconds}});
         });
 
+    add.Mutation(
+        "terrainkit.valleys",
+        "Turn the large shape of the terrain, or of a square around a point, into an eroded mountain: branching "
+        "valleys and ridges, talus, rock ledges and rough rock. Fine detail is rebuilt. One undo step.",
+        {{"x", Type::Number, "World X of the center; omit x and z for the whole terrain."},
+         {"z", Type::Number, "World Z of the center."},
+         {"radiusMeters", Type::Number, "Half size of the square area around the center."},
+         {"erosion", Type::Number, "How deeply water carves the valleys."},
+         {"hillSlope", Type::Number, "Tangent of the steepest hillside."},
+         {"detail", Type::Number, "Small variation that makes valleys wander and branch."},
+         {"rockVariation", Type::Number, "How much the rock differs from place to place, 0..1."},
+         {"ledges", Type::Number, "Horizontal steps in hard rock, 0..1."},
+         {"roughness", Type::Number, "Height of the rock roughness in meters."},
+         {"seed", Type::Integer, "Random seed."},
+         {"strength", Type::Number, "Blend with the original terrain, 0..1."}},
+        [shared](const Json& parameters, Sink& result) {
+            if (!RequireTerrain(result)) {
+                return;
+            }
+            TerrainStore& store = TerrainStore::Get();
+            ValleySettings settings = shared->valleys;
+            settings.erosion = parameters.value("erosion", settings.erosion);
+            settings.hillSlope = parameters.value("hillSlope", settings.hillSlope);
+            settings.detail = parameters.value("detail", settings.detail);
+            settings.rockVariation = parameters.value("rockVariation", settings.rockVariation);
+            settings.ledges = parameters.value("ledges", settings.ledges);
+            settings.roughness = parameters.value("roughness", settings.roughness);
+            settings.seed = parameters.value("seed", settings.seed);
+            settings.strength = parameters.value("strength", settings.strength);
+            SampleRect rect = WholeTerrainRect(store);
+            if (parameters.contains("x") && parameters.contains("z")) {
+                rect = IntersectRects(rect, SampleRectAround(store.Settings().grid, parameters.at("x").get<float>(),
+                                                             parameters.at("z").get<float>(),
+                                                             parameters.value("radiusMeters", 256.0f)));
+            }
+            const auto started = std::chrono::steady_clock::now();
+            std::string error{};
+            if (!RunValleys(*shared, rect, settings, error)) {
+                Fail(result, "VALLEYS_FAILED", error);
+                return;
+            }
+            const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+            Ok(result, "Valleys carved.", {{"samples", rect.Count()}, {"seconds", seconds}});
+        });
     add.Mutation(
         "terrainkit.erode",
         "Run water and thermal erosion over the terrain or a square around a point. The GPU path runs over a few "

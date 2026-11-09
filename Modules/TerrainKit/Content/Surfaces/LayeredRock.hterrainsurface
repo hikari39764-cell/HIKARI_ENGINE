@@ -1,0 +1,31 @@
+{
+  "name": "Layered Rock",
+  "color": "Rock028_1K-JPG_Color.jpg",
+  "normal": "Rock028_1K-JPG_NormalDX.jpg",
+  "height": "Rock028_1K-JPG_Displacement.jpg",
+  "tilingMeters": 10.0,
+  "heightContrast": 0.15,
+  "normalStrength": 1.5,
+  "variationContrast": 1.6,
+  "roughnessValue": 0.84,
+  "source": "https://ambientcg.com/view?id=Rock028",
+  "license": "CC0-1.0",
+  "author": "ambientCG (Lennart Demes)",
+  "mapColorA": [
+    0.502,
+    0.471,
+    0.431
+  ],
+  "mapColorB": [
+    0.588,
+    0.51,
+    0.412
+  ],
+  "mapColorC": [
+    0.392,
+    0.369,
+    0.345
+  ],
+  "mapBandMeters": 9,
+  "mapBandAmount": 1.0
+}

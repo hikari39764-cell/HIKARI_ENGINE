@@ -5,8 +5,10 @@
 #include <chrono>
 #include <cmath>
 #include <execution>
+#include <utility>
 
 #include "HIKARI_TerrainKitStore.h"
+#include "HIKARI_TerrainKitSurfaces.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataControl.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataRules.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataSpline.h"
@@ -68,46 +70,51 @@ std::vector<float> CollectHeights(const TerrainStore& store, TileCoord tile) {
     return heights;
 }
 
-// 遠景の色：制御図の 2 材質の平均色を混ぜて全段を作る（RGB は平方根で詰める、A は粗さ）。
-std::vector<uint8_t> BuildFarColor(const std::vector<uint32_t>& control, uint32_t samples,
-                                   const std::vector<std::array<float, 4>>& surfaces) {
-    std::vector<float> level(static_cast<size_t>(kFarCacheSize) * kFarCacheSize * 4u);
-    const uint32_t lastSample = samples - 1u;
-    for (uint32_t z = 0u; z < kFarCacheSize; ++z) {
-        const uint32_t sourceZ = z * lastSample / (kFarCacheSize - 1u);
-        for (uint32_t x = 0u; x < kFarCacheSize; ++x) {
-            const uint32_t sourceX = x * lastSample / (kFarCacheSize - 1u);
-            // 遠景の一画素は制御図の 2 標本分。周りの 3 x 3 を平均して道の縁などのぎざぎざを消す。
-            std::array<float, 4> color{};
-            for (uint32_t tapZ = sourceZ > 0u ? sourceZ - 1u : 0u; tapZ <= (std::min)(sourceZ + 1u, lastSample);
-                 ++tapZ) {
-                for (uint32_t tapX = sourceX > 0u ? sourceX - 1u : 0u; tapX <= (std::min)(sourceX + 1u, lastSample);
-                     ++tapX) {
-                    const std::array<float, 4> tap =
-                        ControlSampleColor(control[static_cast<size_t>(tapZ) * samples + tapX], surfaces);
-                    for (size_t channel = 0u; channel < color.size(); ++channel) {
-                        color[channel] += tap[channel];
-                    }
-                }
-            }
-            const uint32_t tapsZ = (std::min)(sourceZ + 1u, lastSample) - (sourceZ > 0u ? sourceZ - 1u : 0u) + 1u;
-            const uint32_t tapsX = (std::min)(sourceX + 1u, lastSample) - (sourceX > 0u ? sourceX - 1u : 0u) + 1u;
-            for (size_t channel = 0u; channel < color.size(); ++channel) {
-                level[(static_cast<size_t>(z) * kFarCacheSize + x) * 4u + channel] =
-                    color[channel] / static_cast<float>(tapsZ * tapsX);
+// 読み取りの格子（m）。集水と尾根・谷を見るには十分で、大きな世界でも背景で一瞬で解ける細かさ。
+constexpr float kAnalysisCellMeters = 4.0f;
+
+// 世界全体の粗い高さを焼いた瓦片から集める。
+TerrainAnalysis CollectAnalysisHeights(const TerrainStore& store) {
+    const TerrainSettings& settings = store.Settings();
+    const TerrainGrid& grid = settings.grid;
+    const uint32_t samples = TileSamples(grid);
+    const uint32_t step = (std::max)(static_cast<uint32_t>(std::lround(kAnalysisCellMeters / SampleSpacing(grid))), 1u);
+    const uint32_t cellsPerTile = (samples - 1u) / step;
+    TerrainAnalysis analysis{};
+    analysis.width = static_cast<uint32_t>(settings.tilesX) * cellsPerTile + 1u;
+    analysis.height = static_cast<uint32_t>(settings.tilesZ) * cellsPerTile + 1u;
+    analysis.cellMeters = static_cast<float>(SampleSpacing(grid) * step);
+    analysis.originX = static_cast<double>(settings.firstTileX) * grid.tileSizeMeters;
+    analysis.originZ = static_cast<double>(settings.firstTileZ) * grid.tileSizeMeters;
+    analysis.heights.assign(static_cast<size_t>(analysis.width) * analysis.height, 0.0f);
+    for (const auto& [tile, runtime] : store.Tiles()) {
+        if (runtime.heights.empty()) {
+            continue;
+        }
+        const uint32_t firstX = static_cast<uint32_t>(tile.x - settings.firstTileX) * cellsPerTile;
+        const uint32_t firstZ = static_cast<uint32_t>(tile.z - settings.firstTileZ) * cellsPerTile;
+        for (uint32_t z = 0u; z <= cellsPerTile; ++z) {
+            for (uint32_t x = 0u; x <= cellsPerTile; ++x) {
+                analysis.heights[static_cast<size_t>(firstZ + z) * analysis.width + firstX + x] =
+                    DequantizeHeight(grid, runtime.heights[static_cast<size_t>(z * step) * samples + x * step]);
             }
         }
     }
+    return analysis;
+}
+
+// 全段を作って詰める。RGB は線形の平方根で詰める（暗い色の段差を減らす）。
+std::vector<uint8_t> PackMipChain(std::vector<float> level) {
     std::vector<uint8_t> bytes{};
-    uint32_t size = kFarCacheSize;
-    for (uint32_t mip = 0u; mip < kFarCacheMips; ++mip) {
+    uint32_t size = kColorMapSize;
+    for (uint32_t mip = 0u; mip < kColorMapMips; ++mip) {
         const size_t offset = bytes.size();
         bytes.resize(offset + static_cast<size_t>(size) * size * 4u);
         for (size_t index = 0u; index < static_cast<size_t>(size) * size * 4u; ++index) {
-            const float value = (index % 4u) == 3u ? level[index] : std::sqrt((std::max)(level[index], 0.0f));
+            const float value = (index % 4u) != 3u ? std::sqrt((std::max)(level[index], 0.0f)) : level[index];
             bytes[offset + index] = static_cast<uint8_t>(std::clamp(value, 0.0f, 1.0f) * 255.0f + 0.5f);
         }
-        if (mip + 1u == kFarCacheMips) {
+        if (mip + 1u == kColorMapMips) {
             break;
         }
         const uint32_t next = (std::max)(size >> 1u, 1u);
@@ -131,28 +138,6 @@ std::vector<uint8_t> BuildFarColor(const std::vector<uint32_t>& control, uint32_
 }
 
 } // namespace
-
-std::array<float, 4> ControlSampleColor(uint32_t control, const std::vector<std::array<float, 4>>& colors) noexcept {
-    const ControlTexel texel = UnpackControlTexel(control);
-    const float blend = static_cast<float>(texel.blend) / 255.0f;
-    const size_t limit = colors.size() - 1u;
-    const std::array<float, 4>& base = colors[(std::min)(static_cast<size_t>(texel.baseMaterial), limit)];
-    const std::array<float, 4>& overlay = colors[(std::min)(static_cast<size_t>(texel.overlayMaterial), limit)];
-    std::array<float, 4> out{};
-    for (size_t channel = 0u; channel < out.size(); ++channel) {
-        out[channel] = base[channel] + (overlay[channel] - base[channel]) * blend;
-    }
-    return out;
-}
-
-std::vector<std::array<float, 4>> SurfaceColorTable(const TerrainStore& store) {
-    std::vector<std::array<float, 4>> colors{};
-    for (const CookedSurface& surface : store.Surfaces().Surfaces()) {
-        colors.push_back({surface.averageColor[0], surface.averageColor[1], surface.averageColor[2],
-                          std::clamp(surface.asset.roughnessValue, 0.0f, 1.0f)});
-    }
-    return colors;
-}
 
 void TerrainRuleBaker::MarkDirty(TileCoord tile) {
     dirty_.insert(tile);
@@ -180,10 +165,11 @@ void TerrainRuleBaker::Update(TerrainStore& store) {
         if (job_.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
             return;
         }
-        std::vector<TileResult> results = job_.get();
+        JobResult finished = job_.get();
         activeTiles_ = 0u;
-        for (TileResult& result : results) {
-            store.ApplyRuleResult(result.tile, std::move(result.control), std::move(result.farColor));
+        analysis_ = std::move(finished.analysis);
+        for (TileResult& result : finished.tiles) {
+            store.ApplyRuleResult(result.tile, std::move(result.control), std::move(result.colorMap));
         }
     }
     const auto& surfaces = store.Surfaces().Surfaces();
@@ -219,7 +205,11 @@ void TerrainRuleBaker::Update(TerrainStore& store) {
     if (inputs.empty()) {
         return;
     }
-    std::vector<std::array<float, 4>> colors = SurfaceColorTable(store);
+    std::vector<SurfaceMapStyle> styles{};
+    styles.reserve(surfaces.size());
+    for (const CookedSurface& surface : surfaces) {
+        styles.push_back(MakeSurfaceMapStyle(surface));
+    }
     // 曲線は下の層から順に塗る（上の層が勝つ）。
     std::vector<PreparedSpline> splines{};
     for (const HeightLayer& layer : store.Data().Stack().layers) {
@@ -227,32 +217,45 @@ void TerrainRuleBaker::Update(TerrainStore& store) {
             splines.push_back(PrepareSpline(layer.spline));
         }
     }
+    // 高さが変わっていなければ前の読み取りをそのまま使う。
+    TerrainAnalysis fresh = CollectAnalysisHeights(store);
+    std::shared_ptr<const TerrainAnalysis> previous =
+        analysis_ != nullptr && analysis_->heights == fresh.heights ? analysis_ : nullptr;
     activeTiles_ = inputs.size();
-    job_ = std::async(std::launch::async, [inputs = std::move(inputs), rules = store.SurfaceRules(),
-                                           colors = std::move(colors), samples, splines = std::move(splines), grid,
-                                           spacing = static_cast<float>(SampleSpacing(grid))]() mutable {
-        std::vector<TileResult> results(inputs.size());
-        std::vector<size_t> indices(inputs.size());
-        for (size_t index = 0u; index < indices.size(); ++index) {
-            indices[index] = index;
-        }
-        std::for_each(std::execution::par, indices.begin(), indices.end(), [&](size_t index) {
-            TileInput& input = inputs[index];
-            TileResult& result = results[index];
-            result.tile = input.tile;
-            SurfaceRuleTile tile{};
-            tile.samples = samples;
-            tile.spacingMeters = spacing;
-            tile.firstSampleX = input.firstSampleX;
-            tile.firstSampleZ = input.firstSampleZ;
-            tile.heights = input.heights;
-            EvaluateSurfaceRules(rules, tile, input.control);
-            PaintSplineSurfaces(splines, grid, TileSampleRect(grid, input.tile), input.control);
-            result.farColor = BuildFarColor(input.control, samples, colors);
-            result.control = std::move(input.control);
-        });
-        return results;
-    });
+    job_ = std::async(std::launch::async,
+                      [inputs = std::move(inputs), rules = store.SurfaceRules(), styles = std::move(styles), samples,
+                       splines = std::move(splines), grid, previous = std::move(previous), fresh = std::move(fresh),
+                       spacing = static_cast<float>(SampleSpacing(grid))]() mutable {
+                          std::shared_ptr<const TerrainAnalysis> analysis = previous;
+                          if (analysis == nullptr) {
+                              BuildTerrainAnalysis(fresh);
+                              analysis = std::make_shared<const TerrainAnalysis>(std::move(fresh));
+                          }
+                          std::vector<TileResult> results(inputs.size());
+                          std::vector<size_t> indices(inputs.size());
+                          for (size_t index = 0u; index < indices.size(); ++index) {
+                              indices[index] = index;
+                          }
+                          std::for_each(std::execution::par, indices.begin(), indices.end(), [&](size_t index) {
+                              TileInput& input = inputs[index];
+                              TileResult& result = results[index];
+                              result.tile = input.tile;
+                              SurfaceRuleTile tile{};
+                              tile.samples = samples;
+                              tile.spacingMeters = spacing;
+                              tile.firstSampleX = input.firstSampleX;
+                              tile.firstSampleZ = input.firstSampleZ;
+                              tile.heights = input.heights;
+                              tile.analysis = analysis.get();
+                              EvaluateSurfaceRules(rules, tile, input.control);
+                              PaintSplineSurfaces(splines, grid, TileSampleRect(grid, input.tile), input.control);
+                              std::vector<float> color{};
+                              BakeSurfaceColorMap(rules, tile, input.control, styles, kColorMapSize, color);
+                              result.colorMap = PackMipChain(std::move(color));
+                              result.control = std::move(input.control);
+                          });
+                          return JobResult{std::move(results), std::move(analysis)};
+                      });
 }
 
 } // namespace HIKARI::TERRAINKIT

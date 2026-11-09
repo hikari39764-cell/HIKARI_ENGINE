@@ -1,0 +1,29 @@
+{
+  "name": "Dry Grass",
+  "color": "Grass003_1K-JPG_Color.jpg",
+  "normal": "Grass003_1K-JPG_NormalDX.jpg",
+  "height": "Grass003_1K-JPG_Displacement.jpg",
+  "tilingMeters": 3.0,
+  "heightContrast": 0.3,
+  "normalStrength": 1.1,
+  "variationContrast": 1.4,
+  "roughnessValue": 0.94,
+  "source": "https://ambientcg.com/view?id=Grass003",
+  "license": "CC0-1.0",
+  "author": "ambientCG (Lennart Demes)",
+  "mapColorA": [
+    0.533,
+    0.471,
+    0.275
+  ],
+  "mapColorB": [
+    0.463,
+    0.424,
+    0.243
+  ],
+  "mapColorC": [
+    0.588,
+    0.51,
+    0.329
+  ]
+}

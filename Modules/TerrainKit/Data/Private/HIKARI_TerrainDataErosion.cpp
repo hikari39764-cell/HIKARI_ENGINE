@@ -60,6 +60,12 @@ bool ErosionField::Valid() const noexcept {
            std::all_of(heights.begin(), heights.end(), [](float h) { return std::isfinite(h); });
 }
 
+constexpr float kMinimumTransportVolume = 1.0e-7f;
+
+// 水が薄い所では運べない（Jákó & Tóth 2011 の lmax）。薄い膜で流速の割り算が暴れて無理に削るのを防ぐ。
+constexpr float kFullCapacityDepth = 0.01f;
+constexpr float kDepositSlope = 0.67f; // tan 34 度
+
 bool RunHydraulicErosion(ErosionField& field, const HydraulicErosionSettings& requested, ErosionMaps* maps,
                          std::string& error) {
     if (!ValidateField(field, error)) {
@@ -144,7 +150,8 @@ bool RunHydraulicErosion(ErosionField& field, const HydraulicErosionSettings& re
                 const float slope2 = gx * gx + gz * gz;
                 const float tilt = (std::max)(std::sqrt(slope2 / (1.0f + slope2)), s.minimumTilt);
                 const float speed = std::sqrt(velX[i] * velX[i] + velZ[i] * velZ[i]);
-                const float capacity = s.sedimentCapacity * tilt * speed;
+                const float capacity =
+                    s.sedimentCapacity * tilt * speed * std::clamp(water[i] / kFullCapacityDepth, 0.0f, 1.0f);
                 float ground = b[i];
                 float carried = sediment[i];
                 if (capacity > carried) {
@@ -157,7 +164,11 @@ bool RunHydraulicErosion(ErosionField& field, const HydraulicErosionSettings& re
                         maps->wear[i] += amount;
                     }
                 } else {
-                    const float amount = (std::min)(s.depositRate * (carried - capacity) * dt, carried);
+                    // 周りより安息角を超えて高く積もらせない（一点に集まって尖った山にならないように）。
+                    const float lowest = (std::min)({b[at(x > 0u ? x - 1u : x, z)], b[at(x + 1u < w ? x + 1u : x, z)],
+                                                     b[at(x, z > 0u ? z - 1u : z)], b[at(x, z + 1u < h ? z + 1u : z)]});
+                    const float room = (std::max)(0.0f, lowest + kDepositSlope * l - ground);
+                    const float amount = (std::min)({s.depositRate * (carried - capacity) * dt, carried, room});
                     ground += amount;
                     carried -= amount;
                     if (maps != nullptr) {
@@ -169,20 +180,22 @@ bool RunHydraulicErosion(ErosionField& field, const HydraulicErosionSettings& re
             }
         });
         b.swap(bNext);
-        // 5. 堆積物を流速で半ラグランジュ移流（標本単位で戻った位置を双線形に読む）
+        // 5. 堆積物を水と一緒に運ぶ：管の流量の割合で隣へ配る。半ラグランジュ移流と違って総量が保存され、
+        //    流れの出口で堆積物が増えて尖った山ができない。
+        const auto carried = [&](std::size_t n, float flux) {
+            const float out = fluxL[n] + fluxR[n] + fluxT[n] + fluxB[n];
+            const float volume = water[n] * area + out * dt;
+            return volume > kMinimumTransportVolume ? sediment[n] * flux * dt / volume : 0.0f;
+        };
         ForEachRow(h, [&](uint32_t z) {
             for (uint32_t x = 0u; x < w; ++x) {
                 const std::size_t i = at(x, z);
-                const float sx = std::clamp(static_cast<float>(x) - velX[i] * dt / l, 0.0f, static_cast<float>(w - 1u));
-                const float sz = std::clamp(static_cast<float>(z) - velZ[i] * dt / l, 0.0f, static_cast<float>(h - 1u));
-                const auto x0 = (std::min)(static_cast<uint32_t>(sx), w - 2u);
-                const auto z0 = (std::min)(static_cast<uint32_t>(sz), h - 2u);
-                const float fx = sx - static_cast<float>(x0);
-                const float fz = sz - static_cast<float>(z0);
-                const float top = sediment[at(x0, z0)] + (sediment[at(x0 + 1u, z0)] - sediment[at(x0, z0)]) * fx;
-                const float bottom =
-                    sediment[at(x0, z0 + 1u)] + (sediment[at(x0 + 1u, z0 + 1u)] - sediment[at(x0, z0 + 1u)]) * fx;
-                sedimentNext[i] = top + (bottom - top) * fz;
+                float next = sediment[i] - carried(i, fluxL[i] + fluxR[i] + fluxT[i] + fluxB[i]);
+                next += x > 0u ? carried(i - 1u, fluxR[i - 1u]) : 0.0f;
+                next += x + 1u < w ? carried(i + 1u, fluxL[i + 1u]) : 0.0f;
+                next += z > 0u ? carried(i - w, fluxB[i - w]) : 0.0f;
+                next += z + 1u < h ? carried(i + w, fluxT[i + w]) : 0.0f;
+                sedimentNext[i] = (std::max)(next, 0.0f);
             }
         });
         sediment.swap(sedimentNext);
@@ -313,11 +326,11 @@ bool ApplyErosionToLayer(TerrainData& data, uint32_t layerId, const SampleRect& 
     if (maps != nullptr) {
         *maps = {};
     }
-    // 熱力（崖を安息角まで崩す）→ 水力（谷を刻む）の順。
-    if (request.thermal && !RunThermalErosion(field, request.thermalSettings, maps, error)) {
+    // 水力（谷を刻む）→ 熱力（水が残した急な所を安息角まで崩す）の順。
+    if (request.hydraulic && !RunHydraulicErosion(field, request.hydraulicSettings, maps, error)) {
         return false;
     }
-    if (request.hydraulic && !RunHydraulicErosion(field, request.hydraulicSettings, maps, error)) {
+    if (request.thermal && !RunThermalErosion(field, request.thermalSettings, maps, error)) {
         return false;
     }
     return CommitErosionResult(data, layerId, rect, request, input, field.heights, recorder, error);

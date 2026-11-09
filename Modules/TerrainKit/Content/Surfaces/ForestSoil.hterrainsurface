@@ -1,0 +1,29 @@
+{
+  "name": "Forest Soil",
+  "color": "Ground048_1K-JPG_Color.jpg",
+  "normal": "Ground048_1K-JPG_NormalDX.jpg",
+  "height": "Ground048_1K-JPG_Displacement.jpg",
+  "tilingMeters": 3.5,
+  "heightContrast": 0.15,
+  "normalStrength": 1.6,
+  "variationContrast": 1.2,
+  "roughnessValue": 0.9,
+  "source": "https://ambientcg.com/view?id=Ground048",
+  "license": "CC0-1.0",
+  "author": "ambientCG (Lennart Demes)",
+  "mapColorA": [
+    0.275,
+    0.227,
+    0.173
+  ],
+  "mapColorB": [
+    0.235,
+    0.196,
+    0.149
+  ],
+  "mapColorC": [
+    0.329,
+    0.267,
+    0.196
+  ]
+}

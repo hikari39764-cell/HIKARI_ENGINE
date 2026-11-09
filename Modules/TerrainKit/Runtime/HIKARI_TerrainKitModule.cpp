@@ -52,8 +52,8 @@ struct TerrainDrawConstants {
     float tileCells = 256.0f;
     uint32_t gridCells = kGridCells;
     uint32_t debugFlags = 0u;
-    uint32_t surfaceCount = 0u; // 0 なら材質の図が揃うまで仮の色で描く
-    uint32_t farReady = 0u;     // 遠景の色が揃っていれば 1
+    uint32_t surfaceCount = 0u;  // 0 なら材質の図が揃うまで仮の色で描く
+    uint32_t colorMapReady = 0u; // 色の図が揃っていれば 1
     float snowLineMeters = 0.0f;
     float snowAmount = 0.0f;
     float wetness = 0.0f;
@@ -182,7 +182,7 @@ public:
         constants.surfaceCount = render.surfacesUploaded == surfaces.size() && render.surfaceParams != 0u
                                      ? static_cast<uint32_t>(surfaces.size())
                                      : 0u;
-        constants.farReady = render.farCache != 0u && render.farUploaded >= store.Tiles().size() ? 1u : 0u;
+        constants.colorMapReady = render.colorMap != 0u && render.colorMapsUploaded >= store.Tiles().size() ? 1u : 0u;
         constants.snowLineMeters = store.Weather().snowLineMeters;
         constants.snowAmount = store.Weather().snowAmount;
         constants.wetness = store.Weather().wetness;
@@ -194,7 +194,7 @@ public:
         draw.textures[3] = render.surfaceColor;
         draw.textures[4] = render.surfaceDetail;
         draw.textures[5] = render.surfaceParams;
-        draw.textures[6] = render.farCache;
+        draw.textures[6] = render.colorMap;
         draw.indexBuffer = render.indexBuffer;
         draw.indexCount = render.indexCount;
         draw.instances = instances_.data();

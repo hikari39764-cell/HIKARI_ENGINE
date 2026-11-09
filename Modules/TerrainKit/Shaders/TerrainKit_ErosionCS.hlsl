@@ -41,6 +41,9 @@ RWStructuredBuffer<float4> gMaps : register(u3);
 
 static const float kGravity = 9.81f;
 static const float kMinimumWaterDepth = 1.0e-5f;
+// 水が薄い所では運べない（Jákó & Tóth 2011 の lmax）。
+static const float kFullCapacityDepth = 0.01f;
+static const float kDepositSlope = 0.67f; // tan 34 度
 
 uint IndexOf(uint x, uint z) { return z * gWidth + x; }
 
@@ -110,7 +113,7 @@ void CSErode(uint3 id : SV_DispatchThreadID)
     const float gz = (gIn[IndexOf(x, min(z + 1u, gHeight - 1u))].ground - gIn[IndexOf(x, z > 0u ? z - 1u : z)].ground) / (2.0f * gSpacing);
     const float slope2 = gx * gx + gz * gz;
     const float tilt = max(sqrt(slope2 / (1.0f + slope2)), gMinimumTilt);
-    const float capacity = gCapacity * tilt * length(velocity);
+    const float capacity = gCapacity * tilt * length(velocity) * saturate(cell.water / kFullCapacityDepth);
     float4 maps = gMaps[i];
     if (capacity > cell.sediment)
     {
@@ -123,7 +126,11 @@ void CSErode(uint3 id : SV_DispatchThreadID)
     }
     else
     {
-        const float amount = min(gDeposit * (cell.sediment - capacity) * gTimeStep, cell.sediment);
+        // 周りより安息角を超えて高く積もらせない（一点に集まって尖った山にならないように）。
+        const float lowest = min(min(gIn[IndexOf(x > 0u ? x - 1u : x, z)].ground, gIn[IndexOf(min(x + 1u, gWidth - 1u), z)].ground),
+                                 min(gIn[IndexOf(x, z > 0u ? z - 1u : z)].ground, gIn[IndexOf(x, min(z + 1u, gHeight - 1u))].ground));
+        const float room = max(0.0f, lowest + kDepositSlope * gSpacing - cell.ground);
+        const float amount = min(min(gDeposit * (cell.sediment - capacity) * gTimeStep, cell.sediment), room);
         cell.ground += amount;
         cell.sediment -= amount;
         maps.y += amount;
@@ -132,22 +139,31 @@ void CSErode(uint3 id : SV_DispatchThreadID)
     gOut[i] = cell;
 }
 
-// 堆積物を流速で半ラグランジュ移流し、水を蒸発させる。
+// 流量あたりの運ばれる堆積物（管の流量の割合で隣へ配る）。
+float CarriedPerFlux(uint index)
+{
+    const float4 flux = gLanesA[index];
+    const float volume = gIn[index].water * gSpacing * gSpacing + (flux.x + flux.y + flux.z + flux.w) * gTimeStep;
+    return volume > 1.0e-7f ? gIn[index].sediment * gTimeStep / volume : 0.0f;
+}
+
+// 堆積物を水と一緒に運び（総量を保存する）、水を蒸発させる。
 [numthreads(32, 32, 1)]
 void CSTransport(uint3 id : SV_DispatchThreadID)
 {
     BEGIN_CELL
     Cell cell = gIn[i];
-    const float2 velocity = gLanesB[i].xy;
-    const float sx = clamp(float(x) - velocity.x * gTimeStep / gSpacing, 0.0f, float(gWidth - 1u));
-    const float sz = clamp(float(z) - velocity.y * gTimeStep / gSpacing, 0.0f, float(gHeight - 1u));
-    const uint x0 = min(uint(sx), gWidth - 2u);
-    const uint z0 = min(uint(sz), gHeight - 2u);
-    const float fx = sx - float(x0);
-    const float fz = sz - float(z0);
-    const float top = lerp(gIn[IndexOf(x0, z0)].sediment, gIn[IndexOf(x0 + 1u, z0)].sediment, fx);
-    const float bottom = lerp(gIn[IndexOf(x0, z0 + 1u)].sediment, gIn[IndexOf(x0 + 1u, z0 + 1u)].sediment, fx);
-    cell.sediment = lerp(top, bottom, fz);
+    const float4 flux = gLanesA[i];
+    float next = cell.sediment - CarriedPerFlux(i) * (flux.x + flux.y + flux.z + flux.w);
+    if (x > 0u)
+        next += CarriedPerFlux(i - 1u) * gLanesA[i - 1u].y;
+    if (x + 1u < gWidth)
+        next += CarriedPerFlux(i + 1u) * gLanesA[i + 1u].x;
+    if (z > 0u)
+        next += CarriedPerFlux(i - gWidth) * gLanesA[i - gWidth].w;
+    if (z + 1u < gHeight)
+        next += CarriedPerFlux(i + gWidth) * gLanesA[i + gWidth].z;
+    cell.sediment = max(next, 0.0f);
     cell.water *= gKeepWater;
     gOut[i] = cell;
 }

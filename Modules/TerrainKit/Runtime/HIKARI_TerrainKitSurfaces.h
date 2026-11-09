@@ -11,6 +11,7 @@
 
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataRules.h"
 
 // 地表材質。.hterrainsurface（JSON）が元の図を指し、読む時に通道を詰めて BC7 へ焼き、Library に置く。
 // 代码は材質の名前で分岐しない。どの材質も同じ項目で振る舞いを決める。
@@ -21,7 +22,7 @@ inline constexpr uint32_t kSurfaceTextureMips = 11u;
 
 struct TerrainSurfaceAsset {
     std::string name{};
-    // 元の図（この資産からの相対パス）。空なら baseColor と既定値で埋める。
+    // 元の図（この資産からの相対パス）。空なら既定値で埋める。
     std::string color{};
     std::string normal{}; // DirectX 形式
     std::string height{}; // 無ければ明るさから作る
@@ -30,8 +31,14 @@ struct TerrainSurfaceAsset {
     float tilingMeters = 4.0f;
     float heightContrast = 0.25f; // 高さ混合の幅（小さいほど境界が締まる）
     float normalStrength = 1.0f;
-    float roughnessValue = 0.85f;           // 粗さの図が無い時の値、ある時は倍率
-    MATH::Vec3 baseColor{1.0f, 1.0f, 1.0f}; // 色の図に掛ける（線形）
+    float variationContrast = 1.6f; // 大きな尺度で読んだ図の濃淡を強める倍率
+    float roughnessValue = 0.85f;   // 粗さの図が無い時の値、ある時は倍率
+    // 地形の色の図での配色（sRGB 0..1）。A が基調で、B と C へ広い範囲で揺れる。A が黒なら図の平均色を使う。
+    MATH::Vec3 mapColorA{0.0f, 0.0f, 0.0f};
+    MATH::Vec3 mapColorB{0.0f, 0.0f, 0.0f};
+    MATH::Vec3 mapColorC{0.0f, 0.0f, 0.0f};
+    float mapBandMeters = 0.0f; // 地層の帯の間隔。0 なら帯なし
+    float mapBandAmount = 0.0f;
     std::string license{};
     std::string author{};
     std::string source{};
@@ -50,8 +57,16 @@ inline constexpr auto kTerrainSurfaceAssetFields = [](auto&& field) {
     field("tilingMeters", &S::tilingMeters, Range{0.1, 1024.0}, Label{"Tiling"}, Unit{"m"});
     field("heightContrast", &S::heightContrast, Range{0.01, 1.0}, Label{"Height Blend Width"});
     field("normalStrength", &S::normalStrength, Range{0.0, 4.0}, Label{"Normal Strength"});
+    field("variationContrast", &S::variationContrast, Range{0.0, 8.0}, Label{"Variation Contrast"},
+          Help{"How strongly the larger repeats of the map vary the color at a distance."});
     field("roughnessValue", &S::roughnessValue, Range{0.0, 2.0}, Label{"Roughness"});
-    field("baseColor", &S::baseColor, Label{"Base Color"});
+    field("mapColorA", &S::mapColorA, Label{"Map Color"},
+          Help{"Main color of this surface in the terrain color map, sRGB 0..1. Black uses the map's average."});
+    field("mapColorB", &S::mapColorB, Label{"Map Color 2"}, Help{"The color drifts toward this over wide areas."});
+    field("mapColorC", &S::mapColorC, Label{"Map Color 3"}, Help{"The color drifts toward this in some patches."});
+    field("mapBandMeters", &S::mapBandMeters, Range{0.0, 512.0}, Label{"Band Spacing"}, Unit{"m"},
+          Help{"Spacing of rock strata bands. 0 means no bands."});
+    field("mapBandAmount", &S::mapBandAmount, Slider(0.0, 1.0), Label{"Band Strength"});
     field("license", &S::license, Label{"License"});
     field("author", &S::author, Label{"Author"});
     field("source", &S::source, Label{"Source"});
@@ -73,6 +88,8 @@ struct SurfaceCatalogEntry {
 };
 std::vector<SurfaceCatalogEntry> ListTerrainSurfaces(const std::filesystem::path& projectRoot);
 bool ReadTerrainSurfaceAsset(const std::filesystem::path& file, TerrainSurfaceAsset& out, std::string& error);
+// 地形の色の図で使う配色。
+TERRAIN::DATA::SurfaceMapStyle MakeSurfaceMapStyle(const CookedSurface& surface);
 
 // 地形の枠（0..31 番）へ割り当てた材質。読み込みと焼きは背景の thread で進む。
 class TerrainSurfaceLibrary {

@@ -52,9 +52,9 @@ struct TileRuntime {
     uint32_t controlX1 = 0u;
     uint32_t controlZ1 = 0u;
     bool controlRectPending = false;
-    std::vector<uint8_t> farColor{}; // 遠景の色（全段を続けて、RGBA8）
-    bool farPending = false;
-    bool farUploaded = false;
+    std::vector<uint8_t> colorMap{}; // 色の図（全段を続けて、RGBA8）
+    bool colorMapPending = false;
+    bool colorMapUploaded = false;
 };
 
 // 積雪と湿り（材質の名前によらず全面に掛かる）。
@@ -82,8 +82,8 @@ struct TerrainRenderResources {
     uint32_t surfaceColor = 0u;
     uint32_t surfaceDetail = 0u;
     uint32_t surfaceParams = 0u;
-    uint32_t farCache = 0u;
-    uint32_t farUploaded = 0u;
+    uint32_t colorMap = 0u;
+    uint32_t colorMapsUploaded = 0u;
     uint64_t surfaceRevision = 0u;
     uint32_t surfacesUploaded = 0u; // 送り終えた枠の数。全部終わるまで着色器へ渡さない。
     uint64_t layoutRevision = 0u;
@@ -138,7 +138,7 @@ public:
     void SetSurfaceRules(TERRAIN::DATA::SurfaceRuleSet rules);
     TerrainRuleBaker& RuleBaker() noexcept { return ruleBaker_; }
     // 背景の計算の結果を受け取る。手塗りの標本は今の値を残す。
-    void ApplyRuleResult(TERRAIN::DATA::TileCoord tile, std::vector<uint32_t> control, std::vector<uint8_t> farColor);
+    void ApplyRuleResult(TERRAIN::DATA::TileCoord tile, std::vector<uint32_t> control, std::vector<uint8_t> colorMap);
     const TerrainWeather& Weather() const noexcept { return weather_; }
     void SetWeather(const TerrainWeather& weather);
     // 背景の thread を全部止める。DLL を外す前に呼ぶ。

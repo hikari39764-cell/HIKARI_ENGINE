@@ -1,4 +1,4 @@
-ambientCG PBR texture sets used by the built-in stylized terrain package
+ambientCG PBR texture sets used by the built-in terrain surfaces
 
 by ambientCG, creator Lennart Demes (https://ambientcg.com)
 
@@ -10,22 +10,18 @@ dedicating them to the public domain. You may use these assets in personal
 and commercial projects. Attribution is not required; crediting ambientCG
 or creator Lennart Demes is appreciated.
 
-Albedo: Ground101 (Light Smooth Sand)
-  https://ambientcg.com/view?id=Ground101
-  https://ambientcg.com/get?file=Ground101_1K-JPG.zip
-
-Normal: Ground054 (Beach Sand), DirectX convention
-  https://ambientcg.com/view?id=Ground054
-  https://ambientcg.com/get?file=Ground054_1K-JPG.zip
-
-Grass: Grass004 (Dense Lawn)
-  https://ambientcg.com/view?id=Grass004
-  https://ambientcg.com/get?file=Grass004_1K-JPG.zip
-
-Dirt: Ground048 (Brown Soil)
-  https://ambientcg.com/view?id=Ground048
-  https://ambientcg.com/get?file=Ground048_1K-JPG.zip
-
-Rock: Rock030 (Grey Layered Stone)
-  https://ambientcg.com/view?id=Rock030
-  https://ambientcg.com/get?file=Rock030_1K-JPG.zip
+Surface: set (each from https://ambientcg.com/get?file=<set>_1K-JPG.zip; Color, NormalDX and Displacement)
+Grass: Grass001
+Dry Grass: Grass003
+Worn Ground: Ground037
+Soil: Ground103
+Stony Dirt: Ground085
+Rock: Rock051
+Layered Rock: Rock028
+Gravel: Gravel041
+Pebbles: Gravel023
+Meadow: Grass004
+Forest Soil: Ground048
+Grey Rock: Rock030
+Sand: color from Ground101, normal from Ground054
+Snow: base color value, normal from Ground054

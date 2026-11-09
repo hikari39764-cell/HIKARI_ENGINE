@@ -71,6 +71,9 @@ struct NoiseLayerSettings {
     float amplitudeMeters = 120.0f;
     float offsetMeters = 0.0f;
     int32_t seed = 1337;
+    // 山塊の半径。0 より大きければ噪声は山の形を崩す役になり、高さは中心へ向かって上がる。
+    float massifRadiusMeters = 0.0f;
+    MATH::Vec2 massifCenterMeters{0.0f, 0.0f};
     // FastNoise2 ノードエディタが書き出す符号化済みノード木。空でなければ上の基底とフラクタルより優先する。
     std::string encodedNodeTree{};
     bool operator==(const NoiseLayerSettings&) const = default;
@@ -92,6 +95,9 @@ inline constexpr auto kNoiseLayerFields = [](auto&& field) {
           Help{"Height of noise value 1; fractal octaves are normalized to stay within -1..1."});
     field("offsetMeters", &S::offsetMeters, Range{-20000.0, 20000.0}, Label{"Offset"}, Unit{"m"});
     field("seed", &S::seed, Label{"Seed"});
+    field("massifRadiusMeters", &S::massifRadiusMeters, Range{0.0, 65536.0}, Label{"Mountain Radius"}, Unit{"m"},
+          Help{"Above 0, the layer becomes one mountain mass with this radius; the noise breaks up its shape."});
+    field("massifCenterMeters", &S::massifCenterMeters, Label{"Mountain Center"}, Unit{"m"});
     field("encodedNodeTree", &S::encodedNodeTree, Label{"Node Tree"}, Advanced{},
           Help{"Encoded FastNoise2 node tree; overrides basis and fractal when set."});
 };

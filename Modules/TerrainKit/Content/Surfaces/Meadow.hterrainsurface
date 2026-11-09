@@ -1,0 +1,29 @@
+{
+  "name": "Meadow",
+  "color": "Grass004_1K-JPG_Color.jpg",
+  "normal": "Grass004_1K-JPG_NormalDX.jpg",
+  "height": "Grass004_1K-JPG_Displacement.jpg",
+  "tilingMeters": 3.0,
+  "heightContrast": 0.3,
+  "normalStrength": 1.1,
+  "variationContrast": 1.3,
+  "roughnessValue": 0.92,
+  "source": "https://ambientcg.com/view?id=Grass004",
+  "license": "CC0-1.0",
+  "author": "ambientCG (Lennart Demes)",
+  "mapColorA": [
+    0.282,
+    0.4,
+    0.173
+  ],
+  "mapColorB": [
+    0.243,
+    0.361,
+    0.149
+  ],
+  "mapColorC": [
+    0.337,
+    0.431,
+    0.196
+  ]
+}

@@ -4,7 +4,7 @@
 
 #include "HIKARI/Project/RenderSurface.h"
 
-// 地形の描画資源の準備：瓦片の高さ・法線・制御図の転送、材質の配列、遠景の色、光線追跡の代理。
+// 地形の描画資源の準備：瓦片の高さ・法線・制御図の転送、材質の配列、色の図、光線追跡の代理。
 namespace HIKARI::TERRAINKIT {
 
 class TerrainStore;

@@ -231,7 +231,9 @@ bool TerrainStore::Open(const std::filesystem::path& scenePath, const TerrainSet
         weather_.wetness = slotFile.value("wetness", weather_.wetness);
     }
     if (slots.empty()) {
-        slots = {"Grass", "Soil", "Rock", "Sand", "Snow"};
+        // DefaultSurfaceRules の枠の番号と揃える。
+        slots = {"Grass",  "Soil",       "Rock",   "Sand",         "Snow",       "Dry Grass",
+                 "Meadow", "Stony Dirt", "Gravel", "Layered Rock", "Worn Ground"};
     }
     surfaces_.SetSlots(ProjectRoot(), std::move(slots));
     BuildTileList();
@@ -463,7 +465,7 @@ void TerrainStore::MarkControlChanged(const SampleRect& rect) {
         ++runtime.revision; // 光線追跡の代理の色も変わる
     });
     MarkSaveDirty(touched);
-    // 手塗りを外した標本は規則へ戻り、遠景の色も変わる。
+    // 手塗りを外した標本は規則へ戻り、色の図も変わる。
     for (const TileCoord tile : touched) {
         ruleBaker_.MarkDirty(tile);
     }
@@ -490,7 +492,7 @@ void TerrainStore::ShutdownWorkers() {
     ruleBaker_.Cancel();
 }
 
-void TerrainStore::ApplyRuleResult(TileCoord tile, std::vector<uint32_t> control, std::vector<uint8_t> farColor) {
+void TerrainStore::ApplyRuleResult(TileCoord tile, std::vector<uint32_t> control, std::vector<uint8_t> colorMap) {
     const auto found = tiles_.find(tile);
     if (found == tiles_.end() || data_ == nullptr) {
         return;
@@ -519,11 +521,13 @@ void TerrainStore::ApplyRuleResult(TileCoord tile, std::vector<uint32_t> control
             runtime.controlX1 = samples - 1u;
             runtime.controlZ1 = samples - 1u;
             runtime.controlRectPending = true;
-            ++runtime.revision; // 光線追跡の代理の色も変わる
         }
     }
-    runtime.farColor = std::move(farColor);
-    runtime.farPending = true;
+    if (runtime.colorMap != colorMap) {
+        ++runtime.revision; // 光線追跡の代理は色の図を読む
+    }
+    runtime.colorMap = std::move(colorMap);
+    runtime.colorMapPending = true;
 }
 
 void TerrainStore::SetSurfaceSlots(std::vector<std::string> names) {
@@ -728,7 +732,7 @@ void TerrainStore::MarkSaveDirty(std::span<const TileCoord> tiles) {
 void TerrainStore::MarkAllForUpload() noexcept {
     for (auto& [tile, runtime] : tiles_) {
         runtime.uploadPending = true;
-        runtime.farUploaded = false;
+        runtime.colorMapUploaded = false;
     }
 }
 

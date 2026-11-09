@@ -147,8 +147,19 @@ NoiseLayerSettings DefaultNoise() {
     noise.amplitudeMeters = 140.0f;
     noise.offsetMeters = 60.0f;
     noise.featureSizeMeters = 900.0f;
-    noise.octaves = 6u;
+    noise.octaves = 10u; // 特徴 900 m なら一番細かい層が約 2 m（材質の規則が起伏を読める）
     noise.fractal = NoiseFractal::FBm;
+    return noise;
+}
+
+NoiseLayerSettings DefaultMountain() {
+    NoiseLayerSettings noise{};
+    noise.fractal = NoiseFractal::Ridged;
+    noise.amplitudeMeters = 900.0f;
+    noise.offsetMeters = 0.0f;
+    noise.featureSizeMeters = 1100.0f;
+    noise.octaves = 5u;
+    noise.massifRadiusMeters = 1000.0f;
     return noise;
 }
 
@@ -257,6 +268,33 @@ bool RunStamp(EditorShared& shared, std::string_view stampName, const StampSetti
     }
     store.RebakeRect(edit.touched);
     RecordTerrainEdit(shared, recorder.Finish("Stamp Terrain"));
+    return true;
+}
+
+bool RunValleys(EditorShared& shared, const SampleRect& rect, const ValleySettings& settings, std::string& error) {
+    TerrainStore& store = TerrainStore::Get();
+    const uint32_t layer = TargetSculptLayer(shared);
+    if (!store.IsOpen() || layer == 0u) {
+        error = "No terrain with a sculpt layer is open.";
+        return false;
+    }
+    ErosionInput input{};
+    if (!PrepareErosionInput(store.Data(), layer, rect, input, error)) {
+        return false;
+    }
+    ErosionField carved = input.field;
+    if (!CarveValleys(carved, settings, error)) {
+        return false;
+    }
+    TerrainEditRecorder recorder(store.Data());
+    ErosionRequest request{};
+    // 全体なら継ぎ目が無いので羽根は要らない。
+    request.featherSamples = rect.Count() == WholeTerrainRect(store).Count() ? 0u : 32u;
+    if (!CommitErosionResult(store.Data(), layer, rect, request, input, carved.heights, &recorder, error)) {
+        return false;
+    }
+    store.RebakeRect(rect);
+    RecordTerrainEdit(shared, recorder.Finish("Carve Valleys"));
     return true;
 }
 

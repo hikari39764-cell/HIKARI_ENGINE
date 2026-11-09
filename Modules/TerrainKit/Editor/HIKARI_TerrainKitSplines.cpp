@@ -212,8 +212,8 @@ HeightLayer MakeSplineLayer(SplineKind kind) {
     switch (kind) {
     case SplineKind::Road:
         layer.name = "Road";
-        layer.spline.surface = 3u;
-        layer.spline.edgeSurface = 1u;
+        layer.spline.surface = 8u;
+        layer.spline.edgeSurface = 7u;
         break;
     case SplineKind::River:
         layer.name = "River";
@@ -221,7 +221,7 @@ HeightLayer MakeSplineLayer(SplineKind kind) {
         layer.spline.edgeMeters = 5.0f;
         layer.spline.depthMeters = 3.0f;
         layer.spline.wetMeters = 8.0f;
-        layer.spline.surface = 2u;
+        layer.spline.surface = 8u;
         layer.spline.edgeSurface = 3u;
         break;
     case SplineKind::Ramp:
