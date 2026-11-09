@@ -122,8 +122,7 @@ bool IsSupportedTemplateInstance(const RUNTIME::SurfaceGpuSceneInstance& instanc
                                  static_cast<uint32_t>(Flag::TerrainSurface) |
                                  static_cast<uint32_t>(Flag::CameraCenteredOcean) |
                                  static_cast<uint32_t>(Flag::FoliageWind) | static_cast<uint32_t>(Flag::MaterialFx) |
-                                 static_cast<uint32_t>(Flag::Transparent) | static_cast<uint32_t>(Flag::DepthAware) |
-                                 static_cast<uint32_t>(Flag::AlphaMasked);
+                                 static_cast<uint32_t>(Flag::Transparent) | static_cast<uint32_t>(Flag::DepthAware);
     const uint32_t requiredResources = static_cast<uint32_t>(ResourceFlag::ClusterGeometryShaderVisible) |
                                        static_cast<uint32_t>(ResourceFlag::ClusterGeometrySurfaceRange) |
                                        static_cast<uint32_t>(ResourceFlag::ClusterGeometryLodRanges);
@@ -145,7 +144,7 @@ RUNTIME::MassRenderProxyGpuRecord BuildMassRecord(const RUNTIME::MassRenderTrans
                                                   uint32_t sourceRecordIndex) noexcept {
     using Flag = RUNTIME::SurfaceGpuSceneInstanceFlags;
     const uint32_t keptFlags = static_cast<uint32_t>(Flag::ReceiveShadow) | static_cast<uint32_t>(Flag::DoubleSided) |
-                               static_cast<uint32_t>(Flag::ClusterMainline) |
+                               static_cast<uint32_t>(Flag::AlphaMasked) | static_cast<uint32_t>(Flag::ClusterMainline) |
                                static_cast<uint32_t>(Flag::PassForwardOpaque) |
                                static_cast<uint32_t>(Flag::PassDepthPrepass);
     RUNTIME::MassRenderProxyGpuRecord record{};

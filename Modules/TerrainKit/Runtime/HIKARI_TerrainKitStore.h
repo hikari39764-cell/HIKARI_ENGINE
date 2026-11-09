@@ -9,10 +9,13 @@
 #include <string>
 #include <vector>
 
+#include <json.hpp>
+
 #include "HIKARI/Project/WorldView.h"
 #include "HIKARI_TerrainKitGpuErosion.h"
 #include "HIKARI_TerrainKitRivers.h"
 #include "HIKARI_TerrainKitRuleBaker.h"
+#include "HIKARI_TerrainKitScatter.h"
 #include "HIKARI_TerrainKitSurfaces.h"
 #include "TerrainKit/Data/HIKARI_TerrainData.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataRules.h"
@@ -141,6 +144,10 @@ public:
     const TERRAIN::DATA::SurfaceRuleSet& SurfaceRules() const noexcept { return surfaceRules_; }
     void SetSurfaceRules(TERRAIN::DATA::SurfaceRuleSet rules);
     TerrainRuleBaker& RuleBaker() noexcept { return ruleBaker_; }
+    // 散布規則。変えると全部の瓦片を背景で計算し直す。
+    TerrainScatter& Scatter() noexcept { return scatter_; }
+    const TerrainScatter& Scatter() const noexcept { return scatter_; }
+    void SetScatterRules(TERRAIN::DATA::ScatterRuleSet rules);
     // 背景の計算の結果を受け取る。手塗りの標本は今の値を残す。
     void ApplyRuleResult(TERRAIN::DATA::TileCoord tile, std::vector<uint32_t> control, std::vector<uint8_t> colorMap);
     const TerrainWeather& Weather() const noexcept { return weather_; }
@@ -150,7 +157,7 @@ public:
     // 変わった瓦片とその周り（法線が縁の標本を見る）を焼き直し、保存の対象にする。
     void RebakeChanged(std::span<const TERRAIN::DATA::TileCoord> tiles);
     void MarkSaveDirty(std::span<const TERRAIN::DATA::TileCoord> tiles);
-    bool HasUnsavedTiles() const noexcept { return !unsavedTiles_.empty() || stackDirty_; }
+    bool HasUnsavedTiles() const noexcept { return !unsavedTiles_.empty() || stackDirty_ || scatter_.HasUnsaved(); }
 
     // 場面の .cells へ書く。変わった瓦片と層の記述だけ。
     bool Save(const std::filesystem::path& scenePath, std::string& error);
@@ -192,11 +199,15 @@ private:
     bool surfaceSlotsDirty_ = false;
     TERRAIN::DATA::SurfaceRuleSet surfaceRules_{};
     TerrainRuleBaker ruleBaker_{};
+    TerrainScatter scatter_{};
     TerrainWeather weather_{};
     std::map<uint32_t, std::string> loadedImageKeys_{};
 };
 
 std::filesystem::path TerrainCellDirectory(const std::filesystem::path& scenePath);
+// 引擎の JSON 道具には繋がないので、モジュールのファイルはこの二つで読み書きする。
+bool ReadTerrainJson(const std::filesystem::path& path, nlohmann::json& out, std::string& error);
+bool WriteTerrainJson(const std::filesystem::path& path, const nlohmann::json& document, std::string& error);
 // モジュールの DLL のある場所（Content と Shaders の親）。
 std::filesystem::path TerrainModuleDirectory();
 

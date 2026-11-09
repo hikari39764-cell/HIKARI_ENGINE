@@ -106,30 +106,6 @@ uint32_t FindSculptLayer(const TerrainData& data) noexcept {
     return 0u;
 }
 
-// 引擎の JSON 道具には繋がないので、ここで読み書きする。
-bool ReadJson(const std::filesystem::path& path, nlohmann::json& out, std::string& error) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        error = "Could not open " + path.generic_string();
-        return false;
-    }
-    out = nlohmann::json::parse(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), nullptr, false);
-    if (out.is_discarded()) {
-        error = "Invalid JSON in " + path.generic_string();
-        return false;
-    }
-    return true;
-}
-
-bool WriteJson(const std::filesystem::path& path, const nlohmann::json& document, std::string& error) {
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!(file << document.dump(2))) {
-        error = "Could not write " + path.generic_string();
-        return false;
-    }
-    return true;
-}
-
 bool ValidSettings(const TerrainSettings& settings, std::string* error) {
     if (!ValidateTerrainGrid(settings.grid, error)) {
         return false;
@@ -171,6 +147,29 @@ TerrainStore& TerrainStore::Get() {
     return store;
 }
 
+bool ReadTerrainJson(const std::filesystem::path& path, nlohmann::json& out, std::string& error) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        error = "Could not open " + path.generic_string();
+        return false;
+    }
+    out = nlohmann::json::parse(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), nullptr, false);
+    if (out.is_discarded()) {
+        error = "Invalid JSON in " + path.generic_string();
+        return false;
+    }
+    return true;
+}
+
+bool WriteTerrainJson(const std::filesystem::path& path, const nlohmann::json& document, std::string& error) {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!(file << document.dump(2))) {
+        error = "Could not write " + path.generic_string();
+        return false;
+    }
+    return true;
+}
+
 void TerrainStore::Close() {
     ruleBaker_.Cancel();
     rivers_.Invalidate();
@@ -180,6 +179,7 @@ void TerrainStore::Close() {
     tiles_.clear();
     unsavedTiles_.clear();
     stackDirty_ = false;
+    scatter_.Clear();
     ++layoutRevision_;
 }
 
@@ -219,7 +219,7 @@ bool TerrainStore::Open(const std::filesystem::path& scenePath, const TerrainSet
     std::error_code slotError{};
     surfaceRules_ = DefaultSurfaceRules();
     weather_ = {};
-    if (std::filesystem::exists(slotPath, slotError) && ReadJson(slotPath, slotFile, slotMessage)) {
+    if (std::filesystem::exists(slotPath, slotError) && ReadTerrainJson(slotPath, slotFile, slotMessage)) {
         slots = slotFile.value("slots", std::vector<std::string>{});
         if (slotFile.contains("rules")) {
             SurfaceRuleSet rules{};
@@ -236,6 +236,7 @@ bool TerrainStore::Open(const std::filesystem::path& scenePath, const TerrainSet
                  "Meadow", "Stony Dirt", "Gravel", "Layered Rock", "Worn Ground"};
     }
     surfaces_.SetSlots(ProjectRoot(), std::move(slots));
+    scatter_.Load(TerrainCellDirectory(scenePath), ProjectRoot());
     BuildTileList();
     return true;
 }
@@ -249,7 +250,7 @@ bool TerrainStore::LoadFromDisk(const std::filesystem::path& scenePath, std::str
     }
     nlohmann::json root{};
     std::string message{};
-    if (!ReadJson(layerFile, root, message)) {
+    if (!ReadTerrainJson(layerFile, root, message)) {
         if (error != nullptr) {
             *error = message;
         }
@@ -311,6 +312,7 @@ std::unique_ptr<TerrainData> TerrainStore::ReplaceData(std::unique_ptr<TerrainDa
         all.push_back(tile);
     }
     RebakeTiles(all);
+    ruleBaker_.MarkAllScatterDirty(*this);
     MarkSaveDirty(all);
     return previous;
 }
@@ -430,7 +432,7 @@ void TerrainStore::RebakeRect(const SampleRect& rect) {
     });
     MarkSaveDirty(touched);
     for (const TileCoord tile : touched) {
-        ruleBaker_.MarkDirty(tile);
+        ruleBaker_.MarkScatterDirty(tile);
     }
 }
 
@@ -467,14 +469,19 @@ void TerrainStore::MarkControlChanged(const SampleRect& rect) {
     MarkSaveDirty(touched);
     // 手塗りを外した標本は規則へ戻り、色の図も変わる。
     for (const TileCoord tile : touched) {
-        ruleBaker_.MarkDirty(tile);
+        ruleBaker_.MarkScatterDirty(tile);
     }
 }
 
 void TerrainStore::SetSurfaceRules(SurfaceRuleSet rules) {
     surfaceRules_ = std::move(rules);
     surfaceSlotsDirty_ = true;
-    ruleBaker_.MarkAllDirty(*this);
+    ruleBaker_.MarkAllScatterDirty(*this);
+}
+
+void TerrainStore::SetScatterRules(ScatterRuleSet rules) {
+    scatter_.SetRules(std::move(rules));
+    ruleBaker_.MarkAllScatterDirty(*this);
 }
 
 void TerrainStore::SetWeather(const TerrainWeather& weather) {
@@ -547,6 +554,7 @@ void TerrainStore::RebakeAfterStackChange() {
         all.push_back(tile);
     }
     RebakeTiles(all);
+    ruleBaker_.MarkAllScatterDirty(*this);
     MarkSaveDirty(all);
 }
 
@@ -718,6 +726,9 @@ void TerrainStore::RebakeChanged(std::span<const TileCoord> tiles) {
         }
     }
     RebakeTiles(touched);
+    for (const TileCoord tile : touched) {
+        ruleBaker_.MarkScatterDirty(tile);
+    }
     MarkSaveDirty(touched);
 }
 
@@ -746,7 +757,7 @@ bool TerrainStore::Save(const std::filesystem::path& scenePath, std::string& err
     std::filesystem::create_directories(directory, ec);
     std::string message{};
     if ((!samePath || stackDirty_) &&
-        !WriteJson(directory / kLayerFileName, WriteHeightLayerStackJson(data_->Stack()), message)) {
+        !WriteTerrainJson(directory / kLayerFileName, WriteHeightLayerStackJson(data_->Stack()), message)) {
         error = "Could not write the terrain layers: " + message;
         return false;
     }
@@ -755,11 +766,15 @@ bool TerrainStore::Save(const std::filesystem::path& scenePath, std::string& err
                                {"snowAmount", weather_.snowAmount},
                                {"wetness", weather_.wetness}};
     JSONFIELDS::Write(surfaceFile, surfaceRules_, kSurfaceRuleSetFields);
-    if ((!samePath || surfaceSlotsDirty_) && !WriteJson(directory / kSurfaceSlotFileName, surfaceFile, message)) {
+    if ((!samePath || surfaceSlotsDirty_) &&
+        !WriteTerrainJson(directory / kSurfaceSlotFileName, surfaceFile, message)) {
         error = "Could not write the terrain surfaces: " + message;
         return false;
     }
     surfaceSlotsDirty_ = false;
+    if (!scatter_.Save(directory, ProjectRoot(), !samePath, error)) {
+        return false;
+    }
     const HeightStackEvaluator evaluator(*data_);
     std::vector<TileCoord> tiles = unsavedTiles_;
     if (!samePath) {

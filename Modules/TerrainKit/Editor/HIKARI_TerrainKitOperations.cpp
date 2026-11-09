@@ -570,6 +570,33 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
             ChangeSurfaceRules(*shared, std::move(rules));
             Ok(result, "Surface rules updated.", {{"pendingTiles", TerrainStore::Get().RuleBaker().PendingTiles()}});
         });
+    add.Query("terrainkit.scatter.list", "List the scatter rules and how many tiles are still being updated.", {},
+              [](const Json&, Sink& result) {
+                  if (!RequireTerrain(result)) {
+                      return;
+                  }
+                  TerrainStore& store = TerrainStore::Get();
+                  Json out{};
+                  JSONFIELDS::Write(out, store.Scatter().Rules(), kScatterRuleSetFields);
+                  out["asset"] = store.Scatter().AssetPath();
+                  out["pendingTiles"] = store.RuleBaker().PendingTiles();
+                  Ok(result, "Scatter rules.", out);
+              });
+    add.Mutation(
+        "terrainkit.scatter.set",
+        "Replace the scatter rules. Every tile updates in the background; instances placed or moved by hand stay and "
+        "erased ones stay erased. One undo step.",
+        {{"rules", Type::Json, "Rules as in terrainkit.scatter.list."},
+         {"lines", Type::Json, "Line rules as in terrainkit.scatter.list."}},
+        [shared](const Json& parameters, Sink& result) {
+            if (!RequireTerrain(result)) {
+                return;
+            }
+            ScatterRuleSet rules = TerrainStore::Get().Scatter().Rules();
+            JSONFIELDS::Read(parameters, rules, kScatterRuleSetFields);
+            ChangeScatterRules(*shared, std::move(rules));
+            Ok(result, "Scatter rules updated.", {{"pendingTiles", TerrainStore::Get().RuleBaker().PendingTiles()}});
+        });
     add.Mutation("terrainkit.weather.set", "Set the snow line, the snow amount and the wetness of the terrain surface.",
                  {{"snowLineMeters", Type::Number, "Height where snow starts."},
                   {"snowAmount", Type::Number, "0..1."},
@@ -786,7 +813,9 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                   {"modelAssetGuid", Type::String, "Model asset GUID; omit for a box."},
                   {"rayTraced", Type::Boolean, "Whether instances enter the ray traced scene. Leave off for grass."},
                   {"tintVariation", Type::Number, "Per-instance color variation, 0..1."},
-                  {"windStrength", Type::Number, "How much instances sway in the wind, 0..1."}},
+                  {"windStrength", Type::Number, "How much instances sway in the wind, 0..1."},
+                  {"minScreenHeight", Type::Number,
+                   "Instances smaller than this share of the screen height are not drawn. 0 always draws."}},
                  [](const Json& parameters, Sink& result) {
                      GameProjectWorldInstanceSetDesc desc{};
                      const std::string name = parameters.at("name").get<std::string>();
@@ -805,6 +834,7 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                                                             : GameProjectWorldInstanceSetFlags::ReceiveShadow);
                      desc.tintVariation = parameters.value("tintVariation", desc.tintVariation);
                      desc.windStrength = parameters.value("windStrength", desc.windStrength);
+                     desc.minScreenHeight = parameters.value("minScreenHeight", desc.minScreenHeight);
                      if (!TerrainStore::Get().World().AddInstanceSet(desc)) {
                          Fail(result, "INVALID_SET", "The instance set is not valid.");
                          return;

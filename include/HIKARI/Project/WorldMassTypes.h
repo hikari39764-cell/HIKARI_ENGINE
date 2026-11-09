@@ -22,6 +22,10 @@ enum class GameProjectWorldMassRenderGeometry : uint32_t {
     BuiltInSphere = 2u,
 };
 
+// primitiveIndex にこの値を入れると meshIndex の網の全部の部品を描く（幹と葉のように材質が分かれた模型）。
+// materialIndex は見ない。
+inline constexpr uint32_t kGameProjectWorldMassAllPrimitives = 0xFFFFFFFFu;
+
 enum class GameProjectWorldMassRenderFlags : uint32_t {
     None = 0u,
     ReceiveShadow = 1u << 0u,

@@ -4,10 +4,11 @@
 static const uint HIKARI_MASS_GPU_SCENE_VERSION = 1u;
 static const uint HIKARI_MASS_GPU_SCENE_INDEX_BIT = 0x80000000u;
 static const uint HIKARI_MASS_GPU_SCENE_INDEX_MASK = 0x7fffffffu;
-// objectIdHigh の最上位が立つ個体は実例集の個体（物体ではない）。bit 8..15 が色の揺らぎ、bit 0..7 が風の強さ、
-// objectIdLow が種。HIKARI_WorldInstanceStore.cpp の詰め方と揃える。
+// objectIdHigh の最上位が立つ個体は実例集の個体（物体ではない）。bit 16..23 が描く最小の大きさ、bit 8..15 が色の揺らぎ、
+// bit 0..7 が風の強さ、objectIdLow が種。HIKARI_WorldInstanceStore.cpp の詰め方と揃える。
 static const uint HIKARI_MASS_INSTANCE_IDENTITY_BIT = 0x80000000u;
 static const float HIKARI_MASS_INSTANCE_WIND_METERS = 0.6f;
+static const float HIKARI_MASS_INSTANCE_MIN_SCREEN_STEP = 0.0001f;
 
 struct HikariMassRenderProxyGpuRecord
 {

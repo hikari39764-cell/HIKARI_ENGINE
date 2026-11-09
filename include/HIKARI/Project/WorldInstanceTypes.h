@@ -53,11 +53,13 @@ struct GameProjectWorldInstanceSetDesc {
                                            GameProjectWorldInstanceSetFlags::RayTraced);
     char modelAssetGuid[kGameProjectWorldInstanceNameCapacity]{};
     uint32_t meshIndex = 0u;
-    uint32_t primitiveIndex = 0u;
+    uint32_t primitiveIndex = kGameProjectWorldMassAllPrimitives; // 既定は網の全部の部品
     uint32_t materialIndex = 0u;
     float tintVariation = 0.0f; // 個体ごとの色の揺らぎ（0..1）
     float windStrength = 0.0f;  // 風で揺れる強さ（0..1）
-    uint32_t reserved[1] = {0u};
+    // 画面の高さに対する個体の大きさの割合がこれより小さければ描かない（0 は常に描く）。上限 0.0255。
+    // 0.001 は 1440p で約 1.4 画素。小さな物から先に消えるので、距離を種類ごとに決めなくてよい。
+    float minScreenHeight = 0.001f;
 };
 
 static_assert(std::is_trivially_copyable_v<GameProjectWorldInstance>);

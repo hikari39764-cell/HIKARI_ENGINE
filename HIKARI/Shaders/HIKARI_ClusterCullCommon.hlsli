@@ -41,6 +41,18 @@ float HikariClusterCullProjectedScreenRadius(float4 boundsCenterRadius)
         boundsCenterRadius.w);
 }
 
+// 実例集の個体が画面の高さに対してこれより小さく映るなら描かない。
+bool HikariClusterCullInstanceTooSmall(uint absoluteIndex, HikariSurfaceGpuSceneInstance instance)
+{
+    if (!HikariIsMassGpuSceneIndex(absoluteIndex) ||
+        (instance.objectIdHigh & HIKARI_MASS_INSTANCE_IDENTITY_BIT) == 0u)
+    {
+        return false;
+    }
+    const float minimum = (float)((instance.objectIdHigh >> 16u) & 255u) * HIKARI_MASS_INSTANCE_MIN_SCREEN_STEP;
+    return minimum > 0.0f && HikariClusterCullProjectedScreenRadius(instance.boundsCenterRadius) < minimum;
+}
+
 void HikariClusterCullAddDebugCounter(uint byteOffset, uint value)
 {
     if (gClusterCullEnableDebugCounters != 0u)

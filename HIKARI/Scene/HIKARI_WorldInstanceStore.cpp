@@ -52,7 +52,8 @@ GameProjectWorldMassRenderProxyDesc MakeRenderProxy(ComponentTypeId id,
 bool IsValidWorldInstanceSetDesc(const GameProjectWorldInstanceSetDesc& desc) noexcept {
     if (desc.structSize != kGameProjectWorldInstanceSetDescV1Size || desc.version != kGameProjectWorldInstanceVersion ||
         !IsTerminatedText(desc.name) || desc.name[0] == '\0' || !IsTerminatedText(desc.modelAssetGuid) ||
-        !MATH::IsFinite(desc.tintVariation) || !MATH::IsFinite(desc.windStrength) || desc.reserved[0] != 0u) {
+        !MATH::IsFinite(desc.tintVariation) || !MATH::IsFinite(desc.windStrength) ||
+        !MATH::IsFinite(desc.minScreenHeight)) {
         return false;
     }
     const uint32_t known = static_cast<uint32_t>(GameProjectWorldInstanceSetFlags::ReceiveShadow |
@@ -292,8 +293,8 @@ void WorldInstanceStore::CollectRenderViews(std::vector<WorldMassRenderStoreView
             continue;
         }
         if (set.renderDirty) {
-            const uint32_t identity =
-                kInstanceIdentityBit | (EncodeUnit8(set.desc.tintVariation) << 8u) | EncodeUnit8(set.desc.windStrength);
+            const uint32_t identity = kInstanceIdentityBit | (EncodeUnit8(set.desc.minScreenHeight / 0.0255f) << 16u) |
+                                      (EncodeUnit8(set.desc.tintVariation) << 8u) | EncodeUnit8(set.desc.windStrength);
             set.renderInstances.clear();
             set.renderInstances.reserve(set.count);
             for (const auto& [cell, instances] : set.cells) {

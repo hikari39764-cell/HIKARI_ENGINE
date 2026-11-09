@@ -28,8 +28,12 @@ inline constexpr char kPaintToolId[] = "terrainkit.paint";
 inline constexpr char kSplineToolId[] = "terrainkit.spline";
 inline constexpr char kInstanceToolId[] = "terrainkit.instances";
 
+// 実例集の筆の動作。
+enum class InstanceBrushMode : uint8_t { Paint = 0, Move = 1 };
+
 // 実例集の配置の筆。
 struct InstanceBrushSettings {
+    InstanceBrushMode mode = InstanceBrushMode::Paint;
     float radiusMeters = 16.0f;
     float density = 2.0f;       // 100 m2 あたりの個体数
     float spacingMeters = 2.0f; // 個体どうしの最小の間隔
@@ -82,6 +86,9 @@ bool UpdateTerrainLayer(EditorShared& shared, const TERRAIN::DATA::HeightLayer& 
 
 // 自動の材質規則を差し替える（撤销一件、全世界を背景で計算し直す）。
 void ChangeSurfaceRules(EditorShared& shared, TERRAIN::DATA::SurfaceRuleSet rules);
+
+// 散布規則を差し替える（撤销一件、全世界を背景で計算し直す。手で置いた個体は残る）。
+void ChangeScatterRules(EditorShared& shared, TERRAIN::DATA::ScatterRuleSet rules);
 
 // 積雪と湿りを変える（撤销一件）。
 void ChangeWeather(EditorShared& shared, const TerrainWeather& weather);

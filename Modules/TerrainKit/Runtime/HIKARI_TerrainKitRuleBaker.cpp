@@ -11,6 +11,7 @@
 #include "HIKARI_TerrainKitSurfaces.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataControl.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataRules.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataScatter.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataSpline.h"
 
 namespace HIKARI::TERRAINKIT {
@@ -28,6 +29,9 @@ struct TileInput {
     int64_t firstSampleZ = 0;
     std::vector<float> heights{};
     std::vector<uint32_t> control{};
+    bool scatter = false;
+    std::vector<ScatterReserved> reserved{};
+    std::vector<std::vector<float>> ruleMasks{};
 };
 
 // 瓦片と周りの余白の高さを、隣の瓦片から集める。無い瓦片は端の標本で埋める。
@@ -151,6 +155,18 @@ void TerrainRuleBaker::MarkAllDirty(const TerrainStore& store) {
     quietFrames_ = kQuietFramesBeforeStart;
 }
 
+void TerrainRuleBaker::MarkScatterDirty(TileCoord tile) {
+    MarkDirty(tile);
+    scatterDirty_.insert(tile);
+}
+
+void TerrainRuleBaker::MarkAllScatterDirty(const TerrainStore& store) {
+    MarkAllDirty(store);
+    for (const auto& [tile, runtime] : store.Tiles()) {
+        scatterDirty_.insert(tile);
+    }
+}
+
 void TerrainRuleBaker::Cancel() {
     if (job_.valid()) {
         job_.wait();
@@ -158,6 +174,7 @@ void TerrainRuleBaker::Cancel() {
     }
     activeTiles_ = 0u;
     dirty_.clear();
+    scatterDirty_.clear();
 }
 
 void TerrainRuleBaker::Update(TerrainStore& store) {
@@ -170,6 +187,9 @@ void TerrainRuleBaker::Update(TerrainStore& store) {
         analysis_ = std::move(finished.analysis);
         for (TileResult& result : finished.tiles) {
             store.ApplyRuleResult(result.tile, std::move(result.control), std::move(result.colorMap));
+            if (result.scattered) {
+                store.Scatter().Apply(store, *finished.scatterRules, result.tile, result.points);
+            }
         }
     }
     const auto& surfaces = store.Surfaces().Surfaces();
@@ -183,6 +203,7 @@ void TerrainRuleBaker::Update(TerrainStore& store) {
     for (auto it = dirty_.begin(); it != dirty_.end() && inputs.size() < kTilesPerJob;) {
         const auto tile = store.Tiles().find(*it);
         if (tile == store.Tiles().end()) {
+            scatterDirty_.erase(*it);
             it = dirty_.erase(it);
             continue;
         }
@@ -199,6 +220,19 @@ void TerrainRuleBaker::Update(TerrainStore& store) {
         const auto* raster = store.Data().Control().Find(*it);
         input.control =
             raster != nullptr ? raster->values : std::vector<uint32_t>(static_cast<size_t>(samples) * samples, 0u);
+        input.scatter = scatterDirty_.erase(*it) != 0u && store.Scatter().Active();
+        if (input.scatter) {
+            input.reserved = store.Scatter().CollectReserved(store, *it);
+            input.ruleMasks.resize(store.Scatter().Rules().rules.size());
+            for (size_t rule = 0u; rule < input.ruleMasks.size(); ++rule) {
+                const uint32_t layer = store.Scatter().Rules().rules[rule].maskLayer;
+                const auto* mask = layer != 0u ? store.Data().LayerMask(layer) : nullptr;
+                const auto* tileMask = mask != nullptr ? mask->Find(*it) : nullptr;
+                if (tileMask != nullptr) {
+                    input.ruleMasks[rule] = tileMask->values;
+                }
+            }
+        }
         inputs.push_back(std::move(input));
         it = dirty_.erase(it);
     }
@@ -212,9 +246,11 @@ void TerrainRuleBaker::Update(TerrainStore& store) {
     }
     // 曲線は下の層から順に塗る（上の層が勝つ）。
     std::vector<PreparedSpline> splines{};
+    std::vector<uint32_t> splineLayers{};
     for (const HeightLayer& layer : store.Data().Stack().layers) {
         if (layer.kind == HeightLayerKind::Spline && layer.enabled) {
             splines.push_back(PrepareSpline(layer.spline));
+            splineLayers.push_back(layer.id);
         }
     }
     // 高さが変わっていなければ前の読み取りをそのまま使う。
@@ -224,7 +260,9 @@ void TerrainRuleBaker::Update(TerrainStore& store) {
     activeTiles_ = inputs.size();
     job_ = std::async(std::launch::async,
                       [inputs = std::move(inputs), rules = store.SurfaceRules(), styles = std::move(styles), samples,
-                       splines = std::move(splines), grid, previous = std::move(previous), fresh = std::move(fresh),
+                       splines = std::move(splines), splineLayers = std::move(splineLayers), grid,
+                       scatterRules = std::make_shared<const ScatterRuleSet>(store.Scatter().Rules()),
+                       previous = std::move(previous), fresh = std::move(fresh),
                        spacing = static_cast<float>(SampleSpacing(grid))]() mutable {
                           std::shared_ptr<const TerrainAnalysis> analysis = previous;
                           if (analysis == nullptr) {
@@ -252,9 +290,20 @@ void TerrainRuleBaker::Update(TerrainStore& store) {
                               std::vector<float> color{};
                               BakeSurfaceColorMap(rules, tile, input.control, styles, kColorMapSize, color);
                               result.colorMap = PackMipChain(std::move(color));
+                              if (input.scatter) {
+                                  ScatterTile scatter{};
+                                  scatter.surface = tile;
+                                  scatter.control = input.control;
+                                  scatter.ruleMasks = input.ruleMasks;
+                                  scatter.splines = splines;
+                                  scatter.splineLayers = splineLayers;
+                                  scatter.reserved = input.reserved;
+                                  EvaluateScatter(*scatterRules, scatter, result.points);
+                                  result.scattered = true;
+                              }
                               result.control = std::move(input.control);
                           });
-                          return JobResult{std::move(results), std::move(analysis)};
+                          return JobResult{std::move(results), std::move(analysis), std::move(scatterRules)};
                       });
 }
 

@@ -1,10 +1,13 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstddef>
 #include <cstring>
 #include <string>
+#include <string_view>
 
 #include "HIKARI_TerrainKitEditorCommon.h"
+#include "HIKARI_TerrainKitFieldUi.h"
 
 namespace HIKARI::TERRAINKIT {
 namespace {
@@ -43,6 +46,8 @@ public:
         DrawRules(ui, store);
         ui.Separator();
         DrawInstances(ui, store);
+        ui.Separator();
+        DrawScatter(ui, store);
         ui.Separator();
         DrawStamp(ui);
         ui.Separator();
@@ -377,6 +382,7 @@ private:
         ui.InputText("instanceModel", "Model Asset GUID (empty = box)", instanceModel_.data(), instanceModel_.size());
         ui.InputFloat("instanceTint", "Color Variation", &instanceTint_);
         ui.InputFloat("instanceWind", "Wind", &instanceWind_);
+        ui.InputFloat("instanceMinScreen", "Hide Below Screen Height", &instanceMinScreen_);
         ui.Checkbox("instanceRay", "Ray Traced", &instanceRayTraced_);
         if (ui.Button("instanceAdd", "Add Set")) {
             GameProjectWorldInstanceSetDesc desc{};
@@ -390,6 +396,7 @@ private:
                                                                   : GameProjectWorldInstanceSetFlags::ReceiveShadow);
             desc.tintVariation = instanceTint_;
             desc.windStrength = instanceWind_;
+            desc.minScreenHeight = instanceMinScreen_;
             if (world.AddInstanceSet(desc)) {
                 shared_->selectedInstanceSet = MakeComponentTypeId(desc.name).value;
             } else {
@@ -405,7 +412,208 @@ private:
         ui.InputFloat("instanceAlign", "Align To Ground", &brush.alignToGround);
         ui.InputFloat("instanceSlope", "Max Slope (deg)", &brush.maxSlopeDegrees);
         if (ui.Button("instanceTool", "Place Instances Tool") && shared_->services != nullptr) {
+            brush.mode = InstanceBrushMode::Paint;
             shared_->services->ActivateViewportTool(kInstanceToolId);
+        }
+        ui.SameLine();
+        if (ui.Button("instanceMoveTool", "Move Instances Tool") && shared_->services != nullptr) {
+            brush.mode = InstanceBrushMode::Move;
+            shared_->services->ActivateViewportTool(kInstanceToolId);
+        }
+    }
+
+    // 実例集を名前で選ぶ。
+    void DrawSetChoice(IEditorWorkspaceUi& ui, const WorldView& world, const std::string& prefix, std::string& name,
+                       bool& changed) {
+        ui.Text("Instance Set");
+        std::array<ComponentTypeId, 64> ids{};
+        const uint32_t count = (std::min)(world.GetInstanceSetIds(ids), static_cast<uint32_t>(ids.size()));
+        for (uint32_t index = 0u; index < count; ++index) {
+            const GameProjectWorldInstanceSetDesc* set = world.FindInstanceSet(ids[index]);
+            if (set != nullptr &&
+                ui.Selectable(prefix + "set" + set->name, std::string(set->name) + "##" + prefix, name == set->name)) {
+                name = set->name;
+                changed = true;
+            }
+        }
+        if (!name.empty() && world.FindInstanceSet(MakeComponentTypeId(name.c_str())) == nullptr) {
+            ui.Text("\"" + name + "\" does not exist yet; add it above. Nothing is placed until then.");
+        }
+    }
+
+    // 置いてよい地表材質の枠を印で選ぶ。
+    void DrawSurfaceSlots(IEditorWorkspaceUi& ui, const TerrainStore& store, uint32_t& mask, bool& changed) {
+        ui.Text("Allowed Surfaces");
+        if (!ui.BeginTable("scatterSlots", 3u)) {
+            return;
+        }
+        const auto& slots = store.Surfaces().Slots();
+        for (uint32_t slot = 0u; slot < slots.size() && slot < 32u; ++slot) {
+            ui.TableNextColumn();
+            bool allowed = (mask & (1u << slot)) != 0u;
+            if (ui.Checkbox("scatterSlot" + std::to_string(slot), slots[slot], &allowed)) {
+                mask = allowed ? mask | (1u << slot) : mask & ~(1u << slot);
+                changed = true;
+            }
+        }
+        ui.EndTable();
+    }
+
+    // 密度に掛けるマスクの層を選ぶ。マスクは層のマスクの筆で塗る。
+    void DrawMaskChoice(IEditorWorkspaceUi& ui, const TerrainStore& store, ScatterRule& rule, bool& changed) {
+        ui.Text("Density Mask");
+        if (ui.Selectable("scatterMaskNone", "None", rule.maskLayer == 0u) && rule.maskLayer != 0u) {
+            rule.maskLayer = 0u;
+            changed = true;
+        }
+        for (const HeightLayer& layer : store.Data().Stack().layers) {
+            const std::string id = std::to_string(layer.id);
+            if (ui.Selectable("scatterMask" + id, layer.name + "##mask" + id, rule.maskLayer == layer.id)) {
+                rule.maskLayer = layer.id;
+                changed = true;
+            }
+        }
+        if (ui.Button("scatterMaskNew", "New Mask Layer")) {
+            HeightLayer layer{};
+            layer.kind = HeightLayerKind::Sculpt;
+            layer.name = "Mask: " + rule.name;
+            uint32_t id = 0u;
+            std::string error{};
+            if (AddTerrainLayer(*shared_, std::move(layer), TerrainData::kAppend, id, error)) {
+                rule.maskLayer = id;
+                changed = true;
+                shared_->selectedLayer = id;
+                if (shared_->services != nullptr) {
+                    shared_->services->ActivateViewportTool(kMaskToolId);
+                }
+            }
+            Report(error);
+        }
+    }
+
+    // 沿う曲線の層を選ぶ。
+    void DrawSplineChoice(IEditorWorkspaceUi& ui, const TerrainStore& store, uint32_t& layerId, bool& changed) {
+        ui.Text("Along Spline");
+        for (const HeightLayer& layer : store.Data().Stack().layers) {
+            if (layer.kind != HeightLayerKind::Spline) {
+                continue;
+            }
+            const std::string id = std::to_string(layer.id);
+            if (ui.Selectable("scatterSpline" + id, layer.name + "##spline" + id, layerId == layer.id)) {
+                layerId = layer.id;
+                changed = true;
+            }
+        }
+    }
+
+    // 規則は一覧から選び、選んだ一件の全部の項目を字段表から作る。面の規則の次に沿線の規則を並べる。
+    void DrawScatter(IEditorWorkspaceUi& ui, TerrainStore& store) {
+        const size_t pending = store.RuleBaker().PendingTiles();
+        ui.Text(pending != 0u ? "Scatter rules (updating " + std::to_string(pending) + " tiles)" : "Scatter rules");
+        ScatterRuleSet rules = store.Scatter().Rules();
+        bool changed = false;
+        const WorldView& world = store.World();
+        const auto listRow = [&](size_t index, bool& enabled, const std::string& text) {
+            const std::string id = std::to_string(index);
+            changed |= ui.Checkbox("scatterEnabled" + id, "##scatterEnabled" + id, &enabled);
+            ui.SameLine();
+            if (ui.Selectable("scatterRow" + id, text + "##row" + id, selectedScatter_ == index)) {
+                selectedScatter_ = index;
+            }
+        };
+        for (size_t index = 0u; index < rules.rules.size(); ++index) {
+            ScatterRule& rule = rules.rules[index];
+            listRow(index, rule.enabled, rule.name + "  ->  " + rule.instanceSet);
+        }
+        for (size_t index = 0u; index < rules.lines.size(); ++index) {
+            ScatterLineRule& rule = rules.lines[index];
+            listRow(rules.rules.size() + index, rule.enabled, rule.name + "  (along)  ->  " + rule.instanceSet);
+        }
+        if (ui.Button("scatterAdd", "Add Rule")) {
+            ScatterRule rule{};
+            rule.name = "Rule " + std::to_string(rules.rules.size() + 1u);
+            rule.seed = static_cast<uint32_t>(rules.rules.size() + rules.lines.size() + 1u) * 101u;
+            rules.rules.push_back(std::move(rule));
+            selectedScatter_ = rules.rules.size() - 1u;
+            changed = true;
+        }
+        ui.SameLine();
+        if (ui.Button("scatterAddLine", "Add Line Rule")) {
+            ScatterLineRule rule{};
+            rule.name = "Line " + std::to_string(rules.lines.size() + 1u);
+            rule.seed = static_cast<uint32_t>(rules.rules.size() + rules.lines.size() + 1u) * 103u;
+            rules.lines.push_back(std::move(rule));
+            selectedScatter_ = rules.rules.size() + rules.lines.size() - 1u;
+            changed = true;
+        }
+        ui.SameLine();
+        if (ui.Button("scatterRemove", "Remove Selected")) {
+            if (selectedScatter_ < rules.rules.size()) {
+                rules.rules.erase(rules.rules.begin() + static_cast<std::ptrdiff_t>(selectedScatter_));
+                changed = true;
+            } else if (selectedScatter_ - rules.rules.size() < rules.lines.size()) {
+                rules.lines.erase(rules.lines.begin() +
+                                  static_cast<std::ptrdiff_t>(selectedScatter_ - rules.rules.size()));
+                changed = true;
+            }
+        }
+        ui.SameLine();
+        if (ui.Button("scatterDefaults", "Use Mountain Rules")) {
+            rules = DefaultScatterRules();
+            for (const ScatterRule& rule : rules.rules) {
+                if (world.FindInstanceSet(MakeComponentTypeId(rule.instanceSet.c_str())) == nullptr) {
+                    GameProjectWorldInstanceSetDesc desc{};
+                    std::memcpy(desc.name, rule.instanceSet.data(),
+                                (std::min)(rule.instanceSet.size(), sizeof(desc.name) - 1u));
+                    desc.geometry = GameProjectWorldMassRenderGeometry::BuiltInBox;
+                    desc.tintVariation = 0.4f;
+                    (void)world.AddInstanceSet(desc);
+                }
+            }
+            changed = true;
+        }
+        if (selectedScatter_ < rules.rules.size()) {
+            ScatterRule& rule = rules.rules[selectedScatter_];
+            const auto custom = [&](std::string_view key, ScatterRule& object) {
+                if (key == "enabled") {
+                    return true;
+                }
+                if (key == "instanceSet") {
+                    DrawSetChoice(ui, world, "scatterRule", object.instanceSet, changed);
+                    return true;
+                }
+                if (key == "surfaceMask") {
+                    DrawSurfaceSlots(ui, store, object.surfaceMask, changed);
+                    return true;
+                }
+                if (key == "maskLayer") {
+                    DrawMaskChoice(ui, store, object, changed);
+                    return true;
+                }
+                return false;
+            };
+            changed |= DrawFieldUi(ui, "scatterRule", rule, kScatterRuleFields, custom);
+        } else if (selectedScatter_ - rules.rules.size() < rules.lines.size()) {
+            ScatterLineRule& rule = rules.lines[selectedScatter_ - rules.rules.size()];
+            const auto custom = [&](std::string_view key, ScatterLineRule& object) {
+                if (key == "enabled") {
+                    return true;
+                }
+                if (key == "instanceSet") {
+                    DrawSetChoice(ui, world, "scatterLine", object.instanceSet, changed);
+                    return true;
+                }
+                if (key == "splineLayer") {
+                    DrawSplineChoice(ui, store, object.splineLayer, changed);
+                    return true;
+                }
+                return false;
+            };
+            changed |= DrawFieldUi(ui, "scatterLine", rule, kScatterLineRuleFields, custom);
+        }
+        changed |= ui.InputFloat("scatterMargin", "Spline Margin (m)", &rules.splineMarginMeters);
+        if (changed) {
+            ChangeScatterRules(*shared_, std::move(rules));
         }
     }
 
@@ -448,6 +656,8 @@ private:
     std::array<char, 95> instanceModel_{};
     float instanceTint_ = 0.3f;
     float instanceWind_ = 0.0f;
+    float instanceMinScreen_ = 0.001f;
+    size_t selectedScatter_ = 0u;
     bool instanceRayTraced_ = true;
 };
 

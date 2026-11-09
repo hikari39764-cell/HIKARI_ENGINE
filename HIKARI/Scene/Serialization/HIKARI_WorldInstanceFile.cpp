@@ -193,7 +193,8 @@ bool WriteWorldInstanceSetsFile(const std::filesystem::path& path,
                         {"primitiveIndex", set.primitiveIndex},
                         {"materialIndex", set.materialIndex},
                         {"tintVariation", set.tintVariation},
-                        {"windStrength", set.windStrength}});
+                        {"windStrength", set.windStrength},
+                        {"minScreenHeight", set.minScreenHeight}});
     }
     const nlohmann::json document = {{"version", kSetsFileVersion}, {"sets", std::move(list)}};
     std::error_code ec{};
@@ -241,6 +242,7 @@ bool ReadWorldInstanceSetsFile(const std::filesystem::path& path, std::vector<Ga
             set.materialIndex = entry.at("materialIndex").get<uint32_t>();
             set.tintVariation = entry.at("tintVariation").get<float>();
             set.windStrength = entry.at("windStrength").get<float>();
+            set.minScreenHeight = entry.at("minScreenHeight").get<float>();
             outSets.push_back(set);
         }
     } catch (const nlohmann::json::exception& exception) {

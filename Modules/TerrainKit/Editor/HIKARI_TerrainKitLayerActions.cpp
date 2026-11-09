@@ -69,6 +69,19 @@ private:
     SurfaceRuleSet after_;
 };
 
+// 散布規則の前後を持つ撤销。
+class ScatterRulesUndo final : public IEditorUndoEntry {
+public:
+    ScatterRulesUndo(ScatterRuleSet before, ScatterRuleSet after)
+        : before_(std::move(before)), after_(std::move(after)) {}
+    void Undo() override { TerrainStore::Get().SetScatterRules(before_); }
+    void Redo() override { TerrainStore::Get().SetScatterRules(after_); }
+
+private:
+    ScatterRuleSet before_;
+    ScatterRuleSet after_;
+};
+
 // 積雪と湿りの前後を持つ撤销。
 class WeatherUndo final : public IEditorUndoEntry {
 public:
@@ -238,6 +251,19 @@ void ChangeSurfaceRules(EditorShared& shared, SurfaceRuleSet rules) {
     if (shared.services != nullptr) {
         shared.services->RecordUndo("Edit Terrain Rules",
                                     std::make_unique<RulesUndo>(std::move(before), std::move(rules)));
+    }
+}
+
+void ChangeScatterRules(EditorShared& shared, ScatterRuleSet rules) {
+    TerrainStore& store = TerrainStore::Get();
+    ScatterRuleSet before = store.Scatter().Rules();
+    if (before == rules) {
+        return;
+    }
+    store.SetScatterRules(rules);
+    if (shared.services != nullptr) {
+        shared.services->RecordUndo("Edit Scatter Rules",
+                                    std::make_unique<ScatterRulesUndo>(std::move(before), std::move(rules)));
     }
 }
 

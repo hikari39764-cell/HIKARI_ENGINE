@@ -1,6 +1,7 @@
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Core/IO/HIKARI_PathNormalization.h"
 
+#include "Core/HIKARI_Logger.h"
 #include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
 #include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Core/Text/HIKARI_UtfPath.h"
@@ -9,6 +10,7 @@
 #include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/GpuDriven/HIKARI_MassGpuSceneFrameBuffer.h"
+#include "Render3D/Runtime/HIKARI_RenderModelCache.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
 #include "Render3D/Debug/HIKARI_MeshWireDebugRenderer.h"
@@ -37,11 +39,13 @@
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include <Vfx/Common/HIKARI_FxTypes.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -438,12 +442,16 @@ bool ResolveMassRenderModel(const GameProjectWorldMassRenderProxyDesc& proxy, co
     }
     const std::string assetGuid(proxy.modelAssetGuid);
     const auto* descriptor = assetRegistry->FindAs<ModelAssetDescriptor>(AssetGuid{assetGuid});
-    if (descriptor == nullptr) {
+    if (descriptor == nullptr || descriptor->clusteredGeometryPath.empty()) {
+        // 導入の成品が無い模型は読んでも描けない。理由が分かるように一度だけ書く。
+        static std::unordered_set<std::string> reported{};
+        if (reported.insert(assetGuid).second) {
+            HIKARI_LOG_WARN("[MassRender] model " + assetGuid + " is not drawn: it has not been imported");
+        }
         return false;
     }
     outResolved.model = ResolveModelAssetNow(*modelManager, *assetRegistry, descriptor->id.value);
-    if (outResolved.model == nullptr || outResolved.model->GetState() != ModelAsset::State::Loaded ||
-        descriptor->clusteredGeometryPath.empty()) {
+    if (outResolved.model == nullptr || outResolved.model->GetState() != ModelAsset::State::Loaded) {
         outResolved = {};
         return false;
     }
@@ -465,6 +473,44 @@ struct MassRenderSyncContext {
     uint64_t frameIndex = 0u;
 };
 
+bool AddMassStore(const MassRenderSyncContext& context, const WorldMassRenderStoreView& store,
+                  const ResolvedMassRenderModel& resolved, uint64_t typeId, uint32_t primitiveIndex,
+                  uint32_t materialIndex) {
+    const GameProjectWorldMassRenderProxyDesc& proxy = *store.proxy;
+    return context.registry->AddStore(RENDER3D::GPUDRIVEN::MassGpuSceneStoreInput{
+        {typeId, resolved.model, proxy.meshIndex, primitiveIndex, materialIndex,
+         (proxy.flags & static_cast<uint32_t>(GameProjectWorldMassRenderFlags::ReceiveShadow)) != 0u,
+         (proxy.flags & static_cast<uint32_t>(GameProjectWorldMassRenderFlags::SkipRayTracing)) == 0u,
+         resolved.clusteredGeometryPath},
+        store.instances,
+        store.dirtyRanges,
+        store.layoutVersion,
+        store.sourceVersion,
+        store.dirtyBaseSourceVersion});
+}
+
+// 網の全部の部品を、同じ個体の列を共有する別々の種類として足す。同じ部品を複数の節が使っていても一度だけ。
+bool AddMassStoreParts(const MassRenderSyncContext& context, const WorldMassRenderStoreView& store,
+                       const ResolvedMassRenderModel& resolved) {
+    const RENDER3D::RUNTIME::RenderModelAsset* renderModel = context.renderModelCache->GetOrCreate(*resolved.model);
+    if (renderModel == nullptr || !renderModel->valid) {
+        return false;
+    }
+    std::vector<std::pair<uint32_t, uint32_t>> added{};
+    for (const RENDER3D::RUNTIME::RenderSurfaceRecord& surface : renderModel->surfaces) {
+        const std::pair part{surface.primitiveIndex, surface.materialIndex};
+        if (surface.meshIndex != store.proxy->meshIndex || std::find(added.begin(), added.end(), part) != added.end()) {
+            continue;
+        }
+        const uint64_t typeId = store.typeId.value + (added.size() * 0x9E3779B97F4A7C15ull);
+        if (!AddMassStore(context, store, resolved, typeId, part.first, part.second)) {
+            return false;
+        }
+        added.push_back(part);
+    }
+    return !added.empty();
+}
+
 bool SyncMassRenderStores(void* rawContext, const WorldMassRenderPublicationReceipt& receipt,
                           std::span<const WorldMassRenderStoreView> stores) noexcept {
     try {
@@ -481,21 +527,25 @@ bool SyncMassRenderStores(void* rawContext, const WorldMassRenderPublicationRece
                 return false;
             }
             ResolvedMassRenderModel resolved{};
+            // 模型がまだ読めていない種類だけ飛ばす。他の種類まで道連れにしない。毎フレーム試すので読めれば出る。
             if (context.projectRoot == nullptr ||
                 !ResolveMassRenderModel(*store.proxy, context.assetRegistry, context.modelManager, *context.projectRoot,
-                                        resolved) ||
-                !context.registry->AddStore(RENDER3D::GPUDRIVEN::MassGpuSceneStoreInput{
-                    {store.typeId.value, resolved.model, store.proxy->meshIndex, store.proxy->primitiveIndex,
-                     store.proxy->materialIndex,
-                     (store.proxy->flags & static_cast<uint32_t>(GameProjectWorldMassRenderFlags::ReceiveShadow)) != 0u,
-                     (store.proxy->flags & static_cast<uint32_t>(GameProjectWorldMassRenderFlags::SkipRayTracing)) ==
-                         0u,
-                     resolved.clusteredGeometryPath},
-                    store.instances,
-                    store.dirtyRanges,
-                    store.layoutVersion,
-                    store.sourceVersion,
-                    store.dirtyBaseSourceVersion})) {
+                                        resolved)) {
+                continue;
+            }
+            const bool added = store.proxy->primitiveIndex == kGameProjectWorldMassAllPrimitives
+                                   ? AddMassStoreParts(context, store, resolved)
+                                   : AddMassStore(context, store, resolved, store.typeId.value,
+                                                  store.proxy->primitiveIndex, store.proxy->materialIndex);
+            if (!added) {
+                // 個体の総数が上限を超えた時など。全部消えるので、理由を一度だけ書く。
+                static bool reported = false;
+                if (!reported) {
+                    reported = true;
+                    HIKARI_LOG_ERROR("[MassRender] mass instances are not drawn: over the capacity of " +
+                                     std::to_string(RENDER3D::GPUDRIVEN::kMassGpuSceneMaximumSourceInstanceCount) +
+                                     " instances counting each model part");
+                }
                 context.registry->Clear();
                 return false;
             }

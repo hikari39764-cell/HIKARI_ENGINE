@@ -21,6 +21,7 @@ target_sources(
         "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataLayers.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataNoise.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataRules.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataScatter.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataSpline.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Data/Private/HIKARI_TerrainDataStamp.cpp")
 target_include_directories(
@@ -83,6 +84,8 @@ if(TARGET HIKARI_EditorHost)
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitRivers.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitRuleBaker.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitRuleBaker.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitScatter.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitScatter.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitStore.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitStore.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitSurfaces.cpp"
@@ -90,6 +93,7 @@ if(TARGET HIKARI_EditorHost)
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitEditor.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitEditorCommon.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitExport.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitFieldUi.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitLayerActions.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitOperations.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Editor/HIKARI_TerrainKitPanel.cpp"

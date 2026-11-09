@@ -26,6 +26,7 @@
 #include "TerrainKit/Data/HIKARI_TerrainDataFile.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataImage.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataRules.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataScatter.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataValleys.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataStamp.h"
 
@@ -549,6 +550,214 @@ void TestSurfaceRules() {
 
 // 地形の読み取りは谷筋を湿った谷底と見て、谷の彫り込みは水の流れる道を作る。
 // 実例集の個体の詰め方とファイルの往復。壊れたファイルは読まない。
+// 1 m 間隔の瓦片の入力を、世界座標の高さの式から作る。
+template <class Height>
+std::vector<float> ScatterHeights(uint32_t samples, int64_t firstX, int64_t firstZ, Height height) {
+    const int64_t margin = kSurfaceRuleHeightMargin;
+    const int64_t stride = static_cast<int64_t>(samples) + 2 * margin;
+    std::vector<float> heights(static_cast<size_t>(stride * stride));
+    for (int64_t row = 0; row < stride; ++row) {
+        for (int64_t column = 0; column < stride; ++column) {
+            heights[static_cast<size_t>(row * stride + column)] =
+                height(static_cast<float>(firstX + column - margin), static_cast<float>(firstZ + row - margin));
+        }
+    }
+    return heights;
+}
+
+void TestScatter() {
+    const auto flat = [](float, float) { return 10.0f; };
+    const auto makeTile = [](const std::vector<float>& heights, uint32_t samples, int64_t firstX, int64_t firstZ) {
+        ScatterTile tile{};
+        tile.surface.samples = samples;
+        tile.surface.spacingMeters = 1.0f;
+        tile.surface.firstSampleX = firstX;
+        tile.surface.firstSampleZ = firstZ;
+        tile.surface.heights = heights;
+        return tile;
+    };
+    ScatterRuleSet set{};
+    ScatterRule rule{};
+    rule.name = "Trees";
+    rule.instanceSet = "Trees";
+    rule.densityPer100 = 10.0f;
+    rule.footprintMeters = 0.1f;
+    rule.clusterAmount = 0.0f;
+    set.rules.push_back(rule);
+    const std::vector<float> flatHeights = ScatterHeights(65u, 0, 0, flat);
+    const ScatterTile flatTile = makeTile(flatHeights, 65u, 0, 0);
+
+    // 同じ入力は同じ結果で、数は密度どおり。
+    std::vector<ScatterPoint> first{};
+    std::vector<ScatterPoint> second{};
+    EvaluateScatter(set, flatTile, first);
+    EvaluateScatter(set, flatTile, second);
+    CHECK(first.size() == second.size());
+    CHECK(std::equal(first.begin(), first.end(), second.begin(),
+                     [](const ScatterPoint& a, const ScatterPoint& b) { return a.seed == b.seed && a.x == b.x; }));
+    CHECK(first.size() > 350u && first.size() < 470u); // 64 x 64 m x 0.1 = 410
+    for (const ScatterPoint& point : first) {
+        CHECK(point.x >= 0.0f && point.x < 64.0f && point.z >= 0.0f && point.z < 64.0f && point.y == 10.0f);
+        CHECK(point.scale >= rule.scaleMin && point.scale <= rule.scaleMax);
+    }
+
+    // 瓦片の境：二枚に分けても一枚で解いても同じ個体が出る。
+    const std::vector<float> wideHeights = ScatterHeights(129u, 0, 0, flat);
+    std::vector<ScatterPoint> wide{};
+    EvaluateScatter(set, makeTile(wideHeights, 129u, 0, 0), wide);
+    const std::vector<float> rightHeights = ScatterHeights(65u, 64, 0, flat);
+    std::vector<ScatterPoint> right{};
+    EvaluateScatter(set, makeTile(rightHeights, 65u, 64, 0), right);
+    std::vector<uint32_t> joined{};
+    for (const ScatterPoint& point : first) {
+        joined.push_back(point.seed);
+    }
+    for (const ScatterPoint& point : right) {
+        joined.push_back(point.seed);
+    }
+    std::vector<uint32_t> whole{};
+    for (const ScatterPoint& point : wide) {
+        if (point.z < 64.0f) {
+            whole.push_back(point.seed);
+        }
+    }
+    std::sort(joined.begin(), joined.end());
+    std::sort(whole.begin(), whole.end());
+    CHECK(joined == whole);
+
+    // 坡度と高さの条件。
+    const std::vector<float> steep = ScatterHeights(65u, 0, 0, [](float x, float) { return x * 2.0f; }); // 63 度
+    std::vector<ScatterPoint> points{};
+    EvaluateScatter(set, makeTile(steep, 65u, 0, 0), points);
+    CHECK(points.empty());
+    ScatterRuleSet low = set;
+    low.rules[0].maxHeightMeters = 0.0f;
+    low.rules[0].heightFadeMeters = 1.0f;
+    EvaluateScatter(low, flatTile, points);
+    CHECK(points.empty());
+
+    // 足跡：後の規則は前の規則の足跡の中に置かない。
+    ScatterRuleSet layered{};
+    ScatterRule big = rule;
+    big.seed = 5u;
+    big.instanceSet = "Big";
+    big.densityPer100 = 2.0f;
+    big.footprintMeters = 4.0f;
+    ScatterRule small = rule;
+    small.seed = 6u;
+    small.densityPer100 = 50.0f;
+    small.footprintMeters = 0.5f;
+    layered.rules = {big, small};
+    EvaluateScatter(layered, flatTile, points);
+    size_t bigCount = 0u;
+    size_t smallCount = 0u;
+    for (const ScatterPoint& a : points) {
+        if (a.rule != 0u) {
+            ++smallCount;
+            continue;
+        }
+        ++bigCount;
+        for (const ScatterPoint& b : points) {
+            if (&a != &b) {
+                const float dx = a.x - b.x;
+                const float dz = a.z - b.z;
+                CHECK(dx * dx + dz * dz >= 3.0f * 3.0f);
+            }
+        }
+    }
+    CHECK(bigCount > 10u && smallCount > 100u);
+
+    // 手で置いた個体の周りは空ける。
+    const ScatterReserved reserved{32.0f, 32.0f, 10.0f};
+    ScatterTile aroundHand = flatTile;
+    aroundHand.reserved = std::span(&reserved, 1u);
+    EvaluateScatter(set, aroundHand, points);
+    CHECK(!points.empty());
+    for (const ScatterPoint& point : points) {
+        const float dx = point.x - 32.0f;
+        const float dz = point.z - 32.0f;
+        CHECK(dx * dx + dz * dz >= 9.0f * 9.0f);
+    }
+
+    // マスク：0 を塗った半分には出ない。
+    std::vector<std::vector<float>> masks(1u, std::vector<float>(65u * 65u, 1.0f));
+    for (uint32_t z = 0u; z < 65u; ++z) {
+        for (uint32_t x = 0u; x < 32u; ++x) {
+            masks[0][static_cast<size_t>(z) * 65u + x] = 0.0f;
+        }
+    }
+    ScatterTile masked = flatTile;
+    masked.ruleMasks = masks;
+    EvaluateScatter(set, masked, points);
+    CHECK(!points.empty());
+    for (const ScatterPoint& point : points) {
+        CHECK(point.x >= 31.0f);
+    }
+
+    // 地表材質：許さない枠の上には出ない。
+    const std::vector<uint32_t> control(65u * 65u, 0u);
+    ScatterRuleSet surfaceOnly = set;
+    surfaceOnly.rules[0].surfaceMask = 1u << 3u;
+    ScatterTile painted = flatTile;
+    painted.control = control;
+    EvaluateScatter(surfaceOnly, painted, points);
+    CHECK(points.empty());
+
+    // 曲線：面の規則は避け、沿線の規則は間隔どおり両側に並ぶ。
+    SplineLayerSettings road{};
+    road.points = {{{32.0f, 10.0f, -60.0f}, 8.0f}, {{32.0f, 10.0f, 32.0f}, 8.0f}, {{32.0f, 10.0f, 124.0f}, 8.0f}};
+    road.edgeMeters = 2.0f;
+    const std::vector<PreparedSpline> splines{PrepareSpline(road)};
+    const std::vector<uint32_t> layers{42u};
+    ScatterTile withRoad = flatTile;
+    withRoad.splines = splines;
+    withRoad.splineLayers = layers;
+    EvaluateScatter(set, withRoad, points);
+    CHECK(!points.empty());
+    for (const ScatterPoint& point : points) {
+        CHECK(std::abs(point.x - 32.0f) >= 6.0f); // 半幅 4 + 路肩 2 + 余白
+    }
+    ScatterRuleSet fence{};
+    ScatterLineRule line{};
+    line.instanceSet = "Fence";
+    line.splineLayer = 42u;
+    line.spacingMeters = 4.0f;
+    line.offsetMeters = 1.0f;
+    fence.lines.push_back(line);
+    EvaluateScatter(fence, withRoad, points);
+    size_t rightSide = 0u;
+    size_t leftSide = 0u;
+    for (const ScatterPoint& point : points) {
+        CHECK(point.line);
+        rightSide += point.x > 32.0f ? 1u : 0u;
+        leftSide += point.x < 32.0f ? 1u : 0u;
+        CHECK(std::abs(std::abs(point.x - 32.0f) - 5.0f) < 0.1f);
+        // 進む向きは +Z なので回転は無い。
+        CHECK(std::abs(point.rotation[1]) < 0.01f && std::abs(point.rotation[3]) > 0.99f);
+    }
+    CHECK(rightSide == leftSide && rightSide >= 15u && rightSide <= 17u); // 64 m / 4 m
+
+    // 地面に沿わせる回転：上向きが法線へ向く。
+    float rotation[4]{};
+    GroundAlignedRotation(1.3f, 0.5f, -0.25f, 1.0f, rotation);
+    const float upX = 2.0f * (rotation[0] * rotation[1] - rotation[3] * rotation[2]);
+    const float upY = 1.0f - 2.0f * (rotation[0] * rotation[0] + rotation[2] * rotation[2]);
+    const float upZ = 2.0f * (rotation[1] * rotation[2] + rotation[3] * rotation[0]);
+    const float inverse = 1.0f / std::sqrt(0.5f * 0.5f + 0.25f * 0.25f + 1.0f);
+    CHECK(std::abs(upX + 0.5f * inverse) < 0.001f);
+    CHECK(std::abs(upY - inverse) < 0.001f);
+    CHECK(std::abs(upZ - 0.25f * inverse) < 0.001f);
+
+    // 既定の規則は JSON を往復する。
+    nlohmann::json json{};
+    const ScatterRuleSet defaults = DefaultScatterRules();
+    CHECK(defaults.rules.size() == 3u);
+    HIKARI::JSONFIELDS::Write(json, defaults, kScatterRuleSetFields);
+    ScatterRuleSet read{};
+    HIKARI::JSONFIELDS::Read(json, read, kScatterRuleSetFields);
+    CHECK(read == defaults);
+}
+
 void TestWorldInstanceFile() {
     using namespace HIKARI;
     const GameProjectWorldInstance instance =
@@ -1079,6 +1288,7 @@ int main(int argc, char** argv) {
     TestSurfaceRules();
     TestTerrainAnalysis();
     TestWorldInstanceFile();
+    TestScatter();
     TestSplineLayers();
     TestUndo();
     TestErosion();
