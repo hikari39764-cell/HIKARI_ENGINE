@@ -155,10 +155,16 @@ struct GrassLighting
 
 #include "Include/Terrain/HIKARI_TerrainKitGrassBlade.hlsli"
 
+// 一組 32 本：前の 16 本が葉を一枚ずつ判定して作り、頂点は全部の thread で分けて書く（1 本で回すと波の 31 本が遊ぶ）。
+static const uint GRASS_THREADS = 32u;
+groupshared uint gGrassAliveMask;
+groupshared GrassBlade gGrassBlades[GRASS_BLADES_PER_GROUP];
+
 [outputtopology("triangle")]
-[numthreads(1, 1, 1)]
+[numthreads(GRASS_THREADS, 1, 1)]
 void SurfaceMS(
     uint3 groupId : SV_GroupID,
+    uint thread : SV_GroupIndex,
     out vertices GrassVertex vertices[240],
     out indices uint3 triangles[208])
 {
@@ -192,50 +198,37 @@ void SurfaceMS(
         inside = inside && dot(planes[index], float4(center, 1.0f)) >= -radius * length(planes[index].xyz);
     }
 
-    // 先に葉の有無だけ決める（出力の数を宣言するまで頂点を書けない）。大きな構造体の配列は持たない。
-    uint cells[GRASS_BLADES_PER_GROUP];
-    uint surfaces[GRASS_BLADES_PER_GROUP];
-    uint alive = 0u;
-    for (uint index = 0u; inside && index < GRASS_BLADES_PER_GROUP; ++index)
+    // 葉の有無を葉ごとに決め、印の並びで詰めた番号を付ける（出力の数を宣言するまで頂点を書けない）。
+    if (thread == 0u)
+        gGrassAliveMask = 0u;
+    GroupMemoryBarrierWithGroupSync();
+    int2 baseCell = int2(0, 0);
+    uint surface = 0u;
+    bool exists = false;
+    if (inside && thread < GRASS_BLADES_PER_GROUP)
     {
-        const uint cellIndex = index;
-        const int2 cell = int2(flipX ? 3u - (cellIndex & 3u) : (cellIndex & 3u),
-            flipZ ? 3u - (cellIndex >> 2u) : (cellIndex >> 2u));
-        const int2 baseCell = blockCell + cell * step;
-        uint surface = 0u;
-        if (GrassBladeExists(patch, baseCell, camera.xz, surface))
-        {
-            cells[alive] = (uint)(cell.x | (cell.y << 2));
-            surfaces[alive] = surface;
-            ++alive;
-        }
+        const int2 cell = int2(flipX ? 3u - (thread & 3u) : (thread & 3u), flipZ ? 3u - (thread >> 2u) : (thread >> 2u));
+        baseCell = blockCell + cell * step;
+        exists = GrassBladeExists(patch, baseCell, camera.xz, surface);
+        if (exists)
+            InterlockedOr(gGrassAliveMask, 1u << thread);
     }
+    GroupMemoryBarrierWithGroupSync();
+    const uint aliveMask = gGrassAliveMask;
+    const uint alive = countbits(aliveMask);
     const uint pairs = patch.level <= GRASS_LAST_HIGH_LEVEL ? GRASS_HIGH_PAIRS : GRASS_LOW_PAIRS;
     const uint bladeVertices = pairs * 2u + 1u;
     const uint bladeTriangles = (pairs - 1u) * 2u + 1u;
     SetMeshOutputCounts(alive * bladeVertices, alive * bladeTriangles);
-    if (alive == 0u)
-        return;
 
-    const GrassBlock block = GrassBuildBlock(blockCenterXZ, patch);
-    const GrassLighting lighting = GrassReadLighting(center, camera);
-    uint cachedSurface = 0xffffffffu;
-    GrassParams params = (GrassParams)0;
-    for (uint index = 0u; index < alive; ++index)
+    if (exists)
     {
-        if (surfaces[index] != cachedSurface)
-        {
-            cachedSurface = surfaces[index];
-            params = GrassLoadParams(cachedSurface);
-        }
-        const int2 baseCell = blockCell + int2(cells[index] & 3u, cells[index] >> 2u) * step;
-        const GrassBlade blade = GrassBuildBlade(patch, block, lighting, params, baseCell, camera);
+        const uint index = countbits(aliveMask & ((1u << thread) - 1u));
+        const GrassBlock block = GrassBuildBlock(blockCenterXZ, patch);
+        const GrassLighting lighting = GrassReadLighting(center, camera);
+        gGrassBlades[index] = GrassBuildBlade(patch, block, lighting, GrassLoadParams(surface), baseCell, camera);
         const uint firstVertex = index * bladeVertices;
         const uint firstTriangle = index * bladeTriangles;
-        for (uint vertexIndex = 0u; vertexIndex < bladeVertices; ++vertexIndex)
-        {
-            vertices[firstVertex + vertexIndex] = GrassBuildVertex(blade, vertexIndex, pairs);
-        }
         for (uint row = 0u; row + 1u < pairs; ++row)
         {
             const uint base = firstVertex + row * 2u;
@@ -244,6 +237,12 @@ void SurfaceMS(
         }
         const uint last = firstVertex + (pairs - 1u) * 2u;
         triangles[firstTriangle + bladeTriangles - 1u] = uint3(last, last + 1u, last + 2u);
+    }
+    GroupMemoryBarrierWithGroupSync();
+    for (uint vertexIndex = thread; vertexIndex < alive * bladeVertices; vertexIndex += GRASS_THREADS)
+    {
+        const uint blade = vertexIndex / bladeVertices;
+        vertices[vertexIndex] = GrassBuildVertex(gGrassBlades[blade], vertexIndex - blade * bladeVertices, pairs);
     }
 }
 
