@@ -33,11 +33,6 @@ void ResourceWorkspacePanel::DrawContents(AssetDatabase& assetDatabase, AssetReg
     const AssetBrowserContext browserContext{
         context.currentSceneGuid, projectSettingsCache_.StartupScene(assetDatabase), context.currentSceneDirty};
 
-    AssetImportBatchStatus completedBatch{};
-    if (assetDatabase.ConsumeCompletedImportBatch(completedBatch)) {
-        importMonitor_ = MakeImportMonitor(completedBatch);
-        refreshCurrentSceneResourcesRequested_ = true;
-    }
     const AssetRecord* selectedRecord = selection.selectedAssetGuid.empty()
                                             ? nullptr
                                             : assetDatabase.FindByGuid(AssetGuid{selection.selectedAssetGuid});
@@ -259,6 +254,14 @@ bool ResourceWorkspacePanel::ConsumeApplyRuntimeMaterialRequest(AssetGuid& outGu
 
 std::string ResourceWorkspacePanel::ConsumeRefreshRuntimeMaterialGuid() const {
     return assetInspectorPanel_.ConsumeRefreshRuntimeMaterialGuid();
+}
+
+void ResourceWorkspacePanel::PollCompletedImports(AssetDatabase& assetDatabase) const {
+    AssetImportBatchStatus completedBatch{};
+    if (assetDatabase.ConsumeCompletedImportBatch(completedBatch)) {
+        importMonitor_ = MakeImportMonitor(completedBatch);
+        refreshCurrentSceneResourcesRequested_ = true;
+    }
 }
 
 bool ResourceWorkspacePanel::ConsumeRefreshCurrentSceneResourcesRequested() const {

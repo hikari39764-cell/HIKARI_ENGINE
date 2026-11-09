@@ -153,13 +153,40 @@ void ImportOutdatedAssetsForHeadlessRun(AssetDatabase& database) {
     const AssetImportBatchResult imported = database.ImportAllOutdated();
     if (imported.attempted == 0)
         return;
-    const std::string summary = "[AssetImport] headless run imported outdated assets attempted=" +
-                                std::to_string(imported.attempted) + " succeeded=" +
-                                std::to_string(imported.succeeded) + " failed=" + std::to_string(imported.failed);
+    const std::string summary =
+        "[AssetImport] headless run imported outdated assets attempted=" + std::to_string(imported.attempted) +
+        " succeeded=" + std::to_string(imported.succeeded) + " failed=" + std::to_string(imported.failed);
     if (imported.failed != 0)
         HIKARI_LOG_WARN(summary);
     else
         HIKARI_LOG_INFO(summary);
+}
+#endif
+
+#if defined(HIKARI_WITH_EDITOR)
+// 資産フォルダへ直接置かれ、まだ一度も取り込めていない模型と貼り絵を後台の取り込みへ回す（dec-0025）。
+// 取り込み済みで古くなった物は利用者が「古い資産を取り込む」で行う。同じ資産はこの実行中に一度だけ回す。
+void QueueNewModelAndTextureImports(AssetDatabase& database, std::unordered_set<std::string>& queued) {
+    if (database.IsCookedContent() || HasRuntimeCommandLineFlag(L"--agent-play-run") ||
+        database.GetQueuedImportStatus().active) {
+        return;
+    }
+    std::vector<AssetGuid> guids{};
+    for (const AssetRecord* record : database.CollectAll()) {
+        if (record != nullptr && (record->type == AssetType::Model || record->type == AssetType::Texture) &&
+            record->CanImport() && record->importOutdated && record->artifactManifest.guid != record->guid &&
+            !queued.contains(record->guid.value)) {
+            guids.push_back(record->guid);
+        }
+    }
+    if (guids.empty() || !database.QueueImportAssets(guids, "New models and textures")) {
+        return;
+    }
+    for (const AssetGuid& guid : guids) {
+        queued.insert(guid.value);
+    }
+    HIKARI_LOG_INFO("[AssetImport] queued " + std::to_string(guids.size()) +
+                    " new model/texture asset(s) for background import.");
 }
 #endif
 
@@ -397,6 +424,9 @@ bool DocumentSceneAssetBindings::ReloadAssets(
 
     ConfigureModelTextureResolver();
     RenderSubmissionSystem::InvalidateSceneResources(false);
+#if defined(HIKARI_WITH_EDITOR)
+    QueueNewModelAndTextureImports(database_, autoImportQueued_);
+#endif
     return true;
 }
 

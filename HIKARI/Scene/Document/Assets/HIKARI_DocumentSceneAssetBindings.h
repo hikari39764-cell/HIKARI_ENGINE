@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <unordered_set>
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/HIKARI_AssetGuid.h"
@@ -75,6 +76,8 @@ private:
     AssetDatabase database_{};
     AssetRegistry registry_{};
     uint64_t registrySourceRevision_ = 0u;
+    // この実行中に自動で取り込みへ回した資産。取り込みに失敗しても同じ実行中は繰り返さない。
+    std::unordered_set<std::string> autoImportQueued_{};
     SequenceAssetStore sequenceAssets_{};
     GameplayCameraAssetStore gameplayCameras_;
     POST::PostAssetStore postAssets_;

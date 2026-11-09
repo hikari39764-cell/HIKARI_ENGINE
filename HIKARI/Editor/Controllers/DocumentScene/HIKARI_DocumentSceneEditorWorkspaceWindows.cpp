@@ -416,6 +416,7 @@ void DocumentSceneEditorController::HandleResourceWorkspaceRequests(DocumentScen
         viewportDropMessage_ = SummarizeRuntimeRefreshReport(context_.lastRuntimeRefreshReport);
     };
 
+    resourceWorkspacePanel_.PollCompletedImports(scene.GetAssetDatabase());
     const bool refreshCurrentScene = resourceWorkspacePanel_.ConsumeRefreshCurrentSceneResourcesRequested();
     const std::string refreshRuntimeGuid = resourceWorkspacePanel_.ConsumeRefreshRuntimeAssetGuid();
     const std::string reimportAndRefreshRuntimeGuid =
