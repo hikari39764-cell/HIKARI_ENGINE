@@ -29,6 +29,9 @@ SamplerState gLinearClamp : register(s0);
 SamplerState gMaterialWrap : register(s1);
 SamplerState gPointClamp : register(s2);
 
+// これより遠い画素は影の光線を 1 本だけ飛ばす（m）。
+static const float HIKARI_SHADOW_SINGLE_RAY_METERS = 45.0f;
+
 // GeometryAux の面の記述にある着色の法線（法線地図・デカール込み）。不透明面の画素は必ず書かれている。
 // 深度の差分の法線は細い物や輪郭で奥の面を拾って向きを誤り、影の中に光が漏れたので使わない。
 float3 SurfaceNormal(uint2 pixel, out float metallic)
@@ -72,7 +75,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     const float distanceToCamera = length(position - gCameraPosition.xyz);
     const float offset = gRayParams.w * (1.0f + distanceToCamera * 0.02f) * (2.0f - cosine);
     const float sinHalfAngle = sin(gSunCone.w);
-    const uint sampleCount = max((uint)gRayParams.y, 1u);
+    // 遠くの画素は 1 本で足りる。半影は画面で数画素しかなく、CSFilter の 7x7 の均しと時間の積分で埋まる。
+    // 森を見渡す画面では大半が遠くの画素で、光線の数がそのまま費用になる。
+    const uint sampleCount = distanceToCamera > HIKARI_SHADOW_SINGLE_RAY_METERS ? 1u : max((uint)gRayParams.y, 1u);
     const float frame = gRayParams.z;
     float lit = 0.0f;
     [loop] for (uint i = 0u; i < sampleCount; ++i)
