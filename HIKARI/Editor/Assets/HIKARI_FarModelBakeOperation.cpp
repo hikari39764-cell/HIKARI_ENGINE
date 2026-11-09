@@ -1,6 +1,7 @@
 #include "Editor/Assets/HIKARI_FarModelBakeOperation.h"
 
 #include <utility>
+#include <vector>
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
@@ -66,7 +67,16 @@ FarModelBakeOutcome BakeFarModelAsset(AssetDatabase& database, std::string_view 
     }
     outcome.farModelGuid = farRecord->guid.value;
     outcome.ok = true;
-    outcome.message = database.QueueImportAssets({farRecord->guid}, "Far model")
+    // 貼り絵を先に導入する（模型の導入が焼いた貼り絵を参照し、mip も覆率を保つ）。
+    std::vector<AssetGuid> imports{};
+    for (const char* suffix : {"_color.png", "_normal.png"}) {
+        const AssetRecord* texture = database.FindByPath(relativeDirectory / TEXT::PathFromUtf8(name + suffix));
+        if (texture != nullptr) {
+            imports.push_back(texture->guid);
+        }
+    }
+    imports.push_back(farRecord->guid);
+    outcome.message = database.QueueImportAssets(imports, "Far model")
                           ? "Far model baked; its import is queued."
                           : "Far model baked; another import batch is running, so import it again afterwards.";
     return outcome;

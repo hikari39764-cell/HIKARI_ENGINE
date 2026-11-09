@@ -17,6 +17,7 @@
 
 #include "HIKARI_FarModelCard.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/HIKARI_ModelBounds.h"
 
 namespace HIKARI {
 namespace {
@@ -185,9 +186,10 @@ bool BakeFarModel(const ModelAsset& model, const FarModelBakeRequest& request, s
 
     // この網を指す最初の節の位置で、部品を一つの三角形の列にする。描画と同じ置き方。
     MATH::Mat4 nodeMatrix = MATH::Mat4::Identity();
-    for (const ModelNode& node : model.nodes) {
-        if (node.meshIndex == int(request.meshIndex)) {
-            nodeMatrix = node.globalBindMatrix;
+    const auto nodeGlobals = BOUNDS::BuildModelNodeGlobals(model);
+    for (size_t index = 0u; index < model.nodes.size(); ++index) {
+        if (model.nodes[index].meshIndex == int(request.meshIndex)) {
+            nodeMatrix = nodeGlobals[index];
             break;
         }
     }

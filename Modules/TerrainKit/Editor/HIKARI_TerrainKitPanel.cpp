@@ -387,6 +387,7 @@ private:
             if (ui.Selectable("instanceSet" + name, name + "  (" + std::to_string(world.GetInstanceCount(id)) + ")",
                               shared_->selectedInstanceSet == id.value)) {
                 shared_->selectedInstanceSet = id.value;
+                LoadInstanceFields(*set);
             }
         }
         ui.InputText("instanceName", "Set Name", instanceName_.data(), instanceName_.size());
@@ -403,7 +404,7 @@ private:
             }
         }
         ui.Checkbox("instanceRay", "Ray Traced", &instanceRayTraced_);
-        if (ui.Button("instanceAdd", "Add Set")) {
+        if (ui.Button("instanceAdd", "Add or Update Set")) {
             GameProjectWorldInstanceSetDesc desc{};
             std::memcpy(desc.name, instanceName_.data(), (std::min)(instanceName_.size(), sizeof(desc.name) - 1u));
             std::memcpy(desc.modelAssetGuid, instanceModel_.data(),
@@ -442,6 +443,24 @@ private:
             brush.mode = InstanceBrushMode::Move;
             shared_->services->ActivateViewportTool(kInstanceToolId);
         }
+    }
+
+    // 選んだ実例集を入力欄へ読み込む。同じ名前のまま Add or Update Set すると個体を残して設定だけ替わる。
+    void LoadInstanceFields(const GameProjectWorldInstanceSetDesc& set) {
+        const auto copy = [](auto& field, const char* value) {
+            field.fill('\0');
+            std::strncpy(field.data(), value, field.size() - 1u);
+        };
+        copy(instanceName_, set.name);
+        copy(instanceModel_, set.modelAssetGuid);
+        copy(instanceFarModel_, set.farModelAssetGuid);
+        instanceTint_ = set.tintVariation;
+        instanceWind_ = set.windStrength;
+        instanceMinScreen_ = set.minScreenHeight;
+        if (set.farDistance > 0.0f) {
+            instanceFarDistance_ = set.farDistance;
+        }
+        instanceRayTraced_ = (set.flags & static_cast<uint32_t>(GameProjectWorldInstanceSetFlags::RayTraced)) != 0u;
     }
 
     // 実例集を名前で選ぶ。

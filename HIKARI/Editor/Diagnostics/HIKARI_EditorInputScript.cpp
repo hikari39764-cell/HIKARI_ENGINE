@@ -60,6 +60,7 @@ std::optional<EditorInputScript> EditorInputScript::FromCommandLine() {
                                             : -1;
         event.key = item.value("key", std::string{});
         event.wheel = item.value("wheel", 0.0f);
+        event.text = item.value("text", std::string{});
         event.down = item.value("down", false);
         script.events_.push_back(std::move(event));
     }
@@ -84,6 +85,8 @@ void EditorInputScript::Apply(uint64_t frame) {
             io.AddMouseButtonEvent(event.button, event.down);
         if (event.wheel != 0.0f)
             io.AddMouseWheelEvent(0.0f, event.wheel);
+        if (!event.text.empty())
+            io.AddInputCharactersUTF8(event.text.c_str());
         if (!event.key.empty()) {
             const ImGuiKey key = FindKey(event.key);
             if (key == ImGuiKey_None)
