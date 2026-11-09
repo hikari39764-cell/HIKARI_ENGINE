@@ -614,7 +614,9 @@ private:
                 }
                 return false;
             };
-            changed |= DrawFieldUi(ui, "scatterRule", rule, kScatterRuleFields, custom);
+            // 独自の欄（custom）も changed へ書くので、先に描いてから合わせる。
+            const bool fieldChanged = DrawFieldUi(ui, "scatterRule", rule, kScatterRuleFields, custom);
+            changed = changed || fieldChanged;
         } else if (selectedScatter_ - rules.rules.size() < rules.lines.size()) {
             ScatterLineRule& rule = rules.lines[selectedScatter_ - rules.rules.size()];
             const auto custom = [&](std::string_view key, ScatterLineRule& object) {
@@ -631,7 +633,8 @@ private:
                 }
                 return false;
             };
-            changed |= DrawFieldUi(ui, "scatterLine", rule, kScatterLineRuleFields, custom);
+            const bool fieldChanged = DrawFieldUi(ui, "scatterLine", rule, kScatterLineRuleFields, custom);
+            changed = changed || fieldChanged;
         }
         changed |= ui.InputFloat("scatterMargin", "Spline Margin (m)", &rules.splineMarginMeters);
         if (changed) {
