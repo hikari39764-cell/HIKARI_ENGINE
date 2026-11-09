@@ -6,7 +6,7 @@
 
 // 光線追跡の加速構造のために、変形する面（骨格の蒙皮・地形の高さ場）の頂点を描画と同じ変形関数で world 空間へ変形して書く。
 // 出力は一つの pool の中の [位置 float3 × N][法線 float3 × N][接線 float4 × N]。位置は BLAS の頂点、
-// 三つとも命中の解決（HikariDecodeRayCandidate）が読む。添字は HCMESH の頂点番号のまま。
+// 三つとも命中の解決（HikariDecodeRayTriangle）が読む。添字は HCMESH の頂点番号のまま。
 
 cbuffer RayTracingDeformJob : register(b0)
 {

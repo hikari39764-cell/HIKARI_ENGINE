@@ -369,6 +369,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
     struct MassShape {
         Asset* asset = nullptr;
         uint32_t surface = 0, material = 0xffffffffu, flags = 0;
+        uint64_t column = 0;
     };
     const GPUDRIVEN::MassGpuSceneSource* mass = source.HasMassInstances() ? source.mass : nullptr;
     std::vector<MassShape> massShapes(mass ? mass->shapes.size() : 0u);
@@ -394,7 +395,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             excluded.Add(MassInstances, false);
             continue;
         }
-        massShapes[s] = {asset, range->surfaceIndex, slot, (shape.doubleSided ? 1u : 0u) | 2u};
+        massShapes[s] = {asset, range->surfaceIndex, slot, (shape.doubleSided ? 1u : 0u) | 2u, shape.instanceColumn};
     }
     const bool massPresent =
         std::any_of(massShapes.begin(), massShapes.end(), [](const MassShape& shape) { return shape.asset; });
@@ -654,21 +655,36 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             const MassShape& shape = massShapes[s];
             if (!shape.asset)
                 continue;
+            // 一つの模型の部品は同じ BLAS と同じ変換を共有するので、最初の部品の instance に全部の面を載せる。部品ごとに
+            // instance を作ると、一本の光線が同じ木を部品の数だけ調べ、最上位の木も部品の数だけ大きくなる。
+            const auto sameModel = [&](const MassShape& other) {
+                return other.asset == shape.asset && other.column == shape.column;
+            };
+            if (std::any_of(massShapes.begin(), massShapes.begin() + s, sameModel))
+                continue;
+            const auto partOf = [&](uint32_t surface) -> const MassShape* {
+                const auto part = std::find_if(massShapes.begin(), massShapes.end(), [&](const MassShape& other) {
+                    return sameModel(other) && other.surface == surface;
+                });
+                return part != massShapes.end() ? &*part : nullptr;
+            };
             const Asset& asset = *shape.asset;
             for (size_t c = 0; c < asset.chunks.size() && fits; ++c) {
                 const auto& chunk = asset.chunks[c];
                 if (std::none_of(chunk.ranges.begin(), chunk.ranges.end(),
-                                 [&](const auto& range) { return range.surfaceIndex == shape.surface; }))
+                                 [&](const auto& range) { return partOf(range.surfaceIndex) != nullptr; }))
                     continue;
                 fits = chunk.ranges.size() <= budget.maximumHitRecords - hits.size();
                 if (!fits)
                     break;
                 shapes[s].push_back({asset.bottomLevels[c]->GetGpuAddress(), static_cast<uint32_t>(hits.size())});
-                for (const auto& range : chunk.ranges)
+                for (const auto& range : chunk.ranges) {
+                    const MassShape* part = partOf(range.surfaceIndex);
                     hits.push_back({asset.geometryDescriptor, asset.metadataDescriptor,
-                                    range.surfaceIndex == shape.surface ? shape.material : 0xffffffffu, shape.flags,
+                                    part ? part->material : 0xffffffffu, part ? part->flags : shape.flags,
                                     range.firstPrimitive, range.firstCluster, range.clusterCount,
                                     range.primitiveCount});
+                }
             }
         }
         massIncluded = fits && state.mass.Append(*mass, shapes, budget.maximumInstances, instances);

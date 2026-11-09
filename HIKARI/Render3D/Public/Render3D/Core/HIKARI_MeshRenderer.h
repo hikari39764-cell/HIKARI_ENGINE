@@ -118,8 +118,15 @@ struct TerrainSurfaceGpuBindings {
     uint64_t floatVersion = 0;
 };
 TerrainSurfaceGpuBindings GetTerrainSurfaceGpuBindings();
+// historyDepth があれば、前フレームの階層で隠れていた簇を描かない（RenderGeometryAuxSecondPhase で補う）。
 bool RenderGeometryAuxPass(const GFX::Context& graphics, RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
-                           D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask = false);
+                           D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask = false,
+                           const RENDER3D::DEPTH::DepthPyramidView* historyDepth = nullptr);
+// 一段目が落とした簇のうち、一段目の深度で作った今フレームの階層で見える分を描き足す。
+bool RenderGeometryAuxSecondPhase(const GFX::Context& graphics, RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
+                                  D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask,
+                                  const RENDER3D::DEPTH::DepthPyramidView& historyDepth,
+                                  const RENDER3D::DEPTH::DepthPyramidView& currentDepth);
 bool HasStylizedFeatureMaskBackend();
 bool HasGeometryOutlineFeatureBackend();
 bool HasVisibilityOverlayFeatureBackend();

@@ -299,8 +299,8 @@ std::string BuildPerformanceReport(const RuntimePerformanceSnapshot& s) {
         << visibility.height << '/' << visibility.mipCount << '\n';
     for (size_t phase = 0; phase < visibility.samples.size(); ++phase) {
         const auto& sample = visibility.samples[phase];
-        out << "AS " << (phase == 0 ? "GeometryAux" : "Forward") << " sampled(1/16) valid=" << sample.valid
-            << " retireFence=" << sample.retireFence;
+        out << "AS " << RENDER3D::MESHLET::kMeshletVisibilityPhaseNames[phase]
+            << " sampled(1/16) valid=" << sample.valid << " retireFence=" << sample.retireFence;
         if (sample.valid) {
             const auto& c = sample.counters;
             out << " candidates/submitted/invalid=" << c.candidates << '/' << c.submitted << '/' << c.invalid

@@ -19,6 +19,7 @@
 #include "Gfx/HIKARI_UploadTraffic.h"
 #include "Gfx/HIKARI_VideoMemory.h"
 #include "Project/HIKARI_ProjectContext.h"
+#include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
@@ -344,6 +345,19 @@ struct Session {
             report["scenePeaks"] = {{"objects", peakObjects},
                                     {"authorVisibleObjects", peakAuthorVisibleObjects},
                                     {"massRenderInstances", peakMassInstances}};
+            // AS が実際に落とした簇と描いた簇（1/16 フレームの標本）。
+            Json meshlets = Json::object();
+            const auto& visibility = MESHRENDERER::GetDebugStats().meshletBackend.visibility;
+            for (size_t phase = 0; phase < visibility.samples.size(); ++phase) {
+                if (!visibility.samples[phase].valid)
+                    continue;
+                const auto& counters = visibility.samples[phase].counters;
+                meshlets[RENDER3D::MESHLET::kMeshletVisibilityPhaseNames[phase]] = {
+                    {"candidates", counters.candidates},       {"submitted", counters.submitted},
+                    {"frustumCulled", counters.frustumCulled}, {"coneCulled", counters.coneCulled},
+                    {"hzbTested", counters.hzbTested},         {"hzbCulled", counters.hzbCulled}};
+            }
+            report["meshletVisibility"] = std::move(meshlets);
             DescribeUploads();
             report["memory"] = {
                 {"samplingIntervalFrames", 60},

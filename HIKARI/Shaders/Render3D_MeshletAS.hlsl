@@ -39,12 +39,16 @@ ByteAddressBuffer gClusterGeometryPool[HIKARI_CLUSTER_SRV_POOL_COUNT] : register
 #if !defined(HIKARI_MESHLET_DISABLE_OCCLUSION)
 #include "Include/Depth/HIKARI_DepthOcclusion.hlsli"
 Texture2D<float> gMeshletOcclusionDepth : register(t19);
+// GeometryAux の二段目だけが読む前フレームの階層（一段目はこれを t19 で読む）。
+Texture2D<float> gMeshletHistoryDepth : register(t3, space8);
 cbuffer MeshletOcclusionQuery : register(b12)
 {
     float4x4 gMeshletOcclusionViewProj;
-    uint gMeshletVisibilityControl;
+    uint gMeshletVisibilityControl; // 下位 8 bit: t19 の mip 数、次の 8 bit: 前フレームの mip 数、bit 30: 二段目、bit 31: 計数
     uint3 gMeshletOcclusionPadding;
+    float4x4 gMeshletHistoryViewProj;
 };
+static const uint HIKARI_MESHLET_VISIBILITY_SECOND_PHASE = 0x40000000u;
 RWByteAddressBuffer gMeshletVisibilityCounters : register(u0, space8);
 
 void HikariMeshletAsRecordCount(uint offset, bool predicate)
@@ -53,20 +57,18 @@ void HikariMeshletAsRecordCount(uint offset, bool predicate)
     if (WaveIsFirstLane() && count != 0u) gMeshletVisibilityCounters.InterlockedAdd(offset, count);
 }
 
-bool HikariMeshletAsOccluded(float4x4 cullWorld, float4 cullMin, float4 cullMax,
-    out bool tested)
+bool HikariMeshletAsOccluded(Texture2D<float> depth, float4x4 viewProj, uint mipCount,
+    float4x4 cullWorld, float4 cullMin, float4 cullMax, out bool tested)
 {
     tested = false;
-    uint mipCount = gMeshletVisibilityControl & 255u;
     if (mipCount == 0u) return false;
     uint width, height;
-    gMeshletOcclusionDepth.GetDimensions(width, height);
+    depth.GetDimensions(width, height);
     HikariDepthOcclusionQuery query;
-    if (!HikariBuildDepthOcclusionQuery(gMeshletOcclusionViewProj, cullWorld, cullMin.xyz,
+    if (!HikariBuildDepthOcclusionQuery(viewProj, cullWorld, cullMin.xyz,
         cullMax.xyz, uint2(width, height), query)) return false;
     tested = true;
-    return HikariDepthOccluded(gMeshletOcclusionDepth, query, uint2(width, height), mipCount, 0.0f);
-
+    return HikariDepthOccluded(depth, query, uint2(width, height), mipCount, 0.0f);
 }
 #endif
 
@@ -311,8 +313,18 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     }
 
 #if !defined(HIKARI_MESHLET_DISABLE_OCCLUSION)
+    // GeometryAux の二段目は、一段目が前フレームの深度で落とした簇だけを見る。同じ判定で見分ける（一段目が描いた簇は
+    // 描かない）。
+    bool firstPhaseDrew = false;
+    if (clusterValid && (gMeshletVisibilityControl & HIKARI_MESHLET_VISIBILITY_SECOND_PHASE) != 0u) {
+        bool historyTested = false;
+        firstPhaseDrew = !requiresFineCull || !HikariMeshletAsOccluded(gMeshletHistoryDepth, gMeshletHistoryViewProj,
+            (gMeshletVisibilityControl >> 8u) & 255u, cullWorld, cullMin, cullMax, historyTested);
+        if (firstPhaseDrew) clusterValid = false;
+    }
     if (clusterValid && requiresFineCull) {
-        hzbCulled = HikariMeshletAsOccluded(cullWorld, cullMin, cullMax, hzbTested);
+        hzbCulled = HikariMeshletAsOccluded(gMeshletOcclusionDepth, gMeshletOcclusionViewProj,
+            gMeshletVisibilityControl & 255u, cullWorld, cullMin, cullMax, hzbTested);
         if (hzbCulled) clusterValid = false;
     }
 #endif
@@ -337,7 +349,7 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
         HikariMeshletAsRecordCount(24u, candidateLane && !requiresFineCull);
         HikariMeshletAsRecordCount(28u, payloadValid);
         HikariMeshletAsRecordCount(32u, candidateLane && !payloadValid &&
-            !frustumCulled && !coneCulled && !hzbCulled);
+            !frustumCulled && !coneCulled && !hzbCulled && !firstPhaseDrew);
     }
 #endif
     const uint compactIndex = HikariMeshletAsCompactVisibleLane(

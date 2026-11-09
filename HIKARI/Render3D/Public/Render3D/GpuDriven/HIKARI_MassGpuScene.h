@@ -57,6 +57,8 @@ struct MassGpuSceneShape {
     uint32_t primitiveIndex = RUNTIME::kInvalidRenderSurfaceIndex;
     bool doubleSided = false;
     bool rayTraced = true; // false の種類は光線追跡の場景へ入れない
+    // 同じ個体の列を共有する種類（一つの模型の部品）を見分ける値。光追はそれらを一つの instance にまとめる。
+    uint64_t instanceColumn = 0u;
 };
 
 struct MassGpuSceneSource {

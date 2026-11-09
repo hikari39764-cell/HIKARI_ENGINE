@@ -50,7 +50,10 @@ bool HikariClusterCullInstanceTooSmall(uint absoluteIndex, HikariSurfaceGpuScene
         return false;
     }
     const float minimum = (float)((instance.objectIdHigh >> 16u) & 255u) * HIKARI_MASS_INSTANCE_MIN_SCREEN_STEP;
-    return minimum > 0.0f && HikariClusterCullProjectedScreenRadius(instance.boundsCenterRadius) < minimum;
+    // 個体ごとに閾値をずらす。全部が同じ距離で消えると輪が見えるので、遠くへ行くほど少しずつ間引かれるようにする。
+    const uint hash = instance.objectIdLow * 2654435761u;
+    const float spread = 0.6f + 0.8f * (float)(hash >> 16u) / 65535.0f;
+    return minimum > 0.0f && HikariClusterCullProjectedScreenRadius(instance.boundsCenterRadius) < minimum * spread;
 }
 
 void HikariClusterCullAddDebugCounter(uint byteOffset, uint value)

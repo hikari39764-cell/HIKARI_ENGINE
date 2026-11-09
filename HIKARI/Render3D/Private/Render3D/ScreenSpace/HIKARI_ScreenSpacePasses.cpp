@@ -374,8 +374,14 @@ ScreenSpaceFrameResult ExecuteScreenSpacePreLightingPasses(ScreenSpaceRuntimeSta
     GFX::PIX::ScopedGpuEvent pixGeometry(context.cmd, GFX::PIX::kColorRender, "GeometryAux");
     GFX::GPU_PROFILE::ScopedGpuTimer gpuGeometry(context.cmd, GFX::GPU_PROFILE::Pass::GeometryAux);
     const CpuClock::time_point geometryStart = CpuClock::now();
-    result.geometryAuxWritten = MESHRENDERER::RenderGeometryAuxPass(*context.graphics, state.surfaceBuffer,
-                                                                    context.sceneDsv, requirements.requireFeatureMask);
+    // 前フレームの深度で隠れていた簇を一段目で描かない。視点が動いても、今フレームの深度で見える分を二段目で補う。
+    const DEPTH::DepthPyramidView* auxHistory = meshletCurrentDepth && historyDepthPyramidReady &&
+                                                        historyDepthStats.depthPyramid.resource != nullptr &&
+                                                        historyDepthStats.depthPyramid.mipCount <= 255u
+                                                    ? &historyDepthStats.depthPyramid
+                                                    : nullptr;
+    result.geometryAuxWritten = MESHRENDERER::RenderGeometryAuxPass(
+        *context.graphics, state.surfaceBuffer, context.sceneDsv, requirements.requireFeatureMask, auxHistory);
     result.geometryAuxDepthComplete = result.geometryAuxWritten;
     context.renderTargetAccess.Rebind();
     RecordSsaoGeometryAuxDebug(result.geometryAuxWritten, ElapsedMs(geometryStart, CpuClock::now()),
@@ -392,7 +398,14 @@ ScreenSpaceFrameResult ExecuteScreenSpacePreLightingPasses(ScreenSpaceRuntimeSta
         }
     }
     if (meshletCurrentDepth && state.geometryValid) {
-        (void)BuildCurrentFrameDepthPyramid(state, context, renderCameraCb, result);
+        const bool built = BuildCurrentFrameDepthPyramid(state, context, renderCameraCb, result);
+        if (auxHistory != nullptr) {
+            // 階層を作れなかった時は判定なしで全部を描き足す（空の view を渡すと AS は判定しない）。
+            (void)MESHRENDERER::RenderGeometryAuxSecondPhase(
+                *context.graphics, state.surfaceBuffer, context.sceneDsv, requirements.requireFeatureMask, *auxHistory,
+                built ? result.visibilityDepthPyramid : DEPTH::DepthPyramidView{});
+            context.renderTargetAccess.Rebind();
+        }
     }
     if (!state.geometryValid || !context.sceneDepth.IsSampleable()) {
         state.ssaoValid = false;

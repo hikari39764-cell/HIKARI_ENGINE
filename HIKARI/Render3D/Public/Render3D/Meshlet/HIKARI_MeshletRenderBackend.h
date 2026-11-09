@@ -135,8 +135,9 @@ public:
     }
     bool Execute(const MeshletRenderExecutionContext& ctx);
     MeshletVisibilityBinding BeginVisibility(const GFX::Context& graphics, const DEPTH::DepthPyramidView* depth,
-                                             uint32_t phase) {
-        auto binding = visibility_.Begin(graphics, depth, phase);
+                                             MeshletVisibilityPhase phase,
+                                             const DEPTH::DepthPyramidView* history = nullptr) {
+        auto binding = visibility_.Begin(graphics, depth, phase, history);
         stats_.visibility = visibility_.GetStats();
         return binding;
     }

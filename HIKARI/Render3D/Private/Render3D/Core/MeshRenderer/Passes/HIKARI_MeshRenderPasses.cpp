@@ -47,7 +47,8 @@ bool ExecuteMaterialScopedFeaturePasses(const GFX::Context& graphics, const Mesh
 } // namespace
 
 bool RenderGeometryAuxPassInternal(const GFX::Context& graphics, RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
-                                   D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask) {
+                                   D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask,
+                                   const RENDER3D::DEPTH::DepthPyramidView* historyDepth) {
     const bool hasMeshes = HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque);
     auto& sprites = gMeshRendererState.worldSpritePass;
     if (!hasMeshes && !sprites.HasOpaqueWork() && !RENDER3D::SURFACE_EXTENSIONS::HasWork()) {
@@ -68,6 +69,12 @@ bool RenderGeometryAuxPassInternal(const GFX::Context& graphics, RENDER3D::SURFA
     GFX::PIX::ScopedGpuEvent pixGeometry(graphics.cmdList, GFX::PIX::kColorRender, "SceneSurface");
     surfaceBuffer.BeginWrite(graphics.cmdList, sceneDsv);
     MeshPassResources passResources{};
+    if (historyDepth != nullptr)
+        passResources.geometryAuxHistoryDepth = *historyDepth;
+    // モジュールの面（地形）を先に描く。山の陰の物はこの深度で着色の前に落ちる。
+    const bool extensionsWritten = RecordSurfaceExtensions(
+        graphics, RenderSurfacePass::GeometrySurface, passResources,
+        writeFeatureMask ? MeshDrawPassKind::GeometryAuxFeatureMask : MeshDrawPassKind::GeometryAux, writeFeatureMask);
     const bool meshesWritten =
         !hasMeshes || ExecuteGeometryBackendPlan(
                           graphics, RENDER3D::GPUDRIVEN::GpuDrivenPassKind::GeometryAux, passResources,
@@ -78,9 +85,6 @@ bool RenderGeometryAuxPassInternal(const GFX::Context& graphics, RENDER3D::SURFA
     const bool spritesWritten =
         !sprites.HasOpaqueWork() ||
         sprites.ExecuteSurface(graphics, GetActiveMeshFrameResources().view.Bindings().camera, writeFeatureMask);
-    const bool extensionsWritten = RecordSurfaceExtensions(
-        graphics, RenderSurfacePass::GeometrySurface, passResources,
-        writeFeatureMask ? MeshDrawPassKind::GeometryAuxFeatureMask : MeshDrawPassKind::GeometryAux, writeFeatureMask);
     surfaceBuffer.EndWrite(graphics.cmdList);
     return meshesWritten && spritesWritten && extensionsWritten;
 }
@@ -284,8 +288,32 @@ namespace HIKARI::MESHRENDERER {
 
 using namespace INTERNAL;
 bool RenderGeometryAuxPass(const GFX::Context& graphics, RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
-                           D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask) {
-    return RenderGeometryAuxPassInternal(graphics, surfaceBuffer, sceneDsv, writeFeatureMask);
+                           D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask,
+                           const RENDER3D::DEPTH::DepthPyramidView* historyDepth) {
+    return RenderGeometryAuxPassInternal(graphics, surfaceBuffer, sceneDsv, writeFeatureMask, historyDepth);
+}
+
+bool RenderGeometryAuxSecondPhase(const GFX::Context& graphics, RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
+                                  D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask,
+                                  const RENDER3D::DEPTH::DepthPyramidView& historyDepth,
+                                  const RENDER3D::DEPTH::DepthPyramidView& currentDepth) {
+    if (!HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque))
+        return true;
+    GFX::PIX::ScopedGpuEvent pixGeometry(graphics.cmdList, GFX::PIX::kColorRender, "SceneSurface.SecondPhase");
+    surfaceBuffer.ResumeWrite(graphics.cmdList, sceneDsv);
+    MeshPassResources passResources{};
+    passResources.visibilityDepthPyramid = currentDepth;
+    passResources.geometryAuxHistoryDepth = historyDepth;
+    passResources.geometryAuxSecondPhase = true;
+    const bool written =
+        ExecuteGeometryBackendPlan(graphics, RENDER3D::GPUDRIVEN::GpuDrivenPassKind::GeometryAux, passResources,
+                                   writeFeatureMask ? MeshDrawPassKind::GeometryAuxFeatureMask
+                                                    : MeshDrawPassKind::GeometryAux,
+                                   writeFeatureMask ? RENDER3D::MESHLET::MeshletPipelineKind::GeometryAuxFeatureMask
+                                                    : RENDER3D::MESHLET::MeshletPipelineKind::GeometryAux)
+            .gpuBackendExecuted;
+    surfaceBuffer.EndWrite(graphics.cmdList);
+    return written;
 }
 
 bool HasStylizedFeatureMaskBackend() {

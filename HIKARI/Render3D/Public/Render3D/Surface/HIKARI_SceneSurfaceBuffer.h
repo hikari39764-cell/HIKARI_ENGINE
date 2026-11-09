@@ -23,6 +23,8 @@ public:
     void Release();
 
     void BeginWrite(ID3D12GraphicsCommandList* cmd, D3D12_CPU_DESCRIPTOR_HANDLE depthDsv);
+    // 消さずに書き足す（GeometryAux の二段目）。
+    void ResumeWrite(ID3D12GraphicsCommandList* cmd, D3D12_CPU_DESCRIPTOR_HANDLE depthDsv);
     void EndWrite(ID3D12GraphicsCommandList* cmd);
 
     bool IsValid() const;
@@ -43,6 +45,8 @@ private:
     bool PublishFeatureMaskSrv(const GFX::Context& graphics);
     bool PublishStylizedOutlineStyleSrv(const GFX::Context& graphics);
     void ResetResources(bool releaseDescriptors);
+    void TransitionToRenderTargets(ID3D12GraphicsCommandList* cmd);
+    void BindRenderTargets(ID3D12GraphicsCommandList* cmd, D3D12_CPU_DESCRIPTOR_HANDLE depthDsv);
 
     static constexpr DXGI_FORMAT kNormalRoughnessFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
     static constexpr DXGI_FORMAT kFeatureMaskFormat = DXGI_FORMAT_R32G32_UINT;

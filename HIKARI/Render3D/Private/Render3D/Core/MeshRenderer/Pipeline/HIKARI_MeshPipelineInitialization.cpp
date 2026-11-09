@@ -128,10 +128,11 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
     const CD3DX12_DESCRIPTOR_RANGE screenSpacePackedSurfaceRange = srvRange(1, 3, 7);
     const CD3DX12_DESCRIPTOR_RANGE oceanSpectrumRange = srvRange(6u, 5u, 7u);
     const CD3DX12_DESCRIPTOR_RANGE rayTracedShadowRange = srvRange(1u, 11u, 7u);
-    CD3DX12_DESCRIPTOR_RANGE meshletOcclusionRanges[3]{};
+    CD3DX12_DESCRIPTOR_RANGE meshletOcclusionRanges[4]{};
     meshletOcclusionRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1u, 19u, 0u, 0u);
     meshletOcclusionRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1u, 0u, 8u, 1u);
     meshletOcclusionRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1u, 12u, 0u, 2u);
+    meshletOcclusionRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1u, 3u, 8u, 3u);
 
     constexpr D3D12_SHADER_VISIBILITY kAll = D3D12_SHADER_VISIBILITY_ALL;
     constexpr D3D12_SHADER_VISIBILITY kPixel = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -167,7 +168,7 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
     params[ROOT_PARAM::SurfaceGpuSceneControl].InitAsConstants(4, 8, 0, kAll);
     params[ROOT_PARAM::ClusterGeometryPool].InitAsDescriptorTable(1, &clusterGeometryPoolRange, kAll);
     params[ROOT_PARAM::MeshletVisibleRanges].InitAsShaderResourceView(18, 0, kAll);
-    params[ROOT_PARAM::MeshletOcclusionDepth].InitAsDescriptorTable(3u, meshletOcclusionRanges,
+    params[ROOT_PARAM::MeshletOcclusionDepth].InitAsDescriptorTable(4u, meshletOcclusionRanges,
                                                                     D3D12_SHADER_VISIBILITY_AMPLIFICATION);
     params[ROOT_PARAM::LocalLights].InitAsShaderResourceView(0, 5, kPixel);
     params[ROOT_PARAM::LocalLightClusterHeaders].InitAsShaderResourceView(1, 5, kPixel);
@@ -249,8 +250,8 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
         surfaceSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     }
     surfaceExtensionRsDesc.pStaticSamplers = surfaceExtensionSamplers;
-    if (FAILED(GFX::CreateRootSignature(device, surfaceExtensionRsDesc,
-                                        store.surfaceExtensionRootSig.GetAddressOf()))) {
+    if (FAILED(
+            GFX::CreateRootSignature(device, surfaceExtensionRsDesc, store.surfaceExtensionRootSig.GetAddressOf()))) {
         return false;
     }
 

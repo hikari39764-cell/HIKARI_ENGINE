@@ -109,29 +109,28 @@ HikariMaterialTextureFootprint HikariRayTriangleFootprint(
     return footprint;
 }
 
+// 当たった三角形の面を復元する（切り抜きの判定の候補と、確定した一つで同じものを使う）。
 // Raster と同じ HCMESH decode / UV / material-expression API を使用する。
 // BLAS 分割点は meshlet 境界と一致する必要がない。
-bool HikariDecodeRayCandidate(inout RayQuery<RAY_FLAG_NONE> query,
-    uint hitRecordCount, float2 rayCone, out HikariRaySurface surface, out uint flags)
+bool HikariDecodeRayTriangle(uint recordIndex, uint recordPrimitive, float2 bary, float rayT,
+    float3x4 objectToWorld, float3x4 worldToObject, float3 rayDirection, float2 rayCone,
+    out HikariRaySurface surface, out uint flags)
 {
     surface = (HikariRaySurface)0;
     flags = 0u;
-    const uint instance = query.CandidateInstanceID();
-    const uint geometryIndex = query.CandidateGeometryIndex();
-    if (instance >= hitRecordCount || geometryIndex >= hitRecordCount-instance) return false;
-    const HikariRayTracingHitRecord record = gRuntimeRayHits[instance+geometryIndex];
+    const HikariRayTracingHitRecord record = gRuntimeRayHits[recordIndex];
 #ifdef HIKARI_RAY_SURFACE_HIT_RECORD
-    surface.hitRecord = instance + geometryIndex;
+    surface.hitRecord = recordIndex;
 #endif
     const uint geometry = record.geometryDescriptor-HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_BEGIN;
     const uint metadata = record.metadataDescriptor-HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_BEGIN;
     if (record.materialIndex == 0xffffffffu || geometry >= HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_COUNT ||
-        metadata >= HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_COUNT || query.CandidatePrimitiveIndex() >= record.primitiveCount)
+        metadata >= HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_COUNT || recordPrimitive >= record.primitiveCount)
         return false;
     const HikariClusterGeometryHeader header = HikariLoadClusterGeometryHeader(gRuntimeRayGeometry[NonUniformResourceIndex(metadata)]);
     if (!HikariIsValidClusterGeometryHeader(header) || record.firstCluster >= header.clusterCount ||
         record.clusterCount > header.clusterCount-record.firstCluster) return false;
-    const uint primitive = record.firstPrimitive + query.CandidatePrimitiveIndex();
+    const uint primitive = record.firstPrimitive + recordPrimitive;
     if (primitive >= header.meshletPrimitiveCount) return false;
     uint lower = record.firstCluster, upper = lower + record.clusterCount;
     // firstPrimitive は全 LOD0 cluster で昇順。
@@ -158,10 +157,8 @@ bool HikariDecodeRayCandidate(inout RayQuery<RAY_FLAG_NONE> query,
         HikariLoadDeformedRayVertex(record, vertices.y, b);
         HikariLoadDeformedRayVertex(record, vertices.z, c);
     }
-    const float2 bary = query.CandidateTriangleBarycentrics();
     const float3 weights = float3(1.0f-bary.x-bary.y, bary.x, bary.y);
-    const float3x4 objectToWorld = query.CandidateObjectToWorld3x4();
-    const float3x3 normalToWorld = transpose((float3x3)query.CandidateWorldToObject3x4());
+    const float3x3 normalToWorld = transpose((float3x3)worldToObject);
     const float3 normalOS = a.normal.xyz*weights.x + b.normal.xyz*weights.y + c.normal.xyz*weights.z;
     const float3 faceOS = cross(b.position.xyz-a.position.xyz, c.position.xyz-a.position.xyz);
     float3 face = HikariNormalizeOrDefault(mul(normalToWorld, faceOS), float3(0,1,0));
@@ -171,14 +168,14 @@ bool HikariDecodeRayCandidate(inout RayQuery<RAY_FLAG_NONE> query,
     surface.tangent = float4(mul((float3x3)objectToWorld, tangentOS.xyz),
         (tangentOS.w < 0 ? -1.0f : 1.0f) * (determinant((float3x3)objectToWorld) < 0 ? -1.0f : 1.0f));
     surface.position = mul(objectToWorld, float4(a.position.xyz*weights.x + b.position.xyz*weights.y + c.position.xyz*weights.z, 1));
-    surface.distance = query.CandidateTriangleRayT();
+    surface.distance = rayT;
     surface.geometricNormal = face;
     surface.normal = normal;
     surface.uv0 = a.uv01.xy*weights.x + b.uv01.xy*weights.y + c.uv01.xy*weights.z;
     surface.uv1 = a.uv01.zw*weights.x + b.uv01.zw*weights.y + c.uv01.zw*weights.z;
     surface.materialIndex = record.materialIndex;
     surface.footprint = HikariRayTriangleFootprint(max(0.0f, rayCone.x + rayCone.y * surface.distance),
-        query.WorldRayDirection(), mul((float3x3)objectToWorld, b.position.xyz-a.position.xyz),
+        rayDirection, mul((float3x3)objectToWorld, b.position.xyz-a.position.xyz),
         mul((float3x3)objectToWorld, c.position.xyz-a.position.xyz), b.uv01-a.uv01, c.uv01-a.uv01);
     flags = record.flags;
     return all(isfinite(surface.position)) && all(isfinite(surface.normal));
@@ -190,6 +187,9 @@ static const uint HIKARI_RAY_REPORT_BACKFACES = 2u;
 // おおよその距離だけが要る ray に使う。材質を読む命令は呼び出しごとに展開されるので、大きな shader では
 // これだけで重さが変わる（動的 GI の更新の相機 ray をこれにして約 0.35 ms 軽くなった）。
 static const uint HIKARI_RAY_GEOMETRY_ONLY = 4u;
+// 一本の光線が面を復元して材質を調べる候補の上限。これを超えた候補は当たりとして止める。森の中を斜めに抜ける光線は
+// 葉の板を何百枚も通るので、上限が無いと一回の更新が数十 ms 跳ね、GPU が応答しなくなる危険もある。
+static const uint HIKARI_RAY_MAX_MATERIAL_TESTS = 16u;
 
 // 半透明の面が光を通す割合。被覆の外（1 - alpha）はそのまま、被覆の中は透過の分だけ底色で色づいて通る。
 float HikariRayTransmittance(HikariMeshMaterialData material, HikariRaySurface surface, SamplerState materialSampler)
@@ -206,46 +206,44 @@ bool HikariTraceRuntimeSceneCore(RayDesc ray, uint hitRecordCount, uint material
 {
     hit = (HikariRaySurface)0;
     const bool shadowRay = (queryFlags & HIKARI_RAY_SHADOW) != 0u;
+    const bool geometryOnly = (queryFlags & HIKARI_RAY_GEOMETRY_ONLY) != 0u;
     RayQuery<RAY_FLAG_NONE> query;
     // 裏面を切るのは代理だけに効く（他の instance は TRIANGLE_CULL_DISABLE）。粗い代理の下から出る光線を止めない。
     const uint backFaces = (queryFlags & HIKARI_RAY_REPORT_BACKFACES) != 0u ? RAY_FLAG_NONE : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
     query.TraceRayInline(gRuntimeRayScene, backFaces | (shadowRay ? RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH : RAY_FLAG_NONE), 0xff, ray);
+    uint materialTests = 0u;
     while (query.Proceed())
     {
         if (query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE) continue;
-        // 影の光線は、alpha test も透過もしない遮蔽物なら面を復元せず命中記録だけで止める（面の復元は簇の 2 分探索と
-        // 頂点 3 つの読み出しで重い）。
-        if (shadowRay)
+        const uint instance = query.CandidateInstanceID();
+        const uint geometryIndex = query.CandidateGeometryIndex();
+        if (instance >= hitRecordCount || geometryIndex >= hitRecordCount - instance) continue;
+        const uint recordIndex = instance + geometryIndex;
+        const HikariRayTracingHitRecord record = gRuntimeRayHits[recordIndex];
+        if (record.materialIndex >= materialCount || query.CandidatePrimitiveIndex() >= record.primitiveCount ||
+            (shadowRay && (record.flags & 2u) == 0u)) continue;
+        const bool transmissive = (record.flags & HIKARI_RAY_HIT_TRANSMISSIVE) != 0u;
+        // 透過する面は影の光線だけが見る（色を掛けて先へ進む）。
+        if (transmissive && !shadowRay) continue;
+        const bool cutout = !geometryOnly &&
+            (HikariGetMeshMaterialData(record.materialIndex).materialFlags & HIKARI_MATERIAL_FLAG_ALPHA_MASK) != 0u;
+        // 穴も透過もない面は、面を復元せず番号だけで確定する。面の復元（簇の 2 分探索と頂点 3 つの読み出し）は重く、
+        // 走査の順は手前からとは限らないので、候補ごとにやると奥の面の分まで払うことになる。
+        if ((!cutout && !transmissive) || materialTests >= HIKARI_RAY_MAX_MATERIAL_TESTS)
         {
-            const uint instance = query.CandidateInstanceID();
-            const uint geometryIndex = query.CandidateGeometryIndex();
-            if (instance >= hitRecordCount || geometryIndex >= hitRecordCount - instance) continue;
-            const HikariRayTracingHitRecord record = gRuntimeRayHits[instance + geometryIndex];
-            if (record.materialIndex >= materialCount || (record.flags & 2u) == 0u ||
-                query.CandidatePrimitiveIndex() >= record.primitiveCount) continue;
-            if ((record.flags & HIKARI_RAY_HIT_TRANSMISSIVE) == 0u &&
-                (HikariGetMeshMaterialData(record.materialIndex).materialFlags & HIKARI_MATERIAL_FLAG_ALPHA_MASK) == 0u)
-            {
-                query.CommitNonOpaqueTriangleHit();
-                continue;
-            }
+            query.CommitNonOpaqueTriangleHit();
+            continue;
         }
+        ++materialTests;
         HikariRaySurface candidate;
         uint flags;
-        if (!HikariDecodeRayCandidate(query, hitRecordCount, shadowRay ? 0.0f.xx : rayCone, candidate, flags) ||
-            candidate.materialIndex >= materialCount || (shadowRay && (flags & 2u) == 0u)) continue;
+        if (!HikariDecodeRayTriangle(recordIndex, query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics(),
+                query.CandidateTriangleRayT(), query.CandidateObjectToWorld3x4(), query.CandidateWorldToObject3x4(),
+                query.WorldRayDirection(), 0.0f.xx, candidate, flags)) continue;
         const HikariMeshMaterialData material = HikariGetMeshMaterialData(candidate.materialIndex);
-        const bool doubleSided = (flags & 1u) != 0u || (material.instanceFlags & HIKARI_PROGRAM_FLAG_DOUBLE_SIDED) != 0u;
-        const bool backFace = dot(candidate.geometricNormal, ray.Direction) > 0.0f;
-        // 影の光線は裏面でも遮る（カスケードの影と同じ）。始点が接地した物の張り出しの内側に入っても、
-        // 中から抜ける時に裏面を飛ばすと影の中に光の筋が出る。
-        if (!doubleSided && backFace && !shadowRay && (queryFlags & HIKARI_RAY_REPORT_BACKFACES) == 0u) continue;
-        candidate.backFace = backFace ? 1u : 0u;
-        if (backFace) { candidate.geometricNormal = -candidate.geometricNormal; candidate.normal = -candidate.normal; }
         // alpha test は stochastic ray 自身の交差位置で評価する。低 mip の平均 alpha を
         // threshold と比較すると細い葉や穴が消える。完全な shading は最終 hit だけ。
-        if ((material.materialFlags & HIKARI_MATERIAL_FLAG_ALPHA_MASK) != 0u &&
-            (queryFlags & HIKARI_RAY_GEOMETRY_ONLY) == 0u)
+        if (cutout)
         {
             float4 coverage = HikariResolveMaterialBaseColor(material, candidate.uv0, candidate.uv1, materialSampler, true);
             float cutoff = material.pbrParams.w;
@@ -256,67 +254,70 @@ bool HikariTraceRuntimeSceneCore(RayDesc ray, uint hitRecordCount, uint material
             HikariApplyMaterialExpressionCoverage(coverageExpression, coverage, cutoff);
             if (coverage.a < cutoff) continue;
         }
-        if ((flags & HIKARI_RAY_HIT_TRANSMISSIVE) != 0u)
+        if (transmissive)
         {
-            if (shadowRay)
-                transmittance *= HikariRayTransmittance(material, candidate, materialSampler);
+            transmittance *= HikariRayTransmittance(material, candidate, materialSampler);
             continue;
         }
         query.CommitNonOpaqueTriangleHit();
-        hit = candidate;
     }
     const bool found = query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
-    if (found && !shadowRay)
+    if (!found || shadowRay) return found;
+    const uint committedRecord = query.CommittedInstanceID() + query.CommittedGeometryIndex();
+    // 不透明な代理は候補の輪を通らずに確定する。
+    const uint committedFlags = gRuntimeRayHits[committedRecord].flags;
+    if ((committedFlags & HIKARI_RAY_HIT_PROXY) != 0u)
     {
-        // 不透明な代理は候補の輪を通らずに確定する。
-        const uint committedRecord = query.CommittedInstanceID() + query.CommittedGeometryIndex();
-        const uint committedFlags = gRuntimeRayHits[committedRecord].flags;
-        if ((committedFlags & HIKARI_RAY_HIT_PROXY) != 0u)
-        {
-            const uint packed = gRuntimeRayHits[committedRecord].reserved;
-            const float2 normalXZ = float2(int(packed << 8u) >> 24, int(packed) >> 24) / 127.0f;
-            const float3 color = float3(packed & 31u, (packed >> 5u) & 63u, (packed >> 11u) & 31u) / float3(31.0f, 63.0f, 31.0f);
-            const bool frontFace = query.CommittedTriangleFrontFace();
-            const float3 normal = float3(normalXZ.x, sqrt(saturate(1.0f - dot(normalXZ, normalXZ))), normalXZ.y) * (frontFace ? 1.0f : -1.0f);
-            hit = (HikariRaySurface)0;
-            hit.distance = query.CommittedRayT();
-            hit.position = ray.Origin + ray.Direction * hit.distance;
-            hit.geometricNormal = normal;
-            hit.normal = normal;
-            hit.tangent = float4(1.0f, 0.0f, 0.0f, 1.0f);
-            hit.baseColor = float4(color * color, 1.0f);
-            hit.pbr.roughness = 0.9f;
-            hit.pbr.occlusion = 1.0f;
-            hit.pbr.specularColor = 1.0f.xxx;
-            hit.pbr.specularFactor = 1.0f;
-            hit.pbr.ior = 1.5f;
-            hit.backFace = frontFace ? 0u : 1u;
+        const uint packed = gRuntimeRayHits[committedRecord].reserved;
+        const float2 normalXZ = float2(int(packed << 8u) >> 24, int(packed) >> 24) / 127.0f;
+        const float3 color = float3(packed & 31u, (packed >> 5u) & 63u, (packed >> 11u) & 31u) / float3(31.0f, 63.0f, 31.0f);
+        const bool frontFace = query.CommittedTriangleFrontFace();
+        const float3 normal = float3(normalXZ.x, sqrt(saturate(1.0f - dot(normalXZ, normalXZ))), normalXZ.y) * (frontFace ? 1.0f : -1.0f);
+        hit.distance = query.CommittedRayT();
+        hit.position = ray.Origin + ray.Direction * hit.distance;
+        hit.geometricNormal = normal;
+        hit.normal = normal;
+        hit.tangent = float4(1.0f, 0.0f, 0.0f, 1.0f);
+        hit.baseColor = float4(color * color, 1.0f);
+        hit.pbr.roughness = 0.9f;
+        hit.pbr.occlusion = 1.0f;
+        hit.pbr.specularColor = 1.0f.xxx;
+        hit.pbr.specularFactor = 1.0f;
+        hit.pbr.ior = 1.5f;
+        hit.backFace = frontFace ? 0u : 1u;
 #ifdef HIKARI_RAY_SURFACE_HIT_RECORD
-            hit.hitRecord = committedRecord;
+        hit.hitRecord = committedRecord;
 #endif
-            return true;
-        }
+        return true;
     }
-    if (found && !shadowRay && (queryFlags & HIKARI_RAY_GEOMETRY_ONLY) == 0u)
+    uint flags;
+    if (!HikariDecodeRayTriangle(committedRecord, query.CommittedPrimitiveIndex(), query.CommittedTriangleBarycentrics(),
+            query.CommittedRayT(), query.CommittedObjectToWorld3x4(), query.CommittedWorldToObject3x4(),
+            query.WorldRayDirection(), rayCone, hit, flags)) return false;
+    if (dot(hit.geometricNormal, ray.Direction) > 0.0f)
     {
-        const HikariMeshMaterialData material = HikariGetMeshMaterialData(hit.materialIndex);
-        const float3 baseNormal = hit.normal;
-        hit.baseColor = HikariResolveMaterialBaseColor(material, hit.uv0, hit.uv1, materialSampler, true, hit.footprint);
-        const HikariMaterialExpressionContext expressionContext = HikariBuildMaterialExpressionContext(
-            hit.uv0, hit.uv1, time, hit.position, hit.normal, hit.tangent, ray.Origin, 0.0f.xxxx, 0.0f.xx, hit.footprint);
-        HikariMaterialExpressionResult expression = HikariEvaluateMaterialExpression(material, expressionContext, materialSampler);
-        expression.baseColor = HikariResolveMaterialSourceColor(material, expression.baseColor);
-        float cutoff = material.pbrParams.w;
-        HikariApplyMaterialExpressionCoverage(expression, hit.baseColor, cutoff);
-        hit.pbr = HikariResolveMaterialPbrInputs(material, hit.uv0, hit.uv1, materialSampler, hit.footprint);
-        HikariApplyMaterialExpressionPbr(expression, hit.pbr);
-        hit.normal = HikariResolveSurfaceShadingNormal(material, baseNormal, hit.tangent,
-            hit.uv0, hit.uv1, materialSampler, hit.footprint);
-        hit.normal = HikariResolveMaterialExpressionNormal(expression, material.normalScale, baseNormal, hit.tangent, hit.normal);
-        hit.emissive = HikariResolveMaterialEmissive(material, hit.uv0, hit.uv1, materialSampler, hit.footprint);
-        if ((expression.outputMask & HIKARI_EXPRESSION_OUTPUT_EMISSIVE) != 0u) hit.emissive = expression.emissive;
+        hit.backFace = 1u;
+        hit.geometricNormal = -hit.geometricNormal;
+        hit.normal = -hit.normal;
     }
-    return found;
+    if (geometryOnly) return true;
+    const HikariMeshMaterialData material = HikariGetMeshMaterialData(hit.materialIndex);
+    const float3 baseNormal = hit.normal;
+    hit.baseColor = HikariResolveMaterialBaseColor(material, hit.uv0, hit.uv1, materialSampler, true, hit.footprint);
+    const HikariMaterialExpressionContext expressionContext = HikariBuildMaterialExpressionContext(
+        hit.uv0, hit.uv1, time, hit.position, hit.normal, hit.tangent, ray.Origin, 0.0f.xxxx, 0.0f.xx, hit.footprint);
+    HikariMaterialExpressionResult expression = HikariEvaluateMaterialExpression(material, expressionContext, materialSampler);
+    expression.baseColor = HikariResolveMaterialSourceColor(material, expression.baseColor);
+    float cutoff = material.pbrParams.w;
+    HikariApplyMaterialExpressionCoverage(expression, hit.baseColor, cutoff);
+    hit.pbr = HikariResolveMaterialPbrInputs(material, hit.uv0, hit.uv1, materialSampler, hit.footprint);
+    HikariApplyMaterialExpressionPbr(expression, hit.pbr);
+    hit.normal = HikariResolveSurfaceShadingNormal(material, baseNormal, hit.tangent,
+        hit.uv0, hit.uv1, materialSampler, hit.footprint);
+    hit.normal = HikariResolveMaterialExpressionNormal(expression, material.normalScale, baseNormal, hit.tangent, hit.normal);
+    hit.emissive = HikariResolveMaterialEmissive(material, hit.uv0, hit.uv1, materialSampler, hit.footprint);
+    if ((expression.outputMask & HIKARI_EXPRESSION_OUTPUT_EMISSIVE) != 0u) hit.emissive = expression.emissive;
+    return true;
 }
 bool HikariTraceRuntimeScene(RayDesc ray, uint hitRecordCount, uint materialCount,
     float4 time, SamplerState materialSampler, uint queryFlags, out HikariRaySurface hit,

@@ -55,7 +55,7 @@ constexpr UINT SurfaceGpuSceneControl = 22;
 constexpr UINT ClusterGeometryPool = 23;
 // Meshlet visible range buffer -> t18
 constexpr UINT MeshletVisibleRanges = 24;
-// AS visibility table -> t19 + u0,space8 (AS only; unchanged DWORD budget)
+// AS visibility table -> t19 + u0,space8 + b12 + t3,space8 (AS only; unchanged DWORD budget)
 constexpr UINT MeshletOcclusionDepth = 25;
 // Mesh-shader deformation palettes -> t0, space3. The skinned VS/PS root signature
 // overrides this same slot as the legacy b3 CBV during migration.

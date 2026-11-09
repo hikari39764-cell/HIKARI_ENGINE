@@ -477,7 +477,8 @@ bool MassGpuSceneRegistry::EndSync(RUNTIME::RenderModelCache& renderModelCache) 
                                                     shape.meshIndex,
                                                     shape.primitiveIndex,
                                                     shape.key.doubleSided,
-                                                    store.input.proxy.rayTraced};
+                                                    store.input.proxy.rayTraced,
+                                                    reinterpret_cast<uintptr_t>(store.input.transforms.data())};
                 impl_->layouts.push_back(Impl::StoreLayout{store.input.proxy.typeId, store.templateKey,
                                                            store.input.layoutVersion, store.input.sourceVersion, cursor,
                                                            SaturateToUint32(store.input.transforms.size())});
