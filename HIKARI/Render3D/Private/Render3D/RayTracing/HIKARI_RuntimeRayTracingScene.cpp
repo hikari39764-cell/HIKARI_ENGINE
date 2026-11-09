@@ -18,6 +18,7 @@
 #include "Gfx/RayTracing/HIKARI_DxrCapabilities.h"
 #include "Render3D/Cluster/HIKARI_ClusterRayTracingGeometry.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
+#include "Core/HIKARI_Logger.h"
 #include "Render3D/GpuDriven/HIKARI_MassGpuScene.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneSurfaceRecord.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
@@ -641,6 +642,13 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
     // 大量配置は最後に並べる。種類ごとの hit 記録を個体が共有する。予算に収まらなければ大量配置だけを外す。
     const size_t massFirstInstance = instances.size(), massFirstHit = hits.size();
     const auto dropMass = [&] {
+        // カスケードの影も大量配置を描かないので、外すとその影がまるごと消える。黙って起きないよう一度だけ書く。
+        static bool reported = false;
+        if (!reported) {
+            reported = true;
+            HIKARI_LOG_WARN("[RT][Mass] mass instances left the ray scene (over the instance or memory budget); they "
+                            "cast no ray traced shadow and GI rays pass through them");
+        }
         instances.resize(massFirstInstance);
         hits.resize(massFirstHit);
         state.mass.Drop();

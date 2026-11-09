@@ -22,6 +22,7 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
+#include "Render3D/RayTracing/HIKARI_RuntimeRayTracingScene.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
@@ -358,6 +359,15 @@ struct Session {
                     {"hzbTested", counters.hzbTested},         {"hzbCulled", counters.hzbCulled}};
             }
             report["meshletVisibility"] = std::move(meshlets);
+            const auto& rayScene = RENDER3D::PIPELINE::GetRuntimeRayTracingStats();
+            report["rayScene"] = {
+                {"status", static_cast<int>(rayScene.status)},
+                {"instances", rayScene.instances},
+                {"hitRecords", rayScene.hitRecords},
+                {"residentBytes", rayScene.residentBytes},
+                {"massExcluded",
+                 rayScene.excluded
+                     .surfaces[static_cast<size_t>(RENDER3D::RAYTRACING::RuntimeRayTracingExclusion::MassInstances)]}};
             DescribeUploads();
             report["memory"] = {
                 {"samplingIntervalFrames", 60},

@@ -13,7 +13,7 @@ RWStructuredBuffer<float> gFocusHeights : register(u1);
 cbuffer DynamicDiffuseGiCB : register(b0)
 {
     HikariIrradianceVolumeData gPreviousVolumes[HIKARI_DYNAMIC_GI_VOLUME_COUNT];
-    uint4 gField;           // x この層の index
+    uint4 gField;           // x この層の index、y 一度も更新していない probe の間引き（n 個に 1 個を今回更新する）
     float4 gOrigin;         // xyz 格子の原点
     float4 gSpacing;        // xyz 軸ごとの間隔
     uint4 gCounts;          // xyz counts, w total
@@ -165,14 +165,21 @@ void main(uint3 groupId : SV_GroupID, uint lane : SV_GroupIndex)
     // 収束した probe（RTXGI の probe variability）は 4 回に 1 回だけ更新し、光照が変われば固定 ray の明るさで目を覚ます。
     const bool converged = initialized && updates >= 16.0f && variation < gBlend.w;
     const bool resting = converged && (ProbeHash(gWork.x * 2654435761u ^ probeIndex) & 3u) != 0u;
-    // 新しく視野へ入った格子も待たせない。既存格子は変更の近傍だけ先行更新する。
-    if (hasPrevious && !priorityUpdate && (selected >= gWork.z || resting))
+    // 新しく範囲へ入って一度も更新していない probe は、今回の分（C++ が決める間引き）だけ先に更新する。残りは空のまま
+    // 次へ回し、描画は粗い層で受ける。全部を同じフレームで追跡すると、飛行中の更新数が数倍に跳ねる。
+    const bool firstUpdate = (!hasPrevious || previousStatistics.r < 0.5f) &&
+        ProbeHash(gWork.x * 1664525u ^ probeIndex) % max(gField.y, 1u) == 0u;
+    // 既存格子は変更の近傍だけ先行更新する。
+    if (!firstUpdate && !priorityUpdate && (selected >= gWork.z || resting))
     {
         for (uint texel = lane; texel < tileSize.x * tileSize.y; texel += 64u)
         {
             const uint2 pixel = uint2(texel % tileSize.x, texel / tileSize.x);
-            gOutputAtlas[tile + pixel] =
-                gMaterialTexturePool[NonUniformResourceIndex(previousAtlasIndex)].Load(int3(previousTile + pixel, 0));
+            if (hasPrevious)
+                gOutputAtlas[tile + pixel] =
+                    gMaterialTexturePool[NonUniformResourceIndex(previousAtlasIndex)].Load(int3(previousTile + pixel, 0));
+            else
+                gOutputAtlas[tile + pixel] = 0.0f.xxxx;
         }
         return;
     }
