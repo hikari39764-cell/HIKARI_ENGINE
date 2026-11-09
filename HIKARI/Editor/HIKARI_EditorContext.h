@@ -172,6 +172,8 @@ struct EditorContext {
     uint64_t nextSceneObjectId = 1;
     bool sceneDirty = false;
     std::vector<KeptPlayPose> keptPlayPoses{};
+    // 記録した時の場面。Play 中に別の場面へ切り替わっていたら、番号が別の物を指すので書き戻さない。
+    std::string keptPlayScenePath{};
     RuntimeResourceRefreshReport lastRuntimeRefreshReport{};
 };
 

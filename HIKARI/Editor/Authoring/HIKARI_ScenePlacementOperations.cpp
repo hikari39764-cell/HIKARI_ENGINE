@@ -106,6 +106,10 @@ EditorOperationResult KeepPlayResults(SceneObjectOperationContext& operation, co
         return failure;
     }
     std::vector<KeptPlayPose>& kept = operation.editor.keptPlayPoses;
+    if (operation.editor.keptPlayScenePath != scene.GetScenePath()) {
+        kept.clear();
+        operation.editor.keptPlayScenePath = scene.GetScenePath();
+    }
     nlohmann::json recorded = nlohmann::json::array();
     nlohmann::json skipped = nlohmann::json::array();
     for (const SceneObjectId id : targets) {

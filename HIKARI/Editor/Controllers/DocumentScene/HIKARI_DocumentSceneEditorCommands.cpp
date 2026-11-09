@@ -161,6 +161,11 @@ void DocumentSceneEditorController::ApplyKeptPlayResults(DocumentSceneBase& scen
     if (!stopped || context_.keptPlayPoses.empty()) {
         return;
     }
+    if (context_.keptPlayScenePath != scene.GetScenePath()) {
+        HIKARI_LOG_WARN("Keep Play Results: Play ended in another scene; the kept poses were not written back.");
+        context_.keptPlayPoses.clear();
+        return;
+    }
     // Play を止めると文書は Play 前へ戻っている。そこへ残した姿勢を書き、一つの撤销にする。
     SceneDocument& document = scene.GetSceneDocument();
     std::vector<SceneObjectData> before = document.objects;
