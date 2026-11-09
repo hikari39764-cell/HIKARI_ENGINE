@@ -650,9 +650,9 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             reported = true;
             HIKARI_LOG_WARN(std::string("[RT][Mass] mass instances left the ray scene (") + reason +
                             "); they cast no ray traced shadow and GI rays pass through them. instances=" +
-                            std::to_string(instances.size()) + " resident MB=" +
-                            std::to_string(state.stats.residentBytes / 1048576u) + " retiring MB=" +
-                            std::to_string(state.stats.retiringBytes / 1048576u));
+                            std::to_string(instances.size()) +
+                            " resident MB=" + std::to_string(state.stats.residentBytes / 1048576u) +
+                            " retiring MB=" + std::to_string(state.stats.retiringBytes / 1048576u));
         }
         instances.resize(massFirstInstance);
         hits.resize(massFirstHit);
@@ -711,6 +711,13 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
         // 変形した BLAS は中身が動いたので、それを指す TLAS も refit する。
         if (!state.deformed.empty() && !state.topLevel->RefitInPlace(graphics))
             return state.Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
+    } else if (state.topLevel && state.hitUploads.Current() && SameBytes(hits, state.lastHits) &&
+               state.topLevel->RebuildTopLevelInPlace(graphics, instances)) {
+        // 個体の数が変わっただけなら結果と scratch を作り直さない（筆で塗る間は毎フレーム来る）。
+        state.gpuPrefixValid = false;
+        state.massDescsOnGpu = false;
+        state.lastInstances = std::move(instances);
+        ++state.version;
     } else {
         // 収まらなければ大量配置だけを外してもう一度組む（場面全体は止めない）。
         std::unique_ptr<AccelerationStructure> top;
@@ -727,10 +734,10 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
                                            : strictAvailable;
             auto built = std::make_unique<AccelerationStructure>();
             if (bytes != UINT64_MAX && bytes < available &&
-                built->BuildTopLevel(graphics, instances, available - bytes, true,
-                                     state.topLevel && state.lastInstances.size() == instances.size()
-                                         ? state.topLevel.get()
-                                         : nullptr)) {
+                built->BuildTopLevel(
+                    graphics, instances, available - bytes, true,
+                    state.topLevel && state.lastInstances.size() == instances.size() ? state.topLevel.get() : nullptr,
+                    nullptr, static_cast<uint32_t>(instances.size() + instances.size() / 4u))) {
                 top = std::move(built);
             } else if (massIncluded) {
                 massIncluded = false;

@@ -87,6 +87,7 @@ private:
     uint32_t activeSlotIndex_ = 0u;
     std::array<FrameSlot, GFX::kFrameResourceCount> slots_{};
     std::vector<RUNTIME::MassRenderDirtyRange> uploadRanges_{};
+    std::vector<RUNTIME::MassRenderProxyGpuRecord> uploadStaging_{};
     MassGpuSceneFrameBufferStats stats_{};
 };
 
