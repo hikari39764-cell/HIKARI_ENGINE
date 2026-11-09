@@ -11,7 +11,8 @@ namespace HIKARI::TERRAIN::DATA {
 namespace {
 
 constexpr float kRadiansToDegrees = 180.0f / std::numbers::pi_v<float>;
-constexpr float kTwoPi = 2.0f * std::numbers::pi_v<float>;
+constexpr float kPi = std::numbers::pi_v<float>;
+constexpr float kTwoPi = 2.0f * kPi;
 constexpr double kProbeMeters = 2.0;
 constexpr uint8_t kOccupiedFootprint = 1u;
 constexpr uint8_t kOccupiedSpline = 2u;
@@ -305,12 +306,17 @@ private:
                 point.x = static_cast<float>(x);
                 point.y = height;
                 point.z = static_cast<float>(z);
-                GroundAlignedRotation(HashUnit(Mix(hash + 4u)) * kTwoPi, slopeX, slopeZ, rule.alignToGround,
-                                      point.rotation);
+                // 向き：乱数の方位を、下り坂の向きへ寄せる（寄せるほど揺れ幅が狭まる）。前は +Z。
+                float yaw = HashUnit(Mix(hash + 4u)) * kTwoPi;
+                if (rule.facingDownhill > 0.0f && (slopeX != 0.0f || slopeZ != 0.0f)) {
+                    yaw = std::atan2(-slopeX, -slopeZ) + (yaw - kPi) * (1.0f - rule.facingDownhill);
+                }
+                GroundAlignedRotation(yaw, slopeX, slopeZ, rule.alignToGround, point.rotation);
                 // 林縁（密度の低い所）ほど小さくする。
                 const float fullness = std::clamp(density / 0.6f, 0.0f, 1.0f);
                 point.scale = (rule.scaleMin + (rule.scaleMax - rule.scaleMin) * HashUnit(Mix(hash + 5u))) *
                               (rule.edgeScale + (1.0f - rule.edgeScale) * fullness);
+                point.y -= rule.sinkMeters * point.scale;
                 out_.push_back(point);
             }
         }

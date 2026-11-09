@@ -27,6 +27,8 @@ struct ScatterRule {
     float scaleMax = 1.25f;
     float edgeScale = 0.6f;      // 密度の低い所（林縁）の個体の大きさの倍率
     float alignToGround = 0.25f; // 0 は真上、1 は地面の傾きのまま
+    float facingDownhill = 0.0f; // 1 で前（+Z）を下り坂へ向ける（崖の岩の面）。0 は向きを乱数で
+    float sinkMeters = 0.0f;     // 大きさ 1 あたり地面へ埋める深さ。斜面で浮かないように
     float minSlopeDegrees = 0.0f;
     float maxSlopeDegrees = 40.0f;
     float slopeFadeDegrees = 6.0f;
@@ -64,6 +66,11 @@ inline constexpr auto kScatterRuleFields = [](auto&& field) {
     field("edgeScale", &S::edgeScale, Slider(0.0, 1.0), Label{"Edge Scale"},
           Help{"Size of instances where density is low, such as at the edge of a forest."}, Group{"Instances"});
     field("alignToGround", &S::alignToGround, Slider(0.0, 1.0), Label{"Align To Ground"}, Group{"Instances"});
+    field("facingDownhill", &S::facingDownhill, Slider(0.0, 1.0), Label{"Face Downhill"},
+          Help{"1 turns the front (+Z) of every instance down the slope, for rock faces on cliffs. 0 is random."},
+          Group{"Instances"});
+    field("sinkMeters", &S::sinkMeters, Range{0.0, 20.0}, Label{"Sink Into Ground"}, Unit{"m"},
+          Help{"Depth pushed into the ground at scale 1, so large rocks do not float on slopes."}, Group{"Instances"});
     field("minSlopeDegrees", &S::minSlopeDegrees, Range{0.0, 90.0}, Label{"Min Slope"}, Unit{"deg"}, Group{"Slope"});
     field("maxSlopeDegrees", &S::maxSlopeDegrees, Range{0.0, 90.0}, Label{"Max Slope"}, Unit{"deg"}, Group{"Slope"});
     field("slopeFadeDegrees", &S::slopeFadeDegrees, Range{0.01, 45.0}, Label{"Slope Fade"}, Unit{"deg"},
