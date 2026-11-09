@@ -142,6 +142,17 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
         {"scene.create_empty_object", "Create an empty scene object.", "scene", EDITOR::CreateSceneEmptyObject,
          Concat({NameParameter("物体名称，缺省为 AI Object"), PositionParameters(), RotationParameters(),
                  ScaleParameters()})},
+        {"scene.drop_to_ground",
+         "Place the bottom of each object's model on the ground below it and tilt it to the slope, keeping its "
+         "facing (objects without a model are placed by their pivot). "
+         "Uses the selection when objectIds is omitted, and each object's GroundAnchorComponent settings when present. "
+         "One undo step.",
+         "scene",
+         EDITOR::DropSceneObjectsToGround,
+         {{"objectIds", EditorOperationParameterType::Json, false, "Stable SceneObjectIds; default is the selection"},
+          {"alignToGround", EditorOperationParameterType::Float, false, "0 keeps upright, 1 follows the slope"},
+          {"maxTiltDegrees", EditorOperationParameterType::Float, false, "Largest tilt from upright in degrees"},
+          {"sinkMeters", EditorOperationParameterType::Float, false, "Depth pushed into the ground in meters"}}},
         {"scene.create_water",
          "Create a water surface. camera_centered_ocean makes a sea that follows the camera at position y.", "scene",
          EDITOR::CreateSceneWaterObject,

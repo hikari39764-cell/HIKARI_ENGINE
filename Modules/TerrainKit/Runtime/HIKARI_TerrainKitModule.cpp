@@ -11,6 +11,7 @@
 #include "HIKARI/Project/GameComponent.h"
 #include "HIKARI/Project/GameFlowViews.h"
 #include "HIKARI/Project/GameProjectModule.h"
+#include "HIKARI/Project/GroundSource.h"
 #include "HIKARI/Project/NavigationSource.h"
 #include "HIKARI/Project/RenderSurface.h"
 #include "HIKARI/Project/RuntimeFeature.h"
@@ -73,7 +74,8 @@ struct TerrainDrawConstants {
 class TerrainComponent final : public IGameComponent,
                                public IRenderSurfaceExtension,
                                public INavigationGeometrySource,
-                               public IWaterSource {
+                               public IWaterSource,
+                               public IGroundSource {
 public:
     void OnAttach(GameComponentContext& context) override {
         world_ = context.GetWorld();
@@ -81,6 +83,7 @@ public:
         (void)world_.AddRenderSurfaceExtension(*this);
         (void)world_.AddNavigationGeometrySource(*this);
         (void)world_.AddWaterSource(*this);
+        (void)world_.AddGroundSource(*this);
         TerrainStore::Get().BindWorld(world_);
     }
 
@@ -115,6 +118,7 @@ public:
         world_.RemoveRenderSurfaceExtension(*this);
         world_.RemoveNavigationGeometrySource(*this);
         world_.RemoveWaterSource(*this);
+        world_.RemoveGroundSource(*this);
         for (const uint64_t body : heightFields_) {
             world_.RemoveStaticHeightField(body);
         }
@@ -314,6 +318,41 @@ public:
     bool SampleWater(float x, float z, GameProjectWaterSourceSample& out) const override {
         return water_.Sample(TerrainStore::Get(), x, z, out);
     }
+
+    // 編集器の「地面へ置く」と地面に従う物体が使う。真下へは高さを直接読む（歩進めより正確で速い）。
+    bool RaycastGround(const GameProjectFloat3& origin, const GameProjectFloat3& direction, float maxDistance,
+                       GameProjectGroundHit& out) const override {
+        const TerrainStore& store = TerrainStore::Get();
+        float hit[3]{};
+        if (direction.y < -0.9999f) {
+            const std::optional<float> height = store.HeightAt(origin.x, origin.z);
+            if (!height.has_value() || origin.y < *height || origin.y - *height > maxDistance) {
+                return false;
+            }
+            hit[0] = origin.x;
+            hit[1] = *height;
+            hit[2] = origin.z;
+        } else {
+            const float from[3]{origin.x, origin.y, origin.z};
+            const float toward[3]{direction.x, direction.y, direction.z};
+            if (!store.Raycast(from, toward, maxDistance, hit)) {
+                return false;
+            }
+        }
+        // 法線は前後左右の標本の差から（描画の法線と同じ間隔）。
+        const float spacing = static_cast<float>(TERRAIN::DATA::SampleSpacing(store.Settings().grid));
+        const auto height = [&](float x, float z) { return store.HeightAt(x, z).value_or(hit[1]); };
+        const float slopeX = height(hit[0] + spacing, hit[2]) - height(hit[0] - spacing, hit[2]);
+        const float slopeZ = height(hit[0], hit[2] + spacing) - height(hit[0], hit[2] - spacing);
+        const float normal[3]{-slopeX, 2.0f * spacing, -slopeZ};
+        const float length = std::sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
+        const float offset[3]{hit[0] - origin.x, hit[1] - origin.y, hit[2] - origin.z};
+        out.position = {hit[0], hit[1], hit[2]};
+        out.normal = {normal[0] / length, normal[1] / length, normal[2] / length};
+        out.distance = std::sqrt(offset[0] * offset[0] + offset[1] * offset[1] + offset[2] * offset[2]);
+        return true;
+    }
+    uint64_t GetGroundRevision() const noexcept override { return TerrainStore::Get().GroundRevision(); }
 
 private:
     std::filesystem::path CurrentScenePath() const {

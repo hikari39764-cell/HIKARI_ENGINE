@@ -183,6 +183,7 @@ void TerrainStore::Close() {
     surfaceSlotsDirty_ = false;
     scatter_.Clear();
     ++layoutRevision_;
+    ++groundRevision_;
 }
 
 bool TerrainStore::Open(const std::filesystem::path& scenePath, const TerrainSettings& settings, std::string* error) {
@@ -400,6 +401,7 @@ void TerrainStore::BakeTile(TileCoord tile, const HeightStackEvaluator& evaluato
     BuildNormalMips(bordered, samples, SampleSpacing(grid), runtime.normalMips);
     runtime.uploadPending = true;
     ++runtime.revision;
+    ++groundRevision_;
 }
 
 void TerrainStore::RebakeTiles(std::span<const TileCoord> tiles) {
@@ -767,6 +769,7 @@ void TerrainStore::BakeTileRect(TileCoord tile, const SampleRect& area, const He
         runtime.rectPending = true;
     }
     ++runtime.revision;
+    ++groundRevision_;
 }
 
 void TerrainStore::RebakeChanged(std::span<const TileCoord> tiles) {

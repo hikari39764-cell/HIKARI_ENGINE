@@ -139,6 +139,12 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
     commandRouter_.Bind(EditorCommandId::FocusSelection, "Focus Selection",
                         context_.selection.GetSelectedObjectCount() != 0u,
                         [this, &scene]() { FocusSceneObjects(scene, context_.selection.GetSelectedObjectIds()); });
+    // LookDev は自分の「落とす」（外接箱を下の面へ積む）を持つので、地面へ置くのは場面の工作区だけ。
+    if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Scene)) {
+        commandRouter_.BindOperation(EditorCommandId::DropSelectionToGround, TEXT::Localize("ui.command.dropToGround"),
+                                     context_.selection.GetSelectedObjectCount() != 0u && !scene.IsRuntimePlayActive(),
+                                     "scene.drop_to_ground");
+    }
 }
 
 std::vector<EDITOR::EditorAssetDocument*> DocumentSceneEditorController::UnsavedAssetDocuments() {

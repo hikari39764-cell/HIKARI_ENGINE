@@ -707,6 +707,7 @@
     {"ui.window.projectFeatures", "项目功能"}, {"ui.window.quality", "质量"}, {"ui.window.sceneDocument", "场景文档"},
     {"ui.window.sceneSystems", "场景系统"}, {"ui.window.sceneWorkspace", "场景工作区"},
     {"ui.command.duplicateSelection", "复制选中"}, {"ui.command.deleteSelection", "删除选中"},
+    {"ui.command.dropToGround", "贴到地面"},
     {"ui.inspector.worldSprite.size", "尺寸"}, {"ui.inspector.worldSprite.alphaOpaque", "不透明"},
     {"ui.inspector.worldSprite.alphaCutoff", "裁切阈值"}, {"ui.inspector.worldText.text", "文字"},
     {"ui.inspector.worldText.horizontalAlign", "水平对齐"}, {"ui.inspector.worldText.verticalAlign", "垂直对齐"},

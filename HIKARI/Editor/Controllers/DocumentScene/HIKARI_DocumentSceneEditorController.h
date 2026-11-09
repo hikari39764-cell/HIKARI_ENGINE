@@ -32,6 +32,7 @@
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/History/HIKARI_EditorDocumentHistory.h"
 #include "Editor/History/HIKARI_SceneObjectTransformHistorySession.h"
+#include "Editor/Authoring/HIKARI_GroundFollow.h"
 #include "Editor/SystemAuthoring/HIKARI_SystemAuthoringRegistry.h"
 #include "Editor/Gizmos/HIKARI_EditorTransformGizmo.h"
 #include "Editor/Environment/HIKARI_EnvironmentPanel.h"
@@ -480,6 +481,7 @@ private:
     EDITOR::EditorDocumentHistory documentHistory_{};
     EDITOR::EditorCommandRouter commandRouter_{};
     EDITOR::SceneObjectTransformHistorySession viewportTransformHistory_{};
+    EDITOR::GroundFollowService groundFollow_{};
     bool sceneViewCameraSnapshotValid_ = false;
     Camera3D sceneViewEditorCameraSnapshot_{};
     DebugCameraController3D sceneViewDebugCameraSnapshot_{};

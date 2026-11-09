@@ -213,6 +213,8 @@ public:
     // 描画の資源の作り直しなどで全部送り直す。
     void MarkAllForUpload() noexcept;
     uint64_t LayoutRevision() const noexcept { return layoutRevision_; }
+    // 高さが焼き直されるか瓦片が外れるたびに増える。地面に従う物体の置き直しが見る。
+    uint64_t GroundRevision() const noexcept { return groundRevision_; }
     TerrainRenderResources& Render() noexcept { return render_; }
     GpuErosionJob& Erosion() noexcept { return erosion_; }
     TerrainRivers& Rivers() noexcept { return rivers_; }
@@ -240,6 +242,7 @@ private:
     std::vector<TERRAIN::DATA::TileCoord> derivedTiles_{};
     bool stackDirty_ = false;
     uint64_t layoutRevision_ = 1u;
+    uint64_t groundRevision_ = 1u;
     TerrainRenderResources render_{};
     GpuErosionJob erosion_{};
     TerrainRivers rivers_{};

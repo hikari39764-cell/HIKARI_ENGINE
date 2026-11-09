@@ -36,6 +36,8 @@ class IGameComponent;
 class INavigationGeometrySource;
 class IRenderSurfaceExtension;
 class IWaterSource;
+class IGroundSource;
+struct GameProjectGroundHit;
 struct GameProjectOcean;
 struct GameProjectWaterSample;
 class IGameProjectSession;
@@ -131,6 +133,12 @@ public:
                                                  GameProjectWaterSample& out) const noexcept;
     // 場面の海（相机を追う水面）。無ければ false。
     HIKARI_GAME_PROJECT_SDK_API bool FindOcean(GameProjectOcean& out) const noexcept;
+    // モジュールの地面（地形など）を地面の問い合わせへ足す（HIKARI/Project/GroundSource.h）。外すまで生かしておく。
+    HIKARI_GAME_PROJECT_SDK_API bool AddGroundSource(IGroundSource& source) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API void RemoveGroundSource(IGroundSource& source) const noexcept;
+    // 地面への光線。登録された地面のうち一番近い当たり。物理の無い編集中の世界でも使える。
+    HIKARI_GAME_PROJECT_SDK_API bool RaycastGround(GameProjectFloat3 origin, GameProjectFloat3 direction,
+                                                   float maxDistance, GameProjectGroundHit& out) const noexcept;
     // モジュールの面を登録する。OnWorldDetached までに外すこと。
     HIKARI_GAME_PROJECT_SDK_API bool AddRenderSurfaceExtension(IRenderSurfaceExtension& extension) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API void RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) const noexcept;

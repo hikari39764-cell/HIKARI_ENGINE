@@ -545,6 +545,14 @@ void World::AddWaterSource(IWaterSource& source) {
 
 void World::RemoveWaterSource(IWaterSource& source) noexcept { std::erase(waterSources_, &source); }
 
+void World::AddGroundSource(IGroundSource& source) {
+    if (std::find(groundSources_.begin(), groundSources_.end(), &source) == groundSources_.end()) {
+        groundSources_.push_back(&source);
+    }
+}
+
+void World::RemoveGroundSource(IGroundSource& source) noexcept { std::erase(groundSources_, &source); }
+
 void World::RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) noexcept {
     std::erase(renderSurfaceExtensions_, &extension);
 }
